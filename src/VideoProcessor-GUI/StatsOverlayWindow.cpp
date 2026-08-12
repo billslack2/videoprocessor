@@ -267,7 +267,7 @@ bool StatsOverlayWindow::RenderSweepBannerBgra(const CString& status,
 	if (status.IsEmpty())
 		return false;
 	width = 1400;
-	height = 188;
+	height = 250;
 	stride = width * 4;
 	BITMAPINFO info{};
 	info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
@@ -318,12 +318,11 @@ bool StatsOverlayWindow::RenderSweepBannerBgra(const CString& status,
 	SetTextColor(memory, stateColor);
 	TextOut(memory, 26, 86, stateLabel, stateLabel.GetLength());
 	CString value(status);
-	constexpr int maximumCharacters = 46;
-	if (value.GetLength() > maximumCharacters)
-		value = value.Left(maximumCharacters - 3) + TEXT("...");
 	SelectObject(memory, valueFont);
 	SetTextColor(memory, RGB(255, 255, 255));
-	TextOut(memory, 330, 104, value, value.GetLength());
+	RECT valueRect{ 330, 86, width - 28, height - 18 };
+	::DrawText(memory, value, -1, &valueRect,
+		DT_LEFT | DT_TOP | DT_WORDBREAK | DT_NOPREFIX);
 	SelectObject(memory, oldFont);
 	DeleteObject(titleFont);
 	DeleteObject(stateFont);
@@ -349,7 +348,7 @@ bool StatsOverlayWindow::RenderSweepSummaryBgra(
 	const size_t first = page * itemsPerPage;
 	const size_t count = (std::min)(itemsPerPage, items.size() - first);
 	width = 1400;
-	height = 168 + static_cast<int>(count) * 88;
+	height = 168 + static_cast<int>(count) * 118;
 	stride = width * 4;
 	BITMAPINFO info{};
 	info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
@@ -382,7 +381,7 @@ bool StatsOverlayWindow::RenderSweepSummaryBgra(
 	HFONT titleFont = CreateFont(36, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
 		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
 		CLEARTYPE_QUALITY, FIXED_PITCH | FF_MODERN, TEXT("Consolas"));
-	HFONT valueFont = CreateFont(31, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+	HFONT valueFont = CreateFont(29, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
 		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
 		CLEARTYPE_QUALITY, FIXED_PITCH | FF_MODERN, TEXT("Consolas"));
 	HFONT oldFont = static_cast<HFONT>(SelectObject(memory, titleFont));
@@ -405,13 +404,15 @@ bool StatsOverlayWindow::RenderSweepSummaryBgra(
 		const CString verdict = item.passed ? L"PASS" : L"FAIL";
 		SetTextColor(memory, color);
 		TextOut(memory, 26, y, verdict, verdict.GetLength());
-		CString label = item.label + L" - " + item.detail;
-		constexpr int maximumCharacters = 43;
-		if (label.GetLength() > maximumCharacters)
-			label = label.Left(maximumCharacters - 3) + TEXT("...");
 		SetTextColor(memory, RGB(255, 255, 255));
-		TextOut(memory, 210, y, label, label.GetLength());
-		y += 88;
+		RECT labelRect{ 210, y, width - 28, y + 70 };
+		::DrawText(memory, item.label, -1, &labelRect,
+			DT_LEFT | DT_TOP | DT_WORDBREAK | DT_NOPREFIX);
+		SetTextColor(memory, RGB(185, 215, 235));
+		RECT detailRect{ 210, y + 72, width - 28, y + 108 };
+		::DrawText(memory, item.detail, -1, &detailRect,
+			DT_LEFT | DT_TOP | DT_WORDBREAK | DT_NOPREFIX);
+		y += 118;
 	}
 	SelectObject(memory, oldFont);
 	DeleteObject(titleFont);

@@ -106,8 +106,12 @@ Options:
       "active-output-sweep"; the normal user configuration is refused.
       The active contract is shown in the native top-right OSD by default.
 
-  /active_output_sweep_hold_ms <1000-60000>
+  /active_output_sweep_hold_ms <1000-600000>
       Milliseconds per live contract in the active-output sweep (default: 5000 ms).
+
+  /active_output_sweep_tests <list>
+      Run only the specified documented cases. Use comma-separated numbers and
+      ranges, for example 2,5 or 2-5,8. The default runs all cases.
 
   /active_output_sweep_show_info <true|false>
       Keep the top-right OSD visible during an active-output sweep (default: true).
@@ -859,6 +863,7 @@ bool RequiresCommandLineValue(const wchar_t* argument)
 		IsCommandLineOption(argument, L"/renderer_transfer_matrix") ||
 		IsCommandLineOption(argument, L"/renderer_primaries") ||
 		IsCommandLineOption(argument, L"/active_output_sweep_hold_ms") ||
+		IsCommandLineOption(argument, L"/active_output_sweep_tests") ||
 		IsCommandLineOption(argument, L"/active_output_sweep_restart");
 }
 
@@ -968,10 +973,28 @@ void ValidateCommandLineArguments(const std::vector<const wchar_t*>& arguments)
 		if (IsCommandLineOption(argument, L"/active_output_sweep_hold_ms") &&
 			(!IsPositiveInteger(arguments[index + 1]) ||
 			 _wtoi(arguments[index + 1]) < 1000 ||
-			 _wtoi(arguments[index + 1]) > 60000))
+			 _wtoi(arguments[index + 1]) > 600000))
 		{
 			throw std::runtime_error(
-				"Invalid /active_output_sweep_hold_ms: expected an integer from 1000 to 60000");
+				"Invalid /active_output_sweep_hold_ms: expected an integer from 1000 to 600000");
+		}
+
+		if (IsCommandLineOption(argument, L"/active_output_sweep_tests"))
+		{
+			const wchar_t* value = arguments[index + 1];
+			bool hasDigit = false;
+			for (const wchar_t* character = value; *character; ++character)
+			{
+				if (*character >= L'0' && *character <= L'9')
+					hasDigit = true;
+				else if (*character != L',' && *character != L'-' &&
+					*character != L' ' && *character != L'\t')
+					throw std::runtime_error(
+						"Invalid /active_output_sweep_tests: use numbers, commas, and ranges (for example 2,5 or 2-5)");
+			}
+			if (!hasDigit)
+				throw std::runtime_error(
+					"Invalid /active_output_sweep_tests: specify one or more test numbers");
 		}
 
 		if (IsCommandLineOption(argument, L"/active_output_sweep_restart") &&
@@ -1199,6 +1222,7 @@ BOOL CVideoProcessorApp::InitInstance()
 		bool activeOutputSweepShowInfo = true;
 		bool activeOutputSweepCaptureRestart = true;
 		DWORD activeOutputSweepHoldMs = 5000;
+		CString activeOutputSweepTests;
 
 		for (int i = 1; i < iNumOfArgs; i++)
 		{
@@ -1771,6 +1795,13 @@ BOOL CVideoProcessorApp::InitInstance()
 				++i;
 			}
 
+			if (wcscmp(pArgs[i], L"/active_output_sweep_tests") == 0 &&
+				(i + 1) < iNumOfArgs)
+			{
+				activeOutputSweepTests = pArgs[i + 1];
+				++i;
+			}
+
 			if (wcscmp(pArgs[i], L"/active_output_sweep_restart") == 0 &&
 				(i + 1) < iNumOfArgs)
 			{
@@ -1783,7 +1814,8 @@ BOOL CVideoProcessorApp::InitInstance()
 
 		if (activeOutputSweep)
 			dlg.ConfigureActiveOutputSweep(true, activeOutputSweepHoldMs,
-				activeOutputSweepShowInfo, activeOutputSweepCaptureRestart);
+				activeOutputSweepShowInfo, activeOutputSweepCaptureRestart,
+				activeOutputSweepTests);
 
 		const ApplicationInterface::Selection interfaceSelection =
 			ApplicationInterface::Resolve(

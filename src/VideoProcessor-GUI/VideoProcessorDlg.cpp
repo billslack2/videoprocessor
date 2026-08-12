@@ -2644,13 +2644,15 @@ void CVideoProcessorDlg::ApplySavedConfiguration()
 }
 
 void CVideoProcessorDlg::ConfigureActiveOutputSweep(
-	bool enabled, DWORD holdMs, bool showInfo, bool captureRestart)
+	bool enabled, DWORD holdMs, bool showInfo, bool captureRestart,
+	const CString& requestedTests)
 {
 	m_activeOutputSweepRequested = enabled;
 	m_activeOutputSweepHoldMs = holdMs < 1000 ? 1000 :
-		(holdMs > 60000 ? 60000 : holdMs);
+		(holdMs > 600000 ? 600000 : holdMs);
 	m_activeOutputSweepShowInfo = showInfo;
 	m_activeOutputSweepCaptureRestart = captureRestart;
+	m_activeOutputSweepRequestedTests = requestedTests;
 	if (!enabled)
 		return;
 
@@ -2658,9 +2660,10 @@ void CVideoProcessorDlg::ConfigureActiveOutputSweep(
 	// call occurs while command-line settings are applied, before capture starts.
 	StartFullScreen(true);
 	DebugLog::Log(
-		"Active output sweep armed: fullscreen=required hold_ms=%lu show_info=%d reinitialize=%s",
+		"Active output sweep armed: fullscreen=required hold_ms=%lu show_info=%d reinitialize=%s requested_tests=%S",
 		m_activeOutputSweepHoldMs, m_activeOutputSweepShowInfo ? 1 : 0,
-		m_activeOutputSweepCaptureRestart ? "capture" : "renderer");
+		m_activeOutputSweepCaptureRestart ? "capture" : "renderer",
+		m_activeOutputSweepRequestedTests.GetString());
 }
 
 bool CVideoProcessorDlg::StartActiveOutputSweep()
@@ -2726,24 +2729,116 @@ bool CVideoProcessorDlg::StartActiveOutputSweep()
 	ClearActiveOutputSweepSummary("new-sweep");
 	m_activeOutputSweepResults.clear();
 	m_activeOutputSweepCases = {
-		{ L"1/17 legacy direct full/sRGB", "direct", "full", "srgb", false, false, false, false, false },
-		{ L"2/17 direct auto/auto", "direct", "auto", "auto", false, false, false, false, false },
-		{ L"3/17 direct full/G22 policy", "direct", "full", "2.2", false, false, false, false, false },
-		{ L"4/17 VP direct full/G22", "direct", "full", "2.2", false, true, true, false, false },
-		{ L"5/17 direct limited/G22 policy", "direct", "limited", "2.2", false, false, false, false, false },
-		{ L"6/17 VP direct limited/G22", "direct", "limited", "2.2", false, true, true, false, false },
-		{ L"7/17 VP direct limited/G24", "direct", "limited", "2.4", false, false, true, false, false },
-		{ L"8/17 VP direct limited/auto", "direct", "limited", "auto", false, false, true, false, false },
-		{ L"9/17 VP direct full/G20", "direct", "full", "2.0", false, false, true, false, false },
-		{ L"10/17 VP direct limited/G20", "direct", "limited", "2.0", false, false, true, false, false },
-		{ L"11/17 VP direct full/sRGB 8-bit", "direct", "full", "srgb", true, false, true, false, false },
-		{ L"12/17 VP direct compute off", "direct", "full", "srgb", false, false, true, true, false },
-		{ L"13/17 VP direct shader cache off", "direct", "full", "srgb", false, false, true, false, true },
-		{ L"14/17 VP direct compute/cache off", "direct", "full", "srgb", false, false, true, true, true },
-		{ L"15/17 composed full/sRGB", "composed", "full", "srgb", false, false, false, false, false },
-		{ L"16/17 composed full/G20", "composed", "full", "2.0", false, false, false, false, false },
-		{ L"17/17 composed VP-owned", "composed", "full", "srgb", false, false, true, false, false },
+		{ L"1/17 legacy direct full/sRGB", "direct", "full", "srgb", false, false, false, false, false,
+			L"Test 1/17: Legacy presenter; Direct; Full range; sRGB transfer" },
+		{ L"2/17 direct auto/auto", "direct", "auto", "auto", false, false, false, false, false,
+			L"Test 2/17: Legacy presenter; Direct; Auto range; Auto transfer" },
+		{ L"3/17 direct full/G22 policy", "direct", "full", "2.2", false, false, false, false, false,
+			L"Test 3/17: Legacy presenter; Direct; Full range; Gamma 2.2 policy check" },
+		{ L"4/17 VP direct full/G22", "direct", "full", "2.2", false, true, true, false, false,
+			L"Test 4/17: VP-owned DXGI; Direct; Full range; Gamma 2.2 experiment" },
+		{ L"5/17 direct limited/G22 policy", "direct", "limited", "2.2", false, false, false, false, false,
+			L"Test 5/17: Legacy presenter; Direct; Limited range; Gamma 2.2 policy check" },
+		{ L"6/17 VP direct limited/G22", "direct", "limited", "2.2", false, true, true, false, false,
+			L"Test 6/17: VP-owned DXGI; Direct; Limited range; Gamma 2.2 experiment" },
+		{ L"7/17 VP direct limited/G24", "direct", "limited", "2.4", false, false, true, false, false,
+			L"Test 7/17: VP-owned DXGI; Direct; Limited range; Gamma 2.4" },
+		{ L"8/17 VP direct limited/auto", "direct", "limited", "auto", false, false, true, false, false,
+			L"Test 8/17: VP-owned DXGI; Direct; Limited range; Auto transfer" },
+		{ L"9/17 VP direct full/G20", "direct", "full", "2.0", false, false, true, false, false,
+			L"Test 9/17: VP-owned DXGI; Direct; Full range; Gamma 2.0" },
+		{ L"10/17 VP direct limited/G20", "direct", "limited", "2.0", false, false, true, false, false,
+			L"Test 10/17: VP-owned DXGI; Direct; Limited range; Gamma 2.0" },
+		{ L"11/17 VP direct full/sRGB 8-bit", "direct", "full", "srgb", true, false, true, false, false,
+			L"Test 11/17: VP-owned DXGI; Direct; Full range; sRGB; Force 8-bit SDR" },
+		{ L"12/17 VP direct compute off", "direct", "full", "srgb", false, false, true, true, false,
+			L"Test 12/17: VP-owned DXGI; Direct; Full range; sRGB; D3D11 compute off" },
+		{ L"13/17 VP direct shader cache off", "direct", "full", "srgb", false, false, true, false, true,
+			L"Test 13/17: VP-owned DXGI; Direct; Full range; sRGB; Shader cache off" },
+		{ L"14/17 VP direct compute/cache off", "direct", "full", "srgb", false, false, true, true, true,
+			L"Test 14/17: VP-owned DXGI; Direct; Full range; sRGB; Compute and cache off" },
+		{ L"15/17 composed full/sRGB", "composed", "full", "srgb", false, false, false, false, false,
+			L"Test 15/17: Legacy presenter; Composed; Full range; sRGB transfer" },
+		{ L"16/17 composed full/G20", "composed", "full", "2.0", false, false, false, false, false,
+			L"Test 16/17: Legacy presenter; Composed; Full range; Gamma 2.0" },
+		{ L"17/17 composed VP-owned", "composed", "full", "srgb", false, false, true, false, false,
+			L"Test 17/17: VP-owned DXGI; Composed; Full range; sRGB transfer" },
 	};
+	if (!m_activeOutputSweepRequestedTests.IsEmpty())
+	{
+		std::vector<bool> selected(m_activeOutputSweepCases.size(), false);
+		const std::wstring expression = m_activeOutputSweepRequestedTests.GetString();
+		auto parseNumber = [](const std::wstring& value, size_t& number)
+		{
+			if (value.empty())
+				return false;
+			wchar_t* end = nullptr;
+			const unsigned long parsed = wcstoul(value.c_str(), &end, 10);
+			if (end == value.c_str() || *end != L'\0' || parsed == 0)
+				return false;
+			number = static_cast<size_t>(parsed);
+			return true;
+		};
+		bool valid = true;
+		size_t start = 0;
+		while (valid && start <= expression.size())
+		{
+			const size_t separator = expression.find(L',', start);
+			std::wstring token = expression.substr(start,
+				separator == std::wstring::npos ? std::wstring::npos : separator - start);
+			const size_t firstCharacter = token.find_first_not_of(L" \t");
+			const size_t lastCharacter = token.find_last_not_of(L" \t");
+			if (firstCharacter == std::wstring::npos)
+			{
+				valid = false;
+				break;
+			}
+			token = token.substr(firstCharacter, lastCharacter - firstCharacter + 1);
+			const size_t dash = token.find(L'-');
+			if (dash != std::wstring::npos && token.find(L'-', dash + 1) != std::wstring::npos)
+			{
+				valid = false;
+				break;
+			}
+			size_t first = 0;
+			size_t last = 0;
+			if (dash == std::wstring::npos)
+			{
+				valid = parseNumber(token, first);
+				last = first;
+			}
+			else
+			{
+				valid = parseNumber(token.substr(0, dash), first) &&
+					parseNumber(token.substr(dash + 1), last) && first <= last;
+			}
+			if (!valid || last > selected.size())
+			{
+				valid = false;
+				break;
+			}
+			for (size_t number = first; number <= last; ++number)
+				selected[number - 1] = true;
+			if (separator == std::wstring::npos)
+				break;
+			start = separator + 1;
+		}
+		if (!valid || std::find(selected.begin(), selected.end(), true) == selected.end())
+		{
+			CString error;
+			error.Format(L"refused: invalid test list '%s' (use 2,5 or 2-5)",
+				m_activeOutputSweepRequestedTests.GetString());
+			CompleteActiveOutputSweep(error);
+			return false;
+		}
+		std::vector<ActiveOutputSweepCase> filtered;
+		for (size_t index = 0; index < selected.size(); ++index)
+		{
+			if (selected[index])
+				filtered.push_back(m_activeOutputSweepCases[index]);
+		}
+		m_activeOutputSweepCases = std::move(filtered);
+	}
 	m_activeOutputSweepCaseIndex = 0;
 	m_activeOutputSweepRunning = true;
 	// The live test owns a separate native top-right banner. Do not force the
@@ -2818,7 +2913,8 @@ bool CVideoProcessorDlg::ApplyActiveOutputSweepCase(size_t index)
 	m_activeOutputSweepAwaitingLiveFrame = true;
 	m_activeOutputSweepCaseFailed = false;
 	m_activeOutputSweepDeadlineTick = GetTickCount64() + 15000;
-	m_activeOutputSweepStatus.Format(L"%s - %s restart", test.label,
+	m_activeOutputSweepStatus.Format(L"%s\nRestarting %s for this test",
+		test.description,
 		m_activeOutputSweepCaptureRestart ? L"capture" : L"renderer");
 	DebugLog::Log(
 		"Active output sweep case: index=%zu label=%S presentation=%s range=%s gamma=%s force8=%d vp_owned=%d no_compute=%d no_shader_cache=%d action=%s-restart backup=%S",
@@ -2944,7 +3040,7 @@ void CVideoProcessorDlg::RecordActiveOutputSweepResult(bool passed,
 		m_activeOutputSweepResults.size() > m_activeOutputSweepCaseIndex)
 		return;
 	SweepSummaryItem item;
-	item.label = m_activeOutputSweepCases[m_activeOutputSweepCaseIndex].label;
+	item.label = m_activeOutputSweepCases[m_activeOutputSweepCaseIndex].description;
 	item.detail = detail;
 	item.passed = passed;
 	m_activeOutputSweepResults.push_back(std::move(item));
@@ -2991,8 +3087,8 @@ void CVideoProcessorDlg::UpdateActiveOutputSweep(ULONGLONG now)
 		const ULONGLONG failureHoldMs = m_activeOutputSweepHoldMs < 5000 ?
 			m_activeOutputSweepHoldMs : 5000;
 		m_activeOutputSweepDeadlineTick = now + failureHoldMs;
-		m_activeOutputSweepStatus.Format(L"%s - no live frame after 15s; holding failure",
-			m_activeOutputSweepCases[m_activeOutputSweepCaseIndex].label);
+		m_activeOutputSweepStatus.Format(L"%s\nNo live video after 15 seconds; holding failure",
+			m_activeOutputSweepCases[m_activeOutputSweepCaseIndex].description);
 		DebugLog::Log("Active output sweep case failure hold: index=%zu hold_ms=%llu",
 			m_activeOutputSweepCaseIndex + 1,
 			m_activeOutputSweepDeadlineTick - now);
@@ -5439,8 +5535,8 @@ LRESULT CVideoProcessorDlg::OnMessageRendererLiveFrame(
 		m_activeOutputSweepCaseFailed = false;
 		m_activeOutputSweepDeadlineTick = GetTickCount64() +
 			m_activeOutputSweepHoldMs;
-		m_activeOutputSweepStatus.Format(L"%s - live; holding %lus",
-			m_activeOutputSweepCases[m_activeOutputSweepCaseIndex].label,
+		m_activeOutputSweepStatus.Format(L"%s\nLive video observed; holding %lus",
+			m_activeOutputSweepCases[m_activeOutputSweepCaseIndex].description,
 			m_activeOutputSweepHoldMs / 1000);
 		DebugLog::Log("Active output sweep live frame: index=%zu hold_ms=%lu",
 			m_activeOutputSweepCaseIndex + 1, m_activeOutputSweepHoldMs);
@@ -12461,7 +12557,7 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		int width = 0;
 		int height = 0;
 		int stride = 0;
-		const size_t summaryItemsPerPage = 4;
+		const size_t summaryItemsPerPage = 3;
 		const size_t summaryPage = m_activeOutputSweepSummaryVisible &&
 			m_activeOutputSweepSummaryStartedTick != 0 ?
 			static_cast<size_t>((GetTickCount64() -

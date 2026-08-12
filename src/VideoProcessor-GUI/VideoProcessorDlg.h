@@ -164,7 +164,7 @@ public:
 	// Diagnostic-only runner. It only accepts the explicitly generated temporary
 	// sweep configuration, leaving the user's normal config untouched.
 	void ConfigureActiveOutputSweep(bool enabled, DWORD holdMs, bool showInfo,
-		bool captureRestart);
+		bool captureRestart, const CString& requestedTests);
 
 
 	// UI-related handlers
@@ -726,6 +726,7 @@ protected:
 		bool vpOwnedPresenter = false;
 		bool disableCompute = false;
 		bool disableShaderCache = false;
+		const wchar_t* description = L"";
 	};
 	bool m_activeOutputSweepRequested = false;
 	bool m_activeOutputSweepRunning = false;
@@ -737,6 +738,7 @@ protected:
 	bool m_activeOutputSweepShowInfo = true;
 	bool m_activeOutputSweepCaptureRestart = true;
 	DWORD m_activeOutputSweepHoldMs = 5000;
+	CString m_activeOutputSweepRequestedTests;
 	size_t m_activeOutputSweepCaseIndex = 0;
 	ULONGLONG m_activeOutputSweepDeadlineTick = 0;
 	CString m_activeOutputSweepStatus;
