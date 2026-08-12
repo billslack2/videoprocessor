@@ -2782,46 +2782,64 @@ bool CVideoProcessorDlg::StartActiveOutputSweep()
 	}
 	else
 	{
-		// These use the HDR sweep template's documented display transport.  The
-		// cases deliberately vary one tone-map control at a time, with 300 nits
-		// the comparison anchor because the reported issue begins above 200 nits.
+		// The HDR suite first brackets the target-nits boundary, then repeats the
+		// output-contract cases which can affect black floor, levels, or transfer.
+		// It intentionally omits only the SDR-only force-8-bit swapchain case.
+		// Target primaries and HDMI BT.2020 signaling are selected by the launcher
+		// and preserved across every case in this run.
 		m_activeOutputSweepCases = {
-			{ L"1/12 HDR 100 nits", "direct", "auto", "auto", false, false, false, false, false,
-				L"HDR test 1/12: 100-nit target; automatic tone and gamut mapping",
-				"100", "auto", "auto", "auto", "auto", "bt2020", "true" },
-			{ L"2/12 HDR 200 nits", "direct", "auto", "auto", false, false, false, false, false,
-				L"HDR test 2/12: 200-nit target; reported safe-boundary comparison",
-				"200", "auto", "auto", "auto", "auto", "bt2020", "true" },
-			{ L"3/12 HDR 250 nits", "direct", "auto", "auto", false, false, false, false, false,
-				L"HDR test 3/12: 250-nit target; just above the reported boundary",
-				"250", "auto", "auto", "auto", "auto", "bt2020", "true" },
-			{ L"4/12 HDR 300 nits", "direct", "auto", "auto", false, false, false, false, false,
-				L"HDR test 4/12: 300-nit target; direct fullscreen baseline",
-				"300", "auto", "auto", "auto", "auto", "bt2020", "true" },
-			{ L"5/12 HDR 400 nits", "direct", "auto", "auto", false, false, false, false, false,
-				L"HDR test 5/12: 400-nit target; high-target stress comparison",
-				"400", "auto", "auto", "auto", "auto", "bt2020", "true" },
-			{ L"6/12 HDR 300 composed", "composed", "auto", "auto", false, false, false, false, false,
-				L"HDR test 6/12: 300-nit target; composed presentation comparison",
-				"300", "auto", "auto", "auto", "auto", "bt2020", "true" },
-			{ L"7/12 HDR 300 Rec709", "direct", "auto", "auto", false, false, false, false, false,
-				L"HDR test 7/12: 300-nit target; Rec.709 target and signaling comparison",
-				"300", "auto", "auto", "auto", "auto", "rec709", "false" },
-			{ L"8/12 HDR 300 BT2390", "direct", "auto", "auto", false, false, false, false, false,
-				L"HDR test 8/12: 300-nit target; BT.2390 tone mapping",
-				"300", "bt2390", "auto", "auto", "auto", "bt2020", "true" },
-			{ L"9/12 HDR 300 Reinhard", "direct", "auto", "auto", false, false, false, false, false,
-				L"HDR test 9/12: 300-nit target; Reinhard tone mapping",
-				"300", "reinhard", "auto", "auto", "auto", "bt2020", "true" },
-			{ L"10/12 HDR 300 softclip", "direct", "auto", "auto", false, false, false, false, false,
-				L"HDR test 10/12: 300-nit target; soft-clip gamut mapping",
-				"300", "auto", "softclip", "auto", "auto", "bt2020", "true" },
-			{ L"11/12 HDR 300 peak off", "direct", "auto", "auto", false, false, false, false, false,
-				L"HDR test 11/12: 300-nit target; peak detection disabled",
-				"300", "auto", "auto", "off", "auto", "bt2020", "true" },
-			{ L"12/12 HDR 300 recovery 0", "direct", "auto", "auto", false, false, false, false, false,
-				L"HDR test 12/12: 300-nit target; contrast recovery disabled",
-				"300", "auto", "auto", "auto", "0.0", "bt2020", "true" },
+			{ L"1/26 HDR 100 nits", "direct", "limited", "2.2", false, true, true, false, false,
+				L"HDR test 1/26: 100-nit target; Direct; Limited; Gamma 2.2; automatic mapping", "100", "auto", "auto", "auto", "auto" },
+			{ L"2/26 HDR 200 nits", "direct", "limited", "2.2", false, true, true, false, false,
+				L"HDR test 2/26: 200-nit target; Direct; Limited; Gamma 2.2; boundary comparison", "200", "auto", "auto", "auto", "auto" },
+			{ L"3/26 HDR 250 nits", "direct", "limited", "2.2", false, true, true, false, false,
+				L"HDR test 3/26: 250-nit target; Direct; Limited; Gamma 2.2; just above boundary", "250", "auto", "auto", "auto", "auto" },
+			{ L"4/26 HDR 300 nits", "direct", "limited", "2.2", false, true, true, false, false,
+				L"HDR test 4/26: 300-nit target; Direct; Limited; Gamma 2.2 baseline", "300", "auto", "auto", "auto", "auto" },
+			{ L"5/26 HDR 400 nits", "direct", "limited", "2.2", false, true, true, false, false,
+				L"HDR test 5/26: 400-nit target; Direct; Limited; Gamma 2.2 stress comparison", "400", "auto", "auto", "auto", "auto" },
+			{ L"6/26 HDR legacy full sRGB", "direct", "full", "srgb", false, false, false, false, false,
+				L"HDR test 6/26: Legacy; Direct; Full range; sRGB transfer; black-floor comparison", "300" },
+			{ L"7/26 HDR legacy auto", "direct", "auto", "auto", false, false, false, false, false,
+				L"HDR test 7/26: Legacy; Direct; Auto range and transfer; negotiation comparison", "300" },
+			{ L"8/26 HDR legacy full G22", "direct", "full", "2.2", false, false, false, false, false,
+				L"HDR test 8/26: Legacy; Direct; Full range; Gamma 2.2 policy comparison", "300" },
+			{ L"9/26 HDR VP full G22", "direct", "full", "2.2", false, true, true, false, false,
+				L"HDR test 9/26: VP-owned DXGI; Direct; Full range; Gamma 2.2", "300" },
+			{ L"10/26 HDR legacy limited G22", "direct", "limited", "2.2", false, false, false, false, false,
+				L"HDR test 10/26: Legacy; Direct; Limited; Gamma 2.2 policy comparison", "300" },
+			{ L"11/26 HDR VP limited G22", "direct", "limited", "2.2", false, true, true, false, false,
+				L"HDR test 11/26: VP-owned DXGI; Direct; Limited; Gamma 2.2", "300" },
+			{ L"12/26 HDR VP limited G24", "direct", "limited", "2.4", false, false, true, false, false,
+				L"HDR test 12/26: VP-owned DXGI; Direct; Limited; Gamma 2.4", "300" },
+			{ L"13/26 HDR VP limited auto", "direct", "limited", "auto", false, false, true, false, false,
+				L"HDR test 13/26: VP-owned DXGI; Direct; Limited; Auto transfer", "300" },
+			{ L"14/26 HDR VP full G20", "direct", "full", "2.0", false, false, true, false, false,
+				L"HDR test 14/26: VP-owned DXGI; Direct; Full range; Gamma 2.0", "300" },
+			{ L"15/26 HDR VP limited G20", "direct", "limited", "2.0", false, false, true, false, false,
+				L"HDR test 15/26: VP-owned DXGI; Direct; Limited; Gamma 2.0", "300" },
+			{ L"16/26 HDR VP compute off", "direct", "limited", "2.2", false, true, true, true, false,
+				L"HDR test 16/26: VP-owned DXGI; Direct; Limited; Gamma 2.2; D3D11 compute off", "300" },
+			{ L"17/26 HDR VP cache off", "direct", "limited", "2.2", false, true, true, false, true,
+				L"HDR test 17/26: VP-owned DXGI; Direct; Limited; Gamma 2.2; shader cache off", "300" },
+			{ L"18/26 HDR VP compute/cache off", "direct", "limited", "2.2", false, true, true, true, true,
+				L"HDR test 18/26: VP-owned DXGI; Direct; Limited; Gamma 2.2; compute and cache off", "300" },
+			{ L"19/26 HDR legacy composed", "composed", "full", "srgb", false, false, false, false, false,
+				L"HDR test 19/26: Legacy; Composed; Full range; sRGB transfer", "300" },
+			{ L"20/26 HDR legacy composed G20", "composed", "full", "2.0", false, false, false, false, false,
+				L"HDR test 20/26: Legacy; Composed; Full range; Gamma 2.0", "300" },
+			{ L"21/26 HDR VP composed G22", "composed", "limited", "2.2", false, true, true, false, false,
+				L"HDR test 21/26: VP-owned DXGI; Composed; Limited; Gamma 2.2", "300" },
+			{ L"22/26 HDR BT2390", "direct", "limited", "2.2", false, true, true, false, false,
+				L"HDR test 22/26: 300-nit target; BT.2390 tone mapping", "300", "bt2390", "auto", "auto", "auto" },
+			{ L"23/26 HDR Reinhard", "direct", "limited", "2.2", false, true, true, false, false,
+				L"HDR test 23/26: 300-nit target; Reinhard tone mapping", "300", "reinhard", "auto", "auto", "auto" },
+			{ L"24/26 HDR softclip", "direct", "limited", "2.2", false, true, true, false, false,
+				L"HDR test 24/26: 300-nit target; soft-clip gamut mapping", "300", "auto", "softclip", "auto", "auto" },
+			{ L"25/26 HDR peak off", "direct", "limited", "2.2", false, true, true, false, false,
+				L"HDR test 25/26: 300-nit target; peak detection disabled", "300", "auto", "auto", "off", "auto" },
+			{ L"26/26 HDR recovery 0", "direct", "limited", "2.2", false, true, true, false, false,
+				L"HDR test 26/26: 300-nit target; contrast recovery disabled", "300", "auto", "auto", "auto", "0.0" },
 		};
 	}
 	if (!m_activeOutputSweepRequestedTests.IsEmpty())
@@ -2919,27 +2937,22 @@ bool CVideoProcessorDlg::ApplyActiveOutputSweepCase(size_t index)
 	const bool hdrSuite = m_activeOutputSweepSuite.CompareNoCase(L"hdr") == 0;
 	auto applyTestSettings = [&document, &test, hdrSuite](const std::string& section)
 	{
-		if (!hdrSuite)
+		document.SetKnown(section, "output_path_profile", "custom");
+		document.SetKnown(section, "output_presentation", test.presentation);
+		document.SetKnown(section, "output_range", test.range);
+		document.SetKnown(section, "output_gamma", test.gamma);
+		document.SetKnown(section, "diagnostic_force_8bit_sdr_swapchain",
+			test.force8Bit ? "true" : "false");
+		document.SetKnown(section, "diagnostic_allow_limited_g22",
+			test.allowLimitedG22 ? "true" : "false");
+		document.SetKnown(section, "diagnostic_vp_owned_dxgi_presenter",
+			test.vpOwnedPresenter ? "true" : "false");
+		document.SetKnown(section, "diagnostic_disable_compute",
+			test.disableCompute ? "true" : "false");
+		document.SetKnown(section, "diagnostic_disable_shader_cache",
+			test.disableShaderCache ? "true" : "false");
+		if (hdrSuite)
 		{
-			document.SetKnown(section, "output_path_profile", "custom");
-			document.SetKnown(section, "output_presentation", test.presentation);
-			document.SetKnown(section, "output_range", test.range);
-			document.SetKnown(section, "output_gamma", test.gamma);
-			document.SetKnown(section, "diagnostic_force_8bit_sdr_swapchain",
-				test.force8Bit ? "true" : "false");
-			document.SetKnown(section, "diagnostic_allow_limited_g22",
-				test.allowLimitedG22 ? "true" : "false");
-			document.SetKnown(section, "diagnostic_vp_owned_dxgi_presenter",
-				test.vpOwnedPresenter ? "true" : "false");
-			document.SetKnown(section, "diagnostic_disable_compute",
-				test.disableCompute ? "true" : "false");
-			document.SetKnown(section, "diagnostic_disable_shader_cache",
-				test.disableShaderCache ? "true" : "false");
-		}
-		else
-		{
-			if (strcmp(test.presentation, "auto") != 0)
-				document.SetKnown(section, "output_presentation", test.presentation);
 			if (test.sdrTargetNits)
 				document.SetKnown(section, "sdr_target_nits", test.sdrTargetNits);
 			if (test.toneMapping)

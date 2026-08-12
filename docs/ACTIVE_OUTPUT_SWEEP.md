@@ -38,10 +38,10 @@ VP-owned presenter is what changes the outcome.
 ## HDR tone-mapping suite
 
 Run this only with real HDR content. It refuses to start unless VP currently
-reports a valid PQ, HLG, or HDR input EOTF. The dedicated HDR template defines
-the repeatable fullscreen output baseline: Direct presentation, Limited range,
-Gamma 2.2, BT.2020 target primaries, and BT.2020 signaling. The suite does not
-alter incoming HDR metadata.
+reports a valid PQ, HLG, or HDR input EOTF. The launcher asks whether this run
+targets Rec.709 or BT.2020 and whether it should send the BT.2020 HDMI
+InfoFrame; that selected color/signaling path is held constant across every
+case. The suite never alters incoming HDR metadata.
 
 | Test | Change from the HDR baseline | Purpose |
 | --- | --- | --- |
@@ -50,15 +50,15 @@ alter incoming HDR metadata.
 | 3 | 250 nits | First just-above-boundary test. |
 | 4 | 300 nits | Direct fullscreen anchor for control comparisons. |
 | 5 | 400 nits | Higher target stress comparison. |
-| 6 | 300 nits + composed presentation | Distinguishes fullscreen direct presentation from compositor behavior. |
-| 7 | 300 nits + Rec.709 target/signaling | Separates BT.2020 target/signaling from tone-map behavior. |
-| 8 | 300 nits + BT.2390 | Alternate highlight roll-off. |
-| 9 | 300 nits + Reinhard | Alternate compression baseline. |
-| 10 | 300 nits + softclip gamut mapping | Tests boundary color compression. |
-| 11 | 300 nits + peak detection off | Identifies dynamic peak-analysis influence. |
-| 12 | 300 nits + contrast recovery 0.0 | Identifies local-contrast recovery influence. |
+| 6–21 | 300 nits + every relevant SDR transport/presentation contract | HDR black-floor and output-policy comparisons: legacy/VP-owned, full/limited/auto range, transfer choices, compute/cache, and composed paths. The SDR-only force-8-bit swapchain case is excluded. |
+| 22 | 300 nits + BT.2390 | Alternate highlight roll-off. |
+| 23 | 300 nits + Reinhard | Alternate compression baseline. |
+| 24 | 300 nits + softclip gamut mapping | Tests boundary color compression. |
+| 25 | 300 nits + peak detection off | Identifies dynamic peak-analysis influence. |
+| 26 | 300 nits + contrast recovery 0.0 | Identifies local-contrast recovery influence. |
 
 Tests 1 through 5 isolate the reported target-nits threshold. Tests 6 through
-12 change one relevant control at the 300-nit anchor. If a case is visually
+21 repeat the relevant output/black-floor contracts with HDR input. Tests 22
+through 26 change a single tone-map control at the 300-nit anchor. If a case is visually
 wrong but passes, VP did present a live frame: record the visual/meter result
 and preserve the test number, OSD description, and renderer log.
