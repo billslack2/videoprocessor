@@ -11,15 +11,17 @@ private DLLs, and unexpected files.
 ```text
 VideoProcessor\
   VideoProcessor.exe
-  VideoProcessorConfig.exe
-  VideoProcessorConfigDiscovery.dll
   VideoProcessor.cfg.example
   CONFIGURATION.html
   RELEASE-LAYOUT.md
   RELEASE-MANIFEST.json
-  Qt6*.dll, opengl32sw.dll
-  generic\, iconengines\, imageformats\, networkinformation\
-  platforms\, styles\, tls\
+  logs\                         (intentionally empty)
+  config\
+    VideoProcessorConfig.exe
+    VideoProcessorConfigDiscovery.dll
+    Qt6*.dll, opengl32sw.dll
+    generic\, iconengines\, imageformats\, networkinformation\
+    platforms\, styles\, tls\
   shaders\
     Adaptive sharpen.hlsl, Debanding mild.hlsl, Denoise.hlsl
     Invert.hlsl, NLS.hlsl, NLS.glsl
@@ -30,11 +32,18 @@ VideoProcessor\
     third_party_licenses\
 ```
 
-The application root contains only process images, normal pre-main Config
-imports, the Config discovery module loaded by an absolute application-relative
-path, and Qt's executable-adjacent runtime. Microsoft C/C++ and MFC runtimes are
-provided by the VC v143 Redistributable; Windows/API-set libraries come from the
-operating system and are never copied from a development machine.
+The application root contains the native MFC host, operator data and shared
+assets, but no Qt or Config-only binaries. `config\` owns the complete
+configuration editor process: Windows resolves its normal Qt imports beside
+`VideoProcessorConfig.exe`, and Qt discovers its typed plugin directories below
+that same private directory. The host launches Config by the absolute
+installation-relative `config\VideoProcessorConfig.exe` path and passes the
+active root configuration explicitly. A direct Config launch also checks its
+parent installation for `VideoProcessor.cfg`.
+
+Microsoft C/C++ and MFC runtimes are provided by the VC v143 Redistributable;
+Windows/API-set libraries come from the operating system and are never copied
+from a development machine.
 
 ## Optional renderer contract
 
@@ -56,10 +65,12 @@ Both DirectShow/madVR and VP Renderer resolve configured shader filenames from
 the executable-relative `shaders\` directory. That is the sole packaged shader
 tree. There is no `vprenderer\shaders\` fallback or duplicate.
 
-`vprenderer\VideoProcessorShaderCache.bin`, `VideoProcessor.state`, logs, and
-configuration are mutable operator data. They are not release inputs. The
-manifest stages the source configuration as `VideoProcessor.cfg.example`, so
-copying a release cannot overwrite an active `VideoProcessor.cfg` implicitly.
+`vprenderer\VideoProcessorShaderCache.bin`, `VideoProcessor.state`, log files,
+and configuration are mutable operator data. They are not release inputs. The
+empty `logs\` directory is created in every release for operator clarity; the
+logger independently creates it on startup when it is absent. The manifest
+stages the source configuration as `VideoProcessor.cfg.example`, so copying a
+release cannot overwrite an active `VideoProcessor.cfg` implicitly.
 
 ## Commands
 

@@ -85,6 +85,23 @@ namespace VideoProcessorTest
 	TEST_CLASS(DebugLogRetentionTests)
 	{
 	public:
+		TEST_METHOD(MissingLogsDirectoryIsCreated)
+		{
+			TemporaryLogDirectory installation;
+			const std::string logs = installation.Path("logs");
+			const std::string active = logs + "\\vp.log";
+			std::vector<std::string> diagnostics;
+
+			Assert::AreEqual(INVALID_FILE_ATTRIBUTES,
+				GetFileAttributesA(logs.c_str()));
+			Assert::IsTrue(DebugLogRetention::EnsureParentDirectory(
+				active, diagnostics));
+			Assert::IsTrue((GetFileAttributesA(logs.c_str()) &
+				FILE_ATTRIBUTE_DIRECTORY) != 0);
+
+			RemoveDirectoryA(logs.c_str());
+		}
+
 		TEST_METHOD(OmittedSettingUsesTen)
 		{
 			const auto setting =

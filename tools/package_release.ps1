@@ -40,6 +40,15 @@ $sourceRoots = @{
     nvapi = Join-Path $repositoryRoot '3rdparty\nvapi'
 }
 $expected = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+$expectedDirectories = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+foreach ($entry in @($manifest.directories)) {
+    $relativeDirectory = ([string]$entry.path).Replace('/', '\').TrimEnd('\')
+    if (-not $relativeDirectory -or [IO.Path]::IsPathRooted($relativeDirectory) -or
+        $relativeDirectory.Split('\') -contains '..' -or
+        -not $expectedDirectories.Add($relativeDirectory)) {
+        throw "Unsafe or duplicate manifest directory: $relativeDirectory"
+    }
+}
 $copyPlan = foreach ($entry in $manifest.files) {
     if (-not $sourceRoots.ContainsKey([string]$entry.sourceRoot)) {
         throw "Unknown source root '$($entry.sourceRoot)' for $($entry.destination)"
@@ -80,8 +89,25 @@ foreach ($name in $privateDlls) {
         throw "Plugin-private dependency is missing from the canonical plugin directory: $name"
     }
 }
-if ($expected.Contains('platforms\qoffscreen.dll')) {
+if ($expected.Contains('config\platforms\qoffscreen.dll')) {
     throw 'The Config test-only qoffscreen plugin must not ship.'
+}
+$configRuntime = @(
+    'config\VideoProcessorConfig.exe',
+    'config\VideoProcessorConfigDiscovery.dll',
+    'config\Qt6Core.dll', 'config\Qt6Gui.dll',
+    'config\Qt6Widgets.dll', 'config\platforms\qwindows.dll'
+)
+foreach ($path in $configRuntime) {
+    if (-not $expected.Contains($path)) {
+        throw "Required private Config runtime file is missing: $path"
+    }
+}
+if (@($expected | Where-Object {
+    $_ -match '^(VideoProcessorConfig(?:Discovery)?\.(?:exe|dll)|Qt6.*\.dll|opengl32sw\.dll)$' -or
+    $_ -match '^(generic|iconengines|imageformats|networkinformation|platforms|styles|tls)\\'
+}).Count -ne 0) {
+    throw 'Config/Qt runtime files and plugin folders must not be staged at release root.'
 }
 if ($expected.Contains('VideoProcessor.cfg') -or
     -not $expected.Contains('VideoProcessor.cfg.example')) {
@@ -101,6 +127,9 @@ Write-Host "VP release manifest: $($manifest.files.Count) immutable files"
 Write-Host "Build root: $BuildRoot"
 Write-Host "Stage root: $StageRoot"
 if ($DryRun) {
+    $expectedDirectories | ForEach-Object {
+        Write-Host "DRY RUN DIRECTORY $_"
+    }
     $copyPlan | ForEach-Object {
         Write-Host "DRY RUN $($_.RelativeDestination) <- $($_.Source)"
     }
@@ -115,6 +144,9 @@ if (Test-Path -LiteralPath $StageRoot) {
 }
 if ($PSCmdlet.ShouldProcess($StageRoot, 'Create clean release staging tree')) {
     New-Item -ItemType Directory -Path $StageRoot | Out-Null
+}
+foreach ($relativeDirectory in $expectedDirectories) {
+    New-Item -ItemType Directory -Path (Join-Path $StageRoot $relativeDirectory) -Force | Out-Null
 }
 foreach ($item in $copyPlan) {
     $parent = Split-Path -Parent $item.Destination
@@ -142,6 +174,12 @@ $missing = @($expected | Where-Object { -not $actual.Contains($_) })
 $unexpected = @($actual | Where-Object { -not $expected.Contains($_) })
 if ($missing.Count -gt 0 -or $unexpected.Count -gt 0) {
     throw "Release verification failed. Missing=[$($missing -join ', ')] Unexpected=[$($unexpected -join ', ')]"
+}
+foreach ($relativeDirectory in $expectedDirectories) {
+    $directory = Join-Path $StageRoot $relativeDirectory
+    if (-not (Test-Path -LiteralPath $directory -PathType Container)) {
+        throw "Required release directory is missing: $relativeDirectory"
+    }
 }
 
 Write-Host "Release staged and verified: $($actual.Count) files"

@@ -2,6 +2,14 @@
   "schemaVersion": 1,
   "layoutVersion": "VP-0107",
   "canonicalPluginDirectory": "vprenderer",
+  "directories": [
+    {
+      "path": "logs",
+      "owner": "VideoProcessor",
+      "consumer": "VideoProcessor.exe",
+      "reason": "Intentionally empty release directory; the logger also recreates it when absent."
+    }
+  ],
   "mutableArtifacts": [
     {
       "path": "vprenderer/VideoProcessorShaderCache.bin",
@@ -13,7 +21,7 @@
       "path": "logs/",
       "owner": "VideoProcessor",
       "consumer": "VideoProcessor.exe",
-      "reason": "Runtime diagnostics; never part of a release package."
+      "reason": "Runtime diagnostics are never release inputs; only their empty parent directory is shipped."
     },
     {
       "path": "VideoProcessor.state",
@@ -40,31 +48,31 @@
   ],
   "files": [
     { "sourceRoot": "build", "source": "VideoProcessor-GUI.exe", "destination": "VideoProcessor.exe", "owner": "VideoProcessor", "sourceVersion": "Current x64 Release commit", "consumer": "Operator", "loadMechanism": "Process image", "reason": "Main application executable." },
-    { "sourceRoot": "build", "source": "VideoProcessorConfig.exe", "destination": "VideoProcessorConfig.exe", "owner": "VideoProcessor Config", "sourceVersion": "Qt 6.8.3 / current x64 Release commit", "consumer": "Operator and VideoProcessor.exe", "loadMechanism": "Process image", "reason": "Standalone and owner-associated configuration editor." },
-    { "sourceRoot": "build", "source": "VideoProcessorConfigDiscovery.dll", "destination": "VideoProcessorConfigDiscovery.dll", "owner": "VideoProcessor Config", "sourceVersion": "Current x64 Release commit", "consumer": "VideoProcessorConfig.exe", "loadMechanism": "QLibrary absolute application-directory path", "reason": "Discovers capture devices, connections, monitors, and renderers." },
+    { "sourceRoot": "build", "source": "VideoProcessorConfig.exe", "destination": "config/VideoProcessorConfig.exe", "owner": "VideoProcessor Config", "sourceVersion": "Qt 6.8.3 / current x64 Release commit", "consumer": "Operator and VideoProcessor.exe", "loadMechanism": "Process image launched by absolute installation-relative path", "reason": "Standalone and owner-associated configuration editor, isolated with its private Qt runtime." },
+    { "sourceRoot": "build", "source": "VideoProcessorConfigDiscovery.dll", "destination": "config/VideoProcessorConfigDiscovery.dll", "owner": "VideoProcessor Config", "sourceVersion": "Current x64 Release commit", "consumer": "VideoProcessorConfig.exe", "loadMechanism": "QLibrary absolute application-directory path", "reason": "Discovers capture devices, connections, monitors, and renderers." },
     { "sourceRoot": "repository", "source": "CONFIGURATION.html", "destination": "CONFIGURATION.html", "owner": "VideoProcessor", "sourceVersion": "Current source commit", "consumer": "Operator", "loadMechanism": "Documentation", "reason": "Shipped configuration reference." },
     { "sourceRoot": "repository", "source": "VideoProcessor.cfg", "destination": "VideoProcessor.cfg.example", "owner": "VideoProcessor", "sourceVersion": "Current source commit", "consumer": "Operator", "loadMechanism": "Example only", "reason": "Example configuration; deliberately renamed so deployment cannot overwrite active user configuration." },
     { "sourceRoot": "repository", "source": "packaging/release-manifest.json", "destination": "RELEASE-MANIFEST.json", "owner": "VideoProcessor packaging", "sourceVersion": "VP-0107 schema 1", "consumer": "Installer and operator", "loadMechanism": "Documentation", "reason": "Machine-readable inventory for the exact release layout." },
     { "sourceRoot": "repository", "source": "docs/VP-0107_RELEASE_LAYOUT.md", "destination": "RELEASE-LAYOUT.md", "owner": "VideoProcessor packaging", "sourceVersion": "VP-0107", "consumer": "Installer and operator", "loadMechanism": "Documentation", "reason": "Human-readable layout, loading, deployment, and cache contract." },
 
-    { "sourceRoot": "build", "source": "Qt6Core.dll", "destination": "Qt6Core.dll", "owner": "Qt", "sourceVersion": "6.8.3", "consumer": "VideoProcessorConfig.exe", "loadMechanism": "Normal executable import", "reason": "Qt core runtime required before application startup." },
-    { "sourceRoot": "build", "source": "Qt6Gui.dll", "destination": "Qt6Gui.dll", "owner": "Qt", "sourceVersion": "6.8.3", "consumer": "VideoProcessorConfig.exe", "loadMechanism": "Normal executable import", "reason": "Qt GUI runtime required before application startup." },
-    { "sourceRoot": "build", "source": "Qt6Widgets.dll", "destination": "Qt6Widgets.dll", "owner": "Qt", "sourceVersion": "6.8.3", "consumer": "VideoProcessorConfig.exe", "loadMechanism": "Normal executable import", "reason": "Qt widgets runtime required before application startup." },
-    { "sourceRoot": "build", "source": "Qt6Network.dll", "destination": "Qt6Network.dll", "owner": "Qt", "sourceVersion": "6.8.3", "consumer": "Qt runtime plugins", "loadMechanism": "Plugin transitive import", "reason": "Selected by windeployqt for the deployed Qt plugin set." },
-    { "sourceRoot": "build", "source": "Qt6Svg.dll", "destination": "Qt6Svg.dll", "owner": "Qt", "sourceVersion": "6.8.3", "consumer": "qsvg and qsvgicon plugins", "loadMechanism": "Plugin transitive import", "reason": "SVG image and icon support selected by windeployqt." },
-    { "sourceRoot": "build", "source": "opengl32sw.dll", "destination": "opengl32sw.dll", "owner": "Qt", "sourceVersion": "6.8.3", "consumer": "Qt6Gui.dll", "loadMechanism": "Qt graphics backend dynamic load", "reason": "Software OpenGL fallback selected by windeployqt." },
+    { "sourceRoot": "build", "source": "Qt6Core.dll", "destination": "config/Qt6Core.dll", "owner": "Qt", "sourceVersion": "6.8.3", "consumer": "VideoProcessorConfig.exe", "loadMechanism": "Normal executable import", "reason": "Qt core runtime required before Config startup and therefore private beside its consumer." },
+    { "sourceRoot": "build", "source": "Qt6Gui.dll", "destination": "config/Qt6Gui.dll", "owner": "Qt", "sourceVersion": "6.8.3", "consumer": "VideoProcessorConfig.exe", "loadMechanism": "Normal executable import", "reason": "Qt GUI runtime required before Config startup and therefore private beside its consumer." },
+    { "sourceRoot": "build", "source": "Qt6Widgets.dll", "destination": "config/Qt6Widgets.dll", "owner": "Qt", "sourceVersion": "6.8.3", "consumer": "VideoProcessorConfig.exe", "loadMechanism": "Normal executable import", "reason": "Qt widgets runtime required before Config startup and therefore private beside its consumer." },
+    { "sourceRoot": "build", "source": "Qt6Network.dll", "destination": "config/Qt6Network.dll", "owner": "Qt", "sourceVersion": "6.8.3", "consumer": "Qt runtime plugins", "loadMechanism": "Plugin transitive import", "reason": "Selected by windeployqt for the private Config plugin set." },
+    { "sourceRoot": "build", "source": "Qt6Svg.dll", "destination": "config/Qt6Svg.dll", "owner": "Qt", "sourceVersion": "6.8.3", "consumer": "qsvg and qsvgicon plugins", "loadMechanism": "Plugin transitive import", "reason": "SVG support for the private Config plugin set." },
+    { "sourceRoot": "build", "source": "opengl32sw.dll", "destination": "config/opengl32sw.dll", "owner": "Qt", "sourceVersion": "6.8.3", "consumer": "Qt6Gui.dll", "loadMechanism": "Qt graphics backend dynamic load", "reason": "Software OpenGL fallback private to Config." },
 
-    { "sourceRoot": "build", "source": "generic/qtuiotouchplugin.dll", "destination": "generic/qtuiotouchplugin.dll", "owner": "Qt", "sourceVersion": "6.8.3", "consumer": "VideoProcessorConfig.exe", "loadMechanism": "Qt generic plugin discovery", "reason": "Touch input plugin selected by windeployqt." },
-    { "sourceRoot": "build", "source": "iconengines/qsvgicon.dll", "destination": "iconengines/qsvgicon.dll", "owner": "Qt", "sourceVersion": "6.8.3", "consumer": "VideoProcessorConfig.exe", "loadMechanism": "Qt icon engine discovery", "reason": "SVG icon support selected by windeployqt." },
-    { "sourceRoot": "build", "source": "imageformats/qgif.dll", "destination": "imageformats/qgif.dll", "owner": "Qt", "sourceVersion": "6.8.3", "consumer": "VideoProcessorConfig.exe", "loadMechanism": "Qt image plugin discovery", "reason": "GIF support selected by windeployqt." },
-    { "sourceRoot": "build", "source": "imageformats/qico.dll", "destination": "imageformats/qico.dll", "owner": "Qt", "sourceVersion": "6.8.3", "consumer": "VideoProcessorConfig.exe", "loadMechanism": "Qt image plugin discovery", "reason": "Windows icon support selected by windeployqt." },
-    { "sourceRoot": "build", "source": "imageformats/qjpeg.dll", "destination": "imageformats/qjpeg.dll", "owner": "Qt", "sourceVersion": "6.8.3", "consumer": "VideoProcessorConfig.exe", "loadMechanism": "Qt image plugin discovery", "reason": "JPEG support selected by windeployqt." },
-    { "sourceRoot": "build", "source": "imageformats/qsvg.dll", "destination": "imageformats/qsvg.dll", "owner": "Qt", "sourceVersion": "6.8.3", "consumer": "VideoProcessorConfig.exe", "loadMechanism": "Qt image plugin discovery", "reason": "SVG image support selected by windeployqt." },
-    { "sourceRoot": "build", "source": "networkinformation/qnetworklistmanager.dll", "destination": "networkinformation/qnetworklistmanager.dll", "owner": "Qt", "sourceVersion": "6.8.3", "consumer": "Qt6Network.dll", "loadMechanism": "Qt network-information plugin discovery", "reason": "Windows network information backend selected by windeployqt." },
-    { "sourceRoot": "build", "source": "platforms/qwindows.dll", "destination": "platforms/qwindows.dll", "owner": "Qt", "sourceVersion": "6.8.3", "consumer": "VideoProcessorConfig.exe", "loadMechanism": "Qt platform plugin discovery", "reason": "Required Windows platform integration plugin." },
-    { "sourceRoot": "build", "source": "styles/qmodernwindowsstyle.dll", "destination": "styles/qmodernwindowsstyle.dll", "owner": "Qt", "sourceVersion": "6.8.3", "consumer": "VideoProcessorConfig.exe", "loadMechanism": "Qt style plugin discovery", "reason": "Native Windows visual style selected by windeployqt." },
-    { "sourceRoot": "build", "source": "tls/qcertonlybackend.dll", "destination": "tls/qcertonlybackend.dll", "owner": "Qt", "sourceVersion": "6.8.3", "consumer": "Qt6Network.dll", "loadMechanism": "Qt TLS plugin discovery", "reason": "Certificate-only backend selected by windeployqt." },
-    { "sourceRoot": "build", "source": "tls/qschannelbackend.dll", "destination": "tls/qschannelbackend.dll", "owner": "Qt", "sourceVersion": "6.8.3", "consumer": "Qt6Network.dll", "loadMechanism": "Qt TLS plugin discovery", "reason": "Windows Schannel backend selected by windeployqt." },
+    { "sourceRoot": "build", "source": "generic/qtuiotouchplugin.dll", "destination": "config/generic/qtuiotouchplugin.dll", "owner": "Qt", "sourceVersion": "6.8.3", "consumer": "VideoProcessorConfig.exe", "loadMechanism": "Qt generic plugin discovery", "reason": "Touch input plugin selected by windeployqt." },
+    { "sourceRoot": "build", "source": "iconengines/qsvgicon.dll", "destination": "config/iconengines/qsvgicon.dll", "owner": "Qt", "sourceVersion": "6.8.3", "consumer": "VideoProcessorConfig.exe", "loadMechanism": "Qt icon engine discovery", "reason": "SVG icon support selected by windeployqt." },
+    { "sourceRoot": "build", "source": "imageformats/qgif.dll", "destination": "config/imageformats/qgif.dll", "owner": "Qt", "sourceVersion": "6.8.3", "consumer": "VideoProcessorConfig.exe", "loadMechanism": "Qt image plugin discovery", "reason": "GIF support selected by windeployqt." },
+    { "sourceRoot": "build", "source": "imageformats/qico.dll", "destination": "config/imageformats/qico.dll", "owner": "Qt", "sourceVersion": "6.8.3", "consumer": "VideoProcessorConfig.exe", "loadMechanism": "Qt image plugin discovery", "reason": "Windows icon support selected by windeployqt." },
+    { "sourceRoot": "build", "source": "imageformats/qjpeg.dll", "destination": "config/imageformats/qjpeg.dll", "owner": "Qt", "sourceVersion": "6.8.3", "consumer": "VideoProcessorConfig.exe", "loadMechanism": "Qt image plugin discovery", "reason": "JPEG support selected by windeployqt." },
+    { "sourceRoot": "build", "source": "imageformats/qsvg.dll", "destination": "config/imageformats/qsvg.dll", "owner": "Qt", "sourceVersion": "6.8.3", "consumer": "VideoProcessorConfig.exe", "loadMechanism": "Qt image plugin discovery", "reason": "SVG image support selected by windeployqt." },
+    { "sourceRoot": "build", "source": "networkinformation/qnetworklistmanager.dll", "destination": "config/networkinformation/qnetworklistmanager.dll", "owner": "Qt", "sourceVersion": "6.8.3", "consumer": "Qt6Network.dll", "loadMechanism": "Qt network-information plugin discovery", "reason": "Windows network information backend selected by windeployqt." },
+    { "sourceRoot": "build", "source": "platforms/qwindows.dll", "destination": "config/platforms/qwindows.dll", "owner": "Qt", "sourceVersion": "6.8.3", "consumer": "VideoProcessorConfig.exe", "loadMechanism": "Qt platform plugin discovery", "reason": "Required Windows platform integration plugin." },
+    { "sourceRoot": "build", "source": "styles/qmodernwindowsstyle.dll", "destination": "config/styles/qmodernwindowsstyle.dll", "owner": "Qt", "sourceVersion": "6.8.3", "consumer": "VideoProcessorConfig.exe", "loadMechanism": "Qt style plugin discovery", "reason": "Native Windows visual style selected by windeployqt." },
+    { "sourceRoot": "build", "source": "tls/qcertonlybackend.dll", "destination": "config/tls/qcertonlybackend.dll", "owner": "Qt", "sourceVersion": "6.8.3", "consumer": "Qt6Network.dll", "loadMechanism": "Qt TLS plugin discovery", "reason": "Certificate-only backend selected by windeployqt." },
+    { "sourceRoot": "build", "source": "tls/qschannelbackend.dll", "destination": "config/tls/qschannelbackend.dll", "owner": "Qt", "sourceVersion": "6.8.3", "consumer": "Qt6Network.dll", "loadMechanism": "Qt TLS plugin discovery", "reason": "Windows Schannel backend selected by windeployqt." },
 
     { "sourceRoot": "repository", "source": "shaders/Adaptive sharpen.hlsl", "destination": "shaders/Adaptive sharpen.hlsl", "owner": "VideoProcessor shaders", "sourceVersion": "Current source commit", "consumer": "madVR", "loadMechanism": "Executable-relative shader lookup", "reason": "Built-in configurable HLSL shader." },
     { "sourceRoot": "repository", "source": "shaders/Debanding mild.hlsl", "destination": "shaders/Debanding mild.hlsl", "owner": "VideoProcessor shaders", "sourceVersion": "Current source commit", "consumer": "madVR", "loadMechanism": "Executable-relative shader lookup", "reason": "Built-in configurable HLSL shader." },
