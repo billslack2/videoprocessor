@@ -664,6 +664,41 @@ namespace VideoProcessorTest
 				EffectiveFullscreenToggleActive(false, false));
 		}
 
+		TEST_METHOD(RightAltFullscreenAndModifiedEnterAreFailSafe)
+		{
+			Assert::IsTrue(ConfigurationLiveApply::
+				FullscreenShortcutModifiersMatch(
+					false, true, false, false, true, false, false));
+			Assert::IsTrue(ConfigurationLiveApply::
+				FullscreenShortcutModifiersMatch(
+					false, true, false, true, true, false, true));
+			Assert::IsFalse(ConfigurationLiveApply::
+				FullscreenShortcutModifiersMatch(
+					false, true, false, true, true, false, false));
+			Assert::IsTrue(ConfigurationLiveApply::
+				FullscreenShortcutModifiersMatch(
+					true, true, false, true, true, false, true));
+			Assert::IsFalse(ConfigurationLiveApply::
+				FullscreenShortcutModifiersMatch(
+					false, true, true, true, true, false, true));
+
+			Assert::IsTrue(ConfigurationLiveApply::
+				ShouldConsumeUnmatchedModifiedEnter(
+					true, 0x0d, true, true, false));
+			Assert::IsTrue(ConfigurationLiveApply::
+				ShouldConsumeUnmatchedModifiedEnter(
+					true, 0x0d, false, false, true));
+			Assert::IsFalse(ConfigurationLiveApply::
+				ShouldConsumeUnmatchedModifiedEnter(
+					true, 0x0d, false, false, false));
+			Assert::IsFalse(ConfigurationLiveApply::
+				ShouldConsumeUnmatchedModifiedEnter(
+					false, 0x0d, true, true, false));
+			Assert::IsFalse(ConfigurationLiveApply::
+				ShouldConsumeUnmatchedModifiedEnter(
+					true, 'R', true, true, false));
+		}
+
 		TEST_METHOD(VideoOnlyRetainsForegroundEscapeShortcuts)
 		{
 			Assert::AreEqual(static_cast<int>('U'), static_cast<int>(

@@ -1140,15 +1140,41 @@ private:
 		const bool control = (::GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
 		const bool alt = (::GetAsyncKeyState(VK_MENU) & 0x8000) != 0;
 		const bool shift = (::GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
+		const bool rightAlt = (::GetAsyncKeyState(VK_RMENU) & 0x8000) != 0;
+		const ACCEL* matchedAccelerator = nullptr;
 		for (const ACCEL& accelerator : s_accelerators)
 		{
-			if (accelerator.key != virtualKey ||
-				!ConfigurationLiveApply::ShortcutModifiersMatch(
+			if (accelerator.key == virtualKey &&
+				ConfigurationLiveApply::ShortcutModifiersMatch(
 					(accelerator.fVirt & FCONTROL) != 0,
 					(accelerator.fVirt & FALT) != 0,
 					(accelerator.fVirt & FSHIFT) != 0,
 					control, alt, shift))
-				continue;
+			{
+				matchedAccelerator = &accelerator;
+				break;
+			}
+		}
+		if (!matchedAccelerator && rightAlt)
+		{
+			for (const ACCEL& accelerator : s_accelerators)
+			{
+				if (accelerator.cmd == ID_COMMAND_FULLSCREEN_TOGGLE &&
+					accelerator.key == virtualKey &&
+					ConfigurationLiveApply::FullscreenShortcutModifiersMatch(
+						(accelerator.fVirt & FCONTROL) != 0,
+						(accelerator.fVirt & FALT) != 0,
+						(accelerator.fVirt & FSHIFT) != 0,
+						control, alt, shift, rightAlt))
+				{
+					matchedAccelerator = &accelerator;
+					break;
+				}
+			}
+		}
+		if (matchedAccelerator)
+		{
+			const ACCEL& accelerator = *matchedAccelerator;
 			if (accelerator.cmd == ID_COMMAND_CONFIG_EDITOR)
 			{
 				// The configuration editor owns this key while it has focus so
@@ -1164,7 +1190,7 @@ private:
 					posted ? 1 : 0);
 				if (posted)
 					return 1;
-				break;
+				return ::CallNextHookEx(s_hook, code, message, parameter);
 			}
 			const bool consumeOriginal =
 				accelerator.cmd == ID_COMMAND_TOGGLE_NO_UI;
@@ -1176,7 +1202,6 @@ private:
 				posted ? 1 : 0, consumeOriginal ? 1 : 0);
 			if (consumeOriginal && posted)
 				return 1;
-			break;
 		}
 		// Except for the VP-owned runtime UI toggle, do not consume the original.
 		// madVR/the foreground application receives its normal keyboard event.
@@ -9584,6 +9609,10 @@ BOOL CVideoProcessorDlg::PreTranslateMessage(MSG* pMsg)
 	const bool keyUp = pMsg->message == WM_KEYUP ||
 		pMsg->message == WM_SYSKEYUP;
 	const WORD virtualKey = static_cast<WORD>(pMsg->wParam);
+	const bool control = (::GetKeyState(VK_CONTROL) & 0x8000) != 0;
+	const bool alt = (::GetKeyState(VK_MENU) & 0x8000) != 0;
+	const bool shift = (::GetKeyState(VK_SHIFT) & 0x8000) != 0;
+	const bool rightAlt = (::GetKeyState(VK_RMENU) & 0x8000) != 0;
 	const bool guardedShaderShortcut = m_shaderShortcutKeys.find(virtualKey) !=
 		m_shaderShortcutKeys.end();
 	const bool repeat = (static_cast<ULONG_PTR>(pMsg->lParam) &
@@ -9613,9 +9642,7 @@ BOOL CVideoProcessorDlg::PreTranslateMessage(MSG* pMsg)
 		DebugLog::Log(
 			"Keyboard shader shortcut auto-repeat retained pending intent vk=0x%02x shift=%d ctrl=%d alt=%d",
 			static_cast<unsigned int>(virtualKey),
-			(GetKeyState(VK_SHIFT) & 0x8000) ? 1 : 0,
-			(GetKeyState(VK_CONTROL) & 0x8000) ? 1 : 0,
-			(GetKeyState(VK_MENU) & 0x8000) ? 1 : 0);
+			shift ? 1 : 0, control ? 1 : 0, alt ? 1 : 0);
 		return TRUE;
 	}
 	if (keyUp && guardedShaderShortcut &&
@@ -9633,11 +9660,10 @@ BOOL CVideoProcessorDlg::PreTranslateMessage(MSG* pMsg)
 	if (diagnosticKey)
 	{
 		DebugLog::Log(
-			"Keyboard message: phase=pretranslate message=0x%04x vk=0x%02x ctrl=%d alt=%d age_ms=%lu target=%p dialog=%p foreground=%p focus=%p renderer_state=%d generation=%u retirement_pending=%d reset_active=%d",
+			"Keyboard message: phase=pretranslate message=0x%04x vk=0x%02x ctrl=%d alt=%d right_alt=%d age_ms=%lu target=%p dialog=%p foreground=%p focus=%p renderer_state=%d generation=%u retirement_pending=%d reset_active=%d",
 			pMsg->message,
 			static_cast<unsigned int>(pMsg->wParam),
-			(GetKeyState(VK_CONTROL) & 0x8000) ? 1 : 0,
-			(GetKeyState(VK_MENU) & 0x8000) ? 1 : 0,
+			control ? 1 : 0, alt ? 1 : 0, rightAlt ? 1 : 0,
 			static_cast<unsigned long>(GetTickCount() - static_cast<DWORD>(GetMessageTime())),
 			reinterpret_cast<void*>(pMsg->hwnd),
 			reinterpret_cast<void*>(m_hWnd),
@@ -9654,6 +9680,15 @@ BOOL CVideoProcessorDlg::PreTranslateMessage(MSG* pMsg)
 		if (diagnosticKey)
 			DebugLog::Log("Keyboard message: phase=pretranslate result=accelerator-consumed vk=0x%02x",
 				static_cast<unsigned int>(pMsg->wParam));
+		return TRUE;
+	}
+	if (ConfigurationLiveApply::ShouldConsumeUnmatchedModifiedEnter(
+		keyDown, virtualKey, control, alt, shift))
+	{
+		DebugLog::Log(
+			"Keyboard message: phase=pretranslate result=unmatched-modified-enter-consumed vk=0x%02x ctrl=%d alt=%d right_alt=%d shift=%d",
+			static_cast<unsigned int>(virtualKey), control ? 1 : 0,
+			alt ? 1 : 0, rightAlt ? 1 : 0, shift ? 1 : 0);
 		return TRUE;
 	}
 	if (diagnosticKey)
@@ -9674,15 +9709,43 @@ BOOL CVideoProcessorDlg::TranslateConfiguredAccelerator(MSG* message)
 		const bool control = (::GetKeyState(VK_CONTROL) & 0x8000) != 0;
 		const bool alt = (::GetKeyState(VK_MENU) & 0x8000) != 0;
 		const bool shift = (::GetKeyState(VK_SHIFT) & 0x8000) != 0;
+		const bool rightAlt = (::GetKeyState(VK_RMENU) & 0x8000) != 0;
+		const ACCEL* matchedAccelerator = nullptr;
+		bool rightAltFallback = false;
 		for (const ACCEL& accelerator : m_configuredAccelerators)
 		{
-			if (accelerator.key != virtualKey ||
-				!ConfigurationLiveApply::ShortcutModifiersMatch(
+			if (accelerator.key == virtualKey &&
+				ConfigurationLiveApply::ShortcutModifiersMatch(
 					(accelerator.fVirt & FCONTROL) != 0,
 					(accelerator.fVirt & FALT) != 0,
 					(accelerator.fVirt & FSHIFT) != 0,
 					control, alt, shift))
-				continue;
+			{
+				matchedAccelerator = &accelerator;
+				break;
+			}
+		}
+		if (!matchedAccelerator && rightAlt)
+		{
+			for (const ACCEL& accelerator : m_configuredAccelerators)
+			{
+				if (accelerator.cmd == ID_COMMAND_FULLSCREEN_TOGGLE &&
+					accelerator.key == virtualKey &&
+					ConfigurationLiveApply::FullscreenShortcutModifiersMatch(
+						(accelerator.fVirt & FCONTROL) != 0,
+						(accelerator.fVirt & FALT) != 0,
+						(accelerator.fVirt & FSHIFT) != 0,
+						control, alt, shift, rightAlt))
+				{
+					matchedAccelerator = &accelerator;
+					rightAltFallback = true;
+					break;
+				}
+			}
+		}
+		if (matchedAccelerator)
+		{
+			const ACCEL& accelerator = *matchedAccelerator;
 
 			const ULONGLONG now = GetTickCount64();
 			if (ConfigurationLiveApply::IsDuplicateBackgroundShortcut(
@@ -9703,7 +9766,15 @@ BOOL CVideoProcessorDlg::TranslateConfiguredAccelerator(MSG* message)
 				ToggleConfigurationEditor();
 				return TRUE;
 			}
-			break;
+			if (rightAltFallback)
+			{
+				DebugLog::Log(
+					"Keyboard message: Right Alt normalized to fullscreen shortcut command=%u",
+					static_cast<unsigned int>(accelerator.cmd));
+				::SendMessageW(m_hWnd, WM_COMMAND,
+					MAKEWPARAM(accelerator.cmd, 1), 0);
+				return TRUE;
+			}
 		}
 	}
 

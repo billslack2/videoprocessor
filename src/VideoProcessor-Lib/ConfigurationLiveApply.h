@@ -201,6 +201,27 @@ namespace ConfigurationLiveApply
 			expectedShift == shift;
 	}
 
+	// Windows reports Right Alt (AltGr) as Ctrl+Alt.  Fullscreen is the one
+	// standard Alt shortcut where operators reasonably use either Alt key, so
+	// accept the synthetic Ctrl only after exact accelerator matching has had
+	// priority.  Callers must not use this relaxation for arbitrary shortcuts.
+	inline bool FullscreenShortcutModifiersMatch(bool expectedControl,
+		bool expectedAlt, bool expectedShift, bool control, bool alt,
+		bool shift, bool rightAlt)
+	{
+		return ShortcutModifiersMatch(expectedControl, expectedAlt,
+			expectedShift, control, alt, shift) ||
+			(rightAlt && !expectedControl && expectedAlt && control && alt &&
+				expectedShift == shift);
+	}
+
+	inline bool ShouldConsumeUnmatchedModifiedEnter(bool keyDown,
+		uint16_t virtualKey, bool control, bool alt, bool shift)
+	{
+		return keyDown && virtualKey == ViewToggleDefaultKey &&
+			(control || alt || shift);
+	}
+
 	inline bool ShouldEnableBackgroundShortcuts(bool modernInterface,
 		bool noUi)
 	{
