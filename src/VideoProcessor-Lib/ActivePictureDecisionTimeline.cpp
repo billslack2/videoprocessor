@@ -128,6 +128,13 @@ void ActivePictureDecisionTimeline::Reset(uint64_t transportGeneration)
 }
 
 
+void ActivePictureDecisionTimeline::ResetAnalysis()
+{
+	m_transition.Reset();
+	m_observed.clear();
+}
+
+
 bool ActivePictureDecisionTimeline::TrackAcceptedFrame(
 	const ActivePictureFrameIdentity& identity)
 {

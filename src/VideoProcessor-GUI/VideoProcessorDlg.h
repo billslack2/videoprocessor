@@ -580,6 +580,8 @@ protected:
 	size_t m_profileBaseLeadFrames = 1;
 	size_t m_profileBaseTargetFrames = 0;
 	size_t m_profileBaseActivePictureLookaheadFrames = 0;
+	ActivePictureLookaheadMode m_profileBaseActivePictureLookaheadMode =
+		ActivePictureLookaheadMode::OFF;
 	size_t m_profileBaseStartupPrerollFrames = 0;
 	int m_profileBaseQueueResetDelaySeconds = 5;
 	int m_profileBaseQueueResetHighWaterPercent = 75;

@@ -8,6 +8,8 @@
 
 #pragma once
 
+#include <ActivePictureLookaheadMode.h>
+
 
 #include <VideoFrame.h>
 #include <VideoState.h>
@@ -166,6 +168,7 @@ public:
 	// Uses only frames already held by the existing renderer queue. Zero is the
 	// exact legacy decision-timing path and this setting must never add latency.
 	virtual void SetActivePictureLookaheadFrames(size_t) {}
+	virtual void SetActivePictureLookaheadMode(ActivePictureLookaheadMode) {}
 
 	// Installs the closeable asynchronous reset-request endpoint associated
 	// with this renderer instance. Backends must never call UI or graph control

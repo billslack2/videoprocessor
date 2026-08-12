@@ -6885,6 +6885,8 @@ void CVideoProcessorDlg::RenderStart()
 				videoProcessorApp.GetQueueStartupPrerollFrames(),
 				videoProcessorApp.GetQueueSteadyReserveFrames(),
 				videoProcessorApp.HasQueueSteadyReserveFrames());
+			m_videoRenderer->SetActivePictureLookaheadMode(
+				videoProcessorApp.GetActivePictureLookaheadMode());
 			m_videoRenderer->SetActivePictureLookaheadFrames(
 				videoProcessorApp.GetActivePictureLookaheadFrames());
 			ApplyRequestedShaderSelection();
@@ -6987,6 +6989,8 @@ void CVideoProcessorDlg::RenderStart()
 		m_videoRenderer->SetPresentationLeadFrames(
 			videoProcessorApp.GetPresentationLeadFrames(),
 			videoProcessorApp.HasPresentationLeadFrames());
+		m_videoRenderer->SetActivePictureLookaheadMode(
+			videoProcessorApp.GetActivePictureLookaheadMode());
 		m_videoRenderer->SetActivePictureLookaheadFrames(
 			videoProcessorApp.GetActivePictureLookaheadFrames());
 		ApplyRequestedShaderSelection();
@@ -7074,6 +7078,8 @@ void CVideoProcessorDlg::RenderStart()
 			m_videoRenderer->SetPresentationLeadFrames(
 				videoProcessorApp.GetPresentationLeadFrames(),
 				videoProcessorApp.HasPresentationLeadFrames());
+			m_videoRenderer->SetActivePictureLookaheadMode(
+				videoProcessorApp.GetActivePictureLookaheadMode());
 			m_videoRenderer->SetActivePictureLookaheadFrames(
 				videoProcessorApp.GetActivePictureLookaheadFrames());
 			m_rendererTransitionWindow.KeepOnTop();
@@ -9022,6 +9028,8 @@ void CVideoProcessorDlg::ApplyUnifiedProfileSnapshot(
 				videoProcessorApp.GetQueueSteadyReserveFrames();
 			m_profileBaseActivePictureLookaheadFrames =
 				videoProcessorApp.GetActivePictureLookaheadFrames();
+			m_profileBaseActivePictureLookaheadMode =
+				videoProcessorApp.GetActivePictureLookaheadMode();
 			m_profileBaseStartupPrerollFrames =
 				videoProcessorApp.GetQueueStartupPrerollFrames();
 			m_profileBaseQueueResetDelaySeconds = m_queueResetDelaySeconds;
@@ -9067,6 +9075,20 @@ void CVideoProcessorDlg::ApplyUnifiedProfileSnapshot(
 			snapshot->queue.hasActivePictureLookaheadFrames ?
 			snapshot->queue.activePictureLookaheadFrames :
 			m_profileBaseActivePictureLookaheadFrames;
+		const ActivePictureLookaheadMode desiredLookaheadMode =
+			snapshot->queue.hasActivePictureLookaheadMode ?
+				snapshot->queue.activePictureLookaheadMode :
+				(snapshot->queue.hasActivePictureLookaheadFrames &&
+					snapshot->queue.activePictureLookaheadFrames > 0 ?
+					ActivePictureLookaheadMode::SHADOW :
+					m_profileBaseActivePictureLookaheadMode);
+		if (videoProcessorApp.GetActivePictureLookaheadMode() !=
+			desiredLookaheadMode)
+		{
+			videoProcessorApp.SetActivePictureLookaheadMode(desiredLookaheadMode);
+			m_videoRenderer->SetActivePictureLookaheadMode(desiredLookaheadMode);
+			queuePolicyChanged = true;
+		}
 		if (videoProcessorApp.GetActivePictureLookaheadFrames() != desiredLookahead)
 		{
 			videoProcessorApp.SetActivePictureLookaheadFrames(desiredLookahead);
@@ -9090,12 +9112,14 @@ void CVideoProcessorDlg::ApplyUnifiedProfileSnapshot(
 		if (queuePolicyChanged)
 			DebugLog::Log(
 				"Queue profile applied: profile=%s capacity=%zu lead=%zu "
-				"startup=%zu target=%zu lookahead=%zu reset=%ds high_water=%d%%",
+				"startup=%zu target=%zu lookahead_mode=%s lookahead=%zu reset=%ds high_water=%d%%",
 				snapshot->queue.profile.c_str(),
 				GetRendererVideoFrameQueueSizeMax(),
 				videoProcessorApp.GetPresentationLeadFrames(),
 				videoProcessorApp.GetQueueStartupPrerollFrames(),
 				videoProcessorApp.GetQueueSteadyReserveFrames(),
+				ActivePictureLookaheadModeName(
+					videoProcessorApp.GetActivePictureLookaheadMode()),
 				videoProcessorApp.GetActivePictureLookaheadFrames(),
 				m_queueResetDelaySeconds, m_queueResetHighWaterPercent);
 	}

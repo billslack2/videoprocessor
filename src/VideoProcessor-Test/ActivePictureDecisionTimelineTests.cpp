@@ -3,6 +3,7 @@
 #include <ActivePictureDecisionTimeline.h>
 #include "CppUnitTest.h"
 
+#include <array>
 #include <vector>
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
@@ -207,6 +208,42 @@ namespace VideoProcessorTest
 				published.effectiveIdentity.acceptedSequence);
 			Assert::AreEqual<uint8_t>(0, published.effectiveLookahead);
 			Assert::IsFalse(published.late);
+		}
+
+		TEST_METHOD(LookaheadModesRemainDiagnosticOnly)
+		{
+			ActivePictureLookaheadMode parsed;
+			Assert::IsTrue(ParseActivePictureLookaheadMode("off", parsed));
+			Assert::AreEqual(
+				static_cast<int>(ActivePictureLookaheadMode::OFF),
+				static_cast<int>(parsed));
+			Assert::IsTrue(ParseActivePictureLookaheadMode("SHADOW", parsed));
+			Assert::AreEqual(
+				static_cast<int>(ActivePictureLookaheadMode::SHADOW),
+				static_cast<int>(parsed));
+			Assert::IsFalse(ParseActivePictureLookaheadMode("apply", parsed));
+			Assert::IsFalse(ParseActivePictureLookaheadMode(
+				"outward_apply", parsed));
+		}
+
+		TEST_METHOD(PolicyResetClearsProofButPreservesQueuedIdentities)
+		{
+			ActivePictureDecisionTimeline timeline;
+			timeline.Reset(23);
+			std::array<ActivePictureFrameIdentity, 4> identities;
+			for (uint64_t index = 0; index < identities.size(); ++index)
+			{
+				identities[index] = Identity(23, index + 1, index + 1);
+				Assert::IsTrue(timeline.TrackAcceptedFrame(identities[index]));
+			}
+			timeline.ResetAnalysis();
+			ActivePictureFrameDecision published;
+			for (size_t index = 0; index + 1 < identities.size(); ++index)
+				Assert::IsFalse(timeline.SubmitScheduledObservation(
+					identities[index], Trusted(index + 1, ScopeBounds()),
+					2, 2, published));
+			Assert::IsTrue(timeline.SubmitScheduledObservation(
+				identities.back(), Trusted(4, ScopeBounds()), 2, 2, published));
 		}
 
 		TEST_METHOD(ZeroLookaheadMatchesTransitionModelDecisions)

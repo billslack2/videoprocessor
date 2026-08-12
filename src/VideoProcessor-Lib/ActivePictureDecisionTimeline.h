@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ActivePictureTransitionModel.h"
+#include "ActivePictureLookaheadMode.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -21,7 +22,6 @@ struct ActivePictureFrameIdentity
 bool SameActivePictureFrameIdentity(
 	const ActivePictureFrameIdentity& left,
 	const ActivePictureFrameIdentity& right);
-
 
 enum class ActivePictureScheduledDecisionValidation
 {
@@ -86,6 +86,7 @@ public:
 	static constexpr size_t MAX_RETAINED_IDENTITIES = 32;
 
 	void Reset(uint64_t transportGeneration = 0);
+	void ResetAnalysis();
 	bool TrackAcceptedFrame(const ActivePictureFrameIdentity& identity);
 	void MarkConsumed(const ActivePictureFrameIdentity& identity);
 	void MarkDiscarded(const ActivePictureFrameIdentity& identity,

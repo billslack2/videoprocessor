@@ -962,6 +962,16 @@ void DirectShowVideoRenderer::SetActivePictureLookaheadFrames(size_t frames)
 }
 
 
+void DirectShowVideoRenderer::SetActivePictureLookaheadMode(
+	ActivePictureLookaheadMode mode)
+{
+	m_activePictureLookaheadMode.store(mode, std::memory_order_release);
+	DebugLog::Log(
+		"DirectShow active-picture look-ahead mode retained: mode=%s runtime-active=0",
+		ActivePictureLookaheadModeName(mode));
+}
+
+
 bool DirectShowVideoRenderer::GetLatencySnapshot(
 	RendererLatencySnapshot& snapshot) const
 {

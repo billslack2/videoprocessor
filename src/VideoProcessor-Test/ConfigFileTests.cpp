@@ -2801,6 +2801,7 @@ namespace VideoProcessorTest
 					"lead_frames: 0\n"
 					"startup_preroll_frames: 1\n"
 					"target_frames: 1\n"
+					"active_picture_lookahead_mode: shadow\n"
 					"active_picture_lookahead_frames: 2\n"
 					"reset_after_render_restart_seconds: 2\n"
 					"reset_queue_too_large_percent: 200\n";
@@ -2818,6 +2819,10 @@ namespace VideoProcessorTest
 			Assert::AreEqual(size_t{ 1 }, resolved.startupPrerollFrames);
 			Assert::AreEqual(size_t{ 1 }, resolved.targetFrames);
 			Assert::AreEqual(size_t{ 2 }, resolved.activePictureLookaheadFrames);
+			Assert::IsTrue(resolved.hasActivePictureLookaheadMode);
+			Assert::AreEqual(
+				static_cast<int>(ActivePictureLookaheadMode::SHADOW),
+				static_cast<int>(resolved.activePictureLookaheadMode));
 			Assert::AreEqual(2, resolved.resetAfterRendererRestartSeconds);
 			Assert::AreEqual(200, resolved.resetQueueTooLargePercent);
 
@@ -3002,6 +3007,15 @@ namespace VideoProcessorTest
 			Assert::IsTrue(config.Load(path));
 			Assert::IsFalse(MainConfigSchema::Validate(config, error));
 			Assert::IsTrue(error.find("active_picture_lookahead_frames") !=
+				std::string::npos);
+
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[queue]\nactive_picture_lookahead_mode: apply\n";
+			}
+			Assert::IsTrue(config.Load(path));
+			Assert::IsFalse(MainConfigSchema::Validate(config, error));
+			Assert::IsTrue(error.find("active_picture_lookahead_mode") !=
 				std::string::npos);
 
 			{

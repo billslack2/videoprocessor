@@ -492,16 +492,43 @@ std::vector<std::wstring> LoadConfiguredCommandLineArguments(
 		legacyStartupConfigured ? TEXT("legacy-configured") : TEXT("automatic")));
 
 	std::string activePictureLookaheadFrames;
+	bool activePictureLookaheadFramesConfigured = false;
 	if (tryGetDefaultQueueString("active_picture_lookahead_frames",
 		activePictureLookaheadFrames))
 	{
+		activePictureLookaheadFramesConfigured = true;
 		const size_t frames = static_cast<size_t>(
 			std::stoul(activePictureLookaheadFrames));
 		videoProcessorApp.SetActivePictureLookaheadFrames(frames);
-		DbgLog((LOG_TRACE, 1,
-			TEXT("VideoProcessor: Active-picture look-ahead configured: frames=%zu"),
-			frames));
 	}
+	std::string activePictureLookaheadMode;
+	bool activePictureLookaheadModeConfigured = tryGetDefaultQueueString(
+		"active_picture_lookahead_mode", activePictureLookaheadMode);
+	ActivePictureLookaheadMode parsedLookaheadMode =
+		ActivePictureLookaheadMode::OFF;
+	if (activePictureLookaheadModeConfigured &&
+		ParseActivePictureLookaheadMode(
+			activePictureLookaheadMode, parsedLookaheadMode))
+	{
+		videoProcessorApp.SetActivePictureLookaheadMode(parsedLookaheadMode);
+	}
+	else if (!activePictureLookaheadModeConfigured &&
+		activePictureLookaheadFramesConfigured &&
+		videoProcessorApp.GetActivePictureLookaheadFrames() > 0)
+	{
+		// A nonzero legacy value previously had ambiguous runtime semantics.
+		// Preserve its diagnostic intent without silently enabling pixels.
+		parsedLookaheadMode = ActivePictureLookaheadMode::SHADOW;
+		videoProcessorApp.SetActivePictureLookaheadMode(parsedLookaheadMode);
+	}
+	DbgLog((LOG_TRACE, 1,
+		TEXT("VideoProcessor: Active-picture look-ahead configured: mode=%S frames=%zu legacy-shadow=%d"),
+		ActivePictureLookaheadModeName(
+			videoProcessorApp.GetActivePictureLookaheadMode()),
+		videoProcessorApp.GetActivePictureLookaheadFrames(),
+		(!activePictureLookaheadModeConfigured &&
+			activePictureLookaheadFramesConfigured &&
+			videoProcessorApp.GetActivePictureLookaheadFrames() > 0) ? 1 : 0));
 
 	// The default Queue profile owns the renderer hard capacity. The configured
 	// arguments precede the literal process command line, so a deliberate

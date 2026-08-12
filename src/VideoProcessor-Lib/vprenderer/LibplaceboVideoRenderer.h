@@ -56,6 +56,7 @@ public:
 	void SetQueueFramePolicy(size_t startupPrerollFrames,
 		size_t steadyReserveFrames, bool hasSteadyReserveFrames) override;
 	void SetActivePictureLookaheadFrames(size_t frames) override;
+	void SetActivePictureLookaheadMode(ActivePictureLookaheadMode mode) override;
 	void SetSceneAwareTimingCorrection(bool enabled) override;
 	uint64_t SceneAwareCorrectionDropCount() const override;
 	uint64_t SceneAwareCorrectionRepeatCount() const override;
@@ -174,8 +175,17 @@ private:
 	std::atomic<double> m_captureToPresentationTargetMs{0.0};
 	std::atomic<uint64_t> m_droppedFrames{0};
 	std::atomic<size_t> m_activePictureLookaheadFrames{0};
+	std::atomic<ActivePictureLookaheadMode> m_activePictureLookaheadMode{
+		ActivePictureLookaheadMode::OFF};
+	std::atomic<uint64_t> m_activePictureLookaheadPolicyEpoch{1};
 	uint64_t m_activePictureLookaheadLoggedGeneration = 0;
 	uint8_t m_activePictureLookaheadLoggedAvailable = 0xff;
+	int64_t m_activePictureLookaheadPerfWindowStartNs = 0;
+	uint64_t m_activePictureLookaheadPerfBatches = 0;
+	uint64_t m_activePictureLookaheadPerfScheduled = 0;
+	uint64_t m_activePictureLookaheadPerfAnalyzed = 0;
+	uint64_t m_activePictureLookaheadPerfTotalUs = 0;
+	uint64_t m_activePictureLookaheadPerfMaxUs = 0;
 	std::atomic<uint64_t> m_missingFrameStateDrops{0};
 	std::atomic<uint64_t> m_renderFailureDrops{0};
 	std::atomic_bool m_sceneDetectionEnabled{false};

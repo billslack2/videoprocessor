@@ -127,6 +127,8 @@ namespace MainConfigSchema
 			ConfigSchema::Integer("lead_frames", 0, 16),
 			ConfigSchema::Integer("target_frames", 0, 16),
 			ConfigSchema::Integer("active_picture_lookahead_frames", 0, 8),
+			ConfigSchema::Choice("active_picture_lookahead_mode",
+				{ "off", "shadow" }),
 			ConfigSchema::Integer("startup_preroll_frames", 0, 16),
 			ConfigSchema::Integer("steady_reserve_frames", 0, 16),
 			ConfigSchema::Integer("reset_after_render_restart_seconds", 1, INT_MAX),

@@ -496,7 +496,8 @@ void testEveryPageRoundTrips()
         "renderer: VP Renderer", "fullscreen: false",
         "scene_detect: false",
         "fullscreen_monitor_name: Test Display", "container_colorspace: BT2020",
-        "queue_size: 48", "lead_frames: 3", "reset_queue_too_large_percent: 200",
+        "queue_size: 48", "lead_frames: 3", "active_picture_lookahead_mode: shadow",
+        "reset_queue_too_large_percent: 200",
         "shortcut: Ctrl+Q", "quality: balanced", "sdr_target_nits: 220", "tone_mapping: spline",
         "screen_aspect: 21:10", "vertical_alignment: bottom", "anamorphic_scale: 4:3",
         "renderer_start_stop_time_method: RATIONAL_RATIONAL", "frame_offset: 75",
@@ -907,6 +908,15 @@ void testQueueUnitsAndLutControlsUseConsistentRows()
         "Queue units are still embedded in their value controls");
     require(queueUnit->x() >= queueDepth->x() + queueDepth->width(),
         "Queue unit label is not aligned beside its bounded value input");
+	QComboBox* lookaheadMode = requireControl<QComboBox>(window,
+		QStringLiteral("config.queue.active_picture_lookahead_mode"));
+	require(lookaheadMode->findData(QStringLiteral("off")) >= 0 &&
+		lookaheadMode->findData(QStringLiteral("shadow")) >= 0 &&
+		lookaheadMode->count() == 3 &&
+		lookaheadMode->itemData(0).toString().isEmpty(),
+		"Active-picture lookahead modes are not presented with safe friendly labels");
+	require(lookaheadMode->currentData().toString() == QStringLiteral("shadow"),
+		"Legacy nonzero lookahead depth was not migrated to diagnostic Shadow mode");
 
     window.selectPage(3);
     QToolButton* lutSection = requireControl<QToolButton>(window,

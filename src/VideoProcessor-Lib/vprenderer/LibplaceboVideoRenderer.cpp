@@ -8692,11 +8692,66 @@ void LibplaceboVideoRenderer::SetQueueFramePolicy(
 void LibplaceboVideoRenderer::SetActivePictureLookaheadFrames(size_t frames)
 {
 	const size_t boundedFrames = (std::min)(frames, size_t{ 8 });
-	m_activePictureLookaheadFrames.store(
-		boundedFrames, std::memory_order_release);
+	const size_t previous = m_activePictureLookaheadFrames.exchange(
+		boundedFrames, std::memory_order_acq_rel);
+	if (previous != boundedFrames)
+	{
+		std::lock_guard<std::mutex> queueGuard(m_queueMutex);
+		m_activePictureLookaheadPolicyEpoch.fetch_add(
+			1, std::memory_order_acq_rel);
+		m_activePictureTimeline.ResetAnalysis();
+		for (QueuedFrame& queued : m_frameQueue)
+		{
+			queued.activePicturePreviewAnalyzed = false;
+			queued.activePicturePreviewDecisionAvailable = false;
+		}
+		m_activePictureLookaheadLoggedAvailable = 0xff;
+		m_activePictureLookaheadPerfWindowStartNs = 0;
+		m_activePictureLookaheadPerfBatches = 0;
+		m_activePictureLookaheadPerfScheduled = 0;
+		m_activePictureLookaheadPerfAnalyzed = 0;
+		m_activePictureLookaheadPerfTotalUs = 0;
+		m_activePictureLookaheadPerfMaxUs = 0;
+	}
+	const ActivePictureLookaheadMode mode =
+		m_activePictureLookaheadMode.load(std::memory_order_acquire);
 	DebugLog::Log(
-		"Alpha active-picture look-ahead retained: configured=%zu queue-unchanged=1 runtime-active=0",
-		boundedFrames);
+		"Alpha active-picture look-ahead retained: mode=%s configured=%zu queue-unchanged=1 runtime-active=%d",
+		ActivePictureLookaheadModeName(mode), boundedFrames,
+		mode != ActivePictureLookaheadMode::OFF && boundedFrames > 0 ? 1 : 0);
+}
+
+
+void LibplaceboVideoRenderer::SetActivePictureLookaheadMode(
+	ActivePictureLookaheadMode mode)
+{
+	const ActivePictureLookaheadMode previous =
+		m_activePictureLookaheadMode.exchange(mode, std::memory_order_acq_rel);
+	if (previous != mode)
+	{
+		std::lock_guard<std::mutex> queueGuard(m_queueMutex);
+		m_activePictureLookaheadPolicyEpoch.fetch_add(
+			1, std::memory_order_acq_rel);
+		m_activePictureTimeline.ResetAnalysis();
+		for (QueuedFrame& queued : m_frameQueue)
+		{
+			queued.activePicturePreviewAnalyzed = false;
+			queued.activePicturePreviewDecisionAvailable = false;
+		}
+		m_activePictureLookaheadLoggedAvailable = 0xff;
+		m_activePictureLookaheadPerfWindowStartNs = 0;
+		m_activePictureLookaheadPerfBatches = 0;
+		m_activePictureLookaheadPerfScheduled = 0;
+		m_activePictureLookaheadPerfAnalyzed = 0;
+		m_activePictureLookaheadPerfTotalUs = 0;
+		m_activePictureLookaheadPerfMaxUs = 0;
+	}
+	const size_t frames =
+		m_activePictureLookaheadFrames.load(std::memory_order_acquire);
+	DebugLog::Log(
+		"Alpha active-picture look-ahead mode retained: mode=%s frames=%zu queue-unchanged=1 runtime-active=%d",
+		ActivePictureLookaheadModeName(mode), frames,
+		mode != ActivePictureLookaheadMode::OFF && frames > 0 ? 1 : 0);
 }
 
 
@@ -8964,15 +9019,69 @@ void LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
 	std::vector<QueuedFrame>& previewFrames,
 	uint8_t availableLookahead)
 {
+	const int64_t scanStartNs = SteadyClockNowNs();
+	const uint64_t policyEpoch =
+		m_activePictureLookaheadPolicyEpoch.load(std::memory_order_acquire);
+	const ActivePictureLookaheadMode mode =
+		m_activePictureLookaheadMode.load(std::memory_order_acquire);
+	if (mode == ActivePictureLookaheadMode::OFF)
+		return;
+	const uint8_t configured = static_cast<uint8_t>((std::min)(
+		m_activePictureLookaheadFrames.load(std::memory_order_acquire),
+		size_t{ ActivePictureDecisionTimeline::MAX_LOOKAHEAD_FRAMES }));
 	struct PreviewEvidence
 	{
 		ActivePictureFrameIdentity identity;
 		ActivePictureObservation observation;
 		double framesPerSecond = 0.0;
 	};
+	// Decide cadence before touching 4K pixel buffers. Preview analysis runs on
+	// the render thread, so scanning frames that cannot vote is pure deadline
+	// cost and was the principal pre-enable performance risk.
+	std::vector<QueuedFrame> scheduledFrames;
+	{
+		std::lock_guard<std::mutex> queueGuard(m_queueMutex);
+		if (m_activePictureLookaheadPolicyEpoch.load(
+				std::memory_order_acquire) != policyEpoch ||
+			m_activePictureLookaheadMode.load(std::memory_order_acquire) !=
+				ActivePictureLookaheadMode::SHADOW)
+		{
+			return;
+		}
+		scheduledFrames.reserve(previewFrames.size());
+		for (const QueuedFrame& preview : previewFrames)
+		{
+			AlphaNativeRgbLayout rgbLayout;
+			const bool supportedFormat = preview.state &&
+				(GetAlphaNativeRgbLayout(
+					preview.state->videoFrameEncoding, rgbLayout) ||
+					preview.state->videoFrameEncoding == VideoFrameEncoding::UYVY ||
+					preview.state->videoFrameEncoding == VideoFrameEncoding::HDYC ||
+					preview.state->videoFrameEncoding == VideoFrameEncoding::V210);
+			auto queued = std::find_if(m_frameQueue.begin(), m_frameQueue.end(),
+				[&preview](const QueuedFrame& candidate)
+				{
+					return candidate.activePictureIdentity.transportGeneration ==
+						preview.activePictureIdentity.transportGeneration &&
+						candidate.activePictureIdentity.acceptedSequence ==
+						preview.activePictureIdentity.acceptedSequence;
+				});
+			if (queued == m_frameQueue.end() ||
+				queued->activePicturePreviewAnalyzed || !preview.state ||
+				!preview.frame.GetData() || !supportedFormat ||
+				!preview.state->displayMode ||
+				!m_activePictureTimeline.ShouldAnalyze(
+					preview.sourceSequence,
+					preview.state->displayMode->RefreshRateHz()))
+			{
+				continue;
+			}
+			scheduledFrames.push_back(preview);
+		}
+	}
 	std::vector<PreviewEvidence> observations;
-	observations.reserve(previewFrames.size());
-	for (const QueuedFrame& queued : previewFrames)
+	observations.reserve(scheduledFrames.size());
+	for (const QueuedFrame& queued : scheduledFrames)
 	{
 		if (!queued.state || !queued.state->displayMode ||
 			!queued.frame.GetData())
@@ -9016,19 +9125,55 @@ void LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
 		observations.push_back(preview);
 	}
 
-	const uint8_t configured = static_cast<uint8_t>((std::min)(
-		m_activePictureLookaheadFrames.load(std::memory_order_acquire),
-		size_t{ ActivePictureDecisionTimeline::MAX_LOOKAHEAD_FRAMES }));
 	{
 		std::lock_guard<std::mutex> queueGuard(m_queueMutex);
+		if (m_activePictureLookaheadPolicyEpoch.load(
+				std::memory_order_acquire) != policyEpoch ||
+			m_activePictureLookaheadMode.load(std::memory_order_acquire) !=
+				ActivePictureLookaheadMode::SHADOW)
+		{
+			return;
+		}
+		const uint64_t elapsedUs = static_cast<uint64_t>((std::max)(
+			int64_t{ 0 }, SteadyClockNowNs() - scanStartNs) / 1000);
+		if (m_activePictureLookaheadPerfWindowStartNs == 0)
+			m_activePictureLookaheadPerfWindowStartNs = scanStartNs;
+		++m_activePictureLookaheadPerfBatches;
+		m_activePictureLookaheadPerfScheduled += scheduledFrames.size();
+		m_activePictureLookaheadPerfAnalyzed += observations.size();
+		m_activePictureLookaheadPerfTotalUs += elapsedUs;
+		m_activePictureLookaheadPerfMaxUs = (std::max)(
+			m_activePictureLookaheadPerfMaxUs, elapsedUs);
+		if (SteadyClockNowNs() - m_activePictureLookaheadPerfWindowStartNs >=
+			5'000'000'000LL)
+		{
+			DebugLog::Log(
+				"Alpha active-picture look-ahead performance: policy_epoch=%llu batches=%llu scheduled=%llu analyzed=%llu avg_ms=%.3f max_ms=%.3f runtime-apply=0",
+				static_cast<unsigned long long>(policyEpoch),
+				static_cast<unsigned long long>(m_activePictureLookaheadPerfBatches),
+				static_cast<unsigned long long>(m_activePictureLookaheadPerfScheduled),
+				static_cast<unsigned long long>(m_activePictureLookaheadPerfAnalyzed),
+				m_activePictureLookaheadPerfBatches > 0 ?
+					static_cast<double>(m_activePictureLookaheadPerfTotalUs) /
+						m_activePictureLookaheadPerfBatches / 1000.0 : 0.0,
+				static_cast<double>(m_activePictureLookaheadPerfMaxUs) / 1000.0);
+			m_activePictureLookaheadPerfWindowStartNs = SteadyClockNowNs();
+			m_activePictureLookaheadPerfBatches = 0;
+			m_activePictureLookaheadPerfScheduled = 0;
+			m_activePictureLookaheadPerfAnalyzed = 0;
+			m_activePictureLookaheadPerfTotalUs = 0;
+			m_activePictureLookaheadPerfMaxUs = 0;
+		}
 		if (m_activePictureLookaheadLoggedGeneration != m_queueGeneration ||
 			m_activePictureLookaheadLoggedAvailable != availableLookahead)
 		{
 			m_activePictureLookaheadLoggedGeneration = m_queueGeneration;
 			m_activePictureLookaheadLoggedAvailable = availableLookahead;
 			DebugLog::Log(
-				"Alpha active-picture look-ahead preview: generation=%llu configured=%u available=%u effective=%u runtime-apply=pending",
+				"Alpha active-picture look-ahead preview: generation=%llu mode=%s policy_epoch=%llu configured=%u available=%u effective=%u runtime-apply=0",
 				static_cast<unsigned long long>(m_queueGeneration),
+				ActivePictureLookaheadModeName(mode),
+				static_cast<unsigned long long>(policyEpoch),
 				static_cast<unsigned>(configured),
 				static_cast<unsigned>(availableLookahead),
 				static_cast<unsigned>((std::min)(configured, availableLookahead)));
@@ -9047,30 +9192,17 @@ void LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
 				queued->activePicturePreviewAnalyzed)
 				continue;
 			queued->activePicturePreviewAnalyzed = true;
-			if (!m_activePictureTimeline.ShouldAnalyze(
-				preview.observation.frameNumber, preview.framesPerSecond))
-				continue;
 			ActivePictureFrameDecision decision;
 			if (!m_activePictureTimeline.SubmitScheduledObservation(
 				preview.identity, preview.observation, configured,
 				availableLookahead, decision))
 				continue;
-			auto target = std::find_if(m_frameQueue.begin(), m_frameQueue.end(),
-				[&decision](const QueuedFrame& candidate)
-				{
-					return candidate.activePictureIdentity.transportGeneration ==
-						decision.effectiveIdentity.transportGeneration &&
-						candidate.activePictureIdentity.acceptedSequence ==
-						decision.effectiveIdentity.acceptedSequence;
-				});
-			if (target == m_frameQueue.end())
-				continue;
-			target->activePicturePreviewDecision = decision;
-			target->activePicturePreviewDecisionAvailable = true;
 			DebugLog::Log(
-				"Alpha active-picture look-ahead decision: generation=%llu observed=%llu effective=%llu configured=%u available=%u effective_lead=%u late=%d rect=%d,%d-%d,%d runtime-apply=pending",
+				"Alpha active-picture look-ahead decision: generation=%llu mode=%s policy_epoch=%llu observed=%llu effective=%llu configured=%u available=%u effective_lead=%u late=%d rect=%d,%d-%d,%d runtime-apply=0",
 				static_cast<unsigned long long>(
 					decision.observationIdentity.transportGeneration),
+				ActivePictureLookaheadModeName(mode),
+				static_cast<unsigned long long>(policyEpoch),
 				static_cast<unsigned long long>(
 					decision.observationIdentity.acceptedSequence),
 				static_cast<unsigned long long>(
@@ -9174,7 +9306,9 @@ void LibplaceboVideoRenderer::RenderLoop()
 			const size_t requestedLookahead = (std::min)(
 				m_activePictureLookaheadFrames.load(std::memory_order_acquire),
 				size_t{ ActivePictureDecisionTimeline::MAX_LOOKAHEAD_FRAMES });
-			if (requestedLookahead > 0)
+			if (requestedLookahead > 0 &&
+				m_activePictureLookaheadMode.load(std::memory_order_acquire) !=
+					ActivePictureLookaheadMode::OFF)
 			{
 				size_t sourceLead = 0;
 				for (const QueuedFrame& queued : m_frameQueue)
@@ -9245,7 +9379,9 @@ void LibplaceboVideoRenderer::RenderLoop()
 			}
 		}
 
-		if (m_activePictureLookaheadFrames.load(std::memory_order_acquire) > 0)
+		if (m_activePictureLookaheadFrames.load(std::memory_order_acquire) > 0 &&
+			m_activePictureLookaheadMode.load(std::memory_order_acquire) !=
+				ActivePictureLookaheadMode::OFF)
 		{
 			try
 			{

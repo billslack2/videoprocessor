@@ -11,6 +11,8 @@
 #include <cstddef>
 #include <string>
 
+#include <ActivePictureLookaheadMode.h>
+
 
 class CVideoProcessorApp:
 	public CWinAppEx
@@ -48,6 +50,14 @@ public:
 	{
 		m_activePictureLookaheadFrames = value > 8 ? 8 : value;
 	}
+	ActivePictureLookaheadMode GetActivePictureLookaheadMode() const
+	{
+		return m_activePictureLookaheadMode;
+	}
+	void SetActivePictureLookaheadMode(ActivePictureLookaheadMode value)
+	{
+		m_activePictureLookaheadMode = value;
+	}
 
 private:
 	size_t m_queueStartupPrerollFrames = 0;
@@ -56,6 +66,8 @@ private:
 	size_t m_presentationLeadFrames = 1;
 	bool m_hasPresentationLeadFrames = true;
 	size_t m_activePictureLookaheadFrames = 0;
+	ActivePictureLookaheadMode m_activePictureLookaheadMode =
+		ActivePictureLookaheadMode::OFF;
 	std::string m_displayRecoveryStatePath;
 	bool m_targetOnlyDisplaySessionActive = false;
 	int m_startupExitCode = 0;

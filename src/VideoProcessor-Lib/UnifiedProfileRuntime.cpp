@@ -78,6 +78,10 @@ namespace
 				right.queue.hasActivePictureLookaheadFrames ||
 			left.queue.activePictureLookaheadFrames !=
 				right.queue.activePictureLookaheadFrames ||
+			left.queue.hasActivePictureLookaheadMode !=
+				right.queue.hasActivePictureLookaheadMode ||
+			left.queue.activePictureLookaheadMode !=
+				right.queue.activePictureLookaheadMode ||
 			left.queue.hasStartupPrerollFrames !=
 				right.queue.hasStartupPrerollFrames ||
 			left.queue.startupPrerollFrames !=

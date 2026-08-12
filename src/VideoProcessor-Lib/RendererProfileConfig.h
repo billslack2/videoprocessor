@@ -1,5 +1,7 @@
 #pragma once
 
+#include <ActivePictureLookaheadMode.h>
+
 #include "ConfigFile.h"
 #include "ConfigSchema.h"
 #include "MainConfigSchema.h"
@@ -158,6 +160,9 @@ namespace RendererProfileConfig
 		size_t targetFrames = 0;
 		bool hasActivePictureLookaheadFrames = false;
 		size_t activePictureLookaheadFrames = 0;
+		bool hasActivePictureLookaheadMode = false;
+		ActivePictureLookaheadMode activePictureLookaheadMode =
+			ActivePictureLookaheadMode::OFF;
 		bool hasStartupPrerollFrames = false;
 		size_t startupPrerollFrames = 0;
 		bool hasResetAfterRendererRestartSeconds = false;
@@ -499,6 +504,11 @@ namespace RendererProfileConfig
 				return ParseInteger(value, 0, 16, parsed);
 			if (key == "active_picture_lookahead_frames")
 				return ParseInteger(value, 0, 8, parsed);
+			if (key == "active_picture_lookahead_mode")
+			{
+				ActivePictureLookaheadMode mode;
+				return ParseActivePictureLookaheadMode(value, mode);
+			}
 			if (key == "reset_after_render_restart_seconds")
 				return ParseInteger(value, 1, INT_MAX, parsed);
 			if (key == "reset_queue_too_large_percent")
@@ -1772,6 +1782,20 @@ namespace RendererProfileConfig
 			configured = true;
 			return true;
 		};
+		auto resolveLookaheadMode = [&]() -> bool
+		{
+			const auto setting = settings.find("active_picture_lookahead_mode");
+			if (setting == settings.end()) return true;
+			if (!ParseActivePictureLookaheadMode(
+				setting->second, queue.activePictureLookaheadMode))
+			{
+				error = "[profiles.queue." + profileName +
+					"] active_picture_lookahead_mode is invalid";
+				return false;
+			}
+			queue.hasActivePictureLookaheadMode = true;
+			return true;
+		};
 		if (!resolveSize("queue_size", 1, INT_MAX,
 			queue.hasQueueSize, queue.queueSize) ||
 			!resolveSize("lead_frames", 0, 16,
@@ -1781,6 +1805,7 @@ namespace RendererProfileConfig
 			!resolveSize("active_picture_lookahead_frames", 0, 8,
 				queue.hasActivePictureLookaheadFrames,
 				queue.activePictureLookaheadFrames) ||
+			!resolveLookaheadMode() ||
 			!resolveSize("startup_preroll_frames", 0, 16,
 				queue.hasStartupPrerollFrames, queue.startupPrerollFrames) ||
 			!resolveInteger("reset_after_render_restart_seconds", 1, INT_MAX,

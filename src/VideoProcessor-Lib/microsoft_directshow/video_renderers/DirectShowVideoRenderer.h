@@ -95,6 +95,7 @@ public:
 	void SetPresentationLeadFrames(
 		size_t frames, bool configured) override;
 	void SetActivePictureLookaheadFrames(size_t frames) override;
+	void SetActivePictureLookaheadMode(ActivePictureLookaheadMode mode) override;
 	void SetResetRequestSink(
 		std::shared_ptr<IRendererResetRequestSink> sink) override;
 	void Retire() noexcept override;
@@ -207,6 +208,8 @@ protected:
 	std::atomic<size_t> m_presentationLeadFrames{0};
 	std::atomic_bool m_presentationLeadFramesConfigured{false};
 	std::atomic<size_t> m_activePictureLookaheadFrames{0};
+	std::atomic<ActivePictureLookaheadMode> m_activePictureLookaheadMode{
+		ActivePictureLookaheadMode::OFF};
 	VideoConversionOverride m_videoConversionOverride;
 	DXVA_NominalRange m_forceNominalRange = DXVA_NominalRange::DXVA_NominalRange_Unknown;
 	DXVA_VideoTransferFunction m_forceVideoTransferFunction = DXVA_VideoTransferFunction::DXVA_VideoTransFunc_Unknown;

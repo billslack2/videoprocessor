@@ -529,6 +529,7 @@ QString friendlyChoiceLabel(const QString& raw)
         { QStringLiteral("SMALL"), QStringLiteral("Small") },
         { QStringLiteral("ON"), QStringLiteral("On") },
         { QStringLiteral("OFF"), QStringLiteral("Off") },
+		{ QStringLiteral("SHADOW"), QStringLiteral("Shadow") },
         { QStringLiteral("LIGHT"), QStringLiteral("Light") },
         { QStringLiteral("DEFAULT"), QStringLiteral("Standard") },
         { QStringLiteral("BT1886"), QStringLiteral("BT.1886") },
@@ -1998,15 +1999,33 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             {
                 const QString legacy = value(queueSection,
                     QStringLiteral("steady_reserve_frames"));
-                if (legacy.isEmpty()) continue;
-                if (value(queueSection, QStringLiteral("target_frames")).isEmpty())
-                    document_->SetKnown(queueSection.toStdString(), "target_frames",
-                        legacy.toLocal8Bit().constData());
-                document_->RemoveKnown(queueSection.toStdString(),
-                    "steady_reserve_frames");
-                migrated = true;
+                if (!legacy.isEmpty())
+                {
+                    if (value(queueSection, QStringLiteral("target_frames")).isEmpty())
+                        document_->SetKnown(queueSection.toStdString(), "target_frames",
+                            legacy.toLocal8Bit().constData());
+                    document_->RemoveKnown(queueSection.toStdString(),
+                        "steady_reserve_frames");
+                    migrated = true;
+                }
+                bool validLookahead = false;
+                const int lookahead = value(queueSection,
+                    QStringLiteral("active_picture_lookahead_frames")).toInt(
+                        &validLookahead);
+                if (validLookahead && lookahead > 0 &&
+                    value(queueSection, QStringLiteral(
+                        "active_picture_lookahead_mode")).isEmpty())
+                {
+                    document_->SetKnown(queueSection.toStdString(),
+                        "active_picture_lookahead_mode", "shadow");
+                    migrated = true;
+                }
             }
-            if (migrated) markDirty();
+            if (migrated)
+            {
+                hasPendingMigrations_ = true;
+                markDirty();
+            }
         }
     }
     struct Field
@@ -2325,6 +2344,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                 key.toStdString().c_str(), std::to_string(selected));
             markDirty();
         });
+		return spin;
     };
 
     QComboBox* queuePolicy = nullptr;
@@ -2354,8 +2374,16 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             0, 16, QStringLiteral("frames"));
         addInteger(QStringLiteral("Target frames"), QStringLiteral("target_frames"),
             0, 16, QStringLiteral("frames"));
+        addChoice(QStringLiteral("Active-picture lookahead mode"),
+            QStringLiteral("active_picture_lookahead_mode"),
+            { QStringLiteral("off"), QStringLiteral("shadow") });
         addInteger(QStringLiteral("Active-picture lookahead"), QStringLiteral("active_picture_lookahead_frames"),
             0, 8, QStringLiteral("frames"));
+        form->addRow(QString(), helpLabel(QStringLiteral(
+            "VP Renderer uses queued target frames, not DirectShow lead frames. "
+            "Shadow reports predictions without changing pixels, crop, subtitles, "
+            "or NLS; DirectShow ignores it. Effective depth is limited to available "
+            "non-repeat target frames and never adds queue latency.")));
         addInteger(QStringLiteral("Reset after renderer restart"), QStringLiteral("reset_after_render_restart_seconds"),
             1, INT_MAX, QStringLiteral("seconds"));
         addInteger(QStringLiteral("Queue recovery threshold"), QStringLiteral("reset_queue_too_large_percent"),
@@ -2602,12 +2630,24 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                     return qobject_cast<QSpinBox*>(field.widget)->value();
             return -1;
         };
+		const auto queueChoice = [fields](const QString& key) -> QString
+		{
+			for (const Field& field : *fields)
+				if (field.key == key && field.kind == Field::Choice)
+				{
+					auto* combo = qobject_cast<QComboBox*>(field.widget);
+					return combo->currentData().toString();
+				}
+			return {};
+		};
         QString policyId;
         for (const QueuePolicy& policy : queuePolicies)
             if (queueValue(QStringLiteral("queue_size")) == policy.capacity &&
                 queueValue(QStringLiteral("lead_frames")) == policy.lead &&
                 queueValue(QStringLiteral("target_frames")) == policy.target &&
                 queueValue(QStringLiteral("startup_preroll_frames")) == 0 &&
+				queueChoice(QStringLiteral("active_picture_lookahead_mode")) ==
+					QStringLiteral("off") &&
                 queueValue(QStringLiteral("active_picture_lookahead_frames")) == 0 &&
                 queueValue(QStringLiteral("reset_after_render_restart_seconds")) == 5 &&
                 queueValue(QStringLiteral("reset_queue_too_large_percent")) == 75)
@@ -2662,6 +2702,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                 if (key == QStringLiteral("queue_size")) return QStringLiteral("32");
                 if (key == QStringLiteral("lead_frames")) return QStringLiteral("1");
                 if (key == QStringLiteral("target_frames")) return QStringLiteral("4");
+				if (key == QStringLiteral("active_picture_lookahead_mode")) return QStringLiteral("off");
                 if (key == QStringLiteral("active_picture_lookahead_frames")) return QStringLiteral("0");
                 if (key == QStringLiteral("startup_preroll_frames")) return QStringLiteral("0");
                 if (key == QStringLiteral("steady_reserve_frames")) return QStringLiteral("4");
@@ -2853,6 +2894,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             setValue("lead_frames", selected->lead);
             setValue("startup_preroll_frames", 0);
             setValue("target_frames", selected->target);
+			document_->SetKnown(section, "active_picture_lookahead_mode", "off");
             setValue("active_picture_lookahead_frames", 0);
             setValue("reset_after_render_restart_seconds", 5);
             setValue("reset_queue_too_large_percent", 75);
@@ -2868,6 +2910,13 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                     QSignalBlocker blocker(field.widget);
                     qobject_cast<QSpinBox*>(field.widget)->setValue(value);
                 }
+				else if (field.kind == Field::Choice &&
+					field.key == QStringLiteral("active_picture_lookahead_mode"))
+				{
+					auto* combo = qobject_cast<QComboBox*>(field.widget);
+					QSignalBlocker blocker(field.widget);
+					combo->setCurrentIndex(combo->findData(QStringLiteral("off")));
+				}
             markDirty();
             updateQueuePolicyPresentation();
         });
