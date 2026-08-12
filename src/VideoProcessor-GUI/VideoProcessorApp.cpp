@@ -20,9 +20,18 @@
 #include <MainConfigSchema.h>
 #include <RendererProfileConfig.h>
 #include <ApplicationInterface.h>
+#include <DeckLinkAPI_h.h>
+#include <DeckLinkAPIVersion.h>
+
+#include <d3d11.h>
+#include <dxgi1_6.h>
+#include <intrin.h>
 
 #include "VideoProcessorApp.h"
 using namespace std;
+
+#pragma comment(lib, "d3d11.lib")
+#pragma comment(lib, "dxgi.lib")
 
 
 BEGIN_MESSAGE_MAP(CVideoProcessorApp, CWinAppEx)
@@ -34,6 +43,175 @@ CVideoProcessorApp videoProcessorApp;
 
 namespace
 {
+std::wstring CpuBrand()
+{
+	int registers[4] = {};
+	__cpuid(registers, 0x80000000);
+	if (static_cast<unsigned int>(registers[0]) < 0x80000004)
+		return L"(unavailable)";
+
+	char brand[49] = {};
+	for (int leaf = 0; leaf < 3; ++leaf)
+	{
+		__cpuidex(registers, 0x80000002 + leaf, 0);
+		memcpy(brand + leaf * sizeof(registers), registers, sizeof(registers));
+	}
+	const int length = MultiByteToWideChar(CP_ACP, 0, brand, -1, nullptr, 0);
+	if (length <= 1)
+		return L"(unavailable)";
+	std::vector<wchar_t> converted(static_cast<size_t>(length));
+	MultiByteToWideChar(CP_ACP, 0, brand, -1, converted.data(), length);
+	std::wstring result(converted.data());
+	while (!result.empty() && iswspace(result.back()))
+		result.pop_back();
+	return result;
+}
+
+std::wstring DxgiDriverVersion(const LARGE_INTEGER& version)
+{
+	const ULONGLONG value = static_cast<ULONGLONG>(version.QuadPart);
+	wchar_t text[64] = {};
+	swprintf_s(text, L"%llu.%llu.%llu.%llu",
+		(value >> 48) & 0xffff, (value >> 32) & 0xffff,
+		(value >> 16) & 0xffff, value & 0xffff);
+	return text;
+}
+
+std::wstring DeckLinkName(IDeckLink* deckLink, bool model)
+{
+	if (!deckLink)
+		return L"(unavailable)";
+	BSTR value = nullptr;
+	const HRESULT result = model ? deckLink->GetModelName(&value) :
+		deckLink->GetDisplayName(&value);
+	if (FAILED(result) || !value)
+		return L"(unavailable)";
+	std::wstring name(value, SysStringLen(value));
+	SysFreeString(value);
+	return name;
+}
+
+void LogStartupPlatformInventory()
+{
+	// Do not log monitor serials, EDIDs, device paths, usernames, or the current
+	// capture source. This is a support fingerprint, not an identity inventory.
+	SYSTEM_INFO systemInfo = {};
+	GetNativeSystemInfo(&systemInfo);
+	MEMORYSTATUSEX memory = {};
+	memory.dwLength = sizeof(memory);
+	GlobalMemoryStatusEx(&memory);
+	DebugLog::Log("platform: cpu=\"%S\" logical_processors=%lu architecture=%u memory_mib=%llu",
+		CpuBrand().c_str(), systemInfo.dwNumberOfProcessors,
+		systemInfo.wProcessorArchitecture,
+		memory.ullTotalPhys / (1024ULL * 1024ULL));
+
+	// RtlGetVersion is used instead of GetVersionEx so the log has the real OS
+	// build even when the executable manifest targets an older Windows version.
+	struct RtlOsVersionInfo
+	{
+		ULONG size;
+		ULONG major;
+		ULONG minor;
+		ULONG build;
+		ULONG platformId;
+		WCHAR servicePack[128];
+	};
+	using RtlGetVersionFunction = LONG(WINAPI*)(RtlOsVersionInfo*);
+	RtlOsVersionInfo version = { sizeof(version) };
+	const HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
+	const auto rtlGetVersion = ntdll ? reinterpret_cast<RtlGetVersionFunction>(
+		GetProcAddress(ntdll, "RtlGetVersion")) : nullptr;
+	if (rtlGetVersion && rtlGetVersion(&version) == 0)
+		DebugLog::Log("platform: windows=%lu.%lu.%lu service_pack=\"%S\"",
+			version.major, version.minor, version.build, version.servicePack);
+	else
+		DebugLog::Log("platform: windows=unavailable");
+
+	CComPtr<IDXGIFactory1> factory;
+	if (SUCCEEDED(CreateDXGIFactory1(IID_PPV_ARGS(&factory))))
+	{
+		for (UINT adapterIndex = 0;; ++adapterIndex)
+		{
+			CComPtr<IDXGIAdapter1> adapter;
+			if (factory->EnumAdapters1(adapterIndex, &adapter) == DXGI_ERROR_NOT_FOUND)
+				break;
+			if (!adapter)
+				continue;
+			DXGI_ADAPTER_DESC1 adapterDescription = {};
+			if (FAILED(adapter->GetDesc1(&adapterDescription)))
+				continue;
+			LARGE_INTEGER driver = {};
+			const HRESULT driverResult = adapter->CheckInterfaceSupport(
+				__uuidof(ID3D11Device), &driver);
+			DebugLog::Log(
+				"platform: gpu[%u]=\"%S\" vendor=0x%04x device=0x%04x vram_mib=%llu shared_mib=%llu driver=%S",
+				adapterIndex, adapterDescription.Description, adapterDescription.VendorId,
+				adapterDescription.DeviceId,
+				adapterDescription.DedicatedVideoMemory / (1024ULL * 1024ULL),
+				adapterDescription.SharedSystemMemory / (1024ULL * 1024ULL),
+				SUCCEEDED(driverResult) ? DxgiDriverVersion(driver).c_str() : L"unavailable");
+			for (UINT outputIndex = 0;; ++outputIndex)
+			{
+				CComPtr<IDXGIOutput> output;
+				if (adapter->EnumOutputs(outputIndex, &output) == DXGI_ERROR_NOT_FOUND)
+					break;
+				DXGI_OUTPUT_DESC outputDescription = {};
+				if (output && SUCCEEDED(output->GetDesc(&outputDescription)))
+					DebugLog::Log(
+						"platform: display gpu=%u output=%u name=\"%S\" attached=%d desktop_rect=%ld,%ld %ldx%ld",
+						adapterIndex, outputIndex, outputDescription.DeviceName,
+						outputDescription.AttachedToDesktop ? 1 : 0,
+						outputDescription.DesktopCoordinates.left,
+						outputDescription.DesktopCoordinates.top,
+						outputDescription.DesktopCoordinates.right - outputDescription.DesktopCoordinates.left,
+						outputDescription.DesktopCoordinates.bottom - outputDescription.DesktopCoordinates.top);
+			}
+		}
+	}
+	else
+		DebugLog::Log("platform: dxgi enumeration unavailable");
+}
+
+void LogDeckLinkPlatformInventory()
+{
+	DebugLog::Log("platform: decklink_sdk_api=%s", BLACKMAGIC_DECKLINK_API_VERSION_STRING);
+	CComPtr<IDeckLinkAPIInformation> apiInformation;
+	if (SUCCEEDED(CoCreateInstance(CLSID_CDeckLinkAPIInformation, nullptr,
+		CLSCTX_ALL, IID_PPV_ARGS(&apiInformation))))
+	{
+		BSTR runtimeVersion = nullptr;
+		if (SUCCEEDED(apiInformation->GetString(BMDDeckLinkAPIVersion,
+			&runtimeVersion)) && runtimeVersion)
+		{
+			DebugLog::Log("platform: decklink_desktop_video_runtime=\"%S\"",
+				runtimeVersion);
+			SysFreeString(runtimeVersion);
+		}
+	}
+	else
+		DebugLog::Log("platform: decklink_desktop_video_runtime=unavailable");
+
+	CComPtr<IDeckLinkIterator> iterator;
+	if (FAILED(CoCreateInstance(CLSID_CDeckLinkIterator, nullptr, CLSCTX_ALL,
+		IID_PPV_ARGS(&iterator))))
+	{
+		DebugLog::Log("platform: decklink_hardware=unavailable");
+		return;
+	}
+	UINT deviceIndex = 0;
+	for (;;)
+	{
+		CComPtr<IDeckLink> deckLink;
+		if (iterator->Next(&deckLink) != S_OK || !deckLink)
+			break;
+		DebugLog::Log("platform: decklink[%u] model=\"%S\" display=\"%S\" firmware=not-exposed-by-sdk",
+			deviceIndex++, DeckLinkName(deckLink, true).c_str(),
+			DeckLinkName(deckLink, false).c_str());
+	}
+	if (deviceIndex == 0)
+		DebugLog::Log("platform: decklink_hardware=none-detected");
+}
+
 const wchar_t COMMAND_LINE_HELP[] = LR"(VideoProcessor GUI command-line help
 
 Usage:
@@ -1134,6 +1312,7 @@ BOOL CVideoProcessorApp::InitInstance()
 			debugLogRetention.count,
 			debugLogRetention.diagnostic,
 			LoadEnhancedLoggingEnabled());
+		LogStartupPlatformInventory();
 	}
 
 	m_displayRecoveryStatePath = CurrentStatePath();
@@ -1182,6 +1361,7 @@ BOOL CVideoProcessorApp::InitInstance()
 		// using that without further investigation
 		if (FAILED(CoInitializeEx(nullptr, COINIT_MULTITHREADED)))
 			throw std::runtime_error("Failed to initialize com objects");
+		LogDeckLinkPlatformInventory();
 
 		// Parse command line
 		// https://docs.microsoft.com/en-us/cpp/c-runtime-library/argc-argv-wargv
