@@ -773,6 +773,8 @@ void testRendererProfileSectionsCollapseAndPersist()
         requireControl<QCheckBox>(window,
         QStringLiteral("config.vprenderer.diagnostic_force_8bit_sdr_swapchain")) &&
         requireControl<QCheckBox>(window,
+        QStringLiteral("config.vprenderer.diagnostic_vp_owned_dxgi_presenter")) &&
+        requireControl<QCheckBox>(window,
         QStringLiteral("config.vprenderer.diagnostic_allow_limited_g22")),
         "Output experiment controls are missing from the editor");
     require(requireControl<QCheckBox>(window,
@@ -829,33 +831,60 @@ void testOutputExperimentsPersistAndRestoreDefaults()
     QToolButton* section = requireControl<QToolButton>(window,
         QStringLiteral("rendererSection.outputExperiments"));
     section->click();
+    QComboBox* outputPathProfile = requireControl<QComboBox>(window,
+        QStringLiteral("config.vprenderer.output_path_profile"));
+    selectData(outputPathProfile, QStringLiteral("proposed"));
+    require(requireControl<QComboBox>(window,
+        QStringLiteral("config.vprenderer.output_presentation"))->currentData().toString() ==
+            QStringLiteral("direct") &&
+        requireControl<QComboBox>(window,
+        QStringLiteral("config.vprenderer.output_range"))->currentData().toString() ==
+            QStringLiteral("limited") &&
+        requireControl<QComboBox>(window,
+        QStringLiteral("config.vprenderer.output_gamma"))->currentData().toString() ==
+            QStringLiteral("2.2"),
+        "Proposed output path did not write its visible output settings");
     QCheckBox* limitedG22 = requireControl<QCheckBox>(window,
         QStringLiteral("config.vprenderer.diagnostic_allow_limited_g22"));
     QCheckBox* noCompute = requireControl<QCheckBox>(window,
         QStringLiteral("config.vprenderer.diagnostic_disable_compute"));
     QCheckBox* force8Bit = requireControl<QCheckBox>(window,
         QStringLiteral("config.vprenderer.diagnostic_force_8bit_sdr_swapchain"));
+    QCheckBox* vpOwned = requireControl<QCheckBox>(window,
+        QStringLiteral("config.vprenderer.diagnostic_vp_owned_dxgi_presenter"));
     limitedG22->setChecked(true);
     noCompute->setChecked(true);
     force8Bit->setChecked(true);
+    vpOwned->setChecked(true);
+    require(outputPathProfile->currentData().toString() == QStringLiteral("custom"),
+        "Editing a proposed output-path value did not select Custom");
     save(window);
     const QByteArray configured = readBytes(path);
     require(configured.contains("diagnostic_allow_limited_g22: true") &&
         configured.contains("diagnostic_disable_compute: true") &&
-        configured.contains("diagnostic_force_8bit_sdr_swapchain: true"),
+        configured.contains("diagnostic_force_8bit_sdr_swapchain: true") &&
+        configured.contains("diagnostic_vp_owned_dxgi_presenter: true") &&
+        configured.contains("output_path_profile: custom"),
         "Output experiment controls did not persist with the renderer profile");
 
     answerMessageBox(QMessageBox::Yes);
     requireControl<QPushButton>(window,
         QStringLiteral("config.vprenderer.output_experiments.reset_defaults"))->click();
     require(!limitedG22->isChecked() && !noCompute->isChecked() &&
-        !force8Bit->isChecked(),
+        !force8Bit->isChecked() && !vpOwned->isChecked(),
         "Restore Recommended Defaults did not reset the output experiment controls");
+    require(outputPathProfile->currentData().toString() == QStringLiteral("legacy"),
+        "Restore Recommended Defaults did not select Legacy output path");
     save(window);
     const QByteArray restored = readBytes(path);
     require(restored.contains("diagnostic_allow_limited_g22: false") &&
         restored.contains("diagnostic_disable_compute: false") &&
-        restored.contains("diagnostic_force_8bit_sdr_swapchain: false"),
+        restored.contains("diagnostic_force_8bit_sdr_swapchain: false") &&
+        restored.contains("diagnostic_vp_owned_dxgi_presenter: false") &&
+        restored.contains("output_path_profile: legacy") &&
+        restored.contains("output_presentation: AUTO") &&
+        restored.contains("output_range: AUTO") &&
+        restored.contains("output_gamma: AUTO"),
         "Restored output experiment defaults did not persist");
 }
 

@@ -686,6 +686,7 @@ namespace VideoProcessorTest
 				"report_bt2020_to_display: false\nswitch_refresh_rate: true\noutput_diagnostics: false\n"
 				"diagnostic_disable_shader_cache: false\ndiagnostic_disable_compute: false\n"
 				"diagnostic_force_8bit_sdr_swapchain: false\ndiagnostic_allow_limited_g22: false\n"
+				"diagnostic_vp_owned_dxgi_presenter: false\noutput_path_profile: legacy\n"
 				"default_screen_profile: normal\n"
 				"[vprenderer.bt2020]\nshortcut: F5\nsdr_target_primaries: bt2020\nreport_bt2020_to_display: true\n"
 				"[vprenderer.viewport.viewport_16x9]\nlabel: 16x9\nmode: normal\nscreen_aspect: 16:9\n"
@@ -876,6 +877,8 @@ namespace VideoProcessorTest
 				{ "vprenderer.rec709", "diagnostic_disable_compute", "false" },
 				{ "vprenderer.rec709", "diagnostic_force_8bit_sdr_swapchain", "false" },
 				{ "vprenderer.rec709", "diagnostic_allow_limited_g22", "false" },
+				{ "vprenderer.rec709", "diagnostic_vp_owned_dxgi_presenter", "false" },
+				{ "vprenderer.rec709", "output_path_profile", "custom" },
 				{ "vprenderer.rec709", "default_screen_profile", "normal" },
 
 				{ "vprenderer.viewport.scope", "shortcut", "Ctrl+V" },
