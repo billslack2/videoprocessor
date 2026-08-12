@@ -2495,7 +2495,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             QStringLiteral("output_path_profile"),
             { QStringLiteral("legacy"), QStringLiteral("proposed"),
                 QStringLiteral("custom") });
-        addChoice(QStringLiteral("Presentation mode"),
+        auto* outputPresentation = addChoice(QStringLiteral("Presentation mode"),
             QStringLiteral("output_presentation"),
             { QStringLiteral("AUTO"), QStringLiteral("direct"),
                 QStringLiteral("composed") });
@@ -2503,7 +2503,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             QStringLiteral("output_range"),
             { QStringLiteral("AUTO"), QStringLiteral("full"),
                 QStringLiteral("limited") });
-        addChoice(QStringLiteral("Output gamma"),
+        auto* outputGamma = addChoice(QStringLiteral("Output gamma"),
             QStringLiteral("output_gamma"),
             { QStringLiteral("AUTO"), QStringLiteral("bt1886"),
                 QStringLiteral("srgb"), QStringLiteral("1.8"),
@@ -2526,8 +2526,46 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             QStringLiteral("output_diagnostics"));
         addBoolean(QStringLiteral("Disable shader cache"),
             QStringLiteral("diagnostic_disable_shader_cache"));
+        auto* outputCompatibility = helpLabel(QString());
+        outputCompatibility->setObjectName(
+            QStringLiteral("config.vprenderer.output_experiments.compatibility"));
+        form->addRow(QString(), outputCompatibility);
+        const auto updateOutputCompatibility = [this, outputPresentation,
+            outputGamma, outputCompatibility]()
+        {
+            const auto* vpOwned = findChild<QCheckBox*>(
+                QStringLiteral("config.vprenderer.diagnostic_vp_owned_dxgi_presenter"));
+            QStringList notices;
+            if (outputPresentation->currentData().toString().compare(
+                QStringLiteral("composed"), Qt::CaseInsensitive) == 0 &&
+                vpOwned && vpOwned->isChecked())
+            {
+                notices << QStringLiteral(
+                    "Fallback: VP-owned DXGI is Direct-only; Composed will use libplacebo's presenter.");
+            }
+            const QString gamma = outputGamma->currentData().toString();
+            if (gamma == QStringLiteral("1.8") || gamma == QStringLiteral("2.0") ||
+                gamma == QStringLiteral("2.6") || gamma == QStringLiteral("2.8"))
+            {
+                notices << QStringLiteral(
+                    "Fallback: this pure gamma has no SDR DXGI colour-space declaration; the active transport will be shown in the OSD.");
+            }
+            outputCompatibility->setText(notices.join(QStringLiteral("\n")));
+            outputCompatibility->setVisible(!notices.isEmpty());
+        };
+        connect(outputPresentation, qOverload<int>(&QComboBox::currentIndexChanged), this,
+            [updateOutputCompatibility](int) { updateOutputCompatibility(); });
+        connect(outputGamma, qOverload<int>(&QComboBox::currentIndexChanged), this,
+            [updateOutputCompatibility](int) { updateOutputCompatibility(); });
+        if (auto* vpOwned = findChild<QCheckBox*>(
+            QStringLiteral("config.vprenderer.diagnostic_vp_owned_dxgi_presenter")))
+        {
+            connect(vpOwned, &QCheckBox::toggled, this,
+                [updateOutputCompatibility](bool) { updateOutputCompatibility(); });
+        }
+        updateOutputCompatibility();
         const auto applyOutputPathProfile = [this, state, fields,
-            outputPathProfile](const QString& profile)
+            outputPathProfile, updateOutputCompatibility](const QString& profile)
         {
             if (state->loading || state->section.isEmpty() || !document_ ||
                 profile == QStringLiteral("custom")) return;
@@ -2580,6 +2618,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             }
             const QSignalBlocker profileBlocker(outputPathProfile);
             outputPathProfile->setCurrentIndex(outputPathProfile->findData(profile));
+            updateOutputCompatibility();
             markDirty();
         };
         connect(outputPathProfile, qOverload<int>(&QComboBox::currentIndexChanged), this,

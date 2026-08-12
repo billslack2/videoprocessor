@@ -505,12 +505,24 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 		const int separator = transport.Find(TEXT(" -> "));
 		const CString requested = separator >= 0
 			? transport.Left(separator) : transport;
-		const CString actual = separator >= 0
+		const CString actualAndFallback = separator >= 0
 			? transport.Mid(separator + 4) : TEXT("---");
+		const int fallbackSeparator = actualAndFallback.Find(TEXT(" | FALLBACK: "));
+		const CString actual = fallbackSeparator >= 0
+			? actualAndFallback.Left(fallbackSeparator) : actualAndFallback;
+		const CString fallback = fallbackSeparator >= 0
+			? actualAndFallback.Mid(fallbackSeparator + 13) : CString();
 		line.Format(TEXT("Output:           %-s"),
 			static_cast<LPCTSTR>(target));
 		DrawText(hdc, line, PADDING, y);
 		y += lineHeight;
+		if (!fallback.IsEmpty())
+		{
+			line.Format(TEXT("Fallback:         %-s"),
+				static_cast<LPCTSTR>(fallback));
+			DrawText(hdc, line, PADDING, y);
+			y += lineHeight;
+		}
 		line.Format(TEXT("Transport Req:    %-s"),
 			static_cast<LPCTSTR>(requested));
 		DrawText(hdc, line, PADDING, y);
@@ -793,7 +805,11 @@ int StatsOverlayWindow::CalculateRequiredHeight(const StatsData& stats) const
 	if (stats.hasConversionData)
 		lineCount += 2;
 	if (!stats.outputMode.IsEmpty())
+	{
 		lineCount += 3;
+		if (stats.outputMode.Find(TEXT(" | FALLBACK: ")) >= 0)
+			++lineCount;
+	}
 	if (!stats.displayLut.IsEmpty())
 		++lineCount;
 

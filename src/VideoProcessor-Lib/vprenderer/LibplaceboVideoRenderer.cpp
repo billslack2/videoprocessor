@@ -9142,6 +9142,30 @@ bool LibplaceboVideoRenderer::GetOutputModeInfo(CString& details) const
 			 m_impl->actualOutput.encoding ==
 				LibplaceboOutput::DxgiEncoding::STUDIO_G24_P2020)
 				? "2020" : "709");
+	CStringA fallback;
+	if (!m_impl->actualOutput.safeToRender)
+	{
+		fallback.Format("BLOCKED: %s", m_impl->actualOutput.reason.c_str());
+	}
+	else if (!m_impl->actualOutput.requestedEncodingActive)
+	{
+		fallback.Format("requested transport rejected -> %s/%s",
+			m_impl->actualOutput.encoding ==
+				LibplaceboOutput::DxgiEncoding::FULL_G22_P709 ? "Full" :
+				LibplaceboOutput::ToRangeString(m_impl->actualOutput.encoding),
+			LibplaceboOutput::ToGammaString(m_impl->actualOutput.encoding));
+	}
+	if (m_impl->activeSettings.diagnosticVpOwnedDxgiPresenter &&
+		m_impl->swapchainBlit)
+	{
+		if (!fallback.IsEmpty()) fallback += "; ";
+		fallback += "VP-owned is Direct-only; libplacebo Composed active";
+	}
+	if (!fallback.IsEmpty())
+	{
+		value += " | FALLBACK: ";
+		value += fallback;
+	}
 	details = CString(value);
 	return true;
 }
