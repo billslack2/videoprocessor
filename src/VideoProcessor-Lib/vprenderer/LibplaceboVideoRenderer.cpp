@@ -1366,6 +1366,34 @@ namespace
 			{ "auto", "composed", "direct" });
 		readChoice("output_range", settings.outputRange, { "auto", "full", "limited" });
 		readChoice("output_gamma", settings.outputGamma, { "auto", "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" });
+		// Output Experiments live in the selected display profile, alongside the
+		// transport choices above.  Leaving these booleans out meant that the UI
+		// persisted them but the renderer silently used its false defaults.  In
+		// particular, Proposed never activated its VP-owned presenter or its
+		// Limited/G22 diagnostic path.
+		auto readBoolean = [&config, &rule](const char* key, bool& target)
+		{
+			std::string raw;
+			if (!config.TryGetString(rule.section, key, raw)) return;
+			bool value = false;
+			if (config.TryGetBool(rule.section, key, value))
+			{
+				target = value;
+				return;
+			}
+			DebugLog::Log("display rule '%s': invalid %s value '%s'; retaining base setting",
+				rule.name.c_str(), key, raw.c_str());
+		};
+		readBoolean("output_diagnostics", settings.outputDiagnostics);
+		readBoolean("diagnostic_disable_shader_cache",
+			settings.diagnosticDisableShaderCache);
+		readBoolean("diagnostic_disable_compute", settings.diagnosticDisableCompute);
+		readBoolean("diagnostic_force_8bit_sdr_swapchain",
+			settings.diagnosticForce8BitSdrSwapchain);
+		readBoolean("diagnostic_allow_limited_g22",
+			settings.diagnosticAllowLimitedG22);
+		readBoolean("diagnostic_vp_owned_dxgi_presenter",
+			settings.diagnosticVpOwnedDxgiPresenter);
 		readChoice("sdr_target_primaries", settings.sdrTargetPrimaries, { "rec709", "bt2020" });
 		if (!config.TryGetBool(rule.section, "report_bt2020_to_display",
 			settings.reportBt2020ToDisplay) &&
