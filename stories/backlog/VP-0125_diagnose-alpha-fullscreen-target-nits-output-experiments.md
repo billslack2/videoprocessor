@@ -93,6 +93,42 @@ or a misleading preview comparison.
    to use the preview path, or silently substituting a different output
    contract.
 
+## Presentation architecture decision
+
+The intended production direction is a **VP-owned DXGI presentation layer**.
+Libplacebo remains the renderer: VP gives it an explicit, resolved destination
+colour contract and it performs decode, scaling, colour conversion, gamut map,
+tone map, dithering, and encode. VP, rather than libplacebo's convenience
+D3D11 swapchain, creates and owns the normal DXGI flip-model swapchain and
+its presentation lifecycle. VP must then explicitly select and verify the
+backbuffer format, buffer count, swap effect, scaling/alpha flags, output,
+colour-space request, HDR metadata, fullscreen transition, and `Present`.
+
+This is not a switch to DXGI decode swapchains, D3D11 VideoProcessor, or an
+alternative renderer. It separates the renderer's pixel transform from the
+Windows/driver/display presentation contract:
+
+```
+libplacebo render target -> VP-owned DXGI swapchain -> Windows/driver/display
+```
+
+That separation is required for a reliable diagnosis of a fullscreen-only
+failure. A libplacebo D3D11 colour hint can be mapped to a known supported
+alternative and applied on a subsequent frame; that is a valid convenience
+behaviour, but it is too opaque to be VP's final output-policy authority.
+The renderer must render to the colour contract that VP actually resolves, not
+to an earlier request or an assumed default.
+
+For every DXGI configuration/reconfiguration VP must log the full requested,
+supported, set, and active contract: adapter LUID/vendor/device/driver;
+feature level; monitor/output identity; `DXGI_SWAP_CHAIN_DESC1`; colour-space
+candidate list; `CheckColorSpaceSupport` flags and HRESULT; `SetColorSpace1`
+HRESULT; `GetColorSpace1` readback; HDR metadata request/set/readback where
+available; resize/fullscreen/Present HRESULTs; and the correlated renderer and
+test-run generation. Treat a changed monitor, fullscreen transition, resize,
+or Windows HDR/display state as a new presentation configuration, because
+DXGI colour-space support is output-dependent.
+
 ## Output Experiments
 
 Implement a separate **Output Experiments** section to run the controlled
@@ -115,7 +151,68 @@ colour overrides.
   policy-valid output range/gamma combinations, including VP-0109 diagnostic
   modes only when that spike permits them; and
 - controlled fullscreen/windowed test selection plus an explicit clean
-  renderer/swapchain recreation between runs.
+  renderer/swapchain recreation between runs; and
+- named DXGI diagnostic presets: SDR backbuffer depth (8-bit versus 10-bit),
+  flip-model presentation policy, and device compute-path selection. These
+  are evidence-producing controls, not arbitrary DXGI descriptor editing.
+
+### Capability inventory and configuration scope
+
+Before adding controls, produce a version-pinned inventory of libplacebo,
+D3D11, DXGI, and VP settings. For each candidate, record the upstream default,
+VP's current requested/effective value, whether it is read back, its required
+rebuild scope, affected tests, and one of: **production candidate**,
+**Output-Experiments diagnostic**, **developer-only hardware diagnostic**, or
+**not exposed**. This must include at minimum:
+
+- D3D11 device options: adapter/LUID selection, software policy, debug layer,
+  compute disablement, creation flags, feature-level bounds, and maximum frame
+  latency;
+- D3D11/DXGI swapchain options: flip versus blit model, format/colour and alpha
+  bits, 10-bit-SDR disablement, buffer count, flags, scaling, present/tearing
+  policy, output selection, and exclusive/fullscreen transition;
+- renderer target contract: target primaries/transfer/levels, target and black
+  nits, HDR static metadata, output range/gamma policy, display-reporting
+  request, and the DXGI colour-space mapping;
+- colour-map and renderer options: tone/gamut function and their constants,
+  metadata selection, LUT and tone-map LUT sizes, peak detection thresholds and
+  smoothing, contrast-recovery parameters, scaler/anti-ringing/deband/dither
+  controls, and clipping/LUT visualization; and
+- observability-only options: `pl_renderer_get_hdr_metadata`, renderer errors,
+  cache/peak reset state, target-frame metadata, shader/cache generation, and
+  deterministic backbuffer probes/histograms.
+
+Do not expose all of these to normal users. The initial beta UI receives only
+the named experiment dimensions and diagnostic presets above. Device debug,
+adapter, feature-level, creation-flag, arbitrary DXGI flag, raw colour-space,
+and arbitrary metadata changes are developer-only, restart/rebuild-gated, and
+never persisted as ordinary display defaults. A later product decision may
+promote only configurations that pass the controlled matrix and have a clear,
+safe recommendation.
+
+### Rebuild contract
+
+Every Output Experiments Apply starts a fresh test generation. Initial
+correctness takes priority over incremental update performance:
+
+1. **Full D3D11 device recreation** is mandatory for adapter/LUID, software,
+   debug, no-compute, creation-flag, feature-level, or device-latency changes.
+   Debug-layer changes may require a process restart if Windows cannot enable
+   the requested layer in-process.
+2. **Renderer and VP-owned swapchain recreation** is mandatory for output
+   range/transfer/primaries, target/black nits, target metadata, tone/gamut
+   mapping and constants, peak detection, LUT sizing, dither/output bit depth,
+   swap effect/flags, DXGI colour space, display-reporting, monitor selection,
+   and every fullscreen/windowed transition. Destroy all dependent targets
+   before resize/recreation; reset peak detection and renderer cache state;
+   then recreate, apply the resolved colour contract, and validate readback
+   before the first measured frame.
+3. **No graphics rebuild** is permitted only for UI/logging/OSD changes.
+   Although libplacebo can automatically recreate some cached resources on
+   parameter changes, that is insufficient as the initial lab contract where
+   target metadata and swapchain colour state are under investigation. An
+   incremental path may be introduced later only after equivalent-run evidence
+   proves it preserves pixels and the active DXGI contract.
 
 ### Guardrails
 
@@ -163,6 +260,15 @@ colour overrides.
    generations, complete requested/effective snapshots, normal rollback and
    display-signal restoration, per-profile explicit saving, and no invalid
    low-level override path.
+5. VP owns the flip-model DXGI presentation layer and validates the active
+   DXGI colour space and metadata after each recreation. Libplacebo receives
+   the same resolved destination contract; it is not allowed to silently
+   become the final presentation-policy authority.
+6. The version-pinned capability inventory classifies every relevant
+   libplacebo/D3D11/DXGI option, distinguishes implemented from unimplemented
+   behaviour, and assigns a rebuild scope. The initial UI exposes only the
+   bounded named experiments; unsafe raw controls remain developer-only or
+   unexposed.
 5. Output Experiments has a prominent Restore recommended defaults action that
    restores only that section's selected-profile overrides, resets the
    renderer/state safely, and leaves every unrelated configuration field
