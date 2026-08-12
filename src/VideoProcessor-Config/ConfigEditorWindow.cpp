@@ -2483,13 +2483,14 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         form = addCollapsibleSection(QStringLiteral("outputExperiments"),
             QStringLiteral("Output Experiments (beta)"), QStringLiteral(
                 "Diagnostic output controls for repeatable renderer testing. "
-                "Changes are saved with this renderer profile; Apply recreates "
-                "the renderer before they take effect."), false);
+                "Changes are saved with this renderer profile; Apply performs "
+                "a hard capture-and-renderer reinitialization before they take effect."), false);
         form->addRow(QString(), helpLabel(QStringLiteral(
             "Legacy writes the exact shipping output path. Proposed writes VP's "
             "candidate path for this investigation: a VP-owned 10-bit flip swapchain, "
             "limited pure Gamma 2.2, and diagnostic logging. Custom exposes the "
-            "same individual settings. Apply always recreates the renderer.")));
+                "same individual settings. Apply always hard-reinitializes capture "
+                "and renderer state.")));
         auto* outputPathProfile = addChoice(QStringLiteral("Output path profile"),
             QStringLiteral("output_path_profile"),
             { QStringLiteral("legacy"), QStringLiteral("proposed"),
