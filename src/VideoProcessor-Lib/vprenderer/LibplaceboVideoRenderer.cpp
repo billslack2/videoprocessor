@@ -695,6 +695,11 @@ namespace
 		std::string sdrInputTransfer = "auto";
 		bool outputDiagnostics = false;
 		bool diagnosticDisableShaderCache = false;
+		// Developer-only probes. These are deliberately named experiments rather
+		// than a generic D3D11/DXGI flag escape hatch.
+		bool diagnosticDisableCompute = false;
+		bool diagnosticForce8BitSdrSwapchain = false;
+		bool diagnosticAllowLimitedG22 = false;
 		double configuredScreenAspect = 1.0;
 		bool configuredScreenTarget = false;
 		std::string verticalAlignment = "center";
@@ -751,7 +756,10 @@ namespace
 			<< settings.outputPresentation << '|' << settings.outputRange << '|'
 			<< settings.outputGamma << '|' << settings.sdrTargetPrimaries << '|'
 			<< settings.reportBt2020ToDisplay << '|' << settings.sdrInputTransfer << '|'
-			<< settings.outputDiagnostics << '|' << settings.diagnosticDisableShaderCache << '|';
+			<< settings.outputDiagnostics << '|' << settings.diagnosticDisableShaderCache << '|'
+			<< settings.diagnosticDisableCompute << '|'
+			<< settings.diagnosticForce8BitSdrSwapchain << '|'
+			<< settings.diagnosticAllowLimitedG22 << '|';
 		if (includeViewportSettings)
 		{
 			stream
@@ -1614,6 +1622,33 @@ namespace
 				rawValue.c_str());
 			settings.diagnosticDisableShaderCache = false;
 		}
+		if (TryGetDisplayString(config, "diagnostic_disable_compute", rawValue) &&
+			!TryGetDisplayBool(config, "diagnostic_disable_compute",
+				settings.diagnosticDisableCompute))
+		{
+			DebugLog::Log(
+				"libplacebo: invalid diagnostic_disable_compute value '%s'; using false",
+				rawValue.c_str());
+			settings.diagnosticDisableCompute = false;
+		}
+		if (TryGetDisplayString(config, "diagnostic_force_8bit_sdr_swapchain", rawValue) &&
+			!TryGetDisplayBool(config, "diagnostic_force_8bit_sdr_swapchain",
+				settings.diagnosticForce8BitSdrSwapchain))
+		{
+			DebugLog::Log(
+				"libplacebo: invalid diagnostic_force_8bit_sdr_swapchain value '%s'; using false",
+				rawValue.c_str());
+			settings.diagnosticForce8BitSdrSwapchain = false;
+		}
+		if (TryGetDisplayString(config, "diagnostic_allow_limited_g22", rawValue) &&
+			!TryGetDisplayBool(config, "diagnostic_allow_limited_g22",
+				settings.diagnosticAllowLimitedG22))
+		{
+			DebugLog::Log(
+				"libplacebo: invalid diagnostic_allow_limited_g22 value '%s'; using false",
+				rawValue.c_str());
+			settings.diagnosticAllowLimitedG22 = false;
+		}
 
 		if (TryGetDisplayString(config, "screen_aspect", rawValue))
 		{
@@ -1777,6 +1812,28 @@ namespace
 				settings.diagnosticDisableShaderCache))
 		{
 			DebugLog::Log("libplacebo: invalid diagnostic_disable_shader_cache policy '%s'; retaining display setting", rawValue.c_str());
+		}
+		if (rendererConfig.TryGetPolicyString(
+			"diagnostic_disable_compute", rawValue) &&
+			!rendererConfig.TryGetPolicyBool(
+				"diagnostic_disable_compute", settings.diagnosticDisableCompute))
+		{
+			DebugLog::Log("libplacebo: invalid diagnostic_disable_compute policy '%s'; retaining display setting", rawValue.c_str());
+		}
+		if (rendererConfig.TryGetPolicyString(
+			"diagnostic_force_8bit_sdr_swapchain", rawValue) &&
+			!rendererConfig.TryGetPolicyBool(
+				"diagnostic_force_8bit_sdr_swapchain",
+				settings.diagnosticForce8BitSdrSwapchain))
+		{
+			DebugLog::Log("libplacebo: invalid diagnostic_force_8bit_sdr_swapchain policy '%s'; retaining display setting", rawValue.c_str());
+		}
+		if (rendererConfig.TryGetPolicyString(
+			"diagnostic_allow_limited_g22", rawValue) &&
+			!rendererConfig.TryGetPolicyBool(
+				"diagnostic_allow_limited_g22", settings.diagnosticAllowLimitedG22))
+		{
+			DebugLog::Log("libplacebo: invalid diagnostic_allow_limited_g22 policy '%s'; retaining display setting", rawValue.c_str());
 		}
 		if (!activeProfiles.empty())
 		{
@@ -3120,8 +3177,10 @@ struct LibplaceboVideoRenderer::Impl
 			desc.Height,
 			static_cast<unsigned long long>(stats.sampledPixels),
 			ToString(actualOutput.encoding),
-			actualOutput.targetTransfer == TargetTransfer::GAMMA24
-				? "GAMMA24" : "SWAPCHAIN",
+			actualOutput.targetTransfer == TargetTransfer::GAMMA22
+				? "GAMMA22" :
+				(actualOutput.targetTransfer == TargetTransfer::GAMMA24
+					? "GAMMA24" : "SWAPCHAIN"),
 			stats.minimum[0],
 			stats.minimum[1],
 			stats.minimum[2],
@@ -3189,7 +3248,7 @@ struct LibplaceboVideoRenderer::Impl
 			projection.renderParams.dither_params ? &ditherParams : nullptr;
 
 		DebugLog::Log(
-			"libplacebo settings: quality=%s tone_mapping=%s gamut_mapping=%s peak_detection=%s contrast_recovery=%.2f upscaler=%s downscaler=%s deband=%s dithering=%s output_presentation=%s output_range=%s output_gamma=%s sdr_input_transfer=%s target=%.1f nits black=%.3f nits output_diagnostics=%d diagnostic_disable_shader_cache=%d refresh_switch=%d refresh_command_delay=%llus refresh_commands=%u viewport_target=%s screen_aspect=%.4f automatic_crop=%d subtitle_fit=%d subtitle_hold=%llums subtitle_engage_drift=%llums subtitle_release_drift=%llums subtitle_padding=%dpx subtitle_target_buffer=%dpx",
+			"libplacebo settings: quality=%s tone_mapping=%s gamut_mapping=%s peak_detection=%s contrast_recovery=%.2f upscaler=%s downscaler=%s deband=%s dithering=%s output_presentation=%s output_range=%s output_gamma=%s sdr_input_transfer=%s target=%.1f nits black=%.3f nits output_diagnostics=%d diagnostic_disable_shader_cache=%d diagnostic_disable_compute=%d diagnostic_force_8bit_sdr_swapchain=%d diagnostic_allow_limited_g22=%d refresh_switch=%d refresh_command_delay=%llus refresh_commands=%u viewport_target=%s screen_aspect=%.4f automatic_crop=%d subtitle_fit=%d subtitle_hold=%llums subtitle_engage_drift=%llums subtitle_release_drift=%llums subtitle_padding=%dpx subtitle_target_buffer=%dpx",
 			settings.quality.c_str(),
 			colorMapParams.tone_mapping_function
 				? colorMapParams.tone_mapping_function->name : "none",
@@ -3212,6 +3271,9 @@ struct LibplaceboVideoRenderer::Impl
 			sdrBlackNits,
 			settings.outputDiagnostics ? 1 : 0,
 			settings.diagnosticDisableShaderCache ? 1 : 0,
+			settings.diagnosticDisableCompute ? 1 : 0,
+			settings.diagnosticForce8BitSdrSwapchain ? 1 : 0,
+			settings.diagnosticAllowLimitedG22 ? 1 : 0,
 			settings.switchRefreshRate ? 1 : 0,
 			static_cast<unsigned long long>(settings.refreshRateCommandDelayMs / 1000),
 			static_cast<unsigned int>(settings.refreshRateCommandRules.size()),
@@ -3851,8 +3913,9 @@ struct LibplaceboVideoRenderer::Impl
 		if (encoding == DxgiEncoding::STUDIO_G24_P709 ||
 			encoding == DxgiEncoding::STUDIO_G24_P2020)
 			return PL_COLOR_TRC_GAMMA24;
-		// Studio G22 is intentionally not selected because libplacebo 7.360.1
-		// has no exact target transfer for that DXGI declaration.
+		if (encoding == DxgiEncoding::STUDIO_G22_P709 ||
+			encoding == DxgiEncoding::STUDIO_G22_P2020)
+			return PL_COLOR_TRC_GAMMA22;
 		return PL_COLOR_TRC_UNKNOWN;
 	}
 
@@ -4262,6 +4325,11 @@ struct LibplaceboVideoRenderer::Impl
 		// an unaccepted BT.2020/limited target contract.
 		SetSwapchainColorHint(actualOutput.encoding);
 		DebugLog::Log(
+			"libplacebo DXGI color-space result: trigger=%s requested=%s accepted=%d active_readback=unavailable (IDXGISwapChain3 has no getter)",
+			trigger,
+			ToString(actualOutput.encoding),
+			actualOutput.requestedEncodingActive ? 1 : 0);
+		DebugLog::Log(
 			"libplacebo output negotiation (%s): effective_request=%s/%s/%s/%s actual_contract=%s/%s/%s/%s dxgi=%s accepted=%d safe=%d wire_state=unverified reason=%s",
 			trigger,
 			ToString(outputPlan.request.presentation),
@@ -4315,7 +4383,10 @@ struct LibplaceboVideoRenderer::Impl
 		};
 		struct pl_d3d11_swapchain_params swapchainParams{};
 		swapchainParams.window = videoHwnd;
-		swapchainParams.color_bits = 10;
+		swapchainParams.color_bits =
+			activeSettings.diagnosticForce8BitSdrSwapchain ? 8 : 10;
+		swapchainParams.disable_10bit_sdr =
+			activeSettings.diagnosticForce8BitSdrSwapchain;
 		swapchainParams.blit = blit;
 		swapchain = pl_d3d11_create_swapchain(d3d11, &swapchainParams);
 		if (!swapchain)
@@ -4619,9 +4690,17 @@ struct LibplaceboVideoRenderer::Impl
 		deviceParams.allow_software = false;
 		deviceParams.min_feature_level = D3D_FEATURE_LEVEL_10_0;
 		deviceParams.max_frame_latency = 2;
+		deviceParams.no_compute = settings.diagnosticDisableCompute;
 		d3d11 = pl_d3d11_create(log, &deviceParams);
 		if (!d3d11)
 			throw std::runtime_error("Failed to create libplacebo D3D11 device");
+		DebugLog::Log(
+			"libplacebo D3D11 device: feature_level=0x%04X software=%d allow_software=%d no_compute=%d max_frame_latency=%d",
+			static_cast<unsigned int>(d3d11->device->GetFeatureLevel()),
+			d3d11->software ? 1 : 0,
+			deviceParams.allow_software ? 1 : 0,
+			deviceParams.no_compute ? 1 : 0,
+			deviceParams.max_frame_latency);
 
 		struct pl_cache_params cacheParams =
 			LibplaceboExportedData<pl_cache_params>("pl_cache_default_params");
@@ -4672,12 +4751,16 @@ struct LibplaceboVideoRenderer::Impl
 
 		struct pl_d3d11_swapchain_params swapchainParams{};
 		swapchainParams.window = videoHwnd;
-		swapchainParams.color_bits = 10;
+		swapchainParams.color_bits =
+			settings.diagnosticForce8BitSdrSwapchain ? 8 : 10;
+		swapchainParams.disable_10bit_sdr =
+			settings.diagnosticForce8BitSdrSwapchain;
 		LibplaceboOutput::Request outputRequest;
 		outputRequest.presentation = LibplaceboOutput::ParsePresentation(
 			settings.outputPresentation);
 		outputRequest.range = LibplaceboOutput::ParseRange(settings.outputRange);
 		outputRequest.gamma = LibplaceboOutput::ParseGamma(settings.outputGamma);
+		outputRequest.allowLimitedG22Experiment = settings.diagnosticAllowLimitedG22;
 		const LibplaceboOutput::SdrTargetPrimaries requestedTarget =
 			settings.sdrTargetPrimaries == "bt2020"
 				? LibplaceboOutput::SdrTargetPrimaries::BT2020
@@ -4876,6 +4959,8 @@ struct LibplaceboVideoRenderer::Impl
 			settings.outputPresentation);
 		requestedTransport.range = LibplaceboOutput::ParseRange(settings.outputRange);
 		requestedTransport.gamma = LibplaceboOutput::ParseGamma(settings.outputGamma);
+		requestedTransport.allowLimitedG22Experiment =
+			settings.diagnosticAllowLimitedG22;
 		const auto target = settings.sdrTargetPrimaries == "bt2020"
 			? LibplaceboOutput::SdrTargetPrimaries::BT2020
 			: LibplaceboOutput::SdrTargetPrimaries::REC709;

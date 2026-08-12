@@ -107,7 +107,7 @@ namespace Tests
 				static_cast<int>(actual.presentationModel));
 		}
 
-		TEST_METHOD(LimitedG22IsRejectedWithoutExactRendererTransfer)
+		TEST_METHOD(LimitedG22IsDisabledUnlessTheExperimentIsExplicitlyEnabled)
 		{
 			Request request;
 			request.range = RangeRequest::LIMITED;
@@ -115,6 +115,35 @@ namespace Tests
 			const Plan plan = MakePlan(request);
 			Assert::IsFalse(plan.valid);
 			Assert::IsFalse(Finalize(plan, {}).requestedEncodingActive);
+		}
+
+		TEST_METHOD(LimitedG22ExperimentUsesStudioG22AndPureGamma22)
+		{
+			Request request;
+			request.range = RangeRequest::LIMITED;
+			request.gamma = GammaRequest::GAMMA22;
+			request.allowLimitedG22Experiment = true;
+			const Plan plan = MakePlan(request);
+			Assert::IsTrue(plan.valid);
+			Assert::IsTrue(plan.requiresDxgiOverride);
+			Assert::AreEqual(
+				static_cast<int>(DxgiEncoding::STUDIO_G22_P709),
+				static_cast<int>(plan.desiredEncoding));
+			Assert::AreEqual(
+				static_cast<int>(TargetTransfer::GAMMA22),
+				static_cast<int>(plan.targetTransfer));
+
+			Evidence evidence;
+			evidence.presentationModel = PresentationModel::FLIP;
+			evidence.hasSwapchain3 = true;
+			evidence.presentSupportedBeforeSet = true;
+			evidence.setSucceeded = true;
+			evidence.presentSupportedAfterSet = true;
+			const Actual actual = Finalize(plan, evidence);
+			Assert::IsTrue(actual.requestedEncodingActive);
+			Assert::AreEqual(
+				static_cast<int>(DxgiEncoding::STUDIO_G22_P709),
+				static_cast<int>(actual.encoding));
 		}
 
 		TEST_METHOD(LimitedAutoUsesExactStudioG24AndFlipCandidate)

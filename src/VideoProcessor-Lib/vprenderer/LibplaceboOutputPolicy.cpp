@@ -86,6 +86,22 @@ namespace LibplaceboOutput
 						: DxgiEncoding::STUDIO_G24_P709;
 				result.targetTransfer = TargetTransfer::GAMMA24;
 				break;
+			case GammaRequest::GAMMA22:
+				if (!request.allowLimitedG22Experiment)
+				{
+					result.valid = false;
+					result.reason =
+						"Limited/Gamma-2.2 is a disabled Output Experiments transport";
+					break;
+				}
+				result.desiredEncoding =
+					request.primaries == PrimariesRequest::BT2020
+						? DxgiEncoding::STUDIO_G22_P2020
+						: DxgiEncoding::STUDIO_G22_P709;
+				result.targetTransfer = TargetTransfer::GAMMA22;
+				result.reason =
+					"experimental Limited/Gamma-2.2 transport; verify pixels and display response";
+				break;
 			default:
 				result.valid = false;
 				result.reason =

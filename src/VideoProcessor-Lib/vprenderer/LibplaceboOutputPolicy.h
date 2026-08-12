@@ -56,6 +56,7 @@ namespace LibplaceboOutput
 	enum class TargetTransfer
 	{
 		SWAPCHAIN,
+		GAMMA22,
 		GAMMA24
 	};
 
@@ -65,6 +66,7 @@ namespace LibplaceboOutput
 		RangeRequest range = RangeRequest::AUTO;
 		GammaRequest gamma = GammaRequest::AUTO;
 		PrimariesRequest primaries = PrimariesRequest::REC709;
+		bool allowLimitedG22Experiment = false;
 	};
 
 	// The display target is independent of the DXGI transport.  In particular,

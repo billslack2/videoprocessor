@@ -525,7 +525,10 @@ namespace RendererProfileConfig
 		for (const char* group : { "input", "scaling", "display", "viewport" })
 			if (ValidateProfileSetting(group, key, value, ignored)) return true;
 		if (key == "switch_refresh_rate" || key == "output_diagnostics" ||
-			key == "diagnostic_disable_shader_cache") return IsBoolean(value);
+			key == "diagnostic_disable_shader_cache" ||
+			key == "diagnostic_disable_compute" ||
+			key == "diagnostic_force_8bit_sdr_swapchain" ||
+			key == "diagnostic_allow_limited_g22") return IsBoolean(value);
 		if (key == "deband") return IsChoice(value, { "auto", "on", "off" });
 		return false;
 	}
@@ -546,7 +549,10 @@ namespace RendererProfileConfig
 		const std::vector<ConfigSchema::KeyRule> policyRules = {
 			ConfigSchema::Boolean("switch_refresh_rate"),
 			ConfigSchema::Boolean("output_diagnostics"),
-			ConfigSchema::Boolean("diagnostic_disable_shader_cache")
+			ConfigSchema::Boolean("diagnostic_disable_shader_cache"),
+			ConfigSchema::Boolean("diagnostic_disable_compute"),
+			ConfigSchema::Boolean("diagnostic_force_8bit_sdr_swapchain"),
+			ConfigSchema::Boolean("diagnostic_allow_limited_g22")
 		};
 		if (!ConfigSchema::ValidateSection(config,
 			RendererConfigView::GENERAL_SECTION, policyRules, error))
@@ -1186,7 +1192,10 @@ namespace RendererProfileConfig
 			ConfigSchema::Boolean("switch_refresh_rate"),
 			ConfigSchema::Integer("event_action_delay_seconds", 0, 30),
 			ConfigSchema::Boolean("output_diagnostics"),
-			ConfigSchema::Boolean("diagnostic_disable_shader_cache")
+			ConfigSchema::Boolean("diagnostic_disable_shader_cache"),
+			ConfigSchema::Boolean("diagnostic_disable_compute"),
+			ConfigSchema::Boolean("diagnostic_force_8bit_sdr_swapchain"),
+			ConfigSchema::Boolean("diagnostic_allow_limited_g22")
 		};
 		if (!ConfigSchema::ValidateSection(config, "general", generalRules, error))
 			return false;
@@ -1210,7 +1219,9 @@ namespace RendererProfileConfig
 				"output_range", "output_gamma",
 				"sdr_target_primaries", "report_bt2020_to_display",
 				"sdr_input_transfer", "output_diagnostics",
-				"diagnostic_disable_shader_cache", "screen_aspect",
+				"diagnostic_disable_shader_cache", "diagnostic_disable_compute",
+				"diagnostic_force_8bit_sdr_swapchain",
+				"diagnostic_allow_limited_g22", "screen_aspect",
 				"vertical_alignment",
 				"automatic_crop", "subtitle_fit",
 				"subtitle_hold_seconds", "subtitle_engage_drift_ms",
