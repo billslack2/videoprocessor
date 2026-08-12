@@ -2516,8 +2516,13 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             QStringLiteral("diagnostic_disable_compute"));
         addBoolean(QStringLiteral("Force 8-bit SDR swapchain"),
             QStringLiteral("diagnostic_force_8bit_sdr_swapchain"));
-        addBoolean(QStringLiteral("Use VP-owned DXGI swapchain (beta)"),
+        auto* vpOwnedDxgiPresenter = addBoolean(
+            QStringLiteral("Use VP-owned DXGI swapchain (beta)"),
             QStringLiteral("diagnostic_vp_owned_dxgi_presenter"));
+        vpOwnedDxgiPresenter->setToolTip(QStringLiteral(
+            "Tests VP's authoritative flip/direct presenter. Composed uses the "
+            "libplacebo-owned bitblt swapchain because the VP-owned composed path "
+            "is not supported in this beta."));
         addBoolean(QStringLiteral("Capture detailed output diagnostics"),
             QStringLiteral("output_diagnostics"));
         addBoolean(QStringLiteral("Disable shader cache"),

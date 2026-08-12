@@ -4575,7 +4575,20 @@ struct LibplaceboVideoRenderer::Impl
 			actualOutput.reason = reason;
 		};
 		struct pl_d3d11_swapchain_params swapchainParams{};
-		if (activeSettings.diagnosticVpOwnedDxgiPresenter)
+		// The VP-owned path is an authoritative flip-model experiment. Its
+		// externally wrapped bitblt FBO does not meet the same capability
+		// guarantees as a libplacebo-created composed swapchain (the teardown
+		// clear already demonstrated that mismatch). Keep Composed on the proven
+		// libplacebo-owned path instead of presenting a black experimental surface.
+		const bool useVpOwnedDxgiPresenter =
+			activeSettings.diagnosticVpOwnedDxgiPresenter && !blit;
+		if (activeSettings.diagnosticVpOwnedDxgiPresenter && blit)
+		{
+			DebugLog::Log(
+				"VP-owned DXGI swapchain: requested=1 applied=0 trigger=%s reason=the VP-owned beta presenter supports flip/direct only; using libplacebo-owned composed swapchain",
+				trigger);
+		}
+		if (useVpOwnedDxgiPresenter)
 		{
 			if (!CreateVpOwnedSwapchain(blit, trigger))
 			{
