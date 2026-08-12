@@ -6,9 +6,9 @@ story may have ordered child-task IDs as defined below.
 
 ## Registry state
 
-- Last assigned root story: `VP-0123`
-- Next root story number: `VP-0124`
-- Total indexed items: 139
+- Last assigned root story: `VP-0125`
+- Next root story number: `VP-0126`
+- Total indexed items: 141
 
 ## Story locations
 
@@ -125,7 +125,7 @@ they must not contain requirements that are absent from this file.
 | VP-0092 | Backlog | Discover madVR shortcuts and control its native statistics OSD |
 | VP-0093 | Done | Prevent Alpha SDR BT.2020 output-contract regressions |
 | VP-0094 | Done | Select the configured fullscreen monitor by friendly name |
-| VP-0095 | In progress | Target-only fullscreen display session and recovery |
+| VP-0095 | In Progress | Target-only fullscreen display session and recovery |
 | VP-0096 | In Progress | Establish range-correct video-frame conversion contracts |
 | VP-0097 | Done | Safe standalone configuration editor and VP integration |
 | VP-0098 | Done | Fit trusted active-picture envelopes correctly on arbitrary CIH screens |
@@ -140,7 +140,7 @@ they must not contain requirements that are absent from this file.
 | VP-0107 | Backlog | Normalize runtime dependency layout and plugin-private libraries |
 | VP-0108 | Backlog | Make Modern UI unavailable values use the canonical `---` placeholder |
 | VP-0109 | Backlog | Validate and support Alpha pure-2.2 Studio limited output |
-| VP-0109-1 | Backlog | Prove the pure-2.2 renderer/Studio-G22 transport pairing |
+| VP-0109-1 | In Progress | Prove the pure-2.2 renderer/Studio-G22 transport pairing |
 | VP-0109-2 | Backlog | Implement rejection-safe pure-2.2 Studio limited output |
 | VP-0110 | In Progress | Smooth viewport subtitle placement in and out with millisecond timing |
 | VP-0111 | Backlog | Prevent background shortcuts from hijacking normal typing |
@@ -156,6 +156,8 @@ they must not contain requirements that are absent from this file.
 | VP-0121 | Backlog | Make configuration help UI-first with current screenshots |
 | VP-0122 | Done | Retain scope geometry through subtitle and volume overlays |
 | VP-0123 | Backlog | Split video conversion policy by renderer |
+| VP-0124 | In Progress | Safely accelerate outward active-picture transitions with bounded lookahead |
+| VP-0125 | Backlog | Diagnose Alpha fullscreen target-nits colour crushing and provide Output Experiments |
 | VP-0066-1 | Done | Characterize the live output pipeline with replayable golden traces |
 | VP-0066-2 | Done | Extract a graph-independent video timing controller |
 | VP-0066-3 | Done | Extract epoch-aware frame transport and processing components |

@@ -2,7 +2,7 @@
 
 ## Status
 
-In Review (2026-08-08). The seven VP-0099 commits were integrated by clean
+Review (2026-08-08). The seven VP-0099 commits were integrated by clean
 fast-forward into the discovered default branch `v1.1.017-beta`, advancing it
 from VP-0098 head `3c7ebd5` to validated VP-0099 head `bb1932f`. The preserved
 implementation branch is `codex/vp-0099-dynamic-nls-safety`.
