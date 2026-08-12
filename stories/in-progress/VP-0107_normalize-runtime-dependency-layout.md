@@ -2,13 +2,15 @@
 
 ## Status
 
-Backlog (updated 2026-08-11). Deployment inspection found runtime DLLs both
+In progress (started 2026-08-11). Deployment inspection found runtime DLLs both
 beside the executables and in the legacy `vprenderer\` directory, plus duplicate
 shader asset trees under the VP Renderer payload. The deployed tree may also
 contain libraries left by older packaging passes that are no longer imported or
 loaded. The active deployment uses DirectShow/madVR, but the optional renderer
-payload must remain launchable when selected. No implementation branch or
-worktree has been created.
+payload must remain launchable when selected. Implementation is proceeding on
+`codex/vp-0107-runtime-layout` from default branch `v1.2.001-beta` at
+`8e0ea86`, beginning with the required import, loader, asset, and staging
+inventory.
 
 ## User story
 
