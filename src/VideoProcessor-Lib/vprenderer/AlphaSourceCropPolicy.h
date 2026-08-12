@@ -4,10 +4,39 @@
 #include <string>
 
 #include "ActivePictureTransitionModel.h"
+#include "ActivePictureEvidence.h"
 
 
 namespace AlphaSourceCrop
 {
+	static constexpr uint32_t OUTWARD_PICTURE_CONFIRMATIONS_REQUIRED = 3;
+
+	struct OutwardPictureConfirmationState
+	{
+		ActivePictureBounds candidate;
+		uint32_t confirmations = 0;
+		uint64_t sourceGeneration = 0;
+	};
+
+	struct OutwardPictureConfirmationDecision
+	{
+		OutwardPictureConfirmationState state;
+		bool outwardTransition = false;
+		bool broadOpposingPicture = false;
+		bool authoritative = false;
+	};
+
+	// Expanding a trusted crop changes the logical aspect only after the same
+	// frame shows broad picture-like occupancy in every opposing excluded band.
+	// Localized UI/text still expands presentation immediately, but cannot build
+	// aspect authority by appearing on different edges at different times.
+	OutwardPictureConfirmationDecision ConfirmOutwardPictureTransition(
+		const OutwardPictureConfirmationState& previous,
+		const ActivePictureBounds& trustedGeometry,
+		const ActivePictureBounds& candidate,
+		const ActivePicturePresentationRetentionEvidence& evidence,
+		uint64_t sourceGeneration);
+
 	enum class BarContentEdge
 	{
 		NONE,
@@ -101,6 +130,30 @@ namespace AlphaSourceCrop
 
 	VerticalTranslationConfirmationDecision ConfirmVerticalTranslation(
 		const VerticalTranslationConfirmationInput& input);
+
+	// Dense picture-like evidence is deliberately conservative in the opposite
+	// direction from subtitle translation. One contradictory bar scan must not
+	// resize an established scope presentation; two consecutive analyzed scans
+	// are still fast enough to reveal genuine live pixels within a bounded delay.
+	// Trusted active-picture/full-raster authority does not use this path.
+	static constexpr uint32_t VERTICAL_FIT_CONFIRMATIONS_REQUIRED = 2;
+
+	struct VerticalFitConfirmationState
+	{
+		uint32_t confirmations = 0;
+	};
+
+	struct VerticalFitConfirmationDecision
+	{
+		VerticalFitConfirmationState state;
+		VerticalBarContentDecision effective;
+		bool pending = false;
+		bool newlyAccepted = false;
+	};
+
+	VerticalFitConfirmationDecision ConfirmVerticalFit(
+		const VerticalFitConfirmationState& previous,
+		const VerticalBarContentDecision& observed);
 
 	// A current provisional envelope which expands exactly one vertical edge is
 	// eligible for the same trusted-base retention used by dense target
@@ -198,6 +251,7 @@ namespace AlphaSourceCrop
 		VerticalBarPresentationState presentation;
 		bool translationConfirmationPending = false;
 		float pendingTranslationPixels = 0.0f;
+		bool fitConfirmationPending = false;
 		uint64_t evidenceSourceGeneration = 0;
 		uint64_t currentSourceGeneration = 0;
 		uint64_t currentTick = 0;
@@ -208,7 +262,9 @@ namespace AlphaSourceCrop
 	// Provisional pixels may be inspected against a previously trusted bar
 	// rectangle without acquiring crop authority. This bridge exists only while
 	// the current envelope expands the same edge as an active, same-generation
-	// translation; contradictory or unavailable evidence must reacquire normally.
+	// translation, or while a two-edge dense Fit candidate awaits its second
+	// analyzed sample. Contradictory or unavailable evidence must reacquire
+	// normally.
 	bool CanAnalyzeHeldVerticalBarGeometry(
 		const HeldBarAnalysisInput& input);
 
@@ -216,6 +272,15 @@ namespace AlphaSourceCrop
 	// extents; TRANSLATE retains the farthest same-direction displacement.
 	VerticalBarPresentationState UpdateVerticalBarPresentation(
 		const VerticalBarPresentationUpdateInput& input);
+
+	// A held translation may legitimately predate the current frame when a
+	// competing dense Fit was rejected. Current-frame envelope evidence can
+	// still attest the overlay, but only when it expands exactly the translated
+	// edge and leaves both horizontal and the opposite vertical edge unchanged.
+	bool CurrentTranslationEnvelopeSupportsGeometry(
+		const VerticalBarPresentationState& presentation,
+		const ActivePictureBounds& trustedGeometry,
+		const ActivePictureBounds& currentEnvelope);
 
 	// Interpolates only a translation which the existing subtitle policy has
 	// already selected. Callers supply the active or release duration; zero
@@ -509,6 +574,9 @@ namespace AlphaSourceCrop
 		WITHDRAW,
 		KEEP_CURRENT,
 		HOLD_SNAPSHOT,
+		// Current pixels change presentation immediately, but do not erase the
+		// last affirmative same-generation logical geometry.
+		PRESERVE_REFERENCE,
 	};
 
 	struct SceneInput
@@ -518,6 +586,11 @@ namespace AlphaSourceCrop
 		bool latestEvidenceIsCurrent = false;
 		bool latestObservationSupportsCrop = false;
 		bool existingCropCanBeSnapshotted = false;
+		// Fresh dense evidence on this exact source frame identifies the pixels
+		// outside the trusted rectangle as an overlay whose bounded translation
+		// still owns presentation. It may preserve existing geometry at a cut but
+		// can never create geometry or cross a source generation.
+		bool currentOverlayEvidenceSupportsGeometry = false;
 		bool frameLocalPresentationRetentionEvaluated = false;
 		bool frameLocalPresentationRetentionSafe = false;
 		ActivePictureClassification geometryClassification =
@@ -558,8 +631,8 @@ namespace AlphaSourceCrop
 
 	// A scene boundary resets candidate proof, but presentation is atomic:
 	// matching trusted geometry keeps crop and NLS together; ambiguous or
-	// near-black unavailable cut evidence may retain their existing snapshot
-	// briefly; contradiction withdraws both.
+	// contradictory current pixels may change presentation immediately while
+	// preserving the last affirmative same-generation logical reference.
 	SceneDecision EvaluateSceneBoundary(const SceneInput& input);
 
 	// Latch the bounded scene hold once per rendered frame. Crop and NLS consume

@@ -1,6 +1,7 @@
 #include "pch.h"
 
 #include <ActivePictureEvidence.h>
+#include <vprenderer/AlphaSourceCropPolicy.h>
 #include "CppUnitTest.h"
 
 #include <vector>
@@ -150,6 +151,68 @@ namespace VideoProcessorTest
 			Assert::AreEqual(
 				static_cast<int>(ActivePictureBounds::BarAxes::NONE),
 				static_cast<int>(evidence.trustedBounds.trustedBarAxes));
+		}
+
+		TEST_METHOD(GeneratedFramesGateOutwardLogicalAspectOnBroadOpposingPicture)
+		{
+			using namespace AlphaSourceCrop;
+			const ActivePictureBounds scope =
+				ScopePresentation(320, 180, 22, 158);
+			const ActivePictureBounds full = {
+				0, 0, 320, 180, 320, 180, 16.0 / 9.0,
+				ActivePictureBounds::BarAxes::NONE };
+
+			P010Frame localized(320, 180);
+			localized.BlackOutside(0, 22, 320, 158);
+			localized.FillRectangle(120, 8, 136, 18, 600);
+			localized.FillRectangle(184, 162, 200, 172, 600);
+			const auto localizedRetention =
+				EvaluateActivePicturePresentationRetention(
+					localized.P010Source(), scope);
+			OutwardPictureConfirmationState state;
+			for (int sample = 0; sample < 6; ++sample)
+			{
+				const auto decision = ConfirmOutwardPictureTransition(
+					state, scope, full, localizedRetention, 3);
+				state = decision.state;
+				Assert::IsFalse(decision.authoritative);
+				Assert::AreEqual(0U, state.confirmations);
+			}
+
+			P010Frame broad(320, 180);
+			const auto broadRetention =
+				EvaluateActivePicturePresentationRetention(
+					broad.P010Source(), scope);
+			for (uint32_t sample = 1;
+				sample <= OUTWARD_PICTURE_CONFIRMATIONS_REQUIRED; ++sample)
+			{
+				const auto decision = ConfirmOutwardPictureTransition(
+					state, scope, full, broadRetention, 3);
+				state = decision.state;
+				Assert::AreEqual(sample, state.confirmations);
+				Assert::AreEqual(
+					sample == OUTWARD_PICTURE_CONFIRMATIONS_REQUIRED,
+					decision.authoritative);
+			}
+
+			// Any intervening localized frame breaks consecutiveness.
+			state = ConfirmOutwardPictureTransition(state, scope, full,
+				localizedRetention, 3).state;
+			Assert::AreEqual(0U, state.confirmations);
+			state = ConfirmOutwardPictureTransition(state, scope, full,
+				broadRetention, 3).state;
+			Assert::AreEqual(1U, state.confirmations);
+
+			const ActivePictureBounds pillar = {
+				40, 0, 280, 180, 320, 180, 4.0 / 3.0,
+				ActivePictureBounds::BarAxes::LEFT_RIGHT };
+			const auto horizontalRetention =
+				EvaluateActivePicturePresentationRetention(
+					broad.P010Source(), pillar);
+			const auto horizontal = ConfirmOutwardPictureTransition(
+				{}, pillar, full, horizontalRetention, 3);
+			Assert::IsTrue(horizontal.broadOpposingPicture);
+			Assert::AreEqual(1U, horizontal.state.confirmations);
 		}
 
 		TEST_METHOD(ScopeBarsHaveTrustedOpposingLumaAndChromaEvidence)
