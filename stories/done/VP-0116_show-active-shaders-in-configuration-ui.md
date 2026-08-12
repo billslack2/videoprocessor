@@ -2,10 +2,14 @@
 
 ## Status
 
-In progress. Observed in the deployed `v1.2.001-beta` configuration editor on
-2026-08-11: the Shaders page lists Off and the configured NLS modes, but none
-of the rows identifies the shader mode currently active in the attached VP
-runtime.
+Done. Merged into `v1.2.001-beta` as `8e0ea86` on 2026-08-11 after operator
+validation. The renderer now publishes a generation-current set of stable
+shader section identities, and Config independently marks every authoritative
+active row, including explicit Off and multiple composable members. Unsupported,
+unavailable, and stale-generation state clears the markers instead of guessing.
+
+Verified with a clean x64 Release solution build, the focused target-shader
+native test, and the complete Config test suite.
 
 ## User story
 
