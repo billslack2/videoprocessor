@@ -3225,6 +3225,47 @@ bool CVideoProcessorDlg::EvaluateActiveOutputSweepCase(
 	return decision.verdict != Verdict::WAITING;
 }
 
+bool CVideoProcessorDlg::TryClassifyActiveOutputSweepCase(
+	ULONGLONG now, const char* trigger)
+{
+	if (!m_activeOutputSweepRunning || !m_activeOutputSweepAwaitingLiveFrame ||
+		m_activeOutputSweepCaseIndex >= m_activeOutputSweepCases.size())
+	{
+		return false;
+	}
+
+	SweepResultState state = SweepResultState::Failed;
+	CString detail;
+	if (!EvaluateActiveOutputSweepCase(state, detail))
+		return false;
+
+	m_activeOutputSweepAwaitingLiveFrame = false;
+	m_activeOutputSweepCaseResult = state;
+	m_activeOutputSweepCaseDetail = detail;
+	m_activeOutputSweepCaseFailed = state == SweepResultState::Failed;
+	m_activeOutputSweepBannerState = state == SweepResultState::Passed ?
+		SweepBannerState::Passed : state == SweepResultState::Expected ?
+		SweepBannerState::Expected : state == SweepResultState::Measure ?
+		SweepBannerState::Measure : SweepBannerState::Failed;
+	m_activeOutputSweepDeadlineTick = now +
+		(m_activeOutputSweepCaseFailed ?
+			(std::min<DWORD>)(m_activeOutputSweepHoldMs, 5000) :
+			m_activeOutputSweepHoldMs);
+	const wchar_t* label = state == SweepResultState::Passed ? L"PASS" :
+		state == SweepResultState::Expected ? L"EXPECTED" :
+		state == SweepResultState::Measure ? L"MEASURE" : L"FAIL";
+	m_activeOutputSweepStatus.Format(L"%s\n%s: %s; holding %lus",
+		m_activeOutputSweepCases[m_activeOutputSweepCaseIndex].description,
+		label, detail.GetString(),
+		(m_activeOutputSweepDeadlineTick - now) / 1000);
+	DebugLog::Log(
+		"Active output sweep live classification: index=%zu state=%d trigger=%s hold_ms=%llu detail=%S",
+		m_activeOutputSweepCaseIndex + 1, static_cast<int>(state), trigger,
+		m_activeOutputSweepDeadlineTick - now, detail.GetString());
+	UpdateStatsOverlay();
+	return true;
+}
+
 void CVideoProcessorDlg::ClearActiveOutputSweepSummary(const char* reason)
 {
 	if (!m_activeOutputSweepSummaryVisible)
@@ -3255,6 +3296,12 @@ void CVideoProcessorDlg::UpdateActiveOutputSweep(ULONGLONG now)
 			CompleteActiveOutputSweep(L"complete - original test config restored");
 		return;
 	}
+	// The first live-frame message normally arrives before DXGI frame
+	// statistics have recovered from the expected post-recreate DISJOINT
+	// state. Keep polling the structured contract during the settle window so
+	// later presented-frame evidence can classify the case.
+	if (TryClassifyActiveOutputSweepCase(now, "settle-poll"))
+		return;
 	if (now < m_activeOutputSweepDeadlineTick)
 		return;
 	if (m_activeOutputSweepAwaitingLiveFrame)
@@ -5728,38 +5775,7 @@ LRESULT CVideoProcessorDlg::OnMessageRendererLiveFrame(
 	LPARAM)
 {
 	TryRevealRendererTransition(static_cast<uint32_t>(wParam));
-	if (m_activeOutputSweepRunning && m_activeOutputSweepAwaitingLiveFrame &&
-		m_activeOutputSweepCaseIndex < m_activeOutputSweepCases.size())
-	{
-		SweepResultState state = SweepResultState::Failed;
-		CString detail;
-		if (EvaluateActiveOutputSweepCase(state, detail))
-		{
-			m_activeOutputSweepAwaitingLiveFrame = false;
-			m_activeOutputSweepCaseResult = state;
-			m_activeOutputSweepCaseDetail = detail;
-			m_activeOutputSweepCaseFailed = state == SweepResultState::Failed;
-			m_activeOutputSweepBannerState = state == SweepResultState::Passed ?
-				SweepBannerState::Passed : state == SweepResultState::Expected ?
-				SweepBannerState::Expected : state == SweepResultState::Measure ?
-				SweepBannerState::Measure : SweepBannerState::Failed;
-			m_activeOutputSweepDeadlineTick = GetTickCount64() +
-				(m_activeOutputSweepCaseFailed ?
-					(std::min<DWORD>)(m_activeOutputSweepHoldMs, 5000) :
-					m_activeOutputSweepHoldMs);
-			const wchar_t* label = state == SweepResultState::Passed ? L"PASS" :
-				state == SweepResultState::Expected ? L"EXPECTED" :
-				state == SweepResultState::Measure ? L"MEASURE" : L"FAIL";
-			m_activeOutputSweepStatus.Format(L"%s\n%s: %s; holding %lus",
-				m_activeOutputSweepCases[m_activeOutputSweepCaseIndex].description,
-				label, detail.GetString(),
-				(m_activeOutputSweepDeadlineTick - GetTickCount64()) / 1000);
-			DebugLog::Log("Active output sweep live classification: index=%zu state=%d hold_ms=%llu detail=%S",
-				m_activeOutputSweepCaseIndex + 1, static_cast<int>(state),
-				m_activeOutputSweepDeadlineTick - GetTickCount64(), detail.GetString());
-			UpdateStatsOverlay();
-		}
-	}
+	TryClassifyActiveOutputSweepCase(GetTickCount64(), "live-frame-message");
 	return 0;
 }
 
