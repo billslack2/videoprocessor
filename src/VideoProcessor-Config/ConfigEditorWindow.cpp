@@ -2519,9 +2519,9 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         addBoolean(QStringLiteral("Use VP-owned DXGI swapchain (beta)"),
             QStringLiteral("diagnostic_vp_owned_dxgi_presenter"));
         form->addRow(QString(), helpLabel(QStringLiteral(
-            "VP-owned DXGI tests the authoritative flip/direct presenter. "
-            "Composed uses libplacebo's bitblt swapchain because the VP-owned "
-            "composed path is not supported in this beta.")));
+            "Experimental only: VP-owned DXGI is not part of the Proposed path. "
+            "It may be enabled in Custom for focused presenter diagnostics; "
+            "Composed always uses libplacebo's bitblt swapchain.")));
         addBoolean(QStringLiteral("Capture detailed output diagnostics"),
             QStringLiteral("output_diagnostics"));
         addBoolean(QStringLiteral("Disable shader cache"),
@@ -2588,7 +2588,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                 { "diagnostic_allow_limited_g22", "true" },
                 { "diagnostic_disable_compute", "false" },
                 { "diagnostic_force_8bit_sdr_swapchain", "false" },
-                { "diagnostic_vp_owned_dxgi_presenter", "true" },
+                { "diagnostic_vp_owned_dxgi_presenter", "false" },
                 { "output_diagnostics", "true" },
                 { "diagnostic_disable_shader_cache", "false" }
             };
