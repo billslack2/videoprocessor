@@ -17,6 +17,24 @@ and a successful swap call do not prove that DWM displayed the composed frame.
 This story therefore separates renderer proof from display-delivery proof and
 does not silently promote unavailable evidence to PASS.
 
+Implementation commit `95f680d` is published on
+`origin/codex/vp-0125-dxgi-output`. The VP-owned forced-8-bit path now creates
+`R8G8B8A8_UNORM`, matching libplacebo's D3D11 8-bit selector, and supplies
+`disable_10bit_sdr` plus the requested color depth even when libplacebo wraps
+VP's external swapchain. Structured status now separates renderer readback,
+successful submission, and presented-frame evidence. Direct/flip cases wait
+for DXGI presentation evidence; composed/BitBlt submission without that proof
+returns `MEASURE / DISPLAY DELIVERY UNVERIFIED` rather than PASS. Live and
+retained sweep details report `rendered`, `submissions`, and
+`display_delivery` independently.
+
+Focused `LibplaceboOutputPolicyTests` passed 39/39. The x64 Release GUI,
+VP-renderer DLL, and native test DLL compiled successfully; a whole-solution
+invocation was separately obstructed in this automation environment by its
+duplicate `Path`/`PATH` process environment in unrelated Config/OutputProbe
+project tool launches, not by a source compile failure. Live Epson confirmation
+of the final 8-bit format and revised composed result remains required.
+
 ## User story
 
 As a VP beta tester, I want output experiments and generated test patterns to
@@ -112,4 +130,3 @@ The 2026-08-13 SDR sweep produced the following reproducible evidence:
   explicit unavailable result, never implicit success.
 - BitBlt frame statistics are commonly unavailable; the implementation must
   not manufacture direct-presentation evidence from a successful API return.
-

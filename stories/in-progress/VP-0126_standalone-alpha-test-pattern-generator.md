@@ -45,6 +45,20 @@ render/submission/display-delivery result model. Until authoritative delivery
 evidence exists, composed pattern presentation is explicitly `MEASURE` or
 `DISPLAY DELIVERY UNVERIFIED`, not PASS or “visible.”
 
+Synchronization implementation: commit `13c77be` on
+`origin/VP0126-pattern-generator` merges the complete VP-0125/VP-0127 output
+path while retaining launcher-package commit `877a17e`. Before the clean
+pattern is exposed, the generator now shows requested/actual swapchain format,
+renderer-readback state, submission state, DXGI delivery evidence, and the
+DXGI declaration. It asks the tester to explicitly grade whether the intended
+pattern is visible; a negative grade is logged and terminates that pattern as
+a visible-delivery failure. The dialog reiterates that even presented-frame
+evidence does not prove HDMI values or calibration accuracy.
+
+The synchronized x64 Release GUI and VP-renderer projects build successfully.
+The combined focused suite passed 44/44 tests: all 39 output-policy tests and
+all five calibration-pattern tests.
+
 ## User story
 
 As a display owner, I want to launch VideoProcessor in a dedicated pattern
