@@ -9,6 +9,13 @@ worktree `C:\Users\bslac\Documents\Codex\2026-08-13\we\work\vp-pattern-generator
 on branch `VP0126-pattern-generator`. Normal capture and the regular VP operator
 dialog are out of process scope while this mode runs.
 
+Implementation commit: `c65b764`. The x64 Release solution builds, all five
+focused calibration-pattern tests pass, and the standalone Config test suite
+passes. A full native run passed 812 of 817 tests; the five failures are
+configuration-reference/profile inventory tests outside the pattern-generator
+files. Automated live-window verification remains limited because the Windows
+control helper can enumerate but cannot activate this native MFC window.
+
 The implementation now builds a dedicated executable alias and feeds canonical
 test frames directly to the real Alpha plugin. Alpha resolves the same unified
 `VideoProcessor.cfg` (or explicit `--config`/`--vr_config`) as normal VP. The
