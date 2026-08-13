@@ -178,6 +178,7 @@
     <ClInclude Include="blackmagic_decklink\BlackMagicDeckLinkCaptureDeviceDiscoverer.h" />
     <ClInclude Include="blackmagic_decklink\BlackMagicDeckLinkTranslate.h" />
     <ClInclude Include="CaptureInput.h" />
+    <ClInclude Include="CalibrationPatterns.h" />
     <ClInclude Include="cie.h" />
     <ClInclude Include="ColorSpace.h" />
     <ClInclude Include="ConfigFile.h" />
@@ -293,6 +294,7 @@
     <ClInclude Include="microsoft_directshow\live_source_filter\GpuSubtitleDetector.h" />
   </ItemGroup>
   <ItemGroup>
+	<ClCompile Include="CalibrationPatterns.cpp" />
     <ClCompile Include="ShaderConfigValidation.cpp">
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
     </ClCompile>

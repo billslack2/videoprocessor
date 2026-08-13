@@ -28,6 +28,7 @@
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Use</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="ModernOperatorView.cpp" />
+    <ClCompile Include="PatternGeneratorApp.cpp" />
     <ClCompile Include="RendererTransitionWindow.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
@@ -56,6 +57,7 @@
     <ClInclude Include="framework.h" />
     <ClInclude Include="FullscreenVideoWindow.h" />
     <ClInclude Include="ModernOperatorView.h" />
+    <ClInclude Include="PatternGeneratorApp.h" />
     <ClInclude Include="RendererTransitionWindow.h" />
     <ClInclude Include="Resource.h" />
     <ClInclude Include="pch.h" />
@@ -236,6 +238,10 @@
       <Command>if not exist "$(OutDir)VideoProcessor.cfg" if exist "$(SolutionDir)VideoProcessor.cfg" copy "$(SolutionDir)VideoProcessor.cfg" "$(OutDir)VideoProcessor.cfg" &amp; if exist "$(SolutionDir)CONFIGURATION.html" copy /Y "$(SolutionDir)CONFIGURATION.html" "$(OutDir)CONFIGURATION.html"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
+  <Target Name="CopyPatternGeneratorExecutable" AfterTargets="Build">
+    <Copy SourceFiles="$(TargetPath)"
+          DestinationFiles="$(OutDir)VideoProcessorPatternGenerator.exe" />
+  </Target>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>

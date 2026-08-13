@@ -22,6 +22,7 @@
 #include <ApplicationInterface.h>
 
 #include "VideoProcessorApp.h"
+#include "PatternGeneratorApp.h"
 using namespace std;
 
 
@@ -62,6 +63,10 @@ Options:
 
   /fullscreen
       Start fullscreen.
+
+  /pattern_generator
+      Run the dedicated SDR calibration-pattern application. Capture discovery,
+      normal VideoProcessor playback, and the regular operator UI do not start.
 
   /windowedfullscreenmode
       Use windowed fullscreen mode.
@@ -1031,6 +1036,12 @@ BOOL CVideoProcessorApp::InitInstance()
 
 	bool helpRequested = false;
 	bool fixDisplayRequested = false;
+	wchar_t executablePath[MAX_PATH] = {};
+	GetModuleFileNameW(nullptr, executablePath, ARRAYSIZE(executablePath));
+	const wchar_t* executableName = wcsrchr(executablePath, L'\\');
+	executableName = executableName ? executableName + 1 : executablePath;
+	bool patternGeneratorRequested =
+		_wcsicmp(executableName, L"VideoProcessorPatternGenerator.exe") == 0;
 	for (int i = 1; i < argumentCount; ++i)
 	{
 		if (IsHelpArgument(arguments[i]))
@@ -1042,6 +1053,9 @@ BOOL CVideoProcessorApp::InitInstance()
 			IsCommandLineOption(arguments[i], L"-fix_display") ||
 			IsCommandLineOption(arguments[i], L"--fix_display"))
 			fixDisplayRequested = true;
+		if (IsCommandLineOption(arguments[i], L"/pattern_generator") ||
+			IsCommandLineOption(arguments[i], L"/patterns"))
+			patternGeneratorRequested = true;
 	}
 	LocalFree(arguments);
 
@@ -1060,6 +1074,36 @@ BOOL CVideoProcessorApp::InitInstance()
 			debugLogRetention.count,
 			debugLogRetention.diagnostic,
 			LoadEnhancedLoggingEnabled());
+	}
+
+	// This mutually-exclusive application path uses VP's normal logging,
+	// configuration validation, COM initialization, and Alpha plugin loading,
+	// but never constructs the normal dialog or discovers capture hardware.
+	if (patternGeneratorRequested)
+	{
+		bool comInitialized = false;
+		try
+		{
+			if (!CWinAppEx::InitInstance())
+				throw std::runtime_error("Failed to initialize VideoProcessor Pattern Generator");
+			ValidateRendererConfigRules();
+			const HRESULT comResult = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+			if (FAILED(comResult))
+				throw std::runtime_error("Failed to initialize COM objects");
+			comInitialized = true;
+			m_startupExitCode = RunPatternGenerator(AfxGetInstanceHandle());
+		}
+		catch (const std::exception& error)
+		{
+			const std::wstring text = StringToWideString(error.what());
+			MessageBox(nullptr, text.c_str(), L"VideoProcessor Pattern Generator",
+				MB_OK | MB_ICONERROR | MB_SYSTEMMODAL);
+			m_startupExitCode = 1;
+		}
+		if (comInitialized)
+			CoUninitialize();
+		DEBUGLOG_SHUTDOWN();
+		return FALSE;
 	}
 
 	m_displayRecoveryStatePath = CurrentStatePath();
