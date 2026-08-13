@@ -6,9 +6,9 @@ story may have ordered child-task IDs as defined below.
 
 ## Registry state
 
-- Last assigned root story: `VP-0125`
-- Next root story number: `VP-0126`
-- Total indexed items: 141
+- Last assigned root story: `VP-0126`
+- Next root story number: `VP-0127`
+- Total indexed items: 142
 
 ## Story locations
 
@@ -158,6 +158,7 @@ they must not contain requirements that are absent from this file.
 | VP-0123 | Backlog | Split video conversion policy by renderer |
 | VP-0124 | In Progress | Safely accelerate outward active-picture transitions with bounded lookahead |
 | VP-0125 | In Progress | Diagnose Alpha fullscreen target-nits colour crushing and provide Output Experiments |
+| VP-0126 | In Progress | Standalone Alpha test-pattern generator |
 | VP-0066-1 | Done | Characterize the live output pipeline with replayable golden traces |
 | VP-0066-2 | Done | Extract a graph-independent video timing controller |
 | VP-0066-3 | Done | Extract epoch-aware frame transport and processing components |
