@@ -841,6 +841,8 @@ protected:
 		const wchar_t* detail);
 	bool EvaluateActiveOutputSweepCase(SweepResultState& state,
 		CString& detail) const;
+	bool TryClassifyActiveOutputSweepCase(ULONGLONG now,
+		const char* trigger);
 	void ClearActiveOutputSweepSummary(const char* reason);
 	bool StageSavedConfiguration(const char* reason, bool stageAccelerators);
 	bool PublishStagedConfiguration(bool replaceAccelerators);
