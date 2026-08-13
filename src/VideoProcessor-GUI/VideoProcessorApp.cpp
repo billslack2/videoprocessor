@@ -1447,7 +1447,7 @@ BOOL CVideoProcessorApp::InitInstance()
 		bool activeOutputSweep = false;
 		bool activeOutputSweepShowInfo = true;
 		bool activeOutputSweepCaptureRestart = true;
-		DWORD activeOutputSweepHoldMs = 10000;
+		DWORD activeOutputSweepHoldMs = 5000;
 		CString activeOutputSweepSuite = L"sdr";
 		CString activeOutputSweepTests;
 

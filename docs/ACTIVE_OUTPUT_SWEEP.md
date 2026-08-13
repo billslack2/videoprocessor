@@ -35,7 +35,11 @@ written to the renderer log for audit.
 
 `/active_output_sweep` starts a sweep. `/active_output_sweep_suite sdr|hdr`
 selects the suite; SDR is the default. `/active_output_sweep_hold_ms` defaults
-to 10000 and accepts 1000 through 600000 milliseconds. Use
+to 5000 and accepts 1000 through 600000 milliseconds. The visible hold begins
+only after renderer initialization and contract classification have settled.
+During an active case, press **Space** to pause indefinitely and hide the test
+banner for unobstructed visual or meter measurement. Press **Space** again to
+restore the banner and restart the case's complete configured hold interval. Use
 `/active_output_sweep_tests 2,5` or `2-5,8` for a subset. The default runs the
 whole selected suite. `/active_output_sweep_restart capture|renderer` defaults
 to `capture`; `renderer` keeps capture live but still recreates the renderer,
