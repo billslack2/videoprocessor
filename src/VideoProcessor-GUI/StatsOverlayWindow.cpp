@@ -267,7 +267,7 @@ bool StatsOverlayWindow::RenderSweepBannerBgra(const CString& status,
 	if (status.IsEmpty())
 		return false;
 	width = 1400;
-	height = 250;
+	height = 390;
 	stride = width * 4;
 	BITMAPINFO info{};
 	info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
@@ -294,8 +294,12 @@ bool StatsOverlayWindow::RenderSweepBannerBgra(const CString& status,
 	FillRect(memory, &rect, background);
 	DeleteObject(background);
 	const COLORREF stateColor = state == SweepBannerState::Passed ? RGB(50, 230, 110) :
+		state == SweepBannerState::Expected ? RGB(80, 210, 235) :
+		state == SweepBannerState::Measure ? RGB(255, 190, 0) :
 		state == SweepBannerState::Failed ? RGB(255, 75, 75) : RGB(255, 190, 0);
 	const CString stateLabel = state == SweepBannerState::Passed ? L"PASS" :
+		state == SweepBannerState::Expected ? L"EXPECTED" :
+		state == SweepBannerState::Measure ? L"MEASURE" :
 		state == SweepBannerState::Failed ? L"FAIL" : L"TESTING";
 	HBRUSH border = CreateSolidBrush(stateColor);
 	FrameRect(memory, &rect, border);
@@ -348,7 +352,7 @@ bool StatsOverlayWindow::RenderSweepSummaryBgra(
 	const size_t first = page * itemsPerPage;
 	const size_t count = (std::min)(itemsPerPage, items.size() - first);
 	width = 1400;
-	height = 168 + static_cast<int>(count) * 118;
+	height = 168 + static_cast<int>(count) * 160;
 	stride = width * 4;
 	BITMAPINFO info{};
 	info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
@@ -389,30 +393,44 @@ bool StatsOverlayWindow::RenderSweepSummaryBgra(
 	CString title;
 	title.Format(L"VP OUTPUT SWEEP SUMMARY - PAGE %zu/%zu", page + 1, pageCount);
 	TextOut(memory, 26, 16, title, title.GetLength());
-	const size_t passed = static_cast<size_t>(std::count_if(items.begin(), items.end(),
-		[](const SweepSummaryItem& item) { return item.passed; }));
+	const auto countState = [&items](SweepResultState state)
+	{
+		return static_cast<size_t>(std::count_if(items.begin(), items.end(),
+			[state](const SweepSummaryItem& item) { return item.state == state; }));
+	};
+	const size_t passed = countState(SweepResultState::Passed);
+	const size_t expected = countState(SweepResultState::Expected);
+	const size_t measure = countState(SweepResultState::Measure);
+	const size_t failed = countState(SweepResultState::Failed);
 	CString totals;
-	totals.Format(L"%zu PASS / %zu FAIL", passed, items.size() - passed);
-	SetTextColor(memory, items.size() == passed ? RGB(50, 230, 110) : RGB(255, 190, 0));
+	totals.Format(L"%zu PASS / %zu EXPECTED / %zu MEASURE / %zu FAIL",
+		passed, expected, measure, failed);
+	SetTextColor(memory, failed > 0 ? RGB(255, 75, 75) :
+		measure > 0 ? RGB(255, 190, 0) :
+		expected > 0 ? RGB(80, 210, 235) : RGB(50, 230, 110));
 	TextOut(memory, 26, 70, totals, totals.GetLength());
 	SelectObject(memory, valueFont);
 	int y = 132;
 	for (size_t index = first; index < first + count; ++index)
 	{
 		const SweepSummaryItem& item = items[index];
-		const COLORREF color = item.passed ? RGB(50, 230, 110) : RGB(255, 75, 75);
-		const CString verdict = item.passed ? L"PASS" : L"FAIL";
+		const COLORREF color = item.state == SweepResultState::Passed ? RGB(50, 230, 110) :
+			item.state == SweepResultState::Expected ? RGB(80, 210, 235) :
+			item.state == SweepResultState::Measure ? RGB(255, 190, 0) : RGB(255, 75, 75);
+		const CString verdict = item.state == SweepResultState::Passed ? L"PASS" :
+			item.state == SweepResultState::Expected ? L"EXPECTED" :
+			item.state == SweepResultState::Measure ? L"MEASURE" : L"FAIL";
 		SetTextColor(memory, color);
 		TextOut(memory, 26, y, verdict, verdict.GetLength());
 		SetTextColor(memory, RGB(255, 255, 255));
-		RECT labelRect{ 210, y, width - 28, y + 70 };
+		RECT labelRect{ 270, y, width - 28, y + 70 };
 		::DrawText(memory, item.label, -1, &labelRect,
 			DT_LEFT | DT_TOP | DT_WORDBREAK | DT_NOPREFIX);
 		SetTextColor(memory, RGB(185, 215, 235));
-		RECT detailRect{ 210, y + 72, width - 28, y + 108 };
+		RECT detailRect{ 270, y + 72, width - 28, y + 150 };
 		::DrawText(memory, item.detail, -1, &detailRect,
 			DT_LEFT | DT_TOP | DT_WORDBREAK | DT_NOPREFIX);
-		y += 118;
+		y += 160;
 	}
 	SelectObject(memory, oldFont);
 	DeleteObject(titleFont);

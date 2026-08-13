@@ -3,15 +3,28 @@
 These are fullscreen diagnostic runs against real capture content. They use a
 generated configuration whose filename contains `active-output-sweep`; VP
 refuses to run against a normal user configuration. Each case recreates the
-renderer (and by default the capture graph), observes whether a live frame is
-presented, then restores the generated configuration.
+renderer (and by default the capture graph), observes authoritative applied
+state and presentation, then restores the generated configuration.
 
-The top-right test card is separate from the normal VP statistics overlay. It
-stays inside the active picture area, uses green `PASS` only after a live frame
-is observed, and uses red `FAIL` after a 15-second no-frame timeout. This is a
-presentation/stability result, not proof of physical levels, transfer, or
-calibration; use the displayed full description together with visual or meter
-results.
+The top-right card is separate from the normal VP statistics overlay and stays
+inside the active picture area. Results are based on structured renderer state,
+not log-text matching:
+
+- `PASS` (green): the requested technical contract, presenter ownership, target
+  primaries, required DXGI Check/Set/Check evidence, and a successful Present
+  match a case whose physical response does not need grading.
+- `EXPECTED` (cyan): a deliberately unsupported request produced the exact safe
+  fallback or block described by the case. An arbitrary fallback is a failure.
+- `MEASURE` (amber): metadata and Present match, but the case exists to compare
+  black floor, transfer, HDR mapping, bit depth, or another physical result.
+  Grade it visually or with a meter; VP must not claim that logs prove it.
+- `FAIL` (red): the applied contract contradicts the expected contract, required
+  DXGI evidence is absent, rendering is unexpectedly blocked/fallback, or no
+  successful Present is observed before the timeout.
+
+Each result includes actual range, pixel transfer, target primaries, presenter
+owner, acceptance/verification flags, successful-Present count, and the DXGI
+declaration. The same assertion is written to the renderer log for audit.
 
 ## Shared controls
 
@@ -25,18 +38,32 @@ D3D11 device, and swapchain.
 
 ## SDR output-transport suite
 
-Run this while SDR material is live. It has 17 cases covering the shipping
-legacy path, automatic and pure-gamma negotiations, the VP-owned DXGI
-experiment, limited-range Gamma 2.2, 8-bit swapchain, compute/cache toggles,
-and composed presentation. Its purpose is transport and presentation
-diagnosis; HDR tone-map settings are not varied.
+Run this while SDR material is live. The default suite has 10 non-redundant
+cases covering the shipping legacy path, the VP-owned DXGI path, guarded Full
+and Limited pure-Gamma-2.2 behavior, Limited Gamma 2.4, an 8-bit control, and
+composed presentation. Gamma 2.0 rejection and compute/shader-cache permutations
+remain covered by deterministic unit/configuration tests; they were removed
+from the slow fullscreen default because they add no new output contract.
 
-The Full-range projector comparison is cases 3 and 4. Case 3 confirms that the
-shipping policy rejects an undeclarable pure-power request; case 4 enables the
-strict calibrated-display override and renders pure Gamma 2.2 pixels under the
-nominal Full-G22/sRGB DXGI declaration. The Limited-range comparison remains
-cases 5 and 6. A green PASS means a live frame was presented, not that either
-physical transfer curve was measured.
+The Full-range projector comparison is cases 3 and 4. Case 3 must produce the
+documented Full/sRGB fallback; case 4 enables the strict calibrated-display
+override and renders pure Gamma 2.2 pixels under the nominal Full-G22/sRGB DXGI
+declaration. The Limited-range comparison is cases 5 and 6. Cases 4, 6, 7, and
+8 deliberately report `MEASURE`: metadata can prove which pixels VP rendered,
+but only the display or an instrument can prove the resulting curve and floor.
+
+| Test | Expected technical result | What the tester evaluates |
+| --- | --- | --- |
+| 1 | Legacy Flip, Full, sRGB, Present | Shipping baseline. |
+| 2 | VP Flip, Full, sRGB, verified DXGI, Present | VP-owned baseline and stability. |
+| 3 | Exact fallback to legacy Full/sRGB | Full pure-2.2 guard-off policy. |
+| 4 | VP Flip, Full, pure 2.2, verified nominal Full-G22 declaration | Curve/black floor against madVR. |
+| 5 | Exact fallback to legacy Full/sRGB | Limited pure-2.2 guard-off policy. |
+| 6 | VP Flip, Limited, pure 2.2, verified DXGI | Projector Limited-range curve and floor. |
+| 7 | VP Flip, Limited, pure 2.4, verified DXGI | Lifted-black control against test 6. |
+| 8 | VP Flip, Full, sRGB, 8-bit request | Banding/levels against 10-bit test 2. |
+| 9 | libplacebo bitblt, Full, sRGB, Present | Composed-path behavior. |
+| 10 | libplacebo bitblt despite VP-owned request | Confirms documented Composed ownership. |
 
 ## HDR tone-mapping suite
 
@@ -44,7 +71,8 @@ Run this only with real HDR content. It refuses to start unless VP currently
 reports a valid PQ, HLG, or HDR input EOTF. The launcher asks whether this run
 targets Rec.709 or BT.2020 and whether it should send the BT.2020 HDMI
 InfoFrame; that selected color/signaling path is held constant across every
-case. The suite never alters incoming HDR metadata.
+case. Structured assertions verify the configured target primaries; the suite
+never alters incoming HDR metadata.
 
 | Test | Change from the HDR baseline | Purpose |
 | --- | --- | --- |
@@ -52,16 +80,22 @@ case. The suite never alters incoming HDR metadata.
 | 2 | 200 nits | Reported safe-boundary comparison. |
 | 3 | 250 nits | First just-above-boundary test. |
 | 4 | 300 nits | Direct fullscreen anchor for control comparisons. |
-| 5 | 400 nits | Higher target stress comparison. |
-| 6–21 | 300 nits + every relevant SDR transport/presentation contract | HDR black-floor and output-policy comparisons: legacy/VP-owned, full/limited/auto range, transfer choices, compute/cache, and composed paths. The SDR-only force-8-bit swapchain case is excluded. |
-| 22 | 300 nits + BT.2390 | Alternate highlight roll-off. |
-| 23 | 300 nits + Reinhard | Alternate compression baseline. |
-| 24 | 300 nits + softclip gamut mapping | Tests boundary color compression. |
-| 25 | 300 nits + peak detection off | Identifies dynamic peak-analysis influence. |
-| 26 | 300 nits + contrast recovery 0.0 | Identifies local-contrast recovery influence. |
+| 5 | 400 nits | Higher-target stress comparison. |
+| 6 | Legacy Full/sRGB | Comparison against the Full pure-2.2 anchor. |
+| 7 | Full pure 2.2 with guard off | Must fall back exactly to legacy Full/sRGB. |
+| 8 | VP-owned Full pure 2.2 | Repeats the 300-nit technical anchor. |
+| 9 | Limited pure 2.2 with guard off | Must fall back exactly to legacy Full/sRGB. |
+| 10 | VP-owned Limited pure 2.2 | Black-floor/range comparison. |
+| 11 | VP-owned Limited pure 2.4 | Lifted-black curve control. |
+| 12 | Composed Full/sRGB | Fullscreen/windowed compositor comparison. |
+| 13 | 300 nits + BT.2390 | Alternate highlight roll-off. |
+| 14 | 300 nits + Reinhard | Alternate compression baseline. |
+| 15 | 300 nits + softclip gamut mapping | Tests boundary color compression. |
+| 16 | 300 nits + peak detection off | Identifies dynamic peak-analysis influence. |
+| 17 | 300 nits + contrast recovery 0.0 | Identifies local-contrast recovery influence. |
 
 Tests 1 through 5 isolate the reported target-nits threshold. Tests 6 through
-21 repeat the relevant output/black-floor contracts with HDR input. Tests 22
-through 26 change a single tone-map control at the 300-nit anchor. If a case is visually
-wrong but passes, VP did present a live frame: record the visual/meter result
-and preserve the test number, OSD description, and renderer log.
+12 cover the non-redundant output/black-floor contracts with HDR input. Tests
+13 through 17 change one mapping control at the 300-nit Full-pure-2.2 anchor.
+All HDR cases report `MEASURE` after their technical assertions succeed. Record
+the visual/meter result and preserve the test number, OSD description, and log.

@@ -49,6 +49,7 @@
 #include <ConfigFile.h>
 #include <ConfigurationLiveApply.h>
 #include <ActiveProfileStatus.h>
+#include <ActiveOutputSweepPolicy.h>
 #include <EventActionLauncher.h>
 #include <DisplayRefreshRateEstimator.h>
 #include <DisplayRefreshRatePolicy.h>
@@ -2744,102 +2745,69 @@ bool CVideoProcessorDlg::StartActiveOutputSweep()
 	if (!hdrSuite)
 	{
 		m_activeOutputSweepCases = {
-		{ L"1/17 legacy direct full/sRGB", "direct", "full", "srgb", false, false, false, false, false,
-			L"Test 1/17: Legacy presenter; Direct; Full range; sRGB transfer" },
-		{ L"2/17 direct auto/auto", "direct", "auto", "auto", false, false, false, false, false,
-			L"Test 2/17: Legacy presenter; Direct; Auto range; Auto transfer" },
-		{ L"3/17 direct full/G22 policy", "direct", "full", "2.2", false, false, false, false, false,
-			L"Test 3/17: Legacy presenter; Direct; Full range; Gamma 2.2 policy check" },
-		{ L"4/17 VP direct full/G22", "direct", "full", "2.2", false, true, true, false, false,
-			L"Test 4/17: VP-owned DXGI; Direct; Full range; Gamma 2.2 experiment" },
-		{ L"5/17 direct limited/G22 policy", "direct", "limited", "2.2", false, false, false, false, false,
-			L"Test 5/17: Legacy presenter; Direct; Limited range; Gamma 2.2 policy check" },
-		{ L"6/17 VP direct limited/G22", "direct", "limited", "2.2", false, true, true, false, false,
-			L"Test 6/17: VP-owned DXGI; Direct; Limited range; Gamma 2.2 experiment" },
-		{ L"7/17 VP direct limited/G24", "direct", "limited", "2.4", false, false, true, false, false,
-			L"Test 7/17: VP-owned DXGI; Direct; Limited range; Gamma 2.4" },
-		{ L"8/17 VP direct limited/auto", "direct", "limited", "auto", false, false, true, false, false,
-			L"Test 8/17: VP-owned DXGI; Direct; Limited range; Auto transfer" },
-		{ L"9/17 VP direct full/G20", "direct", "full", "2.0", false, false, true, false, false,
-			L"Test 9/17: VP-owned DXGI; Direct; Full range; Gamma 2.0" },
-		{ L"10/17 VP direct limited/G20", "direct", "limited", "2.0", false, false, true, false, false,
-			L"Test 10/17: VP-owned DXGI; Direct; Limited range; Gamma 2.0" },
-		{ L"11/17 VP direct full/sRGB 8-bit", "direct", "full", "srgb", true, false, true, false, false,
-			L"Test 11/17: VP-owned DXGI; Direct; Full range; sRGB; Force 8-bit SDR" },
-		{ L"12/17 VP direct compute off", "direct", "full", "srgb", false, false, true, true, false,
-			L"Test 12/17: VP-owned DXGI; Direct; Full range; sRGB; D3D11 compute off" },
-		{ L"13/17 VP direct shader cache off", "direct", "full", "srgb", false, false, true, false, true,
-			L"Test 13/17: VP-owned DXGI; Direct; Full range; sRGB; Shader cache off" },
-		{ L"14/17 VP direct compute/cache off", "direct", "full", "srgb", false, false, true, true, true,
-			L"Test 14/17: VP-owned DXGI; Direct; Full range; sRGB; Compute and cache off" },
-		{ L"15/17 composed full/sRGB", "composed", "full", "srgb", false, false, false, false, false,
-			L"Test 15/17: Legacy presenter; Composed; Full range; sRGB transfer" },
-		{ L"16/17 composed full/G20", "composed", "full", "2.0", false, false, false, false, false,
-			L"Test 16/17: Legacy presenter; Composed; Full range; Gamma 2.0" },
-		{ L"17/17 composed VP-owned", "composed", "full", "srgb", false, false, true, false, false,
-			L"Test 17/17: VP-owned DXGI; Composed; Full range; sRGB transfer" },
+		{ L"1/10 legacy direct full/sRGB", "direct", "full", "srgb", false, false, false, false, false,
+			L"Test 1/10: Baseline legacy presenter; expect Flip, Full range, sRGB pixels, and a successful Present" },
+		{ L"2/10 VP direct full/sRGB", "direct", "full", "srgb", false, false, true, false, false,
+			L"Test 2/10: VP-owned baseline; expect Flip, Full range, sRGB, verified DXGI application, and Present" },
+		{ L"3/10 full/G22 guard off", "direct", "full", "2.2", false, false, false, false, false,
+			L"Test 3/10: Full pure 2.2 guard off; expect an explicit safe fallback to Full/sRGB on the legacy presenter" },
+		{ L"4/10 VP full/G22 proof", "direct", "full", "2.2", false, false, true, false, false,
+			L"Test 4/10: VP-owned Full pure 2.2 proof; verify pixels/owner/DXGI/Present, then visually or meter-grade the curve" },
+		{ L"5/10 limited/G22 guard off", "direct", "limited", "2.2", false, false, false, false, false,
+			L"Test 5/10: Limited pure 2.2 guard off; expect an explicit safe fallback to Full/sRGB on the legacy presenter" },
+		{ L"6/10 VP limited/G22 proof", "direct", "limited", "2.2", false, true, true, false, false,
+			L"Test 6/10: VP-owned Limited pure 2.2 proof; verify pixels/owner/DXGI/Present, then meter-grade black floor and curve" },
+		{ L"7/10 VP limited/G24", "direct", "limited", "2.4", false, false, true, false, false,
+			L"Test 7/10: VP-owned Limited pure 2.4 control; verify contract, then compare black floor against tests 4 and 6" },
+		{ L"8/10 VP full/sRGB 8-bit", "direct", "full", "srgb", true, false, true, false, false,
+			L"Test 8/10: VP-owned 8-bit Full/sRGB control; compare banding and levels with the 10-bit baseline" },
+		{ L"9/10 composed full/sRGB", "composed", "full", "srgb", false, false, false, false, false,
+			L"Test 9/10: Composed Full/sRGB control; expect libplacebo bitblt presentation and a successful Present" },
+		{ L"10/10 composed VP request", "composed", "full", "srgb", false, false, true, false, false,
+			L"Test 10/10: Request VP ownership in Composed mode; expect documented libplacebo bitblt ownership, Full/sRGB, and Present" },
 	};
 	}
 	else
 	{
 		// The HDR suite first brackets the target-nits boundary, then repeats the
-		// output-contract cases which can affect black floor, levels, or transfer.
-		// It intentionally omits only the SDR-only force-8-bit swapchain case.
+		// non-redundant output contracts which can affect black floor or transfer.
 		// Target primaries and HDMI BT.2020 signaling are selected by the launcher
 		// and preserved across every case in this run.
 		m_activeOutputSweepCases = {
-			{ L"1/26 HDR 100 nits", "direct", "limited", "2.2", false, true, true, false, false,
-				L"HDR test 1/26: 100-nit target; Direct; Limited; Gamma 2.2; automatic mapping", "100", "auto", "auto", "auto", "auto" },
-			{ L"2/26 HDR 200 nits", "direct", "limited", "2.2", false, true, true, false, false,
-				L"HDR test 2/26: 200-nit target; Direct; Limited; Gamma 2.2; boundary comparison", "200", "auto", "auto", "auto", "auto" },
-			{ L"3/26 HDR 250 nits", "direct", "limited", "2.2", false, true, true, false, false,
-				L"HDR test 3/26: 250-nit target; Direct; Limited; Gamma 2.2; just above boundary", "250", "auto", "auto", "auto", "auto" },
-			{ L"4/26 HDR 300 nits", "direct", "limited", "2.2", false, true, true, false, false,
-				L"HDR test 4/26: 300-nit target; Direct; Limited; Gamma 2.2 baseline", "300", "auto", "auto", "auto", "auto" },
-			{ L"5/26 HDR 400 nits", "direct", "limited", "2.2", false, true, true, false, false,
-				L"HDR test 5/26: 400-nit target; Direct; Limited; Gamma 2.2 stress comparison", "400", "auto", "auto", "auto", "auto" },
-			{ L"6/26 HDR legacy full sRGB", "direct", "full", "srgb", false, false, false, false, false,
-				L"HDR test 6/26: Legacy; Direct; Full range; sRGB transfer; black-floor comparison", "300" },
-			{ L"7/26 HDR legacy auto", "direct", "auto", "auto", false, false, false, false, false,
-				L"HDR test 7/26: Legacy; Direct; Auto range and transfer; negotiation comparison", "300" },
-			{ L"8/26 HDR legacy full G22", "direct", "full", "2.2", false, false, false, false, false,
-				L"HDR test 8/26: Legacy; Direct; Full range; Gamma 2.2 policy comparison", "300" },
-			{ L"9/26 HDR VP full G22", "direct", "full", "2.2", false, true, true, false, false,
-				L"HDR test 9/26: VP-owned DXGI; Direct; Full range; Gamma 2.2", "300" },
-			{ L"10/26 HDR legacy limited G22", "direct", "limited", "2.2", false, false, false, false, false,
-				L"HDR test 10/26: Legacy; Direct; Limited; Gamma 2.2 policy comparison", "300" },
-			{ L"11/26 HDR VP limited G22", "direct", "limited", "2.2", false, true, true, false, false,
-				L"HDR test 11/26: VP-owned DXGI; Direct; Limited; Gamma 2.2", "300" },
-			{ L"12/26 HDR VP limited G24", "direct", "limited", "2.4", false, false, true, false, false,
-				L"HDR test 12/26: VP-owned DXGI; Direct; Limited; Gamma 2.4", "300" },
-			{ L"13/26 HDR VP limited auto", "direct", "limited", "auto", false, false, true, false, false,
-				L"HDR test 13/26: VP-owned DXGI; Direct; Limited; Auto transfer", "300" },
-			{ L"14/26 HDR VP full G20", "direct", "full", "2.0", false, false, true, false, false,
-				L"HDR test 14/26: VP-owned DXGI; Direct; Full range; Gamma 2.0", "300" },
-			{ L"15/26 HDR VP limited G20", "direct", "limited", "2.0", false, false, true, false, false,
-				L"HDR test 15/26: VP-owned DXGI; Direct; Limited; Gamma 2.0", "300" },
-			{ L"16/26 HDR VP compute off", "direct", "limited", "2.2", false, true, true, true, false,
-				L"HDR test 16/26: VP-owned DXGI; Direct; Limited; Gamma 2.2; D3D11 compute off", "300" },
-			{ L"17/26 HDR VP cache off", "direct", "limited", "2.2", false, true, true, false, true,
-				L"HDR test 17/26: VP-owned DXGI; Direct; Limited; Gamma 2.2; shader cache off", "300" },
-			{ L"18/26 HDR VP compute/cache off", "direct", "limited", "2.2", false, true, true, true, true,
-				L"HDR test 18/26: VP-owned DXGI; Direct; Limited; Gamma 2.2; compute and cache off", "300" },
-			{ L"19/26 HDR legacy composed", "composed", "full", "srgb", false, false, false, false, false,
-				L"HDR test 19/26: Legacy; Composed; Full range; sRGB transfer", "300" },
-			{ L"20/26 HDR legacy composed G20", "composed", "full", "2.0", false, false, false, false, false,
-				L"HDR test 20/26: Legacy; Composed; Full range; Gamma 2.0", "300" },
-			{ L"21/26 HDR VP composed G22", "composed", "limited", "2.2", false, true, true, false, false,
-				L"HDR test 21/26: VP-owned DXGI; Composed; Limited; Gamma 2.2", "300" },
-			{ L"22/26 HDR BT2390", "direct", "limited", "2.2", false, true, true, false, false,
-				L"HDR test 22/26: 300-nit target; BT.2390 tone mapping", "300", "bt2390", "auto", "auto", "auto" },
-			{ L"23/26 HDR Reinhard", "direct", "limited", "2.2", false, true, true, false, false,
-				L"HDR test 23/26: 300-nit target; Reinhard tone mapping", "300", "reinhard", "auto", "auto", "auto" },
-			{ L"24/26 HDR softclip", "direct", "limited", "2.2", false, true, true, false, false,
-				L"HDR test 24/26: 300-nit target; soft-clip gamut mapping", "300", "auto", "softclip", "auto", "auto" },
-			{ L"25/26 HDR peak off", "direct", "limited", "2.2", false, true, true, false, false,
-				L"HDR test 25/26: 300-nit target; peak detection disabled", "300", "auto", "auto", "off", "auto" },
-			{ L"26/26 HDR recovery 0", "direct", "limited", "2.2", false, true, true, false, false,
-				L"HDR test 26/26: 300-nit target; contrast recovery disabled", "300", "auto", "auto", "auto", "0.0" },
+			{ L"1/17 HDR 100 nits", "direct", "full", "2.2", false, false, true, false, false,
+				L"HDR test 1/17: 100-nit target; VP-owned Full pure 2.2 anchor; meter-grade highlights, color, and black floor", "100", "auto", "auto", "auto", "auto" },
+			{ L"2/17 HDR 200 nits", "direct", "full", "2.2", false, false, true, false, false,
+				L"HDR test 2/17: 200-nit target; reported safe-boundary comparison on the same Full pure 2.2 contract", "200", "auto", "auto", "auto", "auto" },
+			{ L"3/17 HDR 250 nits", "direct", "full", "2.2", false, false, true, false, false,
+				L"HDR test 3/17: 250-nit target; first just-above-boundary color-crush check", "250", "auto", "auto", "auto", "auto" },
+			{ L"4/17 HDR 300 nits", "direct", "full", "2.2", false, false, true, false, false,
+				L"HDR test 4/17: 300-nit target; Full pure 2.2 baseline for mapping controls", "300", "auto", "auto", "auto", "auto" },
+			{ L"5/17 HDR 400 nits", "direct", "full", "2.2", false, false, true, false, false,
+				L"HDR test 5/17: 400-nit target; higher-target color and highlight stress comparison", "400", "auto", "auto", "auto", "auto" },
+			{ L"6/17 HDR legacy full sRGB", "direct", "full", "srgb", false, false, false, false, false,
+				L"HDR test 6/17: Legacy Full/sRGB baseline; compare curve and black floor with the VP-owned pure 2.2 anchor", "300" },
+			{ L"7/17 HDR full G22 guard off", "direct", "full", "2.2", false, false, false, false, false,
+				L"HDR test 7/17: Full pure 2.2 guard off; expect an explicit safe fallback to legacy Full/sRGB", "300" },
+			{ L"8/17 HDR VP full G22", "direct", "full", "2.2", false, false, true, false, false,
+				L"HDR test 8/17: VP-owned Full pure 2.2 proof; verify metadata/Present, then measure the physical curve", "300" },
+			{ L"9/17 HDR limited G22 guard off", "direct", "limited", "2.2", false, false, false, false, false,
+				L"HDR test 9/17: Limited pure 2.2 guard off; expect an explicit safe fallback to legacy Full/sRGB", "300" },
+			{ L"10/17 HDR VP limited G22", "direct", "limited", "2.2", false, true, true, false, false,
+				L"HDR test 10/17: VP-owned Limited pure 2.2 proof; meter-grade black floor against Full pure 2.2", "300" },
+			{ L"11/17 HDR VP limited G24", "direct", "limited", "2.4", false, false, true, false, false,
+				L"HDR test 11/17: VP-owned Limited pure 2.4 control; compare lifted blacks against Limited pure 2.2", "300" },
+			{ L"12/17 HDR composed full sRGB", "composed", "full", "srgb", false, false, false, false, false,
+				L"HDR test 12/17: Composed Full/sRGB control; expect libplacebo bitblt presentation and measure fullscreen/windowed behavior", "300" },
+			{ L"13/17 HDR BT2390", "direct", "full", "2.2", false, false, true, false, false,
+				L"HDR test 13/17: 300-nit Full pure 2.2; BT.2390 highlight roll-off", "300", "bt2390", "auto", "auto", "auto" },
+			{ L"14/17 HDR Reinhard", "direct", "full", "2.2", false, false, true, false, false,
+				L"HDR test 14/17: 300-nit Full pure 2.2; Reinhard compression comparison", "300", "reinhard", "auto", "auto", "auto" },
+			{ L"15/17 HDR softclip", "direct", "full", "2.2", false, false, true, false, false,
+				L"HDR test 15/17: 300-nit Full pure 2.2; soft-clip gamut-boundary comparison", "300", "auto", "softclip", "auto", "auto" },
+			{ L"16/17 HDR peak off", "direct", "full", "2.2", false, false, true, false, false,
+				L"HDR test 16/17: 300-nit Full pure 2.2; peak detection disabled", "300", "auto", "auto", "off", "auto" },
+			{ L"17/17 HDR recovery 0", "direct", "full", "2.2", false, false, true, false, false,
+				L"HDR test 17/17: 300-nit Full pure 2.2; contrast recovery disabled", "300", "auto", "auto", "auto", "0.0" },
 		};
 	}
 	if (!m_activeOutputSweepRequestedTests.IsEmpty())
@@ -3003,6 +2971,9 @@ bool CVideoProcessorDlg::ApplyActiveOutputSweepCase(size_t index)
 	m_activeOutputSweepCaseIndex = index;
 	m_activeOutputSweepAwaitingLiveFrame = true;
 	m_activeOutputSweepCaseFailed = false;
+	m_activeOutputSweepBannerState = SweepBannerState::Testing;
+	m_activeOutputSweepCaseResult = SweepResultState::Failed;
+	m_activeOutputSweepCaseDetail.Empty();
 	m_activeOutputSweepDeadlineTick = GetTickCount64() + 15000;
 	if (hdrSuite)
 	{
@@ -3136,20 +3107,21 @@ void CVideoProcessorDlg::CompleteActiveOutputSweep(const wchar_t* result)
 	DebugLog::Log("Active output sweep complete: result=%S", result);
 	if (m_activeOutputSweepSummaryVisible)
 	{
-		DebugLog::Log("Active output sweep summary retained: passed=%zu failed=%zu clear_on=renderer-reset-or-rebuild",
-			static_cast<size_t>(std::count_if(m_activeOutputSweepResults.begin(),
-				m_activeOutputSweepResults.end(),
-				[](const SweepSummaryItem& item) { return item.passed; })),
-			m_activeOutputSweepResults.size() - static_cast<size_t>(std::count_if(
-				m_activeOutputSweepResults.begin(), m_activeOutputSweepResults.end(),
-				[](const SweepSummaryItem& item) { return item.passed; })));
+		const size_t failed = static_cast<size_t>(std::count_if(
+			m_activeOutputSweepResults.begin(), m_activeOutputSweepResults.end(),
+			[](const SweepSummaryItem& item)
+			{
+				return item.state == SweepResultState::Failed;
+			}));
+		DebugLog::Log("Active output sweep summary retained: successful=%zu failed=%zu clear_on=renderer-reset-or-rebuild",
+			m_activeOutputSweepResults.size() - failed, failed);
 		UpdateStatsOverlay();
 	}
 	else if (m_videoRenderer)
 		m_videoRenderer->SetNativeSweepOverlay(nullptr, 0, 0, 0, 0);
 }
 
-void CVideoProcessorDlg::RecordActiveOutputSweepResult(bool passed,
+void CVideoProcessorDlg::RecordActiveOutputSweepResult(SweepResultState state,
 	const wchar_t* detail)
 {
 	if (m_activeOutputSweepCaseIndex >= m_activeOutputSweepCases.size() ||
@@ -3158,8 +3130,91 @@ void CVideoProcessorDlg::RecordActiveOutputSweepResult(bool passed,
 	SweepSummaryItem item;
 	item.label = m_activeOutputSweepCases[m_activeOutputSweepCaseIndex].description;
 	item.detail = detail;
-	item.passed = passed;
+	item.state = state;
 	m_activeOutputSweepResults.push_back(std::move(item));
+}
+
+bool CVideoProcessorDlg::EvaluateActiveOutputSweepCase(
+	SweepResultState& state, CString& detail) const
+{
+	using namespace ActiveOutputSweepPolicy;
+	using namespace RendererOutputContract;
+	state = SweepResultState::Failed;
+	detail.Empty();
+	if (!m_videoRenderer ||
+		m_activeOutputSweepCaseIndex >= m_activeOutputSweepCases.size())
+	{
+		detail = L"renderer or active test case is unavailable";
+		return false;
+	}
+
+	const ActiveOutputSweepCase& test =
+		m_activeOutputSweepCases[m_activeOutputSweepCaseIndex];
+	Status actual;
+	if (!m_videoRenderer->GetOutputContractStatus(actual))
+	{
+		detail = L"renderer did not expose structured output-contract state";
+		return false;
+	}
+
+	Expected expected;
+	const bool direct = strcmp(test.presentation, "direct") == 0;
+	const bool composed = strcmp(test.presentation, "composed") == 0;
+	const bool full = strcmp(test.range, "full") == 0;
+	const bool limited = strcmp(test.range, "limited") == 0;
+	const bool gamma22 = strcmp(test.gamma, "2.2") == 0;
+	const bool gamma24 = strcmp(test.gamma, "2.4") == 0;
+	const bool gamma20 = strcmp(test.gamma, "2.0") == 0;
+	const bool expectedFallback = gamma20 ||
+		(full && gamma22 && !(test.vpOwnedPresenter && direct)) ||
+		(limited && gamma22 && !test.allowLimitedG22);
+	expected.disposition = expectedFallback ? Disposition::FALLBACK :
+		Disposition::EXACT;
+	expected.presentation = composed ? Presentation::BITBLT :
+		direct ? Presentation::FLIP : Presentation::UNKNOWN;
+	expected.range = expectedFallback ? Range::FULL :
+		limited ? Range::LIMITED : Range::FULL;
+	expected.transfer = expectedFallback ? Transfer::SRGB :
+		gamma22 ? Transfer::GAMMA22 :
+		gamma24 || (limited && strcmp(test.gamma, "auto") == 0) ?
+		Transfer::GAMMA24 : Transfer::SRGB;
+	expected.requireVpOwner = test.vpOwnedPresenter && direct;
+	expected.requireDxgiVerification = expected.requireVpOwner;
+	expected.swapchainBitDepth = expected.requireVpOwner ?
+		(test.force8Bit ? 8u : 10u) : 0u;
+	const std::string configuredPrimaries = m_activeOutputSweepDocument ?
+		m_activeOutputSweepDocument->Get("vprenderer", "sdr_target_primaries") :
+		std::string();
+	expected.primaries = ConfigFile::NormalizeName(configuredPrimaries) == "bt2020" ?
+		Primaries::BT2020 : Primaries::REC709;
+	const bool hdrSuite = m_activeOutputSweepSuite.CompareNoCase(L"hdr") == 0;
+	expected.measurementRequired = !expectedFallback &&
+		(hdrSuite || gamma22 || gamma24 || limited || test.force8Bit);
+
+	const Decision decision = Evaluate(expected, actual);
+	state = decision.verdict == Verdict::PASS ? SweepResultState::Passed :
+		decision.verdict == Verdict::EXPECTED ? SweepResultState::Expected :
+		decision.verdict == Verdict::MEASURE ? SweepResultState::Measure :
+		SweepResultState::Failed;
+	const wchar_t* range = actual.range == Range::FULL ? L"Full" :
+		actual.range == Range::LIMITED ? L"Limited" : L"Unknown";
+	const wchar_t* transfer = actual.transfer == Transfer::GAMMA22 ? L"Pure2.2" :
+		actual.transfer == Transfer::GAMMA24 ? L"Pure2.4" :
+		actual.transfer == Transfer::SRGB ? L"sRGB" : L"Unknown";
+	const wchar_t* owner = actual.vpOwnsPresentation ? L"VP" : L"libplacebo";
+	const wchar_t* primaries = actual.primaries == Primaries::BT2020 ?
+		L"BT.2020" : actual.primaries == Primaries::REC709 ? L"Rec.709" : L"Unknown";
+	detail.Format(L"%S; actual=%s/%s/%s/%ubit owner=%s accepted=%d verified=%d presents=%llu format=%S DXGI=%S",
+		decision.reason.c_str(), range, transfer, primaries,
+		actual.swapchainBitDepth, owner,
+		actual.requestedContractActive ? 1 : 0,
+		actual.dxgiAppliedVerified ? 1 : 0,
+		static_cast<unsigned long long>(actual.successfulPresents),
+		actual.swapchainFormat.empty() ? "(none)" :
+			actual.swapchainFormat.c_str(),
+		actual.dxgiDeclaration.empty() ? "(none)" :
+			actual.dxgiDeclaration.c_str());
+	return decision.verdict != Verdict::WAITING;
 }
 
 void CVideoProcessorDlg::ClearActiveOutputSweepSummary(const char* reason)
@@ -3200,11 +3255,20 @@ void CVideoProcessorDlg::UpdateActiveOutputSweep(ULONGLONG now)
 			m_activeOutputSweepCaseIndex + 1);
 		m_activeOutputSweepAwaitingLiveFrame = false;
 		m_activeOutputSweepCaseFailed = true;
+		m_activeOutputSweepBannerState = SweepBannerState::Failed;
+		m_activeOutputSweepCaseResult = SweepResultState::Failed;
+		SweepResultState classifiedState = SweepResultState::Failed;
+		CString classifiedDetail;
+		if (EvaluateActiveOutputSweepCase(classifiedState, classifiedDetail))
+			m_activeOutputSweepCaseDetail = classifiedDetail;
+		else
+			m_activeOutputSweepCaseDetail = L"no live frame after 15 seconds";
 		const ULONGLONG failureHoldMs = m_activeOutputSweepHoldMs < 5000 ?
 			m_activeOutputSweepHoldMs : 5000;
 		m_activeOutputSweepDeadlineTick = now + failureHoldMs;
-		m_activeOutputSweepStatus.Format(L"%s\nNo live video after 15 seconds; holding failure",
-			m_activeOutputSweepCases[m_activeOutputSweepCaseIndex].description);
+		m_activeOutputSweepStatus.Format(L"%s\nFAIL: %s; holding failure",
+			m_activeOutputSweepCases[m_activeOutputSweepCaseIndex].description,
+			m_activeOutputSweepCaseDetail.GetString());
 		DebugLog::Log("Active output sweep case failure hold: index=%zu hold_ms=%llu",
 			m_activeOutputSweepCaseIndex + 1,
 			m_activeOutputSweepDeadlineTick - now);
@@ -3213,15 +3277,27 @@ void CVideoProcessorDlg::UpdateActiveOutputSweep(ULONGLONG now)
 	}
 	if (m_activeOutputSweepCaseFailed)
 	{
-		RecordActiveOutputSweepResult(false, L"no live frame after 15 seconds");
+		RecordActiveOutputSweepResult(SweepResultState::Failed,
+			m_activeOutputSweepCaseDetail.GetString());
 		DebugLog::Log("Active output sweep case failed after visible hold: index=%zu",
 			m_activeOutputSweepCaseIndex + 1);
 	}
 	else
 	{
-		RecordActiveOutputSweepResult(true, L"live frame observed");
-		DebugLog::Log("Active output sweep case passed live hold: index=%zu hold_ms=%lu",
-			m_activeOutputSweepCaseIndex + 1, m_activeOutputSweepHoldMs);
+		SweepResultState state = SweepResultState::Failed;
+		CString detail;
+		if (!EvaluateActiveOutputSweepCase(state, detail))
+		{
+			state = SweepResultState::Failed;
+			detail = L"output metadata did not settle before the hold completed";
+		}
+		RecordActiveOutputSweepResult(state, detail.GetString());
+		const char* verdict = state == SweepResultState::Passed ? "PASS" :
+			state == SweepResultState::Expected ? "EXPECTED" :
+			state == SweepResultState::Measure ? "MEASURE" : "FAIL";
+		DebugLog::Log("Active output sweep assertion: index=%zu verdict=%s hold_ms=%lu detail=%S",
+			m_activeOutputSweepCaseIndex + 1, verdict,
+			m_activeOutputSweepHoldMs, detail.GetString());
 	}
 	const size_t next = m_activeOutputSweepCaseIndex + 1;
 	if (next < m_activeOutputSweepCases.size())
@@ -5647,16 +5723,34 @@ LRESULT CVideoProcessorDlg::OnMessageRendererLiveFrame(
 	if (m_activeOutputSweepRunning && m_activeOutputSweepAwaitingLiveFrame &&
 		m_activeOutputSweepCaseIndex < m_activeOutputSweepCases.size())
 	{
-		m_activeOutputSweepAwaitingLiveFrame = false;
-		m_activeOutputSweepCaseFailed = false;
-		m_activeOutputSweepDeadlineTick = GetTickCount64() +
-			m_activeOutputSweepHoldMs;
-		m_activeOutputSweepStatus.Format(L"%s\nLive video observed; holding %lus",
-			m_activeOutputSweepCases[m_activeOutputSweepCaseIndex].description,
-			m_activeOutputSweepHoldMs / 1000);
-		DebugLog::Log("Active output sweep live frame: index=%zu hold_ms=%lu",
-			m_activeOutputSweepCaseIndex + 1, m_activeOutputSweepHoldMs);
-		UpdateStatsOverlay();
+		SweepResultState state = SweepResultState::Failed;
+		CString detail;
+		if (EvaluateActiveOutputSweepCase(state, detail))
+		{
+			m_activeOutputSweepAwaitingLiveFrame = false;
+			m_activeOutputSweepCaseResult = state;
+			m_activeOutputSweepCaseDetail = detail;
+			m_activeOutputSweepCaseFailed = state == SweepResultState::Failed;
+			m_activeOutputSweepBannerState = state == SweepResultState::Passed ?
+				SweepBannerState::Passed : state == SweepResultState::Expected ?
+				SweepBannerState::Expected : state == SweepResultState::Measure ?
+				SweepBannerState::Measure : SweepBannerState::Failed;
+			m_activeOutputSweepDeadlineTick = GetTickCount64() +
+				(m_activeOutputSweepCaseFailed ?
+					(std::min<DWORD>)(m_activeOutputSweepHoldMs, 5000) :
+					m_activeOutputSweepHoldMs);
+			const wchar_t* label = state == SweepResultState::Passed ? L"PASS" :
+				state == SweepResultState::Expected ? L"EXPECTED" :
+				state == SweepResultState::Measure ? L"MEASURE" : L"FAIL";
+			m_activeOutputSweepStatus.Format(L"%s\n%s: %s; holding %lus",
+				m_activeOutputSweepCases[m_activeOutputSweepCaseIndex].description,
+				label, detail.GetString(),
+				(m_activeOutputSweepDeadlineTick - GetTickCount64()) / 1000);
+			DebugLog::Log("Active output sweep live classification: index=%zu state=%d hold_ms=%llu detail=%S",
+				m_activeOutputSweepCaseIndex + 1, static_cast<int>(state),
+				m_activeOutputSweepDeadlineTick - GetTickCount64(), detail.GetString());
+			UpdateStatsOverlay();
+		}
 	}
 	return 0;
 }
@@ -12722,8 +12816,7 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 				summaryPage, summaryItemsPerPage, pixels, width, height, stride) :
 			m_statsOverlay->RenderSweepBannerBgra(m_activeOutputSweepStatus,
 				m_activeOutputSweepAwaitingLiveFrame || m_activeOutputSweepRestorePending ?
-					SweepBannerState::Testing : m_activeOutputSweepCaseFailed ?
-					SweepBannerState::Failed : SweepBannerState::Passed,
+					SweepBannerState::Testing : m_activeOutputSweepBannerState,
 				pixels, width, height, stride);
 		if (rendered)
 		{

@@ -144,6 +144,16 @@ enum class SweepBannerState
 {
 	Testing,
 	Passed,
+	Expected,
+	Measure,
+	Failed,
+};
+
+enum class SweepResultState
+{
+	Passed,
+	Expected,
+	Measure,
 	Failed,
 };
 
@@ -151,7 +161,7 @@ struct SweepSummaryItem
 {
 	CString label;
 	CString detail;
-	bool passed = false;
+	SweepResultState state = SweepResultState::Failed;
 };
 
 class StatsOverlayWindow

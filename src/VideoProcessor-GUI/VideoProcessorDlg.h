@@ -742,6 +742,9 @@ protected:
 	bool m_activeOutputSweepRunning = false;
 	bool m_activeOutputSweepAwaitingLiveFrame = false;
 	bool m_activeOutputSweepCaseFailed = false;
+	SweepBannerState m_activeOutputSweepBannerState = SweepBannerState::Testing;
+	SweepResultState m_activeOutputSweepCaseResult = SweepResultState::Failed;
+	CString m_activeOutputSweepCaseDetail;
 	bool m_activeOutputSweepRestorePending = false;
 	bool m_activeOutputSweepSummaryVisible = false;
 	ULONGLONG m_activeOutputSweepSummaryStartedTick = 0;
@@ -834,7 +837,10 @@ protected:
 	bool ApplyActiveOutputSweepConfiguration();
 	void RestoreActiveOutputSweepConfiguration(const wchar_t* reason);
 	void CompleteActiveOutputSweep(const wchar_t* result);
-	void RecordActiveOutputSweepResult(bool passed, const wchar_t* detail);
+	void RecordActiveOutputSweepResult(SweepResultState state,
+		const wchar_t* detail);
+	bool EvaluateActiveOutputSweepCase(SweepResultState& state,
+		CString& detail) const;
 	void ClearActiveOutputSweepSummary(const char* reason);
 	bool StageSavedConfiguration(const char* reason, bool stageAccelerators);
 	bool PublishStagedConfiguration(bool replaceAccelerators);

@@ -13,6 +13,7 @@
 #include <VideoState.h>
 #include <RendererLiveness.h>
 #include <RendererResetRequest.h>
+#include <RendererOutputContractStatus.h>
 #include <SubtitleRepositionMode.h>
 #include <functional>
 #include <memory>
@@ -291,6 +292,15 @@ public:
 	virtual bool GetOutputModeInfo(CString& details) const
 	{
 		details.Empty();
+		return false;
+	}
+
+	// Structured counterpart to GetOutputModeInfo for automated output-contract
+	// tests. Logs remain the audit trail; test code must not scrape log text.
+	virtual bool GetOutputContractStatus(
+		RendererOutputContract::Status& status) const
+	{
+		status = {};
 		return false;
 	}
 

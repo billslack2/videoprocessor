@@ -2534,9 +2534,11 @@ struct LibplaceboVideoRenderer::Impl
 	uint64_t vpOwnedTargetValidationLoggedGeneration = 0;
 	uint64_t vpOwnedTargetFailureLoggedGeneration = 0;
 	uint64_t vpOwnedPresentFailureLoggedGeneration = 0;
+	uint64_t successfulPresentCount = 0;
 	std::string vpOwnedAppliedEncoding = "unapplied";
 	HRESULT vpOwnedColorSpaceResult = E_PENDING;
 	bool vpOwnedColorSpaceVerified = false;
+	DXGI_FORMAT negotiatedSwapchainFormat = DXGI_FORMAT_UNKNOWN;
 	pl_renderer renderer = nullptr;
 	LibplaceboCompileTelemetry compileTelemetry;
 	pl_tex textures[2] = { nullptr, nullptr };
@@ -4165,6 +4167,7 @@ struct LibplaceboVideoRenderer::Impl
 		vpOwnedTargetValidationLoggedGeneration = 0;
 		vpOwnedTargetFailureLoggedGeneration = 0;
 		vpOwnedPresentFailureLoggedGeneration = 0;
+		successfulPresentCount = 0;
 	}
 
 	bool CreateVpOwnedSwapchain(bool blit, const char* trigger)
@@ -4226,6 +4229,7 @@ struct LibplaceboVideoRenderer::Impl
 		vpOwnedTargetValidationLoggedGeneration = 0;
 		vpOwnedTargetFailureLoggedGeneration = 0;
 		vpOwnedPresentFailureLoggedGeneration = 0;
+		successfulPresentCount = 0;
 		DebugLog::Log(
 			"VP-owned DXGI swapchain: created generation=%llu trigger=%s format=%u effect=%u buffers=%u usage=0x%08X size=%ux%u present_owner=VP",
 			static_cast<unsigned long long>(vpOwnedSwapchainGeneration), trigger,
@@ -4246,6 +4250,7 @@ struct LibplaceboVideoRenderer::Impl
 		negotiatedMonitor = MonitorFromWindow(
 			videoHwnd,
 			MONITOR_DEFAULTTONEAREST);
+		negotiatedSwapchainFormat = DXGI_FORMAT_UNKNOWN;
 		if (!swapchain)
 		{
 			actualOutput = {};
@@ -4290,9 +4295,11 @@ struct LibplaceboVideoRenderer::Impl
 		}
 
 		DXGI_SWAP_CHAIN_DESC swapchainDesc{};
+		negotiatedSwapchainFormat = DXGI_FORMAT_UNKNOWN;
 		const HRESULT descResult = nativeSwapchain->GetDesc(&swapchainDesc);
 		if (SUCCEEDED(descResult))
 		{
+			negotiatedSwapchainFormat = swapchainDesc.BufferDesc.Format;
 			const bool flip =
 				swapchainDesc.SwapEffect == DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL ||
 				swapchainDesc.SwapEffect == DXGI_SWAP_EFFECT_FLIP_DISCARD;
@@ -4490,6 +4497,16 @@ struct LibplaceboVideoRenderer::Impl
 					(probe.support & DXGI_SWAP_CHAIN_COLOR_SPACE_SUPPORT_FLAG_PRESENT) ? 1 : 0,
 					(probe.support & DXGI_SWAP_CHAIN_COLOR_SPACE_SUPPORT_FLAG_OVERLAY_PRESENT) ? 1 : 0);
 			}
+		}
+
+		// VP owns this swapchain specifically so its applied state is
+		// authoritative. Apply and recheck even the nominal Full/sRGB baseline;
+		// merely relying on the creation default would leave the record unknown.
+		if (vpOwnsPresentation && swapchain3 && safeFullBaseline &&
+			outputPlan.valid && !outputPlan.requiresDxgiOverride)
+		{
+			evidence.fullRestoreRequired = true;
+			restoreFullAndVerify();
 		}
 
 		auto toDxgi = [](DxgiEncoding encoding)
@@ -8060,6 +8077,7 @@ struct LibplaceboVideoRenderer::Impl
 				: 0.0;
 		if (rendered && submitted)
 		{
+			++successfulPresentCount;
 			AlphaPresentationRecord record;
 			record.generation = frameGeneration;
 			record.sourceSequence = sourceSequence;
@@ -9521,6 +9539,58 @@ bool LibplaceboVideoRenderer::GetOutputModeInfo(CString& details) const
 		value += " | Pixel Pure2.2; DXGI Full-G22/sRGB nominal; wire unverified";
 	}
 	details = CString(value);
+	return true;
+}
+
+
+bool LibplaceboVideoRenderer::GetOutputContractStatus(
+	RendererOutputContract::Status& status) const
+{
+	status = {};
+	if (!m_impl)
+		return false;
+
+	using namespace RendererOutputContract;
+	std::lock_guard<std::mutex> guard(m_impl->renderMutex);
+	status.available = true;
+	status.safeToRender = m_impl->actualOutput.safeToRender;
+	status.requestedContractActive =
+		m_impl->actualOutput.requestedEncodingActive;
+	status.vpOwnsPresentation = m_impl->vpOwnedSwapchain != nullptr;
+	status.dxgiAppliedVerified = status.vpOwnsPresentation &&
+		m_impl->vpOwnedColorSpaceVerified;
+	status.strictContract = m_impl->outputPlan.strictContract;
+	status.successfulPresents = m_impl->successfulPresentCount;
+	status.swapchainBitDepth =
+		m_impl->negotiatedSwapchainFormat == DXGI_FORMAT_R10G10B10A2_UNORM ? 10 :
+		m_impl->negotiatedSwapchainFormat == DXGI_FORMAT_R16G16B16A16_FLOAT ? 16 :
+		m_impl->negotiatedSwapchainFormat == DXGI_FORMAT_B8G8R8A8_UNORM ||
+		m_impl->negotiatedSwapchainFormat == DXGI_FORMAT_R8G8B8A8_UNORM ? 8 : 0;
+	status.presentation = m_impl->actualOutput.presentationModel ==
+		LibplaceboOutput::PresentationModel::FLIP ? Presentation::FLIP :
+		m_impl->actualOutput.presentationModel ==
+		LibplaceboOutput::PresentationModel::BITBLT ? Presentation::BITBLT :
+		Presentation::UNKNOWN;
+	status.range = std::string(LibplaceboOutput::ToRangeString(
+		m_impl->actualOutput.encoding)) == "FULL" ? Range::FULL : Range::LIMITED;
+	const pl_color_transfer transfer = m_impl->ResolvedPixelTransfer(
+		m_impl->actualOutput.encoding, m_impl->actualOutput.targetTransfer);
+	status.transfer = transfer == PL_COLOR_TRC_GAMMA22 ? Transfer::GAMMA22 :
+		transfer == PL_COLOR_TRC_GAMMA24 ? Transfer::GAMMA24 :
+		transfer == PL_COLOR_TRC_SRGB ? Transfer::SRGB : Transfer::UNKNOWN;
+	status.primaries = m_impl->targetBt2020 ? Primaries::BT2020 : Primaries::REC709;
+	status.dxgiDeclaration = LibplaceboOutput::ToString(
+		m_impl->actualOutput.encoding);
+	status.swapchainFormat =
+		m_impl->negotiatedSwapchainFormat == DXGI_FORMAT_R10G10B10A2_UNORM ?
+			"R10G10B10A2_UNORM" :
+		m_impl->negotiatedSwapchainFormat == DXGI_FORMAT_R16G16B16A16_FLOAT ?
+			"R16G16B16A16_FLOAT" :
+		m_impl->negotiatedSwapchainFormat == DXGI_FORMAT_B8G8R8A8_UNORM ?
+			"B8G8R8A8_UNORM" :
+		m_impl->negotiatedSwapchainFormat == DXGI_FORMAT_R8G8B8A8_UNORM ?
+			"R8G8B8A8_UNORM" : "UNKNOWN";
+	status.reason = m_impl->actualOutput.reason;
 	return true;
 }
 

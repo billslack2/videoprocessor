@@ -71,6 +71,8 @@ public:
 	double ExitLatencyMs() const override;
 	uint64_t DroppedFrameCount() const override;
 	bool GetOutputModeInfo(CString& details) const override;
+	bool GetOutputContractStatus(
+		RendererOutputContract::Status& status) const override;
 	bool GetDisplayLutInfo(CString& details) const override;
 	bool GetVideoIngressInfo(CString& details) const override;
 	bool GetPresentationTargetTiming(double& leadMs,

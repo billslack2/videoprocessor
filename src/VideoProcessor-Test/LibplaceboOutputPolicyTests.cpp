@@ -2,6 +2,7 @@
 #include "CppUnitTest.h"
 
 #include <vprenderer/LibplaceboOutputPolicy.h>
+#include <ActiveOutputSweepPolicy.h>
 
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
@@ -12,6 +13,112 @@ namespace Tests
 	TEST_CLASS(LibplaceboOutputPolicyTests)
 	{
 	public:
+		TEST_METHOD(ActiveSweepExactContractRequiresMetadataAndPresent)
+		{
+			using namespace ActiveOutputSweepPolicy;
+			using namespace RendererOutputContract;
+			Expected expected;
+			expected.presentation = Presentation::FLIP;
+			expected.range = Range::FULL;
+			expected.transfer = Transfer::GAMMA22;
+			expected.primaries = Primaries::REC709;
+			expected.requireVpOwner = true;
+			expected.requireDxgiVerification = true;
+			expected.swapchainBitDepth = 10;
+			Status actual;
+			actual.available = true;
+			actual.safeToRender = true;
+			actual.requestedContractActive = true;
+			actual.vpOwnsPresentation = true;
+			actual.dxgiAppliedVerified = true;
+			actual.swapchainBitDepth = 10;
+			actual.presentation = Presentation::FLIP;
+			actual.range = Range::FULL;
+			actual.transfer = Transfer::GAMMA22;
+			actual.primaries = Primaries::REC709;
+			Assert::AreEqual(static_cast<int>(Verdict::WAITING),
+				static_cast<int>(Evaluate(expected, actual).verdict));
+			actual.successfulPresents = 1;
+			Assert::AreEqual(static_cast<int>(Verdict::PASS),
+				static_cast<int>(Evaluate(expected, actual).verdict));
+			actual.swapchainBitDepth = 8;
+			Assert::AreEqual(static_cast<int>(Verdict::FAIL),
+				static_cast<int>(Evaluate(expected, actual).verdict));
+			actual.swapchainBitDepth = 10;
+			actual.primaries = Primaries::BT2020;
+			Assert::AreEqual(static_cast<int>(Verdict::FAIL),
+				static_cast<int>(Evaluate(expected, actual).verdict));
+		}
+
+		TEST_METHOD(ActiveSweepPhysicalCurveIsMeasurementNotAutomaticPass)
+		{
+			using namespace ActiveOutputSweepPolicy;
+			using namespace RendererOutputContract;
+			Expected expected;
+			expected.presentation = Presentation::FLIP;
+			expected.range = Range::FULL;
+			expected.transfer = Transfer::GAMMA22;
+			expected.requireVpOwner = true;
+			expected.measurementRequired = true;
+			Status actual;
+			actual.available = true;
+			actual.safeToRender = true;
+			actual.requestedContractActive = true;
+			actual.vpOwnsPresentation = true;
+			actual.successfulPresents = 4;
+			actual.presentation = Presentation::FLIP;
+			actual.range = Range::FULL;
+			actual.transfer = Transfer::GAMMA22;
+			Assert::AreEqual(static_cast<int>(Verdict::MEASURE),
+				static_cast<int>(Evaluate(expected, actual).verdict));
+		}
+
+		TEST_METHOD(ActiveSweepExpectedFallbackMustActuallyFallback)
+		{
+			using namespace ActiveOutputSweepPolicy;
+			using namespace RendererOutputContract;
+			Expected expected;
+			expected.disposition = Disposition::FALLBACK;
+			expected.presentation = Presentation::FLIP;
+			expected.range = Range::FULL;
+			expected.transfer = Transfer::SRGB;
+			Status actual;
+			actual.available = true;
+			actual.safeToRender = true;
+			actual.successfulPresents = 1;
+			actual.presentation = Presentation::FLIP;
+			actual.range = Range::FULL;
+			actual.transfer = Transfer::SRGB;
+			Assert::AreEqual(static_cast<int>(Verdict::EXPECTED),
+				static_cast<int>(Evaluate(expected, actual).verdict));
+			actual.range = Range::LIMITED;
+			Assert::AreEqual(static_cast<int>(Verdict::FAIL),
+				static_cast<int>(Evaluate(expected, actual).verdict));
+			actual.range = Range::FULL;
+			actual.requestedContractActive = true;
+			Assert::AreEqual(static_cast<int>(Verdict::FAIL),
+				static_cast<int>(Evaluate(expected, actual).verdict));
+		}
+
+		TEST_METHOD(ActiveSweepUnexpectedFallbackAndBlockedStateFail)
+		{
+			using namespace ActiveOutputSweepPolicy;
+			using namespace RendererOutputContract;
+			Expected expected;
+			Status actual;
+			actual.available = true;
+			actual.safeToRender = true;
+			actual.successfulPresents = 1;
+			Assert::AreEqual(static_cast<int>(Verdict::FAIL),
+				static_cast<int>(Evaluate(expected, actual).verdict));
+			actual.safeToRender = false;
+			Assert::AreEqual(static_cast<int>(Verdict::FAIL),
+				static_cast<int>(Evaluate(expected, actual).verdict));
+			expected.disposition = Disposition::BLOCKED;
+			Assert::AreEqual(static_cast<int>(Verdict::EXPECTED),
+				static_cast<int>(Evaluate(expected, actual).verdict));
+		}
+
 		TEST_METHOD(OneShotInfoFrameSetIsAuthoritativeWhenReadbackDoesNotEcho)
 		{
 			Assert::AreEqual(

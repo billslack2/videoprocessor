@@ -448,6 +448,12 @@ bool LibplaceboPluginVideoRenderer::GetOutputModeInfo(CString& details) const
 	return m_renderer->GetOutputModeInfo(details);
 }
 
+bool LibplaceboPluginVideoRenderer::GetOutputContractStatus(
+	RendererOutputContract::Status& status) const
+{
+	return m_renderer->GetOutputContractStatus(status);
+}
+
 
 bool LibplaceboPluginVideoRenderer::GetDisplayLutInfo(CString& details) const
 {
