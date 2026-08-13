@@ -11,20 +11,25 @@ inside the active picture area. Results are based on structured renderer state,
 not log-text matching:
 
 - `PASS` (green): the requested technical contract, presenter ownership, target
-  primaries, required DXGI Check/Set/Check evidence, and a successful Present
-  match a case whose physical response does not need grading.
+  primaries, required DXGI Check/Set/Check evidence, successful submission, and
+  DXGI presented-frame evidence match a case whose physical response does not
+  need grading.
 - `EXPECTED` (cyan): a deliberately unsupported request produced the exact safe
   fallback or block described by the case. An arbitrary fallback is a failure.
-- `MEASURE` (amber): metadata and Present match, but the case exists to compare
-  black floor, transfer, HDR mapping, bit depth, or another physical result.
+- `MEASURE` (amber): either the case exists to compare black floor, transfer,
+  HDR mapping, bit depth, or another physical result, or composed/BitBlt frames
+  were rendered and submitted without authoritative display-delivery evidence.
   Grade it visually or with a meter; VP must not claim that logs prove it.
 - `FAIL` (red): the applied contract contradicts the expected contract, required
   DXGI evidence is absent, rendering is unexpectedly blocked/fallback, or no
-  successful Present is observed before the timeout.
+  successful submission is observed before the timeout.
 
 Each result includes actual range, pixel transfer, target primaries, presenter
-owner, acceptance/verification flags, successful-Present count, and the DXGI
-declaration. The same assertion is written to the renderer log for audit.
+owner, acceptance/verification flags, submission count, renderer-readback
+state, display-delivery evidence, actual swapchain format, and the DXGI
+declaration. A nonblack backbuffer proves renderer content only; it does not
+prove that DWM or the physical display showed the frame. The same assertion is
+written to the renderer log for audit.
 
 ## Shared controls
 
@@ -62,8 +67,8 @@ but only the display or an instrument can prove the resulting curve and floor.
 | 6 | VP Flip, Limited, pure 2.2, verified DXGI | Projector Limited-range curve and floor. |
 | 7 | VP Flip, Limited, pure 2.4, verified DXGI | Lifted-black control against test 6. |
 | 8 | VP Flip, Full, sRGB, 8-bit request | Banding/levels against 10-bit test 2. |
-| 9 | libplacebo bitblt, Full, sRGB, Present | Composed-path behavior. |
-| 10 | libplacebo bitblt despite VP-owned request | Confirms documented Composed ownership. |
+| 9 | libplacebo bitblt, Full, sRGB, submitted; delivery unverified | Visually grade composed-path delivery; never automatic PASS. |
+| 10 | libplacebo bitblt despite VP-owned request; delivery unverified | Confirms documented Composed ownership and requires visual grading. |
 
 ## HDR tone-mapping suite
 
