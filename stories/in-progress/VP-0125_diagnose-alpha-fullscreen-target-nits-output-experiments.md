@@ -148,6 +148,10 @@ stable test numbers and what remains a visual or meter judgment.
 Commit `6fbd642` passed all 38 focused output-policy/harness tests and all 36
 standalone configuration tests. The complete native suite remains 817/822 with
 the same five unrelated configuration/reference baseline failures.
+Commit `6bba8cb` moves the PowerShell launcher, display-selection wrappers, and
+clean SDR/HDR templates into `packaging/active-output-sweep`; test packages are
+therefore reproducible from a clean checkout instead of depending on ignored
+prior artifact folders.
 
 ## User story
 
