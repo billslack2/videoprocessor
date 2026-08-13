@@ -50,6 +50,14 @@ fullscreen path no longer opens that modal dialog over the active Alpha surface;
 it presents the clean pattern immediately and records input/profile and output
 contract evidence in the VP log instead. The x64 Release generator was rebuilt.
 
+HDR ingress follow-up commit: `ba029a1`. A live HDR10/R10l test reached Alpha
+but libplacebo rejected direct packed-R10l texture upload ("Failed picking any
+compatible texture format for a plane"). HDR pattern frames now use VP's tested
+R10l-to-P010 formatter path while retaining PQ/BT.2020 source metadata. The
+global HDR reference-white field defaults to 203 nits; its value drives PQ
+encoding and MaxCLL/MaxFALL for every HDR pattern. The Release launcher was
+rebuilt and the R10l-to-P010 golden, endpoint, and 4K smoke tests pass.
+
 The implementation now builds a dedicated executable alias and feeds canonical
 test frames directly to the real Alpha plugin. Alpha resolves the same unified
 `VideoProcessor.cfg` (or explicit `--config`/`--vr_config`) as normal VP. The
