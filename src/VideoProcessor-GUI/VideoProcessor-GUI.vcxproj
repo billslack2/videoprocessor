@@ -244,6 +244,8 @@
   <Target Name="CopyPatternGeneratorExecutable" AfterTargets="Build">
     <Copy SourceFiles="$(TargetPath)"
           DestinationFiles="$(OutDir)VideoProcessorPatternGenerator.exe" />
+    <Copy SourceFiles="$(SolutionDir)StartPatternGenerator.cmd"
+          DestinationFiles="$(OutDir)StartPatternGenerator.cmd" />
   </Target>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
