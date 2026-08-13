@@ -25,6 +25,13 @@ MaxCLL/MaxFALL 203, the configured `spline` tone mapper, a negotiated
 and test configuration were removed, the committed tree is clean, and the
 normal x64 Release executable was rebuilt with all five focused tests passing.
 
+Launcher/package follow-up commit: `877a17e`. Every x64 build now emits
+`StartPatternGenerator.cmd` beside `VideoProcessorPatternGenerator.exe`, and
+both are explicit release-manifest entries. The launcher sets its working
+directory to the installation folder and starts only the dedicated executable.
+The full x64 Release build and release-manifest dry run both pass with the two
+artifacts included by default.
+
 The implementation now builds a dedicated executable alias and feeds canonical
 test frames directly to the real Alpha plugin. Alpha resolves the same unified
 `VideoProcessor.cfg` (or explicit `--config`/`--vr_config`) as normal VP. The
@@ -52,6 +59,7 @@ without starting capture or the normal VP runtime.
    normal VP application. It must not discover or open capture hardware and
    must not create the regular operator dialog.
 2. Use a small native Win32/MFC menu; do not add Qt or a browser runtime.
+   Ship a double-click command launcher beside the dedicated executable.
 3. Show purpose and adjustment instructions before launching each pattern.
 4. Present the chosen pattern borderlessly using normal VP fullscreen-monitor
    selection and fallback semantics. Any mouse click or ordinary key returns to
