@@ -17,16 +17,17 @@ tone mapping, gamut conversion, levels, transfer, signalling, or the display.
 Implementation began from confirmed `origin/v1.2.001-beta` at
 `b7de6a2b9c99940e266d4144e52799e1253e6cb2` in clean worktree
 `work\vp-0125-dxgi-output`, branch `codex/vp-0125-dxgi-output`. Initial
-commit `aa08b8c` is local only; no deployment or active-user configuration
-change has occurred.
+commit `aa08b8c` was initially local only. Later work and deployment are recorded
+below.
 
 ## Implementation record: guarded first experiment slice
 
-`aa08b8c`, `d3d358b`, and `eb73951` in the same clean worktree add a
-deliberately bounded source-level experiment without making the pair a normal
-output default. The completed local source commits are `aa08b8c` (guarded
-output path), `d3d358b` (UI and output-capability logging), and `eb73951`
-(profiles and the VP-owned DXGI swapchain beta):
+`aa08b8c`, `d3d358b`, `eb73951`, and subsequent commits in the same clean
+worktree add a deliberately bounded experiment without making the pair a normal
+output default. The source commits include `aa08b8c` (guarded output path),
+`d3d358b` (UI and output-capability logging), `eb73951` (profiles and the first
+VP-owned DXGI swapchain beta), and `d1831c5` (VP-owned Present and corrected
+external-backbuffer capabilities):
 
 - `diagnostic_allow_limited_g22: true`, together with
   `output_range: limited` and `output_gamma: 2.2`, builds a pure
@@ -47,11 +48,9 @@ output path), `d3d358b` (UI and output-capability logging), and `eb73951`
   state/no-compute/latency, swapchain descriptor, adapter/output, colour-space
   probes, Set HRESULT, final VP contract, and R10 backbuffer statistics.
 - The Windows `IDXGISwapChain3` API used here has no `GetColorSpace1` getter.
-  Therefore current evidence is explicitly labelled Check/Set/Check and
-  `active_readback=unavailable`, not falsely reported as active DXGI state.
-  The beta VP-owned swapchain path now carries VP's applied Check/Set/Check
-  record internally and still distinguishes that logical state from
-  wire/display confirmation.
+  Therefore evidence is explicitly labelled Check/Set/Check and as VP's
+  generation-scoped applied-state record, not falsely reported as active DXGI
+  readback or wire state.
 - VP Renderer: Rendering now exposes an independently collapsed **Output
   Experiments (beta)** section. Its controls are editable and saved with the
   selected renderer profile. `legacy` writes the exact existing shipping
@@ -63,31 +62,67 @@ output path), `d3d358b` (UI and output-capability logging), and `eb73951`
   output-path configuration, without changing nits, tone mapping, capture, or
   geometry settings. A focused Qt test verifies proposed save, custom
   transition, and legacy reset persistence.
-- `diagnostic_vp_owned_dxgi_presenter: true` is the first implementation
-  stage of the intended architecture, accurately labelled **VP-owned DXGI
-  swapchain (beta)** in the UI. VP creates the swapchain with
+- `diagnostic_vp_owned_dxgi_presenter: true` is the current vertical slice of
+  the intended architecture, labelled **VP-owned DXGI swapchain (beta)** in
+  the UI. VP creates the swapchain with
   `IDXGIFactory2::CreateSwapChainForHwnd` (R10G10B10A2 by default, B8G8R8A8
   only for the 8-bit experiment; flip-discard/three buffers or bitblt/one
   buffer), applies the selected DXGI colour space itself, and records the
-  request, HRESULT, and post-check result. Libplacebo wraps that same
-  swapchain for rendering and still submits/presents in this stage. It is
-  therefore not yet the production VP-owned presentation loop; resize,
-  fullscreen, timing, and physical-display validation remain required.
+  request, HRESULT, and post-check result. Libplacebo renders to a VP-acquired
+  backbuffer, but VP flushes and calls `Present` itself. The compatibility
+  wrapper remains for resize/configuration while the complete VP-owned state
+  machine is implemented; physical-display and HDR validation remain required.
 - Output logging now records `IDXGIOutput6::GetDesc1` capabilities when
   available: Windows-reported display colour space, bits per colour, and
   minimum, peak, and full-frame luminance. This remains evidence about the
   desktop/output, distinct from the swapchain colour-space request.
 
-Focused `LibplaceboOutputPolicyTests` passed 31/31 before this profile/swapchain
-slice. x64 Release `VideoProcessor-VPRenderer` and
-`VideoProcessor-ConfigTests` builds pass for the current slice; the focused
-Output Experiments profile persistence/reset test passes. The legacy
-`VideoProcessor-Test` executable currently cannot link because the toolchain
-reports corrupt debug information from an unrelated `VideoProcessor-Lib`
-object even after rebuilding that library. The broader Config Editor test group
-currently has two pre-existing failures around `default_screen_profile`; they
-do not exercise these output-policy tests. Physical display, fullscreen, HDR,
-and target-nits validation remain outstanding.
+The clean x64 Release build at `d1831c5` passed all 36
+`VideoProcessorConfigTests`. The native suite reports 810/815 passing; the five
+remaining failures were confirmed as pre-existing and do not exercise the new
+presenter path. Fullscreen SDR technical validation is recorded below. HDR,
+target-nits, and external visual/measurement validation remain outstanding.
+
+The implementation branch is `codex/vp-0125-dxgi-output`, based on the current
+`v1.2.001-beta` integration line. Output Experiments, active SDR/HDR fullscreen
+sweeps, platform inventory, requested/effective/applied output logging, and the
+first VP-owned DXGI Present slice are implemented there. The target-nits report
+still needs the controlled HDR matrix and external visual/measurement evidence;
+"crushed colours" remains a symptom rather than an established pipeline cause.
+
+On 2026-08-12 commit `d1831c5` was built as a clean x64 Release and deployed
+for an SDR EPSON proof. VP created a 3840x2160, 10-bit, three-buffer Flip Discard
+swapchain with render-target, shader-input, and unordered-access usage; applied
+and capability-rechecked `RGB_STUDIO_G22_NONE_P709`; verified the acquired
+backbuffer as `renderable=1, blit_dst=1`; and owned each Present. The live run
+reached stable present IDs/frame statistics at about 59.941 Hz with zero
+libplacebo validation failures, target rejections, Present failures, or device
+errors. This proves the former black/lag failure was the invalid external-target
+contract plus split Present ownership. It does not yet prove the physical wire
+or projector transfer response.
+
+On 2026-08-13 commits `e8d5d07` and `bf9a95d` added the strict Full-range
+pure-power Gamma 2.2 proof requested for a display calibrated like the madVR
+reference chain. DXGI has no exact Rec.709 Full/pure-2.2 declaration:
+`RGB_FULL_G22_NONE_P709` nominally describes sRGB. VP therefore keeps the two
+facts separate. It renders `PL_COLOR_TRC_GAMMA22` pixels while declaring the
+nominal Full-G22/sRGB DXGI colour space, labels wire response unverified, and
+permits this mismatch only through `diagnostic_allow_full_g22: true` with an
+actually VP-owned Direct presenter. The generation is strict: missing VP
+ownership, capability, Check/Set/Check, or target-contract evidence blocks
+rendering instead of silently substituting sRGB. SDR sweep case 4 and HDR case
+9 exercise this exact contract.
+
+The clean x64 Release passed all 36 Config tests and all 34 focused output-policy
+tests. The complete native suite is 813/818, retaining the same five unrelated
+baseline failures. A live Rec.709 EPSON run at `bf9a95d` created the 3840x2160
+R10G10B10A2 three-buffer Flip Discard swapchain, recorded VP as Present owner,
+passed Check/Set/Check, resolved `pixel_transfer=PURE_POWER_GAMMA22`, and
+reported no fallback. Post-flush R10 readback covered 0..1023 and presentation
+stabilized near 59.94 Hz with zero Present, device, renderer-target, or
+libplacebo-validation failures. Physical transfer still requires visual or
+instrument comparison against madVR; API acceptance cannot prove projector
+interpretation.
 
 ## User story
 
@@ -197,7 +232,9 @@ not expose a colour-space getter); HDR metadata request/set/readback where
 available; resize/fullscreen/Present HRESULTs; and the correlated renderer and
 test-run generation. Treat a changed monitor, fullscreen transition, resize,
 or Windows HDR/display state as a new presentation configuration, because
-DXGI colour-space support is output-dependent.
+DXGI colour-space support is output-dependent. DXGI exposes no swapchain colour
+space getter, so a successful set plus capability recheck must never be labelled
+as active readback or wire-state proof.
 
 ## Output Experiments
 
@@ -219,7 +256,8 @@ colour overrides.
   request, with current NVIDIA save/set/restore safeguards intact;
 - policy-valid presentation request (`auto`, `composed`, or `direct`) and
   policy-valid output range/gamma combinations, including the explicit
-  Limited/Gamma-2.2 developer experiment; and
+  Limited/Gamma-2.2 developer experiment and the strict calibrated-display
+  Full/Gamma-2.2 developer experiment; and
 - controlled fullscreen/windowed test selection plus an explicit clean
   renderer/swapchain recreation between runs; and
 - named DXGI diagnostic presets: SDR backbuffer depth (8-bit versus 10-bit),
