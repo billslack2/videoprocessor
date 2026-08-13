@@ -45,9 +45,10 @@ render/submission/display-delivery result model. Until authoritative delivery
 evidence exists, composed pattern presentation is explicitly `MEASURE` or
 `DISPLAY DELIVERY UNVERIFIED`, not PASS or “visible.”
 
-Synchronization implementation: commit `13c77be` on
+Synchronization implementation: commits `13c77be` and `d5cc6e3` on
 `origin/VP0126-pattern-generator` merges the complete VP-0125/VP-0127 output
-path while retaining launcher-package commit `877a17e`. Before the clean
+path and its updated evidence documentation while retaining launcher-package
+commit `877a17e`. Before the clean
 pattern is exposed, the generator now shows requested/actual swapchain format,
 renderer-readback state, submission state, DXGI delivery evidence, and the
 DXGI declaration. It asks the tester to explicitly grade whether the intended

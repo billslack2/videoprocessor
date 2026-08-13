@@ -7,7 +7,7 @@ package reproduced both defects on the selected Epson output. The repository
 default was rediscovered as `origin/v1.2.001-beta`; this continues the
 developer-confirmed beta-based VP-0125 output work on
 `codex/vp-0125-dxgi-output`, with the shared presentation-result contract also
-to be synchronized into the active VP-0126 branch `VP0126-pattern-generator`.
+now synchronized into the active VP-0126 branch `VP0126-pattern-generator`.
 
 Readiness review: the requested and negotiated swapchain formats, the
 libplacebo wrapper handoff, renderer-backbuffer readback, successful swap-call
@@ -17,7 +17,8 @@ and a successful swap call do not prove that DWM displayed the composed frame.
 This story therefore separates renderer proof from display-delivery proof and
 does not silently promote unavailable evidence to PASS.
 
-Implementation commit `95f680d` is published on
+Implementation commit `95f680d` and evidence-documentation commit `9c4e686`
+are published on
 `origin/codex/vp-0125-dxgi-output`. The VP-owned forced-8-bit path now creates
 `R8G8B8A8_UNORM`, matching libplacebo's D3D11 8-bit selector, and supplies
 `disable_10bit_sdr` plus the requested color depth even when libplacebo wraps
