@@ -67,7 +67,7 @@ namespace ActiveOutputSweepPolicy
 		if (!actual.safeToRender)
 			return { Verdict::FAIL, "renderer blocked the requested output contract: " + actual.reason };
 		if (actual.successfulPresents == 0)
-			return { Verdict::WAITING, "output contract has not produced a successful Present" };
+			return { Verdict::WAITING, "output contract has not submitted a frame successfully" };
 
 		if (expected.disposition == Disposition::FALLBACK)
 		{
@@ -92,6 +92,18 @@ namespace ActiveOutputSweepPolicy
 			if (expected.swapchainBitDepth != 0 &&
 				actual.swapchainBitDepth != expected.swapchainBitDepth)
 				return { Verdict::FAIL, "fallback swapchain bit depth does not match the test contract" };
+			if (actual.presentation == Presentation::BITBLT &&
+				actual.displayDelivery != DisplayDeliveryEvidence::PRESENTED)
+			{
+				return { Verdict::MEASURE,
+					"policy fallback occurred as expected; rendered/submitted composed output has no authoritative display-delivery evidence" };
+			}
+			if (actual.presentation == Presentation::FLIP &&
+				actual.displayDelivery != DisplayDeliveryEvidence::PRESENTED)
+			{
+				return { Verdict::WAITING,
+					"policy fallback metadata matches; waiting for DXGI presentation evidence" };
+			}
 			return { Verdict::EXPECTED, "policy fallback occurred as expected" };
 		}
 
@@ -117,9 +129,22 @@ namespace ActiveOutputSweepPolicy
 			actual.swapchainBitDepth != expected.swapchainBitDepth)
 			return { Verdict::FAIL, "swapchain bit depth does not match the test contract" };
 
+		if (actual.presentation == Presentation::BITBLT &&
+			actual.displayDelivery != DisplayDeliveryEvidence::PRESENTED)
+		{
+			return { Verdict::MEASURE,
+				"renderer submitted composed output, but display delivery is unverified; visually grade the selected display" };
+		}
+		if (actual.presentation == Presentation::FLIP &&
+			actual.displayDelivery != DisplayDeliveryEvidence::PRESENTED)
+		{
+			return { Verdict::WAITING,
+				"metadata and submission match; waiting for DXGI presentation evidence" };
+		}
+
 		return expected.measurementRequired ?
 			Decision{ Verdict::MEASURE,
-				"metadata and Present match; physical display response requires visual or meter grading" } :
-			Decision{ Verdict::PASS, "metadata and Present match the expected contract" };
+				"metadata and presented-frame evidence match; physical display response requires visual or meter grading" } :
+			Decision{ Verdict::PASS, "metadata and presented-frame evidence match the expected contract" };
 	}
 }

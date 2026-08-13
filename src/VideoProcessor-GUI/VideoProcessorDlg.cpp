@@ -3204,12 +3204,20 @@ bool CVideoProcessorDlg::EvaluateActiveOutputSweepCase(
 	const wchar_t* owner = actual.vpOwnsPresentation ? L"VP" : L"libplacebo";
 	const wchar_t* primaries = actual.primaries == Primaries::BT2020 ?
 		L"BT.2020" : actual.primaries == Primaries::REC709 ? L"Rec.709" : L"Unknown";
-	detail.Format(L"%S; actual=%s/%s/%s/%ubit owner=%s accepted=%d verified=%d presents=%llu format=%S DXGI=%S",
+	const wchar_t* content = actual.rendererContent ==
+		RendererContentEvidence::NONBLACK ? L"nonblack" :
+		actual.rendererContent == RendererContentEvidence::ALL_BLACK ? L"black" :
+		L"unverified";
+	const wchar_t* delivery = actual.displayDelivery ==
+		DisplayDeliveryEvidence::PRESENTED ? L"presented" :
+		actual.displayDelivery == DisplayDeliveryEvidence::SUBMITTED ? L"submitted-only" :
+		L"unverified";
+	detail.Format(L"%S; actual=%s/%s/%s/%ubit owner=%s accepted=%d verified=%d submissions=%llu rendered=%s display_delivery=%s format=%S DXGI=%S",
 		decision.reason.c_str(), range, transfer, primaries,
 		actual.swapchainBitDepth, owner,
 		actual.requestedContractActive ? 1 : 0,
 		actual.dxgiAppliedVerified ? 1 : 0,
-		static_cast<unsigned long long>(actual.successfulPresents),
+		static_cast<unsigned long long>(actual.successfulPresents), content, delivery,
 		actual.swapchainFormat.empty() ? "(none)" :
 			actual.swapchainFormat.c_str(),
 		actual.dxgiDeclaration.empty() ? "(none)" :

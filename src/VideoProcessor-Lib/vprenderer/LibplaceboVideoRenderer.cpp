@@ -2727,6 +2727,7 @@ struct LibplaceboVideoRenderer::Impl
 	unsigned int diagnosticReadbackFramesRemaining = 30;
 	bool diagnosticReadbackComplete = false;
 	unsigned int diagnosticReadbackAttempts = 0;
+	bool diagnosticReadbackNonBlack = false;
 	bool cadenceLogInitialized = false;
 	uint64_t cadenceLoggedPolicyGeneration = 0;
 	bool cadenceLoggedDue = false;
@@ -3286,6 +3287,7 @@ struct LibplaceboVideoRenderer::Impl
 			return;
 		}
 		diagnosticReadbackComplete = true;
+		diagnosticReadbackNonBlack = !allZero;
 		const double divisor =
 			stats.sampledPixels > 0 ? static_cast<double>(stats.sampledPixels) : 1.0;
 		DebugLog::Log(
@@ -4192,8 +4194,11 @@ struct LibplaceboVideoRenderer::Impl
 		DXGI_SWAP_CHAIN_DESC1 desc{};
 		desc.Width = static_cast<UINT>(std::max<LONG>(1, client.right - client.left));
 		desc.Height = static_cast<UINT>(std::max<LONG>(1, client.bottom - client.top));
+		// Match libplacebo's own D3D11 8-bit picker. Supplying BGRA here while
+		// asking libplacebo to disable 10-bit makes its first resize replace the
+		// externally created format, defeating the authoritative VP request.
 		desc.Format = activeSettings.diagnosticForce8BitSdrSwapchain
-			? DXGI_FORMAT_B8G8R8A8_UNORM : DXGI_FORMAT_R10G10B10A2_UNORM;
+			? DXGI_FORMAT_R8G8B8A8_UNORM : DXGI_FORMAT_R10G10B10A2_UNORM;
 		desc.Stereo = FALSE;
 		desc.SampleDesc.Count = 1;
 		// Match the D3D11 target contract used by libplacebo itself. At feature
@@ -4681,6 +4686,13 @@ struct LibplaceboVideoRenderer::Impl
 			actualOutput.reason = reason;
 		};
 		struct pl_d3d11_swapchain_params swapchainParams{};
+		// libplacebo retains these behavioral fields even when it wraps an
+		// externally supplied swapchain. Set them on both ownership paths so its
+		// initial color configuration cannot silently upgrade an 8-bit VP chain.
+		swapchainParams.color_bits =
+			activeSettings.diagnosticForce8BitSdrSwapchain ? 8 : 10;
+		swapchainParams.disable_10bit_sdr =
+			activeSettings.diagnosticForce8BitSdrSwapchain;
 		// The VP-owned path is an authoritative flip-model experiment. Its
 		// externally wrapped bitblt FBO does not meet the same capability
 		// guarantees as a libplacebo-created composed swapchain (the teardown
@@ -4706,10 +4718,6 @@ struct LibplaceboVideoRenderer::Impl
 		else
 		{
 			swapchainParams.window = videoHwnd;
-			swapchainParams.color_bits =
-				activeSettings.diagnosticForce8BitSdrSwapchain ? 8 : 10;
-			swapchainParams.disable_10bit_sdr =
-				activeSettings.diagnosticForce8BitSdrSwapchain;
 			swapchainParams.blit = blit;
 		}
 		swapchain = pl_d3d11_create_swapchain(d3d11, &swapchainParams);
@@ -5125,6 +5133,10 @@ struct LibplaceboVideoRenderer::Impl
 		// DirectFlip, MPO, or independent flip.
 		swapchainBlit = outputPlan.useBlit;
 		struct pl_d3d11_swapchain_params swapchainParams{};
+		swapchainParams.color_bits =
+			settings.diagnosticForce8BitSdrSwapchain ? 8 : 10;
+		swapchainParams.disable_10bit_sdr =
+			settings.diagnosticForce8BitSdrSwapchain;
 		const bool initializeVpOwnedPresenter =
 			settings.diagnosticVpOwnedDxgiPresenter && !outputPlan.useBlit;
 		if (settings.diagnosticVpOwnedDxgiPresenter && outputPlan.useBlit)
@@ -5141,10 +5153,6 @@ struct LibplaceboVideoRenderer::Impl
 		else
 		{
 			swapchainParams.window = videoHwnd;
-			swapchainParams.color_bits =
-				settings.diagnosticForce8BitSdrSwapchain ? 8 : 10;
-			swapchainParams.disable_10bit_sdr =
-				settings.diagnosticForce8BitSdrSwapchain;
 			swapchainParams.blit = outputPlan.useBlit;
 		}
 		swapchain = pl_d3d11_create_swapchain(d3d11, &swapchainParams);
@@ -9561,6 +9569,18 @@ bool LibplaceboVideoRenderer::GetOutputContractStatus(
 		m_impl->vpOwnedColorSpaceVerified;
 	status.strictContract = m_impl->outputPlan.strictContract;
 	status.successfulPresents = m_impl->successfulPresentCount;
+	status.rendererContent = !m_impl->diagnosticReadbackComplete ?
+		RendererOutputContract::RendererContentEvidence::UNKNOWN :
+		m_impl->diagnosticReadbackNonBlack ?
+			RendererOutputContract::RendererContentEvidence::NONBLACK :
+			RendererOutputContract::RendererContentEvidence::ALL_BLACK;
+	const AlphaPresentationSnapshot presentationSnapshot =
+		m_impl->presentationTelemetry.Snapshot();
+	status.displayDelivery = presentationSnapshot.lastPresentedSequence > 0 ?
+		RendererOutputContract::DisplayDeliveryEvidence::PRESENTED :
+		m_impl->successfulPresentCount > 0 ?
+			RendererOutputContract::DisplayDeliveryEvidence::SUBMITTED :
+			RendererOutputContract::DisplayDeliveryEvidence::UNKNOWN;
 	status.swapchainBitDepth =
 		m_impl->negotiatedSwapchainFormat == DXGI_FORMAT_R10G10B10A2_UNORM ? 10 :
 		m_impl->negotiatedSwapchainFormat == DXGI_FORMAT_R16G16B16A16_FLOAT ? 16 :

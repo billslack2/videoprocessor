@@ -34,6 +34,20 @@ namespace RendererOutputContract
 		BT2020,
 	};
 
+	enum class RendererContentEvidence
+	{
+		UNKNOWN,
+		ALL_BLACK,
+		NONBLACK,
+	};
+
+	enum class DisplayDeliveryEvidence
+	{
+		UNKNOWN,
+		SUBMITTED,
+		PRESENTED,
+	};
+
 	struct Status
 	{
 		bool available = false;
@@ -48,6 +62,10 @@ namespace RendererOutputContract
 		Range range = Range::UNKNOWN;
 		Transfer transfer = Transfer::UNKNOWN;
 		Primaries primaries = Primaries::UNKNOWN;
+		RendererContentEvidence rendererContent =
+			RendererContentEvidence::UNKNOWN;
+		DisplayDeliveryEvidence displayDelivery =
+			DisplayDeliveryEvidence::UNKNOWN;
 		std::string dxgiDeclaration;
 		std::string swapchainFormat;
 		std::string reason;

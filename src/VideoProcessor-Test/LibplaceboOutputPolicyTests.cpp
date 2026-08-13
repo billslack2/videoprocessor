@@ -39,6 +39,7 @@ namespace Tests
 			Assert::AreEqual(static_cast<int>(Verdict::WAITING),
 				static_cast<int>(Evaluate(expected, actual).verdict));
 			actual.successfulPresents = 1;
+			actual.displayDelivery = DisplayDeliveryEvidence::PRESENTED;
 			Assert::AreEqual(static_cast<int>(Verdict::PASS),
 				static_cast<int>(Evaluate(expected, actual).verdict));
 			actual.swapchainBitDepth = 8;
@@ -66,6 +67,7 @@ namespace Tests
 			actual.requestedContractActive = true;
 			actual.vpOwnsPresentation = true;
 			actual.successfulPresents = 4;
+			actual.displayDelivery = DisplayDeliveryEvidence::PRESENTED;
 			actual.presentation = Presentation::FLIP;
 			actual.range = Range::FULL;
 			actual.transfer = Transfer::GAMMA22;
@@ -86,6 +88,7 @@ namespace Tests
 			actual.available = true;
 			actual.safeToRender = true;
 			actual.successfulPresents = 1;
+			actual.displayDelivery = DisplayDeliveryEvidence::PRESENTED;
 			actual.presentation = Presentation::FLIP;
 			actual.range = Range::FULL;
 			actual.transfer = Transfer::SRGB;
@@ -109,6 +112,7 @@ namespace Tests
 			actual.available = true;
 			actual.safeToRender = true;
 			actual.successfulPresents = 1;
+			actual.displayDelivery = DisplayDeliveryEvidence::PRESENTED;
 			Assert::AreEqual(static_cast<int>(Verdict::FAIL),
 				static_cast<int>(Evaluate(expected, actual).verdict));
 			actual.safeToRender = false;
@@ -117,6 +121,31 @@ namespace Tests
 			expected.disposition = Disposition::BLOCKED;
 			Assert::AreEqual(static_cast<int>(Verdict::EXPECTED),
 				static_cast<int>(Evaluate(expected, actual).verdict));
+		}
+
+		TEST_METHOD(ActiveSweepComposedSubmissionRequiresVisualDeliveryGrade)
+		{
+			using namespace ActiveOutputSweepPolicy;
+			using namespace RendererOutputContract;
+			Expected expected;
+			expected.presentation = Presentation::BITBLT;
+			expected.range = Range::FULL;
+			expected.transfer = Transfer::SRGB;
+			Status actual;
+			actual.available = true;
+			actual.safeToRender = true;
+			actual.requestedContractActive = true;
+			actual.successfulPresents = 10;
+			actual.presentation = Presentation::BITBLT;
+			actual.range = Range::FULL;
+			actual.transfer = Transfer::SRGB;
+			actual.displayDelivery = DisplayDeliveryEvidence::SUBMITTED;
+			actual.rendererContent = RendererContentEvidence::NONBLACK;
+			const Decision decision = Evaluate(expected, actual);
+			Assert::AreEqual(static_cast<int>(Verdict::MEASURE),
+				static_cast<int>(decision.verdict));
+			Assert::IsTrue(decision.reason.find("display delivery is unverified") !=
+				std::string::npos);
 		}
 
 		TEST_METHOD(OneShotInfoFrameSetIsAuthoritativeWhenReadbackDoesNotEcho)
