@@ -71,6 +71,28 @@ namespace ConfigurationApplyPolicy
 			key == "windowed_fullscreen_mode";
 	}
 
+	// Output experiments change the D3D11 device/swapchain contract itself.
+	// Treat them more strictly than the normal renderer-only settings: rebuilding
+	// the capture graph also replaces the renderer and its ingress state, which
+	// makes each test equivalent to a fresh capture/render initialization.
+	inline bool IsOutputExperimentChange(const Change& change)
+	{
+		if (!HasPrefix(NormalizeSection(change.section), "vprenderer"))
+			return false;
+		const std::string key = NormalizeSection(change.key);
+		return key == "output_path_profile" ||
+			key == "output_presentation" ||
+			key == "output_range" ||
+			key == "output_gamma" ||
+			key == "output_diagnostics" ||
+			key == "diagnostic_allow_limited_g22" ||
+			key == "diagnostic_allow_full_g22" ||
+			key == "diagnostic_disable_compute" ||
+			key == "diagnostic_force_8bit_sdr_swapchain" ||
+			key == "diagnostic_vp_owned_dxgi_presenter" ||
+			key == "diagnostic_disable_shader_cache";
+	}
+
 	inline Action ClassifySection(const std::string& section,
 		bool directShowRendererActive = true)
 	{
@@ -119,6 +141,7 @@ namespace ConfigurationApplyPolicy
 		// fullscreen choices, so they are deliberately next-start only.
 		if (IsStartupPresentationDefaultChange(change)) return Action::SaveOnly;
 		if (IsShortcutAffectingChange(change)) return Action::ReloadShortcuts;
+		if (IsOutputExperimentChange(change)) return Action::RestartCapture;
 		const std::string section = NormalizeSection(change.section);
 		const std::string key = NormalizeSection(change.key);
 		if ((section == "general" || section == "command_line") &&

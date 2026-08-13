@@ -278,6 +278,57 @@ public:
 				CStringA(contract).GetString());
 	}
 
+	std::wstring GetOutputEvidenceSummary()
+	{
+		using namespace RendererOutputContract;
+		Status status;
+		// The pattern is queued asynchronously. Give Alpha a bounded interval to
+		// expose submission/presentation evidence without delaying clean pattern
+		// display indefinitely on a path where frame statistics are unavailable.
+		for (unsigned int attempt = 0; attempt < 40; ++attempt)
+		{
+			if (m_renderer && m_renderer->GetOutputContractStatus(status) &&
+				status.successfulPresents > 0)
+				break;
+			Sleep(25);
+		}
+		if (!status.available)
+			return L"Result: MEASURE\nOutput contract evidence is unavailable.\n\n"
+				L"Software cannot claim that this pattern reached the display.";
+
+		const wchar_t* content = status.rendererContent ==
+			RendererContentEvidence::NONBLACK ? L"nonblack readback" :
+			status.rendererContent == RendererContentEvidence::ALL_BLACK ?
+				L"all-black readback" : L"unverified";
+		const wchar_t* delivery = status.displayDelivery ==
+			DisplayDeliveryEvidence::PRESENTED ? L"DXGI presentation evidence" :
+			status.displayDelivery == DisplayDeliveryEvidence::SUBMITTED ?
+				L"submitted only; display delivery unverified" : L"unverified";
+		const bool presented = status.displayDelivery ==
+			DisplayDeliveryEvidence::PRESENTED;
+		std::wostringstream text;
+		text << (presented ? L"Result: PRESENTED / VISUALLY CONFIRM" :
+			L"Result: MEASURE / DISPLAY DELIVERY UNVERIFIED")
+			<< L"\nRenderer content: " << content
+			<< L"\nFrame submission: "
+			<< (status.successfulPresents > 0 ? L"accepted" : L"unverified")
+			<< L"\nDisplay delivery: " << delivery
+			<< L"\nSwapchain: " << Widen(status.swapchainFormat)
+			<< L" (" << status.swapchainBitDepth << L"-bit)"
+			<< L"\nDXGI declaration: " << Widen(status.dxgiDeclaration)
+			<< L"\n\nThis does not prove physical HDMI values or calibration accuracy.";
+		DebugLog::Log(
+			"Pattern generator output evidence: rendered=%s submissions=%llu display_delivery=%s format=%s bits=%u dxgi=%s",
+			status.rendererContent == RendererContentEvidence::NONBLACK ? "nonblack" :
+				status.rendererContent == RendererContentEvidence::ALL_BLACK ? "black" : "unverified",
+			static_cast<unsigned long long>(status.successfulPresents),
+			status.displayDelivery == DisplayDeliveryEvidence::PRESENTED ? "presented" :
+				status.displayDelivery == DisplayDeliveryEvidence::SUBMITTED ? "submitted-only" : "unverified",
+			status.swapchainFormat.c_str(), status.swapchainBitDepth,
+			status.dxgiDeclaration.c_str());
+		return text.str();
+	}
+
 	void Stop()
 	{
 		if (!m_renderer)
@@ -604,6 +655,22 @@ private:
 				AlphaPatternSession session(surface, std::move(frame), hdrSource);
 				state.session = &session;
 				session.Start();
+				if (frameIndex == 0)
+				{
+					std::wstring evidence = session.GetOutputEvidenceSummary();
+					evidence += L"\n\nDoes the display match the intended pattern described before launch?\n"
+						L"Yes continues to the clean pattern. No records a visible-delivery failure.";
+					const int grade = MessageBox(surface, evidence.c_str(),
+						L"Alpha pattern output evidence", MB_YESNO | MB_ICONWARNING |
+						MB_DEFBUTTON2 | MB_TOPMOST);
+					DebugLog::Log("Pattern generator visual delivery grade: result=%s",
+						grade == IDYES ? "visible" : "not-visible");
+					if (grade != IDYES)
+						throw std::runtime_error(
+							"Tester reported that the generated pattern was not visibly delivered");
+					SetForegroundWindow(surface);
+					SetFocus(surface);
+				}
 				MSG message{};
 				while (IsWindow(surface) && GetMessage(&message, nullptr, 0, 0) > 0)
 				{

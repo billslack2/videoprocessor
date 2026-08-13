@@ -86,6 +86,8 @@ public:
 	double ExitLatencyMs() const override;
 	uint64_t DroppedFrameCount() const override;
 	bool GetOutputModeInfo(CString& details) const override;
+	bool GetOutputContractStatus(
+		RendererOutputContract::Status& status) const override;
 	bool GetDisplayLutInfo(CString& details) const override;
 	bool GetVideoIngressInfo(CString& details) const override;
 	bool GetPresentationTargetTiming(double& leadMs,
@@ -93,6 +95,8 @@ public:
 	bool GetPresentationTimingStatus(CString& status) const override;
 	bool SupportsNativeStatsOverlay() const override { return true; }
 	bool SetNativeStatsOverlay(const uint8_t* pixels, size_t byteCount,
+		int width, int height, int stride) override;
+	bool SetNativeSweepOverlay(const uint8_t* pixels, size_t byteCount,
 		int width, int height, int stride) override;
 	bool GetConversionPerformance(double& currentUs, double& avg10s, double& max10s) const override;
 	bool GetFrameRateAndPPM(double& measuredFps, int& ppmDeviation) const override;

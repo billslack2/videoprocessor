@@ -13,6 +13,7 @@
 #include <VideoState.h>
 #include <RendererLiveness.h>
 #include <RendererResetRequest.h>
+#include <RendererOutputContractStatus.h>
 #include <SubtitleRepositionMode.h>
 #include <functional>
 #include <memory>
@@ -294,6 +295,15 @@ public:
 		return false;
 	}
 
+	// Structured counterpart to GetOutputModeInfo for automated output-contract
+	// tests. Logs remain the audit trail; test code must not scrape log text.
+	virtual bool GetOutputContractStatus(
+		RendererOutputContract::Status& status) const
+	{
+		status = {};
+		return false;
+	}
+
 	// Concise display-calibration LUT status for the Ctrl+I OSD. Renderers
 	// without this feature return false so the OSD does not imply support.
 	virtual bool GetDisplayLutInfo(CString& details) const
@@ -334,6 +344,12 @@ public:
 	// before returning; callers retain ownership of the supplied buffer.
 	virtual bool SupportsNativeStatsOverlay() const { return false; }
 	virtual bool SetNativeStatsOverlay(const uint8_t*, size_t, int, int, int)
+	{
+		return false;
+	}
+	// A separate high-priority test banner. Unlike the normal stats panel, this
+	// is placed at the top-right of the active picture/scope rectangle.
+	virtual bool SetNativeSweepOverlay(const uint8_t*, size_t, int, int, int)
 	{
 		return false;
 	}

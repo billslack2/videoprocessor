@@ -56,6 +56,7 @@ namespace LibplaceboOutput
 	enum class TargetTransfer
 	{
 		SWAPCHAIN,
+		GAMMA22,
 		GAMMA24
 	};
 
@@ -65,6 +66,9 @@ namespace LibplaceboOutput
 		RangeRequest range = RangeRequest::AUTO;
 		GammaRequest gamma = GammaRequest::AUTO;
 		PrimariesRequest primaries = PrimariesRequest::REC709;
+		bool allowLimitedG22Experiment = false;
+		bool allowFullG22Experiment = false;
+		bool vpOwnedPresenter = false;
 	};
 
 	// The display target is independent of the DXGI transport.  In particular,
@@ -90,6 +94,7 @@ namespace LibplaceboOutput
 		bool useBlit = true;
 		bool valid = true;
 		bool requiresDxgiOverride = false;
+		bool strictContract = false;
 		DxgiEncoding desiredEncoding = DxgiEncoding::FULL_G22_P709;
 		TargetTransfer targetTransfer = TargetTransfer::SWAPCHAIN;
 		std::string reason;
@@ -98,6 +103,7 @@ namespace LibplaceboOutput
 	struct Evidence
 	{
 		PresentationModel presentationModel = PresentationModel::UNKNOWN;
+		bool vpOwnsPresentation = false;
 		bool hasSwapchain3 = false;
 		bool presentSupportedBeforeSet = false;
 		bool setSucceeded = false;

@@ -49,6 +49,7 @@
 #include <ConfigFile.h>
 #include <ConfigurationLiveApply.h>
 #include <ActiveProfileStatus.h>
+#include <ActiveOutputSweepPolicy.h>
 #include <EventActionLauncher.h>
 #include <DisplayRefreshRateEstimator.h>
 #include <DisplayRefreshRatePolicy.h>
@@ -2643,6 +2644,676 @@ void CVideoProcessorDlg::ApplySavedConfiguration()
 	}
 }
 
+void CVideoProcessorDlg::ConfigureActiveOutputSweep(
+	bool enabled, DWORD holdMs, bool showInfo, bool captureRestart,
+	const CString& suite, const CString& requestedTests)
+{
+	m_activeOutputSweepRequested = enabled;
+	m_activeOutputSweepHoldMs = holdMs < 1000 ? 1000 :
+		(holdMs > 600000 ? 600000 : holdMs);
+	m_activeOutputSweepShowInfo = showInfo;
+	m_activeOutputSweepCaptureRestart = captureRestart;
+	m_activeOutputSweepSuite = suite;
+	m_activeOutputSweepSuite.MakeLower();
+	m_activeOutputSweepRequestedTests = requestedTests;
+	if (!enabled)
+		return;
+
+	// A live output test is useful only on the actual fullscreen target. This
+	// call occurs while command-line settings are applied, before capture starts.
+	StartFullScreen(true);
+	DebugLog::Log(
+		"Active output sweep armed: suite=%S fullscreen=required hold_ms=%lu show_info=%d reinitialize=%s requested_tests=%S",
+		m_activeOutputSweepSuite.GetString(),
+		m_activeOutputSweepHoldMs, m_activeOutputSweepShowInfo ? 1 : 0,
+		m_activeOutputSweepCaptureRestart ? "capture" : "renderer",
+		m_activeOutputSweepRequestedTests.GetString());
+}
+
+bool CVideoProcessorDlg::StartActiveOutputSweep()
+{
+	if (!m_activeOutputSweepRequested || m_activeOutputSweepRunning)
+		return false;
+	if (!IsAlphaRendererSelected())
+	{
+		CompleteActiveOutputSweep(L"refused: VP Renderer is not selected");
+		return false;
+	}
+	if (m_rendererFullscreenCheck.GetCheck() != BST_CHECKED)
+	{
+		CompleteActiveOutputSweep(L"refused: fullscreen target is not active");
+		return false;
+	}
+	const bool hdrSuite = m_activeOutputSweepSuite.CompareNoCase(L"hdr") == 0;
+	if (hdrSuite && (!m_captureDeviceVideoState || !m_captureDeviceVideoState->valid ||
+		(m_captureDeviceVideoState->eotf != EOTF::PQ &&
+			m_captureDeviceVideoState->eotf != EOTF::HLG &&
+			m_captureDeviceVideoState->eotf != EOTF::HDR)))
+	{
+		CompleteActiveOutputSweep(
+			L"refused: HDR suite requires live PQ, HLG, or HDR input");
+		return false;
+	}
+
+	ConfigFile rendererConfig;
+	if (!rendererConfig.Load(ConfigFile::RENDERER_FILENAME) ||
+		rendererConfig.GetLoadedPath().empty())
+	{
+		CompleteActiveOutputSweep(L"refused: active renderer config was not found");
+		return false;
+	}
+	const int wideLength = MultiByteToWideChar(CP_ACP, 0,
+		rendererConfig.GetLoadedPath().c_str(), -1, nullptr, 0);
+	if (wideLength <= 1)
+	{
+		CompleteActiveOutputSweep(L"refused: renderer config path is invalid");
+		return false;
+	}
+	std::wstring configPath(static_cast<size_t>(wideLength), L'\0');
+	MultiByteToWideChar(CP_ACP, 0, rendererConfig.GetLoadedPath().c_str(), -1,
+		&configPath[0], wideLength);
+	configPath.pop_back();
+	std::wstring normalizedPath = configPath;
+	std::transform(normalizedPath.begin(), normalizedPath.end(),
+		normalizedPath.begin(), towlower);
+	// The launch helper creates this isolated copy. Refusing every other path
+	// guarantees the live runner cannot rewrite a normal user configuration.
+	if (normalizedPath.find(L"active-output-sweep") == std::wstring::npos)
+	{
+		CompleteActiveOutputSweep(
+			L"refused: launch with generated active-output-sweep config");
+		DebugLog::Log(
+			"Active output sweep refused: renderer_config=%s reason=not-isolated-sweep-copy",
+			rendererConfig.GetLoadedPath().c_str());
+		return false;
+	}
+
+	auto document = std::make_unique<ConfigEditorCore::ConfigDocument>();
+	std::wstring error;
+	if (!document->Load(configPath, error))
+	{
+		CString status;
+		status.Format(L"refused: cannot load sweep config (%s)", error.c_str());
+		CompleteActiveOutputSweep(status);
+		return false;
+	}
+	m_activeOutputSweepDocument = std::move(document);
+	m_activeOutputSweepOriginalDocument =
+		std::make_unique<ConfigEditorCore::ConfigDocument>(*m_activeOutputSweepDocument);
+	ClearActiveOutputSweepSummary("new-sweep");
+	m_activeOutputSweepResults.clear();
+	if (!hdrSuite)
+	{
+		m_activeOutputSweepCases = {
+		{ L"1/10 legacy direct full/sRGB", "direct", "full", "srgb", false, false, false, false, false,
+			L"Test 1/10: Baseline legacy presenter; expect Flip, Full range, sRGB pixels, and a successful Present" },
+		{ L"2/10 VP direct full/sRGB", "direct", "full", "srgb", false, false, true, false, false,
+			L"Test 2/10: VP-owned baseline; expect Flip, Full range, sRGB, verified DXGI application, and Present" },
+		{ L"3/10 full/G22 guard off", "direct", "full", "2.2", false, false, false, false, false,
+			L"Test 3/10: Full pure 2.2 guard off; expect an explicit safe fallback to Full/sRGB on the legacy presenter" },
+		{ L"4/10 VP full/G22 proof", "direct", "full", "2.2", false, false, true, false, false,
+			L"Test 4/10: VP-owned Full pure 2.2 proof; verify pixels/owner/DXGI/Present, then visually or meter-grade the curve" },
+		{ L"5/10 limited/G22 guard off", "direct", "limited", "2.2", false, false, false, false, false,
+			L"Test 5/10: Limited pure 2.2 guard off; expect an explicit safe fallback to Full/sRGB on the legacy presenter" },
+		{ L"6/10 VP limited/G22 proof", "direct", "limited", "2.2", false, true, true, false, false,
+			L"Test 6/10: VP-owned Limited pure 2.2 proof; verify pixels/owner/DXGI/Present, then meter-grade black floor and curve" },
+		{ L"7/10 VP limited/G24", "direct", "limited", "2.4", false, false, true, false, false,
+			L"Test 7/10: VP-owned Limited pure 2.4 control; verify contract, then compare black floor against tests 4 and 6" },
+		{ L"8/10 VP full/sRGB 8-bit", "direct", "full", "srgb", true, false, true, false, false,
+			L"Test 8/10: VP-owned 8-bit Full/sRGB control; compare banding and levels with the 10-bit baseline" },
+		{ L"9/10 composed full/sRGB", "composed", "full", "srgb", false, false, false, false, false,
+			L"Test 9/10: Composed Full/sRGB control; expect libplacebo bitblt presentation and a successful Present" },
+		{ L"10/10 composed VP request", "composed", "full", "srgb", false, false, true, false, false,
+			L"Test 10/10: Request VP ownership in Composed mode; expect documented libplacebo bitblt ownership, Full/sRGB, and Present" },
+	};
+	}
+	else
+	{
+		// The HDR suite first brackets the target-nits boundary, then repeats the
+		// non-redundant output contracts which can affect black floor or transfer.
+		// Target primaries and HDMI BT.2020 signaling are selected by the launcher
+		// and preserved across every case in this run.
+		m_activeOutputSweepCases = {
+			{ L"1/17 HDR 100 nits", "direct", "full", "2.2", false, false, true, false, false,
+				L"HDR test 1/17: 100-nit target; VP-owned Full pure 2.2 anchor; meter-grade highlights, color, and black floor", "100", "auto", "auto", "auto", "auto" },
+			{ L"2/17 HDR 200 nits", "direct", "full", "2.2", false, false, true, false, false,
+				L"HDR test 2/17: 200-nit target; reported safe-boundary comparison on the same Full pure 2.2 contract", "200", "auto", "auto", "auto", "auto" },
+			{ L"3/17 HDR 250 nits", "direct", "full", "2.2", false, false, true, false, false,
+				L"HDR test 3/17: 250-nit target; first just-above-boundary color-crush check", "250", "auto", "auto", "auto", "auto" },
+			{ L"4/17 HDR 300 nits", "direct", "full", "2.2", false, false, true, false, false,
+				L"HDR test 4/17: 300-nit target; Full pure 2.2 baseline for mapping controls", "300", "auto", "auto", "auto", "auto" },
+			{ L"5/17 HDR 400 nits", "direct", "full", "2.2", false, false, true, false, false,
+				L"HDR test 5/17: 400-nit target; higher-target color and highlight stress comparison", "400", "auto", "auto", "auto", "auto" },
+			{ L"6/17 HDR legacy full sRGB", "direct", "full", "srgb", false, false, false, false, false,
+				L"HDR test 6/17: Legacy Full/sRGB baseline; compare curve and black floor with the VP-owned pure 2.2 anchor", "300" },
+			{ L"7/17 HDR full G22 guard off", "direct", "full", "2.2", false, false, false, false, false,
+				L"HDR test 7/17: Full pure 2.2 guard off; expect an explicit safe fallback to legacy Full/sRGB", "300" },
+			{ L"8/17 HDR VP full G22", "direct", "full", "2.2", false, false, true, false, false,
+				L"HDR test 8/17: VP-owned Full pure 2.2 proof; verify metadata/Present, then measure the physical curve", "300" },
+			{ L"9/17 HDR limited G22 guard off", "direct", "limited", "2.2", false, false, false, false, false,
+				L"HDR test 9/17: Limited pure 2.2 guard off; expect an explicit safe fallback to legacy Full/sRGB", "300" },
+			{ L"10/17 HDR VP limited G22", "direct", "limited", "2.2", false, true, true, false, false,
+				L"HDR test 10/17: VP-owned Limited pure 2.2 proof; meter-grade black floor against Full pure 2.2", "300" },
+			{ L"11/17 HDR VP limited G24", "direct", "limited", "2.4", false, false, true, false, false,
+				L"HDR test 11/17: VP-owned Limited pure 2.4 control; compare lifted blacks against Limited pure 2.2", "300" },
+			{ L"12/17 HDR composed full sRGB", "composed", "full", "srgb", false, false, false, false, false,
+				L"HDR test 12/17: Composed Full/sRGB control; expect libplacebo bitblt presentation and measure fullscreen/windowed behavior", "300" },
+			{ L"13/17 HDR BT2390", "direct", "full", "2.2", false, false, true, false, false,
+				L"HDR test 13/17: 300-nit Full pure 2.2; BT.2390 highlight roll-off", "300", "bt2390", "auto", "auto", "auto" },
+			{ L"14/17 HDR Reinhard", "direct", "full", "2.2", false, false, true, false, false,
+				L"HDR test 14/17: 300-nit Full pure 2.2; Reinhard compression comparison", "300", "reinhard", "auto", "auto", "auto" },
+			{ L"15/17 HDR softclip", "direct", "full", "2.2", false, false, true, false, false,
+				L"HDR test 15/17: 300-nit Full pure 2.2; soft-clip gamut-boundary comparison", "300", "auto", "softclip", "auto", "auto" },
+			{ L"16/17 HDR peak off", "direct", "full", "2.2", false, false, true, false, false,
+				L"HDR test 16/17: 300-nit Full pure 2.2; peak detection disabled", "300", "auto", "auto", "off", "auto" },
+			{ L"17/17 HDR recovery 0", "direct", "full", "2.2", false, false, true, false, false,
+				L"HDR test 17/17: 300-nit Full pure 2.2; contrast recovery disabled", "300", "auto", "auto", "auto", "0.0" },
+		};
+	}
+	if (!m_activeOutputSweepRequestedTests.IsEmpty())
+	{
+		std::vector<bool> selected(m_activeOutputSweepCases.size(), false);
+		const std::wstring expression = m_activeOutputSweepRequestedTests.GetString();
+		auto parseNumber = [](const std::wstring& value, size_t& number)
+		{
+			if (value.empty())
+				return false;
+			wchar_t* end = nullptr;
+			const unsigned long parsed = wcstoul(value.c_str(), &end, 10);
+			if (end == value.c_str() || *end != L'\0' || parsed == 0)
+				return false;
+			number = static_cast<size_t>(parsed);
+			return true;
+		};
+		bool valid = true;
+		size_t start = 0;
+		while (valid && start <= expression.size())
+		{
+			const size_t separator = expression.find(L',', start);
+			std::wstring token = expression.substr(start,
+				separator == std::wstring::npos ? std::wstring::npos : separator - start);
+			const size_t firstCharacter = token.find_first_not_of(L" \t");
+			const size_t lastCharacter = token.find_last_not_of(L" \t");
+			if (firstCharacter == std::wstring::npos)
+			{
+				valid = false;
+				break;
+			}
+			token = token.substr(firstCharacter, lastCharacter - firstCharacter + 1);
+			const size_t dash = token.find(L'-');
+			if (dash != std::wstring::npos && token.find(L'-', dash + 1) != std::wstring::npos)
+			{
+				valid = false;
+				break;
+			}
+			size_t first = 0;
+			size_t last = 0;
+			if (dash == std::wstring::npos)
+			{
+				valid = parseNumber(token, first);
+				last = first;
+			}
+			else
+			{
+				valid = parseNumber(token.substr(0, dash), first) &&
+					parseNumber(token.substr(dash + 1), last) && first <= last;
+			}
+			if (!valid || last > selected.size())
+			{
+				valid = false;
+				break;
+			}
+			for (size_t number = first; number <= last; ++number)
+				selected[number - 1] = true;
+			if (separator == std::wstring::npos)
+				break;
+			start = separator + 1;
+		}
+		if (!valid || std::find(selected.begin(), selected.end(), true) == selected.end())
+		{
+			CString error;
+			error.Format(L"refused: invalid test list '%s' (use 2,5 or 2-5)",
+				m_activeOutputSweepRequestedTests.GetString());
+			CompleteActiveOutputSweep(error);
+			return false;
+		}
+		std::vector<ActiveOutputSweepCase> filtered;
+		for (size_t index = 0; index < selected.size(); ++index)
+		{
+			if (selected[index])
+				filtered.push_back(m_activeOutputSweepCases[index]);
+		}
+		m_activeOutputSweepCases = std::move(filtered);
+	}
+	m_activeOutputSweepCaseIndex = 0;
+	m_activeOutputSweepRunning = true;
+	// The live test owns a separate native top-right banner. Do not force the
+	// user's normal diagnostic panel on merely to identify the active contract.
+	DebugLog::Log(
+		"Active output sweep start: config=%S fullscreen_monitor=%S cases=%zu hold_ms=%lu",
+		configPath.c_str(), m_fullscreenMonitorName.GetString(),
+		m_activeOutputSweepCases.size(), m_activeOutputSweepHoldMs);
+	return ApplyActiveOutputSweepCase(0);
+}
+
+bool CVideoProcessorDlg::ApplyActiveOutputSweepCase(size_t index)
+{
+	if (!m_activeOutputSweepDocument || index >= m_activeOutputSweepCases.size())
+		return false;
+	const ActiveOutputSweepCase& test = m_activeOutputSweepCases[index];
+	auto& document = *m_activeOutputSweepDocument;
+	const bool hdrSuite = m_activeOutputSweepSuite.CompareNoCase(L"hdr") == 0;
+	auto applyTestSettings = [&document, &test, hdrSuite](const std::string& section)
+	{
+		const bool allowFullG22 = test.vpOwnedPresenter &&
+			strcmp(test.range, "full") == 0 && strcmp(test.gamma, "2.2") == 0;
+		document.SetKnown(section, "output_path_profile", "custom");
+		document.SetKnown(section, "output_presentation", test.presentation);
+		document.SetKnown(section, "output_range", test.range);
+		document.SetKnown(section, "output_gamma", test.gamma);
+		document.SetKnown(section, "diagnostic_force_8bit_sdr_swapchain",
+			test.force8Bit ? "true" : "false");
+		document.SetKnown(section, "diagnostic_allow_limited_g22",
+			test.allowLimitedG22 ? "true" : "false");
+		document.SetKnown(section, "diagnostic_allow_full_g22",
+			allowFullG22 ? "true" : "false");
+		document.SetKnown(section, "diagnostic_vp_owned_dxgi_presenter",
+			test.vpOwnedPresenter ? "true" : "false");
+		document.SetKnown(section, "diagnostic_disable_compute",
+			test.disableCompute ? "true" : "false");
+		document.SetKnown(section, "diagnostic_disable_shader_cache",
+			test.disableShaderCache ? "true" : "false");
+		if (hdrSuite)
+		{
+			if (test.sdrTargetNits)
+				document.SetKnown(section, "sdr_target_nits", test.sdrTargetNits);
+			if (test.toneMapping)
+				document.SetKnown(section, "tone_mapping", test.toneMapping);
+			if (test.gamutMapping)
+				document.SetKnown(section, "gamut_mapping", test.gamutMapping);
+			if (test.peakDetection)
+				document.SetKnown(section, "peak_detection", test.peakDetection);
+			if (test.contrastRecovery)
+				document.SetKnown(section, "contrast_recovery", test.contrastRecovery);
+			if (test.targetPrimaries)
+				document.SetKnown(section, "sdr_target_primaries", test.targetPrimaries);
+			if (test.reportBt2020ToDisplay)
+				document.SetKnown(section, "report_bt2020_to_display",
+					test.reportBt2020ToDisplay);
+		}
+		document.SetKnown(section, "output_diagnostics", "true");
+	};
+	for (const std::string& section : document.SectionNames())
+	{
+		const std::string normalized = ConfigFile::NormalizeName(section);
+		if (normalized != "vprenderer" &&
+			!(normalized.rfind("vprenderer.", 0) == 0 &&
+				normalized.substr(strlen("vprenderer.")).find('.') == std::string::npos))
+		{
+			continue;
+		}
+		applyTestSettings(section);
+	}
+	// Ensure there is a base display section even for a minimal profile file.
+	applyTestSettings("vprenderer");
+
+	ConfigEditorCore::SaveResult saveResult;
+	std::wstring error;
+	if (!ConfigEditorCore::SaveSafely(document, saveResult, error))
+	{
+		CString status;
+		status.Format(L"sweep save failed: %s", error.c_str());
+		DebugLog::Log("Active output sweep failed: case=%zu detail=%S", index + 1,
+			error.c_str());
+		RestoreActiveOutputSweepConfiguration(status);
+		return false;
+	}
+	m_activeOutputSweepCaseIndex = index;
+	m_activeOutputSweepAwaitingLiveFrame = true;
+	m_activeOutputSweepCaseFailed = false;
+	m_activeOutputSweepBannerState = SweepBannerState::Testing;
+	m_activeOutputSweepCaseResult = SweepResultState::Failed;
+	m_activeOutputSweepCaseDetail.Empty();
+	m_activeOutputSweepDeadlineTick = GetTickCount64() + 15000;
+	if (hdrSuite)
+	{
+		const std::string targetPrimaries = document.Get("vprenderer",
+			"sdr_target_primaries");
+		const std::string reportBt2020 = document.Get("vprenderer",
+			"report_bt2020_to_display");
+		m_activeOutputSweepStatus.Format(
+			L"%s\nTarget primaries: %S; BT.2020 InfoFrame: %S\nRestarting %s for this test",
+			test.description, targetPrimaries.c_str(), reportBt2020.c_str(),
+			m_activeOutputSweepCaptureRestart ? L"capture" : L"renderer");
+	}
+	else
+	{
+		m_activeOutputSweepStatus.Format(L"%s\nRestarting %s for this test",
+			test.description,
+			m_activeOutputSweepCaptureRestart ? L"capture" : L"renderer");
+	}
+	DebugLog::Log(
+		"Active output sweep case: suite=%S index=%zu label=%S presentation=%s range=%s gamma=%s target_nits=%s tone_mapping=%s gamut_mapping=%s peak_detection=%s contrast_recovery=%s target_primaries=%s report_bt2020=%s force8=%d allow_full_g22=%d vp_owned=%d no_compute=%d no_shader_cache=%d action=%s-restart backup=%S",
+		m_activeOutputSweepSuite.GetString(),
+		index + 1, test.label, test.presentation, test.range, test.gamma,
+		test.sdrTargetNits ? test.sdrTargetNits : "(unchanged)",
+		test.toneMapping ? test.toneMapping : "(unchanged)",
+		test.gamutMapping ? test.gamutMapping : "(unchanged)",
+		test.peakDetection ? test.peakDetection : "(unchanged)",
+		test.contrastRecovery ? test.contrastRecovery : "(unchanged)",
+		test.targetPrimaries ? test.targetPrimaries : "(unchanged)",
+		test.reportBt2020ToDisplay ? test.reportBt2020ToDisplay : "(unchanged)",
+		test.force8Bit ? 1 : 0,
+		(test.vpOwnedPresenter && strcmp(test.range, "full") == 0 &&
+			strcmp(test.gamma, "2.2") == 0) ? 1 : 0,
+		test.vpOwnedPresenter ? 1 : 0,
+		test.disableCompute ? 1 : 0, test.disableShaderCache ? 1 : 0,
+		m_activeOutputSweepCaptureRestart ? "capture" : "renderer",
+		saveResult.backupPath.c_str());
+	if (!ApplyActiveOutputSweepConfiguration())
+	{
+		RestoreActiveOutputSweepConfiguration(L"configuration application failed");
+		return false;
+	}
+	UpdateStatsOverlay();
+	return true;
+}
+
+bool CVideoProcessorDlg::ApplyActiveOutputSweepConfiguration()
+{
+	if (m_activeOutputSweepCaptureRestart)
+	{
+		ApplySavedConfiguration();
+		return true;
+	}
+	if (!StageSavedConfiguration("active-output-sweep-renderer-restart", true))
+	{
+		DebugLog::Log("Active output sweep failed: renderer-only configuration stage rejected");
+		return false;
+	}
+	// These options are constructed into the D3D11 device and swapchain. A
+	// renderer rebuild is still necessary, but capture remains live. This is the
+	// closest valid no-full-teardown experiment until the renderer exposes a
+	// transactional live output-contract API.
+	if (m_stagedConfigurationAction == ConfigurationApplyPolicy::Action::RestartCapture)
+	{
+		DebugLog::Log("Active output sweep override: policy=restart-capture action=restart-renderer reason=renderer-only experiment");
+		m_stagedConfigurationAction = ConfigurationApplyPolicy::Action::RestartRenderer;
+	}
+	if (m_stagedConfigurationAction != ConfigurationApplyPolicy::Action::RestartRenderer)
+	{
+		DebugLog::Log("Active output sweep failed: renderer-only action=%s is not restart-renderer",
+			ConfigurationApplyPolicy::ActionLabel(m_stagedConfigurationAction));
+		return false;
+	}
+	m_postRendererStartRequiresGraph = true;
+	m_wantToRestartRenderer = true;
+	UpdateState();
+	return true;
+}
+
+void CVideoProcessorDlg::RestoreActiveOutputSweepConfiguration(const wchar_t* reason)
+{
+	if (!m_activeOutputSweepDocument || !m_activeOutputSweepOriginalDocument)
+	{
+		CompleteActiveOutputSweep(reason);
+		return;
+	}
+	auto restore = std::make_unique<ConfigEditorCore::ConfigDocument>(
+		*m_activeOutputSweepDocument);
+	// Preserve the current loaded bytes for SafeSave's external-edit guard, but
+	// restore the original document byte-for-byte (including comments/order).
+	restore->lines = m_activeOutputSweepOriginalDocument->lines;
+	restore->lineEnding = m_activeOutputSweepOriginalDocument->lineEnding;
+	restore->hasTerminalLineEnding =
+		m_activeOutputSweepOriginalDocument->hasTerminalLineEnding;
+	ConfigEditorCore::SaveResult saveResult;
+	std::wstring error;
+	if (!ConfigEditorCore::SaveSafely(*restore, saveResult, error))
+	{
+		m_activeOutputSweepStatus.Format(
+			L"restore failed - test config retained (%s)", error.c_str());
+		DebugLog::Log("Active output sweep restore failed: detail=%S", error.c_str());
+		CompleteActiveOutputSweep(m_activeOutputSweepStatus);
+		return;
+	}
+	m_activeOutputSweepDocument = std::move(restore);
+	m_activeOutputSweepRestorePending = true;
+	m_activeOutputSweepAwaitingLiveFrame = false;
+	m_activeOutputSweepCaseFailed = false;
+	m_activeOutputSweepStatus.Format(L"%s - restoring test config", reason);
+	DebugLog::Log("Active output sweep restore: result=%S backup=%S action=%s-restart",
+		reason, saveResult.backupPath.c_str(),
+		m_activeOutputSweepCaptureRestart ? "capture" : "renderer");
+	if (!ApplyActiveOutputSweepConfiguration())
+	{
+		CompleteActiveOutputSweep(L"restore saved but renderer restart failed");
+		return;
+	}
+	UpdateStatsOverlay();
+}
+
+void CVideoProcessorDlg::CompleteActiveOutputSweep(const wchar_t* result)
+{
+	m_activeOutputSweepRequested = false;
+	m_activeOutputSweepRunning = false;
+	m_activeOutputSweepAwaitingLiveFrame = false;
+	m_activeOutputSweepCaseFailed = false;
+	m_activeOutputSweepRestorePending = false;
+	m_activeOutputSweepStatus = result;
+	m_activeOutputSweepSummaryVisible = !m_activeOutputSweepResults.empty();
+	m_activeOutputSweepSummaryStartedTick = m_activeOutputSweepSummaryVisible ?
+		GetTickCount64() : 0;
+	DebugLog::Log("Active output sweep complete: result=%S", result);
+	if (m_activeOutputSweepSummaryVisible)
+	{
+		const size_t failed = static_cast<size_t>(std::count_if(
+			m_activeOutputSweepResults.begin(), m_activeOutputSweepResults.end(),
+			[](const SweepSummaryItem& item)
+			{
+				return item.state == SweepResultState::Failed;
+			}));
+		DebugLog::Log("Active output sweep summary retained: successful=%zu failed=%zu clear_on=renderer-reset-or-rebuild",
+			m_activeOutputSweepResults.size() - failed, failed);
+		UpdateStatsOverlay();
+	}
+	else if (m_videoRenderer)
+		m_videoRenderer->SetNativeSweepOverlay(nullptr, 0, 0, 0, 0);
+}
+
+void CVideoProcessorDlg::RecordActiveOutputSweepResult(SweepResultState state,
+	const wchar_t* detail)
+{
+	if (m_activeOutputSweepCaseIndex >= m_activeOutputSweepCases.size() ||
+		m_activeOutputSweepResults.size() > m_activeOutputSweepCaseIndex)
+		return;
+	SweepSummaryItem item;
+	item.label = m_activeOutputSweepCases[m_activeOutputSweepCaseIndex].description;
+	item.detail = detail;
+	item.state = state;
+	m_activeOutputSweepResults.push_back(std::move(item));
+}
+
+bool CVideoProcessorDlg::EvaluateActiveOutputSweepCase(
+	SweepResultState& state, CString& detail) const
+{
+	using namespace ActiveOutputSweepPolicy;
+	using namespace RendererOutputContract;
+	state = SweepResultState::Failed;
+	detail.Empty();
+	if (!m_videoRenderer ||
+		m_activeOutputSweepCaseIndex >= m_activeOutputSweepCases.size())
+	{
+		detail = L"renderer or active test case is unavailable";
+		return false;
+	}
+
+	const ActiveOutputSweepCase& test =
+		m_activeOutputSweepCases[m_activeOutputSweepCaseIndex];
+	Status actual;
+	if (!m_videoRenderer->GetOutputContractStatus(actual))
+	{
+		detail = L"renderer did not expose structured output-contract state";
+		return false;
+	}
+
+	Expected expected;
+	const bool direct = strcmp(test.presentation, "direct") == 0;
+	const bool composed = strcmp(test.presentation, "composed") == 0;
+	const bool full = strcmp(test.range, "full") == 0;
+	const bool limited = strcmp(test.range, "limited") == 0;
+	const bool gamma22 = strcmp(test.gamma, "2.2") == 0;
+	const bool gamma24 = strcmp(test.gamma, "2.4") == 0;
+	const bool gamma20 = strcmp(test.gamma, "2.0") == 0;
+	const bool expectedFallback = gamma20 ||
+		(full && gamma22 && !(test.vpOwnedPresenter && direct)) ||
+		(limited && gamma22 && !test.allowLimitedG22);
+	expected.disposition = expectedFallback ? Disposition::FALLBACK :
+		Disposition::EXACT;
+	expected.presentation = composed ? Presentation::BITBLT :
+		direct ? Presentation::FLIP : Presentation::UNKNOWN;
+	expected.range = expectedFallback ? Range::FULL :
+		limited ? Range::LIMITED : Range::FULL;
+	expected.transfer = expectedFallback ? Transfer::SRGB :
+		gamma22 ? Transfer::GAMMA22 :
+		gamma24 || (limited && strcmp(test.gamma, "auto") == 0) ?
+		Transfer::GAMMA24 : Transfer::SRGB;
+	expected.requireVpOwner = test.vpOwnedPresenter && direct;
+	expected.requireDxgiVerification = expected.requireVpOwner;
+	expected.swapchainBitDepth = expected.requireVpOwner ?
+		(test.force8Bit ? 8u : 10u) : 0u;
+	const std::string configuredPrimaries = m_activeOutputSweepDocument ?
+		m_activeOutputSweepDocument->Get("vprenderer", "sdr_target_primaries") :
+		std::string();
+	expected.primaries = ConfigFile::NormalizeName(configuredPrimaries) == "bt2020" ?
+		Primaries::BT2020 : Primaries::REC709;
+	const bool hdrSuite = m_activeOutputSweepSuite.CompareNoCase(L"hdr") == 0;
+	expected.measurementRequired = !expectedFallback &&
+		(hdrSuite || gamma22 || gamma24 || limited || test.force8Bit);
+
+	const Decision decision = Evaluate(expected, actual);
+	state = decision.verdict == Verdict::PASS ? SweepResultState::Passed :
+		decision.verdict == Verdict::EXPECTED ? SweepResultState::Expected :
+		decision.verdict == Verdict::MEASURE ? SweepResultState::Measure :
+		SweepResultState::Failed;
+	const wchar_t* range = actual.range == Range::FULL ? L"Full" :
+		actual.range == Range::LIMITED ? L"Limited" : L"Unknown";
+	const wchar_t* transfer = actual.transfer == Transfer::GAMMA22 ? L"Pure2.2" :
+		actual.transfer == Transfer::GAMMA24 ? L"Pure2.4" :
+		actual.transfer == Transfer::SRGB ? L"sRGB" : L"Unknown";
+	const wchar_t* owner = actual.vpOwnsPresentation ? L"VP" : L"libplacebo";
+	const wchar_t* primaries = actual.primaries == Primaries::BT2020 ?
+		L"BT.2020" : actual.primaries == Primaries::REC709 ? L"Rec.709" : L"Unknown";
+	const wchar_t* content = actual.rendererContent ==
+		RendererContentEvidence::NONBLACK ? L"nonblack" :
+		actual.rendererContent == RendererContentEvidence::ALL_BLACK ? L"black" :
+		L"unverified";
+	const wchar_t* delivery = actual.displayDelivery ==
+		DisplayDeliveryEvidence::PRESENTED ? L"presented" :
+		actual.displayDelivery == DisplayDeliveryEvidence::SUBMITTED ? L"submitted-only" :
+		L"unverified";
+	detail.Format(L"%S; actual=%s/%s/%s/%ubit owner=%s accepted=%d verified=%d submissions=%llu rendered=%s display_delivery=%s format=%S DXGI=%S",
+		decision.reason.c_str(), range, transfer, primaries,
+		actual.swapchainBitDepth, owner,
+		actual.requestedContractActive ? 1 : 0,
+		actual.dxgiAppliedVerified ? 1 : 0,
+		static_cast<unsigned long long>(actual.successfulPresents), content, delivery,
+		actual.swapchainFormat.empty() ? "(none)" :
+			actual.swapchainFormat.c_str(),
+		actual.dxgiDeclaration.empty() ? "(none)" :
+			actual.dxgiDeclaration.c_str());
+	return decision.verdict != Verdict::WAITING;
+}
+
+void CVideoProcessorDlg::ClearActiveOutputSweepSummary(const char* reason)
+{
+	if (!m_activeOutputSweepSummaryVisible)
+		return;
+	m_activeOutputSweepSummaryVisible = false;
+	m_activeOutputSweepSummaryStartedTick = 0;
+	m_activeOutputSweepResults.clear();
+	DebugLog::Log("Active output sweep summary cleared: reason=%s", reason);
+	if (m_videoRenderer)
+		m_videoRenderer->SetNativeSweepOverlay(nullptr, 0, 0, 0, 0);
+}
+
+void CVideoProcessorDlg::UpdateActiveOutputSweep(ULONGLONG now)
+{
+	if (m_activeOutputSweepRequested && !m_activeOutputSweepRunning)
+	{
+		if (m_rendererState == RendererState::RENDERSTATE_RENDERING &&
+			m_videoRenderer)
+			StartActiveOutputSweep();
+		return;
+	}
+	if (!m_activeOutputSweepRunning)
+		return;
+	if (m_activeOutputSweepRestorePending)
+	{
+		if (m_rendererState == RendererState::RENDERSTATE_RENDERING &&
+			m_videoRenderer)
+			CompleteActiveOutputSweep(L"complete - original test config restored");
+		return;
+	}
+	if (now < m_activeOutputSweepDeadlineTick)
+		return;
+	if (m_activeOutputSweepAwaitingLiveFrame)
+	{
+		DebugLog::Log("Active output sweep case timed out: index=%zu reason=no-live-frame timeout_ms=15000",
+			m_activeOutputSweepCaseIndex + 1);
+		m_activeOutputSweepAwaitingLiveFrame = false;
+		m_activeOutputSweepCaseFailed = true;
+		m_activeOutputSweepBannerState = SweepBannerState::Failed;
+		m_activeOutputSweepCaseResult = SweepResultState::Failed;
+		SweepResultState classifiedState = SweepResultState::Failed;
+		CString classifiedDetail;
+		if (EvaluateActiveOutputSweepCase(classifiedState, classifiedDetail))
+			m_activeOutputSweepCaseDetail = classifiedDetail;
+		else
+			m_activeOutputSweepCaseDetail = L"no live frame after 15 seconds";
+		const ULONGLONG failureHoldMs = m_activeOutputSweepHoldMs < 5000 ?
+			m_activeOutputSweepHoldMs : 5000;
+		m_activeOutputSweepDeadlineTick = now + failureHoldMs;
+		m_activeOutputSweepStatus.Format(L"%s\nFAIL: %s; holding failure",
+			m_activeOutputSweepCases[m_activeOutputSweepCaseIndex].description,
+			m_activeOutputSweepCaseDetail.GetString());
+		DebugLog::Log("Active output sweep case failure hold: index=%zu hold_ms=%llu",
+			m_activeOutputSweepCaseIndex + 1,
+			m_activeOutputSweepDeadlineTick - now);
+		UpdateStatsOverlay();
+		return;
+	}
+	if (m_activeOutputSweepCaseFailed)
+	{
+		RecordActiveOutputSweepResult(SweepResultState::Failed,
+			m_activeOutputSweepCaseDetail.GetString());
+		DebugLog::Log("Active output sweep case failed after visible hold: index=%zu",
+			m_activeOutputSweepCaseIndex + 1);
+	}
+	else
+	{
+		SweepResultState state = SweepResultState::Failed;
+		CString detail;
+		if (!EvaluateActiveOutputSweepCase(state, detail))
+		{
+			state = SweepResultState::Failed;
+			detail = L"output metadata did not settle before the hold completed";
+		}
+		RecordActiveOutputSweepResult(state, detail.GetString());
+		const char* verdict = state == SweepResultState::Passed ? "PASS" :
+			state == SweepResultState::Expected ? "EXPECTED" :
+			state == SweepResultState::Measure ? "MEASURE" : "FAIL";
+		DebugLog::Log("Active output sweep assertion: index=%zu verdict=%s hold_ms=%lu detail=%S",
+			m_activeOutputSweepCaseIndex + 1, verdict,
+			m_activeOutputSweepHoldMs, detail.GetString());
+	}
+	const size_t next = m_activeOutputSweepCaseIndex + 1;
+	if (next < m_activeOutputSweepCases.size())
+		ApplyActiveOutputSweepCase(next);
+	else
+		RestoreActiveOutputSweepConfiguration(L"all cases complete");
+}
+
 bool CVideoProcessorDlg::StageSavedConfiguration(
 	const char* reason, bool stageAccelerators)
 {
@@ -5057,6 +5728,38 @@ LRESULT CVideoProcessorDlg::OnMessageRendererLiveFrame(
 	LPARAM)
 {
 	TryRevealRendererTransition(static_cast<uint32_t>(wParam));
+	if (m_activeOutputSweepRunning && m_activeOutputSweepAwaitingLiveFrame &&
+		m_activeOutputSweepCaseIndex < m_activeOutputSweepCases.size())
+	{
+		SweepResultState state = SweepResultState::Failed;
+		CString detail;
+		if (EvaluateActiveOutputSweepCase(state, detail))
+		{
+			m_activeOutputSweepAwaitingLiveFrame = false;
+			m_activeOutputSweepCaseResult = state;
+			m_activeOutputSweepCaseDetail = detail;
+			m_activeOutputSweepCaseFailed = state == SweepResultState::Failed;
+			m_activeOutputSweepBannerState = state == SweepResultState::Passed ?
+				SweepBannerState::Passed : state == SweepResultState::Expected ?
+				SweepBannerState::Expected : state == SweepResultState::Measure ?
+				SweepBannerState::Measure : SweepBannerState::Failed;
+			m_activeOutputSweepDeadlineTick = GetTickCount64() +
+				(m_activeOutputSweepCaseFailed ?
+					(std::min<DWORD>)(m_activeOutputSweepHoldMs, 5000) :
+					m_activeOutputSweepHoldMs);
+			const wchar_t* label = state == SweepResultState::Passed ? L"PASS" :
+				state == SweepResultState::Expected ? L"EXPECTED" :
+				state == SweepResultState::Measure ? L"MEASURE" : L"FAIL";
+			m_activeOutputSweepStatus.Format(L"%s\n%s: %s; holding %lus",
+				m_activeOutputSweepCases[m_activeOutputSweepCaseIndex].description,
+				label, detail.GetString(),
+				(m_activeOutputSweepDeadlineTick - GetTickCount64()) / 1000);
+			DebugLog::Log("Active output sweep live classification: index=%zu state=%d hold_ms=%llu detail=%S",
+				m_activeOutputSweepCaseIndex + 1, static_cast<int>(state),
+				m_activeOutputSweepDeadlineTick - GetTickCount64(), detail.GetString());
+			UpdateStatsOverlay();
+		}
+	}
 	return 0;
 }
 
@@ -6682,6 +7385,8 @@ void CVideoProcessorDlg::CaptureGUIClear()
 void CVideoProcessorDlg::RenderStart()
 {
 	DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::RenderStart(): Begin")));
+	if (m_activeOutputSweepSummaryVisible && !m_activeOutputSweepRunning)
+		ClearActiveOutputSweepSummary("renderer-rebuild");
 	// Process startup has already parsed, validated, and published its complete
 	// configuration before capture begins. Do not perform a second synchronous
 	// reload during the first capture-state start: that widens the interval
@@ -10091,6 +10796,29 @@ void CVideoProcessorDlg::RefreshModernStatus()
 	status.vpLatency = text(m_rendererLatencyToVPText);
 	status.ptsLead = text(m_rendererLatencyDsLeadText);
 	status.outputLatency = text(m_rendererLatencyToDSText);
+	// Read Alpha's presentation timing from the renderer just as the OSD does.
+	// The legacy latency statics are only a display cache and can remain at their
+	// placeholder values when the Modern view is active.
+	if (m_videoRenderer &&
+		m_rendererState == RendererState::RENDERSTATE_RENDERING)
+	{
+		const int selectedRenderer = m_rendererCombo.GetCurSel();
+		const RendererId* renderer = selectedRenderer >= 0 ?
+			reinterpret_cast<const RendererId*>(
+				m_rendererCombo.GetItemData(selectedRenderer)) : nullptr;
+		if (renderer && renderer->backend == RendererBackend::LIBPLACEBO)
+		{
+			double presentationLeadMs = 0.0;
+			double captureToPresentationMs = 0.0;
+			if (m_videoRenderer->GetPresentationTargetTiming(
+				presentationLeadMs, captureToPresentationMs))
+			{
+				status.ptsLead.Format(TEXT("%.01f"), presentationLeadMs);
+				status.outputLatency.Format(TEXT("%.01f"),
+					captureToPresentationMs);
+			}
+		}
+	}
 	status.videoOnly = m_hideUI;
 	const bool fullscreenRequested =
 		m_rendererFullscreenCheck.GetCheck() == BST_CHECKED;
@@ -10835,6 +11563,8 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 	// Handle regular 1-second timer for UI updates
 	if (nIDEvent == TIMER_ID_1SECOND)
 	{
+		UpdateActiveOutputSweep(uiNow);
+
 		// A source can publish its BT.2020/SDR state only once at startup.
 		// Re-evaluate the opt-in LLDV candidate here so confirmation does not
 		// depend on receiving a second video-state notification.
@@ -10979,7 +11709,23 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 			{
 				cstring.Format(_T("%.01f"), latencySnapshot.vpInternalMs);
 				m_rendererLatencyToVPText.SetWindowText(cstring);
-				if (latencySnapshot.scheduledPresentationKnown)
+				double alphaPresentationLeadMs = 0.0;
+				double alphaCaptureToPresentationMs = 0.0;
+				const bool alphaPresentationKnown = renderer &&
+					renderer->backend == RendererBackend::LIBPLACEBO &&
+					m_videoRenderer->GetPresentationTargetTiming(
+						alphaPresentationLeadMs, alphaCaptureToPresentationMs);
+				if (alphaPresentationKnown)
+				{
+					// Match the Alpha OSD: DirectShow scheduling is not the
+					// presentation authority for this renderer, but its DXGI timing
+					// forecast is meaningful and available in normal playback.
+					cstring.Format(_T("%.01f"), alphaPresentationLeadMs);
+					m_rendererLatencyDsLeadText.SetWindowText(cstring);
+					cstring.Format(_T("%.01f"), alphaCaptureToPresentationMs);
+					m_rendererLatencyToDSText.SetWindowText(cstring);
+				}
+				else if (latencySnapshot.scheduledPresentationKnown)
 				{
 					cstring.Format(_T("%.01f"), latencySnapshot.dsScheduleLeadMs);
 					m_rendererLatencyDsLeadText.SetWindowText(cstring);
@@ -11776,6 +12522,10 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 
 	const bool nativeOverlay = m_statsOverlayRequestedVisible && m_videoRenderer &&
 		m_videoRenderer->SupportsNativeStatsOverlay();
+	const bool nativeSweepBanner = (m_activeOutputSweepRunning ||
+		m_activeOutputSweepSummaryVisible) &&
+		m_activeOutputSweepShowInfo && m_videoRenderer &&
+		m_videoRenderer->SupportsNativeStatsOverlay();
 	// Native-overlay support can appear after the renderer plugin finishes its
 	// handoff. Close the legacy window on that transition as well as in the
 	// immediate toggle path, otherwise both panels remain visible and the
@@ -11793,7 +12543,8 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		m_statsOverlay->Show(m_statsOverlay->IsCreated());
 	}
 	if (!m_statsOverlay ||
-		(!m_statsOverlay->IsVisible() && !nativeOverlay) || !m_lastStatsData)
+		(!m_statsOverlay->IsVisible() && !nativeOverlay && !nativeSweepBanner) ||
+		!m_lastStatsData)
 		return;
 
 	// Fullscreen/windowed changes can put a no-activate layered overlay behind
@@ -11803,6 +12554,7 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		m_statsOverlay->UpdatePosition(displayWindow ? displayWindow : GetSafeHwnd());
 
 	StatsData stats;
+	stats.outputSweep = m_activeOutputSweepStatus;
 
 	// Video format info
 	if (m_captureDeviceVideoState && m_captureDeviceVideoState->valid)
@@ -12056,6 +12808,30 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 			m_videoRenderer->SetNativeStatsOverlay(
 				pixels.data(), pixels.size(), width, height, stride);
 	}
+	if (nativeSweepBanner)
+	{
+		std::vector<uint8_t> pixels;
+		int width = 0;
+		int height = 0;
+		int stride = 0;
+		const size_t summaryItemsPerPage = 3;
+		const size_t summaryPage = m_activeOutputSweepSummaryVisible &&
+			m_activeOutputSweepSummaryStartedTick != 0 ?
+			static_cast<size_t>((GetTickCount64() -
+				m_activeOutputSweepSummaryStartedTick) / 6000) : 0;
+		const bool rendered = m_activeOutputSweepSummaryVisible ?
+			m_statsOverlay->RenderSweepSummaryBgra(m_activeOutputSweepResults,
+				summaryPage, summaryItemsPerPage, pixels, width, height, stride) :
+			m_statsOverlay->RenderSweepBannerBgra(m_activeOutputSweepStatus,
+				m_activeOutputSweepAwaitingLiveFrame || m_activeOutputSweepRestorePending ?
+					SweepBannerState::Testing : m_activeOutputSweepBannerState,
+				pixels, width, height, stride);
+		if (rendered)
+		{
+			m_videoRenderer->SetNativeSweepOverlay(
+				pixels.data(), pixels.size(), width, height, stride);
+		}
+	}
 
 	// Save current stats for next update
 	*m_lastStatsData = stats;
@@ -12152,6 +12928,8 @@ void CVideoProcessorDlg::RequestRendererReset(RendererResetReason reason,
 		RendererResetPriority(reason),
 		requiresGraph ? "graph" : "live-queue",
 		delayMs);
+	if (accepted && m_activeOutputSweepSummaryVisible && !m_activeOutputSweepRunning)
+		ClearActiveOutputSweepSummary("renderer-reset");
 }
 
 

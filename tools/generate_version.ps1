@@ -41,6 +41,8 @@ $VerDate     = (git log -n 1 --format=format:"static const TCHAR* VERSION_DATE=T
 $VerDescribe = Invoke-GitText -GitArguments @("describe", "--tags")
 $VerCommitShort = Invoke-GitText -GitArguments @("rev-parse", "--short=7", "HEAD")
 $VerBranch = Invoke-GitText -GitArguments @("symbolic-ref", "--quiet", "--short", "HEAD")
+$DefaultRemoteRef = Invoke-GitText -GitArguments @("symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD")
+$DefaultBranch = $DefaultRemoteRef -replace '^origin/', ''
 
 # Detached CI checkouts do not have a symbolic branch. Prefer the source
 # branch supplied by common CI systems, while keeping local builds exact.
@@ -61,7 +63,6 @@ if ([String]::IsNullOrWhiteSpace($VerBranch)) {
 # exactly at the remote default branch, report that durable branch identity
 # rather than falling back to an older nearest tag from `git describe`.
 if ([String]::IsNullOrWhiteSpace($VerBranch)) {
-  $DefaultRemoteRef = Invoke-GitText -GitArguments @("symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD")
   if (-not [String]::IsNullOrWhiteSpace($DefaultRemoteRef)) {
     $PointsAtDefault = Invoke-GitText -GitArguments @("merge-base", "--is-ancestor", "HEAD", $DefaultRemoteRef)
     if ($LASTEXITCODE -eq 0) {
@@ -69,6 +70,18 @@ if ([String]::IsNullOrWhiteSpace($VerBranch)) {
     }
   }
 }
+
+# The current beta line is deliberately a branch rather than a rolling Git tag.
+# When that default branch is an ancestor of this build, do not label a new beta
+# artifact with an old nearest historical tag (for example v1.1.016-beta).
+if ($DefaultBranch -match '^v\d+\.\d+\.\d+-beta$' -and
+    -not [String]::IsNullOrWhiteSpace($VerCommitShort)) {
+  & git merge-base --is-ancestor $DefaultRemoteRef HEAD 2>$null
+  if ($LASTEXITCODE -eq 0) {
+    $VerDescribe = "$DefaultBranch-$VerCommitShort"
+  }
+}
+
 if (-not [String]::IsNullOrWhiteSpace($VerBranch)) {
   $VerBranch = $VerBranch.Trim()
   $VerBranch = $VerBranch -replace '^refs/heads/', ''

@@ -2,6 +2,7 @@
 #include "CppUnitTest.h"
 
 #include <vprenderer/LibplaceboOutputPolicy.h>
+#include <ActiveOutputSweepPolicy.h>
 
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
@@ -12,6 +13,141 @@ namespace Tests
 	TEST_CLASS(LibplaceboOutputPolicyTests)
 	{
 	public:
+		TEST_METHOD(ActiveSweepExactContractRequiresMetadataAndPresent)
+		{
+			using namespace ActiveOutputSweepPolicy;
+			using namespace RendererOutputContract;
+			Expected expected;
+			expected.presentation = Presentation::FLIP;
+			expected.range = Range::FULL;
+			expected.transfer = Transfer::GAMMA22;
+			expected.primaries = Primaries::REC709;
+			expected.requireVpOwner = true;
+			expected.requireDxgiVerification = true;
+			expected.swapchainBitDepth = 10;
+			Status actual;
+			actual.available = true;
+			actual.safeToRender = true;
+			actual.requestedContractActive = true;
+			actual.vpOwnsPresentation = true;
+			actual.dxgiAppliedVerified = true;
+			actual.swapchainBitDepth = 10;
+			actual.presentation = Presentation::FLIP;
+			actual.range = Range::FULL;
+			actual.transfer = Transfer::GAMMA22;
+			actual.primaries = Primaries::REC709;
+			Assert::AreEqual(static_cast<int>(Verdict::WAITING),
+				static_cast<int>(Evaluate(expected, actual).verdict));
+			actual.successfulPresents = 1;
+			actual.displayDelivery = DisplayDeliveryEvidence::PRESENTED;
+			Assert::AreEqual(static_cast<int>(Verdict::PASS),
+				static_cast<int>(Evaluate(expected, actual).verdict));
+			actual.swapchainBitDepth = 8;
+			Assert::AreEqual(static_cast<int>(Verdict::FAIL),
+				static_cast<int>(Evaluate(expected, actual).verdict));
+			actual.swapchainBitDepth = 10;
+			actual.primaries = Primaries::BT2020;
+			Assert::AreEqual(static_cast<int>(Verdict::FAIL),
+				static_cast<int>(Evaluate(expected, actual).verdict));
+		}
+
+		TEST_METHOD(ActiveSweepPhysicalCurveIsMeasurementNotAutomaticPass)
+		{
+			using namespace ActiveOutputSweepPolicy;
+			using namespace RendererOutputContract;
+			Expected expected;
+			expected.presentation = Presentation::FLIP;
+			expected.range = Range::FULL;
+			expected.transfer = Transfer::GAMMA22;
+			expected.requireVpOwner = true;
+			expected.measurementRequired = true;
+			Status actual;
+			actual.available = true;
+			actual.safeToRender = true;
+			actual.requestedContractActive = true;
+			actual.vpOwnsPresentation = true;
+			actual.successfulPresents = 4;
+			actual.displayDelivery = DisplayDeliveryEvidence::PRESENTED;
+			actual.presentation = Presentation::FLIP;
+			actual.range = Range::FULL;
+			actual.transfer = Transfer::GAMMA22;
+			Assert::AreEqual(static_cast<int>(Verdict::MEASURE),
+				static_cast<int>(Evaluate(expected, actual).verdict));
+		}
+
+		TEST_METHOD(ActiveSweepExpectedFallbackMustActuallyFallback)
+		{
+			using namespace ActiveOutputSweepPolicy;
+			using namespace RendererOutputContract;
+			Expected expected;
+			expected.disposition = Disposition::FALLBACK;
+			expected.presentation = Presentation::FLIP;
+			expected.range = Range::FULL;
+			expected.transfer = Transfer::SRGB;
+			Status actual;
+			actual.available = true;
+			actual.safeToRender = true;
+			actual.successfulPresents = 1;
+			actual.displayDelivery = DisplayDeliveryEvidence::PRESENTED;
+			actual.presentation = Presentation::FLIP;
+			actual.range = Range::FULL;
+			actual.transfer = Transfer::SRGB;
+			Assert::AreEqual(static_cast<int>(Verdict::EXPECTED),
+				static_cast<int>(Evaluate(expected, actual).verdict));
+			actual.range = Range::LIMITED;
+			Assert::AreEqual(static_cast<int>(Verdict::FAIL),
+				static_cast<int>(Evaluate(expected, actual).verdict));
+			actual.range = Range::FULL;
+			actual.requestedContractActive = true;
+			Assert::AreEqual(static_cast<int>(Verdict::FAIL),
+				static_cast<int>(Evaluate(expected, actual).verdict));
+		}
+
+		TEST_METHOD(ActiveSweepUnexpectedFallbackAndBlockedStateFail)
+		{
+			using namespace ActiveOutputSweepPolicy;
+			using namespace RendererOutputContract;
+			Expected expected;
+			Status actual;
+			actual.available = true;
+			actual.safeToRender = true;
+			actual.successfulPresents = 1;
+			actual.displayDelivery = DisplayDeliveryEvidence::PRESENTED;
+			Assert::AreEqual(static_cast<int>(Verdict::FAIL),
+				static_cast<int>(Evaluate(expected, actual).verdict));
+			actual.safeToRender = false;
+			Assert::AreEqual(static_cast<int>(Verdict::FAIL),
+				static_cast<int>(Evaluate(expected, actual).verdict));
+			expected.disposition = Disposition::BLOCKED;
+			Assert::AreEqual(static_cast<int>(Verdict::EXPECTED),
+				static_cast<int>(Evaluate(expected, actual).verdict));
+		}
+
+		TEST_METHOD(ActiveSweepComposedSubmissionRequiresVisualDeliveryGrade)
+		{
+			using namespace ActiveOutputSweepPolicy;
+			using namespace RendererOutputContract;
+			Expected expected;
+			expected.presentation = Presentation::BITBLT;
+			expected.range = Range::FULL;
+			expected.transfer = Transfer::SRGB;
+			Status actual;
+			actual.available = true;
+			actual.safeToRender = true;
+			actual.requestedContractActive = true;
+			actual.successfulPresents = 10;
+			actual.presentation = Presentation::BITBLT;
+			actual.range = Range::FULL;
+			actual.transfer = Transfer::SRGB;
+			actual.displayDelivery = DisplayDeliveryEvidence::SUBMITTED;
+			actual.rendererContent = RendererContentEvidence::NONBLACK;
+			const Decision decision = Evaluate(expected, actual);
+			Assert::AreEqual(static_cast<int>(Verdict::MEASURE),
+				static_cast<int>(decision.verdict));
+			Assert::IsTrue(decision.reason.find("display delivery is unverified") !=
+				std::string::npos);
+		}
+
 		TEST_METHOD(OneShotInfoFrameSetIsAuthoritativeWhenReadbackDoesNotEcho)
 		{
 			Assert::AreEqual(
@@ -107,7 +243,7 @@ namespace Tests
 				static_cast<int>(actual.presentationModel));
 		}
 
-		TEST_METHOD(LimitedG22IsRejectedWithoutExactRendererTransfer)
+		TEST_METHOD(LimitedG22IsDisabledUnlessTheExperimentIsExplicitlyEnabled)
 		{
 			Request request;
 			request.range = RangeRequest::LIMITED;
@@ -115,6 +251,107 @@ namespace Tests
 			const Plan plan = MakePlan(request);
 			Assert::IsFalse(plan.valid);
 			Assert::IsFalse(Finalize(plan, {}).requestedEncodingActive);
+		}
+
+		TEST_METHOD(LimitedG22ExperimentUsesStudioG22AndPureGamma22)
+		{
+			Request request;
+			request.range = RangeRequest::LIMITED;
+			request.gamma = GammaRequest::GAMMA22;
+			request.allowLimitedG22Experiment = true;
+			const Plan plan = MakePlan(request);
+			Assert::IsTrue(plan.valid);
+			Assert::IsTrue(plan.requiresDxgiOverride);
+			Assert::AreEqual(
+				static_cast<int>(DxgiEncoding::STUDIO_G22_P709),
+				static_cast<int>(plan.desiredEncoding));
+			Assert::AreEqual(
+				static_cast<int>(TargetTransfer::GAMMA22),
+				static_cast<int>(plan.targetTransfer));
+
+			Evidence evidence;
+			evidence.presentationModel = PresentationModel::FLIP;
+			evidence.hasSwapchain3 = true;
+			evidence.presentSupportedBeforeSet = true;
+			evidence.setSucceeded = true;
+			evidence.presentSupportedAfterSet = true;
+			const Actual actual = Finalize(plan, evidence);
+			Assert::IsTrue(actual.requestedEncodingActive);
+			Assert::AreEqual(
+				static_cast<int>(DxgiEncoding::STUDIO_G22_P709),
+				static_cast<int>(actual.encoding));
+		}
+
+		TEST_METHOD(FullPureG22IsDisabledUnlessExplicitlyEnabled)
+		{
+			Request request;
+			request.presentation = PresentationRequest::DIRECT;
+			request.range = RangeRequest::FULL;
+			request.gamma = GammaRequest::GAMMA22;
+			request.vpOwnedPresenter = true;
+			const Plan plan = MakePlan(request);
+			Assert::IsFalse(plan.valid);
+			Assert::IsFalse(plan.strictContract);
+		}
+
+		TEST_METHOD(FullPureG22ExperimentSeparatesPixelsFromDxgiDeclaration)
+		{
+			Request request;
+			request.presentation = PresentationRequest::DIRECT;
+			request.range = RangeRequest::FULL;
+			request.gamma = GammaRequest::GAMMA22;
+			request.allowFullG22Experiment = true;
+			request.vpOwnedPresenter = true;
+			const Plan plan = MakePlan(request);
+			Assert::IsTrue(plan.valid);
+			Assert::IsTrue(plan.strictContract);
+			Assert::IsTrue(plan.requiresDxgiOverride);
+			Assert::AreEqual(static_cast<int>(DxgiEncoding::FULL_G22_P709),
+				static_cast<int>(plan.desiredEncoding));
+			Assert::AreEqual(static_cast<int>(TargetTransfer::GAMMA22),
+				static_cast<int>(plan.targetTransfer));
+
+			Evidence evidence;
+			evidence.presentationModel = PresentationModel::FLIP;
+			evidence.vpOwnsPresentation = true;
+			evidence.hasSwapchain3 = true;
+			evidence.presentSupportedBeforeSet = true;
+			evidence.setSucceeded = true;
+			evidence.presentSupportedAfterSet = true;
+			const Actual actual = Finalize(plan, evidence);
+			Assert::IsTrue(actual.safeToRender);
+			Assert::IsTrue(actual.requestedEncodingActive);
+			Assert::AreEqual(static_cast<int>(DxgiEncoding::FULL_G22_P709),
+				static_cast<int>(actual.encoding));
+			Assert::AreEqual(static_cast<int>(TargetTransfer::GAMMA22),
+				static_cast<int>(actual.targetTransfer));
+		}
+
+		TEST_METHOD(FullPureG22RequiresVpOwnedDirectAndFailsClosed)
+		{
+			Request request;
+			request.presentation = PresentationRequest::COMPOSED;
+			request.range = RangeRequest::FULL;
+			request.gamma = GammaRequest::GAMMA22;
+			request.allowFullG22Experiment = true;
+			const Plan plan = MakePlan(request);
+			Assert::IsFalse(plan.valid);
+			Assert::IsTrue(plan.strictContract);
+			Assert::IsFalse(Finalize(plan, {}).safeToRender);
+
+			request.presentation = PresentationRequest::DIRECT;
+			request.vpOwnedPresenter = true;
+			const Plan direct = MakePlan(request);
+			Assert::IsTrue(direct.valid);
+			Assert::IsFalse(Finalize(direct, {}).safeToRender);
+
+			Evidence nonOwner;
+			nonOwner.presentationModel = PresentationModel::FLIP;
+			nonOwner.hasSwapchain3 = true;
+			nonOwner.presentSupportedBeforeSet = true;
+			nonOwner.setSucceeded = true;
+			nonOwner.presentSupportedAfterSet = true;
+			Assert::IsFalse(Finalize(direct, nonOwner).safeToRender);
 		}
 
 		TEST_METHOD(LimitedAutoUsesExactStudioG24AndFlipCandidate)

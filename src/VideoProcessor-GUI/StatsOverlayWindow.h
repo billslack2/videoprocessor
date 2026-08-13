@@ -36,6 +36,10 @@ struct StatsData
 	// Renderer settings
 	CString method;            // e.g., "Rational-Rational"
 	CString outputMode;        // requested -> negotiated renderer output
+	// Non-empty only while the explicit active-output diagnostic is running.
+	// This is rendered inside the native Alpha overlay as well as the legacy
+	// desktop fallback, so a fullscreen test identifies its current contract.
+	CString outputSweep;
 	CString displayLut;        // Disabled, Active: name (N^3), or Rejected: reason
 	int frameOffsetMs = 0;
 	double hwLatencyMs = 0.0;  // Hardware latency
@@ -136,6 +140,30 @@ struct StatsData
 	}
 };
 
+enum class SweepBannerState
+{
+	Testing,
+	Passed,
+	Expected,
+	Measure,
+	Failed,
+};
+
+enum class SweepResultState
+{
+	Passed,
+	Expected,
+	Measure,
+	Failed,
+};
+
+struct SweepSummaryItem
+{
+	CString label;
+	CString detail;
+	SweepResultState state = SweepResultState::Failed;
+};
+
 class StatsOverlayWindow
 {
 public:
@@ -156,6 +184,11 @@ public:
 	void UpdateStats(const StatsData& stats);
 	bool RenderBgra(std::vector<uint8_t>& pixels, int& width,
 		int& height, int& stride);
+	bool RenderSweepBannerBgra(const CString& status, SweepBannerState state,
+		std::vector<uint8_t>& pixels, int& width, int& height, int& stride);
+	bool RenderSweepSummaryBgra(const std::vector<SweepSummaryItem>& items,
+		size_t page, size_t itemsPerPage, std::vector<uint8_t>& pixels,
+		int& width, int& height, int& stride);
 
 	// Position update
 	void UpdatePosition(HWND parentHwnd);

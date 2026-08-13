@@ -444,6 +444,7 @@ namespace RendererProfileConfig
 		}
 		if (group == "display")
 		{
+			if (key == "output_path_profile") return IsChoice(value, { "legacy", "proposed", "custom" });
 			if (key == "sdr_target_nits") return IsNumberInRange(value, 40.0, 500.0);
 			if (key == "lut_reference_nits") return IsChoice(value, { "auto" }) || IsNumberInRange(value, 40.0, 500.0);
 			if (key == "sdr_black_nits") return IsChoice(value, { "auto" }) || IsNumberInRange(value, 0.0, 500.0, false);
@@ -525,7 +526,12 @@ namespace RendererProfileConfig
 		for (const char* group : { "input", "scaling", "display", "viewport" })
 			if (ValidateProfileSetting(group, key, value, ignored)) return true;
 		if (key == "switch_refresh_rate" || key == "output_diagnostics" ||
-			key == "diagnostic_disable_shader_cache") return IsBoolean(value);
+			key == "diagnostic_disable_shader_cache" ||
+			key == "diagnostic_disable_compute" ||
+			key == "diagnostic_force_8bit_sdr_swapchain" ||
+			key == "diagnostic_allow_limited_g22" ||
+			key == "diagnostic_allow_full_g22" ||
+			key == "diagnostic_vp_owned_dxgi_presenter") return IsBoolean(value);
 		if (key == "deband") return IsChoice(value, { "auto", "on", "off" });
 		return false;
 	}
@@ -546,7 +552,12 @@ namespace RendererProfileConfig
 		const std::vector<ConfigSchema::KeyRule> policyRules = {
 			ConfigSchema::Boolean("switch_refresh_rate"),
 			ConfigSchema::Boolean("output_diagnostics"),
-			ConfigSchema::Boolean("diagnostic_disable_shader_cache")
+			ConfigSchema::Boolean("diagnostic_disable_shader_cache"),
+			ConfigSchema::Boolean("diagnostic_disable_compute"),
+			ConfigSchema::Boolean("diagnostic_force_8bit_sdr_swapchain"),
+			ConfigSchema::Boolean("diagnostic_allow_limited_g22"),
+			ConfigSchema::Boolean("diagnostic_allow_full_g22"),
+			ConfigSchema::Boolean("diagnostic_vp_owned_dxgi_presenter")
 		};
 		if (!ConfigSchema::ValidateSection(config,
 			RendererConfigView::GENERAL_SECTION, policyRules, error))
@@ -568,8 +579,9 @@ namespace RendererProfileConfig
 			RendererConfigView::VPRENDERER_SECTION))
 			for (const auto& value : *renderer)
 				if (value.first != "when" && value.first != "shortcut" &&
-					!RendererConfigView::IsPolicyKey(value.first) &&
-					!ValidateCanonicalDisplaySetting(value.first, value.second))
+					!((RendererConfigView::IsPolicyKey(value.first) &&
+						ValidateBaseSetting(value.first, value.second)) ||
+						ValidateCanonicalDisplaySetting(value.first, value.second)))
 				{
 					error = "[vprenderer] key '" + value.first +
 						"' is not a valid built-in renderer base setting";
@@ -1028,7 +1040,8 @@ namespace RendererProfileConfig
 					}
 					std::string expected;
 					const bool valid = std::string(spec.name) == "display" ?
-						(!RendererConfigView::IsPolicyKey(entry.first) &&
+						((RendererConfigView::IsPolicyKey(entry.first) &&
+							ValidateBaseSetting(entry.first, entry.second)) ||
 							ValidateTargetRendererSetting(entry.first, entry.second)) :
 						ValidateProfileSetting(spec.name, entry.first,
 							entry.second, expected);
@@ -1186,7 +1199,12 @@ namespace RendererProfileConfig
 			ConfigSchema::Boolean("switch_refresh_rate"),
 			ConfigSchema::Integer("event_action_delay_seconds", 0, 30),
 			ConfigSchema::Boolean("output_diagnostics"),
-			ConfigSchema::Boolean("diagnostic_disable_shader_cache")
+			ConfigSchema::Boolean("diagnostic_disable_shader_cache"),
+			ConfigSchema::Boolean("diagnostic_disable_compute"),
+			ConfigSchema::Boolean("diagnostic_force_8bit_sdr_swapchain"),
+			ConfigSchema::Boolean("diagnostic_allow_limited_g22"),
+			ConfigSchema::Boolean("diagnostic_allow_full_g22"),
+			ConfigSchema::Boolean("diagnostic_vp_owned_dxgi_presenter")
 		};
 		if (!ConfigSchema::ValidateSection(config, "general", generalRules, error))
 			return false;
@@ -1207,10 +1225,14 @@ namespace RendererProfileConfig
 				"quality", "tone_mapping", "gamut_mapping", "peak_detection",
 				"contrast_recovery", "upscaler", "downscaler", "deband",
 				"deband_strength", "sigmoid", "dithering", "output_presentation",
-				"output_range", "output_gamma",
+				"output_range", "output_gamma", "output_path_profile",
 				"sdr_target_primaries", "report_bt2020_to_display",
 				"sdr_input_transfer", "output_diagnostics",
-				"diagnostic_disable_shader_cache", "screen_aspect",
+				"diagnostic_disable_shader_cache", "diagnostic_disable_compute",
+				"diagnostic_force_8bit_sdr_swapchain",
+				"diagnostic_allow_limited_g22",
+				"diagnostic_allow_full_g22",
+				"diagnostic_vp_owned_dxgi_presenter", "screen_aspect",
 				"vertical_alignment",
 				"automatic_crop", "subtitle_fit",
 				"subtitle_hold_seconds", "subtitle_engage_drift_ms",
