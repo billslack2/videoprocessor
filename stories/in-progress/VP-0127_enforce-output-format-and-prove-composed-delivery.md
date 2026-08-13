@@ -46,6 +46,16 @@ forced 8-bit returned `MEASURE` with presented-frame evidence, the 8-bit case
 remained `R8G8B8A8_UNORM`, and composed output remained an honest
 delivery-unverified `MEASURE`.
 
+The full Epson HDR Rec.709/no-BT.2020-signalling suite subsequently completed
+17 successful / 0 failed: fifteen cases required physical `MEASURE` grading
+and two produced their expected policy fallback. Commit `30afe33` improves the
+measurement workflow: the default post-classification hold is five seconds;
+Space pauses the active case indefinitely and removes the test banner; Space
+again restores the banner and restarts the complete configured hold. The hold
+does not begin during renderer initialization or DXGI evidence settling. The
+launcher also accepts an explicit display number for reliable unattended or
+remote targeting.
+
 ## User story
 
 As a VP beta tester, I want output experiments and generated test patterns to
