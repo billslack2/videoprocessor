@@ -10687,6 +10687,29 @@ void CVideoProcessorDlg::RefreshModernStatus()
 	status.vpLatency = text(m_rendererLatencyToVPText);
 	status.ptsLead = text(m_rendererLatencyDsLeadText);
 	status.outputLatency = text(m_rendererLatencyToDSText);
+	// Read Alpha's presentation timing from the renderer just as the OSD does.
+	// The legacy latency statics are only a display cache and can remain at their
+	// placeholder values when the Modern view is active.
+	if (m_videoRenderer &&
+		m_rendererState == RendererState::RENDERSTATE_RENDERING)
+	{
+		const int selectedRenderer = m_rendererCombo.GetCurSel();
+		const RendererId* renderer = selectedRenderer >= 0 ?
+			reinterpret_cast<const RendererId*>(
+				m_rendererCombo.GetItemData(selectedRenderer)) : nullptr;
+		if (renderer && renderer->backend == RendererBackend::LIBPLACEBO)
+		{
+			double presentationLeadMs = 0.0;
+			double captureToPresentationMs = 0.0;
+			if (m_videoRenderer->GetPresentationTargetTiming(
+				presentationLeadMs, captureToPresentationMs))
+			{
+				status.ptsLead.Format(TEXT("%.01f"), presentationLeadMs);
+				status.outputLatency.Format(TEXT("%.01f"),
+					captureToPresentationMs);
+			}
+		}
+	}
 	status.videoOnly = m_hideUI;
 	const bool fullscreenRequested =
 		m_rendererFullscreenCheck.GetCheck() == BST_CHECKED;
