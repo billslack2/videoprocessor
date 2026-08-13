@@ -2887,6 +2887,7 @@ bool CVideoProcessorDlg::StartActiveOutputSweep()
 	}
 	m_activeOutputSweepCaseIndex = 0;
 	m_activeOutputSweepRunning = true;
+	m_activeOutputSweepPaused = false;
 	// The live test owns a separate native top-right banner. Do not force the
 	// user's normal diagnostic panel on merely to identify the active contract.
 	DebugLog::Log(
@@ -3098,6 +3099,7 @@ void CVideoProcessorDlg::CompleteActiveOutputSweep(const wchar_t* result)
 	m_activeOutputSweepRequested = false;
 	m_activeOutputSweepRunning = false;
 	m_activeOutputSweepAwaitingLiveFrame = false;
+	m_activeOutputSweepPaused = false;
 	m_activeOutputSweepCaseFailed = false;
 	m_activeOutputSweepRestorePending = false;
 	m_activeOutputSweepStatus = result;
@@ -3266,6 +3268,37 @@ bool CVideoProcessorDlg::TryClassifyActiveOutputSweepCase(
 	return true;
 }
 
+void CVideoProcessorDlg::ToggleActiveOutputSweepPause()
+{
+	if (!m_activeOutputSweepRunning || m_activeOutputSweepRestorePending)
+		return;
+
+	const ULONGLONG now = GetTickCount64();
+	m_activeOutputSweepPaused = !m_activeOutputSweepPaused;
+	if (m_activeOutputSweepPaused)
+	{
+		if (m_videoRenderer)
+			m_videoRenderer->SetNativeSweepOverlay(nullptr, 0, 0, 0, 0);
+		DebugLog::Log(
+			"Active output sweep measurement pause: index=%zu paused=1 overlay=hidden",
+			m_activeOutputSweepCaseIndex + 1);
+		return;
+	}
+
+	// Resuming is an intentional fresh observation interval. If output is
+	// still settling, restart the bounded initialization wait; otherwise give
+	// the tester the complete configured hold time again.
+	m_activeOutputSweepDeadlineTick = now +
+		(m_activeOutputSweepAwaitingLiveFrame ? 15000 :
+			m_activeOutputSweepHoldMs);
+	DebugLog::Log(
+		"Active output sweep measurement pause: index=%zu paused=0 overlay=restored countdown_restarted_ms=%llu awaiting_evidence=%d",
+		m_activeOutputSweepCaseIndex + 1,
+		m_activeOutputSweepDeadlineTick - now,
+		m_activeOutputSweepAwaitingLiveFrame ? 1 : 0);
+	UpdateStatsOverlay();
+}
+
 void CVideoProcessorDlg::ClearActiveOutputSweepSummary(const char* reason)
 {
 	if (!m_activeOutputSweepSummaryVisible)
@@ -3296,6 +3329,8 @@ void CVideoProcessorDlg::UpdateActiveOutputSweep(ULONGLONG now)
 			CompleteActiveOutputSweep(L"complete - original test config restored");
 		return;
 	}
+	if (m_activeOutputSweepPaused)
+		return;
 	// The first live-frame message normally arrives before DXGI frame
 	// statistics have recovered from the expected post-recreate DISJOINT
 	// state. Keep polling the structured contract during the settle window so
@@ -10338,6 +10373,12 @@ BOOL CVideoProcessorDlg::PreTranslateMessage(MSG* pMsg)
 		m_shaderShortcutKeys.end();
 	const bool repeat = (static_cast<ULONG_PTR>(pMsg->lParam) &
 		(1ull << 30)) != 0;
+	if (keyDown && virtualKey == VK_SPACE && !repeat && !control && !alt &&
+		!shift && m_activeOutputSweepRunning)
+	{
+		ToggleActiveOutputSweepPause();
+		return TRUE;
+	}
 	if (keyUp)
 	{
 		for (const ACCEL& accelerator : m_configuredAccelerators)
@@ -12540,7 +12581,7 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		m_videoRenderer->SupportsNativeStatsOverlay();
 	const bool nativeSweepBanner = (m_activeOutputSweepRunning ||
 		m_activeOutputSweepSummaryVisible) &&
-		m_activeOutputSweepShowInfo && m_videoRenderer &&
+		!m_activeOutputSweepPaused && m_activeOutputSweepShowInfo && m_videoRenderer &&
 		m_videoRenderer->SupportsNativeStatsOverlay();
 	// Native-overlay support can appear after the renderer plugin finishes its
 	// handoff. Close the legacy window on that transition as well as in the

@@ -741,6 +741,7 @@ protected:
 	bool m_activeOutputSweepRequested = false;
 	bool m_activeOutputSweepRunning = false;
 	bool m_activeOutputSweepAwaitingLiveFrame = false;
+	bool m_activeOutputSweepPaused = false;
 	bool m_activeOutputSweepCaseFailed = false;
 	SweepBannerState m_activeOutputSweepBannerState = SweepBannerState::Testing;
 	SweepResultState m_activeOutputSweepCaseResult = SweepResultState::Failed;
@@ -750,7 +751,7 @@ protected:
 	ULONGLONG m_activeOutputSweepSummaryStartedTick = 0;
 	bool m_activeOutputSweepShowInfo = true;
 	bool m_activeOutputSweepCaptureRestart = true;
-	DWORD m_activeOutputSweepHoldMs = 10000;
+	DWORD m_activeOutputSweepHoldMs = 5000;
 	CString m_activeOutputSweepSuite = L"sdr";
 	CString m_activeOutputSweepRequestedTests;
 	size_t m_activeOutputSweepCaseIndex = 0;
@@ -843,6 +844,7 @@ protected:
 		CString& detail) const;
 	bool TryClassifyActiveOutputSweepCase(ULONGLONG now,
 		const char* trigger);
+	void ToggleActiveOutputSweepPause();
 	void ClearActiveOutputSweepSummary(const char* reason);
 	bool StageSavedConfiguration(const char* reason, bool stageAccelerators);
 	bool PublishStagedConfiguration(bool replaceAccelerators);

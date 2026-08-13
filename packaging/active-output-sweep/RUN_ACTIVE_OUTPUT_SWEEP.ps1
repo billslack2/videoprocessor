@@ -6,9 +6,11 @@ param(
     [string]$TargetPrimaries = '',
     [string]$ReportBt2020 = '',
     [ValidateRange(1000, 600000)]
-    [int]$HoldMs = 10000,
+    [int]$HoldMs = 5000,
     [ValidateSet('capture', 'renderer')]
     [string]$Restart = 'capture',
+    [ValidateRange(0, 64)]
+    [int]$DisplayNumber = 0,
     [string]$Tests = ''
 )
 
@@ -88,7 +90,14 @@ $monitors = @(& $probe --list-monitors | ForEach-Object {
     }
 })
 if ($monitors.Count -eq 0) { throw 'No active displays were found. The sweep was not started.' }
-if ($monitors.Count -eq 1) {
+if ($DisplayNumber -ne 0) {
+    $selected = $monitors | Where-Object { $_.Number -eq $DisplayNumber }
+    if ($null -eq $selected) {
+        throw "Display number $DisplayNumber is not active. Use --list-monitors to inspect active displays."
+    }
+    Write-Host "Selected display $DisplayNumber`: $($selected.FriendlyName) ($($selected.Source))"
+}
+elseif ($monitors.Count -eq 1) {
     $selected = $monitors[0]
     Write-Host "Only one active display: $($selected.FriendlyName) ($($selected.Source))"
 }
