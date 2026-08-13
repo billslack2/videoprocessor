@@ -111,7 +111,7 @@ permits this mismatch only through `diagnostic_allow_full_g22: true` with an
 actually VP-owned Direct presenter. The generation is strict: missing VP
 ownership, capability, Check/Set/Check, or target-contract evidence blocks
 rendering instead of silently substituting sRGB. SDR sweep case 4 and HDR case
-9 exercise this exact contract.
+8 exercise this exact contract in the current reduced matrix.
 
 The clean x64 Release passed all 36 Config tests and all 34 focused output-policy
 tests. The complete native suite is 813/818, retaining the same five unrelated
@@ -123,6 +123,31 @@ stabilized near 59.94 Hz with zero Present, device, renderer-target, or
 libplacebo-validation failures. Physical transfer still requires visual or
 instrument comparison against madVR; API acceptance cannot prove projector
 interpretation.
+
+On 2026-08-13 the active fullscreen harness was upgraded from a live-frame
+smoke test to a structured contract assertion. It now queries generation-scoped
+renderer state directly (it does not scrape log prose) and classifies each case
+as **PASS**, **EXPECTED**, **MEASURE**, or **FAIL**. Exact cases compare the
+applied presentation model, range, rendered pixel transfer, target primaries,
+presenter owner, negotiated swapchain bit depth/format, required DXGI
+Check/Set/Check record, and successful Present count. Guard-off cases pass only
+when the exact documented Full/sRGB fallback occurs; a different fallback is a
+failure. Physical gamma, black floor, HDR mapping, and banding cases are
+**MEASURE** after their technical contract succeeds, because API/log evidence
+cannot prove projector response. The on-screen and log result include all
+actual fields and the nominal DXGI declaration.
+
+The default live matrix was reduced to 10 non-redundant SDR cases and 17 HDR
+cases. Gamma-2.0 rejection and compute/shader-cache permutations remain in
+deterministic unit/config tests instead of consuming slow fullscreen cycles.
+The HDR nits and mapping anchors now use the VP-owned Full/pure-2.2 path, while
+the suite retains legacy Full/sRGB, guard-off fallbacks, VP-owned Limited 2.2
+and 2.4, and Composed comparisons. The HDR launcher-selected Rec.709/BT.2020
+target is asserted for every case. The harness documentation records the exact
+stable test numbers and what remains a visual or meter judgment.
+Commit `6fbd642` passed all 38 focused output-policy/harness tests and all 36
+standalone configuration tests. The complete native suite remains 817/822 with
+the same five unrelated configuration/reference baseline failures.
 
 ## User story
 
