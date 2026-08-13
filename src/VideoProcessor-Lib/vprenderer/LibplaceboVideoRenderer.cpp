@@ -2506,11 +2506,14 @@ struct LibplaceboVideoRenderer::Impl
 	pl_d3d11 d3d11 = nullptr;
 	pl_cache cache = nullptr;
 	pl_swapchain swapchain = nullptr;
-	// When enabled, VP creates and retains this DXGI object. libplacebo only
-	// wraps it to obtain a renderable target; VP remains the colour-space
-	// authority and records every successful SetColorSpace1 transition.
+	// When enabled, VP creates and retains this DXGI object. The pl_swapchain
+	// wrapper remains only as a resize/configuration compatibility handle; VP
+	// acquires the backbuffer, supplies it to libplacebo, and calls Present.
 	CComPtr<IDXGISwapChain1> vpOwnedSwapchain;
 	uint64_t vpOwnedSwapchainGeneration = 0;
+	uint64_t vpOwnedTargetValidationLoggedGeneration = 0;
+	uint64_t vpOwnedTargetFailureLoggedGeneration = 0;
+	uint64_t vpOwnedPresentFailureLoggedGeneration = 0;
 	std::string vpOwnedAppliedEncoding = "unapplied";
 	HRESULT vpOwnedColorSpaceResult = E_PENDING;
 	bool vpOwnedColorSpaceVerified = false;
@@ -4103,7 +4106,7 @@ struct LibplaceboVideoRenderer::Impl
 	{
 		if (!vpOwnedSwapchain) return;
 		DebugLog::Log(
-			"VP-owned DXGI swapchain: releasing generation=%llu applied=%s verified=%d present_owner=libplacebo",
+			"VP-owned DXGI swapchain: releasing generation=%llu applied_record=%s verified=%d present_owner=VP",
 			static_cast<unsigned long long>(vpOwnedSwapchainGeneration),
 			vpOwnedAppliedEncoding.c_str(),
 			vpOwnedColorSpaceVerified ? 1 : 0);
@@ -4111,6 +4114,9 @@ struct LibplaceboVideoRenderer::Impl
 		vpOwnedAppliedEncoding = "unapplied";
 		vpOwnedColorSpaceResult = E_PENDING;
 		vpOwnedColorSpaceVerified = false;
+		vpOwnedTargetValidationLoggedGeneration = 0;
+		vpOwnedTargetFailureLoggedGeneration = 0;
+		vpOwnedPresentFailureLoggedGeneration = 0;
 	}
 
 	bool CreateVpOwnedSwapchain(bool blit, const char* trigger)
@@ -4139,7 +4145,12 @@ struct LibplaceboVideoRenderer::Impl
 			? DXGI_FORMAT_B8G8R8A8_UNORM : DXGI_FORMAT_R10G10B10A2_UNORM;
 		desc.Stereo = FALSE;
 		desc.SampleDesc.Count = 1;
-		desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+		// Match the D3D11 target contract used by libplacebo itself. At feature
+		// level 11, its wrapped-texture backend requires the SRV/UAV combination
+		// to expose blit_dst. Render-target usage alone produces a texture that is
+		// renderable but invalid as a pl_render_image destination.
+		desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT |
+			DXGI_USAGE_SHADER_INPUT | DXGI_USAGE_UNORDERED_ACCESS;
 		desc.BufferCount = blit ? 1 : 3;
 		desc.Scaling = DXGI_SCALING_STRETCH;
 		desc.SwapEffect = blit ? DXGI_SWAP_EFFECT_DISCARD :
@@ -4164,12 +4175,15 @@ struct LibplaceboVideoRenderer::Impl
 		vpOwnedAppliedEncoding = "unapplied";
 		vpOwnedColorSpaceResult = E_PENDING;
 		vpOwnedColorSpaceVerified = false;
+		vpOwnedTargetValidationLoggedGeneration = 0;
+		vpOwnedTargetFailureLoggedGeneration = 0;
+		vpOwnedPresentFailureLoggedGeneration = 0;
 		DebugLog::Log(
-			"VP-owned DXGI swapchain: created generation=%llu trigger=%s format=%u effect=%u buffers=%u size=%ux%u present_owner=libplacebo",
+			"VP-owned DXGI swapchain: created generation=%llu trigger=%s format=%u effect=%u buffers=%u usage=0x%08X size=%ux%u present_owner=VP",
 			static_cast<unsigned long long>(vpOwnedSwapchainGeneration), trigger,
 			static_cast<unsigned int>(desc.Format),
 			static_cast<unsigned int>(desc.SwapEffect), desc.BufferCount,
-			desc.Width, desc.Height);
+			desc.BufferUsage, desc.Width, desc.Height);
 		return true;
 	}
 
@@ -4204,7 +4218,7 @@ struct LibplaceboVideoRenderer::Impl
 			vpOwnedColorSpaceResult = result;
 			vpOwnedColorSpaceVerified = verified;
 			DebugLog::Log(
-				"VP-owned DXGI swapchain: colour-space state generation=%llu stage=%s requested=%s set=0x%08lX verified=%d present_owner=libplacebo",
+				"VP-owned DXGI swapchain: colour-space applied record generation=%llu stage=%s requested=%s set=0x%08lX capability_recheck=%d present_owner=VP wire_state=unverified",
 				static_cast<unsigned long long>(vpOwnedSwapchainGeneration), stage,
 				vpOwnedAppliedEncoding.c_str(), static_cast<unsigned long>(result),
 				verified ? 1 : 0);
@@ -4524,7 +4538,7 @@ struct LibplaceboVideoRenderer::Impl
 		// an unaccepted BT.2020/limited target contract.
 		SetSwapchainColorHint(actualOutput.encoding);
 		DebugLog::Log(
-			"libplacebo DXGI color-space result: trigger=%s requested=%s accepted=%d active_readback=%s",
+			"libplacebo DXGI color-space result: trigger=%s requested=%s accepted=%d applied_record=%s wire_state=unverified",
 			trigger,
 			ToString(actualOutput.encoding),
 			actualOutput.requestedEncodingActive ? 1 : 0,
@@ -5027,7 +5041,14 @@ struct LibplaceboVideoRenderer::Impl
 		// DirectFlip, MPO, or independent flip.
 		swapchainBlit = outputPlan.useBlit;
 		struct pl_d3d11_swapchain_params swapchainParams{};
-		if (settings.diagnosticVpOwnedDxgiPresenter)
+		const bool initializeVpOwnedPresenter =
+			settings.diagnosticVpOwnedDxgiPresenter && !outputPlan.useBlit;
+		if (settings.diagnosticVpOwnedDxgiPresenter && outputPlan.useBlit)
+		{
+			DebugLog::Log(
+				"VP-owned DXGI swapchain: requested=1 applied=0 trigger=initialize reason=the VP-owned beta presenter supports flip/direct only; using libplacebo-owned composed swapchain");
+		}
+		if (initializeVpOwnedPresenter)
 		{
 			if (!CreateVpOwnedSwapchain(outputPlan.useBlit, "initialize"))
 				throw std::runtime_error("Failed to create VP-owned DXGI swapchain");
@@ -6686,8 +6707,99 @@ struct LibplaceboVideoRenderer::Impl
 			pl_frame_set_chroma_location(&image, PL_CHROMA_LEFT);
 
 		struct pl_swapchain_frame swapchainFrame{};
-		if (!pl_swapchain_start_frame(swapchain, &swapchainFrame))
+		pl_tex vpOwnedFrameTarget = nullptr;
+		CComPtr<ID3D11Texture2D> vpOwnedBackbuffer;
+		if (vpOwnedSwapchain)
+		{
+			const HRESULT getBufferResult = vpOwnedSwapchain->GetBuffer(
+				0, IID_PPV_ARGS(&vpOwnedBackbuffer));
+			if (FAILED(getBufferResult) || !vpOwnedBackbuffer)
+			{
+				if (vpOwnedTargetFailureLoggedGeneration !=
+					vpOwnedSwapchainGeneration)
+				{
+					vpOwnedTargetFailureLoggedGeneration =
+						vpOwnedSwapchainGeneration;
+					DebugLog::Log(
+						"VP-owned DXGI target rejected: generation=%llu stage=GetBuffer result=0x%08lX present_skipped=1",
+						static_cast<unsigned long long>(
+							vpOwnedSwapchainGeneration),
+						static_cast<unsigned long>(getBufferResult));
+				}
+				return false;
+			}
+
+			D3D11_TEXTURE2D_DESC backbufferDesc{};
+			vpOwnedBackbuffer->GetDesc(&backbufferDesc);
+			struct pl_d3d11_wrap_params wrapParams{};
+			wrapParams.tex =
+				static_cast<ID3D11Resource*>(vpOwnedBackbuffer.p);
+			vpOwnedFrameTarget = pl_d3d11_wrap(
+				d3d11->gpu, &wrapParams);
+			const bool targetValid = vpOwnedFrameTarget &&
+				vpOwnedFrameTarget->params.renderable &&
+				vpOwnedFrameTarget->params.blit_dst;
+			if (!targetValid)
+			{
+				if (vpOwnedTargetFailureLoggedGeneration !=
+					vpOwnedSwapchainGeneration)
+				{
+					vpOwnedTargetFailureLoggedGeneration =
+						vpOwnedSwapchainGeneration;
+					DebugLog::Log(
+						"VP-owned DXGI target rejected: generation=%llu stage=capability format=%u bind=0x%08X usage=%u renderable=%d blit_dst=%d present_skipped=1",
+						static_cast<unsigned long long>(
+							vpOwnedSwapchainGeneration),
+						static_cast<unsigned int>(backbufferDesc.Format),
+						backbufferDesc.BindFlags,
+						static_cast<unsigned int>(backbufferDesc.Usage),
+						vpOwnedFrameTarget &&
+							vpOwnedFrameTarget->params.renderable ? 1 : 0,
+						vpOwnedFrameTarget &&
+							vpOwnedFrameTarget->params.blit_dst ? 1 : 0);
+				}
+				pl_tex_destroy(d3d11->gpu, &vpOwnedFrameTarget);
+				vpOwnedBackbuffer.Release();
+				return false;
+			}
+
+			if (vpOwnedTargetValidationLoggedGeneration !=
+				vpOwnedSwapchainGeneration)
+			{
+				vpOwnedTargetValidationLoggedGeneration =
+					vpOwnedSwapchainGeneration;
+				DebugLog::Log(
+					"VP-owned DXGI target verified: generation=%llu format=%u bind=0x%08X usage=%u size=%ux%u renderable=1 blit_dst=1 present_owner=VP",
+					static_cast<unsigned long long>(
+						vpOwnedSwapchainGeneration),
+					static_cast<unsigned int>(backbufferDesc.Format),
+					backbufferDesc.BindFlags,
+					static_cast<unsigned int>(backbufferDesc.Usage),
+					backbufferDesc.Width, backbufferDesc.Height);
+			}
+
+			int componentBits = 0;
+			for (int component = 0;
+				component < vpOwnedFrameTarget->params.format->num_components;
+				++component)
+			{
+				componentBits = std::max(componentBits,
+					static_cast<int>(vpOwnedFrameTarget->params.format->
+						component_depth[component]));
+			}
+			swapchainFrame.fbo = vpOwnedFrameTarget;
+			swapchainFrame.flipped = false;
+			swapchainFrame.color_repr.sys = PL_COLOR_SYSTEM_RGB;
+			swapchainFrame.color_repr.levels = PL_COLOR_LEVELS_FULL;
+			swapchainFrame.color_repr.alpha = PL_ALPHA_UNKNOWN;
+			swapchainFrame.color_repr.bits.sample_depth = componentBits;
+			swapchainFrame.color_repr.bits.color_depth = componentBits;
+			swapchainFrame.color_space = configuredOutputColor;
+		}
+		else if (!pl_swapchain_start_frame(swapchain, &swapchainFrame))
+		{
 			return false;
+		}
 
 		struct pl_frame baseTarget{};
 		pl_frame_from_swapchain(&baseTarget, &swapchainFrame);
@@ -7823,10 +7935,39 @@ struct LibplaceboVideoRenderer::Impl
 			else
 				--diagnosticReadbackFramesRemaining;
 		}
-		const bool submitted = pl_swapchain_submit_frame(swapchain);
 		const int64_t swapStartQpc = PerformanceCounterNow();
-		if (submitted)
-			pl_swapchain_swap_buffers(swapchain);
+		bool submitted = false;
+		if (vpOwnedSwapchain)
+		{
+			// This mirrors libplacebo's submit ordering while keeping the actual
+			// DXGI presentation boundary in VP: flush GPU work, release every
+			// backbuffer reference, then Present exactly once.
+			pl_gpu_flush(d3d11->gpu);
+			pl_tex_destroy(d3d11->gpu, &vpOwnedFrameTarget);
+			vpOwnedBackbuffer.Release();
+			if (rendered)
+			{
+				const HRESULT presentResult = vpOwnedSwapchain->Present(1, 0);
+				submitted = SUCCEEDED(presentResult);
+				if (!submitted && vpOwnedPresentFailureLoggedGeneration !=
+					vpOwnedSwapchainGeneration)
+				{
+					vpOwnedPresentFailureLoggedGeneration =
+						vpOwnedSwapchainGeneration;
+					DebugLog::Log(
+						"VP-owned DXGI Present failed: generation=%llu result=0x%08lX present_owner=VP",
+						static_cast<unsigned long long>(
+							vpOwnedSwapchainGeneration),
+						static_cast<unsigned long>(presentResult));
+				}
+			}
+		}
+		else
+		{
+			submitted = pl_swapchain_submit_frame(swapchain);
+			if (submitted)
+				pl_swapchain_swap_buffers(swapchain);
+		}
 		const int64_t swapEndQpc = PerformanceCounterNow();
 		LARGE_INTEGER qpcFrequency{};
 		QueryPerformanceFrequency(&qpcFrequency);
