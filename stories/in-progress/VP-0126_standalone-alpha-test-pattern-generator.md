@@ -16,6 +16,15 @@ configuration-reference/profile inventory tests outside the pattern-generator
 files. Automated live-window verification remains limited because the Windows
 control helper can enumerate but cannot activate this native MFC window.
 
+An input-free runtime probe subsequently rendered the HDR cinema frame through
+the actual Alpha D3D11/libplacebo plugin on the RTX 3080. The log proves native
+BGRA ingress tagged PQ/BT.2020 with 0.005-1000-nit mastering metadata and
+MaxCLL/MaxFALL 203, the configured `spline` tone mapper, a negotiated
+`RGB_FULL_G22_NONE_P709` swapchain, and the final transition
+`PQ (ST2084)/BT.2020 ... -> SDR Rec.709 100.0 nits`. The temporary probe switch
+and test configuration were removed, the committed tree is clean, and the
+normal x64 Release executable was rebuilt with all five focused tests passing.
+
 The implementation now builds a dedicated executable alias and feeds canonical
 test frames directly to the real Alpha plugin. Alpha resolves the same unified
 `VideoProcessor.cfg` (or explicit `--config`/`--vr_config`) as normal VP. The
