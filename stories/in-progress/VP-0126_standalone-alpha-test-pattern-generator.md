@@ -22,6 +22,13 @@ test frames directly to the real Alpha plugin. Alpha resolves the same unified
 pattern UI exposes no output-range, LUT, shader, scaling, viewport, gamma,
 monitor-policy, tone-mapping, or presentation override.
 
+VP-0127 synchronization note (2026-08-13): a live VP-0125 sweep proved that a
+nonblack Alpha backbuffer and successful swap calls can coexist with a visually
+black composed output. This generator must consume VP-0127's shared
+render/submission/display-delivery result model. Until authoritative delivery
+evidence exists, composed pattern presentation is explicitly `MEASURE` or
+`DISPLAY DELIVERY UNVERIFIED`, not PASS or “visible.”
+
 ## User story
 
 As a display owner, I want to launch VideoProcessor in a dedicated pattern
@@ -51,6 +58,9 @@ without starting capture or the normal VP runtime.
    through 2.76:1 as two sequences: SDR Rec.709 source and HDR10 PQ/BT.2020
    source. HDR grid peaks are approximately 203 nits and include static source
    metadata so the configured VP HDR-to-SDR path can be exercised.
+8. Surface VP-0127 presentation evidence for every displayed pattern:
+   requested and actual swapchain format, renderer-content state, submission
+   state, display-delivery state, and any fallback or format reconfiguration.
 
 ## Acceptance criteria
 
@@ -69,6 +79,10 @@ without starting capture or the normal VP runtime.
 6. SDR Rec.709 and HDR10 PQ/BT.2020 are source contracts, not generator-owned
    output modes or proof of physical wire values. VP configuration is the sole
    authority for output processing and presentation in both cases.
+7. A generated pattern is never reported as visibly delivered solely from a
+   nonblack renderer readback or successful swap call. Composed output without
+   authoritative delivery evidence remains `DISPLAY DELIVERY UNVERIFIED` and
+   offers an explicit tester grade.
 
 ## Non-goals
 
@@ -84,6 +98,8 @@ without starting capture or the normal VP runtime.
 - VP-0100/VP-0101 and VP-0125 contain broader pixel-owned output and VP-owned
   DXGI presentation work. This story may reuse safe presentation mechanisms but
   does not claim their unfinished physical-output proofs.
+- VP-0127 owns authoritative format enforcement and the shared
+  render/submission/display-delivery classification consumed by this story.
 - Desktop composition, ICC/LUT state, driver range, and capture-card conversion
   can change measured values after application rendering. Diagnostics and docs
   must keep generated pixels, DXGI state, and measured HDMI/capture results
