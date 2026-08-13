@@ -43,6 +43,13 @@ mode and no persisted configuration mutation. The x64 Release generator builds
 and all six focused calibration-pattern tests pass, including exact R10l row
 layout, legal black, and PQ 203-nit white assertions.
 
+Crash-path follow-up commit: `6f99576`. Windows Error Reporting recorded an
+access violation in `mfc140u.dll` immediately after Alpha accepted the first
+frame and before the first output-evidence dialog could begin. The dedicated
+fullscreen path no longer opens that modal dialog over the active Alpha surface;
+it presents the clean pattern immediately and records input/profile and output
+contract evidence in the VP log instead. The x64 Release generator was rebuilt.
+
 The implementation now builds a dedicated executable alias and feeds canonical
 test frames directly to the real Alpha plugin. Alpha resolves the same unified
 `VideoProcessor.cfg` (or explicit `--config`/`--vr_config`) as normal VP. The
