@@ -11577,7 +11577,23 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 			{
 				cstring.Format(_T("%.01f"), latencySnapshot.vpInternalMs);
 				m_rendererLatencyToVPText.SetWindowText(cstring);
-				if (latencySnapshot.scheduledPresentationKnown)
+				double alphaPresentationLeadMs = 0.0;
+				double alphaCaptureToPresentationMs = 0.0;
+				const bool alphaPresentationKnown = renderer &&
+					renderer->backend == RendererBackend::LIBPLACEBO &&
+					m_videoRenderer->GetPresentationTargetTiming(
+						alphaPresentationLeadMs, alphaCaptureToPresentationMs);
+				if (alphaPresentationKnown)
+				{
+					// Match the Alpha OSD: DirectShow scheduling is not the
+					// presentation authority for this renderer, but its DXGI timing
+					// forecast is meaningful and available in normal playback.
+					cstring.Format(_T("%.01f"), alphaPresentationLeadMs);
+					m_rendererLatencyDsLeadText.SetWindowText(cstring);
+					cstring.Format(_T("%.01f"), alphaCaptureToPresentationMs);
+					m_rendererLatencyToDSText.SetWindowText(cstring);
+				}
+				else if (latencySnapshot.scheduledPresentationKnown)
 				{
 					cstring.Format(_T("%.01f"), latencySnapshot.dsScheduleLeadMs);
 					m_rendererLatencyDsLeadText.SetWindowText(cstring);
