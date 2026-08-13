@@ -77,6 +77,32 @@ std::wstring DxgiDriverVersion(const LARGE_INTEGER& version)
 	return text;
 }
 
+std::wstring WindowsVersionRegistryString(const wchar_t* name)
+{
+	const wchar_t* key =
+		L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion";
+	DWORD type = 0;
+	DWORD bytes = 0;
+	if (RegGetValueW(HKEY_LOCAL_MACHINE, key, name,
+		RRF_RT_REG_SZ, &type, nullptr, &bytes) != ERROR_SUCCESS || bytes < sizeof(wchar_t))
+		return L"(unavailable)";
+	std::vector<wchar_t> value(bytes / sizeof(wchar_t));
+	if (RegGetValueW(HKEY_LOCAL_MACHINE, key, name,
+		RRF_RT_REG_SZ, &type, value.data(), &bytes) != ERROR_SUCCESS)
+		return L"(unavailable)";
+	return value.data();
+}
+
+DWORD WindowsVersionRegistryDword(const wchar_t* name)
+{
+	const wchar_t* key =
+		L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion";
+	DWORD value = 0;
+	DWORD bytes = sizeof(value);
+	return RegGetValueW(HKEY_LOCAL_MACHINE, key, name,
+		RRF_RT_REG_DWORD, nullptr, &value, &bytes) == ERROR_SUCCESS ? value : 0;
+}
+
 std::wstring DeckLinkName(IDeckLink* deckLink, bool model)
 {
 	if (!deckLink)
@@ -126,6 +152,12 @@ void LogStartupPlatformInventory()
 			version.major, version.minor, version.build, version.servicePack);
 	else
 		DebugLog::Log("platform: windows=unavailable");
+	DebugLog::Log(
+		"platform: windows_release product=\"%S\" display_version=\"%S\" build=%S ubr=%lu",
+		WindowsVersionRegistryString(L"ProductName").c_str(),
+		WindowsVersionRegistryString(L"DisplayVersion").c_str(),
+		WindowsVersionRegistryString(L"CurrentBuildNumber").c_str(),
+		WindowsVersionRegistryDword(L"UBR"));
 
 	CComPtr<IDXGIFactory1> factory;
 	if (SUCCEEDED(CreateDXGIFactory1(IID_PPV_ARGS(&factory))))
@@ -142,7 +174,7 @@ void LogStartupPlatformInventory()
 				continue;
 			LARGE_INTEGER driver = {};
 			const HRESULT driverResult = adapter->CheckInterfaceSupport(
-				__uuidof(ID3D11Device), &driver);
+				__uuidof(IDXGIDevice), &driver);
 			DebugLog::Log(
 				"platform: gpu[%u]=\"%S\" vendor=0x%04x device=0x%04x vram_mib=%llu shared_mib=%llu driver=%S",
 				adapterIndex, adapterDescription.Description, adapterDescription.VendorId,
