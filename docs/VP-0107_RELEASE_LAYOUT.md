@@ -11,6 +11,8 @@ private DLLs, and unexpected files.
 ```text
 VideoProcessor\
   VideoProcessor.exe
+  VideoProcessorPatternGenerator.exe
+  StartPatternGenerator.cmd
   VideoProcessor.cfg.example
   CONFIGURATION.html
   RELEASE-LAYOUT.md
@@ -32,7 +34,8 @@ VideoProcessor\
     third_party_licenses\
 ```
 
-The application root contains the native MFC host, operator data and shared
+The application root contains the native MFC host, its dedicated capture-free
+pattern-generator image and double-click launcher, operator data and shared
 assets, but no Qt or Config-only binaries. `config\` owns the complete
 configuration editor process: Windows resolves its normal Qt imports beside
 `VideoProcessorConfig.exe`, and Qt discovers its typed plugin directories below
