@@ -32,6 +32,17 @@ directory to the installation folder and starts only the dedicated executable.
 The full x64 Release build and release-manifest dry run both pass with the two
 artifacts included by default.
 
+Global source/output follow-up commit: `1e1576a`. Two dropdowns now apply to
+every pattern. Source selects either 8-bit full-range SDR Rec.709 or a real
+HDR10 ingress contract: packed 10-bit legal-range R10l (codes 64-940), ST 2084
+PQ, BT.2020 primaries, 0.005-1000-nit mastering metadata, MaxCLL/MaxFALL 203,
+and 203-nit authored white. Output processing offers Automatic plus only the
+display profiles parsed from the active VP configuration; the current example
+configuration therefore exposes Rec709 and BT2020, with no generator-invented
+mode and no persisted configuration mutation. The x64 Release generator builds
+and all six focused calibration-pattern tests pass, including exact R10l row
+layout, legal black, and PQ 203-nit white assertions.
+
 The implementation now builds a dedicated executable alias and feeds canonical
 test frames directly to the real Alpha plugin. Alpha resolves the same unified
 `VideoProcessor.cfg` (or explicit `--config`/`--vr_config`) as normal VP. The
@@ -87,9 +98,10 @@ without starting capture or the normal VP runtime.
    from capture, while Alpha intentionally applies exactly the configured VP
    tone mapping, LUTs, scaling, shaders, viewport/crop/NLS, and presentation.
 7. Provide 15 individually colored, labeled cinema-aspect grids from 1.33:1
-   through 2.76:1 as two sequences: SDR Rec.709 source and HDR10 PQ/BT.2020
-   source. HDR grid peaks are approximately 203 nits and include static source
-   metadata so the configured VP HDR-to-SDR path can be exercised.
+   through 2.76:1 as one stepped sequence. Global source and configured-output
+   selectors apply to this sequence and every other pattern. HDR source peaks
+   are 203 nits and include static source metadata so any configured VP
+   HDR-to-SDR or HDR-output path can be exercised.
 8. Surface VP-0127 presentation evidence for every displayed pattern:
    requested and actual swapchain format, renderer-content state, submission
    state, display-delivery state, and any fallback or format reconfiguration.
@@ -115,6 +127,9 @@ without starting capture or the normal VP runtime.
    nonblack renderer readback or successful swap call. Composed output without
    authoritative delivery evidence remains `DISPLAY DELIVERY UNVERIFIED` and
    offers an explicit tester grade.
+8. The source and output selectors apply to every pattern. Output choices are
+   restricted to Automatic and profiles that actually exist in the loaded VP
+   renderer configuration; selection does not rewrite or persist configuration.
 
 ## Non-goals
 
