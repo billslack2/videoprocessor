@@ -56,7 +56,7 @@ render/submission/display-delivery result model. Until authoritative delivery
 evidence exists, composed pattern presentation is explicitly `MEASURE` or
 `DISPLAY DELIVERY UNVERIFIED`, not PASS or “visible.”
 
-Synchronization implementation: commits `13c77be` and `d5cc6e3` on
+Synchronization implementation: commits `13c77be`, `d5cc6e3`, and `bad105a` on
 `origin/VP0126-pattern-generator` merges the complete VP-0125/VP-0127 output
 path and its updated evidence documentation while retaining launcher-package
 commit `877a17e`. Before the clean

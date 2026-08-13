@@ -33,8 +33,18 @@ Focused `LibplaceboOutputPolicyTests` passed 39/39. The x64 Release GUI,
 VP-renderer DLL, and native test DLL compiled successfully; a whole-solution
 invocation was separately obstructed in this automation environment by its
 duplicate `Path`/`PATH` process environment in unrelated Config/OutputProbe
-project tool launches, not by a source compile failure. Live Epson confirmation
-of the final 8-bit format and revised composed result remains required.
+project tool launches, not by a source compile failure.
+
+Live Epson testing exposed and verified a harness correction in commit
+`6539601`. The first renderer-live callback arrived while DXGI frame statistics
+were still in their expected post-recreate `DISJOINT` state; the harness then
+failed to reevaluate and falsely timed out despite hundreds of subsequently
+presented frames. Pending cases now poll the structured contract through the
+settle window. A representative Epson rerun of cases 1, 2, 4, 8, and 9 ended
+5 successful / 0 failed: the two baseline cases passed, pure Gamma 2.2 and
+forced 8-bit returned `MEASURE` with presented-frame evidence, the 8-bit case
+remained `R8G8B8A8_UNORM`, and composed output remained an honest
+delivery-unverified `MEASURE`.
 
 ## User story
 
