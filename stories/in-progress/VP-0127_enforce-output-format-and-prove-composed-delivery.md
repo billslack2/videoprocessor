@@ -56,6 +56,19 @@ does not begin during renderer initialization or DXGI evidence settling. The
 launcher also accepts an explicit display number for reliable unattended or
 remote targeting.
 
+Beta-test packaging was finalized from a clean x64 Release rebuild of commit
+`30afe33` (`VERSION_DIRTY=false`). All 47 focused output-policy and native
+overlay tests passed, as did the complete Config executable suite. The normal
+55-file beta and 63-file sweep package contain identical Release executable
+hashes, ship only `VideoProcessor.cfg.example`, and exclude generated run
+configs, backups, logs, and shader caches. Final archives:
+
+- `VideoProcessor-v1.2.001-beta-30afe33-vp0127.zip` — SHA-256
+  `4D4D714F9F1883FF72FBB7E857ACD440EEC376DD3CF34AD456AE3D9415975178`
+- `VideoProcessor-active-output-sweep-v1.2.001-beta-30afe33-vp0127.zip` —
+  SHA-256
+  `EDB7DD3F7ECB6A57AA6EEAEF87A0CC6EBA8C928B8063B3EF87413F39F0FD0135`
+
 ## User story
 
 As a VP beta tester, I want output experiments and generated test patterns to
