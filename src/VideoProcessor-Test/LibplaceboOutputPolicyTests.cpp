@@ -146,6 +146,78 @@ namespace Tests
 				static_cast<int>(actual.encoding));
 		}
 
+		TEST_METHOD(FullPureG22IsDisabledUnlessExplicitlyEnabled)
+		{
+			Request request;
+			request.presentation = PresentationRequest::DIRECT;
+			request.range = RangeRequest::FULL;
+			request.gamma = GammaRequest::GAMMA22;
+			request.vpOwnedPresenter = true;
+			const Plan plan = MakePlan(request);
+			Assert::IsFalse(plan.valid);
+			Assert::IsFalse(plan.strictContract);
+		}
+
+		TEST_METHOD(FullPureG22ExperimentSeparatesPixelsFromDxgiDeclaration)
+		{
+			Request request;
+			request.presentation = PresentationRequest::DIRECT;
+			request.range = RangeRequest::FULL;
+			request.gamma = GammaRequest::GAMMA22;
+			request.allowFullG22Experiment = true;
+			request.vpOwnedPresenter = true;
+			const Plan plan = MakePlan(request);
+			Assert::IsTrue(plan.valid);
+			Assert::IsTrue(plan.strictContract);
+			Assert::IsTrue(plan.requiresDxgiOverride);
+			Assert::AreEqual(static_cast<int>(DxgiEncoding::FULL_G22_P709),
+				static_cast<int>(plan.desiredEncoding));
+			Assert::AreEqual(static_cast<int>(TargetTransfer::GAMMA22),
+				static_cast<int>(plan.targetTransfer));
+
+			Evidence evidence;
+			evidence.presentationModel = PresentationModel::FLIP;
+			evidence.vpOwnsPresentation = true;
+			evidence.hasSwapchain3 = true;
+			evidence.presentSupportedBeforeSet = true;
+			evidence.setSucceeded = true;
+			evidence.presentSupportedAfterSet = true;
+			const Actual actual = Finalize(plan, evidence);
+			Assert::IsTrue(actual.safeToRender);
+			Assert::IsTrue(actual.requestedEncodingActive);
+			Assert::AreEqual(static_cast<int>(DxgiEncoding::FULL_G22_P709),
+				static_cast<int>(actual.encoding));
+			Assert::AreEqual(static_cast<int>(TargetTransfer::GAMMA22),
+				static_cast<int>(actual.targetTransfer));
+		}
+
+		TEST_METHOD(FullPureG22RequiresVpOwnedDirectAndFailsClosed)
+		{
+			Request request;
+			request.presentation = PresentationRequest::COMPOSED;
+			request.range = RangeRequest::FULL;
+			request.gamma = GammaRequest::GAMMA22;
+			request.allowFullG22Experiment = true;
+			const Plan plan = MakePlan(request);
+			Assert::IsFalse(plan.valid);
+			Assert::IsTrue(plan.strictContract);
+			Assert::IsFalse(Finalize(plan, {}).safeToRender);
+
+			request.presentation = PresentationRequest::DIRECT;
+			request.vpOwnedPresenter = true;
+			const Plan direct = MakePlan(request);
+			Assert::IsTrue(direct.valid);
+			Assert::IsFalse(Finalize(direct, {}).safeToRender);
+
+			Evidence nonOwner;
+			nonOwner.presentationModel = PresentationModel::FLIP;
+			nonOwner.hasSwapchain3 = true;
+			nonOwner.presentSupportedBeforeSet = true;
+			nonOwner.setSucceeded = true;
+			nonOwner.presentSupportedAfterSet = true;
+			Assert::IsFalse(Finalize(direct, nonOwner).safeToRender);
+		}
+
 		TEST_METHOD(LimitedAutoUsesExactStudioG24AndFlipCandidate)
 		{
 			Request request;

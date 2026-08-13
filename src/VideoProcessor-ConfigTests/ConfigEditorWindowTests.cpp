@@ -775,7 +775,9 @@ void testRendererProfileSectionsCollapseAndPersist()
         requireControl<QCheckBox>(window,
         QStringLiteral("config.vprenderer.diagnostic_vp_owned_dxgi_presenter")) &&
         requireControl<QCheckBox>(window,
-        QStringLiteral("config.vprenderer.diagnostic_allow_limited_g22")),
+        QStringLiteral("config.vprenderer.diagnostic_allow_limited_g22")) &&
+        requireControl<QCheckBox>(window,
+        QStringLiteral("config.vprenderer.diagnostic_allow_full_g22")),
         "Output experiment controls are missing from the editor");
     require(requireControl<QCheckBox>(window,
         QStringLiteral("config.vprenderer.report_bt2020_to_display")) &&
@@ -846,6 +848,8 @@ void testOutputExperimentsPersistAndRestoreDefaults()
         "Proposed output path did not write its visible output settings");
     QCheckBox* limitedG22 = requireControl<QCheckBox>(window,
         QStringLiteral("config.vprenderer.diagnostic_allow_limited_g22"));
+    QCheckBox* fullG22 = requireControl<QCheckBox>(window,
+        QStringLiteral("config.vprenderer.diagnostic_allow_full_g22"));
     QCheckBox* noCompute = requireControl<QCheckBox>(window,
         QStringLiteral("config.vprenderer.diagnostic_disable_compute"));
     QCheckBox* force8Bit = requireControl<QCheckBox>(window,
@@ -853,6 +857,7 @@ void testOutputExperimentsPersistAndRestoreDefaults()
     QCheckBox* vpOwned = requireControl<QCheckBox>(window,
         QStringLiteral("config.vprenderer.diagnostic_vp_owned_dxgi_presenter"));
     limitedG22->setChecked(true);
+    fullG22->setChecked(true);
     noCompute->setChecked(true);
     force8Bit->setChecked(true);
     vpOwned->setChecked(true);
@@ -861,6 +866,7 @@ void testOutputExperimentsPersistAndRestoreDefaults()
     save(window);
     const QByteArray configured = readBytes(path);
     require(configured.contains("diagnostic_allow_limited_g22: true") &&
+        configured.contains("diagnostic_allow_full_g22: true") &&
         configured.contains("diagnostic_disable_compute: true") &&
         configured.contains("diagnostic_force_8bit_sdr_swapchain: true") &&
         configured.contains("diagnostic_vp_owned_dxgi_presenter: true") &&
@@ -870,7 +876,7 @@ void testOutputExperimentsPersistAndRestoreDefaults()
     answerMessageBox(QMessageBox::Yes);
     requireControl<QPushButton>(window,
         QStringLiteral("config.vprenderer.output_experiments.reset_defaults"))->click();
-    require(!limitedG22->isChecked() && !noCompute->isChecked() &&
+    require(!limitedG22->isChecked() && !fullG22->isChecked() && !noCompute->isChecked() &&
         !force8Bit->isChecked() && !vpOwned->isChecked(),
         "Restore Recommended Defaults did not reset the output experiment controls");
     require(outputPathProfile->currentData().toString() == QStringLiteral("legacy"),
@@ -878,6 +884,7 @@ void testOutputExperimentsPersistAndRestoreDefaults()
     save(window);
     const QByteArray restored = readBytes(path);
     require(restored.contains("diagnostic_allow_limited_g22: false") &&
+        restored.contains("diagnostic_allow_full_g22: false") &&
         restored.contains("diagnostic_disable_compute: false") &&
         restored.contains("diagnostic_force_8bit_sdr_swapchain: false") &&
         restored.contains("diagnostic_vp_owned_dxgi_presenter: false") &&

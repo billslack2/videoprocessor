@@ -11,6 +11,19 @@ The first required proof is SDR Rec.709, limited range, pure power Gamma 2.2 on
 a 10-bit flip-model swapchain. The design must also preserve a safe Full/sRGB
 fallback and leave a clean path to HDR/PQ and BT.2020.
 
+The second proof covers displays calibrated to Full-range pure power Gamma 2.2.
+DXGI has no declaration that expresses that exact Rec.709 transfer. Microsoft
+defines `DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709` as standard sRGB: a linear
+toe followed by a 2.4-power segment, only approximately Gamma 2.2. VP therefore
+models this proof as two deliberately separate facts:
+
+* rendered pixels: `PL_COLOR_TRC_GAMMA22` (pure power 2.2);
+* DXGI declaration: `RGB_FULL_G22_NONE_P709` (nominal sRGB/G22).
+
+This calibrated-display override is opt-in, VP-owned Direct presentation only,
+and wire state remains unverified. It must never be described as an exact or
+verified DXGI pure-2.2 mapping.
+
 ## Evidence from comparable renderers
 
 ### MPC Video Renderer
@@ -39,6 +52,28 @@ mpv has two instructive paths:
 
 mpv's DXGI mapping code understands studio G22/G24 enum values, but its explicit
 D3D11 output-colour-space option exposes full-range sRGB/linear/PQ/BT.2020.
+Current gpu-next also exposes `--treat-srgb-as-power22`. It changes the target
+transfer from libplacebo sRGB to `PL_COLOR_TRC_GAMMA22` while retaining the
+ordinary Full-G22 DXGI declaration. This is the closest public precedent for
+VP's calibrated-display experiment; it does not remove the need for measurement.
+
+### Full-range pure-2.2 strict contract
+
+The Full/pure-2.2 experiment is accepted only when all of these are true:
+
+* Custom output profile explicitly enables the Full-G22 experiment;
+* presentation is Direct and VP actually owns the flip-model presenter;
+* output range is explicitly Full and output gamma is explicitly 2.2;
+* `IDXGISwapChain3` advertises Present support before configuration;
+* `SetColorSpace1(RGB_FULL_G22_NONE_P709)` succeeds;
+* the post-configuration capability check still advertises Present support;
+* the renderer target uses RGB Full levels and `PL_COLOR_TRC_GAMMA22`.
+
+Unlike legacy unsupported requests, any failure blocks rendering for that strict
+generation. It cannot silently substitute sRGB, a libplacebo-owned presenter,
+or composed presentation. Logs and OSD show the pixel transfer, nominal DXGI
+declaration, presenter owner, strict status, and `wire_state=unverified`
+independently.
 
 ### libplacebo 7.360
 
@@ -266,4 +301,3 @@ is not a visual pass.
    configuration UI.
 6. Run the SDR EPSON suite, then the HDR suite, before considering the
    authoritative path for Proposed defaults.
-

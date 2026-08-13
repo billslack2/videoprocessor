@@ -2945,6 +2945,7 @@ bool CVideoProcessorDlg::ApplyActiveOutputSweepCase(size_t index)
 			test.force8Bit ? "true" : "false");
 		document.SetKnown(section, "diagnostic_allow_limited_g22",
 			test.allowLimitedG22 ? "true" : "false");
+		document.SetKnown(section, "diagnostic_allow_full_g22", "false");
 		document.SetKnown(section, "diagnostic_vp_owned_dxgi_presenter",
 			test.vpOwnedPresenter ? "true" : "false");
 		document.SetKnown(section, "diagnostic_disable_compute",

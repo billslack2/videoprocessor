@@ -111,8 +111,34 @@ namespace LibplaceboOutput
 			return result;
 		}
 
-		// DXGI has no Full RGB gamma-2.4 Rec.709 declaration. Full G22 is
-		// specifically the sRGB piecewise transfer, not an arbitrary power curve.
+		// DXGI Full G22/P709 nominally declares sRGB. Some calibrated displays
+		// intentionally expect pure-power 2.2 pixels under that same declaration
+		// (mpv exposes the equivalent treat-srgb-as-power22 override). Keep the
+		// declaration and pixel transfer separate, and permit this mismatch only
+		// through an explicit VP-owned diagnostic contract.
+		if (request.gamma == GammaRequest::GAMMA22 &&
+			request.allowFullG22Experiment)
+		{
+			result.strictContract = true;
+			result.requiresDxgiOverride = true;
+			result.desiredEncoding = request.primaries == PrimariesRequest::BT2020
+				? DxgiEncoding::FULL_G22_P2020 : DxgiEncoding::FULL_G22_P709;
+			result.targetTransfer = TargetTransfer::GAMMA22;
+			if (request.presentation != PresentationRequest::DIRECT ||
+				!request.vpOwnedPresenter)
+			{
+				result.valid = false;
+				result.reason =
+					"Full/pure-Gamma-2.2 requires VP-owned Direct presentation";
+			}
+			else
+				result.reason =
+					"experimental Full/pure-Gamma-2.2 pixels under nominal sRGB DXGI declaration";
+			return result;
+		}
+
+		// Other explicit Full curves have no matching DXGI declaration. Full G22
+		// is specifically the sRGB piecewise transfer by default.
 		if (request.gamma != GammaRequest::AUTO &&
 			request.gamma != GammaRequest::SRGB)
 		{
@@ -167,7 +193,15 @@ namespace LibplaceboOutput
 		}
 		if (!plan.valid)
 		{
+			result.safeToRender = !plan.strictContract;
 			result.reason = plan.reason;
+			return result;
+		}
+		if (plan.strictContract && !evidence.vpOwnsPresentation)
+		{
+			result.safeToRender = false;
+			result.reason =
+				"the strict calibrated-display contract requires VP-owned presentation";
 			return result;
 		}
 		if (plan.request.primaries == PrimariesRequest::BT2020 &&
@@ -190,6 +224,7 @@ namespace LibplaceboOutput
 
 		if (!evidence.hasSwapchain3)
 		{
+			result.safeToRender = !plan.strictContract;
 			result.reason = "IDXGISwapChain3 is unavailable";
 			return result;
 		}
@@ -204,17 +239,20 @@ namespace LibplaceboOutput
 		}
 		if (!evidence.presentSupportedBeforeSet)
 		{
+			result.safeToRender = !plan.strictContract;
 			result.reason =
 				"the requested studio color space was not advertised for presentation";
 			return result;
 		}
 		if (!evidence.setSucceeded)
 		{
+			result.safeToRender = !plan.strictContract;
 			result.reason = "SetColorSpace1 rejected the requested studio color space";
 			return result;
 		}
 		if (!evidence.presentSupportedAfterSet)
 		{
+			result.safeToRender = !plan.strictContract;
 			result.reason =
 				"the requested studio color space was not present-capable after configuration";
 			return result;
@@ -224,7 +262,9 @@ namespace LibplaceboOutput
 		result.targetTransfer = plan.targetTransfer;
 		result.requestedEncodingActive = true;
 		result.reason =
-			"DXGI advertised and accepted the requested studio color space";
+			plan.strictContract
+				? "DXGI accepted the nominal Full-G22 declaration; pure-2.2 pixel response remains unverified"
+				: "DXGI advertised and accepted the requested color space";
 		return result;
 	}
 

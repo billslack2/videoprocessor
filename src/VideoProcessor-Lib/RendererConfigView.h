@@ -39,6 +39,7 @@ public:
 			key == "diagnostic_disable_compute" ||
 			key == "diagnostic_force_8bit_sdr_swapchain" ||
 			key == "diagnostic_allow_limited_g22" ||
+			key == "diagnostic_allow_full_g22" ||
 			key == "diagnostic_vp_owned_dxgi_presenter";
 	}
 
@@ -84,6 +85,7 @@ public:
 			  "diagnostic_disable_shader_cache", "diagnostic_disable_compute",
 			  "diagnostic_force_8bit_sdr_swapchain",
 			  "diagnostic_allow_limited_g22",
+			  "diagnostic_allow_full_g22",
 			  "diagnostic_vp_owned_dxgi_presenter" })
 		{
 			if (!HasKey(GENERAL_SECTION, key))
@@ -117,6 +119,7 @@ public:
 			  "diagnostic_disable_shader_cache", "diagnostic_disable_compute",
 			  "diagnostic_force_8bit_sdr_swapchain",
 			  "diagnostic_allow_limited_g22",
+			  "diagnostic_allow_full_g22",
 			  "diagnostic_vp_owned_dxgi_presenter" })
 			usesLegacyGeneral = usesLegacyGeneral ||
 				HasKey("general", key);

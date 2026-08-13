@@ -86,6 +86,7 @@ namespace ConfigurationApplyPolicy
 			key == "output_gamma" ||
 			key == "output_diagnostics" ||
 			key == "diagnostic_allow_limited_g22" ||
+			key == "diagnostic_allow_full_g22" ||
 			key == "diagnostic_disable_compute" ||
 			key == "diagnostic_force_8bit_sdr_swapchain" ||
 			key == "diagnostic_vp_owned_dxgi_presenter" ||

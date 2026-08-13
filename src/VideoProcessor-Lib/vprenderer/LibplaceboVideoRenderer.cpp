@@ -700,6 +700,7 @@ namespace
 		bool diagnosticDisableCompute = false;
 		bool diagnosticForce8BitSdrSwapchain = false;
 		bool diagnosticAllowLimitedG22 = false;
+		bool diagnosticAllowFullG22 = false;
 		bool diagnosticVpOwnedDxgiPresenter = false;
 		double configuredScreenAspect = 1.0;
 		bool configuredScreenTarget = false;
@@ -761,6 +762,7 @@ namespace
 			<< settings.diagnosticDisableCompute << '|'
 			<< settings.diagnosticForce8BitSdrSwapchain << '|'
 			<< settings.diagnosticAllowLimitedG22 << '|'
+			<< settings.diagnosticAllowFullG22 << '|'
 			<< settings.diagnosticVpOwnedDxgiPresenter << '|';
 		if (includeViewportSettings)
 		{
@@ -1392,6 +1394,8 @@ namespace
 			settings.diagnosticForce8BitSdrSwapchain);
 		readBoolean("diagnostic_allow_limited_g22",
 			settings.diagnosticAllowLimitedG22);
+		readBoolean("diagnostic_allow_full_g22",
+			settings.diagnosticAllowFullG22);
 		readBoolean("diagnostic_vp_owned_dxgi_presenter",
 			settings.diagnosticVpOwnedDxgiPresenter);
 		readChoice("sdr_target_primaries", settings.sdrTargetPrimaries, { "rec709", "bt2020" });
@@ -1679,6 +1683,15 @@ namespace
 				rawValue.c_str());
 			settings.diagnosticAllowLimitedG22 = false;
 		}
+		if (TryGetDisplayString(config, "diagnostic_allow_full_g22", rawValue) &&
+			!TryGetDisplayBool(config, "diagnostic_allow_full_g22",
+				settings.diagnosticAllowFullG22))
+		{
+			DebugLog::Log(
+				"libplacebo: invalid diagnostic_allow_full_g22 value '%s'; using false",
+				rawValue.c_str());
+			settings.diagnosticAllowFullG22 = false;
+		}
 		if (TryGetDisplayString(config, "diagnostic_vp_owned_dxgi_presenter", rawValue) &&
 			!TryGetDisplayBool(config, "diagnostic_vp_owned_dxgi_presenter",
 				settings.diagnosticVpOwnedDxgiPresenter))
@@ -1873,6 +1886,13 @@ namespace
 				"diagnostic_allow_limited_g22", settings.diagnosticAllowLimitedG22))
 		{
 			DebugLog::Log("libplacebo: invalid diagnostic_allow_limited_g22 policy '%s'; retaining display setting", rawValue.c_str());
+		}
+		if (rendererConfig.TryGetPolicyString(
+			"diagnostic_allow_full_g22", rawValue) &&
+			!rendererConfig.TryGetPolicyBool(
+				"diagnostic_allow_full_g22", settings.diagnosticAllowFullG22))
+		{
+			DebugLog::Log("libplacebo: invalid diagnostic_allow_full_g22 policy '%s'; retaining display setting", rawValue.c_str());
 		}
 		if (rendererConfig.TryGetPolicyString(
 			"diagnostic_vp_owned_dxgi_presenter", rawValue) &&
@@ -2704,6 +2724,7 @@ struct LibplaceboVideoRenderer::Impl
 	bool outputContractLogged = false;
 	unsigned int diagnosticReadbackFramesRemaining = 30;
 	bool diagnosticReadbackComplete = false;
+	unsigned int diagnosticReadbackAttempts = 0;
 	bool cadenceLogInitialized = false;
 	uint64_t cadenceLoggedPolicyGeneration = 0;
 	bool cadenceLoggedDue = false;
@@ -3183,7 +3204,7 @@ struct LibplaceboVideoRenderer::Impl
 	void LogOutputReadback()
 	{
 		using namespace LibplaceboOutput;
-		diagnosticReadbackComplete = true;
+		++diagnosticReadbackAttempts;
 		CComPtr<IDXGISwapChain> nativeSwapchain;
 		nativeSwapchain.Attach(pl_d3d11_swapchain_unwrap(swapchain));
 		if (!nativeSwapchain)
@@ -3252,6 +3273,17 @@ struct LibplaceboVideoRenderer::Impl
 			desc.Height,
 			8);
 		context->Unmap(staging, 0);
+		const bool allZero = stats.sampledPixels > 0 &&
+			stats.maximum[0] == 0 && stats.maximum[1] == 0 &&
+			stats.maximum[2] == 0;
+		if (allZero && diagnosticReadbackAttempts < 10)
+		{
+			DebugLog::Log(
+				"libplacebo output diagnostic readback: status=not-ready all_zero=1 attempt=%u/10; retrying after GPU flush",
+				diagnosticReadbackAttempts);
+			return;
+		}
+		diagnosticReadbackComplete = true;
 		const double divisor =
 			stats.sampledPixels > 0 ? static_cast<double>(stats.sampledPixels) : 1.0;
 		DebugLog::Log(
@@ -3331,7 +3363,7 @@ struct LibplaceboVideoRenderer::Impl
 			projection.renderParams.dither_params ? &ditherParams : nullptr;
 
 		DebugLog::Log(
-			"libplacebo settings: quality=%s tone_mapping=%s gamut_mapping=%s peak_detection=%s contrast_recovery=%.2f upscaler=%s downscaler=%s deband=%s dithering=%s output_presentation=%s output_range=%s output_gamma=%s sdr_input_transfer=%s target=%.1f nits black=%.3f nits output_diagnostics=%d diagnostic_disable_shader_cache=%d diagnostic_disable_compute=%d diagnostic_force_8bit_sdr_swapchain=%d diagnostic_allow_limited_g22=%d diagnostic_vp_owned_dxgi_presenter=%d refresh_switch=%d refresh_command_delay=%llus refresh_commands=%u viewport_target=%s screen_aspect=%.4f automatic_crop=%d subtitle_fit=%d subtitle_hold=%llums subtitle_engage_drift=%llums subtitle_release_drift=%llums subtitle_padding=%dpx subtitle_target_buffer=%dpx",
+			"libplacebo settings: quality=%s tone_mapping=%s gamut_mapping=%s peak_detection=%s contrast_recovery=%.2f upscaler=%s downscaler=%s deband=%s dithering=%s output_presentation=%s output_range=%s output_gamma=%s sdr_input_transfer=%s target=%.1f nits black=%.3f nits output_diagnostics=%d diagnostic_disable_shader_cache=%d diagnostic_disable_compute=%d diagnostic_force_8bit_sdr_swapchain=%d diagnostic_allow_limited_g22=%d diagnostic_allow_full_g22=%d diagnostic_vp_owned_dxgi_presenter=%d refresh_switch=%d refresh_command_delay=%llus refresh_commands=%u viewport_target=%s screen_aspect=%.4f automatic_crop=%d subtitle_fit=%d subtitle_hold=%llums subtitle_engage_drift=%llums subtitle_release_drift=%llums subtitle_padding=%dpx subtitle_target_buffer=%dpx",
 			settings.quality.c_str(),
 			colorMapParams.tone_mapping_function
 				? colorMapParams.tone_mapping_function->name : "none",
@@ -3357,6 +3389,7 @@ struct LibplaceboVideoRenderer::Impl
 			settings.diagnosticDisableCompute ? 1 : 0,
 			settings.diagnosticForce8BitSdrSwapchain ? 1 : 0,
 			settings.diagnosticAllowLimitedG22 ? 1 : 0,
+			settings.diagnosticAllowFullG22 ? 1 : 0,
 			settings.diagnosticVpOwnedDxgiPresenter ? 1 : 0,
 			settings.switchRefreshRate ? 1 : 0,
 			static_cast<unsigned long long>(settings.refreshRateCommandDelayMs / 1000),
@@ -4003,6 +4036,18 @@ struct LibplaceboVideoRenderer::Impl
 		return PL_COLOR_TRC_UNKNOWN;
 	}
 
+	static enum pl_color_transfer ResolvedPixelTransfer(
+		LibplaceboOutput::DxgiEncoding encoding,
+		LibplaceboOutput::TargetTransfer targetTransfer)
+	{
+		using LibplaceboOutput::TargetTransfer;
+		if (targetTransfer == TargetTransfer::GAMMA22)
+			return PL_COLOR_TRC_GAMMA22;
+		if (targetTransfer == TargetTransfer::GAMMA24)
+			return PL_COLOR_TRC_GAMMA24;
+		return EncodingTransfer(encoding);
+	}
+
 	void LogPresentationTarget(const char* trigger) const
 	{
 		const LONG_PTR style = GetWindowLongPtr(videoHwnd, GWL_STYLE);
@@ -4069,13 +4114,15 @@ struct LibplaceboVideoRenderer::Impl
 			isChild ? "embedded child preview" : "none");
 	}
 
-	void SetSwapchainColorHint(LibplaceboOutput::DxgiEncoding encoding)
+	void SetSwapchainColorHint(LibplaceboOutput::DxgiEncoding encoding,
+		LibplaceboOutput::TargetTransfer targetTransfer)
 	{
 		configuredOutputColor =
 			LibplaceboExportedData<pl_color_space>("pl_color_space_bt709");
 		configuredOutputColor.primaries = EncodingUsesBt2020(encoding)
 			? PL_COLOR_PRIM_BT_2020 : PL_COLOR_PRIM_BT_709;
-		const enum pl_color_transfer transfer = EncodingTransfer(encoding);
+		const enum pl_color_transfer transfer =
+			ResolvedPixelTransfer(encoding, targetTransfer);
 		configuredOutputColor.transfer =
 			transfer == PL_COLOR_TRC_UNKNOWN ? PL_COLOR_TRC_SRGB : transfer;
 		configuredOutputColor.hdr.min_luma = static_cast<float>(sdrBlackNits);
@@ -4098,7 +4145,8 @@ struct LibplaceboVideoRenderer::Impl
 				repr.levels,
 				EncodingUsesBt2020(actualOutput.encoding)
 					? PL_COLOR_PRIM_BT_2020 : PL_COLOR_PRIM_BT_709,
-				EncodingTransfer(actualOutput.encoding),
+				ResolvedPixelTransfer(actualOutput.encoding,
+					actualOutput.targetTransfer),
 				EncodingLevels(actualOutput.encoding));
 	}
 
@@ -4210,6 +4258,7 @@ struct LibplaceboVideoRenderer::Impl
 		}
 		Evidence evidence;
 		const bool vpOwnsPresentation = vpOwnedSwapchain != nullptr;
+		evidence.vpOwnsPresentation = vpOwnsPresentation;
 		auto recordVpOwnedColorState = [&](DxgiEncoding encoding,
 			HRESULT result, bool verified, const char* stage)
 		{
@@ -4228,7 +4277,8 @@ struct LibplaceboVideoRenderer::Impl
 		{
 			evidence.fullRestoreRequired = previousStateMayBeStudio;
 			actualOutput = Finalize(outputPlan, evidence);
-			SetSwapchainColorHint(actualOutput.encoding);
+			SetSwapchainColorHint(actualOutput.encoding,
+				actualOutput.targetTransfer);
 			DebugLog::Log(
 				"libplacebo output negotiation (%s): effective_request=%s/%s/%s/%s actual=UNKNOWN/FULL/sRGB/Rec.709 reason=cannot unwrap DXGI swapchain",
 				trigger,
@@ -4536,7 +4586,8 @@ struct LibplaceboVideoRenderer::Impl
 		// A DXGI failure falls back to Full/Rec.709 in policy. Replace the
 		// original requested hint immediately so future frames cannot inherit
 		// an unaccepted BT.2020/limited target contract.
-		SetSwapchainColorHint(actualOutput.encoding);
+		SetSwapchainColorHint(actualOutput.encoding,
+			actualOutput.targetTransfer);
 		DebugLog::Log(
 			"libplacebo DXGI color-space result: trigger=%s requested=%s accepted=%d applied_record=%s wire_state=unverified",
 			trigger,
@@ -4546,6 +4597,17 @@ struct LibplaceboVideoRenderer::Impl
 				? vpOwnedAppliedEncoding.c_str() : "vp-record-unverified") :
 				"unavailable (IDXGISwapChain3 has no getter)");
 		DebugLog::Log(
+			"libplacebo output applied state: pixel_transfer=%s dxgi_declaration=%s declaration_semantics=%s presenter_owner=%s strict=%d wire_state=unverified",
+			actualOutput.targetTransfer == TargetTransfer::GAMMA22
+				? "PURE_POWER_GAMMA22" :
+				(actualOutput.targetTransfer == TargetTransfer::GAMMA24
+					? "PURE_POWER_GAMMA24" : "SWAPCHAIN_NOMINAL"),
+			ToString(actualOutput.encoding),
+			actualOutput.encoding == DxgiEncoding::FULL_G22_P709
+				? "sRGB_nominal_no_pure22_DXGI_enum" : "matches_nominal_transfer",
+			vpOwnsPresentation ? "VP" : "libplacebo",
+			outputPlan.strictContract ? 1 : 0);
+		DebugLog::Log(
 			"libplacebo output negotiation (%s): effective_request=%s/%s/%s/%s actual_contract=%s/%s/%s/%s dxgi=%s accepted=%d safe=%d wire_state=unverified reason=%s",
 			trigger,
 			ToString(outputPlan.request.presentation),
@@ -4554,7 +4616,10 @@ struct LibplaceboVideoRenderer::Impl
 			ToString(outputPlan.request.primaries),
 			ToString(actualOutput.presentationModel),
 			ToRangeString(actualOutput.encoding),
-			ToGammaString(actualOutput.encoding),
+			actualOutput.targetTransfer == TargetTransfer::GAMMA22
+				? "PureGamma2.2" :
+				(actualOutput.targetTransfer == TargetTransfer::GAMMA24
+					? "PureGamma2.4" : ToGammaString(actualOutput.encoding)),
 			EncodingUsesBt2020(actualOutput.encoding) ? "BT.2020" : "Rec.709",
 			ToString(actualOutput.encoding),
 			actualOutput.requestedEncodingActive ? 1 : 0,
@@ -4998,6 +5063,8 @@ struct LibplaceboVideoRenderer::Impl
 		outputRequest.range = LibplaceboOutput::ParseRange(settings.outputRange);
 		outputRequest.gamma = LibplaceboOutput::ParseGamma(settings.outputGamma);
 		outputRequest.allowLimitedG22Experiment = settings.diagnosticAllowLimitedG22;
+		outputRequest.allowFullG22Experiment = settings.diagnosticAllowFullG22;
+		outputRequest.vpOwnedPresenter = settings.diagnosticVpOwnedDxgiPresenter;
 		const LibplaceboOutput::SdrTargetPrimaries requestedTarget =
 			settings.sdrTargetPrimaries == "bt2020"
 				? LibplaceboOutput::SdrTargetPrimaries::BT2020
@@ -5084,7 +5151,9 @@ struct LibplaceboVideoRenderer::Impl
 			settings.scopeSubtitleTargetBufferPixels;
 		SetSwapchainColorHint(
 			outputPlan.valid ? outputPlan.desiredEncoding :
-				LibplaceboOutput::DxgiEncoding::FULL_G22_P709);
+				LibplaceboOutput::DxgiEncoding::FULL_G22_P709,
+			outputPlan.valid ? outputPlan.targetTransfer :
+				LibplaceboOutput::TargetTransfer::SWAPCHAIN);
 
 		RECT client{};
 		if (!GetClientRect(videoHwnd, &client))
@@ -5220,6 +5289,10 @@ struct LibplaceboVideoRenderer::Impl
 		requestedTransport.gamma = LibplaceboOutput::ParseGamma(settings.outputGamma);
 		requestedTransport.allowLimitedG22Experiment =
 			settings.diagnosticAllowLimitedG22;
+		requestedTransport.allowFullG22Experiment =
+			settings.diagnosticAllowFullG22;
+		requestedTransport.vpOwnedPresenter =
+			settings.diagnosticVpOwnedDxgiPresenter;
 		const auto target = settings.sdrTargetPrimaries == "bt2020"
 			? LibplaceboOutput::SdrTargetPrimaries::BT2020
 			: LibplaceboOutput::SdrTargetPrimaries::REC709;
@@ -6812,7 +6885,8 @@ struct LibplaceboVideoRenderer::Impl
 		// and accepted. Requested settings never flow directly into the target.
 		baseTarget.repr.levels = EncodingLevels(actualOutput.encoding);
 		const enum pl_color_transfer acceptedTransfer =
-			EncodingTransfer(actualOutput.encoding);
+			ResolvedPixelTransfer(actualOutput.encoding,
+				actualOutput.targetTransfer);
 		if (acceptedTransfer != PL_COLOR_TRC_UNKNOWN)
 			baseTarget.color.transfer = acceptedTransfer;
 		if (targetBt2020)
@@ -7928,13 +8002,6 @@ struct LibplaceboVideoRenderer::Impl
 		nlsPipelineWasActive = nlsPipelineActive;
 		if (!rendered && targetLutApplied)
 			RejectDisplayLutAfterRenderFailure();
-		if (outputDiagnostics && rendered && !diagnosticReadbackComplete)
-		{
-			if (diagnosticReadbackFramesRemaining == 0)
-				LogOutputReadback();
-			else
-				--diagnosticReadbackFramesRemaining;
-		}
 		const int64_t swapStartQpc = PerformanceCounterNow();
 		bool submitted = false;
 		if (vpOwnedSwapchain)
@@ -7943,6 +8010,13 @@ struct LibplaceboVideoRenderer::Impl
 			// DXGI presentation boundary in VP: flush GPU work, release every
 			// backbuffer reference, then Present exactly once.
 			pl_gpu_flush(d3d11->gpu);
+			if (outputDiagnostics && rendered && !diagnosticReadbackComplete)
+			{
+				if (diagnosticReadbackFramesRemaining == 0)
+					LogOutputReadback();
+				else
+					--diagnosticReadbackFramesRemaining;
+			}
 			pl_tex_destroy(d3d11->gpu, &vpOwnedFrameTarget);
 			vpOwnedBackbuffer.Release();
 			if (rendered)
@@ -7964,6 +8038,13 @@ struct LibplaceboVideoRenderer::Impl
 		}
 		else
 		{
+			if (outputDiagnostics && rendered && !diagnosticReadbackComplete)
+			{
+				if (diagnosticReadbackFramesRemaining == 0)
+					LogOutputReadback();
+				else
+					--diagnosticReadbackFramesRemaining;
+			}
 			submitted = pl_swapchain_submit_frame(swapchain);
 			if (submitted)
 				pl_swapchain_swap_buffers(swapchain);
@@ -9364,6 +9445,14 @@ bool LibplaceboVideoRenderer::GetOutputModeInfo(CString& details) const
 		default: return "?";
 		}
 	};
+	auto pixelTransfer = [](const LibplaceboOutput::Actual& output)
+	{
+		if (output.targetTransfer == LibplaceboOutput::TargetTransfer::GAMMA22)
+			return "Pure2.2";
+		if (output.targetTransfer == LibplaceboOutput::TargetTransfer::GAMMA24)
+			return "Pure2.4";
+		return LibplaceboOutput::ToGammaString(output.encoding);
+	};
 	CStringA value;
 	const char* outputTarget = m_impl->targetBt2020
 		? (m_impl->reportBt2020ToDisplay
@@ -9389,7 +9478,7 @@ bool LibplaceboVideoRenderer::GetOutputModeInfo(CString& details) const
 				m_impl->actualOutput.encoding)) == "FULL" ? "F" : "L")
 			: "?",
 		m_impl->actualOutput.safeToRender
-			? LibplaceboOutput::ToGammaString(m_impl->actualOutput.encoding)
+			? pixelTransfer(m_impl->actualOutput)
 			: "?",
 		m_impl->actualOutput.safeToRender &&
 			(m_impl->actualOutput.encoding ==
@@ -9422,6 +9511,14 @@ bool LibplaceboVideoRenderer::GetOutputModeInfo(CString& details) const
 	{
 		value += " | FALLBACK: ";
 		value += fallback;
+	}
+	if (m_impl->actualOutput.safeToRender &&
+		m_impl->actualOutput.targetTransfer ==
+			LibplaceboOutput::TargetTransfer::GAMMA22 &&
+		m_impl->actualOutput.encoding ==
+			LibplaceboOutput::DxgiEncoding::FULL_G22_P709)
+	{
+		value += " | Pixel Pure2.2; DXGI Full-G22/sRGB nominal; wire unverified";
 	}
 	details = CString(value);
 	return true;

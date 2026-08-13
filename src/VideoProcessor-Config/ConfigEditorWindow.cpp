@@ -2499,7 +2499,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             QStringLiteral("output_presentation"),
             { QStringLiteral("AUTO"), QStringLiteral("direct"),
                 QStringLiteral("composed") });
-        addChoice(QStringLiteral("Output range"),
+        auto* outputRange = addChoice(QStringLiteral("Output range"),
             QStringLiteral("output_range"),
             { QStringLiteral("AUTO"), QStringLiteral("full"),
                 QStringLiteral("limited") });
@@ -2512,6 +2512,12 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                 QStringLiteral("2.8") });
         addBoolean(QStringLiteral("Enable limited + pure Gamma 2.2 experiment"),
             QStringLiteral("diagnostic_allow_limited_g22"));
+        addBoolean(QStringLiteral("Enable Full + pure Gamma 2.2 experiment"),
+            QStringLiteral("diagnostic_allow_full_g22"));
+        form->addRow(QString(), helpLabel(QStringLiteral(
+            "Calibrated-display override: renders pure-power Gamma 2.2 pixels "
+            "under DXGI's nominal sRGB Full-G22 declaration. Requires Direct "
+            "and VP-owned DXGI; physical display response remains unverified.")));
         addBoolean(QStringLiteral("Disable D3D11 compute shaders"),
             QStringLiteral("diagnostic_disable_compute"));
         addBoolean(QStringLiteral("Force 8-bit SDR swapchain"),
@@ -2531,7 +2537,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             QStringLiteral("config.vprenderer.output_experiments.compatibility"));
         form->addRow(QString(), outputCompatibility);
         const auto updateOutputCompatibility = [this, outputPresentation,
-            outputGamma, outputCompatibility]()
+            outputRange, outputGamma, outputCompatibility]()
         {
             const auto* vpOwned = findChild<QCheckBox*>(
                 QStringLiteral("config.vprenderer.diagnostic_vp_owned_dxgi_presenter"));
@@ -2544,6 +2550,20 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                     "Fallback: VP-owned DXGI is Direct-only; Composed will use libplacebo's presenter.");
             }
             const QString gamma = outputGamma->currentData().toString();
+            const auto* fullG22 = findChild<QCheckBox*>(
+                QStringLiteral("config.vprenderer.diagnostic_allow_full_g22"));
+            if (fullG22 && fullG22->isChecked())
+            {
+                const bool compatible = gamma == QStringLiteral("2.2") &&
+                    outputRange->currentData().toString().compare(
+                        QStringLiteral("full"), Qt::CaseInsensitive) == 0 &&
+                    outputPresentation->currentData().toString().compare(
+                        QStringLiteral("direct"), Qt::CaseInsensitive) == 0 &&
+                    vpOwned && vpOwned->isChecked();
+                notices << (compatible
+                    ? QStringLiteral("Calibrated-display override: pure Gamma 2.2 pixels; DXGI Full-G22 remains nominal sRGB; wire response unverified.")
+                    : QStringLiteral("BLOCKED: Full + pure Gamma 2.2 requires Full range, Gamma 2.2, Direct, and VP-owned DXGI."));
+            }
             if (gamma == QStringLiteral("1.8") || gamma == QStringLiteral("2.0") ||
                 gamma == QStringLiteral("2.6") || gamma == QStringLiteral("2.8"))
             {
@@ -2557,10 +2577,18 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             [updateOutputCompatibility](int) { updateOutputCompatibility(); });
         connect(outputGamma, qOverload<int>(&QComboBox::currentIndexChanged), this,
             [updateOutputCompatibility](int) { updateOutputCompatibility(); });
+        connect(outputRange, qOverload<int>(&QComboBox::currentIndexChanged), this,
+            [updateOutputCompatibility](int) { updateOutputCompatibility(); });
         if (auto* vpOwned = findChild<QCheckBox*>(
             QStringLiteral("config.vprenderer.diagnostic_vp_owned_dxgi_presenter")))
         {
             connect(vpOwned, &QCheckBox::toggled, this,
+                [updateOutputCompatibility](bool) { updateOutputCompatibility(); });
+        }
+        if (auto* fullG22 = findChild<QCheckBox*>(
+            QStringLiteral("config.vprenderer.diagnostic_allow_full_g22")))
+        {
+            connect(fullG22, &QCheckBox::toggled, this,
                 [updateOutputCompatibility](bool) { updateOutputCompatibility(); });
         }
         updateOutputCompatibility();
@@ -2575,6 +2603,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                 { "output_range", "AUTO" },
                 { "output_gamma", "AUTO" },
                 { "diagnostic_allow_limited_g22", "false" },
+                { "diagnostic_allow_full_g22", "false" },
                 { "diagnostic_disable_compute", "false" },
                 { "diagnostic_force_8bit_sdr_swapchain", "false" },
                 { "diagnostic_vp_owned_dxgi_presenter", "false" },
@@ -2586,6 +2615,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                 { "output_range", "limited" },
                 { "output_gamma", "2.2" },
                 { "diagnostic_allow_limited_g22", "true" },
+                { "diagnostic_allow_full_g22", "false" },
                 { "diagnostic_disable_compute", "false" },
                 { "diagnostic_force_8bit_sdr_swapchain", "false" },
                 { "diagnostic_vp_owned_dxgi_presenter", "false" },
@@ -2895,6 +2925,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                     key == QStringLiteral("diagnostic_disable_compute") ||
                     key == QStringLiteral("diagnostic_force_8bit_sdr_swapchain") ||
                     key == QStringLiteral("diagnostic_allow_limited_g22") ||
+                    key == QStringLiteral("diagnostic_allow_full_g22") ||
                     key == QStringLiteral("diagnostic_vp_owned_dxgi_presenter")) return QStringLiteral("false");
                 if (key == QStringLiteral("switch_refresh_rate")) return QStringLiteral("true");
                 return QStringLiteral("AUTO");

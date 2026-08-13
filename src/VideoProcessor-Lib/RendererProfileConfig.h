@@ -530,6 +530,7 @@ namespace RendererProfileConfig
 			key == "diagnostic_disable_compute" ||
 			key == "diagnostic_force_8bit_sdr_swapchain" ||
 			key == "diagnostic_allow_limited_g22" ||
+			key == "diagnostic_allow_full_g22" ||
 			key == "diagnostic_vp_owned_dxgi_presenter") return IsBoolean(value);
 		if (key == "deband") return IsChoice(value, { "auto", "on", "off" });
 		return false;
@@ -555,6 +556,7 @@ namespace RendererProfileConfig
 			ConfigSchema::Boolean("diagnostic_disable_compute"),
 			ConfigSchema::Boolean("diagnostic_force_8bit_sdr_swapchain"),
 			ConfigSchema::Boolean("diagnostic_allow_limited_g22"),
+			ConfigSchema::Boolean("diagnostic_allow_full_g22"),
 			ConfigSchema::Boolean("diagnostic_vp_owned_dxgi_presenter")
 		};
 		if (!ConfigSchema::ValidateSection(config,
@@ -1201,6 +1203,7 @@ namespace RendererProfileConfig
 			ConfigSchema::Boolean("diagnostic_disable_compute"),
 			ConfigSchema::Boolean("diagnostic_force_8bit_sdr_swapchain"),
 			ConfigSchema::Boolean("diagnostic_allow_limited_g22"),
+			ConfigSchema::Boolean("diagnostic_allow_full_g22"),
 			ConfigSchema::Boolean("diagnostic_vp_owned_dxgi_presenter")
 		};
 		if (!ConfigSchema::ValidateSection(config, "general", generalRules, error))
@@ -1228,6 +1231,7 @@ namespace RendererProfileConfig
 				"diagnostic_disable_shader_cache", "diagnostic_disable_compute",
 				"diagnostic_force_8bit_sdr_swapchain",
 				"diagnostic_allow_limited_g22",
+				"diagnostic_allow_full_g22",
 				"diagnostic_vp_owned_dxgi_presenter", "screen_aspect",
 				"vertical_alignment",
 				"automatic_crop", "subtitle_fit",
