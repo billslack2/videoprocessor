@@ -577,8 +577,9 @@ namespace RendererProfileConfig
 			RendererConfigView::VPRENDERER_SECTION))
 			for (const auto& value : *renderer)
 				if (value.first != "when" && value.first != "shortcut" &&
-					!RendererConfigView::IsPolicyKey(value.first) &&
-					!ValidateCanonicalDisplaySetting(value.first, value.second))
+					!((RendererConfigView::IsPolicyKey(value.first) &&
+						ValidateBaseSetting(value.first, value.second)) ||
+						ValidateCanonicalDisplaySetting(value.first, value.second)))
 				{
 					error = "[vprenderer] key '" + value.first +
 						"' is not a valid built-in renderer base setting";
@@ -1037,7 +1038,8 @@ namespace RendererProfileConfig
 					}
 					std::string expected;
 					const bool valid = std::string(spec.name) == "display" ?
-						(!RendererConfigView::IsPolicyKey(entry.first) &&
+						((RendererConfigView::IsPolicyKey(entry.first) &&
+							ValidateBaseSetting(entry.first, entry.second)) ||
 							ValidateTargetRendererSetting(entry.first, entry.second)) :
 						ValidateProfileSetting(spec.name, entry.first,
 							entry.second, expected);
