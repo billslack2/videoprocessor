@@ -2937,6 +2937,8 @@ bool CVideoProcessorDlg::ApplyActiveOutputSweepCase(size_t index)
 	const bool hdrSuite = m_activeOutputSweepSuite.CompareNoCase(L"hdr") == 0;
 	auto applyTestSettings = [&document, &test, hdrSuite](const std::string& section)
 	{
+		const bool allowFullG22 = test.vpOwnedPresenter &&
+			strcmp(test.range, "full") == 0 && strcmp(test.gamma, "2.2") == 0;
 		document.SetKnown(section, "output_path_profile", "custom");
 		document.SetKnown(section, "output_presentation", test.presentation);
 		document.SetKnown(section, "output_range", test.range);
@@ -2945,7 +2947,8 @@ bool CVideoProcessorDlg::ApplyActiveOutputSweepCase(size_t index)
 			test.force8Bit ? "true" : "false");
 		document.SetKnown(section, "diagnostic_allow_limited_g22",
 			test.allowLimitedG22 ? "true" : "false");
-		document.SetKnown(section, "diagnostic_allow_full_g22", "false");
+		document.SetKnown(section, "diagnostic_allow_full_g22",
+			allowFullG22 ? "true" : "false");
 		document.SetKnown(section, "diagnostic_vp_owned_dxgi_presenter",
 			test.vpOwnedPresenter ? "true" : "false");
 		document.SetKnown(section, "diagnostic_disable_compute",
@@ -3019,7 +3022,7 @@ bool CVideoProcessorDlg::ApplyActiveOutputSweepCase(size_t index)
 			m_activeOutputSweepCaptureRestart ? L"capture" : L"renderer");
 	}
 	DebugLog::Log(
-		"Active output sweep case: suite=%S index=%zu label=%S presentation=%s range=%s gamma=%s target_nits=%s tone_mapping=%s gamut_mapping=%s peak_detection=%s contrast_recovery=%s target_primaries=%s report_bt2020=%s force8=%d vp_owned=%d no_compute=%d no_shader_cache=%d action=%s-restart backup=%S",
+		"Active output sweep case: suite=%S index=%zu label=%S presentation=%s range=%s gamma=%s target_nits=%s tone_mapping=%s gamut_mapping=%s peak_detection=%s contrast_recovery=%s target_primaries=%s report_bt2020=%s force8=%d allow_full_g22=%d vp_owned=%d no_compute=%d no_shader_cache=%d action=%s-restart backup=%S",
 		m_activeOutputSweepSuite.GetString(),
 		index + 1, test.label, test.presentation, test.range, test.gamma,
 		test.sdrTargetNits ? test.sdrTargetNits : "(unchanged)",
@@ -3029,7 +3032,10 @@ bool CVideoProcessorDlg::ApplyActiveOutputSweepCase(size_t index)
 		test.contrastRecovery ? test.contrastRecovery : "(unchanged)",
 		test.targetPrimaries ? test.targetPrimaries : "(unchanged)",
 		test.reportBt2020ToDisplay ? test.reportBt2020ToDisplay : "(unchanged)",
-		test.force8Bit ? 1 : 0, test.vpOwnedPresenter ? 1 : 0,
+		test.force8Bit ? 1 : 0,
+		(test.vpOwnedPresenter && strcmp(test.range, "full") == 0 &&
+			strcmp(test.gamma, "2.2") == 0) ? 1 : 0,
+		test.vpOwnedPresenter ? 1 : 0,
 		test.disableCompute ? 1 : 0, test.disableShaderCache ? 1 : 0,
 		m_activeOutputSweepCaptureRestart ? "capture" : "renderer",
 		saveResult.backupPath.c_str());

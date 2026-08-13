@@ -31,9 +31,12 @@ experiment, limited-range Gamma 2.2, 8-bit swapchain, compute/cache toggles,
 and composed presentation. Its purpose is transport and presentation
 diagnosis; HDR tone-map settings are not varied.
 
-The key projector comparison is SDR case 6: VP-owned DXGI, Direct, Limited
-range, and pure Gamma 2.2. Cases 5 and 6 show whether the stock policy or the
-VP-owned presenter is what changes the outcome.
+The Full-range projector comparison is cases 3 and 4. Case 3 confirms that the
+shipping policy rejects an undeclarable pure-power request; case 4 enables the
+strict calibrated-display override and renders pure Gamma 2.2 pixels under the
+nominal Full-G22/sRGB DXGI declaration. The Limited-range comparison remains
+cases 5 and 6. A green PASS means a live frame was presented, not that either
+physical transfer curve was measured.
 
 ## HDR tone-mapping suite
 
