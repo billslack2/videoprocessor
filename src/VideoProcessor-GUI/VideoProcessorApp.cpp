@@ -20,9 +20,18 @@
 #include <MainConfigSchema.h>
 #include <RendererProfileConfig.h>
 #include <ApplicationInterface.h>
+#include <DeckLinkAPI_h.h>
+#include <DeckLinkAPIVersion.h>
+
+#include <d3d11.h>
+#include <dxgi1_6.h>
+#include <intrin.h>
 
 #include "VideoProcessorApp.h"
 using namespace std;
+
+#pragma comment(lib, "d3d11.lib")
+#pragma comment(lib, "dxgi.lib")
 
 
 BEGIN_MESSAGE_MAP(CVideoProcessorApp, CWinAppEx)
@@ -34,6 +43,207 @@ CVideoProcessorApp videoProcessorApp;
 
 namespace
 {
+std::wstring CpuBrand()
+{
+	int registers[4] = {};
+	__cpuid(registers, 0x80000000);
+	if (static_cast<unsigned int>(registers[0]) < 0x80000004)
+		return L"(unavailable)";
+
+	char brand[49] = {};
+	for (int leaf = 0; leaf < 3; ++leaf)
+	{
+		__cpuidex(registers, 0x80000002 + leaf, 0);
+		memcpy(brand + leaf * sizeof(registers), registers, sizeof(registers));
+	}
+	const int length = MultiByteToWideChar(CP_ACP, 0, brand, -1, nullptr, 0);
+	if (length <= 1)
+		return L"(unavailable)";
+	std::vector<wchar_t> converted(static_cast<size_t>(length));
+	MultiByteToWideChar(CP_ACP, 0, brand, -1, converted.data(), length);
+	std::wstring result(converted.data());
+	while (!result.empty() && iswspace(result.back()))
+		result.pop_back();
+	return result;
+}
+
+std::wstring DxgiDriverVersion(const LARGE_INTEGER& version)
+{
+	const ULONGLONG value = static_cast<ULONGLONG>(version.QuadPart);
+	wchar_t text[64] = {};
+	swprintf_s(text, L"%llu.%llu.%llu.%llu",
+		(value >> 48) & 0xffff, (value >> 32) & 0xffff,
+		(value >> 16) & 0xffff, value & 0xffff);
+	return text;
+}
+
+std::wstring WindowsVersionRegistryString(const wchar_t* name)
+{
+	const wchar_t* key =
+		L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion";
+	DWORD type = 0;
+	DWORD bytes = 0;
+	if (RegGetValueW(HKEY_LOCAL_MACHINE, key, name,
+		RRF_RT_REG_SZ, &type, nullptr, &bytes) != ERROR_SUCCESS || bytes < sizeof(wchar_t))
+		return L"(unavailable)";
+	std::vector<wchar_t> value(bytes / sizeof(wchar_t));
+	if (RegGetValueW(HKEY_LOCAL_MACHINE, key, name,
+		RRF_RT_REG_SZ, &type, value.data(), &bytes) != ERROR_SUCCESS)
+		return L"(unavailable)";
+	return value.data();
+}
+
+DWORD WindowsVersionRegistryDword(const wchar_t* name)
+{
+	const wchar_t* key =
+		L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion";
+	DWORD value = 0;
+	DWORD bytes = sizeof(value);
+	return RegGetValueW(HKEY_LOCAL_MACHINE, key, name,
+		RRF_RT_REG_DWORD, nullptr, &value, &bytes) == ERROR_SUCCESS ? value : 0;
+}
+
+std::wstring DeckLinkName(IDeckLink* deckLink, bool model)
+{
+	if (!deckLink)
+		return L"(unavailable)";
+	BSTR value = nullptr;
+	const HRESULT result = model ? deckLink->GetModelName(&value) :
+		deckLink->GetDisplayName(&value);
+	if (FAILED(result) || !value)
+		return L"(unavailable)";
+	std::wstring name(value, SysStringLen(value));
+	SysFreeString(value);
+	return name;
+}
+
+void LogStartupPlatformInventory()
+{
+	// Do not log monitor serials, EDIDs, device paths, usernames, or the current
+	// capture source. This is a support fingerprint, not an identity inventory.
+	SYSTEM_INFO systemInfo = {};
+	GetNativeSystemInfo(&systemInfo);
+	MEMORYSTATUSEX memory = {};
+	memory.dwLength = sizeof(memory);
+	GlobalMemoryStatusEx(&memory);
+	DebugLog::Log("platform: cpu=\"%S\" logical_processors=%lu architecture=%u memory_mib=%llu",
+		CpuBrand().c_str(), systemInfo.dwNumberOfProcessors,
+		systemInfo.wProcessorArchitecture,
+		memory.ullTotalPhys / (1024ULL * 1024ULL));
+
+	// RtlGetVersion is used instead of GetVersionEx so the log has the real OS
+	// build even when the executable manifest targets an older Windows version.
+	struct RtlOsVersionInfo
+	{
+		ULONG size;
+		ULONG major;
+		ULONG minor;
+		ULONG build;
+		ULONG platformId;
+		WCHAR servicePack[128];
+	};
+	using RtlGetVersionFunction = LONG(WINAPI*)(RtlOsVersionInfo*);
+	RtlOsVersionInfo version = { sizeof(version) };
+	const HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
+	const auto rtlGetVersion = ntdll ? reinterpret_cast<RtlGetVersionFunction>(
+		GetProcAddress(ntdll, "RtlGetVersion")) : nullptr;
+	if (rtlGetVersion && rtlGetVersion(&version) == 0)
+		DebugLog::Log("platform: windows=%lu.%lu.%lu service_pack=\"%S\"",
+			version.major, version.minor, version.build, version.servicePack);
+	else
+		DebugLog::Log("platform: windows=unavailable");
+	DebugLog::Log(
+		"platform: windows_release product=\"%S\" display_version=\"%S\" build=%S ubr=%lu",
+		WindowsVersionRegistryString(L"ProductName").c_str(),
+		WindowsVersionRegistryString(L"DisplayVersion").c_str(),
+		WindowsVersionRegistryString(L"CurrentBuildNumber").c_str(),
+		WindowsVersionRegistryDword(L"UBR"));
+
+	CComPtr<IDXGIFactory1> factory;
+	if (SUCCEEDED(CreateDXGIFactory1(IID_PPV_ARGS(&factory))))
+	{
+		for (UINT adapterIndex = 0;; ++adapterIndex)
+		{
+			CComPtr<IDXGIAdapter1> adapter;
+			if (factory->EnumAdapters1(adapterIndex, &adapter) == DXGI_ERROR_NOT_FOUND)
+				break;
+			if (!adapter)
+				continue;
+			DXGI_ADAPTER_DESC1 adapterDescription = {};
+			if (FAILED(adapter->GetDesc1(&adapterDescription)))
+				continue;
+			LARGE_INTEGER driver = {};
+			const HRESULT driverResult = adapter->CheckInterfaceSupport(
+				__uuidof(IDXGIDevice), &driver);
+			DebugLog::Log(
+				"platform: gpu[%u]=\"%S\" vendor=0x%04x device=0x%04x vram_mib=%llu shared_mib=%llu driver=%S",
+				adapterIndex, adapterDescription.Description, adapterDescription.VendorId,
+				adapterDescription.DeviceId,
+				adapterDescription.DedicatedVideoMemory / (1024ULL * 1024ULL),
+				adapterDescription.SharedSystemMemory / (1024ULL * 1024ULL),
+				SUCCEEDED(driverResult) ? DxgiDriverVersion(driver).c_str() : L"unavailable");
+			for (UINT outputIndex = 0;; ++outputIndex)
+			{
+				CComPtr<IDXGIOutput> output;
+				if (adapter->EnumOutputs(outputIndex, &output) == DXGI_ERROR_NOT_FOUND)
+					break;
+				DXGI_OUTPUT_DESC outputDescription = {};
+				if (output && SUCCEEDED(output->GetDesc(&outputDescription)))
+					DebugLog::Log(
+						"platform: display gpu=%u output=%u name=\"%S\" attached=%d desktop_rect=%ld,%ld %ldx%ld",
+						adapterIndex, outputIndex, outputDescription.DeviceName,
+						outputDescription.AttachedToDesktop ? 1 : 0,
+						outputDescription.DesktopCoordinates.left,
+						outputDescription.DesktopCoordinates.top,
+						outputDescription.DesktopCoordinates.right - outputDescription.DesktopCoordinates.left,
+						outputDescription.DesktopCoordinates.bottom - outputDescription.DesktopCoordinates.top);
+			}
+		}
+	}
+	else
+		DebugLog::Log("platform: dxgi enumeration unavailable");
+}
+
+void LogDeckLinkPlatformInventory()
+{
+	DebugLog::Log("platform: decklink_sdk_api=%s", BLACKMAGIC_DECKLINK_API_VERSION_STRING);
+	CComPtr<IDeckLinkAPIInformation> apiInformation;
+	if (SUCCEEDED(CoCreateInstance(CLSID_CDeckLinkAPIInformation, nullptr,
+		CLSCTX_ALL, IID_PPV_ARGS(&apiInformation))))
+	{
+		BSTR runtimeVersion = nullptr;
+		if (SUCCEEDED(apiInformation->GetString(BMDDeckLinkAPIVersion,
+			&runtimeVersion)) && runtimeVersion)
+		{
+			DebugLog::Log("platform: decklink_desktop_video_runtime=\"%S\"",
+				runtimeVersion);
+			SysFreeString(runtimeVersion);
+		}
+	}
+	else
+		DebugLog::Log("platform: decklink_desktop_video_runtime=unavailable");
+
+	CComPtr<IDeckLinkIterator> iterator;
+	if (FAILED(CoCreateInstance(CLSID_CDeckLinkIterator, nullptr, CLSCTX_ALL,
+		IID_PPV_ARGS(&iterator))))
+	{
+		DebugLog::Log("platform: decklink_hardware=unavailable");
+		return;
+	}
+	UINT deviceIndex = 0;
+	for (;;)
+	{
+		CComPtr<IDeckLink> deckLink;
+		if (iterator->Next(&deckLink) != S_OK || !deckLink)
+			break;
+		DebugLog::Log("platform: decklink[%u] model=\"%S\" display=\"%S\" firmware=not-exposed-by-sdk",
+			deviceIndex++, DeckLinkName(deckLink, true).c_str(),
+			DeckLinkName(deckLink, false).c_str());
+	}
+	if (deviceIndex == 0)
+		DebugLog::Log("platform: decklink_hardware=none-detected");
+}
+
 const wchar_t COMMAND_LINE_HELP[] = LR"(VideoProcessor GUI command-line help
 
 Usage:
@@ -99,6 +309,30 @@ Options:
 
   /startminimized
       Start the application minimized.
+
+  /active_output_sweep
+      Run the VP Renderer diagnostic contracts against real fullscreen capture
+      content. Requires a generated --config path containing
+      "active-output-sweep"; the normal user configuration is refused.
+      The active contract is shown in the native top-right OSD by default.
+
+  /active_output_sweep_hold_ms <1000-600000>
+      Milliseconds per live contract in the active-output sweep (default: 10000 ms).
+
+  /active_output_sweep_suite <sdr|hdr>
+      Select the SDR output-transport suite (default) or the HDR tone-mapping
+      suite. HDR refuses SDR input and requires a live HDR EOTF.
+
+  /active_output_sweep_tests <list>
+      Run only the specified documented cases. Use comma-separated numbers and
+      ranges, for example 2,5 or 2-5,8. The default runs all cases.
+
+  /active_output_sweep_show_info <true|false>
+      Keep the top-right OSD visible during an active-output sweep (default: true).
+
+  /active_output_sweep_restart <capture|renderer>
+      Use a full capture restart (default) or a renderer-only restart. Renderer-only
+      keeps capture live, but still rebuilds the D3D11 device and swapchain.
 
   /frame_offset <milliseconds|auto>
       Set the timing-clock frame offset in milliseconds, or enable automatic offset.
@@ -841,7 +1075,11 @@ bool RequiresCommandLineValue(const wchar_t* argument)
 		IsCommandLineOption(argument, L"/renderer_nominal_range") ||
 		IsCommandLineOption(argument, L"/renderer_transfer_function") ||
 		IsCommandLineOption(argument, L"/renderer_transfer_matrix") ||
-		IsCommandLineOption(argument, L"/renderer_primaries");
+		IsCommandLineOption(argument, L"/renderer_primaries") ||
+		IsCommandLineOption(argument, L"/active_output_sweep_hold_ms") ||
+		IsCommandLineOption(argument, L"/active_output_sweep_suite") ||
+		IsCommandLineOption(argument, L"/active_output_sweep_tests") ||
+		IsCommandLineOption(argument, L"/active_output_sweep_restart");
 }
 
 bool HasCaseInsensitiveValue(const wchar_t* argument)
@@ -856,7 +1094,8 @@ bool HasCaseInsensitiveValue(const wchar_t* argument)
 		IsCommandLineOption(argument, L"/renderer_nominal_range") ||
 		IsCommandLineOption(argument, L"/renderer_transfer_function") ||
 		IsCommandLineOption(argument, L"/renderer_transfer_matrix") ||
-		IsCommandLineOption(argument, L"/renderer_primaries");
+		IsCommandLineOption(argument, L"/renderer_primaries") ||
+		IsCommandLineOption(argument, L"/active_output_sweep_suite");
 }
 
 bool IsBooleanCommandLineOption(const wchar_t* argument)
@@ -870,7 +1109,9 @@ bool IsBooleanCommandLineOption(const wchar_t* argument)
 		IsCommandLineOption(argument, L"/disable_detection_features") ||
 		IsCommandLineOption(argument, L"/scene_correction_basic") ||
 		IsCommandLineOption(argument, L"/newlldv") ||
-		IsCommandLineOption(argument, L"/startminimized");
+		IsCommandLineOption(argument, L"/startminimized") ||
+		IsCommandLineOption(argument, L"/active_output_sweep") ||
+		IsCommandLineOption(argument, L"/active_output_sweep_show_info");
 }
 
 void ValidateCommandLineArguments(const std::vector<const wchar_t*>& arguments)
@@ -944,6 +1185,49 @@ void ValidateCommandLineArguments(const std::vector<const wchar_t*>& arguments)
 			 _wtoi(arguments[index + 1]) > 200))
 			throw std::runtime_error(
 				"Invalid /reset_queue_too_large_percent: expected an integer from 1 to 200");
+
+		if (IsCommandLineOption(argument, L"/active_output_sweep_hold_ms") &&
+			(!IsPositiveInteger(arguments[index + 1]) ||
+			 _wtoi(arguments[index + 1]) < 1000 ||
+			 _wtoi(arguments[index + 1]) > 600000))
+		{
+			throw std::runtime_error(
+				"Invalid /active_output_sweep_hold_ms: expected an integer from 1000 to 600000");
+		}
+
+		if (IsCommandLineOption(argument, L"/active_output_sweep_suite") &&
+			_wcsicmp(arguments[index + 1], L"sdr") != 0 &&
+			_wcsicmp(arguments[index + 1], L"hdr") != 0)
+		{
+			throw std::runtime_error(
+				"Invalid /active_output_sweep_suite: expected sdr or hdr");
+		}
+
+		if (IsCommandLineOption(argument, L"/active_output_sweep_tests"))
+		{
+			const wchar_t* value = arguments[index + 1];
+			bool hasDigit = false;
+			for (const wchar_t* character = value; *character; ++character)
+			{
+				if (*character >= L'0' && *character <= L'9')
+					hasDigit = true;
+				else if (*character != L',' && *character != L'-' &&
+					*character != L' ' && *character != L'\t')
+					throw std::runtime_error(
+						"Invalid /active_output_sweep_tests: use numbers, commas, and ranges (for example 2,5 or 2-5)");
+			}
+			if (!hasDigit)
+				throw std::runtime_error(
+					"Invalid /active_output_sweep_tests: specify one or more test numbers");
+		}
+
+		if (IsCommandLineOption(argument, L"/active_output_sweep_restart") &&
+			_wcsicmp(arguments[index + 1], L"capture") != 0 &&
+			_wcsicmp(arguments[index + 1], L"renderer") != 0)
+		{
+			throw std::runtime_error(
+				"Invalid /active_output_sweep_restart: expected capture or renderer");
+		}
 
 		if (IsCommandLineOption(argument, L"/lldv_max_cll") ||
 			IsCommandLineOption(argument, L"/lldv_max_fall") ||
@@ -1060,6 +1344,7 @@ BOOL CVideoProcessorApp::InitInstance()
 			debugLogRetention.count,
 			debugLogRetention.diagnostic,
 			LoadEnhancedLoggingEnabled());
+		LogStartupPlatformInventory();
 	}
 
 	m_displayRecoveryStatePath = CurrentStatePath();
@@ -1108,6 +1393,7 @@ BOOL CVideoProcessorApp::InitInstance()
 		// using that without further investigation
 		if (FAILED(CoInitializeEx(nullptr, COINIT_MULTITHREADED)))
 			throw std::runtime_error("Failed to initialize com objects");
+		LogDeckLinkPlatformInventory();
 
 		// Parse command line
 		// https://docs.microsoft.com/en-us/cpp/c-runtime-library/argc-argv-wargv
@@ -1158,6 +1444,12 @@ BOOL CVideoProcessorApp::InitInstance()
 		const ApplicationInterface::Preference commandLineInterface =
 			ApplicationInterface::ParseCommandLine(mergedArguments);
 		bool noUiSelected = false;
+		bool activeOutputSweep = false;
+		bool activeOutputSweepShowInfo = true;
+		bool activeOutputSweepCaptureRestart = true;
+		DWORD activeOutputSweepHoldMs = 5000;
+		CString activeOutputSweepSuite = L"sdr";
+		CString activeOutputSweepTests;
 
 		for (int i = 1; i < iNumOfArgs; i++)
 		{
@@ -1711,7 +2003,53 @@ BOOL CVideoProcessorApp::InitInstance()
 				dlg.StartMinimized(booleanValue);
 			}
 
+			if (ReadBooleanOption(pArgs.data(), i, iNumOfArgs,
+				L"/active_output_sweep", booleanValue))
+			{
+				activeOutputSweep = booleanValue;
+			}
+
+			if (ReadBooleanOption(pArgs.data(), i, iNumOfArgs,
+				L"/active_output_sweep_show_info", booleanValue))
+			{
+				activeOutputSweepShowInfo = booleanValue;
+			}
+
+			if (wcscmp(pArgs[i], L"/active_output_sweep_hold_ms") == 0 &&
+				(i + 1) < iNumOfArgs)
+			{
+				activeOutputSweepHoldMs = static_cast<DWORD>(_wtol(pArgs[i + 1]));
+				++i;
+			}
+
+			if (wcscmp(pArgs[i], L"/active_output_sweep_suite") == 0 &&
+				(i + 1) < iNumOfArgs)
+			{
+				activeOutputSweepSuite = pArgs[i + 1];
+				++i;
+			}
+
+			if (wcscmp(pArgs[i], L"/active_output_sweep_tests") == 0 &&
+				(i + 1) < iNumOfArgs)
+			{
+				activeOutputSweepTests = pArgs[i + 1];
+				++i;
+			}
+
+			if (wcscmp(pArgs[i], L"/active_output_sweep_restart") == 0 &&
+				(i + 1) < iNumOfArgs)
+			{
+				activeOutputSweepCaptureRestart =
+					_wcsicmp(pArgs[i + 1], L"capture") == 0;
+				++i;
+			}
+
 		}
+
+		if (activeOutputSweep)
+			dlg.ConfigureActiveOutputSweep(true, activeOutputSweepHoldMs,
+				activeOutputSweepShowInfo, activeOutputSweepCaptureRestart,
+				activeOutputSweepSuite, activeOutputSweepTests);
 
 		const ApplicationInterface::Selection interfaceSelection =
 			ApplicationInterface::Resolve(
@@ -1741,9 +2079,16 @@ BOOL CVideoProcessorApp::InitInstance()
 			}
 		}
 
-		// Set set ourselves to high prio.
+		// High priority is a latency preference, not a startup requirement. Some
+		// managed, remote, and diagnostic-launch contexts legitimately deny it;
+		// rendering at the normal process class is still functional and gives the
+		// operator a useful log rather than a startup-fatal dialog.
 		if (!SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS))
-			throw std::runtime_error("Failed to set process priority");
+		{
+			DebugLog::Log(
+				"Process priority request denied: requested=high win32_error=%lu action=continue-normal-priority",
+				GetLastError());
+		}
 
 		dlg.DoModal();
 		RestoreDisplayTopology("normal-exit");

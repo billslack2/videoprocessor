@@ -42,6 +42,7 @@
 #include <StatsOverlayWindow.h>
 #include <ApplicationInterface.h>
 #include <ConfigurationApplyPolicy.h>
+#include <ConfigEditorCore.h>
 #include "ModernOperatorView.h"
 
 #include "resource.h"
@@ -160,6 +161,10 @@ public:
 	void DefaultRendererTransferFunction(DXVA_VideoTransferFunction);
 	void DefaultRendererTransferMatrix(DXVA_VideoTransferMatrix);
 	void DefaultRendererPrimaries(DXVA_VideoPrimaries);
+	// Diagnostic-only runner. It only accepts the explicitly generated temporary
+	// sweep configuration, leaving the user's normal config untouched.
+	void ConfigureActiveOutputSweep(bool enabled, DWORD holdMs, bool showInfo,
+		bool captureRestart, const CString& suite, const CString& requestedTests);
 
 
 	// UI-related handlers
@@ -710,6 +715,53 @@ protected:
 	StatsData* m_lastStatsData = nullptr;
 	bool m_statsOverlayRequestedVisible = false;
 
+	struct ActiveOutputSweepCase
+	{
+		const wchar_t* label = L"";
+		const char* presentation = "auto";
+		const char* range = "auto";
+		const char* gamma = "auto";
+		bool force8Bit = false;
+		bool allowLimitedG22 = false;
+		bool vpOwnedPresenter = false;
+		bool disableCompute = false;
+		bool disableShaderCache = false;
+		const wchar_t* description = L"";
+		// HDR-suite values are null for a transport-contract case.  Keeping them
+		// nullable lets the HDR suite preserve its dedicated output template and
+		// change only the color-mapping control being diagnosed.
+		const char* sdrTargetNits = nullptr;
+		const char* toneMapping = nullptr;
+		const char* gamutMapping = nullptr;
+		const char* peakDetection = nullptr;
+		const char* contrastRecovery = nullptr;
+		const char* targetPrimaries = nullptr;
+		const char* reportBt2020ToDisplay = nullptr;
+	};
+	bool m_activeOutputSweepRequested = false;
+	bool m_activeOutputSweepRunning = false;
+	bool m_activeOutputSweepAwaitingLiveFrame = false;
+	bool m_activeOutputSweepPaused = false;
+	bool m_activeOutputSweepCaseFailed = false;
+	SweepBannerState m_activeOutputSweepBannerState = SweepBannerState::Testing;
+	SweepResultState m_activeOutputSweepCaseResult = SweepResultState::Failed;
+	CString m_activeOutputSweepCaseDetail;
+	bool m_activeOutputSweepRestorePending = false;
+	bool m_activeOutputSweepSummaryVisible = false;
+	ULONGLONG m_activeOutputSweepSummaryStartedTick = 0;
+	bool m_activeOutputSweepShowInfo = true;
+	bool m_activeOutputSweepCaptureRestart = true;
+	DWORD m_activeOutputSweepHoldMs = 5000;
+	CString m_activeOutputSweepSuite = L"sdr";
+	CString m_activeOutputSweepRequestedTests;
+	size_t m_activeOutputSweepCaseIndex = 0;
+	ULONGLONG m_activeOutputSweepDeadlineTick = 0;
+	CString m_activeOutputSweepStatus;
+	std::vector<ActiveOutputSweepCase> m_activeOutputSweepCases;
+	std::vector<SweepSummaryItem> m_activeOutputSweepResults;
+	std::unique_ptr<ConfigEditorCore::ConfigDocument> m_activeOutputSweepDocument;
+	std::unique_ptr<ConfigEditorCore::ConfigDocument> m_activeOutputSweepOriginalDocument;
+
 	void UpdateState();
 
 	// Helpers
@@ -780,6 +832,20 @@ protected:
 	void ApplyStatsOverlayForActiveRenderer();
 	void LoadDisplayRefreshRateOverrides();
 	void ApplySavedConfiguration();
+	void UpdateActiveOutputSweep(ULONGLONG now);
+	bool StartActiveOutputSweep();
+	bool ApplyActiveOutputSweepCase(size_t index);
+	bool ApplyActiveOutputSweepConfiguration();
+	void RestoreActiveOutputSweepConfiguration(const wchar_t* reason);
+	void CompleteActiveOutputSweep(const wchar_t* result);
+	void RecordActiveOutputSweepResult(SweepResultState state,
+		const wchar_t* detail);
+	bool EvaluateActiveOutputSweepCase(SweepResultState& state,
+		CString& detail) const;
+	bool TryClassifyActiveOutputSweepCase(ULONGLONG now,
+		const char* trigger);
+	void ToggleActiveOutputSweepPause();
+	void ClearActiveOutputSweepSummary(const char* reason);
 	bool StageSavedConfiguration(const char* reason, bool stageAccelerators);
 	bool PublishStagedConfiguration(bool replaceAccelerators);
 	bool PublishStagedShortcutsOnly();

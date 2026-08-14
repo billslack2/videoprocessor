@@ -2364,11 +2364,8 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
     else if (sectionPrefix == QStringLiteral("vprenderer"))
     {
         form = addCollapsibleSection(QStringLiteral("basic"), QStringLiteral("Basic"),
-            QStringLiteral("Common presentation, output, and SDR target settings."), true);
+            QStringLiteral("Common rendering, SDR target, and display settings."), true);
         addChoice(QStringLiteral("Rendering quality"), QStringLiteral("quality"), { QStringLiteral("fast"), QStringLiteral("balanced"), QStringLiteral("high") });
-        addChoice(QStringLiteral("Presentation mode"), QStringLiteral("output_presentation"), { QStringLiteral("AUTO"), QStringLiteral("direct"), QStringLiteral("composed") });
-        addChoice(QStringLiteral("Output range"), QStringLiteral("output_range"), { QStringLiteral("AUTO"), QStringLiteral("full"), QStringLiteral("limited") });
-        addChoice(QStringLiteral("Output gamma"), QStringLiteral("output_gamma"), { QStringLiteral("AUTO"), QStringLiteral("bt1886"), QStringLiteral("srgb"), QStringLiteral("1.8"), QStringLiteral("2.0"), QStringLiteral("2.2"), QStringLiteral("2.4"), QStringLiteral("2.6"), QStringLiteral("2.8") });
         addChoice(QStringLiteral("SDR primaries"), QStringLiteral("sdr_target_primaries"), { QStringLiteral("REC709"), QStringLiteral("BT2020") });
         addText(QStringLiteral("SDR target luminance"), QStringLiteral("sdr_target_nits"), QStringLiteral("nits"));
         auto* sdrBlackLevel = addText(QStringLiteral("SDR black level (nits)"), QStringLiteral("sdr_black_nits"));
@@ -2483,8 +2480,227 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         addChoice(QStringLiteral("LUT reference transfer"), QStringLiteral("lut_reference_transfer"), { QStringLiteral("AUTO"), QStringLiteral("srgb"), QStringLiteral("bt1886"), QStringLiteral("2.2"), QStringLiteral("2.4") });
         addChoice(QStringLiteral("LUT reference primaries"), QStringLiteral("lut_reference_primaries"), { QStringLiteral("AUTO"), QStringLiteral("REC709"), QStringLiteral("P3_D65"), QStringLiteral("BT2020") });
 
-        // Diagnostic-only renderer switches remain supported in manual config,
-        // but deliberately stay out of the normal configuration UI.
+        form = addCollapsibleSection(QStringLiteral("outputExperiments"),
+            QStringLiteral("Output Experiments (beta)"), QStringLiteral(
+                "Diagnostic output controls for repeatable renderer testing. "
+                "Changes are saved with this renderer profile; Apply performs "
+                "a hard capture-and-renderer reinitialization before they take effect."), false);
+        form->addRow(QString(), helpLabel(QStringLiteral(
+            "Legacy writes the exact shipping output path. Proposed writes VP's "
+            "candidate path for this investigation: a VP-owned 10-bit flip swapchain, "
+            "limited pure Gamma 2.2, and diagnostic logging. Custom exposes the "
+                "same individual settings. Apply always hard-reinitializes capture "
+                "and renderer state.")));
+        auto* outputPathProfile = addChoice(QStringLiteral("Output path profile"),
+            QStringLiteral("output_path_profile"),
+            { QStringLiteral("legacy"), QStringLiteral("proposed"),
+                QStringLiteral("custom") });
+        auto* outputPresentation = addChoice(QStringLiteral("Presentation mode"),
+            QStringLiteral("output_presentation"),
+            { QStringLiteral("AUTO"), QStringLiteral("direct"),
+                QStringLiteral("composed") });
+        auto* outputRange = addChoice(QStringLiteral("Output range"),
+            QStringLiteral("output_range"),
+            { QStringLiteral("AUTO"), QStringLiteral("full"),
+                QStringLiteral("limited") });
+        auto* outputGamma = addChoice(QStringLiteral("Output gamma"),
+            QStringLiteral("output_gamma"),
+            { QStringLiteral("AUTO"), QStringLiteral("bt1886"),
+                QStringLiteral("srgb"), QStringLiteral("1.8"),
+                QStringLiteral("2.0"), QStringLiteral("2.2"),
+                QStringLiteral("2.4"), QStringLiteral("2.6"),
+                QStringLiteral("2.8") });
+        addBoolean(QStringLiteral("Enable limited + pure Gamma 2.2 experiment"),
+            QStringLiteral("diagnostic_allow_limited_g22"));
+        addBoolean(QStringLiteral("Enable Full + pure Gamma 2.2 experiment"),
+            QStringLiteral("diagnostic_allow_full_g22"));
+        form->addRow(QString(), helpLabel(QStringLiteral(
+            "Calibrated-display override: renders pure-power Gamma 2.2 pixels "
+            "under DXGI's nominal sRGB Full-G22 declaration. Requires Direct "
+            "and VP-owned DXGI; physical display response remains unverified.")));
+        addBoolean(QStringLiteral("Disable D3D11 compute shaders"),
+            QStringLiteral("diagnostic_disable_compute"));
+        addBoolean(QStringLiteral("Force 8-bit SDR swapchain"),
+            QStringLiteral("diagnostic_force_8bit_sdr_swapchain"));
+        addBoolean(QStringLiteral("Use VP-owned DXGI swapchain (beta)"),
+            QStringLiteral("diagnostic_vp_owned_dxgi_presenter"));
+        form->addRow(QString(), helpLabel(QStringLiteral(
+            "Experimental only: VP-owned DXGI is not part of the Proposed path. "
+            "It may be enabled in Custom for focused presenter diagnostics; "
+            "Composed always uses libplacebo's bitblt swapchain.")));
+        addBoolean(QStringLiteral("Capture detailed output diagnostics"),
+            QStringLiteral("output_diagnostics"));
+        addBoolean(QStringLiteral("Disable shader cache"),
+            QStringLiteral("diagnostic_disable_shader_cache"));
+        auto* outputCompatibility = helpLabel(QString());
+        outputCompatibility->setObjectName(
+            QStringLiteral("config.vprenderer.output_experiments.compatibility"));
+        form->addRow(QString(), outputCompatibility);
+        const auto updateOutputCompatibility = [this, outputPresentation,
+            outputRange, outputGamma, outputCompatibility]()
+        {
+            const auto* vpOwned = findChild<QCheckBox*>(
+                QStringLiteral("config.vprenderer.diagnostic_vp_owned_dxgi_presenter"));
+            QStringList notices;
+            if (outputPresentation->currentData().toString().compare(
+                QStringLiteral("composed"), Qt::CaseInsensitive) == 0 &&
+                vpOwned && vpOwned->isChecked())
+            {
+                notices << QStringLiteral(
+                    "Fallback: VP-owned DXGI is Direct-only; Composed will use libplacebo's presenter.");
+            }
+            const QString gamma = outputGamma->currentData().toString();
+            const auto* fullG22 = findChild<QCheckBox*>(
+                QStringLiteral("config.vprenderer.diagnostic_allow_full_g22"));
+            if (fullG22 && fullG22->isChecked())
+            {
+                const bool compatible = gamma == QStringLiteral("2.2") &&
+                    outputRange->currentData().toString().compare(
+                        QStringLiteral("full"), Qt::CaseInsensitive) == 0 &&
+                    outputPresentation->currentData().toString().compare(
+                        QStringLiteral("direct"), Qt::CaseInsensitive) == 0 &&
+                    vpOwned && vpOwned->isChecked();
+                notices << (compatible
+                    ? QStringLiteral("Calibrated-display override: pure Gamma 2.2 pixels; DXGI Full-G22 remains nominal sRGB; wire response unverified.")
+                    : QStringLiteral("BLOCKED: Full + pure Gamma 2.2 requires Full range, Gamma 2.2, Direct, and VP-owned DXGI."));
+            }
+            if (gamma == QStringLiteral("1.8") || gamma == QStringLiteral("2.0") ||
+                gamma == QStringLiteral("2.6") || gamma == QStringLiteral("2.8"))
+            {
+                notices << QStringLiteral(
+                    "Fallback: this pure gamma has no SDR DXGI colour-space declaration; the active transport will be shown in the OSD.");
+            }
+            outputCompatibility->setText(notices.join(QStringLiteral("\n")));
+            outputCompatibility->setVisible(!notices.isEmpty());
+        };
+        connect(outputPresentation, qOverload<int>(&QComboBox::currentIndexChanged), this,
+            [updateOutputCompatibility](int) { updateOutputCompatibility(); });
+        connect(outputGamma, qOverload<int>(&QComboBox::currentIndexChanged), this,
+            [updateOutputCompatibility](int) { updateOutputCompatibility(); });
+        connect(outputRange, qOverload<int>(&QComboBox::currentIndexChanged), this,
+            [updateOutputCompatibility](int) { updateOutputCompatibility(); });
+        if (auto* vpOwned = findChild<QCheckBox*>(
+            QStringLiteral("config.vprenderer.diagnostic_vp_owned_dxgi_presenter")))
+        {
+            connect(vpOwned, &QCheckBox::toggled, this,
+                [updateOutputCompatibility](bool) { updateOutputCompatibility(); });
+        }
+        if (auto* fullG22 = findChild<QCheckBox*>(
+            QStringLiteral("config.vprenderer.diagnostic_allow_full_g22")))
+        {
+            connect(fullG22, &QCheckBox::toggled, this,
+                [updateOutputCompatibility](bool) { updateOutputCompatibility(); });
+        }
+        updateOutputCompatibility();
+        const auto applyOutputPathProfile = [this, state, fields,
+            outputPathProfile, updateOutputCompatibility](const QString& profile)
+        {
+            if (state->loading || state->section.isEmpty() || !document_ ||
+                profile == QStringLiteral("custom")) return;
+            struct Value { const char* key; const char* value; };
+            static constexpr Value legacy[] = {
+                { "output_presentation", "AUTO" },
+                { "output_range", "AUTO" },
+                { "output_gamma", "AUTO" },
+                { "diagnostic_allow_limited_g22", "false" },
+                { "diagnostic_allow_full_g22", "false" },
+                { "diagnostic_disable_compute", "false" },
+                { "diagnostic_force_8bit_sdr_swapchain", "false" },
+                { "diagnostic_vp_owned_dxgi_presenter", "false" },
+                { "output_diagnostics", "false" },
+                { "diagnostic_disable_shader_cache", "false" }
+            };
+            static constexpr Value proposed[] = {
+                { "output_presentation", "direct" },
+                { "output_range", "limited" },
+                { "output_gamma", "2.2" },
+                { "diagnostic_allow_limited_g22", "true" },
+                { "diagnostic_allow_full_g22", "false" },
+                { "diagnostic_disable_compute", "false" },
+                { "diagnostic_force_8bit_sdr_swapchain", "false" },
+                { "diagnostic_vp_owned_dxgi_presenter", "false" },
+                { "output_diagnostics", "true" },
+                { "diagnostic_disable_shader_cache", "false" }
+            };
+            const Value* values = profile == QStringLiteral("proposed") ?
+                proposed : legacy;
+            const size_t count = profile == QStringLiteral("proposed") ?
+                std::size(proposed) : std::size(legacy);
+            const std::string section = state->section.toStdString();
+            document_->SetKnown(section, "output_path_profile",
+                profile.toLocal8Bit().constData());
+            for (size_t index = 0; index < count; ++index)
+            {
+                document_->SetKnown(section, values[index].key, values[index].value);
+                for (const Field& field : *fields)
+                    if (field.key == QString::fromLatin1(values[index].key))
+                    {
+                        const QSignalBlocker blocker(field.widget);
+                        if (field.kind == Field::Boolean)
+                            qobject_cast<QCheckBox*>(field.widget)->setChecked(
+                                QString::fromLatin1(values[index].value) == QStringLiteral("true"));
+                        else if (field.kind == Field::Choice)
+                            qobject_cast<QComboBox*>(field.widget)->setCurrentIndex(
+                                qobject_cast<QComboBox*>(field.widget)->findData(
+                                    QString::fromLatin1(values[index].value)));
+                        break;
+                    }
+            }
+            const QSignalBlocker profileBlocker(outputPathProfile);
+            outputPathProfile->setCurrentIndex(outputPathProfile->findData(profile));
+            updateOutputCompatibility();
+            markDirty();
+        };
+        connect(outputPathProfile, qOverload<int>(&QComboBox::currentIndexChanged), this,
+            [outputPathProfile, applyOutputPathProfile](int)
+        { applyOutputPathProfile(outputPathProfile->currentData().toString()); });
+        const auto markOutputPathCustom = [this, state, outputPathProfile]
+        {
+            if (state->loading || state->section.isEmpty() || !document_ ||
+                outputPathProfile->currentData().toString() == QStringLiteral("custom")) return;
+            const QSignalBlocker blocker(outputPathProfile);
+            outputPathProfile->setCurrentIndex(outputPathProfile->findData(
+                QStringLiteral("custom")));
+            document_->SetKnown(state->section.toStdString(), "output_path_profile", "custom");
+            markDirty();
+        };
+        for (const Field& field : *fields)
+            if (field.key == QStringLiteral("output_presentation") ||
+                field.key == QStringLiteral("output_range") ||
+                field.key == QStringLiteral("output_gamma") ||
+                field.key.startsWith(QStringLiteral("diagnostic_")) ||
+                field.key == QStringLiteral("output_diagnostics"))
+            {
+                if (field.kind == Field::Boolean)
+                    connect(qobject_cast<QCheckBox*>(field.widget), &QCheckBox::toggled,
+                        this, [markOutputPathCustom](bool) { markOutputPathCustom(); });
+                else if (field.kind == Field::Choice && field.widget != outputPathProfile)
+                    connect(qobject_cast<QComboBox*>(field.widget),
+                        qOverload<int>(&QComboBox::currentIndexChanged), this,
+                        [markOutputPathCustom](int) { markOutputPathCustom(); });
+            }
+        auto* resetOutputExperiments = new QPushButton(
+            QStringLiteral("Restore Recommended Defaults"));
+        resetOutputExperiments->setObjectName(
+            QStringLiteral("config.vprenderer.output_experiments.reset_defaults"));
+        resetOutputExperiments->setToolTip(QStringLiteral(
+            "Restore this profile's complete shipping output-path configuration."));
+        resetOutputExperiments->setAccessibleName(
+            QStringLiteral("Restore recommended output experiment defaults"));
+        connect(resetOutputExperiments, &QPushButton::clicked, this,
+            [this, state, applyOutputPathProfile]
+        {
+            if (state->section.isEmpty() || !document_) return;
+            if (QMessageBox::question(this,
+                QStringLiteral("Restore output experiment defaults"),
+                QStringLiteral("Restore the shipping Legacy output path for this "
+                    "renderer profile? This resets presentation, range, gamma, "
+                    "and all output experiment controls."),
+                QMessageBox::Yes | QMessageBox::Cancel,
+                QMessageBox::Cancel) != QMessageBox::Yes) return;
+            applyOutputPathProfile(QStringLiteral("legacy"));
+        });
+        form->addRow(QString(), resetOutputExperiments);
     }
     else if (sectionPrefix == QStringLiteral("vprenderer.viewport"))
     {
@@ -2695,6 +2911,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             if (sectionPrefix == QStringLiteral("vprenderer"))
             {
                 if (key == QStringLiteral("quality")) return QStringLiteral("high");
+                if (key == QStringLiteral("output_path_profile")) return QStringLiteral("legacy");
                 if (key == QStringLiteral("sdr_target_primaries")) return QStringLiteral("REC709");
                 if (key == QStringLiteral("sdr_target_nits")) return QStringLiteral("203");
                 if (key == QStringLiteral("sdr_black_nits") ||
@@ -2704,7 +2921,12 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                 if (key == QStringLiteral("lut")) return {};
                 if (key == QStringLiteral("report_bt2020_to_display") ||
                     key == QStringLiteral("output_diagnostics") ||
-                    key == QStringLiteral("diagnostic_disable_shader_cache")) return QStringLiteral("false");
+                    key == QStringLiteral("diagnostic_disable_shader_cache") ||
+                    key == QStringLiteral("diagnostic_disable_compute") ||
+                    key == QStringLiteral("diagnostic_force_8bit_sdr_swapchain") ||
+                    key == QStringLiteral("diagnostic_allow_limited_g22") ||
+                    key == QStringLiteral("diagnostic_allow_full_g22") ||
+                    key == QStringLiteral("diagnostic_vp_owned_dxgi_presenter")) return QStringLiteral("false");
                 if (key == QStringLiteral("switch_refresh_rate")) return QStringLiteral("true");
                 return QStringLiteral("AUTO");
             }

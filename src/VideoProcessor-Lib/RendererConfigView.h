@@ -35,7 +35,12 @@ public:
 	{
 		return key == "switch_refresh_rate" ||
 			key == "output_diagnostics" ||
-			key == "diagnostic_disable_shader_cache";
+			key == "diagnostic_disable_shader_cache" ||
+			key == "diagnostic_disable_compute" ||
+			key == "diagnostic_force_8bit_sdr_swapchain" ||
+			key == "diagnostic_allow_limited_g22" ||
+			key == "diagnostic_allow_full_g22" ||
+			key == "diagnostic_vp_owned_dxgi_presenter";
 	}
 
 	bool Validate(std::string& error,
@@ -77,7 +82,11 @@ public:
 
 		for (const char* key :
 			{ "switch_refresh_rate", "output_diagnostics",
-			  "diagnostic_disable_shader_cache" })
+			  "diagnostic_disable_shader_cache", "diagnostic_disable_compute",
+			  "diagnostic_force_8bit_sdr_swapchain",
+			  "diagnostic_allow_limited_g22",
+			  "diagnostic_allow_full_g22",
+			  "diagnostic_vp_owned_dxgi_presenter" })
 		{
 			if (!HasKey(GENERAL_SECTION, key))
 				continue;
@@ -107,7 +116,11 @@ public:
 		bool usesLegacyGeneral = false;
 		for (const char* key :
 			{ "switch_refresh_rate", "output_diagnostics",
-			  "diagnostic_disable_shader_cache" })
+			  "diagnostic_disable_shader_cache", "diagnostic_disable_compute",
+			  "diagnostic_force_8bit_sdr_swapchain",
+			  "diagnostic_allow_limited_g22",
+			  "diagnostic_allow_full_g22",
+			  "diagnostic_vp_owned_dxgi_presenter" })
 			usesLegacyGeneral = usesLegacyGeneral ||
 				HasKey("general", key);
 		if (usesLegacyGeneral)

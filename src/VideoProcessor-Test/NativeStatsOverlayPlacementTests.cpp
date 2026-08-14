@@ -36,6 +36,27 @@ namespace Tests
 			Assert::IsTrue(std::fabs(result.panel.bottom - 1877.0f) < 0.01f);
 		}
 
+		TEST_METHOD(SweepBannerAnchorsAtTheTopRightOfTheActivePicture)
+		{
+			const Result result = PlaceTopRight(
+				{ 0.0f, 0.0f, 3840.0f, 2160.0f },
+				{ 0.0f, 0.0f, 3840.0f, 2160.0f }, 860.0f, 112.0f);
+			Assert::IsTrue(std::fabs(result.panel.left - 2940.0f) < 0.01f);
+			Assert::IsTrue(std::fabs(result.panel.top - 40.0f) < 0.01f);
+			Assert::IsTrue(std::fabs(result.panel.right - 3800.0f) < 0.01f);
+			Assert::IsTrue(std::fabs(result.panel.bottom - 152.0f) < 0.01f);
+		}
+
+		TEST_METHOD(SweepBannerFollowsTheScopeFittedPicture)
+		{
+			const Result result = PlaceTopRight(
+				{ 0.0f, 283.0f, 3840.0f, 1917.0f },
+				{ 0.0f, 0.0f, 3840.0f, 2160.0f }, 860.0f, 112.0f);
+			Assert::IsTrue(std::fabs(result.panel.top - 323.0f) < 0.01f);
+			Assert::IsTrue(std::fabs(result.panel.bottom - 435.0f) < 0.01f);
+			Assert::IsTrue(std::fabs(result.visiblePicture.top - 283.0f) < 0.01f);
+		}
+
 		TEST_METHOD(LetterboxAndPillarboxUseTheirActualPictureBounds)
 		{
 			const Result letterbox = Place(

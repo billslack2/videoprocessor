@@ -88,4 +88,24 @@ namespace NativeStatsOverlayPlacement
 		result.panel = { right - width, bottom - height, right, bottom };
 		return result;
 	}
+
+	inline Result PlaceTopRight(const Rect& requestedPicture, const Rect& output,
+		float panelWidth, float panelHeight,
+		float insetPixels = kDefaultInsetPixels)
+	{
+		Result result = Place(requestedPicture, output, panelWidth, panelHeight,
+			insetPixels);
+		if (!result.visiblePicture.IsValid() || !result.panel.IsValid())
+			return result;
+		const float height = result.panel.Height();
+		float top = result.visiblePicture.top + std::max(0.0f, insetPixels);
+		if (top + height > result.visiblePicture.bottom)
+		{
+			top = result.visiblePicture.top;
+			result.insetClamped = true;
+		}
+		result.panel.top = top;
+		result.panel.bottom = top + height;
+		return result;
+	}
 }
