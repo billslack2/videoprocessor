@@ -2,7 +2,8 @@
 
 ## Status
 
-In Progress (2026-08-13). The SDR active-output sweep in the VP-0125 beta
+Done (2026-08-13). Merged into `origin/v1.2.001-beta` as merge commit
+`9309dc5` (tested feature commit `30afe33`). The SDR active-output sweep in the VP-0125 beta
 package reproduced both defects on the selected Epson output. The repository
 default was rediscovered as `origin/v1.2.001-beta`; this continues the
 developer-confirmed beta-based VP-0125 output work on
