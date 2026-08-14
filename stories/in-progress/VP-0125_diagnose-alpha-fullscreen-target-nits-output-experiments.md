@@ -153,6 +153,47 @@ clean SDR/HDR templates into `packaging/active-output-sweep`; test packages are
 therefore reproducible from a clean checkout instead of depending on ignored
 prior artifact folders.
 
+## Stale-frame finding (2026-08-14)
+
+Live testing after the VP-owned presentation changes reports intermittent stale
+imagery during madVR-to-VP Renderer and VP Renderer-to-madVR handoffs. A stale
+VP scene has also appeared during an Alpha-only scene/viewport transition, once
+as a smaller current image surrounded by pixels from an older image (a
+"frame within a frame"). The issue is not currently critical, and no broad
+render-path change is authorized without a bounded proof.
+
+The present evidence points to presentation-surface clearing rather than the
+libplacebo shader cache, scaler selection, or capture queue:
+
+- the affected live configuration selects Direct presentation and the
+  experimental VP-owned DXGI presenter;
+- the GUI transition path logs `event=black-suppressed` and deliberately does
+  not create its former opaque transition cover;
+- Alpha retirement repeatedly logs
+  `terminal black clear skipped before release` on the VP-owned path;
+- that skip was introduced by `0e67bb4` when the external FBO was not known to
+  be blit-capable, but `d1831c5` subsequently created the backbuffer with
+  render-target, shader-input, and unordered-access usage and current live logs
+  verify `renderable=1, blit_dst=1`; and
+- the VP-owned per-frame path acquires a flip-discard backbuffer and renders the
+  selected destination rectangle without an explicit whole-surface clear. A
+  smaller or changed viewport can therefore leave undefined or previously
+  presented pixels outside the newly written rectangle, matching the reported
+  visual symptom.
+
+This is a strong working diagnosis, not yet a completed fix. The initial repair
+must remain confined to the VP-owned experimental presenter: clear the complete
+acquired target to deterministic black before drawing a frame, and restore a
+terminal black presentation using the same proven
+`GetBuffer -> wrap -> clear -> flush -> release -> Present` ownership sequence.
+Do not modify scaler, tone-map, LUT, frame-mixing, capture-generation, or the
+established libplacebo-owned composed path as part of this finding. Add concise
+generation/clear diagnostics, then verify madVR-to-Alpha, Alpha-to-madVR,
+Alpha-only scene/viewport changes, graph resets, fullscreen changes, scope/flat
+profiles, and renderer retirement. An A/B run with the VP-owned presenter
+disabled is useful diagnostic evidence but is not a production repair because
+it also disables the calibrated pure-power output experiment.
+
 ## User story
 
 As a VP Renderer beta tester tuning HDR-to-SDR output for a BT.2020 projector
