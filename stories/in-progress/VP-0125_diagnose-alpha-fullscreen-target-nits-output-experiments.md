@@ -186,6 +186,9 @@ must remain confined to the VP-owned experimental presenter: clear the complete
 acquired target to deterministic black before drawing a frame, and restore a
 terminal black presentation using the same proven
 `GetBuffer -> wrap -> clear -> flush -> release -> Present` ownership sequence.
+This black state must come from clearing and presenting the renderer-owned
+surface itself. Do not add or restore a fake black GUI overlay, opaque cover
+window, transition shield, or other visual layer in front of the video.
 Do not modify scaler, tone-map, LUT, frame-mixing, capture-generation, or the
 established libplacebo-owned composed path as part of this finding. Add concise
 generation/clear diagnostics, then verify madVR-to-Alpha, Alpha-to-madVR,
