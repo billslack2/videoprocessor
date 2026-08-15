@@ -10,6 +10,8 @@ the current default branch `origin/v1.2.001-beta` tip
 
 Implementation checkpoint:
 
+- Implemented and pushed `3a9d652` (`feat(ui): clarify renderer telemetry
+  and live apply`) on `codex/vp0130-renderer-ui-live-apply`.
 - The Modern Renderer card now uses the available space more efficiently.
   Both backends show renderer uptime; DirectShow additionally reports its
   configured Start/Stop timestamp method, and VP Renderer reports its real
@@ -27,8 +29,9 @@ Implementation checkpoint:
   explicit `[directshow]` and `[vprenderer.input_processing]` values remain
   backend-owned overrides and are never flattened on Apply.
 - Clean x64 Release builds of the GUI, configuration editor, and relevant
-  tests succeeded. The full configuration-editor suite and focused native
-  apply-policy test passed.
+  tests succeeded. The full configuration-editor suite, both focused editor
+  tests, and the focused native apply-policy test passed. The tracker now
+  awaits code and live operator visual review; no deployment has been made.
 
 ## User story
 
