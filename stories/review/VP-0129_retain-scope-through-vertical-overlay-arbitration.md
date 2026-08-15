@@ -9,6 +9,9 @@ integration branch. Implementation commit
 `codex/vp-0129-vertical-overlay-arbitration`, based on default-branch commit
 `daed55e98566c4b109765de004b715f7e01a3690`. The clean worktree is
 `C:\Users\bslac\vp\worktrees\vp-0129-vertical-overlay-arbitration`.
+Pull request `#62` merged this implementation into `v1.2.001-beta` as merge
+commit `e45b0aa0e5290051eb69f9413a493a49b8c40c7c` on 2026-08-15. The story
+intentionally remains in Review at the user's request.
 
 Completed work is deliberately narrow:
 
@@ -38,9 +41,8 @@ Validation at exact commit `9e19fa8`:
   `ConfigEditorCoreValidatesEveryEditableOrderedProfileSurface`; and
 - the standalone x64 Release `VideoProcessorConfigTests.exe` suite passes.
 
-Independent code review, live validation of the captured menu/subtitle
-sequence, and merge to `v1.2.001-beta` remain. No deployment or configuration
-change was performed. Original research used deployed log
+Live validation of the captured menu/subtitle sequence remains. No deployment
+or configuration change was performed. Original research used deployed log
 `C:\Videoprocessor\vp\logs\vp.log` from 2026-08-15 and default-branch source
 commit `daed55e98566c4b109765de004b715f7e01a3690`. This remains a narrow
 VP-0122 follow-up, not a crop-system redesign or global timing change.
