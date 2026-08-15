@@ -1176,6 +1176,13 @@ private:
 		if (matchedAccelerator)
 		{
 			const ACCEL& accelerator = *matchedAccelerator;
+			if (!ConfigurationLiveApply::MayDispatchBackgroundAccelerator(
+				(accelerator.fVirt & FCONTROL) != 0,
+				(accelerator.fVirt & FALT) != 0,
+				(accelerator.fVirt & FSHIFT) != 0))
+			{
+				return ::CallNextHookEx(s_hook, code, message, parameter);
+			}
 			if (accelerator.cmd == ID_COMMAND_CONFIG_EDITOR)
 			{
 				// The configuration editor owns this key while it has focus so

@@ -199,6 +199,18 @@ namespace VideoProcessorTest
 				42, 42, false));
 			Assert::IsFalse(ConfigurationLiveApply::MayDispatchGlobalShortcut(
 				42, 84, true));
+			Assert::IsFalse(
+				ConfigurationLiveApply::MayDispatchBackgroundAccelerator(
+					false, false, false));
+			Assert::IsTrue(
+				ConfigurationLiveApply::MayDispatchBackgroundAccelerator(
+					true, false, false));
+			Assert::IsTrue(
+				ConfigurationLiveApply::MayDispatchBackgroundAccelerator(
+					false, true, false));
+			Assert::IsTrue(
+				ConfigurationLiveApply::MayDispatchBackgroundAccelerator(
+					false, false, true));
 			Assert::IsTrue(ConfigurationLiveApply::ShortcutModifiersMatch(
 				true, false, true, true, false, true));
 			Assert::IsFalse(ConfigurationLiveApply::ShortcutModifiersMatch(

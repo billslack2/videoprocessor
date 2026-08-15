@@ -181,7 +181,9 @@ void ModernOperatorView::DrawQueueMetric(CDC& dc, int x, int y,
 	dc.TextOut(Px(x), Px(y), label);
 	dc.SetTextColor(Text);
 	dc.SelectObject(&m_boldFont);
-	dc.TextOut(Px(x), Px(y + 17), value);
+	// Keep the 13 px value baseline cadence tight enough that the semibold
+	// glyph descenders clear the card's bottom border at every DPI.
+	dc.TextOut(Px(x), Px(y + 13), value);
 }
 
 void ModernOperatorView::SetStatus(const ModernOperatorStatus& status)
