@@ -1240,7 +1240,7 @@ bool ConfigEditorWindow::validateCandidate(std::wstring& error,
 }
 
 QStringList ConfigEditorWindow::validationErrors(QStringList& fields,
-    bool allowActionDrafts) const
+    bool allowActionDrafts, bool includeCoreValidation) const
 {
     QStringList errors;
     fields.clear();
@@ -1252,8 +1252,8 @@ QStringList ConfigEditorWindow::validationErrors(QStringList& fields,
     }
     ConfigEditorCore::ConfigDocument validationDocument = *document_;
     std::wstring coreError;
-    bool coreValid = false;
-    if (allowActionDrafts)
+    bool coreValid = !includeCoreValidation;
+    if (includeCoreValidation && allowActionDrafts)
     {
         const int maximumDrafts = static_cast<int>(
             validationDocument.SectionNamesWithPrefix("actions").size());
@@ -1279,11 +1279,11 @@ QStringList ConfigEditorWindow::validationErrors(QStringList& fields,
             coreValid = ConfigEditorCore::ValidateCandidate(
                 validationDocument, coreError);
     }
-    else
+    else if (includeCoreValidation)
         coreValid = ConfigEditorCore::ValidateCandidate(
             validationDocument, coreError);
 
-    if (!coreValid)
+    if (includeCoreValidation && !coreValid)
     {
         const QString message = QString::fromStdWString(coreError);
         errors.push_back(message);
@@ -1357,7 +1357,10 @@ QString ConfigEditorWindow::displayWarning() const
 bool ConfigEditorWindow::updateValidationState()
 {
     QStringList fields;
-    const QStringList errors = validationErrors(fields, true);
+    // Keep ordinary editing entirely in memory. Full schema/shader validation
+    // serializes a candidate beside the configuration and is intentionally
+    // reserved for Apply/OK, where safe persistence validates again.
+    const QStringList errors = validationErrors(fields, true, false);
     const bool valid = errors.isEmpty();
     if (saveButton_) saveButton_->setEnabled(configurationLoaded_ && valid);
     if (applyButton_)
@@ -2017,7 +2020,7 @@ QWidget* ConfigEditorWindow::createStartupPage()
 	auto* captureDevice = bindChoiceField(QStringLiteral("general"),
         QStringLiteral("capture_device"), captureDevices_.isEmpty() ?
             QStringList{ QString() } : captureDevices_,
-        captureDevices_.isEmpty() ? QStringList{ QStringLiteral("No capture devices discovered") } : QStringList{}, true);
+        captureDevices_.isEmpty() ? QStringList{ QStringLiteral("No capture devices discovered") } : QStringList{});
     hardwareForm->addRow(QStringLiteral("Capture device"), captureDevice);
 
     auto* captureConnection = new QComboBox;
@@ -2118,7 +2121,7 @@ QWidget* ConfigEditorWindow::createStartupPage()
     sourceForm->setVerticalSpacing(8);
     monitorChoice_ = bindChoiceField(QStringLiteral("general"),
         QStringLiteral("fullscreen_monitor_name"), withDefaultChoice(monitors_),
-        { QStringLiteral("Default monitor") }, true);
+        { QStringLiteral("Default monitor") });
     sourceForm->addRow(QStringLiteral("Monitor"), monitorChoice_);
 	const bool hideLegacy = configuredBooleanValue(value(QStringLiteral("general"),
 		QStringLiteral("hide_legacy_renderers")), true);
@@ -2127,7 +2130,7 @@ QWidget* ConfigEditorWindow::createStartupPage()
     sourceForm->addRow(QStringLiteral("Renderer"), bindChoiceField(QStringLiteral("general"),
         QStringLiteral("renderer"), availableRenderers.isEmpty() ?
             QStringList{ QString() } : availableRenderers,
-        availableRenderers.isEmpty() ? QStringList{ QStringLiteral("No renderers discovered") } : QStringList{}, true));
+        availableRenderers.isEmpty() ? QStringList{ QStringLiteral("No renderers discovered") } : QStringList{}));
     sourceForm->addRow(QString(), bindCheckField(
         QStringLiteral("Hide legacy renderers"), QStringLiteral("general"),
         QStringLiteral("hide_legacy_renderers"), true));

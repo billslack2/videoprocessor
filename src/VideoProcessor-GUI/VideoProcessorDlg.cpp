@@ -306,6 +306,11 @@ bool SignalConfigurationEditorReveal(DWORD processId)
 {
 	if (!processId)
 		return false;
+	// The warm Config process is separate from the foreground VP process.
+	// Grant it the one-shot foreground right before signaling reveal; otherwise
+	// Windows may show its topmost window without activating it and consume the
+	// operator's first selector click merely to activate the editor.
+	::AllowSetForegroundWindow(processId);
 	const std::wstring eventName =
 		ConfigurationLiveApply::ConfigurationEditorRevealEventName(processId);
 	HANDLE eventHandle = ::OpenEventW(EVENT_MODIFY_STATE, FALSE,

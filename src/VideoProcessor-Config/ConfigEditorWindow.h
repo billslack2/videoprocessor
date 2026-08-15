@@ -83,7 +83,7 @@ private:
     bool validateCandidate(std::wstring& error,
         bool allowActionDrafts = false) const;
     QStringList validationErrors(QStringList& fields,
-        bool allowActionDrafts) const;
+        bool allowActionDrafts, bool includeCoreValidation = true) const;
     QString displayWarning() const;
     bool updateValidationState();
     void applyNativeOwner();
