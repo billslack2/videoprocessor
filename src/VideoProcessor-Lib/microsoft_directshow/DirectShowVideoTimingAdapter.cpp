@@ -102,6 +102,12 @@ bool DirectShowVideoTimingAdapter::UsesLiveTimestampCatchUp(
 	}
 }
 
+bool DirectShowVideoTimingAdapter::UsesStartOnlyLiveTimestampCatchUp(
+	DirectShowStartStopTimeMethod mode)
+{
+	return mode == DS_SSTM_CLOCK_NONE || mode == DS_SSTM_THEO_NONE;
+}
+
 void DirectShowLiveTimestampCatchUp::ResetToEpoch(uint64_t epoch) noexcept
 {
 	m_epoch = epoch;

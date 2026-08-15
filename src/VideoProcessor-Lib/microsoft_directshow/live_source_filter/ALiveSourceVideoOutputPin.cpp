@@ -955,6 +955,7 @@ HRESULT ALiveSourceVideoOutputPin::RenderVideoFrameIntoSample(VideoFrame& videoF
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART2:
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_THEO:
 	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_CLOCK:
+	case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_NONE:
 
 		// Get frame timestamp as reference time using integer math utility
 		timeStart = effectiveHardwareTime;

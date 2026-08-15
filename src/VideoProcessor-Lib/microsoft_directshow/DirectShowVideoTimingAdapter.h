@@ -78,6 +78,7 @@ public:
 	static VideoTimingMode ToVideoTimingMode(DirectShowStartStopTimeMethod mode);
 	static bool UsesPresentationLead(DirectShowStartStopTimeMethod mode);
 	static bool UsesLiveTimestampCatchUp(DirectShowStartStopTimeMethod mode);
+	static bool UsesStartOnlyLiveTimestampCatchUp(DirectShowStartStopTimeMethod mode);
 
 private:
 	DirectShowStartStopTimeMethod m_mode;

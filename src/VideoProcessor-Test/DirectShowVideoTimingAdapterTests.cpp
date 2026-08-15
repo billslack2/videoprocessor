@@ -111,6 +111,24 @@ namespace Tests
 			Assert::IsFalse(DirectShowVideoTimingAdapter::UsesLiveTimestampCatchUp(
 				DS_SSTM_RATIONAL_RATIONAL));
 			Assert::IsFalse(DirectShowVideoTimingAdapter::UsesLiveTimestampCatchUp(
+				DS_SSTM_CLOCK_NONE));
+			Assert::IsFalse(DirectShowVideoTimingAdapter::UsesLiveTimestampCatchUp(
+				DS_SSTM_THEO_NONE));
+			Assert::IsFalse(DirectShowVideoTimingAdapter::UsesLiveTimestampCatchUp(
+				DS_SSTM_NONE));
+		}
+
+		TEST_METHOD(StartOnlyCatchUpClassificationIsLimitedToNoStopModes)
+		{
+			Assert::IsTrue(DirectShowVideoTimingAdapter::UsesStartOnlyLiveTimestampCatchUp(
+				DS_SSTM_CLOCK_NONE));
+			Assert::IsTrue(DirectShowVideoTimingAdapter::UsesStartOnlyLiveTimestampCatchUp(
+				DS_SSTM_THEO_NONE));
+			Assert::IsFalse(DirectShowVideoTimingAdapter::UsesStartOnlyLiveTimestampCatchUp(
+				DS_SSTM_CLOCK_SMART));
+			Assert::IsFalse(DirectShowVideoTimingAdapter::UsesStartOnlyLiveTimestampCatchUp(
+				DS_SSTM_RATIONAL_RATIONAL));
+			Assert::IsFalse(DirectShowVideoTimingAdapter::UsesStartOnlyLiveTimestampCatchUp(
 				DS_SSTM_NONE));
 		}
 

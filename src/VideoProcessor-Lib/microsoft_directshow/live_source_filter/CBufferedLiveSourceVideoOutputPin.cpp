@@ -1791,6 +1791,9 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 	REFERENCE_TIME rationalCatchUpMinimumStart = 0;
 	uint64_t rationalLatchEpoch = 0;
 	DirectShowLiveTimestampCatchUp legacyTimestampCatchUp;
+	// Separate state prevents the start-only modes from altering the continuity
+	// history of legacy modes that publish both ends of the sample interval.
+	DirectShowLiveTimestampCatchUp startOnlyTimestampCatchUp;
 	uint64_t legacyConvertedCatchUpEpoch = 0;
 	bool legacyConvertedCatchUpPending = false;
 	uint64_t legacyIntentionalRawGapEpoch = 0;
@@ -2431,6 +2434,12 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				legacyTimestampCatchUp.CommitSuccessfulStop(
 					expectedQueueEpoch, presentationStop);
 			}
+			else if (DirectShowVideoTimingAdapter::UsesStartOnlyLiveTimestampCatchUp(
+					m_timestamp) && presentationTimeResult == VFW_S_NO_STOP_TIME)
+			{
+				startOnlyTimestampCatchUp.CommitSuccessfulStop(
+					expectedQueueEpoch, presentationStart + m_frameDuration);
+			}
 			m_currentEpochDeliverySuccessCount.fetch_add(
 				1, std::memory_order_acq_rel);
 			m_lastDeliverySuccessQueueEpoch.store(
@@ -2569,19 +2578,26 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				}
 				const size_t discardedStaleFrames =
 					discardedRawFrames + discardedConvertedFrames;
-				if (DirectShowVideoTimingAdapter::UsesLiveTimestampCatchUp(m_timestamp) &&
+				const bool usesLegacyTimestampCatchUp =
+					DirectShowVideoTimingAdapter::UsesLiveTimestampCatchUp(m_timestamp);
+				const bool usesStartOnlyTimestampCatchUp =
+					DirectShowVideoTimingAdapter::UsesStartOnlyLiveTimestampCatchUp(m_timestamp);
+				if ((usesLegacyTimestampCatchUp || usesStartOnlyTimestampCatchUp) &&
 					discardedConvertedFrames > 0)
 				{
 					// Legacy modes stamp samples during conversion. Arm a one-shot
 					// delivery-boundary splice so removing old converted samples does
 					// not leave their timestamp span scheduled in DirectShow.
-					legacyTimestampCatchUp.Arm(expectedQueueEpoch);
+					if (usesLegacyTimestampCatchUp)
+						legacyTimestampCatchUp.Arm(expectedQueueEpoch);
+					else
+						startOnlyTimestampCatchUp.Arm(expectedQueueEpoch);
 					legacyConvertedCatchUpEpoch = expectedQueueEpoch;
 					legacyConvertedCatchUpPending = true;
 				}
 				legacyIntentionalRawGapEpoch = expectedQueueEpoch;
 				legacyIntentionalRawGapPending =
-					DirectShowVideoTimingAdapter::UsesLiveTimestampCatchUp(m_timestamp) &&
+					(usesLegacyTimestampCatchUp || usesStartOnlyTimestampCatchUp) &&
 					discardedRawFrames > 0;
 				if (timestampOwnershipEnabled && discardedStaleFrames > 0)
 				{
@@ -2738,7 +2754,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 					convergenceDecision.pacedDeliveryMaximumUs,
 					convergenceDecision.pacedPrimingDepth,
 					TimestampMethodName(m_timestamp),
-					DirectShowVideoTimingAdapter::UsesLiveTimestampCatchUp(m_timestamp) &&
+					(usesLegacyTimestampCatchUp || usesStartOnlyTimestampCatchUp) &&
 						discardedConvertedFrames > 0 ? 1 : 0);
 			}
 			++framesSinceLastLog;
@@ -3300,7 +3316,10 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				// counter reaches the raw frames removed by convergence. Re-arm at
 				// that exact intentional boundary so the hardware-clock timeline
 				// remains continuous without hiding unrelated capture loss.
-				legacyTimestampCatchUp.Arm(currentQueueEpoch);
+				if (DirectShowVideoTimingAdapter::UsesLiveTimestampCatchUp(m_timestamp))
+					legacyTimestampCatchUp.Arm(currentQueueEpoch);
+				else
+					startOnlyTimestampCatchUp.Arm(currentQueueEpoch);
 				legacyIntentionalRawGapPending = false;
 				legacyIntentionalRawGapEpoch = 0;
 				DebugLog::Log(
@@ -3381,6 +3400,39 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 					legacyConvertedCatchUpEpoch = 0;
 					DebugLog::Log(
 						"VP-0066 LEGACY TIMESTAMP CATCH-UP: method=%s epoch=%llu "
+						"frame=%llu offset=%.3fms next_start=%.3fms",
+						TimestampMethodName(m_timestamp), currentQueueEpoch,
+						convertedSample.frameNumber,
+						catchUp.offset / 10000.0,
+						catchUp.start / 10000.0);
+				}
+			}
+			else if (DirectShowVideoTimingAdapter::UsesStartOnlyLiveTimestampCatchUp(
+					m_timestamp) && sampleTimeHr == VFW_S_NO_STOP_TIME)
+			{
+				// Use a nominal stop only for the continuity calculation. The sample
+				// remains start-only when the adjusted timestamp is written below.
+				const DirectShowLiveCatchUpDecision catchUp =
+					startOnlyTimestampCatchUp.Adjust(
+						currentQueueEpoch, currentStart, currentStart + m_frameDuration);
+				REFERENCE_TIME adjustedStart = catchUp.start;
+				if (catchUp.adjusted && FAILED(pSample->SetTime(&adjustedStart, nullptr)))
+				{
+					DebugLog::Log(
+						"VP-0072 START-ONLY TIMESTAMP CATCH-UP: failed to stamp "
+						"method=%s epoch=%llu; requesting reset",
+						TimestampMethodName(m_timestamp), currentQueueEpoch);
+					pSample->Release();
+					RequestCoordinatedReset("start-only-catch-up-stamp-failure");
+					break;
+				}
+				currentStart = catchUp.start;
+				if (catchUp.rebased)
+				{
+					legacyConvertedCatchUpPending = false;
+					legacyConvertedCatchUpEpoch = 0;
+					DebugLog::Log(
+						"VP-0072 START-ONLY TIMESTAMP CATCH-UP: method=%s epoch=%llu "
 						"frame=%llu offset=%.3fms next_start=%.3fms",
 						TimestampMethodName(m_timestamp), currentQueueEpoch,
 						convertedSample.frameNumber,
