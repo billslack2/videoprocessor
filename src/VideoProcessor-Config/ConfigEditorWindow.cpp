@@ -1519,6 +1519,22 @@ void ConfigEditorWindow::applyChanges()
     saveChanges();
 }
 
+void ConfigEditorWindow::rebuildConfigurationShell()
+{
+    // Renderer discovery is captured once per editor session. Rebuild the
+    // dependent controls from that stable snapshot after the visibility policy
+    // is committed so General, Actions, and Shortcuts agree immediately.
+    const int currentPage = pages_ ? pages_->currentIndex() : 0;
+	activeProfileLists_.clear();
+	monitorChoice_ = nullptr;
+	actionRendererTarget_ = nullptr;
+    QWidget* replacement = createShell();
+    QWidget* previous = takeCentralWidget();
+    setCentralWidget(replacement);
+    selectPage(currentPage);
+    if (previous) previous->deleteLater();
+}
+
 bool ConfigEditorWindow::saveChanges()
 {
     if (!configurationLoaded_ || !document_) return false;
@@ -1536,7 +1552,7 @@ bool ConfigEditorWindow::saveChanges()
             QString::fromLatin1(inputKey)).trimmed();
         const QString directShow = value(QStringLiteral("directshow"),
             QString::fromLatin1(inputKey)).trimmed();
-        const QString vpRenderer = value(QStringLiteral("vprenderer"),
+        const QString vpRenderer = value(QStringLiteral("vprenderer.input_processing"),
             QString::fromLatin1(inputKey)).trimmed();
         if (general.isEmpty() && !directShow.isEmpty() && vpRenderer.isEmpty())
         {
@@ -1550,6 +1566,13 @@ bool ConfigEditorWindow::saveChanges()
         savedSnapshot_, captureDocumentSnapshot(*document_));
     const auto action = ConfigurationApplyPolicy::ClassifyChanges(changed,
         snapshotUsesDirectShowRenderer(savedSnapshot_));
+	const bool rendererVisibilityChanged = std::any_of(changed.begin(), changed.end(),
+		[](const ConfigurationApplyPolicy::Change& change)
+		{
+			return ConfigurationApplyPolicy::NormalizeSection(change.section) ==
+				"general" && ConfigFile::NormalizeName(change.key) ==
+				"hide_legacy_renderers";
+		});
 
     // Persist shortcut spelling in the same canonical form used by the
     // accelerator parser. Case is not a modifier: L and l are both L, while
@@ -1618,6 +1641,8 @@ bool ConfigEditorWindow::saveChanges()
     saveButton_->setEnabled(true);
     if (applyButton_) applyButton_->setEnabled(false);
     savedSnapshot_ = captureDocumentSnapshot(*document_);
+	if (rendererVisibilityChanged)
+		rebuildConfigurationShell();
     updateEffectSummary();
 
     // The editor is a separate process. Signal the running VP instance only
@@ -1846,15 +1871,10 @@ QWidget* ConfigEditorWindow::createShell()
     {
         // Cancel is intentionally an editor-only operation: the working copy
         // is discarded without touching the file or signaling VideoProcessor.
-        const int currentPage = pages_ ? pages_->currentIndex() : 0;
         dirty_ = false;
         hide();
         loadConfiguration();
-        QWidget* replacement = createShell();
-        QWidget* previous = takeCentralWidget();
-        setCentralWidget(replacement);
-        selectPage(currentPage);
-        if (previous) previous->deleteLater();
+		rebuildConfigurationShell();
     });
     connect(applyButton_, &QPushButton::clicked, this, [this] { applyChanges(); });
     auto* saveShortcut = new QShortcut(QKeySequence::Save, root);
@@ -2138,7 +2158,7 @@ QWidget* ConfigEditorWindow::createStartupPage()
     cards->addCard(createCard(QStringLiteral("Display"),
         QStringLiteral("Monitor targeting and refresh-rate behavior. Refresh switching currently applies to VP Renderer."), source));
     cards->addCard(createCard(QStringLiteral("Input processing"),
-        QStringLiteral("Shared source conversion and metadata defaults. Renderer pages may override each value."), input));
+        QStringLiteral("Shared source conversion and metadata defaults. Apply restarts the renderer; renderer pages may override each value."), input));
     return createPage(QStringLiteral("General"), QStringLiteral("Choose how VideoProcessor starts and which hardware it uses."), cards);
 }
 

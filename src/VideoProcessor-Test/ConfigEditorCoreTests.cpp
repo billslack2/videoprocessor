@@ -255,6 +255,17 @@ namespace VideoProcessorTest
 				static_cast<int>(ConfigurationApplyPolicy::ClassifyChange(
 					{ "general", "fullscreen_monitor_session_mode" })));
 
+			// The General input-processing values are shared defaults. Applying
+			// one restarts the active renderer, which then resolves its explicit
+			// override or inherits this default during reconstruction.
+			for (const char* inputKey : { "video_conversion",
+				"container_colorspace", "hdr_colorspace", "hdr_luminance" })
+			{
+				Assert::AreEqual(static_cast<int>(Action::RestartRenderer),
+					static_cast<int>(ConfigurationApplyPolicy::ClassifyChange(
+						{ "general", inputKey })));
+			}
+
 			// Startup-only settings participate normally in strongest-action
 			// precedence without causing an action by themselves.
 			Assert::AreEqual(static_cast<int>(Action::SaveOnly),

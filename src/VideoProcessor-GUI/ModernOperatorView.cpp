@@ -120,7 +120,7 @@ void ModernOperatorView::LayoutControls()
 	place(m_view, header.fullscreen);
 	place(m_videoOnly, header.videoOnly);
 	m_captureRestart.MoveWindow(Px(390), Px(116), Px(127), Px(29));
-	m_rendererRestart.MoveWindow(Px(179), Px(526), Px(77), Px(29));
+	m_rendererRestart.MoveWindow(Px(179), Px(485), Px(77), Px(29));
 	m_queueReset.MoveWindow(Px(394), Px(615), Px(117), Px(29));
 }
 
@@ -134,15 +134,15 @@ void ModernOperatorView::DrawWideValue(CDC& dc, int x, int y, int width,
 		DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
 }
 
-void ModernOperatorView::DrawQueueMetric(CDC& dc, int x,
+void ModernOperatorView::DrawQueueMetric(CDC& dc, int x, int y,
 	const CString& label, const CString& value)
 {
 	dc.SelectObject(&m_regularFont);
 	dc.SetTextColor(Muted);
-	dc.TextOut(Px(x), Px(613), label);
+	dc.TextOut(Px(x), Px(y), label);
 	dc.SetTextColor(Text);
 	dc.SelectObject(&m_boldFont);
-	dc.TextOut(Px(x), Px(630), value);
+	dc.TextOut(Px(x), Px(y + 17), value);
 }
 
 void ModernOperatorView::SetStatus(const ModernOperatorStatus& status)
@@ -295,45 +295,63 @@ void ModernOperatorView::OnPaint()
 		{ TEXT("Primaries"), m_status.capturedPrimaries },
 		{ TEXT("Transfer"), m_status.capturedTransfer } });
 
-	DrawCard(dc, CRect(Px(16), Px(326), Px(268), Px(442)),
+	// Reclaim a small amount of unused space below the PCIe rows for the
+	// renderer card.  The HDR rows still retain their normal one-line cadence.
+	DrawCard(dc, CRect(Px(16), Px(326), Px(268), Px(438)),
 		TEXT(""), TEXT("Hardware link"));
-	DrawRows(dc, 27, 368, 230, {
+	DrawRows(dc, 27, 366, 230, {
 		{ TEXT("PCIe speed"), m_status.hardware[0] },
 		{ TEXT("PCIe width"), m_status.hardware[1] } });
 
-	DrawCard(dc, CRect(Px(276), Px(326), Px(528), Px(442)),
+	DrawCard(dc, CRect(Px(276), Px(326), Px(528), Px(438)),
 		TEXT(""), TEXT("HDR luminance"));
-	DrawRows(dc, 287, 368, 230, {
+	DrawRows(dc, 287, 366, 230, {
 		{ TEXT("MaxCLL"), m_status.maxCll }, { TEXT("MaxFALL"), m_status.maxFall },
 		{ TEXT("Mastering min"), m_status.masteringMin }, { TEXT("Mastering max"), m_status.masteringMax } });
 
-	DrawCard(dc, CRect(Px(16), Px(450), Px(268), Px(569)),
+	DrawCard(dc, CRect(Px(16), Px(446), Px(268), Px(575)),
 		TEXT(""), TEXT("Renderer"), m_status.rendererState);
-	dc.SetTextColor(Text); dc.SelectObject(&m_regularFont);
-	dc.TextOut(Px(27), Px(497), m_status.rendererName);
+	DrawWideValue(dc, 27, 493, 141, m_status.rendererName);
+	if (m_status.directShowRenderer)
+	{
+		DrawRows(dc, 27, 519, 230, {
+			{ TEXT("Uptime"), m_status.rendererUptime },
+			{ TEXT("Start / stop"), m_status.rendererStartStopMethod } });
+	}
+	else if (m_status.vpRenderer)
+	{
+		DrawRows(dc, 27, 519, 230, {
+			{ TEXT("Uptime"), m_status.rendererUptime },
+			{ TEXT("Presents"), m_status.rendererPresents } });
+	}
+	else
+	{
+		DrawRows(dc, 27, 519, 230, {
+			{ TEXT("Uptime"), m_status.rendererUptime } });
+	}
 
-	DrawCard(dc, CRect(Px(276), Px(450), Px(528), Px(569)),
+	DrawCard(dc, CRect(Px(276), Px(446), Px(528), Px(575)),
 		TEXT(""), TEXT("Latency"));
-	DrawRows(dc, 287, 492, 230, {
+	DrawRows(dc, 287, 488, 230, {
 		{ TEXT("VP Processing"), m_status.vpLatency },
 		{ TEXT("Presentation"), m_status.ptsLead },
 		{ TEXT("Total"), m_status.outputLatency } });
 
-	DrawCard(dc, CRect(Px(16), Px(577), Px(528), Px(655)),
+	DrawCard(dc, CRect(Px(16), Px(583), Px(528), Px(655)),
 		TEXT(""), TEXT("Queue health"));
 	if (m_status.singleQueue)
 	{
-		DrawQueueMetric(dc, 27, TEXT("Queued"), m_status.queueTotal);
-		DrawQueueMetric(dc, 112, TEXT("Capacity"), m_status.queueCapacity);
-		DrawQueueMetric(dc, 207, TEXT("Drops"), m_status.dropped);
+		DrawQueueMetric(dc, 27, 611, TEXT("Queued"), m_status.queueTotal);
+		DrawQueueMetric(dc, 112, 611, TEXT("Capacity"), m_status.queueCapacity);
+		DrawQueueMetric(dc, 207, 611, TEXT("Drops"), m_status.dropped);
 	}
 	else
 	{
-		DrawQueueMetric(dc, 27, TEXT("Raw"), m_status.queueRaw);
-		DrawQueueMetric(dc, 78, TEXT("Converted"), m_status.queueConverted);
-		DrawQueueMetric(dc, 163, TEXT("Total"), m_status.queueTotal);
-		DrawQueueMetric(dc, 218, TEXT("Max"), m_status.queueCapacity);
-		DrawQueueMetric(dc, 267, TEXT("Drops"), m_status.dropped);
+		DrawQueueMetric(dc, 27, 611, TEXT("Raw"), m_status.queueRaw);
+		DrawQueueMetric(dc, 78, 611, TEXT("Converted"), m_status.queueConverted);
+		DrawQueueMetric(dc, 163, 611, TEXT("Total"), m_status.queueTotal);
+		DrawQueueMetric(dc, 218, 611, TEXT("Max"), m_status.queueCapacity);
+		DrawQueueMetric(dc, 267, 611, TEXT("Drops"), m_status.dropped);
 	}
 
 	paintDc.BitBlt(paintRect.left, paintRect.top,

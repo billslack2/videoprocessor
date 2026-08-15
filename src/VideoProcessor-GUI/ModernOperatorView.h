@@ -40,6 +40,11 @@ struct ModernOperatorStatus
 	CString masteringMax = TEXT("---");
 	CString rendererName = TEXT("No active renderer");
 	CString rendererState = TEXT("Unavailable");
+	CString rendererUptime = TEXT("---");
+	CString rendererStartStopMethod = TEXT("---");
+	CString rendererPresents = TEXT("---");
+	bool directShowRenderer = false;
+	bool vpRenderer = false;
 	CString queueRaw = TEXT("---");
 	CString queueConverted = TEXT("---");
 	CString queueTotal = TEXT("---");
@@ -85,7 +90,7 @@ private:
 		const std::initializer_list<std::pair<CString, CString>>& rows);
 	void DrawWideValue(CDC& dc, int x, int y, int width,
 		const CString& value);
-	void DrawQueueMetric(CDC& dc, int x, const CString& label,
+	void DrawQueueMetric(CDC& dc, int x, int y, const CString& label,
 		const CString& value);
 	void CreateButton(CButton& button, UINT id, const CString& text);
 

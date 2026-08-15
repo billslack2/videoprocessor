@@ -10939,6 +10939,38 @@ void CVideoProcessorDlg::RefreshModernStatus()
 	status.masteringMax = text(m_hdrLuminanceMasterMax);
 	status.rendererName = selected(m_rendererCombo);
 	status.rendererState = compactState(text(m_rendererStateText));
+	const int selectedRendererIndex = m_rendererCombo.GetCurSel();
+	const RendererId* selectedRenderer = selectedRendererIndex >= 0 ?
+		reinterpret_cast<const RendererId*>(
+			m_rendererCombo.GetItemData(selectedRendererIndex)) : nullptr;
+	status.directShowRenderer = selectedRenderer &&
+		selectedRenderer->backend == RendererBackend::DIRECTSHOW;
+	status.vpRenderer = selectedRenderer &&
+		selectedRenderer->backend == RendererBackend::LIBPLACEBO;
+	if (m_rendererState == RendererState::RENDERSTATE_RENDERING &&
+		m_rendererStartTime != 0)
+	{
+		const DWORD elapsedMilliseconds = GetTickCount() -
+			static_cast<DWORD>(m_rendererStartTime);
+		const unsigned long long elapsedSeconds = elapsedMilliseconds / 1000ULL;
+		status.rendererUptime.Format(TEXT("%02llu:%02llu:%02llu"),
+			elapsedSeconds / 3600ULL, (elapsedSeconds / 60ULL) % 60ULL,
+			elapsedSeconds % 60ULL);
+	}
+	if (status.directShowRenderer)
+		status.rendererStartStopMethod =
+			selected(m_rendererDirectShowStartStopTimeMethodCombo);
+	else if (status.vpRenderer && m_videoRenderer &&
+		m_rendererState == RendererState::RENDERSTATE_RENDERING)
+	{
+		RendererOutputContract::Status contract;
+		if (m_videoRenderer->GetOutputContractStatus(contract) &&
+			contract.available)
+		{
+			status.rendererPresents.Format(TEXT("%llu"),
+				static_cast<unsigned long long>(contract.successfulPresents));
+		}
+	}
 	// Queue getters enforce the renderer lifecycle contract and may only be
 	// queried after the graph has reached RENDERING. The Modern view is also
 	// refreshed during startup, so keep its initial placeholders until then.
@@ -10954,12 +10986,7 @@ void CVideoProcessorDlg::RefreshModernStatus()
 		status.queueCapacity.Format(TEXT("%zu"),
 			GetRendererVideoFrameQueueSizeMax());
 
-		const int selectedRenderer = m_rendererCombo.GetCurSel();
-		const RendererId* renderer = selectedRenderer >= 0 ?
-			reinterpret_cast<const RendererId*>(
-				m_rendererCombo.GetItemData(selectedRenderer)) : nullptr;
-		status.singleQueue = renderer &&
-			renderer->backend == RendererBackend::LIBPLACEBO;
+		status.singleQueue = status.vpRenderer;
 	}
 	status.dropped = text(m_rendererDroppedFrameCountText);
 	status.vpLatency = text(m_rendererLatencyToVPText);
@@ -10971,11 +10998,7 @@ void CVideoProcessorDlg::RefreshModernStatus()
 	if (m_videoRenderer &&
 		m_rendererState == RendererState::RENDERSTATE_RENDERING)
 	{
-		const int selectedRenderer = m_rendererCombo.GetCurSel();
-		const RendererId* renderer = selectedRenderer >= 0 ?
-			reinterpret_cast<const RendererId*>(
-				m_rendererCombo.GetItemData(selectedRenderer)) : nullptr;
-		if (renderer && renderer->backend == RendererBackend::LIBPLACEBO)
+		if (status.vpRenderer)
 		{
 			double presentationLeadMs = 0.0;
 			double captureToPresentationMs = 0.0;

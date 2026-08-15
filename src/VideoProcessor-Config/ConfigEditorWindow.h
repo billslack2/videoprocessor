@@ -95,6 +95,7 @@ private:
     bool nativeOwnerIsValid() const;
     void applyChanges();
 	bool saveChanges();
+	void rebuildConfigurationShell();
     bool notifyVideoProcessor();
     void loadConfiguration();
     void migrateSharedRefreshRate();

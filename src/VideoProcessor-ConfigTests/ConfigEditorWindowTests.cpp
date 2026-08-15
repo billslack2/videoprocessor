@@ -1437,6 +1437,86 @@ void testLegacyRendererVisibilityDefaultsHiddenAndPreservesShortcuts()
         "The editor wrote the unchanged default instead of preserving its omission");
 }
 
+void testLegacyRendererVisibilityRebuildsTheFormWhenApplied()
+{
+    QTemporaryDir directory;
+    const QString path = copyFixture(directory);
+    ConfigEditorWindow window(path, 0, true);
+    QStackedWidget* pages = requireControl<QStackedWidget>(window,
+        QStringLiteral("settingsPages"));
+    pages->setCurrentIndex(7);
+    QComboBox* oldRenderer = requireControl<QComboBox>(window,
+        QStringLiteral("config.general.renderer"));
+    const void* oldRendererAddress = oldRenderer;
+    QCheckBox* hideLegacyRenderers = requireControl<QCheckBox>(window,
+        QStringLiteral("config.general.hide_legacy_renderers"));
+    hideLegacyRenderers->setChecked(false);
+    require(requireControl<QLabel>(window,
+        QStringLiteral("configurationEffectSummary"))->text().startsWith(
+            QStringLiteral("Restart renderer:")),
+        "Changing renderer visibility was not classified for a live renderer refresh");
+
+    // Apply recreates every renderer-dependent selector from the one stable
+    // discovery snapshot. Do not use save(window): its old Apply pointer is
+    // intentionally retired as part of this UI rebuild.
+    requireControl<QPushButton>(window, QStringLiteral("applyConfiguration"))->click();
+    QCoreApplication::processEvents();
+
+    QComboBox* rebuiltRenderer = requireControl<QComboBox>(window,
+        QStringLiteral("config.general.renderer"));
+    require(rebuiltRenderer != oldRendererAddress,
+        "Apply did not rebuild the renderer-dependent form");
+    require(!requireControl<QCheckBox>(window,
+        QStringLiteral("config.general.hide_legacy_renderers"))->isChecked(),
+        "Applied renderer visibility did not persist into the rebuilt form");
+    require(requireControl<QStackedWidget>(window,
+        QStringLiteral("settingsPages"))->currentIndex() == 7,
+        "Rebuilding renderer-dependent controls changed the active editor page");
+    require(!requireControl<QPushButton>(window,
+        QStringLiteral("applyConfiguration"))->isEnabled(),
+        "The rebuilt form incorrectly remained dirty after Apply");
+}
+
+void testGeneralInputApplyPreservesBackendOverrides()
+{
+    QTemporaryDir directory;
+    const QString path = copyFixture(directory);
+    QFile file(path);
+    require(file.open(QIODevice::Append),
+        "Could not append the VP Renderer input override fixture");
+    file.write("\n[vprenderer.input_processing]\nvideo_conversion: NONE\n");
+    file.close();
+
+    ConfigEditorWindow window(path, 0, true);
+    // Keep [general] without an explicit conversion default and save an
+    // unrelated General edit. The two backend-specific values must remain
+    // independent instead of being flattened into the shared default.
+    QCheckBox* hideLegacyRenderers = requireControl<QCheckBox>(window,
+        QStringLiteral("config.general.hide_legacy_renderers"));
+    hideLegacyRenderers->setChecked(false);
+    require(requireControl<QLabel>(window,
+        QStringLiteral("configurationEffectSummary"))->text().startsWith(
+            QStringLiteral("Restart renderer:")),
+        "General changes are not labelled as a renderer restart");
+    requireControl<QPushButton>(window, QStringLiteral("applyConfiguration"))->click();
+    QCoreApplication::processEvents();
+
+    const QByteArray saved = readBytes(path);
+    const auto section = [&saved](const QByteArray& name)
+    {
+        const int begin = saved.indexOf(QByteArray("[") + name + QByteArray("]"));
+        const int end = begin < 0 ? -1 : saved.indexOf(QByteArray("\n["), begin + 1);
+        return begin < 0 ? QByteArray() : saved.mid(begin,
+            end < 0 ? -1 : end - begin);
+    };
+    require(!section("general").contains("video_conversion:"),
+        "Applying an unrelated General change wrote a conversion default");
+    require(section("directshow").contains("video_conversion: V210_TO_P010"),
+        "Applying a General change flattened the DirectShow conversion override");
+    require(section("vprenderer.input_processing").contains("video_conversion: NONE"),
+        "Applying a General change flattened the VP Renderer conversion override");
+}
+
 void testNewActionStartsUnconfigured()
 {
     QTemporaryDir directory;
@@ -2906,6 +2986,10 @@ int main(int argc, char** argv)
     failures += run("LUT selector discovers installation LUT files", testLutSelectorDiscoversInstallationLutFiles);
     failures += run("choice labels and VP Renderer name", testChoiceLabelsAndVpRendererName);
     failures += run("legacy renderer visibility defaults hidden and preserves shortcuts", testLegacyRendererVisibilityDefaultsHiddenAndPreservesShortcuts);
+	failures += run("legacy renderer visibility rebuilds the form when applied",
+		testLegacyRendererVisibilityRebuildsTheFormWhenApplied);
+	failures += run("General input Apply preserves backend overrides",
+		testGeneralInputApplyPreservesBackendOverrides);
     failures += run("new action starts unconfigured", testNewActionStartsUnconfigured);
     failures += run("empty actions show an empty state", testEmptyActionsShowEmptyState);
     failures += run("missing configuration can be created from editor",
