@@ -55,6 +55,20 @@ Implementation checkpoint:
   the backend-specific third row empty. The x64 Release host/plugin hashes
   matched after deployment; the previous pair is backed up at
   `C:\\Videoprocessor\\vp\\backups\\vp0130-c8b372c-20260815-120242`.
+- Final layout and recovery follow-up produced and deployed `6248fe9`
+  (`fix(ui): prevent clipped queue metrics and global bare shortcuts`). Queue
+  values now have four additional logical pixels of bottom-border clearance.
+  The
+  hang was traced to the background shortcut observer dispatching the bare
+  `R` reset accelerator while another application owned focus; ordinary text
+  entry generated reset requests until DirectShow request 11 wedged and
+  shutdown waited behind it. Background observation now requires at least one
+  Ctrl, Alt, or Shift modifier, while bare shortcuts continue to work when VP
+  owns focus. The focused native policy test and a clean x64 Release solution
+  build passed. The orphaned process was force-stopped, the host/plugin pair
+  was SHA-256 verified after deployment, and the replacement launched with a
+  responsive main window. Backup:
+  `C:\\Videoprocessor\\vp\\backups\\vp0130-6248fe9-20260815-121529`.
 
 ## User story
 
@@ -69,7 +83,7 @@ confusing shared defaults with backend-specific overrides.
    queue health:
    - all renderers show uptime while rendering;
    - DirectShow shows the configured Start/Stop timestamp method;
-   - VP Renderer shows only its existing successful-present counter;
+   - VP Renderer leaves the backend-specific third metric row empty;
    - labels are blue/left and values white/right in the existing metric-row
      treatment.
 2. Use the spare visual space around Hardware link/HDR/Queue cards to retain a
@@ -92,9 +106,9 @@ confusing shared defaults with backend-specific overrides.
 ## Acceptance criteria
 
 - The Modern Renderer tile uses the standard key/value colours and alignment;
-  DirectShow shows uptime plus Start/Stop, VP Renderer shows uptime plus a
-  real successful-present count, and no hard-coded VP processing-path or
-  fabricated late-present metric appears.
+  DirectShow shows uptime plus Start/Stop, VP Renderer shows uptime with its
+  backend-specific third row empty, and no hard-coded VP processing-path or
+  fabricated presentation metric appears.
 - Queue information and Reset remain in the Queue health card rather than
   being duplicated in Renderer.
 - Toggling **Hide legacy renderers** then clicking Apply updates the editor's
