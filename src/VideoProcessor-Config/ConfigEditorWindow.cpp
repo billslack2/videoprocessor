@@ -43,6 +43,7 @@
 #include <QLibrary>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QListView>
 #include <QMenu>
 #include <QMessageBox>
 #include <QPainter>
@@ -83,6 +84,7 @@ namespace
 constexpr int kPageMargin = 16;
 constexpr int kCardPadding = 12;
 constexpr int kResponsiveContentWidth = 720;
+constexpr int kRendererNameRole = Qt::UserRole + 1;
 
 using DocumentSnapshot = std::map<std::string,
     std::map<std::string, std::string>>;
@@ -1529,21 +1531,76 @@ void ConfigEditorWindow::applyChanges()
     saveChanges();
 }
 
+void ConfigEditorWindow::setRendererDiscoveryForTesting(
+    const QStringList& allRenderers, const QStringList& filteredRenderers)
+{
+    allRenderers_ = allRenderers;
+    filteredRenderers_ = filteredRenderers;
+    rebuildConfigurationShell();
+}
+
 void ConfigEditorWindow::rebuildConfigurationShell()
 {
-    // Renderer discovery is captured once per editor session. Rebuild the
-    // dependent controls from that stable snapshot whenever the UI-only
-    // visibility preference changes so General, Actions, and Shortcuts agree
-    // without waiting for Apply or querying the system again.
+    // Recreate the editor after a full document reload (for example Cancel).
+    // Ordinary renderer-visibility changes are handled in place and never
+    // enter this comparatively expensive path.
     const int currentPage = pages_ ? pages_->currentIndex() : 0;
 	activeProfileLists_.clear();
 	monitorChoice_ = nullptr;
+	rendererChoice_ = nullptr;
 	actionRendererTarget_ = nullptr;
+	rendererShortcutForm_ = nullptr;
     QWidget* replacement = createShell();
     QWidget* previous = takeCentralWidget();
     setCentralWidget(replacement);
     selectPage(currentPage);
     if (previous) previous->deleteLater();
+}
+
+void ConfigEditorWindow::applyRendererVisibilityFilter(bool hideLegacyRenderers)
+{
+    const auto containsRenderer = [](const QStringList& renderers,
+        const QString& candidate)
+    {
+        return std::any_of(renderers.cbegin(), renderers.cend(),
+            [&candidate](const QString& renderer)
+            {
+                return renderer.compare(candidate, Qt::CaseInsensitive) == 0;
+            });
+    };
+    const auto isLegacy = [this, &containsRenderer](const QString& renderer)
+    {
+        return containsRenderer(allRenderers_, renderer) &&
+            !containsRenderer(filteredRenderers_, renderer);
+    };
+    const auto filterCombo = [hideLegacyRenderers, &isLegacy](QComboBox* combo)
+    {
+        auto* view = combo ? qobject_cast<QListView*>(combo->view()) : nullptr;
+        if (!view) return;
+        for (int index = 0; index < combo->count(); ++index)
+        {
+            const QString renderer = combo->itemData(index,
+                kRendererNameRole).toString();
+            view->setRowHidden(index,
+                hideLegacyRenderers && !renderer.isEmpty() &&
+                isLegacy(renderer));
+        }
+    };
+
+    filterCombo(rendererChoice_);
+    filterCombo(actionRendererTarget_);
+    if (!rendererShortcutForm_) return;
+    for (int row = 0; row < rendererShortcutForm_->rowCount(); ++row)
+    {
+        QLayoutItem* fieldItem = rendererShortcutForm_->itemAt(row,
+            QFormLayout::FieldRole);
+        QWidget* field = fieldItem ? fieldItem->widget() : nullptr;
+        const QString renderer = field ?
+            field->property("rendererName").toString() : QString();
+        rendererShortcutForm_->setRowVisible(row,
+            !hideLegacyRenderers || renderer.isEmpty() ||
+            !isLegacy(renderer));
+    }
 }
 
 bool ConfigEditorWindow::saveChanges()
@@ -1898,6 +1955,8 @@ QWidget* ConfigEditorWindow::createShell()
     connect(previousPage, &QShortcut::activated, this,
         [selectAdjacentPage] { selectAdjacentPage(-1); });
 
+    applyRendererVisibilityFilter(configuredBooleanValue(value(
+        QStringLiteral("general"), QStringLiteral("hide_legacy_renderers")), true));
     updateValidationState();
     return root;
 }
@@ -2116,17 +2175,21 @@ QWidget* ConfigEditorWindow::createStartupPage()
     sourceForm->addRow(QStringLiteral("Monitor"), monitorChoice_);
 	const bool hideLegacy = configuredBooleanValue(value(QStringLiteral("general"),
 		QStringLiteral("hide_legacy_renderers")), true);
-	const QStringList availableRenderers = hideLegacy ? filteredRenderers_ : allRenderers_;
-	persistDiscoveredDefault(QStringLiteral("renderer"), availableRenderers);
-    sourceForm->addRow(QStringLiteral("Renderer"), bindChoiceField(QStringLiteral("general"),
-        QStringLiteral("renderer"), availableRenderers.isEmpty() ?
-            QStringList{ QString() } : availableRenderers,
-        availableRenderers.isEmpty() ? QStringList{ QStringLiteral("No renderers discovered") } : QStringList{}));
+	const QStringList visibleRenderers = hideLegacy ? filteredRenderers_ : allRenderers_;
+	persistDiscoveredDefault(QStringLiteral("renderer"), visibleRenderers);
+    rendererChoice_ = bindChoiceField(QStringLiteral("general"),
+        QStringLiteral("renderer"), allRenderers_.isEmpty() ?
+            QStringList{ QString() } : allRenderers_,
+        allRenderers_.isEmpty() ? QStringList{ QStringLiteral("No renderers discovered") } : QStringList{});
+    for (int index = 0; index < rendererChoice_->count(); ++index)
+        rendererChoice_->setItemData(index,
+            rendererChoice_->itemData(index).toString(), kRendererNameRole);
+    sourceForm->addRow(QStringLiteral("Renderer"), rendererChoice_);
     auto* hideLegacyRenderers = bindCheckField(
         QStringLiteral("Hide legacy renderers"), QStringLiteral("general"),
         QStringLiteral("hide_legacy_renderers"), true);
     connect(hideLegacyRenderers, &QCheckBox::toggled, this,
-        [this] { rebuildConfigurationShell(); });
+        [this](bool checked) { applyRendererVisibilityFilter(checked); });
     sourceForm->addRow(QString(), hideLegacyRenderers);
     sourceForm->addRow(QString(), bindCheckField(
         QStringLiteral("Switch refresh rate"), QStringLiteral("general"),
@@ -4350,15 +4413,15 @@ QWidget* ConfigEditorWindow::createActionsPage()
     rendererTarget->setInsertPolicy(QComboBox::NoInsert);
     rendererTarget->addItem(QStringLiteral("VP Renderer (default)"), QStringLiteral("vprenderer"));
     rendererTarget->addItem(QStringLiteral("All renderers"), QStringLiteral("*"));
-    const bool hideLegacyRenderers = configuredBooleanValue(value(
-        QStringLiteral("general"), QStringLiteral("hide_legacy_renderers")), true);
-    const QStringList& renderers = hideLegacyRenderers ? filteredRenderers_ : allRenderers_;
+    const QStringList& renderers = allRenderers_;
     for (int index = 0; index < renderers.size(); ++index)
     {
         if (renderers[index].compare(QStringLiteral("VP Renderer"), Qt::CaseInsensitive) == 0 ||
             renderers[index].compare(QStringLiteral("VideoProcessor Renderer (Alpha)"), Qt::CaseInsensitive) == 0)
             continue;
         rendererTarget->addItem(QStringLiteral("%1 - %2").arg(index + 1).arg(renderers[index]), QString::number(index + 1));
+        rendererTarget->setItemData(rendererTarget->count() - 1,
+            renderers[index], kRendererNameRole);
     }
     rendererTarget->setCurrentIndex(0);
     rendererTarget->setEditText(rendererTarget->itemText(0));
@@ -4854,21 +4917,23 @@ QWidget* ConfigEditorWindow::createShortcutsPage()
     fixedShortcuts->addCard(captureCard);
     layout->addWidget(fixedShortcuts);
 
-    const bool hideLegacyRenderers = configuredBooleanValue(value(
-        QStringLiteral("general"), QStringLiteral("hide_legacy_renderers")), true);
-    const QStringList& renderers = hideLegacyRenderers ? filteredRenderers_ : allRenderers_;
+    const QStringList& renderers = allRenderers_;
     if (!renderers.isEmpty())
     {
         auto* rendererContent = new QWidget;
         auto* rendererForm = new QFormLayout(rendererContent);
+        rendererShortcutForm_ = rendererForm;
         rendererForm->setContentsMargins(0, 0, 0, 0);
         rendererForm->setHorizontalSpacing(18);
         rendererForm->setVerticalSpacing(8);
         rendererForm->setFieldGrowthPolicy(QFormLayout::FieldsStayAtSizeHint);
         rendererForm->setRowWrapPolicy(QFormLayout::WrapLongRows);
         for (int index = 0; index < renderers.size(); ++index)
-            rendererForm->addRow(QStringLiteral("%1 - %2").arg(index + 1).arg(renderers[index]),
-                makeEditor(QStringLiteral("render.%1").arg(index + 1), QString()));
+        {
+            QLineEdit* edit = makeEditor(QStringLiteral("render.%1").arg(index + 1), QString());
+            edit->setProperty("rendererName", renderers[index]);
+            rendererForm->addRow(QStringLiteral("%1 - %2").arg(index + 1).arg(renderers[index]), edit);
+        }
         layout->addWidget(createCard(QStringLiteral("Renderer selection"),
             QStringLiteral("Optional shortcuts select a renderer by its one-based position in VP's renderer list on this PC."),
             rendererContent));

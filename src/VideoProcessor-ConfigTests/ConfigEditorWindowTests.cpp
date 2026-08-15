@@ -10,10 +10,12 @@
 #include <QApplication>
 #include <QAccessible>
 #include <QAbstractButton>
+#include <QAbstractItemView>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDialog>
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QFrame>
 #include <QInputDialog>
@@ -23,6 +25,7 @@
 #include <QLayout>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QListView>
 #include <QMessageBox>
 #include <QPlainTextEdit>
 #include <QPushButton>
@@ -1465,7 +1468,7 @@ void testUnchangedActiveProfileStatusDoesNotInvalidateLists()
         "A changed active-profile snapshot did not update the list model");
 }
 
-void testLegacyRendererVisibilityRebuildsRendererUiImmediately()
+void testLegacyRendererVisibilityFiltersExistingUiImmediately()
 {
     QTemporaryDir directory;
     const QString path = copyFixture(directory);
@@ -1478,44 +1481,71 @@ void testLegacyRendererVisibilityRebuildsRendererUiImmediately()
         baselineApply->click();
         QCoreApplication::processEvents();
     }
+    window.setRendererDiscoveryForTesting({
+        QStringLiteral("VP Renderer"),
+        QStringLiteral("DirectShow - madVR"),
+        QStringLiteral("DirectShow - Video Renderer"),
+        QStringLiteral("DirectShow - Video Mixing Renderer 9") }, {
+        QStringLiteral("VP Renderer"),
+        QStringLiteral("DirectShow - madVR") });
     QStackedWidget* pages = requireControl<QStackedWidget>(window,
         QStringLiteral("settingsPages"));
     pages->setCurrentIndex(7);
-    QComboBox* oldRenderer = requireControl<QComboBox>(window,
+    QComboBox* renderer = requireControl<QComboBox>(window,
         QStringLiteral("config.general.renderer"));
-    const void* oldRendererAddress = oldRenderer;
-    QComboBox* oldActionRenderer = requireControl<QComboBox>(window,
+    QComboBox* actionRenderer = requireControl<QComboBox>(window,
         QStringLiteral("config.actions.renderer"));
-    const int hiddenActionRendererCount = oldActionRenderer->count();
-    const auto rendererShortcutCount = [&window]
+    const auto visibleComboItems = [](QComboBox* combo)
+    {
+        auto* view = qobject_cast<QListView*>(combo->view());
+        require(view != nullptr, "Renderer combo does not use a list view");
+        int count = 0;
+        for (int index = 0; index < combo->count(); ++index)
+            if (!view->isRowHidden(index)) ++count;
+        return count;
+    };
+    const auto visibleRendererShortcuts = [&window]
     {
         int count = 0;
         for (QLineEdit* edit : window.findChildren<QLineEdit*>())
-            if (edit->objectName().startsWith(QStringLiteral("config.shortcuts.render.")))
+            if (edit->objectName().startsWith(QStringLiteral("config.shortcuts.render.")) &&
+                !edit->isHidden())
                 ++count;
         return count;
     };
-    const int hiddenShortcutCount = rendererShortcutCount();
+    const int hiddenGeneralCount = visibleComboItems(renderer);
+    const int hiddenActionCount = visibleComboItems(actionRenderer);
+    const int hiddenShortcutCount = visibleRendererShortcuts();
+    require(hiddenGeneralCount < renderer->count(),
+        "The fixture exposes no hidden legacy renderer rows");
     QCheckBox* hideLegacyRenderers = requireControl<QCheckBox>(window,
         QStringLiteral("config.general.hide_legacy_renderers"));
+    QElapsedTimer timer;
+    timer.start();
     hideLegacyRenderers->setChecked(false);
     QCoreApplication::processEvents();
+    const qint64 elapsedMs = timer.elapsed();
 
-    QComboBox* rebuiltRenderer = requireControl<QComboBox>(window,
-        QStringLiteral("config.general.renderer"));
-    require(rebuiltRenderer != oldRendererAddress,
-        "Toggling legacy renderer visibility did not rebuild General immediately");
+    require(requireControl<QComboBox>(window,
+        QStringLiteral("config.general.renderer")) == renderer,
+        "Toggling legacy renderer visibility replaced the General selector");
+    require(requireControl<QComboBox>(window,
+        QStringLiteral("config.actions.renderer")) == actionRenderer,
+        "Toggling legacy renderer visibility replaced the Actions selector");
+    require(elapsedMs < 250,
+        "Filtering the cached renderer UI took 250 ms or longer");
     require(!requireControl<QCheckBox>(window,
         QStringLiteral("config.general.hide_legacy_renderers"))->isChecked(),
-        "Immediate renderer visibility rebuild lost the checkbox state");
+        "Immediate renderer filtering lost the checkbox state");
     require(requireControl<QStackedWidget>(window,
         QStringLiteral("settingsPages"))->currentIndex() == 7,
-        "Rebuilding renderer-dependent controls changed the active editor page");
-    require(requireControl<QComboBox>(window,
-        QStringLiteral("config.actions.renderer"))->count() >= hiddenActionRendererCount,
-        "Actions did not immediately expose the unfiltered renderer snapshot");
-    require(rendererShortcutCount() >= hiddenShortcutCount,
-        "Shortcuts did not immediately expose the unfiltered renderer snapshot");
+        "Filtering renderer-dependent controls changed the active editor page");
+    require(visibleComboItems(renderer) > hiddenGeneralCount,
+        "General did not immediately expose the cached legacy renderer rows");
+    require(visibleComboItems(actionRenderer) > hiddenActionCount,
+        "Actions did not immediately expose the cached renderer rows");
+    require(visibleRendererShortcuts() > hiddenShortcutCount,
+        "Shortcuts did not immediately expose the cached renderer rows");
     require(!requireControl<QLabel>(window,
         QStringLiteral("configurationEffectSummary"))->text().startsWith(
             QStringLiteral("Restart renderer:")),
@@ -3114,8 +3144,8 @@ int main(int argc, char** argv)
     failures += run("LUT selector discovers installation LUT files", testLutSelectorDiscoversInstallationLutFiles);
     failures += run("choice labels and VP Renderer name", testChoiceLabelsAndVpRendererName);
     failures += run("legacy renderer visibility defaults hidden and preserves shortcuts", testLegacyRendererVisibilityDefaultsHiddenAndPreservesShortcuts);
-	failures += run("legacy renderer visibility rebuilds renderer UI immediately",
-		testLegacyRendererVisibilityRebuildsRendererUiImmediately);
+	failures += run("legacy renderer visibility filters existing UI immediately",
+		testLegacyRendererVisibilityFiltersExistingUiImmediately);
 	failures += run("General input Apply preserves backend overrides",
 		testGeneralInputApplyPreservesBackendOverrides);
     failures += run("new action starts unconfigured", testNewActionStartsUnconfigured);
