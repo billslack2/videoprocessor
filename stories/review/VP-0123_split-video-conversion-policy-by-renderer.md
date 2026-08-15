@@ -2,9 +2,39 @@
 
 ## Status
 
-Backlog (2026-08-11). Video conversion is currently presented and persisted as
-one shared input-processing setting even though DirectShow and VP Renderer have
-different ingress capabilities and may need different choices.
+Review (2026-08-15). Implementation is ready for review in
+`billslack2/videoprocessor` pull request
+[#60](https://github.com/billslack2/videoprocessor/pull/60), targeting the
+current default branch `v1.2.001-beta`.
+
+During implementation, operator review expanded the original split: General
+now remains the shared input-processing default, while DirectShow and VP
+Renderer each expose an optional override for video conversion, container
+color space, HDR color space, and HDR luminance. Every renderer selector can
+inherit and display the effective General value.
+
+## Implementation checkpoint (2026-08-15)
+
+- Implemented and pushed `codex/vp-0123-conversion-policy`, synchronized with
+  `origin/v1.2.001-beta` at merge commit `067952a`.
+- Added dedicated **Input Processing** pages beneath VP Renderer and DirectShow,
+  retaining General as the shared default and storing renderer overrides in
+  canonical renderer-owned sections.
+- Preserved old and new configuration loading, migrated legacy VP profile-owned
+  input values, and kept save operations comment/value preserving.
+- Applied the effective policy at renderer startup and restart, including the
+  active renderer's V210-to-P010 conversion behavior.
+- Completed the requested Config UI polish: inherited effective-value labels,
+  aligned two-column cards and shortcut fields, renderer/display organization,
+  selector caching, compact navigation focus styling, and sufficient sidebar
+  width for renderer child pages.
+- Clean x64 Release solution build passed after synchronization. Both focused
+  native VP-0123 tests passed. The configuration UI suite passed before the
+  final default-branch sync; all VP-0123 checks also passed afterward. One
+  popup-focus test remains sensitive to a separately running deployed Config
+  process and passed when that process was closed.
+- Packaged x64 Release was deployed with the active configuration hash
+  preserved and manually accepted before review.
 
 ## User story
 
@@ -92,4 +122,3 @@ DirectShow renderer.
 - VP-0045: built-in renderer configuration namespace.
 - VP-0097: standalone configuration editor and ownership model.
 - VP-0107: canonical packaged configuration and release layout.
-
