@@ -322,6 +322,59 @@ namespace Tests
 				static_cast<int>(decision.effective.action));
 		}
 
+		TEST_METHOD(DenseArbitrationSuppressesCoarseTwoEdgeFitUntilAccepted)
+		{
+			VerticalBarPresentationResolutionInput input;
+			input.genericUpperExpansion = true;
+			input.genericLowerExpansion = true;
+			input.genericVerticalFitConfirmed = true;
+			input.genericVerticalFitAuthoritative = true;
+			input.denseVerticalArbitrationEnabled = true;
+			input.authoritativeTop = 360;
+			input.authoritativeBottom = 1800;
+			input.rasterHeight = 2160;
+
+			// Sequence 1496: the coarse envelope is not itself a Fit decision.
+			auto decision = ResolveVerticalBarPresentation(input);
+			Assert::AreEqual(static_cast<int>(
+				VerticalBarPresentationAction::NONE),
+				static_cast<int>(decision.action));
+			const ActivePictureBounds trusted = {
+				0, 360, 3840, 1800, 3840, 2160,
+				3840.0 / 1440.0, ActivePictureBounds::BarAxes::TOP_BOTTOM };
+			const ActivePictureBounds expanded = {
+				0, 148, 3840, 1960, 3840, 2160,
+				3840.0 / 1812.0, ActivePictureBounds::BarAxes::NONE };
+			Input crop = TrustedScopeCrop();
+			crop.geometry = trusted;
+			crop.outwardExpansion = expanded;
+			crop.outwardExpansionSourceGeneration = crop.frameSourceGeneration;
+			auto routing = ResolveVerticalBarRendererRouting(decision);
+			crop.outwardPresentationActive = routing.fitActive;
+			crop.outwardExpansionAvailable = routing.fitActive;
+			auto presented = Evaluate(crop);
+			Assert::IsTrue(presented.applyCrop);
+			Assert::IsFalse(presented.outwardExpanded);
+			Assert::AreEqual(360, presented.sourceBounds.top);
+			Assert::AreEqual(1800, presented.sourceBounds.bottom);
+
+			// A Fit already accepted by the dense two-sample policy remains
+			// authoritative and takes the existing bounded outward route.
+			input.detailedAction = VerticalBarPresentationAction::FIT;
+			decision = ResolveVerticalBarPresentation(input);
+			Assert::AreEqual(static_cast<int>(
+				VerticalBarPresentationAction::FIT),
+				static_cast<int>(decision.action));
+			routing = ResolveVerticalBarRendererRouting(decision);
+			crop.outwardPresentationActive = routing.fitActive;
+			crop.outwardExpansionAvailable = routing.fitActive;
+			presented = Evaluate(crop);
+			Assert::IsTrue(presented.applyCrop);
+			Assert::IsTrue(presented.outwardExpanded);
+			Assert::AreEqual(148, presented.sourceBounds.top);
+			Assert::AreEqual(1960, presented.sourceBounds.bottom);
+		}
+
 		TEST_METHOD(DenseFitConfirmationDoesNotDelayFailOpen)
 		{
 			VerticalFitConfirmationState pending;
@@ -642,7 +695,7 @@ namespace Tests
 				static_cast<int>(decision.effective.action));
 		}
 
-		TEST_METHOD(OnlyProvisionalSingleVerticalEdgeStartsInspectionRetention)
+		TEST_METHOD(OnlyProvisionalVerticalEdgesStartInspectionRetention)
 		{
 			Assert::IsTrue(ShouldRetainTrustedBaseForVerticalInspection(
 				true, true, true, false, false, false, true));
@@ -656,8 +709,10 @@ namespace Tests
 				true, true, false, false, false, false, true));
 			Assert::IsFalse(ShouldRetainTrustedBaseForVerticalInspection(
 				true, true, true, true, false, false, true));
-			Assert::IsFalse(ShouldRetainTrustedBaseForVerticalInspection(
+			Assert::IsTrue(ShouldRetainTrustedBaseForVerticalInspection(
 				true, true, true, false, true, false, true));
+			Assert::IsFalse(ShouldRetainTrustedBaseForVerticalInspection(
+				true, true, true, true, true, false, true));
 		}
 
 		TEST_METHOD(PendingTranslationRetainsTrustedCropWithoutFullRasterFlash)
@@ -689,6 +744,41 @@ namespace Tests
 			picture.latestObservationClassification =
 				ActivePictureClassification::FULL_RASTER_TRUSTED;
 			AssertFullRaster(Evaluate(picture));
+		}
+
+		TEST_METHOD(PendingDenseFitRetainsTrustedCropWithoutFullRasterFlash)
+		{
+			Input input = TrustedScopeCrop();
+			input.geometry = {
+				0, 360, 3840, 1800, 3840, 2160,
+				3840.0 / 1440.0, ActivePictureBounds::BarAxes::TOP_BOTTOM };
+			input.latestObservationSupportsCrop = false;
+			input.latestObservationIsProvisional = true;
+			input.latestObservationClassification =
+				ActivePictureClassification::PROVISIONAL;
+			input.frameLocalPresentationRetentionEvaluated = true;
+			input.frameLocalPresentationRetentionSafe = false;
+			input.verticalFitConfirmationPending = true;
+			input.verticalTranslationBase = input.geometry;
+			input.verticalTranslationSourceGeneration = 7;
+
+			// Sequence 1526 logged Fit pending 1/2, so final crop evaluation must
+			// agree with that decision instead of returning full raster.
+			const Decision retained = Evaluate(input);
+			Assert::IsTrue(retained.applyCrop);
+			Assert::IsFalse(retained.outwardExpanded);
+			Assert::IsFalse(retained.verticallyTranslated);
+			Assert::AreEqual(360, retained.sourceBounds.top);
+			Assert::AreEqual(1800, retained.sourceBounds.bottom);
+			Assert::IsTrue(retained.reason.find("fit") != std::string::npos);
+
+			Input stale = input;
+			stale.verticalTranslationSourceGeneration = 6;
+			AssertFullRaster(Evaluate(stale));
+
+			Input fullRaster = input;
+			fullRaster.fullRasterPresentationAuthoritative = true;
+			AssertFullRaster(Evaluate(fullRaster));
 		}
 
 		TEST_METHOD(ZeroDurationEngageStillAllowsTimedRelease)

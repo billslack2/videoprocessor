@@ -155,10 +155,11 @@ namespace AlphaSourceCrop
 		const VerticalFitConfirmationState& previous,
 		const VerticalBarContentDecision& observed);
 
-	// A current provisional envelope which expands exactly one vertical edge is
-	// eligible for the same trusted-base retention used by dense target
-	// confirmation. This closes the frame before the first dense sample without
-	// treating a horizontal or two-edge geometry change as subtitle motion.
+	// A current provisional envelope which expands one or both vertical edges is
+	// eligible for trusted-base retention until the first dense sample. This
+	// closes the pre-analysis frame without treating coarse vertical geometry as
+	// subtitle motion or confirmed picture fill. Horizontal involvement remains
+	// fail-open.
 	bool ShouldRetainTrustedBaseForVerticalInspection(
 		bool subtitleFitEnabled,
 		bool currentEnvelope,
@@ -320,6 +321,10 @@ namespace AlphaSourceCrop
 		// retain or fail open, never resize the picture.
 		bool genericVerticalFitConfirmed = false;
 		bool genericVerticalFitAuthoritative = false;
+		// When the dense subtitle/bar-content pass is enabled, a coarse current
+		// two-edge envelope is inspection evidence only. Dense classification and
+		// its confirmation policy must explicitly select FIT.
+		bool denseVerticalArbitrationEnabled = false;
 		int genericUpperBound = 0;
 		int genericLowerBound = 0;
 		int authoritativeTop = 0;
@@ -530,6 +535,10 @@ namespace AlphaSourceCrop
 		// instead of flashing to full raster. This may briefly clip the newly seen
 		// bar pixels, but cannot establish or renew crop authority.
 		bool verticalTranslationConfirmationPending = false;
+		// Dense picture-like evidence also requires bounded confirmation. Retain
+		// the same trusted base while that confirmation is pending; this does not
+		// grant or renew crop authority.
+		bool verticalFitConfirmationPending = false;
 		// Sparse source-baked text/UI in one encoded bar is a presentation
 		// displacement, not a new aspect ratio. Translate the trusted source
 		// window without changing its dimensions so scale and NLS stay stable.
