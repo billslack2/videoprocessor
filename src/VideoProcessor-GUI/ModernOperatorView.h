@@ -34,6 +34,8 @@ struct ModernOperatorStatus
 	CString captureLatency = TEXT("---");
 	std::array<CString, 4> hardware = {
 		TEXT("---"), TEXT("---"), TEXT("---"), TEXT("---") };
+	bool hardwareSpeedWarning = false;
+	bool hardwareWidthWarning = false;
 	CString maxCll = TEXT("---");
 	CString maxFall = TEXT("---");
 	CString masteringMin = TEXT("---");
@@ -88,9 +90,12 @@ private:
 		const CString& title, const CString& state = CString());
 	void DrawRows(CDC& dc, int x, int y, int width,
 		const std::initializer_list<std::pair<CString, CString>>& rows);
+	void DrawHardwareRow(CDC& dc, int x, int y, int width,
+		const CString& label, const CString& value, bool warning);
+	void DrawWarningIcon(CDC& dc, int x, int y);
 	void DrawWideValue(CDC& dc, int x, int y, int width,
 		const CString& value);
-	void DrawQueueMetric(CDC& dc, int x, int y, const CString& label,
+	void DrawQueueMetric(CDC& dc, int x, int y, int width, const CString& label,
 		const CString& value);
 	void CreateButton(CButton& button, UINT id, const CString& text);
 

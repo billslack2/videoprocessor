@@ -1103,6 +1103,7 @@ bool IsBooleanCommandLineOption(const wchar_t* argument)
 	return IsCommandLineOption(argument, L"/fullscreen") ||
 		IsCommandLineOption(argument, L"/windowedfullscreenmode") ||
 		IsCommandLineOption(argument, L"/noui") ||
+		IsCommandLineOption(argument, L"/always_warn_pci") ||
 		IsCommandLineOption(argument, L"/czeddie") ||
 		IsCommandLineOption(argument, L"/scene_detect") ||
 		IsCommandLineOption(argument, L"/scene") ||
@@ -1910,6 +1911,14 @@ BOOL CVideoProcessorApp::InitInstance()
 			{
 				dlg.HideUI(booleanValue);
 				noUiSelected = booleanValue;
+			}
+
+			// Diagnostic-only Modern UI switch. Do not add it to help text or
+			// configuration: it exists solely to exercise the PCIe warning glyph.
+			if (ReadBooleanOption(pArgs.data(), i, iNumOfArgs,
+				L"/always_warn_pci", booleanValue))
+			{
+				dlg.AlwaysWarnPci(booleanValue);
 			}
 
 			// Retain the legacy switch as a no-op so existing command lines remain

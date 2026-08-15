@@ -4440,6 +4440,11 @@ void CVideoProcessorDlg::HideUI(bool enabled)
 		m_rendererFullScreenStart = false;
 }
 
+void CVideoProcessorDlg::AlwaysWarnPci(bool enabled)
+{
+	m_alwaysWarnPci = enabled;
+}
+
 void CVideoProcessorDlg::StartMinimized(bool enabled)
 {
 	m_startMinimized = enabled;
@@ -10904,6 +10909,11 @@ void CVideoProcessorDlg::RefreshModernStatus()
 		value.Trim();
 		return value.IsEmpty() ? CString(TEXT("---")) : value;
 	};
+	auto pcieValueBelow = [](const CString& value, int minimum)
+	{
+		const int firstDigit = value.FindOneOf(TEXT("0123456789"));
+		return firstDigit >= 0 && _ttoi(value.Mid(firstDigit)) < minimum;
+	};
 
 	ModernOperatorStatus status;
 	status.captureDevice = selected(m_captureDeviceCombo);
@@ -10933,6 +10943,10 @@ void CVideoProcessorDlg::RefreshModernStatus()
 	if (status.hardware[1] != TEXT("---") &&
 		status.hardware[1].Left(1).CompareNoCase(TEXT("x")) != 0)
 		status.hardware[1] = TEXT("x") + status.hardware[1];
+	status.hardwareSpeedWarning = m_alwaysWarnPci ||
+		pcieValueBelow(status.hardware[0], 2);
+	status.hardwareWidthWarning = m_alwaysWarnPci ||
+		pcieValueBelow(status.hardware[1], 4);
 	status.maxCll = text(m_hdrLuminanceMaxCll);
 	status.maxFall = text(m_hdrLuminanceMaxFall);
 	status.masteringMin = text(m_hdrLuminanceMasterMin);
@@ -10947,6 +10961,17 @@ void CVideoProcessorDlg::RefreshModernStatus()
 		selectedRenderer->backend == RendererBackend::DIRECTSHOW;
 	status.vpRenderer = selectedRenderer &&
 		selectedRenderer->backend == RendererBackend::LIBPLACEBO;
+	if (status.directShowRenderer)
+	{
+		const CString prefix(TEXT("DirectShow"));
+		if (status.rendererName.Left(prefix.GetLength()).CompareNoCase(prefix) == 0)
+		{
+			status.rendererName = status.rendererName.Mid(prefix.GetLength());
+			status.rendererName.TrimLeft(TEXT(" \t-:|/"));
+			if (status.rendererName.IsEmpty())
+				status.rendererName = prefix;
+		}
+	}
 	if (m_rendererState == RendererState::RENDERSTATE_RENDERING &&
 		m_rendererStartTime != 0)
 	{

@@ -134,6 +134,7 @@ public:
 	void FullscreenMonitorName(const CString& name);
 	CString FullscreenMonitorName() const { return m_fullscreenMonitorName; }
 	void HideUI(bool enabled = true);
+	void AlwaysWarnPci(bool enabled = true);
 	void StartMinimized(bool enabled = true);
 	void SceneDetect(bool enabled = true);
 	void SceneCorrectionUpstreamSample(bool enabled);
@@ -518,6 +519,7 @@ protected:
 	CString m_fullscreenMonitorName;
 	ULONGLONG m_lastFullscreenMonitorSelectionLogTick = 0;
 	bool m_hideUI = false;
+	bool m_alwaysWarnPci = false;
 	bool m_noUiToggleShortcutLatched = false;
 	bool m_startMinimized = false;
 
