@@ -31,6 +31,7 @@ namespace MainConfigSchema
 			section == "queue" ||
 			section.rfind("queue.", 0) == 0 ||
 			section == "directshow" ||
+			section == "vprenderer.input_processing" ||
 			section == "directshow.conversion" ||
 			section == "directshow.ppm" ||
 			section == "queue_recovery" ||
@@ -96,7 +97,8 @@ namespace MainConfigSchema
 			ConfigSchema::Boolean("no_ui"),
 			ConfigSchema::Boolean("startminimized"),
 			ConfigSchema::Boolean("start_minimized"),
-			ConfigSchema::Any("capture_input")
+			ConfigSchema::Any("capture_input"),
+			ConfigSchema::Boolean("switch_refresh_rate")
 		};
 		if (!ConfigSchema::ValidateSection(
 			config, "command_line", commandLineRules, error))
@@ -159,8 +161,17 @@ namespace MainConfigSchema
 		if (!ConfigSchema::ValidateSection(
 			config, "directshow", directShowRules, error))
 			return false;
+		const std::vector<ConfigSchema::KeyRule> vpRendererInputRules = {
+			commandLineRules[10], // video_conversion
+			commandLineRules[11], // container_colorspace
+			commandLineRules[12], // hdr_colorspace
+			commandLineRules[13]  // hdr_luminance
+		};
+		if (!ConfigSchema::ValidateSection(
+			config, "vprenderer.input_processing", vpRendererInputRules, error))
+			return false;
 		// [general] is the shared input-policy default. [directshow] and
-		// [vprenderer] may independently override any of its fields, so overlap
+		// [vprenderer.input_processing] may independently override any of its fields, so overlap
 		// is deliberate and resolved by the runtime rather than rejected here.
 
 		const std::vector<ConfigSchema::KeyRule> deckLinkRules = {

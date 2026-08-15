@@ -2230,6 +2230,43 @@ namespace VideoProcessorTest
 			DeleteFileA(path.c_str());
 		}
 
+		TEST_METHOD(Vp0123InputProcessingChildIsNotADisplayProfile)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(
+				ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) +
+				"VideoProcessor-vp0123-input-processing-child.cfg";
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[general]\nrenderer: VideoProcessor Renderer (Alpha)\n"
+					"[vprenderer]\nquality: balanced\n"
+					"[vprenderer.input_processing]\n"
+					"video_conversion: none\n";
+			}
+
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			std::string error;
+			Assert::IsTrue(MainConfigSchema::Validate(config, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			RendererProfileConfig::Model model;
+			Assert::IsTrue(RendererProfileConfig::Read(config, model, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			const auto display = std::find_if(model.groups.begin(), model.groups.end(),
+				[](const RendererProfileConfig::Group& group)
+				{ return group.name == "display"; });
+			Assert::IsTrue(display != model.groups.end());
+			Assert::AreEqual(static_cast<size_t>(1), display->profiles.size());
+			Assert::AreEqual("base", display->profiles.front().c_str());
+			const auto base = model.profiles.find("display.base");
+			Assert::IsTrue(base != model.profiles.end());
+			Assert::IsTrue(base->second.settings.find("video_conversion") ==
+				base->second.settings.end(),
+				L"Input processing was misclassified as display-profile state.");
+			DeleteFileA(path.c_str());
+		}
+
 		TEST_METHOD(Vp0097ShortcutKeyCombinesWithOptionalProfileRule)
 		{
 			char temporaryDirectory[MAX_PATH] = {};

@@ -20,6 +20,7 @@ class QPushButton;
 class QRect;
 class QStackedWidget;
 class QSystemTrayIcon;
+class QThread;
 class QToolButton;
 class QWindow;
 class QWinEventNotifier;
@@ -96,7 +97,9 @@ private:
 	bool saveChanges();
     bool notifyVideoProcessor();
     void loadConfiguration();
+    void migrateSharedRefreshRate();
     void loadDiscoveryCache();
+    void applyMonitorDiscovery(const QStringList& discovered);
     void setupTray();
     void exitApplication();
     void setStatus(const QString& message, bool error = false);
@@ -137,6 +140,7 @@ private:
     QLabel* status_ = nullptr;
 	QLabel* effectSummary_ = nullptr;
     QComboBox* monitorChoice_ = nullptr;
+    QThread* monitorDiscoveryThread_ = nullptr;
     QComboBox* actionRendererTarget_ = nullptr;
     QPushButton* applyButton_ = nullptr;
     QPushButton* saveButton_ = nullptr;

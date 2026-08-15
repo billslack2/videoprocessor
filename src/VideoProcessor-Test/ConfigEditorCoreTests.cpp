@@ -729,6 +729,29 @@ namespace VideoProcessorTest
 			DeleteFileW(path.c_str());
 		}
 
+		TEST_METHOD(ConfigEditorCoreAcceptsRendererInputProcessingPolicy)
+		{
+			const std::wstring path = MakeTemporaryConfigPath(L"vpc");
+			Assert::IsFalse(path.empty());
+			WriteBytes(path,
+				"[general]\nvideo_conversion: v210_to_p010\n"
+				"[vprenderer.input_processing]\nvideo_conversion: none\n"
+				"container_colorspace: follow_input\n"
+				"hdr_colorspace: follow_input_lldv\n"
+				"hdr_luminance: follow_input_lldv\n");
+
+			ConfigEditorCore::ConfigDocument document;
+			std::wstring error;
+			Assert::IsTrue(document.Load(path, error), error.c_str());
+			Assert::IsTrue(ConfigEditorCore::ValidateCandidate(document, error),
+				error.c_str());
+			Assert::IsTrue(document.SetKnown(
+				"vprenderer.input_processing", "video_conversion", "v210_to_p010"));
+			Assert::IsTrue(ConfigEditorCore::ValidateCandidate(document, error),
+				error.c_str());
+			DeleteFileW(path.c_str());
+		}
+
 		TEST_METHOD(ConfigEditorCoreSupportsRepeatedSafeSavesFromOneDocument)
 		{
 			const std::wstring path = MakeTemporaryConfigPath(L"vpc");

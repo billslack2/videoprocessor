@@ -316,8 +316,7 @@ QString VpTheme::StyleSheet()
         QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; }
         QSplitter::handle { background: transparent; width: 12px; }
         QSplitter::handle:vertical { height: 12px; }
-        QPushButton[nav="true"]:focus, QToolButton[navSection="true"]:focus,
-        QToolButton[headerMenu="true"]:focus {
+        QToolButton[navSection="true"]:focus, QToolButton[headerMenu="true"]:focus {
             border: 1px solid #4daaf1;
         }
         QCheckBox:focus { color: #ffffff; }

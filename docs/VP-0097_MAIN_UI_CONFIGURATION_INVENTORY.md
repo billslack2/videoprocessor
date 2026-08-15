@@ -14,15 +14,15 @@ This inventory treats the existing VideoProcessor window as two different surfac
 | Capture Restart | Live command | None | Never saved |
 | Renderer | Persistent startup choice | `[general] renderer` | Editable discovered selector; blank means not configured and an unavailable configured name is retained |
 | Renderer Restart | Live command | None | Never saved |
-| Container colorspace | Shared default with renderer overrides | `[general] container_colorspace`, optionally `[directshow]` or `[vprenderer]` | General supplies the default; both renderer pages offer `Inherit (General)` or a finite override |
-| HDR colorspace policy | Shared default with renderer overrides | `[general] hdr_colorspace`, optionally `[directshow]` or `[vprenderer]` | General supplies the default; both renderer pages offer `Inherit (General)` or a finite override |
-| HDR luminance policy | Shared default with renderer overrides | `[general] hdr_luminance`, optionally `[directshow]` or `[vprenderer]` | General supplies the default; both renderer pages offer `Inherit (General)` or a finite override |
+| Container colorspace | Shared default with renderer overrides | `[general] container_colorspace`, optionally `[directshow]` or `[vprenderer.input_processing]` | General supplies the default; both renderer pages offer `Inherit (General)` or a finite override |
+| HDR colorspace policy | Shared default with renderer overrides | `[general] hdr_colorspace`, optionally `[directshow]` or `[vprenderer.input_processing]` | General supplies the default; both renderer pages offer `Inherit (General)` or a finite override |
+| HDR luminance policy | Shared default with renderer overrides | `[general] hdr_luminance`, optionally `[directshow]` or `[vprenderer.input_processing]` | General supplies the default; both renderer pages offer `Inherit (General)` or a finite override |
 | Queue Use | Live enable switch | None | Not exposed; needs a config contract before addition |
 | Queue capacity | Persistent queue profile value | `[queue]` or `[queue.<name>]` `queue_size` | Editable in the Qt ordered Queue profile page |
 | Queue Reset | Live command | None | Never saved |
 | Queue Auto | Live policy switch | No Boolean contract | Not exposed. Recovery thresholds are persistent queue settings, but this checkbox itself is not |
 | Scene Detect | Persistent startup policy | `[general] scene_detect` | Editable on General |
-| Video conversion | Shared default with renderer overrides | `[general] video_conversion`, optionally `[directshow]` or `[vprenderer]` | General supplies the default; both renderer pages offer `Inherit (General)` or a finite override |
+| Video conversion | Shared default with renderer overrides | `[general] video_conversion`, optionally `[directshow]` or `[vprenderer.input_processing]` | General supplies the default; both renderer pages offer `Inherit (General)` or a finite override |
 | Start/Stop method | Persistent DirectShow policy | `[directshow] renderer_start_stop_time_method` | Editable finite selector |
 | DirectShow nominal range | Persistent DirectShow override | `[directshow] renderer_nominal_range` | Editable finite selector |
 | DirectShow transfer function | Persistent DirectShow override | `[directshow] renderer_transfer_function` | Editable finite selector |

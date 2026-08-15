@@ -88,8 +88,8 @@ vprenderer.sdr_target_primaries	rec709
 vprenderer.sdr_target_primaries	bt2020
 vprenderer.report_bt2020_to_display	true
 vprenderer.report_bt2020_to_display	false
-vprenderer.switch_refresh_rate	true
-vprenderer.switch_refresh_rate	false
+general.switch_refresh_rate	true
+general.switch_refresh_rate	false
 vprenderer.viewport.<variant>.automatic_crop	true
 vprenderer.viewport.<variant>.automatic_crop	false
 vprenderer.viewport.<variant>.vertical_alignment	top

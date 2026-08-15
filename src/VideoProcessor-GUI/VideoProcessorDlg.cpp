@@ -3599,8 +3599,15 @@ bool CVideoProcessorDlg::StageRuntimeSettings(
 	auto getBackendInputValue = [&config, &getApplicationValue](bool vpRenderer,
 		const char* key, std::string& value)
 	{
-		const char* section = vpRenderer ? "vprenderer" : "directshow";
+		const char* section = vpRenderer ? "vprenderer.input_processing" : "directshow";
 		if (config.TryGetString(section, key, value)) return true;
+		if (vpRenderer && config.TryGetString("vprenderer.input", key, value))
+			return true;
+		// VP-0123 initially wrote the renderer override into the display-profile
+		// root. Keep that spelling readable while new saves use the independent
+		// input-policy root, which profile rename/remove operations cannot touch.
+		if (vpRenderer && config.TryGetString("vprenderer", key, value))
+			return true;
 		if (getApplicationValue(key, value)) return true;
 		// Before VP-0123, [directshow] was a shared compatibility location.
 		// Retain it only as VP Renderer's final fallback for old unsaved files.
@@ -4027,7 +4034,7 @@ void CVideoProcessorDlg::PublishStagedRuntimeSettings()
 	m_rendererFullscreenCheck.SetCheck(
 		sessionPresentation.fullscreen ? BST_CHECKED : BST_UNCHECKED);
 	DebugLog::Log(
-		"Configuration runtime settings published: renderer=%S renderer_source=%d saved_renderer=%S session_renderer=%S accepted_renderer=%S alpha_selected=%d conversion=%d frame_offset=%d metadata=%d directshow=%d presentation_retained=1 video_only=%d fullscreen=%d",
+		"Configuration runtime settings published: renderer=%S renderer_source=%d saved_renderer=%S session_renderer=%S accepted_renderer=%S alpha_selected=%d conversion=%d directshow_conversion=%d vp_conversion=%d active_conversion=%d frame_offset=%d metadata=%d directshow=%d presentation_retained=1 video_only=%d fullscreen=%d",
 		rendererDecision.renderer.empty() ? L"(retained)" :
 			rendererDecision.renderer.c_str(),
 		static_cast<int>(rendererDecision.source),
@@ -4039,6 +4046,11 @@ void CVideoProcessorDlg::PublishStagedRuntimeSettings()
 		IsAlphaRendererSelected() ? 1 : 0,
 		(m_stagedRuntimeSettings.hasDirectShowVideoConversion ||
 			m_stagedRuntimeSettings.hasVpRendererVideoConversion) ? 1 : 0,
+		static_cast<int>(m_directShowVideoConversionOverride),
+		static_cast<int>(m_vpRendererVideoConversionOverride),
+		static_cast<int>(IsAlphaRendererSelected() ?
+			m_vpRendererVideoConversionOverride :
+			m_directShowVideoConversionOverride),
 		m_stagedRuntimeSettings.hasFrameOffset ? 1 : 0,
 		(m_stagedRuntimeSettings.hasDirectShowContainerColorSpace ||
 			m_stagedRuntimeSettings.hasVpRendererContainerColorSpace ||
