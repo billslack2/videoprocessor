@@ -1706,8 +1706,8 @@ QWidget* ConfigEditorWindow::createShell()
 
     navigation_ = new QWidget;
     navigation_->setObjectName(QStringLiteral("sidebar"));
-    navigation_->setMinimumWidth(156);
-    navigation_->setMaximumWidth(184);
+    navigation_->setMinimumWidth(172);
+    navigation_->setMaximumWidth(200);
     navigation_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);
     navigation_->setAccessibleName(QStringLiteral("Settings navigation"));
     auto* navLayout = new QVBoxLayout(navigation_);
@@ -4741,8 +4741,8 @@ QWidget* ConfigEditorWindow::createShortcutsPage()
         { "DeckLink input 2", "capture_2", "Ctrl+2" },
         { "DeckLink input 3", "capture_3", "Ctrl+3" },
         { "DeckLink input 4", "capture_4", "Ctrl+4" },
-        { "Active renderer: conversion off", "video_conversion_off", "V" },
-        { "Active renderer: V210 to P010", "video_conversion_p010", "Shift+V" }
+        { "Video conversion off", "video_conversion_off", "V" },
+        { "V210 to P010 conversion", "video_conversion_p010", "Shift+V" }
     };
 
     auto makeEditor = [this](const QString& key, const QString& defaultValue)

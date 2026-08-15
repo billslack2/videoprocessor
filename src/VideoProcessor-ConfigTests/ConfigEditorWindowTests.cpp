@@ -372,6 +372,13 @@ void testEveryPageRoundTrips()
     std::sort(inputNavigationTargets.begin(), inputNavigationTargets.end());
     require(inputNavigationTargets == QList<int>{ 10, 11 },
         "Renderer Input navigation entries do not target the dedicated pages");
+    QWidget* navigation = requireControl<QWidget>(window, QStringLiteral("sidebar"));
+    require(navigation->minimumWidth() >= 172,
+        "The settings navigation is too narrow for renderer child labels");
+    const QString theme = VpTheme::StyleSheet();
+    require(theme.contains(QStringLiteral("QPushButton[nav=\"true\"]:focus")) &&
+        theme.contains(QStringLiteral("outline: 0")),
+        "Focused settings navigation still uses the generic button focus box");
 
     requireControl<QComboBox>(window, QStringLiteral("config.general.capture_device"))
         ->setEditText(QStringLiteral("Decklink Test Device"));
@@ -632,6 +639,14 @@ void testTwoColumnCardsShareRowHeight()
         populatedShortcut->minimumWidth() == emptyShortcut->minimumWidth() &&
         populatedShortcut->maximumWidth() == emptyShortcut->maximumWidth(),
         "Empty shortcut editors do not retain the populated field width");
+    QStringList shortcutLabels;
+    for (QLabel* label : pages->widget(6)->findChildren<QLabel*>())
+        shortcutLabels.append(label->text());
+    require(shortcutLabels.contains(QStringLiteral("Video conversion off")) &&
+        shortcutLabels.contains(QStringLiteral("V210 to P010 conversion")) &&
+        !shortcutLabels.contains(QStringLiteral("Active renderer: conversion off")) &&
+        !shortcutLabels.contains(QStringLiteral("Active renderer: V210 to P010")),
+        "Shared video-conversion shortcuts do not use compact renderer-neutral labels");
 }
 
 void testInheritedRendererInputSelectorsUseEffectiveLabels()
