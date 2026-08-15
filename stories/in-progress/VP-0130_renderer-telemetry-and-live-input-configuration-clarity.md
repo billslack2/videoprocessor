@@ -69,6 +69,26 @@ Implementation checkpoint:
   was SHA-256 verified after deployment, and the replacement launched with a
   responsive main window. Backup:
   `C:\\Videoprocessor\\vp\\backups\\vp0130-6248fe9-20260815-121529`.
+- Configuration-editor responsiveness follow-up produced and deployed
+  `8ecfc5f` (`fix(config): keep cached selectors responsive`). Capture and
+  renderer discovery remain cached for the editor process, monitor discovery
+  now refreshes only when Qt reports a real screen-topology change, and the
+  active-profile timer pauses while hidden or while a selector popup owns
+  focus. Unchanged profile state no longer emits redundant model updates. The
+  full configuration-editor test suite, including real dropdown interaction
+  and the new no-invalidation regression, passed. The previous editor is
+  backed up at
+  `C:\\Videoprocessor\\vp\\backups\\vp0130-8ecfc5f-20260815-122759`.
+- Cold-start testing exposed an inconsistent parser: the valid shared setting
+  `video_conversion: NONE` was translated to `/video_conversion NONE`, but
+  the startup parser rejected it even though validation and live Apply accept
+  it. Follow-up `0809d04` (`fix(config): accept disabled video conversion at
+  startup`) centralizes parsing and accepts `NONE`/`OFF` plus the existing
+  conversion spellings. The focused x64 Release regression test passed, the
+  clean x64 Release host/plugin pair built successfully, and source/deployed
+  SHA-256 hashes matched. The deployed application launched with the existing
+  configuration and a responsive main window. Backup:
+  `C:\\Videoprocessor\\vp\\backups\\vp0130-0809d04-20260815-123500`.
 
 ## User story
 
