@@ -4106,7 +4106,19 @@ QWidget* ConfigEditorWindow::createShadersPage()
     parameters->verticalHeader()->setVisible(false);
     parameters->setSelectionBehavior(QAbstractItemView::SelectRows);
     parameters->setSelectionMode(QAbstractItemView::SingleSelection);
-    parameters->setMinimumHeight(170);
+    // Let the containing page own vertical overflow.  A custom parameter list
+    // is generally small, but an implementation may legitimately expose many
+    // keys; an inner scrollbar hides those values behind a second scroll area.
+    auto updateParameterTableHeight = [parameters]
+    {
+        const int frame = parameters->frameWidth() * 2;
+        const int header = parameters->horizontalHeader()->height();
+        int rows = 0;
+        for (int row = 0; row < parameters->rowCount(); ++row)
+            rows += parameters->rowHeight(row);
+        parameters->setFixedHeight(frame + header + rows);
+    };
+    parameters->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     auto* parameterButtons = new QHBoxLayout;
     auto* addParameter = new QPushButton(QStringLiteral("+ Add parameter"));
     auto* removeParameter = new QPushButton(QStringLiteral("Remove selected"));
@@ -4121,6 +4133,16 @@ QWidget* ConfigEditorWindow::createShadersPage()
     parameterLayout->addLayout(parameterButtons);
     parameterFields->setVisible(false);
     detailsLayout->addWidget(parameterFields);
+    connect(parameters->model(), &QAbstractItemModel::rowsInserted, this,
+        [updateParameterTableHeight](const QModelIndex&, int, int)
+        {
+            updateParameterTableHeight();
+        });
+    connect(parameters->model(), &QAbstractItemModel::rowsRemoved, this,
+        [updateParameterTableHeight](const QModelIndex&, int, int)
+        {
+            updateParameterTableHeight();
+        });
     auto* offExplanation = helpLabel(QStringLiteral(
         "NLS is disabled. Choose an included mode on the left to configure its stretch behavior."));
     offExplanation->setProperty("emptyState", true);
@@ -4269,7 +4291,7 @@ QWidget* ConfigEditorWindow::createShadersPage()
 
     auto load = [this, state, root, title, shortcut, useRule, rule, ruleField,
         normalFields, parameterToggle, advanced, parameterFields, offExplanation, label, parameters,
-        stage, hlsl, glsl]
+        stage, hlsl, glsl, updateParameterTableHeight]
         (QListWidgetItem* item)
     {
         state->loading = true;
@@ -4325,6 +4347,7 @@ QWidget* ConfigEditorWindow::createShadersPage()
             parameters->setItem(row, 1,
                 new QTableWidgetItem(QString::fromLocal8Bit(setting.second.c_str())));
         }
+        updateParameterTableHeight();
         loadCombo(stage, QStringLiteral("stage"), QStringLiteral("pre_resize"));
         hlsl->setText(value(state->section, QStringLiteral("hlsl_file"), QStringLiteral("NLS.hlsl")));
         glsl->setText(value(state->section, QStringLiteral("glsl_file"), QStringLiteral("NLS.glsl")));

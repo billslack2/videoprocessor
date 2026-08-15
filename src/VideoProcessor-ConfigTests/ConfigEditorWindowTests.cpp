@@ -20,6 +20,7 @@
 #include <QFile>
 #include <QFrame>
 #include <QImage>
+#include <QHeaderView>
 #include <QInputDialog>
 #include <QKeyEvent>
 #include <QMouseEvent>
@@ -34,6 +35,7 @@
 #include <QPushButton>
 #include <QRect>
 #include <QScrollArea>
+#include <QScrollBar>
 #include <QShortcut>
 #include <QSpinBox>
 #include <QSplitter>
@@ -1528,6 +1530,62 @@ void testLegacyRendererVisibilityDefaultsHiddenAndPreservesShortcuts()
         renderer->count() == cachedRendererCount &&
         renderer->currentData().toString() == QStringLiteral("DirectShow - madVR"),
         "Hiding legacy renderers rebuilt the model or changed selection");
+}
+
+void testCustomShaderParametersExpandIntoPageScroll()
+{
+    QTemporaryDir directory;
+    const QString path = copyFixture(directory);
+    QByteArray configuration = readBytes(path);
+    const qsizetype section = configuration.indexOf("[shader.nls.standard]\n");
+    const qsizetype nextSection = configuration.indexOf("\n[", section + 1);
+    require(section >= 0 && nextSection > section,
+        "Standard shader section was not found in the fixture");
+    QByteArray parameters;
+    for (int index = 0; index < 24; ++index)
+        parameters += "custom_parameter_" + QByteArray::number(index) + ": value\n";
+    configuration.insert(nextSection + 1, parameters);
+    QFile file(path);
+    require(file.open(QIODevice::WriteOnly | QIODevice::Truncate),
+        "Cannot prepare long custom parameter fixture");
+    require(file.write(configuration) == configuration.size(),
+        "Cannot write long custom parameter fixture");
+    file.close();
+
+    ConfigEditorWindow window(path, 0, true);
+    window.resize(840, 500);
+    window.show();
+    QCoreApplication::processEvents();
+    QListWidget* modes = requireControl<QListWidget>(window,
+        QStringLiteral("config.shader.nls.modes"));
+    modes->setCurrentRow(1);
+    QToolButton* parameterToggle = requireControl<QToolButton>(window,
+        QStringLiteral("config.shader.nls.parameters_toggle"));
+    parameterToggle->setChecked(true);
+    QCoreApplication::processEvents();
+    QTableWidget* table = requireControl<QTableWidget>(window,
+        QStringLiteral("config.shader.nls.parameters"));
+    require(table->rowCount() >= 24,
+        "Long custom parameter list did not load");
+    require(table->verticalScrollBarPolicy() == Qt::ScrollBarAlwaysOff,
+        "Custom parameter table retained an internal vertical scrollbar");
+    int rowHeight = 0;
+    for (int row = 0; row < table->rowCount(); ++row)
+        rowHeight += table->rowHeight(row);
+    require(table->height() == table->frameWidth() * 2 +
+        table->horizontalHeader()->height() + rowHeight,
+        "Custom parameter table did not expand to show every row");
+
+    QScrollArea* pageScroll = nullptr;
+    for (QWidget* ancestor = table->parentWidget(); ancestor;
+        ancestor = ancestor->parentWidget())
+        if (auto* scroll = qobject_cast<QScrollArea*>(ancestor))
+        {
+            pageScroll = scroll;
+            break;
+        }
+    require(pageScroll && pageScroll->verticalScrollBar()->maximum() > 0,
+        "Long custom parameter list did not overflow the containing page");
 }
 
 void testUnchangedActiveProfileStatusDoesNotInvalidateLists()
@@ -3219,6 +3277,8 @@ int main(int argc, char** argv)
         testSceneDetectionDefaultsOffAndHidesManualOverrides);
     failures += run("virtual shader Off option persists", testVirtualShaderOffOptionPersistsWhenConfigured);
     failures += run("disabling shader rule preserves shortcut", testDisablingShaderRulePreservesShortcut);
+    failures += run("custom shader parameters expand into page scroll",
+        testCustomShaderParametersExpandIntoPageScroll);
     failures += run("renderer profile sections collapse and persist", testRendererProfileSectionsCollapseAndPersist);
     failures += run("output experiments persist and restore defaults",
         testOutputExperimentsPersistAndRestoreDefaults);
