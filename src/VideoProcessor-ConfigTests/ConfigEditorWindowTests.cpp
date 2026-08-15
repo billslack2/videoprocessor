@@ -367,7 +367,7 @@ void testEveryPageRoundTrips()
         "Renderer Input pages were not added as dedicated settings pages");
     QList<int> inputNavigationTargets;
     for (QPushButton* button : window.findChildren<QPushButton*>())
-        if (button->text() == QStringLiteral("Input") && button->property("navChild").toBool())
+        if (button->text() == QStringLiteral("Input Processing") && button->property("navChild").toBool())
             inputNavigationTargets.append(button->property("pageIndex").toInt());
     std::sort(inputNavigationTargets.begin(), inputNavigationTargets.end());
     require(inputNavigationTargets == QList<int>{ 10, 11 },

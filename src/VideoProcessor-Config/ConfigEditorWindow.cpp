@@ -1693,10 +1693,10 @@ QWidget* ConfigEditorWindow::createShell()
     };
     addRendererGroup(QStringLiteral("VP Renderer"), {
         { QStringLiteral("Rendering"), 2 }, { QStringLiteral("Screen Config"), 4 },
-        { QStringLiteral("Input"), 10 }
+        { QStringLiteral("Input Processing"), 10 }
     });
     addRendererGroup(QStringLiteral("DirectShow"), {
-        { QStringLiteral("General"), 3 }, { QStringLiteral("Input"), 11 }
+        { QStringLiteral("General"), 3 }, { QStringLiteral("Input Processing"), 11 }
     });
     navLayout->addStretch();
     centerLayout->addWidget(navigation_);
@@ -4639,8 +4639,8 @@ QWidget* ConfigEditorWindow::createShortcutsPage()
         { "DeckLink input 2", "capture_2", "Ctrl+2" },
         { "DeckLink input 3", "capture_3", "Ctrl+3" },
         { "DeckLink input 4", "capture_4", "Ctrl+4" },
-        { "Disable video conversion", "video_conversion_off", "V" },
-        { "V210 to P010 conversion", "video_conversion_p010", "Shift+V" }
+        { "Active renderer: conversion off", "video_conversion_off", "V" },
+        { "Active renderer: V210 to P010", "video_conversion_p010", "Shift+V" }
     };
 
     auto makeEditor = [this](const QString& key, const QString& defaultValue)
@@ -4722,7 +4722,7 @@ QWidget* ConfigEditorWindow::createShortcutsPage()
         QStringLiteral("Built-in application and display controls."),
         makeForm(applicationFields, std::size(applicationFields)));
     auto* captureCard = createCard(QStringLiteral("Capture & renderer"),
-        QStringLiteral("Capture selection, renderer control, and conversion."),
+        QStringLiteral("Capture selection, renderer control, and active-renderer conversion."),
         makeForm(captureFields, std::size(captureFields)));
     applicationCard->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
     captureCard->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
