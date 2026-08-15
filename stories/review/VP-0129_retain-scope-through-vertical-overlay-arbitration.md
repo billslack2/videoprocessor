@@ -2,14 +2,48 @@
 
 ## Status
 
-In Progress (2026-08-15). Implementation is starting from default-branch
-commit `daed55e98566c4b109765de004b715f7e01a3690` on
-`codex/vp-0129-vertical-overlay-arbitration`. Research is based on deployed
-log `C:\Videoprocessor\vp\logs\vp.log`
-from 2026-08-15 and default-branch source commit
-`daed55e98566c4b109765de004b715f7e01a3690` (`v1.2.001-beta`). This is a
-narrow follow-up to VP-0122; it does not propose a crop-system redesign or a
-global timing change.
+Review (2026-08-15). The user authorized implementation after reviewing this
+story; GitHub was re-queried and confirmed `v1.2.001-beta` as the default
+integration branch. Implementation commit
+`9e19fa8bf31537aba11b020acceab99237688a3f` is pushed on
+`codex/vp-0129-vertical-overlay-arbitration`, based on default-branch commit
+`daed55e98566c4b109765de004b715f7e01a3690`. The clean worktree is
+`C:\Users\bslac\vp\worktrees\vp-0129-vertical-overlay-arbitration`.
+
+Completed work is deliberately narrow:
+
+- coarse current two-edge vertical envelopes no longer bypass dense
+  arbitration while subtitle Fit is enabled;
+- a Fit accepted by the existing dense two-sample policy is now routed
+  explicitly into bounded outward presentation;
+- provisional one- or two-edge vertical inspection and pending dense Fit retain
+  the exact same-generation trusted base without renewing crop authority;
+- final crop telemetry now distinguishes inspection, translation-confirmation,
+  and Fit-confirmation waits; and
+- immediate trusted-full-raster, invalid-input, stale-generation, horizontal,
+  and explicit fail-open behavior remains ahead of retention.
+
+Validation at exact commit `9e19fa8`:
+
+- the three new regressions failed before implementation and pass afterward;
+- all 98 focused `AlphaSourceCropPolicyTests` pass;
+- the complete x64 Release solution builds successfully with clean build
+  identity `v1.2.001-beta-9e19fa8` and `VERSION_DIRTY=false`;
+- the complete test DLL reports 820/825, with the same five unrelated existing
+  configuration/reference-fixture failures:
+  `ConfigurationReferenceMatchesPublicFieldInventory`,
+  `Vp0097NamedViewportsUseFileOrderAndIgnoreLabels`,
+  `Vp0079OwnerVariantsResolveWithoutPersistedProfileState`,
+  `ConfigEditorCoreRoundTripsEveryEditorOwnedKey`, and
+  `ConfigEditorCoreValidatesEveryEditableOrderedProfileSurface`; and
+- the standalone x64 Release `VideoProcessorConfigTests.exe` suite passes.
+
+Independent code review, live validation of the captured menu/subtitle
+sequence, and merge to `v1.2.001-beta` remain. No deployment or configuration
+change was performed. Original research used deployed log
+`C:\Videoprocessor\vp\logs\vp.log` from 2026-08-15 and default-branch source
+commit `daed55e98566c4b109765de004b715f7e01a3690`. This remains a narrow
+VP-0122 follow-up, not a crop-system redesign or global timing change.
 
 ## User story
 
