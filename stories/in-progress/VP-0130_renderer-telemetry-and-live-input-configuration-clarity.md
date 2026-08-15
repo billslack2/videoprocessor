@@ -48,6 +48,13 @@ Implementation checkpoint:
 - The corrected x64 Release host/plugin pair was deployed and SHA-256 verified
   on 2026-08-15. Its previous binaries are backed up at
   `C:\\Videoprocessor\\vp\\backups\\vp0130-7497335-20260815-115418`.
+- Follow-up operator review produced and deployed `c8b372c` (`fix(ui): restore
+  queue metric alignment`). Queue labels and values again share the original
+  left edge and spacing, warning glyphs expose the hover text **May impact
+  performance**, the DirectShow row reads `Start/Stop`, and VP Renderer leaves
+  the backend-specific third row empty. The x64 Release host/plugin hashes
+  matched after deployment; the previous pair is backed up at
+  `C:\\Videoprocessor\\vp\\backups\\vp0130-c8b372c-20260815-120242`.
 
 ## User story
 
