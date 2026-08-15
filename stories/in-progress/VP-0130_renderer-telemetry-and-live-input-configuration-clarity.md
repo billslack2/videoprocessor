@@ -30,8 +30,13 @@ Implementation checkpoint:
   backend-owned overrides and are never flattened on Apply.
 - Clean x64 Release builds of the GUI, configuration editor, and relevant
   tests succeeded. The full configuration-editor suite, both focused editor
-  tests, and the focused native apply-policy test passed. The tracker now
-  awaits code and live operator visual review; no deployment has been made.
+  tests, and the focused native apply-policy test passed.
+- Deployed on 2026-08-15 from `3a9d652` after a fresh x64 Release build:
+  `VideoProcessor.exe`, `vprenderer\\VideoProcessorVPRenderer.dll`, and
+  `config\\VideoProcessorConfig.exe`. The previous binaries are backed up at
+  `C:\\Videoprocessor\\vp\\backups\\vp0130-3a9d652-20260815-113950`.
+  SHA-256 verification passed for all three deployed artifacts. The tracker
+  now awaits code and live operator visual review.
 
 ## User story
 
