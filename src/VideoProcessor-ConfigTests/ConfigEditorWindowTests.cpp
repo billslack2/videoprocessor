@@ -15,6 +15,7 @@
 #include <QDialog>
 #include <QDir>
 #include <QFile>
+#include <QFrame>
 #include <QInputDialog>
 #include <QKeyEvent>
 #include <QMouseEvent>
@@ -556,6 +557,59 @@ void testEveryPageRoundTrips()
     require(requireControl<QComboBox>(reloaded,
         QStringLiteral("config.directshow.video_conversion"))->currentData().toString() ==
         QStringLiteral("NONE"), "DirectShow input override did not reload");
+}
+
+void testTwoColumnCardsShareRowHeight()
+{
+    QTemporaryDir directory;
+    ConfigEditorWindow window(copyFixture(directory), 0, true);
+    window.resize(1200, 800);
+    window.show();
+    QCoreApplication::processEvents();
+
+    QStackedWidget* pages = requireControl<QStackedWidget>(window,
+        QStringLiteral("settingsPages"));
+    const auto card = [pages](const QString& title) -> QFrame*
+    {
+        for (QLabel* label : pages->widget(0)->findChildren<QLabel*>())
+            if (label->property("cardTitle").toBool() && label->text() == title)
+                return qobject_cast<QFrame*>(label->parentWidget());
+        throw std::runtime_error(("Missing card: " + title).toStdString());
+    };
+    QFrame* hardware = card(QStringLiteral("Hardware"));
+    QFrame* behavior = card(QStringLiteral("General behavior"));
+    QFrame* display = card(QStringLiteral("Display"));
+    QFrame* input = card(QStringLiteral("Input processing"));
+    require(hardware->height() == behavior->height() && hardware->y() == behavior->y(),
+        "The first two-column card row is not height-aligned");
+    require(display->height() == input->height() && display->y() == input->y(),
+        "The second two-column card row is not height-aligned");
+    require((hardware->layout()->alignment() & Qt::AlignTop) != 0 &&
+        (display->layout()->alignment() & Qt::AlignTop) != 0,
+        "Two-column card contents are not top-justified");
+}
+
+void testInheritedRendererInputSelectorsUseEffectiveLabels()
+{
+    QTemporaryDir directory;
+    ConfigEditorWindow window(copyFixture(directory), 0, true);
+    const auto verifyInherited = [&window](const QString& objectName,
+        const QString& expectedText)
+    {
+        QComboBox* combo = requireControl<QComboBox>(window, objectName);
+        require(combo->currentData().toString().isEmpty(),
+            "An inherited input setting must retain its empty override value");
+        require(combo->currentText() == expectedText,
+            "An inherited input setting did not identify its effective value");
+        require(combo->property("inherited").toBool(),
+            "An inherited input setting is not styled as inherited");
+    };
+    verifyInherited(QStringLiteral("config.directshow.video_conversion"),
+        QStringLiteral("Inherited: V210 to P010"));
+    verifyInherited(QStringLiteral("config.vprenderer.video_conversion"),
+        QStringLiteral("Inherited: V210 to P010"));
+    verifyInherited(QStringLiteral("config.directshow.hdr_colorspace"),
+        QStringLiteral("Inherited: Follow input (LLDV)"));
 }
 
 void answerInputDialog(const QString& text)
@@ -2732,6 +2786,9 @@ int main(int argc, char** argv)
     application.setStyleSheet(VpTheme::StyleSheet());
     int failures = 0;
     failures += run("every page round trips", testEveryPageRoundTrips);
+    failures += run("two-column cards share row height", testTwoColumnCardsShareRowHeight);
+    failures += run("inherited renderer Input selectors use effective labels",
+        testInheritedRendererInputSelectorsUseEffectiveLabels);
     failures += run("profile lifecycle through widgets", testProfileLifecycleThroughWidgets);
     failures += run("unrelated content remains exact", testUnrelatedContentRemainsExact);
     failures += run("scene detection defaults off and hides manual overrides",

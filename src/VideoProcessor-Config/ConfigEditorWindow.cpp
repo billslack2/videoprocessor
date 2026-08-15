@@ -236,9 +236,9 @@ public:
 
     void addCard(QWidget* card)
     {
-        // Dashboard-style cards should use their natural content height. If
-        // they vertically expand, short forms acquire large blank interiors
-        // and their controls drift apart as the window grows.
+        // Cards share their row height on wide, two-column pages while their
+        // contents stay top-justified. This keeps the visual grid aligned
+        // without allowing controls to drift apart as the window grows.
         card->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
         if (card->layout()) card->layout()->setAlignment(Qt::AlignTop);
         cards_.push_back(card);
@@ -256,13 +256,32 @@ private:
     void reflow(int availableWidth)
     {
         const int columns = availableWidth >= kResponsiveContentWidth ? 2 : 1;
-        if (columns == columns_ && layout_->count() == cards_.size()) return;
-        columns_ = columns;
-        for (QWidget* card : cards_) layout_->removeWidget(card);
-        for (int index = 0; index < cards_.size(); ++index)
-            layout_->addWidget(cards_[index], index / columns_, index % columns_, Qt::AlignTop);
-        for (int column = 0; column < 2; ++column)
-            layout_->setColumnStretch(column, column < columns_ ? 1 : 0);
+        if (columns != columns_ || layout_->count() != cards_.size())
+        {
+            columns_ = columns;
+            for (QWidget* card : cards_) layout_->removeWidget(card);
+            for (int index = 0; index < cards_.size(); ++index)
+                layout_->addWidget(cards_[index], index / columns_, index % columns_, Qt::AlignTop);
+            for (int column = 0; column < 2; ++column)
+                layout_->setColumnStretch(column, column < columns_ ? 1 : 0);
+        }
+
+        for (QWidget* card : cards_) card->setMinimumHeight(0);
+        if (columns_ != 2) return;
+
+        layout_->activate();
+        const int rowCount = (cards_.size() + columns_ - 1) / columns_;
+        for (int row = 0; row < rowCount; ++row) layout_->setRowMinimumHeight(row, 0);
+        for (int first = 0; first < cards_.size(); first += columns_)
+        {
+            const int second = first + 1;
+            const int rowHeight = second < cards_.size() ?
+                qMax(cards_[first]->sizeHint().height(), cards_[second]->sizeHint().height()) :
+                cards_[first]->sizeHint().height();
+            layout_->setRowMinimumHeight(first / columns_, rowHeight);
+            cards_[first]->setMinimumHeight(rowHeight);
+            if (second < cards_.size()) cards_[second]->setMinimumHeight(rowHeight);
+        }
     }
 
     QGridLayout* layout_ = nullptr;
@@ -936,10 +955,13 @@ QComboBox* ConfigEditorWindow::bindChoiceField(const QString& section, const QSt
         isSharedInputSetting(key);
     if (backendInputSetting)
     {
-        // An absent backend field is intentionally displayed as Inherit rather
-        // than as the resolved General value.  The legacy DirectShow location
-        // remains VP Renderer's final fallback until an editor save migrates it.
-        fallback.clear();
+        // A renderer-owned omission is an inherited selector value. DirectShow
+        // keeps [general] as its source; VP Renderer retains the historical
+        // DirectShow location as a final fallback for unsaved legacy files.
+        fallback = value(QStringLiteral("general"), key);
+        if (fallback.isEmpty() && section.compare(QStringLiteral("vprenderer"),
+            Qt::CaseInsensitive) == 0)
+            fallback = value(QStringLiteral("directshow"), key);
     }
     else if (section.compare(QStringLiteral("directshow"), Qt::CaseInsensitive) == 0)
         fallback = value(QStringLiteral("general"), key);
@@ -951,8 +973,28 @@ QComboBox* ConfigEditorWindow::bindChoiceField(const QString& section, const QSt
     else if (section.compare(QStringLiteral("general"), Qt::CaseInsensitive) == 0 &&
         isSharedInputSetting(key))
         fallback = value(QStringLiteral("directshow"), key);
-    const QString configured = value(section, key, fallback);
-    if (!configured.isEmpty())
+    const QString raw = value(section, key);
+    const bool inherited = backendInputSetting && raw.isEmpty();
+    const QString configured = inherited ? fallback : value(section, key, fallback);
+    if (inherited)
+    {
+        QString inheritedLabel = friendlyChoiceLabel(configured);
+        for (int index = 1; index < combo->count(); ++index)
+            if (combo->itemData(index).toString().compare(configured,
+                Qt::CaseInsensitive) == 0)
+            {
+                inheritedLabel = combo->itemText(index);
+                break;
+            }
+        combo->setItemText(0, configured.isEmpty() ? QStringLiteral("Inherited / not set") :
+            QStringLiteral("Inherited: %1").arg(inheritedLabel));
+        combo->setProperty("inherited", true);
+        combo->setToolTip(configured.isEmpty() ?
+            QStringLiteral("No General value is currently set. Selecting a value creates a renderer override.") :
+            QStringLiteral("Inherited from General. Selecting a value creates a renderer override."));
+        combo->setCurrentIndex(0);
+    }
+    else if (!configured.isEmpty())
     {
         int index = combo->findData(configured, Qt::UserRole, Qt::MatchFixedString);
         if (index < 0)
@@ -1014,9 +1056,16 @@ QComboBox* ConfigEditorWindow::bindChoiceField(const QString& section, const QSt
         });
     }
     else
-        connect(combo, qOverload<int>(&QComboBox::currentIndexChanged), this, [combo, save](int index)
+        connect(combo, qOverload<int>(&QComboBox::currentIndexChanged), this,
+            [combo, save, backendInputSetting](int index)
         {
-            if (index >= 0) save(combo->itemData(index).toString());
+            if (index < 0) return;
+            const bool inherited = backendInputSetting &&
+                combo->itemData(index).toString().trimmed().isEmpty();
+            combo->setProperty("inherited", inherited);
+            combo->style()->unpolish(combo);
+            combo->style()->polish(combo);
+            save(combo->itemData(index).toString());
         });
     return combo;
 }
