@@ -44,7 +44,6 @@ struct ModernOperatorStatus
 	CString rendererState = TEXT("Unavailable");
 	CString rendererUptime = TEXT("---");
 	CString rendererStartStopMethod = TEXT("---");
-	CString rendererPresents = TEXT("---");
 	bool directShowRenderer = false;
 	bool vpRenderer = false;
 	CString queueRaw = TEXT("---");
@@ -95,7 +94,7 @@ private:
 	void DrawWarningIcon(CDC& dc, int x, int y);
 	void DrawWideValue(CDC& dc, int x, int y, int width,
 		const CString& value);
-	void DrawQueueMetric(CDC& dc, int x, int y, int width, const CString& label,
+	void DrawQueueMetric(CDC& dc, int x, int y, const CString& label,
 		const CString& value);
 	void CreateButton(CButton& button, UINT id, const CString& text);
 

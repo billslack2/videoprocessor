@@ -14,6 +14,8 @@ namespace
 	constexpr UINT IDC_MODERN_QUEUE_RESET = 12004;
 	constexpr UINT IDC_MODERN_VIDEO_ONLY = 12005;
 	constexpr UINT IDC_MODERN_VIEW = 12006;
+	constexpr UINT IDC_MODERN_PCIE_SPEED_WARNING = 12007;
+	constexpr UINT IDC_MODERN_PCIE_WIDTH_WARNING = 12008;
 
 	const COLORREF Background = RGB(6, 13, 20);
 	const COLORREF Header = RGB(15, 26, 37);
@@ -171,7 +173,7 @@ void ModernOperatorView::DrawHardwareRow(CDC& dc, int x, int y, int width,
 		DrawWarningIcon(dc, valueRight + 4, y + 1);
 }
 
-void ModernOperatorView::DrawQueueMetric(CDC& dc, int x, int y, int width,
+void ModernOperatorView::DrawQueueMetric(CDC& dc, int x, int y,
 	const CString& label, const CString& value)
 {
 	dc.SelectObject(&m_regularFont);
@@ -179,9 +181,7 @@ void ModernOperatorView::DrawQueueMetric(CDC& dc, int x, int y, int width,
 	dc.TextOut(Px(x), Px(y), label);
 	dc.SetTextColor(Text);
 	dc.SelectObject(&m_boldFont);
-	CRect valueRect(Px(x), Px(y + 17), Px(x + width), Px(y + 34));
-	dc.DrawText(value, valueRect,
-		DT_RIGHT | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+	dc.TextOut(Px(x), Px(y + 17), value);
 }
 
 void ModernOperatorView::SetStatus(const ModernOperatorStatus& status)
@@ -189,6 +189,27 @@ void ModernOperatorView::SetStatus(const ModernOperatorStatus& status)
 	const bool presentationChanged =
 		m_status.videoOnly != status.videoOnly ||
 		m_status.fullscreenRequested != status.fullscreenRequested;
+	if (m_tooltips.GetSafeHwnd())
+	{
+		auto updateWarningTooltip = [this](bool wasVisible, bool visible,
+			const CRect& rect, UINT_PTR id)
+		{
+			if (wasVisible == visible)
+				return;
+			if (visible)
+				m_tooltips.AddTool(this, TEXT("May impact performance"), &rect, id);
+			else
+				m_tooltips.DelTool(this, id);
+		};
+		updateWarningTooltip(m_status.hardwareSpeedWarning,
+			status.hardwareSpeedWarning,
+			CRect(Px(243), Px(367), Px(256), Px(380)),
+			IDC_MODERN_PCIE_SPEED_WARNING);
+		updateWarningTooltip(m_status.hardwareWidthWarning,
+			status.hardwareWidthWarning,
+			CRect(Px(243), Px(385), Px(256), Px(398)),
+			IDC_MODERN_PCIE_WIDTH_WARNING);
+	}
 	m_status = status;
 	if (presentationChanged)
 	{
@@ -356,14 +377,13 @@ void ModernOperatorView::OnPaint()
 		DrawRows(dc, 27, 475, 230, {
 			{ TEXT("Renderer"), m_status.rendererName },
 			{ TEXT("Uptime"), m_status.rendererUptime },
-			{ TEXT("Start / stop"), m_status.rendererStartStopMethod } });
+			{ TEXT("Start/Stop"), m_status.rendererStartStopMethod } });
 	}
 	else if (m_status.vpRenderer)
 	{
 		DrawRows(dc, 27, 475, 230, {
 			{ TEXT("Renderer"), m_status.rendererName },
-			{ TEXT("Uptime"), m_status.rendererUptime },
-			{ TEXT("Presents"), m_status.rendererPresents } });
+			{ TEXT("Uptime"), m_status.rendererUptime } });
 	}
 	else
 	{
@@ -383,17 +403,17 @@ void ModernOperatorView::OnPaint()
 		TEXT(""), TEXT("Queue health"));
 	if (m_status.singleQueue)
 	{
-		DrawQueueMetric(dc, 27, 621, 88, TEXT("Queued"), m_status.queueTotal);
-		DrawQueueMetric(dc, 132, 621, 88, TEXT("Capacity"), m_status.queueCapacity);
-		DrawQueueMetric(dc, 237, 621, 88, TEXT("Drops"), m_status.dropped);
+		DrawQueueMetric(dc, 27, 621, TEXT("Queued"), m_status.queueTotal);
+		DrawQueueMetric(dc, 112, 621, TEXT("Capacity"), m_status.queueCapacity);
+		DrawQueueMetric(dc, 207, 621, TEXT("Drops"), m_status.dropped);
 	}
 	else
 	{
-		DrawQueueMetric(dc, 27, 621, 52, TEXT("Raw"), m_status.queueRaw);
-		DrawQueueMetric(dc, 88, 621, 82, TEXT("Converted"), m_status.queueConverted);
-		DrawQueueMetric(dc, 179, 621, 52, TEXT("Total"), m_status.queueTotal);
-		DrawQueueMetric(dc, 240, 621, 52, TEXT("Max"), m_status.queueCapacity);
-		DrawQueueMetric(dc, 301, 621, 52, TEXT("Drops"), m_status.dropped);
+		DrawQueueMetric(dc, 27, 621, TEXT("Raw"), m_status.queueRaw);
+		DrawQueueMetric(dc, 78, 621, TEXT("Converted"), m_status.queueConverted);
+		DrawQueueMetric(dc, 163, 621, TEXT("Total"), m_status.queueTotal);
+		DrawQueueMetric(dc, 218, 621, TEXT("Max"), m_status.queueCapacity);
+		DrawQueueMetric(dc, 267, 621, TEXT("Drops"), m_status.dropped);
 	}
 
 	paintDc.BitBlt(paintRect.left, paintRect.top,

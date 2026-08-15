@@ -10985,17 +10985,6 @@ void CVideoProcessorDlg::RefreshModernStatus()
 	if (status.directShowRenderer)
 		status.rendererStartStopMethod =
 			selected(m_rendererDirectShowStartStopTimeMethodCombo);
-	else if (status.vpRenderer && m_videoRenderer &&
-		m_rendererState == RendererState::RENDERSTATE_RENDERING)
-	{
-		RendererOutputContract::Status contract;
-		if (m_videoRenderer->GetOutputContractStatus(contract) &&
-			contract.available)
-		{
-			status.rendererPresents.Format(TEXT("%llu"),
-				static_cast<unsigned long long>(contract.successfulPresents));
-		}
-	}
 	// Queue getters enforce the renderer lifecycle contract and may only be
 	// queried after the graph has reached RENDERING. The Modern view is also
 	// refreshed during startup, so keep its initial placeholders until then.
