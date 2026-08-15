@@ -106,6 +106,15 @@ Implementation checkpoint:
   deployed artifacts matched their source SHA-256 hashes; the deployed host
   and Config window launched responsive. Backup:
   `C:\\Videoprocessor\\vp\\backups\\vp0130-64ca44d-20260815-130000`.
+- Legacy renderer visibility follow-up `4ee7cb4` (`fix(config): filter legacy
+  renderers immediately`) makes the checkbox a UI-only live filter. Toggling
+  it immediately rebuilds General, Actions, and renderer Shortcuts from the
+  cached discovery snapshot, preserves the active page and pending document,
+  and performs no rediscovery. Saving the preference no longer requests a
+  renderer restart. The focused regression and complete Config editor suite
+  passed, clean x64 Release host and Config builds completed, and both
+  deployed hashes matched. Backup:
+  `C:\\Videoprocessor\\vp\\backups\\vp0130-4ee7cb4-20260815-131000`.
 
 ## User story
 
@@ -126,11 +135,12 @@ confusing shared defaults with backend-specific overrides.
 2. Use the spare visual space around Hardware link/HDR/Queue cards to retain a
    readable, compact Modern layout. Keep the renderer Restart action and all
    existing queue controls functional.
-3. On successful Apply of `general.hide_legacy_renderers`, refresh every
-   renderer-discovery-dependent editor surface (General selector, Actions, and
-   renderer shortcuts) immediately from the same startup discovery snapshot.
-   Preserve the selected page and any still-configured hidden renderer value;
-   do not silently select another renderer.
+3. Treat `general.hide_legacy_renderers` as an immediate UI-only filter. On
+   toggle, refresh every renderer-discovery-dependent editor surface (General
+   selector, Actions, and renderer shortcuts) from the same startup discovery
+   snapshot without waiting for Apply or performing discovery again. Preserve
+   the selected page and any still-configured hidden renderer value; do not
+   silently select another renderer or request a renderer restart.
 4. Make the General Input processing description and effect summary explicit:
    `video_conversion`, `container_colorspace`, `hdr_colorspace`, and
    `hdr_luminance` are shared defaults and Apply requests the existing
@@ -148,10 +158,10 @@ confusing shared defaults with backend-specific overrides.
   fabricated presentation metric appears.
 - Queue information and Reset remain in the Queue health card rather than
   being duplicated in Renderer.
-- Toggling **Hide legacy renderers** then clicking Apply updates the editor's
-  renderer-dependent selections immediately, without reopening the editor or
-  discarding the current page. Turning it off restores the discovered legacy
-  choices.
+- Toggling **Hide legacy renderers** updates General, Actions, and renderer
+  Shortcuts immediately, without Apply, rediscovery, a renderer restart,
+  reopening the editor, or discarding the current page. Turning it off restores
+  the already-discovered legacy choices.
 - General Input processing changes display **Restart renderer** as their
   pending effect and signal the running VP only after a successful validated
   save.
