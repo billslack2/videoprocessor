@@ -2535,6 +2535,7 @@ struct LibplaceboVideoRenderer::Impl
 	uint64_t vpOwnedTargetFailureLoggedGeneration = 0;
 	uint64_t vpOwnedPresentFailureLoggedGeneration = 0;
 	uint64_t successfulPresentCount = 0;
+	uint64_t vpOwnedClearLoggedGeneration = 0;
 	std::string vpOwnedAppliedEncoding = "unapplied";
 	HRESULT vpOwnedColorSpaceResult = E_PENDING;
 	bool vpOwnedColorSpaceVerified = false;
@@ -3020,18 +3021,49 @@ struct LibplaceboVideoRenderer::Impl
 		if (!d3d11 || !d3d11->gpu || !swapchain)
 			return false;
 
-		// libplacebo guarantees a blit-capable FBO for the swapchains it creates
-		// itself.  That guarantee does not currently hold for the externally
-		// created DXGI swapchain that the VP-owned experiment wraps: clearing that
-		// FBO emits "dst->params.blit_dst" validation failures during every
-		// renderer restart.  The GUI already covers the old renderer while the
-		// replacement starts, so do not deliberately present an unsafe black frame
-		// on this diagnostic path.
 		if (vpOwnedSwapchain)
 		{
+			CComPtr<ID3D11Texture2D> backbuffer;
+			const HRESULT getBufferResult = vpOwnedSwapchain->GetBuffer(
+				0, IID_PPV_ARGS(&backbuffer));
+			if (FAILED(getBufferResult) || !backbuffer)
+			{
+				DebugLog::Log(
+					"VP-owned DXGI terminal black rejected: generation=%llu stage=GetBuffer result=0x%08lX",
+					static_cast<unsigned long long>(vpOwnedSwapchainGeneration),
+					static_cast<unsigned long>(getBufferResult));
+				return false;
+			}
+			pl_d3d11_wrap_params wrapParams{};
+			wrapParams.tex = static_cast<ID3D11Resource*>(backbuffer.p);
+			pl_tex targetTexture = pl_d3d11_wrap(d3d11->gpu, &wrapParams);
+			if (!targetTexture || !targetTexture->params.renderable ||
+				!targetTexture->params.blit_dst)
+			{
+				DebugLog::Log(
+					"VP-owned DXGI terminal black rejected: generation=%llu stage=capability renderable=%d blit_dst=%d",
+					static_cast<unsigned long long>(vpOwnedSwapchainGeneration),
+					targetTexture && targetTexture->params.renderable ? 1 : 0,
+					targetTexture && targetTexture->params.blit_dst ? 1 : 0);
+				pl_tex_destroy(d3d11->gpu, &targetTexture);
+				return false;
+			}
+			pl_swapchain_frame frame{};
+			frame.fbo = targetTexture;
+			pl_frame target{};
+			pl_frame_from_swapchain(&target, &frame);
+			const float black[] = { 0.0f, 0.0f, 0.0f };
+			pl_frame_clear(d3d11->gpu, &target, black);
+			pl_gpu_flush(d3d11->gpu);
+			pl_tex_destroy(d3d11->gpu, &targetTexture);
+			backbuffer.Release();
+			const HRESULT presentResult = vpOwnedSwapchain->Present(1, 0);
+			const bool presented = SUCCEEDED(presentResult);
 			DebugLog::Log(
-				"VP-owned DXGI swapchain: terminal black clear skipped before release (external FBO is not guaranteed blit-capable)");
-			return false;
+				"VP-owned DXGI terminal black: generation=%llu clear=whole_surface present=%d result=0x%08lX",
+				static_cast<unsigned long long>(vpOwnedSwapchainGeneration),
+				presented ? 1 : 0, static_cast<unsigned long>(presentResult));
+			return presented;
 		}
 
 		struct pl_swapchain_frame swapchainFrame{};
@@ -4170,6 +4202,7 @@ struct LibplaceboVideoRenderer::Impl
 		vpOwnedTargetFailureLoggedGeneration = 0;
 		vpOwnedPresentFailureLoggedGeneration = 0;
 		successfulPresentCount = 0;
+		vpOwnedClearLoggedGeneration = 0;
 	}
 
 	bool CreateVpOwnedSwapchain(bool blit, const char* trigger)
@@ -4235,6 +4268,7 @@ struct LibplaceboVideoRenderer::Impl
 		vpOwnedTargetFailureLoggedGeneration = 0;
 		vpOwnedPresentFailureLoggedGeneration = 0;
 		successfulPresentCount = 0;
+		vpOwnedClearLoggedGeneration = 0;
 		DebugLog::Log(
 			"VP-owned DXGI swapchain: created generation=%llu trigger=%s format=%u effect=%u buffers=%u usage=0x%08X size=%ux%u present_owner=VP",
 			static_cast<unsigned long long>(vpOwnedSwapchainGeneration), trigger,
@@ -6901,6 +6935,21 @@ struct LibplaceboVideoRenderer::Impl
 
 		struct pl_frame baseTarget{};
 		pl_frame_from_swapchain(&baseTarget, &swapchainFrame);
+		if (vpOwnedSwapchain)
+		{
+			// Flip-discard backbuffers contain undefined prior contents. Rendering a
+			// smaller destination rectangle must therefore begin with a full target
+			// clear, otherwise old pixels can survive around a resized viewport.
+			const float black[] = { 0.0f, 0.0f, 0.0f };
+			pl_frame_clear(d3d11->gpu, &baseTarget, black);
+			if (vpOwnedClearLoggedGeneration != vpOwnedSwapchainGeneration)
+			{
+				vpOwnedClearLoggedGeneration = vpOwnedSwapchainGeneration;
+				DebugLog::Log(
+					"VP-owned DXGI target clear: generation=%llu scope=whole_surface before_render=1 present_owner=VP",
+					static_cast<unsigned long long>(vpOwnedSwapchainGeneration));
+			}
+		}
 		const struct pl_color_repr returnedRepr = baseTarget.repr;
 		const struct pl_color_space returnedColor = baseTarget.color;
 		const bool returnedTargetMatchesActualOutput =
