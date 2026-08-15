@@ -621,11 +621,15 @@ QRect ConfigEditorPlacement::ClampFrameToWorkArea(const QRect& frame,
 }
 
 ConfigEditorWindow::ConfigEditorWindow(QString configPath, quintptr ownerHandle,
-    bool testMode)
+    bool testMode, const QStringList& testFilteredRenderers,
+    const QStringList& testAllRenderers)
     : configPath_(std::move(configPath)), ownerHandle_(ownerHandle),
       testMode_(testMode),
       document_(std::make_unique<ConfigEditorCore::ConfigDocument>())
 {
+    // Windows advertises a roughly 150 ms combo-box animation through Qt.
+    // Config is a dense control surface; dropdowns should open synchronously.
+    QApplication::setEffectEnabled(Qt::UI_AnimateCombo, false);
     if (ownerHandle_)
     {
         DWORD processId = 0;
@@ -647,6 +651,11 @@ ConfigEditorWindow::ConfigEditorWindow(QString configPath, quintptr ownerHandle,
     loadConfiguration();
     migrateSharedRefreshRate();
     if (!testMode_) loadDiscoveryCache();
+    else
+    {
+        filteredRenderers_ = testFilteredRenderers;
+        allRenderers_ = testAllRenderers;
+    }
     setCentralWidget(createShell());
     if (!testMode_)
     {
@@ -1203,6 +1212,31 @@ void ConfigEditorWindow::markDirty()
     updateValidationState();
 }
 
+void ConfigEditorWindow::prepareRendererPopup()
+{
+    if (!rendererChoice_) return;
+    auto* list = qobject_cast<QListView*>(rendererChoice_->view());
+    if (!list) return;
+
+    // QComboBox otherwise defers polishing and item geometry until the first
+    // popup open. Renderer discovery is already cached; prepare the cached
+    // view now so the user's first click has no one-time layout penalty.
+    list->setUniformItemSizes(true);
+    rendererChoice_->ensurePolished();
+    list->ensurePolished();
+    list->viewport()->ensurePolished();
+    list->doItemsLayout();
+    if (rendererChoice_->count() > 0)
+    {
+        list->sizeHintForRow(0);
+        list->sizeHintForColumn(rendererChoice_->modelColumn());
+        list->visualRect(rendererChoice_->model()->index(
+            qMax(0, rendererChoice_->currentIndex()),
+            rendererChoice_->modelColumn(), rendererChoice_->rootModelIndex()));
+    }
+    list->window()->ensurePolished();
+}
+
 void ConfigEditorWindow::updateEffectSummary()
 {
     if (!effectSummary_) return;
@@ -1364,6 +1398,7 @@ bool ConfigEditorWindow::updateValidationState()
     // reserved for Apply/OK, where safe persistence validates again.
     const QStringList errors = validationErrors(fields, true, false);
     const bool valid = errors.isEmpty();
+    validationValid_ = valid;
     if (saveButton_) saveButton_->setEnabled(configurationLoaded_ && valid);
     if (applyButton_)
         applyButton_->setEnabled(configurationLoaded_ && dirty_ && valid);
@@ -1750,6 +1785,17 @@ bool ConfigEditorWindow::saveChanges()
 
 QWidget* ConfigEditorWindow::createShell()
 {
+    pages_ = nullptr;
+    navigation_ = nullptr;
+    status_ = nullptr;
+    effectSummary_ = nullptr;
+    monitorChoice_ = nullptr;
+    rendererChoice_ = nullptr;
+    rendererShortcutForm_ = nullptr;
+    actionRendererTarget_ = nullptr;
+    applyButton_ = nullptr;
+    saveButton_ = nullptr;
+    activeProfileLists_.clear();
     auto* root = new QWidget;
     root->setObjectName(QStringLiteral("root"));
     auto* rootLayout = new QVBoxLayout(root);
@@ -2185,12 +2231,33 @@ QWidget* ConfigEditorWindow::createStartupPage()
         rendererChoice_->setItemData(index,
             rendererChoice_->itemData(index).toString(), kRendererNameRole);
     sourceForm->addRow(QStringLiteral("Renderer"), rendererChoice_);
-    auto* hideLegacyRenderers = bindCheckField(
-        QStringLiteral("Hide legacy renderers"), QStringLiteral("general"),
-        QStringLiteral("hide_legacy_renderers"), true);
-    connect(hideLegacyRenderers, &QCheckBox::toggled, this,
-        [this](bool checked) { applyRendererVisibilityFilter(checked); });
+    auto* hideLegacyRenderers = configuredCheck(
+        QStringLiteral("Hide legacy renderers"), value(QStringLiteral("general"),
+            QStringLiteral("hide_legacy_renderers")), true);
+    hideLegacyRenderers->setObjectName(controlName(QStringLiteral("general"),
+        QStringLiteral("hide_legacy_renderers")));
+    hideLegacyRenderers->setEnabled(true);
     sourceForm->addRow(QString(), hideLegacyRenderers);
+    connect(hideLegacyRenderers, &QCheckBox::toggled, this,
+        [this](bool hide) { applyRendererVisibilityFilter(hide); });
+    connect(hideLegacyRenderers, &QCheckBox::toggled, this,
+        [this, hideLegacyRenderers](bool checked)
+    {
+        if (!document_) return;
+        document_->SetKnown("general", "hide_legacy_renderers",
+            checked ? "true" : "false");
+        editOrder_[hideLegacyRenderers->objectName()] = ++editSerial_;
+        dirty_ = true;
+        if (effectSummary_)
+            effectSummary_->setText(QStringLiteral(
+                "Save required: Config renderer visibility"));
+        if (saveButton_)
+            saveButton_->setEnabled(configurationLoaded_ && validationValid_);
+        if (applyButton_)
+            applyButton_->setEnabled(configurationLoaded_ && validationValid_);
+    });
+    applyRendererVisibilityFilter(hideLegacy);
+    prepareRendererPopup();
     sourceForm->addRow(QString(), bindCheckField(
         QStringLiteral("Switch refresh rate"), QStringLiteral("general"),
         QStringLiteral("switch_refresh_rate"), true));
@@ -4937,6 +5004,9 @@ QWidget* ConfigEditorWindow::createShortcutsPage()
         layout->addWidget(createCard(QStringLiteral("Renderer selection"),
             QStringLiteral("Optional shortcuts select a renderer by its one-based position in VP's renderer list on this PC."),
             rendererContent));
+        applyRendererVisibilityFilter(configuredBooleanValue(value(
+            QStringLiteral("general"), QStringLiteral("hide_legacy_renderers")),
+            true));
     }
     return createPage(QStringLiteral("Shortcuts"),
         QStringLiteral("Configure global keyboard shortcuts. Defaults are shown; clear a field and save to disable it. A running VP applies saved shortcuts immediately."),

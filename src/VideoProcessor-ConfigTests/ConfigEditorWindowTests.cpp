@@ -26,6 +26,7 @@
 #include <QLabel>
 #include <QLayout>
 #include <QLineEdit>
+#include <QListView>
 #include <QListWidget>
 #include <QListView>
 #include <QMessageBox>
@@ -1464,6 +1465,69 @@ void testLegacyRendererVisibilityDefaultsHiddenAndPreservesShortcuts()
         "Hidden renderer shortcuts were not preserved verbatim");
     require(!saved.contains("hide_legacy_renderers:"),
         "The editor wrote the unchanged default instead of preserving its omission");
+
+    QTemporaryDir toggleDirectory;
+    const QStringList filteredRenderers = {
+        QStringLiteral("VP Renderer"), QStringLiteral("DirectShow - madVR") };
+    QStringList allRenderers = {
+        QStringLiteral("VP Renderer"), QStringLiteral("DirectShow - madVR"),
+        QStringLiteral("Enhanced Video Renderer") };
+    for (int index = 0; index < 128; ++index)
+        allRenderers.push_back(QStringLiteral("Cached legacy renderer %1").arg(index));
+    ConfigEditorWindow toggleWindow(copyFixture(toggleDirectory), 0, true,
+        filteredRenderers, allRenderers);
+    require(!QApplication::isEffectEnabled(Qt::UI_AnimateCombo),
+        "Config left Qt's delayed combo-box animation enabled");
+    QCheckBox* toggle = requireControl<QCheckBox>(toggleWindow,
+        QStringLiteral("config.general.hide_legacy_renderers"));
+    QComboBox* renderer = requireControl<QComboBox>(toggleWindow,
+        QStringLiteral("config.general.renderer"));
+    const int legacyIndex = renderer->findData(
+        QStringLiteral("Enhanced Video Renderer"));
+    auto* rendererList = qobject_cast<QListView*>(renderer->view());
+    QLineEdit* legacyShortcut = requireControl<QLineEdit>(toggleWindow,
+        QStringLiteral("config.shortcuts.render.3"));
+    require(rendererList != nullptr && legacyIndex >= 0 &&
+        legacyShortcut->isHidden(),
+        "Renderer dropdown does not expose its cached list view");
+    toggleWindow.show();
+    for (QWidget* ancestor = renderer->parentWidget(); ancestor;
+        ancestor = ancestor->parentWidget())
+        if (auto* scrollArea = qobject_cast<QScrollArea*>(ancestor))
+        {
+            scrollArea->ensureWidgetVisible(renderer);
+            break;
+        }
+    QCoreApplication::processEvents();
+    require(renderer->isVisibleTo(&toggleWindow),
+        "Renderer dropdown is not visible for the first-open latency test");
+    QElapsedTimer firstOpenTimer;
+    firstOpenTimer.start();
+    renderer->showPopup();
+    QCoreApplication::processEvents();
+    const qint64 firstOpenElapsed = firstOpenTimer.elapsed();
+    const std::string firstOpenFailure = QStringLiteral(
+        "The cached renderer dropdown still performs deferred work on first open (%1 ms)")
+        .arg(firstOpenElapsed).toStdString();
+    require(firstOpenElapsed < 100,
+        firstOpenFailure.c_str());
+    renderer->hidePopup();
+    const int cachedRendererCount = renderer->count();
+    QElapsedTimer toggleTimer;
+    toggleTimer.start();
+    toggle->setChecked(false);
+    require(toggleTimer.elapsed() < 100 &&
+        !rendererList->isRowHidden(legacyIndex) &&
+        !legacyShortcut->isHidden(),
+        "Showing legacy renderers did not reveal cached UI rows");
+    toggleTimer.restart();
+    toggle->setChecked(true);
+    require(toggleTimer.elapsed() < 100 &&
+        rendererList->isRowHidden(legacyIndex) &&
+        legacyShortcut->isHidden() &&
+        renderer->count() == cachedRendererCount &&
+        renderer->currentData().toString() == QStringLiteral("DirectShow - madVR"),
+        "Hiding legacy renderers rebuilt the model or changed selection");
 }
 
 void testUnchangedActiveProfileStatusDoesNotInvalidateLists()
@@ -1592,13 +1656,16 @@ void testGeneralInputApplyPreservesBackendOverrides()
     // Keep [general] without an explicit conversion default and save an
     // unrelated General edit. The two backend-specific values must remain
     // independent instead of being flattened into the shared default.
-    QCheckBox* hideLegacyRenderers = requireControl<QCheckBox>(window,
-        QStringLiteral("config.general.hide_legacy_renderers"));
-    hideLegacyRenderers->setChecked(false);
-    require(requireControl<QLabel>(window,
-        QStringLiteral("configurationEffectSummary"))->text().startsWith(
-            QStringLiteral("Restart renderer:")),
-        "General changes are not labelled as a renderer restart");
+    QCheckBox* switchRefreshRate = requireControl<QCheckBox>(window,
+        QStringLiteral("config.general.switch_refresh_rate"));
+    switchRefreshRate->setChecked(!switchRefreshRate->isChecked());
+    const QString effectSummary = requireControl<QLabel>(window,
+        QStringLiteral("configurationEffectSummary"))->text();
+    const std::string effectFailure = QStringLiteral(
+        "General changes are not labelled as a renderer restart: %1")
+        .arg(effectSummary).toStdString();
+    require(effectSummary.startsWith(QStringLiteral("Restart renderer:")),
+        effectFailure.c_str());
     requireControl<QPushButton>(window, QStringLiteral("applyConfiguration"))->click();
     QCoreApplication::processEvents();
 

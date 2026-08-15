@@ -37,7 +37,8 @@ class ConfigEditorWindow final : public QMainWindow
 {
 public:
     explicit ConfigEditorWindow(QString configPath, quintptr ownerHandle = 0,
-        bool testMode = false);
+        bool testMode = false, const QStringList& testFilteredRenderers = {},
+        const QStringList& testAllRenderers = {});
     ~ConfigEditorWindow() override;
     void selectPage(int index);
     void reveal();
@@ -83,6 +84,7 @@ private:
     QCheckBox* bindCheckField(const QString& label, const QString& section, const QString& key, bool defaultValue = false);
     void markDirty();
 	void updateEffectSummary();
+    void prepareRendererPopup();
     bool validateCandidate(std::wstring& error,
         bool allowActionDrafts = false) const;
     QStringList validationErrors(QStringList& fields,
@@ -129,6 +131,7 @@ private:
     bool exitRequested_ = false;
     bool configurationLoaded_ = false;
     bool dirty_ = false;
+    bool validationValid_ = true;
     bool hasPendingMigrations_ = false;
     bool testMode_ = false;
     std::unique_ptr<ConfigEditorCore::ConfigDocument> document_;
