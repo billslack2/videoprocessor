@@ -103,7 +103,7 @@ they must not contain requirements that are absent from this file.
 | VP-0070-4 | Blocked | Panel subtitle live validation and performance |
 | VP-0070-5 | Blocked | Extract subtitle analysis and relocation pipeline |
 | VP-0071 | Done | Compose the VP diagnostics OSD through madVR |
-| VP-0072 | Backlog | Repair or explicitly constrain DirectShow no-stop timestamp modes |
+| VP-0072 | Done | Repair or explicitly constrain DirectShow no-stop timestamp modes |
 | VP-0073 | Done | Diagnose and minimally repair keyboard-command responsiveness |
 | VP-0074 | Done | Alpha latency resilience and NLS shader cold-start recovery |
 | VP-0075 | Done | Restore Alpha analysis parity on native RGB ingress |

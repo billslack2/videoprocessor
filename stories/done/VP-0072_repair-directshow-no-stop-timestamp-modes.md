@@ -2,10 +2,17 @@
 
 ## Status
 
-Backlog (2026-08-02). Live madVR characterization after the VP-0066 stable
-baseline found three failures isolated to the modes whose stop-time component
-is `None`. The seven modes that provide both usable start and stop timing are
-working and are regression-locked by this story.
+Done (2026-08-15). Merged to `v1.2.001-beta` as `e5761c5`.
+
+`Clock-None` now receives the same valid hardware-clock start calculation as
+the other Clock-start modes. `Clock-None` and `Theo-None` receive a dedicated
+start-only live timestamp catch-up path: it uses a nominal frame duration only
+for continuity calculation and continues to publish samples with no stop time.
+Focused native coverage classifies exactly those two modes as start-only and
+keeps them excluded from the full start/stop catch-up path. The x64 Release
+GUI build succeeded, and live test logs recorded successful first-live-frame
+reveals for both repaired modes. The deployed test build was then completed
+and accepted.
 
 ## User story
 
