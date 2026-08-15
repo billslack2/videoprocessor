@@ -161,7 +161,7 @@ they must not contain requirements that are absent from this file.
 | VP-0126 | In Progress | Standalone Alpha test-pattern generator |
 | VP-0127 | Done | Enforce output format and prove composed display delivery |
 | VP-0128 | Backlog | Audit VP Renderer option parity and resolved defaults |
-| VP-0129 | Backlog | Retain scope through vertical overlay arbitration |
+| VP-0129 | In Progress | Retain scope through vertical overlay arbitration |
 | VP-0066-1 | Done | Characterize the live output pipeline with replayable golden traces |
 | VP-0066-2 | Done | Extract a graph-independent video timing controller |
 | VP-0066-3 | Done | Extract epoch-aware frame transport and processing components |

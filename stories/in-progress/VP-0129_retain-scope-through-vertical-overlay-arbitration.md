@@ -2,7 +2,10 @@
 
 ## Status
 
-Backlog. Research is based on deployed log `C:\Videoprocessor\vp\logs\vp.log`
+In Progress (2026-08-15). Implementation is starting from default-branch
+commit `daed55e98566c4b109765de004b715f7e01a3690` on
+`codex/vp-0129-vertical-overlay-arbitration`. Research is based on deployed
+log `C:\Videoprocessor\vp\logs\vp.log`
 from 2026-08-15 and default-branch source commit
 `daed55e98566c4b109765de004b715f7e01a3690` (`v1.2.001-beta`). This is a
 narrow follow-up to VP-0122; it does not propose a crop-system redesign or a
