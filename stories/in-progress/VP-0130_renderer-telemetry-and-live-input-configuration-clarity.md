@@ -37,6 +37,17 @@ Implementation checkpoint:
   `C:\\Videoprocessor\\vp\\backups\\vp0130-3a9d652-20260815-113950`.
   SHA-256 verification passed for all three deployed artifacts. The tracker
   now awaits code and live operator visual review.
+- Operator review produced follow-up `7497335` (`fix(ui): refine renderer card
+  diagnostics`). Renderer identity is now a blue/left `Renderer` row with a
+  white/right value, leading `DirectShow - ` is removed for display, Restart
+  is restored to the bottom of the enlarged Renderer card, Hardware link is
+  shorter, and Queue health uses non-overlapping, aligned metric columns.
+  PCIe speed below Gen 2 and width below x4 now receive warning glyphs; the
+  permanent undocumented CLI-only `/always_warn_pci` switch forces both for
+  visual testing.
+- The corrected x64 Release host/plugin pair was deployed and SHA-256 verified
+  on 2026-08-15. Its previous binaries are backed up at
+  `C:\\Videoprocessor\\vp\\backups\\vp0130-7497335-20260815-115418`.
 
 ## User story
 
