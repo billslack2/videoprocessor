@@ -131,12 +131,12 @@ QString VpTheme::StyleSheet()
             letter-spacing: 0.6px;
         }
         QPushButton[nav="true"] {
-            min-height: 28px;
+            min-height: 30px;
             border: 0;
             border-left: 3px solid transparent;
             border-radius: 3px 0 0 3px;
             background: transparent;
-            padding: 6px 12px;
+            padding: 3px 12px;
             text-align: left;
             color: #afc0d0;
         }
@@ -169,8 +169,6 @@ QString VpTheme::StyleSheet()
         QToolButton[profileSection="true"]:hover { background: #162839; }
         QToolButton[profileSection="true"]:focus { border: 1px solid #3b9ce5; }
         QPushButton[nav="true"][navChild="true"] {
-            padding-top: 6px;
-            padding-bottom: 6px;
             padding-left: 14px;
             color: #9eb2c4;
         }

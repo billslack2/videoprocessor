@@ -12,12 +12,14 @@
 #include <QAbstractButton>
 #include <QAbstractItemView>
 #include <QCheckBox>
+#include <QColor>
 #include <QComboBox>
 #include <QDialog>
 #include <QDir>
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFrame>
+#include <QImage>
 #include <QInputDialog>
 #include <QKeyEvent>
 #include <QMouseEvent>
@@ -382,6 +384,27 @@ void testEveryPageRoundTrips()
     require(theme.contains(QStringLiteral("QPushButton[nav=\"true\"]:focus")) &&
         theme.contains(QStringLiteral("outline: 0")),
         "Focused settings navigation still uses the generic button focus box");
+    require(theme.contains(QStringLiteral("min-height: 30px")) &&
+        theme.contains(QStringLiteral("padding: 3px 12px")),
+        "Settings navigation no longer reserves safe vertical label space");
+    window.show();
+    QCoreApplication::processEvents();
+    QPushButton* selectedNavigation = nullptr;
+    for (QPushButton* button : window.findChildren<QPushButton*>())
+    {
+        if (!button->property("nav").toBool()) continue;
+        require(button->height() >= button->fontMetrics().height() + 6,
+            "A settings navigation label can be clipped vertically");
+        if (button->isChecked()) selectedNavigation = button;
+    }
+    require(selectedNavigation != nullptr,
+        "Settings navigation has no selected item");
+    QImage navigationImage(selectedNavigation->size(), QImage::Format_ARGB32);
+    navigationImage.fill(Qt::transparent);
+    selectedNavigation->render(&navigationImage);
+    require(navigationImage.pixelColor(selectedNavigation->width() - 8,
+        selectedNavigation->height() / 2) == QColor(QStringLiteral("#13283a")),
+        "Settings navigation stylesheet did not render its selected background");
 
     selectData(requireControl<QComboBox>(window,
         QStringLiteral("config.general.capture_device")),
