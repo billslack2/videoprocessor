@@ -149,7 +149,7 @@ void ModernOperatorView::SetStatus(const ModernOperatorStatus& status)
 {
 	const bool presentationChanged =
 		m_status.videoOnly != status.videoOnly ||
-		m_status.fullscreen != status.fullscreen;
+		m_status.fullscreenRequested != status.fullscreenRequested;
 	m_status = status;
 	if (presentationChanged)
 	{
@@ -350,7 +350,7 @@ void ModernOperatorView::OnDrawItem(int, LPDRAWITEMSTRUCT item)
 	const bool pressed = (item->itemState & ODS_SELECTED) != 0;
 	const bool active =
 		(item->CtlID == IDC_MODERN_VIDEO_ONLY && m_status.videoOnly) ||
-		(item->CtlID == IDC_MODERN_VIEW && m_status.fullscreen);
+		(item->CtlID == IDC_MODERN_VIEW && m_status.fullscreenRequested);
 	COLORREF fill = active ? RGB(20, 82, 68) : RGB(20, 42, 58);
 	if (pressed)
 		fill = RGB(30, 65, 82);
