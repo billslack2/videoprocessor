@@ -43,6 +43,7 @@
 #include <QLibrary>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QListView>
 #include <QMenu>
 #include <QMessageBox>
 #include <QPainter>
@@ -83,6 +84,7 @@ namespace
 constexpr int kPageMargin = 16;
 constexpr int kCardPadding = 12;
 constexpr int kResponsiveContentWidth = 720;
+constexpr int kRendererNameRole = Qt::UserRole + 1;
 
 using DocumentSnapshot = std::map<std::string,
     std::map<std::string, std::string>>;
@@ -648,10 +650,9 @@ ConfigEditorWindow::ConfigEditorWindow(QString configPath, quintptr ownerHandle,
     setCentralWidget(createShell());
     if (!testMode_)
     {
-        auto* activeProfileTimer = new QTimer(this);
-        connect(activeProfileTimer, &QTimer::timeout, this,
+        activeProfileTimer_ = new QTimer(this);
+        connect(activeProfileTimer_, &QTimer::timeout, this,
             &ConfigEditorWindow::refreshActiveProfileIndicators);
-        activeProfileTimer->start(500);
         refreshActiveProfileIndicators();
     }
     if (!testMode_) setupTray();
@@ -846,6 +847,10 @@ void ConfigEditorWindow::migrateSharedRefreshRate()
 
 void ConfigEditorWindow::refreshActiveProfileIndicators()
 {
+    // A combo popup has its own transient native window. Avoid unrelated model
+    // notifications while the operator is opening or selecting from it.
+    if (hasActiveOwnedPopup()) return;
+
     const uint32_t expectedProcessId = ownerProcessId_;
     ActiveProfileStatus::Snapshot active;
     const bool available = ActiveProfileStatus::Read(expectedProcessId, active);
@@ -893,7 +898,11 @@ void ConfigEditorWindow::applyActiveProfileIndicators(bool available,
                     })) :
                 (available && !activeSection.isEmpty() &&
                     section.compare(activeSection, Qt::CaseInsensitive) == 0);
-            item->setData(ActiveProfileRole, isActive);
+            // QListWidget emits dataChanged even when the assigned value is
+            // identical. Do not continually invalidate every profile list on
+            // the UI thread for an unchanged shared-memory snapshot.
+            if (item->data(ActiveProfileRole).toBool() != isActive)
+                item->setData(ActiveProfileRole, isActive);
         }
     }
 }
@@ -1233,7 +1242,7 @@ bool ConfigEditorWindow::validateCandidate(std::wstring& error,
 }
 
 QStringList ConfigEditorWindow::validationErrors(QStringList& fields,
-    bool allowActionDrafts) const
+    bool allowActionDrafts, bool includeCoreValidation) const
 {
     QStringList errors;
     fields.clear();
@@ -1245,8 +1254,8 @@ QStringList ConfigEditorWindow::validationErrors(QStringList& fields,
     }
     ConfigEditorCore::ConfigDocument validationDocument = *document_;
     std::wstring coreError;
-    bool coreValid = false;
-    if (allowActionDrafts)
+    bool coreValid = !includeCoreValidation;
+    if (includeCoreValidation && allowActionDrafts)
     {
         const int maximumDrafts = static_cast<int>(
             validationDocument.SectionNamesWithPrefix("actions").size());
@@ -1272,11 +1281,11 @@ QStringList ConfigEditorWindow::validationErrors(QStringList& fields,
             coreValid = ConfigEditorCore::ValidateCandidate(
                 validationDocument, coreError);
     }
-    else
+    else if (includeCoreValidation)
         coreValid = ConfigEditorCore::ValidateCandidate(
             validationDocument, coreError);
 
-    if (!coreValid)
+    if (includeCoreValidation && !coreValid)
     {
         const QString message = QString::fromStdWString(coreError);
         errors.push_back(message);
@@ -1350,7 +1359,10 @@ QString ConfigEditorWindow::displayWarning() const
 bool ConfigEditorWindow::updateValidationState()
 {
     QStringList fields;
-    const QStringList errors = validationErrors(fields, true);
+    // Keep ordinary editing entirely in memory. Full schema/shader validation
+    // serializes a candidate beside the configuration and is intentionally
+    // reserved for Apply/OK, where safe persistence validates again.
+    const QStringList errors = validationErrors(fields, true, false);
     const bool valid = errors.isEmpty();
     if (saveButton_) saveButton_->setEnabled(configurationLoaded_ && valid);
     if (applyButton_)
@@ -1519,6 +1531,78 @@ void ConfigEditorWindow::applyChanges()
     saveChanges();
 }
 
+void ConfigEditorWindow::setRendererDiscoveryForTesting(
+    const QStringList& allRenderers, const QStringList& filteredRenderers)
+{
+    allRenderers_ = allRenderers;
+    filteredRenderers_ = filteredRenderers;
+    rebuildConfigurationShell();
+}
+
+void ConfigEditorWindow::rebuildConfigurationShell()
+{
+    // Recreate the editor after a full document reload (for example Cancel).
+    // Ordinary renderer-visibility changes are handled in place and never
+    // enter this comparatively expensive path.
+    const int currentPage = pages_ ? pages_->currentIndex() : 0;
+	activeProfileLists_.clear();
+	monitorChoice_ = nullptr;
+	rendererChoice_ = nullptr;
+	actionRendererTarget_ = nullptr;
+	rendererShortcutForm_ = nullptr;
+    QWidget* replacement = createShell();
+    QWidget* previous = takeCentralWidget();
+    setCentralWidget(replacement);
+    selectPage(currentPage);
+    if (previous) previous->deleteLater();
+}
+
+void ConfigEditorWindow::applyRendererVisibilityFilter(bool hideLegacyRenderers)
+{
+    const auto containsRenderer = [](const QStringList& renderers,
+        const QString& candidate)
+    {
+        return std::any_of(renderers.cbegin(), renderers.cend(),
+            [&candidate](const QString& renderer)
+            {
+                return renderer.compare(candidate, Qt::CaseInsensitive) == 0;
+            });
+    };
+    const auto isLegacy = [this, &containsRenderer](const QString& renderer)
+    {
+        return containsRenderer(allRenderers_, renderer) &&
+            !containsRenderer(filteredRenderers_, renderer);
+    };
+    const auto filterCombo = [hideLegacyRenderers, &isLegacy](QComboBox* combo)
+    {
+        auto* view = combo ? qobject_cast<QListView*>(combo->view()) : nullptr;
+        if (!view) return;
+        for (int index = 0; index < combo->count(); ++index)
+        {
+            const QString renderer = combo->itemData(index,
+                kRendererNameRole).toString();
+            view->setRowHidden(index,
+                hideLegacyRenderers && !renderer.isEmpty() &&
+                isLegacy(renderer));
+        }
+    };
+
+    filterCombo(rendererChoice_);
+    filterCombo(actionRendererTarget_);
+    if (!rendererShortcutForm_) return;
+    for (int row = 0; row < rendererShortcutForm_->rowCount(); ++row)
+    {
+        QLayoutItem* fieldItem = rendererShortcutForm_->itemAt(row,
+            QFormLayout::FieldRole);
+        QWidget* field = fieldItem ? fieldItem->widget() : nullptr;
+        const QString renderer = field ?
+            field->property("rendererName").toString() : QString();
+        rendererShortcutForm_->setRowVisible(row,
+            !hideLegacyRenderers || renderer.isEmpty() ||
+            !isLegacy(renderer));
+    }
+}
+
 bool ConfigEditorWindow::saveChanges()
 {
     if (!configurationLoaded_ || !document_) return false;
@@ -1536,7 +1620,7 @@ bool ConfigEditorWindow::saveChanges()
             QString::fromLatin1(inputKey)).trimmed();
         const QString directShow = value(QStringLiteral("directshow"),
             QString::fromLatin1(inputKey)).trimmed();
-        const QString vpRenderer = value(QStringLiteral("vprenderer"),
+        const QString vpRenderer = value(QStringLiteral("vprenderer.input_processing"),
             QString::fromLatin1(inputKey)).trimmed();
         if (general.isEmpty() && !directShow.isEmpty() && vpRenderer.isEmpty())
         {
@@ -1550,7 +1634,6 @@ bool ConfigEditorWindow::saveChanges()
         savedSnapshot_, captureDocumentSnapshot(*document_));
     const auto action = ConfigurationApplyPolicy::ClassifyChanges(changed,
         snapshotUsesDirectShowRenderer(savedSnapshot_));
-
     // Persist shortcut spelling in the same canonical form used by the
     // accelerator parser. Case is not a modifier: L and l are both L, while
     // Shift+L is the distinct shifted chord.
@@ -1846,15 +1929,10 @@ QWidget* ConfigEditorWindow::createShell()
     {
         // Cancel is intentionally an editor-only operation: the working copy
         // is discarded without touching the file or signaling VideoProcessor.
-        const int currentPage = pages_ ? pages_->currentIndex() : 0;
         dirty_ = false;
         hide();
         loadConfiguration();
-        QWidget* replacement = createShell();
-        QWidget* previous = takeCentralWidget();
-        setCentralWidget(replacement);
-        selectPage(currentPage);
-        if (previous) previous->deleteLater();
+		rebuildConfigurationShell();
     });
     connect(applyButton_, &QPushButton::clicked, this, [this] { applyChanges(); });
     auto* saveShortcut = new QShortcut(QKeySequence::Save, root);
@@ -1877,6 +1955,8 @@ QWidget* ConfigEditorWindow::createShell()
     connect(previousPage, &QShortcut::activated, this,
         [selectAdjacentPage] { selectAdjacentPage(-1); });
 
+    applyRendererVisibilityFilter(configuredBooleanValue(value(
+        QStringLiteral("general"), QStringLiteral("hide_legacy_renderers")), true));
     updateValidationState();
     return root;
 }
@@ -1990,7 +2070,7 @@ QWidget* ConfigEditorWindow::createStartupPage()
 	auto* captureDevice = bindChoiceField(QStringLiteral("general"),
         QStringLiteral("capture_device"), captureDevices_.isEmpty() ?
             QStringList{ QString() } : captureDevices_,
-        captureDevices_.isEmpty() ? QStringList{ QStringLiteral("No capture devices discovered") } : QStringList{}, true);
+        captureDevices_.isEmpty() ? QStringList{ QStringLiteral("No capture devices discovered") } : QStringList{});
     hardwareForm->addRow(QStringLiteral("Capture device"), captureDevice);
 
     auto* captureConnection = new QComboBox;
@@ -2091,19 +2171,26 @@ QWidget* ConfigEditorWindow::createStartupPage()
     sourceForm->setVerticalSpacing(8);
     monitorChoice_ = bindChoiceField(QStringLiteral("general"),
         QStringLiteral("fullscreen_monitor_name"), withDefaultChoice(monitors_),
-        { QStringLiteral("Default monitor") }, true);
+        { QStringLiteral("Default monitor") });
     sourceForm->addRow(QStringLiteral("Monitor"), monitorChoice_);
 	const bool hideLegacy = configuredBooleanValue(value(QStringLiteral("general"),
 		QStringLiteral("hide_legacy_renderers")), true);
-	const QStringList availableRenderers = hideLegacy ? filteredRenderers_ : allRenderers_;
-	persistDiscoveredDefault(QStringLiteral("renderer"), availableRenderers);
-    sourceForm->addRow(QStringLiteral("Renderer"), bindChoiceField(QStringLiteral("general"),
-        QStringLiteral("renderer"), availableRenderers.isEmpty() ?
-            QStringList{ QString() } : availableRenderers,
-        availableRenderers.isEmpty() ? QStringList{ QStringLiteral("No renderers discovered") } : QStringList{}, true));
-    sourceForm->addRow(QString(), bindCheckField(
+	const QStringList visibleRenderers = hideLegacy ? filteredRenderers_ : allRenderers_;
+	persistDiscoveredDefault(QStringLiteral("renderer"), visibleRenderers);
+    rendererChoice_ = bindChoiceField(QStringLiteral("general"),
+        QStringLiteral("renderer"), allRenderers_.isEmpty() ?
+            QStringList{ QString() } : allRenderers_,
+        allRenderers_.isEmpty() ? QStringList{ QStringLiteral("No renderers discovered") } : QStringList{});
+    for (int index = 0; index < rendererChoice_->count(); ++index)
+        rendererChoice_->setItemData(index,
+            rendererChoice_->itemData(index).toString(), kRendererNameRole);
+    sourceForm->addRow(QStringLiteral("Renderer"), rendererChoice_);
+    auto* hideLegacyRenderers = bindCheckField(
         QStringLiteral("Hide legacy renderers"), QStringLiteral("general"),
-        QStringLiteral("hide_legacy_renderers"), true));
+        QStringLiteral("hide_legacy_renderers"), true);
+    connect(hideLegacyRenderers, &QCheckBox::toggled, this,
+        [this](bool checked) { applyRendererVisibilityFilter(checked); });
+    sourceForm->addRow(QString(), hideLegacyRenderers);
     sourceForm->addRow(QString(), bindCheckField(
         QStringLiteral("Switch refresh rate"), QStringLiteral("general"),
         QStringLiteral("switch_refresh_rate"), true));
@@ -2138,7 +2225,7 @@ QWidget* ConfigEditorWindow::createStartupPage()
     cards->addCard(createCard(QStringLiteral("Display"),
         QStringLiteral("Monitor targeting and refresh-rate behavior. Refresh switching currently applies to VP Renderer."), source));
     cards->addCard(createCard(QStringLiteral("Input processing"),
-        QStringLiteral("Shared source conversion and metadata defaults. Renderer pages may override each value."), input));
+        QStringLiteral("Shared source conversion and metadata defaults. Apply restarts the renderer; renderer pages may override each value."), input));
     return createPage(QStringLiteral("General"), QStringLiteral("Choose how VideoProcessor starts and which hardware it uses."), cards);
 }
 
@@ -4326,15 +4413,15 @@ QWidget* ConfigEditorWindow::createActionsPage()
     rendererTarget->setInsertPolicy(QComboBox::NoInsert);
     rendererTarget->addItem(QStringLiteral("VP Renderer (default)"), QStringLiteral("vprenderer"));
     rendererTarget->addItem(QStringLiteral("All renderers"), QStringLiteral("*"));
-    const bool hideLegacyRenderers = configuredBooleanValue(value(
-        QStringLiteral("general"), QStringLiteral("hide_legacy_renderers")), true);
-    const QStringList& renderers = hideLegacyRenderers ? filteredRenderers_ : allRenderers_;
+    const QStringList& renderers = allRenderers_;
     for (int index = 0; index < renderers.size(); ++index)
     {
         if (renderers[index].compare(QStringLiteral("VP Renderer"), Qt::CaseInsensitive) == 0 ||
             renderers[index].compare(QStringLiteral("VideoProcessor Renderer (Alpha)"), Qt::CaseInsensitive) == 0)
             continue;
         rendererTarget->addItem(QStringLiteral("%1 - %2").arg(index + 1).arg(renderers[index]), QString::number(index + 1));
+        rendererTarget->setItemData(rendererTarget->count() - 1,
+            renderers[index], kRendererNameRole);
     }
     rendererTarget->setCurrentIndex(0);
     rendererTarget->setEditText(rendererTarget->itemText(0));
@@ -4830,21 +4917,23 @@ QWidget* ConfigEditorWindow::createShortcutsPage()
     fixedShortcuts->addCard(captureCard);
     layout->addWidget(fixedShortcuts);
 
-    const bool hideLegacyRenderers = configuredBooleanValue(value(
-        QStringLiteral("general"), QStringLiteral("hide_legacy_renderers")), true);
-    const QStringList& renderers = hideLegacyRenderers ? filteredRenderers_ : allRenderers_;
+    const QStringList& renderers = allRenderers_;
     if (!renderers.isEmpty())
     {
         auto* rendererContent = new QWidget;
         auto* rendererForm = new QFormLayout(rendererContent);
+        rendererShortcutForm_ = rendererForm;
         rendererForm->setContentsMargins(0, 0, 0, 0);
         rendererForm->setHorizontalSpacing(18);
         rendererForm->setVerticalSpacing(8);
         rendererForm->setFieldGrowthPolicy(QFormLayout::FieldsStayAtSizeHint);
         rendererForm->setRowWrapPolicy(QFormLayout::WrapLongRows);
         for (int index = 0; index < renderers.size(); ++index)
-            rendererForm->addRow(QStringLiteral("%1 - %2").arg(index + 1).arg(renderers[index]),
-                makeEditor(QStringLiteral("render.%1").arg(index + 1), QString()));
+        {
+            QLineEdit* edit = makeEditor(QStringLiteral("render.%1").arg(index + 1), QString());
+            edit->setProperty("rendererName", renderers[index]);
+            rendererForm->addRow(QStringLiteral("%1 - %2").arg(index + 1).arg(renderers[index]), edit);
+        }
         layout->addWidget(createCard(QStringLiteral("Renderer selection"),
             QStringLiteral("Optional shortcuts select a renderer by its one-based position in VP's renderer list on this PC."),
             rendererContent));
@@ -4928,6 +5017,7 @@ void ConfigEditorWindow::closeEvent(QCloseEvent* event)
 
 void ConfigEditorWindow::hideEvent(QHideEvent* event)
 {
+    if (activeProfileTimer_) activeProfileTimer_->stop();
     pendingTopmostReassert_ = false;
     explicitRevealIntent_ = false;
     scopedTopmostEligible_ = false;
@@ -4939,6 +5029,11 @@ void ConfigEditorWindow::hideEvent(QHideEvent* event)
 void ConfigEditorWindow::showEvent(QShowEvent* event)
 {
     QMainWindow::showEvent(event);
+    if (activeProfileTimer_ && !activeProfileTimer_->isActive())
+    {
+        refreshActiveProfileIndicators();
+        activeProfileTimer_->start(500);
+    }
     scopedTopmostEligible_ = true;
     pendingTopmostReassert_ = true;
     applyNativeOwner();

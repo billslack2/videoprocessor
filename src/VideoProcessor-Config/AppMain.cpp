@@ -14,6 +14,7 @@
 #include <QFileInfo>
 #include <QImage>
 #include <QMessageBox>
+#include <QScreen>
 #include <QTimer>
 #include <QWinEventNotifier>
 
@@ -186,15 +187,10 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
 
     const std::wstring activationEventName = installationScopedEventName(
         L"Local\\VideoProcessorConfigEditor.Activate.v1");
-    const std::wstring discoveryRefreshEventName = installationScopedEventName(
-        L"Local\\VideoProcessorConfigEditor.RefreshDiscovery.v1");
-
     HANDLE activationEvent = screenshotPath.isEmpty() ?
         CreateEventW(nullptr, FALSE, FALSE, activationEventName.c_str()) : nullptr;
     const bool existingInstance = activationEvent &&
         GetLastError() == ERROR_ALREADY_EXISTS;
-    HANDLE discoveryRefreshEvent = screenshotPath.isEmpty() ?
-        CreateEventW(nullptr, FALSE, FALSE, discoveryRefreshEventName.c_str()) : nullptr;
     if (existingInstance)
     {
         // VP starts a hidden Config process opportunistically.  If one is
@@ -206,33 +202,25 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
                 owner, ownerProcessId);
             if (!acknowledged) SetEvent(activationEvent);
         }
-        // VP launches the tray-resident editor opportunistically. Even when it
-        // stays hidden, refresh monitor discovery so the next reveal reflects
-        // the current Windows topology without discarding the configured name.
-        if (discoveryRefreshEvent) SetEvent(discoveryRefreshEvent);
         CloseHandle(activationEvent);
-        if (discoveryRefreshEvent) CloseHandle(discoveryRefreshEvent);
         if (SUCCEEDED(comResult)) CoUninitialize();
         return 0;
     }
 
     ConfigEditorWindow window(QFileInfo(configPath).absoluteFilePath(), owner);
     std::unique_ptr<QWinEventNotifier> activationNotifier;
-    std::unique_ptr<QWinEventNotifier> discoveryRefreshNotifier;
     if (activationEvent)
     {
         activationNotifier = std::make_unique<QWinEventNotifier>(activationEvent, &window);
         QObject::connect(activationNotifier.get(), &QWinEventNotifier::activated,
             &window, [&window] { window.reveal(); });
     }
-    if (discoveryRefreshEvent)
-    {
-        discoveryRefreshNotifier = std::make_unique<QWinEventNotifier>(
-            discoveryRefreshEvent, &window);
-        QObject::connect(discoveryRefreshNotifier.get(),
-            &QWinEventNotifier::activated, &window,
-            [&window] { window.refreshMonitorDiscovery(); });
-    }
+    // The startup cache remains stable across ordinary reveal/hide cycles.
+    // Refresh monitor names only when Qt reports a real topology change.
+    QObject::connect(&app, &QGuiApplication::screenAdded, &window,
+        [&window](QScreen*) { window.refreshMonitorDiscovery(); });
+    QObject::connect(&app, &QGuiApplication::screenRemoved, &window,
+        [&window](QScreen*) { window.refreshMonitorDiscovery(); });
     window.selectPage(initialPage);
     if (!startInTray)
         window.show();
@@ -243,9 +231,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
             QCoreApplication::quit();
         });
     const int result = app.exec();
-    discoveryRefreshNotifier.reset();
     activationNotifier.reset();
-    if (discoveryRefreshEvent) CloseHandle(discoveryRefreshEvent);
     if (activationEvent) CloseHandle(activationEvent);
     if (SUCCEEDED(comResult)) CoUninitialize();
     return result;

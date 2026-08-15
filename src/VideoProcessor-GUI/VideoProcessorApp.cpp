@@ -337,9 +337,9 @@ Options:
   /frame_offset <milliseconds|auto>
       Set the timing-clock frame offset in milliseconds, or enable automatic offset.
 
-  /video_conversion V210_TO_P010
-      Convert supported YUV/RGB input to P010.
-      UYVY_TO_P010 is accepted as an alias.
+  /video_conversion <NONE|V210_TO_P010>
+      Use the renderer default, or convert supported YUV/RGB input to P010.
+      OFF and UYVY_TO_P010 are accepted as aliases.
 
   /container_colorspace <value>
       BT2020 | P3_D65 | P3_DCI | P3_D60 | REC709 | REC601_525 | REC601_625
@@ -1103,6 +1103,7 @@ bool IsBooleanCommandLineOption(const wchar_t* argument)
 	return IsCommandLineOption(argument, L"/fullscreen") ||
 		IsCommandLineOption(argument, L"/windowedfullscreenmode") ||
 		IsCommandLineOption(argument, L"/noui") ||
+		IsCommandLineOption(argument, L"/always_warn_pci") ||
 		IsCommandLineOption(argument, L"/czeddie") ||
 		IsCommandLineOption(argument, L"/scene_detect") ||
 		IsCommandLineOption(argument, L"/scene") ||
@@ -1528,16 +1529,8 @@ BOOL CVideoProcessorApp::InitInstance()
 			{
 				VideoConversionOverride videoConversionOverride = VideoConversionOverride::VIDEOCONVERSION_NONE;
 
-				if (wcscmp(pArgs[i + 1], L"V210_TO_P010") == 0)
-				{
-					videoConversionOverride = VideoConversionOverride::VIDEOCONVERSION_V210_TO_P010;
-				}
-				else if (wcscmp(pArgs[i + 1], L"UYVY_TO_P010") == 0)
-				{
-					// UYVY_TO_P010 is an alias for V210_TO_P010 (smart auto-detection)
-					videoConversionOverride = VideoConversionOverride::VIDEOCONVERSION_V210_TO_P010;
-				}
-				else
+				if (!TryParseVideoConversionOverride(
+					pArgs[i + 1], videoConversionOverride))
 				{
 					throw std::runtime_error("Invalid option for /video_conversion");
 				}
@@ -1910,6 +1903,14 @@ BOOL CVideoProcessorApp::InitInstance()
 			{
 				dlg.HideUI(booleanValue);
 				noUiSelected = booleanValue;
+			}
+
+			// Diagnostic-only Modern UI switch. Do not add it to help text or
+			// configuration: it exists solely to exercise the PCIe warning glyph.
+			if (ReadBooleanOption(pArgs.data(), i, iNumOfArgs,
+				L"/always_warn_pci", booleanValue))
+			{
+				dlg.AlwaysWarnPci(booleanValue);
 			}
 
 			// Retain the legacy switch as a no-op so existing command lines remain

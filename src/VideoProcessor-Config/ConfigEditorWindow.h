@@ -21,9 +21,11 @@ class QRect;
 class QStackedWidget;
 class QSystemTrayIcon;
 class QThread;
+class QTimer;
 class QToolButton;
 class QWindow;
 class QWinEventNotifier;
+class QFormLayout;
 
 namespace ConfigEditorCore { struct ConfigDocument; }
 namespace ConfigEditorPlacement
@@ -43,6 +45,8 @@ public:
     void setActiveProfileStatusForTesting(const QString& queue,
         const QString& renderer, const QString& viewport,
         const QStringList& shaders, bool shaderAvailable = true);
+    void setRendererDiscoveryForTesting(const QStringList& allRenderers,
+        const QStringList& filteredRenderers);
 
 protected:
     bool event(QEvent* event) override;
@@ -82,7 +86,7 @@ private:
     bool validateCandidate(std::wstring& error,
         bool allowActionDrafts = false) const;
     QStringList validationErrors(QStringList& fields,
-        bool allowActionDrafts) const;
+        bool allowActionDrafts, bool includeCoreValidation = true) const;
     QString displayWarning() const;
     bool updateValidationState();
     void applyNativeOwner();
@@ -95,6 +99,8 @@ private:
     bool nativeOwnerIsValid() const;
     void applyChanges();
 	bool saveChanges();
+	void rebuildConfigurationShell();
+    void applyRendererVisibilityFilter(bool hideLegacyRenderers);
     bool notifyVideoProcessor();
     void loadConfiguration();
     void migrateSharedRefreshRate();
@@ -140,8 +146,11 @@ private:
     QLabel* status_ = nullptr;
 	QLabel* effectSummary_ = nullptr;
     QComboBox* monitorChoice_ = nullptr;
+    QComboBox* rendererChoice_ = nullptr;
     QThread* monitorDiscoveryThread_ = nullptr;
+    QTimer* activeProfileTimer_ = nullptr;
     QComboBox* actionRendererTarget_ = nullptr;
+    QFormLayout* rendererShortcutForm_ = nullptr;
     QPushButton* applyButton_ = nullptr;
     QPushButton* saveButton_ = nullptr;
     QSystemTrayIcon* tray_ = nullptr;

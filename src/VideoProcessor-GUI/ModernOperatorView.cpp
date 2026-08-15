@@ -14,6 +14,8 @@ namespace
 	constexpr UINT IDC_MODERN_QUEUE_RESET = 12004;
 	constexpr UINT IDC_MODERN_VIDEO_ONLY = 12005;
 	constexpr UINT IDC_MODERN_VIEW = 12006;
+	constexpr UINT IDC_MODERN_PCIE_SPEED_WARNING = 12007;
+	constexpr UINT IDC_MODERN_PCIE_WIDTH_WARNING = 12008;
 
 	const COLORREF Background = RGB(6, 13, 20);
 	const COLORREF Header = RGB(15, 26, 37);
@@ -120,7 +122,7 @@ void ModernOperatorView::LayoutControls()
 	place(m_view, header.fullscreen);
 	place(m_videoOnly, header.videoOnly);
 	m_captureRestart.MoveWindow(Px(390), Px(116), Px(127), Px(29));
-	m_rendererRestart.MoveWindow(Px(179), Px(526), Px(77), Px(29));
+	m_rendererRestart.MoveWindow(Px(179), Px(538), Px(77), Px(29));
 	m_queueReset.MoveWindow(Px(394), Px(615), Px(117), Px(29));
 }
 
@@ -134,15 +136,54 @@ void ModernOperatorView::DrawWideValue(CDC& dc, int x, int y, int width,
 		DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
 }
 
-void ModernOperatorView::DrawQueueMetric(CDC& dc, int x,
+void ModernOperatorView::DrawWarningIcon(CDC& dc, int x, int y)
+{
+	const int left = Px(x);
+	const int top = Px(y);
+	const int size = Px(13);
+	CPoint triangle[] = {
+		CPoint(left + size / 2, top),
+		CPoint(left, top + size - Px(1)),
+		CPoint(left + size, top + size - Px(1)) };
+	CPen border(PS_SOLID, 1, RGB(119, 81, 12));
+	CBrush fill(RGB(238, 180, 49));
+	const auto oldPen = dc.SelectObject(&border);
+	const auto oldBrush = dc.SelectObject(&fill);
+	dc.Polygon(triangle, 3);
+	dc.SelectObject(oldBrush);
+	dc.SelectObject(oldPen);
+	dc.SetTextColor(RGB(32, 28, 15));
+	dc.SelectObject(&m_boldFont);
+	dc.DrawText(TEXT("!"), CRect(left, top + Px(1), left + size,
+		top + size + Px(1)), DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+}
+
+void ModernOperatorView::DrawHardwareRow(CDC& dc, int x, int y, int width,
+	const CString& label, const CString& value, bool warning)
+{
+	dc.SelectObject(&m_regularFont);
+	dc.SetTextColor(Muted);
+	dc.TextOut(Px(x), Px(y), label);
+	const int valueRight = x + width - (warning ? 18 : 0);
+	dc.SetTextColor(Text);
+	CRect valueRect(Px(x + width / 2), Px(y), Px(valueRight), Px(y + 17));
+	dc.DrawText(value, valueRect,
+		DT_RIGHT | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+	if (warning)
+		DrawWarningIcon(dc, valueRight + 4, y + 1);
+}
+
+void ModernOperatorView::DrawQueueMetric(CDC& dc, int x, int y,
 	const CString& label, const CString& value)
 {
 	dc.SelectObject(&m_regularFont);
 	dc.SetTextColor(Muted);
-	dc.TextOut(Px(x), Px(613), label);
+	dc.TextOut(Px(x), Px(y), label);
 	dc.SetTextColor(Text);
 	dc.SelectObject(&m_boldFont);
-	dc.TextOut(Px(x), Px(630), value);
+	// Keep the 13 px value baseline cadence tight enough that the semibold
+	// glyph descenders clear the card's bottom border at every DPI.
+	dc.TextOut(Px(x), Px(y + 13), value);
 }
 
 void ModernOperatorView::SetStatus(const ModernOperatorStatus& status)
@@ -150,6 +191,27 @@ void ModernOperatorView::SetStatus(const ModernOperatorStatus& status)
 	const bool presentationChanged =
 		m_status.videoOnly != status.videoOnly ||
 		m_status.fullscreenRequested != status.fullscreenRequested;
+	if (m_tooltips.GetSafeHwnd())
+	{
+		auto updateWarningTooltip = [this](bool wasVisible, bool visible,
+			const CRect& rect, UINT_PTR id)
+		{
+			if (wasVisible == visible)
+				return;
+			if (visible)
+				m_tooltips.AddTool(this, TEXT("May impact performance"), &rect, id);
+			else
+				m_tooltips.DelTool(this, id);
+		};
+		updateWarningTooltip(m_status.hardwareSpeedWarning,
+			status.hardwareSpeedWarning,
+			CRect(Px(243), Px(367), Px(256), Px(380)),
+			IDC_MODERN_PCIE_SPEED_WARNING);
+		updateWarningTooltip(m_status.hardwareWidthWarning,
+			status.hardwareWidthWarning,
+			CRect(Px(243), Px(385), Px(256), Px(398)),
+			IDC_MODERN_PCIE_WIDTH_WARNING);
+	}
 	m_status = status;
 	if (presentationChanged)
 	{
@@ -295,45 +357,65 @@ void ModernOperatorView::OnPaint()
 		{ TEXT("Primaries"), m_status.capturedPrimaries },
 		{ TEXT("Transfer"), m_status.capturedTransfer } });
 
-	DrawCard(dc, CRect(Px(16), Px(326), Px(268), Px(442)),
+	// Hardware link contains two values, so keep it compact and give the
+	// renderer card enough height for its metadata plus a bottom action.
+	DrawCard(dc, CRect(Px(16), Px(326), Px(268), Px(420)),
 		TEXT(""), TEXT("Hardware link"));
-	DrawRows(dc, 27, 368, 230, {
-		{ TEXT("PCIe speed"), m_status.hardware[0] },
-		{ TEXT("PCIe width"), m_status.hardware[1] } });
+	DrawHardwareRow(dc, 27, 366, 230, TEXT("PCIe speed"),
+		m_status.hardware[0], m_status.hardwareSpeedWarning);
+	DrawHardwareRow(dc, 27, 384, 230, TEXT("PCIe width"),
+		m_status.hardware[1], m_status.hardwareWidthWarning);
 
-	DrawCard(dc, CRect(Px(276), Px(326), Px(528), Px(442)),
+	DrawCard(dc, CRect(Px(276), Px(326), Px(528), Px(438)),
 		TEXT(""), TEXT("HDR luminance"));
-	DrawRows(dc, 287, 368, 230, {
+	DrawRows(dc, 287, 366, 230, {
 		{ TEXT("MaxCLL"), m_status.maxCll }, { TEXT("MaxFALL"), m_status.maxFall },
 		{ TEXT("Mastering min"), m_status.masteringMin }, { TEXT("Mastering max"), m_status.masteringMax } });
 
-	DrawCard(dc, CRect(Px(16), Px(450), Px(268), Px(569)),
+	DrawCard(dc, CRect(Px(16), Px(428), Px(268), Px(575)),
 		TEXT(""), TEXT("Renderer"), m_status.rendererState);
-	dc.SetTextColor(Text); dc.SelectObject(&m_regularFont);
-	dc.TextOut(Px(27), Px(497), m_status.rendererName);
+	if (m_status.directShowRenderer)
+	{
+		DrawRows(dc, 27, 475, 230, {
+			{ TEXT("Renderer"), m_status.rendererName },
+			{ TEXT("Uptime"), m_status.rendererUptime },
+			{ TEXT("Start/Stop"), m_status.rendererStartStopMethod } });
+	}
+	else if (m_status.vpRenderer)
+	{
+		DrawRows(dc, 27, 475, 230, {
+			{ TEXT("Renderer"), m_status.rendererName },
+			{ TEXT("Uptime"), m_status.rendererUptime } });
+	}
+	else
+	{
+		DrawRows(dc, 27, 475, 230, {
+			{ TEXT("Renderer"), m_status.rendererName },
+			{ TEXT("Uptime"), m_status.rendererUptime } });
+	}
 
-	DrawCard(dc, CRect(Px(276), Px(450), Px(528), Px(569)),
+	DrawCard(dc, CRect(Px(276), Px(446), Px(528), Px(575)),
 		TEXT(""), TEXT("Latency"));
-	DrawRows(dc, 287, 492, 230, {
+	DrawRows(dc, 287, 488, 230, {
 		{ TEXT("VP Processing"), m_status.vpLatency },
 		{ TEXT("Presentation"), m_status.ptsLead },
 		{ TEXT("Total"), m_status.outputLatency } });
 
-	DrawCard(dc, CRect(Px(16), Px(577), Px(528), Px(655)),
+	DrawCard(dc, CRect(Px(16), Px(583), Px(528), Px(655)),
 		TEXT(""), TEXT("Queue health"));
 	if (m_status.singleQueue)
 	{
-		DrawQueueMetric(dc, 27, TEXT("Queued"), m_status.queueTotal);
-		DrawQueueMetric(dc, 112, TEXT("Capacity"), m_status.queueCapacity);
-		DrawQueueMetric(dc, 207, TEXT("Drops"), m_status.dropped);
+		DrawQueueMetric(dc, 27, 621, TEXT("Queued"), m_status.queueTotal);
+		DrawQueueMetric(dc, 112, 621, TEXT("Capacity"), m_status.queueCapacity);
+		DrawQueueMetric(dc, 207, 621, TEXT("Drops"), m_status.dropped);
 	}
 	else
 	{
-		DrawQueueMetric(dc, 27, TEXT("Raw"), m_status.queueRaw);
-		DrawQueueMetric(dc, 78, TEXT("Converted"), m_status.queueConverted);
-		DrawQueueMetric(dc, 163, TEXT("Total"), m_status.queueTotal);
-		DrawQueueMetric(dc, 218, TEXT("Max"), m_status.queueCapacity);
-		DrawQueueMetric(dc, 267, TEXT("Drops"), m_status.dropped);
+		DrawQueueMetric(dc, 27, 621, TEXT("Raw"), m_status.queueRaw);
+		DrawQueueMetric(dc, 78, 621, TEXT("Converted"), m_status.queueConverted);
+		DrawQueueMetric(dc, 163, 621, TEXT("Total"), m_status.queueTotal);
+		DrawQueueMetric(dc, 218, 621, TEXT("Max"), m_status.queueCapacity);
+		DrawQueueMetric(dc, 267, 621, TEXT("Drops"), m_status.dropped);
 	}
 
 	paintDc.BitBlt(paintRect.left, paintRect.top,

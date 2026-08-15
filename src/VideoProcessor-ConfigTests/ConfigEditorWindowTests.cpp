@@ -10,10 +10,12 @@
 #include <QApplication>
 #include <QAccessible>
 #include <QAbstractButton>
+#include <QAbstractItemView>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDialog>
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QFrame>
 #include <QInputDialog>
@@ -23,6 +25,7 @@
 #include <QLayout>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QListView>
 #include <QMessageBox>
 #include <QPlainTextEdit>
 #include <QPushButton>
@@ -380,18 +383,21 @@ void testEveryPageRoundTrips()
         theme.contains(QStringLiteral("outline: 0")),
         "Focused settings navigation still uses the generic button focus box");
 
-    requireControl<QComboBox>(window, QStringLiteral("config.general.capture_device"))
-        ->setEditText(QStringLiteral("Decklink Test Device"));
+    selectData(requireControl<QComboBox>(window,
+        QStringLiteral("config.general.capture_device")),
+        QStringLiteral("Decklink Test Device"));
     QComboBox* captureInput = requireControl<QComboBox>(window,
         QStringLiteral("config.general.capture_input"));
     selectData(captureInput, QStringLiteral("HDMI"));
-    requireControl<QComboBox>(window, QStringLiteral("config.general.renderer"))
-        ->setEditText(QStringLiteral("VideoProcessor Renderer (Alpha)"));
+    selectData(requireControl<QComboBox>(window,
+        QStringLiteral("config.general.renderer")),
+        QStringLiteral("VideoProcessor Renderer (Alpha)"));
     requireControl<QCheckBox>(window, QStringLiteral("config.general.fullscreen"))->setChecked(false);
     requireControl<QCheckBox>(window, QStringLiteral("config.general.startminimized"))->setChecked(false);
     requireControl<QCheckBox>(window, QStringLiteral("config.general.scene_detect"))->setChecked(false);
-    requireControl<QComboBox>(window, QStringLiteral("config.general.fullscreen_monitor_name"))
-        ->setEditText(QStringLiteral("Test Display"));
+    selectData(requireControl<QComboBox>(window,
+        QStringLiteral("config.general.fullscreen_monitor_name")),
+        QStringLiteral("Test Display"));
     selectData(requireControl<QComboBox>(window, QStringLiteral("config.general.video_conversion")),
         QStringLiteral("V210_TO_P010"));
     selectData(requireControl<QComboBox>(window, QStringLiteral("config.general.container_colorspace")),
@@ -1403,7 +1409,7 @@ void testChoiceLabelsAndVpRendererName()
     frameOffsetAuto->setChecked(true);
     require(!frameOffsetValue->isEnabled(),
         "Automatic Frame offset did not disable the numeric value");
-    renderer->setEditText(QStringLiteral("VideoProcessor Renderer (Alpha)"));
+    selectData(renderer, QStringLiteral("VideoProcessor Renderer (Alpha)"));
     save(window);
     const QByteArray saved = readBytes(path);
     require(saved.contains("renderer: VP Renderer"),
@@ -1435,6 +1441,158 @@ void testLegacyRendererVisibilityDefaultsHiddenAndPreservesShortcuts()
         "Hidden renderer shortcuts were not preserved verbatim");
     require(!saved.contains("hide_legacy_renderers:"),
         "The editor wrote the unchanged default instead of preserving its omission");
+}
+
+void testUnchangedActiveProfileStatusDoesNotInvalidateLists()
+{
+    QTemporaryDir directory;
+    ConfigEditorWindow window(copyFixture(directory), 0, true);
+    auto* shader = requireControl<QListWidget>(window,
+        QStringLiteral("config.shader.nls.modes"));
+    require(shader->count() >= 3,
+        "Shader fixture does not expose enough active-profile rows");
+
+    const QString first = shader->item(1)->data(Qt::UserRole).toString();
+    window.setActiveProfileStatusForTesting({}, {}, {}, { first });
+    int dataChanges = 0;
+    QObject::connect(shader->model(), &QAbstractItemModel::dataChanged,
+        [&dataChanges] { ++dataChanges; });
+
+    window.setActiveProfileStatusForTesting({}, {}, {}, { first });
+    require(dataChanges == 0,
+        "An unchanged active-profile snapshot invalidated the list model");
+
+    const QString second = shader->item(2)->data(Qt::UserRole).toString();
+    window.setActiveProfileStatusForTesting({}, {}, {}, { second });
+    require(dataChanges > 0,
+        "A changed active-profile snapshot did not update the list model");
+}
+
+void testLegacyRendererVisibilityFiltersExistingUiImmediately()
+{
+    QTemporaryDir directory;
+    const QString path = copyFixture(directory);
+    ConfigEditorWindow window(path, 0, true);
+    // Commit any fixture migration first so this test observes only the
+    // visibility preference's apply classification.
+    if (QPushButton* baselineApply = requireControl<QPushButton>(window,
+        QStringLiteral("applyConfiguration")); baselineApply->isEnabled())
+    {
+        baselineApply->click();
+        QCoreApplication::processEvents();
+    }
+    window.setRendererDiscoveryForTesting({
+        QStringLiteral("VP Renderer"),
+        QStringLiteral("DirectShow - madVR"),
+        QStringLiteral("DirectShow - Video Renderer"),
+        QStringLiteral("DirectShow - Video Mixing Renderer 9") }, {
+        QStringLiteral("VP Renderer"),
+        QStringLiteral("DirectShow - madVR") });
+    QStackedWidget* pages = requireControl<QStackedWidget>(window,
+        QStringLiteral("settingsPages"));
+    pages->setCurrentIndex(7);
+    QComboBox* renderer = requireControl<QComboBox>(window,
+        QStringLiteral("config.general.renderer"));
+    QComboBox* actionRenderer = requireControl<QComboBox>(window,
+        QStringLiteral("config.actions.renderer"));
+    const auto visibleComboItems = [](QComboBox* combo)
+    {
+        auto* view = qobject_cast<QListView*>(combo->view());
+        require(view != nullptr, "Renderer combo does not use a list view");
+        int count = 0;
+        for (int index = 0; index < combo->count(); ++index)
+            if (!view->isRowHidden(index)) ++count;
+        return count;
+    };
+    const auto visibleRendererShortcuts = [&window]
+    {
+        int count = 0;
+        for (QLineEdit* edit : window.findChildren<QLineEdit*>())
+            if (edit->objectName().startsWith(QStringLiteral("config.shortcuts.render.")) &&
+                !edit->isHidden())
+                ++count;
+        return count;
+    };
+    const int hiddenGeneralCount = visibleComboItems(renderer);
+    const int hiddenActionCount = visibleComboItems(actionRenderer);
+    const int hiddenShortcutCount = visibleRendererShortcuts();
+    require(hiddenGeneralCount < renderer->count(),
+        "The fixture exposes no hidden legacy renderer rows");
+    QCheckBox* hideLegacyRenderers = requireControl<QCheckBox>(window,
+        QStringLiteral("config.general.hide_legacy_renderers"));
+    QElapsedTimer timer;
+    timer.start();
+    hideLegacyRenderers->setChecked(false);
+    QCoreApplication::processEvents();
+    const qint64 elapsedMs = timer.elapsed();
+
+    require(requireControl<QComboBox>(window,
+        QStringLiteral("config.general.renderer")) == renderer,
+        "Toggling legacy renderer visibility replaced the General selector");
+    require(requireControl<QComboBox>(window,
+        QStringLiteral("config.actions.renderer")) == actionRenderer,
+        "Toggling legacy renderer visibility replaced the Actions selector");
+    require(elapsedMs < 250,
+        "Filtering the cached renderer UI took 250 ms or longer");
+    require(!requireControl<QCheckBox>(window,
+        QStringLiteral("config.general.hide_legacy_renderers"))->isChecked(),
+        "Immediate renderer filtering lost the checkbox state");
+    require(requireControl<QStackedWidget>(window,
+        QStringLiteral("settingsPages"))->currentIndex() == 7,
+        "Filtering renderer-dependent controls changed the active editor page");
+    require(visibleComboItems(renderer) > hiddenGeneralCount,
+        "General did not immediately expose the cached legacy renderer rows");
+    require(visibleComboItems(actionRenderer) > hiddenActionCount,
+        "Actions did not immediately expose the cached renderer rows");
+    require(visibleRendererShortcuts() > hiddenShortcutCount,
+        "Shortcuts did not immediately expose the cached renderer rows");
+    require(!requireControl<QLabel>(window,
+        QStringLiteral("configurationEffectSummary"))->text().startsWith(
+            QStringLiteral("Restart renderer:")),
+        "The UI-only visibility preference still requests a renderer restart");
+    require(requireControl<QPushButton>(window,
+        QStringLiteral("applyConfiguration"))->isEnabled(),
+        "The immediately applied UI preference cannot be persisted");
+}
+
+void testGeneralInputApplyPreservesBackendOverrides()
+{
+    QTemporaryDir directory;
+    const QString path = copyFixture(directory);
+    QFile file(path);
+    require(file.open(QIODevice::Append),
+        "Could not append the VP Renderer input override fixture");
+    file.write("\n[vprenderer.input_processing]\nvideo_conversion: NONE\n");
+    file.close();
+
+    ConfigEditorWindow window(path, 0, true);
+    // Keep [general] without an explicit conversion default and save an
+    // unrelated General edit. The two backend-specific values must remain
+    // independent instead of being flattened into the shared default.
+    QCheckBox* hideLegacyRenderers = requireControl<QCheckBox>(window,
+        QStringLiteral("config.general.hide_legacy_renderers"));
+    hideLegacyRenderers->setChecked(false);
+    require(requireControl<QLabel>(window,
+        QStringLiteral("configurationEffectSummary"))->text().startsWith(
+            QStringLiteral("Restart renderer:")),
+        "General changes are not labelled as a renderer restart");
+    requireControl<QPushButton>(window, QStringLiteral("applyConfiguration"))->click();
+    QCoreApplication::processEvents();
+
+    const QByteArray saved = readBytes(path);
+    const auto section = [&saved](const QByteArray& name)
+    {
+        const int begin = saved.indexOf(QByteArray("[") + name + QByteArray("]"));
+        const int end = begin < 0 ? -1 : saved.indexOf(QByteArray("\n["), begin + 1);
+        return begin < 0 ? QByteArray() : saved.mid(begin,
+            end < 0 ? -1 : end - begin);
+    };
+    require(!section("general").contains("video_conversion:"),
+        "Applying an unrelated General change wrote a conversion default");
+    require(section("directshow").contains("video_conversion: V210_TO_P010"),
+        "Applying a General change flattened the DirectShow conversion override");
+    require(section("vprenderer.input_processing").contains("video_conversion: NONE"),
+        "Applying a General change flattened the VP Renderer conversion override");
 }
 
 void testNewActionStartsUnconfigured()
@@ -1753,7 +1911,11 @@ void testInvalidRendererIsRejectedContinuously()
     QLabel* status = requireControl<QLabel>(window,
         QStringLiteral("configurationStatus"));
 
-    renderer->setEditText(QStringLiteral("DirectShow - madVR1a"));
+    require(!renderer->isEditable(),
+        "Renderer discovery selector still accepts arbitrary typed values");
+    renderer->addItem(QStringLiteral("DirectShow - madVR1a"),
+        QStringLiteral("DirectShow - madVR1a"));
+    selectData(renderer, QStringLiteral("DirectShow - madVR1a"));
     QCoreApplication::processEvents();
     require(status->text().contains(QStringLiteral("renderer 'DirectShow - madVR1a' was not discovered")) &&
         status->styleSheet().contains(QStringLiteral("#ff8d86")),
@@ -1767,8 +1929,7 @@ void testInvalidRendererIsRejectedContinuously()
     require(window.isVisible() && readBytes(path) == saved,
         "An invalid renderer candidate was saved or closed the editor");
 
-    renderer->setEditText(QStringLiteral("VP Renderer"));
-    QCoreApplication::processEvents();
+    selectData(renderer, QStringLiteral("VP Renderer"));
     require(ok->isEnabled() && apply->isEnabled(),
         "Correcting the renderer did not restore OK and Apply");
     require(!status->styleSheet().contains(QStringLiteral("#ff8d86")),
@@ -1839,33 +2000,16 @@ void testDisplayWarningAndErrorPrecedence()
 
     QComboBox* renderer = requireControl<QComboBox>(window,
         QStringLiteral("config.general.renderer"));
-    renderer->setEditText(QStringLiteral("DirectShow - invalid"));
-    QCoreApplication::processEvents();
+    renderer->addItem(QStringLiteral("DirectShow - invalid"),
+        QStringLiteral("DirectShow - invalid"));
+    selectData(renderer, QStringLiteral("DirectShow - invalid"));
     require(status->text().contains(QStringLiteral("renderer 'DirectShow - invalid'")) &&
         !status->text().contains(QStringLiteral("Warning: Display")) &&
         status->styleSheet().contains(QStringLiteral("#ff8d86")) &&
         !ok->isEnabled() && !apply->isEnabled(),
         "A validation error did not override the display warning");
 
-    QLineEdit* aspect = requireControl<QLineEdit>(window,
-        QStringLiteral("config.vprenderer.viewport.screen_aspect"));
-    const QString originalAspect = aspect->text();
-    aspect->setText(QStringLiteral("not-an-aspect"));
-    QCoreApplication::processEvents();
-    if (!status->text().contains(QStringLiteral("screen_aspect")) ||
-        !status->text().contains(QStringLiteral("And 1 additional error.")))
-        throw std::runtime_error(QStringLiteral(
-            "Multiple errors did not show the latest error/count: %1")
-            .arg(status->text()).toStdString());
-
-    aspect->setText(originalAspect);
-    QCoreApplication::processEvents();
-    require(status->text().contains(QStringLiteral("renderer 'DirectShow - invalid'")) &&
-        !status->text().contains(QStringLiteral("additional error")),
-        "Fixing the latest error did not reveal the remaining current error");
-
-    renderer->setEditText(QStringLiteral("DirectShow - madVR"));
-    QCoreApplication::processEvents();
+    selectData(renderer, QStringLiteral("DirectShow - madVR"));
     require(status->text().contains(QStringLiteral("Warning: Display 'EPSON PJ'")) &&
         status->styleSheet().contains(QStringLiteral("#e0b45c")) &&
         ok->isEnabled(),
@@ -1946,9 +2090,9 @@ void testRemainingEffectSummaryPrecedence()
         requireControl<QLineEdit>(window,
             QStringLiteral("config.shortcuts.fullscreen_toggle"))
             ->setText(QStringLiteral("Ctrl+Alt+F11"));
-        requireControl<QComboBox>(window,
-            QStringLiteral("config.general.renderer"))
-            ->setEditText(QStringLiteral("VP Renderer"));
+        selectData(requireControl<QComboBox>(window,
+            QStringLiteral("config.general.renderer")),
+            QStringLiteral("VP Renderer"));
         QLabel* effect = requireControl<QLabel>(window,
             QStringLiteral("configurationEffectSummary"));
         require(effect->text().startsWith(QStringLiteral("Restart renderer:")) &&
@@ -2039,6 +2183,99 @@ void testDpiKeyboardAndAccessibilityBehavior()
     }
 }
 
+void testPrimaryDiscoverySelectorsOpenOnFieldClick()
+{
+    QTemporaryDir directory;
+    const QString path = copyFixture(directory);
+    ConfigEditorWindow window(path, 0, true);
+    window.show();
+    window.selectPage(0);
+    QCoreApplication::processEvents();
+
+    for (const QString& name : {
+        QStringLiteral("config.general.capture_device"),
+        QStringLiteral("config.general.fullscreen_monitor_name"),
+        QStringLiteral("config.general.renderer") })
+    {
+        QComboBox* selector = requireControl<QComboBox>(window, name);
+        require(!selector->isEditable(),
+            "A discovery selector still behaves like a text editor");
+        require(selector->lineEdit() == nullptr,
+            "A discovery selector still owns an embedded text editor");
+        require(selector->isVisibleTo(&window) && selector->isEnabled(),
+            "A discovery selector is not available for direct interaction");
+
+        const QPoint point = selector->rect().center();
+        const QPoint globalPoint = selector->mapToGlobal(point);
+        const ULONGLONG started = GetTickCount64();
+        QMouseEvent press(QEvent::MouseButtonPress, QPointF(point),
+            QPointF(globalPoint), Qt::LeftButton, Qt::LeftButton,
+            Qt::NoModifier);
+        QApplication::sendEvent(selector, &press);
+        QCoreApplication::processEvents();
+        QWidget* popup = selector->view()->window();
+        const ULONGLONG elapsed = GetTickCount64() - started;
+        require(popup && popup->isVisible(),
+            "Clicking the discovery selector field did not open its popup");
+        require(elapsed < 250,
+            "Discovery selector popup did not open promptly");
+        selector->hidePopup();
+        QCoreApplication::processEvents();
+    }
+}
+
+void testOrdinaryEditsDoNotRequireDiskValidation()
+{
+    QTemporaryDir directory;
+    require(directory.isValid(), "Cannot create validation test directory");
+    const QString candidateDirectory =
+        directory.filePath(QStringLiteral("removed-before-edit"));
+    require(QDir().mkpath(candidateDirectory),
+        "Cannot create validation candidate directory");
+    const QString path = candidateDirectory +
+        QStringLiteral("/VideoProcessor.cfg");
+    require(QFile::copy(repositoryPath(QStringLiteral(
+        "test-fixtures/deployed-VideoProcessor-20260807-current.cfg")), path),
+        "Cannot copy validation candidate fixture");
+
+    ConfigEditorWindow window(path, 0, true);
+    const QString parked = directory.filePath(QStringLiteral("parked.cfg"));
+    require(QFile::rename(path, parked) &&
+        QDir().rmdir(candidateDirectory),
+        "Cannot remove the candidate directory after loading");
+
+    QCheckBox* fullscreen = requireControl<QCheckBox>(window,
+        QStringLiteral("config.general.fullscreen"));
+    fullscreen->setChecked(!fullscreen->isChecked());
+    QCoreApplication::processEvents();
+    require(requireControl<QPushButton>(window,
+        QStringLiteral("applyConfiguration"))->isEnabled(),
+        "An ordinary edit synchronously required a disk validation copy");
+    require(!requireControl<QLabel>(window,
+        QStringLiteral("configurationStatus"))->text().contains(
+            QStringLiteral("validation copy"), Qt::CaseInsensitive),
+        "Interactive validation attempted disk-backed core validation");
+}
+
+void testWarmRevealPathGrantsForegroundPermission()
+{
+    const QByteArray source = readBytes(repositoryPath(QStringLiteral(
+        "src/VideoProcessor-GUI/VideoProcessorDlg.cpp")));
+    const qsizetype functionStart = source.indexOf(
+        "bool SignalConfigurationEditorReveal(DWORD processId)");
+    const qsizetype functionEnd = source.indexOf(
+        "bool SendConfigurationEditorRevealOnce", functionStart);
+    require(functionStart >= 0 && functionEnd > functionStart,
+        "Cannot locate the stable Config reveal path");
+    const QByteArray revealPath = source.mid(functionStart,
+        functionEnd - functionStart);
+    const qsizetype grant = revealPath.indexOf(
+        "AllowSetForegroundWindow(processId)");
+    const qsizetype signal = revealPath.indexOf("SetEvent(eventHandle)");
+    require(grant >= 0 && signal > grant,
+        "Warm Config reveal does not grant foreground permission before signaling");
+}
+
 void testNativeOwnerPreservesQtInputAndPopupAssociation()
 {
     if (QGuiApplication::platformName().compare(
@@ -2093,15 +2330,14 @@ void testNativeOwnerPreservesQtInputAndPopupAssociation()
     require(testAdvertisedEditor == editor,
         "Config editor did not advertise its current native top-level HWND");
 
-    QLineEdit* capture = requireControl<QComboBox>(window,
-        QStringLiteral("config.general.capture_device"))->lineEdit();
-    require(capture != nullptr, "Capture device editor is not keyboard-editable");
-    capture->setFocus();
-    capture->selectAll();
+    QLineEdit* shortcut = requireControl<QLineEdit>(window,
+        QStringLiteral("config.shortcuts.fullscreen_toggle"));
+    shortcut->setFocus();
+    shortcut->selectAll();
     QKeyEvent keyPress(QEvent::KeyPress, Qt::Key_Z, Qt::NoModifier,
         QStringLiteral("z"));
-    QApplication::sendEvent(capture, &keyPress);
-    require(capture->text() == QStringLiteral("z"),
+    QApplication::sendEvent(shortcut, &keyPress);
+    require(shortcut->text() == QStringLiteral("z"),
         "Native association interfered with normal Qt edit keyboard input");
 
     QComboBox* renderer = requireControl<QComboBox>(window,
@@ -2243,12 +2479,12 @@ void testNativeOwnerPreservesQtInputAndPopupAssociation()
     QCoreApplication::processEvents();
     require(window.isVisible(),
         "Activation through the advertised replacement HWND did not reveal");
-    capture->setFocus();
-    capture->selectAll();
+    shortcut->setFocus();
+    shortcut->selectAll();
     QKeyEvent secondKeyPress(QEvent::KeyPress, Qt::Key_Y, Qt::NoModifier,
         QStringLiteral("y"));
-    QApplication::sendEvent(capture, &secondKeyPress);
-    require(capture->text() == QStringLiteral("y"),
+    QApplication::sendEvent(shortcut, &secondKeyPress);
+    require(shortcut->text() == QStringLiteral("y"),
         "Repeated activation interfered with normal Qt keyboard focus");
 
     HWND replacementHost = CreateWindowExW(WS_EX_TOOLWINDOW,
@@ -2901,11 +3137,17 @@ int main(int argc, char** argv)
         testQueueUnitsAndLutControlsUseConsistentRows);
     failures += run("active profile markers cover relevant lists", testActiveProfileMarkersCoverRelevantLists);
     failures += run("active shader markers use authoritative set", testActiveShaderMarkersUseAuthoritativeSet);
+    failures += run("unchanged active profile status avoids list invalidation",
+        testUnchangedActiveProfileStatusDoesNotInvalidateLists);
     failures += run("active shader status rejects stale generation", testActiveShaderStatusRejectsStaleGeneration);
     failures += run("standalone Config reads live active profile status", testStandaloneConfigAcceptsLiveActiveProfileStatus);
     failures += run("LUT selector discovers installation LUT files", testLutSelectorDiscoversInstallationLutFiles);
     failures += run("choice labels and VP Renderer name", testChoiceLabelsAndVpRendererName);
     failures += run("legacy renderer visibility defaults hidden and preserves shortcuts", testLegacyRendererVisibilityDefaultsHiddenAndPreservesShortcuts);
+	failures += run("legacy renderer visibility filters existing UI immediately",
+		testLegacyRendererVisibilityFiltersExistingUiImmediately);
+	failures += run("General input Apply preserves backend overrides",
+		testGeneralInputApplyPreservesBackendOverrides);
     failures += run("new action starts unconfigured", testNewActionStartsUnconfigured);
     failures += run("empty actions show an empty state", testEmptyActionsShowEmptyState);
     failures += run("missing configuration can be created from editor",
@@ -2924,6 +3166,12 @@ int main(int argc, char** argv)
     failures += run("remaining effect summary precedence",
         testRemainingEffectSummaryPrecedence);
     failures += run("DPI keyboard and accessibility behavior", testDpiKeyboardAndAccessibilityBehavior);
+    failures += run("primary discovery selectors open on field click",
+        testPrimaryDiscoverySelectorsOpenOnFieldClick);
+    failures += run("ordinary edits avoid disk validation",
+        testOrdinaryEditsDoNotRequireDiskValidation);
+    failures += run("warm reveal grants foreground permission",
+        testWarmRevealPathGrantsForegroundPermission);
     failures += run("native owner preserves Qt input and popup association",
         testNativeOwnerPreservesQtInputAndPopupAssociation);
     failures += run("real configuration dropdown remains clickable",

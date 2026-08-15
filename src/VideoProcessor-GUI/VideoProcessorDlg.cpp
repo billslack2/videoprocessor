@@ -306,6 +306,11 @@ bool SignalConfigurationEditorReveal(DWORD processId)
 {
 	if (!processId)
 		return false;
+	// The warm Config process is separate from the foreground VP process.
+	// Grant it the one-shot foreground right before signaling reveal; otherwise
+	// Windows may show its topmost window without activating it and consume the
+	// operator's first selector click merely to activate the editor.
+	::AllowSetForegroundWindow(processId);
 	const std::wstring eventName =
 		ConfigurationLiveApply::ConfigurationEditorRevealEventName(processId);
 	HANDLE eventHandle = ::OpenEventW(EVENT_MODIFY_STATE, FALSE,
@@ -1176,6 +1181,13 @@ private:
 		if (matchedAccelerator)
 		{
 			const ACCEL& accelerator = *matchedAccelerator;
+			if (!ConfigurationLiveApply::MayDispatchBackgroundAccelerator(
+				(accelerator.fVirt & FCONTROL) != 0,
+				(accelerator.fVirt & FALT) != 0,
+				(accelerator.fVirt & FSHIFT) != 0))
+			{
+				return ::CallNextHookEx(s_hook, code, message, parameter);
+			}
 			if (accelerator.cmd == ID_COMMAND_CONFIG_EDITOR)
 			{
 				// The configuration editor owns this key while it has focus so
@@ -4438,6 +4450,11 @@ void CVideoProcessorDlg::HideUI(bool enabled)
 	m_hideUI = enabled;
 	if (enabled)
 		m_rendererFullScreenStart = false;
+}
+
+void CVideoProcessorDlg::AlwaysWarnPci(bool enabled)
+{
+	m_alwaysWarnPci = enabled;
 }
 
 void CVideoProcessorDlg::StartMinimized(bool enabled)
@@ -10904,6 +10921,11 @@ void CVideoProcessorDlg::RefreshModernStatus()
 		value.Trim();
 		return value.IsEmpty() ? CString(TEXT("---")) : value;
 	};
+	auto pcieValueBelow = [](const CString& value, int minimum)
+	{
+		const int firstDigit = value.FindOneOf(TEXT("0123456789"));
+		return firstDigit >= 0 && _ttoi(value.Mid(firstDigit)) < minimum;
+	};
 
 	ModernOperatorStatus status;
 	status.captureDevice = selected(m_captureDeviceCombo);
@@ -10933,12 +10955,48 @@ void CVideoProcessorDlg::RefreshModernStatus()
 	if (status.hardware[1] != TEXT("---") &&
 		status.hardware[1].Left(1).CompareNoCase(TEXT("x")) != 0)
 		status.hardware[1] = TEXT("x") + status.hardware[1];
+	status.hardwareSpeedWarning = m_alwaysWarnPci ||
+		pcieValueBelow(status.hardware[0], 2);
+	status.hardwareWidthWarning = m_alwaysWarnPci ||
+		pcieValueBelow(status.hardware[1], 4);
 	status.maxCll = text(m_hdrLuminanceMaxCll);
 	status.maxFall = text(m_hdrLuminanceMaxFall);
 	status.masteringMin = text(m_hdrLuminanceMasterMin);
 	status.masteringMax = text(m_hdrLuminanceMasterMax);
 	status.rendererName = selected(m_rendererCombo);
 	status.rendererState = compactState(text(m_rendererStateText));
+	const int selectedRendererIndex = m_rendererCombo.GetCurSel();
+	const RendererId* selectedRenderer = selectedRendererIndex >= 0 ?
+		reinterpret_cast<const RendererId*>(
+			m_rendererCombo.GetItemData(selectedRendererIndex)) : nullptr;
+	status.directShowRenderer = selectedRenderer &&
+		selectedRenderer->backend == RendererBackend::DIRECTSHOW;
+	status.vpRenderer = selectedRenderer &&
+		selectedRenderer->backend == RendererBackend::LIBPLACEBO;
+	if (status.directShowRenderer)
+	{
+		const CString prefix(TEXT("DirectShow"));
+		if (status.rendererName.Left(prefix.GetLength()).CompareNoCase(prefix) == 0)
+		{
+			status.rendererName = status.rendererName.Mid(prefix.GetLength());
+			status.rendererName.TrimLeft(TEXT(" \t-:|/"));
+			if (status.rendererName.IsEmpty())
+				status.rendererName = prefix;
+		}
+	}
+	if (m_rendererState == RendererState::RENDERSTATE_RENDERING &&
+		m_rendererStartTime != 0)
+	{
+		const DWORD elapsedMilliseconds = GetTickCount() -
+			static_cast<DWORD>(m_rendererStartTime);
+		const unsigned long long elapsedSeconds = elapsedMilliseconds / 1000ULL;
+		status.rendererUptime.Format(TEXT("%02llu:%02llu:%02llu"),
+			elapsedSeconds / 3600ULL, (elapsedSeconds / 60ULL) % 60ULL,
+			elapsedSeconds % 60ULL);
+	}
+	if (status.directShowRenderer)
+		status.rendererStartStopMethod =
+			selected(m_rendererDirectShowStartStopTimeMethodCombo);
 	// Queue getters enforce the renderer lifecycle contract and may only be
 	// queried after the graph has reached RENDERING. The Modern view is also
 	// refreshed during startup, so keep its initial placeholders until then.
@@ -10954,12 +11012,7 @@ void CVideoProcessorDlg::RefreshModernStatus()
 		status.queueCapacity.Format(TEXT("%zu"),
 			GetRendererVideoFrameQueueSizeMax());
 
-		const int selectedRenderer = m_rendererCombo.GetCurSel();
-		const RendererId* renderer = selectedRenderer >= 0 ?
-			reinterpret_cast<const RendererId*>(
-				m_rendererCombo.GetItemData(selectedRenderer)) : nullptr;
-		status.singleQueue = renderer &&
-			renderer->backend == RendererBackend::LIBPLACEBO;
+		status.singleQueue = status.vpRenderer;
 	}
 	status.dropped = text(m_rendererDroppedFrameCountText);
 	status.vpLatency = text(m_rendererLatencyToVPText);
@@ -10971,11 +11024,7 @@ void CVideoProcessorDlg::RefreshModernStatus()
 	if (m_videoRenderer &&
 		m_rendererState == RendererState::RENDERSTATE_RENDERING)
 	{
-		const int selectedRenderer = m_rendererCombo.GetCurSel();
-		const RendererId* renderer = selectedRenderer >= 0 ?
-			reinterpret_cast<const RendererId*>(
-				m_rendererCombo.GetItemData(selectedRenderer)) : nullptr;
-		if (renderer && renderer->backend == RendererBackend::LIBPLACEBO)
+		if (status.vpRenderer)
 		{
 			double presentationLeadMs = 0.0;
 			double captureToPresentationMs = 0.0;

@@ -24,3 +24,32 @@ const TCHAR* ToString(const VideoConversionOverride videoConversionOverride)
 
 	throw std::runtime_error("VideoConversionOverride ToString() failed, value not recognized");
 }
+
+
+bool TryParseVideoConversionOverride(
+	const TCHAR* value,
+	VideoConversionOverride& videoConversionOverride) noexcept
+{
+	if (value == nullptr)
+	{
+		return false;
+	}
+
+	if (_tcsicmp(value, TEXT("NONE")) == 0 ||
+		_tcsicmp(value, TEXT("OFF")) == 0)
+	{
+		videoConversionOverride =
+			VideoConversionOverride::VIDEOCONVERSION_NONE;
+		return true;
+	}
+
+	if (_tcsicmp(value, TEXT("V210_TO_P010")) == 0 ||
+		_tcsicmp(value, TEXT("UYVY_TO_P010")) == 0)
+	{
+		videoConversionOverride =
+			VideoConversionOverride::VIDEOCONVERSION_V210_TO_P010;
+		return true;
+	}
+
+	return false;
+}

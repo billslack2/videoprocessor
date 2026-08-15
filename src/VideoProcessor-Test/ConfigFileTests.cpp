@@ -19,6 +19,7 @@
 #include <RendererConfigView.h>
 #include <RendererProfileConfig.h>
 #include <UnifiedProfileRuntime.h>
+#include <VideoConversionOverride.h>
 #include "CppUnitTest.h"
 
 #include <cmath>
@@ -33,6 +34,26 @@ namespace VideoProcessorTest
 	TEST_CLASS(ConfigFileTests)
 	{
 	public:
+		TEST_METHOD(VideoConversionOverrideAcceptsConfiguredDisabledValues)
+		{
+			VideoConversionOverride parsed =
+				VideoConversionOverride::VIDEOCONVERSION_V210_TO_P010;
+			Assert::IsTrue(TryParseVideoConversionOverride(TEXT("NONE"), parsed));
+			Assert::IsTrue(parsed ==
+				VideoConversionOverride::VIDEOCONVERSION_NONE);
+			Assert::IsTrue(TryParseVideoConversionOverride(TEXT("off"), parsed));
+			Assert::IsTrue(parsed ==
+				VideoConversionOverride::VIDEOCONVERSION_NONE);
+			Assert::IsTrue(TryParseVideoConversionOverride(
+				TEXT("V210_TO_P010"), parsed));
+			Assert::IsTrue(parsed ==
+				VideoConversionOverride::VIDEOCONVERSION_V210_TO_P010);
+			Assert::IsTrue(TryParseVideoConversionOverride(
+				TEXT("uyvy_to_p010"), parsed));
+			Assert::IsFalse(TryParseVideoConversionOverride(
+				TEXT("NOT_A_CONVERSION"), parsed));
+		}
+
 		TEST_METHOD(ModernOperatorBuildIdentityUsesBranchAndCommit)
 		{
 			Assert::AreEqual(std::wstring(
@@ -199,6 +220,18 @@ namespace VideoProcessorTest
 				42, 42, false));
 			Assert::IsFalse(ConfigurationLiveApply::MayDispatchGlobalShortcut(
 				42, 84, true));
+			Assert::IsFalse(
+				ConfigurationLiveApply::MayDispatchBackgroundAccelerator(
+					false, false, false));
+			Assert::IsTrue(
+				ConfigurationLiveApply::MayDispatchBackgroundAccelerator(
+					true, false, false));
+			Assert::IsTrue(
+				ConfigurationLiveApply::MayDispatchBackgroundAccelerator(
+					false, true, false));
+			Assert::IsTrue(
+				ConfigurationLiveApply::MayDispatchBackgroundAccelerator(
+					false, false, true));
 			Assert::IsTrue(ConfigurationLiveApply::ShortcutModifiersMatch(
 				true, false, true, true, false, true));
 			Assert::IsFalse(ConfigurationLiveApply::ShortcutModifiersMatch(

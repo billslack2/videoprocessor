@@ -186,6 +186,14 @@ namespace ConfigurationLiveApply
 			foregroundProcessId != videoProcessorProcessId;
 	}
 
+	inline bool MayDispatchBackgroundAccelerator(bool expectedControl,
+		bool expectedAlt, bool expectedShift)
+	{
+		// An unmodified key is ordinary typing when another application owns
+		// focus.  Never turn that typing into a VideoProcessor command.
+		return expectedControl || expectedAlt || expectedShift;
+	}
+
 	inline bool MayDispatchInjectedShortcut(bool injected,
 		uint32_t videoProcessorProcessId, uint32_t foregroundProcessId)
 	{

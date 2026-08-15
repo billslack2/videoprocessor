@@ -26,3 +26,9 @@ enum class VideoConversionOverride
 
 
 const TCHAR* ToString(const VideoConversionOverride);
+
+// Parses the configuration/command-line spellings for the shared override.
+// NONE and OFF both explicitly select the renderer default.
+bool TryParseVideoConversionOverride(
+	const TCHAR* value,
+	VideoConversionOverride& videoConversionOverride) noexcept;
