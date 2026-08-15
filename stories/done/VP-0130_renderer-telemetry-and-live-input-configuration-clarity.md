@@ -2,11 +2,10 @@
 
 ## Status
 
-In Progress (2026-08-15). Implementation is on
-`codex/vp0130-renderer-ui-live-apply` in the clean worktree
-`C:\Videoprocessor\vp\worktrees\vp0130-renderer-ui-live-apply`, based on
-the current default branch `origin/v1.2.001-beta` tip
-`e45b0aa0e5290051eb69f9413a493a49b8c40c7c`.
+Done (2026-08-15). Merged by
+[PR #63](https://github.com/billslack2/videoprocessor/pull/63) into the
+default integration branch `v1.2.001-beta` as merge commit
+`f412ea5e90f43c3ac998ab5fa34b1b638704e41b`.
 
 Implementation checkpoint:
 
