@@ -6,9 +6,9 @@ story may have ordered child-task IDs as defined below.
 
 ## Registry state
 
-- Last assigned root story: `VP-0130`
-- Next root story number: `VP-0131`
-- Total indexed items: 146
+- Last assigned root story: `VP-0131`
+- Next root story number: `VP-0132`
+- Total indexed items: 147
 
 ## Story locations
 
@@ -163,6 +163,7 @@ they must not contain requirements that are absent from this file.
 | VP-0128 | Backlog | Audit VP Renderer option parity and resolved defaults |
 | VP-0129 | Review | Retain scope through vertical overlay arbitration |
 | VP-0130 | In Progress | Renderer telemetry and live input-configuration clarity |
+| VP-0131 | Backlog | Bidirectional NLS and bounded scope-to-16:9 fill |
 | VP-0066-1 | Done | Characterize the live output pipeline with replayable golden traces |
 | VP-0066-2 | Done | Extract a graph-independent video timing controller |
 | VP-0066-3 | Done | Extract epoch-aware frame transport and processing components |
