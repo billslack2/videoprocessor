@@ -159,20 +159,9 @@ namespace MainConfigSchema
 		if (!ConfigSchema::ValidateSection(
 			config, "directshow", directShowRules, error))
 			return false;
-		for (const char* sharedInputKey : { "video_conversion",
-			"container_colorspace", "hdr_colorspace", "hdr_luminance" })
-		{
-			std::string canonicalValue;
-			std::string legacyValue;
-			if (config.TryGetString("general", sharedInputKey, canonicalValue) &&
-				config.TryGetString("directshow", sharedInputKey, legacyValue))
-			{
-				error = "cannot specify both [general] " +
-					std::string(sharedInputKey) + " and legacy [directshow] " +
-					sharedInputKey;
-				return false;
-			}
-		}
+		// [general] is the shared input-policy default. [directshow] and
+		// [vprenderer] may independently override any of its fields, so overlap
+		// is deliberate and resolved by the runtime rather than rejected here.
 
 		const std::vector<ConfigSchema::KeyRule> deckLinkRules = {
 			ConfigSchema::Choice("rgb_8bit_packing", { "AUTO", "ARGB", "BGRA" }),

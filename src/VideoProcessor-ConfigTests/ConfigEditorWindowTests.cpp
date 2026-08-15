@@ -389,6 +389,12 @@ void testEveryPageRoundTrips()
         ->setText(QStringLiteral("220"));
     selectData(requireControl<QComboBox>(window, QStringLiteral("config.vprenderer.tone_mapping")),
         QStringLiteral("spline"));
+    selectData(requireControl<QComboBox>(window,
+        QStringLiteral("config.vprenderer.video_conversion")),
+        QStringLiteral("V210_TO_P010"));
+    selectData(requireControl<QComboBox>(window,
+        QStringLiteral("config.vprenderer.hdr_colorspace")),
+        QStringLiteral("FOLLOW_INPUT_LLDV"));
 
     requireControl<QLineEdit>(window,
         QStringLiteral("config.vprenderer.viewport.screen_aspect"))->setText(QStringLiteral("21:10"));
@@ -411,6 +417,10 @@ void testEveryPageRoundTrips()
         QStringLiteral("config.directshow.frame_offset.value"))->setValue(75);
     selectData(requireControl<QComboBox>(window,
         QStringLiteral("config.directshow.renderer_primaries")), QStringLiteral("BT2020"));
+    selectData(requireControl<QComboBox>(window,
+        QStringLiteral("config.directshow.video_conversion")), QStringLiteral("NONE"));
+    selectData(requireControl<QComboBox>(window,
+        QStringLiteral("config.directshow.container_colorspace")), QStringLiteral("REC709"));
 
     requireControl<QLineEdit>(window, QStringLiteral("config.lldv.max_cll"))
         ->setText(QStringLiteral("1200"));
@@ -500,7 +510,8 @@ void testEveryPageRoundTrips()
         "shortcut: Ctrl+Q", "quality: balanced", "sdr_target_nits: 220", "tone_mapping: spline",
         "screen_aspect: 21:10", "vertical_alignment: bottom", "anamorphic_scale: 4:3",
         "renderer_start_stop_time_method: RATIONAL_RATIONAL", "frame_offset: 75",
-        "renderer_primaries: BT2020", "max_cll: 1200", "max_fall: 450",
+        "renderer_primaries: BT2020", "video_conversion: NONE",
+        "container_colorspace: REC709", "max_cll: 1200", "max_fall: 450",
         "fullscreen_toggle: Ctrl+F", "config_editor: Ctrl+E", "toggle_noui: Alt+U",
         "renderer: *", "run: C:\\Tools\\verified-action.cmd 42",
         "enabled: false", "debug: false", "debug_log_retention: 25",
@@ -508,6 +519,8 @@ void testEveryPageRoundTrips()
     };
     for (const QByteArray& text : expected)
         require(saved.contains(text), text.constData());
+    require(saved.contains("[vprenderer]\nvideo_conversion: V210_TO_P010"),
+        "VP Renderer input override was not saved in its canonical section");
     require(saved.indexOf("[shader.nls.protected]") < saved.indexOf("[shader.nls.standard]"),
         "NLS selection order was not persisted through section order");
 
@@ -524,6 +537,12 @@ void testEveryPageRoundTrips()
     require(requireControl<QComboBox>(reloaded,
         QStringLiteral("config.vprenderer.viewport.vertical_alignment"))->currentData().toString() ==
         QStringLiteral("bottom"), "Vertical alignment did not reload");
+    require(requireControl<QComboBox>(reloaded,
+        QStringLiteral("config.vprenderer.video_conversion"))->currentData().toString() ==
+        QStringLiteral("V210_TO_P010"), "VP Renderer input override did not reload");
+    require(requireControl<QComboBox>(reloaded,
+        QStringLiteral("config.directshow.video_conversion"))->currentData().toString() ==
+        QStringLiteral("NONE"), "DirectShow input override did not reload");
 }
 
 void answerInputDialog(const QString& text)

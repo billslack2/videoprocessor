@@ -2737,17 +2737,24 @@ namespace VideoProcessorTest
 			Assert::IsTrue(MainConfigSchema::Validate(config, error),
 				std::wstring(error.begin(), error.end()).c_str());
 
-			// The historical DirectShow location remains readable, but defining
-			// the same shared policy in both homes is ambiguous.
+			// General is the shared default and DirectShow is now an explicit
+			// override, so both fields are valid together.
 			{
 				std::ofstream file(path, std::ios::out | std::ios::trunc);
 				file << "[general]\nvideo_conversion: V210_TO_P010\n"
-					"[directshow]\nvideo_conversion: V210_TO_P010\n"
-					"[vprenderer]\nquality: high\n";
+					"container_colorspace: BT2020\n"
+					"[directshow]\nvideo_conversion: NONE\n"
+					"container_colorspace: REC709\n"
+					"[vprenderer]\nquality: high\n"
+					"video_conversion: V210_TO_P010\n"
+					"hdr_colorspace: FOLLOW_INPUT_LLDV\n";
 			}
 			Assert::IsTrue(config.Load(path));
-			Assert::IsFalse(MainConfigSchema::Validate(config, error));
-			Assert::IsTrue(error.find("both [general]") != std::string::npos);
+			Assert::IsTrue(MainConfigSchema::Validate(config, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			RendererProfileConfig::Model rendererModel;
+			Assert::IsTrue(RendererProfileConfig::Read(config, rendererModel, error),
+				std::wstring(error.begin(), error.end()).c_str());
 
 			{
 				std::ofstream file(path, std::ios::out | std::ios::trunc);

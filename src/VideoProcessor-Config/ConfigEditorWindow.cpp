@@ -719,7 +719,26 @@ void ConfigEditorWindow::loadConfiguration()
 	hasPendingMigrations_ = false;
 	savedSnapshot_ = configurationLoaded_ ? captureDocumentSnapshot(*document_) :
 		DocumentSnapshot{};
-	dirty_ = configurationLoaded_ && !document_->existedAtLoad;
+	bool migratedLegacyInputPolicy = false;
+	if (configurationLoaded_)
+	{
+		for (const char* inputKey : { "video_conversion", "container_colorspace",
+			"hdr_colorspace", "hdr_luminance" })
+		{
+			const std::string general = document_->Get("general", inputKey);
+			const std::string directShow = document_->Get("directshow", inputKey);
+			const std::string vpRenderer = document_->Get("vprenderer", inputKey);
+			if (general.empty() && !directShow.empty() && vpRenderer.empty())
+			{
+				document_->SetKnown("general", inputKey, directShow);
+				document_->RemoveKnown("directshow", inputKey);
+				migratedLegacyInputPolicy = true;
+			}
+		}
+	}
+	dirty_ = configurationLoaded_ && (!document_->existedAtLoad ||
+		migratedLegacyInputPolicy);
+	hasPendingMigrations_ = migratedLegacyInputPolicy;
 }
 
 void ConfigEditorWindow::loadDiscoveryCache()
@@ -911,8 +930,24 @@ QComboBox* ConfigEditorWindow::bindChoiceField(const QString& section, const QSt
     }
 
     QString fallback;
-    if (section.compare(QStringLiteral("directshow"), Qt::CaseInsensitive) == 0)
+    const bool backendInputSetting =
+        (section.compare(QStringLiteral("directshow"), Qt::CaseInsensitive) == 0 ||
+         section.compare(QStringLiteral("vprenderer"), Qt::CaseInsensitive) == 0) &&
+        isSharedInputSetting(key);
+    if (backendInputSetting)
+    {
+        // An absent backend field is intentionally displayed as Inherit rather
+        // than as the resolved General value.  The legacy DirectShow location
+        // remains VP Renderer's final fallback until an editor save migrates it.
+        fallback.clear();
+    }
+    else if (section.compare(QStringLiteral("directshow"), Qt::CaseInsensitive) == 0)
         fallback = value(QStringLiteral("general"), key);
+    else if (section.compare(QStringLiteral("vprenderer"), Qt::CaseInsensitive) == 0)
+    {
+        fallback = value(QStringLiteral("general"), key);
+        if (fallback.isEmpty()) fallback = value(QStringLiteral("directshow"), key);
+    }
     else if (section.compare(QStringLiteral("general"), Qt::CaseInsensitive) == 0 &&
         isSharedInputSetting(key))
         fallback = value(QStringLiteral("directshow"), key);
@@ -952,13 +987,17 @@ QComboBox* ConfigEditorWindow::bindChoiceField(const QString& section, const QSt
             normalized = QStringLiteral("VP Renderer");
         const std::string sectionText = section.toStdString();
         const std::string keyText = key.toStdString();
-        if (section.compare(QStringLiteral("directshow"), Qt::CaseInsensitive) == 0)
+        if (section.compare(QStringLiteral("directshow"), Qt::CaseInsensitive) == 0 &&
+            !isSharedInputSetting(key))
             document_->RemoveKnown("general", keyText.c_str());
-        else if (section.compare(QStringLiteral("general"), Qt::CaseInsensitive) == 0 &&
-            isSharedInputSetting(key))
-            document_->RemoveKnown("directshow", keyText.c_str());
         if (normalized.trimmed().isEmpty()) document_->RemoveKnown(sectionText, keyText.c_str());
-        else document_->SetKnown(sectionText, keyText.c_str(), normalized.toLocal8Bit().constData());
+        else if (!document_->SetKnown(sectionText, keyText.c_str(),
+            normalized.toLocal8Bit().constData()))
+        {
+            document_->AddSection(sectionText);
+            document_->SetKnown(sectionText, keyText.c_str(),
+                normalized.toLocal8Bit().constData());
+        }
         markDirty();
     };
     if (editable)
@@ -1336,6 +1375,29 @@ void ConfigEditorWindow::applyChanges()
 bool ConfigEditorWindow::saveChanges()
 {
     if (!configurationLoaded_ || !document_) return false;
+
+    // VP-0123 migration. Before VP Renderer had its own input policy, a
+    // DirectShow-only field acted as a shared setting. If it is the only
+    // spelling for a key, move it to [general] so both renderer pages show
+    // Inherit and preserve the exact former behavior. Mixed files retain their
+    // explicit backend override; a configured [general] value always remains
+    // the shared default.
+    for (const char* inputKey : { "video_conversion", "container_colorspace",
+        "hdr_colorspace", "hdr_luminance" })
+    {
+        const QString general = value(QStringLiteral("general"),
+            QString::fromLatin1(inputKey)).trimmed();
+        const QString directShow = value(QStringLiteral("directshow"),
+            QString::fromLatin1(inputKey)).trimmed();
+        const QString vpRenderer = value(QStringLiteral("vprenderer"),
+            QString::fromLatin1(inputKey)).trimmed();
+        if (general.isEmpty() && !directShow.isEmpty() && vpRenderer.isEmpty())
+        {
+            document_->SetKnown("general", inputKey,
+                directShow.toLocal8Bit().constData());
+            document_->RemoveKnown("directshow", inputKey);
+        }
+    }
 
     const std::vector<ConfigurationApplyPolicy::Change> changed = changedDocumentValues(
         savedSnapshot_, captureDocumentSnapshot(*document_));
@@ -1892,7 +1954,7 @@ QWidget* ConfigEditorWindow::createStartupPage()
     inputForm->setContentsMargins(0, 0, 0, 0);
     inputForm->setVerticalSpacing(8);
     inputForm->addRow(QStringLiteral("Video conversion"), bindChoiceField(QStringLiteral("general"),
-        QStringLiteral("video_conversion"), { QString(), QStringLiteral("V210_TO_P010") },
+        QStringLiteral("video_conversion"), { QStringLiteral("NONE"), QStringLiteral("V210_TO_P010") },
         { QStringLiteral("Disabled"), QStringLiteral("V210 to P010") }));
     inputForm->addRow(QStringLiteral("Container color space"), bindChoiceField(QStringLiteral("general"),
         QStringLiteral("container_colorspace"),
@@ -1917,7 +1979,7 @@ QWidget* ConfigEditorWindow::createStartupPage()
     cards->addCard(createCard(QStringLiteral("Display"),
         QStringLiteral("Monitor targeting when VP starts fullscreen."), source));
     cards->addCard(createCard(QStringLiteral("Input processing"),
-        QStringLiteral("Source conversion and metadata policy shared by every renderer."), input));
+        QStringLiteral("Shared source conversion and metadata defaults. Renderer pages may override each value."), input));
     return createPage(QStringLiteral("General"), QStringLiteral("Choose how VideoProcessor starts and which hardware it uses."), cards);
 }
 
@@ -1928,7 +1990,12 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
     // named and their file order alone selects the default, so migrate a root
     // to a unique generated name in the pending document. Disk is unchanged
     // until the user explicitly saves.
-    if (configurationLoaded_ && document_ &&
+    const bool rendererOwnsInputPolicy = sectionPrefix == QStringLiteral("vprenderer") &&
+        ( !value(sectionPrefix, QStringLiteral("video_conversion")).isEmpty() ||
+          !value(sectionPrefix, QStringLiteral("container_colorspace")).isEmpty() ||
+          !value(sectionPrefix, QStringLiteral("hdr_colorspace")).isEmpty() ||
+          !value(sectionPrefix, QStringLiteral("hdr_luminance")).isEmpty() );
+    if (configurationLoaded_ && document_ && !rendererOwnsInputPolicy &&
         profileSections(sectionPrefix).contains(sectionPrefix, Qt::CaseInsensitive))
     {
         const QStringList before = profileSections(sectionPrefix);
@@ -2077,6 +2144,38 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
     auto* detailLayout = new QVBoxLayout(detail);
     detailLayout->setContentsMargins(0, 0, 0, 0);
     detailLayout->setSpacing(12);
+    if (sectionPrefix == QStringLiteral("vprenderer"))
+    {
+        auto* conversion = new QWidget;
+        auto* conversionForm = new QFormLayout(conversion);
+        conversionForm->setContentsMargins(0, 0, 0, 0);
+        conversionForm->setVerticalSpacing(8);
+        conversionForm->addRow(QStringLiteral("Video conversion"), bindChoiceField(
+            QStringLiteral("vprenderer"), QStringLiteral("video_conversion"),
+            { QString(), QStringLiteral("NONE"), QStringLiteral("V210_TO_P010") },
+            { QStringLiteral("Inherit (General)"), QStringLiteral("Disabled"),
+              QStringLiteral("V210 to P010") }));
+        conversionForm->addRow(QStringLiteral("Container color space"), bindChoiceField(
+            QStringLiteral("vprenderer"), QStringLiteral("container_colorspace"),
+            { QString(), QStringLiteral("BT2020"), QStringLiteral("P3_D65"), QStringLiteral("P3_DCI"),
+              QStringLiteral("P3_D60"), QStringLiteral("REC709"), QStringLiteral("REC601_525"), QStringLiteral("REC601_625") },
+            { QStringLiteral("Inherit (General)") }));
+        conversionForm->addRow(QStringLiteral("HDR color space"), bindChoiceField(
+            QStringLiteral("vprenderer"), QStringLiteral("hdr_colorspace"),
+            { QString(), QStringLiteral("FOLLOW_INPUT"), QStringLiteral("FOLLOW_INPUT_LLDV"),
+              QStringLiteral("FOLLOW_CONTAINER"), QStringLiteral("BT2020"), QStringLiteral("P3"), QStringLiteral("REC709") },
+            { QStringLiteral("Inherit (General)"), QStringLiteral("Follow input"),
+              QStringLiteral("Follow input (LLDV)"), QStringLiteral("Follow container"),
+              QStringLiteral("BT.2020"), QStringLiteral("P3"), QStringLiteral("Rec. 709") }));
+        conversionForm->addRow(QStringLiteral("HDR luminance"), bindChoiceField(
+            QStringLiteral("vprenderer"), QStringLiteral("hdr_luminance"),
+            { QString(), QStringLiteral("FOLLOW_INPUT"), QStringLiteral("FOLLOW_INPUT_LLDV"), QStringLiteral("HDR_LUMINANCE_USER") },
+            { QStringLiteral("Inherit (General)"), QStringLiteral("Follow input"),
+              QStringLiteral("Follow input (LLDV)"), QStringLiteral("User values") }));
+        detailLayout->addWidget(createCard(QStringLiteral("Input processing"),
+        QStringLiteral("Override the General input policy for VP Renderer, or inherit it. Changes apply after restart."),
+            conversion));
+    }
     auto* selectedTitle = new QLabel(QStringLiteral("Profile"));
     selectedTitle->setProperty("cardTitle", true);
     detailLayout->addWidget(selectedTitle);
@@ -3415,6 +3514,32 @@ QWidget* ConfigEditorWindow::createDirectShowPage()
     });
     timingForm->addRow(QStringLiteral("Frame offset (ms)"), frameOffsetRow);
 
+    auto* input = new QWidget;
+    auto* inputForm = new QFormLayout(input);
+    inputForm->setContentsMargins(0, 0, 0, 0);
+    inputForm->setVerticalSpacing(8);
+    inputForm->addRow(QStringLiteral("Video conversion"), bindChoiceField(section,
+        QStringLiteral("video_conversion"),
+        { QString(), QStringLiteral("NONE"), QStringLiteral("V210_TO_P010") },
+        { QStringLiteral("Inherit (General)"), QStringLiteral("Disabled"), QStringLiteral("V210 to P010") }));
+    inputForm->addRow(QStringLiteral("Container color space"), bindChoiceField(section,
+        QStringLiteral("container_colorspace"),
+        { QString(), QStringLiteral("BT2020"), QStringLiteral("P3_D65"), QStringLiteral("P3_DCI"),
+          QStringLiteral("P3_D60"), QStringLiteral("REC709"), QStringLiteral("REC601_525"), QStringLiteral("REC601_625") },
+        { QStringLiteral("Inherit (General)") }));
+    inputForm->addRow(QStringLiteral("HDR color space"), bindChoiceField(section,
+        QStringLiteral("hdr_colorspace"),
+        { QString(), QStringLiteral("FOLLOW_INPUT"), QStringLiteral("FOLLOW_INPUT_LLDV"),
+          QStringLiteral("FOLLOW_CONTAINER"), QStringLiteral("BT2020"), QStringLiteral("P3"), QStringLiteral("REC709") },
+        { QStringLiteral("Inherit (General)"), QStringLiteral("Follow input"),
+          QStringLiteral("Follow input (LLDV)"), QStringLiteral("Follow container"),
+          QStringLiteral("BT.2020"), QStringLiteral("P3"), QStringLiteral("Rec. 709") }));
+    inputForm->addRow(QStringLiteral("HDR luminance"), bindChoiceField(section,
+        QStringLiteral("hdr_luminance"),
+        { QString(), QStringLiteral("FOLLOW_INPUT"), QStringLiteral("FOLLOW_INPUT_LLDV"), QStringLiteral("HDR_LUMINANCE_USER") },
+        { QStringLiteral("Inherit (General)"), QStringLiteral("Follow input"),
+          QStringLiteral("Follow input (LLDV)"), QStringLiteral("User values") }));
+
     auto* overrides = new QWidget;
     auto* overrideForm = new QFormLayout(overrides);
     overrideForm->setContentsMargins(0, 0, 0, 0);
@@ -3435,6 +3560,8 @@ QWidget* ConfigEditorWindow::createDirectShowPage()
 
     cards->addCard(createCard(QStringLiteral("Timing"),
         QStringLiteral("Timing controls used only by DirectShow renderers."), timing));
+    cards->addCard(createCard(QStringLiteral("Input processing"),
+        QStringLiteral("Override the General input policy for DirectShow, or inherit it. Changes apply after restart."), input));
     cards->addCard(createCard(QStringLiteral("Renderer overrides"),
         QStringLiteral("DirectShow color overrides. Auto lets the renderer decide."), overrides));
     return createPage(QStringLiteral("DirectShow: General"),
