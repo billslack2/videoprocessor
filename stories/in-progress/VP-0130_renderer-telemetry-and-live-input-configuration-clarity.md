@@ -89,6 +89,23 @@ Implementation checkpoint:
   SHA-256 hashes matched. The deployed application launched with the existing
   configuration and a responsive main window. Backup:
   `C:\\Videoprocessor\\vp\\backups\\vp0130-0809d04-20260815-123500`.
+- Deeper independent review of the remaining selector delay produced and
+  deployed `64ca44d` (`fix(config): make discovery selectors respond
+  immediately`). The reported Capture device, Monitor, and Renderer controls
+  are now true non-editable selectors, so clicking the field opens the popup
+  instead of focusing an embedded text editor. Ordinary edits no longer run
+  disk-backed candidate validation synchronously on Qt's UI thread; complete
+  validation is retained for Apply/OK, while discovery-name checks remain
+  immediate. Warm Config reveal now grants the editor foreground permission
+  before signaling it, preventing the first click from being consumed solely
+  to activate a previously hidden editor. New regressions click the center of
+  all three selectors and require the popup within 250 ms, prove ordinary
+  edits remain responsive when the validation temp path is unavailable, and
+  enforce the foreground-grant ordering. The full configuration-editor suite
+  and clean x64 Release host, renderer, and Config builds passed. All three
+  deployed artifacts matched their source SHA-256 hashes; the deployed host
+  and Config window launched responsive. Backup:
+  `C:\\Videoprocessor\\vp\\backups\\vp0130-64ca44d-20260815-130000`.
 
 ## User story
 
