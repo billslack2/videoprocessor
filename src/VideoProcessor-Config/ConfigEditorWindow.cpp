@@ -648,10 +648,9 @@ ConfigEditorWindow::ConfigEditorWindow(QString configPath, quintptr ownerHandle,
     setCentralWidget(createShell());
     if (!testMode_)
     {
-        auto* activeProfileTimer = new QTimer(this);
-        connect(activeProfileTimer, &QTimer::timeout, this,
+        activeProfileTimer_ = new QTimer(this);
+        connect(activeProfileTimer_, &QTimer::timeout, this,
             &ConfigEditorWindow::refreshActiveProfileIndicators);
-        activeProfileTimer->start(500);
         refreshActiveProfileIndicators();
     }
     if (!testMode_) setupTray();
@@ -846,6 +845,10 @@ void ConfigEditorWindow::migrateSharedRefreshRate()
 
 void ConfigEditorWindow::refreshActiveProfileIndicators()
 {
+    // A combo popup has its own transient native window. Avoid unrelated model
+    // notifications while the operator is opening or selecting from it.
+    if (hasActiveOwnedPopup()) return;
+
     const uint32_t expectedProcessId = ownerProcessId_;
     ActiveProfileStatus::Snapshot active;
     const bool available = ActiveProfileStatus::Read(expectedProcessId, active);
@@ -893,7 +896,11 @@ void ConfigEditorWindow::applyActiveProfileIndicators(bool available,
                     })) :
                 (available && !activeSection.isEmpty() &&
                     section.compare(activeSection, Qt::CaseInsensitive) == 0);
-            item->setData(ActiveProfileRole, isActive);
+            // QListWidget emits dataChanged even when the assigned value is
+            // identical. Do not continually invalidate every profile list on
+            // the UI thread for an unchanged shared-memory snapshot.
+            if (item->data(ActiveProfileRole).toBool() != isActive)
+                item->setData(ActiveProfileRole, isActive);
         }
     }
 }
@@ -4948,6 +4955,7 @@ void ConfigEditorWindow::closeEvent(QCloseEvent* event)
 
 void ConfigEditorWindow::hideEvent(QHideEvent* event)
 {
+    if (activeProfileTimer_) activeProfileTimer_->stop();
     pendingTopmostReassert_ = false;
     explicitRevealIntent_ = false;
     scopedTopmostEligible_ = false;
@@ -4959,6 +4967,11 @@ void ConfigEditorWindow::hideEvent(QHideEvent* event)
 void ConfigEditorWindow::showEvent(QShowEvent* event)
 {
     QMainWindow::showEvent(event);
+    if (activeProfileTimer_ && !activeProfileTimer_->isActive())
+    {
+        refreshActiveProfileIndicators();
+        activeProfileTimer_->start(500);
+    }
     scopedTopmostEligible_ = true;
     pendingTopmostReassert_ = true;
     applyNativeOwner();

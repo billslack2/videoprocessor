@@ -21,6 +21,7 @@ class QRect;
 class QStackedWidget;
 class QSystemTrayIcon;
 class QThread;
+class QTimer;
 class QToolButton;
 class QWindow;
 class QWinEventNotifier;
@@ -142,6 +143,7 @@ private:
 	QLabel* effectSummary_ = nullptr;
     QComboBox* monitorChoice_ = nullptr;
     QThread* monitorDiscoveryThread_ = nullptr;
+    QTimer* activeProfileTimer_ = nullptr;
     QComboBox* actionRendererTarget_ = nullptr;
     QPushButton* applyButton_ = nullptr;
     QPushButton* saveButton_ = nullptr;

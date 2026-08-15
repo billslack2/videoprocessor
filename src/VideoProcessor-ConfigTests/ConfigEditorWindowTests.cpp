@@ -1437,6 +1437,31 @@ void testLegacyRendererVisibilityDefaultsHiddenAndPreservesShortcuts()
         "The editor wrote the unchanged default instead of preserving its omission");
 }
 
+void testUnchangedActiveProfileStatusDoesNotInvalidateLists()
+{
+    QTemporaryDir directory;
+    ConfigEditorWindow window(copyFixture(directory), 0, true);
+    auto* shader = requireControl<QListWidget>(window,
+        QStringLiteral("config.shader.nls.modes"));
+    require(shader->count() >= 3,
+        "Shader fixture does not expose enough active-profile rows");
+
+    const QString first = shader->item(1)->data(Qt::UserRole).toString();
+    window.setActiveProfileStatusForTesting({}, {}, {}, { first });
+    int dataChanges = 0;
+    QObject::connect(shader->model(), &QAbstractItemModel::dataChanged,
+        [&dataChanges] { ++dataChanges; });
+
+    window.setActiveProfileStatusForTesting({}, {}, {}, { first });
+    require(dataChanges == 0,
+        "An unchanged active-profile snapshot invalidated the list model");
+
+    const QString second = shader->item(2)->data(Qt::UserRole).toString();
+    window.setActiveProfileStatusForTesting({}, {}, {}, { second });
+    require(dataChanges > 0,
+        "A changed active-profile snapshot did not update the list model");
+}
+
 void testLegacyRendererVisibilityRebuildsTheFormWhenApplied()
 {
     QTemporaryDir directory;
@@ -2981,6 +3006,8 @@ int main(int argc, char** argv)
         testQueueUnitsAndLutControlsUseConsistentRows);
     failures += run("active profile markers cover relevant lists", testActiveProfileMarkersCoverRelevantLists);
     failures += run("active shader markers use authoritative set", testActiveShaderMarkersUseAuthoritativeSet);
+    failures += run("unchanged active profile status avoids list invalidation",
+        testUnchangedActiveProfileStatusDoesNotInvalidateLists);
     failures += run("active shader status rejects stale generation", testActiveShaderStatusRejectsStaleGeneration);
     failures += run("standalone Config reads live active profile status", testStandaloneConfigAcceptsLiveActiveProfileStatus);
     failures += run("LUT selector discovers installation LUT files", testLutSelectorDiscoversInstallationLutFiles);
