@@ -635,7 +635,7 @@ namespace VideoProcessorTest
 			using Action = ConfigurationLiveApply::FullscreenToggleAction;
 			using Direction = ConfigurationLiveApply::
 				FullscreenTransitionDirection;
-			const auto staleStartupRequest = ConfigurationLiveApply::
+			const auto pendingRequest = ConfigurationLiveApply::
 				ResolveFullscreenToggle(true, false, Direction::None);
 			const auto pendingEnter = ConfigurationLiveApply::
 				ResolveFullscreenToggle(true, false, Direction::Entering);
@@ -645,7 +645,7 @@ namespace VideoProcessorTest
 				ResolveFullscreenToggle(true, true, Direction::None);
 			const auto inactive = ConfigurationLiveApply::
 				ResolveFullscreenToggle(false, false, Direction::None);
-			Assert::IsTrue(staleStartupRequest == Action::EnterFullscreen);
+			Assert::IsTrue(pendingRequest == Action::ExitFullscreen);
 			Assert::IsTrue(pendingEnter == Action::CancelPending);
 			Assert::IsTrue(pendingExit == Action::EnterFullscreen);
 			Assert::IsTrue(active == Action::ExitFullscreen);

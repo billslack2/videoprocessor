@@ -50,7 +50,9 @@ struct ModernOperatorStatus
 	CString ptsLead = TEXT("---");
 	CString outputLatency = TEXT("---");
 	bool videoOnly = false;
-	bool fullscreen = false;
+	// The toolbar acknowledges the selected presentation mode immediately.
+	// Actual host activation can lag behind while the renderer obtains a frame.
+	bool fullscreenRequested = false;
 };
 
 class ModernOperatorView : public CWnd

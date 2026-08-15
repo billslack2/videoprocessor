@@ -10989,14 +10989,11 @@ void CVideoProcessorDlg::RefreshModernStatus()
 		}
 	}
 	status.videoOnly = m_hideUI;
-	const bool fullscreenRequested =
+	// The Fullscreen button reflects the operator's request, not completion of
+	// the asynchronous renderer transition. This confirms the selection as soon
+	// as the toggle is pressed or startup fullscreen is requested.
+	status.fullscreenRequested =
 		m_rendererFullscreenCheck.GetCheck() == BST_CHECKED;
-	const bool fullscreenActive = m_fullScreenVideoWindow &&
-		IsWindow(m_fullScreenVideoWindow->GetHWND()) &&
-		::IsWindowVisible(m_fullScreenVideoWindow->GetHWND());
-	status.fullscreen = ConfigurationLiveApply::
-		EffectiveFullscreenToggleActive(
-			fullscreenRequested, fullscreenActive);
 	m_modernOperatorView.SetStatus(status);
 }
 

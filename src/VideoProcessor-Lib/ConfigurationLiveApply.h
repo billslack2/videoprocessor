@@ -300,7 +300,9 @@ namespace ConfigurationLiveApply
 			return FullscreenToggleAction::EnterFullscreen;
 		if (fullscreenActive)
 			return FullscreenToggleAction::ExitFullscreen;
-		(void)fullscreenRequested;
+		// A pending request is also the "on" state in the operator UI.
+		if (fullscreenRequested)
+			return FullscreenToggleAction::ExitFullscreen;
 		return FullscreenToggleAction::EnterFullscreen;
 	}
 
