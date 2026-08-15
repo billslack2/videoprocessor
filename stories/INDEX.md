@@ -157,7 +157,7 @@ they must not contain requirements that are absent from this file.
 | VP-0122 | Done | Retain scope geometry through subtitle and volume overlays |
 | VP-0123 | Backlog | Split video conversion policy by renderer |
 | VP-0124 | In Progress | Safely accelerate outward active-picture transitions with bounded lookahead |
-| VP-0125 | In Progress | Diagnose Alpha fullscreen target-nits colour crushing and provide Output Experiments |
+| VP-0125 | Done | Diagnose Alpha fullscreen target-nits colour crushing and provide Output Experiments |
 | VP-0126 | In Progress | Standalone Alpha test-pattern generator |
 | VP-0127 | Done | Enforce output format and prove composed display delivery |
 | VP-0128 | Backlog | Audit VP Renderer option parity and resolved defaults |

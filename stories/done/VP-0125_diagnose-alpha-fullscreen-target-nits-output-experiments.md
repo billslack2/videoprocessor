@@ -2,8 +2,17 @@
 
 ## Status
 
-In Progress (2026-08-12). A beta report identifies a fullscreen-only Alpha output
-failure that needs bounded diagnosis before any production tone-mapping change.
+Done (2026-08-14). The VP-owned DXGI output experiments and active SDR/HDR
+sweep harness were merged into `origin/v1.2.001-beta` at `9309dc5`. The final
+stale-frame repair was rebased as `d12c7b2` and merged at `daed55e`. Live
+fullscreen testing accepted the repair: deterministic whole-surface clearing
+removed the observed stale/frame-within-a-frame behavior. The final Release
+renderer, GUI, and native-test projects built successfully; all 47 focused
+output-policy/overlay tests passed, and the complete native suite was 818/823
+with the same five unrelated configuration/reference baseline failures.
+
+The original beta report identified a fullscreen-only Alpha output
+failure that required bounded diagnosis before any production tone-mapping change.
 With a BT.2020 SDR target, BT.2020 display reporting enabled, and output gamma
 2.2 selected, raising `sdr_target_nits` above 200 causes visibly crushed
 colours in fullscreen. The same setting does not show the reported crushing in
@@ -181,21 +190,17 @@ libplacebo shader cache, scaler selection, or capture queue:
   presented pixels outside the newly written rectangle, matching the reported
   visual symptom.
 
-This is a strong working diagnosis, not yet a completed fix. The initial repair
-must remain confined to the VP-owned experimental presenter: clear the complete
-acquired target to deterministic black before drawing a frame, and restore a
-terminal black presentation using the same proven
+The bounded repair is complete in `d12c7b2` and merged in `daed55e`. It remains
+confined to the VP-owned experimental presenter: the complete acquired target
+is cleared to deterministic black before drawing each frame, and renderer
+retirement restores a terminal black presentation using the same proven
 `GetBuffer -> wrap -> clear -> flush -> release -> Present` ownership sequence.
-This black state must come from clearing and presenting the renderer-owned
-surface itself. Do not add or restore a fake black GUI overlay, opaque cover
-window, transition shield, or other visual layer in front of the video.
-Do not modify scaler, tone-map, LUT, frame-mixing, capture-generation, or the
-established libplacebo-owned composed path as part of this finding. Add concise
-generation/clear diagnostics, then verify madVR-to-Alpha, Alpha-to-madVR,
-Alpha-only scene/viewport changes, graph resets, fullscreen changes, scope/flat
-profiles, and renderer retirement. An A/B run with the VP-owned presenter
-disabled is useful diagnostic evidence but is not a production repair because
-it also disables the calibrated pure-power output experiment.
+The black state comes from clearing and presenting the renderer-owned surface
+itself; no fake GUI overlay, opaque cover window, or transition shield was
+added. Scaler, tone-map, LUT, frame-mixing, capture generation, and the
+libplacebo-owned composed path remain unchanged. The user accepted the live
+result after reproducing the prior stale-frame symptom. Concise per-generation
+clear diagnostics remain available for subsequent beta evidence.
 
 ## User story
 
