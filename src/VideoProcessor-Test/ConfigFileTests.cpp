@@ -2230,6 +2230,43 @@ namespace VideoProcessorTest
 			DeleteFileA(path.c_str());
 		}
 
+		TEST_METHOD(Vp0123InputProcessingChildIsNotADisplayProfile)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(
+				ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) +
+				"VideoProcessor-vp0123-input-processing-child.cfg";
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[general]\nrenderer: VideoProcessor Renderer (Alpha)\n"
+					"[vprenderer]\nquality: balanced\n"
+					"[vprenderer.input_processing]\n"
+					"video_conversion: none\n";
+			}
+
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			std::string error;
+			Assert::IsTrue(MainConfigSchema::Validate(config, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			RendererProfileConfig::Model model;
+			Assert::IsTrue(RendererProfileConfig::Read(config, model, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			const auto display = std::find_if(model.groups.begin(), model.groups.end(),
+				[](const RendererProfileConfig::Group& group)
+				{ return group.name == "display"; });
+			Assert::IsTrue(display != model.groups.end());
+			Assert::AreEqual(static_cast<size_t>(1), display->profiles.size());
+			Assert::AreEqual("base", display->profiles.front().c_str());
+			const auto base = model.profiles.find("display.base");
+			Assert::IsTrue(base != model.profiles.end());
+			Assert::IsTrue(base->second.settings.find("video_conversion") ==
+				base->second.settings.end(),
+				L"Input processing was misclassified as display-profile state.");
+			DeleteFileA(path.c_str());
+		}
+
 		TEST_METHOD(Vp0097ShortcutKeyCombinesWithOptionalProfileRule)
 		{
 			char temporaryDirectory[MAX_PATH] = {};
@@ -2737,17 +2774,24 @@ namespace VideoProcessorTest
 			Assert::IsTrue(MainConfigSchema::Validate(config, error),
 				std::wstring(error.begin(), error.end()).c_str());
 
-			// The historical DirectShow location remains readable, but defining
-			// the same shared policy in both homes is ambiguous.
+			// General is the shared default and DirectShow is now an explicit
+			// override, so both fields are valid together.
 			{
 				std::ofstream file(path, std::ios::out | std::ios::trunc);
 				file << "[general]\nvideo_conversion: V210_TO_P010\n"
-					"[directshow]\nvideo_conversion: V210_TO_P010\n"
-					"[vprenderer]\nquality: high\n";
+					"container_colorspace: BT2020\n"
+					"[directshow]\nvideo_conversion: NONE\n"
+					"container_colorspace: REC709\n"
+					"[vprenderer]\nquality: high\n"
+					"video_conversion: V210_TO_P010\n"
+					"hdr_colorspace: FOLLOW_INPUT_LLDV\n";
 			}
 			Assert::IsTrue(config.Load(path));
-			Assert::IsFalse(MainConfigSchema::Validate(config, error));
-			Assert::IsTrue(error.find("both [general]") != std::string::npos);
+			Assert::IsTrue(MainConfigSchema::Validate(config, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			RendererProfileConfig::Model rendererModel;
+			Assert::IsTrue(RendererProfileConfig::Read(config, rendererModel, error),
+				std::wstring(error.begin(), error.end()).c_str());
 
 			{
 				std::ofstream file(path, std::ios::out | std::ios::trunc);

@@ -264,6 +264,14 @@ QString VpTheme::StyleSheet()
         QPushButton:hover { background: #18324a; border-color: #4d85ac; }
         QPushButton:pressed { background: #0e1e2e; }
         QPushButton:focus { border: 1px solid #3a9de8; }
+        QPushButton[nav="true"]:focus {
+            border: 0;
+            border-left: 3px solid transparent;
+            outline: 0;
+        }
+        QPushButton[nav="true"]:checked:focus {
+            border-left-color: #41a8f5;
+        }
         QPushButton:disabled { color: #607689; background: #111b26; border-color: #263a4d; }
         QPushButton[primary="true"] { color: #f8fcff; background: #1479c4; border-color: #248dd6; }
         QPushButton[primary="true"]:hover { background: #1c8bd9; border-color: #55b3f4; }
@@ -316,8 +324,7 @@ QString VpTheme::StyleSheet()
         QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; }
         QSplitter::handle { background: transparent; width: 12px; }
         QSplitter::handle:vertical { height: 12px; }
-        QPushButton[nav="true"]:focus, QToolButton[navSection="true"]:focus,
-        QToolButton[headerMenu="true"]:focus {
+        QToolButton[navSection="true"]:focus, QToolButton[headerMenu="true"]:focus {
             border: 1px solid #4daaf1;
         }
         QCheckBox:focus { color: #ffffff; }

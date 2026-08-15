@@ -3590,17 +3590,28 @@ bool CVideoProcessorDlg::StageRuntimeSettings(
 		return config.TryGetString("general", key, value) ||
 			config.TryGetString("command_line", key, value);
 	};
-	auto getSharedValue = [&config, &getApplicationValue](const char* key,
-		std::string& value)
-	{
-		return getApplicationValue(key, value) ||
-			config.TryGetString("directshow", key, value);
-	};
 	auto getDirectShowValue = [&config, &getApplicationValue](const char* key,
 		std::string& value)
 	{
 		return config.TryGetString("directshow", key, value) ||
 			getApplicationValue(key, value);
+	};
+	auto getBackendInputValue = [&config, &getApplicationValue](bool vpRenderer,
+		const char* key, std::string& value)
+	{
+		const char* section = vpRenderer ? "vprenderer.input_processing" : "directshow";
+		if (config.TryGetString(section, key, value)) return true;
+		if (vpRenderer && config.TryGetString("vprenderer.input", key, value))
+			return true;
+		// VP-0123 initially wrote the renderer override into the display-profile
+		// root. Keep that spelling readable while new saves use the independent
+		// input-policy root, which profile rename/remove operations cannot touch.
+		if (vpRenderer && config.TryGetString("vprenderer", key, value))
+			return true;
+		if (getApplicationValue(key, value)) return true;
+		// Before VP-0123, [directshow] was a shared compatibility location.
+		// Retain it only as VP Renderer's final fallback for old unsaved files.
+		return vpRenderer && config.TryGetString("directshow", key, value);
 	};
 	auto invalid = [&error](const char* key, const std::string& value)
 	{
@@ -3671,21 +3682,32 @@ bool CVideoProcessorDlg::StageRuntimeSettings(
 			}
 		}
 	}
-	if (getSharedValue("video_conversion", value))
+	auto stageVideoConversion = [&invalid](const std::string& raw,
+		VideoConversionOverride& destination) -> bool
 	{
-		const std::string token = ConfigFile::NormalizeName(value);
-		m_stagedRuntimeSettings.hasVideoConversion = true;
+		const std::string token = ConfigFile::NormalizeName(raw);
 		if (token == "none" || token == "off")
-			m_stagedRuntimeSettings.videoConversion =
-				VideoConversionOverride::VIDEOCONVERSION_NONE;
+			destination = VideoConversionOverride::VIDEOCONVERSION_NONE;
 		else if (token == "v210_to_p010" || token == "uyvy_to_p010")
-			m_stagedRuntimeSettings.videoConversion =
-				VideoConversionOverride::VIDEOCONVERSION_V210_TO_P010;
-		else return invalid("video_conversion", value);
-	}
-	if (getSharedValue("container_colorspace", value))
+			destination = VideoConversionOverride::VIDEOCONVERSION_V210_TO_P010;
+		else return invalid("video_conversion", raw);
+		return true;
+	};
+	if (getBackendInputValue(false, "video_conversion", value))
 	{
-		const std::string token = ConfigFile::NormalizeName(value);
+		m_stagedRuntimeSettings.hasDirectShowVideoConversion = true;
+		if (!stageVideoConversion(value,
+			m_stagedRuntimeSettings.directShowVideoConversion)) return false;
+	}
+	if (getBackendInputValue(true, "video_conversion", value))
+	{
+		m_stagedRuntimeSettings.hasVpRendererVideoConversion = true;
+		if (!stageVideoConversion(value,
+			m_stagedRuntimeSettings.vpRendererVideoConversion)) return false;
+	}
+	auto stageContainerColorSpace = [&invalid](const std::string& raw,
+		ColorSpace& destination) -> bool
+	{
 		const std::map<std::string, ColorSpace> values = {
 			{ "auto", ColorSpace::UNKNOWN }, { "follow_input", ColorSpace::UNKNOWN },
 			{ "bt2020", ColorSpace::BT_2020 }, { "p3_d65", ColorSpace::P3_D65 },
@@ -3693,14 +3715,26 @@ bool CVideoProcessorDlg::StageRuntimeSettings(
 			{ "rec709", ColorSpace::REC_709 },
 			{ "rec601_525", ColorSpace::REC_601_525 },
 			{ "rec601_625", ColorSpace::REC_601_625 } };
-		const auto found = values.find(token);
-		if (found == values.end()) return invalid("container_colorspace", value);
-		m_stagedRuntimeSettings.hasContainerColorSpace = true;
-		m_stagedRuntimeSettings.containerColorSpace = found->second;
-	}
-	if (getSharedValue("hdr_colorspace", value))
+		const auto found = values.find(ConfigFile::NormalizeName(raw));
+		if (found == values.end()) return invalid("container_colorspace", raw);
+		destination = found->second;
+		return true;
+	};
+	if (getBackendInputValue(false, "container_colorspace", value))
 	{
-		const std::string token = ConfigFile::NormalizeName(value);
+		m_stagedRuntimeSettings.hasDirectShowContainerColorSpace = true;
+		if (!stageContainerColorSpace(value,
+			m_stagedRuntimeSettings.directShowContainerColorSpace)) return false;
+	}
+	if (getBackendInputValue(true, "container_colorspace", value))
+	{
+		m_stagedRuntimeSettings.hasVpRendererContainerColorSpace = true;
+		if (!stageContainerColorSpace(value,
+			m_stagedRuntimeSettings.vpRendererContainerColorSpace)) return false;
+	}
+	auto stageHdrColorSpace = [&invalid](const std::string& raw,
+		HdrColorspaceOptions& destination) -> bool
+	{
 		const std::map<std::string, HdrColorspaceOptions> values = {
 			{ "follow_input", HdrColorspaceOptions::HDR_COLORSPACE_FOLLOW_INPUT },
 			{ "follow_input_lldv", HdrColorspaceOptions::HDR_COLORSPACE_FOLLOW_INPUT_LLDV },
@@ -3708,23 +3742,47 @@ bool CVideoProcessorDlg::StageRuntimeSettings(
 			{ "bt2020", HdrColorspaceOptions::HDR_COLORSPACE_BT2020 },
 			{ "p3", HdrColorspaceOptions::HDR_COLORSPACE_P3 },
 			{ "rec709", HdrColorspaceOptions::HDR_COLORSPACE_REC709 } };
-		const auto found = values.find(token);
-		if (found == values.end()) return invalid("hdr_colorspace", value);
-		m_stagedRuntimeSettings.hasHdrColorSpace = true;
-		m_stagedRuntimeSettings.hdrColorSpace = found->second;
-	}
-	if (getSharedValue("hdr_luminance", value))
+		const auto found = values.find(ConfigFile::NormalizeName(raw));
+		if (found == values.end()) return invalid("hdr_colorspace", raw);
+		destination = found->second;
+		return true;
+	};
+	if (getBackendInputValue(false, "hdr_colorspace", value))
 	{
-		const std::string token = ConfigFile::NormalizeName(value);
+		m_stagedRuntimeSettings.hasDirectShowHdrColorSpace = true;
+		if (!stageHdrColorSpace(value,
+			m_stagedRuntimeSettings.directShowHdrColorSpace)) return false;
+	}
+	if (getBackendInputValue(true, "hdr_colorspace", value))
+	{
+		m_stagedRuntimeSettings.hasVpRendererHdrColorSpace = true;
+		if (!stageHdrColorSpace(value,
+			m_stagedRuntimeSettings.vpRendererHdrColorSpace)) return false;
+	}
+	auto stageHdrLuminance = [&invalid](const std::string& raw,
+		HdrLuminanceOptions& destination) -> bool
+	{
 		const std::map<std::string, HdrLuminanceOptions> values = {
 			{ "follow_input", HdrLuminanceOptions::HDR_LUMINANCE_FOLLOW_INPUT },
 			{ "follow_input_lldv", HdrLuminanceOptions::HDR_LUMINANCE_FOLLOW_INPUT_LLDV },
 			{ "hdr_luminance_user", HdrLuminanceOptions::HDR_LUMINANCE_USER },
 			{ "user", HdrLuminanceOptions::HDR_LUMINANCE_USER } };
-		const auto found = values.find(token);
-		if (found == values.end()) return invalid("hdr_luminance", value);
-		m_stagedRuntimeSettings.hasHdrLuminance = true;
-		m_stagedRuntimeSettings.hdrLuminance = found->second;
+		const auto found = values.find(ConfigFile::NormalizeName(raw));
+		if (found == values.end()) return invalid("hdr_luminance", raw);
+		destination = found->second;
+		return true;
+	};
+	if (getBackendInputValue(false, "hdr_luminance", value))
+	{
+		m_stagedRuntimeSettings.hasDirectShowHdrLuminance = true;
+		if (!stageHdrLuminance(value,
+			m_stagedRuntimeSettings.directShowHdrLuminance)) return false;
+	}
+	if (getBackendInputValue(true, "hdr_luminance", value))
+	{
+		m_stagedRuntimeSettings.hasVpRendererHdrLuminance = true;
+		if (!stageHdrLuminance(value,
+			m_stagedRuntimeSettings.vpRendererHdrLuminance)) return false;
 	}
 	if (getDirectShowValue("renderer_start_stop_time_method", value))
 	{
@@ -3921,18 +3979,30 @@ void CVideoProcessorDlg::PublishStagedRuntimeSettings()
 		if (m_captureDevice)
 			m_captureDevice->SetFrameOffsetMs(IsAlphaRendererSelected() ? 0 : offset);
 	}
-	if (m_stagedRuntimeSettings.hasVideoConversion)
-		selectData(m_rendererVideoConversionCombo,
-			static_cast<DWORD_PTR>(m_stagedRuntimeSettings.videoConversion));
-	if (m_stagedRuntimeSettings.hasContainerColorSpace)
-		selectData(m_colorspaceContainerCombo,
-			static_cast<DWORD_PTR>(m_stagedRuntimeSettings.containerColorSpace));
-	if (m_stagedRuntimeSettings.hasHdrColorSpace)
-		selectData(m_hdrColorspaceCombo,
-			static_cast<DWORD_PTR>(m_stagedRuntimeSettings.hdrColorSpace));
-	if (m_stagedRuntimeSettings.hasHdrLuminance)
-		selectData(m_hdrLuminanceCombo,
-			static_cast<DWORD_PTR>(m_stagedRuntimeSettings.hdrLuminance));
+	if (m_stagedRuntimeSettings.hasDirectShowVideoConversion)
+		m_directShowVideoConversionOverride =
+			m_stagedRuntimeSettings.directShowVideoConversion;
+	if (m_stagedRuntimeSettings.hasVpRendererVideoConversion)
+		m_vpRendererVideoConversionOverride =
+			m_stagedRuntimeSettings.vpRendererVideoConversion;
+	if (m_stagedRuntimeSettings.hasDirectShowContainerColorSpace)
+		m_directShowContainerColorSpace =
+			m_stagedRuntimeSettings.directShowContainerColorSpace;
+	if (m_stagedRuntimeSettings.hasVpRendererContainerColorSpace)
+		m_vpRendererContainerColorSpace =
+			m_stagedRuntimeSettings.vpRendererContainerColorSpace;
+	if (m_stagedRuntimeSettings.hasDirectShowHdrColorSpace)
+		m_directShowHDRColorSpaceOption =
+			m_stagedRuntimeSettings.directShowHdrColorSpace;
+	if (m_stagedRuntimeSettings.hasVpRendererHdrColorSpace)
+		m_vpRendererHDRColorSpaceOption =
+			m_stagedRuntimeSettings.vpRendererHdrColorSpace;
+	if (m_stagedRuntimeSettings.hasDirectShowHdrLuminance)
+		m_directShowHDRLuminanceOption =
+			m_stagedRuntimeSettings.directShowHdrLuminance;
+	if (m_stagedRuntimeSettings.hasVpRendererHdrLuminance)
+		m_vpRendererHDRLuminanceOption =
+			m_stagedRuntimeSettings.vpRendererHdrLuminance;
 	if (m_stagedRuntimeSettings.hasDirectShowTimeMethod)
 		selectData(m_rendererDirectShowStartStopTimeMethodCombo,
 			static_cast<DWORD_PTR>(m_stagedRuntimeSettings.directShowTimeMethod));
@@ -3964,7 +4034,7 @@ void CVideoProcessorDlg::PublishStagedRuntimeSettings()
 	m_rendererFullscreenCheck.SetCheck(
 		sessionPresentation.fullscreen ? BST_CHECKED : BST_UNCHECKED);
 	DebugLog::Log(
-		"Configuration runtime settings published: renderer=%S renderer_source=%d saved_renderer=%S session_renderer=%S accepted_renderer=%S alpha_selected=%d conversion=%d frame_offset=%d metadata=%d directshow=%d presentation_retained=1 video_only=%d fullscreen=%d",
+		"Configuration runtime settings published: renderer=%S renderer_source=%d saved_renderer=%S session_renderer=%S accepted_renderer=%S alpha_selected=%d conversion=%d directshow_conversion=%d vp_conversion=%d active_conversion=%d frame_offset=%d metadata=%d directshow=%d presentation_retained=1 video_only=%d fullscreen=%d",
 		rendererDecision.renderer.empty() ? L"(retained)" :
 			rendererDecision.renderer.c_str(),
 		static_cast<int>(rendererDecision.source),
@@ -3974,11 +4044,20 @@ void CVideoProcessorDlg::PublishStagedRuntimeSettings()
 		m_acceptedRendererName.IsEmpty() ? L"(none)" :
 			m_acceptedRendererName.GetString(),
 		IsAlphaRendererSelected() ? 1 : 0,
-		m_stagedRuntimeSettings.hasVideoConversion ? 1 : 0,
+		(m_stagedRuntimeSettings.hasDirectShowVideoConversion ||
+			m_stagedRuntimeSettings.hasVpRendererVideoConversion) ? 1 : 0,
+		static_cast<int>(m_directShowVideoConversionOverride),
+		static_cast<int>(m_vpRendererVideoConversionOverride),
+		static_cast<int>(IsAlphaRendererSelected() ?
+			m_vpRendererVideoConversionOverride :
+			m_directShowVideoConversionOverride),
 		m_stagedRuntimeSettings.hasFrameOffset ? 1 : 0,
-		(m_stagedRuntimeSettings.hasContainerColorSpace ||
-			m_stagedRuntimeSettings.hasHdrColorSpace ||
-			m_stagedRuntimeSettings.hasHdrLuminance) ? 1 : 0,
+		(m_stagedRuntimeSettings.hasDirectShowContainerColorSpace ||
+			m_stagedRuntimeSettings.hasVpRendererContainerColorSpace ||
+			m_stagedRuntimeSettings.hasDirectShowHdrColorSpace ||
+			m_stagedRuntimeSettings.hasVpRendererHdrColorSpace ||
+			m_stagedRuntimeSettings.hasDirectShowHdrLuminance ||
+			m_stagedRuntimeSettings.hasVpRendererHdrLuminance) ? 1 : 0,
 		(m_stagedRuntimeSettings.hasDirectShowTimeMethod ||
 			m_stagedRuntimeSettings.hasNominalRange ||
 			m_stagedRuntimeSettings.hasTransferFunction ||
@@ -4469,29 +4548,39 @@ void CVideoProcessorDlg::SetQueueResetHighWaterPercent(const CString& value)
 
 void CVideoProcessorDlg::DefaultVideoConversionOverride(VideoConversionOverride videoConversionOverride)
 {
-	m_defaultVideoConversionOverride = videoConversionOverride;
+	m_directShowVideoConversionOverride = videoConversionOverride;
+	m_vpRendererVideoConversionOverride = videoConversionOverride;
 }
 
 
 void CVideoProcessorDlg::DefaultContainerColorSpace(ColorSpace containerColorSpace)
 {
-	m_defaultContainerColorSpace = containerColorSpace;
+	m_directShowContainerColorSpace = containerColorSpace;
+	m_vpRendererContainerColorSpace = containerColorSpace;
 }
 
 
 void CVideoProcessorDlg::DefaultHDRColorSpace(HdrColorspaceOptions hdrColorSpaceOption)
 {
-	m_defaultHDRColorSpaceOption = hdrColorSpaceOption;
+	m_directShowHDRColorSpaceOption = hdrColorSpaceOption;
+	m_vpRendererHDRColorSpaceOption = hdrColorSpaceOption;
 }
 
 
 void CVideoProcessorDlg::DefaultHDRLuminance(HdrLuminanceOptions hdrLuminanceOption)
 {
-	m_defaultHDRLuminanceOption = hdrLuminanceOption;
+	m_directShowHDRLuminanceOption = hdrLuminanceOption;
+	m_vpRendererHDRLuminanceOption = hdrLuminanceOption;
 }
 
 void CVideoProcessorDlg::SetVideoConversionOff()
 {
+	const bool vpRenderer = IsAlphaRendererSelected();
+	if (vpRenderer)
+		m_vpRendererVideoConversionOverride = VideoConversionOverride::VIDEOCONVERSION_NONE;
+	else
+		m_directShowVideoConversionOverride = VideoConversionOverride::VIDEOCONVERSION_NONE;
+	DEBUGLOG("Video conversion command applied: owner=%s value=NONE", vpRenderer ? "vprenderer" : "directshow");
 	if (m_rendererVideoConversionCombo.GetCurSel() != 0) {
 
 		m_rendererVideoConversionCombo.SetCurSel(0);
@@ -4501,6 +4590,12 @@ void CVideoProcessorDlg::SetVideoConversionOff()
 
 void CVideoProcessorDlg::SetVideoConversionP010()
 {
+	const bool vpRenderer = IsAlphaRendererSelected();
+	if (vpRenderer)
+		m_vpRendererVideoConversionOverride = VideoConversionOverride::VIDEOCONVERSION_V210_TO_P010;
+	else
+		m_directShowVideoConversionOverride = VideoConversionOverride::VIDEOCONVERSION_V210_TO_P010;
+	DEBUGLOG("Video conversion command applied: owner=%s value=V210_TO_P010", vpRenderer ? "vprenderer" : "directshow");
 	if (m_rendererVideoConversionCombo.GetCurSel() != 1) {
 		m_rendererVideoConversionCombo.SetCurSel(1);
 		OnBnClickedCaptureRestart();
@@ -4762,6 +4857,27 @@ void CVideoProcessorDlg::UpdateRendererBackendUi()
 		directShowSelected =
 			renderer && renderer->backend == RendererBackend::DIRECTSHOW;
 	}
+	const VideoConversionOverride conversion = directShowSelected ?
+		m_directShowVideoConversionOverride : m_vpRendererVideoConversionOverride;
+	const ColorSpace containerColorSpace = directShowSelected ?
+		m_directShowContainerColorSpace : m_vpRendererContainerColorSpace;
+	const HdrColorspaceOptions hdrColorSpace = directShowSelected ?
+		m_directShowHDRColorSpaceOption : m_vpRendererHDRColorSpaceOption;
+	const HdrLuminanceOptions hdrLuminance = directShowSelected ?
+		m_directShowHDRLuminanceOption : m_vpRendererHDRLuminanceOption;
+	auto selectData = [](CComboBox& combo, DWORD_PTR value)
+	{
+		for (int index = 0; index < combo.GetCount(); ++index)
+			if (combo.GetItemData(index) == value)
+			{
+				combo.SetCurSel(index);
+				return;
+			}
+	};
+	selectData(m_rendererVideoConversionCombo, static_cast<DWORD_PTR>(conversion));
+	selectData(m_colorspaceContainerCombo, static_cast<DWORD_PTR>(containerColorSpace));
+	selectData(m_hdrColorspaceCombo, static_cast<DWORD_PTR>(hdrColorSpace));
+	selectData(m_hdrLuminanceCombo, static_cast<DWORD_PTR>(hdrLuminance));
 
 	// Start/Stop describes DirectShow sample timestamps. Those timestamps pace
 	// the downstream DirectShow queue, but do not exist in the in-process
@@ -7438,15 +7554,11 @@ void CVideoProcessorDlg::RenderStart()
 	DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::RenderStart(): Begin")));
 	if (m_activeOutputSweepSummaryVisible && !m_activeOutputSweepRunning)
 		ClearActiveOutputSweepSummary("renderer-rebuild");
-	// Process startup has already parsed, validated, and published its complete
-	// configuration before capture begins. Do not perform a second synchronous
-	// reload during the first capture-state start: that widens the interval
-	// between UpdateState's ingress-sequence check and renderer construction.
-	// Apply-driven first starts may still arrive with an explicit staged
-	// candidate. Every actual reconstruction stages here after graph retirement.
+	// Stage even the first construction: renderer-owned input policy cannot be
+	// represented by the legacy shared command-line defaults alone.
 	const bool firstRendererConstruction =
 		m_rendererGeneration.load(std::memory_order_acquire) == 0;
-	if (!m_stagedConfiguration && !firstRendererConstruction &&
+	if (!m_stagedConfiguration &&
 		!StageSavedConfiguration("renderer-lifecycle", true))
 	{
 		RestoreAcceptedRendererSelectionAfterReloadFailure();
@@ -10187,7 +10299,7 @@ BOOL CVideoProcessorDlg::OnInitDialog()
 		int index = m_colorspaceContainerCombo.AddString(p.first);
 		m_colorspaceContainerCombo.SetItemData(index, (int)p.second);
 
-		if (p.second == m_defaultContainerColorSpace)
+		if (p.second == m_directShowContainerColorSpace)
 			m_colorspaceContainerCombo.SetCurSel(index);
 	}
 
@@ -10196,7 +10308,7 @@ BOOL CVideoProcessorDlg::OnInitDialog()
 		int index = m_hdrColorspaceCombo.AddString(p.first);
 		m_hdrColorspaceCombo.SetItemData(index, (int)p.second);
 
-		if (p.second == m_defaultHDRColorSpaceOption)
+		if (p.second == m_directShowHDRColorSpaceOption)
 			m_hdrColorspaceCombo.SetCurSel(index);
 	}
 
@@ -10205,7 +10317,7 @@ BOOL CVideoProcessorDlg::OnInitDialog()
 		int index = m_hdrLuminanceCombo.AddString(p.first);
 		m_hdrLuminanceCombo.SetItemData(index, (int)p.second);
 
-		if (p.second == m_defaultHDRLuminanceOption)
+		if (p.second == m_directShowHDRLuminanceOption)
 			m_hdrLuminanceCombo.SetCurSel(index);
 	}
 
@@ -10259,7 +10371,7 @@ BOOL CVideoProcessorDlg::OnInitDialog()
 		int index = m_rendererVideoConversionCombo.AddString(ToString(p));
 		m_rendererVideoConversionCombo.SetItemData(index, (int)p);
 
-		if (p == m_defaultVideoConversionOverride)
+		if (p == m_directShowVideoConversionOverride)
 			m_rendererVideoConversionCombo.SetCurSel(index);
 	}
 

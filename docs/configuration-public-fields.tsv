@@ -11,6 +11,7 @@ general.windowed_fullscreen_mode	general-windowed-fullscreen-mode	VP startup	no
 general.startminimized	general-start-minimized	VP startup	no
 general.scene_detect	general-scene-detect	VP cadence	no
 general.video_conversion	general-video-conversion	VP input processing	no
+vprenderer.input_processing.video_conversion	general-video-conversion	VP Renderer input override	no
 general.container_colorspace	general-container-colorspace	VP input metadata	no
 general.hdr_colorspace	general-hdr-colorspace	VP HDR	no
 general.hdr_luminance	general-hdr-luminance	VP HDR	no
@@ -57,7 +58,7 @@ vprenderer.output_gamma	vprenderer-output-gamma	VP Renderer	no
 vprenderer.sdr_input_transfer	vprenderer-sdr-input-transfer	VP Renderer	no
 vprenderer.sdr_target_primaries	vprenderer-sdr-target-primaries	VP Renderer	no
 vprenderer.report_bt2020_to_display	vprenderer-report-bt2020	VP Renderer	no
-vprenderer.switch_refresh_rate	vprenderer-switch-refresh-rate	VP Renderer	no
+general.switch_refresh_rate	general-switch-refresh-rate	General	no
 vprenderer.<variant>.when	vprenderer-variant-when	VP Renderer	no
 vprenderer.<variant>.shortcut	vprenderer-variant-shortcut	VP Renderer	no
 lldv.<profile>.when	lldv-profile-when	LLDV metadata	no

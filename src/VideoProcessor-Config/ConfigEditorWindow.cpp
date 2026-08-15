@@ -47,6 +47,7 @@
 #include <QMessageBox>
 #include <QPainter>
 #include <QPlainTextEdit>
+#include <QPointer>
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QRect>
@@ -63,6 +64,7 @@
 #include <QStyledItemDelegate>
 #include <QSystemTrayIcon>
 #include <QTableWidget>
+#include <QThread>
 #include <QTimer>
 #include <QToolButton>
 #include <QVBoxLayout>
@@ -236,9 +238,9 @@ public:
 
     void addCard(QWidget* card)
     {
-        // Dashboard-style cards should use their natural content height. If
-        // they vertically expand, short forms acquire large blank interiors
-        // and their controls drift apart as the window grows.
+        // Cards share their row height on wide, two-column pages while their
+        // contents stay top-justified. This keeps the visual grid aligned
+        // without allowing controls to drift apart as the window grows.
         card->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
         if (card->layout()) card->layout()->setAlignment(Qt::AlignTop);
         cards_.push_back(card);
@@ -256,13 +258,32 @@ private:
     void reflow(int availableWidth)
     {
         const int columns = availableWidth >= kResponsiveContentWidth ? 2 : 1;
-        if (columns == columns_ && layout_->count() == cards_.size()) return;
-        columns_ = columns;
-        for (QWidget* card : cards_) layout_->removeWidget(card);
-        for (int index = 0; index < cards_.size(); ++index)
-            layout_->addWidget(cards_[index], index / columns_, index % columns_, Qt::AlignTop);
-        for (int column = 0; column < 2; ++column)
-            layout_->setColumnStretch(column, column < columns_ ? 1 : 0);
+        if (columns != columns_ || layout_->count() != cards_.size())
+        {
+            columns_ = columns;
+            for (QWidget* card : cards_) layout_->removeWidget(card);
+            for (int index = 0; index < cards_.size(); ++index)
+                layout_->addWidget(cards_[index], index / columns_, index % columns_, Qt::AlignTop);
+            for (int column = 0; column < 2; ++column)
+                layout_->setColumnStretch(column, column < columns_ ? 1 : 0);
+        }
+
+        for (QWidget* card : cards_) card->setMinimumHeight(0);
+        if (columns_ != 2) return;
+
+        layout_->activate();
+        const int rowCount = (cards_.size() + columns_ - 1) / columns_;
+        for (int row = 0; row < rowCount; ++row) layout_->setRowMinimumHeight(row, 0);
+        for (int first = 0; first < cards_.size(); first += columns_)
+        {
+            const int second = first + 1;
+            const int rowHeight = second < cards_.size() ?
+                qMax(cards_[first]->sizeHint().height(), cards_[second]->sizeHint().height()) :
+                cards_[first]->sizeHint().height();
+            layout_->setRowMinimumHeight(first / columns_, rowHeight);
+            cards_[first]->setMinimumHeight(rowHeight);
+            if (second < cards_.size()) cards_[second]->setMinimumHeight(rowHeight);
+        }
     }
 
     QGridLayout* layout_ = nullptr;
@@ -622,6 +643,7 @@ ConfigEditorWindow::ConfigEditorWindow(QString configPath, quintptr ownerHandle,
     resize(1040, 700);
     setMinimumSize(1040, 700);
     loadConfiguration();
+    migrateSharedRefreshRate();
     if (!testMode_) loadDiscoveryCache();
     setCentralWidget(createShell());
     if (!testMode_)
@@ -677,6 +699,12 @@ ConfigEditorWindow::ConfigEditorWindow(QString configPath, quintptr ownerHandle,
 
 ConfigEditorWindow::~ConfigEditorWindow()
 {
+	if (monitorDiscoveryThread_)
+	{
+		monitorDiscoveryThread_->requestInterruption();
+		monitorDiscoveryThread_->wait();
+		monitorDiscoveryThread_ = nullptr;
+	}
 	if (revealEventNotifier_)
 		revealEventNotifier_->setEnabled(false);
 	if (revealEvent_)
@@ -719,7 +747,59 @@ void ConfigEditorWindow::loadConfiguration()
 	hasPendingMigrations_ = false;
 	savedSnapshot_ = configurationLoaded_ ? captureDocumentSnapshot(*document_) :
 		DocumentSnapshot{};
-	dirty_ = configurationLoaded_ && !document_->existedAtLoad;
+	bool migratedLegacyInputPolicy = false;
+	if (configurationLoaded_)
+	{
+		for (const char* inputKey : { "video_conversion", "container_colorspace",
+			"hdr_colorspace", "hdr_luminance" })
+		{
+			const std::string general = document_->Get("general", inputKey);
+			const std::string directShow = document_->Get("directshow", inputKey);
+			const std::string vpRendererInput =
+				document_->Get("vprenderer.input_processing", inputKey);
+			const std::string interimVpRendererInput =
+				document_->Get("vprenderer.input", inputKey);
+			const std::string legacyVpRenderer =
+				document_->Get("vprenderer", inputKey);
+			if (!interimVpRendererInput.empty())
+			{
+				if (vpRendererInput.empty())
+				{
+					document_->AddSection("vprenderer.input_processing");
+					document_->SetKnown("vprenderer.input_processing", inputKey,
+						interimVpRendererInput);
+				}
+				document_->RemoveKnown("vprenderer.input", inputKey);
+				migratedLegacyInputPolicy = true;
+			}
+			if (!legacyVpRenderer.empty())
+			{
+				if (vpRendererInput.empty() && interimVpRendererInput.empty())
+				{
+					document_->AddSection("vprenderer.input_processing");
+					document_->SetKnown("vprenderer.input_processing", inputKey,
+						legacyVpRenderer);
+				}
+				document_->RemoveKnown("vprenderer", inputKey);
+				migratedLegacyInputPolicy = true;
+			}
+			if (general.empty() && !directShow.empty() &&
+				vpRendererInput.empty() && interimVpRendererInput.empty() &&
+				legacyVpRenderer.empty())
+			{
+				document_->SetKnown("general", inputKey, directShow);
+				document_->RemoveKnown("directshow", inputKey);
+				migratedLegacyInputPolicy = true;
+			}
+		}
+		if (document_->SectionSettings("vprenderer.input").empty())
+			document_->RemoveSection("vprenderer.input");
+		if (document_->SectionSettings("vprenderer").empty())
+			document_->RemoveSection("vprenderer");
+	}
+	dirty_ = configurationLoaded_ && (!document_->existedAtLoad ||
+		migratedLegacyInputPolicy);
+	hasPendingMigrations_ = migratedLegacyInputPolicy;
 }
 
 void ConfigEditorWindow::loadDiscoveryCache()
@@ -734,6 +814,34 @@ void ConfigEditorWindow::loadDiscoveryCache()
     monitors_ = discoverValues("VPDiscoverMonitors");
     filteredRenderers_ = discoverValues("VPDiscoverRenderers", true);
     allRenderers_ = discoverValues("VPDiscoverRenderers", false);
+}
+
+void ConfigEditorWindow::migrateSharedRefreshRate()
+{
+    if (!configurationLoaded_ || !document_) return;
+
+    const QString root = QStringLiteral("vprenderer");
+    const QString key = QStringLiteral("switch_refresh_rate");
+    QString shared = value(QStringLiteral("general"), key);
+    bool migrated = false;
+    for (const QString& section : profileSections(root))
+    {
+        const QString configured = value(section, key);
+        if (configured.isEmpty()) continue;
+        if (shared.isEmpty()) shared = configured;
+        document_->RemoveKnown(section.toStdString(), key.toStdString().c_str());
+        migrated = true;
+    }
+    if (migrated && !shared.isEmpty())
+    {
+        document_->AddSection("general");
+        document_->SetKnown("general", key.toStdString().c_str(),
+            shared.toLocal8Bit().constData());
+        dirty_ = true;
+        hasPendingMigrations_ = true;
+    }
+    if (document_->SectionSettings(root.toStdString()).empty())
+        document_->RemoveSection(root.toStdString());
 }
 
 void ConfigEditorWindow::refreshActiveProfileIndicators()
@@ -792,8 +900,36 @@ void ConfigEditorWindow::applyActiveProfileIndicators(bool available,
 
 void ConfigEditorWindow::refreshMonitorDiscovery()
 {
-    if (testMode_) return;
-    const QStringList discovered = discoverValues("VPDiscoverMonitors");
+    if (testMode_ || monitorDiscoveryThread_) return;
+
+    // Configuration activation can coincide with a Windows display-topology
+    // rebuild. Keep hardware discovery away from the UI thread; every selector
+    // continues serving the cache while this refresh is in flight.
+    QPointer<ConfigEditorWindow> guarded(this);
+    monitorDiscoveryThread_ = QThread::create([guarded]
+    {
+        const HRESULT initialized = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+        const QStringList discovered = discoverValues("VPDiscoverMonitors");
+        if (SUCCEEDED(initialized)) CoUninitialize();
+        if (!guarded) return;
+        QMetaObject::invokeMethod(guarded, [guarded, discovered]
+        {
+            if (guarded) guarded->applyMonitorDiscovery(discovered);
+        }, Qt::QueuedConnection);
+    });
+    monitorDiscoveryThread_->setParent(this);
+    QThread* worker = monitorDiscoveryThread_;
+    connect(worker, &QThread::finished, this, [this, worker]
+    {
+        if (monitorDiscoveryThread_ == worker)
+            monitorDiscoveryThread_ = nullptr;
+        worker->deleteLater();
+    });
+    worker->start();
+}
+
+void ConfigEditorWindow::applyMonitorDiscovery(const QStringList& discovered)
+{
     monitors_ = discovered;
     if (!monitorChoice_) return;
 
@@ -852,7 +988,7 @@ QStringList ConfigEditorWindow::profileSections(const QString& root) const
         {
             const QString suffix = section.mid(prefix.size()).toLower();
             if (root.compare(QStringLiteral("vprenderer"), Qt::CaseInsensitive) == 0 &&
-                (suffix == QStringLiteral("input") || suffix == QStringLiteral("scaling") || suffix == QStringLiteral("viewport")))
+                RendererProfileConfig::IsRendererChildRoot(suffix.toStdString()))
                 continue;
             result.push_back(section);
         }
@@ -911,13 +1047,52 @@ QComboBox* ConfigEditorWindow::bindChoiceField(const QString& section, const QSt
     }
 
     QString fallback;
-    if (section.compare(QStringLiteral("directshow"), Qt::CaseInsensitive) == 0)
+    const bool backendInputSetting =
+        (section.compare(QStringLiteral("directshow"), Qt::CaseInsensitive) == 0 ||
+         section.compare(QStringLiteral("vprenderer.input_processing"), Qt::CaseInsensitive) == 0) &&
+        isSharedInputSetting(key);
+    if (backendInputSetting)
+    {
+        // A renderer-owned omission is an inherited selector value. DirectShow
+        // keeps [general] as its source; VP Renderer retains the historical
+        // DirectShow location as a final fallback for unsaved legacy files.
         fallback = value(QStringLiteral("general"), key);
+        if (fallback.isEmpty() && section.compare(QStringLiteral("vprenderer.input_processing"),
+            Qt::CaseInsensitive) == 0)
+            fallback = value(QStringLiteral("directshow"), key);
+    }
+    else if (section.compare(QStringLiteral("directshow"), Qt::CaseInsensitive) == 0)
+        fallback = value(QStringLiteral("general"), key);
+    else if (section.compare(QStringLiteral("vprenderer.input_processing"), Qt::CaseInsensitive) == 0)
+    {
+        fallback = value(QStringLiteral("general"), key);
+        if (fallback.isEmpty()) fallback = value(QStringLiteral("directshow"), key);
+    }
     else if (section.compare(QStringLiteral("general"), Qt::CaseInsensitive) == 0 &&
         isSharedInputSetting(key))
         fallback = value(QStringLiteral("directshow"), key);
-    const QString configured = value(section, key, fallback);
-    if (!configured.isEmpty())
+    const QString raw = value(section, key);
+    const bool inherited = backendInputSetting && raw.isEmpty();
+    const QString configured = inherited ? fallback : value(section, key, fallback);
+    if (inherited)
+    {
+        QString inheritedLabel = friendlyChoiceLabel(configured);
+        for (int index = 1; index < combo->count(); ++index)
+            if (combo->itemData(index).toString().compare(configured,
+                Qt::CaseInsensitive) == 0)
+            {
+                inheritedLabel = combo->itemText(index);
+                break;
+            }
+        combo->setItemText(0, configured.isEmpty() ? QStringLiteral("Inherited / not set") :
+            QStringLiteral("Inherited: %1").arg(inheritedLabel));
+        combo->setProperty("inherited", true);
+        combo->setToolTip(configured.isEmpty() ?
+            QStringLiteral("No General value is currently set. Selecting a value creates a renderer override.") :
+            QStringLiteral("Inherited from General. Selecting a value creates a renderer override."));
+        combo->setCurrentIndex(0);
+    }
+    else if (!configured.isEmpty())
     {
         int index = combo->findData(configured, Qt::UserRole, Qt::MatchFixedString);
         if (index < 0)
@@ -952,13 +1127,17 @@ QComboBox* ConfigEditorWindow::bindChoiceField(const QString& section, const QSt
             normalized = QStringLiteral("VP Renderer");
         const std::string sectionText = section.toStdString();
         const std::string keyText = key.toStdString();
-        if (section.compare(QStringLiteral("directshow"), Qt::CaseInsensitive) == 0)
+        if (section.compare(QStringLiteral("directshow"), Qt::CaseInsensitive) == 0 &&
+            !isSharedInputSetting(key))
             document_->RemoveKnown("general", keyText.c_str());
-        else if (section.compare(QStringLiteral("general"), Qt::CaseInsensitive) == 0 &&
-            isSharedInputSetting(key))
-            document_->RemoveKnown("directshow", keyText.c_str());
         if (normalized.trimmed().isEmpty()) document_->RemoveKnown(sectionText, keyText.c_str());
-        else document_->SetKnown(sectionText, keyText.c_str(), normalized.toLocal8Bit().constData());
+        else if (!document_->SetKnown(sectionText, keyText.c_str(),
+            normalized.toLocal8Bit().constData()))
+        {
+            document_->AddSection(sectionText);
+            document_->SetKnown(sectionText, keyText.c_str(),
+                normalized.toLocal8Bit().constData());
+        }
         markDirty();
     };
     if (editable)
@@ -975,9 +1154,16 @@ QComboBox* ConfigEditorWindow::bindChoiceField(const QString& section, const QSt
         });
     }
     else
-        connect(combo, qOverload<int>(&QComboBox::currentIndexChanged), this, [combo, save](int index)
+        connect(combo, qOverload<int>(&QComboBox::currentIndexChanged), this,
+            [combo, save, backendInputSetting](int index)
         {
-            if (index >= 0) save(combo->itemData(index).toString());
+            if (index < 0) return;
+            const bool inherited = backendInputSetting &&
+                combo->itemData(index).toString().trimmed().isEmpty();
+            combo->setProperty("inherited", inherited);
+            combo->style()->unpolish(combo);
+            combo->style()->polish(combo);
+            save(combo->itemData(index).toString());
         });
     return combo;
 }
@@ -1337,6 +1523,29 @@ bool ConfigEditorWindow::saveChanges()
 {
     if (!configurationLoaded_ || !document_) return false;
 
+    // VP-0123 migration. Before VP Renderer had its own input policy, a
+    // DirectShow-only field acted as a shared setting. If it is the only
+    // spelling for a key, move it to [general] so both renderer pages show
+    // Inherit and preserve the exact former behavior. Mixed files retain their
+    // explicit backend override; a configured [general] value always remains
+    // the shared default.
+    for (const char* inputKey : { "video_conversion", "container_colorspace",
+        "hdr_colorspace", "hdr_luminance" })
+    {
+        const QString general = value(QStringLiteral("general"),
+            QString::fromLatin1(inputKey)).trimmed();
+        const QString directShow = value(QStringLiteral("directshow"),
+            QString::fromLatin1(inputKey)).trimmed();
+        const QString vpRenderer = value(QStringLiteral("vprenderer"),
+            QString::fromLatin1(inputKey)).trimmed();
+        if (general.isEmpty() && !directShow.isEmpty() && vpRenderer.isEmpty())
+        {
+            document_->SetKnown("general", inputKey,
+                directShow.toLocal8Bit().constData());
+            document_->RemoveKnown("directshow", inputKey);
+        }
+    }
+
     const std::vector<ConfigurationApplyPolicy::Change> changed = changedDocumentValues(
         savedSnapshot_, captureDocumentSnapshot(*document_));
     const auto action = ConfigurationApplyPolicy::ClassifyChanges(changed,
@@ -1497,8 +1706,8 @@ QWidget* ConfigEditorWindow::createShell()
 
     navigation_ = new QWidget;
     navigation_->setObjectName(QStringLiteral("sidebar"));
-    navigation_->setMinimumWidth(156);
-    navigation_->setMaximumWidth(184);
+    navigation_->setMinimumWidth(172);
+    navigation_->setMaximumWidth(200);
     navigation_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);
     navigation_->setAccessibleName(QStringLiteral("Settings navigation"));
     auto* navLayout = new QVBoxLayout(navigation_);
@@ -1520,6 +1729,12 @@ QWidget* ConfigEditorWindow::createShell()
     pages_->addWidget(createActionsPage());
     pages_->addWidget(createShadersPage());
     pages_->addWidget(createLogsPage());
+    pages_->addWidget(createInputProcessingPage(QStringLiteral("VP Renderer: Input"),
+        QStringLiteral("Override the General input policy for VP Renderer, or inherit it."),
+        QStringLiteral("vprenderer.input_processing")));
+    pages_->addWidget(createInputProcessingPage(QStringLiteral("DirectShow: Input"),
+        QStringLiteral("Override the General input policy for DirectShow, or inherit it."),
+        QStringLiteral("directshow")));
 
     auto* navGroup = new QButtonGroup(root);
     navGroup->setExclusive(true);
@@ -1575,10 +1790,11 @@ QWidget* ConfigEditorWindow::createShell()
         });
     };
     addRendererGroup(QStringLiteral("VP Renderer"), {
-        { QStringLiteral("Rendering"), 2 }, { QStringLiteral("Screen Config"), 4 }
+        { QStringLiteral("Rendering"), 2 }, { QStringLiteral("Screen Config"), 4 },
+        { QStringLiteral("Input Processing"), 10 }
     });
     addRendererGroup(QStringLiteral("DirectShow"), {
-        { QStringLiteral("General"), 3 }
+        { QStringLiteral("General"), 3 }, { QStringLiteral("Input Processing"), 11 }
     });
     navLayout->addStretch();
     centerLayout->addWidget(navigation_);
@@ -1851,22 +2067,13 @@ QWidget* ConfigEditorWindow::createStartupPage()
         markDirty();
     });
     hardwareForm->addRow(QStringLiteral("Input connection"), captureConnection);
-	const bool hideLegacy = configuredBooleanValue(value(QStringLiteral("general"),
-		QStringLiteral("hide_legacy_renderers")), true);
-	const QStringList availableRenderers = hideLegacy ? filteredRenderers_ : allRenderers_;
-	persistDiscoveredDefault(QStringLiteral("renderer"), availableRenderers);
-    hardwareForm->addRow(QStringLiteral("Renderer"), bindChoiceField(QStringLiteral("general"),
-        QStringLiteral("renderer"), availableRenderers.isEmpty() ?
-            QStringList{ QString() } : availableRenderers,
-        availableRenderers.isEmpty() ? QStringList{ QStringLiteral("No renderers discovered") } : QStringList{}, true));
-
     auto* behavior = new QWidget;
     auto* behaviorLayout = new QVBoxLayout(behavior);
     behaviorLayout->setContentsMargins(0, 0, 0, 0);
     behaviorLayout->setSpacing(8);
     behaviorLayout->addWidget(bindCheckField(QStringLiteral("Start fullscreen"), QStringLiteral("general"), QStringLiteral("fullscreen")));
     behaviorLayout->addWidget(bindCheckField(QStringLiteral("Windowed fullscreen"), QStringLiteral("general"), QStringLiteral("windowed_fullscreen_mode")));
-    behaviorLayout->addWidget(bindCheckField(QStringLiteral("Video Only"),
+    behaviorLayout->addWidget(bindCheckField(QStringLiteral("Start as Video Only"),
         QStringLiteral("general"), QStringLiteral("noui"),
         configuredBooleanValue(value(QStringLiteral("general"),
             QStringLiteral("no_ui")), false)));
@@ -1886,13 +2093,27 @@ QWidget* ConfigEditorWindow::createStartupPage()
         QStringLiteral("fullscreen_monitor_name"), withDefaultChoice(monitors_),
         { QStringLiteral("Default monitor") }, true);
     sourceForm->addRow(QStringLiteral("Monitor"), monitorChoice_);
+	const bool hideLegacy = configuredBooleanValue(value(QStringLiteral("general"),
+		QStringLiteral("hide_legacy_renderers")), true);
+	const QStringList availableRenderers = hideLegacy ? filteredRenderers_ : allRenderers_;
+	persistDiscoveredDefault(QStringLiteral("renderer"), availableRenderers);
+    sourceForm->addRow(QStringLiteral("Renderer"), bindChoiceField(QStringLiteral("general"),
+        QStringLiteral("renderer"), availableRenderers.isEmpty() ?
+            QStringList{ QString() } : availableRenderers,
+        availableRenderers.isEmpty() ? QStringList{ QStringLiteral("No renderers discovered") } : QStringList{}, true));
+    sourceForm->addRow(QString(), bindCheckField(
+        QStringLiteral("Hide legacy renderers"), QStringLiteral("general"),
+        QStringLiteral("hide_legacy_renderers"), true));
+    sourceForm->addRow(QString(), bindCheckField(
+        QStringLiteral("Switch refresh rate"), QStringLiteral("general"),
+        QStringLiteral("switch_refresh_rate"), true));
 
     auto* input = new QWidget;
     auto* inputForm = new QFormLayout(input);
     inputForm->setContentsMargins(0, 0, 0, 0);
     inputForm->setVerticalSpacing(8);
     inputForm->addRow(QStringLiteral("Video conversion"), bindChoiceField(QStringLiteral("general"),
-        QStringLiteral("video_conversion"), { QString(), QStringLiteral("V210_TO_P010") },
+        QStringLiteral("video_conversion"), { QStringLiteral("NONE"), QStringLiteral("V210_TO_P010") },
         { QStringLiteral("Disabled"), QStringLiteral("V210 to P010") }));
     inputForm->addRow(QStringLiteral("Container color space"), bindChoiceField(QStringLiteral("general"),
         QStringLiteral("container_colorspace"),
@@ -1911,13 +2132,13 @@ QWidget* ConfigEditorWindow::createStartupPage()
         { QStringLiteral("Follow input"), QStringLiteral("Follow input (LLDV)"), QStringLiteral("User values") }));
 
     cards->addCard(createCard(QStringLiteral("Hardware"),
-        QStringLiteral("Capture and renderer selections used when VP starts."), hardware));
+        QStringLiteral("Capture selection used when VP starts."), hardware));
     cards->addCard(createCard(QStringLiteral("General behavior"),
         QStringLiteral("How VideoProcessor opens and prepares a source."), behavior));
     cards->addCard(createCard(QStringLiteral("Display"),
-        QStringLiteral("Monitor targeting when VP starts fullscreen."), source));
+        QStringLiteral("Monitor targeting and refresh-rate behavior. Refresh switching currently applies to VP Renderer."), source));
     cards->addCard(createCard(QStringLiteral("Input processing"),
-        QStringLiteral("Source conversion and metadata policy shared by every renderer."), input));
+        QStringLiteral("Shared source conversion and metadata defaults. Renderer pages may override each value."), input));
     return createPage(QStringLiteral("General"), QStringLiteral("Choose how VideoProcessor starts and which hardware it uses."), cards);
 }
 
@@ -1928,7 +2149,12 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
     // named and their file order alone selects the default, so migrate a root
     // to a unique generated name in the pending document. Disk is unchanged
     // until the user explicitly saves.
-    if (configurationLoaded_ && document_ &&
+    const bool rendererOwnsInputPolicy = sectionPrefix == QStringLiteral("vprenderer") &&
+        ( !value(sectionPrefix, QStringLiteral("video_conversion")).isEmpty() ||
+          !value(sectionPrefix, QStringLiteral("container_colorspace")).isEmpty() ||
+          !value(sectionPrefix, QStringLiteral("hdr_colorspace")).isEmpty() ||
+          !value(sectionPrefix, QStringLiteral("hdr_luminance")).isEmpty() );
+    if (configurationLoaded_ && document_ && !rendererOwnsInputPolicy &&
         profileSections(sectionPrefix).contains(sectionPrefix, Qt::CaseInsensitive))
     {
         const QStringList before = profileSections(sectionPrefix);
@@ -1945,7 +2171,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             {
                 QStringList defaultOnlyKeys;
                 if (sectionPrefix == QStringLiteral("vprenderer"))
-                    defaultOnlyKeys = { QStringLiteral("switch_refresh_rate"), QStringLiteral("output_diagnostics"),
+                    defaultOnlyKeys = { QStringLiteral("output_diagnostics"),
                         QStringLiteral("diagnostic_disable_shader_cache") };
                 for (const QString& key : defaultOnlyKeys)
                 {
@@ -2371,7 +2597,6 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         auto* sdrBlackLevel = addText(QStringLiteral("SDR black level (nits)"), QStringLiteral("sdr_black_nits"));
         sdrBlackLevel->setPlaceholderText(QStringLiteral("Auto or a numeric value"));
         addBoolean(QStringLiteral("Report BT.2020 to display"), QStringLiteral("report_bt2020_to_display"));
-        addBoolean(QStringLiteral("Switch refresh rate"), QStringLiteral("switch_refresh_rate"));
 
         form = addCollapsibleSection(QStringLiteral("colorTone"), QStringLiteral("Color and tone"),
             QStringLiteral("Input interpretation, tone mapping, gamut mapping, and peak handling."), false);
@@ -2927,7 +3152,6 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                     key == QStringLiteral("diagnostic_allow_limited_g22") ||
                     key == QStringLiteral("diagnostic_allow_full_g22") ||
                     key == QStringLiteral("diagnostic_vp_owned_dxgi_presenter")) return QStringLiteral("false");
-                if (key == QStringLiteral("switch_refresh_rate")) return QStringLiteral("true");
                 return QStringLiteral("AUTO");
             }
             return {};
@@ -2959,8 +3183,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         {
             QString raw = profileValue(section, field.key);
             const bool defaultOnlyRendererField = sectionPrefix == QStringLiteral("vprenderer") &&
-                (field.key == QStringLiteral("switch_refresh_rate") ||
-                 field.key == QStringLiteral("output_diagnostics") ||
+                (field.key == QStringLiteral("output_diagnostics") ||
                  field.key == QStringLiteral("diagnostic_disable_shader_cache"));
             const bool defaultOnlyField = defaultOnlyRendererField;
             QString configured = raw;
@@ -3236,7 +3459,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         if (from.isEmpty() || to.isEmpty() || from == to) return;
         QStringList keys;
         if (sectionPrefix == QStringLiteral("vprenderer"))
-            keys = { QStringLiteral("switch_refresh_rate"), QStringLiteral("output_diagnostics"),
+            keys = { QStringLiteral("output_diagnostics"),
                 QStringLiteral("diagnostic_disable_shader_cache") };
         for (const QString& keyText : keys)
         {
@@ -3352,6 +3575,46 @@ QWidget* ConfigEditorWindow::createRendererPage()
         QStringLiteral("Configure ordered rendering profiles. The first profile in the list is the default."), QStringLiteral("vprenderer"));
 }
 
+QWidget* ConfigEditorWindow::createInputProcessingPage(const QString& title,
+    const QString& description, const QString& section)
+{
+    auto* input = new QWidget;
+    auto* inputForm = new QFormLayout(input);
+    inputForm->setContentsMargins(0, 0, 0, 0);
+    inputForm->setVerticalSpacing(8);
+    inputForm->addRow(QStringLiteral("Video conversion"), bindChoiceField(section,
+        QStringLiteral("video_conversion"),
+        { QString(), QStringLiteral("NONE"), QStringLiteral("V210_TO_P010") },
+        { QStringLiteral("Inherit (General)"), QStringLiteral("Disabled"),
+          QStringLiteral("V210 to P010") }));
+    inputForm->addRow(QStringLiteral("Container color space"), bindChoiceField(section,
+        QStringLiteral("container_colorspace"),
+        { QString(), QStringLiteral("BT2020"), QStringLiteral("P3_D65"), QStringLiteral("P3_DCI"),
+          QStringLiteral("P3_D60"), QStringLiteral("REC709"), QStringLiteral("REC601_525"),
+          QStringLiteral("REC601_625") },
+        { QStringLiteral("Inherit (General)") }));
+    inputForm->addRow(QStringLiteral("HDR color space"), bindChoiceField(section,
+        QStringLiteral("hdr_colorspace"),
+        { QString(), QStringLiteral("FOLLOW_INPUT"), QStringLiteral("FOLLOW_INPUT_LLDV"),
+          QStringLiteral("FOLLOW_CONTAINER"), QStringLiteral("BT2020"), QStringLiteral("P3"),
+          QStringLiteral("REC709") },
+        { QStringLiteral("Inherit (General)"), QStringLiteral("Follow input"),
+          QStringLiteral("Follow input (LLDV)"), QStringLiteral("Follow container"),
+          QStringLiteral("BT.2020"), QStringLiteral("P3"), QStringLiteral("Rec. 709") }));
+    inputForm->addRow(QStringLiteral("HDR luminance"), bindChoiceField(section,
+        QStringLiteral("hdr_luminance"),
+        { QString(), QStringLiteral("FOLLOW_INPUT"), QStringLiteral("FOLLOW_INPUT_LLDV"),
+          QStringLiteral("HDR_LUMINANCE_USER") },
+        { QStringLiteral("Inherit (General)"), QStringLiteral("Follow input"),
+          QStringLiteral("Follow input (LLDV)"), QStringLiteral("User values") }));
+
+    auto* cards = new ResponsiveCardGrid;
+    cards->addCard(createCard(QStringLiteral("Input processing"),
+        QStringLiteral("Choose per-renderer overrides, or inherit the General defaults. Changes apply after restart."),
+        input));
+    return createPage(title, description, cards);
+}
+
 QWidget* ConfigEditorWindow::createDirectShowPage()
 {
     const QString section = QStringLiteral("directshow");
@@ -3393,8 +3656,10 @@ QWidget* ConfigEditorWindow::createDirectShowPage()
     frameOffsetValue->setMaximumWidth(180);
     frameOffsetValue->setValue(automaticFrameOffset ? 0 : configuredFrameOffset.toInt());
     frameOffsetValue->setEnabled(!automaticFrameOffset);
+    frameOffsetValue->setFixedWidth(180);
+    frameOffsetLayout->addWidget(frameOffsetValue);
     frameOffsetLayout->addWidget(frameOffsetAuto);
-    frameOffsetLayout->addWidget(frameOffsetValue, 1);
+    frameOffsetLayout->addStretch();
     connect(frameOffsetAuto, &QCheckBox::toggled, this,
         [this, frameOffsetValue](bool automatic)
     {
@@ -4476,7 +4741,7 @@ QWidget* ConfigEditorWindow::createShortcutsPage()
         { "DeckLink input 2", "capture_2", "Ctrl+2" },
         { "DeckLink input 3", "capture_3", "Ctrl+3" },
         { "DeckLink input 4", "capture_4", "Ctrl+4" },
-        { "Disable video conversion", "video_conversion_off", "V" },
+        { "Video conversion off", "video_conversion_off", "V" },
         { "V210 to P010 conversion", "video_conversion_p010", "Shift+V" }
     };
 
@@ -4493,7 +4758,10 @@ QWidget* ConfigEditorWindow::createShortcutsPage()
         auto* edit = new QLineEdit(initial);
         edit->setObjectName(controlName(QStringLiteral("shortcuts"), key));
         edit->setAccessibleName(accessibleSettingName(key));
-        edit->setMaximumWidth(220);
+        // QLineEdit's size hint shrinks when the clear button is absent. Keep
+        // every shortcut column aligned whether the value is populated,
+        // explicitly empty, or currently has no visible clear affordance.
+        edit->setFixedWidth(220);
         edit->setClearButtonEnabled(true);
         edit->setToolTip(defaultValue.isEmpty() ?
             QStringLiteral("No built-in shortcut. Clear and save to disable.") :
@@ -4551,20 +4819,15 @@ QWidget* ConfigEditorWindow::createShortcutsPage()
     auto* layout = new QVBoxLayout(content);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(16);
-    auto* fixedShortcuts = new QWidget;
-    auto* fixedLayout = new QHBoxLayout(fixedShortcuts);
-    fixedLayout->setContentsMargins(0, 0, 0, 0);
-    fixedLayout->setSpacing(16);
+    auto* fixedShortcuts = new ResponsiveCardGrid;
     auto* applicationCard = createCard(QStringLiteral("Application"),
         QStringLiteral("Built-in application and display controls."),
         makeForm(applicationFields, std::size(applicationFields)));
     auto* captureCard = createCard(QStringLiteral("Capture & renderer"),
-        QStringLiteral("Capture selection, renderer control, and conversion."),
+        QStringLiteral("Capture selection, renderer control, and active-renderer conversion."),
         makeForm(captureFields, std::size(captureFields)));
-    applicationCard->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
-    captureCard->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
-    fixedLayout->addWidget(applicationCard, 1, Qt::AlignTop);
-    fixedLayout->addWidget(captureCard, 1, Qt::AlignTop);
+    fixedShortcuts->addCard(applicationCard);
+    fixedShortcuts->addCard(captureCard);
     layout->addWidget(fixedShortcuts);
 
     const bool hideLegacyRenderers = configuredBooleanValue(value(

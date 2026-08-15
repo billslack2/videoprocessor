@@ -15,6 +15,7 @@
 #include <QDialog>
 #include <QDir>
 #include <QFile>
+#include <QFrame>
 #include <QInputDialog>
 #include <QKeyEvent>
 #include <QMouseEvent>
@@ -36,6 +37,7 @@
 #include <QTimer>
 #include <QToolButton>
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <functional>
@@ -359,6 +361,25 @@ void testEveryPageRoundTrips()
     const QString path = copyFixture(directory);
     ConfigEditorWindow window(path, 0, true);
 
+    QStackedWidget* pages = requireControl<QStackedWidget>(window,
+        QStringLiteral("settingsPages"));
+    require(pages->count() == 12,
+        "Renderer Input pages were not added as dedicated settings pages");
+    QList<int> inputNavigationTargets;
+    for (QPushButton* button : window.findChildren<QPushButton*>())
+        if (button->text() == QStringLiteral("Input Processing") && button->property("navChild").toBool())
+            inputNavigationTargets.append(button->property("pageIndex").toInt());
+    std::sort(inputNavigationTargets.begin(), inputNavigationTargets.end());
+    require(inputNavigationTargets == QList<int>{ 10, 11 },
+        "Renderer Input navigation entries do not target the dedicated pages");
+    QWidget* navigation = requireControl<QWidget>(window, QStringLiteral("sidebar"));
+    require(navigation->minimumWidth() >= 172,
+        "The settings navigation is too narrow for renderer child labels");
+    const QString theme = VpTheme::StyleSheet();
+    require(theme.contains(QStringLiteral("QPushButton[nav=\"true\"]:focus")) &&
+        theme.contains(QStringLiteral("outline: 0")),
+        "Focused settings navigation still uses the generic button focus box");
+
     requireControl<QComboBox>(window, QStringLiteral("config.general.capture_device"))
         ->setEditText(QStringLiteral("Decklink Test Device"));
     QComboBox* captureInput = requireControl<QComboBox>(window,
@@ -389,6 +410,12 @@ void testEveryPageRoundTrips()
         ->setText(QStringLiteral("220"));
     selectData(requireControl<QComboBox>(window, QStringLiteral("config.vprenderer.tone_mapping")),
         QStringLiteral("spline"));
+    selectData(requireControl<QComboBox>(window,
+        QStringLiteral("config.vprenderer.input_processing.video_conversion")),
+        QStringLiteral("V210_TO_P010"));
+    selectData(requireControl<QComboBox>(window,
+        QStringLiteral("config.vprenderer.input_processing.hdr_colorspace")),
+        QStringLiteral("FOLLOW_INPUT_LLDV"));
 
     requireControl<QLineEdit>(window,
         QStringLiteral("config.vprenderer.viewport.screen_aspect"))->setText(QStringLiteral("21:10"));
@@ -409,8 +436,20 @@ void testEveryPageRoundTrips()
         QStringLiteral("config.directshow.frame_offset.auto"))->setChecked(false);
     requireControl<QSpinBox>(window,
         QStringLiteral("config.directshow.frame_offset.value"))->setValue(75);
+    QSpinBox* frameOffsetValue = requireControl<QSpinBox>(window,
+        QStringLiteral("config.directshow.frame_offset.value"));
+    QCheckBox* frameOffsetAuto = requireControl<QCheckBox>(window,
+        QStringLiteral("config.directshow.frame_offset.auto"));
+    require(frameOffsetValue->parentWidget() == frameOffsetAuto->parentWidget() &&
+        frameOffsetValue->parentWidget()->layout()->indexOf(frameOffsetValue) <
+        frameOffsetValue->parentWidget()->layout()->indexOf(frameOffsetAuto),
+        "Frame offset Auto is not positioned after the numeric entry");
     selectData(requireControl<QComboBox>(window,
         QStringLiteral("config.directshow.renderer_primaries")), QStringLiteral("BT2020"));
+    selectData(requireControl<QComboBox>(window,
+        QStringLiteral("config.directshow.video_conversion")), QStringLiteral("NONE"));
+    selectData(requireControl<QComboBox>(window,
+        QStringLiteral("config.directshow.container_colorspace")), QStringLiteral("REC709"));
 
     requireControl<QLineEdit>(window, QStringLiteral("config.lldv.max_cll"))
         ->setText(QStringLiteral("1200"));
@@ -500,7 +539,8 @@ void testEveryPageRoundTrips()
         "shortcut: Ctrl+Q", "quality: balanced", "sdr_target_nits: 220", "tone_mapping: spline",
         "screen_aspect: 21:10", "vertical_alignment: bottom", "anamorphic_scale: 4:3",
         "renderer_start_stop_time_method: RATIONAL_RATIONAL", "frame_offset: 75",
-        "renderer_primaries: BT2020", "max_cll: 1200", "max_fall: 450",
+        "renderer_primaries: BT2020", "video_conversion: NONE",
+        "container_colorspace: REC709", "max_cll: 1200", "max_fall: 450",
         "fullscreen_toggle: Ctrl+F", "config_editor: Ctrl+E", "toggle_noui: Alt+U",
         "renderer: *", "run: C:\\Tools\\verified-action.cmd 42",
         "enabled: false", "debug: false", "debug_log_retention: 25",
@@ -508,6 +548,14 @@ void testEveryPageRoundTrips()
     };
     for (const QByteArray& text : expected)
         require(saved.contains(text), text.constData());
+    const int rendererRoot = saved.indexOf("[vprenderer.input_processing]");
+    const int rendererRootEnd = saved.indexOf(QByteArray("\n["),
+        rendererRoot + 1);
+    const QByteArray rendererRootValues = rendererRoot >= 0 ? saved.mid(
+        rendererRoot, rendererRootEnd < 0 ? -1 : rendererRootEnd - rendererRoot) :
+        QByteArray();
+    require(rendererRootValues.contains("video_conversion: V210_TO_P010"),
+        "VP Renderer input override was not saved in its independent input-policy section");
     require(saved.indexOf("[shader.nls.protected]") < saved.indexOf("[shader.nls.standard]"),
         "NLS selection order was not persisted through section order");
 
@@ -524,6 +572,134 @@ void testEveryPageRoundTrips()
     require(requireControl<QComboBox>(reloaded,
         QStringLiteral("config.vprenderer.viewport.vertical_alignment"))->currentData().toString() ==
         QStringLiteral("bottom"), "Vertical alignment did not reload");
+    require(requireControl<QComboBox>(reloaded,
+        QStringLiteral("config.vprenderer.input_processing.video_conversion"))->currentData().toString() ==
+        QStringLiteral("V210_TO_P010"), "VP Renderer input override did not reload");
+    require(requireControl<QComboBox>(reloaded,
+        QStringLiteral("config.directshow.video_conversion"))->currentData().toString() ==
+        QStringLiteral("NONE"), "DirectShow input override did not reload");
+}
+
+void testTwoColumnCardsShareRowHeight()
+{
+    QTemporaryDir directory;
+    ConfigEditorWindow window(copyFixture(directory), 0, true);
+    window.resize(1200, 800);
+    window.show();
+    QCoreApplication::processEvents();
+
+    QStackedWidget* pages = requireControl<QStackedWidget>(window,
+        QStringLiteral("settingsPages"));
+    const auto card = [](QWidget* page, const QString& title) -> QFrame*
+    {
+        for (QLabel* label : page->findChildren<QLabel*>())
+            if (label->property("cardTitle").toBool() && label->text() == title)
+                return qobject_cast<QFrame*>(label->parentWidget());
+        throw std::runtime_error(("Missing card: " + title).toStdString());
+    };
+    QFrame* hardware = card(pages->widget(0), QStringLiteral("Hardware"));
+    QFrame* behavior = card(pages->widget(0), QStringLiteral("General behavior"));
+    QFrame* display = card(pages->widget(0), QStringLiteral("Display"));
+    QFrame* input = card(pages->widget(0), QStringLiteral("Input processing"));
+    require(hardware->height() == behavior->height() && hardware->y() == behavior->y(),
+        "The first two-column card row is not height-aligned");
+    require(display->height() == input->height() && display->y() == input->y(),
+        "The second two-column card row is not height-aligned");
+    require((hardware->layout()->alignment() & Qt::AlignTop) != 0 &&
+        (display->layout()->alignment() & Qt::AlignTop) != 0,
+        "Two-column card contents are not top-justified");
+    require(hardware->findChild<QComboBox*>(
+        QStringLiteral("config.general.renderer")) == nullptr &&
+        display->findChild<QComboBox*>(
+        QStringLiteral("config.general.renderer")) != nullptr,
+        "The renderer selector was not moved from Hardware to Display");
+    require(display->findChild<QCheckBox*>(
+        QStringLiteral("config.general.hide_legacy_renderers")) != nullptr,
+        "Display does not contain the Hide legacy renderers checkbox");
+    QCheckBox* videoOnly = requireControl<QCheckBox>(window,
+        QStringLiteral("config.general.noui"));
+    require(videoOnly->text() == QStringLiteral("Start as Video Only"),
+        "The Video Only startup checkbox does not use its explicit label");
+
+    pages->setCurrentIndex(6);
+    QCoreApplication::processEvents();
+    QFrame* application = card(pages->widget(6), QStringLiteral("Application"));
+    QFrame* capture = card(pages->widget(6), QStringLiteral("Capture & renderer"));
+    require(application->height() == capture->height() &&
+        application->y() == capture->y(),
+        "The Shortcuts cards are not height-aligned");
+    require((application->layout()->alignment() & Qt::AlignTop) != 0 &&
+        (capture->layout()->alignment() & Qt::AlignTop) != 0,
+        "The Shortcuts card contents are not top-justified");
+    QLineEdit* populatedShortcut = requireControl<QLineEdit>(window,
+        QStringLiteral("config.shortcuts.capture_3"));
+    QLineEdit* emptyShortcut = requireControl<QLineEdit>(window,
+        QStringLiteral("config.shortcuts.video_conversion_off"));
+    require(populatedShortcut->width() == emptyShortcut->width() &&
+        populatedShortcut->minimumWidth() == emptyShortcut->minimumWidth() &&
+        populatedShortcut->maximumWidth() == emptyShortcut->maximumWidth(),
+        "Empty shortcut editors do not retain the populated field width");
+    QStringList shortcutLabels;
+    for (QLabel* label : pages->widget(6)->findChildren<QLabel*>())
+        shortcutLabels.append(label->text());
+    require(shortcutLabels.contains(QStringLiteral("Video conversion off")) &&
+        shortcutLabels.contains(QStringLiteral("V210 to P010 conversion")) &&
+        !shortcutLabels.contains(QStringLiteral("Active renderer: conversion off")) &&
+        !shortcutLabels.contains(QStringLiteral("Active renderer: V210 to P010")),
+        "Shared video-conversion shortcuts do not use compact renderer-neutral labels");
+}
+
+void testInheritedRendererInputSelectorsUseEffectiveLabels()
+{
+    QTemporaryDir directory;
+    ConfigEditorWindow window(copyFixture(directory), 0, true);
+    const auto verifyInherited = [&window](const QString& objectName,
+        const QString& expectedText)
+    {
+        QComboBox* combo = requireControl<QComboBox>(window, objectName);
+        require(combo->currentData().toString().isEmpty(),
+            "An inherited input setting must retain its empty override value");
+        require(combo->currentText() == expectedText,
+            "An inherited input setting did not identify its effective value");
+        require(combo->property("inherited").toBool(),
+            "An inherited input setting is not styled as inherited");
+    };
+    verifyInherited(QStringLiteral("config.directshow.video_conversion"),
+        QStringLiteral("Inherited: V210 to P010"));
+    verifyInherited(QStringLiteral("config.vprenderer.input_processing.video_conversion"),
+        QStringLiteral("Inherited: V210 to P010"));
+    verifyInherited(QStringLiteral("config.directshow.hdr_colorspace"),
+        QStringLiteral("Inherited: Follow input (LLDV)"));
+}
+
+void testLegacyVpInputOverrideMigratesToIndependentPolicySection()
+{
+    QTemporaryDir directory;
+    const QString path = copyFixture(directory);
+    QFile file(path);
+    require(file.open(QIODevice::Append),
+        "Could not append the legacy VP input override fixture");
+    file.write("\n[vprenderer]\nvideo_conversion: NONE\n");
+    file.close();
+
+    ConfigEditorWindow window(path, 0, true);
+    QComboBox* conversion = requireControl<QComboBox>(window,
+        QStringLiteral("config.vprenderer.input_processing.video_conversion"));
+    require(conversion->currentData().toString() == QStringLiteral("NONE"),
+        "The legacy VP input override was not loaded into the new selector");
+    save(window);
+
+    const QByteArray saved = readBytes(path);
+    const int inputSection = saved.indexOf("[vprenderer.input_processing]");
+    const int inputEnd = saved.indexOf(QByteArray("\n["), inputSection + 1);
+    const QByteArray inputValues = inputSection >= 0 ? saved.mid(inputSection,
+        inputEnd < 0 ? -1 : inputEnd - inputSection) : QByteArray();
+    require(inputValues.contains("video_conversion: NONE"),
+        "The migrated VP input override was not saved independently");
+    require(!saved.contains("[vprenderer]\nvideo_conversion:"),
+        "The legacy display-profile root still owns VP input processing");
+    require(!saved.contains("[vprenderer.profile_1]"),
+        "Migrating input policy created a synthetic display profile");
 }
 
 void answerInputDialog(const QString& text)
@@ -780,10 +956,15 @@ void testRendererProfileSectionsCollapseAndPersist()
         QStringLiteral("config.vprenderer.diagnostic_allow_full_g22")),
         "Output experiment controls are missing from the editor");
     require(requireControl<QCheckBox>(window,
-        QStringLiteral("config.vprenderer.report_bt2020_to_display")) &&
-        requireControl<QCheckBox>(window,
-        QStringLiteral("config.vprenderer.switch_refresh_rate")),
-        "Common display controls are not included in the Basic section");
+        QStringLiteral("config.vprenderer.report_bt2020_to_display")),
+        "The renderer display-reporting control is not included in Basic");
+    QStackedWidget* pages = requireControl<QStackedWidget>(window,
+        QStringLiteral("settingsPages"));
+    require(pages->widget(0)->findChild<QCheckBox*>(
+        QStringLiteral("config.general.switch_refresh_rate")) != nullptr &&
+        pages->widget(2)->findChild<QCheckBox*>(
+        QStringLiteral("config.general.switch_refresh_rate")) == nullptr,
+        "Switch refresh rate was not moved from Renderer Basic to General Display");
     QComboBox* debanding = requireControl<QComboBox>(window,
         QStringLiteral("config.vprenderer.deband_strength"));
     require(debanding->findData(QStringLiteral("AUTO")) >= 0 &&
@@ -1232,15 +1413,16 @@ void testChoiceLabelsAndVpRendererName()
         "Frame offset did not preserve the canonical AUTO token on disk");
 }
 
-void testLegacyRendererVisibilityRemainsManualAndPreserved()
+void testLegacyRendererVisibilityDefaultsHiddenAndPreservesShortcuts()
 {
     QTemporaryDir directory;
     const QString path = copyFixture(directory);
     ConfigEditorWindow window(path, 0, true);
 
-    require(window.findChild<QCheckBox*>(
-        QStringLiteral("config.general.hide_legacy_renderers")) == nullptr,
-        "The manual-only legacy renderer setting is still editable in the UI");
+    QCheckBox* hideLegacyRenderers = requireControl<QCheckBox>(window,
+        QStringLiteral("config.general.hide_legacy_renderers"));
+    require(hideLegacyRenderers->isChecked(),
+        "Hide legacy renderers does not default to enabled when omitted");
     require(window.findChild<QLineEdit*>(
         QStringLiteral("config.shortcuts.render.1")) == nullptr,
         "A renderer shortcut was exposed without a visible discovered renderer");
@@ -1252,7 +1434,7 @@ void testLegacyRendererVisibilityRemainsManualAndPreserved()
     require(saved.contains("render.1: A") && saved.contains("render.2: M"),
         "Hidden renderer shortcuts were not preserved verbatim");
     require(!saved.contains("hide_legacy_renderers:"),
-        "The editor wrote the omitted manual-only setting instead of using its true default");
+        "The editor wrote the unchanged default instead of preserving its omission");
 }
 
 void testNewActionStartsUnconfigured()
@@ -1703,9 +1885,9 @@ void testVideoOnlyStartupDefaultRoundTrips()
         QStringLiteral("config.general.fullscreen"));
     QCheckBox* videoOnly = requireControl<QCheckBox>(window,
         QStringLiteral("config.general.noui"));
-    require(videoOnly->text() == QStringLiteral("Video Only") &&
+    require(videoOnly->text() == QStringLiteral("Start as Video Only") &&
         videoOnly->parentWidget() == fullscreen->parentWidget(),
-        "Video Only is missing from the startup presentation controls");
+        "Start as Video Only is missing from the startup presentation controls");
 
     videoOnly->setChecked(true);
     QLabel* effect = requireControl<QLabel>(window,
@@ -2700,6 +2882,11 @@ int main(int argc, char** argv)
     application.setStyleSheet(VpTheme::StyleSheet());
     int failures = 0;
     failures += run("every page round trips", testEveryPageRoundTrips);
+    failures += run("two-column cards share row height", testTwoColumnCardsShareRowHeight);
+    failures += run("inherited renderer Input selectors use effective labels",
+        testInheritedRendererInputSelectorsUseEffectiveLabels);
+    failures += run("legacy VP input override migrates independently",
+        testLegacyVpInputOverrideMigratesToIndependentPolicySection);
     failures += run("profile lifecycle through widgets", testProfileLifecycleThroughWidgets);
     failures += run("unrelated content remains exact", testUnrelatedContentRemainsExact);
     failures += run("scene detection defaults off and hides manual overrides",
@@ -2718,7 +2905,7 @@ int main(int argc, char** argv)
     failures += run("standalone Config reads live active profile status", testStandaloneConfigAcceptsLiveActiveProfileStatus);
     failures += run("LUT selector discovers installation LUT files", testLutSelectorDiscoversInstallationLutFiles);
     failures += run("choice labels and VP Renderer name", testChoiceLabelsAndVpRendererName);
-    failures += run("legacy renderer visibility remains manual and preserved", testLegacyRendererVisibilityRemainsManualAndPreserved);
+    failures += run("legacy renderer visibility defaults hidden and preserves shortcuts", testLegacyRendererVisibilityDefaultsHiddenAndPreservesShortcuts);
     failures += run("new action starts unconfigured", testNewActionStartsUnconfigured);
     failures += run("empty actions show an empty state", testEmptyActionsShowEmptyState);
     failures += run("missing configuration can be created from editor",

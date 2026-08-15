@@ -525,6 +525,14 @@ namespace RendererProfileConfig
 		std::string ignored;
 		for (const char* group : { "input", "scaling", "display", "viewport" })
 			if (ValidateProfileSetting(group, key, value, ignored)) return true;
+		if (key == "video_conversion")
+			return IsChoice(value, { "none", "off", "v210_to_p010", "uyvy_to_p010" });
+		if (key == "container_colorspace")
+			return IsChoice(value, { "auto", "follow_input", "bt2020", "p3_d65", "p3_dci", "p3_d60", "rec709", "rec601_525", "rec601_625" });
+		if (key == "hdr_colorspace")
+			return IsChoice(value, { "follow_input", "follow_input_lldv", "follow_container", "bt2020", "p3", "rec709" });
+		if (key == "hdr_luminance")
+			return IsChoice(value, { "follow_input", "follow_input_lldv", "hdr_luminance_user", "user" });
 		if (key == "switch_refresh_rate" || key == "output_diagnostics" ||
 			key == "diagnostic_disable_shader_cache" ||
 			key == "diagnostic_disable_compute" ||
@@ -539,6 +547,9 @@ namespace RendererProfileConfig
 	inline bool ValidateCanonicalDisplaySetting(
 		const std::string& key, const std::string& value)
 	{
+		if (key == "video_conversion" || key == "container_colorspace" ||
+			key == "hdr_colorspace" || key == "hdr_luminance")
+			return ValidateBaseSetting(key, value);
 		std::string ignored;
 		for (const char* group : { "input", "scaling", "display" })
 			if (ValidateProfileSetting(group, key, value, ignored)) return true;
@@ -549,7 +560,21 @@ namespace RendererProfileConfig
 	inline bool ValidateCanonicalRendererSections(
 		const ConfigFile& config, std::string& error)
 	{
+		for (const std::string& section : config.GetSectionNames())
+			if (section.rfind("vprenderer.input_processing.", 0) == 0)
+			{
+				error = "[vprenderer.input_processing] is renderer policy and cannot have named variants";
+				return false;
+			}
 		const std::vector<ConfigSchema::KeyRule> policyRules = {
+			ConfigSchema::Choice("video_conversion",
+				{ "none", "off", "v210_to_p010", "uyvy_to_p010" }),
+			ConfigSchema::Choice("container_colorspace",
+				{ "auto", "follow_input", "bt2020", "p3_d65", "p3_dci", "p3_d60", "rec709", "rec601_525", "rec601_625" }),
+			ConfigSchema::Choice("hdr_colorspace",
+				{ "follow_input", "follow_input_lldv", "follow_container", "bt2020", "p3", "rec709" }),
+			ConfigSchema::Choice("hdr_luminance",
+				{ "follow_input", "follow_input_lldv", "hdr_luminance_user", "user" }),
 			ConfigSchema::Boolean("switch_refresh_rate"),
 			ConfigSchema::Boolean("output_diagnostics"),
 			ConfigSchema::Boolean("diagnostic_disable_shader_cache"),
@@ -683,6 +708,26 @@ namespace RendererProfileConfig
 		return group == "input" || group == "scaling" ||
 			group == "display" || group == "viewport" || group == "queue" ||
 			group == "lldv";
+	}
+
+	inline bool IsRendererChildNamespace(const std::string& name)
+	{
+		for (const char* child : { "input", "input_processing", "scaling", "viewport" })
+		{
+			const std::string root(child);
+			if (name == root ||
+				(name.size() > root.size() &&
+				 name.compare(0, root.size(), root) == 0 &&
+				 name[root.size()] == '.'))
+				return true;
+		}
+		return false;
+	}
+
+	inline bool IsRendererChildRoot(const std::string& name)
+	{
+		return name.find('.') == std::string::npos &&
+			IsRendererChildNamespace(name);
 	}
 
 	inline bool IsSupportedActionEvent(const std::string& event)
@@ -861,10 +906,7 @@ namespace RendererProfileConfig
 				// Nested roots owned by the built-in renderer are independent
 				// groups, rather than display variants.
 				if (std::string(spec.name) == "display" &&
-					(name == "input" || name == "scaling" || name == "viewport" ||
-					 name.rfind("input.", 0) == 0 ||
-					 name.rfind("scaling.", 0) == 0 ||
-					 name.rfind("viewport.", 0) == 0))
+					IsRendererChildNamespace(name))
 					continue;
 				if (name.find('.') != std::string::npos || !IsIdentifier(name) ||
 					(std::string(spec.name) == "viewport" &&

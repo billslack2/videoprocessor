@@ -433,16 +433,27 @@ protected:
 		bool hasFrameOffset = false;
 		bool frameOffsetAuto = false;
 		int frameOffsetMs = 0;
-		bool hasVideoConversion = false;
-		VideoConversionOverride videoConversion =
+		bool hasDirectShowVideoConversion = false;
+		VideoConversionOverride directShowVideoConversion =
 			VideoConversionOverride::VIDEOCONVERSION_NONE;
-		bool hasContainerColorSpace = false;
-		ColorSpace containerColorSpace = ColorSpace::UNKNOWN;
-		bool hasHdrColorSpace = false;
-		HdrColorspaceOptions hdrColorSpace =
+		bool hasVpRendererVideoConversion = false;
+		VideoConversionOverride vpRendererVideoConversion =
+			VideoConversionOverride::VIDEOCONVERSION_NONE;
+		bool hasDirectShowContainerColorSpace = false;
+		ColorSpace directShowContainerColorSpace = ColorSpace::UNKNOWN;
+		bool hasVpRendererContainerColorSpace = false;
+		ColorSpace vpRendererContainerColorSpace = ColorSpace::UNKNOWN;
+		bool hasDirectShowHdrColorSpace = false;
+		HdrColorspaceOptions directShowHdrColorSpace =
 			HdrColorspaceOptions::HDR_COLORSPACE_FOLLOW_INPUT;
-		bool hasHdrLuminance = false;
-		HdrLuminanceOptions hdrLuminance =
+		bool hasVpRendererHdrColorSpace = false;
+		HdrColorspaceOptions vpRendererHdrColorSpace =
+			HdrColorspaceOptions::HDR_COLORSPACE_FOLLOW_INPUT;
+		bool hasDirectShowHdrLuminance = false;
+		HdrLuminanceOptions directShowHdrLuminance =
+			HdrLuminanceOptions::HDR_LUMINANCE_FOLLOW_INPUT;
+		bool hasVpRendererHdrLuminance = false;
+		HdrLuminanceOptions vpRendererHdrLuminance =
 			HdrLuminanceOptions::HDR_LUMINANCE_FOLLOW_INPUT;
 		bool hasDirectShowTimeMethod = false;
 		DirectShowStartStopTimeMethod directShowTimeMethod =
@@ -598,10 +609,14 @@ protected:
 	bool m_sceneCorrectionUpstreamSample = true;
 	SubtitleRepositionMode m_subtitleRepositionMode =
 		SubtitleRepositionMode::DISABLED;
-	VideoConversionOverride m_defaultVideoConversionOverride = VideoConversionOverride::VIDEOCONVERSION_NONE;
-	ColorSpace m_defaultContainerColorSpace = ColorSpace::UNKNOWN;
-	HdrColorspaceOptions m_defaultHDRColorSpaceOption = HdrColorspaceOptions::HDR_COLORSPACE_FOLLOW_INPUT;
-	HdrLuminanceOptions m_defaultHDRLuminanceOption = HdrLuminanceOptions::HDR_LUMINANCE_FOLLOW_INPUT;
+	VideoConversionOverride m_directShowVideoConversionOverride = VideoConversionOverride::VIDEOCONVERSION_NONE;
+	VideoConversionOverride m_vpRendererVideoConversionOverride = VideoConversionOverride::VIDEOCONVERSION_NONE;
+	ColorSpace m_directShowContainerColorSpace = ColorSpace::UNKNOWN;
+	ColorSpace m_vpRendererContainerColorSpace = ColorSpace::UNKNOWN;
+	HdrColorspaceOptions m_directShowHDRColorSpaceOption = HdrColorspaceOptions::HDR_COLORSPACE_FOLLOW_INPUT;
+	HdrColorspaceOptions m_vpRendererHDRColorSpaceOption = HdrColorspaceOptions::HDR_COLORSPACE_FOLLOW_INPUT;
+	HdrLuminanceOptions m_directShowHDRLuminanceOption = HdrLuminanceOptions::HDR_LUMINANCE_FOLLOW_INPUT;
+	HdrLuminanceOptions m_vpRendererHDRLuminanceOption = HdrLuminanceOptions::HDR_LUMINANCE_FOLLOW_INPUT;
 	DirectShowStartStopTimeMethod m_defaultDSSSTimeMethod = DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART;
 	DXVA_NominalRange m_defaultNominalRange = DXVA_NominalRange::DXVA_NominalRange_Unknown;  // Auto
 	DXVA_VideoTransferFunction m_defaultTransferFunction = DXVA_VideoTransferFunction::DXVA_VideoTransFunc_Unknown;  // Auto
