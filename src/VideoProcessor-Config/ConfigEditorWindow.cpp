@@ -1582,6 +1582,12 @@ QWidget* ConfigEditorWindow::createShell()
     pages_->addWidget(createActionsPage());
     pages_->addWidget(createShadersPage());
     pages_->addWidget(createLogsPage());
+    pages_->addWidget(createInputProcessingPage(QStringLiteral("VP Renderer: Input"),
+        QStringLiteral("Override the General input policy for VP Renderer, or inherit it."),
+        QStringLiteral("vprenderer")));
+    pages_->addWidget(createInputProcessingPage(QStringLiteral("DirectShow: Input"),
+        QStringLiteral("Override the General input policy for DirectShow, or inherit it."),
+        QStringLiteral("directshow")));
 
     auto* navGroup = new QButtonGroup(root);
     navGroup->setExclusive(true);
@@ -1637,10 +1643,11 @@ QWidget* ConfigEditorWindow::createShell()
         });
     };
     addRendererGroup(QStringLiteral("VP Renderer"), {
-        { QStringLiteral("Rendering"), 2 }, { QStringLiteral("Screen Config"), 4 }
+        { QStringLiteral("Rendering"), 2 }, { QStringLiteral("Screen Config"), 4 },
+        { QStringLiteral("Input"), 10 }
     });
     addRendererGroup(QStringLiteral("DirectShow"), {
-        { QStringLiteral("General"), 3 }
+        { QStringLiteral("General"), 3 }, { QStringLiteral("Input"), 11 }
     });
     navLayout->addStretch();
     centerLayout->addWidget(navigation_);
@@ -2144,38 +2151,6 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
     auto* detailLayout = new QVBoxLayout(detail);
     detailLayout->setContentsMargins(0, 0, 0, 0);
     detailLayout->setSpacing(12);
-    if (sectionPrefix == QStringLiteral("vprenderer"))
-    {
-        auto* conversion = new QWidget;
-        auto* conversionForm = new QFormLayout(conversion);
-        conversionForm->setContentsMargins(0, 0, 0, 0);
-        conversionForm->setVerticalSpacing(8);
-        conversionForm->addRow(QStringLiteral("Video conversion"), bindChoiceField(
-            QStringLiteral("vprenderer"), QStringLiteral("video_conversion"),
-            { QString(), QStringLiteral("NONE"), QStringLiteral("V210_TO_P010") },
-            { QStringLiteral("Inherit (General)"), QStringLiteral("Disabled"),
-              QStringLiteral("V210 to P010") }));
-        conversionForm->addRow(QStringLiteral("Container color space"), bindChoiceField(
-            QStringLiteral("vprenderer"), QStringLiteral("container_colorspace"),
-            { QString(), QStringLiteral("BT2020"), QStringLiteral("P3_D65"), QStringLiteral("P3_DCI"),
-              QStringLiteral("P3_D60"), QStringLiteral("REC709"), QStringLiteral("REC601_525"), QStringLiteral("REC601_625") },
-            { QStringLiteral("Inherit (General)") }));
-        conversionForm->addRow(QStringLiteral("HDR color space"), bindChoiceField(
-            QStringLiteral("vprenderer"), QStringLiteral("hdr_colorspace"),
-            { QString(), QStringLiteral("FOLLOW_INPUT"), QStringLiteral("FOLLOW_INPUT_LLDV"),
-              QStringLiteral("FOLLOW_CONTAINER"), QStringLiteral("BT2020"), QStringLiteral("P3"), QStringLiteral("REC709") },
-            { QStringLiteral("Inherit (General)"), QStringLiteral("Follow input"),
-              QStringLiteral("Follow input (LLDV)"), QStringLiteral("Follow container"),
-              QStringLiteral("BT.2020"), QStringLiteral("P3"), QStringLiteral("Rec. 709") }));
-        conversionForm->addRow(QStringLiteral("HDR luminance"), bindChoiceField(
-            QStringLiteral("vprenderer"), QStringLiteral("hdr_luminance"),
-            { QString(), QStringLiteral("FOLLOW_INPUT"), QStringLiteral("FOLLOW_INPUT_LLDV"), QStringLiteral("HDR_LUMINANCE_USER") },
-            { QStringLiteral("Inherit (General)"), QStringLiteral("Follow input"),
-              QStringLiteral("Follow input (LLDV)"), QStringLiteral("User values") }));
-        detailLayout->addWidget(createCard(QStringLiteral("Input processing"),
-        QStringLiteral("Override the General input policy for VP Renderer, or inherit it. Changes apply after restart."),
-            conversion));
-    }
     auto* selectedTitle = new QLabel(QStringLiteral("Profile"));
     selectedTitle->setProperty("cardTitle", true);
     detailLayout->addWidget(selectedTitle);
@@ -3451,6 +3426,46 @@ QWidget* ConfigEditorWindow::createRendererPage()
         QStringLiteral("Configure ordered rendering profiles. The first profile in the list is the default."), QStringLiteral("vprenderer"));
 }
 
+QWidget* ConfigEditorWindow::createInputProcessingPage(const QString& title,
+    const QString& description, const QString& section)
+{
+    auto* input = new QWidget;
+    auto* inputForm = new QFormLayout(input);
+    inputForm->setContentsMargins(0, 0, 0, 0);
+    inputForm->setVerticalSpacing(8);
+    inputForm->addRow(QStringLiteral("Video conversion"), bindChoiceField(section,
+        QStringLiteral("video_conversion"),
+        { QString(), QStringLiteral("NONE"), QStringLiteral("V210_TO_P010") },
+        { QStringLiteral("Inherit (General)"), QStringLiteral("Disabled"),
+          QStringLiteral("V210 to P010") }));
+    inputForm->addRow(QStringLiteral("Container color space"), bindChoiceField(section,
+        QStringLiteral("container_colorspace"),
+        { QString(), QStringLiteral("BT2020"), QStringLiteral("P3_D65"), QStringLiteral("P3_DCI"),
+          QStringLiteral("P3_D60"), QStringLiteral("REC709"), QStringLiteral("REC601_525"),
+          QStringLiteral("REC601_625") },
+        { QStringLiteral("Inherit (General)") }));
+    inputForm->addRow(QStringLiteral("HDR color space"), bindChoiceField(section,
+        QStringLiteral("hdr_colorspace"),
+        { QString(), QStringLiteral("FOLLOW_INPUT"), QStringLiteral("FOLLOW_INPUT_LLDV"),
+          QStringLiteral("FOLLOW_CONTAINER"), QStringLiteral("BT2020"), QStringLiteral("P3"),
+          QStringLiteral("REC709") },
+        { QStringLiteral("Inherit (General)"), QStringLiteral("Follow input"),
+          QStringLiteral("Follow input (LLDV)"), QStringLiteral("Follow container"),
+          QStringLiteral("BT.2020"), QStringLiteral("P3"), QStringLiteral("Rec. 709") }));
+    inputForm->addRow(QStringLiteral("HDR luminance"), bindChoiceField(section,
+        QStringLiteral("hdr_luminance"),
+        { QString(), QStringLiteral("FOLLOW_INPUT"), QStringLiteral("FOLLOW_INPUT_LLDV"),
+          QStringLiteral("HDR_LUMINANCE_USER") },
+        { QStringLiteral("Inherit (General)"), QStringLiteral("Follow input"),
+          QStringLiteral("Follow input (LLDV)"), QStringLiteral("User values") }));
+
+    auto* cards = new ResponsiveCardGrid;
+    cards->addCard(createCard(QStringLiteral("Input processing"),
+        QStringLiteral("Choose per-renderer overrides, or inherit the General defaults. Changes apply after restart."),
+        input));
+    return createPage(title, description, cards);
+}
+
 QWidget* ConfigEditorWindow::createDirectShowPage()
 {
     const QString section = QStringLiteral("directshow");
@@ -3514,32 +3529,6 @@ QWidget* ConfigEditorWindow::createDirectShowPage()
     });
     timingForm->addRow(QStringLiteral("Frame offset (ms)"), frameOffsetRow);
 
-    auto* input = new QWidget;
-    auto* inputForm = new QFormLayout(input);
-    inputForm->setContentsMargins(0, 0, 0, 0);
-    inputForm->setVerticalSpacing(8);
-    inputForm->addRow(QStringLiteral("Video conversion"), bindChoiceField(section,
-        QStringLiteral("video_conversion"),
-        { QString(), QStringLiteral("NONE"), QStringLiteral("V210_TO_P010") },
-        { QStringLiteral("Inherit (General)"), QStringLiteral("Disabled"), QStringLiteral("V210 to P010") }));
-    inputForm->addRow(QStringLiteral("Container color space"), bindChoiceField(section,
-        QStringLiteral("container_colorspace"),
-        { QString(), QStringLiteral("BT2020"), QStringLiteral("P3_D65"), QStringLiteral("P3_DCI"),
-          QStringLiteral("P3_D60"), QStringLiteral("REC709"), QStringLiteral("REC601_525"), QStringLiteral("REC601_625") },
-        { QStringLiteral("Inherit (General)") }));
-    inputForm->addRow(QStringLiteral("HDR color space"), bindChoiceField(section,
-        QStringLiteral("hdr_colorspace"),
-        { QString(), QStringLiteral("FOLLOW_INPUT"), QStringLiteral("FOLLOW_INPUT_LLDV"),
-          QStringLiteral("FOLLOW_CONTAINER"), QStringLiteral("BT2020"), QStringLiteral("P3"), QStringLiteral("REC709") },
-        { QStringLiteral("Inherit (General)"), QStringLiteral("Follow input"),
-          QStringLiteral("Follow input (LLDV)"), QStringLiteral("Follow container"),
-          QStringLiteral("BT.2020"), QStringLiteral("P3"), QStringLiteral("Rec. 709") }));
-    inputForm->addRow(QStringLiteral("HDR luminance"), bindChoiceField(section,
-        QStringLiteral("hdr_luminance"),
-        { QString(), QStringLiteral("FOLLOW_INPUT"), QStringLiteral("FOLLOW_INPUT_LLDV"), QStringLiteral("HDR_LUMINANCE_USER") },
-        { QStringLiteral("Inherit (General)"), QStringLiteral("Follow input"),
-          QStringLiteral("Follow input (LLDV)"), QStringLiteral("User values") }));
-
     auto* overrides = new QWidget;
     auto* overrideForm = new QFormLayout(overrides);
     overrideForm->setContentsMargins(0, 0, 0, 0);
@@ -3560,8 +3549,6 @@ QWidget* ConfigEditorWindow::createDirectShowPage()
 
     cards->addCard(createCard(QStringLiteral("Timing"),
         QStringLiteral("Timing controls used only by DirectShow renderers."), timing));
-    cards->addCard(createCard(QStringLiteral("Input processing"),
-        QStringLiteral("Override the General input policy for DirectShow, or inherit it. Changes apply after restart."), input));
     cards->addCard(createCard(QStringLiteral("Renderer overrides"),
         QStringLiteral("DirectShow color overrides. Auto lets the renderer decide."), overrides));
     return createPage(QStringLiteral("DirectShow: General"),

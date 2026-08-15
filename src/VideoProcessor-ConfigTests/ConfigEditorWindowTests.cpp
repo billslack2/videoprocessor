@@ -36,6 +36,7 @@
 #include <QTimer>
 #include <QToolButton>
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <functional>
@@ -358,6 +359,18 @@ void testEveryPageRoundTrips()
     QTemporaryDir directory;
     const QString path = copyFixture(directory);
     ConfigEditorWindow window(path, 0, true);
+
+    QStackedWidget* pages = requireControl<QStackedWidget>(window,
+        QStringLiteral("settingsPages"));
+    require(pages->count() == 12,
+        "Renderer Input pages were not added as dedicated settings pages");
+    QList<int> inputNavigationTargets;
+    for (QPushButton* button : window.findChildren<QPushButton*>())
+        if (button->text() == QStringLiteral("Input") && button->property("navChild").toBool())
+            inputNavigationTargets.append(button->property("pageIndex").toInt());
+    std::sort(inputNavigationTargets.begin(), inputNavigationTargets.end());
+    require(inputNavigationTargets == QList<int>{ 10, 11 },
+        "Renderer Input navigation entries do not target the dedicated pages");
 
     requireControl<QComboBox>(window, QStringLiteral("config.general.capture_device"))
         ->setEditText(QStringLiteral("Decklink Test Device"));

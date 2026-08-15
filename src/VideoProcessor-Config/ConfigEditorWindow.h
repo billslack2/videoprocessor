@@ -57,6 +57,8 @@ private:
     QWidget* createQueuePage();
     QWidget* createRendererPage();
     QWidget* createDirectShowPage();
+    QWidget* createInputProcessingPage(const QString& title, const QString& description,
+        const QString& section);
     QWidget* createViewportPage();
     QWidget* createLldvPage();
     QWidget* createShadersPage();
