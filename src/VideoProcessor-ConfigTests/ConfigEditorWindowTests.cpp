@@ -1465,44 +1465,64 @@ void testUnchangedActiveProfileStatusDoesNotInvalidateLists()
         "A changed active-profile snapshot did not update the list model");
 }
 
-void testLegacyRendererVisibilityRebuildsTheFormWhenApplied()
+void testLegacyRendererVisibilityRebuildsRendererUiImmediately()
 {
     QTemporaryDir directory;
     const QString path = copyFixture(directory);
     ConfigEditorWindow window(path, 0, true);
+    // Commit any fixture migration first so this test observes only the
+    // visibility preference's apply classification.
+    if (QPushButton* baselineApply = requireControl<QPushButton>(window,
+        QStringLiteral("applyConfiguration")); baselineApply->isEnabled())
+    {
+        baselineApply->click();
+        QCoreApplication::processEvents();
+    }
     QStackedWidget* pages = requireControl<QStackedWidget>(window,
         QStringLiteral("settingsPages"));
     pages->setCurrentIndex(7);
     QComboBox* oldRenderer = requireControl<QComboBox>(window,
         QStringLiteral("config.general.renderer"));
     const void* oldRendererAddress = oldRenderer;
+    QComboBox* oldActionRenderer = requireControl<QComboBox>(window,
+        QStringLiteral("config.actions.renderer"));
+    const int hiddenActionRendererCount = oldActionRenderer->count();
+    const auto rendererShortcutCount = [&window]
+    {
+        int count = 0;
+        for (QLineEdit* edit : window.findChildren<QLineEdit*>())
+            if (edit->objectName().startsWith(QStringLiteral("config.shortcuts.render.")))
+                ++count;
+        return count;
+    };
+    const int hiddenShortcutCount = rendererShortcutCount();
     QCheckBox* hideLegacyRenderers = requireControl<QCheckBox>(window,
         QStringLiteral("config.general.hide_legacy_renderers"));
     hideLegacyRenderers->setChecked(false);
-    require(requireControl<QLabel>(window,
-        QStringLiteral("configurationEffectSummary"))->text().startsWith(
-            QStringLiteral("Restart renderer:")),
-        "Changing renderer visibility was not classified for a live renderer refresh");
-
-    // Apply recreates every renderer-dependent selector from the one stable
-    // discovery snapshot. Do not use save(window): its old Apply pointer is
-    // intentionally retired as part of this UI rebuild.
-    requireControl<QPushButton>(window, QStringLiteral("applyConfiguration"))->click();
     QCoreApplication::processEvents();
 
     QComboBox* rebuiltRenderer = requireControl<QComboBox>(window,
         QStringLiteral("config.general.renderer"));
     require(rebuiltRenderer != oldRendererAddress,
-        "Apply did not rebuild the renderer-dependent form");
+        "Toggling legacy renderer visibility did not rebuild General immediately");
     require(!requireControl<QCheckBox>(window,
         QStringLiteral("config.general.hide_legacy_renderers"))->isChecked(),
-        "Applied renderer visibility did not persist into the rebuilt form");
+        "Immediate renderer visibility rebuild lost the checkbox state");
     require(requireControl<QStackedWidget>(window,
         QStringLiteral("settingsPages"))->currentIndex() == 7,
         "Rebuilding renderer-dependent controls changed the active editor page");
-    require(!requireControl<QPushButton>(window,
+    require(requireControl<QComboBox>(window,
+        QStringLiteral("config.actions.renderer"))->count() >= hiddenActionRendererCount,
+        "Actions did not immediately expose the unfiltered renderer snapshot");
+    require(rendererShortcutCount() >= hiddenShortcutCount,
+        "Shortcuts did not immediately expose the unfiltered renderer snapshot");
+    require(!requireControl<QLabel>(window,
+        QStringLiteral("configurationEffectSummary"))->text().startsWith(
+            QStringLiteral("Restart renderer:")),
+        "The UI-only visibility preference still requests a renderer restart");
+    require(requireControl<QPushButton>(window,
         QStringLiteral("applyConfiguration"))->isEnabled(),
-        "The rebuilt form incorrectly remained dirty after Apply");
+        "The immediately applied UI preference cannot be persisted");
 }
 
 void testGeneralInputApplyPreservesBackendOverrides()
@@ -3094,8 +3114,8 @@ int main(int argc, char** argv)
     failures += run("LUT selector discovers installation LUT files", testLutSelectorDiscoversInstallationLutFiles);
     failures += run("choice labels and VP Renderer name", testChoiceLabelsAndVpRendererName);
     failures += run("legacy renderer visibility defaults hidden and preserves shortcuts", testLegacyRendererVisibilityDefaultsHiddenAndPreservesShortcuts);
-	failures += run("legacy renderer visibility rebuilds the form when applied",
-		testLegacyRendererVisibilityRebuildsTheFormWhenApplied);
+	failures += run("legacy renderer visibility rebuilds renderer UI immediately",
+		testLegacyRendererVisibilityRebuildsRendererUiImmediately);
 	failures += run("General input Apply preserves backend overrides",
 		testGeneralInputApplyPreservesBackendOverrides);
     failures += run("new action starts unconfigured", testNewActionStartsUnconfigured);

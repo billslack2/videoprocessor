@@ -140,6 +140,12 @@ namespace ConfigurationApplyPolicy
 		// running session would unexpectedly override the user's current UI and
 		// fullscreen choices, so they are deliberately next-start only.
 		if (IsStartupPresentationDefaultChange(change)) return Action::SaveOnly;
+		// This setting only controls which already-discovered renderers the
+		// configuration editor exposes. The editor refreshes those controls
+		// immediately, so saving the preference must not restart the renderer.
+		if (NormalizeSection(change.section) == "general" &&
+			NormalizeSection(change.key) == "hide_legacy_renderers")
+			return Action::SaveOnly;
 		if (IsShortcutAffectingChange(change)) return Action::ReloadShortcuts;
 		if (IsOutputExperimentChange(change)) return Action::RestartCapture;
 		const std::string section = NormalizeSection(change.section);

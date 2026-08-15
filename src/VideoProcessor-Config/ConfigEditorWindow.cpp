@@ -1532,8 +1532,9 @@ void ConfigEditorWindow::applyChanges()
 void ConfigEditorWindow::rebuildConfigurationShell()
 {
     // Renderer discovery is captured once per editor session. Rebuild the
-    // dependent controls from that stable snapshot after the visibility policy
-    // is committed so General, Actions, and Shortcuts agree immediately.
+    // dependent controls from that stable snapshot whenever the UI-only
+    // visibility preference changes so General, Actions, and Shortcuts agree
+    // without waiting for Apply or querying the system again.
     const int currentPage = pages_ ? pages_->currentIndex() : 0;
 	activeProfileLists_.clear();
 	monitorChoice_ = nullptr;
@@ -1576,14 +1577,6 @@ bool ConfigEditorWindow::saveChanges()
         savedSnapshot_, captureDocumentSnapshot(*document_));
     const auto action = ConfigurationApplyPolicy::ClassifyChanges(changed,
         snapshotUsesDirectShowRenderer(savedSnapshot_));
-	const bool rendererVisibilityChanged = std::any_of(changed.begin(), changed.end(),
-		[](const ConfigurationApplyPolicy::Change& change)
-		{
-			return ConfigurationApplyPolicy::NormalizeSection(change.section) ==
-				"general" && ConfigFile::NormalizeName(change.key) ==
-				"hide_legacy_renderers";
-		});
-
     // Persist shortcut spelling in the same canonical form used by the
     // accelerator parser. Case is not a modifier: L and l are both L, while
     // Shift+L is the distinct shifted chord.
@@ -1651,8 +1644,6 @@ bool ConfigEditorWindow::saveChanges()
     saveButton_->setEnabled(true);
     if (applyButton_) applyButton_->setEnabled(false);
     savedSnapshot_ = captureDocumentSnapshot(*document_);
-	if (rendererVisibilityChanged)
-		rebuildConfigurationShell();
     updateEffectSummary();
 
     // The editor is a separate process. Signal the running VP instance only
@@ -2131,9 +2122,12 @@ QWidget* ConfigEditorWindow::createStartupPage()
         QStringLiteral("renderer"), availableRenderers.isEmpty() ?
             QStringList{ QString() } : availableRenderers,
         availableRenderers.isEmpty() ? QStringList{ QStringLiteral("No renderers discovered") } : QStringList{}));
-    sourceForm->addRow(QString(), bindCheckField(
+    auto* hideLegacyRenderers = bindCheckField(
         QStringLiteral("Hide legacy renderers"), QStringLiteral("general"),
-        QStringLiteral("hide_legacy_renderers"), true));
+        QStringLiteral("hide_legacy_renderers"), true);
+    connect(hideLegacyRenderers, &QCheckBox::toggled, this,
+        [this] { rebuildConfigurationShell(); });
+    sourceForm->addRow(QString(), hideLegacyRenderers);
     sourceForm->addRow(QString(), bindCheckField(
         QStringLiteral("Switch refresh rate"), QStringLiteral("general"),
         QStringLiteral("switch_refresh_rate"), true));
