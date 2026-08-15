@@ -115,6 +115,17 @@ Implementation checkpoint:
   passed, clean x64 Release host and Config builds completed, and both
   deployed hashes matched. Backup:
   `C:\\Videoprocessor\\vp\\backups\\vp0130-4ee7cb4-20260815-131000`.
+- Operator testing showed `4ee7cb4` still spent 5–8 seconds reconstructing the
+  complete 12-page editor shell on each toggle. Performance correction
+  `1f074cb` (`perf(config): filter cached renderers in place`) now constructs
+  General, Actions, and renderer Shortcut rows once from the all-renderer
+  snapshot and only changes existing row visibility. No control or page is
+  recreated. The deterministic regression includes useful and built-in legacy
+  renderers, verifies all three surfaces, requires the same widget instances,
+  and enforces a sub-250 ms toggle. The focused regression and complete Config
+  suite passed; the clean x64 Release Config executable was SHA-256 verified
+  after deployment. Backup:
+  `C:\\Videoprocessor\\vp\\backups\\vp0130-1f074cb-20260815-132500`.
 
 ## User story
 
