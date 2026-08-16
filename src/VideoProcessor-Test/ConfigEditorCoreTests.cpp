@@ -216,6 +216,16 @@ namespace VideoProcessorTest
 					{ { "queue", "queue_size" }, { "shortcuts", "renderer_restart" } })));
 		}
 
+		TEST_METHOD(ConfigurationApplyPolicyRestartsRendererForSdrGammaAdjustment)
+		{
+			using ConfigurationApplyPolicy::Action;
+			using ConfigurationApplyPolicy::Change;
+			const Change change = { "vprenderer.rec709", "sdr_adjust_gamma" };
+			Assert::IsFalse(ConfigurationApplyPolicy::IsOutputExperimentChange(change));
+			Assert::AreEqual(static_cast<int>(Action::RestartRenderer),
+				static_cast<int>(ConfigurationApplyPolicy::ClassifyChange(change)));
+		}
+
 		TEST_METHOD(ConfigurationApplyPolicyKeepsStartupPresentationDefaultsForNextStart)
 		{
 			using ConfigurationApplyPolicy::Action;

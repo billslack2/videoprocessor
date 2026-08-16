@@ -37,6 +37,11 @@ captures are expected to contain exactly the same output codes.
 The JSON records source levels/transfer/primaries, renderer ingress, requested
 output values, accepted DXGI declaration, pixel-transfer override, presenter
 owner, target/black nits, tone/gamut mapping, and code-value statistics.
+It also records the SDR gamma-adjustment decision: configured and declared
+source transfer, effective source transfer, accepted target transfer, action,
+and reason. `OFF` suppresses only SDR transfer-curve conversion; matrix/range,
+primaries, scaling, LUTs, shaders, dithering, quantization, and display response
+may still alter the result.
 
 ## Interpretation limits
 

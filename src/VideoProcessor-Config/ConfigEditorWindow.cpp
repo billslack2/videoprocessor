@@ -2752,9 +2752,23 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         sdrBlackLevel->setPlaceholderText(QStringLiteral("Auto or a numeric value"));
         addBoolean(QStringLiteral("Report BT.2020 to display"), QStringLiteral("report_bt2020_to_display"));
 
-        form = addCollapsibleSection(QStringLiteral("colorTone"), QStringLiteral("Color and tone"),
-            QStringLiteral("Input interpretation, tone mapping, gamut mapping, and peak handling."), false);
-        addChoice(QStringLiteral("SDR input transfer"), QStringLiteral("sdr_input_transfer"), { QStringLiteral("AUTO"), QStringLiteral("bt1886"), QStringLiteral("srgb"), QStringLiteral("1.8"), QStringLiteral("2.0"), QStringLiteral("2.2"), QStringLiteral("2.4"), QStringLiteral("2.6"), QStringLiteral("2.8") });
+		form = addCollapsibleSection(QStringLiteral("colorTone"), QStringLiteral("Color and tone"),
+			QStringLiteral("Input interpretation, tone mapping, gamut mapping, and peak handling."), false);
+		auto* sdrAdjustGamma = addChoice(QStringLiteral("SDR gamma adjustment"),
+			QStringLiteral("sdr_adjust_gamma"),
+			{ QStringLiteral("AUTO"), QStringLiteral("on"), QStringLiteral("off") });
+		sdrAdjustGamma->setItemText(1, QStringLiteral("Auto (mpv-compatible)"));
+		sdrAdjustGamma->setItemText(2, QStringLiteral("On - color managed (current behavior)"));
+		sdrAdjustGamma->setItemText(3, QStringLiteral("Off - suppress SDR transfer conversion"));
+		sdrAdjustGamma->setToolTip(QStringLiteral(
+			"Auto suppresses common ambiguous SDR-to-sRGB conversion only for an automatic output curve. "
+			"On honors source and output transfer metadata. Off treats SDR as already encoded for the accepted output transfer."));
+		auto* sdrInputTransfer = addChoice(QStringLiteral("SDR input transfer"), QStringLiteral("sdr_input_transfer"), { QStringLiteral("AUTO"), QStringLiteral("bt1886"), QStringLiteral("srgb"), QStringLiteral("1.8"), QStringLiteral("2.0"), QStringLiteral("2.2"), QStringLiteral("2.4"), QStringLiteral("2.6"), QStringLiteral("2.8") });
+		sdrInputTransfer->setToolTip(QStringLiteral(
+			"Declares how SDR source codes are interpreted when gamma adjustment is On. "
+			"The value remains recorded but is not used for transfer conversion when adjustment is Off."));
+		form->addRow(QString(), helpLabel(QStringLiteral(
+			"This controls SDR transfer-curve conversion only. YUV/RGB matrix, range, primaries, scaling, LUT, shaders, dithering, quantization, and the physical display response remain active.")));
         addChoice(QStringLiteral("Tone mapping"), QStringLiteral("tone_mapping"), { QStringLiteral("AUTO"), QStringLiteral("spline"), QStringLiteral("bt2390"), QStringLiteral("st2094-40"), QStringLiteral("reinhard") });
         addChoice(QStringLiteral("Gamut mapping"), QStringLiteral("gamut_mapping"), { QStringLiteral("AUTO"), QStringLiteral("perceptual"), QStringLiteral("softclip"), QStringLiteral("relative"), QStringLiteral("desaturate") });
         addChoice(QStringLiteral("Peak detection"), QStringLiteral("peak_detection"), { QStringLiteral("AUTO"), QStringLiteral("off"), QStringLiteral("high_quality"), QStringLiteral("on") });

@@ -710,6 +710,32 @@ void testInheritedRendererInputSelectorsUseEffectiveLabels()
         QStringLiteral("Inherited: Follow input (LLDV)"));
 }
 
+void testSdrGammaAdjustmentLabelsAndPersistence()
+{
+    QTemporaryDir directory;
+    const QString path = copyFixture(directory);
+    {
+        ConfigEditorWindow window(path, 0, true);
+        QComboBox* adjustment = requireControl<QComboBox>(window,
+            QStringLiteral("config.vprenderer.sdr_adjust_gamma"));
+        require(adjustment->findText(QStringLiteral("Auto (mpv-compatible)")) >= 0 &&
+            adjustment->findText(QStringLiteral("On - color managed (current behavior)")) >= 0 &&
+            adjustment->findText(QStringLiteral("Off - suppress SDR transfer conversion")) >= 0,
+            "SDR gamma adjustment does not expose the reviewed labels");
+        selectData(adjustment, QStringLiteral("off"));
+        save(window);
+    }
+    require(readBytes(path).contains("sdr_adjust_gamma: off"),
+        "SDR gamma adjustment did not persist in the renderer profile");
+    {
+        ConfigEditorWindow window(path, 0, true);
+        QComboBox* adjustment = requireControl<QComboBox>(window,
+            QStringLiteral("config.vprenderer.sdr_adjust_gamma"));
+        require(adjustment->currentData().toString() == QStringLiteral("off"),
+            "SDR gamma adjustment did not reload from the renderer profile");
+    }
+}
+
 void testLegacyVpInputOverrideMigratesToIndependentPolicySection()
 {
     QTemporaryDir directory;
@@ -3275,6 +3301,8 @@ int main(int argc, char** argv)
     failures += run("two-column cards share row height", testTwoColumnCardsShareRowHeight);
     failures += run("inherited renderer Input selectors use effective labels",
         testInheritedRendererInputSelectorsUseEffectiveLabels);
+    failures += run("SDR gamma adjustment labels and persistence",
+        testSdrGammaAdjustmentLabelsAndPersistence);
     failures += run("legacy VP input override migrates independently",
         testLegacyVpInputOverrideMigratesToIndependentPolicySection);
     failures += run("profile lifecycle through widgets", testProfileLifecycleThroughWidgets);

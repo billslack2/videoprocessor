@@ -13,6 +13,84 @@ namespace Tests
 	TEST_CLASS(LibplaceboOutputPolicyTests)
 	{
 	public:
+		TEST_METHOD(SdrGammaMissingOrOnPreservesCurrentManagedBehavior)
+		{
+			Assert::AreEqual(static_cast<int>(SdrAdjustGamma::ON),
+				static_cast<int>(ParseSdrAdjustGamma("")));
+			Assert::AreEqual(static_cast<int>(SdrAdjustGamma::AUTO),
+				static_cast<int>(ParseSdrAdjustGamma("auto")));
+			Assert::AreEqual(static_cast<int>(SdrAdjustGamma::OFF),
+				static_cast<int>(ParseSdrAdjustGamma("off")));
+			Assert::AreEqual(static_cast<int>(SdrAdjustGamma::OFF),
+				static_cast<int>(ParseSdrAdjustGamma("no")));
+			Assert::AreEqual(static_cast<int>(SdrAdjustGamma::ON),
+				static_cast<int>(ParseSdrAdjustGamma("yes")));
+			Assert::AreEqual(static_cast<int>(SdrAdjustGamma::ON),
+				static_cast<int>(ParseSdrAdjustGamma("invalid")));
+			const auto decision = ResolveSdrGamma(SdrAdjustGamma::ON, true, true,
+				GammaRequest::AUTO, SdrTransfer::BT1886, SdrTransfer::SRGB);
+			Assert::AreEqual(static_cast<int>(SdrGammaAction::ADJUST),
+				static_cast<int>(decision.action));
+			Assert::AreEqual(static_cast<int>(SdrTransfer::BT1886),
+				static_cast<int>(decision.effectiveSource));
+		}
+
+		TEST_METHOD(SdrGammaOffMatchesAcceptedSdrTarget)
+		{
+			for (const SdrTransfer target : { SdrTransfer::SRGB,
+				SdrTransfer::GAMMA22, SdrTransfer::GAMMA24 })
+			{
+				const auto decision = ResolveSdrGamma(SdrAdjustGamma::OFF, true, true,
+					GammaRequest::GAMMA22, SdrTransfer::BT1886, target);
+				Assert::AreEqual(static_cast<int>(SdrGammaAction::SUPPRESS),
+					static_cast<int>(decision.action));
+				Assert::AreEqual(static_cast<int>(target),
+					static_cast<int>(decision.effectiveSource));
+			}
+			const auto unknown = ResolveSdrGamma(SdrAdjustGamma::OFF, true, true,
+				GammaRequest::AUTO, SdrTransfer::BT1886, SdrTransfer::UNKNOWN);
+			Assert::AreEqual(static_cast<int>(SdrGammaAction::ADJUST),
+				static_cast<int>(unknown.action));
+			Assert::AreEqual(static_cast<int>(SdrTransfer::BT1886),
+				static_cast<int>(unknown.effectiveSource));
+		}
+
+		TEST_METHOD(SdrGammaAutoMatchesMpvCommonSdrToAutomaticSrgbPolicy)
+		{
+			for (const SdrTransfer source : { SdrTransfer::BT1886,
+				SdrTransfer::GAMMA22, SdrTransfer::SRGB })
+			{
+				const auto decision = ResolveSdrGamma(SdrAdjustGamma::AUTO, true, true,
+					GammaRequest::AUTO, source, SdrTransfer::SRGB);
+				Assert::AreEqual(static_cast<int>(SdrGammaAction::SUPPRESS),
+					static_cast<int>(decision.action));
+			}
+			Assert::AreEqual(static_cast<int>(SdrGammaAction::ADJUST),
+				static_cast<int>(ResolveSdrGamma(SdrAdjustGamma::AUTO, true, true,
+					GammaRequest::SRGB, SdrTransfer::BT1886,
+					SdrTransfer::SRGB).action));
+			Assert::AreEqual(static_cast<int>(SdrGammaAction::ADJUST),
+				static_cast<int>(ResolveSdrGamma(SdrAdjustGamma::AUTO, true, true,
+					GammaRequest::AUTO, SdrTransfer::GAMMA24,
+					SdrTransfer::SRGB).action));
+		}
+
+		TEST_METHOD(SdrGammaPolicyDoesNotModifyHdrOrUnsafeOutput)
+		{
+			const auto hdr = ResolveSdrGamma(SdrAdjustGamma::OFF, false, true,
+				GammaRequest::AUTO, SdrTransfer::OTHER, SdrTransfer::SRGB);
+			Assert::AreEqual(static_cast<int>(SdrGammaAction::NOT_APPLICABLE),
+				static_cast<int>(hdr.action));
+			Assert::AreEqual(static_cast<int>(SdrTransfer::OTHER),
+				static_cast<int>(hdr.effectiveSource));
+			const auto blocked = ResolveSdrGamma(SdrAdjustGamma::OFF, true, false,
+				GammaRequest::AUTO, SdrTransfer::BT1886, SdrTransfer::SRGB);
+			Assert::AreEqual(static_cast<int>(SdrGammaAction::BLOCKED),
+				static_cast<int>(blocked.action));
+			Assert::AreEqual(static_cast<int>(SdrTransfer::BT1886),
+				static_cast<int>(blocked.effectiveSource));
+		}
+
 		TEST_METHOD(ActiveSweepExactContractRequiresMetadataAndPresent)
 		{
 			using namespace ActiveOutputSweepPolicy;

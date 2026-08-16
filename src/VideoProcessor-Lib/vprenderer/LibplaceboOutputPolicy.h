@@ -60,6 +60,44 @@ namespace LibplaceboOutput
 		GAMMA24
 	};
 
+	enum class SdrAdjustGamma
+	{
+		AUTO,
+		ON,
+		OFF
+	};
+
+	// Renderer-independent transfer names used by the SDR gamma policy. The
+	// libplacebo adapter translates these to/from pl_color_transfer at the frame
+	// boundary, keeping this policy directly unit-testable.
+	enum class SdrTransfer
+	{
+		UNKNOWN,
+		BT1886,
+		SRGB,
+		GAMMA22,
+		GAMMA24,
+		OTHER
+	};
+
+	enum class SdrGammaAction
+	{
+		ADJUST,
+		SUPPRESS,
+		NOT_APPLICABLE,
+		BLOCKED
+	};
+
+	struct SdrGammaDecision
+	{
+		SdrAdjustGamma requested = SdrAdjustGamma::ON;
+		SdrGammaAction action = SdrGammaAction::ADJUST;
+		SdrTransfer declaredSource = SdrTransfer::UNKNOWN;
+		SdrTransfer effectiveSource = SdrTransfer::UNKNOWN;
+		SdrTransfer actualTarget = SdrTransfer::UNKNOWN;
+		std::string reason;
+	};
+
 	struct Request
 	{
 		PresentationRequest presentation = PresentationRequest::AUTO;
@@ -172,6 +210,14 @@ namespace LibplaceboOutput
 	PresentationRequest ParsePresentation(const std::string& value);
 	RangeRequest ParseRange(const std::string& value);
 	GammaRequest ParseGamma(const std::string& value);
+	SdrAdjustGamma ParseSdrAdjustGamma(const std::string& value);
+	SdrGammaDecision ResolveSdrGamma(
+		SdrAdjustGamma requested,
+		bool inputIsSdr,
+		bool outputSafe,
+		GammaRequest configuredOutputGamma,
+		SdrTransfer declaredSource,
+		SdrTransfer actualTarget);
 	Plan MakePlan(const Request& request);
 	SdrOutputContract MakeSdrOutputContract(
 		Request requestedTransport,
@@ -194,6 +240,9 @@ namespace LibplaceboOutput
 	const char* ToString(PresentationModel value);
 	const char* ToString(RangeRequest value);
 	const char* ToString(GammaRequest value);
+	const char* ToString(SdrAdjustGamma value);
+	const char* ToString(SdrTransfer value);
+	const char* ToString(SdrGammaAction value);
 	const char* ToString(PrimariesRequest value);
 	const char* ToString(DxgiEncoding value);
 	const char* ToRangeString(DxgiEncoding value);

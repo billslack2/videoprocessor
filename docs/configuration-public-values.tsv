@@ -84,6 +84,9 @@ vprenderer.sdr_input_transfer	2.2
 vprenderer.sdr_input_transfer	2.4
 vprenderer.sdr_input_transfer	2.6
 vprenderer.sdr_input_transfer	2.8
+vprenderer.sdr_adjust_gamma	AUTO
+vprenderer.sdr_adjust_gamma	on
+vprenderer.sdr_adjust_gamma	off
 vprenderer.sdr_target_primaries	rec709
 vprenderer.sdr_target_primaries	bt2020
 vprenderer.report_bt2020_to_display	true

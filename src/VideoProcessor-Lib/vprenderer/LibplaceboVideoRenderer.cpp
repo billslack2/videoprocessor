@@ -876,6 +876,9 @@ namespace
 		std::string sdrTargetPrimaries = "rec709";
 		bool reportBt2020ToDisplay = false;
 		std::string sdrInputTransfer = "auto";
+		// Missing keys retain the historical VP behavior: honor the declared SDR
+		// source transfer and color-manage it to the accepted output transfer.
+		std::string sdrAdjustGamma = "on";
 		bool outputDiagnostics = false;
 		bool diagnosticDisableShaderCache = false;
 		// Developer-only probes. These are deliberately named experiments rather
@@ -941,6 +944,7 @@ namespace
 			<< settings.outputPresentation << '|' << settings.outputRange << '|'
 			<< settings.outputGamma << '|' << settings.sdrTargetPrimaries << '|'
 			<< settings.reportBt2020ToDisplay << '|' << settings.sdrInputTransfer << '|'
+			<< settings.sdrAdjustGamma << '|'
 			<< settings.outputDiagnostics << '|' << settings.diagnosticDisableShaderCache << '|'
 			<< settings.diagnosticDisableCompute << '|'
 			<< settings.diagnosticForce8BitSdrSwapchain << '|'
@@ -1589,6 +1593,8 @@ namespace
 			DebugLog::Log("display rule '%s': invalid report_bt2020_to_display value '%s'; retaining base setting", rule.name.c_str(), raw.c_str());
 		}
 		readChoice("sdr_input_transfer", settings.sdrInputTransfer, { "auto", "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" });
+		readChoice("sdr_adjust_gamma", settings.sdrAdjustGamma,
+			{ "auto", "on", "off" });
 		if (config.TryGetString(rule.section, "contrast_recovery", raw))
 		{
 			settings.hasContrastRecovery = false;
@@ -1820,6 +1826,9 @@ namespace
 		settings.sdrInputTransfer = ReadChoice(
 			config, "sdr_input_transfer", "auto",
 			{ "auto", "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" });
+		settings.sdrAdjustGamma = ReadChoice(
+			config, "sdr_adjust_gamma", "on",
+			{ "auto", "on", "off" });
 		if (TryGetDisplayString(config, "output_diagnostics", rawValue) &&
 			!TryGetDisplayBool(config, "output_diagnostics", settings.outputDiagnostics))
 		{
@@ -2813,6 +2822,10 @@ struct LibplaceboVideoRenderer::Impl
 	bool suppressLimitedNegotiation = false;
 	uint64_t nextOutputRecoveryTick = 0;
 	enum pl_color_transfer sdrInputTransfer = PL_COLOR_TRC_UNKNOWN;
+	LibplaceboOutput::SdrAdjustGamma sdrAdjustGamma =
+		LibplaceboOutput::SdrAdjustGamma::ON;
+	LibplaceboOutput::SdrGammaDecision lastSdrGammaDecision;
+	std::string lastSdrGammaDecisionSignature;
 	double configuredScreenAspect = 1.0;
 	bool configuredScreenTarget = false;
 	std::string verticalAlignment = "center";
@@ -3618,6 +3631,24 @@ struct LibplaceboVideoRenderer::Impl
 				"\",\n"
 			<< "  \"raw_r10_sha256\": \"" << rawSha256 << "\",\n"
 			<< "  \"ingress\": \"" << JsonEscape(ingressStatus) << "\",\n"
+			<< "  \"sdr_adjust_gamma_requested\": \"" <<
+				LibplaceboOutput::ToString(lastSdrGammaDecision.requested) << "\",\n"
+			<< "  \"sdr_gamma_action\": \"" <<
+				LibplaceboOutput::ToString(lastSdrGammaDecision.action) << "\",\n"
+			<< "  \"sdr_gamma_applicable\": " <<
+				(lastSdrGammaDecision.action ==
+					LibplaceboOutput::SdrGammaAction::NOT_APPLICABLE ? "false" : "true") << ",\n"
+			<< "  \"sdr_gamma_reason\": \"" << JsonEscape(
+				lastSdrGammaDecision.reason) << "\",\n"
+			<< "  \"sdr_input_transfer_configured\": \"" << JsonEscape(
+				activeSettings.sdrInputTransfer) << "\",\n"
+			<< "  \"source_transfer_declared\": \"" <<
+				LibplaceboOutput::ToString(lastSdrGammaDecision.declaredSource) << "\",\n"
+			<< "  \"source_transfer_effective\": \"" <<
+				LibplaceboOutput::ToString(lastSdrGammaDecision.effectiveSource) << "\",\n"
+			<< "  \"target_transfer_effective\": \"" <<
+				LibplaceboOutput::ToString(lastSdrGammaDecision.actualTarget) << "\",\n"
+			<< "  \"transfer_only_caveats\": \"YUV/RGB matrix, range, primaries, scaling, LUT, shaders, dithering, quantization, and display response may still alter output\",\n"
 			<< "  \"source_levels\": \"" <<
 				(sourceImage.repr.levels == PL_COLOR_LEVELS_LIMITED ?
 					"limited" : "full") << "\",\n"
@@ -3777,7 +3808,7 @@ struct LibplaceboVideoRenderer::Impl
 			projection.renderParams.dither_params ? &ditherParams : nullptr;
 
 		DebugLog::Log(
-			"libplacebo settings: quality=%s tone_mapping=%s gamut_mapping=%s peak_detection=%s contrast_recovery=%.2f upscaler=%s downscaler=%s deband=%s dithering=%s output_presentation=%s output_range=%s output_gamma=%s sdr_input_transfer=%s target=%.1f nits black=%.3f nits output_diagnostics=%d diagnostic_disable_shader_cache=%d diagnostic_disable_compute=%d diagnostic_force_8bit_sdr_swapchain=%d diagnostic_allow_limited_g22=%d diagnostic_allow_full_g22=%d diagnostic_vp_owned_dxgi_presenter=%d refresh_switch=%d refresh_command_delay=%llus refresh_commands=%u viewport_target=%s screen_aspect=%.4f automatic_crop=%d subtitle_fit=%d subtitle_hold=%llums subtitle_engage_drift=%llums subtitle_release_drift=%llums subtitle_padding=%dpx subtitle_target_buffer=%dpx",
+			"libplacebo settings: quality=%s tone_mapping=%s gamut_mapping=%s peak_detection=%s contrast_recovery=%.2f upscaler=%s downscaler=%s deband=%s dithering=%s output_presentation=%s output_range=%s output_gamma=%s sdr_input_transfer=%s sdr_adjust_gamma=%s target=%.1f nits black=%.3f nits output_diagnostics=%d diagnostic_disable_shader_cache=%d diagnostic_disable_compute=%d diagnostic_force_8bit_sdr_swapchain=%d diagnostic_allow_limited_g22=%d diagnostic_allow_full_g22=%d diagnostic_vp_owned_dxgi_presenter=%d refresh_switch=%d refresh_command_delay=%llus refresh_commands=%u viewport_target=%s screen_aspect=%.4f automatic_crop=%d subtitle_fit=%d subtitle_hold=%llums subtitle_engage_drift=%llums subtitle_release_drift=%llums subtitle_padding=%dpx subtitle_target_buffer=%dpx",
 			settings.quality.c_str(),
 			colorMapParams.tone_mapping_function
 				? colorMapParams.tone_mapping_function->name : "none",
@@ -3796,6 +3827,7 @@ struct LibplaceboVideoRenderer::Impl
 			settings.outputRange.c_str(),
 			settings.outputGamma.c_str(),
 			settings.sdrInputTransfer.c_str(),
+			settings.sdrAdjustGamma.c_str(),
 			sdrTargetNits,
 			sdrBlackNits,
 			settings.outputDiagnostics ? 1 : 0,
@@ -4460,6 +4492,35 @@ struct LibplaceboVideoRenderer::Impl
 		if (targetTransfer == TargetTransfer::GAMMA24)
 			return PL_COLOR_TRC_GAMMA24;
 		return EncodingTransfer(encoding);
+	}
+
+	static LibplaceboOutput::SdrTransfer ToSdrTransfer(
+		enum pl_color_transfer transfer)
+	{
+		using LibplaceboOutput::SdrTransfer;
+		switch (transfer)
+		{
+		case PL_COLOR_TRC_BT_1886: return SdrTransfer::BT1886;
+		case PL_COLOR_TRC_SRGB: return SdrTransfer::SRGB;
+		case PL_COLOR_TRC_GAMMA22: return SdrTransfer::GAMMA22;
+		case PL_COLOR_TRC_GAMMA24: return SdrTransfer::GAMMA24;
+		case PL_COLOR_TRC_UNKNOWN: return SdrTransfer::UNKNOWN;
+		default: return SdrTransfer::OTHER;
+		}
+	}
+
+	static enum pl_color_transfer FromSdrTransfer(
+		LibplaceboOutput::SdrTransfer transfer)
+	{
+		using LibplaceboOutput::SdrTransfer;
+		switch (transfer)
+		{
+		case SdrTransfer::BT1886: return PL_COLOR_TRC_BT_1886;
+		case SdrTransfer::SRGB: return PL_COLOR_TRC_SRGB;
+		case SdrTransfer::GAMMA22: return PL_COLOR_TRC_GAMMA22;
+		case SdrTransfer::GAMMA24: return PL_COLOR_TRC_GAMMA24;
+		default: return PL_COLOR_TRC_UNKNOWN;
+		}
 	}
 
 	void LogPresentationTarget(const char* trigger) const
@@ -5589,6 +5650,10 @@ struct LibplaceboVideoRenderer::Impl
 		sdrTargetNits = settings.sdrTargetNits;
 		sdrBlackNits = settings.sdrBlackNits;
 		sdrInputTransfer = TranslateOutputGamma(settings.sdrInputTransfer);
+		sdrAdjustGamma = LibplaceboOutput::ParseSdrAdjustGamma(
+			settings.sdrAdjustGamma);
+		lastSdrGammaDecision = {};
+		lastSdrGammaDecisionSignature.clear();
 		configuredScreenAspect = settings.configuredScreenAspect;
 		configuredScreenTarget = settings.configuredScreenTarget;
 		verticalAlignment = settings.verticalAlignment;
@@ -7211,6 +7276,64 @@ struct LibplaceboVideoRenderer::Impl
 			// comparison with other renderers. It changes how captured SDR code
 			// values are decoded, independently of the output transfer curve.
 			image.color.transfer = sdrInputTransfer;
+		}
+		const enum pl_color_transfer declaredSourceTransfer =
+			image.color.transfer;
+		const enum pl_color_transfer acceptedOutputTransfer =
+			ResolvedPixelTransfer(actualOutput.encoding,
+				actualOutput.targetTransfer);
+		lastSdrGammaDecision = LibplaceboOutput::ResolveSdrGamma(
+			sdrAdjustGamma,
+			state.eotf == EOTF::SDR,
+			actualOutput.safeToRender,
+			LibplaceboOutput::ParseGamma(activeSettings.outputGamma),
+			ToSdrTransfer(declaredSourceTransfer),
+			ToSdrTransfer(acceptedOutputTransfer));
+		if (lastSdrGammaDecision.action ==
+			LibplaceboOutput::SdrGammaAction::SUPPRESS)
+		{
+			const enum pl_color_transfer effective = FromSdrTransfer(
+				lastSdrGammaDecision.effectiveSource);
+			if (effective != PL_COLOR_TRC_UNKNOWN)
+				image.color.transfer = effective;
+		}
+		const bool gammaRangeConversion = image.repr.levels !=
+			EncodingLevels(actualOutput.encoding);
+		const enum pl_color_primaries gammaTargetPrimaries = targetBt2020
+			? PL_COLOR_PRIM_BT_2020 : PL_COLOR_PRIM_BT_709;
+		const bool gammaPrimariesConversion = image.color.primaries !=
+			PL_COLOR_PRIM_UNKNOWN && image.color.primaries != gammaTargetPrimaries;
+		std::ostringstream gammaSignature;
+		gammaSignature << static_cast<int>(state.eotf) << '|'
+			<< static_cast<int>(lastSdrGammaDecision.requested) << '|'
+			<< static_cast<int>(lastSdrGammaDecision.action) << '|'
+			<< static_cast<int>(lastSdrGammaDecision.declaredSource) << '|'
+			<< static_cast<int>(lastSdrGammaDecision.effectiveSource) << '|'
+			<< static_cast<int>(lastSdrGammaDecision.actualTarget) << '|'
+			<< actualOutput.requestedEncodingActive << '|'
+			<< gammaRangeConversion << '|' << gammaPrimariesConversion << '|'
+			<< (displayLutParsed && displayLut);
+		if (lastSdrGammaDecisionSignature != gammaSignature.str())
+		{
+			lastSdrGammaDecisionSignature = gammaSignature.str();
+			DebugLog::Log(
+				"SDR_GAMMA requested=%s applicable=%s action=%s source_configured=%s source_declared=%s source_effective=%s target_requested=%s target_actual=%s output_fallback=%d other_processing=range:%d,primaries:%d,lut:%d,scaling:possible,dither:%d,deband:%d reason=\"%s\"",
+				LibplaceboOutput::ToString(lastSdrGammaDecision.requested),
+				lastSdrGammaDecision.action ==
+					LibplaceboOutput::SdrGammaAction::NOT_APPLICABLE ? "no" : "yes",
+				LibplaceboOutput::ToString(lastSdrGammaDecision.action),
+				activeSettings.sdrInputTransfer.c_str(),
+				LibplaceboOutput::ToString(lastSdrGammaDecision.declaredSource),
+				LibplaceboOutput::ToString(lastSdrGammaDecision.effectiveSource),
+				activeSettings.outputGamma.c_str(),
+				LibplaceboOutput::ToString(lastSdrGammaDecision.actualTarget),
+				actualOutput.requestedEncodingActive ? 0 : 1,
+				gammaRangeConversion ? 1 : 0,
+				gammaPrimariesConversion ? 1 : 0,
+				displayLutParsed && displayLut ? 1 : 0,
+				renderParams.dither_params ? 1 : 0,
+				renderParams.deband_params ? 1 : 0,
+				lastSdrGammaDecision.reason.c_str());
 		}
 		// SDR is already display-referred. Match its nominal luminance to the SDR
 		// render target so libplacebo performs range/matrix/transfer conversion but
@@ -10032,6 +10155,22 @@ bool LibplaceboVideoRenderer::GetOutputModeInfo(CString& details) const
 			LibplaceboOutput::DxgiEncoding::FULL_G22_P709)
 	{
 		value += " | Pixel Pure2.2; DXGI Full-G22/sRGB nominal; wire unverified";
+	}
+	if (!m_impl->lastSdrGammaDecision.reason.empty())
+	{
+		CStringA gamma;
+		gamma.Format(" | SDR Gamma %s: %s (%s->%s; target %s)",
+			LibplaceboOutput::ToString(
+				m_impl->lastSdrGammaDecision.requested),
+			LibplaceboOutput::ToString(
+				m_impl->lastSdrGammaDecision.action),
+			LibplaceboOutput::ToString(
+				m_impl->lastSdrGammaDecision.declaredSource),
+			LibplaceboOutput::ToString(
+				m_impl->lastSdrGammaDecision.effectiveSource),
+			LibplaceboOutput::ToString(
+				m_impl->lastSdrGammaDecision.actualTarget));
+		value += gamma;
 	}
 	details = CString(value);
 	return true;

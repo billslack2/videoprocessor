@@ -56,6 +56,7 @@ vprenderer.output_presentation	vprenderer-output-presentation	VP Renderer	no
 vprenderer.output_range	vprenderer-output-range	VP Renderer	no
 vprenderer.output_gamma	vprenderer-output-gamma	VP Renderer	no
 vprenderer.sdr_input_transfer	vprenderer-sdr-input-transfer	VP Renderer	no
+vprenderer.sdr_adjust_gamma	vprenderer-sdr-adjust-gamma	VP Renderer	no
 vprenderer.sdr_target_primaries	vprenderer-sdr-target-primaries	VP Renderer	no
 vprenderer.report_bt2020_to_display	vprenderer-report-bt2020	VP Renderer	no
 general.switch_refresh_rate	general-switch-refresh-rate	General	no
