@@ -304,6 +304,14 @@ public:
 		return false;
 	}
 
+	// Queue a one-shot capture of the renderer-owned frame that will be
+	// presented. File encoding is intentionally asynchronous.
+	virtual bool RequestRenderedOutputCapture(CString& status)
+	{
+		status = TEXT("Rendered-output capture is not supported by this renderer");
+		return false;
+	}
+
 	// Concise display-calibration LUT status for the Ctrl+I OSD. Renderers
 	// without this feature return false so the OSD does not imply support.
 	virtual bool GetDisplayLutInfo(CString& details) const

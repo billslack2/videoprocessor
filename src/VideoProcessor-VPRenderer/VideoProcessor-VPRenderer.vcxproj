@@ -62,7 +62,7 @@
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalLibraryDirectories>..\..\3rdparty\libplacebo\lib;..\..\3rdparty\nvapi\amd64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>libplacebo-360.lib;nvapi64.lib;opengl32.lib;strmiids.lib;winmm.lib;bcrypt.lib;Propsys.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>libplacebo-360.lib;nvapi64.lib;opengl32.lib;strmiids.lib;winmm.lib;bcrypt.lib;Propsys.lib;windowscodecs.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
       <Command>if exist "$(SolutionDir)3rdparty\libplacebo\bin\*.dll" copy /Y "$(SolutionDir)3rdparty\libplacebo\bin\*.dll" "$(OutDir)" &amp; if exist "$(SolutionDir)3rdparty\libplacebo\licenses" xcopy /Y /I /E "$(SolutionDir)3rdparty\libplacebo\licenses" "$(OutDir)third_party_licenses" &amp; if exist "$(SolutionDir)3rdparty\libplacebo\LICENSE.txt" copy /Y "$(SolutionDir)3rdparty\libplacebo\LICENSE.txt" "$(OutDir)third_party_licenses\libplacebo-LICENSE.txt" &amp; if exist "$(SolutionDir)3rdparty\nvapi\License.txt" copy /Y "$(SolutionDir)3rdparty\nvapi\License.txt" "$(OutDir)third_party_licenses\nvapi-LICENSE.txt" &amp; if exist "$(SolutionDir)3rdparty\libplacebo\README.txt" copy /Y "$(SolutionDir)3rdparty\libplacebo\README.txt" "$(OutDir)README.txt"</Command>
@@ -87,7 +87,7 @@
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalLibraryDirectories>..\..\3rdparty\libplacebo\lib;..\..\3rdparty\nvapi\amd64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>libplacebo-360.lib;nvapi64.lib;opengl32.lib;strmiids.lib;winmm.lib;bcrypt.lib;Propsys.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>libplacebo-360.lib;nvapi64.lib;opengl32.lib;strmiids.lib;winmm.lib;bcrypt.lib;Propsys.lib;windowscodecs.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
       <Command>if exist "$(SolutionDir)3rdparty\libplacebo\bin\*.dll" copy /Y "$(SolutionDir)3rdparty\libplacebo\bin\*.dll" "$(OutDir)" &amp; if exist "$(SolutionDir)3rdparty\libplacebo\licenses" xcopy /Y /I /E "$(SolutionDir)3rdparty\libplacebo\licenses" "$(OutDir)third_party_licenses" &amp; if exist "$(SolutionDir)3rdparty\libplacebo\LICENSE.txt" copy /Y "$(SolutionDir)3rdparty\libplacebo\LICENSE.txt" "$(OutDir)third_party_licenses\libplacebo-LICENSE.txt" &amp; if exist "$(SolutionDir)3rdparty\nvapi\License.txt" copy /Y "$(SolutionDir)3rdparty\nvapi\License.txt" "$(OutDir)third_party_licenses\nvapi-LICENSE.txt" &amp; if exist "$(SolutionDir)3rdparty\libplacebo\README.txt" copy /Y "$(SolutionDir)3rdparty\libplacebo\README.txt" "$(OutDir)README.txt"</Command>

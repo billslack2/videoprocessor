@@ -495,6 +495,11 @@ void testEveryPageRoundTrips()
     require(configShortcut->text() == QStringLiteral("Ctrl+Shift+S"),
         "Open configuration did not default to Ctrl+Shift+S");
     configShortcut->setText(QStringLiteral("Ctrl+e"));
+    QLineEdit* renderedCaptureShortcut = requireControl<QLineEdit>(window,
+        QStringLiteral("config.shortcuts.capture_rendered_output"));
+    require(renderedCaptureShortcut->text() == QStringLiteral("Ctrl+Alt+S"),
+        "Rendered-output capture did not default to Ctrl+Alt+S");
+    renderedCaptureShortcut->setText(QStringLiteral("Ctrl+Alt+C"));
     QLineEdit* noUiShortcut = requireControl<QLineEdit>(window,
         QStringLiteral("config.shortcuts.toggle_noui"));
     require(noUiShortcut->text() == QStringLiteral("Ctrl+Shift+U"),
@@ -573,7 +578,8 @@ void testEveryPageRoundTrips()
         "renderer_start_stop_time_method: RATIONAL_RATIONAL", "frame_offset: 75",
         "renderer_primaries: BT2020", "video_conversion: NONE",
         "container_colorspace: REC709", "max_cll: 1200", "max_fall: 450",
-        "fullscreen_toggle: Ctrl+F", "config_editor: Ctrl+E", "toggle_noui: Alt+U",
+        "fullscreen_toggle: Ctrl+F", "config_editor: Ctrl+E",
+        "capture_rendered_output: Ctrl+Alt+C", "toggle_noui: Alt+U",
         "renderer: *", "run: C:\\Tools\\verified-action.cmd 42",
         "enabled: false", "debug: false", "debug_log_retention: 25",
         "label: Verified Stretch", "order: 10", "strength: 0.85"

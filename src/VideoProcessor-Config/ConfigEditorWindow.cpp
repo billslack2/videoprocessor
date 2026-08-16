@@ -4908,6 +4908,7 @@ QWidget* ConfigEditorWindow::createShortcutsPage()
         { "Toggle fullscreen", "fullscreen_toggle", "Alt+Enter" },
         { "Exit fullscreen", "fullscreen_exit", "Esc" },
         { "Toggle statistics", "toggle_stats_overlay", "Ctrl+I" },
+        { "Capture rendered output", "capture_rendered_output", "Ctrl+Alt+S" },
         { "Automatic transfer", "auto_set", "Ctrl+Shift+A" },
         { "PQ transfer", "pq_set", "Ctrl+Shift+P" }
     };

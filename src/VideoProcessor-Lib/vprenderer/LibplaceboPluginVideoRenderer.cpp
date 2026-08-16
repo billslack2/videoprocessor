@@ -454,6 +454,17 @@ bool LibplaceboPluginVideoRenderer::GetOutputContractStatus(
 	return m_renderer->GetOutputContractStatus(status);
 }
 
+bool LibplaceboPluginVideoRenderer::RequestRenderedOutputCapture(
+	CString& status)
+{
+	if (!m_renderer)
+	{
+		status = TEXT("VP Renderer is not active");
+		return false;
+	}
+	return m_renderer->RequestRenderedOutputCapture(status);
+}
+
 
 bool LibplaceboPluginVideoRenderer::GetDisplayLutInfo(CString& details) const
 {

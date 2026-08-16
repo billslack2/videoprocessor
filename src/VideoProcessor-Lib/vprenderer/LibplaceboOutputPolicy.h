@@ -139,6 +139,9 @@ namespace LibplaceboOutput
 		uint64_t sum[3] = {};
 		uint64_t channelsBelowStudioBlack = 0;
 		uint64_t channelsAboveStudioWhite = 0;
+		// Per-channel code-value populations. These intentionally isolate the
+		// near-black region where sRGB and pure-power transfer curves diverge.
+		uint64_t nearBlackBuckets[8] = {};
 	};
 
 	// NvAPI documents an InfoFrame SET as a one-shot transmission to the
@@ -182,6 +185,7 @@ namespace LibplaceboOutput
 		unsigned int width,
 		unsigned int height,
 		unsigned int sampleStep = 1);
+	uint16_t ExpandR10ToR16(uint16_t value);
 	OneShotSignalAcceptance ClassifyOneShotSignal(
 		bool setSucceeded,
 		bool readbackSucceeded,

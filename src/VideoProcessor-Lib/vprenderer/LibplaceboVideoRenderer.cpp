@@ -41,6 +41,8 @@
 
 #include <dxgi1_6.h>
 #include <nvapi.h>
+#include <wincodec.h>
+#include <bcrypt.h>
 
 #include <algorithm>
 #include <array>
@@ -50,6 +52,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <iomanip>
 #include <initializer_list>
 #include <sstream>
 #include <stdexcept>
@@ -84,6 +87,186 @@ namespace
 			return {};
 		CW2A utf8(buffer.data(), CP_UTF8);
 		return std::string(static_cast<const char*>(utf8));
+	}
+
+	std::wstring ScreenshotDirectory()
+	{
+		std::vector<wchar_t> buffer(32768);
+		const DWORD length = GetModuleFileNameW(
+			nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
+		if (length == 0 || length >= buffer.size())
+			return L"screenshots";
+		std::wstring path(buffer.data(), length);
+		const size_t separator = path.find_last_of(L"\\/");
+		if (separator == std::wstring::npos)
+			return L"screenshots";
+		path.resize(separator);
+		return path + L"\\screenshots";
+	}
+
+	std::string JsonEscape(const std::string& value)
+	{
+		std::ostringstream result;
+		for (const unsigned char character : value)
+		{
+			switch (character)
+			{
+			case '\\': result << "\\\\"; break;
+			case '"': result << "\\\""; break;
+			case '\n': result << "\\n"; break;
+			case '\r': result << "\\r"; break;
+			case '\t': result << "\\t"; break;
+			default:
+				if (character < 0x20)
+					result << "\\u" << std::hex << std::setw(4) <<
+						std::setfill('0') << static_cast<unsigned int>(character) <<
+						std::dec;
+				else
+					result << character;
+			}
+		}
+		return result.str();
+	}
+
+	std::string WideToUtf8(const std::wstring& value)
+	{
+		if (value.empty()) return {};
+		const int length = WideCharToMultiByte(CP_UTF8, 0, value.c_str(),
+			static_cast<int>(value.size()), nullptr, 0, nullptr, nullptr);
+		if (length <= 0) return {};
+		std::string result(static_cast<size_t>(length), '\0');
+		WideCharToMultiByte(CP_UTF8, 0, value.c_str(),
+			static_cast<int>(value.size()), &result[0], length, nullptr, nullptr);
+		return result;
+	}
+
+	std::wstring CaptureTimestampStem(uint64_t sourceSequence)
+	{
+		SYSTEMTIME time{};
+		GetLocalTime(&time);
+		wchar_t stem[128] = {};
+		swprintf_s(stem,
+			L"VP-rendered-%04u%02u%02u-%02u%02u%02u-%03u-frame-%llu",
+			time.wYear, time.wMonth, time.wDay, time.wHour, time.wMinute,
+			time.wSecond, time.wMilliseconds,
+			static_cast<unsigned long long>(sourceSequence));
+		return stem;
+	}
+
+	std::string Sha256Hex(const void* data, size_t size)
+	{
+		BCRYPT_ALG_HANDLE algorithm = nullptr;
+		BCRYPT_HASH_HANDLE hash = nullptr;
+		DWORD objectBytes = 0;
+		DWORD hashBytes = 0;
+		DWORD resultBytes = 0;
+		std::vector<uint8_t> object;
+		std::vector<uint8_t> digest;
+		NTSTATUS status = BCryptOpenAlgorithmProvider(&algorithm,
+			BCRYPT_SHA256_ALGORITHM, nullptr, 0);
+		if (status >= 0) status = BCryptGetProperty(algorithm,
+			BCRYPT_OBJECT_LENGTH, reinterpret_cast<PUCHAR>(&objectBytes),
+			sizeof(objectBytes), &resultBytes, 0);
+		if (status >= 0) status = BCryptGetProperty(algorithm,
+			BCRYPT_HASH_LENGTH, reinterpret_cast<PUCHAR>(&hashBytes),
+			sizeof(hashBytes), &resultBytes, 0);
+		if (status >= 0)
+		{
+			object.resize(objectBytes);
+			digest.resize(hashBytes);
+			status = BCryptCreateHash(algorithm, &hash, object.data(),
+				static_cast<ULONG>(object.size()), nullptr, 0, 0);
+		}
+		const uint8_t* bytes = static_cast<const uint8_t*>(data);
+		while (status >= 0 && size > 0)
+		{
+			const ULONG chunk = static_cast<ULONG>(std::min<size_t>(
+				size, std::numeric_limits<ULONG>::max()));
+			status = BCryptHashData(hash, const_cast<PUCHAR>(bytes), chunk, 0);
+			bytes += chunk;
+			size -= chunk;
+		}
+		if (status >= 0) status = BCryptFinishHash(hash, digest.data(),
+			static_cast<ULONG>(digest.size()), 0);
+		if (hash) BCryptDestroyHash(hash);
+		if (algorithm) BCryptCloseAlgorithmProvider(algorithm, 0);
+		if (status < 0) return {};
+		std::ostringstream result;
+		result << std::hex << std::setfill('0');
+		for (const uint8_t byte : digest)
+			result << std::setw(2) << static_cast<unsigned int>(byte);
+		return result.str();
+	}
+
+	bool WriteR10Png16(const std::wstring& filename,
+		const std::vector<uint32_t>& pixels, unsigned int width,
+		unsigned int height, std::string& error)
+	{
+		const HRESULT initialize = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+		const bool uninitialize = SUCCEEDED(initialize);
+		CComPtr<IWICImagingFactory> factory;
+		HRESULT result = CoCreateInstance(CLSID_WICImagingFactory, nullptr,
+			CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&factory));
+		CComPtr<IWICStream> stream;
+		CComPtr<IWICBitmapEncoder> encoder;
+		CComPtr<IWICBitmapFrameEncode> frame;
+		CComPtr<IPropertyBag2> properties;
+		if (SUCCEEDED(result)) result = factory->CreateStream(&stream);
+		if (SUCCEEDED(result)) result = stream->InitializeFromFilename(
+			filename.c_str(), GENERIC_WRITE);
+		if (SUCCEEDED(result)) result = factory->CreateEncoder(
+			GUID_ContainerFormatPng, nullptr, &encoder);
+		if (SUCCEEDED(result)) result = encoder->Initialize(stream,
+			WICBitmapEncoderNoCache);
+		if (SUCCEEDED(result)) result = encoder->CreateNewFrame(
+			&frame, &properties);
+		if (SUCCEEDED(result)) result = frame->Initialize(properties);
+		if (SUCCEEDED(result)) result = frame->SetSize(width, height);
+		WICPixelFormatGUID format = GUID_WICPixelFormat64bppRGBA;
+		if (SUCCEEDED(result)) result = frame->SetPixelFormat(&format);
+		if (SUCCEEDED(result) && format != GUID_WICPixelFormat64bppRGBA)
+			result = WINCODEC_ERR_UNSUPPORTEDPIXELFORMAT;
+
+		std::vector<uint16_t> rgba;
+		if (SUCCEEDED(result))
+		{
+			rgba.resize(pixels.size() * 4);
+			for (size_t index = 0; index < pixels.size(); ++index)
+			{
+				const uint32_t packed = pixels[index];
+				const uint16_t red = static_cast<uint16_t>(packed & 0x3ffu);
+				const uint16_t green = static_cast<uint16_t>((packed >> 10) & 0x3ffu);
+				const uint16_t blue = static_cast<uint16_t>((packed >> 20) & 0x3ffu);
+				const uint16_t alpha = static_cast<uint16_t>((packed >> 30) & 0x3u);
+				// Bit replication preserves every original 10-bit code in the
+				// high ten bits and expands the endpoints exactly to 16-bit.
+				rgba[index * 4 + 0] = LibplaceboOutput::ExpandR10ToR16(red);
+				rgba[index * 4 + 1] = LibplaceboOutput::ExpandR10ToR16(green);
+				rgba[index * 4 + 2] = LibplaceboOutput::ExpandR10ToR16(blue);
+				rgba[index * 4 + 3] = static_cast<uint16_t>(alpha * 21845u);
+			}
+			const UINT stride = width * 4u * sizeof(uint16_t);
+			result = frame->WritePixels(height, stride,
+				static_cast<UINT>(rgba.size() * sizeof(uint16_t)),
+				reinterpret_cast<BYTE*>(rgba.data()));
+		}
+		if (SUCCEEDED(result)) result = frame->Commit();
+		if (SUCCEEDED(result)) result = encoder->Commit();
+		properties.Release();
+		frame.Release();
+		encoder.Release();
+		stream.Release();
+		factory.Release();
+		if (uninitialize) CoUninitialize();
+		if (FAILED(result))
+		{
+			char message[64] = {};
+			sprintf_s(message, "WIC result=0x%08lX",
+				static_cast<unsigned long>(result));
+			error = message;
+			return false;
+		}
+		return true;
 	}
 
 	bool ReadUserShader(const std::string& filename, std::string& source,
@@ -2729,6 +2912,8 @@ struct LibplaceboVideoRenderer::Impl
 	bool diagnosticReadbackComplete = false;
 	unsigned int diagnosticReadbackAttempts = 0;
 	bool diagnosticReadbackNonBlack = false;
+	std::atomic_bool renderedOutputCaptureRequested{false};
+	std::vector<std::thread> captureWorkers;
 	bool cadenceLogInitialized = false;
 	uint64_t cadenceLoggedPolicyGeneration = 0;
 	bool cadenceLoggedDue = false;
@@ -2997,6 +3182,8 @@ struct LibplaceboVideoRenderer::Impl
 
 	~Impl()
 	{
+		for (std::thread& worker : captureWorkers)
+			if (worker.joinable()) worker.join();
 		nvidiaBt2020Reporter.Restore();
 		pl_mpv_user_shader_destroy(&nlsHook);
 		pl_renderer_destroy(&renderer);
@@ -3236,41 +3423,36 @@ struct LibplaceboVideoRenderer::Impl
 			static_cast<unsigned long long>(chromaSamples));
 	}
 
-	void LogOutputReadback()
+	bool ReadR10Texture(ID3D11Texture2D* authoritativeBackbuffer,
+		std::vector<uint32_t>& pixels, D3D11_TEXTURE2D_DESC& desc,
+		std::string& error)
 	{
-		using namespace LibplaceboOutput;
-		++diagnosticReadbackAttempts;
-		CComPtr<IDXGISwapChain> nativeSwapchain;
-		nativeSwapchain.Attach(pl_d3d11_swapchain_unwrap(swapchain));
-		if (!nativeSwapchain)
+		CComPtr<ID3D11Texture2D> backBuffer = authoritativeBackbuffer;
+		if (!backBuffer)
 		{
-			DebugLog::Log(
-				"libplacebo output diagnostic readback failed: cannot unwrap swapchain");
-			return;
+			CComPtr<IDXGISwapChain> nativeSwapchain;
+			nativeSwapchain.Attach(pl_d3d11_swapchain_unwrap(swapchain));
+			if (!nativeSwapchain)
+			{
+				error = "cannot unwrap libplacebo swapchain";
+				return false;
+			}
+			const HRESULT getBuffer = nativeSwapchain->GetBuffer(
+				0, IID_PPV_ARGS(&backBuffer));
+			if (FAILED(getBuffer) || !backBuffer)
+			{
+				char message[64] = {};
+				sprintf_s(message, "GetBuffer=0x%08lX",
+					static_cast<unsigned long>(getBuffer));
+				error = message;
+				return false;
+			}
 		}
-
-		CComPtr<ID3D11Texture2D> backBuffer;
-		HRESULT result = nativeSwapchain->GetBuffer(
-			0,
-			__uuidof(ID3D11Texture2D),
-			reinterpret_cast<void**>(&backBuffer));
-		if (FAILED(result) || !backBuffer)
-		{
-			DebugLog::Log(
-				"libplacebo output diagnostic readback failed: GetBuffer=0x%08lX",
-				static_cast<unsigned long>(result));
-			return;
-		}
-
-		D3D11_TEXTURE2D_DESC desc{};
 		backBuffer->GetDesc(&desc);
 		if (desc.Format != DXGI_FORMAT_R10G10B10A2_UNORM)
 		{
-			DebugLog::Log(
-				"libplacebo output diagnostic readback skipped: format=%u expected=%u",
-				static_cast<unsigned int>(desc.Format),
-				static_cast<unsigned int>(DXGI_FORMAT_R10G10B10A2_UNORM));
-			return;
+			error = "authoritative backbuffer is not R10G10B10A2_UNORM";
+			return false;
 		}
 
 		D3D11_TEXTURE2D_DESC stagingDesc = desc;
@@ -3279,13 +3461,15 @@ struct LibplaceboVideoRenderer::Impl
 		stagingDesc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
 		stagingDesc.MiscFlags = 0;
 		CComPtr<ID3D11Texture2D> staging;
-		result = d3d11->device->CreateTexture2D(&stagingDesc, nullptr, &staging);
+		HRESULT result = d3d11->device->CreateTexture2D(
+			&stagingDesc, nullptr, &staging);
 		if (FAILED(result) || !staging)
 		{
-			DebugLog::Log(
-				"libplacebo output diagnostic readback failed: CreateTexture2D=0x%08lX",
+			char message[64] = {};
+			sprintf_s(message, "CreateTexture2D=0x%08lX",
 				static_cast<unsigned long>(result));
-			return;
+			error = message;
+			return false;
 		}
 
 		CComPtr<ID3D11DeviceContext> context;
@@ -3295,19 +3479,43 @@ struct LibplaceboVideoRenderer::Impl
 		result = context->Map(staging, 0, D3D11_MAP_READ, 0, &mapped);
 		if (FAILED(result))
 		{
-			DebugLog::Log(
-				"libplacebo output diagnostic readback failed: Map=0x%08lX",
+			char message[64] = {};
+			sprintf_s(message, "Map=0x%08lX",
 				static_cast<unsigned long>(result));
+			error = message;
+			return false;
+		}
+		pixels.resize(static_cast<size_t>(desc.Width) * desc.Height);
+		for (unsigned int y = 0; y < desc.Height; ++y)
+			memcpy(pixels.data() + static_cast<size_t>(y) * desc.Width,
+				static_cast<const uint8_t*>(mapped.pData) +
+					static_cast<size_t>(y) * mapped.RowPitch,
+				static_cast<size_t>(desc.Width) * sizeof(uint32_t));
+		context->Unmap(staging, 0);
+		return true;
+	}
+
+	void LogOutputReadback(ID3D11Texture2D* authoritativeBackbuffer,
+		const char* owner)
+	{
+		using namespace LibplaceboOutput;
+		++diagnosticReadbackAttempts;
+		std::vector<uint32_t> pixels;
+		D3D11_TEXTURE2D_DESC desc{};
+		std::string error;
+		if (!ReadR10Texture(authoritativeBackbuffer, pixels, desc, error))
+		{
+			DebugLog::Log(
+				"libplacebo output diagnostic readback failed: owner=%s reason=%s",
+				owner, error.c_str());
 			return;
 		}
 
 		const PackedR10Stats stats = AnalyzePackedR10(
-			static_cast<const uint32_t*>(mapped.pData),
-			mapped.RowPitch / sizeof(uint32_t),
+			pixels.data(), desc.Width,
 			desc.Width,
 			desc.Height,
 			8);
-		context->Unmap(staging, 0);
 		const bool allZero = stats.sampledPixels > 0 &&
 			stats.maximum[0] == 0 && stats.maximum[1] == 0 &&
 			stats.maximum[2] == 0;
@@ -3323,7 +3531,8 @@ struct LibplaceboVideoRenderer::Impl
 		const double divisor =
 			stats.sampledPixels > 0 ? static_cast<double>(stats.sampledPixels) : 1.0;
 		DebugLog::Log(
-			"libplacebo output diagnostic readback: format=R10G10B10A2 size=%ux%u sampled=%llu step=8 encoding=%s transfer=%s min_rgb=%u/%u/%u max_rgb=%u/%u/%u mean_rgb=%.2f/%.2f/%.2f channels_below_64=%llu channels_above_940=%llu cache=%s objects=%d signature=%016llX",
+			"libplacebo output diagnostic readback: source=authoritative-present-backbuffer owner=%s format=R10G10B10A2 size=%ux%u sampled=%llu step=8 encoding=%s transfer=%s min_rgb=%u/%u/%u max_rgb=%u/%u/%u mean_rgb=%.2f/%.2f/%.2f channels_below_64=%llu channels_above_940=%llu near_black_codes=0:%llu,1-3:%llu,4-15:%llu,16-31:%llu,32-63:%llu,64-79:%llu,80-127:%llu,128+:%llu cache=%s objects=%d signature=%016llX",
+			owner,
 			desc.Width,
 			desc.Height,
 			static_cast<unsigned long long>(stats.sampledPixels),
@@ -3343,9 +3552,178 @@ struct LibplaceboVideoRenderer::Impl
 			stats.sum[2] / divisor,
 			static_cast<unsigned long long>(stats.channelsBelowStudioBlack),
 			static_cast<unsigned long long>(stats.channelsAboveStudioWhite),
+			static_cast<unsigned long long>(stats.nearBlackBuckets[0]),
+			static_cast<unsigned long long>(stats.nearBlackBuckets[1]),
+			static_cast<unsigned long long>(stats.nearBlackBuckets[2]),
+			static_cast<unsigned long long>(stats.nearBlackBuckets[3]),
+			static_cast<unsigned long long>(stats.nearBlackBuckets[4]),
+			static_cast<unsigned long long>(stats.nearBlackBuckets[5]),
+			static_cast<unsigned long long>(stats.nearBlackBuckets[6]),
+			static_cast<unsigned long long>(stats.nearBlackBuckets[7]),
 			shaderCacheEnabled ? "enabled" : "disabled",
 			cache ? pl_cache_objects(cache) : 0,
 			static_cast<unsigned long long>(cache ? pl_cache_signature(cache) : 0));
+	}
+
+	void CaptureRenderedOutput(ID3D11Texture2D* authoritativeBackbuffer,
+		const char* owner, uint64_t frameGeneration, uint64_t sourceSequence,
+		const struct pl_frame& sourceImage)
+	{
+		std::vector<uint32_t> pixels;
+		D3D11_TEXTURE2D_DESC desc{};
+		std::string error;
+		if (!ReadR10Texture(authoritativeBackbuffer, pixels, desc, error))
+		{
+			DebugLog::Log(
+				"Rendered-output capture failed: stage=readback owner=%s source=%llu reason=%s",
+				owner, static_cast<unsigned long long>(sourceSequence), error.c_str());
+			return;
+		}
+		const LibplaceboOutput::PackedR10Stats stats =
+			LibplaceboOutput::AnalyzePackedR10(
+				pixels.data(), desc.Width, desc.Width, desc.Height, 1);
+		const std::wstring directory = ScreenshotDirectory();
+		const std::wstring stem = CaptureTimestampStem(sourceSequence);
+		uint64_t contentSignature = 1469598103934665603ull;
+		for (const uint32_t pixel : pixels)
+		{
+			for (unsigned int byte = 0; byte < sizeof(pixel); ++byte)
+			{
+				contentSignature ^= static_cast<uint8_t>(pixel >> (byte * 8));
+				contentSignature *= 1099511628211ull;
+			}
+		}
+		const std::string rawSha256 = Sha256Hex(pixels.data(),
+			pixels.size() * sizeof(uint32_t));
+		const std::wstring pngPath = directory + L"\\" + stem + L".png";
+		const std::wstring jsonPath = directory + L"\\" + stem + L".json";
+		std::ostringstream metadata;
+		metadata.imbue(std::locale::classic());
+		metadata << std::setprecision(10)
+			<< "{\n  \"schema\": \"vp-rendered-output-capture-v1\",\n"
+			<< "  \"capture_id\": \"" << JsonEscape(WideToUtf8(stem)) << "\",\n"
+			<< "  \"source_sequence\": " << sourceSequence << ",\n"
+			<< "  \"renderer_generation\": " << frameGeneration << ",\n"
+			<< "  \"presenter_owner\": \"" << JsonEscape(owner) << "\",\n"
+			<< "  \"swapchain_generation\": " << vpOwnedSwapchainGeneration << ",\n"
+			<< "  \"display_device\": \"" << JsonEscape(
+				WideToUtf8(negotiatedDisplayDeviceName)) << "\",\n"
+			<< "  \"authoritative_stage\": \"after-render-before-present\",\n"
+			<< "  \"pixel_format\": \"R10G10B10A2_UNORM\",\n"
+			<< "  \"png_mapping\": \"R10 code c stored as 16-bit (c<<6)|(c>>4); recover with value>>6\",\n"
+			<< "  \"width\": " << desc.Width << ",\n"
+			<< "  \"height\": " << desc.Height << ",\n"
+			<< "  \"content_signature_fnv1a64\": \"" << std::hex <<
+				std::setw(16) << std::setfill('0') << contentSignature << std::dec <<
+				"\",\n"
+			<< "  \"raw_r10_sha256\": \"" << rawSha256 << "\",\n"
+			<< "  \"ingress\": \"" << JsonEscape(ingressStatus) << "\",\n"
+			<< "  \"source_levels\": \"" <<
+				(sourceImage.repr.levels == PL_COLOR_LEVELS_LIMITED ?
+					"limited" : "full") << "\",\n"
+			<< "  \"source_transfer\": \"" << JsonEscape(
+				pl_color_transfer_name(sourceImage.color.transfer)) << "\",\n"
+			<< "  \"source_primaries\": \"" << JsonEscape(
+				pl_color_primaries_name(sourceImage.color.primaries)) << "\",\n"
+			<< "  \"source_eotf\": \"" << JsonEscape(
+				CStringA(ToString(lastRenderedEotf)).GetString()) << "\",\n"
+			<< "  \"source_colorspace\": \"" << JsonEscape(
+				CStringA(ToString(lastRenderedColorspace)).GetString()) << "\",\n"
+			<< "  \"requested_presentation\": \"" <<
+				JsonEscape(activeSettings.outputPresentation) << "\",\n"
+			<< "  \"requested_range\": \"" <<
+				JsonEscape(activeSettings.outputRange) << "\",\n"
+			<< "  \"requested_gamma\": \"" <<
+				JsonEscape(activeSettings.outputGamma) << "\",\n"
+			<< "  \"actual_presentation\": \"" <<
+				LibplaceboOutput::ToString(actualOutput.presentationModel) << "\",\n"
+			<< "  \"actual_dxgi_encoding\": \"" <<
+				LibplaceboOutput::ToString(actualOutput.encoding) << "\",\n"
+			<< "  \"actual_pixel_transfer\": \"" <<
+				(actualOutput.targetTransfer == LibplaceboOutput::TargetTransfer::GAMMA22
+					? "pure-gamma-2.2" :
+					actualOutput.targetTransfer == LibplaceboOutput::TargetTransfer::GAMMA24
+						? "pure-gamma-2.4" : "swapchain-nominal") << "\",\n"
+			<< "  \"target_primaries\": \"" <<
+				(targetBt2020 ? "BT.2020" : "Rec.709") << "\",\n"
+			<< "  \"report_bt2020_to_display\": " <<
+				(reportBt2020ToDisplay ? "true" : "false") << ",\n"
+			<< "  \"dxgi_applied_encoding\": \"" <<
+				JsonEscape(vpOwnedAppliedEncoding) << "\",\n"
+			<< "  \"dxgi_set_result\": " <<
+				static_cast<long>(vpOwnedColorSpaceResult) << ",\n"
+			<< "  \"dxgi_postcheck_verified\": " <<
+				(vpOwnedColorSpaceVerified ? "true" : "false") << ",\n"
+			<< "  \"requested_encoding_active\": " <<
+				(actualOutput.requestedEncodingActive ? "true" : "false") << ",\n"
+			<< "  \"safe_to_render\": " <<
+				(actualOutput.safeToRender ? "true" : "false") << ",\n"
+			<< "  \"output_reason\": \"" <<
+				JsonEscape(actualOutput.reason) << "\",\n"
+			<< "  \"target_nits\": " << sdrTargetNits << ",\n"
+			<< "  \"black_nits\": " << sdrBlackNits << ",\n"
+			<< "  \"tone_mapping\": \"" <<
+				JsonEscape(activeSettings.toneMapping) << "\",\n"
+			<< "  \"gamut_mapping\": \"" <<
+				JsonEscape(activeSettings.gamutMapping) << "\",\n"
+			<< "  \"min_rgb_code\": [" << stats.minimum[0] << ", " <<
+				stats.minimum[1] << ", " << stats.minimum[2] << "],\n"
+			<< "  \"max_rgb_code\": [" << stats.maximum[0] << ", " <<
+				stats.maximum[1] << ", " << stats.maximum[2] << "],\n"
+			<< "  \"channels_below_code_64\": " <<
+				stats.channelsBelowStudioBlack << ",\n"
+			<< "  \"channels_above_code_940\": " <<
+				stats.channelsAboveStudioWhite << ",\n"
+			<< "  \"near_black_channel_buckets\": {\"0\": " <<
+				stats.nearBlackBuckets[0] << ", \"1-3\": " <<
+				stats.nearBlackBuckets[1] << ", \"4-15\": " <<
+				stats.nearBlackBuckets[2] << ", \"16-31\": " <<
+				stats.nearBlackBuckets[3] << ", \"32-63\": " <<
+				stats.nearBlackBuckets[4] << ", \"64-79\": " <<
+				stats.nearBlackBuckets[5] << ", \"80-127\": " <<
+				stats.nearBlackBuckets[6] << ", \"128+\": " <<
+				stats.nearBlackBuckets[7] << "}\n}\n";
+		const SteadyClock::time_point captureStarted = SteadyClock::now();
+		captureWorkers.emplace_back([
+			pixels = std::move(pixels), width = desc.Width, height = desc.Height,
+			pngPath, jsonPath, directory, json = metadata.str(), sourceSequence,
+			captureStarted]()
+		{
+			if (!CreateDirectoryW(directory.c_str(), nullptr) &&
+				GetLastError() != ERROR_ALREADY_EXISTS)
+			{
+				DebugLog::Log(
+					"Rendered-output capture failed: stage=create-directory source=%llu error=%lu",
+					static_cast<unsigned long long>(sourceSequence),
+					static_cast<unsigned long>(GetLastError()));
+				return;
+			}
+			std::string writeError;
+			if (!WriteR10Png16(pngPath, pixels, width, height, writeError))
+			{
+				DebugLog::Log(
+					"Rendered-output capture failed: stage=png source=%llu reason=%s path=%ls",
+					static_cast<unsigned long long>(sourceSequence),
+					writeError.c_str(), pngPath.c_str());
+				return;
+			}
+			std::ofstream sidecar(jsonPath, std::ios::binary | std::ios::trunc);
+			if (!sidecar || !sidecar.write(json.data(),
+				static_cast<std::streamsize>(json.size())))
+			{
+				DebugLog::Log(
+					"Rendered-output capture failed: stage=json source=%llu path=%ls",
+					static_cast<unsigned long long>(sourceSequence), jsonPath.c_str());
+				return;
+			}
+			DebugLog::Log(
+				"Rendered-output capture complete: source=%llu png=%ls metadata=%ls raw_bytes=%llu elapsed_ms=%.2f",
+				static_cast<unsigned long long>(sourceSequence), pngPath.c_str(),
+				jsonPath.c_str(),
+				static_cast<unsigned long long>(pixels.size() * sizeof(uint32_t)),
+				std::chrono::duration<double, std::milli>(
+					SteadyClock::now() - captureStarted).count());
+		});
 	}
 
 	void ConfigureRenderParams(const RendererSettings& settings)
@@ -5142,6 +5520,21 @@ struct LibplaceboVideoRenderer::Impl
 		else if (reportBt2020ToDisplay)
 			DebugLog::Log("libplacebo: report_bt2020_to_display ignored because target primaries are Rec.709");
 		requestedOutputPlan = LibplaceboOutput::MakePlan(outputRequest);
+		if (outputRequest.gamma == LibplaceboOutput::GammaRequest::UNSUPPORTED)
+		{
+			DebugLog::Log(
+				"libplacebo output request unsupported: configured_output_gamma=%s parsed=UNSUPPORTED effect=none fallback_policy=Full/sRGB reason=%s",
+				settings.outputGamma.c_str(),
+				requestedOutputPlan.reason.c_str());
+		}
+		else if (!requestedOutputPlan.valid)
+		{
+			DebugLog::Log(
+				"libplacebo output request rejected: configured=%s/%s/%s reason=%s fallback_policy=Full/sRGB",
+				settings.outputPresentation.c_str(),
+				settings.outputRange.c_str(), settings.outputGamma.c_str(),
+				requestedOutputPlan.reason.c_str());
+		}
 		LibplaceboOutput::Request effectiveOutputRequest = outputRequest;
 		// The embedded preview is a WS_CHILD control. Its historically stable
 		// presentation path is DWM-composed BitBlt; it cannot safely inherit a
@@ -8117,10 +8510,16 @@ struct LibplaceboVideoRenderer::Impl
 			// DXGI presentation boundary in VP: flush GPU work, release every
 			// backbuffer reference, then Present exactly once.
 			pl_gpu_flush(d3d11->gpu);
+			if (rendered && renderedOutputCaptureRequested.exchange(false,
+				std::memory_order_acq_rel))
+			{
+				CaptureRenderedOutput(vpOwnedBackbuffer, "VP-owned-DXGI",
+					frameGeneration, sourceSequence, image);
+			}
 			if (outputDiagnostics && rendered && !diagnosticReadbackComplete)
 			{
 				if (diagnosticReadbackFramesRemaining == 0)
-					LogOutputReadback();
+					LogOutputReadback(vpOwnedBackbuffer, "VP-owned-DXGI");
 				else
 					--diagnosticReadbackFramesRemaining;
 			}
@@ -8145,10 +8544,16 @@ struct LibplaceboVideoRenderer::Impl
 		}
 		else
 		{
+			if (rendered && renderedOutputCaptureRequested.exchange(false,
+				std::memory_order_acq_rel))
+			{
+				CaptureRenderedOutput(nullptr, "libplacebo-owned",
+					frameGeneration, sourceSequence, image);
+			}
 			if (outputDiagnostics && rendered && !diagnosticReadbackComplete)
 			{
 				if (diagnosticReadbackFramesRemaining == 0)
-					LogOutputReadback();
+					LogOutputReadback(nullptr, "libplacebo-owned");
 				else
 					--diagnosticReadbackFramesRemaining;
 			}
@@ -9693,6 +10098,28 @@ bool LibplaceboVideoRenderer::GetOutputContractStatus(
 		m_impl->negotiatedSwapchainFormat == DXGI_FORMAT_R8G8B8A8_UNORM ?
 			"R8G8B8A8_UNORM" : "UNKNOWN";
 	status.reason = m_impl->actualOutput.reason;
+	return true;
+}
+
+bool LibplaceboVideoRenderer::RequestRenderedOutputCapture(CString& status)
+{
+	if (!m_impl || m_state.load(std::memory_order_acquire) !=
+		RendererState::RENDERSTATE_RENDERING)
+	{
+		status = TEXT("Rendered-output capture requires an active VP Renderer");
+		return false;
+	}
+	bool expected = false;
+	if (!m_impl->renderedOutputCaptureRequested.compare_exchange_strong(
+		expected, true, std::memory_order_acq_rel))
+	{
+		status = TEXT("A rendered-output capture is already queued");
+		return false;
+	}
+	status = TEXT("Rendered-output capture queued (screenshots folder)");
+	DebugLog::Log(
+		"Rendered-output capture queued: stage=next-rendered-frame output_directory=%ls",
+		ScreenshotDirectory().c_str());
 	return true;
 }
 

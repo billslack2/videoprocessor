@@ -718,6 +718,19 @@ namespace Tests
 			Assert::AreEqual(940, static_cast<int>(stats.maximum[2]));
 			Assert::AreEqual(2ull, stats.channelsBelowStudioBlack);
 			Assert::AreEqual(1ull, stats.channelsAboveStudioWhite);
+			Assert::AreEqual(1ull, stats.nearBlackBuckets[0]);
+			Assert::AreEqual(1ull, stats.nearBlackBuckets[4]);
+			Assert::AreEqual(1ull, stats.nearBlackBuckets[5]);
+			Assert::AreEqual(3ull, stats.nearBlackBuckets[7]);
+		}
+
+		TEST_METHOD(R10ToPng16MappingPreservesEveryCode)
+		{
+			for (uint16_t value = 0; value <= 1023; ++value)
+				Assert::AreEqual(static_cast<int>(value),
+					static_cast<int>(ExpandR10ToR16(value) >> 6));
+			Assert::AreEqual(0, static_cast<int>(ExpandR10ToR16(0)));
+			Assert::AreEqual(65535, static_cast<int>(ExpandR10ToR16(1023)));
 		}
 
 		TEST_METHOD(PackedR10DiagnosticsRespectsRowPitchAndSampleStep)

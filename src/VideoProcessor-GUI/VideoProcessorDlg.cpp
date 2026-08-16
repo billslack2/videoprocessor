@@ -426,6 +426,7 @@ const ShortcutDefinition SHORTCUT_DEFINITIONS[] =
 		ConfigurationLiveApply::ViewToggleDefaultKey,
 		ConfigurationLiveApply::ViewToggleDefaultModifiers },
 	{ "toggle_stats_overlay",  ID_COMMAND_TOGGLE_STATS_OVERLAY,   'I',       FCONTROL },
+	{ "capture_rendered_output", ID_COMMAND_CAPTURE_RENDERED_OUTPUT, 'S',     FCONTROL | FALT },
 	{ "pq_set",                ID_COMMAND_PQ_SET,                 'P',       FCONTROL | FSHIFT },
 	{ "renderer_restart",      ID_COMMAND_RENDERER_RESTART,       'R',       FSHIFT },
 	{ "renderer_reset",        ID_COMMAND_RENDERER_RESET,         'R',       0 },
@@ -1862,6 +1863,7 @@ BEGIN_MESSAGE_MAP(CVideoProcessorDlg, CDialog)
 	ON_COMMAND(ID_COMMAND_VC_NONE, &CVideoProcessorDlg::SetVideoConversionOff)
 	ON_COMMAND(ID_COMMAND_VC_P010, &CVideoProcessorDlg::SetVideoConversionP010)
 	ON_COMMAND(ID_COMMAND_TOGGLE_STATS_OVERLAY, &CVideoProcessorDlg::OnCommandToggleStatsOverlay)
+	ON_COMMAND(ID_COMMAND_CAPTURE_RENDERED_OUTPUT, &CVideoProcessorDlg::OnCommandCaptureRenderedOutput)
 	ON_COMMAND(ID_COMMAND_DISPLAY_RULE_AUTO, &CVideoProcessorDlg::OnCommandDisplayRuleAuto)
 	ON_COMMAND(ID_COMMAND_CONFIG_EDITOR, &CVideoProcessorDlg::OnCommandConfigEditor)
 	ON_COMMAND(ID_COMMAND_TOGGLE_NO_UI, &CVideoProcessorDlg::OnCommandToggleNoUi)
@@ -6591,6 +6593,21 @@ void CVideoProcessorDlg::OnCommandToggleStatsOverlay()
 		m_statsOverlayRequestedVisible ? 1 : 0);
 }
 
+void CVideoProcessorDlg::OnCommandCaptureRenderedOutput()
+{
+	CString status;
+	const bool accepted = m_videoRenderer &&
+		m_videoRenderer->RequestRenderedOutputCapture(status);
+	if (status.IsEmpty())
+		status = accepted ? TEXT("Rendered-output capture queued") :
+			TEXT("Rendered-output capture is unavailable");
+	DebugLog::Log(
+		"Rendered-output capture command: accepted=%d renderer_state=%d detail=%ls",
+		accepted ? 1 : 0, static_cast<int>(m_rendererState),
+		static_cast<LPCWSTR>(status));
+	OnRendererDetailString(status);
+}
+
 void CVideoProcessorDlg::ApplyStatsOverlayForActiveRenderer()
 {
 	if (!m_statsOverlay)
@@ -10517,6 +10534,24 @@ BOOL CVideoProcessorDlg::PreTranslateMessage(MSG* pMsg)
 			{
 				m_noUiToggleShortcutLatched = false;
 				break;
+			}
+		}
+	}
+	if (keyDown && repeat)
+	{
+		for (const ACCEL& accelerator : m_configuredAccelerators)
+		{
+			if (accelerator.cmd == ID_COMMAND_CAPTURE_RENDERED_OUTPUT &&
+				accelerator.key == virtualKey &&
+				ConfigurationLiveApply::ShortcutModifiersMatch(
+					(accelerator.fVirt & FCONTROL) != 0,
+					(accelerator.fVirt & FALT) != 0,
+					(accelerator.fVirt & FSHIFT) != 0,
+					control, alt, shift))
+			{
+				DebugLog::Log(
+					"Rendered-output capture shortcut suppressed held-key auto-repeat");
+				return TRUE;
 			}
 		}
 	}

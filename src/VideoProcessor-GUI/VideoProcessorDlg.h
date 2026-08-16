@@ -227,6 +227,7 @@ public:
 	void OnCommandPQSet();
 	void OnCommandAutoSet();
 	void OnCommandToggleStatsOverlay();
+	void OnCommandCaptureRenderedOutput();
 	void OnCommandConfigEditor();
 
 	// ICaptureDeviceDiscovererCallback

@@ -309,11 +309,23 @@ namespace LibplaceboOutput
 						++result.channelsBelowStudioBlack;
 					if (channels[channel] > 940)
 						++result.channelsAboveStudioWhite;
+					const uint16_t value = channels[channel];
+					const size_t bucket = value == 0 ? 0 :
+						value <= 3 ? 1 : value <= 15 ? 2 :
+						value <= 31 ? 3 : value <= 63 ? 4 :
+						value <= 79 ? 5 : value <= 127 ? 6 : 7;
+					++result.nearBlackBuckets[bucket];
 				}
 				++result.sampledPixels;
 			}
 		}
 		return result;
+	}
+
+	uint16_t ExpandR10ToR16(uint16_t value)
+	{
+		value = static_cast<uint16_t>(value & 0x3ffu);
+		return static_cast<uint16_t>((value << 6) | (value >> 4));
 	}
 
 	const char* ToString(PresentationRequest value)

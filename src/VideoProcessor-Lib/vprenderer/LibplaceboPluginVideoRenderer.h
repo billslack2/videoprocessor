@@ -73,6 +73,7 @@ public:
 	bool GetOutputModeInfo(CString& details) const override;
 	bool GetOutputContractStatus(
 		RendererOutputContract::Status& status) const override;
+	bool RequestRenderedOutputCapture(CString& status) override;
 	bool GetDisplayLutInfo(CString& details) const override;
 	bool GetVideoIngressInfo(CString& details) const override;
 	bool GetPresentationTargetTiming(double& leadMs,
