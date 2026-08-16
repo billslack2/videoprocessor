@@ -393,7 +393,7 @@ curve: 2.0
 tolerance_percent: 5
 max_stretch_ratio: 1.4</pre>
 <h4>NLS+ balanced 16:9-to-scope mapping (VP Renderer only)</h4>
-<p>NLS+ uses its own GLSL file and shares the correction across both axes. It has no HLSL implementation. The example leaves presentation crop disabled, so selecting it does not discard picture content.</p>
+<p>NLS+ uses its own GLSL file and shares the correction across both axes. It has no HLSL implementation. Its supplied member uses <code>any</code> direction so it can respond to either source/target mismatch, with a bounded 2 percent per-edge VP Renderer crop to reduce distortion.</p>
 <pre data-ini-example="shader-nls-plus">[shader.nls.plus]
 shader_type: nls
 label: NLS+
@@ -406,9 +406,9 @@ curve: 2.0
 axis_balance: 0.5
 tolerance_percent: 5
 max_stretch_ratio: 1.4
-aspect_direction: narrower_only
-vprenderer_max_crop_percent: 0
-vprenderer_crop_preference: preserve_image</pre>
+aspect_direction: any
+vprenderer_max_crop_percent: 2
+vprenderer_crop_preference: minimize_distortion</pre>
 <h4>NLS-V scope-to-16:9 mapping with bounded crop (VP Renderer only)</h4>
 <p>NLS-V reuses the established one-axis GLSL hook in its vertical direction and the currently selected 16:9 viewport target. It does not create or require an NLS-specific viewport. VP first removes trusted encoded bars as part of NLS; for a 2.39:1 active picture, this example then permits only the minimum additional picture crop needed to hold the remaining vertical mapping to 1.22x.</p>
 <pre data-ini-example="shader-nls-vertical">[shader.nls.vertical]
