@@ -2,10 +2,11 @@
 
 ## Status
 
-In Progress. The live VP Renderer trace from 2026-08-16 at
-`00:26:23-00:26:49` reproduces a release-blocking regression. Work is isolated
-on source branch `codex/vp-0132-subtitle-stability`, based on the current GitHub
-default branch `v1.2.001-beta` at `74a6c7e`.
+Done (2026-08-16). Merged by
+[PR #65](https://github.com/billslack2/videoprocessor/pull/65) into the default
+integration branch `v1.2.001-beta` as merge commit
+`9daf9ab8e15493d77fb74d25706452eafeb8cd8a` after deterministic, Release-build,
+deployment, forward-playback, rewind, and operator visual acceptance.
 
 The trace review found that the configured screen aspect remained 2.35, but a
 `BAR_CROP_TRUSTED` refinement that had not yet reaffirmed the retained crop
@@ -29,8 +30,13 @@ Renderer, and native test targets successfully. Its focused policy suite passes
 pre-existing configuration/reference failures. The matched Release EXE and
 renderer DLL were deployed at 00:53 after backing up the prior pair under
 `C:\Videoprocessor\vp\backups\vp0132-before-bb4ca90-20260816-0053`; active
-configuration was not changed. Live forward/rewind confirmation remains
-pending.
+configuration was not changed. Live forward/rewind confirmation is complete.
+The accepted replay through the 59.941 Hz transition recorded 66
+bounded `bar_wait=1` retentions, no occurrence of the original failure
+signature, and no full-raster presentation frame between trusted crop frames.
+The subtitle target was accepted only after three stable analyzed samples and
+engaged/released progressively. The operator confirmed that no visible flash
+recurred.
 
 ## User story
 
