@@ -2,7 +2,13 @@
 
 ## Status
 
-Backlog (2026-08-16). A VP Renderer beta tester reports a slightly darker
+In Progress (2026-08-16). The developer confirmed the newly updated default
+integration branch `v1.2.001-beta` as the implementation base. Work began from
+clean base `9daf9ab8e15493d77fb74d25706452eafeb8cd8a` in branch
+`codex/vp0133-renderer-output-capture`, worktree
+`work\vp-0133-renderer-output-capture`.
+
+A VP Renderer beta tester reports a slightly darker
 image and loss of differentiated near-black detail compared with madVR and
 projector tone mapping. The existing log can distinguish requested and actual
 transport, source EOTF, formatter contract, and broad R10 output statistics,
@@ -14,10 +20,10 @@ swapchain. During VP-owned Direct presentation, that is not the authoritative
 backbuffer rendered and presented by VP. This story corrects that diagnostic
 boundary before treating readback or screenshots as evidence.
 
-The repository default implementation branch was manually discovered on
-2026-08-16 as `v1.2.001-beta`. Source implementation must not begin until the
-developer explicitly confirms that branch under the tracker implementation
-gate.
+The repository default implementation branch was manually discovered and
+explicitly confirmed on 2026-08-16 as `v1.2.001-beta`. A fresh fetch advanced
+the earlier observed tip from `74a6c7e` to confirmed base `9daf9ab` before the
+implementation worktree was created.
 
 The story-ID audit found no duplicate canonical root story and confirmed
 VP-0132 as the highest canonical root. It also found historical index-only
