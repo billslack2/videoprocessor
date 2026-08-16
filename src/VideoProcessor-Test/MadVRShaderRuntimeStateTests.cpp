@@ -76,6 +76,33 @@ namespace VideoProcessorTest
 	TEST_CLASS(MadVRShaderRuntimeStateTests)
 	{
 	public:
+		TEST_METHOD(ConfiguredShaderRuleRetainsHistoricalAnyDirectionDefault)
+		{
+			const ConfiguredShaderRule rule;
+			Assert::AreEqual(static_cast<int>(NlsAspectDirection::ANY),
+				static_cast<int>(rule.aspectDirection));
+		}
+
+		TEST_METHOD(VpRendererNlsUsesActivePictureWithoutCreatingAViewportProfile)
+		{
+			const NlsSourceGeometry nls =
+				ResolveNlsPresentationSourceGeometry(true, true,
+					240, 0, 1680, 1080, false,
+					0, 0, 1920, 1080, 1920, 1080);
+			Assert::IsTrue(nls.valid);
+			Assert::AreEqual(4.0 / 3.0, nls.aspect, 0.000001);
+			Assert::AreEqual(240, nls.left);
+			Assert::AreEqual(1680, nls.right);
+
+			const NlsSourceGeometry nlsOff =
+				ResolveNlsPresentationSourceGeometry(false, true,
+					240, 0, 1680, 1080, false,
+					0, 0, 1920, 1080, 1920, 1080);
+			Assert::AreEqual(16.0 / 9.0, nlsOff.aspect, 0.000001);
+			Assert::AreEqual(0, nlsOff.left);
+			Assert::AreEqual(1920, nlsOff.right);
+		}
+
 		TEST_METHOD(WaitingCannotExposeNlsOutputContract)
 		{
 			MadVRShaderRuntimeSnapshot snapshot;

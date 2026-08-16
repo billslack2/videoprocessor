@@ -83,6 +83,16 @@ NlsSourceGeometry ResolveNlsSourceGeometry(bool trustedCropApplied,
 	int cropLeft, int cropTop, int cropRight, int cropBottom,
 	int rasterWidth, int rasterHeight);
 
+// NLS always maps the trusted active picture, independently of whether the
+// viewport's ordinary automatic crop is enabled. When NLS is off or detector
+// authority is unavailable, the established viewport/full-raster source wins.
+NlsSourceGeometry ResolveNlsPresentationSourceGeometry(bool nlsRequested,
+	bool activePictureAvailable,
+	int activeLeft, int activeTop, int activeRight, int activeBottom,
+	bool viewportCropApplied,
+	int viewportLeft, int viewportTop, int viewportRight, int viewportBottom,
+	int rasterWidth, int rasterHeight);
+
 
 double ResolveNlsTargetAspect(bool configuredTarget,
 	double configuredAspect, double outputPanelAspect);

@@ -144,6 +144,27 @@ NlsMappingDecision EvaluateNlsMapping(bool aspectAvailable,
 }
 
 
+NlsSourceGeometry ResolveNlsPresentationSourceGeometry(bool nlsRequested,
+	bool activePictureAvailable,
+	int activeLeft, int activeTop, int activeRight, int activeBottom,
+	bool viewportCropApplied,
+	int viewportLeft, int viewportTop, int viewportRight, int viewportBottom,
+	int rasterWidth, int rasterHeight)
+{
+	if (nlsRequested && activePictureAvailable)
+	{
+		const NlsSourceGeometry activePicture = ResolveNlsSourceGeometry(true,
+			activeLeft, activeTop, activeRight, activeBottom,
+			rasterWidth, rasterHeight);
+		if (activePicture.valid)
+			return activePicture;
+	}
+	return ResolveNlsSourceGeometry(viewportCropApplied,
+		viewportLeft, viewportTop, viewportRight, viewportBottom,
+		rasterWidth, rasterHeight);
+}
+
+
 NlsPresentationCropDecision ResolveNlsPresentationCrop(
 	const NlsSourceGeometry& source, double targetAspect,
 	double tolerancePercent, double activeAspectMinimum,

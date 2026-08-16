@@ -2609,6 +2609,7 @@ struct LibplaceboVideoRenderer::Impl
 	std::string rejectedNlsHookSignature;
 	std::string activeNlsShaderPath;
 	std::string lastNlsPipelineVariant;
+	std::string lastNlsHookBindingPolicy;
 	bool nlsPipelineWasActive = false;
 	struct pl_color_map_params colorMapParams{};
 	struct pl_peak_detect_params peakDetectParams{};
@@ -5413,6 +5414,7 @@ struct LibplaceboVideoRenderer::Impl
 		rejectedNlsHookSignature.clear();
 		activeNlsShaderPath.clear();
 		lastNlsPipelineVariant.clear();
+		lastNlsHookBindingPolicy.clear();
 		nlsPipelineWasActive = false;
 		renderParams.hooks = nullptr;
 		renderParams.num_hooks = 0;
@@ -5507,8 +5509,50 @@ struct LibplaceboVideoRenderer::Impl
 		return true;
 	}
 
+	struct NlsHookMappingState
+	{
+		bool stretchAvailable = false;
+		bool axisAvailable = false;
+		float stretchRatio = 0.0f;
+		float warpAxis = 0.0f;
+		int parameterCount = 0;
+		std::string floatParameterNames;
+	};
+
+	static NlsHookMappingState ReadNlsHookMapping(const struct pl_hook* hook)
+	{
+		NlsHookMappingState state;
+		if (!hook)
+			return state;
+		state.parameterCount = hook->num_parameters;
+		for (int index = 0; index < hook->num_parameters; ++index)
+		{
+			const struct pl_hook_par& parameter = hook->parameters[index];
+			if (!parameter.name || !parameter.data ||
+				parameter.type != PL_VAR_FLOAT)
+			{
+				continue;
+			}
+			if (!state.floatParameterNames.empty())
+				state.floatParameterNames += ',';
+			state.floatParameterNames += parameter.name;
+			if (strcmp(parameter.name, "stretch_ratio") == 0)
+			{
+				state.stretchAvailable = true;
+				state.stretchRatio = parameter.data->f;
+			}
+			else if (strcmp(parameter.name, "warp_axis") == 0)
+			{
+				state.axisAvailable = true;
+				state.warpAxis = parameter.data->f;
+			}
+		}
+		return state;
+	}
+
 	static bool SetNlsHookMapping(const struct pl_hook* hook,
-		const NlsMappingDecision& decision)
+		const NlsMappingDecision& decision,
+		NlsHookMappingState* boundState = nullptr)
 	{
 		bool stretchUpdated = false;
 		bool axisUpdated = false;
@@ -5533,7 +5577,67 @@ struct LibplaceboVideoRenderer::Impl
 				axisUpdated = true;
 			}
 		}
+		if (boundState)
+			*boundState = ReadNlsHookMapping(hook);
 		return stretchUpdated && axisUpdated;
+	}
+
+	void LogNlsHookBinding(const NlsMappingDecision& decision,
+		const NlsHookMappingState& binding)
+	{
+		double strength = 1.0;
+		const auto configuredStrength = nlsRule.parameters.find("strength");
+		if (configuredStrength != nlsRule.parameters.end())
+			ParseDouble(configuredStrength->second, strength);
+		strength = std::max(0.0, std::min(1.0, strength));
+
+		double xCenterScale = 1.0;
+		double yCenterScale = 1.0;
+		const auto configuredBalance = nlsRule.parameters.find("axis_balance");
+		if (configuredBalance != nlsRule.parameters.end())
+		{
+			double balance = 0.5;
+			ParseDouble(configuredBalance->second, balance);
+			balance = std::max(0.0, std::min(1.0, balance));
+			const double q = decision.verticalWarp
+				? 1.0 / decision.stretchRatio : decision.stretchRatio;
+			const double xExponent = decision.verticalWarp
+				? balance : 1.0 - balance;
+			const double yExponent = decision.verticalWarp
+				? balance - 1.0 : -balance;
+			xCenterScale = std::pow(q, xExponent * strength);
+			yCenterScale = std::pow(q, yExponent * strength);
+		}
+		else
+		{
+			const double selectedAxisScale =
+				1.0 + (decision.stretchRatio - 1.0) * strength;
+			if (decision.verticalWarp)
+				yCenterScale = selectedAxisScale;
+			else
+				xCenterScale = selectedAxisScale;
+		}
+
+		std::ostringstream policy;
+		policy << nlsHookSignature << '|' << binding.parameterCount << '|'
+			<< binding.floatParameterNames << '|'
+			<< std::lround(binding.stretchRatio * 100000.0f) << '|'
+			<< std::lround(binding.warpAxis * 100000.0f) << '|'
+			<< std::lround(xCenterScale * 100000.0) << '|'
+			<< std::lround(yCenterScale * 100000.0);
+		if (policy.str() == lastNlsHookBindingPolicy)
+			return;
+		lastNlsHookBindingPolicy = policy.str();
+		DebugLog::Log(
+			"Alpha NLS hook binding: shader=%s parameters=%d float_parameters=%s stretch_ratio=%.5f warp_axis=%.1f axis=%s strength=%.3f expected_center_scale_x=%.5f expected_center_scale_y=%.5f",
+			activeNlsShaderPath.empty() ? nlsRule.filename.c_str() :
+				activeNlsShaderPath.c_str(),
+			binding.parameterCount,
+			binding.floatParameterNames.empty() ? "(none)" :
+				binding.floatParameterNames.c_str(),
+			binding.stretchRatio, binding.warpAxis,
+			decision.verticalWarp ? "vertical" : "horizontal",
+			strength, xCenterScale, yCenterScale);
 	}
 
 	bool EnsureNlsHook(const NlsMappingDecision& decision)
@@ -5542,7 +5646,14 @@ struct LibplaceboVideoRenderer::Impl
 			FixedNlsParameters(nlsRule);
 		const std::string hookKey = NlsHookKey(nlsRule, parameters);
 		if (nlsHook && nlsHookSignature == hookKey)
-			return SetNlsHookMapping(nlsHook, decision);
+		{
+			NlsHookMappingState binding;
+			const bool updated = SetNlsHookMapping(
+				nlsHook, decision, &binding);
+			if (updated)
+				LogNlsHookBinding(decision, binding);
+			return updated;
+		}
 		if (rejectedNlsHookSignature == hookKey)
 			return false;
 
@@ -5559,7 +5670,8 @@ struct LibplaceboVideoRenderer::Impl
 				nlsRule.filename.c_str(), reason.c_str());
 			return false;
 		}
-		if (!SetNlsHookMapping(replacement, decision))
+		NlsHookMappingState binding;
+		if (!SetNlsHookMapping(replacement, decision, &binding))
 		{
 			pl_mpv_user_shader_destroy(&replacement);
 			rejectedNlsHookSignature = hookKey;
@@ -5573,6 +5685,7 @@ struct LibplaceboVideoRenderer::Impl
 		nlsHookSignature = replacementKey;
 		rejectedNlsHookSignature.clear();
 		activeNlsShaderPath = resolvedPath;
+		LogNlsHookBinding(decision, binding);
 		const auto balance = nlsRule.parameters.find("axis_balance");
 		DebugLog::Log(
 			"Alpha shaders: loaded mpv GLSL hook \"%s\" stretch=%.5f axis=%s axis_balance=%s",
@@ -7534,13 +7647,31 @@ struct LibplaceboVideoRenderer::Impl
 			// NLS geometry when the crop policy is already presenting the complete
 			// raster. In that case the source aspect is known directly from the
 			// resolution, independent of profile names or provisional dark edges.
+			// NLS operates on the detected picture, not on source-baked black bars.
+			// This is part of the established NLS presentation contract and is
+			// independent of the viewport's ordinary automatic-crop setting. NLS-off
+			// presentation remains governed exclusively by cropDecision above.
+			const bool nlsActivePictureCropApplied = nlsRequested &&
+				effectiveGeometryAvailable &&
+				effectiveGeometrySourceGeneration == frameGeneration;
 			const NlsSourceGeometry finalSourceGeometry =
-				ResolveNlsSourceGeometry(cropDecision.applyCrop,
+				ResolveNlsPresentationSourceGeometry(nlsRequested,
+					nlsActivePictureCropApplied,
+					effectiveGeometry.left, effectiveGeometry.top,
+					effectiveGeometry.right, effectiveGeometry.bottom,
+					cropDecision.applyCrop,
 					cropDecision.sourceBounds.left,
 					cropDecision.sourceBounds.top,
 					cropDecision.sourceBounds.right,
 					cropDecision.sourceBounds.bottom,
 					width, height);
+			if (nlsActivePictureCropApplied && finalSourceGeometry.valid)
+			{
+				source.crop.x0 = static_cast<float>(finalSourceGeometry.left);
+				source.crop.y0 = static_cast<float>(finalSourceGeometry.top);
+				source.crop.x1 = static_cast<float>(finalSourceGeometry.right);
+				source.crop.y1 = static_cast<float>(finalSourceGeometry.bottom);
+			}
 			NlsPresentationCropDecision nlsPresentationCrop;
 			nlsPresentationCrop.source = finalSourceGeometry;
 			if (nlsRequested)
@@ -7669,9 +7800,45 @@ struct LibplaceboVideoRenderer::Impl
 				MadVRShaderLoader::SetRuntimeShaderSelection(
 					requestedShaderSelector, requestedShaderSelector,
 					finalNlsDecision.mode);
+				const double detectorAspect = effectiveGeometryAvailable &&
+					effectiveGeometry.bottom > effectiveGeometry.top
+					? static_cast<double>(effectiveGeometry.right -
+						effectiveGeometry.left) /
+						(effectiveGeometry.bottom - effectiveGeometry.top)
+					: 0.0;
+				const NlsMappingDecision detectorNlsDecision =
+					EvaluateNlsMapping(effectiveGeometryAvailable,
+						detectorAspect, finalTargetAspect,
+						nlsRule.aspectTolerancePercent,
+						nlsRule.activeAspectMinimum,
+						nlsRule.aspectDirection,
+						nlsRule.maximumStretchRatio);
+				const bool detectorGeometryExcluded =
+					effectiveGeometryAvailable && !cropDecision.applyCrop &&
+					!nlsActivePictureCropApplied &&
+					detectorNlsDecision.mode == NlsMappingMode::ACTIVE &&
+					finalNlsDecision.mode != NlsMappingMode::ACTIVE;
+				const int nlsCropPixelsX = std::max(0,
+					(finalSourceGeometry.right - finalSourceGeometry.left -
+						(presentationSourceGeometry.right -
+						 presentationSourceGeometry.left)) / 2);
+				const int nlsCropPixelsY = std::max(0,
+					(finalSourceGeometry.bottom - finalSourceGeometry.top -
+						(presentationSourceGeometry.bottom -
+						 presentationSourceGeometry.top)) / 2);
 				std::ostringstream finalPresentationPolicy;
 				finalPresentationPolicy << requestedShaderSelector << '|'
 					<< static_cast<int>(finalNlsDecision.mode) << '|'
+					<< automaticSourceCrop << '|'
+					<< nlsActivePictureCropApplied << '|'
+					<< effectiveGeometryAvailable << '|'
+					<< effectiveGeometry.left << ','
+					<< effectiveGeometry.top << '-'
+					<< effectiveGeometry.right << ','
+					<< effectiveGeometry.bottom << '|'
+					<< effectiveGeometrySourceGeneration << '|'
+					<< static_cast<int>(detectorNlsDecision.mode) << '|'
+					<< detectorGeometryExcluded << '|'
 					<< cropDecision.sourceBounds.left << ','
 					<< cropDecision.sourceBounds.top << '-'
 					<< cropDecision.sourceBounds.right << ','
@@ -7688,14 +7855,26 @@ struct LibplaceboVideoRenderer::Impl
 					lastFinalPresentationPolicy =
 						finalPresentationPolicy.str();
 					DebugLog::Log(
-						"Alpha NLS backend=vprenderer requested=%s applicable=%s file=%s mapping=%s detector_rect=%d,%d-%d,%d presentation_rect=%d,%d-%d,%d source=%.4f target=%.4f requested_ratio=%.5f max_ratio=%.5f direction=%s axis=%s stretch=%.5f crop_percent=%.5f crop_preference=%s renderer_generation=%llu crop_reason=\"%s\" reason=\"%s\"",
+						"Alpha NLS backend=vprenderer requested=%s applicable=%s file=%s viewport_profiles=\"%s\" automatic_crop=%d nls_active_picture_crop=%d mapping=%s trusted_detector=%d detector_rect=%d,%d-%d,%d detector_aspect=%.4f detector_mapping=%s detector_generation=%llu source_policy=%s presentation_rect=%d,%d-%d,%d source=%.4f target=%.4f requested_ratio=%.5f max_ratio=%.5f direction=%s axis=%s stretch=%.5f crop_limit_percent=%.5f crop_applied=%d crop_percent=%.5f crop_pixels_x=%d crop_pixels_y=%d crop_preference=%s detector_excluded=%d blocker=%s renderer_generation=%llu crop_reason=\"%s\" reason=\"%s\"",
 						requestedShaderSelector.c_str(), nlsRule.name.c_str(),
 						nlsRule.filename.c_str(),
+						activeDisplayRule.empty() ? "(base)" :
+							activeDisplayRule.c_str(),
+						automaticSourceCrop ? 1 : 0,
+						nlsActivePictureCropApplied ? 1 : 0,
 						NlsMappingModeName(finalNlsDecision.mode),
-						finalSourceGeometry.left,
-						finalSourceGeometry.top,
-						finalSourceGeometry.right,
-						finalSourceGeometry.bottom,
+						effectiveGeometryAvailable ? 1 : 0,
+						effectiveGeometry.left,
+						effectiveGeometry.top,
+						effectiveGeometry.right,
+						effectiveGeometry.bottom,
+						detectorAspect,
+						NlsMappingModeName(detectorNlsDecision.mode),
+						static_cast<unsigned long long>(
+							effectiveGeometrySourceGeneration),
+						nlsActivePictureCropApplied ? "nls-active-picture" :
+							(cropDecision.applyCrop ? "viewport-trusted-crop" :
+								"full-raster"),
 						presentationSourceGeometry.left,
 						presentationSourceGeometry.top,
 						presentationSourceGeometry.right,
@@ -7707,9 +7886,16 @@ struct LibplaceboVideoRenderer::Impl
 						NlsAspectDirectionName(nlsRule.aspectDirection),
 						NlsMappingAxisName(finalNlsDecision),
 						finalNlsDecision.stretchRatio,
+						nlsRule.vpRendererMaximumCropPercent,
+						nlsPresentationCrop.applied ? 1 : 0,
 						nlsPresentationCrop.percentPerEdge,
+						nlsCropPixelsX, nlsCropPixelsY,
 						NlsPresentationCropPreferenceName(
 							nlsRule.vpRendererCropPreference),
+						detectorGeometryExcluded ? 1 : 0,
+						detectorGeometryExcluded
+							? "detector geometry unavailable to this shader rule"
+							: "none",
 						static_cast<unsigned long long>(nlsRendererGeneration),
 						nlsPresentationCrop.reason.c_str(),
 						finalNlsDecision.reason.c_str());
@@ -8127,14 +8313,25 @@ struct LibplaceboVideoRenderer::Impl
 		if (nlsPipelineActive &&
 			(nlsPipelineVariantChanged || compileSnapshot.Compiled()))
 		{
+			const NlsHookMappingState binding =
+				ReadNlsHookMapping(nlsHook);
 			DebugLog::Log(
-				"Alpha shader compile: shader=%s cache=%s renderer_generation=%llu queue_generation=%llu source=%llu input=%dx%d output=%dx%d glsl_ms=%.3f spirv_cross_ms=%.3f hlsl_ms=%.3f compile_ms=%.3f render_ms=%.3f queue=%zu/%zu oldest_ms=%.3f",
+				"Alpha shader compile: shader=%s cache=%s render=%s hooks=%d parameters=%d stretch_ratio=%.5f warp_axis=%.1f renderer_generation=%llu queue_generation=%llu source=%llu input=%dx%d output=%dx%d source_crop=%.1f,%.1f-%.1f,%.1f target_crop=%.1f,%.1f-%.1f,%.1f glsl_ms=%.3f spirv_cross_ms=%.3f hlsl_ms=%.3f compile_ms=%.3f render_ms=%.3f queue=%zu/%zu oldest_ms=%.3f",
 				activeNlsShaderPath.c_str(),
 				compileSnapshot.Compiled() ? "cold" : "warm",
+				rendered ? "success" : "failed",
+				renderParams.num_hooks,
+				binding.parameterCount,
+				binding.stretchRatio,
+				binding.warpAxis,
 				static_cast<unsigned long long>(nlsRendererGeneration),
 				static_cast<unsigned long long>(frameGeneration),
 				static_cast<unsigned long long>(sourceSequence),
 				width, height, outputWidth, outputHeight,
+				renderImage.crop.x0, renderImage.crop.y0,
+				renderImage.crop.x1, renderImage.crop.y1,
+				target.crop.x0, target.crop.y0,
+				target.crop.x1, target.crop.y1,
 				compileSnapshot.glslMs,
 				compileSnapshot.spirvCrossMs,
 				compileSnapshot.hlslMs,

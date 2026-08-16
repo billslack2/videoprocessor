@@ -4,9 +4,12 @@
 #include <vprenderer/LibplaceboDisplayLut.h>
 #include <libplacebo/d3d11.h>
 #include <libplacebo/renderer.h>
+#include <libplacebo/shaders/custom.h>
 
 #include <cstdint>
 #include <fstream>
+#include <iterator>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -141,6 +144,82 @@ namespace
 		uint8_t a;
 	};
 
+	std::string LoadBundledShader(const char* fileName)
+	{
+		std::string path = __FILE__;
+		for (int level = 0; level < 3; ++level)
+		{
+			const size_t separator = path.find_last_of("\\/");
+			if (separator == std::string::npos)
+				return {};
+			path.resize(separator);
+		}
+		path += "\\shaders\\";
+		path += fileName;
+		std::ifstream input(path, std::ios::binary);
+		return std::string(std::istreambuf_iterator<char>(input),
+			std::istreambuf_iterator<char>());
+	}
+
+	void ReplaceShaderToken(std::string& source, const std::string& name,
+		const std::string& value)
+	{
+		const std::string token = "{{" + name + "}}";
+		size_t position = 0;
+		while ((position = source.find(token, position)) != std::string::npos)
+		{
+			source.replace(position, token.size(), value);
+			position += value.size();
+		}
+	}
+
+	const pl_hook* ParseBundledNlsShader(pl_gpu gpu, const char* fileName,
+		double axisBalance)
+	{
+		std::string source = LoadBundledShader(fileName);
+		Assert::IsFalse(source.empty(), L"Bundled NLS shader was not found");
+		const std::map<std::string, std::string> parameters = {
+			{ "strength", "1.0" },
+			{ "curve", "2.0" },
+			{ "geometry", "0" },
+			{ "center_protection", "0.0" },
+			{ "axis_balance", std::to_string(axisBalance) }
+		};
+		for (const auto& parameter : parameters)
+			ReplaceShaderToken(source, parameter.first, parameter.second);
+		Assert::IsTrue(source.find("{{") == std::string::npos,
+			L"Bundled NLS shader still contains an unsubstituted token");
+		const pl_hook* hook = pl_mpv_user_shader_parse(
+			gpu, source.data(), source.size());
+		Assert::IsNotNull(hook, L"libplacebo rejected bundled NLS shader");
+		return hook;
+	}
+
+	void BindNlsShader(const pl_hook* hook, float stretchRatio, float warpAxis)
+	{
+		bool stretchBound = false;
+		bool axisBound = false;
+		for (int index = 0; index < hook->num_parameters; ++index)
+		{
+			const pl_hook_par& parameter = hook->parameters[index];
+			if (!parameter.name || !parameter.data ||
+				parameter.type != PL_VAR_FLOAT)
+				continue;
+			if (strcmp(parameter.name, "stretch_ratio") == 0)
+			{
+				parameter.data->f = stretchRatio;
+				stretchBound = true;
+			}
+			else if (strcmp(parameter.name, "warp_axis") == 0)
+			{
+				parameter.data->f = warpAxis;
+				axisBound = true;
+			}
+		}
+		Assert::IsTrue(stretchBound && axisBound,
+			L"Bundled NLS shader did not expose both dynamic parameters");
+	}
+
 	class TargetLutGpuFixture
 	{
 	public:
@@ -225,6 +304,71 @@ namespace
 			pl_tex_destroy(gpu, &targetTexture);
 			pl_tex_destroy(gpu, &sourceTexture);
 			return result[0];
+		}
+
+		pl_gpu Gpu() const
+		{
+			return m_d3d11 ? m_d3d11->gpu : nullptr;
+		}
+
+		std::vector<RgbaPixel> RenderCoordinateField(
+			const pl_hook* hook, int width = 64, int height = 64)
+		{
+			pl_gpu gpu = m_d3d11->gpu;
+			const enum pl_fmt_caps requiredCaps = static_cast<enum pl_fmt_caps>(
+				PL_FMT_CAP_SAMPLEABLE | PL_FMT_CAP_RENDERABLE |
+				PL_FMT_CAP_HOST_READABLE);
+			pl_fmt format = pl_find_fmt(
+				gpu, PL_FMT_UNORM, 4, 8, 8, requiredCaps);
+			Assert::IsNotNull(format);
+
+			std::vector<RgbaPixel> sourcePixels(width * height);
+			for (int y = 0; y < height; ++y)
+				for (int x = 0; x < width; ++x)
+					sourcePixels[y * width + x] = {
+						static_cast<uint8_t>(x * 255 / (width - 1)),
+						static_cast<uint8_t>(y * 255 / (height - 1)),
+						static_cast<uint8_t>((x + y) * 255 /
+							(width + height - 2)), 255 };
+
+			pl_tex_params sourceParams{};
+			sourceParams.w = width;
+			sourceParams.h = height;
+			sourceParams.format = format;
+			sourceParams.sampleable = true;
+			sourceParams.initial_data = sourcePixels.data();
+			pl_tex sourceTexture = pl_tex_create(gpu, &sourceParams);
+			Assert::IsNotNull(sourceTexture);
+
+			pl_tex_params targetParams{};
+			targetParams.w = width;
+			targetParams.h = height;
+			targetParams.format = format;
+			targetParams.renderable = true;
+			targetParams.host_readable = true;
+			pl_tex targetTexture = pl_tex_create(gpu, &targetParams);
+			Assert::IsNotNull(targetTexture);
+
+			pl_frame image = MakeRgbFrame(sourceTexture);
+			pl_frame target = MakeRgbFrame(targetTexture);
+			pl_render_params params = pl_render_fast_params;
+			if (hook)
+			{
+				params.hooks = &hook;
+				params.num_hooks = 1;
+			}
+			Assert::IsTrue(pl_render_image(
+				m_renderer, &image, &target, &params));
+			pl_gpu_finish(gpu);
+
+			std::vector<RgbaPixel> result(width * height);
+			pl_tex_transfer_params download{};
+			download.tex = targetTexture;
+			download.ptr = result.data();
+			Assert::IsTrue(pl_tex_download(gpu, &download));
+			pl_tex_destroy(gpu, &targetTexture);
+			pl_tex_destroy(gpu, &sourceTexture);
+			return result;
 		}
 
 	private:
@@ -615,6 +759,78 @@ namespace VideoProcessorTest
 
 			Assert::IsTrue(calibrated.r < 15 && calibrated.g > 240 && calibrated.b < 15,
 				L"The compatible high-quality target LUT path did not produce green output");
+		}
+
+		TEST_METHOD(BundledNlsGlSlHooksMovePixelsOnTheRealGpuPath)
+		{
+			TargetLutGpuFixture fixture;
+			Assert::IsTrue(fixture.Create(),
+				L"Could not create the libplacebo WARP test device");
+			const std::vector<RgbaPixel> baseline =
+				fixture.RenderCoordinateField(nullptr);
+
+			const pl_hook* balanced = ParseBundledNlsShader(
+				fixture.Gpu(), "NLSPlus.glsl", 0.5);
+			BindNlsShader(balanced, 1.32f, 0.0f);
+			const std::vector<RgbaPixel> balancedPixels =
+				fixture.RenderCoordinateField(balanced);
+			const size_t quarter = 16 * 64 + 16;
+			Assert::IsTrue(std::abs(static_cast<int>(balancedPixels[quarter].r) -
+				static_cast<int>(baseline[quarter].r)) >= 3,
+				L"NLS+ did not move horizontal coordinate pixels");
+			Assert::IsTrue(std::abs(static_cast<int>(balancedPixels[quarter].g) -
+				static_cast<int>(baseline[quarter].g)) >= 3,
+				L"NLS+ did not move vertical coordinate pixels");
+			Assert::IsTrue(std::abs(static_cast<int>(balancedPixels.front().r) -
+				static_cast<int>(baseline.front().r)) <= 2 &&
+				std::abs(static_cast<int>(balancedPixels.front().g) -
+					static_cast<int>(baseline.front().g)) <= 2,
+				L"NLS+ did not keep the fixed image edge bounded");
+
+			// Dynamic changes must affect the already-parsed hook. This catches a
+			// compiled shader whose runtime parameter data is never consumed.
+			BindNlsShader(balanced, 1.0f, 0.0f);
+			const std::vector<RgbaPixel> identityPixels =
+				fixture.RenderCoordinateField(balanced);
+			Assert::IsTrue(std::abs(static_cast<int>(identityPixels[quarter].r) -
+				static_cast<int>(baseline[quarter].r)) <= 2 &&
+				std::abs(static_cast<int>(identityPixels[quarter].g) -
+					static_cast<int>(baseline[quarter].g)) <= 2,
+				L"Updating the same NLS+ hook to ratio 1 was not identity");
+
+			const pl_hook* oneAxisPlus = ParseBundledNlsShader(
+				fixture.Gpu(), "NLSPlus.glsl", 0.0);
+			const pl_hook* established = ParseBundledNlsShader(
+				fixture.Gpu(), "NLS.glsl", 0.0);
+			BindNlsShader(oneAxisPlus, 1.32f, 0.0f);
+			BindNlsShader(established, 1.32f, 0.0f);
+			const std::vector<RgbaPixel> oneAxisPlusPixels =
+				fixture.RenderCoordinateField(oneAxisPlus);
+			const std::vector<RgbaPixel> establishedPixels =
+				fixture.RenderCoordinateField(established);
+			for (size_t index = 0; index < establishedPixels.size(); ++index)
+			{
+				Assert::IsTrue(std::abs(
+					static_cast<int>(oneAxisPlusPixels[index].r) -
+					static_cast<int>(establishedPixels[index].r)) <= 2);
+				Assert::IsTrue(std::abs(
+					static_cast<int>(oneAxisPlusPixels[index].g) -
+					static_cast<int>(establishedPixels[index].g)) <= 2);
+			}
+
+			BindNlsShader(established, 1.125f, 1.0f);
+			const std::vector<RgbaPixel> verticalPixels =
+				fixture.RenderCoordinateField(established);
+			Assert::IsTrue(std::abs(static_cast<int>(verticalPixels[quarter].g) -
+				static_cast<int>(baseline[quarter].g)) >= 3,
+				L"Existing NLS GLSL did not move vertical coordinate pixels");
+			Assert::IsTrue(std::abs(static_cast<int>(verticalPixels[quarter].r) -
+				static_cast<int>(baseline[quarter].r)) <= 2,
+				L"Vertical NLS unexpectedly altered the horizontal coordinate");
+
+			pl_mpv_user_shader_destroy(&balanced);
+			pl_mpv_user_shader_destroy(&oneAxisPlus);
+			pl_mpv_user_shader_destroy(&established);
 		}
 	};
 }

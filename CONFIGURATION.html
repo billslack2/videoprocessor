@@ -331,7 +331,7 @@ hlsl_file: Adaptive sharpen.hlsl</pre>
 
 <h2 id="nls">Nonlinear Stretch (NLS) shader</h2>
 <p>NLS is VP's bundled nonlinear-stretch shader, not a separate renderer feature. It is still an ordinary <code>shader_type: nls</code> member: a shader group selects it, a root selection can turn it off, and its settings control its behavior. What makes it special is that VP supplies the shader with a runtime active-picture and viewport contract rather than leaving it to guess from a fixed source resolution. The optional NLS+ hook and all intentional presentation-crop settings are VP Renderer/GLSL-only; madVR/HLSL always retains its complete-source one-axis presentation.</p>
-<table><thead><tr><th>Step</th><th>How NLS works</th></tr></thead><tbody><tr><td>1. Select</td><td>A normal shader-group rule selects the standard or protected NLS member, or its root/off state. The <code>when</code> rule selects a mode; it does not identify every input aspect that should stretch.</td></tr><tr><td>2. Measure</td><td>VP waits for trusted, stable active-picture bounds from the current renderer generation. Until then it leaves mapping in a waiting/safe state.</td></tr><tr><td>3. Resolve</td><td>VP compares the measured active-picture aspect with the resolved viewport target. A near match passes through; a manageable mismatch uses horizontal or vertical nonlinear mapping; a ratio above the rule's <code>max_stretch_ratio</code> uses safe linear fit instead.</td></tr><tr><td>4. Run</td><td>The bundled HLSL or GLSL shader receives the chosen axis, stretch ratio, active rectangle, and safe-fit inputs, then performs only that selected mapping. It does not choose the target aspect itself.</td></tr></tbody></table>
+<table><thead><tr><th>Step</th><th>How NLS works</th></tr></thead><tbody><tr><td>1. Select</td><td>A normal shader-group rule selects the standard or protected NLS member, or its root/off state. The <code>when</code> rule selects a mode; it does not identify every input aspect that should stretch.</td></tr><tr><td>2. Measure</td><td>VP waits for trusted, stable active-picture bounds from the current renderer generation. Until then it leaves mapping in a waiting/safe state.</td></tr><tr><td>3. Resolve</td><td>VP Renderer removes trusted source-baked black bars as part of NLS, independently of the viewport's ordinary <code>automatic_crop</code> setting, then compares the remaining active-picture aspect with the existing viewport target. NLS-off presentation is unchanged. A near match passes through; a manageable mismatch uses horizontal or vertical nonlinear mapping; a ratio above the rule's <code>max_stretch_ratio</code> uses safe linear fit instead.</td></tr><tr><td>4. Run</td><td>The bundled HLSL or GLSL shader receives the chosen axis, stretch ratio, active rectangle, and safe-fit inputs, then performs only that selected mapping. It does not choose the target aspect itself.</td></tr></tbody></table>
 <div class="note"><strong>Viewport-driven behavior.</strong> A 4:3 active picture can map toward a 16:9 viewport. Scope content can pass through on a scope viewport. A 4:3 picture on a 2.35:1 viewport exceeds the safe stretch limit and remains a safe fit instead of receiving a destructive warp. The selected viewport, not a hard-coded input resolution, supplies the target.</div>
 <div class="group">
 <article id="shader-nls-geometry" data-fields="shader.&lt;group&gt;.&lt;member&gt;.geometry"><h3><code>[shader.&lt;group&gt;.&lt;member&gt;] geometry</code></h3><p class="meta"><strong>Purpose:</strong> chooses the NLS geometry mode. <strong>Syntax:</strong> an NLS geometry token understood by the installed NLS shader. <strong>Omitted:</strong> the shader's default geometry.</p><table class="values"><thead><tr><th>Value</th><th>Meaning</th></tr></thead><tbody><tr><td><code>classic</code></td><td>Standard nonlinear-stretch geometry.</td></tr><tr><td><code>protected</code></td><td>Geometry intended for use with centre protection.</td></tr></tbody></table><p><strong>Effect and verification:</strong> Treat geometry and <code>center_protection</code> as a pair. Use the shipped names unless the installed NLS shader explicitly supports another mode.</p></article>
@@ -353,7 +353,7 @@ hlsl_file: Adaptive sharpen.hlsl</pre>
 <p>The rule selector merely activates NLS for the intended class of input; it does not identify a fixed 4:3 resolution. VP compares each stable active picture with the 16:9 viewport at runtime. A 4:3 active picture can use horizontal NLS toward 16:9, while material already near 16:9 passes through.</p>
 <pre data-ini-example="shader-nls-standard">[vprenderer.viewport]
 screen_aspect: 16:9
-automatic_crop: true
+automatic_crop: false
 
 [shader.nls.standard]
 when: ${transfer}=="SDR"
@@ -410,14 +410,8 @@ aspect_direction: narrower_only
 vprenderer_max_crop_percent: 0
 vprenderer_crop_preference: preserve_image</pre>
 <h4>NLS-V scope-to-16:9 mapping with bounded crop (VP Renderer only)</h4>
-<p>NLS-V reuses the established one-axis GLSL hook in its vertical direction. For a 2.39:1 picture on a 16:9 viewport, this example permits the minimum side crop needed to hold the remaining vertical mapping to 1.22x. The detector-owned active picture is unchanged.</p>
-<pre data-ini-example="shader-nls-vertical">[vprenderer.viewport.nls_vertical_16x9]
-label: NLS-V 16x9
-screen_aspect: 16:9
-automatic_crop: true
-subtitle_fit: false
-
-[shader.nls.vertical]
+<p>NLS-V reuses the established one-axis GLSL hook in its vertical direction and the currently selected 16:9 viewport target. It does not create or require an NLS-specific viewport. VP first removes trusted encoded bars as part of NLS; for a 2.39:1 active picture, this example then permits only the minimum additional picture crop needed to hold the remaining vertical mapping to 1.22x.</p>
+<pre data-ini-example="shader-nls-vertical">[shader.nls.vertical]
 shader_type: nls
 label: NLS-V
 stage: pre_resize
