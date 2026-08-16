@@ -60,6 +60,16 @@ active-picture crop, bounded additional crop, bound hook values, installed
 hook count, and render success. A real WARP readback test proves the existing
 GLSL vertical path changes only Y pixels and preserves X.
 
+Final QA deployment checkpoint: the correction is committed as `cf2d8fc`.
+The clean x64 Release rebuild reported `VERSION_DIRTY=false`; all 45 focused
+NLS/GLSL/configuration tests passed. The matched deployment hashes are
+`30AF5CD5...E4245C` for `VideoProcessor.exe` and
+`462C27FC...A385E` for `VideoProcessorVPRenderer.dll`. The corrected example
+config contains only NLS+ and NLS-V shader members and no NLS-specific
+viewport. The active user config was not modified. The replaced files are
+recoverable from
+`C:\Videoprocessor\vp\backups\vp0089-vp0131-qa-20260815-214708`.
+
 ## User story
 
 As an operator with a fixed 16:9 screen, I want an opt-in NLS-V profile for

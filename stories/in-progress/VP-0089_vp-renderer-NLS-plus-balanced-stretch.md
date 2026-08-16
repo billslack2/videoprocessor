@@ -40,6 +40,11 @@ Change-only diagnostics now report the bound dynamic values, expected X/Y
 centre scales, hook count, crops, render result, and detector/presentation
 geometry. No viewport profile or renderer is created by NLS+.
 
+QA fix checkpoint: committed as `cf2d8fc`. A clean x64 Release rebuild reported
+`VERSION_DIRTY=false`, and the final focused run passed all 45 selected
+NLS/GLSL/configuration tests. The matched EXE and VP Renderer DLL were deployed
+and SHA-256 verified. Live picture-quality acceptance remains open.
+
 Deployment checkpoint: the clean `847c865` executable/VP Renderer DLL pair,
 Config binaries, `NLSPlus.glsl`, documentation, release manifest, demo config,
 and minimally edited active config were installed at `C:\Videoprocessor\vp`.
