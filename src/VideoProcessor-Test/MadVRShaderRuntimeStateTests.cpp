@@ -10,6 +10,7 @@
 #include <fstream>
 #include <iterator>
 #include <map>
+#include <utility>
 
 #pragma comment(lib, "d3dcompiler.lib")
 
@@ -325,31 +326,42 @@ namespace VideoProcessorTest
 
 			for (const bool sourceWider : { false, true })
 				for (const double ratio : { 1.0, 1.321875, 1.5 })
-					for (const double balance : { 0.0, 0.5, 1.0 })
+					for (const double strength : { 0.0, 0.8, 1.0 })
+						for (const double balance : { 0.0, 0.25, 0.5, 1.0 })
 					{
+						const double requestedBalance = balance * strength;
+						const double balanceLimit = ratio <= 1.000001 ? 1.0 :
+							std::log(1.08) / std::log(ratio);
+						const double effectiveBalance = std::min(
+							requestedBalance, balanceLimit);
 						const double q = sourceWider ? 1.0 / ratio : ratio;
 						const double xExponent = sourceWider ?
-							balance : 1.0 - balance;
+							effectiveBalance : 1.0 - effectiveBalance;
 						const double yExponent = sourceWider ?
-							balance - 1.0 : -balance;
+							effectiveBalance - 1.0 : -effectiveBalance;
 						const double xScale = std::pow(q, xExponent);
 						const double yScale = std::pow(q, yExponent);
 						Assert::AreEqual(q, xScale / yScale, 0.000001);
-						if (!sourceWider && balance == 0.0)
+						Assert::IsTrue(std::pow(ratio, effectiveBalance) <=
+							1.080001);
+						if (!sourceWider &&
+							(balance == 0.0 || strength == 0.0))
 						{
 							Assert::AreEqual(ratio, xScale, 0.000001);
 							Assert::AreEqual(1.0, yScale, 0.000001);
 						}
 
 						for (const bool protectedGeometry : { false, true })
-							for (const double scale : { xScale, yScale })
+							for (const auto& axis : {
+								std::pair<double, double>{ xScale, 0.35 },
+								std::pair<double, double>{ yScale, 0.25 } })
 							{
 								double previous = 0.0;
 								for (int sample = 0; sample <= 10000; ++sample)
 								{
 									const double radius = sample / 10000.0;
-									const double mapped = mapRadius(radius, scale,
-										2.0, protectedGeometry, 0.35);
+									const double mapped = mapRadius(radius, axis.first,
+										2.0, protectedGeometry, axis.second);
 									Assert::IsTrue(std::isfinite(mapped));
 									Assert::IsTrue(mapped >= -0.000001 &&
 										mapped <= 1.000001);

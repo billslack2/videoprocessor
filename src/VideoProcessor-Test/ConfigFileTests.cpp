@@ -2746,7 +2746,10 @@ namespace VideoProcessorTest
 					"[shader.nls.plus]\nshortcut: b\n"
 					"shader_type: nls\n"
 					"glsl_file: NLSPlus.glsl\n"
-					"axis_balance: 0.5\n"
+					"axis_balance: 0.25\n"
+					"max_center_zoom: 1.08\n"
+					"horizontal_center_protection: 0.35\n"
+					"vertical_center_protection: 0.25\n"
 					"aspect_direction: wider_only\n"
 					"vprenderer_max_crop_percent: 6\n"
 					"vprenderer_crop_preference: minimize_distortion\n";
@@ -2774,8 +2777,48 @@ namespace VideoProcessorTest
 			Assert::AreEqual(static_cast<int>(
 				NlsPresentationCropPreference::MINIMIZE_DISTORTION),
 				static_cast<int>(selection.front().vpRendererCropPreference));
-			Assert::AreEqual("0.5",
-				selection.front().parameters.at("axis_balance").c_str());
+			Assert::AreEqual(0.25, std::stod(selection.front().parameters.at(
+				"axis_balance")), 0.000001);
+			Assert::AreEqual(1.08, std::stod(selection.front().parameters.at(
+				"max_center_zoom")), 0.000001);
+			Assert::AreEqual(0.35, std::stod(selection.front().parameters.at(
+				"horizontal_center_protection")), 0.000001);
+			Assert::AreEqual(0.25, std::stod(selection.front().parameters.at(
+				"vertical_center_protection")), 0.000001);
+			DeleteFileA(path.c_str());
+		}
+
+		TEST_METHOD(Vp0089NlsPlusNewParametersHaveBackwardCompatibleDefaults)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(
+				ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) +
+				"VideoProcessor-vp0089-nls-plus-upgrade.cfg";
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[shader.nls]\nshortcut: n\n"
+					"[shader.nls.plus]\nshortcut: b\n"
+					"shader_type: nls\n"
+					"glsl_file: NLSPlus.glsl\n"
+					"axis_balance: 0.5\n";
+			}
+
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			std::string error;
+			std::vector<ConfiguredShaderRule> selection;
+			Assert::IsTrue(MadVRShaderLoader::ResolveConfiguredRuleSelection(
+				config, "@shader-key:b", ShaderRendererBackend::LIBPLACEBO,
+				selection, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			Assert::AreEqual(static_cast<size_t>(1), selection.size());
+			Assert::AreEqual(1.08, std::stod(selection.front().parameters.at(
+				"max_center_zoom")), 0.000001);
+			Assert::AreEqual(0.35, std::stod(selection.front().parameters.at(
+				"horizontal_center_protection")), 0.000001);
+			Assert::AreEqual(0.25, std::stod(selection.front().parameters.at(
+				"vertical_center_protection")), 0.000001);
 			DeleteFileA(path.c_str());
 		}
 
@@ -2800,6 +2843,9 @@ namespace VideoProcessorTest
 				Assert::IsFalse(ShaderConfigValidation::Validate(config, error));
 			};
 			rejects("axis_balance: 1.01");
+			rejects("max_center_zoom: 1.251");
+			rejects("horizontal_center_protection: 0.451");
+			rejects("vertical_center_protection: -0.001");
 			rejects("aspect_direction: sideways");
 			rejects("vprenderer_max_crop_percent: 10.01");
 			rejects("vprenderer_crop_preference: automatic");

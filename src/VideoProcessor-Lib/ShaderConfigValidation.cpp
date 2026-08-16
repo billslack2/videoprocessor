@@ -35,8 +35,11 @@ namespace
 			value == "veryhigh";
 		if (name == "strength") return Bounded(raw, 0.0, 1.0);
 		if (name == "center_protection") return Bounded(raw, 0.0, 0.45);
+		if (name == "horizontal_center_protection" ||
+			name == "vertical_center_protection") return Bounded(raw, 0.0, 0.45);
 		if (name == "curve") return Bounded(raw, 0.5, 4.0);
 		if (name == "axis_balance") return Bounded(raw, 0.0, 1.0);
+		if (name == "max_center_zoom") return Bounded(raw, 1.0, 1.25);
 		return false;
 	}
 
@@ -139,7 +142,9 @@ bool ShaderConfigValidation::Validate(const ConfigFile& config,
 		{
 			for (const char* rawName :
 				{ "strength", "geometry", "center_protection", "curve", "quality",
-				  "axis_balance" })
+				  "axis_balance", "max_center_zoom",
+				  "horizontal_center_protection",
+				  "vertical_center_protection" })
 			{
 				const std::string name(rawName), aliasName = "param_" + name;
 				const auto typed = values->find(name), alias = values->find(aliasName);

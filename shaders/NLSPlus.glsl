@@ -73,29 +73,47 @@ float nls_plus_map_coordinate(float coordinate, float center_scale,
 
 vec4 hook()
 {
+    // NLS+ strength controls how much correction moves to the complementary
+    // axis. It never weakens the total aspect correction: the two centre
+    // slopes always retain the quotient required to preserve centre geometry.
     float strength = clamp(float({{strength}}), 0.0, 1.0);
     float curve = clamp(float({{curve}}), 1.0, 2.9);
     float ratio = clamp(stretch_ratio, 1.0, 1.5);
-    float balance = clamp(float({{axis_balance}}), 0.0, 1.0);
+    float requested_balance =
+        clamp(float({{axis_balance}}), 0.0, 1.0) * strength;
+    float max_center_zoom =
+        clamp(float({{max_center_zoom}}), 1.0, 1.25);
     bool source_wider = warp_axis >= 0.5;
     int geometry = int(clamp(float({{geometry}}), 0.0, 1.0));
-    float center_protection =
-        clamp(float({{center_protection}}), 0.0, 0.45);
+    float horizontal_center_protection =
+        clamp(float({{horizontal_center_protection}}), 0.0, 0.45);
+    float vertical_center_protection =
+        clamp(float({{vertical_center_protection}}), 0.0, 0.45);
+
+    // Sharing correction between axes creates uniform centre zoom. Bound that
+    // zoom independently of the input ratio so aggressive aspect changes
+    // automatically fall back toward the established one-axis map.
+    float ratio_log = log(max(ratio, 1.000001));
+    float balance_limit = ratio <= 1.000001 ? 1.0 :
+        log(max_center_zoom) / ratio_log;
+    float balance = min(requested_balance,
+        clamp(balance_limit, 0.0, 1.0));
 
     // q is target/source aspect. The inverse-map centre slopes must satisfy
     // x_slope / y_slope == q to cancel the presentation layer's linear aspect
-    // change at full strength. Balance zero reproduces the established selected
-    // axis; 0.5 splits the correction equally in logarithmic aspect space.
+    // change at every strength. Balance zero reproduces the established
+    // selected axis; 0.5 splits the correction equally in logarithmic aspect
+    // space when the centre-zoom limit permits it.
     float q = source_wider ? 1.0 / ratio : ratio;
     float x_exponent = source_wider ? balance : 1.0 - balance;
     float y_exponent = source_wider ? balance - 1.0 : -balance;
-    float x_scale = pow(q, x_exponent * strength);
-    float y_scale = pow(q, y_exponent * strength);
+    float x_scale = pow(q, x_exponent);
+    float y_scale = pow(q, y_exponent);
 
     vec2 sample_pos = HOOKED_pos;
     sample_pos.x = nls_plus_map_coordinate(sample_pos.x, x_scale,
-        curve, geometry, center_protection);
+        curve, geometry, horizontal_center_protection);
     sample_pos.y = nls_plus_map_coordinate(sample_pos.y, y_scale,
-        curve, geometry, center_protection);
+        curve, geometry, vertical_center_protection);
     return HOOKED_tex(clamp(sample_pos, vec2(0.0), vec2(1.0)));
 }

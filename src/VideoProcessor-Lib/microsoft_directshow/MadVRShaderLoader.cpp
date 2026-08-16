@@ -830,6 +830,12 @@ bool NormalizeNlsSetting(const std::string& name,
 		minimum = 0.0;
 		maximum = 0.45;
 	}
+	else if (name == "horizontal_center_protection" ||
+		name == "vertical_center_protection")
+	{
+		minimum = 0.0;
+		maximum = 0.45;
+	}
 	else if (name == "curve")
 	{
 		minimum = 0.5;
@@ -839,6 +845,11 @@ bool NormalizeNlsSetting(const std::string& name,
 	{
 		minimum = 0.0;
 		maximum = 1.0;
+	}
+	else if (name == "max_center_zoom")
+	{
+		minimum = 1.0;
+		maximum = 1.25;
 	}
 	else
 	{
@@ -928,9 +939,24 @@ void LoadTypedNlsSettings(const ConfigFile& config,
 	for (const auto& setting : defaults)
 		rule.parameters.emplace(setting.first, setting.second);
 
+	// Keep existing NLS+ profiles usable when the bundled shader gains tuning
+	// controls. These defaults are deliberately filename-scoped so ordinary
+	// NLS, NLS-V, and user shaders retain their exact parameter contracts.
+	const auto glslFile = settings->find("glsl_file");
+	if (glslFile != settings->end() &&
+		ConfigFile::NormalizeName(std::filesystem::u8path(
+			ConfigFile::Trim(glslFile->second)).filename().u8string()) ==
+		"nlsplus.glsl")
+	{
+		rule.parameters.emplace("max_center_zoom", "1.08");
+		rule.parameters.emplace("horizontal_center_protection", "0.35");
+		rule.parameters.emplace("vertical_center_protection", "0.25");
+	}
+
 	for (const char* rawName :
 		{ "strength", "geometry", "center_protection", "curve", "quality",
-		  "axis_balance" })
+		  "axis_balance", "max_center_zoom",
+		  "horizontal_center_protection", "vertical_center_protection" })
 	{
 		const std::string name(rawName);
 		const std::string alias = "param_" + name;
@@ -2089,7 +2115,10 @@ static bool ValidateConfiguredShadersWithRuntimeParser(const ConfigFile& config,
 		if (type == "nls")
 		{
 			for (const char* rawName :
-				{ "strength", "geometry", "center_protection", "curve", "quality" })
+				{ "strength", "geometry", "center_protection", "curve", "quality",
+				  "axis_balance", "max_center_zoom",
+				  "horizontal_center_protection",
+				  "vertical_center_protection" })
 			{
 				const std::string name(rawName);
 				const std::string alias = "param_" + name;

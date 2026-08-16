@@ -174,16 +174,19 @@ namespace
 	}
 
 	const pl_hook* ParseBundledNlsShader(pl_gpu gpu, const char* fileName,
-		double axisBalance)
+		double axisBalance, double strength = 1.0)
 	{
 		std::string source = LoadBundledShader(fileName);
 		Assert::IsFalse(source.empty(), L"Bundled NLS shader was not found");
 		const std::map<std::string, std::string> parameters = {
-			{ "strength", "1.0" },
+			{ "strength", std::to_string(strength) },
 			{ "curve", "2.0" },
-			{ "geometry", "0" },
-			{ "center_protection", "0.0" },
-			{ "axis_balance", std::to_string(axisBalance) }
+			{ "geometry", "1" },
+			{ "center_protection", "0.35" },
+			{ "axis_balance", std::to_string(axisBalance) },
+			{ "max_center_zoom", "1.08" },
+			{ "horizontal_center_protection", "0.35" },
+			{ "vertical_center_protection", "0.25" }
 		};
 		for (const auto& parameter : parameters)
 			ReplaceShaderToken(source, parameter.first, parameter.second);
@@ -770,7 +773,7 @@ namespace VideoProcessorTest
 				fixture.RenderCoordinateField(nullptr);
 
 			const pl_hook* balanced = ParseBundledNlsShader(
-				fixture.Gpu(), "NLSPlus.glsl", 0.5);
+				fixture.Gpu(), "NLSPlus.glsl", 0.25, 0.8);
 			BindNlsShader(balanced, 1.32f, 0.0f);
 			const std::vector<RgbaPixel> balancedPixels =
 				fixture.RenderCoordinateField(balanced);

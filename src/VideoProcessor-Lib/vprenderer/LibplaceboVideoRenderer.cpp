@@ -5593,20 +5593,39 @@ struct LibplaceboVideoRenderer::Impl
 
 		double xCenterScale = 1.0;
 		double yCenterScale = 1.0;
+		double requestedBalance = 0.0;
+		double effectiveBalance = 0.0;
+		double maximumCenterZoom = 1.08;
 		const auto configuredBalance = nlsRule.parameters.find("axis_balance");
 		if (configuredBalance != nlsRule.parameters.end())
 		{
 			double balance = 0.5;
 			ParseDouble(configuredBalance->second, balance);
 			balance = std::max(0.0, std::min(1.0, balance));
+			const auto configuredMaximumCenterZoom =
+				nlsRule.parameters.find("max_center_zoom");
+			if (configuredMaximumCenterZoom != nlsRule.parameters.end())
+				ParseDouble(configuredMaximumCenterZoom->second,
+					maximumCenterZoom);
+			maximumCenterZoom = std::max(1.0,
+				std::min(1.25, maximumCenterZoom));
+			requestedBalance = balance * strength;
+			effectiveBalance = requestedBalance;
+			if (decision.stretchRatio > 1.000001)
+			{
+				const double balanceLimit = std::log(maximumCenterZoom) /
+					std::log(decision.stretchRatio);
+				effectiveBalance = std::min(effectiveBalance,
+					std::max(0.0, std::min(1.0, balanceLimit)));
+			}
 			const double q = decision.verticalWarp
 				? 1.0 / decision.stretchRatio : decision.stretchRatio;
 			const double xExponent = decision.verticalWarp
-				? balance : 1.0 - balance;
+				? effectiveBalance : 1.0 - effectiveBalance;
 			const double yExponent = decision.verticalWarp
-				? balance - 1.0 : -balance;
-			xCenterScale = std::pow(q, xExponent * strength);
-			yCenterScale = std::pow(q, yExponent * strength);
+				? effectiveBalance - 1.0 : -effectiveBalance;
+			xCenterScale = std::pow(q, xExponent);
+			yCenterScale = std::pow(q, yExponent);
 		}
 		else
 		{
@@ -5629,7 +5648,7 @@ struct LibplaceboVideoRenderer::Impl
 			return;
 		lastNlsHookBindingPolicy = policy.str();
 		DebugLog::Log(
-			"Alpha NLS hook binding: shader=%s parameters=%d float_parameters=%s stretch_ratio=%.5f warp_axis=%.1f axis=%s strength=%.3f expected_center_scale_x=%.5f expected_center_scale_y=%.5f",
+			"Alpha NLS hook binding: shader=%s parameters=%d float_parameters=%s stretch_ratio=%.5f warp_axis=%.1f axis=%s strength=%.3f requested_balance=%.5f effective_balance=%.5f max_center_zoom=%.5f expected_center_scale_x=%.5f expected_center_scale_y=%.5f",
 			activeNlsShaderPath.empty() ? nlsRule.filename.c_str() :
 				activeNlsShaderPath.c_str(),
 			binding.parameterCount,
@@ -5637,7 +5656,8 @@ struct LibplaceboVideoRenderer::Impl
 				binding.floatParameterNames.c_str(),
 			binding.stretchRatio, binding.warpAxis,
 			decision.verticalWarp ? "vertical" : "horizontal",
-			strength, xCenterScale, yCenterScale);
+			strength, requestedBalance, effectiveBalance, maximumCenterZoom,
+			xCenterScale, yCenterScale);
 	}
 
 	bool EnsureNlsHook(const NlsMappingDecision& decision)

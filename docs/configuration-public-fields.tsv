@@ -100,6 +100,9 @@ shader.<group>.<member>.tolerance_percent	shader-nls-tolerance-percent	Shader NL
 shader.<group>.<member>.max_stretch_ratio	shader-nls-max-stretch-ratio	Shader NLS	no
 shader.<group>.<member>.aspect_direction	shader-nls-aspect-direction	Shader NLS	no
 shader.<group>.<member>.axis_balance	shader-nls-axis-balance	Shader NLS	no
+shader.<group>.<member>.max_center_zoom	shader-nls-max-center-zoom	Shader NLS	no
+shader.<group>.<member>.horizontal_center_protection	shader-nls-horizontal-center-protection	Shader NLS	no
+shader.<group>.<member>.vertical_center_protection	shader-nls-vertical-center-protection	Shader NLS	no
 shader.<group>.<member>.vprenderer_max_crop_percent	shader-nls-vprenderer-max-crop	Shader NLS	no
 shader.<group>.<member>.vprenderer_crop_preference	shader-nls-vprenderer-crop-preference	Shader NLS	no
 actions.<name>.enabled	action-enabled	Event action	no
