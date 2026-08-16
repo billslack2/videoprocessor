@@ -1856,7 +1856,8 @@ QWidget* ConfigEditorWindow::createShell()
     pages_->addWidget(createLldvPage());
     pages_->addWidget(createShortcutsPage());
     pages_->addWidget(createActionsPage());
-    pages_->addWidget(createShadersPage());
+    pages_->addWidget(createStandardShadersPage());
+    pages_->addWidget(createNlsShadersPage());
     pages_->addWidget(createLogsPage());
     pages_->addWidget(createInputProcessingPage(QStringLiteral("VP Renderer: Input"),
         QStringLiteral("Override the General input policy for VP Renderer, or inherit it."),
@@ -1867,20 +1868,6 @@ QWidget* ConfigEditorWindow::createShell()
 
     auto* navGroup = new QButtonGroup(root);
     navGroup->setExclusive(true);
-    const std::vector<std::pair<QString, int>> sharedNavigation = {
-        { QStringLiteral("General"), 0 }, { QStringLiteral("Queue"), 1 },
-        { QStringLiteral("LLDV"), 5 }, { QStringLiteral("Shaders"), 8 },
-        { QStringLiteral("Actions"), 7 },
-        { QStringLiteral("Shortcuts"), 6 }, { QStringLiteral("Logs"), 9 }
-    };
-    for (const auto& entry : sharedNavigation)
-    {
-        QPushButton* button = addNavigationButton(entry.first, entry.second);
-        navGroup->addButton(button, entry.second);
-        navLayout->addWidget(button);
-        if (entry.second == 0) button->setChecked(true);
-    }
-
     auto addRendererGroup = [this, navLayout, navGroup](const QString& title,
         const std::vector<std::pair<QString, int>>& entries)
     {
@@ -1918,12 +1905,28 @@ QWidget* ConfigEditorWindow::createShell()
             header->setArrowType(expanded ? Qt::DownArrow : Qt::RightArrow);
         });
     };
+    const auto addLeaf = [this, navLayout, navGroup](const QString& title, int page)
+    {
+        QPushButton* button = addNavigationButton(title, page);
+        navGroup->addButton(button, page);
+        navLayout->addWidget(button);
+        if (page == 0) button->setChecked(true);
+    };
+    addLeaf(QStringLiteral("General"), 0);
+    addLeaf(QStringLiteral("Queue"), 1);
+    addLeaf(QStringLiteral("LLDV"), 5);
+    addRendererGroup(QStringLiteral("Shaders"), {
+        { QStringLiteral("Standard"), 8 }, { QStringLiteral("NLS"), 9 }
+    });
+    addLeaf(QStringLiteral("Actions"), 7);
+    addLeaf(QStringLiteral("Shortcuts"), 6);
+    addLeaf(QStringLiteral("Logs"), 10);
     addRendererGroup(QStringLiteral("VP Renderer"), {
         { QStringLiteral("Rendering"), 2 }, { QStringLiteral("Screen Config"), 4 },
-        { QStringLiteral("Input Processing"), 10 }
+        { QStringLiteral("Input Processing"), 11 }
     });
     addRendererGroup(QStringLiteral("DirectShow"), {
-        { QStringLiteral("General"), 3 }, { QStringLiteral("Input Processing"), 11 }
+        { QStringLiteral("General"), 3 }, { QStringLiteral("Input Processing"), 12 }
     });
     navLayout->addStretch();
     centerLayout->addWidget(navigation_);
@@ -3956,7 +3959,262 @@ QWidget* ConfigEditorWindow::createLldvPage()
             content));
 }
 
-QWidget* ConfigEditorWindow::createShadersPage()
+QWidget* ConfigEditorWindow::createStandardShadersPage()
+{
+    struct State { QString section; bool loading = false; };
+    auto state = std::make_shared<State>();
+    auto* splitter = new ResponsiveSplitter;
+
+    auto* list = new QListWidget;
+    list->setObjectName(QStringLiteral("config.shader.standard.items"));
+    list->setAccessibleName(QStringLiteral("Standard shaders"));
+    list->setAccessibleDescription(QStringLiteral(
+        "Configured custom shader effects outside the specialized NLS group."));
+
+    QStringList sections;
+    if (document_)
+        for (const std::string& raw : document_->SectionNamesWithPrefix("shader"))
+        {
+            const QString section = QString::fromStdString(raw);
+            const bool nlsRoot = section.compare(QStringLiteral("shader.nls"),
+                Qt::CaseInsensitive) == 0;
+            const bool nlsMember = section.startsWith(QStringLiteral("shader.nls."),
+                Qt::CaseInsensitive) &&
+                value(section, QStringLiteral("shader_type")).compare(
+                    QStringLiteral("nls"), Qt::CaseInsensitive) == 0;
+            const bool effect = !value(section, QStringLiteral("shader_type")).isEmpty() ||
+                !value(section, QStringLiteral("hlsl_file")).isEmpty() ||
+                !value(section, QStringLiteral("glsl_file")).isEmpty();
+            if (!nlsRoot && !nlsMember && effect) sections.push_back(section);
+        }
+    for (const QString& section : sections)
+    {
+        QString shown = value(section, QStringLiteral("label"));
+        if (shown.isEmpty()) shown = displayName(section, QStringLiteral("shader"));
+        auto* item = new QListWidgetItem(shown);
+        item->setData(Qt::UserRole, section);
+        item->setToolTip(QStringLiteral("[%1]").arg(section));
+        item->setSizeHint(QSize(0, 36));
+        list->addItem(item);
+    }
+
+    auto* selection = new QWidget;
+    auto* selectionLayout = new QVBoxLayout(selection);
+    selectionLayout->setContentsMargins(0, 0, 0, 0);
+    selectionLayout->addWidget(list, 1);
+    if (sections.isEmpty())
+        selectionLayout->addWidget(helpLabel(QStringLiteral(
+            "No standard/custom shader effects are configured. Existing shader groups are preserved.")));
+
+    auto* details = new QWidget;
+    auto* layout = new QVBoxLayout(details);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(10);
+    auto* title = new QLabel(QStringLiteral("Select a shader"));
+    title->setProperty("cardTitle", true);
+    layout->addWidget(title);
+    auto* sectionName = helpLabel(QString());
+    sectionName->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    layout->addWidget(sectionName);
+
+    auto* form = new QFormLayout;
+    auto* label = new QLineEdit;
+    auto* shortcut = new QLineEdit;
+    auto* type = new QComboBox;
+    type->addItem(QStringLiteral("Custom"), QStringLiteral("custom"));
+    type->addItem(QStringLiteral("NLS"), QStringLiteral("nls"));
+    auto* stage = new QComboBox;
+    stage->addItem(QStringLiteral("Before resize"), QStringLiteral("pre_resize"));
+    stage->addItem(QStringLiteral("After resize"), QStringLiteral("post_resize"));
+    auto* order = new QLineEdit;
+    order->setValidator(new QIntValidator(order));
+    auto* hlsl = new QLineEdit;
+    auto* glsl = new QLineEdit;
+    label->setObjectName(QStringLiteral("config.shader.standard.label"));
+    shortcut->setObjectName(QStringLiteral("config.shader.standard.shortcut"));
+    type->setObjectName(QStringLiteral("config.shader.standard.shader_type"));
+    stage->setObjectName(QStringLiteral("config.shader.standard.stage"));
+    order->setObjectName(QStringLiteral("config.shader.standard.order"));
+    hlsl->setObjectName(QStringLiteral("config.shader.standard.hlsl_file"));
+    glsl->setObjectName(QStringLiteral("config.shader.standard.glsl_file"));
+    form->addRow(QStringLiteral("Display name"), label);
+    form->addRow(QStringLiteral("Shortcut key"), shortcut);
+    form->addRow(QStringLiteral("Shader type"), type);
+    form->addRow(QStringLiteral("Stage"), stage);
+    form->addRow(QStringLiteral("Order"), order);
+    form->addRow(QStringLiteral("DirectShow shader file"), hlsl);
+    form->addRow(QStringLiteral("VP Renderer shader file"), glsl);
+    layout->addLayout(form);
+
+    auto* useRule = new QCheckBox(QStringLiteral("Enable with a rule"));
+    auto* rule = new QPlainTextEdit;
+    rule->setObjectName(QStringLiteral("config.shader.standard.when"));
+    rule->setMaximumHeight(90);
+    layout->addWidget(useRule);
+    layout->addWidget(rule);
+
+    auto* parameters = new QTableWidget(0, 2);
+    parameters->setObjectName(QStringLiteral("config.shader.standard.parameters"));
+    parameters->setHorizontalHeaderLabels({ QStringLiteral("Parameter"), QStringLiteral("Value") });
+    parameters->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+    parameters->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
+    parameters->verticalHeader()->setVisible(false);
+    parameters->setAccessibleName(QStringLiteral("Standard shader parameters"));
+    auto* parameterButtons = new QHBoxLayout;
+    auto* addParameter = new QPushButton(QStringLiteral("+ Add parameter"));
+    auto* removeParameter = new QPushButton(QStringLiteral("Remove selected"));
+    parameterButtons->addWidget(addParameter);
+    parameterButtons->addWidget(removeParameter);
+    parameterButtons->addStretch();
+    layout->addWidget(new QLabel(QStringLiteral("Shader parameters")));
+    layout->addWidget(helpLabel(QStringLiteral(
+        "Implementation-specific values are saved on the selected shader without changing its group structure.")));
+    layout->addWidget(parameters);
+    layout->addLayout(parameterButtons);
+    layout->addStretch();
+
+    const auto storeText = [this, state](const char* key, const QString& text)
+    {
+        if (state->loading || state->section.isEmpty() || !document_) return;
+        if (text.trimmed().isEmpty()) document_->RemoveKnown(state->section.toStdString(), key);
+        else document_->SetKnown(state->section.toStdString(), key,
+            text.trimmed().toLocal8Bit().constData());
+        markDirty();
+    };
+    for (const auto& field : std::vector<std::pair<QLineEdit*, const char*>>{
+        { label, "label" }, { shortcut, "shortcut" }, { order, "order" },
+        { hlsl, "hlsl_file" }, { glsl, "glsl_file" } })
+        connect(field.first, &QLineEdit::textChanged, this,
+            [storeText, field](const QString& text) { storeText(field.second, text); });
+    for (const auto& field : std::vector<std::pair<QComboBox*, const char*>>{
+        { type, "shader_type" }, { stage, "stage" } })
+        connect(field.first, &QComboBox::currentIndexChanged, this,
+            [this, state, field](int index)
+            {
+                if (state->loading || state->section.isEmpty() || !document_ || index < 0) return;
+                document_->SetKnown(state->section.toStdString(), field.second,
+                    field.first->itemData(index).toString().toLocal8Bit().constData());
+                markDirty();
+            });
+    connect(useRule, &QCheckBox::toggled, this, [this, state, rule](bool enabled)
+    {
+        rule->setVisible(enabled);
+        if (state->loading || state->section.isEmpty() || !document_) return;
+        if (!enabled) document_->RemoveKnown(state->section.toStdString(), "when");
+        markDirty();
+    });
+    connect(rule, &QPlainTextEdit::textChanged, this, [this, state, rule]
+    {
+        if (state->loading || state->section.isEmpty() || !document_) return;
+        QString text = rule->toPlainText().trimmed();
+        text.replace(QRegularExpression(QStringLiteral("[\\r\\n]+")), QStringLiteral(" "));
+        if (text.isEmpty()) document_->RemoveKnown(state->section.toStdString(), "when");
+        else document_->SetKnown(state->section.toStdString(), "when", text.toLocal8Bit().constData());
+        markDirty();
+    });
+    connect(parameters, &QTableWidget::cellChanged, this,
+        [this, state, parameters](int row, int column)
+        {
+            if (state->loading || state->section.isEmpty() || !document_ || column != 1) return;
+            auto* key = parameters->item(row, 0);
+            auto* setting = parameters->item(row, 1);
+            if (!key || !setting) return;
+            document_->SetKnown(state->section.toStdString(), key->text().toLocal8Bit().constData(),
+                setting->text().toLocal8Bit().constData());
+            markDirty();
+        });
+    connect(addParameter, &QPushButton::clicked, this, [this, state, parameters]
+    {
+        if (state->section.isEmpty() || !document_) return;
+        bool ok = false;
+        const QString key = QInputDialog::getText(this, QStringLiteral("Add shader parameter"),
+            QStringLiteral("Parameter name"), QLineEdit::Normal, {}, &ok).trimmed();
+        if (!ok || key.isEmpty() || isShaderStructuralKey(key) ||
+            !QRegularExpression(QStringLiteral("^[A-Za-z_][A-Za-z0-9_.-]*$")).match(key).hasMatch())
+            return;
+        const QString setting = QInputDialog::getText(this, QStringLiteral("Add shader parameter"),
+            QStringLiteral("Value"), QLineEdit::Normal, {}, &ok);
+        if (!ok) return;
+        document_->SetKnown(state->section.toStdString(), key.toLocal8Bit().constData(),
+            setting.toLocal8Bit().constData());
+        state->loading = true;
+        const int row = parameters->rowCount();
+        parameters->insertRow(row);
+        auto* keyItem = new QTableWidgetItem(key);
+        keyItem->setFlags(keyItem->flags() & ~Qt::ItemIsEditable);
+        parameters->setItem(row, 0, keyItem);
+        parameters->setItem(row, 1, new QTableWidgetItem(setting));
+        state->loading = false;
+        markDirty();
+    });
+    connect(removeParameter, &QPushButton::clicked, this, [this, state, parameters]
+    {
+        const int row = parameters->currentRow();
+        if (state->section.isEmpty() || !document_ || row < 0) return;
+        const QString key = parameters->item(row, 0)->text();
+        document_->RemoveKnown(state->section.toStdString(), key.toLocal8Bit().constData());
+        state->loading = true;
+        parameters->removeRow(row);
+        state->loading = false;
+        markDirty();
+    });
+
+    auto load = [this, state, details, title, sectionName, label, shortcut, type, stage, order,
+        hlsl, glsl, useRule, rule, parameters](QListWidgetItem* item)
+    {
+        state->loading = true;
+        state->section = item ? item->data(Qt::UserRole).toString() : QString();
+        details->setEnabled(item != nullptr);
+        title->setText(item ? item->text() : QStringLiteral("No standard shaders configured"));
+        sectionName->setText(item ? QStringLiteral("[%1]").arg(state->section) : QString());
+        const auto setCombo = [this, state](QComboBox* combo, const QString& key, const QString& fallback)
+        {
+            const QString wanted = value(state->section, key, fallback);
+            int index = combo->findData(wanted, Qt::UserRole, Qt::MatchFixedString);
+            if (index < 0) { combo->addItem(friendlyChoiceLabel(wanted), wanted); index = combo->count() - 1; }
+            combo->setCurrentIndex(index);
+        };
+        label->setText(value(state->section, QStringLiteral("label")));
+        shortcut->setText(canonicalShortcutText(value(state->section, QStringLiteral("shortcut"))));
+        setCombo(type, QStringLiteral("shader_type"), QStringLiteral("custom"));
+        setCombo(stage, QStringLiteral("stage"), QStringLiteral("pre_resize"));
+        order->setText(value(state->section, QStringLiteral("order")));
+        hlsl->setText(value(state->section, QStringLiteral("hlsl_file")));
+        glsl->setText(value(state->section, QStringLiteral("glsl_file")));
+        const QString expression = value(state->section, QStringLiteral("when"));
+        useRule->setChecked(!expression.isEmpty());
+        rule->setPlainText(expression);
+        rule->setVisible(!expression.isEmpty());
+        parameters->setRowCount(0);
+        if (document_ && !state->section.isEmpty())
+            for (const auto& setting : document_->SectionSettings(state->section.toStdString()))
+            {
+                const QString key = QString::fromLocal8Bit(setting.first.c_str());
+                if (isShaderStructuralKey(key)) continue;
+                const int row = parameters->rowCount();
+                parameters->insertRow(row);
+                auto* keyItem = new QTableWidgetItem(key);
+                keyItem->setFlags(keyItem->flags() & ~Qt::ItemIsEditable);
+                parameters->setItem(row, 0, keyItem);
+                parameters->setItem(row, 1,
+                    new QTableWidgetItem(QString::fromLocal8Bit(setting.second.c_str())));
+            }
+        state->loading = false;
+    };
+    connect(list, &QListWidget::currentItemChanged, this,
+        [load](QListWidgetItem* current) { load(current); });
+    if (list->count()) list->setCurrentRow(0); else load(nullptr);
+
+    splitter->addWidget(createCard(QStringLiteral("Standard shaders"),
+        QStringLiteral("Ordinary custom shader effects, in configuration order."), selection));
+    splitter->addWidget(createCard(QStringLiteral("Shader details"),
+        QStringLiteral("Edit shader files, activation, stage, order, and implementation parameters."), details));
+    splitter->setSizes({ 310, 620 });
+    return createPage(QStringLiteral("Standard"),
+        QStringLiteral("Configure ordinary shaders. NLS modes have their own specialized page."), splitter);
+}
+
+QWidget* ConfigEditorWindow::createNlsShadersPage()
 {
     struct State { QString section; bool loading = false; };
     auto state = std::make_shared<State>();
@@ -4449,7 +4707,7 @@ QWidget* ConfigEditorWindow::createShadersPage()
     splitter->setStretchFactor(0, 0);
     splitter->setStretchFactor(1, 1);
     splitter->setSizes({ 310, 620 });
-    return createPage(QStringLiteral("Shaders"),
+    return createPage(QStringLiteral("NLS"),
         QStringLiteral("Configure included nonlinear stretch (NLS) modes without rewriting custom shader sections."), splitter);
 }
 

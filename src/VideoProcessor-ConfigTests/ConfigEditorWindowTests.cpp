@@ -371,15 +371,30 @@ void testEveryPageRoundTrips()
 
     QStackedWidget* pages = requireControl<QStackedWidget>(window,
         QStringLiteral("settingsPages"));
-    require(pages->count() == 12,
-        "Renderer Input pages were not added as dedicated settings pages");
+    require(pages->count() == 13,
+        "Renderer Input and shader child pages were not added as dedicated settings pages");
     QList<int> inputNavigationTargets;
     for (QPushButton* button : window.findChildren<QPushButton*>())
         if (button->text() == QStringLiteral("Input Processing") && button->property("navChild").toBool())
             inputNavigationTargets.append(button->property("pageIndex").toInt());
     std::sort(inputNavigationTargets.begin(), inputNavigationTargets.end());
-    require(inputNavigationTargets == QList<int>{ 10, 11 },
+    require(inputNavigationTargets == QList<int>{ 11, 12 },
         "Renderer Input navigation entries do not target the dedicated pages");
+    QList<int> shaderNavigationTargets;
+    for (QPushButton* button : window.findChildren<QPushButton*>())
+        if ((button->text() == QStringLiteral("Standard") ||
+             button->text() == QStringLiteral("NLS")) &&
+            button->property("navChild").toBool())
+            shaderNavigationTargets.append(button->property("pageIndex").toInt());
+    std::sort(shaderNavigationTargets.begin(), shaderNavigationTargets.end());
+    require(shaderNavigationTargets == QList<int>{ 8, 9 },
+        "Shader navigation does not expose Standard and NLS as child pages");
+    bool shaderHeaderFound = false;
+    for (QToolButton* header : window.findChildren<QToolButton*>())
+        if (header->property("navSection").toBool() &&
+            header->text() == QStringLiteral("Shaders"))
+            shaderHeaderFound = true;
+    require(shaderHeaderFound, "Shaders is not a collapsible navigation section");
     QWidget* navigation = requireControl<QWidget>(window, QStringLiteral("sidebar"));
     require(navigation->minimumWidth() >= 172,
         "The settings navigation is too narrow for renderer child labels");
