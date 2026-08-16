@@ -4074,6 +4074,8 @@ QWidget* ConfigEditorWindow::createShadersPage()
     glsl->setObjectName(QStringLiteral("config.shader.nls.glsl_file"));
     hlsl->setAccessibleName(QStringLiteral("DirectShow shader file"));
     glsl->setAccessibleName(QStringLiteral("VP Renderer shader file"));
+    hlsl->setPlaceholderText(QStringLiteral("Leave blank when unsupported"));
+    glsl->setPlaceholderText(QStringLiteral("Leave blank when unsupported"));
     advancedForm->addRow(QStringLiteral("Stage"), stage);
     advancedForm->addRow(QStringLiteral("DirectShow shader file"), hlsl);
     advancedForm->addRow(QStringLiteral("VP Renderer shader file"), glsl);
@@ -4349,8 +4351,10 @@ QWidget* ConfigEditorWindow::createShadersPage()
         }
         updateParameterTableHeight();
         loadCombo(stage, QStringLiteral("stage"), QStringLiteral("pre_resize"));
-        hlsl->setText(value(state->section, QStringLiteral("hlsl_file"), QStringLiteral("NLS.hlsl")));
-        glsl->setText(value(state->section, QStringLiteral("glsl_file"), QStringLiteral("NLS.glsl")));
+        // A logical shader member may implement only one renderer. Preserve an
+        // omitted backend file as blank rather than silently substituting NLS.
+        hlsl->setText(value(state->section, QStringLiteral("hlsl_file")));
+        glsl->setText(value(state->section, QStringLiteral("glsl_file")));
         state->loading = false;
     };
     connect(list, &QListWidget::currentItemChanged, this,

@@ -367,6 +367,19 @@ void testEveryPageRoundTrips()
 {
     QTemporaryDir directory;
     const QString path = copyFixture(directory);
+    {
+        QFile file(path);
+        require(file.open(QIODevice::Append),
+            "Cannot add the GLSL-only shader fixture");
+        const QByteArray glslOnlyMember =
+            "\n[shader.nls.plus]\n"
+            "shader_type: nls\n"
+            "label: NLS+\n"
+            "stage: pre_resize\n"
+            "glsl_file: NLSPlus.glsl\n";
+        require(file.write(glslOnlyMember) == glslOnlyMember.size(),
+            "Cannot write the GLSL-only shader fixture");
+    }
     ConfigEditorWindow window(path, 0, true);
 
     QStackedWidget* pages = requireControl<QStackedWidget>(window,
@@ -547,6 +560,9 @@ void testEveryPageRoundTrips()
     require(parameterToggle->isChecked(), "Custom shader parameter disclosure did not expand");
     QTableWidget* parameters = requireControl<QTableWidget>(window,
         QStringLiteral("config.shader.nls.parameters"));
+    require(theme.contains(QStringLiteral("QTableWidget::item:selected")) &&
+        theme.contains(QStringLiteral("background: #173c59")),
+        "Selected shader parameter rows can fall back to the platform light selection color");
     bool changedParameter = false;
     for (int row = 0; row < parameters->rowCount(); ++row)
         if (parameters->item(row, 0) &&
@@ -559,6 +575,22 @@ void testEveryPageRoundTrips()
         }
     require(changedParameter, "Structured shader parameter did not load");
     requireControl<QPushButton>(window, QStringLiteral("config.shader.nls.move_down"))->click();
+
+    int nlsPlusRow = -1;
+    for (int row = 0; row < shaders->count(); ++row)
+        if (shaders->item(row)->text() == QStringLiteral("NLS+"))
+        {
+            nlsPlusRow = row;
+            break;
+        }
+    require(nlsPlusRow >= 0, "NLS+ shader mode did not load");
+    shaders->setCurrentRow(nlsPlusRow);
+    require(requireControl<QLineEdit>(window,
+        QStringLiteral("config.shader.nls.hlsl_file"))->text().isEmpty(),
+        "A GLSL-only shader was given an unintended DirectShow fallback file");
+    require(requireControl<QLineEdit>(window,
+        QStringLiteral("config.shader.nls.glsl_file"))->text() == QStringLiteral("NLSPlus.glsl"),
+        "NLS+ did not retain its VP Renderer implementation");
 
     save(window);
     const QByteArray saved = readBytes(path);

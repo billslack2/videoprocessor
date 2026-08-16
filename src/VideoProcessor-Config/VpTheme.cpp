@@ -240,6 +240,10 @@ QString VpTheme::StyleSheet()
             alternate-background-color: #101c28;
         }
         QTableWidget::item { padding: 5px; }
+        QTableWidget::item:selected {
+            background: #173c59;
+            color: #f4fbff;
+        }
         QHeaderView::section {
             color: #aebfd0;
             background: #142231;
