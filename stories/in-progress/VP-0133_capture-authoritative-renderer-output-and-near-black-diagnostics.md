@@ -40,7 +40,7 @@ renderer conversion difference from DXGI, GPU, HDMI, or display behavior.
 ## Requirements
 
 1. Add a configurable VP action and shortcut for **Capture rendered output**.
-   The shipped default is `Ctrl+Shift+S`. It must use the normal foreground and
+   The shipped default is `Ctrl+Alt+S`. It must use the normal foreground and
    modifier-safe shortcut dispatch; it must not fire while the operator types
    in another application.
 2. The request is one-shot and asynchronous from the UI. It captures the next
@@ -101,7 +101,7 @@ renderer conversion difference from DXGI, GPU, HDMI, or display behavior.
 1. Pressing the configured shortcut once produces exactly one image and one
    metadata file from the next successful frame; holding or auto-repeat does
    not create an uncontrolled capture stream.
-2. The default `Ctrl+Shift+S` works with VP in the foreground and does not fire
+2. The default `Ctrl+Alt+S` works with VP in the foreground and does not fire
    from ordinary background typing. A custom shortcut round-trips through the
    configuration editor and runtime parser.
 3. A known R10 test image containing code values around 0 and 64 round-trips
@@ -141,3 +141,50 @@ renderer conversion difference from DXGI, GPU, HDMI, or display behavior.
 - libplacebo exposes host texture transfer through `pl_tex_download`; the
   Windows VP-owned implementation may instead use an explicitly synchronized
   D3D11 staging copy of the already acquired authoritative backbuffer.
+
+## Implementation and verification record (2026-08-16)
+
+Implemented in VideoProcessor commit `b3e6990` on pushed branch
+`codex/vp0133-renderer-output-capture`, based directly on the freshly fetched
+`origin/v1.2.001-beta` commit `9daf9ab`.
+
+- Added the configurable `capture_rendered_output` action. The default is
+  `Ctrl+Alt+S`; the originally considered `Ctrl+Shift+S` was rejected because
+  it already opens Configuration.
+- Captures the authoritative VP-owned R10 backbuffer and writes an asynchronous
+  WIC 64-bpp RGBA PNG plus JSON sidecar under `screenshots`. The documented
+  reversible mapping is `(r10 << 6) | (r10 >> 4)`; the exact original code is
+  recovered with `r16 >> 6`.
+- The sidecar hashes the tightly packed original R10 samples with SHA-256. This
+  is a stronger identity check for renderer code values than hashing the PNG
+  container, whose encoder metadata and layout are not part of the pixel
+  contract.
+- Metadata records ingress/source semantics, requested and resolved output
+  contract, presenter and swapchain generation, DXGI Check/Set/Check evidence,
+  tone/gamut controls, full-frame min/max/excursions, and explicit near-black
+  buckets. Logs distinguish authoritative-present backbuffer evidence from the
+  compatibility swapchain and explicitly report output-gamma policy fallbacks.
+- Added exhaustive R10-to-16-bit round-trip coverage, near-black bucket tests,
+  and shortcut default/save/reload coverage. The renderer plugin ABI advanced
+  from 8 to 9 so mismatched host/plugin pairs fail cleanly.
+
+Verification used a clean x64 Release rebuild from committed `b3e6990` and
+reported `VERSION_DESCRIBE v1.2.001-beta-b3e6990` with
+`VERSION_DIRTY=false`. Focused output-policy tests passed 40/40 and the
+configuration-editor test executable passed. The full native run passed
+826/831. Its five failures reproduce independently and are pre-existing
+configuration-schema/reference baseline failures unrelated to VP-0133:
+
+- `ConfigEditorCoreRoundTripsEveryEditorOwnedKey`
+- `Vp0079OwnerVariantsResolveWithoutPersistedProfileState`
+- `Vp0097NamedViewportsUseFileOrderAndIgnoreLabels`
+- `ConfigurationReferenceMatchesPublicFieldInventory`
+- `ConfigEditorCoreValidatesEveryEditableOrderedProfileSurface`
+
+The canonical Release staging passed its 55-file manifest check. Two verified
+archives were produced: the regular beta package and a separate VP-0133 tester
+package containing the capture guide and active-output sweep tools. Neither
+contains an active `VideoProcessor.cfg`; only `VideoProcessor.cfg.example` is
+included. Live projector comparison and external measurement remain open, so
+the story stays In Progress rather than claiming that application readback has
+validated HDMI or physical display behavior.
