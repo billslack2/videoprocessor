@@ -5573,10 +5573,13 @@ struct LibplaceboVideoRenderer::Impl
 		nlsHookSignature = replacementKey;
 		rejectedNlsHookSignature.clear();
 		activeNlsShaderPath = resolvedPath;
+		const auto balance = nlsRule.parameters.find("axis_balance");
 		DebugLog::Log(
-			"Alpha shaders: loaded mpv GLSL hook \"%s\" stretch=%.5f axis=%s",
+			"Alpha shaders: loaded mpv GLSL hook \"%s\" stretch=%.5f axis=%s axis_balance=%s",
 			resolvedPath.c_str(), decision.stretchRatio,
-			decision.verticalWarp ? "vertical" : "horizontal");
+			decision.verticalWarp ? "vertical" : "horizontal",
+			balance == nlsRule.parameters.end() ? "single-axis" :
+				balance->second.c_str());
 		return true;
 	}
 
@@ -7538,8 +7541,35 @@ struct LibplaceboVideoRenderer::Impl
 					cropDecision.sourceBounds.right,
 					cropDecision.sourceBounds.bottom,
 					width, height);
-			const double finalSourceAspect = finalSourceGeometry.aspect;
-			const bool finalBoundsAuthoritative = finalSourceGeometry.valid;
+			NlsPresentationCropDecision nlsPresentationCrop;
+			nlsPresentationCrop.source = finalSourceGeometry;
+			if (nlsRequested)
+			{
+				nlsPresentationCrop = ResolveNlsPresentationCrop(
+					finalSourceGeometry, finalTargetAspect,
+					nlsRule.aspectTolerancePercent,
+					nlsRule.activeAspectMinimum, nlsRule.aspectDirection,
+					nlsRule.maximumStretchRatio,
+					nlsRule.vpRendererMaximumCropPercent,
+					nlsRule.vpRendererCropPreference);
+				if (nlsPresentationCrop.applied)
+				{
+					source.crop.x0 = static_cast<float>(
+						nlsPresentationCrop.source.left);
+					source.crop.y0 = static_cast<float>(
+						nlsPresentationCrop.source.top);
+					source.crop.x1 = static_cast<float>(
+						nlsPresentationCrop.source.right);
+					source.crop.y1 = static_cast<float>(
+						nlsPresentationCrop.source.bottom);
+				}
+			}
+			const NlsSourceGeometry& presentationSourceGeometry =
+				nlsPresentationCrop.source;
+			const double finalSourceAspect =
+				presentationSourceGeometry.aspect;
+			const bool finalBoundsAuthoritative = finalSourceGeometry.valid &&
+				presentationSourceGeometry.valid;
 			const double screenLayoutAspect = configuredScreenActive || nlsRequested
 				? finalTargetAspect : pl_rect2df_aspect(&target.crop);
 			const AlphaSourceCrop::CenteredFitDecision screenFit =
@@ -7557,6 +7587,10 @@ struct LibplaceboVideoRenderer::Impl
 					<< cropDecision.sourceBounds.top << '-'
 					<< cropDecision.sourceBounds.right << ','
 					<< cropDecision.sourceBounds.bottom << '|'
+					<< presentationSourceGeometry.left << ','
+					<< presentationSourceGeometry.top << '-'
+					<< presentationSourceGeometry.right << ','
+					<< presentationSourceGeometry.bottom << '|'
 					<< std::lround(finalTargetAspect * 100000.0) << '|'
 					<< std::lround(target.crop.x0 * 10.0f) << ','
 					<< std::lround(target.crop.y0 * 10.0f) << '-'
@@ -7569,7 +7603,7 @@ struct LibplaceboVideoRenderer::Impl
 					return;
 				lastFinalLayoutPolicy = policy.str();
 				DebugLog::Log(
-					"Alpha final layout: raster=%dx%d trusted=%d,%d-%d,%d envelope=%d,%d-%d,%d screen_aspect=%.5f screen=%.1f,%.1f-%.1f,%.1f picture=%.1f,%.1f-%.1f,%.1f unused_axis=%s mapping=%s vertical_alignment=%s subtitle_shift_source_pixels=%d anamorphic=%.5f",
+					"Alpha final layout: raster=%dx%d trusted=%d,%d-%d,%d envelope=%d,%d-%d,%d presentation=%d,%d-%d,%d screen_aspect=%.5f screen=%.1f,%.1f-%.1f,%.1f picture=%.1f,%.1f-%.1f,%.1f unused_axis=%s mapping=%s vertical_alignment=%s subtitle_shift_source_pixels=%d anamorphic=%.5f",
 					width, height,
 					effectiveGeometry.left, effectiveGeometry.top,
 					effectiveGeometry.right, effectiveGeometry.bottom,
@@ -7577,6 +7611,10 @@ struct LibplaceboVideoRenderer::Impl
 					cropDecision.sourceBounds.top,
 					cropDecision.sourceBounds.right,
 					cropDecision.sourceBounds.bottom,
+					presentationSourceGeometry.left,
+					presentationSourceGeometry.top,
+					presentationSourceGeometry.right,
+					presentationSourceGeometry.bottom,
 					finalTargetAspect,
 					finalScreen.left, finalScreen.top,
 					finalScreen.right, finalScreen.bottom,
@@ -7595,7 +7633,7 @@ struct LibplaceboVideoRenderer::Impl
 					EvaluateNlsMapping(finalBoundsAuthoritative,
 						finalSourceAspect, finalTargetAspect,
 						nlsRule.aspectTolerancePercent,
-						nlsRule.activeAspectMinimum, nlsRule.narrowerOnly,
+						nlsRule.activeAspectMinimum, nlsRule.aspectDirection,
 						nlsRule.maximumStretchRatio);
 				if (!finalBoundsAuthoritative)
 					finalNlsDecision.reason =
@@ -7619,7 +7657,7 @@ struct LibplaceboVideoRenderer::Impl
 					finalNlsDecision.mode != NlsMappingMode::WAITING)
 				{
 					const MadVRActivePictureGeometry geometry = {
-						finalSourceAspect,
+						finalSourceGeometry.aspect,
 						static_cast<double>(finalSourceGeometry.left) / width,
 						static_cast<double>(finalSourceGeometry.top) / height,
 						static_cast<double>(finalSourceGeometry.right) / width,
@@ -7638,6 +7676,11 @@ struct LibplaceboVideoRenderer::Impl
 					<< cropDecision.sourceBounds.top << '-'
 					<< cropDecision.sourceBounds.right << ','
 					<< cropDecision.sourceBounds.bottom << '|'
+					<< presentationSourceGeometry.left << ','
+					<< presentationSourceGeometry.top << '-'
+					<< presentationSourceGeometry.right << ','
+					<< presentationSourceGeometry.bottom << '|'
+					<< nlsPresentationCrop.reason << '|'
 					<< finalNlsDecision.reason;
 				if (finalPresentationPolicy.str() !=
 					lastFinalPresentationPolicy)
@@ -7645,20 +7688,30 @@ struct LibplaceboVideoRenderer::Impl
 					lastFinalPresentationPolicy =
 						finalPresentationPolicy.str();
 					DebugLog::Log(
-						"Alpha NLS backend=vprenderer requested=%s applicable=%s mapping=%s rect=%d,%d-%d,%d source=%.4f target=%.4f requested_ratio=%.5f max_ratio=%.5f axis=%s stretch=%.5f renderer_generation=%llu reason=\"%s\"",
+						"Alpha NLS backend=vprenderer requested=%s applicable=%s file=%s mapping=%s detector_rect=%d,%d-%d,%d presentation_rect=%d,%d-%d,%d source=%.4f target=%.4f requested_ratio=%.5f max_ratio=%.5f direction=%s axis=%s stretch=%.5f crop_percent=%.5f crop_preference=%s renderer_generation=%llu crop_reason=\"%s\" reason=\"%s\"",
 						requestedShaderSelector.c_str(), nlsRule.name.c_str(),
+						nlsRule.filename.c_str(),
 						NlsMappingModeName(finalNlsDecision.mode),
-						cropDecision.sourceBounds.left,
-						cropDecision.sourceBounds.top,
-						cropDecision.sourceBounds.right,
-						cropDecision.sourceBounds.bottom,
+						finalSourceGeometry.left,
+						finalSourceGeometry.top,
+						finalSourceGeometry.right,
+						finalSourceGeometry.bottom,
+						presentationSourceGeometry.left,
+						presentationSourceGeometry.top,
+						presentationSourceGeometry.right,
+						presentationSourceGeometry.bottom,
 						finalNlsDecision.sourceAspect,
 						finalNlsDecision.targetAspect,
 						finalNlsDecision.requestedRatio,
 						finalNlsDecision.maximumRatio,
+						NlsAspectDirectionName(nlsRule.aspectDirection),
 						NlsMappingAxisName(finalNlsDecision),
 						finalNlsDecision.stretchRatio,
+						nlsPresentationCrop.percentPerEdge,
+						NlsPresentationCropPreferenceName(
+							nlsRule.vpRendererCropPreference),
 						static_cast<unsigned long long>(nlsRendererGeneration),
+						nlsPresentationCrop.reason.c_str(),
 						finalNlsDecision.reason.c_str());
 				}
 				nlsDecision = finalNlsDecision;

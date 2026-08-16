@@ -98,6 +98,10 @@ shader.<group>.<member>.curve	shader-nls-curve	Shader NLS	no
 shader.<group>.<member>.quality	shader-nls-quality	Shader NLS	no
 shader.<group>.<member>.tolerance_percent	shader-nls-tolerance-percent	Shader NLS	no
 shader.<group>.<member>.max_stretch_ratio	shader-nls-max-stretch-ratio	Shader NLS	no
+shader.<group>.<member>.aspect_direction	shader-nls-aspect-direction	Shader NLS	no
+shader.<group>.<member>.axis_balance	shader-nls-axis-balance	Shader NLS	no
+shader.<group>.<member>.vprenderer_max_crop_percent	shader-nls-vprenderer-max-crop	Shader NLS	no
+shader.<group>.<member>.vprenderer_crop_preference	shader-nls-vprenderer-crop-preference	Shader NLS	no
 actions.<name>.enabled	action-enabled	Event action	no
 actions.<name>.renderer	action-renderer	Event action	no
 actions.<name>.on	action-on	Event action	no

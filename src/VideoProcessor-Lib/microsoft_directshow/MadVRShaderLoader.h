@@ -58,7 +58,10 @@ struct ConfiguredShaderRule
 	double maximumStretchRatio = NLS_DEFAULT_MAXIMUM_STRETCH_RATIO;
 	double stableGeometryDeadbandPercent = 2.0;
 	double activeAspectMinimum = 0.0;
-	bool narrowerOnly = false;
+	NlsAspectDirection aspectDirection = NlsAspectDirection::NARROWER_ONLY;
+	double vpRendererMaximumCropPercent = 0.0;
+	NlsPresentationCropPreference vpRendererCropPreference =
+		NlsPresentationCropPreference::PRESERVE_IMAGE;
 };
 
 

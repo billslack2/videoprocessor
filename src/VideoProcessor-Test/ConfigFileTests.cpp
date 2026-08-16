@@ -18,6 +18,7 @@
 #include <microsoft_directshow/video_renderers/DirectShowVideoRenderers.h>
 #include <RendererConfigView.h>
 #include <RendererProfileConfig.h>
+#include <ShaderConfigValidation.h>
 #include <UnifiedProfileRuntime.h>
 #include <VideoConversionOverride.h>
 #include "CppUnitTest.h"
@@ -2692,7 +2693,8 @@ namespace VideoProcessorTest
 			const std::string path = std::string(temporaryDirectory) +
 				"VideoProcessor-vp0099-expansion-only.cfg";
 
-			auto resolve = [&](const char* direction, bool expectedNarrowerOnly)
+			auto resolve = [&](const char* direction,
+				NlsAspectDirection expectedDirection)
 			{
 				{
 					std::ofstream file(path, std::ios::out | std::ios::trunc);
@@ -2719,14 +2721,88 @@ namespace VideoProcessorTest
 							config, "@shader-key:Shift+n", backend,
 							selection, error));
 					Assert::AreEqual(static_cast<size_t>(1), selection.size());
-					Assert::AreEqual(expectedNarrowerOnly,
-						selection.front().narrowerOnly);
+					Assert::AreEqual(static_cast<int>(expectedDirection),
+						static_cast<int>(selection.front().aspectDirection));
 				}
 			};
 
-			resolve(nullptr, true);
-			resolve("narrower_only", true);
-			resolve("any", false);
+			resolve(nullptr, NlsAspectDirection::NARROWER_ONLY);
+			resolve("narrower_only", NlsAspectDirection::NARROWER_ONLY);
+			resolve("wider_only", NlsAspectDirection::WIDER_ONLY);
+			resolve("any", NlsAspectDirection::ANY);
+			DeleteFileA(path.c_str());
+		}
+
+		TEST_METHOD(Vp0089AndVp0131TypedAdvancedNlsSettingsResolveForAlpha)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(
+				ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) +
+				"VideoProcessor-vp0089-vp0131-advanced-nls.cfg";
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[shader.nls]\nshortcut: n\n"
+					"[shader.nls.plus]\nshortcut: b\n"
+					"shader_type: nls\n"
+					"glsl_file: NLSPlus.glsl\n"
+					"axis_balance: 0.5\n"
+					"aspect_direction: wider_only\n"
+					"vprenderer_max_crop_percent: 6\n"
+					"vprenderer_crop_preference: minimize_distortion\n";
+			}
+
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			std::string error;
+			Assert::IsTrue(MainConfigSchema::Validate(config, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			Assert::IsTrue(ShaderConfigValidation::Validate(config, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			std::vector<ConfiguredShaderRule> selection;
+			Assert::IsTrue(MadVRShaderLoader::ResolveConfiguredRuleSelection(
+				config, "@shader-key:b", ShaderRendererBackend::LIBPLACEBO,
+				selection, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			Assert::AreEqual(static_cast<size_t>(1), selection.size());
+			Assert::AreEqual("NLSPlus.glsl",
+				selection.front().filename.c_str());
+			Assert::AreEqual(static_cast<int>(NlsAspectDirection::WIDER_ONLY),
+				static_cast<int>(selection.front().aspectDirection));
+			Assert::AreEqual(6.0,
+				selection.front().vpRendererMaximumCropPercent, 0.000001);
+			Assert::AreEqual(static_cast<int>(
+				NlsPresentationCropPreference::MINIMIZE_DISTORTION),
+				static_cast<int>(selection.front().vpRendererCropPreference));
+			Assert::AreEqual("0.5",
+				selection.front().parameters.at("axis_balance").c_str());
+			DeleteFileA(path.c_str());
+		}
+
+		TEST_METHOD(Vp0089AndVp0131InvalidAdvancedNlsSettingsAreRejected)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(
+				ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) +
+				"VideoProcessor-vp0089-vp0131-invalid-nls.cfg";
+			auto rejects = [&](const char* setting)
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[shader.nls]\nshortcut: n\n"
+					"[shader.nls.plus]\nshortcut: b\n"
+					"shader_type: nls\n"
+					"glsl_file: NLSPlus.glsl\n" << setting << "\n";
+				file.close();
+				ConfigFile config;
+				Assert::IsTrue(config.Load(path));
+				std::string error;
+				Assert::IsFalse(ShaderConfigValidation::Validate(config, error));
+			};
+			rejects("axis_balance: 1.01");
+			rejects("aspect_direction: sideways");
+			rejects("vprenderer_max_crop_percent: 10.01");
+			rejects("vprenderer_crop_preference: automatic");
 			DeleteFileA(path.c_str());
 		}
 

@@ -174,6 +174,166 @@ namespace VideoProcessorTest
 				std::string::npos);
 		}
 
+		TEST_METHOD(Vp0131WiderOnlySelectsOnlyVerticalCorrection)
+		{
+			const NlsMappingDecision vertical = EvaluateNlsMapping(
+				true, 2.39, 16.0 / 9.0, 5.0, 0.0,
+				NlsAspectDirection::WIDER_ONLY, 1.4);
+			Assert::AreEqual(static_cast<int>(NlsMappingMode::ACTIVE),
+				static_cast<int>(vertical.mode));
+			Assert::IsTrue(vertical.verticalWarp);
+
+			const NlsMappingDecision narrower = EvaluateNlsMapping(
+				true, 16.0 / 9.0, 2.35, 5.0, 0.0,
+				NlsAspectDirection::WIDER_ONLY, 1.4);
+			Assert::AreEqual(
+				static_cast<int>(NlsMappingMode::LINEAR_PASSTHROUGH),
+				static_cast<int>(narrower.mode));
+			Assert::IsTrue(narrower.reason.find("narrower") !=
+				std::string::npos);
+		}
+
+		TEST_METHOD(Vp0131PreserveImageUsesMinimumBoundedSideCrop)
+		{
+			NlsSourceGeometry source;
+			source.left = 0;
+			source.top = 0;
+			source.right = 3840;
+			source.bottom = 1607;
+			source.aspect = 3840.0 / 1607.0;
+			source.valid = true;
+			const NlsPresentationCropDecision crop =
+				ResolveNlsPresentationCrop(source, 16.0 / 9.0, 5.0, 0.0,
+					NlsAspectDirection::WIDER_ONLY, 1.22, 6.0,
+					NlsPresentationCropPreference::PRESERVE_IMAGE);
+			Assert::IsTrue(crop.applied);
+			Assert::IsTrue(crop.croppedLeftRight);
+			Assert::AreEqual(178, crop.pixelsPerEdge);
+			Assert::AreEqual(178, crop.source.left);
+			Assert::AreEqual(3662, crop.source.right);
+			Assert::IsTrue(crop.percentPerEdge > 4.6 &&
+				crop.percentPerEdge < 4.7);
+			const NlsMappingDecision mapping = EvaluateNlsMapping(true,
+				crop.source.aspect, 16.0 / 9.0, 5.0, 0.0,
+				NlsAspectDirection::WIDER_ONLY, 1.22);
+			Assert::AreEqual(static_cast<int>(NlsMappingMode::ACTIVE),
+				static_cast<int>(mapping.mode));
+			Assert::IsTrue(mapping.stretchRatio <= 1.22);
+		}
+
+		TEST_METHOD(Vp0131MinimizeDistortionUsesConfiguredSideCrop)
+		{
+			const NlsSourceGeometry source = {
+				0, 0, 3840, 1607, 3840.0 / 1607.0, true };
+			const NlsPresentationCropDecision crop =
+				ResolveNlsPresentationCrop(source, 16.0 / 9.0, 5.0, 0.0,
+					NlsAspectDirection::WIDER_ONLY, 1.4, 6.0,
+					NlsPresentationCropPreference::MINIMIZE_DISTORTION);
+			Assert::IsTrue(crop.applied);
+			Assert::AreEqual(230, crop.pixelsPerEdge);
+			Assert::AreEqual(230, crop.source.left);
+			Assert::AreEqual(3610, crop.source.right);
+			const NlsMappingDecision mapping = EvaluateNlsMapping(true,
+				crop.source.aspect, 16.0 / 9.0, 5.0, 0.0,
+				NlsAspectDirection::WIDER_ONLY, 1.4);
+			Assert::IsTrue(mapping.stretchRatio < 1.19);
+		}
+
+		TEST_METHOD(Vp0131InsufficientCropPreservesCompleteSource)
+		{
+			const NlsSourceGeometry source = {
+				0, 0, 3840, 1607, 3840.0 / 1607.0, true };
+			const NlsPresentationCropDecision crop =
+				ResolveNlsPresentationCrop(source, 16.0 / 9.0, 5.0, 0.0,
+					NlsAspectDirection::WIDER_ONLY, 1.22, 4.0,
+					NlsPresentationCropPreference::PRESERVE_IMAGE);
+			Assert::IsFalse(crop.applied);
+			Assert::AreEqual(source.left, crop.source.left);
+			Assert::AreEqual(source.right, crop.source.right);
+			Assert::IsTrue(crop.reason.find("cannot satisfy") !=
+				std::string::npos);
+		}
+
+		TEST_METHOD(Vp0131NarrowerMappingUsesSymmetricTopBottomCrop)
+		{
+			const NlsSourceGeometry source = {
+				0, 0, 1920, 1080, 16.0 / 9.0, true };
+			const NlsPresentationCropDecision crop =
+				ResolveNlsPresentationCrop(source, 2.35, 5.0, 0.0,
+					NlsAspectDirection::NARROWER_ONLY, 1.2, 5.0,
+					NlsPresentationCropPreference::PRESERVE_IMAGE);
+			Assert::IsTrue(crop.applied);
+			Assert::IsFalse(crop.croppedLeftRight);
+			Assert::AreEqual(50, crop.pixelsPerEdge);
+			Assert::AreEqual(50, crop.source.top);
+			Assert::AreEqual(1030, crop.source.bottom);
+		}
+
+		TEST_METHOD(Vp0089BalancedMapIsBoundedMonotonicAndAspectCorrect)
+		{
+			auto mapRadius = [](double radius, double centerScale,
+				double curve, bool protectedGeometry, double centerProtection)
+			{
+				if (!protectedGeometry || centerProtection <= 0.0)
+					return centerScale * radius -
+						(centerScale - 1.0) * std::pow(radius, curve);
+				if (radius <= centerProtection)
+					return radius * centerScale;
+				const double span = 1.0 - centerProtection;
+				const double t = (radius - centerProtection) / span;
+				const double t2 = t * t;
+				const double t3 = t2 * t;
+				const double t4 = t3 * t;
+				const double t5 = t4 * t;
+				const double h00 = 1.0 - 10.0 * t3 + 15.0 * t4 - 6.0 * t5;
+				const double h10 = t - 6.0 * t3 + 8.0 * t4 - 3.0 * t5;
+				const double h01 = 10.0 * t3 - 15.0 * t4 + 6.0 * t5;
+				const double h11 = -4.0 * t3 + 7.0 * t4 - 3.0 * t5;
+				const double startPosition = centerProtection * centerScale;
+				const double edgeSlope = std::max(0.20,
+					1.0 - 0.5 * (centerScale - 1.0) * curve);
+				return h00 * startPosition + h10 * span * centerScale +
+					h01 + h11 * span * edgeSlope;
+			};
+
+			for (const bool sourceWider : { false, true })
+				for (const double ratio : { 1.0, 1.321875, 1.5 })
+					for (const double balance : { 0.0, 0.5, 1.0 })
+					{
+						const double q = sourceWider ? 1.0 / ratio : ratio;
+						const double xExponent = sourceWider ?
+							balance : 1.0 - balance;
+						const double yExponent = sourceWider ?
+							balance - 1.0 : -balance;
+						const double xScale = std::pow(q, xExponent);
+						const double yScale = std::pow(q, yExponent);
+						Assert::AreEqual(q, xScale / yScale, 0.000001);
+						if (!sourceWider && balance == 0.0)
+						{
+							Assert::AreEqual(ratio, xScale, 0.000001);
+							Assert::AreEqual(1.0, yScale, 0.000001);
+						}
+
+						for (const bool protectedGeometry : { false, true })
+							for (const double scale : { xScale, yScale })
+							{
+								double previous = 0.0;
+								for (int sample = 0; sample <= 10000; ++sample)
+								{
+									const double radius = sample / 10000.0;
+									const double mapped = mapRadius(radius, scale,
+										2.0, protectedGeometry, 0.35);
+									Assert::IsTrue(std::isfinite(mapped));
+									Assert::IsTrue(mapped >= -0.000001 &&
+										mapped <= 1.000001);
+									Assert::IsTrue(mapped + 0.000001 >= previous);
+									previous = mapped;
+								}
+								Assert::AreEqual(1.0, previous, 0.000001);
+							}
+					}
+		}
+
 		TEST_METHOD(UnstableOrRejectedGeometryWaits)
 		{
 			Assert::AreEqual(

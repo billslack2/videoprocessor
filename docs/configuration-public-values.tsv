@@ -103,6 +103,11 @@ shader.<group>.<member>.shader_type	nls
 shader.<group>.<member>.shader_type	custom
 shader.<group>.<member>.stage	pre_resize
 shader.<group>.<member>.stage	post_resize
+shader.<group>.<member>.aspect_direction	narrower_only
+shader.<group>.<member>.aspect_direction	wider_only
+shader.<group>.<member>.aspect_direction	any
+shader.<group>.<member>.vprenderer_crop_preference	preserve_image
+shader.<group>.<member>.vprenderer_crop_preference	minimize_distortion
 actions.<name>.enabled	true
 actions.<name>.enabled	false
 actions.<name>.renderer	vprenderer

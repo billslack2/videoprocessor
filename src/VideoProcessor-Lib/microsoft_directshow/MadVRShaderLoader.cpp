@@ -318,7 +318,10 @@ struct ShaderRule
 	double stableGeometryDeadbandPercent =
 		ActivePictureTransitionModel::DEFAULT_STABLE_GEOMETRY_DEADBAND_PERCENT;
 	double activeAspectMinimum = 0.0;
-	bool narrowerOnly = false;
+	NlsAspectDirection aspectDirection = NlsAspectDirection::ANY;
+	double vpRendererMaximumCropPercent = 0.0;
+	NlsPresentationCropPreference vpRendererCropPreference =
+		NlsPresentationCropPreference::PRESERVE_IMAGE;
 	std::string inactiveRule;
 	std::vector<ShaderEntry> preScale;
 	std::vector<ShaderEntry> postScale;
@@ -832,6 +835,11 @@ bool NormalizeNlsSetting(const std::string& name,
 		minimum = 0.5;
 		maximum = 4.0;
 	}
+	else if (name == "axis_balance")
+	{
+		minimum = 0.0;
+		maximum = 1.0;
+	}
 	else
 	{
 		return false;
@@ -870,6 +878,36 @@ void LoadTypedNlsSettings(const ConfigFile& config,
 		rule.valid = false;
 	}
 
+	const auto maximumCrop = settings->find("vprenderer_max_crop_percent");
+	if (maximumCrop != settings->end() &&
+		!ParseBoundedDouble(maximumCrop->second, 0.0, 10.0,
+			rule.vpRendererMaximumCropPercent))
+	{
+		DebugLog::Log(
+			"Shaders: rule \"%s\" has invalid vprenderer_max_crop_percent \"%s\"; use 0 through 10",
+			rule.name.c_str(), maximumCrop->second.c_str());
+		rule.valid = false;
+	}
+	const auto cropPreference = settings->find("vprenderer_crop_preference");
+	if (cropPreference != settings->end())
+	{
+		const std::string preference =
+			ConfigFile::NormalizeName(cropPreference->second);
+		if (preference == "preserve_image")
+			rule.vpRendererCropPreference =
+				NlsPresentationCropPreference::PRESERVE_IMAGE;
+		else if (preference == "minimize_distortion")
+			rule.vpRendererCropPreference =
+				NlsPresentationCropPreference::MINIMIZE_DISTORTION;
+		else
+		{
+			DebugLog::Log(
+				"Shaders: rule \"%s\" has invalid vprenderer_crop_preference \"%s\"; use PRESERVE_IMAGE or MINIMIZE_DISTORTION",
+				rule.name.c_str(), cropPreference->second.c_str());
+			rule.valid = false;
+		}
+	}
+
 	const std::map<std::string, std::string> defaults = {
 		{ "strength", "1" },
 		{ "geometry", "0" },
@@ -891,7 +929,8 @@ void LoadTypedNlsSettings(const ConfigFile& config,
 		rule.parameters.emplace(setting.first, setting.second);
 
 	for (const char* rawName :
-		{ "strength", "geometry", "center_protection", "curve", "quality" })
+		{ "strength", "geometry", "center_protection", "curve", "quality",
+		  "axis_balance" })
 	{
 		const std::string name(rawName);
 		const std::string alias = "param_" + name;
@@ -1058,7 +1097,7 @@ ShaderRule LoadRule(const ConfigFile& config, const std::string& configuredName)
 			// Typed NLS is expansion-only unless a rule explicitly opts into
 			// vertical warping. A vertical warp makes a wider picture fit a
 			// narrower target and can visibly shrink the presentation.
-			rule.narrowerOnly = true;
+			rule.aspectDirection = NlsAspectDirection::NARROWER_ONLY;
 		}
 		else if (type != "custom" && type != "shader")
 		{
@@ -1171,12 +1210,14 @@ ShaderRule LoadRule(const ConfigFile& config, const std::string& configuredName)
 	{
 		const std::string direction = ConfigFile::NormalizeName(rawValue);
 		if (direction == "narrower_only")
-			rule.narrowerOnly = true;
+			rule.aspectDirection = NlsAspectDirection::NARROWER_ONLY;
+		else if (direction == "wider_only")
+			rule.aspectDirection = NlsAspectDirection::WIDER_ONLY;
 		else if (direction == "any")
-			rule.narrowerOnly = false;
+			rule.aspectDirection = NlsAspectDirection::ANY;
 		else
 		{
-			DebugLog::Log("Shaders: rule \"%s\" has invalid aspect_direction \"%s\"; use ANY or NARROWER_ONLY",
+			DebugLog::Log("Shaders: rule \"%s\" has invalid aspect_direction \"%s\"; use NARROWER_ONLY, WIDER_ONLY, or ANY",
 				rule.name.c_str(), rawValue.c_str());
 			rule.valid = false;
 		}
@@ -1301,7 +1342,7 @@ ShaderRule LoadTargetRule(const ConfigFile& config, const std::string& name,
 		// NLS expands narrower content by default. Reverse-direction vertical
 		// warping is opt-in because fitting a wider picture to a narrower target
 		// visibly reduces its presentation size.
-		rule.narrowerOnly = true;
+		rule.aspectDirection = NlsAspectDirection::NARROWER_ONLY;
 	}
 	else if (type != "custom")
 	{
@@ -1324,13 +1365,15 @@ ShaderRule LoadTargetRule(const ConfigFile& config, const std::string& name,
 		{
 			const std::string direction = ConfigFile::NormalizeName(value);
 			if (direction == "narrower_only")
-				rule.narrowerOnly = true;
+				rule.aspectDirection = NlsAspectDirection::NARROWER_ONLY;
+			else if (direction == "wider_only")
+				rule.aspectDirection = NlsAspectDirection::WIDER_ONLY;
 			else if (direction == "any")
-				rule.narrowerOnly = false;
+				rule.aspectDirection = NlsAspectDirection::ANY;
 			else
 			{
 				DebugLog::Log(
-					"Shaders: [%s] aspect_direction must be narrower_only or any",
+					"Shaders: [%s] aspect_direction must be narrower_only, wider_only, or any",
 					section.c_str());
 				rule.valid = false;
 			}
@@ -1526,7 +1569,10 @@ ConfiguredShaderRule ToConfiguredShaderRule(const ShaderRule& rule)
 	configured.stableGeometryDeadbandPercent =
 		rule.stableGeometryDeadbandPercent;
 	configured.activeAspectMinimum = rule.activeAspectMinimum;
-	configured.narrowerOnly = rule.narrowerOnly;
+	configured.aspectDirection = rule.aspectDirection;
+	configured.vpRendererMaximumCropPercent =
+		rule.vpRendererMaximumCropPercent;
+	configured.vpRendererCropPreference = rule.vpRendererCropPreference;
 	return configured;
 }
 
@@ -2517,17 +2563,30 @@ bool MadVRShaderLoader::ValidateActivePictureAspect(const std::string& ruleName,
 	}
 	const double signedDifferencePercent =
 		(target - activeAspectRatio) * 100.0 / target;
-	const bool allowed = rule.narrowerOnly ?
-		signedDifferencePercent > rule.aspectTolerancePercent :
-		std::abs(signedDifferencePercent) > rule.aspectTolerancePercent;
+	bool allowed = false;
+	switch (rule.aspectDirection)
+	{
+	case NlsAspectDirection::NARROWER_ONLY:
+		allowed = signedDifferencePercent > rule.aspectTolerancePercent;
+		break;
+	case NlsAspectDirection::WIDER_ONLY:
+		allowed = signedDifferencePercent < -rule.aspectTolerancePercent;
+		break;
+	case NlsAspectDirection::ANY:
+		allowed = std::abs(signedDifferencePercent) >
+			rule.aspectTolerancePercent;
+		break;
+	}
 	if (!allowed)
 	{
 		std::ostringstream message;
 		message << "active picture " << activeAspectRatio
 			<< " is already within " << rule.aspectTolerancePercent
 			<< "% of target " << target;
-		if (rule.narrowerOnly)
+		if (rule.aspectDirection == NlsAspectDirection::NARROWER_ONLY)
 			message << ", or is wider than that target";
+		else if (rule.aspectDirection == NlsAspectDirection::WIDER_ONLY)
+			message << ", or is narrower than that target";
 		reason = message.str();
 	}
 	return allowed;
@@ -2597,7 +2656,7 @@ bool MadVRShaderLoader::EvaluateNlsMapping(const std::string& ruleName,
 	}
 	decision = ::EvaluateNlsMapping(aspectAvailable, activeAspectRatio,
 		target, std::max(0.0, rule.aspectTolerancePercent),
-		rule.activeAspectMinimum, rule.narrowerOnly,
+		rule.activeAspectMinimum, rule.aspectDirection,
 		rule.maximumStretchRatio);
 	g_runtimeState.SetNlsDecision(decision);
 	return true;

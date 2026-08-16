@@ -36,6 +36,7 @@ namespace
 		if (name == "strength") return Bounded(raw, 0.0, 1.0);
 		if (name == "center_protection") return Bounded(raw, 0.0, 0.45);
 		if (name == "curve") return Bounded(raw, 0.5, 4.0);
+		if (name == "axis_balance") return Bounded(raw, 0.0, 1.0);
 		return false;
 	}
 
@@ -137,7 +138,8 @@ bool ShaderConfigValidation::Validate(const ConfigFile& config,
 		if (shaderType == "nls")
 		{
 			for (const char* rawName :
-				{ "strength", "geometry", "center_protection", "curve", "quality" })
+				{ "strength", "geometry", "center_protection", "curve", "quality",
+				  "axis_balance" })
 			{
 				const std::string name(rawName), aliasName = "param_" + name;
 				const auto typed = values->find(name), alias = values->find(aliasName);
@@ -161,6 +163,36 @@ bool ShaderConfigValidation::Validate(const ConfigFile& config,
 			{
 				reason = "[" + section + "] tolerance_percent must be from 0 through 50";
 				return false;
+			}
+			std::string direction;
+			if (config.TryGetString(section, "aspect_direction", direction))
+			{
+				direction = ConfigFile::NormalizeName(direction);
+				if (direction != "narrower_only" && direction != "wider_only" &&
+					direction != "any")
+				{
+					reason = "[" + section + "] aspect_direction must be narrower_only, wider_only, or any";
+					return false;
+				}
+			}
+			std::string cropPercent;
+			if (config.TryGetString(section, "vprenderer_max_crop_percent",
+				cropPercent) && !Bounded(cropPercent, 0.0, 10.0))
+			{
+				reason = "[" + section + "] vprenderer_max_crop_percent must be from 0 through 10";
+				return false;
+			}
+			std::string cropPreference;
+			if (config.TryGetString(section, "vprenderer_crop_preference",
+				cropPreference))
+			{
+				cropPreference = ConfigFile::NormalizeName(cropPreference);
+				if (cropPreference != "preserve_image" &&
+					cropPreference != "minimize_distortion")
+				{
+					reason = "[" + section + "] vprenderer_crop_preference must be preserve_image or minimize_distortion";
+					return false;
+				}
 			}
 		}
 		std::string order;

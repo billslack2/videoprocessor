@@ -50,7 +50,8 @@ double ResolveNlsTargetAspect(bool configuredTarget,
 
 NlsMappingDecision EvaluateNlsMapping(bool aspectAvailable,
 	double activeAspect, double targetAspect, double tolerancePercent,
-	double activeAspectMinimum, bool narrowerOnly, double maximumStretchRatio)
+	double activeAspectMinimum, NlsAspectDirection direction,
+	double maximumStretchRatio)
 {
 	NlsMappingDecision decision;
 	decision.sourceAspect = activeAspect;
@@ -100,11 +101,20 @@ NlsMappingDecision EvaluateNlsMapping(bool aspectAvailable,
 		decision.reason = "active picture matches the target within tolerance";
 		return decision;
 	}
-	if (narrowerOnly && signedDifferencePercent <= tolerancePercent)
+	if (direction == NlsAspectDirection::NARROWER_ONLY &&
+		signedDifferencePercent <= tolerancePercent)
 	{
 		decision.mode = NlsMappingMode::LINEAR_PASSTHROUGH;
 		decision.reason =
 			"active picture is wider than the configured target; preserving source geometry";
+		return decision;
+	}
+	if (direction == NlsAspectDirection::WIDER_ONLY &&
+		signedDifferencePercent >= -tolerancePercent)
+	{
+		decision.mode = NlsMappingMode::LINEAR_PASSTHROUGH;
+		decision.reason =
+			"active picture is narrower than the configured target; preserving source geometry";
 		return decision;
 	}
 	if (decision.requestedRatio > maximumStretchRatio)
@@ -131,6 +141,137 @@ NlsMappingDecision EvaluateNlsMapping(bool aspectAvailable,
 		"active picture is wider than the target" :
 		"active picture is narrower than the target";
 	return decision;
+}
+
+
+NlsPresentationCropDecision ResolveNlsPresentationCrop(
+	const NlsSourceGeometry& source, double targetAspect,
+	double tolerancePercent, double activeAspectMinimum,
+	NlsAspectDirection direction, double maximumStretchRatio,
+	double maximumCropPercent,
+	NlsPresentationCropPreference preference)
+{
+	NlsPresentationCropDecision result;
+	result.source = source;
+	if (!source.valid)
+	{
+		result.reason = "NLS presentation crop requires valid source geometry";
+		return result;
+	}
+	if (!std::isfinite(maximumCropPercent) || maximumCropPercent < 0.0 ||
+		maximumCropPercent > 10.0)
+	{
+		result.reason = "NLS presentation crop limit is invalid";
+		return result;
+	}
+	if (maximumCropPercent <= 0.0)
+	{
+		result.reason = "NLS presentation crop is disabled";
+		return result;
+	}
+
+	const NlsMappingDecision original = EvaluateNlsMapping(true,
+		source.aspect, targetAspect, tolerancePercent, activeAspectMinimum,
+		direction, maximumStretchRatio);
+	if (original.mode == NlsMappingMode::WAITING ||
+		original.mode == NlsMappingMode::LINEAR_PASSTHROUGH)
+	{
+		result.reason = "NLS presentation crop is not applicable to the mapping";
+		return result;
+	}
+	if (preference == NlsPresentationCropPreference::PRESERVE_IMAGE &&
+		original.mode != NlsMappingMode::SAFE_FIT)
+	{
+		result.reason = "NLS mapping is already within the configured stretch limit";
+		return result;
+	}
+
+	const bool sourceWider = source.aspect > targetAspect;
+	const int extent = sourceWider ?
+		(source.right - source.left) : (source.bottom - source.top);
+	if (extent <= 2)
+	{
+		result.reason = "NLS presentation crop has no usable source extent";
+		return result;
+	}
+
+	const double maximumFraction = maximumCropPercent / 100.0;
+	const int maximumPixels = static_cast<int>(std::floor(
+		maximumFraction * extent + 1.0e-9));
+	const double targetFraction = std::max(0.0,
+		(1.0 - 1.0 / original.requestedRatio) * 0.5);
+	const int targetPixels = static_cast<int>(std::floor(
+		targetFraction * extent + 1.0e-9));
+	int cropPixels = 0;
+
+	if (preference == NlsPresentationCropPreference::PRESERVE_IMAGE)
+	{
+		const double requiredFraction = std::max(0.0,
+			(1.0 - maximumStretchRatio / original.requestedRatio) * 0.5);
+		cropPixels = static_cast<int>(std::ceil(
+			requiredFraction * extent - 1.0e-9));
+		if (cropPixels <= 0 || cropPixels > maximumPixels ||
+			cropPixels > targetPixels)
+		{
+			result.reason =
+				"configured presentation crop cannot satisfy the NLS stretch limit";
+			return result;
+		}
+	}
+	else
+	{
+		cropPixels = std::min(maximumPixels, targetPixels);
+		if (cropPixels <= 0)
+		{
+			result.reason = "configured presentation crop rounds to zero pixels";
+			return result;
+		}
+	}
+
+	NlsSourceGeometry candidate = source;
+	if (sourceWider)
+	{
+		candidate.left += cropPixels;
+		candidate.right -= cropPixels;
+	}
+	else
+	{
+		candidate.top += cropPixels;
+		candidate.bottom -= cropPixels;
+	}
+	if (candidate.right <= candidate.left ||
+		candidate.bottom <= candidate.top)
+	{
+		result.reason = "NLS presentation crop produced empty source geometry";
+		return result;
+	}
+	candidate.aspect = static_cast<double>(candidate.right - candidate.left) /
+		(candidate.bottom - candidate.top);
+	candidate.valid = std::isfinite(candidate.aspect) &&
+		candidate.aspect > 0.0;
+	const NlsMappingDecision cropped = EvaluateNlsMapping(candidate.valid,
+		candidate.aspect, targetAspect, tolerancePercent, activeAspectMinimum,
+		direction, maximumStretchRatio);
+	if (cropped.mode != NlsMappingMode::ACTIVE &&
+		cropped.mode != NlsMappingMode::LINEAR_PASSTHROUGH)
+	{
+		result.reason =
+			"bounded presentation crop cannot produce a safe NLS mapping";
+		return result;
+	}
+
+	result.source = candidate;
+	result.applied = true;
+	result.croppedLeftRight = sourceWider;
+	result.pixelsPerEdge = cropPixels;
+	result.percentPerEdge = 100.0 * cropPixels / extent;
+	std::ostringstream message;
+	message << "cropped " << cropPixels << " pixels (" <<
+		result.percentPerEdge << " percent) from each " <<
+		(sourceWider ? "side" : "top/bottom edge") << " for " <<
+		NlsPresentationCropPreferenceName(preference);
+	result.reason = message.str();
+	return result;
 }
 
 
@@ -161,4 +302,35 @@ const char* NlsMappingAxisName(const NlsMappingDecision& decision)
 	if (decision.mode == NlsMappingMode::SAFE_FIT)
 		return decision.safeFitVertical ? "vertical" : "horizontal";
 	return "none";
+}
+
+
+const char* NlsAspectDirectionName(NlsAspectDirection direction)
+{
+	switch (direction)
+	{
+	case NlsAspectDirection::NARROWER_ONLY:
+		return "narrower_only";
+	case NlsAspectDirection::WIDER_ONLY:
+		return "wider_only";
+	case NlsAspectDirection::ANY:
+		return "any";
+	default:
+		return "unknown";
+	}
+}
+
+
+const char* NlsPresentationCropPreferenceName(
+	NlsPresentationCropPreference preference)
+{
+	switch (preference)
+	{
+	case NlsPresentationCropPreference::PRESERVE_IMAGE:
+		return "preserve_image";
+	case NlsPresentationCropPreference::MINIMIZE_DISTORTION:
+		return "minimize_distortion";
+	default:
+		return "unknown";
+	}
 }

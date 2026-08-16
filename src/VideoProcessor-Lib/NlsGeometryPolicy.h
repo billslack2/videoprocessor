@@ -27,6 +27,21 @@ enum class NlsMappingMode
 };
 
 
+enum class NlsAspectDirection
+{
+	NARROWER_ONLY,
+	WIDER_ONLY,
+	ANY
+};
+
+
+enum class NlsPresentationCropPreference
+{
+	PRESERVE_IMAGE,
+	MINIMIZE_DISTORTION
+};
+
+
 struct NlsMappingDecision
 {
 	NlsMappingMode mode = NlsMappingMode::WAITING;
@@ -53,6 +68,17 @@ struct NlsSourceGeometry
 };
 
 
+struct NlsPresentationCropDecision
+{
+	NlsSourceGeometry source;
+	bool applied = false;
+	bool croppedLeftRight = false;
+	int pixelsPerEdge = 0;
+	double percentPerEdge = 0.0;
+	std::string reason;
+};
+
+
 NlsSourceGeometry ResolveNlsSourceGeometry(bool trustedCropApplied,
 	int cropLeft, int cropTop, int cropRight, int cropBottom,
 	int rasterWidth, int rasterHeight);
@@ -63,8 +89,32 @@ double ResolveNlsTargetAspect(bool configuredTarget,
 
 NlsMappingDecision EvaluateNlsMapping(bool aspectAvailable,
 	double activeAspect, double targetAspect, double tolerancePercent,
-	double activeAspectMinimum, bool narrowerOnly,
+	double activeAspectMinimum, NlsAspectDirection direction,
 	double maximumStretchRatio = NLS_DEFAULT_MAXIMUM_STRETCH_RATIO);
+
+// Preserve the established Boolean call contract for existing callers and
+// tests while production configuration moves to the explicit direction enum.
+inline NlsMappingDecision EvaluateNlsMapping(bool aspectAvailable,
+	double activeAspect, double targetAspect, double tolerancePercent,
+	double activeAspectMinimum, bool narrowerOnly,
+	double maximumStretchRatio = NLS_DEFAULT_MAXIMUM_STRETCH_RATIO)
+{
+	return EvaluateNlsMapping(aspectAvailable, activeAspect, targetAspect,
+		tolerancePercent, activeAspectMinimum,
+		narrowerOnly ? NlsAspectDirection::NARROWER_ONLY :
+			NlsAspectDirection::ANY,
+		maximumStretchRatio);
+}
+
+NlsPresentationCropDecision ResolveNlsPresentationCrop(
+	const NlsSourceGeometry& source, double targetAspect,
+	double tolerancePercent, double activeAspectMinimum,
+	NlsAspectDirection direction, double maximumStretchRatio,
+	double maximumCropPercent,
+	NlsPresentationCropPreference preference);
 
 const char* NlsMappingModeName(NlsMappingMode mode);
 const char* NlsMappingAxisName(const NlsMappingDecision& decision);
+const char* NlsAspectDirectionName(NlsAspectDirection direction);
+const char* NlsPresentationCropPreferenceName(
+	NlsPresentationCropPreference preference);
