@@ -113,6 +113,11 @@ if ($expected.Contains('VideoProcessor.cfg') -or
     -not $expected.Contains('VideoProcessor.cfg.example')) {
     throw 'Release staging must contain only the example configuration name.'
 }
+if ($expected.Contains('CONFIGURATION.html') -or
+    -not $expected.Contains('docs\CONFIGURATION.html') -or
+    -not $expected.Contains('docs\VideoProcessor_NLS_Configuration_Guide.pdf')) {
+    throw 'Release operator documentation must contain the configuration HTML and NLS PDF under docs only.'
+}
 $shaderDestinations = @($copyPlan | Where-Object {
     $_.RelativeDestination -like 'shaders\*'
 })

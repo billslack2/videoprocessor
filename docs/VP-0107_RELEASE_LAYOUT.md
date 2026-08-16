@@ -9,13 +9,15 @@ private DLLs, and unexpected files.
 ## Canonical tree
 
 ```text
-VideoProcessor\
+  VideoProcessor\
   VideoProcessor.exe
   VideoProcessor.cfg.example
-  CONFIGURATION.html
   RELEASE-LAYOUT.md
   RELEASE-MANIFEST.json
   logs\                         (intentionally empty)
+  docs\
+    CONFIGURATION.html
+    VideoProcessor_NLS_Configuration_Guide.pdf
   config\
     VideoProcessorConfig.exe
     VideoProcessorConfigDiscovery.dll
@@ -33,7 +35,9 @@ VideoProcessor\
 ```
 
 The application root contains the native MFC host, operator data and shared
-assets, but no Qt or Config-only binaries. `config\` owns the complete
+assets, but no Qt or Config-only binaries. Operator-facing configuration
+documentation is grouped under `docs\`; the configuration HTML and NLS PDF
+must not be staged at the release root. `config\` owns the complete
 configuration editor process: Windows resolves its normal Qt imports beside
 `VideoProcessorConfig.exe`, and Qt discovers its typed plugin directories below
 that same private directory. The host launches Config by the absolute
