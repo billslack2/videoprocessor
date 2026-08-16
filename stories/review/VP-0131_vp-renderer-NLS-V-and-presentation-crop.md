@@ -2,11 +2,11 @@
 
 ## Status
 
-In Progress (2026-08-15). Implementing on branch
-`codex/vp0089-vp0131-nls-profiles` in worktree
-`C:\Videoprocessor\vp\git-main\stories\.vp0089-vp0131-nls` together with
-VP-0089. The implementation starts from GitHub's current default branch,
-`v1.2.001-beta` at `74a6c7e`.
+Review (2026-08-15). Implemented on branch
+`codex/vp0089-vp0131-nls-profiles` together with VP-0089 and submitted as
+GitHub PR [#64](https://github.com/billslack2/videoprocessor/pull/64) against
+`v1.2.001-beta`. Live picture-quality acceptance remains a release-review
+item; the code and configuration-editor changes are ready for review.
 
 Readiness review confirmed that the existing GLSL hook already implements the
 required vertical one-axis map through dynamic `warp_axis`; the missing pieces
@@ -30,8 +30,8 @@ HLSL behavior; the separate Config application suite passed; and release
 packaging staged and verified all 56 immutable files. The full native suite
 passed 832 of 837 tests; its five failures are pre-existing stale default-
 branch documentation/config expectations unrelated to NLS. Live VP Renderer
-scope/subtitle/pan/menu/mixed-aspect acceptance remains open, so the story stays
-In Progress.
+scope/subtitle/pan/menu/mixed-aspect acceptance remains open as a release-review
+item.
 
 Initial deployment checkpoint: the clean `847c865` executable/VP Renderer DLL
 pair, Config binaries, new shader members, bounded-crop settings, demo config,

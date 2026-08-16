@@ -2,11 +2,11 @@
 
 ## Status
 
-In Progress (2026-08-15). Implementing on branch
-`codex/vp0089-vp0131-nls-profiles` in worktree
-`C:\Videoprocessor\vp\git-main\stories\.vp0089-vp0131-nls` together with
-VP-0131. The implementation starts from GitHub's current default branch,
-`v1.2.001-beta` at `74a6c7e`.
+Review (2026-08-15). Implemented on branch
+`codex/vp0089-vp0131-nls-profiles` together with VP-0131 and submitted as
+GitHub PR [#64](https://github.com/billslack2/videoprocessor/pull/64) against
+`v1.2.001-beta`. Live picture-quality acceptance remains a release-review
+item; the code and configuration-editor changes are ready for review.
 
 Readiness review confirmed that VP Renderer already owns the exact source
 rectangle, viewport target, one-axis mapping decision, dynamic
@@ -28,7 +28,7 @@ full native suite passed 832 of 837 tests. Its five failures are pre-existing
 stale documentation/config test expectations on the default branch (including
 the removed `default_screen_profile` key and a `2.1:1` fixture that asserts
 `47:20`), not failures in the NLS paths. Live picture-quality acceptance with
-actual VP Renderer material remains open, so the story stays In Progress.
+actual VP Renderer material remains open as a release-review item.
 
 Runtime QA checkpoint (2026-08-15): logs proved NLS+ selected, parsed, bound,
 compiled, and rendered, but the prior equation-only unit test could not prove
@@ -43,7 +43,8 @@ geometry. No viewport profile or renderer is created by NLS+.
 QA fix checkpoint: committed as `cf2d8fc`. A clean x64 Release rebuild reported
 `VERSION_DIRTY=false`, and the final focused run passed all 45 selected
 NLS/GLSL/configuration tests. The matched EXE and VP Renderer DLL were deployed
-and SHA-256 verified. Live picture-quality acceptance remains open.
+and SHA-256 verified. Live picture-quality acceptance remains open as a
+release-review item.
 
 Deployment checkpoint: the clean `847c865` executable/VP Renderer DLL pair,
 Config binaries, `NLSPlus.glsl`, documentation, release manifest, demo config,
