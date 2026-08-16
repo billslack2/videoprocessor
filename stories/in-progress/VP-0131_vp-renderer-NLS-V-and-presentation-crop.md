@@ -33,13 +33,32 @@ branch documentation/config expectations unrelated to NLS. Live VP Renderer
 scope/subtitle/pan/menu/mixed-aspect acceptance remains open, so the story stays
 In Progress.
 
-Deployment checkpoint: the clean `847c865` executable/VP Renderer DLL pair,
-Config binaries, new profiles, bounded-crop settings, demo config, and active
-config were installed at `C:\Videoprocessor\vp`. The active configuration kept
-all prior user values/comments and only gained the new viewport/profile
-sections plus explicit zero-crop defaults on existing NLS members. The prior
-files are recoverable from
+Initial deployment checkpoint: the clean `847c865` executable/VP Renderer DLL
+pair, Config binaries, new shader members, bounded-crop settings, demo config,
+and active config were installed at `C:\Videoprocessor\vp`. That deployment
+incorrectly included an NLS-specific viewport, which the user removed and
+which must not be restored. The prior files are recoverable from
 `C:\Videoprocessor\vp\backups\vp0089-vp0131-20260815-201830`.
+
+Runtime QA correction (2026-08-15): the latest failed visual run selected
+NLS-V while retaining a full 16:9 raster, so a detected 2.00:1 picture was
+incorrectly evaluated as 16:9-to-16:9 passthrough. The rejected solution was a
+new/coupled 16:9 viewport profile. The accepted correction restores the
+established VP-0003 NLS contract instead: whenever VP Renderer NLS is selected,
+it maps the trusted active-picture rectangle (thereby removing detected encoded
+bars) independently of the viewport's ordinary `automatic_crop` setting.
+NLS-off presentation remains unchanged. The optional percentage is then only
+an additional crop of actual picture pixels when required by the stretch cap.
+The demo and deployed configurations must contain only the NLS+ and NLS-V
+shader members—no NLS-specific viewport and no new renderer.
+
+QA also found that a later local operation replaced only the deployed EXE,
+breaking the tested EXE/plugin pairing. A fresh x64 Release pair must be
+backed up, deployed together, and hash-verified before live acceptance. New
+change-only telemetry records detector versus presentation geometry, NLS
+active-picture crop, bounded additional crop, bound hook values, installed
+hook count, and render success. A real WARP readback test proves the existing
+GLSL vertical path changes only Y pixels and preserves X.
 
 ## User story
 
@@ -57,8 +76,12 @@ the option is disabled.
   `wider_only`, and `any`.
 - Intentional presentation crop is available to every VP Renderer NLS member,
   including the existing standard/protected profiles and VP-0089 NLS+.
-- The crop is not detector output. It is derived after the trusted/full-raster
-  source rectangle is selected and is used only for final NLS presentation.
+- NLS first uses the trusted active-picture rectangle, preserving the
+  established 4:3-to-16:9 and bar-removal behavior without a special viewport.
+  Intentional crop is not detector output; it is derived afterward and used
+  only for final NLS presentation.
+- Do not create an NLS-specific 16:9 viewport or a new renderer. NLS-V is only
+  a GLSL shader member selected through the existing dynamic shader mechanism.
 - Intentional crop and NLS+ are permanently out of scope for madVR/HLSL.
   DirectShow retains full-source one-axis NLS and never emulates either feature.
 - No dedicated Config controls are added. The existing generic parameter table
@@ -94,7 +117,8 @@ approximately 4.6 percent from each side and leaves a 1.22x vertical map.
    enum while keeping legacy/default selection equivalent.
 2. Add the GLSL-only NLS-V profile; do not add or modify an HLSL shader.
 3. Add a pure, deterministic presentation-crop policy that operates on the
-   already-selected NLS source rectangle and returns a separate rectangle.
+   trusted active-picture rectangle after encoded bars have been removed and
+   returns a separate rectangle.
 4. Apply the result only after NLS is requested and before final mapping/layout
    publication. Do not mutate detector evidence, crop authority, subtitle
    evidence, or saved active-picture geometry.
@@ -109,6 +133,9 @@ approximately 4.6 percent from each side and leaves a 1.22x vertical map.
 
 - Existing NLS output and fit decisions are unchanged with crop `0` and with
   new fields omitted.
+- Stable detected bars are removed as part of the established NLS source
+  contract even when ordinary viewport `automatic_crop` is off; NLS-off keeps
+  the viewport/full-raster presentation unchanged.
 - `wider_only` activates for stable scope-to-16:9 input and passes through
   narrower/equal content; `narrower_only` and `any` retain current behavior.
 - On VP Renderer, 2.39:1 to 16:9 with the shipped NLS-V settings crops about
@@ -122,7 +149,8 @@ approximately 4.6 percent from each side and leaves a 1.22x vertical map.
 - madVR/HLSL behavior, shaders, presentation ownership, and configuration
   output are unchanged; VP Renderer-only fields have no effect there.
 - Pure policy/configuration tests cover both crop axes, both preferences,
-  rounding, invalid settings, direction boundaries, and compatibility.
+  rounding, invalid settings, direction boundaries, compatibility, and a real
+  libplacebo/D3D11 WARP pixel-readback of the checked-in GLSL.
 - A clean x64 Release build and live VP Renderer validation cover scope films,
   subtitles, pans, menus, and mixed-aspect transitions.
 

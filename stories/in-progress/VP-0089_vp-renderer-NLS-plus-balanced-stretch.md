@@ -30,6 +30,16 @@ the removed `default_screen_profile` key and a `2.1:1` fixture that asserts
 `47:20`), not failures in the NLS paths. Live picture-quality acceptance with
 actual VP Renderer material remains open, so the story stays In Progress.
 
+Runtime QA checkpoint (2026-08-15): logs proved NLS+ selected, parsed, bound,
+compiled, and rendered, but the prior equation-only unit test could not prove
+that output pixels moved. Added a real libplacebo/D3D11 WARP readback test of
+the checked-in GLSL. It proves balanced NLS+ moves both coordinate axes,
+ratio `1` is identity on the same dynamic hook, fixed edges remain bounded,
+and `axis_balance: 0` matches the existing `NLS.glsl` output within tolerance.
+Change-only diagnostics now report the bound dynamic values, expected X/Y
+centre scales, hook count, crops, render result, and detector/presentation
+geometry. No viewport profile or renderer is created by NLS+.
+
 Deployment checkpoint: the clean `847c865` executable/VP Renderer DLL pair,
 Config binaries, `NLSPlus.glsl`, documentation, release manifest, demo config,
 and minimally edited active config were installed at `C:\Videoprocessor\vp`.
@@ -54,6 +64,9 @@ left and right edges.
   their current behavior, parameters, cache identity, and defaults.
 - NLS+ is selected explicitly. Omission of every new field is behaviorally
   identical to the current release.
+- Like established VP Renderer NLS, NLS+ consumes the trusted active-picture
+  rectangle directly; detected source-baked bars are not a separate viewport
+  profile or a new renderer.
 - NLS+ is GLSL/VP Renderer only. There is no HLSL implementation, madVR
   fallback, compatibility claim, or future DirectShow parity commitment.
 - VP-0131 owns the shared, opt-in VP Renderer presentation-crop policy used by
@@ -105,8 +118,8 @@ a shader variant.
 - Invalid balance values reject the NLS+ rule safely.
 - NLS+ has no HLSL file and cannot be selected as a madVR effect.
 - Unit/policy tests, shader-source contract tests, a clean x64 Release build,
-  and live VP Renderer validation cover geometry, pans, tickers, faces, menus,
-  and mixed-aspect transitions.
+  real GPU pixel-readback tests, and live VP Renderer validation cover geometry,
+  pans, tickers, faces, menus, and mixed-aspect transitions.
 
 ## Non-goals
 
