@@ -41,6 +41,7 @@
 #include <QSplitter>
 #include <QStackedWidget>
 #include <QTableWidget>
+#include <QTabBar>
 #include <QTemporaryDir>
 #include <QTimer>
 #include <QToolButton>
@@ -373,28 +374,37 @@ void testEveryPageRoundTrips()
         QStringLiteral("settingsPages"));
     require(pages->count() == 13,
         "Renderer Input and shader child pages were not added as dedicated settings pages");
-    QList<int> inputNavigationTargets;
     for (QPushButton* button : window.findChildren<QPushButton*>())
-        if (button->text() == QStringLiteral("Input Processing") && button->property("navChild").toBool())
-            inputNavigationTargets.append(button->property("pageIndex").toInt());
-    std::sort(inputNavigationTargets.begin(), inputNavigationTargets.end());
-    require(inputNavigationTargets == QList<int>{ 11, 12 },
-        "Renderer Input navigation entries do not target the dedicated pages");
-    QList<int> shaderNavigationTargets;
-    for (QPushButton* button : window.findChildren<QPushButton*>())
-        if ((button->text() == QStringLiteral("Standard") ||
-             button->text() == QStringLiteral("NLS")) &&
-            button->property("navChild").toBool())
-            shaderNavigationTargets.append(button->property("pageIndex").toInt());
-    std::sort(shaderNavigationTargets.begin(), shaderNavigationTargets.end());
-    require(shaderNavigationTargets == QList<int>{ 8, 9 },
-        "Shader navigation does not expose Standard and NLS as child pages");
-    bool shaderHeaderFound = false;
-    for (QToolButton* header : window.findChildren<QToolButton*>())
-        if (header->property("navSection").toBool() &&
-            header->text() == QStringLiteral("Shaders"))
-            shaderHeaderFound = true;
-    require(shaderHeaderFound, "Shaders is not a collapsible navigation section");
+        require(!button->property("navChild").toBool(),
+            "Grouped settings still expose child entries in the left navigation");
+    QTabBar* sectionTabs = requireControl<QTabBar>(window,
+        QStringLiteral("settingsSectionTabs"));
+    const auto parentButton = [&window](const QString& text)
+    {
+        for (QPushButton* button : window.findChildren<QPushButton*>())
+            if (button->property("nav").toBool() && button->text() == text)
+                return button;
+        return static_cast<QPushButton*>(nullptr);
+    };
+    const auto requireTabs = [sectionTabs](const QStringList& expected)
+    {
+        QStringList actual;
+        for (int tab = 0; tab < sectionTabs->count(); ++tab)
+            actual.push_back(sectionTabs->tabText(tab));
+        require(actual == expected, "A grouped settings page has the wrong top tabs");
+    };
+    QPushButton* shadersNavigation = parentButton(QStringLiteral("Shaders"));
+    QPushButton* vpRenderer = parentButton(QStringLiteral("VP Renderer"));
+    QPushButton* directShow = parentButton(QStringLiteral("DirectShow"));
+    require(shadersNavigation && vpRenderer && directShow,
+        "A grouped settings parent is missing from the left navigation");
+    shadersNavigation->click();
+    requireTabs({ QStringLiteral("NLS"), QStringLiteral("Standard") });
+    vpRenderer->click();
+    requireTabs({ QStringLiteral("Rendering"), QStringLiteral("Screen Config"),
+        QStringLiteral("Input Processing") });
+    directShow->click();
+    requireTabs({ QStringLiteral("General"), QStringLiteral("Input Processing") });
     QWidget* navigation = requireControl<QWidget>(window, QStringLiteral("sidebar"));
     require(navigation->minimumWidth() >= 172,
         "The settings navigation is too narrow for renderer child labels");

@@ -65,6 +65,7 @@
 #include <QStyledItemDelegate>
 #include <QSystemTrayIcon>
 #include <QTableWidget>
+#include <QTabBar>
 #include <QThread>
 #include <QTimer>
 #include <QToolButton>
@@ -1868,69 +1869,91 @@ QWidget* ConfigEditorWindow::createShell()
 
     auto* navGroup = new QButtonGroup(root);
     navGroup->setExclusive(true);
-    auto addRendererGroup = [this, navLayout, navGroup](const QString& title,
-        const std::vector<std::pair<QString, int>>& entries)
-    {
-        auto* header = new QToolButton;
-        header->setText(title);
-        header->setAccessibleName(title);
-        header->setAccessibleDescription(
-            QStringLiteral("Expand or collapse the %1 settings group.").arg(title));
-        header->setProperty("navSection", true);
-        header->setArrowType(Qt::RightArrow);
-        header->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-        header->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-        navLayout->addSpacing(8);
-        navLayout->addWidget(header);
-
-        auto* children = new QWidget;
-        children->setVisible(false);
-        children->setProperty("navChildren", true);
-        children->setProperty("navHeader", QVariant::fromValue<QObject*>(header));
-        auto* childLayout = new QVBoxLayout(children);
-        childLayout->setContentsMargins(4, 0, 0, 0);
-        childLayout->setSpacing(2);
-        for (const auto& entry : entries)
-        {
-            QPushButton* button = addNavigationButton(entry.first, entry.second);
-            button->setProperty("navChild", true);
-            navGroup->addButton(button, entry.second);
-            childLayout->addWidget(button);
-        }
-        navLayout->addWidget(children);
-        connect(header, &QToolButton::clicked, this, [header, children]
-        {
-            const bool expanded = !children->isVisible();
-            children->setVisible(expanded);
-            header->setArrowType(expanded ? Qt::DownArrow : Qt::RightArrow);
-        });
-    };
     const auto addLeaf = [this, navLayout, navGroup](const QString& title, int page)
     {
         QPushButton* button = addNavigationButton(title, page);
         navGroup->addButton(button, page);
         navLayout->addWidget(button);
         if (page == 0) button->setChecked(true);
+        return button;
     };
     addLeaf(QStringLiteral("General"), 0);
     addLeaf(QStringLiteral("Queue"), 1);
     addLeaf(QStringLiteral("LLDV"), 5);
-    addRendererGroup(QStringLiteral("Shaders"), {
-        { QStringLiteral("Standard"), 8 }, { QStringLiteral("NLS"), 9 }
-    });
+    QPushButton* shadersNavigation = addLeaf(QStringLiteral("Shaders"), 9);
     addLeaf(QStringLiteral("Actions"), 7);
     addLeaf(QStringLiteral("Shortcuts"), 6);
     addLeaf(QStringLiteral("Logs"), 10);
-    addRendererGroup(QStringLiteral("VP Renderer"), {
-        { QStringLiteral("Rendering"), 2 }, { QStringLiteral("Screen Config"), 4 },
-        { QStringLiteral("Input Processing"), 11 }
-    });
-    addRendererGroup(QStringLiteral("DirectShow"), {
-        { QStringLiteral("General"), 3 }, { QStringLiteral("Input Processing"), 12 }
-    });
+    navLayout->addSpacing(8);
+    QPushButton* vpNavigation = addLeaf(QStringLiteral("VP Renderer"), 2);
+    QPushButton* directShowNavigation = addLeaf(QStringLiteral("DirectShow"), 3);
     navLayout->addStretch();
+
+    auto* pageHost = new QWidget;
+    pageHost->setObjectName(QStringLiteral("sectionPageHost"));
+    auto* pageHostLayout = new QVBoxLayout(pageHost);
+    pageHostLayout->setContentsMargins(0, 0, 0, 0);
+    pageHostLayout->setSpacing(0);
+    auto* sectionTabs = new QTabBar;
+    sectionTabs->setObjectName(QStringLiteral("settingsSectionTabs"));
+    sectionTabs->setAccessibleName(QStringLiteral("Settings section pages"));
+    sectionTabs->setExpanding(false);
+    sectionTabs->setDrawBase(true);
+    pageHostLayout->addWidget(sectionTabs);
+    pageHostLayout->addWidget(pages_, 1);
+
+    const auto showSectionTabs = [sectionTabs](
+        const std::vector<std::pair<QString, int>>& entries, int currentPage)
+    {
+        QSignalBlocker blocker(sectionTabs);
+        while (sectionTabs->count() > 0) sectionTabs->removeTab(0);
+        int selected = 0;
+        for (int index = 0; index < static_cast<int>(entries.size()); ++index)
+        {
+            sectionTabs->addTab(entries[index].first);
+            sectionTabs->setTabData(index, entries[index].second);
+            if (entries[index].second == currentPage) selected = index;
+        }
+        sectionTabs->setCurrentIndex(selected);
+        sectionTabs->setVisible(!entries.empty());
+    };
+    const auto updateSectionTabs = [showSectionTabs, shadersNavigation,
+        vpNavigation, directShowNavigation](int page)
+    {
+        if (page == 8 || page == 9)
+        {
+            shadersNavigation->setChecked(true);
+            showSectionTabs({ { QStringLiteral("NLS"), 9 },
+                { QStringLiteral("Standard"), 8 } }, page);
+        }
+        else if (page == 2 || page == 4 || page == 11)
+        {
+            vpNavigation->setChecked(true);
+            showSectionTabs({ { QStringLiteral("Rendering"), 2 },
+                { QStringLiteral("Screen Config"), 4 },
+                { QStringLiteral("Input Processing"), 11 } }, page);
+        }
+        else if (page == 3 || page == 12)
+        {
+            directShowNavigation->setChecked(true);
+            showSectionTabs({ { QStringLiteral("General"), 3 },
+                { QStringLiteral("Input Processing"), 12 } }, page);
+        }
+        else
+            showSectionTabs({}, page);
+    };
+    connect(sectionTabs, &QTabBar::currentChanged, this,
+        [this, sectionTabs](int tab)
+        {
+            if (tab < 0) return;
+            const int page = sectionTabs->tabData(tab).toInt();
+            if (page >= 0 && page < pages_->count() && pages_->currentIndex() != page)
+                pages_->setCurrentIndex(page);
+        });
+    connect(pages_, &QStackedWidget::currentChanged, this, updateSectionTabs);
+    updateSectionTabs(pages_->currentIndex());
     centerLayout->addWidget(navigation_);
-    centerLayout->addWidget(pages_, 1);
+    centerLayout->addWidget(pageHost, 1);
     rootLayout->addWidget(center, 1);
 
     auto* footer = new QWidget;
