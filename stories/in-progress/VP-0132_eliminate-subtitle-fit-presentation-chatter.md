@@ -7,8 +7,9 @@ In Progress. The live VP Renderer trace from 2026-08-16 at
 on source branch `codex/vp-0132-subtitle-stability`, based on the current GitHub
 default branch `v1.2.001-beta` at `74a6c7e`.
 
-The first trace review found that the configured screen aspect remained 2.35,
-but provisional vertical-bar evidence briefly withdrew the trusted
+The trace review found that the configured screen aspect remained 2.35, but a
+`BAR_CROP_TRUSTED` refinement that had not yet reaffirmed the retained crop
+briefly withdrew the trusted
 `0,276-3840,1884` presentation to full raster and restored it on the following
 frame. Subtitle translation then published many per-frame layout rectangles.
 The existing two-dense-sample confirmation can complete in only a small
@@ -21,10 +22,15 @@ the recorded `BAR_CROP_TRUSTED` refinement that has not yet reaffirmed the old
 crop. The crop log now publishes `bar_wait`. Focused Alpha source-crop policy
 tests pass 99/99, including the exact non-containing bar-refinement state,
 three-sample initial engagement, three-sample retargeting, full-raster override,
-and stale-generation rejection. x64 Release test and VP Renderer targets build
-successfully. The complete native suite currently reports 824/829 with the same
-five pre-existing configuration/reference failures present on the default
-branch; clean full-solution Release verification and deployment remain pending.
+and stale-generation rejection. The fix is published in PR #65. A clean
+VP-0131 + VP-0132 integration at `bb4ca90` rebuilt the x64 Release host, VP
+Renderer, and native test targets successfully. Its focused policy suite passes
+99/99 and its complete native suite reports 836/841 with the same five
+pre-existing configuration/reference failures. The matched Release EXE and
+renderer DLL were deployed at 00:53 after backing up the prior pair under
+`C:\Videoprocessor\vp\backups\vp0132-before-bb4ca90-20260816-0053`; active
+configuration was not changed. Live forward/rewind confirmation remains
+pending.
 
 ## User story
 
