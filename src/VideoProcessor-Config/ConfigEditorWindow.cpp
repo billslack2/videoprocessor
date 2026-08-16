@@ -225,6 +225,40 @@ public:
     }
 };
 
+// The platform delegate centers its editor using the editor's size hint. Our
+// themed QLineEdit has a larger minimum height than the parameter row, which
+// made the editor appear to jump downward when a value was clicked. Parameter
+// values are all plain text, so give every value cell the same compact editor
+// geometry instead of allowing that platform-dependent repositioning.
+class ShaderParameterItemDelegate final : public QStyledItemDelegate
+{
+public:
+    using QStyledItemDelegate::QStyledItemDelegate;
+
+    QWidget* createEditor(QWidget* parent, const QStyleOptionViewItem&,
+        const QModelIndex& index) const override
+    {
+        if (index.column() != 1) return nullptr;
+        auto* editor = new QLineEdit(parent);
+        editor->setObjectName(QStringLiteral("config.shader.nls.parameter_value_editor"));
+        // The application theme gives ordinary form fields a comfortable
+        // minimum height. Table editors must instead fit the existing row.
+        editor->setStyleSheet(QStringLiteral(
+            "QLineEdit { min-height: 0; padding: 0 7px; }"));
+        editor->setMinimumSize(0, 0);
+        editor->setMaximumHeight(QWIDGETSIZE_MAX);
+        return editor;
+    }
+
+    void updateEditorGeometry(QWidget* editor,
+        const QStyleOptionViewItem& option, const QModelIndex&) const override
+    {
+        // Keep a one-pixel inset for the table gridline while occupying the
+        // full row height. This is deterministic for every shader parameter.
+        editor->setGeometry(option.rect.adjusted(1, 1, -1, -1));
+    }
+};
+
 class ResponsiveCardGrid final : public QWidget
 {
 public:
@@ -4108,6 +4142,8 @@ QWidget* ConfigEditorWindow::createShadersPage()
     parameters->verticalHeader()->setVisible(false);
     parameters->setSelectionBehavior(QAbstractItemView::SelectRows);
     parameters->setSelectionMode(QAbstractItemView::SingleSelection);
+    parameters->setItemDelegateForColumn(1,
+        new ShaderParameterItemDelegate(parameters));
     // Let the containing page own vertical overflow.  A custom parameter list
     // is generally small, but an implementation may legitimately expose many
     // keys; an inner scrollbar hides those values behind a second scroll area.

@@ -563,6 +563,17 @@ void testEveryPageRoundTrips()
     require(theme.contains(QStringLiteral("QTableWidget::item:selected")) &&
         theme.contains(QStringLiteral("background: #173c59")),
         "Selected shader parameter rows can fall back to the platform light selection color");
+    require(parameters->rowCount() > 0, "Shader parameter fixture did not load");
+    const QModelIndex parameterIndex = parameters->model()->index(0, 1);
+    parameters->edit(parameterIndex);
+    QCoreApplication::processEvents();
+    QLineEdit* parameterEditor = parameters->findChild<QLineEdit*>(
+        QStringLiteral("config.shader.nls.parameter_value_editor"));
+    require(parameterEditor != nullptr, "Shader parameter did not use the compact editor");
+    const QRect valueCell = parameters->visualRect(parameterIndex);
+    const QRect expectedEditor = valueCell.adjusted(1, 1, -1, -1);
+    require(parameterEditor->geometry() == expectedEditor,
+        "Shader parameter editor was not aligned to its value cell");
     bool changedParameter = false;
     for (int row = 0; row < parameters->rowCount(); ++row)
         if (parameters->item(row, 0) &&
