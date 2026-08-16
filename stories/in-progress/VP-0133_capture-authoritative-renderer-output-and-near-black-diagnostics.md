@@ -78,6 +78,23 @@ renderer conversion difference from DXGI, GPU, HDMI, or display behavior.
     HDMI InfoFrames, the projector transfer curve, or measured luminance. The
     metadata and documentation must explain that matching renderer captures
     move the remaining investigation downstream to transport/display evidence.
+11. Add an explicit renderer-profile `sdr_adjust_gamma` policy with three UI
+    choices: **Auto (mpv-compatible)**, **On - color managed (current
+    behavior)**, and **Off - suppress SDR transfer conversion**. A missing key
+    resolves to On so existing users do not change behavior silently.
+12. Implement this as source/target transfer metadata policy at the libplacebo
+    frame boundary, not as an artistic gamma control. On retains the declared
+    SDR source transfer. Auto suppresses conversion only for an automatic sRGB
+    target and a common ambiguous BT.1886, pure-2.2, or sRGB source. Off treats
+    SDR as already encoded for the finalized accepted SDR target transfer.
+13. The policy applies only to SDR input. It must not rewrite PQ, HLG, or other
+    HDR input, must use the finalized actual output after fallback, and must not
+    falsify the DXGI declaration or accepted output target.
+14. UI help, OSD, ordinary logs, and rendered-output JSON must distinguish
+    configured/declared/effective source transfer, accepted target transfer,
+    ADJUST/SUPPRESS/NOT_APPLICABLE/BLOCKED action, and reason. They must state
+    that matrix/range/primaries conversion, scaling, LUTs, shaders, dithering,
+    quantization, and physical display response remain active.
 
 ## Logging additions
 
@@ -95,6 +112,11 @@ renderer conversion difference from DXGI, GPU, HDMI, or display behavior.
 - Correct output-diagnostic readback so VP-owned evidence always comes from the
   VP-owned presented backbuffer. Retain the existing summary statistics for
   normal diagnostic runs, now sourced from the correct surface.
+- Emit one structured `SDR_GAMMA` record when the resolved decision or relevant
+  processing caveat changes, rather than spamming every frame. Include the
+  requested policy, applicability/action, configured and declared/effective
+  source, requested/actual target, output fallback state, and other active
+  processing caveats.
 
 ## Acceptance criteria
 
@@ -120,6 +142,11 @@ renderer conversion difference from DXGI, GPU, HDMI, or display behavior.
 8. A tester package includes the feature, configuration documentation, the
    default shortcut, and concise instructions for capturing the same SDR
    Rec.709 PLUGE/ramp frame in madVR and VP Renderer.
+9. Policy tests cover On/default compatibility, Off against accepted sRGB,
+   pure-2.2 and pure-2.4 targets, mpv-compatible Auto boundaries, unknown or
+   unsafe outputs, and HDR exclusion. UI tests cover exact labels and
+   save/reload; applying the setting performs a renderer restart, not the full
+   capture teardown reserved for DXGI Output Experiments.
 
 ## Non-goals
 
@@ -128,6 +155,7 @@ renderer conversion difference from DXGI, GPU, HDMI, or display behavior.
 - Do not change production output range, gamma, tone mapping, LUT, or projector
   recommendations in order to make two screenshots look similar.
 - Do not make screenshot capture depend on the active-output sweep harness.
+- Do not describe Off as bit-exact passthrough or a complete madVR mode.
 
 ## Dependencies and references
 
@@ -141,6 +169,11 @@ renderer conversion difference from DXGI, GPU, HDMI, or display behavior.
 - libplacebo exposes host texture transfer through `pl_tex_download`; the
   Windows VP-owned implementation may instead use an explicitly synchronized
   D3D11 staging copy of the already acquired authoritative backbuffer.
+- mpv implements `sdr-adjust-gamma` in its frontend by changing frame transfer
+  metadata before libplacebo rendering; libplacebo has no equivalent one-switch
+  option. MPC Video Renderer similarly provides precedent for ordinary Rec.709
+  SDR without an extra transfer remap, but neither precedent establishes a
+  bit-exact or physical display contract.
 
 ## Implementation and verification record (2026-08-16)
 
@@ -188,3 +221,24 @@ contains an active `VideoProcessor.cfg`; only `VideoProcessor.cfg.example` is
 included. Live projector comparison and external measurement remain open, so
 the story stays In Progress rather than claiming that application readback has
 validated HDMI or physical display behavior.
+
+The subsequent SDR comparison audit added the reviewed `sdr_adjust_gamma`
+policy to this same story rather than creating a competing gamma story. The
+implementation keeps the accepted output/DXGI target authoritative and changes
+only effective SDR source transfer metadata at the per-frame libplacebo
+boundary. The UI exposes Auto/On/Off with explicit transfer-only caveats; the
+ordinary log, renderer status/OSD, and VP-0133 JSON sidecar expose the resolved
+decision. Focused policy/restart tests pass 45/45 and the configuration/UI suite,
+including exact label and save/reload coverage, passes. The full native suite
+remains at the same five documented pre-existing failures with no new failure.
+
+This extension is committed and pushed as `bedc3f0` (implementation/tests/docs)
+and `424ff92` (shipped example configuration), still based on the freshly
+verified default-branch tip `9daf9ab`. A serial clean x64 Release rebuild from
+`424ff92` completed with `VERSION_DESCRIBE v1.2.001-beta-424ff92` and
+`VERSION_DIRTY=false`. The final native result is 831/836 with exactly the same
+five baseline failures listed above; the configuration/UI executable passes.
+The 55-file canonical manifest and both regular and VP-0133 tester archives
+were rebuilt from that commit. The archives contain only
+`VideoProcessor.cfg.example`, never an active `VideoProcessor.cfg`; the tester
+archive additionally contains the capture guide and active-output sweep tools.
