@@ -14,6 +14,18 @@ frame. Subtitle translation then published many per-frame layout rectangles.
 The existing two-dense-sample confirmation can complete in only a small
 fraction of a second and does not close every provisional-frame authority gap.
 
+Implementation checkpoint (2026-08-16): source commit `68bd68f` requires three
+compatible dense subtitle observations, retains the prior accepted target while
+a replacement target confirms, and adds an explicit bounded retention state for
+the recorded `BAR_CROP_TRUSTED` refinement that has not yet reaffirmed the old
+crop. The crop log now publishes `bar_wait`. Focused Alpha source-crop policy
+tests pass 99/99, including the exact non-containing bar-refinement state,
+three-sample initial engagement, three-sample retargeting, full-raster override,
+and stale-generation rejection. x64 Release test and VP Renderer targets build
+successfully. The complete native suite currently reports 824/829 with the same
+five pre-existing configuration/reference failures present on the default
+branch; clean full-solution Release verification and deployment remain pending.
+
 ## User story
 
 As a scope-screen operator, I want subtitle fitting to wait for convincing
