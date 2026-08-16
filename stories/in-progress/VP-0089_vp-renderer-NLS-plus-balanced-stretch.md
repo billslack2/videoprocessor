@@ -15,6 +15,27 @@ selection needed by this work. The new transform is bounded GLSL math plus a
 small typed-parameter extension; no API, ownership, or concurrency spike is
 needed. The current `NLS.glsl` path remains the compatibility baseline.
 
+Implementation checkpoint (2026-08-15): committed as `847c865` on the
+feature branch. Added the separate `NLSPlus.glsl` hook, `axis_balance`
+validation/substitution, demo and deployed `NLS+` profiles, diagnostics,
+documentation, tests, build copying, and the immutable release-manifest entry.
+The existing `NLS.glsl` and `NLS.hlsl` files were not changed.
+
+Verification checkpoint: the clean x64 Release solution build passed; all 41
+focused NLS/configuration tests passed; the separate Config application suite
+passed; and release packaging staged and verified all 56 immutable files. The
+full native suite passed 832 of 837 tests. Its five failures are pre-existing
+stale documentation/config test expectations on the default branch (including
+the removed `default_screen_profile` key and a `2.1:1` fixture that asserts
+`47:20`), not failures in the NLS paths. Live picture-quality acceptance with
+actual VP Renderer material remains open, so the story stays In Progress.
+
+Deployment checkpoint: the clean `847c865` executable/VP Renderer DLL pair,
+Config binaries, `NLSPlus.glsl`, documentation, release manifest, demo config,
+and minimally edited active config were installed at `C:\Videoprocessor\vp`.
+The prior files are recoverable from
+`C:\Videoprocessor\vp\backups\vp0089-vp0131-20260815-201830`.
+
 ## User story
 
 As a scope-screen user, I want an opt-in NLS+ profile that shares the required

@@ -15,6 +15,32 @@ owned symmetric crop resolver. The generic Config parameter table already
 expands with the page on the current default branch, so this story requires no
 Config UI work or spike.
 
+Implementation checkpoint (2026-08-15): committed as `847c865` on the
+feature branch. Production NLS direction is now the explicit
+`narrower_only`/`wider_only`/`any` enum; a separate deterministic crop policy
+returns presentation-only geometry; VP Renderer applies it after detector/full-
+raster source selection; and the new GLSL-only NLS-V profile reuses
+`NLS.glsl`. Crop remains zero by default on existing members and is not read by
+the madVR presentation path.
+
+Verification checkpoint: the clean x64 Release solution build passed; all 41
+focused NLS/configuration tests passed, including both crop axes, both crop
+preferences, inadequate-crop fallback, wider-only selection, and unchanged
+HLSL behavior; the separate Config application suite passed; and release
+packaging staged and verified all 56 immutable files. The full native suite
+passed 832 of 837 tests; its five failures are pre-existing stale default-
+branch documentation/config expectations unrelated to NLS. Live VP Renderer
+scope/subtitle/pan/menu/mixed-aspect acceptance remains open, so the story stays
+In Progress.
+
+Deployment checkpoint: the clean `847c865` executable/VP Renderer DLL pair,
+Config binaries, new profiles, bounded-crop settings, demo config, and active
+config were installed at `C:\Videoprocessor\vp`. The active configuration kept
+all prior user values/comments and only gained the new viewport/profile
+sections plus explicit zero-crop defaults on existing NLS members. The prior
+files are recoverable from
+`C:\Videoprocessor\vp\backups\vp0089-vp0131-20260815-201830`.
+
 ## User story
 
 As an operator with a fixed 16:9 screen, I want an opt-in NLS-V profile for
