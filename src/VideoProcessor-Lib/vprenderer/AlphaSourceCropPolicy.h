@@ -93,10 +93,10 @@ namespace AlphaSourceCrop
 		const VerticalBarContentInput& input);
 
 	// Subtitle extent often grows over the first few decoded frames. Confirm a
-	// new or larger translation on two consecutive dense analysis samples before
+	// new or larger translation on three consecutive dense analysis samples before
 	// exposing it to the presentation interpolator. This is deliberately based
 	// on analyzed observations rather than wall-clock time or raw frame count.
-	static constexpr uint32_t VERTICAL_TRANSLATION_CONFIRMATIONS_REQUIRED = 2;
+	static constexpr uint32_t VERTICAL_TRANSLATION_CONFIRMATIONS_REQUIRED = 3;
 	static constexpr float VERTICAL_TRANSLATION_STABILITY_PIXELS = 2.0f;
 
 	struct VerticalTranslationConfirmationState
@@ -163,7 +163,7 @@ namespace AlphaSourceCrop
 	bool ShouldRetainTrustedBaseForVerticalInspection(
 		bool subtitleFitEnabled,
 		bool currentEnvelope,
-		bool latestObservationIsProvisional,
+		bool latestObservationCanAwaitInspection,
 		bool leftExpansion,
 		bool topExpansion,
 		bool rightExpansion,
@@ -530,8 +530,13 @@ namespace AlphaSourceCrop
 		bool frameLocalPresentationRetentionEvaluated = false;
 		bool frameLocalPresentationRetentionSafe = false;
 		bool presentationFailOpen = false;
+		// A trusted bar observation may disagree slightly with the retained crop
+		// while the transition model is still confirming the replacement. Keep the
+		// last trusted presentation during that bounded confirmation instead of
+		// exposing full raster between old and new bar geometries.
+		bool barCropRefinementPending = false;
 		// A first dense subtitle observation is not yet a stable motion target.
-		// Retain the current trusted base for the bounded two-sample confirmation
+		// Retain the current trusted base for the bounded three-sample confirmation
 		// instead of flashing to full raster. This may briefly clip the newly seen
 		// bar pixels, but cannot establish or renew crop authority.
 		bool verticalTranslationConfirmationPending = false;
