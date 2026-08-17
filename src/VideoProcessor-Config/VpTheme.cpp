@@ -182,12 +182,6 @@ QString VpTheme::StyleSheet()
         QLabel[cardTitle="true"] { color: #f0f6fb; font-size: 16px; font-weight: 650; }
         QLabel[help="true"] { color: #93a8bb; font-size: 12px; }
         QLabel { color: #dce8f2; }
-        QTabWidget::pane {
-            background: #0b121b;
-            border: 1px solid #2e465d;
-            border-radius: 0 6px 6px 6px;
-            top: -1px;
-        }
         QTabBar::tab {
             color: #a9bed0;
             background: #111e2b;

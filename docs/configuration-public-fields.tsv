@@ -32,6 +32,7 @@ queue.<variant>.when	queue-variant-when	VP queue	no
 queue.<variant>.shortcut	queue-variant-shortcut	VP queue	no
 directshow.renderer_start_stop_time_method	directshow-start-stop-time-method	DirectShow	no
 directshow.frame_offset	directshow-frame-offset	DirectShow	no
+directshow.video_conversion	general-video-conversion	DirectShow	no
 directshow.renderer_nominal_range	directshow-renderer-nominal-range	DirectShow	no
 directshow.conversion.conversion_method	directshow-conversion-method	DirectShow conversion	no
 directshow.conversion.min_core_count	directshow-conversion-min-cores	DirectShow conversion	no
@@ -55,7 +56,13 @@ vprenderer.sdr_black_nits	vprenderer-sdr-black-nits	VP Renderer	no
 vprenderer.output_presentation	vprenderer-output-presentation	VP Renderer	no
 vprenderer.output_range	vprenderer-output-range	VP Renderer	no
 vprenderer.output_gamma	vprenderer-output-gamma	VP Renderer	no
+vprenderer.output_path_profile	vprenderer-diagnostic-output-experiments	VP Renderer diagnostics	no
+vprenderer.diagnostic_disable_compute	vprenderer-diagnostic-output-experiments	VP Renderer diagnostics	no
+vprenderer.diagnostic_force_8bit_sdr_swapchain	vprenderer-diagnostic-output-experiments	VP Renderer diagnostics	no
+vprenderer.diagnostic_allow_limited_g22	vprenderer-diagnostic-output-experiments	VP Renderer diagnostics	no
+vprenderer.diagnostic_vp_owned_dxgi_presenter	vprenderer-diagnostic-output-experiments	VP Renderer diagnostics	no
 vprenderer.sdr_input_transfer	vprenderer-sdr-input-transfer	VP Renderer	no
+vprenderer.sdr_adjust_gamma	vprenderer-sdr-adjust-gamma	VP Renderer	no
 vprenderer.sdr_target_primaries	vprenderer-sdr-target-primaries	VP Renderer	no
 vprenderer.report_bt2020_to_display	vprenderer-report-bt2020	VP Renderer	no
 general.switch_refresh_rate	general-switch-refresh-rate	General	no
@@ -78,8 +85,10 @@ vprenderer.viewport.<variant>.anamorphic_scale	viewport-anamorphic-scale	VP Rend
 vprenderer.viewport.<variant>.automatic_crop	viewport-automatic-crop	VP Renderer viewport	no
 vprenderer.viewport.<variant>.subtitle_fit	viewport-subtitle-fit	VP Renderer viewport	no
 vprenderer.viewport.<variant>.subtitle_hold_seconds	viewport-subtitle-hold-seconds	VP Renderer viewport	no
-vprenderer.viewport.<variant>.subtitle_release_drift_seconds	viewport-subtitle-release-drift-seconds	VP Renderer viewport	no
+vprenderer.viewport.<variant>.subtitle_engage_drift_ms	viewport-subtitle-engage-drift-ms	VP Renderer viewport	no
+vprenderer.viewport.<variant>.subtitle_release_drift_ms	viewport-subtitle-release-drift-ms	VP Renderer viewport	no
 vprenderer.viewport.<variant>.subtitle_padding_pixels	viewport-subtitle-padding-pixels	VP Renderer viewport	no
+vprenderer.viewport.<variant>.subtitle_target_buffer_pixels	viewport-subtitle-target-buffer-pixels	VP Renderer viewport	no
 shader.<group>.type	shader-group-type	Shader selection	no
 shader.<group>.when	shader-group-when	Shader selection	no
 shader.<group>.shortcut	shader-group-shortcut	Shader selection	no

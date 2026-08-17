@@ -216,6 +216,16 @@ namespace VideoProcessorTest
 					{ { "queue", "queue_size" }, { "shortcuts", "renderer_restart" } })));
 		}
 
+		TEST_METHOD(ConfigurationApplyPolicyRestartsRendererForSdrGammaAdjustment)
+		{
+			using ConfigurationApplyPolicy::Action;
+			using ConfigurationApplyPolicy::Change;
+			const Change change = { "vprenderer.rec709", "sdr_adjust_gamma" };
+			Assert::IsFalse(ConfigurationApplyPolicy::IsOutputExperimentChange(change));
+			Assert::AreEqual(static_cast<int>(Action::RestartRenderer),
+				static_cast<int>(ConfigurationApplyPolicy::ClassifyChange(change)));
+		}
+
 		TEST_METHOD(ConfigurationApplyPolicyKeepsStartupPresentationDefaultsForNextStart)
 		{
 			using ConfigurationApplyPolicy::Action;
@@ -699,15 +709,11 @@ namespace VideoProcessorTest
 				"diagnostic_force_8bit_sdr_swapchain: false\ndiagnostic_allow_limited_g22: false\n"
 				"diagnostic_allow_full_g22: false\n"
 				"diagnostic_vp_owned_dxgi_presenter: false\noutput_path_profile: legacy\n"
-				"default_screen_profile: normal\n"
 				"[vprenderer.bt2020]\nshortcut: F5\nsdr_target_primaries: bt2020\nreport_bt2020_to_display: true\n"
 				"[vprenderer.viewport.viewport_16x9]\nlabel: 16x9\nmode: normal\nscreen_aspect: 16:9\n"
 				"automatic_crop: false\nsubtitle_fit: true\nsubtitle_hold_seconds: 2\n"
 				"subtitle_engage_drift_ms: 0\nsubtitle_release_drift_ms: 0\nsubtitle_padding_pixels: 20\n"
 				"subtitle_target_buffer_pixels: 10\n"
-				"scope_screen_aspect: 2.35:1\nscope_automatic_crop: true\nscope_subtitle_fit: true\n"
-				"scope_subtitle_hold_seconds: 2\nscope_subtitle_engage_drift_ms: 0\nscope_subtitle_release_drift_ms: 0\n"
-				"scope_subtitle_padding_pixels: 20\n"
 				"[lldv.standard]\nmax_cll: 1000\nmax_fall: 401\nmastering_min_luminance: 0.001\n"
 				"mastering_max_luminance: 4000\n");
 
@@ -915,7 +921,6 @@ namespace VideoProcessorTest
 				{ "vprenderer.rec709", "diagnostic_allow_full_g22", "false" },
 				{ "vprenderer.rec709", "diagnostic_vp_owned_dxgi_presenter", "false" },
 				{ "vprenderer.rec709", "output_path_profile", "custom" },
-				{ "vprenderer.rec709", "default_screen_profile", "normal" },
 
 				{ "vprenderer.viewport.scope", "shortcut", "Ctrl+V" },
 				{ "vprenderer.viewport.scope", "when", "${width} >= 1280" },

@@ -67,9 +67,8 @@ private:
         const QString& section);
     QWidget* createViewportPage();
     QWidget* createLldvPage();
-    QWidget* createShadersPage();
-    QWidget* createNlsShadersPage();
     QWidget* createStandardShadersPage();
+    QWidget* createNlsShadersPage();
     QWidget* createActionsPage();
     QWidget* createShortcutsPage();
     QWidget* createLogsPage();

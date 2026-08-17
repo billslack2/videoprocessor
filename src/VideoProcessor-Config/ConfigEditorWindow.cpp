@@ -65,7 +65,6 @@
 #include <QSystemTrayIcon>
 #include <QTableWidget>
 #include <QTabBar>
-#include <QTabWidget>
 #include <QThread>
 #include <QTimer>
 #include <QToolButton>
@@ -952,8 +951,9 @@ void ConfigEditorWindow::selectPage(int index)
     if (!pages_ || index < 0 || index >= pages_->count()) return;
     pages_->setCurrentIndex(index);
     if (!navigation_) return;
-    const int navigationIndex = index == 4 || index == 10 ? 2 :
-        index == 11 ? 3 : index;
+    const int navigationIndex = index == 4 || index == 11 ? 2 :
+        index == 12 ? 3 :
+        index == 8 || index == 9 ? 8 : index;
     for (QAbstractButton* button : navigation_->findChildren<QAbstractButton*>())
     {
         const bool selected = button->property("pageIndex").isValid() &&
@@ -2071,37 +2071,6 @@ QWidget* ConfigEditorWindow::createShell()
 
     pages_ = new QStackedWidget;
     pages_->setObjectName(QStringLiteral("settingsPages"));
-    auto createSectionTabs = [this](const QStringList& labels,
-        const std::vector<int>& targets, const QString& objectName)
-    {
-        auto* tabs = new QTabBar;
-        tabs->setObjectName(objectName);
-        tabs->setAccessibleName(QStringLiteral("Section navigation"));
-        tabs->setProperty("sectionTabs", true);
-        // A standalone QTabBar draws a style-provided tab-bar base by default.
-        // QTabWidget suppresses that base because its pane owns the frame. Keep
-        // these cross-page tabs visually identical to the Shader QTabWidget
-        // tabs by suppressing the native base here as well; otherwise Windows
-        // styles can expose bright baseline/end-cap pixels around the tabs.
-        tabs->setDrawBase(false);
-        tabs->setExpanding(false);
-        tabs->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
-        for (const QString& label : labels) tabs->addTab(label);
-        connect(tabs, &QTabBar::currentChanged, this, [this, targets](int tabIndex)
-        {
-            if (tabIndex >= 0 && tabIndex < static_cast<int>(targets.size()) && pages_ &&
-                pages_->currentIndex() != targets[tabIndex])
-                selectPage(targets[tabIndex]);
-        });
-        return tabs;
-    };
-    QTabBar* vpSections = createSectionTabs(
-        { QStringLiteral("Rendering"), QStringLiteral("Screen Config"),
-          QStringLiteral("Input Processing") }, { 2, 4, 10 },
-        QStringLiteral("config.vprenderer.sections"));
-    QTabBar* directShowSections = createSectionTabs(
-        { QStringLiteral("General"), QStringLiteral("Input Processing") }, { 3, 11 },
-        QStringLiteral("config.directshow.sections"));
     pages_->addWidget(createStartupPage());
     pages_->addWidget(createQueuePage());
     pages_->addWidget(createRendererPage());
@@ -2110,7 +2079,8 @@ QWidget* ConfigEditorWindow::createShell()
     pages_->addWidget(createLldvPage());
     pages_->addWidget(createShortcutsPage());
     pages_->addWidget(createActionsPage());
-    pages_->addWidget(createShadersPage());
+    pages_->addWidget(createStandardShadersPage());
+    pages_->addWidget(createNlsShadersPage());
     pages_->addWidget(createLogsPage());
     pages_->addWidget(createInputProcessingPage(
         QStringLiteral("Input processing"),
@@ -2121,63 +2091,103 @@ QWidget* ConfigEditorWindow::createShell()
         QStringLiteral("Override the General input policy for DirectShow, or inherit it."),
         QStringLiteral("directshow")));
 
-    // These bars live outside the page stack so a click never replaces the
-    // widget that is processing it. The selected tab and the displayed page
-    // therefore remain one persistent, synchronously updated interaction.
-    auto* sectionHeader = new QWidget;
-    auto* sectionHeaderLayout = new QHBoxLayout(sectionHeader);
-    sectionHeaderLayout->setContentsMargins(0, 0, 0, 0);
-    sectionHeaderLayout->setSpacing(0);
-    sectionHeaderLayout->addWidget(vpSections, 0, Qt::AlignLeft);
-    sectionHeaderLayout->addWidget(directShowSections, 0, Qt::AlignLeft);
-    sectionHeaderLayout->addStretch();
-    auto syncSectionHeader = [sectionHeader, vpSections, directShowSections](int pageIndex)
-    {
-        const int vpTab = pageIndex == 2 ? 0 : pageIndex == 4 ? 1 :
-            pageIndex == 10 ? 2 : -1;
-        const int directShowTab = pageIndex == 3 ? 0 : pageIndex == 11 ? 1 : -1;
-        sectionHeader->setVisible(vpTab >= 0 || directShowTab >= 0);
-        vpSections->setVisible(vpTab >= 0);
-        directShowSections->setVisible(directShowTab >= 0);
-        if (vpTab >= 0)
-        {
-            const QSignalBlocker blocker(vpSections);
-            vpSections->setCurrentIndex(vpTab);
-        }
-        if (directShowTab >= 0)
-        {
-            const QSignalBlocker blocker(directShowSections);
-            directShowSections->setCurrentIndex(directShowTab);
-        }
-    };
-    connect(pages_, &QStackedWidget::currentChanged, this, syncSectionHeader);
-    syncSectionHeader(pages_->currentIndex());
-
     auto* navGroup = new QButtonGroup(root);
     navGroup->setExclusive(true);
-    const std::vector<std::pair<QString, int>> navigationEntries = {
-        { QStringLiteral("General"), 0 }, { QStringLiteral("Queue"), 1 },
-        { QStringLiteral("LLDV"), 5 }, { QStringLiteral("Shaders"), 8 },
-        { QStringLiteral("Actions"), 7 }, { QStringLiteral("Shortcuts"), 6 },
-        { QStringLiteral("Logs"), 9 }, { QStringLiteral("VP Renderer"), 2 },
-        { QStringLiteral("DirectShow"), 3 }
-    };
-    for (const auto& entry : navigationEntries)
+    const auto addLeaf = [this, navLayout, navGroup](const QString& title, int page)
     {
-        QPushButton* button = addNavigationButton(entry.first, entry.second);
-        navGroup->addButton(button, entry.second);
+        QPushButton* button = addNavigationButton(title, page);
+        navGroup->addButton(button, page);
         navLayout->addWidget(button);
-        if (entry.second == 0) button->setChecked(true);
-    }
+        if (page == 0) button->setChecked(true);
+        return button;
+    };
+    addLeaf(QStringLiteral("General"), 0);
+    addLeaf(QStringLiteral("Queue"), 1);
+    addLeaf(QStringLiteral("LLDV"), 5);
+    QPushButton* shadersNavigation = addLeaf(QStringLiteral("Shaders"), 8);
+    addLeaf(QStringLiteral("Actions"), 7);
+    addLeaf(QStringLiteral("Shortcuts"), 6);
+    addLeaf(QStringLiteral("Logs"), 10);
+    navLayout->addSpacing(8);
+    QPushButton* vpNavigation = addLeaf(QStringLiteral("VP Renderer"), 2);
+    QPushButton* directShowNavigation = addLeaf(QStringLiteral("DirectShow"), 3);
     navLayout->addStretch();
-    auto* contentColumn = new QWidget;
-    auto* contentLayout = new QVBoxLayout(contentColumn);
-    contentLayout->setContentsMargins(0, 0, 0, 0);
-    contentLayout->setSpacing(0);
-    contentLayout->addWidget(sectionHeader);
-    contentLayout->addWidget(pages_, 1);
+
+    auto* pageHost = new QWidget;
+    pageHost->setObjectName(QStringLiteral("sectionPageHost"));
+    auto* pageHostLayout = new QVBoxLayout(pageHost);
+    pageHostLayout->setContentsMargins(0, 0, 0, 0);
+    pageHostLayout->setSpacing(0);
+    auto* sectionTabs = new QTabBar;
+    sectionTabs->setObjectName(QStringLiteral("settingsSectionTabs"));
+    sectionTabs->setAccessibleName(QStringLiteral("Settings section pages"));
+    sectionTabs->setProperty("sectionTabs", true);
+    sectionTabs->setExpanding(false);
+    sectionTabs->setDrawBase(false);
+    sectionTabs->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
+    pageHostLayout->addWidget(sectionTabs, 0, Qt::AlignLeft);
+    pageHostLayout->addWidget(pages_, 1);
+
+    const auto showSectionTabs = [sectionTabs](
+        const std::vector<std::pair<QString, int>>& entries, int currentPage)
+    {
+        QSignalBlocker blocker(sectionTabs);
+        bool sameTabs = sectionTabs->count() == static_cast<int>(entries.size());
+        for (int index = 0; sameTabs && index < sectionTabs->count(); ++index)
+            sameTabs = sectionTabs->tabText(index) == entries[index].first &&
+                sectionTabs->tabData(index).toInt() == entries[index].second;
+        if (!sameTabs)
+        {
+            while (sectionTabs->count() > 0) sectionTabs->removeTab(0);
+            for (int index = 0; index < static_cast<int>(entries.size()); ++index)
+            {
+                sectionTabs->addTab(entries[index].first);
+                sectionTabs->setTabData(index, entries[index].second);
+            }
+        }
+        int selected = 0;
+        for (int index = 0; index < static_cast<int>(entries.size()); ++index)
+            if (entries[index].second == currentPage) selected = index;
+        sectionTabs->setCurrentIndex(selected);
+        sectionTabs->setVisible(!entries.empty());
+    };
+    const auto updateSectionTabs = [showSectionTabs, shadersNavigation,
+        vpNavigation, directShowNavigation](int page)
+    {
+        if (page == 8 || page == 9)
+        {
+            shadersNavigation->setChecked(true);
+            showSectionTabs({ { QStringLiteral("Standard"), 8 },
+                { QStringLiteral("NLS"), 9 } }, page);
+        }
+        else if (page == 2 || page == 4 || page == 11)
+        {
+            vpNavigation->setChecked(true);
+            showSectionTabs({ { QStringLiteral("Rendering"), 2 },
+                { QStringLiteral("Screen Config"), 4 },
+                { QStringLiteral("Input Processing"), 11 } }, page);
+        }
+        else if (page == 3 || page == 12)
+        {
+            directShowNavigation->setChecked(true);
+            showSectionTabs({ { QStringLiteral("General"), 3 },
+                { QStringLiteral("Input Processing"), 12 } }, page);
+        }
+        else
+            showSectionTabs({}, page);
+    };
+    connect(sectionTabs, &QTabBar::currentChanged, this,
+        [this, sectionTabs](int tab)
+        {
+            if (tab < 0) return;
+            const int page = sectionTabs->tabData(tab).toInt();
+            if (page >= 0 && page < pages_->count() && pages_->currentIndex() != page)
+                selectPage(page);
+        });
+    connect(pages_, &QStackedWidget::currentChanged, this, updateSectionTabs);
+    updateSectionTabs(pages_->currentIndex());
     centerLayout->addWidget(navigation_);
-    centerLayout->addWidget(contentColumn, 1);
+    centerLayout->addWidget(pageHost, 1);
     rootLayout->addWidget(center, 1);
 
     auto* footer = new QWidget;
@@ -3002,9 +3012,23 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         sdrBlackLevel->setPlaceholderText(QStringLiteral("Auto or a numeric value"));
         addBoolean(QStringLiteral("Report BT.2020 to display"), QStringLiteral("report_bt2020_to_display"));
 
-        form = addCollapsibleSection(QStringLiteral("colorTone"), QStringLiteral("Color and tone"),
-            QStringLiteral("Input interpretation, tone mapping, gamut mapping, and peak handling."), false);
-        addChoice(QStringLiteral("SDR input transfer"), QStringLiteral("sdr_input_transfer"), { QStringLiteral("AUTO"), QStringLiteral("bt1886"), QStringLiteral("srgb"), QStringLiteral("1.8"), QStringLiteral("2.0"), QStringLiteral("2.2"), QStringLiteral("2.4"), QStringLiteral("2.6"), QStringLiteral("2.8") });
+		form = addCollapsibleSection(QStringLiteral("colorTone"), QStringLiteral("Color and tone"),
+			QStringLiteral("Input interpretation, tone mapping, gamut mapping, and peak handling."), false);
+		auto* sdrAdjustGamma = addChoice(QStringLiteral("SDR gamma adjustment"),
+			QStringLiteral("sdr_adjust_gamma"),
+			{ QStringLiteral("AUTO"), QStringLiteral("on"), QStringLiteral("off") });
+		sdrAdjustGamma->setItemText(1, QStringLiteral("Auto (mpv-compatible)"));
+		sdrAdjustGamma->setItemText(2, QStringLiteral("On - color managed (current behavior)"));
+		sdrAdjustGamma->setItemText(3, QStringLiteral("Off - suppress SDR transfer conversion"));
+		sdrAdjustGamma->setToolTip(QStringLiteral(
+			"Auto suppresses common ambiguous SDR-to-sRGB conversion only for an automatic output curve. "
+			"On honors source and output transfer metadata. Off treats SDR as already encoded for the accepted output transfer."));
+		auto* sdrInputTransfer = addChoice(QStringLiteral("SDR input transfer"), QStringLiteral("sdr_input_transfer"), { QStringLiteral("AUTO"), QStringLiteral("bt1886"), QStringLiteral("srgb"), QStringLiteral("1.8"), QStringLiteral("2.0"), QStringLiteral("2.2"), QStringLiteral("2.4"), QStringLiteral("2.6"), QStringLiteral("2.8") });
+		sdrInputTransfer->setToolTip(QStringLiteral(
+			"Declares how SDR source codes are interpreted when gamma adjustment is On. "
+			"The value remains recorded but is not used for transfer conversion when adjustment is Off."));
+		form->addRow(QString(), helpLabel(QStringLiteral(
+			"This controls SDR transfer-curve conversion only. YUV/RGB matrix, range, primaries, scaling, LUT, shaders, dithering, quantization, and the physical display response remain active.")));
         addChoice(QStringLiteral("Tone mapping"), QStringLiteral("tone_mapping"), { QStringLiteral("AUTO"), QStringLiteral("spline"), QStringLiteral("bt2390"), QStringLiteral("st2094-40"), QStringLiteral("reinhard") });
         addChoice(QStringLiteral("Gamut mapping"), QStringLiteral("gamut_mapping"), { QStringLiteral("AUTO"), QStringLiteral("perceptual"), QStringLiteral("softclip"), QStringLiteral("relative"), QStringLiteral("desaturate") });
         addChoice(QStringLiteral("Peak detection"), QStringLiteral("peak_detection"), { QStringLiteral("AUTO"), QStringLiteral("off"), QStringLiteral("high_quality"), QStringLiteral("on") });
@@ -4550,7 +4574,7 @@ QWidget* ConfigEditorWindow::createNlsShadersPage()
     splitter->setStretchFactor(1, 1);
     splitter->setSizes({ 310, 620 });
     return createPage(QStringLiteral("NLS"),
-        QStringLiteral("Configure included nonlinear stretch modes without rewriting custom shader sections."), splitter);
+        QStringLiteral("Configure included nonlinear stretch (NLS) modes without rewriting custom shader sections."), splitter);
 }
 
 QWidget* ConfigEditorWindow::createStandardShadersPage()
@@ -4849,16 +4873,6 @@ QWidget* ConfigEditorWindow::createStandardShadersPage()
     splitter->setSizes({ 310, 620 });
     return createPage(QStringLiteral("Standard"),
         QStringLiteral("Configure optional ordinary shader effects separately from NLS."), splitter);
-}
-
-QWidget* ConfigEditorWindow::createShadersPage()
-{
-    auto* sections = new QTabWidget;
-    sections->setObjectName(QStringLiteral("config.shader.sections"));
-    sections->setAccessibleName(QStringLiteral("Shader sections"));
-    sections->addTab(createStandardShadersPage(), QStringLiteral("Standard"));
-    sections->addTab(createNlsShadersPage(), QStringLiteral("NLS"));
-    return sections;
 }
 
 QWidget* ConfigEditorWindow::createActionsPage()
@@ -5330,6 +5344,7 @@ QWidget* ConfigEditorWindow::createShortcutsPage()
         { "Toggle fullscreen", "fullscreen_toggle", "Alt+Enter" },
         { "Exit fullscreen", "fullscreen_exit", "Esc" },
         { "Toggle statistics", "toggle_stats_overlay", "Ctrl+I" },
+        { "Screenshot", "capture_rendered_output", "Ctrl+Alt+S" },
         { "Automatic transfer", "auto_set", "Ctrl+Shift+A" },
         { "PQ transfer", "pq_set", "Ctrl+Shift+P" }
     };

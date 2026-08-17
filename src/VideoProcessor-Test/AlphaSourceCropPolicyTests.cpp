@@ -514,7 +514,7 @@ namespace Tests
 			Assert::IsFalse(drift.IsActive());
 		}
 
-		TEST_METHOD(NewVerticalTranslationRequiresTwoStableAnalysisSamples)
+		TEST_METHOD(NewVerticalTranslationRequiresThreeStableAnalysisSamples)
 		{
 			VerticalTranslationConfirmationInput input;
 			input.observed.action =
@@ -528,6 +528,11 @@ namespace Tests
 			Assert::AreEqual(static_cast<int>(
 				VerticalBarPresentationAction::NONE),
 				static_cast<int>(decision.effective.action));
+
+			input.previous = decision.state;
+			decision = ConfirmVerticalTranslation(input);
+			Assert::IsTrue(decision.pending);
+			Assert::AreEqual(2u, decision.state.confirmations);
 
 			input.previous = decision.state;
 			decision = ConfirmVerticalTranslation(input);
@@ -560,6 +565,12 @@ namespace Tests
 			input.previous = decision.state;
 			input.observed.translationPixels = 209.0f;
 			decision = ConfirmVerticalTranslation(input);
+			Assert::IsTrue(decision.pending);
+			Assert::AreEqual(2u, decision.state.confirmations);
+
+			input.previous = decision.state;
+			input.observed.translationPixels = 210.0f;
+			decision = ConfirmVerticalTranslation(input);
 			Assert::IsTrue(decision.newlyAccepted);
 			// Stable estimates within two pixels choose the farther reveal.
 			Assert::AreEqual(210.0f,
@@ -576,6 +587,12 @@ namespace Tests
 			input.observed.translationPixels = 210.0f;
 
 			auto decision = ConfirmVerticalTranslation(input);
+			Assert::IsTrue(decision.pending);
+			Assert::AreEqual(192.0f,
+				decision.effective.translationPixels, 0.001f);
+
+			input.previous = decision.state;
+			decision = ConfirmVerticalTranslation(input);
 			Assert::IsTrue(decision.pending);
 			Assert::AreEqual(192.0f,
 				decision.effective.translationPixels, 0.001f);
@@ -607,6 +624,10 @@ namespace Tests
 
 			input.previous = decision.state;
 			decision = ConfirmVerticalTranslation(input);
+			Assert::IsTrue(decision.pending);
+
+			input.previous = decision.state;
+			decision = ConfirmVerticalTranslation(input);
 			Assert::IsTrue(decision.newlyAccepted);
 			Assert::AreEqual(216.0f,
 				decision.effective.translationPixels, 0.001f);
@@ -633,6 +654,10 @@ namespace Tests
 			auto decision = ConfirmVerticalTranslation(input);
 			input.previous = decision.state;
 			decision = ConfirmVerticalTranslation(input);
+			Assert::IsTrue(decision.pending);
+
+			input.previous = decision.state;
+			decision = ConfirmVerticalTranslation(input);
 			Assert::IsTrue(decision.newlyAccepted);
 			Assert::AreEqual(-216.0f,
 				decision.effective.translationPixels, 0.001f);
@@ -645,6 +670,10 @@ namespace Tests
 			Assert::IsTrue(decision.pending);
 			Assert::AreEqual(-216.0f,
 				decision.effective.translationPixels, 0.001f);
+
+			input.previous = decision.state;
+			decision = ConfirmVerticalTranslation(input);
+			Assert::IsTrue(decision.pending);
 
 			input.previous = decision.state;
 			decision = ConfirmVerticalTranslation(input);
@@ -663,6 +692,10 @@ namespace Tests
 			input.observed.translationPixels = 272.0f;
 
 			auto decision = ConfirmVerticalTranslation(input);
+			input.previous = decision.state;
+			decision = ConfirmVerticalTranslation(input);
+			Assert::IsTrue(decision.pending);
+
 			input.previous = decision.state;
 			decision = ConfirmVerticalTranslation(input);
 			Assert::IsTrue(decision.newlyAccepted);
@@ -739,6 +772,18 @@ namespace Tests
 			stale.verticalTranslationSourceGeneration = 6;
 			AssertFullRaster(Evaluate(stale));
 
+			Input nonContainingBar = input;
+			nonContainingBar.latestObservationIsProvisional = false;
+			nonContainingBar.latestObservationClassification =
+				ActivePictureClassification::BAR_CROP_TRUSTED;
+			const Decision retainedAcrossBarRefinement =
+				Evaluate(nonContainingBar);
+			Assert::IsTrue(retainedAcrossBarRefinement.applyCrop);
+			Assert::AreEqual(274,
+				retainedAcrossBarRefinement.sourceBounds.top);
+			Assert::AreEqual(1884,
+				retainedAcrossBarRefinement.sourceBounds.bottom);
+
 			Input picture = input;
 			picture.latestObservationIsProvisional = false;
 			picture.latestObservationClassification =
@@ -779,6 +824,36 @@ namespace Tests
 			Input fullRaster = input;
 			fullRaster.fullRasterPresentationAuthoritative = true;
 			AssertFullRaster(Evaluate(fullRaster));
+		}
+
+		TEST_METHOD(BarCropRefinementRetainsTrustedCropUntilTransitionPublishes)
+		{
+			Input input = TrustedScopeCrop();
+			input.latestObservationSupportsCrop = false;
+			input.latestObservationClassification =
+				ActivePictureClassification::BAR_CROP_TRUSTED;
+			input.frameLocalPresentationRetentionEvaluated = true;
+			input.frameLocalPresentationRetentionSafe = false;
+			input.barCropRefinementPending = true;
+
+			const Decision retained = Evaluate(input);
+			Assert::IsTrue(retained.applyCrop);
+			Assert::AreEqual(274, retained.sourceBounds.top);
+			Assert::AreEqual(1884, retained.sourceBounds.bottom);
+			Assert::IsTrue(retained.reason.find("bar refinement") !=
+				std::string::npos);
+
+			Input unbounded = input;
+			unbounded.barCropRefinementPending = false;
+			AssertFullRaster(Evaluate(unbounded));
+
+			Input fullRaster = input;
+			fullRaster.fullRasterPresentationAuthoritative = true;
+			AssertFullRaster(Evaluate(fullRaster));
+
+			Input stale = input;
+			stale.geometrySourceGeneration = 6;
+			AssertFullRaster(Evaluate(stale));
 		}
 
 		TEST_METHOD(ZeroDurationEngageStillAllowsTimedRelease)

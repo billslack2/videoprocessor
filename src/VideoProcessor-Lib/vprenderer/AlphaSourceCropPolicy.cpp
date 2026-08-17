@@ -359,14 +359,14 @@ namespace AlphaSourceCrop
 	bool ShouldRetainTrustedBaseForVerticalInspection(
 		bool subtitleFitEnabled,
 		bool currentEnvelope,
-		bool latestObservationIsProvisional,
+		bool latestObservationCanAwaitInspection,
 		bool leftExpansion,
 		bool topExpansion,
 		bool rightExpansion,
 		bool bottomExpansion)
 	{
 		return subtitleFitEnabled && currentEnvelope &&
-			latestObservationIsProvisional &&
+			latestObservationCanAwaitInspection &&
 			!leftExpansion && !rightExpansion &&
 			(topExpansion || bottomExpansion);
 	}
@@ -1164,6 +1164,10 @@ namespace AlphaSourceCrop
 			input.ambiguityHoldActive;
 		const bool pixelSafeAmbiguousRetention = ambiguousObservation &&
 			input.frameLocalPresentationRetentionSafe;
+		const bool boundedBarCropRefinementRetention =
+			input.barCropRefinementPending &&
+			input.latestObservationClassification ==
+				ActivePictureClassification::BAR_CROP_TRUSTED;
 		const bool boundedOutwardExpansion =
 			input.outwardPresentationActive &&
 			input.outwardExpansionAvailable &&
@@ -1193,14 +1197,16 @@ namespace AlphaSourceCrop
 				input.frameSourceGeneration;
 		const bool boundedVerticalConfirmationRetention =
 			input.verticalTranslationConfirmationPending &&
-			input.latestObservationIsProvisional &&
+			input.latestObservationClassification !=
+				ActivePictureClassification::FULL_RASTER_TRUSTED &&
 			SameBounds(input.verticalTranslationBase, input.geometry) &&
 			input.verticalTranslationSourceGeneration != 0 &&
 			input.verticalTranslationSourceGeneration ==
 				input.frameSourceGeneration;
 		const bool boundedVerticalFitConfirmationRetention =
 			input.verticalFitConfirmationPending &&
-			input.latestObservationIsProvisional &&
+			input.latestObservationClassification !=
+				ActivePictureClassification::FULL_RASTER_TRUSTED &&
 			SameBounds(input.verticalTranslationBase, input.geometry) &&
 			input.verticalTranslationSourceGeneration != 0 &&
 			input.verticalTranslationSourceGeneration ==
@@ -1208,6 +1214,7 @@ namespace AlphaSourceCrop
 		if (!input.latestObservationSupportsCrop &&
 			!boundedSceneVerificationRetention &&
 			!boundedAmbiguousRetention && !pixelSafeAmbiguousRetention &&
+			!boundedBarCropRefinementRetention &&
 			!boundedOutwardExpansion && !boundedVerticalTranslation &&
 			!boundedVerticalBaseRetention &&
 			!boundedVerticalEngageBaseRetention &&
@@ -1329,6 +1336,8 @@ namespace AlphaSourceCrop
 				? "trusted crop retained at timed subtitle engage origin"
 				: (boundedVerticalBaseRetention
 				? "subtitle release settled at current trusted base"
+				: (boundedBarCropRefinementRetention
+					? "trusted crop retained while bar refinement confirms"
 				: (boundedVerticalFitConfirmationRetention
 					? "trusted crop retained while vertical fit confirms"
 				: (boundedVerticalConfirmationRetention
@@ -1341,7 +1350,7 @@ namespace AlphaSourceCrop
 				? "frame-local pixel-safe presentation retained prior crop"
 				: (boundedSceneVerificationRetention
 					? "bounded scene verification retained current trusted crop"
-					: "bounded ambiguity hold retained current trusted crop"))))))));
+					: "bounded ambiguity hold retained current trusted crop")))))))));
 		return decision;
 	}
 

@@ -49,6 +49,74 @@ namespace LibplaceboOutput
 		return GammaRequest::UNSUPPORTED;
 	}
 
+	SdrAdjustGamma ParseSdrAdjustGamma(const std::string& value)
+	{
+		if (value == "auto") return SdrAdjustGamma::AUTO;
+		if (value == "off" || value == "no") return SdrAdjustGamma::OFF;
+		return SdrAdjustGamma::ON;
+	}
+
+	SdrGammaDecision ResolveSdrGamma(
+		SdrAdjustGamma requested,
+		bool inputIsSdr,
+		bool outputSafe,
+		GammaRequest configuredOutputGamma,
+		SdrTransfer declaredSource,
+		SdrTransfer actualTarget)
+	{
+		SdrGammaDecision result;
+		result.requested = requested;
+		result.declaredSource = declaredSource;
+		result.effectiveSource = declaredSource;
+		result.actualTarget = actualTarget;
+		if (!inputIsSdr)
+		{
+			result.action = SdrGammaAction::NOT_APPLICABLE;
+			result.reason = "input transfer is not SDR";
+			return result;
+		}
+		if (!outputSafe)
+		{
+			result.action = SdrGammaAction::BLOCKED;
+			result.reason = "the accepted output contract is unsafe";
+			return result;
+		}
+		if (actualTarget == SdrTransfer::UNKNOWN ||
+			actualTarget == SdrTransfer::OTHER)
+		{
+			result.action = SdrGammaAction::ADJUST;
+			result.reason = "the accepted SDR output transfer is unknown";
+			return result;
+		}
+
+		bool suppress = requested == SdrAdjustGamma::OFF;
+		if (requested == SdrAdjustGamma::AUTO)
+		{
+			const bool commonAmbiguousSource =
+				declaredSource == SdrTransfer::BT1886 ||
+				declaredSource == SdrTransfer::GAMMA22 ||
+				declaredSource == SdrTransfer::SRGB;
+			suppress = configuredOutputGamma == GammaRequest::AUTO &&
+				actualTarget == SdrTransfer::SRGB && commonAmbiguousSource;
+		}
+		if (suppress)
+		{
+			result.action = SdrGammaAction::SUPPRESS;
+			result.effectiveSource = actualTarget;
+			result.reason = requested == SdrAdjustGamma::AUTO
+				? "automatic sRGB output with an ambiguous common SDR source"
+				: "SDR source treated as already encoded for the accepted output transfer";
+		}
+		else
+		{
+			result.action = SdrGammaAction::ADJUST;
+			result.reason = requested == SdrAdjustGamma::AUTO
+				? "explicit or non-sRGB output honors source and output metadata"
+				: "source and output transfer metadata are honored";
+		}
+		return result;
+	}
+
 	Plan MakePlan(const Request& request)
 	{
 		Plan result;
@@ -309,11 +377,23 @@ namespace LibplaceboOutput
 						++result.channelsBelowStudioBlack;
 					if (channels[channel] > 940)
 						++result.channelsAboveStudioWhite;
+					const uint16_t value = channels[channel];
+					const size_t bucket = value == 0 ? 0 :
+						value <= 3 ? 1 : value <= 15 ? 2 :
+						value <= 31 ? 3 : value <= 63 ? 4 :
+						value <= 79 ? 5 : value <= 127 ? 6 : 7;
+					++result.nearBlackBuckets[bucket];
 				}
 				++result.sampledPixels;
 			}
 		}
 		return result;
+	}
+
+	uint16_t ExpandR10ToR16(uint16_t value)
+	{
+		value = static_cast<uint16_t>(value & 0x3ffu);
+		return static_cast<uint16_t>((value << 6) | (value >> 4));
 	}
 
 	const char* ToString(PresentationRequest value)
@@ -357,6 +437,40 @@ namespace LibplaceboOutput
 		case GammaRequest::GAMMA22: return "2.2";
 		case GammaRequest::GAMMA24: return "2.4";
 		default: return "UNSUPPORTED";
+		}
+	}
+
+	const char* ToString(SdrAdjustGamma value)
+	{
+		switch (value)
+		{
+		case SdrAdjustGamma::AUTO: return "AUTO";
+		case SdrAdjustGamma::OFF: return "OFF";
+		default: return "ON";
+		}
+	}
+
+	const char* ToString(SdrTransfer value)
+	{
+		switch (value)
+		{
+		case SdrTransfer::BT1886: return "BT1886";
+		case SdrTransfer::SRGB: return "sRGB";
+		case SdrTransfer::GAMMA22: return "GAMMA22";
+		case SdrTransfer::GAMMA24: return "GAMMA24";
+		case SdrTransfer::OTHER: return "OTHER";
+		default: return "UNKNOWN";
+		}
+	}
+
+	const char* ToString(SdrGammaAction value)
+	{
+		switch (value)
+		{
+		case SdrGammaAction::SUPPRESS: return "SUPPRESS";
+		case SdrGammaAction::NOT_APPLICABLE: return "NOT_APPLICABLE";
+		case SdrGammaAction::BLOCKED: return "BLOCKED";
+		default: return "ADJUST";
 		}
 	}
 

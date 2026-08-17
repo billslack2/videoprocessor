@@ -1663,8 +1663,8 @@ namespace VideoProcessorTest
 			RendererProfileConfig::ResolvedViewport viewport;
 			Assert::IsTrue(RendererProfileConfig::ResolveViewport(model,
 				"scope", 1, viewport, error));
-			Assert::AreEqual(47ull, viewport.screenAspect.numerator);
-			Assert::AreEqual(20ull, viewport.screenAspect.denominator);
+			Assert::AreEqual(21ull, viewport.screenAspect.numerator);
+			Assert::AreEqual(10ull, viewport.screenAspect.denominator);
 			Assert::IsTrue(viewport.hasScreenAspect);
 			Assert::AreEqual("top", viewport.verticalAlignment.c_str());
 			Assert::IsTrue(viewport.automaticCrop);
@@ -1680,7 +1680,7 @@ namespace VideoProcessorTest
 				result, error));
 			Assert::IsTrue(result.changed);
 			Assert::IsTrue(result.snapshot->queue.hasQueueSize);
-			Assert::AreEqual(static_cast<size_t>(1),
+			Assert::AreEqual(static_cast<size_t>(32),
 				result.snapshot->queue.queueSize);
 			DeleteFileA(path.c_str());
 		}
@@ -2220,8 +2220,10 @@ namespace VideoProcessorTest
 			Assert::IsTrue(MainConfigSchema::Validate(config, error),
 				std::wstring(error.begin(), error.end()).c_str());
 			RendererProfileConfig::Model model;
-			Assert::IsTrue(RendererProfileConfig::Read(config, model, error),
-				std::wstring(error.begin(), error.end()).c_str());
+			const bool read = RendererProfileConfig::Read(config, model, error);
+			if (!read)
+				Logger::WriteMessage(("RendererProfileConfig::Read: " + error).c_str());
+			Assert::IsTrue(read, std::wstring(error.begin(), error.end()).c_str());
 			const auto viewport = std::find_if(model.groups.begin(), model.groups.end(),
 				[](const RendererProfileConfig::Group& group)
 				{ return group.name == "viewport"; });
