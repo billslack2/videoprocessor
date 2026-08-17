@@ -125,8 +125,8 @@ they must not contain requirements that are absent from this file.
 | VP-0092 | Backlog | Discover madVR shortcuts and control its native statistics OSD |
 | VP-0093 | Done | Prevent Alpha SDR BT.2020 output-contract regressions |
 | VP-0094 | Done | Select the configured fullscreen monitor by friendly name |
-| VP-0095 | In Progress | Target-only fullscreen display session and recovery |
-| VP-0096 | In Progress | Establish range-correct video-frame conversion contracts |
+| VP-0095 | Done | Target configured fullscreen display only (MultiMonitor controls display power/topology) |
+| VP-0096 | Done | Establish range-correct video-frame conversion contracts |
 | VP-0097 | Done | Safe standalone configuration editor and VP integration |
 | VP-0098 | Done | Fit trusted active-picture envelopes correctly on arbitrary CIH screens |
 | VP-0099 | Review | Dynamic, renderer-neutral NLS geometry and safety policy |
@@ -163,7 +163,7 @@ they must not contain requirements that are absent from this file.
 | VP-0128 | Backlog | Audit VP Renderer option parity and resolved defaults |
 | VP-0129 | Review | Retain scope through vertical overlay arbitration |
 | VP-0130 | In Progress | Renderer telemetry and live input-configuration clarity |
-| VP-0131 | Review | VP Renderer NLS-V and bounded presentation crop |
+| VP-0131 | Done | VP Renderer NLS-V and bounded presentation crop |
 | VP-0132 | Done | Eliminate subtitle-fit presentation chatter |
 | VP-0133 | In Progress | Capture authoritative renderer output and near-black diagnostics |
 | VP-0066-1 | Done | Characterize the live output pipeline with replayable golden traces |

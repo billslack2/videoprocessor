@@ -2,9 +2,13 @@
 
 ## Status
 
-In Progress. Merged baseline on `origin/v1.1.016-beta` as `3dc792e` (2026-08-05).
-The active deployment configuration remains on `existing` while a follow-up
-resolves Windows rejecting the supplied one-path CCD topology on this hardware.
+Done (2026-08-17). The baseline implementation merged on
+`origin/v1.1.016-beta` as `3dc792e` (2026-08-05). The accepted final scope is
+display targeting only: VP selects the configured display but never enables,
+disables, rearranges, or restores Windows display topology. MultiMonitor is
+the external tool responsible for turning displays on or off. The historical
+native CCD topology/session/recovery plan below is superseded and is retained
+only as implementation history.
 
 ## User story
 

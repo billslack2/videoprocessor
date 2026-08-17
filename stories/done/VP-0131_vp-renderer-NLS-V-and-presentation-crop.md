@@ -2,11 +2,14 @@
 
 ## Status
 
-Review (2026-08-15). Implemented on branch
+Done (2026-08-17). Implemented on branch
 `codex/vp0089-vp0131-nls-profiles` together with VP-0089 and submitted as
 GitHub PR [#64](https://github.com/billslack2/videoprocessor/pull/64) against
 `v1.2.001-beta`. Live picture-quality acceptance remains a release-review
-item; the code and configuration-editor changes are ready for review.
+item; the code and configuration-editor changes are ready for review. GitHub
+PR [#64](https://github.com/billslack2/videoprocessor/pull/64) merged into
+`v1.2.001-beta` as `b46be3d` on 2026-08-17. Completion is accepted; any future
+picture-quality investigation is separate follow-up work.
 
 Readiness review confirmed that the existing GLSL hook already implements the
 required vertical one-axis map through dynamic `warp_axis`; the missing pieces

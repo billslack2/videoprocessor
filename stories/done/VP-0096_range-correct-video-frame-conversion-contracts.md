@@ -2,7 +2,7 @@
 
 ## Status
 
-In Progress (2026-08-06). Test-first range and routing analysis is active on
+Done (2026-08-17). Test-first range and routing analysis was completed on
 `codex/vp-0096-range-conversion-tests` in
 `C:\Users\bslac\vp\vp-0096-range-conversion-tests`, based on the current
 GitHub default branch `v1.1.016-beta` at `b6e2892`. Documentation review,
@@ -18,7 +18,10 @@ Implementation checkpoint (2026-08-06): all seven characterization failures
 are resolved on the feature branch, renderer routing/signaling and native
 analysis are covered, a clean x64 Release build succeeds, and the complete
 suite passes 635/635 tests. The story remains in progress for hardware-path
-validation and final integration review.
+validation and final integration review. GitHub PR
+[#45](https://github.com/billslack2/videoprocessor/pull/45) merged into
+`v1.2.001-beta` as `a57e115` on 2026-08-09. Completion is accepted; no
+additional hardware-validation gate remains for this story.
 
 ## User story
 
