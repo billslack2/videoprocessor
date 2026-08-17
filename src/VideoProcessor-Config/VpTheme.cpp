@@ -182,6 +182,31 @@ QString VpTheme::StyleSheet()
         QLabel[cardTitle="true"] { color: #f0f6fb; font-size: 16px; font-weight: 650; }
         QLabel[help="true"] { color: #93a8bb; font-size: 12px; }
         QLabel { color: #dce8f2; }
+        QTabWidget::pane {
+            background: #0b121b;
+            border: 1px solid #2e465d;
+            border-radius: 0 6px 6px 6px;
+            top: -1px;
+        }
+        QTabBar::tab {
+            color: #a9bed0;
+            background: #111e2b;
+            border: 1px solid #2e465d;
+            border-bottom: 0;
+            border-top-left-radius: 5px;
+            border-top-right-radius: 5px;
+            min-width: 86px;
+            padding: 7px 13px;
+            margin-right: 3px;
+        }
+        QTabBar::tab:hover { color: #e8f3fb; background: #172a3b; }
+        QTabBar::tab:selected {
+            color: #f2f8fd;
+            background: #0b121b;
+            border-color: #4f88af;
+        }
+        QTabBar::tab:disabled { color: #63798c; background: #101923; }
+        QTabBar[sectionTabs="true"] { background: #0b121b; }
         QLineEdit, QComboBox, QSpinBox, QPlainTextEdit, QListWidget {
             min-height: 26px;
             color: #e8f1f8;

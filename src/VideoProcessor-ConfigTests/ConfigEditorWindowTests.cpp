@@ -41,6 +41,8 @@
 #include <QSplitter>
 #include <QStackedWidget>
 #include <QTableWidget>
+#include <QTabBar>
+#include <QTabWidget>
 #include <QTemporaryDir>
 #include <QTimer>
 #include <QToolButton>
@@ -64,6 +66,8 @@ WNDPROC testOwnerOriginalProcedure = nullptr;
 HWND testAdvertisedEditor = nullptr;
 bool testActivateOnAssociation = false;
 bool testAssociationActivationAcknowledged = false;
+
+void answerInputDialog(const QString& text);
 
 bool appearsAbove(HWND first, HWND second)
 {
@@ -376,7 +380,15 @@ void testEveryPageRoundTrips()
             "shader_type: nls\n"
             "label: NLS+\n"
             "stage: pre_resize\n"
-            "glsl_file: NLSPlus.glsl\n";
+            "glsl_file: NLSPlus.glsl\n"
+            "\n[shader.standard]\n"
+            "type: multi\n"
+            "\n[shader.standard.debanding_mild]\n"
+            "shader_type: custom\n"
+            "label: Debanding Mild\n"
+            "stage: pre_resize\n"
+            "hlsl_file: Debanding mild.hlsl\n"
+            "threshold: 32\n";
         require(file.write(glslOnlyMember) == glslOnlyMember.size(),
             "Cannot write the GLSL-only shader fixture");
     }
@@ -386,13 +398,33 @@ void testEveryPageRoundTrips()
         QStringLiteral("settingsPages"));
     require(pages->count() == 12,
         "Renderer Input pages were not added as dedicated settings pages");
-    QList<int> inputNavigationTargets;
-    for (QPushButton* button : window.findChildren<QPushButton*>())
-        if (button->text() == QStringLiteral("Input Processing") && button->property("navChild").toBool())
-            inputNavigationTargets.append(button->property("pageIndex").toInt());
-    std::sort(inputNavigationTargets.begin(), inputNavigationTargets.end());
-    require(inputNavigationTargets == QList<int>{ 10, 11 },
-        "Renderer Input navigation entries do not target the dedicated pages");
+    QTabBar* vpSections = requireControl<QTabBar>(window,
+        QStringLiteral("config.vprenderer.sections"));
+    QTabBar* directShowSections = requireControl<QTabBar>(window,
+        QStringLiteral("config.directshow.sections"));
+    require(window.findChildren<QTabBar*>(
+        QStringLiteral("config.vprenderer.sections")).size() == 1 &&
+        window.findChildren<QTabBar*>(
+            QStringLiteral("config.directshow.sections")).size() == 1,
+        "Renderer section navigation is duplicated across content pages");
+    require(vpSections->count() == 3 && vpSections->tabText(0) == QStringLiteral("Rendering") &&
+        vpSections->tabText(1) == QStringLiteral("Screen Config") &&
+        vpSections->tabText(2) == QStringLiteral("Input Processing"),
+        "VP Renderer pages do not use the shared tab navigation");
+    require(!vpSections->expanding() && vpSections->sizePolicy().horizontalPolicy() ==
+        QSizePolicy::Maximum,
+        "VP Renderer section tabs do not use the compact Shader tab sizing");
+    require(!vpSections->drawBase(),
+        "VP Renderer section tabs still draw the standalone native tab-bar base");
+    require(directShowSections->count() == 2 &&
+        directShowSections->tabText(0) == QStringLiteral("General") &&
+        directShowSections->tabText(1) == QStringLiteral("Input Processing"),
+        "DirectShow pages do not use the shared tab navigation");
+    require(!directShowSections->expanding() &&
+        directShowSections->sizePolicy().horizontalPolicy() == QSizePolicy::Maximum,
+        "DirectShow section tabs do not use the compact Shader tab sizing");
+    require(!directShowSections->drawBase(),
+        "DirectShow section tabs still draw the standalone native tab-bar base");
     QWidget* navigation = requireControl<QWidget>(window, QStringLiteral("sidebar"));
     require(navigation->minimumWidth() >= 172,
         "The settings navigation is too narrow for renderer child labels");
@@ -400,6 +432,9 @@ void testEveryPageRoundTrips()
     require(theme.contains(QStringLiteral("QPushButton[nav=\"true\"]:focus")) &&
         theme.contains(QStringLiteral("outline: 0")),
         "Focused settings navigation still uses the generic button focus box");
+    require(theme.contains(QStringLiteral("QTabBar::tab:selected")) &&
+        theme.contains(QStringLiteral("color: #f2f8fd")),
+        "Shader section tabs do not have a visible selected state");
     require(theme.contains(QStringLiteral("min-height: 30px")) &&
         theme.contains(QStringLiteral("padding: 3px 12px")),
         "Settings navigation no longer reserves safe vertical label space");
@@ -603,6 +638,67 @@ void testEveryPageRoundTrips()
         QStringLiteral("config.shader.nls.glsl_file"))->text() == QStringLiteral("NLSPlus.glsl"),
         "NLS+ did not retain its VP Renderer implementation");
 
+    QTabWidget* shaderSections = requireControl<QTabWidget>(window,
+        QStringLiteral("config.shader.sections"));
+    require(shaderSections->count() == 2 &&
+        shaderSections->tabText(0) == QStringLiteral("Standard") &&
+        shaderSections->tabText(1) == QStringLiteral("NLS"),
+        "Shaders page does not separate NLS and standard effects");
+    shaderSections->setCurrentIndex(0);
+    QListWidget* standardShaders = requireControl<QListWidget>(window,
+        QStringLiteral("config.shader.standard.items"));
+    require(standardShaders->count() == 1,
+        "Standard shader fixture did not load");
+    int debandingRow = -1;
+    for (int row = 0; row < standardShaders->count(); ++row)
+        if (standardShaders->item(row)->text() == QStringLiteral("Debanding Mild"))
+        {
+            debandingRow = row;
+            break;
+        }
+    require(debandingRow >= 0, "Debanding default shader did not load");
+    standardShaders->setCurrentRow(debandingRow);
+    require(requireControl<QLineEdit>(window,
+        QStringLiteral("config.shader.standard.shortcut"))->text().isEmpty(),
+        "A shipped standard shader was assigned a shortcut by default");
+    require(requireControl<QLineEdit>(window,
+        QStringLiteral("config.shader.standard.hlsl_file"))->text() ==
+        QStringLiteral("Debanding mild.hlsl"),
+        "Standard DirectShow shader file did not load");
+    require(requireControl<QLineEdit>(window,
+        QStringLiteral("config.shader.standard.glsl_file"))->text().isEmpty(),
+        "HLSL-only standard shader was given a VP Renderer fallback file");
+    QToolButton* standardParameterToggle = requireControl<QToolButton>(window,
+        QStringLiteral("config.shader.standard.parameters_toggle"));
+    require(!standardParameterToggle->isChecked(),
+        "Standard shader custom parameters did not start collapsed");
+    standardParameterToggle->click();
+    QTableWidget* standardParameters = requireControl<QTableWidget>(window,
+        QStringLiteral("config.shader.standard.parameters"));
+    require(standardParameters->rowCount() == 1 &&
+        standardParameters->item(0, 0)->text() == QStringLiteral("threshold") &&
+        standardParameters->item(0, 1)->text() == QStringLiteral("32"),
+        "Standard shader custom parameters did not load");
+    standardParameters->item(0, 1)->setText(QStringLiteral("28"));
+    requireControl<QLineEdit>(window,
+        QStringLiteral("config.shader.standard.shortcut"))->setText(QStringLiteral("Ctrl+d"));
+    const int standardCountBeforeAdd = standardShaders->count();
+    answerInputDialog(QStringLiteral("Temporary Shader"));
+    requireControl<QPushButton>(window, QStringLiteral("config.shader.standard.add"))->click();
+    require(standardShaders->count() == standardCountBeforeAdd + 1,
+        "Add standard shader did not create a shader configuration");
+    require(standardShaders->currentItem() &&
+        standardShaders->currentItem()->text() == QStringLiteral("Temporary Shader"),
+        "New standard shader was not selected");
+    require(requireControl<QLineEdit>(window,
+        QStringLiteral("config.shader.standard.shortcut"))->text().isEmpty(),
+        "New standard shader unexpectedly received a shortcut");
+    require(requireControl<QLineEdit>(window,
+        QStringLiteral("config.shader.standard.hlsl_file"))->text().isEmpty() &&
+        requireControl<QLineEdit>(window,
+            QStringLiteral("config.shader.standard.glsl_file"))->text().isEmpty(),
+        "New standard shader did not begin with intentionally blank backend files");
+
     save(window);
     const QByteArray saved = readBytes(path);
     const QList<QByteArray> expected = {
@@ -619,7 +715,9 @@ void testEveryPageRoundTrips()
         "fullscreen_toggle: Ctrl+F", "config_editor: Ctrl+E", "toggle_noui: Alt+U",
         "renderer: *", "run: C:\\Tools\\verified-action.cmd 42",
         "enabled: false", "debug: false", "debug_log_retention: 25",
-        "label: Verified Stretch", "order: 10", "strength: 0.85"
+        "label: Verified Stretch", "order: 10", "strength: 0.85", "threshold: 28",
+        "shortcut: Ctrl+D", "[shader.standard.temporary_shader]",
+        "label: Temporary Shader"
     };
     for (const QByteArray& text : expected)
         require(saved.contains(text), text.constData());
@@ -653,6 +751,157 @@ void testEveryPageRoundTrips()
     require(requireControl<QComboBox>(reloaded,
         QStringLiteral("config.directshow.video_conversion"))->currentData().toString() ==
         QStringLiteral("NONE"), "DirectShow input override did not reload");
+}
+
+void testRendererSectionTabsRemainSynchronizedDuringRapidClicks()
+{
+    QTemporaryDir directory;
+    ConfigEditorWindow window(copyFixture(directory), 0, true);
+    window.resize(1120, 760);
+    window.show();
+    window.selectPage(2);
+    QCoreApplication::processEvents();
+
+    QStackedWidget* pages = requireControl<QStackedWidget>(window,
+        QStringLiteral("settingsPages"));
+    QTabBar* vpSections = requireControl<QTabBar>(window,
+        QStringLiteral("config.vprenderer.sections"));
+    QTabBar* directShowSections = requireControl<QTabBar>(window,
+        QStringLiteral("config.directshow.sections"));
+    require(window.findChildren<QTabBar*>(
+        QStringLiteral("config.vprenderer.sections")).size() == 1 &&
+        window.findChildren<QTabBar*>(
+            QStringLiteral("config.directshow.sections")).size() == 1,
+        "Renderer tabs are not persistent single controls");
+
+    const auto clickTab = [](QTabBar* tabs, int tabIndex)
+    {
+        const QPoint point = tabs->tabRect(tabIndex).center();
+        const QPoint globalPoint = tabs->mapToGlobal(point);
+        QMouseEvent press(QEvent::MouseButtonPress, QPointF(point),
+            QPointF(globalPoint), Qt::LeftButton, Qt::LeftButton,
+            Qt::NoModifier);
+        QApplication::sendEvent(tabs, &press);
+        QMouseEvent release(QEvent::MouseButtonRelease, QPointF(point),
+            QPointF(globalPoint), Qt::LeftButton, Qt::NoButton,
+            Qt::NoModifier);
+        QApplication::sendEvent(tabs, &release);
+    };
+    const auto requirePage = [&window, pages](QTabBar* tabs, int tabIndex,
+        int pageIndex, const QString& title, const QString& sentinelName)
+    {
+        require(tabs->currentIndex() == tabIndex,
+            "Renderer section tab selection is stale");
+        require(pages->currentIndex() == pageIndex,
+            "Renderer section content did not follow its selected tab");
+        QLabel* pageTitle = pages->currentWidget()->findChild<QLabel*>(
+            QStringLiteral("pageTitle"));
+        require(pageTitle && pageTitle->text() == title,
+            "Renderer section title did not follow its selected tab");
+        QWidget* sentinel = requireControl<QWidget>(window, sentinelName);
+        require(pages->currentWidget()->isAncestorOf(sentinel) &&
+            sentinel->isVisibleTo(&window),
+            "Renderer section displayed content does not match its title and tab");
+    };
+    const auto navigationButton = [&window](const QString& text)
+    {
+        for (QPushButton* button : window.findChildren<QPushButton*>())
+            if (button->property("nav").toBool() && button->text() == text)
+                return button;
+        return static_cast<QPushButton*>(nullptr);
+    };
+
+    struct ExpectedPage
+    {
+        int tabIndex;
+        int pageIndex;
+        const char* title;
+        const char* sentinel;
+    };
+    const std::vector<ExpectedPage> vpSequence = {
+        { 1, 4, "Screen Config", "config.vprenderer.viewport.profiles" },
+        { 2, 10, "Input processing", "config.vprenderer.input_processing.video_conversion" },
+        { 0, 2, "Rendering", "config.vprenderer.profiles" },
+        { 2, 10, "Input processing", "config.vprenderer.input_processing.video_conversion" },
+        { 1, 4, "Screen Config", "config.vprenderer.viewport.profiles" },
+        { 0, 2, "Rendering", "config.vprenderer.profiles" }
+    };
+    for (const ExpectedPage& expected : vpSequence)
+    {
+        clickTab(vpSections, expected.tabIndex);
+        requirePage(vpSections, expected.tabIndex, expected.pageIndex,
+            QString::fromLatin1(expected.title),
+            QString::fromLatin1(expected.sentinel));
+    }
+    require(vpSections->isVisibleTo(&window) &&
+        !directShowSections->isVisibleTo(&window),
+        "VP Renderer section did not retain its persistent tab bar");
+    require(navigationButton(QStringLiteral("VP Renderer")) &&
+        navigationButton(QStringLiteral("VP Renderer"))->isChecked(),
+        "VP Renderer child page lost its parent navigation selection");
+
+    window.selectPage(3);
+    const std::vector<ExpectedPage> directShowSequence = {
+        { 1, 11, "Input processing", "config.directshow.video_conversion" },
+        { 0, 3, "General", "config.directshow.frame_offset.auto" },
+        { 1, 11, "Input processing", "config.directshow.video_conversion" },
+        { 0, 3, "General", "config.directshow.frame_offset.auto" }
+    };
+    for (const ExpectedPage& expected : directShowSequence)
+    {
+        clickTab(directShowSections, expected.tabIndex);
+        requirePage(directShowSections, expected.tabIndex, expected.pageIndex,
+            QString::fromLatin1(expected.title),
+            QString::fromLatin1(expected.sentinel));
+    }
+    require(directShowSections->isVisibleTo(&window) &&
+        !vpSections->isVisibleTo(&window),
+        "DirectShow section did not retain its persistent tab bar");
+    require(navigationButton(QStringLiteral("DirectShow")) &&
+        navigationButton(QStringLiteral("DirectShow"))->isChecked(),
+        "DirectShow child page lost its parent navigation selection");
+    require(!vpSections->drawBase() && !directShowSections->drawBase(),
+        "Persistent renderer tabs restored the native white tab-bar base");
+}
+
+void testEmptyStandardShadersCanCreateFirstShader()
+{
+    QTemporaryDir directory;
+    const QString path = copyFixture(directory);
+    ConfigEditorWindow window(path, 0, true);
+    QTabWidget* shaderSections = requireControl<QTabWidget>(window,
+        QStringLiteral("config.shader.sections"));
+    require(shaderSections->tabText(0) == QStringLiteral("Standard"),
+        "Standard is not the first shader section");
+    shaderSections->setCurrentIndex(0);
+    window.show();
+    QCoreApplication::processEvents();
+    QListWidget* standardShaders = requireControl<QListWidget>(window,
+        QStringLiteral("config.shader.standard.items"));
+    require(standardShaders->count() == 0,
+        "The no-default fixture unexpectedly contains a standard shader");
+
+    answerInputDialog(QStringLiteral("My First Shader"));
+    requireControl<QPushButton>(window, QStringLiteral("config.shader.standard.add"))->click();
+    require(standardShaders->count() == 1 && standardShaders->currentItem() &&
+        standardShaders->currentItem()->text() == QStringLiteral("My First Shader"),
+        "The first Standard shader was not created and selected");
+    require(requireControl<QLineEdit>(window,
+        QStringLiteral("config.shader.standard.shortcut"))->text().isEmpty(),
+        "The first Standard shader unexpectedly received a shortcut");
+
+    save(window);
+    const QByteArray saved = readBytes(path);
+    require(saved.contains("[shader.standard]\ntype: multi"),
+        "Creating the first shader did not create the Standard shader group");
+    const int sectionStart = saved.indexOf("[shader.standard.my_first_shader]");
+    const int sectionEnd = saved.indexOf(QByteArray("\n["), sectionStart + 1);
+    const QByteArray created = sectionStart >= 0 ? saved.mid(sectionStart,
+        sectionEnd < 0 ? -1 : sectionEnd - sectionStart) : QByteArray();
+    require(created.contains("shader_type: custom") &&
+        created.contains("label: My First Shader") &&
+        !created.contains("shortcut:") && !created.contains("when:"),
+        "The first Standard shader did not save as a clean opt-in custom shader");
 }
 
 void testTwoColumnCardsShareRowHeight()
@@ -3309,6 +3558,10 @@ int main(int argc, char** argv)
     application.setStyleSheet(VpTheme::StyleSheet());
     int failures = 0;
     failures += run("every page round trips", testEveryPageRoundTrips);
+    failures += run("renderer section tabs stay synchronized during rapid clicks",
+        testRendererSectionTabsRemainSynchronizedDuringRapidClicks);
+    failures += run("empty Standard shaders can create first shader",
+        testEmptyStandardShadersCanCreateFirstShader);
     failures += run("two-column cards share row height", testTwoColumnCardsShareRowHeight);
     failures += run("inherited renderer Input selectors use effective labels",
         testInheritedRendererInputSelectorsUseEffectiveLabels);

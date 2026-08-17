@@ -223,7 +223,10 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
         [&window](QScreen*) { window.refreshMonitorDiscovery(); });
     window.selectPage(initialPage);
     if (!startInTray)
-        window.show();
+        // Enter the Qt event loop before exposing the native window. This
+        // lets Qt complete the first style/layout/paint pass rather than
+        // briefly showing an empty Win32 frame during startup.
+        QTimer::singleShot(0, &window, [&window] { window.reveal(); });
     if (!screenshotPath.isEmpty())
         QTimer::singleShot(400, &window, [&window, screenshotPath]
         {

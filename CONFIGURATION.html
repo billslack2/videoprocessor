@@ -327,6 +327,24 @@ shader_type: custom
 label: Post-resize finishing
 stage: post_resize
 hlsl_file: Adaptive sharpen.hlsl</pre>
+<h4>Included standard shader defaults</h4>
+<p>The shipped configuration keeps ordinary bundled shaders in <code>shader.standard</code>, separately from NLS. The group is <code>multi</code> so selected cleanup and finishing effects can compose, but every member intentionally starts without a shortcut or <code>when</code> rule. They therefore have no effect until explicitly enabled.</p>
+<pre data-ini-example="shader-standard-defaults">[shader.standard]
+type: multi
+
+[shader.standard.debanding_mild]
+shader_type: custom
+label: Debanding Mild
+stage: pre_resize
+order: 10
+hlsl_file: Debanding mild.hlsl
+
+[shader.standard.adaptive_sharpen]
+shader_type: custom
+label: Adaptive Sharpen
+stage: post_resize
+order: 10
+hlsl_file: Adaptive sharpen.hlsl</pre>
 </section>
 
 <h2 id="nls">Nonlinear Stretch (NLS) shader</h2>

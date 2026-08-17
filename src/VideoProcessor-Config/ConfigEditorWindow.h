@@ -68,6 +68,8 @@ private:
     QWidget* createViewportPage();
     QWidget* createLldvPage();
     QWidget* createShadersPage();
+    QWidget* createNlsShadersPage();
+    QWidget* createStandardShadersPage();
     QWidget* createActionsPage();
     QWidget* createShortcutsPage();
     QWidget* createLogsPage();

@@ -2526,6 +2526,36 @@ namespace VideoProcessorTest
 					expected.first, "shortcut", value));
 				Assert::AreEqual(expected.second, value.c_str());
 			}
+			Assert::IsTrue(config.TryGetString("shader.standard", "type", value));
+			Assert::AreEqual("multi", value.c_str());
+			const std::pair<const char*, const char*> standardShaders[] = {
+				{ "shader.standard.debanding_mild", "Debanding mild.hlsl" },
+				{ "shader.standard.denoise", "Denoise.hlsl" },
+				{ "shader.standard.adaptive_sharpen", "Adaptive sharpen.hlsl" },
+				{ "shader.standard.invert", "Invert.hlsl" }
+			};
+			for (const auto& expected : standardShaders)
+			{
+				Assert::IsTrue(config.TryGetString(expected.first, "hlsl_file", value));
+				Assert::AreEqual(expected.second, value.c_str());
+				Assert::IsFalse(config.TryGetString(expected.first, "shortcut", value),
+					L"Shipped standard shaders must remain opt-in");
+				Assert::IsFalse(config.TryGetString(expected.first, "when", value),
+					L"Shipped standard shaders must not auto-select");
+			}
+			std::string shaderError;
+			Assert::IsTrue(ShaderConfigValidation::Validate(config, shaderError),
+				std::wstring(shaderError.begin(), shaderError.end()).c_str());
+			std::vector<ConfiguredShaderRule> configuredShaders;
+			Assert::IsTrue(MadVRShaderLoader::ResolveConfiguredRuleSelection(
+				config, "@shader-key:", ShaderRendererBackend::MADVR,
+				configuredShaders,
+				shaderError),
+				std::wstring(shaderError.begin(), shaderError.end()).c_str());
+			Assert::IsFalse(std::any_of(configuredShaders.begin(), configuredShaders.end(),
+				[](const ConfiguredShaderRule& rule)
+				{ return rule.name.rfind("standard.", 0) == 0; }),
+				L"An unselected shipped standard shader must not enter the renderer chain");
 			Assert::IsTrue(config.TryGetString(
 				"shortcuts", "render.1", value));
 			Assert::AreEqual("Shift+A", value.c_str());
