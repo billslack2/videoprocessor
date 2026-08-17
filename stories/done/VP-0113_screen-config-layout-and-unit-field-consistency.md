@@ -2,7 +2,7 @@
 
 ## Status
 
-In Progress (2026-08-10). Implementation began after the developer confirmed
+Done (2026-08-17). Implementation began after the developer confirmed
 the discovered default branch `v1.2.001-beta`. Worktree:
 `C:\\Users\\bslac\\vp\\worktrees\\vp-0113-screen-config-layout`, branch
 `codex/vp-0113-screen-config-layout`, based on `origin/v1.2.001-beta` at
@@ -30,7 +30,11 @@ Implementation checkpoint (2026-08-10):
   foreground did not remove scoped Config topmost state`.
 - Visual screenshot review confirmed the Screen Config geometry disclosure
   in the built standalone editor. Screenshot:
-  `C:\\Users\\bslac\\vp\\worktrees\\vp-0113-screen-config-layout\\vp0113-screen-config-layout.png`.
+`C:\\Users\\bslac\\vp\\worktrees\\vp-0113-screen-config-layout\\vp0113-screen-config-layout.png`.
+
+The implementation was merged into `v1.2.001-beta` through GitHub PR
+[#50](https://github.com/billslack2/videoprocessor/pull/50) on 2026-08-10
+(`6d7200f`). No further acceptance gate remains for this UI-only story.
 
 ## User story
 

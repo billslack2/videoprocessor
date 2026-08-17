@@ -145,7 +145,7 @@ they must not contain requirements that are absent from this file.
 | VP-0110 | In Progress | Smooth viewport subtitle placement in and out with millisecond timing |
 | VP-0111 | Backlog | Prevent background shortcuts from hijacking normal typing |
 | VP-0112 | Done | Show the active profile in relevant configuration pages |
-| VP-0113 | In Progress | Screen Config layout and unit-field consistency |
+| VP-0113 | Done | Screen Config layout and unit-field consistency |
 | VP-0114 | Backlog | Alpha conservative scaling and small-bar zoom controls |
 | VP-0115 | Backlog | Diagnose DeckLink delivery failures and renderer-transition drops |
 | VP-0116 | Backlog | Show all active shaders in the configuration UI |
