@@ -705,7 +705,9 @@ void testTwoColumnCardsShareRowHeight()
     QStringList shortcutLabels;
     for (QLabel* label : pages->widget(6)->findChildren<QLabel*>())
         shortcutLabels.append(label->text());
-    require(shortcutLabels.contains(QStringLiteral("Video conversion off")) &&
+    require(shortcutLabels.contains(QStringLiteral("Screenshot")) &&
+        !shortcutLabels.contains(QStringLiteral("Capture rendered output")) &&
+        shortcutLabels.contains(QStringLiteral("Video conversion off")) &&
         shortcutLabels.contains(QStringLiteral("V210 to P010 conversion")) &&
         !shortcutLabels.contains(QStringLiteral("Active renderer: conversion off")) &&
         !shortcutLabels.contains(QStringLiteral("Active renderer: V210 to P010")),
