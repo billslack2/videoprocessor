@@ -360,30 +360,15 @@ namespace Tests
 				static_cast<int>(actual.encoding));
 		}
 
-		TEST_METHOD(FullPureG22IsDisabledUnlessExplicitlyEnabled)
+		TEST_METHOD(FullPureG22IsAStandardDisplayCalibrationTarget)
 		{
 			Request request;
-			request.presentation = PresentationRequest::DIRECT;
 			request.range = RangeRequest::FULL;
 			request.gamma = GammaRequest::GAMMA22;
-			request.vpOwnedPresenter = true;
-			const Plan plan = MakePlan(request);
-			Assert::IsFalse(plan.valid);
-			Assert::IsFalse(plan.strictContract);
-		}
-
-		TEST_METHOD(FullPureG22ExperimentSeparatesPixelsFromDxgiDeclaration)
-		{
-			Request request;
-			request.presentation = PresentationRequest::DIRECT;
-			request.range = RangeRequest::FULL;
-			request.gamma = GammaRequest::GAMMA22;
-			request.allowFullG22Experiment = true;
-			request.vpOwnedPresenter = true;
 			const Plan plan = MakePlan(request);
 			Assert::IsTrue(plan.valid);
-			Assert::IsTrue(plan.strictContract);
-			Assert::IsTrue(plan.requiresDxgiOverride);
+			Assert::IsFalse(plan.strictContract);
+			Assert::IsFalse(plan.requiresDxgiOverride);
 			Assert::AreEqual(static_cast<int>(DxgiEncoding::FULL_G22_P709),
 				static_cast<int>(plan.desiredEncoding));
 			Assert::AreEqual(static_cast<int>(TargetTransfer::GAMMA22),
@@ -391,11 +376,29 @@ namespace Tests
 
 			Evidence evidence;
 			evidence.presentationModel = PresentationModel::FLIP;
-			evidence.vpOwnsPresentation = true;
-			evidence.hasSwapchain3 = true;
-			evidence.presentSupportedBeforeSet = true;
-			evidence.setSucceeded = true;
-			evidence.presentSupportedAfterSet = true;
+			const Actual actual = Finalize(plan, evidence);
+			Assert::IsTrue(actual.safeToRender);
+			Assert::IsTrue(actual.requestedEncodingActive);
+			Assert::AreEqual(static_cast<int>(TargetTransfer::GAMMA22),
+				static_cast<int>(actual.targetTransfer));
+		}
+
+		TEST_METHOD(FullPureG22SeparatesDisplayPixelsFromWindowsRgbDeclaration)
+		{
+			Request request;
+			request.range = RangeRequest::FULL;
+			request.gamma = GammaRequest::GAMMA22;
+			const Plan plan = MakePlan(request);
+			Assert::IsTrue(plan.valid);
+			Assert::IsFalse(plan.strictContract);
+			Assert::IsFalse(plan.requiresDxgiOverride);
+			Assert::AreEqual(static_cast<int>(DxgiEncoding::FULL_G22_P709),
+				static_cast<int>(plan.desiredEncoding));
+			Assert::AreEqual(static_cast<int>(TargetTransfer::GAMMA22),
+				static_cast<int>(plan.targetTransfer));
+
+			Evidence evidence;
+			evidence.presentationModel = PresentationModel::FLIP;
 			const Actual actual = Finalize(plan, evidence);
 			Assert::IsTrue(actual.safeToRender);
 			Assert::IsTrue(actual.requestedEncodingActive);
@@ -405,31 +408,22 @@ namespace Tests
 				static_cast<int>(actual.targetTransfer));
 		}
 
-		TEST_METHOD(FullPureG22RequiresVpOwnedDirectAndFailsClosed)
+		TEST_METHOD(FullPureG22SupportsComposedWindowsPresentation)
 		{
 			Request request;
 			request.presentation = PresentationRequest::COMPOSED;
 			request.range = RangeRequest::FULL;
 			request.gamma = GammaRequest::GAMMA22;
-			request.allowFullG22Experiment = true;
 			const Plan plan = MakePlan(request);
-			Assert::IsFalse(plan.valid);
-			Assert::IsTrue(plan.strictContract);
-			Assert::IsFalse(Finalize(plan, {}).safeToRender);
-
-			request.presentation = PresentationRequest::DIRECT;
-			request.vpOwnedPresenter = true;
-			const Plan direct = MakePlan(request);
-			Assert::IsTrue(direct.valid);
-			Assert::IsFalse(Finalize(direct, {}).safeToRender);
-
-			Evidence nonOwner;
-			nonOwner.presentationModel = PresentationModel::FLIP;
-			nonOwner.hasSwapchain3 = true;
-			nonOwner.presentSupportedBeforeSet = true;
-			nonOwner.setSucceeded = true;
-			nonOwner.presentSupportedAfterSet = true;
-			Assert::IsFalse(Finalize(direct, nonOwner).safeToRender);
+			Assert::IsTrue(plan.valid);
+			Assert::IsTrue(plan.useBlit);
+			Evidence evidence;
+			evidence.presentationModel = PresentationModel::BITBLT;
+			const Actual actual = Finalize(plan, evidence);
+			Assert::IsTrue(actual.safeToRender);
+			Assert::IsTrue(actual.requestedEncodingActive);
+			Assert::AreEqual(static_cast<int>(TargetTransfer::GAMMA22),
+				static_cast<int>(actual.targetTransfer));
 		}
 
 		TEST_METHOD(LimitedAutoUsesExactStudioG24AndFlipCandidate)
@@ -747,29 +741,65 @@ namespace Tests
 				static_cast<int>(actual.encoding));
 		}
 
-		TEST_METHOD(FullGamma24IsRejectedWithoutTargetMutation)
+		TEST_METHOD(FullGamma24IsAStandardDisplayCalibrationTarget)
 		{
 			Request request;
 			request.range = RangeRequest::FULL;
 			request.gamma = GammaRequest::GAMMA24;
 			const Plan plan = MakePlan(request);
-			Assert::IsFalse(plan.valid);
+			Assert::IsTrue(plan.valid);
+			Assert::IsFalse(plan.requiresDxgiOverride);
+			Assert::AreEqual(static_cast<int>(TargetTransfer::GAMMA24),
+				static_cast<int>(plan.targetTransfer));
 
-			const Actual actual = Finalize(plan, {});
-			Assert::IsFalse(actual.requestedEncodingActive);
+			Evidence evidence;
+			evidence.presentationModel = PresentationModel::FLIP;
+			const Actual actual = Finalize(plan, evidence);
+			Assert::IsTrue(actual.requestedEncodingActive);
 			Assert::AreEqual(
-				static_cast<int>(TargetTransfer::SWAPCHAIN),
+				static_cast<int>(TargetTransfer::GAMMA24),
 				static_cast<int>(actual.targetTransfer));
 		}
 
-		TEST_METHOD(AutoRangeExplicitGamma22IsRejected)
+		TEST_METHOD(AutoRangeExplicitGamma22UsesTheCalibratedDisplayTarget)
 		{
 			Request request;
 			request.gamma = GammaRequest::GAMMA22;
-			Assert::IsFalse(MakePlan(request).valid);
+			const Plan plan = MakePlan(request);
+			Assert::IsTrue(plan.valid);
+			Assert::IsFalse(plan.requiresDxgiOverride);
+			Assert::AreEqual(static_cast<int>(TargetTransfer::GAMMA22),
+				static_cast<int>(plan.targetTransfer));
 		}
 
-		TEST_METHOD(UndeclarableOutputGammasAreRejected)
+		TEST_METHOD(FullRgbSupportsMadvrStyleCalibratedDisplayTransfers)
+		{
+			struct Case
+			{
+				const char* gamma;
+				TargetTransfer target;
+			};
+			for (const Case& test : {
+				Case{ "bt1886", TargetTransfer::BT1886 },
+				Case{ "1.8", TargetTransfer::GAMMA18 },
+				Case{ "2.0", TargetTransfer::GAMMA20 },
+				Case{ "2.2", TargetTransfer::GAMMA22 },
+				Case{ "2.4", TargetTransfer::GAMMA24 },
+				Case{ "2.6", TargetTransfer::GAMMA26 },
+				Case{ "2.8", TargetTransfer::GAMMA28 } })
+			{
+				Request request;
+				request.range = RangeRequest::FULL;
+				request.gamma = ParseGamma(test.gamma);
+				const Plan plan = MakePlan(request);
+				Assert::IsTrue(plan.valid);
+				Assert::IsFalse(plan.requiresDxgiOverride);
+				Assert::AreEqual(static_cast<int>(test.target),
+					static_cast<int>(plan.targetTransfer));
+			}
+		}
+
+		TEST_METHOD(LimitedRgbRejectsDisplayTransfersWithoutMatchingDxgiDeclarations)
 		{
 			for (const char* gamma : { "bt1886", "1.8", "2.0", "2.6", "2.8" })
 			{

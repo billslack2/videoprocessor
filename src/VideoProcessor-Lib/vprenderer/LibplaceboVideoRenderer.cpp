@@ -870,6 +870,7 @@ namespace
 		AutoToggle deband = AutoToggle::AUTO;
 		AutoToggle sigmoid = AutoToggle::AUTO;
 		AutoToggle dithering = AutoToggle::AUTO;
+		std::string displayBitDepth = "auto";
 		std::string outputPresentation = "auto";
 		std::string outputRange = "auto";
 		std::string outputGamma = "auto";
@@ -941,6 +942,7 @@ namespace
 			<< static_cast<int>(settings.deband) << '|'
 			<< static_cast<int>(settings.sigmoid) << '|'
 			<< static_cast<int>(settings.dithering) << '|'
+			<< settings.displayBitDepth << '|'
 			<< settings.outputPresentation << '|' << settings.outputRange << '|'
 			<< settings.outputGamma << '|' << settings.sdrTargetPrimaries << '|'
 			<< settings.reportBt2020ToDisplay << '|' << settings.sdrInputTransfer << '|'
@@ -1551,6 +1553,8 @@ namespace
 		}
 		readToggle("sigmoid", settings.sigmoid);
 		readToggle("dithering", settings.dithering);
+		readChoice("display_bit_depth", settings.displayBitDepth,
+			{ "auto", "8", "10" });
 		readChoice("output_presentation", settings.outputPresentation,
 			{ "auto", "composed", "direct" });
 		readChoice("output_range", settings.outputRange, { "auto", "full", "limited" });
@@ -1807,6 +1811,8 @@ namespace
 		}
 		settings.sigmoid = ReadAutoToggle(config, "sigmoid");
 		settings.dithering = ReadAutoToggle(config, "dithering");
+		settings.displayBitDepth = ReadChoice(
+			config, "display_bit_depth", "auto", { "auto", "8", "10" });
 		settings.outputPresentation = ReadChoice(
 			config, "output_presentation", "auto",
 			{ "auto", "composed", "direct" });
@@ -3551,10 +3557,7 @@ struct LibplaceboVideoRenderer::Impl
 			desc.Height,
 			static_cast<unsigned long long>(stats.sampledPixels),
 			ToString(actualOutput.encoding),
-			actualOutput.targetTransfer == TargetTransfer::GAMMA22
-				? "GAMMA22" :
-				(actualOutput.targetTransfer == TargetTransfer::GAMMA24
-					? "GAMMA24" : "SWAPCHAIN"),
+			LibplaceboOutput::ToString(actualOutput.targetTransfer),
 			stats.minimum[0],
 			stats.minimum[1],
 			stats.minimum[2],
@@ -3672,10 +3675,7 @@ struct LibplaceboVideoRenderer::Impl
 			<< "  \"actual_dxgi_encoding\": \"" <<
 				LibplaceboOutput::ToString(actualOutput.encoding) << "\",\n"
 			<< "  \"actual_pixel_transfer\": \"" <<
-				(actualOutput.targetTransfer == LibplaceboOutput::TargetTransfer::GAMMA22
-					? "pure-gamma-2.2" :
-					actualOutput.targetTransfer == LibplaceboOutput::TargetTransfer::GAMMA24
-						? "pure-gamma-2.4" : "swapchain-nominal") << "\",\n"
+				LibplaceboOutput::ToString(actualOutput.targetTransfer) << "\",\n"
 			<< "  \"target_primaries\": \"" <<
 				(targetBt2020 ? "BT.2020" : "Rec.709") << "\",\n"
 			<< "  \"report_bt2020_to_display\": " <<
@@ -3809,7 +3809,7 @@ struct LibplaceboVideoRenderer::Impl
 			projection.renderParams.dither_params ? &ditherParams : nullptr;
 
 		DebugLog::Log(
-			"libplacebo settings: quality=%s tone_mapping=%s gamut_mapping=%s peak_detection=%s contrast_recovery=%.2f upscaler=%s downscaler=%s deband=%s dithering=%s output_presentation=%s output_range=%s output_gamma=%s sdr_input_transfer=%s sdr_adjust_gamma=%s target=%.1f nits black=%.3f nits output_diagnostics=%d diagnostic_disable_shader_cache=%d diagnostic_disable_compute=%d diagnostic_force_8bit_sdr_swapchain=%d diagnostic_allow_limited_g22=%d diagnostic_allow_full_g22=%d diagnostic_vp_owned_dxgi_presenter=%d refresh_switch=%d refresh_command_delay=%llus refresh_commands=%u viewport_target=%s screen_aspect=%.4f automatic_crop=%d subtitle_fit=%d subtitle_hold=%llums subtitle_engage_drift=%llums subtitle_release_drift=%llums subtitle_padding=%dpx subtitle_target_buffer=%dpx",
+			"libplacebo settings: quality=%s tone_mapping=%s gamut_mapping=%s peak_detection=%s contrast_recovery=%.2f upscaler=%s downscaler=%s deband=%s dithering=%s display_bit_depth=%s output_presentation=%s output_range=%s output_gamma=%s sdr_input_transfer=%s sdr_adjust_gamma=%s target=%.1f nits black=%.3f nits output_diagnostics=%d diagnostic_disable_shader_cache=%d diagnostic_disable_compute=%d diagnostic_force_8bit_sdr_swapchain=%d diagnostic_allow_limited_g22=%d diagnostic_allow_full_g22=%d diagnostic_vp_owned_dxgi_presenter=%d refresh_switch=%d refresh_command_delay=%llus refresh_commands=%u viewport_target=%s screen_aspect=%.4f automatic_crop=%d subtitle_fit=%d subtitle_hold=%llums subtitle_engage_drift=%llums subtitle_release_drift=%llums subtitle_padding=%dpx subtitle_target_buffer=%dpx",
 			settings.quality.c_str(),
 			colorMapParams.tone_mapping_function
 				? colorMapParams.tone_mapping_function->name : "none",
@@ -3823,7 +3823,9 @@ struct LibplaceboVideoRenderer::Impl
 			settings.debandStrength == "auto" ?
 				(renderParams.deband_params ? "auto/on" : "auto/off") :
 				settings.debandStrength.c_str(),
-			renderParams.dither_params ? "on" : "off",
+			renderParams.error_diffusion ? "auto/error-diffusion" :
+				(renderParams.dither_params ? "on" : "off"),
+			settings.displayBitDepth.c_str(),
 			settings.outputPresentation.c_str(),
 			settings.outputRange.c_str(),
 			settings.outputGamma.c_str(),
@@ -4488,10 +4490,17 @@ struct LibplaceboVideoRenderer::Impl
 		LibplaceboOutput::TargetTransfer targetTransfer)
 	{
 		using LibplaceboOutput::TargetTransfer;
-		if (targetTransfer == TargetTransfer::GAMMA22)
-			return PL_COLOR_TRC_GAMMA22;
-		if (targetTransfer == TargetTransfer::GAMMA24)
-			return PL_COLOR_TRC_GAMMA24;
+		switch (targetTransfer)
+		{
+		case TargetTransfer::BT1886: return PL_COLOR_TRC_BT_1886;
+		case TargetTransfer::GAMMA18: return PL_COLOR_TRC_GAMMA18;
+		case TargetTransfer::GAMMA20: return PL_COLOR_TRC_GAMMA20;
+		case TargetTransfer::GAMMA22: return PL_COLOR_TRC_GAMMA22;
+		case TargetTransfer::GAMMA24: return PL_COLOR_TRC_GAMMA24;
+		case TargetTransfer::GAMMA26: return PL_COLOR_TRC_GAMMA26;
+		case TargetTransfer::GAMMA28: return PL_COLOR_TRC_GAMMA28;
+		default: break;
+		}
 		return EncodingTransfer(encoding);
 	}
 
@@ -4503,8 +4512,12 @@ struct LibplaceboVideoRenderer::Impl
 		{
 		case PL_COLOR_TRC_BT_1886: return SdrTransfer::BT1886;
 		case PL_COLOR_TRC_SRGB: return SdrTransfer::SRGB;
+		case PL_COLOR_TRC_GAMMA18: return SdrTransfer::GAMMA18;
+		case PL_COLOR_TRC_GAMMA20: return SdrTransfer::GAMMA20;
 		case PL_COLOR_TRC_GAMMA22: return SdrTransfer::GAMMA22;
 		case PL_COLOR_TRC_GAMMA24: return SdrTransfer::GAMMA24;
+		case PL_COLOR_TRC_GAMMA26: return SdrTransfer::GAMMA26;
+		case PL_COLOR_TRC_GAMMA28: return SdrTransfer::GAMMA28;
 		case PL_COLOR_TRC_UNKNOWN: return SdrTransfer::UNKNOWN;
 		default: return SdrTransfer::OTHER;
 		}
@@ -4518,8 +4531,12 @@ struct LibplaceboVideoRenderer::Impl
 		{
 		case SdrTransfer::BT1886: return PL_COLOR_TRC_BT_1886;
 		case SdrTransfer::SRGB: return PL_COLOR_TRC_SRGB;
+		case SdrTransfer::GAMMA18: return PL_COLOR_TRC_GAMMA18;
+		case SdrTransfer::GAMMA20: return PL_COLOR_TRC_GAMMA20;
 		case SdrTransfer::GAMMA22: return PL_COLOR_TRC_GAMMA22;
 		case SdrTransfer::GAMMA24: return PL_COLOR_TRC_GAMMA24;
+		case SdrTransfer::GAMMA26: return PL_COLOR_TRC_GAMMA26;
+		case SdrTransfer::GAMMA28: return PL_COLOR_TRC_GAMMA28;
 		default: return PL_COLOR_TRC_UNKNOWN;
 		}
 	}
@@ -5094,10 +5111,7 @@ struct LibplaceboVideoRenderer::Impl
 				"unavailable (IDXGISwapChain3 has no getter)");
 		DebugLog::Log(
 			"libplacebo output applied state: pixel_transfer=%s dxgi_declaration=%s declaration_semantics=%s presenter_owner=%s strict=%d wire_state=unverified",
-			actualOutput.targetTransfer == TargetTransfer::GAMMA22
-				? "PURE_POWER_GAMMA22" :
-				(actualOutput.targetTransfer == TargetTransfer::GAMMA24
-					? "PURE_POWER_GAMMA24" : "SWAPCHAIN_NOMINAL"),
+			LibplaceboOutput::ToString(actualOutput.targetTransfer),
 			ToString(actualOutput.encoding),
 			actualOutput.encoding == DxgiEncoding::FULL_G22_P709
 				? "sRGB_nominal_no_pure22_DXGI_enum" : "matches_nominal_transfer",
@@ -5112,10 +5126,9 @@ struct LibplaceboVideoRenderer::Impl
 			ToString(outputPlan.request.primaries),
 			ToString(actualOutput.presentationModel),
 			ToRangeString(actualOutput.encoding),
-			actualOutput.targetTransfer == TargetTransfer::GAMMA22
-				? "PureGamma2.2" :
-				(actualOutput.targetTransfer == TargetTransfer::GAMMA24
-					? "PureGamma2.4" : ToGammaString(actualOutput.encoding)),
+			actualOutput.targetTransfer == TargetTransfer::SWAPCHAIN
+				? ToGammaString(actualOutput.encoding)
+				: LibplaceboOutput::ToString(actualOutput.targetTransfer),
 			EncodingUsesBt2020(actualOutput.encoding) ? "BT.2020" : "Rec.709",
 			ToString(actualOutput.encoding),
 			actualOutput.requestedEncodingActive ? 1 : 0,
@@ -7604,6 +7617,8 @@ struct LibplaceboVideoRenderer::Impl
 		}
 		const struct pl_color_repr returnedRepr = baseTarget.repr;
 		const struct pl_color_space returnedColor = baseTarget.color;
+		LibplaceboRenderParameters::ApplyDisplayBitDepth(
+			activeSettings.displayBitDepth, baseTarget.repr);
 		const bool returnedTargetMatchesActualOutput =
 			ReturnedTargetMatchesActualOutput(returnedRepr, returnedColor);
 		// The frame returned by libplacebo is the default host/compositor contract.
@@ -7630,7 +7645,7 @@ struct LibplaceboVideoRenderer::Impl
 		if (outputDiagnostics && !outputContractLogged)
 		{
 			DebugLog::Log(
-				"libplacebo output diagnostic contract: source_eotf=%d source_system=%s source_levels=%d source_transfer=%s source_luma=%.4f..%.1f returned_system=%s returned_levels=%d returned_transfer=%s returned_bits=%d/%d returned_luma=%.4f..%.1f final_levels=%d final_transfer=%s final_luma=%.4f..%.1f dxgi=%s presentation=%s",
+				"libplacebo output diagnostic contract: source_eotf=%d source_system=%s source_levels=%d source_transfer=%s source_luma=%.4f..%.1f returned_system=%s returned_levels=%d returned_transfer=%s returned_bits=%d/%d returned_luma=%.4f..%.1f display_bit_depth=%s final_bits=%d/%d shift=%d final_levels=%d final_transfer=%s final_luma=%.4f..%.1f dxgi=%s presentation=%s",
 				static_cast<int>(state.eotf),
 				pl_color_system_name(image.repr.sys),
 				static_cast<int>(image.repr.levels),
@@ -7644,6 +7659,10 @@ struct LibplaceboVideoRenderer::Impl
 				returnedRepr.bits.color_depth,
 				returnedColor.hdr.min_luma,
 				returnedColor.hdr.max_luma,
+				activeSettings.displayBitDepth.c_str(),
+				baseTarget.repr.bits.sample_depth,
+				baseTarget.repr.bits.color_depth,
+				baseTarget.repr.bits.bit_shift,
 				static_cast<int>(baseTarget.repr.levels),
 				pl_color_transfer_name(baseTarget.color.transfer),
 				baseTarget.color.hdr.min_luma,
@@ -10351,14 +10370,6 @@ bool LibplaceboVideoRenderer::GetOutputModeInfo(CString& details) const
 		default: return "?";
 		}
 	};
-	auto pixelTransfer = [](const LibplaceboOutput::Actual& output)
-	{
-		if (output.targetTransfer == LibplaceboOutput::TargetTransfer::GAMMA22)
-			return "Pure2.2";
-		if (output.targetTransfer == LibplaceboOutput::TargetTransfer::GAMMA24)
-			return "Pure2.4";
-		return LibplaceboOutput::ToGammaString(output.encoding);
-	};
 	CStringA value;
 	const char* outputTarget = m_impl->targetBt2020
 		? (m_impl->reportBt2020ToDisplay
@@ -10384,7 +10395,7 @@ bool LibplaceboVideoRenderer::GetOutputModeInfo(CString& details) const
 				m_impl->actualOutput.encoding)) == "FULL" ? "F" : "L")
 			: "?",
 		m_impl->actualOutput.safeToRender
-			? pixelTransfer(m_impl->actualOutput)
+			? LibplaceboOutput::ToGammaString(m_impl->actualOutput.encoding)
 			: "?",
 		m_impl->actualOutput.safeToRender &&
 			(m_impl->actualOutput.encoding ==
@@ -10394,37 +10405,51 @@ bool LibplaceboVideoRenderer::GetOutputModeInfo(CString& details) const
 			 m_impl->actualOutput.encoding ==
 				LibplaceboOutput::DxgiEncoding::STUDIO_G24_P2020)
 				? "2020" : "709");
-	CStringA fallback;
+	CStringA gammaAdjustment;
+	CStringA outputStatus;
 	if (!m_impl->actualOutput.safeToRender)
 	{
-		fallback.Format("BLOCKED: %s", m_impl->actualOutput.reason.c_str());
+		outputStatus.Format("Blocked: %s", m_impl->actualOutput.reason.c_str());
 	}
 	else if (!m_impl->actualOutput.requestedEncodingActive)
 	{
-		fallback.Format("requested transport rejected -> %s/%s",
+		const auto requestedGamma = m_impl->outputPlan.request.gamma;
+		if (requestedGamma != LibplaceboOutput::GammaRequest::AUTO &&
+			requestedGamma != LibplaceboOutput::GammaRequest::SRGB &&
 			m_impl->actualOutput.encoding ==
-				LibplaceboOutput::DxgiEncoding::FULL_G22_P709 ? "Full" :
-				LibplaceboOutput::ToRangeString(m_impl->actualOutput.encoding),
-			LibplaceboOutput::ToGammaString(m_impl->actualOutput.encoding));
+				LibplaceboOutput::DxgiEncoding::FULL_G22_P709)
+		{
+			gammaAdjustment.Format("%s req -> sRGB (Windows)",
+				LibplaceboOutput::ToString(requestedGamma));
+		}
+		else
+		{
+			outputStatus = "Windows-compatible RGB active";
+		}
 	}
 	if (m_impl->activeSettings.diagnosticVpOwnedDxgiPresenter &&
 		m_impl->swapchainBlit)
 	{
-		if (!fallback.IsEmpty()) fallback += "; ";
-		fallback += "VP-owned is Direct-only; libplacebo Composed active";
+		if (!outputStatus.IsEmpty()) outputStatus += "; ";
+		outputStatus += "Composed presentation active";
 	}
-	if (!fallback.IsEmpty())
+	if (!gammaAdjustment.IsEmpty())
 	{
-		value += " | FALLBACK: ";
-		value += fallback;
+		value += " | GAMMA: ";
+		value += gammaAdjustment;
+	}
+	if (!outputStatus.IsEmpty())
+	{
+		value += " | STATUS: ";
+		value += outputStatus;
 	}
 	if (m_impl->actualOutput.safeToRender &&
-		m_impl->actualOutput.targetTransfer ==
-			LibplaceboOutput::TargetTransfer::GAMMA22 &&
-		m_impl->actualOutput.encoding ==
-			LibplaceboOutput::DxgiEncoding::FULL_G22_P709)
+		m_impl->actualOutput.targetTransfer !=
+			LibplaceboOutput::TargetTransfer::SWAPCHAIN)
 	{
-		value += " | Pixel Pure2.2; DXGI Full-G22/sRGB nominal; wire unverified";
+		value += " | DISPLAY: ";
+		value += LibplaceboOutput::ToString(
+			m_impl->actualOutput.targetTransfer);
 	}
 	if (!m_impl->lastSdrGammaDecision.reason.empty())
 	{
@@ -10491,9 +10516,18 @@ bool LibplaceboVideoRenderer::GetOutputContractStatus(
 		m_impl->actualOutput.encoding)) == "FULL" ? Range::FULL : Range::LIMITED;
 	const pl_color_transfer transfer = m_impl->ResolvedPixelTransfer(
 		m_impl->actualOutput.encoding, m_impl->actualOutput.targetTransfer);
-	status.transfer = transfer == PL_COLOR_TRC_GAMMA22 ? Transfer::GAMMA22 :
-		transfer == PL_COLOR_TRC_GAMMA24 ? Transfer::GAMMA24 :
-		transfer == PL_COLOR_TRC_SRGB ? Transfer::SRGB : Transfer::UNKNOWN;
+	switch (transfer)
+	{
+	case PL_COLOR_TRC_SRGB: status.transfer = Transfer::SRGB; break;
+	case PL_COLOR_TRC_BT_1886: status.transfer = Transfer::BT1886; break;
+	case PL_COLOR_TRC_GAMMA18: status.transfer = Transfer::GAMMA18; break;
+	case PL_COLOR_TRC_GAMMA20: status.transfer = Transfer::GAMMA20; break;
+	case PL_COLOR_TRC_GAMMA22: status.transfer = Transfer::GAMMA22; break;
+	case PL_COLOR_TRC_GAMMA24: status.transfer = Transfer::GAMMA24; break;
+	case PL_COLOR_TRC_GAMMA26: status.transfer = Transfer::GAMMA26; break;
+	case PL_COLOR_TRC_GAMMA28: status.transfer = Transfer::GAMMA28; break;
+	default: status.transfer = Transfer::UNKNOWN; break;
+	}
 	status.primaries = m_impl->targetBt2020 ? Primaries::BT2020 : Primaries::REC709;
 	status.dxgiDeclaration = LibplaceboOutput::ToString(
 		m_impl->actualOutput.encoding);

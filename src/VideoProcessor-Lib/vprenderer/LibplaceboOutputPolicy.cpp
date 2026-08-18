@@ -40,10 +40,20 @@ namespace LibplaceboOutput
 	{
 		if (value == "srgb")
 			return GammaRequest::SRGB;
+		if (value == "bt1886")
+			return GammaRequest::BT1886;
+		if (value == "1.8")
+			return GammaRequest::GAMMA18;
+		if (value == "2.0")
+			return GammaRequest::GAMMA20;
 		if (value == "2.2")
 			return GammaRequest::GAMMA22;
 		if (value == "2.4")
 			return GammaRequest::GAMMA24;
+		if (value == "2.6")
+			return GammaRequest::GAMMA26;
+		if (value == "2.8")
+			return GammaRequest::GAMMA28;
 		if (value == "auto")
 			return GammaRequest::AUTO;
 		return GammaRequest::UNSUPPORTED;
@@ -179,40 +189,44 @@ namespace LibplaceboOutput
 			return result;
 		}
 
-		// DXGI Full G22/P709 nominally declares sRGB. Some calibrated displays
-		// intentionally expect pure-power 2.2 pixels under that same declaration
-		// (mpv exposes the equivalent treat-srgb-as-power22 override). Keep the
-		// declaration and pixel transfer separate, and permit this mismatch only
-		// through an explicit VP-owned diagnostic contract.
-		if (request.gamma == GammaRequest::GAMMA22 &&
-			request.allowFullG22Experiment)
+		// The display's calibrated transfer and the Windows SDR surface
+		// declaration are separate contracts.  A Full RGB G22/P709 swapchain is
+		// the normal Windows presentation path; a calibrated display may still
+		// require a BT.1886 or pure-power target, as madVR's calibration page
+		// supports. Keep the standard surface declaration and apply the display
+		// target in the renderer rather than treating it as a DXGI transport
+		// request.
+		switch (request.gamma)
 		{
-			result.strictContract = true;
-			result.requiresDxgiOverride = true;
-			result.desiredEncoding = request.primaries == PrimariesRequest::BT2020
-				? DxgiEncoding::FULL_G22_P2020 : DxgiEncoding::FULL_G22_P709;
+		case GammaRequest::AUTO:
+		case GammaRequest::SRGB:
+			break;
+		case GammaRequest::BT1886:
+			result.targetTransfer = TargetTransfer::BT1886;
+			break;
+		case GammaRequest::GAMMA18:
+			result.targetTransfer = TargetTransfer::GAMMA18;
+			break;
+		case GammaRequest::GAMMA20:
+			result.targetTransfer = TargetTransfer::GAMMA20;
+			break;
+		case GammaRequest::GAMMA22:
 			result.targetTransfer = TargetTransfer::GAMMA22;
-			if (request.presentation != PresentationRequest::DIRECT ||
-				!request.vpOwnedPresenter)
-			{
-				result.valid = false;
-				result.reason =
-					"Full/pure-Gamma-2.2 requires VP-owned Direct presentation";
-			}
-			else
-				result.reason =
-					"experimental Full/pure-Gamma-2.2 pixels under nominal sRGB DXGI declaration";
-			return result;
-		}
-
-		// Other explicit Full curves have no matching DXGI declaration. Full G22
-		// is specifically the sRGB piecewise transfer by default.
-		if (request.gamma != GammaRequest::AUTO &&
-			request.gamma != GammaRequest::SRGB)
-		{
+			break;
+		case GammaRequest::GAMMA24:
+			result.targetTransfer = TargetTransfer::GAMMA24;
+			break;
+		case GammaRequest::GAMMA26:
+			result.targetTransfer = TargetTransfer::GAMMA26;
+			break;
+		case GammaRequest::GAMMA28:
+			result.targetTransfer = TargetTransfer::GAMMA28;
+			break;
+		default:
 			result.valid = false;
 			result.reason =
-				"requested output gamma has no matching full-range DXGI declaration";
+				"requested display calibration transfer is unsupported";
+			break;
 		}
 		if (result.valid && request.primaries == PrimariesRequest::BT2020)
 		{
@@ -283,10 +297,11 @@ namespace LibplaceboOutput
 
 		if (!plan.requiresDxgiOverride)
 		{
+			result.targetTransfer = plan.targetTransfer;
 			result.requestedEncodingActive = true;
 			result.reason = evidence.fullRestoreRequired
 				? "restored Full/sRGB after SetColorSpace1 and capability checks"
-				: "using the libplacebo-negotiated Full/sRGB swapchain contract";
+				: "using the standard Windows Full/sRGB swapchain contract";
 			return result;
 		}
 
@@ -434,8 +449,13 @@ namespace LibplaceboOutput
 		{
 		case GammaRequest::AUTO: return "AUTO";
 		case GammaRequest::SRGB: return "sRGB";
+		case GammaRequest::BT1886: return "BT.1886";
+		case GammaRequest::GAMMA18: return "1.8";
+		case GammaRequest::GAMMA20: return "2.0";
 		case GammaRequest::GAMMA22: return "2.2";
 		case GammaRequest::GAMMA24: return "2.4";
+		case GammaRequest::GAMMA26: return "2.6";
+		case GammaRequest::GAMMA28: return "2.8";
 		default: return "UNSUPPORTED";
 		}
 	}
@@ -456,8 +476,12 @@ namespace LibplaceboOutput
 		{
 		case SdrTransfer::BT1886: return "BT1886";
 		case SdrTransfer::SRGB: return "sRGB";
+		case SdrTransfer::GAMMA18: return "GAMMA18";
+		case SdrTransfer::GAMMA20: return "GAMMA20";
 		case SdrTransfer::GAMMA22: return "GAMMA22";
 		case SdrTransfer::GAMMA24: return "GAMMA24";
+		case SdrTransfer::GAMMA26: return "GAMMA26";
+		case SdrTransfer::GAMMA28: return "GAMMA28";
 		case SdrTransfer::OTHER: return "OTHER";
 		default: return "UNKNOWN";
 		}
@@ -489,6 +513,22 @@ namespace LibplaceboOutput
 		case DxgiEncoding::FULL_G22_P2020: return "RGB_FULL_G22_NONE_P2020";
 		case DxgiEncoding::STUDIO_G22_P2020: return "RGB_STUDIO_G22_NONE_P2020";
 		case DxgiEncoding::STUDIO_G24_P2020: return "RGB_STUDIO_G24_NONE_P2020";
+		}
+		return "UNKNOWN";
+	}
+
+	const char* ToString(TargetTransfer value)
+	{
+		switch (value)
+		{
+		case TargetTransfer::SWAPCHAIN: return "sRGB";
+		case TargetTransfer::BT1886: return "BT.1886";
+		case TargetTransfer::GAMMA18: return "Pure Gamma 1.8";
+		case TargetTransfer::GAMMA20: return "Pure Gamma 2.0";
+		case TargetTransfer::GAMMA22: return "Pure Gamma 2.2";
+		case TargetTransfer::GAMMA24: return "Pure Gamma 2.4";
+		case TargetTransfer::GAMMA26: return "Pure Gamma 2.6";
+		case TargetTransfer::GAMMA28: return "Pure Gamma 2.8";
 		}
 		return "UNKNOWN";
 	}

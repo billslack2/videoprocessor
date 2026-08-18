@@ -32,8 +32,13 @@ namespace LibplaceboOutput
 	{
 		AUTO,
 		SRGB,
+		BT1886,
+		GAMMA18,
+		GAMMA20,
 		GAMMA22,
 		GAMMA24,
+		GAMMA26,
+		GAMMA28,
 		UNSUPPORTED
 	};
 
@@ -56,8 +61,13 @@ namespace LibplaceboOutput
 	enum class TargetTransfer
 	{
 		SWAPCHAIN,
+		BT1886,
+		GAMMA18,
+		GAMMA20,
 		GAMMA22,
-		GAMMA24
+		GAMMA24,
+		GAMMA26,
+		GAMMA28
 	};
 
 	enum class SdrAdjustGamma
@@ -75,8 +85,12 @@ namespace LibplaceboOutput
 		UNKNOWN,
 		BT1886,
 		SRGB,
+		GAMMA18,
+		GAMMA20,
 		GAMMA22,
 		GAMMA24,
+		GAMMA26,
+		GAMMA28,
 		OTHER
 	};
 
@@ -245,6 +259,7 @@ namespace LibplaceboOutput
 	const char* ToString(SdrGammaAction value);
 	const char* ToString(PrimariesRequest value);
 	const char* ToString(DxgiEncoding value);
+	const char* ToString(TargetTransfer value);
 	const char* ToRangeString(DxgiEncoding value);
 	const char* ToGammaString(DxgiEncoding value);
 }

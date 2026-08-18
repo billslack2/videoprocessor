@@ -35,7 +35,7 @@ struct StatsData
 
 	// Renderer settings
 	CString method;            // e.g., "Rational-Rational"
-	CString outputMode;        // requested -> negotiated renderer output
+	CString outputMode;        // negotiated RGB output plus optional adjustment/status
 	// Non-empty only while the explicit active-output diagnostic is running.
 	// This is rendered inside the native Alpha overlay as well as the legacy
 	// desktop fallback, so a fullscreen test identifies its current contract.

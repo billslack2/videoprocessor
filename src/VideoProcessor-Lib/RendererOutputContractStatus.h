@@ -23,8 +23,13 @@ namespace RendererOutputContract
 	{
 		UNKNOWN,
 		SRGB,
+		BT1886,
+		GAMMA18,
+		GAMMA20,
 		GAMMA22,
 		GAMMA24,
+		GAMMA26,
+		GAMMA28,
 	};
 
 	enum class Primaries

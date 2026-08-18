@@ -59,6 +59,9 @@ vprenderer.deband	off
 vprenderer.dithering	AUTO
 vprenderer.dithering	on
 vprenderer.dithering	off
+vprenderer.display_bit_depth	AUTO
+vprenderer.display_bit_depth	8
+vprenderer.display_bit_depth	10
 vprenderer.sdr_black_nits	AUTO
 vprenderer.output_presentation	AUTO
 vprenderer.output_presentation	composed

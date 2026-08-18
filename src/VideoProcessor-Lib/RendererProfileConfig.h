@@ -446,6 +446,7 @@ namespace RendererProfileConfig
 		if (group == "display")
 		{
 			if (key == "output_path_profile") return IsChoice(value, { "legacy", "proposed", "custom" });
+			if (key == "display_bit_depth") return IsChoice(value, { "auto", "8", "10" });
 			if (key == "sdr_target_nits") return IsNumberInRange(value, 40.0, 500.0);
 			if (key == "lut_reference_nits") return IsChoice(value, { "auto" }) || IsNumberInRange(value, 40.0, 500.0);
 			if (key == "sdr_black_nits") return IsChoice(value, { "auto" }) || IsNumberInRange(value, 0.0, 500.0, false);
@@ -1269,7 +1270,7 @@ namespace RendererProfileConfig
 				"sdr_target_nits", "sdr_black_nits", "switch_refresh_rate",
 				"quality", "tone_mapping", "gamut_mapping", "peak_detection",
 				"contrast_recovery", "upscaler", "downscaler", "deband",
-				"deband_strength", "sigmoid", "dithering", "output_presentation",
+				"deband_strength", "sigmoid", "dithering", "display_bit_depth", "output_presentation",
 				"output_range", "output_gamma", "output_path_profile",
 				"sdr_target_primaries", "report_bt2020_to_display",
 				"sdr_input_transfer", "sdr_adjust_gamma", "output_diagnostics",

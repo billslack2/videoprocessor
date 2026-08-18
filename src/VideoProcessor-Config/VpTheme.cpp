@@ -96,6 +96,7 @@ QString VpTheme::StyleSheet()
             font-family: "Segoe UI";
             font-size: 13px;
         }
+        QDialog { background: #0b121b; }
         QMainWindow, #root, #pageViewport { background: #0b121b; }
         #brandHeader {
             background: #0a1119;

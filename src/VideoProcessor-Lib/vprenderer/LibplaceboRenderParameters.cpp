@@ -68,6 +68,23 @@ namespace
 
 namespace LibplaceboRenderParameters
 {
+	void ApplyDisplayBitDepth(const std::string& displayBitDepth,
+		pl_color_repr& targetRepresentation)
+	{
+		int requestedDepth = 0;
+		if (displayBitDepth == "8") requestedDepth = 8;
+		else if (displayBitDepth == "10") requestedDepth = 10;
+		else return;
+
+		const int sampleDepth = targetRepresentation.bits.sample_depth;
+		if (sampleDepth <= 0) return;
+
+		const int effectiveDepth = requestedDepth < sampleDepth ?
+			requestedDepth : sampleDepth;
+		targetRepresentation.bits.color_depth = effectiveDepth;
+		targetRepresentation.bits.bit_shift = sampleDepth - effectiveDepth;
+	}
+
 	bool Build(const Settings& settings, bool hasDisplayLut,
 		Projection& projection, std::string& error)
 	{
@@ -178,6 +195,37 @@ namespace LibplaceboRenderParameters
 				projection.renderParams.deband_params, projection.debandParams);
 		};
 
+		auto setDithering = [&]() -> bool
+		{
+			if (settings.dithering == Toggle::Off)
+			{
+				// libplacebo treats error diffusion as a separate, preferred
+				// dithering path. Both pointers must be cleared for Off to mean Off.
+				projection.renderParams.dither_params = nullptr;
+				projection.renderParams.error_diffusion = nullptr;
+				return true;
+			}
+			if (settings.dithering == Toggle::On)
+			{
+				const pl_dither_params* defaults =
+					ReadLibplaceboData<pl_dither_params>(
+						"pl_dither_default_params", error);
+				if (!defaults) return false;
+				projection.ditherParams = *defaults;
+				projection.renderParams.dither_params = &projection.ditherParams;
+				// On explicitly selects libplacebo's ordinary, gamma-aware default
+				// instead of inheriting a preset's error-diffusion kernel.
+				projection.renderParams.error_diffusion = nullptr;
+				return true;
+			}
+			if (projection.renderParams.dither_params)
+			{
+				projection.ditherParams = *projection.renderParams.dither_params;
+				projection.renderParams.dither_params = &projection.ditherParams;
+			}
+			return true;
+		};
+
 		if (!setToggle(settings.sigmoid, "pl_sigmoid_default_params",
 			projection.renderParams.sigmoid_params, projection.sigmoidParams) ||
 			!setToggle(settings.peakDetection,
@@ -185,8 +233,7 @@ namespace LibplaceboRenderParameters
 				projection.renderParams.peak_detect_params,
 				projection.peakDetectParams) ||
 			!setDeband() ||
-			!setToggle(settings.dithering, "pl_dither_default_params",
-				projection.renderParams.dither_params, projection.ditherParams))
+			!setDithering())
 		{
 			return false;
 		}
