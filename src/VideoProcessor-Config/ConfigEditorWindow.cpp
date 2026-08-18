@@ -11,6 +11,7 @@
 
 #include <ConfigEditorCore.h>
 #include <RendererProfileConfig.h>
+#include <ShaderPreparationPolicy.h>
 
 #include <QAbstractItemView>
 #include <QAbstractItemModel>
@@ -89,16 +90,18 @@ constexpr int kCardPadding = 12;
 constexpr int kResponsiveContentWidth = 720;
 constexpr int kRendererNameRole = Qt::UserRole + 1;
 
-using DocumentSnapshot = std::map<std::string,
-    std::map<std::string, std::string>>;
+using DocumentSnapshot = ShaderPreparationPolicy::Snapshot;
 
 DocumentSnapshot captureDocumentSnapshot(
     const ConfigEditorCore::ConfigDocument& document)
 {
     DocumentSnapshot snapshot;
     for (const std::string& section : document.SectionNames())
+    {
+        snapshot[section];
         for (const auto& setting : document.SectionSettings(section))
             snapshot[section][setting.first] = setting.second;
+    }
     return snapshot;
 }
 
@@ -1481,8 +1484,9 @@ void ConfigEditorWindow::updateEffectSummary()
         effectSummary_->setText(QStringLiteral("No pending changes"));
         return;
     }
+    const DocumentSnapshot currentSnapshot = captureDocumentSnapshot(*document_);
     const std::vector<ConfigurationApplyPolicy::Change> changed = changedDocumentValues(
-        savedSnapshot_, captureDocumentSnapshot(*document_));
+        savedSnapshot_, currentSnapshot);
     const auto action = ConfigurationApplyPolicy::ClassifyChanges(changed,
         snapshotUsesDirectShowRenderer(savedSnapshot_));
     QStringList sections;
@@ -1899,30 +1903,13 @@ bool ConfigEditorWindow::saveChanges()
         }
     }
 
+    const DocumentSnapshot currentSnapshot = captureDocumentSnapshot(*document_);
     const std::vector<ConfigurationApplyPolicy::Change> changed = changedDocumentValues(
-        savedSnapshot_, captureDocumentSnapshot(*document_));
+        savedSnapshot_, currentSnapshot);
     const auto action = ConfigurationApplyPolicy::ClassifyChanges(changed,
         snapshotUsesDirectShowRenderer(savedSnapshot_));
-    const bool prepareShaders = std::any_of(changed.cbegin(), changed.cend(),
-        [](const ConfigurationApplyPolicy::Change& change)
-        {
-            const std::string section =
-                ConfigurationApplyPolicy::NormalizeSection(change.section);
-            const std::string key =
-                ConfigurationApplyPolicy::NormalizeSection(change.key);
-            // Selection metadata changes which profile becomes active, but it
-            // does not change any GPU program. New/deleted profiles still
-            // arrive as setting changes (or an empty section-level key) and
-            // therefore remain preparation candidates.
-            if (key == "name" || key == "shortcut" || key == "use_rule" ||
-                key == "when" || key == "label")
-                return false;
-            return (ConfigurationApplyPolicy::HasPrefix(section, "vprenderer") &&
-                    !ConfigurationApplyPolicy::HasPrefix(section,
-                        "vprenderer.output")) ||
-                ConfigurationApplyPolicy::HasPrefix(section, "shader") ||
-                ConfigurationApplyPolicy::HasPrefix(section, "shaders");
-        });
+    const bool prepareShaders = ShaderPreparationPolicy::ShouldPrepare(
+        savedSnapshot_, currentSnapshot);
     // Persist shortcut spelling in the same canonical form used by the
     // accelerator parser. Case is not a modifier: L and l are both L, while
     // Shift+L is the distinct shifted chord.

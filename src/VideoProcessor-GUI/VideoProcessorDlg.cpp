@@ -6206,18 +6206,13 @@ void CVideoProcessorDlg::StartShaderPreparation()
 	}
 
 	std::vector<std::string> profiles;
-	for (const std::string& section : config.GetSectionNames())
+	std::string profileError;
+	if (!RendererProfileConfig::CollectRenderingProfileNames(
+		config, profiles, profileError))
 	{
-		std::string profile;
-		if (section.rfind("vprenderer.", 0) == 0 &&
-			section.rfind("vprenderer.output.", 0) != 0 &&
-			section != "vprenderer.input_processing")
-			profile = ConfigFile::NormalizeName(section.substr(11));
-		else if (section.rfind("profiles.display.", 0) == 0)
-			profile = ConfigFile::NormalizeName(section.substr(17));
-		if (!profile.empty() &&
-			std::find(profiles.begin(), profiles.end(), profile) == profiles.end())
-			profiles.push_back(profile);
+		PublishShaderPreparationStatus("failed", 0, 0,
+			"Rendering profiles could not be enumerated.");
+		return;
 	}
 	if (profiles.empty())
 	{

@@ -1615,6 +1615,23 @@ namespace RendererProfileConfig
 		return true;
 	}
 
+	inline bool CollectRenderingProfileNames(const ConfigFile& config,
+		std::vector<std::string>& profiles, std::string& error)
+	{
+		profiles.clear();
+		Model model;
+		if (!Read(config, model, error))
+			return false;
+		for (const Group& group : model.groups)
+			if (group.name == "display")
+			{
+				profiles = group.profiles;
+				return true;
+			}
+		error.clear();
+		return true;
+	}
+
 	// A physical key event is deliberately resolved across every independent
 	// group.  Thus one chord may select, for example, both a display profile and
 	// a viewport profile.  Ambiguity is only an error within a single group.

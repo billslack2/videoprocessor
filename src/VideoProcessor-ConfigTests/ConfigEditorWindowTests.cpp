@@ -1578,6 +1578,70 @@ void testOutputExperimentsPersistAndRestoreDefaults()
         "Restored normal diagnostics changed ordinary output or calibration settings");
 }
 
+void testEmptyShortcutsSurviveNlsBackendEdit()
+{
+    QTemporaryDir directory;
+    require(directory.isValid(), "Cannot create temporary directory");
+    const QString path = directory.filePath(QStringLiteral("VideoProcessor.cfg"));
+    require(QFile::copy(repositoryPath(QStringLiteral("VideoProcessor.cfg")), path),
+        "Cannot copy the current NLS configuration");
+    QByteArray contents = readBytes(path);
+    contents.replace("\r\n", "\n");
+    const QByteArray shortcuts("[shortcuts]\n");
+    const qsizetype position = contents.indexOf(shortcuts);
+    require(position >= 0, "Fixture has no shortcuts section");
+    contents.insert(position + shortcuts.size(),
+        "render.2: Shift+M\n"
+        "video_conversion_off: \n"
+        "video_conversion_p010:\n"
+        "auto_set: \n"
+        "pq_set: \n"
+        "capture_4: \n"
+        "capture_3: \n"
+        "capture_1: \n");
+    QFile fixture(path);
+    require(fixture.open(QIODevice::WriteOnly | QIODevice::Truncate),
+        "Could not add empty shortcut fixture values");
+    require(fixture.write(contents) == contents.size(),
+        "Could not write empty shortcut fixture values");
+    fixture.close();
+
+    ConfigEditorWindow window(path, 0, true);
+    QListWidget* modes = requireControl<QListWidget>(window,
+        QStringLiteral("config.shader.nls.modes"));
+    QListWidgetItem* vertical = nullptr;
+    for (int row = 0; row < modes->count(); ++row)
+        if (modes->item(row)->data(Qt::UserRole).toString().compare(
+            QStringLiteral("shader.nls.vertical"), Qt::CaseInsensitive) == 0)
+            vertical = modes->item(row);
+    require(vertical != nullptr, "NLS-V mode is missing");
+    modes->setCurrentItem(vertical);
+    QCoreApplication::processEvents();
+
+    QLineEdit* hlsl = requireControl<QLineEdit>(window,
+        QStringLiteral("config.shader.nls.hlsl_file"));
+    hlsl->setText(QStringLiteral("NLS.hlsl"));
+    QCoreApplication::processEvents();
+    QPushButton* apply = requireControl<QPushButton>(window,
+        QStringLiteral("applyConfiguration"));
+    require(apply->isEnabled(),
+        "An NLS edit was disabled by explicitly empty shortcuts");
+    apply->click();
+    QCoreApplication::processEvents();
+
+    const QByteArray saved = readBytes(path);
+    require(saved.contains("hlsl_file: NLS.hlsl"),
+        "The NLS backend filename was not saved");
+    require(saved.contains("video_conversion_off: \n") &&
+        saved.contains("video_conversion_p010:\n") &&
+        saved.contains("auto_set: \n") &&
+        saved.contains("pq_set: \n") &&
+        saved.contains("capture_4: \n") &&
+        saved.contains("capture_3: \n") &&
+        saved.contains("capture_1: \n"),
+        "Explicitly disabled shortcuts were not preserved");
+}
+
 void testOutputDiagnosticPresetCanInherit()
 {
     QTemporaryDir directory;
@@ -3768,6 +3832,8 @@ int main(int argc, char** argv)
     failures += run("two-column cards share row height", testTwoColumnCardsShareRowHeight);
     failures += run("inherited renderer Input selectors use effective labels",
         testInheritedRendererInputSelectorsUseEffectiveLabels);
+    failures += run("empty shortcuts survive NLS backend edit",
+        testEmptyShortcutsSurviveNlsBackendEdit);
     failures += run("SDR gamma adjustment labels and persistence",
         testSdrGammaAdjustmentLabelsAndPersistence);
     failures += run("legacy VP input override migrates independently",

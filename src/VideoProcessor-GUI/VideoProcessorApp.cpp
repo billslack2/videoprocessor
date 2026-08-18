@@ -107,14 +107,38 @@ int RunNonCapturingShaderPreparation()
 		return 1;
 	}
 
-	VideoStateComPtr videoState = new VideoState;
-	videoState->valid = true;
-	videoState->displayMode = std::make_shared<DisplayMode>(
-		3840, 2160, false, 60000, 1001);
-	videoState->videoFrameEncoding = VideoFrameEncoding::V210;
-	videoState->eotf = EOTF::SDR;
-	videoState->colorspace = ColorSpace::REC_709;
-	videoState->hdrData = std::make_shared<HDRData>();
+	const auto makeSourceState = [](EOTF eotf, ColorSpace colorspace)
+	{
+		VideoStateComPtr state = new VideoState;
+		state->valid = true;
+		state->displayMode = std::make_shared<DisplayMode>(
+			3840, 2160, false, 60000, 1001);
+		state->videoFrameEncoding = VideoFrameEncoding::V210;
+		state->eotf = eotf;
+		state->colorspace = colorspace;
+		state->hdrData = std::make_shared<HDRData>();
+		if (eotf == EOTF::PQ)
+		{
+			state->hdrData->displayPrimaryRedX = 0.708;
+			state->hdrData->displayPrimaryRedY = 0.292;
+			state->hdrData->displayPrimaryGreenX = 0.170;
+			state->hdrData->displayPrimaryGreenY = 0.797;
+			state->hdrData->displayPrimaryBlueX = 0.131;
+			state->hdrData->displayPrimaryBlueY = 0.046;
+			state->hdrData->whitePointX = 0.3127;
+			state->hdrData->whitePointY = 0.3290;
+			state->hdrData->masteringDisplayMinLuminance = 0.005;
+			state->hdrData->masteringDisplayMaxLuminance = 1000.0;
+			state->hdrData->maxCll = 1000.0;
+			state->hdrData->maxFall = 400.0;
+		}
+		return state;
+	};
+	const std::vector<VideoStateComPtr> sourceStates = {
+		makeSourceState(EOTF::SDR, ColorSpace::REC_709),
+		makeSourceState(EOTF::PQ, ColorSpace::BT_2020)
+	};
+	VideoStateComPtr videoState = sourceStates.front();
 
 	UnifiedProfileRuntime::Runtime runtime;
 	std::string error;
@@ -127,27 +151,22 @@ int RunNonCapturingShaderPreparation()
 	}
 	const auto original = runtime.GetSnapshot();
 	std::vector<std::string> profiles;
-	for (const std::string& section : config.GetSectionNames())
+	if (!RendererProfileConfig::CollectRenderingProfileNames(
+		config, profiles, error))
 	{
-		std::string profile;
-		if (section.rfind("vprenderer.", 0) == 0 &&
-			section.rfind("vprenderer.output.", 0) != 0 &&
-			section != "vprenderer.input_processing")
-			profile = ConfigFile::NormalizeName(section.substr(11));
-		else if (section.rfind("profiles.display.", 0) == 0)
-			profile = ConfigFile::NormalizeName(section.substr(17));
-		if (!profile.empty() &&
-			std::find(profiles.begin(), profiles.end(), profile) == profiles.end())
-			profiles.push_back(profile);
+		WriteShaderPreparationStatus(configPath, "failed", 0, 0,
+			"Rendering profiles could not be enumerated.");
+		return 1;
 	}
 
+	const size_t total = profiles.size() * sourceStates.size();
 	HWND target = ::CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
 		L"STATIC", L"VideoProcessor Shader Preparation", WS_POPUP,
 		-32000, -32000, 3840, 2160, nullptr, nullptr,
 		AfxGetInstanceHandle(), nullptr);
 	if (!target)
 	{
-		WriteShaderPreparationStatus(configPath, "failed", 0, profiles.size(),
+		WriteShaderPreparationStatus(configPath, "failed", 0, total,
 			"Shader preparation could not create a rendering target.");
 		return 1;
 	}
@@ -173,49 +192,58 @@ int RunNonCapturingShaderPreparation()
 		std::vector<uint8_t> frameBytes(videoState->BytesPerFrame(), 0);
 		std::vector<std::unique_ptr<SyntheticFrameBuffer>> sourceBuffers;
 		uint64_t frameCounter = 1;
-		for (size_t index = 0; index < profiles.size(); ++index)
+		size_t current = 0;
+		for (VideoStateComPtr sourceState : sourceStates)
 		{
-			char message[128] = {};
-			sprintf_s(message, "Preparing shaders %zu of %zu...", index + 1,
-				profiles.size());
-			WriteShaderPreparationStatus(configPath, "preparing", index + 1,
-				profiles.size(), message);
-			auto candidate =
-				std::make_shared<UnifiedProfileRuntime::Snapshot>(*original);
-			candidate->generation = original->generation + index + 1;
-			candidate->manualSelections["display"] = profiles[index];
-			candidate->effectiveSelections["display"] = profiles[index];
-			CString active;
-			bool restart = false;
-			bool liveReset = false;
-			if (!renderer.ApplyApplicationState(*candidate, active, restart,
-				liveReset) || restart)
-				throw std::runtime_error("rendering profile was not accepted");
-			if (liveReset) renderer.ResetLiveQueue();
-			const uint64_t presentedBefore = renderer.PresentedFrameCount();
-			sourceBuffers.emplace_back(new SyntheticFrameBuffer);
-			VideoFrame frame(frameBytes.data(), frameCounter++, 0,
-				sourceBuffers.back().get());
-			renderer.OnVideoFrame(frame);
-			for (int attempt = 0; attempt < 1200 &&
-				renderer.PresentedFrameCount() == presentedBefore; ++attempt)
-				std::this_thread::sleep_for(std::chrono::milliseconds(10));
-			if (renderer.PresentedFrameCount() == presentedBefore)
-				throw std::runtime_error("shader preparation frame timed out");
+			if (!renderer.OnVideoState(sourceState))
+				throw std::runtime_error("shader preparation source state was not accepted");
+			renderer.ResetLiveQueue();
+			for (size_t index = 0; index < profiles.size(); ++index)
+			{
+				++current;
+				char message[160] = {};
+				sprintf_s(message, "Preparing %s shaders %zu of %zu...",
+					sourceState->eotf == EOTF::PQ ? "HDR" : "SDR",
+					current, total);
+				WriteShaderPreparationStatus(configPath, "preparing", current,
+					total, message);
+				auto candidate =
+					std::make_shared<UnifiedProfileRuntime::Snapshot>(*original);
+				candidate->generation = original->generation + current;
+				candidate->manualSelections["display"] = profiles[index];
+				candidate->effectiveSelections["display"] = profiles[index];
+				CString active;
+				bool restart = false;
+				bool liveReset = false;
+				if (!renderer.ApplyApplicationState(*candidate, active, restart,
+					liveReset) || restart)
+					throw std::runtime_error("rendering profile was not accepted");
+				if (liveReset) renderer.ResetLiveQueue();
+				const uint64_t presentedBefore = renderer.PresentedFrameCount();
+				sourceBuffers.emplace_back(new SyntheticFrameBuffer);
+				VideoFrame frame(frameBytes.data(), frameCounter++, 0,
+					sourceBuffers.back().get());
+				renderer.OnVideoFrame(frame);
+				for (int attempt = 0; attempt < 1200 &&
+					renderer.PresentedFrameCount() == presentedBefore; ++attempt)
+					std::this_thread::sleep_for(std::chrono::milliseconds(10));
+				if (renderer.PresentedFrameCount() == presentedBefore)
+					throw std::runtime_error("shader preparation frame timed out");
+			}
 		}
 		if (!renderer.PersistShaderCache())
 			throw std::runtime_error("shader cache could not be saved");
 		renderer.Stop();
 		renderer.Retire();
-		WriteShaderPreparationStatus(configPath, "ready", profiles.size(),
-			profiles.size(), "Shaders ready");
+		WriteShaderPreparationStatus(configPath, "ready", total,
+			total, "SDR and HDR shaders ready");
 		result = 0;
 	}
 	catch (const std::exception& exception)
 	{
 		DebugLog::Log("Non-capturing shader preparation failed: %s",
 			exception.what());
-		WriteShaderPreparationStatus(configPath, "failed", 0, profiles.size(),
+		WriteShaderPreparationStatus(configPath, "failed", 0, total,
 			"Shader preparation incomplete");
 	}
 	::DestroyWindow(target);

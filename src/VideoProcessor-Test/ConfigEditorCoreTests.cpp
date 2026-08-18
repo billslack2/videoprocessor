@@ -115,6 +115,31 @@ namespace VideoProcessorTest
 			DeleteFileW(path.c_str());
 		}
 
+		TEST_METHOD(EmptyShortcutAssignmentsAreHandledAsUnset)
+		{
+			const std::wstring path = MakeTemporaryConfigPath(L"vpc");
+			WriteBytes(path,
+				"[shortcuts]\r\nrender.1: Shift+A\r\n"
+				"video_conversion_off: \r\n"
+				"video_conversion_p010:\r\n"
+				"capture_1: \r\n");
+			ConfigEditorCore::ConfigDocument document;
+			std::wstring error;
+			Assert::IsTrue(document.Load(path, error), error.c_str());
+			const bool valid = ConfigEditorCore::ValidateCandidate(document, error);
+			if (!valid) Logger::WriteMessage(error.c_str());
+			Assert::IsTrue(valid);
+			const std::string disabled =
+				document.Get("shortcuts", "video_conversion_off");
+			if (!disabled.empty())
+			{
+				const std::wstring detail = L"Unexpected disabled shortcut length: " +
+					std::to_wstring(disabled.size());
+				Assert::Fail(detail.c_str());
+			}
+			DeleteFileW(path.c_str());
+		}
+
 		TEST_METHOD(ConfigurationApplyPolicyClassifiesEveryDocumentedRestartCategory)
 		{
 			using ConfigurationApplyPolicy::Action;
