@@ -195,9 +195,12 @@ namespace ConfigurationLiveApply
 	inline bool MayDispatchBackgroundAccelerator(bool expectedControl,
 		bool expectedAlt, bool expectedShift)
 	{
-		// An unmodified key is ordinary typing when another application owns
-		// focus.  Never turn that typing into a VideoProcessor command.
-		return expectedControl || expectedAlt || expectedShift;
+		// VP shortcuts are intentionally global whenever Config does not own
+		// focus.  Bare configured keys are just as valid as modified chords.
+		(void)expectedControl;
+		(void)expectedAlt;
+		(void)expectedShift;
+		return true;
 	}
 
 	inline bool MayDispatchInjectedShortcut(bool injected,

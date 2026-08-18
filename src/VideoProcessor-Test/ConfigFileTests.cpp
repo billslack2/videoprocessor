@@ -214,7 +214,7 @@ namespace VideoProcessorTest
 			Assert::IsTrue(Source::AcceptedRuntime == decision.source);
 		}
 
-		TEST_METHOD(GlobalShortcutPolicyObservesOnlyExternalForeground)
+		TEST_METHOD(GlobalShortcutPolicyAllowsBareKeysOutsideConfig)
 		{
 			Assert::IsTrue(ConfigurationLiveApply::MayDispatchGlobalShortcut(
 				42, 84, false));
@@ -222,7 +222,7 @@ namespace VideoProcessorTest
 				42, 42, false));
 			Assert::IsFalse(ConfigurationLiveApply::MayDispatchGlobalShortcut(
 				42, 84, true));
-			Assert::IsFalse(
+			Assert::IsTrue(
 				ConfigurationLiveApply::MayDispatchBackgroundAccelerator(
 					false, false, false));
 			Assert::IsTrue(

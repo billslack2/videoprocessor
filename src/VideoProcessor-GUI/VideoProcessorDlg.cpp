@@ -1140,8 +1140,17 @@ private:
 		DWORD foregroundProcessId = 0;
 		if (foreground)
 			::GetWindowThreadProcessId(foreground, &foregroundProcessId);
+		const HWND configurationEditor =
+			FindConfigurationEditorForCurrentInstallation();
+		DWORD configurationEditorProcessId = 0;
+		if (configurationEditor)
+			::GetWindowThreadProcessId(configurationEditor,
+				&configurationEditorProcessId);
+		const bool configurationModal =
+			configurationEditorProcessId != 0 &&
+			foregroundProcessId == configurationEditorProcessId;
 		if (!ConfigurationLiveApply::MayDispatchGlobalShortcut(
-			::GetCurrentProcessId(), foregroundProcessId, false))
+			::GetCurrentProcessId(), foregroundProcessId, configurationModal))
 		{
 			return ::CallNextHookEx(s_hook, code, message, parameter);
 		}
