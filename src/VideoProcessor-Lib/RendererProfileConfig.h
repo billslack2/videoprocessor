@@ -537,7 +537,10 @@ namespace RendererProfileConfig
 			return IsChoice(value, { "follow_input", "follow_input_lldv", "follow_container", "bt2020", "p3", "rec709" });
 		if (key == "hdr_luminance")
 			return IsChoice(value, { "follow_input", "follow_input_lldv", "hdr_luminance_user", "user" });
-		if (key == "switch_refresh_rate" || key == "output_diagnostics" ||
+		if (key == "profile_update_mode")
+			return IsChoice(value, { "rebuild", "live", "never" });
+		if (key == "live_profile_updates" ||
+			key == "switch_refresh_rate" || key == "output_diagnostics" ||
 			key == "diagnostic_disable_shader_cache" ||
 			key == "diagnostic_disable_compute" ||
 			key == "diagnostic_force_8bit_sdr_swapchain" ||
@@ -579,6 +582,9 @@ namespace RendererProfileConfig
 				{ "follow_input", "follow_input_lldv", "follow_container", "bt2020", "p3", "rec709" }),
 			ConfigSchema::Choice("hdr_luminance",
 				{ "follow_input", "follow_input_lldv", "hdr_luminance_user", "user" }),
+			ConfigSchema::Choice("profile_update_mode",
+				{ "rebuild", "live", "never" }),
+			ConfigSchema::Boolean("live_profile_updates"),
 			ConfigSchema::Boolean("switch_refresh_rate"),
 			ConfigSchema::Boolean("output_diagnostics"),
 			ConfigSchema::Boolean("diagnostic_disable_shader_cache"),
@@ -1242,6 +1248,9 @@ namespace RendererProfileConfig
 		std::string value;
 		const std::vector<ConfigSchema::KeyRule> generalRules = {
 			ConfigSchema::Boolean("persist_profile_selection"),
+			ConfigSchema::Choice("profile_update_mode",
+				{ "rebuild", "live", "never" }),
+			ConfigSchema::Boolean("live_profile_updates"),
 			ConfigSchema::Boolean("switch_refresh_rate"),
 			ConfigSchema::Integer("event_action_delay_seconds", 0, 30),
 			ConfigSchema::Boolean("output_diagnostics"),
@@ -1267,7 +1276,9 @@ namespace RendererProfileConfig
 			if (!display)
 				continue;
 			const std::set<std::string> baseKeys = {
-				"sdr_target_nits", "sdr_black_nits", "switch_refresh_rate",
+				"sdr_target_nits", "sdr_black_nits", "profile_update_mode",
+				"live_profile_updates",
+				"switch_refresh_rate",
 				"quality", "tone_mapping", "gamut_mapping", "peak_detection",
 				"contrast_recovery", "upscaler", "downscaler", "deband",
 				"deband_strength", "sigmoid", "dithering", "display_bit_depth", "output_presentation",

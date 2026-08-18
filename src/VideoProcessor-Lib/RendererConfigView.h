@@ -33,7 +33,9 @@ public:
 
 	static bool IsPolicyKey(const std::string& key)
 	{
-		return key == "switch_refresh_rate" ||
+		return key == "profile_update_mode" ||
+			key == "live_profile_updates" ||
+			key == "switch_refresh_rate" ||
 			key == "output_diagnostics" ||
 			key == "diagnostic_disable_shader_cache" ||
 			key == "diagnostic_disable_compute" ||
@@ -81,7 +83,7 @@ public:
 		}
 
 		for (const char* key :
-			{ "switch_refresh_rate", "output_diagnostics",
+			{ "profile_update_mode", "live_profile_updates", "switch_refresh_rate", "output_diagnostics",
 			  "diagnostic_disable_shader_cache", "diagnostic_disable_compute",
 			  "diagnostic_force_8bit_sdr_swapchain",
 			  "diagnostic_allow_limited_g22",

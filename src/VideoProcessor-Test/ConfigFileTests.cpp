@@ -1746,6 +1746,7 @@ namespace VideoProcessorTest
 			{
 				std::ofstream file(path, std::ios::out | std::ios::trunc);
 				file << "[general]\nrenderer: VideoProcessor Renderer (Alpha)\n"
+					"profile_update_mode: never\n"
 					"[vprenderer.viewport]\nscreen_aspect: 16:9\n"
 					"[vprenderer.viewport.scope]\nwhen: $key==\"F2\"\n"
 					"screen_aspect: 16:9\nvertical_alignment: BOTTOM\n"
@@ -3328,6 +3329,8 @@ namespace VideoProcessorTest
 					"quality: high\n"
 					"sdr_target_nits: 100\n"
 					"[vpvr.general]\n"
+					"profile_update_mode: never\n"
+					"live_profile_updates: true\n"
 					"switch_refresh_rate: false\n";
 			}
 
@@ -3340,9 +3343,17 @@ namespace VideoProcessorTest
 			Assert::IsTrue(error.empty());
 			Assert::IsTrue(warnings.empty());
 			std::string quality;
+			std::string profileUpdateMode;
+			bool liveProfileUpdates = false;
 			bool switchRefreshRate = true;
 			Assert::IsTrue(view.TryGetDisplayString("quality", quality));
 			Assert::AreEqual("high", quality.c_str());
+			Assert::IsTrue(view.TryGetPolicyString(
+				"profile_update_mode", profileUpdateMode));
+			Assert::AreEqual("never", profileUpdateMode.c_str());
+			Assert::IsTrue(view.TryGetPolicyBool(
+				"live_profile_updates", liveProfileUpdates));
+			Assert::IsTrue(liveProfileUpdates);
 			Assert::IsTrue(view.TryGetPolicyBool(
 				"switch_refresh_rate", switchRefreshRate));
 			Assert::IsFalse(switchRefreshRate);

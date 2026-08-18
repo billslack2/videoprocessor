@@ -430,6 +430,8 @@ namespace
 
 	constexpr const char* SHADER_CACHE_RELATIVE_PATH =
 		"vprenderer\\VideoProcessorShaderCache.bin";
+	constexpr const char* SHADER_CACHE_CLEAR_RELATIVE_PATH =
+		"vprenderer\\VideoProcessorShaderCache.clear";
 	constexpr size_t MAX_SHADER_CACHE_FILE_SIZE =
 		256u * 1024u * 1024u;
 	std::mutex g_runtimeDisplayRuleMutex;
@@ -607,6 +609,23 @@ namespace
 			return SHADER_CACHE_RELATIVE_PATH;
 		path.resize(separator + 1);
 		path += SHADER_CACHE_RELATIVE_PATH;
+		return path;
+	}
+
+	std::string ShaderCacheClearRequestPath()
+	{
+		char modulePath[MAX_PATH] = {};
+		const DWORD length =
+			GetModuleFileNameA(nullptr, modulePath, ARRAYSIZE(modulePath));
+		if (length == 0 || length >= ARRAYSIZE(modulePath))
+			return SHADER_CACHE_CLEAR_RELATIVE_PATH;
+
+		std::string path(modulePath, length);
+		const size_t separator = path.find_last_of("\\/");
+		if (separator == std::string::npos)
+			return SHADER_CACHE_CLEAR_RELATIVE_PATH;
+		path.resize(separator + 1);
+		path += SHADER_CACHE_CLEAR_RELATIVE_PATH;
 		return path;
 	}
 
@@ -846,6 +865,33 @@ namespace
 		OFF
 	};
 
+	enum class ProfileUpdateMode
+	{
+		REBUILD,
+		LIVE,
+		NEVER
+	};
+
+	const char* ProfileUpdateModeName(ProfileUpdateMode mode)
+	{
+		switch (mode)
+		{
+		case ProfileUpdateMode::LIVE: return "live";
+		case ProfileUpdateMode::NEVER: return "never";
+		default: return "rebuild";
+		}
+	}
+
+	bool ParseProfileUpdateMode(const std::string& raw, ProfileUpdateMode& mode)
+	{
+		const std::string normalized = ConfigFile::NormalizeName(raw);
+		if (normalized == "rebuild") mode = ProfileUpdateMode::REBUILD;
+		else if (normalized == "live") mode = ProfileUpdateMode::LIVE;
+		else if (normalized == "never") mode = ProfileUpdateMode::NEVER;
+		else return false;
+		return true;
+	}
+
 	struct RefreshRateCommandRule
 	{
 		int minimumRate = 0;
@@ -857,6 +903,10 @@ namespace
 	{
 		double sdrTargetNits = PL_COLOR_SDR_WHITE;
 		double sdrBlackNits = PL_COLOR_SDR_WHITE / PL_COLOR_SDR_CONTRAST;
+		// File-only rollout policy. Rebuild remains the compatibility default;
+		// live preserves the renderer for safe changes, while never retains the
+		// current program instead of requesting a new variant.
+		ProfileUpdateMode profileUpdateMode = ProfileUpdateMode::REBUILD;
 		bool switchRefreshRate = true;
 		std::string quality = "high";
 		std::string toneMapping = "auto";
@@ -1577,6 +1627,11 @@ namespace
 			DebugLog::Log("display rule '%s': invalid %s value '%s'; retaining base setting",
 				rule.name.c_str(), key, raw.c_str());
 		};
+		bool legacyLiveProfileUpdates =
+			settings.profileUpdateMode == ProfileUpdateMode::LIVE;
+		readBoolean("live_profile_updates", legacyLiveProfileUpdates);
+		settings.profileUpdateMode = legacyLiveProfileUpdates ?
+			ProfileUpdateMode::LIVE : ProfileUpdateMode::REBUILD;
 		readBoolean("output_diagnostics", settings.outputDiagnostics);
 		readBoolean("diagnostic_disable_shader_cache",
 			settings.diagnosticDisableShaderCache);
@@ -1741,6 +1796,18 @@ namespace
 				warning.c_str());
 
 		std::string rawValue;
+		bool legacyLiveProfileUpdates = false;
+		if (TryGetDisplayString(config, "live_profile_updates", rawValue) &&
+			!TryGetDisplayBool(config, "live_profile_updates",
+				legacyLiveProfileUpdates))
+		{
+			DebugLog::Log(
+				"libplacebo: invalid live_profile_updates value '%s'; using false",
+				rawValue.c_str());
+			legacyLiveProfileUpdates = false;
+		}
+		settings.profileUpdateMode = legacyLiveProfileUpdates ?
+			ProfileUpdateMode::LIVE : ProfileUpdateMode::REBUILD;
 		if (TryGetDisplayString(config, "sdr_target_nits", rawValue))
 		{
 			double parsed = 0.0;
@@ -2041,6 +2108,29 @@ namespace
 		// [general], [display], and [libplacebo] locations remain readable
 		// through the centralized compatibility view.
 		const RendererConfigView rendererConfig(config);
+		if (rendererConfig.TryGetPolicyString(
+			"profile_update_mode", rawValue) &&
+			!ParseProfileUpdateMode(rawValue, settings.profileUpdateMode))
+		{
+			DebugLog::Log(
+				"libplacebo: invalid profile_update_mode policy '%s'; using rebuild",
+				rawValue.c_str());
+			settings.profileUpdateMode = ProfileUpdateMode::REBUILD;
+		}
+		if (rendererConfig.TryGetPolicyString(
+			"live_profile_updates", rawValue) &&
+			!rendererConfig.TryGetPolicyBool(
+				"live_profile_updates", legacyLiveProfileUpdates))
+		{
+			DebugLog::Log("libplacebo: invalid live_profile_updates policy '%s'; retaining display setting", rawValue.c_str());
+		}
+		else if (!rendererConfig.TryGetPolicyString(
+			"profile_update_mode", rawValue) &&
+			rendererConfig.TryGetPolicyString("live_profile_updates", rawValue))
+		{
+			settings.profileUpdateMode = legacyLiveProfileUpdates ?
+				ProfileUpdateMode::LIVE : ProfileUpdateMode::REBUILD;
+		}
 		if (rendererConfig.TryGetPolicyString(
 			"switch_refresh_rate", rawValue) &&
 			!rendererConfig.TryGetPolicyBool(
@@ -3291,6 +3381,18 @@ struct LibplaceboVideoRenderer::Impl
 	void LoadShaderCache()
 	{
 		shaderCachePath = ShaderCachePath();
+		const std::string clearRequestPath = ShaderCacheClearRequestPath();
+		if (GetFileAttributesA(clearRequestPath.c_str()) != INVALID_FILE_ATTRIBUTES)
+		{
+			DeleteFileA(shaderCachePath.c_str());
+			DeleteFileA((shaderCachePath + ".tmp").c_str());
+			DeleteFileA(clearRequestPath.c_str());
+			pl_cache_reset(cache);
+			loadedShaderCacheSignature = 0;
+			DebugLog::Log(
+				"libplacebo persistent shader cache cleared by user request");
+			return;
+		}
 		std::ifstream input(
 			shaderCachePath,
 			std::ios::binary | std::ios::ate);
@@ -3341,6 +3443,21 @@ struct LibplaceboVideoRenderer::Impl
 
 	void SaveShaderCache()
 	{
+		if (shaderCachePath.empty())
+			shaderCachePath = ShaderCachePath();
+		const std::string clearRequestPath = ShaderCacheClearRequestPath();
+		if (GetFileAttributesA(clearRequestPath.c_str()) != INVALID_FILE_ATTRIBUTES)
+		{
+			DeleteFileA(shaderCachePath.c_str());
+			DeleteFileA((shaderCachePath + ".tmp").c_str());
+			DeleteFileA(clearRequestPath.c_str());
+			if (cache)
+				pl_cache_reset(cache);
+			loadedShaderCacheSignature = 0;
+			DebugLog::Log(
+				"libplacebo persistent shader cache clear completed; current cache was not saved");
+			return;
+		}
 		if (!shaderCacheEnabled ||
 			!cache || shaderCachePath.empty() || pl_cache_objects(cache) <= 0)
 			return;
@@ -3809,7 +3926,7 @@ struct LibplaceboVideoRenderer::Impl
 			projection.renderParams.dither_params ? &ditherParams : nullptr;
 
 		DebugLog::Log(
-			"libplacebo settings: quality=%s tone_mapping=%s gamut_mapping=%s peak_detection=%s contrast_recovery=%.2f upscaler=%s downscaler=%s deband=%s dithering=%s display_bit_depth=%s output_presentation=%s output_range=%s output_gamma=%s sdr_input_transfer=%s sdr_adjust_gamma=%s target=%.1f nits black=%.3f nits output_diagnostics=%d diagnostic_disable_shader_cache=%d diagnostic_disable_compute=%d diagnostic_force_8bit_sdr_swapchain=%d diagnostic_allow_limited_g22=%d diagnostic_allow_full_g22=%d diagnostic_vp_owned_dxgi_presenter=%d refresh_switch=%d refresh_command_delay=%llus refresh_commands=%u viewport_target=%s screen_aspect=%.4f automatic_crop=%d subtitle_fit=%d subtitle_hold=%llums subtitle_engage_drift=%llums subtitle_release_drift=%llums subtitle_padding=%dpx subtitle_target_buffer=%dpx",
+			"libplacebo settings: quality=%s tone_mapping=%s gamut_mapping=%s peak_detection=%s contrast_recovery=%.2f upscaler=%s downscaler=%s deband=%s dithering=%s display_bit_depth=%s output_presentation=%s output_range=%s output_gamma=%s sdr_input_transfer=%s sdr_adjust_gamma=%s target=%.1f nits black=%.3f profile_update_mode=%s output_diagnostics=%d diagnostic_disable_shader_cache=%d diagnostic_disable_compute=%d diagnostic_force_8bit_sdr_swapchain=%d diagnostic_allow_limited_g22=%d diagnostic_allow_full_g22=%d diagnostic_vp_owned_dxgi_presenter=%d refresh_switch=%d refresh_command_delay=%llus refresh_commands=%u viewport_target=%s screen_aspect=%.4f automatic_crop=%d subtitle_fit=%d subtitle_hold=%llums subtitle_engage_drift=%llums subtitle_release_drift=%llums subtitle_padding=%dpx subtitle_target_buffer=%dpx",
 			settings.quality.c_str(),
 			colorMapParams.tone_mapping_function
 				? colorMapParams.tone_mapping_function->name : "none",
@@ -3833,6 +3950,7 @@ struct LibplaceboVideoRenderer::Impl
 			settings.sdrAdjustGamma.c_str(),
 			sdrTargetNits,
 			sdrBlackNits,
+			ProfileUpdateModeName(settings.profileUpdateMode),
 			settings.outputDiagnostics ? 1 : 0,
 			settings.diagnosticDisableShaderCache ? 1 : 0,
 			settings.diagnosticDisableCompute ? 1 : 0,
@@ -5792,26 +5910,81 @@ struct LibplaceboVideoRenderer::Impl
 		}
 	}
 
-	// F5/F6 deliberately share the same P709/sRGB DXGI transport.  Switching
-	// only the SDR target gamut and its optional NVIDIA AVI InfoFrame therefore
-	// needs neither a device nor a swapchain transition.  Keeping that work
-	// live avoids a desktop re-sync/black frame on projectors.
-	bool ApplyBt2020TargetLive(const RendererSettings& settings)
+	// A profile can change libplacebo's render description without changing the
+	// D3D11 device or swapchain contract. Preserve the renderer and its program
+	// cache for those changes when the file-only compatibility switch is enabled.
+	// Any transport, device, or cache-policy difference remains a hard rebuild
+	// boundary. Refresh-rate policy is orthogonal to shader math and may change
+	// without replacing the renderer.
+	bool ApplyProfileSettingsLive(const RendererSettings& settings)
 	{
 		std::lock_guard<std::mutex> guard(renderMutex);
 		RendererSettings currentTransport = activeSettings;
 		RendererSettings nextTransport = settings;
+		currentTransport.switchRefreshRate = settings.switchRefreshRate;
+		currentTransport.sdrTargetNits = settings.sdrTargetNits;
+		currentTransport.sdrBlackNits = settings.sdrBlackNits;
+		currentTransport.quality = settings.quality;
+		currentTransport.toneMapping = settings.toneMapping;
+		currentTransport.gamutMapping = settings.gamutMapping;
+		currentTransport.peakDetection = settings.peakDetection;
+		currentTransport.hasContrastRecovery = settings.hasContrastRecovery;
+		currentTransport.contrastRecovery = settings.contrastRecovery;
+		currentTransport.upscaler = settings.upscaler;
+		currentTransport.downscaler = settings.downscaler;
+		currentTransport.debandStrength = settings.debandStrength;
+		currentTransport.deband = settings.deband;
+		currentTransport.sigmoid = settings.sigmoid;
+		currentTransport.dithering = settings.dithering;
+		currentTransport.displayBitDepth = settings.displayBitDepth;
 		currentTransport.sdrTargetPrimaries = "rec709";
 		currentTransport.reportBt2020ToDisplay = false;
+		currentTransport.sdrInputTransfer = settings.sdrInputTransfer;
+		currentTransport.sdrAdjustGamma = settings.sdrAdjustGamma;
+		currentTransport.outputDiagnostics = settings.outputDiagnostics;
+		currentTransport.lutPath = settings.lutPath;
+		currentTransport.lutPathRejected = settings.lutPathRejected;
+		currentTransport.lutConstrainedBaseDirectory =
+			settings.lutConstrainedBaseDirectory;
+		currentTransport.lutReferencePrimaries = settings.lutReferencePrimaries;
+		currentTransport.lutReferenceTransfer = settings.lutReferenceTransfer;
+		currentTransport.lutReferenceRange = settings.lutReferenceRange;
+		currentTransport.lutReferenceNits = settings.lutReferenceNits;
 		nextTransport.sdrTargetPrimaries = "rec709";
 		nextTransport.reportBt2020ToDisplay = false;
-		if (EffectiveSettingsFingerprint(currentTransport) !=
-			EffectiveSettingsFingerprint(nextTransport))
+		if (EffectiveSettingsFingerprint(currentTransport, false) !=
+			EffectiveSettingsFingerprint(nextTransport, false))
 		{
 			DebugLog::Log(
-				"libplacebo output target live switch rejected: a renderer setting other than SDR target primaries/NVIDIA AVI differs");
+				"libplacebo live profile update rejected: transport, device, or shader-cache policy differs");
 			return false;
 		}
+
+		const bool lutChanged =
+			activeSettings.lutPath != settings.lutPath ||
+			activeSettings.lutPathRejected != settings.lutPathRejected ||
+			activeSettings.lutConstrainedBaseDirectory !=
+				settings.lutConstrainedBaseDirectory;
+		const bool diagnosticsEnabled =
+			!outputDiagnostics && settings.outputDiagnostics;
+		if (lutChanged)
+		{
+			// pl_renderer may retain resources derived from the current pl_lut.
+			// Flush those references before releasing the LUT; the attached pl_cache
+			// remains intact and can recreate a previously compiled program cheaply.
+			if (renderer)
+				pl_renderer_flush_cache(renderer);
+			pl_lut_free(&displayLut);
+			displayLutParsed = false;
+			displayLutStatus = "Disabled";
+			LoadDisplayLut(settings);
+		}
+		// Reference metadata describes how the already loaded LUT is interpreted;
+		// changing it does not require reparsing the LUT file itself.
+		lutReferencePrimaries = settings.lutReferencePrimaries;
+		lutReferenceTransfer = settings.lutReferenceTransfer;
+		lutReferenceRange = settings.lutReferenceRange;
+		lutReferenceNits = settings.lutReferenceNits;
 
 		LibplaceboOutput::Request requestedTransport;
 		requestedTransport.presentation = LibplaceboOutput::ParsePresentation(
@@ -5830,10 +6003,27 @@ struct LibplaceboVideoRenderer::Impl
 		const auto contract = LibplaceboOutput::MakeSdrOutputContract(
 			requestedTransport, target, settings.reportBt2020ToDisplay);
 		activeSettings = settings;
+		sdrTargetNits = settings.sdrTargetNits;
+		sdrBlackNits = settings.sdrBlackNits;
+		sdrInputTransfer = TranslateOutputGamma(settings.sdrInputTransfer);
+		sdrAdjustGamma = LibplaceboOutput::ParseSdrAdjustGamma(
+			settings.sdrAdjustGamma);
+		outputDiagnostics = settings.outputDiagnostics;
 		targetBt2020 = contract.target ==
 			LibplaceboOutput::SdrTargetPrimaries::BT2020;
 		reportBt2020ToDisplay = contract.reportBt2020ToDisplay;
 		bt2020SignalingFailed = false;
+		SetSwapchainColorHint(actualOutput.encoding, actualOutput.targetTransfer);
+		lastSdrGammaDecision = {};
+		lastSdrGammaDecisionSignature.clear();
+		outputContractLogged = false;
+		if (diagnosticsEnabled)
+		{
+			diagnosticReadbackFramesRemaining = 30;
+			diagnosticReadbackComplete = false;
+			diagnosticReadbackAttempts = 0;
+			diagnosticReadbackNonBlack = false;
+		}
 		ConfigureRenderParams(settings);
 		restartSettingsFingerprint = EffectiveSettingsFingerprint(settings, false);
 		effectiveSettingsFingerprint = EffectiveSettingsFingerprint(settings);
@@ -5851,8 +6041,11 @@ struct LibplaceboVideoRenderer::Impl
 			nvidiaBt2020Reporter.Restore();
 		}
 		DebugLog::Log(
-			"libplacebo output target switched live: target=%s DXGI_transport=P709/sRGB NVIDIA_AVI=%s swapchain_recreated=0",
+			"libplacebo profile settings applied live: target=%s luminance=%.1f nits black=%.4f nits LUT=%s processing=updated DXGI_transport=P709/sRGB NVIDIA_AVI=%s swapchain_recreated=0",
 			targetBt2020 ? "BT.2020" : "Rec.709",
+			sdrTargetNits,
+			sdrBlackNits,
+			displayLutParsed && displayLut ? "active" : "disabled",
 			reportBt2020ToDisplay ? "requested" : "disabled");
 		return true;
 	}
@@ -9863,8 +10056,26 @@ bool LibplaceboVideoRenderer::ApplyApplicationState(
 	rendererRestartRequired = m_impl != nullptr &&
 		(!state || EffectiveSettingsFingerprint(candidateSettings, false) !=
 			m_impl->restartSettingsFingerprint);
+	const bool anyRendererSettingChanged = m_impl &&
+		EffectiveSettingsFingerprint(candidateSettings) !=
+			m_impl->effectiveSettingsFingerprint;
+	if (state && m_impl && anyRendererSettingChanged &&
+		candidateSettings.profileUpdateMode == ProfileUpdateMode::NEVER)
+	{
+		// A cache miss cannot be discovered safely without asking libplacebo to
+		// render (and therefore compile) the candidate program. NEVER is the safe
+		// diagnostic: retain the known-good current program and all settings that
+		// feed it rather than partially applying the requested profile.
+		rendererRestartRequired = false;
+		activeState = TEXT("Profile retained: current shader program");
+		DebugLog::Log(
+			"application profile generation %llu retained current renderer settings because profile_update_mode=never",
+			static_cast<unsigned long long>(snapshot.generation));
+		return false;
+	}
 	if (rendererRestartRequired && state && m_impl &&
-		m_impl->ApplyBt2020TargetLive(candidateSettings))
+		candidateSettings.profileUpdateMode == ProfileUpdateMode::LIVE &&
+		m_impl->ApplyProfileSettingsLive(candidateSettings))
 	{
 		rendererRestartRequired = false;
 	}

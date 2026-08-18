@@ -26,6 +26,7 @@
 #include <QDir>
 #include <QDialog>
 #include <QEvent>
+#include <QFile>
 #include <QFileInfo>
 #include <QFileSystemWatcher>
 #include <QFormLayout>
@@ -4685,6 +4686,43 @@ QWidget* ConfigEditorWindow::createStandardShadersPage()
     selectionLayout->addWidget(list, 1);
     selectionLayout->addWidget(helpLabel(QStringLiteral(
         "These entries are independent effects. By default none has a shortcut or rule, so none is active.")));
+    auto* clearCache = new QPushButton(QStringLiteral("Clear shader cache"));
+    clearCache->setObjectName(QStringLiteral("config.shader.cache.clear"));
+    clearCache->setAccessibleDescription(QStringLiteral(
+        "Clear the persistent VP Renderer shader cache at the next renderer start."));
+    selectionLayout->addWidget(clearCache);
+    selectionLayout->addWidget(helpLabel(QStringLiteral(
+        "Clears the persistent GPU shader cache at the next VP Renderer start. Playback is not interrupted.")));
+    connect(clearCache, &QPushButton::clicked, this, [this]
+    {
+        const QDir configurationDirectory = QFileInfo(configPath_).absoluteDir();
+        const QString rendererDirectory = configurationDirectory.filePath(
+            QStringLiteral("vprenderer"));
+        if (!QDir().mkpath(rendererDirectory))
+        {
+            setStatus(QStringLiteral("Could not access the VP Renderer cache folder."), true);
+            return;
+        }
+
+        const QDir cacheDirectory(rendererDirectory);
+        const QString cachePath = cacheDirectory.filePath(
+            QStringLiteral("VideoProcessorShaderCache.bin"));
+        const QString temporaryPath = cachePath + QStringLiteral(".tmp");
+        const QString requestPath = cacheDirectory.filePath(
+            QStringLiteral("VideoProcessorShaderCache.clear"));
+        QFile request(requestPath);
+        if (!request.open(QIODevice::WriteOnly | QIODevice::Truncate) ||
+            request.write("clear\n") < 0)
+        {
+            setStatus(QStringLiteral("Could not request a shader cache clear."), true);
+            return;
+        }
+        request.close();
+        QFile::remove(cachePath);
+        QFile::remove(temporaryPath);
+        setStatus(QStringLiteral(
+            "Shader cache will be cleared at the next VP Renderer start."));
+    });
 
     auto* details = new QWidget;
     auto* detailsLayout = new QVBoxLayout(details);

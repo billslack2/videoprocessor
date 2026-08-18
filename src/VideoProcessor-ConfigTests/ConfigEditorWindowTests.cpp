@@ -18,6 +18,7 @@
 #include <QDir>
 #include <QElapsedTimer>
 #include <QFile>
+#include <QFileInfo>
 #include <QFrame>
 #include <QImage>
 #include <QHeaderView>
@@ -666,6 +667,22 @@ void testEveryPageRoundTrips()
         shaderSections->tabText(1) == QStringLiteral("NLS") &&
         shaderSections->currentIndex() == 0,
         "Shaders page does not separate Standard and NLS in the requested order");
+    const QString cacheDirectoryPath = directory.filePath(QStringLiteral("vprenderer"));
+    require(QDir().mkpath(cacheDirectoryPath),
+        "Cannot create the shader-cache test directory");
+    const QString cachePath = QDir(cacheDirectoryPath).filePath(
+        QStringLiteral("VideoProcessorShaderCache.bin"));
+    QFile cacheFile(cachePath);
+    require(cacheFile.open(QIODevice::WriteOnly) && cacheFile.write("cached") == 6,
+        "Cannot create the shader-cache test fixture");
+    cacheFile.close();
+    requireControl<QPushButton>(window,
+        QStringLiteral("config.shader.cache.clear"))->click();
+    require(!QFileInfo::exists(cachePath),
+        "Clear shader cache did not remove the persistent cache file");
+    require(QFileInfo::exists(QDir(cacheDirectoryPath).filePath(
+        QStringLiteral("VideoProcessorShaderCache.clear"))),
+        "Clear shader cache did not leave a request for the active renderer shutdown path");
     QListWidget* standardShaders = requireControl<QListWidget>(window,
         QStringLiteral("config.shader.standard.items"));
     require(standardShaders->count() == 1,
