@@ -62,6 +62,7 @@
 #define WM_MESSAGE_EVALUATE_RENDERER_START              (WM_APP + 11)
 #define WM_MESSAGE_RENDERER_RESET_REQUEST               (WM_APP + 12)
 #define WM_MESSAGE_RENDERER_RETIRED                     (WM_APP + 13)
+#define WM_MESSAGE_EXTERNAL_SHORTCUT                    (WM_APP + 14)
 
 // Timer IDs
 #define TIMER_ID_1SECOND 1
@@ -205,6 +206,7 @@ public:
 	afx_msg LRESULT OnMessageDirectShowNotification(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnMessageRendererStateChange(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnMessageRendererDetailString(WPARAM wParam, LPARAM lParam);
+	afx_msg LRESULT OnMessageExternalShortcut(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnMessageRendererLiveFrame(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnMessageRendererResetRequest(
 		WPARAM wParam, LPARAM lParam);

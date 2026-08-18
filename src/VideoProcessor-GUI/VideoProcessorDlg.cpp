@@ -1847,6 +1847,7 @@ BEGIN_MESSAGE_MAP(CVideoProcessorDlg, CDialog)
 	ON_MESSAGE(WM_MESSAGE_DIRECTSHOW_NOTIFICATION, &CVideoProcessorDlg::OnMessageDirectShowNotification)
 	ON_MESSAGE(WM_MESSAGE_RENDERER_STATE_CHANGE, &CVideoProcessorDlg::OnMessageRendererStateChange)
 	ON_MESSAGE(WM_MESSAGE_RENDERER_DETAIL_STRING, &CVideoProcessorDlg::OnMessageRendererDetailString)
+	ON_MESSAGE(WM_MESSAGE_EXTERNAL_SHORTCUT, &CVideoProcessorDlg::OnMessageExternalShortcut)
 	ON_MESSAGE(WM_MESSAGE_RENDERER_LIVE_FRAME, &CVideoProcessorDlg::OnMessageRendererLiveFrame)
 	ON_MESSAGE(WM_MESSAGE_RENDERER_RESET_REQUEST, &CVideoProcessorDlg::OnMessageRendererResetRequest)
 	ON_MESSAGE(WM_MESSAGE_RENDERER_RETIRED, &CVideoProcessorDlg::OnMessageRendererRetired)
@@ -6064,6 +6065,43 @@ LRESULT CVideoProcessorDlg::OnMessageRendererDetailString(WPARAM wParam, LPARAM 
 	m_rendererDetailStringStatic.SetWindowText(*pDetailString);
 
 	delete pDetailString;
+	return 0;
+}
+
+LRESULT CVideoProcessorDlg::OnMessageExternalShortcut(WPARAM wParam,
+	LPARAM lParam)
+{
+	const BYTE supportedModifiers = FCONTROL | FALT | FSHIFT;
+	if (wParam > 0xffff ||
+		(static_cast<UINT_PTR>(lParam) & ~supportedModifiers) != 0)
+	{
+		DebugLog::Log(
+			"External shortcut rejected: key=%llu modifiers=0x%llx reason=invalid-payload",
+			static_cast<unsigned long long>(wParam),
+			static_cast<unsigned long long>(lParam));
+		return 0;
+	}
+
+	const WORD key = static_cast<WORD>(wParam);
+	const BYTE modifiers = static_cast<BYTE>(lParam);
+	for (const ACCEL& accelerator : m_configuredAccelerators)
+	{
+		if (accelerator.key != key ||
+			(accelerator.fVirt & supportedModifiers) != modifiers)
+			continue;
+
+		const BOOL posted = PostMessage(WM_COMMAND,
+			MAKEWPARAM(accelerator.cmd, 1), 0);
+		DebugLog::Log(
+			"External shortcut dispatch: key=%u modifiers=0x%02x command=%u posted=%d",
+			static_cast<unsigned>(key), static_cast<unsigned>(modifiers),
+			static_cast<unsigned>(accelerator.cmd), posted ? 1 : 0);
+		return posted ? 1 : 0;
+	}
+
+	DebugLog::Log(
+		"External shortcut rejected: key=%u modifiers=0x%02x reason=not-configured",
+		static_cast<unsigned>(key), static_cast<unsigned>(modifiers));
 	return 0;
 }
 
@@ -10298,6 +10336,18 @@ BOOL CVideoProcessorDlg::OnInitDialog()
 
 		if (!CDialog::OnInitDialog())
 		return FALSE;
+
+	// VideoProcessor is commonly started from an elevated launcher while
+	// automation clients run at normal integrity. Permit only the dedicated
+	// shortcut request; ordinary cross-integrity keyboard/window messages remain
+	// blocked by UIPI. The handler accepts only exact configured accelerators.
+	if (!::ChangeWindowMessageFilterEx(GetSafeHwnd(),
+		WM_MESSAGE_EXTERNAL_SHORTCUT, MSGFLT_ALLOW, nullptr))
+	{
+		DebugLog::Log(
+			"External shortcut message filter unavailable: error=%lu",
+			::GetLastError());
+	}
 
 	const HWND resetWakeWindow = GetSafeHwnd();
 	m_rendererResetCoordinator =
