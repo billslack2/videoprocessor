@@ -696,34 +696,87 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 		const CString transport = targetSeparator >= 0
 			? m_stats.outputMode.Mid(targetSeparator + 3) : m_stats.outputMode;
 		const int separator = transport.Find(TEXT(" -> "));
-		const CString requested = separator >= 0
-			? transport.Left(separator) : transport;
-		const CString actualAndFallback = separator >= 0
+		const CString actualAndDetails = separator >= 0
 			? transport.Mid(separator + 4) : TEXT("---");
-		const int fallbackSeparator = actualAndFallback.Find(TEXT(" | FALLBACK: "));
-		const CString actual = fallbackSeparator >= 0
-			? actualAndFallback.Left(fallbackSeparator) : actualAndFallback;
-		const CString fallback = fallbackSeparator >= 0
-			? actualAndFallback.Mid(fallbackSeparator + 13) : CString();
-		line.Format(TEXT("Output:           %-s"),
-			static_cast<LPCTSTR>(target));
+		const int detailsSeparator = actualAndDetails.Find(TEXT(" | "));
+		const CString actual = detailsSeparator >= 0
+			? actualAndDetails.Left(detailsSeparator) : actualAndDetails;
+		const int gammaSeparator = m_stats.outputMode.Find(TEXT(" | GAMMA: "));
+		CString gamma = gammaSeparator >= 0
+			? m_stats.outputMode.Mid(gammaSeparator + 10) : CString();
+		if (!gamma.IsEmpty())
+		{
+			const int nextDetail = gamma.Find(TEXT(" | "));
+			if (nextDetail >= 0)
+				gamma = gamma.Left(nextDetail);
+		}
+		const int statusSeparator = m_stats.outputMode.Find(TEXT(" | STATUS: "));
+		CString status = statusSeparator >= 0
+			? m_stats.outputMode.Mid(statusSeparator + 11) : CString();
+		if (!status.IsEmpty())
+		{
+			const int nextDetail = status.Find(TEXT(" | "));
+			if (nextDetail >= 0)
+				status = status.Left(nextDetail);
+		}
+		const int displaySeparator = m_stats.outputMode.Find(TEXT(" | DISPLAY: "));
+		CString display = displaySeparator >= 0
+			? m_stats.outputMode.Mid(displaySeparator + 12) : CString();
+		if (!display.IsEmpty())
+		{
+			const int nextDetail = display.Find(TEXT(" | "));
+			if (nextDetail >= 0)
+				display = display.Left(nextDetail);
+		}
+
+		const int firstSlash = actual.Find(TEXT('/'));
+		const int secondSlash = firstSlash >= 0
+			? actual.Find(TEXT('/'), firstSlash + 1) : -1;
+		const int lastSlash = actual.ReverseFind(TEXT('/'));
+		const CString presentation = firstSlash >= 0
+			? actual.Left(firstSlash) : actual;
+		const CString rangeCode = firstSlash >= 0 && secondSlash > firstSlash
+			? actual.Mid(firstSlash + 1, secondSlash - firstSlash - 1) : TEXT("?");
+		const CString transferCode = secondSlash >= 0 && lastSlash > secondSlash
+			? actual.Mid(secondSlash + 1, lastSlash - secondSlash - 1) : TEXT("?");
+		const CString range = rangeCode == TEXT("F") ? TEXT("RGB Full") :
+			rangeCode == TEXT("L") ? TEXT("RGB Limited") : TEXT("RGB ?");
+		const CString transfer = transferCode.Find(TEXT("sRGB")) >= 0
+			? TEXT("sRGB") : transferCode;
+		const CString primaries = target.Find(TEXT("BT.2020")) >= 0
+			? TEXT("BT.2020") : TEXT("Rec.709");
+
+		line.Format(TEXT("Output:           %s / %s / %s"),
+			static_cast<LPCTSTR>(range),
+			static_cast<LPCTSTR>(transfer),
+			static_cast<LPCTSTR>(primaries));
 		DrawText(hdc, line, PADDING, y);
 		y += lineHeight;
-		if (!fallback.IsEmpty())
+		line.Format(TEXT("Present:          %-s"),
+			static_cast<LPCTSTR>(presentation));
+		DrawText(hdc, line, PADDING, y);
+		y += lineHeight;
+		if (!display.IsEmpty())
 		{
-			line.Format(TEXT("Fallback:         %-s"),
-				static_cast<LPCTSTR>(fallback));
+			line.Format(TEXT("Display:          %-s"),
+				static_cast<LPCTSTR>(display));
 			DrawText(hdc, line, PADDING, y);
 			y += lineHeight;
 		}
-		line.Format(TEXT("Transport Req:    %-s"),
-			static_cast<LPCTSTR>(requested));
-		DrawText(hdc, line, PADDING, y);
-		y += lineHeight;
-		line.Format(TEXT("Transport Actual: %-s"),
-			static_cast<LPCTSTR>(actual));
-		DrawText(hdc, line, PADDING, y);
-		y += lineHeight;
+		if (!gamma.IsEmpty())
+		{
+			line.Format(TEXT("Gamma:            %-s"),
+				static_cast<LPCTSTR>(gamma));
+			DrawText(hdc, line, PADDING, y);
+			y += lineHeight;
+		}
+		if (!status.IsEmpty())
+		{
+			line.Format(TEXT("Status:           %-s"),
+				static_cast<LPCTSTR>(status));
+			DrawText(hdc, line, PADDING, y);
+			y += lineHeight;
+		}
 	}
 
 	if (!m_stats.displayLut.IsEmpty())
@@ -1001,8 +1054,12 @@ int StatsOverlayWindow::CalculateRequiredHeight(const StatsData& stats) const
 		lineCount += 2;
 	if (!stats.outputMode.IsEmpty())
 	{
-		lineCount += 3;
-		if (stats.outputMode.Find(TEXT(" | FALLBACK: ")) >= 0)
+		lineCount += 2;
+		if (stats.outputMode.Find(TEXT(" | GAMMA: ")) >= 0)
+			++lineCount;
+		if (stats.outputMode.Find(TEXT(" | DISPLAY: ")) >= 0)
+			++lineCount;
+		if (stats.outputMode.Find(TEXT(" | STATUS: ")) >= 0)
 			++lineCount;
 	}
 	if (!stats.displayLut.IsEmpty())

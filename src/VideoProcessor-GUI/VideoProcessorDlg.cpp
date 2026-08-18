@@ -2920,8 +2920,6 @@ bool CVideoProcessorDlg::ApplyActiveOutputSweepCase(size_t index)
 	const bool hdrSuite = m_activeOutputSweepSuite.CompareNoCase(L"hdr") == 0;
 	auto applyTestSettings = [&document, &test, hdrSuite](const std::string& section)
 	{
-		const bool allowFullG22 = test.vpOwnedPresenter &&
-			strcmp(test.range, "full") == 0 && strcmp(test.gamma, "2.2") == 0;
 		document.SetKnown(section, "output_path_profile", "custom");
 		document.SetKnown(section, "output_presentation", test.presentation);
 		document.SetKnown(section, "output_range", test.range);
@@ -2931,7 +2929,7 @@ bool CVideoProcessorDlg::ApplyActiveOutputSweepCase(size_t index)
 		document.SetKnown(section, "diagnostic_allow_limited_g22",
 			test.allowLimitedG22 ? "true" : "false");
 		document.SetKnown(section, "diagnostic_allow_full_g22",
-			allowFullG22 ? "true" : "false");
+			"false");
 		document.SetKnown(section, "diagnostic_vp_owned_dxgi_presenter",
 			test.vpOwnedPresenter ? "true" : "false");
 		document.SetKnown(section, "diagnostic_disable_compute",
@@ -3176,24 +3174,32 @@ bool CVideoProcessorDlg::EvaluateActiveOutputSweepCase(
 	Expected expected;
 	const bool direct = strcmp(test.presentation, "direct") == 0;
 	const bool composed = strcmp(test.presentation, "composed") == 0;
-	const bool full = strcmp(test.range, "full") == 0;
 	const bool limited = strcmp(test.range, "limited") == 0;
 	const bool gamma22 = strcmp(test.gamma, "2.2") == 0;
 	const bool gamma24 = strcmp(test.gamma, "2.4") == 0;
-	const bool gamma20 = strcmp(test.gamma, "2.0") == 0;
-	const bool expectedFallback = gamma20 ||
-		(full && gamma22 && !(test.vpOwnedPresenter && direct)) ||
-		(limited && gamma22 && !test.allowLimitedG22);
+	const bool limitedGammaSupported = strcmp(test.gamma, "auto") == 0 ||
+		gamma24 || (gamma22 && test.allowLimitedG22);
+	const bool expectedFallback = limited && !limitedGammaSupported;
 	expected.disposition = expectedFallback ? Disposition::FALLBACK :
 		Disposition::EXACT;
 	expected.presentation = composed ? Presentation::BITBLT :
 		direct ? Presentation::FLIP : Presentation::UNKNOWN;
 	expected.range = expectedFallback ? Range::FULL :
 		limited ? Range::LIMITED : Range::FULL;
+	const auto configuredTransfer = [gamma = std::string(test.gamma)]()
+	{
+		if (gamma == "bt1886") return Transfer::BT1886;
+		if (gamma == "1.8") return Transfer::GAMMA18;
+		if (gamma == "2.0") return Transfer::GAMMA20;
+		if (gamma == "2.2") return Transfer::GAMMA22;
+		if (gamma == "2.4") return Transfer::GAMMA24;
+		if (gamma == "2.6") return Transfer::GAMMA26;
+		if (gamma == "2.8") return Transfer::GAMMA28;
+		return Transfer::SRGB;
+	};
 	expected.transfer = expectedFallback ? Transfer::SRGB :
-		gamma22 ? Transfer::GAMMA22 :
-		gamma24 || (limited && strcmp(test.gamma, "auto") == 0) ?
-		Transfer::GAMMA24 : Transfer::SRGB;
+		(limited && strcmp(test.gamma, "auto") == 0) ?
+		Transfer::GAMMA24 : configuredTransfer();
 	expected.requireVpOwner = test.vpOwnedPresenter && direct;
 	expected.requireDxgiVerification = expected.requireVpOwner;
 	expected.swapchainBitDepth = expected.requireVpOwner ?
@@ -3205,7 +3211,7 @@ bool CVideoProcessorDlg::EvaluateActiveOutputSweepCase(
 		Primaries::BT2020 : Primaries::REC709;
 	const bool hdrSuite = m_activeOutputSweepSuite.CompareNoCase(L"hdr") == 0;
 	expected.measurementRequired = !expectedFallback &&
-		(hdrSuite || gamma22 || gamma24 || limited || test.force8Bit);
+		(hdrSuite || strcmp(test.gamma, "auto") != 0 || limited || test.force8Bit);
 
 	const Decision decision = Evaluate(expected, actual);
 	state = decision.verdict == Verdict::PASS ? SweepResultState::Passed :
@@ -3214,8 +3220,13 @@ bool CVideoProcessorDlg::EvaluateActiveOutputSweepCase(
 		SweepResultState::Failed;
 	const wchar_t* range = actual.range == Range::FULL ? L"Full" :
 		actual.range == Range::LIMITED ? L"Limited" : L"Unknown";
-	const wchar_t* transfer = actual.transfer == Transfer::GAMMA22 ? L"Pure2.2" :
+	const wchar_t* transfer = actual.transfer == Transfer::BT1886 ? L"BT.1886" :
+		actual.transfer == Transfer::GAMMA18 ? L"Pure1.8" :
+		actual.transfer == Transfer::GAMMA20 ? L"Pure2.0" :
+		actual.transfer == Transfer::GAMMA22 ? L"Pure2.2" :
 		actual.transfer == Transfer::GAMMA24 ? L"Pure2.4" :
+		actual.transfer == Transfer::GAMMA26 ? L"Pure2.6" :
+		actual.transfer == Transfer::GAMMA28 ? L"Pure2.8" :
 		actual.transfer == Transfer::SRGB ? L"sRGB" : L"Unknown";
 	const wchar_t* owner = actual.vpOwnsPresentation ? L"VP" : L"libplacebo";
 	const wchar_t* primaries = actual.primaries == Primaries::BT2020 ?

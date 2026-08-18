@@ -318,6 +318,8 @@ namespace VideoProcessorTest
 			AssertSameData(NativeData<pl_dither_params>("pl_dither_default_params"),
 				projection.renderParams.dither_params, sizeof(pl_dither_params),
 				L"Enabled dithering must copy libplacebo's default parameters.");
+			Assert::IsTrue(projection.renderParams.error_diffusion == nullptr,
+				L"Explicit dithering must not be replaced by a preset's error diffusion.");
 
 			settings.sigmoid = Toggle::Off;
 			settings.peakDetection = Toggle::Off;
@@ -328,6 +330,40 @@ namespace VideoProcessorTest
 			Assert::IsTrue(projection.renderParams.peak_detect_params == nullptr);
 			Assert::IsTrue(projection.renderParams.deband_params == nullptr);
 			Assert::IsTrue(projection.renderParams.dither_params == nullptr);
+			Assert::IsTrue(projection.renderParams.error_diffusion == nullptr,
+				L"Disabled dithering must also disable the preferred error-diffusion path.");
+		}
+
+		TEST_METHOD(DisplayBitDepthTargetsDitheringWithoutChangingSwapchainStorage)
+		{
+			pl_color_repr target{};
+			target.bits.sample_depth = 10;
+			target.bits.color_depth = 10;
+
+			ApplyDisplayBitDepth("auto", target);
+			Assert::AreEqual(10, target.bits.sample_depth);
+			Assert::AreEqual(10, target.bits.color_depth);
+			Assert::AreEqual(0, target.bits.bit_shift);
+
+			ApplyDisplayBitDepth("8", target);
+			Assert::AreEqual(10, target.bits.sample_depth,
+				L"Display precision must not change the physical swapchain format.");
+			Assert::AreEqual(8, target.bits.color_depth);
+			Assert::AreEqual(2, target.bits.bit_shift,
+				L"Eight-bit values in a ten-bit RGB target must be MSB-aligned.");
+
+			ApplyDisplayBitDepth("10", target);
+			Assert::AreEqual(10, target.bits.sample_depth);
+			Assert::AreEqual(10, target.bits.color_depth);
+			Assert::AreEqual(0, target.bits.bit_shift);
+
+			pl_color_repr eightBitTarget{};
+			eightBitTarget.bits.sample_depth = 8;
+			eightBitTarget.bits.color_depth = 8;
+			ApplyDisplayBitDepth("10", eightBitTarget);
+			Assert::AreEqual(8, eightBitTarget.bits.color_depth,
+				L"A requested display depth must be clamped to actual storage precision.");
+			Assert::AreEqual(0, eightBitTarget.bits.bit_shift);
 		}
 
 		TEST_METHOD(DebandingStrengthUsesOneCanonicalAndDistinctNativeSetting)

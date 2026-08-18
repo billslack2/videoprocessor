@@ -62,4 +62,11 @@ namespace LibplaceboRenderParameters
 	// obtained. The caller receives a human-readable error in `error`.
 	bool Build(const Settings& settings, bool hasDisplayLut,
 		Projection& projection, std::string& error);
+
+	// Applies the user-declared native display precision to an already resolved
+	// target representation. The storage depth remains unchanged; lower display
+	// precision is represented MSB-aligned so libplacebo dithers and writes the
+	// correct full-range values into a higher-depth RGB swapchain.
+	void ApplyDisplayBitDepth(const std::string& displayBitDepth,
+		pl_color_repr& targetRepresentation);
 }

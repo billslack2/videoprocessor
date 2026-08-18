@@ -701,7 +701,7 @@ namespace VideoProcessorTest
 				"output_gamma: srgb\nsdr_target_nits: 203\nsdr_black_nits: auto\n"
 				"tone_mapping: auto\ngamut_mapping: auto\npeak_detection: auto\ncontrast_recovery: auto\n"
 				"upscaler: auto\ndownscaler: auto\ndeband: auto\ndeband_strength: off\n"
-				"sigmoid: auto\ndithering: auto\nsdr_input_transfer: auto\nsdr_target_primaries: rec709\n"
+				"sigmoid: auto\ndithering: auto\ndisplay_bit_depth: auto\nsdr_input_transfer: auto\nsdr_target_primaries: rec709\n"
 				"lut: calibration.cube\nlut_reference_nits: auto\nlut_reference_range: auto\n"
 				"lut_reference_transfer: auto\nlut_reference_primaries: auto\n"
 				"report_bt2020_to_display: false\nswitch_refresh_rate: true\noutput_diagnostics: false\n"
@@ -720,6 +720,14 @@ namespace VideoProcessorTest
 			ConfigEditorCore::ConfigDocument document;
 			std::wstring error;
 			Assert::IsTrue(document.Load(path, error), error.c_str());
+			Assert::IsTrue(ConfigEditorCore::ValidateCandidate(document, error), error.c_str());
+			Assert::IsTrue(document.SetKnown(
+				"vprenderer.primary", "display_bit_depth", "12"));
+			Assert::IsFalse(ConfigEditorCore::ValidateCandidate(document, error));
+			Assert::IsTrue(error.find(L"display_bit_depth") != std::wstring::npos,
+				error.c_str());
+			Assert::IsTrue(document.SetKnown(
+				"vprenderer.primary", "display_bit_depth", "8"));
 			Assert::IsTrue(ConfigEditorCore::ValidateCandidate(document, error), error.c_str());
 			DeleteFileW(path.c_str());
 		}

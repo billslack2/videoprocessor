@@ -51,6 +51,7 @@ vprenderer.upscaler	vprenderer-upscaler	VP Renderer	no
 vprenderer.downscaler	vprenderer-downscaler	VP Renderer	no
 vprenderer.deband	vprenderer-deband	VP Renderer	no
 vprenderer.dithering	vprenderer-dithering	VP Renderer	no
+vprenderer.display_bit_depth	vprenderer-display-bit-depth	VP Renderer	no
 vprenderer.sdr_target_nits	vprenderer-sdr-target-nits	VP Renderer	no
 vprenderer.sdr_black_nits	vprenderer-sdr-black-nits	VP Renderer	no
 vprenderer.output_presentation	vprenderer-output-presentation	VP Renderer	no
