@@ -63,6 +63,12 @@ namespace ConfigurationLiveApply
 
 	static const wchar_t ChangedEventName[] =
 		L"Local\\VideoProcessor.ConfigurationChanged.v1";
+	static const wchar_t ShaderPreparationEventName[] =
+		L"Local\\VideoProcessor.ShaderPreparationRequested.v1";
+	static const wchar_t ShaderPreparationStatusFileName[] =
+		L"VideoProcessorShaderPreparation.status";
+	static const char ShaderPreparationStatusFileNameA[] =
+		"VideoProcessorShaderPreparation.status";
 
 	inline std::wstring ConfigurationEditorRevealEventName(uint32_t processId)
 	{

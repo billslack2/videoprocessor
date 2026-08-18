@@ -5615,7 +5615,8 @@ struct LibplaceboVideoRenderer::Impl
 
 	void Initialize(HWND videoHwnd, VideoStateComPtr& state, const std::string& manualRule,
 		const std::map<std::string, std::string>& manualUnifiedProfiles,
-		VideoConversionOverride videoConversionOverride)
+		VideoConversionOverride videoConversionOverride,
+		bool nonCapturingPreparationMode)
 	{
 		this->videoHwnd = videoHwnd;
 		const RendererSettings settings = LoadRendererSettings(
@@ -5675,9 +5676,11 @@ struct LibplaceboVideoRenderer::Impl
 				shaderCachePath.c_str());
 		}
 
+		ConfigFile shaderConfig;
 		std::string nlsPrewarmReason;
-		if (MadVRShaderLoader::GetConfiguredNlsPrewarmRules(
-			startupNlsPrewarmRules, nlsPrewarmReason))
+		if (shaderConfig.Load(ConfigFile::RENDERER_FILENAME) &&
+			MadVRShaderLoader::ResolveConfiguredNlsPrewarmRules(shaderConfig,
+				startupNlsPrewarmRules, nlsPrewarmReason))
 		{
 			std::ostringstream names;
 			for (size_t index = 0; index < startupNlsPrewarmRules.size(); ++index)
@@ -5828,7 +5831,11 @@ struct LibplaceboVideoRenderer::Impl
 		// the desktop timing. Query and select the content rate only after that
 		// transition has completed; an earlier verified no-op could otherwise
 		// leave this newly initialized renderer running at the restored rate.
-		displayRefreshRate.Switch(videoHwnd, *state, settings);
+		if (!nonCapturingPreparationMode)
+			displayRefreshRate.Switch(videoHwnd, *state, settings);
+		else
+			DebugLog::Log(
+				"libplacebo non-capturing preparation: display refresh switching suppressed");
 		// Negotiate only after libplacebo has applied its hint and completed the
 		// initial ResizeBuffers operation; either may otherwise replace DXGI state.
 		ConfigureAndFallback("initialize");
@@ -9456,6 +9463,35 @@ LibplaceboVideoRenderer::~LibplaceboVideoRenderer()
 	m_impl.reset();
 }
 
+bool LibplaceboVideoRenderer::PersistShaderCache()
+{
+	if (!m_impl) return false;
+	std::lock_guard<std::mutex> guard(m_impl->renderMutex);
+	m_impl->SaveShaderCache();
+	return true;
+}
+
+
+bool LibplaceboVideoRenderer::ReloadConfiguredShaderPrewarm()
+{
+	if (!m_impl) return false;
+	ConfigFile config;
+	if (!config.Load(ConfigFile::RENDERER_FILENAME)) return false;
+	std::vector<ConfiguredShaderRule> rules;
+	std::string reason;
+	const bool available =
+		MadVRShaderLoader::ResolveConfiguredNlsPrewarmRules(
+			config, rules, reason);
+	std::lock_guard<std::mutex> guard(m_impl->renderMutex);
+	m_impl->startupNlsPrewarmRules = std::move(rules);
+	m_impl->startupNlsPrewarmComplete = !available;
+	DebugLog::Log(
+		"Alpha shader prewarm configuration reloaded: armed=%d rules=%zu reason=%s",
+		available ? 1 : 0, m_impl->startupNlsPrewarmRules.size(),
+		reason.empty() ? "none" : reason.c_str());
+	return true;
+}
+
 
 bool LibplaceboVideoRenderer::OnVideoState(VideoStateComPtr& videoState)
 {
@@ -9838,7 +9874,7 @@ void LibplaceboVideoRenderer::Build()
 	try
 	{
 		impl->Initialize(m_videoHwnd, state, manualRule, manualUnifiedProfiles,
-			m_videoConversionOverride);
+			m_videoConversionOverride, m_nonCapturingPreparationMode);
 	}
 	catch (...)
 	{
@@ -9865,9 +9901,11 @@ void LibplaceboVideoRenderer::Build()
 	std::vector<ConfiguredShaderRule> baselineSelection;
 	std::vector<std::string> baselineSections;
 	std::string baselineReason;
-	if (MadVRShaderLoader::GetConfiguredRuleSelection(
-		"@shader-key:", ShaderRendererBackend::LIBPLACEBO,
-		baselineSelection, baselineSections, baselineReason))
+	ConfigFile shaderConfig;
+	if (shaderConfig.Load(ConfigFile::RENDERER_FILENAME) &&
+		MadVRShaderLoader::ResolveConfiguredRuleSelection(shaderConfig,
+			"@shader-key:", ShaderRendererBackend::LIBPLACEBO,
+			baselineSelection, baselineSections, baselineReason))
 	{
 		std::lock_guard<std::mutex> guard(m_stateMutex);
 		m_activeShaderSections = std::move(baselineSections);
@@ -9965,9 +10003,11 @@ bool LibplaceboVideoRenderer::SelectShaderRule(
 	std::vector<ConfiguredShaderRule> selection;
 	std::vector<std::string> activeSections;
 	std::string reason;
-	if (!MadVRShaderLoader::GetConfiguredRuleSelection(
-		selector, ShaderRendererBackend::LIBPLACEBO,
-		selection, activeSections, reason))
+	ConfigFile shaderConfig;
+	if (!shaderConfig.Load(ConfigFile::RENDERER_FILENAME) ||
+		!MadVRShaderLoader::ResolveConfiguredRuleSelection(shaderConfig,
+			selector, ShaderRendererBackend::LIBPLACEBO,
+			selection, activeSections, reason))
 	{
 		DebugLog::Log(
 			"Alpha shaders: rejected selector \"%s\": %s",
@@ -11626,6 +11666,7 @@ void LibplaceboVideoRenderer::RenderLoop()
 		}
 		consecutiveFailures = 0;
 		m_hasPresentedLiveFrame.store(true, std::memory_order_release);
+		m_presentedFrameCount.fetch_add(1, std::memory_order_release);
 
 		if (correctionDecision.action == AlphaCadenceAction::Drop)
 		{

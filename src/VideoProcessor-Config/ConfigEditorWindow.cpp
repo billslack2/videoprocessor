@@ -50,6 +50,8 @@
 #include <QPainter>
 #include <QPlainTextEdit>
 #include <QPointer>
+#include <QProcess>
+#include <QProgressBar>
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QRect>
@@ -884,6 +886,11 @@ ConfigEditorWindow::ConfigEditorWindow(QString configPath, quintptr ownerHandle,
         connect(activeProfileTimer_, &QTimer::timeout, this,
             &ConfigEditorWindow::refreshActiveProfileIndicators);
         refreshActiveProfileIndicators();
+        shaderStatusTimer_ = new QTimer(this);
+        shaderStatusTimer_->setInterval(250);
+        connect(shaderStatusTimer_, &QTimer::timeout, this,
+            &ConfigEditorWindow::refreshShaderPreparationStatus);
+        shaderStatusTimer_->start();
     }
     if (!testMode_) setupTray();
 	const std::wstring revealEventName =
@@ -1623,9 +1630,12 @@ bool ConfigEditorWindow::updateValidationState()
     const QStringList errors = validationErrors(fields, true, false);
     const bool valid = errors.isEmpty();
     validationValid_ = valid;
-    if (saveButton_) saveButton_->setEnabled(configurationLoaded_ && valid);
+    if (saveButton_)
+        saveButton_->setEnabled(!shaderPreparationBusy_ &&
+            configurationLoaded_ && valid);
     if (applyButton_)
-        applyButton_->setEnabled(configurationLoaded_ && dirty_ && valid);
+        applyButton_->setEnabled(!shaderPreparationBusy_ &&
+            configurationLoaded_ && dirty_ && valid);
     if (!valid)
     {
         int latest = 0;
@@ -1893,6 +1903,26 @@ bool ConfigEditorWindow::saveChanges()
         savedSnapshot_, captureDocumentSnapshot(*document_));
     const auto action = ConfigurationApplyPolicy::ClassifyChanges(changed,
         snapshotUsesDirectShowRenderer(savedSnapshot_));
+    const bool prepareShaders = std::any_of(changed.cbegin(), changed.cend(),
+        [](const ConfigurationApplyPolicy::Change& change)
+        {
+            const std::string section =
+                ConfigurationApplyPolicy::NormalizeSection(change.section);
+            const std::string key =
+                ConfigurationApplyPolicy::NormalizeSection(change.key);
+            // Selection metadata changes which profile becomes active, but it
+            // does not change any GPU program. New/deleted profiles still
+            // arrive as setting changes (or an empty section-level key) and
+            // therefore remain preparation candidates.
+            if (key == "name" || key == "shortcut" || key == "use_rule" ||
+                key == "when" || key == "label")
+                return false;
+            return (ConfigurationApplyPolicy::HasPrefix(section, "vprenderer") &&
+                    !ConfigurationApplyPolicy::HasPrefix(section,
+                        "vprenderer.output")) ||
+                ConfigurationApplyPolicy::HasPrefix(section, "shader") ||
+                ConfigurationApplyPolicy::HasPrefix(section, "shaders");
+        });
     // Persist shortcut spelling in the same canonical form used by the
     // accelerator parser. Case is not a modifier: L and l are both L, while
     // Shift+L is the distinct shifted chord.
@@ -2004,6 +2034,8 @@ bool ConfigEditorWindow::saveChanges()
             QStringLiteral("Changes saved safely. Takes effect when VideoProcessor next starts. Backup: %1")
                 .arg(QString::fromStdWString(result.backupPath)), false);
     }
+    if (prepareShaders)
+        requestShaderPreparation();
     return true;
 }
 
@@ -2019,6 +2051,10 @@ QWidget* ConfigEditorWindow::createShell()
     actionRendererTarget_ = nullptr;
     applyButton_ = nullptr;
     saveButton_ = nullptr;
+    configurationHost_ = nullptr;
+    shaderCacheStatus_ = nullptr;
+    shaderPreparationStatus_ = nullptr;
+    shaderFooterBusy_ = nullptr;
     activeProfileLists_.clear();
     auto* root = new QWidget;
     root->setObjectName(QStringLiteral("root"));
@@ -2092,6 +2128,7 @@ QWidget* ConfigEditorWindow::createShell()
         QStringLiteral("Override the General input policy for DirectShow, or inherit it."),
         QStringLiteral("directshow")));
     pages_->addWidget(createOutputPage());
+    pages_->addWidget(createShadersSetupPage());
 
     auto* navGroup = new QButtonGroup(root);
     navGroup->setExclusive(true);
@@ -2106,7 +2143,7 @@ QWidget* ConfigEditorWindow::createShell()
     addLeaf(QStringLiteral("General"), 0);
     addLeaf(QStringLiteral("Queue"), 1);
     addLeaf(QStringLiteral("LLDV"), 5);
-    QPushButton* shadersNavigation = addLeaf(QStringLiteral("Shaders"), 8);
+    QPushButton* shadersNavigation = addLeaf(QStringLiteral("Shaders"), 14);
     addLeaf(QStringLiteral("Actions"), 7);
     addLeaf(QStringLiteral("Shortcuts"), 6);
     addLeaf(QStringLiteral("Logs"), 10);
@@ -2156,10 +2193,11 @@ QWidget* ConfigEditorWindow::createShell()
     const auto updateSectionTabs = [showSectionTabs, shadersNavigation,
         vpNavigation, directShowNavigation](int page)
     {
-        if (page == 8 || page == 9)
+        if (page == 8 || page == 9 || page == 14)
         {
             shadersNavigation->setChecked(true);
-            showSectionTabs({ { QStringLiteral("Standard"), 8 },
+            showSectionTabs({ { QStringLiteral("Setup"), 14 },
+                { QStringLiteral("Standard"), 8 },
                 { QStringLiteral("NLS"), 9 } }, page);
         }
         else if (page == 2 || page == 4 || page == 11 || page == 13)
@@ -2191,6 +2229,7 @@ QWidget* ConfigEditorWindow::createShell()
     updateSectionTabs(pages_->currentIndex());
     centerLayout->addWidget(navigation_);
     centerLayout->addWidget(pageHost, 1);
+    configurationHost_ = center;
     rootLayout->addWidget(center, 1);
 
     auto* footer = new QWidget;
@@ -2206,6 +2245,13 @@ QWidget* ConfigEditorWindow::createShell()
     status_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     status_->setWordWrap(true);
     footerLayout->addWidget(status_, 1);
+    shaderFooterBusy_ = new QProgressBar;
+    shaderFooterBusy_->setObjectName(QStringLiteral("shaderPreparationBusy"));
+    shaderFooterBusy_->setRange(0, 0);
+    shaderFooterBusy_->setTextVisible(false);
+    shaderFooterBusy_->setFixedSize(54, 8);
+    shaderFooterBusy_->hide();
+    footerLayout->addWidget(shaderFooterBusy_);
     effectSummary_ = new QLabel;
     effectSummary_->setObjectName(QStringLiteral("configurationEffectSummary"));
     effectSummary_->setAccessibleName(QStringLiteral("Pending configuration effect"));
@@ -2232,7 +2278,8 @@ QWidget* ConfigEditorWindow::createShell()
     {
         // A clean OK is just a close. A dirty OK must remain open if validation
         // or safe persistence fails, so the user can correct the candidate.
-        if (!dirty_ || saveChanges()) hide();
+        if (!dirty_) hide();
+        else if (saveChanges() && !shaderPreparationBusy_) hide();
     });
     connect(cancel, &QPushButton::clicked, this, [this]
     {
@@ -4160,6 +4207,127 @@ QWidget* ConfigEditorWindow::createRendererPage()
         QStringLiteral("Configure ordered rendering profiles. The first profile in the list is the default."), QStringLiteral("vprenderer"));
 }
 
+void ConfigEditorWindow::setShaderPreparationBusy(bool busy,
+    const QString& message)
+{
+    shaderPreparationBusy_ = busy;
+    if (configurationHost_) configurationHost_->setEnabled(!busy);
+    if (shaderFooterBusy_) shaderFooterBusy_->setVisible(busy);
+    if (saveButton_) saveButton_->setEnabled(!busy && configurationLoaded_);
+    if (applyButton_)
+        applyButton_->setEnabled(!busy && configurationLoaded_ && dirty_ &&
+            validationValid_);
+    if (!message.isEmpty()) setStatus(message, false);
+}
+
+void ConfigEditorWindow::requestShaderPreparation()
+{
+    if (testMode_) return;
+    const QDir rendererDirectory(QFileInfo(configPath_).absoluteDir().filePath(
+        QStringLiteral("vprenderer")));
+    if (!QDir().mkpath(rendererDirectory.absolutePath()))
+    {
+        setStatus(QStringLiteral("Could not access the VP Renderer shader folder."), true);
+        return;
+    }
+    const QString statusPath = rendererDirectory.filePath(
+        QString::fromWCharArray(
+            ConfigurationLiveApply::ShaderPreparationStatusFileName));
+    const QString temporaryPath = statusPath + QStringLiteral(".tmp");
+    QFile status(temporaryPath);
+    if (!status.open(QIODevice::WriteOnly | QIODevice::Truncate) ||
+        status.write("state=waiting\ncurrent=0\ntotal=0\nmessage=Waiting for VideoProcessor...\n") < 0)
+    {
+        setStatus(QStringLiteral("Could not create the shader preparation request."), true);
+        return;
+    }
+    status.close();
+    QFile::remove(statusPath);
+    if (!QFile::rename(temporaryPath, statusPath))
+    {
+        setStatus(QStringLiteral("Could not publish the shader preparation request."), true);
+        return;
+    }
+
+    SetLastError(ERROR_SUCCESS);
+    HANDLE requested = CreateEventW(nullptr, FALSE, FALSE,
+        ConfigurationLiveApply::ShaderPreparationEventName);
+    const bool vpWasListening = requested &&
+        GetLastError() == ERROR_ALREADY_EXISTS;
+    const bool signaled = vpWasListening && SetEvent(requested) != FALSE;
+    if (requested) CloseHandle(requested);
+    if (!signaled)
+    {
+        QDir installation = QFileInfo(configPath_).absoluteDir();
+        QString executable = installation.filePath(
+            QStringLiteral("VideoProcessor.exe"));
+        if (!QFileInfo::exists(executable))
+        {
+            QDir besideConfig(QCoreApplication::applicationDirPath());
+            besideConfig.cdUp();
+            executable = besideConfig.filePath(QStringLiteral("VideoProcessor.exe"));
+        }
+        qint64 processId = 0;
+        if (!QFileInfo::exists(executable) || !QProcess::startDetached(executable,
+            { QStringLiteral("/prepare_shaders") }, installation.absolutePath(),
+            &processId))
+        {
+            setStatus(QStringLiteral(
+                "Shader preparation could not start VideoProcessor."), true);
+            return;
+        }
+    }
+    setShaderPreparationBusy(true, QStringLiteral("Preparing shaders..."));
+    refreshShaderPreparationStatus();
+}
+
+void ConfigEditorWindow::refreshShaderPreparationStatus()
+{
+    const QDir rendererDirectory(QFileInfo(configPath_).absoluteDir().filePath(
+        QStringLiteral("vprenderer")));
+    const QFileInfo cache(rendererDirectory.filePath(
+        QStringLiteral("VideoProcessorShaderCache.bin")));
+    if (shaderCacheStatus_)
+    {
+        shaderCacheStatus_->setText(cache.exists() ?
+            QStringLiteral("Persistent cache: %1 MB · Updated %2")
+                .arg(cache.size() / (1024.0 * 1024.0), 0, 'f', 1)
+                .arg(cache.lastModified().toString(QStringLiteral("MMM d, h:mm AP"))) :
+            QStringLiteral("Persistent cache: Not created yet"));
+    }
+
+    QFile status(rendererDirectory.filePath(QString::fromWCharArray(
+        ConfigurationLiveApply::ShaderPreparationStatusFileName)));
+    if (!status.open(QIODevice::ReadOnly))
+    {
+        if (shaderPreparationStatus_)
+            shaderPreparationStatus_->setText(QStringLiteral("Shaders not prepared yet"));
+        return;
+    }
+    QString state;
+    QString message;
+    while (!status.atEnd())
+    {
+        const QString line = QString::fromUtf8(status.readLine()).trimmed();
+        const int separator = line.indexOf(u'=');
+        if (separator < 0) continue;
+        const QString key = line.left(separator);
+        const QString value = line.mid(separator + 1);
+        if (key == QStringLiteral("state")) state = value;
+        else if (key == QStringLiteral("message")) message = value;
+    }
+    const bool busy = state == QStringLiteral("waiting") ||
+        state == QStringLiteral("preparing");
+    if (shaderPreparationStatus_)
+        shaderPreparationStatus_->setText(message.isEmpty() ?
+            (busy ? QStringLiteral("Preparing shaders...") :
+                QStringLiteral("Shaders ready")) : message);
+    if (busy != shaderPreparationBusy_)
+        setShaderPreparationBusy(busy, message);
+    else if (busy && !message.isEmpty())
+        setStatus(message, false);
+}
+
 QWidget* ConfigEditorWindow::createOutputPage()
 {
     return createProfilePage(QStringLiteral("Output"),
@@ -4741,6 +4909,91 @@ QWidget* ConfigEditorWindow::createNlsShadersPage()
         QStringLiteral("Configure included nonlinear stretch (NLS) modes without rewriting custom shader sections."), splitter);
 }
 
+QWidget* ConfigEditorWindow::createShadersSetupPage()
+{
+    auto* content = new QWidget;
+    auto* layout = new QVBoxLayout(content);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(12);
+
+    auto* statusContent = new QWidget;
+    auto* statusLayout = new QVBoxLayout(statusContent);
+    statusLayout->setContentsMargins(0, 0, 0, 0);
+    statusLayout->setSpacing(8);
+    shaderPreparationStatus_ = new QLabel(QStringLiteral("Shaders ready"));
+    shaderPreparationStatus_->setObjectName(
+        QStringLiteral("config.shader.preparation.status"));
+    shaderPreparationStatus_->setProperty("cardTitle", true);
+    shaderCacheStatus_ = helpLabel(QStringLiteral("Checking shader cache..."));
+    shaderCacheStatus_->setObjectName(QStringLiteral("config.shader.cache.status"));
+    statusLayout->addWidget(shaderPreparationStatus_);
+    statusLayout->addWidget(shaderCacheStatus_);
+    layout->addWidget(createCard(QStringLiteral("Shader status"),
+        QStringLiteral("VP prepares missing GPU shader variants before you switch rendering profiles."),
+        statusContent));
+
+    auto* controls = new QWidget;
+    auto* controlsLayout = new QVBoxLayout(controls);
+    controlsLayout->setContentsMargins(0, 0, 0, 0);
+    controlsLayout->setSpacing(8);
+    auto* buttons = new QHBoxLayout;
+    auto* prepare = new QPushButton(QStringLiteral("Prepare shaders"));
+    prepare->setObjectName(QStringLiteral("config.shader.prepare"));
+    prepare->setAccessibleDescription(QStringLiteral(
+        "Prepare shader variants for every VP Renderer rendering profile."));
+    auto* clearCache = new QPushButton(QStringLiteral("Clear shader cache"));
+    clearCache->setObjectName(QStringLiteral("config.shader.cache.clear"));
+    clearCache->setProperty("danger", true);
+    clearCache->setAccessibleDescription(QStringLiteral(
+        "Clear the persistent VP Renderer shader cache at the next renderer start."));
+    buttons->addWidget(prepare);
+    buttons->addWidget(clearCache);
+    buttons->addStretch();
+    controlsLayout->addLayout(buttons);
+    controlsLayout->addWidget(helpLabel(QStringLiteral(
+        "Preparation runs asynchronously in VideoProcessor. If VP is closed, Config starts it in non-capturing shader-preparation mode.")));
+    layout->addWidget(createCard(QStringLiteral("Shader setup"),
+        QStringLiteral("Prepare or clear the persistent VP Renderer shader cache."),
+        controls));
+    layout->addStretch();
+
+    connect(prepare, &QPushButton::clicked, this,
+        &ConfigEditorWindow::requestShaderPreparation);
+    connect(clearCache, &QPushButton::clicked, this, [this]
+    {
+        const QDir configurationDirectory = QFileInfo(configPath_).absoluteDir();
+        const QString rendererDirectory = configurationDirectory.filePath(
+            QStringLiteral("vprenderer"));
+        if (!QDir().mkpath(rendererDirectory))
+        {
+            setStatus(QStringLiteral("Could not access the VP Renderer cache folder."), true);
+            return;
+        }
+        const QDir cacheDirectory(rendererDirectory);
+        const QString cachePath = cacheDirectory.filePath(
+            QStringLiteral("VideoProcessorShaderCache.bin"));
+        const QString temporaryPath = cachePath + QStringLiteral(".tmp");
+        const QString requestPath = cacheDirectory.filePath(
+            QStringLiteral("VideoProcessorShaderCache.clear"));
+        QFile request(requestPath);
+        if (!request.open(QIODevice::WriteOnly | QIODevice::Truncate) ||
+            request.write("clear\n") < 0)
+        {
+            setStatus(QStringLiteral("Could not request a shader cache clear."), true);
+            return;
+        }
+        request.close();
+        QFile::remove(cachePath);
+        QFile::remove(temporaryPath);
+        setStatus(QStringLiteral(
+            "Shader cache will be cleared at the next VP Renderer start."));
+        refreshShaderPreparationStatus();
+    });
+    refreshShaderPreparationStatus();
+    return createPage(QStringLiteral("Shaders"),
+        QStringLiteral("Prepare and inspect VP Renderer shader storage."), content);
+}
+
 QWidget* ConfigEditorWindow::createStandardShadersPage()
 {
     auto state = std::make_shared<ShaderEditorState>();
@@ -4777,44 +5030,6 @@ QWidget* ConfigEditorWindow::createStandardShadersPage()
     selectionLayout->addWidget(list, 1);
     selectionLayout->addWidget(helpLabel(QStringLiteral(
         "These entries are independent effects. By default none has a shortcut or rule, so none is active.")));
-    auto* clearCache = new QPushButton(QStringLiteral("Clear shader cache"));
-    clearCache->setObjectName(QStringLiteral("config.shader.cache.clear"));
-    clearCache->setAccessibleDescription(QStringLiteral(
-        "Clear the persistent VP Renderer shader cache at the next renderer start."));
-    selectionLayout->addWidget(clearCache);
-    selectionLayout->addWidget(helpLabel(QStringLiteral(
-        "Clears the persistent GPU shader cache at the next VP Renderer start. Playback is not interrupted.")));
-    connect(clearCache, &QPushButton::clicked, this, [this]
-    {
-        const QDir configurationDirectory = QFileInfo(configPath_).absoluteDir();
-        const QString rendererDirectory = configurationDirectory.filePath(
-            QStringLiteral("vprenderer"));
-        if (!QDir().mkpath(rendererDirectory))
-        {
-            setStatus(QStringLiteral("Could not access the VP Renderer cache folder."), true);
-            return;
-        }
-
-        const QDir cacheDirectory(rendererDirectory);
-        const QString cachePath = cacheDirectory.filePath(
-            QStringLiteral("VideoProcessorShaderCache.bin"));
-        const QString temporaryPath = cachePath + QStringLiteral(".tmp");
-        const QString requestPath = cacheDirectory.filePath(
-            QStringLiteral("VideoProcessorShaderCache.clear"));
-        QFile request(requestPath);
-        if (!request.open(QIODevice::WriteOnly | QIODevice::Truncate) ||
-            request.write("clear\n") < 0)
-        {
-            setStatus(QStringLiteral("Could not request a shader cache clear."), true);
-            return;
-        }
-        request.close();
-        QFile::remove(cachePath);
-        QFile::remove(temporaryPath);
-        setStatus(QStringLiteral(
-            "Shader cache will be cleared at the next VP Renderer start."));
-    });
-
     auto* details = new QWidget;
     auto* detailsLayout = new QVBoxLayout(details);
     detailsLayout->setContentsMargins(0, 0, 0, 0);

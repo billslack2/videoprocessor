@@ -2855,6 +2855,38 @@ namespace VideoProcessorTest
 			DeleteFileA(path.c_str());
 		}
 
+		TEST_METHOD(TargetNlsPrewarmEnumeratesAlphaGlslVariants)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(
+				ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) +
+				"VideoProcessor-target-nls-prewarm.cfg";
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[shader.nls]\nshortcut: n\n"
+					"[shader.nls.first]\nshader_type: nls\n"
+					"glsl_file: First.glsl\nhlsl_file: First.hlsl\n"
+					"[shader.nls.second]\nshader_type: nls\n"
+					"glsl_file: Second.glsl\n"
+					"[shader.standard.other]\nshader_type: custom\n"
+					"glsl_file: Other.glsl\n";
+			}
+
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			std::vector<ConfiguredShaderRule> rules;
+			std::string reason;
+			Assert::IsTrue(
+				MadVRShaderLoader::ResolveConfiguredNlsPrewarmRules(
+					config, rules, reason),
+				std::wstring(reason.begin(), reason.end()).c_str());
+			Assert::AreEqual(static_cast<size_t>(2), rules.size());
+			Assert::AreEqual("First.glsl", rules[0].filename.c_str());
+			Assert::AreEqual("Second.glsl", rules[1].filename.c_str());
+			DeleteFileA(path.c_str());
+		}
+
 		TEST_METHOD(Vp0089AndVp0131InvalidAdvancedNlsSettingsAreRejected)
 		{
 			char temporaryDirectory[MAX_PATH] = {};

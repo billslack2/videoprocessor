@@ -424,6 +424,7 @@ protected:
 	WORD m_lastBackgroundShortcutCommand = 0;
 	ULONGLONG m_lastBackgroundShortcutTick = 0;
 	HANDLE m_configurationChangedEvent = nullptr;
+	HANDLE m_shaderPreparationEvent = nullptr;
 	std::map<std::string, std::map<std::string, std::string>>
 		m_configurationSnapshot;
 	struct StagedRuntimeSettings
@@ -852,6 +853,11 @@ protected:
 	void ApplyStatsOverlayForActiveRenderer();
 	void LoadDisplayRefreshRateOverrides();
 	void ApplySavedConfiguration();
+	void StartShaderPreparation();
+	void AdvanceShaderPreparation();
+	void FinishShaderPreparation(bool succeeded, const char* detail);
+	void PublishShaderPreparationStatus(const char* state, size_t current,
+		size_t total, const char* message) const;
 	void UpdateActiveOutputSweep(ULONGLONG now);
 	bool StartActiveOutputSweep();
 	bool ApplyActiveOutputSweepCase(size_t index);
@@ -916,6 +922,15 @@ protected:
 	void ApplyUnifiedProfileSnapshot(
 		const std::shared_ptr<const UnifiedProfileRuntime::Snapshot>& snapshot,
 		bool allowRestart);
+	bool ApplyShaderPreparationSnapshot(
+		const std::shared_ptr<const UnifiedProfileRuntime::Snapshot>& snapshot);
+	bool m_shaderPreparationActive = false;
+	bool m_shaderPreparationRestoring = false;
+	std::vector<std::shared_ptr<const UnifiedProfileRuntime::Snapshot>>
+		m_shaderPreparationSnapshots;
+	std::shared_ptr<const UnifiedProfileRuntime::Snapshot>
+		m_shaderPreparationOriginalSnapshot;
+	size_t m_shaderPreparationIndex = 0;
 	void ScheduleUnifiedProfileActions(
 		const std::vector<UnifiedProfileRuntime::ActionInvocation>& actions);
 	void PublishUnifiedProfileEvent(const std::string& event,

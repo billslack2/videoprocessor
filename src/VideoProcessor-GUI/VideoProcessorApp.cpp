@@ -19,13 +19,21 @@
 #include <DisplayTopologySession.h>
 #include <MainConfigSchema.h>
 #include <RendererProfileConfig.h>
+#include <UnifiedProfileRuntime.h>
+#include <StateVariables.h>
+#include <vprenderer/LibplaceboPluginVideoRenderer.h>
 #include <ApplicationInterface.h>
+#include <ConfigurationLiveApply.h>
 #include <DeckLinkAPI_h.h>
 #include <DeckLinkAPIVersion.h>
 
 #include <d3d11.h>
 #include <dxgi1_6.h>
 #include <intrin.h>
+#include <atomic>
+#include <chrono>
+#include <fstream>
+#include <thread>
 
 #include "VideoProcessorApp.h"
 using namespace std;
@@ -43,6 +51,177 @@ CVideoProcessorApp videoProcessorApp;
 
 namespace
 {
+struct ShaderPreparationCallback final : IRendererCallback
+{
+	std::atomic<RendererState> state{ RendererState::RENDERSTATE_UNKNOWN };
+	void OnRendererState(RendererState value) override { state.store(value); }
+	void OnRendererDetailString(const CString&) override {}
+};
+
+struct SyntheticFrameBuffer final : IUnknown
+{
+	std::atomic<ULONG> references{ 0 };
+	HRESULT STDMETHODCALLTYPE QueryInterface(REFIID, void** value) override
+	{
+		if (value) *value = nullptr;
+		return E_NOINTERFACE;
+	}
+	ULONG STDMETHODCALLTYPE AddRef() override { return ++references; }
+	ULONG STDMETHODCALLTYPE Release() override { return --references; }
+};
+
+void WriteShaderPreparationStatus(const std::string& configPath,
+	const char* state, size_t current, size_t total, const char* message)
+{
+	if (configPath.empty()) return;
+	const size_t separator = configPath.find_last_of("\\/");
+	if (separator == std::string::npos) return;
+	const std::string directory = configPath.substr(0, separator) +
+		"\\vprenderer";
+	if (!::CreateDirectoryA(directory.c_str(), nullptr) &&
+		::GetLastError() != ERROR_ALREADY_EXISTS) return;
+	const std::string path = directory + "\\" +
+		ConfigurationLiveApply::ShaderPreparationStatusFileNameA;
+	const std::string temporary = path + ".tmp";
+	{
+		std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
+		if (!output) return;
+		output << "state=" << state << "\ncurrent=" << current
+			<< "\ntotal=" << total << "\nmessage=" << message << "\n";
+	}
+	::MoveFileExA(temporary.c_str(), path.c_str(),
+		MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH);
+}
+
+int RunNonCapturingShaderPreparation()
+{
+	ConfigFile config;
+	if (!config.Load()) return 1;
+	const std::string configPath = config.GetLoadedPath();
+	WriteShaderPreparationStatus(configPath, "preparing", 0, 0,
+		"Starting non-capturing shader preparation...");
+	if (!LibplaceboPluginVideoRenderer::IsAvailable())
+	{
+		WriteShaderPreparationStatus(configPath, "failed", 0, 0,
+			"VP Renderer is unavailable.");
+		return 1;
+	}
+
+	VideoStateComPtr videoState = new VideoState;
+	videoState->valid = true;
+	videoState->displayMode = std::make_shared<DisplayMode>(
+		3840, 2160, false, 60000, 1001);
+	videoState->videoFrameEncoding = VideoFrameEncoding::V210;
+	videoState->eotf = EOTF::SDR;
+	videoState->colorspace = ColorSpace::REC_709;
+	videoState->hdrData = std::make_shared<HDRData>();
+
+	UnifiedProfileRuntime::Runtime runtime;
+	std::string error;
+	if (!runtime.Initialize(config, StateVariables::VideoStateLookup(videoState),
+		error) || !runtime.GetSnapshot())
+	{
+		WriteShaderPreparationStatus(configPath, "failed", 0, 0,
+			"Rendering profiles could not be loaded.");
+		return 1;
+	}
+	const auto original = runtime.GetSnapshot();
+	std::vector<std::string> profiles;
+	for (const std::string& section : config.GetSectionNames())
+	{
+		std::string profile;
+		if (section.rfind("vprenderer.", 0) == 0 &&
+			section.rfind("vprenderer.output.", 0) != 0 &&
+			section != "vprenderer.input_processing")
+			profile = ConfigFile::NormalizeName(section.substr(11));
+		else if (section.rfind("profiles.display.", 0) == 0)
+			profile = ConfigFile::NormalizeName(section.substr(17));
+		if (!profile.empty() &&
+			std::find(profiles.begin(), profiles.end(), profile) == profiles.end())
+			profiles.push_back(profile);
+	}
+
+	HWND target = ::CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
+		L"STATIC", L"VideoProcessor Shader Preparation", WS_POPUP,
+		-32000, -32000, 3840, 2160, nullptr, nullptr,
+		AfxGetInstanceHandle(), nullptr);
+	if (!target)
+	{
+		WriteShaderPreparationStatus(configPath, "failed", 0, profiles.size(),
+			"Shader preparation could not create a rendering target.");
+		return 1;
+	}
+	::ShowWindow(target, SW_SHOWNOACTIVATE);
+
+	int result = 1;
+	try
+	{
+		ShaderPreparationCallback callback;
+		LibplaceboPluginVideoRenderer renderer(callback, target, nullptr,
+			false, 1, VideoConversionOverride::VIDEOCONVERSION_NONE);
+		renderer.SetNonCapturingPreparationMode(true);
+		renderer.OnVideoState(videoState);
+		renderer.Build();
+		renderer.Start();
+		for (int attempt = 0; attempt < 200 &&
+			callback.state.load() != RendererState::RENDERSTATE_RENDERING;
+			++attempt)
+			std::this_thread::sleep_for(std::chrono::milliseconds(25));
+		if (callback.state.load() != RendererState::RENDERSTATE_RENDERING)
+			throw std::runtime_error("VP Renderer did not start");
+
+		std::vector<uint8_t> frameBytes(videoState->BytesPerFrame(), 0);
+		std::vector<std::unique_ptr<SyntheticFrameBuffer>> sourceBuffers;
+		uint64_t frameCounter = 1;
+		for (size_t index = 0; index < profiles.size(); ++index)
+		{
+			char message[128] = {};
+			sprintf_s(message, "Preparing shaders %zu of %zu...", index + 1,
+				profiles.size());
+			WriteShaderPreparationStatus(configPath, "preparing", index + 1,
+				profiles.size(), message);
+			auto candidate =
+				std::make_shared<UnifiedProfileRuntime::Snapshot>(*original);
+			candidate->generation = original->generation + index + 1;
+			candidate->manualSelections["display"] = profiles[index];
+			candidate->effectiveSelections["display"] = profiles[index];
+			CString active;
+			bool restart = false;
+			bool liveReset = false;
+			if (!renderer.ApplyApplicationState(*candidate, active, restart,
+				liveReset) || restart)
+				throw std::runtime_error("rendering profile was not accepted");
+			if (liveReset) renderer.ResetLiveQueue();
+			const uint64_t presentedBefore = renderer.PresentedFrameCount();
+			sourceBuffers.emplace_back(new SyntheticFrameBuffer);
+			VideoFrame frame(frameBytes.data(), frameCounter++, 0,
+				sourceBuffers.back().get());
+			renderer.OnVideoFrame(frame);
+			for (int attempt = 0; attempt < 1200 &&
+				renderer.PresentedFrameCount() == presentedBefore; ++attempt)
+				std::this_thread::sleep_for(std::chrono::milliseconds(10));
+			if (renderer.PresentedFrameCount() == presentedBefore)
+				throw std::runtime_error("shader preparation frame timed out");
+		}
+		if (!renderer.PersistShaderCache())
+			throw std::runtime_error("shader cache could not be saved");
+		renderer.Stop();
+		renderer.Retire();
+		WriteShaderPreparationStatus(configPath, "ready", profiles.size(),
+			profiles.size(), "Shaders ready");
+		result = 0;
+	}
+	catch (const std::exception& exception)
+	{
+		DebugLog::Log("Non-capturing shader preparation failed: %s",
+			exception.what());
+		WriteShaderPreparationStatus(configPath, "failed", 0, profiles.size(),
+			"Shader preparation incomplete");
+	}
+	::DestroyWindow(target);
+	return result;
+}
+
 std::wstring CpuBrand()
 {
 	int registers[4] = {};
@@ -306,6 +485,9 @@ Options:
 
   /noui
       Hide the user interface; show video only.
+
+  /prepare_shaders
+      Prepare VP Renderer shader variants without starting capture or showing UI.
 
   /startminimized
       Start the application minimized.
@@ -1316,6 +1498,7 @@ BOOL CVideoProcessorApp::InitInstance()
 
 	bool helpRequested = false;
 	bool fixDisplayRequested = false;
+	bool shaderPreparationRequested = false;
 	for (int i = 1; i < argumentCount; ++i)
 	{
 		if (IsHelpArgument(arguments[i]))
@@ -1327,6 +1510,10 @@ BOOL CVideoProcessorApp::InitInstance()
 			IsCommandLineOption(arguments[i], L"-fix_display") ||
 			IsCommandLineOption(arguments[i], L"--fix_display"))
 			fixDisplayRequested = true;
+		if (IsCommandLineOption(arguments[i], L"/prepare_shaders") ||
+			IsCommandLineOption(arguments[i], L"-prepare_shaders") ||
+			IsCommandLineOption(arguments[i], L"--prepare_shaders"))
+			shaderPreparationRequested = true;
 	}
 	LocalFree(arguments);
 
@@ -1346,6 +1533,27 @@ BOOL CVideoProcessorApp::InitInstance()
 			debugLogRetention.diagnostic,
 			LoadEnhancedLoggingEnabled());
 		LogStartupPlatformInventory();
+	}
+
+	if (shaderPreparationRequested)
+	{
+		if (!CWinAppEx::InitInstance())
+		{
+			m_startupExitCode = 1;
+			DEBUGLOG_SHUTDOWN();
+			return FALSE;
+		}
+		const HRESULT comResult = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+		if (FAILED(comResult))
+			m_startupExitCode = 1;
+		else
+		{
+			ValidateRendererConfigRules();
+			m_startupExitCode = RunNonCapturingShaderPreparation();
+			CoUninitialize();
+		}
+		DEBUGLOG_SHUTDOWN();
+		return FALSE;
 	}
 
 	m_displayRecoveryStatePath = CurrentStatePath();

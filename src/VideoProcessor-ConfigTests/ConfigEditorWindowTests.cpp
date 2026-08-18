@@ -396,7 +396,7 @@ void testEveryPageRoundTrips()
 
     QStackedWidget* pages = requireControl<QStackedWidget>(window,
         QStringLiteral("settingsPages"));
-    require(pages->count() == 14,
+    require(pages->count() == 15,
         "Renderer Output, Input, and shader child pages were not added as dedicated settings pages");
     for (QPushButton* button : window.findChildren<QPushButton*>())
         require(!button->property("navChild").toBool(),
@@ -431,7 +431,8 @@ void testEveryPageRoundTrips()
     require(shadersNavigation && vpRenderer && directShow,
         "A grouped settings parent is missing from the left navigation");
     shadersNavigation->click();
-    requireTabs({ QStringLiteral("Standard"), QStringLiteral("NLS") });
+    requireTabs({ QStringLiteral("Setup"), QStringLiteral("Standard"),
+        QStringLiteral("NLS") });
     vpRenderer->click();
     requireTabs({ QStringLiteral("Rendering"), QStringLiteral("Output"),
         QStringLiteral("Screen Config"),
@@ -660,14 +661,15 @@ void testEveryPageRoundTrips()
         QStringLiteral("config.shader.nls.glsl_file"))->text() == QStringLiteral("NLSPlus.glsl"),
         "NLS+ did not retain its VP Renderer implementation");
 
-    window.selectPage(8);
+    window.selectPage(14);
     QTabBar* shaderSections = requireControl<QTabBar>(window,
         QStringLiteral("settingsSectionTabs"));
-    require(shaderSections->count() == 2 &&
-        shaderSections->tabText(0) == QStringLiteral("Standard") &&
-        shaderSections->tabText(1) == QStringLiteral("NLS") &&
+    require(shaderSections->count() == 3 &&
+        shaderSections->tabText(0) == QStringLiteral("Setup") &&
+        shaderSections->tabText(1) == QStringLiteral("Standard") &&
+        shaderSections->tabText(2) == QStringLiteral("NLS") &&
         shaderSections->currentIndex() == 0,
-        "Shaders page does not separate Standard and NLS in the requested order");
+        "Shaders page does not separate Setup, Standard, and NLS in the requested order");
     const QString cacheDirectoryPath = directory.filePath(QStringLiteral("vprenderer"));
     require(QDir().mkpath(cacheDirectoryPath),
         "Cannot create the shader-cache test directory");
@@ -902,12 +904,14 @@ void testRendererSectionTabsRemainSynchronizedDuringRapidClicks()
         "DirectShow child page lost its parent navigation selection");
 
     window.selectPage(8);
-    requireTabs({ QStringLiteral("Standard"), QStringLiteral("NLS") });
+    requireTabs({ QStringLiteral("Setup"), QStringLiteral("Standard"),
+        QStringLiteral("NLS") });
     runSequence({
-        { 1, 9, "NLS", "config.shader.nls.modes" },
-        { 0, 8, "Standard", "config.shader.standard.items" },
-        { 1, 9, "NLS", "config.shader.nls.modes" },
-        { 0, 8, "Standard", "config.shader.standard.items" }
+        { 2, 9, "NLS", "config.shader.nls.modes" },
+        { 1, 8, "Standard", "config.shader.standard.items" },
+        { 0, 14, "Shaders", "config.shader.prepare" },
+        { 2, 9, "NLS", "config.shader.nls.modes" },
+        { 1, 8, "Standard", "config.shader.standard.items" }
     });
     require(navigationButton(QStringLiteral("Shaders")) &&
         navigationButton(QStringLiteral("Shaders"))->isChecked(),
@@ -924,9 +928,10 @@ void testEmptyStandardShadersCanCreateFirstShader()
     window.selectPage(8);
     QTabBar* shaderSections = requireControl<QTabBar>(window,
         QStringLiteral("settingsSectionTabs"));
-    require(shaderSections->tabText(0) == QStringLiteral("Standard") &&
-        shaderSections->currentIndex() == 0,
-        "Standard is not the first shader section");
+    require(shaderSections->tabText(0) == QStringLiteral("Setup") &&
+        shaderSections->tabText(1) == QStringLiteral("Standard") &&
+        shaderSections->currentIndex() == 1,
+        "Standard shader editing is not the selected shader section");
     window.show();
     QCoreApplication::processEvents();
     QListWidget* standardShaders = requireControl<QListWidget>(window,

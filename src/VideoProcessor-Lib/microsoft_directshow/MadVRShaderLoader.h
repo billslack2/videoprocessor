@@ -145,6 +145,9 @@ public:
 	static bool GetConfiguredNlsPrewarmRules(
 		std::vector<ConfiguredShaderRule>& rules,
 		std::string& reason);
+	static bool ResolveConfiguredNlsPrewarmRules(const ConfigFile& config,
+		std::vector<ConfiguredShaderRule>& rules,
+		std::string& reason);
 	static bool IsShaderFilenameCompatible(const std::string& filename,
 		ShaderRendererBackend backend);
 	// Resolves one shader filename under <executable>\shaders. Directory

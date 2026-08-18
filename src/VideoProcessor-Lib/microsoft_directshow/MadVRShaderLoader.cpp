@@ -2875,10 +2875,43 @@ bool MadVRShaderLoader::GetConfiguredNlsPrewarmRules(
 	std::vector<ConfiguredShaderRule>& rules,
 	std::string& reason)
 {
+	ConfigFile config;
+	if (!config.Load())
+	{
+		reason = "shader configuration is unavailable";
+		return false;
+	}
+	return ResolveConfiguredNlsPrewarmRules(config, rules, reason);
+}
+
+
+bool MadVRShaderLoader::ResolveConfiguredNlsPrewarmRules(
+	const ConfigFile& config, std::vector<ConfiguredShaderRule>& rules,
+	std::string& reason)
+{
 	rules.clear();
 	reason.clear();
-	ConfigFile config;
-	if (!config.Load() || !config.HasSection(CONFIG_SECTION))
+	if (IsTargetShaderConfiguration(config))
+	{
+		for (const std::string& section : config.GetSectionNames())
+		{
+			constexpr const char* prefix = "shader.";
+			if (section.rfind(prefix, 0) != 0) continue;
+			ShaderRule rule = LoadTargetRule(config,
+				section.substr(std::char_traits<char>::length(prefix)),
+				ShaderRendererBackend::LIBPLACEBO);
+			if (rule.valid && rule.nls &&
+				RuleAppliesToBackend(rule, ShaderRendererBackend::LIBPLACEBO))
+				rules.push_back(ToConfiguredShaderRule(rule));
+		}
+		if (rules.empty())
+		{
+			reason = "no Alpha-compatible NLS rules are configured";
+			return false;
+		}
+		return true;
+	}
+	if (!config.HasSection(CONFIG_SECTION))
 	{
 		reason = "shader configuration is unavailable";
 		return false;
