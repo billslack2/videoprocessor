@@ -2,15 +2,24 @@
 
 ## Status
 
-In progress (2026-08-17). `CONFIGURATION.html` is a comprehensive public-field
-reference, but it still teaches configuration primarily as hand-edited text.
-The standalone configuration editor now exposes the supported workflow in a
-safer, discoverable UI and should become the primary path presented to users.
+Review (2026-08-18). The UI-first guide is implemented from canonical Markdown
+and publishes matching offline HTML and PDF editions. A separate senior writer,
+UI evidence specialist, and independent senior documentation reviewer produced
+and reviewed the content. The active configuration was not modified.
 
-The expanded deliverable requested at implementation start uses one editable
-Markdown source and publishes both offline HTML and PDF editions. Content and
-screenshots are being produced by separate senior documentation roles and will
-receive an independent senior documentation review before acceptance.
+## Review evidence
+
+- Source baseline: default integration branch `v1.2.001-beta`, commit `59e6344`.
+- Sanitized deterministic fixture derived from the latest active configuration.
+- 25 owned screenshots cover every page, expanded controls, active-versus-selected,
+  and clean/validation/live/restart/next-start footer states.
+- `tools/build_configuration_docs.py --check` validates HTML freshness, required
+  screenshot coverage, anchors, and an HTML/PDF SHA-256 provenance record.
+- Final PDF: 82 rendered and visually inspected pages, no blank pages, 448 link
+  annotations, clickable narrative/reference destinations, and correct metadata.
+- `ConfigurationReferenceMatchesPublicFieldInventory` passes in x64 Release.
+- Release packaging stages and verifies 83 immutable files, including identical
+  HTML/PDF copies and all 25 offline assets; the active config is untouched.
 
 ## User story
 
