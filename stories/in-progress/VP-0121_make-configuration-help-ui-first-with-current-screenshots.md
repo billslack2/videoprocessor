@@ -2,10 +2,15 @@
 
 ## Status
 
-Backlog (2026-08-11). `CONFIGURATION.html` is a comprehensive public-field
+In progress (2026-08-17). `CONFIGURATION.html` is a comprehensive public-field
 reference, but it still teaches configuration primarily as hand-edited text.
 The standalone configuration editor now exposes the supported workflow in a
 safer, discoverable UI and should become the primary path presented to users.
+
+The expanded deliverable requested at implementation start uses one editable
+Markdown source and publishes both offline HTML and PDF editions. Content and
+screenshots are being produced by separate senior documentation roles and will
+receive an independent senior documentation review before acceptance.
 
 ## User story
 
@@ -16,7 +21,8 @@ schema, while still having an exact field reference when I need it.
 
 ## Documentation strategy
 
-Keep one canonical `CONFIGURATION.html`, with two complementary layers:
+Keep one canonical Markdown source, published as `CONFIGURATION.html` and a
+matching PDF, with two complementary layers:
 
 1. **UI guide:** task-oriented explanations and current screenshots for normal
    operators.
@@ -123,6 +129,9 @@ change cannot silently erase configuration semantics.
 - Documentation tests check every referenced image exists in both source and
   staged Release output, every image has nonempty alt text, internal anchors are
   valid, and the public-field inventory still matches the reference.
+- The Markdown source is the editable authority, and generated HTML and PDF
+  preserve its content, screenshots, navigation, links, and field-reference
+  coverage without requiring hand edits to either published format.
 - The HTML is reviewed offline at normal and narrow widths, and screenshots are
   checked at 100% and 150% display scaling for readability rather than clipping.
 - A clean x64 Release build packages the updated HTML and image assets, and the
@@ -144,4 +153,3 @@ change cannot silently erase configuration semantics.
 - VP-0097: safe standalone configuration editor and its structured pages.
 - VP-0112/VP-0116: active profile and active shader presentation.
 - VP-0113: current Screen Config and unit-field layout.
-
