@@ -3436,7 +3436,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             outputPathProfile, updateOutputCompatibility](const QString& profile)
         {
             if (state->loading || state->section.isEmpty() || !document_ ||
-                profile == QStringLiteral("custom")) return;
+                profile.isEmpty() || profile == QStringLiteral("custom")) return;
             struct Value { const char* key; const char* value; };
 		static constexpr Value legacy[] = {
 				{ "diagnostic_allow_limited_g22", "false" },

@@ -1578,6 +1578,31 @@ void testOutputExperimentsPersistAndRestoreDefaults()
         "Restored normal diagnostics changed ordinary output or calibration settings");
 }
 
+void testOutputDiagnosticPresetCanInherit()
+{
+    QTemporaryDir directory;
+    const QString path = copyFixture(directory);
+    ConfigEditorWindow window(path, 0, true);
+    window.selectPage(13);
+    window.show();
+    QCoreApplication::processEvents();
+
+    requireControl<QPushButton>(window,
+        QStringLiteral("config.vprenderer.output.add_profile"))->click();
+    QCoreApplication::processEvents();
+    QComboBox* outputPathProfile = requireControl<QComboBox>(window,
+        QStringLiteral("config.vprenderer.output.output_path_profile"));
+    selectData(outputPathProfile, QStringLiteral("proposed"));
+    outputPathProfile->setCurrentIndex(0);
+    save(window);
+
+    const QByteArray configured = readBytes(path);
+    require(!configured.contains("output_path_profile: \n") &&
+        !configured.contains("output_path_profile:\n") &&
+        !configured.contains("output_path_profile:\r\n"),
+        "Selecting inherited diagnostics persisted an invalid empty output-path profile");
+}
+
 void testScreenConfigSectionsAndInlineUnits()
 {
     QTemporaryDir directory;
@@ -3758,6 +3783,8 @@ int main(int argc, char** argv)
     failures += run("renderer profile sections collapse and persist", testRendererProfileSectionsCollapseAndPersist);
     failures += run("output experiments persist and restore defaults",
         testOutputExperimentsPersistAndRestoreDefaults);
+    failures += run("output diagnostic preset can inherit",
+        testOutputDiagnosticPresetCanInherit);
     failures += run("Screen Config sections and inline units", testScreenConfigSectionsAndInlineUnits);
     failures += run("queue units and LUT controls use consistent rows",
         testQueueUnitsAndLutControlsUseConsistentRows);
