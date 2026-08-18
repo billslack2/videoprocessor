@@ -15,6 +15,7 @@ namespace ConfigurationApplyPolicy
 		SaveOnly,
 		ReloadShortcuts,
 		ResetQueues,
+		ApplyProfiles,
 		RestartRenderer,
 		RestartCapture
 	};
@@ -77,13 +78,13 @@ namespace ConfigurationApplyPolicy
 	// makes each test equivalent to a fresh capture/render initialization.
 	inline bool IsOutputExperimentChange(const Change& change)
 	{
-		if (!HasPrefix(NormalizeSection(change.section), "vprenderer"))
+		if (!HasPrefix(NormalizeSection(change.section), "vprenderer.output"))
 			return false;
 		const std::string key = NormalizeSection(change.key);
 		return key == "output_path_profile" ||
 			key == "output_presentation" ||
 			key == "output_range" ||
-			key == "output_gamma" ||
+			key == "output_transport_gamma" ||
 			key == "output_diagnostics" ||
 			key == "diagnostic_allow_limited_g22" ||
 			key == "diagnostic_allow_full_g22" ||
@@ -91,6 +92,16 @@ namespace ConfigurationApplyPolicy
 			key == "diagnostic_force_8bit_sdr_swapchain" ||
 			key == "diagnostic_vp_owned_dxgi_presenter" ||
 			key == "diagnostic_disable_shader_cache";
+	}
+
+	inline bool IsRenderingProfileSection(const std::string& rawSection)
+	{
+		const std::string section = NormalizeSection(rawSection);
+		if (section == "vprenderer") return true;
+		constexpr const char* prefix = "vprenderer.";
+		if (section.rfind(prefix, 0) != 0) return false;
+		return section.find('.', std::char_traits<char>::length(prefix)) ==
+			std::string::npos;
 	}
 
 	inline Action ClassifySection(const std::string& section,
@@ -115,6 +126,10 @@ namespace ConfigurationApplyPolicy
 		if (HasPrefix(normalized, "directshow"))
 			return directShowRendererActive ? Action::RestartRenderer :
 				Action::SaveOnly;
+		if (HasPrefix(normalized, "vprenderer.output"))
+			return Action::RestartCapture;
+		if (IsRenderingProfileSection(normalized))
+			return Action::ApplyProfiles;
 
 		// Every known renderer, input, profile, shader, LLDV, presentation, and
 		// completed-event action section follows the coherent renderer-restart
@@ -183,6 +198,7 @@ namespace ConfigurationApplyPolicy
 		case Action::RestartCapture: return "Restart capture";
 		case Action::RestartRenderer: return "Restart renderer";
 		case Action::ResetQueues: return "Reset queues";
+		case Action::ApplyProfiles: return "Apply rendering live";
 		case Action::ReloadShortcuts: return "Apply shortcuts live";
 		default: return "Takes effect next start";
 		}

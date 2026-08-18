@@ -209,10 +209,12 @@ public:
 	// backends consume this state but never resolve keys or persist profiles.
 	virtual bool ApplyApplicationState(
 		const UnifiedProfileRuntime::Snapshot& snapshot,
-		CString& activeState, bool& rendererRestartRequired)
+		CString& activeState, bool& rendererRestartRequired,
+		bool& liveResetRequired)
 	{
 		activeState.Empty();
 		rendererRestartRequired = false;
+		liveResetRequired = false;
 		return false;
 	}
 	// Select a named renderer display profile, or "auto" to return to the

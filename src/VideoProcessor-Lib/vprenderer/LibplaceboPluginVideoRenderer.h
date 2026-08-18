@@ -65,7 +65,8 @@ public:
 	CString ActiveShaderRule() const override;
 	bool ApplyApplicationState(const UnifiedProfileRuntime::Snapshot& snapshot,
 		CString& activeState,
-		bool& rendererRestartRequired) override;
+		bool& rendererRestartRequired,
+		bool& liveResetRequired) override;
 	size_t GetFrameQueueSize() override;
 	double EntryLatencyMs() const override;
 	double ExitLatencyMs() const override;

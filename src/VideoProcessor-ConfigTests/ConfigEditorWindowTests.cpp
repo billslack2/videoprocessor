@@ -396,8 +396,8 @@ void testEveryPageRoundTrips()
 
     QStackedWidget* pages = requireControl<QStackedWidget>(window,
         QStringLiteral("settingsPages"));
-    require(pages->count() == 13,
-        "Renderer Input and shader child pages were not added as dedicated settings pages");
+    require(pages->count() == 14,
+        "Renderer Output, Input, and shader child pages were not added as dedicated settings pages");
     for (QPushButton* button : window.findChildren<QPushButton*>())
         require(!button->property("navChild").toBool(),
             "Grouped settings still expose child entries in the left navigation");
@@ -433,7 +433,8 @@ void testEveryPageRoundTrips()
     shadersNavigation->click();
     requireTabs({ QStringLiteral("Standard"), QStringLiteral("NLS") });
     vpRenderer->click();
-    requireTabs({ QStringLiteral("Rendering"), QStringLiteral("Screen Config"),
+    requireTabs({ QStringLiteral("Rendering"), QStringLiteral("Output"),
+        QStringLiteral("Screen Config"),
         QStringLiteral("Input Processing") });
     directShow->click();
     requireTabs({ QStringLiteral("General"), QStringLiteral("Input Processing") });
@@ -872,14 +873,16 @@ void testRendererSectionTabsRemainSynchronizedDuringRapidClicks()
         }
     };
 
-    requireTabs({ QStringLiteral("Rendering"), QStringLiteral("Screen Config"),
+    requireTabs({ QStringLiteral("Rendering"), QStringLiteral("Output"),
+        QStringLiteral("Screen Config"),
         QStringLiteral("Input Processing") });
     runSequence({
-        { 1, 4, "Screen Config", "config.vprenderer.viewport.profiles" },
-        { 2, 11, "Input processing", "config.vprenderer.input_processing.video_conversion" },
+        { 1, 13, "Output", "config.vprenderer.output.profiles" },
+        { 2, 4, "Screen Config", "config.vprenderer.viewport.profiles" },
+        { 3, 11, "Input processing", "config.vprenderer.input_processing.video_conversion" },
         { 0, 2, "Rendering", "config.vprenderer.profiles" },
-        { 2, 11, "Input processing", "config.vprenderer.input_processing.video_conversion" },
-        { 1, 4, "Screen Config", "config.vprenderer.viewport.profiles" },
+        { 3, 11, "Input processing", "config.vprenderer.input_processing.video_conversion" },
+        { 2, 4, "Screen Config", "config.vprenderer.viewport.profiles" },
         { 0, 2, "Rendering", "config.vprenderer.profiles" }
     });
     require(navigationButton(QStringLiteral("VP Renderer")) &&
@@ -1371,6 +1374,12 @@ void testRendererProfileSectionsCollapseAndPersist()
     require(window.findChild<QComboBox*>(
         QStringLiteral("config.vprenderer.deband")) == nullptr,
         "The overlapping legacy debanding toggle is still exposed");
+    QStackedWidget* pages = requireControl<QStackedWidget>(window,
+        QStringLiteral("settingsPages"));
+    require(pages->widget(2)->findChild<QToolButton*>(
+        QStringLiteral("rendererSection.outputExperiments")) == nullptr,
+        "Output experiments are still owned by Rendering");
+    window.selectPage(13);
     QToolButton* outputExperiments = requireControl<QToolButton>(window,
         QStringLiteral("rendererSection.outputExperiments"));
     require(!outputExperiments->isChecked(),
@@ -1380,18 +1389,18 @@ void testRendererProfileSectionsCollapseAndPersist()
     require(!advancedOutput->isChecked(),
         "Advanced output was expanded initially");
     QCheckBox* vpOwnedPresenter = requireControl<QCheckBox>(window,
-        QStringLiteral("config.vprenderer.diagnostic_vp_owned_dxgi_presenter"));
+        QStringLiteral("config.vprenderer.output.diagnostic_vp_owned_dxgi_presenter"));
     require(requireControl<QCheckBox>(window,
-        QStringLiteral("config.vprenderer.output_diagnostics")) &&
+        QStringLiteral("config.vprenderer.output.output_diagnostics")) &&
         requireControl<QCheckBox>(window,
-        QStringLiteral("config.vprenderer.diagnostic_disable_shader_cache")) &&
+        QStringLiteral("config.vprenderer.output.diagnostic_disable_shader_cache")) &&
         requireControl<QCheckBox>(window,
-        QStringLiteral("config.vprenderer.diagnostic_disable_compute")) &&
+        QStringLiteral("config.vprenderer.output.diagnostic_disable_compute")) &&
         requireControl<QCheckBox>(window,
-        QStringLiteral("config.vprenderer.diagnostic_force_8bit_sdr_swapchain")) &&
+        QStringLiteral("config.vprenderer.output.diagnostic_force_8bit_sdr_swapchain")) &&
         vpOwnedPresenter &&
         requireControl<QCheckBox>(window,
-        QStringLiteral("config.vprenderer.diagnostic_allow_limited_g22")),
+        QStringLiteral("config.vprenderer.output.diagnostic_allow_limited_g22")),
         "Output experiment controls are missing from the editor");
     require(vpOwnedPresenter->accessibleName() ==
         QStringLiteral("Force VP-owned DXGI presenter (flip only, beta)"),
@@ -1403,15 +1412,15 @@ void testRendererProfileSectionsCollapseAndPersist()
         QStringLiteral("config.vprenderer.output_gamma")),
         "The display-transfer control is not included in Display calibration");
     require(requireControl<QComboBox>(window,
-        QStringLiteral("config.vprenderer.output_presentation")) &&
+        QStringLiteral("config.vprenderer.output.output_presentation")) &&
         requireControl<QComboBox>(window,
-        QStringLiteral("config.vprenderer.output_range")),
+        QStringLiteral("config.vprenderer.output.output_range")) &&
+        requireControl<QComboBox>(window,
+        QStringLiteral("config.vprenderer.output.output_transport_gamma")),
         "The ordinary output controls are not included in Advanced output");
     require(requireControl<QComboBox>(window,
         QStringLiteral("config.vprenderer.quality")),
         "Rendering quality is not available at the top of the renderer profile");
-    QStackedWidget* pages = requireControl<QStackedWidget>(window,
-        QStringLiteral("settingsPages"));
     require(pages->widget(0)->findChild<QCheckBox*>(
         QStringLiteral("config.general.switch_refresh_rate")) != nullptr &&
         pages->widget(2)->findChild<QCheckBox*>(
@@ -1452,6 +1461,7 @@ void testRendererProfileSectionsCollapseAndPersist()
     require(!calibrationContent->isVisibleTo(&window),
         "Display calibration content is visible while collapsed");
 
+    window.selectPage(2);
     sourceColor->click();
     require(sourceColor->isChecked() && requireControl<QWidget>(window,
         QStringLiteral("rendererSection.sourceColor.content"))->isVisibleTo(&window),
@@ -1462,16 +1472,6 @@ void testRendererProfileSectionsCollapseAndPersist()
     QCoreApplication::processEvents();
     require(sourceColor->isChecked(),
         "Renderer section expansion state changed when selecting another profile");
-    QComboBox* outputPresentation = requireControl<QComboBox>(window,
-        QStringLiteral("config.vprenderer.output_presentation"));
-    QComboBox* outputRange = requireControl<QComboBox>(window,
-        QStringLiteral("config.vprenderer.output_range"));
-    require(outputPresentation->currentData().toString().isEmpty() &&
-        outputPresentation->currentText() == QStringLiteral("Inherited: Direct") &&
-        outputRange->currentData().toString().isEmpty() &&
-        outputRange->currentText() == QStringLiteral("Inherited: Full"),
-        "A secondary renderer profile does not expose inherited Advanced output values");
-
     // Selecting the canonical control must retire the compatibility toggle,
     // so saving cannot leave two conflicting debanding values in one profile.
     profiles->setCurrentRow(0);
@@ -1491,7 +1491,7 @@ void testOutputExperimentsPersistAndRestoreDefaults()
     QTemporaryDir directory;
     const QString path = copyFixture(directory);
     ConfigEditorWindow window(path, 0, true);
-    window.selectPage(2);
+    window.selectPage(13);
     window.show();
     QCoreApplication::processEvents();
 
@@ -1499,11 +1499,13 @@ void testOutputExperimentsPersistAndRestoreDefaults()
         QStringLiteral("rendererSection.outputExperiments"));
     section->click();
     QComboBox* outputPathProfile = requireControl<QComboBox>(window,
-        QStringLiteral("config.vprenderer.output_path_profile"));
+        QStringLiteral("config.vprenderer.output.output_path_profile"));
     QComboBox* outputPresentation = requireControl<QComboBox>(window,
-        QStringLiteral("config.vprenderer.output_presentation"));
+        QStringLiteral("config.vprenderer.output.output_presentation"));
     QComboBox* outputRange = requireControl<QComboBox>(window,
-        QStringLiteral("config.vprenderer.output_range"));
+        QStringLiteral("config.vprenderer.output.output_range"));
+    QComboBox* outputTransportGamma = requireControl<QComboBox>(window,
+        QStringLiteral("config.vprenderer.output.output_transport_gamma"));
     QComboBox* outputGamma = requireControl<QComboBox>(window,
         QStringLiteral("config.vprenderer.output_gamma"));
     const QString originalPresentation = outputPresentation->currentData().toString();
@@ -1515,16 +1517,16 @@ void testOutputExperimentsPersistAndRestoreDefaults()
         outputGamma->currentData().toString() == originalGamma,
         "Diagnostic preset changed an ordinary output or calibration control");
     QCheckBox* limitedG22 = requireControl<QCheckBox>(window,
-        QStringLiteral("config.vprenderer.diagnostic_allow_limited_g22"));
+        QStringLiteral("config.vprenderer.output.diagnostic_allow_limited_g22"));
     QCheckBox* noCompute = requireControl<QCheckBox>(window,
-        QStringLiteral("config.vprenderer.diagnostic_disable_compute"));
+        QStringLiteral("config.vprenderer.output.diagnostic_disable_compute"));
     QCheckBox* force8Bit = requireControl<QCheckBox>(window,
-        QStringLiteral("config.vprenderer.diagnostic_force_8bit_sdr_swapchain"));
+        QStringLiteral("config.vprenderer.output.diagnostic_force_8bit_sdr_swapchain"));
     QCheckBox* vpOwned = requireControl<QCheckBox>(window,
-        QStringLiteral("config.vprenderer.diagnostic_vp_owned_dxgi_presenter"));
+        QStringLiteral("config.vprenderer.output.diagnostic_vp_owned_dxgi_presenter"));
     selectData(outputPresentation, QStringLiteral("direct"));
     selectData(outputRange, QStringLiteral("limited"));
-    selectData(outputGamma, QStringLiteral("2.4"));
+    selectData(outputTransportGamma, QStringLiteral("2.4"));
     require(outputPathProfile->currentData().toString() == QStringLiteral("proposed"),
         "Editing ordinary output or display calibration changed the diagnostic preset");
     limitedG22->setChecked(true);
@@ -1539,13 +1541,13 @@ void testOutputExperimentsPersistAndRestoreDefaults()
         configured.contains("diagnostic_disable_compute: true") &&
         configured.contains("diagnostic_force_8bit_sdr_swapchain: true") &&
         configured.contains("diagnostic_vp_owned_dxgi_presenter: true") &&
-        configured.contains("output_gamma: 2.4") &&
+        configured.contains("output_transport_gamma: 2.4") &&
         configured.contains("output_path_profile: custom"),
         "Output experiment controls did not persist with the renderer profile");
 
     answerMessageBox(QMessageBox::Yes);
     requireControl<QPushButton>(window,
-        QStringLiteral("config.vprenderer.output_experiments.reset_defaults"))->click();
+        QStringLiteral("config.vprenderer.output.output_experiments.reset_defaults"))->click();
     require(!limitedG22->isChecked() && !noCompute->isChecked() &&
         !force8Bit->isChecked() && !vpOwned->isChecked(),
         "Restore Normal Diagnostics did not reset the output experiment controls");
@@ -1555,7 +1557,8 @@ void testOutputExperimentsPersistAndRestoreDefaults()
         QStringLiteral("direct"), Qt::CaseInsensitive) == 0 &&
         outputRange->currentData().toString().compare(
         QStringLiteral("limited"), Qt::CaseInsensitive) == 0 &&
-        outputGamma->currentData().toString() == QStringLiteral("2.4"),
+        outputTransportGamma->currentData().toString() == QStringLiteral("2.4") &&
+        outputGamma->currentData().toString() == originalGamma,
         "Restore Normal Diagnostics changed ordinary output or calibration controls");
     save(window);
     const QByteArray restored = readBytes(path);
@@ -1566,7 +1569,7 @@ void testOutputExperimentsPersistAndRestoreDefaults()
         restored.contains("output_path_profile: legacy") &&
         restored.toLower().contains("output_presentation: direct") &&
         restored.toLower().contains("output_range: limited") &&
-        restored.contains("output_gamma: 2.4"),
+        restored.contains("output_transport_gamma: 2.4"),
         "Restored normal diagnostics changed ordinary output or calibration settings");
 }
 
@@ -2182,9 +2185,9 @@ void testGeneralInputApplyPreservesBackendOverrides()
     const QString effectSummary = requireControl<QLabel>(window,
         QStringLiteral("configurationEffectSummary"))->text();
     const std::string effectFailure = QStringLiteral(
-        "General changes are not labelled as a renderer restart: %1")
+        "The legacy output migration is not labelled as a capture restart: %1")
         .arg(effectSummary).toStdString();
-    require(effectSummary.startsWith(QStringLiteral("Restart renderer:")),
+    require(effectSummary.startsWith(QStringLiteral("Restart capture:")),
         effectFailure.c_str());
     requireControl<QPushButton>(window, QStringLiteral("applyConfiguration"))->click();
     QCoreApplication::processEvents();

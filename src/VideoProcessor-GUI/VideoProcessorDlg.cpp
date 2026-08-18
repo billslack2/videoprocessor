@@ -390,6 +390,7 @@ const TCHAR* ToString(RendererResetReason reason)
 	case RendererResetReason::DisplayTransition: return TEXT("display-transition");
 	case RendererResetReason::Resize: return TEXT("resize");
 	case RendererResetReason::QueueSizeChange: return TEXT("queue-size-change");
+	case RendererResetReason::ProfileChange: return TEXT("profile-change");
 	case RendererResetReason::TimingOffsetChange: return TEXT("timing-offset-change");
 	case RendererResetReason::QueuePressure: return TEXT("queue-pressure");
 	case RendererResetReason::QueueCapacity: return TEXT("queue-capacity");
@@ -2638,6 +2639,7 @@ void CVideoProcessorDlg::ApplySavedConfiguration()
 		UpdateState();
 		break;
 	case ConfigurationApplyPolicy::Action::ResetQueues:
+	case ConfigurationApplyPolicy::Action::ApplyProfiles:
 	{
 		const bool replaceShortcuts = m_stagedShortcutsChanged;
 		if (PublishStagedConfiguration(replaceShortcuts))
@@ -4246,7 +4248,9 @@ bool CVideoProcessorDlg::PublishStagedConfiguration(bool replaceAccelerators)
 	ApplyUnifiedProfileSnapshot(result.snapshot ? result.snapshot :
 		m_profileRuntime.GetSnapshot(),
 		m_stagedConfigurationAction ==
-			ConfigurationApplyPolicy::Action::ResetQueues);
+			ConfigurationApplyPolicy::Action::ResetQueues ||
+		m_stagedConfigurationAction ==
+			ConfigurationApplyPolicy::Action::ApplyProfiles);
 	DebugLog::Log(
 		"Configuration publication complete: identity=%s action=%s shortcuts=%s",
 		m_stagedConfigurationIdentity.c_str(),
@@ -10040,8 +10044,9 @@ void CVideoProcessorDlg::ApplyUnifiedProfileSnapshot(
 
 	CString activeState;
 	bool rendererRestartRequired = false;
+	bool liveResetRequired = false;
 	if (!m_videoRenderer->ApplyApplicationState(
-		*snapshot, activeState, rendererRestartRequired))
+		*snapshot, activeState, rendererRestartRequired, liveResetRequired))
 		return;
 
 	DebugLog::Log("Applied unified profile state: %s",
@@ -10061,6 +10066,12 @@ void CVideoProcessorDlg::ApplyUnifiedProfileSnapshot(
 		m_postRendererStartRequiresGraph = false;
 		m_wantToRestartRenderer = true;
 		UpdateState();
+	}
+	else if (allowRestart && liveResetRequired)
+	{
+		DebugLog::Log(
+			"Rendering profile applied live; requesting cache-preserving queue reset");
+		RequestRendererReset(RendererResetReason::ProfileChange, false, 0);
 	}
 	else if (allowRestart && queuePolicyChanged)
 	{

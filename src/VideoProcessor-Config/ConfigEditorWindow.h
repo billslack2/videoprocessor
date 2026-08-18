@@ -62,6 +62,7 @@ private:
     QWidget* createStartupPage();
     QWidget* createQueuePage();
     QWidget* createRendererPage();
+    QWidget* createOutputPage();
     QWidget* createDirectShowPage();
     QWidget* createInputProcessingPage(const QString& title, const QString& description,
         const QString& section);

@@ -923,6 +923,9 @@ namespace
 		std::string displayBitDepth = "auto";
 		std::string outputPresentation = "auto";
 		std::string outputRange = "auto";
+		// Limited-range DXGI declarations are output-path policy, independent of
+		// the calibrated display transfer selected by a rendering profile.
+		std::string outputTransportGamma = "auto";
 		std::string outputGamma = "auto";
 		std::string sdrTargetPrimaries = "rec709";
 		bool reportBt2020ToDisplay = false;
@@ -994,7 +997,8 @@ namespace
 			<< static_cast<int>(settings.dithering) << '|'
 			<< settings.displayBitDepth << '|'
 			<< settings.outputPresentation << '|' << settings.outputRange << '|'
-			<< settings.outputGamma << '|' << settings.sdrTargetPrimaries << '|'
+			<< settings.outputTransportGamma << '|' << settings.outputGamma << '|'
+			<< settings.sdrTargetPrimaries << '|'
 			<< settings.reportBt2020ToDisplay << '|' << settings.sdrInputTransfer << '|'
 			<< settings.sdrAdjustGamma << '|'
 			<< settings.outputDiagnostics << '|' << settings.diagnosticDisableShaderCache << '|'
@@ -1200,8 +1204,9 @@ namespace
 						"vprenderer" :
 						(group.name == "input" ? "vprenderer.input" :
 							(group.name == "scaling" ? "vprenderer.scaling" :
-								(group.name == "viewport" ? "vprenderer.viewport" :
-									group.name)));
+								(group.name == "output" ? "vprenderer.output" :
+									(group.name == "viewport" ? "vprenderer.viewport" :
+										group.name))));
 					if (!config.HasSection(root) &&
 						group.defaultSelection != "base")
 					{
@@ -1608,9 +1613,11 @@ namespace
 		readChoice("output_presentation", settings.outputPresentation,
 			{ "auto", "composed", "direct" });
 		readChoice("output_range", settings.outputRange, { "auto", "full", "limited" });
+		readChoice("output_transport_gamma", settings.outputTransportGamma,
+			{ "auto", "2.2", "2.4" });
 		readChoice("output_gamma", settings.outputGamma, { "auto", "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" });
-		// Output Experiments live in the selected display profile, alongside the
-		// transport choices above.  Leaving these booleans out meant that the UI
+		// Output transport and experiments live in their own selected profile.
+		// Leaving these booleans out meant that the UI
 		// persisted them but the renderer silently used its false defaults.  In
 		// particular, Proposed never activated its VP-owned presenter or its
 		// Limited/G22 diagnostic path.
@@ -1885,6 +1892,9 @@ namespace
 			{ "auto", "composed", "direct" });
 		settings.outputRange = ReadChoice(
 			config, "output_range", "auto", { "auto", "full", "limited" });
+		settings.outputTransportGamma = ReadChoice(
+			config, "output_transport_gamma", "auto",
+			{ "auto", "2.2", "2.4" });
 		settings.outputGamma = ReadChoice(
 			config, "output_gamma", "auto",
 			{ "auto", "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" });
@@ -3926,7 +3936,7 @@ struct LibplaceboVideoRenderer::Impl
 			projection.renderParams.dither_params ? &ditherParams : nullptr;
 
 		DebugLog::Log(
-			"libplacebo settings: quality=%s tone_mapping=%s gamut_mapping=%s peak_detection=%s contrast_recovery=%.2f upscaler=%s downscaler=%s deband=%s dithering=%s display_bit_depth=%s output_presentation=%s output_range=%s output_gamma=%s sdr_input_transfer=%s sdr_adjust_gamma=%s target=%.1f nits black=%.3f profile_update_mode=%s output_diagnostics=%d diagnostic_disable_shader_cache=%d diagnostic_disable_compute=%d diagnostic_force_8bit_sdr_swapchain=%d diagnostic_allow_limited_g22=%d diagnostic_allow_full_g22=%d diagnostic_vp_owned_dxgi_presenter=%d refresh_switch=%d refresh_command_delay=%llus refresh_commands=%u viewport_target=%s screen_aspect=%.4f automatic_crop=%d subtitle_fit=%d subtitle_hold=%llums subtitle_engage_drift=%llums subtitle_release_drift=%llums subtitle_padding=%dpx subtitle_target_buffer=%dpx",
+			"libplacebo settings: quality=%s tone_mapping=%s gamut_mapping=%s peak_detection=%s contrast_recovery=%.2f upscaler=%s downscaler=%s deband=%s dithering=%s display_bit_depth=%s output_presentation=%s output_range=%s output_transport_gamma=%s output_gamma=%s sdr_input_transfer=%s sdr_adjust_gamma=%s target=%.1f nits black=%.3f profile_update_mode=%s output_diagnostics=%d diagnostic_disable_shader_cache=%d diagnostic_disable_compute=%d diagnostic_force_8bit_sdr_swapchain=%d diagnostic_allow_limited_g22=%d diagnostic_allow_full_g22=%d diagnostic_vp_owned_dxgi_presenter=%d refresh_switch=%d refresh_command_delay=%llus refresh_commands=%u viewport_target=%s screen_aspect=%.4f automatic_crop=%d subtitle_fit=%d subtitle_hold=%llums subtitle_engage_drift=%llums subtitle_release_drift=%llums subtitle_padding=%dpx subtitle_target_buffer=%dpx",
 			settings.quality.c_str(),
 			colorMapParams.tone_mapping_function
 				? colorMapParams.tone_mapping_function->name : "none",
@@ -3945,6 +3955,7 @@ struct LibplaceboVideoRenderer::Impl
 			settings.displayBitDepth.c_str(),
 			settings.outputPresentation.c_str(),
 			settings.outputRange.c_str(),
+			settings.outputTransportGamma.c_str(),
 			settings.outputGamma.c_str(),
 			settings.sdrInputTransfer.c_str(),
 			settings.sdrAdjustGamma.c_str(),
@@ -5691,7 +5702,9 @@ struct LibplaceboVideoRenderer::Impl
 		outputRequest.presentation = LibplaceboOutput::ParsePresentation(
 			settings.outputPresentation);
 		outputRequest.range = LibplaceboOutput::ParseRange(settings.outputRange);
-		outputRequest.gamma = LibplaceboOutput::ParseGamma(settings.outputGamma);
+		outputRequest.gamma = LibplaceboOutput::ParseGamma(
+			settings.outputRange == "limited" ?
+				settings.outputTransportGamma : settings.outputGamma);
 		outputRequest.allowLimitedG22Experiment = settings.diagnosticAllowLimitedG22;
 		outputRequest.allowFullG22Experiment = settings.diagnosticAllowFullG22;
 		outputRequest.vpOwnedPresenter = settings.diagnosticVpOwnedDxgiPresenter;
@@ -5937,6 +5950,7 @@ struct LibplaceboVideoRenderer::Impl
 		currentTransport.sigmoid = settings.sigmoid;
 		currentTransport.dithering = settings.dithering;
 		currentTransport.displayBitDepth = settings.displayBitDepth;
+		currentTransport.outputGamma = settings.outputGamma;
 		currentTransport.sdrTargetPrimaries = "rec709";
 		currentTransport.reportBt2020ToDisplay = false;
 		currentTransport.sdrInputTransfer = settings.sdrInputTransfer;
@@ -5969,11 +5983,10 @@ struct LibplaceboVideoRenderer::Impl
 			!outputDiagnostics && settings.outputDiagnostics;
 		if (lutChanged)
 		{
-			// pl_renderer may retain resources derived from the current pl_lut.
-			// Flush those references before releasing the LUT; the attached pl_cache
-			// remains intact and can recreate a previously compiled program cheaply.
-			if (renderer)
-				pl_renderer_flush_cache(renderer);
+			// libplacebo keys custom LUT state by the LUT's content signature and
+			// invalidates only the outdated resource itself. Its renderer API
+			// explicitly supports image/color/target changes without a cache flush,
+			// so preserve compiled programs while replacing the parsed LUT.
 			pl_lut_free(&displayLut);
 			displayLutParsed = false;
 			displayLutStatus = "Disabled";
@@ -5990,7 +6003,9 @@ struct LibplaceboVideoRenderer::Impl
 		requestedTransport.presentation = LibplaceboOutput::ParsePresentation(
 			settings.outputPresentation);
 		requestedTransport.range = LibplaceboOutput::ParseRange(settings.outputRange);
-		requestedTransport.gamma = LibplaceboOutput::ParseGamma(settings.outputGamma);
+		requestedTransport.gamma = LibplaceboOutput::ParseGamma(
+			settings.outputRange == "limited" ?
+				settings.outputTransportGamma : settings.outputGamma);
 		requestedTransport.allowLimitedG22Experiment =
 			settings.diagnosticAllowLimitedG22;
 		requestedTransport.allowFullG22Experiment =
@@ -6002,6 +6017,8 @@ struct LibplaceboVideoRenderer::Impl
 			: LibplaceboOutput::SdrTargetPrimaries::REC709;
 		const auto contract = LibplaceboOutput::MakeSdrOutputContract(
 			requestedTransport, target, settings.reportBt2020ToDisplay);
+		const LibplaceboOutput::Plan nextOutputPlan =
+			LibplaceboOutput::MakePlan(contract.transport);
 		activeSettings = settings;
 		sdrTargetNits = settings.sdrTargetNits;
 		sdrBlackNits = settings.sdrBlackNits;
@@ -6013,6 +6030,7 @@ struct LibplaceboVideoRenderer::Impl
 			LibplaceboOutput::SdrTargetPrimaries::BT2020;
 		reportBt2020ToDisplay = contract.reportBt2020ToDisplay;
 		bt2020SignalingFailed = false;
+		actualOutput.targetTransfer = nextOutputPlan.targetTransfer;
 		SetSwapchainColorHint(actualOutput.encoding, actualOutput.targetTransfer);
 		lastSdrGammaDecision = {};
 		lastSdrGammaDecisionSignature.clear();
@@ -10040,14 +10058,28 @@ CString LibplaceboVideoRenderer::ActiveShaderRule() const
 bool LibplaceboVideoRenderer::ApplyApplicationState(
 	const UnifiedProfileRuntime::Snapshot& snapshot,
 	CString& activeState,
-	bool& rendererRestartRequired)
+	bool& rendererRestartRequired,
+	bool& liveResetRequired)
 {
 	activeState.Empty();
 	rendererRestartRequired = false;
+	liveResetRequired = false;
 
 	std::unique_lock<std::mutex> guard(m_stateMutex);
 	const std::map<std::string, std::string>& next =
 		snapshot.effectiveSelections;
+	const auto groupChanged = [this, &next](const char* group)
+	{
+		const auto before = m_manualUnifiedProfiles.find(group);
+		const auto after = next.find(group);
+		return (before == m_manualUnifiedProfiles.end()) != (after == next.end()) ||
+			(before != m_manualUnifiedProfiles.end() && after != next.end() &&
+			 before->second != after->second);
+	};
+	const bool renderingProfileChanged =
+		groupChanged("display") || groupChanged("input") ||
+		groupChanged("scaling");
+	const bool outputProfileChanged = groupChanged("output");
 	VideoStateComPtr state = m_videoState;
 	std::string candidateProfiles;
 	const RendererSettings candidateSettings = state ?
@@ -10059,7 +10091,25 @@ bool LibplaceboVideoRenderer::ApplyApplicationState(
 	const bool anyRendererSettingChanged = m_impl &&
 		EffectiveSettingsFingerprint(candidateSettings) !=
 			m_impl->effectiveSettingsFingerprint;
-	if (state && m_impl && anyRendererSettingChanged &&
+	if (state && m_impl && renderingProfileChanged && !outputProfileChanged)
+	{
+		// Rendering profiles own only shader/render description and calibration.
+		// They are structurally forbidden from replacing the D3D device or
+		// swapchain. Apply them to the existing renderer, then let the application
+		// run its cache-preserving LiveQueue reset transaction.
+		if (anyRendererSettingChanged &&
+			!m_impl->ApplyProfileSettingsLive(candidateSettings))
+		{
+			rendererRestartRequired = false;
+			DebugLog::Log(
+				"rendering profile generation %llu rejected instead of rebuilding: output/device policy unexpectedly differed",
+				static_cast<unsigned long long>(snapshot.generation));
+			return false;
+		}
+		rendererRestartRequired = false;
+		liveResetRequired = true;
+	}
+	else if (state && m_impl && anyRendererSettingChanged &&
 		candidateSettings.profileUpdateMode == ProfileUpdateMode::NEVER)
 	{
 		// A cache miss cannot be discovered safely without asking libplacebo to
@@ -10073,7 +10123,7 @@ bool LibplaceboVideoRenderer::ApplyApplicationState(
 			static_cast<unsigned long long>(snapshot.generation));
 		return false;
 	}
-	if (rendererRestartRequired && state && m_impl &&
+	if (!liveResetRequired && rendererRestartRequired && state && m_impl &&
 		candidateSettings.profileUpdateMode == ProfileUpdateMode::LIVE &&
 		m_impl->ApplyProfileSettingsLive(candidateSettings))
 	{

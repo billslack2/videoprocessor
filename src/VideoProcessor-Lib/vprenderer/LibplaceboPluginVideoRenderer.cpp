@@ -412,10 +412,11 @@ CString LibplaceboPluginVideoRenderer::ActiveShaderRule() const
 bool LibplaceboPluginVideoRenderer::ApplyApplicationState(
 	const UnifiedProfileRuntime::Snapshot& snapshot,
 	CString& activeState,
-	bool& rendererRestartRequired)
+	bool& rendererRestartRequired,
+	bool& liveResetRequired)
 {
 	return m_renderer->ApplyApplicationState(snapshot, activeState,
-		rendererRestartRequired);
+		rendererRestartRequired, liveResetRequired);
 }
 
 

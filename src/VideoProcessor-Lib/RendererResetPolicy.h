@@ -12,6 +12,7 @@ enum class RendererResetReason
 	DisplayTransition,
 	Resize,
 	QueueSizeChange,
+	ProfileChange,
 	TimingOffsetChange,
 	QueuePressure,
 	QueueCapacity,
@@ -37,6 +38,7 @@ constexpr int RendererResetPriority(RendererResetReason reason)
 	case RendererResetReason::DisplayTransition: return 70;
 	case RendererResetReason::Resize: return 60;
 	case RendererResetReason::QueueSizeChange: return 50;
+	case RendererResetReason::ProfileChange: return 55;
 	case RendererResetReason::TimingOffsetChange: return 40;
 	case RendererResetReason::QueuePressure: return 30;
 	default: return 0;

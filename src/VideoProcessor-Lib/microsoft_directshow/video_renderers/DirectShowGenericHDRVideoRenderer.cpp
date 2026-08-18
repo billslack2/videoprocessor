@@ -1183,8 +1183,10 @@ bool DirectShowGenericHDRVideoRenderer::RefreshShaderRule(CString& activeRule,
 bool DirectShowGenericHDRVideoRenderer::ApplyApplicationState(
 	const UnifiedProfileRuntime::Snapshot& snapshot,
 	CString& activeState,
-	bool& rendererRestartRequired)
+	bool& rendererRestartRequired,
+	bool& liveResetRequired)
 {
+	liveResetRequired = false;
 	if (!IsGraphThread())
 	{
 		const UnifiedProfileRuntime::Snapshot state(snapshot);
@@ -1202,8 +1204,9 @@ bool DirectShowGenericHDRVideoRenderer::ApplyApplicationState(
 			{
 				CString appliedState;
 				bool restartRequired = false;
+				bool resetRequired = false;
 				ApplyApplicationState(
-					state, appliedState, restartRequired);
+					state, appliedState, restartRequired, resetRequired);
 				if (restartRequired)
 					QueueRendererRestartCompletion();
 			});

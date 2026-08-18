@@ -128,7 +128,6 @@ namespace VideoProcessorTest
 				// Shader definitions, rules, and legacy shader sections.
 				"shader", "shader.nls.standard", "shaders", "shaders.legacy",
 				// Renderer and viewport profiles, including legacy profile roots.
-				"vprenderer", "vprenderer.rec709",
 				"vprenderer.viewport.scope", "profiles", "profiles.viewport.scope",
 				"viewport", "viewport.scope",
 				// Completed-event actions are part of the staged renderer model.
@@ -141,6 +140,10 @@ namespace VideoProcessorTest
 				Assert::AreEqual(static_cast<int>(Action::RestartRenderer),
 					static_cast<int>(actual));
 			}
+			Assert::AreEqual(static_cast<int>(Action::ApplyProfiles),
+				static_cast<int>(ConfigurationApplyPolicy::ClassifySection("vprenderer")));
+			Assert::AreEqual(static_cast<int>(Action::ApplyProfiles),
+				static_cast<int>(ConfigurationApplyPolicy::ClassifySection("vprenderer.rec709")));
 		}
 
 		TEST_METHOD(ConfigurationApplyPolicyClassifiesNoOpAndSaveOnlyContent)
@@ -201,7 +204,7 @@ namespace VideoProcessorTest
 
 			// A non-shortcut value in the same profile retains the profile's normal
 			// effect, and unknown content never becomes live merely by using this key.
-			Assert::AreEqual(static_cast<int>(Action::RestartRenderer),
+			Assert::AreEqual(static_cast<int>(Action::ApplyProfiles),
 				static_cast<int>(ConfigurationApplyPolicy::ClassifyChange(
 					{ "vprenderer.rec709", "quality" })));
 			Assert::AreEqual(static_cast<int>(Action::SaveOnly),
@@ -216,14 +219,17 @@ namespace VideoProcessorTest
 					{ { "queue", "queue_size" }, { "shortcuts", "renderer_restart" } })));
 		}
 
-		TEST_METHOD(ConfigurationApplyPolicyRestartsRendererForSdrGammaAdjustment)
+		TEST_METHOD(ConfigurationApplyPolicyAppliesSdrGammaAdjustmentLive)
 		{
 			using ConfigurationApplyPolicy::Action;
 			using ConfigurationApplyPolicy::Change;
 			const Change change = { "vprenderer.rec709", "sdr_adjust_gamma" };
 			Assert::IsFalse(ConfigurationApplyPolicy::IsOutputExperimentChange(change));
-			Assert::AreEqual(static_cast<int>(Action::RestartRenderer),
+			Assert::AreEqual(static_cast<int>(Action::ApplyProfiles),
 				static_cast<int>(ConfigurationApplyPolicy::ClassifyChange(change)));
+			Assert::AreEqual(static_cast<int>(Action::RestartCapture),
+				static_cast<int>(ConfigurationApplyPolicy::ClassifyChange(
+					{ "vprenderer.output.default", "output_range" })));
 		}
 
 		TEST_METHOD(ConfigurationApplyPolicyKeepsStartupPresentationDefaultsForNextStart)
@@ -396,7 +402,7 @@ namespace VideoProcessorTest
 		{
 			using ConfigurationApplyPolicy::Action;
 			using ConfigurationApplyPolicy::Change;
-			Assert::AreEqual(static_cast<int>(Action::RestartRenderer),
+			Assert::AreEqual(static_cast<int>(Action::ApplyProfiles),
 				static_cast<int>(ConfigurationApplyPolicy::ClassifySections(
 					{ "logging", "queue", "vprenderer.primary", "shortcuts" })));
 			Assert::AreEqual(static_cast<int>(Action::RestartRenderer),
@@ -407,11 +413,11 @@ namespace VideoProcessorTest
 				{ "general", "no_ui" },                  // SaveOnly
 				{ "shortcuts", "renderer_restart" },     // ReloadShortcuts
 				{ "queue.low_latency", "queue_size" },   // ResetQueues
-				{ "vprenderer.rec709", "quality" }       // RestartRenderer
+				{ "vprenderer.rec709", "quality" }       // ApplyProfiles
 			};
 			const Action expected[] = {
 				Action::SaveOnly, Action::ReloadShortcuts,
-				Action::ResetQueues, Action::RestartRenderer
+				Action::ResetQueues, Action::ApplyProfiles
 			};
 			for (size_t left = 0; left < ARRAYSIZE(representatives); ++left)
 			{
@@ -426,7 +432,7 @@ namespace VideoProcessorTest
 							{ representatives[right], representatives[left] })));
 				}
 			}
-			Assert::AreEqual(static_cast<int>(Action::RestartRenderer),
+			Assert::AreEqual(static_cast<int>(Action::ApplyProfiles),
 				static_cast<int>(ConfigurationApplyPolicy::ClassifyChanges(
 					{ representatives[0], representatives[1], representatives[2],
 						representatives[3], representatives[3] })));
@@ -436,6 +442,8 @@ namespace VideoProcessorTest
 				std::string(ConfigurationApplyPolicy::ActionLabel(Action::ReloadShortcuts)));
 			Assert::AreEqual(std::string("Reset queues"),
 				std::string(ConfigurationApplyPolicy::ActionLabel(Action::ResetQueues)));
+			Assert::AreEqual(std::string("Apply rendering live"),
+				std::string(ConfigurationApplyPolicy::ActionLabel(Action::ApplyProfiles)));
 			Assert::AreEqual(std::string("Restart renderer"),
 				std::string(ConfigurationApplyPolicy::ActionLabel(Action::RestartRenderer)));
 			Assert::AreEqual(std::string("Restart capture"),
@@ -697,19 +705,21 @@ namespace VideoProcessorTest
 				"[queue.low]\nshortcut: Shift+l\nqueue_size: 1\nlead_frames: 0\n"
 				"startup_preroll_frames: 1\ntarget_frames: 1\nactive_picture_lookahead_frames: 2\n"
 				"reset_after_render_restart_seconds: 2\nreset_queue_too_large_percent: 60\n"
-				"[vprenderer.primary]\nquality: high\noutput_presentation: auto\noutput_range: full\n"
+				"[vprenderer.primary]\nquality: high\n"
 				"output_gamma: srgb\nsdr_target_nits: 203\nsdr_black_nits: auto\n"
 				"tone_mapping: auto\ngamut_mapping: auto\npeak_detection: auto\ncontrast_recovery: auto\n"
 				"upscaler: auto\ndownscaler: auto\ndeband: auto\ndeband_strength: off\n"
 				"sigmoid: auto\ndithering: auto\ndisplay_bit_depth: auto\nsdr_input_transfer: auto\nsdr_target_primaries: rec709\n"
 				"lut: calibration.cube\nlut_reference_nits: auto\nlut_reference_range: auto\n"
 				"lut_reference_transfer: auto\nlut_reference_primaries: auto\n"
-				"report_bt2020_to_display: false\nswitch_refresh_rate: true\noutput_diagnostics: false\n"
+				"report_bt2020_to_display: false\nswitch_refresh_rate: true\n"
+				"[vprenderer.bt2020]\nshortcut: F5\nsdr_target_primaries: bt2020\nreport_bt2020_to_display: true\n"
+				"[vprenderer.output.default]\noutput_presentation: auto\noutput_range: full\n"
+				"output_transport_gamma: auto\noutput_diagnostics: false\n"
 				"diagnostic_disable_shader_cache: false\ndiagnostic_disable_compute: false\n"
 				"diagnostic_force_8bit_sdr_swapchain: false\ndiagnostic_allow_limited_g22: false\n"
 				"diagnostic_allow_full_g22: false\n"
 				"diagnostic_vp_owned_dxgi_presenter: false\noutput_path_profile: legacy\n"
-				"[vprenderer.bt2020]\nshortcut: F5\nsdr_target_primaries: bt2020\nreport_bt2020_to_display: true\n"
 				"[vprenderer.viewport.viewport_16x9]\nlabel: 16x9\nmode: normal\nscreen_aspect: 16:9\n"
 				"automatic_crop: false\nsubtitle_fit: true\nsubtitle_hold_seconds: 2\n"
 				"subtitle_engage_drift_ms: 0\nsubtitle_release_drift_ms: 0\nsubtitle_padding_pixels: 20\n"
@@ -861,6 +871,7 @@ namespace VideoProcessorTest
 			ConfigEditorCore::ConfigDocument document;
 			std::wstring error;
 			Assert::IsTrue(document.Load(path, error), error.c_str());
+			Assert::IsTrue(document.AddSection("vprenderer.output.default"));
 			// The UI migrates this legacy shared-input spelling when its canonical
 			// General control is edited.
 			document.RemoveKnown("directshow", "video_conversion");
@@ -897,8 +908,6 @@ namespace VideoProcessorTest
 				{ "vprenderer.rec709", "shortcut", "Ctrl+R" },
 				{ "vprenderer.rec709", "when", "${eotf} == \"SDR\"" },
 				{ "vprenderer.rec709", "quality", "balanced" },
-				{ "vprenderer.rec709", "output_presentation", "composed" },
-				{ "vprenderer.rec709", "output_range", "limited" },
 				{ "vprenderer.rec709", "output_gamma", "srgb" },
 				{ "vprenderer.rec709", "sdr_input_transfer", "bt1886" },
 				{ "vprenderer.rec709", "sdr_target_primaries", "REC709" },
@@ -921,14 +930,17 @@ namespace VideoProcessorTest
 				{ "vprenderer.rec709", "lut_reference_primaries", "REC709" },
 				{ "vprenderer.rec709", "report_bt2020_to_display", "false" },
 				{ "vprenderer.rec709", "switch_refresh_rate", "true" },
-				{ "vprenderer.rec709", "output_diagnostics", "true" },
-				{ "vprenderer.rec709", "diagnostic_disable_shader_cache", "false" },
-				{ "vprenderer.rec709", "diagnostic_disable_compute", "false" },
-				{ "vprenderer.rec709", "diagnostic_force_8bit_sdr_swapchain", "false" },
-				{ "vprenderer.rec709", "diagnostic_allow_limited_g22", "false" },
-				{ "vprenderer.rec709", "diagnostic_allow_full_g22", "false" },
-				{ "vprenderer.rec709", "diagnostic_vp_owned_dxgi_presenter", "false" },
-				{ "vprenderer.rec709", "output_path_profile", "custom" },
+				{ "vprenderer.output.default", "output_presentation", "composed" },
+				{ "vprenderer.output.default", "output_range", "limited" },
+				{ "vprenderer.output.default", "output_transport_gamma", "2.4" },
+				{ "vprenderer.output.default", "output_diagnostics", "true" },
+				{ "vprenderer.output.default", "diagnostic_disable_shader_cache", "false" },
+				{ "vprenderer.output.default", "diagnostic_disable_compute", "false" },
+				{ "vprenderer.output.default", "diagnostic_force_8bit_sdr_swapchain", "false" },
+				{ "vprenderer.output.default", "diagnostic_allow_limited_g22", "false" },
+				{ "vprenderer.output.default", "diagnostic_allow_full_g22", "false" },
+				{ "vprenderer.output.default", "diagnostic_vp_owned_dxgi_presenter", "false" },
+				{ "vprenderer.output.default", "output_path_profile", "custom" },
 
 				{ "vprenderer.viewport.scope", "shortcut", "Ctrl+V" },
 				{ "vprenderer.viewport.scope", "when", "${width} >= 1280" },

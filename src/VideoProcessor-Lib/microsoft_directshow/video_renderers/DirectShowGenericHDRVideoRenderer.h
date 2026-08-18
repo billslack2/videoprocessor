@@ -62,7 +62,8 @@ public:
 	bool ApplyApplicationState(
 		const UnifiedProfileRuntime::Snapshot& snapshot,
 		CString& activeState,
-		bool& rendererRestartRequired) override;
+		bool& rendererRestartRequired,
+		bool& liveResetRequired) override;
 	bool SupportsNativeStatsOverlay() const override
 	{
 		return m_osdServices != nullptr && !m_osdFailureLogged;
