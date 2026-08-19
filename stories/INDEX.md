@@ -133,27 +133,27 @@ they must not contain requirements that are absent from this file.
 | VP-0100 | Backlog | Prove pixel-owned SDR presentation for Alpha |
 | VP-0101 | Backlog | Implement production pixel-owned calibrated output and 3D LUTs |
 | VP-0102 | Done | Dual-mode classic and modern operator UI |
-| VP-0103 | In Progress | Apply saved configuration safely to a running VideoProcessor |
+| VP-0103 | Review | Apply saved configuration safely to a running VideoProcessor |
 | VP-0104 | Done | Allow NLS without trusted crop on known scope viewports |
 | VP-0105 | Done | Toggle the runtime UI with a configurable shortcut |
 | VP-0106 | Done | Reduce madVR NLS transition latency |
-| VP-0107 | Backlog | Normalize runtime dependency layout and plugin-private libraries |
+| VP-0107 | Done | Normalize runtime dependency layout and plugin-private libraries |
 | VP-0108 | Backlog | Make Modern UI unavailable values use the canonical `---` placeholder |
 | VP-0109 | Backlog | Validate and support Alpha pure-2.2 Studio limited output |
 | VP-0109-1 | In Progress | Prove the pure-2.2 renderer/Studio-G22 transport pairing |
 | VP-0109-2 | Backlog | Implement rejection-safe pure-2.2 Studio limited output |
-| VP-0110 | In Progress | Smooth viewport subtitle placement in and out with millisecond timing |
+| VP-0110 | Done | Smooth viewport subtitle placement in and out with millisecond timing |
 | VP-0111 | Backlog | Prevent background shortcuts from hijacking normal typing |
 | VP-0112 | Done | Show the active profile in relevant configuration pages |
 | VP-0113 | Done | Screen Config layout and unit-field consistency |
 | VP-0114 | Backlog | Alpha conservative scaling and small-bar zoom controls |
 | VP-0115 | Backlog | Diagnose DeckLink delivery failures and renderer-transition drops |
-| VP-0116 | Backlog | Show all active shaders in the configuration UI |
-| VP-0117 | In Progress | Restore VP Renderer presentation timing and mode truth |
+| VP-0116 | Done | Show all active shaders in the configuration UI |
+| VP-0117 | Done | Restore VP Renderer presentation timing and mode truth |
 | VP-0118 | Done | Make Alt+Enter enter fullscreen from an inactive startup request |
 | VP-0119 | Done | Apply anamorphic lens scale in the correct direction |
 | VP-0120 | Backlog | Retire owner-bound configuration tray processes |
-| VP-0121 | Backlog | Make configuration help UI-first with current screenshots |
+| VP-0121 | Review | Make configuration help UI-first with current screenshots |
 | VP-0122 | Done | Retain scope geometry through subtitle and volume overlays |
 | VP-0123 | Review | Split video conversion policy by renderer |
 | VP-0124 | In Progress | Safely accelerate outward active-picture transitions with bounded lookahead |
@@ -162,7 +162,7 @@ they must not contain requirements that are absent from this file.
 | VP-0127 | Done | Enforce output format and prove composed display delivery |
 | VP-0128 | Backlog | Audit VP Renderer option parity and resolved defaults |
 | VP-0129 | Review | Retain scope through vertical overlay arbitration |
-| VP-0130 | In Progress | Renderer telemetry and live input-configuration clarity |
+| VP-0130 | Done | Renderer telemetry and live input-configuration clarity |
 | VP-0131 | Done | VP Renderer NLS-V and bounded presentation crop |
 | VP-0132 | Done | Eliminate subtitle-fit presentation chatter |
 | VP-0133 | In Progress | Capture authoritative renderer output and near-black diagnostics |
