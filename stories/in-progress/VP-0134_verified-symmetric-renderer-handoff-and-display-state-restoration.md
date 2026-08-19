@@ -2,11 +2,26 @@
 
 ## Status
 
-Backlog. Created 2026-08-18 after source review and independent NVIDIA,
-DirectShow/madVR, and Windows display-stack reviews. There is confirmed work
-to do: renderer objects are replaced in order, but VP does not yet establish a
-verified renderer-neutral display and callback boundary before starting the
-next renderer.
+In Progress (2026-08-18). The developer confirmed `origin/v1.2.001-beta` as
+the implementation base. Work is active on
+`codex/vp-0134-renderer-handoff` in the clean worktree
+`C:\Users\bslac\vp\worktrees\vp-0134-renderer-handoff`, based on
+`bb8f5c1c84ff48e9258ebecb03502d259ab94aa9`.
+
+Readiness review: renderer selection, callback, graph, swapchain, refresh-rate,
+NVAPI, window, and command lifetimes are mapped in this record; the required
+clean-start boundary and failure policy are explicit; deterministic seams and
+live comparison criteria are defined; and implementation is isolated from the
+dirty authoritative source checkout. NVIDIA automatic-policy restoration
+(`RESET` versus replay) and physical wire behavior still require supported-
+driver/projector validation before final acceptance, but do not prevent the
+coordinator, generation safety, retryable restoration, and automated failure
+paths from being implemented and reviewed now.
+
+First progress note: implementation begins by auditing the confirmed base,
+extracting renderer-neutral transition/display policy, closing stale callback
+and capture-ingress lifetime gaps, then integrating retryable Alpha display
+restoration without changing deployed configuration.
 
 ## User story
 

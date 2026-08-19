@@ -166,7 +166,7 @@ they must not contain requirements that are absent from this file.
 | VP-0131 | Done | VP Renderer NLS-V and bounded presentation crop |
 | VP-0132 | Done | Eliminate subtitle-fit presentation chatter |
 | VP-0133 | In Progress | Capture authoritative renderer output and near-black diagnostics |
-| VP-0134 | Backlog | Verified symmetric renderer handoff and display-state restoration |
+| VP-0134 | In Progress | Verified symmetric renderer handoff and display-state restoration |
 | VP-0066-1 | Done | Characterize the live output pipeline with replayable golden traces |
 | VP-0066-2 | Done | Extract a graph-independent video timing controller |
 | VP-0066-3 | Done | Extract epoch-aware frame transport and processing components |
