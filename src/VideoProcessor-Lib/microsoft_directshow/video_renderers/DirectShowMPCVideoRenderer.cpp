@@ -30,6 +30,7 @@
 
 DirectShowMPCVideoRenderer::DirectShowMPCVideoRenderer(
 	IRendererCallback& callback,
+	uint32_t rendererGeneration,
 	HWND videoHwnd,
 	HWND eventHwnd,
 	UINT eventMsg,
@@ -44,6 +45,7 @@ DirectShowMPCVideoRenderer::DirectShowMPCVideoRenderer(
 	DXVA_VideoPrimaries forceVideoPrimaries):
 	DirectShowVideoRenderer(
 		callback,
+		rendererGeneration,
 		videoHwnd,
 		eventHwnd,
 		eventMsg,
@@ -57,7 +59,8 @@ DirectShowMPCVideoRenderer::DirectShowMPCVideoRenderer(
 	m_forceVideoTransferMatrix(forceVideoTransferMatrix),
 	m_forceVideoPrimaries(forceVideoPrimaries)
 {
-	callback.OnRendererDetailString(TEXT("MPC Video Renderer DirectShow"));
+	callback.OnRendererDetailString(
+		TEXT("MPC Video Renderer DirectShow"), rendererGeneration);
 }
 
 

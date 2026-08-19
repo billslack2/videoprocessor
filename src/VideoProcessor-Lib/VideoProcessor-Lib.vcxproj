@@ -216,6 +216,7 @@
     <ClInclude Include="RendererResetRequest.h" />
     <ClInclude Include="RendererResetRequestLatch.h" />
     <ClInclude Include="RendererTransitionModel.h" />
+	<ClInclude Include="RendererGenerationGate.h" />
     <ClInclude Include="vprenderer\\AlphaCadenceCorrectionPolicy.h" />
     <ClInclude Include="vprenderer\\AlphaPresentationTelemetry.h" />
     <ClInclude Include="ActivePictureDecisionTimeline.h" />

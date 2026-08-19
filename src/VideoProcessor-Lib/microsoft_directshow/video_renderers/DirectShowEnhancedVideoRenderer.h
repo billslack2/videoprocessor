@@ -23,6 +23,7 @@ public:
 
 	DirectShowEnhancedVideoRenderer(
 		IRendererCallback& callback,
+		uint32_t rendererGeneration,
 		HWND videoHwnd,
 		HWND eventHwnd,
 		UINT eventMsg,

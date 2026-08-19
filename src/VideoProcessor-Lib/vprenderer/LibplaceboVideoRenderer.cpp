@@ -12,6 +12,7 @@
 #include <UnifiedProfileRuntime.h>
 #include <DebugLog.h>
 #include <DisplayRuleExpression.h>
+#include <DisplayRefreshRatePolicy.h>
 #include <microsoft_directshow/MadVRShaderLoader.h>
 #include <vprenderer/AlphaCadenceCorrectionPolicy.h>
 #include <vprenderer/AlphaQueuePolicy.h>
@@ -461,7 +462,17 @@ namespace
 	class NvidiaBt2020Reporter
 	{
 	public:
-		~NvidiaBt2020Reporter() { Restore(); }
+		~NvidiaBt2020Reporter()
+		{
+			if (!Restore())
+			{
+				DebugLog::Log(
+					"NVIDIA BT.2020 report: final AVI InfoFrame restore "
+					"failed for %s; residual driver state is unverified",
+					m_displayName.c_str());
+				Shutdown();
+			}
+		}
 
 		bool IsActive() const { return m_active; }
 		bool IsReadbackVerified() const { return m_readbackVerified; }
@@ -476,7 +487,13 @@ namespace
 			}
 			if (m_active && name == m_displayName)
 				return true;
-			Restore();
+			if (!Restore())
+			{
+				DebugLog::Log(
+					"NVIDIA BT.2020 report: refusing a new target while "
+					"the previous AVI InfoFrame restore remains pending");
+				return false;
+			}
 
 			NvAPI_Status status = NvAPI_Initialize();
 			if (status != NVAPI_OK)
@@ -561,21 +578,47 @@ namespace
 			return true;
 		}
 
-		void Restore()
+		bool Restore()
 		{
-			if (m_active)
+			if (!m_active)
 			{
-				NV_INFOFRAME_DATA restore = m_originalInfoFrame;
-				restore.cmd = NV_INFOFRAME_CMD_SET;
-				restore.type = INFOFRAME_TYPE_AVI;
-				const NvAPI_Status status =
-					NvAPI_Disp_InfoFrameControl(m_displayId, &restore);
-				DebugLog::Log("NVIDIA BT.2020 report: AVI InfoFrame restore on %s display_id=0x%08X colorimetry=%u extended=%u result=%s", m_displayName.c_str(), m_displayId, static_cast<unsigned int>(restore.infoframe.video.colorimetry), static_cast<unsigned int>(restore.infoframe.video.extendedColorimetry), NvApiStatusText(status).c_str());
+				Shutdown();
+				return true;
 			}
+
+			// A modeset can invalidate the NvAPI display ID. Resolve the saved
+			// display name again immediately before the restoration SET.
+			NvU32 currentDisplayId = 0;
+			NvAPI_Status status = NvAPI_DISP_GetDisplayIdByDisplayName(
+				m_displayName.c_str(), &currentDisplayId);
+			if (status != NVAPI_OK)
+			{
+				DebugLog::Log(
+					"NVIDIA BT.2020 report: AVI InfoFrame restore pending "
+					"for %s because display lookup failed: %s",
+					m_displayName.c_str(), NvApiStatusText(status).c_str());
+				return false;
+			}
+			m_displayId = currentDisplayId;
+
+			NV_INFOFRAME_DATA restore = m_originalInfoFrame;
+			restore.cmd = NV_INFOFRAME_CMD_SET;
+			restore.type = INFOFRAME_TYPE_AVI;
+			status = NvAPI_Disp_InfoFrameControl(m_displayId, &restore);
+			DebugLog::Log("NVIDIA BT.2020 report: AVI InfoFrame restore on %s display_id=0x%08X colorimetry=%u extended=%u result=%s", m_displayName.c_str(), m_displayId, static_cast<unsigned int>(restore.infoframe.video.colorimetry), static_cast<unsigned int>(restore.infoframe.video.extendedColorimetry), NvApiStatusText(status).c_str());
+			if (status != NVAPI_OK)
+			{
+				DebugLog::Log(
+					"NVIDIA BT.2020 report: restore remains pending; "
+					"ownership is retained for retry");
+				return false;
+			}
+
 			m_active = false;
 			m_readbackVerified = false;
 			m_displayName.clear();
 			Shutdown();
+			return true;
 		}
 
 	private:
@@ -2429,7 +2472,9 @@ namespace
 		const DISPLAYCONFIG_RATIONAL& first,
 		const DISPLAYCONFIG_RATIONAL& second)
 	{
-		return std::abs(RefreshRateHz(first) - RefreshRateHz(second)) < 0.002;
+		return DisplayRefreshRatesExactlyEqual(
+			{ first.Numerator, first.Denominator },
+			{ second.Numerator, second.Denominator });
 	}
 
 	std::wstring DisplayDeviceNameForWindow(HWND hwnd)
@@ -2538,15 +2583,25 @@ namespace
 
 		~ScopedDisplayRefreshRate()
 		{
-			if (m_cancelEvent) SetEvent(m_cancelEvent);
-			for (std::thread& worker : m_actionWorkers)
-				if (worker.joinable()) worker.join();
-			m_actionWorkers.clear();
-			Restore();
+			if (!m_finalRestoreAttempted && !RestoreNow())
+				DebugLog::Log(
+					"libplacebo refresh-rate final restore remains unverified");
 			for (std::thread& worker : m_actionWorkers)
 				if (worker.joinable()) worker.join();
 			if (m_cancelEvent) CloseHandle(m_cancelEvent);
 		}
+
+		bool RestoreNow()
+		{
+			m_finalRestoreAttempted = true;
+			if (m_cancelEvent) SetEvent(m_cancelEvent);
+			for (std::thread& worker : m_actionWorkers)
+				if (worker.joinable()) worker.join();
+			m_actionWorkers.clear();
+			return Restore();
+		}
+
+		bool HasPendingRestore() const { return m_changed; }
 
 		void Switch(HWND hwnd, const VideoState& state, const RendererSettings& settings)
 		{
@@ -2660,10 +2715,10 @@ namespace
 			return true;
 		}
 
-		void Restore()
+		bool Restore()
 		{
 			if (!m_changed)
-				return;
+				return true;
 
 			std::vector<DISPLAYCONFIG_PATH_INFO> paths;
 			std::vector<DISPLAYCONFIG_MODE_INFO> modes;
@@ -2674,7 +2729,7 @@ namespace
 				m_displayDeviceName, paths, modes, pathCount, modeCount, pathIndex))
 			{
 				DebugLog::Log("libplacebo refresh-rate restore failed: active display path not found");
-				return;
+				return false;
 			}
 
 			const LONG restoreResult = ApplyDisplayRefreshRate(
@@ -2684,25 +2739,59 @@ namespace
 				modeCount,
 				pathIndex,
 				m_originalRefreshRate);
-			if (restoreResult == ERROR_SUCCESS)
+			if (restoreResult != ERROR_SUCCESS)
 			{
 				DebugLog::Log(
-					"libplacebo refresh-rate restore applied: %.6f Hz",
-					RefreshRateHz(m_originalRefreshRate));
-				RunRefreshRateCommand(
-					m_refreshCommandSettings,
-					RefreshRateHz(m_originalRefreshRate));
-				PublishEvent("refresh.restored", RefreshRateHz(m_originalRefreshRate),
-					RefreshRateHz(m_originalRefreshRate), RefreshRateHz(m_originalRefreshRate));
+					"libplacebo refresh-rate restore failed: %.6f Hz error=%ld; "
+					"restore remains pending",
+					RefreshRateHz(m_originalRefreshRate), restoreResult);
+				return false;
 			}
-			else
+
+			// SetDisplayConfig success means the request was accepted, not that
+			// the active path has converged. Require two consecutive exact
+			// rational observations within a bounded two-second window.
+			DISPLAYCONFIG_RATIONAL actualRefreshRate{};
+			DisplayRefreshRestoreVerifier verifier(
+				{ m_originalRefreshRate.Numerator,
+				  m_originalRefreshRate.Denominator });
+			const ULONGLONG verificationDeadline = GetTickCount64() + 2000;
+			do
+			{
+				const bool querySucceeded =
+					GetCurrentRefreshRate(actualRefreshRate);
+				if (verifier.Observe(
+					querySucceeded,
+					{ actualRefreshRate.Numerator,
+					  actualRefreshRate.Denominator }))
+					break;
+				Sleep(50);
+			}
+			while (GetTickCount64() < verificationDeadline);
+
+			if (verifier.ConsecutiveMatches() < 2)
 			{
 				DebugLog::Log(
-					"libplacebo refresh-rate restore failed: %.6f Hz error=%ld",
+					"libplacebo refresh-rate restore unverified: requested=%.6f Hz "
+					"last_observed=%.6f Hz; restore remains pending",
 					RefreshRateHz(m_originalRefreshRate),
-					restoreResult);
+					RefreshRateHz(actualRefreshRate));
+				return false;
 			}
+
+			DebugLog::Log(
+				"libplacebo refresh-rate restore verified: %.6f Hz "
+				"rational=%u/%u",
+				RefreshRateHz(m_originalRefreshRate),
+				m_originalRefreshRate.Numerator,
+				m_originalRefreshRate.Denominator);
+			RunRefreshRateCommand(
+				m_refreshCommandSettings,
+				RefreshRateHz(m_originalRefreshRate));
+			PublishEvent("refresh.restored", RefreshRateHz(m_originalRefreshRate),
+				RefreshRateHz(m_originalRefreshRate), RefreshRateHz(m_originalRefreshRate));
 			m_changed = false;
+			return true;
 		}
 
 		void PublishEvent(const std::string& event, double actualRefresh,
@@ -2806,6 +2895,7 @@ namespace
 		std::wstring m_displayDeviceName;
 		DISPLAYCONFIG_RATIONAL m_originalRefreshRate{};
 		bool m_changed = false;
+		bool m_finalRestoreAttempted = false;
 		RendererSettings m_refreshCommandSettings;
 		HANDLE m_cancelEvent = nullptr;
 		std::vector<std::thread> m_actionWorkers;
@@ -3300,28 +3390,60 @@ struct LibplaceboVideoRenderer::Impl
 		cadenceNextDueSummaryTick = 0;
 	}
 
+	bool RetireOutput()
+	{
+		if (!outputResourcesRetired)
+		{
+			for (std::thread& worker : captureWorkers)
+				if (worker.joinable()) worker.join();
+			captureWorkers.clear();
+			pl_mpv_user_shader_destroy(&nlsHook);
+			pl_renderer_destroy(&renderer);
+			pl_lut_free(&displayLut);
+			if (d3d11)
+			{
+				pl_tex_destroy(d3d11->gpu, &statsOverlayTexture);
+				pl_tex_destroy(d3d11->gpu, &sweepOverlayTexture);
+				for (pl_tex& texture : textures)
+					pl_tex_destroy(d3d11->gpu, &texture);
+			}
+			pl_swapchain_destroy(&swapchain);
+			vpOwnedSwapchain.Release();
+			SaveShaderCache();
+			pl_d3d11_destroy(&d3d11);
+			pl_cache_destroy(&cache);
+			pl_log_destroy(&log);
+			outputResourcesRetired = true;
+			DebugLog::Log(
+				"VP Renderer retirement: swapchain and D3D resources released "
+				"before display-global restoration");
+		}
+
+		const bool refreshRestored = displayRefreshRate.RestoreNow();
+		if (!refreshRestored)
+		{
+			DebugLog::Log(
+				"VP Renderer retirement: display refresh restoration is "
+				"pending; NVIDIA restoration deferred");
+			return false;
+		}
+		const bool nvidiaRestored = nvidiaBt2020Reporter.Restore();
+		DebugLog::Log(
+			"VP Renderer retirement: external state refresh=%s nvidia=%s",
+			refreshRestored ? "restored" : "pending",
+			nvidiaRestored ? "restored" : "pending");
+		return nvidiaRestored;
+	}
+
 	~Impl()
 	{
-		for (std::thread& worker : captureWorkers)
-			if (worker.joinable()) worker.join();
-		nvidiaBt2020Reporter.Restore();
-		pl_mpv_user_shader_destroy(&nlsHook);
-		pl_renderer_destroy(&renderer);
-		pl_lut_free(&displayLut);
-		if (d3d11)
-		{
-			pl_tex_destroy(d3d11->gpu, &statsOverlayTexture);
-			pl_tex_destroy(d3d11->gpu, &sweepOverlayTexture);
-			for (pl_tex& texture : textures)
-				pl_tex_destroy(d3d11->gpu, &texture);
-		}
-		pl_swapchain_destroy(&swapchain);
-		vpOwnedSwapchain.Release();
-		SaveShaderCache();
-		pl_d3d11_destroy(&d3d11);
-		pl_cache_destroy(&cache);
-		pl_log_destroy(&log);
+		if (!RetireOutput())
+			DebugLog::Log(
+				"VP Renderer retirement: final external-state restoration "
+				"remains unverified");
 	}
+
+	bool outputResourcesRetired = false;
 
 	bool PresentBlackFrame()
 	{
@@ -9422,12 +9544,14 @@ uint64_t AlphaSourceFormatKey(const VideoState& state)
 
 LibplaceboVideoRenderer::LibplaceboVideoRenderer(
 	IRendererCallback& callback,
+	uint32_t rendererGeneration,
 	HWND videoHwnd,
 	ITimingClock* timingClock,
 	bool useFrameQueue,
 	size_t frameQueueMaxSize,
 	VideoConversionOverride videoConversionOverride) :
 	m_callback(callback),
+	m_callbackGeneration(rendererGeneration),
 	m_videoHwnd(videoHwnd),
 	m_timingClock(timingClock),
 	m_useFrameQueue(useFrameQueue),
@@ -9444,7 +9568,8 @@ LibplaceboVideoRenderer::LibplaceboVideoRenderer(
 	if (!m_manualDisplayRule.empty())
 		DebugLog::Log("display: restored runtime manual rule '%s' for new renderer",
 			m_manualDisplayRule.c_str());
-	m_callback.OnRendererDetailString(TEXT("VP Renderer"));
+	m_callback.OnRendererDetailString(
+		TEXT("VP Renderer"), m_callbackGeneration);
 }
 
 
@@ -10243,25 +10368,37 @@ void LibplaceboVideoRenderer::Retire() noexcept
 		}
 		ClearQueue("renderer retirement");
 		bool blackPresented = false;
+		bool externalStateRestored = true;
 		if (m_impl)
 		{
 			std::lock_guard<std::mutex> renderGuard(m_impl->renderMutex);
-			blackPresented = m_impl->PresentBlackFrame();
+			if (!m_impl->outputResourcesRetired)
+				blackPresented = m_impl->PresentBlackFrame();
+			externalStateRestored = m_impl->RetireOutput();
 		}
 		DebugLog::Log(
-			"VP Renderer retirement: terminal black present=%d before swapchain release",
-			blackPresented ? 1 : 0);
-		m_impl.reset();
+			"VP Renderer retirement: terminal black present=%d "
+			"before swapchain release external_state=%s",
+			blackPresented ? 1 : 0,
+			externalStateRestored ? "restored" : "pending");
+		m_retirementSucceeded.store(
+			externalStateRestored, std::memory_order_release);
+		if (externalStateRestored)
+			m_impl.reset();
 		m_hasPresentedLiveFrame.store(false, std::memory_order_release);
 		DebugLog::Log(
-			"VP Renderer retired: render thread stopped and presentation swapchain released");
+			"VP Renderer retired: render thread stopped and presentation "
+			"swapchain released external_state=%s",
+			externalStateRestored ? "restored" : "pending-retry");
 	}
 	catch (const std::exception& error)
 	{
+		m_retirementSucceeded.store(false, std::memory_order_release);
 		DebugLog::Log("VP Renderer retirement failed: %s", error.what());
 	}
 	catch (...)
 	{
+		m_retirementSucceeded.store(false, std::memory_order_release);
 		DebugLog::Log("VP Renderer retirement failed with an unknown exception");
 	}
 }
@@ -10600,7 +10737,7 @@ void LibplaceboVideoRenderer::ApplyViewportTarget(
 		details.Format(TEXT("VP Renderer - Screen: %.4f:1"), aspect);
 	else
 		details = TEXT("VP Renderer - Screen: output panel");
-	m_callback.OnRendererDetailString(details);
+	m_callback.OnRendererDetailString(details, m_callbackGeneration);
 }
 
 
@@ -11924,5 +12061,5 @@ bool LibplaceboVideoRenderer::CanDequeueLocked() const
 void LibplaceboVideoRenderer::SetState(RendererState state)
 {
 	m_state.store(state, std::memory_order_release);
-	m_callback.OnRendererState(state);
+	m_callback.OnRendererState(state, m_callbackGeneration);
 }

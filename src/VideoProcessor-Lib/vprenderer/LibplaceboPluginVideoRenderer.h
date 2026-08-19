@@ -14,6 +14,7 @@ public:
 
 	LibplaceboPluginVideoRenderer(
 		IRendererCallback& callback,
+		uint32_t rendererGeneration,
 		HWND videoHwnd,
 		ITimingClock* timingClock,
 		bool useFrameQueue,
@@ -36,6 +37,7 @@ public:
 	void Start() override;
 	void Stop() override;
 	void Retire() noexcept override;
+	bool RetirementSucceeded() const override;
 	void Reset() override;
 	void ResetLiveQueue() override;
 	void OnSize() override;

@@ -22,6 +22,7 @@
 
 DirectShowVideoRenderer::DirectShowVideoRenderer(
 	IRendererCallback& callback,
+	uint32_t rendererGeneration,
 	HWND videoHwnd,
 	HWND eventHwnd,
 	UINT eventMsg,
@@ -31,6 +32,7 @@ DirectShowVideoRenderer::DirectShowVideoRenderer(
 	size_t frameQueueMaxSize,
 	VideoConversionOverride videoConversionOverride):
 	m_callback(callback),
+	m_callbackGeneration(rendererGeneration),
 	m_videoHwnd(videoHwnd),
 	m_eventHwnd(eventHwnd),
 	m_eventMsg(eventMsg),
@@ -1296,6 +1298,7 @@ void DirectShowVideoRenderer::OnGraphEvent(long evCode, LONG_PTR param1, LONG_PT
 {
 	// ! Do not tear down graph here
 	// https://docs.microsoft.com/en-us/windows/win32/directshow/responding-to-events
+	m_callback.OnRendererGraphEvent(evCode, m_callbackGeneration);
 
 	switch (evCode)
 	{
@@ -1338,15 +1341,16 @@ void DirectShowVideoRenderer::PublishPendingStateCallback()
 		completions.swap(m_pendingStateCompletions);
 	}
 	for (const RendererState state : completions)
-		m_callback.OnRendererState(state);
+		m_callback.OnRendererState(state, m_callbackGeneration);
 	if (m_pendingRendererRestart.exchange(false, std::memory_order_acq_rel))
-		m_callback.OnRendererRestartRequired();
+		m_callback.OnRendererRestartRequired(m_callbackGeneration);
 }
 
 
 void DirectShowVideoRenderer::WakeForOwnerCompletion() const
 {
-	PostMessage(m_eventHwnd, m_eventMsg, 0, 0);
+	PostMessage(m_eventHwnd, m_eventMsg, 0,
+		static_cast<LPARAM>(m_callbackGeneration));
 }
 
 
@@ -1458,7 +1462,9 @@ void DirectShowVideoRenderer::GraphBuild()
 	// Set up event notification.
 	//
 
-	if (FAILED(m_pEvent->SetNotifyWindow((OAHWND)m_eventHwnd, m_eventMsg, NULL)))
+	if (FAILED(m_pEvent->SetNotifyWindow(
+		(OAHWND)m_eventHwnd, m_eventMsg,
+		static_cast<LONG_PTR>(m_callbackGeneration))))
 		throw std::runtime_error("Failed to setup event notification");
 
 	SetState(RendererState::RENDERSTATE_READY);

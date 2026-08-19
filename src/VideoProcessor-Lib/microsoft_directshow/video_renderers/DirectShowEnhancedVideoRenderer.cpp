@@ -13,6 +13,7 @@
 
 DirectShowEnhancedVideoRenderer::DirectShowEnhancedVideoRenderer(
 	IRendererCallback& callback,
+	uint32_t rendererGeneration,
 	HWND videoHwnd,
 	HWND eventHwnd,
 	UINT eventMsg,
@@ -24,6 +25,7 @@ DirectShowEnhancedVideoRenderer::DirectShowEnhancedVideoRenderer(
 	DirectShowGenericVideoRenderer(
 		CLSID_EnhancedVideoRenderer,
 		callback,
+		rendererGeneration,
 		videoHwnd,
 		eventHwnd,
 		eventMsg,
@@ -33,5 +35,6 @@ DirectShowEnhancedVideoRenderer::DirectShowEnhancedVideoRenderer(
 		frameQueueMaxSize,
 		videoConversionOverride)
 {
-	callback.OnRendererDetailString(TEXT("DirectShow Enhanced Video Renderer"));
+	callback.OnRendererDetailString(
+		TEXT("DirectShow Enhanced Video Renderer"), rendererGeneration);
 }

@@ -15,6 +15,7 @@
 #include <RendererResetRequest.h>
 #include <RendererOutputContractStatus.h>
 #include <SubtitleRepositionMode.h>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <vector>
@@ -48,17 +49,24 @@ const TCHAR* ToString(const RendererState rendererState);
  */
 struct IRendererCallback
 {
-	// Note that this will be synchronous with calls to the renderer. No external thread
-	// will cause calls. Most likely this will be a result of OnWindowsEvent() and Stop() handling.
-	virtual void OnRendererState(RendererState rendererState) = 0;
+	// Callbacks can originate on renderer-owner or render threads. Receivers must
+	// marshal UI work and reject callbacks from a stale renderer generation.
+	virtual void OnRendererState(
+		RendererState rendererState, uint32_t rendererGeneration) = 0;
 
 	// The renderer can report a human-readable string to say what it's doing
 	// No need to do anything but just display.
-	virtual void OnRendererDetailString(const CString& details) = 0;
+	virtual void OnRendererDetailString(
+		const CString& details, uint32_t rendererGeneration) = 0;
+
+	// Reports the real event code drained from IMediaEventEx. The window
+	// notification parameters are not DirectShow event codes.
+	virtual void OnRendererGraphEvent(
+		long eventCode, uint32_t rendererGeneration) {}
 
 	// Delivered on the callback/UI thread after an asynchronous renderer-owner
 	// command discovers that the graph must be replaced.
-	virtual void OnRendererRestartRequired() {}
+	virtual void OnRendererRestartRequired(uint32_t rendererGeneration) {}
 };
 
 
@@ -182,6 +190,9 @@ public:
 	// Implementations must be idempotent so a later final shared_ptr release is
 	// nonblocking even if a transient callback pin outlives retirement.
 	virtual void Retire() noexcept {}
+	// False keeps the handoff closed. A subsequent Retire() call may retry
+	// restoration retained by the outgoing renderer.
+	virtual bool RetirementSucceeded() const { return true; }
 
 	//
 	// GUI

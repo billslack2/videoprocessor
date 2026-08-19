@@ -54,8 +54,11 @@ namespace
 struct ShaderPreparationCallback final : IRendererCallback
 {
 	std::atomic<RendererState> state{ RendererState::RENDERSTATE_UNKNOWN };
-	void OnRendererState(RendererState value) override { state.store(value); }
-	void OnRendererDetailString(const CString&) override {}
+	void OnRendererState(RendererState value, uint32_t) override
+	{
+		state.store(value);
+	}
+	void OnRendererDetailString(const CString&, uint32_t) override {}
 };
 
 struct SyntheticFrameBuffer final : IUnknown
@@ -176,7 +179,7 @@ int RunNonCapturingShaderPreparation()
 	try
 	{
 		ShaderPreparationCallback callback;
-		LibplaceboPluginVideoRenderer renderer(callback, target, nullptr,
+		LibplaceboPluginVideoRenderer renderer(callback, 1, target, nullptr,
 			false, 1, VideoConversionOverride::VIDEOCONVERSION_NONE);
 		renderer.SetNonCapturingPreparationMode(true);
 		renderer.OnVideoState(videoState);

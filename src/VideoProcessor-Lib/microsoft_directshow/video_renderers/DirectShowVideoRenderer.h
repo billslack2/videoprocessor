@@ -39,6 +39,7 @@ public:
 
 	DirectShowVideoRenderer(
 		IRendererCallback& callback,
+		uint32_t rendererGeneration,
 		HWND videoHwnd,
 		HWND eventHwnd,
 		UINT eventMsg,
@@ -188,6 +189,7 @@ protected:
 	}
 
 	IRendererCallback& m_callback;
+	const uint32_t m_callbackGeneration;
 	HWND m_videoHwnd;
 	HWND m_eventHwnd;
 	UINT m_eventMsg;
