@@ -79,7 +79,37 @@ DirectShowGenericHDRVideoRenderer::DirectShowGenericHDRVideoRenderer(
 DirectShowGenericHDRVideoRenderer::~DirectShowGenericHDRVideoRenderer()
 {
 	if (IsGraphThread())
-		ClearNativeStatsOverlayOnGraphThread();
+		ReleaseGraphOwnedRendererServices();
+}
+
+
+void DirectShowGenericHDRVideoRenderer::ReleaseGraphOwnedRendererServices()
+	noexcept
+{
+	AssertGraphThread();
+	if (m_osdServices)
+	{
+		const HRESULT clearResult = m_osdServices->OsdSetBitmap(
+			"VideoProcessor.Diagnostics", nullptr, nullptr,
+			0, 0, 0, false, 0, 0, 0, nullptr, nullptr, nullptr);
+		DebugLog::Log(
+			"madVR OSD: graph-owner teardown clear=0x%08lX generation=%llu",
+			clearResult,
+			static_cast<unsigned long long>(m_rendererGeneration));
+		m_osdServices.Release();
+	}
+	if (m_osdBitmap)
+	{
+		DeleteObject(m_osdBitmap);
+		m_osdBitmap = nullptr;
+	}
+	{
+		std::lock_guard<std::mutex> guard(m_osdMutex);
+		m_osdPixels.clear();
+		m_osdWidth = 0;
+		m_osdHeight = 0;
+		m_osdStride = 0;
+	}
 }
 
 

@@ -74,6 +74,7 @@ public:
 protected:
 
 	// DirectShowVideoRenderer
+	void ReleaseGraphOwnedRendererServices() noexcept override;
 	void RendererBuild() override;
 	void MediaTypeGenerate() override;
 	void RendererConnect() override;

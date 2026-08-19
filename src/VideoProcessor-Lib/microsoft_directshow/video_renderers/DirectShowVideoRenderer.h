@@ -186,6 +186,10 @@ protected:
 	{
 		assert(IsGraphThread());
 	}
+	// Renderer-specific COM services must be detached while the graph owner's
+	// apartment is still alive. The final retirement worker may run in a
+	// different apartment and must only destroy an already-detached object.
+	virtual void ReleaseGraphOwnedRendererServices() noexcept {}
 
 	IRendererCallback& m_callback;
 	HWND m_videoHwnd;
