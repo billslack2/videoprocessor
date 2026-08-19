@@ -210,9 +210,23 @@ bool LogMadVRShaderPreflight(const std::string& source, const std::string& profi
 	const std::filesystem::path& path, const char* stageName, unsigned int order)
 {
 	static std::once_flag environmentLogged;
+	static std::mutex successfulPreflightMutex;
+	static std::set<std::pair<uint64_t, std::string>> successfulPreflights;
 	std::call_once(environmentLogged, LogMadVRShaderEnvironment);
 
 	const uint64_t fingerprint = ShaderSourceFingerprint(source);
+	const std::pair<uint64_t, std::string> cacheKey(fingerprint, profile);
+	{
+		std::lock_guard<std::mutex> lock(successfulPreflightMutex);
+		if (successfulPreflights.find(cacheKey) != successfulPreflights.end())
+		{
+			DebugLog::Log(
+				"Shaders: local HLSL preflight cache hit for %s shader #%u \"%s\" profile=%s bytes=%zu fingerprint=%016llX",
+				stageName, order, path.u8string().c_str(), profile.c_str(),
+				source.size(), static_cast<unsigned long long>(fingerprint));
+			return true;
+		}
+	}
 	CComPtr<ID3DBlob> bytecode;
 	CComPtr<ID3DBlob> diagnostics;
 	const HRESULT hr = D3DCompile(source.data(), source.size(),
@@ -235,6 +249,10 @@ bool LogMadVRShaderPreflight(const std::string& source, const std::string& profi
 		static_cast<unsigned long long>(fingerprint),
 		bytecode ? bytecode->GetBufferSize() : 0,
 		message.empty() ? "(none)" : message.c_str());
+	{
+		std::lock_guard<std::mutex> lock(successfulPreflightMutex);
+		successfulPreflights.insert(cacheKey);
+	}
 	return true;
 }
 

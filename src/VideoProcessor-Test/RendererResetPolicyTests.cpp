@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "CppUnitTest.h"
 
+#include <BoundedDeliveryGate.h>
 #include <RendererResetPolicy.h>
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
@@ -71,6 +72,40 @@ namespace Tests
 		{
 			Assert::IsTrue(QueuePolicyApplyRequiresGraphReset(true));
 			Assert::IsFalse(QueuePolicyApplyRequiresGraphReset(false));
+		}
+
+		TEST_METHOD(BlockedDeliveryCannotStarveGraphOwnerControl)
+		{
+			std::timed_mutex gate;
+			std::atomic_bool gateHeld{false};
+			std::thread delivery([&]()
+				{
+					std::lock_guard<std::timed_mutex> lock(gate);
+					gateHeld.store(true, std::memory_order_release);
+					std::this_thread::sleep_for(
+						std::chrono::milliseconds(50));
+				});
+			while (!gateHeld.load(std::memory_order_acquire))
+				std::this_thread::yield();
+
+			bool executed = false;
+			const auto started = std::chrono::steady_clock::now();
+			const bool blockedResult = TryRunBoundedDeliveryTransaction(
+				gate, std::chrono::milliseconds(5),
+				[&]() { executed = true; });
+			const auto elapsed = std::chrono::duration_cast<
+				std::chrono::milliseconds>(
+					std::chrono::steady_clock::now() - started);
+			delivery.join();
+
+			Assert::IsFalse(blockedResult);
+			Assert::IsFalse(executed);
+			Assert::IsTrue(elapsed < std::chrono::milliseconds(40));
+
+			Assert::IsTrue(TryRunBoundedDeliveryTransaction(
+				gate, std::chrono::milliseconds(5),
+				[&]() { executed = true; }));
+			Assert::IsTrue(executed);
 		}
 
 		TEST_METHOD(DynamicVideoAspectIsGeometryOnly)

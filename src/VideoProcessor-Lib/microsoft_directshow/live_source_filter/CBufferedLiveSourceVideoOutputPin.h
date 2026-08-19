@@ -376,7 +376,13 @@ private:
 	// Serializes downstream Deliver calls with flush/NewSegment during Reset.
 	// BeginFlush is sent before Reset takes this gate so a blocked renderer can
 	// return; no old-epoch sample can then cross the segment boundary.
-	CCritSec m_deliveryGate;
+	// Deliver may remain inside a third-party renderer indefinitely while its
+	// downstream queue is saturated.  A shader/profile transaction must never
+	// wait unboundedly behind that external call because graph reset is queued
+	// on the same owner apartment.  std::timed_mutex keeps the reset path's
+	// proven blocking serialization while allowing presentation-only updates to
+	// defer instead of forming a graph-owner <-> delivery-thread cycle.
+	std::timed_mutex m_deliveryGate;
 	std::atomic_bool m_deliveryFlushing = false;
 	// Identifies the current queue epoch. A conversion that began before a
 	// reset/recovery must not publish its sample into the new epoch.
