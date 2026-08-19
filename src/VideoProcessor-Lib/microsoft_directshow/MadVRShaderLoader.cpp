@@ -8,6 +8,8 @@
 
 #include <pch.h>
 
+#include <MadVRShaderTransactionPolicy.h>
+
 #include <ConfigFile.h>
 #include <DebugLog.h>
 #include <DisplayRuleExpression.h>
@@ -276,6 +278,7 @@ struct ShaderEntry
 	std::filesystem::path path;
 	std::string displayName;
 	std::map<std::string, std::string> parameters;
+	bool nlsRuntimeParameters = false;
 };
 
 
@@ -1732,8 +1735,22 @@ bool PrepareStage(const std::vector<ShaderEntry>& entries,
 			return false;
 		}
 		const auto readFinished = std::chrono::steady_clock::now();
+		std::string preflightSource = shader.source;
 		if (!ApplyShaderParameters(shader.source, entry.parameters, entry.path))
 			return false;
+		if (entry.nlsRuntimeParameters)
+		{
+			auto preflightParameters = entry.parameters;
+			NormalizeMadVRNlsRuntimeParametersForPreflight(
+				preflightParameters);
+			if (!ApplyShaderParameters(preflightSource, preflightParameters,
+				entry.path))
+				return false;
+		}
+		else
+		{
+			preflightSource = shader.source;
+		}
 		shader.profile = ShaderProfile(shader.source, defaultProfile);
 		if (shader.profile.empty())
 		{
@@ -1743,7 +1760,7 @@ bool PrepareStage(const std::vector<ShaderEntry>& entries,
 			return false;
 		}
 		const auto expanded = std::chrono::steady_clock::now();
-		if (!LogMadVRShaderPreflight(shader.source, shader.profile,
+		if (!LogMadVRShaderPreflight(preflightSource, shader.profile,
 			entry.path, stageName, entry.order))
 		{
 			DebugLog::Log(
@@ -1860,6 +1877,7 @@ void AppendRuleEntries(const ShaderRule& rule,
 				entry.order = static_cast<unsigned int>(target.size() + 1);
 			entry.displayName = rule.label;
 			entry.parameters = rule.parameters;
+			entry.nlsRuntimeParameters = rule.nls;
 			target.push_back(std::move(entry));
 		}
 	};

@@ -45,17 +45,14 @@ enum class LiveEpochConvergenceReason
 	UnsafeBoundary,
 	TargetChangedWithinEpoch,
 	PacedIngressObserved,
-	PacedPrimeRequested,
-	SteadyBacklogObserved,
-	SteadyBacklogCatchUpRequested
+	PacedPrimeRequested
 };
 
 enum class LiveEpochConvergenceActivation
 {
 	None,
 	HardBlockRecovery,
-	PacedPrime,
-	SteadyBacklogRecovery
+	PacedPrime
 };
 
 struct LiveEpochConvergenceInput
@@ -97,11 +94,11 @@ struct LiveEpochConvergenceDecision
 	LiveEpochConvergenceReason reason = LiveEpochConvergenceReason::None;
 	// A request authorizes one live catch-up transition after either recovered
 	// hard-block evidence or a locally backlogged, frame-paced ingress plateau:
-	// activate the steady latest-wins policy, discard stale raw work, and reduce
-	// converted work to desiredVpDepth. Final timestamps remain owned by the
-	// delivery sequencer, so discarded pictures create no presentation-timeline
-	// hole. A sustained raw backlog may request the same transaction again after
-	// the initial convergence; transient one-frame handoff jitter cannot.
+	// activate the steady
+	// latest-wins policy and reduce converted work to desiredVpDepth. Raw work
+	// is preserved and rapidly processed under that cap. Final timestamps remain
+	// owned by the delivery sequencer, so discarded converted pictures create no
+	// presentation-timeline hole. The request is emitted at most once per epoch.
 	bool requestConvergence = false;
 	size_t staleVpFrames = 0;
 	size_t staleRawFrames = 0;
@@ -136,12 +133,6 @@ public:
 	static constexpr size_t kMinimumPacedPrimingDepth = 8;
 	static constexpr uint64_t kBlockObservationTimeoutMs = 3000;
 	static constexpr uint64_t kArmedConvergenceWindowMs = 2000;
-	// A raw depth of one is normal thread handoff jitter. More than one raw
-	// frame surviving six successful deliveries is a self-sustaining latency
-	// reservoir: converted steady backpressure otherwise replaces exactly one
-	// old raw frame for every newly captured frame and can never catch up.
-	static constexpr size_t kSteadyRawBacklogTolerance = 1;
-	static constexpr uint32_t kRequiredSteadyBacklogDeliveries = 6;
 
 	LiveEpochConvergenceDecision Observe(
 		const LiveEpochConvergenceInput& input);
@@ -166,9 +157,6 @@ private:
 	void ResetPacedEvidence();
 	bool IsTerminal() const;
 	bool CanRequestTrim(const LiveEpochConvergenceInput& input) const;
-	LiveEpochConvergenceDecision ObserveSteadyBacklog(
-		const LiveEpochConvergenceInput& input,
-		LiveEpochConvergenceState previousState);
 
 	bool m_initialized = false;
 	uint64_t m_epoch = 0;
@@ -183,7 +171,6 @@ private:
 	bool m_hasArmedTick = false;
 	uint64_t m_armedTickMs = 0;
 	bool m_observationTimeoutReported = false;
-	uint32_t m_consecutiveSteadyBacklogDeliveries = 0;
 	LiveEpochConvergenceState m_state =
 		LiveEpochConvergenceState::Disabled;
 };

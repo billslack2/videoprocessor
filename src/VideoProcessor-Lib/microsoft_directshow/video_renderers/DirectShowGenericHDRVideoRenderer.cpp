@@ -8,6 +8,8 @@
 
 #include <pch.h>
 
+#include <MadVRShaderTransactionPolicy.h>
+
 #include "DirectShowViewportPlacement.h"
 
 #include <dvdmedia.h>
@@ -781,9 +783,11 @@ bool DirectShowGenericHDRVideoRenderer::SelectShaderRule(const CString& ruleName
 		label, inactiveRule, nlsMapping))
 		return false;
 	CT2A requestedUtf8(m_requestedShaderRule, CP_UTF8);
-	if (MadVRShaderLoader::RuleSelectorsEqual(
-		static_cast<const char*>(requestedUtf8),
-		static_cast<const char*>(ruleUtf8)))
+	if (ShouldCoalesceMadVRShaderRequest(
+		MadVRShaderLoader::RuleSelectorsEqual(
+			static_cast<const char*>(requestedUtf8),
+			static_cast<const char*>(ruleUtf8)),
+		m_shaderRuleApplicationPending))
 	{
 		activeRule = m_activeShaderRule;
 		DebugLog::Log("Shaders: coalesced duplicate manual request for \"%s\"",
@@ -792,6 +796,7 @@ bool DirectShowGenericHDRVideoRenderer::SelectShaderRule(const CString& ruleName
 	}
 	const bool previousRuleUsedNlsMapping = m_requestedRuleUsesNlsMapping;
 	m_requestedShaderRule = ruleName;
+	m_shaderRuleApplicationPending = true;
 	m_requestedShaderLabel.Format(TEXT("%S"), label.c_str());
 	m_inactiveShaderRule.Format(TEXT("%S"), inactiveRule.c_str());
 	m_requestedRuleUsesNlsMapping = nlsMapping;
@@ -837,6 +842,7 @@ bool DirectShowGenericHDRVideoRenderer::SelectShaderRule(const CString& ruleName
 			return true;
 		}
 		UpdateActiveShaderSelection(selection);
+		m_shaderRuleApplicationPending = false;
 		m_nlsTargetAspect = decision.targetAspect;
 		UpdateNlsOsdMode(decision.mode);
 		m_requestedShaderApplied =
@@ -890,9 +896,18 @@ bool DirectShowGenericHDRVideoRenderer::SelectShaderRule(const CString& ruleName
 			MadVRShaderLoader::SetRuntimeShaderSelection(
 				std::string(ruleUtf8), inactiveRule,
 				MadVRNlsMappingMode::OFF);
-			const MadVRShaderSelection bypassSelection =
-				MadVRShaderLoader::ApplyConfiguredShaderRule(m_pRenderer,
-					*m_videoState, inactiveRule, false);
+			unsigned long desiredAspectX = 0;
+			unsigned long desiredAspectY = 0;
+			MadVRShaderLoader::GetRuntimeOutputAspectRatio(
+				desiredAspectX, desiredAspectY);
+			MadVRShaderSelection bypassSelection;
+			if (!ApplyConfiguredShaderRuleCoherently(
+					inactiveRule, false, desiredAspectX, desiredAspectY,
+					rendererRestartRequired, bypassSelection))
+			{
+				activeRule = m_activeShaderRule;
+				return true;
+			}
 			UpdateActiveShaderSelection(bypassSelection);
 			rendererRestartRequired = DoesOutputAspectRequireRestart(
 				bypassSelection.outputAspectRatioX,
@@ -902,6 +917,7 @@ bool DirectShowGenericHDRVideoRenderer::SelectShaderRule(const CString& ruleName
 				bypassSelection.outputAspectRatioY))
 				rendererRestartRequired = false;
 		}
+		m_shaderRuleApplicationPending = false;
 		m_requestedShaderApplied = false;
 		m_appliedShaderAspectRatio = 0.0;
 		m_activeShaderRule.Format(TEXT("%s (Waiting)"),
@@ -925,6 +941,7 @@ bool DirectShowGenericHDRVideoRenderer::SelectShaderRule(const CString& ruleName
 		return true;
 	}
 	UpdateActiveShaderSelection(selection);
+	m_shaderRuleApplicationPending = false;
 	m_requestedShaderApplied = true;
 	m_appliedShaderAspectRatio = activeAspectRatio;
 	m_appliedActivePictureGeneration = activeRectangle.generation;
@@ -983,13 +1000,14 @@ bool DirectShowGenericHDRVideoRenderer::RefreshShaderRule(CString& activeRule,
 		// The refresh timer runs quickly while transitions are being acquired.
 		// Avoid reparsing shader configuration when detector state cannot
 		// possibly change the current mapping.
-		if (!aspectAvailable &&
+		if (!m_shaderRuleApplicationPending && !aspectAvailable &&
 			m_nlsMappingMode == MadVRNlsMappingMode::WAITING)
 		{
 			UpdateNlsOsdMode(MadVRNlsMappingMode::WAITING);
 			return false;
 		}
-		if (aspectAvailable && m_requestedShaderApplied &&
+		if (!m_shaderRuleApplicationPending && aspectAvailable &&
+			m_requestedShaderApplied &&
 			activeRectangle.generation ==
 				m_appliedActivePictureGeneration &&
 			m_viewportGeneration ==
@@ -1008,7 +1026,8 @@ bool DirectShowGenericHDRVideoRenderer::RefreshShaderRule(CString& activeRule,
 		MadVRShaderLoader::SetRuntimeNlsDecision(decision);
 		if (decision.mode == MadVRNlsMappingMode::WAITING)
 		{
-			if (m_nlsMappingMode == MadVRNlsMappingMode::WAITING)
+			if (!m_shaderRuleApplicationPending &&
+				m_nlsMappingMode == MadVRNlsMappingMode::WAITING)
 			{
 				UpdateNlsOsdMode(MadVRNlsMappingMode::WAITING);
 				return false;
@@ -1035,6 +1054,7 @@ bool DirectShowGenericHDRVideoRenderer::RefreshShaderRule(CString& activeRule,
 				return true;
 			}
 			UpdateActiveShaderSelection(waitingSelection);
+			m_shaderRuleApplicationPending = false;
 			UpdateNlsOsdMode(MadVRNlsMappingMode::WAITING);
 			m_requestedShaderApplied = false;
 			m_appliedShaderAspectRatio = 0.0;
@@ -1053,7 +1073,8 @@ bool DirectShowGenericHDRVideoRenderer::RefreshShaderRule(CString& activeRule,
 				static_cast<unsigned long long>(m_rendererGeneration));
 			return true;
 		}
-		const bool mappingChanged = decision.mode != m_nlsMappingMode ||
+		const bool mappingChanged = m_shaderRuleApplicationPending ||
+			decision.mode != m_nlsMappingMode ||
 			!m_requestedShaderApplied ||
 			std::abs(activeAspectRatio - m_appliedShaderAspectRatio) > 0.01 ||
 			activeRectangle.generation != m_appliedActivePictureGeneration ||
@@ -1086,6 +1107,7 @@ bool DirectShowGenericHDRVideoRenderer::RefreshShaderRule(CString& activeRule,
 			return true;
 		}
 		UpdateActiveShaderSelection(selection);
+		m_shaderRuleApplicationPending = false;
 		m_nlsTargetAspect = decision.targetAspect;
 		UpdateNlsOsdMode(decision.mode);
 		m_requestedShaderApplied = true;
@@ -1132,7 +1154,8 @@ bool DirectShowGenericHDRVideoRenderer::RefreshShaderRule(CString& activeRule,
 		(std::abs(activeAspectRatio - m_appliedShaderAspectRatio) > 0.01 ||
 			activeRectangle.generation != m_appliedActivePictureGeneration ||
 			m_viewportGeneration != m_appliedViewportGeneration);
-	if (shouldApply == m_requestedShaderApplied && !activeAspectChanged)
+	if (!m_shaderRuleApplicationPending &&
+		shouldApply == m_requestedShaderApplied && !activeAspectChanged)
 		return false;
 
 	std::string ruleToApply;
@@ -1154,10 +1177,20 @@ bool DirectShowGenericHDRVideoRenderer::RefreshShaderRule(CString& activeRule,
 		}
 	}
 
-	const MadVRShaderSelection selection =
-		MadVRShaderLoader::ApplyConfiguredShaderRule(m_pRenderer, *m_videoState,
-			ruleToApply, shouldApply);
+	unsigned long desiredAspectX = 0;
+	unsigned long desiredAspectY = 0;
+	MadVRShaderLoader::GetRuntimeOutputAspectRatio(
+		desiredAspectX, desiredAspectY);
+	MadVRShaderSelection selection;
+	if (!ApplyConfiguredShaderRuleCoherently(
+			ruleToApply, shouldApply, desiredAspectX, desiredAspectY,
+			rendererRestartRequired, selection))
+	{
+		activeRule = m_activeShaderRule;
+		return true;
+	}
 	UpdateActiveShaderSelection(selection);
+	m_shaderRuleApplicationPending = false;
 	m_requestedShaderApplied = shouldApply;
 	m_appliedShaderAspectRatio = shouldApply ? activeAspectRatio : 0.0;
 	m_appliedActivePictureGeneration = shouldApply ? activeRectangle.generation : 0;

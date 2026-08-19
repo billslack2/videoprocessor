@@ -120,6 +120,10 @@ private:
 	CString m_requestedShaderLabel;
 	CString m_inactiveShaderRule;
 	bool m_requestedRuleUsesNlsMapping = false;
+	// Desired intent is latched before madVR accepts the coherent chain. Keep a
+	// distinct pending bit so a bounded delivery-gate deferral is retried by the
+	// 25 ms refresh timer instead of being mistaken for an applied duplicate.
+	bool m_shaderRuleApplicationPending = false;
 	MadVRNlsMappingMode m_nlsMappingMode = MadVRNlsMappingMode::OFF;
 	double m_nlsTargetAspect = 0.0;
 	bool m_requestedShaderApplied = false;

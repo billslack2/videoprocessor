@@ -247,8 +247,12 @@ bool CBufferedLiveSourceVideoOutputPin::RunWithDeliveryHeld(
 	// active-picture refresh will retry after downstream delivery progresses.
 	std::chrono::steady_clock::time_point acquired;
 	std::chrono::steady_clock::time_point completed;
+	// One 23.976 Hz delivery interval is 41.7 ms. Give a normal paced Deliver
+	// enough time to return while retaining a hard upper bound for a renderer
+	// that is genuinely stuck.
+	constexpr std::chrono::milliseconds deliveryHoldTimeout(50);
 	const bool executed = TryRunBoundedDeliveryTransaction(
-		m_deliveryGate, std::chrono::milliseconds(5), [&]()
+		m_deliveryGate, deliveryHoldTimeout, [&]()
 		{
 			acquired = std::chrono::steady_clock::now();
 			operation();
@@ -257,7 +261,7 @@ bool CBufferedLiveSourceVideoOutputPin::RunWithDeliveryHeld(
 	if (!executed)
 	{
 		DebugLog::Log(
-			"Shaders: coherent delivery hold deferred after 5ms; current chain retained so graph control remains runnable");
+			"Shaders: coherent delivery hold deferred after 50ms; current chain retained so graph control remains runnable");
 		return false;
 	}
 	DebugLog::Log(

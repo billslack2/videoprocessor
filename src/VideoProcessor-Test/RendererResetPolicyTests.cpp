@@ -2,6 +2,7 @@
 #include "CppUnitTest.h"
 
 #include <BoundedDeliveryGate.h>
+#include <MadVRShaderTransactionPolicy.h>
 #include <RendererResetPolicy.h>
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
@@ -106,6 +107,37 @@ namespace Tests
 				gate, std::chrono::milliseconds(5),
 				[&]() { executed = true; }));
 			Assert::IsTrue(executed);
+		}
+
+		TEST_METHOD(DeferredShaderIntentCannotBecomeAFalseDuplicate)
+		{
+			Assert::IsTrue(ShouldCoalesceMadVRShaderRequest(true, false));
+			Assert::IsFalse(ShouldCoalesceMadVRShaderRequest(true, true));
+			Assert::IsFalse(ShouldCoalesceMadVRShaderRequest(false, false));
+		}
+
+		TEST_METHOD(NlsGeometryVariantsShareStructuralPreflight)
+		{
+			std::map<std::string, std::string> first = {
+				{ "active_left", "0.00000000" },
+				{ "active_top", "0.03148000" },
+				{ "active_right", "1.00000000" },
+				{ "active_bottom", "0.96852000" },
+				{ "stretch_ratio", "1.23865000" },
+				{ "warp_axis", "0" },
+				{ "safe_fit", "0" },
+			};
+			auto second = first;
+			second["active_top"] = "0.00000000";
+			second["active_bottom"] = "1.00000000";
+			second["stretch_ratio"] = "1.32188000";
+
+			NormalizeMadVRNlsRuntimeParametersForPreflight(first);
+			NormalizeMadVRNlsRuntimeParametersForPreflight(second);
+			Assert::IsTrue(first == second);
+
+			second["warp_axis"] = "1";
+			Assert::IsFalse(first == second);
 		}
 
 		TEST_METHOD(DynamicVideoAspectIsGeometryOnly)

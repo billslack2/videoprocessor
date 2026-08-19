@@ -41,16 +41,7 @@ LiveEpochConvergenceDecision LiveEpochConvergenceController::Observe(
 	}
 
 	if (IsTerminal())
-	{
-		// TrimApplied activates persistent converted-queue backpressure. If raw
-		// work subsequently accumulates, that same backpressure can preserve the
-		// stale raw reservoir forever. Reuse the timestamp-aware convergence
-		// transaction after sustained evidence instead of making the first trim
-		// terminal for the entire epoch.
-		if (m_state == LiveEpochConvergenceState::TrimApplied)
-			return ObserveSteadyBacklog(input, previousState);
 		return MakeDecision(input, previousState, LiveEpochConvergenceReason::None);
-	}
 
 	if (input.resetOrFlushInProgress)
 	{
@@ -242,7 +233,6 @@ void LiveEpochConvergenceController::Reset()
 	m_hasArmedTick = false;
 	m_armedTickMs = 0;
 	m_observationTimeoutReported = false;
-	m_consecutiveSteadyBacklogDeliveries = 0;
 	m_state = LiveEpochConvergenceState::Disabled;
 }
 
@@ -261,48 +251,7 @@ void LiveEpochConvergenceController::BeginEpoch(
 	m_hasArmedTick = false;
 	m_armedTickMs = 0;
 	m_observationTimeoutReported = false;
-	m_consecutiveSteadyBacklogDeliveries = 0;
 	m_state = LiveEpochConvergenceState::ObservingIngress;
-}
-
-LiveEpochConvergenceDecision
-LiveEpochConvergenceController::ObserveSteadyBacklog(
-	const LiveEpochConvergenceInput& input,
-	LiveEpochConvergenceState previousState)
-{
-	if (input.resetOrFlushInProgress || !input.deliveryCompleted ||
-		!input.deliverySucceeded || !IsNormalDelivery(input) ||
-		!input.rawDepthKnown ||
-		input.vpRawDepth <= kSteadyRawBacklogTolerance)
-	{
-		m_consecutiveSteadyBacklogDeliveries = 0;
-		return MakeDecision(input, previousState,
-			input.resetOrFlushInProgress ?
-				LiveEpochConvergenceReason::UnsafeBoundary :
-				LiveEpochConvergenceReason::None);
-	}
-
-	++m_consecutiveSteadyBacklogDeliveries;
-	if (m_consecutiveSteadyBacklogDeliveries <
-		kRequiredSteadyBacklogDeliveries)
-	{
-		return MakeDecision(input, previousState,
-			LiveEpochConvergenceReason::SteadyBacklogObserved);
-	}
-
-	m_consecutiveSteadyBacklogDeliveries = 0;
-	LiveEpochConvergenceDecision decision = MakeDecision(
-		input, previousState,
-		LiveEpochConvergenceReason::SteadyBacklogCatchUpRequested);
-	decision.requestConvergence = true;
-	decision.staleRawFrames = input.vpRawDepth;
-	decision.staleConvertedFrames = input.vpConvertedDepth >
-		m_desiredVpDepth ? input.vpConvertedDepth - m_desiredVpDepth : 0;
-	decision.staleVpFrames =
-		decision.staleRawFrames + decision.staleConvertedFrames;
-	decision.activation =
-		LiveEpochConvergenceActivation::SteadyBacklogRecovery;
-	return decision;
 }
 
 LiveEpochConvergenceDecision LiveEpochConvergenceController::MakeDecision(
@@ -478,8 +427,6 @@ const char* ToString(LiveEpochConvergenceReason reason)
 	case LiveEpochConvergenceReason::TargetChangedWithinEpoch: return "target-changed-within-epoch";
 	case LiveEpochConvergenceReason::PacedIngressObserved: return "paced-ingress-observed";
 	case LiveEpochConvergenceReason::PacedPrimeRequested: return "paced-prime-requested";
-	case LiveEpochConvergenceReason::SteadyBacklogObserved: return "steady-backlog-observed";
-	case LiveEpochConvergenceReason::SteadyBacklogCatchUpRequested: return "steady-backlog-catch-up-requested";
 	default: return "none";
 	}
 }
@@ -491,7 +438,6 @@ const char* ToString(LiveEpochConvergenceActivation activation)
 	case LiveEpochConvergenceActivation::None: return "none";
 	case LiveEpochConvergenceActivation::HardBlockRecovery: return "hard-block-recovery";
 	case LiveEpochConvergenceActivation::PacedPrime: return "paced-prime";
-	case LiveEpochConvergenceActivation::SteadyBacklogRecovery: return "steady-backlog-recovery";
 	default: return "none";
 	}
 }
