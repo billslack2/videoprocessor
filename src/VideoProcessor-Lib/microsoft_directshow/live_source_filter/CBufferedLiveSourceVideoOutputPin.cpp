@@ -627,14 +627,27 @@ HRESULT CBufferedLiveSourceVideoOutputPin::OnVideoFrame(VideoFrame& videoFrame)
 	const bool limitPrimeRawRetention = callbackEpoch != 0 &&
 		callbackEpoch == m_primeQueueEpoch.load(std::memory_order_acquire) &&
 		m_steadyQueueEpoch.load(std::memory_order_acquire) != callbackEpoch;
+	const LiveSteadyQueueDecision steadyCaptureDecision =
+		LiveSteadyQueuePolicy::Evaluate({
+			m_steadyQueueEpoch.load(std::memory_order_acquire),
+			currentEpoch.value,
+			IsSteadyQueueTargetConfigured(),
+			m_sceneAwareTimingCorrection.load(std::memory_order_acquire),
+			GetConfiguredSteadyQueueTarget(),
+			m_publishedConvertedQueueDepth.load(std::memory_order_acquire) });
 	size_t discardedByLimitedPush = 0;
 	const EpochBoundedQueuePushResult pushResult = limitPrimeRawRetention ?
 		m_captureFrameQueue.PushWithMaximum(
 			std::move(capturedFrame), { callbackEpoch }, currentEpoch,
 			DirectShowEpochPrimePolicy::MaximumRetainedRawQueueFrames,
 			&discardedByLimitedPush) :
-		m_captureFrameQueue.Push(
-			std::move(capturedFrame), { callbackEpoch }, currentEpoch);
+		(steadyCaptureDecision.active ?
+			m_captureFrameQueue.PushWithMaximum(
+				std::move(capturedFrame), { callbackEpoch }, currentEpoch,
+				steadyCaptureDecision.maximumRawDepth,
+				&discardedByLimitedPush) :
+			m_captureFrameQueue.Push(
+				std::move(capturedFrame), { callbackEpoch }, currentEpoch));
 	EpochBoundedQueueMetrics rawMetrics = m_captureFrameQueue.Metrics();
 	m_publishedRawQueueDepth.store(rawMetrics.depth, std::memory_order_release);
 	const size_t retainedSourceBuffers = rawMetrics.depth +
@@ -667,7 +680,8 @@ HRESULT CBufferedLiveSourceVideoOutputPin::OnVideoFrame(VideoFrame& videoFrame)
 	acceptedRawQueueDepth = rawMetrics.depth;
 	if (pushResult == EpochBoundedQueuePushResult::AcceptedAfterOverflowDiscard)
 	{
-		const size_t discardedByPush = limitPrimeRawRetention ?
+		const size_t discardedByPush = (limitPrimeRawRetention ||
+			steadyCaptureDecision.active) ?
 			discardedByLimitedPush : 1;
 		m_droppedFrameCount.fetch_add(
 			discardedByPush, std::memory_order_relaxed);

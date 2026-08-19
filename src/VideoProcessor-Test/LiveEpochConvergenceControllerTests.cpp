@@ -1,6 +1,10 @@
 #include "pch.h"
 #include "CppUnitTest.h"
 
+#include <functional>
+#include <vector>
+
+#include <EpochBoundedQueue.h>
 #include <LiveEpochConvergenceController.h>
 #include <LiveSteadyQueuePolicy.h>
 
@@ -314,6 +318,7 @@ namespace Tests
 				5, 5, true, false, 1, 22 });
 			Assert::IsTrue(decision.active);
 			Assert::AreEqual<size_t>(1, decision.highWater);
+			Assert::AreEqual<size_t>(1, decision.maximumRawDepth);
 			Assert::IsTrue(decision.holdConversion);
 
 			decision = LiveSteadyQueuePolicy::Evaluate({
@@ -327,10 +332,33 @@ namespace Tests
 			decision = LiveSteadyQueuePolicy::Evaluate({
 				5, 6, true, false, 1, 22 });
 			Assert::IsFalse(decision.active);
+			Assert::AreEqual<size_t>(0, decision.maximumRawDepth);
 			decision = LiveSteadyQueuePolicy::Evaluate({
 				5, 5, true, true, 1, 22 });
 			Assert::IsTrue(decision.active);
 			Assert::IsTrue(decision.holdConversion);
+		}
+
+		TEST_METHOD(SteadyCaptureRetainsExactlyOneLatestWinsHandoff)
+		{
+			const PipelineEpoch epoch{ 7 };
+			std::vector<int> released;
+			EpochBoundedQueue<int, std::function<void(int&)>> raw(
+				32, [&released](int& frame) { released.push_back(frame); });
+			const LiveSteadyQueueDecision decision =
+				LiveSteadyQueuePolicy::Evaluate({ 7, 7, true, false, 3, 3 });
+
+			Assert::AreEqual<size_t>(1, decision.maximumRawDepth);
+			Assert::AreEqual(static_cast<int>(EpochBoundedQueuePushResult::Accepted),
+				static_cast<int>(raw.PushWithMaximum(
+					100, epoch, epoch, decision.maximumRawDepth)));
+			Assert::AreEqual(static_cast<int>(
+				EpochBoundedQueuePushResult::AcceptedAfterOverflowDiscard),
+				static_cast<int>(raw.PushWithMaximum(
+					101, epoch, epoch, decision.maximumRawDepth)));
+			Assert::AreEqual<size_t>(1, raw.Size());
+			Assert::AreEqual<size_t>(1, released.size());
+			Assert::AreEqual(100, released.front());
 		}
 
 		TEST_METHOD(Exact23976ThresholdAndRecoveryAreRateIndependent)
