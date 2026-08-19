@@ -86,6 +86,25 @@ namespace Tests
 				static_cast<int>(ClassifyDirectShowGraphEvent(0x12)));
 		}
 
+		TEST_METHOD(RapidRendererSelectionDefersAcrossLifecycleBoundaries)
+		{
+			Assert::AreEqual(
+				static_cast<int>(
+					RendererRestartDispatch::DeferUntilConstructionCompletes),
+				static_cast<int>(ClassifyRendererRestartDispatch(true, false)));
+			Assert::AreEqual(
+				static_cast<int>(
+					RendererRestartDispatch::DeferUntilConstructionCompletes),
+				static_cast<int>(ClassifyRendererRestartDispatch(true, true)));
+			Assert::AreEqual(
+				static_cast<int>(
+					RendererRestartDispatch::DeferUntilRetirementCompletes),
+				static_cast<int>(ClassifyRendererRestartDispatch(false, true)));
+			Assert::AreEqual(
+				static_cast<int>(RendererRestartDispatch::DispatchNow),
+				static_cast<int>(ClassifyRendererRestartDispatch(false, false)));
+		}
+
 		TEST_METHOD(DisplayTransitionOwnsConcurrentSourceGapRecovery)
 		{
 			Assert::IsTrue(

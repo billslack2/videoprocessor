@@ -1861,6 +1861,7 @@ BEGIN_MESSAGE_MAP(CVideoProcessorDlg, CDialog)
 	ON_MESSAGE(WM_MESSAGE_RENDERER_LIVE_FRAME, &CVideoProcessorDlg::OnMessageRendererLiveFrame)
 	ON_MESSAGE(WM_MESSAGE_RENDERER_RESET_REQUEST, &CVideoProcessorDlg::OnMessageRendererResetRequest)
 	ON_MESSAGE(WM_MESSAGE_RENDERER_RETIRED, &CVideoProcessorDlg::OnMessageRendererRetired)
+	ON_MESSAGE(WM_MESSAGE_RENDERER_INTENT_READY, &CVideoProcessorDlg::OnMessageRendererIntentReady)
 	ON_MESSAGE(WM_MODERN_OPERATOR_ACTION, &CVideoProcessorDlg::OnMessageModernOperatorAction)
 
 	// Command handlers (from accelerator)
@@ -4825,6 +4826,19 @@ void CVideoProcessorDlg::OnBnClickedRendererRestart()
 
 	m_postRendererStartRequiresGraph = true;
 	m_wantToRestartRenderer = true;
+	const RendererRestartDispatch dispatch = ClassifyRendererRestartDispatch(
+		m_rendererConstructionActive, m_rendererRetirementPending);
+	if (dispatch != RendererRestartDispatch::DispatchNow)
+	{
+		DebugLog::Log(
+			"Renderer restart intent coalesced: renderer=%S construction_active=%d "
+			"retirement_pending=%d action=latest-intent-waits-for-lifecycle-boundary",
+			m_sessionRendererOverride.IsEmpty() ? L"(selection)" :
+				m_sessionRendererOverride.GetString(),
+			m_rendererConstructionActive ? 1 : 0,
+			m_rendererRetirementPending ? 1 : 0);
+		return;
+	}
 	UpdateState();
 }
 
@@ -6013,6 +6027,16 @@ LRESULT CVideoProcessorDlg::OnMessageRendererRetired(
 }
 
 
+LRESULT CVideoProcessorDlg::OnMessageRendererIntentReady(
+	WPARAM,
+	LPARAM)
+{
+	if (!m_rendererConstructionActive)
+		UpdateState();
+	return 0;
+}
+
+
 bool CVideoProcessorDlg::TryFinalizeRendererRetirement(
 	uint64_t token,
 	const char* completionSource)
@@ -7143,6 +7167,12 @@ void CVideoProcessorDlg::OnRendererDetailString(const CString& details)
 void CVideoProcessorDlg::UpdateState()
 {
 	DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::UpdateState()")));
+	if (m_rendererConstructionActive)
+	{
+		DbgLog((LOG_TRACE, 1,
+			TEXT("CVideoProcessorDlg::UpdateState(): waiting for renderer construction")));
+		return;
+	}
 	if (m_rendererRetirementPending)
 	{
 		TryFinalizeRendererRetirement(
@@ -8093,6 +8123,7 @@ void CVideoProcessorDlg::RenderStart()
 #if defined(_WIN64)
 	if (selectedRenderer->backend == RendererBackend::LIBPLACEBO)
 	{
+		m_rendererConstructionActive = true;
 		try
 		{
 			const size_t alphaQueueCapacity =
@@ -8126,11 +8157,15 @@ void CVideoProcessorDlg::RenderStart()
 			m_videoRenderer->SetSceneAwareTimingCorrection(
 				m_sceneAwareTimingCorrection);
 			m_videoRenderer->Start();
+			m_rendererConstructionActive = false;
+			if (m_wantToRestartRenderer)
+				PostMessage(WM_MESSAGE_RENDERER_INTENT_READY, 0, 0);
 			m_rendererStateText.SetWindowText(
 				TEXT("Started VP Renderer, waiting for image..."));
 		}
 		catch (const std::exception& e)
 		{
+			m_rendererConstructionActive = false;
 			DebugLog::Log("libplacebo renderer startup failed: %s", e.what());
 			DestroyVideoRenderer();
 			if (!m_rendererRetirementPending)
@@ -8163,6 +8198,7 @@ void CVideoProcessorDlg::RenderStart()
 
 	try
 	{
+		m_rendererConstructionActive = true;
 		if (IsEqualCLSID(*rendererClSID, CLSID_MPCVR))
 			m_videoRenderer = std::make_shared<DirectShowMPCVideoRenderer>(
 				*this, m_rendererTargetHwnd, GetSafeHwnd(),
@@ -8228,12 +8264,16 @@ void CVideoProcessorDlg::RenderStart()
 		m_videoRenderer->SetSubtitleRepositioningMode(
 			m_subtitleRepositionMode);
 		m_videoRenderer->Start();
+		m_rendererConstructionActive = false;
+		if (m_wantToRestartRenderer)
+			PostMessage(WM_MESSAGE_RENDERER_INTENT_READY, 0, 0);
 
 		m_rendererStateText.SetWindowText(TEXT("Started HDR renderer, waiting for image..."));
 
 	}
 	catch (std::runtime_error e)
 	{
+		m_rendererConstructionActive = false;
 		DestroyVideoRenderer();
 		if (m_rendererRetirementPending)
 		{
@@ -8247,6 +8287,7 @@ void CVideoProcessorDlg::RenderStart()
 
 		try
 		{
+			m_rendererConstructionActive = true;
 			if (IsEqualCLSID(*rendererClSID, CLSID_MPCVR))
 			{
 				m_videoRenderer = std::make_shared<DirectShowMPCVideoRenderer>(
@@ -8314,11 +8355,15 @@ void CVideoProcessorDlg::RenderStart()
 			m_videoRenderer->SetSubtitleRepositioningMode(
 				m_subtitleRepositionMode);
 			m_videoRenderer->Start();
+			m_rendererConstructionActive = false;
+			if (m_wantToRestartRenderer)
+				PostMessage(WM_MESSAGE_RENDERER_INTENT_READY, 0, 0);
 
 			m_rendererStateText.SetWindowText(TEXT("Started, waiting for image..."));
 		}
 		catch (std::runtime_error e)
 		{
+			m_rendererConstructionActive = false;
 			DestroyVideoRenderer();
 			if (!m_rendererRetirementPending)
 			{

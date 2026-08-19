@@ -154,6 +154,71 @@ namespace Tests
 				static_cast<int>(lateDecision.activation));
 		}
 
+		TEST_METHOD(SameRateSourceGapRawBacklogCannotRemainAfterInitialConvergence)
+		{
+			LiveEpochConvergenceController controller;
+			LiveEpochConvergenceInput input = Input();
+			input.desiredVpDepth = 3;
+			input.targetConfigured = true;
+			input.vpRawDepth = 3;
+
+			(void)Observe(controller, input, 60000, 19, 1);
+			(void)Observe(controller, input, 16683, 19);
+			(void)Observe(controller, input, 16683, 19);
+			LiveEpochConvergenceDecision decision =
+				Observe(controller, input, 16683, 19);
+			Assert::IsTrue(decision.requestConvergence);
+			Assert::AreEqual(
+				static_cast<int>(LiveEpochConvergenceActivation::HardBlockRecovery),
+				static_cast<int>(decision.activation));
+
+			// Reproduce the live trace: after the one-shot trim, five raw frames
+			// regrew behind the converted target. At equal capture/delivery rates
+			// this reservoir is permanent unless convergence remains enforceable.
+			input.vpRawDepth = 5;
+			for (uint32_t delivery = 1;
+				delivery < LiveEpochConvergenceController::
+					kRequiredSteadyBacklogDeliveries; ++delivery)
+			{
+				decision = Observe(controller, input, 16683, 3);
+				Assert::IsFalse(decision.requestConvergence);
+				Assert::AreEqual(
+					static_cast<int>(
+						LiveEpochConvergenceReason::SteadyBacklogObserved),
+					static_cast<int>(decision.reason));
+			}
+
+			decision = Observe(controller, input, 16683, 3);
+			Assert::IsTrue(decision.requestConvergence);
+			Assert::AreEqual<size_t>(5, decision.staleRawFrames);
+			Assert::AreEqual<size_t>(5, decision.staleVpFrames);
+			Assert::AreEqual(
+				static_cast<int>(
+					LiveEpochConvergenceActivation::SteadyBacklogRecovery),
+				static_cast<int>(decision.activation));
+
+			input.vpRawDepth = 0;
+			decision = Observe(controller, input, 16683, 3);
+			Assert::IsFalse(decision.requestConvergence);
+		}
+
+		TEST_METHOD(SteadySingleRawHandoffNeverTriggersCatchUp)
+		{
+			LiveEpochConvergenceController controller;
+			LiveEpochConvergenceInput input = Input();
+			input.vpRawDepth = 3;
+			(void)Observe(controller, input, 60000, 16, 1);
+			(void)Observe(controller, input, 16683, 16);
+			(void)Observe(controller, input, 16683, 16);
+			Assert::IsTrue(Observe(controller, input, 16683, 16).
+				requestConvergence);
+
+			input.vpRawDepth = 1;
+			for (int delivery = 0; delivery < 30; ++delivery)
+				Assert::IsFalse(Observe(controller, input, 16683, 2).
+					requestConvergence);
+		}
+
 		TEST_METHOD(HandshakeDelayMatrixPreservesConfiguredSteadyQueueTarget)
 		{
 			const uint64_t handshakeDelaysMs[] =
