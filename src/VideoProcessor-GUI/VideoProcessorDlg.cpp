@@ -54,6 +54,7 @@
 #include <EventActionLauncher.h>
 #include <DisplayRefreshRateEstimator.h>
 #include <DisplayRefreshRatePolicy.h>
+#include <RendererGenerationGate.h>
 #include <RendererProfileConfig.h>
 #include <MainConfigSchema.h>
 #include <UnifiedProfileRuntime.h>
@@ -1879,6 +1880,8 @@ BEGIN_MESSAGE_MAP(CVideoProcessorDlg, CDialog)
 	ON_MESSAGE(WM_MESSAGE_RENDERER_RESET_REQUEST, &CVideoProcessorDlg::OnMessageRendererResetRequest)
 	ON_MESSAGE(WM_MESSAGE_RENDERER_RETIRED, &CVideoProcessorDlg::OnMessageRendererRetired)
 	ON_MESSAGE(WM_MESSAGE_RENDERER_INTENT_READY, &CVideoProcessorDlg::OnMessageRendererIntentReady)
+	ON_MESSAGE(WM_MESSAGE_RENDERER_GRAPH_EVENT, &CVideoProcessorDlg::OnMessageRendererGraphEvent)
+	ON_MESSAGE(WM_MESSAGE_RENDERER_RESTART_REQUIRED, &CVideoProcessorDlg::OnMessageRendererRestartRequired)
 	ON_MESSAGE(WM_MODERN_OPERATOR_ACTION, &CVideoProcessorDlg::OnMessageModernOperatorAction)
 
 	// Command handlers (from accelerator)
@@ -5766,100 +5769,27 @@ LRESULT CVideoProcessorDlg::OnMessageCaptureDeviceError(WPARAM wParam, LPARAM lP
 }
 LRESULT CVideoProcessorDlg::OnMessageDirectShowNotification(WPARAM wParam, LPARAM lParam)
 {
+	const uint32_t messageGeneration = static_cast<uint32_t>(lParam);
+	const uint32_t currentGeneration =
+		m_rendererGeneration.load(std::memory_order_acquire);
 	const std::shared_ptr<IVideoRenderer> renderer =
 		std::atomic_load_explicit(
 			&m_videoRenderer, std::memory_order_acquire);
-	if (renderer)
+	if (!RendererGenerationGate::Accept(
+		messageGeneration, currentGeneration, renderer != nullptr) ||
+		!m_activeRendererIsDirectShow)
 	{
-		// Enhanced DirectShow event handling for MadVR changes
-		// We'll intercept events before passing them to the renderer to detect important changes
-
-		// First call the renderer to process DirectShow events and get any graph events
-		HRESULT hr = renderer->OnWindowsEvent(wParam, lParam);
-
-		// Now check for specific DirectShow graph events that indicate MadVR changes
-		// These events are typically sent via the DirectShow event system
-		if (SUCCEEDED(hr))
-		{
-			// Try to detect specific DirectShow events that affect MadVR
-			// Note: The exact event codes depend on DirectShow implementation
-			// We'll add logging to detect what events we're getting
-
-			DbgLog((LOG_TRACE, 2, TEXT("DirectShow notification received - wParam: 0x%08X, lParam: 0x%08X"),
-				(DWORD)wParam, (DWORD)lParam));
-
-			// Check for common DirectShow events that might indicate renderer changes
-			// EC_DISPLAY_CHANGED = 0x16, EC_WINDOW_DESTROYED = 0x11, etc.
-			long eventCode = (long)wParam;
-
-			switch (eventCode)
-			{
-			case 0x16: // EC_DISPLAY_CHANGED
-			{
-				if (!m_outputReadinessGraphReprimeActive)
-				{
-					g_displayRefreshRateSampler->ResetMeasurement();
-				}
-				else
-				{
-					DebugLog::Log(
-						"DirectShow display event belongs to the output-readiness "
-						"graph re-prime; preserving its selecting DXGI evidence");
-				}
-				const ULONGLONG now = GetTickCount64();
-				if (m_rendererState == RendererState::RENDERSTATE_RENDERING &&
-					(!m_rendererResetCoordinator ||
-						!m_rendererResetCoordinator->
-							GetDiagnostics().hasPending) &&
-					now >= m_queueResetIgnoreEventsUntil)
-				{
-					RequestRendererReset(RendererResetReason::DisplayTransition, true,
-						static_cast<UINT>(m_queueResetDelaySeconds * 1000));
-				}
-				else
-				{
-					DbgLog((LOG_TRACE, 1, TEXT("DirectShow display transition - queue re-prime already pending or suppressed")));
-				}
-				break;
-			}
-
-			case 0x0E: // EC_VIDEO_SIZE_CHANGED
-				// madVR emits this for an accepted dynamic picture-aspect update.
-				// NLS therefore changes geometry without throwing away valid DXGI
-				// timing evidence or entering the display-transition reset path.
-				ASSERT(ClassifyDirectShowGraphEvent(eventCode) ==
-					DirectShowGraphEventImpact::GeometryOnly);
-				DebugLog::Log(
-					"DirectShow video geometry changed: event=EC_VIDEO_SIZE_CHANGED "
-					"action=retain-display-timing-and-queue");
-				break;
-
-			case 0x11: // EC_WINDOW_DESTROYED  
-				DbgLog((LOG_TRACE, 1, TEXT("EC_WINDOW_DESTROYED detected - MadVR window change")));
-				break;
-
-			case 0x12: // EC_QUALITY_CHANGE
-				DbgLog((LOG_TRACE, 1, TEXT("EC_QUALITY_CHANGE detected - potential MadVR quality adjustment")));
-				// Don't reset for quality changes, but log them for diagnostics
-				break;
-
-			case 0x0D: // EC_REPAINT
-				// Very common, don't log at normal trace level
-				break;
-
-			default:
-				// Log unknown events for debugging
-				if (eventCode > 0 && eventCode < 0x50) // DirectShow event code range
-				{
-					DbgLog((LOG_TRACE, 2, TEXT("Unknown DirectShow event code: 0x%02X"), eventCode));
-				}
-				break;
-			}
-		}
-
-		if (FAILED(hr))
-			FatalError(TEXT("Failed to handle windows event in renderer"));
+		DebugLog::Log(
+			"DirectShow notification rejected: message_generation=%u "
+			"current_generation=%u renderer=%d directshow=%d",
+			messageGeneration, currentGeneration, renderer ? 1 : 0,
+			m_activeRendererIsDirectShow ? 1 : 0);
+		return 0;
 	}
+
+	const HRESULT hr = renderer->OnWindowsEvent(wParam, lParam);
+	if (FAILED(hr))
+		FatalError(TEXT("Failed to handle windows event in renderer"));
 
 	return 0;
 }
@@ -5868,6 +5798,19 @@ LRESULT CVideoProcessorDlg::OnMessageDirectShowNotification(WPARAM wParam, LPARA
 LRESULT CVideoProcessorDlg::OnMessageRendererStateChange(WPARAM wParam, LPARAM lParam)
 {
 	const RendererState newRendererState = (RendererState)wParam;
+	const uint32_t messageGeneration = static_cast<uint32_t>(lParam);
+	const uint32_t currentGeneration =
+		m_rendererGeneration.load(std::memory_order_acquire);
+	if (!RendererGenerationGate::Accept(
+		messageGeneration, currentGeneration, m_videoRenderer != nullptr))
+	{
+		DebugLog::Log(
+			"Renderer state rejected: state=%d message_generation=%u "
+			"current_generation=%u renderer=%d",
+			static_cast<int>(newRendererState), messageGeneration,
+			currentGeneration, m_videoRenderer ? 1 : 0);
+		return 0;
+	}
 
 	DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnMessageRendererStateChange(): %s->%s"),
 		ToString(m_rendererState), ToString(newRendererState)));
@@ -6265,15 +6208,21 @@ bool CVideoProcessorDlg::TryFinalizeRendererRetirement(
 	m_rendererRetirementWaitLoggedToken = 0;
 	if (!completion.succeeded)
 	{
+		m_rendererRetirementRetryActive = false;
+		m_failedRendererRetirement = std::move(completion.renderer);
+		m_failedRendererRetirementNextRetryTick = GetTickCount64() + 1000;
 		DebugLog::Log(
-			"Renderer retirement failed: token=%llu renderer=%S source=%s; "
-			"replacement remains blocked",
+			"Renderer retirement incomplete: token=%llu renderer=%S source=%s; "
+			"external-state restoration remains pending and replacement is blocked",
 			static_cast<unsigned long long>(token),
 			static_cast<LPCTSTR>(m_retiringRendererName), completionSource);
 		m_rendererState = RendererState::RENDERSTATE_FAILED;
-		m_rendererStateText.SetWindowText(TEXT("Retirement failed"));
+		m_rendererStateText.SetWindowText(TEXT("Display restore pending"));
 		return true;
 	}
+	const bool completedRetry = m_rendererRetirementRetryActive;
+	m_rendererRetirementRetryActive = false;
+	m_failedRendererRetirementNextRetryTick = 0;
 	DebugLog::Log(
 		"Renderer transition: process=%lu generation=%u event=old-surface-retired "
 		"renderer=%S target=%p cover=%p token=%llu source=%s "
@@ -6285,7 +6234,9 @@ bool CVideoProcessorDlg::TryFinalizeRendererRetirement(
 		completion.wakePosted ? 1 : 0, completion.wakePostError);
 	m_retiringRendererName.Empty();
 	m_retiringRendererGeneration = 0;
-	if (m_rendererState == RendererState::RENDERSTATE_STOPPED)
+	if (completedRetry)
+		m_rendererState = RendererState::RENDERSTATE_UNKNOWN;
+	else if (m_rendererState == RendererState::RENDERSTATE_STOPPED)
 		m_rendererState = RendererState::RENDERSTATE_UNKNOWN;
 	else if (m_rendererState == RendererState::RENDERSTATE_FAILED &&
 		!m_wantToTerminate)
@@ -6308,10 +6259,112 @@ bool CVideoProcessorDlg::TryFinalizeRendererRetirement(
 LRESULT CVideoProcessorDlg::OnMessageRendererDetailString(WPARAM wParam, LPARAM lParam)
 {
 	CString* pDetailString = (CString*)wParam;
-
-	m_rendererDetailStringStatic.SetWindowText(*pDetailString);
+	const uint32_t messageGeneration = static_cast<uint32_t>(lParam);
+	const uint32_t currentGeneration =
+		m_rendererGeneration.load(std::memory_order_acquire);
+	if (RendererGenerationGate::Accept(
+		messageGeneration, currentGeneration, m_videoRenderer != nullptr))
+		m_rendererDetailStringStatic.SetWindowText(*pDetailString);
+	else
+		DebugLog::Log(
+			"Renderer detail rejected: message_generation=%u "
+			"current_generation=%u renderer=%d",
+			messageGeneration, currentGeneration, m_videoRenderer ? 1 : 0);
 
 	delete pDetailString;
+	return 0;
+}
+
+LRESULT CVideoProcessorDlg::OnMessageRendererGraphEvent(
+	WPARAM wParam, LPARAM lParam)
+{
+	const long eventCode = static_cast<long>(wParam);
+	const uint32_t messageGeneration = static_cast<uint32_t>(lParam);
+	const uint32_t currentGeneration =
+		m_rendererGeneration.load(std::memory_order_acquire);
+	if (!RendererGenerationGate::Accept(
+		messageGeneration, currentGeneration, m_videoRenderer != nullptr) ||
+		!m_activeRendererIsDirectShow)
+	{
+		DebugLog::Log(
+			"DirectShow graph event rejected: event=0x%lx "
+			"message_generation=%u current_generation=%u renderer=%d "
+			"directshow=%d",
+			eventCode, messageGeneration, currentGeneration,
+			m_videoRenderer ? 1 : 0,
+			m_activeRendererIsDirectShow ? 1 : 0);
+		return 0;
+	}
+
+	DbgLog((LOG_TRACE, 2,
+		TEXT("DirectShow graph event received: event=0x%08lX generation=%u"),
+		eventCode, messageGeneration));
+	switch (eventCode)
+	{
+	case EC_DISPLAY_CHANGED:
+		if (!m_outputReadinessGraphReprimeActive)
+			g_displayRefreshRateSampler->ResetMeasurement();
+		else
+			DebugLog::Log(
+				"DirectShow display event belongs to the output-readiness "
+				"graph re-prime; preserving its selecting DXGI evidence");
+		if (m_rendererState == RendererState::RENDERSTATE_RENDERING &&
+			(!m_rendererResetCoordinator ||
+				!m_rendererResetCoordinator->GetDiagnostics().hasPending) &&
+			GetTickCount64() >= m_queueResetIgnoreEventsUntil)
+		{
+			RequestRendererReset(
+				RendererResetReason::DisplayTransition, true,
+				static_cast<UINT>(m_queueResetDelaySeconds * 1000));
+		}
+		else
+		{
+			DbgLog((LOG_TRACE, 1,
+				TEXT("DirectShow display transition - queue re-prime already pending or suppressed")));
+		}
+		break;
+	case EC_VIDEO_SIZE_CHANGED:
+		ASSERT(ClassifyDirectShowGraphEvent(eventCode) ==
+			DirectShowGraphEventImpact::GeometryOnly);
+		DebugLog::Log(
+			"DirectShow video geometry changed: event=EC_VIDEO_SIZE_CHANGED "
+			"action=retain-display-timing-and-queue");
+		break;
+	case EC_WINDOW_DESTROYED:
+		DbgLog((LOG_TRACE, 1,
+			TEXT("EC_WINDOW_DESTROYED detected - DirectShow window change")));
+		break;
+	case EC_QUALITY_CHANGE:
+		DbgLog((LOG_TRACE, 1,
+			TEXT("EC_QUALITY_CHANGE detected - renderer quality adjustment")));
+		break;
+	case EC_REPAINT:
+		break;
+	default:
+		break;
+	}
+	return 0;
+}
+
+
+LRESULT CVideoProcessorDlg::OnMessageRendererRestartRequired(
+	WPARAM, LPARAM lParam)
+{
+	const uint32_t messageGeneration = static_cast<uint32_t>(lParam);
+	const uint32_t currentGeneration =
+		m_rendererGeneration.load(std::memory_order_acquire);
+	if (!RendererGenerationGate::Accept(
+		messageGeneration, currentGeneration, m_videoRenderer != nullptr))
+	{
+		DebugLog::Log(
+			"Renderer restart request rejected: message_generation=%u "
+			"current_generation=%u renderer=%d",
+			messageGeneration, currentGeneration, m_videoRenderer ? 1 : 0);
+		return 0;
+	}
+	m_postRendererStartRequiresGraph = false;
+	m_wantToRestartRenderer = true;
+	UpdateState();
 	return 0;
 }
 
@@ -6943,7 +6996,8 @@ void CVideoProcessorDlg::OnCommandCaptureRenderedOutput()
 		"Rendered-output capture command: accepted=%d renderer_state=%d detail=%ls",
 		accepted ? 1 : 0, static_cast<int>(m_rendererState),
 		static_cast<LPCWSTR>(status));
-	OnRendererDetailString(status);
+	OnRendererDetailString(
+		status, m_rendererGeneration.load(std::memory_order_acquire));
 }
 
 void CVideoProcessorDlg::ApplyStatsOverlayForActiveRenderer()
@@ -7148,7 +7202,8 @@ void CVideoProcessorDlg::OnCaptureDeviceError(const CString& error)
 }
 
 
-void CVideoProcessorDlg::OnRendererState(RendererState rendererState)
+void CVideoProcessorDlg::OnRendererState(
+	RendererState rendererState, uint32_t rendererGeneration)
 {
 	// Will be called synchronous as a response to our calls and hence does
 	// not need posting messages, we still do so to keep the pattern.
@@ -7156,11 +7211,12 @@ void CVideoProcessorDlg::OnRendererState(RendererState rendererState)
 	PostMessage(
 		WM_MESSAGE_RENDERER_STATE_CHANGE,
 		rendererState,
-		0);
+		static_cast<LPARAM>(rendererGeneration));
 }
 
 
-void CVideoProcessorDlg::OnRendererDetailString(const CString& details)
+void CVideoProcessorDlg::OnRendererDetailString(
+	const CString& details, uint32_t rendererGeneration)
 {
 	// Will be called synchronous as a response to our calls and hence does
 	// not need posting messages, we still do so to keep the pattern.
@@ -7170,7 +7226,17 @@ void CVideoProcessorDlg::OnRendererDetailString(const CString& details)
 	PostMessage(
 		WM_MESSAGE_RENDERER_DETAIL_STRING,
 		(WPARAM)pDetailString,
-		0);
+		static_cast<LPARAM>(rendererGeneration));
+}
+
+
+void CVideoProcessorDlg::OnRendererGraphEvent(
+	long eventCode, uint32_t rendererGeneration)
+{
+	PostMessage(
+		WM_MESSAGE_RENDERER_GRAPH_EVENT,
+		static_cast<WPARAM>(eventCode),
+		static_cast<LPARAM>(rendererGeneration));
 }
 
 
@@ -7178,12 +7244,6 @@ void CVideoProcessorDlg::OnRendererDetailString(const CString& details)
 void CVideoProcessorDlg::UpdateState()
 {
 	DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::UpdateState()")));
-	if (m_rendererConstructionActive)
-	{
-		DbgLog((LOG_TRACE, 1,
-			TEXT("CVideoProcessorDlg::UpdateState(): waiting for renderer construction")));
-		return;
-	}
 	if (m_rendererRetirementPending)
 	{
 		TryFinalizeRendererRetirement(
@@ -7193,6 +7253,33 @@ void CVideoProcessorDlg::UpdateState()
 	{
 		DbgLog((LOG_TRACE, 1,
 			TEXT("CVideoProcessorDlg::UpdateState(): waiting for renderer retirement")));
+		return;
+	}
+	if (m_failedRendererRetirement)
+	{
+		const ULONGLONG now = GetTickCount64();
+		if (now < m_failedRendererRetirementNextRetryTick)
+			return;
+
+		m_rendererRetirementPending = true;
+		m_rendererRetirementRetryActive = true;
+		m_rendererRetirementToken++;
+		m_rendererRetirementWaitLoggedToken = 0;
+		DebugLog::Log(
+			"Renderer handoff restoration retry queued: generation=%u token=%llu",
+			m_rendererGeneration.load(std::memory_order_acquire),
+			static_cast<unsigned long long>(m_rendererRetirementToken));
+		const bool queued = m_rendererRetirementService.Retire(
+			std::move(m_failedRendererRetirement), m_rendererRetirementToken,
+			GetSafeHwnd(), WM_MESSAGE_RENDERER_RETIRED);
+		if (!queued)
+			throw std::runtime_error("Renderer retirement retry service is closed");
+		return;
+	}
+	if (m_rendererConstructionActive)
+	{
+		DbgLog((LOG_TRACE, 1,
+			TEXT("CVideoProcessorDlg::UpdateState(): waiting for renderer construction")));
 		return;
 	}
 
@@ -8144,6 +8231,7 @@ void CVideoProcessorDlg::RenderStart()
 				GetRendererVideoFrameQueueSizeMax();
 			m_videoRenderer = std::make_shared<LibplaceboPluginVideoRenderer>(
 				*this,
+				rendererGeneration,
 				m_rendererTargetHwnd,
 				timingClock,
 				GetRendererVideoFrameUseQueue(),
@@ -8215,7 +8303,7 @@ void CVideoProcessorDlg::RenderStart()
 		m_rendererConstructionActive = true;
 		if (IsEqualCLSID(*rendererClSID, CLSID_MPCVR))
 			m_videoRenderer = std::make_shared<DirectShowMPCVideoRenderer>(
-				*this, m_rendererTargetHwnd, GetSafeHwnd(),
+				*this, rendererGeneration, m_rendererTargetHwnd, GetSafeHwnd(),
 				WM_MESSAGE_DIRECTSHOW_NOTIFICATION, timingClock,
 				directShowStartStopTimeMethod,
 				GetRendererVideoFrameUseQueue(),
@@ -8227,7 +8315,7 @@ void CVideoProcessorDlg::RenderStart()
 			*rendererClSID, CLSID_EnhancedVideoRenderer))
 			m_videoRenderer =
 				std::make_shared<DirectShowEnhancedVideoRenderer>(
-					*this, m_rendererTargetHwnd, GetSafeHwnd(),
+					*this, rendererGeneration, m_rendererTargetHwnd, GetSafeHwnd(),
 					WM_MESSAGE_DIRECTSHOW_NOTIFICATION, timingClock,
 					directShowStartStopTimeMethod,
 					GetRendererVideoFrameUseQueue(),
@@ -8236,7 +8324,7 @@ void CVideoProcessorDlg::RenderStart()
 		else if (m_activeRendererName.Find(TEXT("madVR")) >= 0)
 			m_videoRenderer =
 				std::make_shared<DirectShowGenericHDRVideoRenderer>(
-					*rendererClSID, *this, m_rendererTargetHwnd,
+					*rendererClSID, *this, rendererGeneration, m_rendererTargetHwnd,
 					GetSafeHwnd(), WM_MESSAGE_DIRECTSHOW_NOTIFICATION,
 					timingClock, directShowStartStopTimeMethod,
 					GetRendererVideoFrameUseQueue(),
@@ -8247,7 +8335,7 @@ void CVideoProcessorDlg::RenderStart()
 		else
 			m_videoRenderer =
 				std::make_shared<DirectShowGenericVideoRenderer>(
-					*rendererClSID, *this, m_rendererTargetHwnd,
+					*rendererClSID, *this, rendererGeneration, m_rendererTargetHwnd,
 					GetSafeHwnd(), WM_MESSAGE_DIRECTSHOW_NOTIFICATION,
 					timingClock, directShowStartStopTimeMethod,
 					GetRendererVideoFrameUseQueue(),
@@ -8306,6 +8394,7 @@ void CVideoProcessorDlg::RenderStart()
 			{
 				m_videoRenderer = std::make_shared<DirectShowMPCVideoRenderer>(
 					*this,
+					rendererGeneration,
 					m_rendererTargetHwnd,
 					this->GetSafeHwnd(),
 					WM_MESSAGE_DIRECTSHOW_NOTIFICATION,
@@ -8323,6 +8412,7 @@ void CVideoProcessorDlg::RenderStart()
 			{
 				m_videoRenderer = std::make_shared<DirectShowEnhancedVideoRenderer>(
 					*this,
+					rendererGeneration,
 					m_rendererTargetHwnd,
 					this->GetSafeHwnd(),
 					WM_MESSAGE_DIRECTSHOW_NOTIFICATION,
@@ -8336,6 +8426,7 @@ void CVideoProcessorDlg::RenderStart()
 				m_videoRenderer = std::make_shared<DirectShowGenericVideoRenderer>(
 					*rendererClSID,
 					*this,
+					rendererGeneration,
 					m_rendererTargetHwnd,
 					this->GetSafeHwnd(),
 					WM_MESSAGE_DIRECTSHOW_NOTIFICATION,
@@ -8506,7 +8597,7 @@ void CVideoProcessorDlg::RenderRemove()
 
 	DestroyVideoRenderer();
 
-	if (!m_rendererRetirementPending)
+	if (!m_rendererRetirementPending && !m_failedRendererRetirement)
 		m_rendererState = RendererState::RENDERSTATE_UNKNOWN;
 
 	DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::RenderRemove(): End")));
@@ -8546,7 +8637,7 @@ void CVideoProcessorDlg::DestroyVideoRenderer()
 
 	// Final swapchain/device release can enter the driver. Both DirectShow and
 	// VP Renderer retirement therefore use the lifecycle worker; replacement
-	// construction waits for the matching completion token below.
+	// construction waits for durable restoration before a successor is built.
 	m_rendererRetirementPending = true;
 	m_rendererRetirementToken++;
 	m_retiringRendererName = m_activeRendererName;
@@ -8604,11 +8695,12 @@ bool CVideoProcessorDlg::ShowRendererTransitionBlack(const char* reason)
 }
 
 
-void CVideoProcessorDlg::OnRendererRestartRequired()
+void CVideoProcessorDlg::OnRendererRestartRequired(uint32_t rendererGeneration)
 {
-	m_postRendererStartRequiresGraph = false;
-	m_wantToRestartRenderer = true;
-	UpdateState();
+	PostMessage(
+		WM_MESSAGE_RENDERER_RESTART_REQUIRED,
+		0,
+		static_cast<LPARAM>(rendererGeneration));
 }
 
 
@@ -12402,6 +12494,8 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 	// Handle regular 1-second timer for UI updates
 	if (nIDEvent == TIMER_ID_1SECOND)
 	{
+		if (m_failedRendererRetirement)
+			UpdateState();
 		UpdateActiveOutputSweep(uiNow);
 
 		// A source can publish its BT.2020/SDR state only once at startup.

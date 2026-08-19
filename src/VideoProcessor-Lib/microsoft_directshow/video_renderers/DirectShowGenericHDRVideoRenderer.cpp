@@ -37,6 +37,7 @@
 DirectShowGenericHDRVideoRenderer::DirectShowGenericHDRVideoRenderer(
 	GUID rendererCLSID,
 	IRendererCallback& callback,
+	uint32_t rendererGeneration,
 	HWND videoHwnd,
 	HWND eventHwnd,
 	UINT eventMsg,
@@ -51,6 +52,7 @@ DirectShowGenericHDRVideoRenderer::DirectShowGenericHDRVideoRenderer(
 	DXVA_VideoPrimaries forceVideoPrimaries):
 	DirectShowVideoRenderer(
 		callback,
+		rendererGeneration,
 		videoHwnd,
 		eventHwnd,
 		eventMsg,
@@ -67,7 +69,8 @@ DirectShowGenericHDRVideoRenderer::DirectShowGenericHDRVideoRenderer(
 {
 	m_rendererGeneration = MadVRShaderLoader::BeginRendererGeneration();
 	RestoreRuntimeShaderRequest();
-	callback.OnRendererDetailString(TEXT("DirectShow HDR renderer"));
+	callback.OnRendererDetailString(
+		TEXT("DirectShow HDR renderer"), rendererGeneration);
 	DebugLog::Log(
 		"Shaders: renderer generation %llu created requested=%S mapping=%s",
 		static_cast<unsigned long long>(m_rendererGeneration),

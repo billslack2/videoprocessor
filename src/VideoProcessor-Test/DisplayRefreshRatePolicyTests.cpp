@@ -206,5 +206,25 @@ namespace Tests
 			Assert::AreEqual(Decision(DisplayRefreshRateDecision::Accepted),
 				Decision(newResult.decision));
 		}
+
+		TEST_METHOD(ExactRationalComparisonAcceptsEquivalentFractionsOnly)
+		{
+			Assert::IsTrue(DisplayRefreshRatesExactlyEqual(
+				{ 60000, 1001 }, { 120000, 2002 }));
+			Assert::IsFalse(DisplayRefreshRatesExactlyEqual(
+				{ 60000, 1001 }, { 59940, 1000 }));
+			Assert::IsFalse(DisplayRefreshRatesExactlyEqual(
+				{ 60000, 0 }, { 60000, 1001 }));
+		}
+
+		TEST_METHOD(RestoreVerificationRequiresConsecutiveExactObservations)
+		{
+			DisplayRefreshRestoreVerifier verifier({ 60000, 1001 });
+			Assert::IsFalse(verifier.Observe(true, { 60000, 1001 }));
+			Assert::IsFalse(verifier.Observe(false, {}));
+			Assert::AreEqual(0u, verifier.ConsecutiveMatches());
+			Assert::IsFalse(verifier.Observe(true, { 120000, 2002 }));
+			Assert::IsTrue(verifier.Observe(true, { 60000, 1001 }));
+		}
 	};
 }

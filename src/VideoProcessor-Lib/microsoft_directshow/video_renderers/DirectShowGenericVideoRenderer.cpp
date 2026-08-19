@@ -23,6 +23,7 @@
 DirectShowGenericVideoRenderer::DirectShowGenericVideoRenderer(
 	GUID rendererCLSID,
 	IRendererCallback& callback,
+	uint32_t rendererGeneration,
 	HWND videoHwnd,
 	HWND eventHwnd,
 	UINT eventMsg,
@@ -33,6 +34,7 @@ DirectShowGenericVideoRenderer::DirectShowGenericVideoRenderer(
 	VideoConversionOverride videoConversionOverride):
 	DirectShowVideoRenderer(
 		callback,
+		rendererGeneration,
 		videoHwnd,
 		eventHwnd,
 		eventMsg,
@@ -43,7 +45,8 @@ DirectShowGenericVideoRenderer::DirectShowGenericVideoRenderer(
 		videoConversionOverride),
 	m_rendererCLSID(rendererCLSID)
 {
-	callback.OnRendererDetailString(TEXT("DirectShow generic renderer"));
+	callback.OnRendererDetailString(
+		TEXT("DirectShow generic renderer"), rendererGeneration);
 }
 
 

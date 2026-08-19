@@ -67,6 +67,8 @@
 #define WM_MESSAGE_RENDERER_RETIRED                     (WM_APP + 13)
 #define WM_MESSAGE_EXTERNAL_SHORTCUT                    (WM_APP + 14)
 #define WM_MESSAGE_RENDERER_INTENT_READY                (WM_APP + 15)
+#define WM_MESSAGE_RENDERER_GRAPH_EVENT                 (WM_APP + 16)
+#define WM_MESSAGE_RENDERER_RESTART_REQUIRED            (WM_APP + 17)
 
 // Timer IDs
 #define TIMER_ID_1SECOND 1
@@ -212,6 +214,9 @@ public:
 	afx_msg LRESULT OnMessageDirectShowNotification(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnMessageRendererStateChange(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnMessageRendererDetailString(WPARAM wParam, LPARAM lParam);
+	afx_msg LRESULT OnMessageRendererGraphEvent(WPARAM wParam, LPARAM lParam);
+	afx_msg LRESULT OnMessageRendererRestartRequired(
+		WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnMessageExternalShortcut(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnMessageRendererLiveFrame(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnMessageRendererResetRequest(
@@ -258,9 +263,13 @@ public:
 	void OnCaptureDeviceError(const CString& error) override;
 
 	// IRendererCallback
-	void OnRendererState(RendererState rendererState) override;
-	void OnRendererDetailString(const CString& details) override;
-	void OnRendererRestartRequired() override;
+	void OnRendererState(
+		RendererState rendererState, uint32_t rendererGeneration) override;
+	void OnRendererDetailString(
+		const CString& details, uint32_t rendererGeneration) override;
+	void OnRendererGraphEvent(
+		long eventCode, uint32_t rendererGeneration) override;
+	void OnRendererRestartRequired(uint32_t rendererGeneration) override;
 
 protected:
 
@@ -647,8 +656,11 @@ protected:
 
 
 	std::shared_ptr<IVideoRenderer> m_videoRenderer;
+	std::shared_ptr<IVideoRenderer> m_failedRendererRetirement;
+	ULONGLONG m_failedRendererRetirementNextRetryTick = 0;
 	RendererRetirementService m_rendererRetirementService;
 	bool m_rendererRetirementPending = false;
+	bool m_rendererRetirementRetryActive = false;
 	bool m_rendererConstructionActive = false;
 	uint64_t m_rendererRetirementToken = 0;
 	uint64_t m_rendererRetirementWaitLoggedToken = 0;

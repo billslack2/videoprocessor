@@ -64,6 +64,40 @@ struct DisplayRefreshRateResult
 	bool shouldRecalculate = false;
 };
 
+struct DisplayRefreshRational
+{
+	uint32_t numerator = 0;
+	uint32_t denominator = 0;
+};
+
+bool DisplayRefreshRatesExactlyEqual(
+	const DisplayRefreshRational& first,
+	const DisplayRefreshRational& second);
+
+class DisplayRefreshRestoreVerifier
+{
+public:
+	explicit DisplayRefreshRestoreVerifier(
+		DisplayRefreshRational expected,
+		unsigned int requiredConsecutiveMatches = 2)
+		: m_expected(expected),
+		  m_requiredConsecutiveMatches(
+			requiredConsecutiveMatches == 0 ? 1 : requiredConsecutiveMatches)
+	{
+	}
+
+	bool Observe(bool querySucceeded, DisplayRefreshRational observed);
+	unsigned int ConsecutiveMatches() const
+	{
+		return m_consecutiveMatches;
+	}
+
+private:
+	DisplayRefreshRational m_expected;
+	unsigned int m_requiredConsecutiveMatches = 2;
+	unsigned int m_consecutiveMatches = 0;
+};
+
 DisplayRefreshRateResult EvaluateDisplayRefreshRate(
 	const DisplayRefreshRateInput& input);
 const char* ToString(DisplayRefreshRateDecision decision);

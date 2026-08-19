@@ -16,6 +16,7 @@ VideoProcessorLibplaceboGetApiVersion()
 extern "C" __declspec(dllexport) IVideoRenderer* __cdecl
 VideoProcessorLibplaceboCreateRenderer(
 	IRendererCallback* callback,
+	uint32_t rendererGeneration,
 	HWND videoHwnd,
 	ITimingClock* timingClock,
 	bool useFrameQueue,
@@ -37,6 +38,7 @@ VideoProcessorLibplaceboCreateRenderer(
 	{
 		return new LibplaceboVideoRenderer(
 			*callback,
+			rendererGeneration,
 			videoHwnd,
 			timingClock,
 			useFrameQueue,
