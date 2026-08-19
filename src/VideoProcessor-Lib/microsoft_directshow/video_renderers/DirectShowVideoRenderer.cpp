@@ -491,9 +491,11 @@ void DirectShowVideoRenderer::StopWithIngressDrain(
 				SetState(RendererState::RENDERSTATE_STOPPED);
 			else
 				SetState(RendererState::RENDERSTATE_FAILED);
-		}, [eventHwnd = m_eventHwnd, eventMsg = m_eventMsg]()
+		}, [eventHwnd = m_eventHwnd, eventMsg = m_eventMsg,
+			 rendererGeneration = m_callbackGeneration]()
 		{
-			PostMessage(eventHwnd, eventMsg, 0, 0);
+			PostMessage(eventHwnd, eventMsg, 0,
+				static_cast<LPARAM>(rendererGeneration));
 		});
 }
 
