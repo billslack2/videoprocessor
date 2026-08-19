@@ -3,10 +3,11 @@
 ## Status
 
 In Progress (2026-08-18). The developer confirmed `origin/v1.2.001-beta` as
-the implementation base. Work is active on
-`codex/vp-0134-renderer-handoff` in the clean worktree
-`C:\Users\bslac\vp\worktrees\vp-0134-renderer-handoff`, based on
-`bb8f5c1c84ff48e9258ebecb03502d259ab94aa9`.
+the implementation base. The first safe-handoff implementation slice is
+committed as `7a1da9d9` and pushed to
+`origin/codex/vp-0134-renderer-handoff` from the clean worktree
+`C:\Users\bslac\vp\worktrees\vp-0134-renderer-handoff`. The branch is based
+on `bb8f5c1c84ff48e9258ebecb03502d259ab94aa9`.
 
 Readiness review: renderer selection, callback, graph, swapchain, refresh-rate,
 NVAPI, window, and command lifetimes are mapped in this record; the required
@@ -18,10 +19,62 @@ driver/projector validation before final acceptance, but do not prevent the
 coordinator, generation safety, retryable restoration, and automated failure
 paths from being implemented and reviewed now.
 
-First progress note: implementation begins by auditing the confirmed base,
-extracting renderer-neutral transition/display policy, closing stale callback
-and capture-ingress lifetime gaps, then integrating retryable Alpha display
-restoration without changing deployed configuration.
+The source branch remains in progress rather than Review because the first
+slice establishes the safe renderer-generation and Alpha-owned restoration
+boundary, while the renderer-neutral snapshot/coordinator, asynchronous
+stabilization, NVIDIA policy qualification/readback, broader deterministic
+failure seams, and physical repeated-switch matrix below remain open.
+
+## Implementation progress (2026-08-18)
+
+Implemented and pushed in `7a1da9d9`:
+
+- Renderer callbacks and DirectShow notification-window messages now carry a
+  renderer generation. State, detail, restart, notification, and actual graph-
+  event messages are rejected when stale or when no matching renderer exists.
+- DirectShow notification instance data carries the generation, notification
+  is revoked during graph teardown, and the dialog now acts on event codes
+  drained from `IMediaEventEx::GetEvent` instead of treating notification
+  `wParam` as an event code.
+- The existing capture-ingress close/drain and asynchronous DirectShow
+  retirement boundary is preserved. Alpha retirement now fails closed when
+  required external state cannot be restored, retains the outgoing object for
+  one-second retry, and blocks construction of the successor.
+- Alpha destroys its renderer, swapchain, textures, D3D device, cache, and
+  related output resources before restoring the original display refresh.
+  Refresh restoration requires two consecutive exact rational observations
+  within two seconds and retains dirty state after failure.
+- NVIDIA AVI restoration is ordered after the final refresh modeset,
+  re-resolves the saved display name to a current NvAPI display ID, and retains
+  baseline/ownership state on lookup or `SET` failure so retirement can retry.
+- The optional Alpha renderer ABI was advanced from 12 to 13 so generation
+  identity is also enforced across the plugin boundary.
+
+Automated evidence for this commit:
+
+- Serialized x64 Release solution build: passed. Existing compiler/Qt
+  deployment warnings remain; no new build error was introduced.
+- Native MSTest suite: 859 passed, 0 failed, 0 skipped.
+- Standalone configuration/UI integration suite: passed (exit code 0).
+- New focused generation-gate and exact-refresh verification coverage: 15
+  passed, including equivalent fractional rates, near-rate rejection,
+  consecutive stable observations, query-failure reset, and stale generation
+  rejection.
+
+Still required before Review/Done:
+
+- Move the restoration journal and renderer-neutral pre-construction snapshot
+  into one application/dialog-owned coordinator covering both directions.
+- Make display stabilization asynchronous so failed/mismatched observations
+  never sleep on the UI thread.
+- Compare complete target/path identity and observable Advanced Color state,
+  detect target replacement/ownership conflict, and prevent stale-baseline
+  writes after hotplug or topology changes.
+- Qualify Nvidia automatic/default/override restoration on supported drivers,
+  add post-restore readback/conflict handling, and preserve existing override
+  semantics.
+- Complete deterministic fault seams for retry, topology, DirectShow partial
+  teardown/OSD failure, and then run the repeated Alpha/madVR hardware matrix.
 
 ## User story
 
