@@ -60,6 +60,15 @@ Automated evidence for this commit:
   passed, including equivalent fractional rates, near-rate rejection,
   consecutive stable observations, query-failure reset, and stale generation
   rejection.
+- Deployment (2026-08-18): rebuilt the clean committed branch so the binary
+  identifies `7a1da9d9`, generated the verified 57-file release allowlist, and
+  deployed it to `C:\Videoprocessor\vp`. All 57 replaced files were backed up
+  at
+  `C:\Videoprocessor\vp\backups\deploy-20260818-215320-pre-vp0134`.
+  `VideoProcessor.cfg` remained byte-identical with SHA-256
+  `34F339C6CEAB9426BF9461F99389A1A70097B4130BFEE1346D9C9B3A337FE7F9`,
+  and the mutable Alpha shader cache was also preserved. This is deployment
+  evidence only; it does not replace the live renderer-switch matrix.
 
 Still required before Review/Done:
 
