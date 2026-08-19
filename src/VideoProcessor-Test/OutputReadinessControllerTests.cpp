@@ -154,6 +154,55 @@ namespace Tests
 				controller.Observe(input).requestSerializedPostReadyReset);
 		}
 
+		TEST_METHOD(HandshakeDelayMatrixNeverChangesExactPrefillTarget)
+		{
+			const uint64_t handshakeDelaysMs[] =
+				{ 0, 100, 500, 2000, 5000, 10000, 15000 };
+			const size_t reserveTargets[] = { 2, 3 };
+			for (const size_t reserveTarget : reserveTargets)
+			{
+				for (const uint64_t handshakeDelayMs : handshakeDelaysMs)
+				{
+					OutputReadinessController controller;
+					OutputReadinessInput input = ReadyInput();
+					input.reserveFrames = reserveTarget;
+					input.observationTickMs = 1000;
+					input.graphOperational = false;
+					input.displayDecision = DisplayRefreshRateDecision::Warming;
+					OutputReadinessDecision decision = controller.Observe(input);
+					Assert::IsTrue(decision.allowDownstreamDelivery);
+
+					input.observationTickMs += handshakeDelayMs;
+					input.graphOperational = true;
+					input.displayDecision = DisplayRefreshRateDecision::Accepted;
+					decision = controller.Observe(input);
+					Assert::IsTrue(decision.allowDownstreamDelivery);
+					Assert::IsFalse(decision.requestSerializedPostReadyReset);
+
+					input.observationTickMs +=
+						OutputReadinessController::kPostReadySettleMs;
+					decision = controller.Observe(input);
+					Assert::IsTrue(decision.requestSerializedPostReadyReset);
+
+					input.postReadyResetCompleted = true;
+					input.postReadyEpoch = 42;
+					input.currentEpochProcessedDepth = reserveTarget - 1;
+					decision = controller.Observe(input);
+					Assert::AreEqual(
+						static_cast<int>(OutputReadinessState::Prefilling),
+						static_cast<int>(decision.state));
+					Assert::IsFalse(decision.allowDownstreamDelivery);
+
+					input.currentEpochProcessedDepth = reserveTarget;
+					decision = controller.Observe(input);
+					Assert::AreEqual(
+						static_cast<int>(OutputReadinessState::Steady),
+						static_cast<int>(decision.state));
+					Assert::IsTrue(decision.allowDownstreamDelivery);
+				}
+			}
+		}
+
 		TEST_METHOD(ProofAppearingDuringSettleCannotCancelCommittedReset)
 		{
 			OutputReadinessController controller;

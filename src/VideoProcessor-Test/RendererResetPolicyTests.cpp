@@ -73,6 +73,19 @@ namespace Tests
 			Assert::IsFalse(QueuePolicyApplyRequiresGraphReset(false));
 		}
 
+		TEST_METHOD(DynamicVideoAspectIsGeometryOnly)
+		{
+			Assert::AreEqual(
+				static_cast<int>(DirectShowGraphEventImpact::GeometryOnly),
+				static_cast<int>(ClassifyDirectShowGraphEvent(0x0e)));
+			Assert::AreEqual(
+				static_cast<int>(DirectShowGraphEventImpact::DisplayTransition),
+				static_cast<int>(ClassifyDirectShowGraphEvent(0x16)));
+			Assert::AreEqual(
+				static_cast<int>(DirectShowGraphEventImpact::None),
+				static_cast<int>(ClassifyDirectShowGraphEvent(0x12)));
+		}
+
 		TEST_METHOD(DisplayTransitionOwnsConcurrentSourceGapRecovery)
 		{
 			Assert::IsTrue(

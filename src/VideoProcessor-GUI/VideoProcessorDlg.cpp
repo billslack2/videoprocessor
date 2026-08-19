@@ -5623,9 +5623,8 @@ LRESULT CVideoProcessorDlg::OnMessageDirectShowNotification(WPARAM wParam, LPARA
 
 			switch (eventCode)
 			{
-		case 0x16: // EC_DISPLAY_CHANGED
-		case 0x0E: // EC_VIDEO_SIZE_CHANGED
-		{
+			case 0x16: // EC_DISPLAY_CHANGED
+			{
 				if (!m_outputReadinessGraphReprimeActive)
 				{
 					g_displayRefreshRateSampler->ResetMeasurement();
@@ -5652,6 +5651,17 @@ LRESULT CVideoProcessorDlg::OnMessageDirectShowNotification(WPARAM wParam, LPARA
 				}
 				break;
 			}
+
+			case 0x0E: // EC_VIDEO_SIZE_CHANGED
+				// madVR emits this for an accepted dynamic picture-aspect update.
+				// NLS therefore changes geometry without throwing away valid DXGI
+				// timing evidence or entering the display-transition reset path.
+				ASSERT(ClassifyDirectShowGraphEvent(eventCode) ==
+					DirectShowGraphEventImpact::GeometryOnly);
+				DebugLog::Log(
+					"DirectShow video geometry changed: event=EC_VIDEO_SIZE_CHANGED "
+					"action=retain-display-timing-and-queue");
+				break;
 
 			case 0x11: // EC_WINDOW_DESTROYED  
 				DbgLog((LOG_TRACE, 1, TEXT("EC_WINDOW_DESTROYED detected - MadVR window change")));

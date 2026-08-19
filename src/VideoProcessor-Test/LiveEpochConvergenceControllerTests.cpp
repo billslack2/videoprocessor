@@ -154,6 +154,62 @@ namespace Tests
 				static_cast<int>(lateDecision.activation));
 		}
 
+		TEST_METHOD(HandshakeDelayMatrixPreservesConfiguredSteadyQueueTarget)
+		{
+			const uint64_t handshakeDelaysMs[] =
+				{ 0, 100, 500, 2000, 5000, 10000, 15000 };
+			const size_t desiredDepths[] = { 2, 3 };
+			const size_t launchDepths[] = { 16, 32 };
+
+			for (const size_t desiredDepth : desiredDepths)
+			{
+				for (const size_t launchDepth : launchDepths)
+				{
+					for (const uint64_t handshakeDelayMs : handshakeDelaysMs)
+					{
+						LiveEpochConvergenceController controller;
+						LiveEpochConvergenceInput input = Input(
+							41, desiredDepth == 2 ? 41708 : 16683);
+						input.desiredVpDepth = desiredDepth;
+						input.targetConfigured = true;
+						input.vpRawDepth = 3;
+						input.observationTickMs = 1000 + handshakeDelayMs;
+
+						// Inject the HDMI/madVR readiness delay without manufacturing
+						// deliveries during it. The first downstream-scale block can
+						// arrive immediately or fifteen seconds into the same epoch.
+						input.deliveryCompleted = false;
+						Assert::IsFalse(controller.Observe(input).requestConvergence);
+						input.deliveryCompleted = true;
+						LiveEpochConvergenceDecision decision = Observe(
+							controller, input,
+							input.nominalFrameDurationUs * 3,
+							launchDepth, 1);
+						Assert::AreEqual(
+							static_cast<int>(LiveEpochConvergenceState::IngressBlocked),
+							static_cast<int>(decision.state));
+
+						for (int recovery = 0; recovery < 3; ++recovery)
+						{
+							decision = Observe(controller, input,
+								input.nominalFrameDurationUs,
+								launchDepth);
+						}
+
+						Assert::IsTrue(decision.requestConvergence);
+						Assert::AreEqual<size_t>(desiredDepth,
+							launchDepth - decision.staleConvertedFrames);
+						Assert::AreEqual<size_t>(launchDepth - desiredDepth,
+							decision.staleConvertedFrames);
+						Assert::AreEqual(
+							static_cast<int>(
+								LiveEpochConvergenceActivation::HardBlockRecovery),
+							static_cast<int>(decision.activation));
+					}
+				}
+			}
+		}
+
 		TEST_METHOD(Paced23976IngressPrimesWithoutThreeFrameStall)
 		{
 			LiveEpochConvergenceController controller;
