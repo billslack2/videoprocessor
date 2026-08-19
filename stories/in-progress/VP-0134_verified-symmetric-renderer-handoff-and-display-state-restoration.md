@@ -70,6 +70,31 @@ Automated evidence for this commit:
   and the mutable Alpha shader cache was also preserved. This is deployment
   evidence only; it does not replace the live renderer-switch matrix.
 
+### First live round-trip finding and hotfix (2026-08-18)
+
+The first deployed live sequence started in VP Renderer successfully and
+switched to madVR successfully. The return selection to VP Renderer remained
+in `Stopping`; Restart was unavailable and application Quit could not complete
+without killing the process.
+
+The log proved that madVR delivery/conversion workers stopped and the complete
+DirectShow graph teardown finished in 94 ms. The following owner-completion
+wake was then rejected as `message_generation=0` while the current generation
+was 2. One `StopWithIngressDrain()` completion lambda had bypassed the new
+generation-aware wake path and still posted `lParam=0`, so the dialog never
+published the already-queued `STOPPED` state. The same missing state transition
+explains the stuck switch, ignored Restart, and blocked Quit.
+
+Hotfix `e9606bb5` captures and posts the outgoing renderer generation from that
+completion lambda. The serialized x64 Release rebuild passed, the native suite
+passed 859/859, and the configuration integration suite passed. The verified
+57-file release was redeployed to `C:\Videoprocessor\vp`; the replaced build is
+recoverable at
+`C:\Videoprocessor\vp\backups\deploy-20260818-222147-pre-e9606bb`.
+The active configuration and shader cache retained their pre-deployment
+SHA-256 hashes. A fresh VP -> madVR -> VP round trip and normal Quit remain
+required to close this live finding.
+
 Still required before Review/Done:
 
 - Move the restoration journal and renderer-neutral pre-construction snapshot
