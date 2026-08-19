@@ -1,6 +1,10 @@
 #include "pch.h"
 #include "CppUnitTest.h"
 
+#include <functional>
+#include <vector>
+
+#include <EpochBoundedQueue.h>
 #include <LiveEpochConvergenceController.h>
 #include <LiveSteadyQueuePolicy.h>
 
@@ -154,6 +158,62 @@ namespace Tests
 				static_cast<int>(lateDecision.activation));
 		}
 
+		TEST_METHOD(HandshakeDelayMatrixPreservesConfiguredSteadyQueueTarget)
+		{
+			const uint64_t handshakeDelaysMs[] =
+				{ 0, 100, 500, 2000, 5000, 10000, 15000 };
+			const size_t desiredDepths[] = { 2, 3 };
+			const size_t launchDepths[] = { 16, 32 };
+
+			for (const size_t desiredDepth : desiredDepths)
+			{
+				for (const size_t launchDepth : launchDepths)
+				{
+					for (const uint64_t handshakeDelayMs : handshakeDelaysMs)
+					{
+						LiveEpochConvergenceController controller;
+						LiveEpochConvergenceInput input = Input(
+							41, desiredDepth == 2 ? 41708 : 16683);
+						input.desiredVpDepth = desiredDepth;
+						input.targetConfigured = true;
+						input.vpRawDepth = 3;
+						input.observationTickMs = 1000 + handshakeDelayMs;
+
+						// Inject the HDMI/madVR readiness delay without manufacturing
+						// deliveries during it. The first downstream-scale block can
+						// arrive immediately or fifteen seconds into the same epoch.
+						input.deliveryCompleted = false;
+						Assert::IsFalse(controller.Observe(input).requestConvergence);
+						input.deliveryCompleted = true;
+						LiveEpochConvergenceDecision decision = Observe(
+							controller, input,
+							input.nominalFrameDurationUs * 3,
+							launchDepth, 1);
+						Assert::AreEqual(
+							static_cast<int>(LiveEpochConvergenceState::IngressBlocked),
+							static_cast<int>(decision.state));
+
+						for (int recovery = 0; recovery < 3; ++recovery)
+						{
+							decision = Observe(controller, input,
+								input.nominalFrameDurationUs,
+								launchDepth);
+						}
+
+						Assert::IsTrue(decision.requestConvergence);
+						Assert::AreEqual<size_t>(desiredDepth,
+							launchDepth - decision.staleConvertedFrames);
+						Assert::AreEqual<size_t>(launchDepth - desiredDepth,
+							decision.staleConvertedFrames);
+						Assert::AreEqual(
+							static_cast<int>(
+								LiveEpochConvergenceActivation::HardBlockRecovery),
+							static_cast<int>(decision.activation));
+					}
+				}
+			}
+		}
+
 		TEST_METHOD(Paced23976IngressPrimesWithoutThreeFrameStall)
 		{
 			LiveEpochConvergenceController controller;
@@ -258,6 +318,7 @@ namespace Tests
 				5, 5, true, false, 1, 22 });
 			Assert::IsTrue(decision.active);
 			Assert::AreEqual<size_t>(1, decision.highWater);
+			Assert::AreEqual<size_t>(1, decision.maximumRawDepth);
 			Assert::IsTrue(decision.holdConversion);
 
 			decision = LiveSteadyQueuePolicy::Evaluate({
@@ -271,10 +332,33 @@ namespace Tests
 			decision = LiveSteadyQueuePolicy::Evaluate({
 				5, 6, true, false, 1, 22 });
 			Assert::IsFalse(decision.active);
+			Assert::AreEqual<size_t>(0, decision.maximumRawDepth);
 			decision = LiveSteadyQueuePolicy::Evaluate({
 				5, 5, true, true, 1, 22 });
 			Assert::IsTrue(decision.active);
 			Assert::IsTrue(decision.holdConversion);
+		}
+
+		TEST_METHOD(SteadyCaptureRetainsExactlyOneLatestWinsHandoff)
+		{
+			const PipelineEpoch epoch{ 7 };
+			std::vector<int> released;
+			EpochBoundedQueue<int, std::function<void(int&)>> raw(
+				32, [&released](int& frame) { released.push_back(frame); });
+			const LiveSteadyQueueDecision decision =
+				LiveSteadyQueuePolicy::Evaluate({ 7, 7, true, false, 3, 3 });
+
+			Assert::AreEqual<size_t>(1, decision.maximumRawDepth);
+			Assert::AreEqual(static_cast<int>(EpochBoundedQueuePushResult::Accepted),
+				static_cast<int>(raw.PushWithMaximum(
+					100, epoch, epoch, decision.maximumRawDepth)));
+			Assert::AreEqual(static_cast<int>(
+				EpochBoundedQueuePushResult::AcceptedAfterOverflowDiscard),
+				static_cast<int>(raw.PushWithMaximum(
+					101, epoch, epoch, decision.maximumRawDepth)));
+			Assert::AreEqual<size_t>(1, raw.Size());
+			Assert::AreEqual<size_t>(1, released.size());
+			Assert::AreEqual(100, released.front());
 		}
 
 		TEST_METHOD(Exact23976ThresholdAndRecoveryAreRateIndependent)

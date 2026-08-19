@@ -8,6 +8,8 @@
 
 #include <pch.h>
 
+#include <BoundedDeliveryGate.h>
+
 #include <dvdmedia.h>
 #include <guid.h>
 #include <IMediaSideData.h>
@@ -240,10 +242,28 @@ bool CBufferedLiveSourceVideoOutputPin::RunWithDeliveryHeld(
 	const std::function<void()>& operation)
 {
 	const auto started = std::chrono::steady_clock::now();
-	CAutoLock deliveryLock(&m_deliveryGate);
-	const auto acquired = std::chrono::steady_clock::now();
-	operation();
-	const auto completed = std::chrono::steady_clock::now();
+	// Graph-owner work must stay bounded. If Deliver is blocked in madVR, leave
+	// the current coherent aspect/shader chain active; the coalesced profile or
+	// active-picture refresh will retry after downstream delivery progresses.
+	std::chrono::steady_clock::time_point acquired;
+	std::chrono::steady_clock::time_point completed;
+	// One 23.976 Hz delivery interval is 41.7 ms. Give a normal paced Deliver
+	// enough time to return while retaining a hard upper bound for a renderer
+	// that is genuinely stuck.
+	constexpr std::chrono::milliseconds deliveryHoldTimeout(50);
+	const bool executed = TryRunBoundedDeliveryTransaction(
+		m_deliveryGate, deliveryHoldTimeout, [&]()
+		{
+			acquired = std::chrono::steady_clock::now();
+			operation();
+			completed = std::chrono::steady_clock::now();
+		});
+	if (!executed)
+	{
+		DebugLog::Log(
+			"Shaders: coherent delivery hold deferred after 50ms; current chain retained so graph control remains runnable");
+		return false;
+	}
 	DebugLog::Log(
 		"Shaders: coherent delivery hold wait=%.3fms hold=%.3fms total=%.3fms",
 		std::chrono::duration<double, std::milli>(acquired - started).count(),
@@ -607,14 +627,27 @@ HRESULT CBufferedLiveSourceVideoOutputPin::OnVideoFrame(VideoFrame& videoFrame)
 	const bool limitPrimeRawRetention = callbackEpoch != 0 &&
 		callbackEpoch == m_primeQueueEpoch.load(std::memory_order_acquire) &&
 		m_steadyQueueEpoch.load(std::memory_order_acquire) != callbackEpoch;
+	const LiveSteadyQueueDecision steadyCaptureDecision =
+		LiveSteadyQueuePolicy::Evaluate({
+			m_steadyQueueEpoch.load(std::memory_order_acquire),
+			currentEpoch.value,
+			IsSteadyQueueTargetConfigured(),
+			m_sceneAwareTimingCorrection.load(std::memory_order_acquire),
+			GetConfiguredSteadyQueueTarget(),
+			m_publishedConvertedQueueDepth.load(std::memory_order_acquire) });
 	size_t discardedByLimitedPush = 0;
 	const EpochBoundedQueuePushResult pushResult = limitPrimeRawRetention ?
 		m_captureFrameQueue.PushWithMaximum(
 			std::move(capturedFrame), { callbackEpoch }, currentEpoch,
 			DirectShowEpochPrimePolicy::MaximumRetainedRawQueueFrames,
 			&discardedByLimitedPush) :
-		m_captureFrameQueue.Push(
-			std::move(capturedFrame), { callbackEpoch }, currentEpoch);
+		(steadyCaptureDecision.active ?
+			m_captureFrameQueue.PushWithMaximum(
+				std::move(capturedFrame), { callbackEpoch }, currentEpoch,
+				steadyCaptureDecision.maximumRawDepth,
+				&discardedByLimitedPush) :
+			m_captureFrameQueue.Push(
+				std::move(capturedFrame), { callbackEpoch }, currentEpoch));
 	EpochBoundedQueueMetrics rawMetrics = m_captureFrameQueue.Metrics();
 	m_publishedRawQueueDepth.store(rawMetrics.depth, std::memory_order_release);
 	const size_t retainedSourceBuffers = rawMetrics.depth +
@@ -647,7 +680,8 @@ HRESULT CBufferedLiveSourceVideoOutputPin::OnVideoFrame(VideoFrame& videoFrame)
 	acceptedRawQueueDepth = rawMetrics.depth;
 	if (pushResult == EpochBoundedQueuePushResult::AcceptedAfterOverflowDiscard)
 	{
-		const size_t discardedByPush = limitPrimeRawRetention ?
+		const size_t discardedByPush = (limitPrimeRawRetention ||
+			steadyCaptureDecision.active) ?
 			discardedByLimitedPush : 1;
 		m_droppedFrameCount.fetch_add(
 			discardedByPush, std::memory_order_relaxed);
@@ -1035,7 +1069,7 @@ void CBufferedLiveSourceVideoOutputPin::Reset()
 			{
 				// No Deliver call can start while queues, timestamp state, and the
 				// DirectShow segment are changed below.
-				CAutoLock deliveryLock(&m_deliveryGate);
+				std::lock_guard<std::timed_mutex> deliveryLock(m_deliveryGate);
 
 		m_sceneDetectorGeneration.fetch_add(1, std::memory_order_release);
 		m_sceneTimingGeneration.fetch_add(1, std::memory_order_acq_rel);
@@ -1926,7 +1960,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 		uint32_t presentationGapSlotsBefore,
 		bool sourceDiscontinuity) -> HRESULT
 	{
-		CAutoLock deliveryLock(&m_deliveryGate);
+		std::lock_guard<std::timed_mutex> deliveryLock(m_deliveryGate);
 		if (m_deliveryFlushing.load(std::memory_order_acquire) ||
 			expectedQueueEpoch != m_queueEpoch.load(std::memory_order_acquire))
 			return VFW_E_WRONG_STATE;
@@ -3080,7 +3114,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				// Reset uses the same gate before changing epoch, queues, and the
 				// buffering flag. Revalidate every part of the candidate while
 				// holding it so old-epoch depth can never release a new epoch.
-				CAutoLock deliveryLock(&m_deliveryGate);
+				std::lock_guard<std::timed_mutex> deliveryLock(m_deliveryGate);
 				if (!m_isBuffering.load(std::memory_order_acquire))
 				{
 					continue;

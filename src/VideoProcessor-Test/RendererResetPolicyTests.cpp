@@ -1,6 +1,8 @@
 #include "pch.h"
 #include "CppUnitTest.h"
 
+#include <BoundedDeliveryGate.h>
+#include <MadVRShaderTransactionPolicy.h>
 #include <RendererResetPolicy.h>
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
@@ -71,6 +73,103 @@ namespace Tests
 		{
 			Assert::IsTrue(QueuePolicyApplyRequiresGraphReset(true));
 			Assert::IsFalse(QueuePolicyApplyRequiresGraphReset(false));
+		}
+
+		TEST_METHOD(BlockedDeliveryCannotStarveGraphOwnerControl)
+		{
+			std::timed_mutex gate;
+			std::atomic_bool gateHeld{false};
+			std::thread delivery([&]()
+				{
+					std::lock_guard<std::timed_mutex> lock(gate);
+					gateHeld.store(true, std::memory_order_release);
+					std::this_thread::sleep_for(
+						std::chrono::milliseconds(50));
+				});
+			while (!gateHeld.load(std::memory_order_acquire))
+				std::this_thread::yield();
+
+			bool executed = false;
+			const auto started = std::chrono::steady_clock::now();
+			const bool blockedResult = TryRunBoundedDeliveryTransaction(
+				gate, std::chrono::milliseconds(5),
+				[&]() { executed = true; });
+			const auto elapsed = std::chrono::duration_cast<
+				std::chrono::milliseconds>(
+					std::chrono::steady_clock::now() - started);
+			delivery.join();
+
+			Assert::IsFalse(blockedResult);
+			Assert::IsFalse(executed);
+			Assert::IsTrue(elapsed < std::chrono::milliseconds(40));
+
+			Assert::IsTrue(TryRunBoundedDeliveryTransaction(
+				gate, std::chrono::milliseconds(5),
+				[&]() { executed = true; }));
+			Assert::IsTrue(executed);
+		}
+
+		TEST_METHOD(DeferredShaderIntentCannotBecomeAFalseDuplicate)
+		{
+			Assert::IsTrue(ShouldCoalesceMadVRShaderRequest(true, false));
+			Assert::IsFalse(ShouldCoalesceMadVRShaderRequest(true, true));
+			Assert::IsFalse(ShouldCoalesceMadVRShaderRequest(false, false));
+		}
+
+		TEST_METHOD(NlsGeometryVariantsShareStructuralPreflight)
+		{
+			std::map<std::string, std::string> first = {
+				{ "active_left", "0.00000000" },
+				{ "active_top", "0.03148000" },
+				{ "active_right", "1.00000000" },
+				{ "active_bottom", "0.96852000" },
+				{ "stretch_ratio", "1.23865000" },
+				{ "warp_axis", "0" },
+				{ "safe_fit", "0" },
+			};
+			auto second = first;
+			second["active_top"] = "0.00000000";
+			second["active_bottom"] = "1.00000000";
+			second["stretch_ratio"] = "1.32188000";
+
+			NormalizeMadVRNlsRuntimeParametersForPreflight(first);
+			NormalizeMadVRNlsRuntimeParametersForPreflight(second);
+			Assert::IsTrue(first == second);
+
+			second["warp_axis"] = "1";
+			Assert::IsFalse(first == second);
+		}
+
+		TEST_METHOD(DynamicVideoAspectIsGeometryOnly)
+		{
+			Assert::AreEqual(
+				static_cast<int>(DirectShowGraphEventImpact::GeometryOnly),
+				static_cast<int>(ClassifyDirectShowGraphEvent(0x0e)));
+			Assert::AreEqual(
+				static_cast<int>(DirectShowGraphEventImpact::DisplayTransition),
+				static_cast<int>(ClassifyDirectShowGraphEvent(0x16)));
+			Assert::AreEqual(
+				static_cast<int>(DirectShowGraphEventImpact::None),
+				static_cast<int>(ClassifyDirectShowGraphEvent(0x12)));
+		}
+
+		TEST_METHOD(RapidRendererSelectionDefersAcrossLifecycleBoundaries)
+		{
+			Assert::AreEqual(
+				static_cast<int>(
+					RendererRestartDispatch::DeferUntilConstructionCompletes),
+				static_cast<int>(ClassifyRendererRestartDispatch(true, false)));
+			Assert::AreEqual(
+				static_cast<int>(
+					RendererRestartDispatch::DeferUntilConstructionCompletes),
+				static_cast<int>(ClassifyRendererRestartDispatch(true, true)));
+			Assert::AreEqual(
+				static_cast<int>(
+					RendererRestartDispatch::DeferUntilRetirementCompletes),
+				static_cast<int>(ClassifyRendererRestartDispatch(false, true)));
+			Assert::AreEqual(
+				static_cast<int>(RendererRestartDispatch::DispatchNow),
+				static_cast<int>(ClassifyRendererRestartDispatch(false, false)));
 		}
 
 		TEST_METHOD(DisplayTransitionOwnsConcurrentSourceGapRecovery)

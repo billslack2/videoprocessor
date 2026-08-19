@@ -183,6 +183,9 @@
     <ClInclude Include="RendererResetPolicy.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="MadVRShaderTransactionPolicy.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="RendererResetRequest.h">
       <Filter>Header Files</Filter>
     </ClInclude>

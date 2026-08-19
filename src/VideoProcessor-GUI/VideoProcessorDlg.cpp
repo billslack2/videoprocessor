@@ -1861,6 +1861,7 @@ BEGIN_MESSAGE_MAP(CVideoProcessorDlg, CDialog)
 	ON_MESSAGE(WM_MESSAGE_RENDERER_LIVE_FRAME, &CVideoProcessorDlg::OnMessageRendererLiveFrame)
 	ON_MESSAGE(WM_MESSAGE_RENDERER_RESET_REQUEST, &CVideoProcessorDlg::OnMessageRendererResetRequest)
 	ON_MESSAGE(WM_MESSAGE_RENDERER_RETIRED, &CVideoProcessorDlg::OnMessageRendererRetired)
+	ON_MESSAGE(WM_MESSAGE_RENDERER_INTENT_READY, &CVideoProcessorDlg::OnMessageRendererIntentReady)
 	ON_MESSAGE(WM_MODERN_OPERATOR_ACTION, &CVideoProcessorDlg::OnMessageModernOperatorAction)
 
 	// Command handlers (from accelerator)
@@ -4825,6 +4826,19 @@ void CVideoProcessorDlg::OnBnClickedRendererRestart()
 
 	m_postRendererStartRequiresGraph = true;
 	m_wantToRestartRenderer = true;
+	const RendererRestartDispatch dispatch = ClassifyRendererRestartDispatch(
+		m_rendererConstructionActive, m_rendererRetirementPending);
+	if (dispatch != RendererRestartDispatch::DispatchNow)
+	{
+		DebugLog::Log(
+			"Renderer restart intent coalesced: renderer=%S construction_active=%d "
+			"retirement_pending=%d action=latest-intent-waits-for-lifecycle-boundary",
+			m_sessionRendererOverride.IsEmpty() ? L"(selection)" :
+				m_sessionRendererOverride.GetString(),
+			m_rendererConstructionActive ? 1 : 0,
+			m_rendererRetirementPending ? 1 : 0);
+		return;
+	}
 	UpdateState();
 }
 
@@ -5623,9 +5637,8 @@ LRESULT CVideoProcessorDlg::OnMessageDirectShowNotification(WPARAM wParam, LPARA
 
 			switch (eventCode)
 			{
-		case 0x16: // EC_DISPLAY_CHANGED
-		case 0x0E: // EC_VIDEO_SIZE_CHANGED
-		{
+			case 0x16: // EC_DISPLAY_CHANGED
+			{
 				if (!m_outputReadinessGraphReprimeActive)
 				{
 					g_displayRefreshRateSampler->ResetMeasurement();
@@ -5652,6 +5665,17 @@ LRESULT CVideoProcessorDlg::OnMessageDirectShowNotification(WPARAM wParam, LPARA
 				}
 				break;
 			}
+
+			case 0x0E: // EC_VIDEO_SIZE_CHANGED
+				// madVR emits this for an accepted dynamic picture-aspect update.
+				// NLS therefore changes geometry without throwing away valid DXGI
+				// timing evidence or entering the display-transition reset path.
+				ASSERT(ClassifyDirectShowGraphEvent(eventCode) ==
+					DirectShowGraphEventImpact::GeometryOnly);
+				DebugLog::Log(
+					"DirectShow video geometry changed: event=EC_VIDEO_SIZE_CHANGED "
+					"action=retain-display-timing-and-queue");
+				break;
 
 			case 0x11: // EC_WINDOW_DESTROYED  
 				DbgLog((LOG_TRACE, 1, TEXT("EC_WINDOW_DESTROYED detected - MadVR window change")));
@@ -5998,6 +6022,16 @@ LRESULT CVideoProcessorDlg::OnMessageRendererRetired(
 {
 	const uint64_t token = static_cast<uint64_t>(wParam);
 	if (TryFinalizeRendererRetirement(token, "window-message"))
+		UpdateState();
+	return 0;
+}
+
+
+LRESULT CVideoProcessorDlg::OnMessageRendererIntentReady(
+	WPARAM,
+	LPARAM)
+{
+	if (!m_rendererConstructionActive)
 		UpdateState();
 	return 0;
 }
@@ -7133,6 +7167,12 @@ void CVideoProcessorDlg::OnRendererDetailString(const CString& details)
 void CVideoProcessorDlg::UpdateState()
 {
 	DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::UpdateState()")));
+	if (m_rendererConstructionActive)
+	{
+		DbgLog((LOG_TRACE, 1,
+			TEXT("CVideoProcessorDlg::UpdateState(): waiting for renderer construction")));
+		return;
+	}
 	if (m_rendererRetirementPending)
 	{
 		TryFinalizeRendererRetirement(
@@ -8083,6 +8123,7 @@ void CVideoProcessorDlg::RenderStart()
 #if defined(_WIN64)
 	if (selectedRenderer->backend == RendererBackend::LIBPLACEBO)
 	{
+		m_rendererConstructionActive = true;
 		try
 		{
 			const size_t alphaQueueCapacity =
@@ -8116,11 +8157,15 @@ void CVideoProcessorDlg::RenderStart()
 			m_videoRenderer->SetSceneAwareTimingCorrection(
 				m_sceneAwareTimingCorrection);
 			m_videoRenderer->Start();
+			m_rendererConstructionActive = false;
+			if (m_wantToRestartRenderer)
+				PostMessage(WM_MESSAGE_RENDERER_INTENT_READY, 0, 0);
 			m_rendererStateText.SetWindowText(
 				TEXT("Started VP Renderer, waiting for image..."));
 		}
 		catch (const std::exception& e)
 		{
+			m_rendererConstructionActive = false;
 			DebugLog::Log("libplacebo renderer startup failed: %s", e.what());
 			DestroyVideoRenderer();
 			if (!m_rendererRetirementPending)
@@ -8153,6 +8198,7 @@ void CVideoProcessorDlg::RenderStart()
 
 	try
 	{
+		m_rendererConstructionActive = true;
 		if (IsEqualCLSID(*rendererClSID, CLSID_MPCVR))
 			m_videoRenderer = std::make_shared<DirectShowMPCVideoRenderer>(
 				*this, m_rendererTargetHwnd, GetSafeHwnd(),
@@ -8218,12 +8264,16 @@ void CVideoProcessorDlg::RenderStart()
 		m_videoRenderer->SetSubtitleRepositioningMode(
 			m_subtitleRepositionMode);
 		m_videoRenderer->Start();
+		m_rendererConstructionActive = false;
+		if (m_wantToRestartRenderer)
+			PostMessage(WM_MESSAGE_RENDERER_INTENT_READY, 0, 0);
 
 		m_rendererStateText.SetWindowText(TEXT("Started HDR renderer, waiting for image..."));
 
 	}
 	catch (std::runtime_error e)
 	{
+		m_rendererConstructionActive = false;
 		DestroyVideoRenderer();
 		if (m_rendererRetirementPending)
 		{
@@ -8237,6 +8287,7 @@ void CVideoProcessorDlg::RenderStart()
 
 		try
 		{
+			m_rendererConstructionActive = true;
 			if (IsEqualCLSID(*rendererClSID, CLSID_MPCVR))
 			{
 				m_videoRenderer = std::make_shared<DirectShowMPCVideoRenderer>(
@@ -8304,11 +8355,15 @@ void CVideoProcessorDlg::RenderStart()
 			m_videoRenderer->SetSubtitleRepositioningMode(
 				m_subtitleRepositionMode);
 			m_videoRenderer->Start();
+			m_rendererConstructionActive = false;
+			if (m_wantToRestartRenderer)
+				PostMessage(WM_MESSAGE_RENDERER_INTENT_READY, 0, 0);
 
 			m_rendererStateText.SetWindowText(TEXT("Started, waiting for image..."));
 		}
 		catch (std::runtime_error e)
 		{
+			m_rendererConstructionActive = false;
 			DestroyVideoRenderer();
 			if (!m_rendererRetirementPending)
 			{

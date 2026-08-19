@@ -8,6 +8,8 @@
 
 #include <pch.h>
 
+#include <MadVRShaderTransactionPolicy.h>
+
 #include <ConfigFile.h>
 #include <DebugLog.h>
 #include <DisplayRuleExpression.h>
@@ -210,9 +212,23 @@ bool LogMadVRShaderPreflight(const std::string& source, const std::string& profi
 	const std::filesystem::path& path, const char* stageName, unsigned int order)
 {
 	static std::once_flag environmentLogged;
+	static std::mutex successfulPreflightMutex;
+	static std::set<std::pair<uint64_t, std::string>> successfulPreflights;
 	std::call_once(environmentLogged, LogMadVRShaderEnvironment);
 
 	const uint64_t fingerprint = ShaderSourceFingerprint(source);
+	const std::pair<uint64_t, std::string> cacheKey(fingerprint, profile);
+	{
+		std::lock_guard<std::mutex> lock(successfulPreflightMutex);
+		if (successfulPreflights.find(cacheKey) != successfulPreflights.end())
+		{
+			DebugLog::Log(
+				"Shaders: local HLSL preflight cache hit for %s shader #%u \"%s\" profile=%s bytes=%zu fingerprint=%016llX",
+				stageName, order, path.u8string().c_str(), profile.c_str(),
+				source.size(), static_cast<unsigned long long>(fingerprint));
+			return true;
+		}
+	}
 	CComPtr<ID3DBlob> bytecode;
 	CComPtr<ID3DBlob> diagnostics;
 	const HRESULT hr = D3DCompile(source.data(), source.size(),
@@ -235,6 +251,10 @@ bool LogMadVRShaderPreflight(const std::string& source, const std::string& profi
 		static_cast<unsigned long long>(fingerprint),
 		bytecode ? bytecode->GetBufferSize() : 0,
 		message.empty() ? "(none)" : message.c_str());
+	{
+		std::lock_guard<std::mutex> lock(successfulPreflightMutex);
+		successfulPreflights.insert(cacheKey);
+	}
 	return true;
 }
 
@@ -258,6 +278,7 @@ struct ShaderEntry
 	std::filesystem::path path;
 	std::string displayName;
 	std::map<std::string, std::string> parameters;
+	bool nlsRuntimeParameters = false;
 };
 
 
@@ -1714,8 +1735,22 @@ bool PrepareStage(const std::vector<ShaderEntry>& entries,
 			return false;
 		}
 		const auto readFinished = std::chrono::steady_clock::now();
+		std::string preflightSource = shader.source;
 		if (!ApplyShaderParameters(shader.source, entry.parameters, entry.path))
 			return false;
+		if (entry.nlsRuntimeParameters)
+		{
+			auto preflightParameters = entry.parameters;
+			NormalizeMadVRNlsRuntimeParametersForPreflight(
+				preflightParameters);
+			if (!ApplyShaderParameters(preflightSource, preflightParameters,
+				entry.path))
+				return false;
+		}
+		else
+		{
+			preflightSource = shader.source;
+		}
 		shader.profile = ShaderProfile(shader.source, defaultProfile);
 		if (shader.profile.empty())
 		{
@@ -1725,7 +1760,7 @@ bool PrepareStage(const std::vector<ShaderEntry>& entries,
 			return false;
 		}
 		const auto expanded = std::chrono::steady_clock::now();
-		if (!LogMadVRShaderPreflight(shader.source, shader.profile,
+		if (!LogMadVRShaderPreflight(preflightSource, shader.profile,
 			entry.path, stageName, entry.order))
 		{
 			DebugLog::Log(
@@ -1842,6 +1877,7 @@ void AppendRuleEntries(const ShaderRule& rule,
 				entry.order = static_cast<unsigned int>(target.size() + 1);
 			entry.displayName = rule.label;
 			entry.parameters = rule.parameters;
+			entry.nlsRuntimeParameters = rule.nls;
 			target.push_back(std::move(entry));
 		}
 	};

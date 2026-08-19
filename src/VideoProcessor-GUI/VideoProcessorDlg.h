@@ -63,6 +63,7 @@
 #define WM_MESSAGE_RENDERER_RESET_REQUEST               (WM_APP + 12)
 #define WM_MESSAGE_RENDERER_RETIRED                     (WM_APP + 13)
 #define WM_MESSAGE_EXTERNAL_SHORTCUT                    (WM_APP + 14)
+#define WM_MESSAGE_RENDERER_INTENT_READY                (WM_APP + 15)
 
 // Timer IDs
 #define TIMER_ID_1SECOND 1
@@ -211,6 +212,8 @@ public:
 	afx_msg LRESULT OnMessageRendererResetRequest(
 		WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnMessageRendererRetired(
+		WPARAM wParam, LPARAM lParam);
+	afx_msg LRESULT OnMessageRendererIntentReady(
 		WPARAM wParam, LPARAM lParam);
 	bool TryFinalizeRendererRetirement(
 		uint64_t token, const char* completionSource);
@@ -633,6 +636,7 @@ protected:
 	std::shared_ptr<IVideoRenderer> m_videoRenderer;
 	RendererRetirementService m_rendererRetirementService;
 	bool m_rendererRetirementPending = false;
+	bool m_rendererConstructionActive = false;
 	uint64_t m_rendererRetirementToken = 0;
 	uint64_t m_rendererRetirementWaitLoggedToken = 0;
 	CString m_retiringRendererName;

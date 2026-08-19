@@ -1500,6 +1500,8 @@ void DirectShowVideoRenderer::GraphTeardown()
 		m_pEvent = nullptr;
 	}
 
+	ReleaseGraphOwnedRendererServices();
+
 	//
 	// Teardown window
 	//
@@ -1572,6 +1574,15 @@ void DirectShowVideoRenderer::GraphTeardownNoThrow() noexcept
 	{
 	}
 	logPhase("clear-notify-window", phaseStarted);
+	phaseStarted = GetTickCount64();
+	try
+	{
+		ReleaseGraphOwnedRendererServices();
+	}
+	catch (...)
+	{
+	}
+	logPhase("renderer-services-release", phaseStarted);
 	phaseStarted = GetTickCount64();
 	try
 	{

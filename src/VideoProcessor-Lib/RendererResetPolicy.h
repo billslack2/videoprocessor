@@ -67,6 +67,52 @@ constexpr bool QueuePolicyApplyRequiresGraphReset(
 	return directShowRendererActive;
 }
 
+enum class DirectShowGraphEventImpact
+{
+	None,
+	GeometryOnly,
+	DisplayTransition,
+};
+
+// EC_VIDEO_SIZE_CHANGED is expected when madVR accepts a dynamic picture
+// aspect update (for example NLS). It changes presentation geometry, not the
+// physical output timing, and must not invalidate refresh evidence or re-prime
+// the graph. EC_DISPLAY_CHANGED remains a real output transition.
+constexpr DirectShowGraphEventImpact ClassifyDirectShowGraphEvent(
+	long eventCode)
+{
+	constexpr long EcVideoSizeChanged = 0x0e;
+	constexpr long EcDisplayChanged = 0x16;
+	return eventCode == EcDisplayChanged ?
+		DirectShowGraphEventImpact::DisplayTransition :
+		eventCode == EcVideoSizeChanged ?
+		DirectShowGraphEventImpact::GeometryOnly :
+		DirectShowGraphEventImpact::None;
+}
+
+enum class RendererRestartDispatch
+{
+	DispatchNow,
+	DeferUntilConstructionCompletes,
+	DeferUntilRetirementCompletes,
+};
+
+// Renderer construction can pump window messages inside third-party Build()
+// and Start() calls. A shortcut received there is a new desired renderer, not
+// permission to re-enter teardown while the current renderer is only partly
+// constructed. Keep the latest intent latched and reconcile it after the
+// current lifecycle boundary.
+constexpr RendererRestartDispatch ClassifyRendererRestartDispatch(
+	bool constructionActive,
+	bool retirementPending)
+{
+	return constructionActive ?
+		RendererRestartDispatch::DeferUntilConstructionCompletes :
+		retirementPending ?
+		RendererRestartDispatch::DeferUntilRetirementCompletes :
+		RendererRestartDispatch::DispatchNow;
+}
+
 // A graph retarget cannot be safely interrupted once madVR owns it. The
 // fullscreen control is still allowed to express the final intent while that
 // transaction is in flight; a covered rebuild is required only when that

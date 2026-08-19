@@ -2637,6 +2637,13 @@ namespace VideoProcessorTest
 					expected.first, "shortcut", value));
 				Assert::AreEqual(expected.second, value.c_str());
 			}
+			Assert::IsTrue(config.TryGetString(
+				"shader.nls.standard", "stage", value));
+			Assert::AreEqual("pre_resize", value.c_str(),
+				L"Bundled madVR NLS must run before madVR enlarges the presentation surface");
+			Assert::IsTrue(config.TryGetString(
+				"shader.nls.standard", "order", value));
+			Assert::AreEqual("10", value.c_str());
 			Assert::IsTrue(config.TryGetString("shader.standard", "type", value));
 			Assert::AreEqual("multi", value.c_str());
 			const std::pair<const char*, const char*> standardShaders[] = {

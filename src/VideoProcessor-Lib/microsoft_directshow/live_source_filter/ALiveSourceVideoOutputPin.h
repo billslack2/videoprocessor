@@ -124,8 +124,9 @@ public:
 	virtual void SetOutputReadinessDeliveryReserve(size_t) {}
 	virtual void SetQueueFramePolicy(size_t, size_t, bool) {}
 	// Shader-chain replacement is not atomic in madVR. Buffered pins override
-	// this to hold downstream delivery across the aspect/shader transaction so
-	// no sample can be rendered against a half-applied presentation contract.
+	// this to make a bounded attempt to hold downstream delivery across the
+	// aspect/shader transaction. The attempt must be allowed to defer when a
+	// third-party Deliver call is blocked, or graph control can be starved.
 	virtual bool RunWithDeliveryHeld(const std::function<void()>& operation)
 	{
 		operation();
