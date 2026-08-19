@@ -153,10 +153,11 @@ claiming physical verification without sink evidence or a protocol analyzer.
    that target timing, Advanced Color, driver signaling, DWM, or the sink has
    stabilized.
 6. Refresh-rate commands are detached `cmd.exe` processes delayed with
-   `ping.exe`; VP closes their handles immediately. They have no transition
-   generation, cancellation, completion, or exit-code barrier. A command for
-   the retired renderer, including one scheduled when the rate was already
-   correct, can run after the next renderer starts.
+   `ping.exe`; VP closes their handles immediately. VP-0135 separately removes
+   the artificial delay and launches configured commands directly. These are
+   intentional user-configured external actions, so this story must observe
+   their launch boundary without treating arbitrary script effects as
+   renderer-owned reversible state.
 7. VP does not currently toggle Windows Advanced Color/HDR. Because madVR may
    change observable display state, the handoff must inventory and compare it,
    but VP must not toggle it unless VP recorded ownership of that change.
@@ -200,9 +201,9 @@ handoff transaction:
 5. Completely destroy the outgoing graph, filters, COM interfaces, swapchain,
    D3D resources, child windows, OSD resources, and fullscreen/exclusive
    ownership.
-6. Cancel scheduled-but-not-started old-generation external actions and wait
-   for or terminate already-started VP-owned actions under a documented
-   bounded policy.
+6. Cancel scheduled-but-not-started renderer-owned actions. Do not cancel or
+   terminate an external refresh command already launched under the VP-0135
+   user-command contract.
 7. Re-query topology and resolve the intended physical target again.
 8. Restore VP-owned display mode/path state. Any successful mutating API call
    must mark the target dirty immediately; dirty remains set until exact
@@ -226,26 +227,14 @@ The transition must be asynchronous/state-machine driven; do not block the UI
 thread with sleeps or a nested unsafe message pump. The replacement renderer
 must not exist concurrently with unresolved outgoing global state.
 
-### External refresh-command ownership
+### External refresh-command boundary
 
-Replace the detached `cmd / ping / command` mechanism with an application-
-owned scheduler:
-
-- use a cancellable VP timer for delay;
-- bind each request to transition generation and physical target identity;
-- revalidate generation and desired rate immediately before launch;
-- retain process and, where compatible, job handles;
-- log PID, launch, cancellation, timeout, completion, exit code, and spawned-
-  child limitations;
-- prevent an old-generation command from executing after successor
-  construction; and
-- require any restoration command that affects display state to complete and
-  be followed by state verification before the barrier opens.
-
-Arbitrary scripts can create detached descendants or mutate unobservable
-driver state. If VP cannot contain or observe such effects, configuration and
-logs must explicitly state that strict clean-start equivalence ends at that
-extension boundary.
+VP-0135 owns removal of the `ping.exe` pre-launch timer and direct asynchronous
+execution of the configured command. VP-0134 must not cancel, terminate, or
+wait for an intentionally launched arbitrary user command as though it were a
+renderer worker. Record the transition and command-launch ordering in
+diagnostics, and state explicitly that clean-start equivalence cannot include
+unobservable or irreversible side effects produced by user scripts.
 
 ### Failure policy
 
@@ -361,8 +350,10 @@ Add deterministic seams/fakes for:
    `SDC_ALLOW_CHANGES`.
 6. NVIDIA set/readback/restore failure, ownership conflict, target remapping,
    auto/default policy, existing override preservation, and retry.
-7. Delayed command cancellation before launch, switch while running, timeout,
-   nonzero exit, child-process limitation, and a rate-already-correct command.
+7. Direct external-command launch ordering, switch while a user command is
+   running, launch failure, child-process limitation, and a
+   rate-already-correct command. VP-0135 separately proves removal of the
+   artificial delay.
 8. Stable-observation coalescing, missing/duplicate `WM_DISPLAYCHANGE`, stale
    DXGI factory/output snapshots, hotplug, and target identity change.
 9. Cold versus switched pre-construction snapshots for both renderer backends.
@@ -384,7 +375,7 @@ Add deterministic seams/fakes for:
 | Color modes | Windows HDR off/on, SDR/PQ/HLG, Rec.709/BT.2020, full/studio, and 8/10-bit-capable paths |
 | Display topology | Single, extended, clone, cross-monitor/GPU move, hotplug during teardown, sleep/wake, lock/unlock, and display power cycle |
 | GPU/vendor paths | NVIDIA success/failure on at least two supported driver branches; AMD/Intel paths remain no-op for NVIDIA work |
-| External commands | Delays 0/5/30 seconds, switch before expiry, hanging/failing command, spawned child, and no matching rule |
+| External commands | Direct launch, switch while running, launch failure, spawned child, and no matching rule; VP-0135 proves there is no artificial delay |
 | Fault injection | Mode/query/fallback/restore failures, NVAPI failures, missing notifications, stale output factory, topology change, and device removal |
 
 Ordinary validation may use Windows/NVAPI readback and sink diagnostics. Final
@@ -412,9 +403,9 @@ when available, an HDMI protocol analyzer or trustworthy sink status page.
 - NVIDIA restoration occurs after swapchain/device destruction and the final
   modeset, is read back, preserves automatic/user override ownership, and
   remains pending on failure.
-- No retired-generation refresh command can execute after successor
-  construction; command limitations are explicit when arbitrary descendants
-  prevent containment.
+- No renderer-owned delayed action from a retired generation can execute after
+  successor construction. Intentionally launched external refresh commands
+  follow VP-0135 and are explicitly outside reversible renderer ownership.
 - Hotplug/topology change cannot cause a stale baseline to be applied to a
   different target.
 - Existing renderer-specific startup/re-prime, NLS/shader/profile persistence,
@@ -446,6 +437,7 @@ when available, an HDMI protocol analyzer or trustworthy sink status page.
 - VP-0078: Alpha refresh/host/handoff queue re-prime.
 - VP-0117 and VP-0133: presentation/output truth and authoritative output
   diagnostics.
+- VP-0135: direct refresh-rate command execution without the `ping.exe` delay.
 
 ## Implementation readiness gate
 
