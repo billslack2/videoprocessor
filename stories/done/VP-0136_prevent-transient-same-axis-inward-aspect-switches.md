@@ -2,12 +2,10 @@
 
 ## Status
 
-Backlog (2026-08-19). Live 2.20:1 content exposed a transition-policy gap:
-after a receiver volume overlay remained near the top of the picture for
-several seconds, Alpha trusted a temporary 2.35:1 inward crop, changed the
-layout for about seven seconds, and then returned to 2.20:1. The established
-nested-crop dwell does not cover a stricter crop on the same already-cropped
-axis.
+Done (2026-08-20). Same-axis inward crop candidates now require eight seconds
+of continuous confirmation. The logged seven-second 2.20:1-to-2.35:1 false
+transition remains on the stable geometry, while outward recovery retains its
+existing adjacent-confirmation latency.
 
 ## User story
 
@@ -119,6 +117,17 @@ fully suppress this seven-second trace even after the predicate is corrected.
   while an inward dwell is pending;
 - localized top volume UI and bottom subtitle sequences, whether or not the
   vertical-overlay classifier accepts them.
+
+## Validation and release evidence
+
+- Implemented in VideoProcessor commit `08b27c3` and fast-forwarded to
+  `origin/v1.2.001-beta` after rebasing against the latest remote branch.
+- The exact logged top/bottom bounds are covered at 23.976, 24, 25, 29.97,
+  30, 50, 59.94, and 60 Hz; left/right same-axis containment is also covered.
+- Focused transition-model tests passed 34/34.
+- The complete x64 Release solution built successfully.
+- The complete native suite passed 866/866, and the standalone Config UI test
+  suite passed.
 
 ## Boundaries and related work
 
