@@ -627,27 +627,18 @@ HRESULT CBufferedLiveSourceVideoOutputPin::OnVideoFrame(VideoFrame& videoFrame)
 	const bool limitPrimeRawRetention = callbackEpoch != 0 &&
 		callbackEpoch == m_primeQueueEpoch.load(std::memory_order_acquire) &&
 		m_steadyQueueEpoch.load(std::memory_order_acquire) != callbackEpoch;
-	const LiveSteadyQueueDecision steadyCaptureDecision =
-		LiveSteadyQueuePolicy::Evaluate({
-			m_steadyQueueEpoch.load(std::memory_order_acquire),
-			currentEpoch.value,
-			IsSteadyQueueTargetConfigured(),
-			m_sceneAwareTimingCorrection.load(std::memory_order_acquire),
-			GetConfiguredSteadyQueueTarget(),
-			m_publishedConvertedQueueDepth.load(std::memory_order_acquire) });
 	size_t discardedByLimitedPush = 0;
+	// After the epoch-local prime window, raw capture uses the queue's physical
+	// capacity. The converted high-water mark controls the desired VP reserve;
+	// shrinking raw admission to one latest-wins frame turns ordinary worker
+	// jitter into source timestamp gaps and forces a live renderer to repeat.
 	const EpochBoundedQueuePushResult pushResult = limitPrimeRawRetention ?
 		m_captureFrameQueue.PushWithMaximum(
 			std::move(capturedFrame), { callbackEpoch }, currentEpoch,
 			DirectShowEpochPrimePolicy::MaximumRetainedRawQueueFrames,
 			&discardedByLimitedPush) :
-		(steadyCaptureDecision.active ?
-			m_captureFrameQueue.PushWithMaximum(
-				std::move(capturedFrame), { callbackEpoch }, currentEpoch,
-				steadyCaptureDecision.maximumRawDepth,
-				&discardedByLimitedPush) :
-			m_captureFrameQueue.Push(
-				std::move(capturedFrame), { callbackEpoch }, currentEpoch));
+		m_captureFrameQueue.Push(
+			std::move(capturedFrame), { callbackEpoch }, currentEpoch);
 	EpochBoundedQueueMetrics rawMetrics = m_captureFrameQueue.Metrics();
 	m_publishedRawQueueDepth.store(rawMetrics.depth, std::memory_order_release);
 	const size_t retainedSourceBuffers = rawMetrics.depth +
@@ -680,8 +671,7 @@ HRESULT CBufferedLiveSourceVideoOutputPin::OnVideoFrame(VideoFrame& videoFrame)
 	acceptedRawQueueDepth = rawMetrics.depth;
 	if (pushResult == EpochBoundedQueuePushResult::AcceptedAfterOverflowDiscard)
 	{
-		const size_t discardedByPush = (limitPrimeRawRetention ||
-			steadyCaptureDecision.active) ?
+		const size_t discardedByPush = limitPrimeRawRetention ?
 			discardedByLimitedPush : 1;
 		m_droppedFrameCount.fetch_add(
 			discardedByPush, std::memory_order_relaxed);
@@ -1778,6 +1768,17 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 	HANDLE events[2] = { m_hShutdownEvent, m_hConvertedAvailableEvent };
 	DWORD lastLatencyLogTime = 0;
 	uint64_t framesSinceLastLog = 0;
+	uint64_t latencyTrendEpoch = 0;
+	uint64_t latencyTrendStartedTick = 0;
+	double latencyTrendBaselinePtsLeadMs = 0.0;
+	double latencyTrendBaselineScheduledMs = 0.0;
+	bool latencyTrendBaselineScheduledKnown = false;
+	size_t latencyQueueMinimumSinceLog = (std::numeric_limits<size_t>::max)();
+	size_t latencyQueueMaximumSinceLog = 0;
+	uint64_t latencyRawOverflowAtEpochStart = 0;
+	uint64_t latencyRawOverflowAtLastLog = 0;
+	uint64_t latencySourceGapSlotsSinceEpochStart = 0;
+	uint64_t latencySourceGapSlotsSinceLastLog = 0;
 
 	// Enhanced delivery performance tracking
 	uint64_t deliverySuccessCount = 0;
@@ -1837,6 +1838,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 	uint64_t latencyClockDiscontinuityLoggedEpoch = 0;
 	bool downstreamRejectedUntilNewEpoch = false;
 	uint64_t downstreamRejectedEpoch = 0;
+	bool sceneHardwareClockBypassLogged = false;
 
 	// When Scene Detect is enabled, this delivery-thread-only planner selects
 	// display-rate slots and whole-picture repeat/drop actions. The unified
@@ -1958,7 +1960,8 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 		RationalLiveOutputCadence outputCadence,
 		double displayRateHz,
 		uint32_t presentationGapSlotsBefore,
-		bool sourceDiscontinuity) -> HRESULT
+		bool sourceDiscontinuity,
+		uint64_t deliveredSourceGapSlots) -> HRESULT
 	{
 		std::lock_guard<std::timed_mutex> deliveryLock(m_deliveryGate);
 		if (m_deliveryFlushing.load(std::memory_order_acquire) ||
@@ -2155,37 +2158,143 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				// but a live-capture regression can be a slow PTS-lead drift. Keep a
 				// lightweight, delivery-thread-owned steady-state trace so diagnosis
 				// does not depend on exporting the trace only after a later reset.
-				const DWORD latencyNow = GetTickCount();
+				const uint64_t latencyNow64 = GetTickCount64();
+				const DWORD latencyNow = static_cast<DWORD>(latencyNow64);
+				const size_t rawDepth = m_publishedRawQueueDepth.load(
+					std::memory_order_acquire);
+				const size_t convertedDepth =
+					m_publishedConvertedQueueDepth.load(
+						std::memory_order_acquire);
+				const size_t totalDepth = rawDepth + convertedDepth;
+				const uint64_t rawOverflowCount =
+					m_captureFrameQueue.Metrics().overflowDiscarded;
+				if (latencyTrendEpoch != expectedQueueEpoch)
+				{
+					latencyTrendEpoch = expectedQueueEpoch;
+					latencyTrendStartedTick = latencyNow64;
+					latencyTrendBaselinePtsLeadMs =
+						displayedLatencySnapshot.dsScheduleLeadMs;
+					latencyTrendBaselineScheduledMs =
+						displayedLatencySnapshot.scheduledLatencyMs;
+					latencyTrendBaselineScheduledKnown =
+						displayedLatencySnapshot.scheduledPresentationKnown;
+					latencyQueueMinimumSinceLog = totalDepth;
+					latencyQueueMaximumSinceLog = totalDepth;
+					latencyRawOverflowAtEpochStart = rawOverflowCount;
+					latencyRawOverflowAtLastLog = rawOverflowCount;
+					latencySourceGapSlotsSinceEpochStart = 0;
+					latencySourceGapSlotsSinceLastLog = 0;
+				}
+				else
+				{
+					latencyQueueMinimumSinceLog = std::min(
+						latencyQueueMinimumSinceLog, totalDepth);
+					latencyQueueMaximumSinceLog = std::max(
+						latencyQueueMaximumSinceLog, totalDepth);
+				}
+				latencySourceGapSlotsSinceEpochStart +=
+					deliveredSourceGapSlots;
+				latencySourceGapSlotsSinceLastLog +=
+					deliveredSourceGapSlots;
 				if (lastLatencyLogTime == 0 ||
 					latencyNow - lastLatencyLogTime >= 10000)
 				{
-					const size_t rawDepth = m_publishedRawQueueDepth.load(
-						std::memory_order_acquire);
-					const size_t convertedDepth =
-						m_publishedConvertedQueueDepth.load(
-							std::memory_order_acquire);
+					const uint64_t trendElapsedMs =
+						latencyNow64 - latencyTrendStartedTick;
+					const double ptsLeadDeltaMs =
+						displayedLatencySnapshot.dsScheduleLeadMs -
+						latencyTrendBaselinePtsLeadMs;
+					const double scheduledDeltaMs =
+						displayedLatencySnapshot.scheduledLatencyMs -
+						latencyTrendBaselineScheduledMs;
+					const double hoursPerTrend = trendElapsedMs > 0 ?
+						3600000.0 / static_cast<double>(trendElapsedMs) : 0.0;
+					const double ptsLeadSlopeMsPerHour =
+						ptsLeadDeltaMs * hoursPerTrend;
+					const double scheduledSlopeMsPerHour =
+						scheduledDeltaMs * hoursPerTrend;
+					const bool scheduledTrendKnown =
+						latencyTrendBaselineScheduledKnown &&
+						displayedLatencySnapshot.scheduledPresentationKnown;
+					// A 10-second delta is useful, but extrapolating its normal sub-ms
+					// jitter to an hourly rate is misleading. Publish a slope only after
+					// one uninterrupted minute in the same graph epoch.
+					const bool trendSlopeReady = trendElapsedMs >= 60000;
+					const uint64_t rawOverflowSinceEpoch =
+						rawOverflowCount - latencyRawOverflowAtEpochStart;
+					const uint64_t rawOverflowSinceLastLog =
+						rawOverflowCount - latencyRawOverflowAtLastLog;
+					char ptsLeadText[48];
+					char scheduledText[48];
+					char ptsDeltaText[48];
+					char ptsSlopeText[48];
+					char scheduledDeltaText[48];
+					char scheduledSlopeText[48];
+					if (displayedLatencySnapshot.scheduledPresentationKnown)
+					{
+						sprintf_s(ptsLeadText, "%.2fms",
+							displayedLatencySnapshot.dsScheduleLeadMs);
+						sprintf_s(scheduledText, "%.2fms",
+							displayedLatencySnapshot.scheduledLatencyMs);
+						sprintf_s(ptsDeltaText, "%+.2fms", ptsLeadDeltaMs);
+					}
+					else
+					{
+						strcpy_s(ptsLeadText, "N/A");
+						strcpy_s(scheduledText, "N/A");
+						strcpy_s(ptsDeltaText, "N/A");
+					}
+					if (displayedLatencySnapshot.scheduledPresentationKnown &&
+						trendSlopeReady)
+						sprintf_s(ptsSlopeText, "%+.2fms/h", ptsLeadSlopeMsPerHour);
+					else
+						strcpy_s(ptsSlopeText, "N/A");
+					if (scheduledTrendKnown)
+						sprintf_s(scheduledDeltaText, "%+.2fms", scheduledDeltaMs);
+					else
+						strcpy_s(scheduledDeltaText, "N/A");
+					if (scheduledTrendKnown && trendSlopeReady)
+						sprintf_s(scheduledSlopeText, "%+.2fms/h",
+							scheduledSlopeMsPerHour);
+					else
+						strcpy_s(scheduledSlopeText, "N/A");
 					DebugLog::Log(
 						"VP LATENCY (10s): epoch=%llu method=%s frame=%llu "
-						"vp_internal=%.2fms pts_lead=%s%.2fms scheduled=%s%.2fms "
+						"vp_internal=%.2fms pts_lead=%s scheduled=%s "
 						"pts_start=%lld graph_time=%lld queue=%zu/%zu/%zu target=%zu "
-						"source_gap=%u ppm=%d deliveries=%llu",
+						"source_gap=%llu ppm=%d deliveries=%llu "
+						"trend_age=%.1fs pts_delta=%s pts_slope=%s "
+						"scheduled_delta=%s scheduled_slope=%s "
+						"queue_range=%zu..%zu raw_overflow=%llu/+%llu "
+						"source_gap_slots=%llu/+%llu",
 						static_cast<unsigned long long>(expectedQueueEpoch),
 						TimestampMethodName(m_timestamp),
 						static_cast<unsigned long long>(frameNumber),
 						displayedLatencySnapshot.vpInternalMs,
-						displayedLatencySnapshot.scheduledPresentationKnown ? "" : "N/A ",
-						displayedLatencySnapshot.dsScheduleLeadMs,
-						displayedLatencySnapshot.scheduledPresentationKnown ? "" : "N/A ",
-						displayedLatencySnapshot.scheduledLatencyMs,
+						ptsLeadText, scheduledText,
 						static_cast<long long>(presentationStart),
 						static_cast<long long>(streamTime), rawDepth, convertedDepth,
 						rawDepth + convertedDepth,
 						GetConfiguredSteadyQueueTarget(),
-						timestampDecision.sourceGapSlotsBefore,
+						static_cast<unsigned long long>(deliveredSourceGapSlots),
 						GetCurrentPPMCorrection(),
-						static_cast<unsigned long long>(framesSinceLastLog));
+						static_cast<unsigned long long>(framesSinceLastLog),
+						trendElapsedMs / 1000.0,
+						ptsDeltaText, ptsSlopeText,
+						scheduledDeltaText, scheduledSlopeText,
+						latencyQueueMinimumSinceLog, latencyQueueMaximumSinceLog,
+						static_cast<unsigned long long>(rawOverflowSinceEpoch),
+						static_cast<unsigned long long>(rawOverflowSinceLastLog),
+						static_cast<unsigned long long>(
+							latencySourceGapSlotsSinceEpochStart),
+						static_cast<unsigned long long>(
+							latencySourceGapSlotsSinceLastLog));
 					lastLatencyLogTime = latencyNow;
 					framesSinceLastLog = 0;
+					latencyQueueMinimumSinceLog = totalDepth;
+					latencyQueueMaximumSinceLog = totalDepth;
+					latencyRawOverflowAtLastLog = rawOverflowCount;
+					latencySourceGapSlotsSinceLastLog = 0;
 				}
 			}
 			else
@@ -2616,16 +2725,23 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 					DirectShowVideoTimingAdapter::UsesLiveTimestampCatchUp(m_timestamp);
 				const bool usesStartOnlyTimestampCatchUp =
 					DirectShowVideoTimingAdapter::UsesStartOnlyLiveTimestampCatchUp(m_timestamp);
+				const bool usesLiveHardwareClockTimestamps =
+					DirectShowVideoTimingAdapter::UsesLiveHardwareClockTimestamps(m_timestamp);
 				if ((usesLegacyTimestampCatchUp || usesStartOnlyTimestampCatchUp) &&
 					discardedConvertedFrames > 0)
 				{
-					// Legacy modes stamp samples during conversion. Arm a one-shot
-					// delivery-boundary splice so removing old converted samples does
-					// not leave their timestamp span scheduled in DirectShow.
-					if (usesLegacyTimestampCatchUp)
-						legacyTimestampCatchUp.Arm(expectedQueueEpoch);
-					else
-						startOnlyTimestampCatchUp.Arm(expectedQueueEpoch);
+					// Pre-stamped synthetic modes join the prior delivered interval.
+					// A live hardware-clock mode is instead armed at the next delivery,
+					// where it can use a fresh graph-now plus presentation-lead anchor.
+					// Joining that mode to the last stale stop would preserve the very
+					// real-time delay this convergence transaction is removing.
+					if (!usesLiveHardwareClockTimestamps)
+					{
+						if (usesLegacyTimestampCatchUp)
+							legacyTimestampCatchUp.Arm(expectedQueueEpoch);
+						else
+							startOnlyTimestampCatchUp.Arm(expectedQueueEpoch);
+					}
 					legacyConvertedCatchUpEpoch = expectedQueueEpoch;
 					legacyConvertedCatchUpPending = true;
 				}
@@ -2940,6 +3056,8 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			const bool pendingStillValid =
 				!m_isBuffering.load(std::memory_order_acquire) &&
 				m_sceneAwareTimingCorrection.load(std::memory_order_acquire) &&
+				DirectShowVideoTimingAdapter::AllowsSceneAwareTimestampCorrection(
+					m_timestamp) &&
 				m_sceneCorrectionUpstreamSample.load(std::memory_order_acquire) &&
 				pendingUpstreamRepeat.queueEpoch == currentQueueEpoch &&
 				pendingUpstreamRepeat.timingGeneration == currentTimingGeneration &&
@@ -2963,7 +3081,8 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				RationalLiveOutputCadence::Display,
 				sceneCadence.displayRateHz,
 				0,
-				false);
+				false,
+				0);
 			if (repeatHr == S_OK)
 			{
 				++sceneCadence.nextOutputIndex;
@@ -3239,11 +3358,29 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			// Scene Detect samples the converted P010 luma plane.  Keep the user
 			// selection intact for a later P010 graph, but never alter cadence or
 			// timestamps while the active graph delivers another subtype.
-			const bool sceneEnabled =
+			const bool sceneRequested =
 				m_sceneAwareTimingCorrection.load(std::memory_order_acquire) &&
 				IsEqualGUID(m_mediaType.subtype, MEDIASUBTYPE_P010);
+			const bool sceneTimestampCorrectionCompatible =
+				DirectShowVideoTimingAdapter::AllowsSceneAwareTimestampCorrection(
+					m_timestamp);
+			const bool sceneEnabled =
+				sceneRequested && sceneTimestampCorrectionCompatible;
 			const bool sceneTimingReady =
 				m_sceneTimingReady.load(std::memory_order_acquire);
+			if (sceneRequested && !sceneTimestampCorrectionCompatible &&
+				!sceneHardwareClockBypassLogged)
+			{
+				sceneHardwareClockBypassLogged = true;
+				DebugLog::Log(
+					"VP-0138 SCENE-AWARE TIMESTAMP CORRECTION BYPASSED: "
+					"method=%s reason=live-hardware-clock-authoritative",
+					TimestampMethodName(m_timestamp));
+			}
+			else if (!sceneRequested)
+			{
+				sceneHardwareClockBypassLogged = false;
+			}
 
 			// A reset can purge the queues after this sample was converted but
 			// before delivery popped it. Never send an old-segment sample or reuse
@@ -3326,6 +3463,8 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				lastSuccessfullyDeliveredEpoch != currentQueueEpoch;
 			const bool sourceGapDiscontinuity =
 				convertedSample.sourceDiscontinuity;
+			const bool usesLiveHardwareClockTimestamps =
+				DirectShowVideoTimingAdapter::UsesLiveHardwareClockTimestamps(m_timestamp);
 			if (legacyConvertedCatchUpPending &&
 				legacyConvertedCatchUpEpoch != currentQueueEpoch)
 			{
@@ -3342,14 +3481,61 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				lastSuccessfullyDeliveredEpoch == currentQueueEpoch &&
 				convertedSample.frameNumber > lastSuccessfullyDeliveredFrameNumber &&
 				convertedSample.frameNumber - lastSuccessfullyDeliveredFrameNumber > 1;
+			const uint64_t deliveredSourceGapSlots = deliveredSourceFrameGap ?
+				convertedSample.frameNumber - lastSuccessfullyDeliveredFrameNumber - 1 : 0;
+			const bool intentionalConvertedTrimBoundary =
+				legacyConvertedCatchUpPending &&
+				legacyConvertedCatchUpEpoch == currentQueueEpoch;
+			if (intentionalConvertedTrimBoundary &&
+				usesLiveHardwareClockTimestamps)
+			{
+				REFERENCE_TIME graphNow = REFERENCE_TIME_INVALID;
+				const bool graphClockValid =
+					readConfirmedRunningStreamTime(graphNow) &&
+					graphNow != REFERENCE_TIME_INVALID;
+				if (graphClockValid)
+				{
+					const REFERENCE_TIME presentationLead =
+						DirectShowVideoTimingAdapter::UsesPresentationLead(m_timestamp) ?
+						GetRampedLeadTime() : 0;
+					const REFERENCE_TIME liveTarget = graphNow + presentationLead;
+					if (DirectShowVideoTimingAdapter::UsesLiveTimestampCatchUp(m_timestamp))
+						legacyTimestampCatchUp.ArmAt(currentQueueEpoch, liveTarget);
+					else
+						startOnlyTimestampCatchUp.ArmAt(currentQueueEpoch, liveTarget);
+					DebugLog::Log(
+						"VP-0138 LIVE CLOCK REBASE ARMED: method=%s epoch=%llu "
+						"frame=%llu graph_now=%.3fms lead=%.3fms target=%.3fms",
+						TimestampMethodName(m_timestamp), currentQueueEpoch,
+						convertedSample.frameNumber, graphNow / 10000.0,
+						presentationLead / 10000.0, liveTarget / 10000.0);
+				}
+				else
+				{
+					// Convergence follows a successful delivery, so the catch-up helper
+					// has a safe last-stop fallback. It is less current than graph-now,
+					// but remains monotonic and never invents a steered timebase.
+					if (DirectShowVideoTimingAdapter::UsesLiveTimestampCatchUp(m_timestamp))
+						legacyTimestampCatchUp.Arm(currentQueueEpoch);
+					else
+						startOnlyTimestampCatchUp.Arm(currentQueueEpoch);
+					DebugLog::Log(
+						"VP-0138 LIVE CLOCK REBASE FALLBACK: method=%s epoch=%llu "
+						"frame=%llu reason=graph-clock-unavailable action=last-delivered-stop",
+						TimestampMethodName(m_timestamp), currentQueueEpoch,
+						convertedSample.frameNumber);
+				}
+			}
+			bool intentionalRawTrimBoundary = false;
 			if (legacyIntentionalRawGapPending &&
 				!legacyConvertedCatchUpPending && deliveredSourceFrameGap &&
 				legacyIntentionalRawGapEpoch == currentQueueEpoch)
 			{
-				// The retained converted reserve is delivered before the source
-				// counter reaches the raw frames removed by convergence. Re-arm at
-				// that exact intentional boundary so the hardware-clock timeline
-				// remains continuous without hiding unrelated capture loss.
+				intentionalRawTrimBoundary = true;
+				// The retained converted reserve reaches delivery before the raw
+				// frames removed by the same convergence transaction. Compress this
+				// known stale-work span once. Later delivery gaps are independently
+				// classified as small contiguous splices or material re-primes.
 				if (DirectShowVideoTimingAdapter::UsesLiveTimestampCatchUp(m_timestamp))
 					legacyTimestampCatchUp.Arm(currentQueueEpoch);
 				else
@@ -3357,12 +3543,30 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				legacyIntentionalRawGapPending = false;
 				legacyIntentionalRawGapEpoch = 0;
 				DebugLog::Log(
-					"VP-0066 LEGACY RAW CATCH-UP: method=%s epoch=%llu frame=%llu",
+					"VP-0138 RAW TRIM BOUNDARY: method=%s epoch=%llu frame=%llu action=%s",
 					TimestampMethodName(m_timestamp), currentQueueEpoch,
-					convertedSample.frameNumber);
+					convertedSample.frameNumber,
+					usesLiveHardwareClockTimestamps ?
+						"splice-intentional-stale-live-gap" :
+						"splice-synthetic-timeline");
+			}
+			if (usesLiveHardwareClockTimestamps && deliveredSourceFrameGap &&
+				!intentionalConvertedTrimBoundary && !intentionalRawTrimBoundary)
+			{
+				// The source counter gap is telemetry only for a live hardware-clock
+				// timeline. Keep delivering the retained frame with its real DeckLink
+				// timestamp and let madVR's existing reservoir own presentation. Do not
+				// manufacture a DirectShow discontinuity or reset the graph here.
+				DebugLog::Log(
+					"VP-0138 LIVE CLOCK DELIVERY GAP: method=%s epoch=%llu "
+					"frame=%llu missing_slots=%llu action=telemetry-only",
+					TimestampMethodName(m_timestamp), currentQueueEpoch,
+					convertedSample.frameNumber,
+					static_cast<unsigned long long>(deliveredSourceGapSlots));
 			}
 			const bool markDiscontinuity =
-				epochStartDiscontinuity || sourceGapDiscontinuity;
+				epochStartDiscontinuity || sourceGapDiscontinuity ||
+				intentionalConvertedTrimBoundary || intentionalRawTrimBoundary;
 			const DirectShowSamplePreparationResult preparation =
 				m_directShowFrameDeliverer.Prepare({
 					pSample, markDiscontinuity,
@@ -3385,16 +3589,22 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 					} });
 			if (markDiscontinuity)
 			{
+				const char* discontinuityOrigin = epochStartDiscontinuity ?
+					(sourceGapDiscontinuity ? "epoch-start+source-gap" : "epoch-start") :
+					sourceGapDiscontinuity ? "source-gap" :
+					intentionalConvertedTrimBoundary ? "converted-trim" :
+					"raw-trim";
 				DebugLog::Log(
 					"DirectShow sample discontinuity: epoch=%llu frame=%llu "
-					"origin=%s epoch_start=%d source_gap=%d",
+					"origin=%s epoch_start=%d source_gap=%d converted_trim=%d raw_trim=%d delivery_gap=%d",
 					static_cast<unsigned long long>(currentQueueEpoch),
 					static_cast<unsigned long long>(convertedSample.frameNumber),
-					epochStartDiscontinuity && sourceGapDiscontinuity ?
-						"epoch-start+source-gap" :
-						(epochStartDiscontinuity ? "epoch-start" : "source-gap"),
+					discontinuityOrigin,
 					epochStartDiscontinuity ? 1 : 0,
-					sourceGapDiscontinuity ? 1 : 0);
+					sourceGapDiscontinuity ? 1 : 0,
+					intentionalConvertedTrimBoundary ? 1 : 0,
+					intentionalRawTrimBoundary ? 1 : 0,
+					0);
 			}
 			if (FAILED(preparation.discontinuityResult))
 				DebugLog::Log(
@@ -3852,7 +4062,8 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 					RationalLiveOutputCadence::Rational,
 				sceneCadenceForSample ? sceneCadence.displayRateHz : 0.0,
 				scheduledPresentationGapRepeat ? 1U : 0U,
-				convertedSample.sourceDiscontinuity);
+				convertedSample.sourceDiscontinuity,
+				deliveredSourceGapSlots);
 
 			if (hr == S_OK && sceneCadenceForSample &&
 				deferredUpstreamRepeat)

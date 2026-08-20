@@ -18,10 +18,6 @@ struct LiveSteadyQueueDecision
 {
 	bool active = false;
 	size_t highWater = 0;
-	// Once convergence has established the converted reserve, capture keeps one
-	// latest-wins handoff.  A downstream stall can then delay one source frame,
-	// but cannot become a permanent raw reservoir at equal input/output rates.
-	size_t maximumRawDepth = 0;
 	// In steady live operation, backpressure must be applied before conversion.
 	// Dropping an already-converted sample makes the capture counter and output
 	// timeline disagree; that can either manufacture a renderer repeat or make
@@ -48,7 +44,6 @@ public:
 			return decision;
 
 		decision.highWater = std::max<size_t>(1, input.configuredTarget);
-		decision.maximumRawDepth = 1;
 		decision.holdConversion =
 			input.convertedDepth >= decision.highWater;
 		return decision;

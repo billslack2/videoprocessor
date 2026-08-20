@@ -318,7 +318,6 @@ namespace Tests
 				5, 5, true, false, 1, 22 });
 			Assert::IsTrue(decision.active);
 			Assert::AreEqual<size_t>(1, decision.highWater);
-			Assert::AreEqual<size_t>(1, decision.maximumRawDepth);
 			Assert::IsTrue(decision.holdConversion);
 
 			decision = LiveSteadyQueuePolicy::Evaluate({
@@ -332,14 +331,13 @@ namespace Tests
 			decision = LiveSteadyQueuePolicy::Evaluate({
 				5, 6, true, false, 1, 22 });
 			Assert::IsFalse(decision.active);
-			Assert::AreEqual<size_t>(0, decision.maximumRawDepth);
 			decision = LiveSteadyQueuePolicy::Evaluate({
 				5, 5, true, true, 1, 22 });
 			Assert::IsTrue(decision.active);
 			Assert::IsTrue(decision.holdConversion);
 		}
 
-		TEST_METHOD(SteadyCaptureRetainsExactlyOneLatestWinsHandoff)
+		TEST_METHOD(SteadyCaptureUsesBoundedQueueCapacity)
 		{
 			const PipelineEpoch epoch{ 7 };
 			std::vector<int> released;
@@ -348,17 +346,14 @@ namespace Tests
 			const LiveSteadyQueueDecision decision =
 				LiveSteadyQueuePolicy::Evaluate({ 7, 7, true, false, 3, 3 });
 
-			Assert::AreEqual<size_t>(1, decision.maximumRawDepth);
+			Assert::IsTrue(decision.active);
+			Assert::IsTrue(decision.holdConversion);
 			Assert::AreEqual(static_cast<int>(EpochBoundedQueuePushResult::Accepted),
-				static_cast<int>(raw.PushWithMaximum(
-					100, epoch, epoch, decision.maximumRawDepth)));
-			Assert::AreEqual(static_cast<int>(
-				EpochBoundedQueuePushResult::AcceptedAfterOverflowDiscard),
-				static_cast<int>(raw.PushWithMaximum(
-					101, epoch, epoch, decision.maximumRawDepth)));
-			Assert::AreEqual<size_t>(1, raw.Size());
-			Assert::AreEqual<size_t>(1, released.size());
-			Assert::AreEqual(100, released.front());
+				static_cast<int>(raw.Push(100, epoch, epoch)));
+			Assert::AreEqual(static_cast<int>(EpochBoundedQueuePushResult::Accepted),
+				static_cast<int>(raw.Push(101, epoch, epoch)));
+			Assert::AreEqual<size_t>(2, raw.Size());
+			Assert::AreEqual<size_t>(0, released.size());
 		}
 
 		TEST_METHOD(Exact23976ThresholdAndRecoveryAreRateIndependent)

@@ -44,6 +44,9 @@ class DirectShowLiveTimestampCatchUp
 public:
 	void ResetToEpoch(uint64_t epoch) noexcept;
 	void Arm(uint64_t epoch) noexcept;
+	void ArmAt(
+		uint64_t epoch,
+		VideoReferenceTime targetStart) noexcept;
 	DirectShowLiveCatchUpDecision Adjust(
 		uint64_t epoch,
 		VideoReferenceTime start,
@@ -58,6 +61,8 @@ private:
 	bool m_lastStopValid = false;
 	VideoReferenceTime m_lastStop = 0;
 	VideoReferenceTime m_offset = 0;
+	bool m_targetStartValid = false;
+	VideoReferenceTime m_targetStart = 0;
 };
 
 class DirectShowVideoTimingAdapter
@@ -79,6 +84,10 @@ public:
 	static bool UsesPresentationLead(DirectShowStartStopTimeMethod mode);
 	static bool UsesLiveTimestampCatchUp(DirectShowStartStopTimeMethod mode);
 	static bool UsesStartOnlyLiveTimestampCatchUp(DirectShowStartStopTimeMethod mode);
+	static bool UsesLiveHardwareClockTimestamps(
+		DirectShowStartStopTimeMethod mode);
+	static bool AllowsSceneAwareTimestampCorrection(
+		DirectShowStartStopTimeMethod mode);
 
 private:
 	DirectShowStartStopTimeMethod m_mode;

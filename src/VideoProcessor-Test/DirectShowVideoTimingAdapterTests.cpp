@@ -132,6 +132,45 @@ namespace Tests
 				DS_SSTM_NONE));
 		}
 
+		TEST_METHOD(LiveHardwareClockClassificationExcludesSyntheticTimelines)
+		{
+			Assert::IsTrue(
+				DirectShowVideoTimingAdapter::UsesLiveHardwareClockTimestamps(
+					DS_SSTM_CLOCK_SMART));
+			Assert::IsTrue(
+				DirectShowVideoTimingAdapter::UsesLiveHardwareClockTimestamps(
+					DS_SSTM_CLOCK_SMART2));
+			Assert::IsTrue(
+				DirectShowVideoTimingAdapter::UsesLiveHardwareClockTimestamps(
+					DS_SSTM_CLOCK_RATIONAL));
+			Assert::IsTrue(
+				DirectShowVideoTimingAdapter::UsesLiveHardwareClockTimestamps(
+					DS_SSTM_CLOCK_NONE));
+			Assert::IsFalse(
+				DirectShowVideoTimingAdapter::UsesLiveHardwareClockTimestamps(
+					DS_SSTM_RATIONAL_RATIONAL));
+			Assert::IsFalse(
+				DirectShowVideoTimingAdapter::UsesLiveHardwareClockTimestamps(
+					DS_SSTM_THEO_THEO));
+			Assert::IsFalse(
+				DirectShowVideoTimingAdapter::UsesLiveHardwareClockTimestamps(
+					DS_SSTM_THEO_NONE));
+		}
+
+		TEST_METHOD(HardwareClockModesRejectSyntheticTimestampOwners)
+		{
+			Assert::IsFalse(
+				DirectShowVideoTimingAdapter::AllowsSceneAwareTimestampCorrection(
+					DS_SSTM_CLOCK_SMART2));
+
+			Assert::IsFalse(
+				DirectShowVideoTimingAdapter::AllowsSceneAwareTimestampCorrection(
+					DS_SSTM_CLOCK_SMART));
+			Assert::IsTrue(
+				DirectShowVideoTimingAdapter::AllowsSceneAwareTimestampCorrection(
+					DS_SSTM_RATIONAL_RATIONAL));
+		}
+
 		TEST_METHOD(LiveCatchUpRemovesOnlyTheDiscardedStartupTimestampSpan)
 		{
 			DirectShowLiveTimestampCatchUp catchUp;
@@ -169,6 +208,42 @@ namespace Tests
 			Assert::IsFalse(nextEpoch.adjusted);
 			Assert::IsFalse(nextEpoch.rebased);
 			Assert::AreEqual<VideoReferenceTime>(100000, nextEpoch.start);
+		}
+
+		TEST_METHOD(LiveHardwareCatchUpAnchorsRetainedFrameToCurrentGraphTime)
+		{
+			DirectShowLiveTimestampCatchUp catchUp;
+			const uint64_t epoch = 9;
+			catchUp.ResetToEpoch(epoch);
+			catchUp.ArmAt(epoch, 3250000);
+
+			DirectShowLiveCatchUpDecision decision = catchUp.Adjust(
+				epoch, 7000000, 7166833);
+			Assert::IsTrue(decision.rebased);
+			Assert::AreEqual<VideoReferenceTime>(3250000, decision.start);
+			Assert::AreEqual<VideoReferenceTime>(3416833, decision.stop);
+			Assert::AreEqual<VideoReferenceTime>(-3750000, decision.offset);
+
+			// This is a one-time epoch anchor, not a continuously steered clock.
+			decision = catchUp.Adjust(epoch, 7166833, 7333666);
+			Assert::IsFalse(decision.rebased);
+			Assert::AreEqual<VideoReferenceTime>(3416833, decision.start);
+			Assert::AreEqual<VideoReferenceTime>(3583666, decision.stop);
+		}
+
+		TEST_METHOD(LiveHardwareCatchUpNeverRegressesPastDeliveredStop)
+		{
+			DirectShowLiveTimestampCatchUp catchUp;
+			const uint64_t epoch = 10;
+			catchUp.ResetToEpoch(epoch);
+			catchUp.CommitSuccessfulStop(epoch, 3500000);
+			catchUp.ArmAt(epoch, 3250000);
+
+			const DirectShowLiveCatchUpDecision decision = catchUp.Adjust(
+				epoch, 7000000, 7166833);
+			Assert::IsTrue(decision.rebased);
+			Assert::AreEqual<VideoReferenceTime>(3500000, decision.start);
+			Assert::AreEqual<VideoReferenceTime>(3666833, decision.stop);
 		}
 
 		TEST_METHOD(LiveCatchUpCanSpliceConvertedTrimThenLaterRawTrim)

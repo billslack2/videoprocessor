@@ -108,6 +108,31 @@ bool DirectShowVideoTimingAdapter::UsesStartOnlyLiveTimestampCatchUp(
 	return mode == DS_SSTM_CLOCK_NONE || mode == DS_SSTM_THEO_NONE;
 }
 
+bool DirectShowVideoTimingAdapter::UsesLiveHardwareClockTimestamps(
+	DirectShowStartStopTimeMethod mode)
+{
+	switch (mode)
+	{
+	case DS_SSTM_CLOCK_SMART:
+	case DS_SSTM_CLOCK_SMART2:
+	case DS_SSTM_CLOCK_THEO:
+	case DS_SSTM_CLOCK_CLOCK:
+	case DS_SSTM_CLOCK_RATIONAL:
+	case DS_SSTM_CLOCK_NONE:
+		return true;
+	default:
+		return false;
+	}
+}
+
+bool DirectShowVideoTimingAdapter::AllowsSceneAwareTimestampCorrection(
+	DirectShowStartStopTimeMethod mode)
+{
+	// Scene cadence owns a display-slot timeline. It cannot replace an absolute
+	// hardware-clock timeline without compressing every undelivered source frame.
+	return !UsesLiveHardwareClockTimestamps(mode);
+}
+
 void DirectShowLiveTimestampCatchUp::ResetToEpoch(uint64_t epoch) noexcept
 {
 	m_epoch = epoch;
@@ -115,6 +140,8 @@ void DirectShowLiveTimestampCatchUp::ResetToEpoch(uint64_t epoch) noexcept
 	m_lastStopValid = false;
 	m_lastStop = 0;
 	m_offset = 0;
+	m_targetStartValid = false;
+	m_targetStart = 0;
 }
 
 void DirectShowLiveTimestampCatchUp::Arm(uint64_t epoch) noexcept
@@ -122,6 +149,22 @@ void DirectShowLiveTimestampCatchUp::Arm(uint64_t epoch) noexcept
 	if (m_epoch != epoch)
 		ResetToEpoch(epoch);
 	m_pending = true;
+	m_targetStartValid = false;
+	m_targetStart = 0;
+}
+
+void DirectShowLiveTimestampCatchUp::ArmAt(
+	uint64_t epoch,
+	VideoReferenceTime targetStart) noexcept
+{
+	if (m_epoch != epoch)
+		ResetToEpoch(epoch);
+	m_pending = true;
+	m_targetStartValid = true;
+	// A graph-now anchor catches up to live time, but DirectShow must never see
+	// the next interval start before the last successfully delivered stop.
+	m_targetStart = m_lastStopValid && m_lastStop > targetStart ?
+		m_lastStop : targetStart;
 }
 
 DirectShowLiveCatchUpDecision DirectShowLiveTimestampCatchUp::Adjust(
@@ -135,13 +178,17 @@ DirectShowLiveCatchUpDecision DirectShowLiveTimestampCatchUp::Adjust(
 	DirectShowLiveCatchUpDecision decision;
 	decision.start = start + m_offset;
 	decision.stop = stop + m_offset;
-	if (m_pending && m_lastStopValid)
+	if (m_pending && (m_targetStartValid || m_lastStopValid))
 	{
-		m_offset += m_lastStop - decision.start;
+		const VideoReferenceTime targetStart =
+			m_targetStartValid ? m_targetStart : m_lastStop;
+		m_offset += targetStart - decision.start;
 		decision.start = start + m_offset;
 		decision.stop = stop + m_offset;
 		decision.rebased = true;
 		m_pending = false;
+		m_targetStartValid = false;
+		m_targetStart = 0;
 	}
 	decision.offset = m_offset;
 	decision.adjusted = m_offset != 0;
