@@ -129,6 +129,7 @@ public:
 	static constexpr uint8_t CLEAR_TRANSITION_CONFIRMATIONS = 2;
 	static constexpr double ANALYSIS_PERIOD_SECONDS = 0.080;
 	static constexpr double NESTED_CROP_CONFIRMATION_SECONDS = 4.0;
+	static constexpr double SAME_AXIS_INWARD_CONFIRMATION_SECONDS = 8.0;
 	static constexpr double DEFAULT_STABLE_GEOMETRY_DEADBAND_PERCENT = 2.0;
 	static constexpr double MAX_STABLE_GEOMETRY_DEADBAND_PERCENT = 5.0;
 
@@ -155,6 +156,13 @@ public:
 	static uint64_t AnalysisIntervalFrames(double framesPerSecond);
 
 private:
+	enum class InwardCropKind
+	{
+		NONE,
+		SAME_AXIS,
+		ORTHOGONAL
+	};
+
 	struct TrustedGeometry
 	{
 		ActivePictureBounds bounds;
@@ -177,9 +185,10 @@ private:
 		const ActivePictureBounds& bounds);
 	static bool HasAuthorityForCroppedAxes(
 		const ActivePictureBounds& bounds);
-	static bool IsNestedOrthogonalCrop(
+	static InwardCropKind ClassifyInwardCrop(
 		const ActivePictureBounds& stable,
 		const ActivePictureBounds& candidate);
+	static double InwardCropConfirmationSeconds(InwardCropKind kind);
 	void RememberTrustedGeometry(const ActivePictureBounds& bounds,
 		ActivePictureClassification classification);
 	bool FindRecentTrustedGeometry(const ActivePictureObservation& observation,

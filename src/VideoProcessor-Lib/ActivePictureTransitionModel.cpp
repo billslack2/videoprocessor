@@ -208,21 +208,45 @@ bool ActivePictureTransitionModel::HasAuthorityForCroppedAxes(
 }
 
 
-bool ActivePictureTransitionModel::IsNestedOrthogonalCrop(
+ActivePictureTransitionModel::InwardCropKind
+ActivePictureTransitionModel::ClassifyInwardCrop(
 	const ActivePictureBounds& stable,
 	const ActivePictureBounds& candidate)
 {
 	if (stable.rasterWidth != candidate.rasterWidth ||
 		stable.rasterHeight != candidate.rasterHeight)
-		return false;
+		return InwardCropKind::NONE;
 	if (candidate.left < stable.left || candidate.top < stable.top ||
 		candidate.right > stable.right || candidate.bottom > stable.bottom)
-		return false;
+		return InwardCropKind::NONE;
+	const bool horizontalInward = candidate.left > stable.left ||
+		candidate.right < stable.right;
+	const bool verticalInward = candidate.top > stable.top ||
+		candidate.bottom < stable.bottom;
+	if (!horizontalInward && !verticalInward)
+		return InwardCropKind::NONE;
 	const uint8_t stableAxes = static_cast<uint8_t>(stable.trustedBarAxes);
 	const uint8_t candidateAxes = static_cast<uint8_t>(candidate.trustedBarAxes);
-	return stableAxes != 0 &&
-		(candidateAxes & stableAxes) == stableAxes &&
-		(candidateAxes & ~stableAxes) != 0;
+	const uint8_t movedAxes =
+		(horizontalInward ? static_cast<uint8_t>(
+			ActivePictureBounds::BarAxes::LEFT_RIGHT) : 0) |
+		(verticalInward ? static_cast<uint8_t>(
+			ActivePictureBounds::BarAxes::TOP_BOTTOM) : 0);
+	if (stableAxes == 0 ||
+		(candidateAxes & stableAxes) != stableAxes ||
+		(candidateAxes & movedAxes) != movedAxes)
+		return InwardCropKind::NONE;
+	return (candidateAxes & ~stableAxes) != 0 ?
+		InwardCropKind::ORTHOGONAL : InwardCropKind::SAME_AXIS;
+}
+
+
+double ActivePictureTransitionModel::InwardCropConfirmationSeconds(
+	InwardCropKind kind)
+{
+	return kind == InwardCropKind::SAME_AXIS ?
+		SAME_AXIS_INWARD_CONFIRMATION_SECONDS :
+		NESTED_CROP_CONFIRMATION_SECONDS;
 }
 
 
@@ -415,30 +439,34 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 		decision.decisionLatencyFrames =
 			observation.frameNumber >= m_firstContradictoryFrame ?
 			observation.frameNumber - m_firstContradictoryFrame : 0;
-		const bool nestedCrop =
-			IsNestedOrthogonalCrop(m_stable, m_candidate);
+		const InwardCropKind inwardCrop =
+			ClassifyInwardCrop(m_stable, m_candidate);
+		const bool inwardConfirmation = inwardCrop != InwardCropKind::NONE;
 		const double framesPerSecond =
 			std::isfinite(observation.framesPerSecond) &&
 			observation.framesPerSecond > 0.0 ?
 			observation.framesPerSecond : 60.0;
-		const uint64_t nestedFrames = static_cast<uint64_t>(std::ceil(
-			framesPerSecond * NESTED_CROP_CONFIRMATION_SECONDS));
-		const bool durationConfirmed = !nestedCrop ||
-			decision.decisionLatencyFrames >= nestedFrames;
-		if (nestedCrop)
+		const uint64_t confirmationFrames = static_cast<uint64_t>(std::ceil(
+			framesPerSecond * InwardCropConfirmationSeconds(inwardCrop)));
+		const bool durationConfirmed = !inwardConfirmation ||
+			decision.decisionLatencyFrames >= confirmationFrames;
+		if (inwardConfirmation)
 		{
-			decision.reason =
+			decision.reason = inwardCrop == InwardCropKind::SAME_AXIS ?
+				"recent same-axis inward crop awaiting sustained confirmation" :
 				"recent nested crop awaiting sustained confirmation";
 			decision.confidence = std::min(1.0,
 				static_cast<double>(decision.decisionLatencyFrames) /
-				static_cast<double>(nestedFrames));
+				static_cast<double>(confirmationFrames));
 		}
 		if (m_matchingCandidates >= CLEAR_TRANSITION_CONFIRMATIONS &&
 			durationConfirmed)
 			return CommitCandidate(
-				observation, nestedCrop ?
-				"recent nested crop sustained" :
-				"recent trusted geometry reacquired");
+				observation, inwardConfirmation ?
+					(inwardCrop == InwardCropKind::SAME_AXIS ?
+						"recent same-axis inward crop sustained" :
+						"recent nested crop sustained") :
+					"recent trusted geometry reacquired");
 		return decision;
 	}
 
@@ -591,8 +619,9 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 			observation.bounds.aspectRatio * 0.25;
 	}
 
-	const bool nestedCrop =
-		IsNestedOrthogonalCrop(m_stable, m_candidate);
+	const InwardCropKind inwardCrop =
+		ClassifyInwardCrop(m_stable, m_candidate);
+	const bool inwardConfirmation = inwardCrop != InwardCropKind::NONE;
 	const uint8_t required = CLEAR_TRANSITION_CONFIRMATIONS;
 	decision.state = ActivePictureTransitionState::CANDIDATE_TRANSITION;
 	decision.bounds = m_candidate;
@@ -614,21 +643,26 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 		std::isfinite(observation.framesPerSecond) &&
 		observation.framesPerSecond > 0.0 ?
 		observation.framesPerSecond : 60.0;
-	const uint64_t nestedFrames = static_cast<uint64_t>(std::ceil(
-		framesPerSecond * NESTED_CROP_CONFIRMATION_SECONDS));
-	const bool durationConfirmed = !nestedCrop ||
-		decision.decisionLatencyFrames >= nestedFrames;
-	if (nestedCrop)
+	const uint64_t confirmationFrames = static_cast<uint64_t>(std::ceil(
+		framesPerSecond * InwardCropConfirmationSeconds(inwardCrop)));
+	const bool durationConfirmed = !inwardConfirmation ||
+		decision.decisionLatencyFrames >= confirmationFrames;
+	if (inwardConfirmation)
 	{
-		decision.reason = "nested crop awaiting sustained confirmation";
+		decision.reason = inwardCrop == InwardCropKind::SAME_AXIS ?
+			"same-axis inward crop awaiting sustained confirmation" :
+			"nested crop awaiting sustained confirmation";
 		decision.confidence = std::min(1.0,
 			static_cast<double>(decision.decisionLatencyFrames) /
-			static_cast<double>(nestedFrames));
+			static_cast<double>(confirmationFrames));
 	}
 
 	if (m_matchingCandidates >= required && durationConfirmed)
 		return CommitCandidate(observation,
-			nestedCrop ? "nested crop sustained" :
+			inwardConfirmation ?
+				(inwardCrop == InwardCropKind::SAME_AXIS ?
+					"same-axis inward crop sustained" :
+					"nested crop sustained") :
 			"trusted transition confirmed");
 
 	return decision;

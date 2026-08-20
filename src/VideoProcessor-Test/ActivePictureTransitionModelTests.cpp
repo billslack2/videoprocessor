@@ -30,6 +30,13 @@ namespace VideoProcessorTest
 				ActivePictureBounds::BarAxes::LEFT_RIGHT };
 		}
 
+		ActivePictureBounds NarrowFourByThreeBounds()
+		{
+			return { 560, 0, 3280, 2160, 3840, 2160,
+				2720.0 / 2160.0,
+				ActivePictureBounds::BarAxes::LEFT_RIGHT };
+		}
+
 		ActivePictureBounds LoggedScopeBounds()
 		{
 			return { 0, 276, 3840, 1884, 3840, 2160,
@@ -42,6 +49,20 @@ namespace VideoProcessorTest
 			return { 492, 276, 3348, 1884, 3840, 2160,
 				2856.0 / 1608.0,
 				ActivePictureBounds::BarAxes::BOTH };
+		}
+
+		ActivePictureBounds LoggedTwoTwentyBounds()
+		{
+			return { 0, 208, 3840, 1952, 3840, 2160,
+				3840.0 / 1744.0,
+				ActivePictureBounds::BarAxes::TOP_BOTTOM };
+		}
+
+		ActivePictureBounds LoggedTwoThirtyFiveBounds()
+		{
+			return { 0, 260, 3840, 1896, 3840, 2160,
+				3840.0 / 1636.0,
+				ActivePictureBounds::BarAxes::TOP_BOTTOM };
 		}
 
 		ActivePictureTransitionDecision Observe(
@@ -142,43 +163,34 @@ namespace VideoProcessorTest
 			Assert::IsTrue(decision.stable);
 		}
 
-		TEST_METHOD(ClearScopeImaxCutsRequireTwoTrustedObservations)
+		TEST_METHOD(ClearScopeToImaxOutwardCutsRequireTwoTrustedObservations)
 		{
 			const double rates[] = {
 				23.976, 24.0, 25.0, 29.97, 30.0, 59.94, 60.0
 			};
 			for (const double rate : rates)
 			{
-				const ActivePictureBounds before[] = {
-					ScopeBounds(), ImaxBounds()
-				};
-				const ActivePictureBounds after[] = {
-					ImaxBounds(), ScopeBounds()
-				};
-				for (int direction = 0; direction < 2; ++direction)
-				{
-					ActivePictureTransitionModel model;
-					const uint64_t interval =
-						ActivePictureTransitionModel::
-							AnalysisIntervalFrames(rate);
-					const uint64_t firstFrame =
-						Establish(model, before[direction], interval);
+				ActivePictureTransitionModel model;
+				const uint64_t interval =
+					ActivePictureTransitionModel::
+						AnalysisIntervalFrames(rate);
+				const uint64_t firstFrame =
+					Establish(model, ScopeBounds(), interval);
 
-					const auto probing =
-						Observe(model, after[direction], firstFrame);
-					Assert::IsFalse(probing.publish);
-					Assert::IsTrue(probing.stable);
-					Assert::IsFalse(probing.clearTransition);
+				const auto probing =
+					Observe(model, ImaxBounds(), firstFrame);
+				Assert::IsFalse(probing.publish);
+				Assert::IsTrue(probing.stable);
+				Assert::IsFalse(probing.clearTransition);
 
-					const auto stable = Observe(
-						model, after[direction], firstFrame + interval);
-					Assert::IsTrue(stable.publish);
-					Assert::IsTrue(stable.stable);
-					Assert::IsTrue(
-						static_cast<double>(
-							stable.decisionLatencyFrames) /
-							rate <= 0.1001);
-				}
+				const auto stable = Observe(
+					model, ImaxBounds(), firstFrame + interval);
+				Assert::IsTrue(stable.publish);
+				Assert::IsTrue(stable.stable);
+				Assert::IsTrue(
+					static_cast<double>(
+						stable.decisionLatencyFrames) /
+					rate <= 0.1001);
 			}
 		}
 
@@ -253,6 +265,112 @@ namespace VideoProcessorTest
 				}
 				Assert::IsTrue(published);
 			}
+		}
+
+		TEST_METHOD(SevenSecondSameAxisInwardBlipRetainsTwoTwentyAtEveryFrameRate)
+		{
+			const double rates[] = {
+				23.976, 24.0, 25.0, 29.97, 30.0, 50.0, 59.94, 60.0
+			};
+			for (const double rate : rates)
+			{
+				ActivePictureTransitionModel model;
+				uint64_t frame = Establish(model, LoggedTwoTwentyBounds());
+				const uint64_t blipFrames = static_cast<uint64_t>(
+					std::ceil(rate * 7.0));
+				for (uint64_t count = 0; count < blipFrames;
+					++count, ++frame)
+				{
+					const auto decision = Observe(model,
+						LoggedTwoThirtyFiveBounds(), frame,
+						ActivePictureClassification::BAR_CROP_TRUSTED,
+						rate);
+					Assert::IsFalse(decision.publish);
+					Assert::IsTrue(decision.stable);
+					Assert::AreEqual(LoggedTwoTwentyBounds().top,
+						decision.stableBounds.top);
+					Assert::AreEqual(LoggedTwoTwentyBounds().bottom,
+						decision.stableBounds.bottom);
+					Assert::AreEqual(std::string(
+						"same-axis inward crop awaiting sustained confirmation"),
+						decision.reason);
+				}
+
+				const auto recovered = Observe(model,
+					LoggedTwoTwentyBounds(), frame,
+					ActivePictureClassification::BAR_CROP_TRUSTED,
+					rate);
+				Assert::IsFalse(recovered.publish);
+				Assert::IsTrue(recovered.stable);
+				Assert::AreEqual(LoggedTwoTwentyBounds().top,
+					recovered.bounds.top);
+				Assert::AreEqual(LoggedTwoTwentyBounds().bottom,
+					recovered.bounds.bottom);
+			}
+		}
+
+		TEST_METHOD(PersistentSameAxisInwardCropCommitsAfterEightSeconds)
+		{
+			const double rates[] = {
+				23.976, 24.0, 25.0, 29.97, 30.0, 50.0, 59.94, 60.0
+			};
+			for (const double rate : rates)
+			{
+				ActivePictureTransitionModel model;
+				uint64_t frame = Establish(model, LoggedTwoTwentyBounds());
+				const uint64_t firstCandidate = frame;
+				bool published = false;
+				while (!published &&
+					frame - firstCandidate <= static_cast<uint64_t>(
+						std::ceil(rate * 8.2)))
+				{
+					const auto decision = Observe(model,
+						LoggedTwoThirtyFiveBounds(), frame++,
+						ActivePictureClassification::BAR_CROP_TRUSTED,
+						rate);
+					published = decision.publish;
+				}
+				Assert::IsTrue(published);
+			}
+		}
+
+		TEST_METHOD(SameAxisLeftRightInwardCropAlsoWaits)
+		{
+			constexpr double rate = 60.0;
+			ActivePictureTransitionModel model;
+			uint64_t frame = Establish(model, FourByThreeBounds());
+			const uint64_t blipFrames = static_cast<uint64_t>(rate * 7.0);
+			for (uint64_t count = 0; count < blipFrames;
+				++count, ++frame)
+			{
+				const auto decision = Observe(model,
+					NarrowFourByThreeBounds(), frame,
+					ActivePictureClassification::BAR_CROP_TRUSTED,
+					rate);
+				Assert::IsFalse(decision.publish);
+				Assert::AreEqual(FourByThreeBounds().left,
+					decision.stableBounds.left);
+				Assert::AreEqual(FourByThreeBounds().right,
+					decision.stableBounds.right);
+			}
+		}
+
+		TEST_METHOD(SameAxisOutwardRecoveryRemainsAdjacentConfirmationFast)
+		{
+			ActivePictureTransitionModel model;
+			uint64_t frame = Establish(model, LoggedTwoThirtyFiveBounds());
+			Assert::IsFalse(Observe(model, LoggedTwoTwentyBounds(), frame++,
+				ActivePictureClassification::BAR_CROP_TRUSTED,
+				23.976).publish);
+			const auto recovered = Observe(model,
+				LoggedTwoTwentyBounds(), frame,
+				ActivePictureClassification::BAR_CROP_TRUSTED,
+				23.976);
+			Assert::IsTrue(recovered.publish);
+			Assert::AreEqual(LoggedTwoTwentyBounds().top,
+				recovered.bounds.top);
+			Assert::AreEqual(LoggedTwoTwentyBounds().bottom,
+				recovered.bounds.bottom);
 		}
 
 		TEST_METHOD(ProvisionalRecentWindowboxRestoresAuthorityAndStillWaits)
@@ -418,7 +536,7 @@ namespace VideoProcessorTest
 			Assert::AreEqual(0.0, decision.confidence, 0.000001);
 		}
 
-		TEST_METHOD(PreviouslyTrustedGeometryReacquiresOnAdjacentFrames)
+		TEST_METHOD(PreviouslyTrustedSameAxisInwardGeometryStillWaits)
 		{
 			ActivePictureTransitionModel model;
 			uint64_t frame = Establish(model, ScopeBounds(), 2);
@@ -434,15 +552,18 @@ namespace VideoProcessorTest
 			Assert::IsTrue(probing.stable);
 			Assert::IsTrue(model.ShouldAnalyze(returnFrame + 1, 23.976));
 
-			const auto reacquired = Observe(
+			const auto waiting = Observe(
 				model, ScopeBounds(), returnFrame + 1,
 				ActivePictureClassification::PROVISIONAL);
-			Assert::IsTrue(reacquired.publish);
-			Assert::IsTrue(reacquired.stable);
+			Assert::IsFalse(waiting.publish);
+			Assert::IsTrue(waiting.stable);
 			Assert::AreEqual(
 				static_cast<unsigned long long>(1),
 				static_cast<unsigned long long>(
-					reacquired.decisionLatencyFrames));
+					waiting.decisionLatencyFrames));
+			Assert::AreEqual(std::string(
+				"recent same-axis inward crop awaiting sustained confirmation"),
+				waiting.reason);
 		}
 
 		TEST_METHOD(RecentTrustedGeometryRecursAcrossThreeAspectModes)
@@ -753,13 +874,13 @@ namespace VideoProcessorTest
 			}
 		}
 
-		TEST_METHOD(TrustedGeometryBeyondDeadbandStillTransitions)
+		TEST_METHOD(TrustedSameAxisInwardGeometryBeyondDeadbandWaits)
 		{
 			ActivePictureTransitionModel model;
 			uint64_t frame = Establish(model, ScopeBounds());
 			ActivePictureBounds changed = ScopeBounds();
-			// 44px per edge exceeds 2% of 2160 and is therefore allowed
-			// to take the normal two-observation trusted transition path.
+			// 44px per edge exceeds 2% of 2160, but a strict same-axis
+			// contraction still needs sustained confirmation.
 			changed.top += 44;
 			changed.bottom -= 44;
 			changed.aspectRatio =
@@ -769,11 +890,14 @@ namespace VideoProcessorTest
 			const auto probing = Observe(model, changed, frame++);
 			Assert::IsFalse(probing.publish);
 			Assert::IsTrue(probing.stable);
-			const auto committed = Observe(model, changed, frame);
-			Assert::IsTrue(committed.publish);
-			Assert::IsTrue(committed.stable);
-			Assert::AreEqual(308, committed.bounds.top);
-			Assert::AreEqual(1852, committed.bounds.bottom);
+			const auto waiting = Observe(model, changed, frame);
+			Assert::IsFalse(waiting.publish);
+			Assert::IsTrue(waiting.stable);
+			Assert::AreEqual(264, waiting.stableBounds.top);
+			Assert::AreEqual(1896, waiting.stableBounds.bottom);
+			Assert::AreEqual(std::string(
+				"same-axis inward crop awaiting sustained confirmation"),
+				waiting.reason);
 		}
 
 		TEST_METHOD(DeadbandCannotBeRaisedBeyondFivePercent)
