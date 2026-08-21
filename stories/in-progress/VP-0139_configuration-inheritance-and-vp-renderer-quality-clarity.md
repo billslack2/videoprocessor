@@ -180,3 +180,7 @@ inheritance, `Auto`, and an omitted setting.
   the active transfer (for example `BT.1886` for a live SDR source) and says
   `Source unavailable` when VP has no live input instead of implying a source
   is known.
+- A non-activating in-video status now says `Preparing VP Renderer shaders...`
+  while a new NLS pipeline variant can compile. It is usable in both fullscreen
+  and windowed presentation and clears when the render call returns.
+- Removed the redundant Scaling and Processing summary text above its controls.
