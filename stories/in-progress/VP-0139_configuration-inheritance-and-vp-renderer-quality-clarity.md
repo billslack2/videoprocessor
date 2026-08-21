@@ -21,6 +21,10 @@ Completed and deployed checkpoints:
   profiles retain an inheritance choice.
 - Root Rendering quality now always selects an explicit quality and defaults
   to `High`; its visible order is `High`, `Balanced`, `Fast`.
+- Config now overwrites an externally edited configuration on Apply or OK.
+  The external version is retained first as Config's timestamped backup; the
+  editor still validates its document and performs the atomic replacement.
+  Other non-editor `SaveSafely` callers retain their conflict guard.
 
 Focused Config tests and each deployed x64 Release Config build passed for
 these checkpoints. Continue operator validation and record each subsequent
