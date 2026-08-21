@@ -169,3 +169,14 @@ inheritance, `Auto`, and an omitted setting.
 - Focused Config editor regression test passes. Successful x64 Release Config,
   main application, and VP Renderer plugin binaries were deployed with
   timestamped binary backups; no active configuration was overwritten.
+
+## Responsiveness checkpoint — 2026-08-21
+
+- Normal VP Renderer startup no longer compiles inactive NLS profiles on the
+  live render path. This avoids cold-cache shader compilation stalls during
+  first playback. Config's existing **Prepare shaders** workflow remains the
+  explicit, separately reported way to warm those profiles.
+- Auto source-transfer text now consumes the live VP source snapshot. It shows
+  the active transfer (for example `BT.1886` for a live SDR source) and says
+  `Source unavailable` when VP has no live input instead of implying a source
+  is known.
