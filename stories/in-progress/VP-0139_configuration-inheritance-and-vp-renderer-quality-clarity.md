@@ -34,6 +34,11 @@ Completed and deployed checkpoints:
   initialization, live profile application, renderer start/restart, and reset.
   This makes the selected upscaler/downscaler and complete libplacebo option
   state observable after renderer swaps and HDMI graph re-syncs.
+- Scaling and Processing selectors now present explicit values in quality-first
+  order after `Auto`. The downscaler's final `none` value is correctly shown
+  as `Match upscaler` and now resolves to the active upscaler rather than
+  incorrectly disabling downscaling. The user-facing sigmoid control is
+  labelled `Anti-ringing` with an accurate explanatory tooltip.
 
 Focused Config tests and each deployed x64 Release Config build passed for
 these checkpoints. Continue operator validation and record each subsequent
