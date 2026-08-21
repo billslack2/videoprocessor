@@ -67,12 +67,11 @@ Completed and deployed checkpoints:
   presently limits it to `1.0`), and Peak detection needs distinct Auto,
   Standard/default, High quality, and Off states. Current `On` and
   `High quality` both resolve to libplacebo's high-quality preset.
-- Config now shows a single compact Auto resolution line below the reviewed
-  Basic controls. Quality-governed fields identify only the selected quality
-  and effective policy (for example, `Auto — High: EWA Lanczos sharp`). The
-  longer applicability and runtime-state wording was removed after operator
-  review; the line refreshes immediately with quality and explicit/Auto
-  setting changes.
+- Config now shows a single italic, value-only Auto resolution line below the
+  reviewed Basic controls (for example, `EWA Lanczos sharp`, `Spline`, or
+  `Perceptual`). The longer `Auto`, quality, applicability, and runtime-state
+  wording was removed after operator review. Changing Rendering quality still
+  immediately recalculates every Auto field; explicit choices remain fixed.
 - `contrast_recovery` now validates and accepts the complete libplacebo range
   `0.0` through `2.0`; Config labels and placeholder text match that range.
   Peak detection now has distinct native states: `Auto` keeps the quality
