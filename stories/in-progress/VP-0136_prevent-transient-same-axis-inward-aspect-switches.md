@@ -2,10 +2,12 @@
 
 ## Status
 
-Done (2026-08-20). Same-axis inward crop candidates now require eight seconds
-of continuous confirmation. The logged seven-second 2.20:1-to-2.35:1 false
-transition remains on the stable geometry, while outward recovery retains its
-existing adjacent-confirmation latency.
+In Progress (2026-08-20). The initial eight-second same-axis inward dwell fixed
+the reported top-volume-overlay transition, but live Eternals testing showed
+that it also delayed genuine same-axis aspect changes by the full eight
+seconds. Commit `aab9bab` reverts the broad rule and restores the prior
+adjacent-confirmation logic for comparison testing. A narrower discriminator
+is still required before this story can be completed.
 
 ## User story
 
@@ -135,6 +137,15 @@ fully suppress this seven-second trace even after the predicate is corrected.
   The five replaced files and active configuration were backed up under
   `C:\Videoprocessor\vp\backups\20260820-202326-pre-beta-08b27c3`; the active
   configuration remained unchanged at SHA-256 `03DDD4B31C4633B09944C2DF5818734D7C5619A305A7D88C3DA498CA4DC6B02C`.
+- The Eternals trace recorded genuine trusted 2.3881 transitions held from
+  22:18:43 to 22:18:51 and from 22:20:09 to 22:20:17 specifically by the new
+  same-axis inward dwell.
+- Commit `aab9bab` reverted `08b27c3`, restored the previous transition model,
+  and was fast-forwarded to `origin/v1.2.001-beta` after a current-base rebase.
+- The rollback passed 30/30 focused transition tests and 862/862 native tests,
+  then produced and installed a verified 57-file x64 Release package.
+- The replaced rollback-test binaries and active config are recoverable under
+  `C:\Videoprocessor\vp\backups\20260820-222618-pre-rollback-aab9bab`.
 
 ## Boundaries and related work
 
