@@ -47,11 +47,13 @@ Completed and deployed checkpoints:
   checkbox: it is always active when the page's metadata is configured. The
   former `Use new LLDV detection` switch is now labelled `Alternate LLDV
   detection`; its existing persisted `general.newlldv` behavior is unchanged.
-- Tone-mapping parity has been re-audited against libplacebo. The current UI
-  exposes the core target levels, tone/gamut choice, peak-detection policy,
-  and contrast recovery. Detailed curve constants, peak-analysis tuning,
-  gamut constants, inverse mapping, metadata/LUT controls, and debug
-  visualizers remain deliberately deferred to a future Advanced section.
+- The initial tone-mapping comparison was only a high-level inventory and is
+  superseded by an API-7.360 registry audit. VP must use libplacebo's exported
+  `pl_option_list` (key, type, range, deprecated and preset metadata) as the
+  exact contract before deciding which controls are basic versus Advanced.
+  The current UI exposes only core target levels, tone/gamut choice,
+  peak-detection policy, and contrast recovery; it does not represent the
+  complete `pl_options` interface.
 
 Focused Config tests and each deployed x64 Release Config build passed for
 these checkpoints. Continue operator validation and record each subsequent
