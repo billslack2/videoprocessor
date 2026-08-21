@@ -43,6 +43,15 @@ Completed and deployed checkpoints:
   Shader preparation no longer disables Config while waiting for/working in
   VideoProcessor; Config starts non-capturing preparation when possible and
   reports a failed or stale request rather than blocking indefinitely.
+- The shared LLDV page no longer presents metadata handling as an optional
+  checkbox: it is always active when the page's metadata is configured. The
+  former `Use new LLDV detection` switch is now labelled `Alternate LLDV
+  detection`; its existing persisted `general.newlldv` behavior is unchanged.
+- Tone-mapping parity has been re-audited against libplacebo. The current UI
+  exposes the core target levels, tone/gamut choice, peak-detection policy,
+  and contrast recovery. Detailed curve constants, peak-analysis tuning,
+  gamut constants, inverse mapping, metadata/LUT controls, and debug
+  visualizers remain deliberately deferred to a future Advanced section.
 
 Focused Config tests and each deployed x64 Release Config build passed for
 these checkpoints. Continue operator validation and record each subsequent
