@@ -27,8 +27,13 @@ Completed and deployed checkpoints:
   Other non-editor `SaveSafely` callers retain their conflict guard.
 - The VP Renderer scaling review confirmed a material option-parity gap:
   libplacebo 7.360.1 exports substantially more scaler filters than Config
-  exposes. The options are absent from Config, validation, and the renderer
-  filter mapping; no broad scaler expansion has been implemented here.
+  exposes. Config, validation, and the renderer filter mapping now expose the
+  documented scaler set (including explicit disabled/built-in sampling), with
+  each explicit filter covered by a native-export regression test.
+- VP Renderer now serializes libplacebo's resolved render options after
+  initialization, live profile application, renderer start/restart, and reset.
+  This makes the selected upscaler/downscaler and complete libplacebo option
+  state observable after renderer swaps and HDMI graph re-syncs.
 
 Focused Config tests and each deployed x64 Release Config build passed for
 these checkpoints. Continue operator validation and record each subsequent
@@ -76,7 +81,8 @@ inheritance, `Auto`, and an omitted setting.
 - This story covers the reviewed Config presentation and persistence behavior,
   not an exhaustive libplacebo option audit. VP-0128 remains the authoritative
   broader option-parity and resolved-defaults audit. The 2026-08-21 scaling
-  review reconfirms that VP-0128 should cover the missing filters end-to-end.
+  review and selected-filter expansion complete the initial scaler subset;
+  VP-0128 continues to own broader option coverage and resolved-default work.
 - VP-0123 owns the underlying per-renderer Input Processing policy split; this
   story improves its interactive inherited-value presentation.
 - Preserve existing configuration comments and explicit settings. Never turn a
