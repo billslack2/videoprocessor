@@ -143,7 +143,7 @@ they must not contain requirements that are absent from this file.
 | VP-0109-1 | In Progress | Prove the pure-2.2 renderer/Studio-G22 transport pairing |
 | VP-0109-2 | Backlog | Implement rejection-safe pure-2.2 Studio limited output |
 | VP-0110 | Done | Smooth viewport subtitle placement in and out with millisecond timing |
-| VP-0111 | Backlog | Prevent background shortcuts from hijacking normal typing |
+| VP-0111 | Backlog | Scope shortcuts to VP focus and restore presentation focus |
 | VP-0112 | Done | Show the active profile in relevant configuration pages |
 | VP-0113 | Done | Screen Config layout and unit-field consistency |
 | VP-0114 | Backlog | Alpha conservative scaling and small-bar zoom controls |
