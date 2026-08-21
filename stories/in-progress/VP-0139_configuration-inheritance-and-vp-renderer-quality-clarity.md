@@ -72,6 +72,15 @@ Completed and deployed checkpoints:
   `Perceptual`). The longer `Auto`, quality, applicability, and runtime-state
   wording was removed after operator review. Changing Rendering quality still
   immediately recalculates every Auto field; explicit choices remain fixed.
+- The Auto presentation now covers every Auto-capable VP Renderer control in
+  Rendering, Source transfer, Tone mapping, Scaling and Processing,
+  Calibration LUT reference, and Advanced output. Fixed policies show their
+  resolved value (for example `sRGB`, `Full RGB`, `Flip`, or `2.4` when
+  Limited is selected); source- and device-dependent controls accurately show
+  `Source metadata`, `Source dependent`, `Output format`, or `Not
+  constrained` rather than a fictitious fixed value. Display primaries no
+  longer has a separate `Default: Rec. 709` choice: it has only Rec. 709 and
+  BT.2020, selecting Rec. 709 when unset.
 - `contrast_recovery` now validates and accepts the complete libplacebo range
   `0.0` through `2.0`; Config labels and placeholder text match that range.
   Peak detection now has distinct native states: `Auto` keeps the quality
