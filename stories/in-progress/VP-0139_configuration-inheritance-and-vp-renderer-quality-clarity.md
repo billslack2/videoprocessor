@@ -79,6 +79,11 @@ Completed and deployed checkpoints:
   uses `pl_peak_detect_high_quality_params`, and `Off` disables it. The
   persisted legacy `on` spelling remains compatible and is displayed as
   `Standard`.
+- The Auto scaler policies are protected by a native-parameter regression
+  test against the deployed libplacebo API: High is EWA Lanczos sharp up /
+  Hermite down, Balanced is Lanczos / Hermite, and Fast uses built-in sampling
+  for both. This verifies the Config effective-value labels and confirms that
+  Hermite is the native High-preset downscaler, rather than a VP fallback.
 
 Focused Config tests and each deployed x64 Release Config build passed for
 these checkpoints. The Auto-preview and mapping change was built from x64
