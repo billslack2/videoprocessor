@@ -39,6 +39,10 @@ Completed and deployed checkpoints:
   as `Match upscaler` and now resolves to the active upscaler rather than
   incorrectly disabling downscaling. The user-facing sigmoid control is
   labelled `Anti-ringing` with an accurate explanatory tooltip.
+- Peak detection now presents `High quality`, `On`, then `Off` after `Auto`.
+  Shader preparation no longer disables Config while waiting for/working in
+  VideoProcessor; Config starts non-capturing preparation when possible and
+  reports a failed or stale request rather than blocking indefinitely.
 
 Focused Config tests and each deployed x64 Release Config build passed for
 these checkpoints. Continue operator validation and record each subsequent
