@@ -54,6 +54,19 @@ Completed and deployed checkpoints:
   The current UI exposes only core target levels, tone/gamut choice,
   peak-detection policy, and contrast recovery; it does not represent the
   complete `pl_options` interface.
+- The deployed `libplacebo-360.dll` was queried directly: API 7.360 exposes
+  215 option entries. This is a library capability registry, not a VP feature
+  inventory. For example, VP calls `pl_render_image`, not
+  `pl_render_image_mix`, so frame-mixer controls would be no-ops; other
+  entries require host frame metadata, VP-owned LUT/presentation integration,
+  or are explicitly deprecated/debug-only. Any Advanced page must be a
+  typed, version-gated VP manifest rather than an arbitrary `pl_options_load`
+  pass-through.
+- The audit found two existing UI/adapter corrections to prioritize before
+  additional surface area: `contrast_recovery` is valid through `2.0` (VP
+  presently limits it to `1.0`), and Peak detection needs distinct Auto,
+  Standard/default, High quality, and Off states. Current `On` and
+  `High quality` both resolve to libplacebo's high-quality preset.
 
 Focused Config tests and each deployed x64 Release Config build passed for
 these checkpoints. Continue operator validation and record each subsequent
