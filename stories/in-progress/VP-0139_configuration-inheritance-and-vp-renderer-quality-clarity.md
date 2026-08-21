@@ -67,11 +67,31 @@ Completed and deployed checkpoints:
   presently limits it to `1.0`), and Peak detection needs distinct Auto,
   Standard/default, High quality, and Off states. Current `On` and
   `High quality` both resolve to libplacebo's high-quality preset.
+- Config now shows a compact, non-assertive Auto resolution line below the
+  reviewed Basic controls. Quality-governed fields identify the selected
+  quality and effective policy (for example, `Auto — High: EWA Lanczos sharp`)
+  and scaler lines add whether they are used only while enlarging or reducing
+  video. Before a renderer snapshot is available the line says `Preview —
+  start VP Renderer to verify.`; after the selected renderer profile becomes
+  active it reduces to `Active.` The preview refreshes immediately with
+  quality, explicit/Auto setting, profile selection, and active-renderer
+  changes. It intentionally does not claim hardware-dependent output bit
+  depth until VP Renderer has an active output.
+- `contrast_recovery` now validates and accepts the complete libplacebo range
+  `0.0` through `2.0`; Config labels and placeholder text match that range.
+  Peak detection now has distinct native states: `Auto` keeps the quality
+  preset, `Standard` uses `pl_peak_detect_default_params`, `High quality`
+  uses `pl_peak_detect_high_quality_params`, and `Off` disables it. The
+  persisted legacy `on` spelling remains compatible and is displayed as
+  `Standard`.
 
 Focused Config tests and each deployed x64 Release Config build passed for
-these checkpoints. Continue operator validation and record each subsequent
-concern, source commit, and release validation here before moving the story to
-Review.
+these checkpoints. The Auto-preview and mapping change was built from x64
+Release, verified by the Config regression plus three native libplacebo
+parameter tests, backed up/deployed, and Config was reopened for operator
+validation. Continue the remaining field-by-field review and record each
+subsequent concern, source commit, and release validation here before moving
+the story to Review.
 
 ## User story
 
