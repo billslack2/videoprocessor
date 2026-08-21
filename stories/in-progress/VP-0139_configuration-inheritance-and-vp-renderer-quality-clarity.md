@@ -81,6 +81,9 @@ Completed and deployed checkpoints:
   constrained` rather than a fictitious fixed value. Display primaries no
   longer has a separate `Default: Rec. 709` choice: it has only Rec. 709 and
   BT.2020, selecting Rec. 709 when unset.
+- Operator review standardized the concise italic labels as `Auto: <effective
+  value>` (for example, `Auto: Source dependent`) so it is explicit that the
+  displayed value is the current Auto policy rather than a saved override.
 - `contrast_recovery` now validates and accepts the complete libplacebo range
   `0.0` through `2.0`; Config labels and placeholder text match that range.
   Peak detection now has distinct native states: `Auto` keeps the quality
