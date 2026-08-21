@@ -67,16 +67,12 @@ Completed and deployed checkpoints:
   presently limits it to `1.0`), and Peak detection needs distinct Auto,
   Standard/default, High quality, and Off states. Current `On` and
   `High quality` both resolve to libplacebo's high-quality preset.
-- Config now shows a compact, non-assertive Auto resolution line below the
-  reviewed Basic controls. Quality-governed fields identify the selected
-  quality and effective policy (for example, `Auto — High: EWA Lanczos sharp`)
-  and scaler lines add whether they are used only while enlarging or reducing
-  video. Before a renderer snapshot is available the line says `Preview —
-  start VP Renderer to verify.`; after the selected renderer profile becomes
-  active it reduces to `Active.` The preview refreshes immediately with
-  quality, explicit/Auto setting, profile selection, and active-renderer
-  changes. It intentionally does not claim hardware-dependent output bit
-  depth until VP Renderer has an active output.
+- Config now shows a single compact Auto resolution line below the reviewed
+  Basic controls. Quality-governed fields identify only the selected quality
+  and effective policy (for example, `Auto — High: EWA Lanczos sharp`). The
+  longer applicability and runtime-state wording was removed after operator
+  review; the line refreshes immediately with quality and explicit/Auto
+  setting changes.
 - `contrast_recovery` now validates and accepts the complete libplacebo range
   `0.0` through `2.0`; Config labels and placeholder text match that range.
   Peak detection now has distinct native states: `Auto` keeps the quality
