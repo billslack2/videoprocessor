@@ -153,3 +153,19 @@ inheritance, `Auto`, and an omitted setting.
 - Preserve existing configuration comments and explicit settings. Never turn a
   displayed inherited/default value into a saved override merely by opening the
   editor.
+
+## Implementation checkpoint — 2026-08-21
+
+- Completed the inherited Input Processing presentation and immediate General
+  value refresh without persisting displayed inherited values.
+- Removed redundant root-profile default rows and made root rendering quality
+  explicit, ordered `High`, `Balanced`, `Fast` with `High` as the unset value.
+- Added compact italic resolved-policy text for every Auto-capable VP Renderer
+  control. The text is nested directly below its selector (2 px spacing), not
+  a separate blank form row. It uses the form `Auto: <effective value>`.
+- Corrected target-black Auto to show its actual libplacebo calculation:
+  target white divided by the SDR contrast constant (1000). For example,
+  79 nits displays `Auto: 0.079 nits`, and refreshes when target white changes.
+- Focused Config editor regression test passes. Successful x64 Release Config,
+  main application, and VP Renderer plugin binaries were deployed with
+  timestamped binary backups; no active configuration was overwritten.
