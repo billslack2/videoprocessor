@@ -128,6 +128,13 @@ fully suppress this seven-second trace even after the predicate is corrected.
 - The complete x64 Release solution built successfully.
 - The complete native suite passed 866/866, and the standalone Config UI test
   suite passed.
+- A fresh detached `origin/v1.2.001-beta` worktree at `08b27c3` produced a
+  clean x64 Release identity with `VERSION_DIRTY=false`; the manifest packager
+  staged and verified 57 immutable files.
+- All 57 files were installed and hash-verified under `C:\Videoprocessor\vp`.
+  The five replaced files and active configuration were backed up under
+  `C:\Videoprocessor\vp\backups\20260820-202326-pre-beta-08b27c3`; the active
+  configuration remained unchanged at SHA-256 `03DDD4B31C4633B09944C2DF5818734D7C5619A305A7D88C3DA498CA4DC6B02C`.
 
 ## Boundaries and related work
 
