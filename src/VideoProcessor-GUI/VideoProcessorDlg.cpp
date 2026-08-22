@@ -11789,13 +11789,16 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 
 	if (nIDEvent == SHADER_RULE_REFRESH_TIMER_ID)
 	{
+		// Keep the render-stall overlay available for a future revisit, but do
+		// not show it while normal libplacebo pipeline preparation is fast enough.
+		constexpr bool showRenderStallOverlay = false;
 		CString renderStallStatus;
 		const bool rendererCanReportStall =
 			m_rendererState == RendererState::RENDERSTATE_STARTING ||
 			m_rendererState == RendererState::RENDERSTATE_READY ||
 			m_rendererState == RendererState::RENDERSTATE_RENDERING;
 		const bool renderStalled =
-			rendererCanReportStall &&
+			showRenderStallOverlay && rendererCanReportStall &&
 			m_videoRenderer && !m_wantToRestartRenderer &&
 			m_videoRenderer->GetRenderStallStatus(renderStallStatus);
 		if (renderStalled && m_rendererTargetHwnd && GetSafeHwnd())
