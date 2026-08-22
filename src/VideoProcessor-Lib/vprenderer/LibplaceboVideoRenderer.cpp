@@ -9235,7 +9235,7 @@ struct LibplaceboVideoRenderer::Impl
 			(nlsPipelineActive && nlsPipelineVariantChanged);
 		if (preparingShader && presentationCallback)
 			presentationCallback->OnRendererPresentationStatus(
-				TEXT("Preparing VP Renderer shaders..."), true);
+				TEXT("VideoProcessor will resume automatically. This can take a few seconds."), true);
 		compileTelemetry.BeginRender();
 		const SteadyClock::time_point renderStart = SteadyClock::now();
 		const bool targetLutApplied =

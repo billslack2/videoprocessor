@@ -646,6 +646,10 @@ protected:
 	uint32_t m_retiringRendererGeneration = 0;
 	RendererState m_rendererState = RendererState::RENDERSTATE_UNKNOWN;
 	RendererTransitionWindow m_rendererTransitionWindow;
+	// Each renderer worker reports its own shader-compile begin/end.  Renderer
+	// replacement can briefly overlap those workers, so one completion must not
+	// remove the visible compile screen for another worker that is still busy.
+	uint32_t m_rendererPresentationStatusCount = 0;
 	HWND m_rendererTargetHwnd = nullptr;
 	bool m_preserveFullscreenHostForProfileRestart = false;
 	bool m_fullscreenRetargetPending = false;

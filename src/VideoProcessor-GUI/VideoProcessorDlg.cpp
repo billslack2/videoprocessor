@@ -6126,16 +6126,50 @@ LRESULT CVideoProcessorDlg::OnMessageRendererPresentationStatus(WPARAM wParam,
 {
 	std::unique_ptr<CString> status(reinterpret_cast<CString*>(wParam));
 	const bool visible = lParam != 0;
-	if (visible && status && m_rendererTargetHwnd &&
-		IsWindow(m_rendererTargetHwnd) && GetSafeHwnd())
+	if (visible)
 	{
+		++m_rendererPresentationStatusCount;
+		if (!status || !m_rendererTargetHwnd ||
+			!IsWindow(m_rendererTargetHwnd) || !GetSafeHwnd())
+		{
+			DebugLog::Log(
+				"Shader compilation splash skipped: status=%p target=%p target_valid=%d owner=%p owner_valid=%d active=%u",
+				status.get(), m_rendererTargetHwnd,
+				m_rendererTargetHwnd && IsWindow(m_rendererTargetHwnd) ? 1 : 0,
+				GetSafeHwnd(), GetSafeHwnd() && IsWindow(GetSafeHwnd()) ? 1 : 0,
+				m_rendererPresentationStatusCount);
+			return 0;
+		}
 		m_rendererDetailStringStatic.SetWindowText(*status);
 		m_rendererTransitionWindow.ShowStatus(m_rendererTargetHwnd,
 			GetSafeHwnd(), *status);
+		// RedrawWindow paints the popup but does not guarantee that DWM has
+		// composed it before the render worker enters a potentially multi-second
+		// driver compile.  Flush only from the UI message handler; the renderer
+		// callback itself remains a fast PostMessage operation.
+		const HRESULT compositionResult =
+			m_rendererTransitionWindow.SynchronizeComposition();
+		DebugLog::Log(
+			"Shader compilation splash shown: target=%p cover=%p active=%u composition_sync=0x%08lx",
+			m_rendererTargetHwnd, m_rendererTransitionWindow.GetHWND(),
+			m_rendererPresentationStatusCount,
+			static_cast<unsigned long>(compositionResult));
 	}
 	else
 	{
-		m_rendererTransitionWindow.Hide();
+		if (m_rendererPresentationStatusCount > 0)
+			--m_rendererPresentationStatusCount;
+		if (m_rendererPresentationStatusCount == 0)
+		{
+			m_rendererTransitionWindow.Hide();
+			DebugLog::Log("Shader compilation splash hidden: active=0");
+		}
+		else
+		{
+			DebugLog::Log(
+				"Shader compilation splash retained for another active worker: active=%u",
+				m_rendererPresentationStatusCount);
+		}
 	}
 	return 0;
 }
@@ -7125,8 +7159,14 @@ void CVideoProcessorDlg::OnRendererPresentationStatus(const CString& status,
 	bool visible)
 {
 	CString* copy = new CString(status);
-	PostMessage(WM_MESSAGE_RENDERER_PRESENTATION_STATUS,
-		reinterpret_cast<WPARAM>(copy), visible ? 1 : 0);
+	if (!PostMessage(WM_MESSAGE_RENDERER_PRESENTATION_STATUS,
+		reinterpret_cast<WPARAM>(copy), visible ? 1 : 0))
+	{
+		DebugLog::Log(
+			"Shader compilation splash post failed: visible=%d error=%lu",
+			visible ? 1 : 0, GetLastError());
+		delete copy;
+	}
 }
 
 

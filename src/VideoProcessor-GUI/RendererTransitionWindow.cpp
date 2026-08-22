@@ -219,17 +219,49 @@ LRESULT CALLBACK RendererTransitionWindow::WindowProc(
 			GetWindowLongPtr(hwnd, GWLP_USERDATA));
 		if (window && !window->m_status.IsEmpty())
 		{
+			const LONG clientWidth = client.right - client.left;
+			const LONG clientHeight = client.bottom - client.top;
+			const LONG cardWidth = std::min<LONG>(720,
+				std::max<LONG>(360, clientWidth - 96));
+			const LONG cardHeight = 188;
+			const LONG cardLeft = (clientWidth - cardWidth) / 2;
+			const LONG cardTop = (clientHeight - cardHeight) / 2;
+			const RECT card{ cardLeft, cardTop, cardLeft + cardWidth,
+				cardTop + cardHeight };
+			HBRUSH cardBrush = CreateSolidBrush(RGB(23, 31, 42));
+			HPEN borderPen = CreatePen(PS_SOLID, 1, RGB(76, 98, 124));
+			HGDIOBJ oldBrush = cardBrush ? SelectObject(dc, cardBrush) : nullptr;
+			HGDIOBJ oldPen = borderPen ? SelectObject(dc, borderPen) : nullptr;
+			RoundRect(dc, card.left, card.top, card.right, card.bottom, 18, 18);
+			if (oldPen) SelectObject(dc, oldPen);
+			if (oldBrush) SelectObject(dc, oldBrush);
+			if (borderPen) DeleteObject(borderPen);
+			if (cardBrush) DeleteObject(cardBrush);
+
 			SetBkMode(dc, TRANSPARENT);
-			SetTextColor(dc, RGB(230, 238, 245));
-			HFONT font = CreateFontW(28, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE,
+			SetTextColor(dc, RGB(238, 244, 250));
+			HFONT titleFont = CreateFontW(29, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE,
 				FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
 				CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
-			HGDIOBJ oldFont = font ? SelectObject(dc, font) : nullptr;
-			RECT textRect = client;
-			DrawTextW(dc, window->m_status, -1, &textRect,
+			HGDIOBJ oldFont = titleFont ? SelectObject(dc, titleFont) : nullptr;
+			RECT titleRect{ card.left + 28, card.top + 32, card.right - 28,
+				card.top + 80 };
+			DrawTextW(dc, L"Compiling VP Renderer shaders", -1, &titleRect,
 				DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
 			if (oldFont) SelectObject(dc, oldFont);
-			if (font) DeleteObject(font);
+			if (titleFont) DeleteObject(titleFont);
+
+			SetTextColor(dc, RGB(181, 202, 222));
+			HFONT detailFont = CreateFontW(19, 0, 0, 0, FW_NORMAL, FALSE, FALSE,
+				FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+				CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
+			oldFont = detailFont ? SelectObject(dc, detailFont) : nullptr;
+			RECT detailRect{ card.left + 36, card.top + 91, card.right - 36,
+				card.bottom - 30 };
+			DrawTextW(dc, window->m_status, -1, &detailRect,
+				DT_CENTER | DT_VCENTER | DT_WORDBREAK | DT_NOPREFIX);
+			if (oldFont) SelectObject(dc, oldFont);
+			if (detailFont) DeleteObject(detailFont);
 		}
 		EndPaint(hwnd, &paint);
 		return 0;
