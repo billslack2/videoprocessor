@@ -5943,6 +5943,8 @@ struct LibplaceboVideoRenderer::Impl
 		currentTransport.dithering = next.dithering;
 		currentTransport.displayBitDepth = next.displayBitDepth;
 		currentTransport.outputGamma = next.outputGamma;
+		currentTransport.sdrTargetPrimaries = "rec709";
+		currentTransport.reportBt2020ToDisplay = false;
 		currentTransport.sdrInputTransfer = next.sdrInputTransfer;
 		currentTransport.sdrAdjustGamma = next.sdrAdjustGamma;
 		currentTransport.outputDiagnostics = next.outputDiagnostics;
@@ -5954,11 +5956,8 @@ struct LibplaceboVideoRenderer::Impl
 		currentTransport.lutReferenceTransfer = next.lutReferenceTransfer;
 		currentTransport.lutReferenceRange = next.lutReferenceRange;
 		currentTransport.lutReferenceNits = next.lutReferenceNits;
-		// Target primaries and BT.2020 display reporting are part of the
-		// effective display-output contract. In particular, a renderer rebuilt
-		// after a DirectShow/madVR handoff starts with the Rec.709 contract; an
-		// ensuing F6 selection must run the complete asynchronous output
-		// initialization path rather than mutate only libplacebo's target.
+		nextTransport.sdrTargetPrimaries = "rec709";
+		nextTransport.reportBt2020ToDisplay = false;
 		return EffectiveSettingsFingerprint(currentTransport, false) ==
 			EffectiveSettingsFingerprint(nextTransport, false);
 	}
