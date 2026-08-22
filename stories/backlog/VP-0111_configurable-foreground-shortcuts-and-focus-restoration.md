@@ -4,11 +4,12 @@
 
 Backlog (requirement revised 2026-08-22). No implementation has started.
 
-The user chose an opt-in compatibility model. Add a Shortcuts > Setup checkbox
-that enables the focus-scoped behavior defined below. The checkbox defaults to
-unchecked; unchecked must retain today's global shortcut and focus behavior.
-The existing shortcut editor becomes the Shortcuts > Shortcuts page without
-changing its bindings or layout.
+The user chose an opt-in compatibility model. Keep one `Shortcuts` item in the
+left side menu. Inside that page, add `Setup` and `Shortcuts` tabs in the same
+style already used inside the Shaders and VP Renderer pages. The Setup tab's
+checkbox enables the focus-scoped behavior defined below. It defaults to
+unchecked, which must retain today's global shortcut and focus behavior. The
+existing shortcut editor moves intact to the internal Shortcuts tab.
 
 GitHub currently reports `v1.2.001-beta` as the VideoProcessor default
 integration branch. Implementation is waiting for the developer to confirm
@@ -78,20 +79,21 @@ Current source inspection also shows that:
 4. Apply a saved change live to a running VP. Changing the checkbox must start
    or stop the background observer as required without a VP restart or renderer
    rebuild.
-5. Change Config navigation to follow the established Shaders parent/child
-   pattern:
-   - `Shortcuts` is the parent navigation group.
-   - `Setup` is the first child page.
-   - `Shortcuts` is the second child page and contains the complete existing
+5. Keep exactly one `Shortcuts` entry in the left side menu. Do not add Setup
+   or a second Shortcuts entry to the side menu.
+6. Inside the page selected by that side-menu entry, follow the established
+   Shaders and VP Renderer internal-tab pattern:
+   - `Setup` is the first internal tab.
+   - `Shortcuts` is the second internal tab and contains the complete existing
      shortcut editor unchanged.
-6. For now, Setup contains one keyboard-handling card with one checkbox:
+7. For now, Setup contains one keyboard-handling card with one checkbox:
    **Only process shortcuts while VideoProcessor is in the foreground**.
-7. Setup help text must explain both modes plainly:
+8. Setup help text must explain both modes plainly:
    - Checked: background keystrokes do not control VP; VP attempts to restore
      focus at the defined lifecycle boundaries.
    - Unchecked: configured shortcuts retain today's global behavior whenever
      Config is not active.
-8. Update `VideoProcessor.cfg` comments and `CONFIGURATION.html` with the
+9. Update `VideoProcessor.cfg` comments and `CONFIGURATION.html` with the
    default, live-apply behavior, Config exception, and Windows focus limitation.
 
 ## Mode behavior
@@ -166,12 +168,13 @@ keyboard capture.
 
 ## Acceptance criteria
 
-- Config navigation shows Shortcuts > Setup and Shortcuts > Shortcuts using
-  the same visual and interaction pattern as the Shaders child pages.
+- The left side menu still contains exactly one `Shortcuts` item. Selecting it
+  shows internal `Setup` and `Shortcuts` tabs using the same visual and
+  interaction pattern as the Shaders and VP Renderer tabs.
 - Setup contains the single foreground-only checkbox, initially unchecked for
   an absent setting. The existing shortcut fields, defaults, clear controls,
-  validation, scrolling, and save behavior remain unchanged on the child
-  Shortcuts page.
+  validation, scrolling, and save behavior remain unchanged on the internal
+  Shortcuts tab.
 - Saving the checkbox writes only `[shortcuts] foreground_only`; loading,
   saving, and live apply preserve unrelated settings, comments, and bindings.
 - Toggling the setting live changes keyboard policy without rebuilding the
@@ -214,9 +217,9 @@ keyboard capture.
 
 1. Configuration tests for absent/default false, explicit false, explicit
    true, invalid Boolean text, round-trip preservation, and live apply.
-2. Config UI tests for the Shortcuts parent/child navigation, initial checkbox
-   state, save/reload, dirty state, validation, and preservation of every
-   existing shortcut field.
+2. Config UI tests for the unchanged single Shortcuts side-menu item, internal
+   Setup/Shortcuts tabs, initial checkbox state, save/reload, dirty state,
+   validation, and preservation of every existing shortcut field.
 3. Policy unit tests in both modes covering VP main window, windowed host,
    fullscreen host, routed renderer child, Config, unrelated process,
    desktop/null, destroyed HWND, and stale renderer generation.
