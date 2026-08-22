@@ -3066,7 +3066,6 @@ struct LibplaceboVideoRenderer::Impl
 	ColorSpace lastRenderedColorspace = ColorSpace::UNKNOWN;
 	std::string shaderCachePath;
 	uint64_t loadedShaderCacheSignature = 0;
-	int loadedShaderCacheObjects = 0;
 	bool shaderCacheEnabled = true;
 	bool outputDiagnostics = false;
 	bool outputContractLogged = false;
@@ -3348,11 +3347,6 @@ struct LibplaceboVideoRenderer::Impl
 			if (worker.joinable()) worker.join();
 		nvidiaBt2020Reporter.Restore();
 		pl_mpv_user_shader_destroy(&nlsHook);
-		// The GPU cache owns the compiled shader blobs while the renderer still
-		// references them. Persist it before destroying the renderer; saving
-		// afterwards retained only a small subset and made a fullscreen/windowed
-		// swap compile the same programs again.
-		SaveShaderCache();
 		pl_renderer_destroy(&renderer);
 		pl_lut_free(&displayLut);
 		if (d3d11)
@@ -3364,6 +3358,7 @@ struct LibplaceboVideoRenderer::Impl
 		}
 		pl_swapchain_destroy(&swapchain);
 		vpOwnedSwapchain.Release();
+		SaveShaderCache();
 		pl_d3d11_destroy(&d3d11);
 		pl_cache_destroy(&cache);
 		pl_log_destroy(&log);
@@ -3445,7 +3440,6 @@ struct LibplaceboVideoRenderer::Impl
 			DeleteFileA(clearRequestPath.c_str());
 			pl_cache_reset(cache);
 			loadedShaderCacheSignature = 0;
-			loadedShaderCacheObjects = 0;
 			DebugLog::Log(
 				"libplacebo persistent shader cache cleared by user request");
 			return;
@@ -3492,7 +3486,6 @@ struct LibplaceboVideoRenderer::Impl
 		}
 
 		loadedShaderCacheSignature = pl_cache_signature(cache);
-		loadedShaderCacheObjects = pl_cache_objects(cache);
 		DebugLog::Log(
 			"libplacebo persistent shader cache loaded: %d objects, %zu bytes",
 			loaded,
@@ -3512,7 +3505,6 @@ struct LibplaceboVideoRenderer::Impl
 			if (cache)
 				pl_cache_reset(cache);
 			loadedShaderCacheSignature = 0;
-			loadedShaderCacheObjects = 0;
 			DebugLog::Log(
 				"libplacebo persistent shader cache clear completed; current cache was not saved");
 			return;
@@ -3520,70 +3512,6 @@ struct LibplaceboVideoRenderer::Impl
 		if (!shaderCacheEnabled ||
 			!cache || shaderCachePath.empty() || pl_cache_objects(cache) <= 0)
 			return;
-
-		// The persistent cache is append-only unless the explicit clear-request
-		// marker was handled above. Always re-read and merge the on-disk cache,
-		// even when object counts happen to match: a different resolution or
-		// profile can produce a different set with the same cardinality. This also
-		// preserves entries added by an earlier renderer lifetime after this one
-		// originally loaded its cache.
-		const int objectsBeforeMerge = pl_cache_objects(cache);
-		const DWORD persistedAttributes =
-			GetFileAttributesA(shaderCachePath.c_str());
-		if (persistedAttributes != INVALID_FILE_ATTRIBUTES)
-		{
-			std::ifstream input(shaderCachePath, std::ios::binary | std::ios::ate);
-			if (!input.is_open())
-			{
-				DebugLog::Log(
-					"libplacebo persistent shader cache not saved: complete cache file could not be reopened");
-				return;
-			}
-			const std::streamoff length = input.tellg();
-			if (length <= 0 ||
-				static_cast<uint64_t>(length) > MAX_SHADER_CACHE_FILE_SIZE)
-			{
-				DebugLog::Log(
-					"libplacebo persistent shader cache not saved: complete cache file has invalid size");
-				return;
-			}
-			std::vector<uint8_t> persisted(static_cast<size_t>(length));
-			input.seekg(0, std::ios::beg);
-			if (!input.read(reinterpret_cast<char*>(persisted.data()),
-				static_cast<std::streamsize>(persisted.size())))
-			{
-				DebugLog::Log(
-					"libplacebo persistent shader cache not saved: complete cache file could not be read");
-				return;
-			}
-			const int merged = pl_cache_load(cache, persisted.data(), persisted.size());
-			const int objectsAfterMerge = pl_cache_objects(cache);
-			if (merged < 0 || objectsAfterMerge < objectsBeforeMerge ||
-				objectsAfterMerge < merged)
-			{
-				DebugLog::Log(
-					"libplacebo persistent shader cache not saved: refusing non-additive update current=%d saved=%d merged=%d",
-					objectsBeforeMerge, merged, objectsAfterMerge);
-				return;
-			}
-			if (objectsAfterMerge != objectsBeforeMerge ||
-				merged != loadedShaderCacheObjects)
-			{
-				DebugLog::Log(
-					"libplacebo persistent shader cache preserved: merged %d current with %d saved objects -> %d",
-					objectsBeforeMerge, merged, objectsAfterMerge);
-			}
-			loadedShaderCacheObjects = objectsAfterMerge;
-		}
-		else if (loadedShaderCacheObjects > 0)
-		{
-			// Config's explicit clear action always leaves a marker, handled above.
-			// A missing file without that marker is therefore not authority to
-			// discard the previously loaded persistent set.
-			DebugLog::Log(
-				"libplacebo persistent shader cache not saved: existing cache disappeared without an explicit clear request");
-			return;
-		}
 
 		const uint64_t signature = pl_cache_signature(cache);
 		if (signature == loadedShaderCacheSignature)
@@ -3637,7 +3565,6 @@ struct LibplaceboVideoRenderer::Impl
 		}
 
 		loadedShaderCacheSignature = signature;
-		loadedShaderCacheObjects = pl_cache_objects(cache);
 		DebugLog::Log(
 			"libplacebo persistent shader cache saved: %d objects, %zu bytes",
 			pl_cache_objects(cache),
@@ -5803,20 +5730,15 @@ struct LibplaceboVideoRenderer::Impl
 			LibplaceboExportedData<pl_cache_params>("pl_cache_default_params");
 		cacheParams.log = log;
 		cacheParams.max_object_size = 64u * 1024u * 1024u;
-		// Persistence is intentionally cumulative across resolution and profile
-		// changes. Do not let libplacebo silently prune older objects from the
-		// in-memory union; the serialized-file safety cap remains enforced by
-		// MAX_SHADER_CACHE_FILE_SIZE in LoadShaderCache/SaveShaderCache.
-		cacheParams.max_total_size = 0;
+		cacheParams.max_total_size = 256u * 1024u * 1024u;
 		cache = pl_cache_create(&cacheParams);
 		if (shaderCacheEnabled)
 		{
-			pl_gpu_set_cache(d3d11->gpu, cache);
-			// Attach first, then populate. This is libplacebo's documented/demo
-			// lifecycle and ensures the GPU observes every restored cache object.
 			LoadShaderCache();
+			pl_gpu_set_cache(d3d11->gpu, cache);
 			DebugLog::Log(
-				"libplacebo GPU shader cache enabled: memory limit=unlimited (append-only persistence) object limit=%u MiB path=%s",
+				"libplacebo GPU shader cache enabled: memory limit=%u MiB object limit=%u MiB path=%s",
+				256u,
 				64u,
 				shaderCachePath.c_str());
 		}
@@ -5827,12 +5749,6 @@ struct LibplaceboVideoRenderer::Impl
 				"libplacebo GPU shader cache disabled by diagnostic setting; persistent file left unchanged at %s",
 				shaderCachePath.c_str());
 		}
-
-		// Do not synthesize inactive window/profile/viewport combinations. The
-		// persistent cache grows only from pipelines required by live playback.
-		DebugLog::Log(
-			"Alpha shader startup matrix disabled: compiling live cache misses on demand");
-
 		LibplaceboOutput::Request outputRequest;
 		outputRequest.presentation = LibplaceboOutput::ParsePresentation(
 			settings.outputPresentation);
@@ -9185,15 +9101,6 @@ struct LibplaceboVideoRenderer::Impl
 			SteadyClock::now() - renderStart).count();
 		const LibplaceboCompileSnapshot compileSnapshot =
 			compileTelemetry.EndRender();
-		if (rendered && compileSnapshot.Compiled() &&
-			renderParams.dynamic_constants)
-		{
-			// Dynamic constants collapse later profile/presentation changes into
-			// this program, but the first dynamic program is still a real cache
-			// miss. Save it immediately, while libplacebo still owns every compiled
-			// blob, so a restart or fullscreen transition cannot repeat that cost.
-			SaveShaderCache();
-		}
 		if (nlsPipelineActive &&
 			(nlsPipelineVariantChanged || compileSnapshot.Compiled()))
 		{
