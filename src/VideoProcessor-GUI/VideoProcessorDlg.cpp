@@ -6263,8 +6263,6 @@ bool CVideoProcessorDlg::TryFinalizeRendererRetirement(
 
 	m_rendererRetirementPending = false;
 	m_rendererRetirementWaitLoggedToken = 0;
-	m_shaderLoadingWindow.Hide();
-	m_shaderLoadingPopupShownTick = 0;
 	if (!completion.succeeded)
 	{
 		DebugLog::Log(
@@ -8517,6 +8515,8 @@ void CVideoProcessorDlg::RenderRemove()
 
 void CVideoProcessorDlg::DestroyVideoRenderer()
 {
+	m_shaderLoadingWindow.Hide();
+	m_shaderLoadingPopupShownTick = 0;
 	if (!m_videoRenderer)
 		return;
 	if (m_fullscreenRetargetPending)
@@ -12153,14 +12153,17 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 
 	if (nIDEvent == SHADER_RULE_REFRESH_TIMER_ID)
 	{
+		// Renderer preparation remains asynchronous and observable in logs, but
+		// the operator-facing pipeline preparation popup is intentionally off.
+		constexpr bool showRenderStallOverlay = false;
 		CString renderStallStatus;
 		const bool rendererCanReportStall =
 			m_rendererState == RendererState::RENDERSTATE_STARTING ||
 			m_rendererState == RendererState::RENDERSTATE_READY ||
-			m_rendererState == RendererState::RENDERSTATE_RENDERING ||
-			m_rendererState == RendererState::RENDERSTATE_STOPPING;
+			m_rendererState == RendererState::RENDERSTATE_RENDERING;
 		const bool renderStalled =
-			rendererCanReportStall && m_videoRenderer &&
+			showRenderStallOverlay && rendererCanReportStall &&
+			m_videoRenderer && !m_wantToRestartRenderer &&
 			m_videoRenderer->GetRenderStallStatus(renderStallStatus);
 		if (renderStalled && m_rendererTargetHwnd && GetSafeHwnd())
 		{
@@ -12170,10 +12173,7 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 			if (shown && !wasVisible && m_shaderLoadingWindow.IsVisible())
 				m_shaderLoadingPopupShownTick = GetTickCount64();
 		}
-		const bool retainWhileRendererRetires =
-			m_rendererRetirementPending && m_shaderLoadingWindow.IsVisible();
-		if (!renderStalled && !retainWhileRendererRetires &&
-			m_shaderLoadingWindow.IsVisible() &&
+		else if (m_shaderLoadingWindow.IsVisible() &&
 			(!rendererCanReportStall ||
 			 GetTickCount64() - m_shaderLoadingPopupShownTick >= 300))
 		{
