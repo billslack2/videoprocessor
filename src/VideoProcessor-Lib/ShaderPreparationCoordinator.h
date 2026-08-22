@@ -68,12 +68,20 @@ namespace ShaderPreparationCoordinator
 				start = request;
 				return EnqueueResult::Start;
 			}
-			if (m_active.generation == generation ||
-				(m_hasPending && m_pending.generation == generation))
+			if (m_active.generation == generation)
+			{
+				start = m_active;
 				return EnqueueResult::Coalesced;
+			}
+			if (m_hasPending && m_pending.generation == generation)
+			{
+				start = m_pending;
+				return EnqueueResult::Coalesced;
+			}
 
 			m_pending = request;
 			m_hasPending = true;
+			start = request;
 			return EnqueueResult::ReplacedPending;
 		}
 
@@ -106,6 +114,11 @@ namespace ShaderPreparationCoordinator
 
 		bool HasActive() const { return m_hasActive; }
 		bool HasPending() const { return m_hasPending; }
+		Request LatestRequest() const
+		{
+			return m_hasPending ? m_pending :
+				(m_hasActive ? m_active : Request{});
+		}
 
 	private:
 		uint64_t m_nextSerial = 1;

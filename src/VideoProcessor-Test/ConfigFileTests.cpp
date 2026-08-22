@@ -21,6 +21,7 @@
 #include <ShaderConfigValidation.h>
 #include <ShaderPreparationPolicy.h>
 #include <ShaderPreparationCoordinator.h>
+#include <ShaderPreparationService.h>
 #include <UnifiedProfileRuntime.h>
 #include <VideoConversionOverride.h>
 #include "CppUnitTest.h"
@@ -2428,7 +2429,7 @@ namespace VideoProcessorTest
 
 			Request ignored;
 			Assert::IsTrue(queue.Enqueue(initial, ignored) == EnqueueResult::Coalesced);
-			Assert::AreEqual(static_cast<uint64_t>(0), ignored.serial);
+			Assert::AreEqual(first.serial, ignored.serial);
 
 			Generation newest = initial;
 			newest.shader = 9;
@@ -2440,6 +2441,11 @@ namespace VideoProcessorTest
 			}
 			Assert::IsTrue(queue.HasActive());
 			Assert::IsTrue(queue.HasPending());
+			Assert::AreEqual(static_cast<uint64_t>(100),
+				queue.LatestRequest().generation.targetGeometry);
+			Assert::IsTrue(queue.Enqueue(initial, ignored) == EnqueueResult::Coalesced);
+			Assert::AreEqual(static_cast<uint64_t>(100),
+				queue.LatestRequest().generation.targetGeometry);
 
 			Request next;
 			Assert::IsTrue(queue.Complete(first, next) ==
@@ -2466,6 +2472,74 @@ namespace VideoProcessorTest
 				CompletionResult::DiscardRetired);
 			Assert::IsTrue(queue.Enqueue(generation, next) ==
 				EnqueueResult::RejectedRetired);
+		}
+
+		TEST_METHOD(ShaderPreparationServiceRunsColdWorkAwayFromRequestingThread)
+		{
+			using namespace ShaderPreparationService;
+			Service service;
+			std::mutex gateMutex;
+			std::condition_variable gateChanged;
+			bool entered = false;
+			bool release = false;
+			const DWORD requestingThreadId = GetCurrentThreadId();
+			Generation firstGeneration{};
+			firstGeneration.renderer = 42;
+			firstGeneration.targetGeometry = 1;
+			Request first;
+			Assert::IsTrue(service.Enqueue(firstGeneration,
+				[&](const Request&, const Cancellation& cancellation)
+				{
+					std::unique_lock<std::mutex> lock(gateMutex);
+					entered = true;
+					gateChanged.notify_all();
+					gateChanged.wait(lock, [&]() { return release; });
+					return !cancellation.Requested();
+				}, first) == EnqueueResult::Start);
+			{
+				std::unique_lock<std::mutex> lock(gateMutex);
+				Assert::IsTrue(gateChanged.wait_for(lock, std::chrono::seconds(1),
+					[&]() { return entered; }));
+			}
+			Assert::IsTrue(service.WorkerThreadId() != 0);
+			Assert::IsTrue(service.WorkerThreadId() != requestingThreadId);
+
+			Request newest;
+			Generation newestGeneration = firstGeneration;
+			for (uint64_t geometry = 2; geometry <= 101; ++geometry)
+			{
+				newestGeneration.targetGeometry = geometry;
+				Assert::IsTrue(service.Enqueue(newestGeneration,
+					[](const Request&, const Cancellation& cancellation)
+					{
+						return !cancellation.Requested();
+					}, newest) == EnqueueResult::ReplacedPending);
+			}
+
+			{
+				std::lock_guard<std::mutex> lock(gateMutex);
+				release = true;
+			}
+			gateChanged.notify_all();
+			Completion completions[2];
+			size_t completionCount = 0;
+			for (int attempt = 0; attempt < 100 && completionCount < 2; ++attempt)
+			{
+				if (service.TryTakeCompletion(completions[completionCount]))
+					++completionCount;
+				else
+					Sleep(10);
+			}
+			Assert::AreEqual(static_cast<size_t>(2), completionCount);
+			Assert::IsTrue(completions[0].result ==
+				CompletionResult::DiscardSuperseded);
+			Assert::IsFalse(completions[0].prepared);
+			Assert::AreEqual(static_cast<uint64_t>(101),
+				completions[1].request.generation.targetGeometry);
+			Assert::IsTrue(completions[1].result == CompletionResult::Activate);
+			Assert::IsTrue(completions[1].prepared);
+			service.Retire();
+			service.Join();
 		}
 
 		TEST_METHOD(Vp0097ShortcutKeyCombinesWithOptionalProfileRule)
