@@ -56,6 +56,17 @@ The previous executable is preserved as
 file was modified. Live cold-cache, resize, renderer-switch, and close
 validation remains pending the isolated-context implementation.
 
+Follow-up commit: `b6691e6` (`VP-0140 make shader compilation status visible`).
+The non-activating renderer cover now displays a distinct shader-compilation
+splash, forces a DWM composition boundary before the render worker enters the
+driver, and reference-counts overlapping renderer workers so an older compile
+cannot hide the splash while a newer compile continues. The callback remains a
+fast posted UI message; failures to post and invalid targets now log explicit
+diagnostics. The x64 Release GUI build passed with zero warnings and errors.
+This improves the cold-cache experience and visibility only: the separate
+isolated-context/cache-handoff slice remains necessary to keep old video
+presenting through a brand-new shader compilation.
+
 ## User story
 
 As a VideoProcessor operator, I need every potentially cold VP Renderer shader
