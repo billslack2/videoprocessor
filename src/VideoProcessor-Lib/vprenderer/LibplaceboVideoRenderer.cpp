@@ -3,7 +3,6 @@
 #include "LibplaceboVideoRenderer.h"
 
 #include <ConfigFile.h>
-#include <ConfigurationLiveApply.h>
 #include <EventActionLauncher.h>
 #include <ActivePictureTransitionModel.h>
 #include <AspectRatio.h>
@@ -631,17 +630,6 @@ namespace
 			return SHADER_CACHE_CLEAR_RELATIVE_PATH;
 		path.resize(separator + 1);
 		path += SHADER_CACHE_CLEAR_RELATIVE_PATH;
-		return path;
-	}
-
-	std::string ShaderPreparationStatusPath()
-	{
-		std::string path = ShaderCachePath();
-		const size_t separator = path.find_last_of("\\/");
-		if (separator == std::string::npos)
-			return ConfigurationLiveApply::ShaderPreparationStatusFileNameA;
-		path.resize(separator + 1);
-		path += ConfigurationLiveApply::ShaderPreparationStatusFileNameA;
 		return path;
 	}
 
@@ -2931,8 +2919,6 @@ struct LibplaceboVideoRenderer::Impl
 	struct pl_render_params renderParams{};
 	ActivePictureTransitionModel nlsTransition;
 	ConfiguredShaderRule nlsRule;
-	std::vector<ConfiguredShaderRule> startupNlsPrewarmRules;
-	bool startupNlsPrewarmComplete = false;
 	std::string requestedShaderSelector;
 	std::string activeShaderStatus = "None";
 	uint64_t activeShaderStatusSerial = 0;
@@ -3462,7 +3448,6 @@ struct LibplaceboVideoRenderer::Impl
 		{
 			DeleteFileA(shaderCachePath.c_str());
 			DeleteFileA((shaderCachePath + ".tmp").c_str());
-			DeleteFileA(ShaderPreparationStatusPath().c_str());
 			DeleteFileA(clearRequestPath.c_str());
 			pl_cache_reset(cache);
 			loadedShaderCacheSignature = 0;
@@ -3529,7 +3514,6 @@ struct LibplaceboVideoRenderer::Impl
 		{
 			DeleteFileA(shaderCachePath.c_str());
 			DeleteFileA((shaderCachePath + ".tmp").c_str());
-			DeleteFileA(ShaderPreparationStatusPath().c_str());
 			DeleteFileA(clearRequestPath.c_str());
 			if (cache)
 				pl_cache_reset(cache);
@@ -5785,8 +5769,7 @@ struct LibplaceboVideoRenderer::Impl
 
 	void Initialize(HWND videoHwnd, VideoStateComPtr& state, const std::string& manualRule,
 		const std::map<std::string, std::string>& manualUnifiedProfiles,
-		VideoConversionOverride videoConversionOverride,
-		bool nonCapturingPreparationMode)
+		VideoConversionOverride videoConversionOverride)
 	{
 		this->videoHwnd = videoHwnd;
 		const RendererSettings settings = LoadRendererSettings(
@@ -5851,13 +5834,10 @@ struct LibplaceboVideoRenderer::Impl
 				shaderCachePath.c_str());
 		}
 
-		// Compiling inactive NLS profiles with pl_render_image here can take many
-		// seconds on a cold cache and runs on the live render path. Normal playback
-		// must remain responsive; Config's Prepare shaders action runs the same
-		// work through its separately reported preparation workflow instead.
-		startupNlsPrewarmComplete = true;
+		// Do not synthesize inactive window/profile/viewport combinations. The
+		// persistent cache grows only from pipelines required by live playback.
 		DebugLog::Log(
-			"Alpha shader startup prewarm deferred: normal playback remains responsive; use Config Prepare shaders to warm inactive profiles");
+			"Alpha shader startup matrix disabled: compiling live cache misses on demand");
 
 		LibplaceboOutput::Request outputRequest;
 		outputRequest.presentation = LibplaceboOutput::ParsePresentation(
@@ -5989,11 +5969,7 @@ struct LibplaceboVideoRenderer::Impl
 		// the desktop timing. Query and select the content rate only after that
 		// transition has completed; an earlier verified no-op could otherwise
 		// leave this newly initialized renderer running at the restored rate.
-		if (!nonCapturingPreparationMode)
-			displayRefreshRate.Switch(videoHwnd, *state, settings);
-		else
-			DebugLog::Log(
-				"libplacebo non-capturing preparation: display refresh switching suppressed");
+		displayRefreshRate.Switch(videoHwnd, *state, settings);
 		// Negotiate only after libplacebo has applied its hint and completed the
 		// initial ResizeBuffers operation; either may otherwise replace DXGI state.
 		ConfigureAndFallback("initialize");
@@ -6097,8 +6073,8 @@ struct LibplaceboVideoRenderer::Impl
 			nlsDecision = {};
 			renderParams.hooks = nullptr;
 			renderParams.num_hooks = 0;
-			// The alternate profile was prewarmed with the previous crop/subtitle
-			// parameters. Re-prime it lazily without dropping the live swapchain.
+			// A newly selected live profile must use current crop/subtitle
+			// parameters. Prime it lazily without dropping the live swapchain.
 			ClearScopeSubtitleEvidence();
 			ClearScopePresentationEvidence();
 			lastSourceCropPolicy.clear();
@@ -8126,8 +8102,7 @@ struct LibplaceboVideoRenderer::Impl
 				struct pl_frame& target,
 				bool configuredScreenActive,
 				float /* subtitleShift */,
-				bool* trustedActivePicture = nullptr,
-				bool publishFinalPresentation = false)
+				bool* trustedActivePicture = nullptr)
 		{
 			source = image;
 			if (trustedActivePicture)
@@ -8257,34 +8232,31 @@ struct LibplaceboVideoRenderer::Impl
 			bool releaseDriftBaseRetention = false;
 			float resolvedSubtitleTranslation = requestedSubtitleTranslation
 				? subtitleShiftSourcePixels : 0.0f;
-			if (publishFinalPresentation)
+			if (!storedVerticalBaseMatchesEffectiveGeometry)
+				scopeSubtitleDrift.Reset();
+			else
+				resolvedSubtitleTranslation =
+					scopeSubtitleDrift.Resolve(
+						resolvedSubtitleTranslation, overlayNow,
+						requestedSubtitleTranslation
+							? scopeSubtitleEngageDriftMs
+							: scopeSubtitleReleaseDriftMs);
+			releaseDriftBaseRetention =
+				!requestedSubtitleTranslation &&
+				scopeSubtitleDrift.ConsumeFinalBaseFrame();
+			const bool subtitleDriftActive = scopeSubtitleDrift.IsActive();
+			if (subtitleDriftActive != scopeSubtitleDriftWasActive)
 			{
-				if (!storedVerticalBaseMatchesEffectiveGeometry)
-					scopeSubtitleDrift.Reset();
-				else
-					resolvedSubtitleTranslation =
-						scopeSubtitleDrift.Resolve(
-							resolvedSubtitleTranslation, overlayNow,
-							requestedSubtitleTranslation
-								? scopeSubtitleEngageDriftMs
-								: scopeSubtitleReleaseDriftMs);
-				releaseDriftBaseRetention =
-					!requestedSubtitleTranslation &&
-					scopeSubtitleDrift.ConsumeFinalBaseFrame();
-				const bool subtitleDriftActive = scopeSubtitleDrift.IsActive();
-				if (subtitleDriftActive != scopeSubtitleDriftWasActive)
-				{
-					DebugLog::Log(
-						"libplacebo scope subtitle fit: %s drift %s; duration=%llums shift=%.1f px",
-						requestedSubtitleTranslation ? "engage" : "release",
-						subtitleDriftActive ? "started" : "completed",
-						static_cast<unsigned long long>(
-							requestedSubtitleTranslation
-								? scopeSubtitleEngageDriftMs
-								: scopeSubtitleReleaseDriftMs),
-						resolvedSubtitleTranslation);
-					scopeSubtitleDriftWasActive = subtitleDriftActive;
-				}
+				DebugLog::Log(
+					"libplacebo scope subtitle fit: %s drift %s; duration=%llums shift=%.1f px",
+					requestedSubtitleTranslation ? "engage" : "release",
+					subtitleDriftActive ? "started" : "completed",
+					static_cast<unsigned long long>(
+						requestedSubtitleTranslation
+							? scopeSubtitleEngageDriftMs
+							: scopeSubtitleReleaseDriftMs),
+					resolvedSubtitleTranslation);
+				scopeSubtitleDriftWasActive = subtitleDriftActive;
 			}
 			const bool subtitleDriftTranslation =
 				std::abs(resolvedSubtitleTranslation) > 0.5f;
@@ -8636,20 +8608,6 @@ struct LibplaceboVideoRenderer::Impl
 				}
 				return fit;
 			};
-			if (!publishFinalPresentation)
-			{
-				// Shader/profile prewarming must not publish per-frame presentation
-				// state. It only needs valid geometry for the selected viewport.
-				if (configuredScreenActive)
-					fitTargetToAspect(configuredScreenAspect,
-						AlphaSourceCrop::VerticalPictureAlignment::CENTER);
-				fitTargetToAspect(
-					AlphaSourceCrop::ApplyAnamorphicLensCompensation(
-						pl_rect2df_aspect(&source.crop), anamorphicScale),
-					ResolveVerticalPictureAlignment(verticalAlignment));
-				return;
-			}
-
 			// This is the sole per-frame NLS authority. Derive every mapping input
 			// from the exact source rectangle selected above, then publish crop,
 			// hook, runtime geometry, status, and destination layout as one decision.
@@ -8965,90 +8923,6 @@ struct LibplaceboVideoRenderer::Impl
 			// therefore a centered geometry no-op.
 		};
 
-		if (!startupNlsPrewarmComplete)
-		{
-			startupNlsPrewarmComplete = true;
-			std::set<std::string> warmedHookKeys;
-			size_t renderAttempts = 0;
-			size_t renderFailures = 0;
-			for (const ConfiguredShaderRule& rule : startupNlsPrewarmRules)
-			{
-				const struct pl_hook* warmHook = nullptr;
-				std::string hookKey;
-				std::string resolvedPath;
-				std::string reason;
-				if (!CreateNlsHook(rule, warmHook, hookKey, resolvedPath, reason))
-				{
-					++renderFailures;
-					DebugLog::Log(
-						"Alpha shader startup prewarm: rule=%s result=rejected reason=\"%s\"",
-						rule.name.c_str(), reason.c_str());
-					continue;
-				}
-				if (!warmedHookKeys.insert(hookKey).second)
-				{
-					pl_mpv_user_shader_destroy(&warmHook);
-					continue;
-				}
-
-				NlsMappingDecision warmDecision;
-				warmDecision.stretchRatio = 1.2;
-				if (!SetNlsHookMapping(warmHook, warmDecision))
-				{
-					++renderFailures;
-					DebugLog::Log(
-						"Alpha shader startup prewarm: rule=%s result=rejected reason=\"dynamic NLS parameters are unavailable\"",
-						rule.name.c_str());
-					pl_mpv_user_shader_destroy(&warmHook);
-					continue;
-				}
-
-					struct pl_frame warmImage{};
-					struct pl_frame warmTarget = baseTarget;
-					configureViewport(
-						warmImage, warmTarget, configuredScreenActive, 0.0f);
-					struct pl_render_params warmParams = renderParams;
-					warmParams.hooks = &warmHook;
-					warmParams.num_hooks = 1;
-					++renderAttempts;
-					compileTelemetry.BeginRender();
-					const SteadyClock::time_point warmStart = SteadyClock::now();
-					const bool warmed = pl_render_image(
-						renderer, &warmImage, &warmTarget, &warmParams);
-					const double warmMs =
-						std::chrono::duration<double, std::milli>(
-							SteadyClock::now() - warmStart).count();
-					const LibplaceboCompileSnapshot compileSnapshot =
-						compileTelemetry.EndRender();
-					if (!warmed)
-						++renderFailures;
-					const int warmOutputWidth = warmTarget.planes[0].texture
-						? warmTarget.planes[0].texture->params.w : 0;
-					const int warmOutputHeight = warmTarget.planes[0].texture
-						? warmTarget.planes[0].texture->params.h : 0;
-					DebugLog::Log(
-						"Alpha shader startup prewarm: shader=%s rule=%s target=%s cache=%s renderer_generation=%llu input=%dx%d output=%dx%d glsl_ms=%.3f spirv_cross_ms=%.3f hlsl_ms=%.3f compile_ms=%.3f render_ms=%.3f result=%s",
-						resolvedPath.c_str(), rule.name.c_str(),
-						configuredScreenActive ? "configured" : "output-panel",
-						compileSnapshot.Compiled() ? "cold" : "warm",
-						static_cast<unsigned long long>(nlsRendererGeneration),
-						width, height, warmOutputWidth, warmOutputHeight,
-						compileSnapshot.glslMs,
-						compileSnapshot.spirvCrossMs,
-						compileSnapshot.hlslMs,
-						compileSnapshot.glslMs + compileSnapshot.spirvCrossMs +
-							compileSnapshot.hlslMs,
-						warmMs, warmed ? "success" : "failed");
-				pl_mpv_user_shader_destroy(&warmHook);
-			}
-			DebugLog::Log(
-				"Alpha shader startup prewarm complete: rules=%zu unique_hooks=%zu renders=%zu failures=%zu cache=%d objects/%zu bytes",
-				startupNlsPrewarmRules.size(), warmedHookKeys.size(),
-				renderAttempts, renderFailures,
-				cache ? pl_cache_objects(cache) : 0,
-				cache ? pl_cache_size(cache) : 0);
-		}
-
 		struct pl_frame renderImage{};
 		struct pl_frame target = baseTarget;
 		bool trustedActivePicture = false;
@@ -9057,8 +8931,7 @@ struct LibplaceboVideoRenderer::Impl
 			target,
 			configuredScreenActive,
 			subtitleShiftSourcePixels,
-			&trustedActivePicture,
-			true);
+			&trustedActivePicture);
 		std::vector<uint8_t> overlayPixels;
 		int overlayWidth = 0;
 		int overlayHeight = 0;
@@ -9770,45 +9643,6 @@ LibplaceboVideoRenderer::~LibplaceboVideoRenderer()
 	m_impl.reset();
 }
 
-bool LibplaceboVideoRenderer::PersistShaderCache()
-{
-	if (!m_impl) return false;
-	std::lock_guard<std::mutex> guard(m_impl->renderMutex);
-	m_impl->SaveShaderCache();
-	return true;
-}
-
-
-bool LibplaceboVideoRenderer::ReloadConfiguredShaderPrewarm()
-{
-	if (!m_impl) return false;
-	if ((GetWindowLongPtr(m_videoHwnd, GWL_STYLE) & WS_CHILD) != 0)
-	{
-		std::lock_guard<std::mutex> guard(m_impl->renderMutex);
-		m_impl->startupNlsPrewarmRules.clear();
-		m_impl->startupNlsPrewarmComplete = true;
-		DebugLog::Log(
-			"Alpha shader prewarm skipped: configured shader hooks are fullscreen-only");
-		return true;
-	}
-	ConfigFile config;
-	if (!config.Load(ConfigFile::RENDERER_FILENAME)) return false;
-	std::vector<ConfiguredShaderRule> rules;
-	std::string reason;
-	const bool available =
-		MadVRShaderLoader::ResolveConfiguredNlsPrewarmRules(
-			config, rules, reason);
-	std::lock_guard<std::mutex> guard(m_impl->renderMutex);
-	m_impl->startupNlsPrewarmRules = std::move(rules);
-	m_impl->startupNlsPrewarmComplete = !available;
-	DebugLog::Log(
-		"Alpha shader prewarm configuration reloaded: armed=%d rules=%zu reason=%s",
-		available ? 1 : 0, m_impl->startupNlsPrewarmRules.size(),
-		reason.empty() ? "none" : reason.c_str());
-	return true;
-}
-
-
 bool LibplaceboVideoRenderer::OnVideoState(VideoStateComPtr& videoState)
 {
 	if (!videoState)
@@ -10191,7 +10025,7 @@ void LibplaceboVideoRenderer::Build()
 	try
 	{
 		impl->Initialize(m_videoHwnd, state, manualRule, manualUnifiedProfiles,
-			m_videoConversionOverride, m_nonCapturingPreparationMode);
+			m_videoConversionOverride);
 	}
 	catch (...)
 	{
@@ -12118,7 +11952,6 @@ void LibplaceboVideoRenderer::RenderLoop()
 		}
 		consecutiveFailures = 0;
 		m_hasPresentedLiveFrame.store(true, std::memory_order_release);
-		m_presentedFrameCount.fetch_add(1, std::memory_order_release);
 
 		if (correctionDecision.action == AlphaCadenceAction::Drop)
 		{

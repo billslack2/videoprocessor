@@ -55,7 +55,6 @@
 #include <DisplayRefreshRateEstimator.h>
 #include <DisplayRefreshRatePolicy.h>
 #include <RendererProfileConfig.h>
-#include <ShaderPreparationPolicy.h>
 #include <MainConfigSchema.h>
 #include <UnifiedProfileRuntime.h>
 
@@ -93,14 +92,6 @@ std::wstring ConfigurationEditorDirectory(
 	const std::wstring& applicationDirectory)
 {
 	return applicationDirectory + L"config\\";
-}
-
-uint64_t FileTimeTicks(const FILETIME& value)
-{
-	ULARGE_INTEGER ticks{};
-	ticks.LowPart = value.dwLowDateTime;
-	ticks.HighPart = value.dwHighDateTime;
-	return ticks.QuadPart;
 }
 
 struct CaptureVideoStateNotification
@@ -2034,8 +2025,6 @@ CVideoProcessorDlg::CVideoProcessorDlg():
 		CreateEvent(nullptr, TRUE, FALSE, nullptr);
 	m_configurationChangedEvent = CreateEventW(nullptr, FALSE, FALSE,
 		ConfigurationLiveApply::ChangedEventName);
-	m_shaderPreparationEvent = CreateEventW(nullptr, FALSE, FALSE,
-		ConfigurationLiveApply::ShaderPreparationEventName);
 	LoadDisplayRefreshRateOverrides();
 
 	ConfigFile profileConfig;
@@ -4399,28 +4388,6 @@ CVideoProcessorDlg::~CVideoProcessorDlg()
 		CloseHandle(m_configurationChangedEvent);
 		m_configurationChangedEvent = nullptr;
 	}
-	if (m_shaderPreparationEvent)
-	{
-		CloseHandle(m_shaderPreparationEvent);
-		m_shaderPreparationEvent = nullptr;
-	}
-	if (m_shaderPreparationProcess)
-	{
-		if (m_shaderPreparationJob)
-		{
-			// Closing a kill-on-close job terminates an unfinished isolated
-			// preparation even if VP itself is being torn down abnormally.
-			CloseHandle(m_shaderPreparationJob);
-			m_shaderPreparationJob = nullptr;
-		}
-		else
-		{
-			TerminateProcess(m_shaderPreparationProcess, ERROR_CANCELLED);
-		}
-		CloseHandle(m_shaderPreparationProcess);
-		m_shaderPreparationProcess = nullptr;
-	}
-
 	for (auto& captureDevice : m_captureDevices)
 		(*captureDevice).Release();
 
@@ -6189,306 +6156,6 @@ LRESULT CVideoProcessorDlg::OnMessageRendererPresentationStatus(WPARAM wParam,
 	return 0;
 }
 
-void CVideoProcessorDlg::PublishShaderPreparationStatus(const char* state,
-	size_t current, size_t total, const char* message) const
-{
-	std::string configPath = m_profileRuntime.ConfigPath();
-	if (configPath.empty())
-	{
-		ConfigFile config;
-		if (config.Load()) configPath = config.GetLoadedPath();
-	}
-	if (configPath.empty()) return;
-
-	const size_t separator = configPath.find_last_of("\\/");
-	if (separator == std::string::npos) return;
-	const std::string directory = configPath.substr(0, separator) +
-		"\\vprenderer";
-	if (!::CreateDirectoryA(directory.c_str(), nullptr) &&
-		::GetLastError() != ERROR_ALREADY_EXISTS) return;
-	const std::string path = directory + "\\" +
-		ConfigurationLiveApply::ShaderPreparationStatusFileNameA;
-	const std::string temporary = path + ".tmp";
-	{
-		std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
-		if (!output) return;
-		output << "state=" << (state ? state : "unknown") << "\n"
-			<< "policy=explicit-clear-v1\n"
-			<< "current=" << current << "\n"
-			<< "total=" << total << "\n"
-			<< "message=" << (message ? message : "") << "\n";
-	}
-	::MoveFileExA(temporary.c_str(), path.c_str(),
-		MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH);
-}
-
-bool CVideoProcessorDlg::StartShaderPreparation(bool blockRendererStart)
-{
-	if (m_shaderPreparationProcess)
-	{
-		if (blockRendererStart)
-			m_startupShaderPreparationBlocksRendererStart = true;
-		return true;
-	}
-	// Never prewarm an active VP Renderer. Each profile advance reaches
-	// pl_render_image on its live presentation worker, where a cold driver
-	// compile can hold renderMutex for seconds. The non-capturing host creates
-	// independent renderer/device lifetimes for the same windowed/fullscreen
-	// SDR/PQ profile matrix, so this UI handler only launches work and returns.
-	std::wstring directory;
-	if (!GetApplicationDirectory(directory))
-	{
-		PublishShaderPreparationStatus("failed", 0, 0,
-			"Shader preparation could not locate VideoProcessor.exe.");
-		if (blockRendererStart)
-			m_startupShaderPreparationComplete = true;
-		return false;
-	}
-	std::wstring executable = directory + L"VideoProcessor.exe";
-	std::wstring command = L"\"" + executable + L"\" /prepare_shaders";
-	PublishShaderPreparationStatus("waiting", 0, 0,
-		"Starting non-capturing shader preparation...");
-	HANDLE job = ::CreateJobObjectW(nullptr, nullptr);
-	if (job)
-	{
-		JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};
-		limits.BasicLimitInformation.LimitFlags =
-			JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-		if (!::SetInformationJobObject(job,
-			JobObjectExtendedLimitInformation, &limits, sizeof(limits)))
-		{
-			::CloseHandle(job);
-			job = nullptr;
-		}
-	}
-	STARTUPINFOW startup{};
-	startup.cb = sizeof(startup);
-	PROCESS_INFORMATION process{};
-	if (!::CreateProcessW(executable.c_str(), &command[0], nullptr,
-		nullptr, FALSE, CREATE_NO_WINDOW | BELOW_NORMAL_PRIORITY_CLASS |
-			CREATE_SUSPENDED,
-		nullptr, directory.c_str(), &startup, &process))
-	{
-		if (job) ::CloseHandle(job);
-		PublishShaderPreparationStatus("failed", 0, 0,
-			"Non-capturing shader preparation could not start.");
-		if (blockRendererStart)
-			m_startupShaderPreparationComplete = true;
-		return false;
-	}
-	if (job && !::AssignProcessToJobObject(job, process.hProcess))
-	{
-		DebugLog::Log(
-			"Shader preparation job assignment failed: process=%lu error=%lu; using explicit shutdown cancellation",
-			process.dwProcessId, GetLastError());
-		::CloseHandle(job);
-		job = nullptr;
-	}
-	if (::ResumeThread(process.hThread) == static_cast<DWORD>(-1))
-	{
-		const DWORD resumeError = GetLastError();
-		::TerminateProcess(process.hProcess, resumeError);
-		::CloseHandle(process.hThread);
-		::CloseHandle(process.hProcess);
-		if (job) ::CloseHandle(job);
-		PublishShaderPreparationStatus("failed", 0, 0,
-			"Non-capturing shader preparation could not resume.");
-		if (blockRendererStart)
-			m_startupShaderPreparationComplete = true;
-		return false;
-	}
-	::CloseHandle(process.hThread);
-	m_shaderPreparationProcess = process.hProcess;
-	m_shaderPreparationJob = job;
-	m_startupShaderPreparationBlocksRendererStart = blockRendererStart;
-	DebugLog::Log(
-		"Shader preparation launched in non-capturing host: startup_gate=%d active_vp_renderer=%d renderer_state=%d process=%lu",
-		blockRendererStart ? 1 : 0,
-		m_videoRenderer && IsAlphaRendererSelected() ? 1 : 0,
-		static_cast<int>(m_rendererState), process.dwProcessId);
-	if (blockRendererStart)
-		ShowStartupShaderPreparationSplash();
-	return true;
-}
-
-
-bool CVideoProcessorDlg::HasPreparedShaderCache() const
-{
-	std::wstring directory;
-	if (!GetApplicationDirectory(directory))
-		return false;
-	const std::wstring rendererDirectory = directory + L"vprenderer\\";
-	const std::wstring cachePath = rendererDirectory +
-		L"VideoProcessorShaderCache.bin";
-	const std::wstring clearPath = rendererDirectory +
-		L"VideoProcessorShaderCache.clear";
-	const std::wstring statusPath = rendererDirectory +
-		ConfigurationLiveApply::ShaderPreparationStatusFileName;
-
-	if (::GetFileAttributesW(clearPath.c_str()) != INVALID_FILE_ATTRIBUTES)
-	{
-		DebugLog::Log(
-			"Startup shader preparation required: explicit cache-clear marker exists");
-		return false;
-	}
-
-	WIN32_FILE_ATTRIBUTE_DATA cacheData{};
-	WIN32_FILE_ATTRIBUTE_DATA statusData{};
-	if (!::GetFileAttributesExW(cachePath.c_str(), GetFileExInfoStandard,
-		&cacheData) || !::GetFileAttributesExW(statusPath.c_str(),
-			GetFileExInfoStandard, &statusData))
-	{
-		DebugLog::Log(
-			"Startup shader preparation required: cache or completed-preparation status is missing");
-		return false;
-	}
-	const ULONGLONG cacheBytes =
-		(static_cast<ULONGLONG>(cacheData.nFileSizeHigh) << 32) |
-		cacheData.nFileSizeLow;
-	if (cacheBytes == 0)
-		return false;
-
-	HANDLE status = ::CreateFileW(statusPath.c_str(), GENERIC_READ,
-		FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
-		OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-	if (status == INVALID_HANDLE_VALUE)
-		return false;
-	char statusBytes[512] = {};
-	DWORD bytesRead = 0;
-	const BOOL read = ::ReadFile(status, statusBytes,
-		static_cast<DWORD>(sizeof(statusBytes) - 1), &bytesRead, nullptr);
-	::CloseHandle(status);
-	const std::string statusText = read
-		? std::string(statusBytes, statusBytes + bytesRead) : std::string();
-	if (statusText.rfind("state=ready", 0) != 0)
-	{
-		DebugLog::Log(
-			"Startup shader preparation required: last preparation did not complete");
-		return false;
-	}
-
-	const bool explicitClearInvalidationPolicy =
-		statusText.find("\npolicy=explicit-clear-v1\n") != std::string::npos;
-	// New status explicitly belongs to a lifetime invalidated only by Clear.
-	// For a legacy status without that policy marker, use timestamps once to
-	// detect the known clear-followed-by-partial-compilation state.
-	if (!ShaderPreparationPolicy::HasCompletedCacheLifetime(true, cacheBytes,
-		FileTimeTicks(cacheData.ftCreationTime), false, true,
-		explicitClearInvalidationPolicy,
-		FileTimeTicks(statusData.ftLastWriteTime)))
-	{
-		DebugLog::Log(
-			"Startup shader preparation required: cache lifetime is newer than completed-preparation status");
-		return false;
-	}
-	DebugLog::Log(
-		"Startup shader preparation skipped: prepared persistent cache is valid size=%llu",
-		static_cast<unsigned long long>(cacheBytes));
-	return true;
-}
-
-
-void CVideoProcessorDlg::ShowStartupShaderPreparationSplash()
-{
-	const HWND target = m_windowedVideoWindow.GetSafeHwnd();
-	if (!target || !::IsWindow(target) || !GetSafeHwnd())
-	{
-		DebugLog::Log(
-			"Startup shader preparation splash skipped: target=%p target_valid=%d owner=%p",
-			target, target && ::IsWindow(target) ? 1 : 0, GetSafeHwnd());
-		return;
-	}
-	CString message(TEXT(
-		"Preparing all configured windowed and fullscreen shader variants."));
-	std::wstring directory;
-	if (GetApplicationDirectory(directory))
-	{
-		const std::wstring statusPath = directory + L"vprenderer\\" +
-			ConfigurationLiveApply::ShaderPreparationStatusFileName;
-		std::ifstream status(statusPath, std::ios::binary);
-		std::string line;
-		while (std::getline(status, line))
-		{
-			if (line.rfind("message=", 0) != 0)
-				continue;
-			line.erase(0, 8);
-			if (!line.empty() && line.back() == '\r') line.pop_back();
-			if (!line.empty()) message = CString(line.c_str());
-			break;
-		}
-	}
-	message += TEXT("\r\nVideo will begin automatically; the UI remains available.");
-	if (m_rendererTransitionWindow.IsVisible() &&
-		m_startupShaderPreparationSplashMessage == message)
-	{
-		m_rendererTransitionWindow.KeepOnTop();
-		m_startupShaderPreparationSplashVisible = true;
-		return;
-	}
-	m_startupShaderPreparationSplashMessage = message;
-	m_rendererDetailStringStatic.SetWindowText(message);
-	m_rendererTransitionWindow.ShowStatus(target, GetSafeHwnd(), message);
-	m_startupShaderPreparationSplashVisible = true;
-	const HRESULT compositionResult =
-		m_rendererTransitionWindow.SynchronizeComposition();
-	DebugLog::Log(
-		"Startup shader preparation splash shown: target=%p cover=%p composition_sync=0x%08lx",
-		target, m_rendererTransitionWindow.GetHWND(),
-		static_cast<unsigned long>(compositionResult));
-}
-
-
-void CVideoProcessorDlg::PollShaderPreparation()
-{
-	if (!m_shaderPreparationProcess)
-		return;
-	const DWORD waitResult = ::WaitForSingleObject(m_shaderPreparationProcess, 0);
-	if (waitResult == WAIT_TIMEOUT)
-	{
-		if (m_startupShaderPreparationBlocksRendererStart &&
-			IsAlphaRendererSelected())
-			ShowStartupShaderPreparationSplash();
-		else if (m_startupShaderPreparationSplashVisible)
-		{
-			m_rendererTransitionWindow.Hide();
-			m_startupShaderPreparationSplashVisible = false;
-		}
-		return;
-	}
-
-	DWORD exitCode = ERROR_PROCESS_ABORTED;
-	const BOOL gotExitCode = ::GetExitCodeProcess(
-		m_shaderPreparationProcess, &exitCode);
-	::CloseHandle(m_shaderPreparationProcess);
-	m_shaderPreparationProcess = nullptr;
-	if (m_shaderPreparationJob)
-	{
-		::CloseHandle(m_shaderPreparationJob);
-		m_shaderPreparationJob = nullptr;
-	}
-	const bool succeeded = gotExitCode && exitCode == 0;
-	DebugLog::Log(
-		"Non-capturing shader preparation finished: succeeded=%d exit_code=%lu startup_gate=%d",
-		succeeded ? 1 : 0, exitCode,
-		m_startupShaderPreparationBlocksRendererStart ? 1 : 0);
-
-	if (!m_startupShaderPreparationBlocksRendererStart)
-		return;
-	m_startupShaderPreparationBlocksRendererStart = false;
-	m_startupShaderPreparationComplete = true;
-	m_rendererTransitionWindow.Hide();
-	m_startupShaderPreparationSplashVisible = false;
-	m_startupShaderPreparationSplashMessage.Empty();
-	if (!succeeded)
-	{
-		m_rendererDetailStringStatic.SetWindowText(
-			TEXT("Shader preparation failed; continuing with on-demand preparation."));
-		DebugLog::Log(
-			"Startup shader preparation failed; releasing renderer start without a prepared cache");
-	}
-	UpdateState();
-}
-
 LRESULT CVideoProcessorDlg::OnMessageExternalShortcut(WPARAM wParam,
 	LPARAM lParam)
 {
@@ -7539,18 +7206,9 @@ void CVideoProcessorDlg::UpdateState()
 		{
 			return;
 		}
-		// Trust a completed cache lifetime and start immediately. Only a missing,
-		// explicitly cleared, partial, or failed lifetime runs the configured
-		// matrix in an isolated process while this UI polls its process handle.
-		if (IsAlphaRendererSelected() && !m_startupShaderPreparationComplete)
-		{
-			if (HasPreparedShaderCache())
-				m_startupShaderPreparationComplete = true;
-			else if (!m_shaderPreparationProcess)
-				StartShaderPreparation(true);
-			if (!m_startupShaderPreparationComplete)
-				return;
-		}
+		// Persistent libplacebo entries are consumed opportunistically. Never
+		// delay renderer construction for an exhaustive synthetic matrix; a real
+		// cold live miss uses the delayed, nonblocking compilation splash.
 		if (m_captureDeviceVideoState &&
 			m_captureDeviceVideoState->valid)
 			RenderStart();
@@ -12355,13 +12013,9 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 
 	if (nIDEvent == CONFIGURATION_LIVE_APPLY_TIMER_ID)
 	{
-		PollShaderPreparation();
 		if (m_configurationChangedEvent &&
 			WaitForSingleObject(m_configurationChangedEvent, 0) == WAIT_OBJECT_0)
 			ApplySavedConfiguration();
-		if (m_shaderPreparationEvent &&
-			WaitForSingleObject(m_shaderPreparationEvent, 0) == WAIT_OBJECT_0)
-			StartShaderPreparation();
 		return;
 	}
 

@@ -27,10 +27,6 @@ public:
 	void OnVideoFrame(VideoFrame& videoFrame) override;
 	bool HasPresentedLiveFrame() const override;
 	const char* PresentedLiveFrameEvidence() const override;
-	uint64_t PresentedFrameCount() const override;
-	bool PersistShaderCache() override;
-	void SetNonCapturingPreparationMode(bool enabled) override;
-	bool ReloadConfiguredShaderPrewarm() override;
 	HRESULT OnWindowsEvent(LONG_PTR param1, LONG_PTR param2) override;
 	void Build() override;
 	void Start() override;

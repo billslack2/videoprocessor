@@ -105,10 +105,6 @@ public:
 	// successful submit/present boundary.
 	virtual bool HasPresentedLiveFrame() const { return false; }
 	virtual const char* PresentedLiveFrameEvidence() const { return "unavailable"; }
-	virtual uint64_t PresentedFrameCount() const { return 0; }
-	virtual bool PersistShaderCache() { return false; }
-	virtual void SetNonCapturingPreparationMode(bool) {}
-	virtual bool ReloadConfiguredShaderPrewarm() { return true; }
 	virtual bool GetLivenessSnapshot(RendererLivenessSnapshot& snapshot) const
 	{
 		snapshot = {};

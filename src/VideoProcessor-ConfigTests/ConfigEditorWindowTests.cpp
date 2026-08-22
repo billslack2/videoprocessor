@@ -670,6 +670,9 @@ void testEveryPageRoundTrips()
         shaderSections->tabText(2) == QStringLiteral("NLS") &&
         shaderSections->currentIndex() == 0,
         "Shaders page does not separate Setup, Standard, and NLS in the requested order");
+    require(window.findChild<QPushButton*>(
+        QStringLiteral("config.shader.prepare")) == nullptr,
+        "Shaders Setup still exposes exhaustive preparation");
     const QString cacheDirectoryPath = directory.filePath(QStringLiteral("vprenderer"));
     require(QDir().mkpath(cacheDirectoryPath),
         "Cannot create the shader-cache test directory");
@@ -679,19 +682,10 @@ void testEveryPageRoundTrips()
     require(cacheFile.open(QIODevice::WriteOnly) && cacheFile.write("cached") == 6,
         "Cannot create the shader-cache test fixture");
     cacheFile.close();
-    const QString preparationStatusPath = QDir(cacheDirectoryPath).filePath(
-        QStringLiteral("VideoProcessorShaderPreparation.status"));
-    QFile preparationStatus(preparationStatusPath);
-    require(preparationStatus.open(QIODevice::WriteOnly) &&
-        preparationStatus.write("state=ready\n") == 12,
-        "Cannot create the shader-preparation status fixture");
-    preparationStatus.close();
     requireControl<QPushButton>(window,
         QStringLiteral("config.shader.cache.clear"))->click();
     require(!QFileInfo::exists(cachePath),
         "Clear shader cache did not remove the persistent cache file");
-    require(!QFileInfo::exists(preparationStatusPath),
-        "Clear shader cache did not invalidate completed preparation status");
     require(QFileInfo::exists(QDir(cacheDirectoryPath).filePath(
         QStringLiteral("VideoProcessorShaderCache.clear"))),
         "Clear shader cache did not leave a request for the active renderer shutdown path");
@@ -918,7 +912,7 @@ void testRendererSectionTabsRemainSynchronizedDuringRapidClicks()
     runSequence({
         { 2, 9, "NLS", "config.shader.nls.modes" },
         { 1, 8, "Standard", "config.shader.standard.items" },
-        { 0, 14, "Shaders", "config.shader.prepare" },
+        { 0, 14, "Shaders", "config.shader.cache.clear" },
         { 2, 9, "NLS", "config.shader.nls.modes" },
         { 1, 8, "Standard", "config.shader.standard.items" }
     });

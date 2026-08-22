@@ -430,7 +430,6 @@ protected:
 	WORD m_lastBackgroundShortcutCommand = 0;
 	ULONGLONG m_lastBackgroundShortcutTick = 0;
 	HANDLE m_configurationChangedEvent = nullptr;
-	HANDLE m_shaderPreparationEvent = nullptr;
 	std::map<std::string, std::map<std::string, std::string>>
 		m_configurationSnapshot;
 	struct StagedRuntimeSettings
@@ -864,12 +863,6 @@ protected:
 	void ApplyStatsOverlayForActiveRenderer();
 	void LoadDisplayRefreshRateOverrides();
 	void ApplySavedConfiguration();
-	bool StartShaderPreparation(bool blockRendererStart = false);
-	void PollShaderPreparation();
-	void ShowStartupShaderPreparationSplash();
-	bool HasPreparedShaderCache() const;
-	void PublishShaderPreparationStatus(const char* state, size_t current,
-		size_t total, const char* message) const;
 	void UpdateActiveOutputSweep(ULONGLONG now);
 	bool StartActiveOutputSweep();
 	bool ApplyActiveOutputSweepCase(size_t index);
@@ -934,15 +927,6 @@ protected:
 	void ApplyUnifiedProfileSnapshot(
 		const std::shared_ptr<const UnifiedProfileRuntime::Snapshot>& snapshot,
 		bool allowRestart);
-	// Preparation owns an isolated VideoProcessor process only when the current
-	// cache lifetime has never completed configured preparation. Retain its
-	// handle so the UI can poll without waiting on GPU compilation.
-	HANDLE m_shaderPreparationProcess = nullptr;
-	HANDLE m_shaderPreparationJob = nullptr;
-	bool m_startupShaderPreparationComplete = false;
-	bool m_startupShaderPreparationBlocksRendererStart = false;
-	bool m_startupShaderPreparationSplashVisible = false;
-	CString m_startupShaderPreparationSplashMessage;
 	void ScheduleUnifiedProfileActions(
 		const std::vector<UnifiedProfileRuntime::ActionInvocation>& actions);
 	void PublishUnifiedProfileEvent(const std::string& event,

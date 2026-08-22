@@ -419,27 +419,6 @@ bool LibplaceboPluginVideoRenderer::ApplyApplicationState(
 		rendererRestartRequired, liveResetRequired);
 }
 
-uint64_t LibplaceboPluginVideoRenderer::PresentedFrameCount() const
-{
-	return m_renderer->PresentedFrameCount();
-}
-
-bool LibplaceboPluginVideoRenderer::PersistShaderCache()
-{
-	return m_renderer->PersistShaderCache();
-}
-
-void LibplaceboPluginVideoRenderer::SetNonCapturingPreparationMode(bool enabled)
-{
-	m_renderer->SetNonCapturingPreparationMode(enabled);
-}
-
-bool LibplaceboPluginVideoRenderer::ReloadConfiguredShaderPrewarm()
-{
-	return m_renderer->ReloadConfiguredShaderPrewarm();
-}
-
-
 size_t LibplaceboPluginVideoRenderer::GetFrameQueueSize()
 {
 	return m_renderer->GetFrameQueueSize();
