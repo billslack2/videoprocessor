@@ -2,7 +2,9 @@
 
 ## Status
 
-In Progress (2026-08-21). Source worktree:
+Done (2026-08-22). The developer accepted the deployed x64 Release build at
+source commit `7b72265` after live windowed/fullscreen, Rec.709/BT.2020,
+renderer-switch, resize, cache-clear, NLS, and NLS+ testing. Source worktree:
 `C:\\Videoprocessor\\vp\\vprenderer\\.codex-worktrees\\vp-0140`, branch
 `codex/vp-0140-nonblocking-shader-preparation`, based on
 `v1.2.001-beta` at `a31803d`.
@@ -357,6 +359,40 @@ for `VideoProcessorVPRenderer.dll`. The replaced pair is backed up under
 `VideoProcessor.cfg` and the existing 57-object, 7,076,884-byte libplacebo
 cache were preserved byte-for-byte. Live repeated F5/F6, NLS, OSD, and resize
 validation remains required before Review.
+
+Accepted final rollback (2026-08-22): the intervening shadow-render,
+compilation-overlay, epoch, and shader-status implementations established that
+VP could not safely predict or independently manage libplacebo's composed
+render programs. Source commits `4e3cc38` (`Remove custom shader lifecycle
+orchestration`), `b3a6783` (`Disable render stall overlay`), and `7b72265`
+(`Remove unused shader overlay status mirror`) remove that speculative control
+plane. VP no longer precompiles, guesses, flushes, tracks, or displays status
+for shader variants. libplacebo owns normal on-demand program compilation and
+its bounded persistent cache. VP retains only cache inspection and the
+explicit user-requested **Clear shader cache** action.
+
+The accepted UI-liveness boundary is the existing nonblocking `try_lock` and
+coalesced-intent handling for resize, display/profile, and shader changes.
+Those paths do not synchronously wait behind a render. The disabled overlay
+code was left behaviorally inert for possible later investigation; its unused
+status mirror was removed. This final scope deliberately does not claim a
+second libplacebo renderer/device can prepare transferable programs in the
+background or that cold compilation can continue presenting the old frame;
+the attempted VP-level lifecycle was less correct and substantially slower
+than libplacebo's standard behavior.
+
+Final verification rebuilt the complete solution in x64 Release with
+`VERSION_DIRTY=false` and passed all 861 native tests, including the real GPU
+NLS/NLS+ path. All shader/cache/NLS Config tests passed. A separate
+foreground/topmost timing test remained desktop-focus-sensitive on later
+reruns and had already passed from the same unchanged Config test binary; the
+final cleanup does not build into that test. The deployed executable SHA-256
+is `C4F440FB7FF19BF17DDC0E4F5BBE85729AA42058805C54BD0A42C18BAC55D2FC`;
+the replaced deployment is recoverable under
+`C:\\Videoprocessor\\vp\\backups\\before-vp0140-7b72265-20260822-141308`.
+No renderer DLL, configuration, or cache file was changed by that final
+deployment. The completed feature branch is published at `7b72265` on
+`origin/codex/vp-0140-nonblocking-shader-preparation`.
 
 ## User story
 
