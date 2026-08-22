@@ -327,6 +327,37 @@ for `VideoProcessorVPRenderer.dll`. The replaced pair is backed up under
 The active configuration and 35-object libplacebo cache were preserved. Live
 shader-Off resize validation remains required before Review.
 
+Renderer-cache ownership rollback (2026-08-22): subsequent live validation
+showed a previously exercised profile compiling again within the same operator
+session. The remaining source audit found three VP calls to
+`pl_renderer_flush_cache`: display-LUT failure, native stats-overlay topology
+or bitmap-size changes, and native sweep-overlay topology or bitmap-size
+changes. The overlay calls could discard every hot Rec.709, BT.2020, base, and
+NLS program merely because OSD content changed. This contradicted
+libplacebo's API contract, which says an explicit flush is normally unnecessary
+even when image parameters, colorspace, or target configuration change because
+libplacebo detects and replaces outdated resources itself.
+
+Source commit `971fc1a` (`Stop flushing libplacebo renderer programs`) removes
+every VP call to `pl_renderer_flush_cache` and the now-unused overlay
+invalidation bookkeeping. libplacebo now exclusively owns its live renderer
+program lifecycle. VP retains only bounded `pl_cache` persistence (load once,
+save at renderer destruction) and the explicit user-requested cache clear;
+ordinary profile, viewport, overlay, LUT, source-metadata, resize, and reset
+changes cannot clear reusable renderer programs.
+
+The x64 Release VP renderer plugin and GUI build completed successfully at the
+clean `971fc1a` commit. All 861 native tests and the complete Config UI test
+suite passed. Deployed SHA-256 values are
+`8A80E2E5D03BA7F46E437B8C72E9E85F7934ECE358496F619084123533AD3DA3`
+for `VideoProcessor.exe` and
+`BEACC569889AA9BC4CFA5148AE654225B1BE1A9F3375AB54D59B983933275F71`
+for `VideoProcessorVPRenderer.dll`. The replaced pair is backed up under
+`C:\\Videoprocessor\\vp\\backups\\vp-0140-971fc1a-20260822-0919`.
+`VideoProcessor.cfg` and the existing 57-object, 7,076,884-byte libplacebo
+cache were preserved byte-for-byte. Live repeated F5/F6, NLS, OSD, and resize
+validation remains required before Review.
+
 ## User story
 
 As a VideoProcessor operator, I need every potentially cold VP Renderer shader
