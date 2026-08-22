@@ -1044,7 +1044,8 @@ void testInheritedRendererInputSelectorsUseEffectiveLabels()
         require(combo->currentData().toString().isEmpty(),
             "An inherited input setting must retain its empty override value");
         require(combo->currentText() == expectedText,
-            "An inherited input setting did not identify its effective value");
+            QStringLiteral("An inherited input setting did not identify its effective value: %1 is '%2', expected '%3'")
+                .arg(objectName, combo->currentText(), expectedText).toStdString().c_str());
         require(combo->property("inherited").toBool(),
             "An inherited input setting is not styled as inherited");
     };
@@ -1054,6 +1055,50 @@ void testInheritedRendererInputSelectorsUseEffectiveLabels()
         QStringLiteral("Inherited: V210 to P010"));
     verifyInherited(QStringLiteral("config.directshow.hdr_colorspace"),
         QStringLiteral("Inherited: Follow input (LLDV)"));
+
+    QComboBox* override = requireControl<QComboBox>(window,
+        QStringLiteral("config.vprenderer.input_processing.hdr_colorspace"));
+    selectData(override, QStringLiteral("FOLLOW_INPUT"));
+    require(override->itemText(0) == QStringLiteral("Inherited: Follow input (LLDV)"),
+        "The inherit choice did not identify General's effective value beside an override");
+}
+
+void testInheritedRendererInputSelectorsRefreshWithGeneral()
+{
+    QTemporaryDir directory;
+    ConfigEditorWindow window(copyFixture(directory), 0, true);
+    QComboBox* generalContainer = requireControl<QComboBox>(window,
+        QStringLiteral("config.general.container_colorspace"));
+    selectData(generalContainer, QString());
+    for (const QString& objectName : { QStringLiteral("config.directshow.container_colorspace"),
+        QStringLiteral("config.vprenderer.input_processing.container_colorspace") })
+    {
+        QComboBox* inherited = requireControl<QComboBox>(window, objectName);
+        require(inherited->currentData().toString().isEmpty() &&
+            inherited->currentText() == QStringLiteral("Inherited: Follow input"),
+            "An inherited container policy did not expose General's Follow input value");
+    }
+
+    QComboBox* generalHdr = requireControl<QComboBox>(window,
+        QStringLiteral("config.general.hdr_luminance"));
+    selectData(generalHdr, QStringLiteral("FOLLOW_INPUT"));
+    for (const QString& objectName : { QStringLiteral("config.directshow.hdr_luminance"),
+        QStringLiteral("config.vprenderer.input_processing.hdr_luminance") })
+    {
+        QComboBox* inherited = requireControl<QComboBox>(window, objectName);
+        require(inherited->currentData().toString().isEmpty() &&
+            inherited->currentText() == QStringLiteral("Inherited: Follow input"),
+            "An inherited HDR policy did not refresh after its General value changed");
+    }
+
+    QComboBox* hdrOverride = requireControl<QComboBox>(window,
+        QStringLiteral("config.directshow.hdr_colorspace"));
+    selectData(hdrOverride, QStringLiteral("FOLLOW_INPUT_LLDV"));
+    QComboBox* generalColor = requireControl<QComboBox>(window,
+        QStringLiteral("config.general.hdr_colorspace"));
+    selectData(generalColor, QStringLiteral("FOLLOW_INPUT"));
+    require(hdrOverride->itemText(0) == QStringLiteral("Inherited: Follow input"),
+        "The inherit choice did not refresh beside an active renderer override");
 }
 
 void testSdrGammaAdjustmentLabelsAndPersistence()
@@ -1110,6 +1155,44 @@ void testLegacyVpInputOverrideMigratesToIndependentPolicySection()
         "The legacy display-profile root still owns VP input processing");
     require(!saved.contains("[vprenderer.profile_1]"),
         "Migrating input policy created a synthetic display profile");
+}
+
+void testLldvMetadataMigratesToEnabledSingleton()
+{
+    QTemporaryDir directory;
+    require(directory.isValid(), "Cannot create LLDV migration directory");
+    const QString path = copyFixture(directory);
+    QByteArray config = readBytes(path);
+    config.replace("hdr_colorspace: FOLLOW_INPUT_LLDV", "hdr_colorspace: FOLLOW_INPUT");
+    config.replace("hdr_luminance: FOLLOW_INPUT_LLDV", "hdr_luminance: FOLLOW_INPUT");
+    config.replace("[lldv]", "[lldv.default]");
+    config.replace("#max_cll: 1000", "max_cll: 1234");
+    config.replace("#max_fall: 401", "max_fall: 432");
+    config.replace("#mastering_min_luminance: 0.001",
+        "mastering_min_luminance: 0.002");
+    config.replace("#mastering_max_luminance: 4000",
+        "mastering_max_luminance: 3500");
+    QFile file(path);
+    require(file.open(QIODevice::WriteOnly | QIODevice::Truncate),
+        "Cannot write LLDV migration fixture");
+    require(file.write(config) == config.size(),
+        "Cannot replace LLDV migration fixture");
+    file.close();
+
+    ConfigEditorWindow window(path, 0, true);
+    require(window.findChild<QCheckBox*>(QStringLiteral("config.lldv.enabled")) == nullptr,
+        "LLDV metadata handling is always enabled and must not be exposed as a toggle");
+    require(requireControl<QLineEdit>(window,
+        QStringLiteral("config.lldv.max_cll"))->text() == QStringLiteral("1234"),
+        "Canonical LLDV singleton did not retain MaxCLL");
+
+    save(window);
+    const QByteArray saved = readBytes(path);
+    require(saved.contains("[lldv]") && !saved.contains("[lldv.default]"),
+        "Named LLDV configuration did not migrate to the singleton section");
+    require(saved.contains("hdr_colorspace: FOLLOW_INPUT_LLDV") &&
+        saved.contains("hdr_luminance: FOLLOW_INPUT_LLDV"),
+        "Explicit LLDV metadata remained silently disabled by FOLLOW_INPUT");
 }
 
 void answerInputDialog(const QString& text)
@@ -1426,6 +1509,42 @@ void testRendererProfileSectionsCollapseAndPersist()
     require(requireControl<QComboBox>(window,
         QStringLiteral("config.vprenderer.quality")),
         "Rendering quality is not available at the top of the renderer profile");
+    QComboBox* quality = requireControl<QComboBox>(window,
+        QStringLiteral("config.vprenderer.quality"));
+    require(quality->currentData().toString() == QStringLiteral("high") &&
+        quality->currentText() == QStringLiteral("High") &&
+        qobject_cast<QListView*>(quality->view())->isRowHidden(0),
+        "The root rendering-quality selector exposes a redundant Default choice");
+    require(quality->itemData(1).toString() == QStringLiteral("high") &&
+        quality->itemData(2).toString() == QStringLiteral("balanced") &&
+        quality->itemData(3).toString() == QStringLiteral("fast"),
+        "Rendering-quality choices are not ordered High, Balanced, Fast");
+    QComboBox* upscaler = requireControl<QComboBox>(window,
+        QStringLiteral("config.vprenderer.upscaler"));
+    QComboBox* downscaler = requireControl<QComboBox>(window,
+        QStringLiteral("config.vprenderer.downscaler"));
+    for (const QString& value : { QStringLiteral("none"),
+        QStringLiteral("nearest"), QStringLiteral("oversample"),
+        QStringLiteral("gaussian"), QStringLiteral("catmull_rom"),
+        QStringLiteral("lanczos"), QStringLiteral("ewa_lanczos4sharpest") })
+        require(upscaler->findData(value) >= 0,
+            "The upscaler selector is missing a supported libplacebo filter");
+    for (const QString& value : { QStringLiteral("none"),
+        QStringLiteral("box"), QStringLiteral("hermite"),
+        QStringLiteral("gaussian"), QStringLiteral("catmull_rom"),
+        QStringLiteral("mitchell"), QStringLiteral("lanczos") })
+        require(downscaler->findData(value) >= 0,
+            "The downscaler selector is missing a supported libplacebo filter");
+    require(upscaler->itemData(2).toString() ==
+        QStringLiteral("ewa_lanczos4sharpest") &&
+        upscaler->itemData(3).toString() == QStringLiteral("ewa_lanczossharp") &&
+        upscaler->itemData(12).toString() == QStringLiteral("none"),
+        "Upscaler choices are not ordered from highest quality to lowest");
+    require(downscaler->itemData(2).toString() == QStringLiteral("ewa_lanczos") &&
+        downscaler->itemData(9).toString() == QStringLiteral("bilinear") &&
+        downscaler->itemData(11).toString() == QStringLiteral("none") &&
+        downscaler->itemText(11) == QStringLiteral("Match upscaler"),
+        "Downscaler choices are not quality ordered or accurately labelled");
     require(pages->widget(0)->findChild<QCheckBox*>(
         QStringLiteral("config.general.switch_refresh_rate")) != nullptr &&
         pages->widget(2)->findChild<QCheckBox*>(
@@ -1438,6 +1557,22 @@ void testRendererProfileSectionsCollapseAndPersist()
         debanding->findData(QStringLiteral("light")) >= 0 &&
         debanding->findData(QStringLiteral("default")) >= 0,
         "The canonical debanding selector is missing an expected value");
+    require(debanding->itemData(1).toString() == QStringLiteral("AUTO") &&
+        debanding->itemData(2).toString() == QStringLiteral("default") &&
+        debanding->itemData(3).toString() == QStringLiteral("light") &&
+        debanding->itemData(4).toString() == QStringLiteral("off"),
+        "Debanding choices are not ordered Standard, Light, Off after Auto");
+    QComboBox* sigmoid = requireControl<QComboBox>(window,
+        QStringLiteral("config.vprenderer.sigmoid"));
+    require(sigmoid->accessibleName() == QStringLiteral("Anti-ringing"),
+        "Sigmoid scaling does not expose the Anti-ringing accessible name");
+    QComboBox* peakDetection = requireControl<QComboBox>(window,
+        QStringLiteral("config.vprenderer.peak_detection"));
+    require(peakDetection->itemData(1).toString() == QStringLiteral("AUTO") &&
+        peakDetection->itemData(2).toString() == QStringLiteral("high_quality") &&
+        peakDetection->itemData(3).toString() == QStringLiteral("on") &&
+        peakDetection->itemData(4).toString() == QStringLiteral("off"),
+        "Peak-detection choices are not ordered High quality, On, Off after Auto");
     QComboBox* dithering = requireControl<QComboBox>(window,
         QStringLiteral("config.vprenderer.dithering"));
     require(dithering->itemText(dithering->findData(QStringLiteral("AUTO"))) ==
@@ -1449,9 +1584,10 @@ void testRendererProfileSectionsCollapseAndPersist()
         "The dithering selector does not use concise Auto/On/Off labels");
     QComboBox* displayBitDepth = requireControl<QComboBox>(window,
         QStringLiteral("config.vprenderer.display_bit_depth"));
-    require(displayBitDepth->currentData().toString().isEmpty() &&
-        displayBitDepth->currentText() == QStringLiteral("Default: Auto"),
-        "An unset value in the default renderer profile is not identified as a built-in default");
+    require(displayBitDepth->currentData().toString() == QStringLiteral("AUTO") &&
+        displayBitDepth->currentText() == QStringLiteral("Auto") &&
+        qobject_cast<QListView*>(displayBitDepth->view())->isRowHidden(0),
+        "A quality-governed renderer selector still exposes a separate Use default choice");
     require(displayBitDepth->itemText(
         displayBitDepth->findData(QStringLiteral("AUTO"))) == QStringLiteral("Auto") &&
         displayBitDepth->itemText(
@@ -1460,6 +1596,9 @@ void testRendererProfileSectionsCollapseAndPersist()
         displayBitDepth->findData(QStringLiteral("10"))) ==
         QStringLiteral("10-bit or higher"),
         "The display bit-depth selector is missing an expected value");
+    require(displayBitDepth->itemData(2).toString() == QStringLiteral("10") &&
+        displayBitDepth->itemData(3).toString() == QStringLiteral("8"),
+        "Display bit-depth choices are not ordered from highest quality to lowest");
     require(!requireControl<QWidget>(window,
         QStringLiteral("rendererSection.lut.content"))->isVisibleTo(&window),
         "3D LUT renderer content is visible while collapsed");
@@ -1955,8 +2094,57 @@ void testChoiceLabelsAndVpRendererName()
         QStringLiteral("config.vprenderer.peak_detection"));
     require(peakDetection->findText(QStringLiteral("Auto")) >= 0 &&
         peakDetection->findText(QStringLiteral("AUTO")) < 0 &&
+        peakDetection->findText(QStringLiteral("Standard")) >= 0 &&
         peakDetection->findData(QStringLiteral("default")) < 0,
         "Renderer selector exposes duplicate or inconsistently cased automatic choices");
+
+    QComboBox* quality = requireControl<QComboBox>(window,
+        QStringLiteral("config.vprenderer.quality"));
+    QComboBox* displayPrimaries = requireControl<QComboBox>(window,
+        QStringLiteral("config.vprenderer.sdr_target_primaries"));
+    require(displayPrimaries->count() == 2 &&
+        displayPrimaries->currentData().toString() == QStringLiteral("REC709") &&
+        displayPrimaries->findText(QStringLiteral("Default"),
+            Qt::MatchStartsWith) < 0,
+        "Display primaries still exposes Default as a separate choice");
+    require(requireControl<QLabel>(window,
+        QStringLiteral("config.vprenderer.output_gamma.auto_status"))->text() ==
+            QStringLiteral("Auto: sRGB") &&
+        requireControl<QLabel>(window,
+        QStringLiteral("config.vprenderer.sdr_adjust_gamma.auto_status"))->text() ==
+            QStringLiteral("Auto: Source unavailable") &&
+        requireControl<QLabel>(window,
+        QStringLiteral("config.vprenderer.sdr_input_transfer.auto_status"))->text() ==
+            QStringLiteral("Auto: Source unavailable") &&
+        requireControl<QLabel>(window,
+        QStringLiteral("config.vprenderer.display_bit_depth.auto_status"))->text() ==
+            QStringLiteral("Auto: Output format"),
+        "A VP Renderer Auto control does not identify its effective policy");
+    QLineEdit* targetWhiteLevel = requireControl<QLineEdit>(window,
+        QStringLiteral("config.vprenderer.sdr_target_nits"));
+    QLineEdit* targetBlackLevel = requireControl<QLineEdit>(window,
+        QStringLiteral("config.vprenderer.sdr_black_nits"));
+    QLabel* targetBlackStatus = requireControl<QLabel>(window,
+        QStringLiteral("config.vprenderer.sdr_black_nits.auto_status"));
+    targetWhiteLevel->setText(QStringLiteral("79"));
+    targetBlackLevel->setText(QStringLiteral("Auto"));
+    QCoreApplication::processEvents();
+    require(targetBlackStatus->text() == QStringLiteral("Auto: 0.079 nits"),
+        "Auto target black level does not show its calculated libplacebo value");
+    QComboBox* upscaler = requireControl<QComboBox>(window,
+        QStringLiteral("config.vprenderer.upscaler"));
+    QLabel* upscalerStatus = requireControl<QLabel>(window,
+        QStringLiteral("config.vprenderer.upscaler.auto_status"));
+    require(upscalerStatus->text() == QStringLiteral("Auto: EWA Lanczos sharp") &&
+        upscalerStatus->font().italic(),
+        "Auto upscaler does not use a concise italic effective-value label");
+    selectData(quality, QStringLiteral("balanced"));
+    require(upscalerStatus->text() == QStringLiteral("Auto: Lanczos"),
+        "Auto policy preview did not refresh after rendering quality changed");
+    selectData(upscaler, QStringLiteral("lanczos"));
+    require(upscalerStatus->isHidden() && upscalerStatus->text().isEmpty(),
+        "An Auto-policy preview remains visible for an explicit filter choice");
+    selectData(upscaler, QStringLiteral("AUTO"));
 
     QComboBox* shaderStage = requireControl<QComboBox>(window,
         QStringLiteral("config.shader.nls.stage"));
@@ -2532,16 +2720,28 @@ void testApplyOkCancelContract()
         require(external.open(QIODevice::Append), "Cannot create external-save conflict");
         external.write("\n# external edit\n");
         external.close();
-        const QByteArray externallyEdited = readBytes(path);
+        const QStringList backupsBefore = QDir(directory.path()).entryList(
+            { QStringLiteral("VideoProcessor.cfg.backup-*") }, QDir::Files);
         requireControl<QPushButton>(window,
             QStringLiteral("okConfiguration"))->click();
         QCoreApplication::processEvents();
-        require(window.isVisible(), "OK closed after a failed safe save");
-        require(readBytes(path) == externallyEdited,
-            "Failed OK overwrote the external configuration change");
-        require(requireControl<QPushButton>(window,
-            QStringLiteral("applyConfiguration"))->isEnabled(),
-            "Failed OK cleared the dirty state");
+        require(!window.isVisible(), "OK did not close after overwriting an external edit");
+        const QByteArray saved = readBytes(path);
+        require(saved.contains("fullscreen: false") && !saved.contains("# external edit"),
+            "Config did not replace the externally edited file with its validated document");
+        const QStringList backupsAfter = QDir(directory.path()).entryList(
+            { QStringLiteral("VideoProcessor.cfg.backup-*") }, QDir::Files);
+        require(backupsAfter.size() == backupsBefore.size() + 1,
+            "Overwriting an external edit did not retain a timestamped backup");
+        bool externalVersionBackedUp = false;
+        for (const QString& backup : backupsAfter)
+            if (readBytes(QDir(directory.path()).filePath(backup)).contains("# external edit"))
+            {
+                externalVersionBackedUp = true;
+                break;
+            }
+        require(externalVersionBackedUp,
+            "The externally edited configuration was not preserved in the backup");
     }
 
     {
@@ -3832,12 +4032,16 @@ int main(int argc, char** argv)
     failures += run("two-column cards share row height", testTwoColumnCardsShareRowHeight);
     failures += run("inherited renderer Input selectors use effective labels",
         testInheritedRendererInputSelectorsUseEffectiveLabels);
+    failures += run("inherited renderer Input selectors refresh with General",
+        testInheritedRendererInputSelectorsRefreshWithGeneral);
     failures += run("empty shortcuts survive NLS backend edit",
         testEmptyShortcutsSurviveNlsBackendEdit);
     failures += run("SDR gamma adjustment labels and persistence",
         testSdrGammaAdjustmentLabelsAndPersistence);
     failures += run("legacy VP input override migrates independently",
         testLegacyVpInputOverrideMigratesToIndependentPolicySection);
+    failures += run("LLDV metadata migrates to enabled singleton",
+        testLldvMetadataMigratesToEnabledSingleton);
     failures += run("profile lifecycle through widgets", testProfileLifecycleThroughWidgets);
     failures += run("unrelated content remains exact", testUnrelatedContentRemainsExact);
     failures += run("scene detection defaults off and hides manual overrides",

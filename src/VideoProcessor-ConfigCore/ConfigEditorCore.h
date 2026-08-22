@@ -17,9 +17,9 @@ namespace ConfigEditorCore
 		std::vector<std::string> lines;
 		std::string lineEnding = "\r\n";
 		bool hasTerminalLineEnding = false;
-		// Exact bytes observed by Load(). SaveSafely compares these with the
-		// current file immediately before writing so an external edit is never
-		// silently overwritten.
+		// Exact bytes observed by Load(). SaveSafely normally compares these with
+		// the current file immediately before writing; the Config editor can
+		// explicitly request an overwrite while preserving those bytes in backup.
 		std::string loadedBytes;
 		bool existedAtLoad = false;
 
@@ -68,7 +68,8 @@ namespace ConfigEditorCore
 	// Validates first, writes a timestamped non-overwriting backup, writes a
 	// sibling temporary file, then atomically replaces the configuration. On
 	// failure the original configuration remains in place; a completed backup is
-	// retained and reported in SaveResult.
+	// retained and reported in SaveResult. When overwriteExternalChanges is true,
+	// a changed or newly-created on-disk file is backed up then replaced.
 	bool SaveSafely(ConfigDocument& document, SaveResult& result,
-		std::wstring& error);
+		std::wstring& error, bool overwriteExternalChanges = false);
 }

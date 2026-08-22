@@ -34,6 +34,7 @@
 #pragma warning(disable: 4244) // conversion warning in an upstream inline helper
 #include <libplacebo/cache.h>
 #include <libplacebo/d3d11.h>
+#include <libplacebo/options.h>
 #include <libplacebo/renderer.h>
 #include <libplacebo/shaders/custom.h>
 #include <libplacebo/utils/upload.h>
@@ -865,6 +866,8 @@ namespace
 		OFF
 	};
 
+	using PeakDetection = LibplaceboRenderParameters::PeakDetection;
+
 	enum class ProfileUpdateMode
 	{
 		REBUILD,
@@ -911,7 +914,7 @@ namespace
 		std::string quality = "high";
 		std::string toneMapping = "auto";
 		std::string gamutMapping = "auto";
-		AutoToggle peakDetection = AutoToggle::AUTO;
+		PeakDetection peakDetection = PeakDetection::Auto;
 		bool hasContrastRecovery = false;
 		float contrastRecovery = 0.0f;
 		std::string upscaler = "auto";
@@ -1494,6 +1497,29 @@ namespace
 		return defaultValue;
 	}
 
+	PeakDetection ReadPeakDetection(const ConfigFile& config, const char* key,
+		PeakDetection defaultValue = PeakDetection::Auto)
+	{
+		std::string rawValue;
+		if (!TryGetDisplayString(config, key, rawValue))
+			return defaultValue;
+
+		const std::string value = ConfigFile::NormalizeName(rawValue);
+		if (value == "auto") return PeakDetection::Auto;
+		// `default` is the historical spelling for libplacebo's ordinary
+		// peak-detection parameters. It is not the quality-preset inheritance
+		// mode, which is explicitly `auto`.
+		if (value == "default" || value == "on" || value == "true")
+			return PeakDetection::Standard;
+		if (value == "high_quality") return PeakDetection::HighQuality;
+		if (value == "off" || value == "false") return PeakDetection::Off;
+
+		DebugLog::Log(
+			"libplacebo: invalid %s value '%s'; using Auto",
+			key, rawValue.c_str());
+		return defaultValue;
+	}
+
 	bool ApplyDebandStrength(const std::string& rawValue,
 		RendererSettings& settings)
 	{
@@ -1559,6 +1585,30 @@ namespace
 			if (config.TryGetBool(rule.section, key, enabled)) { target = enabled ? AutoToggle::ON : AutoToggle::OFF; return; }
 			DebugLog::Log("display rule '%s': invalid %s value '%s'; retaining base setting", rule.name.c_str(), key, raw.c_str());
 		};
+		auto readPeakDetection = [&config, &rule](PeakDetection& target)
+		{
+			std::string raw;
+			if (!config.TryGetString(rule.section, "peak_detection", raw)) return;
+			const std::string value = ConfigFile::NormalizeName(raw);
+			if (value == "auto") { target = PeakDetection::Auto; return; }
+			if (value == "default" || value == "on" || value == "true")
+			{
+				target = PeakDetection::Standard;
+				return;
+			}
+			if (value == "high_quality")
+			{
+				target = PeakDetection::HighQuality;
+				return;
+			}
+			if (value == "off" || value == "false")
+			{
+				target = PeakDetection::Off;
+				return;
+			}
+			DebugLog::Log("display rule '%s': invalid peak_detection value '%s'; retaining base setting",
+				rule.name.c_str(), raw.c_str());
+		};
 		std::string raw;
 		if (config.TryGetString(rule.section, "sdr_target_nits", raw))
 		{
@@ -1590,15 +1640,9 @@ namespace
 		readChoice("quality", settings.quality, { "fast", "balanced", "high" });
 		readChoice("tone_mapping", settings.toneMapping, { "auto", "spline", "bt2390", "st2094-40", "reinhard" });
 		readChoice("gamut_mapping", settings.gamutMapping, { "auto", "perceptual", "softclip", "relative", "desaturate" });
-		readToggle("peak_detection", settings.peakDetection);
-		if (config.TryGetString(rule.section, "peak_detection", raw))
-		{
-			const std::string named = ConfigFile::NormalizeName(raw);
-			if (named == "default") settings.peakDetection = AutoToggle::AUTO;
-			else if (named == "high_quality") settings.peakDetection = AutoToggle::ON;
-		}
-		readChoice("upscaler", settings.upscaler, { "auto", "ewa_lanczossharp", "ewa_lanczos", "bicubic", "bilinear" });
-		readChoice("downscaler", settings.downscaler, { "auto", "ewa_lanczos", "bicubic", "bilinear" });
+		readPeakDetection(settings.peakDetection);
+		readChoice("upscaler", settings.upscaler, { "auto", "none", "nearest", "bilinear", "oversample", "bicubic", "gaussian", "catmull_rom", "lanczos", "ewa_lanczos", "ewa_lanczossharp", "ewa_lanczos4sharpest" });
+		readChoice("downscaler", settings.downscaler, { "auto", "none", "box", "hermite", "bilinear", "bicubic", "gaussian", "catmull_rom", "mitchell", "lanczos", "ewa_lanczos" });
 		readToggle("deband", settings.deband);
 		if (config.TryGetString(rule.section, "deband_strength", raw))
 		{
@@ -1861,21 +1905,13 @@ namespace
 		settings.gamutMapping = ReadChoice(
 			config, "gamut_mapping", "auto",
 			{ "auto", "perceptual", "softclip", "relative", "desaturate" });
-		settings.peakDetection = ReadAutoToggle(config, "peak_detection");
-		if (TryGetDisplayString(config, "peak_detection", rawValue))
-		{
-			const std::string named = ConfigFile::NormalizeName(rawValue);
-			if (named == "default")
-				settings.peakDetection = AutoToggle::AUTO;
-			else if (named == "high_quality")
-				settings.peakDetection = AutoToggle::ON;
-		}
+		settings.peakDetection = ReadPeakDetection(config, "peak_detection");
 		settings.upscaler = ReadChoice(
 			config, "upscaler", "auto",
-			{ "auto", "ewa_lanczossharp", "ewa_lanczos", "bicubic", "bilinear" });
+			{ "auto", "none", "nearest", "bilinear", "oversample", "bicubic", "gaussian", "catmull_rom", "lanczos", "ewa_lanczos", "ewa_lanczossharp", "ewa_lanczos4sharpest" });
 		settings.downscaler = ReadChoice(
 			config, "downscaler", "auto",
-			{ "auto", "ewa_lanczos", "bicubic", "bilinear" });
+			{ "auto", "none", "box", "hermite", "bilinear", "bicubic", "gaussian", "catmull_rom", "mitchell", "lanczos", "ewa_lanczos" });
 		settings.deband = ReadAutoToggle(config, "deband");
 		if (TryGetDisplayString(config, "deband_strength", rawValue))
 		{
@@ -2087,7 +2123,7 @@ namespace
 			ConfigFile::NormalizeName(rawValue) != "auto")
 		{
 			double parsed = 0.0;
-			if (ParseDouble(rawValue, parsed) && parsed >= 0.0 && parsed <= 1.0)
+			if (ParseDouble(rawValue, parsed) && parsed >= 0.0 && parsed <= 2.0)
 			{
 				settings.hasContrastRecovery = true;
 				settings.contrastRecovery = static_cast<float>(parsed);
@@ -2095,7 +2131,7 @@ namespace
 			else
 			{
 				DebugLog::Log(
-					"libplacebo: contrast_recovery must be AUTO or between 0.0 and 1.0; using AUTO");
+					"libplacebo: contrast_recovery must be AUTO or between 0.0 and 2.0; using AUTO");
 			}
 		}
 
@@ -2839,6 +2875,7 @@ struct LibplaceboVideoRenderer::Impl
 	bool vpOwnedColorSpaceVerified = false;
 	DXGI_FORMAT negotiatedSwapchainFormat = DXGI_FORMAT_UNKNOWN;
 	pl_renderer renderer = nullptr;
+	IRendererCallback* presentationCallback = nullptr;
 	LibplaceboCompileTelemetry compileTelemetry;
 	pl_tex textures[2] = { nullptr, nullptr };
 	pl_tex statsOverlayTexture = nullptr;
@@ -3017,14 +3054,22 @@ struct LibplaceboVideoRenderer::Impl
 	HWND videoHwnd = nullptr;
 	HMONITOR negotiatedMonitor = nullptr;
 	bool hasPresentedFrame = false;
+	// The first image submitted to a new libplacebo renderer can populate
+	// previously unseen base programs (even when no custom shader hook is
+	// selected). Give the presentation host a non-activating status surface for
+	// that work; this is deliberately independent of NLS hook changes.
+	bool presentationPipelinePrepared = false;
 	uint64_t nextPresentationTelemetryLogTick = 0;
 	uint64_t lastSubmittedScreenProfileRequest = 0;
 	uint64_t activePictureScreenProfileRequestSerial = 0;
 	std::mutex renderMutex;
+	std::atomic_bool resizePending{ false };
+	std::atomic_bool outputRenegotiationPending{ false };
 	EOTF lastRenderedEotf = EOTF::UNKNOWN;
 	ColorSpace lastRenderedColorspace = ColorSpace::UNKNOWN;
 	std::string shaderCachePath;
 	uint64_t loadedShaderCacheSignature = 0;
+	int loadedShaderCacheObjects = 0;
 	bool shaderCacheEnabled = true;
 	bool outputDiagnostics = false;
 	bool outputContractLogged = false;
@@ -3306,6 +3351,11 @@ struct LibplaceboVideoRenderer::Impl
 			if (worker.joinable()) worker.join();
 		nvidiaBt2020Reporter.Restore();
 		pl_mpv_user_shader_destroy(&nlsHook);
+		// The GPU cache owns the compiled shader blobs while the renderer still
+		// references them. Persist it before destroying the renderer; saving
+		// afterwards retained only a small subset and made a fullscreen/windowed
+		// swap compile the same programs again.
+		SaveShaderCache();
 		pl_renderer_destroy(&renderer);
 		pl_lut_free(&displayLut);
 		if (d3d11)
@@ -3317,7 +3367,6 @@ struct LibplaceboVideoRenderer::Impl
 		}
 		pl_swapchain_destroy(&swapchain);
 		vpOwnedSwapchain.Release();
-		SaveShaderCache();
 		pl_d3d11_destroy(&d3d11);
 		pl_cache_destroy(&cache);
 		pl_log_destroy(&log);
@@ -3399,6 +3448,7 @@ struct LibplaceboVideoRenderer::Impl
 			DeleteFileA(clearRequestPath.c_str());
 			pl_cache_reset(cache);
 			loadedShaderCacheSignature = 0;
+			loadedShaderCacheObjects = 0;
 			DebugLog::Log(
 				"libplacebo persistent shader cache cleared by user request");
 			return;
@@ -3445,6 +3495,7 @@ struct LibplaceboVideoRenderer::Impl
 		}
 
 		loadedShaderCacheSignature = pl_cache_signature(cache);
+		loadedShaderCacheObjects = pl_cache_objects(cache);
 		DebugLog::Log(
 			"libplacebo persistent shader cache loaded: %d objects, %zu bytes",
 			loaded,
@@ -3464,6 +3515,7 @@ struct LibplaceboVideoRenderer::Impl
 			if (cache)
 				pl_cache_reset(cache);
 			loadedShaderCacheSignature = 0;
+			loadedShaderCacheObjects = 0;
 			DebugLog::Log(
 				"libplacebo persistent shader cache clear completed; current cache was not saved");
 			return;
@@ -3471,6 +3523,70 @@ struct LibplaceboVideoRenderer::Impl
 		if (!shaderCacheEnabled ||
 			!cache || shaderCachePath.empty() || pl_cache_objects(cache) <= 0)
 			return;
+
+		// The persistent cache is append-only unless the explicit clear-request
+		// marker was handled above. Always re-read and merge the on-disk cache,
+		// even when object counts happen to match: a different resolution or
+		// profile can produce a different set with the same cardinality. This also
+		// preserves entries added by an earlier renderer lifetime after this one
+		// originally loaded its cache.
+		const int objectsBeforeMerge = pl_cache_objects(cache);
+		const DWORD persistedAttributes =
+			GetFileAttributesA(shaderCachePath.c_str());
+		if (persistedAttributes != INVALID_FILE_ATTRIBUTES)
+		{
+			std::ifstream input(shaderCachePath, std::ios::binary | std::ios::ate);
+			if (!input.is_open())
+			{
+				DebugLog::Log(
+					"libplacebo persistent shader cache not saved: complete cache file could not be reopened");
+				return;
+			}
+			const std::streamoff length = input.tellg();
+			if (length <= 0 ||
+				static_cast<uint64_t>(length) > MAX_SHADER_CACHE_FILE_SIZE)
+			{
+				DebugLog::Log(
+					"libplacebo persistent shader cache not saved: complete cache file has invalid size");
+				return;
+			}
+			std::vector<uint8_t> persisted(static_cast<size_t>(length));
+			input.seekg(0, std::ios::beg);
+			if (!input.read(reinterpret_cast<char*>(persisted.data()),
+				static_cast<std::streamsize>(persisted.size())))
+			{
+				DebugLog::Log(
+					"libplacebo persistent shader cache not saved: complete cache file could not be read");
+				return;
+			}
+			const int merged = pl_cache_load(cache, persisted.data(), persisted.size());
+			const int objectsAfterMerge = pl_cache_objects(cache);
+			if (merged < 0 || objectsAfterMerge < objectsBeforeMerge ||
+				objectsAfterMerge < merged)
+			{
+				DebugLog::Log(
+					"libplacebo persistent shader cache not saved: refusing non-additive update current=%d saved=%d merged=%d",
+					objectsBeforeMerge, merged, objectsAfterMerge);
+				return;
+			}
+			if (objectsAfterMerge != objectsBeforeMerge ||
+				merged != loadedShaderCacheObjects)
+			{
+				DebugLog::Log(
+					"libplacebo persistent shader cache preserved: merged %d current with %d saved objects -> %d",
+					objectsBeforeMerge, merged, objectsAfterMerge);
+			}
+			loadedShaderCacheObjects = objectsAfterMerge;
+		}
+		else if (loadedShaderCacheObjects > 0)
+		{
+			// Config's explicit clear action always leaves a marker, handled above.
+			// A missing file without that marker is therefore not authority to
+			// discard the previously loaded persistent set.
+			DebugLog::Log(
+				"libplacebo persistent shader cache not saved: existing cache disappeared without an explicit clear request");
+			return;
+		}
 
 		const uint64_t signature = pl_cache_signature(cache);
 		if (signature == loadedShaderCacheSignature)
@@ -3524,6 +3640,7 @@ struct LibplaceboVideoRenderer::Impl
 		}
 
 		loadedShaderCacheSignature = signature;
+		loadedShaderCacheObjects = pl_cache_objects(cache);
 		DebugLog::Log(
 			"libplacebo persistent shader cache saved: %d objects, %zu bytes",
 			pl_cache_objects(cache),
@@ -3885,14 +4002,41 @@ struct LibplaceboVideoRenderer::Impl
 		});
 	}
 
-	void ConfigureRenderParams(const RendererSettings& settings)
+	void LogResolvedRenderOptions(const char* lifecycle)
+	{
+		pl_options options = pl_options_alloc(log);
+		if (!options)
+		{
+			DebugLog::Log("libplacebo resolved options (%s): unavailable (allocation failed)",
+				lifecycle);
+			return;
+		}
+
+		pl_options_reset(options, &renderParams);
+		const char* serialized = pl_options_save(options);
+		const auto optionText = [options](const char* key)
+		{
+			const pl_opt_data data = pl_options_get(options, key);
+			return data && data->text ? std::string(data->text) :
+				std::string("<unavailable>");
+		};
+		const std::string upscaler = optionText("upscaler");
+		const std::string downscaler = optionText("downscaler");
+		const std::string resolved = serialized ? serialized : "<unavailable>";
+		DebugLog::Log(
+			"libplacebo resolved render options (%s): upscaler=%s downscaler=%s all=%s",
+			lifecycle, upscaler.c_str(), downscaler.c_str(), resolved.c_str());
+		pl_options_free(&options);
+	}
+
+	void ConfigureRenderParams(const RendererSettings& settings,
+		const char* lifecycle)
 	{
 		LibplaceboRenderParameters::Settings parameterSettings;
 		parameterSettings.quality = settings.quality;
 		parameterSettings.toneMapping = settings.toneMapping;
 		parameterSettings.gamutMapping = settings.gamutMapping;
-		parameterSettings.peakDetection =
-			static_cast<LibplaceboRenderParameters::Toggle>(settings.peakDetection);
+		parameterSettings.peakDetection = settings.peakDetection;
 		parameterSettings.hasContrastRecovery = settings.hasContrastRecovery;
 		parameterSettings.contrastRecovery = settings.contrastRecovery;
 		parameterSettings.upscaler = settings.upscaler;
@@ -3904,6 +4048,11 @@ struct LibplaceboVideoRenderer::Impl
 			static_cast<LibplaceboRenderParameters::Toggle>(settings.sigmoid);
 		parameterSettings.dithering =
 			static_cast<LibplaceboRenderParameters::Toggle>(settings.dithering);
+		// VP changes rendering profiles, presentation targets and calibrated
+		// output while the application is live. libplacebo documents dynamic
+		// constants precisely for this interactive case: it trades a small amount
+		// of shader throughput for avoiding a synchronous new shader variant.
+		parameterSettings.dynamicConstants = true;
 
 		LibplaceboRenderParameters::Projection projection;
 		std::string projectionError;
@@ -3936,7 +4085,7 @@ struct LibplaceboVideoRenderer::Impl
 			projection.renderParams.dither_params ? &ditherParams : nullptr;
 
 		DebugLog::Log(
-			"libplacebo settings: quality=%s tone_mapping=%s gamut_mapping=%s peak_detection=%s contrast_recovery=%.2f upscaler=%s downscaler=%s deband=%s dithering=%s display_bit_depth=%s output_presentation=%s output_range=%s output_transport_gamma=%s output_gamma=%s sdr_input_transfer=%s sdr_adjust_gamma=%s target=%.1f nits black=%.3f profile_update_mode=%s output_diagnostics=%d diagnostic_disable_shader_cache=%d diagnostic_disable_compute=%d diagnostic_force_8bit_sdr_swapchain=%d diagnostic_allow_limited_g22=%d diagnostic_allow_full_g22=%d diagnostic_vp_owned_dxgi_presenter=%d refresh_switch=%d refresh_command_delay=%llus refresh_commands=%u viewport_target=%s screen_aspect=%.4f automatic_crop=%d subtitle_fit=%d subtitle_hold=%llums subtitle_engage_drift=%llums subtitle_release_drift=%llums subtitle_padding=%dpx subtitle_target_buffer=%dpx",
+			"libplacebo settings: quality=%s tone_mapping=%s gamut_mapping=%s peak_detection=%s contrast_recovery=%.2f upscaler=%s downscaler=%s deband=%s dithering=%s dynamic_constants=%d display_bit_depth=%s output_presentation=%s output_range=%s output_transport_gamma=%s output_gamma=%s sdr_input_transfer=%s sdr_adjust_gamma=%s target=%.1f nits black=%.3f profile_update_mode=%s output_diagnostics=%d diagnostic_disable_shader_cache=%d diagnostic_disable_compute=%d diagnostic_force_8bit_sdr_swapchain=%d diagnostic_allow_limited_g22=%d diagnostic_allow_full_g22=%d diagnostic_vp_owned_dxgi_presenter=%d refresh_switch=%d refresh_command_delay=%llus refresh_commands=%u viewport_target=%s screen_aspect=%.4f automatic_crop=%d subtitle_fit=%d subtitle_hold=%llums subtitle_engage_drift=%llums subtitle_release_drift=%llums subtitle_padding=%dpx subtitle_target_buffer=%dpx",
 			settings.quality.c_str(),
 			colorMapParams.tone_mapping_function
 				? colorMapParams.tone_mapping_function->name : "none",
@@ -3952,6 +4101,7 @@ struct LibplaceboVideoRenderer::Impl
 				settings.debandStrength.c_str(),
 			renderParams.error_diffusion ? "auto/error-diffusion" :
 				(renderParams.dither_params ? "on" : "off"),
+			renderParams.dynamic_constants ? 1 : 0,
 			settings.displayBitDepth.c_str(),
 			settings.outputPresentation.c_str(),
 			settings.outputRange.c_str(),
@@ -3981,6 +4131,7 @@ struct LibplaceboVideoRenderer::Impl
 			static_cast<unsigned long long>(scopeSubtitleReleaseDriftMs),
 			scopeSubtitlePaddingPixels,
 			scopeSubtitleTargetBufferPixels);
+		LogResolvedRenderOptions(lifecycle);
 	}
 
 	void ClearScopePresentationEvidence()
@@ -5656,15 +5807,20 @@ struct LibplaceboVideoRenderer::Impl
 			LibplaceboExportedData<pl_cache_params>("pl_cache_default_params");
 		cacheParams.log = log;
 		cacheParams.max_object_size = 64u * 1024u * 1024u;
-		cacheParams.max_total_size = 256u * 1024u * 1024u;
+		// Persistence is intentionally cumulative across resolution and profile
+		// changes. Do not let libplacebo silently prune older objects from the
+		// in-memory union; the serialized-file safety cap remains enforced by
+		// MAX_SHADER_CACHE_FILE_SIZE in LoadShaderCache/SaveShaderCache.
+		cacheParams.max_total_size = 0;
 		cache = pl_cache_create(&cacheParams);
 		if (shaderCacheEnabled)
 		{
-			LoadShaderCache();
 			pl_gpu_set_cache(d3d11->gpu, cache);
+			// Attach first, then populate. This is libplacebo's documented/demo
+			// lifecycle and ensures the GPU observes every restored cache object.
+			LoadShaderCache();
 			DebugLog::Log(
-				"libplacebo GPU shader cache enabled: memory limit=%u MiB object limit=%u MiB path=%s",
-				256u,
+				"libplacebo GPU shader cache enabled: memory limit=unlimited (append-only persistence) object limit=%u MiB path=%s",
 				64u,
 				shaderCachePath.c_str());
 		}
@@ -5676,30 +5832,13 @@ struct LibplaceboVideoRenderer::Impl
 				shaderCachePath.c_str());
 		}
 
-		ConfigFile shaderConfig;
-		std::string nlsPrewarmReason;
-		if (shaderConfig.Load(ConfigFile::RENDERER_FILENAME) &&
-			MadVRShaderLoader::ResolveConfiguredNlsPrewarmRules(shaderConfig,
-				startupNlsPrewarmRules, nlsPrewarmReason))
-		{
-			std::ostringstream names;
-			for (size_t index = 0; index < startupNlsPrewarmRules.size(); ++index)
-			{
-				if (index != 0)
-					names << ',';
-				names << startupNlsPrewarmRules[index].name;
-			}
-			DebugLog::Log(
-				"Alpha shader startup prewarm armed: rules=%zu names=%s",
-				startupNlsPrewarmRules.size(), names.str().c_str());
-		}
-		else
-		{
-			startupNlsPrewarmComplete = true;
-			DebugLog::Log(
-				"Alpha shader startup prewarm skipped: %s",
-				nlsPrewarmReason.c_str());
-		}
+		// Compiling inactive NLS profiles with pl_render_image here can take many
+		// seconds on a cold cache and runs on the live render path. Normal playback
+		// must remain responsive; Config's Prepare shaders action runs the same
+		// work through its separately reported preparation workflow instead.
+		startupNlsPrewarmComplete = true;
+		DebugLog::Log(
+			"Alpha shader startup prewarm deferred: normal playback remains responsive; use Config Prepare shaders to warm inactive profiles");
 
 		LibplaceboOutput::Request outputRequest;
 		outputRequest.presentation = LibplaceboOutput::ParsePresentation(
@@ -5853,7 +5992,7 @@ struct LibplaceboVideoRenderer::Impl
 			convertedFrame.resize(static_cast<size_t>(formatter->GetOutFrameSize()));
 		}
 		LoadDisplayLut(settings);
-		ConfigureRenderParams(settings);
+		ConfigureRenderParams(settings, "renderer initialization");
 
 		DebugLog::Log(
 			"libplacebo initialized: D3D11, %s upload, SDR target request=%s %.1f nits",
@@ -6049,7 +6188,7 @@ struct LibplaceboVideoRenderer::Impl
 			diagnosticReadbackAttempts = 0;
 			diagnosticReadbackNonBlack = false;
 		}
-		ConfigureRenderParams(settings);
+		ConfigureRenderParams(settings, "live profile update");
 		restartSettingsFingerprint = EffectiveSettingsFingerprint(settings, false);
 		effectiveSettingsFingerprint = EffectiveSettingsFingerprint(settings);
 
@@ -6999,9 +7138,18 @@ struct LibplaceboVideoRenderer::Impl
 		if (lastRenderedEotf != EOTF::UNKNOWN &&
 			(lastRenderedEotf != state.eotf || lastRenderedColorspace != state.colorspace))
 		{
-			// Flush at the exact queued-frame boundary, not when metadata first
-			// arrives. Older queued frames still belong to the prior color state.
-			pl_renderer_flush_cache(renderer);
+			// pl_render_image tracks source and target changes itself. Explicitly
+			// flushing here discarded the SDR programs while the non-capturing
+			// preparation worker moved on to HDR (and vice versa), so the next live
+			// source incurred a cold, visible shader build. Keep both variants in
+			// the shared persistent cache; libplacebo invalidates only resources
+			// that genuinely no longer apply.
+			DebugLog::Log(
+				"libplacebo source metadata changed: retaining cached shader variants (%s/%s -> %s/%s)",
+				CStringA(ToString(lastRenderedEotf)).GetString(),
+				CStringA(ToString(lastRenderedColorspace)).GetString(),
+				CStringA(ToString(state.eotf)).GetString(),
+				CStringA(ToString(state.colorspace)).GetString());
 		}
 
 		const int width = static_cast<int>(state.displayMode->FrameWidth());
@@ -9083,6 +9231,11 @@ struct LibplaceboVideoRenderer::Impl
 				nlsPipelineVariant != lastNlsPipelineVariant;
 		}
 
+		const bool preparingShader = !presentationPipelinePrepared ||
+			(nlsPipelineActive && nlsPipelineVariantChanged);
+		if (preparingShader && presentationCallback)
+			presentationCallback->OnRendererPresentationStatus(
+				TEXT("Preparing VP Renderer shaders..."), true);
 		compileTelemetry.BeginRender();
 		const SteadyClock::time_point renderStart = SteadyClock::now();
 		const bool targetLutApplied =
@@ -9096,6 +9249,19 @@ struct LibplaceboVideoRenderer::Impl
 			SteadyClock::now() - renderStart).count();
 		const LibplaceboCompileSnapshot compileSnapshot =
 			compileTelemetry.EndRender();
+		if (rendered)
+			presentationPipelinePrepared = true;
+		if (rendered && compileSnapshot.Compiled() &&
+			renderParams.dynamic_constants)
+		{
+			// Dynamic constants collapse later profile/presentation changes into
+			// this program, but the first dynamic program is still a real cache
+			// miss. Save it immediately, while libplacebo still owns every compiled
+			// blob, so a restart or fullscreen transition cannot repeat that cost.
+			SaveShaderCache();
+		}
+		if (preparingShader && presentationCallback)
+			presentationCallback->OnRendererPresentationStatus(CString(), false);
 		if (nlsPipelineActive &&
 			(nlsPipelineVariantChanged || compileSnapshot.Compiled()))
 		{
@@ -9361,9 +9527,8 @@ struct LibplaceboVideoRenderer::Impl
 		return rendered && submitted;
 	}
 
-	void Resize(HWND videoHwnd)
+	void ResizeLocked(HWND videoHwnd)
 	{
-		std::lock_guard<std::mutex> guard(renderMutex);
 		if (!swapchain)
 			return;
 
@@ -9378,9 +9543,27 @@ struct LibplaceboVideoRenderer::Impl
 			ConfigureAndFallback("resize");
 	}
 
+	void Resize(HWND videoHwnd)
+	{
+		std::unique_lock<std::mutex> guard(renderMutex, std::try_to_lock);
+		if (!guard.owns_lock())
+		{
+			resizePending.store(true, std::memory_order_release);
+			return;
+		}
+		resizePending.store(false, std::memory_order_release);
+		ResizeLocked(videoHwnd);
+	}
+
 	void RenegotiateOutput()
 	{
-		std::lock_guard<std::mutex> guard(renderMutex);
+		std::unique_lock<std::mutex> guard(renderMutex, std::try_to_lock);
+		if (!guard.owns_lock())
+		{
+			outputRenegotiationPending.store(true, std::memory_order_release);
+			return;
+		}
+		outputRenegotiationPending.store(false, std::memory_order_release);
 		RetryAutoLimitedCandidate("display change");
 	}
 
@@ -9475,6 +9658,15 @@ bool LibplaceboVideoRenderer::PersistShaderCache()
 bool LibplaceboVideoRenderer::ReloadConfiguredShaderPrewarm()
 {
 	if (!m_impl) return false;
+	if ((GetWindowLongPtr(m_videoHwnd, GWL_STYLE) & WS_CHILD) != 0)
+	{
+		std::lock_guard<std::mutex> guard(m_impl->renderMutex);
+		m_impl->startupNlsPrewarmRules.clear();
+		m_impl->startupNlsPrewarmComplete = true;
+		DebugLog::Log(
+			"Alpha shader prewarm skipped: configured shader hooks are fullscreen-only");
+		return true;
+	}
 	ConfigFile config;
 	if (!config.Load(ConfigFile::RENDERER_FILENAME)) return false;
 	std::vector<ConfiguredShaderRule> rules;
@@ -9871,6 +10063,7 @@ void LibplaceboVideoRenderer::Build()
 	}
 
 	std::unique_ptr<Impl> impl(new Impl());
+	impl->presentationCallback = &m_callback;
 	try
 	{
 		impl->Initialize(m_videoHwnd, state, manualRule, manualUnifiedProfiles,
@@ -9987,8 +10180,9 @@ bool LibplaceboVideoRenderer::SelectShaderRule(
 	if (MadVRShaderLoader::CanonicalizeRuleSelector(selector).empty())
 		return false;
 	{
-		std::lock_guard<std::mutex> guard(m_impl->renderMutex);
-		if (MadVRShaderLoader::RuleSelectorsEqual(
+		std::unique_lock<std::mutex> guard(
+			m_impl->renderMutex, std::try_to_lock);
+		if (guard.owns_lock() && MadVRShaderLoader::RuleSelectorsEqual(
 			m_requestedShaderSelector, selector))
 		{
 			activeRule = CString(
@@ -10023,15 +10217,97 @@ bool LibplaceboVideoRenderer::SelectShaderRule(
 			selector.rfind("@shader-key:", 0) == 0;
 	}
 	{
-		std::lock_guard<std::mutex> guard(m_impl->renderMutex);
-		m_impl->SetConfiguredShaderSelection(
-			selector, selection, m_shaderRendererGeneration);
+		std::unique_lock<std::mutex> guard(
+			m_impl->renderMutex, std::try_to_lock);
+		if (!guard.owns_lock())
+		{
+			std::lock_guard<std::mutex> pendingGuard(m_pendingShaderMutex);
+			m_pendingShaderSelector = selector;
+			activeRule = TEXT("NLS: Pending");
+			DebugLog::Log(
+				"Alpha shaders: queued selector \"%s\" without blocking the UI; render thread is busy",
+				selector.c_str());
+			return true;
+		}
+		const bool explicitlyOff = std::any_of(selection.begin(), selection.end(),
+			[](const ConfiguredShaderRule& rule) { return rule.none; });
+		const bool embeddedWindowed =
+			(GetWindowLongPtr(m_videoHwnd, GWL_STYLE) & WS_CHILD) != 0;
+		if (embeddedWindowed && !explicitlyOff)
+		{
+			std::vector<ConfiguredShaderRule> offSelection;
+			ConfiguredShaderRule off;
+			off.name = "off";
+			off.label = "Off";
+			off.none = true;
+			offSelection.push_back(std::move(off));
+			m_impl->SetConfiguredShaderSelection(
+				"@shader-key:", offSelection, m_shaderRendererGeneration);
+			m_impl->SetShaderStatus("NLS: Fullscreen only");
+			DebugLog::Log(
+				"Alpha shaders: deferred selector \"%s\" because configured shader hooks are fullscreen-only",
+				selector.c_str());
+		}
+		else
+		{
+			m_impl->SetConfiguredShaderSelection(
+				selector, selection, m_shaderRendererGeneration);
+		}
 		activeRule = CString(
 			CStringA(m_impl->activeShaderStatus.c_str()));
 		m_lastReportedShaderStatusSerial =
 			m_impl->activeShaderStatusSerial;
 	}
 	return true;
+}
+
+
+void LibplaceboVideoRenderer::ApplyPendingShaderSelectionLocked()
+{
+	std::string selector;
+	{
+		std::lock_guard<std::mutex> pendingGuard(m_pendingShaderMutex);
+		selector.swap(m_pendingShaderSelector);
+	}
+	if (selector.empty() || !m_impl)
+		return;
+
+	std::vector<ConfiguredShaderRule> selection;
+	std::string reason;
+	ConfigFile shaderConfig;
+	if (!shaderConfig.Load(ConfigFile::RENDERER_FILENAME) ||
+		!MadVRShaderLoader::ResolveConfiguredRuleSelection(shaderConfig,
+			selector, ShaderRendererBackend::LIBPLACEBO, selection, reason))
+	{
+		DebugLog::Log(
+			"Alpha shaders: queued selector \"%s\" rejected on render thread: %s",
+			selector.c_str(), reason.c_str());
+		return;
+	}
+
+	const bool explicitlyOff = std::any_of(selection.begin(), selection.end(),
+		[](const ConfiguredShaderRule& rule) { return rule.none; });
+	const bool embeddedWindowed =
+		(GetWindowLongPtr(m_videoHwnd, GWL_STYLE) & WS_CHILD) != 0;
+	if (embeddedWindowed && !explicitlyOff)
+	{
+		ConfiguredShaderRule off;
+		off.name = "off";
+		off.label = "Off";
+		off.none = true;
+		m_impl->SetConfiguredShaderSelection(
+			"@shader-key:", { off }, m_shaderRendererGeneration);
+		m_impl->SetShaderStatus("NLS: Fullscreen only");
+	}
+	else
+	{
+		m_impl->SetConfiguredShaderSelection(
+			selector, selection, m_shaderRendererGeneration);
+	}
+	m_lastReportedShaderStatusSerial = m_impl->activeShaderStatusSerial;
+	DebugLog::Log(
+		"Alpha shaders: applied queued selector \"%s\" on render thread",
+		selector.c_str());
 }
 
 
@@ -10044,7 +10320,10 @@ bool LibplaceboVideoRenderer::RefreshShaderRule(
 	if (!m_impl)
 		return false;
 
-	std::lock_guard<std::mutex> guard(m_impl->renderMutex);
+	std::unique_lock<std::mutex> guard(
+		m_impl->renderMutex, std::try_to_lock);
+	if (!guard.owns_lock())
+		return false;
 	activeRule = CString(
 		CStringA(m_impl->activeShaderStatus.c_str()));
 	const bool changed =
@@ -10061,7 +10340,10 @@ std::vector<CString> LibplaceboVideoRenderer::ActiveShaders() const
 	std::vector<CString> shaders;
 	if (!m_impl)
 		return shaders;
-	std::lock_guard<std::mutex> guard(m_impl->renderMutex);
+	std::unique_lock<std::mutex> guard(
+		m_impl->renderMutex, std::try_to_lock);
+	if (!guard.owns_lock())
+		return shaders;
 	if (m_impl->renderParams.num_hooks > 0 &&
 		!m_impl->activeNlsShaderPath.empty())
 	{
@@ -10090,7 +10372,10 @@ CString LibplaceboVideoRenderer::ActiveShaderRule() const
 {
 	if (!m_impl)
 		return TEXT("None");
-	std::lock_guard<std::mutex> guard(m_impl->renderMutex);
+	std::unique_lock<std::mutex> guard(
+		m_impl->renderMutex, std::try_to_lock);
+	if (!guard.owns_lock())
+		return TEXT("Rendering");
 	return CString(CStringA(m_impl->activeShaderStatus.c_str()));
 }
 
@@ -10204,6 +10489,13 @@ void LibplaceboVideoRenderer::Start()
 	if (!m_impl || m_state.load(std::memory_order_acquire) != RendererState::RENDERSTATE_READY)
 		throw std::runtime_error("libplacebo renderer is not ready");
 
+	{
+		std::lock_guard<std::mutex> guard(m_impl->renderMutex);
+		// A DirectShow graph stop/run may follow an HDMI re-sync while retaining
+		// this renderer instance. The same renderParams are passed to every frame;
+		// emit libplacebo's resolved view at the restart boundary for verification.
+		m_impl->LogResolvedRenderOptions("renderer start/restart (including HDMI re-sync)");
+	}
 	BeginQueueGeneration("start", true);
 	m_renderThread = std::thread(&LibplaceboVideoRenderer::RenderLoop, this);
 	SetState(RendererState::RENDERSTATE_RENDERING);
@@ -10269,34 +10561,41 @@ void LibplaceboVideoRenderer::Retire() noexcept
 
 void LibplaceboVideoRenderer::Reset()
 {
+	// Queue invalidation is CPU-side state and must never wait for an in-flight
+	// libplacebo compile. In particular, HDMI re-sync can arrive on the UI
+	// thread while pl_render_image is building a new program.
+	BeginQueueGeneration("renderer reset");
 	if (m_impl && m_impl->renderer)
 	{
-		std::lock_guard<std::mutex> guard(m_impl->renderMutex);
-		BeginQueueGeneration("renderer reset");
-		pl_renderer_flush_cache(m_impl->renderer);
-	}
-	else
-	{
-		BeginQueueGeneration("renderer reset");
+		// HDMI and presentation resets retain the same renderer/device. Flushing
+		// here throws away compiled programs and turns the next frame into a long
+		// blocking shader build. libplacebo reconciles changed frame/target data
+		// in pl_render_image, so retain the cache across this reset.
+		std::unique_lock<std::mutex> guard(
+			m_impl->renderMutex, std::try_to_lock);
+		if (guard.owns_lock())
+		{
+			m_impl->LogResolvedRenderOptions(
+				"renderer reset (including HDMI re-sync)");
+		}
+		else
+		{
+			DebugLog::Log(
+				"libplacebo renderer reset: render busy; resolved-state log deferred");
+		}
 	}
 	m_frameCounter.store(0, std::memory_order_relaxed);
 	m_sceneDetectorGeneration.fetch_add(1, std::memory_order_acq_rel);
 	ResetFrameRateAndPPM();
-	DebugLog::Log("libplacebo renderer reset: new queue generation and renderer cache flushed");
+	DebugLog::Log("libplacebo renderer reset: new queue generation; shader cache retained");
 }
 
 
 void LibplaceboVideoRenderer::ResetLiveQueue()
 {
-	if (m_impl)
-	{
-		std::lock_guard<std::mutex> guard(m_impl->renderMutex);
-		BeginQueueGeneration("live queue reset");
-	}
-	else
-	{
-		BeginQueueGeneration("live queue reset");
-	}
+	// This may be called from UI/profile application paths. It only advances
+	// queue state, so waiting for the GPU render/compile lock is unnecessary.
+	BeginQueueGeneration("live queue reset");
 	m_sceneDetectorGeneration.fetch_add(1, std::memory_order_acq_rel);
 }
 
@@ -10643,7 +10942,10 @@ bool LibplaceboVideoRenderer::GetOutputModeInfo(CString& details) const
 		return false;
 	}
 
-	std::lock_guard<std::mutex> guard(m_impl->renderMutex);
+	std::unique_lock<std::mutex> guard(
+		m_impl->renderMutex, std::try_to_lock);
+	if (!guard.owns_lock())
+		return false;
 	auto requestPresentation = [](LibplaceboOutput::PresentationRequest value)
 	{
 		switch (value)
@@ -10781,7 +11083,10 @@ bool LibplaceboVideoRenderer::GetOutputContractStatus(
 		return false;
 
 	using namespace RendererOutputContract;
-	std::lock_guard<std::mutex> guard(m_impl->renderMutex);
+	std::unique_lock<std::mutex> guard(
+		m_impl->renderMutex, std::try_to_lock);
+	if (!guard.owns_lock())
+		return false;
 	status.available = true;
 	status.safeToRender = m_impl->actualOutput.safeToRender;
 	status.requestedContractActive =
@@ -10876,7 +11181,10 @@ bool LibplaceboVideoRenderer::GetDisplayLutInfo(CString& details) const
 		return false;
 	}
 
-	std::lock_guard<std::mutex> guard(m_impl->renderMutex);
+	std::unique_lock<std::mutex> guard(
+		m_impl->renderMutex, std::try_to_lock);
+	if (!guard.owns_lock())
+		return false;
 	details = CString(CStringA(m_impl->displayLutStatus.c_str()));
 	return true;
 }
@@ -10889,7 +11197,10 @@ bool LibplaceboVideoRenderer::GetVideoIngressInfo(CString& details) const
 		return false;
 	}
 
-	std::lock_guard<std::mutex> guard(m_impl->renderMutex);
+	std::unique_lock<std::mutex> guard(
+		m_impl->renderMutex, std::try_to_lock);
+	if (!guard.owns_lock())
+		return false;
 	details = CString(CStringA(m_impl->ingressStatus.c_str()));
 	return !details.IsEmpty();
 }
@@ -10909,7 +11220,10 @@ bool LibplaceboVideoRenderer::GetPresentationTimingStatus(CString& status) const
 	if (!m_impl)
 		return false;
 
-	std::lock_guard<std::mutex> guard(m_impl->renderMutex);
+	std::unique_lock<std::mutex> guard(
+		m_impl->renderMutex, std::try_to_lock);
+	if (!guard.owns_lock())
+		return false;
 	const AlphaPresentationSnapshot snapshot =
 		m_impl->presentationTelemetry.Snapshot();
 	CStringA value;
@@ -10992,7 +11306,10 @@ bool LibplaceboVideoRenderer::GetConversionPerformance(
 {
 	if (!m_impl || !m_impl->formatter)
 		return false;
-	std::lock_guard<std::mutex> guard(m_impl->renderMutex);
+	std::unique_lock<std::mutex> guard(
+		m_impl->renderMutex, std::try_to_lock);
+	if (!guard.owns_lock())
+		return false;
 	m_impl->formatter->GetConversionPerformance(currentUs, avg10s, max10s);
 	return currentUs > 0.0 || avg10s > 0.0 || max10s > 0.0;
 }
@@ -11374,6 +11691,16 @@ void LibplaceboVideoRenderer::RenderLoop()
 		try
 		{
 			std::lock_guard<std::mutex> renderGuard(m_impl->renderMutex);
+			// UI-originated control changes never wait behind shader compilation.
+			// Coalesced work is applied here, on the render thread, once the GPU is
+			// available again and before the next frame is described.
+			if (m_impl->resizePending.exchange(false,
+				std::memory_order_acq_rel))
+				m_impl->ResizeLocked(m_videoHwnd);
+			if (m_impl->outputRenegotiationPending.exchange(false,
+				std::memory_order_acq_rel))
+				m_impl->RetryAutoLimitedCandidate("deferred display change");
+			ApplyPendingShaderSelectionLocked();
 			{
 				std::lock_guard<std::mutex> queueGuard(m_queueMutex);
 				staleGeneration =

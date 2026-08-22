@@ -158,85 +158,170 @@ int RunNonCapturingShaderPreparation()
 			"Rendering profiles could not be enumerated.");
 		return 1;
 	}
-
-	const size_t total = profiles.size() * sourceStates.size();
-	HWND target = ::CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
-		L"STATIC", L"VideoProcessor Shader Preparation", WS_POPUP,
-		-32000, -32000, 3840, 2160, nullptr, nullptr,
-		AfxGetInstanceHandle(), nullptr);
-	if (!target)
+	RendererProfileConfig::Model profileModel;
+	if (!RendererProfileConfig::Read(config, profileModel, error))
 	{
-		WriteShaderPreparationStatus(configPath, "failed", 0, total,
-			"Shader preparation could not create a rendering target.");
+		WriteShaderPreparationStatus(configPath, "failed", 0, 0,
+			"Viewport profiles could not be enumerated.");
 		return 1;
 	}
-	::ShowWindow(target, SW_SHOWNOACTIVATE);
+	std::vector<std::string> viewports{ "default" };
+	for (const RendererProfileConfig::Group& group : profileModel.groups)
+		if (group.name == "viewport")
+		{
+			viewports = group.profiles;
+			break;
+		}
+
+	const int fullscreenTargetWidth = (std::max)(1,
+		::GetSystemMetrics(SM_CXSCREEN));
+	const int fullscreenTargetHeight = (std::max)(1,
+		::GetSystemMetrics(SM_CYSCREEN));
+	struct PreparationTarget
+	{
+		SIZE size;
+		bool embedded;
+		const char* name;
+	};
+	// Windowed and fullscreen VP use materially different presentation paths:
+	// the preview is a composed child surface, while fullscreen is a top-level
+	// swapchain. Build both known targets with independent renderer lifetimes.
+	// Resizing one live preparation swapchain previously proved unsafe and also
+	// did not reproduce the embedded child's output contract.
+	const std::vector<PreparationTarget> preparationTargets = {
+		{ { 1040, 585 }, true, "windowed" },
+		{ { fullscreenTargetWidth, fullscreenTargetHeight }, false, "fullscreen" }
+	};
+	const size_t total = profiles.size() * viewports.size() *
+		sourceStates.size() * preparationTargets.size();
 
 	int result = 1;
 	try
 	{
-		ShaderPreparationCallback callback;
-		LibplaceboPluginVideoRenderer renderer(callback, target, nullptr,
-			false, 1, VideoConversionOverride::VIDEOCONVERSION_NONE);
-		renderer.SetNonCapturingPreparationMode(true);
-		renderer.OnVideoState(videoState);
-		renderer.Build();
-		renderer.Start();
-		for (int attempt = 0; attempt < 200 &&
-			callback.state.load() != RendererState::RENDERSTATE_RENDERING;
-			++attempt)
-			std::this_thread::sleep_for(std::chrono::milliseconds(25));
-		if (callback.state.load() != RendererState::RENDERSTATE_RENDERING)
-			throw std::runtime_error("VP Renderer did not start");
-
-		std::vector<uint8_t> frameBytes(videoState->BytesPerFrame(), 0);
-		std::vector<std::unique_ptr<SyntheticFrameBuffer>> sourceBuffers;
 		uint64_t frameCounter = 1;
 		size_t current = 0;
-		for (VideoStateComPtr sourceState : sourceStates)
+		for (const PreparationTarget& preparationTarget : preparationTargets)
 		{
-			if (!renderer.OnVideoState(sourceState))
-				throw std::runtime_error("shader preparation source state was not accepted");
-			renderer.ResetLiveQueue();
-			for (size_t index = 0; index < profiles.size(); ++index)
+			HWND parent = nullptr;
+			if (preparationTarget.embedded)
 			{
-				++current;
-				char message[160] = {};
-				sprintf_s(message, "Preparing %s shaders %zu of %zu...",
-					sourceState->eotf == EOTF::PQ ? "HDR" : "SDR",
-					current, total);
-				WriteShaderPreparationStatus(configPath, "preparing", current,
-					total, message);
-				auto candidate =
-					std::make_shared<UnifiedProfileRuntime::Snapshot>(*original);
-				candidate->generation = original->generation + current;
-				candidate->manualSelections["display"] = profiles[index];
-				candidate->effectiveSelections["display"] = profiles[index];
-				CString active;
-				bool restart = false;
-				bool liveReset = false;
-				if (!renderer.ApplyApplicationState(*candidate, active, restart,
-					liveReset) || restart)
-					throw std::runtime_error("rendering profile was not accepted");
-				if (liveReset) renderer.ResetLiveQueue();
-				const uint64_t presentedBefore = renderer.PresentedFrameCount();
-				sourceBuffers.emplace_back(new SyntheticFrameBuffer);
-				VideoFrame frame(frameBytes.data(), frameCounter++, 0,
-					sourceBuffers.back().get());
-				renderer.OnVideoFrame(frame);
-				for (int attempt = 0; attempt < 1200 &&
-					renderer.PresentedFrameCount() == presentedBefore; ++attempt)
-					std::this_thread::sleep_for(std::chrono::milliseconds(10));
-				if (renderer.PresentedFrameCount() == presentedBefore)
-					throw std::runtime_error("shader preparation frame timed out");
+				parent = ::CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
+					L"STATIC", L"VideoProcessor Shader Preparation Host", WS_POPUP,
+					-32000, -32000, preparationTarget.size.cx,
+					preparationTarget.size.cy, nullptr, nullptr,
+					AfxGetInstanceHandle(), nullptr);
+				if (parent)
+					::ShowWindow(parent, SW_SHOWNOACTIVATE);
 			}
+			HWND target = ::CreateWindowExW(
+				preparationTarget.embedded ? 0 :
+					(WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE),
+				L"STATIC", L"VideoProcessor Shader Preparation",
+				preparationTarget.embedded ? (WS_CHILD | WS_VISIBLE) : WS_POPUP,
+				preparationTarget.embedded ? 0 : -32000,
+				preparationTarget.embedded ? 0 : -32000,
+				preparationTarget.size.cx, preparationTarget.size.cy,
+				parent, nullptr, AfxGetInstanceHandle(), nullptr);
+			if (!target)
+			{
+				if (parent) ::DestroyWindow(parent);
+				throw std::runtime_error(
+					"shader preparation could not create a rendering target");
+			}
+			if (!preparationTarget.embedded)
+				::ShowWindow(target, SW_SHOWNOACTIVATE);
+
+			try
+			{
+				ShaderPreparationCallback callback;
+				LibplaceboPluginVideoRenderer renderer(callback, target, nullptr,
+					false, 1, VideoConversionOverride::VIDEOCONVERSION_NONE);
+				renderer.SetNonCapturingPreparationMode(true);
+				renderer.OnVideoState(videoState);
+				renderer.Build();
+				renderer.Start();
+				for (int attempt = 0; attempt < 200 &&
+					callback.state.load() != RendererState::RENDERSTATE_RENDERING;
+					++attempt)
+					std::this_thread::sleep_for(std::chrono::milliseconds(25));
+				if (callback.state.load() != RendererState::RENDERSTATE_RENDERING)
+					throw std::runtime_error("VP Renderer did not start");
+				if (!renderer.ReloadConfiguredShaderPrewarm())
+					throw std::runtime_error(
+						"configured shader profiles could not be enumerated");
+
+				std::vector<uint8_t> frameBytes(videoState->BytesPerFrame(), 0);
+				std::vector<std::unique_ptr<SyntheticFrameBuffer>> sourceBuffers;
+				for (VideoStateComPtr sourceState : sourceStates)
+				{
+					if (!renderer.OnVideoState(sourceState))
+						throw std::runtime_error(
+							"shader preparation source state was not accepted");
+					renderer.ResetLiveQueue();
+					for (const std::string& displayProfile : profiles)
+					{
+						for (const std::string& viewportProfile : viewports)
+						{
+							++current;
+							char message[192] = {};
+							sprintf_s(message,
+								"Preparing %s %s %s shaders %zu of %zu...",
+								sourceState->eotf == EOTF::PQ ? "HDR" : "SDR",
+								preparationTarget.name, viewportProfile.c_str(),
+								current, total);
+							WriteShaderPreparationStatus(configPath, "preparing", current,
+								total, message);
+							std::map<std::string, std::string> selections =
+								original->manualSelections;
+							selections["display"] = displayProfile;
+							selections["viewport"] = viewportProfile;
+							std::shared_ptr<const UnifiedProfileRuntime::Snapshot> candidate;
+							if (!runtime.ResolveSelectionsForPreparation(selections,
+								StateVariables::VideoStateLookup(sourceState),
+								original->generation + current, candidate, error) || !candidate)
+								throw std::runtime_error(
+									"shader preparation profile could not be resolved");
+							CString active;
+							bool restart = false;
+							bool liveReset = false;
+							if (!renderer.ApplyApplicationState(*candidate, active, restart,
+								liveReset) || restart)
+								throw std::runtime_error(
+									"rendering profile was not accepted");
+							if (liveReset) renderer.ResetLiveQueue();
+							const uint64_t presentedBefore = renderer.PresentedFrameCount();
+							sourceBuffers.emplace_back(new SyntheticFrameBuffer);
+							VideoFrame frame(frameBytes.data(), frameCounter++, 0,
+								sourceBuffers.back().get());
+							renderer.OnVideoFrame(frame);
+							// Cold D3D11 shader compilation can exceed 30 seconds on
+							// complex HDR/viewport variants. This is an offline worker,
+							// so allow completion rather than abandoning a valid compile.
+							for (int attempt = 0; attempt < 12000 &&
+								renderer.PresentedFrameCount() == presentedBefore; ++attempt)
+								std::this_thread::sleep_for(std::chrono::milliseconds(10));
+							if (renderer.PresentedFrameCount() == presentedBefore)
+								throw std::runtime_error(
+									"shader preparation frame timed out");
+						}
+					}
+				}
+				if (!renderer.PersistShaderCache())
+					throw std::runtime_error("shader cache could not be saved");
+				renderer.Stop();
+				renderer.Retire();
+			}
+			catch (...)
+			{
+				::DestroyWindow(target);
+				if (parent) ::DestroyWindow(parent);
+				throw;
+			}
+			::DestroyWindow(target);
+			if (parent) ::DestroyWindow(parent);
 		}
-		if (!renderer.PersistShaderCache())
-			throw std::runtime_error("shader cache could not be saved");
-		renderer.Stop();
-		renderer.Retire();
 		WriteShaderPreparationStatus(configPath, "ready", total,
-			total, "SDR and HDR shaders ready");
+			total, "Windowed and fullscreen SDR/HDR shaders ready");
 		result = 0;
 	}
 	catch (const std::exception& exception)
@@ -246,7 +331,6 @@ int RunNonCapturingShaderPreparation()
 		WriteShaderPreparationStatus(configPath, "failed", 0, total,
 			"Shader preparation incomplete");
 	}
-	::DestroyWindow(target);
 	return result;
 }
 

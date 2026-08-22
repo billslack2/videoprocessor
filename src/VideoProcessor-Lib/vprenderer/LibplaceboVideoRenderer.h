@@ -149,6 +149,7 @@ private:
 		const char* reason);
 	void UpdateFrameRateAndPPM(timingclocktime_t frameTimestamp);
 	void ResetFrameRateAndPPM();
+	void ApplyPendingShaderSelectionLocked();
 	IRendererCallback& m_callback;
 	HWND m_videoHwnd = nullptr;
 	ITimingClock* m_timingClock = nullptr;
@@ -161,6 +162,8 @@ private:
 	VideoStateComPtr m_videoState;
 	std::atomic<RendererState> m_state{RendererState::RENDERSTATE_UNKNOWN};
 	std::string m_requestedShaderSelector;
+	std::mutex m_pendingShaderMutex;
+	std::string m_pendingShaderSelector;
 	std::vector<std::string> m_activeShaderSections;
 	bool m_activeShaderSectionsAvailable = false;
 	uint64_t m_shaderRendererGeneration = 0;

@@ -18,12 +18,23 @@ namespace LibplaceboRenderParameters
 		Off
 	};
 
+	// Peak detection has two deliberately distinct native parameter sets.
+	// Do not collapse Standard and HighQuality into Toggle::On: the latter has
+	// a much higher percentile and a substantially higher cost.
+	enum class PeakDetection
+	{
+		Auto,
+		Standard,
+		HighQuality,
+		Off
+	};
+
 	struct Settings
 	{
 		std::string quality = "high";
 		std::string toneMapping = "auto";
 		std::string gamutMapping = "auto";
-		Toggle peakDetection = Toggle::Auto;
+		PeakDetection peakDetection = PeakDetection::Auto;
 		bool hasContrastRecovery = false;
 		float contrastRecovery = 0.0f;
 		std::string upscaler = "auto";
@@ -35,6 +46,10 @@ namespace LibplaceboRenderParameters
 		Toggle deband = Toggle::Auto;
 		Toggle sigmoid = Toggle::Auto;
 		Toggle dithering = Toggle::Auto;
+		// Keep compile-time shader values dynamic when a caller needs to change
+		// render settings without pausing presentation for a new shader variant.
+		// This is deliberately a runtime policy, not a user-facing quality value.
+		bool dynamicConstants = false;
 	};
 
 	struct Projection

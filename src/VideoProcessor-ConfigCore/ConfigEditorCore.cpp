@@ -542,28 +542,13 @@ namespace ConfigEditorCore
 	}
 
 	bool SaveSafely(ConfigDocument& document, SaveResult& result,
-		std::wstring& error)
+		std::wstring& error, bool overwriteExternalChanges)
 	{
 		result = {};
 		if (!ValidateCandidate(document, error)) return false;
-		const bool creatingConfiguration = !document.existedAtLoad;
-
-		if (document.existedAtLoad)
+		bool creatingConfiguration = !document.existedAtLoad;
+		auto backupExistingConfiguration = [&document, &result, &error]()
 		{
-			std::string currentBytes;
-			if (!ReadBytes(document.path, currentBytes))
-			{
-				error = L"Could not re-read the configuration before saving. "
-					L"The configuration was not changed.";
-				return false;
-			}
-			if (currentBytes != document.loadedBytes)
-			{
-				error = L"The configuration changed outside this editor after it was "
-					L"loaded. Reload and review those changes before saving.";
-				return false;
-			}
-
 			const std::wstring backup = UniqueBackupPath(document.path);
 			if (backup.empty())
 			{
@@ -577,15 +562,40 @@ namespace ConfigEditorCore
 				return false;
 			}
 			result.backupPath = backup;
+			return true;
+		};
+
+		if (document.existedAtLoad)
+		{
+			std::string currentBytes;
+			if (!ReadBytes(document.path, currentBytes))
+			{
+				error = L"Could not re-read the configuration before saving. "
+					L"The configuration was not changed.";
+				return false;
+			}
+			if (currentBytes != document.loadedBytes && !overwriteExternalChanges)
+			{
+				error = L"The configuration changed outside this editor after it was "
+					L"loaded. Reload and review those changes before saving.";
+				return false;
+			}
+
+			if (!backupExistingConfiguration()) return false;
 		}
 		else
 		{
 			const DWORD attributes = GetFileAttributesW(document.path.c_str());
 			if (attributes != INVALID_FILE_ATTRIBUTES)
 			{
-				error = L"The configuration was created outside this editor after it "
-					L"was opened. Reload and review it before saving.";
-				return false;
+				if (!overwriteExternalChanges)
+				{
+					error = L"The configuration was created outside this editor after it "
+						L"was opened. Reload and review it before saving.";
+					return false;
+				}
+				creatingConfiguration = false;
+				if (!backupExistingConfiguration()) return false;
 			}
 			const DWORD failure = GetLastError();
 			if (failure != ERROR_FILE_NOT_FOUND && failure != ERROR_PATH_NOT_FOUND)

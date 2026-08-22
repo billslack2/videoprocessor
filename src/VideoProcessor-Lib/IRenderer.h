@@ -56,6 +56,11 @@ struct IRendererCallback
 	// No need to do anything but just display.
 	virtual void OnRendererDetailString(const CString& details) = 0;
 
+	// Short-lived presentation status for work which may keep a video frame
+	// unavailable, such as compiling a cold renderer shader. Implementations
+	// must return immediately; the receiver is responsible for marshaling UI.
+	virtual void OnRendererPresentationStatus(const CString&, bool) {}
+
 	// Delivered on the callback/UI thread after an asynchronous renderer-owner
 	// command discovers that the graph must be replaced.
 	virtual void OnRendererRestartRequired() {}

@@ -92,28 +92,22 @@ renderer: VP Renderer
 quality: high</pre>
 </section>
 
-<h2 id="lldv">LLDV metadata profiles</h2>
-<p>LLDV metadata uses the same ordered profile model as Queue, VP Renderer, and Viewports. Use named sections such as <code>[lldv.standard]</code>. The first profile in file order is the default; later profiles are tested in file order and inherit any omitted metadata fields from the first profile. The legacy exact <code>[lldv]</code> section remains readable as the baseline.</p>
+<h2 id="lldv">LLDV metadata</h2>
+<p>LLDV metadata is one application-wide input contract shared by DirectShow and VP Renderer. Store it in the singleton <code>[lldv]</code> section. Config migrates a lone legacy named section such as <code>[lldv.default]</code> to this form.</p>
 <div class="group">
-<article id="lldv-profile-when" data-fields="lldv.&lt;profile&gt;.when"><h3><code>[lldv.&lt;profile&gt;] when</code></h3><p class="meta"><strong>Purpose:</strong> selects a later LLDV metadata profile automatically. <strong>Syntax:</strong> the normal VP rule expression. <strong>Omitted:</strong> no automatic selection for that profile.</p><p>If several automatic rules match, the first matching profile in file order wins.</p></article>
-<article id="lldv-profile-shortcut" data-fields="lldv.&lt;profile&gt;.shortcut"><h3><code>[lldv.&lt;profile&gt;] shortcut</code></h3><p class="meta"><strong>Purpose:</strong> manually selects an LLDV metadata profile. <strong>Syntax:</strong> one key with optional Ctrl, Alt, or Shift modifiers. <strong>Omitted:</strong> no manual selector.</p><p>When both <code>when</code> and <code>shortcut</code> exist, either can select the profile.</p></article>
-<article id="lldv-max-cll" data-fields="lldv.&lt;profile&gt;.max_cll"><h3><code>max_cll</code></h3><p class="meta"><strong>Purpose:</strong> overrides synthesized LLDV maximum content light level metadata. <strong>Syntax:</strong> non-negative luminance value in nits. <strong>Omitted:</strong> a later profile inherits the first profile; an omitted baseline uses VP's mode-specific default.</p></article>
-<article id="lldv-max-fall" data-fields="lldv.&lt;profile&gt;.max_fall"><h3><code>max_fall</code></h3><p class="meta"><strong>Purpose:</strong> overrides synthesized LLDV maximum frame-average light level metadata. <strong>Syntax:</strong> non-negative luminance value in nits. <strong>Omitted:</strong> inherits the baseline or VP's mode-specific default.</p></article>
-<article id="lldv-mastering-min-luminance" data-fields="lldv.&lt;profile&gt;.mastering_min_luminance"><h3><code>mastering_min_luminance</code></h3><p class="meta"><strong>Purpose:</strong> controls the mastering-display minimum luminance synthesized for recognized LLDV input. <strong>Syntax:</strong> non-negative nits. <strong>Omitted:</strong> inherits the baseline or VP's mode-specific default.</p></article>
-<article id="lldv-mastering-max-luminance" data-fields="lldv.&lt;profile&gt;.mastering_max_luminance"><h3><code>mastering_max_luminance</code></h3><p class="meta"><strong>Purpose:</strong> controls the mastering-display maximum luminance synthesized for recognized LLDV input. <strong>Syntax:</strong> a value greater than zero in nits. <strong>Omitted:</strong> inherits the baseline or VP's mode-specific default.</p><p>These fields affect synthesized metadata only when VP recognizes LLDV input. They do not change renderer tone-mapping controls by themselves.</p></article>
+<article id="lldv-max-cll" data-fields="lldv.max_cll"><h3><code>max_cll</code></h3><p class="meta"><strong>Purpose:</strong> overrides synthesized LLDV maximum content light level metadata. <strong>Syntax:</strong> non-negative luminance value in nits. <strong>Omitted:</strong> uses VP's mode-specific default.</p></article>
+<article id="lldv-max-fall" data-fields="lldv.max_fall"><h3><code>max_fall</code></h3><p class="meta"><strong>Purpose:</strong> overrides synthesized LLDV maximum frame-average light level metadata. <strong>Syntax:</strong> non-negative luminance value in nits. <strong>Omitted:</strong> uses VP's mode-specific default.</p></article>
+<article id="lldv-mastering-min-luminance" data-fields="lldv.mastering_min_luminance"><h3><code>mastering_min_luminance</code></h3><p class="meta"><strong>Purpose:</strong> controls the mastering-display minimum luminance synthesized for recognized LLDV input. <strong>Syntax:</strong> non-negative nits. <strong>Omitted:</strong> uses VP's mode-specific default.</p></article>
+<article id="lldv-mastering-max-luminance" data-fields="lldv.mastering_max_luminance"><h3><code>mastering_max_luminance</code></h3><p class="meta"><strong>Purpose:</strong> controls the mastering-display maximum luminance synthesized for recognized LLDV input. <strong>Syntax:</strong> a value greater than zero in nits. <strong>Omitted:</strong> uses VP's mode-specific default.</p><p>Enable LLDV metadata handling in Config so both shared HDR follow policies use their LLDV-aware mode. These fields affect synthesized metadata only when VP recognizes LLDV input.</p></article>
 </div>
 
 <section class="section-examples" aria-labelledby="lldv-examples">
 <h3 id="lldv-examples">Example</h3>
-<pre data-ini-example="lldv-profiles">[lldv.standard]
+<pre data-ini-example="lldv">[lldv]
 max_cll: 1000
 max_fall: 401
 mastering_min_luminance: 0.001
-mastering_max_luminance: 4000
-
-[lldv.bright]
-shortcut: Shift+d
-max_cll: 4000</pre>
+mastering_max_luminance: 4000</pre>
 </section>
 
 <h2 id="queue">Queue and DirectShow</h2>

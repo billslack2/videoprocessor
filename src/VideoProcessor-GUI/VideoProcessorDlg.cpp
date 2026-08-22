@@ -1857,6 +1857,7 @@ BEGIN_MESSAGE_MAP(CVideoProcessorDlg, CDialog)
 	ON_MESSAGE(WM_MESSAGE_DIRECTSHOW_NOTIFICATION, &CVideoProcessorDlg::OnMessageDirectShowNotification)
 	ON_MESSAGE(WM_MESSAGE_RENDERER_STATE_CHANGE, &CVideoProcessorDlg::OnMessageRendererStateChange)
 	ON_MESSAGE(WM_MESSAGE_RENDERER_DETAIL_STRING, &CVideoProcessorDlg::OnMessageRendererDetailString)
+	ON_MESSAGE(WM_MESSAGE_RENDERER_PRESENTATION_STATUS, &CVideoProcessorDlg::OnMessageRendererPresentationStatus)
 	ON_MESSAGE(WM_MESSAGE_EXTERNAL_SHORTCUT, &CVideoProcessorDlg::OnMessageExternalShortcut)
 	ON_MESSAGE(WM_MESSAGE_RENDERER_LIVE_FRAME, &CVideoProcessorDlg::OnMessageRendererLiveFrame)
 	ON_MESSAGE(WM_MESSAGE_RENDERER_RESET_REQUEST, &CVideoProcessorDlg::OnMessageRendererResetRequest)
@@ -6119,6 +6120,26 @@ LRESULT CVideoProcessorDlg::OnMessageRendererDetailString(WPARAM wParam, LPARAM 
 	return 0;
 }
 
+
+LRESULT CVideoProcessorDlg::OnMessageRendererPresentationStatus(WPARAM wParam,
+	LPARAM lParam)
+{
+	std::unique_ptr<CString> status(reinterpret_cast<CString*>(wParam));
+	const bool visible = lParam != 0;
+	if (visible && status && m_rendererTargetHwnd &&
+		IsWindow(m_rendererTargetHwnd) && GetSafeHwnd())
+	{
+		m_rendererDetailStringStatic.SetWindowText(*status);
+		m_rendererTransitionWindow.ShowStatus(m_rendererTargetHwnd,
+			GetSafeHwnd(), *status);
+	}
+	else
+	{
+		m_rendererTransitionWindow.Hide();
+	}
+	return 0;
+}
+
 void CVideoProcessorDlg::PublishShaderPreparationStatus(const char* state,
 	size_t current, size_t total, const char* message) const
 {
@@ -7161,6 +7182,15 @@ void CVideoProcessorDlg::OnRendererDetailString(const CString& details)
 		WM_MESSAGE_RENDERER_DETAIL_STRING,
 		(WPARAM)pDetailString,
 		0);
+}
+
+
+void CVideoProcessorDlg::OnRendererPresentationStatus(const CString& status,
+	bool visible)
+{
+	CString* copy = new CString(status);
+	PostMessage(WM_MESSAGE_RENDERER_PRESENTATION_STATUS,
+		reinterpret_cast<WPARAM>(copy), visible ? 1 : 0);
 }
 
 
@@ -9921,12 +9951,36 @@ bool CVideoProcessorDlg::BuildPushVideoState()
 	// Alterations
 	//
 
-	// Legacy behavior: a HDFury LLDV source was identified as BT.2020 + PQ
-	// without static HDR metadata.  Keep this path exactly when /newlldv is off.
+	// Legacy HDFury firmware/DeckLink combinations exposed LLDV as BT.2020 +
+	// PQ without static HDR metadata. Current Vertex2 + DeckLink combinations
+	// can expose the fixed custom HDR block used by the documented VP workflow:
+	// mastering 0..1000 nits and MaxCLL/MaxFALL 1000. Recognize both forms so
+	// Follow input (LLDV) can replace the synthetic block with VP's configured
+	// values. The exact signature prevents ordinary HDR10 metadata from being
+	// reinterpreted merely because it is PQ/BT.2020.
+	const HDRData* rawHdrData = m_captureDeviceVideoState->hdrData.get();
+	const bool hasVertex2CustomHdrSignature = rawHdrData &&
+		rawHdrData->maxCll == 1000.0 &&
+		rawHdrData->maxFall == 1000.0 &&
+		rawHdrData->masteringDisplayMinLuminance == 0.0 &&
+		rawHdrData->masteringDisplayMaxLuminance == 1000.0;
 	const bool isLegacyHDFuryLLDV =
 		m_captureDeviceVideoState->colorspace == ColorSpace::BT_2020 &&
 		m_captureDeviceVideoState->eotf == EOTF::PQ &&
-		!m_captureDeviceVideoState->hdrData;
+		(!rawHdrData || hasVertex2CustomHdrSignature);
+	DebugLog::Log(
+		"LLDV state trace: raw_eotf=%s raw_colorspace=%s raw_hdr=%d raw_values=%g/%g/%g/%g vertex2_signature=%d lldv_modes_selected=%d newlldv=%d legacy_match=%d",
+		CStringA(ToString(m_captureDeviceVideoState->eotf)).GetString(),
+		CStringA(ToString(m_captureDeviceVideoState->colorspace)).GetString(),
+		rawHdrData ? 1 : 0,
+		rawHdrData ? rawHdrData->maxCll : -1.0,
+		rawHdrData ? rawHdrData->maxFall : -1.0,
+		rawHdrData ? rawHdrData->masteringDisplayMinLuminance : -1.0,
+		rawHdrData ? rawHdrData->masteringDisplayMaxLuminance : -1.0,
+		hasVertex2CustomHdrSignature ? 1 : 0,
+		IsNewLldvModeSelected() ? 1 : 0,
+		m_useNewLldvHeuristic ? 1 : 0,
+		isLegacyHDFuryLLDV ? 1 : 0);
 
 	// New behavior: DeckLink reports LLDV as BT.2020 + SDR without static HDR
 	// metadata.  There is no exposed VSIF to prove this, so only apply the
@@ -10019,6 +10073,28 @@ bool CVideoProcessorDlg::BuildPushVideoState()
 				const RendererProfileConfig::LldvMetadata lldvDefaults =
 					RendererProfileConfig::DefaultLldvMetadata(
 						m_useNewLldvHeuristic);
+				// Resolve against the runtime snapshot used for this effective state.
+				// The cached members are retained for change detection/restart
+				// scheduling, but renderer lifecycle publication can replace the
+				// profile snapshot before another capture notification arrives. Reading
+				// the authoritative snapshot here prevents a newly saved singleton
+				// [lldv] section from falling back to the legacy hard-coded values.
+				const auto activeProfileSnapshot =
+					m_profileRuntime.GetSnapshot();
+				const auto* activeLldv = activeProfileSnapshot ?
+					&activeProfileSnapshot->lldv : nullptr;
+				const double profileMaxCll =
+					activeLldv && activeLldv->hasMaxCll ?
+						activeLldv->maxCll : -1.0;
+				const double profileMaxFall =
+					activeLldv && activeLldv->hasMaxFall ?
+						activeLldv->maxFall : -1.0;
+				const double profileMasteringMin =
+					activeLldv && activeLldv->hasMasteringMinLuminance ?
+						activeLldv->masteringMinLuminance : -1.0;
+				const double profileMasteringMax =
+					activeLldv && activeLldv->hasMasteringMaxLuminance ?
+						activeLldv->masteringMaxLuminance : -1.0;
 				auto resolveLldvValue = [](double commandLineValue,
 					double profileValue, double fallback, bool strictlyPositive)
 				{
@@ -10031,19 +10107,33 @@ bool CVideoProcessorDlg::BuildPushVideoState()
 					return hasProfileValue ? profileValue : fallback;
 				};
 				videoState->hdrData->maxCll = resolveLldvValue(
-					m_lldvMaxCllOverride, m_profileLldvMaxCllOverride,
+					m_lldvMaxCllOverride, profileMaxCll,
 					lldvDefaults.maxCll, false);
 				videoState->hdrData->maxFall = resolveLldvValue(
-					m_lldvMaxFallOverride, m_profileLldvMaxFallOverride,
+					m_lldvMaxFallOverride, profileMaxFall,
 					lldvDefaults.maxFall, false);
 				videoState->hdrData->masteringDisplayMinLuminance =
 					resolveLldvValue(m_lldvMasteringMinLuminanceOverride,
-						m_profileLldvMasteringMinLuminanceOverride,
+						profileMasteringMin,
 						lldvDefaults.masteringMinLuminance, false);
 				videoState->hdrData->masteringDisplayMaxLuminance =
 					resolveLldvValue(m_lldvMasteringMaxLuminanceOverride,
-						m_profileLldvMasteringMaxLuminanceOverride,
+						profileMasteringMax,
 						lldvDefaults.masteringMaxLuminance, true);
+				DebugLog::Log(
+					"LLDV effective metadata: profile=%s command_line=%g/%g/%g/%g profile_values=%g/%g/%g/%g defaults=%g/%g/%g/%g effective=%g/%g/%g/%g",
+					!activeLldv || activeLldv->profile.empty() ? "(none)" :
+						activeLldv->profile.c_str(),
+					m_lldvMaxCllOverride, m_lldvMaxFallOverride,
+					m_lldvMasteringMinLuminanceOverride,
+					m_lldvMasteringMaxLuminanceOverride,
+					profileMaxCll, profileMaxFall, profileMasteringMin,
+					profileMasteringMax, lldvDefaults.maxCll,
+					lldvDefaults.maxFall, lldvDefaults.masteringMinLuminance,
+					lldvDefaults.masteringMaxLuminance,
+					videoState->hdrData->maxCll, videoState->hdrData->maxFall,
+					videoState->hdrData->masteringDisplayMinLuminance,
+					videoState->hdrData->masteringDisplayMaxLuminance);
 			}
 			break;
 
@@ -10230,9 +10320,13 @@ void CVideoProcessorDlg::PublishActiveProfileStatus()
 		shaderSections.emplace_back(CStringA(section).GetString());
 	const uint64_t rendererGeneration =
 		m_rendererGeneration.load(std::memory_order_acquire);
+	const std::string sourceEotf = m_builtVideoState && m_builtVideoState->valid ?
+		CStringA(ToString(m_builtVideoState->eotf)).GetString() : std::string();
+	const std::string sourceColorSpace = m_builtVideoState && m_builtVideoState->valid ?
+		CStringA(ToString(m_builtVideoState->colorspace)).GetString() : std::string();
 	ActiveProfileStatus::Publish(GetCurrentProcessId(), snapshot->generation,
 		snapshot->effectiveSelections, rendererGeneration, shaderAvailable,
-		shaderSections);
+		shaderSections, sourceEotf, sourceColorSpace);
 }
 
 void CVideoProcessorDlg::ApplyUnifiedProfileSnapshot(

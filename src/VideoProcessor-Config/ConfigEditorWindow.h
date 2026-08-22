@@ -82,6 +82,8 @@ private:
     QPushButton* addNavigationButton(const QString& text, int pageIndex);
     QString value(const QString& section, const QString& key, const QString& fallback = {}) const;
     QStringList profileSections(const QString& root) const;
+    QString inheritedSharedInputLabel(const QString& key) const;
+    void refreshInheritedSharedInputChoices(const QString& key);
     QLineEdit* bindTextField(const QString& section, const QString& key, const QString& fallback = {});
     QComboBox* bindChoiceField(const QString& section, const QString& key,
         const QStringList& values, const QStringList& labels = {}, bool editable = false);
@@ -112,6 +114,7 @@ private:
     void refreshShaderPreparationStatus();
     void setShaderPreparationBusy(bool busy, const QString& message = {});
     void loadConfiguration();
+    void migrateLldvSingleton();
     void migrateSharedRefreshRate();
     void loadDiscoveryCache();
     void applyMonitorDiscovery(const QStringList& discovered);
@@ -123,6 +126,7 @@ private:
     void applyActiveProfileIndicators(bool available, const QString& queue,
         const QString& renderer, const QString& viewport,
         const QStringList& shaders, bool shaderAvailable);
+    void refreshRendererAutoStatus();
 
     QString configPath_;
     quintptr ownerHandle_ = 0;
@@ -169,9 +173,19 @@ private:
     QLabel* shaderPreparationStatus_ = nullptr;
     QProgressBar* shaderFooterBusy_ = nullptr;
     bool shaderPreparationBusy_ = false;
+    qint64 shaderPreparationProcessId_ = 0;
     QSystemTrayIcon* tray_ = nullptr;
 	void* revealEvent_ = nullptr;
 	QWinEventNotifier* revealEventNotifier_ = nullptr;
     struct ProfileListBinding { QListWidget* list; QString sectionPrefix; };
     std::vector<ProfileListBinding> activeProfileLists_;
+    struct RendererAutoStatusBinding
+    {
+        QString sectionPrefix;
+        QString key;
+        QWidget* control;
+        QLabel* label;
+    };
+    std::vector<RendererAutoStatusBinding> rendererAutoStatusBindings_;
+    QString liveSourceTransfer_;
 };

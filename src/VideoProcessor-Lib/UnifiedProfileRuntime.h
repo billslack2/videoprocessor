@@ -91,6 +91,19 @@ namespace UnifiedProfileRuntime
 			const std::shared_ptr<const Snapshot>& current,
 			std::vector<ActionInvocation>& actions, std::string& error) const;
 
+		// Resolves a supplied selection set without publishing or persisting it.
+		// Non-capturing shader preparation uses this to warm profile combinations
+		// that a user may select later, while leaving their active profile intact.
+		bool ResolveSelectionsForPreparation(
+			const std::map<std::string, std::string>& selections,
+			const DisplayRuleExpression::ValueLookup& sourceValues,
+			uint64_t generation, std::shared_ptr<const Snapshot>& snapshot,
+			std::string& error) const
+		{
+			return BuildSnapshot(selections, sourceValues, generation, snapshot,
+				error);
+		}
+
 		std::shared_ptr<const Snapshot> GetSnapshot() const;
 		bool IsInitialized() const;
 		std::string StatePath() const;

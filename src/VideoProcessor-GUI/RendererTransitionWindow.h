@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atlstr.h>
 
 // Opaque, owner-bound popup kept above the renderer target while presentation
 // ownership changes. The popup is deliberately not a child of the target:
@@ -12,6 +13,7 @@ public:
 	~RendererTransitionWindow();
 
 	void Show(HWND renderTarget, HWND stableOwner);
+	void ShowStatus(HWND renderTarget, HWND stableOwner, const CString& status);
 	void Hide();
 	void KeepOnTop();
 	bool IsVisible() const;
@@ -25,9 +27,11 @@ private:
 	static ATOM RegisterWindowClass();
 
 	void Destroy();
+	void ShowInternal(HWND renderTarget, HWND stableOwner);
 	bool ResizeAndRaise();
 
 	HWND m_hwnd = nullptr;
 	HWND m_renderTarget = nullptr;
 	HWND m_owner = nullptr;
+	CString m_status;
 };

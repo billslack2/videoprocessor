@@ -763,6 +763,12 @@ QString friendlyChoiceLabel(const QString& raw)
 {
     static const QHash<QString, QString> labels = {
         { QStringLiteral("AUTO"), QStringLiteral("Auto") },
+        { QStringLiteral("NONE"), QStringLiteral("Disabled") },
+        { QStringLiteral("V210_TO_P010"), QStringLiteral("V210 to P010") },
+        { QStringLiteral("FOLLOW_INPUT"), QStringLiteral("Follow input") },
+        { QStringLiteral("FOLLOW_INPUT_LLDV"), QStringLiteral("Follow input (LLDV)") },
+        { QStringLiteral("FOLLOW_CONTAINER"), QStringLiteral("Follow container") },
+        { QStringLiteral("HDR_LUMINANCE_USER"), QStringLiteral("User values") },
         { QStringLiteral("FAST"), QStringLiteral("Fast") },
         { QStringLiteral("BALANCED"), QStringLiteral("Balanced") },
         { QStringLiteral("HIGH"), QStringLiteral("High") },
@@ -792,6 +798,15 @@ QString friendlyChoiceLabel(const QString& raw)
         { QStringLiteral("HIGH_QUALITY"), QStringLiteral("High quality") },
         { QStringLiteral("EWA_LANCZOSSHARP"), QStringLiteral("EWA Lanczos sharp") },
         { QStringLiteral("EWA_LANCZOS"), QStringLiteral("EWA Lanczos") },
+        { QStringLiteral("EWA_LANCZOS4SHARPEST"), QStringLiteral("EWA Lanczos 4 sharpest") },
+        { QStringLiteral("CATMULL_ROM"), QStringLiteral("Catmull-Rom") },
+        { QStringLiteral("NEAREST"), QStringLiteral("Nearest") },
+        { QStringLiteral("OVERSAMPLE"), QStringLiteral("Oversample") },
+        { QStringLiteral("GAUSSIAN"), QStringLiteral("Gaussian") },
+        { QStringLiteral("LANCZOS"), QStringLiteral("Lanczos") },
+        { QStringLiteral("BOX"), QStringLiteral("Box") },
+        { QStringLiteral("HERMITE"), QStringLiteral("Hermite") },
+        { QStringLiteral("MITCHELL"), QStringLiteral("Mitchell") },
         { QStringLiteral("BICUBIC"), QStringLiteral("Bicubic") },
         { QStringLiteral("BILINEAR"), QStringLiteral("Bilinear") },
         { QStringLiteral("SPLINE"), QStringLiteral("Spline") },
@@ -875,6 +890,7 @@ ConfigEditorWindow::ConfigEditorWindow(QString configPath, quintptr ownerHandle,
     resize(1040, 700);
     setMinimumSize(1040, 700);
     loadConfiguration();
+    migrateLldvSingleton();
     migrateSharedRefreshRate();
     if (!testMode_) loadDiscoveryCache();
     else
@@ -1060,6 +1076,65 @@ void ConfigEditorWindow::loadDiscoveryCache()
     allRenderers_ = discoverValues("VPDiscoverRenderers", false);
 }
 
+void ConfigEditorWindow::migrateLldvSingleton()
+{
+    if (!configurationLoaded_ || !document_) return;
+
+    QStringList sections = profileSections(QStringLiteral("lldv"));
+    if (sections.isEmpty()) return;
+
+    QString section;
+    for (const QString& candidate : sections)
+        if (candidate.compare(QStringLiteral("lldv"), Qt::CaseInsensitive) == 0)
+        {
+            section = candidate;
+            break;
+        }
+
+    // LLDV metadata is one application-wide input contract, not a selectable
+    // rendering profile. Canonicalize the common one-named-section form while
+    // retaining multi-section files for backwards-compatible manual recovery.
+    if (section.isEmpty() && sections.size() == 1)
+    {
+        const QString legacy = sections.front();
+        if (document_->RenameSection(legacy.toStdString(), "lldv"))
+        {
+            section = QStringLiteral("lldv");
+            dirty_ = true;
+            hasPendingMigrations_ = true;
+        }
+    }
+    if (section.isEmpty()) section = sections.front();
+
+    bool hasMetadata = false;
+    for (const char* key : { "max_cll", "max_fall",
+        "mastering_min_luminance", "mastering_max_luminance" })
+    {
+        if (!document_->Get(section.toStdString().c_str(), key).empty())
+        {
+            hasMetadata = true;
+            break;
+        }
+    }
+
+    // Explicit LLDV metadata is an unambiguous request to use VP's established
+    // LLDV-aware follow modes. Previously Config displayed and saved these
+    // values while ordinary FOLLOW_INPUT silently bypassed all four of them.
+    const auto normalizedGeneral = [this](const char* key)
+    {
+        return QString::fromLocal8Bit(document_->Get("general", key).c_str())
+            .trimmed().toLower();
+    };
+    if (hasMetadata && normalizedGeneral("hdr_colorspace") == QStringLiteral("follow_input") &&
+        normalizedGeneral("hdr_luminance") == QStringLiteral("follow_input"))
+    {
+        document_->SetKnown("general", "hdr_colorspace", "FOLLOW_INPUT_LLDV");
+        document_->SetKnown("general", "hdr_luminance", "FOLLOW_INPUT_LLDV");
+        dirty_ = true;
+        hasPendingMigrations_ = true;
+    }
+}
+
 void ConfigEditorWindow::migrateSharedRefreshRate()
 {
     if (!configurationLoaded_ || !document_) return;
@@ -1100,6 +1175,13 @@ void ConfigEditorWindow::refreshActiveProfileIndicators()
     const QString renderer = available ? QString::fromLocal8Bit(active.renderer) : QString();
     const QString viewport = available ? QString::fromLocal8Bit(active.viewport) : QString();
     const QString queue = available ? QString::fromLocal8Bit(active.queue) : QString();
+    const QString sourceEotf = available ?
+        QString::fromLocal8Bit(active.sourceEotf).trimmed() : QString();
+    // The renderer declares captured SDR as BT.1886 before applying the
+    // configured SDR-transfer policy. For HDR inputs, expose the actual EOTF
+    // so an SDR-only setting does not imply it is currently active.
+    liveSourceTransfer_ = sourceEotf.compare(QStringLiteral("SDR"),
+        Qt::CaseInsensitive) == 0 ? QStringLiteral("BT.1886") : sourceEotf;
     const bool shaderAvailable = available &&
         ActiveProfileStatus::ShaderSetIsCurrent(active);
     QStringList shaders;
@@ -1108,6 +1190,7 @@ void ConfigEditorWindow::refreshActiveProfileIndicators()
             shaders.push_back(QString::fromLocal8Bit(active.shaders[index]));
     applyActiveProfileIndicators(available, queue, renderer, viewport,
         shaders, shaderAvailable);
+    refreshRendererAutoStatus();
 }
 
 void ConfigEditorWindow::setActiveProfileStatusForTesting(const QString& queue,
@@ -1148,6 +1231,7 @@ void ConfigEditorWindow::applyActiveProfileIndicators(bool available,
                 item->setData(ActiveProfileRole, isActive);
         }
     }
+    refreshRendererAutoStatus();
 }
 
 void ConfigEditorWindow::refreshMonitorDiscovery()
@@ -1248,6 +1332,192 @@ QStringList ConfigEditorWindow::profileSections(const QString& root) const
     return result;
 }
 
+QString ConfigEditorWindow::inheritedSharedInputLabel(const QString& key) const
+{
+    // The General control is authoritative for the effective display value.
+    // This also covers choices whose stored value is empty, such as Container
+    // color space's "Follow input" policy.
+    if (QComboBox* general = findChild<QComboBox*>(
+        controlName(QStringLiteral("general"), key)))
+    {
+        const QString selected = general->currentData().toString();
+        return selected.isEmpty() ? general->currentText() :
+            friendlyChoiceLabel(selected);
+    }
+
+    const QString configured = value(QStringLiteral("general"), key);
+    if (!configured.isEmpty()) return friendlyChoiceLabel(configured);
+    if (key == QStringLiteral("container_colorspace"))
+        return QStringLiteral("Follow input");
+    if (key == QStringLiteral("video_conversion"))
+        return QStringLiteral("Disabled");
+    if (key == QStringLiteral("hdr_colorspace") ||
+        key == QStringLiteral("hdr_luminance"))
+        return QStringLiteral("Follow input");
+    return {};
+}
+
+void ConfigEditorWindow::refreshInheritedSharedInputChoices(const QString& key)
+{
+    if (!isSharedInputSetting(key)) return;
+
+    const QString inheritedLabel = inheritedSharedInputLabel(key);
+    const QString text = inheritedLabel.isEmpty() ?
+        QStringLiteral("Inherited / not set") :
+        QStringLiteral("Inherited: %1").arg(inheritedLabel);
+    const QString tooltip = inheritedLabel.isEmpty() ?
+        QStringLiteral("No General value is currently set. Selecting a value creates a renderer override.") :
+        QStringLiteral("Inherited from General: %1. Selecting a value creates a renderer override.")
+            .arg(inheritedLabel);
+    for (const QString& section : { QStringLiteral("directshow"),
+        QStringLiteral("vprenderer.input_processing") })
+    {
+        QComboBox* combo = findChild<QComboBox*>(controlName(section, key));
+        if (!combo) continue;
+        const QSignalBlocker blocker(combo);
+        combo->setItemText(0, text);
+        if (combo->currentData().toString().trimmed().isEmpty())
+        {
+            combo->setToolTip(tooltip);
+            combo->setProperty("inherited", true);
+        }
+    }
+    refreshRendererAutoStatus();
+}
+
+void ConfigEditorWindow::refreshRendererAutoStatus()
+{
+    const auto qualityControl = findChild<QComboBox*>(
+        QStringLiteral("config.vprenderer.quality"));
+    const QString quality = qualityControl ?
+        qualityControl->currentData().toString().trimmed().toLower() :
+        QStringLiteral("high");
+    const auto qualityValue = [&quality](const QString& high,
+        const QString& balanced, const QString& fast)
+    {
+        if (quality == QStringLiteral("fast")) return fast;
+        if (quality == QStringLiteral("balanced")) return balanced;
+        return high;
+    };
+    const auto isAuto = [](QWidget* control)
+    {
+        if (const auto* combo = qobject_cast<QComboBox*>(control))
+            return combo->currentData().toString().trimmed().compare(
+                QStringLiteral("auto"), Qt::CaseInsensitive) == 0;
+        if (const auto* edit = qobject_cast<QLineEdit*>(control))
+            return edit->text().trimmed().compare(QStringLiteral("auto"),
+                Qt::CaseInsensitive) == 0;
+        return false;
+    };
+    for (const RendererAutoStatusBinding& binding : rendererAutoStatusBindings_)
+    {
+        if (!binding.label || !binding.control) continue;
+        if (!isAuto(binding.control))
+        {
+            binding.label->clear();
+            binding.label->setVisible(false);
+            continue;
+        }
+
+        QString text;
+        if (binding.key == QStringLiteral("sdr_black_nits"))
+        {
+            const auto* targetWhite = findChild<QLineEdit*>(
+                QStringLiteral("config.vprenderer.sdr_target_nits"));
+            bool valid = false;
+            const double whiteNits = targetWhite ?
+                targetWhite->text().trimmed().toDouble(&valid) : 0.0;
+            // libplacebo's documented SDR contrast constant is 1000:1.
+            text = valid && whiteNits > 0.0 ? QString::number(
+                whiteNits / 1000.0, 'f', 3) + QStringLiteral(" nits") :
+                QStringLiteral("0.203 nits");
+        }
+        else if (binding.key == QStringLiteral("output_gamma"))
+            text = QStringLiteral("sRGB");
+        else if (binding.key == QStringLiteral("sdr_adjust_gamma"))
+            text = liveSourceTransfer_.isEmpty() ?
+                QStringLiteral("Source unavailable") : liveSourceTransfer_;
+        else if (binding.key == QStringLiteral("sdr_input_transfer"))
+            text = liveSourceTransfer_.isEmpty() ?
+                QStringLiteral("Source unavailable") : liveSourceTransfer_;
+        else if (binding.key == QStringLiteral("tone_mapping"))
+            text = QStringLiteral("Spline");
+        else if (binding.key == QStringLiteral("gamut_mapping"))
+            text = QStringLiteral("Perceptual");
+        else if (binding.key == QStringLiteral("peak_detection"))
+        {
+            text = qualityValue(QStringLiteral("High quality"),
+                QStringLiteral("Standard"), QStringLiteral("Off"));
+        }
+        else if (binding.key == QStringLiteral("contrast_recovery"))
+        {
+            text = qualityValue(QStringLiteral("0.30"), QStringLiteral("0.00"),
+                QStringLiteral("0.00"));
+        }
+        else if (binding.key == QStringLiteral("upscaler"))
+        {
+            text = qualityValue(QStringLiteral("EWA Lanczos sharp"),
+                QStringLiteral("Lanczos"), QStringLiteral("Built-in sampling"));
+        }
+        else if (binding.key == QStringLiteral("downscaler"))
+        {
+            text = qualityValue(QStringLiteral("Hermite"),
+                QStringLiteral("Hermite"), QStringLiteral("Built-in sampling"));
+        }
+        else if (binding.key == QStringLiteral("deband_strength"))
+        {
+            text = qualityValue(QStringLiteral("Standard"), QStringLiteral("Off"),
+                QStringLiteral("Off"));
+        }
+        else if (binding.key == QStringLiteral("sigmoid"))
+        {
+            text = qualityValue(QStringLiteral("On"), QStringLiteral("On"),
+                QStringLiteral("Off"));
+        }
+        else if (binding.key == QStringLiteral("dithering"))
+        {
+            text = qualityValue(QStringLiteral("Blue-noise dithering"),
+                QStringLiteral("Blue-noise dithering"), QStringLiteral("Off"));
+        }
+        else if (binding.key == QStringLiteral("display_bit_depth"))
+            text = QStringLiteral("Output format");
+        else if (binding.key == QStringLiteral("lut_reference_nits") ||
+            binding.key == QStringLiteral("lut_reference_range") ||
+            binding.key == QStringLiteral("lut_reference_transfer") ||
+            binding.key == QStringLiteral("lut_reference_primaries"))
+        {
+            text = QStringLiteral("Not constrained");
+        }
+        else if (binding.sectionPrefix == QStringLiteral("vprenderer.output") &&
+            binding.key == QStringLiteral("output_presentation"))
+        {
+            text = QStringLiteral("Flip");
+        }
+        else if (binding.sectionPrefix == QStringLiteral("vprenderer.output") &&
+            binding.key == QStringLiteral("output_range"))
+        {
+            text = QStringLiteral("Full RGB");
+        }
+        else if (binding.sectionPrefix == QStringLiteral("vprenderer.output") &&
+            binding.key == QStringLiteral("output_transport_gamma"))
+        {
+            const auto* range = findChild<QComboBox*>(
+                QStringLiteral("config.vprenderer.output.output_range"));
+            text = range && range->currentData().toString().compare(
+                QStringLiteral("limited"), Qt::CaseInsensitive) == 0 ?
+                QStringLiteral("2.4") : QStringLiteral("Not used");
+        }
+        if (text.isEmpty())
+        {
+            binding.label->clear();
+            binding.label->setVisible(false);
+            continue;
+        }
+        binding.label->setText(QStringLiteral("Auto: %1").arg(text));
+        binding.label->setVisible(true);
+    }
+}
+
 QLineEdit* ConfigEditorWindow::bindTextField(const QString& section, const QString& key, const QString& fallback)
 {
     auto* edit = new QLineEdit(value(section, key, fallback));
@@ -1328,20 +1598,15 @@ QComboBox* ConfigEditorWindow::bindChoiceField(const QString& section, const QSt
     const QString configured = inherited ? fallback : value(section, key, fallback);
     if (inherited)
     {
-        QString inheritedLabel = friendlyChoiceLabel(configured);
-        for (int index = 1; index < combo->count(); ++index)
-            if (combo->itemData(index).toString().compare(configured,
-                Qt::CaseInsensitive) == 0)
-            {
-                inheritedLabel = combo->itemText(index);
-                break;
-            }
-        combo->setItemText(0, configured.isEmpty() ? QStringLiteral("Inherited / not set") :
+        const QString inheritedLabel = inheritedSharedInputLabel(key);
+        combo->setItemText(0, inheritedLabel.isEmpty() ?
+            QStringLiteral("Inherited / not set") :
             QStringLiteral("Inherited: %1").arg(inheritedLabel));
         combo->setProperty("inherited", true);
-        combo->setToolTip(configured.isEmpty() ?
+        combo->setToolTip(inheritedLabel.isEmpty() ?
             QStringLiteral("No General value is currently set. Selecting a value creates a renderer override.") :
-            QStringLiteral("Inherited from General. Selecting a value creates a renderer override."));
+            QStringLiteral("Inherited from General: %1. Selecting a value creates a renderer override.")
+                .arg(inheritedLabel));
         combo->setCurrentIndex(0);
     }
     else if (!configured.isEmpty())
@@ -1369,6 +1634,16 @@ QComboBox* ConfigEditorWindow::bindChoiceField(const QString& section, const QSt
     else if (combo->count() > 0)
         combo->setCurrentIndex(0);
 
+    // Keep the inherit command meaningful even while a renderer override is
+    // selected: users can see the value they will get before choosing it.
+    if (backendInputSetting)
+    {
+        const QString inheritedLabel = inheritedSharedInputLabel(key);
+        combo->setItemText(0, inheritedLabel.isEmpty() ?
+            QStringLiteral("Inherited / not set") :
+            QStringLiteral("Inherited: %1").arg(inheritedLabel));
+    }
+
     auto save = [this, section, key](const QString& selected)
     {
         if (!document_) return;
@@ -1391,6 +1666,8 @@ QComboBox* ConfigEditorWindow::bindChoiceField(const QString& section, const QSt
                 normalized.toLocal8Bit().constData());
         }
         markDirty();
+        if (section.compare(QStringLiteral("general"), Qt::CaseInsensitive) == 0)
+            refreshInheritedSharedInputChoices(key);
     };
     if (editable)
     {
@@ -1635,11 +1912,9 @@ bool ConfigEditorWindow::updateValidationState()
     const bool valid = errors.isEmpty();
     validationValid_ = valid;
     if (saveButton_)
-        saveButton_->setEnabled(!shaderPreparationBusy_ &&
-            configurationLoaded_ && valid);
+        saveButton_->setEnabled(configurationLoaded_ && valid);
     if (applyButton_)
-        applyButton_->setEnabled(!shaderPreparationBusy_ &&
-            configurationLoaded_ && dirty_ && valid);
+        applyButton_->setEnabled(configurationLoaded_ && dirty_ && valid);
     if (!valid)
     {
         int latest = 0;
@@ -1819,6 +2094,7 @@ void ConfigEditorWindow::rebuildConfigurationShell()
     // enter this comparatively expensive path.
     const int currentPage = pages_ ? pages_->currentIndex() : 0;
 	activeProfileLists_.clear();
+	rendererAutoStatusBindings_.clear();
 	monitorChoice_ = nullptr;
 	rendererChoice_ = nullptr;
 	actionRendererTarget_ = nullptr;
@@ -1908,8 +2184,6 @@ bool ConfigEditorWindow::saveChanges()
         savedSnapshot_, currentSnapshot);
     const auto action = ConfigurationApplyPolicy::ClassifyChanges(changed,
         snapshotUsesDirectShowRenderer(savedSnapshot_));
-    const bool prepareShaders = ShaderPreparationPolicy::ShouldPrepare(
-        savedSnapshot_, currentSnapshot);
     // Persist shortcut spelling in the same canonical form used by the
     // accelerator parser. Case is not a modifier: L and l are both L, while
     // Shift+L is the distinct shifted chord.
@@ -1967,7 +2241,10 @@ bool ConfigEditorWindow::saveChanges()
         if (applyButton_) applyButton_->setEnabled(false);
         return false;
     }
-    if (!ConfigEditorCore::SaveSafely(*document_, result, error))
+    // Config is the interactive authority for this file. Preserve any outside
+    // version in the timestamped backup, then save the user's validated editor
+    // state instead of refusing a stale-file conflict.
+    if (!ConfigEditorCore::SaveSafely(*document_, result, error, true))
     {
         setStatus(QString::fromStdWString(error), true);
         if (!testMode_) openValidationError(this, QString::fromStdWString(error));
@@ -2021,8 +2298,6 @@ bool ConfigEditorWindow::saveChanges()
             QStringLiteral("Changes saved safely. Takes effect when VideoProcessor next starts. Backup: %1")
                 .arg(QString::fromStdWString(result.backupPath)), false);
     }
-    if (prepareShaders)
-        requestShaderPreparation();
     return true;
 }
 
@@ -2043,6 +2318,7 @@ QWidget* ConfigEditorWindow::createShell()
     shaderPreparationStatus_ = nullptr;
     shaderFooterBusy_ = nullptr;
     activeProfileLists_.clear();
+    rendererAutoStatusBindings_.clear();
     auto* root = new QWidget;
     root->setObjectName(QStringLiteral("root"));
     auto* rootLayout = new QVBoxLayout(root);
@@ -2266,7 +2542,7 @@ QWidget* ConfigEditorWindow::createShell()
         // A clean OK is just a close. A dirty OK must remain open if validation
         // or safe persistence fails, so the user can correct the candidate.
         if (!dirty_) hide();
-        else if (saveChanges() && !shaderPreparationBusy_) hide();
+        else if (saveChanges()) hide();
     });
     connect(cancel, &QPushButton::clicked, this, [this]
     {
@@ -3005,13 +3281,15 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             markDirty();
         });
     };
-    auto addChoice = [&](const QString& label, const QString& key, const QStringList& choices)
+    auto addChoice = [&](const QString& label, const QString& key,
+        const QStringList& choices, bool allowInherited = true)
     {
         auto* combo = new QComboBox;
         combo->setObjectName(controlName(sectionPrefix, key));
         combo->setAccessibleName(label);
         combo->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-        combo->addItem(QStringLiteral("Inherited / not set"), QString());
+        if (allowInherited)
+            combo->addItem(QStringLiteral("Inherited / not set"), QString());
         for (const QString& choice : choices)
             combo->addItem(friendlyChoiceLabel(choice), choice);
         form->addRow(label, combo);
@@ -3037,6 +3315,51 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             markDirty();
         });
         return combo;
+    };
+    const auto addRendererAutoStatus = [this, &form, sectionPrefix](
+        const QString& key, QWidget* control)
+    {
+        if ((sectionPrefix != QStringLiteral("vprenderer") &&
+             sectionPrefix != QStringLiteral("vprenderer.output")) ||
+            !form || !control)
+            return;
+        auto* status = helpLabel(QString());
+        status->setObjectName(controlName(sectionPrefix, key) +
+            QStringLiteral(".auto_status"));
+        QFont statusFont = status->font();
+        statusFont.setItalic(true);
+        status->setFont(statusFont);
+        status->setVisible(false);
+        int row = -1;
+        QFormLayout::ItemRole role = QFormLayout::SpanningRole;
+        QWidget* fieldControl = control;
+        while (fieldControl && row < 0)
+        {
+            form->getWidgetPosition(fieldControl, &row, &role);
+            if (row < 0)
+                fieldControl = fieldControl->parentWidget();
+        }
+        if (row < 0 || role != QFormLayout::FieldRole)
+        {
+            delete status;
+            return;
+        }
+        auto* field = new QWidget;
+        auto* fieldLayout = new QVBoxLayout(field);
+        fieldLayout->setContentsMargins(0, 0, 0, 0);
+        fieldLayout->setSpacing(2);
+        form->removeWidget(fieldControl);
+        fieldLayout->addWidget(fieldControl);
+        fieldLayout->addWidget(status);
+        form->setWidget(row, QFormLayout::FieldRole, field);
+        rendererAutoStatusBindings_.push_back(
+            { sectionPrefix, key, control, status });
+        if (auto* combo = qobject_cast<QComboBox*>(control))
+            connect(combo, qOverload<int>(&QComboBox::currentIndexChanged), this,
+                [this](int) { refreshRendererAutoStatus(); });
+        else if (auto* edit = qobject_cast<QLineEdit*>(control))
+            connect(edit, &QLineEdit::textChanged, this,
+                [this](const QString&) { refreshRendererAutoStatus(); });
     };
     auto addInteger = [&](const QString& label, const QString& key,
         int minimum, int maximum, const QString& unit)
@@ -3118,13 +3441,18 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
     else if (sectionPrefix == QStringLiteral("vprenderer"))
     {
 		form = addPlainForm();
-		addChoice(QStringLiteral("Rendering quality"), QStringLiteral("quality"),
-			{ QStringLiteral("fast"), QStringLiteral("balanced"), QStringLiteral("high") });
+		auto* renderingQuality = addChoice(QStringLiteral("Rendering quality"),
+			QStringLiteral("quality"), { QStringLiteral("high"),
+			QStringLiteral("balanced"), QStringLiteral("fast") });
+		connect(renderingQuality, qOverload<int>(&QComboBox::currentIndexChanged), this,
+			[this](int) { refreshRendererAutoStatus(); });
 
 		form = addCollapsibleSection(QStringLiteral("calibration"),
 			QStringLiteral("Display calibration"), QStringLiteral(
 				"Describe the calibrated display response VP should target. This is separate from Windows RGB presentation."), false);
-		addChoice(QStringLiteral("Display primaries"), QStringLiteral("sdr_target_primaries"), { QStringLiteral("REC709"), QStringLiteral("BT2020") });
+		addChoice(QStringLiteral("Display primaries"),
+			QStringLiteral("sdr_target_primaries"),
+			{ QStringLiteral("REC709"), QStringLiteral("BT2020") }, false);
 		auto* outputGamma = addChoice(QStringLiteral("Display transfer / gamma"),
 			QStringLiteral("output_gamma"),
 			{ QStringLiteral("AUTO"), QStringLiteral("bt1886"),
@@ -3136,6 +3464,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 			"The calibrated display transfer VP targets during color-managed rendering. "
 			"It does not change Windows' normal Full RGB / sRGB presentation declaration. "
 			"Choose a measured transfer such as pure 2.2 only when this profile is calibrated to it."));
+		addRendererAutoStatus(QStringLiteral("output_gamma"), outputGamma);
 		addBoolean(QStringLiteral("Report BT.2020 to display"), QStringLiteral("report_bt2020_to_display"));
 		form->addRow(QString(), helpLabel(QStringLiteral(
 			"For an already calibrated display, describe its primaries and transfer here. "
@@ -3154,31 +3483,54 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 			"Controls SDR source-transfer conversion, not display calibration or a manual gamma adjustment. "
 			"Auto suppresses common ambiguous SDR-to-sRGB conversion only for an automatic output curve. "
 			"On honors source and output transfer metadata. Off treats SDR as already encoded for the accepted output transfer."));
+		addRendererAutoStatus(QStringLiteral("sdr_adjust_gamma"), sdrAdjustGamma);
 		auto* sdrInputTransfer = addChoice(QStringLiteral("SDR input transfer"), QStringLiteral("sdr_input_transfer"), { QStringLiteral("AUTO"), QStringLiteral("bt1886"), QStringLiteral("srgb"), QStringLiteral("1.8"), QStringLiteral("2.0"), QStringLiteral("2.2"), QStringLiteral("2.4"), QStringLiteral("2.6"), QStringLiteral("2.8") });
 		sdrInputTransfer->setToolTip(QStringLiteral(
 			"Declares how SDR source codes are interpreted when gamma adjustment is On. "
 			"The value remains recorded but is not used for transfer conversion when adjustment is Off."));
+		addRendererAutoStatus(QStringLiteral("sdr_input_transfer"), sdrInputTransfer);
 		form->addRow(QString(), helpLabel(QStringLiteral(
 			"This controls SDR transfer-curve conversion only. YUV/RGB matrix, range, primaries, scaling, LUT, shaders, dithering, quantization, and the physical display response remain active.")));
 
         form = addCollapsibleSection(QStringLiteral("toneMapping"),
             QStringLiteral("Tone mapping"), QStringLiteral(
                 "HDR tone mapping, gamut compression, dynamic peak handling, and contrast recovery."), false);
-		addText(QStringLiteral("Target white level"), QStringLiteral("sdr_target_nits"), QStringLiteral("nits"));
+		auto* sdrTargetWhiteLevel = addText(QStringLiteral("Target white level"),
+			QStringLiteral("sdr_target_nits"), QStringLiteral("nits"));
+		connect(sdrTargetWhiteLevel, &QLineEdit::textChanged, this,
+			[this](const QString&) { refreshRendererAutoStatus(); });
 		auto* sdrBlackLevel = addText(QStringLiteral("Target black level"), QStringLiteral("sdr_black_nits"), QStringLiteral("nits"));
 		sdrBlackLevel->setPlaceholderText(QStringLiteral("Auto or a numeric value"));
-        addChoice(QStringLiteral("Tone mapping"), QStringLiteral("tone_mapping"), { QStringLiteral("AUTO"), QStringLiteral("spline"), QStringLiteral("bt2390"), QStringLiteral("st2094-40"), QStringLiteral("reinhard") });
-        addChoice(QStringLiteral("Gamut mapping"), QStringLiteral("gamut_mapping"), { QStringLiteral("AUTO"), QStringLiteral("perceptual"), QStringLiteral("softclip"), QStringLiteral("relative"), QStringLiteral("desaturate") });
-        addChoice(QStringLiteral("Peak detection"), QStringLiteral("peak_detection"), { QStringLiteral("AUTO"), QStringLiteral("off"), QStringLiteral("high_quality"), QStringLiteral("on") });
-        auto* contrastRecovery = addText(QStringLiteral("Contrast recovery (0 to 1)"), QStringLiteral("contrast_recovery"));
-        contrastRecovery->setPlaceholderText(QStringLiteral("Auto or a value from 0 to 1"));
+        addRendererAutoStatus(QStringLiteral("sdr_black_nits"), sdrBlackLevel);
+        auto* toneMapping = addChoice(QStringLiteral("Tone mapping"), QStringLiteral("tone_mapping"), { QStringLiteral("AUTO"), QStringLiteral("spline"), QStringLiteral("bt2390"), QStringLiteral("st2094-40"), QStringLiteral("reinhard") });
+        addRendererAutoStatus(QStringLiteral("tone_mapping"), toneMapping);
+        auto* gamutMapping = addChoice(QStringLiteral("Gamut mapping"), QStringLiteral("gamut_mapping"), { QStringLiteral("AUTO"), QStringLiteral("perceptual"), QStringLiteral("softclip"), QStringLiteral("relative"), QStringLiteral("desaturate") });
+        addRendererAutoStatus(QStringLiteral("gamut_mapping"), gamutMapping);
+        auto* peakDetection = addChoice(QStringLiteral("Peak detection"), QStringLiteral("peak_detection"), { QStringLiteral("AUTO"), QStringLiteral("high_quality"), QStringLiteral("on"), QStringLiteral("off") });
+        peakDetection->setItemText(peakDetection->findData(QStringLiteral("on")),
+            QStringLiteral("Standard"));
+        addRendererAutoStatus(QStringLiteral("peak_detection"), peakDetection);
+        auto* contrastRecovery = addText(QStringLiteral("Contrast recovery (0 to 2)"), QStringLiteral("contrast_recovery"));
+        contrastRecovery->setPlaceholderText(QStringLiteral("Auto or a value from 0 to 2"));
+        addRendererAutoStatus(QStringLiteral("contrast_recovery"), contrastRecovery);
 
         form = addCollapsibleSection(QStringLiteral("scalingCleanup"), QStringLiteral("Scaling and Processing"),
-            QStringLiteral("Scaling algorithms, debanding, sigmoid processing, dithering, and output precision."), false);
-        addChoice(QStringLiteral("Upscaler"), QStringLiteral("upscaler"), { QStringLiteral("AUTO"), QStringLiteral("ewa_lanczossharp"), QStringLiteral("ewa_lanczos"), QStringLiteral("bicubic"), QStringLiteral("bilinear") });
-        addChoice(QStringLiteral("Downscaler"), QStringLiteral("downscaler"), { QStringLiteral("AUTO"), QStringLiteral("ewa_lanczos"), QStringLiteral("bicubic"), QStringLiteral("bilinear") });
-        addChoice(QStringLiteral("Debanding"), QStringLiteral("deband_strength"), { QStringLiteral("AUTO"), QStringLiteral("off"), QStringLiteral("light"), QStringLiteral("default") });
-        addChoice(QStringLiteral("Sigmoid scaling"), QStringLiteral("sigmoid"), { QStringLiteral("AUTO"), QStringLiteral("on"), QStringLiteral("off") });
+            QString(), false);
+        auto* upscaler = addChoice(QStringLiteral("Upscaler"), QStringLiteral("upscaler"), { QStringLiteral("AUTO"), QStringLiteral("ewa_lanczos4sharpest"), QStringLiteral("ewa_lanczossharp"), QStringLiteral("ewa_lanczos"), QStringLiteral("lanczos"), QStringLiteral("catmull_rom"), QStringLiteral("bicubic"), QStringLiteral("gaussian"), QStringLiteral("oversample"), QStringLiteral("bilinear"), QStringLiteral("nearest"), QStringLiteral("none") });
+        addRendererAutoStatus(QStringLiteral("upscaler"), upscaler);
+        auto* downscaler = addChoice(QStringLiteral("Downscaler"), QStringLiteral("downscaler"), { QStringLiteral("AUTO"), QStringLiteral("ewa_lanczos"), QStringLiteral("lanczos"), QStringLiteral("mitchell"), QStringLiteral("catmull_rom"), QStringLiteral("bicubic"), QStringLiteral("gaussian"), QStringLiteral("hermite"), QStringLiteral("bilinear"), QStringLiteral("box"), QStringLiteral("none") });
+        downscaler->setItemText(downscaler->findData(QStringLiteral("none")),
+            QStringLiteral("Match upscaler"));
+        addRendererAutoStatus(QStringLiteral("downscaler"), downscaler);
+        auto* debanding = addChoice(QStringLiteral("Debanding"), QStringLiteral("deband_strength"), { QStringLiteral("AUTO"), QStringLiteral("default"), QStringLiteral("light"), QStringLiteral("off") });
+        addRendererAutoStatus(QStringLiteral("deband_strength"), debanding);
+        auto* sigmoid = addChoice(QStringLiteral("Anti-ringing"),
+            QStringLiteral("sigmoid"), { QStringLiteral("AUTO"),
+            QStringLiteral("on"), QStringLiteral("off") });
+		sigmoid->setAccessibleName(QStringLiteral("Anti-ringing"));
+        sigmoid->setToolTip(QStringLiteral(
+            "Optional sigmoidization before upscaling. It reduces ringing artifacts; Auto uses the rendering-quality preset."));
+        addRendererAutoStatus(QStringLiteral("sigmoid"), sigmoid);
         auto* dithering = addChoice(QStringLiteral("Dithering"), QStringLiteral("dithering"),
             { QStringLiteral("AUTO"), QStringLiteral("on"), QStringLiteral("off") });
         dithering->setItemText(1, QStringLiteral("Auto"));
@@ -3186,14 +3538,16 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         dithering->setItemText(3, QStringLiteral("Off"));
         dithering->setToolTip(QStringLiteral(
             "Auto uses the rendering-quality preset. On uses libplacebo's default dithering. Off disables dithering."));
+        addRendererAutoStatus(QStringLiteral("dithering"), dithering);
         auto* displayBitDepth = addChoice(QStringLiteral("Display bit depth"),
             QStringLiteral("display_bit_depth"),
-            { QStringLiteral("AUTO"), QStringLiteral("8"), QStringLiteral("10") });
+            { QStringLiteral("AUTO"), QStringLiteral("10"), QStringLiteral("8") });
         displayBitDepth->setItemText(1, QStringLiteral("Auto"));
-        displayBitDepth->setItemText(2, QStringLiteral("8-bit"));
-        displayBitDepth->setItemText(3, QStringLiteral("10-bit or higher"));
+        displayBitDepth->setItemText(2, QStringLiteral("10-bit or higher"));
+        displayBitDepth->setItemText(3, QStringLiteral("8-bit"));
         displayBitDepth->setToolTip(QStringLiteral(
             "Native display precision used as the dithering target. Auto uses the active RGB swapchain depth."));
+        addRendererAutoStatus(QStringLiteral("display_bit_depth"), displayBitDepth);
 
 		form = addCollapsibleSection(QStringLiteral("lut"), QStringLiteral("Calibration LUT (3D LUT)"),
             QStringLiteral("Optional lookup-table file and the signal reference used to interpret it."), false);
@@ -3281,9 +3635,13 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         lutReferenceLuminance->setToolTip(QStringLiteral(
             "Choose Auto or a common reference luminance from 40 to 500 nits. "
             "Existing custom values remain available in their profile."));
-        addChoice(QStringLiteral("LUT reference range"), QStringLiteral("lut_reference_range"), { QStringLiteral("AUTO"), QStringLiteral("full"), QStringLiteral("limited") });
-        addChoice(QStringLiteral("LUT reference transfer"), QStringLiteral("lut_reference_transfer"), { QStringLiteral("AUTO"), QStringLiteral("srgb"), QStringLiteral("bt1886"), QStringLiteral("2.2"), QStringLiteral("2.4") });
-        addChoice(QStringLiteral("LUT reference primaries"), QStringLiteral("lut_reference_primaries"), { QStringLiteral("AUTO"), QStringLiteral("REC709"), QStringLiteral("P3_D65"), QStringLiteral("BT2020") });
+        addRendererAutoStatus(QStringLiteral("lut_reference_nits"), lutReferenceLuminance);
+        auto* lutReferenceRange = addChoice(QStringLiteral("LUT reference range"), QStringLiteral("lut_reference_range"), { QStringLiteral("AUTO"), QStringLiteral("full"), QStringLiteral("limited") });
+        addRendererAutoStatus(QStringLiteral("lut_reference_range"), lutReferenceRange);
+        auto* lutReferenceTransfer = addChoice(QStringLiteral("LUT reference transfer"), QStringLiteral("lut_reference_transfer"), { QStringLiteral("AUTO"), QStringLiteral("srgb"), QStringLiteral("bt1886"), QStringLiteral("2.2"), QStringLiteral("2.4") });
+        addRendererAutoStatus(QStringLiteral("lut_reference_transfer"), lutReferenceTransfer);
+        auto* lutReferencePrimaries = addChoice(QStringLiteral("LUT reference primaries"), QStringLiteral("lut_reference_primaries"), { QStringLiteral("AUTO"), QStringLiteral("REC709"), QStringLiteral("P3_D65"), QStringLiteral("BT2020") });
+        addRendererAutoStatus(QStringLiteral("lut_reference_primaries"), lutReferencePrimaries);
 
     }
     else if (sectionPrefix == QStringLiteral("vprenderer.output"))
@@ -3302,6 +3660,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         outputPresentation->setToolTip(QStringLiteral(
             "Auto is recommended. Direct and Composed are compatibility preferences; "
             "Windows and the renderer choose the effective presentation path."));
+		addRendererAutoStatus(QStringLiteral("output_presentation"), outputPresentation);
         auto* outputRange = addChoice(QStringLiteral("RGB output range"),
             QStringLiteral("output_range"),
             { QStringLiteral("AUTO"), QStringLiteral("full"),
@@ -3309,6 +3668,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         outputRange->setToolTip(QStringLiteral(
             "Auto normally uses Full RGB. Select Limited only for a known "
             "limited-range display chain or a transport diagnostic."));
+		addRendererAutoStatus(QStringLiteral("output_range"), outputRange);
         auto* outputTransportGamma = addChoice(
             QStringLiteral("Limited transport transfer"),
             QStringLiteral("output_transport_gamma"),
@@ -3318,6 +3678,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             "Only applies when RGB output range is Limited. Auto uses the "
             "standard limited-range transport. Display calibration remains "
             "part of the Rendering profile."));
+		addRendererAutoStatus(QStringLiteral("output_transport_gamma"), outputTransportGamma);
         auto* outputCompatibility = helpLabel(QString());
         outputCompatibility->setObjectName(
             QStringLiteral("config.vprenderer.output.advanced_output.compatibility"));
@@ -3819,16 +4180,42 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             else
             {
                 auto* combo = qobject_cast<QComboBox*>(field.widget);
+                const int autoIndex = combo->findData(QStringLiteral("AUTO"),
+                    Qt::UserRole, Qt::MatchFixedString);
+                // A VP Renderer root profile already has an explicit quality
+                // policy. Where libplacebo offers AUTO, it is the meaningful
+                // default: an additional empty "Use default" choice is both
+                // redundant and ambiguous. Keep that omission available only
+                // to named profiles, where it means inherit this root value.
+                const bool rootRendererExplicitDefault = defaultProfile &&
+                    sectionPrefix == QStringLiteral("vprenderer") &&
+                    (field.key == QStringLiteral("quality") ||
+                     field.key == QStringLiteral("sdr_target_primaries"));
+                const bool hasUnspecifiedChoice = combo->count() > 0 &&
+                    combo->itemData(0).toString().isEmpty();
+                const bool hideUnspecifiedChoice = rootRendererExplicitDefault ||
+                    (defaultProfile && sectionPrefix == QStringLiteral("vprenderer") &&
+                        autoIndex >= 0);
+                if (auto* view = qobject_cast<QListView*>(combo->view()))
+                    view->setRowHidden(0, hasUnspecifiedChoice &&
+                        hideUnspecifiedChoice);
                 const QString inheritedDisplay = friendlyChoiceLabel(configured);
-                if (raw.isEmpty() && !configured.isEmpty())
-                    combo->setItemText(0, defaultProfile ?
-                        QStringLiteral("Default: %1").arg(inheritedDisplay) :
-                        QStringLiteral("Inherited: %1").arg(inheritedDisplay));
-                else
-                    combo->setItemText(0, defaultProfile ?
-                        QStringLiteral("Use default") : QStringLiteral("Use inherited value"));
-                int index = raw.isEmpty() ? 0 :
-                    (configured.isEmpty() ? 0 : combo->findData(configured, Qt::UserRole, Qt::MatchFixedString));
+                if (hasUnspecifiedChoice)
+                {
+                    if (raw.isEmpty() && !configured.isEmpty())
+                        combo->setItemText(0, defaultProfile ?
+                            QStringLiteral("Default: %1").arg(inheritedDisplay) :
+                            QStringLiteral("Inherited: %1").arg(inheritedDisplay));
+                    else
+                        combo->setItemText(0, defaultProfile ?
+                            QStringLiteral("Use default") : QStringLiteral("Use inherited value"));
+                }
+                const int effectiveIndex = autoIndex >= 0 ? autoIndex :
+                    combo->findData(configured, Qt::UserRole, Qt::MatchFixedString);
+                int index = raw.isEmpty() ?
+                    (hideUnspecifiedChoice || !hasUnspecifiedChoice ? effectiveIndex : 0) :
+                    (configured.isEmpty() && hasUnspecifiedChoice ? 0 :
+                        combo->findData(configured, Qt::UserRole, Qt::MatchFixedString));
                 if (index < 0)
                     for (int candidate = 0; candidate < combo->count(); ++candidate)
                         if (combo->itemData(candidate).toString().compare(
@@ -3863,6 +4250,9 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         if (queuePolicy)
             updateQueuePolicyFromValues();
         state->loading = false;
+        if (sectionPrefix == QStringLiteral("vprenderer") ||
+            sectionPrefix == QStringLiteral("vprenderer.output"))
+            refreshRendererAutoStatus();
     };
 
     if (queuePolicy)
@@ -4198,11 +4588,13 @@ void ConfigEditorWindow::setShaderPreparationBusy(bool busy,
     const QString& message)
 {
     shaderPreparationBusy_ = busy;
-    if (configurationHost_) configurationHost_->setEnabled(!busy);
     if (shaderFooterBusy_) shaderFooterBusy_->setVisible(busy);
-    if (saveButton_) saveButton_->setEnabled(!busy && configurationLoaded_);
+    if (auto* prepare = findChild<QPushButton*>(
+        QStringLiteral("config.shader.prepare")))
+        prepare->setEnabled(!busy);
+    if (saveButton_) saveButton_->setEnabled(configurationLoaded_ && validationValid_);
     if (applyButton_)
-        applyButton_->setEnabled(!busy && configurationLoaded_ && dirty_ &&
+        applyButton_->setEnabled(configurationLoaded_ && dirty_ &&
             validationValid_);
     if (!message.isEmpty()) setStatus(message, false);
 }
@@ -4236,34 +4628,45 @@ void ConfigEditorWindow::requestShaderPreparation()
         return;
     }
 
-    SetLastError(ERROR_SUCCESS);
-    HANDLE requested = CreateEventW(nullptr, FALSE, FALSE,
+    // Never ask an active presentation process to compile cache variants. The
+    // old event path ran this work from VP's MFC UI thread, which made both VP
+    // and Config appear frozen. Explicit preparation uses an isolated process.
+    HANDLE listener = OpenEventW(SYNCHRONIZE, FALSE,
         ConfigurationLiveApply::ShaderPreparationEventName);
-    const bool vpWasListening = requested &&
-        GetLastError() == ERROR_ALREADY_EXISTS;
-    const bool signaled = vpWasListening && SetEvent(requested) != FALSE;
-    if (requested) CloseHandle(requested);
-    if (!signaled)
+    const bool vpIsRunning = listener != nullptr;
+    if (listener) CloseHandle(listener);
+    if (vpIsRunning)
     {
-        QDir installation = QFileInfo(configPath_).absoluteDir();
-        QString executable = installation.filePath(
-            QStringLiteral("VideoProcessor.exe"));
-        if (!QFileInfo::exists(executable))
-        {
-            QDir besideConfig(QCoreApplication::applicationDirPath());
-            besideConfig.cdUp();
-            executable = besideConfig.filePath(QStringLiteral("VideoProcessor.exe"));
-        }
-        qint64 processId = 0;
-        if (!QFileInfo::exists(executable) || !QProcess::startDetached(executable,
-            { QStringLiteral("/prepare_shaders") }, installation.absolutePath(),
-            &processId))
-        {
-            setStatus(QStringLiteral(
-                "Shader preparation could not start VideoProcessor."), true);
-            return;
-        }
+        QFile::remove(statusPath);
+        setShaderPreparationBusy(false);
+        setStatus(QStringLiteral(
+            "Shader preparation is available after VideoProcessor stops. Live changes do not prepare shaders."), false);
+        return;
     }
+
+    QDir installation = QFileInfo(configPath_).absoluteDir();
+    QString executable = installation.filePath(
+        QStringLiteral("VideoProcessor.exe"));
+    if (!QFileInfo::exists(executable))
+    {
+        QDir besideConfig(QCoreApplication::applicationDirPath());
+        besideConfig.cdUp();
+        executable = besideConfig.filePath(QStringLiteral("VideoProcessor.exe"));
+    }
+    qint64 processId = 0;
+    if (!QFileInfo::exists(executable) || !QProcess::startDetached(executable,
+        { QStringLiteral("/prepare_shaders") }, installation.absolutePath(),
+        &processId))
+    {
+		QFile::remove(statusPath);
+		setShaderPreparationBusy(false);
+        setStatus(QStringLiteral(
+            "Shader preparation could not start VideoProcessor."), true);
+        return;
+    }
+	shaderPreparationProcessId_ = processId;
+	setStatus(QStringLiteral(
+		"Started VideoProcessor to prepare shaders. Config remains available."), false);
     setShaderPreparationBusy(true, QStringLiteral("Preparing shaders..."));
     refreshShaderPreparationStatus();
 }
@@ -4303,15 +4706,46 @@ void ConfigEditorWindow::refreshShaderPreparationStatus()
         if (key == QStringLiteral("state")) state = value;
         else if (key == QStringLiteral("message")) message = value;
     }
-    const bool busy = state == QStringLiteral("waiting") ||
-        state == QStringLiteral("preparing");
+	if (state == QStringLiteral("waiting") && shaderPreparationProcessId_ == 0)
+	{
+		HANDLE listener = OpenEventW(SYNCHRONIZE, FALSE,
+			ConfigurationLiveApply::ShaderPreparationEventName);
+		const bool isListening = listener != nullptr;
+		if (listener) CloseHandle(listener);
+		if (!isListening)
+		{
+			state = QStringLiteral("idle");
+			message = QStringLiteral(
+				"Shader preparation is not running. Start it when VideoProcessor is available.");
+		}
+	}
+	if (state == QStringLiteral("waiting") && shaderPreparationProcessId_ > 0)
+	{
+		HANDLE process = OpenProcess(SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION,
+			FALSE, static_cast<DWORD>(shaderPreparationProcessId_));
+		DWORD exitCode = STILL_ACTIVE;
+		const bool stopped = !process ||
+			(!GetExitCodeProcess(process, &exitCode) || exitCode != STILL_ACTIVE);
+		if (process) CloseHandle(process);
+		if (stopped)
+		{
+			state = QStringLiteral("failed");
+			message = QStringLiteral(
+				"VideoProcessor closed before shader preparation began.");
+			shaderPreparationProcessId_ = 0;
+		}
+	}
+	if (state != QStringLiteral("waiting") && state != QStringLiteral("preparing"))
+		shaderPreparationProcessId_ = 0;
+	const bool finalBusy = state == QStringLiteral("waiting") ||
+		state == QStringLiteral("preparing");
     if (shaderPreparationStatus_)
         shaderPreparationStatus_->setText(message.isEmpty() ?
-            (busy ? QStringLiteral("Preparing shaders...") :
+            (finalBusy ? QStringLiteral("Preparing shaders...") :
                 QStringLiteral("Shaders ready")) : message);
-    if (busy != shaderPreparationBusy_)
-        setShaderPreparationBusy(busy, message);
-    else if (busy && !message.isEmpty())
+    if (finalBusy != shaderPreparationBusy_)
+        setShaderPreparationBusy(finalBusy, message);
+    else if (finalBusy && !message.isEmpty())
         setStatus(message, false);
 }
 
@@ -4332,27 +4766,27 @@ QWidget* ConfigEditorWindow::createInputProcessingPage(const QString& title,
     inputForm->addRow(QStringLiteral("Video conversion"), bindChoiceField(section,
         QStringLiteral("video_conversion"),
         { QString(), QStringLiteral("NONE"), QStringLiteral("V210_TO_P010") },
-        { QStringLiteral("Inherit (General)"), QStringLiteral("Disabled"),
+        { QStringLiteral("Inherited / not set"), QStringLiteral("Disabled"),
           QStringLiteral("V210 to P010") }));
     inputForm->addRow(QStringLiteral("Container color space"), bindChoiceField(section,
         QStringLiteral("container_colorspace"),
         { QString(), QStringLiteral("BT2020"), QStringLiteral("P3_D65"), QStringLiteral("P3_DCI"),
           QStringLiteral("P3_D60"), QStringLiteral("REC709"), QStringLiteral("REC601_525"),
           QStringLiteral("REC601_625") },
-        { QStringLiteral("Inherit (General)") }));
+        { QStringLiteral("Inherited / not set") }));
     inputForm->addRow(QStringLiteral("HDR color space"), bindChoiceField(section,
         QStringLiteral("hdr_colorspace"),
         { QString(), QStringLiteral("FOLLOW_INPUT"), QStringLiteral("FOLLOW_INPUT_LLDV"),
           QStringLiteral("FOLLOW_CONTAINER"), QStringLiteral("BT2020"), QStringLiteral("P3"),
           QStringLiteral("REC709") },
-        { QStringLiteral("Inherit (General)"), QStringLiteral("Follow input"),
+        { QStringLiteral("Inherited / not set"), QStringLiteral("Follow input"),
           QStringLiteral("Follow input (LLDV)"), QStringLiteral("Follow container"),
           QStringLiteral("BT.2020"), QStringLiteral("P3"), QStringLiteral("Rec. 709") }));
     inputForm->addRow(QStringLiteral("HDR luminance"), bindChoiceField(section,
         QStringLiteral("hdr_luminance"),
         { QString(), QStringLiteral("FOLLOW_INPUT"), QStringLiteral("FOLLOW_INPUT_LLDV"),
           QStringLiteral("HDR_LUMINANCE_USER") },
-        { QStringLiteral("Inherit (General)"), QStringLiteral("Follow input"),
+        { QStringLiteral("Inherited / not set"), QStringLiteral("Follow input"),
           QStringLiteral("Follow input (LLDV)"), QStringLiteral("User values") }));
 
     auto* cards = new ResponsiveCardGrid;
@@ -4463,25 +4897,19 @@ QWidget* ConfigEditorWindow::createViewportPage()
 QWidget* ConfigEditorWindow::createLldvPage()
 {
     const QStringList sections = profileSections(QStringLiteral("lldv"));
-    const QString section = sections.isEmpty() ? QString() : sections.front();
+    const QString section = sections.isEmpty() ? QStringLiteral("lldv") : sections.front();
 
     auto* content = new QWidget;
     auto* layout = new QVBoxLayout(content);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(12);
-    layout->addWidget(bindCheckField(QStringLiteral("Use new LLDV detection"),
+
+    layout->addWidget(helpLabel(QStringLiteral(
+        "Uses these values for recognized HDFury LLDV input and sends the same effective metadata to DirectShow and VP Renderer.")));
+    layout->addWidget(bindCheckField(QStringLiteral("Alternate LLDV detection"),
         QStringLiteral("general"), QStringLiteral("newlldv")));
     layout->addWidget(helpLabel(QStringLiteral(
         "Uses VP's newer LLDV metadata detection heuristic. Restart VideoProcessor after changing this setting.")));
-
-    if (section.isEmpty())
-    {
-        layout->addWidget(helpLabel(QStringLiteral(
-            "No LLDV settings are present in this configuration. VideoProcessor will use its built-in defaults.")));
-        return createPage(QStringLiteral("LLDV"),
-            QStringLiteral("Configure the LLDV metadata values shared by every renderer."),
-            createCard(QStringLiteral("LLDV metadata"), QString(), content));
-    }
 
     if (sections.size() > 1)
     {
@@ -4531,7 +4959,7 @@ QWidget* ConfigEditorWindow::createLldvPage()
     return createPage(QStringLiteral("LLDV"),
         QStringLiteral("Configure the LLDV metadata values shared by every renderer."),
         createCard(QStringLiteral("LLDV metadata"),
-            QStringLiteral("The editor uses the first LLDV configuration it finds. Rules and shortcuts remain available only through manual configuration editing."),
+            QStringLiteral("LLDV is one shared input-metadata policy. Config saves it in the singleton [lldv] section."),
             content));
 }
 
@@ -4938,7 +5366,7 @@ QWidget* ConfigEditorWindow::createShadersSetupPage()
     buttons->addStretch();
     controlsLayout->addLayout(buttons);
     controlsLayout->addWidget(helpLabel(QStringLiteral(
-        "Preparation runs asynchronously in VideoProcessor. If VP is closed, Config starts it in non-capturing shader-preparation mode.")));
+        "Preparation runs in an isolated non-capturing process after VP stops, so it never interrupts playback.")));
     layout->addWidget(createCard(QStringLiteral("Shader setup"),
         QStringLiteral("Prepare or clear the persistent VP Renderer shader cache."),
         controls));

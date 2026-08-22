@@ -429,7 +429,7 @@ namespace RendererProfileConfig
 			if (key == "tone_mapping") return IsChoice(value, { "auto", "spline", "bt2390", "st2094-40", "reinhard" });
 			if (key == "gamut_mapping") return IsChoice(value, { "auto", "perceptual", "softclip", "relative", "desaturate" });
 			if (key == "peak_detection") return IsChoice(value, { "auto", "off", "default", "high_quality", "on" });
-			if (key == "contrast_recovery") return IsChoice(value, { "auto" }) || IsNumberInRange(value, 0.0, 1.0);
+			if (key == "contrast_recovery") return IsChoice(value, { "auto" }) || IsNumberInRange(value, 0.0, 2.0);
 			if (key == "sdr_input_transfer") return IsChoice(value, { "auto", "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" });
 			if (key == "sdr_adjust_gamma") return IsChoice(value, { "auto", "on", "off" });
 			expected = "an input-owned setting"; return false;
@@ -437,8 +437,8 @@ namespace RendererProfileConfig
 		if (group == "scaling")
 		{
 			if (key == "quality") return IsChoice(value, { "fast", "balanced", "high" });
-			if (key == "upscaler") return IsChoice(value, { "auto", "ewa_lanczossharp", "ewa_lanczos", "bicubic", "bilinear" });
-			if (key == "downscaler") return IsChoice(value, { "auto", "ewa_lanczos", "bicubic", "bilinear" });
+			if (key == "upscaler") return IsChoice(value, { "auto", "none", "nearest", "bilinear", "oversample", "bicubic", "gaussian", "catmull_rom", "lanczos", "ewa_lanczos", "ewa_lanczossharp", "ewa_lanczos4sharpest" });
+			if (key == "downscaler") return IsChoice(value, { "auto", "none", "box", "hermite", "bilinear", "bicubic", "gaussian", "catmull_rom", "mitchell", "lanczos", "ewa_lanczos" });
 			if (key == "sigmoid" || key == "dithering") return IsChoice(value, { "auto", "on", "off" });
 			if (key == "deband_strength") return IsChoice(value, { "auto", "off", "light", "default" });
 			expected = "a scaling-owned setting"; return false;

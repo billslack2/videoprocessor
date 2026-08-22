@@ -69,12 +69,10 @@ vprenderer.report_bt2020_to_display	vprenderer-report-bt2020	VP Renderer	no
 general.switch_refresh_rate	general-switch-refresh-rate	General	no
 vprenderer.<variant>.when	vprenderer-variant-when	VP Renderer	no
 vprenderer.<variant>.shortcut	vprenderer-variant-shortcut	VP Renderer	no
-lldv.<profile>.when	lldv-profile-when	LLDV metadata	no
-lldv.<profile>.shortcut	lldv-profile-shortcut	LLDV metadata	no
-lldv.<profile>.max_cll	lldv-max-cll	LLDV metadata	no
-lldv.<profile>.max_fall	lldv-max-fall	LLDV metadata	no
-lldv.<profile>.mastering_min_luminance	lldv-mastering-min-luminance	LLDV metadata	no
-lldv.<profile>.mastering_max_luminance	lldv-mastering-max-luminance	LLDV metadata	no
+lldv.max_cll	lldv-max-cll	LLDV metadata	no
+lldv.max_fall	lldv-max-fall	LLDV metadata	no
+lldv.mastering_min_luminance	lldv-mastering-min-luminance	LLDV metadata	no
+lldv.mastering_max_luminance	lldv-mastering-max-luminance	LLDV metadata	no
 vprenderer.viewport.when	viewport-when	VP Renderer viewport	no
 vprenderer.viewport.shortcut	viewport-shortcut	VP Renderer viewport	no
 vprenderer.viewport.<variant>.when	viewport-variant-when	VP Renderer viewport	no

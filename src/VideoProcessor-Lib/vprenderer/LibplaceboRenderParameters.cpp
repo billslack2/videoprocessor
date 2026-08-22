@@ -52,7 +52,14 @@ namespace
 
 	const char* Upscaler(const std::string& upscaler)
 	{
+		if (upscaler == "none") return nullptr;
+		if (upscaler == "nearest") return "pl_filter_nearest";
+		if (upscaler == "oversample") return "pl_filter_oversample";
+		if (upscaler == "gaussian") return "pl_filter_gaussian";
+		if (upscaler == "catmull_rom") return "pl_filter_catmull_rom";
+		if (upscaler == "lanczos") return "pl_filter_lanczos";
 		if (upscaler == "ewa_lanczos") return "pl_filter_ewa_lanczos";
+		if (upscaler == "ewa_lanczos4sharpest") return "pl_filter_ewa_lanczos4sharpest";
 		if (upscaler == "bicubic") return "pl_filter_bicubic";
 		if (upscaler == "bilinear") return "pl_filter_bilinear";
 		return "pl_filter_ewa_lanczossharp";
@@ -60,6 +67,13 @@ namespace
 
 	const char* Downscaler(const std::string& downscaler)
 	{
+		if (downscaler == "none") return nullptr;
+		if (downscaler == "box") return "pl_filter_box";
+		if (downscaler == "hermite") return "pl_filter_hermite";
+		if (downscaler == "gaussian") return "pl_filter_gaussian";
+		if (downscaler == "catmull_rom") return "pl_filter_catmull_rom";
+		if (downscaler == "mitchell") return "pl_filter_mitchell";
+		if (downscaler == "lanczos") return "pl_filter_lanczos";
 		if (downscaler == "bicubic") return "pl_filter_bicubic";
 		if (downscaler == "bilinear") return "pl_filter_bilinear";
 		return "pl_filter_ewa_lanczos";
@@ -96,6 +110,7 @@ namespace LibplaceboRenderParameters
 			projection.qualityPresetExport.c_str(), error);
 		if (!preset) return false;
 		projection.renderParams = *preset;
+		projection.renderParams.dynamic_constants = settings.dynamicConstants;
 
 		// A target display LUT has a known incompatible path with the preset's
 		// error-diffusion shader. It remains an output-LUT decision, not a user
@@ -195,6 +210,38 @@ namespace LibplaceboRenderParameters
 				projection.renderParams.deband_params, projection.debandParams);
 		};
 
+		auto setPeakDetection = [&]() -> bool
+		{
+			if (settings.peakDetection == PeakDetection::Off)
+			{
+				projection.renderParams.peak_detect_params = nullptr;
+				return true;
+			}
+			if (settings.peakDetection == PeakDetection::Auto)
+			{
+				if (projection.renderParams.peak_detect_params)
+				{
+					projection.peakDetectParams =
+						*projection.renderParams.peak_detect_params;
+					projection.renderParams.peak_detect_params =
+						&projection.peakDetectParams;
+				}
+				return true;
+			}
+
+			const char* exportName = settings.peakDetection ==
+				PeakDetection::HighQuality ?
+				"pl_peak_detect_high_quality_params" :
+				"pl_peak_detect_default_params";
+			const pl_peak_detect_params* parameters =
+				ReadLibplaceboData<pl_peak_detect_params>(exportName, error);
+			if (!parameters) return false;
+			projection.peakDetectParams = *parameters;
+			projection.renderParams.peak_detect_params =
+				&projection.peakDetectParams;
+			return true;
+		};
+
 		auto setDithering = [&]() -> bool
 		{
 			if (settings.dithering == Toggle::Off)
@@ -228,10 +275,7 @@ namespace LibplaceboRenderParameters
 
 		if (!setToggle(settings.sigmoid, "pl_sigmoid_default_params",
 			projection.renderParams.sigmoid_params, projection.sigmoidParams) ||
-			!setToggle(settings.peakDetection,
-				"pl_peak_detect_high_quality_params",
-				projection.renderParams.peak_detect_params,
-				projection.peakDetectParams) ||
+			!setPeakDetection() ||
 			!setDeband() ||
 			!setDithering())
 		{
@@ -240,20 +284,38 @@ namespace LibplaceboRenderParameters
 
 		if (settings.upscaler != "auto")
 		{
-			projection.upscalerExport = Upscaler(settings.upscaler);
-			projection.renderParams.upscaler =
-				ReadLibplaceboData<pl_filter_config>(
-					projection.upscalerExport.c_str(), error);
-			if (!projection.renderParams.upscaler) return false;
+			const char* exportName = Upscaler(settings.upscaler);
+			projection.upscalerExport = exportName ? exportName : "none";
+			if (exportName)
+			{
+				projection.renderParams.upscaler =
+					ReadLibplaceboData<pl_filter_config>(exportName, error);
+				if (!projection.renderParams.upscaler) return false;
+			}
+			else
+				projection.renderParams.upscaler = nullptr;
 		}
 
 		if (settings.downscaler != "auto")
 		{
-			projection.downscalerExport = Downscaler(settings.downscaler);
-			projection.renderParams.downscaler =
-				ReadLibplaceboData<pl_filter_config>(
-					projection.downscalerExport.c_str(), error);
-			if (!projection.renderParams.downscaler) return false;
+			// libplacebo's downscaler=none means use the resolved upscaler. This
+			// differs from upscaler=none, which requests built-in GPU sampling.
+			if (settings.downscaler == "none")
+			{
+				projection.downscalerExport = "same_as_upscaler";
+				projection.renderParams.downscaler = projection.renderParams.upscaler;
+				return true;
+			}
+			const char* exportName = Downscaler(settings.downscaler);
+			projection.downscalerExport = exportName ? exportName : "none";
+			if (exportName)
+			{
+				projection.renderParams.downscaler =
+					ReadLibplaceboData<pl_filter_config>(exportName, error);
+				if (!projection.renderParams.downscaler) return false;
+			}
+			else
+				projection.renderParams.downscaler = nullptr;
 		}
 
 		return true;

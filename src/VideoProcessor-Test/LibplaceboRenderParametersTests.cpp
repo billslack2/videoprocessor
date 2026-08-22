@@ -111,6 +111,20 @@ namespace
 		return Toggle::Auto;
 	}
 
+	PeakDetection PeakDetectionFromProfileSetting(const std::string& value)
+	{
+		const std::string normalized = ConfigFile::NormalizeName(value);
+		if (normalized == "high_quality") return PeakDetection::HighQuality;
+		if (normalized == "default" || normalized == "on" ||
+			normalized == "true")
+		{
+			return PeakDetection::Standard;
+		}
+		if (normalized == "off" || normalized == "false")
+			return PeakDetection::Off;
+		return PeakDetection::Auto;
+	}
+
 	// This represents the renderer's final hand-off: the profile resolver has
 	// already inherited baseline settings and selected one display profile. The
 	// projection boundary consumes only these resolved values.
@@ -121,7 +135,7 @@ namespace
 		settings.quality = RequiredProfileSetting(profile, "quality");
 		settings.toneMapping = RequiredProfileSetting(profile, "tone_mapping");
 		settings.gamutMapping = RequiredProfileSetting(profile, "gamut_mapping");
-		settings.peakDetection = ToggleFromProfileSetting(
+		settings.peakDetection = PeakDetectionFromProfileSetting(
 			RequiredProfileSetting(profile, "peak_detection"));
 		settings.upscaler = RequiredProfileSetting(profile, "upscaler");
 		settings.downscaler = RequiredProfileSetting(profile, "downscaler");
@@ -179,6 +193,59 @@ namespace VideoProcessorTest
 					projection.renderParams.error_diffusion,
 					L"The selected quality preset must retain its error-diffusion setting.");
 			}
+		}
+
+		TEST_METHOD(AutoScalersFollowTheNativeQualityPreset)
+		{
+			const struct
+			{
+				const char* quality;
+				const char* upscaler;
+				const char* downscaler;
+			} cases[] = {
+				{ "high", "pl_filter_ewa_lanczossharp", "pl_filter_hermite" },
+				{ "balanced", "pl_filter_lanczos", "pl_filter_hermite" },
+				{ "fast", nullptr, nullptr }
+			};
+
+			for (const auto& testCase : cases)
+			{
+				Settings settings;
+				settings.quality = testCase.quality;
+				Projection projection;
+				BuildOrFail(settings, false, projection);
+				if (testCase.upscaler)
+				{
+					AssertPointer(NativeData<pl_filter_config>(testCase.upscaler),
+						projection.renderParams.upscaler,
+						L"Auto upscaler does not match the selected native quality preset.");
+					AssertPointer(NativeData<pl_filter_config>(testCase.downscaler),
+						projection.renderParams.downscaler,
+						L"Auto downscaler does not match the selected native quality preset.");
+				}
+				else
+				{
+					Assert::IsNull(projection.renderParams.upscaler,
+						L"Fast Auto upscaler must use libplacebo's built-in sampling.");
+					Assert::IsNull(projection.renderParams.downscaler,
+						L"Fast Auto downscaler must use libplacebo's built-in sampling.");
+				}
+			}
+		}
+
+		TEST_METHOD(DynamicConstantsFollowTheRuntimePresentationPolicy)
+		{
+			Settings settings;
+			settings.dynamicConstants = true;
+			Projection projection;
+			BuildOrFail(settings, false, projection);
+			Assert::IsTrue(projection.renderParams.dynamic_constants,
+				L"Dynamic renderer policy must reach libplacebo render parameters.");
+
+			settings.dynamicConstants = false;
+			BuildOrFail(settings, false, projection);
+			Assert::IsFalse(projection.renderParams.dynamic_constants,
+				L"Static renderer policy must remain available for non-interactive callers.");
 		}
 
 		TEST_METHOD(EveryToneMappingChoicePointsAtTheNativeFunction)
@@ -242,8 +309,14 @@ namespace VideoProcessorTest
 				const char* value;
 				const char* exportName;
 			} upscalers[] = {
+				{ "nearest", "pl_filter_nearest" },
+				{ "oversample", "pl_filter_oversample" },
+				{ "gaussian", "pl_filter_gaussian" },
+				{ "catmull_rom", "pl_filter_catmull_rom" },
+				{ "lanczos", "pl_filter_lanczos" },
 				{ "ewa_lanczossharp", "pl_filter_ewa_lanczossharp" },
 				{ "ewa_lanczos", "pl_filter_ewa_lanczos" },
+				{ "ewa_lanczos4sharpest", "pl_filter_ewa_lanczos4sharpest" },
 				{ "bicubic", "pl_filter_bicubic" },
 				{ "bilinear", "pl_filter_bilinear" }
 			};
@@ -252,6 +325,12 @@ namespace VideoProcessorTest
 				const char* value;
 				const char* exportName;
 			} downscalers[] = {
+				{ "box", "pl_filter_box" },
+				{ "hermite", "pl_filter_hermite" },
+				{ "gaussian", "pl_filter_gaussian" },
+				{ "catmull_rom", "pl_filter_catmull_rom" },
+				{ "mitchell", "pl_filter_mitchell" },
+				{ "lanczos", "pl_filter_lanczos" },
 				{ "ewa_lanczos", "pl_filter_ewa_lanczos" },
 				{ "bicubic", "pl_filter_bicubic" },
 				{ "bilinear", "pl_filter_bilinear" }
@@ -280,13 +359,37 @@ namespace VideoProcessorTest
 					projection.renderParams.downscaler,
 					L"Downscaling must use the selected native libplacebo filter.");
 			}
+
+			Settings disabled;
+			disabled.upscaler = "none";
+			disabled.downscaler = "none";
+			Projection disabledProjection;
+			BuildOrFail(disabled, false, disabledProjection);
+			Assert::IsTrue(disabledProjection.upscalerExport == "none");
+			Assert::IsTrue(disabledProjection.downscalerExport == "same_as_upscaler");
+			Assert::IsNull(disabledProjection.renderParams.upscaler);
+			Assert::IsNull(disabledProjection.renderParams.downscaler);
+
+			Settings matchUpscaler;
+			matchUpscaler.upscaler = "lanczos";
+			matchUpscaler.downscaler = "none";
+			Projection matchUpscalerProjection;
+			BuildOrFail(matchUpscaler, false, matchUpscalerProjection);
+			Assert::IsTrue(matchUpscalerProjection.downscalerExport ==
+				"same_as_upscaler");
+			AssertPointer(NativeData<pl_filter_config>("pl_filter_lanczos"),
+				matchUpscalerProjection.renderParams.upscaler,
+				L"The explicit upscaler must resolve before a matching downscaler.");
+			AssertPointer(matchUpscalerProjection.renderParams.upscaler,
+				matchUpscalerProjection.renderParams.downscaler,
+				L"Downscaler none must match the resolved upscaler, not disable it.");
 		}
 
 		TEST_METHOD(ExplicitToggleValuesBecomeTheExpectedNativeParameters)
 		{
 			Settings settings;
 			settings.sigmoid = Toggle::On;
-			settings.peakDetection = Toggle::On;
+			settings.peakDetection = PeakDetection::HighQuality;
 			settings.deband = Toggle::On;
 			settings.dithering = Toggle::On;
 			Projection projection;
@@ -306,6 +409,13 @@ namespace VideoProcessorTest
 				projection.renderParams.peak_detect_params,
 				sizeof(pl_peak_detect_params),
 				L"Enabled peak detection must copy libplacebo's high-quality parameters.");
+			settings.peakDetection = PeakDetection::Standard;
+			BuildOrFail(settings, false, projection);
+			AssertSameData(NativeData<pl_peak_detect_params>(
+				"pl_peak_detect_default_params"),
+				projection.renderParams.peak_detect_params,
+				sizeof(pl_peak_detect_params),
+				L"Standard peak detection must use libplacebo's ordinary parameters, not the high-quality set.");
 			AssertPointer(&projection.debandParams,
 				projection.renderParams.deband_params,
 				L"Enabled debanding must supply debanding parameters.");
@@ -322,7 +432,7 @@ namespace VideoProcessorTest
 				L"Explicit dithering must not be replaced by a preset's error diffusion.");
 
 			settings.sigmoid = Toggle::Off;
-			settings.peakDetection = Toggle::Off;
+			settings.peakDetection = PeakDetection::Off;
 			settings.deband = Toggle::Off;
 			settings.dithering = Toggle::Off;
 			BuildOrFail(settings, false, projection);
@@ -403,11 +513,11 @@ namespace VideoProcessorTest
 		{
 			Settings settings;
 			settings.hasContrastRecovery = true;
-			settings.contrastRecovery = 0.35f;
+			settings.contrastRecovery = 1.75f;
 			Projection projection;
 			BuildOrFail(settings, false, projection);
 			Assert::IsTrue(std::fabs(
-				projection.colorMapParams.contrast_recovery - 0.35f) < 0.0001f);
+				projection.colorMapParams.contrast_recovery - 1.75f) < 0.0001f);
 			Assert::IsTrue(projection.renderParams.lut == nullptr);
 			Assert::AreEqual(static_cast<int>(PL_LUT_UNKNOWN),
 				static_cast<int>(projection.renderParams.lut_type));

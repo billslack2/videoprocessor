@@ -11,8 +11,8 @@
 
 namespace ActiveProfileStatus
 {
-    constexpr uint32_t Version = 3;
-    constexpr wchar_t MappingName[] = L"Local\\VideoProcessor.ActiveProfileStatus.v3";
+    constexpr uint32_t Version = 4;
+    constexpr wchar_t MappingName[] = L"Local\\VideoProcessor.ActiveProfileStatus.v4";
     constexpr size_t MaximumActiveShaders = 16;
 
     struct Snapshot
@@ -28,6 +28,8 @@ namespace ActiveProfileStatus
         uint32_t shaderAvailable = 0;
         uint32_t shaderCount = 0;
         char shaders[MaximumActiveShaders][96]{};
+        char sourceEotf[32]{};
+        char sourceColorSpace[32]{};
     };
 
     inline void Copy(char* destination, size_t count, const std::string& value)
@@ -52,7 +54,9 @@ namespace ActiveProfileStatus
     inline void Publish(uint32_t processId, uint64_t generation,
         const std::map<std::string, std::string>& selections,
         uint64_t rendererGeneration, bool shaderAvailable,
-        const std::vector<std::string>& shaders)
+        const std::vector<std::string>& shaders,
+        const std::string& sourceEotf = {},
+        const std::string& sourceColorSpace = {})
     {
         static HANDLE mapping = nullptr;
         static Snapshot* shared = nullptr;
@@ -88,6 +92,8 @@ namespace ActiveProfileStatus
             (std::min)(shaders.size(), MaximumActiveShaders)) : 0;
         for (uint32_t index = 0; index < next.shaderCount; ++index)
             Copy(next.shaders[index], sizeof(next.shaders[index]), shaders[index]);
+        Copy(next.sourceEotf, sizeof(next.sourceEotf), sourceEotf);
+        Copy(next.sourceColorSpace, sizeof(next.sourceColorSpace), sourceColorSpace);
         *shared = next;
         MemoryBarrier();
     }
