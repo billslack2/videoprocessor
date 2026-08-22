@@ -4395,6 +4395,11 @@ CVideoProcessorDlg::~CVideoProcessorDlg()
 		CloseHandle(m_shaderPreparationEvent);
 		m_shaderPreparationEvent = nullptr;
 	}
+	if (m_shaderPreparationProcess)
+	{
+		CloseHandle(m_shaderPreparationProcess);
+		m_shaderPreparationProcess = nullptr;
+	}
 
 	for (auto& captureDevice : m_captureDevices)
 		(*captureDevice).Release();
@@ -6128,7 +6133,7 @@ LRESULT CVideoProcessorDlg::OnMessageRendererPresentationStatus(WPARAM wParam,
 	const bool visible = lParam != 0;
 	if (visible)
 	{
-		++m_rendererPresentationStatusCount;
+		m_rendererPresentationStatusCount = 1;
 		if (!status || !m_rendererTargetHwnd ||
 			!IsWindow(m_rendererTargetHwnd) || !GetSafeHwnd())
 		{
@@ -6157,19 +6162,9 @@ LRESULT CVideoProcessorDlg::OnMessageRendererPresentationStatus(WPARAM wParam,
 	}
 	else
 	{
-		if (m_rendererPresentationStatusCount > 0)
-			--m_rendererPresentationStatusCount;
-		if (m_rendererPresentationStatusCount == 0)
-		{
-			m_rendererTransitionWindow.Hide();
-			DebugLog::Log("Shader compilation splash hidden: active=0");
-		}
-		else
-		{
-			DebugLog::Log(
-				"Shader compilation splash retained for another active worker: active=%u",
-				m_rendererPresentationStatusCount);
-		}
+		m_rendererPresentationStatusCount = 0;
+		m_rendererTransitionWindow.Hide();
+		DebugLog::Log("Shader compilation splash hidden: active=0");
 	}
 	return 0;
 }
@@ -6236,9 +6231,15 @@ bool CVideoProcessorDlg::ApplyShaderPreparationSnapshot(
 	return false;
 }
 
-void CVideoProcessorDlg::StartShaderPreparation()
+bool CVideoProcessorDlg::StartShaderPreparation(bool blockRendererStart)
 {
-	if (m_shaderPreparationActive) return;
+	if (m_shaderPreparationProcess)
+	{
+		if (blockRendererStart)
+			m_startupShaderPreparationBlocksRendererStart = true;
+		return true;
+	}
+	if (m_shaderPreparationActive) return false;
 	// Never prewarm an active VP Renderer. Each profile advance reaches
 	// pl_render_image on its live presentation worker, where a cold driver
 	// compile can hold renderMutex for seconds. The non-capturing host creates
@@ -6249,7 +6250,9 @@ void CVideoProcessorDlg::StartShaderPreparation()
 	{
 		PublishShaderPreparationStatus("failed", 0, 0,
 			"Shader preparation could not locate VideoProcessor.exe.");
-		return;
+		if (blockRendererStart)
+			m_startupShaderPreparationComplete = true;
+		return false;
 	}
 	std::wstring executable = directory + L"VideoProcessor.exe";
 	std::wstring command = L"\"" + executable + L"\" /prepare_shaders";
@@ -6262,16 +6265,82 @@ void CVideoProcessorDlg::StartShaderPreparation()
 	{
 		PublishShaderPreparationStatus("failed", 0, 0,
 			"Non-capturing shader preparation could not start.");
-		return;
+		if (blockRendererStart)
+			m_startupShaderPreparationComplete = true;
+		return false;
 	}
 	::CloseHandle(process.hThread);
-	::CloseHandle(process.hProcess);
+	m_shaderPreparationProcess = process.hProcess;
+	m_startupShaderPreparationBlocksRendererStart = blockRendererStart;
 	DebugLog::Log(
-		"Shader preparation launched in non-capturing host: active_vp_renderer=%d renderer_state=%d",
+		"Shader preparation launched in non-capturing host: startup_gate=%d active_vp_renderer=%d renderer_state=%d process=%lu",
+		blockRendererStart ? 1 : 0,
 		m_videoRenderer && IsAlphaRendererSelected() ? 1 : 0,
-		static_cast<int>(m_rendererState));
+		static_cast<int>(m_rendererState), process.dwProcessId);
 	PublishShaderPreparationStatus("waiting", 0, 0,
 		"Starting non-capturing shader preparation...");
+	if (blockRendererStart)
+		ShowStartupShaderPreparationSplash();
+	return true;
+}
+
+
+void CVideoProcessorDlg::ShowStartupShaderPreparationSplash()
+{
+	const HWND target = m_windowedVideoWindow.GetSafeHwnd();
+	if (!target || !::IsWindow(target) || !GetSafeHwnd())
+	{
+		DebugLog::Log(
+			"Startup shader preparation splash skipped: target=%p target_valid=%d owner=%p",
+			target, target && ::IsWindow(target) ? 1 : 0, GetSafeHwnd());
+		return;
+	}
+	const CString message(
+		TEXT("Preparing all configured windowed and fullscreen shader variants.\r\n"
+			"Video will begin automatically."));
+	m_rendererDetailStringStatic.SetWindowText(message);
+	m_rendererTransitionWindow.ShowStatus(target, GetSafeHwnd(), message);
+	const HRESULT compositionResult =
+		m_rendererTransitionWindow.SynchronizeComposition();
+	DebugLog::Log(
+		"Startup shader preparation splash shown: target=%p cover=%p composition_sync=0x%08lx",
+		target, m_rendererTransitionWindow.GetHWND(),
+		static_cast<unsigned long>(compositionResult));
+}
+
+
+void CVideoProcessorDlg::PollShaderPreparation()
+{
+	if (!m_shaderPreparationProcess)
+		return;
+	const DWORD waitResult = ::WaitForSingleObject(m_shaderPreparationProcess, 0);
+	if (waitResult == WAIT_TIMEOUT)
+		return;
+
+	DWORD exitCode = ERROR_PROCESS_ABORTED;
+	const BOOL gotExitCode = ::GetExitCodeProcess(
+		m_shaderPreparationProcess, &exitCode);
+	::CloseHandle(m_shaderPreparationProcess);
+	m_shaderPreparationProcess = nullptr;
+	const bool succeeded = gotExitCode && exitCode == 0;
+	DebugLog::Log(
+		"Non-capturing shader preparation finished: succeeded=%d exit_code=%lu startup_gate=%d",
+		succeeded ? 1 : 0, exitCode,
+		m_startupShaderPreparationBlocksRendererStart ? 1 : 0);
+
+	if (!m_startupShaderPreparationBlocksRendererStart)
+		return;
+	m_startupShaderPreparationBlocksRendererStart = false;
+	m_startupShaderPreparationComplete = true;
+	m_rendererTransitionWindow.Hide();
+	if (!succeeded)
+	{
+		m_rendererDetailStringStatic.SetWindowText(
+			TEXT("Shader preparation failed; continuing with on-demand preparation."));
+		DebugLog::Log(
+			"Startup shader preparation failed; releasing renderer start without a prepared cache");
+	}
+	UpdateState();
 }
 
 void CVideoProcessorDlg::AdvanceShaderPreparation()
@@ -7383,6 +7452,17 @@ void CVideoProcessorDlg::UpdateState()
 			m_rendererIngressState->LatestCaptureSequence())
 		{
 			return;
+		}
+		// Compile the complete cache before the first live VP Renderer starts.
+		// The worker owns separate D3D11/libplacebo state, while this UI thread
+		// only polls a process handle. This prevents first-use stalls when the
+		// operator changes presentation modes or enables a configured shader.
+		if (IsAlphaRendererSelected() && !m_startupShaderPreparationComplete)
+		{
+			if (!m_shaderPreparationProcess)
+				StartShaderPreparation(true);
+			if (!m_startupShaderPreparationComplete)
+				return;
 		}
 		if (m_captureDeviceVideoState &&
 			m_captureDeviceVideoState->valid)
@@ -9173,6 +9253,7 @@ void CVideoProcessorDlg::TryRevealRendererTransition(uint32_t generation)
 			? GetTickCount64() - m_transitionBlackStartTick
 			: 0;
 	m_windowedVideoWindow.ShowLogo(false);
+	m_rendererPresentationStatusCount = 0;
 	m_rendererTransitionWindow.Hide();
 	m_rendererFirstFrameRevealPendingGeneration = 0;
 	m_rendererFirstFrameRevealTargetHwnd = nullptr;
@@ -12189,6 +12270,7 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 
 	if (nIDEvent == CONFIGURATION_LIVE_APPLY_TIMER_ID)
 	{
+		PollShaderPreparation();
 		if (m_configurationChangedEvent &&
 			WaitForSingleObject(m_configurationChangedEvent, 0) == WAIT_OBJECT_0)
 			ApplySavedConfiguration();

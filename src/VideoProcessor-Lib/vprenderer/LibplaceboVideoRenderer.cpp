@@ -55,6 +55,7 @@
 #include <fstream>
 #include <iomanip>
 #include <initializer_list>
+#include <memory>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -3063,6 +3064,8 @@ struct LibplaceboVideoRenderer::Impl
 	uint64_t lastSubmittedScreenProfileRequest = 0;
 	uint64_t activePictureScreenProfileRequestSerial = 0;
 	std::mutex renderMutex;
+	std::mutex pendingProfileMutex;
+	std::unique_ptr<RendererSettings> pendingProfileSettings;
 	std::atomic_bool resizePending{ false };
 	std::atomic_bool outputRenegotiationPending{ false };
 	EOTF lastRenderedEotf = EOTF::UNKNOWN;
@@ -6009,7 +6012,23 @@ struct LibplaceboVideoRenderer::Impl
 
 	void ApplyViewportSettings(const RendererSettings& settings)
 	{
-		std::lock_guard<std::mutex> guard(renderMutex);
+		std::unique_lock<std::mutex> guard(renderMutex, std::try_to_lock);
+		if (!guard.owns_lock())
+		{
+			// Treat the complete settings snapshot as one coalesced render-thread
+			// transaction. A viewport update commonly follows a live display-profile
+			// update, and must not reintroduce a UI wait after that update was deferred.
+			std::lock_guard<std::mutex> pendingGuard(pendingProfileMutex);
+			pendingProfileSettings.reset(new RendererSettings(settings));
+			DebugLog::Log(
+				"libplacebo viewport settings queued without blocking the UI; render thread is busy");
+			return;
+		}
+		ApplyViewportSettingsLocked(settings);
+	}
+
+	void ApplyViewportSettingsLocked(const RendererSettings& settings)
+	{
 		const bool renderingBehaviorChanged =
 			configuredScreenAspect != settings.configuredScreenAspect ||
 			configuredScreenTarget != settings.configuredScreenTarget ||
@@ -6039,6 +6058,10 @@ struct LibplaceboVideoRenderer::Impl
 		restartSettingsFingerprint = EffectiveSettingsFingerprint(settings, false);
 		if (renderingBehaviorChanged)
 		{
+			// Geometry changes can select a different libplacebo program even
+			// without a custom NLS hook. Arm presentation status before the next
+			// render instead of discovering that compile silently.
+			presentationPipelinePrepared = false;
 			// A viewport/profile epoch cannot inherit crop proof. Reacquire from
 			// current-frame shared evidence even when the source generation did
 			// not change.
@@ -6077,7 +6100,24 @@ struct LibplaceboVideoRenderer::Impl
 	// without replacing the renderer.
 	bool ApplyProfileSettingsLive(const RendererSettings& settings)
 	{
-		std::lock_guard<std::mutex> guard(renderMutex);
+		std::unique_lock<std::mutex> guard(renderMutex, std::try_to_lock);
+		if (!guard.owns_lock())
+		{
+			std::lock_guard<std::mutex> pendingGuard(pendingProfileMutex);
+			pendingProfileSettings.reset(new RendererSettings(settings));
+			DebugLog::Log(
+				"libplacebo live profile update queued without blocking the UI; render thread is busy");
+			return true;
+		}
+		{
+			std::lock_guard<std::mutex> pendingGuard(pendingProfileMutex);
+			pendingProfileSettings.reset();
+		}
+		return ApplyProfileSettingsLiveLocked(settings);
+	}
+
+	bool ApplyProfileSettingsLiveLocked(const RendererSettings& settings)
+	{
 		RendererSettings currentTransport = activeSettings;
 		RendererSettings nextTransport = settings;
 		currentTransport.switchRefreshRate = settings.switchRefreshRate;
@@ -6189,6 +6229,10 @@ struct LibplaceboVideoRenderer::Impl
 			diagnosticReadbackNonBlack = false;
 		}
 		ConfigureRenderParams(settings, "live profile update");
+		// Rec.709/BT.2020 and other display-profile changes can select a new
+		// libplacebo program. The render worker reports status before entering
+		// pl_render_image, while the UI remains free to paint and accept input.
+		presentationPipelinePrepared = false;
 		restartSettingsFingerprint = EffectiveSettingsFingerprint(settings, false);
 		effectiveSettingsFingerprint = EffectiveSettingsFingerprint(settings);
 
@@ -6212,6 +6256,28 @@ struct LibplaceboVideoRenderer::Impl
 			displayLutParsed && displayLut ? "active" : "disabled",
 			reportBt2020ToDisplay ? "requested" : "disabled");
 		return true;
+	}
+
+	void ApplyPendingProfileSettingsLocked()
+	{
+		std::unique_ptr<RendererSettings> pending;
+		{
+			std::lock_guard<std::mutex> pendingGuard(pendingProfileMutex);
+			pending.swap(pendingProfileSettings);
+		}
+		if (!pending)
+			return;
+		if (!ApplyProfileSettingsLiveLocked(*pending))
+		{
+			DebugLog::Log(
+				"libplacebo queued live profile update was rejected on render thread");
+		}
+		else
+		{
+			ApplyViewportSettingsLocked(*pending);
+			DebugLog::Log(
+				"libplacebo queued profile and viewport settings applied on render thread");
+		}
 	}
 
 	void SetShaderStatus(const std::string& status)
@@ -11700,6 +11766,7 @@ void LibplaceboVideoRenderer::RenderLoop()
 			if (m_impl->outputRenegotiationPending.exchange(false,
 				std::memory_order_acq_rel))
 				m_impl->RetryAutoLimitedCandidate("deferred display change");
+			m_impl->ApplyPendingProfileSettingsLocked();
 			ApplyPendingShaderSelectionLocked();
 			{
 				std::lock_guard<std::mutex> queueGuard(m_queueMutex);

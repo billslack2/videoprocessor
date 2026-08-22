@@ -65,7 +65,8 @@ void RendererTransitionWindow::ShowInternal(HWND renderTarget, HWND stableOwner)
 		m_renderTarget = renderTarget;
 		m_owner = stableOwner;
 		m_hwnd = CreateWindowExW(
-			WS_EX_NOACTIVATE | WS_EX_NOPARENTNOTIFY | WS_EX_TOOLWINDOW,
+			WS_EX_NOACTIVATE | WS_EX_NOPARENTNOTIFY | WS_EX_TOOLWINDOW |
+				WS_EX_TRANSPARENT,
 			RENDERER_TRANSITION_WINDOW_CLASS,
 			L"",
 			WS_POPUP,

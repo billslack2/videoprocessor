@@ -646,9 +646,9 @@ protected:
 	uint32_t m_retiringRendererGeneration = 0;
 	RendererState m_rendererState = RendererState::RENDERSTATE_UNKNOWN;
 	RendererTransitionWindow m_rendererTransitionWindow;
-	// Each renderer worker reports its own shader-compile begin/end.  Renderer
-	// replacement can briefly overlap those workers, so one completion must not
-	// remove the visible compile screen for another worker that is still busy.
+	// VP Renderer serializes GPU work on one render worker. Treat compile status
+	// as a single visible state; reference counting stale lifecycle callbacks can
+	// otherwise strand an input-covering status window after rendering resumes.
 	uint32_t m_rendererPresentationStatusCount = 0;
 	HWND m_rendererTargetHwnd = nullptr;
 	bool m_preserveFullscreenHostForProfileRestart = false;
@@ -864,7 +864,9 @@ protected:
 	void ApplyStatsOverlayForActiveRenderer();
 	void LoadDisplayRefreshRateOverrides();
 	void ApplySavedConfiguration();
-	void StartShaderPreparation();
+	bool StartShaderPreparation(bool blockRendererStart = false);
+	void PollShaderPreparation();
+	void ShowStartupShaderPreparationSplash();
 	void AdvanceShaderPreparation();
 	void FinishShaderPreparation(bool succeeded, const char* detail);
 	void PublishShaderPreparationStatus(const char* state, size_t current,
@@ -937,6 +939,12 @@ protected:
 		const std::shared_ptr<const UnifiedProfileRuntime::Snapshot>& snapshot);
 	bool m_shaderPreparationActive = false;
 	bool m_shaderPreparationRestoring = false;
+	// Preparation owns an isolated VideoProcessor process. Retain its process
+	// handle so startup can remain responsive while renderer construction waits
+	// for the fully populated windowed/fullscreen cache.
+	HANDLE m_shaderPreparationProcess = nullptr;
+	bool m_startupShaderPreparationComplete = false;
+	bool m_startupShaderPreparationBlocksRendererStart = false;
 	std::vector<std::shared_ptr<const UnifiedProfileRuntime::Snapshot>>
 		m_shaderPreparationSnapshots;
 	std::shared_ptr<const UnifiedProfileRuntime::Snapshot>

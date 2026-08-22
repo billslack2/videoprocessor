@@ -246,10 +246,6 @@ int RunNonCapturingShaderPreparation()
 					std::this_thread::sleep_for(std::chrono::milliseconds(25));
 				if (callback.state.load() != RendererState::RENDERSTATE_RENDERING)
 					throw std::runtime_error("VP Renderer did not start");
-				if (!renderer.ReloadConfiguredShaderPrewarm())
-					throw std::runtime_error(
-						"configured shader profiles could not be enumerated");
-
 				std::vector<uint8_t> frameBytes(videoState->BytesPerFrame(), 0);
 				std::vector<std::unique_ptr<SyntheticFrameBuffer>> sourceBuffers;
 				for (VideoStateComPtr sourceState : sourceStates)
@@ -289,6 +285,12 @@ int RunNonCapturingShaderPreparation()
 								throw std::runtime_error(
 									"rendering profile was not accepted");
 							if (liveReset) renderer.ResetLiveQueue();
+							// Prewarm rules are consumed by one rendered candidate. Re-arm
+							// them after each display/viewport selection so NLS+ is cached
+							// for every configured fullscreen geometry, not just the first.
+							if (!renderer.ReloadConfiguredShaderPrewarm())
+								throw std::runtime_error(
+									"configured shader profiles could not be enumerated");
 							const uint64_t presentedBefore = renderer.PresentedFrameCount();
 							sourceBuffers.emplace_back(new SyntheticFrameBuffer);
 							VideoFrame frame(frameBytes.data(), frameCounter++, 0,

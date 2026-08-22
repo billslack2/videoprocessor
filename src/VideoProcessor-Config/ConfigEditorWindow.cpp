@@ -4686,8 +4686,10 @@ void ConfigEditorWindow::refreshShaderPreparationStatus()
             QStringLiteral("Persistent cache: Not created yet"));
     }
 
-    QFile status(rendererDirectory.filePath(QString::fromWCharArray(
-        ConfigurationLiveApply::ShaderPreparationStatusFileName)));
+	const QString statusPath = rendererDirectory.filePath(QString::fromWCharArray(
+		ConfigurationLiveApply::ShaderPreparationStatusFileName));
+	const QFileInfo statusInfo(statusPath);
+    QFile status(statusPath);
     if (!status.open(QIODevice::ReadOnly))
     {
         if (shaderPreparationStatus_)
@@ -4739,6 +4741,23 @@ void ConfigEditorWindow::refreshShaderPreparationStatus()
 		shaderPreparationProcessId_ = 0;
 	const bool finalBusy = state == QStringLiteral("waiting") ||
 		state == QStringLiteral("preparing");
+	if (state == QStringLiteral("ready") && statusInfo.exists())
+	{
+		const QString completed = statusInfo.lastModified().toString(
+			QStringLiteral("MMM d, h:mm AP"));
+		if (cache.exists() && cache.lastModified() > statusInfo.lastModified())
+		{
+			message = QStringLiteral(
+				"Full preparation last completed %1; the cache changed afterward and has not been fully revalidated.")
+				.arg(completed);
+		}
+		else
+		{
+			message = QStringLiteral("%1 · Prepared %2")
+				.arg(message.isEmpty() ? QStringLiteral("Shaders ready") : message,
+					completed);
+		}
+	}
     if (shaderPreparationStatus_)
         shaderPreparationStatus_->setText(message.isEmpty() ?
             (finalBusy ? QStringLiteral("Preparing shaders...") :
