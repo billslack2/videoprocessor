@@ -738,6 +738,8 @@ protected:
 	StatsOverlayWindow* m_statsOverlay = nullptr;
 	StatsData* m_lastStatsData = nullptr;
 	bool m_statsOverlayRequestedVisible = false;
+	bool m_shaderCompilationOverlayVisible = false;
+	CString m_shaderCompilationOverlayStatus;
 
 	struct ActiveOutputSweepCase
 	{

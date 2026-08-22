@@ -11800,6 +11800,35 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 		if (m_rendererState == RendererState::RENDERSTATE_RENDERING &&
 			m_videoRenderer && !m_wantToRestartRenderer)
 		{
+			CString compilationStatus;
+			const bool compiling =
+				m_videoRenderer->SupportsNativeStatsOverlay() &&
+				m_videoRenderer->GetShaderCompilationStatus(
+					compilationStatus);
+			if (compiling && m_statsOverlay &&
+				(!m_shaderCompilationOverlayVisible ||
+					compilationStatus != m_shaderCompilationOverlayStatus))
+			{
+				std::vector<uint8_t> pixels;
+				int width = 0;
+				int height = 0;
+				int stride = 0;
+				if (m_statsOverlay->RenderShaderCompilationBgra(
+					compilationStatus, pixels, width, height, stride))
+				{
+					m_videoRenderer->SetNativeStatsOverlay(
+						pixels.data(), pixels.size(), width, height, stride);
+					m_shaderCompilationOverlayVisible = true;
+					m_shaderCompilationOverlayStatus = compilationStatus;
+				}
+			}
+			else if (m_shaderCompilationOverlayVisible)
+			{
+				m_videoRenderer->SetNativeStatsOverlay(
+					nullptr, 0, 0, 0, 0);
+				m_shaderCompilationOverlayVisible = false;
+				m_shaderCompilationOverlayStatus.Empty();
+			}
 			CString refreshedShaderRule;
 			bool shaderRestartRequired = false;
 			if (m_videoRenderer->RefreshShaderRule(

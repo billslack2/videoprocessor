@@ -245,6 +245,14 @@ public:
 		rendererRestartRequired = false;
 		return false;
 	}
+	// Reports only an in-flight renderer compiler invocation. Implementations
+	// must not take their render lock here: the UI polls this specifically while
+	// the render thread may be blocked inside a driver/compiler call.
+	virtual bool GetShaderCompilationStatus(CString& status) const
+	{
+		status.Empty();
+		return false;
+	}
 	virtual void SetSceneCorrectionUpstreamSample(bool) {}
 	// Optional burned-in subtitle relocation. Renderers without a writable live
 	// source may ignore this request.

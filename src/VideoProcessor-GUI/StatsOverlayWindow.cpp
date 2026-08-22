@@ -341,6 +341,73 @@ bool StatsOverlayWindow::RenderSweepBannerBgra(const CString& status,
 	return true;
 }
 
+bool StatsOverlayWindow::RenderShaderCompilationBgra(const CString& status,
+	std::vector<uint8_t>& pixels, int& width, int& height, int& stride)
+{
+	if (status.IsEmpty())
+		return false;
+	width = 1200;
+	height = 260;
+	stride = width * 4;
+	BITMAPINFO info{};
+	info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+	info.bmiHeader.biWidth = width;
+	info.bmiHeader.biHeight = -height;
+	info.bmiHeader.biPlanes = 1;
+	info.bmiHeader.biBitCount = 32;
+	info.bmiHeader.biCompression = BI_RGB;
+	void* bits = nullptr;
+	HDC screen = GetDC(nullptr);
+	HBITMAP bitmap = CreateDIBSection(
+		screen, &info, DIB_RGB_COLORS, &bits, nullptr, 0);
+	HDC memory = bitmap ? CreateCompatibleDC(screen) : nullptr;
+	ReleaseDC(nullptr, screen);
+	if (!bitmap || !memory || !bits)
+	{
+		if (memory) DeleteDC(memory);
+		if (bitmap) DeleteObject(bitmap);
+		return false;
+	}
+	HGDIOBJ oldBitmap = SelectObject(memory, bitmap);
+	RECT rect{ 0, 0, width, height };
+	HBRUSH background = CreateSolidBrush(RGB(18, 31, 45));
+	FillRect(memory, &rect, background);
+	DeleteObject(background);
+	HBRUSH border = CreateSolidBrush(RGB(90, 155, 205));
+	FrameRect(memory, &rect, border);
+	DeleteObject(border);
+	SetBkMode(memory, TRANSPARENT);
+	HFONT titleFont = CreateFont(44, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+		CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, TEXT("Segoe UI"));
+	HFONT detailFont = CreateFont(31, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+		CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, TEXT("Segoe UI"));
+	HFONT oldFont = static_cast<HFONT>(SelectObject(memory, titleFont));
+	SetTextColor(memory, RGB(245, 248, 252));
+	RECT titleRect{ 30, 42, width - 30, 110 };
+	::DrawText(memory, TEXT("Compiling VP Renderer shader"), -1, &titleRect,
+		DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+	SelectObject(memory, detailFont);
+	SetTextColor(memory, RGB(185, 215, 238));
+	CString detail(status);
+	detail += TEXT("  Video continues with the current shader.");
+	RECT detailRect{ 30, 130, width - 30, height - 30 };
+	::DrawText(memory, detail, -1, &detailRect,
+		DT_CENTER | DT_TOP | DT_WORDBREAK | DT_NOPREFIX);
+	SelectObject(memory, oldFont);
+	DeleteObject(titleFont);
+	DeleteObject(detailFont);
+	SelectObject(memory, oldBitmap);
+	pixels.assign(static_cast<uint8_t*>(bits),
+		static_cast<uint8_t*>(bits) + static_cast<size_t>(stride) * height);
+	for (size_t index = 3; index < pixels.size(); index += 4)
+		pixels[index] = 235;
+	DeleteDC(memory);
+	DeleteObject(bitmap);
+	return true;
+}
+
 bool StatsOverlayWindow::RenderSweepSummaryBgra(
 	const std::vector<SweepSummaryItem>& items, size_t page, size_t itemsPerPage,
 	std::vector<uint8_t>& pixels, int& width, int& height, int& stride)

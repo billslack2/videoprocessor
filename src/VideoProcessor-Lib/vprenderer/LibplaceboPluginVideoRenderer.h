@@ -59,6 +59,7 @@ public:
 		bool& rendererRestartRequired) override;
 	bool RefreshShaderRule(CString& activeRule,
 		bool& rendererRestartRequired) override;
+	bool GetShaderCompilationStatus(CString& status) const override;
 	std::vector<CString> ActiveShaders() const override;
 	bool GetActiveShaderSections(
 		std::vector<CString>& sections) const override;

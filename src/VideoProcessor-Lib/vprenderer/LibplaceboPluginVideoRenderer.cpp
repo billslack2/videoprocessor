@@ -388,6 +388,12 @@ bool LibplaceboPluginVideoRenderer::RefreshShaderRule(
 		rendererRestartRequired);
 }
 
+bool LibplaceboPluginVideoRenderer::GetShaderCompilationStatus(
+	CString& status) const
+{
+	return m_renderer && m_renderer->GetShaderCompilationStatus(status);
+}
+
 
 std::vector<CString>
 LibplaceboPluginVideoRenderer::ActiveShaders() const

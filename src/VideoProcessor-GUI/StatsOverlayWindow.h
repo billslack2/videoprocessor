@@ -189,6 +189,8 @@ public:
 	bool RenderSweepSummaryBgra(const std::vector<SweepSummaryItem>& items,
 		size_t page, size_t itemsPerPage, std::vector<uint8_t>& pixels,
 		int& width, int& height, int& stride);
+	bool RenderShaderCompilationBgra(const CString& status,
+		std::vector<uint8_t>& pixels, int& width, int& height, int& stride);
 
 	// Position update
 	void UpdatePosition(HWND parentHwnd);

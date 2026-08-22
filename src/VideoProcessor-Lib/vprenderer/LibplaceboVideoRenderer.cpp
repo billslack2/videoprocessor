@@ -2920,6 +2920,23 @@ struct LibplaceboVideoRenderer::Impl
 	ConfiguredShaderRule nlsRule;
 	std::string requestedShaderSelector;
 	mutable std::mutex shaderStatusMutex;
+	std::atomic_bool shaderCompilationActive{false};
+	mutable std::mutex shaderCompilationMutex;
+	struct ShaderSelectionRequest
+	{
+		std::string selector;
+		std::vector<ConfiguredShaderRule> selection;
+		uint64_t generation = 0;
+		uint64_t rendererGeneration = 0;
+	};
+	std::unique_ptr<ShaderSelectionRequest> pendingShaderSelection;
+	std::unique_ptr<ShaderSelectionRequest> completedShaderSelection;
+	std::thread shaderCompilationWorker;
+	bool shaderCompilationWorkerRunning = false;
+	bool shaderCompilationWorkerFinished = false;
+	bool shaderCompilationWorkerSucceeded = false;
+	uint64_t shaderSelectionGeneration = 0;
+	std::string shaderCompilationLabel;
 	std::string activeShaderStatus = "None";
 	uint64_t activeShaderStatusSerial = 0;
 	uint64_t nlsRendererGeneration = 0;
@@ -3067,6 +3084,7 @@ struct LibplaceboVideoRenderer::Impl
 	ColorSpace lastRenderedColorspace = ColorSpace::UNKNOWN;
 	std::string shaderCachePath;
 	uint64_t loadedShaderCacheSignature = 0;
+	std::mutex shaderCacheFileMutex;
 	bool shaderCacheEnabled = true;
 	bool outputDiagnostics = false;
 	bool outputContractLogged = false;
@@ -3344,6 +3362,8 @@ struct LibplaceboVideoRenderer::Impl
 
 	~Impl()
 	{
+		if (shaderCompilationWorker.joinable())
+			shaderCompilationWorker.join();
 		for (std::thread& worker : captureWorkers)
 			if (worker.joinable()) worker.join();
 		nvidiaBt2020Reporter.Restore();
@@ -3495,6 +3515,7 @@ struct LibplaceboVideoRenderer::Impl
 
 	void SaveShaderCache()
 	{
+		std::lock_guard<std::mutex> fileGuard(shaderCacheFileMutex);
 		if (shaderCachePath.empty())
 			shaderCachePath = ShaderCachePath();
 		const std::string clearRequestPath = ShaderCacheClearRequestPath();
@@ -6252,6 +6273,443 @@ struct LibplaceboVideoRenderer::Impl
 			static_cast<unsigned long long>(nlsRendererGeneration));
 	}
 
+	void QueueShaderSelection(const std::string& selector,
+		const std::vector<ConfiguredShaderRule>& selection,
+		uint64_t rendererGeneration)
+	{
+		uint64_t generation = 0;
+		{
+			std::lock_guard<std::mutex> guard(shaderCompilationMutex);
+			std::unique_ptr<ShaderSelectionRequest> request(
+				new ShaderSelectionRequest());
+			request->selector = selector;
+			request->selection = selection;
+			request->generation = ++shaderSelectionGeneration;
+			request->rendererGeneration = rendererGeneration;
+			generation = request->generation;
+			pendingShaderSelection = std::move(request);
+		}
+		SetShaderStatus(SelectionIsOff(selection) ?
+			"NLS: Pending off" : "NLS: Compiling");
+		DebugLog::Log(
+			"Alpha shaders: requested selector \"%s\" generation=%llu; current pipeline remains active",
+			selector.c_str(),
+			static_cast<unsigned long long>(generation));
+	}
+
+	static bool SelectionIsOff(
+		const std::vector<ConfiguredShaderRule>& selection)
+	{
+		return std::find_if(selection.begin(), selection.end(),
+			[](const ConfiguredShaderRule& rule) { return rule.none; }) !=
+			selection.end();
+	}
+
+	void ApplyCompletedShaderSelectionLocked()
+	{
+		std::unique_ptr<ShaderSelectionRequest> completed;
+		std::unique_ptr<ShaderSelectionRequest> immediate;
+		bool succeeded = false;
+		bool joinWorker = false;
+		uint64_t currentGeneration = 0;
+		{
+			std::lock_guard<std::mutex> guard(shaderCompilationMutex);
+			currentGeneration = shaderSelectionGeneration;
+			if (shaderCompilationWorkerFinished)
+			{
+				completed = std::move(completedShaderSelection);
+				succeeded = shaderCompilationWorkerSucceeded;
+				shaderCompilationWorkerFinished = false;
+				shaderCompilationWorkerRunning = false;
+				joinWorker = shaderCompilationWorker.joinable();
+			}
+			if (pendingShaderSelection &&
+				SelectionIsOff(pendingShaderSelection->selection))
+			{
+				immediate = std::move(pendingShaderSelection);
+			}
+		}
+		if (joinWorker)
+			shaderCompilationWorker.join();
+
+		if (immediate)
+		{
+			SetConfiguredShaderSelection(immediate->selector,
+				immediate->selection, immediate->rendererGeneration);
+			DebugLog::Log(
+				"Alpha shaders: disabled immediately at generation=%llu",
+				static_cast<unsigned long long>(immediate->generation));
+		}
+		if (!completed)
+			return;
+		if (completed->generation != currentGeneration)
+		{
+			DebugLog::Log(
+				"Alpha shader background compile discarded: completed=%llu requested=%llu",
+				static_cast<unsigned long long>(completed->generation),
+				static_cast<unsigned long long>(currentGeneration));
+			return;
+		}
+		if (!succeeded)
+		{
+			SetShaderStatus("Rejected: background compile failed");
+			return;
+		}
+		SetConfiguredShaderSelection(completed->selector,
+			completed->selection, completed->rendererGeneration);
+		DebugLog::Log(
+			"Alpha shader background compile activated: selector=\"%s\" generation=%llu",
+			completed->selector.c_str(),
+			static_cast<unsigned long long>(completed->generation));
+	}
+
+	struct ShadowShaderCompileJob
+	{
+		ShaderSelectionRequest request;
+		struct pl_frame image{};
+		struct pl_frame target{};
+		std::string imageFormats[PL_MAX_PLANES];
+		std::string targetFormats[PL_MAX_PLANES];
+		int imageWidths[PL_MAX_PLANES]{};
+		int imageHeights[PL_MAX_PLANES]{};
+		int targetWidths[PL_MAX_PLANES]{};
+		int targetHeights[PL_MAX_PLANES]{};
+		struct pl_render_params params{};
+		struct pl_color_map_params colorMap{};
+		struct pl_peak_detect_params peakDetect{};
+		struct pl_sigmoid_params sigmoid{};
+		struct pl_deband_params deband{};
+		struct pl_dither_params dither{};
+		struct pl_custom_lut imageLut{};
+		struct pl_custom_lut targetLut{};
+		std::vector<float> imageLutData;
+		std::vector<float> targetLutData;
+		bool hasImageLut = false;
+		bool hasTargetLut = false;
+		bool noCompute = false;
+		LUID adapterLuid{};
+		bool hasAdapterLuid = false;
+	};
+
+	static void CopyLut(const struct pl_custom_lut* source,
+		struct pl_custom_lut& destination, std::vector<float>& data,
+		bool& present)
+	{
+		present = source != nullptr && source->data != nullptr;
+		if (!present)
+			return;
+		destination = *source;
+		size_t entries = static_cast<size_t>(std::max(1, source->size[0]));
+		if (source->size[1] > 0)
+			entries *= static_cast<size_t>(source->size[1]);
+		if (source->size[2] > 0)
+			entries *= static_cast<size_t>(source->size[2]);
+		data.assign(source->data, source->data + entries * 3);
+		destination.data = data.data();
+	}
+
+	void StartPendingShaderCompilationLocked(const struct pl_frame& image,
+		const struct pl_frame& target)
+	{
+		std::unique_ptr<ShaderSelectionRequest> request;
+		{
+			std::lock_guard<std::mutex> guard(shaderCompilationMutex);
+			if (shaderCompilationWorkerRunning || !pendingShaderSelection ||
+				SelectionIsOff(pendingShaderSelection->selection))
+				return;
+			request = std::move(pendingShaderSelection);
+			shaderCompilationWorkerRunning = true;
+			shaderCompilationWorkerFinished = false;
+			shaderCompilationActive.store(true, std::memory_order_release);
+			const auto nls = std::find_if(request->selection.begin(),
+				request->selection.end(),
+				[](const ConfiguredShaderRule& rule) { return rule.nls; });
+			shaderCompilationLabel =
+				nls != request->selection.end() && !nls->name.empty() ?
+				nls->name : "VP Renderer shader";
+		}
+
+		ShadowShaderCompileJob job;
+		job.request = *request;
+		job.image = image;
+		job.target = target;
+		job.image.prev = nullptr;
+		job.image.next = nullptr;
+		job.image.acquire = nullptr;
+		job.image.release = nullptr;
+		job.image.overlays = nullptr;
+		job.image.num_overlays = 0;
+		job.target.prev = nullptr;
+		job.target.next = nullptr;
+		job.target.acquire = nullptr;
+		job.target.release = nullptr;
+		job.target.overlays = nullptr;
+		job.target.num_overlays = 0;
+		const auto rejectBeforeStart = [this, &job](const char* reason)
+		{
+			DebugLog::Log(
+				"Alpha shader background compile rejected before start: selector=\"%s\" generation=%llu reason=%s",
+				job.request.selector.c_str(),
+				static_cast<unsigned long long>(job.request.generation), reason);
+			std::lock_guard<std::mutex> guard(shaderCompilationMutex);
+			completedShaderSelection.reset(
+				new ShaderSelectionRequest(job.request));
+			shaderCompilationWorkerSucceeded = false;
+			shaderCompilationWorkerFinished = true;
+			shaderCompilationLabel.clear();
+			shaderCompilationActive.store(false, std::memory_order_release);
+		};
+		for (int index = 0; index < job.image.num_planes; ++index)
+		{
+			pl_tex texture = job.image.planes[index].texture;
+			if (!texture || !texture->params.format ||
+				!texture->params.format->name)
+			{
+				rejectBeforeStart("invalid source texture description");
+				return;
+			}
+			job.imageFormats[index] = texture->params.format->name;
+			job.imageWidths[index] = texture->params.w;
+			job.imageHeights[index] = texture->params.h;
+			job.image.planes[index].texture = nullptr;
+		}
+		for (int index = 0; index < job.target.num_planes; ++index)
+		{
+			pl_tex texture = job.target.planes[index].texture;
+			if (!texture || !texture->params.format ||
+				!texture->params.format->name)
+			{
+				rejectBeforeStart("invalid target texture description");
+				return;
+			}
+			job.targetFormats[index] = texture->params.format->name;
+			job.targetWidths[index] = texture->params.w;
+			job.targetHeights[index] = texture->params.h;
+			job.target.planes[index].texture = nullptr;
+		}
+		CopyLut(image.lut, job.imageLut, job.imageLutData,
+			job.hasImageLut);
+		CopyLut(target.lut, job.targetLut, job.targetLutData,
+			job.hasTargetLut);
+		job.image.lut = job.hasImageLut ? &job.imageLut : nullptr;
+		job.target.lut = job.hasTargetLut ? &job.targetLut : nullptr;
+		job.params = renderParams;
+		job.colorMap = colorMapParams;
+		job.peakDetect = peakDetectParams;
+		job.sigmoid = sigmoidParams;
+		job.deband = debandParams;
+		job.dither = ditherParams;
+		job.params.color_map_params = &job.colorMap;
+		job.params.peak_detect_params = renderParams.peak_detect_params ?
+			&job.peakDetect : nullptr;
+		job.params.sigmoid_params = renderParams.sigmoid_params ?
+			&job.sigmoid : nullptr;
+		job.params.deband_params = renderParams.deband_params ?
+			&job.deband : nullptr;
+		job.params.dither_params = renderParams.dither_params ?
+			&job.dither : nullptr;
+		job.params.hooks = nullptr;
+		job.params.num_hooks = 0;
+		job.noCompute = activeSettings.diagnosticDisableCompute;
+		CComQIPtr<IDXGIDevice> liveDxgiDevice(
+			d3d11 ? d3d11->device : nullptr);
+		CComPtr<IDXGIAdapter> liveAdapter;
+		DXGI_ADAPTER_DESC liveAdapterDescription{};
+		if (liveDxgiDevice &&
+			SUCCEEDED(liveDxgiDevice->GetAdapter(&liveAdapter)) &&
+			SUCCEEDED(liveAdapter->GetDesc(&liveAdapterDescription)))
+		{
+			job.adapterLuid = liveAdapterDescription.AdapterLuid;
+			job.hasAdapterLuid = true;
+		}
+
+		try
+		{
+			shaderCompilationWorker = std::thread(
+			[this, job = std::move(job)]() mutable
+			{
+				SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
+				job.imageLut.data = job.imageLutData.empty() ? nullptr :
+					job.imageLutData.data();
+				job.targetLut.data = job.targetLutData.empty() ? nullptr :
+					job.targetLutData.data();
+				job.image.lut = job.hasImageLut ? &job.imageLut : nullptr;
+				job.target.lut = job.hasTargetLut ? &job.targetLut : nullptr;
+				job.params.color_map_params = &job.colorMap;
+				job.params.peak_detect_params = job.params.peak_detect_params ?
+					&job.peakDetect : nullptr;
+				job.params.sigmoid_params = job.params.sigmoid_params ?
+					&job.sigmoid : nullptr;
+				job.params.deband_params = job.params.deband_params ?
+					&job.deband : nullptr;
+				job.params.dither_params = job.params.dither_params ?
+					&job.dither : nullptr;
+				LibplaceboCompileTelemetry telemetry;
+				struct pl_log_params logParams{};
+				logParams.log_cb = LibplaceboLog;
+				logParams.log_priv = &telemetry;
+				logParams.log_level = PL_LOG_INFO;
+				pl_log workerLog = pl_log_create(PL_API_VER, &logParams);
+				pl_d3d11 workerD3d11 = nullptr;
+				pl_renderer workerRenderer = nullptr;
+				const struct pl_hook* workerHook = nullptr;
+				pl_tex imageTextures[PL_MAX_PLANES]{};
+				pl_tex targetTextures[PL_MAX_PLANES]{};
+				bool succeeded = false;
+				std::string failure = "initialization failed";
+				if (workerLog)
+				{
+					struct pl_d3d11_params deviceParams =
+						LibplaceboExportedData<pl_d3d11_params>(
+							"pl_d3d11_default_params");
+					deviceParams.allow_software = false;
+					deviceParams.min_feature_level = D3D_FEATURE_LEVEL_10_0;
+					deviceParams.max_frame_latency = 1;
+					deviceParams.no_compute = job.noCompute;
+					if (job.hasAdapterLuid)
+						deviceParams.adapter_luid = job.adapterLuid;
+					workerD3d11 = pl_d3d11_create(workerLog, &deviceParams);
+				}
+				if (workerD3d11 && workerD3d11->device)
+				{
+					CComQIPtr<IDXGIDevice> workerDxgiDevice(
+						workerD3d11->device);
+					if (workerDxgiDevice)
+						workerDxgiDevice->SetGPUThreadPriority(-7);
+				}
+				if (workerD3d11)
+				{
+					if (shaderCacheEnabled)
+						pl_gpu_set_cache(workerD3d11->gpu, cache);
+					workerRenderer = pl_renderer_create(
+						workerLog, workerD3d11->gpu);
+				}
+				if (workerRenderer)
+				{
+					succeeded = true;
+					for (int index = 0; index < job.image.num_planes; ++index)
+					{
+						pl_fmt format = pl_find_named_fmt(
+							workerD3d11->gpu, job.imageFormats[index].c_str());
+						struct pl_tex_params textureParams{};
+						textureParams.w = job.imageWidths[index];
+						textureParams.h = job.imageHeights[index];
+						textureParams.format = format;
+						textureParams.sampleable = true;
+						imageTextures[index] = format ? pl_tex_create(
+							workerD3d11->gpu, &textureParams) : nullptr;
+						job.image.planes[index].texture = imageTextures[index];
+						succeeded = succeeded && imageTextures[index] != nullptr;
+					}
+					for (int index = 0; index < job.target.num_planes; ++index)
+					{
+						pl_fmt format = pl_find_named_fmt(
+							workerD3d11->gpu, job.targetFormats[index].c_str());
+						struct pl_tex_params textureParams{};
+						textureParams.w = job.targetWidths[index];
+						textureParams.h = job.targetHeights[index];
+						textureParams.format = format;
+						textureParams.renderable = true;
+						targetTextures[index] = format ? pl_tex_create(
+							workerD3d11->gpu, &textureParams) : nullptr;
+						job.target.planes[index].texture = targetTextures[index];
+						succeeded = succeeded && targetTextures[index] != nullptr;
+					}
+				}
+				const auto nls = std::find_if(job.request.selection.begin(),
+					job.request.selection.end(),
+					[](const ConfiguredShaderRule& rule) { return rule.nls; });
+				if (succeeded && nls != job.request.selection.end())
+				{
+					std::string hookKey;
+					std::string resolvedPath;
+					if (!CreateNlsHook(*nls, workerHook, hookKey,
+						resolvedPath, failure, workerD3d11->gpu))
+						succeeded = false;
+					NlsMappingDecision mapping;
+					mapping.mode = NlsMappingMode::ACTIVE;
+					mapping.stretchRatio = 1.1;
+					if (succeeded && !SetNlsHookMapping(workerHook, mapping))
+					{
+						failure = "dynamic NLS parameters unavailable";
+						succeeded = false;
+					}
+					if (succeeded)
+					{
+						job.params.hooks = &workerHook;
+						job.params.num_hooks = 1;
+						telemetry.BeginRender();
+						const SteadyClock::time_point started = SteadyClock::now();
+						succeeded = pl_render_image(workerRenderer,
+							&job.image, &job.target, &job.params);
+						const LibplaceboCompileSnapshot snapshot =
+							telemetry.EndRender();
+						DebugLog::Log(
+							"Alpha shader background compile: selector=\"%s\" generation=%llu result=%s glsl_ms=%.3f spirv_cross_ms=%.3f hlsl_ms=%.3f elapsed_ms=%.3f",
+							job.request.selector.c_str(),
+							static_cast<unsigned long long>(job.request.generation),
+							succeeded ? "success" : "failed",
+							snapshot.glslMs, snapshot.spirvCrossMs,
+							snapshot.hlslMs,
+							std::chrono::duration<double, std::milli>(
+								SteadyClock::now() - started).count());
+					}
+				}
+				else if (succeeded)
+				{
+					failure = "no NLS rule";
+					succeeded = false;
+				}
+				if (workerD3d11)
+					pl_gpu_finish(workerD3d11->gpu);
+				pl_mpv_user_shader_destroy(&workerHook);
+				pl_renderer_destroy(&workerRenderer);
+				if (workerD3d11)
+				{
+					for (pl_tex& texture : targetTextures)
+						pl_tex_destroy(workerD3d11->gpu, &texture);
+					for (pl_tex& texture : imageTextures)
+						pl_tex_destroy(workerD3d11->gpu, &texture);
+				}
+				if (succeeded)
+					SaveShaderCache();
+				pl_d3d11_destroy(&workerD3d11);
+				pl_log_destroy(&workerLog);
+				if (!succeeded)
+					DebugLog::Log(
+						"Alpha shader background compile failed: selector=\"%s\" generation=%llu reason=%s",
+						job.request.selector.c_str(),
+						static_cast<unsigned long long>(job.request.generation),
+						failure.c_str());
+				{
+					std::lock_guard<std::mutex> guard(shaderCompilationMutex);
+					completedShaderSelection.reset(
+						new ShaderSelectionRequest(job.request));
+					shaderCompilationWorkerSucceeded = succeeded;
+					shaderCompilationWorkerFinished = true;
+					shaderCompilationLabel.clear();
+					shaderCompilationActive.store(false,
+						std::memory_order_release);
+				}
+			});
+		}
+		catch (const std::exception& error)
+		{
+			DebugLog::Log(
+				"Alpha shader background compile could not start: selector=\"%s\" generation=%llu reason=%s",
+				request->selector.c_str(),
+				static_cast<unsigned long long>(request->generation),
+				error.what());
+			std::lock_guard<std::mutex> guard(shaderCompilationMutex);
+			completedShaderSelection = std::move(request);
+			shaderCompilationWorkerSucceeded = false;
+			shaderCompilationWorkerFinished = true;
+			shaderCompilationLabel.clear();
+			shaderCompilationActive.store(false,
+				std::memory_order_release);
+		}
+	}
+
 	static std::map<std::string, std::string> FixedNlsParameters(
 		const ConfiguredShaderRule& rule)
 	{
@@ -6279,7 +6737,8 @@ struct LibplaceboVideoRenderer::Impl
 
 	bool CreateNlsHook(const ConfiguredShaderRule& rule,
 		const struct pl_hook*& hook, std::string& hookKey,
-		std::string& resolvedPath, std::string& reason)
+		std::string& resolvedPath, std::string& reason,
+		pl_gpu hookGpu = nullptr)
 	{
 		const std::map<std::string, std::string> parameters =
 			FixedNlsParameters(rule);
@@ -6290,7 +6749,7 @@ struct LibplaceboVideoRenderer::Impl
 		if (!ApplyUserShaderParameters(source, parameters, reason))
 			return false;
 		hook = pl_mpv_user_shader_parse(
-			d3d11->gpu, source.data(), source.size());
+			hookGpu ? hookGpu : d3d11->gpu, source.data(), source.size());
 		if (!hook)
 		{
 			reason = "libplacebo could not parse shader";
@@ -7050,6 +7509,7 @@ struct LibplaceboVideoRenderer::Impl
 		bool& presentationTargetTimingKnown,
 		double& presentationTargetLeadMs)
 	{
+		ApplyCompletedShaderSelectionLocked();
 		const HMONITOR currentMonitor = MonitorFromWindow(
 			videoHwnd,
 			MONITOR_DEFAULTTONEAREST);
@@ -7104,9 +7564,8 @@ struct LibplaceboVideoRenderer::Impl
 			(lastRenderedEotf != state.eotf || lastRenderedColorspace != state.colorspace))
 		{
 			// pl_render_image tracks source and target changes itself. Explicitly
-			// flushing here discarded the SDR programs while the non-capturing
-			// preparation worker moved on to HDR (and vice versa), so the next live
-			// source incurred a cold, visible shader build. Keep both variants in
+			// flushing here discards reusable SDR/HDR programs and makes a recently
+			// seen source cold again. Keep every valid variant in
 			// the shared persistent cache; libplacebo invalidates only resources
 			// that genuinely no longer apply.
 			DebugLog::Log(
@@ -8952,7 +9411,14 @@ struct LibplaceboVideoRenderer::Impl
 			const NativeStatsOverlayPlacement::Rect pictureRect{
 				target.crop.x0, target.crop.y0,
 				target.crop.x1, target.crop.y1 };
+			const bool compilationOverlay = shaderCompilationActive.load(
+				std::memory_order_acquire);
 			const NativeStatsOverlayPlacement::Result placement =
+				compilationOverlay ?
+				NativeStatsOverlayPlacement::PlaceCentered(
+					pictureRect, outputRect,
+					static_cast<float>(statsOverlayTexture->params.w),
+					static_cast<float>(statsOverlayTexture->params.h)) :
 				NativeStatsOverlayPlacement::Place(
 					pictureRect, outputRect,
 					static_cast<float>(statsOverlayTexture->params.w),
@@ -9063,6 +9529,7 @@ struct LibplaceboVideoRenderer::Impl
 			baseTarget.planes[0].texture->params.w : 0;
 		const int outputHeight = baseTarget.planes[0].texture ?
 			baseTarget.planes[0].texture->params.h : 0;
+		StartPendingShaderCompilationLocked(renderImage, target);
 		const bool nlsPipelineActive = renderParams.num_hooks > 0 &&
 			!activeNlsShaderPath.empty();
 		std::string nlsPipelineVariant;
@@ -9080,7 +9547,6 @@ struct LibplaceboVideoRenderer::Impl
 			nlsPipelineVariantChanged = !nlsPipelineWasActive ||
 				nlsPipelineVariant != lastNlsPipelineVariant;
 		}
-
 		compileTelemetry.BeginRender();
 		const SteadyClock::time_point renderStart = SteadyClock::now();
 		const bool targetLutApplied =
@@ -9094,6 +9560,14 @@ struct LibplaceboVideoRenderer::Impl
 			SteadyClock::now() - renderStart).count();
 		const LibplaceboCompileSnapshot compileSnapshot =
 			compileTelemetry.EndRender();
+		if (rendered && compileSnapshot.Compiled())
+		{
+			// libplacebo owns the cache contents, but the cache itself is memory
+			// resident. Persist newly compiled programs immediately so an app kill
+			// cannot discard an expensive build. Signature comparison makes this a
+			// no-op if serialization did not actually change.
+			SaveShaderCache();
+		}
 		if (nlsPipelineActive &&
 			(nlsPipelineVariantChanged || compileSnapshot.Compiled()))
 		{
@@ -9973,21 +10447,17 @@ bool LibplaceboVideoRenderer::SelectShaderRule(
 		static_cast<const char*>(selectorUtf8);
 	if (MadVRShaderLoader::CanonicalizeRuleSelector(selector).empty())
 		return false;
+	if (MadVRShaderLoader::RuleSelectorsEqual(
+		m_requestedShaderSelector, selector))
 	{
-		std::unique_lock<std::mutex> guard(
-			m_impl->renderMutex, std::try_to_lock);
-		if (guard.owns_lock() && MadVRShaderLoader::RuleSelectorsEqual(
-			m_requestedShaderSelector, selector))
-		{
-			std::lock_guard<std::mutex> statusGuard(
-				m_impl->shaderStatusMutex);
-			activeRule = CString(CStringA(
-				m_impl->activeShaderStatus.c_str()));
-			DebugLog::Log(
-				"Alpha shaders: coalesced duplicate request for \"%s\"",
-				selector.c_str());
-			return true;
-		}
+		std::lock_guard<std::mutex> statusGuard(
+			m_impl->shaderStatusMutex);
+		activeRule = CString(CStringA(
+			m_impl->activeShaderStatus.c_str()));
+		DebugLog::Log(
+			"Alpha shaders: coalesced duplicate request for \"%s\"",
+			selector.c_str());
+		return true;
 	}
 
 	std::vector<ConfiguredShaderRule> selection;
@@ -10012,64 +10482,10 @@ bool LibplaceboVideoRenderer::SelectShaderRule(
 		m_activeShaderSectionsAvailable =
 			selector.rfind("@shader-key:", 0) == 0;
 	}
-	{
-		std::unique_lock<std::mutex> guard(
-			m_impl->renderMutex, std::try_to_lock);
-		if (!guard.owns_lock())
-		{
-			std::lock_guard<std::mutex> pendingGuard(m_pendingShaderMutex);
-			m_pendingShaderSelector = selector;
-			activeRule = TEXT("NLS: Pending");
-			DebugLog::Log(
-				"Alpha shaders: queued selector \"%s\" without blocking the UI; render thread is busy",
-				selector.c_str());
-			return true;
-		}
-		m_impl->SetConfiguredShaderSelection(
-			selector, selection, m_shaderRendererGeneration);
-		std::lock_guard<std::mutex> statusGuard(
-			m_impl->shaderStatusMutex);
-		activeRule = CString(CStringA(
-			m_impl->activeShaderStatus.c_str()));
-		m_lastReportedShaderStatusSerial = m_impl->activeShaderStatusSerial;
-	}
-	return true;
-}
-
-
-void LibplaceboVideoRenderer::ApplyPendingShaderSelectionLocked()
-{
-	std::string selector;
-	{
-		std::lock_guard<std::mutex> pendingGuard(m_pendingShaderMutex);
-		selector.swap(m_pendingShaderSelector);
-	}
-	if (selector.empty() || !m_impl)
-		return;
-
-	std::vector<ConfiguredShaderRule> selection;
-	std::string reason;
-	ConfigFile shaderConfig;
-	if (!shaderConfig.Load(ConfigFile::RENDERER_FILENAME) ||
-		!MadVRShaderLoader::ResolveConfiguredRuleSelection(shaderConfig,
-			selector, ShaderRendererBackend::LIBPLACEBO, selection, reason))
-	{
-		DebugLog::Log(
-			"Alpha shaders: queued selector \"%s\" rejected on render thread: %s",
-			selector.c_str(), reason.c_str());
-		return;
-	}
-
-	m_impl->SetConfiguredShaderSelection(
+	m_impl->QueueShaderSelection(
 		selector, selection, m_shaderRendererGeneration);
-	{
-		std::lock_guard<std::mutex> statusGuard(
-			m_impl->shaderStatusMutex);
-		m_lastReportedShaderStatusSerial = m_impl->activeShaderStatusSerial;
-	}
-	DebugLog::Log(
-		"Alpha shaders: applied queued selector \"%s\" on render thread",
-		selector.c_str());
+	activeRule = TEXT("NLS: Pending");
+	return true;
 }
 
 
@@ -10090,6 +10506,21 @@ bool LibplaceboVideoRenderer::RefreshShaderRule(
 	m_lastReportedShaderStatusSerial =
 		m_impl->activeShaderStatusSerial;
 	return changed;
+}
+
+bool LibplaceboVideoRenderer::GetShaderCompilationStatus(CString& status) const
+{
+	status.Empty();
+	if (!m_impl ||
+		!m_impl->shaderCompilationActive.load(std::memory_order_acquire))
+		return false;
+
+	std::lock_guard<std::mutex> guard(m_impl->shaderCompilationMutex);
+	status.Format(TEXT("Compiling %S..."),
+		m_impl->shaderCompilationLabel.empty() ?
+			"VP Renderer shader" :
+			m_impl->shaderCompilationLabel.c_str());
+	return true;
 }
 
 
@@ -11452,7 +11883,6 @@ void LibplaceboVideoRenderer::RenderLoop()
 				std::memory_order_acq_rel))
 				m_impl->RetryAutoLimitedCandidate("deferred display change");
 			m_impl->ApplyPendingProfileSettingsLocked();
-			ApplyPendingShaderSelectionLocked();
 			{
 				std::lock_guard<std::mutex> queueGuard(m_queueMutex);
 				staleGeneration =
