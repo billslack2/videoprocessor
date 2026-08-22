@@ -346,8 +346,8 @@ bool StatsOverlayWindow::RenderShaderCompilationBgra(const CString& status,
 {
 	if (status.IsEmpty())
 		return false;
-	width = 1200;
-	height = 260;
+	width = 720;
+	height = 150;
 	stride = width * 4;
 	BITMAPINFO info{};
 	info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
@@ -377,22 +377,22 @@ bool StatsOverlayWindow::RenderShaderCompilationBgra(const CString& status,
 	FrameRect(memory, &rect, border);
 	DeleteObject(border);
 	SetBkMode(memory, TRANSPARENT);
-	HFONT titleFont = CreateFont(44, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+	HFONT titleFont = CreateFont(28, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
 		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
 		CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, TEXT("Segoe UI"));
-	HFONT detailFont = CreateFont(31, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+	HFONT detailFont = CreateFont(20, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
 		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
 		CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, TEXT("Segoe UI"));
 	HFONT oldFont = static_cast<HFONT>(SelectObject(memory, titleFont));
 	SetTextColor(memory, RGB(245, 248, 252));
-	RECT titleRect{ 30, 42, width - 30, 110 };
-	::DrawText(memory, TEXT("Compiling VP Renderer shader"), -1, &titleRect,
+	RECT titleRect{ 24, 22, width - 24, 68 };
+	::DrawText(memory, TEXT("Compiling shader"), -1, &titleRect,
 		DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
 	SelectObject(memory, detailFont);
 	SetTextColor(memory, RGB(185, 215, 238));
 	CString detail(status);
-	detail += TEXT("  Video continues with the current shader.");
-	RECT detailRect{ 30, 130, width - 30, height - 30 };
+	detail += TEXT("  Video continues normally.");
+	RECT detailRect{ 24, 82, width - 24, height - 18 };
 	::DrawText(memory, detail, -1, &detailRect,
 		DT_CENTER | DT_TOP | DT_WORDBREAK | DT_NOPREFIX);
 	SelectObject(memory, oldFont);

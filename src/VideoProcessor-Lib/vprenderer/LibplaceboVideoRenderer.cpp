@@ -2921,6 +2921,7 @@ struct LibplaceboVideoRenderer::Impl
 	std::string requestedShaderSelector;
 	mutable std::mutex shaderStatusMutex;
 	std::atomic_bool shaderCompilationActive{false};
+	std::atomic_bool shaderCompilationOverlayActive{false};
 	mutable std::mutex shaderCompilationMutex;
 	struct ShaderSelectionRequest
 	{
@@ -2937,6 +2938,7 @@ struct LibplaceboVideoRenderer::Impl
 	bool shaderCompilationWorkerSucceeded = false;
 	uint64_t shaderSelectionGeneration = 0;
 	std::string shaderCompilationLabel;
+	ULONGLONG shaderCompilationStartedTick = 0;
 	std::string activeShaderStatus = "None";
 	uint64_t activeShaderStatusSerial = 0;
 	uint64_t nlsRendererGeneration = 0;
@@ -6421,6 +6423,9 @@ struct LibplaceboVideoRenderer::Impl
 			shaderCompilationWorkerRunning = true;
 			shaderCompilationWorkerFinished = false;
 			shaderCompilationActive.store(true, std::memory_order_release);
+			shaderCompilationOverlayActive.store(false,
+				std::memory_order_release);
+			shaderCompilationStartedTick = GetTickCount64();
 			const auto nls = std::find_if(request->selection.begin(),
 				request->selection.end(),
 				[](const ConfiguredShaderRule& rule) { return rule.nls; });
@@ -6458,6 +6463,8 @@ struct LibplaceboVideoRenderer::Impl
 			shaderCompilationWorkerFinished = true;
 			shaderCompilationLabel.clear();
 			shaderCompilationActive.store(false, std::memory_order_release);
+			shaderCompilationOverlayActive.store(false,
+				std::memory_order_release);
 		};
 		for (int index = 0; index < job.image.num_planes; ++index)
 		{
@@ -6691,6 +6698,8 @@ struct LibplaceboVideoRenderer::Impl
 					shaderCompilationLabel.clear();
 					shaderCompilationActive.store(false,
 						std::memory_order_release);
+					shaderCompilationOverlayActive.store(false,
+						std::memory_order_release);
 				}
 			});
 		}
@@ -6707,6 +6716,8 @@ struct LibplaceboVideoRenderer::Impl
 			shaderCompilationWorkerFinished = true;
 			shaderCompilationLabel.clear();
 			shaderCompilationActive.store(false,
+				std::memory_order_release);
+			shaderCompilationOverlayActive.store(false,
 				std::memory_order_release);
 		}
 	}
@@ -9412,7 +9423,7 @@ struct LibplaceboVideoRenderer::Impl
 			const NativeStatsOverlayPlacement::Rect pictureRect{
 				target.crop.x0, target.crop.y0,
 				target.crop.x1, target.crop.y1 };
-			const bool compilationOverlay = shaderCompilationActive.load(
+			const bool compilationOverlay = shaderCompilationOverlayActive.load(
 				std::memory_order_acquire);
 			const NativeStatsOverlayPlacement::Result placement =
 				compilationOverlay ?
@@ -10514,9 +10525,22 @@ bool LibplaceboVideoRenderer::GetShaderCompilationStatus(CString& status) const
 	status.Empty();
 	if (!m_impl ||
 		!m_impl->shaderCompilationActive.load(std::memory_order_acquire))
+	{
+		if (m_impl)
+			m_impl->shaderCompilationOverlayActive.store(false,
+				std::memory_order_release);
 		return false;
+	}
 
 	std::lock_guard<std::mutex> guard(m_impl->shaderCompilationMutex);
+	constexpr ULONGLONG compilationOverlayDelayMs = 500;
+	if (GetTickCount64() - m_impl->shaderCompilationStartedTick <
+		compilationOverlayDelayMs)
+	{
+		return false;
+	}
+	m_impl->shaderCompilationOverlayActive.store(true,
+		std::memory_order_release);
 	status.Format(TEXT("Compiling %S..."),
 		m_impl->shaderCompilationLabel.empty() ?
 			"VP Renderer shader" :
