@@ -195,6 +195,47 @@ The completed 37-object cache, active configuration, and running Config process
 were preserved. A normal next launch must therefore skip preparation and start
 VP Renderer immediately; another live operator validation remains required.
 
+Final preparation rollback (2026-08-22): live validation showed that the
+configured matrix was itself the regression. Its 16 entries were a synthetic
+Cartesian product of two display profiles, two viewport profiles, SDR/PQ, and
+windowed/fullscreen hosts—not evidence that libplacebo needed 16 distinct
+programs or one program per window size. Individual candidates could take more
+than 30 seconds, so exhaustive preparation was neither predictable nor useful.
+
+Source commit `d351151` (`Remove exhaustive shader preparation`) deletes the
+matrix and its complete control plane: the Config Prepare button/progress UI,
+`/prepare_shaders` command, worker process/job/mutex ownership, request event,
+status file, cache-lifetime preparation policy, startup renderer gate, NLS
+prewarm enumerator/render loop, and preparation-only renderer/runtime APIs.
+The Shaders Setup page now reports only persistent-cache size and retains the
+explicit Clear action. VP Renderer never precompiles windowed, fullscreen,
+viewport, color-profile, or source-state combinations. It compiles only a
+pipeline reached by live playback and atomically merges a cold result into the
+persistent append-only libplacebo cache.
+
+The remaining live-miss contract is deliberately small. `pl_render_image`
+runs on the presentation worker, not the MFC UI thread. Resize, display change,
+shader selection, and live profile updates use `try_lock` plus coalesced pending
+state, so UI-originated calls do not wait behind a driver compile. When a
+live render remains slow for 150 ms, a watchdog uses only the callback's posted
+UI message to show the non-activating, input-transparent compilation splash;
+the worker hides it when the render returns. Warm cache hits remain silent.
+
+Validation and deployment (2026-08-22): clean x64 Release builds succeeded for
+GUI, VP Renderer, and Config. All 861 native tests passed, and the complete
+Config UI test executable passed with an explicit assertion that the Prepare
+control no longer exists. Deployed hashes are
+`3C3D64FE6C393DA4FEB497CBAE774C0F0E8E5E992C33B3B10DE3D09CA20F03C2`
+for `VideoProcessor.exe`,
+`BB2D7EEB3FBA28E64F2C6F773395B04F1E3DC81B3AC2E0E65875301B18A3ED87`
+for `VideoProcessorVPRenderer.dll`, and
+`2CC1E2DC2AA61478775D390BFDCAA273E0B29327C86FDA9AE4C40AAFC616090A`
+for Config. The replaced binaries are backed up under
+`C:\\Videoprocessor\\vp\\backups\\vp-0140-d351151-20260822-0142`.
+No configuration or shader-cache file was changed during deployment. Live
+operator validation of a cold windowed start, fullscreen transition, and F6
+BT.2020 selection remains required before Review.
+
 ## User story
 
 As a VideoProcessor operator, I need every potentially cold VP Renderer shader
