@@ -225,6 +225,13 @@ void LibplaceboPluginVideoRenderer::Stop()
 }
 
 
+void LibplaceboPluginVideoRenderer::StopWithIngressDrain(
+	const std::function<void()>& drainAfterGraphStop)
+{
+	m_renderer->StopWithIngressDrain(drainAfterGraphStop);
+}
+
+
 void LibplaceboPluginVideoRenderer::Retire() noexcept
 {
 	if (m_renderer)
@@ -380,6 +387,13 @@ bool LibplaceboPluginVideoRenderer::SelectShaderRule(
 }
 
 
+bool LibplaceboPluginVideoRenderer::GetRenderStallStatus(
+	CString& status) const
+{
+	return m_renderer->GetRenderStallStatus(status);
+}
+
+
 bool LibplaceboPluginVideoRenderer::RefreshShaderRule(
 	CString& activeRule,
 	bool& rendererRestartRequired)
@@ -418,27 +432,6 @@ bool LibplaceboPluginVideoRenderer::ApplyApplicationState(
 	return m_renderer->ApplyApplicationState(snapshot, activeState,
 		rendererRestartRequired, liveResetRequired);
 }
-
-uint64_t LibplaceboPluginVideoRenderer::PresentedFrameCount() const
-{
-	return m_renderer->PresentedFrameCount();
-}
-
-bool LibplaceboPluginVideoRenderer::PersistShaderCache()
-{
-	return m_renderer->PersistShaderCache();
-}
-
-void LibplaceboPluginVideoRenderer::SetNonCapturingPreparationMode(bool enabled)
-{
-	m_renderer->SetNonCapturingPreparationMode(enabled);
-}
-
-bool LibplaceboPluginVideoRenderer::ReloadConfiguredShaderPrewarm()
-{
-	return m_renderer->ReloadConfiguredShaderPrewarm();
-}
-
 
 size_t LibplaceboPluginVideoRenderer::GetFrameQueueSize()
 {

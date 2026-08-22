@@ -19,7 +19,6 @@
 #include <RendererConfigView.h>
 #include <RendererProfileConfig.h>
 #include <ShaderConfigValidation.h>
-#include <ShaderPreparationPolicy.h>
 #include <UnifiedProfileRuntime.h>
 #include <VideoConversionOverride.h>
 #include "CppUnitTest.h"
@@ -2305,13 +2304,13 @@ namespace VideoProcessorTest
 			DeleteFileA(path.c_str());
 		}
 
-		TEST_METHOD(ShaderPreparationUsesExactParsedRenderingProfileNames)
+		TEST_METHOD(RenderingProfilesUseExactParsedNames)
 		{
 			char temporaryDirectory[MAX_PATH] = {};
 			Assert::IsTrue(GetTempPathA(
 				ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
 			const std::string path = std::string(temporaryDirectory) +
-				"VideoProcessor-shader-preparation-profiles.cfg";
+				"VideoProcessor-rendering-profile-names.cfg";
 			{
 				std::ofstream file(path, std::ios::out | std::ios::trunc);
 				file << "[general]\nrenderer: VideoProcessor Renderer (Alpha)\n"
@@ -2331,7 +2330,7 @@ namespace VideoProcessorTest
 				std::wstring(error.begin(), error.end()).c_str());
 			Assert::AreEqual(static_cast<size_t>(2), profiles.size());
 			// ConfigFile defines profile identifiers as normalized, case-insensitive
-			// names. The worker must use the model's identifiers verbatim instead
+			// names. Consumers must use the model's identifiers verbatim instead
 			// of deriving a second list from section text.
 			Assert::AreEqual("rec709_scope_med", profiles[0].c_str());
 			Assert::AreEqual("bt2020_scope_high", profiles[1].c_str());
@@ -2342,74 +2341,6 @@ namespace VideoProcessorTest
 			Assert::IsTrue(model.profiles.find("display." + profiles[1]) !=
 				model.profiles.end());
 			DeleteFileA(path.c_str());
-		}
-
-		TEST_METHOD(ShaderPreparationSkipsDeletionAndProfileMetadata)
-		{
-			using ShaderPreparationPolicy::Snapshot;
-			const Snapshot original = {
-				{ "vprenderer.Rec709", {
-					{ "quality", "high" }, { "shortcut", "F5" } } },
-				{ "vprenderer.ToDelete", { { "quality", "balanced" } } },
-				{ "vprenderer.viewport.scope", {
-					{ "screen_aspect", "2.35:1" } } },
-				{ "vprenderer.output.Default", {
-					{ "presentation_preference", "auto" } } },
-				{ "shader.Example", { { "file", "example.glsl" } } }
-			};
-
-			Snapshot deleted = original;
-			deleted.erase("vprenderer.ToDelete");
-			deleted.erase("shader.Example");
-			Assert::IsFalse(ShaderPreparationPolicy::ShouldPrepare(
-				original, deleted));
-
-			Snapshot metadata = original;
-			metadata["vprenderer.Rec709"]["shortcut"] = "F6";
-			metadata["vprenderer.Rec709"]["when"] = "$eotf == SDR";
-			Assert::IsFalse(ShaderPreparationPolicy::ShouldPrepare(
-				original, metadata));
-
-			Snapshot renamed = original;
-			renamed["vprenderer.Renamed"] = renamed["vprenderer.Rec709"];
-			renamed.erase("vprenderer.Rec709");
-			Assert::IsFalse(ShaderPreparationPolicy::ShouldPrepare(
-				original, renamed));
-
-			Snapshot emptyProfile = original;
-			emptyProfile["vprenderer.New"] = {};
-			Assert::IsFalse(ShaderPreparationPolicy::ShouldPrepare(
-				original, emptyProfile));
-		}
-
-		TEST_METHOD(ShaderPreparationRunsForNewGpuProcessingState)
-		{
-			using ShaderPreparationPolicy::Snapshot;
-			const Snapshot original = {
-				{ "vprenderer.Rec709", { { "quality", "high" } } },
-				{ "vprenderer.viewport.scope", {
-					{ "screen_aspect", "2.35:1" } } }
-			};
-
-			Snapshot changed = original;
-			changed["vprenderer.Rec709"]["sdr_target_nits"] = "120";
-			Assert::IsTrue(ShaderPreparationPolicy::ShouldPrepare(
-				original, changed));
-
-			Snapshot added = original;
-			added["vprenderer.BT2020"] = { { "quality", "balanced" } };
-			Assert::IsTrue(ShaderPreparationPolicy::ShouldPrepare(
-				original, added));
-
-			Snapshot shader = original;
-			shader["shader.NLS"] = { { "file", "nls.glsl" } };
-			Assert::IsTrue(ShaderPreparationPolicy::ShouldPrepare(
-				original, shader));
-
-			Snapshot unrelated = original;
-			unrelated["vprenderer.viewport.scope"]["screen_aspect"] = "2.40:1";
-			Assert::IsFalse(ShaderPreparationPolicy::ShouldPrepare(
-				original, unrelated));
 		}
 
 		TEST_METHOD(Vp0097ShortcutKeyCombinesWithOptionalProfileRule)
@@ -2967,38 +2898,6 @@ namespace VideoProcessorTest
 				"horizontal_center_protection")), 0.000001);
 			Assert::AreEqual(0.25, std::stod(selection.front().parameters.at(
 				"vertical_center_protection")), 0.000001);
-			DeleteFileA(path.c_str());
-		}
-
-		TEST_METHOD(TargetNlsPrewarmEnumeratesAlphaGlslVariants)
-		{
-			char temporaryDirectory[MAX_PATH] = {};
-			Assert::IsTrue(GetTempPathA(
-				ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
-			const std::string path = std::string(temporaryDirectory) +
-				"VideoProcessor-target-nls-prewarm.cfg";
-			{
-				std::ofstream file(path, std::ios::out | std::ios::trunc);
-				file << "[shader.nls]\nshortcut: n\n"
-					"[shader.nls.first]\nshader_type: nls\n"
-					"glsl_file: First.glsl\nhlsl_file: First.hlsl\n"
-					"[shader.nls.second]\nshader_type: nls\n"
-					"glsl_file: Second.glsl\n"
-					"[shader.standard.other]\nshader_type: custom\n"
-					"glsl_file: Other.glsl\n";
-			}
-
-			ConfigFile config;
-			Assert::IsTrue(config.Load(path));
-			std::vector<ConfiguredShaderRule> rules;
-			std::string reason;
-			Assert::IsTrue(
-				MadVRShaderLoader::ResolveConfiguredNlsPrewarmRules(
-					config, rules, reason),
-				std::wstring(reason.begin(), reason.end()).c_str());
-			Assert::AreEqual(static_cast<size_t>(2), rules.size());
-			Assert::AreEqual("First.glsl", rules[0].filename.c_str());
-			Assert::AreEqual("Second.glsl", rules[1].filename.c_str());
 			DeleteFileA(path.c_str());
 		}
 

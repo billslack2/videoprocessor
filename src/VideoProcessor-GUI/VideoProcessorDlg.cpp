@@ -1813,6 +1813,7 @@ BEGIN_MESSAGE_MAP(CVideoProcessorDlg, CDialog)
 	// Pre-baked callbacks
 	ON_WM_PAINT()
 	ON_WM_SIZE()
+	ON_WM_MOVE()
 	ON_WM_QUERYDRAGICON()
 	ON_WM_GETMINMAXINFO()
 	ON_WM_SETFOCUS()
@@ -1857,7 +1858,6 @@ BEGIN_MESSAGE_MAP(CVideoProcessorDlg, CDialog)
 	ON_MESSAGE(WM_MESSAGE_DIRECTSHOW_NOTIFICATION, &CVideoProcessorDlg::OnMessageDirectShowNotification)
 	ON_MESSAGE(WM_MESSAGE_RENDERER_STATE_CHANGE, &CVideoProcessorDlg::OnMessageRendererStateChange)
 	ON_MESSAGE(WM_MESSAGE_RENDERER_DETAIL_STRING, &CVideoProcessorDlg::OnMessageRendererDetailString)
-	ON_MESSAGE(WM_MESSAGE_RENDERER_PRESENTATION_STATUS, &CVideoProcessorDlg::OnMessageRendererPresentationStatus)
 	ON_MESSAGE(WM_MESSAGE_EXTERNAL_SHORTCUT, &CVideoProcessorDlg::OnMessageExternalShortcut)
 	ON_MESSAGE(WM_MESSAGE_RENDERER_LIVE_FRAME, &CVideoProcessorDlg::OnMessageRendererLiveFrame)
 	ON_MESSAGE(WM_MESSAGE_RENDERER_RESET_REQUEST, &CVideoProcessorDlg::OnMessageRendererResetRequest)
@@ -2025,8 +2025,6 @@ CVideoProcessorDlg::CVideoProcessorDlg():
 		CreateEvent(nullptr, TRUE, FALSE, nullptr);
 	m_configurationChangedEvent = CreateEventW(nullptr, FALSE, FALSE,
 		ConfigurationLiveApply::ChangedEventName);
-	m_shaderPreparationEvent = CreateEventW(nullptr, FALSE, FALSE,
-		ConfigurationLiveApply::ShaderPreparationEventName);
 	LoadDisplayRefreshRateOverrides();
 
 	ConfigFile profileConfig;
@@ -4390,12 +4388,6 @@ CVideoProcessorDlg::~CVideoProcessorDlg()
 		CloseHandle(m_configurationChangedEvent);
 		m_configurationChangedEvent = nullptr;
 	}
-	if (m_shaderPreparationEvent)
-	{
-		CloseHandle(m_shaderPreparationEvent);
-		m_shaderPreparationEvent = nullptr;
-	}
-
 	for (auto& captureDevice : m_captureDevices)
 		(*captureDevice).Release();
 
@@ -6121,249 +6113,6 @@ LRESULT CVideoProcessorDlg::OnMessageRendererDetailString(WPARAM wParam, LPARAM 
 }
 
 
-LRESULT CVideoProcessorDlg::OnMessageRendererPresentationStatus(WPARAM wParam,
-	LPARAM lParam)
-{
-	std::unique_ptr<CString> status(reinterpret_cast<CString*>(wParam));
-	const bool visible = lParam != 0;
-	if (visible && status && m_rendererTargetHwnd &&
-		IsWindow(m_rendererTargetHwnd) && GetSafeHwnd())
-	{
-		m_rendererDetailStringStatic.SetWindowText(*status);
-		m_rendererTransitionWindow.ShowStatus(m_rendererTargetHwnd,
-			GetSafeHwnd(), *status);
-	}
-	else
-	{
-		m_rendererTransitionWindow.Hide();
-	}
-	return 0;
-}
-
-void CVideoProcessorDlg::PublishShaderPreparationStatus(const char* state,
-	size_t current, size_t total, const char* message) const
-{
-	std::string configPath = m_profileRuntime.ConfigPath();
-	if (configPath.empty())
-	{
-		ConfigFile config;
-		if (config.Load()) configPath = config.GetLoadedPath();
-	}
-	if (configPath.empty()) return;
-
-	const size_t separator = configPath.find_last_of("\\/");
-	if (separator == std::string::npos) return;
-	const std::string directory = configPath.substr(0, separator) +
-		"\\vprenderer";
-	if (!::CreateDirectoryA(directory.c_str(), nullptr) &&
-		::GetLastError() != ERROR_ALREADY_EXISTS) return;
-	const std::string path = directory + "\\" +
-		ConfigurationLiveApply::ShaderPreparationStatusFileNameA;
-	const std::string temporary = path + ".tmp";
-	{
-		std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
-		if (!output) return;
-		output << "state=" << (state ? state : "unknown") << "\n"
-			<< "current=" << current << "\n"
-			<< "total=" << total << "\n"
-			<< "message=" << (message ? message : "") << "\n";
-	}
-	::MoveFileExA(temporary.c_str(), path.c_str(),
-		MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH);
-}
-
-bool CVideoProcessorDlg::ApplyShaderPreparationSnapshot(
-	const std::shared_ptr<const UnifiedProfileRuntime::Snapshot>& snapshot)
-{
-	if (!snapshot || !m_videoRenderer ||
-		m_rendererState != RendererState::RENDERSTATE_RENDERING)
-		return false;
-	CString activeState;
-	bool rendererRestartRequired = false;
-	bool liveResetRequired = false;
-	if (!m_videoRenderer->ApplyApplicationState(*snapshot, activeState,
-		rendererRestartRequired, liveResetRequired))
-	{
-		FinishShaderPreparation(false,
-			"A rendering profile could not be applied live");
-		return false;
-	}
-	if (rendererRestartRequired)
-	{
-		FinishShaderPreparation(false,
-			"A rendering profile requires renderer reconstruction");
-		return false;
-	}
-	if (liveResetRequired)
-	{
-		RequestRendererReset(RendererResetReason::ProfileChange, false, 0);
-		return true;
-	}
-	return false;
-}
-
-void CVideoProcessorDlg::StartShaderPreparation()
-{
-	if (m_shaderPreparationActive) return;
-	if (!m_videoRenderer || !IsAlphaRendererSelected())
-	{
-		std::wstring directory;
-		if (!GetApplicationDirectory(directory))
-		{
-			PublishShaderPreparationStatus("failed", 0, 0,
-				"Shader preparation could not locate VideoProcessor.exe.");
-			return;
-		}
-		std::wstring executable = directory + L"VideoProcessor.exe";
-		std::wstring command = L"\"" + executable + L"\" /prepare_shaders";
-		STARTUPINFOW startup{};
-		startup.cb = sizeof(startup);
-		PROCESS_INFORMATION process{};
-		if (!::CreateProcessW(executable.c_str(), &command[0], nullptr,
-			nullptr, FALSE, CREATE_NO_WINDOW, nullptr, directory.c_str(),
-			&startup, &process))
-		{
-			PublishShaderPreparationStatus("failed", 0, 0,
-				"Non-capturing shader preparation could not start.");
-			return;
-		}
-		::CloseHandle(process.hThread);
-		::CloseHandle(process.hProcess);
-		PublishShaderPreparationStatus("waiting", 0, 0,
-			"Starting non-capturing shader preparation...");
-		return;
-	}
-	if (m_rendererState != RendererState::RENDERSTATE_RENDERING)
-	{
-		PublishShaderPreparationStatus("waiting", 0, 0,
-			"Waiting for VideoProcessor renderer...");
-		if (m_shaderPreparationEvent) SetEvent(m_shaderPreparationEvent);
-		return;
-	}
-	if (RendererResetOperationInProgress())
-	{
-		PublishShaderPreparationStatus("waiting", 0, 0,
-			"Waiting for the current renderer update...");
-		if (m_shaderPreparationEvent) SetEvent(m_shaderPreparationEvent);
-		return;
-	}
-
-	const auto original = m_profileRuntime.GetSnapshot();
-	if (!original)
-	{
-		PublishShaderPreparationStatus("failed", 0, 0,
-			"Shader preparation could not read rendering profiles.");
-		return;
-	}
-	ConfigFile config;
-	if (!config.Load())
-	{
-		PublishShaderPreparationStatus("failed", 0, 0,
-			"Shader preparation could not load VideoProcessor.cfg.");
-		return;
-	}
-	if (!m_videoRenderer->ReloadConfiguredShaderPrewarm())
-	{
-		PublishShaderPreparationStatus("failed", 0, 0,
-			"Shader configuration could not be prepared.");
-		return;
-	}
-
-	std::vector<std::string> profiles;
-	std::string profileError;
-	if (!RendererProfileConfig::CollectRenderingProfileNames(
-		config, profiles, profileError))
-	{
-		PublishShaderPreparationStatus("failed", 0, 0,
-			"Rendering profiles could not be enumerated.");
-		return;
-	}
-	if (profiles.empty())
-	{
-		FinishShaderPreparation(true, "No additional rendering profiles need preparation");
-		return;
-	}
-
-	m_shaderPreparationOriginalSnapshot = original;
-	m_shaderPreparationSnapshots.clear();
-	for (size_t index = 0; index < profiles.size(); ++index)
-	{
-		auto candidate =
-			std::make_shared<UnifiedProfileRuntime::Snapshot>(*original);
-		candidate->generation = original->generation + index + 1;
-		candidate->manualSelections["display"] = profiles[index];
-		candidate->effectiveSelections["display"] = profiles[index];
-		m_shaderPreparationSnapshots.push_back(candidate);
-	}
-	m_shaderPreparationIndex = 0;
-	m_shaderPreparationRestoring = false;
-	m_shaderPreparationActive = true;
-	DebugLog::Log("Shader preparation started: profiles=%zu renderer_generation=%u",
-		m_shaderPreparationSnapshots.size(),
-		m_rendererGeneration.load(std::memory_order_acquire));
-	AdvanceShaderPreparation();
-}
-
-void CVideoProcessorDlg::AdvanceShaderPreparation()
-{
-	if (!m_shaderPreparationActive) return;
-	while (m_shaderPreparationIndex < m_shaderPreparationSnapshots.size())
-	{
-		const size_t current = m_shaderPreparationIndex + 1;
-		char message[128] = {};
-		sprintf_s(message, "Preparing shaders %zu of %zu...", current,
-			m_shaderPreparationSnapshots.size());
-		PublishShaderPreparationStatus("preparing", current,
-			m_shaderPreparationSnapshots.size(), message);
-		DebugLog::Log("Shader preparation profile: current=%zu total=%zu display=%s",
-			current, m_shaderPreparationSnapshots.size(),
-			m_shaderPreparationSnapshots[m_shaderPreparationIndex]
-				->effectiveSelections.at("display").c_str());
-		++m_shaderPreparationIndex;
-		if (ApplyShaderPreparationSnapshot(
-			m_shaderPreparationSnapshots[m_shaderPreparationIndex - 1]))
-			return;
-		if (!m_shaderPreparationActive) return;
-	}
-
-	if (!m_shaderPreparationRestoring)
-	{
-		m_shaderPreparationRestoring = true;
-		PublishShaderPreparationStatus("preparing",
-			m_shaderPreparationSnapshots.size(),
-			m_shaderPreparationSnapshots.size(),
-			"Finalizing shader cache...");
-		if (ApplyShaderPreparationSnapshot(
-			m_shaderPreparationOriginalSnapshot))
-			return;
-		if (!m_shaderPreparationActive) return;
-	}
-	FinishShaderPreparation(true, "Shaders ready");
-}
-
-void CVideoProcessorDlg::FinishShaderPreparation(bool succeeded,
-	const char* detail)
-{
-	if (succeeded && m_videoRenderer && !m_videoRenderer->PersistShaderCache())
-	{
-		succeeded = false;
-		detail = "Shader cache could not be saved";
-	}
-	const size_t total = m_shaderPreparationSnapshots.size();
-	PublishShaderPreparationStatus(succeeded ? "ready" : "failed",
-		succeeded ? total : m_shaderPreparationIndex, total,
-		detail ? detail : (succeeded ? "Shaders ready" :
-			"Shader preparation incomplete"));
-	DebugLog::Log("Shader preparation %s: prepared=%zu total=%zu detail=%s",
-		succeeded ? "completed" : "failed", m_shaderPreparationIndex,
-		total, detail ? detail : "none");
-	m_shaderPreparationActive = false;
-	m_shaderPreparationRestoring = false;
-	m_shaderPreparationIndex = 0;
-	m_shaderPreparationSnapshots.clear();
-	m_shaderPreparationOriginalSnapshot.reset();
-}
-
 LRESULT CVideoProcessorDlg::OnMessageExternalShortcut(WPARAM wParam,
 	LPARAM lParam)
 {
@@ -7185,14 +6934,6 @@ void CVideoProcessorDlg::OnRendererDetailString(const CString& details)
 }
 
 
-void CVideoProcessorDlg::OnRendererPresentationStatus(const CString& status,
-	bool visible)
-{
-	CString* copy = new CString(status);
-	PostMessage(WM_MESSAGE_RENDERER_PRESENTATION_STATUS,
-		reinterpret_cast<WPARAM>(copy), visible ? 1 : 0);
-}
-
 
 void CVideoProcessorDlg::UpdateState()
 {
@@ -7408,6 +7149,9 @@ void CVideoProcessorDlg::UpdateState()
 		{
 			return;
 		}
+		// Persistent libplacebo entries are consumed opportunistically. Never
+		// delay renderer construction for an exhaustive synthetic matrix; live
+		// playback compiles only the shader it actually requires.
 		if (m_captureDeviceVideoState &&
 			m_captureDeviceVideoState->valid)
 			RenderStart();
@@ -8531,6 +8275,8 @@ void CVideoProcessorDlg::RenderRemove()
 
 void CVideoProcessorDlg::DestroyVideoRenderer()
 {
+	m_shaderLoadingWindow.Hide();
+	m_shaderLoadingPopupShownTick = 0;
 	if (!m_videoRenderer)
 		return;
 	if (m_fullscreenRetargetPending)
@@ -8558,29 +8304,9 @@ void CVideoProcessorDlg::DestroyVideoRenderer()
 	DebugLog::Log(
 		"Renderer teardown: detached renderer before destruction to block reentrant callbacks");
 
-	// Alpha/plugin retirement has not yet been audited as an idempotent
-	// cross-thread contract. Retire it synchronously, explicitly releasing its
-	// swapchain before a replacement renderer can claim the target HWND.
-	if (!m_activeRendererIsDirectShow)
-	{
-		rendererToDestroy->Retire();
-		m_rendererTransitionWindow.KeepOnTop();
-		const HRESULT compositionResult =
-			m_rendererTransitionWindow.SynchronizeComposition();
-		rendererToDestroy.reset();
-		DebugLog::Log(
-			"Renderer transition: process=%lu generation=%u event=old-surface-retired "
-			"renderer=%S target=%p cover=%p mode=alpha-synchronous "
-			"composition_sync=0x%08lx",
-			GetCurrentProcessId(),
-			m_rendererGeneration.load(std::memory_order_acquire),
-			static_cast<LPCTSTR>(m_activeRendererName),
-			m_rendererTargetHwnd,
-			m_rendererTransitionWindow.GetHWND(),
-			static_cast<unsigned long>(compositionResult));
-		return;
-	}
-
+	// Final swapchain/device release can enter the driver. Both DirectShow and
+	// VP Renderer retirement therefore use the lifecycle worker; replacement
+	// construction waits for the matching completion token below.
 	m_rendererRetirementPending = true;
 	m_rendererRetirementToken++;
 	m_retiringRendererName = m_activeRendererName;
@@ -9240,8 +8966,6 @@ void CVideoProcessorDlg::TryRevealRendererTransition(uint32_t generation)
 		static_cast<unsigned long long>(blackDurationMs),
 		static_cast<unsigned long>(compositionSyncResult),
 		static_cast<unsigned long long>(compositionSyncMs));
-	if (coordinatedReset && m_shaderPreparationActive)
-		AdvanceShaderPreparation();
 }
 
 
@@ -11670,6 +11394,7 @@ void CVideoProcessorDlg::OnSize(UINT nType, int cx, int cy)
 		!RendererResetOperationInProgress())
 		m_videoRenderer->OnSize();
 	m_rendererTransitionWindow.KeepOnTop();
+	m_shaderLoadingWindow.UpdatePosition();
 
 	// Some windowed DirectShow renderers finish processing WM_SIZE after this
 	// handler returns.  Restore the fixed UI now and once more after that work
@@ -11707,6 +11432,13 @@ void CVideoProcessorDlg::OnSize(UINT nType, int cx, int cy)
 
 	lastSize = currentSize;
 	CDialog::OnSize(nType, cx, cy);
+}
+
+
+void CVideoProcessorDlg::OnMove(int x, int y)
+{
+	CDialog::OnMove(x, y);
+	m_shaderLoadingWindow.UpdatePosition();
 }
 
 
@@ -12056,6 +11788,34 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 
 	if (nIDEvent == SHADER_RULE_REFRESH_TIMER_ID)
 	{
+		// Keep the render-stall overlay available for a future revisit, but do
+		// not show it while normal libplacebo pipeline preparation is fast enough.
+		constexpr bool showRenderStallOverlay = false;
+		CString renderStallStatus;
+		const bool rendererCanReportStall =
+			m_rendererState == RendererState::RENDERSTATE_STARTING ||
+			m_rendererState == RendererState::RENDERSTATE_READY ||
+			m_rendererState == RendererState::RENDERSTATE_RENDERING;
+		const bool renderStalled =
+			showRenderStallOverlay && rendererCanReportStall &&
+			m_videoRenderer && !m_wantToRestartRenderer &&
+			m_videoRenderer->GetRenderStallStatus(renderStallStatus);
+		if (renderStalled && m_rendererTargetHwnd && GetSafeHwnd())
+		{
+			const bool wasVisible = m_shaderLoadingWindow.IsVisible();
+			const bool shown = m_shaderLoadingWindow.Show(
+				m_rendererTargetHwnd, GetSafeHwnd(), renderStallStatus);
+			if (shown && !wasVisible && m_shaderLoadingWindow.IsVisible())
+				m_shaderLoadingPopupShownTick = GetTickCount64();
+		}
+		else if (m_shaderLoadingWindow.IsVisible() &&
+			(!rendererCanReportStall ||
+			 GetTickCount64() - m_shaderLoadingPopupShownTick >= 300))
+		{
+			m_shaderLoadingWindow.Hide();
+			m_shaderLoadingPopupShownTick = 0;
+		}
+
 		if (m_rendererState == RendererState::RENDERSTATE_RENDERING &&
 			m_videoRenderer && !m_wantToRestartRenderer)
 		{
@@ -12216,9 +11976,6 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 		if (m_configurationChangedEvent &&
 			WaitForSingleObject(m_configurationChangedEvent, 0) == WAIT_OBJECT_0)
 			ApplySavedConfiguration();
-		if (m_shaderPreparationEvent &&
-			WaitForSingleObject(m_shaderPreparationEvent, 0) == WAIT_OBJECT_0)
-			StartShaderPreparation();
 		return;
 	}
 

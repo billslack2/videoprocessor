@@ -670,6 +670,9 @@ void testEveryPageRoundTrips()
         shaderSections->tabText(2) == QStringLiteral("NLS") &&
         shaderSections->currentIndex() == 0,
         "Shaders page does not separate Setup, Standard, and NLS in the requested order");
+    require(window.findChild<QPushButton*>(
+        QStringLiteral("config.shader.prepare")) == nullptr,
+        "Shaders Setup still exposes exhaustive preparation");
     const QString cacheDirectoryPath = directory.filePath(QStringLiteral("vprenderer"));
     require(QDir().mkpath(cacheDirectoryPath),
         "Cannot create the shader-cache test directory");
@@ -909,7 +912,7 @@ void testRendererSectionTabsRemainSynchronizedDuringRapidClicks()
     runSequence({
         { 2, 9, "NLS", "config.shader.nls.modes" },
         { 1, 8, "Standard", "config.shader.standard.items" },
-        { 0, 14, "Shaders", "config.shader.prepare" },
+        { 0, 14, "Shaders", "config.shader.cache.clear" },
         { 2, 9, "NLS", "config.shader.nls.modes" },
         { 1, 8, "Standard", "config.shader.standard.items" }
     });

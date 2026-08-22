@@ -56,11 +56,6 @@ struct IRendererCallback
 	// No need to do anything but just display.
 	virtual void OnRendererDetailString(const CString& details) = 0;
 
-	// Short-lived presentation status for work which may keep a video frame
-	// unavailable, such as compiling a cold renderer shader. Implementations
-	// must return immediately; the receiver is responsible for marshaling UI.
-	virtual void OnRendererPresentationStatus(const CString&, bool) {}
-
 	// Delivered on the callback/UI thread after an asynchronous renderer-owner
 	// command discovers that the graph must be replaced.
 	virtual void OnRendererRestartRequired() {}
@@ -105,10 +100,6 @@ public:
 	// successful submit/present boundary.
 	virtual bool HasPresentedLiveFrame() const { return false; }
 	virtual const char* PresentedLiveFrameEvidence() const { return "unavailable"; }
-	virtual uint64_t PresentedFrameCount() const { return 0; }
-	virtual bool PersistShaderCache() { return false; }
-	virtual void SetNonCapturingPreparationMode(bool) {}
-	virtual bool ReloadConfiguredShaderPrewarm() { return true; }
 	virtual bool GetLivenessSnapshot(RendererLivenessSnapshot& snapshot) const
 	{
 		snapshot = {};
@@ -243,6 +234,13 @@ public:
 	{
 		activeRule.Empty();
 		rendererRestartRequired = false;
+		return false;
+	}
+	// Reports a slow rendering call that is currently in flight. The GUI paints
+	// the returned status independently of the renderer thread.
+	virtual bool GetRenderStallStatus(CString& status) const
+	{
+		status.Empty();
 		return false;
 	}
 	// Re-evaluates an armed conditional shader rule against live content.

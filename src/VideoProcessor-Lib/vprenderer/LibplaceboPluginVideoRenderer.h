@@ -27,14 +27,12 @@ public:
 	void OnVideoFrame(VideoFrame& videoFrame) override;
 	bool HasPresentedLiveFrame() const override;
 	const char* PresentedLiveFrameEvidence() const override;
-	uint64_t PresentedFrameCount() const override;
-	bool PersistShaderCache() override;
-	void SetNonCapturingPreparationMode(bool enabled) override;
-	bool ReloadConfiguredShaderPrewarm() override;
 	HRESULT OnWindowsEvent(LONG_PTR param1, LONG_PTR param2) override;
 	void Build() override;
 	void Start() override;
 	void Stop() override;
+	void StopWithIngressDrain(
+		const std::function<void()>& drainAfterGraphStop) override;
 	void Retire() noexcept override;
 	void Reset() override;
 	void ResetLiveQueue() override;
@@ -61,6 +59,7 @@ public:
 		bool& rendererRestartRequired) override;
 	bool SelectShaderRule(const CString& ruleName, CString& activeRule,
 		bool& rendererRestartRequired) override;
+	bool GetRenderStallStatus(CString& status) const override;
 	bool RefreshShaderRule(CString& activeRule,
 		bool& rendererRestartRequired) override;
 	std::vector<CString> ActiveShaders() const override;

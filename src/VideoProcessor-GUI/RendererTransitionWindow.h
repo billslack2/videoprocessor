@@ -1,7 +1,5 @@
 #pragma once
 
-#include <atlstr.h>
-
 // Opaque, owner-bound popup kept above the renderer target while presentation
 // ownership changes. The popup is deliberately not a child of the target:
 // DirectShow renderers create their own child video window, and fullscreen
@@ -13,7 +11,6 @@ public:
 	~RendererTransitionWindow();
 
 	void Show(HWND renderTarget, HWND stableOwner);
-	void ShowStatus(HWND renderTarget, HWND stableOwner, const CString& status);
 	void Hide();
 	void KeepOnTop();
 	bool IsVisible() const;
@@ -33,5 +30,4 @@ private:
 	HWND m_hwnd = nullptr;
 	HWND m_renderTarget = nullptr;
 	HWND m_owner = nullptr;
-	CString m_status;
 };

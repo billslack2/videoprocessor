@@ -46,9 +46,10 @@ namespace LibplaceboRenderParameters
 		Toggle deband = Toggle::Auto;
 		Toggle sigmoid = Toggle::Auto;
 		Toggle dithering = Toggle::Auto;
-		// Keep compile-time shader values dynamic when a caller needs to change
-		// render settings without pausing presentation for a new shader variant.
-		// This is deliberately a runtime policy, not a user-facing quality value.
+		// VP is an interactive renderer: output dimensions, crop geometry and
+		// presentation properties can change while the renderer remains live.
+		// Keep those values out of compiled program keys so a window resize does
+		// not synchronously manufacture a new shader variant.
 		bool dynamicConstants = false;
 	};
 

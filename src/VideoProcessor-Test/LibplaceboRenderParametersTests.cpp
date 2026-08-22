@@ -233,19 +233,19 @@ namespace VideoProcessorTest
 			}
 		}
 
-		TEST_METHOD(DynamicConstantsFollowTheRuntimePresentationPolicy)
+		TEST_METHOD(DynamicConstantsFollowInteractivePresentationPolicy)
 		{
 			Settings settings;
 			settings.dynamicConstants = true;
 			Projection projection;
 			BuildOrFail(settings, false, projection);
 			Assert::IsTrue(projection.renderParams.dynamic_constants,
-				L"Dynamic renderer policy must reach libplacebo render parameters.");
+				L"Interactive presentation must keep geometry out of compiled shader keys.");
 
 			settings.dynamicConstants = false;
 			BuildOrFail(settings, false, projection);
 			Assert::IsFalse(projection.renderParams.dynamic_constants,
-				L"Static renderer policy must remain available for non-interactive callers.");
+				L"Non-interactive callers must retain the static-constant policy.");
 		}
 
 		TEST_METHOD(EveryToneMappingChoicePointsAtTheNativeFunction)

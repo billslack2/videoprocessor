@@ -34,6 +34,7 @@
 #include <VideoFrame.h>
 #include <FullscreenVideoWindow.h>
 #include <RendererTransitionWindow.h>
+#include <ShaderLoadingWindow.h>
 #include <VideoConversionOverride.h>
 #include <WindowedVideoWindow.h>
 #include <microsoft_directshow/DirectShowRendererStartStopTimeMethod.h>
@@ -64,7 +65,6 @@
 #define WM_MESSAGE_RENDERER_RETIRED                     (WM_APP + 13)
 #define WM_MESSAGE_EXTERNAL_SHORTCUT                    (WM_APP + 14)
 #define WM_MESSAGE_RENDERER_INTENT_READY                (WM_APP + 15)
-#define WM_MESSAGE_RENDERER_PRESENTATION_STATUS          (WM_APP + 16)
 
 // Timer IDs
 #define TIMER_ID_1SECOND 1
@@ -208,7 +208,6 @@ public:
 	afx_msg LRESULT OnMessageDirectShowNotification(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnMessageRendererStateChange(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnMessageRendererDetailString(WPARAM wParam, LPARAM lParam);
-	afx_msg LRESULT OnMessageRendererPresentationStatus(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnMessageExternalShortcut(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnMessageRendererLiveFrame(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnMessageRendererResetRequest(
@@ -257,7 +256,6 @@ public:
 	// IRendererCallback
 	void OnRendererState(RendererState rendererState) override;
 	void OnRendererDetailString(const CString& details) override;
-	void OnRendererPresentationStatus(const CString& status, bool visible) override;
 	void OnRendererRestartRequired() override;
 
 protected:
@@ -430,7 +428,6 @@ protected:
 	WORD m_lastBackgroundShortcutCommand = 0;
 	ULONGLONG m_lastBackgroundShortcutTick = 0;
 	HANDLE m_configurationChangedEvent = nullptr;
-	HANDLE m_shaderPreparationEvent = nullptr;
 	std::map<std::string, std::map<std::string, std::string>>
 		m_configurationSnapshot;
 	struct StagedRuntimeSettings
@@ -646,6 +643,8 @@ protected:
 	uint32_t m_retiringRendererGeneration = 0;
 	RendererState m_rendererState = RendererState::RENDERSTATE_UNKNOWN;
 	RendererTransitionWindow m_rendererTransitionWindow;
+	ShaderLoadingWindow m_shaderLoadingWindow;
+	ULONGLONG m_shaderLoadingPopupShownTick = 0;
 	HWND m_rendererTargetHwnd = nullptr;
 	bool m_preserveFullscreenHostForProfileRestart = false;
 	bool m_fullscreenRetargetPending = false;
@@ -860,11 +859,6 @@ protected:
 	void ApplyStatsOverlayForActiveRenderer();
 	void LoadDisplayRefreshRateOverrides();
 	void ApplySavedConfiguration();
-	void StartShaderPreparation();
-	void AdvanceShaderPreparation();
-	void FinishShaderPreparation(bool succeeded, const char* detail);
-	void PublishShaderPreparationStatus(const char* state, size_t current,
-		size_t total, const char* message) const;
 	void UpdateActiveOutputSweep(ULONGLONG now);
 	bool StartActiveOutputSweep();
 	bool ApplyActiveOutputSweepCase(size_t index);
@@ -929,15 +923,6 @@ protected:
 	void ApplyUnifiedProfileSnapshot(
 		const std::shared_ptr<const UnifiedProfileRuntime::Snapshot>& snapshot,
 		bool allowRestart);
-	bool ApplyShaderPreparationSnapshot(
-		const std::shared_ptr<const UnifiedProfileRuntime::Snapshot>& snapshot);
-	bool m_shaderPreparationActive = false;
-	bool m_shaderPreparationRestoring = false;
-	std::vector<std::shared_ptr<const UnifiedProfileRuntime::Snapshot>>
-		m_shaderPreparationSnapshots;
-	std::shared_ptr<const UnifiedProfileRuntime::Snapshot>
-		m_shaderPreparationOriginalSnapshot;
-	size_t m_shaderPreparationIndex = 0;
 	void ScheduleUnifiedProfileActions(
 		const std::vector<UnifiedProfileRuntime::ActionInvocation>& actions);
 	void PublishUnifiedProfileEvent(const std::string& event,
@@ -966,6 +951,7 @@ protected:
 	void OnOK() override;
 	afx_msg void OnPaint();
 	afx_msg void OnSize(UINT nType, int cx, int cy);
+	afx_msg void OnMove(int x, int y);
 	afx_msg void OnSetFocus(CWnd* pOldWnd);
 	afx_msg void OnClose();
 	afx_msg void OnSysCommand(UINT command, LPARAM lParam);

@@ -38,15 +38,6 @@ ATOM RendererTransitionWindow::RegisterWindowClass()
 
 void RendererTransitionWindow::Show(HWND renderTarget, HWND stableOwner)
 {
-	m_status.Empty();
-	ShowInternal(renderTarget, stableOwner);
-}
-
-
-void RendererTransitionWindow::ShowStatus(HWND renderTarget, HWND stableOwner,
-	const CString& status)
-{
-	m_status = status;
 	ShowInternal(renderTarget, stableOwner);
 }
 
@@ -65,7 +56,8 @@ void RendererTransitionWindow::ShowInternal(HWND renderTarget, HWND stableOwner)
 		m_renderTarget = renderTarget;
 		m_owner = stableOwner;
 		m_hwnd = CreateWindowExW(
-			WS_EX_NOACTIVATE | WS_EX_NOPARENTNOTIFY | WS_EX_TOOLWINDOW,
+			WS_EX_NOACTIVATE | WS_EX_NOPARENTNOTIFY | WS_EX_TOOLWINDOW |
+				WS_EX_TRANSPARENT,
 			RENDERER_TRANSITION_WINDOW_CLASS,
 			L"",
 			WS_POPUP,
@@ -84,8 +76,6 @@ void RendererTransitionWindow::ShowInternal(HWND renderTarget, HWND stableOwner)
 			throw std::runtime_error(
 				"Failed to create renderer transition window");
 		}
-		SetWindowLongPtr(m_hwnd, GWLP_USERDATA,
-			reinterpret_cast<LONG_PTR>(this));
 	}
 	else
 	{
@@ -147,7 +137,6 @@ void RendererTransitionWindow::Destroy()
 	m_hwnd = nullptr;
 	m_renderTarget = nullptr;
 	m_owner = nullptr;
-	m_status.Empty();
 }
 
 
@@ -215,22 +204,6 @@ LRESULT CALLBACK RendererTransitionWindow::WindowProc(
 			dc,
 			&client,
 			reinterpret_cast<HBRUSH>(GetStockObject(BLACK_BRUSH)));
-		const auto* window = reinterpret_cast<const RendererTransitionWindow*>(
-			GetWindowLongPtr(hwnd, GWLP_USERDATA));
-		if (window && !window->m_status.IsEmpty())
-		{
-			SetBkMode(dc, TRANSPARENT);
-			SetTextColor(dc, RGB(230, 238, 245));
-			HFONT font = CreateFontW(28, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE,
-				FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-				CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
-			HGDIOBJ oldFont = font ? SelectObject(dc, font) : nullptr;
-			RECT textRect = client;
-			DrawTextW(dc, window->m_status, -1, &textRect,
-				DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
-			if (oldFont) SelectObject(dc, oldFont);
-			if (font) DeleteObject(font);
-		}
 		EndPaint(hwnd, &paint);
 		return 0;
 	}
