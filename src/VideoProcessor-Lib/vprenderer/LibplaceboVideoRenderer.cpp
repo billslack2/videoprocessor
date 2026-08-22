@@ -2878,7 +2878,6 @@ struct LibplaceboVideoRenderer::Impl
 	bool vpOwnedColorSpaceVerified = false;
 	DXGI_FORMAT negotiatedSwapchainFormat = DXGI_FORMAT_UNKNOWN;
 	pl_renderer renderer = nullptr;
-	IRendererCallback* presentationCallback = nullptr;
 	LibplaceboCompileTelemetry compileTelemetry;
 	pl_tex textures[2] = { nullptr, nullptr };
 	pl_tex statsOverlayTexture = nullptr;
@@ -3055,11 +3054,6 @@ struct LibplaceboVideoRenderer::Impl
 	HWND videoHwnd = nullptr;
 	HMONITOR negotiatedMonitor = nullptr;
 	bool hasPresentedFrame = false;
-	// The first image submitted to a new libplacebo renderer can populate
-	// previously unseen base programs (even when no custom shader hook is
-	// selected). Give the presentation host a non-activating status surface for
-	// that work; this is deliberately independent of NLS hook changes.
-	bool presentationPipelinePrepared = false;
 	uint64_t nextPresentationTelemetryLogTick = 0;
 	uint64_t lastSubmittedScreenProfileRequest = 0;
 	uint64_t activePictureScreenProfileRequestSerial = 0;
@@ -6050,9 +6044,6 @@ struct LibplaceboVideoRenderer::Impl
 		restartSettingsFingerprint = EffectiveSettingsFingerprint(settings, false);
 		if (renderingBehaviorChanged)
 		{
-			// Geometry changes can select a different cached libplacebo program.
-			// Mark it for delayed validation; a warm hit never displays status.
-			presentationPipelinePrepared = false;
 			// A viewport/profile epoch cannot inherit crop proof. Reacquire from
 			// current-frame shared evidence even when the source generation did
 			// not change.
@@ -6220,10 +6211,6 @@ struct LibplaceboVideoRenderer::Impl
 			diagnosticReadbackNonBlack = false;
 		}
 		ConfigureRenderParams(settings, "live profile update");
-		// Rec.709/BT.2020 can select a different composed program even though the
-		// NLS hook itself is unchanged. Validate it on the next render; the delayed
-		// watchdog remains silent for a warm cache hit.
-		presentationPipelinePrepared = false;
 		restartSettingsFingerprint = EffectiveSettingsFingerprint(settings, false);
 		effectiveSettingsFingerprint = EffectiveSettingsFingerprint(settings);
 
@@ -9185,34 +9172,6 @@ struct LibplaceboVideoRenderer::Impl
 				nlsPipelineVariant != lastNlsPipelineVariant;
 		}
 
-		const bool pipelineValidationPending = !presentationPipelinePrepared ||
-			(nlsPipelineActive && nlsPipelineVariantChanged);
-		// A changed profile or geometry is not proof of a cache miss. Start a
-		// bounded watchdog and display compilation status only when pl_render_image
-		// is still busy after normal warm-render latency. The watchdog invokes only
-		// the callback's nonblocking PostMessage path and is joined before return.
-		std::mutex slowRenderMutex;
-		std::condition_variable slowRenderChanged;
-		bool slowRenderFinished = false;
-		std::atomic_bool slowRenderStatusShown{ false };
-		std::thread slowRenderWatchdog;
-		if (pipelineValidationPending && presentationCallback)
-		{
-			IRendererCallback* const callback = presentationCallback;
-			slowRenderWatchdog = std::thread([&]()
-			{
-				std::unique_lock<std::mutex> lock(slowRenderMutex);
-				if (slowRenderChanged.wait_for(lock,
-					std::chrono::milliseconds(150),
-					[&]() { return slowRenderFinished; }))
-					return;
-				lock.unlock();
-				slowRenderStatusShown.store(true, std::memory_order_release);
-				callback->OnRendererPresentationStatus(
-					TEXT("VideoProcessor will resume automatically. This can take a few seconds."),
-					true);
-			});
-		}
 		compileTelemetry.BeginRender();
 		const SteadyClock::time_point renderStart = SteadyClock::now();
 		const bool targetLutApplied =
@@ -9226,15 +9185,6 @@ struct LibplaceboVideoRenderer::Impl
 			SteadyClock::now() - renderStart).count();
 		const LibplaceboCompileSnapshot compileSnapshot =
 			compileTelemetry.EndRender();
-		{
-			std::lock_guard<std::mutex> lock(slowRenderMutex);
-			slowRenderFinished = true;
-		}
-		slowRenderChanged.notify_all();
-		if (slowRenderWatchdog.joinable())
-			slowRenderWatchdog.join();
-		if (rendered)
-			presentationPipelinePrepared = true;
 		if (rendered && compileSnapshot.Compiled() &&
 			renderParams.dynamic_constants)
 		{
@@ -9243,15 +9193,6 @@ struct LibplaceboVideoRenderer::Impl
 			// miss. Save it immediately, while libplacebo still owns every compiled
 			// blob, so a restart or fullscreen transition cannot repeat that cost.
 			SaveShaderCache();
-		}
-		if (slowRenderStatusShown.load(std::memory_order_acquire) &&
-			presentationCallback)
-		{
-			presentationCallback->OnRendererPresentationStatus(CString(), false);
-			DebugLog::Log(
-				"Slow pipeline status completed: cache=%s render=%s render_ms=%.3f",
-				compileSnapshot.Compiled() ? "cold" : "warm",
-				rendered ? "success" : "failed", renderMs);
 		}
 		if (nlsPipelineActive &&
 			(nlsPipelineVariantChanged || compileSnapshot.Compiled()))
@@ -9532,10 +9473,6 @@ struct LibplaceboVideoRenderer::Impl
 			DebugLog::Log("libplacebo: swapchain resize failed (%d x %d)", width, height);
 		else
 		{
-			// A new output geometry may select another cached program. Validate on
-			// the next render, but show status only if its delayed watchdog proves
-			// that the cache lookup was not warm.
-			presentationPipelinePrepared = false;
 			ConfigureAndFallback("resize");
 		}
 	}
@@ -10021,7 +9958,6 @@ void LibplaceboVideoRenderer::Build()
 	}
 
 	std::unique_ptr<Impl> impl(new Impl());
-	impl->presentationCallback = &m_callback;
 	try
 	{
 		impl->Initialize(m_videoHwnd, state, manualRule, manualUnifiedProfiles,
@@ -10187,30 +10123,8 @@ bool LibplaceboVideoRenderer::SelectShaderRule(
 				selector.c_str());
 			return true;
 		}
-		const bool explicitlyOff = std::any_of(selection.begin(), selection.end(),
-			[](const ConfiguredShaderRule& rule) { return rule.none; });
-		const bool embeddedWindowed =
-			(GetWindowLongPtr(m_videoHwnd, GWL_STYLE) & WS_CHILD) != 0;
-		if (embeddedWindowed && !explicitlyOff)
-		{
-			std::vector<ConfiguredShaderRule> offSelection;
-			ConfiguredShaderRule off;
-			off.name = "off";
-			off.label = "Off";
-			off.none = true;
-			offSelection.push_back(std::move(off));
-			m_impl->SetConfiguredShaderSelection(
-				"@shader-key:", offSelection, m_shaderRendererGeneration);
-			m_impl->SetShaderStatus("NLS: Fullscreen only");
-			DebugLog::Log(
-				"Alpha shaders: deferred selector \"%s\" because configured shader hooks are fullscreen-only",
-				selector.c_str());
-		}
-		else
-		{
-			m_impl->SetConfiguredShaderSelection(
-				selector, selection, m_shaderRendererGeneration);
-		}
+		m_impl->SetConfiguredShaderSelection(
+			selector, selection, m_shaderRendererGeneration);
 		activeRule = CString(
 			CStringA(m_impl->activeShaderStatus.c_str()));
 		m_lastReportedShaderStatusSerial =
@@ -10243,25 +10157,8 @@ void LibplaceboVideoRenderer::ApplyPendingShaderSelectionLocked()
 		return;
 	}
 
-	const bool explicitlyOff = std::any_of(selection.begin(), selection.end(),
-		[](const ConfiguredShaderRule& rule) { return rule.none; });
-	const bool embeddedWindowed =
-		(GetWindowLongPtr(m_videoHwnd, GWL_STYLE) & WS_CHILD) != 0;
-	if (embeddedWindowed && !explicitlyOff)
-	{
-		ConfiguredShaderRule off;
-		off.name = "off";
-		off.label = "Off";
-		off.none = true;
-		m_impl->SetConfiguredShaderSelection(
-			"@shader-key:", { off }, m_shaderRendererGeneration);
-		m_impl->SetShaderStatus("NLS: Fullscreen only");
-	}
-	else
-	{
-		m_impl->SetConfiguredShaderSelection(
-			selector, selection, m_shaderRendererGeneration);
-	}
+	m_impl->SetConfiguredShaderSelection(
+		selector, selection, m_shaderRendererGeneration);
 	m_lastReportedShaderStatusSerial = m_impl->activeShaderStatusSerial;
 	DebugLog::Log(
 		"Alpha shaders: applied queued selector \"%s\" on render thread",

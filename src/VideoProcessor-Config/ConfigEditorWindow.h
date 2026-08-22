@@ -160,7 +160,7 @@ private:
     QComboBox* rendererChoice_ = nullptr;
     QThread* monitorDiscoveryThread_ = nullptr;
     QTimer* activeProfileTimer_ = nullptr;
-    QTimer* shaderStatusTimer_ = nullptr;
+    QTimer* shaderCacheStatusTimer_ = nullptr;
     QComboBox* actionRendererTarget_ = nullptr;
     QFormLayout* rendererShortcutForm_ = nullptr;
     QPushButton* applyButton_ = nullptr;

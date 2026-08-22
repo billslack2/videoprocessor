@@ -64,7 +64,6 @@
 #define WM_MESSAGE_RENDERER_RETIRED                     (WM_APP + 13)
 #define WM_MESSAGE_EXTERNAL_SHORTCUT                    (WM_APP + 14)
 #define WM_MESSAGE_RENDERER_INTENT_READY                (WM_APP + 15)
-#define WM_MESSAGE_RENDERER_PRESENTATION_STATUS          (WM_APP + 16)
 
 // Timer IDs
 #define TIMER_ID_1SECOND 1
@@ -208,7 +207,6 @@ public:
 	afx_msg LRESULT OnMessageDirectShowNotification(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnMessageRendererStateChange(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnMessageRendererDetailString(WPARAM wParam, LPARAM lParam);
-	afx_msg LRESULT OnMessageRendererPresentationStatus(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnMessageExternalShortcut(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnMessageRendererLiveFrame(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnMessageRendererResetRequest(
@@ -257,7 +255,6 @@ public:
 	// IRendererCallback
 	void OnRendererState(RendererState rendererState) override;
 	void OnRendererDetailString(const CString& details) override;
-	void OnRendererPresentationStatus(const CString& status, bool visible) override;
 	void OnRendererRestartRequired() override;
 
 protected:
@@ -645,10 +642,6 @@ protected:
 	uint32_t m_retiringRendererGeneration = 0;
 	RendererState m_rendererState = RendererState::RENDERSTATE_UNKNOWN;
 	RendererTransitionWindow m_rendererTransitionWindow;
-	// VP Renderer serializes GPU work on one render worker. Treat compile status
-	// as a single visible state; reference counting stale lifecycle callbacks can
-	// otherwise strand an input-covering status window after rendering resumes.
-	uint32_t m_rendererPresentationStatusCount = 0;
 	HWND m_rendererTargetHwnd = nullptr;
 	bool m_preserveFullscreenHostForProfileRestart = false;
 	bool m_fullscreenRetargetPending = false;

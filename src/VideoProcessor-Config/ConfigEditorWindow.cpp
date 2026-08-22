@@ -903,11 +903,11 @@ ConfigEditorWindow::ConfigEditorWindow(QString configPath, quintptr ownerHandle,
         connect(activeProfileTimer_, &QTimer::timeout, this,
             &ConfigEditorWindow::refreshActiveProfileIndicators);
         refreshActiveProfileIndicators();
-        shaderStatusTimer_ = new QTimer(this);
-        shaderStatusTimer_->setInterval(1000);
-        connect(shaderStatusTimer_, &QTimer::timeout, this,
+        shaderCacheStatusTimer_ = new QTimer(this);
+        shaderCacheStatusTimer_->setInterval(2000);
+        connect(shaderCacheStatusTimer_, &QTimer::timeout, this,
             &ConfigEditorWindow::refreshShaderCacheStatus);
-        shaderStatusTimer_->start();
+        shaderCacheStatusTimer_->start();
     }
     if (!testMode_) setupTray();
 	const std::wstring revealEventName =
@@ -4587,7 +4587,6 @@ void ConfigEditorWindow::refreshShaderCacheStatus()
                 .arg(cache.lastModified().toString(QStringLiteral("MMM d, h:mm AP"))) :
             QStringLiteral("Persistent cache: Not created yet"));
     }
-
 }
 
 QWidget* ConfigEditorWindow::createOutputPage()
@@ -5179,8 +5178,8 @@ QWidget* ConfigEditorWindow::createShadersSetupPage()
     shaderCacheStatus_ = helpLabel(QStringLiteral("Checking shader cache..."));
     shaderCacheStatus_->setObjectName(QStringLiteral("config.shader.cache.status"));
     statusLayout->addWidget(shaderCacheStatus_);
-    layout->addWidget(createCard(QStringLiteral("Shader status"),
-        QStringLiteral("VP Renderer compiles only the shader needed by live video and reuses it from the persistent cache. Window size and fullscreen are not precompiled as separate candidates."),
+    layout->addWidget(createCard(QStringLiteral("Shader cache"),
+        QStringLiteral("VP Renderer compiles shaders when they are required and stores them here."),
         statusContent));
 
     auto* controls = new QWidget;
@@ -5197,9 +5196,9 @@ QWidget* ConfigEditorWindow::createShadersSetupPage()
     buttons->addStretch();
     controlsLayout->addLayout(buttons);
     controlsLayout->addWidget(helpLabel(QStringLiteral(
-        "After clearing, the next shader is compiled only when live playback actually needs it. A delayed splash reports a slow compile without blocking the application UI.")));
-    layout->addWidget(createCard(QStringLiteral("Shader setup"),
-        QStringLiteral("Explicitly clear the persistent VP Renderer shader cache."),
+        "The cache is rebuilt automatically as VP Renderer uses shaders.")));
+    layout->addWidget(createCard(QStringLiteral("Cache maintenance"),
+        QStringLiteral("Remove the persistent VP Renderer shader cache."),
         controls));
     layout->addStretch();
 
@@ -5230,7 +5229,7 @@ QWidget* ConfigEditorWindow::createShadersSetupPage()
         QFile::remove(cachePath);
         QFile::remove(temporaryPath);
         setStatus(QStringLiteral(
-            "Shader cache cleared. VP Renderer will compile entries on demand."));
+            "Shader cache will be cleared at the next VP Renderer start."));
         refreshShaderCacheStatus();
     });
     refreshShaderCacheStatus();

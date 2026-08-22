@@ -1857,7 +1857,6 @@ BEGIN_MESSAGE_MAP(CVideoProcessorDlg, CDialog)
 	ON_MESSAGE(WM_MESSAGE_DIRECTSHOW_NOTIFICATION, &CVideoProcessorDlg::OnMessageDirectShowNotification)
 	ON_MESSAGE(WM_MESSAGE_RENDERER_STATE_CHANGE, &CVideoProcessorDlg::OnMessageRendererStateChange)
 	ON_MESSAGE(WM_MESSAGE_RENDERER_DETAIL_STRING, &CVideoProcessorDlg::OnMessageRendererDetailString)
-	ON_MESSAGE(WM_MESSAGE_RENDERER_PRESENTATION_STATUS, &CVideoProcessorDlg::OnMessageRendererPresentationStatus)
 	ON_MESSAGE(WM_MESSAGE_EXTERNAL_SHORTCUT, &CVideoProcessorDlg::OnMessageExternalShortcut)
 	ON_MESSAGE(WM_MESSAGE_RENDERER_LIVE_FRAME, &CVideoProcessorDlg::OnMessageRendererLiveFrame)
 	ON_MESSAGE(WM_MESSAGE_RENDERER_RESET_REQUEST, &CVideoProcessorDlg::OnMessageRendererResetRequest)
@@ -6113,49 +6112,6 @@ LRESULT CVideoProcessorDlg::OnMessageRendererDetailString(WPARAM wParam, LPARAM 
 }
 
 
-LRESULT CVideoProcessorDlg::OnMessageRendererPresentationStatus(WPARAM wParam,
-	LPARAM lParam)
-{
-	std::unique_ptr<CString> status(reinterpret_cast<CString*>(wParam));
-	const bool visible = lParam != 0;
-	if (visible)
-	{
-		m_rendererPresentationStatusCount = 1;
-		if (!status || !m_rendererTargetHwnd ||
-			!IsWindow(m_rendererTargetHwnd) || !GetSafeHwnd())
-		{
-			DebugLog::Log(
-				"Shader compilation splash skipped: status=%p target=%p target_valid=%d owner=%p owner_valid=%d active=%u",
-				status.get(), m_rendererTargetHwnd,
-				m_rendererTargetHwnd && IsWindow(m_rendererTargetHwnd) ? 1 : 0,
-				GetSafeHwnd(), GetSafeHwnd() && IsWindow(GetSafeHwnd()) ? 1 : 0,
-				m_rendererPresentationStatusCount);
-			return 0;
-		}
-		m_rendererDetailStringStatic.SetWindowText(*status);
-		m_rendererTransitionWindow.ShowStatus(m_rendererTargetHwnd,
-			GetSafeHwnd(), *status);
-		// RedrawWindow paints the popup but does not guarantee that DWM has
-		// composed it before the render worker enters a potentially multi-second
-		// driver compile.  Flush only from the UI message handler; the renderer
-		// callback itself remains a fast PostMessage operation.
-		const HRESULT compositionResult =
-			m_rendererTransitionWindow.SynchronizeComposition();
-		DebugLog::Log(
-			"Shader compilation splash shown: target=%p cover=%p active=%u composition_sync=0x%08lx",
-			m_rendererTargetHwnd, m_rendererTransitionWindow.GetHWND(),
-			m_rendererPresentationStatusCount,
-			static_cast<unsigned long>(compositionResult));
-	}
-	else
-	{
-		m_rendererPresentationStatusCount = 0;
-		m_rendererTransitionWindow.Hide();
-		DebugLog::Log("Shader compilation splash hidden: active=0");
-	}
-	return 0;
-}
-
 LRESULT CVideoProcessorDlg::OnMessageExternalShortcut(WPARAM wParam,
 	LPARAM lParam)
 {
@@ -6977,20 +6933,6 @@ void CVideoProcessorDlg::OnRendererDetailString(const CString& details)
 }
 
 
-void CVideoProcessorDlg::OnRendererPresentationStatus(const CString& status,
-	bool visible)
-{
-	CString* copy = new CString(status);
-	if (!PostMessage(WM_MESSAGE_RENDERER_PRESENTATION_STATUS,
-		reinterpret_cast<WPARAM>(copy), visible ? 1 : 0))
-	{
-		DebugLog::Log(
-			"Shader compilation splash post failed: visible=%d error=%lu",
-			visible ? 1 : 0, GetLastError());
-		delete copy;
-	}
-}
-
 
 void CVideoProcessorDlg::UpdateState()
 {
@@ -7207,8 +7149,8 @@ void CVideoProcessorDlg::UpdateState()
 			return;
 		}
 		// Persistent libplacebo entries are consumed opportunistically. Never
-		// delay renderer construction for an exhaustive synthetic matrix; a real
-		// cold live miss uses the delayed, nonblocking compilation splash.
+		// delay renderer construction for an exhaustive synthetic matrix; live
+		// playback compiles only the shader it actually requires.
 		if (m_captureDeviceVideoState &&
 			m_captureDeviceVideoState->valid)
 			RenderStart();
@@ -8998,7 +8940,6 @@ void CVideoProcessorDlg::TryRevealRendererTransition(uint32_t generation)
 			? GetTickCount64() - m_transitionBlackStartTick
 			: 0;
 	m_windowedVideoWindow.ShowLogo(false);
-	m_rendererPresentationStatusCount = 0;
 	m_rendererTransitionWindow.Hide();
 	m_rendererFirstFrameRevealPendingGeneration = 0;
 	m_rendererFirstFrameRevealTargetHwnd = nullptr;
