@@ -84,6 +84,8 @@ public:
 	bool SupportsNativeStatsOverlay() const override;
 	bool SetNativeStatsOverlay(const uint8_t* pixels, size_t byteCount,
 		int width, int height, int stride) override;
+	bool SetNativeShaderCompilationOverlay(const uint8_t* pixels,
+		size_t byteCount, int width, int height, int stride) override;
 	bool SetNativeSweepOverlay(const uint8_t* pixels, size_t byteCount,
 		int width, int height, int stride) override;
 	bool GetConversionPerformance(

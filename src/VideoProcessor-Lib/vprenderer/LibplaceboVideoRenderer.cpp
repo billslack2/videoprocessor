@@ -2881,6 +2881,7 @@ struct LibplaceboVideoRenderer::Impl
 	LibplaceboCompileTelemetry compileTelemetry;
 	pl_tex textures[2] = { nullptr, nullptr };
 	pl_tex statsOverlayTexture = nullptr;
+	pl_tex shaderCompilationOverlayTexture = nullptr;
 	pl_tex sweepOverlayTexture = nullptr;
 	std::mutex statsOverlayMutex;
 	std::vector<uint8_t> statsOverlayPixels;
@@ -2889,6 +2890,12 @@ struct LibplaceboVideoRenderer::Impl
 	int statsOverlayStride = 0;
 	uint64_t statsOverlaySerial = 0;
 	uint64_t appliedStatsOverlaySerial = 0;
+	std::vector<uint8_t> shaderCompilationOverlayPixels;
+	int shaderCompilationOverlayWidth = 0;
+	int shaderCompilationOverlayHeight = 0;
+	int shaderCompilationOverlayStride = 0;
+	uint64_t shaderCompilationOverlaySerial = 0;
+	uint64_t appliedShaderCompilationOverlaySerial = 0;
 	std::vector<uint8_t> sweepOverlayPixels;
 	int sweepOverlayWidth = 0;
 	int sweepOverlayHeight = 0;
@@ -2897,6 +2904,8 @@ struct LibplaceboVideoRenderer::Impl
 	uint64_t appliedSweepOverlaySerial = 0;
 	NativeStatsOverlayPlacement::Result lastStatsOverlayPlacement;
 	bool hasStatsOverlayPlacement = false;
+	NativeStatsOverlayPlacement::Result lastShaderCompilationOverlayPlacement;
+	bool hasShaderCompilationOverlayPlacement = false;
 	NativeStatsOverlayPlacement::Result lastSweepOverlayPlacement;
 	bool hasSweepOverlayPlacement = false;
 	pl_custom_lut* displayLut = nullptr;
@@ -2921,7 +2930,6 @@ struct LibplaceboVideoRenderer::Impl
 	std::string requestedShaderSelector;
 	mutable std::mutex shaderStatusMutex;
 	std::atomic_bool shaderCompilationActive{false};
-	std::atomic_bool shaderCompilationOverlayActive{false};
 	mutable std::mutex shaderCompilationMutex;
 	struct ShaderSelectionRequest
 	{
@@ -3375,6 +3383,7 @@ struct LibplaceboVideoRenderer::Impl
 		if (d3d11)
 		{
 			pl_tex_destroy(d3d11->gpu, &statsOverlayTexture);
+			pl_tex_destroy(d3d11->gpu, &shaderCompilationOverlayTexture);
 			pl_tex_destroy(d3d11->gpu, &sweepOverlayTexture);
 			for (pl_tex& texture : textures)
 				pl_tex_destroy(d3d11->gpu, &texture);
@@ -6423,8 +6432,6 @@ struct LibplaceboVideoRenderer::Impl
 			shaderCompilationWorkerRunning = true;
 			shaderCompilationWorkerFinished = false;
 			shaderCompilationActive.store(true, std::memory_order_release);
-			shaderCompilationOverlayActive.store(false,
-				std::memory_order_release);
 			shaderCompilationStartedTick = GetTickCount64();
 			const auto nls = std::find_if(request->selection.begin(),
 				request->selection.end(),
@@ -6463,8 +6470,6 @@ struct LibplaceboVideoRenderer::Impl
 			shaderCompilationWorkerFinished = true;
 			shaderCompilationLabel.clear();
 			shaderCompilationActive.store(false, std::memory_order_release);
-			shaderCompilationOverlayActive.store(false,
-				std::memory_order_release);
 		};
 		for (int index = 0; index < job.image.num_planes; ++index)
 		{
@@ -6698,8 +6703,6 @@ struct LibplaceboVideoRenderer::Impl
 					shaderCompilationLabel.clear();
 					shaderCompilationActive.store(false,
 						std::memory_order_release);
-					shaderCompilationOverlayActive.store(false,
-						std::memory_order_release);
 				}
 			});
 		}
@@ -6716,8 +6719,6 @@ struct LibplaceboVideoRenderer::Impl
 			shaderCompilationWorkerFinished = true;
 			shaderCompilationLabel.clear();
 			shaderCompilationActive.store(false,
-				std::memory_order_release);
-			shaderCompilationOverlayActive.store(false,
 				std::memory_order_release);
 		}
 	}
@@ -9355,6 +9356,57 @@ struct LibplaceboVideoRenderer::Impl
 			}
 			appliedStatsOverlaySerial = overlaySerial;
 		}
+		std::vector<uint8_t> compilationOverlayPixels;
+		int compilationOverlayWidth = 0;
+		int compilationOverlayHeight = 0;
+		int compilationOverlayStride = 0;
+		uint64_t compilationOverlaySerial = 0;
+		{
+			std::lock_guard<std::mutex> overlayGuard(statsOverlayMutex);
+			compilationOverlaySerial = shaderCompilationOverlaySerial;
+			if (compilationOverlaySerial !=
+				appliedShaderCompilationOverlaySerial)
+			{
+				compilationOverlayPixels = shaderCompilationOverlayPixels;
+				compilationOverlayWidth = shaderCompilationOverlayWidth;
+				compilationOverlayHeight = shaderCompilationOverlayHeight;
+				compilationOverlayStride = shaderCompilationOverlayStride;
+			}
+		}
+		if (compilationOverlaySerial !=
+			appliedShaderCompilationOverlaySerial)
+		{
+			if (!compilationOverlayPixels.empty())
+			{
+				struct pl_plane_data plane{};
+				plane.type = PL_FMT_UNORM;
+				plane.width = compilationOverlayWidth;
+				plane.height = compilationOverlayHeight;
+				plane.pixel_stride = 4;
+				plane.row_stride =
+					static_cast<size_t>(compilationOverlayStride);
+				plane.pixels = compilationOverlayPixels.data();
+				uint64_t masks[4] =
+				{
+					0x00FF0000, 0x0000FF00, 0x000000FF, 0xFF000000
+				};
+				pl_plane_data_from_mask(&plane, masks);
+				if (!pl_upload_plane(d3d11->gpu, nullptr,
+					&shaderCompilationOverlayTexture, &plane))
+				{
+					DebugLog::Log(
+						"Alpha shader compilation OSD texture upload failed");
+				}
+			}
+			else
+			{
+				pl_tex_destroy(d3d11->gpu,
+					&shaderCompilationOverlayTexture);
+				hasShaderCompilationOverlayPlacement = false;
+			}
+			appliedShaderCompilationOverlaySerial =
+				compilationOverlaySerial;
+		}
 		std::vector<uint8_t> sweepPixels;
 		int sweepWidth = 0;
 		int sweepHeight = 0;
@@ -9399,8 +9451,8 @@ struct LibplaceboVideoRenderer::Impl
 			}
 			appliedSweepOverlaySerial = sweepSerial;
 		}
-		struct pl_overlay overlays[2]{};
-		struct pl_overlay_part overlayParts[2]{};
+		struct pl_overlay overlays[3]{};
+		struct pl_overlay_part overlayParts[3]{};
 		int overlayCount = 0;
 		if (statsOverlayTexture)
 		{
@@ -9423,14 +9475,7 @@ struct LibplaceboVideoRenderer::Impl
 			const NativeStatsOverlayPlacement::Rect pictureRect{
 				target.crop.x0, target.crop.y0,
 				target.crop.x1, target.crop.y1 };
-			const bool compilationOverlay = shaderCompilationOverlayActive.load(
-				std::memory_order_acquire);
 			const NativeStatsOverlayPlacement::Result placement =
-				compilationOverlay ?
-				NativeStatsOverlayPlacement::PlaceCentered(
-					pictureRect, outputRect,
-					static_cast<float>(statsOverlayTexture->params.w),
-					static_cast<float>(statsOverlayTexture->params.h)) :
 				NativeStatsOverlayPlacement::Place(
 					pictureRect, outputRect,
 					static_cast<float>(statsOverlayTexture->params.w),
@@ -9478,6 +9523,65 @@ struct LibplaceboVideoRenderer::Impl
 					placement.usedOutputFallback ? 1 : 0);
 				lastStatsOverlayPlacement = placement;
 				hasStatsOverlayPlacement = true;
+			}
+			overlay.parts = &overlayPart;
+			overlay.num_parts = 1;
+			++overlayCount;
+		}
+		if (shaderCompilationOverlayTexture)
+		{
+			pl_overlay& overlay = overlays[overlayCount];
+			pl_overlay_part& overlayPart = overlayParts[overlayCount];
+			overlay.tex = shaderCompilationOverlayTexture;
+			overlay.mode = PL_OVERLAY_NORMAL;
+			overlay.coords = PL_OVERLAY_COORDS_DST_FRAME;
+			overlay.repr = pl_color_repr_rgb;
+			overlay.repr.levels = PL_COLOR_LEVELS_FULL;
+			overlay.repr.alpha = PL_ALPHA_INDEPENDENT;
+			overlay.color = pl_color_space_srgb;
+			overlayPart.src = { 0.0f, 0.0f,
+				static_cast<float>(shaderCompilationOverlayTexture->params.w),
+				static_cast<float>(shaderCompilationOverlayTexture->params.h) };
+			const float dstWidth =
+				static_cast<float>(baseTarget.planes[0].texture->params.w);
+			const float dstHeight =
+				static_cast<float>(baseTarget.planes[0].texture->params.h);
+			const NativeStatsOverlayPlacement::Rect outputRect{
+				0.0f, 0.0f, dstWidth, dstHeight };
+			const NativeStatsOverlayPlacement::Rect pictureRect{
+				target.crop.x0, target.crop.y0,
+				target.crop.x1, target.crop.y1 };
+			const NativeStatsOverlayPlacement::Result placement =
+				NativeStatsOverlayPlacement::PlaceCentered(
+					pictureRect, outputRect,
+					static_cast<float>(
+						shaderCompilationOverlayTexture->params.w),
+					static_cast<float>(
+						shaderCompilationOverlayTexture->params.h));
+			overlayPart.dst = { placement.panel.left, placement.panel.top,
+				placement.panel.right, placement.panel.bottom };
+			if (!hasShaderCompilationOverlayPlacement ||
+				std::fabs(lastShaderCompilationOverlayPlacement.panel.left -
+					placement.panel.left) > 0.25f ||
+				std::fabs(lastShaderCompilationOverlayPlacement.panel.top -
+					placement.panel.top) > 0.25f ||
+				std::fabs(lastShaderCompilationOverlayPlacement.panel.right -
+					placement.panel.right) > 0.25f ||
+				std::fabs(lastShaderCompilationOverlayPlacement.panel.bottom -
+					placement.panel.bottom) > 0.25f)
+			{
+				DebugLog::Log(
+					"Alpha shader compilation OSD placement: renderer_gen=%llu source_seq=%llu picture=%.1f,%.1f-%.1f,%.1f panel=%.1f,%.1f-%.1f,%.1f",
+					static_cast<unsigned long long>(frameGeneration),
+					static_cast<unsigned long long>(sourceSequence),
+					placement.visiblePicture.left,
+					placement.visiblePicture.top,
+					placement.visiblePicture.right,
+					placement.visiblePicture.bottom,
+					placement.panel.left, placement.panel.top,
+					placement.panel.right, placement.panel.bottom);
+				lastShaderCompilationOverlayPlacement = placement;
+				hasShaderCompilationOverlayPlacement = true;
 			}
 			overlay.parts = &overlayPart;
 			overlay.num_parts = 1;
@@ -10526,9 +10630,6 @@ bool LibplaceboVideoRenderer::GetShaderCompilationStatus(CString& status) const
 	if (!m_impl ||
 		!m_impl->shaderCompilationActive.load(std::memory_order_acquire))
 	{
-		if (m_impl)
-			m_impl->shaderCompilationOverlayActive.store(false,
-				std::memory_order_release);
 		return false;
 	}
 
@@ -10539,8 +10640,6 @@ bool LibplaceboVideoRenderer::GetShaderCompilationStatus(CString& status) const
 	{
 		return false;
 	}
-	m_impl->shaderCompilationOverlayActive.store(true,
-		std::memory_order_release);
 	status.Format(TEXT("Compiling %S..."),
 		m_impl->shaderCompilationLabel.empty() ?
 			"VP Renderer shader" :
@@ -11483,6 +11582,34 @@ bool LibplaceboVideoRenderer::SetNativeStatsOverlay(
 	m_impl->statsOverlayHeight = pixels ? height : 0;
 	m_impl->statsOverlayStride = pixels ? stride : 0;
 	++m_impl->statsOverlaySerial;
+	return true;
+}
+
+bool LibplaceboVideoRenderer::SetNativeShaderCompilationOverlay(
+	const uint8_t* pixels, size_t byteCount, int width, int height, int stride)
+{
+	if (!m_impl)
+		return false;
+	if (pixels && (width <= 0 || height <= 0 || stride < width * 4 ||
+		byteCount < static_cast<size_t>(stride) * height))
+	{
+		return false;
+	}
+
+	std::lock_guard<std::mutex> guard(m_impl->statsOverlayMutex);
+	if (pixels)
+	{
+		m_impl->shaderCompilationOverlayPixels.assign(
+			pixels, pixels + byteCount);
+	}
+	else
+	{
+		m_impl->shaderCompilationOverlayPixels.clear();
+	}
+	m_impl->shaderCompilationOverlayWidth = pixels ? width : 0;
+	m_impl->shaderCompilationOverlayHeight = pixels ? height : 0;
+	m_impl->shaderCompilationOverlayStride = pixels ? stride : 0;
+	++m_impl->shaderCompilationOverlaySerial;
 	return true;
 }
 

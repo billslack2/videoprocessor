@@ -273,6 +273,13 @@ bool LibplaceboPluginVideoRenderer::SetNativeStatsOverlay(
 		pixels, byteCount, width, height, stride);
 }
 
+bool LibplaceboPluginVideoRenderer::SetNativeShaderCompilationOverlay(
+	const uint8_t* pixels, size_t byteCount, int width, int height, int stride)
+{
+	return m_renderer && m_renderer->SetNativeShaderCompilationOverlay(
+		pixels, byteCount, width, height, stride);
+}
+
 bool LibplaceboPluginVideoRenderer::SetNativeSweepOverlay(
 	const uint8_t* pixels, size_t byteCount, int width, int height, int stride)
 {

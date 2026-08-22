@@ -11816,7 +11816,7 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 				if (m_statsOverlay->RenderShaderCompilationBgra(
 					compilationStatus, pixels, width, height, stride))
 				{
-					m_videoRenderer->SetNativeStatsOverlay(
+					m_videoRenderer->SetNativeShaderCompilationOverlay(
 						pixels.data(), pixels.size(), width, height, stride);
 					m_shaderCompilationOverlayVisible = true;
 					m_shaderCompilationOverlayStatus = compilationStatus;
@@ -11824,7 +11824,7 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 			}
 			else if (m_shaderCompilationOverlayVisible)
 			{
-				m_videoRenderer->SetNativeStatsOverlay(
+				m_videoRenderer->SetNativeShaderCompilationOverlay(
 					nullptr, 0, 0, 0, 0);
 				m_shaderCompilationOverlayVisible = false;
 				m_shaderCompilationOverlayStatus.Empty();

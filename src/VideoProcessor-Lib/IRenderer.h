@@ -365,6 +365,14 @@ public:
 	{
 		return false;
 	}
+	// A separate centered notice for a genuinely long shader compilation.
+	// Keeping this independent prevents periodic stats refreshes from replacing
+	// the notice (or vice versa).
+	virtual bool SetNativeShaderCompilationOverlay(
+		const uint8_t*, size_t, int, int, int)
+	{
+		return false;
+	}
 	// A separate high-priority test banner. Unlike the normal stats panel, this
 	// is placed at the top-right of the active picture/scope rectangle.
 	virtual bool SetNativeSweepOverlay(const uint8_t*, size_t, int, int, int)
