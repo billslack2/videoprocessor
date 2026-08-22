@@ -2538,6 +2538,8 @@ namespace VideoProcessorTest
 				completions[1].request.generation.targetGeometry);
 			Assert::IsTrue(completions[1].result == CompletionResult::Activate);
 			Assert::IsTrue(completions[1].prepared);
+			Assert::IsTrue(completions[1].workerThreadPriority <=
+				THREAD_PRIORITY_NORMAL);
 			service.Retire();
 			service.Join();
 		}

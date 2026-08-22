@@ -3,6 +3,7 @@
 #include <ShaderPreparationCoordinator.h>
 
 #include <Windows.h>
+#include <objbase.h>
 
 #include <atomic>
 #include <chrono>
@@ -59,6 +60,7 @@ namespace ShaderPreparationService
 		bool prepared = false;
 		double durationMs = 0.0;
 		DWORD workerThreadId = 0;
+		int workerThreadPriority = THREAD_PRIORITY_ERROR_RETURN;
 	};
 
 	class Service
@@ -138,6 +140,14 @@ namespace ShaderPreparationService
 		void Run()
 		{
 			const DWORD workerThreadId = GetCurrentThreadId();
+			const HRESULT apartmentResult = CoInitializeEx(nullptr,
+				COINIT_MULTITHREADED);
+			// Preparation is intentionally below the interactive UI and render
+			// workers. Driver compilation can still occupy a core, but it must not
+			// win ordinary window/message scheduling merely because it is cold.
+			SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
+			const int workerThreadPriority =
+				GetThreadPriority(GetCurrentThread());
 			m_workerThreadId.store(workerThreadId, std::memory_order_release);
 			for (;;)
 			{
@@ -173,7 +183,8 @@ namespace ShaderPreparationService
 				Request next;
 				const CompletionResult result = m_queue.Complete(request, next);
 				m_completions.push_back(
-					{ request, result, prepared, durationMs, workerThreadId });
+					{ request, result, prepared, durationMs, workerThreadId,
+						workerThreadPriority });
 				m_activeRequest = next;
 				if (next.serial != 0 && !m_retiring)
 				{
@@ -186,6 +197,8 @@ namespace ShaderPreparationService
 					m_pendingWork = {};
 				}
 			}
+			if (SUCCEEDED(apartmentResult))
+				CoUninitialize();
 		}
 
 		mutable std::mutex m_mutex;
