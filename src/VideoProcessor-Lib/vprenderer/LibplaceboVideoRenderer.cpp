@@ -6610,6 +6610,7 @@ struct LibplaceboVideoRenderer::Impl
 						textureParams.h = job.targetHeights[index];
 						textureParams.format = format;
 						textureParams.renderable = true;
+						textureParams.blit_dst = true;
 						targetTextures[index] = format ? pl_tex_create(
 							workerD3d11->gpu, &textureParams) : nullptr;
 						job.target.planes[index].texture = targetTextures[index];
