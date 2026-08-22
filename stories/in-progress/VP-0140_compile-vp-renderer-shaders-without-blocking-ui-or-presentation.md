@@ -48,6 +48,14 @@ the explicit-preparation trigger; ordinary live selector, resize, output, and
 startup cache-miss preparation still require the isolated context/cache-handoff
 slice.
 
+Deployment (2026-08-21): deployed the successful x64 Release GUI build from
+`85ca85a` to `C:\\Videoprocessor\\vp\\VideoProcessor.exe`; SHA-256
+`080DCABDC81141D4F9E0331E2809A4A3008357AA4ED312F3BAF1AFCA00E51DB9`.
+The previous executable is preserved as
+`VideoProcessor.exe.bak-20260821-234001-vp0140-external-prep`. No configuration
+file was modified. Live cold-cache, resize, renderer-switch, and close
+validation remains pending the isolated-context implementation.
+
 ## User story
 
 As a VideoProcessor operator, I need every potentially cold VP Renderer shader
