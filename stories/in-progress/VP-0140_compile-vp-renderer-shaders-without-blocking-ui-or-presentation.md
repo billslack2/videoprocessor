@@ -108,6 +108,52 @@ as `config\\VideoProcessorConfig.exe.pending-vp0140`. No configuration file
 was modified. Live operator validation remains pending before moving the story
 to Review.
 
+Correction and simplification (2026-08-22): deployed logs established why the
+same NLS+ workflow had worked normally before this story. At 16:55 the
+persistent cache contained 42 objects (5.58 MB), and F6/BT.2020 rendered warm
+in 0.85 ms without compilation. The cache was then explicitly cleared at
+23:45:43 and again at 00:08:27. Its replacement contained only 10 objects; the
+first F6 transition compiled one missing composed libplacebo program for about
+3.4 seconds and saved object 11. NLS+ itself was unchanged. The regression was
+therefore cache-lifecycle handling and over-eager preparation/status behavior,
+not a new requirement that NLS+ recompile for every window, fullscreen,
+viewport, or color-profile transition.
+
+Follow-up commit: `47b5d55` (`VP-0140 simplify shader cache lifecycle`). A
+completed current cache now starts immediately without preparation or a
+splash. Missing, explicitly cleared, failed, partial, or legacy-stale cache
+lifetimes run the configured 16-candidate matrix once in the isolated
+`/prepare_shaders` process while the main UI continues dispatching messages.
+The completed status carries a versioned explicit-clear policy: later
+append-only cache saves remain valid, while Config and the renderer both
+invalidate status when Clear is requested. Legacy status uses the cache/status
+timestamps only once for migration, preventing a repeated-preparation loop.
+
+Live F5/F6, fullscreen, and viewport changes no longer display compilation
+status merely because their geometry or profile changed. A 150 ms delayed
+watchdog remains silent for a warm `pl_render_image`; if that call is actually
+slow, it posts the input-transparent splash without waiting on the UI thread,
+then hides it when rendering returns and logs whether compile telemetry was
+cold or warm. The unused in-process coordinator/service and their speculative
+tests were removed. The final change removes 622 lines and adds 213.
+
+Validation and deployment (2026-08-22): clean x64 Release builds succeeded for
+GUI, VP Renderer, and Config from clean commit `47b5d55`. A full
+non-incremental native test build passed all 865 tests, and the direct Config
+UI suite passed, including explicit proof that Clear deletes completed
+preparation status. The paired deployed hashes are
+`611B4DF2ECF529937545FD9402480A9ABB5FE91E0FCC52C7B9DB0498BFA0919C`
+for `VideoProcessor.exe` and
+`9B38E27862B16DD0285A625A19F8D269532DDF03BCBC007851EC1A56B6A0E321`
+for `VideoProcessorVPRenderer.dll`; Config is
+`56998A746C68952E87D2F2082B6C0222757FCA76EB7052768E286B0ED6D6DDB5`.
+The replaced binaries and prior pending Config build are backed up under
+`C:\\Videoprocessor\\vp\\backups\\vp-0140-47b5d55-20260822-0054`.
+No configuration or cache file was changed during deployment. The known
+partial 694,780-byte cache and older legacy status remain intentionally in
+place, so the next launch must exercise one responsive startup preparation;
+live operator validation remains pending before Review.
+
 ## User story
 
 As a VideoProcessor operator, I need every potentially cold VP Renderer shader
