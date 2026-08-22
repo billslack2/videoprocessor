@@ -269,6 +269,40 @@ for Config. The replaced binaries are backed up under
 No configuration or shader-cache file was changed during deployment. Live
 operator validation remains required before Review.
 
+Custom lifecycle rollback (2026-08-22): windowed live telemetry after
+`06f652d` proved that VP's remaining cache policy was still adding complexity
+without controlling libplacebo's real program selection. A resize from
+1040x585 to 2000x1125 selected a new composed program and spent about 5.45
+seconds in GLSL/SPIR-V/HLSL/DXBC compilation, while returning to 1040x585 and
+entering a previously used 2560x1440 fullscreen pipeline were warm. The shader
+source was unchanged; the cold key was libplacebo's composed render program,
+not a VP-authored NLS variant that could be usefully predicted.
+
+Source commit `667c1cf` (`Remove custom shader cache lifecycle`) therefore
+removes the last VP-authored persistence policy: no append-only on-disk union,
+no unlimited cumulative cache, no re-read/merge on save, and no save on every
+cold render. The cache is again a normal bounded libplacebo GPU cache (256 MiB
+total, 64 MiB per object), loaded once when the renderer is created and saved
+once when it is destroyed. Only the explicit clear-request marker remains as
+VP lifecycle plumbing so Config can retain **Clear shader cache**. Preparation,
+prewarm, synthetic variants, compilation splash/status, and transition-driven
+cache work remain absent. The UI-thread-safe `try_lock` and coalesced pending
+resize/profile/shader intents remain because they prevent UI callbacks from
+waiting behind live rendering; they neither compile nor manage shader state.
+
+Verification and deployment (2026-08-22): the complete x64 Release solution
+built successfully from clean commit `667c1cf`. The forced non-incremental
+native suite passed all 861 tests and the complete offscreen Config UI suite
+passed. Deployed SHA-256 values are
+`936DBE806733B5AC5B4E7001587373290AE5CA045021F660F36A4A7951947F16`
+for `VideoProcessor.exe` and
+`3A321654258F81A5FBDF1758A2A24E9EF5450738DC4F4335C587A4919BC3FB80`
+for `VideoProcessorVPRenderer.dll`. The replaced pair is backed up under
+`C:\\Videoprocessor\\vp\\backups\\vp-0140-667c1cf-20260822-0830`.
+Config was left running and unchanged because this correction changes only the
+renderer integration. No configuration or shader-cache file was modified.
+Live operator validation remains required before Review.
+
 ## User story
 
 As a VideoProcessor operator, I need every potentially cold VP Renderer shader
