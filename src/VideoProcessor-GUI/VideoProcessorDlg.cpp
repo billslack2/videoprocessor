@@ -8276,7 +8276,6 @@ void CVideoProcessorDlg::RenderRemove()
 void CVideoProcessorDlg::DestroyVideoRenderer()
 {
 	m_shaderLoadingWindow.Hide();
-	m_shaderLoadingStatus.Empty();
 	m_shaderLoadingPopupShownTick = 0;
 	if (!m_videoRenderer)
 		return;
@@ -11808,14 +11807,12 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 				m_rendererTargetHwnd, GetSafeHwnd(), renderStallStatus);
 			if (shown && !wasVisible && m_shaderLoadingWindow.IsVisible())
 				m_shaderLoadingPopupShownTick = GetTickCount64();
-			m_shaderLoadingStatus = renderStallStatus;
 		}
 		else if (m_shaderLoadingWindow.IsVisible() &&
 			(!rendererCanReportStall ||
 			 GetTickCount64() - m_shaderLoadingPopupShownTick >= 300))
 		{
 			m_shaderLoadingWindow.Hide();
-			m_shaderLoadingStatus.Empty();
 			m_shaderLoadingPopupShownTick = 0;
 		}
 

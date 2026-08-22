@@ -1,8 +1,5 @@
 #pragma once
 
-#include <string>
-
-
 // UI-owned loading notice for slow VP Renderer pipeline preparation. This is
 // deliberately a top-level popup instead of a libplacebo overlay: it remains
 // paintable while the render thread is compiling a shader program.

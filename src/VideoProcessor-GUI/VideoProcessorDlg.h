@@ -644,7 +644,6 @@ protected:
 	RendererState m_rendererState = RendererState::RENDERSTATE_UNKNOWN;
 	RendererTransitionWindow m_rendererTransitionWindow;
 	ShaderLoadingWindow m_shaderLoadingWindow;
-	CString m_shaderLoadingStatus;
 	ULONGLONG m_shaderLoadingPopupShownTick = 0;
 	HWND m_rendererTargetHwnd = nullptr;
 	bool m_preserveFullscreenHostForProfileRestart = false;
