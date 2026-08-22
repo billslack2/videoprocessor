@@ -20,6 +20,7 @@
 #include <RendererProfileConfig.h>
 #include <ShaderConfigValidation.h>
 #include <ShaderPreparationPolicy.h>
+#include <ShaderPreparationCoordinator.h>
 #include <UnifiedProfileRuntime.h>
 #include <VideoConversionOverride.h>
 #include "CppUnitTest.h"
@@ -2410,6 +2411,61 @@ namespace VideoProcessorTest
 			unrelated["vprenderer.viewport.scope"]["screen_aspect"] = "2.40:1";
 			Assert::IsFalse(ShaderPreparationPolicy::ShouldPrepare(
 				original, unrelated));
+		}
+
+		TEST_METHOD(ShaderPreparationCoordinatorCoalescesAndDiscardsSupersededWork)
+		{
+			using namespace ShaderPreparationCoordinator;
+			Queue queue;
+			Request first;
+			Generation initial{};
+			initial.renderer = 7;
+			initial.configuration = 11;
+			initial.targetGeometry = 1920ULL << 32 | 1080ULL;
+			Assert::IsTrue(queue.Enqueue(initial, first) == EnqueueResult::Start);
+			Assert::IsTrue(queue.HasActive());
+			Assert::IsFalse(queue.HasPending());
+
+			Request ignored;
+			Assert::IsTrue(queue.Enqueue(initial, ignored) == EnqueueResult::Coalesced);
+			Assert::AreEqual(static_cast<uint64_t>(0), ignored.serial);
+
+			Generation newest = initial;
+			newest.shader = 9;
+			for (uint64_t geometry = 1; geometry <= 100; ++geometry)
+			{
+				newest.targetGeometry = geometry;
+				Assert::IsTrue(queue.Enqueue(newest, ignored) ==
+					EnqueueResult::ReplacedPending);
+			}
+			Assert::IsTrue(queue.HasActive());
+			Assert::IsTrue(queue.HasPending());
+
+			Request next;
+			Assert::IsTrue(queue.Complete(first, next) ==
+				CompletionResult::DiscardSuperseded);
+			Assert::AreEqual(static_cast<uint64_t>(100),
+				next.generation.targetGeometry);
+			Assert::IsTrue(queue.HasActive());
+			Assert::IsFalse(queue.HasPending());
+			Assert::IsTrue(queue.Complete(next, ignored) ==
+				CompletionResult::Activate);
+		}
+
+		TEST_METHOD(ShaderPreparationCoordinatorRetirementPreventsPublication)
+		{
+			using namespace ShaderPreparationCoordinator;
+			Queue queue;
+			Request active;
+			Generation generation{};
+			generation.renderer = 21;
+			Assert::IsTrue(queue.Enqueue(generation, active) == EnqueueResult::Start);
+			queue.Retire();
+			Request next;
+			Assert::IsTrue(queue.Complete(active, next) ==
+				CompletionResult::DiscardRetired);
+			Assert::IsTrue(queue.Enqueue(generation, next) ==
+				EnqueueResult::RejectedRetired);
 		}
 
 		TEST_METHOD(Vp0097ShortcutKeyCombinesWithOptionalProfileRule)
