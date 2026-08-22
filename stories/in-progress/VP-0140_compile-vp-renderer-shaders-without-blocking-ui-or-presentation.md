@@ -74,6 +74,40 @@ The previous executable is preserved as
 `VideoProcessor.exe.bak-20260821-235513-vp0140-splash`. No configuration file
 was modified.
 
+Follow-up commit: `4d287c3` (`VP-0140 prepare configured shaders without
+blocking UI`). Startup now gates only live VP Renderer construction while an
+isolated `/prepare_shaders` process reads the active configuration and fills
+the persistent cache. The main window continues capture and message dispatch
+and shows a non-activating, input-transparent preparation screen until the
+worker exits. With the deployed configuration, the worker enumerates both
+display profiles, both viewport profiles, SDR and PQ sources, and windowed and
+fullscreen targets (16 base candidates); it re-arms every configured NLS
+prewarm rule for each candidate so NLS+ is not consumed only by the first
+geometry.
+
+Live display/profile and viewport updates now use a coalesced full-settings
+snapshot and `try_lock`; when libplacebo is compiling, the UI call returns
+immediately and the render worker applies the newest snapshot before its next
+frame. Rec.709/BT.2020 and viewport changes explicitly arm the compilation
+status before `pl_render_image`, fixing the missing splash on F5/F6 and
+geometry-driven cold variants. The splash is a single serialized state rather
+than a stale callback reference count. Config also distinguishes a completed
+full-preparation timestamp from a cache file modified afterward.
+
+Validation (2026-08-22): clean x64 Release builds succeeded for
+`VideoProcessor-GUI`, `VideoProcessor-VPRenderer`, and
+`VideoProcessor-Config`; all 867 `VideoProcessor-Test` tests and the direct
+Config UI test suite passed. Deployed the clean `4d287c3` GUI executable and
+renderer DLL with SHA-256 values
+`6B0C1904EAEE688FB1E9CC4D819701016FF4947AF77BE3A4485B92107A579085` and
+`CE68C1B5F056028F68607FC225D506E57286D439F0792B25C3DCE8E9BD31B613`.
+The prior three binaries are preserved under
+`C:\\Videoprocessor\\vp\\backups\\vp-0140-4d287c3-20260822-0026`.
+The running Config process was not interrupted; its new executable is staged
+as `config\\VideoProcessorConfig.exe.pending-vp0140`. No configuration file
+was modified. Live operator validation remains pending before moving the story
+to Review.
+
 ## User story
 
 As a VideoProcessor operator, I need every potentially cold VP Renderer shader
