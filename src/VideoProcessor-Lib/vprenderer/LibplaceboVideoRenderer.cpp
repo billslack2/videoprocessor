@@ -5942,7 +5942,6 @@ struct LibplaceboVideoRenderer::Impl
 		currentTransport.sigmoid = next.sigmoid;
 		currentTransport.dithering = next.dithering;
 		currentTransport.displayBitDepth = next.displayBitDepth;
-		currentTransport.outputGamma = next.outputGamma;
 		currentTransport.sdrTargetPrimaries = "rec709";
 		currentTransport.reportBt2020ToDisplay = false;
 		currentTransport.sdrInputTransfer = next.sdrInputTransfer;
@@ -6153,8 +6152,6 @@ struct LibplaceboVideoRenderer::Impl
 			: LibplaceboOutput::SdrTargetPrimaries::REC709;
 		const auto contract = LibplaceboOutput::MakeSdrOutputContract(
 			requestedTransport, target, settings.reportBt2020ToDisplay);
-		const LibplaceboOutput::Plan nextOutputPlan =
-			LibplaceboOutput::MakePlan(contract.transport);
 		activeSettings = settings;
 		sdrTargetNits = settings.sdrTargetNits;
 		sdrBlackNits = settings.sdrBlackNits;
@@ -6166,8 +6163,10 @@ struct LibplaceboVideoRenderer::Impl
 			LibplaceboOutput::SdrTargetPrimaries::BT2020;
 		reportBt2020ToDisplay = contract.reportBt2020ToDisplay;
 		bt2020SignalingFailed = false;
-		actualOutput.targetTransfer = nextOutputPlan.targetTransfer;
-		SetSwapchainColorHint(actualOutput.encoding, actualOutput.targetTransfer);
+		// F5/F6 retain the already negotiated P709/sRGB transport. Do not replace
+		// observed output state with a newly requested plan, and do not submit a
+		// lazy swapchain color hint without a matching output negotiation. The
+		// per-frame target below applies the live primaries and luminance values.
 		lastSdrGammaDecision = {};
 		lastSdrGammaDecisionSignature.clear();
 		outputContractLogged = false;
@@ -6194,7 +6193,7 @@ struct LibplaceboVideoRenderer::Impl
 			nvidiaBt2020Reporter.Restore();
 		}
 		DebugLog::Log(
-			"libplacebo profile settings applied live: target=%s luminance=%.1f nits black=%.4f nits LUT=%s processing=updated DXGI_transport=P709/sRGB NVIDIA_AVI=%s swapchain_recreated=0",
+			"libplacebo profile settings applied live: target=%s luminance=%.1f nits black=%.4f nits LUT=%s processing=updated negotiated_output=preserved DXGI_transport=P709/sRGB NVIDIA_AVI=%s swapchain_recreated=0",
 			targetBt2020 ? "BT.2020" : "Rec.709",
 			sdrTargetNits,
 			sdrBlackNits,
