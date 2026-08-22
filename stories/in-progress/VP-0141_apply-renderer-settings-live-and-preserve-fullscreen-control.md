@@ -2,12 +2,13 @@
 
 ## Status
 
-Backlog. Created 2026-08-22 from live validation of the merged VP-0140 build
-at source commit `802038d`. The incident and source review establish a bounded
-implementation path: compatible libplacebo processing changes must use the
-existing render-thread live-update path, while fullscreen and Config input,
-z-order, and close routing must remain recoverable during an arbitrarily slow
-render call.
+In progress. Implementation began 2026-08-22 from the current
+`origin/v1.2.001-beta` integration tip, source commit `802038d`.
+
+The incident and source review establish a bounded implementation path:
+compatible libplacebo processing changes must use the existing render-thread
+live-update path, while fullscreen and Config input, z-order, and close
+routing must remain recoverable during an arbitrarily slow render call.
 
 ## Problem
 
