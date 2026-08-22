@@ -6205,103 +6205,39 @@ bool CVideoProcessorDlg::ApplyShaderPreparationSnapshot(
 void CVideoProcessorDlg::StartShaderPreparation()
 {
 	if (m_shaderPreparationActive) return;
-	if (!m_videoRenderer || !IsAlphaRendererSelected())
-	{
-		std::wstring directory;
-		if (!GetApplicationDirectory(directory))
-		{
-			PublishShaderPreparationStatus("failed", 0, 0,
-				"Shader preparation could not locate VideoProcessor.exe.");
-			return;
-		}
-		std::wstring executable = directory + L"VideoProcessor.exe";
-		std::wstring command = L"\"" + executable + L"\" /prepare_shaders";
-		STARTUPINFOW startup{};
-		startup.cb = sizeof(startup);
-		PROCESS_INFORMATION process{};
-		if (!::CreateProcessW(executable.c_str(), &command[0], nullptr,
-			nullptr, FALSE, CREATE_NO_WINDOW, nullptr, directory.c_str(),
-			&startup, &process))
-		{
-			PublishShaderPreparationStatus("failed", 0, 0,
-				"Non-capturing shader preparation could not start.");
-			return;
-		}
-		::CloseHandle(process.hThread);
-		::CloseHandle(process.hProcess);
-		PublishShaderPreparationStatus("waiting", 0, 0,
-			"Starting non-capturing shader preparation...");
-		return;
-	}
-	if (m_rendererState != RendererState::RENDERSTATE_RENDERING)
-	{
-		PublishShaderPreparationStatus("waiting", 0, 0,
-			"Waiting for VideoProcessor renderer...");
-		if (m_shaderPreparationEvent) SetEvent(m_shaderPreparationEvent);
-		return;
-	}
-	if (RendererResetOperationInProgress())
-	{
-		PublishShaderPreparationStatus("waiting", 0, 0,
-			"Waiting for the current renderer update...");
-		if (m_shaderPreparationEvent) SetEvent(m_shaderPreparationEvent);
-		return;
-	}
-
-	const auto original = m_profileRuntime.GetSnapshot();
-	if (!original)
+	// Never prewarm an active VP Renderer. Each profile advance reaches
+	// pl_render_image on its live presentation worker, where a cold driver
+	// compile can hold renderMutex for seconds. The non-capturing host creates
+	// independent renderer/device lifetimes for the same windowed/fullscreen
+	// SDR/PQ profile matrix, so this UI handler only launches work and returns.
+	std::wstring directory;
+	if (!GetApplicationDirectory(directory))
 	{
 		PublishShaderPreparationStatus("failed", 0, 0,
-			"Shader preparation could not read rendering profiles.");
+			"Shader preparation could not locate VideoProcessor.exe.");
 		return;
 	}
-	ConfigFile config;
-	if (!config.Load())
+	std::wstring executable = directory + L"VideoProcessor.exe";
+	std::wstring command = L"\"" + executable + L"\" /prepare_shaders";
+	STARTUPINFOW startup{};
+	startup.cb = sizeof(startup);
+	PROCESS_INFORMATION process{};
+	if (!::CreateProcessW(executable.c_str(), &command[0], nullptr,
+		nullptr, FALSE, CREATE_NO_WINDOW | BELOW_NORMAL_PRIORITY_CLASS,
+		nullptr, directory.c_str(), &startup, &process))
 	{
 		PublishShaderPreparationStatus("failed", 0, 0,
-			"Shader preparation could not load VideoProcessor.cfg.");
+			"Non-capturing shader preparation could not start.");
 		return;
 	}
-	if (!m_videoRenderer->ReloadConfiguredShaderPrewarm())
-	{
-		PublishShaderPreparationStatus("failed", 0, 0,
-			"Shader configuration could not be prepared.");
-		return;
-	}
-
-	std::vector<std::string> profiles;
-	std::string profileError;
-	if (!RendererProfileConfig::CollectRenderingProfileNames(
-		config, profiles, profileError))
-	{
-		PublishShaderPreparationStatus("failed", 0, 0,
-			"Rendering profiles could not be enumerated.");
-		return;
-	}
-	if (profiles.empty())
-	{
-		FinishShaderPreparation(true, "No additional rendering profiles need preparation");
-		return;
-	}
-
-	m_shaderPreparationOriginalSnapshot = original;
-	m_shaderPreparationSnapshots.clear();
-	for (size_t index = 0; index < profiles.size(); ++index)
-	{
-		auto candidate =
-			std::make_shared<UnifiedProfileRuntime::Snapshot>(*original);
-		candidate->generation = original->generation + index + 1;
-		candidate->manualSelections["display"] = profiles[index];
-		candidate->effectiveSelections["display"] = profiles[index];
-		m_shaderPreparationSnapshots.push_back(candidate);
-	}
-	m_shaderPreparationIndex = 0;
-	m_shaderPreparationRestoring = false;
-	m_shaderPreparationActive = true;
-	DebugLog::Log("Shader preparation started: profiles=%zu renderer_generation=%u",
-		m_shaderPreparationSnapshots.size(),
-		m_rendererGeneration.load(std::memory_order_acquire));
-	AdvanceShaderPreparation();
+	::CloseHandle(process.hThread);
+	::CloseHandle(process.hProcess);
+	DebugLog::Log(
+		"Shader preparation launched in non-capturing host: active_vp_renderer=%d renderer_state=%d",
+		m_videoRenderer && IsAlphaRendererSelected() ? 1 : 0,
+		static_cast<int>(m_rendererState));
+	PublishShaderPreparationStatus("waiting", 0, 0,
+		"Starting non-capturing shader preparation...");
 }
 
 void CVideoProcessorDlg::AdvanceShaderPreparation()
