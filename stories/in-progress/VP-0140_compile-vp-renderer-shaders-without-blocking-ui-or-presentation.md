@@ -154,6 +154,47 @@ partial 694,780-byte cache and older legacy status remain intentionally in
 place, so the next launch must exercise one responsive startup preparation;
 live operator validation remains pending before Review.
 
+Failed live validation and correction (2026-08-22): the first `47b5d55`
+startup proved that the application message loop remained responsive—madVR,
+fullscreen commands, and shortcut dispatch continued—but VP Renderer was
+correctly gated behind a long cold preparation and its splash was subsequently
+hidden by another renderer/fullscreen transition. The splash did not refresh
+from the status file, so the operator saw a black/logo preview with no visible
+progress while candidates took 13--19 seconds each.
+
+More seriously, closing/restarting the owning VP process only closed its child
+process handle. It did not terminate the `/prepare_shaders` child. Live process
+inspection found three preparation workers (`26968`, `10788`, and `4644`), two
+with exited parents, concurrently writing the shared cache/status files. That
+made Config's status non-authoritative during the run and left no owning VP UI
+to transition into VP Renderer when an orphan finished. The backend eventually
+did complete at 01:05:20, atomically saving 37 objects (5,347,336 bytes) and
+then publishing `ready`, but the operator-facing completion path had already
+been lost.
+
+Corrective source commit: `0af7618` (`VP-0140 fix preparation ownership and
+progress UI`). Preparation now serializes through one named mutex; a later
+worker waits and coalesces if the active owner completes. Each child starts
+suspended, is assigned to a kill-on-close job before running, and is explicitly
+terminated as a fallback when its VP instance closes. Synthetic windowed and
+top-level preparation HWNDs are never shown. While the exact startup child is
+running and VP Renderer is selected, the one-second UI poll reloads the
+worker's `Preparing ... N of 16` message and reasserts the input-transparent
+splash if another state transition hid it. Selecting another renderer leaves
+that renderer usable without the preparation cover.
+
+All 865 native tests passed again and clean x64 Release GUI/plugin builds were
+produced from `0af7618` with `VERSION_DIRTY=false`. The paired deployment
+hashes are
+`15E940E203C3E1B712F55CCCEAC4F9045D31ED33A36C9A8D73058FD24E84D81A`
+for `VideoProcessor.exe` and
+`9B38E27862B16DD0285A625A19F8D269532DDF03BCBC007851EC1A56B6A0E321`
+for `VideoProcessorVPRenderer.dll`. The replaced pair is backed up under
+`C:\\Videoprocessor\\vp\\backups\\vp-0140-0af7618-20260822-0113`.
+The completed 37-object cache, active configuration, and running Config process
+were preserved. A normal next launch must therefore skip preparation and start
+VP Renderer immediately; another live operator validation remains required.
+
 ## User story
 
 As a VideoProcessor operator, I need every potentially cold VP Renderer shader
