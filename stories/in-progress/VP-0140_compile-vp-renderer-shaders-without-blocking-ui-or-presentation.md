@@ -2,11 +2,22 @@
 
 ## Status
 
-Backlog (2026-08-21). Live renderer-switch validation exposed multi-second
-libplacebo shader compilation that stalls presentation and makes window
-operations, renderer restart, and application exit appear hung. This is a
-separate responsiveness and compilation-lifecycle concern from VP-0134's
-renderer handoff and display-state ownership work.
+In Progress (2026-08-21). Source worktree:
+`C:\\Videoprocessor\\vp\\vprenderer\\.codex-worktrees\\vp-0140`, branch
+`codex/vp-0140-nonblocking-shader-preparation`, based on
+`v1.2.001-beta` at `a31803d`.
+
+Initial inventory confirms that UI resize and display-change already coalesce
+through nonblocking try-lock paths, but cold `pl_render_image` work still runs
+on the presentation worker while it owns `renderMutex`. The first implementation
+slice introduces and tests generation-aware preparation scheduling (one active
+request plus the newest compatible pending request) without moving libplacebo
+calls across an unsafe D3D11 context. The next slice will bind that scheduler to
+a renderer-owned compatible compilation context and cache handoff.
+
+Initial source commit: `8fa4cbf` (`VP-0140 add shader preparation scheduling
+boundary`). `VideoProcessor-Test` x64 Release built successfully; focused
+coalescing/supersession and retirement-publication tests passed.
 
 ## User story
 
