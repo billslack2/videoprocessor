@@ -5575,8 +5575,6 @@ struct LibplaceboVideoRenderer::Impl
 		displayLutStatus = "Rejected: render error";
 		displayLutParsed = false;
 		pl_lut_free(&displayLut);
-		if (renderer)
-			pl_renderer_flush_cache(renderer);
 	}
 
 	const char* DisplayLutContractMismatch(
@@ -8848,10 +8846,6 @@ struct LibplaceboVideoRenderer::Impl
 		}
 		if (overlaySerial != appliedStatsOverlaySerial)
 		{
-			const bool hadOverlay = statsOverlayTexture != nullptr;
-			const bool geometryChanged = statsOverlayTexture &&
-				(statsOverlayTexture->params.w != overlayWidth ||
-				 statsOverlayTexture->params.h != overlayHeight);
 			if (!overlayPixels.empty())
 			{
 				struct pl_plane_data plane{};
@@ -8877,8 +8871,6 @@ struct LibplaceboVideoRenderer::Impl
 				pl_tex_destroy(d3d11->gpu, &statsOverlayTexture);
 			}
 			appliedStatsOverlaySerial = overlaySerial;
-			if (hadOverlay != (statsOverlayTexture != nullptr) || geometryChanged)
-				pl_renderer_flush_cache(renderer);
 		}
 		std::vector<uint8_t> sweepPixels;
 		int sweepWidth = 0;
@@ -8898,10 +8890,6 @@ struct LibplaceboVideoRenderer::Impl
 		}
 		if (sweepSerial != appliedSweepOverlaySerial)
 		{
-			const bool hadOverlay = sweepOverlayTexture != nullptr;
-			const bool geometryChanged = sweepOverlayTexture &&
-				(sweepOverlayTexture->params.w != sweepWidth ||
-				 sweepOverlayTexture->params.h != sweepHeight);
 			if (!sweepPixels.empty())
 			{
 				struct pl_plane_data plane{};
@@ -8927,8 +8915,6 @@ struct LibplaceboVideoRenderer::Impl
 				pl_tex_destroy(d3d11->gpu, &sweepOverlayTexture);
 			}
 			appliedSweepOverlaySerial = sweepSerial;
-			if (hadOverlay != (sweepOverlayTexture != nullptr) || geometryChanged)
-				pl_renderer_flush_cache(renderer);
 		}
 		struct pl_overlay overlays[2]{};
 		struct pl_overlay_part overlayParts[2]{};
