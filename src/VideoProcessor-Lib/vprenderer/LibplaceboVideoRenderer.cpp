@@ -50,7 +50,6 @@
 #include <chrono>
 #include <cctype>
 #include <cmath>
-#include <condition_variable>
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
@@ -646,82 +645,12 @@ namespace
 		return *value;
 	}
 
-	struct LibplaceboCompileSnapshot
-	{
-		double glslMs = 0.0;
-		double spirvCrossMs = 0.0;
-		double hlslMs = 0.0;
-
-		bool Compiled() const
-		{
-			return glslMs > 0.0 || spirvCrossMs > 0.0 || hlslMs > 0.0;
-		}
-	};
-
-	class LibplaceboCompileTelemetry
-	{
-	public:
-		void BeginRender()
-		{
-			std::lock_guard<std::mutex> guard(m_mutex);
-			m_active = true;
-			m_snapshot = {};
-		}
-
-		LibplaceboCompileSnapshot EndRender()
-		{
-			std::lock_guard<std::mutex> guard(m_mutex);
-			m_active = false;
-			return m_snapshot;
-		}
-
-		void Observe(const char* message)
-		{
-			const double glslMs = ParseDuration(
-				message, "translating GLSL to SPIR-V");
-			const double spirvCrossMs = ParseDuration(
-				message, "translating SPIR-V to HLSL");
-			const double hlslMs = ParseDuration(
-				message, "translating HLSL to DXBC");
-			if (glslMs <= 0.0 && spirvCrossMs <= 0.0 && hlslMs <= 0.0)
-				return;
-
-			std::lock_guard<std::mutex> guard(m_mutex);
-			if (!m_active)
-				return;
-			m_snapshot.glslMs += glslMs;
-			m_snapshot.spirvCrossMs += spirvCrossMs;
-			m_snapshot.hlslMs += hlslMs;
-		}
-
-	private:
-		static double ParseDuration(const char* message, const char* operation)
-		{
-			if (!message || !operation || !std::strstr(message, operation))
-				return 0.0;
-			const char* spent = std::strstr(message, "Spent ");
-			if (!spent)
-				return 0.0;
-			char* end = nullptr;
-			const double duration = std::strtod(spent + 6, &end);
-			return end != spent + 6 && duration > 0.0 ? duration : 0.0;
-		}
-
-		std::mutex m_mutex;
-		bool m_active = false;
-		LibplaceboCompileSnapshot m_snapshot;
-	};
-
 	void LibplaceboLog(void* privateContext, enum pl_log_level level,
 		const char* message)
 	{
+		(void)privateContext;
 		if (!message)
 			return;
-		if (privateContext)
-		{
-			static_cast<LibplaceboCompileTelemetry*>(privateContext)->Observe(
-				message);
-		}
 
 		const char* label = "info";
 		switch (level)
@@ -2878,7 +2807,7 @@ struct LibplaceboVideoRenderer::Impl
 	bool vpOwnedColorSpaceVerified = false;
 	DXGI_FORMAT negotiatedSwapchainFormat = DXGI_FORMAT_UNKNOWN;
 	pl_renderer renderer = nullptr;
-	LibplaceboCompileTelemetry compileTelemetry;
+	std::atomic<ULONGLONG> libplaceboRenderStartedTick{ 0 };
 	pl_tex textures[2] = { nullptr, nullptr };
 	pl_tex statsOverlayTexture = nullptr;
 	pl_tex sweepOverlayTexture = nullptr;
@@ -2944,9 +2873,7 @@ struct LibplaceboVideoRenderer::Impl
 	std::string nlsHookSignature;
 	std::string rejectedNlsHookSignature;
 	std::string activeNlsShaderPath;
-	std::string lastNlsPipelineVariant;
 	std::string lastNlsHookBindingPolicy;
-	bool nlsPipelineWasActive = false;
 	struct pl_color_map_params colorMapParams{};
 	struct pl_peak_detect_params peakDetectParams{};
 	struct pl_sigmoid_params sigmoidParams{};
@@ -3064,23 +2991,12 @@ struct LibplaceboVideoRenderer::Impl
 	std::mutex renderMutex;
 	std::mutex pendingProfileMutex;
 	std::unique_ptr<RendererSettings> pendingProfileSettings;
-	mutable std::mutex pipelinePreparationMutex;
-	bool pipelinePreparationActive = false;
-	uint64_t pipelinePreparationEpoch = 0;
-	ULONGLONG pipelinePreparationStartedTick = 0;
-	std::string pipelinePreparationLabel;
 	std::atomic_bool resizePending{ false };
 	std::atomic_bool outputRenegotiationPending{ false };
 	EOTF lastRenderedEotf = EOTF::UNKNOWN;
 	ColorSpace lastRenderedColorspace = ColorSpace::UNKNOWN;
 	std::string shaderCachePath;
-	uint64_t loadedShaderCacheSignature = 0;
 	bool shaderCacheEnabled = true;
-	std::mutex shaderCacheSaveMutex;
-	std::condition_variable shaderCacheSaveChanged;
-	std::thread shaderCacheSaveWorker;
-	bool shaderCacheSaveRequested = false;
-	bool shaderCacheSaveClosing = false;
 	bool outputDiagnostics = false;
 	bool outputContractLogged = false;
 	unsigned int diagnosticReadbackFramesRemaining = 30;
@@ -3357,7 +3273,6 @@ struct LibplaceboVideoRenderer::Impl
 
 	~Impl()
 	{
-		StopShaderCacheSaveWorker();
 		for (std::thread& worker : captureWorkers)
 			if (worker.joinable()) worker.join();
 		nvidiaBt2020Reporter.Restore();
@@ -3454,7 +3369,6 @@ struct LibplaceboVideoRenderer::Impl
 			DeleteFileA((shaderCachePath + ".tmp").c_str());
 			DeleteFileA(clearRequestPath.c_str());
 			pl_cache_reset(cache);
-			loadedShaderCacheSignature = 0;
 			DebugLog::Log(
 				"libplacebo persistent shader cache cleared by user request");
 			return;
@@ -3500,7 +3414,6 @@ struct LibplaceboVideoRenderer::Impl
 			return;
 		}
 
-		loadedShaderCacheSignature = pl_cache_signature(cache);
 		DebugLog::Log(
 			"libplacebo persistent shader cache loaded: %d objects, %zu bytes",
 			loaded,
@@ -3519,17 +3432,12 @@ struct LibplaceboVideoRenderer::Impl
 			DeleteFileA(clearRequestPath.c_str());
 			if (cache)
 				pl_cache_reset(cache);
-			loadedShaderCacheSignature = 0;
 			DebugLog::Log(
 				"libplacebo persistent shader cache clear completed; current cache was not saved");
 			return;
 		}
 		if (!shaderCacheEnabled ||
 			!cache || shaderCachePath.empty() || pl_cache_objects(cache) <= 0)
-			return;
-
-		const uint64_t signature = pl_cache_signature(cache);
-		if (signature == loadedShaderCacheSignature)
 			return;
 
 		const size_t required = pl_cache_save(cache, nullptr, 0);
@@ -3579,58 +3487,10 @@ struct LibplaceboVideoRenderer::Impl
 			return;
 		}
 
-		loadedShaderCacheSignature = signature;
 		DebugLog::Log(
 			"libplacebo persistent shader cache saved: %d objects, %zu bytes",
 			pl_cache_objects(cache),
 			data.size());
-	}
-
-	void ScheduleShaderCacheSave()
-	{
-		std::lock_guard<std::mutex> guard(shaderCacheSaveMutex);
-		if (shaderCacheSaveClosing)
-			return;
-		shaderCacheSaveRequested = true;
-		if (!shaderCacheSaveWorker.joinable())
-		{
-			shaderCacheSaveWorker = std::thread([this]()
-				{
-					SetThreadPriority(
-						GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
-					for (;;)
-					{
-						{
-							std::unique_lock<std::mutex> lock(
-								shaderCacheSaveMutex);
-							shaderCacheSaveChanged.wait(lock, [this]()
-								{
-									return shaderCacheSaveRequested ||
-										shaderCacheSaveClosing;
-								});
-							if (!shaderCacheSaveRequested &&
-								shaderCacheSaveClosing)
-							{
-								break;
-							}
-							shaderCacheSaveRequested = false;
-						}
-						SaveShaderCache();
-					}
-				});
-		}
-		shaderCacheSaveChanged.notify_one();
-	}
-
-	void StopShaderCacheSaveWorker()
-	{
-		{
-			std::lock_guard<std::mutex> guard(shaderCacheSaveMutex);
-			shaderCacheSaveClosing = true;
-		}
-		shaderCacheSaveChanged.notify_all();
-		if (shaderCacheSaveWorker.joinable())
-			shaderCacheSaveWorker.join();
 	}
 
 	void LogFormatterInputDiagnostics(
@@ -5761,7 +5621,6 @@ struct LibplaceboVideoRenderer::Impl
 
 		struct pl_log_params logParams{};
 		logParams.log_cb = LibplaceboLog;
-		logParams.log_priv = &compileTelemetry;
 		logParams.log_level = PL_LOG_INFO;
 		log = pl_log_create(PL_API_VER, &logParams);
 		if (!log)
@@ -6281,74 +6140,14 @@ struct LibplaceboVideoRenderer::Impl
 		++activeShaderStatusSerial;
 	}
 
-	uint64_t RequestPipelinePreparation(const char* reason)
-	{
-		std::lock_guard<std::mutex> guard(pipelinePreparationMutex);
-		const uint64_t epoch = ++pipelinePreparationEpoch;
-		if (!pipelinePreparationActive)
-			pipelinePreparationStartedTick = GetTickCount64();
-		pipelinePreparationActive = true;
-		pipelinePreparationLabel = "Preparing shaders...";
-		DebugLog::Log(
-			"Alpha pipeline preparation: epoch=%llu state=queued reason=%s label=\"%s\"",
-			static_cast<unsigned long long>(epoch),
-			reason ? reason : "unspecified",
-			pipelinePreparationLabel.c_str());
-		return epoch;
-	}
-
-	void CompletePipelinePreparation(
-		uint64_t epoch,
-		bool succeeded,
-		const char* reason)
-	{
-		if (epoch == 0)
-			return;
-		std::lock_guard<std::mutex> guard(pipelinePreparationMutex);
-		if (!pipelinePreparationActive || epoch != pipelinePreparationEpoch)
-		{
-			DebugLog::Log(
-				"Alpha pipeline preparation: epoch=%llu state=superseded current=%llu reason=%s",
-				static_cast<unsigned long long>(epoch),
-				static_cast<unsigned long long>(pipelinePreparationEpoch),
-				reason ? reason : "render completed");
-			return;
-		}
-		const ULONGLONG elapsed = GetTickCount64() -
-			pipelinePreparationStartedTick;
-		pipelinePreparationActive = false;
-		pipelinePreparationLabel.clear();
-		DebugLog::Log(
-			"Alpha pipeline preparation: epoch=%llu state=%s reason=%s elapsed_ms=%llu",
-			static_cast<unsigned long long>(epoch),
-			succeeded ? "active" : "failed",
-			reason ? reason : "render completed",
-			static_cast<unsigned long long>(elapsed));
-	}
-
-	void CancelPipelinePreparation(const char* reason)
-	{
-		std::lock_guard<std::mutex> guard(pipelinePreparationMutex);
-		if (!pipelinePreparationActive)
-			return;
-		DebugLog::Log(
-			"Alpha pipeline preparation: epoch=%llu state=cancelled reason=%s",
-			static_cast<unsigned long long>(pipelinePreparationEpoch),
-			reason ? reason : "renderer lifecycle");
-		pipelinePreparationActive = false;
-		pipelinePreparationLabel.clear();
-	}
-
-	bool GetPipelinePreparationStatus(CString& status) const
+	bool GetRenderStallStatus(CString& status) const
 	{
 		status.Empty();
-		std::lock_guard<std::mutex> guard(pipelinePreparationMutex);
-		if (!pipelinePreparationActive ||
-			GetTickCount64() - pipelinePreparationStartedTick < 500)
-		{
+		const ULONGLONG started = libplaceboRenderStartedTick.load(
+			std::memory_order_acquire);
+		if (started == 0 || GetTickCount64() - started < 500)
 			return false;
-		}
-		status = CString(CStringA(pipelinePreparationLabel.c_str()));
+		status = TEXT("Compiling shaders...");
 		return true;
 	}
 
@@ -6374,9 +6173,7 @@ struct LibplaceboVideoRenderer::Impl
 			std::lock_guard<std::mutex> guard(shaderStatusMutex);
 			activeNlsShaderPath.clear();
 		}
-		lastNlsPipelineVariant.clear();
 		lastNlsHookBindingPolicy.clear();
-		nlsPipelineWasActive = false;
 		renderParams.hooks = nullptr;
 		renderParams.num_hooks = 0;
 		pl_mpv_user_shader_destroy(&nlsHook);
@@ -7198,7 +6995,6 @@ struct LibplaceboVideoRenderer::Impl
 	bool RenderLocked(
 		const VideoFrame& videoFrame,
 		VideoStateComPtr& statePtr,
-		uint64_t& preparationEpoch,
 		uint64_t frameGeneration,
 		uint64_t sourceSequence,
 		const ActivePictureFrameIdentity& activePictureIdentity,
@@ -9228,86 +9024,19 @@ struct LibplaceboVideoRenderer::Impl
 			target.overlays = overlays;
 			target.num_overlays = overlayCount;
 		}
-		const int outputWidth = baseTarget.planes[0].texture ?
-			baseTarget.planes[0].texture->params.w : 0;
-		const int outputHeight = baseTarget.planes[0].texture ?
-			baseTarget.planes[0].texture->params.h : 0;
-		const bool nlsPipelineActive = renderParams.num_hooks > 0 &&
-			!activeNlsShaderPath.empty();
-		std::string nlsPipelineVariant;
-		bool nlsPipelineVariantChanged = false;
-		if (nlsPipelineActive)
-		{
-			std::ostringstream variant;
-			variant << nlsHookSignature << '|' << width << 'x' << height << "->"
-				<< outputWidth << 'x' << outputHeight << '|'
-				<< std::lround(target.crop.x0 * 10.0f) << ','
-				<< std::lround(target.crop.y0 * 10.0f) << '-'
-				<< std::lround(target.crop.x1 * 10.0f) << ','
-				<< std::lround(target.crop.y1 * 10.0f);
-			nlsPipelineVariant = variant.str();
-			nlsPipelineVariantChanged = !nlsPipelineWasActive ||
-				nlsPipelineVariant != lastNlsPipelineVariant;
-		}
-
-		if (nlsPipelineActive && nlsPipelineVariantChanged)
-		{
-			preparationEpoch = RequestPipelinePreparation(
-				"NLS pipeline activation");
-		}
-		compileTelemetry.BeginRender();
 		const SteadyClock::time_point renderStart = SteadyClock::now();
 		const bool targetLutApplied =
 			target.lut == displayLut && target.lut_type == PL_LUT_NATIVE;
+		libplaceboRenderStartedTick.store(GetTickCount64(),
+			std::memory_order_release);
 		const bool rendered = pl_render_image(
 			renderer,
 			&renderImage,
 			&target,
 			&renderParams);
+		libplaceboRenderStartedTick.store(0, std::memory_order_release);
 		const double renderMs = std::chrono::duration<double, std::milli>(
 			SteadyClock::now() - renderStart).count();
-		const LibplaceboCompileSnapshot compileSnapshot =
-			compileTelemetry.EndRender();
-		if (rendered &&
-			(preparationEpoch != 0 || compileSnapshot.Compiled()))
-		{
-			// libplacebo owns cache contents. Persist a changed signature on a
-			// low-priority I/O worker so a process restart retains an expensive
-			// compile without serializing the cache on the render thread.
-			ScheduleShaderCacheSave();
-		}
-		if (nlsPipelineActive &&
-			(nlsPipelineVariantChanged || compileSnapshot.Compiled()))
-		{
-			const NlsHookMappingState binding =
-				ReadNlsHookMapping(nlsHook);
-			DebugLog::Log(
-				"Alpha shader compile: shader=%s cache=%s render=%s hooks=%d parameters=%d stretch_ratio=%.5f warp_axis=%.1f renderer_generation=%llu queue_generation=%llu source=%llu input=%dx%d output=%dx%d source_crop=%.1f,%.1f-%.1f,%.1f target_crop=%.1f,%.1f-%.1f,%.1f glsl_ms=%.3f spirv_cross_ms=%.3f hlsl_ms=%.3f compile_ms=%.3f render_ms=%.3f queue=%zu/%zu oldest_ms=%.3f",
-				activeNlsShaderPath.c_str(),
-				compileSnapshot.Compiled() ? "cold" : "warm",
-				rendered ? "success" : "failed",
-				renderParams.num_hooks,
-				binding.parameterCount,
-				binding.stretchRatio,
-				binding.warpAxis,
-				static_cast<unsigned long long>(nlsRendererGeneration),
-				static_cast<unsigned long long>(frameGeneration),
-				static_cast<unsigned long long>(sourceSequence),
-				width, height, outputWidth, outputHeight,
-				renderImage.crop.x0, renderImage.crop.y0,
-				renderImage.crop.x1, renderImage.crop.y1,
-				target.crop.x0, target.crop.y0,
-				target.crop.x1, target.crop.y1,
-				compileSnapshot.glslMs,
-				compileSnapshot.spirvCrossMs,
-				compileSnapshot.hlslMs,
-				compileSnapshot.glslMs + compileSnapshot.spirvCrossMs +
-					compileSnapshot.hlslMs,
-				renderMs,
-				queueDepthAfterDequeue,
-				desiredQueueDepth,
-				oldestQueuedAgeMs);
-		}
 		if (!rendered && targetLutApplied)
 			RejectDisplayLutAfterRenderFailure();
 		const int64_t swapStartQpc = PerformanceCounterNow();
@@ -9502,9 +9231,6 @@ struct LibplaceboVideoRenderer::Impl
 		}
 		if (rendered && submitted)
 		{
-			nlsPipelineWasActive = nlsPipelineActive;
-			lastNlsPipelineVariant = nlsPipelineActive ?
-				nlsPipelineVariant : std::string();
 			hasPresentedFrame = true;
 			if (viewportRequestSerial != 0 &&
 				viewportRequestSerial != lastSubmittedScreenProfileRequest)
@@ -9538,11 +9264,6 @@ struct LibplaceboVideoRenderer::Impl
 			}
 			lastRenderedEotf = state.eotf;
 			lastRenderedColorspace = state.colorspace;
-		}
-		if (rendered && submitted)
-		{
-			CompletePipelinePreparation(
-				preparationEpoch, true, "first frame presented");
 		}
 		return rendered && submitted;
 	}
@@ -10311,11 +10032,11 @@ CString LibplaceboVideoRenderer::ActiveShaderRule() const
 }
 
 
-bool LibplaceboVideoRenderer::GetPipelinePreparationStatus(
+bool LibplaceboVideoRenderer::GetRenderStallStatus(
 	CString& status) const
 {
 	status.Empty();
-	return m_impl && m_impl->GetPipelinePreparationStatus(status);
+	return m_impl && m_impl->GetRenderStallStatus(status);
 }
 
 
@@ -10500,8 +10221,6 @@ void LibplaceboVideoRenderer::StopInternal(
 		std::lock_guard<std::mutex> guard(m_queueMutex);
 		m_stopRequested = true;
 	}
-	if (m_impl)
-		m_impl->CancelPipelinePreparation("renderer stop");
 	m_queueChanged.notify_all();
 	if (m_renderThread.joinable())
 		m_renderThread.join();
@@ -10531,8 +10250,6 @@ void LibplaceboVideoRenderer::Retire() noexcept
 			m_queueChanged.notify_all();
 			m_renderThread.join();
 		}
-		if (m_impl)
-			m_impl->CancelPipelinePreparation("renderer retirement");
 		ClearQueue("renderer retirement");
 		bool blackPresented = false;
 		if (m_impl)
@@ -11464,7 +11181,6 @@ void LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
 void LibplaceboVideoRenderer::RenderLoop()
 {
 	unsigned int consecutiveFailures = 0;
-	uint64_t pendingPipelinePreparationEpoch = 0;
 	try
 	{
 		{
@@ -11499,7 +11215,6 @@ void LibplaceboVideoRenderer::RenderLoop()
 		DebugLog::Log(
 			"libplacebo renderer-thread initialization failed: %s",
 			error.what());
-		m_impl->CancelPipelinePreparation("renderer initialization failed");
 		std::lock_guard<std::mutex> queueGuard(m_queueMutex);
 		if (!m_stopRequested)
 			SetState(RendererState::RENDERSTATE_FAILED);
@@ -11509,7 +11224,6 @@ void LibplaceboVideoRenderer::RenderLoop()
 	{
 		DebugLog::Log(
 			"libplacebo renderer-thread initialization failed: unknown exception");
-		m_impl->CancelPipelinePreparation("renderer initialization failed");
 		std::lock_guard<std::mutex> queueGuard(m_queueMutex);
 		if (!m_stopRequested)
 			SetState(RendererState::RENDERSTATE_FAILED);
@@ -11767,7 +11481,6 @@ void LibplaceboVideoRenderer::RenderLoop()
 				rendered = state && m_impl->RenderLocked(
 					frame,
 					state,
-					pendingPipelinePreparationEpoch,
 					frameGeneration,
 					sourceSequence,
 					activePictureIdentity,
@@ -11791,9 +11504,6 @@ void LibplaceboVideoRenderer::RenderLoop()
 					correctionDecision,
 					presentationTargetTimingKnown,
 					presentationTargetLeadMs);
-				if (rendered)
-					pendingPipelinePreparationEpoch = 0;
-
 				const double renderCycleMs =
 					std::chrono::duration<double, std::milli>(
 						SteadyClock::now() - renderCycleStart).count();
@@ -12026,7 +11736,6 @@ void LibplaceboVideoRenderer::RenderLoop()
 					"libplacebo renderer failure requires reconstruction: gpu_failed=%d consecutive_failures=%u",
 					1,
 					consecutiveFailures);
-				m_impl->CancelPipelinePreparation("terminal GPU failure");
 				{
 					std::lock_guard<std::mutex> queueGuard(m_queueMutex);
 					if (!m_stopRequested)
@@ -12050,8 +11759,6 @@ void LibplaceboVideoRenderer::RenderLoop()
 			{
 				DebugLog::Log(
 					"libplacebo renderer failed 300 consecutive visible frames with a healthy GPU; marking renderer failed for swapchain reconstruction");
-				m_impl->CancelPipelinePreparation(
-					"terminal visible-frame failure");
 				{
 					std::lock_guard<std::mutex> queueGuard(m_queueMutex);
 					if (!m_stopRequested)

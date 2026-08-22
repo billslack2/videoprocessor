@@ -387,10 +387,10 @@ bool LibplaceboPluginVideoRenderer::SelectShaderRule(
 }
 
 
-bool LibplaceboPluginVideoRenderer::GetPipelinePreparationStatus(
+bool LibplaceboPluginVideoRenderer::GetRenderStallStatus(
 	CString& status) const
 {
-	return m_renderer->GetPipelinePreparationStatus(status);
+	return m_renderer->GetRenderStallStatus(status);
 }
 
 

@@ -59,7 +59,7 @@ public:
 		bool& rendererRestartRequired) override;
 	bool SelectShaderRule(const CString& ruleName, CString& activeRule,
 		bool& rendererRestartRequired) override;
-	bool GetPipelinePreparationStatus(CString& status) const override;
+	bool GetRenderStallStatus(CString& status) const override;
 	bool RefreshShaderRule(CString& activeRule,
 		bool& rendererRestartRequired) override;
 	std::vector<CString> ActiveShaders() const override;

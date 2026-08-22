@@ -8276,8 +8276,8 @@ void CVideoProcessorDlg::RenderRemove()
 void CVideoProcessorDlg::DestroyVideoRenderer()
 {
 	m_shaderLoadingWindow.Hide();
-	m_pipelinePreparationStatus.Empty();
-	m_pipelinePreparationPopupShownTick = 0;
+	m_shaderLoadingStatus.Empty();
+	m_shaderLoadingPopupShownTick = 0;
 	if (!m_videoRenderer)
 		return;
 	if (m_fullscreenRetargetPending)
@@ -11789,32 +11789,31 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 
 	if (nIDEvent == SHADER_RULE_REFRESH_TIMER_ID)
 	{
-		CString preparationStatus;
-		const bool rendererCanPrepare =
+		CString renderStallStatus;
+		const bool rendererCanReportStall =
 			m_rendererState == RendererState::RENDERSTATE_STARTING ||
 			m_rendererState == RendererState::RENDERSTATE_READY ||
 			m_rendererState == RendererState::RENDERSTATE_RENDERING;
-		const bool preparing =
-			rendererCanPrepare &&
+		const bool renderStalled =
+			rendererCanReportStall &&
 			m_videoRenderer && !m_wantToRestartRenderer &&
-			m_videoRenderer->GetPipelinePreparationStatus(
-				preparationStatus);
-		if (preparing && m_rendererTargetHwnd && GetSafeHwnd())
+			m_videoRenderer->GetRenderStallStatus(renderStallStatus);
+		if (renderStalled && m_rendererTargetHwnd && GetSafeHwnd())
 		{
 			const bool wasVisible = m_shaderLoadingWindow.IsVisible();
 			const bool shown = m_shaderLoadingWindow.Show(
-				m_rendererTargetHwnd, GetSafeHwnd(), preparationStatus);
+				m_rendererTargetHwnd, GetSafeHwnd(), renderStallStatus);
 			if (shown && !wasVisible && m_shaderLoadingWindow.IsVisible())
-				m_pipelinePreparationPopupShownTick = GetTickCount64();
-			m_pipelinePreparationStatus = preparationStatus;
+				m_shaderLoadingPopupShownTick = GetTickCount64();
+			m_shaderLoadingStatus = renderStallStatus;
 		}
 		else if (m_shaderLoadingWindow.IsVisible() &&
-			(!rendererCanPrepare ||
-			 GetTickCount64() - m_pipelinePreparationPopupShownTick >= 300))
+			(!rendererCanReportStall ||
+			 GetTickCount64() - m_shaderLoadingPopupShownTick >= 300))
 		{
 			m_shaderLoadingWindow.Hide();
-			m_pipelinePreparationStatus.Empty();
-			m_pipelinePreparationPopupShownTick = 0;
+			m_shaderLoadingStatus.Empty();
+			m_shaderLoadingPopupShownTick = 0;
 		}
 
 		if (m_rendererState == RendererState::RENDERSTATE_RENDERING &&

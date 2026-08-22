@@ -236,10 +236,9 @@ public:
 		rendererRestartRequired = false;
 		return false;
 	}
-	// Reports a genuinely slow renderer-pipeline transition. Implementations
-	// keep this active through the first successfully presented frame; the GUI
-	// displays it independently of the renderer's own OSD.
-	virtual bool GetPipelinePreparationStatus(CString& status) const
+	// Reports a slow rendering call that is currently in flight. The GUI paints
+	// the returned status independently of the renderer thread.
+	virtual bool GetRenderStallStatus(CString& status) const
 	{
 		status.Empty();
 		return false;
