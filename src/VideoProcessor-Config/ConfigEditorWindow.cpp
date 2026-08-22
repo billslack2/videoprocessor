@@ -4686,10 +4686,8 @@ void ConfigEditorWindow::refreshShaderPreparationStatus()
             QStringLiteral("Persistent cache: Not created yet"));
     }
 
-	const QString statusPath = rendererDirectory.filePath(QString::fromWCharArray(
-		ConfigurationLiveApply::ShaderPreparationStatusFileName));
-	const QFileInfo statusInfo(statusPath);
-    QFile status(statusPath);
+    QFile status(rendererDirectory.filePath(QString::fromWCharArray(
+        ConfigurationLiveApply::ShaderPreparationStatusFileName)));
     if (!status.open(QIODevice::ReadOnly))
     {
         if (shaderPreparationStatus_)
@@ -4741,23 +4739,6 @@ void ConfigEditorWindow::refreshShaderPreparationStatus()
 		shaderPreparationProcessId_ = 0;
 	const bool finalBusy = state == QStringLiteral("waiting") ||
 		state == QStringLiteral("preparing");
-	if (state == QStringLiteral("ready") && statusInfo.exists())
-	{
-		const QString completed = statusInfo.lastModified().toString(
-			QStringLiteral("MMM d, h:mm AP"));
-		if (cache.exists() && cache.lastModified() > statusInfo.lastModified())
-		{
-			message = QStringLiteral(
-				"Full preparation last completed %1; the cache changed afterward and has not been fully revalidated.")
-				.arg(completed);
-		}
-		else
-		{
-			message = QStringLiteral("%1 · Prepared %2")
-				.arg(message.isEmpty() ? QStringLiteral("Shaders ready") : message,
-					completed);
-		}
-	}
     if (shaderPreparationStatus_)
         shaderPreparationStatus_->setText(message.isEmpty() ?
             (finalBusy ? QStringLiteral("Preparing shaders...") :
@@ -5409,6 +5390,9 @@ QWidget* ConfigEditorWindow::createShadersSetupPage()
         const QString temporaryPath = cachePath + QStringLiteral(".tmp");
         const QString requestPath = cacheDirectory.filePath(
             QStringLiteral("VideoProcessorShaderCache.clear"));
+        const QString statusPath = cacheDirectory.filePath(
+            QString::fromWCharArray(
+                ConfigurationLiveApply::ShaderPreparationStatusFileName));
         QFile request(requestPath);
         if (!request.open(QIODevice::WriteOnly | QIODevice::Truncate) ||
             request.write("clear\n") < 0)
@@ -5419,6 +5403,10 @@ QWidget* ConfigEditorWindow::createShadersSetupPage()
         request.close();
         QFile::remove(cachePath);
         QFile::remove(temporaryPath);
+        // A ready marker describes the cache that was just removed. Deleting it
+        // makes the next VP startup perform one complete configured preparation
+        // instead of trusting stale status from an earlier cache lifetime.
+        QFile::remove(statusPath);
         setStatus(QStringLiteral(
             "Shader cache will be cleared at the next VP Renderer start."));
         refreshShaderPreparationStatus();

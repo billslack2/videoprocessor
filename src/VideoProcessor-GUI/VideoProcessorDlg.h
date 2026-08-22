@@ -867,8 +867,7 @@ protected:
 	bool StartShaderPreparation(bool blockRendererStart = false);
 	void PollShaderPreparation();
 	void ShowStartupShaderPreparationSplash();
-	void AdvanceShaderPreparation();
-	void FinishShaderPreparation(bool succeeded, const char* detail);
+	bool HasPreparedShaderCache() const;
 	void PublishShaderPreparationStatus(const char* state, size_t current,
 		size_t total, const char* message) const;
 	void UpdateActiveOutputSweep(ULONGLONG now);
@@ -935,21 +934,12 @@ protected:
 	void ApplyUnifiedProfileSnapshot(
 		const std::shared_ptr<const UnifiedProfileRuntime::Snapshot>& snapshot,
 		bool allowRestart);
-	bool ApplyShaderPreparationSnapshot(
-		const std::shared_ptr<const UnifiedProfileRuntime::Snapshot>& snapshot);
-	bool m_shaderPreparationActive = false;
-	bool m_shaderPreparationRestoring = false;
-	// Preparation owns an isolated VideoProcessor process. Retain its process
-	// handle so startup can remain responsive while renderer construction waits
-	// for the fully populated windowed/fullscreen cache.
+	// Preparation owns an isolated VideoProcessor process only when the current
+	// cache lifetime has never completed configured preparation. Retain its
+	// handle so the UI can poll without waiting on GPU compilation.
 	HANDLE m_shaderPreparationProcess = nullptr;
 	bool m_startupShaderPreparationComplete = false;
 	bool m_startupShaderPreparationBlocksRendererStart = false;
-	std::vector<std::shared_ptr<const UnifiedProfileRuntime::Snapshot>>
-		m_shaderPreparationSnapshots;
-	std::shared_ptr<const UnifiedProfileRuntime::Snapshot>
-		m_shaderPreparationOriginalSnapshot;
-	size_t m_shaderPreparationIndex = 0;
 	void ScheduleUnifiedProfileActions(
 		const std::vector<UnifiedProfileRuntime::ActionInvocation>& actions);
 	void PublishUnifiedProfileEvent(const std::string& event,

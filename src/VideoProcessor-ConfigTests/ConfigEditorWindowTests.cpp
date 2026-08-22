@@ -679,10 +679,19 @@ void testEveryPageRoundTrips()
     require(cacheFile.open(QIODevice::WriteOnly) && cacheFile.write("cached") == 6,
         "Cannot create the shader-cache test fixture");
     cacheFile.close();
+    const QString preparationStatusPath = QDir(cacheDirectoryPath).filePath(
+        QStringLiteral("VideoProcessorShaderPreparation.status"));
+    QFile preparationStatus(preparationStatusPath);
+    require(preparationStatus.open(QIODevice::WriteOnly) &&
+        preparationStatus.write("state=ready\n") == 12,
+        "Cannot create the shader-preparation status fixture");
+    preparationStatus.close();
     requireControl<QPushButton>(window,
         QStringLiteral("config.shader.cache.clear"))->click();
     require(!QFileInfo::exists(cachePath),
         "Clear shader cache did not remove the persistent cache file");
+    require(!QFileInfo::exists(preparationStatusPath),
+        "Clear shader cache did not invalidate completed preparation status");
     require(QFileInfo::exists(QDir(cacheDirectoryPath).filePath(
         QStringLiteral("VideoProcessorShaderCache.clear"))),
         "Clear shader cache did not leave a request for the active renderer shutdown path");

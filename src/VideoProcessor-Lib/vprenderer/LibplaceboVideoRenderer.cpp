@@ -3,6 +3,7 @@
 #include "LibplaceboVideoRenderer.h"
 
 #include <ConfigFile.h>
+#include <ConfigurationLiveApply.h>
 #include <EventActionLauncher.h>
 #include <ActivePictureTransitionModel.h>
 #include <AspectRatio.h>
@@ -50,6 +51,7 @@
 #include <chrono>
 #include <cctype>
 #include <cmath>
+#include <condition_variable>
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
@@ -59,6 +61,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <vector>
 
 
@@ -628,6 +631,17 @@ namespace
 			return SHADER_CACHE_CLEAR_RELATIVE_PATH;
 		path.resize(separator + 1);
 		path += SHADER_CACHE_CLEAR_RELATIVE_PATH;
+		return path;
+	}
+
+	std::string ShaderPreparationStatusPath()
+	{
+		std::string path = ShaderCachePath();
+		const size_t separator = path.find_last_of("\\/");
+		if (separator == std::string::npos)
+			return ConfigurationLiveApply::ShaderPreparationStatusFileNameA;
+		path.resize(separator + 1);
+		path += ConfigurationLiveApply::ShaderPreparationStatusFileNameA;
 		return path;
 	}
 
@@ -3448,6 +3462,7 @@ struct LibplaceboVideoRenderer::Impl
 		{
 			DeleteFileA(shaderCachePath.c_str());
 			DeleteFileA((shaderCachePath + ".tmp").c_str());
+			DeleteFileA(ShaderPreparationStatusPath().c_str());
 			DeleteFileA(clearRequestPath.c_str());
 			pl_cache_reset(cache);
 			loadedShaderCacheSignature = 0;
@@ -3514,6 +3529,7 @@ struct LibplaceboVideoRenderer::Impl
 		{
 			DeleteFileA(shaderCachePath.c_str());
 			DeleteFileA((shaderCachePath + ".tmp").c_str());
+			DeleteFileA(ShaderPreparationStatusPath().c_str());
 			DeleteFileA(clearRequestPath.c_str());
 			if (cache)
 				pl_cache_reset(cache);
@@ -6058,9 +6074,8 @@ struct LibplaceboVideoRenderer::Impl
 		restartSettingsFingerprint = EffectiveSettingsFingerprint(settings, false);
 		if (renderingBehaviorChanged)
 		{
-			// Geometry changes can select a different libplacebo program even
-			// without a custom NLS hook. Arm presentation status before the next
-			// render instead of discovering that compile silently.
+			// Geometry changes can select a different cached libplacebo program.
+			// Mark it for delayed validation; a warm hit never displays status.
 			presentationPipelinePrepared = false;
 			// A viewport/profile epoch cannot inherit crop proof. Reacquire from
 			// current-frame shared evidence even when the source generation did
@@ -6229,9 +6244,9 @@ struct LibplaceboVideoRenderer::Impl
 			diagnosticReadbackNonBlack = false;
 		}
 		ConfigureRenderParams(settings, "live profile update");
-		// Rec.709/BT.2020 and other display-profile changes can select a new
-		// libplacebo program. The render worker reports status before entering
-		// pl_render_image, while the UI remains free to paint and accept input.
+		// Rec.709/BT.2020 can select a different composed program even though the
+		// NLS hook itself is unchanged. Validate it on the next render; the delayed
+		// watchdog remains silent for a warm cache hit.
 		presentationPipelinePrepared = false;
 		restartSettingsFingerprint = EffectiveSettingsFingerprint(settings, false);
 		effectiveSettingsFingerprint = EffectiveSettingsFingerprint(settings);
@@ -9297,11 +9312,34 @@ struct LibplaceboVideoRenderer::Impl
 				nlsPipelineVariant != lastNlsPipelineVariant;
 		}
 
-		const bool preparingShader = !presentationPipelinePrepared ||
+		const bool pipelineValidationPending = !presentationPipelinePrepared ||
 			(nlsPipelineActive && nlsPipelineVariantChanged);
-		if (preparingShader && presentationCallback)
-			presentationCallback->OnRendererPresentationStatus(
-				TEXT("VideoProcessor will resume automatically. This can take a few seconds."), true);
+		// A changed profile or geometry is not proof of a cache miss. Start a
+		// bounded watchdog and display compilation status only when pl_render_image
+		// is still busy after normal warm-render latency. The watchdog invokes only
+		// the callback's nonblocking PostMessage path and is joined before return.
+		std::mutex slowRenderMutex;
+		std::condition_variable slowRenderChanged;
+		bool slowRenderFinished = false;
+		std::atomic_bool slowRenderStatusShown{ false };
+		std::thread slowRenderWatchdog;
+		if (pipelineValidationPending && presentationCallback)
+		{
+			IRendererCallback* const callback = presentationCallback;
+			slowRenderWatchdog = std::thread([&]()
+			{
+				std::unique_lock<std::mutex> lock(slowRenderMutex);
+				if (slowRenderChanged.wait_for(lock,
+					std::chrono::milliseconds(150),
+					[&]() { return slowRenderFinished; }))
+					return;
+				lock.unlock();
+				slowRenderStatusShown.store(true, std::memory_order_release);
+				callback->OnRendererPresentationStatus(
+					TEXT("VideoProcessor will resume automatically. This can take a few seconds."),
+					true);
+			});
+		}
 		compileTelemetry.BeginRender();
 		const SteadyClock::time_point renderStart = SteadyClock::now();
 		const bool targetLutApplied =
@@ -9315,6 +9353,13 @@ struct LibplaceboVideoRenderer::Impl
 			SteadyClock::now() - renderStart).count();
 		const LibplaceboCompileSnapshot compileSnapshot =
 			compileTelemetry.EndRender();
+		{
+			std::lock_guard<std::mutex> lock(slowRenderMutex);
+			slowRenderFinished = true;
+		}
+		slowRenderChanged.notify_all();
+		if (slowRenderWatchdog.joinable())
+			slowRenderWatchdog.join();
 		if (rendered)
 			presentationPipelinePrepared = true;
 		if (rendered && compileSnapshot.Compiled() &&
@@ -9326,8 +9371,15 @@ struct LibplaceboVideoRenderer::Impl
 			// blob, so a restart or fullscreen transition cannot repeat that cost.
 			SaveShaderCache();
 		}
-		if (preparingShader && presentationCallback)
+		if (slowRenderStatusShown.load(std::memory_order_acquire) &&
+			presentationCallback)
+		{
 			presentationCallback->OnRendererPresentationStatus(CString(), false);
+			DebugLog::Log(
+				"Slow pipeline status completed: cache=%s render=%s render_ms=%.3f",
+				compileSnapshot.Compiled() ? "cold" : "warm",
+				rendered ? "success" : "failed", renderMs);
+		}
 		if (nlsPipelineActive &&
 			(nlsPipelineVariantChanged || compileSnapshot.Compiled()))
 		{
@@ -9606,7 +9658,13 @@ struct LibplaceboVideoRenderer::Impl
 		if (!pl_swapchain_resize(swapchain, &width, &height))
 			DebugLog::Log("libplacebo: swapchain resize failed (%d x %d)", width, height);
 		else
+		{
+			// A new output geometry may select another cached program. Validate on
+			// the next render, but show status only if its delayed watchdog proves
+			// that the cache lookup was not warm.
+			presentationPipelinePrepared = false;
 			ConfigureAndFallback("resize");
+		}
 	}
 
 	void Resize(HWND videoHwnd)

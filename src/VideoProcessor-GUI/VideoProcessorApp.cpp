@@ -86,7 +86,7 @@ void WriteShaderPreparationStatus(const std::string& configPath,
 	{
 		std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
 		if (!output) return;
-		output << "state=" << state << "\ncurrent=" << current
+		output << "state=" << state << "\npolicy=explicit-clear-v1\ncurrent=" << current
 			<< "\ntotal=" << total << "\nmessage=" << message << "\n";
 	}
 	::MoveFileExA(temporary.c_str(), path.c_str(),

@@ -3,12 +3,24 @@
 #include <ConfigFile.h>
 #include <RendererProfileConfig.h>
 
+#include <cstdint>
 #include <map>
 #include <set>
 #include <string>
 
 namespace ShaderPreparationPolicy
 {
+	inline bool HasCompletedCacheLifetime(bool cacheExists,
+		uint64_t cacheBytes, uint64_t cacheCreationTicks,
+		bool clearRequested, bool statusReady,
+		bool explicitClearInvalidationPolicy,
+		uint64_t statusCompletedTicks)
+	{
+		return cacheExists && cacheBytes > 0 && !clearRequested && statusReady &&
+			(explicitClearInvalidationPolicy ||
+				cacheCreationTicks <= statusCompletedTicks);
+	}
+
 	using Section = std::map<std::string, std::string>;
 	using Snapshot = std::map<std::string, Section>;
 
