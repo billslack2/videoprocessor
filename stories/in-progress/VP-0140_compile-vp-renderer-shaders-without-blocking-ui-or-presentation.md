@@ -236,6 +236,39 @@ No configuration or shader-cache file was changed during deployment. Live
 operator validation of a cold windowed start, fullscreen transition, and F6
 BT.2020 selection remains required before Review.
 
+Final simplification (2026-08-22): live validation of `d351151` showed two
+remaining branch regressions. The delayed compilation overlay could remain
+over video after a slow render, and VP Renderer explicitly replaced every
+non-Off shader selection with `NLS: Fullscreen only` whenever its target HWND
+was the normal embedded/windowed host. That restriction was not a libplacebo
+requirement and directly contradicted the previously working windowed NLS
+behavior.
+
+Source commit `06f652d` (`Simplify VP Renderer shader cache lifecycle`) removes
+the compilation-status callback, watchdog thread, posted UI message, status
+painting, and fullscreen-only selector gate. Configuration exposes only cache
+size and `Clear shader cache`; it contains no Prepare control or preparation
+status. Exhaustive preparation remains deleted. Both windowed and fullscreen
+renderers now apply the selected shader normally, and libplacebo compiles only
+when live rendering reaches a genuine cache miss. UI-originated renderer
+changes retain the existing `try_lock`/coalesced-intent paths rather than
+waiting on a compile.
+
+Verification and deployment (2026-08-22): the complete x64 Release solution
+built successfully from clean commit `06f652d`. A forced non-incremental native
+test rebuild passed all 861 tests, and the complete Config UI suite passed,
+including assertions that the Prepare control and preparation status are
+absent while explicit cache clearing remains. Deployed SHA-256 values are
+`E60BCEA23855A26B0069A49D69B7AC0CD8D52356991197F67A151C66829C08FD`
+for `VideoProcessor.exe`,
+`2741E41BB16B3A2A57A2BC2F59C4FD57D3508EB2E44740860BE3828884FD7BB8`
+for `VideoProcessorVPRenderer.dll`, and
+`B853E6BCA836DF29462AE27852F2D722CF57CF6F8CE78EB479487EE88910F559`
+for Config. The replaced binaries are backed up under
+`C:\\Videoprocessor\\vp\\backups\\vp-0140-06f652d-20260822-0208`.
+No configuration or shader-cache file was changed during deployment. Live
+operator validation remains required before Review.
+
 ## User story
 
 As a VideoProcessor operator, I need every potentially cold VP Renderer shader
