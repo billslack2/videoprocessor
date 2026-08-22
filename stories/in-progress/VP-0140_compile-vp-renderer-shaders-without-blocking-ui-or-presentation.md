@@ -67,6 +67,13 @@ This improves the cold-cache experience and visibility only: the separate
 isolated-context/cache-handoff slice remains necessary to keep old video
 presenting through a brand-new shader compilation.
 
+Deployment (2026-08-21): deployed the successful x64 Release GUI build from
+`b6691e6` to `C:\\Videoprocessor\\vp\\VideoProcessor.exe`; SHA-256
+`E20A96FB55013EC9C82C24D6F2A0C897E69EA1E7389871CD69E0ECC5EE550756`.
+The previous executable is preserved as
+`VideoProcessor.exe.bak-20260821-235513-vp0140-splash`. No configuration file
+was modified.
+
 ## User story
 
 As a VideoProcessor operator, I need every potentially cold VP Renderer shader
