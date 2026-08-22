@@ -6,9 +6,9 @@ story may have ordered child-task IDs as defined below.
 
 ## Registry state
 
-- Last assigned root story: `VP-0139`
-- Next root story number: `VP-0140`
-- Total indexed items: 154
+- Last assigned root story: `VP-0140`
+- Next root story number: `VP-0141`
+- Total indexed items: 155
 
 ## Story locations
 
@@ -171,6 +171,7 @@ they must not contain requirements that are absent from this file.
 | VP-0136 | In Progress | Prevent transient same-axis inward aspect switches |
 | VP-0137 | Done | Restore bounded madVR queue, NLS, and renderer-switch behavior |
 | VP-0139 | Done | Configuration inheritance and VP Renderer quality clarity |
+| VP-0140 | Backlog | Compile VP Renderer shaders without blocking UI or presentation |
 | VP-0066-1 | Done | Characterize the live output pipeline with replayable golden traces |
 | VP-0066-2 | Done | Extract a graph-independent video timing controller |
 | VP-0066-3 | Done | Extract epoch-aware frame transport and processing components |
