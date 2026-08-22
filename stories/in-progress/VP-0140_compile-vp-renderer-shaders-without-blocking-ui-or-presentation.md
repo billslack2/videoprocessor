@@ -303,6 +303,30 @@ Config was left running and unchanged because this correction changes only the
 renderer integration. No configuration or shader-cache file was modified.
 Live operator validation remains required before Review.
 
+Native shader-policy rollback (2026-08-22): live validation of `667c1cf`
+captured a cold base libplacebo render while the configured shader was Off. A
+window resize from 1040x585 to 1056x594 spent 10.66 seconds in GLSL-to-SPIR-V,
+273 ms in SPIR-V-to-HLSL, and 2.66 seconds in HLSL-to-DXBC; the complete render
+stall was 13.82 seconds. The same run logged `dynamic_constants=1`.
+
+That setting was not libplacebo's selected quality preset. VP had begun
+forcibly enabling it in `a31803d` as a speculative recompilation-avoidance
+policy, which caused even shader-Off playback to use a VP-selected base shader
+family. Source commit `a72a3ac` (`Stop overriding libplacebo shader constants`)
+removes the override and its renderer-parameter plumbing. VP now copies the
+native libplacebo render preset without changing `dynamic_constants`; a test
+locks that invariant to the exported native preset.
+
+The complete x64 Release solution built successfully and all 861 native tests
+passed. Deployed SHA-256 values are
+`4B29FF69767B5B084D60DAB4ED4B023B4BE6ED6D69E5B6F0B0697FFE84964D32`
+for `VideoProcessor.exe` and
+`4D7729DE18365411C38B6EAC6401077FE31F703AAC4A15919126F68D30853232`
+for `VideoProcessorVPRenderer.dll`. The replaced pair is backed up under
+`C:\\Videoprocessor\\vp\\backups\\vp-0140-a72a3ac-20260822-0845`.
+The active configuration and 35-object libplacebo cache were preserved. Live
+shader-Off resize validation remains required before Review.
+
 ## User story
 
 As a VideoProcessor operator, I need every potentially cold VP Renderer shader
