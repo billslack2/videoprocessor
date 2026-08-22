@@ -758,6 +758,11 @@ protected:
 	// Stats overlay
 	StatsOverlayWindow* m_statsOverlay = nullptr;
 	StatsData* m_lastStatsData = nullptr;
+	// Renderer telemetry getters are deliberately nonblocking. Retain their
+	// last valid values only within the same renderer/host generation when a
+	// periodic OSD read loses the render-lock race.
+	const IVideoRenderer* m_lastStatsTelemetryRenderer = nullptr;
+	uint32_t m_lastStatsTelemetryGeneration = 0;
 	bool m_statsOverlayRequestedVisible = false;
 
 	struct ActiveOutputSweepCase

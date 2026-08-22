@@ -6263,6 +6263,8 @@ bool CVideoProcessorDlg::TryFinalizeRendererRetirement(
 
 	m_rendererRetirementPending = false;
 	m_rendererRetirementWaitLoggedToken = 0;
+	m_shaderLoadingWindow.Hide();
+	m_shaderLoadingPopupShownTick = 0;
 	if (!completion.succeeded)
 	{
 		DebugLog::Log(
@@ -8515,8 +8517,6 @@ void CVideoProcessorDlg::RenderRemove()
 
 void CVideoProcessorDlg::DestroyVideoRenderer()
 {
-	m_shaderLoadingWindow.Hide();
-	m_shaderLoadingPopupShownTick = 0;
 	if (!m_videoRenderer)
 		return;
 	if (m_fullscreenRetargetPending)
@@ -12153,17 +12153,14 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 
 	if (nIDEvent == SHADER_RULE_REFRESH_TIMER_ID)
 	{
-		// Keep the render-stall overlay available for a future revisit, but do
-		// not show it while normal libplacebo pipeline preparation is fast enough.
-		constexpr bool showRenderStallOverlay = false;
 		CString renderStallStatus;
 		const bool rendererCanReportStall =
 			m_rendererState == RendererState::RENDERSTATE_STARTING ||
 			m_rendererState == RendererState::RENDERSTATE_READY ||
-			m_rendererState == RendererState::RENDERSTATE_RENDERING;
+			m_rendererState == RendererState::RENDERSTATE_RENDERING ||
+			m_rendererState == RendererState::RENDERSTATE_STOPPING;
 		const bool renderStalled =
-			showRenderStallOverlay && rendererCanReportStall &&
-			m_videoRenderer && !m_wantToRestartRenderer &&
+			rendererCanReportStall && m_videoRenderer &&
 			m_videoRenderer->GetRenderStallStatus(renderStallStatus);
 		if (renderStalled && m_rendererTargetHwnd && GetSafeHwnd())
 		{
@@ -12173,7 +12170,10 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 			if (shown && !wasVisible && m_shaderLoadingWindow.IsVisible())
 				m_shaderLoadingPopupShownTick = GetTickCount64();
 		}
-		else if (m_shaderLoadingWindow.IsVisible() &&
+		const bool retainWhileRendererRetires =
+			m_rendererRetirementPending && m_shaderLoadingWindow.IsVisible();
+		if (!renderStalled && !retainWhileRendererRetires &&
+			m_shaderLoadingWindow.IsVisible() &&
 			(!rendererCanReportStall ||
 			 GetTickCount64() - m_shaderLoadingPopupShownTick >= 300))
 		{
@@ -13394,6 +13394,10 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 
 	StatsData stats;
 	stats.outputSweep = m_activeOutputSweepStatus;
+	const IVideoRenderer* const statsRenderer = m_videoRenderer.get();
+	const bool sameStatsTelemetryGeneration = statsRenderer != nullptr &&
+		statsRenderer == m_lastStatsTelemetryRenderer &&
+		m_transitionGeneration == m_lastStatsTelemetryGeneration;
 
 	// Video format info
 	if (m_captureDeviceVideoState && m_captureDeviceVideoState->valid)
@@ -13520,8 +13524,16 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 				stats.presentationTimingStatus);
 		}
 		stats.queueDroppedFrames = m_videoRenderer->DroppedFrameCount();
-		m_videoRenderer->GetOutputModeInfo(stats.outputMode);
-		m_videoRenderer->GetDisplayLutInfo(stats.displayLut);
+		if (!m_videoRenderer->GetOutputModeInfo(stats.outputMode) &&
+			sameStatsTelemetryGeneration)
+		{
+			stats.outputMode = m_lastStatsData->outputMode;
+		}
+		if (!m_videoRenderer->GetDisplayLutInfo(stats.displayLut) &&
+			sameStatsTelemetryGeneration)
+		{
+			stats.displayLut = m_lastStatsData->displayLut;
+		}
 		stats.sceneDetectCorrectionDrops = m_videoRenderer->SceneAwareCorrectionDropCount();
 		stats.sceneDetectCorrectionRepeats = m_videoRenderer->SceneAwareCorrectionRepeatCount();
 		stats.sceneDetectDetected = m_videoRenderer->SceneAwareDetectedCount();
@@ -13575,6 +13587,8 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		CString ingress;
 		if (m_videoRenderer->GetVideoIngressInfo(ingress))
 			stats.videoConversion = ingress;
+		else if (sameStatsTelemetryGeneration)
+			stats.videoConversion = m_lastStatsData->videoConversion;
 	}
 	
 	// Conversion performance (NEW - V210→P010 etc.)
@@ -13674,6 +13688,8 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 
 	// Save current stats for next update
 	*m_lastStatsData = stats;
+	m_lastStatsTelemetryRenderer = statsRenderer;
+	m_lastStatsTelemetryGeneration = m_transitionGeneration;
 }
 
 
