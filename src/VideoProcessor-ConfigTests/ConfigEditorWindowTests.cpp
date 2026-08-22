@@ -2153,7 +2153,7 @@ void testChoiceLabelsAndVpRendererName()
             QStringLiteral("Auto: sRGB") &&
         requireControl<QLabel>(window,
         QStringLiteral("config.vprenderer.sdr_adjust_gamma.auto_status"))->text() ==
-            QStringLiteral("Auto: Source unavailable") &&
+            QStringLiteral("Auto: Conditional SDR-to-sRGB policy") &&
         requireControl<QLabel>(window,
         QStringLiteral("config.vprenderer.sdr_input_transfer.auto_status"))->text() ==
             QStringLiteral("Auto: Source unavailable") &&

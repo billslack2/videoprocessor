@@ -1435,8 +1435,10 @@ void ConfigEditorWindow::refreshRendererAutoStatus()
         else if (binding.key == QStringLiteral("output_gamma"))
             text = QStringLiteral("sRGB");
         else if (binding.key == QStringLiteral("sdr_adjust_gamma"))
-            text = liveSourceTransfer_.isEmpty() ?
-                QStringLiteral("Source unavailable") : liveSourceTransfer_;
+            // This selector controls the conversion policy, rather than
+            // declaring the input transfer. Do not echo the live input EOTF
+            // here: that belongs only to sdr_input_transfer below.
+            text = QStringLiteral("Conditional SDR-to-sRGB policy");
         else if (binding.key == QStringLiteral("sdr_input_transfer"))
             text = liveSourceTransfer_.isEmpty() ?
                 QStringLiteral("Source unavailable") : liveSourceTransfer_;
