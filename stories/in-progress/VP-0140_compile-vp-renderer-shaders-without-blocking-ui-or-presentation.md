@@ -39,6 +39,15 @@ SDR/PQ, windowed/fullscreen, display-profile, and viewport-profile coverage;
 the isolated in-process compiler context will reuse that contract rather than
 inventing a different shader key.
 
+Follow-up commit: `85ca85a` (`VP-0140 run shader preparation out of process`).
+The explicit Config `Prepare shaders` command always launches the existing
+non-capturing `/prepare_shaders` host at below-normal process priority. It no
+longer cycles live VP Renderer profiles or runs prewarm `pl_render_image` calls
+on the presentation worker. The GUI x64 Release build passed. This resolves
+the explicit-preparation trigger; ordinary live selector, resize, output, and
+startup cache-miss preparation still require the isolated context/cache-handoff
+slice.
+
 ## User story
 
 As a VideoProcessor operator, I need every potentially cold VP Renderer shader
