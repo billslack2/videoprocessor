@@ -30,6 +30,15 @@ worker tests passed. Incremental test linking can emit `LNK1103` in this
 worktree due to corrupt debug information; a normal non-incremental Release
 link regenerated the test DLL and passed validation.
 
+Follow-up commit: `9925eee` (`VP-0140 prepare shader worker execution
+context`). The dedicated worker initializes an MTA apartment, runs below normal
+priority, and publishes its thread identity and priority with each completion.
+The focused gate test again passed after an x64 Release rebuild. Inventory also
+confirmed that `/prepare_shaders` already has the required synthetic
+SDR/PQ, windowed/fullscreen, display-profile, and viewport-profile coverage;
+the isolated in-process compiler context will reuse that contract rather than
+inventing a different shader key.
+
 ## User story
 
 As a VideoProcessor operator, I need every potentially cold VP Renderer shader
