@@ -2,13 +2,30 @@
 
 ## Status
 
-In progress. Implementation began 2026-08-22 from the current
-`origin/v1.2.001-beta` integration tip, source commit `802038d`.
+Review. Implementation is committed as `892668f` on
+`codex/vp-0141-live-settings`, based on the current 2026-08-22
+`origin/v1.2.001-beta` integration tip `802038d`. The Qt/libplacebo review
+confirmed the existing immutable render-thread safe point and cache lifecycle
+are preserved.
 
 The incident and source review establish a bounded implementation path:
 compatible libplacebo processing changes must use the existing render-thread
 live-update path, while fullscreen and Config input, z-order, and close
 routing must remain recoverable during an arbitrarily slow render call.
+
+The effective-delta gate now
+queues compatible immutable settings for the existing libplacebo render-thread
+safe point; fullscreen raw-key forwarding and asynchronous Config target
+acknowledgement are implemented. The Config acknowledgement uses an explicit,
+validated VP endpoint so a mutable fullscreen owner cannot receive or lose the
+reply. Validation: x64 Release builds of Lib, VPRenderer, GUI, Config, and
+ConfigTests; the full Config suite; the focused native ownership/async-ack
+test; and the native suite (861 passed). No deployment was performed.
+
+Remaining review/acceptance: manually change each of the five incident
+settings while `rec709_scope_med` is active in fullscreen, verify the log says
+`compatible live update queued`, and confirm Config, configured shortcuts,
+Alt+F4, and normal exit remain responsive during any cold shader compile.
 
 ## Problem
 
