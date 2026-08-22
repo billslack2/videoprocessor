@@ -3972,11 +3972,6 @@ struct LibplaceboVideoRenderer::Impl
 			static_cast<LibplaceboRenderParameters::Toggle>(settings.sigmoid);
 		parameterSettings.dithering =
 			static_cast<LibplaceboRenderParameters::Toggle>(settings.dithering);
-		// VP changes rendering profiles, presentation targets and calibrated
-		// output while the application is live. libplacebo documents dynamic
-		// constants precisely for this interactive case: it trades a small amount
-		// of shader throughput for avoiding a synchronous new shader variant.
-		parameterSettings.dynamicConstants = true;
 
 		LibplaceboRenderParameters::Projection projection;
 		std::string projectionError;

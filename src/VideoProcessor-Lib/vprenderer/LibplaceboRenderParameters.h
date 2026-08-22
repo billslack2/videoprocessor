@@ -46,10 +46,6 @@ namespace LibplaceboRenderParameters
 		Toggle deband = Toggle::Auto;
 		Toggle sigmoid = Toggle::Auto;
 		Toggle dithering = Toggle::Auto;
-		// Keep compile-time shader values dynamic when a caller needs to change
-		// render settings without pausing presentation for a new shader variant.
-		// This is deliberately a runtime policy, not a user-facing quality value.
-		bool dynamicConstants = false;
 	};
 
 	struct Projection

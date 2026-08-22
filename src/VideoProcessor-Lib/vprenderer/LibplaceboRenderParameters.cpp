@@ -110,7 +110,6 @@ namespace LibplaceboRenderParameters
 			projection.qualityPresetExport.c_str(), error);
 		if (!preset) return false;
 		projection.renderParams = *preset;
-		projection.renderParams.dynamic_constants = settings.dynamicConstants;
 
 		// A target display LUT has a known incompatible path with the preset's
 		// error-diffusion shader. It remains an output-LUT decision, not a user
