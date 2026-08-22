@@ -16,8 +16,19 @@ calls across an unsafe D3D11 context. The next slice will bind that scheduler to
 a renderer-owned compatible compilation context and cache handoff.
 
 Initial source commit: `8fa4cbf` (`VP-0140 add shader preparation scheduling
-boundary`). `VideoProcessor-Test` x64 Release built successfully; focused
-coalescing/supersession and retirement-publication tests passed.
+boundary`). Follow-up commit: `4c99fd6` (`VP-0140 add dedicated shader
+preparation worker`). The worker owns cancellation, coalescing, completion,
+and background join semantics without holding a renderer/GPU/UI lock while it
+executes work. A deterministic gate proves requesting-thread responsiveness,
+worker-thread execution, newest-request promotion, stale completion discard,
+and retirement-safe publication. It deliberately does not yet dispatch
+libplacebo work; the next slice creates a compatible isolated D3D11/libplacebo
+context and hands its serialized cache result back to the live renderer.
+
+`VideoProcessor-Test` x64 Release built successfully; focused coordinator and
+worker tests passed. Incremental test linking can emit `LNK1103` in this
+worktree due to corrupt debug information; a normal non-incremental Release
+link regenerated the test DLL and passed validation.
 
 ## User story
 
