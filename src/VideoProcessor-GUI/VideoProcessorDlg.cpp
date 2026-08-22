@@ -4406,6 +4406,17 @@ CVideoProcessorDlg::~CVideoProcessorDlg()
 	}
 	if (m_shaderPreparationProcess)
 	{
+		if (m_shaderPreparationJob)
+		{
+			// Closing a kill-on-close job terminates an unfinished isolated
+			// preparation even if VP itself is being torn down abnormally.
+			CloseHandle(m_shaderPreparationJob);
+			m_shaderPreparationJob = nullptr;
+		}
+		else
+		{
+			TerminateProcess(m_shaderPreparationProcess, ERROR_CANCELLED);
+		}
 		CloseHandle(m_shaderPreparationProcess);
 		m_shaderPreparationProcess = nullptr;
 	}
@@ -6235,29 +6246,66 @@ bool CVideoProcessorDlg::StartShaderPreparation(bool blockRendererStart)
 	}
 	std::wstring executable = directory + L"VideoProcessor.exe";
 	std::wstring command = L"\"" + executable + L"\" /prepare_shaders";
+	PublishShaderPreparationStatus("waiting", 0, 0,
+		"Starting non-capturing shader preparation...");
+	HANDLE job = ::CreateJobObjectW(nullptr, nullptr);
+	if (job)
+	{
+		JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};
+		limits.BasicLimitInformation.LimitFlags =
+			JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+		if (!::SetInformationJobObject(job,
+			JobObjectExtendedLimitInformation, &limits, sizeof(limits)))
+		{
+			::CloseHandle(job);
+			job = nullptr;
+		}
+	}
 	STARTUPINFOW startup{};
 	startup.cb = sizeof(startup);
 	PROCESS_INFORMATION process{};
 	if (!::CreateProcessW(executable.c_str(), &command[0], nullptr,
-		nullptr, FALSE, CREATE_NO_WINDOW | BELOW_NORMAL_PRIORITY_CLASS,
+		nullptr, FALSE, CREATE_NO_WINDOW | BELOW_NORMAL_PRIORITY_CLASS |
+			CREATE_SUSPENDED,
 		nullptr, directory.c_str(), &startup, &process))
 	{
+		if (job) ::CloseHandle(job);
 		PublishShaderPreparationStatus("failed", 0, 0,
 			"Non-capturing shader preparation could not start.");
 		if (blockRendererStart)
 			m_startupShaderPreparationComplete = true;
 		return false;
 	}
+	if (job && !::AssignProcessToJobObject(job, process.hProcess))
+	{
+		DebugLog::Log(
+			"Shader preparation job assignment failed: process=%lu error=%lu; using explicit shutdown cancellation",
+			process.dwProcessId, GetLastError());
+		::CloseHandle(job);
+		job = nullptr;
+	}
+	if (::ResumeThread(process.hThread) == static_cast<DWORD>(-1))
+	{
+		const DWORD resumeError = GetLastError();
+		::TerminateProcess(process.hProcess, resumeError);
+		::CloseHandle(process.hThread);
+		::CloseHandle(process.hProcess);
+		if (job) ::CloseHandle(job);
+		PublishShaderPreparationStatus("failed", 0, 0,
+			"Non-capturing shader preparation could not resume.");
+		if (blockRendererStart)
+			m_startupShaderPreparationComplete = true;
+		return false;
+	}
 	::CloseHandle(process.hThread);
 	m_shaderPreparationProcess = process.hProcess;
+	m_shaderPreparationJob = job;
 	m_startupShaderPreparationBlocksRendererStart = blockRendererStart;
 	DebugLog::Log(
 		"Shader preparation launched in non-capturing host: startup_gate=%d active_vp_renderer=%d renderer_state=%d process=%lu",
 		blockRendererStart ? 1 : 0,
 		m_videoRenderer && IsAlphaRendererSelected() ? 1 : 0,
 		static_cast<int>(m_rendererState), process.dwProcessId);
-	PublishShaderPreparationStatus("waiting", 0, 0,
-		"Starting non-capturing shader preparation...");
 	if (blockRendererStart)
 		ShowStartupShaderPreparationSplash();
 	return true;
@@ -6350,11 +6398,37 @@ void CVideoProcessorDlg::ShowStartupShaderPreparationSplash()
 			target, target && ::IsWindow(target) ? 1 : 0, GetSafeHwnd());
 		return;
 	}
-	const CString message(
-		TEXT("Preparing all configured windowed and fullscreen shader variants.\r\n"
-			"Video will begin automatically."));
+	CString message(TEXT(
+		"Preparing all configured windowed and fullscreen shader variants."));
+	std::wstring directory;
+	if (GetApplicationDirectory(directory))
+	{
+		const std::wstring statusPath = directory + L"vprenderer\\" +
+			ConfigurationLiveApply::ShaderPreparationStatusFileName;
+		std::ifstream status(statusPath, std::ios::binary);
+		std::string line;
+		while (std::getline(status, line))
+		{
+			if (line.rfind("message=", 0) != 0)
+				continue;
+			line.erase(0, 8);
+			if (!line.empty() && line.back() == '\r') line.pop_back();
+			if (!line.empty()) message = CString(line.c_str());
+			break;
+		}
+	}
+	message += TEXT("\r\nVideo will begin automatically; the UI remains available.");
+	if (m_rendererTransitionWindow.IsVisible() &&
+		m_startupShaderPreparationSplashMessage == message)
+	{
+		m_rendererTransitionWindow.KeepOnTop();
+		m_startupShaderPreparationSplashVisible = true;
+		return;
+	}
+	m_startupShaderPreparationSplashMessage = message;
 	m_rendererDetailStringStatic.SetWindowText(message);
 	m_rendererTransitionWindow.ShowStatus(target, GetSafeHwnd(), message);
+	m_startupShaderPreparationSplashVisible = true;
 	const HRESULT compositionResult =
 		m_rendererTransitionWindow.SynchronizeComposition();
 	DebugLog::Log(
@@ -6370,13 +6444,28 @@ void CVideoProcessorDlg::PollShaderPreparation()
 		return;
 	const DWORD waitResult = ::WaitForSingleObject(m_shaderPreparationProcess, 0);
 	if (waitResult == WAIT_TIMEOUT)
+	{
+		if (m_startupShaderPreparationBlocksRendererStart &&
+			IsAlphaRendererSelected())
+			ShowStartupShaderPreparationSplash();
+		else if (m_startupShaderPreparationSplashVisible)
+		{
+			m_rendererTransitionWindow.Hide();
+			m_startupShaderPreparationSplashVisible = false;
+		}
 		return;
+	}
 
 	DWORD exitCode = ERROR_PROCESS_ABORTED;
 	const BOOL gotExitCode = ::GetExitCodeProcess(
 		m_shaderPreparationProcess, &exitCode);
 	::CloseHandle(m_shaderPreparationProcess);
 	m_shaderPreparationProcess = nullptr;
+	if (m_shaderPreparationJob)
+	{
+		::CloseHandle(m_shaderPreparationJob);
+		m_shaderPreparationJob = nullptr;
+	}
 	const bool succeeded = gotExitCode && exitCode == 0;
 	DebugLog::Log(
 		"Non-capturing shader preparation finished: succeeded=%d exit_code=%lu startup_gate=%d",
@@ -6388,6 +6477,8 @@ void CVideoProcessorDlg::PollShaderPreparation()
 	m_startupShaderPreparationBlocksRendererStart = false;
 	m_startupShaderPreparationComplete = true;
 	m_rendererTransitionWindow.Hide();
+	m_startupShaderPreparationSplashVisible = false;
+	m_startupShaderPreparationSplashMessage.Empty();
 	if (!succeeded)
 	{
 		m_rendererDetailStringStatic.SetWindowText(

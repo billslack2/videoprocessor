@@ -33,6 +33,7 @@
 #include <atomic>
 #include <chrono>
 #include <fstream>
+#include <iterator>
 #include <thread>
 
 #include "VideoProcessorApp.h"
@@ -70,6 +71,43 @@ struct SyntheticFrameBuffer final : IUnknown
 	ULONG STDMETHODCALLTYPE Release() override { return --references; }
 };
 
+struct OwnedPreparationMutex
+{
+	HANDLE handle = nullptr;
+	bool owned = false;
+	~OwnedPreparationMutex()
+	{
+		if (owned && handle) ::ReleaseMutex(handle);
+		if (handle) ::CloseHandle(handle);
+	}
+};
+
+bool HasCompletedShaderPreparation(const std::string& configPath)
+{
+	const size_t separator = configPath.find_last_of("\\/");
+	if (separator == std::string::npos) return false;
+	const std::string directory = configPath.substr(0, separator) +
+		"\\vprenderer\\";
+	if (::GetFileAttributesA((directory +
+		"VideoProcessorShaderCache.clear").c_str()) != INVALID_FILE_ATTRIBUTES)
+		return false;
+	WIN32_FILE_ATTRIBUTE_DATA cache{};
+	if (!::GetFileAttributesExA((directory +
+		"VideoProcessorShaderCache.bin").c_str(), GetFileExInfoStandard, &cache))
+		return false;
+	const ULONGLONG bytes =
+		(static_cast<ULONGLONG>(cache.nFileSizeHigh) << 32) |
+		cache.nFileSizeLow;
+	if (bytes == 0) return false;
+	std::ifstream status(directory +
+		ConfigurationLiveApply::ShaderPreparationStatusFileNameA,
+		std::ios::binary);
+	const std::string text((std::istreambuf_iterator<char>(status)),
+		std::istreambuf_iterator<char>());
+	return text.rfind("state=ready", 0) == 0 &&
+		text.find("\npolicy=explicit-clear-v1\n") != std::string::npos;
+}
+
 void WriteShaderPreparationStatus(const std::string& configPath,
 	const char* state, size_t current, size_t total, const char* message)
 {
@@ -98,6 +136,25 @@ int RunNonCapturingShaderPreparation()
 	ConfigFile config;
 	if (!config.Load()) return 1;
 	const std::string configPath = config.GetLoadedPath();
+	::SetLastError(ERROR_SUCCESS);
+	OwnedPreparationMutex preparationMutex;
+	preparationMutex.handle = ::CreateMutexW(nullptr, FALSE,
+		L"Local\\VideoProcessorShaderPreparation-v1");
+	if (!preparationMutex.handle) return 1;
+	const bool anotherPreparationWasActive =
+		::GetLastError() == ERROR_ALREADY_EXISTS;
+	const DWORD mutexWait = ::WaitForSingleObject(
+		preparationMutex.handle, INFINITE);
+	if (mutexWait != WAIT_OBJECT_0 && mutexWait != WAIT_ABANDONED)
+		return 1;
+	preparationMutex.owned = true;
+	if (anotherPreparationWasActive &&
+		HasCompletedShaderPreparation(configPath))
+	{
+		DebugLog::Log(
+			"Non-capturing shader preparation coalesced: another owner completed the cache");
+		return 0;
+	}
 	WriteShaderPreparationStatus(configPath, "preparing", 0, 0,
 		"Starting non-capturing shader preparation...");
 	if (!LibplaceboPluginVideoRenderer::IsAvailable())
@@ -210,8 +267,6 @@ int RunNonCapturingShaderPreparation()
 					-32000, -32000, preparationTarget.size.cx,
 					preparationTarget.size.cy, nullptr, nullptr,
 					AfxGetInstanceHandle(), nullptr);
-				if (parent)
-					::ShowWindow(parent, SW_SHOWNOACTIVATE);
 			}
 			HWND target = ::CreateWindowExW(
 				preparationTarget.embedded ? 0 :
@@ -228,8 +283,9 @@ int RunNonCapturingShaderPreparation()
 				throw std::runtime_error(
 					"shader preparation could not create a rendering target");
 			}
-			if (!preparationTarget.embedded)
-				::ShowWindow(target, SW_SHOWNOACTIVATE);
+			// Swapchain creation and rendering do not require either synthetic
+			// target to be shown. Keeping both hidden guarantees that preparation
+			// can never expose a black/logo window on the operator desktop.
 
 			try
 			{

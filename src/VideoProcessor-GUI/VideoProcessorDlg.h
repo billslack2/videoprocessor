@@ -938,8 +938,11 @@ protected:
 	// cache lifetime has never completed configured preparation. Retain its
 	// handle so the UI can poll without waiting on GPU compilation.
 	HANDLE m_shaderPreparationProcess = nullptr;
+	HANDLE m_shaderPreparationJob = nullptr;
 	bool m_startupShaderPreparationComplete = false;
 	bool m_startupShaderPreparationBlocksRendererStart = false;
+	bool m_startupShaderPreparationSplashVisible = false;
+	CString m_startupShaderPreparationSplashMessage;
 	void ScheduleUnifiedProfileActions(
 		const std::vector<UnifiedProfileRuntime::ActionInvocation>& actions);
 	void PublishUnifiedProfileEvent(const std::string& event,
