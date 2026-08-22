@@ -19,6 +19,7 @@
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
+#include <QEventLoop>
 #include <QFrame>
 #include <QImage>
 #include <QHeaderView>
@@ -50,6 +51,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cstdint>
 #include <functional>
 #include <iostream>
 #include <stdexcept>
@@ -66,6 +68,8 @@ WNDPROC testOwnerOriginalProcedure = nullptr;
 HWND testAdvertisedEditor = nullptr;
 bool testActivateOnAssociation = false;
 bool testAssociationActivationAcknowledged = false;
+uint32_t testPresentationTargetAcknowledgementSequence = 0;
+HWND testPresentationTargetAcknowledgementEditor = nullptr;
 
 void answerInputDialog(const QString& text);
 
@@ -259,6 +263,17 @@ LRESULT CALLBACK testOwnerProcedure(HWND window, UINT message,
 {
     static const UINT associationMessage = RegisterWindowMessageW(
         L"VideoProcessor.ConfigEditor.Association.v1");
+	static const UINT presentationTargetAcknowledgementMessage =
+		RegisterWindowMessageW(
+			L"VideoProcessor.ConfigEditor.PresentationTargetAck.v2");
+	if (message == presentationTargetAcknowledgementMessage)
+	{
+		testPresentationTargetAcknowledgementSequence =
+			static_cast<uint32_t>(wParam);
+		testPresentationTargetAcknowledgementEditor =
+			reinterpret_cast<HWND>(lParam);
+		return 1;
+	}
     if (message == associationMessage)
     {
         const HWND editor = reinterpret_cast<HWND>(lParam);
@@ -3440,6 +3455,36 @@ void testNativeOwnerPreservesQtInputAndPopupAssociation()
         SMTO_ABORTIFHUNG | SMTO_BLOCK, 1000, &targetAcknowledged) &&
         targetAcknowledged == 1,
         "Replacement presentation target was not accepted");
+	const UINT targetMessageV2 = RegisterWindowMessageW(
+		L"VideoProcessor.ConfigEditor.PresentationTarget.v2");
+	const UINT acknowledgementEndpointMessage = RegisterWindowMessageW(
+		L"VideoProcessor.ConfigEditor.PresentationTargetAckEndpoint.v1");
+	constexpr uint32_t targetSequence = 0x141;
+	testPresentationTargetAcknowledgementSequence = 0;
+	testPresentationTargetAcknowledgementEditor = nullptr;
+	require(PostMessageW(editor, acknowledgementEndpointMessage,
+		static_cast<WPARAM>(GetCurrentProcessId()),
+		reinterpret_cast<LPARAM>(owner)),
+		"Could not queue asynchronous presentation-target acknowledgement endpoint");
+	require(PostMessageW(editor, targetMessageV2,
+		(static_cast<WPARAM>(targetSequence) << 32) |
+			static_cast<WPARAM>(GetCurrentProcessId()),
+		reinterpret_cast<LPARAM>(replacementHost)),
+		"Could not queue asynchronous presentation-target v2 update");
+	QEventLoop acknowledgementLoop;
+	QTimer acknowledgementPoll;
+	QObject::connect(&acknowledgementPoll, &QTimer::timeout,
+		&acknowledgementLoop, [&acknowledgementLoop, targetSequence]
+		{
+			if (testPresentationTargetAcknowledgementSequence == targetSequence)
+				acknowledgementLoop.quit();
+		});
+	QTimer::singleShot(1000, &acknowledgementLoop, &QEventLoop::quit);
+	acknowledgementPoll.start(10);
+	acknowledgementLoop.exec();
+	require(testPresentationTargetAcknowledgementSequence == targetSequence &&
+		testPresentationTargetAcknowledgementEditor == editor,
+		"Presentation-target v2 update did not asynchronously acknowledge the current Config HWND");
     QCoreApplication::processEvents();
     require(GetWindow(editor, GW_OWNER) == nullptr &&
         (GetWindowLongPtrW(editor, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0,
@@ -3494,6 +3539,8 @@ void testNativeOwnerPreservesQtInputAndPopupAssociation()
         reinterpret_cast<LONG_PTR>(testOwnerOriginalProcedure));
     testOwnerOriginalProcedure = nullptr;
     testAdvertisedEditor = nullptr;
+	testPresentationTargetAcknowledgementSequence = 0;
+	testPresentationTargetAcknowledgementEditor = nullptr;
     DestroyWindow(owner);
 }
 

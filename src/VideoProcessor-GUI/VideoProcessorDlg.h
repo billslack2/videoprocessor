@@ -13,6 +13,7 @@
 #include <set>
 #include <map>
 #include <atomic>
+#include <cstdint>
 #include <condition_variable>
 #include <memory>
 #include <mutex>
@@ -429,6 +430,13 @@ protected:
 	ULONGLONG m_configurationEditorActivationAcknowledgedTick = 0;
 	HWND m_configurationEditorHwnd = nullptr;
 	DWORD m_configurationEditorProcessId = 0;
+	uint32_t m_configurationEditorPresentationSequence = 0;
+	uint32_t m_configurationEditorPresentationRequired = 0;
+	uint32_t m_configurationEditorPresentationAcknowledged = 0;
+	HWND m_configurationEditorPresentationEditor = nullptr;
+	HWND m_configurationEditorPresentationTarget = nullptr;
+	ULONGLONG m_configurationEditorPresentationQueuedTick = 0;
+	bool m_configurationEditorPresentationTimeoutLogged = false;
 	WORD m_lastBackgroundShortcutCommand = 0;
 	ULONGLONG m_lastBackgroundShortcutTick = 0;
 	HANDLE m_configurationChangedEvent = nullptr;
@@ -904,8 +912,7 @@ protected:
 	void TrackConfigurationEditor(HWND editor);
 	HWND VisibleAssociatedConfigurationEditor() const;
 	bool RequestConfigurationEditorReveal(HWND editor);
-	bool PublishConfigurationEditorPresentationTarget(HWND editor,
-		bool synchronous = false);
+	bool PublishConfigurationEditorPresentationTarget(HWND editor);
 	bool RequestConfigurationEditorOneShotReassert(HWND editor,
 		HWND presentationTarget);
 	HWND ConfigurationEditorOwner();
@@ -974,6 +981,8 @@ protected:
 	afx_msg LRESULT OnConfigurationEditorHotkey(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnConfigurationEditorAssociation(WPARAM wParam,
 		LPARAM lParam);
+	afx_msg LRESULT OnConfigurationEditorPresentationTargetAcknowledgement(
+		WPARAM wParam, LPARAM lParam);
 	afx_msg void OnCommandToggleNoUi();
 	afx_msg HCURSOR	OnQueryDragIcon();
 	afx_msg void OnGetMinMaxInfo(MINMAXINFO* minMaxInfo);

@@ -25,6 +25,7 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QDialog>
+#include <QDebug>
 #include <QEvent>
 #include <QFile>
 #include <QFileInfo>
@@ -2019,6 +2020,19 @@ void ConfigEditorWindow::applyScopedTopmost()
 {
     if (!pendingTopmostReassert_ || !scopedTopmostEligible_ || !isVisible())
         return;
+	if (hasActiveOwnedPopup())
+	{
+		if (!topmostReassertDeferredForPopup_)
+		{
+			topmostReassertDeferredForPopup_ = true;
+			qInfo("Configuration editor z-order repair deferred: active Qt popup");
+		}
+		// A native topmost request can reorder the popup out from under its menu
+		// or combo list. Keep the repair pending and retry from the Qt event loop
+		// after the popup has had a chance to close.
+		QTimer::singleShot(50, this, [this] { applyScopedTopmost(); });
+		return;
+	}
     // Config is an operator modal surface.  While it is visible, retain its
     // topmost placement even after another application receives foreground.
     // This deliberately matches madVR's configuration behavior and keeps the
@@ -2028,6 +2042,11 @@ void ConfigEditorWindow::applyScopedTopmost()
     scopedTopmost_ = SetWindowPos(editor, HWND_TOPMOST, 0, 0, 0, 0,
         SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW) != FALSE;
     pendingTopmostReassert_ = false;
+	if (topmostReassertDeferredForPopup_)
+	{
+		topmostReassertDeferredForPopup_ = false;
+		qInfo("Configuration editor z-order repair applied after Qt popup closed");
+	}
 }
 
 void ConfigEditorWindow::removeScopedTopmost()
@@ -6344,14 +6363,47 @@ bool ConfigEditorWindow::nativeEvent(const QByteArray& eventType,
         L"VideoProcessor.ConfigEditor.Activate.v1");
     static const UINT presentationTargetMessage = RegisterWindowMessageW(
         L"VideoProcessor.ConfigEditor.PresentationTarget.v1");
+	static const UINT presentationTargetMessageV2 = RegisterWindowMessageW(
+		L"VideoProcessor.ConfigEditor.PresentationTarget.v2");
+	static const UINT presentationTargetAcknowledgementEndpointMessage =
+		RegisterWindowMessageW(
+			L"VideoProcessor.ConfigEditor.PresentationTargetAckEndpoint.v1");
+	static const UINT presentationTargetAcknowledgementMessageV2 =
+		RegisterWindowMessageW(
+			L"VideoProcessor.ConfigEditor.PresentationTargetAck.v2");
     static const UINT reassertMessage = RegisterWindowMessageW(
         L"VideoProcessor.ConfigEditor.Reassert.v1");
     if (!message)
         return QMainWindow::nativeEvent(eventType, nativeMessage, result);
+	if (presentationTargetAcknowledgementEndpointMessage &&
+		message->message == presentationTargetAcknowledgementEndpointMessage)
+	{
+		const DWORD requestedProcessId = static_cast<DWORD>(message->wParam);
+		const HWND requestedEndpoint = reinterpret_cast<HWND>(message->lParam);
+		DWORD actualProcessId = 0;
+		if (requestedEndpoint && IsWindow(requestedEndpoint))
+			GetWindowThreadProcessId(requestedEndpoint, &actualProcessId);
+		const bool accepted = requestedProcessId != 0 &&
+			requestedProcessId == ownerProcessId_ &&
+			actualProcessId == requestedProcessId;
+		if (accepted)
+		{
+			presentationTargetAcknowledgementHandle_ =
+				reinterpret_cast<quintptr>(requestedEndpoint);
+			presentationTargetAcknowledgementProcessId_ = requestedProcessId;
+		}
+		if (result) *result = accepted ? 1 : 0;
+		return true;
+	}
 
-    if (message->message == presentationTargetMessage)
+    if (message->message == presentationTargetMessage ||
+		message->message == presentationTargetMessageV2)
     {
         const DWORD requestedProcessId = static_cast<DWORD>(message->wParam);
+		const quint32 requestedSequence =
+			message->message == presentationTargetMessageV2 ?
+				static_cast<quint32>(static_cast<quint64>(message->wParam) >> 32) :
+				0;
         const HWND requestedTarget = reinterpret_cast<HWND>(message->lParam);
         DWORD actualProcessId = 0;
         if (requestedTarget && IsWindow(requestedTarget))
@@ -6363,9 +6415,29 @@ bool ConfigEditorWindow::nativeEvent(const QByteArray& eventType,
         {
             presentationTargetHandle_ = reinterpret_cast<quintptr>(requestedTarget);
             presentationTargetProcessId_ = requestedProcessId;
-			// The presentation target is placement metadata only. Re-parenting or
-			// reasserting z-order here disrupts a combo popup that the operator may
-			// be using while VP rebuilds its renderer.
+			if (isVisible() && scopedTopmostEligible_)
+			{
+				pendingTopmostReassert_ = true;
+				QTimer::singleShot(0, this, [this] { applyScopedTopmost(); });
+			}
+			// The target is placement metadata only: Config remains an independent
+			// native top-level window and never acquires the fullscreen HWND as an
+			// owner. v2 acknowledges receiver acceptance asynchronously; VP treats
+			// a queued PostMessage as pending, never as accepted.
+			const HWND editor = reinterpret_cast<HWND>(effectiveWinId());
+			if (requestedSequence != 0 && presentationTargetAcknowledgementMessageV2 &&
+				presentationTargetAcknowledgementHandle_ && editor &&
+				IsWindow(editor) &&
+				presentationTargetAcknowledgementProcessId_ == requestedProcessId &&
+				IsWindow(reinterpret_cast<HWND>(
+					presentationTargetAcknowledgementHandle_)))
+			{
+				PostMessageW(reinterpret_cast<HWND>(
+					presentationTargetAcknowledgementHandle_),
+					presentationTargetAcknowledgementMessageV2,
+					static_cast<WPARAM>(requestedSequence),
+					reinterpret_cast<LPARAM>(editor));
+			}
         }
         if (result) *result = accepted ? 1 : 0;
         return true;

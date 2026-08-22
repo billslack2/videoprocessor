@@ -134,7 +134,10 @@ private:
     bool ownerApplied_ = false;
     quintptr presentationTargetHandle_ = 0;
     quint32 presentationTargetProcessId_ = 0;
+    quintptr presentationTargetAcknowledgementHandle_ = 0;
+    quint32 presentationTargetAcknowledgementProcessId_ = 0;
     bool pendingTopmostReassert_ = false;
+    bool topmostReassertDeferredForPopup_ = false;
     bool scopedTopmost_ = false;
     bool explicitRevealIntent_ = false;
     bool scopedTopmostEligible_ = false;

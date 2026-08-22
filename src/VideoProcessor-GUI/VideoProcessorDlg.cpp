@@ -1820,6 +1820,9 @@ DisplayTimingSnapshot GetDisplayTimingSnapshot(HWND hwnd)
 
 static UINT WM_CONFIGURATION_EDITOR_ASSOCIATION =
 	::RegisterWindowMessageW(L"VideoProcessor.ConfigEditor.Association.v1");
+static UINT WM_CONFIGURATION_EDITOR_PRESENTATION_TARGET_ACKNOWLEDGEMENT =
+	::RegisterWindowMessageW(
+		L"VideoProcessor.ConfigEditor.PresentationTargetAck.v2");
 
 BEGIN_MESSAGE_MAP(CVideoProcessorDlg, CDialog)
 
@@ -1897,6 +1900,9 @@ BEGIN_MESSAGE_MAP(CVideoProcessorDlg, CDialog)
 	ON_MESSAGE(WM_HOTKEY, &CVideoProcessorDlg::OnConfigurationEditorHotkey)
 	ON_REGISTERED_MESSAGE(WM_CONFIGURATION_EDITOR_ASSOCIATION,
 		&CVideoProcessorDlg::OnConfigurationEditorAssociation)
+	ON_REGISTERED_MESSAGE(
+		WM_CONFIGURATION_EDITOR_PRESENTATION_TARGET_ACKNOWLEDGEMENT,
+		&CVideoProcessorDlg::OnConfigurationEditorPresentationTargetAcknowledgement)
 	ON_COMMAND_RANGE(ID_COMMAND_SHADER_RULE_FIRST, ID_COMMAND_SHADER_RULE_LAST, &CVideoProcessorDlg::OnCommandShaderRule)
 	ON_COMMAND_RANGE(ID_COMMAND_DISPLAY_RULE_FIRST, ID_COMMAND_DISPLAY_RULE_LAST, &CVideoProcessorDlg::OnCommandDisplayRule)
 	ON_COMMAND_RANGE(ID_COMMAND_UNIFIED_PROFILE_FIRST, ID_COMMAND_UNIFIED_PROFILE_LAST, &CVideoProcessorDlg::OnCommandDisplayRule)
@@ -2340,7 +2346,7 @@ LRESULT CVideoProcessorDlg::OnConfigurationEditorAssociation(
 }
 
 bool CVideoProcessorDlg::PublishConfigurationEditorPresentationTarget(
-	HWND editor, bool synchronous)
+	HWND editor)
 {
 	if (!editor || !::IsWindow(editor))
 		return false;
@@ -2375,42 +2381,114 @@ bool CVideoProcessorDlg::PublishConfigurationEditorPresentationTarget(
 		return false;
 	}
 	static const UINT targetMessage = ::RegisterWindowMessageW(
-		L"VideoProcessor.ConfigEditor.PresentationTarget.v1");
-	if (!targetMessage)
+		L"VideoProcessor.ConfigEditor.PresentationTarget.v2");
+	static const UINT acknowledgementEndpointMessage =
+		::RegisterWindowMessageW(
+			L"VideoProcessor.ConfigEditor.PresentationTargetAckEndpoint.v1");
+	const HWND acknowledgementEndpoint = GetSafeHwnd();
+	if (!targetMessage || !acknowledgementEndpointMessage ||
+		!acknowledgementEndpoint || !::IsWindow(acknowledgementEndpoint))
 		return false;
-	DWORD_PTR acknowledgement = 0;
-	LRESULT delivered = 0;
-	bool accepted = false;
-	if (synchronous)
+	const ULONGLONG now = GetTickCount64();
+	if (editor == m_configurationEditorPresentationEditor &&
+		target == m_configurationEditorPresentationTarget &&
+		m_configurationEditorPresentationRequired != 0)
 	{
-		delivered = ::SendMessageTimeoutW(editor, targetMessage,
-			static_cast<WPARAM>(GetCurrentProcessId()),
-			reinterpret_cast<LPARAM>(target),
-			SMTO_ABORTIFHUNG | SMTO_BLOCK, 250, &acknowledgement);
-		accepted = delivered != 0 && acknowledgement == 1;
+		if (m_configurationEditorPresentationAcknowledged ==
+			m_configurationEditorPresentationRequired)
+		{
+			return true;
+		}
+		if (m_configurationEditorPresentationQueuedTick != 0 &&
+			now - m_configurationEditorPresentationQueuedTick < 1500)
+		{
+			return true;
+		}
 	}
-	else
+	uint32_t sequence = ++m_configurationEditorPresentationSequence;
+	if (sequence == 0)
+		sequence = ++m_configurationEditorPresentationSequence;
+	const WPARAM request =
+		(static_cast<WPARAM>(sequence) << 32) |
+		static_cast<WPARAM>(GetCurrentProcessId());
+	const BOOL endpointQueued = ::PostMessageW(editor,
+		acknowledgementEndpointMessage,
+		static_cast<WPARAM>(GetCurrentProcessId()),
+		reinterpret_cast<LPARAM>(acknowledgementEndpoint));
+	if (!endpointQueued)
 	{
-		delivered = ::PostMessageW(editor, targetMessage,
-			static_cast<WPARAM>(GetCurrentProcessId()),
-			reinterpret_cast<LPARAM>(target));
-		accepted = delivered != 0;
+		DebugLog::Log(
+			"Configuration editor presentation acknowledgement endpoint queue failed: editor=%p endpoint=%p error=%lu",
+			reinterpret_cast<void*>(editor),
+			reinterpret_cast<void*>(acknowledgementEndpoint), GetLastError());
+		return false;
 	}
-	if (synchronous &&
-		ConfigurationLiveApply::ShouldRequestConfigurationEditorOneShotReassert(
-			accepted, ::IsWindow(editor) != FALSE))
-		RequestConfigurationEditorOneShotReassert(editor, target);
+	const BOOL queued = ::PostMessageW(editor, targetMessage, request,
+		reinterpret_cast<LPARAM>(target));
+	if (!queued)
+	{
+		DebugLog::Log(
+			"Configuration editor presentation target queue failed: editor=%p target=%p target_pid=%lu sequence=%u error=%lu",
+			reinterpret_cast<void*>(editor), reinterpret_cast<void*>(target),
+			targetProcessId, sequence, GetLastError());
+		return false;
+	}
+	m_configurationEditorPresentationRequired = sequence;
+	m_configurationEditorPresentationEditor = editor;
+	m_configurationEditorPresentationTarget = target;
+	m_configurationEditorPresentationQueuedTick = now;
+	m_configurationEditorPresentationTimeoutLogged = false;
 	DebugLog::Log(
-		"Configuration editor presentation owner handoff: editor=%p target=%p target_pid=%lu monitor=%p mode=%s delivered=%lld ack=%llu accepted=%d",
+		"Configuration editor presentation target queued: editor=%p target=%p target_pid=%lu monitor=%p sequence=%u queued=1 acknowledgement=awaiting",
 		reinterpret_cast<void*>(editor), reinterpret_cast<void*>(target),
 		targetProcessId,
 		reinterpret_cast<void*>(::MonitorFromWindow(
-			target, MONITOR_DEFAULTTONEAREST)),
-		synchronous ? "sync-before-reveal" : "async-target-change",
-		static_cast<long long>(delivered),
-		static_cast<unsigned long long>(acknowledgement),
-		accepted ? 1 : 0);
-	return accepted;
+			target, MONITOR_DEFAULTTONEAREST)), sequence);
+	return true;
+}
+
+LRESULT CVideoProcessorDlg::OnConfigurationEditorPresentationTargetAcknowledgement(
+	WPARAM wParam, LPARAM lParam)
+{
+	const uint32_t sequence = static_cast<uint32_t>(wParam);
+	const HWND acknowledgedEditor = reinterpret_cast<HWND>(lParam);
+	if (sequence == 0 ||
+		sequence != m_configurationEditorPresentationRequired ||
+		acknowledgedEditor != m_configurationEditorPresentationEditor)
+	{
+		DebugLog::Log(
+			"Configuration editor presentation target acknowledgement ignored: sequence=%u required=%u editor=%p expected=%p",
+			sequence, m_configurationEditorPresentationRequired,
+			reinterpret_cast<void*>(acknowledgedEditor),
+			reinterpret_cast<void*>(m_configurationEditorPresentationEditor));
+		return 0;
+	}
+	if (!m_configurationEditorPresentationEditor ||
+		!::IsWindow(m_configurationEditorPresentationEditor) ||
+		!IsConfigurationEditorTopLevel(
+			m_configurationEditorPresentationEditor,
+			m_configurationEditorProcessId, false) ||
+		!m_configurationEditorPresentationTarget ||
+		!::IsWindow(m_configurationEditorPresentationTarget))
+	{
+		DebugLog::Log(
+			"Configuration editor presentation target acknowledgement rejected: sequence=%u editor=%p target=%p reason=stale-window",
+			sequence,
+			reinterpret_cast<void*>(m_configurationEditorPresentationEditor),
+			reinterpret_cast<void*>(m_configurationEditorPresentationTarget));
+		return 0;
+	}
+	m_configurationEditorPresentationAcknowledged = sequence;
+	m_configurationEditorPresentationQueuedTick = 0;
+	m_configurationEditorPresentationTimeoutLogged = false;
+	DebugLog::Log(
+		"Configuration editor presentation target acknowledged: editor=%p target=%p sequence=%u accepted=1",
+		reinterpret_cast<void*>(m_configurationEditorPresentationEditor),
+		reinterpret_cast<void*>(m_configurationEditorPresentationTarget), sequence);
+	RequestConfigurationEditorOneShotReassert(
+		m_configurationEditorPresentationEditor,
+		m_configurationEditorPresentationTarget);
+	return 1;
 }
 
 void CVideoProcessorDlg::RequestPresentationFocus(const char* reason,
@@ -2509,7 +2587,7 @@ bool CVideoProcessorDlg::RequestConfigurationEditorReveal(HWND editor)
 
 	DWORD_PTR acknowledgement = 0;
 	bool messageDelivered = false;
-	PublishConfigurationEditorPresentationTarget(target, true);
+	PublishConfigurationEditorPresentationTarget(target);
 	if (SendConfigurationEditorRevealOnce(target,
 		ConfigurationEditorOwner(), GetCurrentProcessId(), messageDelivered,
 		acknowledgement))
@@ -2536,7 +2614,7 @@ bool CVideoProcessorDlg::RequestConfigurationEditorReveal(HWND editor)
 		return false;
 	}
 	TrackConfigurationEditor(rediscovered);
-	PublishConfigurationEditorPresentationTarget(rediscovered, true);
+	PublishConfigurationEditorPresentationTarget(rediscovered);
 	DWORD_PTR retryAcknowledgement = 0;
 	bool retryDelivered = false;
 	const bool acknowledged = SendConfigurationEditorRevealOnce(rediscovered,
@@ -6254,18 +6332,44 @@ LRESULT CVideoProcessorDlg::OnMessageExternalShortcut(WPARAM wParam,
 
 	const WORD key = static_cast<WORD>(wParam);
 	const BYTE modifiers = static_cast<BYTE>(lParam);
+	const bool control = (modifiers & FCONTROL) != 0;
+	const bool alt = (modifiers & FALT) != 0;
+	const bool shift = (modifiers & FSHIFT) != 0;
+	const bool rightAlt = (::GetKeyState(VK_RMENU) & 0x8000) != 0;
+	const ACCEL* matchedAccelerator = nullptr;
 	for (const ACCEL& accelerator : m_configuredAccelerators)
 	{
 		if (accelerator.key != key ||
 			(accelerator.fVirt & supportedModifiers) != modifiers)
 			continue;
-
+		matchedAccelerator = &accelerator;
+		break;
+	}
+	if (!matchedAccelerator && rightAlt)
+	{
+		for (const ACCEL& accelerator : m_configuredAccelerators)
+		{
+			if (accelerator.cmd == ID_COMMAND_FULLSCREEN_TOGGLE &&
+				accelerator.key == key &&
+				ConfigurationLiveApply::FullscreenShortcutModifiersMatch(
+					(accelerator.fVirt & FCONTROL) != 0,
+					(accelerator.fVirt & FALT) != 0,
+					(accelerator.fVirt & FSHIFT) != 0,
+					control, alt, shift, rightAlt))
+			{
+				matchedAccelerator = &accelerator;
+				break;
+			}
+		}
+	}
+	if (matchedAccelerator)
+	{
 		const BOOL posted = PostMessage(WM_COMMAND,
-			MAKEWPARAM(accelerator.cmd, 1), 0);
+			MAKEWPARAM(matchedAccelerator->cmd, 1), 0);
 		DebugLog::Log(
 			"External shortcut dispatch: key=%u modifiers=0x%02x command=%u posted=%d",
 			static_cast<unsigned>(key), static_cast<unsigned>(modifiers),
-			static_cast<unsigned>(accelerator.cmd), posted ? 1 : 0);
+			static_cast<unsigned>(matchedAccelerator->cmd), posted ? 1 : 0);
 		return posted ? 1 : 0;
 	}
 
@@ -11865,6 +11969,25 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 {
 	const ULONGLONG uiNow = GetTickCount64();
 	m_lastUiMessageTick.store(uiNow, std::memory_order_release);
+	if (m_configurationEditorPresentationRequired != 0 &&
+		m_configurationEditorPresentationAcknowledged !=
+			m_configurationEditorPresentationRequired &&
+		m_configurationEditorPresentationQueuedTick != 0 &&
+		uiNow - m_configurationEditorPresentationQueuedTick >= 1500 &&
+		!m_configurationEditorPresentationTimeoutLogged)
+	{
+		// A dead or blocked Qt process must never make the MFC UI wait. Keep the
+		// fullscreen close/shortcut routes independent of this advisory target
+		// handoff; a later lifecycle event may safely retry the newest sequence.
+		m_configurationEditorPresentationTimeoutLogged = true;
+		DebugLog::Log(
+			"Configuration editor presentation target acknowledgement timed out: editor=%p target=%p sequence=%u elapsed_ms=%llu state=nonblocking-safe-route-retained",
+			reinterpret_cast<void*>(m_configurationEditorPresentationEditor),
+			reinterpret_cast<void*>(m_configurationEditorPresentationTarget),
+			m_configurationEditorPresentationRequired,
+			static_cast<unsigned long long>(
+				uiNow - m_configurationEditorPresentationQueuedTick));
+	}
 	if (m_rendererRetirementPending &&
 		TryFinalizeRendererRetirement(
 			m_rendererRetirementToken, "ui-timer-reconciliation"))

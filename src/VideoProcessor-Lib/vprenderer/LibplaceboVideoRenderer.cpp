@@ -5962,6 +5962,87 @@ struct LibplaceboVideoRenderer::Impl
 			EffectiveSettingsFingerprint(nextTransport, false);
 	}
 
+	static std::string DescribeProfileSettingsDelta(
+		const RendererSettings& current,
+		const RendererSettings& next)
+	{
+		std::vector<const char*> fields;
+		auto changed = [&fields](bool differs, const char* name)
+		{
+			if (differs)
+				fields.push_back(name);
+		};
+		changed(current.sdrTargetNits != next.sdrTargetNits, "sdr_target_nits");
+		changed(current.sdrBlackNits != next.sdrBlackNits, "sdr_black_nits");
+		changed(current.switchRefreshRate != next.switchRefreshRate,
+			"switch_refresh_rate");
+		changed(current.quality != next.quality, "quality");
+		changed(current.toneMapping != next.toneMapping, "tone_mapping");
+		changed(current.gamutMapping != next.gamutMapping, "gamut_mapping");
+		changed(current.peakDetection != next.peakDetection, "peak_detection");
+		changed(current.hasContrastRecovery != next.hasContrastRecovery ||
+			current.contrastRecovery != next.contrastRecovery, "contrast_recovery");
+		changed(current.upscaler != next.upscaler, "upscaler");
+		changed(current.downscaler != next.downscaler, "downscaler");
+		changed(current.debandStrength != next.debandStrength ||
+			current.deband != next.deband, "deband");
+		changed(current.sigmoid != next.sigmoid, "sigmoid");
+		changed(current.dithering != next.dithering, "dithering");
+		changed(current.displayBitDepth != next.displayBitDepth, "display_bit_depth");
+		changed(current.sdrInputTransfer != next.sdrInputTransfer ||
+			current.sdrAdjustGamma != next.sdrAdjustGamma, "sdr_processing");
+		changed(current.sdrTargetPrimaries != next.sdrTargetPrimaries ||
+			current.reportBt2020ToDisplay != next.reportBt2020ToDisplay,
+			"sdr_display_target");
+		changed(current.outputDiagnostics != next.outputDiagnostics,
+			"output_diagnostics");
+		changed(current.lutPath != next.lutPath ||
+			current.lutPathRejected != next.lutPathRejected ||
+			current.lutConstrainedBaseDirectory != next.lutConstrainedBaseDirectory ||
+			current.lutReferencePrimaries != next.lutReferencePrimaries ||
+			current.lutReferenceTransfer != next.lutReferenceTransfer ||
+			current.lutReferenceRange != next.lutReferenceRange ||
+			current.lutReferenceNits != next.lutReferenceNits, "lut");
+		changed(current.outputPresentation != next.outputPresentation,
+			"output_presentation");
+		changed(current.outputRange != next.outputRange, "output_range");
+		changed(current.outputTransportGamma != next.outputTransportGamma,
+			"output_transport_gamma");
+		changed(current.outputGamma != next.outputGamma, "output_gamma");
+		changed(current.diagnosticDisableShaderCache !=
+			next.diagnosticDisableShaderCache, "shader_cache_policy");
+		changed(current.diagnosticDisableCompute != next.diagnosticDisableCompute ||
+			current.diagnosticForce8BitSdrSwapchain !=
+				next.diagnosticForce8BitSdrSwapchain ||
+			current.diagnosticAllowLimitedG22 !=
+				next.diagnosticAllowLimitedG22 ||
+			current.diagnosticAllowFullG22 != next.diagnosticAllowFullG22 ||
+			current.diagnosticVpOwnedDxgiPresenter !=
+				next.diagnosticVpOwnedDxgiPresenter, "device_or_presenter_policy");
+		changed(current.configuredScreenAspect != next.configuredScreenAspect ||
+			current.configuredScreenTarget != next.configuredScreenTarget ||
+			current.verticalAlignment != next.verticalAlignment ||
+			current.anamorphicScale != next.anamorphicScale ||
+			current.automaticSourceCrop != next.automaticSourceCrop ||
+			current.scopeSubtitleFit != next.scopeSubtitleFit ||
+			current.scopeSubtitleHoldMs != next.scopeSubtitleHoldMs ||
+			current.scopeSubtitleEngageDriftMs != next.scopeSubtitleEngageDriftMs ||
+			current.scopeSubtitleReleaseDriftMs != next.scopeSubtitleReleaseDriftMs ||
+			current.scopeSubtitlePaddingPixels != next.scopeSubtitlePaddingPixels ||
+			current.scopeSubtitleTargetBufferPixels !=
+				next.scopeSubtitleTargetBufferPixels, "viewport");
+		if (fields.empty())
+			return "none";
+		std::ostringstream description;
+		for (size_t index = 0; index < fields.size(); ++index)
+		{
+			if (index != 0)
+				description << ',';
+			description << fields[index];
+		}
+		return description.str();
+	}
+
 	void PublishSettingsState(const RendererSettings& settings)
 	{
 		const std::string effective = EffectiveSettingsFingerprint(settings);
@@ -5989,6 +6070,20 @@ struct LibplaceboVideoRenderer::Impl
 		std::lock_guard<std::mutex> guard(publishedSettingsMutex);
 		return publishedSettingsAvailable &&
 			LiveProfileSettingsCompatible(publishedActiveSettings, settings);
+	}
+
+	bool ClassifyProfileSettingsLiveUpdate(const RendererSettings& settings,
+		std::string& changedFields) const
+	{
+		std::lock_guard<std::mutex> guard(publishedSettingsMutex);
+		if (!publishedSettingsAvailable)
+		{
+			changedFields = "published-settings-unavailable";
+			return false;
+		}
+		changedFields = DescribeProfileSettingsDelta(
+			publishedActiveSettings, settings);
+		return LiveProfileSettingsCompatible(publishedActiveSettings, settings);
 	}
 
 	bool ApplyProfileSettingsLive(const RendererSettings& settings)
@@ -10053,18 +10148,6 @@ bool LibplaceboVideoRenderer::ApplyApplicationState(
 	std::unique_lock<std::mutex> guard(m_stateMutex);
 	const std::map<std::string, std::string>& next =
 		snapshot.effectiveSelections;
-	const auto groupChanged = [this, &next](const char* group)
-	{
-		const auto before = m_manualUnifiedProfiles.find(group);
-		const auto after = next.find(group);
-		return (before == m_manualUnifiedProfiles.end()) != (after == next.end()) ||
-			(before != m_manualUnifiedProfiles.end() && after != next.end() &&
-			 before->second != after->second);
-	};
-	const bool renderingProfileChanged =
-		groupChanged("display") || groupChanged("input") ||
-		groupChanged("scaling");
-	const bool outputProfileChanged = groupChanged("output");
 	VideoStateComPtr state = m_videoState;
 	std::string candidateProfiles;
 	const RendererSettings candidateSettings = state ?
@@ -10096,23 +10179,32 @@ bool LibplaceboVideoRenderer::ApplyApplicationState(
 	const bool anyRendererSettingChanged = m_impl &&
 		EffectiveSettingsFingerprint(candidateSettings) !=
 			currentEffectiveFingerprint;
-	if (state && m_impl && renderingProfileChanged && !outputProfileChanged)
+	std::string changedFields = "none";
+	const bool liveSettingsCompatible = state && m_impl &&
+		anyRendererSettingChanged &&
+		m_impl->ClassifyProfileSettingsLiveUpdate(
+			candidateSettings, changedFields);
+	if (liveSettingsCompatible)
 	{
-		// Rendering profiles own only shader/render description and calibration.
-		// They are structurally forbidden from replacing the D3D device or
-		// swapchain. Apply them to the existing renderer, then let the application
-		// run its cache-preserving LiveQueue reset transaction.
-		if (anyRendererSettingChanged &&
-			!m_impl->ApplyProfileSettingsLive(candidateSettings))
+		// Compare the effective settings, not merely selected profile labels.
+		// This preserves the renderer and its libplacebo/D3D resources when an
+		// editor changes values inside the already selected profile. The immutable
+		// intent is consumed only by the render thread's existing safe point.
+		if (!m_impl->ApplyProfileSettingsLive(candidateSettings))
 		{
 			rendererRestartRequired = false;
 			DebugLog::Log(
-				"rendering profile generation %llu rejected instead of rebuilding: output/device policy unexpectedly differed",
-				static_cast<unsigned long long>(snapshot.generation));
+				"application profile generation %llu live update rejected after compatible classification: fields=%s",
+				static_cast<unsigned long long>(snapshot.generation),
+				changedFields.c_str());
 			return false;
 		}
 		rendererRestartRequired = false;
 		liveResetRequired = true;
+		DebugLog::Log(
+			"application profile generation %llu compatible live update queued: fields=%s",
+			static_cast<unsigned long long>(snapshot.generation),
+			changedFields.c_str());
 	}
 	else if (state && m_impl && anyRendererSettingChanged &&
 		candidateSettings.profileUpdateMode == ProfileUpdateMode::NEVER)
@@ -10129,22 +10221,38 @@ bool LibplaceboVideoRenderer::ApplyApplicationState(
 		return false;
 	}
 	if (!liveResetRequired && rendererRestartRequired && state && m_impl &&
-		candidateSettings.profileUpdateMode == ProfileUpdateMode::LIVE &&
-		m_impl->ApplyProfileSettingsLive(candidateSettings))
+		anyRendererSettingChanged)
 	{
-		rendererRestartRequired = false;
+		if (changedFields == "none")
+			m_impl->ClassifyProfileSettingsLiveUpdate(candidateSettings,
+				changedFields);
+		DebugLog::Log(
+			"application profile generation %llu requires renderer rebuild: effective_fields=%s boundary=output-device-swapchain-or-cache-policy",
+			static_cast<unsigned long long>(snapshot.generation),
+			changedFields.c_str());
 	}
 	m_manualUnifiedProfiles = next;
 
-	activeState.Format(TEXT("Viewport: %S (%S, %S)"),
-		snapshot.viewport.profile.c_str(),
-		candidateSettings.configuredScreenTarget ?
-			snapshot.viewport.screenAspect.Canonical().c_str() :
-			"output panel",
-		candidateSettings.verticalAlignment.c_str());
+	if (rendererRestartRequired)
+	{
+		activeState.Format(TEXT("Renderer rebuild: %S"), changedFields.c_str());
+	}
+	else
+	{
+		activeState.Format(TEXT("Viewport: %S (%S, %S)"),
+			snapshot.viewport.profile.c_str(),
+			candidateSettings.configuredScreenTarget ?
+				snapshot.viewport.screenAspect.Canonical().c_str() :
+				"output panel",
+			candidateSettings.verticalAlignment.c_str());
+	}
 	if (!rendererRestartRequired && m_impl)
 	{
-		m_impl->ApplyViewportSettings(candidateSettings);
+		// ApplyProfileSettingsLive already queues the full immutable snapshot and
+		// applies its viewport portion at the same render-thread safe point.
+		// Do not replace that intent with a second UI-thread queue operation.
+		if (!liveResetRequired)
+			m_impl->ApplyViewportSettings(candidateSettings);
 		ApplyViewportTarget(candidateSettings.configuredScreenTarget,
 			candidateSettings.configuredScreenAspect, "application snapshot");
 		DebugLog::Log(
