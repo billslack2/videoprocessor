@@ -143,7 +143,7 @@ private:
 		const char* reason);
 	void UpdateFrameRateAndPPM(timingclocktime_t frameTimestamp);
 	void ResetFrameRateAndPPM();
-	uint64_t ApplyPendingShaderSelectionLocked();
+	void ApplyPendingShaderSelectionLocked();
 	IRendererCallback& m_callback;
 	HWND m_videoHwnd = nullptr;
 	ITimingClock* m_timingClock = nullptr;
@@ -180,7 +180,6 @@ private:
 	std::thread m_renderThread;
 	std::thread m_stopWorker;
 	std::atomic_bool m_stopWorkerStarted{false};
-	std::atomic<uint64_t> m_initialPipelinePreparationEpoch{0};
 
 	std::unique_ptr<Impl> m_impl;
 	VideoStateComPtr m_buildVideoState;

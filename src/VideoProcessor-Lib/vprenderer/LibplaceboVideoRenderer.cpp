@@ -6249,7 +6249,7 @@ struct LibplaceboVideoRenderer::Impl
 		return true;
 	}
 
-	uint64_t ApplyPendingProfileSettingsLocked()
+	void ApplyPendingProfileSettingsLocked()
 	{
 		std::unique_ptr<RendererSettings> pending;
 		{
@@ -6257,19 +6257,12 @@ struct LibplaceboVideoRenderer::Impl
 			pending.swap(pendingProfileSettings);
 		}
 		if (!pending)
-			return 0;
-		// Activate status only when the render thread consumes this exact intent.
-		// A request published after this safe point therefore cannot be cleared by
-		// the frame already in progress.
-		const uint64_t preparationEpoch = RequestPipelinePreparation(
-			"Loading video pipeline...", "profile/viewport intent consumed");
+			return;
 		if (!ApplyProfileSettingsLiveLocked(*pending))
 		{
 			DebugLog::Log(
 				"libplacebo queued live profile update was rejected on render thread");
-			CompletePipelinePreparation(
-				preparationEpoch, false, "profile rejected");
-			return 0;
+			return;
 		}
 		else
 		{
@@ -6277,7 +6270,6 @@ struct LibplaceboVideoRenderer::Impl
 			DebugLog::Log(
 				"libplacebo queued profile and viewport settings applied on render thread");
 		}
-		return preparationEpoch;
 	}
 
 	void SetShaderStatus(const std::string& status)
@@ -6289,17 +6281,14 @@ struct LibplaceboVideoRenderer::Impl
 		++activeShaderStatusSerial;
 	}
 
-	uint64_t RequestPipelinePreparation(
-		const std::string& label,
-		const char* reason)
+	uint64_t RequestPipelinePreparation(const char* reason)
 	{
 		std::lock_guard<std::mutex> guard(pipelinePreparationMutex);
 		const uint64_t epoch = ++pipelinePreparationEpoch;
 		if (!pipelinePreparationActive)
 			pipelinePreparationStartedTick = GetTickCount64();
 		pipelinePreparationActive = true;
-		pipelinePreparationLabel = label.empty() ?
-			"Loading video pipeline..." : label;
+		pipelinePreparationLabel = "Preparing shaders...";
 		DebugLog::Log(
 			"Alpha pipeline preparation: epoch=%llu state=queued reason=%s label=\"%s\"",
 			static_cast<unsigned long long>(epoch),
@@ -9263,11 +9252,8 @@ struct LibplaceboVideoRenderer::Impl
 
 		if (nlsPipelineActive && nlsPipelineVariantChanged)
 		{
-			const std::string label = nlsRule.name.empty() ?
-				"Loading NLS shader..." :
-				"Loading " + nlsRule.name + " shader...";
 			preparationEpoch = RequestPipelinePreparation(
-				label, "NLS pipeline activation");
+				"NLS pipeline activation");
 		}
 		compileTelemetry.BeginRender();
 		const SteadyClock::time_point renderStart = SteadyClock::now();
@@ -10231,7 +10217,7 @@ bool LibplaceboVideoRenderer::SelectShaderRule(
 }
 
 
-uint64_t LibplaceboVideoRenderer::ApplyPendingShaderSelectionLocked()
+void LibplaceboVideoRenderer::ApplyPendingShaderSelectionLocked()
 {
 	std::string selector;
 	{
@@ -10239,7 +10225,7 @@ uint64_t LibplaceboVideoRenderer::ApplyPendingShaderSelectionLocked()
 		selector.swap(m_pendingShaderSelector);
 	}
 	if (selector.empty() || !m_impl)
-		return 0;
+		return;
 
 	std::vector<ConfiguredShaderRule> selection;
 	std::string reason;
@@ -10251,14 +10237,8 @@ uint64_t LibplaceboVideoRenderer::ApplyPendingShaderSelectionLocked()
 		DebugLog::Log(
 			"Alpha shaders: queued selector \"%s\" rejected on render thread: %s",
 			selector.c_str(), reason.c_str());
-		return 0;
+		return;
 	}
-	const bool nlsSelection = std::any_of(
-		selection.begin(), selection.end(),
-		[](const ConfiguredShaderRule& rule) { return rule.nls; });
-	const uint64_t preparationEpoch = nlsSelection ? 0 :
-		m_impl->RequestPipelinePreparation(
-			"Loading video pipeline...", "shader intent consumed");
 
 	m_impl->SetConfiguredShaderSelection(
 		selector, selection, m_shaderRendererGeneration);
@@ -10270,7 +10250,6 @@ uint64_t LibplaceboVideoRenderer::ApplyPendingShaderSelectionLocked()
 	DebugLog::Log(
 		"Alpha shaders: applied queued selector \"%s\" on render thread",
 		selector.c_str());
-	return preparationEpoch;
 }
 
 
@@ -10469,10 +10448,6 @@ void LibplaceboVideoRenderer::Start()
 	if (!m_impl || m_state.load(std::memory_order_acquire) != RendererState::RENDERSTATE_READY)
 		throw std::runtime_error("libplacebo renderer is not ready");
 
-	m_initialPipelinePreparationEpoch.store(
-		m_impl->RequestPipelinePreparation(
-			"Loading video pipeline...", "renderer start"),
-		std::memory_order_release);
 	BeginQueueGeneration("start", true);
 	m_renderThread = std::thread(&LibplaceboVideoRenderer::RenderLoop, this);
 }
@@ -11489,9 +11464,7 @@ void LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
 void LibplaceboVideoRenderer::RenderLoop()
 {
 	unsigned int consecutiveFailures = 0;
-	uint64_t pendingPipelinePreparationEpoch =
-		m_initialPipelinePreparationEpoch.exchange(
-			0, std::memory_order_acq_rel);
+	uint64_t pendingPipelinePreparationEpoch = 0;
 	try
 	{
 		{
@@ -11775,27 +11748,15 @@ void LibplaceboVideoRenderer::RenderLoop()
 			if (m_impl->resizePending.exchange(false,
 				std::memory_order_acq_rel))
 			{
-				pendingPipelinePreparationEpoch = std::max(
-					pendingPipelinePreparationEpoch,
-					m_impl->RequestPipelinePreparation(
-						"Loading video pipeline...", "window resize"));
 				m_impl->ResizeLocked(m_videoHwnd);
 			}
 			if (m_impl->outputRenegotiationPending.exchange(false,
 				std::memory_order_acq_rel))
 			{
-				pendingPipelinePreparationEpoch = std::max(
-					pendingPipelinePreparationEpoch,
-					m_impl->RequestPipelinePreparation(
-						"Loading video pipeline...", "output renegotiation"));
 				m_impl->RetryAutoLimitedCandidate("deferred display change");
 			}
-			pendingPipelinePreparationEpoch = std::max(
-				pendingPipelinePreparationEpoch,
-				m_impl->ApplyPendingProfileSettingsLocked());
-			pendingPipelinePreparationEpoch = std::max(
-				pendingPipelinePreparationEpoch,
-				ApplyPendingShaderSelectionLocked());
+			m_impl->ApplyPendingProfileSettingsLocked();
+			ApplyPendingShaderSelectionLocked();
 			{
 				std::lock_guard<std::mutex> queueGuard(m_queueMutex);
 				staleGeneration =
