@@ -2,12 +2,9 @@
 
 ## Status
 
-In Progress (2026-08-21). Operator review identified misleading configuration
-editor states while validating the deployed x64 Release Config application.
-Implementation is active in
-`C:\Videoprocessor\vp\vprenderer\.codex-worktrees\vp-lldv-singleton-fix`
-on branch `codex/fix-lldv-singleton`; it has not yet been committed as a
-dedicated VP source change.
+Done (2026-08-21). Operator validation accepted the deployed behavior. Source
+commit `a31803d` (`Clarify VP Renderer configuration and shader lifecycle`) was
+fast-forwarded into the GitHub default branch `v1.2.001-beta`.
 
 Completed and deployed checkpoints:
 
@@ -184,3 +181,26 @@ inheritance, `Auto`, and an omitted setting.
   while a new NLS pipeline variant can compile. It is usable in both fullscreen
   and windowed presentation and clears when the render call returns.
 - Removed the redundant Scaling and Processing summary text above its controls.
+
+## Final shader lifecycle and UI-thread checkpoint — 2026-08-21
+
+- Configured NLS hooks are fullscreen-only. Windowed presentation remembers
+  the selected rule without compiling or applying it; returning to fullscreen
+  restores that selection. Live logs verified windowed deferral followed by a
+  warm-cache fullscreen restore with `compile_ms=0.000`.
+- Renderer resize, output renegotiation, HDMI/reset handling, live queue reset,
+  shader selection, and periodic status reads no longer make the main UI
+  thread wait behind libplacebo rendering or shader compilation. Work that
+  requires the renderer lock is coalesced or queued for the render thread;
+  status reads skip a busy sample.
+- Shader programs remain append-only in the persistent cache across ordinary
+  renderer resets and mode changes. Final deployment loaded all 42 retained
+  cache objects (5,578,764 bytes); no cache or active configuration was
+  cleared.
+- The final Config review also corrected the Anti-ringing accessibility name
+  and attached the `10-bit or higher` and `8-bit` labels to their matching
+  stored values in quality-first order.
+- The x64 Release host, VP Renderer plugin, and Config application built
+  successfully. The complete standalone Config regression suite passed, the
+  matched binaries were backed up and deployed, and both applications were
+  reopened responsive for operator acceptance.
