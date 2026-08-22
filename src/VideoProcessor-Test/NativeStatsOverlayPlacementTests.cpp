@@ -57,17 +57,6 @@ namespace Tests
 			Assert::IsTrue(std::fabs(result.visiblePicture.top - 283.0f) < 0.01f);
 		}
 
-		TEST_METHOD(ShaderCompilationPanelIsCenteredInVisiblePicture)
-		{
-			const Result result = PlaceCentered(
-				{ 0.0f, 283.0f, 3840.0f, 1917.0f },
-				{ 0.0f, 0.0f, 3840.0f, 2160.0f }, 1200.0f, 260.0f);
-			Assert::IsTrue(std::fabs(result.panel.left - 1320.0f) < 0.01f);
-			Assert::IsTrue(std::fabs(result.panel.right - 2520.0f) < 0.01f);
-			Assert::IsTrue(std::fabs(result.panel.top - 970.0f) < 0.01f);
-			Assert::IsTrue(std::fabs(result.panel.bottom - 1230.0f) < 0.01f);
-		}
-
 		TEST_METHOD(LetterboxAndPillarboxUseTheirActualPictureBounds)
 		{
 			const Result letterbox = Place(

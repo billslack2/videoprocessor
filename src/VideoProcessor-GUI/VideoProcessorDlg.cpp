@@ -1813,6 +1813,7 @@ BEGIN_MESSAGE_MAP(CVideoProcessorDlg, CDialog)
 	// Pre-baked callbacks
 	ON_WM_PAINT()
 	ON_WM_SIZE()
+	ON_WM_MOVE()
 	ON_WM_QUERYDRAGICON()
 	ON_WM_GETMINMAXINFO()
 	ON_WM_SETFOCUS()
@@ -8274,6 +8275,9 @@ void CVideoProcessorDlg::RenderRemove()
 
 void CVideoProcessorDlg::DestroyVideoRenderer()
 {
+	m_shaderLoadingWindow.Hide();
+	m_pipelinePreparationStatus.Empty();
+	m_pipelinePreparationPopupShownTick = 0;
 	if (!m_videoRenderer)
 		return;
 	if (m_fullscreenRetargetPending)
@@ -8301,29 +8305,9 @@ void CVideoProcessorDlg::DestroyVideoRenderer()
 	DebugLog::Log(
 		"Renderer teardown: detached renderer before destruction to block reentrant callbacks");
 
-	// Alpha/plugin retirement has not yet been audited as an idempotent
-	// cross-thread contract. Retire it synchronously, explicitly releasing its
-	// swapchain before a replacement renderer can claim the target HWND.
-	if (!m_activeRendererIsDirectShow)
-	{
-		rendererToDestroy->Retire();
-		m_rendererTransitionWindow.KeepOnTop();
-		const HRESULT compositionResult =
-			m_rendererTransitionWindow.SynchronizeComposition();
-		rendererToDestroy.reset();
-		DebugLog::Log(
-			"Renderer transition: process=%lu generation=%u event=old-surface-retired "
-			"renderer=%S target=%p cover=%p mode=alpha-synchronous "
-			"composition_sync=0x%08lx",
-			GetCurrentProcessId(),
-			m_rendererGeneration.load(std::memory_order_acquire),
-			static_cast<LPCTSTR>(m_activeRendererName),
-			m_rendererTargetHwnd,
-			m_rendererTransitionWindow.GetHWND(),
-			static_cast<unsigned long>(compositionResult));
-		return;
-	}
-
+	// Final swapchain/device release can enter the driver. Both DirectShow and
+	// VP Renderer retirement therefore use the lifecycle worker; replacement
+	// construction waits for the matching completion token below.
 	m_rendererRetirementPending = true;
 	m_rendererRetirementToken++;
 	m_retiringRendererName = m_activeRendererName;
@@ -11411,6 +11395,7 @@ void CVideoProcessorDlg::OnSize(UINT nType, int cx, int cy)
 		!RendererResetOperationInProgress())
 		m_videoRenderer->OnSize();
 	m_rendererTransitionWindow.KeepOnTop();
+	m_shaderLoadingWindow.UpdatePosition();
 
 	// Some windowed DirectShow renderers finish processing WM_SIZE after this
 	// handler returns.  Restore the fixed UI now and once more after that work
@@ -11448,6 +11433,13 @@ void CVideoProcessorDlg::OnSize(UINT nType, int cx, int cy)
 
 	lastSize = currentSize;
 	CDialog::OnSize(nType, cx, cy);
+}
+
+
+void CVideoProcessorDlg::OnMove(int x, int y)
+{
+	CDialog::OnMove(x, y);
+	m_shaderLoadingWindow.UpdatePosition();
 }
 
 
@@ -11797,38 +11789,37 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 
 	if (nIDEvent == SHADER_RULE_REFRESH_TIMER_ID)
 	{
+		CString preparationStatus;
+		const bool rendererCanPrepare =
+			m_rendererState == RendererState::RENDERSTATE_STARTING ||
+			m_rendererState == RendererState::RENDERSTATE_READY ||
+			m_rendererState == RendererState::RENDERSTATE_RENDERING;
+		const bool preparing =
+			rendererCanPrepare &&
+			m_videoRenderer && !m_wantToRestartRenderer &&
+			m_videoRenderer->GetPipelinePreparationStatus(
+				preparationStatus);
+		if (preparing && m_rendererTargetHwnd && GetSafeHwnd())
+		{
+			const bool wasVisible = m_shaderLoadingWindow.IsVisible();
+			const bool shown = m_shaderLoadingWindow.Show(
+				m_rendererTargetHwnd, GetSafeHwnd(), preparationStatus);
+			if (shown && !wasVisible && m_shaderLoadingWindow.IsVisible())
+				m_pipelinePreparationPopupShownTick = GetTickCount64();
+			m_pipelinePreparationStatus = preparationStatus;
+		}
+		else if (m_shaderLoadingWindow.IsVisible() &&
+			(!rendererCanPrepare ||
+			 GetTickCount64() - m_pipelinePreparationPopupShownTick >= 300))
+		{
+			m_shaderLoadingWindow.Hide();
+			m_pipelinePreparationStatus.Empty();
+			m_pipelinePreparationPopupShownTick = 0;
+		}
+
 		if (m_rendererState == RendererState::RENDERSTATE_RENDERING &&
 			m_videoRenderer && !m_wantToRestartRenderer)
 		{
-			CString compilationStatus;
-			const bool compiling =
-				m_videoRenderer->SupportsNativeStatsOverlay() &&
-				m_videoRenderer->GetShaderCompilationStatus(
-					compilationStatus);
-			if (compiling && m_statsOverlay &&
-				(!m_shaderCompilationOverlayVisible ||
-					compilationStatus != m_shaderCompilationOverlayStatus))
-			{
-				std::vector<uint8_t> pixels;
-				int width = 0;
-				int height = 0;
-				int stride = 0;
-				if (m_statsOverlay->RenderShaderCompilationBgra(
-					compilationStatus, pixels, width, height, stride))
-				{
-					m_videoRenderer->SetNativeShaderCompilationOverlay(
-						pixels.data(), pixels.size(), width, height, stride);
-					m_shaderCompilationOverlayVisible = true;
-					m_shaderCompilationOverlayStatus = compilationStatus;
-				}
-			}
-			else if (m_shaderCompilationOverlayVisible)
-			{
-				m_videoRenderer->SetNativeShaderCompilationOverlay(
-					nullptr, 0, 0, 0, 0);
-				m_shaderCompilationOverlayVisible = false;
-				m_shaderCompilationOverlayStatus.Empty();
-			}
 			CString refreshedShaderRule;
 			bool shaderRestartRequired = false;
 			if (m_videoRenderer->RefreshShaderRule(

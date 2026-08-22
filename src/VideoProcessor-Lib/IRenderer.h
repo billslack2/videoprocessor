@@ -236,6 +236,14 @@ public:
 		rendererRestartRequired = false;
 		return false;
 	}
+	// Reports a genuinely slow renderer-pipeline transition. Implementations
+	// keep this active through the first successfully presented frame; the GUI
+	// displays it independently of the renderer's own OSD.
+	virtual bool GetPipelinePreparationStatus(CString& status) const
+	{
+		status.Empty();
+		return false;
+	}
 	// Re-evaluates an armed conditional shader rule against live content.
 	// Returns true only when its applied/bypassed state changed.
 	virtual bool RefreshShaderRule(CString& activeRule,
@@ -243,14 +251,6 @@ public:
 	{
 		activeRule.Empty();
 		rendererRestartRequired = false;
-		return false;
-	}
-	// Reports only an in-flight renderer compiler invocation. Implementations
-	// must not take their render lock here: the UI polls this specifically while
-	// the render thread may be blocked inside a driver/compiler call.
-	virtual bool GetShaderCompilationStatus(CString& status) const
-	{
-		status.Empty();
 		return false;
 	}
 	virtual void SetSceneCorrectionUpstreamSample(bool) {}
@@ -362,14 +362,6 @@ public:
 	// before returning; callers retain ownership of the supplied buffer.
 	virtual bool SupportsNativeStatsOverlay() const { return false; }
 	virtual bool SetNativeStatsOverlay(const uint8_t*, size_t, int, int, int)
-	{
-		return false;
-	}
-	// A separate centered notice for a genuinely long shader compilation.
-	// Keeping this independent prevents periodic stats refreshes from replacing
-	// the notice (or vice versa).
-	virtual bool SetNativeShaderCompilationOverlay(
-		const uint8_t*, size_t, int, int, int)
 	{
 		return false;
 	}

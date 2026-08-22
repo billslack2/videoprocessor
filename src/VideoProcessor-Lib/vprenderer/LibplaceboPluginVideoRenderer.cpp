@@ -225,6 +225,13 @@ void LibplaceboPluginVideoRenderer::Stop()
 }
 
 
+void LibplaceboPluginVideoRenderer::StopWithIngressDrain(
+	const std::function<void()>& drainAfterGraphStop)
+{
+	m_renderer->StopWithIngressDrain(drainAfterGraphStop);
+}
+
+
 void LibplaceboPluginVideoRenderer::Retire() noexcept
 {
 	if (m_renderer)
@@ -270,13 +277,6 @@ bool LibplaceboPluginVideoRenderer::SetNativeStatsOverlay(
 	const uint8_t* pixels, size_t byteCount, int width, int height, int stride)
 {
 	return m_renderer && m_renderer->SetNativeStatsOverlay(
-		pixels, byteCount, width, height, stride);
-}
-
-bool LibplaceboPluginVideoRenderer::SetNativeShaderCompilationOverlay(
-	const uint8_t* pixels, size_t byteCount, int width, int height, int stride)
-{
-	return m_renderer && m_renderer->SetNativeShaderCompilationOverlay(
 		pixels, byteCount, width, height, stride);
 }
 
@@ -387,18 +387,19 @@ bool LibplaceboPluginVideoRenderer::SelectShaderRule(
 }
 
 
+bool LibplaceboPluginVideoRenderer::GetPipelinePreparationStatus(
+	CString& status) const
+{
+	return m_renderer->GetPipelinePreparationStatus(status);
+}
+
+
 bool LibplaceboPluginVideoRenderer::RefreshShaderRule(
 	CString& activeRule,
 	bool& rendererRestartRequired)
 {
 	return m_renderer->RefreshShaderRule(activeRule,
 		rendererRestartRequired);
-}
-
-bool LibplaceboPluginVideoRenderer::GetShaderCompilationStatus(
-	CString& status) const
-{
-	return m_renderer && m_renderer->GetShaderCompilationStatus(status);
 }
 
 

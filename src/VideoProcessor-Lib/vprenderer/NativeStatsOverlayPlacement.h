@@ -108,20 +108,4 @@ namespace NativeStatsOverlayPlacement
 		result.panel.bottom = top + height;
 		return result;
 	}
-
-	inline Result PlaceCentered(const Rect& requestedPicture, const Rect& output,
-		float panelWidth, float panelHeight)
-	{
-		Result result = Place(requestedPicture, output, panelWidth, panelHeight, 0.0f);
-		if (!result.visiblePicture.IsValid() || !result.panel.IsValid())
-			return result;
-		const float width = result.panel.Width();
-		const float height = result.panel.Height();
-		const float left = result.visiblePicture.left +
-			(result.visiblePicture.Width() - width) * 0.5f;
-		const float top = result.visiblePicture.top +
-			(result.visiblePicture.Height() - height) * 0.5f;
-		result.panel = { left, top, left + width, top + height };
-		return result;
-	}
 }

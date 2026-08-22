@@ -34,6 +34,7 @@
 #include <VideoFrame.h>
 #include <FullscreenVideoWindow.h>
 #include <RendererTransitionWindow.h>
+#include <ShaderLoadingWindow.h>
 #include <VideoConversionOverride.h>
 #include <WindowedVideoWindow.h>
 #include <microsoft_directshow/DirectShowRendererStartStopTimeMethod.h>
@@ -642,6 +643,9 @@ protected:
 	uint32_t m_retiringRendererGeneration = 0;
 	RendererState m_rendererState = RendererState::RENDERSTATE_UNKNOWN;
 	RendererTransitionWindow m_rendererTransitionWindow;
+	ShaderLoadingWindow m_shaderLoadingWindow;
+	CString m_pipelinePreparationStatus;
+	ULONGLONG m_pipelinePreparationPopupShownTick = 0;
 	HWND m_rendererTargetHwnd = nullptr;
 	bool m_preserveFullscreenHostForProfileRestart = false;
 	bool m_fullscreenRetargetPending = false;
@@ -738,8 +742,6 @@ protected:
 	StatsOverlayWindow* m_statsOverlay = nullptr;
 	StatsData* m_lastStatsData = nullptr;
 	bool m_statsOverlayRequestedVisible = false;
-	bool m_shaderCompilationOverlayVisible = false;
-	CString m_shaderCompilationOverlayStatus;
 
 	struct ActiveOutputSweepCase
 	{
@@ -950,6 +952,7 @@ protected:
 	void OnOK() override;
 	afx_msg void OnPaint();
 	afx_msg void OnSize(UINT nType, int cx, int cy);
+	afx_msg void OnMove(int x, int y);
 	afx_msg void OnSetFocus(CWnd* pOldWnd);
 	afx_msg void OnClose();
 	afx_msg void OnSysCommand(UINT command, LPARAM lParam);

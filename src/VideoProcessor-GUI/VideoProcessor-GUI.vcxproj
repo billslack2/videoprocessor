@@ -32,6 +32,7 @@
     </ClCompile>
     <ClCompile Include="ModernOperatorView.cpp" />
     <ClCompile Include="RendererTransitionWindow.cpp" />
+    <ClCompile Include="ShaderLoadingWindow.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
@@ -60,6 +61,7 @@
     <ClInclude Include="FullscreenVideoWindow.h" />
     <ClInclude Include="ModernOperatorView.h" />
     <ClInclude Include="RendererTransitionWindow.h" />
+    <ClInclude Include="ShaderLoadingWindow.h" />
     <ClInclude Include="Resource.h" />
     <ClInclude Include="pch.h" />
     <ClInclude Include="StatsOverlayWindow.h" />

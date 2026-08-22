@@ -46,6 +46,8 @@ public:
 	void Build() override;
 	void Start() override;
 	void Stop() override;
+	void StopWithIngressDrain(
+		const std::function<void()>& drainAfterGraphStop) override;
 	void Retire() noexcept override;
 	void Reset() override;
 	void ResetLiveQueue() override;
@@ -72,9 +74,9 @@ public:
 		bool& rendererRestartRequired) override;
 	bool SelectShaderRule(const CString& ruleName, CString& activeRule,
 		bool& rendererRestartRequired) override;
+	bool GetPipelinePreparationStatus(CString& status) const override;
 	bool RefreshShaderRule(CString& activeRule,
 		bool& rendererRestartRequired) override;
-	bool GetShaderCompilationStatus(CString& status) const override;
 	std::vector<CString> ActiveShaders() const override;
 	bool GetActiveShaderSections(
 		std::vector<CString>& sections) const override;
@@ -99,8 +101,6 @@ public:
 	bool SupportsNativeStatsOverlay() const override { return true; }
 	bool SetNativeStatsOverlay(const uint8_t* pixels, size_t byteCount,
 		int width, int height, int stride) override;
-	bool SetNativeShaderCompilationOverlay(const uint8_t* pixels,
-		size_t byteCount, int width, int height, int stride) override;
 	bool SetNativeSweepOverlay(const uint8_t* pixels, size_t byteCount,
 		int width, int height, int stride) override;
 	bool GetConversionPerformance(double& currentUs, double& avg10s, double& max10s) const override;
@@ -129,6 +129,7 @@ private:
 	};
 
 	void RenderLoop();
+	void StopInternal(const std::function<void()>& drainAfterGraphStop);
 	void AnalyzeActivePictureLookahead(
 		std::vector<QueuedFrame>& previewFrames,
 		uint8_t availableLookahead);
@@ -142,6 +143,7 @@ private:
 		const char* reason);
 	void UpdateFrameRateAndPPM(timingclocktime_t frameTimestamp);
 	void ResetFrameRateAndPPM();
+	uint64_t ApplyPendingShaderSelectionLocked();
 	IRendererCallback& m_callback;
 	HWND m_videoHwnd = nullptr;
 	ITimingClock* m_timingClock = nullptr;
@@ -153,6 +155,8 @@ private:
 	VideoStateComPtr m_videoState;
 	std::atomic<RendererState> m_state{RendererState::RENDERSTATE_UNKNOWN};
 	std::string m_requestedShaderSelector;
+	std::mutex m_pendingShaderMutex;
+	std::string m_pendingShaderSelector;
 	std::vector<std::string> m_activeShaderSections;
 	bool m_activeShaderSectionsAvailable = false;
 	uint64_t m_shaderRendererGeneration = 0;
@@ -174,8 +178,15 @@ private:
 	bool m_queueDepthWindowHasSamples = false;
 	bool m_stopRequested = false;
 	std::thread m_renderThread;
+	std::thread m_stopWorker;
+	std::atomic_bool m_stopWorkerStarted{false};
+	std::atomic<uint64_t> m_initialPipelinePreparationEpoch{0};
 
 	std::unique_ptr<Impl> m_impl;
+	VideoStateComPtr m_buildVideoState;
+	std::string m_buildManualRule;
+	std::map<std::string, std::string> m_buildManualUnifiedProfiles;
+	std::atomic_bool m_implInitialized{false};
 	std::atomic<double> m_entryLatencyMs{0.0};
 	std::atomic<double> m_exitLatencyMs{0.0};
 	std::atomic_bool m_presentationTargetTimingKnown{false};

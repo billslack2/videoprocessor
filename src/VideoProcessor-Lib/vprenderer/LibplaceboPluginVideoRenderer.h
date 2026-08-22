@@ -31,6 +31,8 @@ public:
 	void Build() override;
 	void Start() override;
 	void Stop() override;
+	void StopWithIngressDrain(
+		const std::function<void()>& drainAfterGraphStop) override;
 	void Retire() noexcept override;
 	void Reset() override;
 	void ResetLiveQueue() override;
@@ -57,9 +59,9 @@ public:
 		bool& rendererRestartRequired) override;
 	bool SelectShaderRule(const CString& ruleName, CString& activeRule,
 		bool& rendererRestartRequired) override;
+	bool GetPipelinePreparationStatus(CString& status) const override;
 	bool RefreshShaderRule(CString& activeRule,
 		bool& rendererRestartRequired) override;
-	bool GetShaderCompilationStatus(CString& status) const override;
 	std::vector<CString> ActiveShaders() const override;
 	bool GetActiveShaderSections(
 		std::vector<CString>& sections) const override;
@@ -84,8 +86,6 @@ public:
 	bool SupportsNativeStatsOverlay() const override;
 	bool SetNativeStatsOverlay(const uint8_t* pixels, size_t byteCount,
 		int width, int height, int stride) override;
-	bool SetNativeShaderCompilationOverlay(const uint8_t* pixels,
-		size_t byteCount, int width, int height, int stride) override;
 	bool SetNativeSweepOverlay(const uint8_t* pixels, size_t byteCount,
 		int width, int height, int stride) override;
 	bool GetConversionPerformance(
