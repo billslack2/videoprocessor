@@ -154,6 +154,22 @@ namespace Tests
 		std::atomic_bool retired{false};
 	};
 
+	class RetriedRetirementRenderer final : public FakeResetRenderer
+	{
+	public:
+		void Retire() noexcept override
+		{
+			attempts.fetch_add(1, std::memory_order_acq_rel);
+		}
+
+		bool RetirementSucceeded() const override
+		{
+			return attempts.load(std::memory_order_acquire) >= 2;
+		}
+
+		std::atomic<unsigned int> attempts{0};
+	};
+
 	bool WaitForCompletion(RendererResetCoordinator& coordinator)
 	{
 		for (int attempt = 0; attempt < 200; ++attempt)
@@ -480,6 +496,49 @@ namespace Tests
 				std::chrono::seconds(2)) == std::future_status::ready);
 			Assert::IsTrue(completion.get().succeeded);
 			poller.join();
+			service.RequestClose();
+			service.Join();
+		}
+
+		TEST_METHOD(RendererRetirementRetainsObjectForAsynchronousRestoreRetry)
+		{
+			RendererRetirementService service;
+			auto renderer = std::make_shared<RetriedRetirementRenderer>();
+			Assert::IsTrue(service.Retire(
+				renderer, 75, nullptr, WM_APP + 93));
+
+			RendererRetirementService::Completion first;
+			for (int attempt = 0; attempt < 200; ++attempt)
+			{
+				if (service.TryTakeCompletion(75, first))
+					break;
+				std::this_thread::sleep_for(std::chrono::milliseconds(5));
+			}
+			Assert::AreEqual(
+				static_cast<unsigned long long>(75),
+				static_cast<unsigned long long>(first.token));
+			Assert::IsFalse(first.succeeded);
+			Assert::IsNotNull(first.renderer.get());
+			Assert::AreEqual(
+				static_cast<unsigned int>(1), renderer->attempts.load());
+
+			Assert::IsTrue(service.Retire(
+				std::move(first.renderer), 76, nullptr, WM_APP + 94));
+			RendererRetirementService::Completion second;
+			for (int attempt = 0; attempt < 200; ++attempt)
+			{
+				if (service.TryTakeCompletion(76, second))
+					break;
+				std::this_thread::sleep_for(std::chrono::milliseconds(5));
+			}
+			Assert::AreEqual(
+				static_cast<unsigned long long>(76),
+				static_cast<unsigned long long>(second.token));
+			Assert::IsTrue(second.succeeded);
+			Assert::IsNull(second.renderer.get());
+			Assert::AreEqual(
+				static_cast<unsigned int>(2), renderer->attempts.load());
+
 			service.RequestClose();
 			service.Join();
 		}
