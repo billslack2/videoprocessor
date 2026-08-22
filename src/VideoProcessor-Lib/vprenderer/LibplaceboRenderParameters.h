@@ -46,6 +46,11 @@ namespace LibplaceboRenderParameters
 		Toggle deband = Toggle::Auto;
 		Toggle sigmoid = Toggle::Auto;
 		Toggle dithering = Toggle::Auto;
+		// VP is an interactive renderer: output dimensions, crop geometry and
+		// presentation properties can change while the renderer remains live.
+		// Keep those values out of compiled program keys so a window resize does
+		// not synchronously manufacture a new shader variant.
+		bool dynamicConstants = false;
 	};
 
 	struct Projection

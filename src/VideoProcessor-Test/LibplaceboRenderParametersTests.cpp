@@ -233,16 +233,19 @@ namespace VideoProcessorTest
 			}
 		}
 
-		TEST_METHOD(RenderParametersRetainNativeConstantPolicy)
+		TEST_METHOD(DynamicConstantsFollowInteractivePresentationPolicy)
 		{
 			Settings settings;
+			settings.dynamicConstants = true;
 			Projection projection;
 			BuildOrFail(settings, false, projection);
-			const pl_render_params* native =
-				NativeData<pl_render_params>("pl_render_high_quality_params");
-			Assert::AreEqual(native->dynamic_constants,
-				projection.renderParams.dynamic_constants,
-				L"VP must not override libplacebo's native shader-constant policy.");
+			Assert::IsTrue(projection.renderParams.dynamic_constants,
+				L"Interactive presentation must keep geometry out of compiled shader keys.");
+
+			settings.dynamicConstants = false;
+			BuildOrFail(settings, false, projection);
+			Assert::IsFalse(projection.renderParams.dynamic_constants,
+				L"Non-interactive callers must retain the static-constant policy.");
 		}
 
 		TEST_METHOD(EveryToneMappingChoicePointsAtTheNativeFunction)

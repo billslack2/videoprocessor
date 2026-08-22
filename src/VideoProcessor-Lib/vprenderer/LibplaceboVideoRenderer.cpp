@@ -2919,6 +2919,7 @@ struct LibplaceboVideoRenderer::Impl
 	ActivePictureTransitionModel nlsTransition;
 	ConfiguredShaderRule nlsRule;
 	std::string requestedShaderSelector;
+	mutable std::mutex shaderStatusMutex;
 	std::string activeShaderStatus = "None";
 	uint64_t activeShaderStatusSerial = 0;
 	uint64_t nlsRendererGeneration = 0;
@@ -3972,6 +3973,10 @@ struct LibplaceboVideoRenderer::Impl
 			static_cast<LibplaceboRenderParameters::Toggle>(settings.sigmoid);
 		parameterSettings.dithering =
 			static_cast<LibplaceboRenderParameters::Toggle>(settings.dithering);
+		// Output geometry is live state. Without dynamic constants libplacebo
+		// includes dimensions and related values in generated shader programs,
+		// turning every previously unseen window size into a cold compile.
+		parameterSettings.dynamicConstants = true;
 
 		LibplaceboRenderParameters::Projection projection;
 		std::string projectionError;
@@ -6169,6 +6174,7 @@ struct LibplaceboVideoRenderer::Impl
 
 	void SetShaderStatus(const std::string& status)
 	{
+		std::lock_guard<std::mutex> guard(shaderStatusMutex);
 		if (activeShaderStatus == status)
 			return;
 		activeShaderStatus = status;
@@ -6193,7 +6199,10 @@ struct LibplaceboVideoRenderer::Impl
 		nlsDecision = {};
 		nlsHookSignature.clear();
 		rejectedNlsHookSignature.clear();
-		activeNlsShaderPath.clear();
+		{
+			std::lock_guard<std::mutex> guard(shaderStatusMutex);
+			activeNlsShaderPath.clear();
+		}
 		lastNlsPipelineVariant.clear();
 		lastNlsHookBindingPolicy.clear();
 		nlsPipelineWasActive = false;
@@ -6485,7 +6494,10 @@ struct LibplaceboVideoRenderer::Impl
 		nlsHook = replacement;
 		nlsHookSignature = replacementKey;
 		rejectedNlsHookSignature.clear();
-		activeNlsShaderPath = resolvedPath;
+		{
+			std::lock_guard<std::mutex> guard(shaderStatusMutex);
+			activeNlsShaderPath = resolvedPath;
+		}
 		LogNlsHookBinding(decision, binding);
 		const auto balance = nlsRule.parameters.find("axis_balance");
 		DebugLog::Log(
@@ -9967,8 +9979,10 @@ bool LibplaceboVideoRenderer::SelectShaderRule(
 		if (guard.owns_lock() && MadVRShaderLoader::RuleSelectorsEqual(
 			m_requestedShaderSelector, selector))
 		{
-			activeRule = CString(
-				CStringA(m_impl->activeShaderStatus.c_str()));
+			std::lock_guard<std::mutex> statusGuard(
+				m_impl->shaderStatusMutex);
+			activeRule = CString(CStringA(
+				m_impl->activeShaderStatus.c_str()));
 			DebugLog::Log(
 				"Alpha shaders: coalesced duplicate request for \"%s\"",
 				selector.c_str());
@@ -10013,10 +10027,11 @@ bool LibplaceboVideoRenderer::SelectShaderRule(
 		}
 		m_impl->SetConfiguredShaderSelection(
 			selector, selection, m_shaderRendererGeneration);
-		activeRule = CString(
-			CStringA(m_impl->activeShaderStatus.c_str()));
-		m_lastReportedShaderStatusSerial =
-			m_impl->activeShaderStatusSerial;
+		std::lock_guard<std::mutex> statusGuard(
+			m_impl->shaderStatusMutex);
+		activeRule = CString(CStringA(
+			m_impl->activeShaderStatus.c_str()));
+		m_lastReportedShaderStatusSerial = m_impl->activeShaderStatusSerial;
 	}
 	return true;
 }
@@ -10047,7 +10062,11 @@ void LibplaceboVideoRenderer::ApplyPendingShaderSelectionLocked()
 
 	m_impl->SetConfiguredShaderSelection(
 		selector, selection, m_shaderRendererGeneration);
-	m_lastReportedShaderStatusSerial = m_impl->activeShaderStatusSerial;
+	{
+		std::lock_guard<std::mutex> statusGuard(
+			m_impl->shaderStatusMutex);
+		m_lastReportedShaderStatusSerial = m_impl->activeShaderStatusSerial;
+	}
 	DebugLog::Log(
 		"Alpha shaders: applied queued selector \"%s\" on render thread",
 		selector.c_str());
@@ -10063,12 +10082,8 @@ bool LibplaceboVideoRenderer::RefreshShaderRule(
 	if (!m_impl)
 		return false;
 
-	std::unique_lock<std::mutex> guard(
-		m_impl->renderMutex, std::try_to_lock);
-	if (!guard.owns_lock())
-		return false;
-	activeRule = CString(
-		CStringA(m_impl->activeShaderStatus.c_str()));
+	std::lock_guard<std::mutex> guard(m_impl->shaderStatusMutex);
+	activeRule = CString(CStringA(m_impl->activeShaderStatus.c_str()));
 	const bool changed =
 		m_lastReportedShaderStatusSerial !=
 		m_impl->activeShaderStatusSerial;
@@ -10083,12 +10098,8 @@ std::vector<CString> LibplaceboVideoRenderer::ActiveShaders() const
 	std::vector<CString> shaders;
 	if (!m_impl)
 		return shaders;
-	std::unique_lock<std::mutex> guard(
-		m_impl->renderMutex, std::try_to_lock);
-	if (!guard.owns_lock())
-		return shaders;
-	if (m_impl->renderParams.num_hooks > 0 &&
-		!m_impl->activeNlsShaderPath.empty())
+	std::lock_guard<std::mutex> guard(m_impl->shaderStatusMutex);
+	if (!m_impl->activeNlsShaderPath.empty())
 	{
 		CString label;
 		label.Format(TEXT("GLSL: %S"),
@@ -10115,10 +10126,7 @@ CString LibplaceboVideoRenderer::ActiveShaderRule() const
 {
 	if (!m_impl)
 		return TEXT("None");
-	std::unique_lock<std::mutex> guard(
-		m_impl->renderMutex, std::try_to_lock);
-	if (!guard.owns_lock())
-		return TEXT("Rendering");
+	std::lock_guard<std::mutex> guard(m_impl->shaderStatusMutex);
 	return CString(CStringA(m_impl->activeShaderStatus.c_str()));
 }
 
