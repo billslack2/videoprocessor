@@ -20,7 +20,13 @@ acknowledgement are implemented. The Config acknowledgement uses an explicit,
 validated VP endpoint so a mutable fullscreen owner cannot receive or lose the
 reply. Validation: x64 Release builds of Lib, VPRenderer, GUI, Config, and
 ConfigTests; the full Config suite; the focused native ownership/async-ack
-test; and the native suite (861 passed). No deployment was performed.
+test; and the native suite (861 passed).
+
+Deployment completed 2026-08-22 from x64 Release commit `892668f` after a
+clean 57-file manifest stage. The host, VP Renderer plugin, Config executable,
+and Config discovery DLL were backed up and replaced as one validated runtime
+set; deployed SHA-256 hashes match staging. `VideoProcessor.cfg` and
+`vprenderer/VideoProcessorShaderCache.bin` were preserved without edits.
 
 Remaining review/acceptance: manually change each of the five incident
 settings while `rec709_scope_med` is active in fullscreen, verify the log says
