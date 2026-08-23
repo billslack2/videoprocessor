@@ -2,7 +2,11 @@
 
 ## Status
 
-Backlog (2026-08-23). VideoProcessorConfig currently creates a dated
+In Progress (2026-08-23). Implementation is starting from the current remote
+default beta integration branch `v1.2.001-beta` (queried at
+`bb5be05ab7dd8e92d3cbab02b789ab22bdad4329`) in the clean worktree
+`C:\Videoprocessor\vp\git-main\stories\.vp-0144-no-config-backups` on branch
+`codex/vp-0144-no-config-backups`. VideoProcessorConfig currently creates a dated
 `VideoProcessor.cfg.backup-YYYYMMDD-HHMMSS` file whenever it applies an edit
 and includes that path in the success notification. The operator no longer
 needs those backups; saving must update the active configuration without
