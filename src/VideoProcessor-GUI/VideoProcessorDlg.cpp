@@ -2787,6 +2787,11 @@ void CVideoProcessorDlg::ApplySavedConfiguration()
 {
 	if (!StageSavedConfiguration("editor-apply", false))
 		return;
+	// The target is read when a fullscreen host is created, so publish an
+	// accepted monitor change before any renderer transition. This preserves the
+	// current presentation state while making the next fullscreen entry use the
+	// newly saved monitor.
+	PublishStagedFullscreenMonitorSelection();
 
 	switch (m_stagedConfigurationAction)
 	{
@@ -3679,6 +3684,22 @@ bool CVideoProcessorDlg::StageSavedConfiguration(
 	m_stagedConfigurationAction =
 		ConfigurationApplyPolicy::ClassifyChanges(changedValues,
 			directShowActive);
+	const bool fullscreenMonitorSelectionChanged = std::any_of(
+		changedValues.begin(), changedValues.end(),
+		ConfigurationApplyPolicy::IsFullscreenMonitorSelectionChange);
+	if (fullscreenMonitorSelectionChanged)
+	{
+		m_stagedRuntimeSettings.hasFullscreenMonitorName = true;
+		std::string fullscreenMonitorName;
+		if (candidate->TryGetString("general", "fullscreen_monitor_name",
+			fullscreenMonitorName) ||
+			candidate->TryGetString("command_line", "fullscreen_monitor_name",
+				fullscreenMonitorName))
+		{
+			m_stagedRuntimeSettings.fullscreenMonitorName =
+				fullscreenMonitorName.c_str();
+		}
+	}
 	m_stagedShortcutsChanged = std::any_of(changedValues.begin(),
 		changedValues.end(), ConfigurationApplyPolicy::IsShortcutAffectingChange);
 	stageAccelerators = stageAccelerators ||
@@ -4092,6 +4113,19 @@ bool CVideoProcessorDlg::StageRuntimeSettings(
 		break;
 	}
 	return true;
+}
+
+void CVideoProcessorDlg::PublishStagedFullscreenMonitorSelection()
+{
+	if (!m_stagedRuntimeSettings.hasFullscreenMonitorName)
+		return;
+	const CString previousSelection = m_fullscreenMonitorName;
+	FullscreenMonitorName(m_stagedRuntimeSettings.fullscreenMonitorName);
+	DebugLog::Log(
+		"Configuration fullscreen monitor selection published: previous='%S' current='%S' effect=next-fullscreen",
+		previousSelection.IsEmpty() ? L"(default)" : previousSelection.GetString(),
+		m_fullscreenMonitorName.IsEmpty() ? L"(default)" :
+			m_fullscreenMonitorName.GetString());
 }
 
 void CVideoProcessorDlg::PublishStagedRuntimeSettings()

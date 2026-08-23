@@ -72,6 +72,17 @@ namespace ConfigurationApplyPolicy
 			key == "windowed_fullscreen_mode";
 	}
 
+	// Unlike the startup fullscreen choice, the monitor target is consulted
+	// only when the next fullscreen host is constructed. A saved target change
+	// can therefore update that pending selection without changing the current
+	// fullscreen state.
+	inline bool IsFullscreenMonitorSelectionChange(const Change& change)
+	{
+		const std::string section = NormalizeSection(change.section);
+		return (section == "general" || section == "command_line") &&
+			NormalizeSection(change.key) == "fullscreen_monitor_name";
+	}
+
 	// Output experiments change the D3D11 device/swapchain contract itself.
 	// Treat them more strictly than the normal renderer-only settings: rebuilding
 	// the capture graph also replaces the renderer and its ingress state, which

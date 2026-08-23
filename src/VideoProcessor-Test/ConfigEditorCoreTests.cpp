@@ -292,6 +292,15 @@ namespace VideoProcessorTest
 			Assert::AreEqual(static_cast<int>(Action::RestartRenderer),
 				static_cast<int>(ConfigurationApplyPolicy::ClassifyChange(
 					{ "general", "fullscreen_monitor_name" })));
+			Assert::IsTrue(
+				ConfigurationApplyPolicy::IsFullscreenMonitorSelectionChange(
+					{ "GENERAL", "FULLSCREEN_MONITOR_NAME" }));
+			Assert::IsTrue(
+				ConfigurationApplyPolicy::IsFullscreenMonitorSelectionChange(
+					{ "command_line", "fullscreen_monitor_name" }));
+			Assert::IsFalse(
+				ConfigurationApplyPolicy::IsFullscreenMonitorSelectionChange(
+					{ "general", "fullscreen" }));
 			Assert::AreEqual(static_cast<int>(Action::RestartRenderer),
 				static_cast<int>(ConfigurationApplyPolicy::ClassifyChange(
 					{ "general", "fullscreen_monitor_session_mode" })));

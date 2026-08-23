@@ -460,6 +460,8 @@ protected:
 		CString captureInput;
 		bool hasRenderer = false;
 		CString renderer;
+		bool hasFullscreenMonitorName = false;
+		CString fullscreenMonitorName;
 		bool hasFrameOffset = false;
 		bool frameOffsetAuto = false;
 		int frameOffsetMs = 0;
@@ -913,6 +915,7 @@ protected:
 	bool PublishStagedShortcutsOnly();
 	bool ReplaceStagedAccelerators();
 	bool StageRuntimeSettings(const ConfigFile& config, std::string& error);
+	void PublishStagedFullscreenMonitorSelection();
 	void PublishStagedRuntimeSettings();
 	void RestoreAcceptedRendererSelectionAfterReloadFailure();
 	bool EstablishSessionRendererOverrideFromSelection(const char* reason);
