@@ -69,6 +69,7 @@ public:
 	STDMETHODIMP OnVideoFrame(VideoFrame&) override;
 	STDMETHODIMP SetFrameQueueMaxSize(size_t) override;
 	STDMETHODIMP Reset() override;
+	HRESULT BeginTerminalFlush();
 
 	// CBaseFilter
 	STDMETHODIMP NonDelegatingQueryInterface(REFIID riid, void** ppv) override;

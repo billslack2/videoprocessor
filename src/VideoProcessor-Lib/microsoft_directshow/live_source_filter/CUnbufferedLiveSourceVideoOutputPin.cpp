@@ -28,7 +28,7 @@ CUnbufferedLiveSourceVideoOutputPin::~CUnbufferedLiveSourceVideoOutputPin()
 
 HRESULT CUnbufferedLiveSourceVideoOutputPin::OnVideoFrame(VideoFrame& videoFrame)
 {
-	if (CoordinatedResetRequested())
+	if (TerminalFlushStarted() || CoordinatedResetRequested())
 		return S_FALSE;
 
 	BYTE* pData = nullptr;

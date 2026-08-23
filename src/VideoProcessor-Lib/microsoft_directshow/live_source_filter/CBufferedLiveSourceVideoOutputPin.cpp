@@ -1211,6 +1211,26 @@ void CBufferedLiveSourceVideoOutputPin::Reset()
 }
 
 
+HRESULT CBufferedLiveSourceVideoOutputPin::BeginTerminalFlush()
+{
+	// Close every producer/consumer gate before waking a downstream Receive()
+	// that may be blocked in a third-party renderer. Inactive() remains the
+	// owner of joining the workers and purging their queues during graph Stop.
+	m_deliveryFlushing.store(true, std::memory_order_release);
+	m_isActive.store(false, std::memory_order_release);
+	if (m_hConversionShutdownEvent)
+		SetEvent(m_hConversionShutdownEvent);
+	if (m_hShutdownEvent)
+		SetEvent(m_hShutdownEvent);
+	if (m_hFrameAvailableEvent)
+		SetEvent(m_hFrameAvailableEvent);
+	if (m_hConvertedAvailableEvent)
+		SetEvent(m_hConvertedAvailableEvent);
+
+	return ALiveSourceVideoOutputPin::BeginTerminalFlush();
+}
+
+
 size_t CBufferedLiveSourceVideoOutputPin::GetFrameQueueSize()
 {
 	return m_captureFrameQueue.Size();

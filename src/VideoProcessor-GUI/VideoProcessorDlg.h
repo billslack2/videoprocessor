@@ -69,6 +69,11 @@
 #define WM_MESSAGE_RENDERER_INTENT_READY                (WM_APP + 15)
 #define WM_MESSAGE_RENDERER_GRAPH_EVENT                 (WM_APP + 16)
 #define WM_MESSAGE_RENDERER_RESTART_REQUIRED            (WM_APP + 17)
+#define WM_MESSAGE_DIRECTSHOW_OWNER_COMPLETION           (WM_APP + 18)
+
+static_assert(WM_MESSAGE_DIRECTSHOW_NOTIFICATION !=
+	WM_MESSAGE_DIRECTSHOW_OWNER_COMPLETION,
+	"DirectShow graph and owner-completion wakes must remain distinct");
 
 // Timer IDs
 #define TIMER_ID_1SECOND 1
@@ -212,6 +217,8 @@ public:
 	afx_msg LRESULT OnMessageEvaluateRendererStart(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnMessageCaptureDeviceError(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnMessageDirectShowNotification(WPARAM wParam, LPARAM lParam);
+	afx_msg LRESULT OnMessageDirectShowOwnerCompletion(
+		WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnMessageRendererStateChange(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnMessageRendererDetailString(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnMessageRendererGraphEvent(WPARAM wParam, LPARAM lParam);

@@ -1920,6 +1920,7 @@ BEGIN_MESSAGE_MAP(CVideoProcessorDlg, CDialog)
 	ON_MESSAGE(WM_MESSAGE_EVALUATE_RENDERER_START, &CVideoProcessorDlg::OnMessageEvaluateRendererStart)
 	ON_MESSAGE(WM_MESSAGE_CAPTURE_DEVICE_ERROR, &CVideoProcessorDlg::OnMessageCaptureDeviceError)
 	ON_MESSAGE(WM_MESSAGE_DIRECTSHOW_NOTIFICATION, &CVideoProcessorDlg::OnMessageDirectShowNotification)
+	ON_MESSAGE(WM_MESSAGE_DIRECTSHOW_OWNER_COMPLETION, &CVideoProcessorDlg::OnMessageDirectShowOwnerCompletion)
 	ON_MESSAGE(WM_MESSAGE_RENDERER_STATE_CHANGE, &CVideoProcessorDlg::OnMessageRendererStateChange)
 	ON_MESSAGE(WM_MESSAGE_RENDERER_DETAIL_STRING, &CVideoProcessorDlg::OnMessageRendererDetailString)
 	ON_MESSAGE(WM_MESSAGE_EXTERNAL_SHORTCUT, &CVideoProcessorDlg::OnMessageExternalShortcut)
@@ -5891,6 +5892,34 @@ LRESULT CVideoProcessorDlg::OnMessageDirectShowNotification(WPARAM wParam, LPARA
 }
 
 
+LRESULT CVideoProcessorDlg::OnMessageDirectShowOwnerCompletion(
+	WPARAM wParam, LPARAM lParam)
+{
+	const uint32_t messageGeneration = static_cast<uint32_t>(lParam);
+	const uint32_t currentGeneration =
+		m_rendererGeneration.load(std::memory_order_acquire);
+	const std::shared_ptr<IVideoRenderer> renderer =
+		std::atomic_load_explicit(
+			&m_videoRenderer, std::memory_order_acquire);
+	if (!RendererGenerationGate::Accept(
+		messageGeneration, currentGeneration, renderer != nullptr) ||
+		!m_activeRendererIsDirectShow)
+	{
+		DebugLog::Log(
+			"DirectShow owner completion rejected: message_generation=%u "
+			"current_generation=%u renderer=%d directshow=%d",
+			messageGeneration, currentGeneration, renderer ? 1 : 0,
+			m_activeRendererIsDirectShow ? 1 : 0);
+		return 0;
+	}
+
+	const HRESULT hr = renderer->OnOwnerCompletionWake(wParam, lParam);
+	if (FAILED(hr))
+		FatalError(TEXT("Failed to handle DirectShow owner completion"));
+	return 0;
+}
+
+
 LRESULT CVideoProcessorDlg::OnMessageRendererStateChange(WPARAM wParam, LPARAM lParam)
 {
 	const RendererState newRendererState = (RendererState)wParam;
@@ -6319,6 +6348,24 @@ bool CVideoProcessorDlg::TryFinalizeRendererRetirement(
 	const bool completedRetry = m_rendererRetirementRetryActive;
 	m_rendererRetirementRetryActive = false;
 	m_failedRendererRetirementNextRetryTick = 0;
+	// The retiring graph has revoked SetNotifyWindow and its owner apartment is
+	// now gone. Remove only its dedicated graph-event wakes before any successor
+	// can reuse this message ID. Lifecycle completion has a different message
+	// and therefore cannot be consumed by this purge.
+	MSG staleGraphEvent = {};
+	size_t purgedGraphEvents = 0;
+	while (PeekMessage(&staleGraphEvent, GetSafeHwnd(),
+		WM_MESSAGE_DIRECTSHOW_NOTIFICATION,
+		WM_MESSAGE_DIRECTSHOW_NOTIFICATION, PM_REMOVE))
+	{
+		++purgedGraphEvents;
+	}
+	if (purgedGraphEvents != 0)
+	{
+		DebugLog::Log(
+			"DirectShow retiring graph-event wakes purged: count=%zu token=%llu",
+			purgedGraphEvents, static_cast<unsigned long long>(token));
+	}
 	DebugLog::Log(
 		"Renderer transition: process=%lu generation=%u event=old-surface-retired "
 		"renderer=%S target=%p cover=%p token=%llu source=%s "
@@ -8419,7 +8466,8 @@ void CVideoProcessorDlg::RenderStart()
 		if (IsEqualCLSID(*rendererClSID, CLSID_MPCVR))
 			m_videoRenderer = std::make_shared<DirectShowMPCVideoRenderer>(
 				*this, rendererGeneration, m_rendererTargetHwnd, GetSafeHwnd(),
-				WM_MESSAGE_DIRECTSHOW_NOTIFICATION, timingClock,
+				WM_MESSAGE_DIRECTSHOW_NOTIFICATION,
+				WM_MESSAGE_DIRECTSHOW_OWNER_COMPLETION, timingClock,
 				directShowStartStopTimeMethod,
 				GetRendererVideoFrameUseQueue(),
 				GetRendererVideoFrameQueueSizeMax(),
@@ -8431,7 +8479,8 @@ void CVideoProcessorDlg::RenderStart()
 			m_videoRenderer =
 				std::make_shared<DirectShowEnhancedVideoRenderer>(
 					*this, rendererGeneration, m_rendererTargetHwnd, GetSafeHwnd(),
-					WM_MESSAGE_DIRECTSHOW_NOTIFICATION, timingClock,
+					WM_MESSAGE_DIRECTSHOW_NOTIFICATION,
+					WM_MESSAGE_DIRECTSHOW_OWNER_COMPLETION, timingClock,
 					directShowStartStopTimeMethod,
 					GetRendererVideoFrameUseQueue(),
 					GetRendererVideoFrameQueueSizeMax(),
@@ -8441,7 +8490,8 @@ void CVideoProcessorDlg::RenderStart()
 				std::make_shared<DirectShowGenericHDRVideoRenderer>(
 					*rendererClSID, *this, rendererGeneration, m_rendererTargetHwnd,
 					GetSafeHwnd(), WM_MESSAGE_DIRECTSHOW_NOTIFICATION,
-					timingClock, directShowStartStopTimeMethod,
+					WM_MESSAGE_DIRECTSHOW_OWNER_COMPLETION, timingClock,
+					directShowStartStopTimeMethod,
 					GetRendererVideoFrameUseQueue(),
 					GetRendererVideoFrameQueueSizeMax(),
 					videoConversionOverride, forceNominalRange,
@@ -8452,7 +8502,8 @@ void CVideoProcessorDlg::RenderStart()
 				std::make_shared<DirectShowGenericVideoRenderer>(
 					*rendererClSID, *this, rendererGeneration, m_rendererTargetHwnd,
 					GetSafeHwnd(), WM_MESSAGE_DIRECTSHOW_NOTIFICATION,
-					timingClock, directShowStartStopTimeMethod,
+					WM_MESSAGE_DIRECTSHOW_OWNER_COMPLETION, timingClock,
+					directShowStartStopTimeMethod,
 					GetRendererVideoFrameUseQueue(),
 					GetRendererVideoFrameQueueSizeMax(),
 					videoConversionOverride);
@@ -8513,6 +8564,7 @@ void CVideoProcessorDlg::RenderStart()
 					m_rendererTargetHwnd,
 					this->GetSafeHwnd(),
 					WM_MESSAGE_DIRECTSHOW_NOTIFICATION,
+					WM_MESSAGE_DIRECTSHOW_OWNER_COMPLETION,
 					timingClock,
 					directShowStartStopTimeMethod,
 					GetRendererVideoFrameUseQueue(),
@@ -8531,6 +8583,7 @@ void CVideoProcessorDlg::RenderStart()
 					m_rendererTargetHwnd,
 					this->GetSafeHwnd(),
 					WM_MESSAGE_DIRECTSHOW_NOTIFICATION,
+					WM_MESSAGE_DIRECTSHOW_OWNER_COMPLETION,
 					timingClock,
 					directShowStartStopTimeMethod,
 					GetRendererVideoFrameUseQueue(),
@@ -8545,6 +8598,7 @@ void CVideoProcessorDlg::RenderStart()
 					m_rendererTargetHwnd,
 					this->GetSafeHwnd(),
 					WM_MESSAGE_DIRECTSHOW_NOTIFICATION,
+					WM_MESSAGE_DIRECTSHOW_OWNER_COMPLETION,
 					timingClock,
 					directShowStartStopTimeMethod,
 					GetRendererVideoFrameUseQueue(),

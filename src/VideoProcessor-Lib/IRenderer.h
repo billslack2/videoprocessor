@@ -120,6 +120,9 @@ public:
 
 	// Handler for windows events for the graph's pEvent
 	virtual HRESULT OnWindowsEvent(LONG_PTR param1, LONG_PTR param2) = 0;
+	// A renderer-owner lifecycle completion is deliberately separate from a
+	// DirectShow graph-event wake. Renderers without an owner apartment ignore it.
+	virtual HRESULT OnOwnerCompletionWake(LONG_PTR, LONG_PTR) { return S_OK; }
 
 	// Construct the graph
 	virtual void Build() = 0;

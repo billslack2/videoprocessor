@@ -101,6 +101,7 @@ public:
 	bool GetLivenessSnapshot(RendererLivenessSnapshot& snapshot) const override;
 	bool GetLatencySnapshot(RendererLatencySnapshot& snapshot) const override;
 	void Reset() override;
+	HRESULT BeginTerminalFlush() override;
 	REFERENCE_TIME NextFrameTimestamp() const override;
 	void OnBadTimestampDetected() override;
 

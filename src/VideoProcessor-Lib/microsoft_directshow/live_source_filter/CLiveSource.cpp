@@ -159,6 +159,13 @@ STDMETHODIMP CLiveSource::Reset()
 }
 
 
+HRESULT CLiveSource::BeginTerminalFlush()
+{
+	return m_videoOutputPin ? m_videoOutputPin->BeginTerminalFlush() :
+		E_UNEXPECTED;
+}
+
+
 STDMETHODIMP CLiveSource::NonDelegatingQueryInterface(REFIID riid, void** ppv)
 {
 	CheckPointer(ppv, E_POINTER);

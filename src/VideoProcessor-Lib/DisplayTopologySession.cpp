@@ -430,16 +430,151 @@ std::set<TargetIdentity> ActiveTargets(const Topology& topology)
 	return result;
 }
 
-bool WaitForTargets(const Topology& expected)
+bool SameRational(const DISPLAYCONFIG_RATIONAL& left,
+	const DISPLAYCONFIG_RATIONAL& right)
 {
-	const auto expectedTargets = ActiveTargets(expected);
+	return left.Numerator == right.Numerator &&
+		left.Denominator == right.Denominator;
+}
+
+UINT32 SourceModeIndex(const DISPLAYCONFIG_PATH_INFO& path)
+{
+	return (path.flags & DISPLAYCONFIG_PATH_SUPPORT_VIRTUAL_MODE) != 0 ?
+		path.sourceInfo.sourceModeInfoIdx : path.sourceInfo.modeInfoIdx;
+}
+
+UINT32 TargetModeIndex(const DISPLAYCONFIG_PATH_INFO& path)
+{
+	return (path.flags & DISPLAYCONFIG_PATH_SUPPORT_VIRTUAL_MODE) != 0 ?
+		path.targetInfo.targetModeInfoIdx : path.targetInfo.modeInfoIdx;
+}
+
+const DISPLAYCONFIG_MODE_INFO* ReferencedMode(const Topology& topology,
+	UINT32 index, DISPLAYCONFIG_MODE_INFO_TYPE type)
+{
+	if (index == DISPLAYCONFIG_PATH_MODE_IDX_INVALID ||
+		index >= topology.modes.size())
+	{
+		return nullptr;
+	}
+	const DISPLAYCONFIG_MODE_INFO& mode = topology.modes[index];
+	return mode.infoType == type ? &mode : nullptr;
+}
+
+bool SameSourceMode(const DISPLAYCONFIG_MODE_INFO* left,
+	const DISPLAYCONFIG_MODE_INFO* right)
+{
+	if (!left || !right)
+		return left == right;
+	const auto& first = left->sourceMode;
+	const auto& second = right->sourceMode;
+	return first.width == second.width && first.height == second.height &&
+		first.pixelFormat == second.pixelFormat &&
+		first.position.x == second.position.x &&
+		first.position.y == second.position.y;
+}
+
+bool SameTargetMode(const DISPLAYCONFIG_MODE_INFO* left,
+	const DISPLAYCONFIG_MODE_INFO* right)
+{
+	if (!left || !right)
+		return left == right;
+	const auto& first = left->targetMode.targetVideoSignalInfo;
+	const auto& second = right->targetMode.targetVideoSignalInfo;
+	return first.pixelRate == second.pixelRate &&
+		SameRational(first.hSyncFreq, second.hSyncFreq) &&
+		SameRational(first.vSyncFreq, second.vSyncFreq) &&
+		first.activeSize.cx == second.activeSize.cx &&
+		first.activeSize.cy == second.activeSize.cy &&
+		first.totalSize.cx == second.totalSize.cx &&
+		first.totalSize.cy == second.totalSize.cy &&
+		first.videoStandard == second.videoStandard &&
+		first.scanLineOrdering == second.scanLineOrdering;
+}
+
+bool SamePathState(const Topology& expectedTopology,
+	const DISPLAYCONFIG_PATH_INFO& expected,
+	const Topology& actualTopology,
+	const DISPLAYCONFIG_PATH_INFO& actual)
+{
+	constexpr UINT32 relevantPathFlags = DISPLAYCONFIG_PATH_ACTIVE |
+		DISPLAYCONFIG_PATH_SUPPORT_VIRTUAL_MODE;
+	return (expected.flags & relevantPathFlags) ==
+			(actual.flags & relevantPathFlags) &&
+		expected.sourceInfo.adapterId.HighPart ==
+			actual.sourceInfo.adapterId.HighPart &&
+		expected.sourceInfo.adapterId.LowPart ==
+			actual.sourceInfo.adapterId.LowPart &&
+		expected.sourceInfo.id == actual.sourceInfo.id &&
+		expected.targetInfo.adapterId.HighPart ==
+			actual.targetInfo.adapterId.HighPart &&
+		expected.targetInfo.adapterId.LowPart ==
+			actual.targetInfo.adapterId.LowPart &&
+		expected.targetInfo.id == actual.targetInfo.id &&
+		expected.targetInfo.outputTechnology ==
+			actual.targetInfo.outputTechnology &&
+		expected.targetInfo.rotation == actual.targetInfo.rotation &&
+		expected.targetInfo.scaling == actual.targetInfo.scaling &&
+		SameRational(expected.targetInfo.refreshRate,
+			actual.targetInfo.refreshRate) &&
+		expected.targetInfo.scanLineOrdering ==
+			actual.targetInfo.scanLineOrdering &&
+		SameSourceMode(
+			ReferencedMode(expectedTopology, SourceModeIndex(expected),
+				DISPLAYCONFIG_MODE_INFO_TYPE_SOURCE),
+			ReferencedMode(actualTopology, SourceModeIndex(actual),
+				DISPLAYCONFIG_MODE_INFO_TYPE_SOURCE)) &&
+		SameTargetMode(
+			ReferencedMode(expectedTopology, TargetModeIndex(expected),
+				DISPLAYCONFIG_MODE_INFO_TYPE_TARGET),
+			ReferencedMode(actualTopology, TargetModeIndex(actual),
+				DISPLAYCONFIG_MODE_INFO_TYPE_TARGET));
+}
+
+bool IsExactTopologyActive(const Topology& expected, const Topology& actual)
+{
+	if (expected.paths.size() != actual.paths.size() ||
+		ActiveTargets(expected) != ActiveTargets(actual))
+	{
+		return false;
+	}
+	for (const auto& expectedPath : expected.paths)
+	{
+		const auto matching = std::find_if(actual.paths.begin(),
+			actual.paths.end(), [&](const DISPLAYCONFIG_PATH_INFO& path)
+			{
+				return expectedPath.targetInfo.adapterId.HighPart ==
+						path.targetInfo.adapterId.HighPart &&
+					expectedPath.targetInfo.adapterId.LowPart ==
+						path.targetInfo.adapterId.LowPart &&
+					expectedPath.targetInfo.id == path.targetInfo.id;
+			});
+		if (matching == actual.paths.end() ||
+			!SamePathState(expected, expectedPath, actual, *matching))
+		{
+			return false;
+		}
+	}
+	return true;
+}
+
+bool WaitForExactTopology(const Topology& expected)
+{
 	const ULONGLONG deadline = GetTickCount64() + 5000;
+	unsigned int consecutiveMatches = 0;
 	do
 	{
 		Topology active;
 		if (QueryTopology(QDC_ONLY_ACTIVE_PATHS, active) == ERROR_SUCCESS &&
-			ActiveTargets(active) == expectedTargets)
-			return true;
+			IsExactTopologyActive(expected, active))
+		{
+			if (++consecutiveMatches >= 2)
+				return true;
+		}
+		else
+		{
+			consecutiveMatches = 0;
+		}
 		Sleep(100);
 	} while (GetTickCount64() < deadline);
 	return false;
@@ -471,22 +606,15 @@ namespace DisplayTopologySession
 		LONG result = ERROR_SUCCESS;
 		if (!ApplyTopology(topology, true, false, result) ||
 			!ApplyTopology(topology, false, false, result) ||
-			!WaitForTargets(topology))
+			!WaitForExactTopology(topology))
 		{
 			error = result == ERROR_SUCCESS ?
-				"restored display targets were not confirmed" :
+				"exact restored display topology was not confirmed" :
 				"SetDisplayConfig restore failed with Windows error " +
 					std::to_string(result);
 			DebugLog::Log("Display topology restore failed: reason=%s windows_error=%ld record_retained=1",
 				reason, result);
 			return false;
-		}
-		for (const auto& path : topology.paths)
-		{
-			std::string modeError;
-			if (!ApplyMaximumMode(path, modeError))
-				DebugLog::Log("Display topology restored but maximum mode was not applied: reason=%s error=%s",
-					reason, modeError.c_str());
 		}
 		if (!UpdateRecoveryEntry(statePath, nullptr, error))
 		{

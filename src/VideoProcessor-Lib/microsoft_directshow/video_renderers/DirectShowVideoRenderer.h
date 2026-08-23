@@ -42,7 +42,8 @@ public:
 		uint32_t rendererGeneration,
 		HWND videoHwnd,
 		HWND eventHwnd,
-		UINT eventMsg,
+		UINT graphEventMsg,
+		UINT ownerCompletionMsg,
 		ITimingClock* timingClock,
 		DirectShowStartStopTimeMethod timestamp,
 		bool useFrameQueue,
@@ -78,6 +79,8 @@ public:
 	bool GetLivenessSnapshot(RendererLivenessSnapshot& snapshot) const override;
 	bool GetLatencySnapshot(RendererLatencySnapshot& snapshot) const override;
 	HRESULT OnWindowsEvent(LONG_PTR param1, LONG_PTR param2) override;
+	HRESULT OnOwnerCompletionWake(
+		LONG_PTR param1, LONG_PTR param2) override;
 	void Build() override;
 	void Start() override;
 	void Stop() override;
@@ -99,6 +102,10 @@ public:
 	void SetResetRequestSink(
 		std::shared_ptr<IRendererResetRequestSink> sink) override;
 	void Retire() noexcept override;
+	bool RetirementSucceeded() const override
+	{
+		return m_retirementSucceeded.load(std::memory_order_acquire);
+	}
 	void OnSize() override;
 	void SetFrameQueueMaxSize(size_t) override;
 	void SetSceneAwareTimingCorrection(bool) override;
@@ -196,7 +203,8 @@ protected:
 	const uint32_t m_callbackGeneration;
 	HWND m_videoHwnd;
 	HWND m_eventHwnd;
-	UINT m_eventMsg;
+	UINT m_graphEventMsg;
+	UINT m_ownerCompletionMsg;
 	ITimingClock* m_timingClock;
 	VideoStateComPtr m_videoState;
 	std::mutex m_videoStateAdmissionMutex;
@@ -289,6 +297,7 @@ protected:
 	bool GraphResourcesReleased() const noexcept;
 	virtual void GraphRun();
 	virtual void GraphStop();
+	void GraphBeginTerminalFlush() noexcept;
 
 	virtual void FilterGraphBuild();
 	virtual void FilterGraphDestroy();
@@ -334,6 +343,6 @@ private:
 	std::deque<RendererState> m_pendingStateCompletions;
 	std::atomic_bool m_pendingRendererRestart{false};
 	std::atomic_bool m_graphTeardownComplete{false};
-	std::atomic_bool m_retired{false};
+	std::atomic_bool m_retirementSucceeded{false};
 	DirectShowGraphExecutor m_graphExecutor;
 };

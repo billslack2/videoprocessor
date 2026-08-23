@@ -25,7 +25,8 @@ DirectShowVideoRenderer::DirectShowVideoRenderer(
 	uint32_t rendererGeneration,
 	HWND videoHwnd,
 	HWND eventHwnd,
-	UINT eventMsg,
+	UINT graphEventMsg,
+	UINT ownerCompletionMsg,
 	ITimingClock* timingClock,
 	DirectShowStartStopTimeMethod timestamp,
 	bool useFrameQueue,
@@ -35,7 +36,8 @@ DirectShowVideoRenderer::DirectShowVideoRenderer(
 	m_callbackGeneration(rendererGeneration),
 	m_videoHwnd(videoHwnd),
 	m_eventHwnd(eventHwnd),
-	m_eventMsg(eventMsg),
+	m_graphEventMsg(graphEventMsg),
+	m_ownerCompletionMsg(ownerCompletionMsg),
 	m_timingClock(timingClock),
 	m_timestamp(timestamp),
 	m_useFrameQueue(useFrameQueue),
@@ -46,8 +48,12 @@ DirectShowVideoRenderer::DirectShowVideoRenderer(
 		throw std::runtime_error("Invalid videoHwnd");
 	if (!eventHwnd)
 		throw std::runtime_error("Invalid eventHwnd");
-	if (!eventMsg)
-		throw std::runtime_error("Invalid eventMsg");
+	if (!graphEventMsg || !ownerCompletionMsg ||
+		graphEventMsg == ownerCompletionMsg)
+	{
+		throw std::runtime_error(
+			"DirectShow graph and owner-completion messages must be distinct");
+	}
 
 	if (timingClock && timingClock->TimingClockTicksPerSecond() < 1000LL)
 		throw std::runtime_error("TimingClock needs resolution of at least millisecond level");
@@ -70,7 +76,7 @@ DirectShowVideoRenderer::~DirectShowVideoRenderer()
 
 void DirectShowVideoRenderer::Retire() noexcept
 {
-	if (m_retired.exchange(true, std::memory_order_acq_rel))
+	if (m_retirementSucceeded.load(std::memory_order_acquire))
 		return;
 	DebugLog::Log(
 		"DirectShow renderer retirement started: worker_thread=%lu graph_complete=%d",
@@ -82,17 +88,32 @@ void DirectShowVideoRenderer::Retire() noexcept
 		// event-drain work before the UI releases its lifetime pin. Discard
 		// such post-teardown work and only join the already-clean owner.
 		m_graphExecutor.CancelPendingAndShutdown({});
+		m_retirementSucceeded.store(true, std::memory_order_release);
 		DebugLog::Log(
 			"DirectShow renderer retirement completed: worker_thread=%lu mode=join-only",
 			GetCurrentThreadId());
 		return;
 	}
-	m_graphExecutor.CancelPendingAndShutdown([this]()
-		{
-			GraphTeardownNoThrow();
-		});
+	const bool resourcesReleased =
+		m_graphExecutor.QuiesceAndInvokeCleanup([this]()
+			{
+				GraphTeardownNoThrow();
+				return GraphResourcesReleased();
+			});
+	if (!resourcesReleased)
+	{
+		m_graphTeardownComplete.store(false, std::memory_order_release);
+		DebugLog::Log(
+			"DirectShow renderer retirement pending: worker_thread=%lu "
+			"owner_apartment_retained=1",
+			GetCurrentThreadId());
+		return;
+	}
+	m_graphExecutor.Shutdown();
+	m_retirementSucceeded.store(true, std::memory_order_release);
 	DebugLog::Log(
-		"DirectShow renderer retirement completed: worker_thread=%lu mode=forced-cleanup",
+		"DirectShow renderer retirement completed: worker_thread=%lu "
+		"mode=verified-forced-cleanup",
 		GetCurrentThreadId());
 }
 
@@ -298,10 +319,6 @@ void DirectShowVideoRenderer::OnVideoFrame(VideoFrame& videoFrame)
 
 HRESULT DirectShowVideoRenderer::OnWindowsEvent(LONG_PTR, LONG_PTR)
 {
-	// A previous owner-side drain can have published a state transition. Only
-	// deliver it here, on the window/UI thread.
-	PublishPendingStateCallback();
-
 	const bool accepted = PostCoalescedGraphCommand(
 		GRAPH_COMMAND_EVENT_DRAIN, [this]()
 		{
@@ -321,6 +338,13 @@ HRESULT DirectShowVideoRenderer::OnWindowsEvent(LONG_PTR, LONG_PTR)
 			}
 		});
 	return accepted ? S_OK : VFW_E_WRONG_STATE;
+}
+
+
+HRESULT DirectShowVideoRenderer::OnOwnerCompletionWake(LONG_PTR, LONG_PTR)
+{
+	PublishPendingStateCallback();
+	return S_OK;
 }
 
 
@@ -426,6 +450,7 @@ void DirectShowVideoRenderer::StopWithIngressDrain(
 	{
 		const ULONGLONG stopStarted = GetTickCount64();
 		ULONGLONG phaseStarted = stopStarted;
+		GraphBeginTerminalFlush();
 		DebugLog::Log("DirectShow stop phase: phase=graph-stop-begin mode=inline thread=%lu",
 			GetCurrentThreadId());
 		GraphStop();
@@ -457,6 +482,7 @@ void DirectShowVideoRenderer::StopWithIngressDrain(
 		{
 			const ULONGLONG stopStarted = GetTickCount64();
 			ULONGLONG phaseStarted = stopStarted;
+			GraphBeginTerminalFlush();
 			DebugLog::Log("DirectShow stop phase: phase=graph-stop-begin mode=async thread=%lu",
 				GetCurrentThreadId());
 			try
@@ -491,10 +517,11 @@ void DirectShowVideoRenderer::StopWithIngressDrain(
 				SetState(RendererState::RENDERSTATE_STOPPED);
 			else
 				SetState(RendererState::RENDERSTATE_FAILED);
-		}, [eventHwnd = m_eventHwnd, eventMsg = m_eventMsg,
+		}, [eventHwnd = m_eventHwnd,
+			 ownerCompletionMsg = m_ownerCompletionMsg,
 			 rendererGeneration = m_callbackGeneration]()
 		{
-			PostMessage(eventHwnd, eventMsg, 0,
+			PostMessage(eventHwnd, ownerCompletionMsg, 0,
 				static_cast<LPARAM>(rendererGeneration));
 		});
 }
@@ -1351,7 +1378,7 @@ void DirectShowVideoRenderer::PublishPendingStateCallback()
 
 void DirectShowVideoRenderer::WakeForOwnerCompletion() const
 {
-	PostMessage(m_eventHwnd, m_eventMsg, 0,
+	PostMessage(m_eventHwnd, m_ownerCompletionMsg, 0,
 		static_cast<LPARAM>(m_callbackGeneration));
 }
 
@@ -1465,7 +1492,7 @@ void DirectShowVideoRenderer::GraphBuild()
 	//
 
 	if (FAILED(m_pEvent->SetNotifyWindow(
-		(OAHWND)m_eventHwnd, m_eventMsg,
+		(OAHWND)m_eventHwnd, m_graphEventMsg,
 		static_cast<LONG_PTR>(m_callbackGeneration))))
 		throw std::runtime_error("Failed to setup event notification");
 
@@ -1573,6 +1600,19 @@ void DirectShowVideoRenderer::GraphTeardownNoThrow() noexcept
 				GetCurrentThreadId());
 		};
 	ULONGLONG phaseStarted = GetTickCount64();
+	GraphBeginTerminalFlush();
+	if (m_pControl)
+	{
+		const HRESULT stopResult = m_pControl->Stop();
+		if (FAILED(stopResult))
+		{
+			DebugLog::Log(
+				"DirectShow forced graph Stop failed during teardown: hr=0x%08lx",
+				static_cast<unsigned long>(stopResult));
+		}
+	}
+	logPhase("terminal-flush-and-stop", phaseStarted);
+	phaseStarted = GetTickCount64();
 	try
 	{
 		if (m_pEvent)
@@ -1807,6 +1847,27 @@ void DirectShowVideoRenderer::GraphStop()
 
 	assert(m_liveSource->GetFrameQueueSize() == 0);
 
+}
+
+
+void DirectShowVideoRenderer::GraphBeginTerminalFlush() noexcept
+{
+	assert(IsGraphThread());
+	if (!m_liveSource)
+		return;
+
+	const HRESULT result = m_liveSource->BeginTerminalFlush();
+	if (FAILED(result))
+	{
+		DebugLog::Log(
+			"DirectShow terminal BeginFlush failed before graph stop: hr=0x%08lx",
+			static_cast<unsigned long>(result));
+	}
+	else
+	{
+		DebugLog::Log(
+			"DirectShow terminal BeginFlush completed before graph stop");
+	}
 }
 
 

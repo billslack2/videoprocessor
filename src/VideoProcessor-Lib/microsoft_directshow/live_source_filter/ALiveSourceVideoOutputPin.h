@@ -176,6 +176,11 @@ public:
 	// Reset the internal state and the video stream.
 	virtual void Reset();
 
+	// Permanently unblock downstream delivery while this graph generation is
+	// being retired. Unlike Reset(), terminal flush is intentionally one-way:
+	// no EndFlush and no NewSegment are delivered on this pin afterwards.
+	virtual HRESULT BeginTerminalFlush();
+
 	// Set fixed pipeline offset for RATIONAL_RATIONAL mode (in 100ns units)
 	// This compensates for processing delays by shifting the timeline forward
 	void SetRationalPipelineOffset(REFERENCE_TIME offset) { m_rationalPipelineOffset = offset; }
@@ -583,6 +588,11 @@ protected:
 		m_resetRequestLatch.Complete();
 	}
 	RendererResetRequestLatch m_resetRequestLatch;
+	bool TerminalFlushStarted() const
+	{
+		return m_terminalFlushStarted.load(std::memory_order_acquire);
+	}
+	std::atomic<bool> m_terminalFlushStarted{false};
 
 	// Frame duration statistics tracking
 	// These track the actual tick rate of timeStart/timeStop intervals

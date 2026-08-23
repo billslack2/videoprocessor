@@ -4,6 +4,7 @@
 #include <objbase.h>
 
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <deque>
 #include <functional>
@@ -190,9 +191,9 @@ public:
 		std::future<Result> result = task->get_future();
 		{
 			std::lock_guard<std::mutex> lock(m_mutex);
-			if (m_stopping)
+			if (m_stopping || m_quiescing)
 				throw std::runtime_error(
-					"DirectShow graph executor is closed");
+					"DirectShow graph executor is closed or quiescing");
 			m_commands.push_back({ 0, [task]()
 				{
 					(*task)();
@@ -209,7 +210,7 @@ public:
 	bool Post(std::function<void()> function)
 	{
 		std::lock_guard<std::mutex> lock(m_mutex);
-		if (m_stopping)
+		if (m_stopping || m_quiescing)
 			return false;
 		m_commands.push_back({ 0, std::move(function), {} });
 		SetEvent(m_workEvent);
@@ -223,7 +224,7 @@ public:
 		std::function<void()> afterCompletion)
 	{
 		std::lock_guard<std::mutex> lock(m_mutex);
-		if (m_stopping)
+		if (m_stopping || m_quiescing)
 			return false;
 		m_commands.push_back(
 			{ 0, std::move(function), std::move(afterCompletion) });
@@ -242,7 +243,7 @@ public:
 			return Post(std::move(function));
 
 		std::lock_guard<std::mutex> lock(m_mutex);
-		if (m_stopping)
+		if (m_stopping || m_quiescing)
 			return false;
 		for (auto& command : m_commands)
 		{
@@ -255,6 +256,62 @@ public:
 		m_commands.push_back({ key, std::move(function), {} });
 		SetEvent(m_workEvent);
 		return true;
+	}
+
+	// Close normal graph admission, discard queued non-lifecycle commands, and
+	// run one cleanup attempt on the existing COM owner apartment. An incomplete
+	// attempt deliberately leaves that apartment alive for a later retry.
+	bool QuiesceAndInvokeCleanup(
+		std::function<bool()> cleanup) noexcept
+	{
+		if (!m_thread.joinable() || !cleanup)
+			return false;
+		if (IsOwnerThread())
+			std::terminate();
+
+		auto task = std::make_shared<std::packaged_task<bool()>>(
+			[cleanup = std::move(cleanup)]()
+			{
+				try
+				{
+					return cleanup();
+				}
+				catch (...)
+				{
+					return false;
+				}
+			});
+		std::future<bool> result = task->get_future();
+		{
+			std::lock_guard<std::mutex> lock(m_mutex);
+			if (m_stopping)
+				return false;
+			m_quiescing = true;
+			m_commands.clear();
+			m_commands.push_back({ 0, [task]() { (*task)(); }, {} });
+			SetEvent(m_workEvent);
+		}
+
+		while (result.wait_for(std::chrono::milliseconds(0)) !=
+			std::future_status::ready)
+		{
+			const DWORD waitResult = MsgWaitForMultipleObjectsEx(
+				0, nullptr, 50, QS_SENDMESSAGE, MWMO_INPUTAVAILABLE);
+			if (waitResult == WAIT_OBJECT_0)
+			{
+				MSG message;
+				PeekMessage(
+					&message, nullptr, WM_NULL, WM_NULL, PM_NOREMOVE);
+			}
+		}
+		try
+		{
+			return result.get();
+		}
+		catch (...)
+		{
+			return false;
+		}
 	}
 
 	void Shutdown() noexcept
@@ -333,4 +390,5 @@ private:
 	std::mutex m_mutex;
 	std::deque<Command> m_commands;
 	bool m_stopping = false;
+	bool m_quiescing = false;
 };

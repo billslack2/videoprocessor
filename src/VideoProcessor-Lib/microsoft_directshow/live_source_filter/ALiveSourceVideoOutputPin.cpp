@@ -559,6 +559,24 @@ void ALiveSourceVideoOutputPin::Reset()
 }
 
 
+HRESULT ALiveSourceVideoOutputPin::BeginTerminalFlush()
+{
+	bool expected = false;
+	if (!m_terminalFlushStarted.compare_exchange_strong(
+		expected, true, std::memory_order_acq_rel))
+	{
+		return S_OK;
+	}
+
+	const HRESULT result = DeliverBeginFlush();
+	if (FAILED(result))
+	{
+		m_terminalFlushStarted.store(false, std::memory_order_release);
+	}
+	return result;
+}
+
+
 bool ALiveSourceVideoOutputPin::RequestCoordinatedReset(
 	const char* reason, RendererResetReason resetReason)
 {
