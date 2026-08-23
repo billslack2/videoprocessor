@@ -558,9 +558,93 @@ bool IsExactTopologyActive(const Topology& expected, const Topology& actual)
 	return true;
 }
 
+void LogTopologyDifference(const Topology& expected, const Topology& actual)
+{
+	DebugLog::Log(
+		"Display topology verification mismatch: kind=summary "
+		"expected_paths=%zu actual_paths=%zu expected_targets=%zu "
+		"actual_targets=%zu",
+		expected.paths.size(), actual.paths.size(),
+		ActiveTargets(expected).size(), ActiveTargets(actual).size());
+	for (const auto& expectedPath : expected.paths)
+	{
+		const auto matching = std::find_if(actual.paths.begin(),
+			actual.paths.end(), [&](const DISPLAYCONFIG_PATH_INFO& path)
+			{
+				return expectedPath.targetInfo.adapterId.HighPart ==
+						path.targetInfo.adapterId.HighPart &&
+					expectedPath.targetInfo.adapterId.LowPart ==
+						path.targetInfo.adapterId.LowPart &&
+					expectedPath.targetInfo.id == path.targetInfo.id;
+			});
+		if (matching == actual.paths.end())
+		{
+			DebugLog::Log(
+				"Display topology verification mismatch: kind=missing-target "
+				"adapter=%ld:%lu target_id=%u",
+				expectedPath.targetInfo.adapterId.HighPart,
+				expectedPath.targetInfo.adapterId.LowPart,
+				expectedPath.targetInfo.id);
+			continue;
+		}
+		if (SamePathState(expected, expectedPath, actual, *matching))
+			continue;
+
+		const DISPLAYCONFIG_MODE_INFO* expectedSource = ReferencedMode(
+			expected, SourceModeIndex(expectedPath),
+			DISPLAYCONFIG_MODE_INFO_TYPE_SOURCE);
+		const DISPLAYCONFIG_MODE_INFO* actualSource = ReferencedMode(
+			actual, SourceModeIndex(*matching),
+			DISPLAYCONFIG_MODE_INFO_TYPE_SOURCE);
+		const DISPLAYCONFIG_MODE_INFO* expectedTarget = ReferencedMode(
+			expected, TargetModeIndex(expectedPath),
+			DISPLAYCONFIG_MODE_INFO_TYPE_TARGET);
+		const DISPLAYCONFIG_MODE_INFO* actualTarget = ReferencedMode(
+			actual, TargetModeIndex(*matching),
+			DISPLAYCONFIG_MODE_INFO_TYPE_TARGET);
+		DebugLog::Log(
+			"Display topology verification mismatch: kind=path-state "
+			"adapter=%ld:%lu target_id=%u "
+			"source_id_expected=%u source_id_actual=%u "
+			"flags_expected=0x%08lx flags_actual=0x%08lx "
+			"source_expected=%ux%u@%ld,%ld source_actual=%ux%u@%ld,%ld "
+			"refresh_expected=%u/%u refresh_actual=%u/%u "
+			"rotation_expected=%d rotation_actual=%d "
+			"scaling_expected=%d scaling_actual=%d "
+			"active_expected=%ux%u active_actual=%ux%u",
+			expectedPath.targetInfo.adapterId.HighPart,
+			expectedPath.targetInfo.adapterId.LowPart,
+			expectedPath.targetInfo.id,
+			expectedPath.sourceInfo.id, matching->sourceInfo.id,
+			static_cast<unsigned long>(expectedPath.flags),
+			static_cast<unsigned long>(matching->flags),
+			expectedSource ? expectedSource->sourceMode.width : 0,
+			expectedSource ? expectedSource->sourceMode.height : 0,
+			expectedSource ? expectedSource->sourceMode.position.x : 0,
+			expectedSource ? expectedSource->sourceMode.position.y : 0,
+			actualSource ? actualSource->sourceMode.width : 0,
+			actualSource ? actualSource->sourceMode.height : 0,
+			actualSource ? actualSource->sourceMode.position.x : 0,
+			actualSource ? actualSource->sourceMode.position.y : 0,
+			expectedPath.targetInfo.refreshRate.Numerator,
+			expectedPath.targetInfo.refreshRate.Denominator,
+			matching->targetInfo.refreshRate.Numerator,
+			matching->targetInfo.refreshRate.Denominator,
+			static_cast<int>(expectedPath.targetInfo.rotation),
+			static_cast<int>(matching->targetInfo.rotation),
+			static_cast<int>(expectedPath.targetInfo.scaling),
+			static_cast<int>(matching->targetInfo.scaling),
+			expectedTarget ? expectedTarget->targetMode.targetVideoSignalInfo.activeSize.cx : 0,
+			expectedTarget ? expectedTarget->targetMode.targetVideoSignalInfo.activeSize.cy : 0,
+			actualTarget ? actualTarget->targetMode.targetVideoSignalInfo.activeSize.cx : 0,
+			actualTarget ? actualTarget->targetMode.targetVideoSignalInfo.activeSize.cy : 0);
+	}
+}
+
 bool WaitForExactTopology(const Topology& expected)
 {
-	const ULONGLONG deadline = GetTickCount64() + 5000;
+	const ULONGLONG started = GetTickCount64();
+	const ULONGLONG deadline = started + 5000;
 	unsigned int consecutiveMatches = 0;
 	do
 	{
@@ -569,7 +653,15 @@ bool WaitForExactTopology(const Topology& expected)
 			IsExactTopologyActive(expected, active))
 		{
 			if (++consecutiveMatches >= 2)
+			{
+				DebugLog::Log(
+					"Display topology verification: result=stable-exact "
+					"observations=%u elapsed_ms=%llu paths=%zu",
+					consecutiveMatches,
+					static_cast<unsigned long long>(GetTickCount64() - started),
+					expected.paths.size());
 				return true;
+			}
 		}
 		else
 		{
@@ -577,6 +669,14 @@ bool WaitForExactTopology(const Topology& expected)
 		}
 		Sleep(100);
 	} while (GetTickCount64() < deadline);
+	Topology finalObservation;
+	if (QueryTopology(QDC_ONLY_ACTIVE_PATHS, finalObservation) == ERROR_SUCCESS)
+		LogTopologyDifference(expected, finalObservation);
+	else
+		DebugLog::Log(
+			"Display topology verification mismatch: kind=query-failed "
+			"elapsed_ms=%llu",
+			static_cast<unsigned long long>(GetTickCount64() - started));
 	return false;
 }
 }
@@ -603,6 +703,10 @@ namespace DisplayTopologySession
 				reason, error.c_str());
 			return false;
 		}
+		DebugLog::Log(
+			"Display topology restore audit: phase=record-decoded reason=%s "
+			"paths=%zu modes=%zu",
+			reason, topology.paths.size(), topology.modes.size());
 		LONG result = ERROR_SUCCESS;
 		if (!ApplyTopology(topology, true, false, result) ||
 			!ApplyTopology(topology, false, false, result) ||

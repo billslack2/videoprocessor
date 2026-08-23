@@ -344,5 +344,8 @@ private:
 	std::atomic_bool m_pendingRendererRestart{false};
 	std::atomic_bool m_graphTeardownComplete{false};
 	std::atomic_bool m_retirementSucceeded{false};
+	// Graph-owner-only terminal protocol latch. A failed BeginFlush may retry;
+	// a successful one is never sent twice during normal stop plus teardown.
+	bool m_terminalFlushComplete = false;
 	DirectShowGraphExecutor m_graphExecutor;
 };

@@ -79,8 +79,9 @@ void DirectShowVideoRenderer::Retire() noexcept
 	if (m_retirementSucceeded.load(std::memory_order_acquire))
 		return;
 	DebugLog::Log(
-		"DirectShow renderer retirement started: worker_thread=%lu graph_complete=%d",
-		GetCurrentThreadId(),
+		"DirectShow renderer retirement started: generation=%u "
+		"worker_thread=%lu graph_complete=%d",
+		m_callbackGeneration, GetCurrentThreadId(),
 		m_graphTeardownComplete.load(std::memory_order_acquire) ? 1 : 0);
 	if (m_graphTeardownComplete.load(std::memory_order_acquire))
 	{
@@ -90,8 +91,9 @@ void DirectShowVideoRenderer::Retire() noexcept
 		m_graphExecutor.CancelPendingAndShutdown({});
 		m_retirementSucceeded.store(true, std::memory_order_release);
 		DebugLog::Log(
-			"DirectShow renderer retirement completed: worker_thread=%lu mode=join-only",
-			GetCurrentThreadId());
+			"DirectShow renderer retirement completed: generation=%u "
+			"worker_thread=%lu graph_complete=1 mode=join-only",
+			m_callbackGeneration, GetCurrentThreadId());
 		return;
 	}
 	const bool resourcesReleased =
@@ -104,17 +106,17 @@ void DirectShowVideoRenderer::Retire() noexcept
 	{
 		m_graphTeardownComplete.store(false, std::memory_order_release);
 		DebugLog::Log(
-			"DirectShow renderer retirement pending: worker_thread=%lu "
-			"owner_apartment_retained=1",
-			GetCurrentThreadId());
+			"DirectShow renderer retirement pending: generation=%u "
+			"worker_thread=%lu graph_complete=0 owner_apartment_retained=1",
+			m_callbackGeneration, GetCurrentThreadId());
 		return;
 	}
 	m_graphExecutor.Shutdown();
 	m_retirementSucceeded.store(true, std::memory_order_release);
 	DebugLog::Log(
-		"DirectShow renderer retirement completed: worker_thread=%lu "
-		"mode=verified-forced-cleanup",
-		GetCurrentThreadId());
+		"DirectShow renderer retirement completed: generation=%u "
+		"worker_thread=%lu graph_complete=1 mode=verified-forced-cleanup",
+		m_callbackGeneration, GetCurrentThreadId());
 }
 
 
@@ -1694,7 +1696,9 @@ void DirectShowVideoRenderer::GraphTeardownNoThrow() noexcept
 	m_graphTeardownComplete.store(
 		GraphResourcesReleased(), std::memory_order_release);
 	DebugLog::Log(
-		"DirectShow teardown phase: phase=complete total_ms=%llu graph_complete=%d thread=%lu",
+		"DirectShow teardown phase: phase=complete generation=%u "
+		"total_ms=%llu graph_complete=%d thread=%lu",
+		m_callbackGeneration,
 		static_cast<unsigned long long>(GetTickCount64() - teardownStarted),
 		m_graphTeardownComplete.load(std::memory_order_acquire) ? 1 : 0,
 		GetCurrentThreadId());
@@ -1853,20 +1857,25 @@ void DirectShowVideoRenderer::GraphStop()
 void DirectShowVideoRenderer::GraphBeginTerminalFlush() noexcept
 {
 	assert(IsGraphThread());
-	if (!m_liveSource)
+	if (!m_liveSource || m_terminalFlushComplete)
 		return;
 
 	const HRESULT result = m_liveSource->BeginTerminalFlush();
 	if (FAILED(result))
 	{
 		DebugLog::Log(
-			"DirectShow terminal BeginFlush failed before graph stop: hr=0x%08lx",
+			"DirectShow terminal BeginFlush failed before graph stop: "
+			"generation=%u hr=0x%08lx",
+			m_callbackGeneration,
 			static_cast<unsigned long>(result));
 	}
 	else
 	{
+		m_terminalFlushComplete = true;
 		DebugLog::Log(
-			"DirectShow terminal BeginFlush completed before graph stop");
+			"DirectShow terminal BeginFlush completed before graph stop: "
+			"generation=%u target=%p",
+			m_callbackGeneration, m_videoHwnd);
 	}
 }
 

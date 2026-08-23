@@ -5916,6 +5916,12 @@ LRESULT CVideoProcessorDlg::OnMessageDirectShowOwnerCompletion(
 	const HRESULT hr = renderer->OnOwnerCompletionWake(wParam, lParam);
 	if (FAILED(hr))
 		FatalError(TEXT("Failed to handle DirectShow owner completion"));
+	DebugLog::Log(
+		"Renderer handoff audit: phase=owner-completion-accepted "
+		"generation=%u renderer=%S target=%p fullscreen_host=%p",
+		messageGeneration, static_cast<LPCTSTR>(m_activeRendererName),
+		m_rendererTargetHwnd,
+		m_fullScreenVideoWindow ? m_fullScreenVideoWindow->GetHWND() : nullptr);
 	return 0;
 }
 
@@ -6368,11 +6374,15 @@ bool CVideoProcessorDlg::TryFinalizeRendererRetirement(
 	}
 	DebugLog::Log(
 		"Renderer transition: process=%lu generation=%u event=old-surface-retired "
-		"renderer=%S target=%p cover=%p token=%llu source=%s "
+		"renderer=%S target=%p fullscreen_host=%p fullscreen_intent=%d "
+		"cover=%p token=%llu source=%s "
 		"wake_posted=%d wake_error=%lu",
 		GetCurrentProcessId(), m_retiringRendererGeneration,
 		static_cast<LPCTSTR>(m_retiringRendererName),
-		m_rendererTargetHwnd, m_rendererTransitionWindow.GetHWND(),
+		m_rendererTargetHwnd,
+		m_fullScreenVideoWindow ? m_fullScreenVideoWindow->GetHWND() : nullptr,
+		m_rendererFullscreenCheck.GetCheck() ? 1 : 0,
+		m_rendererTransitionWindow.GetHWND(),
 		static_cast<unsigned long long>(token), completionSource,
 		completion.wakePosted ? 1 : 0, completion.wakePostError);
 	m_retiringRendererName.Empty();
@@ -8307,6 +8317,17 @@ void CVideoProcessorDlg::RenderStart()
 	}
 	m_preserveFullscreenHostForProfileRestart = false;
 	++m_rendererTargetRevision;
+	DebugLog::Log(
+		"Renderer handoff audit: phase=successor-selected generation=%u "
+		"renderer=%S backend=%s target=%p target_revision=%llu "
+		"fullscreen_host=%p fullscreen_intent=%d previous_renderer=%S",
+		rendererGeneration, static_cast<LPCTSTR>(m_activeRendererName),
+		m_activeRendererIsDirectShow ? "directshow" : "vp-renderer",
+		m_rendererTargetHwnd,
+		static_cast<unsigned long long>(m_rendererTargetRevision),
+		m_fullScreenVideoWindow ? m_fullScreenVideoWindow->GetHWND() : nullptr,
+		m_rendererFullscreenCheck.GetCheck() ? 1 : 0,
+		static_cast<LPCTSTR>(previousRendererName));
 	m_transitionGeneration = rendererGeneration;
 	if (m_rendererResetTransitionActive)
 	{
@@ -8733,9 +8754,15 @@ void CVideoProcessorDlg::RenderStop()
 		m_rendererIngressState;
 	const ULONGLONG stopQueuedTick = GetTickCount64();
 	DebugLog::Log(
-		"Renderer stop dispatch: phase=before-stop generation=%u renderer_state=%d foreground=%p focus=%p",
+		"Renderer stop dispatch: phase=before-stop generation=%u "
+		"renderer=%S renderer_state=%d target=%p fullscreen_host=%p "
+		"fullscreen_intent=%d foreground=%p focus=%p",
 		m_rendererGeneration.load(std::memory_order_acquire),
+		static_cast<LPCTSTR>(m_activeRendererName),
 		static_cast<int>(m_rendererState),
+		m_rendererTargetHwnd,
+		m_fullScreenVideoWindow ? m_fullScreenVideoWindow->GetHWND() : nullptr,
+		m_rendererFullscreenCheck.GetCheck() ? 1 : 0,
 		reinterpret_cast<void*>(::GetForegroundWindow()),
 		reinterpret_cast<void*>(::GetFocus()));
 	m_videoRenderer->StopWithIngressDrain([ingress]()
@@ -8743,10 +8770,15 @@ void CVideoProcessorDlg::RenderStop()
 			ingress->WaitForDrain();
 		});
 	DebugLog::Log(
-		"Renderer stop dispatch: phase=after-stop-call return_ms=%llu generation=%u renderer_state=%d foreground=%p focus=%p",
+		"Renderer stop dispatch: phase=after-stop-call return_ms=%llu "
+		"generation=%u renderer_state=%d target=%p fullscreen_host=%p "
+		"fullscreen_intent=%d foreground=%p focus=%p",
 		static_cast<unsigned long long>(GetTickCount64() - stopQueuedTick),
 		m_rendererGeneration.load(std::memory_order_acquire),
 		static_cast<int>(m_rendererState),
+		m_rendererTargetHwnd,
+		m_fullScreenVideoWindow ? m_fullScreenVideoWindow->GetHWND() : nullptr,
+		m_rendererFullscreenCheck.GetCheck() ? 1 : 0,
 		reinterpret_cast<void*>(::GetForegroundWindow()),
 		reinterpret_cast<void*>(::GetFocus()));
 
@@ -8814,10 +8846,14 @@ void CVideoProcessorDlg::DestroyVideoRenderer()
 		m_rendererGeneration.load(std::memory_order_acquire);
 	DebugLog::Log(
 		"Renderer retirement queued: process=%lu generation=%u renderer=%S "
-		"token=%llu ui_thread=%lu",
+		"token=%llu target=%p fullscreen_host=%p fullscreen_intent=%d "
+		"ui_thread=%lu",
 		GetCurrentProcessId(), m_retiringRendererGeneration,
 		static_cast<LPCTSTR>(m_retiringRendererName),
 		static_cast<unsigned long long>(m_rendererRetirementToken),
+		m_rendererTargetHwnd,
+		m_fullScreenVideoWindow ? m_fullScreenVideoWindow->GetHWND() : nullptr,
+		m_rendererFullscreenCheck.GetCheck() ? 1 : 0,
 		GetCurrentThreadId());
 	const bool queued = m_rendererRetirementService.Retire(
 		std::move(rendererToDestroy), m_rendererRetirementToken,
@@ -9458,12 +9494,15 @@ void CVideoProcessorDlg::TryRevealRendererTransition(uint32_t generation)
 	RequestPresentationFocus("first-live-frame", generation);
 	DebugLog::Log(
 		"Renderer transition: process=%lu generation=%u event=first-live-frame-reveal "
-		"renderer=%S target=%p evidence=%s black_ms=%llu "
+		"renderer=%S target=%p fullscreen_host=%p fullscreen_intent=%d "
+		"evidence=%s black_ms=%llu "
 		"composition_sync=0x%08lx composition_sync_ms=%llu",
 		GetCurrentProcessId(),
 		generation,
 		static_cast<LPCTSTR>(m_activeRendererName),
 		m_rendererTargetHwnd,
+		m_fullScreenVideoWindow ? m_fullScreenVideoWindow->GetHWND() : nullptr,
+		m_rendererFullscreenCheck.GetCheck() ? 1 : 0,
 		evidence ? evidence : "unknown",
 		static_cast<unsigned long long>(blackDurationMs),
 		static_cast<unsigned long>(compositionSyncResult),
