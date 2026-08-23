@@ -165,7 +165,7 @@ they must not contain requirements that are absent from this file.
 | VP-0130 | Done | Renderer telemetry and live input-configuration clarity |
 | VP-0131 | Done | VP Renderer NLS-V and bounded presentation crop |
 | VP-0132 | Done | Eliminate subtitle-fit presentation chatter |
-| VP-0133 | In Progress | Capture authoritative renderer output and near-black diagnostics |
+| VP-0133 | Backlog | Capture authoritative renderer output and near-black diagnostics |
 | VP-0134 | In Progress | Verified symmetric renderer handoff and display-state restoration |
 | VP-0135 | Backlog | Execute refresh-rate commands directly without a ping delay |
 | VP-0136 | In Progress | Prevent transient same-axis inward aspect switches |
@@ -175,7 +175,7 @@ they must not contain requirements that are absent from this file.
 | VP-0140 | Done | Compile VP Renderer shaders without blocking UI or presentation |
 | VP-0141 | Review | Apply VP Renderer settings live and preserve fullscreen control |
 | VP-0142 | Backlog | Design profile-selection persistence policy |
-| VP-0143 | In Progress | Restart renderer after queue-profile changes |
+| VP-0143 | Done | Restart renderer after queue-profile changes |
 | VP-0144 | Done | Stop creating configuration backups |
 | VP-0145 | Backlog | Renderer post-stall reset eligibility |
 | VP-0145-1 | Backlog | Post-stall reset telemetry and diagnostics |

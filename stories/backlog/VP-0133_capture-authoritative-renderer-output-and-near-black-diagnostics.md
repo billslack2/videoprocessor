@@ -2,9 +2,17 @@
 
 ## Status
 
-In Progress (2026-08-16). The developer confirmed the newly updated default
-integration branch `v1.2.001-beta` as the implementation base. Work began from
-clean base `9daf9ab8e15493d77fb74d25706452eafeb8cd8a` in branch
+Backlog (2026-08-23). The renderer-output capture and SDR-policy work recorded
+below has already been implemented, verified, and integrated into
+`v1.2.001-beta`. The remaining VP-0133 acceptance work—live projector
+comparison and external physical-display measurement—is intentionally deferred
+until that testing can be scheduled. Resume by using the existing VP-0133
+tester package to compare matched VP Renderer and madVR captures, retaining
+the distinction between application readback, transport evidence, and measured
+display behavior.
+
+The implementation began from clean base
+`9daf9ab8e15493d77fb74d25706452eafeb8cd8a` in branch
 `codex/vp0133-renderer-output-capture`, worktree
 `work\vp-0133-renderer-output-capture`.
 
