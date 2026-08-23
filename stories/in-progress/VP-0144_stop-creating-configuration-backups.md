@@ -12,6 +12,30 @@ and includes that path in the success notification. The operator no longer
 needs those backups; saving must update the active configuration without
 creating a backup artifact or showing backup text.
 
+## Progress
+
+- 2026-08-23: Implemented source commit `5fc3cfb` on
+  `codex/vp-0144-no-config-backups`, based on the freshly queried and fetched
+  `v1.2.001-beta` tip `bb5be05`. The save core no longer creates a dated
+  configuration copy before atomic replacement. Validation, temporary-file
+  writing, external-change detection, and atomic replacement remain in place.
+  The Config UI no longer appends `Backup: <path>` to normal or draft-save
+  status messages.
+- x64 Release builds succeeded for `VideoProcessorConfig.exe`,
+  `VideoProcessor-Test`, and `VideoProcessorConfigTests`. Focused native
+  save-flow tests passed 5/5; the complete Qt Config-editor test executable
+  passed.
+- Deployed the matching x64 Release `VideoProcessorConfig.exe` to
+  `C:\Videoprocessor\vp\config\VideoProcessorConfig.exe`; deployed SHA-256 is
+  `72C2043170E670970E26D80191D6BCBADBE4EB986293EE2B097E5F5138FB05C8`.
+  The prior executable is backed up at
+  `C:\Videoprocessor\vp\backups\VP-0144-no-config-backups-20260823-0727\VideoProcessorConfig.exe`
+  (SHA-256 `4CB178AE64BBA0C58F48631046657084D8F4839DD939D72224268EA2F338FA6A`).
+  `C:\Videoprocessor\vp\VideoProcessor.cfg` was not changed.
+- Pending user validation: apply a real edit through the deployed Config
+  editor, confirm no new `VideoProcessor.cfg.backup-*` file appears, and
+  confirm the success message has no `Backup:` text.
+
 ## User story
 
 As a VideoProcessor operator, I want VideoProcessorConfig saves to update the
