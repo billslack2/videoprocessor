@@ -18,6 +18,11 @@
 - Story state is part of the work, not a retrospective label: as soon as
   implementation starts, move the story from `backlog/` to `in-progress/` and
   keep its status and progress evidence current as the work advances.
+- Treat `C:\Users\bslac\vp\story-tracker\stories\in-progress` as a live
+  queue. For every state transition, atomically `git mv` the record, update
+  its exact `## Status`, and update `INDEX.md`; before committing and after
+  rebasing, verify that every state-folder record and index row agree. Closed,
+  review, or backlog stories must never remain in `in-progress/`.
 - Before assigning a new story ID, audit every canonical state folder for
   `VP-####` story filenames and compare the discovered IDs with `INDEX.md`.
   Do not trust the registry's `Next story number` by itself. The new ID must be

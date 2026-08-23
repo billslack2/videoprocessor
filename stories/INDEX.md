@@ -211,6 +211,26 @@ uncommitted work; create a fresh checkout from `origin/main` instead. A story
 change is not complete until it is committed and pushed to the canonical
 `main` branch, unless the user explicitly requests another review branch.
 
+### State synchronization invariant
+
+`C:\Users\bslac\vp\story-tracker\stories\in-progress` is a live queue, not
+a history folder. It must contain exactly the stories whose `## Status` and
+`INDEX.md` row both say `In Progress`; the same exact folder/index/status
+agreement is required for every canonical state folder.
+
+For every intentional state change, make the following updates in one commit:
+
+1. `git mv` the canonical story record to the matching state folder;
+2. change its `## Status` to the exact matching state and retain the relevant
+   implementation, validation, and acceptance evidence; and
+3. change the corresponding `INDEX.md` row to that state.
+
+Before committing and again after rebasing, compare every canonical story file
+with the index. Report any unexpected duplicate, missing, or mismatched state;
+do not silently repair a discrepancy that was not part of the requested story
+transition. Before ending the task, fetch, push, and verify that the dedicated
+tracker checkout is clean and at the `origin/main` tip.
+
 ## Story ID conflict audit
 
 Before creating a story or child task, and after every fetch/retry caused by

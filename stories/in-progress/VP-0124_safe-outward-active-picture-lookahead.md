@@ -2,7 +2,7 @@
 
 ## Status
 
-In progress. The reviewed shadow-only prototype is pushed as
+In Progress. The reviewed shadow-only prototype is pushed as
 `codex/vp-0124-lookahead-shadow` at `0c9f86b`, based on the default
 `v1.2.001-beta` tip `b7de6a2`. Both senior gates approved the opt-in,
 default-Off diagnostic scope; pixel-changing lookahead remains unimplemented.
