@@ -2264,9 +2264,8 @@ bool ConfigEditorWindow::saveChanges()
         if (applyButton_) applyButton_->setEnabled(false);
         return false;
     }
-    // Config is the interactive authority for this file. Preserve any outside
-    // version in the timestamped backup, then save the user's validated editor
-    // state instead of refusing a stale-file conflict.
+    // Config is the interactive authority for this file. Save the user's
+    // validated editor state instead of refusing a stale-file conflict.
     if (!ConfigEditorCore::SaveSafely(*document_, result, error, true))
     {
         setStatus(QString::fromStdWString(error), true);
@@ -2295,11 +2294,10 @@ bool ConfigEditorWindow::saveChanges()
                 enabled->setChecked(false);
             }
         }
-        setStatus(QStringLiteral("Changes saved%1. Incomplete action%2 %3 saved as disabled draft%2. Backup: %4")
+        setStatus(QStringLiteral("Changes saved%1. Incomplete action%2 %3 saved as disabled draft%2.")
             .arg(notified ? QStringLiteral(" and sent to VideoProcessor") : QStringLiteral("; VideoProcessor could not be notified"))
             .arg(draftedActions.size() == 1 ? QString() : QStringLiteral("s"),
-                draftedActions.join(QStringLiteral(", ")),
-                QString::fromStdWString(result.backupPath)));
+                draftedActions.join(QStringLiteral(", "))));
     }
 	else if (creatingConfiguration)
     {
@@ -2316,10 +2314,8 @@ bool ConfigEditorWindow::saveChanges()
         const QString effect = QString::fromLatin1(
             ConfigurationApplyPolicy::ActionLabel(action));
         setStatus(notified ?
-            QStringLiteral("Changes saved safely. %1 was requested. Backup: %2")
-                .arg(effect, QString::fromStdWString(result.backupPath)) :
-            QStringLiteral("Changes saved safely. Takes effect when VideoProcessor next starts. Backup: %1")
-                .arg(QString::fromStdWString(result.backupPath)), false);
+            QStringLiteral("Changes saved safely. %1 was requested.").arg(effect) :
+            QStringLiteral("Changes saved safely. Takes effect when VideoProcessor next starts."), false);
     }
     return true;
 }

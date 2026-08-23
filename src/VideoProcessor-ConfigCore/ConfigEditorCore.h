@@ -19,7 +19,7 @@ namespace ConfigEditorCore
 		bool hasTerminalLineEnding = false;
 		// Exact bytes observed by Load(). SaveSafely normally compares these with
 		// the current file immediately before writing; the Config editor can
-		// explicitly request an overwrite while preserving those bytes in backup.
+		// explicitly request an overwrite instead of rejecting a stale-file conflict.
 		std::string loadedBytes;
 		bool existedAtLoad = false;
 
@@ -65,11 +65,10 @@ namespace ConfigEditorCore
 	bool ValidateCandidate(const ConfigDocument& document,
 		std::wstring& error);
 
-	// Validates first, writes a timestamped non-overwriting backup, writes a
-	// sibling temporary file, then atomically replaces the configuration. On
-	// failure the original configuration remains in place; a completed backup is
-	// retained and reported in SaveResult. When overwriteExternalChanges is true,
-	// a changed or newly-created on-disk file is backed up then replaced.
+	// Validates first, writes a sibling temporary file, then atomically replaces
+	// the configuration. On failure the original configuration remains in place.
+	// When overwriteExternalChanges is true, a changed or newly-created on-disk
+	// file is replaced after the candidate passes validation.
 	bool SaveSafely(ConfigDocument& document, SaveResult& result,
 		std::wstring& error, bool overwriteExternalChanges = false);
 }
