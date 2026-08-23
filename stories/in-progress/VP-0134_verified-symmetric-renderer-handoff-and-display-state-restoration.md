@@ -9,6 +9,43 @@ Source baseline: `origin/v1.2.001-beta` at
 `0fab90191a29c0d5e9cd22dae4e72217e7289661`.
 Implementation branch: `codex/vp-0134-cold-start`.
 
+### Implementation checkpoint — 2026-08-23
+
+Source commit `3e1887a` (**VP-0134 harden DirectShow cold-start
+retirement**) is pushed to `origin/codex/vp-0134-cold-start` from the baseline
+above. This is a reviewed incremental slice, not story completion.
+
+Delivered in this checkpoint:
+
+- DirectShow graph events and graph-owner lifecycle completions use distinct
+  window messages. Retirement purges only stale graph-event wakes after the
+  old graph has revoked notification and its apartment is gone.
+- Terminal source-pin shutdown closes buffered producer/consumer admission,
+  wakes workers, sends one-way downstream `BeginFlush`, then stops and tears
+  down the graph. Forced and partial-build teardown uses the same unblock seam.
+- DirectShow retirement reports success only after graph resources are proven
+  released. An incomplete attempt retains the same COM owner apartment,
+  rejects ordinary commands and permits a later cleanup retry on that thread.
+- Full-topology restoration no longer applies an unjournaled maximum mode.
+  Recovery clears only after two consecutive exact observations of the target
+  set, source placement/mode, target timing, rational refresh, rotation,
+  scaling and relevant path flags.
+- The x64 Release GUI rebuild succeeded. The x64 Release native test suite
+  passed 869/869, including the new same-owner incomplete-retirement retry
+  seam. A principal Windows/DirectShow/graphics review found no blocker in
+  this incremental DirectShow slice.
+
+Principal-review P1 work still required before VP-0134 can complete:
+
+- Version the display recovery record and journal physical monitor identity
+  (`monitorDevicePath`, plus ContainerId/EDID evidence where available). Resolve
+  it unambiguously before `SDC_VALIDATE` or `SDC_APPLY`; LUID/target ID alone
+  cannot prevent a stale restore write after hotplug or target-ID reuse.
+- Renderer build/retirement failure paths must retain the app-owned fullscreen
+  host, fullscreen intent and cover. Fullscreen topology/host release is valid
+  only for explicit fullscreen-off, an invalid host, or application display
+  session shutdown.
+
 The original VP-0134 safety slice is already integrated as `580d6483a`
 (**VP-0134 enforce safe renderer handoff boundary**) and `5320d9d1c`
 (**VP-0134 tag DirectShow stop completion wake**). The obsolete
