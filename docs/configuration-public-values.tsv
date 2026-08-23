@@ -8,6 +8,8 @@ general.startminimized	true
 general.startminimized	false
 general.scene_detect	true
 general.scene_detect	false
+shortcuts.foreground_only	true
+shortcuts.foreground_only	false
 decklink.rgb_8bit_packing	AUTO
 decklink.rgb_8bit_packing	ARGB
 decklink.rgb_8bit_packing	BGRA

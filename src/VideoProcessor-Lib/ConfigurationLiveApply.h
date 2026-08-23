@@ -234,9 +234,21 @@ namespace ConfigurationLiveApply
 	}
 
 	inline bool ShouldEnableBackgroundShortcuts(bool modernInterface,
-		bool noUi)
+		bool noUi, bool foregroundOnly)
 	{
-		return modernInterface && !noUi;
+		return modernInterface && !noUi && !foregroundOnly;
+	}
+
+	inline bool ShouldRequestPresentationFocus(bool foregroundOnly,
+		bool configurationVisible, bool validTarget)
+	{
+		return foregroundOnly && !configurationVisible && validTarget;
+	}
+
+	inline bool ShouldReturnPresentationFocus(bool foregroundOnly,
+		bool configurationWasForeground, bool validTarget)
+	{
+		return foregroundOnly && configurationWasForeground && validTarget;
 	}
 
 	// Renderer construction must consume the same capture-state generation that

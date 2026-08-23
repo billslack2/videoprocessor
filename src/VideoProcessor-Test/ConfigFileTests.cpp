@@ -248,11 +248,23 @@ namespace VideoProcessorTest
 		TEST_METHOD(ModernBackgroundAndConfigurationModalPoliciesAreFailSafe)
 		{
 			Assert::IsTrue(
-				ConfigurationLiveApply::ShouldEnableBackgroundShortcuts(true, false));
+				ConfigurationLiveApply::ShouldEnableBackgroundShortcuts(true, false, false));
 			Assert::IsFalse(
-				ConfigurationLiveApply::ShouldEnableBackgroundShortcuts(false, false));
+				ConfigurationLiveApply::ShouldEnableBackgroundShortcuts(false, false, false));
 			Assert::IsFalse(
-				ConfigurationLiveApply::ShouldEnableBackgroundShortcuts(true, true));
+				ConfigurationLiveApply::ShouldEnableBackgroundShortcuts(true, true, false));
+			Assert::IsFalse(
+				ConfigurationLiveApply::ShouldEnableBackgroundShortcuts(true, false, true));
+			Assert::IsTrue(ConfigurationLiveApply::ShouldRequestPresentationFocus(
+				true, false, true));
+			Assert::IsFalse(ConfigurationLiveApply::ShouldRequestPresentationFocus(
+				false, false, true));
+			Assert::IsFalse(ConfigurationLiveApply::ShouldRequestPresentationFocus(
+				true, true, true));
+			Assert::IsTrue(ConfigurationLiveApply::ShouldReturnPresentationFocus(
+				true, true, true));
+			Assert::IsFalse(ConfigurationLiveApply::ShouldReturnPresentationFocus(
+				false, true, true));
 			Assert::IsTrue(
 				ConfigurationLiveApply::ShouldSuppressFullscreenTopmost(false, true, false));
 			Assert::IsTrue(
@@ -3325,6 +3337,33 @@ namespace VideoProcessorTest
 			Assert::IsFalse(MainConfigSchema::Validate(config, error));
 			Assert::IsTrue(
 				error.find("lead_frames") != std::string::npos);
+			DeleteFileA(path.c_str());
+		}
+
+		TEST_METHOD(MainConfigSchemaValidatesForegroundOnlyShortcutPolicy)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(
+				ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) +
+				"VideoProcessor-shortcut-focus-schema.cfg";
+			ConfigFile config;
+			std::string error;
+
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[shortcuts]\nforeground_only: true\n";
+			}
+			Assert::IsTrue(config.Load(path));
+			Assert::IsTrue(MainConfigSchema::Validate(config, error));
+
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[shortcuts]\nforeground_only: sometimes\n";
+			}
+			Assert::IsTrue(config.Load(path));
+			Assert::IsFalse(MainConfigSchema::Validate(config, error));
+			Assert::IsTrue(error.find("foreground_only") != std::string::npos);
 			DeleteFileA(path.c_str());
 		}
 

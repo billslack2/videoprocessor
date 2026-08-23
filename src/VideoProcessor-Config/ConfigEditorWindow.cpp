@@ -71,6 +71,7 @@
 #include <QToolButton>
 #include <QVBoxLayout>
 #include <QWindow>
+#include <QWindowStateChangeEvent>
 #include <QWinEventNotifier>
 
 #include <algorithm>
@@ -2196,7 +2197,10 @@ bool ConfigEditorWindow::saveChanges()
         {
             for (const auto& setting : document_->SectionSettings(section))
             {
-                const bool isShortcut = root == QStringLiteral("shortcuts") ||
+                const bool isShortcut =
+                    (root == QStringLiteral("shortcuts") &&
+                        ConfigFile::NormalizeName(setting.first) !=
+                            "foreground_only") ||
                     ConfigFile::NormalizeName(setting.first) == "shortcut";
                 if (!isShortcut || ConfigFile::Trim(setting.second).empty()) continue;
                 std::string canonical;
@@ -2388,6 +2392,7 @@ QWidget* ConfigEditorWindow::createShell()
         QStringLiteral("directshow")));
     pages_->addWidget(createOutputPage());
     pages_->addWidget(createShadersSetupPage());
+    pages_->addWidget(createShortcutsSetupPage());
 
     auto* navGroup = new QButtonGroup(root);
     navGroup->setExclusive(true);
@@ -2404,7 +2409,7 @@ QWidget* ConfigEditorWindow::createShell()
     addLeaf(QStringLiteral("LLDV"), 5);
     QPushButton* shadersNavigation = addLeaf(QStringLiteral("Shaders"), 14);
     addLeaf(QStringLiteral("Actions"), 7);
-    addLeaf(QStringLiteral("Shortcuts"), 6);
+    QPushButton* shortcutsNavigation = addLeaf(QStringLiteral("Shortcuts"), 15);
     addLeaf(QStringLiteral("Logs"), 10);
     navLayout->addSpacing(8);
     QPushButton* vpNavigation = addLeaf(QStringLiteral("VP Renderer"), 2);
@@ -2450,7 +2455,7 @@ QWidget* ConfigEditorWindow::createShell()
         sectionTabs->setVisible(!entries.empty());
     };
     const auto updateSectionTabs = [showSectionTabs, shadersNavigation,
-        vpNavigation, directShowNavigation](int page)
+        shortcutsNavigation, vpNavigation, directShowNavigation](int page)
     {
         if (page == 8 || page == 9 || page == 14)
         {
@@ -2472,6 +2477,12 @@ QWidget* ConfigEditorWindow::createShell()
             directShowNavigation->setChecked(true);
             showSectionTabs({ { QStringLiteral("General"), 3 },
                 { QStringLiteral("Input Processing"), 12 } }, page);
+        }
+        else if (page == 6 || page == 15)
+        {
+            shortcutsNavigation->setChecked(true);
+            showSectionTabs({ { QStringLiteral("Setup"), 15 },
+                { QStringLiteral("Shortcuts"), 6 } }, page);
         }
         else
             showSectionTabs({}, page);
@@ -6128,7 +6139,79 @@ QWidget* ConfigEditorWindow::createShortcutsPage()
             true));
     }
     return createPage(QStringLiteral("Shortcuts"),
-        QStringLiteral("Configure global keyboard shortcuts. Defaults are shown; clear a field and save to disable it. A running VP applies saved shortcuts immediately."),
+        QStringLiteral("Configure keyboard shortcuts. Defaults are shown; clear a field and save to disable it. A running VP applies saved shortcuts immediately."),
+        content);
+}
+
+bool ConfigEditorWindow::savedForegroundOnlyEnabled() const
+{
+    for (const auto& section : savedSnapshot_)
+    {
+        if (ConfigurationApplyPolicy::NormalizeSection(section.first) !=
+            "shortcuts")
+            continue;
+        for (const auto& setting : section.second)
+            if (ConfigurationApplyPolicy::NormalizeSection(setting.first) ==
+                "foreground_only")
+                return configuredBooleanValue(
+                    QString::fromLocal8Bit(setting.second.c_str()), false);
+    }
+    return false;
+}
+
+void ConfigEditorWindow::returnFocusToPresentationTarget(const char* reason)
+{
+    const HWND target = reinterpret_cast<HWND>(presentationTargetHandle_);
+    DWORD actualProcessId = 0;
+    const bool validTarget = target && IsWindow(target) &&
+        presentationTargetProcessId_ != 0 &&
+        presentationTargetProcessId_ == ownerProcessId_ &&
+        GetWindowThreadProcessId(target, &actualProcessId) != 0 &&
+        actualProcessId == presentationTargetProcessId_;
+    if (!ConfigurationLiveApply::ShouldReturnPresentationFocus(
+        savedForegroundOnlyEnabled(), true, validTarget))
+        return;
+
+    if (IsIconic(target)) ShowWindowAsync(target, SW_RESTORE);
+    AllowSetForegroundWindow(ownerProcessId_);
+    BringWindowToTop(target);
+    const BOOL requested = SetForegroundWindow(target);
+    const HWND foreground = GetForegroundWindow();
+    const QString diagnostic = QStringLiteral(
+        "VideoProcessor Config focus handoff: reason=%1 target=0x%2 requested=%3 foreground=0x%4\n")
+        .arg(QString::fromLatin1(reason))
+        .arg(reinterpret_cast<quintptr>(target), 0, 16)
+        .arg(requested ? QStringLiteral("true") : QStringLiteral("false"))
+        .arg(reinterpret_cast<quintptr>(foreground), 0, 16);
+    OutputDebugStringW(reinterpret_cast<LPCWSTR>(diagnostic.utf16()));
+}
+
+QWidget* ConfigEditorWindow::createShortcutsSetupPage()
+{
+    auto* content = new QWidget;
+    auto* layout = new QVBoxLayout(content);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(16);
+
+    auto* handling = new QWidget;
+    auto* handlingLayout = new QVBoxLayout(handling);
+    handlingLayout->setContentsMargins(0, 0, 0, 0);
+    handlingLayout->setSpacing(8);
+    handlingLayout->addWidget(bindCheckField(
+        QStringLiteral("Only process shortcuts while VideoProcessor is in the foreground"),
+        QStringLiteral("shortcuts"), QStringLiteral("foreground_only"), false));
+    auto* help = new QLabel(QStringLiteral(
+        "When enabled, background applications keep their keystrokes. VideoProcessor asks Windows to return focus after startup, a renderer change, or closing or minimizing Config."));
+    help->setWordWrap(true);
+    help->setObjectName(QStringLiteral("fieldHelp"));
+    handlingLayout->addWidget(help);
+    layout->addWidget(createCard(QStringLiteral("Keyboard handling"),
+        QStringLiteral("Choose whether shortcuts remain global or require VideoProcessor focus."),
+        handling));
+    layout->addStretch();
+
+    return createPage(QStringLiteral("Shortcuts"),
+        QStringLiteral("Control when VideoProcessor processes configured keyboard shortcuts."),
         content);
 }
 
@@ -6201,6 +6284,11 @@ void ConfigEditorWindow::closeEvent(QCloseEvent* event)
 {
     if (!exitRequested_ && tray_ && tray_->isVisible())
     {
+        const HWND editor = reinterpret_cast<HWND>(effectiveWinId());
+        returnFocusAfterHide_ = savedForegroundOnlyEnabled() && editor &&
+            GetForegroundWindow() == editor;
+        if (returnFocusAfterHide_ && ownerProcessId_ != 0)
+            AllowSetForegroundWindow(ownerProcessId_);
         hide();
         event->ignore();
         return;
@@ -6217,6 +6305,11 @@ void ConfigEditorWindow::hideEvent(QHideEvent* event)
     removeScopedTopmost();
     clearNativeOwner();
     QMainWindow::hideEvent(event);
+    if (returnFocusAfterHide_)
+    {
+        returnFocusAfterHide_ = false;
+        returnFocusToPresentationTarget("config-close");
+    }
 }
 
 void ConfigEditorWindow::showEvent(QShowEvent* event)
@@ -6339,7 +6432,20 @@ bool ConfigEditorWindow::nativeEvent(const QByteArray& eventType,
 
 bool ConfigEditorWindow::event(QEvent* event)
 {
+    bool returnAfterMinimize = false;
+    if (event->type() == QEvent::WindowStateChange)
+    {
+        const auto* stateChange = static_cast<QWindowStateChangeEvent*>(event);
+        const HWND editor = reinterpret_cast<HWND>(effectiveWinId());
+        returnAfterMinimize = !(stateChange->oldState() & Qt::WindowMinimized) &&
+            editor && GetForegroundWindow() == editor &&
+            savedForegroundOnlyEnabled();
+        if (returnAfterMinimize && ownerProcessId_ != 0)
+            AllowSetForegroundWindow(ownerProcessId_);
+    }
     const bool handled = QMainWindow::event(event);
+    if (returnAfterMinimize && isMinimized())
+        returnFocusToPresentationTarget("config-minimize");
     if (event->type() == QEvent::WinIdChange)
     {
         if (scopedTopmost_)

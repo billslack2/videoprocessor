@@ -414,6 +414,7 @@ protected:
 	HICON m_hIcon;
 	HACCEL m_accelerator = nullptr;
 	std::vector<ACCEL> m_configuredAccelerators;
+	bool m_shortcutsForegroundOnly = false;
 	bool m_configurationEditorModal = false;
 	bool m_configurationEditorActivationPending = false;
 	bool m_configurationEditorFallbackLaunched = false;
@@ -432,6 +433,7 @@ protected:
 		m_configurationSnapshot;
 	struct StagedRuntimeSettings
 	{
+		bool shortcutsForegroundOnly = false;
 		bool hasCaptureDevice = false;
 		CString captureDevice;
 		bool hasCaptureInput = false;
@@ -885,6 +887,7 @@ protected:
 	void ReloadConfiguredAccelerators();
 	void StartGlobalShortcutObserver();
 	void StopGlobalShortcutObserver();
+	void RequestPresentationFocus(const char* reason, unsigned int generation);
 	void ToggleConfigurationEditor();
 	void StartConfigurationEditorInTray();
 	// Legacy activation-intent cleanup retained for source compatibility only;

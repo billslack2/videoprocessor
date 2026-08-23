@@ -72,6 +72,7 @@ private:
     QWidget* createNlsShadersPage();
     QWidget* createShadersSetupPage();
     QWidget* createActionsPage();
+    QWidget* createShortcutsSetupPage();
     QWidget* createShortcutsPage();
     QWidget* createLogsPage();
     QWidget* createProfilePage(const QString& title, const QString& description,
@@ -100,6 +101,8 @@ private:
     void clearNativeOwner();
     void publishNativeAssociation();
     void positionForReveal();
+    bool savedForegroundOnlyEnabled() const;
+    void returnFocusToPresentationTarget(const char* reason);
     void applyScopedTopmost();
     void removeScopedTopmost();
     bool hasActiveOwnedPopup() const;
@@ -136,6 +139,7 @@ private:
     bool explicitRevealIntent_ = false;
     bool scopedTopmostEligible_ = false;
     bool popupActivationTransition_ = false;
+    bool returnFocusAfterHide_ = false;
     bool exitRequested_ = false;
     bool configurationLoaded_ = false;
     bool dirty_ = false;

@@ -396,8 +396,8 @@ void testEveryPageRoundTrips()
 
     QStackedWidget* pages = requireControl<QStackedWidget>(window,
         QStringLiteral("settingsPages"));
-    require(pages->count() == 15,
-        "Renderer Output, Input, and shader child pages were not added as dedicated settings pages");
+    require(pages->count() == 16,
+        "Renderer Output, Input, shader, and shortcut child pages were not added as dedicated settings pages");
     for (QPushButton* button : window.findChildren<QPushButton*>())
         require(!button->property("navChild").toBool(),
             "Grouped settings still expose child entries in the left navigation");
@@ -426,9 +426,10 @@ void testEveryPageRoundTrips()
         require(actual == expected, "A grouped settings page has the wrong top tabs");
     };
     QPushButton* shadersNavigation = parentButton(QStringLiteral("Shaders"));
+    QPushButton* shortcutsNavigation = parentButton(QStringLiteral("Shortcuts"));
     QPushButton* vpRenderer = parentButton(QStringLiteral("VP Renderer"));
     QPushButton* directShow = parentButton(QStringLiteral("DirectShow"));
-    require(shadersNavigation && vpRenderer && directShow,
+    require(shadersNavigation && shortcutsNavigation && vpRenderer && directShow,
         "A grouped settings parent is missing from the left navigation");
     shadersNavigation->click();
     requireTabs({ QStringLiteral("Setup"), QStringLiteral("Standard"),
@@ -439,6 +440,8 @@ void testEveryPageRoundTrips()
         QStringLiteral("Input Processing") });
     directShow->click();
     requireTabs({ QStringLiteral("General"), QStringLiteral("Input Processing") });
+    shortcutsNavigation->click();
+    requireTabs({ QStringLiteral("Setup"), QStringLiteral("Shortcuts") });
     QWidget* navigation = requireControl<QWidget>(window, QStringLiteral("sidebar"));
     require(navigation->minimumWidth() >= 172,
         "The settings navigation is too narrow for renderer child labels");
@@ -570,6 +573,11 @@ void testEveryPageRoundTrips()
     require(noUiShortcut->text() == QStringLiteral("Ctrl+Shift+U"),
         "Video-only UI toggle did not default to Ctrl+Shift+U");
     noUiShortcut->setText(QStringLiteral("Alt+u"));
+    QCheckBox* foregroundOnly = requireControl<QCheckBox>(window,
+        QStringLiteral("config.shortcuts.foreground_only"));
+    require(!foregroundOnly->isChecked(),
+        "Foreground-only shortcut processing did not default to disabled");
+    foregroundOnly->setChecked(true);
 
     window.selectPage(10);
     require(requireControl<QCheckBox>(window, QStringLiteral("config.logging.enabled"))->isChecked(),
@@ -758,6 +766,7 @@ void testEveryPageRoundTrips()
         "container_colorspace: REC709", "max_cll: 1200", "max_fall: 450",
         "fullscreen_toggle: Ctrl+F", "config_editor: Ctrl+E",
         "capture_rendered_output: Ctrl+Alt+C", "toggle_noui: Alt+U",
+        "foreground_only: true",
         "renderer: *", "run: C:\\Tools\\verified-action.cmd 42",
         "enabled: false", "debug: false", "debug_log_retention: 25",
         "label: Verified Stretch", "order: 10", "strength: 0.85", "threshold: 28",
@@ -796,6 +805,9 @@ void testEveryPageRoundTrips()
     require(requireControl<QComboBox>(reloaded,
         QStringLiteral("config.directshow.video_conversion"))->currentData().toString() ==
         QStringLiteral("NONE"), "DirectShow input override did not reload");
+    require(requireControl<QCheckBox>(reloaded,
+        QStringLiteral("config.shortcuts.foreground_only"))->isChecked(),
+        "Foreground-only shortcut processing did not reload");
 }
 
 void testRendererSectionTabsRemainSynchronizedDuringRapidClicks()
@@ -919,6 +931,17 @@ void testRendererSectionTabsRemainSynchronizedDuringRapidClicks()
     require(navigationButton(QStringLiteral("Shaders")) &&
         navigationButton(QStringLiteral("Shaders"))->isChecked(),
         "Shader child page lost its parent navigation selection");
+
+    window.selectPage(15);
+    requireTabs({ QStringLiteral("Setup"), QStringLiteral("Shortcuts") });
+    runSequence({
+        { 1, 6, "Shortcuts", "config.shortcuts.fullscreen_toggle" },
+        { 0, 15, "Shortcuts", "config.shortcuts.foreground_only" },
+        { 1, 6, "Shortcuts", "config.shortcuts.fullscreen_toggle" }
+    });
+    require(navigationButton(QStringLiteral("Shortcuts")) &&
+        navigationButton(QStringLiteral("Shortcuts"))->isChecked(),
+        "Shortcuts child page lost its parent navigation selection");
     require(!sectionTabs->drawBase(),
         "Persistent grouped tabs restored the native white tab-bar base");
 }

@@ -182,6 +182,13 @@ namespace MainConfigSchema
 		if (!ConfigSchema::ValidateSection(
 			config, "decklink", deckLinkRules, error))
 			return false;
+		std::string foregroundOnly;
+		if (config.TryGetString("shortcuts", "foreground_only", foregroundOnly) &&
+			!ConfigSchema::Boolean("foreground_only").validator(foregroundOnly))
+		{
+			error = "[shortcuts] key 'foreground_only' must be a Boolean";
+			return false;
+		}
 		const std::vector<ConfigSchema::KeyRule> conversionRules = {
 			ConfigSchema::Choice("conversion_method",
 				{ "auto", "simd", "optimized", "standard" }),

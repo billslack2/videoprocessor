@@ -88,6 +88,19 @@ std::wstring ConfigurationEditorPath(const std::wstring& applicationDirectory)
 	return applicationDirectory + ConfigurationEditorRelativePath;
 }
 
+bool ReadShortcutsForegroundOnly(const ConfigFile& config, bool& enabled,
+	std::string& error)
+{
+	enabled = false;
+	std::string raw;
+	if (!config.TryGetString("shortcuts", "foreground_only", raw))
+		return true;
+	if (config.TryGetBool("shortcuts", "foreground_only", enabled))
+		return true;
+	error = "unsupported value for shortcuts.foreground_only: " + raw;
+	return false;
+}
+
 std::wstring ConfigurationEditorDirectory(
 	const std::wstring& applicationDirectory)
 {
@@ -2031,6 +2044,14 @@ CVideoProcessorDlg::CVideoProcessorDlg():
 	if (profileConfig.Load())
 	{
 		m_configurationSnapshot = CaptureConfigurationSnapshot(profileConfig);
+		std::string shortcutPolicyError;
+		if (!ReadShortcutsForegroundOnly(profileConfig,
+			m_shortcutsForegroundOnly, shortcutPolicyError))
+		{
+			m_shortcutsForegroundOnly = false;
+			DebugLog::Log("Shortcut focus policy retained default: %s",
+				shortcutPolicyError.c_str());
+		}
 		std::string profileError;
 		if (!m_profileRuntime.Initialize(profileConfig,
 			GetUnifiedProfileSourceLookup(), profileError))
@@ -2164,9 +2185,16 @@ void CVideoProcessorDlg::StartGlobalShortcutObserver()
 {
 	StopGlobalShortcutObserver();
 	if (!ConfigurationLiveApply::ShouldEnableBackgroundShortcuts(
-		m_interfaceMode == ApplicationInterface::Mode::Modern, m_hideUI) ||
+		m_interfaceMode == ApplicationInterface::Mode::Modern, m_hideUI,
+		m_shortcutsForegroundOnly) ||
 		!GetSafeHwnd())
+	{
+		DebugLog::Log(
+			"Background shortcut observer suppressed: modern=%d noui=%d foreground_only=%d",
+			m_interfaceMode == ApplicationInterface::Mode::Modern ? 1 : 0,
+			m_hideUI ? 1 : 0, m_shortcutsForegroundOnly ? 1 : 0);
 		return;
+	}
 
 	const bool observerStarted = GlobalShortcutObserver::Start(GetSafeHwnd(),
 		m_configuredAccelerators);
@@ -2383,6 +2411,57 @@ bool CVideoProcessorDlg::PublishConfigurationEditorPresentationTarget(
 		static_cast<unsigned long long>(acknowledgement),
 		accepted ? 1 : 0);
 	return accepted;
+}
+
+void CVideoProcessorDlg::RequestPresentationFocus(const char* reason,
+	unsigned int generation)
+{
+	HWND configurationEditor = VisibleAssociatedConfigurationEditor();
+	if (!configurationEditor)
+		configurationEditor = FindConfigurationEditorForCurrentInstallation();
+	const bool configurationVisible = configurationEditor &&
+		::IsWindow(configurationEditor) &&
+		::IsWindowVisible(configurationEditor);
+
+	const HWND fullscreenTarget = m_fullScreenVideoWindow &&
+		::IsWindow(m_fullScreenVideoWindow->GetHWND()) ?
+		m_fullScreenVideoWindow->GetHWND() : nullptr;
+	const HWND windowedTarget =
+		::IsWindow(m_windowedVideoWindow.GetSafeHwnd()) ?
+		m_windowedVideoWindow.GetSafeHwnd() : nullptr;
+	HWND target = reinterpret_cast<HWND>(
+		ConfigurationLiveApply::SelectConfigurationEditorPresentationTarget(
+			m_rendererFullscreenCheck.GetCheck() != FALSE,
+			reinterpret_cast<uintptr_t>(fullscreenTarget),
+			::IsWindow(m_rendererTargetHwnd) ?
+				reinterpret_cast<uintptr_t>(m_rendererTargetHwnd) : 0,
+			reinterpret_cast<uintptr_t>(windowedTarget)));
+	if (target && ::IsWindow(target))
+		target = ::GetAncestor(target, GA_ROOT);
+	if (!target || !::IsWindow(target))
+		target = GetSafeHwnd();
+	DWORD targetProcessId = 0;
+	if (target) ::GetWindowThreadProcessId(target, &targetProcessId);
+	const bool validTarget = target && ::IsWindow(target) &&
+		targetProcessId == GetCurrentProcessId();
+	if (!ConfigurationLiveApply::ShouldRequestPresentationFocus(
+		m_shortcutsForegroundOnly, configurationVisible, validTarget))
+	{
+		DebugLog::Log(
+			"Presentation focus request skipped: reason=%s generation=%u foreground_only=%d config_visible=%d valid_target=%d target=%p",
+			reason, generation, m_shortcutsForegroundOnly ? 1 : 0,
+			configurationVisible ? 1 : 0, validTarget ? 1 : 0, target);
+		return;
+	}
+
+	if (::IsIconic(target)) ::ShowWindowAsync(target, SW_RESTORE);
+	::BringWindowToTop(target);
+	const BOOL requested = ::SetForegroundWindow(target);
+	const HWND foreground = ::GetForegroundWindow();
+	DebugLog::Log(
+		"Presentation focus request: reason=%s generation=%u target=%p requested=%d foreground=%p acquired=%d",
+		reason, generation, target, requested ? 1 : 0, foreground,
+		foreground == target ? 1 : 0);
 }
 
 bool CVideoProcessorDlg::RequestConfigurationEditorOneShotReassert(
@@ -3659,6 +3738,9 @@ bool CVideoProcessorDlg::StageRuntimeSettings(
 		return false;
 	};
 	std::string value;
+	if (!ReadShortcutsForegroundOnly(config,
+		m_stagedRuntimeSettings.shortcutsForegroundOnly, error))
+		return false;
 	if (getApplicationValue("capture_device", value))
 	{
 		m_stagedRuntimeSettings.hasCaptureDevice = true;
@@ -4159,9 +4241,13 @@ bool CVideoProcessorDlg::ReplaceStagedAccelerators()
 		std::move(m_stagedUnifiedProfileShortcutKeys);
 	m_configuredAccelerators =
 		std::move(m_stagedConfiguredAccelerators);
+	m_shortcutsForegroundOnly =
+		m_stagedRuntimeSettings.shortcutsForegroundOnly;
 	if (previous)
 		DestroyAcceleratorTable(previous);
 	StartGlobalShortcutObserver();
+	DebugLog::Log("Shortcut focus policy applied live: foreground_only=%d",
+		m_shortcutsForegroundOnly ? 1 : 0);
 	return true;
 }
 
@@ -8954,6 +9040,7 @@ void CVideoProcessorDlg::TryRevealRendererTransition(uint32_t generation)
 			m_rendererResetTransitionActive = false;
 		}
 	}
+	RequestPresentationFocus("first-live-frame", generation);
 	DebugLog::Log(
 		"Renderer transition: process=%lu generation=%u event=first-live-frame-reveal "
 		"renderer=%S target=%p evidence=%s black_ms=%llu "
