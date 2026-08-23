@@ -1,6 +1,12 @@
 # VideoProcessor story tracker guidance
 
 - Stories in this directory are the authoritative VP story records.
+- `C:\Users\bslac\vp\story-tracker\stories` is the dedicated authoritative
+  tracker checkout. Keep it on `main` and synchronized with `origin/main`: at
+  the beginning of tracker work fetch and fast-forward it; before ending the
+  work commit, rebase, and push every intentional tracker change so `main` is
+  clean and matches `origin/main`. Never leave story-state edits only in this
+  checkout's working tree or use it as an isolated rewrite/worktree baseline.
 - For any story lookup, review, planning, or status decision, fetch and read
   the record from `origin/main` first. Do not rely on the current worktree,
   local `main`, a source checkout, or an unverified commit lookup as the
