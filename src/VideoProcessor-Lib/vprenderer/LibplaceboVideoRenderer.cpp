@@ -10952,6 +10952,7 @@ bool LibplaceboVideoRenderer::GetOutputModeInfo(CString& details) const
 		}
 	};
 	CStringA value;
+	const char* outputSignal = "Rec.709";
 	const char* outputTarget = m_impl->targetBt2020
 		? (m_impl->reportBt2020ToDisplay
 			? (m_impl->nvidiaBt2020Reporter.IsReadbackVerified()
@@ -10963,6 +10964,21 @@ bool LibplaceboVideoRenderer::GetOutputModeInfo(CString& details) const
 				? "SDR BT.2020 / HDMI signal unavailable"
 				: "SDR BT.2020 / display manual"))
 		: "SDR Rec.709";
+	if (m_impl->targetBt2020)
+	{
+		if (m_impl->reportBt2020ToDisplay)
+		{
+			outputSignal = m_impl->nvidiaBt2020Reporter.IsReadbackVerified()
+				? "BT.2020 (verified)"
+				: (m_impl->nvidiaBt2020Reporter.IsActive()
+					? "BT.2020 (set)" : "BT.2020 (unavailable)");
+		}
+		else
+		{
+			outputSignal = m_impl->bt2020SignalingFailed
+				? "BT.2020 (unavailable)" : "BT.2020 (manual)";
+		}
+	}
 	value.Format(
 		"Target %s | Req %s/%s/%s/%s -> %s/%s/%s/%s",
 		outputTarget,
@@ -11024,6 +11040,38 @@ bool LibplaceboVideoRenderer::GetOutputModeInfo(CString& details) const
 		value += " | STATUS: ";
 		value += outputStatus;
 	}
+	value += " | SIGNAL: ";
+	value += outputSignal;
+	value += " | SWAPCHAIN: ";
+	switch (m_impl->negotiatedSwapchainFormat)
+	{
+	case DXGI_FORMAT_R10G10B10A2_UNORM:
+		value += "10-bit R10G10B10A2";
+		break;
+	case DXGI_FORMAT_R16G16B16A16_FLOAT:
+		value += "16-bit float RGBA";
+		break;
+	case DXGI_FORMAT_B8G8R8A8_UNORM:
+		value += "8-bit BGRA8";
+		break;
+	case DXGI_FORMAT_R8G8B8A8_UNORM:
+		value += "8-bit RGBA8";
+		break;
+	default:
+		value += "Unknown";
+		break;
+	}
+	value += " | PRESENTER: ";
+	value += m_impl->vpOwnedSwapchain ? "VP" : "libplacebo";
+	value += " | CONTRACT: ";
+	if (!m_impl->actualOutput.safeToRender)
+		value += "Blocked";
+	else if (!m_impl->actualOutput.requestedEncodingActive)
+		value += "Fallback";
+	else if (m_impl->vpOwnedSwapchain && m_impl->vpOwnedColorSpaceVerified)
+		value += "Active (verified)";
+	else
+		value += "Active";
 	if (m_impl->actualOutput.safeToRender &&
 		m_impl->actualOutput.targetTransfer !=
 			LibplaceboOutput::TargetTransfer::SWAPCHAIN)

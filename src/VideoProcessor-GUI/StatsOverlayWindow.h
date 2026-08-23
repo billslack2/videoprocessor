@@ -27,6 +27,7 @@ struct StatsData
 	CString pixelFormat;       // e.g., "P010"
 	CString viewport;          // e.g., "cinema (2.35:1)"
 	CString rendererName;      // selected presentation backend
+	CString surfaceMode;       // actual presentation host: fullscreen or windowed
 
 	// Frame rate measurement and PPM tracking (NEW)
 	double theoreticalRefreshRate = 0.0;  // Expected refresh rate from display mode (Hz)
@@ -236,7 +237,7 @@ private:
 	// Window constants - shared 20px native/fallback OSD typography.
 	static const int MARGIN_RIGHT = 500;
 	static const int MARGIN_BOTTOM = 320;    // Move up 20 pixels (was 300)
-	static const int WINDOW_WIDTH = 420;     // Keep width the same
+	static const int WINDOW_WIDTH = 540;     // Fit compact output-contract diagnostics
 	static const int PADDING = 10;
 	static const int LINE_HEIGHT = 20;
 	static const int ALPHA_LINE_HEIGHT = 20;

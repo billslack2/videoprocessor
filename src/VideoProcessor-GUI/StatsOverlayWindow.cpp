@@ -688,6 +688,12 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 	DrawText(hdc, line, PADDING, y);
 	y += lineHeight;
 
+	line.Format(TEXT("Surface:          %-s"),
+		m_stats.surfaceMode.IsEmpty() ? TEXT("---") :
+		static_cast<LPCTSTR>(m_stats.surfaceMode));
+	DrawText(hdc, line, PADDING, y);
+	y += lineHeight;
+
 	if (!m_stats.outputMode.IsEmpty())
 	{
 		const int targetSeparator = m_stats.outputMode.Find(TEXT(" | "));
@@ -701,33 +707,24 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 		const int detailsSeparator = actualAndDetails.Find(TEXT(" | "));
 		const CString actual = detailsSeparator >= 0
 			? actualAndDetails.Left(detailsSeparator) : actualAndDetails;
-		const int gammaSeparator = m_stats.outputMode.Find(TEXT(" | GAMMA: "));
-		CString gamma = gammaSeparator >= 0
-			? m_stats.outputMode.Mid(gammaSeparator + 10) : CString();
-		if (!gamma.IsEmpty())
+		auto detailValue = [this](LPCTSTR marker) -> CString
 		{
-			const int nextDetail = gamma.Find(TEXT(" | "));
+			const CString tag(marker);
+			const int separator = m_stats.outputMode.Find(tag);
+			CString result = separator >= 0
+				? m_stats.outputMode.Mid(separator + tag.GetLength()) : CString();
+			const int nextDetail = result.Find(TEXT(" | "));
 			if (nextDetail >= 0)
-				gamma = gamma.Left(nextDetail);
-		}
-		const int statusSeparator = m_stats.outputMode.Find(TEXT(" | STATUS: "));
-		CString status = statusSeparator >= 0
-			? m_stats.outputMode.Mid(statusSeparator + 11) : CString();
-		if (!status.IsEmpty())
-		{
-			const int nextDetail = status.Find(TEXT(" | "));
-			if (nextDetail >= 0)
-				status = status.Left(nextDetail);
-		}
-		const int displaySeparator = m_stats.outputMode.Find(TEXT(" | DISPLAY: "));
-		CString display = displaySeparator >= 0
-			? m_stats.outputMode.Mid(displaySeparator + 12) : CString();
-		if (!display.IsEmpty())
-		{
-			const int nextDetail = display.Find(TEXT(" | "));
-			if (nextDetail >= 0)
-				display = display.Left(nextDetail);
-		}
+				result = result.Left(nextDetail);
+			return result;
+		};
+		const CString gamma = detailValue(TEXT(" | GAMMA: "));
+		const CString status = detailValue(TEXT(" | STATUS: "));
+		const CString display = detailValue(TEXT(" | DISPLAY: "));
+		const CString signal = detailValue(TEXT(" | SIGNAL: "));
+		const CString swapchain = detailValue(TEXT(" | SWAPCHAIN: "));
+		const CString presenter = detailValue(TEXT(" | PRESENTER: "));
+		const CString contract = detailValue(TEXT(" | CONTRACT: "));
 
 		const int firstSlash = actual.Find(TEXT('/'));
 		const int secondSlash = firstSlash >= 0
@@ -752,10 +749,38 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 			static_cast<LPCTSTR>(primaries));
 		DrawText(hdc, line, PADDING, y);
 		y += lineHeight;
+		if (!signal.IsEmpty())
+		{
+			line.Format(TEXT("Signal:           %-s"),
+				static_cast<LPCTSTR>(signal));
+			DrawText(hdc, line, PADDING, y);
+			y += lineHeight;
+		}
+		if (!swapchain.IsEmpty())
+		{
+			line.Format(TEXT("Swapchain:        %-s"),
+				static_cast<LPCTSTR>(swapchain));
+			DrawText(hdc, line, PADDING, y);
+			y += lineHeight;
+		}
 		line.Format(TEXT("Present:          %-s"),
 			static_cast<LPCTSTR>(presentation));
 		DrawText(hdc, line, PADDING, y);
 		y += lineHeight;
+		if (!presenter.IsEmpty())
+		{
+			line.Format(TEXT("Presenter:        %-s"),
+				static_cast<LPCTSTR>(presenter));
+			DrawText(hdc, line, PADDING, y);
+			y += lineHeight;
+		}
+		if (!contract.IsEmpty())
+		{
+			line.Format(TEXT("Contract:         %-s"),
+				static_cast<LPCTSTR>(contract));
+			DrawText(hdc, line, PADDING, y);
+			y += lineHeight;
+		}
 		if (!display.IsEmpty())
 		{
 			line.Format(TEXT("Display:          %-s"),
@@ -1036,6 +1061,7 @@ int StatsOverlayWindow::CalculateRequiredHeight(const StatsData& stats) const
 	// offset). The remaining rows mirror the exact
 	// optional conditions in DrawStats so the background follows its content.
 	size_t lineCount = stats.isAlphaRenderer ? 22 : 24;
+	++lineCount; // Surface mode is always shown.
 	if (!stats.outputSweep.IsEmpty())
 		++lineCount;
 	if (stats.measuredRefreshRate > 0.0)
@@ -1060,6 +1086,14 @@ int StatsOverlayWindow::CalculateRequiredHeight(const StatsData& stats) const
 		if (stats.outputMode.Find(TEXT(" | DISPLAY: ")) >= 0)
 			++lineCount;
 		if (stats.outputMode.Find(TEXT(" | STATUS: ")) >= 0)
+			++lineCount;
+		if (stats.outputMode.Find(TEXT(" | SIGNAL: ")) >= 0)
+			++lineCount;
+		if (stats.outputMode.Find(TEXT(" | SWAPCHAIN: ")) >= 0)
+			++lineCount;
+		if (stats.outputMode.Find(TEXT(" | PRESENTER: ")) >= 0)
+			++lineCount;
+		if (stats.outputMode.Find(TEXT(" | CONTRACT: ")) >= 0)
 			++lineCount;
 	}
 	if (!stats.displayLut.IsEmpty())

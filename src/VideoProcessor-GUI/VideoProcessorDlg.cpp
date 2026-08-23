@@ -13846,6 +13846,9 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 
 	StatsData stats;
 	stats.outputSweep = m_activeOutputSweepStatus;
+	stats.surfaceMode = m_fullScreenVideoWindow &&
+		::IsWindow(m_fullScreenVideoWindow->GetHWND()) ?
+		TEXT("Fullscreen") : TEXT("Windowed");
 	const IVideoRenderer* const statsRenderer = m_videoRenderer.get();
 	const bool sameStatsTelemetryGeneration = statsRenderer != nullptr &&
 		statsRenderer == m_lastStatsTelemetryRenderer &&
