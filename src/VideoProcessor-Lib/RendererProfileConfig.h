@@ -875,7 +875,6 @@ namespace RendererProfileConfig
 		std::string& error)
 	{
 		model = {};
-		model.persistSelection = false;
 		error.clear();
 		if (!config.GetWarnings().empty())
 		{
@@ -888,6 +887,21 @@ namespace RendererProfileConfig
 		if (!rendererConfig.Validate(error, model.warnings) ||
 			!ValidateCanonicalRendererSections(config, error))
 			return false;
+
+		// Target-profile configurations use the same durable profile-selection
+		// contract as the generic unified format.  They remain opt-out so an
+		// installation that intentionally wants a fresh default at every start
+		// can set [general] persist_profile_selection: false.
+		bool persist = true;
+		std::string persistText;
+		if (config.TryGetString("general", "persist_profile_selection",
+			persistText) &&
+			!config.TryGetBool("general", "persist_profile_selection", persist))
+		{
+			error = "general persist_profile_selection must be true or false";
+			return false;
+		}
+		model.persistSelection = persist;
 
 		for (const char* legacy : { "command_line", "profile_groups", "profiles",
 			"event_actions", "shaders", "display_rules", "refresh_rate_commands",
@@ -956,7 +970,7 @@ namespace RendererProfileConfig
 			Group group;
 			group.name = spec.name;
 			group.defaultSelection = baselineName;
-			group.persistSelection = false;
+			group.persistSelection = model.persistSelection;
 			group.profiles.push_back(baselineName);
 			Profile base;
 			base.group = group.name;

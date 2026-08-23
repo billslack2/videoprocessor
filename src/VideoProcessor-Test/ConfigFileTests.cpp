@@ -1620,13 +1620,17 @@ namespace VideoProcessorTest
 			DeleteFileA(path.c_str());
 		}
 
-		TEST_METHOD(Vp0079OwnerVariantsResolveWithoutPersistedProfileState)
+		TEST_METHOD(Vp0079OwnerVariantsPersistAndRestoreProfileState)
 		{
 			char temporaryDirectory[MAX_PATH] = {};
 			Assert::IsTrue(GetTempPathA(
 				ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
 			const std::string path = std::string(temporaryDirectory) +
 				"VideoProcessor-vp0079-config.cfg";
+			const std::string statePath = path.substr(0, path.size() - 4) +
+				".state";
+			DeleteFileA(statePath.c_str());
+			DeleteFileA((statePath + ".tmp").c_str());
 			{
 				std::ofstream file(path, std::ios::out | std::ios::trunc);
 				file << "[general]\n"
@@ -1657,7 +1661,7 @@ namespace VideoProcessorTest
 			RendererProfileConfig::Model model;
 			Assert::IsTrue(RendererProfileConfig::Read(config, model, error),
 				std::wstring(error.begin(), error.end()).c_str());
-			Assert::IsFalse(model.persistSelection);
+			Assert::IsTrue(model.persistSelection);
 			Assert::AreEqual(static_cast<size_t>(3), model.groups.size());
 
 			std::vector<RendererProfileConfig::KeySelection> selections;
@@ -1686,7 +1690,7 @@ namespace VideoProcessorTest
 			UnifiedProfileRuntime::Runtime runtime;
 			Assert::IsTrue(runtime.Initialize(config,
 				[](const std::string&, std::string&) { return false; }, error));
-			Assert::IsTrue(runtime.StatePath().empty());
+			Assert::AreEqual(statePath.c_str(), runtime.StatePath().c_str());
 			UnifiedProfileRuntime::SelectionResult result;
 			Assert::IsTrue(runtime.SelectKey("L",
 				[](const std::string&, std::string&) { return false; },
@@ -1695,7 +1699,30 @@ namespace VideoProcessorTest
 			Assert::IsTrue(result.snapshot->queue.hasQueueSize);
 			Assert::AreEqual(static_cast<size_t>(32),
 				result.snapshot->queue.queueSize);
+
+			Assert::IsTrue(runtime.SelectKey("F2",
+				[](const std::string&, std::string&) { return false; },
+				result, error));
+			Assert::IsTrue(result.changed);
+			Assert::AreEqual("scope", result.snapshot->viewport.profile.c_str());
+
+			std::ifstream state(statePath);
+			const std::string stateContents(
+				(std::istreambuf_iterator<char>(state)),
+				std::istreambuf_iterator<char>());
+			Assert::IsTrue(stateContents.find("profile.viewport: scope") !=
+				std::string::npos);
+
+			ConfigFile restoredConfig;
+			Assert::IsTrue(restoredConfig.Load(path));
+			UnifiedProfileRuntime::Runtime restoredRuntime;
+			Assert::IsTrue(restoredRuntime.Initialize(restoredConfig,
+				[](const std::string&, std::string&) { return false; }, error));
+			Assert::AreEqual("scope",
+				restoredRuntime.GetSnapshot()->viewport.profile.c_str());
 			DeleteFileA(path.c_str());
+			DeleteFileA(statePath.c_str());
+			DeleteFileA((statePath + ".tmp").c_str());
 		}
 
 		TEST_METHOD(UnifiedQueueProfileRestartPolicyUsesCommittedLatestQueueSelection)
@@ -2777,7 +2804,7 @@ namespace VideoProcessorTest
 			RendererProfileConfig::Model model;
 			Assert::IsTrue(RendererProfileConfig::Read(config, model, error),
 				std::wstring(error.begin(), error.end()).c_str());
-			Assert::IsFalse(model.persistSelection);
+			Assert::IsTrue(model.persistSelection);
 			// The shipped sample must not invoke machine-local commands.
 			Assert::AreEqual(static_cast<size_t>(0), model.actions.size());
 

@@ -98,7 +98,8 @@ namespace MainConfigSchema
 			ConfigSchema::Boolean("startminimized"),
 			ConfigSchema::Boolean("start_minimized"),
 			ConfigSchema::Any("capture_input"),
-			ConfigSchema::Boolean("switch_refresh_rate")
+			ConfigSchema::Boolean("switch_refresh_rate"),
+			ConfigSchema::Boolean("persist_profile_selection")
 		};
 		if (!ConfigSchema::ValidateSection(
 			config, "command_line", commandLineRules, error))
