@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <dwmapi.h>
 #include <dxgi1_2.h>
+#include <psapi.h>
 #include <shellapi.h>
 #include <wrl/client.h>
 #include <chrono>
@@ -32,6 +33,7 @@
 
 #pragma comment(lib, "dwmapi.lib")
 #pragma comment(lib, "dxgi.lib")
+#pragma comment(lib, "psapi.lib")
 
 #include <version.h>
 #include <cie.h>
@@ -68,6 +70,31 @@ using Microsoft::WRL::ComPtr;
 
 constexpr wchar_t ConfigurationEditorRelativePath[] =
 	L"config\\VideoProcessorConfig.exe";
+
+void LogRendererResourceCensus(uint32_t generation, const CString& renderer,
+	uint64_t token)
+{
+	const HANDLE process = GetCurrentProcess();
+	PROCESS_MEMORY_COUNTERS_EX memory = {};
+	memory.cb = sizeof(memory);
+	const BOOL memoryAvailable = GetProcessMemoryInfo(process,
+		reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&memory), sizeof(memory));
+	DWORD handleCount = 0;
+	const BOOL handlesAvailable = GetProcessHandleCount(process, &handleCount);
+	DebugLog::Log(
+		"Renderer resource census: phase=old-surface-retired generation=%u "
+		"renderer=%S token=%llu private_kib=%llu working_set_kib=%llu "
+		"peak_working_set_kib=%llu handles=%lu gdi=%lu user=%lu "
+		"memory_ok=%d handles_ok=%d",
+		generation, static_cast<LPCTSTR>(renderer),
+		static_cast<unsigned long long>(token),
+		static_cast<unsigned long long>(memory.PrivateUsage / 1024),
+		static_cast<unsigned long long>(memory.WorkingSetSize / 1024),
+		static_cast<unsigned long long>(memory.PeakWorkingSetSize / 1024),
+		handleCount, GetGuiResources(process, GR_GDIOBJECTS),
+		GetGuiResources(process, GR_USEROBJECTS),
+		memoryAvailable ? 1 : 0, handlesAvailable ? 1 : 0);
+}
 
 bool GetApplicationDirectory(std::wstring& directory)
 {
@@ -6385,6 +6412,8 @@ bool CVideoProcessorDlg::TryFinalizeRendererRetirement(
 		m_rendererTransitionWindow.GetHWND(),
 		static_cast<unsigned long long>(token), completionSource,
 		completion.wakePosted ? 1 : 0, completion.wakePostError);
+	LogRendererResourceCensus(m_retiringRendererGeneration,
+		m_retiringRendererName, token);
 	m_retiringRendererName.Empty();
 	m_retiringRendererGeneration = 0;
 	if (completedRetry)
@@ -9006,10 +9035,15 @@ void CVideoProcessorDlg::PumpRendererResetMailbox()
 					RendererTransitionState::AwaitingFrame :
 				m_rendererTransitionModel.State() ==
 					RendererTransitionState::FailedCovered);
+		const bool expectedLifecycleCancellation = !currentSuccess &&
+			completion.failure == "renderer selection is no longer usable" &&
+			(completion.staleGeneration || !m_videoRenderer ||
+				m_rendererState != RendererState::RENDERSTATE_RENDERING);
 		DEBUGLOG(
 			"Reset %s: operation=%llu request=%llu generation=%u "
 			"current_generation=%u reason=%s scope=%s%s%s",
-			currentSuccess ? "completed" : "failed",
+			currentSuccess ? "completed" :
+				expectedLifecycleCancellation ? "cancelled" : "failed",
 			static_cast<unsigned long long>(completion.operationId),
 			static_cast<unsigned long long>(completion.request.sequence),
 			completion.rendererGeneration,
@@ -13978,6 +14012,11 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		stats.activeShaderRule = m_videoRenderer->ActiveShaderRule();
 		stats.activeShaders = m_videoRenderer->ActiveShaders();
 	}
+	// A graph reset can briefly make the renderer non-rendering while the same
+	// renderer and host generation still own the output contract. Do not let
+	// that diagnostics-only interval erase the last negotiated OSD value.
+	if (stats.outputMode.IsEmpty() && sameStatsTelemetryGeneration)
+		stats.outputMode = m_lastStatsData->outputMode;
 
 	// Capture device frame counts
 	if (m_captureDeviceState == CaptureDeviceState::CAPTUREDEVICESTATE_CAPTURING && m_captureDevice)
