@@ -2,15 +2,11 @@
 
 ## Status
 
-In Progress (2026-08-23). Implementation is starting from the current remote
-default beta integration branch `v1.2.001-beta` (queried at
-`bb5be05ab7dd8e92d3cbab02b789ab22bdad4329`) in the clean worktree
-`C:\Videoprocessor\vp\git-main\stories\.vp-0144-no-config-backups` on branch
-`codex/vp-0144-no-config-backups`. VideoProcessorConfig currently creates a dated
-`VideoProcessor.cfg.backup-YYYYMMDD-HHMMSS` file whenever it applies an edit
-and includes that path in the success notification. The operator no longer
-needs those backups; saving must update the active configuration without
-creating a backup artifact or showing backup text.
+Done (2026-08-23). The verified implementation was rebased onto the refreshed
+`v1.2.001-beta` tip `2cb0730` and fast-forwarded into
+`origin/v1.2.001-beta` at `0fab901`. VideoProcessorConfig no longer creates a
+dated `VideoProcessor.cfg.backup-YYYYMMDD-HHMMSS` file when it applies an edit
+and no longer includes a backup path in the success notification.
 
 ## Progress
 
@@ -32,9 +28,9 @@ creating a backup artifact or showing backup text.
   `C:\Videoprocessor\vp\backups\VP-0144-no-config-backups-20260823-0727\VideoProcessorConfig.exe`
   (SHA-256 `4CB178AE64BBA0C58F48631046657084D8F4839DD939D72224268EA2F338FA6A`).
   `C:\Videoprocessor\vp\VideoProcessor.cfg` was not changed.
-- Pending user validation: apply a real edit through the deployed Config
-  editor, confirm no new `VideoProcessor.cfg.backup-*` file appears, and
-  confirm the success message has no `Backup:` text.
+- User validation confirmed the deployed behavior. The commit was then rebased
+  as `0fab901` onto the refreshed beta tip and integrated into
+  `origin/v1.2.001-beta`.
 
 ## User story
 
