@@ -2,8 +2,11 @@
 
 ## Status
 
-Backlog (2026-08-23). Parent: [VP-0145](VP-0145_renderer-post-stall-reset-eligibility.md).
-This is the first implementation increment and is telemetry-only.
+Review (2026-08-23). Parent:
+[VP-0145](../in-progress/VP-0145_renderer-post-stall-reset-eligibility.md).
+Implemented at `7475bfe` on `codex/vp-0145-reset-advisory`; x64 Release
+builds and 21 focused tests pass. Dedicated VP and madVR runtime log captures
+remain for acceptance. The post-stall evaluator is telemetry-only.
 
 ## User story
 
@@ -16,7 +19,11 @@ when a reset should occur without the application performing one.
 Implement a shared recovery-health evaluator and structured diagnostic output
 for VP Renderer and DirectShow - madVR. The evaluator may observe existing
 state, but it must not submit a reset request or alter queue, delivery,
-presentation, shader, display, or graph behavior.
+presentation, shader, display, or graph behavior. Separately, fullscreen
+entry and renderer switches schedule the existing reset coordinator with the
+configured queue-reset delay. Those deterministic resets are logged as
+detected, armed or covered, and resolved or failed; advisory evaluation stays
+suppressed until they have settled.
 
 ### Required telemetry
 
@@ -74,13 +81,16 @@ cooldown/suppression reason.
    baseline and is labelled advisory rather than treated as a reset command.
 5. Persistent advisory state produces a refreshed report at the 10-second
    cadence, with no faster recurring advisory spam.
-6. Focused tests or deterministic log-based validation verify that this task
-   does not call the reset coordinator, restart a renderer, flush a queue, or
-   change delivery/presentation behavior.
+6. Focused tests or deterministic log-based validation verify that the
+   advisory evaluator does not call the reset coordinator, restart a renderer,
+   flush a queue, or change delivery/presentation behavior. Fullscreen entry
+   and renderer switching are the explicitly requested exception: they must
+   use the existing delayed coordinator and log their outcome.
 
 ## Boundaries
 
-- Do not add an automatic reset, new hotkey behavior, or queue policy change.
+- Do not add an automatic reset based on advisory telemetry, new hotkey
+  behavior, or queue policy change.
 - Do not infer madVR queue occupancy from VP-side queues or OSD latency.
 - Do not compare milliseconds across refresh rates without also reporting
   display-frame normalization.
@@ -101,7 +111,9 @@ cooldown/suppression reason.
   persistent advisory using the required fields.
 - madVR source-gap or timing-step run demonstrating compatible-baseline and
   `occupancy=unobservable` reporting.
-- Focused test/log evidence that no reset request was emitted by the advisory.
+- Focused test/log evidence that no reset request was emitted by the advisory,
+  plus VP and madVR logs showing deterministic fullscreen/switch resets before
+  post-stall telemetry evaluates recovery.
 
 ## Tracker audit note
 

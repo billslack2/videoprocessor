@@ -2,9 +2,12 @@
 
 ## Status
 
-Backlog (2026-08-23). This root is decomposed so the first implementation is
-telemetry and diagnostics only. It must not initiate, coalesce, delay, or
-otherwise change a renderer reset.
+In Progress (2026-08-23). The diagnostic implementation is on
+`codex/vp-0145-reset-advisory` at `7475bfe` and is ready for focused runtime
+log validation. Post-stall advice itself is telemetry-only. Separately,
+fullscreen entry and renderer changes are confirmed deterministic reset
+boundaries and now use the existing reset coordinator with the configured
+queue-reset delay before advisory telemetry may evaluate recovery.
 
 ## User story
 
@@ -30,7 +33,8 @@ likely to restore queue and latency health.
 ## Required behavior
 
 1. Establish shared post-stall recovery diagnostics for both VP Renderer and
-   DirectShow - madVR without changing runtime recovery behavior.
+   DirectShow - madVR without allowing a post-stall advisory to change runtime
+   recovery behavior.
 2. Classify the state as healthy, settling, reset-advisory, or suppressed with
    structured reasons and the applicable renderer/generation/configuration
    identity.
@@ -46,15 +50,19 @@ likely to restore queue and latency health.
    lead/latency at the same rate and configuration, source/delivery health,
    madVR configuration, and explicit `occupancy=unobservable` when applicable.
 5. Reset advice must be suppressed during renderer construction/retirement,
-   output readiness rewarm, active graph reset, and a short quiet window after
-   a settings, shader, profile, or refresh transition. The diagnostic must
-   state the suppression reason.
-6. This root does not authorize automatic reset. Any later action policy must
-   be separately reviewed against the telemetry collected by child task 1.
+   output readiness rewarm, an active graph reset, and a short quiet window
+   after a settings, shader, profile, refresh, fullscreen, or renderer
+   transition. The diagnostic must state the suppression reason.
+6. Entering fullscreen and switching renderer must schedule the existing reset
+   coordinator using the configured queue-reset delay. Logs must record the
+   detection, request acceptance/coverage, and reset completion or failure.
+   This does not authorize an automatic reset based on a post-stall advisory;
+   any such action policy remains separately reviewable after evidence is
+   collected.
 
 ## Decomposition
 
-1. [VP-0145-1](VP-0145-1_post-stall-reset-telemetry-and-diagnostics.md) --
+1. [VP-0145-1](../review/VP-0145-1_post-stall-reset-telemetry-and-diagnostics.md) --
    Add cross-renderer telemetry and a non-mutating `reset should occur`
    advisory. It is independently testable from logs and has no reset side
    effects.
@@ -72,7 +80,9 @@ require automatic reset implementation.
    between the successful 22:50 VP reset case and the ambiguous madVR
    post-reset latency-step case.
 2. No renderer reset, queue trim, timing rebase, presentation setting, or
-   graph lifecycle behavior changes under this root's first child.
+   graph lifecycle behavior may result from a post-stall advisory. The only
+   reset behavior in this increment is the explicit fullscreen-entry and
+   renderer-switch use of the existing, delayed reset coordinator.
 3. Subsequent work has an evidence-backed decision rather than treating any
    single stall, queue increase, or latency increase as reset-worthy.
 
