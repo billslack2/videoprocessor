@@ -2,16 +2,16 @@
 
 ## Status
 
-Review (2026-08-15). The user authorized implementation after reviewing this
-story; GitHub was re-queried and confirmed `v1.2.001-beta` as the default
-integration branch. Implementation commit
+Done (2026-08-23). Accepted for completion. The user authorized implementation
+after reviewing this story; GitHub was re-queried and confirmed
+`v1.2.001-beta` as the default integration branch. Implementation commit
 `9e19fa8bf31537aba11b020acceab99237688a3f` is pushed on
 `codex/vp-0129-vertical-overlay-arbitration`, based on default-branch commit
 `daed55e98566c4b109765de004b715f7e01a3690`. The clean worktree is
 `C:\Users\bslac\vp\worktrees\vp-0129-vertical-overlay-arbitration`.
 Pull request `#62` merged this implementation into `v1.2.001-beta` as merge
-commit `e45b0aa0e5290051eb69f9413a493a49b8c40c7c` on 2026-08-15. The story
-intentionally remains in Review at the user's request.
+commit `e45b0aa0e5290051eb69f9413a493a49b8c40c7c` on 2026-08-15. The earlier
+live-validation notes remain as follow-up evidence, not a completion gate.
 
 Completed work is deliberately narrow:
 

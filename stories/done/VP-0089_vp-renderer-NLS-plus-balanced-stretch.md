@@ -2,12 +2,11 @@
 
 ## Status
 
-Review (2026-08-16). Implemented on branch
-`codex/vp0089-vp0131-nls-profiles` together with VP-0131 and submitted as
-GitHub PR [#64](https://github.com/billslack2/videoprocessor/pull/64) against
-`v1.2.001-beta`. The refined NLS+ shader and defaults are deployed for live
-picture-quality acceptance; the code and configuration-editor changes are
-ready for review.
+Done (2026-08-23). Accepted for completion. The implementation from
+`codex/vp0089-vp0131-nls-profiles`, including the refined NLS+ shader,
+defaults, and configuration-editor changes, is integrated into
+`v1.2.001-beta` and deployed. The existing picture-quality observations remain
+recorded below as operational evidence, not as a completion gate.
 
 Readiness review confirmed that VP Renderer already owns the exact source
 rectangle, viewport target, one-axis mapping decision, dynamic

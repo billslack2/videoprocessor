@@ -2,14 +2,14 @@
 
 ## Status
 
-Review (2026-08-09). The original vertical-alignment implementation is
-integrated and remains subject to its outstanding live Alpha subtitle
-validation. The expanded live-configuration editor implementation now stages
-validated configuration changes, applies the required restart/reset/save-only
-action, and keeps the configuration shortcut as a one-way reveal command.
-While visible, the editor is a Qt-owned topmost operator surface so it remains
-above the VP video host and other desktop windows. The complete x64 Release
-solution build passed before review.
+Done (2026-08-23). Accepted for completion. The original vertical-alignment
+implementation and expanded live-configuration editor are integrated. The
+editor stages validated configuration changes, applies the required
+restart/reset/save-only action, and keeps the configuration shortcut as a
+one-way reveal command. While visible, the editor is a Qt-owned topmost
+operator surface so it remains above the VP video host and other desktop
+windows. The complete x64 Release solution build passed; the earlier live
+Alpha subtitle-validation note remains historical follow-up evidence.
 
 This is deliberately a conservative first live-configuration contract. It is
 not a file watcher and it does not attempt arbitrary per-key hot reload. An

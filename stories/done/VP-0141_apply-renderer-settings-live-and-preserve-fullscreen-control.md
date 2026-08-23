@@ -2,11 +2,11 @@
 
 ## Status
 
-Review. Implementation is committed as `892668f` on
-`codex/vp-0141-live-settings`, based on the current 2026-08-22
-`origin/v1.2.001-beta` integration tip `802038d`. The Qt/libplacebo review
-confirmed the existing immutable render-thread safe point and cache lifecycle
-are preserved.
+Done (2026-08-23). Accepted for completion. The implementation on
+`codex/vp-0141-live-settings` is integrated into `v1.2.001-beta`. The
+Qt/libplacebo review confirmed the existing immutable render-thread safe point
+and cache lifecycle are preserved. The earlier manual fullscreen review notes
+remain operational follow-up evidence, not a completion gate.
 
 The incident and source review establish a bounded implementation path:
 compatible libplacebo processing changes must use the existing render-thread

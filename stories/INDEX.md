@@ -120,7 +120,7 @@ they must not contain requirements that are absent from this file.
 | VP-0086 | Done | Comprehensive configuration usage reference |
 | VP-0087 | Blocked | VP-managed subtitle fit with madVR presentation |
 | VP-0088 | In Progress | Expose fast Alpha-native display refresh measurement |
-| VP-0089 | Review | VP Renderer NLS+ balanced stretch |
+| VP-0089 | Done | VP Renderer NLS+ balanced stretch |
 | VP-0091 | Done | Hide System32 DirectShow renderers by default |
 | VP-0092 | Backlog | Discover madVR shortcuts and control its native statistics OSD |
 | VP-0093 | Done | Prevent Alpha SDR BT.2020 output-contract regressions |
@@ -129,11 +129,11 @@ they must not contain requirements that are absent from this file.
 | VP-0096 | Done | Establish range-correct video-frame conversion contracts |
 | VP-0097 | Done | Safe standalone configuration editor and VP integration |
 | VP-0098 | Done | Fit trusted active-picture envelopes correctly on arbitrary CIH screens |
-| VP-0099 | Review | Dynamic, renderer-neutral NLS geometry and safety policy |
+| VP-0099 | Done | Dynamic, renderer-neutral NLS geometry and safety policy |
 | VP-0100 | Backlog | Prove pixel-owned SDR presentation for Alpha |
 | VP-0101 | Backlog | Implement production pixel-owned calibrated output and 3D LUTs |
 | VP-0102 | Done | Dual-mode classic and modern operator UI |
-| VP-0103 | Review | Apply saved configuration safely to a running VideoProcessor |
+| VP-0103 | Done | Apply saved configuration safely to a running VideoProcessor |
 | VP-0104 | Done | Allow NLS without trusted crop on known scope viewports |
 | VP-0105 | Done | Toggle the runtime UI with a configurable shortcut |
 | VP-0106 | Done | Reduce madVR NLS transition latency |
@@ -155,13 +155,13 @@ they must not contain requirements that are absent from this file.
 | VP-0120 | Backlog | Retire owner-bound configuration tray processes |
 | VP-0121 | Review | Make configuration help UI-first with current screenshots |
 | VP-0122 | Done | Retain scope geometry through subtitle and volume overlays |
-| VP-0123 | Review | Split video conversion policy by renderer |
+| VP-0123 | Done | Split video conversion policy by renderer |
 | VP-0124 | In Progress | Safely accelerate outward active-picture transitions with bounded lookahead |
 | VP-0125 | Done | Diagnose Alpha fullscreen target-nits colour crushing and provide Output Experiments |
 | VP-0126 | In Progress | Standalone Alpha test-pattern generator |
 | VP-0127 | Done | Enforce output format and prove composed display delivery |
 | VP-0128 | Backlog | Audit VP Renderer option parity and resolved defaults |
-| VP-0129 | Review | Retain scope through vertical overlay arbitration |
+| VP-0129 | Done | Retain scope through vertical overlay arbitration |
 | VP-0130 | Done | Renderer telemetry and live input-configuration clarity |
 | VP-0131 | Done | VP Renderer NLS-V and bounded presentation crop |
 | VP-0132 | Done | Eliminate subtitle-fit presentation chatter |
@@ -173,7 +173,7 @@ they must not contain requirements that are absent from this file.
 | VP-0138 | In Progress | Preserve Clock-Smart2 real-time timestamps |
 | VP-0139 | Done | Configuration inheritance and VP Renderer quality clarity |
 | VP-0140 | Done | Compile VP Renderer shaders without blocking UI or presentation |
-| VP-0141 | Review | Apply VP Renderer settings live and preserve fullscreen control |
+| VP-0141 | Done | Apply VP Renderer settings live and preserve fullscreen control |
 | VP-0142 | Backlog | Design profile-selection persistence policy |
 | VP-0143 | Done | Restart renderer after queue-profile changes |
 | VP-0144 | Done | Stop creating configuration backups |

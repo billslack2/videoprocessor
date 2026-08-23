@@ -2,10 +2,10 @@
 
 ## Status
 
-Review (2026-08-15). Implementation is ready for review in
-`billslack2/videoprocessor` pull request
-[#60](https://github.com/billslack2/videoprocessor/pull/60), targeting the
-current default branch `v1.2.001-beta`.
+Done (2026-08-23). Accepted for completion. The implementation from
+[`#60`](https://github.com/billslack2/videoprocessor/pull/60) is integrated
+into `v1.2.001-beta`; its Release build, deployment, and recorded manual
+acceptance complete this story.
 
 During implementation, operator review expanded the original split: General
 now remains the shared input-processing default, while DirectShow and VP
