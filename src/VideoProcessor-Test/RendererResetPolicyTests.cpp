@@ -226,13 +226,13 @@ namespace Tests
 			Assert::IsFalse(IsDirectShowToAlphaBackendHandoff(true, true));
 		}
 
-		TEST_METHOD(FreshAlphaQueueReprimesOnlyForRefreshTransition)
+		TEST_METHOD(FreshAlphaQueueReprimesForEveryDeterministicTransition)
 		{
 			Assert::IsFalse(AlphaFreshStartRequiresDelayedReprime(
 				AlphaFreshStartTransition::None));
-			Assert::IsFalse(AlphaFreshStartRequiresDelayedReprime(
+			Assert::IsTrue(AlphaFreshStartRequiresDelayedReprime(
 				AlphaFreshStartTransition::BackendHandoff));
-			Assert::IsFalse(AlphaFreshStartRequiresDelayedReprime(
+			Assert::IsTrue(AlphaFreshStartRequiresDelayedReprime(
 				AlphaFreshStartTransition::HostTransition));
 			Assert::IsTrue(AlphaFreshStartRequiresDelayedReprime(
 				AlphaFreshStartTransition::RefreshTransition));

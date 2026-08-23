@@ -57,6 +57,8 @@ public:
 	bool FinalizeRetirementForShutdown() noexcept override;
 	void Reset() override;
 	void ResetLiveQueue() override;
+	void SetPostStallResetTelemetrySuppressedUntil(
+		uint64_t tick) override;
 	void OnSize() override;
 	void OnPaint() override;
 	void OnDisplayChange() override;

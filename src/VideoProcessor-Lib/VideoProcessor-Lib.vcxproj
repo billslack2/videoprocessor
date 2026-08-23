@@ -210,6 +210,7 @@
 	<ClInclude Include="MadVRShaderTransactionPolicy.h" />
     <ClInclude Include="IRenderer.h" />
     <ClInclude Include="RendererLiveness.h" />
+    <ClInclude Include="RendererPostStallResetAdvisor.h" />
     <ClInclude Include="RendererIngressState.h" />
     <ClInclude Include="RendererResetCoordinator.h" />
     <ClInclude Include="RendererResetPolicy.h" />

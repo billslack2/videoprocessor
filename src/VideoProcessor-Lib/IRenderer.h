@@ -125,6 +125,10 @@ public:
 	{
 		return false;
 	}
+	// A deterministic lifecycle reset has already been armed by the host.
+	// Renderers use this only to defer post-stall advisory logs until that reset
+	// has had its configured settle interval; it never changes frame delivery.
+	virtual void SetPostStallResetTelemetrySuppressedUntil(uint64_t) {}
 
 	// Handler for windows events for the graph's pEvent
 	virtual HRESULT OnWindowsEvent(LONG_PTR param1, LONG_PTR param2) = 0;

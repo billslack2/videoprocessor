@@ -27,6 +27,7 @@
 #include <ShortcutRepeatGuard.h>
 #include <CCie1931Control.h>
 #include <IRenderer.h>
+#include <RendererPostStallResetAdvisor.h>
 #include <RendererResetCoordinator.h>
 #include <RendererResetPolicy.h>
 #include <RendererRetirementService.h>
@@ -595,6 +596,11 @@ protected:
 	bool m_dropDiagnosticInitialized = false;
 	uint64_t m_lastLoggedCaptureMissed = 0;
 	uint64_t m_lastLoggedRendererDropped = 0;
+	// This advisory-only classifier has no reset callback. It makes opaque
+	// madVR queue limits explicit in the diagnostic record.
+	PostStallResetAdvisor m_madVRPostStallResetAdvisor;
+	uint64_t m_madVRLastObservedDeliveryEpoch = 0;
+	uint64_t m_madVRLastMaximumSuccessfulDeliveryUs = 0;
 	ULONGLONG m_lastLivenessRecoveryTick = 0;
 	bool m_queuePressureRecoveryRequested = false;
 	bool m_queueCapacityRecoveryRequested = false;
@@ -636,6 +642,11 @@ protected:
 	// preserve refresh cleanup while logging host/backend skips explicitly.
 	bool m_alphaHostTransitionPending = false;
 	bool m_alphaBackendHandoffPending = false;
+	// These are deterministic reset boundaries, not post-stall hypotheses.
+	// They are consumed only after the replacement/retarget is rendering so the
+	// configured queue-reset delay is measured against a usable renderer.
+	bool m_fullscreenEntryTransitionPending = false;
+	bool m_rendererSwitchTransitionPending = false;
 	double m_alphaRefreshTransitionPreviousRateHz = 0.0;
 	double m_alphaRefreshTransitionCurrentRateHz = 0.0;
 	// Initial DirectShow starts and backend handoffs need the proven madVR
@@ -953,6 +964,8 @@ protected:
 	void RebuildRendererCombo();
 	void ClearRendererCombo();
 	void UpdateStatsOverlay();
+	void LogMadVRPostStallResetDiagnostics(const StatsData& stats,
+		double measuredCaptureRateHz);
 	void LogDroppedCounterChanges(const StatsData& stats);
 	void ApplyStatsOverlayForActiveRenderer();
 	void LoadDisplayRefreshRateOverrides();

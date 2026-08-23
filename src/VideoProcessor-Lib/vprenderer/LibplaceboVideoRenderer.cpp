@@ -9,6 +9,7 @@
 #include <ActivePictureEvidence.h>
 #include <RendererConfigView.h>
 #include <RendererProfileConfig.h>
+#include <RendererPostStallResetAdvisor.h>
 #include <UnifiedProfileRuntime.h>
 #include <DebugLog.h>
 #include <DisplayRuleExpression.h>
@@ -3169,6 +3170,8 @@ struct LibplaceboVideoRenderer::Impl
 	HMONITOR negotiatedMonitor = nullptr;
 	bool hasPresentedFrame = false;
 	uint64_t nextPresentationTelemetryLogTick = 0;
+	PostStallResetAdvisor postStallResetAdvisor;
+	std::atomic<uint64_t> postStallResetTelemetrySuppressUntilTick{ 0 };
 	uint64_t lastSubmittedScreenProfileRequest = 0;
 	uint64_t activePictureScreenProfileRequestSerial = 0;
 	std::mutex renderMutex;
@@ -9829,9 +9832,64 @@ struct LibplaceboVideoRenderer::Impl
 			}
 
 			const uint64_t nowTick = GetTickCount64();
+			PostStallResetObservation resetObservation;
+			resetObservation.renderer = PostStallRendererKind::VpRenderer;
+			resetObservation.nowTick = nowTick;
+			resetObservation.generation = frameGeneration;
+			resetObservation.outputReady = sample.available &&
+				presentationSnapshot.evidence == AlphaPresentationEvidence::Stable;
+			resetObservation.rendererQuiet =
+				!resizePending.load(std::memory_order_acquire) &&
+				!outputRenegotiationPending.load(std::memory_order_acquire) &&
+				nowTick >= postStallResetTelemetrySuppressUntilTick.load(
+					std::memory_order_acquire);
+			resetObservation.materialStall = std::max(renderMs, swapBlockMs) >=
+				static_cast<double>(PostStallResetAdvisor::MATERIAL_STALL_MS);
+			resetObservation.queueDepth = queueDepthAfterDequeue;
+			resetObservation.healthyQueueDepth = desiredQueueDepth;
+			resetObservation.framePeriodMs =
+				presentationSnapshot.measuredDisplayHz >= 10.0 ?
+					1000.0 / presentationSnapshot.measuredDisplayHz :
+					captureRateHz >= 10.0 ? 1000.0 / captureRateHz : 0.0;
+			resetObservation.oldestQueuedAgeMs = oldestQueuedAgeMs;
+			resetObservation.renderMs = renderMs;
+			resetObservation.swapBlockMs = swapBlockMs;
+			const PostStallResetDecision resetDecision =
+				postStallResetAdvisor.Observe(resetObservation);
+			if (resetDecision.shouldLog)
+			{
+				const char* const logPrefix = resetDecision.resetShouldOccur ?
+					"Post-stall reset should occur" :
+					"Post-stall reset telemetry";
+				DebugLog::Log(
+					"%s: renderer=VP action=diagnostic-only state=%s reason=%s generation=%llu output_ready=%d quiet=%d since_stall_ms=%llu observations=%u queue_after=%zu healthy_queue=%zu oldest_ms=%.2f render_ms=%.2f swap_ms=%.2f frame_period_ms=%.3f display_hz=%.5f debt=%llu present_id=%u timing=%s",
+					logPrefix,
+					PostStallResetDiagnosticStateText(resetDecision.state),
+					resetDecision.reason,
+					static_cast<unsigned long long>(frameGeneration),
+					resetObservation.outputReady ? 1 : 0,
+					resetObservation.rendererQuiet ? 1 : 0,
+					static_cast<unsigned long long>(
+						resetDecision.millisecondsSinceMaterialStall),
+					resetDecision.persistentBadObservations,
+					queueDepthAfterDequeue,
+					desiredQueueDepth,
+					oldestQueuedAgeMs,
+					renderMs,
+					swapBlockMs,
+					resetObservation.framePeriodMs,
+					presentationSnapshot.measuredDisplayHz,
+					static_cast<unsigned long long>(
+						presentationSnapshot.sourceToPresentDebt),
+					presentationSnapshot.lastPresentId,
+					AlphaPresentationTimingStatusText(
+						presentationSnapshot.timingStatus));
+			}
 			if (nowTick >= nextPresentationTelemetryLogTick)
 			{
-				nextPresentationTelemetryLogTick = nowTick + 5000;
+				nextPresentationTelemetryLogTick = nowTick +
+					(resetDecision.state ==
+						PostStallResetDiagnosticState::Monitoring ? 5000 : 2000);
 				const AlphaPresentationSnapshot snapshot =
 					presentationTelemetry.Snapshot();
 				DebugLog::Log(
@@ -11018,6 +11076,23 @@ void LibplaceboVideoRenderer::ResetLiveQueue()
 	BeginQueueGeneration("live queue reset");
 	m_sceneDetectorGeneration.fetch_add(1, std::memory_order_acq_rel);
 }
+
+
+void LibplaceboVideoRenderer::SetPostStallResetTelemetrySuppressedUntil(
+	uint64_t tick)
+{
+	if (!m_impl)
+		return;
+	uint64_t observed = m_impl->postStallResetTelemetrySuppressUntilTick.load(
+		std::memory_order_acquire);
+	while (observed < tick &&
+		!m_impl->postStallResetTelemetrySuppressUntilTick.compare_exchange_weak(
+			observed, tick, std::memory_order_release,
+			std::memory_order_acquire))
+	{
+	}
+}
+
 
 void LibplaceboVideoRenderer::SetSceneAwareTimingCorrection(bool enabled)
 {

@@ -7,6 +7,7 @@ enum class RendererResetReason
 	None,
 	Manual,
 	PostRendererStart,
+	RendererSwitch,
 	RefreshTransition,
 	HostTransition,
 	DisplayTransition,
@@ -32,6 +33,7 @@ constexpr int RendererResetPriority(RendererResetReason reason)
 	// lower-priority same-contract recovery request.
 	case RendererResetReason::SourceGapRecovery: return 65;
 	case RendererResetReason::PostRendererStart: return 80;
+	case RendererResetReason::RendererSwitch: return 80;
 	case RendererResetReason::RefreshTransition: return 80;
 	case RendererResetReason::HostTransition: return 80;
 	case RendererResetReason::OutputReadiness: return 75;
@@ -133,9 +135,10 @@ enum class AlphaFreshStartTransition
 	RefreshTransition,
 };
 
-// Record the backend boundary for diagnostics, but do not treat it as proof
-// that Alpha needs a second queue generation. The retired DirectShow queue
-// cannot cross into the newly constructed Alpha renderer.
+// Record the backend boundary for diagnostics. The new renderer receives a
+// delayed post-transition queue reset even though the retired queue cannot
+// cross into it; fullscreen and renderer changes may still complete while
+// display or driver work is settling.
 constexpr bool IsDirectShowToAlphaBackendHandoff(
 	bool previousRendererWasDirectShow,
 	bool nextRendererIsDirectShow)
@@ -143,13 +146,14 @@ constexpr bool IsDirectShowToAlphaBackendHandoff(
 	return previousRendererWasDirectShow && !nextRendererIsDirectShow;
 }
 
-// A fresh Alpha renderer already owns a new queue and swapchain. Re-prime it
-// only when a real refresh-family transition can admit frames while Windows
-// and DXGI still describe different output modes. Backend and HWND changes do
-// not carry queue contents into the new renderer and therefore must not cause
-// a delayed visible reset.
+// Fullscreen host changes and renderer handoffs are deterministic reset
+// boundaries. Use the configured queue-reset delay before checking any
+// post-stall advisory so a freshly constructed Alpha queue has the same
+// transition-settle behavior as the DirectShow path.
 constexpr bool AlphaFreshStartRequiresDelayedReprime(
 	AlphaFreshStartTransition transition)
 {
-	return transition == AlphaFreshStartTransition::RefreshTransition;
+	return transition == AlphaFreshStartTransition::RefreshTransition ||
+		transition == AlphaFreshStartTransition::HostTransition ||
+		transition == AlphaFreshStartTransition::BackendHandoff;
 }

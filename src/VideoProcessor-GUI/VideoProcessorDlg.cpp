@@ -450,6 +450,8 @@ const TCHAR* ToString(RendererResetReason reason)
 	case RendererResetReason::Manual: return TEXT("manual");
 	case RendererResetReason::PostRendererStart:
 		return TEXT("post-renderer-start");
+	case RendererResetReason::RendererSwitch:
+		return TEXT("renderer-switch");
 	case RendererResetReason::RefreshTransition:
 		return TEXT("refresh-transition");
 	case RendererResetReason::HostTransition:
@@ -5445,6 +5447,19 @@ void CVideoProcessorDlg::OnRendererDirectShowPrimariesSelected()
 void CVideoProcessorDlg::OnBnClickedRendererFullScreenCheck()
 {
 	DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnBnClickedRendererFullScreenCheck()")));
+	if (m_rendererFullscreenCheck.GetCheck())
+	{
+		m_fullscreenEntryTransitionPending = true;
+		DebugLog::Log(
+			"Transition reset detected: trigger=fullscreen-entry "
+			"state=awaiting-renderer-boundary delay=%d seconds "
+			"action=existing-auto-reset-before-post-stall-telemetry",
+			m_queueResetDelaySeconds);
+	}
+	else
+	{
+		m_fullscreenEntryTransitionPending = false;
+	}
 
 	if (m_fullscreenRetargetPending)
 	{
@@ -6185,24 +6200,58 @@ LRESULT CVideoProcessorDlg::OnMessageRendererStateChange(WPARAM wParam, LPARAM l
 		const bool postStartRequiresGraph =
 			m_postRendererStartRequiresGraph;
 		m_postRendererStartRequiresGraph = true;
+		const bool fullscreenEntryTransition =
+			m_fullscreenEntryTransitionPending;
+		const bool rendererSwitchTransition =
+			m_rendererSwitchTransitionPending;
+		m_fullscreenEntryTransitionPending = false;
+		m_rendererSwitchTransitionPending = false;
 		if (m_activeRendererIsDirectShow)
 		{
-			// DirectShow now starts provisionally, then uses validated DXGI vblank
-			// evidence to make one serialized LiveQueue reset and exact VP prefill.
-			// Do not stack the legacy configured-delay reset behind it: that was the
-			// source of display-handshake-dependent queue depth.
-			DebugLog::Log(
-				"Post-start reset deferred: renderer=%S backend=DirectShow "
-				"legacy_requires_graph=%d display_settle=%u; "
-				"awaiting output-readiness evidence",
-				static_cast<LPCTSTR>(m_activeRendererName),
-				postStartRequiresGraph ? 1 : 0, windowSettleDelayMs);
+			if (fullscreenEntryTransition || rendererSwitchTransition)
+			{
+				const RendererResetReason transitionReason =
+					fullscreenEntryTransition ?
+						RendererResetReason::HostTransition :
+						RendererResetReason::RendererSwitch;
+				const UINT delayMs = static_cast<UINT>(
+					m_queueResetDelaySeconds * 1000);
+				const RendererResetCoordinator::SubmissionReceipt resetReceipt =
+					RequestRendererReset(transitionReason, true, delayMs);
+				const bool resetAccepted = resetReceipt.accepted;
+				if (resetAccepted)
+				{
+					m_videoRenderer->SetPostStallResetTelemetrySuppressedUntil(
+						GetTickCount64() + delayMs +
+							PostStallResetAdvisor::QUIET_WINDOW_MS);
+				}
+				DebugLog::Log(
+					"Transition reset armed: renderer=%S backend=DirectShow "
+					"trigger=%s delay=%ums scope=graph request=%s "
+					"action=existing-auto-reset-before-post-stall-telemetry",
+					static_cast<LPCTSTR>(m_activeRendererName),
+					fullscreenEntryTransition ? "fullscreen-entry" :
+						"renderer-switch",
+					delayMs, resetAccepted ? "accepted" : "covered-or-rejected");
+			}
+			else
+			{
+				// DirectShow starts provisionally, then uses validated DXGI vblank
+				// evidence to make one serialized graph reset and exact VP prefill.
+				DebugLog::Log(
+					"Post-start reset deferred: renderer=%S backend=DirectShow "
+					"legacy_requires_graph=%d display_settle=%u; "
+					"awaiting output-readiness evidence",
+					static_cast<LPCTSTR>(m_activeRendererName),
+					postStartRequiresGraph ? 1 : 0, windowSettleDelayMs);
+			}
 		}
 		else
 		{
 			const bool refreshTransition = m_alphaRefreshTransitionPending;
 			const bool hostTransition = m_alphaHostTransitionPending;
-			const bool backendHandoff = m_alphaBackendHandoffPending;
+			const bool backendHandoff = m_alphaBackendHandoffPending ||
+				rendererSwitchTransition;
 			const double previousRate = m_alphaRefreshTransitionPreviousRateHz;
 			const double currentRate = m_alphaRefreshTransitionCurrentRateHz;
 			m_alphaRefreshTransitionPending = false;
@@ -6216,22 +6265,45 @@ LRESULT CVideoProcessorDlg::OnMessageRendererStateChange(WPARAM wParam, LPARAM l
 
 			if (AlphaFreshStartRequiresDelayedReprime(freshStartTransition))
 			{
-				// A real cross-family refresh change is asynchronous outside Alpha.
-				// Preserve its one delayed queue-only cleanup so transition-era
-				// frames cannot survive the Windows/DXGI settling boundary.
-				RequestRendererReset(
-					RendererResetReason::RefreshTransition,
+				const RendererResetReason transitionReason =
+					freshStartTransition ==
+						AlphaFreshStartTransition::HostTransition ?
+						RendererResetReason::HostTransition :
+					freshStartTransition ==
+						AlphaFreshStartTransition::BackendHandoff ?
+						RendererResetReason::RendererSwitch :
+						RendererResetReason::RefreshTransition;
+				// Refresh, host, and renderer boundaries all wait for the queue's
+				// configured settle delay before the lightweight VP re-prime.
+				const UINT delayMs = static_cast<UINT>(
+					m_queueResetDelaySeconds * 1000);
+				const RendererResetCoordinator::SubmissionReceipt resetReceipt =
+					RequestRendererReset(
+					transitionReason,
 					false,
-					static_cast<UINT>(m_queueResetDelaySeconds * 1000));
+					delayMs);
+				const bool resetAccepted = resetReceipt.accepted;
+				if (resetAccepted)
+				{
+					m_videoRenderer->SetPostStallResetTelemetrySuppressedUntil(
+						GetTickCount64() + delayMs +
+							PostStallResetAdvisor::QUIET_WINDOW_MS);
+				}
 				DebugLog::Log(
-					"Alpha refresh transition re-prime armed: previous=%.6fHz "
-					"configured=%.6fHz delay=%d seconds action=queue-only "
-					"coalesced_host=%d coalesced_backend_handoff=%d",
+					"Transition reset armed: renderer=%S backend=VP trigger=%s "
+					"previous=%.6fHz configured=%.6fHz delay=%d seconds request=%s "
+					"scope=live-queue action=existing-auto-reset-before-post-stall-telemetry",
+					static_cast<LPCTSTR>(m_activeRendererName),
+					freshStartTransition ==
+						AlphaFreshStartTransition::HostTransition ?
+						"fullscreen-entry" :
+					freshStartTransition ==
+						AlphaFreshStartTransition::BackendHandoff ?
+						"renderer-switch" : "refresh-transition",
 					previousRate,
 					currentRate,
 					m_queueResetDelaySeconds,
-					hostTransition ? 1 : 0,
-					backendHandoff ? 1 : 0);
+					resetAccepted ? "accepted" : "covered-or-rejected");
 			}
 			else if (windowSettleDelayMs != 0)
 			{
@@ -8666,6 +8738,18 @@ void CVideoProcessorDlg::RenderStart()
 	m_activeRendererIsDirectShow =
 		selectedRenderer->backend == RendererBackend::DIRECTSHOW;
 	m_activeRendererSelectorIndex = i + 1;
+	m_rendererSwitchTransitionPending = !previousRendererName.IsEmpty() &&
+		previousRendererName.CompareNoCase(m_activeRendererName) != 0;
+	if (m_rendererSwitchTransitionPending)
+	{
+		DebugLog::Log(
+			"Transition reset detected: trigger=renderer-switch previous=%S "
+			"next=%S state=awaiting-renderer-boundary delay=%d seconds "
+			"action=existing-auto-reset-before-post-stall-telemetry",
+			static_cast<LPCTSTR>(previousRendererName),
+			static_cast<LPCTSTR>(m_activeRendererName),
+			m_queueResetDelaySeconds);
+	}
 	m_alphaBackendHandoffPending = IsDirectShowToAlphaBackendHandoff(
 		previousRendererWasDirectShow, m_activeRendererIsDirectShow);
 	if (m_alphaBackendHandoffPending)
@@ -9543,6 +9627,29 @@ void CVideoProcessorDlg::PumpRendererResetMailbox()
 			ResetScopeName(completion.request.scope),
 			completion.failure.empty() ? "" : " failure=",
 			completion.failure.empty() ? "" : completion.failure.c_str());
+		if (completion.request.reason == RendererResetReason::HostTransition ||
+			completion.request.reason == RendererResetReason::RendererSwitch)
+		{
+			if (currentSuccess && m_videoRenderer)
+			{
+				// The request-time estimate covers the configured delay.  Extend it
+				// from the actual completion too, so advisory telemetry cannot race
+				// a late existing reset.
+				m_videoRenderer->SetPostStallResetTelemetrySuppressedUntil(
+					now + PostStallResetAdvisor::QUIET_WINDOW_MS);
+			}
+			DebugLog::Log(
+				"Transition reset %s: trigger=%s generation=%u request=%llu "
+				"scope=%s result=%s action=post-stall-telemetry-settling",
+				currentSuccess ? "resolved" : "failed",
+				completion.request.reason == RendererResetReason::HostTransition ?
+					"fullscreen-entry" : "renderer-switch",
+				completion.rendererGeneration,
+				static_cast<unsigned long long>(completion.request.sequence),
+				ResetScopeName(completion.request.scope),
+				currentSuccess ? "existing-auto-reset-completed" :
+					"existing-auto-reset-failed");
+		}
 		const bool outputReadinessGraphReprime =
 			RendererResetPreservesReadinessDisplayMeasurement(
 				completion.request.scope,
@@ -9708,9 +9815,14 @@ void CVideoProcessorDlg::PumpRendererResetMailbox()
 			// modes exhibit the same downstream transition race.
 			const UINT delayMs = static_cast<UINT>(
 				m_queueResetDelaySeconds * 1000);
+			const bool fullscreenEntry = !m_fullscreenRetargetExiting &&
+				m_fullscreenEntryTransitionPending;
+			m_fullscreenEntryTransitionPending = false;
 			const RendererResetCoordinator::SubmissionReceipt receipt =
 				RequestRendererReset(
-					RendererResetReason::DisplayTransition, false, delayMs,
+					fullscreenEntry ? RendererResetReason::HostTransition :
+						RendererResetReason::DisplayTransition,
+					false, delayMs,
 					RendererResetOrigin::AutomaticRetargetSettle,
 					m_outputReadinessRetargetSettleLineageGeneration);
 			const bool settleCovered = receipt.accepted &&
@@ -9718,12 +9830,21 @@ void CVideoProcessorDlg::PumpRendererResetMailbox()
 					RendererResetOrigin::AutomaticRetargetSettle);
 			if (!settleCovered)
 				m_outputReadinessRetargetSettleLineageGeneration = 0;
+			if (settleCovered && m_videoRenderer)
+			{
+				m_videoRenderer->SetPostStallResetTelemetrySuppressedUntil(
+					GetTickCount64() + delayMs +
+						PostStallResetAdvisor::QUIET_WINDOW_MS);
+			}
 			DebugLog::Log(
-				"Post-retarget queue re-prime armed: generation=%u "
-				"origin=automatic-retarget-settle delay=%ums "
+				"Transition reset armed: renderer=%S backend=DirectShow "
+				"trigger=%s generation=%u origin=automatic-retarget-settle "
+				"delay=%ums scope=live-queue "
 				"source=reset_after_render_restart_seconds accepted=%d "
 				"request=%llu disposition=%s selected_request=%llu "
-				"contributors=0x%x",
+				"contributors=0x%x action=existing-auto-reset-before-post-stall-telemetry",
+				static_cast<LPCTSTR>(m_activeRendererName),
+				fullscreenEntry ? "fullscreen-entry" : "display-transition",
 				currentGeneration, delayMs, settleCovered ? 1 : 0,
 				static_cast<unsigned long long>(receipt.requestSequence),
 				ResetSubmissionDispositionName(receipt.disposition),
@@ -9927,7 +10048,11 @@ void CVideoProcessorDlg::TryRevealRendererTransition(uint32_t generation)
 			m_rendererResetCoordinator->GetDiagnostics();
 		const bool delayedPostStart =
 			diagnostics.pendingReason ==
-				RendererResetReason::PostRendererStart;
+				RendererResetReason::PostRendererStart ||
+			diagnostics.pendingReason ==
+				RendererResetReason::HostTransition ||
+			diagnostics.pendingReason ==
+				RendererResetReason::RendererSwitch;
 		const bool delayedPostRetarget =
 			diagnostics.pendingReason ==
 				RendererResetReason::DisplayTransition &&
@@ -15352,6 +15477,9 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		stats.ppmDeviation = hasMeasuredCaptureRate ? measuredCapturePpm : 0;
 	}
 
+	LogMadVRPostStallResetDiagnostics(stats,
+		measuredCaptureRate > 0.0 ? measuredCaptureRate :
+			theoreticalCaptureRate);
 	LogDroppedCounterChanges(stats);
 
 	// Update overlay
@@ -15395,6 +15523,118 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 	*m_lastStatsData = stats;
 	m_lastStatsTelemetryRenderer = statsRenderer;
 	m_lastStatsTelemetryGeneration = m_transitionGeneration;
+}
+
+
+void CVideoProcessorDlg::LogMadVRPostStallResetDiagnostics(
+	const StatsData& stats, double measuredCaptureRateHz)
+{
+	const bool activeMadVR = m_rendererState ==
+		RendererState::RENDERSTATE_RENDERING && m_videoRenderer &&
+		m_activeRendererIsDirectShow &&
+		m_activeRendererName.Find(TEXT("madVR")) >= 0;
+	if (!activeMadVR)
+	{
+		m_madVRPostStallResetAdvisor.Reset();
+		m_madVRLastObservedDeliveryEpoch = 0;
+		m_madVRLastMaximumSuccessfulDeliveryUs = 0;
+		return;
+	}
+
+	RendererLivenessSnapshot liveness;
+	if (!m_videoRenderer->GetLivenessSnapshot(liveness) ||
+		!liveness.supported)
+	{
+		m_madVRPostStallResetAdvisor.Reset();
+		m_madVRLastObservedDeliveryEpoch = 0;
+		m_madVRLastMaximumSuccessfulDeliveryUs = 0;
+		return;
+	}
+
+	if (liveness.queueEpoch != m_madVRLastObservedDeliveryEpoch)
+	{
+		m_madVRLastObservedDeliveryEpoch = liveness.queueEpoch;
+		m_madVRLastMaximumSuccessfulDeliveryUs = 0;
+	}
+	const bool materialStall =
+		liveness.maximumSuccessfulDeliveryDurationUs >=
+			PostStallResetAdvisor::MATERIAL_STALL_MS * 1000ULL &&
+		liveness.maximumSuccessfulDeliveryDurationUs >
+			m_madVRLastMaximumSuccessfulDeliveryUs;
+	m_madVRLastMaximumSuccessfulDeliveryUs = std::max(
+		m_madVRLastMaximumSuccessfulDeliveryUs,
+		liveness.maximumSuccessfulDeliveryDurationUs);
+
+	const uint64_t nowTick = GetTickCount64();
+	const RendererResetCoordinator::Diagnostics resetDiagnostics =
+		m_rendererResetCoordinator ?
+			m_rendererResetCoordinator->GetDiagnostics() :
+			RendererResetCoordinator::Diagnostics{};
+	const bool existingAutoResetPending = resetDiagnostics.hasPending ||
+		resetDiagnostics.selectionPrepared || resetDiagnostics.operationActive ||
+		resetDiagnostics.completionPending;
+	PostStallResetObservation observation;
+	observation.renderer = PostStallRendererKind::MadVR;
+	observation.nowTick = nowTick;
+	observation.generation = m_transitionGeneration;
+	observation.outputReady = liveness.active &&
+		liveness.currentEpochDeliverySuccessCount > 0;
+	observation.rendererQuiet = !m_rendererConstructionActive &&
+		!m_rendererRetirementPending && !m_rendererResetTransitionActive &&
+		!m_outputReadinessGraphReprimeActive && !liveness.resetInProgress &&
+		!existingAutoResetPending;
+	observation.materialStall = materialStall;
+	observation.queueDepth = stats.currentQueueSize;
+	observation.healthyQueueDepth = liveness.deliveryReserveFrames;
+	observation.framePeriodMs = measuredCaptureRateHz >= 10.0 ?
+		1000.0 / measuredCaptureRateHz : 0.0;
+	observation.oldestQueuedAgeMs = static_cast<double>(
+		liveness.oldestRetainedSourceBufferAgeMs);
+	observation.scheduledLatencyKnown = stats.scheduledLatencyKnown;
+	observation.scheduledLatencyMs = stats.scheduledLatencyMs;
+	const PostStallResetDecision decision =
+		m_madVRPostStallResetAdvisor.Observe(observation);
+	if (!decision.shouldLog)
+		return;
+
+	const uint64_t lastSuccessAgeMs = liveness.lastDeliverySuccessTick != 0 &&
+		nowTick >= liveness.lastDeliverySuccessTick ?
+		nowTick - liveness.lastDeliverySuccessTick : 0;
+	const char* const logPrefix = decision.resetShouldOccur ?
+		"Post-stall reset should occur" : "Post-stall reset telemetry";
+	DebugLog::Log(
+		"%s: renderer=madVR action=diagnostic-only state=%s reason=%s transition_generation=%u queue_epoch=%llu output_ready=%d quiet=%d auto_reset_pending=%d pending_reason=%s material_stall=%d since_stall_ms=%llu observations=%u raw_queue=%zu converted_queue=%zu queue_total=%zu/%zu reserve=%zu oldest_ms=%.2f delivery_in_progress=%d last_delivery_success_age_ms=%llu max_delivery_ms=%.3f scheduled_known=%d vp_internal_ms=%.2f pts_lead_ms=%.2f scheduled_latency_ms=%.2f frame_period_ms=%.3f scheduled_frames=%.3f baseline_frames=%.3f delta_frames=%.3f madvr_queue=unobservable",
+		logPrefix,
+		PostStallResetDiagnosticStateText(decision.state),
+		decision.reason,
+		m_transitionGeneration,
+		static_cast<unsigned long long>(liveness.queueEpoch),
+		observation.outputReady ? 1 : 0,
+		observation.rendererQuiet ? 1 : 0,
+		existingAutoResetPending ? 1 : 0,
+		CStringA(ToString(resetDiagnostics.pendingReason)).GetString(),
+		materialStall ? 1 : 0,
+		static_cast<unsigned long long>(
+			decision.millisecondsSinceMaterialStall),
+		decision.persistentBadObservations,
+		liveness.rawQueueDepth,
+		liveness.convertedQueueDepth,
+		stats.currentQueueSize,
+		liveness.queueCapacity,
+		liveness.deliveryReserveFrames,
+		observation.oldestQueuedAgeMs,
+		liveness.deliveryInProgress ? 1 : 0,
+		static_cast<unsigned long long>(lastSuccessAgeMs),
+		static_cast<double>(liveness.maximumSuccessfulDeliveryDurationUs) /
+			1000.0,
+		observation.scheduledLatencyKnown ? 1 : 0,
+		stats.vpInternalLatencyMs,
+		stats.dsScheduleLeadMs,
+		stats.scheduledLatencyMs,
+		observation.framePeriodMs,
+		decision.normalizedScheduledLatencyFrames,
+		decision.baselineScheduledLatencyFrames,
+		decision.scheduledLatencyDeltaFrames);
 }
 
 
@@ -15505,7 +15745,7 @@ CVideoProcessorDlg::RequestRendererReset(RendererResetReason reason,
 		delayMs);
 	if (receipt.accepted && m_activeOutputSweepSummaryVisible &&
 		!m_activeOutputSweepRunning)
-		ClearActiveOutputSweepSummary("renderer-reset");
+	ClearActiveOutputSweepSummary("renderer-reset");
 	return receipt;
 }
 
