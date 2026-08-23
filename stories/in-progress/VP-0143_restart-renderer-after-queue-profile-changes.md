@@ -10,7 +10,9 @@ pipeline running can retain behavior from the prior queue selection.
 
 ## Progress
 
-- 2026-08-22: Implemented `e5dea0e` on `codex/vp-0143-restart-renderer`.
+- 2026-08-22: Implemented `e5dea0e` on `codex/vp-0143-restart-renderer`,
+  then rebased it onto `v1.2.001-beta` at `617e11d`; the resulting feature
+  commit is `61dabd9`.
   A committed queue shortcut selection is debounced, the latest resolved queue
   profile supersedes earlier rapid selections, and the existing controlled
   renderer-restart path preserves fullscreen hosting and normal backend
@@ -21,6 +23,15 @@ pipeline running can retain behavior from the prior queue selection.
   succeeded. The focused VSTest invocation crashed during test discovery with
   `0xC0000005` before executing tests; manual fullscreen validation remains
   required.
+- x64 Release builds of `VideoProcessor-GUI` and
+  `VideoProcessor-VPRenderer` succeeded. The deployed `VideoProcessor.exe`
+  and `vprenderer\VideoProcessorVPRenderer.dll` match their Release artifacts
+  by SHA-256 (`84C744463138777DDD3C5722A1CB5011F9DC03A0A15A047D30A9B071CF75BF00`
+  and `9FF21A5AF62D543295011C9911B6696C21B40F3A8030EB3C644D546B1DEE2152`,
+  respectively); no configuration files changed. A verified snapshot of this
+  deployed pair is at `C:\Videoprocessor\vp\backups\VP-0143-deployed-20260822-214537`.
+  The pre-deployment backup-directory creation failed before a predecessor
+  snapshot was made; existing prior deployment backups remain available.
 
 ## User story
 
