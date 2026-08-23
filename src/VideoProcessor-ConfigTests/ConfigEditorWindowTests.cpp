@@ -2695,6 +2695,10 @@ void testApplyOkCancelContract()
             QStringLiteral("configurationStatus"))->text().contains(
                 QStringLiteral("Takes effect when VideoProcessor next starts")),
             "VP-absent Apply did not report the next-start behavior");
+        require(!requireControl<QLabel>(window,
+            QStringLiteral("configurationStatus"))->text().contains(
+                QStringLiteral("Backup:")),
+            "Configuration save status still reports a backup path");
 
         // A clean OK closes without rewriting the file or creating another
         // backup/runtime notification.
@@ -2772,17 +2776,8 @@ void testApplyOkCancelContract()
             "Config did not replace the externally edited file with its validated document");
         const QStringList backupsAfter = QDir(directory.path()).entryList(
             { QStringLiteral("VideoProcessor.cfg.backup-*") }, QDir::Files);
-        require(backupsAfter.size() == backupsBefore.size() + 1,
-            "Overwriting an external edit did not retain a timestamped backup");
-        bool externalVersionBackedUp = false;
-        for (const QString& backup : backupsAfter)
-            if (readBytes(QDir(directory.path()).filePath(backup)).contains("# external edit"))
-            {
-                externalVersionBackedUp = true;
-                break;
-            }
-        require(externalVersionBackedUp,
-            "The externally edited configuration was not preserved in the backup");
+        require(backupsAfter == backupsBefore,
+            "Overwriting an external edit created a timestamped backup");
     }
 
     {

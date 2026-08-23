@@ -105,13 +105,13 @@ namespace VideoProcessorTest
 			ConfigEditorCore::SaveResult result;
 			Assert::IsTrue(ConfigEditorCore::SaveSafely(
 				document, result, error), error.c_str());
-			Assert::IsFalse(result.backupPath.empty());
+			Assert::IsTrue(result.backupPath.empty(),
+				L"Saving an existing configuration must not create a backup.");
 			const std::string saved = ReadBytes(path);
 			Assert::IsTrue(saved.find("capture_device: DeckLink Test Device") !=
 				std::string::npos);
 			Assert::IsTrue(saved.find("renderer: VP Renderer") !=
 				std::string::npos);
-			DeleteFileW(result.backupPath.c_str());
 			DeleteFileW(path.c_str());
 		}
 
@@ -551,7 +551,7 @@ namespace VideoProcessorTest
 			DeleteFileW(path.c_str());
 		}
 
-		TEST_METHOD(ConfigEditorCoreSafeSaveCreatesBackupAfterValidation)
+		TEST_METHOD(ConfigEditorCoreSafeSaveReplacesExistingConfigurationWithoutBackup)
 		{
 			const std::wstring path = MakeTemporaryConfigPath(L"vpc");
 			Assert::IsFalse(path.empty());
@@ -569,11 +569,10 @@ namespace VideoProcessorTest
 			const bool saved = ConfigEditorCore::SaveSafely(document, result, error);
 			if (!saved) Logger::WriteMessage(error.c_str());
 			Assert::IsTrue(saved, error.c_str());
-			Assert::IsFalse(result.backupPath.empty());
-			Assert::AreEqual(original, ReadBytes(result.backupPath));
+			Assert::IsTrue(result.backupPath.empty(),
+				L"Saving an existing configuration must not retain a backup path.");
 			Assert::AreEqual(std::string("# retained comment\n[queue]\nqueue_size: 1\n"),
 				ReadBytes(path));
-			DeleteFileW(result.backupPath.c_str());
 			DeleteFileW(path.c_str());
 		}
 
@@ -838,8 +837,6 @@ namespace VideoProcessorTest
 			Assert::AreEqual(std::string(
 				"[general]\nfullscreen: true\nstartminimized: true\n"
 				"[vprenderer.primary]\nquality: high\n"), ReadBytes(path));
-			DeleteFileW(first.backupPath.c_str());
-			DeleteFileW(second.backupPath.c_str());
 			DeleteFileW(path.c_str());
 		}
 
@@ -858,11 +855,10 @@ namespace VideoProcessorTest
 			Assert::IsTrue(locked != INVALID_HANDLE_VALUE);
 			ConfigEditorCore::SaveResult result;
 			Assert::IsFalse(ConfigEditorCore::SaveSafely(document, result, error));
-			Assert::IsTrue(error.find(L"replace") != std::wstring::npos ||
-				error.find(L"backup") != std::wstring::npos, error.c_str());
+			Assert::IsTrue(error.find(L"replace") != std::wstring::npos,
+				error.c_str());
 			CloseHandle(locked);
 			Assert::AreEqual(original, ReadBytes(path));
-			if (!result.backupPath.empty()) DeleteFileW(result.backupPath.c_str());
 			DeleteFileW(path.c_str());
 		}
 
@@ -879,11 +875,10 @@ namespace VideoProcessorTest
 			Assert::IsTrue(SetFileAttributesW(path.c_str(), FILE_ATTRIBUTE_READONLY) != FALSE);
 			ConfigEditorCore::SaveResult result;
 			Assert::IsFalse(ConfigEditorCore::SaveSafely(document, result, error));
-			Assert::IsTrue(error.find(L"replace") != std::wstring::npos ||
-				error.find(L"backup") != std::wstring::npos, error.c_str());
+			Assert::IsTrue(error.find(L"replace") != std::wstring::npos,
+				error.c_str());
 			Assert::IsTrue(SetFileAttributesW(path.c_str(), FILE_ATTRIBUTE_NORMAL) != FALSE);
 			Assert::AreEqual(original, ReadBytes(path));
-			if (!result.backupPath.empty()) DeleteFileW(result.backupPath.c_str());
 			DeleteFileW(path.c_str());
 		}
 
@@ -1050,7 +1045,6 @@ namespace VideoProcessorTest
 					reloaded.Get(edit.section, edit.key));
 			Assert::IsTrue(ConfigEditorCore::ValidateCandidate(reloaded, error),
 				error.c_str());
-			DeleteFileW(result.backupPath.c_str());
 			DeleteFileW(path.c_str());
 		}
 	};

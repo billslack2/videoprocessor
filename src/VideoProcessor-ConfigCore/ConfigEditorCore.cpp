@@ -43,30 +43,6 @@ namespace
 		return result;
 	}
 
-	std::wstring Timestamp()
-	{
-		SYSTEMTIME time = {};
-		GetLocalTime(&time);
-		wchar_t value[32] = {};
-		swprintf_s(value, L"%04u%02u%02u-%02u%02u%02u", time.wYear,
-			time.wMonth, time.wDay, time.wHour, time.wMinute, time.wSecond);
-		return value;
-	}
-
-	std::wstring UniqueBackupPath(const std::wstring& path)
-	{
-		const std::wstring base = path + L".backup-" + Timestamp();
-		if (GetFileAttributesW(base.c_str()) == INVALID_FILE_ATTRIBUTES)
-			return base;
-		for (unsigned int suffix = 2; suffix < 10000; ++suffix)
-		{
-			const std::wstring candidate = base + L"-" + std::to_wstring(suffix);
-			if (GetFileAttributesW(candidate.c_str()) == INVALID_FILE_ATTRIBUTES)
-				return candidate;
-		}
-		return {};
-	}
-
 	bool WriteBytes(const std::wstring& path, const std::string& text)
 	{
 		std::ofstream output(ToNarrow(path),
@@ -547,24 +523,6 @@ namespace ConfigEditorCore
 		result = {};
 		if (!ValidateCandidate(document, error)) return false;
 		bool creatingConfiguration = !document.existedAtLoad;
-		auto backupExistingConfiguration = [&document, &result, &error]()
-		{
-			const std::wstring backup = UniqueBackupPath(document.path);
-			if (backup.empty())
-			{
-				error = L"Could not choose a unique backup name. The configuration "
-					L"was not changed.";
-				return false;
-			}
-			if (!CopyFileW(document.path.c_str(), backup.c_str(), TRUE))
-			{
-				error = L"Could not create a backup. The configuration was not changed.";
-				return false;
-			}
-			result.backupPath = backup;
-			return true;
-		};
-
 		if (document.existedAtLoad)
 		{
 			std::string currentBytes;
@@ -581,7 +539,6 @@ namespace ConfigEditorCore
 				return false;
 			}
 
-			if (!backupExistingConfiguration()) return false;
 		}
 		else
 		{
@@ -595,7 +552,6 @@ namespace ConfigEditorCore
 					return false;
 				}
 				creatingConfiguration = false;
-				if (!backupExistingConfiguration()) return false;
 			}
 			const DWORD failure = GetLastError();
 			if (failure != ERROR_FILE_NOT_FOUND && failure != ERROR_PATH_NOT_FOUND)
@@ -609,7 +565,7 @@ namespace ConfigEditorCore
 		DeleteOnExit removeTemporary(temporary);
 		if (!WriteBytes(temporary, document.Serialize()))
 		{
-			error = L"Could not write the temporary configuration. The backup was retained.";
+			error = L"Could not write the temporary configuration. The configuration was not changed.";
 			return false;
 		}
 		if (!MoveFileExW(temporary.c_str(), document.path.c_str(),
@@ -617,8 +573,7 @@ namespace ConfigEditorCore
 		{
 			error = creatingConfiguration ?
 				L"Could not create the configuration from the validated temporary file." :
-				L"Could not replace the configuration. Backup retained at:\n" +
-					result.backupPath;
+				L"Could not replace the configuration. The configuration was not changed.";
 			return false;
 		}
 		document.loadedBytes = document.Serialize();
