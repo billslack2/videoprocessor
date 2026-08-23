@@ -170,6 +170,7 @@ they must not contain requirements that are absent from this file.
 | VP-0135 | Backlog | Execute refresh-rate commands directly without a ping delay |
 | VP-0136 | In Progress | Prevent transient same-axis inward aspect switches |
 | VP-0137 | Done | Restore bounded madVR queue, NLS, and renderer-switch behavior |
+| VP-0138 | In Progress | Preserve Clock-Smart2 real-time timestamps |
 | VP-0139 | Done | Configuration inheritance and VP Renderer quality clarity |
 | VP-0140 | Done | Compile VP Renderer shaders without blocking UI or presentation |
 | VP-0141 | Review | Apply VP Renderer settings live and preserve fullscreen control |
