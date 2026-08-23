@@ -2,11 +2,11 @@
 
 ## Status
 
-In Progress (2026-08-22). Implementation has started from the current
-`v1.2.001-beta` integration tip. A queue-profile change must request the
-existing controlled renderer restart after the new profile state has been
-applied. Queue settings affect the active presentation pipeline; leaving that
-pipeline running can retain behavior from the prior queue selection.
+Done (2026-08-22). The tested implementation is integrated into
+`v1.2.001-beta` at `61dabd9`. A queue-profile change requests the existing
+controlled renderer restart after the new profile state has been applied.
+Queue settings affect the active presentation pipeline; leaving that pipeline
+running can retain behavior from the prior queue selection.
 
 ## Progress
 
@@ -32,6 +32,9 @@ pipeline running can retain behavior from the prior queue selection.
   deployed pair is at `C:\Videoprocessor\vp\backups\VP-0143-deployed-20260822-214537`.
   The pre-deployment backup-directory creation failed before a predecessor
   snapshot was made; existing prior deployment backups remain available.
+- 2026-08-22: Manual testing confirmed the deployed behavior works correctly.
+  The user approved integration, and `61dabd9` was fast-forwarded to
+  `origin/v1.2.001-beta`.
 
 ## User story
 
