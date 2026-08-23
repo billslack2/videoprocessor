@@ -11,6 +11,7 @@
 #include <EventActionLauncher.h>
 #include <MainConfigSchema.h>
 #include <QueueConfiguration.h>
+#include <QueueProfileRestartPolicy.h>
 #include <blackmagic_decklink/BlackMagicDeckLinkTranslate.h>
 #include <guid.h>
 #include <microsoft_directshow/DirectShowTranslations.h>
@@ -1694,6 +1695,114 @@ namespace VideoProcessorTest
 			Assert::IsTrue(result.snapshot->queue.hasQueueSize);
 			Assert::AreEqual(static_cast<size_t>(32),
 				result.snapshot->queue.queueSize);
+			DeleteFileA(path.c_str());
+		}
+
+		TEST_METHOD(UnifiedQueueProfileRestartPolicyUsesCommittedLatestQueueSelection)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(
+				ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) +
+				"VideoProcessor-queue-profile-restart.cfg";
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[queue]\n"
+					"when: $key==\"F1\"\n"
+					"queue_size: 32\n"
+					"[queue.low_latency]\n"
+					"when: $key==\"F2\"\n"
+					"queue_size: 4\n"
+					"[vprenderer.viewport]\n"
+					"screen_aspect: 16:9\n"
+					"[vprenderer.viewport.scope]\n"
+					"when: $key==\"F3\"\n"
+					"screen_aspect: 2.35:1\n";
+			}
+
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			std::string error;
+			UnifiedProfileRuntime::Runtime runtime;
+			Assert::IsTrue(runtime.Initialize(config,
+				[](const std::string&, std::string&) { return false; }, error),
+				std::wstring(error.begin(), error.end()).c_str());
+
+			const auto initial = runtime.GetSnapshot();
+			UnifiedProfileRuntime::SelectionResult queueSelection;
+			Assert::IsTrue(runtime.SelectKey("F2",
+				[](const std::string&, std::string&) { return false; },
+				queueSelection, error));
+			Assert::IsTrue(queueSelection.changed);
+			Assert::IsTrue(runtime.GetSnapshot() == queueSelection.snapshot);
+			Assert::IsTrue(QueueProfileRestartPolicy::
+				RequiresRestartAfterManualSelection(queueSelection.changed,
+					initial->queue.profile, queueSelection.snapshot->queue.profile));
+
+			QueueProfileRestartPolicy::PendingRequest pending;
+			Assert::IsTrue(QueueProfileRestartPolicy::EnqueueResult::Queued ==
+				QueueProfileRestartPolicy::Enqueue(pending,
+					queueSelection.snapshot->generation,
+					queueSelection.snapshot->queue.profile, "shortcut:F2"));
+
+			const auto beforeReselect = runtime.GetSnapshot();
+			UnifiedProfileRuntime::SelectionResult reselect;
+			Assert::IsTrue(runtime.SelectKey("F2",
+				[](const std::string&, std::string&) { return false; }, reselect,
+				error));
+			Assert::IsFalse(reselect.changed);
+			Assert::IsFalse(QueueProfileRestartPolicy::
+				RequiresRestartAfterManualSelection(reselect.changed,
+					beforeReselect->queue.profile, reselect.snapshot->queue.profile));
+
+			const auto beforeViewportSelection = runtime.GetSnapshot();
+			UnifiedProfileRuntime::SelectionResult viewportSelection;
+			Assert::IsTrue(runtime.SelectKey("F3",
+				[](const std::string&, std::string&) { return false; },
+				viewportSelection, error));
+			Assert::IsTrue(viewportSelection.changed);
+			Assert::IsFalse(QueueProfileRestartPolicy::
+				RequiresRestartAfterManualSelection(viewportSelection.changed,
+					beforeViewportSelection->queue.profile,
+					viewportSelection.snapshot->queue.profile));
+			Assert::IsFalse(QueueProfileRestartPolicy::
+				RequiresRestartAfterManualSelection(false, "low_latency", "base"));
+
+			const auto beforeFirstRapidSelection = runtime.GetSnapshot();
+			UnifiedProfileRuntime::SelectionResult firstRapidSelection;
+			Assert::IsTrue(runtime.SelectKey("F1",
+				[](const std::string&, std::string&) { return false; },
+				firstRapidSelection, error));
+			Assert::IsTrue(QueueProfileRestartPolicy::
+				RequiresRestartAfterManualSelection(firstRapidSelection.changed,
+					beforeFirstRapidSelection->queue.profile,
+					firstRapidSelection.snapshot->queue.profile));
+			Assert::IsTrue(QueueProfileRestartPolicy::EnqueueResult::Coalesced ==
+				QueueProfileRestartPolicy::Enqueue(pending,
+					firstRapidSelection.snapshot->generation,
+					firstRapidSelection.snapshot->queue.profile, "shortcut:F1"));
+
+			const auto beforeFinalRapidSelection = runtime.GetSnapshot();
+			UnifiedProfileRuntime::SelectionResult finalRapidSelection;
+			Assert::IsTrue(runtime.SelectKey("F2",
+				[](const std::string&, std::string&) { return false; },
+				finalRapidSelection, error));
+			Assert::IsTrue(QueueProfileRestartPolicy::
+				RequiresRestartAfterManualSelection(finalRapidSelection.changed,
+					beforeFinalRapidSelection->queue.profile,
+					finalRapidSelection.snapshot->queue.profile));
+			Assert::IsTrue(QueueProfileRestartPolicy::EnqueueResult::Coalesced ==
+				QueueProfileRestartPolicy::Enqueue(pending,
+					finalRapidSelection.snapshot->generation,
+					finalRapidSelection.snapshot->queue.profile, "shortcut:F2"));
+
+			QueueProfileRestartPolicy::PendingRequest finalRequest;
+			Assert::IsTrue(QueueProfileRestartPolicy::Consume(pending,
+				finalRequest));
+			Assert::AreEqual(finalRapidSelection.snapshot->queue.profile.c_str(),
+				finalRequest.profile.c_str());
+			Assert::IsFalse(QueueProfileRestartPolicy::Consume(pending,
+				finalRequest));
 			DeleteFileA(path.c_str());
 		}
 

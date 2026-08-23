@@ -30,6 +30,7 @@
 #include <RendererResetPolicy.h>
 #include <RendererRetirementService.h>
 #include <RendererTransitionModel.h>
+#include <QueueProfileRestartPolicy.h>
 #include <UnifiedProfileRuntime.h>
 #include <VideoFrame.h>
 #include <FullscreenVideoWindow.h>
@@ -83,9 +84,11 @@
 #define SHADER_SHORTCUT_DEBOUNCE_MS 75
 #define LLDV_PROFILE_APPLY_TIMER_ID 12
 #define CONFIGURATION_LIVE_APPLY_TIMER_ID 13
+#define QUEUE_PROFILE_RESTART_TIMER_ID 14
 #define CONFIGURATION_EDITOR_HOTKEY_ID 0x5650
 #define SHADER_RULE_REFRESH_INTERVAL_MS 25
 #define CONFIGURATION_LIVE_APPLY_INTERVAL_MS 250
+#define QUEUE_PROFILE_RESTART_DEBOUNCE_MS 100
 #define BACKGROUND_SHORTCUT_DUPLICATE_WINDOW_MS 250
 
 
@@ -726,6 +729,11 @@ protected:
 	std::map<WORD, CString> m_unifiedProfileShortcutKeys;
 	WORD m_lastUnifiedProfileCommand = 0;
 	DWORD m_lastUnifiedProfileCommandTime = 0;
+	QueueProfileRestartPolicy::PendingRequest m_queueProfileRestartRequest;
+	bool m_queueProfileRestartCompletionPending = false;
+	uint32_t m_queueProfileRestartStartingGeneration = 0;
+	std::string m_queueProfileRestartCompletionProfile;
+	std::string m_queueProfileRestartCompletionSource;
 
 	uint32_t m_timerSeconds = 0;
 
@@ -925,7 +933,11 @@ protected:
 	void PublishActiveProfileStatus();
 	void ApplyUnifiedProfileSnapshot(
 		const std::shared_ptr<const UnifiedProfileRuntime::Snapshot>& snapshot,
-		bool allowRestart);
+		bool allowRestart, bool queueProfileRestart = false);
+	void QueueUnifiedQueueProfileRendererRestart(
+		const std::shared_ptr<const UnifiedProfileRuntime::Snapshot>& snapshot,
+		const std::string& source);
+	void DispatchQueuedQueueProfileRendererRestart();
 	void ScheduleUnifiedProfileActions(
 		const std::vector<UnifiedProfileRuntime::ActionInvocation>& actions);
 	void PublishUnifiedProfileEvent(const std::string& event,
