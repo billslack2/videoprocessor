@@ -8,6 +8,20 @@ existing controlled renderer restart after the new profile state has been
 applied. Queue settings affect the active presentation pipeline; leaving that
 pipeline running can retain behavior from the prior queue selection.
 
+## Progress
+
+- 2026-08-22: Implemented `e5dea0e` on `codex/vp-0143-restart-renderer`.
+  A committed queue shortcut selection is debounced, the latest resolved queue
+  profile supersedes earlier rapid selections, and the existing controlled
+  renderer-restart path preserves fullscreen hosting and normal backend
+  lifecycle behavior. Diagnostics identify the profile, shortcut source, and
+  queued/coalesced/completed/failed outcome; the failure UI instructs the user
+  to resolve the renderer error and use Restart Renderer.
+- Debug x64 builds of both `VideoProcessor-Test` and `VideoProcessor-GUI`
+  succeeded. The focused VSTest invocation crashed during test discovery with
+  `0xC0000005` before executing tests; manual fullscreen validation remains
+  required.
+
 ## User story
 
 As a VideoProcessor user, I want a changed queue profile to restart the active
