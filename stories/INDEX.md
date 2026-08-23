@@ -6,9 +6,9 @@ story may have ordered child-task IDs as defined below.
 
 ## Registry state
 
-- Last assigned root story: `VP-0144`
-- Next root story number: `VP-0145`
-- Total indexed items: 159
+- Last assigned root story: `VP-0145`
+- Next root story number: `VP-0146`
+- Total indexed items: 161
 
 ## Story locations
 
@@ -176,6 +176,8 @@ they must not contain requirements that are absent from this file.
 | VP-0142 | Backlog | Design profile-selection persistence policy |
 | VP-0143 | In Progress | Restart renderer after queue-profile changes |
 | VP-0144 | Done | Stop creating configuration backups |
+| VP-0145 | Backlog | Renderer post-stall reset eligibility |
+| VP-0145-1 | Backlog | Post-stall reset telemetry and diagnostics |
 | VP-0066-1 | Done | Characterize the live output pipeline with replayable golden traces |
 | VP-0066-2 | Done | Extract a graph-independent video timing controller |
 | VP-0066-3 | Done | Extract epoch-aware frame transport and processing components |
