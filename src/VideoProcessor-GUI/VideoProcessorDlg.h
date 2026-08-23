@@ -239,6 +239,7 @@ public:
 	afx_msg void OnCommandShaderRule(UINT commandId);
 	afx_msg void OnCommandDisplayRule(UINT commandId);
 	afx_msg void OnCommandRendererSelect(UINT commandId);
+	void SelectRendererFromShortcut(unsigned int oneBasedIndex);
 	void OnCommandPQSet();
 	void OnCommandAutoSet();
 	void OnCommandToggleStatsOverlay();

@@ -1031,9 +1031,44 @@ HACCEL CreateConfiguredAccelerators(
 				ACCEL accelerator = {};
 				if (!TryParseShortcut(chord, accelerator)) { if (rejectInvalidBindings) { failBinding("invalid unified profile shortcut " + chord); return nullptr; } DEBUGLOG("Invalid unified profile shortcut '%s'", chord.c_str()); continue; }
 				const unsigned int binding = (static_cast<unsigned int>(accelerator.fVirt) << 16) | accelerator.key;
-				if (!bindings.insert(binding).second) { if (rejectInvalidBindings) { failBinding("duplicate unified profile shortcut " + chord); return nullptr; } DEBUGLOG("Duplicate unified profile shortcut '%s' ignored", chord.c_str()); continue; }
-				accelerator.cmd = nextCommand;
-				accelerators.push_back(accelerator);
+				const bool isNewBinding = bindings.insert(binding).second;
+				if (isNewBinding)
+				{
+					accelerator.cmd = nextCommand;
+					accelerators.push_back(accelerator);
+				}
+				else
+				{
+					auto existing = accelerators.end();
+					for (auto candidate = accelerators.begin();
+						candidate != accelerators.end(); ++candidate)
+						if (((static_cast<unsigned int>(candidate->fVirt) << 16) |
+							candidate->key) == binding)
+						{
+							existing = candidate;
+							break;
+						}
+					const auto renderer = existing != accelerators.end() ?
+						rendererShortcutIndices.find(existing->cmd) :
+						rendererShortcutIndices.end();
+					if (renderer == rendererShortcutIndices.end())
+					{
+						if (rejectInvalidBindings) { failBinding("duplicate unified profile shortcut " + chord); return nullptr; }
+						DEBUGLOG("Duplicate unified profile shortcut '%s' ignored", chord.c_str());
+						continue;
+					}
+
+					// A renderer selection and a unified profile are intentionally
+					// composable: one chord selects both. Reuse the physical
+					// accelerator and retain the renderer index under the unified
+					// command so its handler can dispatch both operations.
+					const unsigned int rendererIndex = renderer->second;
+					rendererShortcutIndices.erase(renderer);
+					existing->cmd = nextCommand;
+					rendererShortcutIndices[nextCommand] = rendererIndex;
+					DEBUGLOG("Paired shortcut '%s': render.%u plus unified profile",
+						chord.c_str(), rendererIndex);
+				}
 				CString keyName; keyName.Format(TEXT("%S"), chord.c_str());
 				unifiedProfileShortcutKeys[nextCommand] = keyName;
 				++nextCommand;
@@ -6660,6 +6695,10 @@ void CVideoProcessorDlg::OnCommandDisplayRule(UINT commandId)
 	const auto unifiedKey = m_unifiedProfileShortcutKeys.find(static_cast<WORD>(commandId));
 	if (unifiedKey != m_unifiedProfileShortcutKeys.end())
 	{
+		const auto pairedRenderer =
+			m_rendererShortcutIndices.find(static_cast<WORD>(commandId));
+		if (pairedRenderer != m_rendererShortcutIndices.end())
+			SelectRendererFromShortcut(pairedRenderer->second);
 		const DWORD commandTime = static_cast<DWORD>(GetMessageTime());
 		if (m_lastUnifiedProfileCommand == commandId &&
 			commandTime - m_lastUnifiedProfileCommandTime < 100)
@@ -6739,7 +6778,11 @@ void CVideoProcessorDlg::OnCommandRendererSelect(UINT commandId)
 	if (shortcut == m_rendererShortcutIndices.end())
 		return;
 
-	const unsigned int oneBasedIndex = shortcut->second;
+	SelectRendererFromShortcut(shortcut->second);
+}
+
+void CVideoProcessorDlg::SelectRendererFromShortcut(unsigned int oneBasedIndex)
+{
 	if (oneBasedIndex == 0 ||
 		oneBasedIndex > static_cast<unsigned int>(m_rendererCombo.GetCount()))
 	{
