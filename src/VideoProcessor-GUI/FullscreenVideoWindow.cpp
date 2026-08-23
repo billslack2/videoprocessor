@@ -10,6 +10,38 @@
 #include <ApplicationShutdownPolicy.h>
 
 #include "FullscreenVideoWindow.h"
+#include "VideoProcessorDlg.h"
+
+namespace
+{
+bool ForwardFullscreenShortcut(HWND fullscreen, UINT message,
+	WPARAM virtualKey, LPARAM keyData)
+{
+	CWnd* const mainWindow = AfxGetApp() ? AfxGetApp()->GetMainWnd() : nullptr;
+	if (!mainWindow || !::IsWindow(mainWindow->GetSafeHwnd()))
+		return false;
+	BYTE modifiers = 0;
+	if ((::GetKeyState(VK_CONTROL) & 0x8000) != 0)
+		modifiers |= FCONTROL;
+	if ((::GetKeyState(VK_MENU) & 0x8000) != 0)
+		modifiers |= FALT;
+	if ((::GetKeyState(VK_SHIFT) & 0x8000) != 0)
+		modifiers |= FSHIFT;
+	// The raw fullscreen host is not an MFC child, so its keys never pass
+	// through CVideoProcessorDlg::PreTranslateMessage. Route scalar input to
+	// the dialog's common configured-command dispatcher while this key message
+	// is still being handled; no render or cross-process wait is involved.
+	const LRESULT routed = mainWindow->SendMessage(
+		WM_MESSAGE_EXTERNAL_SHORTCUT, virtualKey, modifiers);
+	DebugLog::Log(
+		"Fullscreen keyboard forwarding: message=0x%04x vk=0x%02x modifiers=0x%02x host=%p main=%p routed=%d repeat=%d",
+		message, static_cast<unsigned int>(virtualKey),
+		static_cast<unsigned int>(modifiers), reinterpret_cast<void*>(fullscreen),
+		reinterpret_cast<void*>(mainWindow->GetSafeHwnd()), routed ? 1 : 0,
+		(static_cast<ULONG_PTR>(keyData) & (1ull << 30)) != 0 ? 1 : 0);
+	return routed != 0;
+}
+}
 
 
 FullscreenVideoWindow::FullscreenVideoWindow()
@@ -195,6 +227,20 @@ LRESULT __forceinline FullscreenVideoWindow::HandleMessage(UINT uMsg, WPARAM wPa
 	}
     switch (uMsg)
     {
+	case WM_KEYDOWN:
+	case WM_SYSKEYDOWN:
+		// Keep system close unconditional. It cannot depend on an accelerator
+		// table, Config foreground ownership, or MFC discovering this raw HWND.
+		if (uMsg == WM_SYSKEYDOWN && wParam == VK_F4 &&
+			(::GetKeyState(VK_MENU) & 0x8000) != 0)
+		{
+			OnClose();
+			return 0;
+		}
+		if (ForwardFullscreenShortcut(m_hwnd, uMsg, wParam, lParam))
+			return 0;
+		break;
+
     case WM_SETCURSOR:
         // A fullscreen video surface should never display the pointer.  Handle
         // this at the host-window boundary so every renderer gets the same

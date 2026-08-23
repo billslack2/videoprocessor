@@ -125,6 +125,7 @@ bool LibplaceboPluginVideoRenderer::IsAvailable()
 
 LibplaceboPluginVideoRenderer::LibplaceboPluginVideoRenderer(
 	IRendererCallback& callback,
+	uint32_t rendererGeneration,
 	HWND videoHwnd,
 	ITimingClock* timingClock,
 	bool useFrameQueue,
@@ -144,6 +145,7 @@ LibplaceboPluginVideoRenderer::LibplaceboPluginVideoRenderer(
 
 	m_renderer = plugin.createRenderer(
 		&callback,
+		rendererGeneration,
 		videoHwnd,
 		timingClock,
 		useFrameQueue,
@@ -236,6 +238,12 @@ void LibplaceboPluginVideoRenderer::Retire() noexcept
 {
 	if (m_renderer)
 		m_renderer->Retire();
+}
+
+
+bool LibplaceboPluginVideoRenderer::RetirementSucceeded() const
+{
+	return !m_renderer || m_renderer->RetirementSucceeded();
 }
 
 

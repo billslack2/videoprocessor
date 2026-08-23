@@ -13,6 +13,7 @@
 #include <set>
 #include <map>
 #include <atomic>
+#include <cstdint>
 #include <condition_variable>
 #include <memory>
 #include <mutex>
@@ -66,6 +67,8 @@
 #define WM_MESSAGE_RENDERER_RETIRED                     (WM_APP + 13)
 #define WM_MESSAGE_EXTERNAL_SHORTCUT                    (WM_APP + 14)
 #define WM_MESSAGE_RENDERER_INTENT_READY                (WM_APP + 15)
+#define WM_MESSAGE_RENDERER_GRAPH_EVENT                 (WM_APP + 16)
+#define WM_MESSAGE_RENDERER_RESTART_REQUIRED            (WM_APP + 17)
 
 // Timer IDs
 #define TIMER_ID_1SECOND 1
@@ -211,6 +214,9 @@ public:
 	afx_msg LRESULT OnMessageDirectShowNotification(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnMessageRendererStateChange(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnMessageRendererDetailString(WPARAM wParam, LPARAM lParam);
+	afx_msg LRESULT OnMessageRendererGraphEvent(WPARAM wParam, LPARAM lParam);
+	afx_msg LRESULT OnMessageRendererRestartRequired(
+		WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnMessageExternalShortcut(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnMessageRendererLiveFrame(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnMessageRendererResetRequest(
@@ -257,9 +263,13 @@ public:
 	void OnCaptureDeviceError(const CString& error) override;
 
 	// IRendererCallback
-	void OnRendererState(RendererState rendererState) override;
-	void OnRendererDetailString(const CString& details) override;
-	void OnRendererRestartRequired() override;
+	void OnRendererState(
+		RendererState rendererState, uint32_t rendererGeneration) override;
+	void OnRendererDetailString(
+		const CString& details, uint32_t rendererGeneration) override;
+	void OnRendererGraphEvent(
+		long eventCode, uint32_t rendererGeneration) override;
+	void OnRendererRestartRequired(uint32_t rendererGeneration) override;
 
 protected:
 
@@ -429,6 +439,13 @@ protected:
 	ULONGLONG m_configurationEditorActivationAcknowledgedTick = 0;
 	HWND m_configurationEditorHwnd = nullptr;
 	DWORD m_configurationEditorProcessId = 0;
+	uint32_t m_configurationEditorPresentationSequence = 0;
+	uint32_t m_configurationEditorPresentationRequired = 0;
+	uint32_t m_configurationEditorPresentationAcknowledged = 0;
+	HWND m_configurationEditorPresentationEditor = nullptr;
+	HWND m_configurationEditorPresentationTarget = nullptr;
+	ULONGLONG m_configurationEditorPresentationQueuedTick = 0;
+	bool m_configurationEditorPresentationTimeoutLogged = false;
 	WORD m_lastBackgroundShortcutCommand = 0;
 	ULONGLONG m_lastBackgroundShortcutTick = 0;
 	HANDLE m_configurationChangedEvent = nullptr;
@@ -639,8 +656,11 @@ protected:
 
 
 	std::shared_ptr<IVideoRenderer> m_videoRenderer;
+	std::shared_ptr<IVideoRenderer> m_failedRendererRetirement;
+	ULONGLONG m_failedRendererRetirementNextRetryTick = 0;
 	RendererRetirementService m_rendererRetirementService;
 	bool m_rendererRetirementPending = false;
+	bool m_rendererRetirementRetryActive = false;
 	bool m_rendererConstructionActive = false;
 	uint64_t m_rendererRetirementToken = 0;
 	uint64_t m_rendererRetirementWaitLoggedToken = 0;
@@ -750,6 +770,11 @@ protected:
 	// Stats overlay
 	StatsOverlayWindow* m_statsOverlay = nullptr;
 	StatsData* m_lastStatsData = nullptr;
+	// Renderer telemetry getters are deliberately nonblocking. Retain their
+	// last valid values only within the same renderer/host generation when a
+	// periodic OSD read loses the render-lock race.
+	const IVideoRenderer* m_lastStatsTelemetryRenderer = nullptr;
+	uint32_t m_lastStatsTelemetryGeneration = 0;
 	bool m_statsOverlayRequestedVisible = false;
 
 	struct ActiveOutputSweepCase
@@ -904,8 +929,7 @@ protected:
 	void TrackConfigurationEditor(HWND editor);
 	HWND VisibleAssociatedConfigurationEditor() const;
 	bool RequestConfigurationEditorReveal(HWND editor);
-	bool PublishConfigurationEditorPresentationTarget(HWND editor,
-		bool synchronous = false);
+	bool PublishConfigurationEditorPresentationTarget(HWND editor);
 	bool RequestConfigurationEditorOneShotReassert(HWND editor,
 		HWND presentationTarget);
 	HWND ConfigurationEditorOwner();
@@ -974,6 +998,8 @@ protected:
 	afx_msg LRESULT OnConfigurationEditorHotkey(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnConfigurationEditorAssociation(WPARAM wParam,
 		LPARAM lParam);
+	afx_msg LRESULT OnConfigurationEditorPresentationTargetAcknowledgement(
+		WPARAM wParam, LPARAM lParam);
 	afx_msg void OnCommandToggleNoUi();
 	afx_msg HCURSOR	OnQueryDragIcon();
 	afx_msg void OnGetMinMaxInfo(MINMAXINFO* minMaxInfo);

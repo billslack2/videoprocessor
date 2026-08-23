@@ -61,6 +61,34 @@ DisplayRefreshRateResult Result(
 }
 }
 
+
+bool DisplayRefreshRatesExactlyEqual(
+	const DisplayRefreshRational& first,
+	const DisplayRefreshRational& second)
+{
+	if (first.denominator == 0 || second.denominator == 0)
+		return false;
+	return static_cast<uint64_t>(first.numerator) *
+		static_cast<uint64_t>(second.denominator) ==
+		static_cast<uint64_t>(second.numerator) *
+		static_cast<uint64_t>(first.denominator);
+}
+
+
+bool DisplayRefreshRestoreVerifier::Observe(
+	bool querySucceeded, DisplayRefreshRational observed)
+{
+	if (!querySucceeded ||
+		!DisplayRefreshRatesExactlyEqual(observed, m_expected))
+	{
+		m_consecutiveMatches = 0;
+		return false;
+	}
+	if (m_consecutiveMatches < m_requiredConsecutiveMatches)
+		++m_consecutiveMatches;
+	return m_consecutiveMatches >= m_requiredConsecutiveMatches;
+}
+
 DisplayRefreshRateResult EvaluateDisplayRefreshRate(
 	const DisplayRefreshRateInput& input)
 {

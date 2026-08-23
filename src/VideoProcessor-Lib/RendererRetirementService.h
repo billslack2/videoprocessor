@@ -22,6 +22,9 @@ public:
 		bool succeeded = false;
 		bool wakePosted = false;
 		DWORD wakePostError = ERROR_SUCCESS;
+		// Retain ownership when external display-state restoration is not yet
+		// durable so the UI can schedule another worker-thread attempt.
+		std::shared_ptr<IVideoRenderer> renderer;
 	};
 
 	RendererRetirementService()
@@ -54,17 +57,23 @@ public:
 					try
 					{
 						item.renderer->Retire();
+						succeeded = item.renderer->RetirementSucceeded();
 					}
 					catch (...)
 					{
 						succeeded = false;
 					}
-					item.renderer.reset();
+					Completion completed;
+					completed.token = item.token;
+					completed.succeeded = succeeded;
+					if (!succeeded)
+						completed.renderer = std::move(item.renderer);
+					else
+						item.renderer.reset();
 					{
 						std::lock_guard<std::mutex> lock(m_mutex);
 						m_active = false;
-						m_completions.push_back(
-							{ item.token, succeeded, false, ERROR_SUCCESS });
+						m_completions.push_back(std::move(completed));
 						m_latestCompletionToken.store(
 							item.token, std::memory_order_release);
 						Completion& completion = m_completions.back();

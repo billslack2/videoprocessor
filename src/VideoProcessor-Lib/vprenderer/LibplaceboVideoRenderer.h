@@ -23,6 +23,7 @@ class LibplaceboVideoRenderer final : public IVideoRenderer
 public:
 	LibplaceboVideoRenderer(
 		IRendererCallback& callback,
+		uint32_t rendererGeneration,
 		HWND videoHwnd,
 		ITimingClock* timingClock,
 		bool useFrameQueue,
@@ -49,6 +50,10 @@ public:
 	void StopWithIngressDrain(
 		const std::function<void()>& drainAfterGraphStop) override;
 	void Retire() noexcept override;
+	bool RetirementSucceeded() const override
+	{
+		return m_retirementSucceeded.load(std::memory_order_acquire);
+	}
 	void Reset() override;
 	void ResetLiveQueue() override;
 	void OnSize() override;
@@ -145,6 +150,7 @@ private:
 	void ResetFrameRateAndPPM();
 	void ApplyPendingShaderSelectionLocked();
 	IRendererCallback& m_callback;
+	const uint32_t m_callbackGeneration;
 	HWND m_videoHwnd = nullptr;
 	ITimingClock* m_timingClock = nullptr;
 	bool m_useFrameQueue = true;
@@ -154,6 +160,7 @@ private:
 	mutable std::mutex m_stateMutex;
 	VideoStateComPtr m_videoState;
 	std::atomic<RendererState> m_state{RendererState::RENDERSTATE_UNKNOWN};
+	std::atomic_bool m_retirementSucceeded{true};
 	std::string m_requestedShaderSelector;
 	std::mutex m_pendingShaderMutex;
 	std::string m_pendingShaderSelector;
