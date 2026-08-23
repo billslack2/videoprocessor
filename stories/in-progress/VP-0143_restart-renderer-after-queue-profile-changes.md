@@ -2,10 +2,11 @@
 
 ## Status
 
-Backlog (2026-08-22). A queue-profile change must request the existing
-controlled renderer restart after the new profile state has been applied.
-Queue settings affect the active presentation pipeline; leaving that pipeline
-running can retain behavior from the prior queue selection.
+In Progress (2026-08-22). Implementation has started from the current
+`v1.2.001-beta` integration tip. A queue-profile change must request the
+existing controlled renderer restart after the new profile state has been
+applied. Queue settings affect the active presentation pipeline; leaving that
+pipeline running can retain behavior from the prior queue selection.
 
 ## User story
 
