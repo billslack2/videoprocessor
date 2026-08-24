@@ -5019,6 +5019,7 @@ void CVideoProcessorDlg::OnRendererSelected()
 {
 	EstablishSessionRendererOverrideFromSelection("operator-selection");
 	UpdateRendererBackendUi();
+	RefreshUnifiedProfilesForRuleContext("renderer-selection");
 	OnBnClickedRendererRestart();
 }
 
@@ -6800,6 +6801,7 @@ void CVideoProcessorDlg::SelectRendererFromShortcut(unsigned int oneBasedIndex)
 	{
 		EstablishSessionRendererOverrideFromSelection(
 			"renderer-shortcut-already-selected");
+		RefreshUnifiedProfilesForRuleContext("renderer-shortcut");
 		DEBUGLOG("Renderer shortcut render.%u already selected: %s",
 			oneBasedIndex,
 			rendererName.GetString());
@@ -6812,6 +6814,7 @@ void CVideoProcessorDlg::SelectRendererFromShortcut(unsigned int oneBasedIndex)
 		oneBasedIndex,
 		rendererName.GetString());
 	UpdateRendererBackendUi();
+	RefreshUnifiedProfilesForRuleContext("renderer-shortcut");
 	OnBnClickedRendererRestart();
 }
 
@@ -10436,9 +10439,76 @@ bool CVideoProcessorDlg::BuildPushVideoState()
 }
 
 DisplayRuleExpression::ValueLookup
-CVideoProcessorDlg::GetUnifiedProfileSourceLookup() const
+CVideoProcessorDlg::GetUnifiedProfileSourceLookup()
 {
-	return StateVariables::VideoStateLookup(m_builtVideoState);
+	const DisplayRuleExpression::ValueLookup sourceValues =
+		StateVariables::VideoStateLookup(m_builtVideoState);
+	CString rendererName = m_activeRendererName;
+	const int selectedRenderer = m_rendererCombo.GetCurSel();
+	if (selectedRenderer >= 0)
+		m_rendererCombo.GetLBText(selectedRenderer, rendererName);
+
+	HWND displayWindow = nullptr;
+	if (m_fullScreenVideoWindow &&
+		IsWindow(m_fullScreenVideoWindow->GetHWND()))
+	{
+		displayWindow = m_fullScreenVideoWindow->GetHWND();
+	}
+	else if (m_windowedVideoWindow.GetSafeHwnd())
+	{
+		displayWindow = m_windowedVideoWindow.GetSafeHwnd();
+	}
+	else
+	{
+		displayWindow = GetSafeHwnd();
+	}
+	const double actualRefreshRate = GetActiveTargetRefreshRate(displayWindow);
+	const std::string renderer = CStringA(rendererName).GetString();
+	return [sourceValues, renderer, actualRefreshRate](const std::string& name,
+		std::string& value)
+	{
+		if (name == "renderer")
+		{
+			if (renderer.empty()) return false;
+			value = renderer;
+			return true;
+		}
+		if (name == "actual_refresh")
+		{
+			if (actualRefreshRate <= 0.0) return false;
+			std::ostringstream refresh;
+			refresh.imbue(std::locale::classic());
+			refresh.precision(17);
+			refresh << actualRefreshRate;
+			value = refresh.str();
+			return true;
+		}
+		return sourceValues(name, value);
+	};
+}
+
+void CVideoProcessorDlg::RefreshUnifiedProfilesForRuleContext(
+	const char* reason)
+{
+	if (!m_profileRuntime.IsInitialized())
+		return;
+
+	UnifiedProfileRuntime::RefreshResult result;
+	std::string error;
+	if (!m_profileRuntime.Refresh(GetUnifiedProfileSourceLookup(), result, error))
+	{
+		DebugLog::Log("Unified profile rule-context refresh failed: reason=%s detail=%s",
+			reason ? reason : "unknown", error.c_str());
+		return;
+	}
+	if (!result.changed)
+		return;
+
+	DebugLog::Log("Unified profile rule-context changed: reason=%s generation=%llu",
+		reason ? reason : "unknown",
+		static_cast<unsigned long long>(result.snapshot ? result.snapshot->generation : 0));
+	ApplyUnifiedProfileSnapshot(result.snapshot, true);
+	ScheduleUnifiedProfileActions(result.actions);
 }
 
 void CVideoProcessorDlg::PublishActiveProfileStatus()
@@ -12005,6 +12075,7 @@ void CVideoProcessorDlg::OnDisplayChange(UINT bitsPerPixel, int width, int heigh
 	else if (m_windowedVideoWindow.GetSafeHwnd())
 		displayWindow = m_windowedVideoWindow.GetSafeHwnd();
 	const double configuredRefreshRate = GetActiveTargetRefreshRate(displayWindow);
+	RefreshUnifiedProfilesForRuleContext("display-refresh-change");
 	const double previousRefreshRate = m_lastAlphaTargetRefreshRateHz;
 	const bool materiallyDifferentRefreshFamily =
 		previousRefreshRate > 0.0 && configuredRefreshRate > 0.0 &&

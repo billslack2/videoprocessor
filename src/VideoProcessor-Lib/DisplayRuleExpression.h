@@ -28,7 +28,8 @@ namespace DisplayRuleExpression
 			return GetVariableType(name.substr(9), type);
 		if (name == "eotf" || name == "transfer" || name == "colorspace" ||
 			name == "primaries" || name == "format" || name == "resolution" ||
-			name == "range" || name == "scan" || name == "key" ||
+			name == "range" || name == "scan" || name == "renderer" ||
+			name == "key" ||
 			name == "event" || name == "event_reason" ||
 			name == "viewport_profile" || name == "vertical_alignment" ||
 			(name.size() > 8 && name.compare(0, 8, "profile.") == 0))
