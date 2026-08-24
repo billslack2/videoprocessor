@@ -583,6 +583,11 @@ void testEveryPageRoundTrips()
     require(renderedCaptureShortcut->text() == QStringLiteral("Ctrl+Alt+S"),
         "Rendered-output capture did not default to Ctrl+Alt+S");
     renderedCaptureShortcut->setText(QStringLiteral("Ctrl+Alt+C"));
+    QLineEdit* reapplyRulesShortcut = requireControl<QLineEdit>(window,
+        QStringLiteral("config.shortcuts.reapply_rules"));
+    require(reapplyRulesShortcut->text().isEmpty(),
+        "Re-apply rules unexpectedly received a built-in shortcut");
+    reapplyRulesShortcut->setText(QStringLiteral("Ctrl+Alt+R"));
     QLineEdit* noUiShortcut = requireControl<QLineEdit>(window,
         QStringLiteral("config.shortcuts.toggle_noui"));
     require(noUiShortcut->text() == QStringLiteral("Ctrl+Shift+U"),
@@ -781,6 +786,7 @@ void testEveryPageRoundTrips()
         "container_colorspace: REC709", "max_cll: 1200", "max_fall: 450",
         "fullscreen_toggle: Ctrl+F", "config_editor: Ctrl+E",
         "capture_rendered_output: Ctrl+Alt+C", "toggle_noui: Alt+U",
+        "reapply_rules: Ctrl+Alt+R",
         "foreground_only: true",
         "renderer: *", "run: C:\\Tools\\verified-action.cmd 42",
         "enabled: false", "debug: false", "debug_log_retention: 25",
@@ -823,6 +829,9 @@ void testEveryPageRoundTrips()
     require(requireControl<QCheckBox>(reloaded,
         QStringLiteral("config.shortcuts.foreground_only"))->isChecked(),
         "Foreground-only shortcut processing did not reload");
+    require(requireControl<QLineEdit>(reloaded,
+        QStringLiteral("config.shortcuts.reapply_rules"))->text() ==
+        QStringLiteral("Ctrl+Alt+R"), "Re-apply rules shortcut did not reload");
 }
 
 void testRendererSectionTabsRemainSynchronizedDuringRapidClicks()
@@ -1066,6 +1075,7 @@ void testTwoColumnCardsShareRowHeight()
     for (QLabel* label : pages->widget(6)->findChildren<QLabel*>())
         shortcutLabels.append(label->text());
     require(shortcutLabels.contains(QStringLiteral("Screenshot")) &&
+        shortcutLabels.contains(QStringLiteral("Re-apply rules")) &&
         !shortcutLabels.contains(QStringLiteral("Capture rendered output")) &&
         shortcutLabels.contains(QStringLiteral("Video conversion off")) &&
         shortcutLabels.contains(QStringLiteral("V210 to P010 conversion")) &&

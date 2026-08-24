@@ -242,6 +242,7 @@ public:
 	void OnCommandFullScreenExit();
 	void OnCommandRendererReset();
 	void OnCommandRendererRestart();
+	void OnCommandReapplyRules();
 	void OnCommandDisplayRuleAuto();
 	afx_msg void OnCommandShaderRule(UINT commandId);
 	afx_msg void OnCommandDisplayRule(UINT commandId);

@@ -2673,6 +2673,57 @@ namespace VideoProcessorTest
 			Assert::AreEqual("low_latency",
 				refreshed.snapshot->effectiveSelections.at("queue").c_str());
 
+			UnifiedProfileRuntime::RefreshResult reapplied;
+			std::vector<std::string> clearedGroups;
+			Assert::IsTrue(runtime.ReapplyRules(
+				[](const std::string& variable, std::string& value)
+				{
+					if (variable == "renderer") { value = "VP Renderer"; return true; }
+					if (variable == "source_rate") { value = "59"; return true; }
+					return false;
+				}, reapplied, clearedGroups, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			Assert::IsTrue(reapplied.changed);
+			Assert::AreEqual(static_cast<size_t>(1), clearedGroups.size());
+			Assert::AreEqual("queue", clearedGroups.front().c_str());
+			Assert::AreEqual("vp_60",
+				reapplied.snapshot->effectiveSelections.at("queue").c_str());
+			Assert::AreEqual("low_latency",
+				reapplied.snapshot->manualSelections.at("queue").c_str());
+
+			std::ifstream persistedState(statePath);
+			const std::string persistedText((std::istreambuf_iterator<char>(persistedState)),
+				std::istreambuf_iterator<char>());
+			Assert::IsTrue(persistedText.find("profile.queue: low_latency") !=
+				std::string::npos);
+
+			UnifiedProfileRuntime::RefreshResult idempotent;
+			clearedGroups.clear();
+			Assert::IsTrue(runtime.ReapplyRules(
+				[](const std::string& variable, std::string& value)
+				{
+					if (variable == "renderer") { value = "VP Renderer"; return true; }
+					if (variable == "source_rate") { value = "59"; return true; }
+					return false;
+				}, idempotent, clearedGroups, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			Assert::IsFalse(idempotent.changed);
+			Assert::IsTrue(clearedGroups.empty());
+			Assert::AreEqual("vp_60",
+				idempotent.snapshot->effectiveSelections.at("queue").c_str());
+
+			UnifiedProfileRuntime::RefreshResult rememberedFallback;
+			Assert::IsTrue(runtime.Refresh(
+				[](const std::string& variable, std::string& value)
+				{
+					if (variable == "renderer") { value = "VP Renderer"; return true; }
+					return false;
+				}, rememberedFallback, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			Assert::IsTrue(rememberedFallback.changed);
+			Assert::AreEqual("low_latency", rememberedFallback.snapshot->
+				effectiveSelections.at("queue").c_str());
+
 			UnifiedProfileRuntime::Runtime restartedRuntime;
 			Assert::IsTrue(restartedRuntime.Initialize(config,
 				[](const std::string& variable, std::string& value)

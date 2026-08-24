@@ -6032,6 +6032,7 @@ QWidget* ConfigEditorWindow::createShortcutsPage()
         { "Exit fullscreen", "fullscreen_exit", "Esc" },
         { "Toggle statistics", "toggle_stats_overlay", "Ctrl+I" },
         { "Screenshot", "capture_rendered_output", "Ctrl+Alt+S" },
+        { "Re-apply rules", "reapply_rules", "" },
         { "Automatic transfer", "auto_set", "Ctrl+Shift+A" },
         { "PQ transfer", "pq_set", "Ctrl+Shift+P" }
     };

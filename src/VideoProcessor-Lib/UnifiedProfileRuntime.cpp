@@ -453,6 +453,50 @@ namespace UnifiedProfileRuntime
 	}
 
 
+	bool Runtime::ReapplyRules(
+		const DisplayRuleExpression::ValueLookup& sourceValues,
+		RefreshResult& result, std::vector<std::string>& clearedGroups,
+		std::string& error)
+	{
+		std::lock_guard<std::mutex> guard(m_mutex);
+		result = {};
+		clearedGroups.clear();
+		error.clear();
+		if (!m_initialized)
+		{
+			error = "unified profile runtime is not initialized";
+			return false;
+		}
+
+		const std::shared_ptr<const Snapshot> current =
+			std::atomic_load(&m_snapshot);
+		std::shared_ptr<const Snapshot> candidate;
+		if (!BuildSnapshot(current->manualSelections, {}, sourceValues,
+			m_generation + 1, candidate, error))
+			return false;
+
+		const bool effectiveChanged = !SameEffectiveState(*current, *candidate);
+		if (effectiveChanged && !CollectTransitionActionInvocations(current,
+			candidate, "rules-reapplied", result.actions, error))
+			return false;
+
+		clearedGroups.assign(m_sessionOverrideGroups.begin(),
+			m_sessionOverrideGroups.end());
+		m_sessionOverrideGroups.clear();
+		if (!effectiveChanged)
+		{
+			result.snapshot = current;
+			return true;
+		}
+
+		++m_generation;
+		std::atomic_store(&m_snapshot, candidate);
+		result.changed = true;
+		result.snapshot = candidate;
+		return true;
+	}
+
+
 	std::shared_ptr<const Snapshot> Runtime::GetSnapshot() const
 	{
 		return std::atomic_load(&m_snapshot);

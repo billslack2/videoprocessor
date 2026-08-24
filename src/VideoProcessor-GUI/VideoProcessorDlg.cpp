@@ -470,6 +470,7 @@ const ShortcutDefinition SHORTCUT_DEFINITIONS[] =
 		ConfigurationLiveApply::ViewToggleDefaultModifiers },
 	{ "toggle_stats_overlay",  ID_COMMAND_TOGGLE_STATS_OVERLAY,   'I',       FCONTROL },
 	{ "capture_rendered_output", ID_COMMAND_CAPTURE_RENDERED_OUTPUT, 'S',     FCONTROL | FALT },
+	{ "reapply_rules",         ID_COMMAND_REAPPLY_RULES,            0,         0 },
 	{ "pq_set",                ID_COMMAND_PQ_SET,                 'P',       FCONTROL | FSHIFT },
 	{ "renderer_restart",      ID_COMMAND_RENDERER_RESTART,       'R',       FSHIFT },
 	{ "renderer_reset",        ID_COMMAND_RENDERER_RESET,         'R',       0 },
@@ -708,6 +709,7 @@ HACCEL CreateConfiguredAccelerators(
 		if (hasUnifiedRendererConfig && definition.rendererSpecific)
 			continue;
 		ACCEL accelerator = { static_cast<BYTE>(FVIRTKEY | definition.defaultModifiers), definition.defaultKey, definition.command };
+		bool hasBinding = definition.defaultKey != 0;
 		std::string configuredValue;
 		const ConfigFile& config =
 			definition.rendererSpecific ? rendererConfig : mainConfig;
@@ -727,6 +729,7 @@ HACCEL CreateConfiguredAccelerators(
 			{
 				configuredAccelerator.cmd = definition.command;
 				accelerator = configuredAccelerator;
+				hasBinding = true;
 			}
 			else if (rejectInvalidBindings)
 			{
@@ -735,6 +738,8 @@ HACCEL CreateConfiguredAccelerators(
 				return nullptr;
 			}
 		}
+		if (!hasBinding)
+			continue;
 
 		const unsigned int binding = (static_cast<unsigned int>(accelerator.fVirt) << 16) | accelerator.key;
 		if (bindings.insert(binding).second)
@@ -751,6 +756,8 @@ HACCEL CreateConfiguredAccelerators(
 			}
 			// A duplicate user binding is ambiguous, so retain the command's
 			// compiled default when it is still available.
+			if (definition.defaultKey == 0)
+				continue;
 			accelerator = { static_cast<BYTE>(FVIRTKEY | definition.defaultModifiers), definition.defaultKey, definition.command };
 			const unsigned int defaultBinding = (static_cast<unsigned int>(accelerator.fVirt) << 16) | accelerator.key;
 			if (bindings.insert(defaultBinding).second)
@@ -1964,6 +1971,7 @@ BEGIN_MESSAGE_MAP(CVideoProcessorDlg, CDialog)
 	ON_COMMAND(ID_COMMAND_FULLSCREEN_EXIT, &CVideoProcessorDlg::OnCommandFullScreenExit)
 	ON_COMMAND(ID_COMMAND_RENDERER_RESET, &CVideoProcessorDlg::OnCommandRendererReset)
 	ON_COMMAND(ID_COMMAND_RENDERER_RESTART, &CVideoProcessorDlg::OnCommandRendererRestart)
+	ON_COMMAND(ID_COMMAND_REAPPLY_RULES, &CVideoProcessorDlg::OnCommandReapplyRules)
 
 	ON_COMMAND(ID_COMMAND_PQ_SET, &CVideoProcessorDlg::OnCommandPQSet)
 	ON_COMMAND(ID_COMMAND_AUTO_SET, &CVideoProcessorDlg::OnCommandAutoSet)
@@ -11001,6 +11009,51 @@ void CVideoProcessorDlg::DispatchQueuedQueueProfileReset()
 	// Match the operator's lowercase r reset command exactly, but let the selected queue
 	// profile's configured reset delay provide the settling interval.
 	RequestRendererReset(RendererResetReason::Manual, true, delayMs);
+}
+
+
+void CVideoProcessorDlg::OnCommandReapplyRules()
+{
+	if (!m_profileRuntime.IsInitialized())
+	{
+		DebugLog::Log("Re-apply rules ignored: unified profile runtime is unavailable");
+		return;
+	}
+
+	const auto previousSnapshot = m_profileRuntime.GetSnapshot();
+	UnifiedProfileRuntime::RefreshResult result;
+	std::vector<std::string> clearedGroups;
+	std::string error;
+	if (!m_profileRuntime.ReapplyRules(GetUnifiedProfileSourceLookup(), result,
+		clearedGroups, error))
+	{
+		DebugLog::Log("Re-apply rules failed: %s", error.c_str());
+		return;
+	}
+
+	std::ostringstream cleared;
+	for (size_t index = 0; index < clearedGroups.size(); ++index)
+	{
+		if (index != 0)
+			cleared << ',';
+		cleared << clearedGroups[index];
+	}
+	const bool queueProfileReset = previousSnapshot && result.snapshot &&
+		!result.snapshot->queue.profile.empty() &&
+		previousSnapshot->queue.profile != result.snapshot->queue.profile;
+	DebugLog::Log(
+		"Profile rules re-applied: cleared_overrides=%s changed=%d queue=%s->%s",
+		clearedGroups.empty() ? "none" : cleared.str().c_str(),
+		result.changed ? 1 : 0,
+		previousSnapshot ? previousSnapshot->queue.profile.c_str() : "none",
+		result.snapshot ? result.snapshot->queue.profile.c_str() : "none");
+	if (!result.changed)
+		return;
+
+	ApplyUnifiedProfileSnapshot(result.snapshot, true, queueProfileReset);
+	if (queueProfileReset)
+		QueueUnifiedQueueProfileReset(result.snapshot, "reapply-rules");
+	ScheduleUnifiedProfileActions(result.actions);
 }
 
 

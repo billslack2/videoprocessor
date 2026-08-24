@@ -84,6 +84,13 @@ namespace UnifiedProfileRuntime
 		bool Refresh(const DisplayRuleExpression::ValueLookup& sourceValues,
 			RefreshResult& result, std::string& error);
 
+		// Releases every live shortcut override and immediately resolves the
+		// configured rules again. Durable manual selections remain available as
+		// fallbacks and are not rewritten.
+		bool ReapplyRules(const DisplayRuleExpression::ValueLookup& sourceValues,
+			RefreshResult& result, std::vector<std::string>& clearedGroups,
+			std::string& error);
+
 		// Emits an event against the current committed snapshot. This is used for
 		// renderer-ready, which has no profile transition of its own.
 		bool CollectActionInvocations(const std::string& event,
