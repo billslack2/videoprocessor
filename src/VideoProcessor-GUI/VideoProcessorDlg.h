@@ -70,6 +70,7 @@
 #define WM_MESSAGE_RENDERER_GRAPH_EVENT                 (WM_APP + 16)
 #define WM_MESSAGE_RENDERER_RESTART_REQUIRED            (WM_APP + 17)
 #define WM_MESSAGE_DIRECTSHOW_OWNER_COMPLETION           (WM_APP + 18)
+#define WM_MESSAGE_FULLSCREEN_HOST_RESIZED               (WM_APP + 19)
 
 static_assert(WM_MESSAGE_DIRECTSHOW_NOTIFICATION !=
 	WM_MESSAGE_DIRECTSHOW_OWNER_COMPLETION,
@@ -225,6 +226,8 @@ public:
 	afx_msg LRESULT OnMessageRendererRestartRequired(
 		WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnMessageExternalShortcut(WPARAM wParam, LPARAM lParam);
+	afx_msg LRESULT OnMessageFullscreenHostResized(
+		WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnMessageRendererLiveFrame(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnMessageRendererResetRequest(
 		WPARAM wParam, LPARAM lParam);

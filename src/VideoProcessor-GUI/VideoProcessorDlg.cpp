@@ -1958,6 +1958,7 @@ BEGIN_MESSAGE_MAP(CVideoProcessorDlg, CDialog)
 	ON_MESSAGE(WM_MESSAGE_RENDERER_STATE_CHANGE, &CVideoProcessorDlg::OnMessageRendererStateChange)
 	ON_MESSAGE(WM_MESSAGE_RENDERER_DETAIL_STRING, &CVideoProcessorDlg::OnMessageRendererDetailString)
 	ON_MESSAGE(WM_MESSAGE_EXTERNAL_SHORTCUT, &CVideoProcessorDlg::OnMessageExternalShortcut)
+	ON_MESSAGE(WM_MESSAGE_FULLSCREEN_HOST_RESIZED, &CVideoProcessorDlg::OnMessageFullscreenHostResized)
 	ON_MESSAGE(WM_MESSAGE_RENDERER_LIVE_FRAME, &CVideoProcessorDlg::OnMessageRendererLiveFrame)
 	ON_MESSAGE(WM_MESSAGE_RENDERER_RESET_REQUEST, &CVideoProcessorDlg::OnMessageRendererResetRequest)
 	ON_MESSAGE(WM_MESSAGE_RENDERER_RETIRED, &CVideoProcessorDlg::OnMessageRendererRetired)
@@ -6593,6 +6594,33 @@ LRESULT CVideoProcessorDlg::OnMessageExternalShortcut(WPARAM wParam,
 	return 0;
 }
 
+
+LRESULT CVideoProcessorDlg::OnMessageFullscreenHostResized(
+	WPARAM wParam, LPARAM lParam)
+{
+	const HWND host = reinterpret_cast<HWND>(wParam);
+	const bool currentFullscreenHost = m_fullScreenVideoWindow &&
+		m_fullScreenVideoWindow->GetHWND() == host &&
+		m_rendererTargetHwnd == host;
+	const bool rendererNotified = currentFullscreenHost && m_videoRenderer &&
+		!RendererResetOperationInProgress();
+	if (rendererNotified)
+		m_videoRenderer->OnSize();
+
+	RECT rect{};
+	const BOOL haveRect = host && ::IsWindow(host) &&
+		::GetWindowRect(host, &rect);
+	DebugLog::Log(
+		"Fullscreen host resize: host=%p size=%dx%d current_target=%d "
+		"renderer_notified=%d reset_active=%d rect=%ld,%ld-%ld,%ld",
+		host, LOWORD(lParam), HIWORD(lParam),
+		currentFullscreenHost ? 1 : 0, rendererNotified ? 1 : 0,
+		RendererResetOperationInProgress() ? 1 : 0,
+		haveRect ? rect.left : 0, haveRect ? rect.top : 0,
+		haveRect ? rect.right : 0, haveRect ? rect.bottom : 0);
+	return 0;
+}
+
 //
 // Command handlers
 //
@@ -9714,33 +9742,38 @@ void CVideoProcessorDlg::FullScreenVideoWindowConstruct()
 	{
 		PublishConfigurationEditorPresentationTarget(configurationEditor);
 	}
-	HMONITOR actualMonitor = MonitorFromWindow(
-		fullscreenHwnd, MONITOR_DEFAULTTONULL);
-	if (actualMonitor != hmon)
+	// The monitor may be selected correctly while a display-mode/topology race
+	// leaves the new popup at a stale size.  Normalize the complete rectangle
+	// before DirectShow/madVR can bind its child window; checking only the
+	// monitor allows a top-left, quarter-sized presentation to become sticky.
+	RECT rectBefore{};
+	::GetWindowRect(fullscreenHwnd, &rectBefore);
+	HMONITOR actualMonitor = MonitorFromWindow(fullscreenHwnd,
+		MONITOR_DEFAULTTONULL);
+	MONITORINFO monitorInfo = { sizeof(monitorInfo) };
+	BOOL placed = FALSE;
+	if (GetMonitorInfo(hmon, &monitorInfo))
 	{
-		MONITORINFO monitorInfo = { sizeof(monitorInfo) };
-		if (GetMonitorInfo(hmon, &monitorInfo))
-		{
-			const RECT& rect = monitorInfo.rcMonitor;
-			const BOOL moved = ::SetWindowPos(fullscreenHwnd, nullptr,
-				rect.left, rect.top, rect.right - rect.left,
-				rect.bottom - rect.top,
-				SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOZORDER |
-				SWP_SHOWWINDOW);
-			actualMonitor = MonitorFromWindow(
-				fullscreenHwnd, MONITOR_DEFAULTTONULL);
-			DebugLog::Log(
-				"Fullscreen monitor placement correction: requested=%p before=%p moved=%d after=%p",
-				reinterpret_cast<void*>(hmon),
-				reinterpret_cast<void*>(MonitorFromWindow(
-					this->GetSafeHwnd(), MONITOR_DEFAULTTONEAREST)),
-				moved ? 1 : 0, reinterpret_cast<void*>(actualMonitor));
-		}
+		const RECT& target = monitorInfo.rcMonitor;
+		placed = ::SetWindowPos(fullscreenHwnd, nullptr,
+			target.left, target.top, target.right - target.left,
+			target.bottom - target.top,
+			SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOZORDER |
+			SWP_SHOWWINDOW);
 	}
+	RECT rectAfter{};
+	::GetWindowRect(fullscreenHwnd, &rectAfter);
+	actualMonitor = MonitorFromWindow(fullscreenHwnd, MONITOR_DEFAULTTONULL);
 	DebugLog::Log(
-		"Fullscreen monitor placement verified: requested=%p actual=%p matched=%d",
+		"Fullscreen host initial geometry: requested_monitor=%p actual_monitor=%p "
+		"monitor_matched=%d placement=%d before=%ld,%ld-%ld,%ld "
+		"target=%ld,%ld-%ld,%ld after=%ld,%ld-%ld,%ld",
 		reinterpret_cast<void*>(hmon), reinterpret_cast<void*>(actualMonitor),
-		actualMonitor == hmon ? 1 : 0);
+		actualMonitor == hmon ? 1 : 0, placed ? 1 : 0,
+		rectBefore.left, rectBefore.top, rectBefore.right, rectBefore.bottom,
+		monitorInfo.rcMonitor.left, monitorInfo.rcMonitor.top,
+		monitorInfo.rcMonitor.right, monitorInfo.rcMonitor.bottom,
+		rectAfter.left, rectAfter.top, rectAfter.right, rectAfter.bottom);
 	// Fullscreen is an explicit VP presentation transition. Activate its native
 	// surface now, while the transition is current, so keyboard shortcuts keep
 	// working immediately after the video expands. The later placement timer is

@@ -254,7 +254,7 @@ LRESULT __forceinline FullscreenVideoWindow::HandleMessage(UINT uMsg, WPARAM wPa
         }
         break;
 
-    case WM_ERASEBKGND:
+	case WM_ERASEBKGND:
     {
         RECT client{};
         GetClientRect(m_hwnd, &client);
@@ -262,8 +262,24 @@ LRESULT __forceinline FullscreenVideoWindow::HandleMessage(UINT uMsg, WPARAM wPa
             reinterpret_cast<HDC>(wParam),
             &client,
             reinterpret_cast<HBRUSH>(GetStockObject(BLACK_BRUSH)));
-        return 1;
-    }
+		return 1;
+	}
+
+	case WM_SIZE:
+	{
+		CWnd* const mainWindow = AfxGetApp() ? AfxGetApp()->GetMainWnd() :
+			nullptr;
+		const BOOL posted = mainWindow &&
+			::IsWindow(mainWindow->GetSafeHwnd()) &&
+			::PostMessage(mainWindow->GetSafeHwnd(),
+				WM_MESSAGE_FULLSCREEN_HOST_RESIZED,
+				reinterpret_cast<WPARAM>(m_hwnd), lParam);
+		DebugLog::Log(
+			"Fullscreen host WM_SIZE: host=%p size=%dx%d posted=%d error=%lu",
+			reinterpret_cast<void*>(m_hwnd), LOWORD(lParam), HIWORD(lParam),
+			posted ? 1 : 0, posted ? 0UL : ::GetLastError());
+		break;
+	}
 
 	case WM_CLOSE:
 		OnClose();
