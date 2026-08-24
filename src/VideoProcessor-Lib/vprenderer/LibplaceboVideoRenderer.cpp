@@ -1021,6 +1021,16 @@ namespace
 	bool LookupUnifiedSourceValue(const VideoState& state,
 		const std::string& variable, std::string& value)
 	{
+		// This lookup is only used by the built-in renderer while it resolves
+		// its local copy of the unified configuration. The application owns the
+		// cross-renderer selection, but returning the stable built-in identity
+		// here lets renderer-qualified rules safely evaluate false for madVR
+		// instead of rejecting the complete configuration.
+		if (variable == "renderer")
+		{
+			value = "VP Renderer";
+			return true;
+		}
 		return StateVariables::LookupVideoState(state, variable, value);
 	}
 
@@ -2933,6 +2943,7 @@ struct LibplaceboVideoRenderer::Impl
 	VideoStateComPtr formatterState;
 	std::vector<BYTE> convertedFrame;
 	bool formatterContractLogged = false;
+	std::mutex ingressStatusMutex;
 	std::string ingressStatus = "P010 (initializing)";
 	struct pl_render_params renderParams{};
 	ActivePictureTransitionModel nlsTransition;
@@ -7234,6 +7245,11 @@ struct LibplaceboVideoRenderer::Impl
 		bool& presentationTargetTimingKnown,
 		double& presentationTargetLeadMs)
 	{
+		auto setIngressStatus = [this](std::string status)
+		{
+			std::lock_guard<std::mutex> guard(ingressStatusMutex);
+			ingressStatus = std::move(status);
+		};
 		const HMONITOR currentMonitor = MonitorFromWindow(
 			videoHwnd,
 			MONITOR_DEFAULTTONEAREST);
@@ -7857,9 +7873,10 @@ struct LibplaceboVideoRenderer::Impl
 			image.planes[0].shift_x = 0.0f;
 			image.planes[0].shift_y = 0.0f;
 			image.planes[0].flipped = state.invertedVertical;
-			ingressStatus = nativeRgbLayout.label;
+			std::string resolvedIngressStatus = nativeRgbLayout.label;
 			if (!analysisSource.IsValid())
-				ingressStatus += " (analysis unavailable)";
+				resolvedIngressStatus += " (analysis unavailable)";
+			setIngressStatus(std::move(resolvedIngressStatus));
 		}
 		else
 		{
@@ -7899,21 +7916,21 @@ struct LibplaceboVideoRenderer::Impl
 				switch (state.videoFrameEncoding)
 				{
 				case VideoFrameEncoding::V210:
-					ingressStatus = "P210 (lossless v210 4:2:2)";
+					setIngressStatus("P210 (lossless v210 4:2:2)");
 					break;
 				case VideoFrameEncoding::HDYC:
-					ingressStatus = "P210 (lossless HDYC 4:2:2)";
+					setIngressStatus("P210 (lossless HDYC 4:2:2)");
 					break;
 				default:
-					ingressStatus = "P210 (lossless UYVY 4:2:2)";
+					setIngressStatus("P210 (lossless UYVY 4:2:2)");
 					break;
 				}
 			}
 			else
-				ingressStatus = videoConversionOverride ==
+				setIngressStatus(videoConversionOverride ==
 					VideoConversionOverride::VIDEOCONVERSION_V210_TO_P010 ?
 					"P010 (forced)" :
-					"P010 (source fallback)";
+					"P010 (source fallback)");
 		}
 
 		image.repr.sys = nativeRgbUpload ? PL_COLOR_SYSTEM_RGB :
@@ -11158,10 +11175,7 @@ bool LibplaceboVideoRenderer::GetVideoIngressInfo(CString& details) const
 		return false;
 	}
 
-	std::unique_lock<std::mutex> guard(
-		m_impl->renderMutex, std::try_to_lock);
-	if (!guard.owns_lock())
-		return false;
+	std::lock_guard<std::mutex> guard(m_impl->ingressStatusMutex);
 	details = CString(CStringA(m_impl->ingressStatus.c_str()));
 	return !details.IsEmpty();
 }

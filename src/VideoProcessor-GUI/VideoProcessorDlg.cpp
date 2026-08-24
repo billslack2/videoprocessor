@@ -1031,9 +1031,44 @@ HACCEL CreateConfiguredAccelerators(
 				ACCEL accelerator = {};
 				if (!TryParseShortcut(chord, accelerator)) { if (rejectInvalidBindings) { failBinding("invalid unified profile shortcut " + chord); return nullptr; } DEBUGLOG("Invalid unified profile shortcut '%s'", chord.c_str()); continue; }
 				const unsigned int binding = (static_cast<unsigned int>(accelerator.fVirt) << 16) | accelerator.key;
-				if (!bindings.insert(binding).second) { if (rejectInvalidBindings) { failBinding("duplicate unified profile shortcut " + chord); return nullptr; } DEBUGLOG("Duplicate unified profile shortcut '%s' ignored", chord.c_str()); continue; }
-				accelerator.cmd = nextCommand;
-				accelerators.push_back(accelerator);
+				const bool isNewBinding = bindings.insert(binding).second;
+				if (isNewBinding)
+				{
+					accelerator.cmd = nextCommand;
+					accelerators.push_back(accelerator);
+				}
+				else
+				{
+					auto existing = accelerators.end();
+					for (auto candidate = accelerators.begin();
+						candidate != accelerators.end(); ++candidate)
+						if (((static_cast<unsigned int>(candidate->fVirt) << 16) |
+							candidate->key) == binding)
+						{
+							existing = candidate;
+							break;
+						}
+					const auto renderer = existing != accelerators.end() ?
+						rendererShortcutIndices.find(existing->cmd) :
+						rendererShortcutIndices.end();
+					if (renderer == rendererShortcutIndices.end())
+					{
+						if (rejectInvalidBindings) { failBinding("duplicate unified profile shortcut " + chord); return nullptr; }
+						DEBUGLOG("Duplicate unified profile shortcut '%s' ignored", chord.c_str());
+						continue;
+					}
+
+					// A renderer selection and a unified profile are intentionally
+					// composable: one chord selects both. Reuse the physical
+					// accelerator and retain the renderer index under the unified
+					// command so its handler can dispatch both operations.
+					const unsigned int rendererIndex = renderer->second;
+					rendererShortcutIndices.erase(renderer);
+					existing->cmd = nextCommand;
+					rendererShortcutIndices[nextCommand] = rendererIndex;
+					DEBUGLOG("Paired shortcut '%s': render.%u plus unified profile",
+						chord.c_str(), rendererIndex);
+				}
 				CString keyName; keyName.Format(TEXT("%S"), chord.c_str());
 				unifiedProfileShortcutKeys[nextCommand] = keyName;
 				++nextCommand;
@@ -4984,6 +5019,7 @@ void CVideoProcessorDlg::OnRendererSelected()
 {
 	EstablishSessionRendererOverrideFromSelection("operator-selection");
 	UpdateRendererBackendUi();
+	RefreshUnifiedProfilesForRuleContext("renderer-selection");
 	OnBnClickedRendererRestart();
 }
 
@@ -6660,6 +6696,10 @@ void CVideoProcessorDlg::OnCommandDisplayRule(UINT commandId)
 	const auto unifiedKey = m_unifiedProfileShortcutKeys.find(static_cast<WORD>(commandId));
 	if (unifiedKey != m_unifiedProfileShortcutKeys.end())
 	{
+		const auto pairedRenderer =
+			m_rendererShortcutIndices.find(static_cast<WORD>(commandId));
+		if (pairedRenderer != m_rendererShortcutIndices.end())
+			SelectRendererFromShortcut(pairedRenderer->second);
 		const DWORD commandTime = static_cast<DWORD>(GetMessageTime());
 		if (m_lastUnifiedProfileCommand == commandId &&
 			commandTime - m_lastUnifiedProfileCommandTime < 100)
@@ -6739,7 +6779,11 @@ void CVideoProcessorDlg::OnCommandRendererSelect(UINT commandId)
 	if (shortcut == m_rendererShortcutIndices.end())
 		return;
 
-	const unsigned int oneBasedIndex = shortcut->second;
+	SelectRendererFromShortcut(shortcut->second);
+}
+
+void CVideoProcessorDlg::SelectRendererFromShortcut(unsigned int oneBasedIndex)
+{
 	if (oneBasedIndex == 0 ||
 		oneBasedIndex > static_cast<unsigned int>(m_rendererCombo.GetCount()))
 	{
@@ -6757,6 +6801,7 @@ void CVideoProcessorDlg::OnCommandRendererSelect(UINT commandId)
 	{
 		EstablishSessionRendererOverrideFromSelection(
 			"renderer-shortcut-already-selected");
+		RefreshUnifiedProfilesForRuleContext("renderer-shortcut");
 		DEBUGLOG("Renderer shortcut render.%u already selected: %s",
 			oneBasedIndex,
 			rendererName.GetString());
@@ -6769,6 +6814,7 @@ void CVideoProcessorDlg::OnCommandRendererSelect(UINT commandId)
 		oneBasedIndex,
 		rendererName.GetString());
 	UpdateRendererBackendUi();
+	RefreshUnifiedProfilesForRuleContext("renderer-shortcut");
 	OnBnClickedRendererRestart();
 }
 
@@ -10393,9 +10439,76 @@ bool CVideoProcessorDlg::BuildPushVideoState()
 }
 
 DisplayRuleExpression::ValueLookup
-CVideoProcessorDlg::GetUnifiedProfileSourceLookup() const
+CVideoProcessorDlg::GetUnifiedProfileSourceLookup()
 {
-	return StateVariables::VideoStateLookup(m_builtVideoState);
+	const DisplayRuleExpression::ValueLookup sourceValues =
+		StateVariables::VideoStateLookup(m_builtVideoState);
+	CString rendererName = m_activeRendererName;
+	const int selectedRenderer = m_rendererCombo.GetCurSel();
+	if (selectedRenderer >= 0)
+		m_rendererCombo.GetLBText(selectedRenderer, rendererName);
+
+	HWND displayWindow = nullptr;
+	if (m_fullScreenVideoWindow &&
+		IsWindow(m_fullScreenVideoWindow->GetHWND()))
+	{
+		displayWindow = m_fullScreenVideoWindow->GetHWND();
+	}
+	else if (m_windowedVideoWindow.GetSafeHwnd())
+	{
+		displayWindow = m_windowedVideoWindow.GetSafeHwnd();
+	}
+	else
+	{
+		displayWindow = GetSafeHwnd();
+	}
+	const double actualRefreshRate = GetActiveTargetRefreshRate(displayWindow);
+	const std::string renderer = CStringA(rendererName).GetString();
+	return [sourceValues, renderer, actualRefreshRate](const std::string& name,
+		std::string& value)
+	{
+		if (name == "renderer")
+		{
+			if (renderer.empty()) return false;
+			value = renderer;
+			return true;
+		}
+		if (name == "actual_refresh")
+		{
+			if (actualRefreshRate <= 0.0) return false;
+			std::ostringstream refresh;
+			refresh.imbue(std::locale::classic());
+			refresh.precision(17);
+			refresh << actualRefreshRate;
+			value = refresh.str();
+			return true;
+		}
+		return sourceValues(name, value);
+	};
+}
+
+void CVideoProcessorDlg::RefreshUnifiedProfilesForRuleContext(
+	const char* reason)
+{
+	if (!m_profileRuntime.IsInitialized())
+		return;
+
+	UnifiedProfileRuntime::RefreshResult result;
+	std::string error;
+	if (!m_profileRuntime.Refresh(GetUnifiedProfileSourceLookup(), result, error))
+	{
+		DebugLog::Log("Unified profile rule-context refresh failed: reason=%s detail=%s",
+			reason ? reason : "unknown", error.c_str());
+		return;
+	}
+	if (!result.changed)
+		return;
+
+	DebugLog::Log("Unified profile rule-context changed: reason=%s generation=%llu",
+		reason ? reason : "unknown",
+		static_cast<unsigned long long>(result.snapshot ? result.snapshot->generation : 0));
+	ApplyUnifiedProfileSnapshot(result.snapshot, true);
+	ScheduleUnifiedProfileActions(result.actions);
 }
 
 void CVideoProcessorDlg::PublishActiveProfileStatus()
@@ -10427,6 +10540,35 @@ void CVideoProcessorDlg::ApplyUnifiedProfileSnapshot(
 	if (!snapshot)
 		return;
 	PublishActiveProfileStatus();
+
+	// A paired renderer/profile shortcut can commit a new queue while the old
+	// renderer is being retired. In particular, a DirectShow graph owns madVR's
+	// filter callbacks until its asynchronous teardown completes. Do not mutate
+	// that old graph with settings meant for the selected replacement renderer.
+	// The committed snapshot is retained by m_profileRuntime and is applied when
+	// the fresh renderer is constructed below the lifecycle boundary.
+	CString selectedRendererName;
+	const int selectedRenderer = m_rendererCombo.GetCurSel();
+	if (selectedRenderer >= 0)
+		m_rendererCombo.GetLBText(selectedRenderer, selectedRendererName);
+	const bool selectedRendererDiffers = m_videoRenderer &&
+		!selectedRendererName.IsEmpty() &&
+		!m_activeRendererName.IsEmpty() &&
+		selectedRendererName.CompareNoCase(m_activeRendererName) != 0;
+	if (m_rendererState == RendererState::RENDERSTATE_STOPPING ||
+		selectedRendererDiffers)
+	{
+		DebugLog::Log(
+			"Unified profile application deferred: renderer_state=%d active=%S selected=%S queue=%s reason=renderer-transition",
+			static_cast<int>(m_rendererState),
+			m_activeRendererName.IsEmpty() ? L"(none)" :
+				m_activeRendererName.GetString(),
+			selectedRendererName.IsEmpty() ? L"(none)" :
+				selectedRendererName.GetString(),
+			snapshot->queue.profile.empty() ? "(none)" :
+				snapshot->queue.profile.c_str());
+		return;
+	}
 
 	bool lldvPolicyChanged = false;
 	if (!snapshot->lldv.profile.empty())
@@ -11962,6 +12104,7 @@ void CVideoProcessorDlg::OnDisplayChange(UINT bitsPerPixel, int width, int heigh
 	else if (m_windowedVideoWindow.GetSafeHwnd())
 		displayWindow = m_windowedVideoWindow.GetSafeHwnd();
 	const double configuredRefreshRate = GetActiveTargetRefreshRate(displayWindow);
+	RefreshUnifiedProfilesForRuleContext("display-refresh-change");
 	const double previousRefreshRate = m_lastAlphaTargetRefreshRateHz;
 	const bool materiallyDifferentRefreshFamily =
 		previousRefreshRate > 0.0 && configuredRefreshRate > 0.0 &&

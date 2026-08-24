@@ -2538,6 +2538,48 @@ namespace VideoProcessorTest
 			DeleteFileA(path.c_str());
 		}
 
+		TEST_METHOD(AutomaticQueueProfilesMayUseRendererAndActualRefresh)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(ARRAYSIZE(temporaryDirectory),
+				temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) +
+				"VideoProcessor-queue-renderer-refresh.cfg";
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[queue]\nqueue_size: 16\n"
+					"[queue.madvr]\nwhen: ${renderer}==\"madVR\"\nqueue_size: 32\n"
+					"[queue.vp_60]\nwhen: ${renderer}==\"VP Renderer\" && ${actual_refresh}>=59\nqueue_size: 8\n";
+			}
+
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			RendererProfileConfig::Model model;
+			std::string error;
+			Assert::IsTrue(RendererProfileConfig::Read(config, model, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			auto selectQueue = [&](const char* renderer, const char* refresh)
+			{
+				std::vector<RendererProfileConfig::AutomaticSelection> selections;
+				Assert::IsTrue(RendererProfileConfig::SelectAutomatic(model,
+					[renderer, refresh](const std::string& variable, std::string& value)
+					{
+						if (variable == "renderer") { value = renderer; return true; }
+						if (variable == "actual_refresh") { value = refresh; return true; }
+						return false;
+					}, selections, error));
+				const auto queue = std::find_if(selections.begin(), selections.end(),
+					[](const RendererProfileConfig::AutomaticSelection& selected)
+					{ return selected.group == "queue"; });
+				Assert::IsTrue(queue != selections.end());
+				return queue->profile;
+			};
+			Assert::AreEqual("madvr", selectQueue("madVR", "59.94").c_str());
+			Assert::AreEqual("vp_60", selectQueue("VP Renderer", "59.94").c_str());
+			Assert::AreEqual("base", selectQueue("VP Renderer", "23.976").c_str());
+			DeleteFileA(path.c_str());
+		}
+
 		TEST_METHOD(Vp0097LegacyViewportRootRetainsPrecedenceAndRejectsDefaultId)
 		{
 			char temporaryDirectory[MAX_PATH] = {};

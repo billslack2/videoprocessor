@@ -917,7 +917,8 @@ namespace RendererProfileConfig
 		const std::set<std::string> expressionVariables = {
 			"eotf", "transfer", "colorspace", "primaries", "format",
 			"hdr_metadata", "interlaced", "scan", "source_rate", "cadence",
-			"width", "height", "resolution", "key"
+			"width", "height", "resolution", "renderer", "actual_refresh",
+			"key"
 		};
 
 		for (const GroupSpec& spec : specs)
@@ -1454,7 +1455,8 @@ namespace RendererProfileConfig
 					 !ValidateExpressionVariables(profile.whenExpression,
 						{ "eotf", "transfer", "colorspace", "primaries", "format",
 						  "hdr_metadata", "interlaced", "scan", "source_rate",
-						  "cadence", "width", "height", "resolution", "key" },
+						  "cadence", "width", "height", "resolution", "renderer",
+						  "actual_refresh", "key" },
 						"[" + profileSection + "] when=", error)))
 					return false;
 				model.profiles.emplace(groupName + "." + profileName, std::move(profile));

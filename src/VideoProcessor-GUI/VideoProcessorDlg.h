@@ -239,6 +239,7 @@ public:
 	afx_msg void OnCommandShaderRule(UINT commandId);
 	afx_msg void OnCommandDisplayRule(UINT commandId);
 	afx_msg void OnCommandRendererSelect(UINT commandId);
+	void SelectRendererFromShortcut(unsigned int oneBasedIndex);
 	void OnCommandPQSet();
 	void OnCommandAutoSet();
 	void OnCommandToggleStatsOverlay();
@@ -956,7 +957,8 @@ protected:
 	bool BuildPushVideoState();
 	void BuildPushRestartVideoState();
 	void ScheduleNewLldvRendererRestart();
-	DisplayRuleExpression::ValueLookup GetUnifiedProfileSourceLookup() const;
+	DisplayRuleExpression::ValueLookup GetUnifiedProfileSourceLookup();
+	void RefreshUnifiedProfilesForRuleContext(const char* reason);
 	void PublishActiveProfileStatus();
 	void ApplyUnifiedProfileSnapshot(
 		const std::shared_ptr<const UnifiedProfileRuntime::Snapshot>& snapshot,
