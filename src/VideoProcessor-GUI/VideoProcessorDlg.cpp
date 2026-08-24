@@ -6203,6 +6203,16 @@ LRESULT CVideoProcessorDlg::OnMessageRendererStateChange(WPARAM wParam, LPARAM l
 			DbgLog((LOG_TRACE, 1,
 				TEXT("LLDV confirmed during renderer startup - scheduling renderer restart")));
 		}
+		if (m_queueProfileResetRequest.pending)
+		{
+			DebugLog::Log(
+				"Queue profile reset: renderer=%S generation=%u "
+				"action=dispatch-after-renderer-ready",
+				m_activeRendererName.GetString(),
+				m_rendererGeneration.load(std::memory_order_acquire));
+			KillTimer(QUEUE_PROFILE_RESET_TIMER_ID);
+			SetTimer(QUEUE_PROFILE_RESET_TIMER_ID, 1, nullptr);
+		}
 		break;
 	}
 
@@ -8415,7 +8425,10 @@ void CVideoProcessorDlg::RenderStart()
 				videoConversionOverride);
 			BindRendererResetSink();
 
-			ApplyUnifiedProfileSnapshot(m_profileRuntime.GetSnapshot(), false);
+			const auto profileSnapshot = m_profileRuntime.GetSnapshot();
+			ApplyUnifiedProfileSnapshot(profileSnapshot, false);
+			if (profileSnapshot && !profileSnapshot->queue.profile.empty())
+				QueueUnifiedQueueProfileReset(profileSnapshot, "renderer-start");
 
 			if (m_captureDeviceVideoState)
 				m_videoRenderer->OnVideoState(m_builtVideoState);
@@ -8523,7 +8536,10 @@ void CVideoProcessorDlg::RenderStart()
 					videoConversionOverride);
 		BindRendererResetSink();
 
-		ApplyUnifiedProfileSnapshot(m_profileRuntime.GetSnapshot(), false);
+		const auto profileSnapshot = m_profileRuntime.GetSnapshot();
+		ApplyUnifiedProfileSnapshot(profileSnapshot, false);
+		if (profileSnapshot && !profileSnapshot->queue.profile.empty())
+			QueueUnifiedQueueProfileReset(profileSnapshot, "renderer-start");
 
 		if (m_captureDeviceVideoState)
 			m_videoRenderer->OnVideoState(m_builtVideoState);
@@ -10938,9 +10954,11 @@ void CVideoProcessorDlg::DispatchQueuedQueueProfileReset()
 		currentSnapshot->queue.profile : request.profile;
 	if (!m_videoRenderer)
 	{
+		QueueProfileRestartPolicy::Enqueue(m_queueProfileResetRequest,
+			request.snapshotGeneration, profile, request.source);
 		DebugLog::Log(
 			"Queue profile reset: profile=%s source=%s generation=%llu "
-			"outcome=covered action=post-start-reset-uses-committed-profile",
+			"outcome=deferred action=await-renderer-ready",
 			profile.c_str(), request.source.c_str(),
 			static_cast<unsigned long long>(request.snapshotGeneration));
 		return;
@@ -10960,9 +10978,11 @@ void CVideoProcessorDlg::DispatchQueuedQueueProfileReset()
 	if (m_rendererState != RendererState::RENDERSTATE_RENDERING ||
 		m_wantToRestartRenderer)
 	{
+		QueueProfileRestartPolicy::Enqueue(m_queueProfileResetRequest,
+			request.snapshotGeneration, profile, request.source);
 		DebugLog::Log(
 			"Queue profile reset: profile=%s source=%s generation=%llu "
-			"outcome=covered action=post-start-reset-uses-committed-profile state=%d restart_pending=%d",
+			"outcome=deferred action=await-renderer-ready state=%d restart_pending=%d",
 			profile.c_str(), request.source.c_str(),
 			static_cast<unsigned long long>(request.snapshotGeneration),
 			static_cast<int>(m_rendererState), m_wantToRestartRenderer ? 1 : 0);
@@ -10978,7 +10998,7 @@ void CVideoProcessorDlg::DispatchQueuedQueueProfileReset()
 		static_cast<unsigned long long>(request.snapshotGeneration),
 		m_activeRendererIsDirectShow ? "DirectShow/madVR" : "VP Renderer",
 		delayMs);
-	// Match the operator's R command exactly, but let the selected queue
+	// Match the operator's lowercase r reset command exactly, but let the selected queue
 	// profile's configured reset delay provide the settling interval.
 	RequestRendererReset(RendererResetReason::Manual, true, delayMs);
 }
