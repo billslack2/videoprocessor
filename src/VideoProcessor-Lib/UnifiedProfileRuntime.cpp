@@ -709,7 +709,14 @@ namespace UnifiedProfileRuntime
 		std::map<std::string, std::string> effective = manualSelections;
 		for (const RendererProfileConfig::AutomaticSelection& selection :
 			automatic)
-			effective[selection.group] = selection.profile;
+		{
+			// A configured default supplies an otherwise-unselected group; it is
+			// not a source rule and must not cancel an operator shortcut. A real
+			// when: match remains authoritative over persisted state.
+			if (!selection.configuredDefault ||
+				effective.find(selection.group) == effective.end())
+				effective[selection.group] = selection.profile;
+		}
 
 		std::string viewportProfile = "default";
 		const auto selectedViewport = effective.find("viewport");

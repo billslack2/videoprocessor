@@ -2637,6 +2637,18 @@ namespace VideoProcessorTest
 			Assert::IsTrue(snapshot != nullptr);
 			Assert::AreEqual("vp_24", snapshot->manualSelections.at("queue").c_str());
 			Assert::AreEqual("vp_60", snapshot->effectiveSelections.at("queue").c_str());
+
+			UnifiedProfileRuntime::Runtime fallbackRuntime;
+			Assert::IsTrue(fallbackRuntime.Initialize(config,
+				[](const std::string& variable, std::string& value)
+				{
+					if (variable == "renderer") { value = "VP Renderer"; return true; }
+					return false;
+				}, error), std::wstring(error.begin(), error.end()).c_str());
+			const std::shared_ptr<const UnifiedProfileRuntime::Snapshot> fallback =
+				fallbackRuntime.GetSnapshot();
+			Assert::IsTrue(fallback != nullptr);
+			Assert::AreEqual("vp_24", fallback->effectiveSelections.at("queue").c_str());
 			DeleteFileA(statePath.c_str());
 			DeleteFileA(path.c_str());
 		}
