@@ -2599,6 +2599,48 @@ namespace VideoProcessorTest
 			DeleteFileA(path.c_str());
 		}
 
+		TEST_METHOD(AutomaticQueueRuleOverridesPersistedQueueSelection)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(ARRAYSIZE(temporaryDirectory),
+				temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) +
+				"VideoProcessor-automatic-queue-overrides-state.cfg";
+			const std::string statePath = path.substr(0,
+				path.find_last_of('.')) + ".state";
+			DeleteFileA(path.c_str());
+			DeleteFileA(statePath.c_str());
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[queue.base]\nqueue_size: 16\n"
+					"[queue.vp_24]\nwhen: ${renderer}==\"VP Renderer\" && ${source_rate}<=30\nqueue_size: 8\n"
+					"[queue.vp_60]\nwhen: ${renderer}==\"VP Renderer\" && ${source_rate}>30\nqueue_size: 32\n";
+			}
+			{
+				std::ofstream file(statePath, std::ios::out | std::ios::trunc);
+				file << "# Managed by VideoProcessor.\nprofile.queue: vp_24\n";
+			}
+
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			UnifiedProfileRuntime::Runtime runtime;
+			std::string error;
+			Assert::IsTrue(runtime.Initialize(config,
+				[](const std::string& variable, std::string& value)
+				{
+					if (variable == "renderer") { value = "VP Renderer"; return true; }
+					if (variable == "source_rate") { value = "59"; return true; }
+					return false;
+				}, error), std::wstring(error.begin(), error.end()).c_str());
+			const std::shared_ptr<const UnifiedProfileRuntime::Snapshot> snapshot =
+				runtime.GetSnapshot();
+			Assert::IsTrue(snapshot != nullptr);
+			Assert::AreEqual("vp_24", snapshot->manualSelections.at("queue").c_str());
+			Assert::AreEqual("vp_60", snapshot->effectiveSelections.at("queue").c_str());
+			DeleteFileA(statePath.c_str());
+			DeleteFileA(path.c_str());
+		}
+
 		TEST_METHOD(Vp0097LegacyViewportRootRetainsPrecedenceAndRejectsDefaultId)
 		{
 			char temporaryDirectory[MAX_PATH] = {};

@@ -78,8 +78,8 @@ namespace UnifiedProfileRuntime
 			const DisplayRuleExpression::ValueLookup& sourceValues,
 			SelectionResult& result, std::string& error);
 
-		// Re-resolves automatic profiles after source state changes. Manual
-		// selections remain authoritative until reset by their group expression.
+		// Re-resolves automatic profiles after source state changes. A saved
+		// manual selection is used only when that group has no matching rule.
 		bool Refresh(const DisplayRuleExpression::ValueLookup& sourceValues,
 			RefreshResult& result, std::string& error);
 

@@ -702,12 +702,14 @@ namespace UnifiedProfileRuntime
 			m_model, values, automatic, error))
 			return false;
 
-		std::map<std::string, std::string> effective;
+		// A saved key selection is a fallback for groups without a matching rule.
+		// Source-driven rules are authoritative: they must be able to move a
+		// persisted queue (or any other profile group) as the renderer/input
+		// changes without requiring the operator to first clear state.
+		std::map<std::string, std::string> effective = manualSelections;
 		for (const RendererProfileConfig::AutomaticSelection& selection :
 			automatic)
 			effective[selection.group] = selection.profile;
-		for (const auto& selection : manualSelections)
-			effective[selection.first] = selection.second;
 
 		std::string viewportProfile = "default";
 		const auto selectedViewport = effective.find("viewport");
