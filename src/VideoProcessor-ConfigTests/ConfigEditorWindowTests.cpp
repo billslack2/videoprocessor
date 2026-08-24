@@ -4044,6 +4044,70 @@ void testSyntheticPresentationTargetClamp()
             "synthetic negative-origin clamp plus live target HWND coverage ran" << std::endl;
 }
 
+void testVisiblePresentationTargetUpdateMovesEditor()
+{
+    if (QGuiApplication::platformName().compare(
+        QStringLiteral("windows"), Qt::CaseInsensitive) != 0 ||
+        GetSystemMetrics(SM_CMONITORS) < 2)
+        return;
+
+    std::vector<RECT> monitors;
+    EnumDisplayMonitors(nullptr, nullptr, collectMonitorRects,
+        reinterpret_cast<LPARAM>(&monitors));
+    require(monitors.size() >= 2,
+        "Two-monitor placement fixture could not enumerate two monitors");
+
+    const HINSTANCE instance = GetModuleHandleW(nullptr);
+    HWND owner = CreateWindowExW(WS_EX_TOOLWINDOW, L"STATIC",
+        L"VP placement owner", WS_OVERLAPPEDWINDOW, 0, 0, 320, 200,
+        nullptr, nullptr, instance, nullptr);
+    HWND firstTarget = CreateWindowExW(WS_EX_TOOLWINDOW, L"STATIC",
+        L"VP first presentation target", WS_POPUP,
+        monitors[0].left, monitors[0].top, 320, 200,
+        nullptr, nullptr, instance, nullptr);
+    HWND secondTarget = CreateWindowExW(WS_EX_TOOLWINDOW, L"STATIC",
+        L"VP second presentation target", WS_POPUP,
+        monitors[1].left, monitors[1].top, 320, 200,
+        nullptr, nullptr, instance, nullptr);
+    require(owner && firstTarget && secondTarget,
+        "Cannot create presentation-target placement fixtures");
+    ShowWindow(firstTarget, SW_SHOWNOACTIVATE);
+    ShowWindow(secondTarget, SW_SHOWNOACTIVATE);
+
+    QTemporaryDir directory;
+    ConfigEditorWindow window(copyFixture(directory),
+        reinterpret_cast<quintptr>(owner), true);
+    const HWND editor = reinterpret_cast<HWND>(window.effectiveWinId());
+    const UINT targetMessage = RegisterWindowMessageW(
+        L"VideoProcessor.ConfigEditor.PresentationTarget.v1");
+    auto updateTarget = [editor, targetMessage](HWND target)
+    {
+        DWORD_PTR acknowledged = 0;
+        require(SendMessageTimeoutW(editor, targetMessage, GetCurrentProcessId(),
+            reinterpret_cast<LPARAM>(target), SMTO_ABORTIFHUNG | SMTO_BLOCK,
+            1000, &acknowledged) && acknowledged == 1,
+            "Presentation target update was not accepted");
+        QCoreApplication::processEvents();
+    };
+
+    updateTarget(firstTarget);
+    window.reveal();
+    QCoreApplication::processEvents();
+    require(MonitorFromWindow(editor, MONITOR_DEFAULTTONEAREST) ==
+        MonitorFromWindow(firstTarget, MONITOR_DEFAULTTONEAREST),
+        "Initial Config reveal did not use the current VP monitor");
+
+    updateTarget(secondTarget);
+    require(MonitorFromWindow(editor, MONITOR_DEFAULTTONEAREST) ==
+        MonitorFromWindow(secondTarget, MONITOR_DEFAULTTONEAREST),
+        "Visible Config did not move when VP's presentation monitor changed");
+
+    window.hide();
+    DestroyWindow(secondTarget);
+    DestroyWindow(firstTarget);
+    DestroyWindow(owner);
+}
+
 void testNormalWindowArchitectureHasNoLeasePolling()
 {
     const QByteArray source = readBytes(repositoryPath(QStringLiteral(
@@ -4177,6 +4241,8 @@ int main(int argc, char** argv)
         testExternalForegroundLeavesConfigTopmost);
     failures += run("synthetic presentation target clamp",
         testSyntheticPresentationTargetClamp);
+    failures += run("visible presentation target update moves Config",
+        testVisiblePresentationTargetUpdateMovesEditor);
     failures += run("normal window architecture has no lease polling",
         testNormalWindowArchitectureHasNoLeasePolling);
     if (!testNameFilter.isEmpty() && selectedTestsRun == 0)

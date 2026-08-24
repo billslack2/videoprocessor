@@ -6413,6 +6413,10 @@ bool ConfigEditorWindow::nativeEvent(const QByteArray& eventType,
         {
             presentationTargetHandle_ = reinterpret_cast<quintptr>(requestedTarget);
             presentationTargetProcessId_ = requestedProcessId;
+			// The warm editor may be revealed through its process event before
+			// this asynchronous target update is dispatched.  Place it immediately
+			// as well as during reveal so every open follows VP's current display.
+			positionForReveal();
 			if (isVisible() && scopedTopmostEligible_)
 			{
 				pendingTopmostReassert_ = true;
