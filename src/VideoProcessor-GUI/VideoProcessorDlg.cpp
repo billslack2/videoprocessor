@@ -12678,9 +12678,9 @@ void CVideoProcessorDlg::OnDisplayChange(UINT bitsPerPixel, int width, int heigh
 	if (g_displayRefreshRateSampler)
 		g_displayRefreshRateSampler->ResetMeasurement();
 
-	// Display notifications can precede the capture/renderer replacement by
-	// many seconds. Do not flush the old madVR graph because its queues fill
-	// during that handshake; the replacement renderer owns recovery.
+	// A display notification is a recovery boundary even when the renderer is
+	// not rebuilt.  Give Windows and the HDMI chain the configured settle time,
+	// then always re-prime VP's queue so it cannot retain pre-transition frames.
 	HWND displayWindow = nullptr;
 	if (m_fullScreenVideoWindow && IsWindow(m_fullScreenVideoWindow->GetHWND()))
 		displayWindow = m_fullScreenVideoWindow->GetHWND();
@@ -12718,18 +12718,18 @@ void CVideoProcessorDlg::OnDisplayChange(UINT bitsPerPixel, int width, int heigh
 	m_queueResetIgnoreEventsUntil = GetTickCount64() + 30000;
 	DebugLog::Log(
 		"Windows display mode changed: %d x %d, %u bits; "
-		"display-rate measurement reset; emergency queue recovery "
-		"suppressed pending renderer replacement",
+		"display-rate measurement reset; queue reset scheduled after "
+		"configured settle delay",
 		width,
 		height,
 		bitsPerPixel);
 	if (m_videoRenderer &&
 		m_rendererState == RendererState::RENDERSTATE_RENDERING)
 	{
-		// Fallback only: a replacement renderer will supersede this request
-		// and start its normal settle-plus-configured-delay recovery.
+		// Treat every confirmed Windows display/HDMI transition as requiring one
+		// post-settle queue reset.  The reset coordinator coalesces duplicate
+		// notifications and any higher-priority renderer recovery safely.
 		RequestRendererReset(RendererResetReason::DisplayTransition, false,
-			30000 +
 			static_cast<UINT>(m_queueResetDelaySeconds * 1000));
 	}
 	if (m_videoRenderer &&
