@@ -2614,7 +2614,8 @@ namespace VideoProcessorTest
 				std::ofstream file(path, std::ios::out | std::ios::trunc);
 				file << "[queue.base]\nqueue_size: 16\n"
 					"[queue.vp_24]\nwhen: ${renderer}==\"VP Renderer\" && ${source_rate}<=30\nqueue_size: 8\n"
-					"[queue.vp_60]\nwhen: ${renderer}==\"VP Renderer\" && ${source_rate}>30\nqueue_size: 32\n";
+					"[queue.vp_60]\nwhen: ${renderer}==\"VP Renderer\" && ${source_rate}>30\nqueue_size: 32\n"
+					"[queue.low_latency]\nshortcut: Shift+L\nqueue_size: 1\n";
 			}
 			{
 				std::ofstream file(statePath, std::ios::out | std::ios::trunc);
@@ -2649,6 +2650,19 @@ namespace VideoProcessorTest
 				fallbackRuntime.GetSnapshot();
 			Assert::IsTrue(fallback != nullptr);
 			Assert::AreEqual("vp_24", fallback->effectiveSelections.at("queue").c_str());
+
+			UnifiedProfileRuntime::SelectionResult selection;
+			Assert::IsTrue(runtime.SelectKey("Shift+L",
+				[](const std::string& variable, std::string& value)
+				{
+					if (variable == "renderer") { value = "VP Renderer"; return true; }
+					if (variable == "source_rate") { value = "59"; return true; }
+					return false;
+				}, selection, error), std::wstring(error.begin(), error.end()).c_str());
+			Assert::IsTrue(selection.snapshot != nullptr);
+			Assert::AreEqual("low_latency",
+				selection.snapshot->effectiveSelections.at("queue").c_str());
+			Assert::IsTrue(selection.snapshot->sessionOverrideGroups.count("queue") == 1);
 			DeleteFileA(statePath.c_str());
 			DeleteFileA(path.c_str());
 		}

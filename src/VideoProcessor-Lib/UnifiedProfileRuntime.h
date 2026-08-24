@@ -7,6 +7,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -16,9 +17,11 @@ namespace UnifiedProfileRuntime
 	struct Snapshot
 	{
 		uint64_t generation = 0;
-		// Manual selections are the durable user choices. Effective selections
-		// also include configured defaults and automatic source-driven choices.
+		// Manual selections are durable choices. Session overrides are created by
+		// an explicit shortcut and take precedence over matching source rules for
+		// this process only. Effective selections also include defaults/rules.
 		std::map<std::string, std::string> manualSelections;
+		std::set<std::string> sessionOverrideGroups;
 		std::map<std::string, std::string> effectiveSelections;
 		RendererProfileConfig::ResolvedViewport viewport;
 		RendererProfileConfig::ResolvedQueue queue;
@@ -78,8 +81,8 @@ namespace UnifiedProfileRuntime
 			const DisplayRuleExpression::ValueLookup& sourceValues,
 			SelectionResult& result, std::string& error);
 
-		// Re-resolves automatic profiles after source state changes. A saved
-		// manual selection is used only when that group has no matching rule.
+		// Re-resolves automatic profiles after source state changes. Persisted
+		// choices are fallbacks; a live shortcut remains a session override.
 		bool Refresh(const DisplayRuleExpression::ValueLookup& sourceValues,
 			RefreshResult& result, std::string& error);
 
@@ -105,6 +108,7 @@ namespace UnifiedProfileRuntime
 			std::string& error) const;
 		bool BuildSnapshot(
 			const std::map<std::string, std::string>& manualSelections,
+			const std::set<std::string>& sessionOverrideGroups,
 			const DisplayRuleExpression::ValueLookup& sourceValues,
 			uint64_t generation, std::shared_ptr<const Snapshot>& snapshot,
 			std::string& error) const;

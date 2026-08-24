@@ -40,6 +40,7 @@ namespace
 		const UnifiedProfileRuntime::Snapshot& right)
 	{
 		if (!(left.manualSelections == right.manualSelections &&
+			left.sessionOverrideGroups == right.sessionOverrideGroups &&
 			left.effectiveSelections == right.effectiveSelections &&
 			left.viewport.profile == right.viewport.profile &&
 			left.viewport.screenAspect.numerator ==
@@ -239,7 +240,7 @@ namespace UnifiedProfileRuntime
 			return false;
 
 		std::shared_ptr<const Snapshot> initial;
-		if (!BuildSnapshot(restored, sourceValues, 1, initial, error))
+		if (!BuildSnapshot(restored, {}, sourceValues, 1, initial, error))
 			return false;
 
 		m_generation = 1;
@@ -285,6 +286,8 @@ namespace UnifiedProfileRuntime
 		std::map<std::string, std::string> manual = previous ?
 			previous->manualSelections :
 			std::map<std::string, std::string>();
+		std::set<std::string> sessionOverrides = previous ?
+			previous->sessionOverrideGroups : std::set<std::string>();
 		for (auto selection = manual.begin(); selection != manual.end();)
 		{
 			const auto group = std::find_if(m_model.groups.begin(),
@@ -297,11 +300,14 @@ namespace UnifiedProfileRuntime
 				std::find(group->profiles.begin(), group->profiles.end(),
 					selection->second) != group->profiles.end();
 			if (!valid)
+			{
+				sessionOverrides.erase(selection->first);
 				selection = manual.erase(selection);
+			}
 			else
 				++selection;
 		}
-		if (!BuildSnapshot(manual, sourceValues, m_generation + 1,
+		if (!BuildSnapshot(manual, sessionOverrides, sourceValues, m_generation + 1,
 			candidate, error))
 		{
 			m_model = std::move(previousModel);
@@ -363,17 +369,25 @@ namespace UnifiedProfileRuntime
 		std::map<std::string, std::string> manual =
 			current ? current->manualSelections :
 			std::map<std::string, std::string>();
+		std::set<std::string> sessionOverrides = current ?
+			current->sessionOverrideGroups : std::set<std::string>();
 		for (const RendererProfileConfig::KeySelection& selection :
 			result.selections)
 		{
 			if (selection.resetToAutomatic)
+			{
 				manual.erase(selection.group);
+				sessionOverrides.erase(selection.group);
+			}
 			else
+			{
 				manual[selection.group] = selection.profile;
+				sessionOverrides.insert(selection.group);
+			}
 		}
 
 		std::shared_ptr<const Snapshot> candidate;
-		if (!BuildSnapshot(manual, values, m_generation + 1,
+		if (!BuildSnapshot(manual, sessionOverrides, values, m_generation + 1,
 			candidate, error))
 			return false;
 		if (current && SameEffectiveState(*current, *candidate))
@@ -416,7 +430,8 @@ namespace UnifiedProfileRuntime
 		const std::shared_ptr<const Snapshot> current =
 			std::atomic_load(&m_snapshot);
 		std::shared_ptr<const Snapshot> candidate;
-		if (!BuildSnapshot(current->manualSelections, sourceValues,
+		if (!BuildSnapshot(current->manualSelections,
+			current->sessionOverrideGroups, sourceValues,
 			m_generation + 1, candidate, error))
 			return false;
 		if (SameEffectiveState(*current, *candidate))
@@ -689,6 +704,7 @@ namespace UnifiedProfileRuntime
 
 	bool Runtime::BuildSnapshot(
 		const std::map<std::string, std::string>& manualSelections,
+		const std::set<std::string>& sessionOverrideGroups,
 		const DisplayRuleExpression::ValueLookup& sourceValues,
 		uint64_t generation, std::shared_ptr<const Snapshot>& snapshot,
 		std::string& error) const
@@ -703,9 +719,8 @@ namespace UnifiedProfileRuntime
 			return false;
 
 		// A saved key selection is a fallback for groups without a matching rule.
-		// Source-driven rules are authoritative: they must be able to move a
-		// persisted queue (or any other profile group) as the renderer/input
-		// changes without requiring the operator to first clear state.
+		// Source-driven rules can move persisted settings, while an explicit
+		// shortcut is a deliberate session override until this process exits.
 		std::map<std::string, std::string> effective = manualSelections;
 		for (const RendererProfileConfig::AutomaticSelection& selection :
 			automatic)
@@ -713,7 +728,9 @@ namespace UnifiedProfileRuntime
 			// A configured default supplies an otherwise-unselected group; it is
 			// not a source rule and must not cancel an operator shortcut. A real
 			// when: match remains authoritative over persisted state.
-			if (!selection.configuredDefault ||
+			if ((!selection.configuredDefault &&
+				sessionOverrideGroups.find(selection.group) ==
+					sessionOverrideGroups.end()) ||
 				effective.find(selection.group) == effective.end())
 				effective[selection.group] = selection.profile;
 		}
@@ -778,6 +795,7 @@ namespace UnifiedProfileRuntime
 		std::shared_ptr<Snapshot> next(new Snapshot());
 		next->generation = generation;
 		next->manualSelections = manualSelections;
+		next->sessionOverrideGroups = sessionOverrideGroups;
 		next->effectiveSelections = effective;
 		next->viewport = viewport;
 		next->queue = queue;
