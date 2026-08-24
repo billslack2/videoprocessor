@@ -17,11 +17,9 @@ namespace UnifiedProfileRuntime
 	struct Snapshot
 	{
 		uint64_t generation = 0;
-		// Manual selections are durable choices. Session overrides are created by
-		// an explicit shortcut and take precedence over matching source rules for
-		// this process only. Effective selections also include defaults/rules.
+		// Manual selections are durable user choices. Effective selections also
+		// include configured defaults and automatic source-driven choices.
 		std::map<std::string, std::string> manualSelections;
-		std::set<std::string> sessionOverrideGroups;
 		std::map<std::string, std::string> effectiveSelections;
 		RendererProfileConfig::ResolvedViewport viewport;
 		RendererProfileConfig::ResolvedQueue queue;
@@ -131,6 +129,9 @@ namespace UnifiedProfileRuntime
 		std::string m_configPath;
 		bool m_initialized = false;
 		uint64_t m_generation = 0;
+		// Runtime-only origin state. Keep it outside Snapshot because Snapshot is
+		// passed across the separately deployed VP Renderer DLL boundary.
+		std::set<std::string> m_sessionOverrideGroups;
 		std::shared_ptr<const Snapshot> m_snapshot;
 	};
 }

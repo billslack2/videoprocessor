@@ -2662,7 +2662,27 @@ namespace VideoProcessorTest
 			Assert::IsTrue(selection.snapshot != nullptr);
 			Assert::AreEqual("low_latency",
 				selection.snapshot->effectiveSelections.at("queue").c_str());
-			Assert::IsTrue(selection.snapshot->sessionOverrideGroups.count("queue") == 1);
+			UnifiedProfileRuntime::RefreshResult refreshed;
+			Assert::IsTrue(runtime.Refresh(
+				[](const std::string& variable, std::string& value)
+				{
+					if (variable == "renderer") { value = "VP Renderer"; return true; }
+					if (variable == "source_rate") { value = "59"; return true; }
+					return false;
+				}, refreshed, error), std::wstring(error.begin(), error.end()).c_str());
+			Assert::AreEqual("low_latency",
+				refreshed.snapshot->effectiveSelections.at("queue").c_str());
+
+			UnifiedProfileRuntime::Runtime restartedRuntime;
+			Assert::IsTrue(restartedRuntime.Initialize(config,
+				[](const std::string& variable, std::string& value)
+				{
+					if (variable == "renderer") { value = "VP Renderer"; return true; }
+					if (variable == "source_rate") { value = "59"; return true; }
+					return false;
+				}, error), std::wstring(error.begin(), error.end()).c_str());
+			Assert::AreEqual("vp_60", restartedRuntime.GetSnapshot()->
+				effectiveSelections.at("queue").c_str());
 			DeleteFileA(statePath.c_str());
 			DeleteFileA(path.c_str());
 		}

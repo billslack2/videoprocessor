@@ -40,7 +40,6 @@ namespace
 		const UnifiedProfileRuntime::Snapshot& right)
 	{
 		if (!(left.manualSelections == right.manualSelections &&
-			left.sessionOverrideGroups == right.sessionOverrideGroups &&
 			left.effectiveSelections == right.effectiveSelections &&
 			left.viewport.profile == right.viewport.profile &&
 			left.viewport.screenAspect.numerator ==
@@ -239,6 +238,7 @@ namespace UnifiedProfileRuntime
 			!LoadPersistedSelections(restored, error))
 			return false;
 
+		m_sessionOverrideGroups.clear();
 		std::shared_ptr<const Snapshot> initial;
 		if (!BuildSnapshot(restored, {}, sourceValues, 1, initial, error))
 			return false;
@@ -286,8 +286,7 @@ namespace UnifiedProfileRuntime
 		std::map<std::string, std::string> manual = previous ?
 			previous->manualSelections :
 			std::map<std::string, std::string>();
-		std::set<std::string> sessionOverrides = previous ?
-			previous->sessionOverrideGroups : std::set<std::string>();
+		std::set<std::string> sessionOverrides = m_sessionOverrideGroups;
 		for (auto selection = manual.begin(); selection != manual.end();)
 		{
 			const auto group = std::find_if(m_model.groups.begin(),
@@ -326,6 +325,7 @@ namespace UnifiedProfileRuntime
 		}
 
 		++m_generation;
+		m_sessionOverrideGroups = std::move(sessionOverrides);
 		std::atomic_store(&m_snapshot, candidate);
 		result.snapshot = candidate;
 		DebugLog::Log(
@@ -369,8 +369,7 @@ namespace UnifiedProfileRuntime
 		std::map<std::string, std::string> manual =
 			current ? current->manualSelections :
 			std::map<std::string, std::string>();
-		std::set<std::string> sessionOverrides = current ?
-			current->sessionOverrideGroups : std::set<std::string>();
+		std::set<std::string> sessionOverrides = m_sessionOverrideGroups;
 		for (const RendererProfileConfig::KeySelection& selection :
 			result.selections)
 		{
@@ -390,7 +389,10 @@ namespace UnifiedProfileRuntime
 		if (!BuildSnapshot(manual, sessionOverrides, values, m_generation + 1,
 			candidate, error))
 			return false;
-		if (current && SameEffectiveState(*current, *candidate))
+		const bool overrideStateChanged =
+			sessionOverrides != m_sessionOverrideGroups;
+		if (current && SameEffectiveState(*current, *candidate) &&
+			!overrideStateChanged)
 		{
 			result.snapshot = current;
 			return true;
@@ -403,6 +405,7 @@ namespace UnifiedProfileRuntime
 			return false;
 
 		++m_generation;
+		m_sessionOverrideGroups = std::move(sessionOverrides);
 		std::atomic_store(&m_snapshot, candidate);
 		result.changed = true;
 		result.snapshot = candidate;
@@ -431,7 +434,7 @@ namespace UnifiedProfileRuntime
 			std::atomic_load(&m_snapshot);
 		std::shared_ptr<const Snapshot> candidate;
 		if (!BuildSnapshot(current->manualSelections,
-			current->sessionOverrideGroups, sourceValues,
+			m_sessionOverrideGroups, sourceValues,
 			m_generation + 1, candidate, error))
 			return false;
 		if (SameEffectiveState(*current, *candidate))
@@ -795,7 +798,6 @@ namespace UnifiedProfileRuntime
 		std::shared_ptr<Snapshot> next(new Snapshot());
 		next->generation = generation;
 		next->manualSelections = manualSelections;
-		next->sessionOverrideGroups = sessionOverrideGroups;
 		next->effectiveSelections = effective;
 		next->viewport = viewport;
 		next->queue = queue;
