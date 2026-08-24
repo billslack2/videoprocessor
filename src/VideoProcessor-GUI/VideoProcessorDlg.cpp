@@ -6844,6 +6844,20 @@ void CVideoProcessorDlg::OnCommandConfigEditor()
 	m_configurationEditorLastRevealAttemptTick = 0;
 	DebugLog::Log(
 		"Configuration editor fresh reveal intent started: timeout_ms=20000");
+	// Config normally stays warm in the tray.  A reveal through its stable
+	// process event bypasses the association/reveal path below, so refresh the
+	// presentation target first.  Otherwise Config can retain the monitor from
+	// the previous reveal after VP has moved, or after fullscreen has retargeted
+	// a different display.
+	HWND existingEditor = FindConfigurationEditorForCurrentInstallation();
+	if (!existingEditor && IsConfigurationEditorTopLevel(
+		m_configurationEditorHwnd, m_configurationEditorProcessId, false))
+	{
+		existingEditor = m_configurationEditorHwnd;
+	}
+	TrackConfigurationEditor(existingEditor);
+	if (existingEditor)
+		PublishConfigurationEditorPresentationTarget(existingEditor);
 	if (m_configurationEditorProcessId &&
 		SignalConfigurationEditorReveal(m_configurationEditorProcessId))
 	{
@@ -6855,11 +6869,6 @@ void CVideoProcessorDlg::OnCommandConfigEditor()
 			m_configurationEditorProcessId);
 		return;
 	}
-	HWND existingEditor = FindConfigurationEditorForCurrentInstallation();
-	if (!existingEditor && IsConfigurationEditorTopLevel(
-		m_configurationEditorHwnd, m_configurationEditorProcessId, false))
-		existingEditor = m_configurationEditorHwnd;
-	TrackConfigurationEditor(existingEditor);
 	if (existingEditor && m_configurationEditorProcessId &&
 		SignalConfigurationEditorReveal(m_configurationEditorProcessId))
 	{
