@@ -1755,7 +1755,6 @@ namespace VideoProcessorTest
 				[](const std::string&, std::string&) { return false; }, error),
 				std::wstring(error.begin(), error.end()).c_str());
 
-			const auto initial = runtime.GetSnapshot();
 			UnifiedProfileRuntime::SelectionResult queueSelection;
 			Assert::IsTrue(runtime.SelectKey("F2",
 				[](const std::string&, std::string&) { return false; },
@@ -1763,8 +1762,8 @@ namespace VideoProcessorTest
 			Assert::IsTrue(queueSelection.changed);
 			Assert::IsTrue(runtime.GetSnapshot() == queueSelection.snapshot);
 			Assert::IsTrue(QueueProfileRestartPolicy::
-				RequiresRestartAfterManualSelection(queueSelection.changed,
-					initial->queue.profile, queueSelection.snapshot->queue.profile));
+				RequiresResetAfterManualSelection(true,
+					queueSelection.snapshot->queue.profile));
 
 			QueueProfileRestartPolicy::PendingRequest pending;
 			Assert::IsTrue(QueueProfileRestartPolicy::EnqueueResult::Queued ==
@@ -1772,51 +1771,44 @@ namespace VideoProcessorTest
 					queueSelection.snapshot->generation,
 					queueSelection.snapshot->queue.profile, "shortcut:F2"));
 
-			const auto beforeReselect = runtime.GetSnapshot();
 			UnifiedProfileRuntime::SelectionResult reselect;
 			Assert::IsTrue(runtime.SelectKey("F2",
 				[](const std::string&, std::string&) { return false; }, reselect,
 				error));
 			Assert::IsFalse(reselect.changed);
-			Assert::IsFalse(QueueProfileRestartPolicy::
-				RequiresRestartAfterManualSelection(reselect.changed,
-					beforeReselect->queue.profile, reselect.snapshot->queue.profile));
+			Assert::IsTrue(QueueProfileRestartPolicy::
+				RequiresResetAfterManualSelection(true,
+					reselect.snapshot->queue.profile));
 
-			const auto beforeViewportSelection = runtime.GetSnapshot();
 			UnifiedProfileRuntime::SelectionResult viewportSelection;
 			Assert::IsTrue(runtime.SelectKey("F3",
 				[](const std::string&, std::string&) { return false; },
 				viewportSelection, error));
 			Assert::IsTrue(viewportSelection.changed);
 			Assert::IsFalse(QueueProfileRestartPolicy::
-				RequiresRestartAfterManualSelection(viewportSelection.changed,
-					beforeViewportSelection->queue.profile,
+				RequiresResetAfterManualSelection(false,
 					viewportSelection.snapshot->queue.profile));
 			Assert::IsFalse(QueueProfileRestartPolicy::
-				RequiresRestartAfterManualSelection(false, "low_latency", "base"));
+				RequiresResetAfterManualSelection(false, "base"));
 
-			const auto beforeFirstRapidSelection = runtime.GetSnapshot();
 			UnifiedProfileRuntime::SelectionResult firstRapidSelection;
 			Assert::IsTrue(runtime.SelectKey("F1",
 				[](const std::string&, std::string&) { return false; },
 				firstRapidSelection, error));
 			Assert::IsTrue(QueueProfileRestartPolicy::
-				RequiresRestartAfterManualSelection(firstRapidSelection.changed,
-					beforeFirstRapidSelection->queue.profile,
+				RequiresResetAfterManualSelection(true,
 					firstRapidSelection.snapshot->queue.profile));
 			Assert::IsTrue(QueueProfileRestartPolicy::EnqueueResult::Coalesced ==
 				QueueProfileRestartPolicy::Enqueue(pending,
 					firstRapidSelection.snapshot->generation,
 					firstRapidSelection.snapshot->queue.profile, "shortcut:F1"));
 
-			const auto beforeFinalRapidSelection = runtime.GetSnapshot();
 			UnifiedProfileRuntime::SelectionResult finalRapidSelection;
 			Assert::IsTrue(runtime.SelectKey("F2",
 				[](const std::string&, std::string&) { return false; },
 				finalRapidSelection, error));
 			Assert::IsTrue(QueueProfileRestartPolicy::
-				RequiresRestartAfterManualSelection(finalRapidSelection.changed,
-					beforeFinalRapidSelection->queue.profile,
+				RequiresResetAfterManualSelection(true,
 					finalRapidSelection.snapshot->queue.profile));
 			Assert::IsTrue(QueueProfileRestartPolicy::EnqueueResult::Coalesced ==
 				QueueProfileRestartPolicy::Enqueue(pending,
