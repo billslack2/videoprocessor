@@ -1021,6 +1021,16 @@ namespace
 	bool LookupUnifiedSourceValue(const VideoState& state,
 		const std::string& variable, std::string& value)
 	{
+		// This lookup is only used by the built-in renderer while it resolves
+		// its local copy of the unified configuration. The application owns the
+		// cross-renderer selection, but returning the stable built-in identity
+		// here lets renderer-qualified rules safely evaluate false for madVR
+		// instead of rejecting the complete configuration.
+		if (variable == "renderer")
+		{
+			value = "VP Renderer";
+			return true;
+		}
 		return StateVariables::LookupVideoState(state, variable, value);
 	}
 

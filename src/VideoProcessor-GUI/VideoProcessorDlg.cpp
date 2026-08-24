@@ -10541,6 +10541,35 @@ void CVideoProcessorDlg::ApplyUnifiedProfileSnapshot(
 		return;
 	PublishActiveProfileStatus();
 
+	// A paired renderer/profile shortcut can commit a new queue while the old
+	// renderer is being retired. In particular, a DirectShow graph owns madVR's
+	// filter callbacks until its asynchronous teardown completes. Do not mutate
+	// that old graph with settings meant for the selected replacement renderer.
+	// The committed snapshot is retained by m_profileRuntime and is applied when
+	// the fresh renderer is constructed below the lifecycle boundary.
+	CString selectedRendererName;
+	const int selectedRenderer = m_rendererCombo.GetCurSel();
+	if (selectedRenderer >= 0)
+		m_rendererCombo.GetLBText(selectedRenderer, selectedRendererName);
+	const bool selectedRendererDiffers = m_videoRenderer &&
+		!selectedRendererName.IsEmpty() &&
+		!m_activeRendererName.IsEmpty() &&
+		selectedRendererName.CompareNoCase(m_activeRendererName) != 0;
+	if (m_rendererState == RendererState::RENDERSTATE_STOPPING ||
+		selectedRendererDiffers)
+	{
+		DebugLog::Log(
+			"Unified profile application deferred: renderer_state=%d active=%S selected=%S queue=%s reason=renderer-transition",
+			static_cast<int>(m_rendererState),
+			m_activeRendererName.IsEmpty() ? L"(none)" :
+				m_activeRendererName.GetString(),
+			selectedRendererName.IsEmpty() ? L"(none)" :
+				selectedRendererName.GetString(),
+			snapshot->queue.profile.empty() ? "(none)" :
+				snapshot->queue.profile.c_str());
+		return;
+	}
+
 	bool lldvPolicyChanged = false;
 	if (!snapshot->lldv.profile.empty())
 	{
