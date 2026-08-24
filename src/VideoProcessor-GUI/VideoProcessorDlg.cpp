@@ -1053,13 +1053,15 @@ HACCEL CreateConfiguredAccelerators(
 class GlobalShortcutObserver
 {
 public:
-	static bool Start(HWND target, const std::vector<ACCEL>& accelerators)
+	static bool Start(HWND target, const std::vector<ACCEL>& accelerators,
+		bool sameProcessOnly = false)
 	{
 		Stop();
 		if (!target || accelerators.empty())
 			return false;
 		s_target = target;
 		s_accelerators = accelerators;
+		s_sameProcessOnly = sameProcessOnly;
 		s_readyEvent = ::CreateEventW(nullptr, TRUE, FALSE, nullptr);
 		if (!s_readyEvent)
 		{
@@ -1109,6 +1111,7 @@ private:
 		s_target = nullptr;
 		s_accelerators.clear();
 		s_pressedKeys.clear();
+		s_sameProcessOnly = false;
 	}
 
 	static DWORD WINAPI ThreadProcedure(void*)
@@ -1163,8 +1166,15 @@ private:
 		const bool configurationModal =
 			configurationEditorProcessId != 0 &&
 			foregroundProcessId == configurationEditorProcessId;
-		if (!ConfigurationLiveApply::MayDispatchGlobalShortcut(
-			::GetCurrentProcessId(), foregroundProcessId, configurationModal))
+		// When foreground-only shortcuts are configured, retain only the Config
+		// chord here and accept it only while a VP-owned presentation window is
+		// foreground. Fullscreen video does not route keyboard input through the
+		// main dialog, so without this narrow observer Ctrl+Shift+S is lost.
+		const bool mayDispatch = s_sameProcessOnly ?
+			!configurationModal && foregroundProcessId == ::GetCurrentProcessId() :
+			ConfigurationLiveApply::MayDispatchGlobalShortcut(
+				::GetCurrentProcessId(), foregroundProcessId, configurationModal);
+		if (!mayDispatch)
 		{
 			return ::CallNextHookEx(s_hook, code, message, parameter);
 		}
@@ -1254,6 +1264,7 @@ private:
 	static HWND s_target;
 	static std::vector<ACCEL> s_accelerators;
 	static std::set<WORD> s_pressedKeys;
+	static bool s_sameProcessOnly;
 };
 
 HANDLE GlobalShortcutObserver::s_thread = nullptr;
@@ -1263,6 +1274,7 @@ HHOOK GlobalShortcutObserver::s_hook = nullptr;
 HWND GlobalShortcutObserver::s_target = nullptr;
 std::vector<ACCEL> GlobalShortcutObserver::s_accelerators;
 std::set<WORD> GlobalShortcutObserver::s_pressedKeys;
+bool GlobalShortcutObserver::s_sameProcessOnly = false;
 
 struct DisplayTimingSnapshot
 {
@@ -2193,24 +2205,38 @@ void CVideoProcessorDlg::ReloadConfiguredAccelerators()
 void CVideoProcessorDlg::StartGlobalShortcutObserver()
 {
 	StopGlobalShortcutObserver();
-	if (!ConfigurationLiveApply::ShouldEnableBackgroundShortcuts(
+	const bool enableAllBackgroundShortcuts =
+		ConfigurationLiveApply::ShouldEnableBackgroundShortcuts(
 		m_interfaceMode == ApplicationInterface::Mode::Modern, m_hideUI,
-		m_shortcutsForegroundOnly) ||
-		!GetSafeHwnd())
+		m_shortcutsForegroundOnly);
+	std::vector<ACCEL> observedAccelerators = m_configuredAccelerators;
+	const bool sameProcessOnly = !enableAllBackgroundShortcuts &&
+		m_shortcutsForegroundOnly;
+	if (sameProcessOnly)
+	{
+		observedAccelerators.erase(std::remove_if(observedAccelerators.begin(),
+			observedAccelerators.end(), [](const ACCEL& accelerator)
+			{
+				return accelerator.cmd != ID_COMMAND_CONFIG_EDITOR;
+			}), observedAccelerators.end());
+	}
+	if ((!enableAllBackgroundShortcuts && !sameProcessOnly) ||
+		!GetSafeHwnd() || observedAccelerators.empty())
 	{
 		DebugLog::Log(
-			"Background shortcut observer suppressed: modern=%d noui=%d foreground_only=%d",
+			"Background shortcut observer suppressed: modern=%d noui=%d foreground_only=%d config_only=%d",
 			m_interfaceMode == ApplicationInterface::Mode::Modern ? 1 : 0,
-			m_hideUI ? 1 : 0, m_shortcutsForegroundOnly ? 1 : 0);
+			m_hideUI ? 1 : 0, m_shortcutsForegroundOnly ? 1 : 0,
+			sameProcessOnly ? 1 : 0);
 		return;
 	}
 
 	const bool observerStarted = GlobalShortcutObserver::Start(GetSafeHwnd(),
-		m_configuredAccelerators);
+		observedAccelerators, sameProcessOnly);
 	DebugLog::Log(
-		"Background shortcut observer %s (%zu bindings)",
+		"Background shortcut observer %s (%zu bindings, config_only=%d)",
 		observerStarted ? "started" : "unavailable",
-		m_configuredAccelerators.size());
+		observedAccelerators.size(), sameProcessOnly ? 1 : 0);
 }
 
 void CVideoProcessorDlg::StopGlobalShortcutObserver()
@@ -9554,9 +9580,28 @@ void CVideoProcessorDlg::FullScreenVideoWindowConstruct()
 		"Fullscreen monitor placement verified: requested=%p actual=%p matched=%d",
 		reinterpret_cast<void*>(hmon), reinterpret_cast<void*>(actualMonitor),
 		actualMonitor == hmon ? 1 : 0);
+	// Fullscreen is an explicit VP presentation transition. Activate its native
+	// surface now, while the transition is current, so keyboard shortcuts keep
+	// working immediately after the video expands. The later placement timer is
+	// intentionally passive; it must not steal focus after the operator has
+	// moved to another application.
+	if ((!configurationEditor || !::IsWindowVisible(configurationEditor)) &&
+		fullscreenHwnd && ::IsWindow(fullscreenHwnd))
+	{
+		::ShowWindow(fullscreenHwnd, SW_RESTORE);
+		::BringWindowToTop(fullscreenHwnd);
+		const BOOL activated = ::SetForegroundWindow(fullscreenHwnd);
+		::SetFocus(fullscreenHwnd);
+		DebugLog::Log(
+			"Fullscreen presentation activation: target=%p requested=%d foreground=%p acquired=%d",
+			reinterpret_cast<void*>(fullscreenHwnd), activated ? 1 : 0,
+			reinterpret_cast<void*>(::GetForegroundWindow()),
+			::GetForegroundWindow() == fullscreenHwnd ? 1 : 0);
+	}
 
 	// One normal delayed focus pass gives the renderer and the shell time to
-	// finish fullscreen creation. It is not retried or coupled to Config.
+	// finish fullscreen creation. It corrects placement only; activation above
+	// remains the one user-initiated fullscreen focus handoff.
 	SetTimer(FULLSCREEN_FOCUS_TIMER_ID, 5000, nullptr);
 }
 
@@ -12380,9 +12425,9 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 		return;
 	}
 	
-	// Correct fullscreen placement after the shell/display settles. Renderer
-	// input activation belongs to the renderer's own lifecycle and HWND thread;
-	// this host-only timer must never take keyboard focus.
+	// Correct fullscreen placement after the shell/display settles. The direct
+	// fullscreen transition already activated the presentation target; this
+	// host-only timer must never take keyboard focus later.
 	if (nIDEvent == FULLSCREEN_FOCUS_TIMER_ID)
 	{
 		KillTimer(FULLSCREEN_FOCUS_TIMER_ID);
