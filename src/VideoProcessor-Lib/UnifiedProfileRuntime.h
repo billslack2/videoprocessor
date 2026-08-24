@@ -7,6 +7,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -16,8 +17,8 @@ namespace UnifiedProfileRuntime
 	struct Snapshot
 	{
 		uint64_t generation = 0;
-		// Manual selections are the durable user choices. Effective selections
-		// also include configured defaults and automatic source-driven choices.
+		// Manual selections are durable user choices. Effective selections also
+		// include configured defaults and automatic source-driven choices.
 		std::map<std::string, std::string> manualSelections;
 		std::map<std::string, std::string> effectiveSelections;
 		RendererProfileConfig::ResolvedViewport viewport;
@@ -78,10 +79,17 @@ namespace UnifiedProfileRuntime
 			const DisplayRuleExpression::ValueLookup& sourceValues,
 			SelectionResult& result, std::string& error);
 
-		// Re-resolves automatic profiles after source state changes. Manual
-		// selections remain authoritative until reset by their group expression.
+		// Re-resolves automatic profiles after source state changes. Persisted
+		// choices are fallbacks; a live shortcut remains a session override.
 		bool Refresh(const DisplayRuleExpression::ValueLookup& sourceValues,
 			RefreshResult& result, std::string& error);
+
+		// Releases every live shortcut override and immediately resolves the
+		// configured rules again. Durable manual selections remain available as
+		// fallbacks and are not rewritten.
+		bool ReapplyRules(const DisplayRuleExpression::ValueLookup& sourceValues,
+			RefreshResult& result, std::vector<std::string>& clearedGroups,
+			std::string& error);
 
 		// Emits an event against the current committed snapshot. This is used for
 		// renderer-ready, which has no profile transition of its own.
@@ -105,6 +113,7 @@ namespace UnifiedProfileRuntime
 			std::string& error) const;
 		bool BuildSnapshot(
 			const std::map<std::string, std::string>& manualSelections,
+			const std::set<std::string>& sessionOverrideGroups,
 			const DisplayRuleExpression::ValueLookup& sourceValues,
 			uint64_t generation, std::shared_ptr<const Snapshot>& snapshot,
 			std::string& error) const;
@@ -127,6 +136,9 @@ namespace UnifiedProfileRuntime
 		std::string m_configPath;
 		bool m_initialized = false;
 		uint64_t m_generation = 0;
+		// Runtime-only origin state. Keep it outside Snapshot because Snapshot is
+		// passed across the separately deployed VP Renderer DLL boundary.
+		std::set<std::string> m_sessionOverrideGroups;
 		std::shared_ptr<const Snapshot> m_snapshot;
 	};
 }

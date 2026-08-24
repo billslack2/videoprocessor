@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <string>
 
-// Keeps the UI-side restart trigger tied to a committed, user-initiated queue
+// Keeps the UI-side reset trigger tied to a committed, user-initiated queue
 // selection. The renderer lifecycle owns execution; this policy only retains
 // the newest request while the shortcut burst settles.
 namespace QueueProfileRestartPolicy
@@ -23,11 +23,13 @@ namespace QueueProfileRestartPolicy
 		Coalesced
 	};
 
-	inline bool RequiresRestartAfterManualSelection(bool selectionChanged,
-		const std::string& previousProfile, const std::string& currentProfile)
+	inline bool RequiresResetAfterManualSelection(bool queueWasSelected,
+		const std::string& currentProfile)
 	{
-		return selectionChanged && !currentProfile.empty() &&
-			previousProfile != currentProfile;
+		// Re-selecting an active queue profile is intentionally meaningful: it
+		// uses the normal queue reset path to discard frames buffered under the
+		// old queue epoch.
+		return queueWasSelected && !currentProfile.empty();
 	}
 
 	inline EnqueueResult Enqueue(PendingRequest& pending,

@@ -290,7 +290,8 @@ Options:
       Set the maximum renderer frame queue size.
 
   /reset_after_render_restart_seconds <positive integer>
-      Delay the post-start/restart queue recovery reset (default: 5 seconds).
+      Delay queue resets after a queue-profile selection or renderer restart
+      (default: 5 seconds).
 
   /reset_queue_too_large_percent <1-200>
       Queue high-water threshold for recovery (default: 75 percent).

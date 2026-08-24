@@ -92,11 +92,11 @@ static_assert(WM_MESSAGE_DIRECTSHOW_NOTIFICATION !=
 #define SHADER_SHORTCUT_DEBOUNCE_MS 75
 #define LLDV_PROFILE_APPLY_TIMER_ID 12
 #define CONFIGURATION_LIVE_APPLY_TIMER_ID 13
-#define QUEUE_PROFILE_RESTART_TIMER_ID 14
+#define QUEUE_PROFILE_RESET_TIMER_ID 14
 #define CONFIGURATION_EDITOR_HOTKEY_ID 0x5650
 #define SHADER_RULE_REFRESH_INTERVAL_MS 25
 #define CONFIGURATION_LIVE_APPLY_INTERVAL_MS 250
-#define QUEUE_PROFILE_RESTART_DEBOUNCE_MS 100
+#define QUEUE_PROFILE_RESET_DEBOUNCE_MS 100
 #define BACKGROUND_SHORTCUT_DUPLICATE_WINDOW_MS 250
 
 
@@ -242,6 +242,7 @@ public:
 	void OnCommandFullScreenExit();
 	void OnCommandRendererReset();
 	void OnCommandRendererRestart();
+	void OnCommandReapplyRules();
 	void OnCommandDisplayRuleAuto();
 	afx_msg void OnCommandShaderRule(UINT commandId);
 	afx_msg void OnCommandDisplayRule(UINT commandId);
@@ -759,11 +760,7 @@ protected:
 	std::map<WORD, CString> m_unifiedProfileShortcutKeys;
 	WORD m_lastUnifiedProfileCommand = 0;
 	DWORD m_lastUnifiedProfileCommandTime = 0;
-	QueueProfileRestartPolicy::PendingRequest m_queueProfileRestartRequest;
-	bool m_queueProfileRestartCompletionPending = false;
-	uint32_t m_queueProfileRestartStartingGeneration = 0;
-	std::string m_queueProfileRestartCompletionProfile;
-	std::string m_queueProfileRestartCompletionSource;
+	QueueProfileRestartPolicy::PendingRequest m_queueProfileResetRequest;
 
 	uint32_t m_timerSeconds = 0;
 
@@ -969,11 +966,11 @@ protected:
 	void PublishActiveProfileStatus();
 	void ApplyUnifiedProfileSnapshot(
 		const std::shared_ptr<const UnifiedProfileRuntime::Snapshot>& snapshot,
-		bool allowRestart, bool queueProfileRestart = false);
-	void QueueUnifiedQueueProfileRendererRestart(
+		bool allowRestart, bool queueProfileResetPending = false);
+	void QueueUnifiedQueueProfileReset(
 		const std::shared_ptr<const UnifiedProfileRuntime::Snapshot>& snapshot,
 		const std::string& source);
-	void DispatchQueuedQueueProfileRendererRestart();
+	void DispatchQueuedQueueProfileReset();
 	void ScheduleUnifiedProfileActions(
 		const std::vector<UnifiedProfileRuntime::ActionInvocation>& actions);
 	void PublishUnifiedProfileEvent(const std::string& event,

@@ -1755,7 +1755,6 @@ namespace VideoProcessorTest
 				[](const std::string&, std::string&) { return false; }, error),
 				std::wstring(error.begin(), error.end()).c_str());
 
-			const auto initial = runtime.GetSnapshot();
 			UnifiedProfileRuntime::SelectionResult queueSelection;
 			Assert::IsTrue(runtime.SelectKey("F2",
 				[](const std::string&, std::string&) { return false; },
@@ -1763,8 +1762,8 @@ namespace VideoProcessorTest
 			Assert::IsTrue(queueSelection.changed);
 			Assert::IsTrue(runtime.GetSnapshot() == queueSelection.snapshot);
 			Assert::IsTrue(QueueProfileRestartPolicy::
-				RequiresRestartAfterManualSelection(queueSelection.changed,
-					initial->queue.profile, queueSelection.snapshot->queue.profile));
+				RequiresResetAfterManualSelection(true,
+					queueSelection.snapshot->queue.profile));
 
 			QueueProfileRestartPolicy::PendingRequest pending;
 			Assert::IsTrue(QueueProfileRestartPolicy::EnqueueResult::Queued ==
@@ -1772,51 +1771,44 @@ namespace VideoProcessorTest
 					queueSelection.snapshot->generation,
 					queueSelection.snapshot->queue.profile, "shortcut:F2"));
 
-			const auto beforeReselect = runtime.GetSnapshot();
 			UnifiedProfileRuntime::SelectionResult reselect;
 			Assert::IsTrue(runtime.SelectKey("F2",
 				[](const std::string&, std::string&) { return false; }, reselect,
 				error));
 			Assert::IsFalse(reselect.changed);
-			Assert::IsFalse(QueueProfileRestartPolicy::
-				RequiresRestartAfterManualSelection(reselect.changed,
-					beforeReselect->queue.profile, reselect.snapshot->queue.profile));
+			Assert::IsTrue(QueueProfileRestartPolicy::
+				RequiresResetAfterManualSelection(true,
+					reselect.snapshot->queue.profile));
 
-			const auto beforeViewportSelection = runtime.GetSnapshot();
 			UnifiedProfileRuntime::SelectionResult viewportSelection;
 			Assert::IsTrue(runtime.SelectKey("F3",
 				[](const std::string&, std::string&) { return false; },
 				viewportSelection, error));
 			Assert::IsTrue(viewportSelection.changed);
 			Assert::IsFalse(QueueProfileRestartPolicy::
-				RequiresRestartAfterManualSelection(viewportSelection.changed,
-					beforeViewportSelection->queue.profile,
+				RequiresResetAfterManualSelection(false,
 					viewportSelection.snapshot->queue.profile));
 			Assert::IsFalse(QueueProfileRestartPolicy::
-				RequiresRestartAfterManualSelection(false, "low_latency", "base"));
+				RequiresResetAfterManualSelection(false, "base"));
 
-			const auto beforeFirstRapidSelection = runtime.GetSnapshot();
 			UnifiedProfileRuntime::SelectionResult firstRapidSelection;
 			Assert::IsTrue(runtime.SelectKey("F1",
 				[](const std::string&, std::string&) { return false; },
 				firstRapidSelection, error));
 			Assert::IsTrue(QueueProfileRestartPolicy::
-				RequiresRestartAfterManualSelection(firstRapidSelection.changed,
-					beforeFirstRapidSelection->queue.profile,
+				RequiresResetAfterManualSelection(true,
 					firstRapidSelection.snapshot->queue.profile));
 			Assert::IsTrue(QueueProfileRestartPolicy::EnqueueResult::Coalesced ==
 				QueueProfileRestartPolicy::Enqueue(pending,
 					firstRapidSelection.snapshot->generation,
 					firstRapidSelection.snapshot->queue.profile, "shortcut:F1"));
 
-			const auto beforeFinalRapidSelection = runtime.GetSnapshot();
 			UnifiedProfileRuntime::SelectionResult finalRapidSelection;
 			Assert::IsTrue(runtime.SelectKey("F2",
 				[](const std::string&, std::string&) { return false; },
 				finalRapidSelection, error));
 			Assert::IsTrue(QueueProfileRestartPolicy::
-				RequiresRestartAfterManualSelection(finalRapidSelection.changed,
-					beforeFinalRapidSelection->queue.profile,
+				RequiresResetAfterManualSelection(true,
 					finalRapidSelection.snapshot->queue.profile));
 			Assert::IsTrue(QueueProfileRestartPolicy::EnqueueResult::Coalesced ==
 				QueueProfileRestartPolicy::Enqueue(pending,
@@ -2604,6 +2596,145 @@ namespace VideoProcessorTest
 			Assert::AreEqual("madvr", selectQueue("madVR", "59.94").c_str());
 			Assert::AreEqual("vp_60", selectQueue("VP Renderer", "59.94").c_str());
 			Assert::AreEqual("base", selectQueue("VP Renderer", "23.976").c_str());
+			DeleteFileA(path.c_str());
+		}
+
+		TEST_METHOD(AutomaticQueueRuleOverridesPersistedQueueSelection)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(ARRAYSIZE(temporaryDirectory),
+				temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) +
+				"VideoProcessor-automatic-queue-overrides-state.cfg";
+			const std::string statePath = path.substr(0,
+				path.find_last_of('.')) + ".state";
+			DeleteFileA(path.c_str());
+			DeleteFileA(statePath.c_str());
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[queue.base]\nqueue_size: 16\n"
+					"[queue.vp_24]\nwhen: ${renderer}==\"VP Renderer\" && ${source_rate}<=30\nqueue_size: 8\n"
+					"[queue.vp_60]\nwhen: ${renderer}==\"VP Renderer\" && ${source_rate}>30\nqueue_size: 32\n"
+					"[queue.low_latency]\nshortcut: Shift+L\nqueue_size: 1\n";
+			}
+			{
+				std::ofstream file(statePath, std::ios::out | std::ios::trunc);
+				file << "# Managed by VideoProcessor.\nprofile.queue: vp_24\n";
+			}
+
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			UnifiedProfileRuntime::Runtime runtime;
+			std::string error;
+			Assert::IsTrue(runtime.Initialize(config,
+				[](const std::string& variable, std::string& value)
+				{
+					if (variable == "renderer") { value = "VP Renderer"; return true; }
+					if (variable == "source_rate") { value = "59"; return true; }
+					return false;
+				}, error), std::wstring(error.begin(), error.end()).c_str());
+			const std::shared_ptr<const UnifiedProfileRuntime::Snapshot> snapshot =
+				runtime.GetSnapshot();
+			Assert::IsTrue(snapshot != nullptr);
+			Assert::AreEqual("vp_24", snapshot->manualSelections.at("queue").c_str());
+			Assert::AreEqual("vp_60", snapshot->effectiveSelections.at("queue").c_str());
+
+			UnifiedProfileRuntime::Runtime fallbackRuntime;
+			Assert::IsTrue(fallbackRuntime.Initialize(config,
+				[](const std::string& variable, std::string& value)
+				{
+					if (variable == "renderer") { value = "VP Renderer"; return true; }
+					return false;
+				}, error), std::wstring(error.begin(), error.end()).c_str());
+			const std::shared_ptr<const UnifiedProfileRuntime::Snapshot> fallback =
+				fallbackRuntime.GetSnapshot();
+			Assert::IsTrue(fallback != nullptr);
+			Assert::AreEqual("vp_24", fallback->effectiveSelections.at("queue").c_str());
+
+			UnifiedProfileRuntime::SelectionResult selection;
+			Assert::IsTrue(runtime.SelectKey("Shift+L",
+				[](const std::string& variable, std::string& value)
+				{
+					if (variable == "renderer") { value = "VP Renderer"; return true; }
+					if (variable == "source_rate") { value = "59"; return true; }
+					return false;
+				}, selection, error), std::wstring(error.begin(), error.end()).c_str());
+			Assert::IsTrue(selection.snapshot != nullptr);
+			Assert::AreEqual("low_latency",
+				selection.snapshot->effectiveSelections.at("queue").c_str());
+			UnifiedProfileRuntime::RefreshResult refreshed;
+			Assert::IsTrue(runtime.Refresh(
+				[](const std::string& variable, std::string& value)
+				{
+					if (variable == "renderer") { value = "VP Renderer"; return true; }
+					if (variable == "source_rate") { value = "59"; return true; }
+					return false;
+				}, refreshed, error), std::wstring(error.begin(), error.end()).c_str());
+			Assert::AreEqual("low_latency",
+				refreshed.snapshot->effectiveSelections.at("queue").c_str());
+
+			UnifiedProfileRuntime::RefreshResult reapplied;
+			std::vector<std::string> clearedGroups;
+			Assert::IsTrue(runtime.ReapplyRules(
+				[](const std::string& variable, std::string& value)
+				{
+					if (variable == "renderer") { value = "VP Renderer"; return true; }
+					if (variable == "source_rate") { value = "59"; return true; }
+					return false;
+				}, reapplied, clearedGroups, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			Assert::IsTrue(reapplied.changed);
+			Assert::AreEqual(static_cast<size_t>(1), clearedGroups.size());
+			Assert::AreEqual("queue", clearedGroups.front().c_str());
+			Assert::AreEqual("vp_60",
+				reapplied.snapshot->effectiveSelections.at("queue").c_str());
+			Assert::AreEqual("low_latency",
+				reapplied.snapshot->manualSelections.at("queue").c_str());
+
+			std::ifstream persistedState(statePath);
+			const std::string persistedText((std::istreambuf_iterator<char>(persistedState)),
+				std::istreambuf_iterator<char>());
+			Assert::IsTrue(persistedText.find("profile.queue: low_latency") !=
+				std::string::npos);
+
+			UnifiedProfileRuntime::RefreshResult idempotent;
+			clearedGroups.clear();
+			Assert::IsTrue(runtime.ReapplyRules(
+				[](const std::string& variable, std::string& value)
+				{
+					if (variable == "renderer") { value = "VP Renderer"; return true; }
+					if (variable == "source_rate") { value = "59"; return true; }
+					return false;
+				}, idempotent, clearedGroups, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			Assert::IsFalse(idempotent.changed);
+			Assert::IsTrue(clearedGroups.empty());
+			Assert::AreEqual("vp_60",
+				idempotent.snapshot->effectiveSelections.at("queue").c_str());
+
+			UnifiedProfileRuntime::RefreshResult rememberedFallback;
+			Assert::IsTrue(runtime.Refresh(
+				[](const std::string& variable, std::string& value)
+				{
+					if (variable == "renderer") { value = "VP Renderer"; return true; }
+					return false;
+				}, rememberedFallback, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			Assert::IsTrue(rememberedFallback.changed);
+			Assert::AreEqual("low_latency", rememberedFallback.snapshot->
+				effectiveSelections.at("queue").c_str());
+
+			UnifiedProfileRuntime::Runtime restartedRuntime;
+			Assert::IsTrue(restartedRuntime.Initialize(config,
+				[](const std::string& variable, std::string& value)
+				{
+					if (variable == "renderer") { value = "VP Renderer"; return true; }
+					if (variable == "source_rate") { value = "59"; return true; }
+					return false;
+				}, error), std::wstring(error.begin(), error.end()).c_str());
+			Assert::AreEqual("vp_60", restartedRuntime.GetSnapshot()->
+				effectiveSelections.at("queue").c_str());
+			DeleteFileA(statePath.c_str());
 			DeleteFileA(path.c_str());
 		}
 

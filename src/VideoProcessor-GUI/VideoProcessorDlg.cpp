@@ -470,6 +470,7 @@ const ShortcutDefinition SHORTCUT_DEFINITIONS[] =
 		ConfigurationLiveApply::ViewToggleDefaultModifiers },
 	{ "toggle_stats_overlay",  ID_COMMAND_TOGGLE_STATS_OVERLAY,   'I',       FCONTROL },
 	{ "capture_rendered_output", ID_COMMAND_CAPTURE_RENDERED_OUTPUT, 'S',     FCONTROL | FALT },
+	{ "reapply_rules",         ID_COMMAND_REAPPLY_RULES,            0,         0 },
 	{ "pq_set",                ID_COMMAND_PQ_SET,                 'P',       FCONTROL | FSHIFT },
 	{ "renderer_restart",      ID_COMMAND_RENDERER_RESTART,       'R',       FSHIFT },
 	{ "renderer_reset",        ID_COMMAND_RENDERER_RESET,         'R',       0 },
@@ -708,6 +709,7 @@ HACCEL CreateConfiguredAccelerators(
 		if (hasUnifiedRendererConfig && definition.rendererSpecific)
 			continue;
 		ACCEL accelerator = { static_cast<BYTE>(FVIRTKEY | definition.defaultModifiers), definition.defaultKey, definition.command };
+		bool hasBinding = definition.defaultKey != 0;
 		std::string configuredValue;
 		const ConfigFile& config =
 			definition.rendererSpecific ? rendererConfig : mainConfig;
@@ -727,6 +729,7 @@ HACCEL CreateConfiguredAccelerators(
 			{
 				configuredAccelerator.cmd = definition.command;
 				accelerator = configuredAccelerator;
+				hasBinding = true;
 			}
 			else if (rejectInvalidBindings)
 			{
@@ -735,6 +738,8 @@ HACCEL CreateConfiguredAccelerators(
 				return nullptr;
 			}
 		}
+		if (!hasBinding)
+			continue;
 
 		const unsigned int binding = (static_cast<unsigned int>(accelerator.fVirt) << 16) | accelerator.key;
 		if (bindings.insert(binding).second)
@@ -751,6 +756,8 @@ HACCEL CreateConfiguredAccelerators(
 			}
 			// A duplicate user binding is ambiguous, so retain the command's
 			// compiled default when it is still available.
+			if (definition.defaultKey == 0)
+				continue;
 			accelerator = { static_cast<BYTE>(FVIRTKEY | definition.defaultModifiers), definition.defaultKey, definition.command };
 			const unsigned int defaultBinding = (static_cast<unsigned int>(accelerator.fVirt) << 16) | accelerator.key;
 			if (bindings.insert(defaultBinding).second)
@@ -1964,6 +1971,7 @@ BEGIN_MESSAGE_MAP(CVideoProcessorDlg, CDialog)
 	ON_COMMAND(ID_COMMAND_FULLSCREEN_EXIT, &CVideoProcessorDlg::OnCommandFullScreenExit)
 	ON_COMMAND(ID_COMMAND_RENDERER_RESET, &CVideoProcessorDlg::OnCommandRendererReset)
 	ON_COMMAND(ID_COMMAND_RENDERER_RESTART, &CVideoProcessorDlg::OnCommandRendererRestart)
+	ON_COMMAND(ID_COMMAND_REAPPLY_RULES, &CVideoProcessorDlg::OnCommandReapplyRules)
 
 	ON_COMMAND(ID_COMMAND_PQ_SET, &CVideoProcessorDlg::OnCommandPQSet)
 	ON_COMMAND(ID_COMMAND_AUTO_SET, &CVideoProcessorDlg::OnCommandAutoSet)
@@ -6203,24 +6211,15 @@ LRESULT CVideoProcessorDlg::OnMessageRendererStateChange(WPARAM wParam, LPARAM l
 			DbgLog((LOG_TRACE, 1,
 				TEXT("LLDV confirmed during renderer startup - scheduling renderer restart")));
 		}
-		if (m_queueProfileRestartCompletionPending &&
-			!m_wantToRestartRenderer &&
-			m_rendererGeneration.load(std::memory_order_acquire) >=
-				m_queueProfileRestartStartingGeneration)
+		if (m_queueProfileResetRequest.pending)
 		{
-			const auto profileSnapshot = m_profileRuntime.GetSnapshot();
-			const std::string effectiveProfile = profileSnapshot ?
-				profileSnapshot->queue.profile : std::string();
 			DebugLog::Log(
-				"Queue profile restart: profile=%s source=%s generation=%u "
-				"outcome=completed effective_profile=%s",
-				m_queueProfileRestartCompletionProfile.c_str(),
-				m_queueProfileRestartCompletionSource.c_str(),
-				m_rendererGeneration.load(std::memory_order_acquire),
-				effectiveProfile.c_str());
-			m_queueProfileRestartCompletionPending = false;
-			m_queueProfileRestartCompletionProfile.clear();
-			m_queueProfileRestartCompletionSource.clear();
+				"Queue profile reset: renderer=%S generation=%u "
+				"action=dispatch-after-renderer-ready",
+				m_activeRendererName.GetString(),
+				m_rendererGeneration.load(std::memory_order_acquire));
+			KillTimer(QUEUE_PROFILE_RESET_TIMER_ID);
+			SetTimer(QUEUE_PROFILE_RESET_TIMER_ID, 1, nullptr);
 		}
 		break;
 	}
@@ -6239,15 +6238,6 @@ LRESULT CVideoProcessorDlg::OnMessageRendererStateChange(WPARAM wParam, LPARAM l
 		break;
 
 	case RendererState::RENDERSTATE_FAILED:
-		if (m_queueProfileRestartCompletionPending)
-		{
-			DebugLog::Log(
-				"Queue profile restart: profile=%s source=%s generation=%u "
-				"outcome=failed action=resolve-renderer-error-then-use-Restart-Renderer",
-				m_queueProfileRestartCompletionProfile.c_str(),
-				m_queueProfileRestartCompletionSource.c_str(),
-				m_rendererGeneration.load(std::memory_order_acquire));
-		}
 		PauseRendererIngress();
 		DestroyVideoRenderer();
 		if (m_rendererRetirementPending)
@@ -6263,19 +6253,8 @@ LRESULT CVideoProcessorDlg::OnMessageRendererStateChange(WPARAM wParam, LPARAM l
 			m_windowedVideoWindow.ShowLogo(true);
 		}
 		m_rendererStateText.SetWindowText(TEXT("Failed"));
-		if (m_queueProfileRestartCompletionPending)
-		{
-			m_windowedVideoWindow.SetWindowText(
-				TEXT("Queue profile applied, but renderer restart failed. Resolve the renderer error, then use Restart Renderer."));
-			m_queueProfileRestartCompletionPending = false;
-			m_queueProfileRestartCompletionProfile.clear();
-			m_queueProfileRestartCompletionSource.clear();
-		}
-		else
-		{
-			m_windowedVideoWindow.SetWindowText(
-				TEXT("DirectShow renderer failed to build or start"));
-		}
+		m_windowedVideoWindow.SetWindowText(
+			TEXT("DirectShow renderer failed to build or start"));
 		m_rendererFullscreenCheck.SetCheck(FALSE);
 		enableButtons = !m_rendererResetTransitionActive;
 		break;
@@ -6822,7 +6801,6 @@ void CVideoProcessorDlg::OnCommandDisplayRule(UINT commandId)
 		}
 		m_lastUnifiedProfileCommand = static_cast<WORD>(commandId);
 		m_lastUnifiedProfileCommandTime = commandTime;
-		const auto previousSnapshot = m_profileRuntime.GetSnapshot();
 		UnifiedProfileRuntime::SelectionResult result;
 		std::string error;
 		if (!m_profileRuntime.SelectKey(
@@ -6843,21 +6821,25 @@ void CVideoProcessorDlg::OnCommandDisplayRule(UINT commandId)
 		}
 		DebugLog::Log("Unified profile key selected: %s",
 			activeProfiles.str().c_str());
+		const bool queueWasSelected = std::any_of(result.selections.begin(),
+			result.selections.end(), [](const RendererProfileConfig::KeySelection&
+			selection)
+			{
+				return selection.group == "queue";
+			});
+		const bool queueProfileReset = result.snapshot &&
+			QueueProfileRestartPolicy::RequiresResetAfterManualSelection(
+				queueWasSelected, result.snapshot->queue.profile);
 		if (result.changed)
 		{
-			const std::string previousQueueProfile = previousSnapshot ?
-				previousSnapshot->queue.profile : std::string();
-			const bool queueProfileRestart = result.snapshot &&
-				QueueProfileRestartPolicy::RequiresRestartAfterManualSelection(
-					true, previousQueueProfile, result.snapshot->queue.profile);
 			ApplyUnifiedProfileSnapshot(result.snapshot, true,
-				queueProfileRestart);
-			if (queueProfileRestart)
-				QueueUnifiedQueueProfileRendererRestart(result.snapshot,
-					"shortcut:" + std::string(
-						CStringA(unifiedKey->second).GetString()));
+				queueProfileReset);
 			ScheduleUnifiedProfileActions(result.actions);
 		}
+		if (queueProfileReset)
+			QueueUnifiedQueueProfileReset(result.snapshot,
+				"shortcut:" + std::string(
+					CStringA(unifiedKey->second).GetString()));
 		return;
 	}
 	const auto rule = m_displayRuleShortcutRules.find(static_cast<WORD>(commandId));
@@ -8451,7 +8433,10 @@ void CVideoProcessorDlg::RenderStart()
 				videoConversionOverride);
 			BindRendererResetSink();
 
-			ApplyUnifiedProfileSnapshot(m_profileRuntime.GetSnapshot(), false);
+			const auto profileSnapshot = m_profileRuntime.GetSnapshot();
+			ApplyUnifiedProfileSnapshot(profileSnapshot, false);
+			if (profileSnapshot && !profileSnapshot->queue.profile.empty())
+				QueueUnifiedQueueProfileReset(profileSnapshot, "renderer-start");
 
 			if (m_captureDeviceVideoState)
 				m_videoRenderer->OnVideoState(m_builtVideoState);
@@ -8559,7 +8544,10 @@ void CVideoProcessorDlg::RenderStart()
 					videoConversionOverride);
 		BindRendererResetSink();
 
-		ApplyUnifiedProfileSnapshot(m_profileRuntime.GetSnapshot(), false);
+		const auto profileSnapshot = m_profileRuntime.GetSnapshot();
+		ApplyUnifiedProfileSnapshot(profileSnapshot, false);
+		if (profileSnapshot && !profileSnapshot->queue.profile.empty())
+			QueueUnifiedQueueProfileReset(profileSnapshot, "renderer-start");
 
 		if (m_captureDeviceVideoState)
 			m_videoRenderer->OnVideoState(m_builtVideoState);
@@ -10674,6 +10662,7 @@ void CVideoProcessorDlg::RefreshUnifiedProfilesForRuleContext(
 	if (!m_profileRuntime.IsInitialized())
 		return;
 
+	const auto previousSnapshot = m_profileRuntime.GetSnapshot();
 	UnifiedProfileRuntime::RefreshResult result;
 	std::string error;
 	if (!m_profileRuntime.Refresh(GetUnifiedProfileSourceLookup(), result, error))
@@ -10688,7 +10677,13 @@ void CVideoProcessorDlg::RefreshUnifiedProfilesForRuleContext(
 	DebugLog::Log("Unified profile rule-context changed: reason=%s generation=%llu",
 		reason ? reason : "unknown",
 		static_cast<unsigned long long>(result.snapshot ? result.snapshot->generation : 0));
-	ApplyUnifiedProfileSnapshot(result.snapshot, true);
+	const bool queueProfileReset = previousSnapshot && result.snapshot &&
+		!result.snapshot->queue.profile.empty() &&
+		previousSnapshot->queue.profile != result.snapshot->queue.profile;
+	ApplyUnifiedProfileSnapshot(result.snapshot, true, queueProfileReset);
+	if (queueProfileReset)
+		QueueUnifiedQueueProfileReset(result.snapshot,
+			"rule-context:" + std::string(reason ? reason : "unknown"));
 	ScheduleUnifiedProfileActions(result.actions);
 }
 
@@ -10716,7 +10711,7 @@ void CVideoProcessorDlg::PublishActiveProfileStatus()
 
 void CVideoProcessorDlg::ApplyUnifiedProfileSnapshot(
 	const std::shared_ptr<const UnifiedProfileRuntime::Snapshot>& snapshot,
-	bool allowRestart, bool queueProfileRestart)
+	bool allowRestart, bool queueProfileResetPending)
 {
 	if (!snapshot)
 		return;
@@ -10895,7 +10890,7 @@ void CVideoProcessorDlg::ApplyUnifiedProfileSnapshot(
 
 	DebugLog::Log("Applied unified profile state: %s",
 		CStringA(activeState).GetString());
-	if (allowRestart && rendererRestartRequired && !queueProfileRestart)
+	if (allowRestart && rendererRestartRequired && !queueProfileResetPending)
 	{
 		if (m_rendererFullscreenCheck.GetCheck() && m_fullScreenVideoWindow &&
 			IsWindow(m_fullScreenVideoWindow->GetHWND()))
@@ -10911,54 +10906,54 @@ void CVideoProcessorDlg::ApplyUnifiedProfileSnapshot(
 		m_wantToRestartRenderer = true;
 		UpdateState();
 	}
-	else if (allowRestart && liveResetRequired && !queueProfileRestart)
+	else if (allowRestart && liveResetRequired && !queueProfileResetPending)
 	{
 		DebugLog::Log(
 			"Rendering profile applied live; requesting cache-preserving queue reset");
 		RequestRendererReset(RendererResetReason::ProfileChange, false, 0);
 	}
-	else if (allowRestart && queuePolicyChanged && !queueProfileRestart)
+	else if (allowRestart && queuePolicyChanged && !queueProfileResetPending)
 	{
-		const bool requiresGraph = QueuePolicyApplyRequiresGraphReset(
-			m_activeRendererIsDirectShow);
+		const UINT delayMs = static_cast<UINT>(
+			(std::max)(0, m_queueResetDelaySeconds)) * 1000;
 		DebugLog::Log(
-			"Queue policy apply reset selected: backend=%s scope=%s renderer_reconstruction=0",
-			m_activeRendererIsDirectShow ? "DirectShow" : "Alpha",
-			requiresGraph ? "graph" : "live-queue");
-		RequestRendererReset(RendererResetReason::QueueSizeChange,
-			requiresGraph, 0);
+			"Queue policy apply reset selected: backend=%s scope=manual-graph "
+			"delay=%u",
+			m_activeRendererIsDirectShow ? "DirectShow/madVR" : "VP Renderer",
+			delayMs);
+		RequestRendererReset(RendererResetReason::Manual, true, delayMs);
 	}
 }
 
 
-void CVideoProcessorDlg::QueueUnifiedQueueProfileRendererRestart(
+void CVideoProcessorDlg::QueueUnifiedQueueProfileReset(
 	const std::shared_ptr<const UnifiedProfileRuntime::Snapshot>& snapshot,
 	const std::string& source)
 {
 	if (!snapshot)
 		return;
 	const QueueProfileRestartPolicy::EnqueueResult result =
-		QueueProfileRestartPolicy::Enqueue(m_queueProfileRestartRequest,
+		QueueProfileRestartPolicy::Enqueue(m_queueProfileResetRequest,
 			snapshot->generation, snapshot->queue.profile, source);
 	if (result == QueueProfileRestartPolicy::EnqueueResult::Ignored)
 		return;
 	DebugLog::Log(
-		"Queue profile restart: profile=%s source=%s generation=%llu outcome=%s "
+		"Queue profile reset: profile=%s source=%s generation=%llu outcome=%s "
 		"action=awaiting-selection-settle",
 		snapshot->queue.profile.c_str(), source.c_str(),
 		static_cast<unsigned long long>(snapshot->generation),
 		result == QueueProfileRestartPolicy::EnqueueResult::Coalesced ?
 			"coalesced" : "queued");
-	KillTimer(QUEUE_PROFILE_RESTART_TIMER_ID);
-	SetTimer(QUEUE_PROFILE_RESTART_TIMER_ID,
-		QUEUE_PROFILE_RESTART_DEBOUNCE_MS, nullptr);
+	KillTimer(QUEUE_PROFILE_RESET_TIMER_ID);
+	SetTimer(QUEUE_PROFILE_RESET_TIMER_ID,
+		QUEUE_PROFILE_RESET_DEBOUNCE_MS, nullptr);
 }
 
 
-void CVideoProcessorDlg::DispatchQueuedQueueProfileRendererRestart()
+void CVideoProcessorDlg::DispatchQueuedQueueProfileReset()
 {
 	QueueProfileRestartPolicy::PendingRequest request;
-	if (!QueueProfileRestartPolicy::Consume(m_queueProfileRestartRequest,
+	if (!QueueProfileRestartPolicy::Consume(m_queueProfileResetRequest,
 		request))
 		return;
 	const auto currentSnapshot = m_profileRuntime.GetSnapshot();
@@ -10967,9 +10962,11 @@ void CVideoProcessorDlg::DispatchQueuedQueueProfileRendererRestart()
 		currentSnapshot->queue.profile : request.profile;
 	if (!m_videoRenderer)
 	{
+		QueueProfileRestartPolicy::Enqueue(m_queueProfileResetRequest,
+			request.snapshotGeneration, profile, request.source);
 		DebugLog::Log(
-			"Queue profile restart: profile=%s source=%s generation=%llu "
-			"outcome=not-required action=fresh-renderer-uses-committed-profile",
+			"Queue profile reset: profile=%s source=%s generation=%llu "
+			"outcome=deferred action=await-renderer-ready",
 			profile.c_str(), request.source.c_str(),
 			static_cast<unsigned long long>(request.snapshotGeneration));
 		return;
@@ -10977,55 +10974,86 @@ void CVideoProcessorDlg::DispatchQueuedQueueProfileRendererRestart()
 	if (m_rendererState == RendererState::RENDERSTATE_FAILED)
 	{
 		DebugLog::Log(
-			"Queue profile restart: profile=%s source=%s generation=%llu "
+			"Queue profile reset: profile=%s source=%s generation=%llu "
 			"outcome=failed action=resolve-renderer-error-then-use-Restart-Renderer",
 			profile.c_str(), request.source.c_str(),
 			static_cast<unsigned long long>(request.snapshotGeneration));
-		m_rendererStateText.SetWindowText(TEXT("Queue profile restart unavailable"));
+		m_rendererStateText.SetWindowText(TEXT("Queue profile reset unavailable"));
 		m_windowedVideoWindow.SetWindowText(
-			TEXT("Queue profile applied. Resolve the renderer error, then use Restart Renderer."));
+			TEXT("Queue profile applied. Resolve the renderer error, then use Reset queues."));
 		return;
 	}
-
-	m_queueProfileRestartCompletionPending = true;
-	m_queueProfileRestartStartingGeneration =
-		m_rendererGeneration.load(std::memory_order_acquire);
-	m_queueProfileRestartCompletionProfile = profile;
-	m_queueProfileRestartCompletionSource = request.source;
 	if (m_rendererState != RendererState::RENDERSTATE_RENDERING ||
 		m_wantToRestartRenderer)
 	{
+		QueueProfileRestartPolicy::Enqueue(m_queueProfileResetRequest,
+			request.snapshotGeneration, profile, request.source);
 		DebugLog::Log(
-			"Queue profile restart: profile=%s source=%s generation=%llu "
-			"outcome=coalesced-with-renderer-lifecycle state=%d restart_pending=%d",
+			"Queue profile reset: profile=%s source=%s generation=%llu "
+			"outcome=deferred action=await-renderer-ready state=%d restart_pending=%d",
 			profile.c_str(), request.source.c_str(),
 			static_cast<unsigned long long>(request.snapshotGeneration),
 			static_cast<int>(m_rendererState), m_wantToRestartRenderer ? 1 : 0);
 		return;
 	}
 
-	if (m_rendererFullscreenCheck.GetCheck() && m_fullScreenVideoWindow &&
-		IsWindow(m_fullScreenVideoWindow->GetHWND()))
-	{
-		m_preserveFullscreenHostForProfileRestart = true;
-		DebugLog::Log(
-			"Queue profile restart: preserving fullscreen host hwnd=%p",
-			m_fullScreenVideoWindow->GetHWND());
-	}
-	m_postRendererStartRequiresGraph = false;
-	m_wantToRestartRenderer = true;
-	const RendererRestartDispatch dispatch = ClassifyRendererRestartDispatch(
-		m_rendererConstructionActive, m_rendererRetirementPending);
+	const UINT delayMs = static_cast<UINT>(
+		(std::max)(0, m_queueResetDelaySeconds)) * 1000;
 	DebugLog::Log(
-		"Queue profile restart: profile=%s source=%s generation=%llu backend=%s "
-		"outcome=%s action=controlled-renderer-restart",
+		"Queue profile reset: profile=%s source=%s generation=%llu backend=%s "
+		"action=manual-queue-reset delay=%u",
 		profile.c_str(), request.source.c_str(),
 		static_cast<unsigned long long>(request.snapshotGeneration),
 		m_activeRendererIsDirectShow ? "DirectShow/madVR" : "VP Renderer",
-		dispatch == RendererRestartDispatch::DispatchNow ?
-			"restart-requested" : "coalesced-with-lifecycle-boundary");
-	if (dispatch == RendererRestartDispatch::DispatchNow)
-		UpdateState();
+		delayMs);
+	// Match the operator's lowercase r reset command exactly, but let the selected queue
+	// profile's configured reset delay provide the settling interval.
+	RequestRendererReset(RendererResetReason::Manual, true, delayMs);
+}
+
+
+void CVideoProcessorDlg::OnCommandReapplyRules()
+{
+	if (!m_profileRuntime.IsInitialized())
+	{
+		DebugLog::Log("Re-apply rules ignored: unified profile runtime is unavailable");
+		return;
+	}
+
+	const auto previousSnapshot = m_profileRuntime.GetSnapshot();
+	UnifiedProfileRuntime::RefreshResult result;
+	std::vector<std::string> clearedGroups;
+	std::string error;
+	if (!m_profileRuntime.ReapplyRules(GetUnifiedProfileSourceLookup(), result,
+		clearedGroups, error))
+	{
+		DebugLog::Log("Re-apply rules failed: %s", error.c_str());
+		return;
+	}
+
+	std::ostringstream cleared;
+	for (size_t index = 0; index < clearedGroups.size(); ++index)
+	{
+		if (index != 0)
+			cleared << ',';
+		cleared << clearedGroups[index];
+	}
+	const bool queueProfileReset = previousSnapshot && result.snapshot &&
+		!result.snapshot->queue.profile.empty() &&
+		previousSnapshot->queue.profile != result.snapshot->queue.profile;
+	DebugLog::Log(
+		"Profile rules re-applied: cleared_overrides=%s changed=%d queue=%s->%s",
+		clearedGroups.empty() ? "none" : cleared.str().c_str(),
+		result.changed ? 1 : 0,
+		previousSnapshot ? previousSnapshot->queue.profile.c_str() : "none",
+		result.snapshot ? result.snapshot->queue.profile.c_str() : "none");
+	if (!result.changed)
+		return;
+
+	ApplyUnifiedProfileSnapshot(result.snapshot, true, queueProfileReset);
+	if (queueProfileReset)
+		QueueUnifiedQueueProfileReset(result.snapshot, "reapply-rules");
+	ScheduleUnifiedProfileActions(result.actions);
 }
 
 
@@ -12495,10 +12523,10 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 		return;
 	}
 
-	if (nIDEvent == QUEUE_PROFILE_RESTART_TIMER_ID)
+	if (nIDEvent == QUEUE_PROFILE_RESET_TIMER_ID)
 	{
-		KillTimer(QUEUE_PROFILE_RESTART_TIMER_ID);
-		DispatchQueuedQueueProfileRendererRestart();
+		KillTimer(QUEUE_PROFILE_RESET_TIMER_ID);
+		DispatchQueuedQueueProfileReset();
 		return;
 	}
 

@@ -238,8 +238,9 @@ namespace UnifiedProfileRuntime
 			!LoadPersistedSelections(restored, error))
 			return false;
 
+		m_sessionOverrideGroups.clear();
 		std::shared_ptr<const Snapshot> initial;
-		if (!BuildSnapshot(restored, sourceValues, 1, initial, error))
+		if (!BuildSnapshot(restored, {}, sourceValues, 1, initial, error))
 			return false;
 
 		m_generation = 1;
@@ -285,6 +286,7 @@ namespace UnifiedProfileRuntime
 		std::map<std::string, std::string> manual = previous ?
 			previous->manualSelections :
 			std::map<std::string, std::string>();
+		std::set<std::string> sessionOverrides = m_sessionOverrideGroups;
 		for (auto selection = manual.begin(); selection != manual.end();)
 		{
 			const auto group = std::find_if(m_model.groups.begin(),
@@ -297,11 +299,14 @@ namespace UnifiedProfileRuntime
 				std::find(group->profiles.begin(), group->profiles.end(),
 					selection->second) != group->profiles.end();
 			if (!valid)
+			{
+				sessionOverrides.erase(selection->first);
 				selection = manual.erase(selection);
+			}
 			else
 				++selection;
 		}
-		if (!BuildSnapshot(manual, sourceValues, m_generation + 1,
+		if (!BuildSnapshot(manual, sessionOverrides, sourceValues, m_generation + 1,
 			candidate, error))
 		{
 			m_model = std::move(previousModel);
@@ -320,6 +325,7 @@ namespace UnifiedProfileRuntime
 		}
 
 		++m_generation;
+		m_sessionOverrideGroups = std::move(sessionOverrides);
 		std::atomic_store(&m_snapshot, candidate);
 		result.snapshot = candidate;
 		DebugLog::Log(
@@ -363,20 +369,30 @@ namespace UnifiedProfileRuntime
 		std::map<std::string, std::string> manual =
 			current ? current->manualSelections :
 			std::map<std::string, std::string>();
+		std::set<std::string> sessionOverrides = m_sessionOverrideGroups;
 		for (const RendererProfileConfig::KeySelection& selection :
 			result.selections)
 		{
 			if (selection.resetToAutomatic)
+			{
 				manual.erase(selection.group);
+				sessionOverrides.erase(selection.group);
+			}
 			else
+			{
 				manual[selection.group] = selection.profile;
+				sessionOverrides.insert(selection.group);
+			}
 		}
 
 		std::shared_ptr<const Snapshot> candidate;
-		if (!BuildSnapshot(manual, values, m_generation + 1,
+		if (!BuildSnapshot(manual, sessionOverrides, values, m_generation + 1,
 			candidate, error))
 			return false;
-		if (current && SameEffectiveState(*current, *candidate))
+		const bool overrideStateChanged =
+			sessionOverrides != m_sessionOverrideGroups;
+		if (current && SameEffectiveState(*current, *candidate) &&
+			!overrideStateChanged)
 		{
 			result.snapshot = current;
 			return true;
@@ -389,6 +405,7 @@ namespace UnifiedProfileRuntime
 			return false;
 
 		++m_generation;
+		m_sessionOverrideGroups = std::move(sessionOverrides);
 		std::atomic_store(&m_snapshot, candidate);
 		result.changed = true;
 		result.snapshot = candidate;
@@ -416,7 +433,8 @@ namespace UnifiedProfileRuntime
 		const std::shared_ptr<const Snapshot> current =
 			std::atomic_load(&m_snapshot);
 		std::shared_ptr<const Snapshot> candidate;
-		if (!BuildSnapshot(current->manualSelections, sourceValues,
+		if (!BuildSnapshot(current->manualSelections,
+			m_sessionOverrideGroups, sourceValues,
 			m_generation + 1, candidate, error))
 			return false;
 		if (SameEffectiveState(*current, *candidate))
@@ -427,6 +445,50 @@ namespace UnifiedProfileRuntime
 		if (!CollectTransitionActionInvocations(current, candidate, "source",
 			result.actions, error))
 			return false;
+		++m_generation;
+		std::atomic_store(&m_snapshot, candidate);
+		result.changed = true;
+		result.snapshot = candidate;
+		return true;
+	}
+
+
+	bool Runtime::ReapplyRules(
+		const DisplayRuleExpression::ValueLookup& sourceValues,
+		RefreshResult& result, std::vector<std::string>& clearedGroups,
+		std::string& error)
+	{
+		std::lock_guard<std::mutex> guard(m_mutex);
+		result = {};
+		clearedGroups.clear();
+		error.clear();
+		if (!m_initialized)
+		{
+			error = "unified profile runtime is not initialized";
+			return false;
+		}
+
+		const std::shared_ptr<const Snapshot> current =
+			std::atomic_load(&m_snapshot);
+		std::shared_ptr<const Snapshot> candidate;
+		if (!BuildSnapshot(current->manualSelections, {}, sourceValues,
+			m_generation + 1, candidate, error))
+			return false;
+
+		const bool effectiveChanged = !SameEffectiveState(*current, *candidate);
+		if (effectiveChanged && !CollectTransitionActionInvocations(current,
+			candidate, "rules-reapplied", result.actions, error))
+			return false;
+
+		clearedGroups.assign(m_sessionOverrideGroups.begin(),
+			m_sessionOverrideGroups.end());
+		m_sessionOverrideGroups.clear();
+		if (!effectiveChanged)
+		{
+			result.snapshot = current;
+			return true;
+		}
+
 		++m_generation;
 		std::atomic_store(&m_snapshot, candidate);
 		result.changed = true;
@@ -689,6 +751,7 @@ namespace UnifiedProfileRuntime
 
 	bool Runtime::BuildSnapshot(
 		const std::map<std::string, std::string>& manualSelections,
+		const std::set<std::string>& sessionOverrideGroups,
 		const DisplayRuleExpression::ValueLookup& sourceValues,
 		uint64_t generation, std::shared_ptr<const Snapshot>& snapshot,
 		std::string& error) const
@@ -702,12 +765,22 @@ namespace UnifiedProfileRuntime
 			m_model, values, automatic, error))
 			return false;
 
-		std::map<std::string, std::string> effective;
+		// A saved key selection is a fallback for groups without a matching rule.
+		// Source-driven rules can move persisted settings, while an explicit
+		// shortcut is a deliberate session override until this process exits.
+		std::map<std::string, std::string> effective = manualSelections;
 		for (const RendererProfileConfig::AutomaticSelection& selection :
 			automatic)
-			effective[selection.group] = selection.profile;
-		for (const auto& selection : manualSelections)
-			effective[selection.first] = selection.second;
+		{
+			// A configured default supplies an otherwise-unselected group; it is
+			// not a source rule and must not cancel an operator shortcut. A real
+			// when: match remains authoritative over persisted state.
+			if ((!selection.configuredDefault &&
+				sessionOverrideGroups.find(selection.group) ==
+					sessionOverrideGroups.end()) ||
+				effective.find(selection.group) == effective.end())
+				effective[selection.group] = selection.profile;
+		}
 
 		std::string viewportProfile = "default";
 		const auto selectedViewport = effective.find("viewport");

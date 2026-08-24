@@ -3450,7 +3450,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             0, 16, QStringLiteral("frames"));
         addInteger(QStringLiteral("Active-picture lookahead"), QStringLiteral("active_picture_lookahead_frames"),
             0, 8, QStringLiteral("frames"));
-        addInteger(QStringLiteral("Reset after renderer restart"), QStringLiteral("reset_after_render_restart_seconds"),
+        addInteger(QStringLiteral("Queue reset delay"), QStringLiteral("reset_after_render_restart_seconds"),
             1, INT_MAX, QStringLiteral("seconds"));
         addInteger(QStringLiteral("Queue recovery threshold"), QStringLiteral("reset_queue_too_large_percent"),
             1, 200, QStringLiteral("%"));
@@ -6032,6 +6032,7 @@ QWidget* ConfigEditorWindow::createShortcutsPage()
         { "Exit fullscreen", "fullscreen_exit", "Esc" },
         { "Toggle statistics", "toggle_stats_overlay", "Ctrl+I" },
         { "Screenshot", "capture_rendered_output", "Ctrl+Alt+S" },
+        { "Re-apply rules", "reapply_rules", "" },
         { "Automatic transfer", "auto_set", "Ctrl+Shift+A" },
         { "PQ transfer", "pq_set", "Ctrl+Shift+P" }
     };
