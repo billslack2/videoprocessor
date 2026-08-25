@@ -729,14 +729,17 @@ protected:
 	// from validated readiness evidence is in flight. Its own renderer events
 	// must not discard the evidence that selected it.
 	bool m_outputReadinessGraphReprimeActive = false;
-	uint64_t m_outputReadinessResetCompletedGeneration = 0;
-	uint64_t m_outputReadinessResetCompletedEpoch = 0;
+	OutputReadinessCompletionLatch m_outputReadinessResetCompletion;
 	// A non-readiness DirectShow graph reset (for example capacity recovery or
 	// a graph retarget) has already performed the madVR re-prime transaction.
 	// It can satisfy readiness once the *new* DXGI measurement generation is
 	// validated, avoiding a redundant second graph reset and black flash.
-	uint64_t m_outputReadinessExistingGraphResetGeneration = 0;
-	uint64_t m_outputReadinessExistingGraphResetEpoch = 0;
+	OutputReadinessCompletionLatch m_outputReadinessExistingGraphResetCompletion;
+	// Non-zero only between a successful GraphRetarget and its explicitly
+	// scheduled delayed LiveQueue settle phase. This lineage lets that covered
+	// successor advance readiness from the retarget epoch E1 to E2 without
+	// granting the same credit to arbitrary queue-only resets.
+	uint64_t m_outputReadinessRetargetSettleLineageGeneration = 0;
 	uint64_t m_outputReadinessExistingGraphReservePublishedEpoch = 0;
 	uint64_t m_currentGraphPrimeEvidenceEpoch = 0;
 	uint64_t m_currentGraphPrimeEvidenceTick = 0;
@@ -786,6 +789,10 @@ protected:
 	WORD m_lastUnifiedProfileCommand = 0;
 	DWORD m_lastUnifiedProfileCommandTime = 0;
 	QueueProfileRestartPolicy::PendingRequest m_queueProfileResetRequest;
+	bool m_freshRendererProfileConstruction = false;
+	uint32_t m_freshRendererProfileRendererGeneration = 0;
+	uint64_t m_freshRendererProfileSnapshotGeneration = 0;
+	std::string m_freshRendererProfileName;
 
 	uint32_t m_timerSeconds = 0;
 
@@ -977,8 +984,10 @@ protected:
 		double& overrideRateHz, int& matchedNominalRate) const;
 	void MonitorQueueHealth(size_t rawQueueSize, size_t convertedQueueSize,
 		size_t queueMaxSize, uint64_t droppedFrames);
-	void RequestRendererReset(RendererResetReason reason, bool requiresGraph,
-		UINT delayMs);
+	RendererResetCoordinator::SubmissionReceipt RequestRendererReset(
+		RendererResetReason reason, bool requiresGraph, UINT delayMs,
+		RendererResetOrigin origin = RendererResetOrigin::Unspecified,
+		uint64_t originGeneration = 0);
 	void CompleteRendererResetOperation();
 	bool RendererResetOperationInProgress() const;
 	RendererQueueLaunchDesired PublishRendererQueueLaunchDesired(
@@ -1010,6 +1019,7 @@ protected:
 	void QueueUnifiedQueueProfileReset(
 		const std::shared_ptr<const UnifiedProfileRuntime::Snapshot>& snapshot,
 		const std::string& source);
+	bool TryConsumeQueueProfileResetSatisfiedByFreshConstruction();
 	void DispatchQueuedQueueProfileReset();
 	void ScheduleUnifiedProfileActions(
 		const std::vector<UnifiedProfileRuntime::ActionInvocation>& actions);

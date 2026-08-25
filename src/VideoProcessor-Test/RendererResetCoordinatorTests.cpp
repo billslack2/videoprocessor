@@ -707,6 +707,189 @@ namespace Tests
 				selected.request.scope == RendererResetScope::Graph);
 		}
 
+		TEST_METHOD(ProfileThenReadinessCoalescesWithoutChangingPriority)
+		{
+			FakeResetClock clock;
+			RendererResetCoordinator coordinator(
+				[]() { return true; },
+				[&clock]() { return clock.Now(); });
+			coordinator.Bind(50);
+
+			const auto profile = coordinator.RequestUiWithReceipt(
+				RendererResetReason::Manual,
+				RendererResetScope::Graph,
+				8000, 0, 0,
+				RendererResetOrigin::AutomaticProfile, 14);
+			Assert::IsTrue(profile.accepted);
+			Assert::IsTrue(profile.disposition ==
+				RendererResetCoordinator::SubmissionDisposition::Selected);
+			Assert::AreEqual<uint64_t>(
+				profile.requestSequence, profile.selectedSequence);
+
+			clock.Set(6100);
+			const auto readiness = coordinator.RequestUiWithReceipt(
+				RendererResetReason::OutputReadiness,
+				RendererResetScope::Graph,
+				0, 0, 0,
+				RendererResetOrigin::AutomaticReadiness, 0x1234);
+			Assert::IsTrue(readiness.accepted);
+			Assert::IsTrue(readiness.disposition ==
+				RendererResetCoordinator::SubmissionDisposition::Coalesced);
+			Assert::AreEqual<uint64_t>(
+				profile.requestSequence, readiness.selectedSequence);
+			Assert::IsTrue(readiness.selectedReason ==
+				RendererResetReason::Manual);
+			Assert::IsTrue(readiness.selectedOrigin ==
+				RendererResetOrigin::AutomaticProfile);
+			Assert::AreEqual<uint64_t>(14,
+				readiness.selectedOriginGeneration);
+			Assert::AreEqual<uint64_t>(8100,
+				readiness.selectedDeadlineTick);
+			Assert::IsTrue(RendererResetHasOrigin(
+				readiness.selectedOriginContributors,
+				RendererResetOrigin::AutomaticProfile));
+			Assert::IsTrue(RendererResetHasOrigin(
+				readiness.selectedOriginContributors,
+				RendererResetOrigin::AutomaticReadiness));
+			const RendererResetCoordinator::Diagnostics pendingDiagnostics =
+				coordinator.GetDiagnostics();
+			Assert::IsTrue(pendingDiagnostics.hasPending);
+			Assert::IsFalse(pendingDiagnostics.selectionPrepared);
+			Assert::IsFalse(pendingDiagnostics.operationActive);
+
+			RendererResetCoordinator::SelectedReset selected;
+			Assert::IsFalse(coordinator.DrainReady(8099, selected));
+			Assert::IsTrue(coordinator.DrainReady(8100, selected));
+			Assert::IsTrue(coordinator.GetDiagnostics().selectionPrepared);
+			Assert::IsFalse(coordinator.GetDiagnostics().operationActive);
+			Assert::IsTrue(selected.request.origin ==
+				RendererResetOrigin::AutomaticProfile);
+			Assert::IsTrue(RendererResetHasOrigin(
+				selected.request.originContributors,
+				RendererResetOrigin::AutomaticReadiness));
+			Assert::IsTrue(coordinator.AcknowledgeBlackAndStart(
+				selected, std::make_shared<FakeResetRenderer>()) ==
+				RendererResetCoordinator::StartResult::Started);
+			Assert::IsTrue(coordinator.GetDiagnostics().operationActive);
+			Assert::IsTrue(WaitForCompletion(coordinator));
+			RendererResetCoordinator::OperationResult result;
+			Assert::IsTrue(coordinator.ConsumeCompletion(50, true, result));
+			Assert::IsTrue(result.succeeded);
+			Assert::IsTrue(RendererResetHasOrigin(
+				result.request.originContributors,
+				RendererResetOrigin::AutomaticProfile));
+			Assert::IsTrue(RendererResetHasOrigin(
+				result.request.originContributors,
+				RendererResetOrigin::AutomaticReadiness));
+		}
+
+		TEST_METHOD(ProfileReplacesReadinessAndRetainsBothContributors)
+		{
+			FakeResetClock clock;
+			RendererResetCoordinator coordinator(
+				[]() { return true; },
+				[&clock]() { return clock.Now(); });
+			coordinator.Bind(51);
+
+			const auto readiness = coordinator.RequestUiWithReceipt(
+				RendererResetReason::OutputReadiness,
+				RendererResetScope::Graph,
+				0, 0, 0,
+				RendererResetOrigin::AutomaticReadiness, 31);
+			const auto profile = coordinator.RequestUiWithReceipt(
+				RendererResetReason::Manual,
+				RendererResetScope::Graph,
+				8000, 0, 0,
+				RendererResetOrigin::AutomaticProfile, 15);
+			Assert::IsTrue(readiness.accepted && profile.accepted);
+			Assert::IsTrue(profile.disposition ==
+				RendererResetCoordinator::SubmissionDisposition::Replaced);
+			Assert::AreEqual<uint64_t>(
+				profile.requestSequence, profile.selectedSequence);
+			Assert::IsTrue(profile.selectedOrigin ==
+				RendererResetOrigin::AutomaticProfile);
+			Assert::IsTrue(RendererResetHasOrigin(
+				profile.selectedOriginContributors,
+				RendererResetOrigin::AutomaticReadiness));
+			Assert::IsTrue(RendererResetHasOrigin(
+				profile.selectedOriginContributors,
+				RendererResetOrigin::AutomaticProfile));
+
+			RendererResetCoordinator::SelectedReset selected;
+			Assert::IsTrue(coordinator.DrainReady(8100, selected));
+			Assert::IsTrue(selected.request.reason ==
+				RendererResetReason::Manual);
+			Assert::AreEqual<uint64_t>(15,
+				selected.request.originGeneration);
+		}
+
+		TEST_METHOD(ImmediateUserManualReplacesDelayedAutomaticProfile)
+		{
+			FakeResetClock clock;
+			RendererResetCoordinator coordinator(
+				[]() { return true; },
+				[&clock]() { return clock.Now(); });
+			coordinator.Bind(52);
+
+			const auto profile = coordinator.RequestUiWithReceipt(
+				RendererResetReason::Manual,
+				RendererResetScope::Graph,
+				8000, 0, 0,
+				RendererResetOrigin::AutomaticProfile, 16);
+			clock.Set(200);
+			const auto user = coordinator.RequestUiWithReceipt(
+				RendererResetReason::Manual,
+				RendererResetScope::Graph,
+				0, 0, 0,
+				RendererResetOrigin::UserManual, 0);
+			Assert::IsTrue(profile.accepted && user.accepted);
+			Assert::IsTrue(user.disposition ==
+				RendererResetCoordinator::SubmissionDisposition::Replaced);
+			Assert::AreEqual<uint64_t>(
+				user.requestSequence, user.selectedSequence);
+			Assert::IsTrue(user.selectedReason ==
+				RendererResetReason::Manual);
+			Assert::IsTrue(user.selectedOrigin ==
+				RendererResetOrigin::UserManual);
+			Assert::AreEqual<uint64_t>(200, user.selectedDeadlineTick);
+			Assert::IsTrue(RendererResetHasOrigin(
+				user.selectedOriginContributors,
+				RendererResetOrigin::AutomaticProfile));
+			Assert::IsTrue(RendererResetHasOrigin(
+				user.selectedOriginContributors,
+				RendererResetOrigin::UserManual));
+		}
+
+		TEST_METHOD(EqualPriorityAndDeadlineKeepsFirstOrigin)
+		{
+			FakeResetClock clock;
+			RendererResetCoordinator coordinator(
+				[]() { return true; },
+				[&clock]() { return clock.Now(); });
+			coordinator.Bind(53);
+
+			const auto profile = coordinator.RequestUiWithReceipt(
+				RendererResetReason::Manual,
+				RendererResetScope::Graph,
+				0, 0, 0,
+				RendererResetOrigin::AutomaticProfile, 17);
+			const auto user = coordinator.RequestUiWithReceipt(
+				RendererResetReason::Manual,
+				RendererResetScope::Graph,
+				0, 0, 0,
+				RendererResetOrigin::UserManual, 0);
+			Assert::IsTrue(profile.accepted && user.accepted);
+			Assert::IsTrue(user.disposition ==
+				RendererResetCoordinator::SubmissionDisposition::Coalesced);
+			Assert::AreEqual<uint64_t>(
+				profile.requestSequence, user.selectedSequence);
+			Assert::IsTrue(user.selectedOrigin ==
+				RendererResetOrigin::AutomaticProfile);
+			Assert::IsTrue(RendererResetHasOrigin(
+				user.selectedOriginContributors,
+				RendererResetOrigin::UserManual));
+		}
+
 		TEST_METHOD(DelayedUiRequestBlocksRevealUntilReadyAndDrained)
 		{
 			FakeResetClock clock;
@@ -840,6 +1023,8 @@ namespace Tests
 			RendererResetRequest request;
 			request.reason = RendererResetReason::LivenessRecovery;
 			request.scope = RendererResetScope::Graph;
+			request.origin = RendererResetOrigin::AutomaticProfile;
+			request.originGeneration = 55;
 			binding.sink->Submit(request);
 			RendererResetCoordinator::SelectedReset selected;
 			Assert::IsTrue(coordinator.DrainReady(clock.Now(), selected));
@@ -854,6 +1039,13 @@ namespace Tests
 			Assert::IsFalse(result.succeeded);
 			Assert::IsTrue(result.restartRequired);
 			Assert::IsFalse(result.ingressReopened);
+			Assert::IsTrue(result.request.origin ==
+				RendererResetOrigin::AutomaticProfile);
+			Assert::AreEqual<uint64_t>(55,
+				result.request.originGeneration);
+			Assert::IsTrue(RendererResetHasOrigin(
+				result.request.originContributors,
+				RendererResetOrigin::AutomaticProfile));
 			Assert::IsTrue(coordinator.BlocksReveal(32));
 			coordinator.Revoke(binding.token);
 			Assert::IsFalse(coordinator.BlocksReveal(32));
@@ -869,6 +1061,8 @@ namespace Tests
 			RendererResetRequest request;
 			request.scope = RendererResetScope::LiveQueue;
 			request.reason = RendererResetReason::QueuePressure;
+			request.origin = RendererResetOrigin::AutomaticReadiness;
+			request.originGeneration = 66;
 			binding.sink->Submit(request);
 			RendererResetCoordinator::SelectedReset selected;
 			Assert::IsTrue(coordinator.DrainReady(clock.Now(), selected));
@@ -881,6 +1075,13 @@ namespace Tests
 			Assert::IsTrue(coordinator.ConsumeCompletion(34, true, result));
 			Assert::IsTrue(result.staleGeneration);
 			Assert::IsTrue(result.restartRequired);
+			Assert::IsTrue(result.request.origin ==
+				RendererResetOrigin::AutomaticReadiness);
+			Assert::AreEqual<uint64_t>(66,
+				result.request.originGeneration);
+			Assert::IsTrue(RendererResetHasOrigin(
+				result.request.originContributors,
+				RendererResetOrigin::AutomaticReadiness));
 			Assert::IsFalse(
 				coordinator.GetIngressState()->IsAdmitting());
 		}
@@ -1082,6 +1283,27 @@ namespace Tests
 			Assert::IsTrue(renderer->WaitForDrainReturn());
 			binding.sink->Submit(request);
 			Assert::IsFalse(coordinator.GetDiagnostics().hasPending);
+		}
+
+		TEST_METHOD(ReadinessPreservesMeasurementForGraphButNotRetarget)
+		{
+			const RendererResetOriginContributors readiness =
+				RendererResetOriginBit(RendererResetOrigin::AutomaticReadiness);
+			Assert::IsTrue(
+				RendererResetPreservesReadinessDisplayMeasurement(
+					RendererResetScope::Graph, readiness));
+			Assert::IsFalse(
+				RendererResetPreservesReadinessDisplayMeasurement(
+					RendererResetScope::GraphRetarget, readiness));
+			Assert::IsFalse(
+				RendererResetPreservesReadinessDisplayMeasurement(
+					RendererResetScope::LiveQueue, readiness));
+			Assert::IsTrue(RendererResetKeepsFreshRetargetSettleLineage(
+				RendererResetScope::GraphRetarget, true));
+			Assert::IsFalse(RendererResetKeepsFreshRetargetSettleLineage(
+				RendererResetScope::Graph, true));
+			Assert::IsFalse(RendererResetKeepsFreshRetargetSettleLineage(
+				RendererResetScope::GraphRetarget, false));
 		}
 	};
 }

@@ -73,6 +73,22 @@ namespace Tests
 				HasCurrentEpochDownstreamDelivery(snapshot));
 		}
 
+		TEST_METHOD(OnlyUnclassifiedLiveClockGapIsRecoveryEvidence)
+		{
+			Assert::IsTrue(IsUnexpectedLiveDeliveryGapEvidence(
+				true, true, false, false, false));
+			Assert::IsFalse(IsUnexpectedLiveDeliveryGapEvidence(
+				false, true, false, false, false));
+			Assert::IsFalse(IsUnexpectedLiveDeliveryGapEvidence(
+				true, false, false, false, false));
+			Assert::IsFalse(IsUnexpectedLiveDeliveryGapEvidence(
+				true, true, true, false, false));
+			Assert::IsFalse(IsUnexpectedLiveDeliveryGapEvidence(
+				true, true, false, true, false));
+			Assert::IsFalse(IsUnexpectedLiveDeliveryGapEvidence(
+				true, true, false, false, true));
+		}
+
 		TEST_METHOD(DownstreamPrerollRequiresFiveAcceptedSamples)
 		{
 			Assert::IsFalse(HasSufficientDownstreamPreroll(0));
@@ -205,6 +221,22 @@ namespace Tests
 			Assert::AreEqual(14.0, snapshot.vpInternalMs, 0.001);
 			Assert::AreEqual(170.0, snapshot.dsScheduleLeadMs, 0.001);
 			Assert::AreEqual(184.0, snapshot.scheduledLatencyMs, 0.001);
+		}
+
+		TEST_METHOD(LatencyTrendCannotSpanSameEpochClockRebase)
+		{
+			RendererLatencyTrendLineage lineage;
+			Assert::IsTrue(lineage.RequiresBaseline(7));
+			lineage.Begin(7, 1000);
+			lineage.MarkLogged(1100);
+			Assert::IsFalse(lineage.RequiresBaseline(7));
+			Assert::AreEqual<uint64_t>(1000, lineage.StartedTickMs());
+			Assert::AreEqual<uint32_t>(1100, lineage.LastLogTickMs());
+
+			lineage.InvalidateForClockRebase();
+			Assert::IsTrue(lineage.RequiresBaseline(7));
+			Assert::AreEqual<uint64_t>(0, lineage.StartedTickMs());
+			Assert::AreEqual<uint32_t>(0, lineage.LastLogTickMs());
 		}
 
 		TEST_METHOD(ScheduledLatencyRejectsMissingVpArrivalBoundary)

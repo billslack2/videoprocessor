@@ -39,6 +39,31 @@ public:
 		uint64_t targetRevision = 0;
 	};
 
+	enum class SubmissionDisposition
+	{
+		RejectedUnavailable,
+		RejectedStaleBinding,
+		Selected,
+		Replaced,
+		Coalesced,
+	};
+
+	struct SubmissionReceipt
+	{
+		bool accepted = false;
+		uint64_t requestSequence = 0;
+		SubmissionDisposition disposition =
+			SubmissionDisposition::RejectedUnavailable;
+		uint64_t selectedSequence = 0;
+		RendererResetReason selectedReason = RendererResetReason::None;
+		RendererResetScope selectedScope = RendererResetScope::LiveQueue;
+		RendererResetOrigin selectedOrigin =
+			RendererResetOrigin::Unspecified;
+		uint64_t selectedOriginGeneration = 0;
+		RendererResetOriginContributors selectedOriginContributors = 0;
+		uint64_t selectedDeadlineTick = 0;
+	};
+
 	enum class StartResult
 	{
 		Started,
@@ -73,6 +98,10 @@ public:
 		uint32_t rendererGeneration = 0;
 		RendererResetReason pendingReason = RendererResetReason::None;
 		RendererResetScope pendingScope = RendererResetScope::LiveQueue;
+		RendererResetOrigin pendingOrigin =
+			RendererResetOrigin::Unspecified;
+		uint64_t pendingOriginGeneration = 0;
+		RendererResetOriginContributors pendingOriginContributors = 0;
 		uint64_t pendingDeadlineTick = 0;
 		uint64_t acceptedRequestCount = 0;
 		uint64_t staleRequestCount = 0;
@@ -100,6 +129,14 @@ public:
 	bool RequestUi(RendererResetReason reason, RendererResetScope scope,
 		uint64_t delayMs = 0, uint64_t backendEpoch = 0,
 		uintptr_t targetWindow = 0) noexcept;
+	SubmissionReceipt RequestUiWithReceipt(
+		RendererResetReason reason,
+		RendererResetScope scope,
+		uint64_t delayMs = 0,
+		uint64_t backendEpoch = 0,
+		uintptr_t targetWindow = 0,
+		RendererResetOrigin origin = RendererResetOrigin::Unspecified,
+		uint64_t originGeneration = 0) noexcept;
 
 	// Called on the UI/control thread after a wakeup or deadline timer. Clearing
 	// the outstanding-wakeup flag and selecting work happen under one lock so a
