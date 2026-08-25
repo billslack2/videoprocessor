@@ -3,10 +3,10 @@
 ## Status
 
 In Progress (2026-08-25). Implementation is committed and pushed on
-`codex/vp-0148-1-queue-launch-contract` at `12be56e`, based exactly on the
+`codex/vp-0148-1-queue-launch-contract` at `19cf3b2`, based exactly on the
 freshly queried remote beta `origin/v1.2.001-beta` at
 `2cfbaf2d36a8a848743714178b3fc2861be2d127`. The paired x64 Release host/plugin
-was redeployed on 2026-08-25 at 17:16 local time; live madVR handoff/reset
+was redeployed on 2026-08-25 at 17:53 local time; live madVR handoff/reset
 validation remains before completion.
 
 ## Progress
@@ -52,6 +52,25 @@ validation remains before completion.
   live-clock gaps. One corrective graph re-prime is allowed per renderer and
   effective contract; a second failed epoch reports manual recovery without a
   reset/recreation loop.
+- Deployed madVR validation exposed a false-negative in that new validator:
+  two automatic readiness resets reached the expected `0/2/2` VP queue and
+  approximately 152--159 ms requested-PTS latency, but validation stayed at
+  `stable=0` and incorrectly ended in manual recovery. The epoch-wide maximum
+  delivery duration retained the intentional startup hard block, and a healthy
+  paced `Deliver()` was commonly sampled while in progress; neither is valid
+  post-convergence failure evidence. Both strict checks remain available where
+  appropriate: the historical maximum still vetoes adoption of an old graph,
+  while actual stalls still fail the current-epoch 500 ms success-age test.
+- Post-reset validation now accepts exact, recent current-epoch successful
+  progress even when the next paced delivery is in flight. Healthy evidence
+  must begin within the two-second acquisition deadline and may use only one
+  bounded 1250 ms polling grace to complete its second observation. Late first
+  evidence, stale delivery, evidence loss, or unexpected gaps still take the
+  bounded corrective/manual path.
+- Readiness logs now publish validation blocker bits, stable observation count,
+  recent-delivery result, in-progress state, last-success age, and the
+  epoch-lifetime maximum delivery duration. Blocker/count changes force a log,
+  so `stable=0` no longer hides the rejecting predicate.
 - GraphRetarget retains explicit lineage through its required delayed
   LiveQueue E1-to-E2 settle phase. Transient mixed-epoch liveness reads wait for
   the first coherent snapshot; uncredited epoch changes in Prefilling,
@@ -63,19 +82,19 @@ validation remains before completion.
 - Three independent final architecture gates approved timing/telemetry,
   latency/retry lineage and reset/terminal lifecycle with no remaining blocker.
 - Focused contract/race/schema/reset regressions pass; the complete native
-  suite is 921/921. The clean-commit x64 Release GUI host and VP Renderer DLL
+  suite is 924/924. The clean-commit x64 Release GUI host and VP Renderer DLL
   builds pass (only the pre-existing libplacebo float-conversion warning
   remains).
-- Source commits through `12be56e` are pushed to
+- Source commits through `19cf3b2` are pushed to
   `billslack2/videoprocessor:codex/vp-0148-1-queue-launch-contract`.
 - Deployed the clean-commit x64 Release `VideoProcessor.exe` and paired
   `VideoProcessorVPRenderer.dll` to `C:\Videoprocessor\vp`. Source/deployment
   SHA-256 hashes match. Active configuration, state, shaders, dependencies and
   shader cache were not modified. The immediately previous binary pair is
   recoverable from
-  `C:\Videoprocessor\vp\backups\VP-0148-1-deploy-20260825-171614-12be56e`.
-  The deployed process restarted successfully as PID 13684 and reached live VP
-  rendering; the new madVR handoff/reset matrix has not yet been performed.
+  `C:\Videoprocessor\vp\backups\VP-0148-1-deploy-20260825-175305-19cf3b2`.
+  The deployed process restarted successfully as PID 36604 and is responding;
+  the new madVR handoff/reset matrix has not yet been performed.
 
 ## Parent
 
