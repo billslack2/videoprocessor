@@ -359,10 +359,17 @@ OutputReadinessDecision OutputReadinessController::Observe(
 		const bool unexpectedGap = exactEpoch &&
 			(input.currentGraphUnexpectedLiveDeliveryGapEvents != 0 ||
 			 input.currentGraphUnexpectedLiveDeliveryGapSlots != 0);
+		decision.postResetValidationBlockers =
+			PostResetValidationBlockers(input);
 		const bool validationEvidenceHealthy =
-			IsPostResetEvidenceExact(input) &&
-			IsPostResetEnvelopeHealthy(input);
-		if (validationEvidenceHealthy)
+			decision.postResetValidationBlockers ==
+				OutputReadinessValidationBlockerNone;
+		const bool validationWindowAlreadyOpen =
+			m_validationStableObservationCount != 0;
+		const bool mayAcquireValidationWindow = validValidationClock &&
+			validationElapsedMs <= kPostResetValidationDeadlineMs;
+		if (validationEvidenceHealthy &&
+			(validationWindowAlreadyOpen || mayAcquireValidationWindow))
 		{
 			if (m_validationStableObservationCount == 0 ||
 				input.observationTickMs < m_validationStableStartedTickMs)
@@ -374,6 +381,8 @@ OutputReadinessDecision OutputReadinessController::Observe(
 			{
 				++m_validationStableObservationCount;
 			}
+			decision.postResetValidationStableObservationCount =
+				m_validationStableObservationCount;
 			const uint64_t stableElapsedMs = input.observationTickMs >=
 				m_validationStableStartedTickMs ?
 				input.observationTickMs - m_validationStableStartedTickMs : 0;
@@ -382,7 +391,9 @@ OutputReadinessDecision OutputReadinessController::Observe(
 					stableElapsedMs,
 					std::numeric_limits<uint32_t>::max()));
 			if (validValidationClock &&
-				validationElapsedMs <= kPostResetValidationDeadlineMs &&
+				validationElapsedMs <=
+					kPostResetValidationDeadlineMs +
+					kPostResetValidationCompletionGraceMs &&
 				m_validationStableObservationCount >= 2 &&
 				stableElapsedMs >= kPostResetValidationStableMs)
 			{
@@ -401,8 +412,14 @@ OutputReadinessDecision OutputReadinessController::Observe(
 			ClearValidationWindow();
 		}
 
+		const bool validationWindowMayComplete =
+			m_validationStableObservationCount != 0 &&
+			validationElapsedMs <=
+				kPostResetValidationDeadlineMs +
+				kPostResetValidationCompletionGraceMs;
 		if (unexpectedGap ||
-			validationElapsedMs >= kPostResetValidationDeadlineMs)
+			(validationElapsedMs >= kPostResetValidationDeadlineMs &&
+			 !validationWindowMayComplete))
 		{
 			m_lastFailedValidationEpoch = m_postReadyEpoch;
 			ClearValidationWindow();
@@ -523,46 +540,57 @@ bool OutputReadinessController::CanAdoptCurrentGraph(
 		input.currentGraphConvertedDepth == input.reserveFrames;
 }
 
-bool OutputReadinessController::IsPostResetEvidenceExact(
+uint32_t OutputReadinessController::PostResetValidationBlockers(
 	const OutputReadinessInput& input) const
 {
-	const uint64_t frameRelativeHandshakeScaleBlockUs =
-		input.expectedOutputRefreshHz >= kMinimumRefreshHz ?
-		static_cast<uint64_t>(std::ceil(
-			(kHandshakeScaleBlockPeriods * 1000000.0) /
-			input.expectedOutputRefreshHz)) : 0;
-	const uint64_t handshakeScaleBlockUs = std::min(
-		frameRelativeHandshakeScaleBlockUs,
-		kMaximumAdoptableBlockDurationUs);
-	return input.currentGraphQueueEpoch == m_postReadyEpoch &&
-		input.currentGraphPrimeProven &&
-		input.currentGraphPrimeObservedFullConvertedQueue &&
-		input.currentGraphPostResetBoundarySafe &&
-		input.currentGraphDeliveryRecent &&
-		input.currentGraphPrimeTransitionGeneration == m_transitionGeneration &&
-		input.currentGraphPrimeEpoch == m_postReadyEpoch &&
-		input.currentGraphPrimeTargetFrames == m_postReadyReserveFrames &&
-		input.reserveFrames == m_postReadyReserveFrames &&
-		input.currentGraphPostProofDeliverySuccesses >=
-			kRequiredPostResetValidationDeliveries &&
-		handshakeScaleBlockUs > 0 &&
-		input.currentGraphMaximumSuccessfulDeliveryDurationUs > 0 &&
-		input.currentGraphMaximumSuccessfulDeliveryDurationUs <
-			handshakeScaleBlockUs;
-}
-
-bool OutputReadinessController::IsPostResetEnvelopeHealthy(
-	const OutputReadinessInput& input) const
-{
+	uint32_t blockers = OutputReadinessValidationBlockerNone;
+	if (input.currentGraphQueueEpoch != m_postReadyEpoch)
+		blockers |= OutputReadinessValidationBlockerQueueEpoch;
+	if (!input.currentGraphPrimeProven)
+		blockers |= OutputReadinessValidationBlockerPrimeProof;
+	if (!input.currentGraphPrimeObservedFullConvertedQueue)
+		blockers |= OutputReadinessValidationBlockerFullPrime;
+	if (!input.currentGraphPostResetBoundarySafe)
+		blockers |= OutputReadinessValidationBlockerBoundary;
+	if (!input.currentGraphDeliveryRecent)
+		blockers |= OutputReadinessValidationBlockerRecentDelivery;
+	if (input.currentGraphPrimeTransitionGeneration != m_transitionGeneration)
+		blockers |= OutputReadinessValidationBlockerTransitionGeneration;
+	if (input.currentGraphPrimeEpoch != m_postReadyEpoch)
+		blockers |= OutputReadinessValidationBlockerPrimeEpoch;
+	if (input.currentGraphPrimeTargetFrames != m_postReadyReserveFrames)
+		blockers |= OutputReadinessValidationBlockerPrimeTarget;
+	if (input.reserveFrames != m_postReadyReserveFrames)
+		blockers |= OutputReadinessValidationBlockerReserve;
+	if (input.currentGraphPostProofDeliverySuccesses <
+		kRequiredPostResetValidationDeliveries)
+	{
+		blockers |= OutputReadinessValidationBlockerPostProofDeliveries;
+	}
+	if (input.currentGraphUnexpectedLiveDeliveryGapEvents != 0 ||
+		input.currentGraphUnexpectedLiveDeliveryGapSlots != 0)
+	{
+		blockers |= OutputReadinessValidationBlockerUnexpectedGap;
+	}
+	if (input.currentGraphRawDepth > kMaximumAdoptionRawDepth)
+		blockers |= OutputReadinessValidationBlockerRawDepth;
+	if (input.currentGraphRetainedSourceBufferCount >
+		kMaximumPostResetRetainedSourceBuffers)
+	{
+		blockers |= OutputReadinessValidationBlockerRetainedSource;
+	}
 	const size_t minimumConvertedDepth =
 		m_postReadyReserveFrames == 0 ? 0 : m_postReadyReserveFrames - 1;
-	return input.currentGraphUnexpectedLiveDeliveryGapEvents == 0 &&
-		input.currentGraphUnexpectedLiveDeliveryGapSlots == 0 &&
-		input.currentGraphRawDepth <= kMaximumAdoptionRawDepth &&
-		input.currentGraphRetainedSourceBufferCount <=
-			kMaximumPostResetRetainedSourceBuffers &&
-		input.currentGraphConvertedDepth >= minimumConvertedDepth &&
-		input.currentGraphConvertedDepth <= m_postReadyReserveFrames;
+	if (input.currentGraphConvertedDepth < minimumConvertedDepth ||
+		input.currentGraphConvertedDepth > m_postReadyReserveFrames)
+	{
+		blockers |= OutputReadinessValidationBlockerConvertedEnvelope;
+	}
+	// The epoch-lifetime maximum includes the expected startup hard block that
+	// proves downstream priming. It is a valid veto for adopting an old graph,
+	// but cannot describe post-convergence health. Exact current-epoch success,
+	// recency, gap counters, and the stable envelope validate the reset instead.
+	return blockers;
 }
 
 const char* ToString(OutputReadinessState state)

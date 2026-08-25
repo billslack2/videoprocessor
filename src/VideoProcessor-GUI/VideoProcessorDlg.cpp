@@ -14105,13 +14105,12 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 			readinessLiveness.convergenceDeliverySuccessCount ?
 		readinessLiveness.currentEpochDeliverySuccessCount -
 			readinessLiveness.convergenceDeliverySuccessCount : 0;
+	// A paced DirectShow Receive is normally in progress for much of every
+	// frame period. Its instantaneous ownership bit is not a stall signal;
+	// current-epoch successful progress and age are the stable health evidence.
 	const bool currentGraphDeliveryRecent = currentGraphPrimeProven &&
-		readinessLiveness.lastDeliverySuccessQueueEpoch ==
-			readinessLiveness.queueEpoch &&
-		readinessLiveness.lastDeliverySuccessTick != 0 &&
-		readinessObservationTick >= readinessLiveness.lastDeliverySuccessTick &&
-		readinessObservationTick - readinessLiveness.lastDeliverySuccessTick <= 500 &&
-		!readinessLiveness.deliveryInProgress;
+		HasRecentCurrentEpochDelivery(
+			readinessLiveness, readinessObservationTick, 500);
 	if (hasReadinessLiveness &&
 		m_outputReadinessResetCompletion.BindStableSnapshot(
 			readinessInput.transitionGeneration, readinessLiveness.queueEpoch))
@@ -14309,7 +14308,11 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		m_lastObservedOutputReadinessState != readinessDecision.state ||
 		m_lastObservedOutputReadinessReason != readinessDecision.reason ||
 		m_lastObservedReadinessResetRequest !=
-			readinessDecision.requestSerializedPostReadyReset;
+			readinessDecision.requestSerializedPostReadyReset ||
+		m_lastObservedReadinessValidationBlockers !=
+			readinessDecision.postResetValidationBlockers ||
+		m_lastObservedReadinessValidationObservationCount !=
+			readinessDecision.postResetValidationStableObservationCount;
 	if (readinessChanged)
 	{
 		DebugLog::Log(
@@ -14319,7 +14322,9 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 			"would_request_reset=%d adopt_prime=%d "
 			"prime_epoch=%llu post_proof_success=%u raw=%zu converted=%zu/%zu "
 			"retained_source=%zu high_water=%zu oldest_source_ms=%llu "
-			"validation=%u/%ums stable=%ums unexpected_gaps=%llu/%llu "
+			"validation=%u/%ums stable=%ums observations=%u blockers=0x%04x "
+			"delivery_recent=%d delivery_in_progress=%d last_success_age_ms=%llu "
+			"epoch_max_deliver_us=%llu unexpected_gaps=%llu/%llu "
 			"corrective_reprime=%d manual_recovery=%d "
 			"discard=%d admit=%d deliver=%d",
 			static_cast<unsigned long long>(
@@ -14360,6 +14365,19 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 			readinessDecision.postResetValidationElapsedMs,
 			OutputReadinessController::kPostResetValidationDeadlineMs,
 			readinessDecision.postResetValidationStableElapsedMs,
+			readinessDecision.postResetValidationStableObservationCount,
+			readinessDecision.postResetValidationBlockers,
+			readinessInput.currentGraphDeliveryRecent ? 1 : 0,
+			hasReadinessLiveness && readinessLiveness.deliveryInProgress ? 1 : 0,
+			static_cast<unsigned long long>(hasReadinessLiveness &&
+				readinessLiveness.lastDeliverySuccessTick != 0 &&
+				readinessObservationTick >=
+					readinessLiveness.lastDeliverySuccessTick ?
+				readinessObservationTick -
+					readinessLiveness.lastDeliverySuccessTick :
+				(std::numeric_limits<uint64_t>::max)()),
+			static_cast<unsigned long long>(
+				readinessInput.currentGraphMaximumSuccessfulDeliveryDurationUs),
 			static_cast<unsigned long long>(
 				readinessInput.currentGraphUnexpectedLiveDeliveryGapEvents),
 			static_cast<unsigned long long>(
@@ -14374,6 +14392,10 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		m_lastObservedOutputReadinessReason = readinessDecision.reason;
 		m_lastObservedReadinessResetRequest =
 			readinessDecision.requestSerializedPostReadyReset;
+		m_lastObservedReadinessValidationBlockers =
+			readinessDecision.postResetValidationBlockers;
+		m_lastObservedReadinessValidationObservationCount =
+			readinessDecision.postResetValidationStableObservationCount;
 	}
 	const bool sceneTimingReady =
 		displayRateResult.decision == DisplayRefreshRateDecision::Accepted;

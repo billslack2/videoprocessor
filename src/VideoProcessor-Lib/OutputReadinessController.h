@@ -41,6 +41,25 @@ enum class OutputReadinessReason
 	Ready
 };
 
+enum OutputReadinessValidationBlocker : uint32_t
+{
+	OutputReadinessValidationBlockerNone = 0,
+	OutputReadinessValidationBlockerQueueEpoch = 1u << 0,
+	OutputReadinessValidationBlockerPrimeProof = 1u << 1,
+	OutputReadinessValidationBlockerFullPrime = 1u << 2,
+	OutputReadinessValidationBlockerBoundary = 1u << 3,
+	OutputReadinessValidationBlockerRecentDelivery = 1u << 4,
+	OutputReadinessValidationBlockerTransitionGeneration = 1u << 5,
+	OutputReadinessValidationBlockerPrimeEpoch = 1u << 6,
+	OutputReadinessValidationBlockerPrimeTarget = 1u << 7,
+	OutputReadinessValidationBlockerReserve = 1u << 8,
+	OutputReadinessValidationBlockerPostProofDeliveries = 1u << 9,
+	OutputReadinessValidationBlockerUnexpectedGap = 1u << 10,
+	OutputReadinessValidationBlockerRawDepth = 1u << 11,
+	OutputReadinessValidationBlockerRetainedSource = 1u << 12,
+	OutputReadinessValidationBlockerConvertedEnvelope = 1u << 13
+};
+
 struct OutputReadinessInput
 {
 	uint64_t transitionGeneration = 0;
@@ -162,6 +181,9 @@ struct OutputReadinessDecision
 	uint32_t postReadySettleRequiredMs = 0;
 	uint32_t postResetValidationElapsedMs = 0;
 	uint32_t postResetValidationStableElapsedMs = 0;
+	uint32_t postResetValidationStableObservationCount = 0;
+	uint32_t postResetValidationBlockers =
+		OutputReadinessValidationBlockerNone;
 	bool correctiveReprimeAttempted = false;
 	bool manualRecoveryRequired = false;
 };
@@ -176,6 +198,10 @@ public:
 	static constexpr uint32_t kPostReadySettleMs = 2000;
 	static constexpr uint32_t kPostResetValidationStableMs = 250;
 	static constexpr uint32_t kPostResetValidationDeadlineMs = 2000;
+	// Readiness is observed by a nominal one-second WM_TIMER. Healthy evidence
+	// must begin by the deadline, but one already-open stable window gets one
+	// bounded jitter allowance to reach its second observation.
+	static constexpr uint32_t kPostResetValidationCompletionGraceMs = 1250;
 	static constexpr uint32_t kHandshakeScaleBlockPeriods = 16;
 	static constexpr uint64_t kMaximumAdoptableBlockDurationUs = 500000;
 
@@ -185,8 +211,8 @@ public:
 
 private:
 	bool CanAdoptCurrentGraph(const OutputReadinessInput& input) const;
-	bool IsPostResetEvidenceExact(const OutputReadinessInput& input) const;
-	bool IsPostResetEnvelopeHealthy(const OutputReadinessInput& input) const;
+	uint32_t PostResetValidationBlockers(
+		const OutputReadinessInput& input) const;
 	void BeginPostReadyEpoch(const OutputReadinessInput& input);
 	void ClearValidationWindow();
 

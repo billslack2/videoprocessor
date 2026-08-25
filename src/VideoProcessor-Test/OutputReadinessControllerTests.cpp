@@ -746,6 +746,80 @@ namespace Tests
 			Assert::IsFalse(decision.requestSerializedPostReadyReset);
 		}
 
+		TEST_METHOD(PostResetIgnoresHistoricalStartupHandshakeMaximum)
+		{
+			OutputReadinessController controller;
+			OutputReadinessInput input = ReadyInput();
+			(void)controller.Observe(input);
+			input.postReadyResetCompleted = true;
+			input.postReadyEpoch = 42;
+			input.currentEpochProcessedDepth = input.reserveFrames;
+			input.observationTickMs = 1000;
+			SetValidPostResetEvidence(input, 42);
+			input.currentGraphMaximumSuccessfulDeliveryDurationUs = 638545;
+			(void)controller.Observe(input);
+
+			input.observationTickMs = 2000;
+			OutputReadinessDecision decision = controller.Observe(input);
+			Assert::AreEqual<uint32_t>(
+				OutputReadinessValidationBlockerNone,
+				decision.postResetValidationBlockers);
+			Assert::AreEqual<uint32_t>(
+				1, decision.postResetValidationStableObservationCount);
+			input.observationTickMs = 3000;
+			decision = controller.Observe(input);
+			Assert::AreEqual(
+				static_cast<int>(OutputReadinessState::Steady),
+				static_cast<int>(decision.state));
+			Assert::IsFalse(decision.requestSerializedPostReadyReset);
+		}
+
+		TEST_METHOD(PostResetStableWindowAllowsBoundedTimerJitter)
+		{
+			OutputReadinessController controller;
+			OutputReadinessInput input = ReadyInput();
+			(void)controller.Observe(input);
+			input.postReadyResetCompleted = true;
+			input.postReadyEpoch = 42;
+			input.currentEpochProcessedDepth = input.reserveFrames;
+			input.observationTickMs = 1000;
+			SetValidPostResetEvidence(input, 42);
+			(void)controller.Observe(input);
+
+			input.observationTickMs = 2001;
+			Assert::AreEqual(
+				static_cast<int>(OutputReadinessState::PostResetValidating),
+				static_cast<int>(controller.Observe(input).state));
+			input.observationTickMs = 3002;
+			const OutputReadinessDecision decision = controller.Observe(input);
+			Assert::AreEqual(
+				static_cast<int>(OutputReadinessState::Steady),
+				static_cast<int>(decision.state));
+			Assert::IsFalse(decision.requestSerializedPostReadyReset);
+		}
+
+		TEST_METHOD(PostResetFirstHealthyEvidenceAfterDeadlineStillFails)
+		{
+			OutputReadinessController controller;
+			OutputReadinessInput input = ReadyInput();
+			(void)controller.Observe(input);
+			input.postReadyResetCompleted = true;
+			input.postReadyEpoch = 42;
+			input.currentEpochProcessedDepth = input.reserveFrames;
+			input.observationTickMs = 1000;
+			SetValidPostResetEvidence(input, 42);
+			(void)controller.Observe(input);
+
+			input.observationTickMs = 3001;
+			const OutputReadinessDecision decision = controller.Observe(input);
+			Assert::AreEqual(
+				static_cast<int>(OutputReadinessState::PostReadyResetPending),
+				static_cast<int>(decision.state));
+			Assert::IsTrue(decision.requestSerializedPostReadyReset);
+			Assert::AreEqual<uint32_t>(
+				0, decision.postResetValidationStableObservationCount);
+		}
+
 		TEST_METHOD(UnexpectedLiveGapImmediatelyRequestsCorrectiveReprime)
 		{
 			OutputReadinessController controller;
