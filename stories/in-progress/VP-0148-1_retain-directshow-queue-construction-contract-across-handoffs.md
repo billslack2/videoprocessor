@@ -5,8 +5,9 @@
 In Progress (2026-08-25). Implementation is committed and pushed on
 `codex/vp-0148-1-queue-launch-contract` at `01502c3`, based exactly on the
 freshly queried remote beta `origin/v1.2.001-beta` at
-`2cfbaf2d36a8a848743714178b3fc2861be2d127`. Live madVR hardware validation
-remains before completion.
+`2cfbaf2d36a8a848743714178b3fc2861be2d127`. The paired x64 Release host/plugin
+was deployed on 2026-08-25; live madVR hardware validation remains before
+completion.
 
 ## Progress
 
@@ -35,8 +36,13 @@ remains before completion.
   898/898. The x64 Release GUI host and VP Renderer DLL builds pass (only the
   pre-existing libplacebo float-conversion warning remains).
 - Source commit `01502c3` is pushed to
-  `billslack2/videoprocessor:codex/vp-0148-1-queue-launch-contract`. No deployment
-  or live madVR validation has been performed.
+  `billslack2/videoprocessor:codex/vp-0148-1-queue-launch-contract`.
+- Deployed the post-commit x64 Release `VideoProcessor.exe` and paired
+  `VideoProcessorVPRenderer.dll` to `C:\Videoprocessor\vp`. Source/deployment
+  SHA-256 hashes match. Active configuration, state, shaders, dependencies and
+  shader cache were not modified. The previous binary pair is recoverable from
+  `C:\Videoprocessor\vp\backups\VP-0148-1-deploy-20260825-160640-01502c3`.
+  Live madVR validation has not yet been performed.
 
 ## Parent
 
