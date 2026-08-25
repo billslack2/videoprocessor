@@ -67,6 +67,7 @@ struct IRendererCallback
 	// Delivered on the callback/UI thread after an asynchronous renderer-owner
 	// command discovers that the graph must be replaced.
 	virtual void OnRendererRestartRequired(uint32_t rendererGeneration) {}
+	virtual void OnRendererQueueContractChanged(uint32_t rendererGeneration) {}
 };
 
 

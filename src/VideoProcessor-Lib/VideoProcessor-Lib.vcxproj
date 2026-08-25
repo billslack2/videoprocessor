@@ -216,6 +216,8 @@
     <ClInclude Include="RendererResetRequest.h" />
     <ClInclude Include="RendererResetRequestLatch.h" />
     <ClInclude Include="RendererTransitionModel.h" />
+	<ClInclude Include="RendererQueueLaunchContractModel.h" />
+	<ClInclude Include="RendererQueueLaunchAudit.h" />
 	<ClInclude Include="RendererGenerationGate.h" />
     <ClInclude Include="vprenderer\\AlphaCadenceCorrectionPolicy.h" />
     <ClInclude Include="vprenderer\\AlphaPresentationTelemetry.h" />
@@ -237,6 +239,7 @@
     <ClInclude Include="microsoft_directshow\DirectShowDefines.h" />
     <ClInclude Include="microsoft_directshow\DirectShowRendererStartStopTimeMethod.h" />
     <ClInclude Include="microsoft_directshow\DirectShowTimingClock.h" />
+	<ClInclude Include="microsoft_directshow\DirectShowQueueConstructionContract.h" />
 	<ClInclude Include="microsoft_directshow\DirectShowPresentationLeadPolicy.h" />
 	<ClInclude Include="microsoft_directshow\DirectShowEpochPrimePolicy.h" />
     <ClInclude Include="microsoft_directshow\DirectShowTranslations.h" />
@@ -334,6 +337,7 @@
     <ClCompile Include="IRenderer.cpp" />
     <ClCompile Include="RendererResetCoordinator.cpp" />
     <ClCompile Include="RendererTransitionModel.cpp" />
+	<ClCompile Include="RendererQueueLaunchContractModel.cpp" />
     <ClCompile Include="vprenderer\\AlphaCadenceCorrectionPolicy.cpp">
       <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
     </ClCompile>
@@ -351,6 +355,7 @@
     </ClCompile>
     <ClCompile Include="microsoft_directshow\DirectShowRendererStartStopTimeMethod.cpp" />
     <ClCompile Include="microsoft_directshow\DirectShowTimingClock.cpp" />
+	<ClCompile Include="microsoft_directshow\DirectShowQueueConstructionContract.cpp" />
 	<ClCompile Include="microsoft_directshow\DirectShowVideoTimingAdapter.cpp" />
     <ClCompile Include="microsoft_directshow\DirectShowTranslations.cpp" />
 	<ClCompile Include="microsoft_directshow\MadVRShaderLoader.cpp">

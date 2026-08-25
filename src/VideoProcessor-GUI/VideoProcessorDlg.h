@@ -31,6 +31,7 @@
 #include <RendererResetPolicy.h>
 #include <RendererRetirementService.h>
 #include <RendererTransitionModel.h>
+#include <RendererQueueLaunchContractModel.h>
 #include <QueueProfileRestartPolicy.h>
 #include <UnifiedProfileRuntime.h>
 #include <VideoFrame.h>
@@ -71,6 +72,7 @@
 #define WM_MESSAGE_RENDERER_RESTART_REQUIRED            (WM_APP + 17)
 #define WM_MESSAGE_DIRECTSHOW_OWNER_COMPLETION           (WM_APP + 18)
 #define WM_MESSAGE_FULLSCREEN_HOST_RESIZED               (WM_APP + 19)
+#define WM_MESSAGE_RENDERER_QUEUE_CONTRACT_CHANGED        (WM_APP + 20)
 
 static_assert(WM_MESSAGE_DIRECTSHOW_NOTIFICATION !=
 	WM_MESSAGE_DIRECTSHOW_OWNER_COMPLETION,
@@ -225,6 +227,8 @@ public:
 	afx_msg LRESULT OnMessageRendererGraphEvent(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnMessageRendererRestartRequired(
 		WPARAM wParam, LPARAM lParam);
+	afx_msg LRESULT OnMessageRendererQueueContractChanged(
+		WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnMessageExternalShortcut(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnMessageFullscreenHostResized(
 		WPARAM wParam, LPARAM lParam);
@@ -282,6 +286,8 @@ public:
 	void OnRendererGraphEvent(
 		long eventCode, uint32_t rendererGeneration) override;
 	void OnRendererRestartRequired(uint32_t rendererGeneration) override;
+	void OnRendererQueueContractChanged(
+		uint32_t rendererGeneration) override;
 
 protected:
 
@@ -737,6 +743,12 @@ protected:
 	std::atomic_bool m_transitionRevealPosted{false};
 	RendererTransitionModel m_rendererTransitionModel;
 	bool m_rendererResetTransitionActive = false;
+	RendererQueueLaunchContractModel m_queueLaunchContractModel;
+	uint64_t m_queueLaunchContractRevision = 0;
+	std::string m_queueLaunchContractProfileName;
+	uint32_t m_queueLaunchContractCommitLoggedGeneration = 0;
+	bool m_queueLaunchContractManualRetryPending = false;
+	bool m_queueLaunchContractTerminalFailure = false;
 	uint64_t m_rendererStartCapturedFrameCount = 0;
 	bool m_rendererFrameBaselineValid = false;
 
@@ -952,6 +964,10 @@ protected:
 		UINT delayMs);
 	void CompleteRendererResetOperation();
 	bool RendererResetOperationInProgress() const;
+	RendererQueueLaunchDesired PublishRendererQueueLaunchDesired(
+		RendererQueueLaunchBackend backend, size_t capacity,
+		uint64_t profileGeneration, const char* source);
+	void EvaluateDirectShowQueueLaunchContract(const char* trigger);
 	void LogLivenessSnapshot(const RendererLivenessSnapshot& snapshot,
 		size_t rawQueueSize, size_t convertedQueueSize, size_t queueMaxSize,
 		const char* trigger);

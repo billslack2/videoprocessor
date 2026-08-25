@@ -192,6 +192,12 @@
     <ClInclude Include="RendererTransitionModel.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+	<ClInclude Include="RendererQueueLaunchContractModel.h">
+	  <Filter>Header Files</Filter>
+	</ClInclude>
+	<ClInclude Include="RendererQueueLaunchAudit.h">
+		<Filter>Header Files</Filter>
+	</ClInclude>
     <ClInclude Include="ITimingClock.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -237,6 +243,9 @@
     <ClInclude Include="microsoft_directshow\DirectShowTimingClock.h">
       <Filter>Header Files\microsoft_directshow</Filter>
     </ClInclude>
+	<ClInclude Include="microsoft_directshow\DirectShowQueueConstructionContract.h">
+	  <Filter>Header Files\microsoft_directshow</Filter>
+	</ClInclude>
     <ClInclude Include="microsoft_directshow\DirectShowTranslations.h">
       <Filter>Header Files\microsoft_directshow</Filter>
     </ClInclude>
@@ -464,6 +473,9 @@
     <ClCompile Include="RendererTransitionModel.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+	<ClCompile Include="RendererQueueLaunchContractModel.cpp">
+	  <Filter>Source Files</Filter>
+	</ClCompile>
     <ClCompile Include="StateVariables.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -512,6 +524,9 @@
     <ClCompile Include="microsoft_directshow\DirectShowTimingClock.cpp">
       <Filter>Source Files\microsoft_directshow</Filter>
     </ClCompile>
+	<ClCompile Include="microsoft_directshow\DirectShowQueueConstructionContract.cpp">
+	  <Filter>Source Files\microsoft_directshow</Filter>
+	</ClCompile>
     <ClCompile Include="microsoft_directshow\live_source_filter\ALiveSourceVideoOutputPin.cpp">
       <Filter>Source Files\microsoft_directshow\live_source_filter</Filter>
     </ClCompile>

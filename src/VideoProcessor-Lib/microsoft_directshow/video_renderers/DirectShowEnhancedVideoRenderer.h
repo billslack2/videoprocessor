@@ -32,6 +32,8 @@ public:
 		DirectShowStartStopTimeMethod directShowStartStopTimeMethod,
 		bool useFrameQueue,
 		size_t frameQueueMaxSize,
+		uint64_t queueContractRevision,
+		uint64_t queueProfileGeneration,
 		VideoConversionOverride videoConversionOverride);
 
 	virtual ~DirectShowEnhancedVideoRenderer() {}

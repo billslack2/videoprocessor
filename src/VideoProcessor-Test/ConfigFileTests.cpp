@@ -1763,7 +1763,8 @@ namespace VideoProcessorTest
 			Assert::IsTrue(runtime.GetSnapshot() == queueSelection.snapshot);
 			Assert::IsTrue(QueueProfileRestartPolicy::
 				RequiresResetAfterManualSelection(true,
-					queueSelection.snapshot->queue.profile));
+					queueSelection.snapshot->queue.profile,
+					queueSelection.changed));
 
 			QueueProfileRestartPolicy::PendingRequest pending;
 			Assert::IsTrue(QueueProfileRestartPolicy::EnqueueResult::Queued ==
@@ -1776,9 +1777,9 @@ namespace VideoProcessorTest
 				[](const std::string&, std::string&) { return false; }, reselect,
 				error));
 			Assert::IsFalse(reselect.changed);
-			Assert::IsTrue(QueueProfileRestartPolicy::
+			Assert::IsFalse(QueueProfileRestartPolicy::
 				RequiresResetAfterManualSelection(true,
-					reselect.snapshot->queue.profile));
+					reselect.snapshot->queue.profile, reselect.changed));
 
 			UnifiedProfileRuntime::SelectionResult viewportSelection;
 			Assert::IsTrue(runtime.SelectKey("F3",
@@ -1787,9 +1788,10 @@ namespace VideoProcessorTest
 			Assert::IsTrue(viewportSelection.changed);
 			Assert::IsFalse(QueueProfileRestartPolicy::
 				RequiresResetAfterManualSelection(false,
-					viewportSelection.snapshot->queue.profile));
+					viewportSelection.snapshot->queue.profile,
+					viewportSelection.changed));
 			Assert::IsFalse(QueueProfileRestartPolicy::
-				RequiresResetAfterManualSelection(false, "base"));
+				RequiresResetAfterManualSelection(false, "base", true));
 
 			UnifiedProfileRuntime::SelectionResult firstRapidSelection;
 			Assert::IsTrue(runtime.SelectKey("F1",
@@ -1797,7 +1799,8 @@ namespace VideoProcessorTest
 				firstRapidSelection, error));
 			Assert::IsTrue(QueueProfileRestartPolicy::
 				RequiresResetAfterManualSelection(true,
-					firstRapidSelection.snapshot->queue.profile));
+					firstRapidSelection.snapshot->queue.profile,
+					firstRapidSelection.changed));
 			Assert::IsTrue(QueueProfileRestartPolicy::EnqueueResult::Coalesced ==
 				QueueProfileRestartPolicy::Enqueue(pending,
 					firstRapidSelection.snapshot->generation,
@@ -1809,7 +1812,8 @@ namespace VideoProcessorTest
 				finalRapidSelection, error));
 			Assert::IsTrue(QueueProfileRestartPolicy::
 				RequiresResetAfterManualSelection(true,
-					finalRapidSelection.snapshot->queue.profile));
+					finalRapidSelection.snapshot->queue.profile,
+					finalRapidSelection.changed));
 			Assert::IsTrue(QueueProfileRestartPolicy::EnqueueResult::Coalesced ==
 				QueueProfileRestartPolicy::Enqueue(pending,
 					finalRapidSelection.snapshot->generation,

@@ -57,6 +57,7 @@
 #include <DisplayRefreshRateEstimator.h>
 #include <DisplayRefreshRatePolicy.h>
 #include <RendererGenerationGate.h>
+#include <RendererQueueLaunchAudit.h>
 #include <RendererProfileConfig.h>
 #include <MainConfigSchema.h>
 #include <UnifiedProfileRuntime.h>
@@ -1965,6 +1966,7 @@ BEGIN_MESSAGE_MAP(CVideoProcessorDlg, CDialog)
 	ON_MESSAGE(WM_MESSAGE_RENDERER_INTENT_READY, &CVideoProcessorDlg::OnMessageRendererIntentReady)
 	ON_MESSAGE(WM_MESSAGE_RENDERER_GRAPH_EVENT, &CVideoProcessorDlg::OnMessageRendererGraphEvent)
 	ON_MESSAGE(WM_MESSAGE_RENDERER_RESTART_REQUIRED, &CVideoProcessorDlg::OnMessageRendererRestartRequired)
+	ON_MESSAGE(WM_MESSAGE_RENDERER_QUEUE_CONTRACT_CHANGED, &CVideoProcessorDlg::OnMessageRendererQueueContractChanged)
 	ON_MESSAGE(WM_MODERN_OPERATOR_ACTION, &CVideoProcessorDlg::OnMessageModernOperatorAction)
 
 	// Command handlers (from accelerator)
@@ -5113,6 +5115,14 @@ bool CVideoProcessorDlg::EstablishSessionRendererOverrideFromSelection(
 void CVideoProcessorDlg::OnBnClickedRendererRestart()
 {
 	DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnBnClickedRendererRestart()")));
+	if (m_queueLaunchContractTerminalFailure)
+	{
+		m_queueLaunchContractManualRetryPending = true;
+		m_queueLaunchContractTerminalFailure = false;
+		DebugLog::Log(
+			"DirectShow queue lifecycle manual retry requested: generation=%u",
+			m_rendererGeneration.load(std::memory_order_acquire));
+	}
 
 	if (m_rendererState == RendererState::RENDERSTATE_FAILED)
 		m_rendererState = RendererState::RENDERSTATE_UNKNOWN;
@@ -5177,7 +5187,11 @@ bool CVideoProcessorDlg::IsUnifiedActionRendererSelected(
 
 void CVideoProcessorDlg::UpdateRendererQueueControl()
 {
-	if (m_queueRendererSelectionInitialized)
+	// The edit is shared by the legacy dialog, but DirectShow construction
+	// state is not.  While Alpha is active its visible queue value belongs to
+	// Alpha and must never overwrite the retained DirectShow capacity during a
+	// backend handoff.
+	if (m_queueRendererSelectionInitialized && m_activeRendererIsDirectShow)
 		m_directShowQueueCapacity = std::max<size_t>(1,
 			GetRendererVideoFrameQueueSizeMax());
 
@@ -5833,7 +5847,8 @@ LRESULT CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange(WPARAM wParam
 	// by CBufferedLiveSourceVideoOutputPin detecting frame counter changes
 
 	// New round, new chances, reset state here
-	if (m_rendererState == RendererState::RENDERSTATE_FAILED)
+	if (m_rendererState == RendererState::RENDERSTATE_FAILED &&
+		!m_queueLaunchContractTerminalFailure)
 	{
 		m_rendererState = RendererState::RENDERSTATE_UNKNOWN;
 	}
@@ -6046,6 +6061,9 @@ LRESULT CVideoProcessorDlg::OnMessageRendererStateChange(WPARAM wParam, LPARAM l
 			m_wantToRestartRenderer = true;
 			break;
 		}
+		EvaluateDirectShowQueueLaunchContract("renderer-rendering");
+		if (m_queueLaunchContractTerminalFailure || m_wantToRestartRenderer)
+			break;
 		m_acceptedRendererName = m_activeRendererName;
 		DebugLog::Log(
 			"Renderer accepted for configuration fallback: renderer=%S generation=%u",
@@ -6396,7 +6414,17 @@ bool CVideoProcessorDlg::TryFinalizeRendererRetirement(
 		m_retiringRendererName, token);
 	m_retiringRendererName.Empty();
 	m_retiringRendererGeneration = 0;
-	if (completedRetry)
+	if (m_queueLaunchContractTerminalFailure)
+	{
+		m_rendererState = RendererState::RENDERSTATE_FAILED;
+		m_rendererStateText.SetWindowText(TEXT("Queue contract failed"));
+		m_windowedVideoWindow.ShowLogo(true);
+		m_windowedVideoWindow.SetWindowText(
+			TEXT("DirectShow queue construction did not match the selected capacity. Use Restart Renderer to retry."));
+		m_rendererRestartButton.EnableWindow(true);
+		m_rendererResetButton.EnableWindow(false);
+	}
+	else if (completedRetry)
 		m_rendererState = RendererState::RENDERSTATE_UNKNOWN;
 	else if (m_rendererState == RendererState::RENDERSTATE_STOPPED)
 		m_rendererState = RendererState::RENDERSTATE_UNKNOWN;
@@ -6527,6 +6555,28 @@ LRESULT CVideoProcessorDlg::OnMessageRendererRestartRequired(
 	m_postRendererStartRequiresGraph = false;
 	m_wantToRestartRenderer = true;
 	UpdateState();
+	return 0;
+}
+
+
+LRESULT CVideoProcessorDlg::OnMessageRendererQueueContractChanged(
+	WPARAM, LPARAM lParam)
+{
+	const uint32_t messageGeneration = static_cast<uint32_t>(lParam);
+	const uint32_t currentGeneration =
+		m_rendererGeneration.load(std::memory_order_acquire);
+	if (!RendererGenerationGate::Accept(
+		messageGeneration, currentGeneration, m_videoRenderer != nullptr))
+	{
+		DebugLog::Log(
+			"Renderer queue contract wake rejected: message_generation=%u "
+			"current_generation=%u renderer=%d",
+			messageGeneration, currentGeneration, m_videoRenderer ? 1 : 0);
+		return 0;
+	}
+	EvaluateDirectShowQueueLaunchContract("renderer-contract-wake");
+	if (m_wantToRestartRenderer)
+		UpdateState();
 	return 0;
 }
 
@@ -6689,11 +6739,7 @@ void CVideoProcessorDlg::OnCommandRendererReset()
 
 void CVideoProcessorDlg::OnCommandRendererRestart()
 {
-		
-	m_postRendererStartRequiresGraph = true;
-	m_wantToRestartRenderer = true;
-	UpdateState();
-	
+	OnBnClickedRendererRestart();
 }
 
 
@@ -6857,7 +6903,8 @@ void CVideoProcessorDlg::OnCommandDisplayRule(UINT commandId)
 			});
 		const bool queueProfileReset = result.snapshot &&
 			QueueProfileRestartPolicy::RequiresResetAfterManualSelection(
-				queueWasSelected, result.snapshot->queue.profile);
+				queueWasSelected, result.snapshot->queue.profile,
+				result.changed);
 		if (result.changed)
 		{
 			ApplyUnifiedProfileSnapshot(result.snapshot, true,
@@ -7678,7 +7725,9 @@ void CVideoProcessorDlg::UpdateState()
 		// If the renderer failed we don't auto-start it again but wait for something to happen
 		if (m_rendererState == RendererState::RENDERSTATE_FAILED)
 		{
-			videoProcessorApp.RestoreDisplayTopology("renderer-start-failure");
+			if (!m_queueLaunchContractTerminalFailure)
+				videoProcessorApp.RestoreDisplayTopology(
+					"renderer-start-failure");
 			return;
 		}
 
@@ -8449,8 +8498,26 @@ void CVideoProcessorDlg::RenderStart()
 		m_rendererConstructionActive = true;
 		try
 		{
-			const size_t alphaQueueCapacity =
-				GetRendererVideoFrameQueueSizeMax();
+			const auto profileSnapshot = m_profileRuntime.GetSnapshot();
+			size_t alphaQueueCapacity = GetRendererVideoFrameQueueSizeMax();
+			if (profileSnapshot && !profileSnapshot->queue.profile.empty())
+			{
+				alphaQueueCapacity = std::max<size_t>(1,
+					profileSnapshot->queue.hasQueueSize ?
+					profileSnapshot->queue.queueSize :
+					m_profileBaseQueueCapacity);
+			}
+			const auto alphaDesired = PublishRendererQueueLaunchDesired(
+				RendererQueueLaunchBackend::Alpha, alphaQueueCapacity,
+				profileSnapshot ? profileSnapshot->generation : 0,
+				"alpha-renderer-start");
+			const auto alphaStart =
+				m_queueLaunchContractModel.StartConstruction(
+					rendererGeneration,
+					RendererQueueLaunchBackend::Alpha);
+			if (!alphaStart.accepted)
+				throw std::runtime_error(
+					"Alpha queue lifecycle construction was not accepted");
 			m_videoRenderer = std::make_shared<LibplaceboPluginVideoRenderer>(
 				*this,
 				rendererGeneration,
@@ -8461,7 +8528,6 @@ void CVideoProcessorDlg::RenderStart()
 				videoConversionOverride);
 			BindRendererResetSink();
 
-			const auto profileSnapshot = m_profileRuntime.GetSnapshot();
 			ApplyUnifiedProfileSnapshot(profileSnapshot, false);
 			if (profileSnapshot && !profileSnapshot->queue.profile.empty())
 				QueueUnifiedQueueProfileReset(profileSnapshot, "renderer-start");
@@ -8518,6 +8584,31 @@ void CVideoProcessorDlg::RenderStart()
 #endif
 
 	GUID* rendererClSID = &selectedRenderer->guid;
+	const auto profileSnapshot = m_profileRuntime.GetSnapshot();
+	size_t directShowQueueCapacity = std::max<size_t>(
+		1, m_directShowQueueCapacity);
+	if (profileSnapshot && !profileSnapshot->queue.profile.empty())
+	{
+		directShowQueueCapacity = std::max<size_t>(1,
+			profileSnapshot->queue.hasQueueSize ?
+			profileSnapshot->queue.queueSize : m_profileBaseQueueCapacity);
+	}
+	DebugLog::Log(
+		"DirectShow queue launch selection: renderer=%S generation=%u "
+		"profile=%s profile_generation=%llu capacity=%zu source=%s",
+		static_cast<LPCTSTR>(m_activeRendererName), rendererGeneration,
+		profileSnapshot && !profileSnapshot->queue.profile.empty() ?
+			profileSnapshot->queue.profile.c_str() : "(none)",
+		static_cast<unsigned long long>(
+			profileSnapshot ? profileSnapshot->generation : 0),
+		directShowQueueCapacity,
+		profileSnapshot && !profileSnapshot->queue.profile.empty() ?
+			"resolved-profile-before-construction" : "directshow-base");
+	const RendererQueueLaunchDesired queueLaunchDesired =
+		PublishRendererQueueLaunchDesired(
+			RendererQueueLaunchBackend::DirectShow, directShowQueueCapacity,
+			profileSnapshot ? profileSnapshot->generation : 0,
+			"renderer-start");
 
 	//
 	// Construct renderer
@@ -8526,6 +8617,17 @@ void CVideoProcessorDlg::RenderStart()
 	try
 	{
 		m_rendererConstructionActive = true;
+		const auto queueLaunchStart =
+			m_queueLaunchContractModel.StartConstruction(
+				rendererGeneration,
+				RendererQueueLaunchBackend::DirectShow,
+				m_queueLaunchContractManualRetryPending ?
+					RendererQueueLaunchStartReason::ManualRetry :
+					RendererQueueLaunchStartReason::Normal);
+		if (!queueLaunchStart.accepted)
+			throw std::runtime_error(
+				"DirectShow queue lifecycle construction was not accepted");
+		m_queueLaunchContractManualRetryPending = false;
 		if (IsEqualCLSID(*rendererClSID, CLSID_MPCVR))
 			m_videoRenderer = std::make_shared<DirectShowMPCVideoRenderer>(
 				*this, rendererGeneration, m_rendererTargetHwnd, GetSafeHwnd(),
@@ -8533,7 +8635,9 @@ void CVideoProcessorDlg::RenderStart()
 				WM_MESSAGE_DIRECTSHOW_OWNER_COMPLETION, timingClock,
 				directShowStartStopTimeMethod,
 				GetRendererVideoFrameUseQueue(),
-				GetRendererVideoFrameQueueSizeMax(),
+				directShowQueueCapacity,
+				queueLaunchDesired.effectiveRevision,
+				queueLaunchDesired.profileGeneration,
 				videoConversionOverride, forceNominalRange,
 				forceVideoTransferFunction, forceVideoTransferMatrix,
 				forceVideoPrimaries);
@@ -8546,7 +8650,9 @@ void CVideoProcessorDlg::RenderStart()
 					WM_MESSAGE_DIRECTSHOW_OWNER_COMPLETION, timingClock,
 					directShowStartStopTimeMethod,
 					GetRendererVideoFrameUseQueue(),
-					GetRendererVideoFrameQueueSizeMax(),
+					directShowQueueCapacity,
+					queueLaunchDesired.effectiveRevision,
+					queueLaunchDesired.profileGeneration,
 					videoConversionOverride);
 		else if (m_activeRendererName.Find(TEXT("madVR")) >= 0)
 			m_videoRenderer =
@@ -8556,7 +8662,9 @@ void CVideoProcessorDlg::RenderStart()
 					WM_MESSAGE_DIRECTSHOW_OWNER_COMPLETION, timingClock,
 					directShowStartStopTimeMethod,
 					GetRendererVideoFrameUseQueue(),
-					GetRendererVideoFrameQueueSizeMax(),
+					directShowQueueCapacity,
+					queueLaunchDesired.effectiveRevision,
+					queueLaunchDesired.profileGeneration,
 					videoConversionOverride, forceNominalRange,
 					forceVideoTransferFunction, forceVideoTransferMatrix,
 					forceVideoPrimaries);
@@ -8568,11 +8676,20 @@ void CVideoProcessorDlg::RenderStart()
 					WM_MESSAGE_DIRECTSHOW_OWNER_COMPLETION, timingClock,
 					directShowStartStopTimeMethod,
 					GetRendererVideoFrameUseQueue(),
-					GetRendererVideoFrameQueueSizeMax(),
+					directShowQueueCapacity,
+					queueLaunchDesired.effectiveRevision,
+					queueLaunchDesired.profileGeneration,
 					videoConversionOverride);
 		BindRendererResetSink();
+		if (const auto directShowRenderer =
+			std::dynamic_pointer_cast<DirectShowVideoRenderer>(m_videoRenderer))
+		{
+			directShowRenderer->SetFrameQueueConstructionContract(
+				queueLaunchDesired.key.capacity,
+				queueLaunchDesired.effectiveRevision,
+				queueLaunchDesired.profileGeneration);
+		}
 
-		const auto profileSnapshot = m_profileRuntime.GetSnapshot();
 		ApplyUnifiedProfileSnapshot(profileSnapshot, false);
 		if (profileSnapshot && !profileSnapshot->queue.profile.empty())
 			QueueUnifiedQueueProfileReset(profileSnapshot, "renderer-start");
@@ -8634,7 +8751,9 @@ void CVideoProcessorDlg::RenderStart()
 					timingClock,
 					directShowStartStopTimeMethod,
 					GetRendererVideoFrameUseQueue(),
-					GetRendererVideoFrameQueueSizeMax(),
+					directShowQueueCapacity,
+					queueLaunchDesired.effectiveRevision,
+					queueLaunchDesired.profileGeneration,
 					videoConversionOverride,
 					forceNominalRange,
 					forceVideoTransferFunction,
@@ -8653,7 +8772,9 @@ void CVideoProcessorDlg::RenderStart()
 					timingClock,
 					directShowStartStopTimeMethod,
 					GetRendererVideoFrameUseQueue(),
-					GetRendererVideoFrameQueueSizeMax(),
+					directShowQueueCapacity,
+					queueLaunchDesired.effectiveRevision,
+					queueLaunchDesired.profileGeneration,
 					videoConversionOverride);
 			}
 			else
@@ -8668,12 +8789,22 @@ void CVideoProcessorDlg::RenderStart()
 					timingClock,
 					directShowStartStopTimeMethod,
 					GetRendererVideoFrameUseQueue(),
-					GetRendererVideoFrameQueueSizeMax(),
+					directShowQueueCapacity,
+					queueLaunchDesired.effectiveRevision,
+					queueLaunchDesired.profileGeneration,
 					videoConversionOverride);
 
 			if (!m_videoRenderer)
 				FatalError(TEXT("Failed to build DirectShow Video Renderer"));
 			BindRendererResetSink();
+			if (const auto directShowRenderer =
+				std::dynamic_pointer_cast<DirectShowVideoRenderer>(m_videoRenderer))
+			{
+				directShowRenderer->SetFrameQueueConstructionContract(
+					queueLaunchDesired.key.capacity,
+					queueLaunchDesired.effectiveRevision,
+					queueLaunchDesired.profileGeneration);
+			}
 
 			if (m_captureDeviceVideoState)
 				m_videoRenderer->OnVideoState(m_builtVideoState);
@@ -10758,8 +10889,39 @@ void CVideoProcessorDlg::ApplyUnifiedProfileSnapshot(
 	// the fresh renderer is constructed below the lifecycle boundary.
 	CString selectedRendererName;
 	const int selectedRenderer = m_rendererCombo.GetCurSel();
+	bool selectedRendererIsDirectShow = false;
+	RendererQueueLaunchDesired selectedQueueDesired;
+	bool selectedQueueDesiredKnown = false;
 	if (selectedRenderer >= 0)
+	{
 		m_rendererCombo.GetLBText(selectedRenderer, selectedRendererName);
+		const RendererId* renderer = reinterpret_cast<const RendererId*>(
+			m_rendererCombo.GetItemData(selectedRenderer));
+		selectedRendererIsDirectShow = renderer &&
+			renderer->backend == RendererBackend::DIRECTSHOW;
+	}
+	// Publish the selected backend's construction input before the transition
+	// early-return below.  The retiring renderer must not be mutated, but the
+	// successor must still see the newest committed profile rather than the
+	// previous backend's visible edit value.
+	if (selectedRendererIsDirectShow && !snapshot->queue.profile.empty())
+	{
+		m_directShowQueueCapacity = std::max<size_t>(1,
+			snapshot->queue.hasQueueSize ? snapshot->queue.queueSize :
+			m_profileBaseQueueCapacity);
+		selectedQueueDesired = PublishRendererQueueLaunchDesired(
+			RendererQueueLaunchBackend::DirectShow,
+			m_directShowQueueCapacity, snapshot->generation,
+			"unified-profile");
+		selectedQueueDesiredKnown = true;
+		DebugLog::Log(
+			"DirectShow queue launch intent retained: profile=%s "
+			"profile_generation=%llu capacity=%zu active_generation=%u",
+			snapshot->queue.profile.c_str(),
+			static_cast<unsigned long long>(snapshot->generation),
+			m_directShowQueueCapacity,
+			m_rendererGeneration.load(std::memory_order_acquire));
+	}
 	const bool selectedRendererDiffers = m_videoRenderer &&
 		!selectedRendererName.IsEmpty() &&
 		!m_activeRendererName.IsEmpty() &&
@@ -10814,6 +10976,17 @@ void CVideoProcessorDlg::ApplyUnifiedProfileSnapshot(
 
 	if (!m_videoRenderer)
 		return;
+	if (m_activeRendererIsDirectShow && selectedQueueDesiredKnown)
+	{
+		if (const auto directShowRenderer =
+			std::dynamic_pointer_cast<DirectShowVideoRenderer>(m_videoRenderer))
+		{
+			directShowRenderer->SetFrameQueueConstructionContract(
+				selectedQueueDesired.key.capacity,
+				selectedQueueDesired.effectiveRevision,
+				selectedQueueDesired.profileGeneration);
+		}
+	}
 	if (lldvPolicyChanged && allowRestart && m_captureDeviceVideoState &&
 		m_rendererState != RendererState::RENDERSTATE_STOPPING)
 	{
@@ -10826,6 +10999,7 @@ void CVideoProcessorDlg::ApplyUnifiedProfileSnapshot(
 	}
 
 	bool queuePolicyChanged = false;
+	bool queueCapacityChanged = false;
 	if (!snapshot->queue.profile.empty())
 	{
 		if (!m_profileQueueDefaultsCaptured)
@@ -10851,7 +11025,11 @@ void CVideoProcessorDlg::ApplyUnifiedProfileSnapshot(
 			queueSize.Format(TEXT("%zu"), desiredQueueSize);
 			m_defaultQueueSize = queueSize;
 			m_rendererVideoFrameQueueSizeMaxEdit.SetWindowText(queueSize);
-			m_videoRenderer->SetFrameQueueMaxSize(desiredQueueSize);
+			// DirectShow received the coherent desired tuple above, including
+			// same-capacity profile-generation evidence.
+			if (!m_activeRendererIsDirectShow)
+				m_videoRenderer->SetFrameQueueMaxSize(desiredQueueSize);
+			queueCapacityChanged = true;
 			queuePolicyChanged = true;
 		}
 		const size_t desiredLeadFrames = snapshot->queue.hasLeadFrames ?
@@ -10938,6 +11116,18 @@ void CVideoProcessorDlg::ApplyUnifiedProfileSnapshot(
 		m_postRendererStartRequiresGraph = false;
 		m_wantToRestartRenderer = true;
 		UpdateState();
+	}
+	else if (allowRestart && queueCapacityChanged &&
+		m_activeRendererIsDirectShow)
+	{
+		EvaluateDirectShowQueueLaunchContract("profile-capacity-change");
+		if (m_wantToRestartRenderer)
+			UpdateState();
+		else if (!m_queueLaunchContractTerminalFailure)
+			DebugLog::Log(
+				"DirectShow queue capacity recreation deferred: generation=%u "
+				"reason=construction-or-reset-not-stable",
+				m_rendererGeneration.load(std::memory_order_acquire));
 	}
 	else if (allowRestart && liveResetRequired && !queueProfileResetPending)
 	{
@@ -11759,10 +11949,37 @@ void CVideoProcessorDlg::OnOK()
 		case IDC_RENDERER_VIDEO_FRAME_QUEUE_SIZE_MAX_EDIT:
 			if (m_videoRenderer)
 			{
-				m_videoRenderer->SetFrameQueueMaxSize(GetRendererVideoFrameQueueSizeMax());
-				RequestRendererReset(RendererResetReason::QueueSizeChange,
-					QueuePolicyApplyRequiresGraphReset(
-						m_activeRendererIsDirectShow), 0);
+				const size_t capacity =
+					GetRendererVideoFrameQueueSizeMax();
+				if (m_activeRendererIsDirectShow)
+				{
+					m_directShowQueueCapacity = std::max<size_t>(1, capacity);
+					const auto snapshot = m_profileRuntime.GetSnapshot();
+					const auto desired = PublishRendererQueueLaunchDesired(
+						RendererQueueLaunchBackend::DirectShow,
+						m_directShowQueueCapacity,
+						snapshot ? snapshot->generation : 0,
+						"manual-queue-edit");
+					if (const auto directShowRenderer =
+						std::dynamic_pointer_cast<DirectShowVideoRenderer>(
+							m_videoRenderer))
+					{
+						directShowRenderer->SetFrameQueueConstructionContract(
+							desired.key.capacity,
+							desired.effectiveRevision,
+							desired.profileGeneration);
+					}
+					EvaluateDirectShowQueueLaunchContract(
+						"manual-queue-edit");
+					if (m_wantToRestartRenderer)
+						UpdateState();
+				}
+				else
+				{
+					m_videoRenderer->SetFrameQueueMaxSize(capacity);
+					RequestRendererReset(
+						RendererResetReason::QueueSizeChange, false, 0);
+				}
 			}
 			break;
 
@@ -14309,6 +14526,269 @@ void CVideoProcessorDlg::RequestRendererReset(RendererResetReason reason,
 }
 
 
+void CVideoProcessorDlg::OnRendererQueueContractChanged(
+	uint32_t rendererGeneration)
+{
+	PostMessage(WM_MESSAGE_RENDERER_QUEUE_CONTRACT_CHANGED, 0,
+		static_cast<LPARAM>(rendererGeneration));
+}
+
+
+RendererQueueLaunchDesired
+CVideoProcessorDlg::PublishRendererQueueLaunchDesired(
+	RendererQueueLaunchBackend backend, size_t capacity,
+	uint64_t profileGeneration, const char* source)
+{
+	const auto profileSnapshot = m_profileRuntime.GetSnapshot();
+	const std::string profileName = profileSnapshot &&
+		profileSnapshot->generation == profileGeneration ?
+		profileSnapshot->queue.profile : std::string();
+	RendererQueueLaunchDesired latest;
+	if (m_queueLaunchContractModel.LatestDesired(latest) &&
+		latest.key.backend == backend && latest.key.capacity == capacity)
+	{
+		if (latest.profileGeneration == profileGeneration)
+			return latest;
+		RendererQueueLaunchDesired refreshed = latest;
+		refreshed.profileGeneration = profileGeneration;
+		if (m_queueLaunchContractModel.PublishDesired(refreshed))
+		{
+			m_queueLaunchContractProfileName = profileName;
+			return refreshed;
+		}
+		return latest;
+	}
+
+	RendererQueueLaunchDesired desired;
+	desired.key.backend = backend;
+	desired.key.capacity = capacity;
+	desired.effectiveRevision = ++m_queueLaunchContractRevision;
+	desired.profileGeneration = profileGeneration;
+	if (!m_queueLaunchContractModel.PublishDesired(desired))
+	{
+		DebugLog::Log(
+			"Renderer queue lifecycle publication rejected: source=%s backend=%s "
+			"revision=%llu profile_generation=%llu capacity=%zu",
+			source ? source : "unknown",
+			backend == RendererQueueLaunchBackend::DirectShow ?
+				"DirectShow" : "Alpha",
+			static_cast<unsigned long long>(desired.effectiveRevision),
+			static_cast<unsigned long long>(profileGeneration), capacity);
+		if (m_queueLaunchContractModel.LatestDesired(latest))
+			return latest;
+	}
+	else
+	{
+		m_queueLaunchContractProfileName = profileName;
+		DebugLog::Log(
+			"Renderer queue lifecycle intent published: source=%s backend=%s "
+			"revision=%llu profile_generation=%llu capacity=%zu",
+			source ? source : "unknown",
+			backend == RendererQueueLaunchBackend::DirectShow ?
+				"DirectShow" : "Alpha",
+			static_cast<unsigned long long>(desired.effectiveRevision),
+			static_cast<unsigned long long>(profileGeneration), capacity);
+	}
+	if (m_queueLaunchContractTerminalFailure)
+	{
+		m_queueLaunchContractTerminalFailure = false;
+		if (!m_videoRenderer &&
+			m_rendererState == RendererState::RENDERSTATE_FAILED)
+		{
+			m_rendererState = RendererState::RENDERSTATE_UNKNOWN;
+			PostMessage(WM_MESSAGE_RENDERER_INTENT_READY, 0, 0);
+		}
+		DebugLog::Log(
+			"Renderer queue terminal contract superseded: backend=%s capacity=%zu",
+			backend == RendererQueueLaunchBackend::DirectShow ?
+				"DirectShow" : "Alpha", capacity);
+	}
+	return desired;
+}
+
+
+void CVideoProcessorDlg::EvaluateDirectShowQueueLaunchContract(
+	const char* trigger)
+{
+	if (!m_activeRendererIsDirectShow || !m_videoRenderer)
+		return;
+	const auto renderer = std::dynamic_pointer_cast<DirectShowVideoRenderer>(
+		m_videoRenderer);
+	if (!renderer)
+		return;
+
+	const auto evidence =
+		renderer->GetFrameQueueConstructionContractSnapshot();
+	if (!evidence.desiredKnown || !evidence.committed ||
+		!evidence.currentCapacityKnown || !evidence.allocatorRecorded ||
+		!evidence.launchRecorded || !evidence.activationRecorded)
+	{
+		DebugLog::Log(
+			"DirectShow queue lifecycle audit deferred: trigger=%s generation=%u "
+			"committed=%d allocator=%d launch=%d activation=%d current=%d",
+			trigger ? trigger : "unknown",
+			m_rendererGeneration.load(std::memory_order_acquire),
+			evidence.committed ? 1 : 0,
+			evidence.allocatorRecorded ? 1 : 0,
+			evidence.launchRecorded ? 1 : 0,
+			evidence.activationRecorded ? 1 : 0,
+			evidence.currentCapacityKnown ? 1 : 0);
+		return;
+	}
+
+	const uint32_t rendererGeneration =
+		m_rendererGeneration.load(std::memory_order_acquire);
+	RendererQueueLaunchDesired constructedDesired;
+	constructedDesired.key.backend =
+		RendererQueueLaunchBackend::DirectShow;
+	constructedDesired.key.capacity = evidence.constructedCapacity;
+	constructedDesired.effectiveRevision = evidence.key.contractRevision;
+	constructedDesired.profileGeneration =
+		evidence.constructedProfileGeneration;
+	m_queueLaunchContractModel.CommitConstruction(
+		rendererGeneration, constructedDesired);
+	RendererQueueLaunchDesired desired;
+	if (!m_queueLaunchContractModel.LatestDesired(desired) ||
+		desired.key.backend != RendererQueueLaunchBackend::DirectShow)
+	{
+		return;
+	}
+
+	RendererQueueLaunchStableAudit audit;
+	audit.rendererGeneration = rendererGeneration;
+	audit.desired = desired;
+	audit.constructed.backend = RendererQueueLaunchBackend::DirectShow;
+	audit.constructed.capacity = evidence.constructedCapacity;
+	audit.current.backend = RendererQueueLaunchBackend::DirectShow;
+	audit.current.capacity = evidence.currentCapacity;
+	audit.constructionSettled = !m_rendererConstructionActive &&
+		m_rendererState == RendererState::RENDERSTATE_RENDERING;
+	audit.resetInProgress = RendererResetOperationInProgress();
+	const RendererQueueLaunchAction evaluatedAction =
+		m_queueLaunchContractModel.ConsumeStableAudit(audit);
+	const char* profileName = m_queueLaunchContractProfileName.empty() ?
+		"(none)" : m_queueLaunchContractProfileName.c_str();
+	const bool estimateUnsatisfied = evidence.downstreamEstimateKnown &&
+		evidence.estimateSatisfaction ==
+			DirectShowQueueConstructionContract::
+				EstimateSatisfaction::Unsatisfied;
+	const char* phase = evidence.recreationRequired ? "mismatch" :
+		(estimateUnsatisfied ? "unsatisfied" : "active");
+	const int estimateSatisfied = !evidence.downstreamEstimateKnown ? -1 :
+		(evidence.estimateSatisfaction ==
+			DirectShowQueueConstructionContract::EstimateSatisfaction::Satisfied ?
+			1 : 0);
+
+	if (m_queueLaunchContractCommitLoggedGeneration != rendererGeneration)
+	{
+		RendererQueueLaunchAuditRecord commitRecord;
+		commitRecord.trigger = trigger ? trigger : "unknown";
+		commitRecord.phase = "commit";
+		commitRecord.backend = "DirectShow";
+		commitRecord.profile = profileName;
+		commitRecord.generation = rendererGeneration;
+		commitRecord.profileGeneration = desired.profileGeneration;
+		commitRecord.effectiveRevision = desired.effectiveRevision;
+		commitRecord.desiredRevision = evidence.desired.revision;
+		commitRecord.constructedRevision = evidence.key.contractRevision;
+		commitRecord.desired = desired.key.capacity;
+		commitRecord.retained = evidence.desired.capacity;
+		commitRecord.constructed = evidence.constructedCapacity;
+		commitRecord.state = "committed";
+		DebugLog::Log("%s",
+			FormatRendererQueueLaunchAudit(commitRecord).c_str());
+		m_queueLaunchContractCommitLoggedGeneration = rendererGeneration;
+	}
+
+	RendererQueueLaunchAuditRecord record;
+	record.trigger = trigger ? trigger : "unknown";
+	record.phase = phase;
+	record.backend = "DirectShow";
+	record.profile = profileName;
+	record.generation = rendererGeneration;
+	record.profileGeneration = desired.profileGeneration;
+	record.effectiveRevision = desired.effectiveRevision;
+	record.desiredRevision = evidence.desired.revision;
+	record.constructedRevision = evidence.key.contractRevision;
+	record.desired = desired.key.capacity;
+	record.retained = evidence.desired.capacity;
+	record.constructed = evidence.constructedCapacity;
+	record.current = evidence.currentCapacity;
+	record.allocatorRequested = evidence.allocatorRequested;
+	record.allocatorActual = evidence.allocatorActual;
+	record.prime = evidence.primeTarget;
+	record.reservoir = evidence.reservoirFrames;
+	if (evidence.downstreamEstimateKnown)
+		record.downstreamEstimate = evidence.downstreamEstimateFrames;
+	record.estimateKnown = evidence.downstreamEstimateKnown ? 1 : 0;
+	record.estimateSatisfied = estimateSatisfied;
+	record.state = evidence.recreationRequired ? "stale-contract" :
+		(estimateUnsatisfied ? "estimate-unsatisfied" : "consistent");
+	record.settled = audit.constructionSettled ? 1 : 0;
+	record.reset = audit.resetInProgress ? 1 : 0;
+	record.action = static_cast<int>(evaluatedAction.type);
+	DebugLog::Log("%s", FormatRendererQueueLaunchAudit(record).c_str());
+
+	if (evaluatedAction.type ==
+		RendererQueueLaunchActionType::RequestCoveredRecreation)
+	{
+		// Re-read immediately before dispatch so a newer or reverted intent can
+		// cancel the pending action without creating an obsolete successor.
+		const RendererQueueLaunchAction pending =
+			m_queueLaunchContractModel.PendingAction();
+		if (pending.type !=
+			RendererQueueLaunchActionType::RequestCoveredRecreation ||
+			pending.rendererGeneration != rendererGeneration)
+		{
+			return;
+		}
+		if (m_rendererFullscreenCheck.GetCheck() &&
+			m_fullScreenVideoWindow &&
+			IsWindow(m_fullScreenVideoWindow->GetHWND()))
+		{
+			m_preserveFullscreenHostForProfileRestart = true;
+		}
+		DebugLog::Log(
+			"DirectShow queue lifecycle action: generation=%u desired=%zu "
+			"constructed=%zu current=%zu action=covered-full-recreation",
+			rendererGeneration, pending.desired.key.capacity,
+			pending.constructed.capacity, pending.current.capacity);
+		m_postRendererStartRequiresGraph = false;
+		m_wantToRestartRenderer = true;
+	}
+	else if (evaluatedAction.type == RendererQueueLaunchActionType::FailCovered)
+	{
+		const RendererQueueLaunchAction pending =
+			m_queueLaunchContractModel.PendingAction();
+		if (pending.type != RendererQueueLaunchActionType::FailCovered ||
+			pending.rendererGeneration != rendererGeneration)
+		{
+			return;
+		}
+		m_queueLaunchContractTerminalFailure = true;
+		PauseRendererIngress();
+		m_windowedVideoWindow.ShowLogo(true);
+		if (m_rendererFullscreenCheck.GetCheck() &&
+			m_fullScreenVideoWindow &&
+			IsWindow(m_fullScreenVideoWindow->GetHWND()))
+		{
+			m_preserveFullscreenHostForProfileRestart = true;
+		}
+		m_rendererStateText.SetWindowText(TEXT("Queue contract failed"));
+		m_windowedVideoWindow.SetWindowText(
+			TEXT("DirectShow queue construction did not match the selected capacity. Use Restart Renderer to retry."));
+		m_rendererRestartButton.EnableWindow(true);
+		m_postRendererStartRequiresGraph = false;
+		m_wantToRestartRenderer = true;
+		DebugLog::Log(
+			"DirectShow queue lifecycle action: generation=%u desired=%zu "
+			"constructed=%zu current=%zu action=terminal-covered-failure",
+			rendererGeneration, pending.desired.key.capacity,
+			pending.constructed.capacity, pending.current.capacity);
+	}
+}
+
+
 bool CVideoProcessorDlg::RendererResetOperationInProgress() const
 {
 	if (!m_rendererResetCoordinator)
@@ -14320,6 +14800,9 @@ bool CVideoProcessorDlg::RendererResetOperationInProgress() const
 void CVideoProcessorDlg::CompleteRendererResetOperation()
 {
 	PumpRendererResetMailbox();
+	EvaluateDirectShowQueueLaunchContract("reset-completion");
+	if (m_wantToRestartRenderer)
+		PostMessage(WM_MESSAGE_RENDERER_INTENT_READY, 0, 0);
 }
 
 
