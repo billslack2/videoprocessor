@@ -24,12 +24,10 @@ namespace QueueProfileRestartPolicy
 	};
 
 	inline bool RequiresResetAfterManualSelection(bool queueWasSelected,
-		const std::string& currentProfile)
+		const std::string& currentProfile, bool effectiveSelectionChanged)
 	{
-		// Re-selecting an active queue profile is intentionally meaningful: it
-		// uses the normal queue reset path to discard frames buffered under the
-		// old queue epoch.
-		return queueWasSelected && !currentProfile.empty();
+		return queueWasSelected && effectiveSelectionChanged &&
+			!currentProfile.empty();
 	}
 
 	inline EnqueueResult Enqueue(PendingRequest& pending,

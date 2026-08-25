@@ -32,6 +32,8 @@ DirectShowGenericVideoRenderer::DirectShowGenericVideoRenderer(
 	DirectShowStartStopTimeMethod timestamp,
 	bool useFrameQueue,
 	size_t frameQueueMaxSize,
+	uint64_t queueContractRevision,
+	uint64_t queueProfileGeneration,
 	VideoConversionOverride videoConversionOverride):
 	DirectShowVideoRenderer(
 		callback,
@@ -44,6 +46,8 @@ DirectShowGenericVideoRenderer::DirectShowGenericVideoRenderer(
 		timestamp,
 		useFrameQueue,
 		frameQueueMaxSize,
+		queueContractRevision,
+		queueProfileGeneration,
 		videoConversionOverride),
 	m_rendererCLSID(rendererCLSID)
 {

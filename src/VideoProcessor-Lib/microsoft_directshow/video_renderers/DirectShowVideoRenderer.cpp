@@ -12,6 +12,7 @@
 
 #include <guid.h>
 #include <DebugLog.h>
+#include <RendererQueueLaunchAudit.h>
 #include <microsoft_directshow/live_source_filter/CLiveSource.h>
 #include <microsoft_directshow/live_source_filter/ALiveSourceVideoOutputPin.h>
 #include <microsoft_directshow/DIrectShowTranslations.h>
@@ -31,6 +32,8 @@ DirectShowVideoRenderer::DirectShowVideoRenderer(
 	DirectShowStartStopTimeMethod timestamp,
 	bool useFrameQueue,
 	size_t frameQueueMaxSize,
+	uint64_t queueContractRevision,
+	uint64_t queueProfileGeneration,
 	VideoConversionOverride videoConversionOverride):
 	m_callback(callback),
 	m_callbackGeneration(rendererGeneration),
@@ -41,9 +44,12 @@ DirectShowVideoRenderer::DirectShowVideoRenderer(
 	m_timingClock(timingClock),
 	m_timestamp(timestamp),
 	m_useFrameQueue(useFrameQueue),
-	m_frameQueueMaxSize(frameQueueMaxSize),
 	m_videoConversionOverride(videoConversionOverride)
 {
+	const auto queueContract = m_queueConstructionContract.PublishDesired(
+		frameQueueMaxSize, queueContractRevision, queueProfileGeneration);
+	if (!queueContract.accepted)
+		throw std::runtime_error("Invalid DirectShow queue construction capacity");
 	if (!videoHwnd)
 		throw std::runtime_error("Invalid videoHwnd");
 	if (!eventHwnd)
@@ -1042,18 +1048,46 @@ void DirectShowVideoRenderer::OnSize()
 
 void DirectShowVideoRenderer::SetFrameQueueMaxSize(size_t frameMaxQueueSize)
 {
-	if (!IsGraphThread())
+	const auto current = m_queueConstructionContract.GetSnapshot();
+	const uint64_t revision = !current.desiredKnown ? 1 :
+		(current.desired.capacity == frameMaxQueueSize ?
+			current.desired.revision : current.desired.revision + 1);
+	SetFrameQueueConstructionContract(
+		frameMaxQueueSize,
+		revision,
+		current.desiredKnown ? current.desired.profileGeneration : 0);
+}
+
+
+void DirectShowVideoRenderer::SetFrameQueueConstructionContract(
+	size_t capacity, uint64_t contractRevision,
+	uint64_t profileGeneration)
+{
+	const auto result = m_queueConstructionContract.PublishDesired(
+		capacity, contractRevision, profileGeneration);
+	if (!result.accepted)
 	{
-		PostCoalescedGraphCommand(GRAPH_COMMAND_FRAME_QUEUE_SIZE,
-			[this, frameMaxQueueSize]()
-			{
-				SetFrameQueueMaxSize(frameMaxQueueSize);
-			});
+		DebugLog::Log(
+			"DirectShow queue launch contract rejected: generation=%u "
+			"profile_generation=%llu revision=%llu capacity=%zu disposition=%d",
+			m_callbackGeneration,
+			static_cast<unsigned long long>(profileGeneration),
+			static_cast<unsigned long long>(contractRevision), capacity,
+			static_cast<int>(result.disposition));
 		return;
 	}
-	if (!m_liveSource)
-		return;
-	m_liveSource->SetFrameQueueMaxSize(frameMaxQueueSize);
+	DebugLog::Log(
+		"DirectShow queue launch contract retained: generation=%u "
+		"profile_generation=%llu revision=%llu capacity=%zu committed=%d "
+		"recreation_required=%d action=%s",
+		m_callbackGeneration,
+		static_cast<unsigned long long>(profileGeneration),
+		static_cast<unsigned long long>(contractRevision), capacity,
+		result.committed ? 1 : 0, result.recreationRequired ? 1 : 0,
+		result.recreationRequired ?
+			"retain-for-covered-recreation" : "retain-for-construction");
+	if (result.recreationRequired)
+		m_callback.OnRendererQueueContractChanged(m_callbackGeneration);
 }
 
 
@@ -1485,6 +1519,22 @@ void DirectShowVideoRenderer::GraphBuild()
 	RendererConnect();
 	rendererConnectMs = GetTickCount64() - phaseStart;
 	RefreshDownstreamPrimeTarget();
+	if (m_liveSource && m_liveSource->GetVideoOutputPin())
+	{
+		ALiveSourceVideoOutputPin* outputPin =
+			m_liveSource->GetVideoOutputPin();
+		const auto contract = m_queueConstructionContract.GetSnapshot();
+		if (contract.committed)
+		{
+			m_queueConstructionContract.RecordAllocator(
+				contract.key,
+				static_cast<size_t>((std::max)(
+					LONG{0},
+					outputPin->GetNegotiatedAllocatorRequestCount())),
+				static_cast<size_t>((std::max)(LONG{0},
+					outputPin->GetNegotiatedAllocatorBufferCount())));
+		}
+	}
 
 	//
 	// Window setup
@@ -1729,6 +1779,67 @@ void DirectShowVideoRenderer::GraphRun()
 
 	if (FAILED(m_pControl->Run()))
 		throw std::runtime_error("Failed to Run() graph");
+	if (m_liveSource && m_liveSource->GetVideoOutputPin())
+	{
+		ALiveSourceVideoOutputPin* outputPin =
+			m_liveSource->GetVideoOutputPin();
+		RendererLivenessSnapshot liveness;
+		const auto before = m_queueConstructionContract.GetSnapshot();
+		if (before.committed && outputPin->GetLivenessSnapshot(liveness))
+		{
+			DirectShowQueueConstructionContract::DownstreamEstimate estimate;
+			estimate.known = m_downstreamPrimeTargetKnown.load(
+				std::memory_order_acquire);
+			estimate.frames = m_downstreamPrimeTargetFrames.load(
+				std::memory_order_acquire);
+			m_queueConstructionContract.RecordLaunch(
+				before.key, liveness.primeTargetFrames,
+				liveness.primeTargetFrames + liveness.primeRawTargetFrames,
+				estimate);
+			m_queueConstructionContract.Activate(
+				before.key, liveness.queueCapacity);
+		}
+		const auto audit = m_queueConstructionContract.GetSnapshot();
+		const bool estimateUnsatisfied = audit.downstreamEstimateKnown &&
+			audit.estimateSatisfaction ==
+				DirectShowQueueConstructionContract::
+					EstimateSatisfaction::Unsatisfied;
+		RendererQueueLaunchAuditRecord record;
+		record.trigger = "renderer-activation";
+		record.phase = audit.recreationRequired ? "mismatch" :
+			(estimateUnsatisfied ? "unsatisfied" : "active");
+		record.backend = "DirectShow";
+		record.generation = m_callbackGeneration;
+		record.profileGeneration = audit.desired.profileGeneration;
+		record.effectiveRevision = audit.desired.revision;
+		record.desiredRevision = audit.desired.revision;
+		record.constructedRevision = audit.key.contractRevision;
+		record.desired = audit.desired.capacity;
+		record.retained = audit.desired.capacity;
+		record.constructed = audit.constructedCapacity;
+		if (audit.currentCapacityKnown)
+			record.current = audit.currentCapacity;
+		if (audit.allocatorRecorded)
+		{
+			record.allocatorRequested = audit.allocatorRequested;
+			record.allocatorActual = audit.allocatorActual;
+		}
+		if (audit.launchRecorded)
+		{
+			record.prime = audit.primeTarget;
+			record.reservoir = audit.reservoirFrames;
+			record.estimateKnown = audit.downstreamEstimateKnown ? 1 : 0;
+			record.estimateSatisfied = !audit.downstreamEstimateKnown ? -1 :
+				(audit.estimateSatisfaction ==
+					DirectShowQueueConstructionContract::
+						EstimateSatisfaction::Satisfied ? 1 : 0);
+			if (audit.downstreamEstimateKnown)
+				record.downstreamEstimate = audit.downstreamEstimateFrames;
+		}
+		record.state = audit.recreationRequired ? "stale-contract" :
+			(estimateUnsatisfied ? "estimate-unsatisfied" : "consistent");
+		DebugLog::Log("%s", FormatRendererQueueLaunchAudit(record).c_str());
+	}
 
 	SetState(RendererState::RENDERSTATE_RENDERING);
 	
@@ -2022,6 +2133,31 @@ void DirectShowVideoRenderer::LiveSourceBuildAndConnect()
 	const timestamp_t frameDuration100ns =
 		(timestamp_t)round((1.0 / m_videoState->displayMode->RefreshRateHz()) * UNITS);
 
+	// This is the construction linearization point. A publication wins either
+	// before this lock-backed commit and is consumed by this graph, or after it
+	// and remains the desired contract for a covered successor. Constructed
+	// evidence is immutable for the lifetime of this renderer generation.
+	const auto queueContract =
+		m_queueConstructionContract.Commit(m_callbackGeneration);
+	if (!queueContract.committed)
+		throw std::runtime_error(
+			"DirectShow queue construction contract unavailable");
+	RendererQueueLaunchAuditRecord commitRecord;
+	commitRecord.trigger = "renderer-construction";
+	commitRecord.phase = "commit";
+	commitRecord.backend = "DirectShow";
+	commitRecord.generation = m_callbackGeneration;
+	commitRecord.profileGeneration =
+		queueContract.constructedProfileGeneration;
+	commitRecord.effectiveRevision = queueContract.key.contractRevision;
+	commitRecord.desiredRevision = queueContract.key.contractRevision;
+	commitRecord.constructedRevision = queueContract.key.contractRevision;
+	commitRecord.desired = queueContract.constructedCapacity;
+	commitRecord.retained = queueContract.constructedCapacity;
+	commitRecord.constructed = queueContract.constructedCapacity;
+	commitRecord.state = "committed";
+	DebugLog::Log("%s",
+		FormatRendererQueueLaunchAudit(commitRecord).c_str());
 	m_liveSource->Initialize(
 		m_videoFramFormatter,
 		m_pmt,
@@ -2031,7 +2167,7 @@ void DirectShowVideoRenderer::LiveSourceBuildAndConnect()
 		m_timingClock,
 		m_timestamp,
 		m_useFrameQueue,
-		m_frameQueueMaxSize);
+		queueContract.constructedCapacity);
 
 	// Build() commonly receives the dialog's queue policy before this live
 	// source exists.  Apply the retained policy immediately after Initialize(),
@@ -2211,6 +2347,10 @@ void DirectShowVideoRenderer::RefreshDownstreamPrimeTarget(
 	// The aggregate remains diagnostic. Fresh-epoch priming always uses VP's
 	// configurable physical reservoir and allocator headroom; this publication
 	// is retained for per-epoch telemetry and future validated policy work.
+	m_downstreamPrimeTargetFrames.store(
+		targetFrames, std::memory_order_release);
+	m_downstreamPrimeTargetKnown.store(
+		complete, std::memory_order_release);
 	m_liveSource->GetVideoOutputPin()->SetDownstreamPrimeTarget(targetFrames);
 }
 

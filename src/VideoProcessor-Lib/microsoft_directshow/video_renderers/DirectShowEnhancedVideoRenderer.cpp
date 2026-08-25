@@ -22,6 +22,8 @@ DirectShowEnhancedVideoRenderer::DirectShowEnhancedVideoRenderer(
 	DirectShowStartStopTimeMethod timestamp,
 	bool useFrameQueue,
 	size_t frameQueueMaxSize,
+	uint64_t queueContractRevision,
+	uint64_t queueProfileGeneration,
 	VideoConversionOverride videoConversionOverride):
 	DirectShowGenericVideoRenderer(
 		CLSID_EnhancedVideoRenderer,
@@ -35,6 +37,8 @@ DirectShowEnhancedVideoRenderer::DirectShowEnhancedVideoRenderer(
 		timestamp,
 		useFrameQueue,
 		frameQueueMaxSize,
+		queueContractRevision,
+		queueProfileGeneration,
 		videoConversionOverride)
 {
 	callback.OnRendererDetailString(

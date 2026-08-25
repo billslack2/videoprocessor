@@ -222,6 +222,7 @@
     <ClCompile Include="RendererResetCoordinatorTests.cpp" />
     <ClCompile Include="RendererResetRequestLatchTests.cpp" />
     <ClCompile Include="RendererTransitionModelTests.cpp" />
+	<ClCompile Include="RendererQueueLaunchContractModelTests.cpp" />
 	<ClCompile Include="RendererGenerationGateTests.cpp" />
     <ClCompile Include="RendererLivenessTests.cpp" />
 	<ClCompile Include="DirectShowPresentationLeadPolicyTests.cpp" />
@@ -233,6 +234,7 @@
 	<ClCompile Include="DirectShowDeliveryOutcomeTests.cpp" />
 	<ClCompile Include="DirectShowSegmentTransitionTests.cpp" />
 	<ClCompile Include="DirectShowGraphExecutorTests.cpp" />
+	<ClCompile Include="DirectShowQueueConstructionContractTests.cpp" />
 	<ClCompile Include="EpochBoundedQueueTests.cpp" />
 	<ClCompile Include="FrameProcessorTests.cpp" />
 	<ClCompile Include="LiveEpochConvergenceControllerTests.cpp" />

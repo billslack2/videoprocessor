@@ -22,6 +22,7 @@
 #include <microsoft_directshow/live_source_filter/CLiveSource.h>
 #include <microsoft_directshow/live_source_filter/ALiveSourceVideoOutputPin.h>
 #include <microsoft_directshow/DirectShowTimingClock.h>
+#include <microsoft_directshow/DirectShowQueueConstructionContract.h>
 #include <microsoft_directshow/video_renderers/DirectShowGraphExecutor.h>
 #include <deque>
 #include <atomic>
@@ -48,6 +49,8 @@ public:
 		DirectShowStartStopTimeMethod timestamp,
 		bool useFrameQueue,
 		size_t frameQueueMaxSize,
+		uint64_t queueContractRevision,
+		uint64_t queueProfileGeneration,
 		VideoConversionOverride videoConversionOverride);
 	virtual ~DirectShowVideoRenderer();
 
@@ -108,6 +111,14 @@ public:
 	}
 	void OnSize() override;
 	void SetFrameQueueMaxSize(size_t) override;
+	void SetFrameQueueConstructionContract(
+		size_t capacity, uint64_t contractRevision,
+		uint64_t profileGeneration);
+	DirectShowQueueConstructionContract::Snapshot
+		GetFrameQueueConstructionContractSnapshot() const
+	{
+		return m_queueConstructionContract.GetSnapshot();
+	}
 	void SetSceneAwareTimingCorrection(bool) override;
 	void SetSceneCorrectionUpstreamSample(bool) override;
 	void SetSubtitleRepositioning(bool) override;
@@ -211,7 +222,9 @@ protected:
 	VideoStateComPtr m_admissionVideoState;
 	DirectShowStartStopTimeMethod m_timestamp;
 	bool m_useFrameQueue;
-	size_t m_frameQueueMaxSize;
+	DirectShowQueueConstructionContract m_queueConstructionContract;
+	std::atomic<size_t> m_downstreamPrimeTargetFrames{0};
+	std::atomic_bool m_downstreamPrimeTargetKnown{false};
 	// The dialog can publish this policy while Build() is queued on the graph
 	// thread.  Retain it so a newly-created live source receives it instead of
 	// silently falling back to its default queue behaviour.

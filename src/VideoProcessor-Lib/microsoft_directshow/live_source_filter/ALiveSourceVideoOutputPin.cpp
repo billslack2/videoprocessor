@@ -355,6 +355,17 @@ HRESULT ALiveSourceVideoOutputPin::DecideAllocator(IMemInputPin* pPin, IMemAlloc
 }
 
 
+LONG ALiveSourceVideoOutputPin::ResolveAllocatorBufferRequest(
+	LONG downstreamRequested, LONG recommendedBuffers)
+{
+	constexpr LONG kMinimumBuffers = 8;
+	constexpr LONG kMaximumBuffers = 48;
+	return std::min(kMaximumBuffers,
+		std::max(kMinimumBuffers,
+			std::max(downstreamRequested, recommendedBuffers)));
+}
+
+
 HRESULT ALiveSourceVideoOutputPin::DecideBufferSize(IMemAllocator *pAlloc, ALLOCATOR_PROPERTIES *ppropInputRequest)
 {
 	CheckPointer(pAlloc,E_POINTER);
@@ -367,13 +378,12 @@ HRESULT ALiveSourceVideoOutputPin::DecideBufferSize(IMemAllocator *pAlloc, ALLOC
 	// former fixed request for 128 buffers could commit several gigabytes.
 	// Preserve downstream minimums, but cap the request to a practical queue
 	// headroom limit; SetProperties reports the actual count below.
-	constexpr LONG kMinimumBuffers = 8;
-	constexpr LONG kMaximumBuffers = 48;
 	const LONG requestedBuffers = ppropInputRequest->cBuffers;
-	const LONG recommendedBuffers = std::max(kMinimumBuffers, GetAllocatorBufferCount());
-	ppropInputRequest->cBuffers = std::min(
-		kMaximumBuffers,
-		std::max(kMinimumBuffers, std::max(requestedBuffers, recommendedBuffers)));
+	const LONG recommendedBuffers = GetAllocatorBufferCount();
+	ppropInputRequest->cBuffers = ResolveAllocatorBufferRequest(
+		requestedBuffers, recommendedBuffers);
+	m_negotiatedAllocatorRequestCount.store(
+		ppropInputRequest->cBuffers, std::memory_order_release);
 	ppropInputRequest->cbBuffer = m_videoFrameFormatter->GetOutFrameSize();
 
 	ASSERT(ppropInputRequest->cbBuffer);
