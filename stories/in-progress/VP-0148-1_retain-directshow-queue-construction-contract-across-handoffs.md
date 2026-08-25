@@ -2,10 +2,20 @@
 
 ## Status
 
-Backlog (2026-08-25). Architecture review is complete. The current default
-integration branch was discovered as `v1.2.001-beta` at
-`2cfbaf2d36a8a848743714178b3fc2861be2d127`; implementation awaits required
-developer confirmation of that base.
+In Progress (2026-08-25). The developer confirmed the freshly queried remote
+default/latest beta `v1.2.001-beta` at
+`2cfbaf2d36a8a848743714178b3fc2861be2d127`. Implementation is active on
+`codex/vp-0148-1-queue-launch-contract` in the clean worktree
+`C:\Videoprocessor\vp\git-main\stories\.vp-0148-1-launch-contract`.
+
+## Progress
+
+- The tracker readiness review and three independent architecture gates
+  approved the revisioned construction-commit contract, immutable construction
+  evidence, generation/profile guards, and one-shot failure policy.
+- The source worktree is clean and exactly based on the current remote beta
+  tip. Detailed code-path and test-seam inspection is in progress before the
+  first implementation edit.
 
 ## Parent
 

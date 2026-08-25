@@ -182,7 +182,7 @@ they must not contain requirements that are absent from this file.
 | VP-0146 | Done | Re-apply profile rules shortcut and safe queue-profile handoff |
 | VP-0147 | Backlog | Subtitle-safe libplacebo tone-mapping analysis region |
 | VP-0148 | Backlog | Enforce DirectShow queue launch contracts and trustworthy handoff evidence |
-| VP-0148-1 | Backlog | Retain DirectShow queue construction contract across handoffs |
+| VP-0148-1 | In Progress | Retain DirectShow queue construction contract across handoffs |
 | VP-0148-2 | Backlog | Publish coherent DirectShow queue and delivery telemetry |
 | VP-0066-1 | Done | Characterize the live output pipeline with replayable golden traces |
 | VP-0066-2 | Done | Extract a graph-independent video timing controller |
