@@ -30,6 +30,12 @@ struct RendererLivenessSnapshot
 	uint64_t lastDeliveryStartTick = 0;
 	uint64_t lastDeliverySuccessTick = 0;
 	uint64_t maximumSuccessfulDeliveryDurationUs = 0;
+	// Exact-epoch source-counter gaps observed on a live hardware-clock timeline
+	// after excluding epoch-start, explicit source discontinuities, and
+	// intentional convergence trim boundaries.
+	// These are liveness/re-prime evidence, not an upstream capture-gap claim.
+	uint64_t unexpectedLiveDeliveryGapEvents = 0;
+	uint64_t unexpectedLiveDeliveryGapSlots = 0;
 	size_t rawQueueDepth = 0;
 	size_t convertedQueueDepth = 0;
 	size_t queueCapacity = 0;
@@ -58,6 +64,18 @@ struct RendererLivenessSnapshot
 	size_t deliveryReserveFrames = 0;
 };
 
+inline bool IsUnexpectedLiveDeliveryGapEvidence(
+	bool usesLiveHardwareClockTimestamps,
+	bool deliveredSourceFrameGap,
+	bool sourceDiscontinuity,
+	bool intentionalConvertedTrimBoundary,
+	bool intentionalRawTrimBoundary)
+{
+	return usesLiveHardwareClockTimestamps && deliveredSourceFrameGap &&
+		!sourceDiscontinuity &&
+		!intentionalConvertedTrimBoundary && !intentionalRawTrimBoundary;
+}
+
 // Latency boundaries owned by VP. "Scheduled" ends at the DirectShow sample's
 // requested presentation time; it is not a claim about madVR, scanout, or the
 // physical display.
@@ -68,6 +86,40 @@ struct RendererLatencySnapshot
 	double vpInternalMs = 0.0;
 	double dsScheduleLeadMs = 0.0;
 	double scheduledLatencyMs = 0.0;
+};
+
+// A graph-clock rollback can create a new timestamp lineage without changing
+// the VP queue epoch. Keep the slow 10-second trend identity separate so no
+// delta or slope spans that rebase boundary.
+class RendererLatencyTrendLineage
+{
+public:
+	bool RequiresBaseline(uint64_t queueEpoch) const
+	{
+		return m_epoch == 0 || m_epoch != queueEpoch;
+	}
+
+	void Begin(uint64_t queueEpoch, uint64_t tickMs)
+	{
+		m_epoch = queueEpoch;
+		m_startedTickMs = tickMs;
+	}
+
+	void InvalidateForClockRebase()
+	{
+		m_epoch = 0;
+		m_startedTickMs = 0;
+		m_lastLogTickMs = 0;
+	}
+
+	uint64_t StartedTickMs() const { return m_startedTickMs; }
+	uint32_t LastLogTickMs() const { return m_lastLogTickMs; }
+	void MarkLogged(uint32_t tickMs) { m_lastLogTickMs = tickMs; }
+
+private:
+	uint64_t m_epoch = 0;
+	uint64_t m_startedTickMs = 0;
+	uint32_t m_lastLogTickMs = 0;
 };
 
 // CBaseFilter::StreamTime can retain the custom reference clock's absolute

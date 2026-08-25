@@ -1829,6 +1829,147 @@ namespace VideoProcessorTest
 			DeleteFileA(path.c_str());
 		}
 
+		TEST_METHOD(FreshAlphaConstructionConsumesMatchingPendingProfileReset)
+		{
+			QueueProfileRestartPolicy::PendingRequest pending;
+			Assert::IsTrue(QueueProfileRestartPolicy::EnqueueResult::Queued ==
+				QueueProfileRestartPolicy::Enqueue(
+					pending, 8, "vp_60", "shortcut:Shift+V"));
+
+			QueueProfileRestartPolicy::FreshConstructionEvidence evidence;
+			evidence.freshConstruction = true;
+			evidence.running = true;
+			evidence.rendererGeneration = 4;
+			evidence.appliedSnapshotGeneration = 10;
+			evidence.appliedProfile = "vp_60";
+			evidence.currentSnapshotGeneration = 10;
+			evidence.currentProfile = "vp_60";
+
+			QueueProfileRestartPolicy::PendingRequest satisfied;
+			Assert::IsTrue(QueueProfileRestartPolicy::
+				ConsumeIfSatisfiedByFreshConstruction(
+					pending, evidence, satisfied));
+			Assert::IsFalse(pending.pending);
+			Assert::IsTrue(satisfied.pending);
+			Assert::AreEqual<uint64_t>(8, satisfied.snapshotGeneration);
+			Assert::AreEqual("vp_60", satisfied.profile.c_str());
+			Assert::AreEqual("shortcut:Shift+V", satisfied.source.c_str());
+		}
+
+		TEST_METHOD(RejectedQueueProfileResetSubmissionRestoresExactIdentity)
+		{
+			QueueProfileRestartPolicy::PendingRequest pending;
+			QueueProfileRestartPolicy::Enqueue(
+				pending, 23, "madvr_queue", "shortcut:Shift+M");
+			QueueProfileRestartPolicy::PendingRequest dispatched;
+			Assert::IsTrue(QueueProfileRestartPolicy::Consume(
+				pending, dispatched));
+			Assert::IsTrue(QueueProfileRestartPolicy::RestoreConsumedIfEmpty(
+				pending, dispatched));
+			Assert::AreEqual<uint64_t>(23, pending.snapshotGeneration);
+			Assert::AreEqual("madvr_queue", pending.profile.c_str());
+			Assert::AreEqual("shortcut:Shift+M", pending.source.c_str());
+
+			QueueProfileRestartPolicy::PendingRequest newer;
+			QueueProfileRestartPolicy::Enqueue(
+				newer, 24, "vp_queue", "shortcut:Shift+V");
+			Assert::IsFalse(QueueProfileRestartPolicy::RestoreConsumedIfEmpty(
+				newer, dispatched));
+			Assert::AreEqual<uint64_t>(24, newer.snapshotGeneration);
+			Assert::AreEqual("vp_queue", newer.profile.c_str());
+		}
+
+		TEST_METHOD(FreshDirectShowConstructionRequiresCompleteConsistentAudit)
+		{
+			QueueProfileRestartPolicy::PendingRequest pending;
+			QueueProfileRestartPolicy::Enqueue(
+				pending, 14, "madvr_queue", "shortcut:Shift+M");
+
+			QueueProfileRestartPolicy::FreshConstructionEvidence evidence;
+			evidence.freshConstruction = true;
+			evidence.running = true;
+			evidence.directShow = true;
+			evidence.rendererGeneration = 5;
+			evidence.appliedSnapshotGeneration = 14;
+			evidence.appliedProfile = "madvr_queue";
+			evidence.currentSnapshotGeneration = 14;
+			evidence.currentProfile = "madvr_queue";
+
+			QueueProfileRestartPolicy::PendingRequest satisfied;
+			Assert::IsFalse(QueueProfileRestartPolicy::
+				ConsumeIfSatisfiedByFreshConstruction(
+					pending, evidence, satisfied));
+			Assert::IsTrue(pending.pending);
+			Assert::AreEqual("shortcut:Shift+M", pending.source.c_str());
+
+			evidence.directShowAuditComplete = true;
+			Assert::IsFalse(QueueProfileRestartPolicy::
+				ConsumeIfSatisfiedByFreshConstruction(
+					pending, evidence, satisfied));
+			Assert::IsTrue(pending.pending);
+
+			evidence.directShowAuditConsistent = true;
+			Assert::IsTrue(QueueProfileRestartPolicy::
+				ConsumeIfSatisfiedByFreshConstruction(
+					pending, evidence, satisfied));
+			Assert::AreEqual("shortcut:Shift+M", satisfied.source.c_str());
+		}
+
+		TEST_METHOD(FreshConstructionDoesNotConsumeNewerOrChangedProfileIntent)
+		{
+			QueueProfileRestartPolicy::PendingRequest pending;
+			QueueProfileRestartPolicy::Enqueue(
+				pending, 15, "madvr_queue", "rule-context:renderer-shortcut");
+			const QueueProfileRestartPolicy::PendingRequest original = pending;
+
+			QueueProfileRestartPolicy::FreshConstructionEvidence evidence;
+			evidence.rendererGeneration = 5;
+			evidence.appliedSnapshotGeneration = 15;
+			evidence.appliedProfile = "madvr_queue";
+			evidence.currentSnapshotGeneration = 15;
+			evidence.currentProfile = "madvr_queue";
+
+			QueueProfileRestartPolicy::PendingRequest satisfied;
+			Assert::IsFalse(QueueProfileRestartPolicy::
+				ConsumeIfSatisfiedByFreshConstruction(
+					pending, evidence, satisfied));
+			Assert::AreEqual(original.source.c_str(), pending.source.c_str());
+
+			evidence.freshConstruction = true;
+			Assert::IsFalse(QueueProfileRestartPolicy::
+				ConsumeIfSatisfiedByFreshConstruction(
+					pending, evidence, satisfied));
+			Assert::AreEqual(original.source.c_str(), pending.source.c_str());
+
+			evidence.running = true;
+			evidence.appliedSnapshotGeneration = 14;
+			evidence.currentSnapshotGeneration = 14;
+			Assert::IsFalse(QueueProfileRestartPolicy::
+				ConsumeIfSatisfiedByFreshConstruction(
+					pending, evidence, satisfied));
+			Assert::AreEqual(original.snapshotGeneration,
+				pending.snapshotGeneration);
+			Assert::AreEqual(original.profile.c_str(), pending.profile.c_str());
+			Assert::AreEqual(original.source.c_str(), pending.source.c_str());
+
+			evidence.appliedSnapshotGeneration = 15;
+			evidence.currentSnapshotGeneration = 16;
+			Assert::IsFalse(QueueProfileRestartPolicy::
+				ConsumeIfSatisfiedByFreshConstruction(
+					pending, evidence, satisfied));
+			Assert::IsTrue(pending.pending);
+
+			evidence.appliedSnapshotGeneration = 16;
+			evidence.appliedProfile = "vp_60";
+			evidence.currentProfile = "vp_60";
+			Assert::IsFalse(QueueProfileRestartPolicy::
+				ConsumeIfSatisfiedByFreshConstruction(
+					pending, evidence, satisfied));
+			Assert::IsTrue(pending.pending);
+			Assert::AreEqual("rule-context:renderer-shortcut",
+				pending.source.c_str());
+		}
+
 		TEST_METHOD(UnifiedProfileRuntimeReloadsEditedViewportAndKeepsSelection)
 		{
 			char temporaryDirectory[MAX_PATH] = {};

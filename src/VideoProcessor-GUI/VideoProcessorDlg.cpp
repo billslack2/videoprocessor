@@ -5329,7 +5329,8 @@ void CVideoProcessorDlg::OnBnClickedRendererReset()
 	
 	DebugLog::Log("UI: OnBnClickedRendererReset() - calling m_videoRenderer->Reset()");
 
-	RequestRendererReset(RendererResetReason::Manual, true, 0);
+	RequestRendererReset(RendererResetReason::Manual, true, 0,
+		RendererResetOrigin::UserManual);
 	
 	DebugLog::Log("UI: OnBnClickedRendererReset() - Reset() returned");
 }
@@ -6230,7 +6231,8 @@ LRESULT CVideoProcessorDlg::OnMessageRendererStateChange(WPARAM wParam, LPARAM l
 			DbgLog((LOG_TRACE, 1,
 				TEXT("LLDV confirmed during renderer startup - scheduling renderer restart")));
 		}
-		if (m_queueProfileResetRequest.pending)
+		if (m_queueProfileResetRequest.pending &&
+			!TryConsumeQueueProfileResetSatisfiedByFreshConstruction())
 		{
 			DebugLog::Log(
 				"Queue profile reset: renderer=%S generation=%u "
@@ -6558,6 +6560,36 @@ LRESULT CVideoProcessorDlg::OnMessageRendererRestartRequired(
 	return 0;
 }
 
+const char* ResetOriginName(RendererResetOrigin origin)
+{
+	switch (origin)
+	{
+	case RendererResetOrigin::UserManual: return "user-manual";
+	case RendererResetOrigin::AutomaticProfile: return "automatic-profile";
+	case RendererResetOrigin::AutomaticReadiness: return "automatic-readiness";
+	case RendererResetOrigin::AutomaticRetargetSettle:
+		return "automatic-retarget-settle";
+	default: return "unspecified";
+	}
+}
+
+const char* ResetSubmissionDispositionName(
+	RendererResetCoordinator::SubmissionDisposition disposition)
+{
+	switch (disposition)
+	{
+	case RendererResetCoordinator::SubmissionDisposition::Selected:
+		return "selected";
+	case RendererResetCoordinator::SubmissionDisposition::Replaced:
+		return "replaced";
+	case RendererResetCoordinator::SubmissionDisposition::Coalesced:
+		return "coalesced";
+	case RendererResetCoordinator::SubmissionDisposition::RejectedStaleBinding:
+		return "rejected-stale-binding";
+	default: return "rejected-unavailable";
+	}
+}
+
 
 LRESULT CVideoProcessorDlg::OnMessageRendererQueueContractChanged(
 	WPARAM, LPARAM lParam)
@@ -6732,7 +6764,8 @@ void CVideoProcessorDlg::OnCommandRendererReset()
 {
 	if (m_videoRenderer)
 	{
-		RequestRendererReset(RendererResetReason::Manual, true, 0);
+		RequestRendererReset(RendererResetReason::Manual, true, 0,
+			RendererResetOrigin::UserManual);
 		DEBUGLOG("OnCommandRendererReset");
 	}
 }
@@ -8281,6 +8314,10 @@ void CVideoProcessorDlg::CaptureGUIClear()
 void CVideoProcessorDlg::RenderStart()
 {
 	DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::RenderStart(): Begin")));
+	m_freshRendererProfileConstruction = false;
+	m_freshRendererProfileRendererGeneration = 0;
+	m_freshRendererProfileSnapshotGeneration = 0;
+	m_freshRendererProfileName.clear();
 	if (m_activeOutputSweepSummaryVisible && !m_activeOutputSweepRunning)
 		ClearActiveOutputSweepSummary("renderer-rebuild");
 	// Stage even the first construction: renderer-owned input policy cannot be
@@ -8529,8 +8566,6 @@ void CVideoProcessorDlg::RenderStart()
 			BindRendererResetSink();
 
 			ApplyUnifiedProfileSnapshot(profileSnapshot, false);
-			if (profileSnapshot && !profileSnapshot->queue.profile.empty())
-				QueueUnifiedQueueProfileReset(profileSnapshot, "renderer-start");
 
 			if (m_captureDeviceVideoState)
 				m_videoRenderer->OnVideoState(m_builtVideoState);
@@ -8550,6 +8585,13 @@ void CVideoProcessorDlg::RenderStart()
 			m_videoRenderer->SetSceneAwareTimingCorrection(
 				m_sceneAwareTimingCorrection);
 			m_videoRenderer->Start();
+			m_freshRendererProfileConstruction = profileSnapshot &&
+				!profileSnapshot->queue.profile.empty();
+			m_freshRendererProfileRendererGeneration = rendererGeneration;
+			m_freshRendererProfileSnapshotGeneration = profileSnapshot ?
+				profileSnapshot->generation : 0;
+			m_freshRendererProfileName = profileSnapshot ?
+				profileSnapshot->queue.profile : std::string();
 			m_rendererConstructionActive = false;
 			if (m_wantToRestartRenderer)
 				PostMessage(WM_MESSAGE_RENDERER_INTENT_READY, 0, 0);
@@ -8691,8 +8733,6 @@ void CVideoProcessorDlg::RenderStart()
 		}
 
 		ApplyUnifiedProfileSnapshot(profileSnapshot, false);
-		if (profileSnapshot && !profileSnapshot->queue.profile.empty())
-			QueueUnifiedQueueProfileReset(profileSnapshot, "renderer-start");
 
 		if (m_captureDeviceVideoState)
 			m_videoRenderer->OnVideoState(m_builtVideoState);
@@ -8715,6 +8755,13 @@ void CVideoProcessorDlg::RenderStart()
 		m_videoRenderer->SetSubtitleRepositioningMode(
 			m_subtitleRepositionMode);
 		m_videoRenderer->Start();
+		m_freshRendererProfileConstruction = profileSnapshot &&
+			!profileSnapshot->queue.profile.empty();
+		m_freshRendererProfileRendererGeneration = rendererGeneration;
+		m_freshRendererProfileSnapshotGeneration = profileSnapshot ?
+			profileSnapshot->generation : 0;
+		m_freshRendererProfileName = profileSnapshot ?
+			profileSnapshot->queue.profile : std::string();
 		m_rendererConstructionActive = false;
 		if (m_wantToRestartRenderer)
 			PostMessage(WM_MESSAGE_RENDERER_INTENT_READY, 0, 0);
@@ -8826,6 +8873,13 @@ void CVideoProcessorDlg::RenderStart()
 			m_videoRenderer->SetSubtitleRepositioningMode(
 				m_subtitleRepositionMode);
 			m_videoRenderer->Start();
+			m_freshRendererProfileConstruction = profileSnapshot &&
+				!profileSnapshot->queue.profile.empty();
+			m_freshRendererProfileRendererGeneration = rendererGeneration;
+			m_freshRendererProfileSnapshotGeneration = profileSnapshot ?
+				profileSnapshot->generation : 0;
+			m_freshRendererProfileName = profileSnapshot ?
+				profileSnapshot->queue.profile : std::string();
 			m_rendererConstructionActive = false;
 			if (m_wantToRestartRenderer)
 				PostMessage(WM_MESSAGE_RENDERER_INTENT_READY, 0, 0);
@@ -8985,6 +9039,10 @@ void CVideoProcessorDlg::DestroyVideoRenderer()
 {
 	m_shaderLoadingWindow.Hide();
 	m_shaderLoadingPopupShownTick = 0;
+	m_freshRendererProfileConstruction = false;
+	m_freshRendererProfileRendererGeneration = 0;
+	m_freshRendererProfileSnapshotGeneration = 0;
+	m_freshRendererProfileName.clear();
 	if (!m_videoRenderer)
 		return;
 	if (m_fullscreenRetargetPending)
@@ -9131,6 +9189,17 @@ void CVideoProcessorDlg::BindRendererResetSink()
 
 void CVideoProcessorDlg::RevokeRendererResetSink()
 {
+	if (m_outputReadinessGraphReprimeActive)
+	{
+		DebugLog::Log(
+			"Output readiness graph re-prime operation cancelled: "
+			"reason=renderer-reset-binding-revoked "
+			"action=clear-active-operation-provenance");
+		m_outputReadinessGraphReprimeActive = false;
+	}
+	m_outputReadinessResetCompletion.Reset();
+	m_outputReadinessExistingGraphResetCompletion.Reset();
+	m_outputReadinessRetargetSettleLineageGeneration = 0;
 	if (m_rendererResetCoordinator && m_rendererResetBindingToken != 0)
 	{
 		m_rendererResetCoordinator->Revoke(m_rendererResetBindingToken);
@@ -9188,7 +9257,8 @@ void CVideoProcessorDlg::PumpRendererResetMailbox()
 				m_rendererState != RendererState::RENDERSTATE_RENDERING);
 		DEBUGLOG(
 			"Reset %s: operation=%llu request=%llu generation=%u "
-			"current_generation=%u reason=%s scope=%s%s%s",
+			"current_generation=%u reason=%s origin=%s "
+			"origin_generation=%llu contributors=0x%x scope=%s%s%s",
 			currentSuccess ? "completed" :
 				expectedLifecycleCancellation ? "cancelled" : "failed",
 			static_cast<unsigned long long>(completion.operationId),
@@ -9196,30 +9266,38 @@ void CVideoProcessorDlg::PumpRendererResetMailbox()
 			completion.rendererGeneration,
 			currentGeneration,
 			CStringA(ToString(completion.request.reason)).GetString(),
+			ResetOriginName(completion.request.origin),
+			static_cast<unsigned long long>(
+				completion.request.originGeneration),
+			static_cast<unsigned int>(
+				completion.request.originContributors),
 			ResetScopeName(completion.request.scope),
 			completion.failure.empty() ? "" : " failure=",
 			completion.failure.empty() ? "" : completion.failure.c_str());
 		const bool outputReadinessGraphReprime =
-			completion.request.reason == RendererResetReason::OutputReadiness &&
-			completion.request.scope == RendererResetScope::Graph;
+			RendererResetPreservesReadinessDisplayMeasurement(
+				completion.request.scope,
+				completion.request.originContributors);
 		if (currentSuccess && m_activeRendererIsDirectShow &&
 			outputReadinessGraphReprime)
 		{
 			RendererLivenessSnapshot snapshot;
-			if (m_videoRenderer && m_videoRenderer->GetLivenessSnapshot(snapshot) &&
-				snapshot.supported && snapshot.queueEpoch != 0)
+			const bool usableSnapshot = m_videoRenderer &&
+				m_videoRenderer->GetLivenessSnapshot(snapshot) &&
+				snapshot.supported && snapshot.queueEpoch != 0;
+			const DisplayTimingSnapshot timing =
+				g_displayRefreshRateSampler->GetTimingSnapshot();
+			const uint64_t completionGeneration =
+				(static_cast<uint64_t>(m_transitionGeneration) << 32) ^
+				(timing.generation & 0xffffffffULL);
+			if (m_outputReadinessResetCompletion.MarkCompleted(
+				completionGeneration, usableSnapshot ? snapshot.queueEpoch : 0))
 			{
-				const DisplayTimingSnapshot timing =
-					g_displayRefreshRateSampler->GetTimingSnapshot();
-				m_outputReadinessResetCompletedGeneration =
-					(static_cast<uint64_t>(m_transitionGeneration) << 32) ^
-					(timing.generation & 0xffffffffULL);
-				m_outputReadinessResetCompletedEpoch = snapshot.queueEpoch;
 				DebugLog::Log(
 					"Output readiness reset completed: generation=%llu epoch=%llu "
 					"converted=%zu/%zu reserve=%zu",
 					static_cast<unsigned long long>(
-						m_outputReadinessResetCompletedGeneration),
+						completionGeneration),
 					static_cast<unsigned long long>(snapshot.queueEpoch),
 					snapshot.convertedQueueDepth, snapshot.queueCapacity,
 					snapshot.deliveryReserveFrames);
@@ -9228,7 +9306,8 @@ void CVideoProcessorDlg::PumpRendererResetMailbox()
 			{
 				DebugLog::Log(
 					"Output readiness reset completed without a usable VP queue "
-					"snapshot; deterministic prefill remains pending");
+					"snapshot: generation=%llu action=await-stable-snapshot",
+					static_cast<unsigned long long>(completionGeneration));
 			}
 		}
 		if (currentSuccess && m_activeRendererIsDirectShow &&
@@ -9248,26 +9327,81 @@ void CVideoProcessorDlg::PumpRendererResetMailbox()
 				ResetScopeName(completion.request.scope));
 
 			RendererLivenessSnapshot snapshot;
-			if (m_videoRenderer && m_videoRenderer->GetLivenessSnapshot(snapshot) &&
-				snapshot.supported && snapshot.queueEpoch != 0)
+			const bool usableSnapshot = m_videoRenderer &&
+				m_videoRenderer->GetLivenessSnapshot(snapshot) &&
+				snapshot.supported && snapshot.queueEpoch != 0;
+			const DisplayTimingSnapshot timing =
+				g_displayRefreshRateSampler->GetTimingSnapshot();
+			const uint64_t completionGeneration =
+				(static_cast<uint64_t>(m_transitionGeneration) << 32) ^
+				(timing.generation & 0xffffffffULL);
+			if (m_outputReadinessExistingGraphResetCompletion.MarkCompleted(
+				completionGeneration, usableSnapshot ? snapshot.queueEpoch : 0))
 			{
-				const DisplayTimingSnapshot timing =
-					g_displayRefreshRateSampler->GetTimingSnapshot();
-				m_outputReadinessExistingGraphResetGeneration =
-					(static_cast<uint64_t>(m_transitionGeneration) << 32) ^
-					(timing.generation & 0xffffffffULL);
-				m_outputReadinessExistingGraphResetEpoch = snapshot.queueEpoch;
 				m_outputReadinessExistingGraphReservePublishedEpoch = 0;
 				DebugLog::Log(
 					"Output readiness will adopt fresh DirectShow graph reset: "
 					"generation=%llu epoch=%llu reason=%s",
 					static_cast<unsigned long long>(
-						m_outputReadinessExistingGraphResetGeneration),
+						completionGeneration),
 					static_cast<unsigned long long>(snapshot.queueEpoch),
 					CStringA(ToString(completion.request.reason)).GetString());
 			}
+			else
+			{
+				DebugLog::Log(
+					"DirectShow graph reset completed without a usable VP queue "
+					"snapshot: generation=%llu action=await-stable-snapshot",
+					static_cast<unsigned long long>(completionGeneration));
+			}
+			if (completion.request.scope == RendererResetScope::GraphRetarget)
+				m_outputReadinessRetargetSettleLineageGeneration =
+					completionGeneration;
 		}
-		if (completion.request.reason == RendererResetReason::OutputReadiness)
+		const bool retargetSettleContributor = RendererResetHasOrigin(
+			completion.request.originContributors,
+			RendererResetOrigin::AutomaticRetargetSettle);
+		if (currentSuccess && m_activeRendererIsDirectShow &&
+			retargetSettleContributor &&
+			completion.request.scope == RendererResetScope::LiveQueue &&
+			m_outputReadinessRetargetSettleLineageGeneration != 0)
+		{
+			RendererLivenessSnapshot snapshot;
+			const bool usableSnapshot = m_videoRenderer &&
+				m_videoRenderer->GetLivenessSnapshot(snapshot) &&
+				snapshot.supported && snapshot.queueEpoch != 0;
+			const uint64_t lineageGeneration =
+				m_outputReadinessRetargetSettleLineageGeneration;
+			const bool bound =
+				m_outputReadinessExistingGraphResetCompletion.MarkCompleted(
+					lineageGeneration,
+					usableSnapshot ? snapshot.queueEpoch : 0);
+			m_outputReadinessExistingGraphReservePublishedEpoch = 0;
+			m_outputReadinessRetargetSettleLineageGeneration = 0;
+			DebugLog::Log(
+				"Post-retarget queue settle completed: generation=%llu "
+				"origin=automatic-retarget-settle epoch=%llu snapshot=%s "
+				"action=%s",
+				static_cast<unsigned long long>(lineageGeneration),
+				static_cast<unsigned long long>(
+					usableSnapshot ? snapshot.queueEpoch : 0),
+				usableSnapshot ? "coherent" : "awaiting-coherent",
+				bound ? "advance-readiness-lineage" :
+					"await-stable-snapshot");
+		}
+		else if (retargetSettleContributor &&
+			!RendererResetKeepsFreshRetargetSettleLineage(
+				completion.request.scope, currentSuccess) &&
+			(completion.request.scope != RendererResetScope::LiveQueue ||
+			 !currentSuccess))
+		{
+			// A covering graph operation already published its own fresh lineage;
+			// a failed operation will remain covered by normal restart recovery.
+			m_outputReadinessRetargetSettleLineageGeneration = 0;
+		}
+		if (RendererResetHasOrigin(
+				completion.request.originContributors,
+				RendererResetOrigin::AutomaticReadiness))
 			m_outputReadinessGraphReprimeActive = false;
 		if (currentSuccess && m_activeRendererIsDirectShow &&
 			(completion.request.scope == RendererResetScope::Graph ||
@@ -9305,12 +9439,28 @@ void CVideoProcessorDlg::PumpRendererResetMailbox()
 			// modes exhibit the same downstream transition race.
 			const UINT delayMs = static_cast<UINT>(
 				m_queueResetDelaySeconds * 1000);
-			RequestRendererReset(
-				RendererResetReason::DisplayTransition, false, delayMs);
+			const RendererResetCoordinator::SubmissionReceipt receipt =
+				RequestRendererReset(
+					RendererResetReason::DisplayTransition, false, delayMs,
+					RendererResetOrigin::AutomaticRetargetSettle,
+					m_outputReadinessRetargetSettleLineageGeneration);
+			const bool settleCovered = receipt.accepted &&
+				RendererResetHasOrigin(receipt.selectedOriginContributors,
+					RendererResetOrigin::AutomaticRetargetSettle);
+			if (!settleCovered)
+				m_outputReadinessRetargetSettleLineageGeneration = 0;
 			DebugLog::Log(
 				"Post-retarget queue re-prime armed: generation=%u "
-				"delay=%ums source=reset_after_render_restart_seconds",
-				currentGeneration, delayMs);
+				"origin=automatic-retarget-settle delay=%ums "
+				"source=reset_after_render_restart_seconds accepted=%d "
+				"request=%llu disposition=%s selected_request=%llu "
+				"contributors=0x%x",
+				currentGeneration, delayMs, settleCovered ? 1 : 0,
+				static_cast<unsigned long long>(receipt.requestSequence),
+				ResetSubmissionDispositionName(receipt.disposition),
+				static_cast<unsigned long long>(receipt.selectedSequence),
+				static_cast<unsigned int>(
+					receipt.selectedOriginContributors));
 		}
 		if (completion.request.scope != RendererResetScope::LiveQueue)
 			m_lastLivenessRecoveryTick = now;
@@ -9449,6 +9599,13 @@ void CVideoProcessorDlg::PumpRendererResetMailbox()
 		}
 		m_rendererTransitionModel.OnResetStarted(
 			m_rendererTransitionModel.Key());
+		// Display events are attributable to readiness only after this exact
+		// selected operation starts. Merely pending/coalesced coverage may sit
+		// behind a delayed profile reset while an unrelated display event occurs.
+		m_outputReadinessGraphReprimeActive =
+			RendererResetPreservesReadinessDisplayMeasurement(
+				selected.request.scope,
+				selected.request.originContributors);
 		m_activeGraphRequestId.store(
 			selected.request.sequence, std::memory_order_release);
 		m_activeGraphRequestGeneration.store(
@@ -9457,11 +9614,17 @@ void CVideoProcessorDlg::PumpRendererResetMailbox()
 			now, std::memory_order_release);
 		DEBUGLOG(
 			"Reset started: request=%llu renderer=%S generation=%u "
-			"reason=%s scope=%s",
+			"reason=%s origin=%s origin_generation=%llu "
+			"contributors=0x%x scope=%s",
 			static_cast<unsigned long long>(selected.request.sequence),
 			static_cast<LPCTSTR>(m_activeRendererName),
 			currentGeneration,
 			CStringA(ToString(selected.request.reason)).GetString(),
+			ResetOriginName(selected.request.origin),
+			static_cast<unsigned long long>(
+				selected.request.originGeneration),
+			static_cast<unsigned int>(
+				selected.request.originContributors),
 			ResetScopeName(selected.request.scope));
 	}
 
@@ -11140,11 +11303,13 @@ void CVideoProcessorDlg::ApplyUnifiedProfileSnapshot(
 		const UINT delayMs = static_cast<UINT>(
 			(std::max)(0, m_queueResetDelaySeconds)) * 1000;
 		DebugLog::Log(
-			"Queue policy apply reset selected: backend=%s scope=manual-graph "
-			"delay=%u",
+			"Queue policy apply reset selected: backend=%s "
+			"origin=automatic-profile scope=graph delay=%u",
 			m_activeRendererIsDirectShow ? "DirectShow/madVR" : "VP Renderer",
 			delayMs);
-		RequestRendererReset(RendererResetReason::Manual, true, delayMs);
+		RequestRendererReset(RendererResetReason::Manual, true, delayMs,
+			RendererResetOrigin::AutomaticProfile,
+			snapshot ? snapshot->generation : 0);
 	}
 }
 
@@ -11173,16 +11338,104 @@ void CVideoProcessorDlg::QueueUnifiedQueueProfileReset(
 }
 
 
+bool CVideoProcessorDlg::TryConsumeQueueProfileResetSatisfiedByFreshConstruction()
+{
+	if (!m_queueProfileResetRequest.pending ||
+		!m_freshRendererProfileConstruction)
+	{
+		return false;
+	}
+
+	QueueProfileRestartPolicy::FreshConstructionEvidence satisfaction;
+	const uint32_t currentRendererGeneration =
+		m_rendererGeneration.load(std::memory_order_acquire);
+	satisfaction.freshConstruction =
+		currentRendererGeneration ==
+			m_freshRendererProfileRendererGeneration;
+	satisfaction.running = m_videoRenderer &&
+		m_rendererState == RendererState::RENDERSTATE_RENDERING;
+	satisfaction.directShow = m_activeRendererIsDirectShow;
+	satisfaction.rendererGeneration = currentRendererGeneration;
+	satisfaction.appliedSnapshotGeneration =
+		m_freshRendererProfileSnapshotGeneration;
+	satisfaction.appliedProfile = m_freshRendererProfileName;
+	const auto currentSnapshot = m_profileRuntime.GetSnapshot();
+	if (currentSnapshot)
+	{
+		satisfaction.currentSnapshotGeneration = currentSnapshot->generation;
+		satisfaction.currentProfile = currentSnapshot->queue.profile;
+	}
+
+	if (satisfaction.directShow)
+	{
+		const auto renderer =
+			std::dynamic_pointer_cast<DirectShowVideoRenderer>(m_videoRenderer);
+		if (renderer)
+		{
+			const auto audit =
+				renderer->GetFrameQueueConstructionContractSnapshot();
+			RendererQueueLaunchDesired desired;
+			satisfaction.directShowAuditComplete = audit.desiredKnown &&
+				audit.committed && audit.currentCapacityKnown &&
+				audit.allocatorRecorded && audit.launchRecorded &&
+				audit.activationRecorded &&
+				m_queueLaunchContractModel.LatestDesired(desired) &&
+				desired.key.backend == RendererQueueLaunchBackend::DirectShow;
+			const bool estimateSatisfied = !audit.downstreamEstimateKnown ||
+				audit.estimateSatisfaction ==
+					DirectShowQueueConstructionContract::
+						EstimateSatisfaction::Satisfied;
+			satisfaction.directShowAuditConsistent =
+				satisfaction.directShowAuditComplete &&
+				!audit.recreationRequired && estimateSatisfied &&
+				audit.key.rendererGeneration == currentRendererGeneration &&
+				desired.key.capacity == audit.constructedCapacity &&
+				desired.key.capacity == audit.currentCapacity &&
+				desired.effectiveRevision == audit.key.contractRevision &&
+				desired.profileGeneration ==
+					m_freshRendererProfileSnapshotGeneration &&
+				desired.profileGeneration ==
+					audit.constructedProfileGeneration &&
+				audit.constructedProfileGeneration ==
+					m_freshRendererProfileSnapshotGeneration;
+		}
+	}
+
+	QueueProfileRestartPolicy::PendingRequest satisfiedRequest;
+	const bool consumed = QueueProfileRestartPolicy::
+		ConsumeIfSatisfiedByFreshConstruction(
+			m_queueProfileResetRequest, satisfaction, satisfiedRequest);
+	m_freshRendererProfileConstruction = false;
+	if (!consumed)
+		return false;
+
+	KillTimer(QUEUE_PROFILE_RESET_TIMER_ID);
+	DebugLog::Log(
+		"Queue profile reset: profile=%s source=%s generation=%llu "
+		"origin=automatic-profile outcome=consumed "
+		"action=fresh-construction-satisfied renderer_generation=%u "
+		"applied_generation=%llu backend=%s audit_complete=%d "
+		"audit_consistent=%d",
+		satisfiedRequest.profile.c_str(), satisfiedRequest.source.c_str(),
+		static_cast<unsigned long long>(
+			satisfiedRequest.snapshotGeneration),
+		satisfaction.rendererGeneration,
+		static_cast<unsigned long long>(
+			satisfaction.appliedSnapshotGeneration),
+		satisfaction.directShow ? "DirectShow/madVR" : "VP Renderer",
+		satisfaction.directShowAuditComplete ? 1 : 0,
+		satisfaction.directShowAuditConsistent ? 1 : 0);
+	return true;
+}
+
+
 void CVideoProcessorDlg::DispatchQueuedQueueProfileReset()
 {
 	QueueProfileRestartPolicy::PendingRequest request;
 	if (!QueueProfileRestartPolicy::Consume(m_queueProfileResetRequest,
 		request))
 		return;
-	const auto currentSnapshot = m_profileRuntime.GetSnapshot();
-	const std::string profile = currentSnapshot &&
-		!currentSnapshot->queue.profile.empty() ?
-		currentSnapshot->queue.profile : request.profile;
+	const std::string& profile = request.profile;
 	if (!m_videoRenderer)
 	{
 		QueueProfileRestartPolicy::Enqueue(m_queueProfileResetRequest,
@@ -11224,14 +11477,41 @@ void CVideoProcessorDlg::DispatchQueuedQueueProfileReset()
 		(std::max)(0, m_queueResetDelaySeconds)) * 1000;
 	DebugLog::Log(
 		"Queue profile reset: profile=%s source=%s generation=%llu backend=%s "
-		"action=manual-queue-reset delay=%u",
+		"origin=automatic-profile action=automatic-profile-reset delay=%u",
 		profile.c_str(), request.source.c_str(),
 		static_cast<unsigned long long>(request.snapshotGeneration),
 		m_activeRendererIsDirectShow ? "DirectShow/madVR" : "VP Renderer",
 		delayMs);
-	// Match the operator's lowercase r reset command exactly, but let the selected queue
-	// profile's configured reset delay provide the settling interval.
-	RequestRendererReset(RendererResetReason::Manual, true, delayMs);
+	// Preserve the established operator-strength priority without misreporting
+	// this timer-driven profile reset as a user command.
+	const RendererResetCoordinator::SubmissionReceipt receipt =
+		RequestRendererReset(RendererResetReason::Manual, true, delayMs,
+			RendererResetOrigin::AutomaticProfile,
+			request.snapshotGeneration);
+	const bool profileResetCovered = receipt.accepted &&
+		RendererResetHasOrigin(receipt.selectedOriginContributors,
+			RendererResetOrigin::AutomaticProfile);
+	if (!profileResetCovered)
+	{
+		const bool restored = QueueProfileRestartPolicy::
+			RestoreConsumedIfEmpty(m_queueProfileResetRequest, request);
+		DebugLog::Log(
+			"Queue profile reset: profile=%s source=%s generation=%llu "
+			"origin=automatic-profile outcome=deferred action=retry-submission "
+			"restored=%d request=%llu disposition=%s selected_request=%llu "
+			"contributors=0x%x",
+			profile.c_str(), request.source.c_str(),
+			static_cast<unsigned long long>(request.snapshotGeneration),
+			restored ? 1 : 0,
+			static_cast<unsigned long long>(receipt.requestSequence),
+			ResetSubmissionDispositionName(receipt.disposition),
+			static_cast<unsigned long long>(receipt.selectedSequence),
+			static_cast<unsigned int>(
+				receipt.selectedOriginContributors));
+		KillTimer(QUEUE_PROFILE_RESET_TIMER_ID);
+		SetTimer(QUEUE_PROFILE_RESET_TIMER_ID,
+			QUEUE_PROFILE_RESET_DEBOUNCE_MS, nullptr);
+	}
 }
 
 
@@ -13710,6 +13990,15 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 	readinessInput.transitionGeneration =
 		(static_cast<uint64_t>(m_transitionGeneration) << 32) ^
 		(sampledDisplayTiming.generation & 0xffffffffULL);
+	readinessInput.correctiveRecoveryGeneration = m_transitionGeneration;
+	RendererQueueLaunchDesired readinessQueueContract;
+	if (m_queueLaunchContractModel.DesiredForBackend(
+			RendererQueueLaunchBackend::DirectShow,
+			readinessQueueContract))
+	{
+		readinessInput.correctiveRecoveryContractRevision =
+			readinessQueueContract.effectiveRevision;
+	}
 	readinessInput.graphOperational =
 		m_rendererState == RendererState::RENDERSTATE_RENDERING &&
 		m_videoRenderer != nullptr && !m_rendererResetTransitionActive;
@@ -13762,7 +14051,7 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		m_currentGraphPrimeQueueTransitionGeneration =
 			readinessInput.transitionGeneration;
 	}
-	const bool currentGraphBoundarySafe = hasReadinessLiveness &&
+	const bool currentGraphPostResetBoundarySafe = hasReadinessLiveness &&
 		readinessLiveness.active && readinessLiveness.queueEpoch != 0 &&
 		!readinessLiveness.resetInProgress &&
 		!m_rendererResetTransitionActive &&
@@ -13771,10 +14060,11 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		!m_rendererRetirementPending &&
 		!m_wantToRestartRenderer &&
 		!m_wantToTerminate &&
-		!m_directShowGraphRecoveryAwaitingHealth &&
 		!m_directShowRecoveryRebuildRequested &&
 		!RendererResetOperationInProgress() &&
 		m_rendererTransitionModel.State() == RendererTransitionState::Visible;
+	const bool currentGraphBoundarySafe = currentGraphPostResetBoundarySafe &&
+		!m_directShowGraphRecoveryAwaitingHealth;
 	if (hasReadinessLiveness &&
 		readinessLiveness.convergenceAppliedEpoch != 0 &&
 		(m_currentGraphPrimeTransitionStartTick == 0 ||
@@ -13792,7 +14082,7 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		m_currentGraphPrimeEvidenceTransitionGeneration =
 			readinessInput.transitionGeneration;
 	}
-	const bool currentGraphPrimeProven = currentGraphBoundarySafe &&
+	const bool currentGraphPrimeProven = currentGraphPostResetBoundarySafe &&
 		readinessLiveness.convergenceHardBlockRecovered &&
 		readinessLiveness.convergenceConvertedQueueWasFull &&
 		readinessLiveness.convergenceAppliedEpoch != 0 &&
@@ -13822,15 +14112,37 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		readinessObservationTick >= readinessLiveness.lastDeliverySuccessTick &&
 		readinessObservationTick - readinessLiveness.lastDeliverySuccessTick <= 500 &&
 		!readinessLiveness.deliveryInProgress;
+	if (hasReadinessLiveness &&
+		m_outputReadinessResetCompletion.BindStableSnapshot(
+			readinessInput.transitionGeneration, readinessLiveness.queueEpoch))
+	{
+		DebugLog::Log(
+			"Output readiness reset completion bound to stable snapshot: "
+			"generation=%llu epoch=%llu action=resume-deterministic-prefill",
+			static_cast<unsigned long long>(
+				readinessInput.transitionGeneration),
+			static_cast<unsigned long long>(readinessLiveness.queueEpoch));
+	}
+	if (hasReadinessLiveness &&
+		m_outputReadinessExistingGraphResetCompletion.BindStableSnapshot(
+			readinessInput.transitionGeneration, readinessLiveness.queueEpoch))
+	{
+		m_outputReadinessExistingGraphReservePublishedEpoch = 0;
+		DebugLog::Log(
+			"Existing graph reset completion bound to stable snapshot: "
+			"generation=%llu epoch=%llu action=resume-readiness-adoption",
+			static_cast<unsigned long long>(
+				readinessInput.transitionGeneration),
+			static_cast<unsigned long long>(readinessLiveness.queueEpoch));
+	}
 	const bool readinessGraphResetCompleted =
-		m_outputReadinessResetCompletedGeneration ==
-			readinessInput.transitionGeneration &&
-		m_outputReadinessResetCompletedEpoch != 0;
+		m_outputReadinessResetCompletion.Matches(
+			readinessInput.transitionGeneration);
 	const bool existingGraphResetCanSatisfyReadiness = hasReadinessLiveness &&
-		m_outputReadinessExistingGraphResetGeneration ==
-			readinessInput.transitionGeneration &&
-		m_outputReadinessExistingGraphResetEpoch != 0 &&
-		readinessLiveness.queueEpoch == m_outputReadinessExistingGraphResetEpoch;
+		m_outputReadinessExistingGraphResetCompletion.Matches(
+			readinessInput.transitionGeneration) &&
+		readinessLiveness.queueEpoch ==
+			m_outputReadinessExistingGraphResetCompletion.CompletedEpoch();
 	const bool recoveryRecreationCanSatisfyReadiness = hasReadinessLiveness &&
 		m_directShowRecoveryRecreatedGeneration == m_transitionGeneration &&
 		readinessLiveness.queueEpoch != 0;
@@ -13838,9 +14150,9 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		existingGraphResetCanSatisfyReadiness ||
 		recoveryRecreationCanSatisfyReadiness;
 	readinessInput.postReadyEpoch = readinessGraphResetCompleted ?
-		m_outputReadinessResetCompletedEpoch :
+		m_outputReadinessResetCompletion.CompletedEpoch() :
 		(existingGraphResetCanSatisfyReadiness ?
-			m_outputReadinessExistingGraphResetEpoch :
+			m_outputReadinessExistingGraphResetCompletion.CompletedEpoch() :
 			(recoveryRecreationCanSatisfyReadiness ?
 				readinessLiveness.queueEpoch : 0));
 	readinessInput.currentEpochProcessedDepth = hasReadinessLiveness &&
@@ -13855,10 +14167,14 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		currentGraphPrimeProven &&
 		readinessLiveness.convergenceConvertedQueueWasFull;
 	readinessInput.currentGraphBoundarySafe = currentGraphBoundarySafe;
+	readinessInput.currentGraphPostResetBoundarySafe =
+		currentGraphPostResetBoundarySafe;
 	readinessInput.currentGraphDeliveryRecent = currentGraphDeliveryRecent;
 	readinessInput.currentGraphPrimeTransitionGeneration =
 		currentGraphPrimeCandidateSameEpoch ?
 			m_currentGraphPrimeEvidenceTransitionGeneration : 0;
+	readinessInput.currentGraphQueueEpoch = hasReadinessLiveness ?
+		readinessLiveness.queueEpoch : 0;
 	readinessInput.currentGraphPrimeEpoch = currentGraphPrimeCandidateSameEpoch ?
 		readinessLiveness.convergenceAppliedEpoch : 0;
 	readinessInput.currentGraphPrimeTargetFrames = currentGraphPrimeCandidateSameEpoch ?
@@ -13874,6 +14190,15 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 	readinessInput.currentGraphMaximumSuccessfulDeliveryDurationUs =
 		hasReadinessLiveness ?
 			readinessLiveness.maximumSuccessfulDeliveryDurationUs : 0;
+	readinessInput.currentGraphRetainedSourceBufferCount =
+		hasReadinessLiveness ?
+			readinessLiveness.retainedSourceBufferCount : 0;
+	readinessInput.currentGraphUnexpectedLiveDeliveryGapEvents =
+		hasReadinessLiveness ?
+			readinessLiveness.unexpectedLiveDeliveryGapEvents : 0;
+	readinessInput.currentGraphUnexpectedLiveDeliveryGapSlots =
+		hasReadinessLiveness ?
+			readinessLiveness.unexpectedLiveDeliveryGapSlots : 0;
 	// Phase correction waits for DisplayRefreshRateDecision::Accepted. Output
 	// readiness instead uses independently cadence-validated startup evidence,
 	// so it need not impose a multi-second first-image blackout.
@@ -13920,6 +14245,8 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 	if ((existingGraphResetCanSatisfyReadiness ||
 		recoveryRecreationCanSatisfyReadiness) &&
 		(readinessDecision.state == OutputReadinessState::Prefilling ||
+			readinessDecision.state ==
+				OutputReadinessState::PostResetValidating ||
 			readinessDecision.state == OutputReadinessState::Steady) &&
 		m_outputReadinessExistingGraphReservePublishedEpoch !=
 			readinessInput.postReadyEpoch)
@@ -13952,20 +14279,29 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		// emulate madVR's independently configurable queues with a guessed burst.
 		m_videoRenderer->SetOutputReadinessDeliveryReserve(
 			requestedVpReserveFrames);
-		const bool accepted = m_rendererResetCoordinator->RequestUi(
-			RendererResetReason::OutputReadiness,
-			RendererResetScope::Graph);
-		if (accepted)
-			m_outputReadinessGraphReprimeActive = true;
-		else
+		const RendererResetCoordinator::SubmissionReceipt receipt =
+			RequestRendererReset(RendererResetReason::OutputReadiness,
+				true, 0, RendererResetOrigin::AutomaticReadiness,
+				readinessInput.transitionGeneration);
+		const bool readinessCovered = receipt.accepted &&
+			RendererResetHasOrigin(receipt.selectedOriginContributors,
+				RendererResetOrigin::AutomaticReadiness);
+		if (!readinessCovered)
 			m_outputReadinessObserver.RearmResetRequest();
 		DebugLog::Log(
 			"Output readiness graph re-prime request: generation=%llu "
-			"reserve=%zu accepted=%d VPdepth=%zu/%zu "
+			"origin=automatic-readiness reserve=%zu accepted=%d "
+			"request=%llu disposition=%s selected_request=%llu "
+			"contributors=0x%x VPdepth=%zu/%zu "
 			"madvr_queue=unobservable",
 			static_cast<unsigned long long>(
 				readinessInput.transitionGeneration),
-			requestedVpReserveFrames, accepted ? 1 : 0,
+			requestedVpReserveFrames, readinessCovered ? 1 : 0,
+			static_cast<unsigned long long>(receipt.requestSequence),
+			ResetSubmissionDispositionName(receipt.disposition),
+			static_cast<unsigned long long>(receipt.selectedSequence),
+			static_cast<unsigned int>(
+				receipt.selectedOriginContributors),
 			hasReadinessLiveness ? readinessLiveness.convertedQueueDepth : 0,
 			hasReadinessLiveness ? readinessLiveness.queueCapacity : 0);
 	}
@@ -13983,6 +14319,8 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 			"would_request_reset=%d adopt_prime=%d "
 			"prime_epoch=%llu post_proof_success=%u raw=%zu converted=%zu/%zu "
 			"retained_source=%zu high_water=%zu oldest_source_ms=%llu "
+			"validation=%u/%ums stable=%ums unexpected_gaps=%llu/%llu "
+			"corrective_reprime=%d manual_recovery=%d "
 			"discard=%d admit=%d deliver=%d",
 			static_cast<unsigned long long>(
 				readinessInput.transitionGeneration),
@@ -14019,6 +14357,15 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 				readinessLiveness.retainedSourceBufferHighWater : 0,
 			static_cast<unsigned long long>(hasReadinessLiveness ?
 				readinessLiveness.oldestRetainedSourceBufferAgeMs : 0),
+			readinessDecision.postResetValidationElapsedMs,
+			OutputReadinessController::kPostResetValidationDeadlineMs,
+			readinessDecision.postResetValidationStableElapsedMs,
+			static_cast<unsigned long long>(
+				readinessInput.currentGraphUnexpectedLiveDeliveryGapEvents),
+			static_cast<unsigned long long>(
+				readinessInput.currentGraphUnexpectedLiveDeliveryGapSlots),
+			readinessDecision.correctiveReprimeAttempted ? 1 : 0,
+			readinessDecision.manualRecoveryRequired ? 1 : 0,
 			readinessDecision.discardLiveCapture ? 1 : 0,
 			readinessDecision.admitCurrentEpochCapture ? 1 : 0,
 			readinessDecision.allowDownstreamDelivery ? 1 : 0);
@@ -14492,37 +14839,54 @@ void CVideoProcessorDlg::LogDroppedCounterChanges(const StatsData& stats)
 }
 
 
-void CVideoProcessorDlg::RequestRendererReset(RendererResetReason reason,
-	bool requiresGraph, UINT delayMs)
+RendererResetCoordinator::SubmissionReceipt
+CVideoProcessorDlg::RequestRendererReset(RendererResetReason reason,
+	bool requiresGraph, UINT delayMs, RendererResetOrigin origin,
+	uint64_t originGeneration)
 {
+	RendererResetCoordinator::SubmissionReceipt receipt;
 	if (!m_videoRenderer ||
 		m_rendererState != RendererState::RENDERSTATE_RENDERING ||
 		!m_rendererResetCoordinator)
 	{
-		DEBUGLOG("Reset request ignored: reason=%s renderer is not rendering",
-			CStringA(ToString(reason)).GetString());
-		return;
+		DEBUGLOG(
+			"Reset request ignored: reason=%s origin=%s "
+			"origin_generation=%llu renderer is not rendering",
+			CStringA(ToString(reason)).GetString(), ResetOriginName(origin),
+			static_cast<unsigned long long>(originGeneration));
+		return receipt;
 	}
 
-	const bool accepted = m_rendererResetCoordinator->RequestUi(
+	receipt = m_rendererResetCoordinator->RequestUiWithReceipt(
 		reason,
 		requiresGraph ?
 			RendererResetScope::Graph :
 			RendererResetScope::LiveQueue,
-		delayMs);
+		delayMs, 0, 0, origin, originGeneration);
 	DEBUGLOG(
 		"Reset request %s: renderer=%s backend=%s generation=%u "
-		"reason=%s priority=%d scope=%s delay=%ums",
-		accepted ? "accepted" : "rejected",
+		"request=%llu disposition=%s selected_request=%llu "
+		"reason=%s origin=%s origin_generation=%llu contributors=0x%x "
+		"priority=%d scope=%s selected_scope=%s delay=%ums",
+		receipt.accepted ? "accepted" : "rejected",
 		CStringA(m_activeRendererName).GetString(),
 		m_activeRendererIsDirectShow ? "DirectShow" : "Alpha",
 		m_rendererGeneration.load(std::memory_order_acquire),
+		static_cast<unsigned long long>(receipt.requestSequence),
+		ResetSubmissionDispositionName(receipt.disposition),
+		static_cast<unsigned long long>(receipt.selectedSequence),
 		CStringA(ToString(reason)).GetString(),
+		ResetOriginName(origin),
+		static_cast<unsigned long long>(originGeneration),
+		static_cast<unsigned int>(receipt.selectedOriginContributors),
 		RendererResetPriority(reason),
 		requiresGraph ? "graph" : "live-queue",
+		ResetScopeName(receipt.selectedScope),
 		delayMs);
-	if (accepted && m_activeOutputSweepSummaryVisible && !m_activeOutputSweepRunning)
+	if (receipt.accepted && m_activeOutputSweepSummaryVisible &&
+		!m_activeOutputSweepRunning)
 		ClearActiveOutputSweepSummary("renderer-reset");
+	return receipt;
 }
 
 

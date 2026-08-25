@@ -449,6 +449,8 @@ private:
 	std::atomic<uint64_t> m_lastDeliveryStartTick = 0;
 	std::atomic<uint64_t> m_lastDeliverySuccessTick = 0;
 	std::atomic<uint64_t> m_maximumSuccessfulDeliveryDurationUs = 0;
+	std::atomic<uint64_t> m_unexpectedLiveDeliveryGapEvents = 0;
+	std::atomic<uint64_t> m_unexpectedLiveDeliveryGapSlots = 0;
 	std::atomic<size_t> m_publishedRawQueueDepth = 0;
 	std::atomic<size_t> m_publishedConvertedQueueDepth = 0;
 	std::atomic_bool m_deliveryInProgress = false;

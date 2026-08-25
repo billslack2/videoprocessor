@@ -100,6 +100,106 @@ namespace
 	}
 
 
+	RendererResetCoordinator::SubmissionReceipt SubmitBoundRequest(
+		const std::shared_ptr<RendererResetCoordinator::State>& state,
+		RendererBindingToken token,
+		RendererResetRequest request) noexcept
+	{
+		RendererResetCoordinator::SubmissionReceipt receipt;
+		bool wakeRequired = false;
+		try
+		{
+			std::lock_guard<std::mutex> lock(state->mutex);
+			if (state->closed)
+				return receipt;
+			if (state->currentToken != token)
+			{
+				++state->staleRequestCount;
+				receipt.disposition = RendererResetCoordinator::
+					SubmissionDisposition::RejectedStaleBinding;
+				return receipt;
+			}
+
+			const uint64_t now = state->clock ? state->clock() : 0;
+			request.bindingToken = token;
+			request.sequence = ++state->nextSequence;
+			if (request.requestedTick == 0)
+				request.requestedTick = now;
+			if (request.deadlineTick == 0)
+				request.deadlineTick = request.requestedTick;
+			request.originContributors |= RendererResetOriginBit(
+				request.origin);
+
+			receipt.accepted = true;
+			receipt.requestSequence = request.sequence;
+			if (!state->hasPending)
+			{
+				state->pending = request;
+				state->hasPending = true;
+				receipt.disposition = RendererResetCoordinator::
+					SubmissionDisposition::Selected;
+			}
+			else
+			{
+				RendererResetRequest& selected = state->pending;
+				const RendererResetScope strongestScope =
+					ResetScopeRank(request.scope) >
+						ResetScopeRank(selected.scope) ?
+						request.scope : selected.scope;
+				const uintptr_t retargetWindow =
+					request.scope == RendererResetScope::GraphRetarget ?
+						request.targetWindow :
+					selected.scope == RendererResetScope::GraphRetarget ?
+						selected.targetWindow : 0;
+				const bool replace = RendererResetShouldReplace(
+					RendererResetPriority(request.reason),
+					request.deadlineTick,
+					RendererResetPriority(selected.reason),
+					selected.deadlineTick);
+				const RendererResetOriginContributors contributors =
+					selected.originContributors |
+					request.originContributors;
+				if (replace)
+				{
+					selected = request;
+					receipt.disposition = RendererResetCoordinator::
+						SubmissionDisposition::Replaced;
+				}
+				else
+				{
+					receipt.disposition = RendererResetCoordinator::
+						SubmissionDisposition::Coalesced;
+				}
+				selected.scope = strongestScope;
+				selected.targetWindow = retargetWindow;
+				selected.originContributors = contributors;
+			}
+
+			const RendererResetRequest& selected = state->pending;
+			receipt.selectedSequence = selected.sequence;
+			receipt.selectedReason = selected.reason;
+			receipt.selectedScope = selected.scope;
+			receipt.selectedOrigin = selected.origin;
+			receipt.selectedOriginGeneration =
+				selected.originGeneration;
+			receipt.selectedOriginContributors =
+				selected.originContributors;
+			receipt.selectedDeadlineTick = selected.deadlineTick;
+
+			++state->acceptedRequestCount;
+			wakeRequired = !state->wakePosted;
+		}
+		catch (...)
+		{
+			return {};
+		}
+
+		if (wakeRequired)
+			AttemptWake(state);
+		return receipt;
+	}
+
+
 	class BoundRendererResetRequestSink final :
 		public IRendererResetRequestSink
 	{
@@ -118,68 +218,7 @@ namespace
 				m_state.lock();
 			if (!state)
 				return;
-
-			bool wakeRequired = false;
-			try
-			{
-				std::lock_guard<std::mutex> lock(state->mutex);
-				if (state->closed || state->currentToken != m_token)
-				{
-					++state->staleRequestCount;
-					return;
-				}
-
-				const uint64_t now = state->clock ? state->clock() : 0;
-				request.bindingToken = m_token;
-				request.sequence = ++state->nextSequence;
-				if (request.requestedTick == 0)
-					request.requestedTick = now;
-				if (request.deadlineTick == 0)
-					request.deadlineTick = request.requestedTick;
-
-				if (!state->hasPending)
-				{
-					state->pending = request;
-					state->hasPending = true;
-				}
-				else
-				{
-					RendererResetRequest& selected = state->pending;
-					const RendererResetScope strongestScope =
-						ResetScopeRank(request.scope) >
-							ResetScopeRank(selected.scope) ?
-							request.scope : selected.scope;
-					const uintptr_t retargetWindow =
-						request.scope ==
-							RendererResetScope::GraphRetarget ?
-							request.targetWindow :
-						selected.scope ==
-							RendererResetScope::GraphRetarget ?
-							selected.targetWindow : 0;
-					const bool replace = RendererResetShouldReplace(
-						RendererResetPriority(request.reason),
-						request.deadlineTick,
-						RendererResetPriority(selected.reason),
-						selected.deadlineTick);
-					if (replace)
-						selected = request;
-					selected.scope = strongestScope;
-					selected.targetWindow = retargetWindow;
-				}
-
-				++state->acceptedRequestCount;
-				if (!state->wakePosted)
-				{
-					wakeRequired = true;
-				}
-			}
-			catch (...)
-			{
-				return;
-			}
-
-			if (wakeRequired)
-				AttemptWake(state);
+			SubmitBoundRequest(state, m_token, request);
 		}
 
 	private:
@@ -451,21 +490,35 @@ bool RendererResetCoordinator::RequestUi(
 	uint64_t backendEpoch,
 	uintptr_t targetWindow) noexcept
 {
-	std::shared_ptr<IRendererResetRequestSink> sink;
+	return RequestUiWithReceipt(
+		reason, scope, delayMs, backendEpoch, targetWindow).accepted;
+}
+
+
+RendererResetCoordinator::SubmissionReceipt
+RendererResetCoordinator::RequestUiWithReceipt(
+	RendererResetReason reason,
+	RendererResetScope scope,
+	uint64_t delayMs,
+	uint64_t backendEpoch,
+	uintptr_t targetWindow,
+	RendererResetOrigin origin,
+	uint64_t originGeneration) noexcept
+{
+	RendererBindingToken token = 0;
 	uint64_t now = 0;
 	{
 		try
 		{
 			std::lock_guard<std::mutex> lock(m_state->mutex);
 			if (m_state->closed || m_state->currentToken == 0)
-				return false;
+				return {};
 			now = m_state->clock ? m_state->clock() : 0;
-			sink = std::make_shared<BoundRendererResetRequestSink>(
-				std::weak_ptr<State>(m_state), m_state->currentToken);
+			token = m_state->currentToken;
 		}
 		catch (...)
 		{
-			return false;
+			return {};
 		}
 	}
 
@@ -473,11 +526,12 @@ bool RendererResetCoordinator::RequestUi(
 	request.backendEpoch = backendEpoch;
 	request.reason = reason;
 	request.scope = scope;
+	request.origin = origin;
+	request.originGeneration = originGeneration;
 	request.targetWindow = targetWindow;
 	request.requestedTick = now;
 	request.deadlineTick = SaturatingAdd(now, delayMs);
-	sink->Submit(request);
-	return true;
+	return SubmitBoundRequest(m_state, token, request);
 }
 
 
@@ -738,6 +792,11 @@ RendererResetCoordinator::GetDiagnostics() const noexcept
 		{
 			diagnostics.pendingReason = m_state->pending.reason;
 			diagnostics.pendingScope = m_state->pending.scope;
+			diagnostics.pendingOrigin = m_state->pending.origin;
+			diagnostics.pendingOriginGeneration =
+				m_state->pending.originGeneration;
+			diagnostics.pendingOriginContributors =
+				m_state->pending.originContributors;
 			diagnostics.pendingDeadlineTick =
 				m_state->pending.deadlineTick;
 		}

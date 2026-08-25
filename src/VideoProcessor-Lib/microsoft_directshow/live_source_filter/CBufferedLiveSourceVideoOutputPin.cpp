@@ -333,6 +333,8 @@ HRESULT CBufferedLiveSourceVideoOutputPin::Active()
 		}
 		m_steadyQueueEpoch.store(0, std::memory_order_release);
 		m_currentEpochDeliverySuccessCount.store(0, std::memory_order_release);
+		m_unexpectedLiveDeliveryGapEvents.store(0, std::memory_order_release);
+		m_unexpectedLiveDeliveryGapSlots.store(0, std::memory_order_release);
 		m_convergenceAppliedEpoch.store(0, std::memory_order_release);
 		m_convergenceAppliedTick.store(0, std::memory_order_release);
 		m_convergenceDeliverySuccessCount.store(0, std::memory_order_release);
@@ -1092,6 +1094,8 @@ void CBufferedLiveSourceVideoOutputPin::Reset()
 		}
 		m_steadyQueueEpoch.store(0, std::memory_order_release);
 		m_currentEpochDeliverySuccessCount.store(0, std::memory_order_release);
+		m_unexpectedLiveDeliveryGapEvents.store(0, std::memory_order_release);
+		m_unexpectedLiveDeliveryGapSlots.store(0, std::memory_order_release);
 		m_convergenceAppliedEpoch.store(0, std::memory_order_release);
 		m_convergenceAppliedTick.store(0, std::memory_order_release);
 		m_convergenceDeliverySuccessCount.store(0, std::memory_order_release);
@@ -1319,6 +1323,10 @@ bool CBufferedLiveSourceVideoOutputPin::GetLivenessSnapshot(
 		m_lastDeliverySuccessTick.load(std::memory_order_acquire);
 	snapshot.maximumSuccessfulDeliveryDurationUs =
 		m_maximumSuccessfulDeliveryDurationUs.load(std::memory_order_acquire);
+	snapshot.unexpectedLiveDeliveryGapEvents =
+		m_unexpectedLiveDeliveryGapEvents.load(std::memory_order_acquire);
+	snapshot.unexpectedLiveDeliveryGapSlots =
+		m_unexpectedLiveDeliveryGapSlots.load(std::memory_order_acquire);
 	snapshot.rawQueueDepth =
 		m_publishedRawQueueDepth.load(std::memory_order_acquire);
 	snapshot.convertedQueueDepth =
@@ -1786,10 +1794,8 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 	}
 
 	HANDLE events[2] = { m_hShutdownEvent, m_hConvertedAvailableEvent };
-	DWORD lastLatencyLogTime = 0;
+	RendererLatencyTrendLineage latencyTrendLineage;
 	uint64_t framesSinceLastLog = 0;
-	uint64_t latencyTrendEpoch = 0;
-	uint64_t latencyTrendStartedTick = 0;
 	double latencyTrendBaselinePtsLeadMs = 0.0;
 	double latencyTrendBaselineScheduledMs = 0.0;
 	bool latencyTrendBaselineScheduledKnown = false;
@@ -2105,6 +2111,8 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 			{
 				m_latencyStabilizer.Reset();
 				m_latencySnapshotAvailable.store(false, std::memory_order_release);
+				latencyTrendLineage.InvalidateForClockRebase();
+				framesSinceLastLog = 0;
 			}
 			if (relativeClockRebased &&
 				latencyClockDiscontinuityLoggedEpoch != expectedQueueEpoch)
@@ -2188,10 +2196,10 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 				const size_t totalDepth = rawDepth + convertedDepth;
 				const uint64_t rawOverflowCount =
 					m_captureFrameQueue.Metrics().overflowDiscarded;
-				if (latencyTrendEpoch != expectedQueueEpoch)
+				if (latencyTrendLineage.RequiresBaseline(expectedQueueEpoch))
 				{
-					latencyTrendEpoch = expectedQueueEpoch;
-					latencyTrendStartedTick = latencyNow64;
+					latencyTrendLineage.Begin(
+						expectedQueueEpoch, latencyNow64);
 					latencyTrendBaselinePtsLeadMs =
 						displayedLatencySnapshot.dsScheduleLeadMs;
 					latencyTrendBaselineScheduledMs =
@@ -2216,11 +2224,11 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 					deliveredSourceGapSlots;
 				latencySourceGapSlotsSinceLastLog +=
 					deliveredSourceGapSlots;
-				if (lastLatencyLogTime == 0 ||
-					latencyNow - lastLatencyLogTime >= 10000)
+				if (latencyTrendLineage.LastLogTickMs() == 0 ||
+					latencyNow - latencyTrendLineage.LastLogTickMs() >= 10000)
 				{
 					const uint64_t trendElapsedMs =
-						latencyNow64 - latencyTrendStartedTick;
+						latencyNow64 - latencyTrendLineage.StartedTickMs();
 					const double ptsLeadDeltaMs =
 						displayedLatencySnapshot.dsScheduleLeadMs -
 						latencyTrendBaselinePtsLeadMs;
@@ -2309,7 +2317,7 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 							latencySourceGapSlotsSinceEpochStart),
 						static_cast<unsigned long long>(
 							latencySourceGapSlotsSinceLastLog));
-					lastLatencyLogTime = latencyNow;
+					latencyTrendLineage.MarkLogged(latencyNow);
 					framesSinceLastLog = 0;
 					latencyQueueMinimumSinceLog = totalDepth;
 					latencyQueueMaximumSinceLog = totalDepth;
@@ -3570,13 +3578,21 @@ DWORD CBufferedLiveSourceVideoOutputPin::ThreadProc()
 						"splice-intentional-stale-live-gap" :
 						"splice-synthetic-timeline");
 			}
-			if (usesLiveHardwareClockTimestamps && deliveredSourceFrameGap &&
-				!intentionalConvertedTrimBoundary && !intentionalRawTrimBoundary)
+			if (IsUnexpectedLiveDeliveryGapEvidence(
+				usesLiveHardwareClockTimestamps,
+				deliveredSourceFrameGap,
+				sourceGapDiscontinuity,
+				intentionalConvertedTrimBoundary,
+				intentionalRawTrimBoundary))
 			{
 				// The source counter gap is telemetry only for a live hardware-clock
 				// timeline. Keep delivering the retained frame with its real DeckLink
 				// timestamp and let madVR's existing reservoir own presentation. Do not
 				// manufacture a DirectShow discontinuity or reset the graph here.
+				m_unexpectedLiveDeliveryGapEvents.fetch_add(
+					1, std::memory_order_acq_rel);
+				m_unexpectedLiveDeliveryGapSlots.fetch_add(
+					deliveredSourceGapSlots, std::memory_order_acq_rel);
 				DebugLog::Log(
 					"VP-0138 LIVE CLOCK DELIVERY GAP: method=%s epoch=%llu "
 					"frame=%llu missing_slots=%llu action=telemetry-only",

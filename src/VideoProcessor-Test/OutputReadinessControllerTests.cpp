@@ -11,6 +11,8 @@ OutputReadinessInput ReadyInput()
 {
 	OutputReadinessInput input;
 	input.transitionGeneration = 7;
+	input.correctiveRecoveryGeneration = 7;
+	input.correctiveRecoveryContractRevision = 11;
 	input.graphOperational = true;
 	input.displayDecision = DisplayRefreshRateDecision::Accepted;
 	input.displayReason = DisplayRefreshRateReason::Accepted;
@@ -22,6 +24,51 @@ OutputReadinessInput ReadyInput()
 	input.observationTickMs = 0;
 	input.currentGraphMaximumSuccessfulDeliveryDurationUs = 100000;
 	return input;
+}
+
+void SetValidPostResetEvidence(OutputReadinessInput& input, uint64_t epoch)
+{
+	input.currentGraphBoundarySafe = true;
+	input.currentGraphPostResetBoundarySafe = true;
+	input.currentGraphPrimeProven = true;
+	input.currentGraphPrimeObservedFullConvertedQueue = true;
+	input.currentGraphDeliveryRecent = true;
+	input.currentGraphQueueEpoch = epoch;
+	input.currentGraphPrimeTransitionGeneration = input.transitionGeneration;
+	input.currentGraphPrimeEpoch = epoch;
+	input.currentGraphPrimeTargetFrames = input.reserveFrames;
+	input.currentGraphRawDepth = 0;
+	input.currentGraphConvertedDepth = input.reserveFrames;
+	input.currentGraphRetainedSourceBufferCount = 0;
+	input.currentGraphPostProofDeliverySuccesses =
+		OutputReadinessController::kRequiredPostResetValidationDeliveries;
+	input.currentGraphMaximumSuccessfulDeliveryDurationUs = 100000;
+	input.currentGraphUnexpectedLiveDeliveryGapEvents = 0;
+	input.currentGraphUnexpectedLiveDeliveryGapSlots = 0;
+}
+
+OutputReadinessDecision FinishPostResetValidation(
+	OutputReadinessController& controller,
+	OutputReadinessInput& input,
+	uint64_t epoch)
+{
+	input.postReadyResetCompleted = true;
+	input.postReadyEpoch = epoch;
+	input.currentEpochProcessedDepth = input.reserveFrames;
+	input.observationTickMs = std::max<uint64_t>(1, input.observationTickMs);
+	SetValidPostResetEvidence(input, epoch);
+	OutputReadinessDecision decision = controller.Observe(input);
+	Assert::AreEqual(
+		static_cast<int>(OutputReadinessState::PostResetValidating),
+		static_cast<int>(decision.state));
+	input.observationTickMs += 1;
+	decision = controller.Observe(input);
+	Assert::AreEqual(
+		static_cast<int>(OutputReadinessState::PostResetValidating),
+		static_cast<int>(decision.state));
+	input.observationTickMs +=
+		OutputReadinessController::kPostResetValidationStableMs;
+	return controller.Observe(input);
 }
 }
 
@@ -95,12 +142,24 @@ namespace Tests
 				static_cast<int>(decision.state));
 
 			input.currentEpochProcessedDepth = 8;
+			input.observationTickMs = 1;
 			decision = controller.Observe(input);
 			Assert::IsTrue(decision.prefillSatisfied);
 			Assert::IsTrue(decision.allowDownstreamDelivery);
 			Assert::AreEqual(
-				static_cast<int>(OutputReadinessState::Steady),
+				static_cast<int>(OutputReadinessState::PostResetValidating),
 				static_cast<int>(decision.state));
+
+			SetValidPostResetEvidence(input, 42);
+			input.observationTickMs = 2;
+			Assert::AreEqual(
+				static_cast<int>(OutputReadinessState::PostResetValidating),
+				static_cast<int>(controller.Observe(input).state));
+			input.observationTickMs +=
+				OutputReadinessController::kPostResetValidationStableMs;
+			Assert::AreEqual(
+				static_cast<int>(OutputReadinessState::Steady),
+				static_cast<int>(controller.Observe(input).state));
 		}
 
 		TEST_METHOD(ExplicitTwoFramePrefillDoesNotRequireTheAutomaticReserve)
@@ -120,7 +179,7 @@ namespace Tests
 			Assert::IsFalse(decision.prefillSatisfied);
 
 			input.currentEpochProcessedDepth = 2;
-			decision = controller.Observe(input);
+			decision = FinishPostResetValidation(controller, input, 42);
 			Assert::AreEqual(
 				static_cast<int>(OutputReadinessState::Steady),
 				static_cast<int>(decision.state));
@@ -194,7 +253,8 @@ namespace Tests
 					Assert::IsFalse(decision.allowDownstreamDelivery);
 
 					input.currentEpochProcessedDepth = reserveTarget;
-					decision = controller.Observe(input);
+					decision = FinishPostResetValidation(
+						controller, input, 42);
 					Assert::AreEqual(
 						static_cast<int>(OutputReadinessState::Steady),
 						static_cast<int>(decision.state));
@@ -260,14 +320,15 @@ namespace Tests
 			input.postReadyResetCompleted = true;
 			input.postReadyEpoch = 42;
 			input.currentEpochProcessedDepth = 8;
-			const OutputReadinessDecision decision = controller.Observe(input);
+			const OutputReadinessDecision decision =
+				FinishPostResetValidation(controller, input, 42);
 			Assert::IsFalse(decision.requestSerializedPostReadyReset);
 			Assert::AreEqual(
 				static_cast<int>(OutputReadinessState::Steady),
 				static_cast<int>(decision.state));
 		}
 
-		TEST_METHOD(ExplicitZeroFrameReserveIsImmediatelySteady)
+		TEST_METHOD(ExplicitZeroFrameReserveStillUsesPostResetValidation)
 		{
 			OutputReadinessController controller;
 			OutputReadinessInput input = ReadyInput();
@@ -277,7 +338,8 @@ namespace Tests
 			input.postReadyResetCompleted = true;
 			input.postReadyEpoch = 42;
 			input.currentEpochProcessedDepth = 0;
-			const OutputReadinessDecision decision = controller.Observe(input);
+			const OutputReadinessDecision decision =
+				FinishPostResetValidation(controller, input, 42);
 			Assert::AreEqual(
 				static_cast<int>(OutputReadinessState::Steady),
 				static_cast<int>(decision.state));
@@ -293,16 +355,24 @@ namespace Tests
 			input.postReadyResetCompleted = true;
 			input.postReadyEpoch = 42;
 			input.currentEpochProcessedDepth = 8;
-			Assert::IsTrue(controller.Observe(input).allowDownstreamDelivery);
+			Assert::AreEqual(
+				static_cast<int>(OutputReadinessState::Steady),
+				static_cast<int>(FinishPostResetValidation(
+					controller, input, 42).state));
 
 			input.transitionGeneration = 8;
+			input.correctiveRecoveryGeneration = 8;
 			input.postReadyResetCompleted = false;
 			input.postReadyEpoch = 0;
-			const OutputReadinessDecision decision = controller.Observe(input);
+			OutputReadinessDecision decision = controller.Observe(input);
 			Assert::IsFalse(decision.discardLiveCapture);
 			Assert::IsTrue(decision.allowDownstreamDelivery);
-			Assert::IsTrue(decision.requestSerializedPostReadyReset);
+			Assert::IsFalse(decision.requestSerializedPostReadyReset);
 			Assert::AreEqual<uint64_t>(8, decision.transitionGeneration);
+			input.observationTickMs +=
+				OutputReadinessController::kPostReadySettleMs;
+			decision = controller.Observe(input);
+			Assert::IsTrue(decision.requestSerializedPostReadyReset);
 		}
 
 		TEST_METHOD(AdoptsRecoveredSameEpochWithoutReset)
@@ -612,6 +682,210 @@ namespace Tests
 				controller.Observe(input).requestSerializedPostReadyReset);
 		}
 
+		TEST_METHOD(PostResetNeedsExactEvidenceAndRequestsOneCorrectiveReprime)
+		{
+			OutputReadinessController controller;
+			OutputReadinessInput input = ReadyInput();
+			Assert::IsTrue(
+				controller.Observe(input).requestSerializedPostReadyReset);
+			input.postReadyResetCompleted = true;
+			input.postReadyEpoch = 42;
+			input.currentEpochProcessedDepth = input.reserveFrames;
+			input.observationTickMs = 1000;
+			OutputReadinessDecision decision = controller.Observe(input);
+			Assert::AreEqual(
+				static_cast<int>(OutputReadinessState::PostResetValidating),
+				static_cast<int>(decision.state));
+
+			input.observationTickMs +=
+				OutputReadinessController::kPostResetValidationDeadlineMs;
+			decision = controller.Observe(input);
+			Assert::IsTrue(decision.requestSerializedPostReadyReset);
+			Assert::IsTrue(decision.correctiveReprimeAttempted);
+			Assert::IsTrue(decision.allowDownstreamDelivery);
+			Assert::AreEqual(
+				static_cast<int>(
+					OutputReadinessReason::AwaitingCorrectivePostReadyReset),
+				static_cast<int>(decision.reason));
+			Assert::IsFalse(
+				controller.Observe(input).requestSerializedPostReadyReset);
+			controller.RearmResetRequest();
+			Assert::IsTrue(
+				controller.Observe(input).requestSerializedPostReadyReset);
+			Assert::IsFalse(
+				controller.Observe(input).requestSerializedPostReadyReset);
+		}
+
+		TEST_METHOD(PostResetStableEnvelopeAcceptsTargetMinusOne)
+		{
+			OutputReadinessController controller;
+			OutputReadinessInput input = ReadyInput();
+			input.reserveFrames = 3;
+			(void)controller.Observe(input);
+			input.postReadyResetCompleted = true;
+			input.postReadyEpoch = 42;
+			input.currentEpochProcessedDepth = 3;
+			input.observationTickMs = 1000;
+			SetValidPostResetEvidence(input, 42);
+			Assert::AreEqual(
+				static_cast<int>(OutputReadinessState::PostResetValidating),
+				static_cast<int>(controller.Observe(input).state));
+
+			input.currentEpochProcessedDepth = 2;
+			input.currentGraphConvertedDepth = 2;
+			input.observationTickMs = 1001;
+			Assert::AreEqual(
+				static_cast<int>(OutputReadinessState::PostResetValidating),
+				static_cast<int>(controller.Observe(input).state));
+			input.observationTickMs +=
+				OutputReadinessController::kPostResetValidationStableMs;
+			const OutputReadinessDecision decision = controller.Observe(input);
+			Assert::AreEqual(
+				static_cast<int>(OutputReadinessState::Steady),
+				static_cast<int>(decision.state));
+			Assert::IsFalse(decision.requestSerializedPostReadyReset);
+		}
+
+		TEST_METHOD(UnexpectedLiveGapImmediatelyRequestsCorrectiveReprime)
+		{
+			OutputReadinessController controller;
+			OutputReadinessInput input = ReadyInput();
+			(void)controller.Observe(input);
+			input.postReadyResetCompleted = true;
+			input.postReadyEpoch = 42;
+			input.currentEpochProcessedDepth = input.reserveFrames;
+			input.observationTickMs = 1000;
+			SetValidPostResetEvidence(input, 42);
+			(void)controller.Observe(input);
+
+			input.observationTickMs = 1001;
+			input.currentGraphUnexpectedLiveDeliveryGapEvents = 1;
+			input.currentGraphUnexpectedLiveDeliveryGapSlots = 2;
+			const OutputReadinessDecision decision = controller.Observe(input);
+			Assert::IsTrue(decision.requestSerializedPostReadyReset);
+			Assert::IsTrue(decision.correctiveReprimeAttempted);
+			Assert::IsTrue(decision.allowDownstreamDelivery);
+		}
+
+		TEST_METHOD(TransientRetainedBacklogRestartsStableWindowWithoutReset)
+		{
+			OutputReadinessController controller;
+			OutputReadinessInput input = ReadyInput();
+			input.reserveFrames = 3;
+			(void)controller.Observe(input);
+			input.postReadyResetCompleted = true;
+			input.postReadyEpoch = 42;
+			input.currentEpochProcessedDepth = 3;
+			input.observationTickMs = 1000;
+			SetValidPostResetEvidence(input, 42);
+			(void)controller.Observe(input);
+
+			input.currentGraphConvertedDepth = 2;
+			input.currentGraphRetainedSourceBufferCount = 2;
+			input.observationTickMs = 1100;
+			Assert::IsFalse(
+				controller.Observe(input).requestSerializedPostReadyReset);
+			input.currentGraphRetainedSourceBufferCount = 0;
+			input.observationTickMs = 1200;
+			(void)controller.Observe(input);
+			input.currentGraphRawDepth = 2;
+			input.currentGraphRetainedSourceBufferCount = 2;
+			input.observationTickMs = 1300;
+			(void)controller.Observe(input);
+			input.currentGraphRawDepth = 0;
+			input.currentGraphRetainedSourceBufferCount = 0;
+			input.observationTickMs = 1400;
+			(void)controller.Observe(input);
+			input.observationTickMs = 1650;
+			Assert::AreEqual(
+				static_cast<int>(OutputReadinessState::Steady),
+				static_cast<int>(controller.Observe(input).state));
+		}
+
+		TEST_METHOD(SecondFailedEpochRequiresManualRecoveryWithoutLooping)
+		{
+			OutputReadinessController controller;
+			OutputReadinessInput input = ReadyInput();
+			(void)controller.Observe(input);
+			input.postReadyResetCompleted = true;
+			input.postReadyEpoch = 42;
+			input.currentEpochProcessedDepth = input.reserveFrames;
+			input.observationTickMs = 1000;
+			SetValidPostResetEvidence(input, 42);
+			(void)controller.Observe(input);
+			input.currentGraphUnexpectedLiveDeliveryGapEvents = 1;
+			input.currentGraphUnexpectedLiveDeliveryGapSlots = 2;
+			input.observationTickMs = 1001;
+			Assert::IsTrue(
+				controller.Observe(input).requestSerializedPostReadyReset);
+
+			input.postReadyEpoch = 43;
+			input.observationTickMs = 2000;
+			SetValidPostResetEvidence(input, 43);
+			Assert::AreEqual(
+				static_cast<int>(OutputReadinessState::PostResetValidating),
+				static_cast<int>(controller.Observe(input).state));
+			input.currentGraphUnexpectedLiveDeliveryGapEvents = 1;
+			input.currentGraphUnexpectedLiveDeliveryGapSlots = 1;
+			input.observationTickMs = 2001;
+			OutputReadinessDecision decision = controller.Observe(input);
+			Assert::IsTrue(decision.manualRecoveryRequired);
+			Assert::IsTrue(decision.allowDownstreamDelivery);
+			Assert::IsFalse(decision.requestSerializedPostReadyReset);
+			Assert::AreEqual(
+				static_cast<int>(OutputReadinessState::ManualRecoveryRequired),
+				static_cast<int>(decision.state));
+			decision = controller.Observe(input);
+			Assert::IsFalse(decision.requestSerializedPostReadyReset);
+			Assert::IsTrue(decision.allowDownstreamDelivery);
+		}
+
+		TEST_METHOD(ManualResetCanRecoverTerminalStateWithoutRestoringRetryBudget)
+		{
+			OutputReadinessController controller;
+			OutputReadinessInput input = ReadyInput();
+			(void)controller.Observe(input);
+			input.postReadyResetCompleted = true;
+			input.postReadyEpoch = 42;
+			input.currentEpochProcessedDepth = input.reserveFrames;
+			input.observationTickMs = 1000;
+			SetValidPostResetEvidence(input, 42);
+			(void)controller.Observe(input);
+			input.currentGraphUnexpectedLiveDeliveryGapEvents = 1;
+			input.currentGraphUnexpectedLiveDeliveryGapSlots = 1;
+			input.observationTickMs = 1001;
+			(void)controller.Observe(input);
+
+			input.postReadyEpoch = 43;
+			input.observationTickMs = 2000;
+			SetValidPostResetEvidence(input, 43);
+			(void)controller.Observe(input);
+			input.currentGraphUnexpectedLiveDeliveryGapEvents = 1;
+			input.currentGraphUnexpectedLiveDeliveryGapSlots = 1;
+			input.observationTickMs = 2001;
+			Assert::IsTrue(controller.Observe(input).manualRecoveryRequired);
+
+			input.postReadyEpoch = 44;
+			// A manual graph reset can advance the display-readiness generation,
+			// but it must not replenish the renderer/contract corrective budget.
+			input.transitionGeneration = 8;
+			input.observationTickMs = 3000;
+			SetValidPostResetEvidence(input, 44);
+			Assert::AreEqual(
+				static_cast<int>(OutputReadinessState::PostResetValidating),
+				static_cast<int>(controller.Observe(input).state));
+			input.observationTickMs = 3001;
+			(void)controller.Observe(input);
+			input.observationTickMs +=
+				OutputReadinessController::kPostResetValidationStableMs;
+			const OutputReadinessDecision decision = controller.Observe(input);
+			Assert::AreEqual(
+				static_cast<int>(OutputReadinessState::Steady),
+				static_cast<int>(decision.state));
+			Assert::IsTrue(decision.correctiveReprimeAttempted);
+			Assert::IsFalse(decision.manualRecoveryRequired);
+		}
+
 		TEST_METHOD(NewTransitionCannotAdoptProofFromPriorGeneration)
 		{
 			OutputReadinessController controller;
@@ -632,6 +906,140 @@ namespace Tests
 			const OutputReadinessDecision decision = controller.Observe(input);
 			Assert::IsFalse(decision.adoptedCurrentGraph);
 			Assert::IsTrue(decision.requestSerializedPostReadyReset);
+		}
+
+		TEST_METHOD(PostResetValidationIgnoresLegacyHealthTimerPhase)
+		{
+			OutputReadinessController controller;
+			OutputReadinessInput input = ReadyInput();
+			(void)controller.Observe(input);
+			input.postReadyResetCompleted = true;
+			input.postReadyEpoch = 42;
+			input.currentEpochProcessedDepth = input.reserveFrames;
+			input.observationTickMs = 900;
+			SetValidPostResetEvidence(input, 42);
+			Assert::AreEqual(
+				static_cast<int>(OutputReadinessState::PostResetValidating),
+				static_cast<int>(controller.Observe(input).state));
+
+			// Exact epoch-local evidence is healthy while the separate legacy
+			// graph-health timer is still waiting.
+			input.currentGraphBoundarySafe = false;
+			input.currentGraphPostResetBoundarySafe = true;
+			input.observationTickMs = 1900;
+			Assert::AreEqual(
+				static_cast<int>(OutputReadinessState::PostResetValidating),
+				static_cast<int>(controller.Observe(input).state));
+			input.observationTickMs = 2150;
+			const OutputReadinessDecision decision = controller.Observe(input);
+			Assert::AreEqual(
+				static_cast<int>(OutputReadinessState::Steady),
+				static_cast<int>(decision.state));
+			Assert::IsFalse(decision.correctiveReprimeAttempted);
+		}
+
+		TEST_METHOD(CompletionLatchWaitsForStableSnapshotAndRejectsStaleGeneration)
+		{
+			OutputReadinessCompletionLatch latch;
+			Assert::IsFalse(latch.MarkCompleted(17, 0));
+			Assert::AreEqual<uint64_t>(
+				17, latch.AwaitingSnapshotGeneration());
+			Assert::IsFalse(latch.Matches(17));
+			Assert::IsTrue(latch.BindStableSnapshot(17, 91));
+			Assert::IsTrue(latch.Matches(17));
+			Assert::AreEqual<uint64_t>(91, latch.CompletedEpoch());
+
+			Assert::IsFalse(latch.MarkCompleted(18, 0));
+			Assert::IsFalse(latch.BindStableSnapshot(19, 92));
+			Assert::AreEqual<uint64_t>(
+				0, latch.AwaitingSnapshotGeneration());
+			Assert::IsFalse(latch.Matches(18));
+		}
+
+		TEST_METHOD(CoveredRetargetSettleSuccessorAdvancesBeforePrefill)
+		{
+			OutputReadinessController controller;
+			OutputReadinessInput input = ReadyInput();
+			(void)controller.Observe(input);
+			input.postReadyResetCompleted = true;
+			input.postReadyEpoch = 52;
+			input.currentGraphQueueEpoch = 52;
+			input.currentEpochProcessedDepth = 1;
+			const OutputReadinessDecision decision = controller.Observe(input);
+			Assert::AreEqual(
+				static_cast<int>(OutputReadinessState::Prefilling),
+				static_cast<int>(decision.state));
+			Assert::AreEqual<uint64_t>(52, decision.postReadyEpoch);
+			Assert::IsFalse(decision.requestSerializedPostReadyReset);
+		}
+
+		TEST_METHOD(CoveredRetargetSettleSuccessorAdvancesDuringPrefill)
+		{
+			OutputReadinessController controller;
+			OutputReadinessInput input = ReadyInput();
+			(void)controller.Observe(input);
+			input.postReadyResetCompleted = true;
+			input.postReadyEpoch = 51;
+			input.currentGraphQueueEpoch = 51;
+			input.currentEpochProcessedDepth = 1;
+			Assert::AreEqual(
+				static_cast<int>(OutputReadinessState::Prefilling),
+				static_cast<int>(controller.Observe(input).state));
+
+			// The explicitly covered delayed LiveQueue phase advances E1 to E2.
+			input.postReadyEpoch = 52;
+			input.currentGraphQueueEpoch = 52;
+			const OutputReadinessDecision decision = controller.Observe(input);
+			Assert::AreEqual(
+				static_cast<int>(OutputReadinessState::Prefilling),
+				static_cast<int>(decision.state));
+			Assert::AreEqual<uint64_t>(52, decision.postReadyEpoch);
+			Assert::IsFalse(decision.requestSerializedPostReadyReset);
+		}
+
+		TEST_METHOD(UncreditedEpochChangeDuringPrefillUsesBoundedCorrectivePath)
+		{
+			OutputReadinessController controller;
+			OutputReadinessInput input = ReadyInput();
+			(void)controller.Observe(input);
+			input.postReadyResetCompleted = true;
+			input.postReadyEpoch = 51;
+			input.currentGraphQueueEpoch = 51;
+			input.currentEpochProcessedDepth = 1;
+			(void)controller.Observe(input);
+
+			input.postReadyResetCompleted = false;
+			input.postReadyEpoch = 0;
+			input.currentGraphQueueEpoch = 52;
+			const OutputReadinessDecision decision = controller.Observe(input);
+			Assert::AreEqual(
+				static_cast<int>(OutputReadinessState::PostReadyResetPending),
+				static_cast<int>(decision.state));
+			Assert::IsTrue(decision.requestSerializedPostReadyReset);
+			Assert::IsTrue(decision.correctiveReprimeAttempted);
+		}
+
+		TEST_METHOD(UncreditedEpochChangeAfterSteadyUsesBoundedCorrectivePath)
+		{
+			OutputReadinessController controller;
+			OutputReadinessInput input = ReadyInput();
+			(void)controller.Observe(input);
+			Assert::AreEqual(
+				static_cast<int>(OutputReadinessState::Steady),
+				static_cast<int>(FinishPostResetValidation(
+					controller, input, 51).state));
+
+			// A queue-only epoch change not carrying explicit graph/retarget
+			// coverage cannot inherit the validated E51 contract.
+			input.postReadyResetCompleted = false;
+			input.postReadyEpoch = 0;
+			input.currentGraphQueueEpoch = 52;
+			const OutputReadinessDecision decision = controller.Observe(input);
+			Assert::AreEqual(
+				static_cast<int>(OutputReadinessState::PostReadyResetPending),
+				static_cast<int>(decision.state));
+			Assert::IsTrue(decision.requestSerializedPostReadyReset);
+			Assert::IsTrue(decision.correctiveReprimeAttempted);
 		}
 	};
 }
