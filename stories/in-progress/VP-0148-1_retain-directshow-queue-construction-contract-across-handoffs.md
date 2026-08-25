@@ -2,20 +2,41 @@
 
 ## Status
 
-In Progress (2026-08-25). The developer confirmed the freshly queried remote
-default/latest beta `v1.2.001-beta` at
-`2cfbaf2d36a8a848743714178b3fc2861be2d127`. Implementation is active on
-`codex/vp-0148-1-queue-launch-contract` in the clean worktree
-`C:\Videoprocessor\vp\git-main\stories\.vp-0148-1-launch-contract`.
+In Progress (2026-08-25). Implementation is committed and pushed on
+`codex/vp-0148-1-queue-launch-contract` at `01502c3`, based exactly on the
+freshly queried remote beta `origin/v1.2.001-beta` at
+`2cfbaf2d36a8a848743714178b3fc2861be2d127`. Live madVR hardware validation
+remains before completion.
 
 ## Progress
 
-- The tracker readiness review and three independent architecture gates
-  approved the revisioned construction-commit contract, immutable construction
-  evidence, generation/profile guards, and one-shot failure policy.
-- The source worktree is clean and exactly based on the current remote beta
-  tip. Detailed code-path and test-seam inspection is in progress before the
-  first implementation edit.
+- Added one revisioned, lock-linearized DirectShow queue construction contract.
+  The exact retained capacity/revision is committed immediately before
+  `CLiveSource::Initialize`; immutable constructed evidence cannot be replaced
+  by the later current pin capacity.
+- Resolved backend-owned queue capacity before renderer construction and passed
+  one effective revision/profile generation through all DirectShow constructor,
+  fallback, setter, commit and stable-audit paths. Same-effective reapplication
+  performs no reset or recreation.
+- Added actual downstream-aware allocator request evidence and a shared,
+  parseable `commit`/`active`/`mismatch` audit schema with latched profile,
+  generation/revisions, desired/retained/constructed/current capacity,
+  allocator request/actual, prime/reservoir, estimate satisfaction and explicit
+  unavailable values.
+- Added latest-wins, generation-gated mismatch handling: one full covered
+  renderer recreation is allowed, a repeated same-contract successor mismatch
+  terminates without looping, manual Restart remains available, and a backend
+  handoff or genuinely new effective contract starts a new recovery lineage.
+  No capacity path live-resizes `CLiveSource` or also requests the legacy graph
+  reset.
+- Three independent final architecture gates approved timing/telemetry,
+  latency/retry lineage and reset/terminal lifecycle with no remaining blocker.
+- Focused contract/race/schema regressions pass; the complete native suite is
+  898/898. The x64 Release GUI host and VP Renderer DLL builds pass (only the
+  pre-existing libplacebo float-conversion warning remains).
+- Source commit `01502c3` is pushed to
+  `billslack2/videoprocessor:codex/vp-0148-1-queue-launch-contract`. No deployment
+  or live madVR validation has been performed.
 
 ## Parent
 
