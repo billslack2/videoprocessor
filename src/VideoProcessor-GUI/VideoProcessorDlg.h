@@ -725,6 +725,9 @@ protected:
 	OutputReadinessReason m_lastObservedOutputReadinessReason =
 		OutputReadinessReason::AwaitingGraph;
 	bool m_lastObservedReadinessResetRequest = false;
+	uint32_t m_lastObservedReadinessValidationBlockers =
+		OutputReadinessValidationBlockerNone;
+	uint32_t m_lastObservedReadinessValidationObservationCount = 0;
 	// True only while the intentional DirectShow/madVR graph re-prime selected
 	// from validated readiness evidence is in flight. Its own renderer events
 	// must not discard the evidence that selected it.

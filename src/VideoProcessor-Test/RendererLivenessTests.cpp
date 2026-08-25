@@ -105,7 +105,10 @@ namespace Tests
 			snapshot.currentEpochDeliverySuccessCount = 12;
 			snapshot.lastDeliverySuccessQueueEpoch = 8;
 			snapshot.lastDeliverySuccessTick = 9950;
+			snapshot.deliveryInProgress = true;
 
+			// Sampling a healthy paced Receive in progress must not turn recent
+			// completed progress into a false stall.
 			Assert::IsTrue(HasRecentCurrentEpochDelivery(
 				snapshot, 10000, 500));
 			Assert::IsFalse(HasRecentCurrentEpochDelivery(
