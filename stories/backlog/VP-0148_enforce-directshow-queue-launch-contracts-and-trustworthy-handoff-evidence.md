@@ -109,8 +109,9 @@ normally remains Backlog while a child is active.
 2. VP Renderer/madVR/VP Renderer is repeated 20 times. Every switch has one
    current renderer generation, the latest profile wins, stale work cannot
    restart a successor, and no automatic graph reset or restart occurs merely
-   to apply an already-consistent contract. The existing configured post-start
-   profile-reset policy remains permitted, separately tagged and unchanged.
+   to apply an already-consistent contract. Fresh exact construction consumes
+   a redundant pending automatic profile reset; independent display/readiness/
+   retarget recovery remains generation-bound and separately tagged.
 3. A stable construction mismatch causes exactly one covered renderer
    recreation. A persistent same-contract mismatch becomes an actionable
    terminal failure without a restart loop.
