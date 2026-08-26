@@ -170,6 +170,58 @@ namespace Tests
 		std::atomic<unsigned int> attempts{0};
 	};
 
+	struct ShutdownRetirementProbe
+	{
+		std::atomic<unsigned int> attempts{0};
+		std::atomic<DWORD> retireThread{0};
+		std::atomic<DWORD> finalizeThread{0};
+		std::atomic<DWORD> destructorThread{0};
+	};
+
+	class AlwaysFailRetirementRenderer final : public FakeResetRenderer
+	{
+	public:
+		explicit AlwaysFailRetirementRenderer(
+			std::shared_ptr<ShutdownRetirementProbe> probe)
+			: m_probe(std::move(probe))
+		{
+		}
+
+		~AlwaysFailRetirementRenderer() override
+		{
+			m_probe->destructorThread.store(
+				GetCurrentThreadId(), std::memory_order_release);
+		}
+
+		void Retire() noexcept override
+		{
+			m_probe->retireThread.store(
+				GetCurrentThreadId(), std::memory_order_release);
+			m_probe->attempts.fetch_add(1, std::memory_order_acq_rel);
+		}
+
+		bool RetirementSucceeded() const override { return false; }
+
+		bool FinalizeRetirementForShutdown() noexcept override
+		{
+			m_probe->finalizeThread.store(
+				GetCurrentThreadId(), std::memory_order_release);
+			return true;
+		}
+
+	private:
+		std::shared_ptr<ShutdownRetirementProbe> m_probe;
+	};
+
+	class NonAbandonableRetirementRenderer final : public FakeResetRenderer
+	{
+	public:
+		void Retire() noexcept override { attempts++; }
+		bool RetirementSucceeded() const override { return false; }
+
+		std::atomic<unsigned int> attempts{0};
+	};
+
 	bool WaitForCompletion(RendererResetCoordinator& coordinator)
 	{
 		for (int attempt = 0; attempt < 200; ++attempt)
@@ -185,6 +237,24 @@ namespace Tests
 	TEST_CLASS(RendererResetCoordinatorTests)
 	{
 	public:
+		TEST_METHOD(IncompleteRetirementPolicySeparatesShutdownConversionFromRetention)
+		{
+			using Action = RendererRetirementService::IncompleteAction;
+			using Purpose = RendererRetirementService::Purpose;
+			Assert::IsTrue(
+				RendererRetirementService::ClassifyIncompleteCompletion(
+					false, Purpose::ReplacementHandoff) ==
+				Action::RetryHandoff);
+			Assert::IsTrue(
+				RendererRetirementService::ClassifyIncompleteCompletion(
+					true, Purpose::ReplacementHandoff) ==
+				Action::ConvertHandoffToShutdown);
+			Assert::IsTrue(
+				RendererRetirementService::ClassifyIncompleteCompletion(
+					true, Purpose::ApplicationShutdown) ==
+				Action::RetainFailedShutdown);
+		}
+
 		TEST_METHOD(GraphRetargetCarriesTargetAndPreservesIngressBarrier)
 		{
 			FakeResetClock clock;
@@ -458,7 +528,9 @@ namespace Tests
 			Assert::AreEqual(
 				static_cast<unsigned long long>(73),
 				static_cast<unsigned long long>(completion.token));
-			Assert::IsTrue(completion.succeeded);
+			Assert::IsTrue(completion.lifecycleComplete);
+			Assert::IsTrue(completion.externalStateVerified);
+			Assert::IsFalse(completion.releasedForShutdown);
 			Assert::IsFalse(completion.wakePosted);
 			Assert::AreNotEqual(
 				static_cast<unsigned long>(ERROR_SUCCESS),
@@ -494,7 +566,7 @@ namespace Tests
 			rendererLifetime->releaseRetire.set_value();
 			Assert::IsTrue(completion.wait_for(
 				std::chrono::seconds(2)) == std::future_status::ready);
-			Assert::IsTrue(completion.get().succeeded);
+			Assert::IsTrue(completion.get().lifecycleComplete);
 			poller.join();
 			service.RequestClose();
 			service.Join();
@@ -517,7 +589,9 @@ namespace Tests
 			Assert::AreEqual(
 				static_cast<unsigned long long>(75),
 				static_cast<unsigned long long>(first.token));
-			Assert::IsFalse(first.succeeded);
+			Assert::IsFalse(first.lifecycleComplete);
+			Assert::IsFalse(first.externalStateVerified);
+			Assert::IsFalse(first.releasedForShutdown);
 			Assert::IsNotNull(first.renderer.get());
 			Assert::AreEqual(
 				static_cast<unsigned int>(1), renderer->attempts.load());
@@ -534,10 +608,144 @@ namespace Tests
 			Assert::AreEqual(
 				static_cast<unsigned long long>(76),
 				static_cast<unsigned long long>(second.token));
-			Assert::IsTrue(second.succeeded);
+			Assert::IsTrue(second.lifecycleComplete);
+			Assert::IsTrue(second.externalStateVerified);
+			Assert::IsFalse(second.releasedForShutdown);
 			Assert::IsNull(second.renderer.get());
 			Assert::AreEqual(
 				static_cast<unsigned int>(2), renderer->attempts.load());
+
+			service.RequestClose();
+			service.Join();
+		}
+
+		TEST_METHOD(ApplicationShutdownReleasesUnverifiedRendererOnWorker)
+		{
+			RendererRetirementService service;
+			auto probe = std::make_shared<ShutdownRetirementProbe>();
+			auto renderer =
+				std::make_shared<AlwaysFailRetirementRenderer>(probe);
+			const DWORD uiThread = GetCurrentThreadId();
+			Assert::IsTrue(service.Retire(
+				renderer, 77, nullptr, WM_APP + 95,
+				RendererRetirementService::Purpose::ApplicationShutdown));
+			renderer.reset();
+
+			RendererRetirementService::Completion completion;
+			for (int attempt = 0; attempt < 200; ++attempt)
+			{
+				if (service.TryTakeCompletion(77, completion))
+					break;
+				std::this_thread::sleep_for(std::chrono::milliseconds(5));
+			}
+			Assert::IsTrue(completion.lifecycleComplete);
+			Assert::IsFalse(completion.externalStateVerified);
+			Assert::IsTrue(completion.releasedForShutdown);
+			Assert::IsTrue(
+				completion.purpose ==
+				RendererRetirementService::Purpose::ApplicationShutdown);
+			Assert::IsNull(completion.renderer.get());
+			Assert::AreEqual(1u, probe->attempts.load());
+			Assert::AreNotEqual(uiThread, probe->retireThread.load());
+			Assert::AreEqual(
+				probe->retireThread.load(), probe->finalizeThread.load());
+			Assert::AreEqual(
+				probe->retireThread.load(), probe->destructorThread.load());
+
+			service.RequestClose();
+			service.Join();
+		}
+
+		TEST_METHOD(ApplicationShutdownPreservesVerifiedRetirementOutcome)
+		{
+			RendererRetirementService service;
+			auto renderer = std::make_shared<FakeResetRenderer>();
+			Assert::IsTrue(service.Retire(
+				renderer, 79, nullptr, WM_APP + 98,
+				RendererRetirementService::Purpose::ApplicationShutdown));
+			renderer.reset();
+
+			RendererRetirementService::Completion completion;
+			for (int attempt = 0; attempt < 200; ++attempt)
+			{
+				if (service.TryTakeCompletion(79, completion))
+					break;
+				std::this_thread::sleep_for(std::chrono::milliseconds(5));
+			}
+			Assert::IsTrue(completion.lifecycleComplete);
+			Assert::IsTrue(completion.externalStateVerified);
+			Assert::IsFalse(completion.releasedForShutdown);
+			Assert::IsNull(completion.renderer.get());
+
+			service.RequestClose();
+			service.Join();
+		}
+
+		TEST_METHOD(ApplicationShutdownKeepsNonAbandonableBackendFailClosed)
+		{
+			RendererRetirementService service;
+			auto renderer =
+				std::make_shared<NonAbandonableRetirementRenderer>();
+			Assert::IsTrue(service.Retire(
+				renderer, 80, nullptr, WM_APP + 99,
+				RendererRetirementService::Purpose::ApplicationShutdown));
+
+			RendererRetirementService::Completion completion;
+			for (int attempt = 0; attempt < 200; ++attempt)
+			{
+				if (service.TryTakeCompletion(80, completion))
+					break;
+				std::this_thread::sleep_for(std::chrono::milliseconds(5));
+			}
+			Assert::IsFalse(completion.lifecycleComplete);
+			Assert::IsFalse(completion.externalStateVerified);
+			Assert::IsFalse(completion.releasedForShutdown);
+			Assert::IsNotNull(completion.renderer.get());
+			Assert::AreEqual(1u, renderer->attempts.load());
+
+			completion.renderer.reset();
+			renderer.reset();
+			service.RequestClose();
+			service.Join();
+		}
+
+		TEST_METHOD(FailedHandoffConvertsToSameTokenShutdownFinalization)
+		{
+			RendererRetirementService service;
+			auto probe = std::make_shared<ShutdownRetirementProbe>();
+			auto renderer =
+				std::make_shared<AlwaysFailRetirementRenderer>(probe);
+			Assert::IsTrue(service.Retire(
+				renderer, 78, nullptr, WM_APP + 96));
+			renderer.reset();
+
+			RendererRetirementService::Completion handoff;
+			for (int attempt = 0; attempt < 200; ++attempt)
+			{
+				if (service.TryTakeCompletion(78, handoff))
+					break;
+				std::this_thread::sleep_for(std::chrono::milliseconds(5));
+			}
+			Assert::IsFalse(handoff.lifecycleComplete);
+			Assert::IsNotNull(handoff.renderer.get());
+
+			Assert::IsTrue(service.Retire(
+				std::move(handoff.renderer), 78, nullptr, WM_APP + 97,
+				RendererRetirementService::Purpose::ApplicationShutdown));
+			RendererRetirementService::Completion shutdown;
+			for (int attempt = 0; attempt < 200; ++attempt)
+			{
+				if (service.TryTakeCompletion(78, shutdown))
+					break;
+				std::this_thread::sleep_for(std::chrono::milliseconds(5));
+			}
+			Assert::AreEqual(
+				static_cast<unsigned long long>(78),
+				static_cast<unsigned long long>(shutdown.token));
+			Assert::IsTrue(shutdown.lifecycleComplete);
+			Assert::IsFalse(shutdown.externalStateVerified);
+			Assert::IsTrue(shutdown.releasedForShutdown);
+			Assert::AreEqual(2u, probe->attempts.load());
 
 			service.RequestClose();
 			service.Join();

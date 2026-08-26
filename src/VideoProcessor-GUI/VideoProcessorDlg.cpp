@@ -6422,11 +6422,54 @@ bool CVideoProcessorDlg::TryFinalizeRendererRetirement(
 
 	m_rendererRetirementPending = false;
 	m_rendererRetirementWaitLoggedToken = 0;
-	if (!completion.succeeded)
+	if (completion.purpose ==
+		RendererRetirementService::Purpose::ApplicationShutdown)
+	{
+		DebugLog::Log(
+			"Renderer shutdown retirement completed: token=%llu renderer=%S "
+			"source=%s external_state=%s action=%s",
+			static_cast<unsigned long long>(token),
+			static_cast<LPCTSTR>(m_retiringRendererName), completionSource,
+			completion.externalStateVerified ? "verified" : "unverified",
+			!completion.lifecycleComplete ? "backend-retained" :
+			completion.releasedForShutdown ? "single-attempt-release" :
+			"clean-release");
+	}
+	if (!completion.lifecycleComplete)
 	{
 		m_rendererRetirementRetryActive = false;
 		m_failedRendererRetirement = std::move(completion.renderer);
 		m_failedRendererRetirementNextRetryTick = GetTickCount64() + 1000;
+		const RendererRetirementService::IncompleteAction action =
+			RendererRetirementService::ClassifyIncompleteCompletion(
+				m_wantToTerminate, completion.purpose);
+		const bool convertHandoffToShutdown = action ==
+			RendererRetirementService::IncompleteAction::
+				ConvertHandoffToShutdown;
+		m_shutdownRendererRetirementBlocked = action ==
+			RendererRetirementService::IncompleteAction::RetainFailedShutdown;
+		if (convertHandoffToShutdown)
+		{
+			m_failedRendererRetirementNextRetryTick = 0;
+			DebugLog::Log(
+				"Renderer retirement purpose conversion: token=%llu "
+				"renderer=%S from=replacement-handoff "
+				"to=application-shutdown action=queue-same-token-finalization",
+				static_cast<unsigned long long>(token),
+				static_cast<LPCTSTR>(m_retiringRendererName));
+			return true;
+		}
+		if (m_shutdownRendererRetirementBlocked)
+		{
+			DebugLog::Log(
+				"Renderer shutdown retirement retained: token=%llu renderer=%S "
+				"source=%s action=backend-fail-closed automatic_retry=disabled",
+				static_cast<unsigned long long>(token),
+				static_cast<LPCTSTR>(m_retiringRendererName), completionSource);
+			m_rendererState = RendererState::RENDERSTATE_FAILED;
+			m_rendererStateText.SetWindowText(TEXT("Shutdown cleanup blocked"));
+			return true;
+		}
 		DebugLog::Log(
 			"Renderer retirement incomplete: token=%llu renderer=%S source=%s; "
 			"external-state restoration remains pending and replacement is blocked",
@@ -6438,6 +6481,7 @@ bool CVideoProcessorDlg::TryFinalizeRendererRetirement(
 	}
 	const bool completedRetry = m_rendererRetirementRetryActive;
 	m_rendererRetirementRetryActive = false;
+	m_shutdownRendererRetirementBlocked = false;
 	m_failedRendererRetirementNextRetryTick = 0;
 	// The retiring graph has revoked SetNotifyWindow and its owner apartment is
 	// now gone. Remove only its dedicated graph-event wakes before any successor
@@ -7700,21 +7744,42 @@ void CVideoProcessorDlg::UpdateState()
 	}
 	if (m_failedRendererRetirement)
 	{
+		if (m_shutdownRendererRetirementBlocked)
+			return;
 		const ULONGLONG now = GetTickCount64();
 		if (now < m_failedRendererRetirementNextRetryTick)
 			return;
 
 		m_rendererRetirementPending = true;
 		m_rendererRetirementRetryActive = true;
-		m_rendererRetirementToken++;
+		const RendererRetirementService::Purpose purpose =
+			m_wantToTerminate
+				? RendererRetirementService::Purpose::ApplicationShutdown
+				: RendererRetirementService::Purpose::ReplacementHandoff;
+		// Application shutdown continues the same terminal retirement operation.
+		// Do not manufacture a new token on every failed restoration attempt.
+		if (!m_wantToTerminate)
+			m_rendererRetirementToken++;
 		m_rendererRetirementWaitLoggedToken = 0;
-		DebugLog::Log(
-			"Renderer handoff restoration retry queued: generation=%u token=%llu",
-			m_rendererGeneration.load(std::memory_order_acquire),
-			static_cast<unsigned long long>(m_rendererRetirementToken));
+		if (m_wantToTerminate)
+		{
+			DebugLog::Log(
+				"Renderer shutdown retirement finalization queued: "
+				"generation=%u token=%llu purpose=application-shutdown "
+				"policy=single-attempt-release",
+				m_rendererGeneration.load(std::memory_order_acquire),
+				static_cast<unsigned long long>(m_rendererRetirementToken));
+		}
+		else
+		{
+			DebugLog::Log(
+				"Renderer handoff restoration retry queued: generation=%u token=%llu",
+				m_rendererGeneration.load(std::memory_order_acquire),
+				static_cast<unsigned long long>(m_rendererRetirementToken));
+		}
 		const bool queued = m_rendererRetirementService.Retire(
 			std::move(m_failedRendererRetirement), m_rendererRetirementToken,
-			GetSafeHwnd(), WM_MESSAGE_RENDERER_RETIRED);
+			GetSafeHwnd(), WM_MESSAGE_RENDERER_RETIRED, purpose);
 		if (!queued)
 			throw std::runtime_error("Renderer retirement retry service is closed");
 		return;
@@ -9233,17 +9298,21 @@ void CVideoProcessorDlg::DestroyVideoRenderer()
 	DebugLog::Log(
 		"Renderer retirement queued: process=%lu generation=%u renderer=%S "
 		"token=%llu target=%p fullscreen_host=%p fullscreen_intent=%d "
-		"ui_thread=%lu",
+		"ui_thread=%lu purpose=%s",
 		GetCurrentProcessId(), m_retiringRendererGeneration,
 		static_cast<LPCTSTR>(m_retiringRendererName),
 		static_cast<unsigned long long>(m_rendererRetirementToken),
 		m_rendererTargetHwnd,
 		m_fullScreenVideoWindow ? m_fullScreenVideoWindow->GetHWND() : nullptr,
 		m_rendererFullscreenCheck.GetCheck() ? 1 : 0,
-		GetCurrentThreadId());
+		GetCurrentThreadId(),
+		m_wantToTerminate ? "application-shutdown" : "replacement-handoff");
 	const bool queued = m_rendererRetirementService.Retire(
 		std::move(rendererToDestroy), m_rendererRetirementToken,
-		GetSafeHwnd(), WM_MESSAGE_RENDERER_RETIRED);
+		GetSafeHwnd(), WM_MESSAGE_RENDERER_RETIRED,
+		m_wantToTerminate
+			? RendererRetirementService::Purpose::ApplicationShutdown
+			: RendererRetirementService::Purpose::ReplacementHandoff);
 	if (!queued)
 		throw std::runtime_error("Renderer retirement service is closed");
 }
@@ -13172,6 +13241,16 @@ void CVideoProcessorDlg::OnSetFocus(CWnd* pOldWnd)
 
 void CVideoProcessorDlg::OnDisplayChange(UINT bitsPerPixel, int width, int height)
 {
+	if (m_wantToTerminate)
+	{
+		DebugLog::Log(
+			"Windows display mode change observed during shutdown: "
+			"%d x %d, %u bits; recovery scheduling suppressed",
+			width, height, bitsPerPixel);
+		CDialog::OnDisplayChange(bitsPerPixel, width, height);
+		return;
+	}
+
 	if (g_displayRefreshRateSampler)
 		g_displayRefreshRateSampler->ResetMeasurement();
 
@@ -13270,6 +13349,12 @@ void CVideoProcessorDlg::OnClose()
 	// Set intent first, stopping the discoverer will lead to state update calls
 	m_desiredCaptureDevice = nullptr;
 	m_wantToTerminate = true;
+	KillTimer(FULLSCREEN_FOCUS_TIMER_ID);
+	if (m_fullscreenRetargetPending)
+		ClearFullscreenRetarget(false);
+	DebugLog::Log(
+		"Application shutdown transition activity quiesced: "
+		"fullscreen_focus_timer=stopped retarget_pending=0");
 
 	// Stop discovery
 	if (m_blackMagicDeviceDiscoverer)
@@ -13390,6 +13475,15 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 					"graph-control-timeout");
 			}
 		}
+	}
+	if (m_wantToTerminate)
+	{
+		// Keep only lifecycle reconciliation alive during shutdown. Timer-driven
+		// profile, reset, focus, shader, and display work must not create a new
+		// renderer transition after termination intent is published.
+		if (m_failedRendererRetirement)
+			UpdateState();
+		return;
 	}
 
 	if (nIDEvent == RENDERER_RESET_MAILBOX_TIMER_ID)

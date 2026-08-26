@@ -54,6 +54,7 @@ public:
 	{
 		return m_retirementSucceeded.load(std::memory_order_acquire);
 	}
+	bool FinalizeRetirementForShutdown() noexcept override;
 	void Reset() override;
 	void ResetLiveQueue() override;
 	void OnSize() override;

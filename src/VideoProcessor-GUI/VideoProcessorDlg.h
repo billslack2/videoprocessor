@@ -690,6 +690,7 @@ protected:
 	RendererRetirementService m_rendererRetirementService;
 	bool m_rendererRetirementPending = false;
 	bool m_rendererRetirementRetryActive = false;
+	bool m_shutdownRendererRetirementBlocked = false;
 	bool m_rendererConstructionActive = false;
 	uint64_t m_rendererRetirementToken = 0;
 	uint64_t m_rendererRetirementWaitLoggedToken = 0;

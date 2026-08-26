@@ -25,6 +25,21 @@ namespace VideoProcessorTest
 				ExpectedMethod>));
 		}
 
+		TEST_METHOD(ShutdownFinalizationHasExplicitProxyOverride)
+		{
+#if defined(__cpp_noexcept_function_type)
+			using ExpectedMethod = bool (
+				LibplaceboPluginVideoRenderer::*)() noexcept;
+#else
+			using ExpectedMethod = bool (
+				LibplaceboPluginVideoRenderer::*)();
+#endif
+			Assert::IsTrue((std::is_same_v<
+				decltype(&LibplaceboPluginVideoRenderer::
+					FinalizeRetirementForShutdown),
+				ExpectedMethod>));
+		}
+
 		TEST_METHOD(OptionalRendererUsesOnePrivateDependencyDirectory)
 		{
 			wchar_t temporaryDirectory[MAX_PATH] = {};

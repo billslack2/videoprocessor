@@ -624,6 +624,22 @@ namespace
 			return true;
 		}
 
+		void AbandonPendingRestoreForShutdown()
+		{
+			if (m_active)
+			{
+				DebugLog::Log(
+					"NVIDIA BT.2020 report: pending AVI InfoFrame restore "
+					"released for application shutdown target=%s "
+					"external_state=unverified",
+					m_displayName.c_str());
+			}
+			m_active = false;
+			m_readbackVerified = false;
+			m_displayName.clear();
+			Shutdown();
+		}
+
 	private:
 		void Shutdown()
 		{
@@ -2574,6 +2590,24 @@ namespace
 			return Restore();
 		}
 
+		void AbandonPendingRestoreForShutdown()
+		{
+			if (m_cancelEvent) SetEvent(m_cancelEvent);
+			for (std::thread& worker : m_actionWorkers)
+				if (worker.joinable()) worker.join();
+			m_actionWorkers.clear();
+			if (m_changed)
+			{
+				DebugLog::Log(
+					"libplacebo refresh-rate restore ownership released "
+					"for application shutdown target=%s "
+					"external_state=unverified",
+					NarrowDisplayName(m_displayDeviceName.c_str()).c_str());
+			}
+			m_changed = false;
+			m_finalRestoreAttempted = true;
+		}
+
 		bool HasPendingRestore() const { return m_changed; }
 
 		void Switch(HWND hwnd, const VideoState& state, const RendererSettings& settings)
@@ -3358,30 +3392,44 @@ struct LibplaceboVideoRenderer::Impl
 		}
 
 		const bool refreshRestored = displayRefreshRate.RestoreNow();
-		if (!refreshRestored)
-		{
-			DebugLog::Log(
-				"VP Renderer retirement: display refresh restoration is "
-				"pending; NVIDIA restoration deferred");
-			return false;
-		}
+		// Refresh and InfoFrame state are independent external mutations. A
+		// missing refresh path must not suppress the final NVIDIA cleanup attempt.
 		const bool nvidiaRestored = nvidiaBt2020Reporter.Restore();
 		DebugLog::Log(
 			"VP Renderer retirement: external state refresh=%s nvidia=%s",
 			refreshRestored ? "restored" : "pending",
 			nvidiaRestored ? "restored" : "pending");
-		return nvidiaRestored;
+		return refreshRestored && nvidiaRestored;
+	}
+
+	bool FinalizeRetirementForShutdown()
+	{
+		if (!outputResourcesRetired)
+		{
+			DebugLog::Log(
+				"VP Renderer retirement: shutdown release declined because "
+				"local output resources remain owned");
+			return false;
+		}
+		displayRefreshRate.AbandonPendingRestoreForShutdown();
+		nvidiaBt2020Reporter.AbandonPendingRestoreForShutdown();
+		externalStateAbandonedForShutdown = true;
+		DebugLog::Log(
+			"VP Renderer retirement: retry ownership released for "
+			"application shutdown external_state=unverified");
+		return true;
 	}
 
 	~Impl()
 	{
-		if (!RetireOutput())
+		if (!externalStateAbandonedForShutdown && !RetireOutput())
 			DebugLog::Log(
 				"VP Renderer retirement: final external-state restoration "
 				"remains unverified");
 	}
 
 	bool outputResourcesRetired = false;
+	bool externalStateAbandonedForShutdown = false;
 
 	bool PresentBlackFrame()
 	{
@@ -10582,6 +10630,41 @@ void LibplaceboVideoRenderer::Retire() noexcept
 	{
 		m_retirementSucceeded.store(false, std::memory_order_release);
 		DebugLog::Log("VP Renderer retirement failed with an unknown exception");
+	}
+}
+
+
+bool LibplaceboVideoRenderer::FinalizeRetirementForShutdown() noexcept
+{
+	try
+	{
+		if (!m_impl)
+			return true;
+		bool releaseSafe = false;
+		{
+			std::lock_guard<std::mutex> renderGuard(m_impl->renderMutex);
+			releaseSafe = m_impl->FinalizeRetirementForShutdown();
+		}
+		if (!releaseSafe)
+			return false;
+		// Destroy the implementation on the retirement worker now that all
+		// renderer-local resources are gone and external retry ownership has been
+		// explicitly abandoned for process shutdown. Any transient shared_ptr
+		// released later has a nonblocking renderer destructor.
+		m_impl.reset();
+		return true;
+	}
+	catch (const std::exception& error)
+	{
+		DebugLog::Log(
+			"VP Renderer shutdown finalization failed: %s", error.what());
+		return false;
+	}
+	catch (...)
+	{
+		DebugLog::Log(
+			"VP Renderer shutdown finalization failed with an unknown exception");
+		return false;
 	}
 }
 

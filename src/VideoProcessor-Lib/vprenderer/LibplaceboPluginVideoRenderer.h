@@ -36,6 +36,7 @@ public:
 		const std::function<void()>& drainAfterGraphStop) override;
 	void Retire() noexcept override;
 	bool RetirementSucceeded() const override;
+	bool FinalizeRetirementForShutdown() noexcept override;
 	void Reset() override;
 	void ResetLiveQueue() override;
 	void OnSize() override;

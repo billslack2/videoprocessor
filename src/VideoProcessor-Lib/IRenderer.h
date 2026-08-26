@@ -200,6 +200,14 @@ public:
 	// False keeps the handoff closed. A subsequent Retire() call may retry
 	// restoration retained by the outgoing renderer.
 	virtual bool RetirementSucceeded() const { return true; }
+	// Called only on the retirement worker after an application-shutdown
+	// retirement attempt remained unverified. Backends must relinquish retry
+	// ownership so their later destructor cannot repeat display-global work.
+	// This exception is terminal for process shutdown and must never be used to
+	// admit an in-process successor renderer.
+	// Return true only when destruction is now safe despite an unverified
+	// retirement outcome. The default keeps graph/COM owners fail-closed.
+	virtual bool FinalizeRetirementForShutdown() noexcept { return false; }
 
 	//
 	// GUI

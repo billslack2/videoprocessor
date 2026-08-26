@@ -16,10 +16,38 @@
 class RendererRetirementService
 {
 public:
+	enum class Purpose
+	{
+		ReplacementHandoff,
+		ApplicationShutdown
+	};
+
+	enum class IncompleteAction
+	{
+		RetryHandoff,
+		ConvertHandoffToShutdown,
+		RetainFailedShutdown
+	};
+
+	static IncompleteAction ClassifyIncompleteCompletion(
+		bool terminationRequested, Purpose completedPurpose) noexcept
+	{
+		if (!terminationRequested)
+			return IncompleteAction::RetryHandoff;
+		return completedPurpose == Purpose::ReplacementHandoff
+			? IncompleteAction::ConvertHandoffToShutdown
+			: IncompleteAction::RetainFailedShutdown;
+	}
+
 	struct Completion
 	{
 		uint64_t token = 0;
-		bool succeeded = false;
+		// True means renderer ownership is terminal for this lifecycle purpose.
+		// Consult externalStateVerified before claiming display restoration.
+		bool lifecycleComplete = false;
+		bool externalStateVerified = false;
+		bool releasedForShutdown = false;
+		Purpose purpose = Purpose::ReplacementHandoff;
 		bool wakePosted = false;
 		DWORD wakePostError = ERROR_SUCCESS;
 		// Retain ownership when external display-state restoration is not yet
@@ -53,22 +81,40 @@ public:
 						m_active = true;
 					}
 
-					bool succeeded = true;
+					bool externalStateVerified = true;
 					try
 					{
 						item.renderer->Retire();
-						succeeded = item.renderer->RetirementSucceeded();
+						externalStateVerified =
+							item.renderer->RetirementSucceeded();
 					}
 					catch (...)
 					{
-						succeeded = false;
+						externalStateVerified = false;
 					}
 					Completion completed;
 					completed.token = item.token;
-					completed.succeeded = succeeded;
-					if (!succeeded)
+					completed.purpose = item.purpose;
+					completed.externalStateVerified =
+						externalStateVerified;
+					completed.releasedForShutdown = false;
+					if (!externalStateVerified &&
+						item.purpose == Purpose::ApplicationShutdown)
+					{
+						// Terminal release is backend opt-in. A VP display restore
+						// may be safely abandoned after local resources are retired;
+						// a DirectShow graph-owner failure must remain fail-closed.
+						completed.releasedForShutdown =
+							item.renderer->FinalizeRetirementForShutdown();
+					}
+					completed.lifecycleComplete = externalStateVerified ||
+						completed.releasedForShutdown;
+					if (!completed.lifecycleComplete)
 						completed.renderer = std::move(item.renderer);
 					else
+						// The worker must own the last application-held release. In
+						// particular, an unverified shutdown must not return the
+						// renderer to the UI thread and recreate the original hang.
 						item.renderer.reset();
 					{
 						std::lock_guard<std::mutex> lock(m_mutex);
@@ -81,7 +127,7 @@ public:
 							item.completionWindow,
 							item.completionMessage,
 							static_cast<WPARAM>(item.token),
-							succeeded ? 0 : 1) != FALSE;
+							completion.lifecycleComplete ? 0 : 1) != FALSE;
 						if (!completion.wakePosted)
 							completion.wakePostError = GetLastError();
 					}
@@ -102,7 +148,8 @@ public:
 		const RendererRetirementService&) = delete;
 
 	bool Retire(std::shared_ptr<IVideoRenderer> renderer,
-		uint64_t token, HWND completionWindow, UINT completionMessage)
+		uint64_t token, HWND completionWindow, UINT completionMessage,
+		Purpose purpose = Purpose::ReplacementHandoff)
 	{
 		if (!renderer)
 			return false;
@@ -111,7 +158,7 @@ public:
 			return false;
 		m_items.push_back(
 			{ std::move(renderer), token, completionWindow,
-				completionMessage });
+				completionMessage, purpose });
 		m_workAvailable.notify_one();
 		return true;
 	}
@@ -170,6 +217,7 @@ private:
 		uint64_t token = 0;
 		HWND completionWindow = nullptr;
 		UINT completionMessage = 0;
+		Purpose purpose = Purpose::ReplacementHandoff;
 	};
 
 	mutable std::mutex m_mutex;

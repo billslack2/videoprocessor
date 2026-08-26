@@ -247,6 +247,12 @@ bool LibplaceboPluginVideoRenderer::RetirementSucceeded() const
 }
 
 
+bool LibplaceboPluginVideoRenderer::FinalizeRetirementForShutdown() noexcept
+{
+	return m_renderer && m_renderer->FinalizeRetirementForShutdown();
+}
+
+
 void LibplaceboPluginVideoRenderer::Reset()
 {
 	m_renderer->Reset();
