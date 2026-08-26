@@ -6,9 +6,9 @@ story may have ordered child-task IDs as defined below.
 
 ## Registry state
 
-- Last assigned root story: `VP-0149`
-- Next root story number: `VP-0150`
-- Total indexed items: 168
+- Last assigned root story: `VP-0150`
+- Next root story number: `VP-0151`
+- Total indexed items: 169
 
 ## Story locations
 
@@ -185,6 +185,7 @@ they must not contain requirements that are absent from this file.
 | VP-0148-1 | In Progress | Retain DirectShow queue construction contract across handoffs |
 | VP-0148-2 | Backlog | Publish coherent DirectShow queue and delivery telemetry |
 | VP-0149 | Review | Bound application shutdown after display-restore failure |
+| VP-0150 | Done | Accept UI-style profile labels in action conditions |
 | VP-0066-1 | Done | Characterize the live output pipeline with replayable golden traces |
 | VP-0066-2 | Done | Extract a graph-independent video timing controller |
 | VP-0066-3 | Done | Extract epoch-aware frame transport and processing components |
