@@ -2,12 +2,22 @@
 
 ## Status
 
-Backlog — confirmed P1 shutdown-livelock bug recorded on 2026-08-26. The user
-authorized implementation and deployment from the latest remote beta branch.
+In Progress — implementation began on 2026-08-26 after the readiness review and
+remote-base verification completed. The user authorized implementation and
+deployment from the latest remote beta branch.
 
 Confirmed source baseline: `origin/v1.2.001-beta` at
 `2cfbaf2d36a8a848743714178b3fc2861be2d127`. GitHub reports this branch as the
 current default and latest beta integration branch.
+
+Implementation branch: `codex/vp-0149-bounded-shutdown`.
+Clean worktree:
+`C:\Videoprocessor\vp\git-main\stories\.vp-0149-bounded-shutdown`.
+
+Initial architecture review confirmed that strict unresolved-restoration gating
+must remain for renderer replacement, while explicit application shutdown needs a
+separate bounded terminal policy. Source work has started at the dialog retirement
+state machine and renderer retirement service seams.
 
 ## User story
 
@@ -115,4 +125,3 @@ monitor when the original physical target cannot be identified.
 - Validation can independently prove both required branches: strict replacement
   blocking and bounded application exit.
 - Implementation will use a clean worktree based on the confirmed remote beta tip.
-

@@ -184,7 +184,7 @@ they must not contain requirements that are absent from this file.
 | VP-0148 | Backlog | Enforce DirectShow queue launch contracts and trustworthy handoff evidence |
 | VP-0148-1 | In Progress | Retain DirectShow queue construction contract across handoffs |
 | VP-0148-2 | Backlog | Publish coherent DirectShow queue and delivery telemetry |
-| VP-0149 | Backlog | Bound application shutdown after display-restore failure |
+| VP-0149 | In Progress | Bound application shutdown after display-restore failure |
 | VP-0066-1 | Done | Characterize the live output pipeline with replayable golden traces |
 | VP-0066-2 | Done | Extract a graph-independent video timing controller |
 | VP-0066-3 | Done | Extract epoch-aware frame transport and processing components |
