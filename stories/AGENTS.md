@@ -53,6 +53,8 @@
   `vprenderer\VideoProcessorVPRenderer.dll` as an inseparable versioned pair.
   Back up and replace both from the same successfully completed x64 Release
   build/commit, then verify both deployed hashes against the build artifacts.
-- The VP GitHub repository of record is `billslack2/videoprocessor`. Discover
-  its current default branch before creating source branches or pull requests;
-  do not assume the default branch is named `main`.
+- The VP GitHub repository of record is `billslack2/videoprocessor`. Its
+  current default integration and merge branch is `v1.3.001-beta`. Target
+  completed pull requests to that branch unless the user explicitly requests
+  another base. Before creating source branches or pull requests, verify the
+  current GitHub default branch; do not assume it is named `main`.
