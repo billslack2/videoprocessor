@@ -16,8 +16,11 @@
 #pragma warning(pop)
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
+#include <fstream>
 #include <initializer_list>
+#include <iterator>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -25,6 +28,8 @@
 
 namespace
 {
+	constexpr const char* DISPLAY_CONFIG_SECTION = "display";
+
 	template<typename T>
 	const T& LibplaceboExportedData(const char* exportName)
 	{
@@ -173,7 +178,62 @@ namespace
 		AutoToggle dithering = AutoToggle::AUTO;
 		double scopeScreenAspect = 2.35;
 		bool defaultScopeScreen = false;
+		std::string normalLutPath;
+		std::string scopeLutPath;
 	};
+
+	bool IsAbsolutePath(const std::string& path)
+	{
+		return (path.size() >= 3 && std::isalpha(static_cast<unsigned char>(path[0])) &&
+			path[1] == ':' && (path[2] == '\\' || path[2] == '/')) ||
+			(path.size() >= 2 && path[0] == '\\' && path[1] == '\\');
+	}
+
+	std::string ResolveConfigRelativePath(const ConfigFile& config, const std::string& path)
+	{
+		const std::string trimmed = ConfigFile::Trim(path);
+		if (trimmed.empty() || IsAbsolutePath(trimmed) || config.GetLoadedPath().empty())
+			return trimmed;
+
+		const size_t separator = config.GetLoadedPath().find_last_of("\\/");
+		return separator == std::string::npos ? trimmed :
+			config.GetLoadedPath().substr(0, separator + 1) + trimmed;
+	}
+
+	pl_custom_lut* LoadCubeLut(pl_log log, const std::string& path, const char* profileName)
+	{
+		if (path.empty())
+			return nullptr;
+
+		std::ifstream input(path, std::ios::binary);
+		if (!input)
+		{
+			DebugLog::Log("libplacebo: %s LUT file could not be opened: %s",
+				profileName, path.c_str());
+			return nullptr;
+		}
+
+		const std::string contents((std::istreambuf_iterator<char>(input)),
+			std::istreambuf_iterator<char>());
+		if (contents.empty())
+		{
+			DebugLog::Log("libplacebo: %s LUT file is empty: %s",
+				profileName, path.c_str());
+			return nullptr;
+		}
+
+		pl_custom_lut* lut = pl_lut_parse_cube(log, contents.data(), contents.size());
+		if (!lut)
+		{
+			DebugLog::Log("libplacebo: %s LUT file is invalid and will be ignored: %s",
+				profileName, path.c_str());
+			return nullptr;
+		}
+
+		DebugLog::Log("libplacebo: loaded %s LUT: %s (%d x %d x %d)",
+			profileName, path.c_str(), lut->size[0], lut->size[1], lut->size[2]);
+		return lut;
+	}
 
 	bool ParseDouble(const std::string& value, double& parsed)
 	{
@@ -216,7 +276,7 @@ namespace
 		std::initializer_list<const char*> choices)
 	{
 		std::string rawValue;
-		if (!config.TryGetString("libplacebo", key, rawValue))
+		if (!config.TryGetString(DISPLAY_CONFIG_SECTION, key, rawValue))
 			return defaultValue;
 
 		const std::string value = ConfigFile::NormalizeName(rawValue);
@@ -240,13 +300,13 @@ namespace
 		AutoToggle defaultValue = AutoToggle::AUTO)
 	{
 		std::string rawValue;
-		if (!config.TryGetString("libplacebo", key, rawValue))
+		if (!config.TryGetString(DISPLAY_CONFIG_SECTION, key, rawValue))
 			return defaultValue;
 		if (ConfigFile::NormalizeName(rawValue) == "auto")
 			return AutoToggle::AUTO;
 
 		bool enabled = false;
-		if (config.TryGetBool("libplacebo", key, enabled))
+		if (config.TryGetBool(DISPLAY_CONFIG_SECTION, key, enabled))
 			return enabled ? AutoToggle::ON : AutoToggle::OFF;
 
 		DebugLog::Log(
@@ -264,7 +324,7 @@ namespace
 			return settings;
 
 		std::string rawValue;
-		if (config.TryGetString("libplacebo", "sdr_target_nits", rawValue))
+		if (config.TryGetString(DISPLAY_CONFIG_SECTION, "sdr_target_nits", rawValue))
 		{
 			double parsed = 0.0;
 			if (ParseDouble(rawValue, parsed) && parsed >= 40.0 && parsed <= 500.0)
@@ -276,7 +336,7 @@ namespace
 		}
 
 		settings.sdrBlackNits = settings.sdrTargetNits / PL_COLOR_SDR_CONTRAST;
-		if (config.TryGetString("libplacebo", "sdr_black_nits", rawValue) &&
+		if (config.TryGetString(DISPLAY_CONFIG_SECTION, "sdr_black_nits", rawValue) &&
 			ConfigFile::NormalizeName(rawValue) != "auto")
 		{
 			double parsed = 0.0;
@@ -293,8 +353,8 @@ namespace
 			}
 		}
 
-		if (config.TryGetString("libplacebo", "switch_refresh_rate", rawValue) &&
-			!config.TryGetBool("libplacebo", "switch_refresh_rate", settings.switchRefreshRate))
+		if (config.TryGetString(DISPLAY_CONFIG_SECTION, "switch_refresh_rate", rawValue) &&
+			!config.TryGetBool(DISPLAY_CONFIG_SECTION, "switch_refresh_rate", settings.switchRefreshRate))
 		{
 			DebugLog::Log(
 				"libplacebo: invalid switch_refresh_rate value '%s'; using true",
@@ -320,7 +380,7 @@ namespace
 		settings.deband = ReadAutoToggle(config, "deband");
 		settings.dithering = ReadAutoToggle(config, "dithering");
 
-		if (config.TryGetString("libplacebo", "scope_screen_aspect", rawValue))
+		if (config.TryGetString(DISPLAY_CONFIG_SECTION, "scope_screen_aspect", rawValue))
 		{
 			double parsed = 0.0;
 			if (ParseAspectRatio(rawValue, parsed) && parsed >= 1.5 && parsed <= 4.0)
@@ -333,7 +393,12 @@ namespace
 		settings.defaultScopeScreen = ReadChoice(
 			config, "default_screen_profile", "normal", { "normal", "scope" }) == "scope";
 
-		if (config.TryGetString("libplacebo", "contrast_recovery", rawValue) &&
+		if (config.TryGetString(DISPLAY_CONFIG_SECTION, "normal_lut", rawValue))
+			settings.normalLutPath = ResolveConfigRelativePath(config, rawValue);
+		if (config.TryGetString(DISPLAY_CONFIG_SECTION, "scope_lut", rawValue))
+			settings.scopeLutPath = ResolveConfigRelativePath(config, rawValue);
+
+		if (config.TryGetString(DISPLAY_CONFIG_SECTION, "contrast_recovery", rawValue) &&
 			ConfigFile::NormalizeName(rawValue) != "auto")
 		{
 			double parsed = 0.0;
@@ -622,6 +687,8 @@ struct LibplaceboVideoRenderer::Impl
 	pl_swapchain swapchain = nullptr;
 	pl_renderer renderer = nullptr;
 	pl_tex textures[2] = { nullptr, nullptr };
+	pl_custom_lut* normalLut = nullptr;
+	pl_custom_lut* scopeLut = nullptr;
 	std::unique_ptr<IVideoFrameFormatter> formatter;
 	VideoStateComPtr formatterState;
 	std::vector<BYTE> convertedFrame;
@@ -641,6 +708,8 @@ struct LibplaceboVideoRenderer::Impl
 	~Impl()
 	{
 		pl_renderer_destroy(&renderer);
+		pl_lut_free(&normalLut);
+		pl_lut_free(&scopeLut);
 		if (d3d11)
 		{
 			for (pl_tex& texture : textures)
@@ -849,6 +918,8 @@ struct LibplaceboVideoRenderer::Impl
 		formatterState = state;
 		convertedFrame.resize(static_cast<size_t>(formatter->GetOutFrameSize()));
 		ConfigureRenderParams(settings);
+		normalLut = LoadCubeLut(log, settings.normalLutPath, "normal-profile");
+		scopeLut = LoadCubeLut(log, settings.scopeLutPath, "scope-profile");
 
 		DebugLog::Log(
 			"libplacebo initialized: D3D11, P010 upload, SDR Rec.709 target %.1f nits",
@@ -953,6 +1024,8 @@ struct LibplaceboVideoRenderer::Impl
 				0.0f);
 		}
 		pl_rect2df_aspect_copy(&target.crop, &image.crop, 0.0f);
+		renderParams.lut = scopeScreenActive ? scopeLut : normalLut;
+		renderParams.lut_type = PL_LUT_NATIVE;
 
 		const bool rendered = pl_render_image(renderer, &image, &target, &renderParams);
 		const bool submitted = pl_swapchain_submit_frame(swapchain);
