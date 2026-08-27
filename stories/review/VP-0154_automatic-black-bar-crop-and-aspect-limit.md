@@ -38,6 +38,19 @@ on 2026-08-27; its installed hash matched the build and the active
 `VideoProcessor.cfg` remained unchanged. The branch remains unmerged and in
 Review.
 
+Follow-up `036bfb43` makes the two optional limit values fail open: blank,
+legacy, malformed, and out-of-range values are treated as no limit rather than
+rejecting the unified renderer configuration. The editor no longer writes an
+internal `none` sentinel for a cleared field and removes legacy/malformed
+optional values when it next saves the document. The four invalid `none` lines
+previously written into the operator's active configuration were removed after
+backing it up at
+`C:\Videoprocessor\vp\backups\vp-0154-invalid-none-20260827-1501`.
+The tested x64 Release host from this follow-up was deployed to
+`C:\Videoprocessor\vp\VideoProcessor.exe` (SHA-256
+`EA63FBE1E18451AD909D49D956341C91C4E9D65C748EBFCA115A44E7F3E46909`);
+the branch remains unmerged and in Review.
+
 ## User story
 
 As a VideoProcessor operator using a scope screen, I want trusted active-picture
