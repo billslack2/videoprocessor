@@ -62,12 +62,14 @@ private:
     QWidget* createStartupPage();
     QWidget* createQueuePage();
     QWidget* createRendererPage();
+	QWidget* createScalingPage();
     QWidget* createColorConfigPage();
     QWidget* createOutputPage();
     QWidget* createDirectShowPage();
     QWidget* createInputProcessingPage(const QString& title, const QString& description,
         const QString& section);
     QWidget* createViewportPage();
+	QWidget* createZoomPage();
     QWidget* createLldvPage();
     QWidget* createStandardShadersPage();
     QWidget* createNlsShadersPage();
@@ -77,7 +79,7 @@ private:
     QWidget* createShortcutsPage();
     QWidget* createLogsPage();
     QWidget* createProfilePage(const QString& title, const QString& description,
-        const QString& sectionPrefix);
+        const QString& sectionPrefix, const QString& fieldGroup = {});
     QWidget* createCard(const QString& title, const QString& description, QWidget* content);
     QWidget* createPage(const QString& title, const QString& description, QWidget* body);
     QPushButton* addNavigationButton(const QString& text, int pageIndex);

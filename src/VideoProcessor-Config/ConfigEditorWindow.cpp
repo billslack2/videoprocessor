@@ -2414,6 +2414,8 @@ QWidget* ConfigEditorWindow::createShell()
     pages_->addWidget(createShadersSetupPage());
     pages_->addWidget(createShortcutsSetupPage());
     pages_->addWidget(createColorConfigPage());
+	pages_->addWidget(createScalingPage());
+	pages_->addWidget(createZoomPage());
 
     auto* navGroup = new QButtonGroup(root);
     navGroup->setExclusive(true);
@@ -2485,14 +2487,17 @@ QWidget* ConfigEditorWindow::createShell()
                 { QStringLiteral("Standard"), 8 },
                 { QStringLiteral("NLS"), 9 } }, page);
         }
-        else if (page == 2 || page == 4 || page == 11 || page == 13 || page == 16)
+        else if (page == 2 || page == 4 || page == 11 || page == 13 ||
+			page == 16 || page == 17 || page == 18)
         {
             vpNavigation->setChecked(true);
             showSectionTabs({ { QStringLiteral("Rendering"), 2 },
-                { QStringLiteral("Color Config"), 16 },
+				{ QStringLiteral("Scaling"), 17 },
+				{ QStringLiteral("Color"), 16 },
                 { QStringLiteral("Output"), 13 },
-                { QStringLiteral("Screen Config"), 4 },
-                { QStringLiteral("Input Processing"), 11 } }, page);
+				{ QStringLiteral("Screen"), 4 },
+				{ QStringLiteral("Zoom"), 18 },
+				{ QStringLiteral("Processing"), 11 } }, page);
         }
         else if (page == 3 || page == 12)
         {
@@ -2518,6 +2523,29 @@ QWidget* ConfigEditorWindow::createShell()
                 selectPage(page);
         });
     connect(pages_, &QStackedWidget::currentChanged, this, updateSectionTabs);
+	connect(pages_, &QStackedWidget::currentChanged, this, [this](int page)
+	{
+		// Screen and Zoom are two views of one viewport-profile family. Both
+		// pages are constructed once from the same reusable profile workspace;
+		// keep their visible selection together when the operator switches tabs.
+		if (page != 4 && page != 18) return;
+		const int peerPage = page == 4 ? 18 : 4;
+		QListWidget* target = pages_->widget(page)->findChild<QListWidget*>(
+			controlName(QStringLiteral("vprenderer.viewport"),
+				QStringLiteral("profiles")));
+		QListWidget* peer = pages_->widget(peerPage)->findChild<QListWidget*>(
+			controlName(QStringLiteral("vprenderer.viewport"),
+				QStringLiteral("profiles")));
+		if (!target || !peer || !peer->currentItem()) return;
+		const QString selected = peer->currentItem()->data(Qt::UserRole).toString();
+		for (int index = 0; index < target->count(); ++index)
+			if (target->item(index)->data(Qt::UserRole).toString().compare(
+				selected, Qt::CaseInsensitive) == 0)
+			{
+				if (target->currentRow() != index) target->setCurrentRow(index);
+				break;
+			}
+	});
     updateSectionTabs(pages_->currentIndex());
     centerLayout->addWidget(navigation_);
     centerLayout->addWidget(pageHost, 1);
@@ -2917,7 +2945,7 @@ QWidget* ConfigEditorWindow::createStartupPage()
 }
 
 QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QString& description,
-    const QString& sectionPrefix)
+    const QString& sectionPrefix, const QString& fieldGroup)
 {
     // Output transport used to live inside Rendering profiles. Move those
     // keys into matching Output profiles in the pending document so an old
@@ -3098,6 +3126,62 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             hasPendingMigrations_ = true;
         }
     }
+
+	// Scaling now owns its independent ordered profile group. Move the three
+	// scaler choices from the matching legacy Rendering profile without
+	// changing their effective values or selection rule.
+	if (configurationLoaded_ && document_ &&
+		sectionPrefix == QStringLiteral("vprenderer.scaling"))
+	{
+		const QStringList scalingKeys = {
+			QStringLiteral("upscaler"),
+			QStringLiteral("downscaler"),
+			QStringLiteral("sigmoid")
+		};
+		bool migrated = false;
+		for (const QString& renderingSection : profileSections(
+			QStringLiteral("vprenderer")))
+		{
+			QStringList configuredKeys;
+			for (const QString& key : scalingKeys)
+				if (!value(renderingSection, key).isEmpty())
+					configuredKeys.push_back(key);
+			if (configuredKeys.isEmpty()) continue;
+
+			const QString suffix = renderingSection == QStringLiteral("vprenderer") ?
+				QStringLiteral("Default") :
+				renderingSection.mid(QStringLiteral("vprenderer.").size());
+			const QString scalingSection =
+				QStringLiteral("vprenderer.scaling.%1").arg(suffix);
+			document_->AddSection(scalingSection.toStdString());
+			for (const QString& key : configuredKeys)
+			{
+				const QString configured = value(renderingSection, key);
+				if (value(scalingSection, key).isEmpty())
+					document_->SetKnown(scalingSection.toStdString(),
+						key.toStdString().c_str(),
+						configured.toLocal8Bit().constData());
+				document_->RemoveKnown(renderingSection.toStdString(),
+					key.toStdString().c_str());
+			}
+			for (const QString& selector : { QStringLiteral("shortcut"),
+				QStringLiteral("when") })
+			{
+				const QString configured = value(renderingSection, selector);
+				if (!configured.isEmpty() &&
+					value(scalingSection, selector).isEmpty())
+					document_->SetKnown(scalingSection.toStdString(),
+						selector.toStdString().c_str(),
+						configured.toLocal8Bit().constData());
+			}
+			migrated = true;
+		}
+		if (migrated)
+		{
+			dirty_ = true;
+			hasPendingMigrations_ = true;
+		}
+	}
 
     // Literal roots are the legacy unnamed form. Profiles in the editor are
     // named and their file order alone selects the default, so migrate a root
@@ -3515,6 +3599,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         const QString& key, QWidget* control)
     {
         if ((sectionPrefix != QStringLiteral("vprenderer") &&
+             sectionPrefix != QStringLiteral("vprenderer.scaling") &&
              sectionPrefix != QStringLiteral("vprenderer.color") &&
              sectionPrefix != QStringLiteral("vprenderer.output")) ||
             !form || !control)
@@ -3708,23 +3793,10 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         contrastRecovery->setPlaceholderText(QStringLiteral("Auto or a value from 0 to 2"));
         addRendererAutoStatus(QStringLiteral("contrast_recovery"), contrastRecovery);
 
-        form = addCollapsibleSection(QStringLiteral("scalingCleanup"), QStringLiteral("Scaling and Processing"),
+        form = addCollapsibleSection(QStringLiteral("processing"), QStringLiteral("Processing"),
             QString(), false);
-        auto* upscaler = addChoice(QStringLiteral("Upscaler"), QStringLiteral("upscaler"), { QStringLiteral("AUTO"), QStringLiteral("ewa_lanczos4sharpest"), QStringLiteral("ewa_lanczossharp"), QStringLiteral("ewa_lanczos"), QStringLiteral("lanczos"), QStringLiteral("catmull_rom"), QStringLiteral("bicubic"), QStringLiteral("gaussian"), QStringLiteral("oversample"), QStringLiteral("bilinear"), QStringLiteral("nearest"), QStringLiteral("none") });
-        addRendererAutoStatus(QStringLiteral("upscaler"), upscaler);
-        auto* downscaler = addChoice(QStringLiteral("Downscaler"), QStringLiteral("downscaler"), { QStringLiteral("AUTO"), QStringLiteral("ewa_lanczos"), QStringLiteral("lanczos"), QStringLiteral("mitchell"), QStringLiteral("catmull_rom"), QStringLiteral("bicubic"), QStringLiteral("gaussian"), QStringLiteral("hermite"), QStringLiteral("bilinear"), QStringLiteral("box"), QStringLiteral("none") });
-        downscaler->setItemText(downscaler->findData(QStringLiteral("none")),
-            QStringLiteral("Match upscaler"));
-        addRendererAutoStatus(QStringLiteral("downscaler"), downscaler);
         auto* debanding = addChoice(QStringLiteral("Debanding"), QStringLiteral("deband_strength"), { QStringLiteral("AUTO"), QStringLiteral("default"), QStringLiteral("light"), QStringLiteral("off") });
         addRendererAutoStatus(QStringLiteral("deband_strength"), debanding);
-        auto* sigmoid = addChoice(QStringLiteral("Anti-ringing"),
-            QStringLiteral("sigmoid"), { QStringLiteral("AUTO"),
-            QStringLiteral("on"), QStringLiteral("off") });
-		sigmoid->setAccessibleName(QStringLiteral("Anti-ringing"));
-        sigmoid->setToolTip(QStringLiteral(
-            "Optional sigmoidization before upscaling. It reduces ringing artifacts; Auto uses the rendering-quality preset."));
-        addRendererAutoStatus(QStringLiteral("sigmoid"), sigmoid);
         auto* dithering = addChoice(QStringLiteral("Dithering"), QStringLiteral("dithering"),
             { QStringLiteral("AUTO"), QStringLiteral("on"), QStringLiteral("off") });
         dithering->setItemText(1, QStringLiteral("Auto"));
@@ -4073,8 +4145,41 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         });
         form->addRow(QString(), resetOutputExperiments);
     }
-    else if (sectionPrefix == QStringLiteral("vprenderer.viewport"))
+	else if (sectionPrefix == QStringLiteral("vprenderer.scaling"))
+	{
+		form = addPlainForm();
+		auto* upscaler = addChoice(QStringLiteral("Upscaler"),
+			QStringLiteral("upscaler"), { QStringLiteral("AUTO"),
+			QStringLiteral("ewa_lanczos4sharpest"),
+			QStringLiteral("ewa_lanczossharp"), QStringLiteral("ewa_lanczos"),
+			QStringLiteral("lanczos"), QStringLiteral("catmull_rom"),
+			QStringLiteral("bicubic"), QStringLiteral("gaussian"),
+			QStringLiteral("oversample"), QStringLiteral("bilinear"),
+			QStringLiteral("nearest"), QStringLiteral("none") });
+		addRendererAutoStatus(QStringLiteral("upscaler"), upscaler);
+		auto* downscaler = addChoice(QStringLiteral("Downscaler"),
+			QStringLiteral("downscaler"), { QStringLiteral("AUTO"),
+			QStringLiteral("ewa_lanczos"), QStringLiteral("lanczos"),
+			QStringLiteral("mitchell"), QStringLiteral("catmull_rom"),
+			QStringLiteral("bicubic"), QStringLiteral("gaussian"),
+			QStringLiteral("hermite"), QStringLiteral("bilinear"),
+			QStringLiteral("box"), QStringLiteral("none") });
+		downscaler->setItemText(downscaler->findData(QStringLiteral("none")),
+			QStringLiteral("Match upscaler"));
+		addRendererAutoStatus(QStringLiteral("downscaler"), downscaler);
+		auto* antiRinging = addChoice(QStringLiteral("Anti-ringing"),
+			QStringLiteral("sigmoid"), { QStringLiteral("AUTO"),
+			QStringLiteral("on"), QStringLiteral("off") });
+		antiRinging->setToolTip(QStringLiteral(
+			"Optional sigmoidization before upscaling. It reduces ringing artifacts; Auto uses the scaling-quality preset."));
+		addRendererAutoStatus(QStringLiteral("sigmoid"), antiRinging);
+	}
+	else if (sectionPrefix == QStringLiteral("vprenderer.viewport"))
     {
+		const bool showGeometry = fieldGroup != QStringLiteral("zoom");
+		const bool showZoom = fieldGroup != QStringLiteral("geometry");
+		if (showGeometry)
+		{
         form = addCollapsibleSection(QStringLiteral("geometry"),
             QStringLiteral("Screen geometry"), QStringLiteral(
                 "Physical screen shape, picture placement, and fitting controls."), true);
@@ -4120,6 +4225,11 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             }
             markDirty();
         });
+		}
+		if (showZoom && !showGeometry)
+			form = addPlainForm();
+		if (showZoom)
+		{
 		auto* cropNarrower = addBoolean(
 			QStringLiteral("Crop narrower content to fill screen"),
 			QStringLiteral("crop_narrower_content_to_fill_screen"));
@@ -4163,6 +4273,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             "Must be between 0 and 50 pixels. Adds outward reserve to an "
             "accepted subtitle target so small later extent changes do not "
             "start another movement."));
+		}
     }
     else
     {
@@ -4476,6 +4587,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             updateQueuePolicyFromValues();
         state->loading = false;
         if (sectionPrefix == QStringLiteral("vprenderer") ||
+			sectionPrefix == QStringLiteral("vprenderer.scaling") ||
             sectionPrefix == QStringLiteral("vprenderer.color") ||
             sectionPrefix == QStringLiteral("vprenderer.output"))
             refreshRendererAutoStatus();
@@ -4810,6 +4922,13 @@ QWidget* ConfigEditorWindow::createRendererPage()
         QStringLiteral("Configure ordered rendering profiles. The first profile in the list is the default."), QStringLiteral("vprenderer"));
 }
 
+QWidget* ConfigEditorWindow::createScalingPage()
+{
+	return createProfilePage(QStringLiteral("Scaling"),
+		QStringLiteral("Configure ordered scaling profiles. The first profile in the list is the default."),
+		QStringLiteral("vprenderer.scaling"));
+}
+
 QWidget* ConfigEditorWindow::createColorConfigPage()
 {
     return createProfilePage(QStringLiteral("Color Config"),
@@ -4973,9 +5092,16 @@ QWidget* ConfigEditorWindow::createDirectShowPage()
 
 QWidget* ConfigEditorWindow::createViewportPage()
 {
-    return createProfilePage(QStringLiteral("Screen Config"),
-        QStringLiteral("Configure VP Renderer screen geometry and selection. The first profile in the list is the default."),
-        QStringLiteral("vprenderer.viewport"));
+	return createProfilePage(QStringLiteral("Screen"),
+		QStringLiteral("Configure VP Renderer screen geometry and selection. The first profile in the list is the default."),
+		QStringLiteral("vprenderer.viewport"), QStringLiteral("geometry"));
+}
+
+QWidget* ConfigEditorWindow::createZoomPage()
+{
+	return createProfilePage(QStringLiteral("Zoom"),
+		QStringLiteral("Configure crop/fill and subtitle placement for VP Renderer screen profiles."),
+		QStringLiteral("vprenderer.viewport"), QStringLiteral("zoom"));
 }
 
 QWidget* ConfigEditorWindow::createLldvPage()

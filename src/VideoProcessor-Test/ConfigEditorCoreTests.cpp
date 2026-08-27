@@ -173,6 +173,8 @@ namespace VideoProcessorTest
 				static_cast<int>(ConfigurationApplyPolicy::ClassifySection("vprenderer.viewport")));
 			Assert::AreEqual(static_cast<int>(Action::ApplyProfiles),
 				static_cast<int>(ConfigurationApplyPolicy::ClassifySection("vprenderer.viewport.scope")));
+			Assert::AreEqual(static_cast<int>(Action::ApplyProfiles),
+				static_cast<int>(ConfigurationApplyPolicy::ClassifySection("vprenderer.scaling.film")));
 		}
 
 		TEST_METHOD(ConfigurationApplyPolicyClassifiesNoOpAndSaveOnlyContent)
@@ -239,6 +241,9 @@ namespace VideoProcessorTest
 			Assert::AreEqual(static_cast<int>(Action::ApplyProfiles),
 				static_cast<int>(ConfigurationApplyPolicy::ClassifyChange(
 					{ "vprenderer.viewport.scope", "crop_narrower_content_aspect_limit" })));
+			Assert::AreEqual(static_cast<int>(Action::ApplyProfiles),
+				static_cast<int>(ConfigurationApplyPolicy::ClassifyChange(
+					{ "vprenderer.scaling.film", "upscaler" })));
 			Assert::AreEqual(static_cast<int>(Action::SaveOnly),
 				static_cast<int>(ConfigurationApplyPolicy::ClassifyChange(
 					{ "manual.extension", "shortcut" })));

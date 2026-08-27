@@ -411,8 +411,8 @@ void testEveryPageRoundTrips()
 
     QStackedWidget* pages = requireControl<QStackedWidget>(window,
         QStringLiteral("settingsPages"));
-    require(pages->count() == 17,
-        "Renderer Color Config, Output, Input, shader, and shortcut child pages were not added as dedicated settings pages");
+    require(pages->count() == 19,
+        "Renderer, Scaling, Color, Output, Screen, Zoom, Processing, shader, and shortcut pages were not added as dedicated settings pages");
     for (QPushButton* button : window.findChildren<QPushButton*>())
         require(!button->property("navChild").toBool(),
             "Grouped settings still expose child entries in the left navigation");
@@ -450,10 +450,10 @@ void testEveryPageRoundTrips()
     requireTabs({ QStringLiteral("Setup"), QStringLiteral("Standard"),
         QStringLiteral("NLS") });
     vpRenderer->click();
-    requireTabs({ QStringLiteral("Rendering"), QStringLiteral("Color Config"),
-        QStringLiteral("Output"),
-        QStringLiteral("Screen Config"),
-        QStringLiteral("Input Processing") });
+    requireTabs({ QStringLiteral("Rendering"), QStringLiteral("Scaling"),
+        QStringLiteral("Color"), QStringLiteral("Output"),
+        QStringLiteral("Screen"), QStringLiteral("Zoom"),
+        QStringLiteral("Processing") });
     directShow->click();
     requireTabs({ QStringLiteral("General"), QStringLiteral("Input Processing") });
     shortcutsNavigation->click();
@@ -913,10 +913,14 @@ void testRendererSectionTabsRemainSynchronizedDuringRapidClicks()
             QStringLiteral("pageTitle"));
         require(pageTitle && pageTitle->text() == title,
             "Grouped page title did not follow its selected tab");
-        QWidget* sentinel = requireControl<QWidget>(window, sentinelName);
-        require(pages->currentWidget()->isAncestorOf(sentinel) &&
-            sentinel->isVisibleTo(&window),
-            "Grouped page displayed content does not match its title and tab");
+        QWidget* sentinel = requireControl<QWidget>(*pages->currentWidget(), sentinelName);
+        if (!pages->currentWidget()->isAncestorOf(sentinel) ||
+            !sentinel->isVisibleTo(&window))
+            throw std::runtime_error(QStringLiteral(
+                "Grouped page displayed content does not match tab %1 (%2): descendant=%3 visible=%4")
+                .arg(tabIndex).arg(title)
+                .arg(pages->currentWidget()->isAncestorOf(sentinel))
+                .arg(sentinel->isVisibleTo(&window)).toStdString());
     };
     const auto navigationButton = [&window](const QString& text)
     {
@@ -944,24 +948,41 @@ void testRendererSectionTabsRemainSynchronizedDuringRapidClicks()
         }
     };
 
-    requireTabs({ QStringLiteral("Rendering"), QStringLiteral("Color Config"),
-        QStringLiteral("Output"),
-        QStringLiteral("Screen Config"),
-        QStringLiteral("Input Processing") });
+    requireTabs({ QStringLiteral("Rendering"), QStringLiteral("Scaling"),
+        QStringLiteral("Color"), QStringLiteral("Output"),
+        QStringLiteral("Screen"), QStringLiteral("Zoom"),
+        QStringLiteral("Processing") });
     runSequence({
-        { 2, 13, "Output", "config.vprenderer.output.profiles" },
-        { 3, 4, "Screen Config", "config.vprenderer.viewport.profiles" },
-        { 4, 11, "Input processing", "config.vprenderer.input_processing.video_conversion" },
-        { 1, 16, "Color Config", "config.vprenderer.color.profiles" },
+        { 3, 13, "Output", "config.vprenderer.output.profiles" },
+        { 4, 4, "Screen", "config.vprenderer.viewport.profiles" },
+        { 5, 18, "Zoom", "config.vprenderer.viewport.crop_narrower_content_to_fill_screen" },
+        { 6, 11, "Input processing", "config.vprenderer.input_processing.video_conversion" },
+        { 2, 16, "Color Config", "config.vprenderer.color.profiles" },
+        { 1, 17, "Scaling", "config.vprenderer.scaling.profiles" },
         { 0, 2, "Rendering", "config.vprenderer.profiles" },
-        { 4, 11, "Input processing", "config.vprenderer.input_processing.video_conversion" },
-        { 3, 4, "Screen Config", "config.vprenderer.viewport.profiles" },
-        { 1, 16, "Color Config", "config.vprenderer.color.profiles" },
+        { 6, 11, "Input processing", "config.vprenderer.input_processing.video_conversion" },
+        { 5, 18, "Zoom", "config.vprenderer.viewport.crop_narrower_content_to_fill_screen" },
+        { 4, 4, "Screen", "config.vprenderer.viewport.profiles" },
+        { 2, 16, "Color Config", "config.vprenderer.color.profiles" },
+        { 1, 17, "Scaling", "config.vprenderer.scaling.profiles" },
         { 0, 2, "Rendering", "config.vprenderer.profiles" }
     });
     require(navigationButton(QStringLiteral("VP Renderer")) &&
         navigationButton(QStringLiteral("VP Renderer"))->isChecked(),
         "VP Renderer child page lost its parent navigation selection");
+    window.selectPage(4);
+    QListWidget* screenProfiles = requireControl<QListWidget>(*pages->widget(4),
+        QStringLiteral("config.vprenderer.viewport.profiles"));
+    if (screenProfiles->count() > 1)
+        screenProfiles->setCurrentRow(1);
+    const QString selectedScreenProfile = screenProfiles->currentItem() ?
+        screenProfiles->currentItem()->data(Qt::UserRole).toString() : QString();
+    window.selectPage(18);
+    QListWidget* zoomProfiles = requireControl<QListWidget>(*pages->widget(18),
+        QStringLiteral("config.vprenderer.viewport.profiles"));
+    require(zoomProfiles->currentItem() &&
+        zoomProfiles->currentItem()->data(Qt::UserRole).toString() == selectedScreenProfile,
+        "Screen and Zoom did not retain one shared selected screen profile");
 
     window.selectPage(3);
     requireTabs({ QStringLiteral("General"), QStringLiteral("Input Processing") });
@@ -1564,18 +1585,18 @@ void testRendererProfileSectionsCollapseAndPersist()
 
     QToolButton* toneMapping = requireControl<QToolButton>(window,
         QStringLiteral("rendererSection.toneMapping"));
-    QToolButton* scaling = requireControl<QToolButton>(window,
-        QStringLiteral("rendererSection.scalingCleanup"));
+    QToolButton* processing = requireControl<QToolButton>(window,
+        QStringLiteral("rendererSection.processing"));
     QToolButton* lut = requireControl<QToolButton>(window,
         QStringLiteral("rendererSection.lut"));
     QStackedWidget* pages = requireControl<QStackedWidget>(window,
         QStringLiteral("settingsPages"));
-    require(!toneMapping->isChecked() && !scaling->isChecked() &&
+    require(!toneMapping->isChecked() && !processing->isChecked() &&
         !lut->isChecked(),
         "A renderer section was not collapsed initially");
-    require(scaling->text() == QStringLiteral("Scaling and Processing") &&
-        !scaling->text().contains(u'_'),
-        "The scaling section exposes an internal identifier instead of a friendly heading");
+    require(processing->text() == QStringLiteral("Processing") &&
+        !processing->text().contains(u'_'),
+        "The Processing section exposes an internal identifier instead of a friendly heading");
     QWidget* toneMappingContent = requireControl<QWidget>(window,
         QStringLiteral("rendererSection.toneMapping.content"));
     require(toneMappingContent->findChild<QLineEdit*>(
@@ -1666,9 +1687,9 @@ void testRendererProfileSectionsCollapseAndPersist()
         quality->itemData(3).toString() == QStringLiteral("fast"),
         "Rendering-quality choices are not ordered High, Balanced, Fast");
     QComboBox* upscaler = requireControl<QComboBox>(window,
-        QStringLiteral("config.vprenderer.upscaler"));
+        QStringLiteral("config.vprenderer.scaling.upscaler"));
     QComboBox* downscaler = requireControl<QComboBox>(window,
-        QStringLiteral("config.vprenderer.downscaler"));
+        QStringLiteral("config.vprenderer.scaling.downscaler"));
     for (const QString& value : { QStringLiteral("none"),
         QStringLiteral("nearest"), QStringLiteral("oversample"),
         QStringLiteral("gaussian"), QStringLiteral("catmull_rom"),
@@ -1709,7 +1730,7 @@ void testRendererProfileSectionsCollapseAndPersist()
         debanding->itemData(4).toString() == QStringLiteral("off"),
         "Debanding choices are not ordered Standard, Light, Off after Auto");
     QComboBox* sigmoid = requireControl<QComboBox>(window,
-        QStringLiteral("config.vprenderer.sigmoid"));
+        QStringLiteral("config.vprenderer.scaling.sigmoid"));
     require(sigmoid->accessibleName() == QStringLiteral("Anti-ringing"),
         "Sigmoid scaling does not expose the Anti-ringing accessible name");
     QComboBox* peakDetection = requireControl<QComboBox>(window,
@@ -1966,19 +1987,20 @@ void testScreenConfigSectionsAndInlineUnits()
 
     QToolButton* geometry = requireControl<QToolButton>(window,
         QStringLiteral("screenSection.geometry"));
-    QToolButton* subtitles = requireControl<QToolButton>(window,
-        QStringLiteral("screenSection.subtitles"));
-    require(geometry->isChecked() && !subtitles->isChecked(),
-        "Screen Config sections did not use the expected initial expansion state");
-    require(geometry->text() == QStringLiteral("Screen geometry") &&
-        subtitles->text() == QStringLiteral("Subtitles"),
-        "Screen Config does not use friendly section headings");
+    require(geometry->isChecked() &&
+        geometry->text() == QStringLiteral("Screen geometry"),
+        "Screen does not use the expected geometry section heading and state");
     require(requireControl<QWidget>(window,
         QStringLiteral("screenSection.geometry.content"))->isVisibleTo(&window) &&
-        !requireControl<QWidget>(window,
-        QStringLiteral("screenSection.subtitles.content"))->isVisibleTo(&window),
-        "Screen Config section content visibility does not follow its headers");
+        !window.findChild<QWidget*>(QStringLiteral("screenSection.subtitles.content"))->isVisibleTo(&window),
+        "Screen geometry page contains Zoom content");
 
+    window.selectPage(18);
+    QCoreApplication::processEvents();
+    QToolButton* subtitles = requireControl<QToolButton>(window,
+        QStringLiteral("screenSection.subtitles"));
+    require(!subtitles->isChecked() && subtitles->text() == QStringLiteral("Subtitles"),
+        "Zoom does not use the expected Subtitles section heading and state");
     subtitles->click();
     QCoreApplication::processEvents();
     QLineEdit* hold = requireControl<QLineEdit>(window,
@@ -1992,14 +2014,14 @@ void testScreenConfigSectionsAndInlineUnits()
     require(holdUnit->text() == QStringLiteral("ms") &&
         engageUnit->text() == QStringLiteral("ms") &&
         paddingUnit->text() == QStringLiteral("pixels"),
-        "Screen Config fixed-unit inputs are missing inline unit labels");
+        "Zoom fixed-unit inputs are missing inline unit labels");
     require(hold->text() == QStringLiteral("2000"),
         "Subtitle hold is not presented in milliseconds");
     require(hold->minimumWidth() > 0 &&
         hold->minimumWidth() == hold->maximumWidth() &&
         hold->alignment() == Qt::AlignRight &&
         holdUnit->x() >= hold->x() + hold->width(),
-        "Screen Config unit input is not consistently sized, aligned, and labeled");
+        "Zoom unit input is not consistently sized, aligned, and labeled");
 
     hold->setText(QStringLiteral("1500"));
     save(window);
@@ -2011,7 +2033,7 @@ void testScreenConfigSectionsAndInlineUnits()
     if (profiles->count() > 1) profiles->setCurrentRow(1);
     QCoreApplication::processEvents();
     require(subtitles->isChecked(),
-        "Screen Config section expansion state changed when selecting another profile");
+        "Zoom section expansion state changed when selecting another profile");
 }
 
 void testQueueUnitsAndLutControlsUseConsistentRows()
@@ -2297,9 +2319,9 @@ void testChoiceLabelsAndVpRendererName()
     require(targetBlackStatus->text() == QStringLiteral("Auto: 0.079 nits"),
         "Auto target black level does not show its calculated libplacebo value");
     QComboBox* upscaler = requireControl<QComboBox>(window,
-        QStringLiteral("config.vprenderer.upscaler"));
+        QStringLiteral("config.vprenderer.scaling.upscaler"));
     QLabel* upscalerStatus = requireControl<QLabel>(window,
-        QStringLiteral("config.vprenderer.upscaler.auto_status"));
+        QStringLiteral("config.vprenderer.scaling.upscaler.auto_status"));
     require(upscalerStatus->text() == QStringLiteral("Auto: EWA Lanczos sharp") &&
         upscalerStatus->font().italic(),
         "Auto upscaler does not use a concise italic effective-value label");
