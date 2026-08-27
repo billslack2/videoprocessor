@@ -6,9 +6,9 @@ story may have ordered child-task IDs as defined below.
 
 ## Registry state
 
-- Last assigned root story: `VP-0152`
-- Next root story number: `VP-0153`
-- Total indexed items: 171
+- Last assigned root story: `VP-0154`
+- Next root story number: `VP-0155`
+- Total indexed items: 173
 
 ## Story locations
 
@@ -188,6 +188,8 @@ they must not contain requirements that are absent from this file.
 | VP-0150 | Done | Accept UI-style profile labels in action conditions |
 | VP-0151 | Backlog | Reliable explicit BT.2020 exit signaling |
 | VP-0152 | Done | Coordinated profile selection, actions, and on-screen feedback |
+| VP-0153 | In Progress | Reset queues after every display transition |
+| VP-0154 | In Progress | Automatic black-bar crop and aspect-limit fill |
 | VP-0066-1 | Done | Characterize the live output pipeline with replayable golden traces |
 | VP-0066-2 | Done | Extract a graph-independent video timing controller |
 | VP-0066-3 | Done | Extract epoch-aware frame transport and processing components |
