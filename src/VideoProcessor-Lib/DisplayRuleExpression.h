@@ -137,6 +137,28 @@ namespace DisplayRuleExpression
 			ParseNumber(text.substr(separator + 1), maximum) && minimum <= maximum;
 	}
 
+	// Profile selections have stable configuration identifiers (for example
+	// "low_latency") but are presented to operators with spaces ("Low
+	// Latency").  Action conditions accept either spelling without changing
+	// the value handed to an external action.
+	inline std::string NormalizeProfileComparisonName(const std::string& value)
+	{
+		std::string normalized = ConfigFile::NormalizeName(value);
+		for (char& character : normalized)
+			if (std::isspace(static_cast<unsigned char>(character)) ||
+				character == '-')
+				character = '_';
+		return normalized;
+	}
+
+	inline bool IsProfileSelectionVariable(const std::string& variable)
+	{
+		return (variable.size() > 8 && variable.compare(0, 8,
+			"profile.") == 0) ||
+			(variable.size() > 17 && variable.compare(0, 17,
+				"previous_profile.") == 0);
+	}
+
 	enum class Operation { Equal, NotEqual, Less, LessEqual, Greater, GreaterEqual };
 
 	struct Node
@@ -190,7 +212,9 @@ namespace DisplayRuleExpression
 			// casing alone never denotes Shift, so ${key} remains case-sensitive.
 			// Other expression values remain case-insensitive.
 			if (variable != "key")
-				actual = ConfigFile::NormalizeName(actual);
+				actual = IsProfileSelectionVariable(variable) ?
+					NormalizeProfileComparisonName(actual) :
+					ConfigFile::NormalizeName(actual);
 			if (type == ValueType::Number)
 			{
 				double actualNumber = 0.0;
@@ -454,8 +478,10 @@ namespace DisplayRuleExpression
 			std::vector<bool> quoted;
 			if (m_current.kind == TokenKind::Word)
 			{
-				expected.push_back(variable == "key" ?
-					m_current.text : ConfigFile::NormalizeName(m_current.text));
+				expected.push_back(variable == "key" ? m_current.text :
+					(IsProfileSelectionVariable(variable) ?
+						NormalizeProfileComparisonName(m_current.text) :
+						ConfigFile::NormalizeName(m_current.text)));
 				quoted.push_back(m_current.quoted);
 				Next();
 				while (m_current.kind == TokenKind::Alternative)
@@ -465,8 +491,10 @@ namespace DisplayRuleExpression
 					Next();
 					if (m_current.kind != TokenKind::Word)
 						return Fail("expected value after '|'", error);
-					expected.push_back(variable == "key" ?
-						m_current.text : ConfigFile::NormalizeName(m_current.text));
+					expected.push_back(variable == "key" ? m_current.text :
+						(IsProfileSelectionVariable(variable) ?
+							NormalizeProfileComparisonName(m_current.text) :
+							ConfigFile::NormalizeName(m_current.text)));
 					quoted.push_back(m_current.quoted);
 					Next();
 				}

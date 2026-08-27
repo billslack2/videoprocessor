@@ -1968,6 +1968,8 @@ namespace VideoProcessorTest
 			{
 				std::ofstream file(path, std::ios::out | std::ios::trunc);
 				file << "[general]\nrenderer: VideoProcessor Renderer (Alpha)\n"
+					"[queue]\nqueue_size: 16\n"
+					"[queue.low_latency]\nwhen: $eotf==\"pq\"\nqueue_size: 1\n"
 					"[vprenderer]\nquality: high\n"
 					"[vprenderer.color.rec709]\nshortcut: F5\n"
 					"sdr_target_primaries: REC709\n"
@@ -2004,6 +2006,18 @@ namespace VideoProcessorTest
 					"on: profile.viewport.changed\n"
 					"when: $previous_profile.viewport==\"scope\" && $profile.viewport==\"base\"\n"
 					"run: C:\\Windows\\System32\\cmd.exe /c exit 0\n"
+					"[actions.queue_canonical]\n"
+					"on: profile.queue.changed\n"
+					"when: ${profile.queue}==\"low_latency\"\n"
+					"run: C:\\Windows\\System32\\cmd.exe ${profile.queue}\n"
+					"[actions.queue_ui_label]\n"
+					"on: profile.queue.changed\n"
+					"when: ${profile.queue}==\"Low Latency\"\n"
+					"run: C:\\Windows\\System32\\cmd.exe ${profile.queue}\n"
+					"[actions.queue_ui_label_left]\n"
+					"on: profile.queue.changed\n"
+					"when: ${previous_profile.queue}==\"Low Latency\" && ${profile.queue}==\"base\"\n"
+					"run: C:\\Windows\\System32\\cmd.exe /c exit 0\n"
 					"[actions.color_bt2020]\n"
 					"on: profile.color.changed\n"
 					"when: $profile.color==\"bt2020\" && $previous_profile.color==\"rec709\"\n"
@@ -2035,7 +2049,7 @@ namespace VideoProcessorTest
 			RendererProfileConfig::Model model;
 			Assert::IsTrue(RendererProfileConfig::Read(config, model, error),
 				std::wstring(error.begin(), error.end()).c_str());
-			Assert::AreEqual(static_cast<size_t>(11), model.actions.size());
+			Assert::AreEqual(static_cast<size_t>(14), model.actions.size());
 			const auto configuredColorAction = std::find_if(model.actions.begin(),
 				model.actions.end(), [](const auto& action)
 				{
@@ -2110,6 +2124,16 @@ namespace VideoProcessorTest
 			Assert::IsTrue(entered.snapshot->LookupVariable(
 				"screen_config", visibleScreenConfig));
 			Assert::AreEqual("Scope", visibleScreenConfig.c_str());
+			Assert::IsTrue(hasInvocation(entered.actions,
+				"queue_canonical", "profile.queue.changed"));
+			const auto queueUiLabel = std::find_if(entered.actions.begin(),
+				entered.actions.end(), [](const UnifiedProfileRuntime::ActionInvocation& action)
+				{
+					return action.action.name == "queue_ui_label" &&
+						action.event == "profile.queue.changed";
+				});
+			Assert::IsTrue(queueUiLabel != entered.actions.end());
+			Assert::AreEqual("low_latency", queueUiLabel->action.arguments.c_str());
 
 			std::vector<UnifiedProfileRuntime::ActionInvocation> ready;
 			Assert::IsTrue(runtime.CollectActionInvocations("renderer.ready",
@@ -2147,6 +2171,8 @@ namespace VideoProcessorTest
 			Assert::AreEqual("base", left.snapshot->viewport.profile.c_str());
 			Assert::IsTrue(hasInvocation(left.actions, "scope_left",
 				"profile.viewport.changed"));
+			Assert::IsTrue(hasInvocation(left.actions, "queue_ui_label_left",
+				"profile.queue.changed"));
 
 			// Establish the color selection explicitly before exercising the
 			// Rec.709-to-BT.2020 transition. Persisted selections from a previous
