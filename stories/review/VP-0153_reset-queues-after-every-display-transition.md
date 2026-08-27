@@ -2,11 +2,14 @@
 
 ## Status
 
-In Progress (2026-08-27). A local proof-of-behavior was implemented and
-deployed for operator validation on `codex/always-reset-after-display` at
-`1fa0c2d`; the operator confirmed it worked. The change must now be ported to
-a clean branch based on the current `v1.3.001-beta` integration tip, rebuilt,
-and placed in Review. Do not merge until the operator has reviewed the change.
+Review (2026-08-27). Ported to `codex/vp-0153-display-transition-reset` at
+`ddacb2a`, based on `v1.3.001-beta`; the x64 Release
+`VideoProcessor-GUI` build completed successfully. A local proof-of-behavior
+was previously deployed from equivalent commit `1fa0c2d`, and the operator
+confirmed it worked. The branch is pushed for review; draft-PR creation was
+denied by GitHub with `403 Resource not accessible by integration`. Review it
+at https://github.com/billslack2/videoprocessor/compare/v1.3.001-beta...codex/vp-0153-display-transition-reset?expand=1.
+Do not merge or deploy this branch again until the operator approves it.
 
 ## User story
 
