@@ -16,11 +16,11 @@ trusted full raster. They are centered (top/bottom for narrower, left/right
 for wider), and are disabled for NLS source geometry. The existing pipeline
 preparation status popup is enabled so GPU pipeline compilation no longer looks
 like an unexplained black screen. Focused geometry tests passed from x64 Release
-builds, and fresh x64 Release GUI and VP Renderer builds succeeded. The prior
-validated x64 Release package was deployed to
+builds, and fresh x64 Release GUI and VP Renderer builds succeeded. The
+verified x64 Release package from `ee17077` was deployed to
 `C:\Videoprocessor\vp` for operator testing; its host and renderer hashes
-matched the package, and the active `VideoProcessor.cfg` was unchanged. The
-branch remains unmerged and in Review.
+matched the package, and the active `VideoProcessor.cfg` remained unchanged.
+The branch remains unmerged and in Review.
 
 ## User story
 
