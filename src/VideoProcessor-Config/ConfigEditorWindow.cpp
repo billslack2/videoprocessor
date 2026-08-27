@@ -3388,9 +3388,21 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         fields->push_back({ key, edit, Field::Text, displayScale });
         connect(edit, &QLineEdit::textChanged, this,
             [this, state, key, sectionPrefix, deprecatedViewportAlias,
-                displayScale](const QString& text)
+                displayScale, edit](const QString& text)
         {
             if (state->loading || state->section.isEmpty() || !document_) return;
+            // Text inherited from the default profile is deliberately muted.
+            // As soon as the operator types an override, update that state
+            // immediately instead of leaving the new value looking inherited
+            // until they reselect the profile.
+            const bool inherited = text.trimmed().isEmpty() &&
+                state->section != sectionPrefix;
+            if (edit->property("inherited").toBool() != inherited)
+            {
+                edit->setProperty("inherited", inherited);
+                edit->style()->unpolish(edit);
+                edit->style()->polish(edit);
+            }
             const QString alias = deprecatedViewportAlias(key);
             if (!alias.isEmpty())
                 document_->RemoveKnown(state->section.toStdString(), alias.toStdString().c_str());
@@ -3423,9 +3435,15 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         form->addRow(label, check);
         fields->push_back({ key, check, Field::Boolean });
         connect(check, &QCheckBox::toggled, this,
-            [this, state, key, deprecatedViewportAlias](bool checked)
+            [this, state, key, deprecatedViewportAlias, check](bool checked)
         {
             if (state->loading || state->section.isEmpty() || !document_) return;
+            if (check->property("inherited").toBool())
+            {
+                check->setProperty("inherited", false);
+                check->style()->unpolish(check);
+                check->style()->polish(check);
+            }
             const QString alias = deprecatedViewportAlias(key);
             if (!alias.isEmpty())
                 document_->RemoveKnown(state->section.toStdString(), alias.toStdString().c_str());
@@ -3452,6 +3470,14 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         {
             if (state->loading || state->section.isEmpty() || !document_ || index < 0) return;
             const QString selected = combo->itemData(index).toString();
+            const bool inherited = selected.isEmpty() &&
+                state->section != sectionPrefix;
+            if (combo->property("inherited").toBool() != inherited)
+            {
+                combo->setProperty("inherited", inherited);
+                combo->style()->unpolish(combo);
+                combo->style()->polish(combo);
+            }
             const bool canonicalDebanding =
                 sectionPrefix == QStringLiteral("vprenderer") &&
                 key == QStringLiteral("deband_strength");
@@ -4212,7 +4238,9 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         }
         const QString section = state->section;
         const QString display = current->data(Qt::UserRole + 1).toString();
-        selectedTitle->setText(display);
+        selectedTitle->setText(current->data(ActiveProfileRole).toBool() ?
+            QStringLiteral("%1 (Active)").arg(display) :
+            QStringLiteral("%1 (Not active)").arg(display));
         name->setText(display);
         shortcut->setText(canonicalShortcutText(
             value(section, QStringLiteral("shortcut"))));
