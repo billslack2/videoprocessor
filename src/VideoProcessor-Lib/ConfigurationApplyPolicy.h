@@ -116,6 +116,14 @@ namespace ConfigurationApplyPolicy
 			std::string::npos;
 	}
 
+	// Screen Config profile changes use the same renderer-owned, per-frame
+	// application path as selecting a viewport with F2/F3. Geometry, crop, and
+	// subtitle placement therefore do not need to tear down the renderer.
+	inline bool IsViewportProfileSection(const std::string& rawSection)
+	{
+		return HasPrefix(NormalizeSection(rawSection), "vprenderer.viewport");
+	}
+
 	inline Action ClassifySection(const std::string& section,
 		bool directShowRendererActive = true)
 	{
@@ -140,7 +148,8 @@ namespace ConfigurationApplyPolicy
 				Action::SaveOnly;
 		if (HasPrefix(normalized, "vprenderer.output"))
 			return Action::RestartCapture;
-		if (IsRenderingProfileSection(normalized))
+		if (IsRenderingProfileSection(normalized) ||
+			IsViewportProfileSection(normalized))
 			return Action::ApplyProfiles;
 
 		// Every known renderer, input, profile, shader, LLDV, presentation, and
