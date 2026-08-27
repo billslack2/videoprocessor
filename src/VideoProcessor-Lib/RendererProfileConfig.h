@@ -508,11 +508,10 @@ namespace RendererProfileConfig
 				return IsBoolean(value);
 			if (key == "crop_narrower_content_aspect_limit" ||
 				key == "crop_wider_content_aspect_limit")
-				// A named viewport profile needs a way to override an inherited
-				// limit with no limit at all. The editor writes this internal
-				// sentinel when the operator leaves the optional field blank.
-				return IsChoice(value, { "none" }) ||
-					IsAspectInRange(value, 1.0, 4.0);
+				// This is deliberately forgiving: the limit is optional, so an
+				// absent or malformed value means no limit.
+				// ResolveViewport disables the limit when it cannot parse it.
+				return true;
 			if (key == "subtitle_hold_seconds")
 				return IsNumberInRange(value, MIN_SUBTITLE_HOLD_SECONDS,
 					MAX_SUBTITLE_HOLD_SECONDS);
@@ -1873,17 +1872,11 @@ namespace RendererProfileConfig
 		value = settings.find("crop_narrower_content_aspect_limit");
 		if (value != settings.end())
 		{
-			if (ConfigFile::NormalizeName(value->second) == "none")
-				viewport.hasCropNarrowerContentAspectLimit = false;
-			else if (!AspectRatioParser::Parse(value->second, 1.0, 4.0,
-				viewport.cropNarrowerContentAspectLimit, error))
-			{
-				error = "[profiles.viewport." + viewport.profile +
-					"] crop_narrower_content_aspect_limit: " + error;
-				return false;
-			}
-			else
-				viewport.hasCropNarrowerContentAspectLimit = true;
+			viewport.hasCropNarrowerContentAspectLimit =
+				AspectRatioParser::Parse(value->second, 1.0, 4.0,
+					viewport.cropNarrowerContentAspectLimit, error);
+			if (!viewport.hasCropNarrowerContentAspectLimit)
+				error.clear();
 		}
 		value = settings.find("crop_wider_content_to_fill_screen");
 		if (value != settings.end() &&
@@ -1897,17 +1890,11 @@ namespace RendererProfileConfig
 		value = settings.find("crop_wider_content_aspect_limit");
 		if (value != settings.end())
 		{
-			if (ConfigFile::NormalizeName(value->second) == "none")
-				viewport.hasCropWiderContentAspectLimit = false;
-			else if (!AspectRatioParser::Parse(value->second, 1.0, 4.0,
-				viewport.cropWiderContentAspectLimit, error))
-			{
-				error = "[profiles.viewport." + viewport.profile +
-					"] crop_wider_content_aspect_limit: " + error;
-				return false;
-			}
-			else
-				viewport.hasCropWiderContentAspectLimit = true;
+			viewport.hasCropWiderContentAspectLimit =
+				AspectRatioParser::Parse(value->second, 1.0, 4.0,
+					viewport.cropWiderContentAspectLimit, error);
+			if (!viewport.hasCropWiderContentAspectLimit)
+				error.clear();
 		}
 		value = settings.find("subtitle_fit");
 		if (value != settings.end() &&

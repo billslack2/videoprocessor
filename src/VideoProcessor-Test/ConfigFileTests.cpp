@@ -2093,9 +2093,8 @@ namespace VideoProcessorTest
 				StateVariables::ValueType::Aspect);
 			Assert::AreEqual(2.76, widerAspectLimit->number, 0.000001);
 
-			// A named Screen Config can explicitly suppress a root aspect limit.
-			// The UI presents this as a blank optional field, so it means no limit
-			// rather than falling back to the default profile's value.
+			// Optional limits are best-effort. A legacy or malformed value must not
+			// reject the complete renderer configuration.
 			{
 				std::ofstream file(path, std::ios::out | std::ios::trunc);
 				file << "[general]\nrenderer: VideoProcessor Renderer (Alpha)\n"
@@ -2104,8 +2103,8 @@ namespace VideoProcessorTest
 					"crop_narrower_content_aspect_limit: 2.20:1\n"
 					"crop_wider_content_aspect_limit: 2.76:1\n"
 					"[vprenderer.viewport.scope]\nwhen: $key==\"F2\"\n"
-					"crop_narrower_content_aspect_limit: none\n"
-					"crop_wider_content_aspect_limit: none\n";
+					"crop_narrower_content_aspect_limit: legacy-missing\n"
+					"crop_wider_content_aspect_limit: not-a-ratio\n";
 			}
 			Assert::IsTrue(config.Load(path));
 			error.clear();
@@ -2119,13 +2118,17 @@ namespace VideoProcessorTest
 			{
 				std::ofstream file(path, std::ios::out | std::ios::trunc);
 				file << "[vprenderer.viewport]\n"
+					"crop_narrower_content_aspect_limit: not-a-ratio\n"
 					"crop_wider_content_aspect_limit: 4.1:1\n";
 			}
 			Assert::IsTrue(config.Load(path));
 			error.clear();
-			Assert::IsFalse(RendererProfileConfig::Read(config, model, error));
-			Assert::IsTrue(error.find("crop_wider_content_aspect_limit") !=
-				std::string::npos);
+			Assert::IsTrue(RendererProfileConfig::Read(config, model, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			Assert::IsTrue(RendererProfileConfig::ResolveViewport(
+				model, "base", 4, base, error));
+			Assert::IsFalse(base.hasCropNarrowerContentAspectLimit);
+			Assert::IsFalse(base.hasCropWiderContentAspectLimit);
 			DeleteFileA(path.c_str());
 		}
 
