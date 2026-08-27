@@ -1032,6 +1032,66 @@ namespace AlphaSourceCrop
 			VerticalPictureAlignment::CENTER);
 	}
 
+	AspectLimitFillDecision EvaluateAspectLimitFill(
+		const AspectLimitFillInput& input)
+	{
+		AspectLimitFillDecision decision;
+		decision.sourceBounds = input.sourceBounds;
+		const int width = input.sourceBounds.right - input.sourceBounds.left;
+		const int height = input.sourceBounds.bottom - input.sourceBounds.top;
+		if (width <= 0 || height <= 0)
+		{
+			decision.reason = "trusted crop bounds are invalid";
+			return decision;
+		}
+		decision.contentAspect = static_cast<double>(width) / height;
+		if (!input.trustedAutomaticCropApplied)
+		{
+			decision.reason = "trusted automatic crop is not active";
+			return decision;
+		}
+		if (!input.limitConfigured)
+		{
+			decision.reason = "aspect limit is not configured";
+			return decision;
+		}
+		if (!std::isfinite(input.aspectLimit) || input.aspectLimit < 1.0 ||
+			!std::isfinite(input.screenAspect) || input.screenAspect < 1.0)
+		{
+			decision.reason = "aspect limit or screen aspect is invalid";
+			return decision;
+		}
+		const double epsilon = 1e-6;
+		if (decision.contentAspect + epsilon < input.aspectLimit)
+		{
+			decision.reason = "content is narrower than the configured aspect limit";
+			return decision;
+		}
+		if (decision.contentAspect >= input.screenAspect - epsilon)
+		{
+			decision.reason = "content already fills or exceeds the screen aspect";
+			return decision;
+		}
+		// Crop only the opposite (top/bottom) edges, symmetrically and on chroma
+		// boundaries, to widen the selected active picture to the screen aspect.
+		int filledHeight = static_cast<int>(std::floor(width / input.screenAspect));
+		filledHeight &= ~1;
+		if (filledHeight <= 0 || filledHeight >= height)
+		{
+			decision.reason = "centered fill would not remove source rows";
+			return decision;
+		}
+		const int removedRows = height - filledHeight;
+		const int topInset = (removedRows / 2) & ~1;
+		decision.sourceBounds.top += topInset;
+		decision.sourceBounds.bottom = decision.sourceBounds.top + filledHeight;
+		decision.sourceBounds.aspectRatio = static_cast<double>(width) / filledHeight;
+		decision.sourceBounds.trustedBarAxes = ActivePictureBounds::BarAxes::NONE;
+		decision.applied = true;
+		decision.reason = "trusted content met aspect limit; centered fill cropped top and bottom";
+		return decision;
+	}
+
 	const char* VerticalPictureAlignmentName(
 		VerticalPictureAlignment alignment)
 	{

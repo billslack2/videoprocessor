@@ -139,6 +139,8 @@ namespace RendererProfileConfig
 		std::string verticalAlignment = "center";
 		AspectRatio anamorphicScale{ 1, 1, 1.0 };
 		bool automaticCrop = false;
+		AspectRatio automaticCropAspectLimit{ 1, 1, 1.0 };
+		bool hasAutomaticCropAspectLimit = false;
 		bool subtitleFit = false;
 		uint64_t subtitleHoldMilliseconds = 2000;
 		uint64_t subtitleEngageDriftMilliseconds = 0;
@@ -496,6 +498,8 @@ namespace RendererProfileConfig
 				return IsAspectInRange(value, 0.5, 2.0);
 			if (key == "automatic_crop" || key == "subtitle_fit")
 				return IsBoolean(value);
+			if (key == "automatic_crop_aspect_limit")
+				return IsAspectInRange(value, 1.0, 4.0);
 			if (key == "subtitle_hold_seconds")
 				return IsNumberInRange(value, MIN_SUBTITLE_HOLD_SECONDS,
 					MAX_SUBTITLE_HOLD_SECONDS);
@@ -671,7 +675,8 @@ namespace RendererProfileConfig
 	{
 		// automatic_crop is viewport-owned. Reject it from renderer/display
 		// variants so the same setting cannot acquire two owners.
-		if (key == "automatic_crop") return false;
+		if (key == "automatic_crop" ||
+			key == "automatic_crop_aspect_limit") return false;
 		return ValidateBaseSetting(key, value);
 	}
 
@@ -1360,7 +1365,7 @@ namespace RendererProfileConfig
 				"diagnostic_allow_full_g22",
 				"diagnostic_vp_owned_dxgi_presenter", "screen_aspect",
 				"vertical_alignment",
-				"automatic_crop", "subtitle_fit",
+				"automatic_crop", "automatic_crop_aspect_limit", "subtitle_fit",
 				"subtitle_hold_seconds", "subtitle_engage_drift_ms",
 				"subtitle_release_drift_ms",
 				"subtitle_padding_pixels", "subtitle_target_buffer_pixels"
@@ -1836,6 +1841,18 @@ namespace RendererProfileConfig
 			error = "[profiles.viewport." + viewport.profile +
 				"] automatic_crop is invalid";
 			return false;
+		}
+		value = settings.find("automatic_crop_aspect_limit");
+		if (value != settings.end())
+		{
+			if (!AspectRatioParser::Parse(value->second, 1.0, 4.0,
+				viewport.automaticCropAspectLimit, error))
+			{
+				error = "[profiles.viewport." + viewport.profile +
+					"] automatic_crop_aspect_limit: " + error;
+				return false;
+			}
+			viewport.hasAutomaticCropAspectLimit = true;
 		}
 		value = settings.find("subtitle_fit");
 		if (value != settings.end() &&

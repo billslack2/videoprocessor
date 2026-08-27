@@ -2037,7 +2037,8 @@ namespace VideoProcessorTest
 					"[vprenderer.viewport]\nscreen_aspect: 16:9\n"
 					"[vprenderer.viewport.scope]\nwhen: $key==\"F2\"\n"
 					"screen_aspect: 16:9\nvertical_alignment: BOTTOM\n"
-					"automatic_crop: true\nsubtitle_fit: true\n";
+					"automatic_crop: true\nautomatic_crop_aspect_limit: 2.20:1\n"
+					"subtitle_fit: true\n";
 			}
 
 			ConfigFile config;
@@ -2054,6 +2055,8 @@ namespace VideoProcessorTest
 			Assert::IsTrue(RendererProfileConfig::ResolveViewport(
 				model, "scope", 2, scope, error));
 			Assert::AreEqual("bottom", scope.verticalAlignment.c_str());
+			Assert::IsTrue(scope.hasAutomaticCropAspectLimit);
+			Assert::AreEqual(2.20, scope.automaticCropAspectLimit.value, 0.000001);
 
 			UnifiedProfileRuntime::Runtime runtime;
 			Assert::IsTrue(runtime.Initialize(config,
@@ -2066,15 +2069,23 @@ namespace VideoProcessorTest
 			Assert::IsTrue(selected.snapshot->variables.Lookup(
 				"vertical_alignment", published));
 			Assert::AreEqual("bottom", published.c_str());
+			const StateVariables::Value* aspectLimit =
+				selected.snapshot->variables.Find("$automatic_crop_aspect_limit");
+			Assert::IsNotNull(aspectLimit);
+			Assert::IsTrue(aspectLimit->type ==
+				StateVariables::ValueType::Aspect);
+			Assert::AreEqual(2.20, aspectLimit->number, 0.000001);
 
 			{
 				std::ofstream file(path, std::ios::out | std::ios::trunc);
-				file << "[vprenderer.viewport]\nvertical_alignment: diagonal\n";
+				file << "[vprenderer.viewport]\n"
+					"automatic_crop_aspect_limit: 4.1:1\n";
 			}
 			Assert::IsTrue(config.Load(path));
 			error.clear();
 			Assert::IsFalse(RendererProfileConfig::Read(config, model, error));
-			Assert::IsTrue(error.find("vertical_alignment") != std::string::npos);
+			Assert::IsTrue(error.find("automatic_crop_aspect_limit") !=
+				std::string::npos);
 			DeleteFileA(path.c_str());
 		}
 

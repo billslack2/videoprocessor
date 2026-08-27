@@ -84,6 +84,7 @@ vprenderer.viewport.<variant>.screen_aspect	viewport-screen-aspect	VP Renderer v
 vprenderer.viewport.<variant>.vertical_alignment	viewport-vertical-alignment	VP Renderer viewport	no
 vprenderer.viewport.<variant>.anamorphic_scale	viewport-anamorphic-scale	VP Renderer viewport	no
 vprenderer.viewport.<variant>.automatic_crop	viewport-automatic-crop	VP Renderer viewport	no
+vprenderer.viewport.<variant>.automatic_crop_aspect_limit	viewport-automatic-crop-aspect-limit	VP Renderer viewport	no
 vprenderer.viewport.<variant>.subtitle_fit	viewport-subtitle-fit	VP Renderer viewport	no
 vprenderer.viewport.<variant>.subtitle_hold_seconds	viewport-subtitle-hold-seconds	VP Renderer viewport	no
 vprenderer.viewport.<variant>.subtitle_engage_drift_ms	viewport-subtitle-engage-drift-ms	VP Renderer viewport	no

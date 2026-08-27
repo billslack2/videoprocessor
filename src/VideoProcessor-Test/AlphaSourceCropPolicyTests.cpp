@@ -2208,6 +2208,49 @@ namespace Tests
 				static_cast<int>(widerContent.unusedAxis));
 		}
 
+		TEST_METHOD(AspectLimitFillCropsOnlyTrustedWideEnoughContent)
+		{
+			AspectLimitFillInput input;
+			input.trustedAutomaticCropApplied = true;
+			input.limitConfigured = true;
+			input.aspectLimit = 2.20;
+			input.screenAspect = 2.35;
+			input.sourceBounds = {
+				0, 208, 3840, 1952, 3840, 2160,
+				3840.0 / 1744.0, ActivePictureBounds::BarAxes::TOP_BOTTOM };
+			const AspectLimitFillDecision filled =
+				EvaluateAspectLimitFill(input);
+			Assert::IsTrue(filled.applied);
+			Assert::AreEqual(0, filled.sourceBounds.left);
+			Assert::AreEqual(3840, filled.sourceBounds.right);
+			Assert::IsTrue(filled.sourceBounds.top > input.sourceBounds.top);
+			Assert::IsTrue(filled.sourceBounds.bottom < input.sourceBounds.bottom);
+			Assert::AreEqual(2.35,
+				static_cast<double>(filled.sourceBounds.right - filled.sourceBounds.left) /
+				(filled.sourceBounds.bottom - filled.sourceBounds.top), 0.002);
+
+			input.sourceBounds = {
+				0, 42, 3840, 2118, 3840, 2160,
+				3840.0 / 2076.0, ActivePictureBounds::BarAxes::TOP_BOTTOM };
+			const AspectLimitFillDecision narrow =
+				EvaluateAspectLimitFill(input);
+			Assert::IsFalse(narrow.applied);
+			Assert::IsTrue(narrow.reason.find("narrower") != std::string::npos);
+
+			input.trustedAutomaticCropApplied = false;
+			const AspectLimitFillDecision untrusted =
+				EvaluateAspectLimitFill(input);
+			Assert::IsFalse(untrusted.applied);
+			Assert::IsTrue(untrusted.reason.find("trusted") != std::string::npos);
+
+			input.trustedAutomaticCropApplied = true;
+			input.limitConfigured = false;
+			const AspectLimitFillDecision omitted =
+				EvaluateAspectLimitFill(input);
+			Assert::IsFalse(omitted.applied);
+			Assert::IsTrue(omitted.reason.find("not configured") != std::string::npos);
+		}
+
 		TEST_METHOD(SourceEnvelopeIsIndependentOfScreenAndAnamorphicMapping)
 		{
 			PresentationEnvelopeGeometryInput source;

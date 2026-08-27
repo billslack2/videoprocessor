@@ -4078,6 +4078,18 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             markDirty();
         });
         addBoolean(QStringLiteral("Automatically crop black bars"), QStringLiteral("automatic_crop"));
+        auto* cropAspectLimit = addText(QStringLiteral("Aspect ratio limit"),
+            QStringLiteral("automatic_crop_aspect_limit"));
+        cropAspectLimit->setPlaceholderText(QStringLiteral("Optional, e.g. 2.20:1"));
+        cropAspectLimit->setToolTip(QStringLiteral(
+            "Optional content-aspect threshold for automatic black-bar crop. "
+            "When trusted content is at least this wide but narrower than the "
+            "physical screen, VP fills the screen by centered top/bottom crop. "
+            "Leave blank to retain ordinary aspect-preserving fit."));
+        form->addRow(QString(), helpLabel(QStringLiteral(
+            "This never creates crop authority: VP first needs trusted black-bar "
+            "detection. Enter a ratio or decimal between 1.0 and 4.0; narrower "
+            "content remains fitted without the extra fill.")));
 
         form = addCollapsibleSection(QStringLiteral("subtitles"),
             QStringLiteral("Subtitles"), QStringLiteral(

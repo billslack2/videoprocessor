@@ -55,6 +55,12 @@ namespace
 			left.viewport.anamorphicScale.denominator ==
 				right.viewport.anamorphicScale.denominator &&
 			left.viewport.automaticCrop == right.viewport.automaticCrop &&
+			left.viewport.hasAutomaticCropAspectLimit ==
+				right.viewport.hasAutomaticCropAspectLimit &&
+			left.viewport.automaticCropAspectLimit.numerator ==
+				right.viewport.automaticCropAspectLimit.numerator &&
+			left.viewport.automaticCropAspectLimit.denominator ==
+				right.viewport.automaticCropAspectLimit.denominator &&
 			left.viewport.subtitleFit == right.viewport.subtitleFit &&
 			left.viewport.subtitleHoldMilliseconds ==
 				right.viewport.subtitleHoldMilliseconds &&
@@ -823,6 +829,9 @@ namespace UnifiedProfileRuntime
 			StateVariables::Value::Aspect(viewport.anamorphicScale);
 		variables["automatic_crop"] =
 			StateVariables::Value::Boolean(viewport.automaticCrop);
+		if (viewport.hasAutomaticCropAspectLimit)
+			variables["automatic_crop_aspect_limit"] =
+				StateVariables::Value::Aspect(viewport.automaticCropAspectLimit);
 		variables["subtitle_fit"] =
 			StateVariables::Value::Boolean(viewport.subtitleFit);
 		variables["subtitle_hold_seconds"] =
