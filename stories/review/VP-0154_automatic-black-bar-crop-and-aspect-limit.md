@@ -15,8 +15,10 @@ automatic black-bar crop, are centered (top/bottom for narrower, left/right
 for wider), and are disabled for NLS source geometry. Focused geometry and
 configuration tests passed from x64 Release builds; the Config editor
 round-trip passed through the new controls, and x64 Release GUI and VP Renderer
-builds succeeded. The branch is pushed for operator review. Do not merge or
-deploy until approved.
+builds succeeded. The validated x64 Release package was deployed to
+`C:\Videoprocessor\vp` for operator testing; its host and renderer hashes
+matched the package, and the active `VideoProcessor.cfg` was unchanged. The
+branch remains unmerged and in Review.
 
 ## User story
 
