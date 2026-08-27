@@ -1806,8 +1806,13 @@ namespace
 				rule.name.c_str(), raw.c_str());
 		if (readViewportString("crop_narrower_content_aspect_limit", raw))
 		{
+			settings.cropNarrowerContentAspectLimitConfigured = false;
 			double value = 0.0;
-			if (ParseAspectRatio(raw, value) && value >= 1.0 && value <= 4.0)
+			if (ConfigFile::NormalizeName(raw) == "none")
+			{
+				settings.cropNarrowerContentAspectLimit = 0.0;
+			}
+			else if (ParseAspectRatio(raw, value) && value >= 1.0 && value <= 4.0)
 			{
 				settings.cropNarrowerContentAspectLimit = value;
 				settings.cropNarrowerContentAspectLimitConfigured = true;
@@ -1823,8 +1828,13 @@ namespace
 				rule.name.c_str(), raw.c_str());
 		if (readViewportString("crop_wider_content_aspect_limit", raw))
 		{
+			settings.cropWiderContentAspectLimitConfigured = false;
 			double value = 0.0;
-			if (ParseAspectRatio(raw, value) && value >= 1.0 && value <= 4.0)
+			if (ConfigFile::NormalizeName(raw) == "none")
+			{
+				settings.cropWiderContentAspectLimit = 0.0;
+			}
+			else if (ParseAspectRatio(raw, value) && value >= 1.0 && value <= 4.0)
 			{
 				settings.cropWiderContentAspectLimit = value;
 				settings.cropWiderContentAspectLimitConfigured = true;
@@ -2129,8 +2139,13 @@ namespace
 		}
 		if (TryGetDisplayString(config, "crop_narrower_content_aspect_limit", rawValue))
 		{
+			settings.cropNarrowerContentAspectLimitConfigured = false;
 			double parsed = 0.0;
-			if (ParseAspectRatio(rawValue, parsed) && parsed >= 1.0 && parsed <= 4.0)
+			if (ConfigFile::NormalizeName(rawValue) == "none")
+			{
+				settings.cropNarrowerContentAspectLimit = 0.0;
+			}
+			else if (ParseAspectRatio(rawValue, parsed) && parsed >= 1.0 && parsed <= 4.0)
 			{
 				settings.cropNarrowerContentAspectLimit = parsed;
 				settings.cropNarrowerContentAspectLimitConfigured = true;
@@ -2149,8 +2164,13 @@ namespace
 		}
 		if (TryGetDisplayString(config, "crop_wider_content_aspect_limit", rawValue))
 		{
+			settings.cropWiderContentAspectLimitConfigured = false;
 			double parsed = 0.0;
-			if (ParseAspectRatio(rawValue, parsed) && parsed >= 1.0 && parsed <= 4.0)
+			if (ConfigFile::NormalizeName(rawValue) == "none")
+			{
+				settings.cropWiderContentAspectLimit = 0.0;
+			}
+			else if (ParseAspectRatio(rawValue, parsed) && parsed >= 1.0 && parsed <= 4.0)
 			{
 				settings.cropWiderContentAspectLimit = parsed;
 				settings.cropWiderContentAspectLimitConfigured = true;

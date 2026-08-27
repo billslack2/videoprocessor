@@ -3406,7 +3406,23 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             const QString alias = deprecatedViewportAlias(key);
             if (!alias.isEmpty())
                 document_->RemoveKnown(state->section.toStdString(), alias.toStdString().c_str());
-			if (text.trimmed().isEmpty()) document_->RemoveKnown(state->section.toStdString(), key.toStdString().c_str());
+			const bool viewportAspectLimit =
+				sectionPrefix == QStringLiteral("vprenderer.viewport") &&
+				(key == QStringLiteral("crop_narrower_content_aspect_limit") ||
+				 key == QStringLiteral("crop_wider_content_aspect_limit"));
+			if (text.trimmed().isEmpty())
+			{
+				if (viewportAspectLimit && state->section != sectionPrefix)
+				{
+					// Blank is the operator's explicit "no limit" choice. It must
+					// mask a limit inherited from the default Screen Config.
+					document_->SetKnown(state->section.toStdString(),
+						key.toStdString().c_str(), "none");
+				}
+				else
+					document_->RemoveKnown(state->section.toStdString(),
+						key.toStdString().c_str());
+			}
 			else
             {
                 QString stored = text.trimmed().compare(
@@ -4334,20 +4350,29 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         for (const Field& field : *fields)
         {
             QString raw = profileValue(section, field.key);
+			const bool viewportAspectLimit =
+				sectionPrefix == QStringLiteral("vprenderer.viewport") &&
+				(field.key == QStringLiteral("crop_narrower_content_aspect_limit") ||
+				 field.key == QStringLiteral("crop_wider_content_aspect_limit"));
+			const bool noAspectLimitOverride = viewportAspectLimit &&
+				ConfigFile::NormalizeName(raw.toStdString()) == "none";
             const bool defaultOnlyRendererField = sectionPrefix == QStringLiteral("vprenderer") &&
                 (field.key == QStringLiteral("output_diagnostics") ||
                  field.key == QStringLiteral("diagnostic_disable_shader_cache"));
             const bool defaultOnlyField = defaultOnlyRendererField;
             QString configured = raw;
-            if (configured.isEmpty() && list->count() > 0)
+			if (noAspectLimitOverride)
+				configured.clear();
+			else if (configured.isEmpty() && list->count() > 0)
                 configured = defaultProfile ? fallback(field.key) :
                     profileValue(list->item(0)->data(Qt::UserRole).toString(), field.key);
             if (configured.isEmpty()) configured = fallback(field.key);
             if (defaultOnlyField && !defaultProfile && list->count() > 0)
                 configured = value(list->item(0)->data(Qt::UserRole).toString(), field.key, fallback(field.key));
             field.widget->setEnabled(!defaultOnlyField || defaultProfile);
-            field.widget->setProperty("inherited", raw.isEmpty() && !defaultProfile);
-            field.widget->setToolTip(raw.isEmpty() ?
+			field.widget->setProperty("inherited", raw.isEmpty() && !defaultProfile);
+			field.widget->setToolTip(noAspectLimitOverride ?
+				QStringLiteral("No aspect ratio limit. This fill option may crop any trusted content in its direction.") : raw.isEmpty() ?
                 (defaultProfile ?
                     QStringLiteral("Using the built-in default. Editing creates an explicit setting.") :
                     QStringLiteral("Inherited from the default profile. Editing creates an override.")) :
