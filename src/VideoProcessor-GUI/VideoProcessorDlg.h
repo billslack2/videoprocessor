@@ -79,6 +79,9 @@
 static_assert(WM_MESSAGE_DIRECTSHOW_NOTIFICATION !=
 	WM_MESSAGE_DIRECTSHOW_OWNER_COMPLETION,
 	"DirectShow graph and owner-completion wakes must remain distinct");
+static_assert(WM_MESSAGE_RENDERER_ACTION_EVENT !=
+	WM_MESSAGE_RENDERER_QUEUE_CONTRACT_CHANGED,
+	"Profile action and queue-contract wakes must remain distinct");
 
 // Timer IDs
 #define TIMER_ID_1SECOND 1
