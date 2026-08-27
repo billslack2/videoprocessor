@@ -3,7 +3,7 @@
 ## Status
 
 Review (2026-08-27). Implemented on
-`codex/vp-0154-black-bar-crop-limit` at `0bf70c9`, rebased on current
+`codex/vp-0154-black-bar-crop-limit` at `383762df`, rebased on current
 `v1.3.001-beta` tip `85abed0`. Config now has two independent controls, both
 off by default: **Crop narrower content to fill screen** and **Crop wider
 content to fill screen**. Each has its own optional Aspect ratio limit and
@@ -24,8 +24,16 @@ matched the package, and the active `VideoProcessor.cfg` remained unchanged.
 The latest review commits also make newly entered profile overrides immediately
 use the normal bright field colour, label the profile currently being edited as
 active or not active, and apply Screen Config profile edits through the live
-profile path used by F2/F3 rather than restarting the renderer; they have not
-yet been deployed. The branch remains unmerged and in Review.
+profile path used by F2/F3 rather than restarting the renderer. The new Config
+layout adds compact VP Renderer tabs: **Rendering**, **Scaling**, **Color**,
+**Output**, **Screen**, **Zoom**, and **Processing**. Scaling has independent
+ordered profiles for upscaler, downscaler, and anti-ringing; those selections
+apply through the same live profile path. Screen and Zoom are shared views of
+the same selected screen profile: Screen owns geometry, while Zoom owns
+crop/fill and subtitle placement. Rendering now retains only Debanding,
+Dithering, and Display bit depth under **Processing**. The x64 Release Config
+build and focused GUI/native profile-policy regressions passed. The branch
+remains unmerged and in Review.
 
 ## User story
 
