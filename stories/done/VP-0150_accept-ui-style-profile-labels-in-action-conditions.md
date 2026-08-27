@@ -2,16 +2,17 @@
 
 ## Status
 
-Done — accepted and deployed on 2026-08-26.
+Done — accepted and deployed on 2026-08-26; rebased, validated, and merged
+into the beta integration branch on 2026-08-27.
 
 Confirmed source baseline: `origin/v1.3.001-beta` at
-`2cfbaf2d36a8a848743714178b3fc2861be2d127`. The default integration branch
-was confirmed as `v1.3.001-beta`; it shares that tip with the prior beta
-branch.
+`56a9c73270c833404817e292a6c35bb165a05a72`. The default integration branch
+was confirmed as `v1.3.001-beta`.
 
 Implementation branch: `codex/ui-queue-action-alias`.
-Source commit: `e8dc1a3` (`fix: accept UI profile labels in actions`), pushed
-to `origin/codex/ui-queue-action-alias`.
+Source commit: `e0d302e` (`fix: accept UI profile labels in actions`), pushed
+to `origin/codex/ui-queue-action-alias` and fast-forward merged into
+`origin/v1.3.001-beta`.
 
 ## User story
 
@@ -58,6 +59,8 @@ without requiring users to discover the internal `low_latency` spelling.
   `VideoProcessor-VPRenderer`, and the native test project.
 - Targeted native test
   `UnifiedActionsPublishCommittedSourceAndProfileEvents` passed.
+- After rebasing onto the updated beta tip, a clean x64 Release native-test
+  rebuild and the same targeted test passed again before the merge.
 - The release executable and matching VP Renderer plugin DLL were deployed as
   one versioned pair to `C:\Videoprocessor\vp`; their installed SHA-256 hashes
   matched the respective build outputs.
