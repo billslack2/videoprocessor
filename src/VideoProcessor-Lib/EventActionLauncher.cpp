@@ -150,12 +150,19 @@ namespace EventActionLauncher
 			wideWorkingDirectory.empty() ? nullptr :
 			wideWorkingDirectory.c_str(), &startupInfo, &processInfo))
 		{
-			DebugLog::Log("event action '%s' launch failed: error=%lu",
-				action.name.c_str(), GetLastError());
+			DebugLog::Log(
+				"event action process creation failed: action='%s' role=%s "
+				"program=%s error=%lu",
+				action.name.c_str(), ActionIdentity(action).c_str(),
+				program.c_str(), GetLastError());
 			return;
 		}
+		const DWORD processId = processInfo.dwProcessId;
 		CloseHandle(processInfo.hThread);
 		CloseHandle(processInfo.hProcess);
-		DebugLog::Log("event action '%s' launched", action.name.c_str());
+		DebugLog::Log(
+			"event action process created: action='%s' role=%s pid=%lu program=%s",
+			action.name.c_str(), ActionIdentity(action).c_str(), processId,
+			program.c_str());
 	}
 }

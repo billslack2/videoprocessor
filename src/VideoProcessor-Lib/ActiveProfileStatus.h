@@ -11,8 +11,8 @@
 
 namespace ActiveProfileStatus
 {
-    constexpr uint32_t Version = 4;
-    constexpr wchar_t MappingName[] = L"Local\\VideoProcessor.ActiveProfileStatus.v4";
+    constexpr uint32_t Version = 5;
+    constexpr wchar_t MappingName[] = L"Local\\VideoProcessor.ActiveProfileStatus.v5";
     constexpr size_t MaximumActiveShaders = 16;
 
     struct Snapshot
@@ -22,6 +22,7 @@ namespace ActiveProfileStatus
         uint64_t generation = 0;
         char queue[96]{};
         char renderer[96]{};
+        char color[96]{};
         char viewport[96]{};
         uint64_t rendererGeneration = 0;
         uint64_t shaderGeneration = 0;
@@ -74,6 +75,7 @@ namespace ActiveProfileStatus
         next.processId = processId;
         next.generation = generation;
         const auto renderer = selections.find("display");
+        const auto color = selections.find("color");
         const auto queue = selections.find("queue");
         const auto viewport = selections.find("viewport");
         // Queue profiles use the first (root) profile whenever no conditional
@@ -83,6 +85,8 @@ namespace ActiveProfileStatus
             std::string("queue") : SectionFor("queue", queue->second));
         Copy(next.renderer, sizeof(next.renderer), renderer == selections.end() ?
             std::string() : SectionFor("vprenderer", renderer->second));
+        Copy(next.color, sizeof(next.color), color == selections.end() ?
+            std::string() : SectionFor("vprenderer.color", color->second));
         Copy(next.viewport, sizeof(next.viewport), viewport == selections.end() ?
             std::string() : SectionFor("vprenderer.viewport", viewport->second));
         next.rendererGeneration = rendererGeneration;

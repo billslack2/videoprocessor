@@ -68,6 +68,7 @@ vprenderer.sdr_adjust_gamma	vprenderer-sdr-adjust-gamma	VP Renderer	no
 vprenderer.sdr_target_primaries	vprenderer-sdr-target-primaries	VP Renderer	no
 vprenderer.report_bt2020_to_display	vprenderer-report-bt2020	VP Renderer	no
 general.switch_refresh_rate	general-switch-refresh-rate	General	no
+general.profile_change_display_seconds	general-profile-change-display	General display	no
 vprenderer.<variant>.when	vprenderer-variant-when	VP Renderer	no
 vprenderer.<variant>.shortcut	vprenderer-variant-shortcut	VP Renderer	no
 lldv.max_cll	lldv-max-cll	LLDV metadata	no
@@ -116,6 +117,8 @@ shader.<group>.<member>.vprenderer_max_crop_percent	shader-nls-vprenderer-max-cr
 shader.<group>.<member>.vprenderer_crop_preference	shader-nls-vprenderer-crop-preference	Shader NLS	no
 actions.<name>.enabled	action-enabled	Event action	no
 actions.<name>.renderer	action-renderer	Event action	no
+actions.<name>.coalesce_role	action-coalesce-role	Event action	no
+actions.<name>.delay_seconds	action-delay	Event action	no
 actions.<name>.on	action-on	Event action	no
 actions.<name>.when	action-when	Event action	no
 actions.<name>.run	action-run	Event action	no

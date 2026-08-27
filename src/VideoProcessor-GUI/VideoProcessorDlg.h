@@ -32,6 +32,7 @@
 #include <RendererRetirementService.h>
 #include <RendererTransitionModel.h>
 #include <QueueProfileRestartPolicy.h>
+#include <EventActionLauncher.h>
 #include <UnifiedProfileRuntime.h>
 #include <VideoFrame.h>
 #include <FullscreenVideoWindow.h>
@@ -71,6 +72,7 @@
 #define WM_MESSAGE_RENDERER_RESTART_REQUIRED            (WM_APP + 17)
 #define WM_MESSAGE_DIRECTSHOW_OWNER_COMPLETION           (WM_APP + 18)
 #define WM_MESSAGE_FULLSCREEN_HOST_RESIZED               (WM_APP + 19)
+#define WM_MESSAGE_RENDERER_ACTION_EVENT                 (WM_APP + 20)
 
 static_assert(WM_MESSAGE_DIRECTSHOW_NOTIFICATION !=
 	WM_MESSAGE_DIRECTSHOW_OWNER_COMPLETION,
@@ -94,6 +96,7 @@ static_assert(WM_MESSAGE_DIRECTSHOW_NOTIFICATION !=
 #define LLDV_PROFILE_APPLY_TIMER_ID 12
 #define CONFIGURATION_LIVE_APPLY_TIMER_ID 13
 #define QUEUE_PROFILE_RESET_TIMER_ID 14
+#define PROFILE_CHANGE_OVERLAY_TIMER_ID 15
 #define CONFIGURATION_EDITOR_HOTKEY_ID 0x5650
 #define SHADER_RULE_REFRESH_INTERVAL_MS 25
 #define CONFIGURATION_LIVE_APPLY_INTERVAL_MS 250
@@ -223,6 +226,7 @@ public:
 	afx_msg LRESULT OnMessageRendererStateChange(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnMessageRendererDetailString(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnMessageRendererGraphEvent(WPARAM wParam, LPARAM lParam);
+	afx_msg LRESULT OnMessageRendererActionEvent(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnMessageRendererRestartRequired(
 		WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnMessageExternalShortcut(WPARAM wParam, LPARAM lParam);
@@ -281,6 +285,9 @@ public:
 		const CString& details, uint32_t rendererGeneration) override;
 	void OnRendererGraphEvent(
 		long eventCode, uint32_t rendererGeneration) override;
+	void OnRendererActionEvent(const char* event,
+		double actualRefreshRate, double requestedRefreshRate,
+		double previousRefreshRate, uint32_t rendererGeneration) override;
 	void OnRendererRestartRequired(uint32_t rendererGeneration) override;
 
 protected:
@@ -516,6 +523,8 @@ protected:
 			DXVA_VideoPrimaries::DXVA_VideoPrimaries_Unknown;
 		bool hasSceneDetect = false;
 		bool sceneDetect = false;
+		unsigned int profileChangeDisplaySeconds =
+			ProfileChangeOverlay::DefaultDisplaySeconds;
 	};
 	StagedRuntimeSettings m_stagedRuntimeSettings;
 	std::unique_ptr<ConfigFile> m_stagedConfiguration;
@@ -759,6 +768,7 @@ protected:
 	RendererBindingToken m_rendererResetBindingToken = 0;
 	UnifiedProfileRuntime::Runtime m_profileRuntime;
 	HANDLE m_unifiedActionCancelEvent = nullptr;
+	EventActionLauncher::PendingActionCoalescer m_unifiedActionCoalescer;
 	std::vector<std::thread> m_unifiedActionWorkers;
 	std::map<WORD, CString> m_unifiedProfileShortcutKeys;
 	WORD m_lastUnifiedProfileCommand = 0;
@@ -786,6 +796,13 @@ protected:
 	const IVideoRenderer* m_lastStatsTelemetryRenderer = nullptr;
 	uint32_t m_lastStatsTelemetryGeneration = 0;
 	bool m_statsOverlayRequestedVisible = false;
+	bool m_profileChangeOverlayInitialized = false;
+	std::map<std::string, std::string> m_profileChangeOverlaySelections;
+	std::vector<ProfileChangeOverlay::Item> m_profileChangeOverlayItems;
+	unsigned int m_profileChangeDisplaySeconds =
+		ProfileChangeOverlay::DefaultDisplaySeconds;
+	ULONGLONG m_profileChangeOverlayHoldUntil = 0;
+	ULONGLONG m_profileChangeOverlayFadeUntil = 0;
 
 	struct ActiveOutputSweepCase
 	{
@@ -970,6 +987,10 @@ protected:
 	void ApplyUnifiedProfileSnapshot(
 		const std::shared_ptr<const UnifiedProfileRuntime::Snapshot>& snapshot,
 		bool allowRestart, bool queueProfileResetPending = false);
+	void PublishProfileChangeOverlay(
+		const std::shared_ptr<const UnifiedProfileRuntime::Snapshot>& snapshot);
+	void UpdateProfileChangeOverlay(ULONGLONG now);
+	void ClearProfileChangeOverlay();
 	void QueueUnifiedQueueProfileReset(
 		const std::shared_ptr<const UnifiedProfileRuntime::Snapshot>& snapshot,
 		const std::string& source);

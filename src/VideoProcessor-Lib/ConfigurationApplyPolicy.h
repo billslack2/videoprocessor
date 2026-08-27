@@ -13,6 +13,7 @@ namespace ConfigurationApplyPolicy
 	enum class Action
 	{
 		SaveOnly,
+		ApplyInterface,
 		ReloadShortcuts,
 		ResetQueues,
 		ApplyProfiles,
@@ -172,6 +173,10 @@ namespace ConfigurationApplyPolicy
 		if (NormalizeSection(change.section) == "general" &&
 			NormalizeSection(change.key) == "hide_legacy_renderers")
 			return Action::SaveOnly;
+		if ((NormalizeSection(change.section) == "general" ||
+			NormalizeSection(change.section) == "command_line") &&
+			NormalizeSection(change.key) == "profile_change_display_seconds")
+			return Action::ApplyInterface;
 		if (IsShortcutAffectingChange(change)) return Action::ReloadShortcuts;
 		if (IsOutputExperimentChange(change)) return Action::RestartCapture;
 		const std::string section = NormalizeSection(change.section);
@@ -211,6 +216,7 @@ namespace ConfigurationApplyPolicy
 		case Action::ResetQueues: return "Reset queues";
 		case Action::ApplyProfiles: return "Apply rendering live";
 		case Action::ReloadShortcuts: return "Apply shortcuts live";
+		case Action::ApplyInterface: return "Apply display live";
 		default: return "Takes effect next start";
 		}
 	}

@@ -411,8 +411,8 @@ void testEveryPageRoundTrips()
 
     QStackedWidget* pages = requireControl<QStackedWidget>(window,
         QStringLiteral("settingsPages"));
-    require(pages->count() == 16,
-        "Renderer Output, Input, shader, and shortcut child pages were not added as dedicated settings pages");
+    require(pages->count() == 17,
+        "Renderer Color Config, Output, Input, shader, and shortcut child pages were not added as dedicated settings pages");
     for (QPushButton* button : window.findChildren<QPushButton*>())
         require(!button->property("navChild").toBool(),
             "Grouped settings still expose child entries in the left navigation");
@@ -450,7 +450,8 @@ void testEveryPageRoundTrips()
     requireTabs({ QStringLiteral("Setup"), QStringLiteral("Standard"),
         QStringLiteral("NLS") });
     vpRenderer->click();
-    requireTabs({ QStringLiteral("Rendering"), QStringLiteral("Output"),
+    requireTabs({ QStringLiteral("Rendering"), QStringLiteral("Color Config"),
+        QStringLiteral("Output"),
         QStringLiteral("Screen Config"),
         QStringLiteral("Input Processing") });
     directShow->click();
@@ -511,6 +512,13 @@ void testEveryPageRoundTrips()
         QStringLiteral("V210_TO_P010"));
     selectData(requireControl<QComboBox>(window, QStringLiteral("config.general.container_colorspace")),
         QStringLiteral("BT2020"));
+	QSpinBox* profileChangeDisplay = requireControl<QSpinBox>(window,
+		QStringLiteral("config.general.profile_change_display_seconds"));
+	require(profileChangeDisplay->value() == 5,
+		"Profile change display did not default to five seconds");
+	profileChangeDisplay->setValue(0);
+	require(profileChangeDisplay->specialValueText() == QStringLiteral("Off"),
+		"Zero profile change display duration is not labelled Off");
 
     requireControl<QSpinBox>(window, QStringLiteral("config.queue.queue_size"))->setValue(48);
     requireControl<QSpinBox>(window, QStringLiteral("config.queue.lead_frames"))->setValue(3);
@@ -776,6 +784,7 @@ void testEveryPageRoundTrips()
     const QList<QByteArray> expected = {
         "capture_device: Decklink Test Device", "capture_input: HDMI",
         "renderer: VP Renderer", "fullscreen: false",
+		"profile_change_display_seconds: 0",
         "scene_detect: false",
         "fullscreen_monitor_name: Test Display", "container_colorspace: BT2020",
         "queue_size: 48", "lead_frames: 3", "reset_queue_too_large_percent: 200",
@@ -811,6 +820,9 @@ void testEveryPageRoundTrips()
     require(!requireControl<QCheckBox>(reloaded,
         QStringLiteral("config.general.fullscreen"))->isChecked(),
         "General Boolean did not reload");
+	require(requireControl<QSpinBox>(reloaded,
+		QStringLiteral("config.general.profile_change_display_seconds"))->value() == 0,
+		"Disabled profile change display duration did not reload");
     require(requireControl<QSpinBox>(reloaded,
         QStringLiteral("config.queue.queue_size"))->value() == 48,
         "Queue value did not reload");
@@ -914,16 +926,19 @@ void testRendererSectionTabsRemainSynchronizedDuringRapidClicks()
         }
     };
 
-    requireTabs({ QStringLiteral("Rendering"), QStringLiteral("Output"),
+    requireTabs({ QStringLiteral("Rendering"), QStringLiteral("Color Config"),
+        QStringLiteral("Output"),
         QStringLiteral("Screen Config"),
         QStringLiteral("Input Processing") });
     runSequence({
-        { 1, 13, "Output", "config.vprenderer.output.profiles" },
-        { 2, 4, "Screen Config", "config.vprenderer.viewport.profiles" },
-        { 3, 11, "Input processing", "config.vprenderer.input_processing.video_conversion" },
+        { 2, 13, "Output", "config.vprenderer.output.profiles" },
+        { 3, 4, "Screen Config", "config.vprenderer.viewport.profiles" },
+        { 4, 11, "Input processing", "config.vprenderer.input_processing.video_conversion" },
+        { 1, 16, "Color Config", "config.vprenderer.color.profiles" },
         { 0, 2, "Rendering", "config.vprenderer.profiles" },
-        { 3, 11, "Input processing", "config.vprenderer.input_processing.video_conversion" },
-        { 2, 4, "Screen Config", "config.vprenderer.viewport.profiles" },
+        { 4, 11, "Input processing", "config.vprenderer.input_processing.video_conversion" },
+        { 3, 4, "Screen Config", "config.vprenderer.viewport.profiles" },
+        { 1, 16, "Color Config", "config.vprenderer.color.profiles" },
         { 0, 2, "Rendering", "config.vprenderer.profiles" }
     });
     require(navigationButton(QStringLiteral("VP Renderer")) &&
@@ -1159,7 +1174,7 @@ void testSdrGammaAdjustmentLabelsAndPersistence()
     {
         ConfigEditorWindow window(path, 0, true);
         QComboBox* adjustment = requireControl<QComboBox>(window,
-            QStringLiteral("config.vprenderer.sdr_adjust_gamma"));
+            QStringLiteral("config.vprenderer.color.sdr_adjust_gamma"));
         require(adjustment->findText(QStringLiteral("Auto")) >= 0 &&
             adjustment->findText(QStringLiteral("On")) >= 0 &&
             adjustment->findText(QStringLiteral("Off")) >= 0,
@@ -1172,10 +1187,62 @@ void testSdrGammaAdjustmentLabelsAndPersistence()
     {
         ConfigEditorWindow window(path, 0, true);
         QComboBox* adjustment = requireControl<QComboBox>(window,
-            QStringLiteral("config.vprenderer.sdr_adjust_gamma"));
+            QStringLiteral("config.vprenderer.color.sdr_adjust_gamma"));
         require(adjustment->currentData().toString() == QStringLiteral("off"),
             "SDR gamma adjustment did not reload from the renderer profile");
     }
+}
+
+void testLegacyRendererColorSettingsMigrateToColorConfigs()
+{
+    QTemporaryDir directory;
+    const QString path = copyFixture(directory);
+    QByteArray configuration = readBytes(path);
+    const qsizetype colorStart = configuration.indexOf(
+        "[vprenderer.color.rec709]\n");
+    const qsizetype viewportStart = configuration.indexOf(
+        "[vprenderer.viewport]\n", colorStart);
+    require(colorStart >= 0 && viewportStart > colorStart,
+        "The Color Config fixture cannot be prepared for legacy migration");
+    configuration.remove(colorStart, viewportStart - colorStart);
+    QFile file(path);
+    require(file.open(QIODevice::WriteOnly | QIODevice::Truncate) &&
+        file.write(configuration) == configuration.size(),
+        "Cannot prepare a legacy Rendering color-settings fixture");
+    file.close();
+
+    ConfigEditorWindow window(path, 0, true);
+    QListWidget* colorProfiles = requireControl<QListWidget>(window,
+        QStringLiteral("config.vprenderer.color.profiles"));
+    require(colorProfiles->count() == 2,
+        "Legacy Rendering color settings did not populate independent Color Config profiles");
+    require(colorProfiles->item(0)->data(Qt::UserRole).toString() ==
+            QStringLiteral("vprenderer.color.rec709") &&
+        colorProfiles->item(1)->data(Qt::UserRole).toString() ==
+            QStringLiteral("vprenderer.color.bt2020"),
+        "Color Config migration did not preserve the legacy profile order");
+    save(window);
+
+    const QByteArray saved = readBytes(path);
+    const qsizetype colorRec709Start = saved.indexOf(
+        "[vprenderer.color.rec709]\n");
+    const qsizetype colorRec709End = saved.indexOf("\n[", colorRec709Start + 1);
+    const QByteArray rec709Color = saved.mid(colorRec709Start,
+        colorRec709End - colorRec709Start);
+    require(colorRec709Start >= 0 && colorRec709End > colorRec709Start &&
+        saved.contains("[vprenderer.color.bt2020]\n") &&
+        rec709Color.contains("when: ${key}==\"F5\"") &&
+        !rec709Color.contains("sdr_target_nits:"),
+        "Color Config migration incorrectly moved renderer nits into Color Config");
+    const qsizetype rendererStart = saved.indexOf("[vprenderer.rec709]\n");
+    const qsizetype rendererEnd = saved.indexOf("[vprenderer.bt2020]\n",
+        rendererStart);
+    const QByteArray renderer = saved.mid(rendererStart,
+        rendererEnd - rendererStart);
+    require(rendererStart >= 0 && rendererEnd > rendererStart &&
+        renderer.contains("sdr_target_nits: 100") &&
+        !renderer.contains("sdr_target_primaries:"),
+        "Renderer nits did not remain in the Rendering profile");
 }
 
 void testLegacyVpInputOverrideMigratesToIndependentPolicySection()
@@ -1477,44 +1544,54 @@ void testRendererProfileSectionsCollapseAndPersist()
     window.show();
     QCoreApplication::processEvents();
 
-    QToolButton* calibration = requireControl<QToolButton>(window,
-        QStringLiteral("rendererSection.calibration"));
-    QToolButton* sourceColor = requireControl<QToolButton>(window,
-        QStringLiteral("rendererSection.sourceColor"));
     QToolButton* toneMapping = requireControl<QToolButton>(window,
         QStringLiteral("rendererSection.toneMapping"));
     QToolButton* scaling = requireControl<QToolButton>(window,
         QStringLiteral("rendererSection.scalingCleanup"));
     QToolButton* lut = requireControl<QToolButton>(window,
         QStringLiteral("rendererSection.lut"));
-    require(!calibration->isChecked() && !sourceColor->isChecked() &&
-        !toneMapping->isChecked() && !scaling->isChecked() &&
+    QStackedWidget* pages = requireControl<QStackedWidget>(window,
+        QStringLiteral("settingsPages"));
+    require(!toneMapping->isChecked() && !scaling->isChecked() &&
         !lut->isChecked(),
         "A renderer section was not collapsed initially");
     require(scaling->text() == QStringLiteral("Scaling and Processing") &&
         !scaling->text().contains(u'_'),
         "The scaling section exposes an internal identifier instead of a friendly heading");
-    require(sourceColor->text() == QStringLiteral("Source transfer"),
-        "The SDR input-transfer controls are not grouped under Source transfer");
-    QWidget* calibrationContent = requireControl<QWidget>(window,
-        QStringLiteral("rendererSection.calibration.content"));
     QWidget* toneMappingContent = requireControl<QWidget>(window,
         QStringLiteral("rendererSection.toneMapping.content"));
     require(toneMappingContent->findChild<QLineEdit*>(
         QStringLiteral("config.vprenderer.sdr_target_nits")) != nullptr &&
         toneMappingContent->findChild<QLineEdit*>(
-            QStringLiteral("config.vprenderer.sdr_black_nits")) != nullptr &&
-        calibrationContent->findChild<QLineEdit*>(
-            QStringLiteral("config.vprenderer.sdr_target_nits")) == nullptr,
-        "Tone-mapping target white/black controls are not grouped under Tone mapping");
+            QStringLiteral("config.vprenderer.sdr_black_nits")) != nullptr,
+        "Renderer luminance controls are not grouped under Tone mapping");
+    require(pages->widget(2)->findChild<QToolButton*>(
+        QStringLiteral("rendererSection.calibration")) == nullptr &&
+        pages->widget(2)->findChild<QToolButton*>(
+            QStringLiteral("rendererSection.sourceColor")) == nullptr,
+        "Display calibration or Source transfer is still shown in Rendering");
+    window.selectPage(16);
+    QToolButton* calibration = requireControl<QToolButton>(window,
+        QStringLiteral("rendererSection.calibration"));
+    QToolButton* sourceColor = requireControl<QToolButton>(window,
+        QStringLiteral("rendererSection.sourceColor"));
+    QWidget* calibrationContent = requireControl<QWidget>(window,
+        QStringLiteral("rendererSection.calibration.content"));
+    require(!calibration->isChecked() && !sourceColor->isChecked(),
+        "A Color Config section was not collapsed initially");
+    require(sourceColor->text() == QStringLiteral("Source transfer"),
+        "The SDR input-transfer controls are not grouped under Color Config Source transfer");
+    require(calibrationContent->findChild<QLineEdit*>(
+        QStringLiteral("config.vprenderer.color.sdr_target_nits")) == nullptr &&
+        pages->widget(16)->findChild<QLineEdit*>(
+            QStringLiteral("config.vprenderer.color.sdr_black_nits")) == nullptr,
+        "Color Config incorrectly exposes renderer white/black nits");
     require(window.findChild<QComboBox*>(
         QStringLiteral("config.vprenderer.default_screen_profile")) == nullptr,
         "The obsolete legacy screen-profile selector is still exposed");
     require(window.findChild<QComboBox*>(
         QStringLiteral("config.vprenderer.deband")) == nullptr,
         "The overlapping legacy debanding toggle is still exposed");
-    QStackedWidget* pages = requireControl<QStackedWidget>(window,
-        QStringLiteral("settingsPages"));
     require(pages->widget(2)->findChild<QToolButton*>(
         QStringLiteral("rendererSection.outputExperiments")) == nullptr,
         "Output experiments are still owned by Rendering");
@@ -1545,11 +1622,11 @@ void testRendererProfileSectionsCollapseAndPersist()
         QStringLiteral("Force VP-owned DXGI presenter (flip only, beta)"),
         "The VP-owned DXGI beta path is not labelled as a flip-only diagnostic");
     require(requireControl<QCheckBox>(window,
-        QStringLiteral("config.vprenderer.report_bt2020_to_display")),
-        "The renderer display-reporting control is not included in Display calibration");
+        QStringLiteral("config.vprenderer.color.report_bt2020_to_display")),
+        "The Color Config display-reporting control is not included in Display calibration");
     require(requireControl<QComboBox>(window,
-        QStringLiteral("config.vprenderer.output_gamma")),
-        "The display-transfer control is not included in Display calibration");
+        QStringLiteral("config.vprenderer.color.output_gamma")),
+        "The Color Config display-transfer control is not included in Display calibration");
     require(requireControl<QComboBox>(window,
         QStringLiteral("config.vprenderer.output.output_presentation")) &&
         requireControl<QComboBox>(window,
@@ -1656,20 +1733,23 @@ void testRendererProfileSectionsCollapseAndPersist()
     require(!calibrationContent->isVisibleTo(&window),
         "Display calibration content is visible while collapsed");
 
-    window.selectPage(2);
+    window.selectPage(16);
     sourceColor->click();
     require(sourceColor->isChecked() && requireControl<QWidget>(window,
         QStringLiteral("rendererSection.sourceColor.content"))->isVisibleTo(&window),
         "Source transfer section did not expand");
-    QListWidget* profiles = requireControl<QListWidget>(window,
-        QStringLiteral("config.vprenderer.profiles"));
-    if (profiles->count() > 1) profiles->setCurrentRow(1);
+    QListWidget* colorProfiles = requireControl<QListWidget>(window,
+        QStringLiteral("config.vprenderer.color.profiles"));
+    if (colorProfiles->count() > 1) colorProfiles->setCurrentRow(1);
     QCoreApplication::processEvents();
     require(sourceColor->isChecked(),
         "Renderer section expansion state changed when selecting another profile");
     // Selecting the canonical control must retire the compatibility toggle,
     // so saving cannot leave two conflicting debanding values in one profile.
-    profiles->setCurrentRow(0);
+    window.selectPage(2);
+    QListWidget* renderingProfiles = requireControl<QListWidget>(window,
+        QStringLiteral("config.vprenderer.profiles"));
+    renderingProfiles->setCurrentRow(0);
     QCoreApplication::processEvents();
     selectData(debanding, QStringLiteral("light"));
     selectData(displayBitDepth, QStringLiteral("8"));
@@ -1702,7 +1782,7 @@ void testOutputExperimentsPersistAndRestoreDefaults()
     QComboBox* outputTransportGamma = requireControl<QComboBox>(window,
         QStringLiteral("config.vprenderer.output.output_transport_gamma"));
     QComboBox* outputGamma = requireControl<QComboBox>(window,
-        QStringLiteral("config.vprenderer.output_gamma"));
+        QStringLiteral("config.vprenderer.color.output_gamma"));
     const QString originalPresentation = outputPresentation->currentData().toString();
     const QString originalRange = outputRange->currentData().toString();
     const QString originalGamma = outputGamma->currentData().toString();
@@ -1989,18 +2069,32 @@ void testActiveProfileMarkersCoverRelevantLists()
     ConfigEditorWindow window(copyFixture(directory), 0, true);
     auto* queue = requireControl<QListWidget>(window, QStringLiteral("config.queue.profiles"));
     auto* renderer = requireControl<QListWidget>(window, QStringLiteral("config.vprenderer.profiles"));
+    auto* color = requireControl<QListWidget>(window, QStringLiteral("config.vprenderer.color.profiles"));
     auto* viewport = requireControl<QListWidget>(window, QStringLiteral("config.vprenderer.viewport.profiles"));
     auto* shader = requireControl<QListWidget>(window, QStringLiteral("config.shader.nls.modes"));
+    require(color->count() >= 2,
+        "Color Config fixture does not expose distinct Rec.709 and BT.2020 profiles");
     window.setActiveProfileStatusForTesting(
         queue->item(0)->data(Qt::UserRole).toString(),
         renderer->item(0)->data(Qt::UserRole).toString(),
+        color->item(0)->data(Qt::UserRole).toString(),
         viewport->item(0)->data(Qt::UserRole).toString(),
         { shader->item(0)->data(Qt::UserRole).toString() });
     require(queue->item(0)->data(Qt::UserRole + 12).toBool() &&
         renderer->item(0)->data(Qt::UserRole + 12).toBool() &&
+        color->item(0)->data(Qt::UserRole + 12).toBool() &&
         viewport->item(0)->data(Qt::UserRole + 12).toBool() &&
         shader->item(0)->data(Qt::UserRole + 12).toBool(),
         "A resolved active profile did not receive its active marker");
+    window.setActiveProfileStatusForTesting(
+        queue->item(0)->data(Qt::UserRole).toString(),
+        renderer->item(0)->data(Qt::UserRole).toString(),
+        color->item(1)->data(Qt::UserRole).toString(),
+        viewport->item(0)->data(Qt::UserRole).toString(),
+        { shader->item(0)->data(Qt::UserRole).toString() });
+    require(!color->item(0)->data(Qt::UserRole + 12).toBool() &&
+        color->item(1)->data(Qt::UserRole + 12).toBool(),
+        "The Color Config active marker did not follow a shortcut selection");
 
     window.selectPage(1);
     window.show();
@@ -2032,24 +2126,24 @@ void testActiveShaderMarkersUseAuthoritativeSet()
     const QString first = shader->item(1)->data(Qt::UserRole).toString();
     const QString second = shader->item(2)->data(Qt::UserRole).toString();
 
-    window.setActiveProfileStatusForTesting({}, {}, {}, { off });
+    window.setActiveProfileStatusForTesting({}, {}, {}, {}, { off });
     require(shader->currentRow() == 2 &&
         shader->item(0)->data(Qt::UserRole + 12).toBool() &&
         !shader->item(2)->data(Qt::UserRole + 12).toBool(),
         "Off activity was confused with the selected editing row");
 
-    window.setActiveProfileStatusForTesting({}, {}, {}, { first });
+    window.setActiveProfileStatusForTesting({}, {}, {}, {}, { first });
     require(!shader->item(0)->data(Qt::UserRole + 12).toBool() &&
         shader->item(1)->data(Qt::UserRole + 12).toBool() &&
         shader->currentRow() == 2,
         "A single active shader did not move independently of selection");
 
-    window.setActiveProfileStatusForTesting({}, {}, {}, { first, second });
+    window.setActiveProfileStatusForTesting({}, {}, {}, {}, { first, second });
     require(shader->item(1)->data(Qt::UserRole + 12).toBool() &&
         shader->item(2)->data(Qt::UserRole + 12).toBool(),
         "Multiple authoritative active shaders were collapsed to one row");
 
-    window.setActiveProfileStatusForTesting({}, {}, {}, { first }, false);
+    window.setActiveProfileStatusForTesting({}, {}, {}, {}, { first }, false);
     for (int index = 0; index < shader->count(); ++index)
         require(!shader->item(index)->data(Qt::UserRole + 12).toBool(),
             "Unavailable shader state retained a guessed active marker");
@@ -2072,7 +2166,8 @@ void testActiveShaderStatusRejectsStaleGeneration()
 void testStandaloneConfigAcceptsLiveActiveProfileStatus()
 {
     ActiveProfileStatus::Publish(GetCurrentProcessId(), 1,
-        { { "queue", "low_latency" }, { "display", "rec709" } },
+        { { "queue", "low_latency" }, { "display", "rec709" },
+            { "color", "bt2020" } },
         7, true, { "shader.nls.nonlinear_stretch",
             "shader.future.member" });
     ActiveProfileStatus::Snapshot snapshot;
@@ -2080,6 +2175,7 @@ void testStandaloneConfigAcceptsLiveActiveProfileStatus()
         "Standalone Config did not accept the live VP active-profile status");
     require(ActiveProfileStatus::ShaderSetIsCurrent(snapshot) &&
         snapshot.shaderCount == 2 &&
+        std::string(snapshot.color) == "vprenderer.color.bt2020" &&
         std::string(snapshot.shaders[0]) == "shader.nls.nonlinear_stretch" &&
         std::string(snapshot.shaders[1]) == "shader.future.member",
         "Live status did not preserve the authoritative shader set");
@@ -2152,20 +2248,20 @@ void testChoiceLabelsAndVpRendererName()
     QComboBox* quality = requireControl<QComboBox>(window,
         QStringLiteral("config.vprenderer.quality"));
     QComboBox* displayPrimaries = requireControl<QComboBox>(window,
-        QStringLiteral("config.vprenderer.sdr_target_primaries"));
+        QStringLiteral("config.vprenderer.color.sdr_target_primaries"));
     require(displayPrimaries->count() == 2 &&
         displayPrimaries->currentData().toString() == QStringLiteral("REC709") &&
         displayPrimaries->findText(QStringLiteral("Default"),
             Qt::MatchStartsWith) < 0,
         "Display primaries still exposes Default as a separate choice");
     require(requireControl<QLabel>(window,
-        QStringLiteral("config.vprenderer.output_gamma.auto_status"))->text() ==
+        QStringLiteral("config.vprenderer.color.output_gamma.auto_status"))->text() ==
             QStringLiteral("Auto: sRGB") &&
         requireControl<QLabel>(window,
-        QStringLiteral("config.vprenderer.sdr_adjust_gamma.auto_status"))->text() ==
+        QStringLiteral("config.vprenderer.color.sdr_adjust_gamma.auto_status"))->text() ==
             QStringLiteral("Auto: Conditional SDR-to-sRGB policy") &&
         requireControl<QLabel>(window,
-        QStringLiteral("config.vprenderer.sdr_input_transfer.auto_status"))->text() ==
+        QStringLiteral("config.vprenderer.color.sdr_input_transfer.auto_status"))->text() ==
             QStringLiteral("Auto: Source unavailable") &&
         requireControl<QLabel>(window,
         QStringLiteral("config.vprenderer.display_bit_depth.auto_status"))->text() ==
@@ -2396,17 +2492,17 @@ void testUnchangedActiveProfileStatusDoesNotInvalidateLists()
         "Shader fixture does not expose enough active-profile rows");
 
     const QString first = shader->item(1)->data(Qt::UserRole).toString();
-    window.setActiveProfileStatusForTesting({}, {}, {}, { first });
+    window.setActiveProfileStatusForTesting({}, {}, {}, {}, { first });
     int dataChanges = 0;
     QObject::connect(shader->model(), &QAbstractItemModel::dataChanged,
         [&dataChanges] { ++dataChanges; });
 
-    window.setActiveProfileStatusForTesting({}, {}, {}, { first });
+    window.setActiveProfileStatusForTesting({}, {}, {}, {}, { first });
     require(dataChanges == 0,
         "An unchanged active-profile snapshot invalidated the list model");
 
     const QString second = shader->item(2)->data(Qt::UserRole).toString();
-    window.setActiveProfileStatusForTesting({}, {}, {}, { second });
+    window.setActiveProfileStatusForTesting({}, {}, {}, {}, { second });
     require(dataChanges > 0,
         "A changed active-profile snapshot did not update the list model");
 }
@@ -2585,6 +2681,11 @@ void testNewActionStartsUnconfigured()
     require(requireControl<QPlainTextEdit>(window,
         QStringLiteral("config.actions.when"))->toPlainText().isEmpty(),
         "New action fabricated a condition");
+	requireControl<QLineEdit>(window,
+		QStringLiteral("config.actions.coalesce_role"))->setText(
+			QStringLiteral("test-state"));
+	requireControl<QSpinBox>(window,
+		QStringLiteral("config.actions.delay_seconds"))->setValue(2);
 
     events->item(0)->setCheckState(Qt::Checked);
     requireControl<QLineEdit>(window, QStringLiteral("config.actions.run"))
@@ -2593,7 +2694,9 @@ void testNewActionStartsUnconfigured()
         ->setChecked(true);
     save(window);
     const QByteArray saved = readBytes(path);
-    require(saved.contains("enabled: false") && saved.contains("run: sd"),
+    require(saved.contains("enabled: false") && saved.contains("run: sd") &&
+		saved.contains("coalesce_role: test-state") &&
+		saved.contains("delay_seconds: 2"),
         "Incomplete enabled action was not automatically saved as a disabled draft");
     require(!requireControl<QCheckBox>(window,
         QStringLiteral("config.actions.enabled"))->isChecked(),
@@ -4180,6 +4283,8 @@ int main(int argc, char** argv)
         testEmptyShortcutsSurviveNlsBackendEdit);
     failures += run("SDR gamma adjustment labels and persistence",
         testSdrGammaAdjustmentLabelsAndPersistence);
+    failures += run("legacy Rendering color settings migrate to Color Config",
+        testLegacyRendererColorSettingsMigrateToColorConfigs);
     failures += run("legacy VP input override migrates independently",
         testLegacyVpInputOverrideMigratesToIndependentPolicySection);
     failures += run("LLDV metadata migrates to enabled singleton",

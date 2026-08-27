@@ -1173,6 +1173,7 @@ void ConfigEditorWindow::refreshActiveProfileIndicators()
     ActiveProfileStatus::Snapshot active;
     const bool available = ActiveProfileStatus::Read(expectedProcessId, active);
     const QString renderer = available ? QString::fromLocal8Bit(active.renderer) : QString();
+    const QString color = available ? QString::fromLocal8Bit(active.color) : QString();
     const QString viewport = available ? QString::fromLocal8Bit(active.viewport) : QString();
     const QString queue = available ? QString::fromLocal8Bit(active.queue) : QString();
     const QString sourceEotf = available ?
@@ -1188,21 +1189,22 @@ void ConfigEditorWindow::refreshActiveProfileIndicators()
     if (shaderAvailable)
         for (uint32_t index = 0; index < active.shaderCount; ++index)
             shaders.push_back(QString::fromLocal8Bit(active.shaders[index]));
-    applyActiveProfileIndicators(available, queue, renderer, viewport,
+    applyActiveProfileIndicators(available, queue, renderer, color, viewport,
         shaders, shaderAvailable);
     refreshRendererAutoStatus();
 }
 
 void ConfigEditorWindow::setActiveProfileStatusForTesting(const QString& queue,
-    const QString& renderer, const QString& viewport,
+    const QString& renderer, const QString& color, const QString& viewport,
     const QStringList& shaders, bool shaderAvailable)
 {
-    applyActiveProfileIndicators(true, queue, renderer, viewport, shaders,
+    applyActiveProfileIndicators(true, queue, renderer, color, viewport, shaders,
         shaderAvailable);
 }
 
 void ConfigEditorWindow::applyActiveProfileIndicators(bool available,
-    const QString& queue, const QString& renderer, const QString& viewport,
+    const QString& queue, const QString& renderer, const QString& color,
+    const QString& viewport,
     const QStringList& shaders, bool shaderAvailable)
 {
     for (const ProfileListBinding& binding : activeProfileLists_)
@@ -1210,8 +1212,9 @@ void ConfigEditorWindow::applyActiveProfileIndicators(bool available,
         const bool shaderList = binding.sectionPrefix.startsWith(
             QStringLiteral("shader."));
         const QString activeSection = binding.sectionPrefix == QStringLiteral("vprenderer") ? renderer :
-            (binding.sectionPrefix == QStringLiteral("vprenderer.viewport") ? viewport :
-                (binding.sectionPrefix == QStringLiteral("queue") ? queue : QString()));
+            (binding.sectionPrefix == QStringLiteral("vprenderer.color") ? color :
+                (binding.sectionPrefix == QStringLiteral("vprenderer.viewport") ? viewport :
+                    (binding.sectionPrefix == QStringLiteral("queue") ? queue : QString())));
         for (int index = 0; binding.list && index < binding.list->count(); ++index)
         {
             QListWidgetItem* item = binding.list->item(index);
@@ -1423,7 +1426,7 @@ void ConfigEditorWindow::refreshRendererAutoStatus()
         if (binding.key == QStringLiteral("sdr_black_nits"))
         {
             const auto* targetWhite = findChild<QLineEdit*>(
-                QStringLiteral("config.vprenderer.sdr_target_nits"));
+                controlName(binding.sectionPrefix, QStringLiteral("sdr_target_nits")));
             bool valid = false;
             const double whiteNits = targetWhite ?
                 targetWhite->text().trimmed().toDouble(&valid) : 0.0;
@@ -2410,6 +2413,7 @@ QWidget* ConfigEditorWindow::createShell()
     pages_->addWidget(createOutputPage());
     pages_->addWidget(createShadersSetupPage());
     pages_->addWidget(createShortcutsSetupPage());
+    pages_->addWidget(createColorConfigPage());
 
     auto* navGroup = new QButtonGroup(root);
     navGroup->setExclusive(true);
@@ -2481,10 +2485,11 @@ QWidget* ConfigEditorWindow::createShell()
                 { QStringLiteral("Standard"), 8 },
                 { QStringLiteral("NLS"), 9 } }, page);
         }
-        else if (page == 2 || page == 4 || page == 11 || page == 13)
+        else if (page == 2 || page == 4 || page == 11 || page == 13 || page == 16)
         {
             vpNavigation->setChecked(true);
             showSectionTabs({ { QStringLiteral("Rendering"), 2 },
+                { QStringLiteral("Color Config"), 16 },
                 { QStringLiteral("Output"), 13 },
                 { QStringLiteral("Screen Config"), 4 },
                 { QStringLiteral("Input Processing"), 11 } }, page);
@@ -2851,6 +2856,31 @@ QWidget* ConfigEditorWindow::createStartupPage()
     sourceForm->addRow(QString(), bindCheckField(
         QStringLiteral("Switch refresh rate"), QStringLiteral("general"),
         QStringLiteral("switch_refresh_rate"), true));
+	auto* profileChangeDisplay = new QSpinBox;
+	profileChangeDisplay->setObjectName(controlName(QStringLiteral("general"),
+		QStringLiteral("profile_change_display_seconds")));
+	profileChangeDisplay->setAccessibleName(
+		QStringLiteral("Profile change display duration"));
+	profileChangeDisplay->setRange(0, 60);
+	profileChangeDisplay->setSuffix(QStringLiteral(" seconds"));
+	profileChangeDisplay->setSpecialValueText(QStringLiteral("Off"));
+	profileChangeDisplay->setToolTip(QStringLiteral(
+		"How long profile selections remain visible, including the fade. Set 0 to never display them."));
+	bool profileDisplayOk = false;
+	const int configuredProfileDisplay = value(QStringLiteral("general"),
+		QStringLiteral("profile_change_display_seconds")).toInt(&profileDisplayOk);
+	profileChangeDisplay->setValue(profileDisplayOk ? configuredProfileDisplay : 5);
+	connect(profileChangeDisplay, qOverload<int>(&QSpinBox::valueChanged), this,
+		[this, profileChangeDisplay](int seconds)
+	{
+		if (!document_) return;
+		document_->SetKnown("general", "profile_change_display_seconds",
+			std::to_string(seconds));
+		editOrder_[profileChangeDisplay->objectName()] = ++editSerial_;
+		markDirty();
+	});
+	sourceForm->addRow(QStringLiteral("Profile display"),
+		profileChangeDisplay);
 
     auto* input = new QWidget;
     auto* inputForm = new QFormLayout(input);
@@ -2956,6 +2986,109 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                 document_->SetKnown(outputSection.toStdString(),
                     "output_transport_gamma",
                     displayGamma.toLocal8Bit().constData());
+            }
+            migrated = true;
+        }
+        if (migrated)
+        {
+            dirty_ = true;
+            hasPendingMigrations_ = true;
+        }
+    }
+
+    // A short-lived Color Config split placed the SDR white/black targets in
+    // the wrong group. Restore them to the matching Rendering profile in the
+    // pending document. The disk file changes only after the user explicitly
+    // applies the editor changes.
+    if (configurationLoaded_ && document_ &&
+        sectionPrefix == QStringLiteral("vprenderer"))
+    {
+        const QStringList luminanceKeys = {
+            QStringLiteral("sdr_target_nits"),
+            QStringLiteral("sdr_black_nits")
+        };
+        bool migrated = false;
+        for (const QString& renderingSection : profileSections(
+            QStringLiteral("vprenderer")))
+        {
+            const QString suffix = renderingSection == QStringLiteral("vprenderer") ?
+                QStringLiteral("Default") :
+                renderingSection.mid(QStringLiteral("vprenderer.").size());
+            const QString colorSection =
+                QStringLiteral("vprenderer.color.%1").arg(suffix);
+            for (const QString& key : luminanceKeys)
+            {
+                const QString configured = value(colorSection, key);
+                if (configured.isEmpty()) continue;
+                if (value(renderingSection, key).isEmpty())
+                    document_->SetKnown(renderingSection.toStdString(),
+                        key.toStdString().c_str(),
+                        configured.toLocal8Bit().constData());
+                document_->RemoveKnown(colorSection.toStdString(),
+                    key.toStdString().c_str());
+                migrated = true;
+            }
+        }
+        if (migrated)
+        {
+            dirty_ = true;
+            hasPendingMigrations_ = true;
+        }
+    }
+
+    // Older configurations keep calibrated primaries and source-transfer
+    // handling inside each Rendering profile. Split only those settings into
+    // the independent Color Config group in the pending document. Existing
+    // Color Config profiles always win, and the disk file changes only after
+    // the user explicitly applies the editor changes.
+    if (configurationLoaded_ && document_ &&
+        sectionPrefix == QStringLiteral("vprenderer.color"))
+    {
+        const QStringList colorKeys = {
+            QStringLiteral("sdr_target_primaries"),
+            QStringLiteral("output_gamma"),
+            QStringLiteral("report_bt2020_to_display"),
+            QStringLiteral("sdr_adjust_gamma"),
+            QStringLiteral("sdr_input_transfer")
+        };
+        bool migrated = false;
+        for (const QString& renderingSection : profileSections(
+            QStringLiteral("vprenderer")))
+        {
+            QStringList configuredKeys;
+            for (const QString& key : colorKeys)
+                if (!value(renderingSection, key).isEmpty())
+                    configuredKeys.push_back(key);
+            if (configuredKeys.isEmpty()) continue;
+
+            const QString suffix = renderingSection == QStringLiteral("vprenderer") ?
+                QStringLiteral("Default") :
+                renderingSection.mid(QStringLiteral("vprenderer.").size());
+            const QString colorSection =
+                QStringLiteral("vprenderer.color.%1").arg(suffix);
+            document_->AddSection(colorSection.toStdString());
+            for (const QString& key : configuredKeys)
+            {
+                const QString configured = value(renderingSection, key);
+                if (value(colorSection, key).isEmpty())
+                    document_->SetKnown(colorSection.toStdString(),
+                        key.toStdString().c_str(),
+                        configured.toLocal8Bit().constData());
+                document_->RemoveKnown(renderingSection.toStdString(),
+                    key.toStdString().c_str());
+            }
+            // Preserve the existing key/rule on the new independent group.
+            // Keep it on Rendering as well so legacy renderer policy still
+            // responds exactly as it did until the user chooses otherwise.
+            for (const QString& selector : { QStringLiteral("shortcut"),
+                QStringLiteral("when") })
+            {
+                const QString configured = value(renderingSection, selector);
+                if (!configured.isEmpty() &&
+                    value(colorSection, selector).isEmpty())
+                    document_->SetKnown(colorSection.toStdString(),
+                        selector.toStdString().c_str(),
+                        configured.toLocal8Bit().constData());
             }
             migrated = true;
         }
@@ -3109,6 +3242,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
     list->setDragDropOverwriteMode(false);
     const bool showsActiveProfile = sectionPrefix == QStringLiteral("queue") ||
         sectionPrefix == QStringLiteral("vprenderer") ||
+        sectionPrefix == QStringLiteral("vprenderer.color") ||
         sectionPrefix == QStringLiteral("vprenderer.viewport");
     if (showsActiveProfile)
     {
@@ -3208,6 +3342,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         return sectionForm;
     };
     if (sectionPrefix != QStringLiteral("vprenderer") &&
+        sectionPrefix != QStringLiteral("vprenderer.color") &&
         sectionPrefix != QStringLiteral("vprenderer.viewport"))
         form = addPlainForm();
     QCheckBox* anamorphicEnabled = nullptr;
@@ -3337,6 +3472,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         const QString& key, QWidget* control)
     {
         if ((sectionPrefix != QStringLiteral("vprenderer") &&
+             sectionPrefix != QStringLiteral("vprenderer.color") &&
              sectionPrefix != QStringLiteral("vprenderer.output")) ||
             !form || !control)
             return;
@@ -3455,6 +3591,48 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         addInteger(QStringLiteral("Queue recovery threshold"), QStringLiteral("reset_queue_too_large_percent"),
             1, 200, QStringLiteral("%"));
     }
+    else if (sectionPrefix == QStringLiteral("vprenderer.color"))
+    {
+        form = addCollapsibleSection(QStringLiteral("calibration"),
+            QStringLiteral("Display calibration"), QStringLiteral(
+                "Describe the calibrated Rec.709 or BT.2020 display response this Color Config targets."), false);
+        addChoice(QStringLiteral("Display primaries"),
+            QStringLiteral("sdr_target_primaries"),
+            { QStringLiteral("REC709"), QStringLiteral("BT2020") }, false);
+        auto* outputGamma = addChoice(QStringLiteral("Display transfer / gamma"),
+            QStringLiteral("output_gamma"),
+            { QStringLiteral("AUTO"), QStringLiteral("bt1886"),
+                QStringLiteral("srgb"), QStringLiteral("1.8"),
+                QStringLiteral("2.0"), QStringLiteral("2.2"),
+                QStringLiteral("2.4"), QStringLiteral("2.6"),
+                QStringLiteral("2.8") });
+        outputGamma->setToolTip(QStringLiteral(
+            "The calibrated display transfer VP targets during color-managed rendering. "
+            "It does not change Windows' normal Full RGB / sRGB presentation declaration."));
+        addRendererAutoStatus(QStringLiteral("output_gamma"), outputGamma);
+        addBoolean(QStringLiteral("Report BT.2020 to display"),
+            QStringLiteral("report_bt2020_to_display"));
+
+        form = addCollapsibleSection(QStringLiteral("sourceColor"),
+            QStringLiteral("Source transfer"), QStringLiteral(
+                "How VP interprets SDR source transfer before this Color Config maps it to the calibrated display target."), false);
+        auto* sdrAdjustGamma = addChoice(QStringLiteral("SDR source transfer handling"),
+            QStringLiteral("sdr_adjust_gamma"),
+            { QStringLiteral("AUTO"), QStringLiteral("on"), QStringLiteral("off") });
+        sdrAdjustGamma->setItemText(1, QStringLiteral("Auto"));
+        sdrAdjustGamma->setItemText(2, QStringLiteral("On"));
+        sdrAdjustGamma->setItemText(3, QStringLiteral("Off"));
+        addRendererAutoStatus(QStringLiteral("sdr_adjust_gamma"), sdrAdjustGamma);
+        auto* sdrInputTransfer = addChoice(QStringLiteral("SDR input transfer"),
+            QStringLiteral("sdr_input_transfer"),
+            { QStringLiteral("AUTO"), QStringLiteral("bt1886"), QStringLiteral("srgb"),
+                QStringLiteral("1.8"), QStringLiteral("2.0"), QStringLiteral("2.2"),
+                QStringLiteral("2.4"), QStringLiteral("2.6"), QStringLiteral("2.8") });
+        sdrInputTransfer->setToolTip(QStringLiteral(
+            "Declares how SDR source codes are interpreted when gamma adjustment is On."));
+        addRendererAutoStatus(QStringLiteral("sdr_input_transfer"), sdrInputTransfer);
+
+    }
     else if (sectionPrefix == QStringLiteral("vprenderer"))
     {
 		form = addPlainForm();
@@ -3464,60 +3642,16 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 		connect(renderingQuality, qOverload<int>(&QComboBox::currentIndexChanged), this,
 			[this](int) { refreshRendererAutoStatus(); });
 
-		form = addCollapsibleSection(QStringLiteral("calibration"),
-			QStringLiteral("Display calibration"), QStringLiteral(
-				"Describe the calibrated display response VP should target. This is separate from Windows RGB presentation."), false);
-		addChoice(QStringLiteral("Display primaries"),
-			QStringLiteral("sdr_target_primaries"),
-			{ QStringLiteral("REC709"), QStringLiteral("BT2020") }, false);
-		auto* outputGamma = addChoice(QStringLiteral("Display transfer / gamma"),
-			QStringLiteral("output_gamma"),
-			{ QStringLiteral("AUTO"), QStringLiteral("bt1886"),
-				QStringLiteral("srgb"), QStringLiteral("1.8"),
-				QStringLiteral("2.0"), QStringLiteral("2.2"),
-				QStringLiteral("2.4"), QStringLiteral("2.6"),
-				QStringLiteral("2.8") });
-		outputGamma->setToolTip(QStringLiteral(
-			"The calibrated display transfer VP targets during color-managed rendering. "
-			"It does not change Windows' normal Full RGB / sRGB presentation declaration. "
-			"Choose a measured transfer such as pure 2.2 only when this profile is calibrated to it."));
-		addRendererAutoStatus(QStringLiteral("output_gamma"), outputGamma);
-		addBoolean(QStringLiteral("Report BT.2020 to display"), QStringLiteral("report_bt2020_to_display"));
-		form->addRow(QString(), helpLabel(QStringLiteral(
-			"For an already calibrated display, describe its primaries and transfer here. "
-			"For calibration through a measurement-generated LUT, select the LUT in Calibration LUT below.")));
-
-		form = addCollapsibleSection(QStringLiteral("sourceColor"),
-			QStringLiteral("Source transfer"), QStringLiteral(
-				"How VP interprets SDR source transfer before color mapping."), false);
-		auto* sdrAdjustGamma = addChoice(QStringLiteral("SDR source transfer handling"),
-			QStringLiteral("sdr_adjust_gamma"),
-			{ QStringLiteral("AUTO"), QStringLiteral("on"), QStringLiteral("off") });
-		sdrAdjustGamma->setItemText(1, QStringLiteral("Auto"));
-		sdrAdjustGamma->setItemText(2, QStringLiteral("On"));
-		sdrAdjustGamma->setItemText(3, QStringLiteral("Off"));
-		sdrAdjustGamma->setToolTip(QStringLiteral(
-			"Controls SDR source-transfer conversion, not display calibration or a manual gamma adjustment. "
-			"Auto suppresses common ambiguous SDR-to-sRGB conversion only for an automatic output curve. "
-			"On honors source and output transfer metadata. Off treats SDR as already encoded for the accepted output transfer."));
-		addRendererAutoStatus(QStringLiteral("sdr_adjust_gamma"), sdrAdjustGamma);
-		auto* sdrInputTransfer = addChoice(QStringLiteral("SDR input transfer"), QStringLiteral("sdr_input_transfer"), { QStringLiteral("AUTO"), QStringLiteral("bt1886"), QStringLiteral("srgb"), QStringLiteral("1.8"), QStringLiteral("2.0"), QStringLiteral("2.2"), QStringLiteral("2.4"), QStringLiteral("2.6"), QStringLiteral("2.8") });
-		sdrInputTransfer->setToolTip(QStringLiteral(
-			"Declares how SDR source codes are interpreted when gamma adjustment is On. "
-			"The value remains recorded but is not used for transfer conversion when adjustment is Off."));
-		addRendererAutoStatus(QStringLiteral("sdr_input_transfer"), sdrInputTransfer);
-		form->addRow(QString(), helpLabel(QStringLiteral(
-			"This controls SDR transfer-curve conversion only. YUV/RGB matrix, range, primaries, scaling, LUT, shaders, dithering, quantization, and the physical display response remain active.")));
-
         form = addCollapsibleSection(QStringLiteral("toneMapping"),
             QStringLiteral("Tone mapping"), QStringLiteral(
                 "HDR tone mapping, gamut compression, dynamic peak handling, and contrast recovery."), false);
-		auto* sdrTargetWhiteLevel = addText(QStringLiteral("Target white level"),
-			QStringLiteral("sdr_target_nits"), QStringLiteral("nits"));
-		connect(sdrTargetWhiteLevel, &QLineEdit::textChanged, this,
-			[this](const QString&) { refreshRendererAutoStatus(); });
-		auto* sdrBlackLevel = addText(QStringLiteral("Target black level"), QStringLiteral("sdr_black_nits"), QStringLiteral("nits"));
-		sdrBlackLevel->setPlaceholderText(QStringLiteral("Auto or a numeric value"));
+        auto* sdrTargetWhiteLevel = addText(QStringLiteral("Target white level"),
+            QStringLiteral("sdr_target_nits"), QStringLiteral("nits"));
+        connect(sdrTargetWhiteLevel, &QLineEdit::textChanged, this,
+            [this](const QString&) { refreshRendererAutoStatus(); });
+        auto* sdrBlackLevel = addText(QStringLiteral("Target black level"),
+            QStringLiteral("sdr_black_nits"), QStringLiteral("nits"));
+        sdrBlackLevel->setPlaceholderText(QStringLiteral("Auto or a numeric value"));
         addRendererAutoStatus(QStringLiteral("sdr_black_nits"), sdrBlackLevel);
         auto* toneMapping = addChoice(QStringLiteral("Tone mapping"), QStringLiteral("tone_mapping"), { QStringLiteral("AUTO"), QStringLiteral("spline"), QStringLiteral("bt2390"), QStringLiteral("st2094-40"), QStringLiteral("reinhard") });
         addRendererAutoStatus(QStringLiteral("tone_mapping"), toneMapping);
@@ -3694,7 +3828,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         outputTransportGamma->setToolTip(QStringLiteral(
             "Only applies when RGB output range is Limited. Auto uses the "
             "standard limited-range transport. Display calibration remains "
-            "part of the Rendering profile."));
+            "part of the selected Color Config."));
 		addRendererAutoStatus(QStringLiteral("output_transport_gamma"), outputTransportGamma);
         auto* outputCompatibility = helpLabel(QString());
         outputCompatibility->setObjectName(
@@ -4268,6 +4402,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             updateQueuePolicyFromValues();
         state->loading = false;
         if (sectionPrefix == QStringLiteral("vprenderer") ||
+            sectionPrefix == QStringLiteral("vprenderer.color") ||
             sectionPrefix == QStringLiteral("vprenderer.output"))
             refreshRendererAutoStatus();
     };
@@ -4601,6 +4736,13 @@ QWidget* ConfigEditorWindow::createRendererPage()
         QStringLiteral("Configure ordered rendering profiles. The first profile in the list is the default."), QStringLiteral("vprenderer"));
 }
 
+QWidget* ConfigEditorWindow::createColorConfigPage()
+{
+    return createProfilePage(QStringLiteral("Color Config"),
+        QStringLiteral("Select independent Rec.709 or BT.2020 configurations before rendering. Each Color Config owns display calibration and SDR source-transfer handling; Screen Config selection remains independent."),
+        QStringLiteral("vprenderer.color"));
+}
+
 void ConfigEditorWindow::refreshShaderCacheStatus()
 {
     const QDir rendererDirectory(QFileInfo(configPath_).absoluteDir().filePath(
@@ -4620,7 +4762,7 @@ void ConfigEditorWindow::refreshShaderCacheStatus()
 QWidget* ConfigEditorWindow::createOutputPage()
 {
     return createProfilePage(QStringLiteral("Output"),
-        QStringLiteral("Configure output transport and diagnostic profiles separately from live rendering profiles."),
+        QStringLiteral("Configure output transport and diagnostic profiles separately from live Color Config selections."),
         QStringLiteral("vprenderer.output"));
 }
 
@@ -5641,6 +5783,19 @@ QWidget* ConfigEditorWindow::createActionsPage()
     detailLayout->addWidget(fieldWithHelp(QStringLiteral("Renderer target"), rendererTarget,
         QStringLiteral("Choose VP Renderer, a discovered renderer, or All renderers.")));
 
+    auto* coalesceRole = new QLineEdit;
+    coalesceRole->setObjectName(QStringLiteral("config.actions.coalesce_role"));
+    coalesceRole->setPlaceholderText(QStringLiteral("Optional, e.g. Color"));
+    detailLayout->addWidget(fieldWithHelp(QStringLiteral("Group"), coalesceRole,
+        QStringLiteral("Actions in the same group replace one another while waiting, so only the newest matching action runs. Leave blank to group this action by itself.")));
+
+    auto* delaySeconds = new QSpinBox;
+    delaySeconds->setObjectName(QStringLiteral("config.actions.delay_seconds"));
+    delaySeconds->setRange(0, 30);
+    delaySeconds->setSuffix(QStringLiteral(" seconds"));
+    detailLayout->addWidget(fieldWithHelp(QStringLiteral("Delay"), delaySeconds,
+        QStringLiteral("Wait before launching this action. Use 0 for immediate actions; a later trigger in the same coalescing role replaces it while waiting.")));
+
     auto* events = new QListWidget;
     events->setObjectName(QStringLiteral("config.actions.on"));
     events->setAccessibleName(QStringLiteral("Action events"));
@@ -5657,6 +5812,7 @@ QWidget* ConfigEditorWindow::createActionsPage()
         { "renderer.ready", "Renderer is ready", "Runs when the selected renderer reaches Ready, including after a rebuild." },
         { "profile.changed", "Any active profile changed", "Runs once when one or more effective profile selections change." },
         { "profile.display.changed", "VP Renderer profile changed", "Runs when the selected VP Renderer rendering profile changes." },
+        { "profile.color.changed", "Color Config changed", "Runs when the selected Rec.709 or BT.2020 Color Config changes." },
         { "profile.viewport.changed", "Screen Config profile changed", "Runs when the selected VP Renderer Screen Config profile changes." },
         { "profile.queue.changed", "Queue profile changed", "Runs when the selected Queue profile changes." },
         { "profile.lldv.changed", "LLDV configuration changed", "Runs when the effective LLDV configuration changes." },
@@ -5698,7 +5854,7 @@ QWidget* ConfigEditorWindow::createActionsPage()
     rule->setMaximumBlockCount(3);
     rule->setPlaceholderText(QStringLiteral("${eotf} == \"PQ\""));
     detailLayout->addWidget(fieldWithHelp(QStringLiteral("Only run when (optional)"), rule,
-        QStringLiteral("Leave blank to run for every selected event, or add a condition such as ${eotf} == \"PQ\".")));
+        QStringLiteral("Leave blank to run for every selected event, or add a condition such as ${eotf} == \"PQ\". For Screen Config actions, use its visible name: ${screen_config} == \"Scope\".")));
 
     auto* command = new QLineEdit;
     command->setObjectName(QStringLiteral("config.actions.run"));
@@ -5723,7 +5879,7 @@ QWidget* ConfigEditorWindow::createActionsPage()
     };
 
     auto loadDetails = [this, state, list, remove, detailStack, selectedTitle, name, enabled,
-        rendererTarget, events, rule, command](QListWidgetItem* current)
+        rendererTarget, coalesceRole, delaySeconds, events, rule, command](QListWidgetItem* current)
     {
         state->loading = true;
         state->section = current ? current->data(Qt::UserRole).toString() : QString();
@@ -5750,6 +5906,18 @@ QWidget* ConfigEditorWindow::createActionsPage()
         }
         rendererTarget->setCurrentIndex(rendererIndex);
         rendererTarget->setEditText(rendererTarget->itemText(rendererIndex));
+        coalesceRole->setText(value(state->section, QStringLiteral("coalesce_role")));
+        bool validDelay = false;
+        int configuredDelay = value(state->section,
+            QStringLiteral("delay_seconds")).toInt(&validDelay);
+        if (!validDelay)
+        {
+            configuredDelay = value(QStringLiteral("general"),
+                QStringLiteral("event_action_delay_seconds"),
+                QStringLiteral("5")).toInt(&validDelay);
+            if (!validDelay) configuredDelay = 5;
+        }
+        delaySeconds->setValue(qBound(0, configuredDelay, 30));
         const QStringList configuredEvents = value(state->section, QStringLiteral("on")).split(u',', Qt::SkipEmptyParts);
         QListWidgetItem* firstChecked = nullptr;
         for (int index = 0; index < events->count(); ++index)
@@ -5823,6 +5991,26 @@ QWidget* ConfigEditorWindow::createActionsPage()
         if (selected.isEmpty() || selected.compare(QStringLiteral("vprenderer"), Qt::CaseInsensitive) == 0)
             document_->RemoveKnown(state->section.toStdString(), "renderer");
         else document_->SetKnown(state->section.toStdString(), "renderer", selected.toStdString());
+        markDirty();
+    });
+    connect(coalesceRole, &QLineEdit::textChanged, this,
+        [this, state](const QString& text)
+    {
+        if (state->loading || state->section.isEmpty()) return;
+        const QString role = text.trimmed();
+        if (role.isEmpty())
+            document_->RemoveKnown(state->section.toStdString(), "coalesce_role");
+        else
+            document_->SetKnown(state->section.toStdString(), "coalesce_role",
+                role.toStdString());
+        markDirty();
+    });
+    connect(delaySeconds, qOverload<int>(&QSpinBox::valueChanged), this,
+        [this, state](int seconds)
+    {
+        if (state->loading || state->section.isEmpty()) return;
+        document_->SetKnown(state->section.toStdString(), "delay_seconds",
+            std::to_string(seconds));
         markDirty();
     });
     connect(events, &QListWidget::itemChanged, this, [this, state, events](QListWidgetItem*)

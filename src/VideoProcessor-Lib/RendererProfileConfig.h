@@ -68,6 +68,8 @@ namespace RendererProfileConfig
 	{
 		std::string group;
 		std::string name;
+		// Operator-facing name, currently configured for Screen Config profiles.
+		std::string label;
 		std::string when;
 		DisplayRuleExpression::Expression whenExpression;
 		int priority = 0;
@@ -100,6 +102,10 @@ namespace RendererProfileConfig
 			std::string program;
 			std::string arguments;
 			std::string workingDirectory;
+			// Actions with the same non-empty role share one pending debounce
+			// slot. This lets mutually exclusive actions (for example Rec709 and
+			// BT2020 state writers) use newest-trigger-wins semantics.
+			std::string coalesceRole;
 			// The built-in renderer is identified by backend. A named target is
 			// resolved through [renderer_alias] to this one-based UI selector
 			// index; zero is reserved for the built-in and wildcard targets.
@@ -669,6 +675,20 @@ namespace RendererProfileConfig
 		return ValidateBaseSetting(key, value);
 	}
 
+	// Color Config is deliberately narrower than a general Rendering profile:
+	// it owns the calibrated output target and SDR source-transfer interpretation,
+	// while quality, tone-map policy, and scaling stay in Rendering.
+	inline bool ValidateColorConfigSetting(const std::string& key,
+		const std::string& value)
+	{
+		static const std::set<std::string> colorKeys = {
+			"sdr_target_primaries", "output_gamma",
+			"report_bt2020_to_display", "sdr_adjust_gamma",
+			"sdr_input_transfer" };
+		return colorKeys.find(key) != colorKeys.end() &&
+			ValidateTargetRendererSetting(key, value);
+	}
+
 	inline bool ParseTargetActionRun(const std::string& value,
 		std::string& program, std::string& arguments)
 	{
@@ -731,15 +751,12 @@ namespace RendererProfileConfig
 
 	inline bool IsActionProfileGroup(const std::string& group)
 	{
-		return group == "input" || group == "scaling" ||
-			group == "display" || group == "output" ||
-			group == "viewport" || group == "queue" ||
-			group == "lldv";
+		return DisplayRuleExpression::IsProfileGroup(group);
 	}
 
 	inline bool IsRendererChildNamespace(const std::string& name)
 	{
-		for (const char* child : { "input", "input_processing", "scaling", "output", "viewport" })
+		for (const char* child : { "input", "input_processing", "scaling", "color", "output", "viewport" })
 		{
 			const std::string root(child);
 			if (name == root ||
@@ -785,31 +802,9 @@ namespace RendererProfileConfig
 			event == "refresh.restored";
 	}
 
-	inline bool IsActionProfileVariable(const std::string& variable,
-		const std::string& prefix)
-	{
-		return variable.size() > prefix.size() &&
-			variable.compare(0, prefix.size(), prefix) == 0 &&
-			IsActionProfileGroup(variable.substr(prefix.size()));
-	}
-
 	inline bool IsActionSnapshotVariable(const std::string& variable)
 	{
-		if (variable == "event" || variable == "event_reason" ||
-			variable == "viewport_profile" || variable == "screen_aspect" ||
-			variable == "vertical_alignment" ||
-			variable == "anamorphic_scale" || variable == "automatic_crop" ||
-			variable == "subtitle_fit" || variable == "subtitle_hold_seconds" ||
-			variable == "subtitle_engage_drift_ms" ||
-			variable == "subtitle_release_drift_ms" ||
-			variable == "subtitle_padding_pixels" ||
-			variable == "subtitle_target_buffer_pixels" ||
-			variable == "viewport_generation" || IsActionSourceField(variable))
-			return true;
-		return IsActionProfileVariable(variable, "profile.") ||
-			IsActionProfileVariable(variable, "previous_profile.") ||
-			(variable.size() > 9 && variable.compare(0, 9, "previous.") == 0 &&
-				IsActionSourceField(variable.substr(9)));
+		return DisplayRuleExpression::IsSnapshotActionVariable(variable);
 	}
 
 	inline bool IsActionVariableAvailableForEvents(
@@ -923,6 +918,7 @@ namespace RendererProfileConfig
 			{ "input", "vprenderer.input", true },
 			{ "scaling", "vprenderer.scaling", true },
 			{ "display", "vprenderer", false },
+			{ "color", "vprenderer.color", true },
 			{ "output", "vprenderer.output", true },
 			{ "viewport", "vprenderer.viewport", true },
 			{ "queue", "queue", true },
@@ -980,11 +976,11 @@ namespace RendererProfileConfig
 			if (baselineValues)
 				for (const auto& entry : *baselineValues)
 				{
-					// label is configuration-editor metadata.  It is intentionally
-					// accepted only for viewport sections and never participates in
-					// profile inheritance, runtime resolution, or action variables.
 					if (std::string(spec.name) == "viewport" && entry.first == "label")
+					{
+						base.label = entry.second;
 						continue;
+					}
 					// screen_aspect is the single source of truth for the physical
 					// screen shape. `mode` was a legacy normal/scope label and has
 					// never changed the runtime geometry, so retain compatibility
@@ -1051,6 +1047,15 @@ namespace RendererProfileConfig
 							return false;
 						}
 					}
+					else if (std::string(spec.name) == "color")
+					{
+						if (!ValidateColorConfigSetting(entry.first, entry.second))
+						{
+							error = "[" + section + "] key '" + entry.first +
+								"' is not a valid Color Config setting";
+							return false;
+						}
+					}
 					else
 					{
 						std::string expected;
@@ -1095,7 +1100,10 @@ namespace RendererProfileConfig
 				for (const auto& entry : *values)
 				{
 					if (std::string(spec.name) == "viewport" && entry.first == "label")
+					{
+						profile.label = entry.second;
 						continue;
+					}
 					if (std::string(spec.name) == "viewport" && entry.first == "mode")
 					{
 						std::string expected;
@@ -1128,8 +1136,10 @@ namespace RendererProfileConfig
 						((RendererConfigView::IsPolicyKey(entry.first) &&
 							ValidateBaseSetting(entry.first, entry.second)) ||
 							ValidateTargetRendererSetting(entry.first, entry.second)) :
-						ValidateProfileSetting(spec.name, entry.first,
-							entry.second, expected);
+						(std::string(spec.name) == "color" ?
+							ValidateColorConfigSetting(entry.first, entry.second) :
+							ValidateProfileSetting(spec.name, entry.first,
+								entry.second, expected));
 					if (!valid)
 					{
 						error = "[" + variantSection + "] key '" + entry.first +
@@ -1152,6 +1162,12 @@ namespace RendererProfileConfig
 			model.groups.push_back(std::move(group));
 		}
 
+		std::string configuredActionDelay;
+		if (config.TryGetString("general", "event_action_delay_seconds",
+			configuredActionDelay))
+			ParseInteger(configuredActionDelay, 0, 30,
+				model.eventActionDelaySeconds);
+
 		for (const std::string& section : config.GetSectionNames())
 		{
 			if (section.rfind("actions.", 0) != 0)
@@ -1165,6 +1181,7 @@ namespace RendererProfileConfig
 			const auto* values = config.GetSectionValues(section);
 			Model::EventAction action;
 			action.name = name;
+			action.delaySeconds = model.eventActionDelaySeconds;
 			bool enabled = true;
 			std::string enabledText;
 			if (config.TryGetString(section, "enabled", enabledText) &&
@@ -1176,7 +1193,9 @@ namespace RendererProfileConfig
 			for (const auto& entry : *values)
 				if (entry.first != "enabled" && entry.first != "on" &&
 					entry.first != "when" && entry.first != "run" &&
-					entry.first != "renderer")
+					entry.first != "renderer" &&
+					entry.first != "coalesce_role" &&
+					entry.first != "delay_seconds")
 				{
 					error = "[" + section + "] unknown key '" + entry.first + "'";
 					return false;
@@ -1220,6 +1239,23 @@ namespace RendererProfileConfig
 			if (config.TryGetString(section, "renderer", renderer) &&
 				!ParseActionRenderer(config, section, renderer, action, error))
 				return false;
+			std::string coalesceRole;
+			if (config.TryGetString(section, "coalesce_role", coalesceRole))
+			{
+				action.coalesceRole = ConfigFile::NormalizeName(coalesceRole);
+				if (action.coalesceRole.empty())
+				{
+					error = "[" + section + "] coalesce_role must not be empty";
+					return false;
+				}
+			}
+			std::string delay;
+			if (config.TryGetString(section, "delay_seconds", delay) &&
+				!ParseInteger(delay, 0, 30, action.delaySeconds))
+			{
+				error = "[" + section + "] delay_seconds must be a whole number from 0 to 30";
+				return false;
+			}
 			model.actions.push_back(std::move(action));
 		}
 
@@ -1557,7 +1593,8 @@ namespace RendererProfileConfig
 					if (value.first != "enabled" && value.first != "on" &&
 						value.first != "when" && value.first != "program" &&
 						value.first != "arguments" && value.first != "working_directory" &&
-						value.first != "delay_seconds" && value.first != "renderer")
+						value.first != "delay_seconds" && value.first != "renderer" &&
+						value.first != "coalesce_role")
 					{
 						error = "[" + section + "] unknown key '" + value.first + "'";
 						return false;
@@ -1605,6 +1642,16 @@ namespace RendererProfileConfig
 				if (config.TryGetString(section, "renderer", renderer) &&
 					!ParseActionRenderer(config, section, renderer, action, error))
 					return false;
+				std::string coalesceRole;
+				if (config.TryGetString(section, "coalesce_role", coalesceRole))
+				{
+					action.coalesceRole = ConfigFile::NormalizeName(coalesceRole);
+					if (action.coalesceRole.empty())
+					{
+						error = "[" + section + "] coalesce_role must not be empty";
+						return false;
+					}
+				}
 				std::string delay;
 				if (config.TryGetString(section, "delay_seconds", delay) &&
 					!ParseInteger(delay, 0, 30, action.delaySeconds))

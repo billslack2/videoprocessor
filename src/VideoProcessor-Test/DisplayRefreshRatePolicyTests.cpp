@@ -217,14 +217,24 @@ namespace Tests
 				{ 60000, 0 }, { 60000, 1001 }));
 		}
 
-		TEST_METHOD(RestoreVerificationRequiresConsecutiveExactObservations)
+		TEST_METHOD(RestoreEquivalenceAllowsTightDriverRoundingOnly)
+		{
+			Assert::IsTrue(DisplayRefreshRatesEquivalentForRestore(
+				{ 60000, 1001 }, { 59951, 1000 }));
+			Assert::IsFalse(DisplayRefreshRatesEquivalentForRestore(
+				{ 60000, 1001 }, { 60000, 1000 }));
+			Assert::IsFalse(DisplayRefreshRatesEquivalentForRestore(
+				{ 60000, 0 }, { 59951, 1000 }));
+		}
+
+		TEST_METHOD(RestoreVerificationRequiresConsecutiveEquivalentObservations)
 		{
 			DisplayRefreshRestoreVerifier verifier({ 60000, 1001 });
-			Assert::IsFalse(verifier.Observe(true, { 60000, 1001 }));
+			Assert::IsFalse(verifier.Observe(true, { 59951, 1000 }));
 			Assert::IsFalse(verifier.Observe(false, {}));
 			Assert::AreEqual(0u, verifier.ConsecutiveMatches());
 			Assert::IsFalse(verifier.Observe(true, { 120000, 2002 }));
-			Assert::IsTrue(verifier.Observe(true, { 60000, 1001 }));
+			Assert::IsTrue(verifier.Observe(true, { 59951, 1000 }));
 		}
 	};
 }

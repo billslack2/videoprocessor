@@ -1,6 +1,7 @@
 #pragma once
 
 #include "RendererProfileConfig.h"
+#include "EventActionLauncher.h"
 #include "StateVariables.h"
 
 #include <cstdint>
@@ -97,7 +98,8 @@ namespace UnifiedProfileRuntime
 			const std::string& reason,
 			const std::shared_ptr<const Snapshot>& previous,
 			const std::shared_ptr<const Snapshot>& current,
-			std::vector<ActionInvocation>& actions, std::string& error) const;
+			std::vector<ActionInvocation>& actions, std::string& error,
+			const EventActionLauncher::ActionValueLookup& eventValues = {}) const;
 
 		std::shared_ptr<const Snapshot> GetSnapshot() const;
 		bool IsInitialized() const;
@@ -126,7 +128,8 @@ namespace UnifiedProfileRuntime
 			const std::string& reason,
 			const std::shared_ptr<const Snapshot>& previous,
 			const std::shared_ptr<const Snapshot>& current,
-			std::vector<ActionInvocation>& actions, std::string& error) const;
+			std::vector<ActionInvocation>& actions, std::string& error,
+			const EventActionLauncher::ActionValueLookup& eventValues = {}) const;
 		bool IsPersistedSelectionValid(const std::string& group,
 			const std::string& profile) const;
 

@@ -74,6 +74,14 @@ bool DisplayRefreshRatesExactlyEqual(
 	const DisplayRefreshRational& first,
 	const DisplayRefreshRational& second);
 
+// Windows and GPU drivers can report a refresh rate that differs from the
+// requested rational by a few millihertz after a display-topology rebuild.
+// This comparison is deliberately for restore acknowledgement only; mode
+// selection continues to require exact rational equality.
+bool DisplayRefreshRatesEquivalentForRestore(
+	const DisplayRefreshRational& first,
+	const DisplayRefreshRational& second);
+
 class DisplayRefreshRestoreVerifier
 {
 public:

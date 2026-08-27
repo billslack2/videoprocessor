@@ -12,6 +12,7 @@
 #include "StatsOverlayWindow.h"
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <sstream>
 #include <iomanip>
 
@@ -257,6 +258,149 @@ bool StatsOverlayWindow::RenderBgra(
 		pixels[i] = 220;
 	DeleteDC(memory);
 	DeleteObject(bitmap);
+	return true;
+}
+
+
+bool StatsOverlayWindow::RenderProfileChangesBgra(
+	const std::vector<ProfileChangeOverlay::Item>& items,
+	uint8_t opacity, std::vector<uint8_t>& pixels,
+	int& width, int& height, int& stride)
+{
+	if (items.empty() || opacity == 0)
+		return false;
+
+	HDC screen = GetDC(nullptr);
+	HDC memory = screen ? CreateCompatibleDC(screen) : nullptr;
+	if (screen) ReleaseDC(nullptr, screen);
+	if (!memory) return false;
+
+	HFONT labelFont = CreateFont(14, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+		CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, TEXT("Segoe UI"));
+	HFONT valueFont = CreateFont(22, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE,
+		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+		CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, TEXT("Segoe UI"));
+	if (!labelFont || !valueFont)
+	{
+		if (labelFont) DeleteObject(labelFont);
+		if (valueFont) DeleteObject(valueFont);
+		DeleteDC(memory);
+		return false;
+	}
+
+	constexpr int horizontalPadding = 12;
+	constexpr int separatorGap = 12;
+	constexpr int minimumColumnWidth = 90;
+	std::vector<int> columnWidths;
+	columnWidths.reserve(items.size());
+	for (const auto& item : items)
+	{
+		const CString label(item.label.c_str());
+		const CString value(item.value.c_str());
+		SIZE labelSize{};
+		SIZE valueSize{};
+		HGDIOBJ oldFont = SelectObject(memory, labelFont);
+		GetTextExtentPoint32(memory, label, label.GetLength(), &labelSize);
+		SelectObject(memory, valueFont);
+		GetTextExtentPoint32(memory, value, value.GetLength(), &valueSize);
+		SelectObject(memory, oldFont);
+		columnWidths.push_back((std::max)(minimumColumnWidth,
+			static_cast<int>((std::max)(labelSize.cx, valueSize.cx)) +
+			horizontalPadding * 2));
+	}
+
+	width = 4;
+	for (int columnWidth : columnWidths) width += columnWidth;
+	width += separatorGap * static_cast<int>(items.size() - 1);
+	height = 64;
+	stride = width * 4;
+	BITMAPINFO info{};
+	info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+	info.bmiHeader.biWidth = width;
+	info.bmiHeader.biHeight = -height;
+	info.bmiHeader.biPlanes = 1;
+	info.bmiHeader.biBitCount = 32;
+	info.bmiHeader.biCompression = BI_RGB;
+	void* bits = nullptr;
+	HBITMAP bitmap = CreateDIBSection(memory, &info, DIB_RGB_COLORS,
+		&bits, nullptr, 0);
+	if (!bitmap || !bits)
+	{
+		if (bitmap) DeleteObject(bitmap);
+		DeleteObject(labelFont);
+		DeleteObject(valueFont);
+		DeleteDC(memory);
+		return false;
+	}
+	std::memset(bits, 0, static_cast<size_t>(stride) * height);
+	HGDIOBJ oldBitmap = SelectObject(memory, bitmap);
+	SetBkMode(memory, TRANSPARENT);
+	// GDI writes this DIB as BGRA while the native overlay upload presents the
+	// first color byte as red. Swap red and blue at drawing time so the on-screen
+	// colors match the design values below.
+	const auto overlayColor = [](BYTE red, BYTE green, BYTE blue)
+	{
+		return RGB(blue, green, red);
+	};
+	RECT panel{ 0, 0, width, height };
+	HBRUSH background = CreateSolidBrush(overlayColor(20, 29, 37));
+	HPEN panelPen = CreatePen(PS_SOLID, 1, overlayColor(66, 82, 94));
+	HGDIOBJ oldBrush = SelectObject(memory, background);
+	HGDIOBJ oldPen = SelectObject(memory, panelPen);
+	RoundRect(memory, panel.left, panel.top, panel.right, panel.bottom, 8, 8);
+	SelectObject(memory, oldBrush);
+	SelectObject(memory, oldPen);
+	DeleteObject(background);
+	DeleteObject(panelPen);
+
+	RECT accent{ 0, 0, 4, height };
+	HBRUSH accentBrush = CreateSolidBrush(overlayColor(0, 190, 210));
+	FillRect(memory, &accent, accentBrush);
+	DeleteObject(accentBrush);
+
+	int x = 4;
+	for (size_t index = 0; index < items.size(); ++index)
+	{
+		const int columnWidth = columnWidths[index];
+		const CString label(items[index].label.c_str());
+		const CString value(items[index].value.c_str());
+		SelectObject(memory, labelFont);
+		SetTextColor(memory, overlayColor(174, 187, 197));
+		TextOut(memory, x + horizontalPadding, 8,
+			label, label.GetLength());
+		SelectObject(memory, valueFont);
+		SetTextColor(memory, overlayColor(248, 250, 252));
+		TextOut(memory, x + horizontalPadding, 29,
+			value, value.GetLength());
+		x += columnWidth;
+		if (index + 1 < items.size())
+		{
+			HPEN separator = CreatePen(
+				PS_SOLID, 1, overlayColor(76, 91, 103));
+			HGDIOBJ previousPen = SelectObject(memory, separator);
+			MoveToEx(memory, x + separatorGap / 2, 11, nullptr);
+			LineTo(memory, x + separatorGap / 2, height - 11);
+			SelectObject(memory, previousPen);
+			DeleteObject(separator);
+			x += separatorGap;
+		}
+	}
+
+	SelectObject(memory, oldBitmap);
+	pixels.assign(static_cast<uint8_t*>(bits),
+		static_cast<uint8_t*>(bits) + static_cast<size_t>(stride) * height);
+	const uint8_t alpha = static_cast<uint8_t>(
+		(static_cast<unsigned int>(opacity) * 224) / 255);
+	for (size_t index = 0; index + 3 < pixels.size(); index += 4)
+	{
+		pixels[index + 3] = (pixels[index] || pixels[index + 1] ||
+			pixels[index + 2]) ? alpha : 0;
+	}
+	DeleteObject(bitmap);
+	DeleteObject(labelFont);
+	DeleteObject(valueFont);
+	DeleteDC(memory);
 	return true;
 }
 

@@ -44,7 +44,7 @@ public:
     void reveal();
     void refreshMonitorDiscovery();
     void setActiveProfileStatusForTesting(const QString& queue,
-        const QString& renderer, const QString& viewport,
+        const QString& renderer, const QString& color, const QString& viewport,
         const QStringList& shaders, bool shaderAvailable = true);
     void setRendererDiscoveryForTesting(const QStringList& allRenderers,
         const QStringList& filteredRenderers);
@@ -62,6 +62,7 @@ private:
     QWidget* createStartupPage();
     QWidget* createQueuePage();
     QWidget* createRendererPage();
+    QWidget* createColorConfigPage();
     QWidget* createOutputPage();
     QWidget* createDirectShowPage();
     QWidget* createInputProcessingPage(const QString& title, const QString& description,
@@ -124,7 +125,7 @@ private:
     void setWarningStatus(const QString& message);
     void refreshActiveProfileIndicators();
     void applyActiveProfileIndicators(bool available, const QString& queue,
-        const QString& renderer, const QString& viewport,
+        const QString& renderer, const QString& color, const QString& viewport,
         const QStringList& shaders, bool shaderAvailable);
     void refreshRendererAutoStatus();
 
