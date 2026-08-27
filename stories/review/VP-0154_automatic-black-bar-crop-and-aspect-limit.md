@@ -3,13 +3,14 @@
 ## Status
 
 Review (2026-08-27). Implemented on
-`codex/vp-0154-black-bar-crop-limit` at `6f376d4`, rebased on current
+`codex/vp-0154-black-bar-crop-limit` at `0bf70c9`, rebased on current
 `v1.3.001-beta` tip `85abed0`. Config now has two independent controls, both
 off by default: **Crop narrower content to fill screen** and **Crop wider
 content to fill screen**. Each has its own optional Aspect ratio limit and
 preserves the literal value entered (for example `2.20:1`). A blank narrower
-limit allows any trusted narrower content; a blank wider limit allows any
-trusted wider content. A narrower limit is the minimum eligible aspect, while
+limit explicitly allows any trusted narrower content; a blank wider limit
+explicitly allows any trusted wider content, including in a named Screen Config
+that would otherwise inherit a root-profile limit. A narrower limit is the minimum eligible aspect, while
 a wider limit is the maximum eligible aspect. Both operations require current
 trusted active-picture authority: an automatic bar crop or a generation-current
 trusted full raster. They are centered (top/bottom for narrower, left/right
