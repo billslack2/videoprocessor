@@ -490,15 +490,19 @@ namespace AlphaSourceCrop
 		double contentAspect, const PresentationRect& screen);
 	const char* UnusedSpaceAxisName(UnusedSpaceAxis axis);
 
-	// A viewport may opt into filling a wider physical screen after a trusted
-	// automatic bar crop. The optional limit is a content-aspect eligibility
-	// threshold, never detector authority: only content at or above the limit
-	// may receive this additional centered source crop.
+	// A viewport may independently opt into filling its physical screen after a
+	// trusted automatic bar crop. The optional narrower limit is a minimum
+	// content aspect; the optional wider limit is a maximum content aspect.
+	// Neither limit creates detector authority.
 	struct AspectLimitFillInput
 	{
 		bool trustedAutomaticCropApplied = false;
-		bool limitConfigured = false;
-		double aspectLimit = 0.0;
+		bool cropNarrowerContentToFillScreen = false;
+		bool narrowerLimitConfigured = false;
+		double narrowerAspectLimit = 0.0;
+		bool cropWiderContentToFillScreen = false;
+		bool widerLimitConfigured = false;
+		double widerAspectLimit = 0.0;
 		double screenAspect = 0.0;
 		ActivePictureBounds sourceBounds;
 	};

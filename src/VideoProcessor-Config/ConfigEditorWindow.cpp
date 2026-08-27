@@ -3432,6 +3432,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             document_->SetKnown(state->section.toStdString(), key.toStdString().c_str(), checked ? "true" : "false");
             markDirty();
         });
+		return check;
     };
     auto addChoice = [&](const QString& label, const QString& key,
         const QStringList& choices, bool allowInherited = true)
@@ -4077,19 +4078,27 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             }
             markDirty();
         });
-        addBoolean(QStringLiteral("Automatically crop black bars"), QStringLiteral("automatic_crop"));
-        auto* cropAspectLimit = addText(QStringLiteral("Aspect ratio limit"),
-            QStringLiteral("automatic_crop_aspect_limit"));
-        cropAspectLimit->setPlaceholderText(QStringLiteral("Optional, e.g. 2.20:1"));
-        cropAspectLimit->setToolTip(QStringLiteral(
-            "Optional content-aspect threshold for automatic black-bar crop. "
-            "When trusted content is at least this wide but narrower than the "
-            "physical screen, VP fills the screen by centered top/bottom crop. "
-            "Leave blank to retain ordinary aspect-preserving fit."));
-        form->addRow(QString(), helpLabel(QStringLiteral(
-            "This never creates crop authority: VP first needs trusted black-bar "
-            "detection. Enter a ratio or decimal between 1.0 and 4.0; narrower "
-            "content remains fitted without the extra fill.")));
+		auto* cropNarrower = addBoolean(
+			QStringLiteral("Crop narrower content to fill screen"),
+			QStringLiteral("crop_narrower_content_to_fill_screen"));
+		auto* cropNarrowerLimit = addText(QStringLiteral("Aspect ratio limit"),
+			QStringLiteral("crop_narrower_content_aspect_limit"));
+		cropNarrowerLimit->setPlaceholderText(QStringLiteral("Optional, e.g. 2.20:1"));
+		cropNarrowerLimit->setEnabled(cropNarrower->isChecked());
+		connect(cropNarrower, &QCheckBox::toggled, this,
+			[cropNarrowerLimit](bool enabled)
+			{ cropNarrowerLimit->setEnabled(enabled); });
+
+		auto* cropWider = addBoolean(
+			QStringLiteral("Crop wider content to fill screen"),
+			QStringLiteral("crop_wider_content_to_fill_screen"));
+		auto* cropWiderLimit = addText(QStringLiteral("Aspect ratio limit"),
+			QStringLiteral("crop_wider_content_aspect_limit"));
+		cropWiderLimit->setPlaceholderText(QStringLiteral("Optional, e.g. 2.76:1"));
+		cropWiderLimit->setEnabled(cropWider->isChecked());
+		connect(cropWider, &QCheckBox::toggled, this,
+			[cropWiderLimit](bool enabled)
+			{ cropWiderLimit->setEnabled(enabled); });
 
         form = addCollapsibleSection(QStringLiteral("subtitles"),
             QStringLiteral("Subtitles"), QStringLiteral(

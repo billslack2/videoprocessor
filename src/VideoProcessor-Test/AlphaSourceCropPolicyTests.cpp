@@ -2208,12 +2208,13 @@ namespace Tests
 				static_cast<int>(widerContent.unusedAxis));
 		}
 
-		TEST_METHOD(AspectLimitFillCropsOnlyTrustedWideEnoughContent)
+		TEST_METHOD(AspectLimitFillCropsTrustedNarrowerAndWiderContent)
 		{
 			AspectLimitFillInput input;
 			input.trustedAutomaticCropApplied = true;
-			input.limitConfigured = true;
-			input.aspectLimit = 2.20;
+			input.cropNarrowerContentToFillScreen = true;
+			input.narrowerLimitConfigured = true;
+			input.narrowerAspectLimit = 2.20;
 			input.screenAspect = 2.35;
 			input.sourceBounds = {
 				0, 208, 3840, 1952, 3840, 2160,
@@ -2244,11 +2245,32 @@ namespace Tests
 			Assert::IsTrue(untrusted.reason.find("trusted") != std::string::npos);
 
 			input.trustedAutomaticCropApplied = true;
-			input.limitConfigured = false;
-			const AspectLimitFillDecision omitted =
+			input.narrowerLimitConfigured = false;
+			const AspectLimitFillDecision omittedLimit =
 				EvaluateAspectLimitFill(input);
-			Assert::IsFalse(omitted.applied);
-			Assert::IsTrue(omitted.reason.find("not configured") != std::string::npos);
+			Assert::IsTrue(omittedLimit.applied);
+
+			input.cropNarrowerContentToFillScreen = false;
+			input.cropWiderContentToFillScreen = true;
+			input.widerLimitConfigured = true;
+			input.widerAspectLimit = 2.76;
+			input.sourceBounds = {
+				0, 280, 3840, 1880, 3840, 2160,
+				2.40, ActivePictureBounds::BarAxes::TOP_BOTTOM };
+			const AspectLimitFillDecision wider =
+				EvaluateAspectLimitFill(input);
+			Assert::IsTrue(wider.applied);
+			Assert::IsTrue(wider.sourceBounds.left > input.sourceBounds.left);
+			Assert::IsTrue(wider.sourceBounds.right < input.sourceBounds.right);
+			Assert::AreEqual(2.35,
+				static_cast<double>(wider.sourceBounds.right - wider.sourceBounds.left) /
+				(wider.sourceBounds.bottom - wider.sourceBounds.top), 0.002);
+
+			input.widerAspectLimit = 2.35;
+			const AspectLimitFillDecision tooWide =
+				EvaluateAspectLimitFill(input);
+			Assert::IsFalse(tooWide.applied);
+			Assert::IsTrue(tooWide.reason.find("wider") != std::string::npos);
 		}
 
 		TEST_METHOD(SourceEnvelopeIsIndependentOfScreenAndAnamorphicMapping)

@@ -546,10 +546,15 @@ void testEveryPageRoundTrips()
         QStringLiteral("config.vprenderer.viewport.vertical_alignment")),
         QStringLiteral("bottom"));
     requireControl<QCheckBox>(window,
-        QStringLiteral("config.vprenderer.viewport.automatic_crop"))->setCheckState(Qt::Checked);
+        QStringLiteral("config.vprenderer.viewport.crop_narrower_content_to_fill_screen"))->setCheckState(Qt::Checked);
     requireControl<QLineEdit>(window,
-        QStringLiteral("config.vprenderer.viewport.automatic_crop_aspect_limit"))
+        QStringLiteral("config.vprenderer.viewport.crop_narrower_content_aspect_limit"))
         ->setText(QStringLiteral("2.20:1"));
+    requireControl<QCheckBox>(window,
+        QStringLiteral("config.vprenderer.viewport.crop_wider_content_to_fill_screen"))->setCheckState(Qt::Checked);
+    requireControl<QLineEdit>(window,
+        QStringLiteral("config.vprenderer.viewport.crop_wider_content_aspect_limit"))
+        ->setText(QStringLiteral("2.76:1"));
     requireControl<QCheckBox>(window,
         QStringLiteral("config.vprenderer.viewport.anamorphic_enabled"))->setChecked(true);
     requireControl<QLineEdit>(window,
@@ -793,7 +798,10 @@ void testEveryPageRoundTrips()
         "queue_size: 48", "lead_frames: 3", "reset_queue_too_large_percent: 200",
         "shortcut: Ctrl+Q", "quality: balanced", "sdr_target_nits: 220", "tone_mapping: spline",
         "screen_aspect: 21:10", "vertical_alignment: bottom", "anamorphic_scale: 4:3",
-        "automatic_crop_aspect_limit: 2.20:1",
+        "crop_narrower_content_to_fill_screen: true",
+        "crop_narrower_content_aspect_limit: 2.20:1",
+        "crop_wider_content_to_fill_screen: true",
+        "crop_wider_content_aspect_limit: 2.76:1",
         "renderer_start_stop_time_method: RATIONAL_RATIONAL", "frame_offset: 75",
         "renderer_primaries: BT2020", "video_conversion: NONE",
         "container_colorspace: REC709", "max_cll: 1200", "max_fall: 450",
@@ -834,8 +842,11 @@ void testEveryPageRoundTrips()
         QStringLiteral("config.vprenderer.viewport.screen_aspect"))->text() ==
         QStringLiteral("21:10"), "Viewport value did not reload");
     require(requireControl<QLineEdit>(reloaded,
-        QStringLiteral("config.vprenderer.viewport.automatic_crop_aspect_limit"))->text() ==
-        QStringLiteral("2.20:1"), "Viewport aspect limit did not reload");
+        QStringLiteral("config.vprenderer.viewport.crop_narrower_content_aspect_limit"))->text() ==
+        QStringLiteral("2.20:1"), "Narrower-content aspect limit did not reload");
+    require(requireControl<QLineEdit>(reloaded,
+        QStringLiteral("config.vprenderer.viewport.crop_wider_content_aspect_limit"))->text() ==
+        QStringLiteral("2.76:1"), "Wider-content aspect limit did not reload");
     require(requireControl<QComboBox>(reloaded,
         QStringLiteral("config.vprenderer.viewport.vertical_alignment"))->currentData().toString() ==
         QStringLiteral("bottom"), "Vertical alignment did not reload");
@@ -2325,10 +2336,10 @@ void testChoiceLabelsAndVpRendererName()
             "A checkbox still exposes an indeterminate third state");
 
     window.selectPage(4);
-    QCheckBox* automaticCrop = requireControl<QCheckBox>(window,
-        QStringLiteral("config.vprenderer.viewport.automatic_crop"));
-    require(!automaticCrop->isTristate() &&
-        automaticCrop->checkState() != Qt::PartiallyChecked,
+    QCheckBox* cropNarrower = requireControl<QCheckBox>(window,
+        QStringLiteral("config.vprenderer.viewport.crop_narrower_content_to_fill_screen"));
+    require(!cropNarrower->isTristate() &&
+        cropNarrower->checkState() != Qt::PartiallyChecked,
         "A profile Boolean is exposed as a three-state checkbox");
 
     QComboBox* renderer = requireControl<QComboBox>(window,

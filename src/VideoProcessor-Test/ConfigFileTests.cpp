@@ -2037,7 +2037,10 @@ namespace VideoProcessorTest
 					"[vprenderer.viewport]\nscreen_aspect: 16:9\n"
 					"[vprenderer.viewport.scope]\nwhen: $key==\"F2\"\n"
 					"screen_aspect: 16:9\nvertical_alignment: BOTTOM\n"
-					"automatic_crop: true\nautomatic_crop_aspect_limit: 2.20:1\n"
+					"crop_narrower_content_to_fill_screen: true\n"
+					"crop_narrower_content_aspect_limit: 2.20:1\n"
+					"crop_wider_content_to_fill_screen: true\n"
+					"crop_wider_content_aspect_limit: 2.76:1\n"
 					"subtitle_fit: true\n";
 			}
 
@@ -2055,8 +2058,14 @@ namespace VideoProcessorTest
 			Assert::IsTrue(RendererProfileConfig::ResolveViewport(
 				model, "scope", 2, scope, error));
 			Assert::AreEqual("bottom", scope.verticalAlignment.c_str());
-			Assert::IsTrue(scope.hasAutomaticCropAspectLimit);
-			Assert::AreEqual(2.20, scope.automaticCropAspectLimit.value, 0.000001);
+			Assert::IsTrue(scope.cropNarrowerContentToFillScreen);
+			Assert::IsTrue(scope.hasCropNarrowerContentAspectLimit);
+			Assert::AreEqual(2.20,
+				scope.cropNarrowerContentAspectLimit.value, 0.000001);
+			Assert::IsTrue(scope.cropWiderContentToFillScreen);
+			Assert::IsTrue(scope.hasCropWiderContentAspectLimit);
+			Assert::AreEqual(2.76,
+				scope.cropWiderContentAspectLimit.value, 0.000001);
 
 			UnifiedProfileRuntime::Runtime runtime;
 			Assert::IsTrue(runtime.Initialize(config,
@@ -2069,22 +2078,30 @@ namespace VideoProcessorTest
 			Assert::IsTrue(selected.snapshot->variables.Lookup(
 				"vertical_alignment", published));
 			Assert::AreEqual("bottom", published.c_str());
-			const StateVariables::Value* aspectLimit =
-				selected.snapshot->variables.Find("$automatic_crop_aspect_limit");
-			Assert::IsNotNull(aspectLimit);
-			Assert::IsTrue(aspectLimit->type ==
+			const StateVariables::Value* narrowerAspectLimit =
+				selected.snapshot->variables.Find(
+					"$crop_narrower_content_aspect_limit");
+			Assert::IsNotNull(narrowerAspectLimit);
+			Assert::IsTrue(narrowerAspectLimit->type ==
 				StateVariables::ValueType::Aspect);
-			Assert::AreEqual(2.20, aspectLimit->number, 0.000001);
+			Assert::AreEqual(2.20, narrowerAspectLimit->number, 0.000001);
+			const StateVariables::Value* widerAspectLimit =
+				selected.snapshot->variables.Find(
+					"$crop_wider_content_aspect_limit");
+			Assert::IsNotNull(widerAspectLimit);
+			Assert::IsTrue(widerAspectLimit->type ==
+				StateVariables::ValueType::Aspect);
+			Assert::AreEqual(2.76, widerAspectLimit->number, 0.000001);
 
 			{
 				std::ofstream file(path, std::ios::out | std::ios::trunc);
 				file << "[vprenderer.viewport]\n"
-					"automatic_crop_aspect_limit: 4.1:1\n";
+					"crop_wider_content_aspect_limit: 4.1:1\n";
 			}
 			Assert::IsTrue(config.Load(path));
 			error.clear();
 			Assert::IsFalse(RendererProfileConfig::Read(config, model, error));
-			Assert::IsTrue(error.find("automatic_crop_aspect_limit") !=
+			Assert::IsTrue(error.find("crop_wider_content_aspect_limit") !=
 				std::string::npos);
 			DeleteFileA(path.c_str());
 		}
