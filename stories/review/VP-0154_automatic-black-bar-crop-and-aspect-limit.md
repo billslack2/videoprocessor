@@ -3,36 +3,38 @@
 ## Status
 
 Review (2026-08-27). Implemented on
-`codex/vp-0154-black-bar-crop-limit` at `3d1aa71`, rebased on current
-`v1.3.001-beta` tip `85abed0`. The new optional
-`automatic_crop_aspect_limit` preserves the literal value entered in Config
-(for example `2.20:1`), while using a separate numeric representation only
-for rendering. It applies a centered top/bottom fill only after trusted
-automatic black-bar crop, only when the trusted content aspect meets the
-configured threshold, and never for NLS source geometry. Omission retains
-ordinary aspect-preserving fit. Focused geometry and configuration tests
-passed from a clean x64 Release test build; x64 Release GUI and Config editor
-test targets built successfully. The branch is pushed for operator review.
-Do not merge or deploy until approved.
+`codex/vp-0154-black-bar-crop-limit` at `3978010`, rebased on current
+`v1.3.001-beta` tip `85abed0`. Config now has two independent controls, both
+off by default: **Crop narrower content to fill screen** and **Crop wider
+content to fill screen**. Each has its own optional Aspect ratio limit and
+preserves the literal value entered (for example `2.20:1`). A blank narrower
+limit allows any trusted narrower content; a blank wider limit allows any
+trusted wider content. A narrower limit is the minimum eligible aspect, while
+a wider limit is the maximum eligible aspect. Both operations require trusted
+automatic black-bar crop, are centered (top/bottom for narrower, left/right
+for wider), and are disabled for NLS source geometry. Focused geometry and
+configuration tests passed from x64 Release builds; the Config editor
+round-trip passed through the new controls, and x64 Release GUI and VP Renderer
+builds succeeded. The branch is pushed for operator review. Do not merge or
+deploy until approved.
 
 ## User story
 
-As a VideoProcessor operator using a scope screen, I want automatic black-bar
-crop to visibly zoom the trusted active picture and an optional aspect-ratio
-limit to bound when VP may fill-and-crop it to the screen, so scope material
-uses the screen without risking a large crop of narrower content.
+As a VideoProcessor operator using a scope screen, I want trusted black-bar
+crop to visibly zoom the active picture using independent narrower-content and
+wider-content choices, each with an optional aspect-ratio limit, so I decide
+which content may be cropped to fill the screen.
 
 ## Scope
 
 1. Diagnose and repair the operator-visible no-op in automatic black-bar crop
    while preserving trusted active-picture authority and fail-open behavior.
-2. Add an optional per-viewport **Aspect ratio limit**. It is a content-aspect
-   eligibility threshold: when trusted cropped content is at least the limit
-   but narrower than the configured screen, VP may symmetrically fill the
-   screen and crop the opposite source edges. With no limit, retain the
-   existing aspect-preserving fit after black bars are removed.
-3. Make the control clear in Config, persist it in the viewport profile,
-   validate ratio/decimal input, apply it live, and document its crop effect.
+2. Add independent per-viewport narrower-content and wider-content fill
+   choices, each with an optional **Aspect ratio limit**. A narrower limit is
+   a minimum aspect; a wider limit is a maximum aspect. With a blank limit,
+   that enabled direction may crop any trusted content to fill.
+3. Make the two controls clear in Config, persist their literal ratio/decimal
+   input in the viewport profile, apply them live, and document their effects.
 4. Add focused geometry and configuration tests plus diagnostics that report
    detected source aspect, configured screen aspect, optional limit, selected
    source crop, and the reason a fill was applied or withheld.
@@ -41,11 +43,15 @@ uses the screen without risking a large crop of narrower content.
 
 - Trusted letterbox or pillarbox bars are removed and the active picture is
   scaled into the configured physical-screen viewport.
-- With `automatic_crop_aspect_limit: 2.20:1` and a wider configured scope
-  screen, trusted 2.20:1 content may be centered, zoomed, and symmetrically
-  cropped to fill; narrower content is fitted without this extra crop.
-- Omitting the limit retains existing aspect-preserving automatic-crop
-  behavior.
+- With `crop_narrower_content_to_fill_screen: true` and
+  `crop_narrower_content_aspect_limit: 2.20:1`, trusted 2.20:1 content on a
+  wider scope screen may be centered, zoomed, and symmetrically cropped
+  top/bottom to fill; narrower content remains fitted.
+- With `crop_wider_content_to_fill_screen: true`, trusted content wider than
+  the screen may be centered and symmetrically cropped left/right to fill.
+  `crop_wider_content_aspect_limit` optionally caps the eligible source aspect.
+- Omitting either enabled option's limit permits that option for any trusted
+  content in its direction.
 - No crop is manufactured from full-raster, provisional, stale, or
   contradictory evidence; subtitle/overlay safety remains intact.
 - Configuration UI, parsing, profile inheritance, live application,
