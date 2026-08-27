@@ -8738,9 +8738,13 @@ struct LibplaceboVideoRenderer::Impl
 				presentationSourceGeometry.valid;
 			const double screenLayoutAspect = configuredScreenActive || nlsRequested
 				? finalTargetAspect : pl_rect2df_aspect(&target.crop);
+			// The configured screen is itself a fitted destination rectangle. Apply
+			// the resting alignment here as well as to the later linear picture fit:
+			// active NLS returns after this stage, so centering this fit would make
+			// top/bottom a no-op for the complete NLS presentation.
 			const AlphaSourceCrop::CenteredFitDecision screenFit =
 				fitTargetToAspect(screenLayoutAspect,
-					AlphaSourceCrop::VerticalPictureAlignment::CENTER);
+					ResolveVerticalPictureAlignment(verticalAlignment));
 			const AlphaSourceCrop::PresentationRect finalScreen = screenFit.picture;
 			auto publishFinalLayout = [&](AlphaSourceCrop::UnusedSpaceAxis axis,
 				const char* mapping)
