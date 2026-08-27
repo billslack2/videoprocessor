@@ -699,6 +699,12 @@ protected:
 	uint64_t m_rendererRetirementWaitLoggedToken = 0;
 	CString m_retiringRendererName;
 	uint32_t m_retiringRendererGeneration = 0;
+	uint32_t m_retiringRendererActionGeneration = 0;
+	std::shared_ptr<const UnifiedProfileRuntime::Snapshot>
+		m_retiringRendererActionSnapshot;
+	int m_retiringRendererActionSelectorIndex = 0;
+	bool m_retiringRendererActionIsAlpha = false;
+	int m_activeRendererSelectorIndex = 0;
 	RendererState m_rendererState = RendererState::RENDERSTATE_UNKNOWN;
 	RendererTransitionWindow m_rendererTransitionWindow;
 	ShaderLoadingWindow m_shaderLoadingWindow;
@@ -892,6 +898,9 @@ protected:
 	bool IsAlphaRendererSelected() const;
 	bool IsUnifiedActionRendererSelected(
 		const RendererProfileConfig::Model::EventAction& action) const;
+	bool IsUnifiedActionRendererSelectedFor(
+		const RendererProfileConfig::Model::EventAction& action,
+		int rendererSelectorIndex, bool alphaRenderer) const;
 	void UpdateRendererQueueControl();
 	void UpdateSceneCorrectionModeUi();
 	void UpdateRendererBackendUi();
@@ -1030,6 +1039,9 @@ protected:
 	void DispatchQueuedQueueProfileReset();
 	void ScheduleUnifiedProfileActions(
 		const std::vector<UnifiedProfileRuntime::ActionInvocation>& actions);
+	void ScheduleUnifiedProfileActionsForRenderer(
+		const std::vector<UnifiedProfileRuntime::ActionInvocation>& actions,
+		int rendererSelectorIndex, bool alphaRenderer);
 	void PublishUnifiedProfileEvent(const std::string& event,
 		const std::string& reason,
 		const std::shared_ptr<const UnifiedProfileRuntime::Snapshot>& previous,

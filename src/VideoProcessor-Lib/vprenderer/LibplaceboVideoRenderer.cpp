@@ -2592,10 +2592,6 @@ namespace
 
 		void AbandonPendingRestoreForShutdown()
 		{
-			if (m_cancelEvent) SetEvent(m_cancelEvent);
-			for (std::thread& worker : m_actionWorkers)
-				if (worker.joinable()) worker.join();
-			m_actionWorkers.clear();
 			if (m_changed)
 			{
 				DebugLog::Log(
@@ -2735,16 +2731,12 @@ namespace
 			if (!QueryDisplayPath(
 				m_displayDeviceName, paths, modes, pathCount, modeCount, pathIndex))
 			{
-				// A monitor disable/enable rebuild can retire the exact Windows path
-				// that VP changed. There is no current path on which it is safe to
-				// restore that historic mode, so it cannot remain a retirement
-				// blocker. Windows owns the newly enumerated topology from here.
+				++m_restoreFailureCount;
 				DebugLog::Log(
-					"libplacebo refresh-rate restore skipped: display path disappeared "
-					"during topology rebuild; clearing pending restore");
-				m_restoreFailureCount = 0;
-				m_changed = false;
-				return true;
+					"libplacebo refresh-rate restore pending: display path disappeared "
+					"during topology rebuild; attempt=%u external_state=unverified",
+					m_restoreFailureCount);
+				return false;
 			}
 
 			const LONG restoreResult = ApplyDisplayRefreshRate(
@@ -2759,18 +2751,9 @@ namespace
 				++m_restoreFailureCount;
 				DebugLog::Log(
 					"libplacebo refresh-rate restore failed: %.6f Hz error=%ld; "
-					"attempt=%u/%u",
+					"attempt=%u external_state=unverified",
 					RefreshRateHz(m_originalRefreshRate), restoreResult,
-					m_restoreFailureCount, MaximumRestoreFailures);
-				if (m_restoreFailureCount >= MaximumRestoreFailures)
-				{
-					DebugLog::Log(
-						"libplacebo refresh-rate restore abandoned after bounded failures; "
-						"clearing pending restore to unblock renderer replacement");
-					m_restoreFailureCount = 0;
-					m_changed = false;
-					return true;
-				}
+					m_restoreFailureCount);
 				return false;
 			}
 
@@ -2801,20 +2784,9 @@ namespace
 				++m_restoreFailureCount;
 				DebugLog::Log(
 					"libplacebo refresh-rate restore unverified: requested=%.6f Hz "
-					"last_observed=%.6f Hz; attempt=%u/%u",
+					"last_observed=%.6f Hz; attempt=%u external_state=unverified",
 					RefreshRateHz(m_originalRefreshRate),
-					RefreshRateHz(actualRefreshRate), m_restoreFailureCount,
-					MaximumRestoreFailures);
-				if (m_restoreFailureCount >= MaximumRestoreFailures)
-				{
-					DebugLog::Log(
-						"libplacebo refresh-rate restore abandoned after bounded "
-						"verification failures; clearing pending restore to unblock "
-						"renderer replacement");
-					m_restoreFailureCount = 0;
-					m_changed = false;
-					return true;
-				}
+					RefreshRateHz(actualRefreshRate), m_restoreFailureCount);
 				return false;
 			}
 
@@ -2853,7 +2825,6 @@ namespace
 
 		std::wstring m_displayDeviceName;
 		DISPLAYCONFIG_RATIONAL m_originalRefreshRate{};
-		static constexpr unsigned int MaximumRestoreFailures = 3;
 		unsigned int m_restoreFailureCount = 0;
 		bool m_changed = false;
 		bool m_finalRestoreAttempted = false;

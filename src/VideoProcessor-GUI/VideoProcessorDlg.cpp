@@ -5233,12 +5233,22 @@ bool CVideoProcessorDlg::IsAlphaRendererSelected() const
 bool CVideoProcessorDlg::IsUnifiedActionRendererSelected(
 	const RendererProfileConfig::Model::EventAction& action) const
 {
+	const int selection = m_rendererCombo.GetCurSel();
+	return IsUnifiedActionRendererSelectedFor(action,
+		selection >= 0 ? selection + 1 : 0, IsAlphaRendererSelected());
+}
+
+
+bool CVideoProcessorDlg::IsUnifiedActionRendererSelectedFor(
+	const RendererProfileConfig::Model::EventAction& action,
+	int rendererSelectorIndex, bool alphaRenderer) const
+{
 	if (action.renderer == "*")
 		return true;
 	if (action.renderer == "vprenderer")
-		return IsAlphaRendererSelected();
-	const int selection = m_rendererCombo.GetCurSel();
-	return selection >= 0 && action.rendererSelectorIndex == selection + 1;
+		return alphaRenderer;
+	return rendererSelectorIndex > 0 &&
+		action.rendererSelectorIndex == rendererSelectorIndex;
 }
 
 
@@ -6663,8 +6673,14 @@ LRESULT CVideoProcessorDlg::OnMessageRendererActionEvent(
 		return 0;
 	const uint32_t currentGeneration =
 		m_rendererGeneration.load(std::memory_order_acquire);
-	if (!RendererGenerationGate::Accept(message->rendererGeneration,
-		currentGeneration, m_videoRenderer != nullptr) ||
+	const bool activeRendererAccepted = RendererGenerationGate::Accept(
+		message->rendererGeneration, currentGeneration,
+		m_videoRenderer != nullptr);
+	const bool retiringRendererAccepted =
+		message->event == "refresh.restored" &&
+		message->rendererGeneration != 0 &&
+		message->rendererGeneration == m_retiringRendererActionGeneration;
+	if ((!activeRendererAccepted && !retiringRendererAccepted) ||
 		!m_profileRuntime.IsInitialized())
 	{
 		DebugLog::Log(
@@ -6674,6 +6690,13 @@ LRESULT CVideoProcessorDlg::OnMessageRendererActionEvent(
 			currentGeneration, m_videoRenderer ? 1 : 0);
 		return 0;
 	}
+	const std::shared_ptr<const UnifiedProfileRuntime::Snapshot> eventSnapshot =
+		retiringRendererAccepted ? m_retiringRendererActionSnapshot :
+		m_profileRuntime.GetSnapshot();
+	const int eventRendererSelectorIndex = retiringRendererAccepted ?
+		m_retiringRendererActionSelectorIndex : 0;
+	const bool eventRendererIsAlpha = retiringRendererAccepted ?
+		m_retiringRendererActionIsAlpha : false;
 
 	const double actualRefreshRate = message->actualRefreshRate;
 	const double requestedRefreshRate = message->requestedRefreshRate;
@@ -6706,15 +6729,37 @@ LRESULT CVideoProcessorDlg::OnMessageRendererActionEvent(
 
 	std::vector<UnifiedProfileRuntime::ActionInvocation> actions;
 	std::string error;
-	const auto snapshot = m_profileRuntime.GetSnapshot();
 	if (!m_profileRuntime.CollectActionInvocations(message->event, "refresh",
-		nullptr, snapshot, actions, error, eventValues))
+		nullptr, eventSnapshot, actions, error, eventValues))
 	{
+		if (retiringRendererAccepted)
+		{
+			m_retiringRendererActionGeneration = 0;
+			m_retiringRendererActionSnapshot.reset();
+		}
 		DebugLog::Log("renderer action event '%s' was not published: %s",
 			message->event.c_str(), error.c_str());
 		return 0;
 	}
-	ScheduleUnifiedProfileActions(actions);
+	if (retiringRendererAccepted)
+	{
+		// Retirement publishes refresh.restored before its lifecycle completion.
+		// A queued timer may consume that completion first, so retain the old
+		// immutable profile/renderer context until this exact one-shot event runs.
+		m_retiringRendererActionGeneration = 0;
+		m_retiringRendererActionSnapshot.reset();
+		DebugLog::Log(
+			"renderer action event accepted from retiring renderer: "
+			"event=%s generation=%u selector=%d backend=vp-renderer",
+			message->event.c_str(), message->rendererGeneration,
+			eventRendererSelectorIndex);
+		ScheduleUnifiedProfileActionsForRenderer(actions,
+			eventRendererSelectorIndex, eventRendererIsAlpha);
+	}
+	else
+	{
+		ScheduleUnifiedProfileActions(actions);
+	}
 	return 0;
 }
 
@@ -8622,6 +8667,7 @@ void CVideoProcessorDlg::RenderStart()
 	m_activeRendererName = selectedRenderer->name;
 	m_activeRendererIsDirectShow =
 		selectedRenderer->backend == RendererBackend::DIRECTSHOW;
+	m_activeRendererSelectorIndex = i + 1;
 	m_alphaBackendHandoffPending = IsDirectShowToAlphaBackendHandoff(
 		previousRendererWasDirectShow, m_activeRendererIsDirectShow);
 	if (m_alphaBackendHandoffPending)
@@ -9295,6 +9341,10 @@ void CVideoProcessorDlg::DestroyVideoRenderer()
 	m_retiringRendererName = m_activeRendererName;
 	m_retiringRendererGeneration =
 		m_rendererGeneration.load(std::memory_order_acquire);
+	m_retiringRendererActionGeneration = m_retiringRendererGeneration;
+	m_retiringRendererActionSnapshot = m_profileRuntime.GetSnapshot();
+	m_retiringRendererActionSelectorIndex = m_activeRendererSelectorIndex;
+	m_retiringRendererActionIsAlpha = !m_activeRendererIsDirectShow;
 	DebugLog::Log(
 		"Renderer retirement queued: process=%lu generation=%u renderer=%S "
 		"token=%llu target=%p fullscreen_host=%p fullscreen_intent=%d "
@@ -11917,13 +11967,24 @@ void CVideoProcessorDlg::OnCommandReapplyRules()
 void CVideoProcessorDlg::ScheduleUnifiedProfileActions(
 	const std::vector<UnifiedProfileRuntime::ActionInvocation>& actions)
 {
+	const int selection = m_rendererCombo.GetCurSel();
+	ScheduleUnifiedProfileActionsForRenderer(actions,
+		selection >= 0 ? selection + 1 : 0, IsAlphaRendererSelected());
+}
+
+
+void CVideoProcessorDlg::ScheduleUnifiedProfileActionsForRenderer(
+	const std::vector<UnifiedProfileRuntime::ActionInvocation>& actions,
+	int rendererSelectorIndex, bool alphaRenderer)
+{
 	if (!m_unifiedActionCancelEvent || actions.empty())
 		return;
 	const std::string configPath = m_profileRuntime.ConfigPath();
 	std::map<std::string, const UnifiedProfileRuntime::ActionInvocation*> latest;
 	for (const UnifiedProfileRuntime::ActionInvocation& invocation : actions)
 	{
-		if (!IsUnifiedActionRendererSelected(invocation.action))
+		if (!IsUnifiedActionRendererSelectedFor(invocation.action,
+			rendererSelectorIndex, alphaRenderer))
 		{
 			DebugLog::Log(
 				"event action skipped: action='%s' event=%s reason=renderer-target-mismatch target=%s",
