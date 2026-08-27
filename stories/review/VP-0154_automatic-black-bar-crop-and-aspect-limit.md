@@ -32,8 +32,11 @@ apply through the same live profile path. Screen and Zoom are shared views of
 the same selected screen profile: Screen owns geometry, while Zoom owns
 crop/fill and subtitle placement. Rendering now retains only Debanding,
 Dithering, and Display bit depth under **Processing**. The x64 Release Config
-build and focused GUI/native profile-policy regressions passed. The branch
-remains unmerged and in Review.
+build and focused GUI/native profile-policy regressions passed. The verified
+x64 Release Config executable was deployed to `C:\Videoprocessor\vp\config`
+on 2026-08-27; its installed hash matched the build and the active
+`VideoProcessor.cfg` remained unchanged. The branch remains unmerged and in
+Review.
 
 ## User story
 
