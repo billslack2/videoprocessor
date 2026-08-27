@@ -1045,9 +1045,9 @@ namespace AlphaSourceCrop
 			return decision;
 		}
 		decision.contentAspect = static_cast<double>(width) / height;
-		if (!input.trustedAutomaticCropApplied)
+		if (!input.trustedContentAuthorityAccepted)
 		{
-			decision.reason = "trusted automatic crop is not active";
+			decision.reason = "trusted active-picture authority is unavailable";
 			return decision;
 		}
 		if (!std::isfinite(input.screenAspect) || input.screenAspect < 1.0 ||

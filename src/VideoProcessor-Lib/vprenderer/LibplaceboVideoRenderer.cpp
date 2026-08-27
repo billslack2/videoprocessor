@@ -8756,7 +8756,12 @@ struct LibplaceboVideoRenderer::Impl
 			else
 			{
 				AlphaSourceCrop::AspectLimitFillInput aspectLimitInput;
-				aspectLimitInput.trustedAutomaticCropApplied = cropDecision.applyCrop;
+				// Explicit fill can crop a current trusted full raster (for example
+				// 16:9 content on a 2.35:1 screen) as well as a trusted detected
+				// active picture. Do not use provisional or retained geometry here.
+				aspectLimitInput.trustedContentAuthorityAccepted =
+					cropDecision.applyCrop ||
+					cropInput.fullRasterPresentationAuthoritative;
 				aspectLimitInput.cropNarrowerContentToFillScreen =
 					cropNarrowerContentToFillScreen;
 				aspectLimitInput.narrowerLimitConfigured =
@@ -8886,7 +8891,7 @@ struct LibplaceboVideoRenderer::Impl
 					latestActivePicturePresentationRetentionReason.c_str(),
 					aspectLimitFill.reason.c_str());
 			}
-			if (cropDecision.applyCrop)
+			if (cropDecision.applyCrop || aspectLimitFill.applied)
 			{
 				source.crop.x0 = static_cast<float>(
 					presentationCropBounds.left);

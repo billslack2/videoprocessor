@@ -2211,7 +2211,7 @@ namespace Tests
 		TEST_METHOD(AspectLimitFillCropsTrustedNarrowerAndWiderContent)
 		{
 			AspectLimitFillInput input;
-			input.trustedAutomaticCropApplied = true;
+			input.trustedContentAuthorityAccepted = true;
 			input.cropNarrowerContentToFillScreen = true;
 			input.narrowerLimitConfigured = true;
 			input.narrowerAspectLimit = 2.20;
@@ -2238,17 +2238,29 @@ namespace Tests
 			Assert::IsFalse(narrow.applied);
 			Assert::IsTrue(narrow.reason.find("narrower") != std::string::npos);
 
-			input.trustedAutomaticCropApplied = false;
+			input.trustedContentAuthorityAccepted = false;
 			const AspectLimitFillDecision untrusted =
 				EvaluateAspectLimitFill(input);
 			Assert::IsFalse(untrusted.applied);
 			Assert::IsTrue(untrusted.reason.find("trusted") != std::string::npos);
 
-			input.trustedAutomaticCropApplied = true;
+			input.trustedContentAuthorityAccepted = true;
 			input.narrowerLimitConfigured = false;
 			const AspectLimitFillDecision omittedLimit =
 				EvaluateAspectLimitFill(input);
 			Assert::IsTrue(omittedLimit.applied);
+
+			// A current trusted full raster is valid content authority too. This
+			// is the common no-black-bars case: 16:9 content filling a 2.35:1
+			// physical screen by centered top/bottom crop.
+			input.sourceBounds = {
+				0, 0, 1920, 1080, 1920, 1080,
+				16.0 / 9.0, ActivePictureBounds::BarAxes::NONE };
+			const AspectLimitFillDecision fullRaster =
+				EvaluateAspectLimitFill(input);
+			Assert::IsTrue(fullRaster.applied);
+			Assert::IsTrue(fullRaster.sourceBounds.top > 0);
+			Assert::IsTrue(fullRaster.sourceBounds.bottom < 1080);
 
 			input.cropNarrowerContentToFillScreen = false;
 			input.cropWiderContentToFillScreen = true;
