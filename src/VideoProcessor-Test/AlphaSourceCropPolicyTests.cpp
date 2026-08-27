@@ -2146,6 +2146,35 @@ namespace Tests
 				narrowBottom.picture.right, 0.001);
 		}
 
+		TEST_METHOD(ConfiguredScopeScreenHonorsVerticalAlignmentWithinOutput)
+		{
+			const PresentationRect output = { 0.0, 0.0, 1920.0, 1080.0 };
+			const auto top = FitAspect(2.35, output,
+				VerticalPictureAlignment::TOP);
+			const auto center = FitAspect(2.35, output,
+				VerticalPictureAlignment::CENTER);
+			const auto bottom = FitAspect(2.35, output,
+				VerticalPictureAlignment::BOTTOM);
+
+			const double expectedHeight = 1920.0 / 2.35;
+			const double unusedHeight = 1080.0 - expectedHeight;
+			Assert::IsTrue(top.valid && center.valid && bottom.valid);
+			Assert::AreEqual(0.0, top.picture.top, 0.001);
+			Assert::AreEqual(unusedHeight * 0.5,
+				center.picture.top, 0.001);
+			Assert::AreEqual(unusedHeight, bottom.picture.top, 0.001);
+			Assert::AreEqual(1080.0, bottom.picture.bottom, 0.001);
+			for (const auto& fit : { top, center, bottom })
+			{
+				Assert::AreEqual(0.0, fit.picture.left, 0.001);
+				Assert::AreEqual(1920.0, fit.picture.right, 0.001);
+				Assert::AreEqual(expectedHeight,
+					fit.picture.bottom - fit.picture.top, 0.001);
+				Assert::AreEqual(static_cast<int>(UnusedSpaceAxis::VERTICAL),
+					static_cast<int>(fit.unusedAxis));
+			}
+		}
+
 		TEST_METHOD(DetectedContentFitsConfiguredScreenWithoutASecondViewport)
 		{
 			const PresentationRect panel = { 0.0, 0.0, 3840.0, 2160.0 };
