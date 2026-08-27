@@ -57,6 +57,30 @@ namespace Tests
 			Assert::IsTrue(std::fabs(result.visiblePicture.top - 283.0f) < 0.01f);
 		}
 
+		TEST_METHOD(ProfileBannerAnchorsAtTopLeftInsideScopePicture)
+		{
+			const Result result = PlaceTopLeft(
+				{ 0.0f, 283.0f, 3840.0f, 1917.0f },
+				{ 0.0f, 0.0f, 3840.0f, 2160.0f }, 760.0f, 88.0f,
+				kProfileOverlayInsetPixels);
+			Assert::IsTrue(std::fabs(result.panel.left - 30.0f) < 0.01f);
+			Assert::IsTrue(std::fabs(result.panel.top - 313.0f) < 0.01f);
+			Assert::IsTrue(std::fabs(result.panel.right - 790.0f) < 0.01f);
+			Assert::IsTrue(std::fabs(result.panel.bottom - 401.0f) < 0.01f);
+		}
+
+		TEST_METHOD(ProfileBannerScalesWithOutputResolution)
+		{
+			Assert::IsTrue(std::fabs(ProfileOverlayScale(1080.0f) - 1.275f) <
+				0.01f);
+			Assert::IsTrue(std::fabs(ProfileOverlayScale(1440.0f) - 1.7f) <
+				0.01f);
+			Assert::IsTrue(std::fabs(ProfileOverlayScale(2160.0f) - 2.55f) <
+				0.01f);
+			Assert::IsTrue(std::fabs(ProfileOverlayScale(720.0f) - 0.85f) <
+				0.01f);
+		}
+
 		TEST_METHOD(LetterboxAndPillarboxUseTheirActualPictureBounds)
 		{
 			const Result letterbox = Place(

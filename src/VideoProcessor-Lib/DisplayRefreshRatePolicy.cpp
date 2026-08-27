@@ -19,6 +19,8 @@ constexpr double HARMONIC_TOLERANCE_RATIO = 0.03;
 constexpr double MAXIMUM_UNEXPLAINED_COMPENSATION = 1.5;
 constexpr double MINIMUM_STARTUP_OBSERVATION_SECONDS = 2.0;
 constexpr double MINIMUM_READINESS_OBSERVATION_SECONDS = 10.0;
+constexpr double RESTORE_EQUIVALENCE_TOLERANCE_RATIO = 0.0005;
+constexpr double RESTORE_EQUIVALENCE_TOLERANCE_HZ = 0.02;
 
 double AllowedDifference(double rateHz, double ratio, double minimumHz)
 {
@@ -75,11 +77,30 @@ bool DisplayRefreshRatesExactlyEqual(
 }
 
 
+bool DisplayRefreshRatesEquivalentForRestore(
+	const DisplayRefreshRational& first,
+	const DisplayRefreshRational& second)
+{
+	if (DisplayRefreshRatesExactlyEqual(first, second))
+		return true;
+	if (first.denominator == 0 || second.denominator == 0)
+		return false;
+	const double firstRate = static_cast<double>(first.numerator) /
+		static_cast<double>(first.denominator);
+	const double secondRate = static_cast<double>(second.numerator) /
+		static_cast<double>(second.denominator);
+	return std::isfinite(firstRate) && std::isfinite(secondRate) &&
+		IsClose(firstRate, secondRate,
+			RESTORE_EQUIVALENCE_TOLERANCE_RATIO,
+			RESTORE_EQUIVALENCE_TOLERANCE_HZ);
+}
+
+
 bool DisplayRefreshRestoreVerifier::Observe(
 	bool querySucceeded, DisplayRefreshRational observed)
 {
 	if (!querySucceeded ||
-		!DisplayRefreshRatesExactlyEqual(observed, m_expected))
+		!DisplayRefreshRatesEquivalentForRestore(observed, m_expected))
 	{
 		m_consecutiveMatches = 0;
 		return false;

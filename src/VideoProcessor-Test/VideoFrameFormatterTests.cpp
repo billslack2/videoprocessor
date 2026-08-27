@@ -2018,6 +2018,7 @@ namespace Tests
 				[](const std::string& name, std::string& value)
 				{
 					if (name == "eotf") { value = "PQ"; return true; }
+					if (name == "screen_config") { value = "Scope"; return true; }
 					if (name == "key") { value = "Ctrl+F4"; return true; }
 					if (name == "source_rate") { value = "23"; return true; }
 					if (name == "hdr_metadata") { value = "true"; return true; }
@@ -2036,6 +2037,10 @@ namespace Tests
 				"${key} == \"Ctrl+F4\" || ${key} == \"Ctrl+F5\"", values, specificity, error));
 			Assert::IsFalse(DisplayRuleExpression::Matches(
 				"${key} == \"Ctrl+F6\"", values, specificity, error));
+			Assert::IsTrue(DisplayRuleExpression::Matches(
+				"${screen_config} == \"Scope\"", values, specificity, error));
+			Assert::IsTrue(DisplayRuleExpression::IsSnapshotActionVariable(
+				"screen_config"));
 			Assert::IsFalse(DisplayRuleExpression::Validate("${eotf} > PQ", error));
 			Assert::IsTrue(error.find("supports only = and !=") != std::string::npos);
 			Assert::IsFalse(DisplayRuleExpression::Validate("${unknown} == value", error));

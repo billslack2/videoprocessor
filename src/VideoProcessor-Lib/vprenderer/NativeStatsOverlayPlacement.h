@@ -7,6 +7,21 @@
 namespace NativeStatsOverlayPlacement
 {
 	constexpr float kDefaultInsetPixels = 40.0f;
+	constexpr float kProfileOverlayInsetPixels = 30.0f;
+	constexpr float kProfileOverlayReferenceHeight = 1080.0f;
+	constexpr float kProfileOverlayBaselineScale = 1.275f;
+
+	inline float ProfileOverlayScale(float outputHeight)
+	{
+		if (outputHeight <= 0.0f)
+			return 1.0f;
+		// Keep the banner's share of the output height constant at every
+		// resolution. The 1.5x baseline is the readability choice; resolution
+		// scaling itself remains strictly proportional.
+		return std::max(0.75f, std::min(3.0f,
+			kProfileOverlayBaselineScale * outputHeight /
+				kProfileOverlayReferenceHeight));
+	}
 
 	struct Rect
 	{
@@ -106,6 +121,26 @@ namespace NativeStatsOverlayPlacement
 		}
 		result.panel.top = top;
 		result.panel.bottom = top + height;
+		return result;
+	}
+
+	inline Result PlaceTopLeft(const Rect& requestedPicture, const Rect& output,
+		float panelWidth, float panelHeight,
+		float insetPixels = kDefaultInsetPixels)
+	{
+		Result result = PlaceTopRight(requestedPicture, output, panelWidth,
+			panelHeight, insetPixels);
+		if (!result.visiblePicture.IsValid() || !result.panel.IsValid())
+			return result;
+		const float width = result.panel.Width();
+		float left = result.visiblePicture.left + std::max(0.0f, insetPixels);
+		if (left + width > result.visiblePicture.right)
+		{
+			left = result.visiblePicture.left;
+			result.insetClamped = true;
+		}
+		result.panel.left = left;
+		result.panel.right = left + width;
 		return result;
 	}
 }

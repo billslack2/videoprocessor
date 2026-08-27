@@ -19,6 +19,23 @@ namespace DisplayRuleExpression
 	enum class ValueType { Text, Number, Boolean };
 	using ValueLookup = std::function<bool(const std::string& name, std::string& value)>;
 
+	inline bool IsProfileGroup(const std::string& name)
+	{
+		return name == "input" || name == "scaling" ||
+			name == "display" || name == "color" || name == "output" ||
+			name == "viewport" || name == "queue" || name == "lldv";
+	}
+
+	inline bool IsProfileVariable(const std::string& name,
+		const std::string& prefix)
+	{
+		if (name == prefix + "viewport_name")
+			return true;
+		return name.size() > prefix.size() &&
+			name.compare(0, prefix.size(), prefix) == 0 &&
+			IsProfileGroup(name.substr(prefix.size()));
+	}
+
 	inline bool GetVariableType(const std::string& name, ValueType& type)
 	{
 		// Event actions evaluate a committed current/previous state pair. Keep
@@ -31,14 +48,14 @@ namespace DisplayRuleExpression
 			name == "range" || name == "scan" || name == "renderer" ||
 			name == "key" ||
 			name == "event" || name == "event_reason" ||
+			name == "screen_config" ||
 			name == "viewport_profile" || name == "vertical_alignment" ||
-			(name.size() > 8 && name.compare(0, 8, "profile.") == 0))
+			IsProfileVariable(name, "profile."))
 		{
 			type = ValueType::Text;
 			return true;
 		}
-		if (name.size() > 17 && name.compare(0, 17,
-			"previous_profile.") == 0)
+		if (IsProfileVariable(name, "previous_profile."))
 		{
 			type = ValueType::Text;
 			return true;
@@ -69,6 +86,20 @@ namespace DisplayRuleExpression
 			return true;
 		}
 		return false;
+	}
+
+	inline bool IsSnapshotActionVariable(const std::string& name)
+	{
+		std::string current = name;
+		if (current.size() > 9 && current.compare(0, 9, "previous.") == 0)
+			current.erase(0, 9);
+		ValueType type = ValueType::Text;
+		if (!GetVariableType(name, type))
+			return false;
+		return current != "key" && current != "renderer" &&
+			current != "range" && current != "actual_refresh" &&
+			current != "requested_refresh" &&
+			current != "previous_refresh";
 	}
 
 	inline bool ParseNumber(const std::string& text, double& value)

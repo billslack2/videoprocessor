@@ -7,11 +7,13 @@
 #include <ModernOperatorStatusPolicy.h>
 #include <ConfigFile.h>
 #include <ConfigurationLiveApply.h>
+#include <ConfigurationApplyPolicy.h>
 #include <DisplayTopologySession.h>
 #include <EventActionLauncher.h>
 #include <MainConfigSchema.h>
 #include <QueueConfiguration.h>
 #include <QueueProfileRestartPolicy.h>
+#include <ProfileChangeOverlay.h>
 #include <blackmagic_decklink/BlackMagicDeckLinkTranslate.h>
 #include <guid.h>
 #include <microsoft_directshow/DirectShowTranslations.h>
@@ -1967,9 +1969,13 @@ namespace VideoProcessorTest
 				std::ofstream file(path, std::ios::out | std::ios::trunc);
 				file << "[general]\nrenderer: VideoProcessor Renderer (Alpha)\n"
 					"[vprenderer]\nquality: high\n"
-					"[vprenderer.viewport]\nscreen_aspect: 16:9\n"
+					"[vprenderer.color.rec709]\nshortcut: F5\n"
+					"sdr_target_primaries: REC709\n"
+					"[vprenderer.color.bt2020]\nshortcut: F6\n"
+					"sdr_target_primaries: BT2020\n"
+					"[vprenderer.viewport]\nlabel: 16x9\nscreen_aspect: 16:9\n"
 					"[vprenderer.viewport.scope]\nwhen: $eotf==\"pq\"\n"
-					"screen_aspect: 2.35:1\nautomatic_crop: true\n"
+					"label: Scope\nscreen_aspect: 2.35:1\nautomatic_crop: true\n"
 					"[actions.committed_scope_pq]\n"
 					"on: state.committed\n"
 					"when: $eotf==\"pq\" && $profile.viewport==\"scope\" && $previous.eotf==\"sdr\"\n"
@@ -1990,14 +1996,28 @@ namespace VideoProcessorTest
 					"on: profile.viewport.changed\n"
 					"when: $profile.viewport==\"scope\"\n"
 					"run: C:\\Windows\\System32\\cmd.exe /c exit 0\n"
+					"[actions.scope_visible_name]\n"
+					"on: profile.viewport.changed\n"
+					"when: $screen_config==\"Scope\"\n"
+					"run: C:\\Windows\\System32\\cmd.exe /c exit 0\n"
 					"[actions.scope_left]\n"
 					"on: profile.viewport.changed\n"
 					"when: $previous_profile.viewport==\"scope\" && $profile.viewport==\"base\"\n"
+					"run: C:\\Windows\\System32\\cmd.exe /c exit 0\n"
+					"[actions.color_bt2020]\n"
+					"on: profile.color.changed\n"
+					"when: $profile.color==\"bt2020\" && $previous_profile.color==\"rec709\"\n"
+					"coalesce_role: color-state\n"
+					"delay_seconds: 0\n"
 					"run: C:\\Windows\\System32\\cmd.exe /c exit 0\n"
 					"[actions.renderer_scope_ready]\n"
 					"on: renderer.ready\n"
 					"when: $event_reason==\"renderer_ready\" && $profile.viewport==\"scope\"\n"
 					"run: C:\\Windows\\System32\\cmd.exe /c exit 0\n"
+					"[actions.refresh_values]\n"
+					"on: refresh.applied\n"
+					"when: $requested_refresh==\"59.94\"\n"
+					"run: C:\\Windows\\System32\\cmd.exe ${actual_refresh} ${requested_refresh} ${previous_refresh}\n"
 					"[actions.any_commit]\n"
 					"on: state.committed\n"
 					"run: C:\\Windows\\System32\\cmd.exe /c exit 0\n"
@@ -2015,7 +2035,16 @@ namespace VideoProcessorTest
 			RendererProfileConfig::Model model;
 			Assert::IsTrue(RendererProfileConfig::Read(config, model, error),
 				std::wstring(error.begin(), error.end()).c_str());
-			Assert::AreEqual(static_cast<size_t>(8), model.actions.size());
+			Assert::AreEqual(static_cast<size_t>(11), model.actions.size());
+			const auto configuredColorAction = std::find_if(model.actions.begin(),
+				model.actions.end(), [](const auto& action)
+				{
+					return action.name == "color_bt2020";
+				});
+			Assert::IsTrue(configuredColorAction != model.actions.end());
+			Assert::AreEqual("color-state",
+				configuredColorAction->coalesceRole.c_str());
+			Assert::AreEqual(0, configuredColorAction->delaySeconds);
 
 			auto source = [](const char* eotf, const char* primaries)
 			{
@@ -2075,6 +2104,12 @@ namespace VideoProcessorTest
 				"rec709", "source.primaries.changed"));
 			Assert::IsTrue(hasInvocation(entered.actions,
 				"scope_entered", "profile.viewport.changed"));
+			Assert::IsTrue(hasInvocation(entered.actions,
+				"scope_visible_name", "profile.viewport.changed"));
+			std::string visibleScreenConfig;
+			Assert::IsTrue(entered.snapshot->LookupVariable(
+				"screen_config", visibleScreenConfig));
+			Assert::AreEqual("Scope", visibleScreenConfig.c_str());
 
 			std::vector<UnifiedProfileRuntime::ActionInvocation> ready;
 			Assert::IsTrue(runtime.CollectActionInvocations("renderer.ready",
@@ -2083,6 +2118,28 @@ namespace VideoProcessorTest
 			Assert::IsTrue(hasInvocation(ready, "renderer_scope_ready",
 				"renderer.ready"));
 
+			std::vector<UnifiedProfileRuntime::ActionInvocation> refresh;
+			const EventActionLauncher::ActionValueLookup refreshValues =
+				[](const std::string& variable, std::string& value)
+				{
+					const std::map<std::string, std::string> values = {
+						{ "actual_refresh", "59.9401" },
+						{ "requested_refresh", "59.94" },
+						{ "previous_refresh", "23.976" }
+					};
+					const auto found = values.find(variable);
+					if (found == values.end()) return false;
+					value = found->second;
+					return true;
+				};
+			Assert::IsTrue(runtime.CollectActionInvocations("refresh.applied",
+				"refresh", nullptr, entered.snapshot, refresh, error, refreshValues),
+				std::wstring(error.begin(), error.end()).c_str());
+			Assert::IsTrue(hasInvocation(refresh, "refresh_values",
+				"refresh.applied"));
+			Assert::AreEqual("59.9401 59.94 23.976",
+				refresh.front().action.arguments.c_str());
+
 			UnifiedProfileRuntime::RefreshResult left;
 			Assert::IsTrue(runtime.Refresh(source("sdr", "bt2020"), left, error),
 				std::wstring(error.begin(), error.end()).c_str());
@@ -2090,6 +2147,131 @@ namespace VideoProcessorTest
 			Assert::AreEqual("base", left.snapshot->viewport.profile.c_str());
 			Assert::IsTrue(hasInvocation(left.actions, "scope_left",
 				"profile.viewport.changed"));
+
+			// Establish the color selection explicitly before exercising the
+			// Rec.709-to-BT.2020 transition. Persisted selections from a previous
+			// test run are intentionally a fallback and must not make this action
+			// assertion dependent on the temporary state file.
+			UnifiedProfileRuntime::SelectionResult rec709Selection;
+			Assert::IsTrue(runtime.SelectKey("F5", source("sdr", "bt2020"),
+				rec709Selection, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			Assert::IsTrue(rec709Selection.changed);
+			Assert::AreEqual("rec709", rec709Selection.snapshot->
+				effectiveSelections.at("color").c_str());
+
+			UnifiedProfileRuntime::SelectionResult colorSelection;
+			Assert::IsTrue(runtime.SelectKey("F6", source("sdr", "bt2020"),
+				colorSelection, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			Assert::IsTrue(colorSelection.changed);
+			Assert::AreEqual("bt2020", colorSelection.snapshot->
+				effectiveSelections.at("color").c_str());
+			Assert::IsTrue(hasInvocation(colorSelection.actions, "color_bt2020",
+				"profile.color.changed"));
+			DeleteFileA(path.c_str());
+		}
+
+		TEST_METHOD(PendingEventActionsCoalesceToNewestTrigger)
+		{
+			RendererProfileConfig::Model::EventAction action;
+			action.name = "Renderer Nits";
+			action.renderer = "VP Renderer";
+			action.rendererSelectorIndex = 2;
+			const std::string identity =
+				EventActionLauncher::ActionIdentity(action);
+
+			EventActionLauncher::PendingActionCoalescer coalescer;
+			const uint64_t first = coalescer.Schedule(identity);
+			const uint64_t second = coalescer.Schedule(identity);
+			Assert::IsFalse(coalescer.Claim(identity, first));
+			Assert::IsTrue(coalescer.Claim(identity, second));
+			Assert::IsFalse(coalescer.Claim(identity, second));
+
+			RendererProfileConfig::Model::EventAction sameAction = action;
+			sameAction.rendererSelectorIndex = 3;
+			const std::string sameIdentity =
+				EventActionLauncher::ActionIdentity(sameAction);
+			Assert::AreEqual(identity.c_str(), sameIdentity.c_str());
+			const uint64_t other = coalescer.Schedule(sameIdentity);
+			coalescer.CancelAll();
+			Assert::IsFalse(coalescer.Claim(sameIdentity, other));
+
+			RendererProfileConfig::Model::EventAction rec709 = action;
+			rec709.name = "Rec709";
+			rec709.coalesceRole = "Color State";
+			RendererProfileConfig::Model::EventAction bt2020 = rec709;
+			bt2020.name = "BT2020";
+			const std::string colorIdentity =
+				EventActionLauncher::ActionIdentity(rec709);
+			Assert::AreEqual(colorIdentity.c_str(),
+				EventActionLauncher::ActionIdentity(bt2020).c_str());
+			const uint64_t oldColor = coalescer.Schedule(colorIdentity);
+			const uint64_t newColor = coalescer.Schedule(colorIdentity);
+			Assert::IsFalse(coalescer.Claim(colorIdentity, oldColor));
+			Assert::IsTrue(coalescer.Claim(colorIdentity, newColor));
+		}
+
+		TEST_METHOD(ProfileChangeOverlayUsesFriendlyOrderedLabels)
+		{
+			const auto defaultTiming = ProfileChangeOverlay::ResolveTiming(5);
+			Assert::IsTrue(defaultTiming.Enabled());
+			Assert::AreEqual(5000ull, defaultTiming.totalMilliseconds);
+			Assert::AreEqual(4125ull, defaultTiming.holdMilliseconds);
+			Assert::AreEqual(875ull, defaultTiming.fadeMilliseconds);
+			const auto disabledTiming = ProfileChangeOverlay::ResolveTiming(0);
+			Assert::IsFalse(disabledTiming.Enabled());
+			Assert::AreEqual(0ull, disabledTiming.totalMilliseconds);
+
+			const std::map<std::string, std::string> previous = {
+				{ "display", "rec709_169_med" },
+				{ "color", "bt2020" },
+				{ "viewport", "viewport_16x9" }
+			};
+			const std::map<std::string, std::string> current = {
+				{ "display", "rec709_scope_med" },
+				{ "color", "rec709" },
+				{ "viewport", "scope" }
+			};
+			const auto items = ProfileChangeOverlay::CollectChanges(
+				previous, current, "Scope");
+			Assert::AreEqual(static_cast<size_t>(3), items.size());
+			Assert::AreEqual("Rendering", items[0].label.c_str());
+			Assert::AreEqual("Rec709 Scope Med", items[0].value.c_str());
+			Assert::AreEqual("Color", items[1].label.c_str());
+			Assert::AreEqual("Rec709", items[1].value.c_str());
+			Assert::AreEqual("Screen", items[2].label.c_str());
+			Assert::AreEqual("Scope", items[2].value.c_str());
+		}
+
+		TEST_METHOD(ProfileChangeDisplayDurationIsBoundedAndLive)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(ARRAYSIZE(temporaryDirectory),
+				temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) +
+				"VideoProcessor-profile-display-duration-test.cfg";
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[general]\nprofile_change_display_seconds: 60\n"
+					"[vprenderer]\nquality: high\n";
+			}
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			std::string error;
+			Assert::IsTrue(MainConfigSchema::Validate(config, error));
+			Assert::IsTrue(ConfigurationApplyPolicy::Action::ApplyInterface ==
+				ConfigurationApplyPolicy::ClassifyChange(
+					{ "general", "profile_change_display_seconds" }));
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[general]\nprofile_change_display_seconds: 61\n"
+					"[vprenderer]\nquality: high\n";
+			}
+			Assert::IsTrue(config.Load(path));
+			Assert::IsFalse(MainConfigSchema::Validate(config, error));
+			Assert::IsTrue(error.find("profile_change_display_seconds") !=
+				std::string::npos);
 			DeleteFileA(path.c_str());
 		}
 
@@ -2875,8 +3057,8 @@ namespace VideoProcessorTest
 			const std::pair<const char*, const char*> shortcuts[] = {
 				{ "queue.normal", "Shift+Q" },
 				{ "queue.low_latency", "Shift+L" },
-				{ "vprenderer.rec709", "F5" },
-				{ "vprenderer.bt2020", "F6" },
+				{ "vprenderer.color.rec709", "F5" },
+				{ "vprenderer.color.bt2020", "F6" },
 				{ "vprenderer.viewport.viewport_16x9", "F3" },
 				{ "vprenderer.viewport.scope", "F2" },
 				{ "shader.nls", "N" },

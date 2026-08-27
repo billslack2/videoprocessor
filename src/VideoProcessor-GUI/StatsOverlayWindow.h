@@ -10,6 +10,7 @@
 
 #include <Windows.h>
 #include <atlstr.h>
+#include <ProfileChangeOverlay.h>
 #include <mutex>
 #include <vector>
 
@@ -189,6 +190,10 @@ public:
 		std::vector<uint8_t>& pixels, int& width, int& height, int& stride);
 	bool RenderSweepSummaryBgra(const std::vector<SweepSummaryItem>& items,
 		size_t page, size_t itemsPerPage, std::vector<uint8_t>& pixels,
+		int& width, int& height, int& stride);
+	bool RenderProfileChangesBgra(
+		const std::vector<ProfileChangeOverlay::Item>& items,
+		uint8_t opacity, std::vector<uint8_t>& pixels,
 		int& width, int& height, int& stride);
 
 	// Position update

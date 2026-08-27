@@ -129,6 +129,32 @@ bool ReadShortcutsForegroundOnly(const ConfigFile& config, bool& enabled,
 	return false;
 }
 
+bool ReadProfileChangeDisplaySeconds(const ConfigFile& config,
+	unsigned int& seconds, std::string& error)
+{
+	seconds = ProfileChangeOverlay::DefaultDisplaySeconds;
+	std::string raw;
+	if (!config.TryGetString("general", "profile_change_display_seconds", raw) &&
+		!config.TryGetString("command_line", "profile_change_display_seconds", raw))
+		return true;
+	raw = ConfigFile::Trim(raw);
+	try
+	{
+		size_t consumed = 0;
+		const unsigned long parsed = std::stoul(raw, &consumed);
+		if (consumed != raw.size() ||
+			parsed > ProfileChangeOverlay::MaximumDisplaySeconds)
+			throw std::out_of_range("profile change display seconds");
+		seconds = static_cast<unsigned int>(parsed);
+		return true;
+	}
+	catch (const std::exception&)
+	{
+		error = "profile_change_display_seconds must be a whole number from 0 through 60";
+		return false;
+	}
+}
+
 std::wstring ConfigurationEditorDirectory(
 	const std::wstring& applicationDirectory)
 {
@@ -1964,6 +1990,7 @@ BEGIN_MESSAGE_MAP(CVideoProcessorDlg, CDialog)
 	ON_MESSAGE(WM_MESSAGE_RENDERER_RETIRED, &CVideoProcessorDlg::OnMessageRendererRetired)
 	ON_MESSAGE(WM_MESSAGE_RENDERER_INTENT_READY, &CVideoProcessorDlg::OnMessageRendererIntentReady)
 	ON_MESSAGE(WM_MESSAGE_RENDERER_GRAPH_EVENT, &CVideoProcessorDlg::OnMessageRendererGraphEvent)
+	ON_MESSAGE(WM_MESSAGE_RENDERER_ACTION_EVENT, &CVideoProcessorDlg::OnMessageRendererActionEvent)
 	ON_MESSAGE(WM_MESSAGE_RENDERER_RESTART_REQUIRED, &CVideoProcessorDlg::OnMessageRendererRestartRequired)
 	ON_MESSAGE(WM_MODERN_OPERATOR_ACTION, &CVideoProcessorDlg::OnMessageModernOperatorAction)
 
@@ -2137,6 +2164,15 @@ CVideoProcessorDlg::CVideoProcessorDlg():
 	if (profileConfig.Load())
 	{
 		m_configurationSnapshot = CaptureConfigurationSnapshot(profileConfig);
+		std::string profileDisplayError;
+		if (!ReadProfileChangeDisplaySeconds(profileConfig,
+			m_profileChangeDisplaySeconds, profileDisplayError))
+		{
+			m_profileChangeDisplaySeconds =
+				ProfileChangeOverlay::DefaultDisplaySeconds;
+			DebugLog::Log("Profile change display retained default: %s",
+				profileDisplayError.c_str());
+		}
 		std::string shortcutPolicyError;
 		if (!ReadShortcutsForegroundOnly(profileConfig,
 			m_shortcutsForegroundOnly, shortcutPolicyError))
@@ -2926,6 +2962,11 @@ void CVideoProcessorDlg::ApplySavedConfiguration()
 	}
 	case ConfigurationApplyPolicy::Action::ReloadShortcuts:
 		PublishStagedShortcutsOnly();
+		break;
+	case ConfigurationApplyPolicy::Action::ApplyInterface:
+		if (PublishStagedConfiguration(false))
+			DebugLog::Log(
+				"Configuration transaction accepted: action=apply-display state=published");
 		break;
 	default:
 		DebugLog::Log(
@@ -3938,6 +3979,9 @@ bool CVideoProcessorDlg::StageRuntimeSettings(
 		return false;
 	};
 	std::string value;
+	if (!ReadProfileChangeDisplaySeconds(config,
+		m_stagedRuntimeSettings.profileChangeDisplaySeconds, error))
+		return false;
 	if (!ReadShortcutsForegroundOnly(config,
 		m_stagedRuntimeSettings.shortcutsForegroundOnly, error))
 		return false;
@@ -4242,6 +4286,17 @@ void CVideoProcessorDlg::PublishStagedRuntimeSettings()
 			}
 		return false;
 	};
+	const unsigned int previousProfileDisplaySeconds =
+		m_profileChangeDisplaySeconds;
+	m_profileChangeDisplaySeconds =
+		m_stagedRuntimeSettings.profileChangeDisplaySeconds;
+	if (m_profileChangeDisplaySeconds == 0)
+		ClearProfileChangeOverlay();
+	if (previousProfileDisplaySeconds != m_profileChangeDisplaySeconds)
+		DebugLog::Log(
+			"Profile change display setting applied live: previous_seconds=%u current_seconds=%u enabled=%d",
+			previousProfileDisplaySeconds, m_profileChangeDisplaySeconds,
+			m_profileChangeDisplaySeconds != 0 ? 1 : 0);
 	if (m_stagedRuntimeSettings.hasCaptureDevice)
 	{
 		for (int index = 0; index < m_captureDeviceCombo.GetCount(); ++index)
@@ -4628,6 +4683,7 @@ bool CVideoProcessorDlg::TryGetDisplayRefreshRateOverride(
 
 CVideoProcessorDlg::~CVideoProcessorDlg()
 {
+	KillTimer(PROFILE_CHANGE_OVERLAY_TIMER_ID);
 	ClearStagedConfiguration();
 	if (m_fullScreenVideoWindow &&
 		::IsWindow(m_fullScreenVideoWindow->GetHWND()))
@@ -4668,6 +4724,7 @@ CVideoProcessorDlg::~CVideoProcessorDlg()
 	}
 	if (m_unifiedActionCancelEvent)
 		SetEvent(m_unifiedActionCancelEvent);
+	m_unifiedActionCoalescer.CancelAll();
 	for (std::thread& worker : m_unifiedActionWorkers)
 		if (worker.joinable()) worker.join();
 	m_unifiedActionWorkers.clear();
@@ -6085,6 +6142,7 @@ LRESULT CVideoProcessorDlg::OnMessageRendererStateChange(WPARAM wParam, LPARAM l
 		m_rendererTransitionWindow.KeepOnTop();
 		m_rendererStateText.SetWindowText(TEXT("Rendering"));
 		ApplyStatsOverlayForActiveRenderer();
+		UpdateProfileChangeOverlay(GetTickCount64());
 		m_rendererStartTime = GetTickCount();
 		const bool settlingDisplayTransition =
 			m_displayTransitionAwaitingRenderer;
@@ -6505,6 +6563,84 @@ LRESULT CVideoProcessorDlg::OnMessageRendererGraphEvent(
 	default:
 		break;
 	}
+	return 0;
+}
+
+
+namespace
+{
+	struct RendererActionEventMessage
+	{
+		std::string event;
+		double actualRefreshRate = 0.0;
+		double requestedRefreshRate = 0.0;
+		double previousRefreshRate = 0.0;
+		uint32_t rendererGeneration = 0;
+	};
+}
+
+
+LRESULT CVideoProcessorDlg::OnMessageRendererActionEvent(
+	WPARAM wParam, LPARAM)
+{
+	std::unique_ptr<RendererActionEventMessage> message(
+		reinterpret_cast<RendererActionEventMessage*>(wParam));
+	if (!message)
+		return 0;
+	const uint32_t currentGeneration =
+		m_rendererGeneration.load(std::memory_order_acquire);
+	if (!RendererGenerationGate::Accept(message->rendererGeneration,
+		currentGeneration, m_videoRenderer != nullptr) ||
+		!m_profileRuntime.IsInitialized())
+	{
+		DebugLog::Log(
+			"renderer action event rejected: event=%s message_generation=%u "
+			"current_generation=%u renderer=%d",
+			message->event.c_str(), message->rendererGeneration,
+			currentGeneration, m_videoRenderer ? 1 : 0);
+		return 0;
+	}
+
+	const double actualRefreshRate = message->actualRefreshRate;
+	const double requestedRefreshRate = message->requestedRefreshRate;
+	const double previousRefreshRate = message->previousRefreshRate;
+	const EventActionLauncher::ActionValueLookup eventValues =
+		[actualRefreshRate, requestedRefreshRate, previousRefreshRate](
+			const std::string& variable, std::string& value)
+		{
+			double number = 0.0;
+			if (variable == "actual_refresh") number = actualRefreshRate;
+			else if (variable == "requested_refresh") number = requestedRefreshRate;
+			else if (variable == "previous_refresh") number = previousRefreshRate;
+			else return false;
+			for (const double canonical : {
+				24000.0 / 1001.0, 30000.0 / 1001.0, 60000.0 / 1001.0 })
+			{
+				if (std::abs(number - canonical) >= 0.01)
+					continue;
+				number = canonical < 24.5 ? 23.976 :
+					(canonical < 40.0 ? 29.97 : 59.94);
+				break;
+			}
+			std::ostringstream text;
+			text.imbue(std::locale::classic());
+			text.precision(9);
+			text << number;
+			value = text.str();
+			return true;
+		};
+
+	std::vector<UnifiedProfileRuntime::ActionInvocation> actions;
+	std::string error;
+	const auto snapshot = m_profileRuntime.GetSnapshot();
+	if (!m_profileRuntime.CollectActionInvocations(message->event, "refresh",
+		nullptr, snapshot, actions, error, eventValues))
+	{
+		DebugLog::Log("renderer action event '%s' was not published: %s",
+			message->event.c_str(), error.c_str());
+		return 0;
+	}
+	ScheduleUnifiedProfileActions(actions);
 	return 0;
 }
 
@@ -7448,6 +7584,22 @@ void CVideoProcessorDlg::OnRendererGraphEvent(
 		WM_MESSAGE_RENDERER_GRAPH_EVENT,
 		static_cast<WPARAM>(eventCode),
 		static_cast<LPARAM>(rendererGeneration));
+}
+
+
+void CVideoProcessorDlg::OnRendererActionEvent(const char* event,
+	double actualRefreshRate, double requestedRefreshRate,
+	double previousRefreshRate, uint32_t rendererGeneration)
+{
+	auto message = std::make_unique<RendererActionEventMessage>();
+	message->event = event ? event : "";
+	message->actualRefreshRate = actualRefreshRate;
+	message->requestedRefreshRate = requestedRefreshRate;
+	message->previousRefreshRate = previousRefreshRate;
+	message->rendererGeneration = rendererGeneration;
+	if (PostMessage(WM_MESSAGE_RENDERER_ACTION_EVENT,
+		reinterpret_cast<WPARAM>(message.get()), 0))
+		message.release();
 }
 
 
@@ -10742,6 +10894,138 @@ void CVideoProcessorDlg::PublishActiveProfileStatus()
 		shaderSections, sourceEotf, sourceColorSpace);
 }
 
+void CVideoProcessorDlg::PublishProfileChangeOverlay(
+	const std::shared_ptr<const UnifiedProfileRuntime::Snapshot>& snapshot)
+{
+	if (!snapshot)
+		return;
+	if (!m_profileChangeOverlayInitialized)
+	{
+		m_profileChangeOverlaySelections = snapshot->effectiveSelections;
+		m_profileChangeOverlayInitialized = true;
+		return;
+	}
+	// Startup builds the effective selection map in stages before a renderer
+	// exists. Keep that evolving state as the baseline instead of presenting
+	// normal initialization as a user-visible profile change.
+	if (!m_videoRenderer)
+	{
+		m_profileChangeOverlaySelections = snapshot->effectiveSelections;
+		return;
+	}
+
+	std::string screenName;
+	snapshot->LookupVariable("screen_config", screenName);
+	const std::vector<ProfileChangeOverlay::Item> changed =
+		ProfileChangeOverlay::CollectChanges(m_profileChangeOverlaySelections,
+			snapshot->effectiveSelections, screenName);
+	m_profileChangeOverlaySelections = snapshot->effectiveSelections;
+	if (changed.empty())
+		return;
+	if (m_profileChangeDisplaySeconds == 0)
+	{
+		ClearProfileChangeOverlay();
+		DebugLog::Log(
+			"Profile change overlay suppressed: reason=disabled changes=%zu",
+			changed.size());
+		return;
+	}
+
+	for (const auto& item : changed)
+	{
+		const auto existing = std::find_if(m_profileChangeOverlayItems.begin(),
+			m_profileChangeOverlayItems.end(), [&item](const auto& candidate)
+			{
+				return candidate.group == item.group;
+			});
+		if (existing == m_profileChangeOverlayItems.end())
+			m_profileChangeOverlayItems.push_back(item);
+		else
+			*existing = item;
+	}
+	const auto rank = [](const std::string& group)
+	{
+		static const std::vector<std::string> order = {
+			"display", "color", "output", "viewport", "input", "scaling",
+			"queue", "lldv"
+		};
+		const auto position = std::find(order.begin(), order.end(), group);
+		return position == order.end() ? order.size() :
+			static_cast<size_t>(position - order.begin());
+	};
+	std::stable_sort(m_profileChangeOverlayItems.begin(),
+		m_profileChangeOverlayItems.end(), [&rank](const auto& first,
+			const auto& second)
+		{
+			const size_t firstRank = rank(first.group);
+			const size_t secondRank = rank(second.group);
+			return firstRank == secondRank ? first.group < second.group :
+				firstRank < secondRank;
+		});
+
+	const ULONGLONG now = GetTickCount64();
+	const auto timing = ProfileChangeOverlay::ResolveTiming(
+		m_profileChangeDisplaySeconds);
+	m_profileChangeOverlayHoldUntil = now + timing.holdMilliseconds;
+	m_profileChangeOverlayFadeUntil = now + timing.totalMilliseconds;
+	KillTimer(PROFILE_CHANGE_OVERLAY_TIMER_ID);
+	SetTimer(PROFILE_CHANGE_OVERLAY_TIMER_ID, 50, nullptr);
+	UpdateProfileChangeOverlay(now);
+	std::ostringstream summary;
+	for (size_t index = 0; index < changed.size(); ++index)
+	{
+		if (index != 0) summary << ", ";
+		summary << changed[index].label << '=' << changed[index].value;
+	}
+	DebugLog::Log(
+		"Profile change overlay shown: duration_ms=%llu hold_ms=%llu fade_ms=%llu changes=%s",
+		timing.totalMilliseconds, timing.holdMilliseconds,
+		timing.fadeMilliseconds, summary.str().c_str());
+}
+
+void CVideoProcessorDlg::UpdateProfileChangeOverlay(ULONGLONG now)
+{
+	if (m_profileChangeOverlayItems.empty() ||
+		now >= m_profileChangeOverlayFadeUntil)
+	{
+		ClearProfileChangeOverlay();
+		return;
+	}
+	if (!m_videoRenderer || !m_statsOverlay ||
+		!m_videoRenderer->SupportsNativeStatsOverlay())
+		return;
+
+	uint8_t opacity = 255;
+	if (now > m_profileChangeOverlayHoldUntil)
+	{
+		const ULONGLONG fadeDuration = m_profileChangeOverlayFadeUntil -
+			m_profileChangeOverlayHoldUntil;
+		const ULONGLONG remaining = m_profileChangeOverlayFadeUntil - now;
+		opacity = fadeDuration == 0 ? 0 : static_cast<uint8_t>(
+			(static_cast<unsigned long long>(remaining) * 255) / fadeDuration);
+	}
+	std::vector<uint8_t> pixels;
+	int width = 0;
+	int height = 0;
+	int stride = 0;
+	if (m_statsOverlay->RenderProfileChangesBgra(
+		m_profileChangeOverlayItems, opacity, pixels, width, height, stride))
+	{
+		m_videoRenderer->SetNativeProfileOverlay(
+			pixels.data(), pixels.size(), width, height, stride);
+	}
+}
+
+void CVideoProcessorDlg::ClearProfileChangeOverlay()
+{
+	KillTimer(PROFILE_CHANGE_OVERLAY_TIMER_ID);
+	if (m_videoRenderer)
+		m_videoRenderer->SetNativeProfileOverlay(nullptr, 0, 0, 0, 0);
+	m_profileChangeOverlayItems.clear();
+	m_profileChangeOverlayHoldUntil = 0;
+	m_profileChangeOverlayFadeUntil = 0;
+}
+
 void CVideoProcessorDlg::ApplyUnifiedProfileSnapshot(
 	const std::shared_ptr<const UnifiedProfileRuntime::Snapshot>& snapshot,
 	bool allowRestart, bool queueProfileResetPending)
@@ -10749,6 +11033,7 @@ void CVideoProcessorDlg::ApplyUnifiedProfileSnapshot(
 	if (!snapshot)
 		return;
 	PublishActiveProfileStatus();
+	PublishProfileChangeOverlay(snapshot);
 
 	// A paired renderer/profile shortcut can commit a new queue while the old
 	// renderer is being retired. In particular, a DirectShow graph owns madVR's
@@ -11096,28 +11381,84 @@ void CVideoProcessorDlg::ScheduleUnifiedProfileActions(
 	if (!m_unifiedActionCancelEvent || actions.empty())
 		return;
 	const std::string configPath = m_profileRuntime.ConfigPath();
+	std::map<std::string, const UnifiedProfileRuntime::ActionInvocation*> latest;
 	for (const UnifiedProfileRuntime::ActionInvocation& invocation : actions)
 	{
 		if (!IsUnifiedActionRendererSelected(invocation.action))
+		{
+			DebugLog::Log(
+				"event action skipped: action='%s' event=%s reason=renderer-target-mismatch target=%s",
+				invocation.action.name.c_str(), invocation.event.c_str(),
+				invocation.action.renderer.c_str());
 			continue;
+		}
+		const std::string identity =
+			EventActionLauncher::ActionIdentity(invocation.action);
+		const auto existing = latest.find(identity);
+		if (existing != latest.end())
+		{
+			DebugLog::Log(
+				"event action batch deduplicated: role=%s older_action='%s' "
+				"older_event=%s winner_action='%s' winner_event=%s",
+				identity.c_str(), existing->second->action.name.c_str(),
+				existing->second->event.c_str(), invocation.action.name.c_str(),
+				invocation.event.c_str());
+		}
+		latest[identity] = &invocation;
+	}
+
+	for (const auto& pending : latest)
+	{
+		const std::string identity = pending.first;
+		const UnifiedProfileRuntime::ActionInvocation invocation = *pending.second;
+		const uint64_t generation = m_unifiedActionCoalescer.Schedule(identity);
+		if (generation > 1)
+		{
+			DebugLog::Log(
+				"event action debounce superseded: action='%s' role=%s "
+				"generation=%llu result=newest-trigger-wins owner=%p",
+				invocation.action.name.c_str(), identity.c_str(),
+				static_cast<unsigned long long>(generation), this);
+		}
 		const DWORD delayMs = static_cast<DWORD>(
 			invocation.action.delaySeconds * 1000);
-		DebugLog::Log("event action '%s' scheduled for %s (%s) in %d seconds",
+		DebugLog::Log("event action debounce scheduled: action='%s' event=%s "
+			"reason=%s delay=%dms role=%s generation=%llu owner=%p",
 			invocation.action.name.c_str(), invocation.event.c_str(),
-			invocation.reason.c_str(), invocation.action.delaySeconds);
+			invocation.reason.c_str(), delayMs,
+			identity.c_str(), static_cast<unsigned long long>(generation), this);
 		m_unifiedActionWorkers.emplace_back([this, invocation, configPath,
-			delayMs]()
+			delayMs, identity, generation]()
 			{
 				if (m_unifiedActionCancelEvent &&
 					WaitForSingleObject(m_unifiedActionCancelEvent, delayMs) ==
 						WAIT_TIMEOUT)
 				{
-					EventActionLauncher::Launch(invocation.action, configPath);
+					if (m_unifiedActionCoalescer.Claim(identity, generation))
+					{
+						DebugLog::Log(
+							"event action debounce claimed: action='%s' role=%s "
+							"generation=%llu result=launching",
+							invocation.action.name.c_str(), identity.c_str(),
+							static_cast<unsigned long long>(generation));
+						EventActionLauncher::Launch(invocation.action, configPath);
+					}
+					else
+					{
+						DebugLog::Log(
+							"event action debounce skipped: action='%s' role=%s "
+							"generation=%llu reason=newer-role-owner",
+							invocation.action.name.c_str(), identity.c_str(),
+							static_cast<unsigned long long>(generation));
+					}
 				}
 				else
 				{
-					DebugLog::Log("event action '%s' cancelled while waiting for %s",
-						invocation.action.name.c_str(), invocation.event.c_str());
+					DebugLog::Log(
+						"event action debounce cancelled: action='%s' role=%s "
+						"event=%s reason=shutdown-or-reload",
+						invocation.action.name.c_str(), identity.c_str(),
+						invocation.event.c_str());
 				}
 			});
 	}
@@ -12480,6 +12821,11 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 {
 	const ULONGLONG uiNow = GetTickCount64();
 	m_lastUiMessageTick.store(uiNow, std::memory_order_release);
+	if (nIDEvent == PROFILE_CHANGE_OVERLAY_TIMER_ID)
+	{
+		UpdateProfileChangeOverlay(uiNow);
+		return;
+	}
 	if (m_configurationEditorPresentationRequired != 0 &&
 		m_configurationEditorPresentationAcknowledged !=
 			m_configurationEditorPresentationRequired &&

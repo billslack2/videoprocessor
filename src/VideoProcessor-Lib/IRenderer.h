@@ -64,6 +64,13 @@ struct IRendererCallback
 	virtual void OnRendererGraphEvent(
 		long eventCode, uint32_t rendererGeneration) {}
 
+	// Renderer-owned display transitions are marshalled to the application so
+	// every configured action uses the application's single scheduler/debounce
+	// slot. The numeric values remain bound to the transition that emitted it.
+	virtual void OnRendererActionEvent(const char* event,
+		double actualRefreshRate, double requestedRefreshRate,
+		double previousRefreshRate, uint32_t rendererGeneration) {}
+
 	// Delivered on the callback/UI thread after an asynchronous renderer-owner
 	// command discovers that the graph must be replaced.
 	virtual void OnRendererRestartRequired(uint32_t rendererGeneration) {}
@@ -381,6 +388,11 @@ public:
 	// A separate high-priority test banner. Unlike the normal stats panel, this
 	// is placed at the top-right of the active picture/scope rectangle.
 	virtual bool SetNativeSweepOverlay(const uint8_t*, size_t, int, int, int)
+	{
+		return false;
+	}
+	// Brief profile-change banner placed at the top-left of the visible picture.
+	virtual bool SetNativeProfileOverlay(const uint8_t*, size_t, int, int, int)
 	{
 		return false;
 	}

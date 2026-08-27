@@ -1192,9 +1192,10 @@ namespace
 						"vprenderer" :
 						(group.name == "input" ? "vprenderer.input" :
 							(group.name == "scaling" ? "vprenderer.scaling" :
-								(group.name == "output" ? "vprenderer.output" :
+								(group.name == "color" ? "vprenderer.color" :
+									(group.name == "output" ? "vprenderer.output" :
 									(group.name == "viewport" ? "vprenderer.viewport" :
-										group.name))));
+										group.name)))));
 					if (!config.HasSection(root) &&
 						group.defaultSelection != "base")
 					{
@@ -2554,28 +2555,22 @@ namespace
 	class ScopedDisplayRefreshRate
 	{
 	public:
-		ScopedDisplayRefreshRate()
-			: m_cancelEvent(CreateEventW(nullptr, TRUE, FALSE, nullptr))
-		{
-		}
-
 		~ScopedDisplayRefreshRate()
 		{
 			if (!m_finalRestoreAttempted && !RestoreNow())
 				DebugLog::Log(
 					"libplacebo refresh-rate final restore remains unverified");
-			for (std::thread& worker : m_actionWorkers)
-				if (worker.joinable()) worker.join();
-			if (m_cancelEvent) CloseHandle(m_cancelEvent);
+		}
+
+		void SetEventSink(const std::function<void(const std::string&, double,
+			double, double)>& eventSink)
+		{
+			m_eventSink = eventSink;
 		}
 
 		bool RestoreNow()
 		{
 			m_finalRestoreAttempted = true;
-			if (m_cancelEvent) SetEvent(m_cancelEvent);
-			for (std::thread& worker : m_actionWorkers)
-				if (worker.joinable()) worker.join();
-			m_actionWorkers.clear();
 			return Restore();
 		}
 
@@ -2706,8 +2701,16 @@ namespace
 			if (!QueryDisplayPath(
 				m_displayDeviceName, paths, modes, pathCount, modeCount, pathIndex))
 			{
-				DebugLog::Log("libplacebo refresh-rate restore failed: active display path not found");
-				return false;
+				// A monitor disable/enable rebuild can retire the exact Windows path
+				// that VP changed. There is no current path on which it is safe to
+				// restore that historic mode, so it cannot remain a retirement
+				// blocker. Windows owns the newly enumerated topology from here.
+				DebugLog::Log(
+					"libplacebo refresh-rate restore skipped: display path disappeared "
+					"during topology rebuild; clearing pending restore");
+				m_restoreFailureCount = 0;
+				m_changed = false;
+				return true;
 			}
 
 			const LONG restoreResult = ApplyDisplayRefreshRate(
@@ -2719,16 +2722,28 @@ namespace
 				m_originalRefreshRate);
 			if (restoreResult != ERROR_SUCCESS)
 			{
+				++m_restoreFailureCount;
 				DebugLog::Log(
 					"libplacebo refresh-rate restore failed: %.6f Hz error=%ld; "
-					"restore remains pending",
-					RefreshRateHz(m_originalRefreshRate), restoreResult);
+					"attempt=%u/%u",
+					RefreshRateHz(m_originalRefreshRate), restoreResult,
+					m_restoreFailureCount, MaximumRestoreFailures);
+				if (m_restoreFailureCount >= MaximumRestoreFailures)
+				{
+					DebugLog::Log(
+						"libplacebo refresh-rate restore abandoned after bounded failures; "
+						"clearing pending restore to unblock renderer replacement");
+					m_restoreFailureCount = 0;
+					m_changed = false;
+					return true;
+				}
 				return false;
 			}
 
 			// SetDisplayConfig success means the request was accepted, not that
-			// the active path has converged. Require two consecutive exact
-			// rational observations within a bounded two-second window.
+			// the active path has converged. Require two consecutive equivalent
+			// observations within a bounded two-second window; this accepts only
+			// tight driver rounding after a topology rebuild.
 			DISPLAYCONFIG_RATIONAL actualRefreshRate{};
 			DisplayRefreshRestoreVerifier verifier(
 				{ m_originalRefreshRate.Numerator,
@@ -2749,11 +2764,23 @@ namespace
 
 			if (verifier.ConsecutiveMatches() < 2)
 			{
+				++m_restoreFailureCount;
 				DebugLog::Log(
 					"libplacebo refresh-rate restore unverified: requested=%.6f Hz "
-					"last_observed=%.6f Hz; restore remains pending",
+					"last_observed=%.6f Hz; attempt=%u/%u",
 					RefreshRateHz(m_originalRefreshRate),
-					RefreshRateHz(actualRefreshRate));
+					RefreshRateHz(actualRefreshRate), m_restoreFailureCount,
+					MaximumRestoreFailures);
+				if (m_restoreFailureCount >= MaximumRestoreFailures)
+				{
+					DebugLog::Log(
+						"libplacebo refresh-rate restore abandoned after bounded "
+						"verification failures; clearing pending restore to unblock "
+						"renderer replacement");
+					m_restoreFailureCount = 0;
+					m_changed = false;
+					return true;
+				}
 				return false;
 			}
 
@@ -2768,6 +2795,7 @@ namespace
 				RefreshRateHz(m_originalRefreshRate));
 			PublishEvent("refresh.restored", RefreshRateHz(m_originalRefreshRate),
 				RefreshRateHz(m_originalRefreshRate), RefreshRateHz(m_originalRefreshRate));
+			m_restoreFailureCount = 0;
 			m_changed = false;
 			return true;
 		}
@@ -2775,13 +2803,6 @@ namespace
 		void PublishEvent(const std::string& event, double actualRefresh,
 			double requestedRefresh, double previousRefresh)
 		{
-			ConfigFile config;
-			RendererProfileConfig::Model model;
-			std::string error;
-			if (!config.Load(ConfigFile::RENDERER_FILENAME) ||
-				!RendererProfileConfig::IsUnified(config) ||
-				!RendererProfileConfig::Read(config, model, error))
-				return;
 			std::ostringstream identity;
 			identity.imbue(std::locale::classic());
 			identity.precision(9);
@@ -2792,91 +2813,18 @@ namespace
 					identity.str().c_str());
 				return;
 			}
-			for (const auto& action : model.actions)
-			{
-				if (action.renderer != "vprenderer" && action.renderer != "*")
-					continue;
-				if (std::find(action.events.begin(), action.events.end(), event) ==
-					action.events.end()) continue;
-				const EventActionLauncher::ActionValueLookup values =
-					[&event, actualRefresh, requestedRefresh, previousRefresh](
-						const std::string& variable, std::string& value)
-					{
-						double number = 0.0;
-						if (variable == "event")
-						{
-							value = event;
-							return true;
-						}
-						if (variable == "event_reason")
-						{
-							value = "refresh";
-							return true;
-						}
-						if (variable == "actual_refresh") number = actualRefresh;
-						else if (variable == "requested_refresh") number = requestedRefresh;
-						else if (variable == "previous_refresh") number = previousRefresh;
-						else return false;
-						for (const double canonical : {
-							24000.0 / 1001.0, 30000.0 / 1001.0, 60000.0 / 1001.0 })
-							if (std::abs(number - canonical) < 0.01)
-							{
-								number = canonical < 24.5 ? 23.976 :
-									(canonical < 40.0 ? 29.97 : 59.94);
-								break;
-							}
-						std::ostringstream text;
-						text.imbue(std::locale::classic());
-						text.precision(9);
-						text << number;
-						value = text.str();
-						return true;
-					};
-				int specificity = 0;
-				std::string matchError;
-				const bool matches = action.when.empty() ||
-					action.whenExpression.Matches(values, specificity, matchError);
-				if (!matches)
-				{
-					if (!matchError.empty())
-						DebugLog::Log("event action '%s' evaluation failed: %s",
-							action.name.c_str(), matchError.c_str());
-					continue;
-				}
-				RendererProfileConfig::Model::EventAction resolvedAction;
-				std::string expansionError;
-				if (!EventActionLauncher::ExpandArgumentVariables(action, values,
-					resolvedAction, expansionError))
-				{
-					DebugLog::Log("event action '%s' expansion failed: %s",
-						action.name.c_str(), expansionError.c_str());
-					continue;
-				}
-				const std::string configPath = config.GetLoadedPath();
-				const DWORD delayMs = static_cast<DWORD>(
-					resolvedAction.delaySeconds * 1000);
-				DebugLog::Log("event action '%s' scheduled for %s in %d seconds",
-					resolvedAction.name.c_str(), event.c_str(),
-					resolvedAction.delaySeconds);
-				m_actionWorkers.emplace_back([this, resolvedAction, configPath, delayMs]()
-					{
-						if (!m_cancelEvent ||
-							WaitForSingleObject(m_cancelEvent, delayMs) == WAIT_TIMEOUT)
-							EventActionLauncher::Launch(resolvedAction, configPath);
-						else
-							DebugLog::Log("event action '%s' cancelled with renderer generation",
-								resolvedAction.name.c_str());
-					});
-			}
+			if (m_eventSink)
+				m_eventSink(event, actualRefresh, requestedRefresh, previousRefresh);
 		}
 
 		std::wstring m_displayDeviceName;
 		DISPLAYCONFIG_RATIONAL m_originalRefreshRate{};
+		static constexpr unsigned int MaximumRestoreFailures = 3;
+		unsigned int m_restoreFailureCount = 0;
 		bool m_changed = false;
 		bool m_finalRestoreAttempted = false;
 		RendererSettings m_refreshCommandSettings;
-		HANDLE m_cancelEvent = nullptr;
-		std::vector<std::thread> m_actionWorkers;
+		std::function<void(const std::string&, double, double, double)> m_eventSink;
 		std::set<std::string> m_publishedTransitions;
 	};
 }
@@ -2911,6 +2859,7 @@ struct LibplaceboVideoRenderer::Impl
 	pl_tex textures[2] = { nullptr, nullptr };
 	pl_tex statsOverlayTexture = nullptr;
 	pl_tex sweepOverlayTexture = nullptr;
+	pl_tex profileOverlayTexture = nullptr;
 	std::mutex statsOverlayMutex;
 	std::vector<uint8_t> statsOverlayPixels;
 	int statsOverlayWidth = 0;
@@ -2924,6 +2873,12 @@ struct LibplaceboVideoRenderer::Impl
 	int sweepOverlayStride = 0;
 	uint64_t sweepOverlaySerial = 0;
 	uint64_t appliedSweepOverlaySerial = 0;
+	std::vector<uint8_t> profileOverlayPixels;
+	int profileOverlayWidth = 0;
+	int profileOverlayHeight = 0;
+	int profileOverlayStride = 0;
+	uint64_t profileOverlaySerial = 0;
+	uint64_t appliedProfileOverlaySerial = 0;
 	NativeStatsOverlayPlacement::Result lastStatsOverlayPlacement;
 	bool hasStatsOverlayPlacement = false;
 	NativeStatsOverlayPlacement::Result lastSweepOverlayPlacement;
@@ -3386,6 +3341,7 @@ struct LibplaceboVideoRenderer::Impl
 			{
 				pl_tex_destroy(d3d11->gpu, &statsOverlayTexture);
 				pl_tex_destroy(d3d11->gpu, &sweepOverlayTexture);
+				pl_tex_destroy(d3d11->gpu, &profileOverlayTexture);
 				for (pl_tex& texture : textures)
 					pl_tex_destroy(d3d11->gpu, &texture);
 			}
@@ -9126,8 +9082,52 @@ struct LibplaceboVideoRenderer::Impl
 			}
 			appliedSweepOverlaySerial = sweepSerial;
 		}
-		struct pl_overlay overlays[2]{};
-		struct pl_overlay_part overlayParts[2]{};
+		std::vector<uint8_t> profilePixels;
+		int profileWidth = 0;
+		int profileHeight = 0;
+		int profileStride = 0;
+		uint64_t profileSerial = 0;
+		{
+			std::lock_guard<std::mutex> overlayGuard(statsOverlayMutex);
+			profileSerial = profileOverlaySerial;
+			if (profileSerial != appliedProfileOverlaySerial)
+			{
+				profilePixels = profileOverlayPixels;
+				profileWidth = profileOverlayWidth;
+				profileHeight = profileOverlayHeight;
+				profileStride = profileOverlayStride;
+			}
+		}
+		if (profileSerial != appliedProfileOverlaySerial)
+		{
+			if (!profilePixels.empty())
+			{
+				struct pl_plane_data plane{};
+				plane.type = PL_FMT_UNORM;
+				plane.width = profileWidth;
+				plane.height = profileHeight;
+				plane.pixel_stride = 4;
+				plane.row_stride = static_cast<size_t>(profileStride);
+				plane.pixels = profilePixels.data();
+				uint64_t masks[4] = {
+					0x00FF0000, 0x0000FF00, 0x000000FF, 0xFF000000
+				};
+				pl_plane_data_from_mask(&plane, masks);
+				if (!pl_upload_plane(
+					d3d11->gpu, nullptr, &profileOverlayTexture, &plane))
+				{
+					DebugLog::Log(
+						"Alpha native profile-change texture upload failed");
+				}
+			}
+			else
+			{
+				pl_tex_destroy(d3d11->gpu, &profileOverlayTexture);
+			}
+			appliedProfileOverlaySerial = profileSerial;
+		}
+		struct pl_overlay overlays[3]{};
+		struct pl_overlay_part overlayParts[3]{};
 		int overlayCount = 0;
 		if (statsOverlayTexture)
 		{
@@ -9248,6 +9248,44 @@ struct LibplaceboVideoRenderer::Impl
 				lastSweepOverlayPlacement = placement;
 				hasSweepOverlayPlacement = true;
 			}
+			overlay.parts = &overlayPart;
+			overlay.num_parts = 1;
+			++overlayCount;
+		}
+		if (profileOverlayTexture)
+		{
+			pl_overlay& overlay = overlays[overlayCount];
+			pl_overlay_part& overlayPart = overlayParts[overlayCount];
+			overlay.tex = profileOverlayTexture;
+			overlay.mode = PL_OVERLAY_NORMAL;
+			overlay.coords = PL_OVERLAY_COORDS_DST_FRAME;
+			overlay.repr = pl_color_repr_rgb;
+			overlay.repr.levels = PL_COLOR_LEVELS_FULL;
+			overlay.repr.alpha = PL_ALPHA_INDEPENDENT;
+			overlay.color = pl_color_space_srgb;
+			overlayPart.src = { 0.0f, 0.0f,
+				static_cast<float>(profileOverlayTexture->params.w),
+				static_cast<float>(profileOverlayTexture->params.h) };
+			const float dstWidth = static_cast<float>(
+				baseTarget.planes[0].texture->params.w);
+			const float dstHeight = static_cast<float>(
+				baseTarget.planes[0].texture->params.h);
+			const NativeStatsOverlayPlacement::Rect outputRect{
+				0.0f, 0.0f, dstWidth, dstHeight };
+			const NativeStatsOverlayPlacement::Rect pictureRect{
+				target.crop.x0, target.crop.y0, target.crop.x1, target.crop.y1 };
+			const float profileScale =
+				NativeStatsOverlayPlacement::ProfileOverlayScale(dstHeight);
+			const NativeStatsOverlayPlacement::Result placement =
+				NativeStatsOverlayPlacement::PlaceTopLeft(
+					pictureRect, outputRect,
+					static_cast<float>(profileOverlayTexture->params.w) *
+						profileScale,
+					static_cast<float>(profileOverlayTexture->params.h) *
+						profileScale,
+					NativeStatsOverlayPlacement::kProfileOverlayInsetPixels);
+			overlayPart.dst = { placement.panel.left, placement.panel.top,
+				placement.panel.right, placement.panel.bottom };
 			overlay.parts = &overlayPart;
 			overlay.num_parts = 1;
 			++overlayCount;
@@ -10012,6 +10050,13 @@ void LibplaceboVideoRenderer::Build()
 	// driver for seconds. Build only captures an immutable construction request;
 	// RenderLoop performs the actual initialization on its own thread.
 	m_impl.reset(new Impl());
+	m_impl->displayRefreshRate.SetEventSink(
+		[this](const std::string& event, double actualRefreshRate,
+			double requestedRefreshRate, double previousRefreshRate)
+		{
+			m_callback.OnRendererActionEvent(event.c_str(), actualRefreshRate,
+				requestedRefreshRate, previousRefreshRate, m_callbackGeneration);
+		});
 	m_buildVideoState = state;
 	m_buildManualRule = manualRule;
 	m_buildManualUnifiedProfiles = manualUnifiedProfiles;
@@ -11320,6 +11365,27 @@ bool LibplaceboVideoRenderer::SetNativeSweepOverlay(
 	m_impl->sweepOverlayHeight = pixels ? height : 0;
 	m_impl->sweepOverlayStride = pixels ? stride : 0;
 	++m_impl->sweepOverlaySerial;
+	return true;
+}
+
+bool LibplaceboVideoRenderer::SetNativeProfileOverlay(
+	const uint8_t* pixels, size_t byteCount, int width, int height, int stride)
+{
+	if (!m_impl)
+		return false;
+	if (pixels && (width <= 0 || height <= 0 || stride < width * 4 ||
+		byteCount < static_cast<size_t>(stride) * height))
+		return false;
+
+	std::lock_guard<std::mutex> guard(m_impl->statsOverlayMutex);
+	if (pixels)
+		m_impl->profileOverlayPixels.assign(pixels, pixels + byteCount);
+	else
+		m_impl->profileOverlayPixels.clear();
+	m_impl->profileOverlayWidth = pixels ? width : 0;
+	m_impl->profileOverlayHeight = pixels ? height : 0;
+	m_impl->profileOverlayStride = pixels ? stride : 0;
+	++m_impl->profileOverlaySerial;
 	return true;
 }
 

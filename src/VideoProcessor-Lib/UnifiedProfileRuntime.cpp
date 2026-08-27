@@ -528,7 +528,8 @@ namespace UnifiedProfileRuntime
 		const std::string& reason,
 		const std::shared_ptr<const Snapshot>& previous,
 		const std::shared_ptr<const Snapshot>& current,
-		std::vector<ActionInvocation>& actions, std::string& error) const
+		std::vector<ActionInvocation>& actions, std::string& error,
+		const EventActionLauncher::ActionValueLookup& eventValues) const
 	{
 		std::lock_guard<std::mutex> guard(m_mutex);
 		actions.clear();
@@ -539,7 +540,7 @@ namespace UnifiedProfileRuntime
 			return false;
 		}
 		return CollectActionInvocationsUnlocked(event, reason, previous,
-			current, actions, error);
+			current, actions, error, eventValues);
 	}
 
 
@@ -547,7 +548,8 @@ namespace UnifiedProfileRuntime
 		const std::string& reason,
 		const std::shared_ptr<const Snapshot>& previous,
 		const std::shared_ptr<const Snapshot>& current,
-		std::vector<ActionInvocation>& actions, std::string& error) const
+		std::vector<ActionInvocation>& actions, std::string& error,
+		const EventActionLauncher::ActionValueLookup& eventValues) const
 	{
 		if (!RendererProfileConfig::IsSupportedActionEvent(event))
 		{
@@ -561,9 +563,11 @@ namespace UnifiedProfileRuntime
 				action.events.end())
 				continue;
 			const EventActionLauncher::ActionValueLookup values =
-				[&event, &reason, &previous, &current](
+				[&event, &reason, &previous, &current, &eventValues](
 					const std::string& variable, std::string& value)
 				{
+					if (eventValues && eventValues(variable, value))
+						return true;
 					return LookupActionValue(variable, event, reason, previous,
 						current, value);
 				};
@@ -576,6 +580,10 @@ namespace UnifiedProfileRuntime
 				if (!matchError.empty())
 					DebugLog::Log("event action '%s' evaluation for %s failed: %s",
 						action.name.c_str(), event.c_str(), matchError.c_str());
+				else
+					DebugLog::Log(
+						"event action '%s' did not match %s: condition=false rule=%s",
+						action.name.c_str(), event.c_str(), action.when.c_str());
 				continue;
 			}
 			RendererProfileConfig::Model::EventAction expanded;
@@ -836,8 +844,21 @@ namespace UnifiedProfileRuntime
 			StateVariables::Value::Number(
 				static_cast<double>(generation));
 		for (const auto& selection : effective)
+		{
 			variables["profile." + selection.first] =
 				StateVariables::Value::Text(selection.second);
+			if (selection.first == "viewport")
+			{
+				std::string label = selection.second;
+				const auto profile = m_model.profiles.find("viewport." + selection.second);
+				if (profile != m_model.profiles.end() && !profile->second.label.empty())
+					label = profile->second.label;
+				variables["screen_config"] =
+					StateVariables::Value::Text(label);
+				variables["profile.viewport_name"] =
+					StateVariables::Value::Text(label);
+			}
+		}
 
 		std::shared_ptr<Snapshot> next(new Snapshot());
 		next->generation = generation;
