@@ -2,10 +2,18 @@
 
 ## Status
 
-In Progress (2026-08-27). Discovery found that the existing automatic-crop
-path only removes bars after trusted active-picture evidence; it does not
-provide the requested bounded fill/zoom policy. A separate branch will carry
-this work. No source behavior has changed yet.
+Review (2026-08-27). Implemented on
+`codex/vp-0154-black-bar-crop-limit` at `3d1aa71`, rebased on current
+`v1.3.001-beta` tip `85abed0`. The new optional
+`automatic_crop_aspect_limit` preserves the literal value entered in Config
+(for example `2.20:1`), while using a separate numeric representation only
+for rendering. It applies a centered top/bottom fill only after trusted
+automatic black-bar crop, only when the trusted content aspect meets the
+configured threshold, and never for NLS source geometry. Omission retains
+ordinary aspect-preserving fit. Focused geometry and configuration tests
+passed from a clean x64 Release test build; x64 Release GUI and Config editor
+test targets built successfully. The branch is pushed for operator review.
+Do not merge or deploy until approved.
 
 ## User story
 
