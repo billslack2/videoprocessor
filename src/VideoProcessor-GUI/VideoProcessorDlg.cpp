@@ -5243,12 +5243,8 @@ bool CVideoProcessorDlg::IsUnifiedActionRendererSelectedFor(
 	const RendererProfileConfig::Model::EventAction& action,
 	int rendererSelectorIndex, bool alphaRenderer) const
 {
-	if (action.renderer == "*")
-		return true;
-	if (action.renderer == "vprenderer")
-		return alphaRenderer;
-	return rendererSelectorIndex > 0 &&
-		action.rendererSelectorIndex == rendererSelectorIndex;
+	return RendererGenerationGate::MatchesRendererTarget(action.renderer,
+		action.rendererSelectorIndex, rendererSelectorIndex, alphaRenderer);
 }
 
 
@@ -6677,9 +6673,9 @@ LRESULT CVideoProcessorDlg::OnMessageRendererActionEvent(
 		message->rendererGeneration, currentGeneration,
 		m_videoRenderer != nullptr);
 	const bool retiringRendererAccepted =
-		message->event == "refresh.restored" &&
-		message->rendererGeneration != 0 &&
-		message->rendererGeneration == m_retiringRendererActionGeneration;
+		RendererGenerationGate::AcceptRetiringRefreshRestored(
+			message->event, message->rendererGeneration,
+			m_retiringRendererActionGeneration);
 	if ((!activeRendererAccepted && !retiringRendererAccepted) ||
 		!m_profileRuntime.IsInitialized())
 	{
