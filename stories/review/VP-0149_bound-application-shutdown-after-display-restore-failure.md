@@ -191,3 +191,22 @@ monitor when the original physical target cannot be identified.
   `C:\Videoprocessor\vp\backups\VP-0149-deploy-20260826-032323-029edb7`.
 - No configuration file was changed. The separate configuration editor was left
   running; the main VP process was not started automatically after deployment.
+
+## v1.3 beta rebase and merge
+
+- Rebased the VP-0148/VP-0149 stack onto the exact current remote
+  `v1.3.001-beta` tip `2d7f9ebc7de4d6ce0cf0f0b195cde99e6fc78c10`.
+- Resolved the v1.3 integration by keeping renderer action and queue-contract
+  wake messages distinct (`WM_APP + 20` and `WM_APP + 21`) and by preserving
+  truthful display-restore ownership plus immutable retiring-renderer action
+  context across detach.
+- Final source tip: `5ddb29500f476fd0ca2dcf0dcce97c16423bbf14`.
+  Both `origin/codex/vp-0149-bounded-shutdown` and
+  `origin/v1.3.001-beta` were verified at this commit after the fast-forward.
+- Post-rebase x64 Release builds succeeded for the native test DLL, GUI
+  executable, and VP Renderer DLL. The complete native suite passed `939/939`
+  in `33.8529` seconds.
+- Final independent architecture, code, and behavior gates reported no P0-P2
+  findings and approved the merge.
+- Deployment evidence above remains the prior v1.2-based build. This merge did
+  not redeploy or modify active configuration.
