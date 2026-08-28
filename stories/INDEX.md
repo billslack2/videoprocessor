@@ -196,7 +196,7 @@ they must not contain requirements that are absent from this file.
 | VP-0158 | Review | Zoom-safe active-profile OSD and meaningful status filtering |
 | VP-0159 | Backlog | Consolidate profile-like configuration lists on one shared UI component |
 | VP-0160 | Review | Reapply profile rules after every renderer swap |
-| VP-0161 | In Progress | Concise libplacebo-style renderer health OSD |
+| VP-0161 | Review | Concise libplacebo-style renderer health OSD |
 | VP-0066-1 | Done | Characterize the live output pipeline with replayable golden traces |
 | VP-0066-2 | Done | Extract a graph-independent video timing controller |
 | VP-0066-3 | Done | Extract epoch-aware frame transport and processing components |

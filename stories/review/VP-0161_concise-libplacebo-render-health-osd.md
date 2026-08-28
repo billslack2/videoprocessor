@@ -2,19 +2,36 @@
 
 ## Status
 
-In Progress (2026-08-28). The operator requested a concise Ctrl+I indication
-that Alpha is rendering well, using the useful terminology from libplacebo's
-`plplay` statistics panel without copying every demo-only value. The live
-GitHub default and implementation base was manually discovered and explicitly
-confirmed as `v1.3.003-beta` at `0cf07a95`.
+Review (2026-08-28). Implemented on branch
+`codex/vp-0161-render-health` from confirmed GitHub default
+`v1.3.003-beta` at `0cf07a95`; source commit `342327c7` is published to
+`billslack2/videoprocessor`.
 
-Implementation is active on branch `codex/vp-0161-render-health` in clean
-worktree
-`C:\Videoprocessor\vp\vprenderer\.codex-worktrees\vp0161-render-health`,
-created directly from that remote tip. Initial source tracing confirmed that
-Alpha already measures successful submissions, renderer drops, render time,
-present/swap blocking time, and material render stalls; the implementation
-will expose a bounded health snapshot without changing rendering policy.
+Alpha's Ctrl+I OSD now replaces the two generic frame-counter rows with six
+concise libplacebo-style rows: `Render health`, `Frames rendered`, `Dropped
+frames`, `Times stalled`, `Render frame`, and `Submit frame`. Health warms for
+eight successful render-and-submit cycles, becomes `Degraded` for ten seconds
+after a newly observed renderer drop or frame-rate-aware material stall, and
+otherwise reports `Good`. Renderer and capture drops remain explicitly
+separate, while intentional scene-aware D/R telemetry remains in its existing
+section.
+
+Validation evidence:
+
+- Focused x64 Release `RendererHealthTrackerTests`: 5/5 passed.
+- Complete x64 Release test assembly: 955/956 passed. The sole failure is the
+  beta baseline's `ConfigurationReferenceMatchesPublicFieldInventory` check;
+  it compares unchanged `CONFIGURATION.html`/configuration inventory inputs
+  and is unrelated to the ten VP-0161 source/project/test files.
+- A clean sequential x64 Release solution build passed at source commit
+  `342327c7`; the generated executable identity reported that commit with
+  `VERSION_DIRTY=false`.
+- No configuration or deployed binary was changed.
+
+Remaining acceptance is the live Alpha UI exercise: open Ctrl+I during video,
+confirm the six rows fit without clipping, verify warm-up settles to `Good`,
+and observe that a real renderer drop or material render stall temporarily
+shows `Degraded` while preserving cumulative counters.
 
 ## User story
 
