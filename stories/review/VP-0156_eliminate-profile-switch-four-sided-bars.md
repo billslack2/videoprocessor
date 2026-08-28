@@ -37,6 +37,21 @@ Validation evidence:
 
 Remaining acceptance: the developer must repeat live Screen and Zoom profile
 switches and confirm both that the four-sided flash is gone and that subtitle
+behavior remains unchanged.
+
+For combined operator testing with the zoom-cropped profile OSD fix, the
+separate `codex/vp-0156-with-zoom-osd` branch starts at the explicitly
+requested `7dddc030` commit and applies VP-0156 as combined commit `258be10c`.
+The existing standalone VP-0156 branch and draft PR #71 remain unchanged.
+The affected Alpha source-crop and native overlay-placement suites passed
+114/114, followed by clean x64 Release rebuilds of both projects. The matching
+combined pair was deployed with SHA-256 executable
+`01AE5F424AF189D11020CD477C39890658956E3E4ACB7875FE7BAE881BFEF0C1` and
+renderer
+`60F18D781A5CE1B5C71F87EE87538C0FD769E04E894C05A9A8DB52175FF60B1D`.
+The prior VP-0156-only deployed pair is backed up at
+`C:\\Videoprocessor\\vp\\backups\\vp0156-with-7dddc03-20260827-2253`;
+configuration was unchanged and the combined executable restarted successfully.
 
 ## User story
 
