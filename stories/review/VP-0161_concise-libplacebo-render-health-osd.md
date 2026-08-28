@@ -62,6 +62,35 @@ All hashes match the combined build. The active configuration was not edited
 and retained SHA-256
 `DAC456C0D12657A2B4D10569D79D5B4DDCF7FB0816D8C6F70F53965E8FFBD7C3`.
 
+The user's first live Ctrl+I check of the combined deployment still showed the
+legacy `VFrames`/`Dropped` rows and none of the VP-0161 health rows. The
+renderer implementation exposed the new snapshot, but
+`LibplaceboPluginVideoRenderer` did not forward
+`GetRenderHealthSnapshot`; its inherited default therefore returned false at
+the executable/plugin boundary. Local-only corrective source commit
+`838c8287` adds the explicit proxy override, forwards the snapshot to the
+plugin renderer, bumps the paired plugin API to 15, and adds a regression
+test that requires the proxy override.
+
+The corrective clean x64 Release solution build passed at commit `838c8287`;
+all 30 focused ROI/parameter/plugin/health tests passed, including the new
+proxy regression, and the complete offscreen Config suite passed. The matched
+executable/renderer pair was deployed with the application stopped and backed
+up at
+`C:\Videoprocessor\vp\backup-before-vp0161-plugin-bridge-20260828-183213`.
+Deployed SHA-256 values are:
+
+- `VideoProcessor.exe`:
+  `35D93AF69FCCFE0ADAB0E78B1BE45F35A9ED7182C8A21C7A47816540060A9C5C`.
+- `vprenderer\VideoProcessorVPRenderer.dll`:
+  `4D595B2457FCC16C5817D89DF9C46219F025CF9775D14A11B201F56D4C669243`.
+
+Both hashes match the clean corrective build. The active configuration was
+not edited during this deployment and retained its then-current SHA-256
+`674CE09A96516D7DFAF86B7C9FC79255E57E7953D1E12BB009B870DC0D6ECF3E`.
+The application remains stopped after deployment, and the combined source
+branch remains local and unpushed as requested.
+
 Remaining acceptance is the live Alpha UI exercise: open Ctrl+I during video,
 confirm the six rows fit without clipping, verify warm-up settles to `Good`,
 and observe that a real renderer drop or material render stall temporarily
