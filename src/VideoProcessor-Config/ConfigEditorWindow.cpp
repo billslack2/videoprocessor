@@ -4161,7 +4161,9 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 			QStringLiteral("catmull_rom"),
 			QStringLiteral("bicubic"), QStringLiteral("gaussian"),
 			QStringLiteral("hermite"), QStringLiteral("bilinear"),
-			QStringLiteral("box") });
+			QStringLiteral("box"), QStringLiteral("gpu") });
+		downscaler->setItemText(downscaler->findData(QStringLiteral("gpu")),
+			QStringLiteral("Use GPU"));
 		addRendererAutoStatus(QStringLiteral("downscaler"), downscaler);
 		auto* antiRinging = addChoice(QStringLiteral("Anti-ringing"),
 			QStringLiteral("sigmoid"), { QStringLiteral("AUTO"),
@@ -4474,7 +4476,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 					QStringLiteral("hermite"), QStringLiteral("bilinear"),
 					QStringLiteral("bicubic"), QStringLiteral("gaussian"),
 					QStringLiteral("catmull_rom"), QStringLiteral("mitchell"),
-					QStringLiteral("lanczos")
+					QStringLiteral("lanczos"), QStringLiteral("gpu")
 				};
 				if (!supported.contains(normalized))
 				{

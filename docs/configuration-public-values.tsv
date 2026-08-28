@@ -67,6 +67,7 @@ vprenderer.downscaler	gaussian
 vprenderer.downscaler	hermite
 vprenderer.downscaler	bilinear
 vprenderer.downscaler	box
+vprenderer.downscaler	gpu
 vprenderer.deband	AUTO
 vprenderer.deband	on
 vprenderer.deband	off

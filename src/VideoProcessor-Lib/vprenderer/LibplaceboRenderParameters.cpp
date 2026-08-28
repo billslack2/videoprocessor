@@ -297,6 +297,12 @@ namespace LibplaceboRenderParameters
 
 		if (settings.downscaler != "auto")
 		{
+			if (settings.downscaler == "gpu")
+			{
+				projection.downscalerExport = "gpu";
+				projection.renderParams.downscaler = nullptr;
+				return true;
+			}
 			const char* exportName = Downscaler(settings.downscaler);
 			// Removed or otherwise unsupported legacy values behave exactly as an
 			// omitted setting: retain the quality preset's Auto downscaler.
