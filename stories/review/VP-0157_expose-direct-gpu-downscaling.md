@@ -8,6 +8,10 @@ integration branch `v1.3.001-beta` tip `bdcb60cf` on
 [PR #72](https://github.com/billslack2/videoprocessor/pull/72) targets
 `v1.3.001-beta`.
 
+The tested combined integration is now on `v1.3.002-beta` at `3d23a55b`;
+that branch became the repository default on 2026-08-28. The story remains in
+Review pending the operator comparison described below.
+
 The Downscaler selector now includes **Use GPU** and persists the new canonical
 `downscaler: gpu` value. The renderer accepts that value through root and named
 live scaling profiles and projects it to a null libplacebo downscaler, selecting

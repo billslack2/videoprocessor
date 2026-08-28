@@ -21,6 +21,11 @@ builds, and fresh x64 Release GUI and VP Renderer builds succeeded. The
 verified x64 Release package from `ee17077` was deployed to
 `C:\Videoprocessor\vp` for operator testing; its host and renderer hashes
 matched the package, and the active `VideoProcessor.cfg` remained unchanged.
+
+The tested integration containing VP-0154 is now `v1.3.002-beta` at
+`3d23a55b`; that branch became the repository default on 2026-08-28. The story
+remains in Review pending operator acceptance.
+
 The latest review commits also make newly entered profile overrides immediately
 use the normal bright field colour, label the profile currently being edited as
 active or not active, and apply Screen Config profile edits through the live

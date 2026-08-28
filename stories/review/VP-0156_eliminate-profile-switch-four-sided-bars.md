@@ -7,6 +7,10 @@ Review (2026-08-27). Implemented from the explicitly confirmed
 commit `a031190e`; draft [PR #71](https://github.com/billslack2/videoprocessor/pull/71)
 targets `v1.3.001-beta`.
 
+The tested combined integration is now on `v1.3.002-beta` at `3d23a55b`;
+that branch became the repository default on 2026-08-28. The story remains in
+Review pending the live Screen/Zoom transition acceptance below.
+
 The renderer now retains only generation- and source-format-current trusted
 bar geometry across a live profile boundary. If the newly selected profile
 uses that geometry, the transition frame is force-analyzed before destination
