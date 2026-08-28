@@ -6,9 +6,9 @@ story may have ordered child-task IDs as defined below.
 
 ## Registry state
 
-- Last assigned root story: `VP-0158`
-- Next root story number: `VP-0159`
-- Total indexed items: 177
+- Last assigned root story: `VP-0159`
+- Next root story number: `VP-0160`
+- Total indexed items: 178
 
 ## Story locations
 
@@ -194,6 +194,7 @@ they must not contain requirements that are absent from this file.
 | VP-0156 | Review | Eliminate transient four-sided bars during live Screen and Zoom profile changes |
 | VP-0157 | Review | Expose direct GPU sampling for VP Renderer downscaling |
 | VP-0158 | Review | Zoom-safe active-profile OSD and meaningful status filtering |
+| VP-0159 | Backlog | Consolidate profile-like configuration lists on one shared UI component |
 | VP-0066-1 | Done | Characterize the live output pipeline with replayable golden traces |
 | VP-0066-2 | Done | Extract a graph-independent video timing controller |
 | VP-0066-3 | Done | Extract epoch-aware frame transport and processing components |
