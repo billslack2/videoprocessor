@@ -2,17 +2,37 @@
 
 ## Status
 
-In Progress (2026-08-27). Created after fetching canonical `origin/main` and
-auditing 175 story files against 175 index rows. No duplicate or missing IDs
-were found. The audit found one unrelated pre-existing state mismatch:
-`VP-0154` is stored under `review/` while its status and index row say Done;
-this story does not alter it.
+Review (2026-08-27). Implemented from the developer-confirmed current default
+integration branch `v1.3.001-beta` tip `bdcb60cf` on
+`codex/vp-0157-gpu-downscaler` at source commit `b66c8632`. Draft
+[PR #72](https://github.com/billslack2/videoprocessor/pull/72) targets
+`v1.3.001-beta`.
 
-GitHub reports `v1.3.001-beta` as the current default integration branch.
-The developer confirmed that base. Implementation is active on
-`codex/vp-0157-gpu-downscaler` in the clean worktree
-`C:\\Videoprocessor\\vp\\worktrees\\vp0157-gpu-downscaler`, based on fetched
-remote tip `bdcb60cf`.
+The Downscaler selector now includes **Use GPU** and persists the new canonical
+`downscaler: gpu` value. The renderer accepts that value through root and named
+live scaling profiles and projects it to a null libplacebo downscaler, selecting
+the built-in direct sampling path. Legacy `none` and `ewa_lanczos` downscaler
+values continue migrating to Auto. Configuration help records the lack of
+anti-aliasing and possible aliasing/shimmer trade-off.
+
+Validation evidence:
+
+- Clean x64 Release rebuild of the complete solution passed from committed
+  source `b66c8632`, including GUI, Config, VP Renderer, native tests, and
+  configuration tests.
+- Focused native scaler/profile tests passed 2/2 from the clean build outputs.
+- The focused Config renderer-profile UI/persistence test passed from the clean
+  build output and proves the **Use GPU** label plus `downscaler: gpu` save.
+- The full native suite remained at the beta baseline 940/941. The only failure
+  was the pre-existing `ConfigurationReferenceMatchesPublicFieldInventory`
+  mismatch already recorded on this beta line.
+- A complete Config test run passed before the clean rebuild. The clean-output
+  rerun had one unrelated native popup-association timing failure; that same
+  test passed immediately when retried alone.
+
+Remaining review: confirm the new Downscaler choice is clear in Config and,
+optionally, compare direct GPU downscaling against a filtered choice on live
+content. No deployment was performed.
 
 ## User story
 
@@ -63,3 +83,5 @@ changing old configuration behavior.
 - Libplacebo `renderer.h` documents that null upscaler/downscaler pointers use
   inexpensive built-in sampling and that a null downscaler implies
   `skip_anti_aliasing`.
+- Source commit `b66c8632` and draft PR #72 contain the implementation and
+  automated coverage.
