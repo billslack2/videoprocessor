@@ -4,8 +4,8 @@
 
 Review (2026-08-23). Parent:
 [VP-0145](../in-progress/VP-0145_renderer-post-stall-reset-eligibility.md).
-Implemented at `04d2d9a` on `codex/vp-0145-reset-advisory` (rebased onto
-`v1.3.001-beta`); x64 Release
+Implemented at `a737ecd` on `codex/vp-0145-reset-advisory`, merged into
+`v1.3.002-beta` and carried into the default `v1.3.003-beta`; x64 Release
 builds and 21 focused tests pass. Dedicated VP and madVR runtime log captures
 remain for acceptance. The post-stall evaluator is telemetry-only.
 

@@ -3,8 +3,8 @@
 ## Status
 
 In Progress (2026-08-23). The diagnostic implementation is on
-`codex/vp-0145-reset-advisory` at `04d2d9a` (rebased onto `v1.3.001-beta`) and
-is ready for focused runtime
+`codex/vp-0145-reset-advisory` at `a737ecd`, merged into `v1.3.002-beta` and
+carried into the default `v1.3.003-beta`, is ready for focused runtime
 log validation. Post-stall advice itself is telemetry-only. Separately,
 fullscreen entry and renderer changes are confirmed deterministic reset
 boundaries and now use the existing reset coordinator with the configured
