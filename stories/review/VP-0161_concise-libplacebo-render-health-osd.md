@@ -26,7 +26,17 @@ Validation evidence:
 - A clean sequential x64 Release solution build passed at source commit
   `342327c7`; the generated executable identity reported that commit with
   `VERSION_DIRTY=false`.
-- No configuration or deployed binary was changed.
+- The matched Release executable/renderer pair was deployed to
+  `C:\Videoprocessor\vp` with backup
+  `C:\Videoprocessor\vp\backup-before-vp0161-20260828-175220`.
+- Deployed `VideoProcessor.exe` SHA-256:
+  `9CD5409B52EC5B346B9236BA9F1AF32BDD61AB47A279234D084FF82DFBB44ECC`.
+- Deployed `vprenderer\VideoProcessorVPRenderer.dll` SHA-256:
+  `43E6750B01363F1762EC39EA221292ECE6E83D72DECC1011F06EE2EC570379EE`.
+- Both deployed hashes exactly match the clean source-commit build artifacts.
+  No configuration was edited; the active `VideoProcessor.cfg` SHA-256
+  remained
+  `DAC456C0D12657A2B4D10569D79D5B4DDCF7FB0816D8C6F70F53965E8FFBD7C3`.
 
 Remaining acceptance is the live Alpha UI exercise: open Ctrl+I during video,
 confirm the six rows fit without clipping, verify warm-up settles to `Good`,
