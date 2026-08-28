@@ -6458,6 +6458,7 @@ QWidget* ConfigEditorWindow::createShortcutsPage()
         { "Toggle statistics", "toggle_stats_overlay", "Ctrl+I" },
         { "Screenshot", "capture_rendered_output", "Ctrl+Alt+S" },
         { "Re-apply rules", "reapply_rules", "" },
+        { "Show profiles", "show_profiles", "Ctrl+Alt+I" },
         { "Automatic transfer", "auto_set", "Ctrl+Shift+A" },
         { "PQ transfer", "pq_set", "Ctrl+Shift+P" }
     };

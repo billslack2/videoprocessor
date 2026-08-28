@@ -257,6 +257,7 @@ public:
 	void OnCommandRendererReset();
 	void OnCommandRendererRestart();
 	void OnCommandReapplyRules();
+	void OnCommandShowProfiles();
 	void OnCommandDisplayRuleAuto();
 	afx_msg void OnCommandShaderRule(UINT commandId);
 	afx_msg void OnCommandDisplayRule(UINT commandId);
@@ -1030,6 +1031,11 @@ protected:
 		bool allowRestart, bool queueProfileResetPending = false);
 	void PublishProfileChangeOverlay(
 		const std::shared_ptr<const UnifiedProfileRuntime::Snapshot>& snapshot);
+	std::map<std::string, std::string> GetProfileOverlaySelections(
+		const UnifiedProfileRuntime::Snapshot& snapshot) const;
+	void ShowProfileOverlayItems(
+		const std::vector<ProfileChangeOverlay::Item>& items,
+		bool replaceExisting, const char* reason);
 	void UpdateProfileChangeOverlay(ULONGLONG now);
 	void ClearProfileChangeOverlay();
 	void QueueUnifiedQueueProfileReset(

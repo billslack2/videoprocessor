@@ -9579,7 +9579,10 @@ struct LibplaceboVideoRenderer::Impl
 						profileScale,
 					static_cast<float>(profileOverlayTexture->params.h) *
 						profileScale,
-					NativeStatsOverlayPlacement::kProfileOverlayInsetPixels);
+					NativeStatsOverlayPlacement::kProfileOverlayInsetPixels,
+					NativeStatsOverlayPlacement::ProfileOverlayLeftInset(
+						visiblePicture.IsValid() ? visiblePicture.Height() :
+							dstHeight));
 			overlayPart.dst = { placement.panel.left, placement.panel.top,
 				placement.panel.right, placement.panel.bottom };
 			NativeStatsOverlayPlacement::Result absolutePlacement = placement;

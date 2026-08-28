@@ -34,9 +34,11 @@ namespace ProfileChangeOverlay
 
 	struct Item
 	{
+		enum class Indicator { None, Off, On };
 		std::string group;
 		std::string label;
 		std::string value;
+		Indicator indicator = Indicator::None;
 	};
 
 	inline std::string GroupLabel(const std::string& group)
@@ -49,6 +51,7 @@ namespace ProfileChangeOverlay
 		if (group == "scaling") return "Scaling";
 		if (group == "queue") return "Queue";
 		if (group == "lldv") return "LLDV";
+		if (group == "nls") return "NLS";
 		if (group.empty()) return "Profile";
 		std::string label = group;
 		label[0] = static_cast<char>(std::toupper(
@@ -106,15 +109,68 @@ namespace ProfileChangeOverlay
 		return result.empty() ? profile : result;
 	}
 
+	inline const std::vector<std::string>& PreferredOrder()
+	{
+		static const std::vector<std::string> order = {
+			"display", "color", "output", "viewport", "zoom", "input",
+			"scaling", "queue", "lldv", "nls"
+		};
+		return order;
+	}
+
+	inline std::vector<Item> Collect(
+		const std::set<std::string>& groups,
+		const std::map<std::string, std::string>& current,
+		const std::string& visibleScreenName = {})
+	{
+		std::set<std::string> remaining = groups;
+		std::vector<std::string> ordered;
+		for (const std::string& group : PreferredOrder())
+			if (remaining.erase(group) != 0) ordered.push_back(group);
+		ordered.insert(ordered.end(), remaining.begin(), remaining.end());
+
+		std::vector<Item> items;
+		for (const std::string& group : ordered)
+		{
+			const auto selection = current.find(group);
+			if (selection == current.end()) continue;
+			Item item{ group, GroupLabel(group), ProfileLabel(selection->second) };
+			if (group == "nls")
+			{
+				constexpr const char* EnabledPrefix = "on:";
+				if (selection->second.rfind(EnabledPrefix, 0) == 0)
+				{
+					item.value = selection->second.substr(3);
+					item.indicator = Item::Indicator::On;
+				}
+				else
+				{
+					item.value = "Off";
+					item.indicator = Item::Indicator::Off;
+				}
+			}
+			if (group == "viewport" && !visibleScreenName.empty())
+				item.value = visibleScreenName;
+			items.push_back(std::move(item));
+		}
+		return items;
+	}
+
+	inline std::vector<Item> CollectAll(
+		const std::map<std::string, std::string>& current,
+		const std::string& visibleScreenName = {})
+	{
+		std::set<std::string> groups;
+		for (const auto& selection : current)
+			groups.insert(selection.first);
+		return Collect(groups, current, visibleScreenName);
+	}
+
 	inline std::vector<Item> CollectChanges(
 		const std::map<std::string, std::string>& previous,
 		const std::map<std::string, std::string>& current,
 		const std::string& visibleScreenName = {})
 	{
-		static const std::vector<std::string> preferredOrder = {
-			"display", "color", "output", "viewport", "input", "scaling",
-			"queue", "lldv"
-		};
 		std::set<std::string> changed;
 		for (const auto& selection : current)
 		{
@@ -126,21 +182,6 @@ namespace ProfileChangeOverlay
 			if (current.find(selection.first) == current.end())
 				changed.insert(selection.first);
 
-		std::vector<std::string> ordered;
-		for (const std::string& group : preferredOrder)
-			if (changed.erase(group) != 0) ordered.push_back(group);
-		ordered.insert(ordered.end(), changed.begin(), changed.end());
-
-		std::vector<Item> items;
-		for (const std::string& group : ordered)
-		{
-			const auto selection = current.find(group);
-			if (selection == current.end()) continue;
-			Item item{ group, GroupLabel(group), ProfileLabel(selection->second) };
-			if (group == "viewport" && !visibleScreenName.empty())
-				item.value = visibleScreenName;
-			items.push_back(std::move(item));
-		}
-		return items;
+		return Collect(changed, current, visibleScreenName);
 	}
 }

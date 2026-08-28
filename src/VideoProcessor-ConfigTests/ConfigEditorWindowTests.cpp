@@ -606,6 +606,11 @@ void testEveryPageRoundTrips()
     require(reapplyRulesShortcut->text().isEmpty(),
         "Re-apply rules unexpectedly received a built-in shortcut");
     reapplyRulesShortcut->setText(QStringLiteral("Ctrl+Alt+R"));
+    QLineEdit* showProfilesShortcut = requireControl<QLineEdit>(window,
+        QStringLiteral("config.shortcuts.show_profiles"));
+    require(showProfilesShortcut->text() == QStringLiteral("Ctrl+Alt+I"),
+        "Show profiles did not default to Ctrl+Alt+I");
+    showProfilesShortcut->setText(QStringLiteral("Ctrl+Alt+P"));
     QLineEdit* noUiShortcut = requireControl<QLineEdit>(window,
         QStringLiteral("config.shortcuts.toggle_noui"));
     require(noUiShortcut->text() == QStringLiteral("Ctrl+Shift+U"),
@@ -868,6 +873,9 @@ void testEveryPageRoundTrips()
     require(requireControl<QLineEdit>(reloaded,
         QStringLiteral("config.shortcuts.reapply_rules"))->text() ==
         QStringLiteral("Ctrl+Alt+R"), "Re-apply rules shortcut did not reload");
+    require(requireControl<QLineEdit>(reloaded,
+        QStringLiteral("config.shortcuts.show_profiles"))->text() ==
+        QStringLiteral("Ctrl+Alt+P"), "Show profiles shortcut did not reload");
 }
 
 void testRendererSectionTabsRemainSynchronizedDuringRapidClicks()
@@ -1140,6 +1148,7 @@ void testTwoColumnCardsShareRowHeight()
         shortcutLabels.append(label->text());
     require(shortcutLabels.contains(QStringLiteral("Screenshot")) &&
         shortcutLabels.contains(QStringLiteral("Re-apply rules")) &&
+        shortcutLabels.contains(QStringLiteral("Show profiles")) &&
         !shortcutLabels.contains(QStringLiteral("Capture rendered output")) &&
         shortcutLabels.contains(QStringLiteral("Video conversion off")) &&
         shortcutLabels.contains(QStringLiteral("V210 to P010 conversion")) &&

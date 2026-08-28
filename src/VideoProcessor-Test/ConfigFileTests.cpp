@@ -2526,6 +2526,43 @@ namespace VideoProcessorTest
 			Assert::AreEqual("Scope", items[2].value.c_str());
 		}
 
+		TEST_METHOD(ProfileOverlayIncludesQueueAndConfiguredNlsState)
+		{
+			const std::map<std::string, std::string> previous = {
+				{ "display", "rec709_scope_med" },
+				{ "queue", "standard" },
+				{ "nls", "off" }
+			};
+			const std::map<std::string, std::string> current = {
+				{ "display", "rec709_scope_med" },
+				{ "queue", "low_latency" },
+				{ "nls", "on:Nonlinear Stretch Protected" }
+			};
+			const auto changed = ProfileChangeOverlay::CollectChanges(
+				previous, current);
+			Assert::AreEqual(static_cast<size_t>(2), changed.size());
+			Assert::AreEqual("Queue", changed[0].label.c_str());
+			Assert::AreEqual("Low Latency", changed[0].value.c_str());
+			Assert::AreEqual("NLS", changed[1].label.c_str());
+			Assert::AreEqual("Nonlinear Stretch Protected",
+				changed[1].value.c_str());
+			Assert::IsTrue(changed[1].indicator ==
+				ProfileChangeOverlay::Item::Indicator::On);
+
+			const auto all = ProfileChangeOverlay::CollectAll(current);
+			Assert::AreEqual(static_cast<size_t>(3), all.size());
+			Assert::AreEqual("Rendering", all[0].label.c_str());
+			Assert::AreEqual("Queue", all[1].label.c_str());
+			Assert::AreEqual("NLS", all[2].label.c_str());
+
+			const auto disabled = ProfileChangeOverlay::CollectChanges(
+				current, previous);
+			Assert::AreEqual(static_cast<size_t>(2), disabled.size());
+			Assert::AreEqual("Off", disabled[1].value.c_str());
+			Assert::IsTrue(disabled[1].indicator ==
+				ProfileChangeOverlay::Item::Indicator::Off);
+		}
+
 		TEST_METHOD(ProfileChangeDisplayDurationIsBoundedAndLive)
 		{
 			char temporaryDirectory[MAX_PATH] = {};

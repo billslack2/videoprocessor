@@ -62,10 +62,10 @@ namespace Tests
 			const Result result = PlaceTopLeft(
 				{ 0.0f, 283.0f, 3840.0f, 1917.0f },
 				{ 0.0f, 0.0f, 3840.0f, 2160.0f }, 760.0f, 88.0f,
-				kProfileOverlayInsetPixels);
-			Assert::IsTrue(std::fabs(result.panel.left - 30.0f) < 0.01f);
+				kProfileOverlayInsetPixels, ProfileOverlayLeftInset(1634.0f));
+			Assert::IsTrue(std::fabs(result.panel.left - 75.3889f) < 0.01f);
 			Assert::IsTrue(std::fabs(result.panel.top - 313.0f) < 0.01f);
-			Assert::IsTrue(std::fabs(result.panel.right - 790.0f) < 0.01f);
+			Assert::IsTrue(std::fabs(result.panel.right - 835.3889f) < 0.01f);
 			Assert::IsTrue(std::fabs(result.panel.bottom - 401.0f) < 0.01f);
 		}
 
@@ -78,6 +78,12 @@ namespace Tests
 			Assert::IsTrue(std::fabs(ProfileOverlayScale(2160.0f) - 2.55f) <
 				0.01f);
 			Assert::IsTrue(std::fabs(ProfileOverlayScale(720.0f) - 0.85f) <
+				0.01f);
+			Assert::IsTrue(std::fabs(ProfileOverlayLeftInset(1080.0f) - 60.0f) <
+				0.01f);
+			Assert::IsTrue(std::fabs(ProfileOverlayLeftInset(2160.0f) - 90.0f) <
+				0.01f);
+			Assert::IsTrue(std::fabs(ProfileOverlayLeftInset(720.0f) - 50.0f) <
 				0.01f);
 		}
 
@@ -99,7 +105,8 @@ namespace Tests
 			const Result result = PlaceTopLeft(localPicture, localOutput,
 				760.0f * ProfileOverlayScale(visible.Height()),
 				88.0f * ProfileOverlayScale(visible.Height()),
-				kProfileOverlayInsetPixels);
+				kProfileOverlayInsetPixels,
+				ProfileOverlayLeftInset(visible.Height()));
 			const Rect absolutePanel{
 				result.panel.left + zoomCrop.left,
 				result.panel.top + zoomCrop.top,
@@ -109,7 +116,7 @@ namespace Tests
 			Assert::IsTrue(absolutePanel.top >= visible.top);
 			Assert::IsTrue(absolutePanel.right <= visible.right);
 			Assert::IsTrue(absolutePanel.bottom <= visible.bottom);
-			Assert::IsTrue(std::fabs(absolutePanel.left - 30.0f) < 0.01f);
+			Assert::IsTrue(std::fabs(absolutePanel.left - 60.2778f) < 0.01f);
 			Assert::IsTrue(std::fabs(absolutePanel.top - 205.0f) < 0.01f);
 		}
 

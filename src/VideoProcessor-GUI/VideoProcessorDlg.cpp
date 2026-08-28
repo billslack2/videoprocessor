@@ -498,6 +498,7 @@ const ShortcutDefinition SHORTCUT_DEFINITIONS[] =
 	{ "toggle_stats_overlay",  ID_COMMAND_TOGGLE_STATS_OVERLAY,   'I',       FCONTROL },
 	{ "capture_rendered_output", ID_COMMAND_CAPTURE_RENDERED_OUTPUT, 'S',     FCONTROL | FALT },
 	{ "reapply_rules",         ID_COMMAND_REAPPLY_RULES,            0,         0 },
+	{ "show_profiles",         ID_COMMAND_SHOW_PROFILES,           'I',       FCONTROL | FALT },
 	{ "pq_set",                ID_COMMAND_PQ_SET,                 'P',       FCONTROL | FSHIFT },
 	{ "renderer_restart",      ID_COMMAND_RENDERER_RESTART,       'R',       FSHIFT },
 	{ "renderer_reset",        ID_COMMAND_RENDERER_RESET,         'R',       0 },
@@ -2002,6 +2003,7 @@ BEGIN_MESSAGE_MAP(CVideoProcessorDlg, CDialog)
 	ON_COMMAND(ID_COMMAND_RENDERER_RESET, &CVideoProcessorDlg::OnCommandRendererReset)
 	ON_COMMAND(ID_COMMAND_RENDERER_RESTART, &CVideoProcessorDlg::OnCommandRendererRestart)
 	ON_COMMAND(ID_COMMAND_REAPPLY_RULES, &CVideoProcessorDlg::OnCommandReapplyRules)
+	ON_COMMAND(ID_COMMAND_SHOW_PROFILES, &CVideoProcessorDlg::OnCommandShowProfiles)
 
 	ON_COMMAND(ID_COMMAND_PQ_SET, &CVideoProcessorDlg::OnCommandPQSet)
 	ON_COMMAND(ID_COMMAND_AUTO_SET, &CVideoProcessorDlg::OnCommandAutoSet)
@@ -11303,61 +11305,94 @@ void CVideoProcessorDlg::PublishActiveProfileStatus()
 		shaderSections, sourceEotf, sourceColorSpace);
 }
 
-void CVideoProcessorDlg::PublishProfileChangeOverlay(
-	const std::shared_ptr<const UnifiedProfileRuntime::Snapshot>& snapshot)
+std::map<std::string, std::string>
+CVideoProcessorDlg::GetProfileOverlaySelections(
+	const UnifiedProfileRuntime::Snapshot& snapshot) const
 {
-	if (!snapshot)
-		return;
-	if (!m_profileChangeOverlayInitialized)
-	{
-		m_profileChangeOverlaySelections = snapshot->effectiveSelections;
-		m_profileChangeOverlayInitialized = true;
-		return;
-	}
-	// Startup builds the effective selection map in stages before a renderer
-	// exists. Keep that evolving state as the baseline instead of presenting
-	// normal initialization as a user-visible profile change.
-	if (!m_videoRenderer)
-	{
-		m_profileChangeOverlaySelections = snapshot->effectiveSelections;
-		return;
-	}
+	auto selections = snapshot.effectiveSelections;
+	ConfigFile shaderConfig;
+	if (!shaderConfig.Load(ConfigFile::RENDERER_FILENAME))
+		return selections;
 
-	std::string screenName;
-	snapshot->LookupVariable("screen_config", screenName);
-	const std::vector<ProfileChangeOverlay::Item> changed =
-		ProfileChangeOverlay::CollectChanges(m_profileChangeOverlaySelections,
-			snapshot->effectiveSelections, screenName);
-	m_profileChangeOverlaySelections = snapshot->effectiveSelections;
-	if (changed.empty())
+	bool nlsConfigured = false;
+	for (const std::string& section : shaderConfig.GetSectionNames())
+	{
+		std::string type;
+		if (shaderConfig.TryGetString(section, "shader_type", type) &&
+			ConfigFile::NormalizeName(type) == "nls")
+		{
+			nlsConfigured = true;
+			break;
+		}
+	}
+	if (!nlsConfigured)
+		return selections;
+
+	std::string activeNlsLabel;
+	std::vector<CString> activeSections;
+	if (m_videoRenderer &&
+		m_videoRenderer->GetActiveShaderSections(activeSections))
+	{
+		for (const CString& activeSection : activeSections)
+		{
+			const std::string section =
+				CStringA(activeSection).GetString();
+			std::string type;
+			if (!shaderConfig.TryGetString(section, "shader_type", type) ||
+				ConfigFile::NormalizeName(type) != "nls")
+				continue;
+			if (!shaderConfig.TryGetString(section, "label", activeNlsLabel) ||
+				ConfigFile::Trim(activeNlsLabel).empty())
+			{
+				const size_t separator = section.find_last_of('.');
+				activeNlsLabel = ProfileChangeOverlay::ProfileLabel(
+					separator == std::string::npos ? section :
+					section.substr(separator + 1));
+			}
+			activeNlsLabel = ConfigFile::Trim(activeNlsLabel);
+			break;
+		}
+	}
+	selections["nls"] = activeNlsLabel.empty() ? "off" :
+		"on:" + activeNlsLabel;
+	return selections;
+}
+
+void CVideoProcessorDlg::ShowProfileOverlayItems(
+	const std::vector<ProfileChangeOverlay::Item>& items,
+	bool replaceExisting, const char* reason)
+{
+	if (items.empty())
 		return;
 	if (m_profileChangeDisplaySeconds == 0)
 	{
 		ClearProfileChangeOverlay();
 		DebugLog::Log(
-			"Profile change overlay suppressed: reason=disabled changes=%zu",
-			changed.size());
+			"Profile overlay suppressed: reason=%s changes=%zu",
+			reason ? reason : "unknown", items.size());
 		return;
 	}
 
-	for (const auto& item : changed)
+	if (replaceExisting)
+		m_profileChangeOverlayItems = items;
+	else
 	{
-		const auto existing = std::find_if(m_profileChangeOverlayItems.begin(),
-			m_profileChangeOverlayItems.end(), [&item](const auto& candidate)
-			{
-				return candidate.group == item.group;
-			});
-		if (existing == m_profileChangeOverlayItems.end())
-			m_profileChangeOverlayItems.push_back(item);
-		else
-			*existing = item;
+		for (const auto& item : items)
+		{
+			const auto existing = std::find_if(m_profileChangeOverlayItems.begin(),
+				m_profileChangeOverlayItems.end(), [&item](const auto& candidate)
+				{
+					return candidate.group == item.group;
+				});
+			if (existing == m_profileChangeOverlayItems.end())
+				m_profileChangeOverlayItems.push_back(item);
+			else
+				*existing = item;
+		}
 	}
 	const auto rank = [](const std::string& group)
 	{
-		static const std::vector<std::string> order = {
-			"display", "color", "output", "viewport", "input", "scaling",
-			"queue", "lldv"
-		};
+		const auto& order = ProfileChangeOverlay::PreferredOrder();
 		const auto position = std::find(order.begin(), order.end(), group);
 		return position == order.end() ? order.size() :
 			static_cast<size_t>(position - order.begin());
@@ -11381,15 +11416,48 @@ void CVideoProcessorDlg::PublishProfileChangeOverlay(
 	SetTimer(PROFILE_CHANGE_OVERLAY_TIMER_ID, 50, nullptr);
 	UpdateProfileChangeOverlay(now);
 	std::ostringstream summary;
-	for (size_t index = 0; index < changed.size(); ++index)
+	for (size_t index = 0; index < items.size(); ++index)
 	{
 		if (index != 0) summary << ", ";
-		summary << changed[index].label << '=' << changed[index].value;
+		summary << items[index].label << '=' << items[index].value;
 	}
 	DebugLog::Log(
-		"Profile change overlay shown: duration_ms=%llu hold_ms=%llu fade_ms=%llu changes=%s",
-		timing.totalMilliseconds, timing.holdMilliseconds,
-		timing.fadeMilliseconds, summary.str().c_str());
+		"Profile overlay shown: reason=%s duration_ms=%llu hold_ms=%llu fade_ms=%llu selections=%s",
+		reason ? reason : "unknown", timing.totalMilliseconds,
+		timing.holdMilliseconds, timing.fadeMilliseconds,
+		summary.str().c_str());
+}
+
+void CVideoProcessorDlg::PublishProfileChangeOverlay(
+	const std::shared_ptr<const UnifiedProfileRuntime::Snapshot>& snapshot)
+{
+	if (!snapshot)
+		return;
+	const auto currentSelections = GetProfileOverlaySelections(*snapshot);
+	if (!m_profileChangeOverlayInitialized)
+	{
+		m_profileChangeOverlaySelections = currentSelections;
+		m_profileChangeOverlayInitialized = true;
+		return;
+	}
+	// Startup builds the effective selection map in stages before a renderer
+	// exists. Keep that evolving state as the baseline instead of presenting
+	// normal initialization as a user-visible profile change.
+	if (!m_videoRenderer)
+	{
+		m_profileChangeOverlaySelections = currentSelections;
+		return;
+	}
+
+	std::string screenName;
+	snapshot->LookupVariable("screen_config", screenName);
+	const std::vector<ProfileChangeOverlay::Item> changed =
+		ProfileChangeOverlay::CollectChanges(m_profileChangeOverlaySelections,
+			currentSelections, screenName);
+	m_profileChangeOverlaySelections = currentSelections;
+	if (changed.empty())
+		return;
+	ShowProfileOverlayItems(changed, false, "selection-change");
 }
 
 void CVideoProcessorDlg::UpdateProfileChangeOverlay(ULONGLONG now)
@@ -11957,6 +12025,26 @@ void CVideoProcessorDlg::OnCommandReapplyRules()
 	if (queueProfileReset)
 		QueueUnifiedQueueProfileReset(result.snapshot, "reapply-rules");
 	ScheduleUnifiedProfileActions(result.actions);
+}
+
+
+void CVideoProcessorDlg::OnCommandShowProfiles()
+{
+	const auto snapshot = m_profileRuntime.GetSnapshot();
+	if (!snapshot)
+	{
+		DebugLog::Log(
+			"Show profiles ignored: unified profile runtime is unavailable");
+		return;
+	}
+
+	std::string screenName;
+	snapshot->LookupVariable("screen_config", screenName);
+	const auto selections = GetProfileOverlaySelections(*snapshot);
+	m_profileChangeOverlaySelections = selections;
+	m_profileChangeOverlayInitialized = true;
+	ShowProfileOverlayItems(ProfileChangeOverlay::CollectAll(
+		selections, screenName), true, "show-profiles-shortcut");
 }
 
 
@@ -13693,16 +13781,20 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 			CString refreshedShaderRule;
 			bool shaderRestartRequired = false;
 			if (m_videoRenderer->RefreshShaderRule(
-					refreshedShaderRule, shaderRestartRequired) &&
-				shaderRestartRequired)
+					refreshedShaderRule, shaderRestartRequired))
 			{
-				DEBUGLOG(
-					"Conditional shader state changed to '%S'; "
-					"restarting renderer for aspect negotiation",
-					static_cast<LPCTSTR>(refreshedShaderRule));
-				m_postRendererStartRequiresGraph = false;
-				m_wantToRestartRenderer = true;
-				UpdateState();
+				PublishActiveProfileStatus();
+				PublishProfileChangeOverlay(m_profileRuntime.GetSnapshot());
+				if (shaderRestartRequired)
+				{
+					DEBUGLOG(
+						"Conditional shader state changed to '%S'; "
+						"restarting renderer for aspect negotiation",
+						static_cast<LPCTSTR>(refreshedShaderRule));
+					m_postRendererStartRequiresGraph = false;
+					m_wantToRestartRenderer = true;
+					UpdateState();
+				}
 			}
 		}
 		return;

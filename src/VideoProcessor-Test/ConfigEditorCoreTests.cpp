@@ -1030,6 +1030,7 @@ namespace VideoProcessorTest
 				{ "shortcuts", "config_editor", "Ctrl+E" },
 				{ "shortcuts", "toggle_noui", "Alt+U" },
 				{ "shortcuts", "reapply_rules", "Ctrl+Alt+R" },
+				{ "shortcuts", "show_profiles", "Ctrl+Alt+P" },
 				{ "shortcuts", "fullscreen_toggle", "Ctrl+F" },
 				{ "shortcuts", "fullscreen_exit", "Esc" },
 				{ "shortcuts", "toggle_stats_overlay", "Ctrl+I" },

@@ -292,6 +292,8 @@ bool StatsOverlayWindow::RenderProfileChangesBgra(
 	constexpr int horizontalPadding = 12;
 	constexpr int separatorGap = 12;
 	constexpr int minimumColumnWidth = 90;
+	constexpr int indicatorDiameter = 10;
+	constexpr int indicatorGap = 7;
 	std::vector<int> columnWidths;
 	columnWidths.reserve(items.size());
 	for (const auto& item : items)
@@ -305,8 +307,12 @@ bool StatsOverlayWindow::RenderProfileChangesBgra(
 		SelectObject(memory, valueFont);
 		GetTextExtentPoint32(memory, value, value.GetLength(), &valueSize);
 		SelectObject(memory, oldFont);
+		const int indicatorWidth = item.indicator ==
+			ProfileChangeOverlay::Item::Indicator::None ? 0 :
+			indicatorDiameter + indicatorGap;
 		columnWidths.push_back((std::max)(minimumColumnWidth,
-			static_cast<int>((std::max)(labelSize.cx, valueSize.cx)) +
+			static_cast<int>((std::max)(labelSize.cx,
+				valueSize.cx + indicatorWidth)) +
 			horizontalPadding * 2));
 	}
 
@@ -371,7 +377,28 @@ bool StatsOverlayWindow::RenderProfileChangesBgra(
 			label, label.GetLength());
 		SelectObject(memory, valueFont);
 		SetTextColor(memory, overlayColor(248, 250, 252));
-		TextOut(memory, x + horizontalPadding, 29,
+		int valueX = x + horizontalPadding;
+		if (items[index].indicator !=
+			ProfileChangeOverlay::Item::Indicator::None)
+		{
+			const bool enabled = items[index].indicator ==
+				ProfileChangeOverlay::Item::Indicator::On;
+			const COLORREF color = enabled ? overlayColor(52, 211, 153) :
+				overlayColor(148, 163, 184);
+			HPEN indicatorPen = CreatePen(PS_SOLID, 2, color);
+			HBRUSH indicatorBrush = enabled ? CreateSolidBrush(color) :
+				static_cast<HBRUSH>(GetStockObject(HOLLOW_BRUSH));
+			HGDIOBJ previousPen = SelectObject(memory, indicatorPen);
+			HGDIOBJ previousBrush = SelectObject(memory, indicatorBrush);
+			Ellipse(memory, valueX, 35, valueX + indicatorDiameter,
+				35 + indicatorDiameter);
+			SelectObject(memory, previousBrush);
+			SelectObject(memory, previousPen);
+			if (enabled) DeleteObject(indicatorBrush);
+			DeleteObject(indicatorPen);
+			valueX += indicatorDiameter + indicatorGap;
+		}
+		TextOut(memory, valueX, 29,
 			value, value.GetLength());
 		x += columnWidth;
 		if (index + 1 < items.size())

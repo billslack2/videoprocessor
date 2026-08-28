@@ -8,6 +8,7 @@ namespace NativeStatsOverlayPlacement
 {
 	constexpr float kDefaultInsetPixels = 40.0f;
 	constexpr float kProfileOverlayInsetPixels = 30.0f;
+	constexpr float kProfileOverlayAdditionalLeftInsetReferencePixels = 30.0f;
 	constexpr float kProfileOverlayReferenceHeight = 1080.0f;
 	constexpr float kProfileOverlayBaselineScale = 1.275f;
 
@@ -21,6 +22,17 @@ namespace NativeStatsOverlayPlacement
 		return std::max(0.75f, std::min(3.0f,
 			kProfileOverlayBaselineScale * visiblePictureHeight /
 				kProfileOverlayReferenceHeight));
+	}
+
+	inline float ProfileOverlayLeftInset(float visiblePictureHeight)
+	{
+		if (visiblePictureHeight <= 0.0f)
+			return kProfileOverlayInsetPixels +
+				kProfileOverlayAdditionalLeftInsetReferencePixels;
+		const float relativeScale = std::max(0.5f, std::min(3.0f,
+			visiblePictureHeight / kProfileOverlayReferenceHeight));
+		return kProfileOverlayInsetPixels +
+			kProfileOverlayAdditionalLeftInsetReferencePixels * relativeScale;
 	}
 
 	struct Rect
@@ -126,14 +138,18 @@ namespace NativeStatsOverlayPlacement
 
 	inline Result PlaceTopLeft(const Rect& requestedPicture, const Rect& output,
 		float panelWidth, float panelHeight,
-		float insetPixels = kDefaultInsetPixels)
+		float insetPixels = kDefaultInsetPixels,
+		float leftInsetPixels = -1.0f)
 	{
 		Result result = PlaceTopRight(requestedPicture, output, panelWidth,
 			panelHeight, insetPixels);
 		if (!result.visiblePicture.IsValid() || !result.panel.IsValid())
 			return result;
 		const float width = result.panel.Width();
-		float left = result.visiblePicture.left + std::max(0.0f, insetPixels);
+		const float requestedLeftInset = leftInsetPixels < 0.0f ?
+			insetPixels : leftInsetPixels;
+		float left = result.visiblePicture.left +
+			std::max(0.0f, requestedLeftInset);
 		if (left + width > result.visiblePicture.right)
 		{
 			left = result.visiblePicture.left;

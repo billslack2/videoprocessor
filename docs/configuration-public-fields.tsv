@@ -41,6 +41,7 @@ directshow.ppm.ppm	directshow-ppm	DirectShow timing	no
 shortcuts.render.<index>	render-shortcut	VP shortcut	no
 shortcuts.foreground_only	shortcut-foreground-only	VP shortcut focus	no
 shortcuts.toggle_noui	shortcut-toggle-noui	VP window presentation	no
+shortcuts.show_profiles	shortcut-show-profiles	VP profile overlay	no
 vprenderer.when	vprenderer-when	VP Renderer	no
 vprenderer.shortcut	vprenderer-shortcut	VP Renderer	no
 vprenderer.quality	vprenderer-quality	VP Renderer	no
