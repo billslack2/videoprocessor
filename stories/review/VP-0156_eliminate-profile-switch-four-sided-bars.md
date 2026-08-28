@@ -2,23 +2,41 @@
 
 ## Status
 
-In Progress (2026-08-27). Implementation base `v1.3.001-beta` was freshly
-discovered from `billslack2/videoprocessor` and explicitly confirmed by the
-developer. Work is on `codex/vp-0156-profile-switch-geometry` in clean
-worktree `C:\\Videoprocessor\\vp\\vprenderer\\.codex-worktrees\\vp0156`.
+Review (2026-08-27). Implemented from the explicitly confirmed
+`v1.3.001-beta` base on `codex/vp-0156-profile-switch-geometry` at source
+commit `a031190e`; draft [PR #71](https://github.com/billslack2/videoprocessor/pull/71)
+targets `v1.3.001-beta`.
 
-Readiness review: deployed logs reproduce the defect and show a viewport
-request clearing trusted active-picture geometry immediately before the
-transient frame. The source format and source pixels do not change during a
-profile selection. The implementation boundary is known: carry only current
-trusted source-picture geometry into the new presentation epoch, while
-subtitle evidence, translation, hold timing, envelope, and fit state reset and
-reacquire. Focused native tests and an x64 Release build can validate the
-change.
+The renderer now retains only generation- and source-format-current trusted
+bar geometry across a live profile boundary. If the newly selected profile
+uses that geometry, the transition frame is force-analyzed before destination
+layout. Provisional, malformed, stale-generation, and stale-format geometry
+still fail open. NLS intent and shader bindings are rebuilt for the new target.
 
-Tracker audit: after fetching `origin/main`, 174 canonical records and 174
-index rows were found, with no duplicate IDs or registry mismatch. `VP-0155`
-was the highest root ID, so `VP-0156` is the next safe assignment.
+Subtitle behavior was not modified. The existing subtitle reset calls still
+run before the transition frame, clearing translation/fit confirmations,
+drift, hold state, detected extents, and presentation envelopes. The duplicate
+same-frame reset was consolidated to the render-thread boundary, but subtitle
+detection, motion, smoothing, fit, and release policy code is unchanged.
+
+Validation evidence:
+
+- Focused Alpha source-crop/subtitle policy suite passed 103/103.
+- Full native suite passed 942/943. The sole failure is the pre-existing
+  `ConfigurationReferenceMatchesPublicFieldInventory` mismatch already
+  recorded on the beta line.
+- Clean x64 Release rebuilds succeeded for both `VideoProcessor-GUI` and
+  `VideoProcessor-VPRenderer` from clean commit `a031190e`.
+- The matching Release pair was deployed for operator validation. SHA-256:
+  executable `088F723CC3723D1AC7C061F2DF1234AA36E42772172D8304AD0C61ED68A254F0`;
+  renderer `5311B43518083B34BB81B6350B0D992F057181816D143253880764E70837A143`.
+- The previous pair is backed up at
+  `C:\\Videoprocessor\\vp\\backups\\vp0156-profile-switch-bars-20260827-2247`.
+  `VideoProcessor.cfg` was unchanged, hashes matched the build artifacts, and
+  VideoProcessor restarted successfully.
+
+Remaining acceptance: the developer must repeat live Screen and Zoom profile
+switches and confirm both that the four-sided flash is gone and that subtitle
 
 ## User story
 
