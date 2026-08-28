@@ -4298,14 +4298,14 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 		hdrAnalysisMode->setSizePolicy(
 			QSizePolicy::Expanding, QSizePolicy::Fixed);
 		hdrAnalysisMode->addItem(QStringLiteral("Off"), QStringLiteral("off"));
-		hdrAnalysisMode->addItem(QStringLiteral("Fixed center percentage"),
-			QStringLiteral("fixed"));
-		hdrAnalysisMode->addItem(QStringLiteral("Automatic movement"),
+		hdrAnalysisMode->addItem(QStringLiteral("Smart (Experimental)"),
 			QStringLiteral("automatic"));
+		hdrAnalysisMode->addItem(QStringLiteral("Percentage (Beta)"),
+			QStringLiteral("fixed"));
 		hdrAnalysisMode->setToolTip(QStringLiteral(
-			"Off uses normal full-presentation HDR analysis. Fixed center percentage "
-			"always analyzes the configured central band. Automatic movement protects "
-			"only the active-picture edge affected by VP's subtitle-picture movement."));
+			"Off uses normal full-presentation HDR analysis. Smart protects only the "
+			"active-picture edge affected by VP's subtitle-picture movement. Percentage "
+			"always analyzes the configured central band."));
 		form->addRow(QStringLiteral("HDR analysis protection"), hdrAnalysisMode);
 		hdrAnalysisHeight = addText(
 			QStringLiteral("HDR analysis height"),

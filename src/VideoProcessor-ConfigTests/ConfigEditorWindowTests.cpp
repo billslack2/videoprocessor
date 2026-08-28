@@ -2042,8 +2042,13 @@ void testScreenConfigSectionsAndInlineUnits()
 	require(hdrAnalysisMode->currentData().toString() == QStringLiteral("off") &&
 		hdrAnalysisMode->accessibleName() ==
 			QStringLiteral("HDR analysis protection") &&
-		hdrAnalysisMode->findData(QStringLiteral("fixed")) >= 0 &&
-		hdrAnalysisMode->findData(QStringLiteral("automatic")) >= 0,
+		hdrAnalysisMode->count() == 3 &&
+		hdrAnalysisMode->itemText(0) == QStringLiteral("Off") &&
+		hdrAnalysisMode->itemData(0).toString() == QStringLiteral("off") &&
+		hdrAnalysisMode->itemText(1) == QStringLiteral("Smart (Experimental)") &&
+		hdrAnalysisMode->itemData(1).toString() == QStringLiteral("automatic") &&
+		hdrAnalysisMode->itemText(2) == QStringLiteral("Percentage (Beta)") &&
+		hdrAnalysisMode->itemData(2).toString() == QStringLiteral("fixed"),
 		"Zoom subtitles do not expose the default-off exclusive HDR analysis modes");
 	QLineEdit* hdrAnalysisHeight = requireControl<QLineEdit>(window,
 		QStringLiteral(
