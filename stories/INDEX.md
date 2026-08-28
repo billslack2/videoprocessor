@@ -189,11 +189,11 @@ they must not contain requirements that are absent from this file.
 | VP-0151 | Backlog | Reliable explicit BT.2020 exit signaling |
 | VP-0152 | Done | Coordinated profile selection, actions, and on-screen feedback |
 | VP-0153 | Done | Reset queues after every display transition |
-| VP-0154 | Done | Automatic black-bar crop and aspect-limit fill |
+| VP-0154 | Review | Automatic black-bar crop and aspect-limit fill |
 | VP-0155 | Done | Honor vertical picture alignment for configured screen viewports |
 | VP-0156 | Review | Eliminate transient four-sided bars during live Screen and Zoom profile changes |
 | VP-0157 | Review | Expose direct GPU sampling for VP Renderer downscaling |
-| VP-0158 | Done | Zoom-safe active-profile OSD and meaningful status filtering |
+| VP-0158 | Review | Zoom-safe active-profile OSD and meaningful status filtering |
 | VP-0066-1 | Done | Characterize the live output pipeline with replayable golden traces |
 | VP-0066-2 | Done | Extract a graph-independent video timing controller |
 | VP-0066-3 | Done | Extract epoch-aware frame transport and processing components |

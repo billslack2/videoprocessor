@@ -2,7 +2,7 @@
 
 ## Status
 
-Done (2026-08-27). Implemented on
+Review (2026-08-28). Implementation was completed on
 `codex/vp-0154-black-bar-crop-limit` at `383762df`, rebased on current
 `v1.3.001-beta` tip `85abed0`. Config now has two independent controls, both
 off by default: **Crop narrower content to fill screen** and **Crop wider

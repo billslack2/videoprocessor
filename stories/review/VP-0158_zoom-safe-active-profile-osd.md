@@ -2,7 +2,7 @@
 
 ## Status
 
-Done (2026-08-28). Implemented as one contextual OSD workstream on the
+Review (2026-08-28). Implemented as one contextual OSD workstream on the
 `v1.3.001-beta` integration line and merged by fast-forward into
 `v1.3.001-beta` at source commit `3d23a55b`.
 
@@ -24,6 +24,11 @@ exact remote commit as x64 Release, and deployed to `C:\Videoprocessor\vp`.
 The focused OSD tests passed 3/3, deployed artifact hashes matched the clean
 build, `VideoProcessor.cfg` was unchanged, and VideoProcessor restarted
 successfully.
+
+Remaining review: operator validation of zoom-cropped OSD placement, the
+complete **Show profiles** snapshot, automatic profile/queue/NLS notifications,
+NLS on/off presentation, fade timing, and suppression of zero- or one-option
+categories in representative live configurations.
 
 ## User story
 
