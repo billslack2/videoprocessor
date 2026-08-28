@@ -11,15 +11,15 @@ namespace NativeStatsOverlayPlacement
 	constexpr float kProfileOverlayReferenceHeight = 1080.0f;
 	constexpr float kProfileOverlayBaselineScale = 1.275f;
 
-	inline float ProfileOverlayScale(float outputHeight)
+	inline float ProfileOverlayScale(float visiblePictureHeight)
 	{
-		if (outputHeight <= 0.0f)
+		if (visiblePictureHeight <= 0.0f)
 			return 1.0f;
-		// Keep the banner's share of the output height constant at every
-		// resolution. The 1.5x baseline is the readability choice; resolution
-		// scaling itself remains strictly proportional.
+		// Keep the banner's share of the visible picture height constant.  A
+		// scope viewport or zoom crop can be substantially smaller than the raw
+		// output frame, whose dimensions must not make the banner oversized.
 		return std::max(0.75f, std::min(3.0f,
-			kProfileOverlayBaselineScale * outputHeight /
+			kProfileOverlayBaselineScale * visiblePictureHeight /
 				kProfileOverlayReferenceHeight));
 	}
 

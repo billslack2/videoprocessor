@@ -3001,6 +3001,8 @@ struct LibplaceboVideoRenderer::Impl
 	bool hasStatsOverlayPlacement = false;
 	NativeStatsOverlayPlacement::Result lastSweepOverlayPlacement;
 	bool hasSweepOverlayPlacement = false;
+	NativeStatsOverlayPlacement::Result lastProfileOverlayPlacement;
+	bool hasProfileOverlayPlacement = false;
 	pl_custom_lut* displayLut = nullptr;
 	// Kept deliberately short for the Ctrl+I OSD: "Disabled",
 	// "Loaded: validating", "Active: name (65^3)", or "Rejected: reason".
@@ -9534,7 +9536,10 @@ struct LibplaceboVideoRenderer::Impl
 			pl_overlay_part& overlayPart = overlayParts[overlayCount];
 			overlay.tex = profileOverlayTexture;
 			overlay.mode = PL_OVERLAY_NORMAL;
-			overlay.coords = PL_OVERLAY_COORDS_DST_FRAME;
+			// Profile notices describe the newly selected presentation. Address
+			// them from the final destination crop so source zoom/crop cannot move
+			// any part of the banner outside the visible picture.
+			overlay.coords = PL_OVERLAY_COORDS_DST_CROP;
 			overlay.repr = pl_color_repr_rgb;
 			overlay.repr.levels = PL_COLOR_LEVELS_FULL;
 			overlay.repr.alpha = PL_ALPHA_INDEPENDENT;
@@ -9550,11 +9555,26 @@ struct LibplaceboVideoRenderer::Impl
 				0.0f, 0.0f, dstWidth, dstHeight };
 			const NativeStatsOverlayPlacement::Rect pictureRect{
 				target.crop.x0, target.crop.y0, target.crop.x1, target.crop.y1 };
+			const NativeStatsOverlayPlacement::Rect visiblePicture =
+				NativeStatsOverlayPlacement::Intersect(pictureRect, outputRect);
+			const float cropOriginX = pictureRect.left;
+			const float cropOriginY = pictureRect.top;
+			const NativeStatsOverlayPlacement::Rect cropLocalPicture{
+				visiblePicture.left - cropOriginX,
+				visiblePicture.top - cropOriginY,
+				visiblePicture.right - cropOriginX,
+				visiblePicture.bottom - cropOriginY };
+			const NativeStatsOverlayPlacement::Rect cropLocalOutput{
+				outputRect.left - cropOriginX,
+				outputRect.top - cropOriginY,
+				outputRect.right - cropOriginX,
+				outputRect.bottom - cropOriginY };
 			const float profileScale =
-				NativeStatsOverlayPlacement::ProfileOverlayScale(dstHeight);
+				NativeStatsOverlayPlacement::ProfileOverlayScale(
+					visiblePicture.IsValid() ? visiblePicture.Height() : dstHeight);
 			const NativeStatsOverlayPlacement::Result placement =
 				NativeStatsOverlayPlacement::PlaceTopLeft(
-					pictureRect, outputRect,
+					cropLocalPicture, cropLocalOutput,
 					static_cast<float>(profileOverlayTexture->params.w) *
 						profileScale,
 					static_cast<float>(profileOverlayTexture->params.h) *
@@ -9562,6 +9582,42 @@ struct LibplaceboVideoRenderer::Impl
 					NativeStatsOverlayPlacement::kProfileOverlayInsetPixels);
 			overlayPart.dst = { placement.panel.left, placement.panel.top,
 				placement.panel.right, placement.panel.bottom };
+			NativeStatsOverlayPlacement::Result absolutePlacement = placement;
+			absolutePlacement.visiblePicture = visiblePicture;
+			absolutePlacement.panel.left += cropOriginX;
+			absolutePlacement.panel.top += cropOriginY;
+			absolutePlacement.panel.right += cropOriginX;
+			absolutePlacement.panel.bottom += cropOriginY;
+			if (!hasProfileOverlayPlacement ||
+				std::fabs(lastProfileOverlayPlacement.panel.left -
+					absolutePlacement.panel.left) > 0.25f ||
+				std::fabs(lastProfileOverlayPlacement.panel.top -
+					absolutePlacement.panel.top) > 0.25f ||
+				std::fabs(lastProfileOverlayPlacement.panel.right -
+					absolutePlacement.panel.right) > 0.25f ||
+				std::fabs(lastProfileOverlayPlacement.panel.bottom -
+					absolutePlacement.panel.bottom) > 0.25f ||
+				std::fabs(lastProfileOverlayPlacement.scale -
+					absolutePlacement.scale) >
+					0.001f)
+			{
+				DebugLog::Log(
+					"Alpha native profile OSD placement: renderer_gen=%llu source_seq=%llu visible=%.1f,%.1f-%.1f,%.1f crop_origin=%.1f,%.1f bitmap=%dx%d profile_scale=%.3f fit_scale=%.3f local_panel=%.1f,%.1f-%.1f,%.1f clamped=%d fallback=%d",
+					static_cast<unsigned long long>(frameGeneration),
+					static_cast<unsigned long long>(sourceSequence),
+					visiblePicture.left, visiblePicture.top,
+					visiblePicture.right, visiblePicture.bottom,
+					cropOriginX, cropOriginY,
+					profileOverlayTexture->params.w,
+					profileOverlayTexture->params.h,
+					profileScale, placement.scale,
+					placement.panel.left, placement.panel.top,
+					placement.panel.right, placement.panel.bottom,
+					placement.insetClamped ? 1 : 0,
+					placement.usedOutputFallback ? 1 : 0);
+				lastProfileOverlayPlacement = absolutePlacement;
+				hasProfileOverlayPlacement = true;
+			}
 			overlay.parts = &overlayPart;
 			overlay.num_parts = 1;
 			++overlayCount;
