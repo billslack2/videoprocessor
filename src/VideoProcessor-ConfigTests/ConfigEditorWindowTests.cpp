@@ -1730,6 +1730,8 @@ void testRendererProfileSectionsCollapseAndPersist()
 	require(downscaler->itemData(2).toString() == QStringLiteral("lanczos") &&
 		downscaler->itemData(8).toString() == QStringLiteral("bilinear") &&
 		downscaler->itemData(9).toString() == QStringLiteral("box") &&
+		downscaler->itemData(10).toString() == QStringLiteral("gpu") &&
+		downscaler->itemText(10) == QStringLiteral("Use GPU") &&
 		downscaler->findData(QStringLiteral("none")) < 0 &&
 		downscaler->findData(QStringLiteral("ewa_lanczos")) < 0,
 		"Downscaler choices include a removed or pathologically expensive mode");
@@ -1813,11 +1815,13 @@ void testRendererProfileSectionsCollapseAndPersist()
     QCoreApplication::processEvents();
     selectData(debanding, QStringLiteral("light"));
     selectData(displayBitDepth, QStringLiteral("8"));
+    selectData(downscaler, QStringLiteral("gpu"));
     save(window);
     const QByteArray saved = readBytes(path);
     require(saved.contains("deband_strength: light") &&
         !saved.contains("\ndeband:") &&
-        saved.contains("display_bit_depth: 8"),
+        saved.contains("display_bit_depth: 8") &&
+        saved.contains("downscaler: gpu"),
         "Renderer processing controls did not persist canonically");
 }
 

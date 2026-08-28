@@ -367,6 +367,14 @@ namespace VideoProcessorTest
 			Assert::IsNull(gpuUpscalerProjection.renderParams.upscaler,
 				L"Use GPU must select libplacebo's built-in upscaling path.");
 
+			Settings gpuDownscaler;
+			gpuDownscaler.downscaler = "gpu";
+			Projection gpuDownscalerProjection;
+			BuildOrFail(gpuDownscaler, false, gpuDownscalerProjection);
+			Assert::IsTrue(gpuDownscalerProjection.downscalerExport == "gpu");
+			Assert::IsNull(gpuDownscalerProjection.renderParams.downscaler,
+				L"Use GPU must select libplacebo's built-in downscaling path.");
+
 			const pl_render_params* highQuality =
 				NativeData<pl_render_params>("pl_render_high_quality_params");
 			for (const char* removed : { "none", "ewa_lanczos" })
@@ -545,7 +553,7 @@ namespace VideoProcessorTest
 				"gamut_mapping: perceptual\n"
 				"peak_detection: default\n"
 				"upscaler: ewa_lanczos\n"
-				"downscaler: bilinear\n"
+				"downscaler: gpu\n"
 				"deband_strength: auto\n"
 				"sigmoid: off\n"
 				"dithering: on\n"
@@ -583,7 +591,7 @@ namespace VideoProcessorTest
 			// profile, proving that this exercises the resolver's inheritance path.
 			Assert::AreEqual("balanced",
 				RequiredProfileSetting(selected->second, "quality").c_str());
-			Assert::AreEqual("bilinear",
+			Assert::AreEqual("gpu",
 				RequiredProfileSetting(selected->second, "downscaler").c_str());
 
 			Projection projection;
@@ -595,7 +603,9 @@ namespace VideoProcessorTest
 			Assert::IsTrue(projection.toneMappingExport == "pl_tone_map_bt2390");
 			Assert::IsTrue(projection.gamutMappingExport == "pl_gamut_map_softclip");
 			Assert::IsTrue(projection.upscalerExport == "pl_filter_bicubic");
-			Assert::IsTrue(projection.downscalerExport == "pl_filter_bilinear");
+			Assert::IsTrue(projection.downscalerExport == "gpu");
+			Assert::IsNull(projection.renderParams.downscaler,
+				L"The inherited Use GPU downscaler must retain built-in sampling.");
 			AssertPointer(&projection.peakDetectParams,
 				projection.renderParams.peak_detect_params,
 				L"The selected profile must enable peak detection.");

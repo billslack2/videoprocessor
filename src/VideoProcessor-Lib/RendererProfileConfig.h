@@ -461,7 +461,7 @@ namespace RendererProfileConfig
 				// configuration can start and be repaired by the editor. The runtime
 				// deliberately treats them as omitted/Auto; neither remains a
 				// supported downscaling choice.
-				return IsChoice(value, { "auto", "box", "hermite", "bilinear",
+				return IsChoice(value, { "auto", "gpu", "box", "hermite", "bilinear",
 					"bicubic", "gaussian", "catmull_rom", "mitchell", "lanczos",
 					"none", "ewa_lanczos" });
 			}

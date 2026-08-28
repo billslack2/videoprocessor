@@ -1657,7 +1657,7 @@ namespace
 		readChoice("gamut_mapping", settings.gamutMapping, { "auto", "perceptual", "softclip", "relative", "desaturate" });
 		readPeakDetection(settings.peakDetection);
 		readChoice("upscaler", settings.upscaler, { "auto", "none", "nearest", "bilinear", "oversample", "bicubic", "gaussian", "catmull_rom", "lanczos", "ewa_lanczos", "ewa_lanczossharp", "ewa_lanczos4sharpest" });
-		readChoice("downscaler", settings.downscaler, { "auto", "box", "hermite", "bilinear", "bicubic", "gaussian", "catmull_rom", "mitchell", "lanczos" });
+		readChoice("downscaler", settings.downscaler, { "auto", "gpu", "box", "hermite", "bilinear", "bicubic", "gaussian", "catmull_rom", "mitchell", "lanczos" });
 		readToggle("deband", settings.deband);
 		if (config.TryGetString(rule.section, "deband_strength", raw))
 		{
@@ -1973,7 +1973,7 @@ namespace
 			{ "auto", "none", "nearest", "bilinear", "oversample", "bicubic", "gaussian", "catmull_rom", "lanczos", "ewa_lanczos", "ewa_lanczossharp", "ewa_lanczos4sharpest" });
 		settings.downscaler = ReadChoice(
 			config, "downscaler", "auto",
-			{ "auto", "box", "hermite", "bilinear", "bicubic", "gaussian", "catmull_rom", "mitchell", "lanczos" });
+			{ "auto", "gpu", "box", "hermite", "bilinear", "bicubic", "gaussian", "catmull_rom", "mitchell", "lanczos" });
 		settings.deband = ReadAutoToggle(config, "deband");
 		if (TryGetDisplayString(config, "deband_strength", rawValue))
 		{
