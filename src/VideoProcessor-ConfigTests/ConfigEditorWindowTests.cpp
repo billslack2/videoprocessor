@@ -2041,8 +2041,14 @@ void testScreenConfigSectionsAndInlineUnits()
             "config.vprenderer.zoom.hdr_peak_analysis_picture_only"));
     require(!pictureOnlyHdrAnalysis->isChecked() &&
         pictureOnlyHdrAnalysis->accessibleName() ==
-            QStringLiteral("Analyze center 75% of picture for HDR"),
+            QStringLiteral("Limit HDR analysis to picture center"),
         "Zoom subtitles do not expose the default-off HDR analysis toggle");
+	QLineEdit* hdrAnalysisHeight = requireControl<QLineEdit>(window,
+		QStringLiteral(
+			"config.vprenderer.zoom.hdr_peak_analysis_height_percent"));
+	require(hdrAnalysisHeight->text() == QStringLiteral("75") &&
+		!hdrAnalysisHeight->isEnabled(),
+		"HDR analysis height does not default to 75% or follow the disabled toggle");
     QLineEdit* hold = requireControl<QLineEdit>(window,
         QStringLiteral("config.vprenderer.zoom.subtitle_hold_seconds"));
     QLabel* holdUnit = requireControl<QLabel>(window,
@@ -2065,12 +2071,17 @@ void testScreenConfigSectionsAndInlineUnits()
 
     hold->setText(QStringLiteral("1500"));
     pictureOnlyHdrAnalysis->setChecked(true);
+	require(hdrAnalysisHeight->isEnabled(),
+		"HDR analysis height did not enable with its toggle");
+	hdrAnalysisHeight->setText(QStringLiteral("70"));
     save(window);
     const QByteArray saved = readBytes(path);
     require(saved.contains("subtitle_hold_seconds: 1.5"),
         "Millisecond subtitle hold did not preserve the seconds-based config contract");
     require(saved.contains("hdr_peak_analysis_picture_only: true"),
         "HDR active-picture analysis toggle was not persisted in Zoom");
+	require(saved.contains("hdr_peak_analysis_height_percent: 70"),
+		"HDR active-picture analysis height was not persisted in Zoom");
 
     QListWidget* profiles = requireControl<QListWidget>(window,
         QStringLiteral("config.vprenderer.zoom.profiles"));

@@ -1080,6 +1080,7 @@ void ConfigEditorWindow::migrateViewportZoomProfiles()
         QStringLiteral("crop_wider_content_aspect_limit"),
         QStringLiteral("subtitle_fit"),
         QStringLiteral("hdr_peak_analysis_picture_only"),
+		QStringLiteral("hdr_peak_analysis_height_percent"),
         QStringLiteral("subtitle_hold_seconds"),
         QStringLiteral("subtitle_engage_drift_ms"),
         QStringLiteral("subtitle_release_drift_ms"),
@@ -4260,14 +4261,27 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                 "and keep edge overlays out of HDR peak analysis."), false);
         addBoolean(QStringLiteral("Keep subtitles inside screen bounds"), QStringLiteral("subtitle_fit"));
         auto* pictureOnlyHdrAnalysis = addBoolean(
-            QStringLiteral("Analyze center 75% of picture for HDR"),
+            QStringLiteral("Limit HDR analysis to picture center"),
             QStringLiteral("hdr_peak_analysis_picture_only"));
         pictureOnlyHdrAnalysis->setToolTip(QStringLiteral(
             "When a current trusted active-picture rectangle is available, "
-            "always use its middle 75% of height and full available width for "
-            "libplacebo's HDR peak and average-luminance analysis. This fixed "
-            "inset rejects subtitles and OSDs that cross from a black bar into "
-            "the picture. Invalid or stale geometry falls back to full-frame analysis."));
+            "use its configured central height and full available width for "
+            "libplacebo's HDR peak and average-luminance analysis. This inset "
+            "rejects subtitles and OSDs that cross from a black bar into the "
+            "picture. Invalid or stale geometry falls back to full-frame analysis."));
+		auto* hdrAnalysisHeight = addText(
+			QStringLiteral("HDR analysis height"),
+			QStringLiteral("hdr_peak_analysis_height_percent"),
+			QStringLiteral("%"));
+		hdrAnalysisHeight->setValidator(new QIntValidator(10, 100, hdrAnalysisHeight));
+		hdrAnalysisHeight->setToolTip(QStringLiteral(
+			"Percentage of the detected active-picture height analyzed by libplacebo, "
+			"centered vertically. Use 75% as the default compromise; smaller values "
+			"exclude more subtitle and OSD area."));
+		hdrAnalysisHeight->setEnabled(pictureOnlyHdrAnalysis->isChecked());
+		connect(pictureOnlyHdrAnalysis, &QCheckBox::toggled, this,
+			[hdrAnalysisHeight](bool enabled)
+			{ hdrAnalysisHeight->setEnabled(enabled); });
         auto* subtitleHold = addText(QStringLiteral("Subtitle hold"),
             QStringLiteral("subtitle_hold_seconds"), QStringLiteral("ms"), 1000.0);
         subtitleHold->setValidator(new QIntValidator(250, 30000, subtitleHold));
@@ -4408,6 +4422,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             if (sectionPrefix == QStringLiteral("vprenderer.zoom"))
             {
                 if (key == QStringLiteral("subtitle_hold_seconds")) return QStringLiteral("2");
+				if (key == QStringLiteral("hdr_peak_analysis_height_percent")) return QStringLiteral("75");
                 if (key == QStringLiteral("subtitle_engage_drift_ms")) return QStringLiteral("0");
                 if (key == QStringLiteral("subtitle_release_drift_ms")) return QStringLiteral("0");
                 if (key == QStringLiteral("subtitle_padding_pixels")) return QStringLiteral("20");
@@ -4631,6 +4646,15 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             anamorphicValue->setEnabled(!configured.isEmpty());
             if (configured.isEmpty()) anamorphicValue->setText(QStringLiteral("1:1"));
         }
+		if (sectionPrefix == QStringLiteral("vprenderer.zoom"))
+		{
+			auto* pictureOnly = profileFields->findChild<QCheckBox*>(
+				QStringLiteral("config.vprenderer.zoom.hdr_peak_analysis_picture_only"));
+			auto* analysisHeight = profileFields->findChild<QLineEdit*>(
+				QStringLiteral("config.vprenderer.zoom.hdr_peak_analysis_height_percent"));
+			if (analysisHeight)
+				analysisHeight->setEnabled(pictureOnly && pictureOnly->isChecked());
+		}
         if (queuePolicy)
             updateQueuePolicyFromValues();
         state->loading = false;

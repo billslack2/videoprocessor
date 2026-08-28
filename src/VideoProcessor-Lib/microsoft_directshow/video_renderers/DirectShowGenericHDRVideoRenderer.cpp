@@ -1319,7 +1319,7 @@ bool DirectShowGenericHDRVideoRenderer::ApplyApplicationState(
 		viewport.verticalAlignment.c_str(),
 		viewport.verticalAlignment == "center" ? "" : " unsupported");
 	DebugLog::Log(
-		"DirectShow application viewport profile=%s target=%s numeric=%.7f explicit=%d vertical_alignment=%s placement_supported=%d automatic_crop=%d subtitle_fit=%d hdr_peak_analysis_picture_only=%d subtitle_hold_ms=%llu subtitle_padding=%d generation=%llu renderer_restart=%d",
+		"DirectShow application viewport profile=%s target=%s numeric=%.7f explicit=%d vertical_alignment=%s placement_supported=%d automatic_crop=%d subtitle_fit=%d hdr_peak_analysis_picture_only=%d hdr_peak_analysis_height_percent=%d subtitle_hold_ms=%llu subtitle_padding=%d generation=%llu renderer_restart=%d",
 		viewport.profile.c_str(),
 		viewport.hasScreenAspect ?
 			viewport.screenAspect.Canonical().c_str() : "unavailable",
@@ -1330,6 +1330,7 @@ bool DirectShowGenericHDRVideoRenderer::ApplyApplicationState(
 		viewport.automaticCrop ? 1 : 0,
 		viewport.subtitleFit ? 1 : 0,
 		viewport.hdrPeakAnalysisPictureOnly ? 1 : 0,
+		viewport.hdrPeakAnalysisHeightPercent,
 		static_cast<unsigned long long>(
 			viewport.subtitleHoldMilliseconds),
 		viewport.subtitlePaddingPixels,

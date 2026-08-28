@@ -9,9 +9,9 @@
 
 namespace HdrPeakAnalysisCrop
 {
-	constexpr double ANALYSIS_HEIGHT_FRACTION = 0.75;
-	constexpr double ANALYSIS_HEIGHT_PERCENT =
-		ANALYSIS_HEIGHT_FRACTION * 100.0;
+	constexpr double DEFAULT_ANALYSIS_HEIGHT_PERCENT = 75.0;
+	constexpr double MIN_ANALYSIS_HEIGHT_PERCENT = 10.0;
+	constexpr double MAX_ANALYSIS_HEIGHT_PERCENT = 100.0;
 
 	enum class Outcome
 	{
@@ -68,7 +68,8 @@ namespace HdrPeakAnalysisCrop
 
 	inline Decision Resolve(bool enabled, bool peakDetectionActive,
 		uint64_t frameSourceGeneration, const TrustedPicture& trusted,
-		const pl_rect2df& presentation)
+		const pl_rect2df& presentation,
+		double analysisHeightPercent = DEFAULT_ANALYSIS_HEIGHT_PERCENT)
 	{
 		Decision decision;
 		if (!enabled)
@@ -100,11 +101,19 @@ namespace HdrPeakAnalysisCrop
 			decision.reason = "presentation crop is invalid";
 			return decision;
 		}
+		if (!std::isfinite(analysisHeightPercent) ||
+			analysisHeightPercent < MIN_ANALYSIS_HEIGHT_PERCENT ||
+			analysisHeightPercent > MAX_ANALYSIS_HEIGHT_PERCENT)
+		{
+			decision.reason = "analysis height percentage is invalid";
+			return decision;
+		}
 
 		const double trustedHeight = static_cast<double>(
 			trusted.bottom - trusted.top);
+		const double analysisHeightFraction = analysisHeightPercent / 100.0;
 		const double verticalInset =
-			trustedHeight * (1.0 - ANALYSIS_HEIGHT_FRACTION) * 0.5;
+			trustedHeight * (1.0 - analysisHeightFraction) * 0.5;
 		const float analysisTop = static_cast<float>(trusted.top + verticalInset);
 		const float analysisBottom = static_cast<float>(trusted.bottom - verticalInset);
 
@@ -168,7 +177,7 @@ namespace HdrPeakAnalysisCrop
 		}
 
 		decision.outcome = Outcome::RESTRICTED;
-		decision.reason = "central 75 percent of active-picture height restricts HDR analysis";
+		decision.reason = "configured central active-picture height restricts HDR analysis";
 		return decision;
 	}
 }

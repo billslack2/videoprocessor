@@ -31,6 +31,9 @@ namespace RendererProfileConfig
 	constexpr double MAX_SUBTITLE_HOLD_SECONDS = 30.0;
 	constexpr int DEFAULT_SUBTITLE_TARGET_BUFFER_PIXELS = 10;
 	constexpr int MAX_SUBTITLE_TARGET_BUFFER_PIXELS = 50;
+	constexpr int DEFAULT_HDR_PEAK_ANALYSIS_HEIGHT_PERCENT = 75;
+	constexpr int MIN_HDR_PEAK_ANALYSIS_HEIGHT_PERCENT = 10;
+	constexpr int MAX_HDR_PEAK_ANALYSIS_HEIGHT_PERCENT = 100;
 
 	inline bool OwnsSection(const std::string& section)
 	{
@@ -152,6 +155,8 @@ namespace RendererProfileConfig
 		bool hasCropWiderContentAspectLimit = false;
 		bool subtitleFit = false;
 		bool hdrPeakAnalysisPictureOnly = false;
+		int hdrPeakAnalysisHeightPercent =
+			DEFAULT_HDR_PEAK_ANALYSIS_HEIGHT_PERCENT;
 		uint64_t subtitleHoldMilliseconds = 2000;
 		uint64_t subtitleEngageDriftMilliseconds = 0;
 		uint64_t subtitleReleaseDriftMilliseconds = 0;
@@ -530,6 +535,12 @@ namespace RendererProfileConfig
 			if (key == "subtitle_hold_seconds")
 				return IsNumberInRange(value, MIN_SUBTITLE_HOLD_SECONDS,
 					MAX_SUBTITLE_HOLD_SECONDS);
+			if (key == "hdr_peak_analysis_height_percent")
+			{
+				int parsed = 0; return ParseInteger(value,
+					MIN_HDR_PEAK_ANALYSIS_HEIGHT_PERCENT,
+					MAX_HDR_PEAK_ANALYSIS_HEIGHT_PERCENT, parsed);
+			}
 			if (key == "subtitle_engage_drift_ms" ||
 				key == "subtitle_release_drift_ms")
 			{
@@ -1406,6 +1417,7 @@ namespace RendererProfileConfig
 				"crop_wider_content_to_fill_screen",
 				"crop_wider_content_aspect_limit", "subtitle_fit",
 				"hdr_peak_analysis_picture_only",
+				"hdr_peak_analysis_height_percent",
 				"subtitle_hold_seconds", "subtitle_engage_drift_ms",
 				"subtitle_release_drift_ms",
 				"subtitle_padding_pixels", "subtitle_target_buffer_pixels"
@@ -1936,6 +1948,16 @@ namespace RendererProfileConfig
 				"] hdr_peak_analysis_picture_only is invalid";
 			return false;
 		}
+		value = settings.find("hdr_peak_analysis_height_percent");
+		if (value != settings.end() && !ParseInteger(value->second,
+			MIN_HDR_PEAK_ANALYSIS_HEIGHT_PERCENT,
+			MAX_HDR_PEAK_ANALYSIS_HEIGHT_PERCENT,
+			viewport.hdrPeakAnalysisHeightPercent))
+		{
+			error = "[profiles.viewport." + viewport.profile +
+				"] hdr_peak_analysis_height_percent is invalid";
+			return false;
+		}
 		value = settings.find("subtitle_hold_seconds");
 		if (value != settings.end())
 		{
@@ -2071,6 +2093,16 @@ namespace RendererProfileConfig
 		{
 			error = "[profiles.zoom." + viewport.zoomProfile +
 				"] hdr_peak_analysis_picture_only is invalid";
+			return false;
+		}
+		value = settings.find("hdr_peak_analysis_height_percent");
+		if (value != settings.end() && !ParseInteger(value->second,
+			MIN_HDR_PEAK_ANALYSIS_HEIGHT_PERCENT,
+			MAX_HDR_PEAK_ANALYSIS_HEIGHT_PERCENT,
+			viewport.hdrPeakAnalysisHeightPercent))
+		{
+			error = "[profiles.zoom." + viewport.zoomProfile +
+				"] hdr_peak_analysis_height_percent is invalid";
 			return false;
 		}
 		value = settings.find("subtitle_hold_seconds");

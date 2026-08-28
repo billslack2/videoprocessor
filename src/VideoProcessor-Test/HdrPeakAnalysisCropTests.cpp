@@ -105,6 +105,20 @@ namespace Tests
 			Assert::AreEqual(0.0, decision.excludedFraction, 0.000001);
 		}
 
+		TEST_METHOD(ConfiguredHeightChangesCentralBand)
+		{
+			HdrPeakAnalysisCrop::TrustedPicture trusted = {
+				0, 100, 1920, 900, 1920, 1080, 14, true
+			};
+			const HdrPeakAnalysisCrop::Decision decision =
+				HdrPeakAnalysisCrop::Resolve(true, true, 14, trusted,
+					pl_rect2df{ 0.0f, 0.0f, 1920.0f, 1080.0f }, 50.0);
+
+			Assert::IsTrue(decision.AppliesRestriction());
+			Assert::AreEqual(300.0f, decision.trustedIntersection.y0, 0.000001f);
+			Assert::AreEqual(700.0f, decision.trustedIntersection.y1, 0.000001f);
+		}
+
 		TEST_METHOD(FailsOpenForStaleGeometryOrInactivePeakDetection)
 		{
 			HdrPeakAnalysisCrop::TrustedPicture trusted = {
