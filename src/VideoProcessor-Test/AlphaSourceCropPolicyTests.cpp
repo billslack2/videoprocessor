@@ -42,6 +42,61 @@ namespace Tests
 	TEST_CLASS(AlphaSourceCropPolicyTests)
 	{
 	public:
+		TEST_METHOD(ProfileTransitionRetainsOnlyCurrentTrustedSourceGeometry)
+		{
+			ProfileTransitionRetentionInput input;
+			input.geometryAvailable = true;
+			input.classification =
+				ActivePictureClassification::BAR_CROP_TRUSTED;
+			input.geometry = {
+				0, 120, 3840, 2040, 3840, 2160, 2.0,
+				ActivePictureBounds::BarAxes::TOP_BOTTOM };
+			input.geometrySourceGeneration = 17;
+			input.analysisSourceGeneration = 17;
+			input.frameSourceGeneration = 17;
+			input.sourceFormatMatches = true;
+
+			const ProfileTransitionRetentionDecision decision =
+				EvaluateProfileTransitionRetention(input);
+			Assert::IsTrue(decision.retainSourceGeometry);
+			Assert::IsFalse(decision.retainSubtitleState);
+			Assert::IsFalse(decision.retainNlsPresentationIntent);
+		}
+
+		TEST_METHOD(ProfileTransitionRejectsStaleOrUntrustedGeometry)
+		{
+			ProfileTransitionRetentionInput input;
+			input.geometryAvailable = true;
+			input.classification =
+				ActivePictureClassification::BAR_CROP_TRUSTED;
+			input.geometry = {
+				0, 120, 3840, 2040, 3840, 2160, 2.0,
+				ActivePictureBounds::BarAxes::TOP_BOTTOM };
+			input.geometrySourceGeneration = 17;
+			input.analysisSourceGeneration = 17;
+			input.frameSourceGeneration = 18;
+			input.sourceFormatMatches = true;
+			Assert::IsFalse(EvaluateProfileTransitionRetention(input).
+				retainSourceGeometry);
+
+			input.frameSourceGeneration = 17;
+			// A profile which did not use active-picture geometry may keep this
+			// trusted source-only snapshot dormant. The renderer force-verifies it
+			// before any later profile can present it.
+			Assert::IsTrue(EvaluateProfileTransitionRetention(input).
+				retainSourceGeometry);
+
+			input.classification = ActivePictureClassification::PROVISIONAL;
+			Assert::IsFalse(EvaluateProfileTransitionRetention(input).
+				retainSourceGeometry);
+
+			input.classification =
+				ActivePictureClassification::BAR_CROP_TRUSTED;
+			input.sourceFormatMatches = false;
+			Assert::IsFalse(EvaluateProfileTransitionRetention(input).
+				retainSourceGeometry);
+		}
+
 		TEST_METHOD(BarContentDetectorNeverManufacturesAnOppositeEdge)
 		{
 			Assert::AreEqual(static_cast<int>(BarContentEdge::TOP),
