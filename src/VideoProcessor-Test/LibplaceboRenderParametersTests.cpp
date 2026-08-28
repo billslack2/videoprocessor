@@ -331,7 +331,6 @@ namespace VideoProcessorTest
 				{ "catmull_rom", "pl_filter_catmull_rom" },
 				{ "mitchell", "pl_filter_mitchell" },
 				{ "lanczos", "pl_filter_lanczos" },
-				{ "ewa_lanczos", "pl_filter_ewa_lanczos" },
 				{ "bicubic", "pl_filter_bicubic" },
 				{ "bilinear", "pl_filter_bilinear" }
 			};
@@ -360,29 +359,28 @@ namespace VideoProcessorTest
 					L"Downscaling must use the selected native libplacebo filter.");
 			}
 
-			Settings disabled;
-			disabled.upscaler = "none";
-			disabled.downscaler = "none";
-			Projection disabledProjection;
-			BuildOrFail(disabled, false, disabledProjection);
-			Assert::IsTrue(disabledProjection.upscalerExport == "none");
-			Assert::IsTrue(disabledProjection.downscalerExport == "same_as_upscaler");
-			Assert::IsNull(disabledProjection.renderParams.upscaler);
-			Assert::IsNull(disabledProjection.renderParams.downscaler);
+			Settings gpuUpscaler;
+			gpuUpscaler.upscaler = "none";
+			Projection gpuUpscalerProjection;
+			BuildOrFail(gpuUpscaler, false, gpuUpscalerProjection);
+			Assert::IsTrue(gpuUpscalerProjection.upscalerExport == "none");
+			Assert::IsNull(gpuUpscalerProjection.renderParams.upscaler,
+				L"Use GPU must select libplacebo's built-in upscaling path.");
 
-			Settings matchUpscaler;
-			matchUpscaler.upscaler = "lanczos";
-			matchUpscaler.downscaler = "none";
-			Projection matchUpscalerProjection;
-			BuildOrFail(matchUpscaler, false, matchUpscalerProjection);
-			Assert::IsTrue(matchUpscalerProjection.downscalerExport ==
-				"same_as_upscaler");
-			AssertPointer(NativeData<pl_filter_config>("pl_filter_lanczos"),
-				matchUpscalerProjection.renderParams.upscaler,
-				L"The explicit upscaler must resolve before a matching downscaler.");
-			AssertPointer(matchUpscalerProjection.renderParams.upscaler,
-				matchUpscalerProjection.renderParams.downscaler,
-				L"Downscaler none must match the resolved upscaler, not disable it.");
+			const pl_render_params* highQuality =
+				NativeData<pl_render_params>("pl_render_high_quality_params");
+			for (const char* removed : { "none", "ewa_lanczos" })
+			{
+				Settings legacy;
+				legacy.upscaler = "lanczos";
+				legacy.downscaler = removed;
+				Projection projection;
+				BuildOrFail(legacy, false, projection);
+				Assert::IsTrue(projection.downscalerExport == "auto");
+				AssertPointer(highQuality->downscaler,
+					projection.renderParams.downscaler,
+					L"A removed downscaler must fall back to the quality preset, not the upscaler.");
+			}
 		}
 
 		TEST_METHOD(ExplicitToggleValuesBecomeTheExpectedNativeParameters)

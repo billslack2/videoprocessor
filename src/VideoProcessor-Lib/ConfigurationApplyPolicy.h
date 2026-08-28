@@ -116,12 +116,14 @@ namespace ConfigurationApplyPolicy
 			std::string::npos;
 	}
 
-	// Screen Config profile changes use the same renderer-owned, per-frame
-	// application path as selecting a viewport with F2/F3. Geometry, crop, and
-	// subtitle placement therefore do not need to tear down the renderer.
+	// Screen and Zoom profile changes use the same renderer-owned, per-frame
+	// application path as their F-key selections. Geometry, crop, and subtitle
+	// placement therefore do not need to tear down the renderer.
 	inline bool IsViewportProfileSection(const std::string& rawSection)
 	{
-		return HasPrefix(NormalizeSection(rawSection), "vprenderer.viewport");
+		const std::string section = NormalizeSection(rawSection);
+		return HasPrefix(section, "vprenderer.viewport") ||
+			HasPrefix(section, "vprenderer.zoom");
 	}
 
 	// Scaling profiles alter only the per-frame libplacebo render parameters.

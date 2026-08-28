@@ -892,6 +892,8 @@ ConfigEditorWindow::ConfigEditorWindow(QString configPath, quintptr ownerHandle,
     loadConfiguration();
     migrateLldvSingleton();
     migrateSharedRefreshRate();
+    migrateSeparatedRendererProfiles();
+    migrateViewportZoomProfiles();
     if (!testMode_) loadDiscoveryCache();
     else
     {
@@ -1062,6 +1064,216 @@ void ConfigEditorWindow::loadConfiguration()
 	hasPendingMigrations_ = migratedLegacyInputPolicy;
 }
 
+void ConfigEditorWindow::migrateViewportZoomProfiles()
+{
+    if (!configurationLoaded_ || !document_) return;
+
+    const QString legacyRoot = QStringLiteral("vprenderer.viewport");
+    const QStringList legacySections = profileSections(legacyRoot);
+    if (legacySections.isEmpty()) return;
+
+    const QStringList zoomKeys = {
+        QStringLiteral("automatic_crop"),
+        QStringLiteral("crop_narrower_content_to_fill_screen"),
+        QStringLiteral("crop_narrower_content_aspect_limit"),
+        QStringLiteral("crop_wider_content_to_fill_screen"),
+        QStringLiteral("crop_wider_content_aspect_limit"),
+        QStringLiteral("subtitle_fit"),
+        QStringLiteral("subtitle_hold_seconds"),
+        QStringLiteral("subtitle_engage_drift_ms"),
+        QStringLiteral("subtitle_release_drift_ms"),
+        QStringLiteral("subtitle_padding_pixels"),
+        QStringLiteral("subtitle_target_buffer_pixels") };
+    const QStringList screenKeys = {
+        QStringLiteral("screen_aspect"),
+        QStringLiteral("vertical_alignment"),
+        QStringLiteral("anamorphic_enabled"),
+        QStringLiteral("anamorphic_scale") };
+
+    bool migrated = false;
+    for (const QString& legacySection : legacySections)
+    {
+        QStringList configuredZoomKeys;
+        for (const QString& key : zoomKeys)
+            if (!value(legacySection, key).isEmpty())
+                configuredZoomKeys.push_back(key);
+        if (configuredZoomKeys.isEmpty()) continue;
+
+        const QString suffix = legacySection.compare(legacyRoot,
+            Qt::CaseInsensitive) == 0 ? QStringLiteral("profile_1") :
+            legacySection.mid(legacyRoot.size() + 1);
+        const QString zoomSection = QStringLiteral("vprenderer.zoom.%1")
+            .arg(suffix);
+        document_->AddSection(zoomSection.toStdString());
+        const QString label = value(legacySection, QStringLiteral("label"));
+        if (!label.isEmpty() && value(zoomSection,
+            QStringLiteral("label")).isEmpty())
+            document_->SetKnown(zoomSection.toStdString(), "label",
+                label.toLocal8Bit().constData());
+        for (const QString& key : configuredZoomKeys)
+        {
+            const QString configured = value(legacySection, key);
+            if (value(zoomSection, key).isEmpty())
+                document_->SetKnown(zoomSection.toStdString(),
+                    key.toLocal8Bit().constData(),
+                    configured.toLocal8Bit().constData());
+            document_->RemoveKnown(legacySection.toStdString(),
+                key.toLocal8Bit().constData());
+        }
+        // A legacy viewport shortcut selected all viewport settings. Copy it
+        // only to the new Zoom profile when that legacy profile actually
+        // owned Zoom fields. This preserves F2's matching Scope zoom profile
+        // while letting Shift+2 affect Zoom alone.
+        for (const QString& selector : { QStringLiteral("shortcut"),
+            QStringLiteral("when") })
+        {
+            const QString configured = value(legacySection, selector);
+            if (!configured.isEmpty() && value(zoomSection, selector).isEmpty())
+                document_->SetKnown(zoomSection.toStdString(),
+                    selector.toLocal8Bit().constData(),
+                    configured.toLocal8Bit().constData());
+        }
+
+        bool hasScreenSetting = false;
+        for (const QString& key : screenKeys)
+            if (!value(legacySection, key).isEmpty())
+            {
+                hasScreenSetting = true;
+                break;
+            }
+        // A crop-only legacy profile must not remain a selectable Screen
+        // profile. If it did, Shift+2 would still replace F2's Scope screen
+        // with the inherited 16:9 baseline.
+        if (!hasScreenSetting)
+            document_->RemoveSection(legacySection.toStdString());
+        migrated = true;
+    }
+    if (migrated)
+    {
+        dirty_ = true;
+        hasPendingMigrations_ = true;
+    }
+}
+
+void ConfigEditorWindow::migrateSeparatedRendererProfiles()
+{
+    if (!configurationLoaded_ || !document_) return;
+
+    // Scaling, Color, and Output used to live together in Rendering.  They
+    // are now independent profile families, so moving settings must also
+    // remove a source profile which contains nothing except its old selector.
+    // Leaving that shell behind is not benign: its shortcut would still select
+    // Rendering and replace an unrelated active Rendering baseline.
+    struct Transfer
+    {
+        const char* targetRoot;
+        QStringList keys;
+    };
+    const std::vector<Transfer> transfers = {
+        { "vprenderer.output", { QStringLiteral("output_path_profile"),
+            QStringLiteral("output_presentation"),
+            QStringLiteral("output_range"),
+            QStringLiteral("output_transport_gamma"),
+            QStringLiteral("output_diagnostics"),
+            QStringLiteral("diagnostic_allow_limited_g22"),
+            QStringLiteral("diagnostic_allow_full_g22"),
+            QStringLiteral("diagnostic_disable_compute"),
+            QStringLiteral("diagnostic_force_8bit_sdr_swapchain"),
+            QStringLiteral("diagnostic_vp_owned_dxgi_presenter"),
+            QStringLiteral("diagnostic_disable_shader_cache") } },
+        { "vprenderer.color", { QStringLiteral("sdr_target_primaries"),
+            QStringLiteral("output_gamma"),
+            QStringLiteral("report_bt2020_to_display"),
+            QStringLiteral("sdr_adjust_gamma"),
+            QStringLiteral("sdr_input_transfer") } },
+        { "vprenderer.scaling", { QStringLiteral("upscaler"),
+            QStringLiteral("downscaler"), QStringLiteral("sigmoid") } }
+    };
+
+    bool migrated = false;
+    const QString renderingRoot = QStringLiteral("vprenderer");
+    const QStringList legacySections = profileSections(renderingRoot);
+    for (const QString& renderingSection : legacySections)
+    {
+        const QString suffix = renderingSection.compare(renderingRoot,
+            Qt::CaseInsensitive) == 0 ? QStringLiteral("Default") :
+            renderingSection.mid(renderingRoot.size() + 1);
+        for (const Transfer& transfer : transfers)
+        {
+            QStringList configuredKeys;
+            for (const QString& key : transfer.keys)
+                if (!value(renderingSection, key).isEmpty())
+                    configuredKeys.push_back(key);
+            if (configuredKeys.isEmpty()) continue;
+
+            const QString targetSection = QString::fromLatin1(transfer.targetRoot) +
+                QStringLiteral(".%1").arg(suffix);
+            document_->AddSection(targetSection.toStdString());
+            for (const QString& key : configuredKeys)
+            {
+                const QString configured = value(renderingSection, key);
+                if (value(targetSection, key).isEmpty())
+                    document_->SetKnown(targetSection.toStdString(),
+                        key.toStdString().c_str(),
+                        configured.toLocal8Bit().constData());
+                document_->RemoveKnown(renderingSection.toStdString(),
+                    key.toStdString().c_str());
+            }
+            // A legacy selector selected all of its settings.  Copy it only to
+            // a target family that actually received settings from this
+            // profile; the old family is pruned below when it owns nothing.
+            for (const QString& selector : { QStringLiteral("shortcut"),
+                QStringLiteral("when") })
+            {
+                const QString configured = value(renderingSection, selector);
+                if (!configured.isEmpty() && value(targetSection, selector).isEmpty())
+                    document_->SetKnown(targetSection.toStdString(),
+                        selector.toStdString().c_str(),
+                        configured.toLocal8Bit().constData());
+            }
+            // Before Output had its own family, output_gamma doubled as the
+            // transport gamma for a limited RGB experiment. Preserve that
+            // legacy meaning before Color takes ownership of output_gamma.
+            if (QString::fromLatin1(transfer.targetRoot) ==
+                QStringLiteral("vprenderer.output") &&
+                value(targetSection, QStringLiteral("output_range")).compare(
+                    QStringLiteral("limited"), Qt::CaseInsensitive) == 0 &&
+                value(targetSection, QStringLiteral("output_transport_gamma")).isEmpty())
+            {
+                const QString legacyGamma = value(renderingSection,
+                    QStringLiteral("output_gamma")).toLower();
+                if (legacyGamma == QStringLiteral("2.2") ||
+                    legacyGamma == QStringLiteral("2.4"))
+                    document_->SetKnown(targetSection.toStdString(),
+                        "output_transport_gamma",
+                        legacyGamma.toLocal8Bit().constData());
+            }
+            migrated = true;
+        }
+
+        bool hasRenderingSetting = false;
+        for (const auto& setting : document_->SectionSettings(
+            renderingSection.toStdString()))
+        {
+            const QString key = QString::fromLocal8Bit(setting.first.c_str());
+            if (key.compare(QStringLiteral("shortcut"), Qt::CaseInsensitive) != 0 &&
+                key.compare(QStringLiteral("when"), Qt::CaseInsensitive) != 0)
+            {
+                hasRenderingSetting = true;
+                break;
+            }
+        }
+        if (!hasRenderingSetting &&
+            document_->RemoveSection(renderingSection.toStdString()))
+            migrated = true;
+    }
+    if (migrated)
+    {
+        dirty_ = true;
+        hasPendingMigrations_ = true;
+    }
+}
+
 void ConfigEditorWindow::loadDiscoveryCache()
 {
     // Hardware discovery can enumerate COM registrations and capture/display
@@ -1174,7 +1386,10 @@ void ConfigEditorWindow::refreshActiveProfileIndicators()
     const bool available = ActiveProfileStatus::Read(expectedProcessId, active);
     const QString renderer = available ? QString::fromLocal8Bit(active.renderer) : QString();
     const QString color = available ? QString::fromLocal8Bit(active.color) : QString();
+    const QString scaling = available ? QString::fromLocal8Bit(active.scaling) : QString();
+    const QString output = available ? QString::fromLocal8Bit(active.output) : QString();
     const QString viewport = available ? QString::fromLocal8Bit(active.viewport) : QString();
+    const QString zoom = available ? QString::fromLocal8Bit(active.zoom) : QString();
     const QString queue = available ? QString::fromLocal8Bit(active.queue) : QString();
     const QString sourceEotf = available ?
         QString::fromLocal8Bit(active.sourceEotf).trimmed() : QString();
@@ -1190,22 +1405,24 @@ void ConfigEditorWindow::refreshActiveProfileIndicators()
         for (uint32_t index = 0; index < active.shaderCount; ++index)
             shaders.push_back(QString::fromLocal8Bit(active.shaders[index]));
     applyActiveProfileIndicators(available, queue, renderer, color, viewport,
-        shaders, shaderAvailable);
+        shaders, shaderAvailable, zoom, scaling, output);
     refreshRendererAutoStatus();
 }
 
 void ConfigEditorWindow::setActiveProfileStatusForTesting(const QString& queue,
     const QString& renderer, const QString& color, const QString& viewport,
-    const QStringList& shaders, bool shaderAvailable)
+    const QStringList& shaders, bool shaderAvailable, const QString& zoom,
+    const QString& scaling, const QString& output)
 {
     applyActiveProfileIndicators(true, queue, renderer, color, viewport, shaders,
-        shaderAvailable);
+        shaderAvailable, zoom, scaling, output);
 }
 
 void ConfigEditorWindow::applyActiveProfileIndicators(bool available,
     const QString& queue, const QString& renderer, const QString& color,
     const QString& viewport,
-    const QStringList& shaders, bool shaderAvailable)
+    const QStringList& shaders, bool shaderAvailable, const QString& zoom,
+    const QString& scaling, const QString& output)
 {
     for (const ProfileListBinding& binding : activeProfileLists_)
     {
@@ -1213,8 +1430,11 @@ void ConfigEditorWindow::applyActiveProfileIndicators(bool available,
             QStringLiteral("shader."));
         const QString activeSection = binding.sectionPrefix == QStringLiteral("vprenderer") ? renderer :
             (binding.sectionPrefix == QStringLiteral("vprenderer.color") ? color :
-                (binding.sectionPrefix == QStringLiteral("vprenderer.viewport") ? viewport :
-                    (binding.sectionPrefix == QStringLiteral("queue") ? queue : QString())));
+                (binding.sectionPrefix == QStringLiteral("vprenderer.scaling") ? scaling :
+                    (binding.sectionPrefix == QStringLiteral("vprenderer.output") ? output :
+                        (binding.sectionPrefix == QStringLiteral("vprenderer.viewport") ? viewport :
+                            (binding.sectionPrefix == QStringLiteral("vprenderer.zoom") ? zoom :
+                                (binding.sectionPrefix == QStringLiteral("queue") ? queue : QString()))))));
         for (int index = 0; binding.list && index < binding.list->count(); ++index)
         {
             QListWidgetItem* item = binding.list->item(index);
@@ -1870,7 +2090,10 @@ QStringList ConfigEditorWindow::validationErrors(QStringList& fields,
     if (renderer.compare(QStringLiteral("VideoProcessor Renderer (Alpha)"),
         Qt::CaseInsensitive) == 0)
         renderer = QStringLiteral("VP Renderer");
-    const QStringList acceptedRenderers = testMode_ && allRenderers_.isEmpty() ?
+    // Discovery is advisory for validation. A transient or unavailable helper
+    // must not make every unrelated profile edit unsavable. When it returns a
+    // real list we remain strict; otherwise accept VP's built-in choices.
+    const QStringList acceptedRenderers = allRenderers_.isEmpty() ?
         QStringList{ QStringLiteral("VP Renderer"),
             QStringLiteral("DirectShow - madVR") } : allRenderers_;
 	if (!renderer.isEmpty() &&
@@ -2523,29 +2746,6 @@ QWidget* ConfigEditorWindow::createShell()
                 selectPage(page);
         });
     connect(pages_, &QStackedWidget::currentChanged, this, updateSectionTabs);
-	connect(pages_, &QStackedWidget::currentChanged, this, [this](int page)
-	{
-		// Screen and Zoom are two views of one viewport-profile family. Both
-		// pages are constructed once from the same reusable profile workspace;
-		// keep their visible selection together when the operator switches tabs.
-		if (page != 4 && page != 18) return;
-		const int peerPage = page == 4 ? 18 : 4;
-		QListWidget* target = pages_->widget(page)->findChild<QListWidget*>(
-			controlName(QStringLiteral("vprenderer.viewport"),
-				QStringLiteral("profiles")));
-		QListWidget* peer = pages_->widget(peerPage)->findChild<QListWidget*>(
-			controlName(QStringLiteral("vprenderer.viewport"),
-				QStringLiteral("profiles")));
-		if (!target || !peer || !peer->currentItem()) return;
-		const QString selected = peer->currentItem()->data(Qt::UserRole).toString();
-		for (int index = 0; index < target->count(); ++index)
-			if (target->item(index)->data(Qt::UserRole).toString().compare(
-				selected, Qt::CaseInsensitive) == 0)
-			{
-				if (target->currentRow() != index) target->setCurrentRow(index);
-				break;
-			}
-	});
     updateSectionTabs(pages_->currentIndex());
     centerLayout->addWidget(navigation_);
     centerLayout->addWidget(pageHost, 1);
@@ -2945,85 +3145,8 @@ QWidget* ConfigEditorWindow::createStartupPage()
 }
 
 QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QString& description,
-    const QString& sectionPrefix, const QString& fieldGroup)
+    const QString& sectionPrefix)
 {
-    // Output transport used to live inside Rendering profiles. Move those
-    // keys into matching Output profiles in the pending document so an old
-    // configuration keeps the same shortcut/rule behavior without allowing a
-    // Rendering selection to change the device or swapchain contract.
-    if (configurationLoaded_ && document_ &&
-        sectionPrefix == QStringLiteral("vprenderer.output"))
-    {
-        const QStringList outputKeys = {
-            QStringLiteral("output_path_profile"),
-            QStringLiteral("output_presentation"),
-            QStringLiteral("output_range"),
-            QStringLiteral("output_diagnostics"),
-            QStringLiteral("diagnostic_allow_limited_g22"),
-            QStringLiteral("diagnostic_allow_full_g22"),
-            QStringLiteral("diagnostic_disable_compute"),
-            QStringLiteral("diagnostic_force_8bit_sdr_swapchain"),
-            QStringLiteral("diagnostic_vp_owned_dxgi_presenter"),
-            QStringLiteral("diagnostic_disable_shader_cache")
-        };
-        bool migrated = false;
-        for (const QString& renderingSection : profileSections(
-            QStringLiteral("vprenderer")))
-        {
-            QStringList configuredKeys;
-            for (const QString& key : outputKeys)
-                if (!value(renderingSection, key).isEmpty())
-                    configuredKeys.push_back(key);
-            if (configuredKeys.isEmpty()) continue;
-
-            const QString suffix = renderingSection == QStringLiteral("vprenderer") ?
-                QStringLiteral("Default") :
-                renderingSection.mid(QStringLiteral("vprenderer.").size());
-            const QString outputSection =
-                QStringLiteral("vprenderer.output.%1").arg(suffix);
-            document_->AddSection(outputSection.toStdString());
-            for (const QString& key : configuredKeys)
-            {
-                const QString configured = value(renderingSection, key);
-                if (value(outputSection, key).isEmpty())
-                    document_->SetKnown(outputSection.toStdString(),
-                        key.toStdString().c_str(),
-                        configured.toLocal8Bit().constData());
-                document_->RemoveKnown(renderingSection.toStdString(),
-                    key.toStdString().c_str());
-            }
-            for (const QString& selector : { QStringLiteral("shortcut"),
-                QStringLiteral("when") })
-            {
-                const QString configured = value(renderingSection, selector);
-                if (!configured.isEmpty() && value(outputSection, selector).isEmpty())
-                    document_->SetKnown(outputSection.toStdString(),
-                        selector.toStdString().c_str(),
-                        configured.toLocal8Bit().constData());
-            }
-            const QString range = value(outputSection,
-                QStringLiteral("output_range")).toLower();
-            const QString displayGamma = value(renderingSection,
-                QStringLiteral("output_gamma")).toLower();
-            if (range == QStringLiteral("limited") &&
-                (displayGamma == QStringLiteral("2.2") ||
-                    displayGamma == QStringLiteral("2.4")) &&
-                value(outputSection,
-                    QStringLiteral("output_transport_gamma")).isEmpty())
-            {
-                document_->SetKnown(outputSection.toStdString(),
-                    "output_transport_gamma",
-                    displayGamma.toLocal8Bit().constData());
-            }
-            migrated = true;
-        }
-        if (migrated)
-        {
-            dirty_ = true;
-            hasPendingMigrations_ = true;
-        }
-    }
-
     // A short-lived Color Config split placed the SDR white/black targets in
     // the wrong group. Restore them to the matching Rendering profile in the
     // pending document. The disk file changes only after the user explicitly
@@ -3063,125 +3186,6 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             hasPendingMigrations_ = true;
         }
     }
-
-    // Older configurations keep calibrated primaries and source-transfer
-    // handling inside each Rendering profile. Split only those settings into
-    // the independent Color Config group in the pending document. Existing
-    // Color Config profiles always win, and the disk file changes only after
-    // the user explicitly applies the editor changes.
-    if (configurationLoaded_ && document_ &&
-        sectionPrefix == QStringLiteral("vprenderer.color"))
-    {
-        const QStringList colorKeys = {
-            QStringLiteral("sdr_target_primaries"),
-            QStringLiteral("output_gamma"),
-            QStringLiteral("report_bt2020_to_display"),
-            QStringLiteral("sdr_adjust_gamma"),
-            QStringLiteral("sdr_input_transfer")
-        };
-        bool migrated = false;
-        for (const QString& renderingSection : profileSections(
-            QStringLiteral("vprenderer")))
-        {
-            QStringList configuredKeys;
-            for (const QString& key : colorKeys)
-                if (!value(renderingSection, key).isEmpty())
-                    configuredKeys.push_back(key);
-            if (configuredKeys.isEmpty()) continue;
-
-            const QString suffix = renderingSection == QStringLiteral("vprenderer") ?
-                QStringLiteral("Default") :
-                renderingSection.mid(QStringLiteral("vprenderer.").size());
-            const QString colorSection =
-                QStringLiteral("vprenderer.color.%1").arg(suffix);
-            document_->AddSection(colorSection.toStdString());
-            for (const QString& key : configuredKeys)
-            {
-                const QString configured = value(renderingSection, key);
-                if (value(colorSection, key).isEmpty())
-                    document_->SetKnown(colorSection.toStdString(),
-                        key.toStdString().c_str(),
-                        configured.toLocal8Bit().constData());
-                document_->RemoveKnown(renderingSection.toStdString(),
-                    key.toStdString().c_str());
-            }
-            // Preserve the existing key/rule on the new independent group.
-            // Keep it on Rendering as well so legacy renderer policy still
-            // responds exactly as it did until the user chooses otherwise.
-            for (const QString& selector : { QStringLiteral("shortcut"),
-                QStringLiteral("when") })
-            {
-                const QString configured = value(renderingSection, selector);
-                if (!configured.isEmpty() &&
-                    value(colorSection, selector).isEmpty())
-                    document_->SetKnown(colorSection.toStdString(),
-                        selector.toStdString().c_str(),
-                        configured.toLocal8Bit().constData());
-            }
-            migrated = true;
-        }
-        if (migrated)
-        {
-            dirty_ = true;
-            hasPendingMigrations_ = true;
-        }
-    }
-
-	// Scaling now owns its independent ordered profile group. Move the three
-	// scaler choices from the matching legacy Rendering profile without
-	// changing their effective values or selection rule.
-	if (configurationLoaded_ && document_ &&
-		sectionPrefix == QStringLiteral("vprenderer.scaling"))
-	{
-		const QStringList scalingKeys = {
-			QStringLiteral("upscaler"),
-			QStringLiteral("downscaler"),
-			QStringLiteral("sigmoid")
-		};
-		bool migrated = false;
-		for (const QString& renderingSection : profileSections(
-			QStringLiteral("vprenderer")))
-		{
-			QStringList configuredKeys;
-			for (const QString& key : scalingKeys)
-				if (!value(renderingSection, key).isEmpty())
-					configuredKeys.push_back(key);
-			if (configuredKeys.isEmpty()) continue;
-
-			const QString suffix = renderingSection == QStringLiteral("vprenderer") ?
-				QStringLiteral("Default") :
-				renderingSection.mid(QStringLiteral("vprenderer.").size());
-			const QString scalingSection =
-				QStringLiteral("vprenderer.scaling.%1").arg(suffix);
-			document_->AddSection(scalingSection.toStdString());
-			for (const QString& key : configuredKeys)
-			{
-				const QString configured = value(renderingSection, key);
-				if (value(scalingSection, key).isEmpty())
-					document_->SetKnown(scalingSection.toStdString(),
-						key.toStdString().c_str(),
-						configured.toLocal8Bit().constData());
-				document_->RemoveKnown(renderingSection.toStdString(),
-					key.toStdString().c_str());
-			}
-			for (const QString& selector : { QStringLiteral("shortcut"),
-				QStringLiteral("when") })
-			{
-				const QString configured = value(renderingSection, selector);
-				if (!configured.isEmpty() &&
-					value(scalingSection, selector).isEmpty())
-					document_->SetKnown(scalingSection.toStdString(),
-						selector.toStdString().c_str(),
-						configured.toLocal8Bit().constData());
-			}
-			migrated = true;
-		}
-		if (migrated)
-		{
-			dirty_ = true;
-			hasPendingMigrations_ = true;
-		}
-	}
 
     // Literal roots are the legacy unnamed form. Profiles in the editor are
     // named and their file order alone selects the default, so migrate a root
@@ -3326,8 +3330,11 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
     list->setDragDropOverwriteMode(false);
     const bool showsActiveProfile = sectionPrefix == QStringLiteral("queue") ||
         sectionPrefix == QStringLiteral("vprenderer") ||
+        sectionPrefix == QStringLiteral("vprenderer.scaling") ||
         sectionPrefix == QStringLiteral("vprenderer.color") ||
-        sectionPrefix == QStringLiteral("vprenderer.viewport");
+        sectionPrefix == QStringLiteral("vprenderer.output") ||
+        sectionPrefix == QStringLiteral("vprenderer.viewport") ||
+        sectionPrefix == QStringLiteral("vprenderer.zoom");
     if (showsActiveProfile)
     {
         list->setItemDelegate(new ProfileStateItemDelegate(list));
@@ -3386,7 +3393,9 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         const QString& description, bool expanded)
     {
         const QString sectionObjectPrefix = sectionPrefix == QStringLiteral("vprenderer.viewport") ?
-            QStringLiteral("screenSection") : QStringLiteral("rendererSection");
+            QStringLiteral("screenSection") :
+            (sectionPrefix == QStringLiteral("vprenderer.zoom") ?
+                QStringLiteral("zoomSection") : QStringLiteral("rendererSection"));
         auto* section = new QWidget(profileFields);
         auto* sectionLayout = new QVBoxLayout(section);
         sectionLayout->setContentsMargins(0, 0, 0, 0);
@@ -3427,7 +3436,8 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
     };
     if (sectionPrefix != QStringLiteral("vprenderer") &&
         sectionPrefix != QStringLiteral("vprenderer.color") &&
-        sectionPrefix != QStringLiteral("vprenderer.viewport"))
+        sectionPrefix != QStringLiteral("vprenderer.viewport") &&
+        sectionPrefix != QStringLiteral("vprenderer.zoom"))
         form = addPlainForm();
     QCheckBox* anamorphicEnabled = nullptr;
     QLineEdit* anamorphicValue = nullptr;
@@ -4142,16 +4152,16 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 			QStringLiteral("bicubic"), QStringLiteral("gaussian"),
 			QStringLiteral("oversample"), QStringLiteral("bilinear"),
 			QStringLiteral("nearest"), QStringLiteral("none") });
+		upscaler->setItemText(upscaler->findData(QStringLiteral("none")),
+			QStringLiteral("Use GPU"));
 		addRendererAutoStatus(QStringLiteral("upscaler"), upscaler);
 		auto* downscaler = addChoice(QStringLiteral("Downscaler"),
 			QStringLiteral("downscaler"), { QStringLiteral("AUTO"),
-			QStringLiteral("ewa_lanczos"), QStringLiteral("lanczos"),
-			QStringLiteral("mitchell"), QStringLiteral("catmull_rom"),
+			QStringLiteral("lanczos"), QStringLiteral("mitchell"),
+			QStringLiteral("catmull_rom"),
 			QStringLiteral("bicubic"), QStringLiteral("gaussian"),
 			QStringLiteral("hermite"), QStringLiteral("bilinear"),
-			QStringLiteral("box"), QStringLiteral("none") });
-		downscaler->setItemText(downscaler->findData(QStringLiteral("none")),
-			QStringLiteral("Match upscaler"));
+			QStringLiteral("box") });
 		addRendererAutoStatus(QStringLiteral("downscaler"), downscaler);
 		auto* antiRinging = addChoice(QStringLiteral("Anti-ringing"),
 			QStringLiteral("sigmoid"), { QStringLiteral("AUTO"),
@@ -4160,10 +4170,11 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 			"Optional sigmoidization before upscaling. It reduces ringing artifacts; Auto uses the scaling-quality preset."));
 		addRendererAutoStatus(QStringLiteral("sigmoid"), antiRinging);
 	}
-	else if (sectionPrefix == QStringLiteral("vprenderer.viewport"))
+	else if (sectionPrefix == QStringLiteral("vprenderer.viewport") ||
+		sectionPrefix == QStringLiteral("vprenderer.zoom"))
     {
-		const bool showGeometry = fieldGroup != QStringLiteral("zoom");
-		const bool showZoom = fieldGroup != QStringLiteral("geometry");
+		const bool showGeometry = sectionPrefix == QStringLiteral("vprenderer.viewport");
+		const bool showZoom = sectionPrefix == QStringLiteral("vprenderer.zoom");
 		if (showGeometry)
 		{
         form = addCollapsibleSection(QStringLiteral("geometry"),
@@ -4216,6 +4227,8 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 			form = addPlainForm();
 		if (showZoom)
 		{
+		addBoolean(QStringLiteral("Automatically crop black bars"),
+			QStringLiteral("automatic_crop"));
 		auto* cropNarrower = addBoolean(
 			QStringLiteral("Crop narrower content to fill screen"),
 			QStringLiteral("crop_narrower_content_to_fill_screen"));
@@ -4378,6 +4391,9 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             {
                 if (key == QStringLiteral("screen_aspect")) return QStringLiteral("16:9");
                 if (key == QStringLiteral("vertical_alignment")) return QStringLiteral("center");
+            }
+            if (sectionPrefix == QStringLiteral("vprenderer.zoom"))
+            {
                 if (key == QStringLiteral("subtitle_hold_seconds")) return QStringLiteral("2");
                 if (key == QStringLiteral("subtitle_engage_drift_ms")) return QStringLiteral("0");
                 if (key == QStringLiteral("subtitle_release_drift_ms")) return QStringLiteral("0");
@@ -4447,8 +4463,32 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         for (const Field& field : *fields)
         {
             QString raw = profileValue(section, field.key);
+			const bool scalingDownscaler =
+				sectionPrefix == QStringLiteral("vprenderer.scaling") &&
+				field.key == QStringLiteral("downscaler");
+			if (scalingDownscaler && !raw.isEmpty())
+			{
+				const QString normalized = raw.trimmed().toLower();
+				static const QStringList supported = {
+					QStringLiteral("auto"), QStringLiteral("box"),
+					QStringLiteral("hermite"), QStringLiteral("bilinear"),
+					QStringLiteral("bicubic"), QStringLiteral("gaussian"),
+					QStringLiteral("catmull_rom"), QStringLiteral("mitchell"),
+					QStringLiteral("lanczos")
+				};
+				if (!supported.contains(normalized))
+				{
+					// Removed legacy values must not reappear as synthetic combo-box
+					// entries. Treat them as omitted/Auto and persist their removal
+					// the next time the user saves this configuration.
+					document_->RemoveKnown(section.toStdString(),
+						field.key.toStdString().c_str());
+					raw.clear();
+					markDirty();
+				}
+			}
 			const bool viewportAspectLimit =
-				sectionPrefix == QStringLiteral("vprenderer.viewport") &&
+				sectionPrefix == QStringLiteral("vprenderer.zoom") &&
 				(field.key == QStringLiteral("crop_narrower_content_aspect_limit") ||
 				 field.key == QStringLiteral("crop_wider_content_aspect_limit"));
 			if (viewportAspectLimit && !raw.isEmpty())
@@ -4756,7 +4796,8 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         }
         const QString old = state->section;
         if (!document_->RenameSection(old.toStdString(), renamed.toStdString())) return;
-        if (sectionPrefix == QStringLiteral("vprenderer.viewport"))
+        if (sectionPrefix == QStringLiteral("vprenderer.viewport") ||
+            sectionPrefix == QStringLiteral("vprenderer.zoom"))
             document_->SetKnown(renamed.toStdString(), "label", requested.toLocal8Bit().constData());
         state->section = renamed;
         markDirty();
@@ -5089,14 +5130,14 @@ QWidget* ConfigEditorWindow::createViewportPage()
 {
 	return createProfilePage(QStringLiteral("Screen"),
 		QStringLiteral("Configure VP Renderer screen geometry and selection. The first profile in the list is the default."),
-		QStringLiteral("vprenderer.viewport"), QStringLiteral("geometry"));
+		QStringLiteral("vprenderer.viewport"));
 }
 
 QWidget* ConfigEditorWindow::createZoomPage()
 {
 	return createProfilePage(QStringLiteral("Zoom"),
-		QStringLiteral("Configure crop/fill and subtitle placement for VP Renderer screen profiles."),
-		QStringLiteral("vprenderer.viewport"), QStringLiteral("zoom"));
+		QStringLiteral("Configure independent crop/fill and subtitle profiles. Zoom shortcuts never change the selected Screen geometry."),
+		QStringLiteral("vprenderer.zoom"));
 }
 
 QWidget* ConfigEditorWindow::createLldvPage()
@@ -6009,6 +6050,7 @@ QWidget* ConfigEditorWindow::createActionsPage()
         { "profile.display.changed", "VP Renderer profile changed", "Runs when the selected VP Renderer rendering profile changes." },
         { "profile.color.changed", "Color Config changed", "Runs when the selected Rec.709 or BT.2020 Color Config changes." },
         { "profile.viewport.changed", "Screen Config profile changed", "Runs when the selected VP Renderer Screen Config profile changes." },
+        { "profile.zoom.changed", "Zoom profile changed", "Runs when the selected VP Renderer Zoom profile changes without changing Screen geometry." },
         { "profile.queue.changed", "Queue profile changed", "Runs when the selected Queue profile changes." },
         { "profile.lldv.changed", "LLDV configuration changed", "Runs when the effective LLDV configuration changes." },
         { "profile.input.changed", "VP Renderer input settings changed", "Runs when advanced VP Renderer input settings change." },

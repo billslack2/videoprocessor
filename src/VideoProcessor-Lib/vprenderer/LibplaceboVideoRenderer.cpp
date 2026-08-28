@@ -1222,8 +1222,9 @@ namespace
 							(group.name == "scaling" ? "vprenderer.scaling" :
 								(group.name == "color" ? "vprenderer.color" :
 									(group.name == "output" ? "vprenderer.output" :
-									(group.name == "viewport" ? "vprenderer.viewport" :
-										group.name)))));
+										(group.name == "viewport" ? "vprenderer.viewport" :
+											(group.name == "zoom" ? "vprenderer.zoom" :
+												group.name))))));
 					if (!config.HasSection(root) &&
 						group.defaultSelection != "base")
 					{
@@ -1656,7 +1657,7 @@ namespace
 		readChoice("gamut_mapping", settings.gamutMapping, { "auto", "perceptual", "softclip", "relative", "desaturate" });
 		readPeakDetection(settings.peakDetection);
 		readChoice("upscaler", settings.upscaler, { "auto", "none", "nearest", "bilinear", "oversample", "bicubic", "gaussian", "catmull_rom", "lanczos", "ewa_lanczos", "ewa_lanczossharp", "ewa_lanczos4sharpest" });
-		readChoice("downscaler", settings.downscaler, { "auto", "none", "box", "hermite", "bilinear", "bicubic", "gaussian", "catmull_rom", "mitchell", "lanczos", "ewa_lanczos" });
+		readChoice("downscaler", settings.downscaler, { "auto", "box", "hermite", "bilinear", "bicubic", "gaussian", "catmull_rom", "mitchell", "lanczos" });
 		readToggle("deband", settings.deband);
 		if (config.TryGetString(rule.section, "deband_strength", raw))
 		{
@@ -1972,7 +1973,7 @@ namespace
 			{ "auto", "none", "nearest", "bilinear", "oversample", "bicubic", "gaussian", "catmull_rom", "lanczos", "ewa_lanczos", "ewa_lanczossharp", "ewa_lanczos4sharpest" });
 		settings.downscaler = ReadChoice(
 			config, "downscaler", "auto",
-			{ "auto", "none", "box", "hermite", "bilinear", "bicubic", "gaussian", "catmull_rom", "mitchell", "lanczos", "ewa_lanczos" });
+			{ "auto", "box", "hermite", "bilinear", "bicubic", "gaussian", "catmull_rom", "mitchell", "lanczos" });
 		settings.deband = ReadAutoToggle(config, "deband");
 		if (TryGetDisplayString(config, "deband_strength", rawValue))
 		{
@@ -10641,6 +10642,7 @@ bool LibplaceboVideoRenderer::ApplyApplicationState(
 		EffectiveSettingsFingerprint(candidateSettings) !=
 			currentEffectiveFingerprint;
 	std::string changedFields = "none";
+	bool liveProfileUpdateQueued = false;
 	const bool liveSettingsCompatible = state && m_impl &&
 		anyRendererSettingChanged &&
 		m_impl->ClassifyProfileSettingsLiveUpdate(
@@ -10661,9 +10663,13 @@ bool LibplaceboVideoRenderer::ApplyApplicationState(
 			return false;
 		}
 		rendererRestartRequired = false;
-		liveResetRequired = true;
+		liveProfileUpdateQueued = true;
+		// Compatible Screen, Zoom, Scaling, Color, and Processing changes are
+		// consumed at the render-thread safe point. The queued frames are raw
+		// source frames, so they remain valid under the new render description;
+		// do not flush and re-prime the live queue merely to apply these settings.
 		DebugLog::Log(
-			"application profile generation %llu compatible live update queued: fields=%s",
+			"application profile generation %llu compatible live update queued without queue reset: fields=%s",
 			static_cast<unsigned long long>(snapshot.generation),
 			changedFields.c_str());
 	}
@@ -10681,7 +10687,7 @@ bool LibplaceboVideoRenderer::ApplyApplicationState(
 			static_cast<unsigned long long>(snapshot.generation));
 		return false;
 	}
-	if (!liveResetRequired && rendererRestartRequired && state && m_impl &&
+	if (!liveProfileUpdateQueued && rendererRestartRequired && state && m_impl &&
 		anyRendererSettingChanged)
 	{
 		if (changedFields == "none")
@@ -10712,7 +10718,7 @@ bool LibplaceboVideoRenderer::ApplyApplicationState(
 		// ApplyProfileSettingsLive already queues the full immutable snapshot and
 		// applies its viewport portion at the same render-thread safe point.
 		// Do not replace that intent with a second UI-thread queue operation.
-		if (!liveResetRequired)
+		if (!liveProfileUpdateQueued)
 			m_impl->ApplyViewportSettings(candidateSettings);
 		ApplyViewportTarget(candidateSettings.configuredScreenTarget,
 			candidateSettings.configuredScreenAspect, "application snapshot");

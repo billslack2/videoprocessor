@@ -42,6 +42,7 @@ namespace
 		if (!(left.manualSelections == right.manualSelections &&
 			left.effectiveSelections == right.effectiveSelections &&
 			left.viewport.profile == right.viewport.profile &&
+			left.viewport.zoomProfile == right.viewport.zoomProfile &&
 			left.viewport.screenAspect.numerator ==
 				right.viewport.screenAspect.numerator &&
 			left.viewport.screenAspect.denominator ==
@@ -814,6 +815,11 @@ namespace UnifiedProfileRuntime
 		if (!RendererProfileConfig::ResolveViewport(
 			m_model, viewportProfile, generation, viewport, error))
 			return false;
+		const auto selectedZoom = effective.find("zoom");
+		if (selectedZoom != effective.end() &&
+			!RendererProfileConfig::ResolveZoom(m_model, selectedZoom->second,
+				viewport, error))
+			return false;
 		RendererProfileConfig::ResolvedQueue queue;
 		const auto selectedQueue = effective.find("queue");
 		if (selectedQueue != effective.end() &&
@@ -831,6 +837,8 @@ namespace UnifiedProfileRuntime
 		PublishSourceVariables(values, variables);
 		variables["viewport_profile"] =
 			StateVariables::Value::Text(viewport.profile);
+		variables["zoom_profile"] =
+			StateVariables::Value::Text(viewport.zoomProfile);
 		variables["screen_aspect"] =
 			StateVariables::Value::Aspect(viewport.screenAspect);
 		variables["vertical_alignment"] =
@@ -886,6 +894,16 @@ namespace UnifiedProfileRuntime
 				variables["screen_config"] =
 					StateVariables::Value::Text(label);
 				variables["profile.viewport_name"] =
+					StateVariables::Value::Text(label);
+			}
+			else if (selection.first == "zoom")
+			{
+				std::string label = selection.second;
+				const auto profile = m_model.profiles.find("zoom." + selection.second);
+				if (profile != m_model.profiles.end() && !profile->second.label.empty())
+					label = profile->second.label;
+				variables["zoom_config"] = StateVariables::Value::Text(label);
+				variables["profile.zoom_name"] =
 					StateVariables::Value::Text(label);
 			}
 		}

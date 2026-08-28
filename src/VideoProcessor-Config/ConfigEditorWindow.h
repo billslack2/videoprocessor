@@ -45,7 +45,9 @@ public:
     void refreshMonitorDiscovery();
     void setActiveProfileStatusForTesting(const QString& queue,
         const QString& renderer, const QString& color, const QString& viewport,
-        const QStringList& shaders, bool shaderAvailable = true);
+        const QStringList& shaders, bool shaderAvailable = true,
+        const QString& zoom = {}, const QString& scaling = {},
+        const QString& output = {});
     void setRendererDiscoveryForTesting(const QStringList& allRenderers,
         const QStringList& filteredRenderers);
 
@@ -79,7 +81,7 @@ private:
     QWidget* createShortcutsPage();
     QWidget* createLogsPage();
     QWidget* createProfilePage(const QString& title, const QString& description,
-        const QString& sectionPrefix, const QString& fieldGroup = {});
+        const QString& sectionPrefix);
     QWidget* createCard(const QString& title, const QString& description, QWidget* content);
     QWidget* createPage(const QString& title, const QString& description, QWidget* body);
     QPushButton* addNavigationButton(const QString& text, int pageIndex);
@@ -119,6 +121,8 @@ private:
     void loadConfiguration();
     void migrateLldvSingleton();
     void migrateSharedRefreshRate();
+    void migrateSeparatedRendererProfiles();
+    void migrateViewportZoomProfiles();
     void loadDiscoveryCache();
     void applyMonitorDiscovery(const QStringList& discovered);
     void setupTray();
@@ -128,7 +132,9 @@ private:
     void refreshActiveProfileIndicators();
     void applyActiveProfileIndicators(bool available, const QString& queue,
         const QString& renderer, const QString& color, const QString& viewport,
-        const QStringList& shaders, bool shaderAvailable);
+        const QStringList& shaders, bool shaderAvailable,
+        const QString& zoom = {}, const QString& scaling = {},
+        const QString& output = {});
     void refreshRendererAutoStatus();
 
     QString configPath_;

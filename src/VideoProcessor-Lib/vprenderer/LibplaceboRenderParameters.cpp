@@ -67,7 +67,6 @@ namespace
 
 	const char* Downscaler(const std::string& downscaler)
 	{
-		if (downscaler == "none") return nullptr;
 		if (downscaler == "box") return "pl_filter_box";
 		if (downscaler == "hermite") return "pl_filter_hermite";
 		if (downscaler == "gaussian") return "pl_filter_gaussian";
@@ -76,7 +75,7 @@ namespace
 		if (downscaler == "lanczos") return "pl_filter_lanczos";
 		if (downscaler == "bicubic") return "pl_filter_bicubic";
 		if (downscaler == "bilinear") return "pl_filter_bilinear";
-		return "pl_filter_ewa_lanczos";
+		return nullptr;
 	}
 }
 
@@ -298,24 +297,18 @@ namespace LibplaceboRenderParameters
 
 		if (settings.downscaler != "auto")
 		{
-			// libplacebo's downscaler=none means use the resolved upscaler. This
-			// differs from upscaler=none, which requests built-in GPU sampling.
-			if (settings.downscaler == "none")
+			const char* exportName = Downscaler(settings.downscaler);
+			// Removed or otherwise unsupported legacy values behave exactly as an
+			// omitted setting: retain the quality preset's Auto downscaler.
+			if (!exportName)
 			{
-				projection.downscalerExport = "same_as_upscaler";
-				projection.renderParams.downscaler = projection.renderParams.upscaler;
+				projection.downscalerExport = "auto";
 				return true;
 			}
-			const char* exportName = Downscaler(settings.downscaler);
-			projection.downscalerExport = exportName ? exportName : "none";
-			if (exportName)
-			{
-				projection.renderParams.downscaler =
-					ReadLibplaceboData<pl_filter_config>(exportName, error);
-				if (!projection.renderParams.downscaler) return false;
-			}
-			else
-				projection.renderParams.downscaler = nullptr;
+			projection.downscalerExport = exportName;
+			projection.renderParams.downscaler =
+				ReadLibplaceboData<pl_filter_config>(exportName, error);
+			if (!projection.renderParams.downscaler) return false;
 		}
 
 		return true;

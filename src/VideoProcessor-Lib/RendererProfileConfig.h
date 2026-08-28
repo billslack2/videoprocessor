@@ -134,6 +134,9 @@ namespace RendererProfileConfig
 	{
 		std::string group = "viewport";
 		std::string profile = "default";
+		// Zoom is independently selectable from physical screen geometry.
+		// Keeping both names makes diagnostics and OSD state unambiguous.
+		std::string zoomProfile = "default";
 		AspectRatio screenAspect{ 16, 9, 16.0 / 9.0 };
 		bool hasScreenAspect = false;
 		std::string verticalAlignment = "center";
@@ -452,7 +455,16 @@ namespace RendererProfileConfig
 		{
 			if (key == "quality") return IsChoice(value, { "fast", "balanced", "high" });
 			if (key == "upscaler") return IsChoice(value, { "auto", "none", "nearest", "bilinear", "oversample", "bicubic", "gaussian", "catmull_rom", "lanczos", "ewa_lanczos", "ewa_lanczossharp", "ewa_lanczos4sharpest" });
-			if (key == "downscaler") return IsChoice(value, { "auto", "none", "box", "hermite", "bilinear", "bicubic", "gaussian", "catmull_rom", "mitchell", "lanczos", "ewa_lanczos" });
+			if (key == "downscaler")
+			{
+				// Accept the two removed spellings only as legacy input so an old
+				// configuration can start and be repaired by the editor. The runtime
+				// deliberately treats them as omitted/Auto; neither remains a
+				// supported downscaling choice.
+				return IsChoice(value, { "auto", "box", "hermite", "bilinear",
+					"bicubic", "gaussian", "catmull_rom", "mitchell", "lanczos",
+					"none", "ewa_lanczos" });
+			}
 			if (key == "sigmoid" || key == "dithering") return IsChoice(value, { "auto", "on", "off" });
 			if (key == "deband_strength") return IsChoice(value, { "auto", "off", "light", "default" });
 			expected = "a scaling-owned setting"; return false;
@@ -492,15 +504,16 @@ namespace RendererProfileConfig
 				return IsBoolean(value);
 			expected = "an output-owned setting"; return false;
 		}
-		if (group == "viewport")
+		if (group == "viewport" || group == "zoom")
 		{
-			if (key == "mode")
+			const bool screenGroup = group == "viewport";
+			if (screenGroup && key == "mode")
 				return IsChoice(value, { "normal", "scope" });
-			if (key == "screen_aspect")
+			if (screenGroup && key == "screen_aspect")
 				return IsAspectInRange(value, 1.0, 4.0);
-			if (key == "vertical_alignment")
+			if (screenGroup && key == "vertical_alignment")
 				return IsChoice(value, { "top", "center", "bottom" });
-			if (key == "anamorphic_scale")
+			if (screenGroup && key == "anamorphic_scale")
 				return IsAspectInRange(value, 0.5, 2.0);
 			if (key == "automatic_crop" || key == "subtitle_fit" ||
 				key == "crop_narrower_content_to_fill_screen" ||
@@ -529,7 +542,9 @@ namespace RendererProfileConfig
 				int parsed = 0; return ParseInteger(value, 0,
 					MAX_SUBTITLE_TARGET_BUFFER_PIXELS, parsed);
 			}
-			expected = "a viewport-owned setting"; return false;
+			expected = screenGroup ? "a viewport-owned setting" :
+				"a zoom-owned setting";
+			return false;
 		}
 		if (group == "queue")
 		{
@@ -776,7 +791,7 @@ namespace RendererProfileConfig
 
 	inline bool IsRendererChildNamespace(const std::string& name)
 	{
-		for (const char* child : { "input", "input_processing", "scaling", "color", "output", "viewport" })
+		for (const char* child : { "input", "input_processing", "scaling", "color", "output", "viewport", "zoom" })
 		{
 			const std::string root(child);
 			if (name == root ||
@@ -941,6 +956,7 @@ namespace RendererProfileConfig
 			{ "color", "vprenderer.color", true },
 			{ "output", "vprenderer.output", true },
 			{ "viewport", "vprenderer.viewport", true },
+			{ "zoom", "vprenderer.zoom", true },
 			{ "queue", "queue", true },
 			{ "lldv", "lldv", true }
 		};
@@ -968,7 +984,8 @@ namespace RendererProfileConfig
 					IsRendererChildNamespace(name))
 					continue;
 				if (name.find('.') != std::string::npos || !IsIdentifier(name) ||
-					(std::string(spec.name) == "viewport" &&
+					((std::string(spec.name) == "viewport" ||
+						std::string(spec.name) == "zoom") &&
 						IsReservedViewportIdentifier(name)))
 				{
 					error = "[" + candidate + "] must be exactly one named variant";
@@ -996,7 +1013,8 @@ namespace RendererProfileConfig
 			if (baselineValues)
 				for (const auto& entry : *baselineValues)
 				{
-					if (std::string(spec.name) == "viewport" && entry.first == "label")
+					if ((std::string(spec.name) == "viewport" ||
+						std::string(spec.name) == "zoom") && entry.first == "label")
 					{
 						base.label = entry.second;
 						continue;
@@ -1119,7 +1137,8 @@ namespace RendererProfileConfig
 				std::string profileShortcut;
 				for (const auto& entry : *values)
 				{
-					if (std::string(spec.name) == "viewport" && entry.first == "label")
+					if ((std::string(spec.name) == "viewport" ||
+						std::string(spec.name) == "zoom") && entry.first == "label")
 					{
 						profile.label = entry.second;
 						continue;
@@ -1401,7 +1420,9 @@ namespace RendererProfileConfig
 				return false;
 		}
 
-		const std::vector<std::string> expectedGroups = { "input", "scaling", "display", "output", "viewport", "queue" };
+		const std::vector<std::string> expectedGroups = {
+			"input", "scaling", "display", "color", "output", "viewport",
+			"zoom", "queue", "lldv" };
 		for (const std::string& groupName : expectedGroups)
 		{
 			const std::string section = "profile_groups." + groupName;
@@ -1962,6 +1983,126 @@ namespace RendererProfileConfig
 				viewport.subtitleTargetBufferPixels))
 		{
 			error = "[profiles.viewport." + viewport.profile +
+				"] subtitle_target_buffer_pixels is invalid";
+			return false;
+		}
+		return true;
+	}
+
+	// Zoom is a second, independently selected profile family. It deliberately
+	// overlays only crop and subtitle controls, leaving the selected physical
+	// screen geometry untouched.
+	inline bool ResolveZoom(const Model& model, const std::string& profileName,
+		ResolvedViewport& viewport, std::string& error)
+	{
+		error.clear();
+		if (profileName.empty() || profileName == "default") return true;
+		const auto profile = model.profiles.find(
+			"zoom." + ConfigFile::NormalizeName(profileName));
+		if (profile == model.profiles.end())
+		{
+			error = "zoom profile '" + profileName + "' does not exist";
+			return false;
+		}
+		viewport.zoomProfile = profile->second.name;
+		const auto& settings = profile->second.settings;
+		auto value = settings.find("automatic_crop");
+		if (value != settings.end() &&
+			!ParseBoolean(value->second, viewport.automaticCrop))
+		{
+			error = "[profiles.zoom." + viewport.zoomProfile +
+				"] automatic_crop is invalid";
+			return false;
+		}
+		value = settings.find("crop_narrower_content_to_fill_screen");
+		if (value != settings.end() && !ParseBoolean(value->second,
+			viewport.cropNarrowerContentToFillScreen))
+		{
+			error = "[profiles.zoom." + viewport.zoomProfile +
+				"] crop_narrower_content_to_fill_screen is invalid";
+			return false;
+		}
+		value = settings.find("crop_narrower_content_aspect_limit");
+		if (value != settings.end())
+		{
+			viewport.hasCropNarrowerContentAspectLimit =
+				AspectRatioParser::Parse(value->second, 1.0, 4.0,
+					viewport.cropNarrowerContentAspectLimit, error);
+			if (!viewport.hasCropNarrowerContentAspectLimit) error.clear();
+		}
+		value = settings.find("crop_wider_content_to_fill_screen");
+		if (value != settings.end() && !ParseBoolean(value->second,
+			viewport.cropWiderContentToFillScreen))
+		{
+			error = "[profiles.zoom." + viewport.zoomProfile +
+				"] crop_wider_content_to_fill_screen is invalid";
+			return false;
+		}
+		value = settings.find("crop_wider_content_aspect_limit");
+		if (value != settings.end())
+		{
+			viewport.hasCropWiderContentAspectLimit =
+				AspectRatioParser::Parse(value->second, 1.0, 4.0,
+					viewport.cropWiderContentAspectLimit, error);
+			if (!viewport.hasCropWiderContentAspectLimit) error.clear();
+		}
+		value = settings.find("subtitle_fit");
+		if (value != settings.end() && !ParseBoolean(value->second,
+			viewport.subtitleFit))
+		{
+			error = "[profiles.zoom." + viewport.zoomProfile +
+				"] subtitle_fit is invalid";
+			return false;
+		}
+		value = settings.find("subtitle_hold_seconds");
+		if (value != settings.end())
+		{
+			double seconds = 0.0;
+			if (!DisplayRuleExpression::ParseNumber(
+				ConfigFile::Trim(value->second), seconds) ||
+				seconds < MIN_SUBTITLE_HOLD_SECONDS ||
+				seconds > MAX_SUBTITLE_HOLD_SECONDS)
+			{
+				error = "[profiles.zoom." + viewport.zoomProfile +
+					"] subtitle_hold_seconds is invalid";
+				return false;
+			}
+			viewport.subtitleHoldMilliseconds =
+				static_cast<uint64_t>(std::llround(seconds * 1000.0));
+		}
+		auto resolveMilliseconds = [&settings, &viewport, &error](const char* key,
+			uint64_t& destination) -> bool
+		{
+			const auto configured = settings.find(key);
+			if (configured == settings.end()) return true;
+			int milliseconds = 0;
+			if (!ParseInteger(configured->second, 0, 30000, milliseconds))
+			{
+				error = "[profiles.zoom." + viewport.zoomProfile + "] " + key +
+					" is invalid";
+				return false;
+			}
+			destination = static_cast<uint64_t>(milliseconds);
+			return true;
+		};
+		if (!resolveMilliseconds("subtitle_engage_drift_ms",
+			viewport.subtitleEngageDriftMilliseconds) ||
+			!resolveMilliseconds("subtitle_release_drift_ms",
+				viewport.subtitleReleaseDriftMilliseconds))
+			return false;
+		value = settings.find("subtitle_padding_pixels");
+		if (value != settings.end() && !ParseInteger(value->second, 0, 500,
+			viewport.subtitlePaddingPixels))
+		{
+			error = "[profiles.zoom." + viewport.zoomProfile +
+				"] subtitle_padding_pixels is invalid";
+			return false;
+		}
+		value = settings.find("subtitle_target_buffer_pixels");
+		if (value != settings.end() && !ParseInteger(value->second, 0,
+			MAX_SUBTITLE_TARGET_BUFFER_PIXELS, viewport.subtitleTargetBufferPixels))
+		{
+			error = "[profiles.zoom." + viewport.zoomProfile +
 				"] subtitle_target_buffer_pixels is invalid";
 			return false;
 		}
