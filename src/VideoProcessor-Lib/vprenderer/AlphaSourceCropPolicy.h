@@ -519,6 +519,35 @@ namespace AlphaSourceCrop
 	AspectLimitFillDecision EvaluateAspectLimitFill(
 		const AspectLimitFillInput& input);
 
+	struct ProfileTransitionRetentionInput
+	{
+		bool geometryAvailable = false;
+		ActivePictureClassification classification =
+			ActivePictureClassification::UNAVAILABLE;
+		ActivePictureBounds geometry;
+		uint64_t geometrySourceGeneration = 0;
+		uint64_t analysisSourceGeneration = 0;
+		uint64_t frameSourceGeneration = 0;
+		bool sourceFormatMatches = false;
+	};
+
+	struct ProfileTransitionRetentionDecision
+	{
+		bool retainSourceGeometry = false;
+		// Subtitle motion and NLS mapping are presentation state, not source
+		// geometry. They always reacquire for the newly selected profile.
+		bool retainSubtitleState = false;
+		bool retainNlsPresentationIntent = false;
+	};
+
+	// A Screen/Zoom profile change does not alter the source pixels. Bridge the
+	// first frame with generation-current trusted bar geometry. A profile which
+	// does not consume active-picture geometry may keep that source-only snapshot
+	// dormant; it is force-verified before a later profile can present it. Every
+	// piece of profile-dependent presentation state starts a fresh epoch.
+	ProfileTransitionRetentionDecision EvaluateProfileTransitionRetention(
+		const ProfileTransitionRetentionInput& input);
+
 	class AmbiguityHold
 	{
 	public:

@@ -3043,6 +3043,7 @@ struct LibplaceboVideoRenderer::Impl
 		ActivePictureClassification::UNAVAILABLE;
 	bool latestActivePictureObservationSupportsCrop = false;
 	uint64_t nlsGeometrySourceGeneration = 0;
+	uint64_t nlsGeometrySourceFormatKey = 0;
 	uint64_t activePictureAnalysisSourceGeneration = 0;
 	NlsMappingDecision nlsDecision;
 	const struct pl_hook* nlsHook = nullptr;
@@ -6161,33 +6162,12 @@ struct LibplaceboVideoRenderer::Impl
 		PublishSettingsState(activeSettings);
 		if (renderingBehaviorChanged)
 		{
-			// A viewport/profile epoch cannot inherit crop proof. Reacquire from
-			// current-frame shared evidence even when the source generation did
-			// not change.
-			nlsTransition.Reset();
-			outwardPictureConfirmation = {};
-			nlsGeometryAvailable = false;
-			nlsTransitionWithdrawn = false;
-			nlsGeometry = {};
-			nlsGeometryClassification =
-				ActivePictureClassification::UNAVAILABLE;
-			latestActivePictureObservationSupportsCrop = false;
-			nlsGeometrySourceGeneration = 0;
-			activePictureAnalysisSourceGeneration = 0;
-			ClearSceneVerificationSnapshot();
-			ClearScopeSubtitleEvidence();
-			ClearScopePresentationEvidence();
-			ClearLatestActivePictureEvidence();
-			nlsDecision = {};
-			renderParams.hooks = nullptr;
-			renderParams.num_hooks = 0;
-			// A newly selected live profile must use current crop/subtitle
-			// parameters. Prime it lazily without dropping the live swapchain.
-			ClearScopeSubtitleEvidence();
-			ClearScopePresentationEvidence();
-			lastSourceCropPolicy.clear();
-			lastFinalPresentationPolicy.clear();
-			lastFinalLayoutPolicy.clear();
+			// ApplyViewportTarget advances the viewport serial for this immutable
+			// snapshot. RenderLocked consumes that boundary once, after these new
+			// settings are active, so source geometry and subtitle presentation are
+			// not independently reset at two different points in the same frame.
+			DebugLog::Log(
+				"libplacebo viewport behavior changed: boundary reset deferred to render frame");
 		}
 	}
 
@@ -7284,6 +7264,8 @@ struct LibplaceboVideoRenderer::Impl
 				nlsTransitionWithdrawn = false;
 				nlsGeometryClassification = evidence.classification;
 				nlsGeometrySourceGeneration = analysisSource.generation;
+				nlsGeometrySourceFormatKey =
+					currentIdentity.sourceFormatGeneration;
 				++nlsGeometryGeneration;
 			}
 			else if (transition.stable && !nlsTransitionWithdrawn)
@@ -7312,6 +7294,8 @@ struct LibplaceboVideoRenderer::Impl
 				nlsGeometryClassification =
 					ActivePictureClassification::BAR_CROP_TRUSTED;
 				nlsGeometrySourceGeneration = analysisSource.generation;
+				nlsGeometrySourceFormatKey =
+					currentIdentity.sourceFormatGeneration;
 			}
 			// A dark/ambiguous sample may bridge a normal cut or fade, but it
 			// cannot renew its own authority. Only a fresh trusted observation
@@ -7425,23 +7409,53 @@ struct LibplaceboVideoRenderer::Impl
 		if (!swapchain)
 			return false;
 		const VideoState& state = *statePtr;
+		bool verifyRetainedProfileGeometryThisFrame = false;
 		if (viewportRequestSerial !=
 			activePictureScreenProfileRequestSerial)
 		{
 			activePictureScreenProfileRequestSerial =
 				viewportRequestSerial;
+			AlphaSourceCrop::ProfileTransitionRetentionInput retentionInput;
+			retentionInput.geometryAvailable = nlsGeometryAvailable;
+			retentionInput.classification = nlsGeometryClassification;
+			retentionInput.geometry = nlsGeometry;
+			retentionInput.geometrySourceGeneration =
+				nlsGeometrySourceGeneration;
+			retentionInput.analysisSourceGeneration =
+				activePictureAnalysisSourceGeneration;
+			retentionInput.frameSourceGeneration = frameGeneration;
+			retentionInput.sourceFormatMatches =
+				nlsGeometrySourceFormatKey != 0 &&
+				nlsGeometrySourceFormatKey == AlphaSourceFormatKey(state) &&
+				nlsGeometry.rasterWidth ==
+					static_cast<int>(state.displayMode->FrameWidth()) &&
+				nlsGeometry.rasterHeight ==
+					static_cast<int>(state.displayMode->FrameHeight());
+			const AlphaSourceCrop::ProfileTransitionRetentionDecision retention =
+				AlphaSourceCrop::EvaluateProfileTransitionRetention(retentionInput);
+			verifyRetainedProfileGeometryThisFrame =
+				retention.retainSourceGeometry &&
+				(nlsRequested || automaticSourceCrop || scopeSubtitleFit);
 			nlsTransition.Reset();
 			outwardPictureConfirmation = {};
-			nlsGeometryAvailable = false;
-			nlsTransitionWithdrawn = true;
-			nlsGeometry = {};
-			nlsGeometryClassification =
-				ActivePictureClassification::UNAVAILABLE;
 			latestActivePictureObservationSupportsCrop = false;
-			nlsGeometrySourceGeneration = 0;
-			activePictureAnalysisSourceGeneration = 0;
+			nlsTransitionWithdrawn = false;
+			if (!retention.retainSourceGeometry)
+			{
+				nlsGeometryAvailable = false;
+				nlsTransitionWithdrawn = true;
+				nlsGeometry = {};
+				nlsGeometryClassification =
+					ActivePictureClassification::UNAVAILABLE;
+				nlsGeometrySourceGeneration = 0;
+				nlsGeometrySourceFormatKey = 0;
+				activePictureAnalysisSourceGeneration = 0;
+			}
 			ClearSceneVerificationSnapshot();
 			ClearLatestActivePictureEvidence();
+			activePictureAmbiguityHold.Reset();
+			// Subtitle evidence is profile-dependent presentation state. Never
+			// bridge it with the source-picture geometry retained above.
 			ClearScopeSubtitleEvidence();
 			ClearScopePresentationEvidence();
 			nlsDecision = {};
@@ -7451,9 +7465,16 @@ struct LibplaceboVideoRenderer::Impl
 			lastFinalPresentationPolicy.clear();
 			lastFinalLayoutPolicy.clear();
 			DebugLog::Log(
-				"Alpha active picture authority reset: viewport_request=%llu",
+				"Alpha profile boundary: viewport_request=%llu retained_source_geometry=%d rect=%d,%d-%d,%d subtitle_state_retained=%d nls_intent_retained=%d",
 				static_cast<unsigned long long>(
-					viewportRequestSerial));
+					viewportRequestSerial),
+				retention.retainSourceGeometry ? 1 : 0,
+				retention.retainSourceGeometry ? nlsGeometry.left : 0,
+				retention.retainSourceGeometry ? nlsGeometry.top : 0,
+				retention.retainSourceGeometry ? nlsGeometry.right : 0,
+				retention.retainSourceGeometry ? nlsGeometry.bottom : 0,
+				retention.retainSubtitleState ? 1 : 0,
+				retention.retainNlsPresentationIntent ? 1 : 0);
 		}
 
 		if (lastRenderedEotf != EOTF::UNKNOWN &&
@@ -7686,7 +7707,8 @@ struct LibplaceboVideoRenderer::Impl
 				currentActivePictureIdentity,
 				state.displayMode->RefreshRateHz(),
 				configuredScreenActive, sceneHold,
-				!cadenceRepeat && sceneResult.safeBoundary,
+				(!cadenceRepeat && sceneResult.safeBoundary) ||
+					verifyRetainedProfileGeometryThisFrame,
 				activePicturePreviewDecision);
 		}
 		else
