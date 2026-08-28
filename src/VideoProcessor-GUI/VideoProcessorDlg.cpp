@@ -11314,18 +11314,26 @@ CVideoProcessorDlg::GetProfileOverlaySelections(
 	if (!shaderConfig.Load(ConfigFile::RENDERER_FILENAME))
 		return selections;
 
-	bool nlsConfigured = false;
+	RendererProfileConfig::Model profileModel;
+	std::string profileError;
+	if (RendererProfileConfig::Read(shaderConfig, profileModel, profileError))
+	{
+		std::map<std::string, size_t> optionCounts;
+		for (const RendererProfileConfig::Group& group : profileModel.groups)
+			optionCounts[group.name] = group.profiles.size();
+		selections = ProfileChangeOverlay::FilterSingleOptionGroups(
+			selections, optionCounts);
+	}
+
+	size_t nlsOptionCount = 0;
 	for (const std::string& section : shaderConfig.GetSectionNames())
 	{
 		std::string type;
 		if (shaderConfig.TryGetString(section, "shader_type", type) &&
 			ConfigFile::NormalizeName(type) == "nls")
-		{
-			nlsConfigured = true;
-			break;
-		}
+			++nlsOptionCount;
 	}
-	if (!nlsConfigured)
+	if (nlsOptionCount <= 1)
 		return selections;
 
 	std::string activeNlsLabel;

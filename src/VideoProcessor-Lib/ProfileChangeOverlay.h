@@ -166,6 +166,17 @@ namespace ProfileChangeOverlay
 		return Collect(groups, current, visibleScreenName);
 	}
 
+	inline std::map<std::string, std::string> FilterSingleOptionGroups(
+		const std::map<std::string, std::string>& selections,
+		const std::map<std::string, size_t>& optionCounts)
+	{
+		auto filtered = selections;
+		for (const auto& count : optionCounts)
+			if (count.second <= 1)
+				filtered.erase(count.first);
+		return filtered;
+	}
+
 	inline std::vector<Item> CollectChanges(
 		const std::map<std::string, std::string>& previous,
 		const std::map<std::string, std::string>& current,

@@ -2563,6 +2563,30 @@ namespace VideoProcessorTest
 				ProfileChangeOverlay::Item::Indicator::Off);
 		}
 
+		TEST_METHOD(ProfileOverlayOmitsGroupsWithoutAChoice)
+		{
+			const std::map<std::string, std::string> selections = {
+				{ "display", "cinema" },
+				{ "queue", "normal" },
+				{ "scaling", "sharp" },
+				{ "nls", "on:Protected" }
+			};
+			const std::map<std::string, size_t> optionCounts = {
+				{ "display", 3 },
+				{ "queue", 1 },
+				{ "scaling", 0 },
+				{ "nls", 2 }
+			};
+			const auto filtered =
+				ProfileChangeOverlay::FilterSingleOptionGroups(
+					selections, optionCounts);
+			Assert::AreEqual(static_cast<size_t>(2), filtered.size());
+			Assert::IsTrue(filtered.find("display") != filtered.end());
+			Assert::IsTrue(filtered.find("nls") != filtered.end());
+			Assert::IsTrue(filtered.find("queue") == filtered.end());
+			Assert::IsTrue(filtered.find("scaling") == filtered.end());
+		}
+
 		TEST_METHOD(ProfileChangeDisplayDurationIsBoundedAndLive)
 		{
 			char temporaryDirectory[MAX_PATH] = {};
