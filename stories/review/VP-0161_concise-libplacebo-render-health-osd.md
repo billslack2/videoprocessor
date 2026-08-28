@@ -91,6 +91,48 @@ not edited during this deployment and retained its then-current SHA-256
 The application remains stopped after deployment, and the combined source
 branch remains local and unpushed as requested.
 
+The user's second live Ctrl+I check still showed the legacy rows. Runtime
+evidence confirmed that the correct API-15 executable/plugin pair was loaded,
+so this was not a stale binary or launch-path problem. The remaining defect
+was `LibplaceboVideoRenderer::GetRenderHealthSnapshot` using a non-blocking
+`try_lock` on the long render/present mutex. Ctrl+I's one-second polling can
+remain phase-aligned with the render loop and lose that race indefinitely,
+causing every snapshot to return unavailable. Local-only corrective commit
+`64db6377` gives health publication its own short mutex, so the UI no longer
+competes with render or present work, and logs the plugin-bridge availability
+transition for live verification.
+
+The same commit implements the requested renderer-authoritative rate display.
+VP Renderer publishes the existing Alpha/libplacebo swapchain telemetry field
+`measuredDisplayHz` atomically and forwards it through
+`GetDetectedDisplayRefreshRate`; madVR retains its own detected-rate path.
+Ctrl+I now labels capture cadence `Estimated FPS` and renderer display cadence
+`Estimated vsync rate`. It does not show the UI `WaitForVBlank` sampler,
+configured override, fallback rate, or warm-up status in that OSD field.
+
+The clean x64 Release solution rebuild passed at `64db6377` with generated
+identity `VERSION_DIRTY=false`. Forty focused VP-0147/render-parameter,
+presentation-telemetry, health, and plugin-proxy tests passed after the clean
+build; the complete offscreen Config suite passed. The complete native suite
+passed 967/968 before the clean rebuild, with only the same pre-existing
+`ConfigurationReferenceMatchesPublicFieldInventory` mismatch failing.
+
+The second corrective deployment backup is
+`C:\Videoprocessor\vp\backup-before-vp0161-health-vsync-20260828-190114`.
+Deployed SHA-256 values are:
+
+- `VideoProcessor.exe`:
+  `C5086A5FCAC852A2C77C1E4C6530A3EC619A072A4099ECEF9160BD7365DD7D34`.
+- `vprenderer\VideoProcessorVPRenderer.dll`:
+  `EF9A6C810472B843DA8A950DCB4CE2850633F9DFE235DD64DCB3CADD488359F1`.
+
+Both hashes exactly match the clean build. The active configuration was not
+edited and retained SHA-256
+`674CE09A96516D7DFAF86B7C9FC79255E57E7953D1E12BB009B870DC0D6ECF3E`.
+Automated UI launch did not proceed because its app-approval request timed
+out; VideoProcessor remains stopped, and the source branch remains local and
+unpushed.
+
 Remaining acceptance is the live Alpha UI exercise: open Ctrl+I during video,
 confirm the six rows fit without clipping, verify warm-up settles to `Good`,
 and observe that a real renderer drop or material render stall temporarily
