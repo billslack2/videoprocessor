@@ -23,13 +23,14 @@ namespace DisplayRuleExpression
 	{
 		return name == "input" || name == "scaling" ||
 			name == "display" || name == "color" || name == "output" ||
-			name == "viewport" || name == "queue" || name == "lldv";
+			name == "viewport" || name == "zoom" || name == "queue" ||
+			name == "lldv";
 	}
 
 	inline bool IsProfileVariable(const std::string& name,
 		const std::string& prefix)
 	{
-		if (name == prefix + "viewport_name")
+		if (name == prefix + "viewport_name" || name == prefix + "zoom_name")
 			return true;
 		return name.size() > prefix.size() &&
 			name.compare(0, prefix.size(), prefix) == 0 &&
@@ -48,8 +49,9 @@ namespace DisplayRuleExpression
 			name == "range" || name == "scan" || name == "renderer" ||
 			name == "key" ||
 			name == "event" || name == "event_reason" ||
-			name == "screen_config" ||
-			name == "viewport_profile" || name == "vertical_alignment" ||
+			name == "screen_config" || name == "zoom_config" ||
+			name == "viewport_profile" || name == "zoom_profile" ||
+			name == "vertical_alignment" ||
 			IsProfileVariable(name, "profile."))
 		{
 			type = ValueType::Text;

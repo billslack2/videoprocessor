@@ -490,6 +490,35 @@ namespace AlphaSourceCrop
 		double contentAspect, const PresentationRect& screen);
 	const char* UnusedSpaceAxisName(UnusedSpaceAxis axis);
 
+	// A viewport may independently opt into filling its physical screen after
+	// current trusted active-picture authority has accepted either a bar crop or
+	// the full raster. The optional narrower limit is a minimum content aspect;
+	// the optional wider limit is a maximum content aspect. Neither limit makes
+	// provisional or stale geometry eligible for cropping.
+	struct AspectLimitFillInput
+	{
+		bool trustedContentAuthorityAccepted = false;
+		bool cropNarrowerContentToFillScreen = false;
+		bool narrowerLimitConfigured = false;
+		double narrowerAspectLimit = 0.0;
+		bool cropWiderContentToFillScreen = false;
+		bool widerLimitConfigured = false;
+		double widerAspectLimit = 0.0;
+		double screenAspect = 0.0;
+		ActivePictureBounds sourceBounds;
+	};
+
+	struct AspectLimitFillDecision
+	{
+		ActivePictureBounds sourceBounds;
+		bool applied = false;
+		double contentAspect = 0.0;
+		std::string reason;
+	};
+
+	AspectLimitFillDecision EvaluateAspectLimitFill(
+		const AspectLimitFillInput& input);
+
 	class AmbiguityHold
 	{
 	public:

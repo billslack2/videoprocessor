@@ -2208,6 +2208,83 @@ namespace Tests
 				static_cast<int>(widerContent.unusedAxis));
 		}
 
+		TEST_METHOD(AspectLimitFillCropsTrustedNarrowerAndWiderContent)
+		{
+			AspectLimitFillInput input;
+			input.trustedContentAuthorityAccepted = true;
+			input.cropNarrowerContentToFillScreen = true;
+			input.narrowerLimitConfigured = true;
+			input.narrowerAspectLimit = 2.20;
+			input.screenAspect = 2.35;
+			input.sourceBounds = {
+				0, 208, 3840, 1952, 3840, 2160,
+				3840.0 / 1744.0, ActivePictureBounds::BarAxes::TOP_BOTTOM };
+			const AspectLimitFillDecision filled =
+				EvaluateAspectLimitFill(input);
+			Assert::IsTrue(filled.applied);
+			Assert::AreEqual(0, filled.sourceBounds.left);
+			Assert::AreEqual(3840, filled.sourceBounds.right);
+			Assert::IsTrue(filled.sourceBounds.top > input.sourceBounds.top);
+			Assert::IsTrue(filled.sourceBounds.bottom < input.sourceBounds.bottom);
+			Assert::AreEqual(2.35,
+				static_cast<double>(filled.sourceBounds.right - filled.sourceBounds.left) /
+				(filled.sourceBounds.bottom - filled.sourceBounds.top), 0.002);
+
+			input.sourceBounds = {
+				0, 42, 3840, 2118, 3840, 2160,
+				3840.0 / 2076.0, ActivePictureBounds::BarAxes::TOP_BOTTOM };
+			const AspectLimitFillDecision narrow =
+				EvaluateAspectLimitFill(input);
+			Assert::IsFalse(narrow.applied);
+			Assert::IsTrue(narrow.reason.find("narrower") != std::string::npos);
+
+			input.trustedContentAuthorityAccepted = false;
+			const AspectLimitFillDecision untrusted =
+				EvaluateAspectLimitFill(input);
+			Assert::IsFalse(untrusted.applied);
+			Assert::IsTrue(untrusted.reason.find("trusted") != std::string::npos);
+
+			input.trustedContentAuthorityAccepted = true;
+			input.narrowerLimitConfigured = false;
+			const AspectLimitFillDecision omittedLimit =
+				EvaluateAspectLimitFill(input);
+			Assert::IsTrue(omittedLimit.applied);
+
+			// A current trusted full raster is valid content authority too. This
+			// is the common no-black-bars case: 16:9 content filling a 2.35:1
+			// physical screen by centered top/bottom crop.
+			input.sourceBounds = {
+				0, 0, 1920, 1080, 1920, 1080,
+				16.0 / 9.0, ActivePictureBounds::BarAxes::NONE };
+			const AspectLimitFillDecision fullRaster =
+				EvaluateAspectLimitFill(input);
+			Assert::IsTrue(fullRaster.applied);
+			Assert::IsTrue(fullRaster.sourceBounds.top > 0);
+			Assert::IsTrue(fullRaster.sourceBounds.bottom < 1080);
+
+			input.cropNarrowerContentToFillScreen = false;
+			input.cropWiderContentToFillScreen = true;
+			input.widerLimitConfigured = true;
+			input.widerAspectLimit = 2.76;
+			input.sourceBounds = {
+				0, 280, 3840, 1880, 3840, 2160,
+				2.40, ActivePictureBounds::BarAxes::TOP_BOTTOM };
+			const AspectLimitFillDecision wider =
+				EvaluateAspectLimitFill(input);
+			Assert::IsTrue(wider.applied);
+			Assert::IsTrue(wider.sourceBounds.left > input.sourceBounds.left);
+			Assert::IsTrue(wider.sourceBounds.right < input.sourceBounds.right);
+			Assert::AreEqual(2.35,
+				static_cast<double>(wider.sourceBounds.right - wider.sourceBounds.left) /
+				(wider.sourceBounds.bottom - wider.sourceBounds.top), 0.002);
+
+			input.widerAspectLimit = 2.35;
+			const AspectLimitFillDecision tooWide =
+				EvaluateAspectLimitFill(input);
+			Assert::IsFalse(tooWide.applied);
+			Assert::IsTrue(tooWide.reason.find("wider") != std::string::npos);
+		}
+
 		TEST_METHOD(SourceEnvelopeIsIndependentOfScreenAndAnamorphicMapping)
 		{
 			PresentationEnvelopeGeometryInput source;

@@ -1032,6 +1032,104 @@ namespace AlphaSourceCrop
 			VerticalPictureAlignment::CENTER);
 	}
 
+	AspectLimitFillDecision EvaluateAspectLimitFill(
+		const AspectLimitFillInput& input)
+	{
+		AspectLimitFillDecision decision;
+		decision.sourceBounds = input.sourceBounds;
+		const int width = input.sourceBounds.right - input.sourceBounds.left;
+		const int height = input.sourceBounds.bottom - input.sourceBounds.top;
+		if (width <= 0 || height <= 0)
+		{
+			decision.reason = "trusted crop bounds are invalid";
+			return decision;
+		}
+		decision.contentAspect = static_cast<double>(width) / height;
+		if (!input.trustedContentAuthorityAccepted)
+		{
+			decision.reason = "trusted active-picture authority is unavailable";
+			return decision;
+		}
+		if (!std::isfinite(input.screenAspect) || input.screenAspect < 1.0 ||
+			(input.narrowerLimitConfigured &&
+				(!std::isfinite(input.narrowerAspectLimit) ||
+				 input.narrowerAspectLimit < 1.0)) ||
+			(input.widerLimitConfigured &&
+				(!std::isfinite(input.widerAspectLimit) ||
+				 input.widerAspectLimit < 1.0)))
+		{
+			decision.reason = "aspect limit or screen aspect is invalid";
+			return decision;
+		}
+		const double epsilon = 1e-6;
+		if (decision.contentAspect < input.screenAspect - epsilon)
+		{
+			if (!input.cropNarrowerContentToFillScreen)
+			{
+				decision.reason = "narrower-content fill is off";
+				return decision;
+			}
+			if (input.narrowerLimitConfigured &&
+				decision.contentAspect + epsilon < input.narrowerAspectLimit)
+			{
+				decision.reason = "content is narrower than the configured aspect limit";
+				return decision;
+			}
+			// Crop only top/bottom edges, symmetrically and on chroma boundaries,
+			// to widen the selected active picture to the screen aspect.
+			int filledHeight = static_cast<int>(std::floor(width / input.screenAspect));
+			filledHeight &= ~1;
+			if (filledHeight <= 0 || filledHeight >= height)
+			{
+				decision.reason = "centered narrower-content fill would not remove source rows";
+				return decision;
+			}
+			const int removedRows = height - filledHeight;
+			const int topInset = (removedRows / 2) & ~1;
+			decision.sourceBounds.top += topInset;
+			decision.sourceBounds.bottom = decision.sourceBounds.top + filledHeight;
+			decision.sourceBounds.aspectRatio = static_cast<double>(width) / filledHeight;
+			decision.sourceBounds.trustedBarAxes = ActivePictureBounds::BarAxes::NONE;
+			decision.applied = true;
+			decision.reason = "trusted narrower content filled with centered top and bottom crop";
+			return decision;
+		}
+		if (decision.contentAspect > input.screenAspect + epsilon)
+		{
+			if (!input.cropWiderContentToFillScreen)
+			{
+				decision.reason = "wider-content fill is off";
+				return decision;
+			}
+			if (input.widerLimitConfigured &&
+				decision.contentAspect - epsilon > input.widerAspectLimit)
+			{
+				decision.reason = "content is wider than the configured aspect limit";
+				return decision;
+			}
+			// Crop only left/right edges, symmetrically and on chroma boundaries,
+			// to narrow the selected active picture to the screen aspect.
+			int filledWidth = static_cast<int>(std::floor(height * input.screenAspect));
+			filledWidth &= ~1;
+			if (filledWidth <= 0 || filledWidth >= width)
+			{
+				decision.reason = "centered wider-content fill would not remove source columns";
+				return decision;
+			}
+			const int removedColumns = width - filledWidth;
+			const int leftInset = (removedColumns / 2) & ~1;
+			decision.sourceBounds.left += leftInset;
+			decision.sourceBounds.right = decision.sourceBounds.left + filledWidth;
+			decision.sourceBounds.aspectRatio = static_cast<double>(filledWidth) / height;
+			decision.sourceBounds.trustedBarAxes = ActivePictureBounds::BarAxes::NONE;
+			decision.applied = true;
+			decision.reason = "trusted wider content filled with centered left and right crop";
+			return decision;
+		}
+		decision.reason = "content already matches the screen aspect";
+		return decision;
+	}
+
 	const char* VerticalPictureAlignmentName(
 		VerticalPictureAlignment alignment)
 	{

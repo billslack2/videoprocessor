@@ -152,8 +152,8 @@ namespace VideoProcessorTest
 				"lldv", "lldv.cinema",
 				// Shader definitions, rules, and legacy shader sections.
 				"shader", "shader.nls.standard", "shaders", "shaders.legacy",
-				// Renderer and viewport profiles, including legacy profile roots.
-				"vprenderer.viewport.scope", "profiles", "profiles.viewport.scope",
+				// Renderer and legacy profile roots.
+				"profiles", "profiles.viewport.scope",
 				"viewport", "viewport.scope",
 				// Completed-event actions are part of the staged renderer model.
 				"actions.audio_delay_film", "event_actions.legacy"
@@ -169,6 +169,12 @@ namespace VideoProcessorTest
 				static_cast<int>(ConfigurationApplyPolicy::ClassifySection("vprenderer")));
 			Assert::AreEqual(static_cast<int>(Action::ApplyProfiles),
 				static_cast<int>(ConfigurationApplyPolicy::ClassifySection("vprenderer.rec709")));
+			Assert::AreEqual(static_cast<int>(Action::ApplyProfiles),
+				static_cast<int>(ConfigurationApplyPolicy::ClassifySection("vprenderer.viewport")));
+			Assert::AreEqual(static_cast<int>(Action::ApplyProfiles),
+				static_cast<int>(ConfigurationApplyPolicy::ClassifySection("vprenderer.viewport.scope")));
+			Assert::AreEqual(static_cast<int>(Action::ApplyProfiles),
+				static_cast<int>(ConfigurationApplyPolicy::ClassifySection("vprenderer.scaling.film")));
 		}
 
 		TEST_METHOD(ConfigurationApplyPolicyClassifiesNoOpAndSaveOnlyContent)
@@ -232,6 +238,12 @@ namespace VideoProcessorTest
 			Assert::AreEqual(static_cast<int>(Action::ApplyProfiles),
 				static_cast<int>(ConfigurationApplyPolicy::ClassifyChange(
 					{ "vprenderer.rec709", "quality" })));
+			Assert::AreEqual(static_cast<int>(Action::ApplyProfiles),
+				static_cast<int>(ConfigurationApplyPolicy::ClassifyChange(
+					{ "vprenderer.viewport.scope", "crop_narrower_content_aspect_limit" })));
+			Assert::AreEqual(static_cast<int>(Action::ApplyProfiles),
+				static_cast<int>(ConfigurationApplyPolicy::ClassifyChange(
+					{ "vprenderer.scaling.film", "upscaler" })));
 			Assert::AreEqual(static_cast<int>(Action::SaveOnly),
 				static_cast<int>(ConfigurationApplyPolicy::ClassifyChange(
 					{ "manual.extension", "shortcut" })));

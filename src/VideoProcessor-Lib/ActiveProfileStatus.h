@@ -11,8 +11,8 @@
 
 namespace ActiveProfileStatus
 {
-    constexpr uint32_t Version = 5;
-    constexpr wchar_t MappingName[] = L"Local\\VideoProcessor.ActiveProfileStatus.v5";
+    constexpr uint32_t Version = 7;
+    constexpr wchar_t MappingName[] = L"Local\\VideoProcessor.ActiveProfileStatus.v7";
     constexpr size_t MaximumActiveShaders = 16;
 
     struct Snapshot
@@ -23,7 +23,10 @@ namespace ActiveProfileStatus
         char queue[96]{};
         char renderer[96]{};
         char color[96]{};
+        char scaling[96]{};
+        char output[96]{};
         char viewport[96]{};
+        char zoom[96]{};
         uint64_t rendererGeneration = 0;
         uint64_t shaderGeneration = 0;
         uint32_t shaderAvailable = 0;
@@ -76,8 +79,11 @@ namespace ActiveProfileStatus
         next.generation = generation;
         const auto renderer = selections.find("display");
         const auto color = selections.find("color");
+        const auto scaling = selections.find("scaling");
+        const auto output = selections.find("output");
         const auto queue = selections.find("queue");
         const auto viewport = selections.find("viewport");
+        const auto zoom = selections.find("zoom");
         // Queue profiles use the first (root) profile whenever no conditional
         // selection overrides it. Publish that resolved default explicitly so
         // the editor can mark it active just like an explicitly selected one.
@@ -87,8 +93,14 @@ namespace ActiveProfileStatus
             std::string() : SectionFor("vprenderer", renderer->second));
         Copy(next.color, sizeof(next.color), color == selections.end() ?
             std::string() : SectionFor("vprenderer.color", color->second));
+        Copy(next.scaling, sizeof(next.scaling), scaling == selections.end() ?
+            std::string() : SectionFor("vprenderer.scaling", scaling->second));
+        Copy(next.output, sizeof(next.output), output == selections.end() ?
+            std::string() : SectionFor("vprenderer.output", output->second));
         Copy(next.viewport, sizeof(next.viewport), viewport == selections.end() ?
             std::string() : SectionFor("vprenderer.viewport", viewport->second));
+        Copy(next.zoom, sizeof(next.zoom), zoom == selections.end() ?
+            std::string() : SectionFor("vprenderer.zoom", zoom->second));
         next.rendererGeneration = rendererGeneration;
         next.shaderAvailable = shaderAvailable ? 1u : 0u;
         next.shaderGeneration = shaderAvailable ? rendererGeneration : 0;

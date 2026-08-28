@@ -42,6 +42,7 @@ namespace
 		if (!(left.manualSelections == right.manualSelections &&
 			left.effectiveSelections == right.effectiveSelections &&
 			left.viewport.profile == right.viewport.profile &&
+			left.viewport.zoomProfile == right.viewport.zoomProfile &&
 			left.viewport.screenAspect.numerator ==
 				right.viewport.screenAspect.numerator &&
 			left.viewport.screenAspect.denominator ==
@@ -55,6 +56,22 @@ namespace
 			left.viewport.anamorphicScale.denominator ==
 				right.viewport.anamorphicScale.denominator &&
 			left.viewport.automaticCrop == right.viewport.automaticCrop &&
+			left.viewport.cropNarrowerContentToFillScreen ==
+				right.viewport.cropNarrowerContentToFillScreen &&
+			left.viewport.hasCropNarrowerContentAspectLimit ==
+				right.viewport.hasCropNarrowerContentAspectLimit &&
+			left.viewport.cropNarrowerContentAspectLimit.numerator ==
+				right.viewport.cropNarrowerContentAspectLimit.numerator &&
+			left.viewport.cropNarrowerContentAspectLimit.denominator ==
+				right.viewport.cropNarrowerContentAspectLimit.denominator &&
+			left.viewport.cropWiderContentToFillScreen ==
+				right.viewport.cropWiderContentToFillScreen &&
+			left.viewport.hasCropWiderContentAspectLimit ==
+				right.viewport.hasCropWiderContentAspectLimit &&
+			left.viewport.cropWiderContentAspectLimit.numerator ==
+				right.viewport.cropWiderContentAspectLimit.numerator &&
+			left.viewport.cropWiderContentAspectLimit.denominator ==
+				right.viewport.cropWiderContentAspectLimit.denominator &&
 			left.viewport.subtitleFit == right.viewport.subtitleFit &&
 			left.viewport.subtitleHoldMilliseconds ==
 				right.viewport.subtitleHoldMilliseconds &&
@@ -798,6 +815,11 @@ namespace UnifiedProfileRuntime
 		if (!RendererProfileConfig::ResolveViewport(
 			m_model, viewportProfile, generation, viewport, error))
 			return false;
+		const auto selectedZoom = effective.find("zoom");
+		if (selectedZoom != effective.end() &&
+			!RendererProfileConfig::ResolveZoom(m_model, selectedZoom->second,
+				viewport, error))
+			return false;
 		RendererProfileConfig::ResolvedQueue queue;
 		const auto selectedQueue = effective.find("queue");
 		if (selectedQueue != effective.end() &&
@@ -815,6 +837,8 @@ namespace UnifiedProfileRuntime
 		PublishSourceVariables(values, variables);
 		variables["viewport_profile"] =
 			StateVariables::Value::Text(viewport.profile);
+		variables["zoom_profile"] =
+			StateVariables::Value::Text(viewport.zoomProfile);
 		variables["screen_aspect"] =
 			StateVariables::Value::Aspect(viewport.screenAspect);
 		variables["vertical_alignment"] =
@@ -823,6 +847,20 @@ namespace UnifiedProfileRuntime
 			StateVariables::Value::Aspect(viewport.anamorphicScale);
 		variables["automatic_crop"] =
 			StateVariables::Value::Boolean(viewport.automaticCrop);
+		variables["crop_narrower_content_to_fill_screen"] =
+			StateVariables::Value::Boolean(
+				viewport.cropNarrowerContentToFillScreen);
+		if (viewport.hasCropNarrowerContentAspectLimit)
+			variables["crop_narrower_content_aspect_limit"] =
+				StateVariables::Value::Aspect(
+					viewport.cropNarrowerContentAspectLimit);
+		variables["crop_wider_content_to_fill_screen"] =
+			StateVariables::Value::Boolean(
+				viewport.cropWiderContentToFillScreen);
+		if (viewport.hasCropWiderContentAspectLimit)
+			variables["crop_wider_content_aspect_limit"] =
+				StateVariables::Value::Aspect(
+					viewport.cropWiderContentAspectLimit);
 		variables["subtitle_fit"] =
 			StateVariables::Value::Boolean(viewport.subtitleFit);
 		variables["subtitle_hold_seconds"] =
@@ -856,6 +894,16 @@ namespace UnifiedProfileRuntime
 				variables["screen_config"] =
 					StateVariables::Value::Text(label);
 				variables["profile.viewport_name"] =
+					StateVariables::Value::Text(label);
+			}
+			else if (selection.first == "zoom")
+			{
+				std::string label = selection.second;
+				const auto profile = m_model.profiles.find("zoom." + selection.second);
+				if (profile != m_model.profiles.end() && !profile->second.label.empty())
+					label = profile->second.label;
+				variables["zoom_config"] = StateVariables::Value::Text(label);
+				variables["profile.zoom_name"] =
 					StateVariables::Value::Text(label);
 			}
 		}

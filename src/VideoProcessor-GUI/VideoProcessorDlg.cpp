@@ -13658,9 +13658,10 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 
 	if (nIDEvent == SHADER_RULE_REFRESH_TIMER_ID)
 	{
-		// Renderer preparation remains asynchronous and observable in logs, but
-		// the operator-facing pipeline preparation popup is intentionally off.
-		constexpr bool showRenderStallOverlay = false;
+		// Use the existing top-level VP status popup while the renderer is
+		// compiling its internal GPU pipeline. A native renderer/profile OSD
+		// cannot paint until that pipeline is ready.
+		constexpr bool showRenderStallOverlay = true;
 		CString renderStallStatus;
 		const bool rendererCanReportStall =
 			m_rendererState == RendererState::RENDERSTATE_STARTING ||

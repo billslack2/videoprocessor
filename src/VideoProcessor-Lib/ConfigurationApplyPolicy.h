@@ -116,6 +116,24 @@ namespace ConfigurationApplyPolicy
 			std::string::npos;
 	}
 
+	// Screen and Zoom profile changes use the same renderer-owned, per-frame
+	// application path as their F-key selections. Geometry, crop, and subtitle
+	// placement therefore do not need to tear down the renderer.
+	inline bool IsViewportProfileSection(const std::string& rawSection)
+	{
+		const std::string section = NormalizeSection(rawSection);
+		return HasPrefix(section, "vprenderer.viewport") ||
+			HasPrefix(section, "vprenderer.zoom");
+	}
+
+	// Scaling profiles alter only the per-frame libplacebo render parameters.
+	// They therefore share the live profile path used by Screen profiles rather
+	// than rebuilding the capture graph when a filter profile is selected.
+	inline bool IsScalingProfileSection(const std::string& rawSection)
+	{
+		return HasPrefix(NormalizeSection(rawSection), "vprenderer.scaling");
+	}
+
 	inline Action ClassifySection(const std::string& section,
 		bool directShowRendererActive = true)
 	{
@@ -140,7 +158,9 @@ namespace ConfigurationApplyPolicy
 				Action::SaveOnly;
 		if (HasPrefix(normalized, "vprenderer.output"))
 			return Action::RestartCapture;
-		if (IsRenderingProfileSection(normalized))
+		if (IsRenderingProfileSection(normalized) ||
+			IsViewportProfileSection(normalized) ||
+			IsScalingProfileSection(normalized))
 			return Action::ApplyProfiles;
 
 		// Every known renderer, input, profile, shader, LLDV, presentation, and

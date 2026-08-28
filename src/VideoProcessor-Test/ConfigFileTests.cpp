@@ -2023,6 +2023,63 @@ namespace VideoProcessorTest
 			DeleteFileA(path.c_str());
 		}
 
+		TEST_METHOD(ZoomShortcutNeverChangesSelectedScreenProfile)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(
+				ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) +
+				"VideoProcessor-independent-zoom.cfg";
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[vprenderer.viewport]\n"
+					"screen_aspect: 16:9\n"
+					"[vprenderer.viewport.scope]\n"
+					"when: $key==\"F2\"\n"
+					"screen_aspect: 2.35:1\n"
+					"[vprenderer.zoom]\n"
+					"crop_narrower_content_to_fill_screen: true\n"
+					"[vprenderer.zoom.scope]\n"
+					"when: $key==\"F2\"\n"
+					"crop_narrower_content_to_fill_screen: false\n"
+					"[vprenderer.zoom.scope_and_crop]\n"
+					"when: $key==\"Shift+2\"\n"
+					"crop_narrower_content_aspect_limit: 2.20:1\n";
+			}
+
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			std::string error;
+			UnifiedProfileRuntime::Runtime runtime;
+			Assert::IsTrue(runtime.Initialize(config,
+				[](const std::string&, std::string&) { return false; }, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			UnifiedProfileRuntime::SelectionResult selected;
+			Assert::IsTrue(runtime.SelectKey("F2",
+				[](const std::string&, std::string&) { return false; },
+				selected, error));
+			Assert::AreEqual("scope", selected.snapshot->viewport.profile.c_str());
+			Assert::AreEqual("scope", selected.snapshot->viewport.zoomProfile.c_str());
+			Assert::AreEqual(2.35, selected.snapshot->viewport.screenAspect.value,
+				0.000001);
+			Assert::IsFalse(selected.snapshot->viewport.cropNarrowerContentToFillScreen);
+
+			Assert::IsTrue(runtime.SelectKey("Shift+2",
+				[](const std::string&, std::string&) { return false; },
+				selected, error));
+			Assert::AreEqual("scope", selected.snapshot->viewport.profile.c_str());
+			Assert::AreEqual("scope_and_crop",
+				selected.snapshot->viewport.zoomProfile.c_str());
+			Assert::AreEqual(2.35, selected.snapshot->viewport.screenAspect.value,
+				0.000001);
+			Assert::IsTrue(selected.snapshot->viewport.cropNarrowerContentToFillScreen);
+			Assert::IsTrue(selected.snapshot->viewport.hasCropNarrowerContentAspectLimit);
+			Assert::AreEqual(2.20,
+				selected.snapshot->viewport.cropNarrowerContentAspectLimit.value,
+				0.000001);
+			DeleteFileA(path.c_str());
+		}
+
 		TEST_METHOD(Vp0103VerticalAlignmentDefaultsValidatesAndPublishes)
 		{
 			char temporaryDirectory[MAX_PATH] = {};
@@ -2037,7 +2094,11 @@ namespace VideoProcessorTest
 					"[vprenderer.viewport]\nscreen_aspect: 16:9\n"
 					"[vprenderer.viewport.scope]\nwhen: $key==\"F2\"\n"
 					"screen_aspect: 16:9\nvertical_alignment: BOTTOM\n"
-					"automatic_crop: true\nsubtitle_fit: true\n";
+					"crop_narrower_content_to_fill_screen: true\n"
+					"crop_narrower_content_aspect_limit: 2.20:1\n"
+					"crop_wider_content_to_fill_screen: true\n"
+					"crop_wider_content_aspect_limit: 2.76:1\n"
+					"subtitle_fit: true\n";
 			}
 
 			ConfigFile config;
@@ -2054,6 +2115,14 @@ namespace VideoProcessorTest
 			Assert::IsTrue(RendererProfileConfig::ResolveViewport(
 				model, "scope", 2, scope, error));
 			Assert::AreEqual("bottom", scope.verticalAlignment.c_str());
+			Assert::IsTrue(scope.cropNarrowerContentToFillScreen);
+			Assert::IsTrue(scope.hasCropNarrowerContentAspectLimit);
+			Assert::AreEqual(2.20,
+				scope.cropNarrowerContentAspectLimit.value, 0.000001);
+			Assert::IsTrue(scope.cropWiderContentToFillScreen);
+			Assert::IsTrue(scope.hasCropWiderContentAspectLimit);
+			Assert::AreEqual(2.76,
+				scope.cropWiderContentAspectLimit.value, 0.000001);
 
 			UnifiedProfileRuntime::Runtime runtime;
 			Assert::IsTrue(runtime.Initialize(config,
@@ -2066,15 +2135,57 @@ namespace VideoProcessorTest
 			Assert::IsTrue(selected.snapshot->variables.Lookup(
 				"vertical_alignment", published));
 			Assert::AreEqual("bottom", published.c_str());
+			const StateVariables::Value* narrowerAspectLimit =
+				selected.snapshot->variables.Find(
+					"$crop_narrower_content_aspect_limit");
+			Assert::IsNotNull(narrowerAspectLimit);
+			Assert::IsTrue(narrowerAspectLimit->type ==
+				StateVariables::ValueType::Aspect);
+			Assert::AreEqual(2.20, narrowerAspectLimit->number, 0.000001);
+			const StateVariables::Value* widerAspectLimit =
+				selected.snapshot->variables.Find(
+					"$crop_wider_content_aspect_limit");
+			Assert::IsNotNull(widerAspectLimit);
+			Assert::IsTrue(widerAspectLimit->type ==
+				StateVariables::ValueType::Aspect);
+			Assert::AreEqual(2.76, widerAspectLimit->number, 0.000001);
 
+			// Optional limits are best-effort. A legacy or malformed value must not
+			// reject the complete renderer configuration.
 			{
 				std::ofstream file(path, std::ios::out | std::ios::trunc);
-				file << "[vprenderer.viewport]\nvertical_alignment: diagonal\n";
+				file << "[general]\nrenderer: VideoProcessor Renderer (Alpha)\n"
+					"[vprenderer.viewport]\n"
+					"screen_aspect: 2.35:1\n"
+					"crop_narrower_content_aspect_limit: 2.20:1\n"
+					"crop_wider_content_aspect_limit: 2.76:1\n"
+					"[vprenderer.viewport.scope]\nwhen: $key==\"F2\"\n"
+					"crop_narrower_content_aspect_limit: legacy-missing\n"
+					"crop_wider_content_aspect_limit: not-a-ratio\n";
 			}
 			Assert::IsTrue(config.Load(path));
 			error.clear();
-			Assert::IsFalse(RendererProfileConfig::Read(config, model, error));
-			Assert::IsTrue(error.find("vertical_alignment") != std::string::npos);
+			Assert::IsTrue(RendererProfileConfig::Read(config, model, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			Assert::IsTrue(RendererProfileConfig::ResolveViewport(
+				model, "scope", 3, scope, error));
+			Assert::IsFalse(scope.hasCropNarrowerContentAspectLimit);
+			Assert::IsFalse(scope.hasCropWiderContentAspectLimit);
+
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[vprenderer.viewport]\n"
+					"crop_narrower_content_aspect_limit: not-a-ratio\n"
+					"crop_wider_content_aspect_limit: 4.1:1\n";
+			}
+			Assert::IsTrue(config.Load(path));
+			error.clear();
+			Assert::IsTrue(RendererProfileConfig::Read(config, model, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			Assert::IsTrue(RendererProfileConfig::ResolveViewport(
+				model, "base", 4, base, error));
+			Assert::IsFalse(base.hasCropNarrowerContentAspectLimit);
+			Assert::IsFalse(base.hasCropWiderContentAspectLimit);
 			DeleteFileA(path.c_str());
 		}
 

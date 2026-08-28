@@ -941,6 +941,12 @@ namespace
 		std::string verticalAlignment = "center";
 		double anamorphicScale = 1.0;
 		bool automaticSourceCrop = false;
+		bool cropNarrowerContentToFillScreen = false;
+		bool cropNarrowerContentAspectLimitConfigured = false;
+		double cropNarrowerContentAspectLimit = 0.0;
+		bool cropWiderContentToFillScreen = false;
+		bool cropWiderContentAspectLimitConfigured = false;
+		double cropWiderContentAspectLimit = 0.0;
 		bool scopeSubtitleFit = false;
 		uint64_t scopeSubtitleHoldMs = 2000;
 		uint64_t scopeSubtitleEngageDriftMs = 0;
@@ -1008,6 +1014,12 @@ namespace
 				<< settings.verticalAlignment << '|'
 				<< settings.anamorphicScale << '|'
 				<< settings.automaticSourceCrop << '|'
+				<< settings.cropNarrowerContentToFillScreen << '|'
+				<< settings.cropNarrowerContentAspectLimitConfigured << '|'
+				<< settings.cropNarrowerContentAspectLimit << '|'
+				<< settings.cropWiderContentToFillScreen << '|'
+				<< settings.cropWiderContentAspectLimitConfigured << '|'
+				<< settings.cropWiderContentAspectLimit << '|'
 				<< settings.scopeSubtitleFit << '|' << settings.scopeSubtitleHoldMs << '|'
 				<< settings.scopeSubtitleEngageDriftMs << '|'
 				<< settings.scopeSubtitleReleaseDriftMs << '|'
@@ -1210,8 +1222,9 @@ namespace
 							(group.name == "scaling" ? "vprenderer.scaling" :
 								(group.name == "color" ? "vprenderer.color" :
 									(group.name == "output" ? "vprenderer.output" :
-									(group.name == "viewport" ? "vprenderer.viewport" :
-										group.name)))));
+										(group.name == "viewport" ? "vprenderer.viewport" :
+											(group.name == "zoom" ? "vprenderer.zoom" :
+												group.name))))));
 					if (!config.HasSection(root) &&
 						group.defaultSelection != "base")
 					{
@@ -1644,7 +1657,7 @@ namespace
 		readChoice("gamut_mapping", settings.gamutMapping, { "auto", "perceptual", "softclip", "relative", "desaturate" });
 		readPeakDetection(settings.peakDetection);
 		readChoice("upscaler", settings.upscaler, { "auto", "none", "nearest", "bilinear", "oversample", "bicubic", "gaussian", "catmull_rom", "lanczos", "ewa_lanczos", "ewa_lanczossharp", "ewa_lanczos4sharpest" });
-		readChoice("downscaler", settings.downscaler, { "auto", "none", "box", "hermite", "bilinear", "bicubic", "gaussian", "catmull_rom", "mitchell", "lanczos", "ewa_lanczos" });
+		readChoice("downscaler", settings.downscaler, { "auto", "box", "hermite", "bilinear", "bicubic", "gaussian", "catmull_rom", "mitchell", "lanczos" });
 		readToggle("deband", settings.deband);
 		if (config.TryGetString(rule.section, "deband_strength", raw))
 		{
@@ -1787,6 +1800,53 @@ namespace
 			readViewportString("automatic_crop", raw))
 			DebugLog::Log("profile '%s': invalid automatic_crop '%s'",
 				rule.name.c_str(), raw.c_str());
+		if (!readViewportBool("crop_narrower_content_to_fill_screen",
+			settings.cropNarrowerContentToFillScreen) &&
+			readViewportString("crop_narrower_content_to_fill_screen", raw))
+			DebugLog::Log("profile '%s': invalid crop_narrower_content_to_fill_screen '%s'",
+				rule.name.c_str(), raw.c_str());
+		if (readViewportString("crop_narrower_content_aspect_limit", raw))
+		{
+			settings.cropNarrowerContentAspectLimitConfigured = false;
+			double value = 0.0;
+			if (ConfigFile::NormalizeName(raw) == "none")
+			{
+				settings.cropNarrowerContentAspectLimit = 0.0;
+			}
+			else if (ParseAspectRatio(raw, value) && value >= 1.0 && value <= 4.0)
+			{
+				settings.cropNarrowerContentAspectLimit = value;
+				settings.cropNarrowerContentAspectLimitConfigured = true;
+			}
+			else
+				DebugLog::Log("profile '%s': invalid crop_narrower_content_aspect_limit '%s'",
+					rule.name.c_str(), raw.c_str());
+		}
+		if (!readViewportBool("crop_wider_content_to_fill_screen",
+			settings.cropWiderContentToFillScreen) &&
+			readViewportString("crop_wider_content_to_fill_screen", raw))
+			DebugLog::Log("profile '%s': invalid crop_wider_content_to_fill_screen '%s'",
+				rule.name.c_str(), raw.c_str());
+		if (readViewportString("crop_wider_content_aspect_limit", raw))
+		{
+			settings.cropWiderContentAspectLimitConfigured = false;
+			double value = 0.0;
+			if (ConfigFile::NormalizeName(raw) == "none")
+			{
+				settings.cropWiderContentAspectLimit = 0.0;
+			}
+			else if (ParseAspectRatio(raw, value) && value >= 1.0 && value <= 4.0)
+			{
+				settings.cropWiderContentAspectLimit = value;
+				settings.cropWiderContentAspectLimitConfigured = true;
+			}
+			else
+				DebugLog::Log("profile '%s': invalid crop_wider_content_aspect_limit '%s'",
+					rule.name.c_str(), raw.c_str());
+		}
+		settings.automaticSourceCrop = settings.automaticSourceCrop ||
+			settings.cropNarrowerContentToFillScreen ||
+			settings.cropWiderContentToFillScreen;
 		if (!readViewportBool("subtitle_fit", settings.scopeSubtitleFit) &&
 			readViewportString("subtitle_fit", raw))
 			DebugLog::Log("profile '%s': invalid subtitle_fit '%s'",
@@ -1913,7 +1973,7 @@ namespace
 			{ "auto", "none", "nearest", "bilinear", "oversample", "bicubic", "gaussian", "catmull_rom", "lanczos", "ewa_lanczos", "ewa_lanczossharp", "ewa_lanczos4sharpest" });
 		settings.downscaler = ReadChoice(
 			config, "downscaler", "auto",
-			{ "auto", "none", "box", "hermite", "bilinear", "bicubic", "gaussian", "catmull_rom", "mitchell", "lanczos", "ewa_lanczos" });
+			{ "auto", "box", "hermite", "bilinear", "bicubic", "gaussian", "catmull_rom", "mitchell", "lanczos" });
 		settings.deband = ReadAutoToggle(config, "deband");
 		if (TryGetDisplayString(config, "deband_strength", rawValue))
 		{
@@ -2069,6 +2129,59 @@ namespace
 				rawValue.c_str());
 			settings.automaticSourceCrop = false;
 		}
+		if (TryGetDisplayString(config, "crop_narrower_content_to_fill_screen", rawValue) &&
+			!TryGetDisplayBool(config, "crop_narrower_content_to_fill_screen",
+				settings.cropNarrowerContentToFillScreen))
+		{
+			DebugLog::Log(
+				"libplacebo: invalid crop_narrower_content_to_fill_screen value '%s'; using false",
+				rawValue.c_str());
+			settings.cropNarrowerContentToFillScreen = false;
+		}
+		if (TryGetDisplayString(config, "crop_narrower_content_aspect_limit", rawValue))
+		{
+			settings.cropNarrowerContentAspectLimitConfigured = false;
+			double parsed = 0.0;
+			if (ConfigFile::NormalizeName(rawValue) == "none")
+			{
+				settings.cropNarrowerContentAspectLimit = 0.0;
+			}
+			else if (ParseAspectRatio(rawValue, parsed) && parsed >= 1.0 && parsed <= 4.0)
+			{
+				settings.cropNarrowerContentAspectLimit = parsed;
+				settings.cropNarrowerContentAspectLimitConfigured = true;
+			}
+			else
+				DebugLog::Log("libplacebo: crop_narrower_content_aspect_limit must be a ratio or decimal between 1.0 and 4.0; disabling the limit");
+		}
+		if (TryGetDisplayString(config, "crop_wider_content_to_fill_screen", rawValue) &&
+			!TryGetDisplayBool(config, "crop_wider_content_to_fill_screen",
+				settings.cropWiderContentToFillScreen))
+		{
+			DebugLog::Log(
+				"libplacebo: invalid crop_wider_content_to_fill_screen value '%s'; using false",
+				rawValue.c_str());
+			settings.cropWiderContentToFillScreen = false;
+		}
+		if (TryGetDisplayString(config, "crop_wider_content_aspect_limit", rawValue))
+		{
+			settings.cropWiderContentAspectLimitConfigured = false;
+			double parsed = 0.0;
+			if (ConfigFile::NormalizeName(rawValue) == "none")
+			{
+				settings.cropWiderContentAspectLimit = 0.0;
+			}
+			else if (ParseAspectRatio(rawValue, parsed) && parsed >= 1.0 && parsed <= 4.0)
+			{
+				settings.cropWiderContentAspectLimit = parsed;
+				settings.cropWiderContentAspectLimitConfigured = true;
+			}
+			else
+				DebugLog::Log("libplacebo: crop_wider_content_aspect_limit must be a ratio or decimal between 1.0 and 4.0; disabling the limit");
+		}
+		settings.automaticSourceCrop = settings.automaticSourceCrop ||
+			settings.cropNarrowerContentToFillScreen ||
+			settings.cropWiderContentToFillScreen;
 		if (TryGetDisplayString(config, "subtitle_hold_seconds", rawValue))
 		{
 			double seconds = 0.0;
@@ -2964,6 +3077,12 @@ struct LibplaceboVideoRenderer::Impl
 	std::string verticalAlignment = "center";
 	double anamorphicScale = 1.0;
 	bool automaticSourceCrop = false;
+	bool cropNarrowerContentToFillScreen = false;
+	bool cropNarrowerContentAspectLimitConfigured = false;
+	double cropNarrowerContentAspectLimit = 0.0;
+	bool cropWiderContentToFillScreen = false;
+	bool cropWiderContentAspectLimitConfigured = false;
+	double cropWiderContentAspectLimit = 0.0;
 	bool scopeSubtitleFit = false;
 	uint64_t scopeSubtitleHoldMs = 2000;
 	uint64_t scopeSubtitleEngageDriftMs = 0;
@@ -5880,6 +5999,18 @@ struct LibplaceboVideoRenderer::Impl
 		verticalAlignment = settings.verticalAlignment;
 		anamorphicScale = settings.anamorphicScale;
 		automaticSourceCrop = settings.automaticSourceCrop;
+		cropNarrowerContentToFillScreen =
+			settings.cropNarrowerContentToFillScreen;
+		cropNarrowerContentAspectLimitConfigured =
+			settings.cropNarrowerContentAspectLimitConfigured;
+		cropNarrowerContentAspectLimit =
+			settings.cropNarrowerContentAspectLimit;
+		cropWiderContentToFillScreen =
+			settings.cropWiderContentToFillScreen;
+		cropWiderContentAspectLimitConfigured =
+			settings.cropWiderContentAspectLimitConfigured;
+		cropWiderContentAspectLimit =
+			settings.cropWiderContentAspectLimit;
 		scopeSubtitleFit = settings.scopeSubtitleFit;
 		scopeSubtitleHoldMs = settings.scopeSubtitleHoldMs;
 		scopeSubtitleEngageDriftMs = settings.scopeSubtitleEngageDriftMs;
@@ -5955,6 +6086,18 @@ struct LibplaceboVideoRenderer::Impl
 			verticalAlignment != settings.verticalAlignment ||
 			anamorphicScale != settings.anamorphicScale ||
 			automaticSourceCrop != settings.automaticSourceCrop ||
+			cropNarrowerContentToFillScreen !=
+				settings.cropNarrowerContentToFillScreen ||
+			cropNarrowerContentAspectLimitConfigured !=
+				settings.cropNarrowerContentAspectLimitConfigured ||
+			cropNarrowerContentAspectLimit !=
+				settings.cropNarrowerContentAspectLimit ||
+			cropWiderContentToFillScreen !=
+				settings.cropWiderContentToFillScreen ||
+			cropWiderContentAspectLimitConfigured !=
+				settings.cropWiderContentAspectLimitConfigured ||
+			cropWiderContentAspectLimit !=
+				settings.cropWiderContentAspectLimit ||
 			scopeSubtitleFit != settings.scopeSubtitleFit ||
 			scopeSubtitleHoldMs != settings.scopeSubtitleHoldMs ||
 			scopeSubtitleEngageDriftMs != settings.scopeSubtitleEngageDriftMs ||
@@ -5967,6 +6110,18 @@ struct LibplaceboVideoRenderer::Impl
 		verticalAlignment = settings.verticalAlignment;
 		anamorphicScale = settings.anamorphicScale;
 		automaticSourceCrop = settings.automaticSourceCrop;
+		cropNarrowerContentToFillScreen =
+			settings.cropNarrowerContentToFillScreen;
+		cropNarrowerContentAspectLimitConfigured =
+			settings.cropNarrowerContentAspectLimitConfigured;
+		cropNarrowerContentAspectLimit =
+			settings.cropNarrowerContentAspectLimit;
+		cropWiderContentToFillScreen =
+			settings.cropWiderContentToFillScreen;
+		cropWiderContentAspectLimitConfigured =
+			settings.cropWiderContentAspectLimitConfigured;
+		cropWiderContentAspectLimit =
+			settings.cropWiderContentAspectLimit;
 		scopeSubtitleFit = settings.scopeSubtitleFit;
 		scopeSubtitleHoldMs = settings.scopeSubtitleHoldMs;
 		scopeSubtitleEngageDriftMs = settings.scopeSubtitleEngageDriftMs;
@@ -5979,6 +6134,18 @@ struct LibplaceboVideoRenderer::Impl
 		activeSettings.verticalAlignment = settings.verticalAlignment;
 		activeSettings.anamorphicScale = settings.anamorphicScale;
 		activeSettings.automaticSourceCrop = settings.automaticSourceCrop;
+		activeSettings.cropNarrowerContentToFillScreen =
+			settings.cropNarrowerContentToFillScreen;
+		activeSettings.cropNarrowerContentAspectLimitConfigured =
+			settings.cropNarrowerContentAspectLimitConfigured;
+		activeSettings.cropNarrowerContentAspectLimit =
+			settings.cropNarrowerContentAspectLimit;
+		activeSettings.cropWiderContentToFillScreen =
+			settings.cropWiderContentToFillScreen;
+		activeSettings.cropWiderContentAspectLimitConfigured =
+			settings.cropWiderContentAspectLimitConfigured;
+		activeSettings.cropWiderContentAspectLimit =
+			settings.cropWiderContentAspectLimit;
 		activeSettings.scopeSubtitleFit = settings.scopeSubtitleFit;
 		activeSettings.scopeSubtitleHoldMs = settings.scopeSubtitleHoldMs;
 		activeSettings.scopeSubtitleEngageDriftMs =
@@ -6131,6 +6298,18 @@ struct LibplaceboVideoRenderer::Impl
 			current.verticalAlignment != next.verticalAlignment ||
 			current.anamorphicScale != next.anamorphicScale ||
 			current.automaticSourceCrop != next.automaticSourceCrop ||
+			current.cropNarrowerContentToFillScreen !=
+				next.cropNarrowerContentToFillScreen ||
+			current.cropNarrowerContentAspectLimitConfigured !=
+				next.cropNarrowerContentAspectLimitConfigured ||
+			current.cropNarrowerContentAspectLimit !=
+				next.cropNarrowerContentAspectLimit ||
+			current.cropWiderContentToFillScreen !=
+				next.cropWiderContentToFillScreen ||
+			current.cropWiderContentAspectLimitConfigured !=
+				next.cropWiderContentAspectLimitConfigured ||
+			current.cropWiderContentAspectLimit !=
+				next.cropWiderContentAspectLimit ||
 			current.scopeSubtitleFit != next.scopeSubtitleFit ||
 			current.scopeSubtitleHoldMs != next.scopeSubtitleHoldMs ||
 			current.scopeSubtitleEngageDriftMs != next.scopeSubtitleEngageDriftMs ||
@@ -8576,6 +8755,54 @@ struct LibplaceboVideoRenderer::Impl
 			cropInput.rasterHeight = height;
 			const AlphaSourceCrop::Decision cropDecision =
 				AlphaSourceCrop::Evaluate(cropInput);
+			AlphaSourceCrop::AspectLimitFillDecision aspectLimitFill;
+			if (nlsRequested)
+			{
+				aspectLimitFill.sourceBounds = cropDecision.sourceBounds;
+				const int cropWidth = cropDecision.sourceBounds.right -
+					cropDecision.sourceBounds.left;
+				const int cropHeight = cropDecision.sourceBounds.bottom -
+					cropDecision.sourceBounds.top;
+				aspectLimitFill.contentAspect = cropHeight > 0 ?
+					static_cast<double>(cropWidth) / cropHeight : 0.0;
+				aspectLimitFill.reason =
+					"NLS owns final source geometry; aspect-limit fill withheld";
+			}
+			else if (!configuredScreenActive)
+			{
+				aspectLimitFill.sourceBounds = cropDecision.sourceBounds;
+				aspectLimitFill.reason =
+					"configured physical screen is not active";
+			}
+			else
+			{
+				AlphaSourceCrop::AspectLimitFillInput aspectLimitInput;
+				// Explicit fill can crop a current trusted full raster (for example
+				// 16:9 content on a 2.35:1 screen) as well as a trusted detected
+				// active picture. Do not use provisional or retained geometry here.
+				aspectLimitInput.trustedContentAuthorityAccepted =
+					cropDecision.applyCrop ||
+					cropInput.fullRasterPresentationAuthoritative;
+				aspectLimitInput.cropNarrowerContentToFillScreen =
+					cropNarrowerContentToFillScreen;
+				aspectLimitInput.narrowerLimitConfigured =
+					cropNarrowerContentAspectLimitConfigured;
+				aspectLimitInput.narrowerAspectLimit =
+					cropNarrowerContentAspectLimit;
+				aspectLimitInput.cropWiderContentToFillScreen =
+					cropWiderContentToFillScreen;
+				aspectLimitInput.widerLimitConfigured =
+					cropWiderContentAspectLimitConfigured;
+				aspectLimitInput.widerAspectLimit =
+					cropWiderContentAspectLimit;
+				aspectLimitInput.screenAspect = configuredScreenAspect;
+				aspectLimitInput.sourceBounds = cropDecision.sourceBounds;
+				aspectLimitFill = AlphaSourceCrop::EvaluateAspectLimitFill(
+					aspectLimitInput);
+			}
+			const ActivePictureBounds& presentationCropBounds =
+				aspectLimitFill.applied ? aspectLimitFill.sourceBounds :
+				cropDecision.sourceBounds;
 			std::ostringstream cropPolicy;
 			cropPolicy << automaticSourceCrop << '|'
 				<< cropDecision.applyCrop << '|'
@@ -8597,6 +8824,18 @@ struct LibplaceboVideoRenderer::Impl
 				<< static_cast<int>(verticalResolution.action) << '|'
 				<< leftBarContentActive << detailedVerticalFitEvidence
 				<< rightBarContentActive << verticalTranslationActive << '|'
+				<< cropNarrowerContentToFillScreen << '|'
+				<< cropNarrowerContentAspectLimitConfigured << '|'
+				<< cropNarrowerContentAspectLimit << '|'
+				<< cropWiderContentToFillScreen << '|'
+				<< cropWiderContentAspectLimitConfigured << '|'
+				<< cropWiderContentAspectLimit << '|'
+				<< aspectLimitFill.contentAspect << '|'
+				<< aspectLimitFill.applied << '|'
+				<< presentationCropBounds.left << ','
+				<< presentationCropBounds.top << '-'
+				<< presentationCropBounds.right << ','
+				<< presentationCropBounds.bottom << '|'
 				<< cropDecision.sourceBounds.left << ','
 				<< cropDecision.sourceBounds.top << '-'
 				<< cropDecision.sourceBounds.right << ','
@@ -8611,7 +8850,7 @@ struct LibplaceboVideoRenderer::Impl
 					? "translate" : (verticalFitActive ? "fit" :
 						(verticalFailOpen ? "fail-open" : "none"));
 				DebugLog::Log(
-					"Alpha source crop: sequence=%llu enabled=%d applied=%d expanded=%d translated=%d vertical_action=%s shift_request=%d shift_applied=%d latest_trusted=%d scene_hold=%d ambiguity_hold=%d retention_safe=%d latest_evidence=%d detector_envelope=%d bar_wait=%d inspection_wait=%d translation_wait=%d fit_wait=%d engage_base=%d release_settle=%d envelope_state=%s edges=%c%c%c%c evidence_rect=%d,%d-%d,%d rect=%d,%d-%d,%d classification=%d geometry_generation=%llu frame_generation=%llu reason=\"%s; %s; %s\"",
+					"Alpha source crop: sequence=%llu enabled=%d applied=%d expanded=%d translated=%d vertical_action=%s shift_request=%d shift_applied=%d latest_trusted=%d scene_hold=%d ambiguity_hold=%d retention_safe=%d latest_evidence=%d detector_envelope=%d bar_wait=%d inspection_wait=%d translation_wait=%d fit_wait=%d engage_base=%d release_settle=%d envelope_state=%s edges=%c%c%c%c evidence_rect=%d,%d-%d,%d rect=%d,%d-%d,%d fill_rect=%d,%d-%d,%d content_aspect=%.5f screen_aspect=%.5f narrower_fill=%d narrower_limit=%s%.5f wider_fill=%d wider_limit=%s%.5f fill_applied=%d classification=%d geometry_generation=%llu frame_generation=%llu reason=\"%s; %s; %s; %s\"",
 					static_cast<unsigned long long>(sourceSequence),
 					automaticSourceCrop ? 1 : 0,
 					cropDecision.applyCrop ? 1 : 0,
@@ -8651,24 +8890,38 @@ struct LibplaceboVideoRenderer::Impl
 					cropDecision.sourceBounds.top,
 					cropDecision.sourceBounds.right,
 					cropDecision.sourceBounds.bottom,
+					presentationCropBounds.left,
+					presentationCropBounds.top,
+					presentationCropBounds.right,
+					presentationCropBounds.bottom,
+					aspectLimitFill.contentAspect,
+					configuredScreenActive ? configuredScreenAspect : 0.0,
+					cropNarrowerContentToFillScreen ? 1 : 0,
+					cropNarrowerContentAspectLimitConfigured ? "" : "off/",
+					cropNarrowerContentAspectLimit,
+					cropWiderContentToFillScreen ? 1 : 0,
+					cropWiderContentAspectLimitConfigured ? "" : "off/",
+					cropWiderContentAspectLimit,
+					aspectLimitFill.applied ? 1 : 0,
 					static_cast<int>(effectiveClassification),
 					static_cast<unsigned long long>(
 						effectiveGeometrySourceGeneration),
 					static_cast<unsigned long long>(frameGeneration),
 					cropDecision.reason.c_str(),
 					envelopeDecision.reason,
-					latestActivePicturePresentationRetentionReason.c_str());
+					latestActivePicturePresentationRetentionReason.c_str(),
+					aspectLimitFill.reason.c_str());
 			}
-			if (cropDecision.applyCrop)
+			if (cropDecision.applyCrop || aspectLimitFill.applied)
 			{
 				source.crop.x0 = static_cast<float>(
-					cropDecision.sourceBounds.left);
+					presentationCropBounds.left);
 				source.crop.y0 = static_cast<float>(
-					cropDecision.sourceBounds.top);
+					presentationCropBounds.top);
 				source.crop.x1 = static_cast<float>(
-					cropDecision.sourceBounds.right);
+					presentationCropBounds.right);
 				source.crop.y1 = static_cast<float>(
-					cropDecision.sourceBounds.bottom);
+					presentationCropBounds.bottom);
 				if (trustedActivePicture)
 					*trustedActivePicture = true;
 			}
@@ -10389,6 +10642,7 @@ bool LibplaceboVideoRenderer::ApplyApplicationState(
 		EffectiveSettingsFingerprint(candidateSettings) !=
 			currentEffectiveFingerprint;
 	std::string changedFields = "none";
+	bool liveProfileUpdateQueued = false;
 	const bool liveSettingsCompatible = state && m_impl &&
 		anyRendererSettingChanged &&
 		m_impl->ClassifyProfileSettingsLiveUpdate(
@@ -10409,9 +10663,13 @@ bool LibplaceboVideoRenderer::ApplyApplicationState(
 			return false;
 		}
 		rendererRestartRequired = false;
-		liveResetRequired = true;
+		liveProfileUpdateQueued = true;
+		// Compatible Screen, Zoom, Scaling, Color, and Processing changes are
+		// consumed at the render-thread safe point. The queued frames are raw
+		// source frames, so they remain valid under the new render description;
+		// do not flush and re-prime the live queue merely to apply these settings.
 		DebugLog::Log(
-			"application profile generation %llu compatible live update queued: fields=%s",
+			"application profile generation %llu compatible live update queued without queue reset: fields=%s",
 			static_cast<unsigned long long>(snapshot.generation),
 			changedFields.c_str());
 	}
@@ -10429,7 +10687,7 @@ bool LibplaceboVideoRenderer::ApplyApplicationState(
 			static_cast<unsigned long long>(snapshot.generation));
 		return false;
 	}
-	if (!liveResetRequired && rendererRestartRequired && state && m_impl &&
+	if (!liveProfileUpdateQueued && rendererRestartRequired && state && m_impl &&
 		anyRendererSettingChanged)
 	{
 		if (changedFields == "none")
@@ -10460,7 +10718,7 @@ bool LibplaceboVideoRenderer::ApplyApplicationState(
 		// ApplyProfileSettingsLive already queues the full immutable snapshot and
 		// applies its viewport portion at the same render-thread safe point.
 		// Do not replace that intent with a second UI-thread queue operation.
-		if (!liveResetRequired)
+		if (!liveProfileUpdateQueued)
 			m_impl->ApplyViewportSettings(candidateSettings);
 		ApplyViewportTarget(candidateSettings.configuredScreenTarget,
 			candidateSettings.configuredScreenAspect, "application snapshot");
