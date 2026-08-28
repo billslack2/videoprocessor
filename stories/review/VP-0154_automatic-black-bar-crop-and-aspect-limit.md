@@ -2,7 +2,7 @@
 
 ## Status
 
-Review (2026-08-27). Implemented on
+Done (2026-08-27). Implemented on
 `codex/vp-0154-black-bar-crop-limit` at `383762df`, rebased on current
 `v1.3.001-beta` tip `85abed0`. Config now has two independent controls, both
 off by default: **Crop narrower content to fill screen** and **Crop wider
@@ -35,8 +35,8 @@ Dithering, and Display bit depth under **Processing**. The x64 Release Config
 build and focused GUI/native profile-policy regressions passed. The verified
 x64 Release Config executable was deployed to `C:\Videoprocessor\vp\config`
 on 2026-08-27; its installed hash matched the build and the active
-`VideoProcessor.cfg` remained unchanged. The branch remains unmerged and in
-Review.
+`VideoProcessor.cfg` remained unchanged. This intermediate review build was
+validated before final integration.
 
 Follow-up `036bfb43` makes the two optional limit values fail open: blank,
 legacy, malformed, and out-of-range values are treated as no limit rather than
@@ -48,8 +48,18 @@ backing it up at
 `C:\Videoprocessor\vp\backups\vp-0154-invalid-none-20260827-1501`.
 The tested x64 Release host from this follow-up was deployed to
 `C:\Videoprocessor\vp\VideoProcessor.exe` (SHA-256
-`EA63FBE1E18451AD909D49D956341C91C4E9D65C748EBFCA115A44E7F3E46909`);
-the branch remains unmerged and in Review.
+`EA63FBE1E18451AD909D49D956341C91C4E9D65C748EBFCA115A44E7F3E46909`).
+
+Final follow-up `b5bcea95` completes independent Screen, Zoom, Scaling, Color,
+and Processing live profile application without resetting the live queue,
+removes unsupported pathological downscaler choices, labels the explicit
+upscaler bypass as **Use GPU**, and migrates legacy downscaler values to Auto.
+VP-0154 was merged into `v1.3.001-beta` at merge commit `bdcb60cf`. A clean x64
+Release build completed, Config tests passed, and the native suite passed
+940/941 with only the pre-existing configuration-document inventory mismatch.
+The canonical 57-file release manifest produced and verified
+`VideoProcessor-v1.3.001-beta.zip`; it contains only
+`VideoProcessor.cfg.example`, never the operator's active configuration.
 
 ## User story
 
