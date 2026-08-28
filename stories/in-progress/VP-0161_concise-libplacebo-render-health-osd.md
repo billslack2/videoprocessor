@@ -2,11 +2,19 @@
 
 ## Status
 
-Backlog (2026-08-28). The operator requested a concise Ctrl+I indication that
-Alpha is rendering well, using the useful terminology from libplacebo's
+In Progress (2026-08-28). The operator requested a concise Ctrl+I indication
+that Alpha is rendering well, using the useful terminology from libplacebo's
 `plplay` statistics panel without copying every demo-only value. The live
 GitHub default and implementation base was manually discovered and explicitly
-confirmed as `v1.3.003-beta` at `0cf07a95`; implementation has not started yet.
+confirmed as `v1.3.003-beta` at `0cf07a95`.
+
+Implementation is active on branch `codex/vp-0161-render-health` in clean
+worktree
+`C:\Videoprocessor\vp\vprenderer\.codex-worktrees\vp0161-render-health`,
+created directly from that remote tip. Initial source tracing confirmed that
+Alpha already measures successful submissions, renderer drops, render time,
+present/swap blocking time, and material render stalls; the implementation
+will expose a bounded health snapshot without changing rendering policy.
 
 ## User story
 
