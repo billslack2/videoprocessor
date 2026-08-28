@@ -2,15 +2,17 @@
 
 ## Status
 
-Backlog (2026-08-27). Created after fetching canonical `origin/main` and
+In Progress (2026-08-27). Created after fetching canonical `origin/main` and
 auditing 175 story files against 175 index rows. No duplicate or missing IDs
 were found. The audit found one unrelated pre-existing state mismatch:
 `VP-0154` is stored under `review/` while its status and index row say Done;
 this story does not alter it.
 
 GitHub reports `v1.3.001-beta` as the current default integration branch.
-Implementation is waiting only for the required developer confirmation of
-that base.
+The developer confirmed that base. Implementation is active on
+`codex/vp-0157-gpu-downscaler` in the clean worktree
+`C:\\Videoprocessor\\vp\\worktrees\\vp0157-gpu-downscaler`, based on fetched
+remote tip `bdcb60cf`.
 
 ## User story
 
@@ -61,4 +63,3 @@ changing old configuration behavior.
 - Libplacebo `renderer.h` documents that null upscaler/downscaler pointers use
   inexpensive built-in sampling and that a null downscaler implies
   `skip_anti_aliasing`.
-
