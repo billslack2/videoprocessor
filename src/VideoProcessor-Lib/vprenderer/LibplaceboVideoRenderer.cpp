@@ -9604,7 +9604,9 @@ struct LibplaceboVideoRenderer::Impl
 						profileScale,
 					static_cast<float>(profileOverlayTexture->params.h) *
 						profileScale,
-					NativeStatsOverlayPlacement::kProfileOverlayInsetPixels,
+					NativeStatsOverlayPlacement::ProfileOverlayTopInset(
+						visiblePicture.IsValid() ? visiblePicture.Height() :
+							dstHeight),
 					NativeStatsOverlayPlacement::ProfileOverlayLeftInset(
 						visiblePicture.IsValid() ? visiblePicture.Height() :
 							dstHeight));

@@ -9,6 +9,7 @@ namespace NativeStatsOverlayPlacement
 	constexpr float kDefaultInsetPixels = 40.0f;
 	constexpr float kProfileOverlayInsetPixels = 30.0f;
 	constexpr float kProfileOverlayAdditionalLeftInsetReferencePixels = 30.0f;
+	constexpr float kProfileOverlayAdditionalTopInsetReferencePixels = 30.0f;
 	constexpr float kProfileOverlayReferenceHeight = 1080.0f;
 	constexpr float kProfileOverlayBaselineScale = 1.275f;
 
@@ -33,6 +34,17 @@ namespace NativeStatsOverlayPlacement
 			visiblePictureHeight / kProfileOverlayReferenceHeight));
 		return kProfileOverlayInsetPixels +
 			kProfileOverlayAdditionalLeftInsetReferencePixels * relativeScale;
+	}
+
+	inline float ProfileOverlayTopInset(float visiblePictureHeight)
+	{
+		if (visiblePictureHeight <= 0.0f)
+			return kProfileOverlayInsetPixels +
+				kProfileOverlayAdditionalTopInsetReferencePixels;
+		const float relativeScale = std::max(0.5f, std::min(3.0f,
+			visiblePictureHeight / kProfileOverlayReferenceHeight));
+		return kProfileOverlayInsetPixels +
+			kProfileOverlayAdditionalTopInsetReferencePixels * relativeScale;
 	}
 
 	struct Rect
