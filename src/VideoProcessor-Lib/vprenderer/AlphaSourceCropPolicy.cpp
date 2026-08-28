@@ -1032,6 +1032,28 @@ namespace AlphaSourceCrop
 			VerticalPictureAlignment::CENTER);
 	}
 
+	ProfileTransitionRetentionDecision EvaluateProfileTransitionRetention(
+		const ProfileTransitionRetentionInput& input)
+	{
+		ProfileTransitionRetentionDecision decision;
+		const bool validBounds = input.geometry.rasterWidth > 0 &&
+			input.geometry.rasterHeight > 0 &&
+			input.geometry.left >= 0 && input.geometry.top >= 0 &&
+			input.geometry.right > input.geometry.left &&
+			input.geometry.bottom > input.geometry.top &&
+			input.geometry.right <= input.geometry.rasterWidth &&
+			input.geometry.bottom <= input.geometry.rasterHeight;
+		decision.retainSourceGeometry = input.geometryAvailable &&
+			input.classification ==
+				ActivePictureClassification::BAR_CROP_TRUSTED &&
+			input.geometry.trustedBarAxes != ActivePictureBounds::BarAxes::NONE &&
+			input.geometrySourceGeneration != 0 &&
+			input.geometrySourceGeneration == input.analysisSourceGeneration &&
+			input.geometrySourceGeneration == input.frameSourceGeneration &&
+			input.sourceFormatMatches && validBounds;
+		return decision;
+	}
+
 	AspectLimitFillDecision EvaluateAspectLimitFill(
 		const AspectLimitFillInput& input)
 	{
