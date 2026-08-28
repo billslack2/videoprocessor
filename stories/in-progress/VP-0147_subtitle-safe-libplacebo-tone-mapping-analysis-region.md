@@ -2,18 +2,23 @@
 
 ## Status
 
-Backlog (2026-08-24; architecture reviewed 2026-08-28). VP Renderer can
-preserve burned-in subtitles that lie outside the trusted active picture by
-expanding or translating its presentation crop, but libplacebo then uses that
-same presentation crop for HDR peak and average-luminance detection.
+In Progress (2026-08-28). The local proof is being implemented on branch
+`codex/vp0147-analysis-roi` in worktree
+`C:\Videoprocessor\vp\vprenderer\.codex-worktrees\vp0147-analysis-roi-0cf07a9`,
+based on authoritative `origin/v1.3.003-beta` commit `0cf07a9`.
 
 The architecture review reached a conditional **GO**. A separate analysis
 region is technically viable, but a simple same-frame RGB hook is not: the
 libplacebo high-level renderer owns the tone-map detector state privately and
-later color mapping consumes the original frame metadata. The first source
-increment must therefore be a bounded, non-shipping spike that proves either
-an upstream high-level ROI/mask or the selected VP-owned one-frame analysis
-pipeline below. Production implementation remains gated on that evidence.
+later color mapping consumes the original frame metadata. The selected first
+proof is therefore a local libplacebo fork that adds a generic same-frame peak
+analysis rectangle to the high-level renderer while preserving the complete
+presentation. The user explicitly prohibited submitting, pushing, or opening
+an issue/MR/PR against remote libplacebo while this work is in progress.
+
+The fork and VP integration remain local proof artifacts. VP may expose the
+proof through an opt-in, default-off Zoom / Subtitles setting, but production
+shipping and any upstream submission remain separate reviewed decisions.
 
 Do not ship a cached-metadata or subtitle-duration freeze as an interim
 solution.
@@ -48,10 +53,15 @@ analysis; it is not precedent for a subtitle-aware dynamic detector.
 
 Use these implementations in priority order:
 
-1. Prefer an accepted, released upstream libplacebo high-level peak-analysis
-   ROI/mask that preserves the existing same-frame private detector and color
-   mapping path. Do not carry an ABI-incompatible private libplacebo DLL fork.
-2. While that API remains unavailable, use a VP-owned detector state through
+1. For the local proof, carry a minimal, generic libplacebo fork that adds an
+   optional peak-analysis rectangle independent of `pl_frame.crop`. Keep the
+   existing private same-frame detector, smoothing, scene response, dynamic
+   metadata precedence, and complete rendered presentation. Build and identify
+   the fork separately from stock libplacebo, keep its source and exact commit
+   reproducible, and do not contact or push to remote libplacebo without a new
+   explicit user instruction.
+2. If the local same-frame rectangle proves untenable, use a VP-owned detector
+   state through
    public libplacebo shader and detected-metadata APIs, pipelined by exactly one
    frame:
    - before rendering frame N, retrieve the ROI result dispatched for frame
@@ -72,8 +82,9 @@ metadata freeze. Start the spike with deterministic N-1 retrieval; an older or
 opportunistically polled result is not acceptable merely to avoid measuring a
 readback stall.
 
-A custom tone mapper, a mask-and-restore presentation chain, and a second full
-high-level render are rejected as the initial production architecture. They
+A custom tone mapper, a VP-side mask-and-restore presentation chain, and a
+second full high-level render are rejected as the initial production
+architecture. They
 duplicate or take ownership of substantially more of libplacebo's scaling and
 color pipeline and may be reconsidered only through a new reviewed decision if
 both preferred paths fail.
@@ -81,24 +92,26 @@ both preferred paths fail.
 ## Mandatory non-shipping spike
 
 The first implementation increment is an isolated technical spike. It must not
-add a production default, deploy new binaries, change active user
-configuration, or be treated as partial acceptance of this story.
+deploy new binaries, change active user configuration, enable the feature by
+default, or be treated as partial acceptance of this story. It may add the
+requested default-off diagnostic configuration and UI control needed for local
+A/B testing.
 
 The spike must provide reproducible evidence for all of the following:
 
-1. An RGB-stage public hook can dispatch peak analysis over the exact resolved
-   ROI and return no replacement image while the accepted presentation crop is
-   rendered unchanged.
-2. The analysis hook and the existing NLS hook can coexist in deterministic
-   order without rebuilding or recompiling merely because subtitle detection
-   engages or releases.
-3. Both `max_pq_y` and `avg_pq_y` from frame N are available deterministically
-   for frame N+1, with measured CPU wait, GPU duration, queue behavior, and
-   presentation latency.
-4. An immediate hard-cut candidate or equally early conservative signal resets
-   the owned detector before the previous result is considered for the first
-   frame of the candidate new scene. A later confirmed `safeBoundary` alone is
-   insufficient.
+1. The forked high-level renderer accepts an optional analysis rectangle,
+   excludes every outside pixel from peak, average, histogram, and active-count
+   statistics, and renders output identical to the stock full-presentation
+   path.
+2. The rectangle remains stable when subtitle arbitration expands or translates
+   presentation geometry, intersects final visible geometry when required, and
+   coexists with NLS without subtitle-triggered shader or renderer rebuilds.
+3. Same-frame private detector state supplies both `max_pq_y` and `avg_pq_y`
+   without a VP-owned metadata readback or one-frame injection path. Measure
+   CPU wait, GPU duration, queue behavior, and presentation latency.
+4. Existing libplacebo scene response remains same-frame; source changes,
+   seeks, renderer resets, and trusted analysis-region generation changes reset
+   detector state deterministically without flushing compiled shader programs.
 5. Source changes, seeks, renderer resets, geometry-generation changes, GPU
    analysis failure, and missing results select a documented full-frame/static
    fail-open path without reusing invalid ROI metadata.
@@ -108,20 +121,29 @@ The spike must provide reproducible evidence for all of the following:
    depends on VP carrying such metadata to the renderer.
 7. Native RGB and P010/P210 inputs converge on equivalent decoded-RGB analysis
    within a documented tolerance, and SDR never enters the ROI detector.
-8. A 4K23.976/24/50/59.94/60 comparison records current full-frame detection,
+8. A 4K23.976/24/50/59.94/60 comparison records stock full-frame detection,
    peak detection disabled, ROI analysis without NLS, and ROI analysis with
    NLS. Include intermediate-texture bandwidth, compute time, CPU readback
    time, shader-cache evidence, queue depth, dropped/repeated frames, and
    presentation latency.
+9. Bounded diagnostics prove the selected path without per-frame log spam:
+   feature toggle and fork/API identity, source generation, trusted picture,
+   presentation crop, effective analysis rectangle, rectangle/fallback reason,
+   metadata source, detected `max_pq_y`/`avg_pq_y`, scene/reset state, and
+   aggregated timing/counter evidence.
+10. The configuration editor exposes a default-off control under VP Renderer /
+    Zoom / Subtitles, persists it through the canonical profile schema, applies
+    it through the established live-settings path when safe, and truthfully
+    reports any restart requirement.
 
 The spike ends with one explicit decision:
 
-- **GO**: select the upstream ROI or VP-owned N-1 architecture, record measured
+- **GO**: select the local same-frame ROI or VP-owned N-1 architecture, record measured
   tolerances and cost budgets in this story, remove or hard-disable experimental
   scaffolding, and proceed with the production acceptance criteria.
 - **NO-GO**: retain current full-frame/static behavior and record the blocking
-  result. No-go includes requiring a private DLL fork, inability to preserve
-  presentation pixels, carrying prior-scene values onto a new-scene candidate,
+  result. No-go includes inability to isolate and reproduce the fork, inability
+  to preserve presentation pixels, stale state across source/region changes,
   unbounded synchronization, subtitle-triggered shader/renderer rebuilds, or
   exceeding an agreed 4K frame-time/latency budget.
 
@@ -152,17 +174,19 @@ The spike ends with one explicit decision:
    libplacebo behavior, and emit a bounded diagnostic. Never blank, clip, or
    silently discard subtitle-bearing regions to obtain cleaner statistics.
 7. Maintain temporal detector continuity without carrying measurements across
-   a known scene boundary or source generation. Any delayed-analysis design must
-   reset on an immediate conservative hard-cut candidate before consulting the
-   previous result; the later confirmed scene boundary remains useful for
-   diagnostics but is too late to protect the first candidate new-scene frame.
+   a source generation, seek, reset, or authoritative analysis-region change.
+   The selected same-frame fork must preserve libplacebo's current scene-change
+   response. If the delayed fallback is used instead, it must reset on an
+   immediate conservative hard-cut candidate before consulting the previous
+   result.
 8. Implement the final architecture directly. Do not introduce a temporary
    policy that freezes the last subtitle-free metadata, disables adaptive tone
    mapping only during subtitle cues, dims subtitle pixels, raises black-bar
    APL, or conditionally lowers the global peak percentile.
-9. Prefer an upstream-supported libplacebo analysis ROI/mask if available. If
-   it remains unavailable, use public libplacebo shader/detected-metadata APIs
-   in a VP-owned analysis path without an ABI-incompatible private DLL fork.
+9. Prove the minimal local libplacebo analysis-rectangle fork first. Do not
+   submit or push it upstream during local iteration. Any later upstream
+   proposal or production decision requires explicit review; retain the public
+   shader/detected-metadata design as the no-fork fallback.
 10. Keep the behavior renderer-local, configurable for diagnostic comparison,
     and observable without requiring OCR or recognizing subtitle language.
 
@@ -209,18 +233,24 @@ The spike ends with one explicit decision:
 - Do not ship the spike, expose it as a supported user mode, or deploy it before
   the spike records a GO decision and the production implementation passes all
   acceptance criteria.
+- Do not submit, push, open an issue, or create an MR/PR against remote
+  libplacebo while the local fork and evidence are still being developed.
 
 ## Likely implementation areas
 
 - `src/VideoProcessor-Lib/vprenderer/LibplaceboVideoRenderer.cpp`
 - `src/VideoProcessor-Lib/vprenderer/LibplaceboRenderParameters.*`
 - `src/VideoProcessor-Lib/vprenderer/AlphaSourceCropPolicy.*`
+- `src/VideoProcessor-Config/ConfigEditorWindow.*` and canonical renderer
+  profile schema/defaults for the Zoom / Subtitles toggle
 - `src/VideoProcessor-Lib/SceneDetector.*` for an immediate conservative
   hard-cut candidate distinct from later safe-boundary confirmation
 - VP Renderer plugin ABI only if new host-visible diagnostics or controls are
   required
 - libplacebo RGB hook/detected-HDR-metadata integration or an accepted upstream
   analysis-region API
+- local libplacebo fork headers, renderer/shader implementation, tests, build
+  provenance, and a uniquely identifiable development runtime
 - focused renderer geometry, metadata-precedence, scene-cut, and performance
   tests
 
