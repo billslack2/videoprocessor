@@ -4257,16 +4257,17 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         form = addCollapsibleSection(QStringLiteral("subtitles"),
             QStringLiteral("Subtitles"), QStringLiteral(
                 "Keep subtitle content visible, control how VP moves it into the screen, "
-                "and keep subtitle bars out of HDR peak analysis."), false);
+                "and keep edge overlays out of HDR peak analysis."), false);
         addBoolean(QStringLiteral("Keep subtitles inside screen bounds"), QStringLiteral("subtitle_fit"));
         auto* pictureOnlyHdrAnalysis = addBoolean(
-            QStringLiteral("Limit HDR analysis to active picture"),
+            QStringLiteral("Analyze center 75% of picture for HDR"),
             QStringLiteral("hdr_peak_analysis_picture_only"));
         pictureOnlyHdrAnalysis->setToolTip(QStringLiteral(
             "When a current trusted active-picture rectangle is available, "
-            "exclude surrounding bars and subtitle pixels from libplacebo's "
-            "HDR peak and average-luminance analysis. Invalid or stale geometry "
-            "falls back to full-frame analysis."));
+            "always use its middle 75% of height and full available width for "
+            "libplacebo's HDR peak and average-luminance analysis. This fixed "
+            "inset rejects subtitles and OSDs that cross from a black bar into "
+            "the picture. Invalid or stale geometry falls back to full-frame analysis."));
         auto* subtitleHold = addText(QStringLiteral("Subtitle hold"),
             QStringLiteral("subtitle_hold_seconds"), QStringLiteral("ms"), 1000.0);
         subtitleHold->setValidator(new QIntValidator(250, 30000, subtitleHold));

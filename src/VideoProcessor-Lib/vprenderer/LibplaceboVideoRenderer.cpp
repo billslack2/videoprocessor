@@ -4298,6 +4298,10 @@ struct LibplaceboVideoRenderer::Impl
 			<< trustedPicture.right << ',' << trustedPicture.bottom << '|'
 			<< presentationCrop.x0 << ',' << presentationCrop.y0 << '-'
 			<< presentationCrop.x1 << ',' << presentationCrop.y1 << '|'
+			<< decision.trustedIntersection.x0 << ','
+			<< decision.trustedIntersection.y0 << '-'
+			<< decision.trustedIntersection.x1 << ','
+			<< decision.trustedIntersection.y1 << '|'
 			<< decision.normalizedCrop.x0 << ','
 			<< decision.normalizedCrop.y0 << '-'
 			<< decision.normalizedCrop.x1 << ','
@@ -4307,10 +4311,11 @@ struct LibplaceboVideoRenderer::Impl
 		{
 			lastHdrPeakAnalysisPolicy = signature.str();
 			DebugLog::Log(
-				"libplacebo HDR analysis ROI policy: enabled=%d peak_detection=%d fork=vp0147-c3a3d203 api=%d version=%s source_generation=%llu source_sequence=%llu trusted_available=%d trusted_generation=%llu trusted=%d,%d-%d,%d raster=%dx%d presentation=%.3f,%.3f-%.3f,%.3f normalized=%.6f,%.6f-%.6f,%.6f excluded_pixels=%.0f excluded_percent=%.3f outcome=%s reason=\"%s\"",
+				"libplacebo HDR analysis ROI policy: enabled=%d peak_detection=%d fork=vp0147-c3a3d203 api=%d version=%s analysis_height_percent=%.1f source_generation=%llu source_sequence=%llu trusted_available=%d trusted_generation=%llu trusted=%d,%d-%d,%d raster=%dx%d presentation=%.3f,%.3f-%.3f,%.3f analysis_intersection=%.3f,%.3f-%.3f,%.3f normalized=%.6f,%.6f-%.6f,%.6f excluded_pixels=%.0f excluded_percent=%.3f outcome=%s reason=\"%s\"",
 				hdrPeakAnalysisPictureOnly ? 1 : 0,
 				peakDetectionActive ? 1 : 0,
 				PL_API_VER, PL_VERSION,
+				HdrPeakAnalysisCrop::ANALYSIS_HEIGHT_PERCENT,
 				static_cast<unsigned long long>(frameGeneration),
 				static_cast<unsigned long long>(sourceSequence),
 				trustedPicture.available ? 1 : 0,
@@ -4321,6 +4326,10 @@ struct LibplaceboVideoRenderer::Impl
 				trustedPicture.rasterWidth, trustedPicture.rasterHeight,
 				presentationCrop.x0, presentationCrop.y0,
 				presentationCrop.x1, presentationCrop.y1,
+				decision.trustedIntersection.x0,
+				decision.trustedIntersection.y0,
+				decision.trustedIntersection.x1,
+				decision.trustedIntersection.y1,
 				decision.normalizedCrop.x0, decision.normalizedCrop.y0,
 				decision.normalizedCrop.x1, decision.normalizedCrop.y1,
 				decision.excludedSourcePixels,

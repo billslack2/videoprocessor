@@ -9,6 +9,10 @@
 
 namespace HdrPeakAnalysisCrop
 {
+	constexpr double ANALYSIS_HEIGHT_FRACTION = 0.75;
+	constexpr double ANALYSIS_HEIGHT_PERCENT =
+		ANALYSIS_HEIGHT_FRACTION * 100.0;
+
 	enum class Outcome
 	{
 		DISABLED,
@@ -97,16 +101,23 @@ namespace HdrPeakAnalysisCrop
 			return decision;
 		}
 
+		const double trustedHeight = static_cast<double>(
+			trusted.bottom - trusted.top);
+		const double verticalInset =
+			trustedHeight * (1.0 - ANALYSIS_HEIGHT_FRACTION) * 0.5;
+		const float analysisTop = static_cast<float>(trusted.top + verticalInset);
+		const float analysisBottom = static_cast<float>(trusted.bottom - verticalInset);
+
 		decision.trustedIntersection = {
 			std::max(presentation.x0, static_cast<float>(trusted.left)),
-			std::max(presentation.y0, static_cast<float>(trusted.top)),
+			std::max(presentation.y0, analysisTop),
 			std::min(presentation.x1, static_cast<float>(trusted.right)),
-			std::min(presentation.y1, static_cast<float>(trusted.bottom))
+			std::min(presentation.y1, analysisBottom)
 		};
 		if (decision.trustedIntersection.x0 >= decision.trustedIntersection.x1 ||
 			decision.trustedIntersection.y0 >= decision.trustedIntersection.y1)
 		{
-			decision.reason = "trusted picture does not intersect presentation crop";
+			decision.reason = "central active-picture band does not intersect presentation crop";
 			return decision;
 		}
 
@@ -129,7 +140,7 @@ namespace HdrPeakAnalysisCrop
 		if (decision.excludedFraction <= minimumMeaningfulExclusion)
 		{
 			decision.outcome = Outcome::FULL_PRESENTATION;
-			decision.reason = "presentation is already inside trusted picture";
+			decision.reason = "presentation is already inside central active-picture band";
 			return decision;
 		}
 
@@ -157,7 +168,7 @@ namespace HdrPeakAnalysisCrop
 		}
 
 		decision.outcome = Outcome::RESTRICTED;
-		decision.reason = "trusted active picture restricts HDR analysis";
+		decision.reason = "central 75 percent of active-picture height restricts HDR analysis";
 		return decision;
 	}
 }

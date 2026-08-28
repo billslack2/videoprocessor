@@ -2041,7 +2041,7 @@ void testScreenConfigSectionsAndInlineUnits()
             "config.vprenderer.zoom.hdr_peak_analysis_picture_only"));
     require(!pictureOnlyHdrAnalysis->isChecked() &&
         pictureOnlyHdrAnalysis->accessibleName() ==
-            QStringLiteral("Limit HDR analysis to active picture"),
+            QStringLiteral("Analyze center 75% of picture for HDR"),
         "Zoom subtitles do not expose the default-off HDR analysis toggle");
     QLineEdit* hold = requireControl<QLineEdit>(window,
         QStringLiteral("config.vprenderer.zoom.subtitle_hold_seconds"));
