@@ -15383,6 +15383,49 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 				stats.presentationTimingStatus);
 		}
 		stats.queueDroppedFrames = m_videoRenderer->DroppedFrameCount();
+		if (stats.isAlphaRenderer)
+		{
+			RendererHealthSnapshot health;
+			if (m_videoRenderer->GetRenderHealthSnapshot(health))
+			{
+				stats.hasRenderHealth = true;
+				switch (health.state)
+				{
+				case RendererHealthState::Good:
+					stats.renderHealth = TEXT("Good");
+					break;
+				case RendererHealthState::Degraded:
+					stats.renderHealth = TEXT("Degraded");
+					break;
+				default:
+					stats.renderHealth = TEXT("Warming");
+					break;
+				}
+				stats.framesRendered = health.framesRendered;
+				stats.renderDroppedFrames = health.droppedFrames;
+				stats.timesStalled = health.timesStalled;
+				stats.stalledMs = health.stalledMs;
+				stats.renderAverageMs = health.renderAverageMs;
+				stats.renderPeakMs = health.renderPeakMs;
+				stats.submitAverageMs = health.submitAverageMs;
+				stats.submitPeakMs = health.submitPeakMs;
+			}
+			else if (sameStatsTelemetryGeneration &&
+				m_lastStatsData->hasRenderHealth)
+			{
+				stats.hasRenderHealth = true;
+				stats.renderHealth = m_lastStatsData->renderHealth;
+				stats.framesRendered = m_lastStatsData->framesRendered;
+				stats.renderDroppedFrames =
+					m_lastStatsData->renderDroppedFrames;
+				stats.timesStalled = m_lastStatsData->timesStalled;
+				stats.stalledMs = m_lastStatsData->stalledMs;
+				stats.renderAverageMs = m_lastStatsData->renderAverageMs;
+				stats.renderPeakMs = m_lastStatsData->renderPeakMs;
+				stats.submitAverageMs = m_lastStatsData->submitAverageMs;
+				stats.submitPeakMs = m_lastStatsData->submitPeakMs;
+			}
+		}
 		if (!m_videoRenderer->GetOutputModeInfo(stats.outputMode) &&
 			sameStatsTelemetryGeneration)
 		{

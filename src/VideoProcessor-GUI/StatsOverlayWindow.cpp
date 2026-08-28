@@ -1126,14 +1126,51 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 	DrawText(hdc, line, PADDING, y);
 	y += lineHeight;
 
-	// Frame stats
-	line.Format(TEXT("VFrames:          %llu"), m_stats.rendererCapturedFrames);
-	DrawText(hdc, line, PADDING, y);
-	y += lineHeight;
+	// Frame stats. Alpha uses libplacebo's concise names and renderer-owned
+	// evidence; capture misses remain visible but explicitly separate.
+	if (m_stats.isAlphaRenderer && m_stats.hasRenderHealth)
+	{
+		line.Format(TEXT("Render health:    %s"),
+			static_cast<LPCTSTR>(m_stats.renderHealth));
+		DrawText(hdc, line, PADDING, y);
+		y += lineHeight;
 
-	line.Format(TEXT("Dropped:          %llu/%llu"), m_stats.capturedDroppedFrames, m_stats.queueDroppedFrames);
-	DrawText(hdc, line, PADDING, y);
-	y += lineHeight;
+		line.Format(TEXT("Frames rendered:  %llu"), m_stats.framesRendered);
+		DrawText(hdc, line, PADDING, y);
+		y += lineHeight;
+
+		line.Format(TEXT("Dropped frames:   %llu (capture missed: %llu)"),
+			m_stats.renderDroppedFrames, m_stats.capturedDroppedFrames);
+		DrawText(hdc, line, PADDING, y);
+		y += lineHeight;
+
+		line.Format(TEXT("Times stalled:    %llu (%.0f ms)"),
+			m_stats.timesStalled, m_stats.stalledMs);
+		DrawText(hdc, line, PADDING, y);
+		y += lineHeight;
+
+		line.Format(TEXT("Render frame:     %.2f / %.2f ms avg/peak"),
+			m_stats.renderAverageMs, m_stats.renderPeakMs);
+		DrawText(hdc, line, PADDING, y);
+		y += lineHeight;
+
+		line.Format(TEXT("Submit frame:     %.2f / %.2f ms avg/peak"),
+			m_stats.submitAverageMs, m_stats.submitPeakMs);
+		DrawText(hdc, line, PADDING, y);
+		y += lineHeight;
+	}
+	else
+	{
+		line.Format(TEXT("VFrames:          %llu"),
+			m_stats.rendererCapturedFrames);
+		DrawText(hdc, line, PADDING, y);
+		y += lineHeight;
+
+		line.Format(TEXT("Dropped:          %llu/%llu"),
+			m_stats.capturedDroppedFrames, m_stats.queueDroppedFrames);
+		DrawText(hdc, line, PADDING, y);
+		y += lineHeight;
+	}
 
 	line.Format(TEXT("Scene Mode:       %-s"),
 		m_stats.sceneDetectMode.IsEmpty() ? TEXT("Off") :
@@ -1232,6 +1269,8 @@ int StatsOverlayWindow::CalculateRequiredHeight(const StatsData& stats) const
 	// offset). The remaining rows mirror the exact
 	// optional conditions in DrawStats so the background follows its content.
 	size_t lineCount = stats.isAlphaRenderer ? 22 : 24;
+	if (stats.isAlphaRenderer && stats.hasRenderHealth)
+		lineCount += 4; // Six health rows replace the two legacy frame rows.
 	++lineCount; // Surface mode is always shown.
 	if (!stats.outputSweep.IsEmpty())
 		++lineCount;

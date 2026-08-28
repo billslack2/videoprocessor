@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "CppUnitTest.h"
 
+#include <RendererHealth.h>
 #include <vprenderer/AlphaPresentationTelemetry.h>
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
@@ -175,6 +176,108 @@ namespace Tests
 				static_cast<int>(snapshot.timingStatus));
 			Assert::AreEqual(static_cast<int32_t>(0x80004005L),
 				snapshot.frameStatisticsResult);
+		}
+	};
+
+
+	TEST_CLASS(RendererHealthTrackerTests)
+	{
+	public:
+		TEST_METHOD(WarmsBeforeReportingGood)
+		{
+			RendererHealthTracker tracker;
+			for (uint64_t index = 0;
+				index < RendererHealthTracker::WARMING_FRAME_COUNT - 1;
+				++index)
+			{
+				tracker.RecordSuccessfulFrame(2.0, 1.0);
+			}
+
+			Assert::AreEqual(
+				static_cast<int>(RendererHealthState::Warming),
+				static_cast<int>(tracker.Snapshot(1000, 0).state));
+
+			tracker.RecordSuccessfulFrame(2.0, 1.0);
+			Assert::AreEqual(
+				static_cast<int>(RendererHealthState::Good),
+				static_cast<int>(tracker.Snapshot(1001, 0).state));
+		}
+
+		TEST_METHOD(ReportsRenderAndSubmitAveragesAndPeaks)
+		{
+			RendererHealthTracker tracker;
+			tracker.RecordSuccessfulFrame(2.0, 1.0);
+			tracker.RecordSuccessfulFrame(6.0, 3.0);
+
+			const RendererHealthSnapshot snapshot = tracker.Snapshot(1000, 0);
+			Assert::AreEqual(static_cast<uint64_t>(2), snapshot.framesRendered);
+			Assert::AreEqual(4.0, snapshot.renderAverageMs, 0.001);
+			Assert::AreEqual(6.0, snapshot.renderPeakMs, 0.001);
+			Assert::AreEqual(2.0, snapshot.submitAverageMs, 0.001);
+			Assert::AreEqual(3.0, snapshot.submitPeakMs, 0.001);
+		}
+
+		TEST_METHOD(RecentDropTemporarilyDegradesHealth)
+		{
+			RendererHealthTracker tracker;
+			for (uint64_t index = 0;
+				index < RendererHealthTracker::WARMING_FRAME_COUNT;
+				++index)
+			{
+				tracker.RecordSuccessfulFrame(2.0, 1.0);
+			}
+			Assert::AreEqual(
+				static_cast<int>(RendererHealthState::Good),
+				static_cast<int>(tracker.Snapshot(1000, 0).state));
+
+			RendererHealthSnapshot snapshot = tracker.Snapshot(2000, 1);
+			Assert::AreEqual(
+				static_cast<int>(RendererHealthState::Degraded),
+				static_cast<int>(snapshot.state));
+			Assert::AreEqual(static_cast<uint64_t>(1), snapshot.droppedFrames);
+
+			snapshot = tracker.Snapshot(
+				2000 + RendererHealthTracker::ISSUE_VISIBILITY_MS + 1, 1);
+			Assert::AreEqual(
+				static_cast<int>(RendererHealthState::Good),
+				static_cast<int>(snapshot.state));
+		}
+
+		TEST_METHOD(StallCountDurationAndHealthAreReported)
+		{
+			RendererHealthTracker tracker;
+			for (uint64_t index = 0;
+				index < RendererHealthTracker::WARMING_FRAME_COUNT;
+				++index)
+			{
+				tracker.RecordSuccessfulFrame(2.0, 1.0);
+			}
+			tracker.RecordStall(2000, 64.5);
+
+			const RendererHealthSnapshot snapshot = tracker.Snapshot(2001, 0);
+			Assert::AreEqual(static_cast<uint64_t>(1), snapshot.timesStalled);
+			Assert::AreEqual(64.5, snapshot.stalledMs, 0.001);
+			Assert::AreEqual(
+				static_cast<int>(RendererHealthState::Degraded),
+				static_cast<int>(snapshot.state));
+		}
+
+		TEST_METHOD(DroppedCounterResetDoesNotCreateFalseIssue)
+		{
+			RendererHealthTracker tracker;
+			tracker.Reset(5);
+			for (uint64_t index = 0;
+				index < RendererHealthTracker::WARMING_FRAME_COUNT;
+				++index)
+			{
+				tracker.RecordSuccessfulFrame(2.0, 1.0);
+			}
+
+			const RendererHealthSnapshot snapshot = tracker.Snapshot(1000, 2);
+			Assert::AreEqual(static_cast<uint64_t>(2), snapshot.droppedFrames);
+			Assert::AreEqual(
+				static_cast<int>(RendererHealthState::Good),
+				static_cast<int>(snapshot.state));
 		}
 	};
 }

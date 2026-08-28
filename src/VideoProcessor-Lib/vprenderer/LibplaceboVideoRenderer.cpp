@@ -2954,6 +2954,7 @@ struct LibplaceboVideoRenderer::Impl
 	SceneDetector sceneDetector;
 	AlphaCadenceCorrectionPolicy cadenceCorrectionPolicy;
 	AlphaPresentationTelemetry presentationTelemetry;
+	RendererHealthTracker renderHealth;
 	ScopedDisplayRefreshRate displayRefreshRate;
 	pl_log log = nullptr;
 	pl_d3d11 d3d11 = nullptr;
@@ -9741,6 +9742,7 @@ struct LibplaceboVideoRenderer::Impl
 		if (rendered && submitted)
 		{
 			++successfulPresentCount;
+			renderHealth.RecordSuccessfulFrame(renderMs, swapBlockMs);
 			AlphaPresentationRecord record;
 			record.generation = frameGeneration;
 			record.sourceSequence = sourceSequence;
@@ -10465,6 +10467,8 @@ void LibplaceboVideoRenderer::Build()
 	// driver for seconds. Build only captures an immutable construction request;
 	// RenderLoop performs the actual initialization on its own thread.
 	m_impl.reset(new Impl());
+	m_impl->renderHealth.Reset(
+		m_droppedFrames.load(std::memory_order_relaxed));
 	m_impl->displayRefreshRate.SetEventSink(
 		[this](const std::string& event, double actualRefreshRate,
 			double requestedRefreshRate, double previousRefreshRate)
@@ -11426,6 +11430,24 @@ double LibplaceboVideoRenderer::ExitLatencyMs() const
 uint64_t LibplaceboVideoRenderer::DroppedFrameCount() const
 {
 	return m_droppedFrames.load(std::memory_order_relaxed);
+}
+
+
+bool LibplaceboVideoRenderer::GetRenderHealthSnapshot(
+	RendererHealthSnapshot& snapshot) const
+{
+	snapshot = {};
+	if (!m_impl)
+		return false;
+
+	std::unique_lock<std::mutex> guard(
+		m_impl->renderMutex, std::try_to_lock);
+	if (!guard.owns_lock())
+		return false;
+	snapshot = m_impl->renderHealth.Snapshot(
+		GetTickCount64(),
+		m_droppedFrames.load(std::memory_order_relaxed));
+	return true;
 }
 
 
@@ -12444,6 +12466,16 @@ void LibplaceboVideoRenderer::RenderLoop()
 						m_queueChanged.notify_all();
 					}
 				}
+				const uint64_t healthTick = GetTickCount64();
+				if (renderCycleMs >=
+					AlphaQueuePolicy::RenderStallThresholdMs(captureRateHz))
+				{
+					m_impl->renderHealth.RecordStall(
+						healthTick, renderCycleMs);
+				}
+				m_impl->renderHealth.ObserveDroppedFrames(
+					healthTick,
+					m_droppedFrames.load(std::memory_order_relaxed));
 			}
 		}
 		catch (const std::exception& e)

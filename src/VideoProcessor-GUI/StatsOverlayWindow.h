@@ -79,6 +79,16 @@ struct StatsData
 	uint64_t rendererCapturedFrames = 0;
 	uint64_t capturedDroppedFrames = 0;
 	uint64_t queueDroppedFrames = 0;
+	bool hasRenderHealth = false;
+	CString renderHealth;
+	uint64_t framesRendered = 0;
+	uint64_t renderDroppedFrames = 0;
+	uint64_t timesStalled = 0;
+	double stalledMs = 0.0;
+	double renderAverageMs = 0.0;
+	double renderPeakMs = 0.0;
+	double submitAverageMs = 0.0;
+	double submitPeakMs = 0.0;
 	uint64_t sceneDetectCorrectionDrops = 0;
 	uint64_t sceneDetectCorrectionRepeats = 0;
 	uint64_t sceneDetectDetected = 0;

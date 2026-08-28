@@ -171,6 +171,9 @@
     <ClInclude Include="RendererLiveness.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="RendererHealth.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="RendererIngressState.h">
       <Filter>Header Files</Filter>
     </ClInclude>

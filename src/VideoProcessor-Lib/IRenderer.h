@@ -14,6 +14,7 @@
 #include <RendererLiveness.h>
 #include <RendererResetRequest.h>
 #include <RendererOutputContractStatus.h>
+#include <RendererHealth.h>
 #include <SubtitleRepositionMode.h>
 #include <cstdint>
 #include <functional>
@@ -329,6 +330,14 @@ public:
 
 	// Get the amount of dropped frames due to queue actions
 	virtual uint64_t DroppedFrameCount() const = 0;
+
+	// Concise renderer-owned render/submit health telemetry. Renderers without
+	// authoritative timing and submission evidence return false.
+	virtual bool GetRenderHealthSnapshot(RendererHealthSnapshot& snapshot) const
+	{
+		snapshot = {};
+		return false;
+	}
 
 	// Requested and negotiated renderer output presentation/range/transfer.
 	// Renderers without an explicit output contract return false.
