@@ -2,13 +2,21 @@
 
 ## Status
 
-Backlog (2026-08-24). VP Renderer can preserve burned-in subtitles that lie
-outside the trusted active picture by expanding or translating its presentation
-crop, but libplacebo then uses that same presentation crop for HDR peak and
-average-luminance detection. Design and implement a production analysis-region
-path that keeps the rendered subtitle intact without allowing bar content to
-change the picture tone-mapping curve. Do not ship a cached-metadata or
-subtitle-duration freeze as an interim solution.
+Backlog (2026-08-24; architecture reviewed 2026-08-28). VP Renderer can
+preserve burned-in subtitles that lie outside the trusted active picture by
+expanding or translating its presentation crop, but libplacebo then uses that
+same presentation crop for HDR peak and average-luminance detection.
+
+The architecture review reached a conditional **GO**. A separate analysis
+region is technically viable, but a simple same-frame RGB hook is not: the
+libplacebo high-level renderer owns the tone-map detector state privately and
+later color mapping consumes the original frame metadata. The first source
+increment must therefore be a bounded, non-shipping spike that proves either
+an upstream high-level ROI/mask or the selected VP-owned one-frame analysis
+pipeline below. Production implementation remains gated on that evidence.
+
+Do not ship a cached-metadata or subtitle-duration freeze as an interim
+solution.
 
 ## User story
 
@@ -36,6 +44,87 @@ brightness symptom. MPC Video Renderer avoids this particular pumping by using
 a fixed per-pixel Hable HDR-to-SDR curve rather than adaptive histogram
 analysis; it is not precedent for a subtitle-aware dynamic detector.
 
+## Architecture decision
+
+Use these implementations in priority order:
+
+1. Prefer an accepted, released upstream libplacebo high-level peak-analysis
+   ROI/mask that preserves the existing same-frame private detector and color
+   mapping path. Do not carry an ABI-incompatible private libplacebo DLL fork.
+2. While that API remains unavailable, use a VP-owned detector state through
+   public libplacebo shader and detected-metadata APIs, pipelined by exactly one
+   frame:
+   - before rendering frame N, retrieve the ROI result dispatched for frame
+     N-1;
+   - inject its CIE-Y `max_pq_y` and `avg_pq_y` into frame N only when the
+     result, source generation, geometry authority, and metadata policy all
+     remain valid;
+   - at `PL_HOOK_RGB`, after native RGB or YUV ingress has been decoded to RGB,
+     sample the resolved source ROI, call `pl_shader_detect_peak` with a
+     VP-owned state, and dispatch the compute shader for frame N;
+   - return no replacement image from the analysis hook so the complete
+     presentation remains pixel-identical;
+   - compose a stable hook list with analysis before NLS rather than replacing
+     the existing NLS hook pointer.
+
+This is continuously refreshed per-frame analysis, not a subtitle-duration
+metadata freeze. Start the spike with deterministic N-1 retrieval; an older or
+opportunistically polled result is not acceptable merely to avoid measuring a
+readback stall.
+
+A custom tone mapper, a mask-and-restore presentation chain, and a second full
+high-level render are rejected as the initial production architecture. They
+duplicate or take ownership of substantially more of libplacebo's scaling and
+color pipeline and may be reconsidered only through a new reviewed decision if
+both preferred paths fail.
+
+## Mandatory non-shipping spike
+
+The first implementation increment is an isolated technical spike. It must not
+add a production default, deploy new binaries, change active user
+configuration, or be treated as partial acceptance of this story.
+
+The spike must provide reproducible evidence for all of the following:
+
+1. An RGB-stage public hook can dispatch peak analysis over the exact resolved
+   ROI and return no replacement image while the accepted presentation crop is
+   rendered unchanged.
+2. The analysis hook and the existing NLS hook can coexist in deterministic
+   order without rebuilding or recompiling merely because subtitle detection
+   engages or releases.
+3. Both `max_pq_y` and `avg_pq_y` from frame N are available deterministically
+   for frame N+1, with measured CPU wait, GPU duration, queue behavior, and
+   presentation latency.
+4. An immediate hard-cut candidate or equally early conservative signal resets
+   the owned detector before the previous result is considered for the first
+   frame of the candidate new scene. A later confirmed `safeBoundary` alone is
+   insufficient.
+5. Source changes, seeks, renderer resets, geometry-generation changes, GPU
+   analysis failure, and missing results select a documented full-frame/static
+   fail-open path without reusing invalid ROI metadata.
+6. Authoritative DV, HDR10+, or equivalent dynamic metadata bypasses derived
+   CIE-Y metadata rather than being merged with it. At minimum this requires a
+   pure synthetic-metadata policy test; end-to-end source validation additionally
+   depends on VP carrying such metadata to the renderer.
+7. Native RGB and P010/P210 inputs converge on equivalent decoded-RGB analysis
+   within a documented tolerance, and SDR never enters the ROI detector.
+8. A 4K23.976/24/50/59.94/60 comparison records current full-frame detection,
+   peak detection disabled, ROI analysis without NLS, and ROI analysis with
+   NLS. Include intermediate-texture bandwidth, compute time, CPU readback
+   time, shader-cache evidence, queue depth, dropped/repeated frames, and
+   presentation latency.
+
+The spike ends with one explicit decision:
+
+- **GO**: select the upstream ROI or VP-owned N-1 architecture, record measured
+  tolerances and cost budgets in this story, remove or hard-disable experimental
+  scaffolding, and proceed with the production acceptance criteria.
+- **NO-GO**: retain current full-frame/static behavior and record the blocking
+  result. No-go includes requiring a private DLL fork, inability to preserve
+  presentation pixels, carrying prior-scene values onto a new-scene candidate,
+  unbounded synchronization, subtitle-triggered shader/renderer rebuilds, or
+  exceeding an agreed 4K frame-time/latency budget.
+
 ## Required behavior
 
 1. Separate tone-mapping analysis geometry from presentation geometry. The
@@ -45,9 +134,12 @@ analysis; it is not precedent for a subtitle-aware dynamic detector.
    region from the intersection of the trusted logical active picture and the
    final visible source crop. This excludes revealed black-bar content while
    avoiding influence from picture pixels removed by NLS or presentation crop.
-3. Use the same logical analysis region continuously while its geometry remains
-   authoritative; do not switch histogram scope merely because subtitle
-   detection engages or releases. Full-raster material should naturally retain
+3. Use the same trusted logical analysis basis continuously while its geometry
+   remains authoritative; do not switch histogram scope merely because subtitle
+   detection engages or releases. Resolve the per-frame ROI as its intersection
+   with the final visible source crop. If presentation translation or NLS
+   actually changes that visible intersection, the ROI may change only by that
+   geometric necessity. Full-raster material should naturally retain
    full-raster analysis.
 4. Feed both peak and average-luminance statistics from the analysis region into
    libplacebo tone mapping. A percentile-only workaround is insufficient because
@@ -61,8 +153,9 @@ analysis; it is not precedent for a subtitle-aware dynamic detector.
    silently discard subtitle-bearing regions to obtain cleaner statistics.
 7. Maintain temporal detector continuity without carrying measurements across
    a known scene boundary or source generation. Any delayed-analysis design must
-   explicitly prevent the prior scene's statistics from governing the first
-   frame of a newly detected scene.
+   reset on an immediate conservative hard-cut candidate before consulting the
+   previous result; the later confirmed scene boundary remains useful for
+   diagnostics but is too late to protect the first candidate new-scene frame.
 8. Implement the final architecture directly. Do not introduce a temporary
    policy that freezes the last subtitle-free metadata, disables adaptive tone
    mapping only during subtitle cues, dims subtitle pixels, raises black-bar
@@ -89,7 +182,9 @@ analysis; it is not precedent for a subtitle-aware dynamic detector.
    the preceding scene are not applied to the new scene. Source changes, seeks,
    renderer resets, and generation changes reset analysis state deterministically.
 5. Valid Dolby Vision/HDR10+ dynamic metadata bypasses VP-derived analysis and
-   retains the existing libplacebo metadata preference contract.
+   retains the existing libplacebo metadata preference contract. Synthetic
+   policy tests are mandatory even while the current VP source contract lacks
+   end-to-end dynamic-metadata ingress.
 6. Native RGB and P010/P210 ingress produce equivalent analysis decisions
    within documented conversion tolerance. SDR input remains unaffected.
 7. Diagnostics report presentation crop, trusted picture, resolved analysis
@@ -111,12 +206,17 @@ analysis; it is not precedent for a subtitle-aware dynamic detector.
 - Do not replace libplacebo tone mapping with MPC Video Renderer's fixed Hable
   curve merely to suppress detector pumping.
 - Do not claim that peak-percentile tuning alone satisfies this story.
+- Do not ship the spike, expose it as a supported user mode, or deploy it before
+  the spike records a GO decision and the production implementation passes all
+  acceptance criteria.
 
 ## Likely implementation areas
 
 - `src/VideoProcessor-Lib/vprenderer/LibplaceboVideoRenderer.cpp`
 - `src/VideoProcessor-Lib/vprenderer/LibplaceboRenderParameters.*`
 - `src/VideoProcessor-Lib/vprenderer/AlphaSourceCropPolicy.*`
+- `src/VideoProcessor-Lib/SceneDetector.*` for an immediate conservative
+  hard-cut candidate distinct from later safe-boundary confirmation
 - VP Renderer plugin ABI only if new host-visible diagnostics or controls are
   required
 - libplacebo RGB hook/detected-HDR-metadata integration or an accepted upstream
@@ -134,4 +234,7 @@ analysis; it is not precedent for a subtitle-aware dynamic detector.
 - libplacebo 7.360.1 public APIs include `pl_shader_detect_peak`,
   `pl_get_detected_hdr_metadata`, and the CIE-Y `max_pq_y`/`avg_pq_y` fields,
   but no independent high-level peak-analysis ROI.
-
+- The current VP `VideoState`/`HDRData` contract carries static mastering,
+  MaxCLL, and MaxFALL values but not DV or HDR10+ per-scene structures.
+  Production metadata precedence must be future-safe; full end-to-end dynamic
+  metadata validation requires that separate ingress capability.
