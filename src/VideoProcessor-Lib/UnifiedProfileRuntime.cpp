@@ -73,6 +73,8 @@ namespace
 			left.viewport.cropWiderContentAspectLimit.denominator ==
 				right.viewport.cropWiderContentAspectLimit.denominator &&
 			left.viewport.subtitleFit == right.viewport.subtitleFit &&
+			left.viewport.hdrPeakAnalysisPictureOnly ==
+				right.viewport.hdrPeakAnalysisPictureOnly &&
 			left.viewport.subtitleHoldMilliseconds ==
 				right.viewport.subtitleHoldMilliseconds &&
 			left.viewport.subtitleEngageDriftMilliseconds ==
@@ -863,6 +865,9 @@ namespace UnifiedProfileRuntime
 					viewport.cropWiderContentAspectLimit);
 		variables["subtitle_fit"] =
 			StateVariables::Value::Boolean(viewport.subtitleFit);
+		variables["hdr_peak_analysis_picture_only"] =
+			StateVariables::Value::Boolean(
+				viewport.hdrPeakAnalysisPictureOnly);
 		variables["subtitle_hold_seconds"] =
 			StateVariables::Value::Number(
 				viewport.subtitleHoldMilliseconds / 1000.0);

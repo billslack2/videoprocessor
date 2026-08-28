@@ -2036,6 +2036,13 @@ void testScreenConfigSectionsAndInlineUnits()
         "Zoom does not use the expected Subtitles section heading and state");
     subtitles->click();
     QCoreApplication::processEvents();
+    QCheckBox* pictureOnlyHdrAnalysis = requireControl<QCheckBox>(window,
+        QStringLiteral(
+            "config.vprenderer.zoom.hdr_peak_analysis_picture_only"));
+    require(!pictureOnlyHdrAnalysis->isChecked() &&
+        pictureOnlyHdrAnalysis->accessibleName() ==
+            QStringLiteral("Limit HDR analysis to active picture"),
+        "Zoom subtitles do not expose the default-off HDR analysis toggle");
     QLineEdit* hold = requireControl<QLineEdit>(window,
         QStringLiteral("config.vprenderer.zoom.subtitle_hold_seconds"));
     QLabel* holdUnit = requireControl<QLabel>(window,
@@ -2057,9 +2064,13 @@ void testScreenConfigSectionsAndInlineUnits()
         "Zoom unit input is not consistently sized, aligned, and labeled");
 
     hold->setText(QStringLiteral("1500"));
+    pictureOnlyHdrAnalysis->setChecked(true);
     save(window);
-    require(readBytes(path).contains("subtitle_hold_seconds: 1.5"),
+    const QByteArray saved = readBytes(path);
+    require(saved.contains("subtitle_hold_seconds: 1.5"),
         "Millisecond subtitle hold did not preserve the seconds-based config contract");
+    require(saved.contains("hdr_peak_analysis_picture_only: true"),
+        "HDR active-picture analysis toggle was not persisted in Zoom");
 
     QListWidget* profiles = requireControl<QListWidget>(window,
         QStringLiteral("config.vprenderer.zoom.profiles"));

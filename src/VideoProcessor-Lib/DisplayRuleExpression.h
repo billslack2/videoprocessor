@@ -82,7 +82,8 @@ namespace DisplayRuleExpression
 			type = ValueType::Number;
 			return true;
 		}
-		if (name == "automatic_crop" || name == "subtitle_fit")
+		if (name == "automatic_crop" || name == "subtitle_fit" ||
+			name == "hdr_peak_analysis_picture_only")
 		{
 			type = ValueType::Boolean;
 			return true;

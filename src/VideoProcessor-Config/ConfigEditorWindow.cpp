@@ -1079,6 +1079,7 @@ void ConfigEditorWindow::migrateViewportZoomProfiles()
         QStringLiteral("crop_wider_content_to_fill_screen"),
         QStringLiteral("crop_wider_content_aspect_limit"),
         QStringLiteral("subtitle_fit"),
+        QStringLiteral("hdr_peak_analysis_picture_only"),
         QStringLiteral("subtitle_hold_seconds"),
         QStringLiteral("subtitle_engage_drift_ms"),
         QStringLiteral("subtitle_release_drift_ms"),
@@ -4255,8 +4256,17 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 
         form = addCollapsibleSection(QStringLiteral("subtitles"),
             QStringLiteral("Subtitles"), QStringLiteral(
-                "Keep subtitle content visible and control how VP moves it into the screen."), false);
+                "Keep subtitle content visible, control how VP moves it into the screen, "
+                "and keep subtitle bars out of HDR peak analysis."), false);
         addBoolean(QStringLiteral("Keep subtitles inside screen bounds"), QStringLiteral("subtitle_fit"));
+        auto* pictureOnlyHdrAnalysis = addBoolean(
+            QStringLiteral("Limit HDR analysis to active picture"),
+            QStringLiteral("hdr_peak_analysis_picture_only"));
+        pictureOnlyHdrAnalysis->setToolTip(QStringLiteral(
+            "When a current trusted active-picture rectangle is available, "
+            "exclude surrounding bars and subtitle pixels from libplacebo's "
+            "HDR peak and average-luminance analysis. Invalid or stale geometry "
+            "falls back to full-frame analysis."));
         auto* subtitleHold = addText(QStringLiteral("Subtitle hold"),
             QStringLiteral("subtitle_hold_seconds"), QStringLiteral("ms"), 1000.0);
         subtitleHold->setValidator(new QIntValidator(250, 30000, subtitleHold));

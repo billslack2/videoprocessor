@@ -151,6 +151,7 @@ namespace RendererProfileConfig
 		AspectRatio cropWiderContentAspectLimit{ 1, 1, 1.0 };
 		bool hasCropWiderContentAspectLimit = false;
 		bool subtitleFit = false;
+		bool hdrPeakAnalysisPictureOnly = false;
 		uint64_t subtitleHoldMilliseconds = 2000;
 		uint64_t subtitleEngageDriftMilliseconds = 0;
 		uint64_t subtitleReleaseDriftMilliseconds = 0;
@@ -516,6 +517,7 @@ namespace RendererProfileConfig
 			if (screenGroup && key == "anamorphic_scale")
 				return IsAspectInRange(value, 0.5, 2.0);
 			if (key == "automatic_crop" || key == "subtitle_fit" ||
+				key == "hdr_peak_analysis_picture_only" ||
 				key == "crop_narrower_content_to_fill_screen" ||
 				key == "crop_wider_content_to_fill_screen")
 				return IsBoolean(value);
@@ -1403,6 +1405,7 @@ namespace RendererProfileConfig
 				"crop_narrower_content_aspect_limit",
 				"crop_wider_content_to_fill_screen",
 				"crop_wider_content_aspect_limit", "subtitle_fit",
+				"hdr_peak_analysis_picture_only",
 				"subtitle_hold_seconds", "subtitle_engage_drift_ms",
 				"subtitle_release_drift_ms",
 				"subtitle_padding_pixels", "subtitle_target_buffer_pixels"
@@ -1925,6 +1928,14 @@ namespace RendererProfileConfig
 				"] subtitle_fit is invalid";
 			return false;
 		}
+		value = settings.find("hdr_peak_analysis_picture_only");
+		if (value != settings.end() && !ParseBoolean(value->second,
+			viewport.hdrPeakAnalysisPictureOnly))
+		{
+			error = "[profiles.viewport." + viewport.profile +
+				"] hdr_peak_analysis_picture_only is invalid";
+			return false;
+		}
 		value = settings.find("subtitle_hold_seconds");
 		if (value != settings.end())
 		{
@@ -2052,6 +2063,14 @@ namespace RendererProfileConfig
 		{
 			error = "[profiles.zoom." + viewport.zoomProfile +
 				"] subtitle_fit is invalid";
+			return false;
+		}
+		value = settings.find("hdr_peak_analysis_picture_only");
+		if (value != settings.end() && !ParseBoolean(value->second,
+			viewport.hdrPeakAnalysisPictureOnly))
+		{
+			error = "[profiles.zoom." + viewport.zoomProfile +
+				"] hdr_peak_analysis_picture_only is invalid";
 			return false;
 		}
 		value = settings.find("subtitle_hold_seconds");

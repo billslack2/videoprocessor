@@ -118,6 +118,8 @@ vprenderer.viewport.<variant>.vertical_alignment	center
 vprenderer.viewport.<variant>.vertical_alignment	bottom
 vprenderer.viewport.<variant>.subtitle_fit	true
 vprenderer.viewport.<variant>.subtitle_fit	false
+vprenderer.zoom.<variant>.hdr_peak_analysis_picture_only	true
+vprenderer.zoom.<variant>.hdr_peak_analysis_picture_only	false
 shader.<group>.type	single
 shader.<group>.type	multi
 shader.<group>.<member>.shader_type	nls

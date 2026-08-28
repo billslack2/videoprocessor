@@ -141,6 +141,22 @@ struct pl_peak_detect_params {
     // Setting this to 0.0 (or a negative value) disables this functionality.
     float black_cutoff;
 
+    // Optional normalized crop restricting the image region used for peak
+    // detection. Coordinates are relative to the logical input of this shader,
+    // with (0, 0) at the top left and (1, 1) at the bottom right. Coordinates
+    // are normalized and clamped to this range. Pixels outside this crop do not
+    // contribute to the detected maximum, average, histogram, or scene-change
+    // weighting.
+    //
+    // An all-zero rectangle disables cropping and analyzes the full image. A
+    // non-zero rectangle which is empty after normalization and clamping is
+    // invalid and causes `pl_shader_detect_peak` to fail.
+    //
+    // This field may change between frames without resetting the smoothing
+    // state. This is useful when the presentation crop changes while the
+    // underlying scene remains continuous.
+    pl_rect2df analysis_crop;
+
     // Allows the peak detection result to be delayed by up to a single frame,
     // which can sometimes improve thoughput, at the cost of introducing the
     // possibility of 1-frame flickers on transitions. Disabled by default.

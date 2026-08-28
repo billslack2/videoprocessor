@@ -72,6 +72,9 @@
     <ClInclude Include="vprenderer\\LibplaceboRenderParameters.h">
       <Filter>Header Files\libplacebo</Filter>
     </ClInclude>
+    <ClInclude Include="vprenderer\\HdrPeakAnalysisCrop.h">
+      <Filter>Header Files\libplacebo</Filter>
+    </ClInclude>
     <ClInclude Include="vprenderer\\AlphaPresentationTelemetry.h">
       <Filter>Header Files\libplacebo</Filter>
     </ClInclude>
