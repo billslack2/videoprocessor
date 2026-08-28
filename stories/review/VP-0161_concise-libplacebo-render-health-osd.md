@@ -129,9 +129,18 @@ Deployed SHA-256 values are:
 Both hashes exactly match the clean build. The active configuration was not
 edited and retained SHA-256
 `674CE09A96516D7DFAF86B7C9FC79255E57E7953D1E12BB009B870DC0D6ECF3E`.
-Automated UI launch did not proceed because its app-approval request timed
-out; VideoProcessor remains stopped, and the source branch remains local and
-unpushed.
+The source branch remains local and unpushed.
+
+A subsequent live launch supplied the missing runtime acceptance evidence.
+The new session loaded plugin API 15, Ctrl+I logged
+`VP Renderer plugin render-health bridge: available=1 frames=69`, and the
+native Alpha bitmap grew from the legacy 540x572 panel to 540x792, confirming
+that the six health rows were included. In the stabilized fullscreen
+generation, renderer-owned `measuredDisplayHz` was selected around
+59.9506 Hz while the separate UI `WaitForVBlank` estimator still reported its
+warm-up state, confirming that the OSD no longer borrowed that fallback. The
+application then shut down cleanly; the deployed pair and active
+configuration retained the hashes recorded above.
 
 Remaining acceptance is the live Alpha UI exercise: open Ctrl+I during video,
 confirm the six rows fit without clipping, verify warm-up settles to `Good`,
