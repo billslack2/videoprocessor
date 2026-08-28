@@ -2,10 +2,13 @@
 
 ## Status
 
-Backlog (2026-08-28). Story created from the requested renderer-handoff
-behavior. The current GitHub default branch was discovered as
-`v1.3.003-beta`; implementation awaits the required developer confirmation of
-that base before a source branch or worktree is created.
+In Progress (2026-08-28). The developer confirmed the discovered GitHub
+default branch `v1.3.003-beta` as the implementation base. Source work started
+from its current remote tip `a737ecd3` on branch
+`codex/vp-0160-post-swap-rule-reapply` in clean worktree
+`C:\Videoprocessor\vp\git-main\stories\.vp0160-source`. Initial work is tracing
+the existing `Shift+Z` action and successor-running lifecycle boundary before
+making the focused change.
 
 ## User story
 
@@ -77,4 +80,3 @@ state instead of retaining stale manual or previous-renderer selections.
 - VP-0028: unified renderer profiles and the profile-rule reset action.
 - VP-0134: renderer handoff lifecycle and generation safety.
 - VP-0152: coordinated profile selection actions and feedback.
-
