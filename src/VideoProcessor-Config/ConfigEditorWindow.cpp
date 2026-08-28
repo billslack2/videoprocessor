@@ -1080,6 +1080,7 @@ void ConfigEditorWindow::migrateViewportZoomProfiles()
         QStringLiteral("crop_wider_content_aspect_limit"),
         QStringLiteral("subtitle_fit"),
         QStringLiteral("hdr_peak_analysis_picture_only"),
+		QStringLiteral("hdr_peak_analysis_motion_compensation"),
 		QStringLiteral("hdr_peak_analysis_height_percent"),
         QStringLiteral("subtitle_hold_seconds"),
         QStringLiteral("subtitle_engage_drift_ms"),
@@ -4269,6 +4270,13 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             "libplacebo's HDR peak and average-luminance analysis. This inset "
             "rejects subtitles and OSDs that cross from a black bar into the "
             "picture. Invalid or stale geometry falls back to full-frame analysis."));
+		auto* motionCompensatedHdrAnalysis = addBoolean(
+			QStringLiteral("Protect HDR analysis during subtitle movement"),
+			QStringLiteral("hdr_peak_analysis_motion_compensation"));
+		motionCompensatedHdrAnalysis->setToolTip(QStringLiteral(
+			"Experimental. When fixed center analysis is off, use VP's pending or "
+			"active subtitle-picture movement to exclude the affected active-picture "
+			"edge from HDR analysis. This uses existing geometry and does not use OCR."));
 		auto* hdrAnalysisHeight = addText(
 			QStringLiteral("HDR analysis height"),
 			QStringLiteral("hdr_peak_analysis_height_percent"),
@@ -4279,9 +4287,14 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 			"centered vertically. Use 75% as the default compromise; smaller values "
 			"exclude more subtitle and OSD area."));
 		hdrAnalysisHeight->setEnabled(pictureOnlyHdrAnalysis->isChecked());
+		motionCompensatedHdrAnalysis->setEnabled(
+			!pictureOnlyHdrAnalysis->isChecked());
 		connect(pictureOnlyHdrAnalysis, &QCheckBox::toggled, this,
-			[hdrAnalysisHeight](bool enabled)
-			{ hdrAnalysisHeight->setEnabled(enabled); });
+			[hdrAnalysisHeight, motionCompensatedHdrAnalysis](bool enabled)
+			{
+				hdrAnalysisHeight->setEnabled(enabled);
+				motionCompensatedHdrAnalysis->setEnabled(!enabled);
+			});
         auto* subtitleHold = addText(QStringLiteral("Subtitle hold"),
             QStringLiteral("subtitle_hold_seconds"), QStringLiteral("ms"), 1000.0);
         subtitleHold->setValidator(new QIntValidator(250, 30000, subtitleHold));
@@ -4652,8 +4665,12 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 				QStringLiteral("config.vprenderer.zoom.hdr_peak_analysis_picture_only"));
 			auto* analysisHeight = profileFields->findChild<QLineEdit*>(
 				QStringLiteral("config.vprenderer.zoom.hdr_peak_analysis_height_percent"));
+			auto* motionCompensation = profileFields->findChild<QCheckBox*>(
+				QStringLiteral("config.vprenderer.zoom.hdr_peak_analysis_motion_compensation"));
 			if (analysisHeight)
 				analysisHeight->setEnabled(pictureOnly && pictureOnly->isChecked());
+			if (motionCompensation)
+				motionCompensation->setEnabled(!pictureOnly || !pictureOnly->isChecked());
 		}
         if (queuePolicy)
             updateQueuePolicyFromValues();

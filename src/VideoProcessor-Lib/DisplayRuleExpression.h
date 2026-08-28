@@ -84,7 +84,8 @@ namespace DisplayRuleExpression
 			return true;
 		}
 		if (name == "automatic_crop" || name == "subtitle_fit" ||
-			name == "hdr_peak_analysis_picture_only")
+			name == "hdr_peak_analysis_picture_only" ||
+			name == "hdr_peak_analysis_motion_compensation")
 		{
 			type = ValueType::Boolean;
 			return true;

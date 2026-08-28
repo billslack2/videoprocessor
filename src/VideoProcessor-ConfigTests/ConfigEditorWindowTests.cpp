@@ -2043,6 +2043,12 @@ void testScreenConfigSectionsAndInlineUnits()
         pictureOnlyHdrAnalysis->accessibleName() ==
             QStringLiteral("Limit HDR analysis to picture center"),
         "Zoom subtitles do not expose the default-off HDR analysis toggle");
+	QCheckBox* motionCompensatedHdrAnalysis = requireControl<QCheckBox>(window,
+		QStringLiteral(
+			"config.vprenderer.zoom.hdr_peak_analysis_motion_compensation"));
+	require(!motionCompensatedHdrAnalysis->isChecked() &&
+		motionCompensatedHdrAnalysis->isEnabled(),
+		"Automatic HDR movement protection does not default off and available");
 	QLineEdit* hdrAnalysisHeight = requireControl<QLineEdit>(window,
 		QStringLiteral(
 			"config.vprenderer.zoom.hdr_peak_analysis_height_percent"));
@@ -2070,9 +2076,13 @@ void testScreenConfigSectionsAndInlineUnits()
         "Zoom unit input is not consistently sized, aligned, and labeled");
 
     hold->setText(QStringLiteral("1500"));
+	motionCompensatedHdrAnalysis->setChecked(true);
     pictureOnlyHdrAnalysis->setChecked(true);
 	require(hdrAnalysisHeight->isEnabled(),
 		"HDR analysis height did not enable with its toggle");
+	require(!motionCompensatedHdrAnalysis->isEnabled() &&
+		motionCompensatedHdrAnalysis->isChecked(),
+		"Fixed HDR analysis did not take precedence without erasing automatic configuration");
 	hdrAnalysisHeight->setText(QStringLiteral("70"));
     save(window);
     const QByteArray saved = readBytes(path);
@@ -2080,6 +2090,8 @@ void testScreenConfigSectionsAndInlineUnits()
         "Millisecond subtitle hold did not preserve the seconds-based config contract");
     require(saved.contains("hdr_peak_analysis_picture_only: true"),
         "HDR active-picture analysis toggle was not persisted in Zoom");
+	require(saved.contains("hdr_peak_analysis_motion_compensation: true"),
+		"Automatic HDR movement protection was not persisted in Zoom");
 	require(saved.contains("hdr_peak_analysis_height_percent: 70"),
 		"HDR active-picture analysis height was not persisted in Zoom");
 

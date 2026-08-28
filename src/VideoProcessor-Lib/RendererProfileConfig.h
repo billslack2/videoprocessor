@@ -155,6 +155,7 @@ namespace RendererProfileConfig
 		bool hasCropWiderContentAspectLimit = false;
 		bool subtitleFit = false;
 		bool hdrPeakAnalysisPictureOnly = false;
+		bool hdrPeakAnalysisMotionCompensation = false;
 		int hdrPeakAnalysisHeightPercent =
 			DEFAULT_HDR_PEAK_ANALYSIS_HEIGHT_PERCENT;
 		uint64_t subtitleHoldMilliseconds = 2000;
@@ -523,6 +524,7 @@ namespace RendererProfileConfig
 				return IsAspectInRange(value, 0.5, 2.0);
 			if (key == "automatic_crop" || key == "subtitle_fit" ||
 				key == "hdr_peak_analysis_picture_only" ||
+				key == "hdr_peak_analysis_motion_compensation" ||
 				key == "crop_narrower_content_to_fill_screen" ||
 				key == "crop_wider_content_to_fill_screen")
 				return IsBoolean(value);
@@ -1417,6 +1419,7 @@ namespace RendererProfileConfig
 				"crop_wider_content_to_fill_screen",
 				"crop_wider_content_aspect_limit", "subtitle_fit",
 				"hdr_peak_analysis_picture_only",
+				"hdr_peak_analysis_motion_compensation",
 				"hdr_peak_analysis_height_percent",
 				"subtitle_hold_seconds", "subtitle_engage_drift_ms",
 				"subtitle_release_drift_ms",
@@ -1948,6 +1951,14 @@ namespace RendererProfileConfig
 				"] hdr_peak_analysis_picture_only is invalid";
 			return false;
 		}
+		value = settings.find("hdr_peak_analysis_motion_compensation");
+		if (value != settings.end() && !ParseBoolean(value->second,
+			viewport.hdrPeakAnalysisMotionCompensation))
+		{
+			error = "[profiles.viewport." + viewport.profile +
+				"] hdr_peak_analysis_motion_compensation is invalid";
+			return false;
+		}
 		value = settings.find("hdr_peak_analysis_height_percent");
 		if (value != settings.end() && !ParseInteger(value->second,
 			MIN_HDR_PEAK_ANALYSIS_HEIGHT_PERCENT,
@@ -2093,6 +2104,14 @@ namespace RendererProfileConfig
 		{
 			error = "[profiles.zoom." + viewport.zoomProfile +
 				"] hdr_peak_analysis_picture_only is invalid";
+			return false;
+		}
+		value = settings.find("hdr_peak_analysis_motion_compensation");
+		if (value != settings.end() && !ParseBoolean(value->second,
+			viewport.hdrPeakAnalysisMotionCompensation))
+		{
+			error = "[profiles.zoom." + viewport.zoomProfile +
+				"] hdr_peak_analysis_motion_compensation is invalid";
 			return false;
 		}
 		value = settings.find("hdr_peak_analysis_height_percent");

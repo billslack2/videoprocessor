@@ -135,5 +135,53 @@ namespace Tests
 			Assert::IsFalse(HdrPeakAnalysisCrop::Resolve(
 				false, true, 8, trusted, presentation).AppliesRestriction());
 		}
+
+		TEST_METHOD(MotionCompensationTrimsOnlyMovementOwningEdge)
+		{
+			HdrPeakAnalysisCrop::TrustedPicture trusted = {
+				0, 100, 1920, 900, 1920, 1080, 15, true
+			};
+			const pl_rect2df presentation = {
+				0.0f, 0.0f, 1920.0f, 1080.0f
+			};
+			const auto lower = HdrPeakAnalysisCrop::ResolveMotionCompensated(
+				true, true, 15, trusted, presentation, 80.0);
+			Assert::IsTrue(lower.AppliesRestriction());
+			Assert::AreEqual(100.0f, lower.trustedIntersection.y0, 0.000001f);
+			Assert::AreEqual(820.0f, lower.trustedIntersection.y1, 0.000001f);
+
+			const auto upper = HdrPeakAnalysisCrop::ResolveMotionCompensated(
+				true, true, 15, trusted, presentation, -60.0);
+			Assert::IsTrue(upper.AppliesRestriction());
+			Assert::AreEqual(160.0f, upper.trustedIntersection.y0, 0.000001f);
+			Assert::AreEqual(900.0f, upper.trustedIntersection.y1, 0.000001f);
+		}
+
+		TEST_METHOD(MotionCompensationIsIdleWithoutMovement)
+		{
+			HdrPeakAnalysisCrop::TrustedPicture trusted = {
+				0, 100, 1920, 900, 1920, 1080, 16, true
+			};
+			const auto decision = HdrPeakAnalysisCrop::ResolveMotionCompensated(
+				true, true, 16, trusted,
+				pl_rect2df{ 0.0f, 0.0f, 1920.0f, 1080.0f }, 0.0);
+			Assert::IsFalse(decision.AppliesRestriction());
+			Assert::AreEqual(
+				static_cast<int>(HdrPeakAnalysisCrop::Outcome::FULL_PRESENTATION),
+				static_cast<int>(decision.outcome));
+		}
+
+		TEST_METHOD(FixedPercentageTakesPrecedenceOverMotionCompensation)
+		{
+			HdrPeakAnalysisCrop::TrustedPicture trusted = {
+				0, 100, 1920, 900, 1920, 1080, 17, true
+			};
+			const auto decision = HdrPeakAnalysisCrop::ResolvePolicy(
+				true, true, true, 17, trusted,
+				pl_rect2df{ 0.0f, 0.0f, 1920.0f, 1080.0f }, 50.0, 300.0);
+			Assert::IsTrue(decision.AppliesRestriction());
+			Assert::AreEqual(300.0f, decision.trustedIntersection.y0, 0.000001f);
+			Assert::AreEqual(700.0f, decision.trustedIntersection.y1, 0.000001f);
+		}
 	};
 }

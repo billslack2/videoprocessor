@@ -120,6 +120,8 @@ vprenderer.viewport.<variant>.subtitle_fit	true
 vprenderer.viewport.<variant>.subtitle_fit	false
 vprenderer.zoom.<variant>.hdr_peak_analysis_picture_only	true
 vprenderer.zoom.<variant>.hdr_peak_analysis_picture_only	false
+vprenderer.zoom.<variant>.hdr_peak_analysis_motion_compensation	true
+vprenderer.zoom.<variant>.hdr_peak_analysis_motion_compensation	false
 shader.<group>.type	single
 shader.<group>.type	multi
 shader.<group>.<member>.shader_type	nls

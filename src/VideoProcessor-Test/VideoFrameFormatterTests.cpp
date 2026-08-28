@@ -2193,6 +2193,7 @@ namespace Tests
 			cinema.settings["screen_aspect"] = "2.35:1";
 			cinema.settings["automatic_crop"] = "true";
 			cinema.settings["subtitle_fit"] = "true";
+			cinema.settings["hdr_peak_analysis_motion_compensation"] = "true";
 			cinema.settings["hdr_peak_analysis_height_percent"] = "70";
 			cinema.settings["subtitle_hold_seconds"] = "2";
 			cinema.settings["subtitle_engage_drift_ms"] = "300";
@@ -2210,6 +2211,7 @@ namespace Tests
 			Assert::IsFalse(viewport.hasScreenAspect);
 			Assert::IsFalse(viewport.automaticCrop);
 			Assert::IsFalse(viewport.subtitleFit);
+			Assert::IsFalse(viewport.hdrPeakAnalysisMotionCompensation);
 			Assert::AreEqual(75, viewport.hdrPeakAnalysisHeightPercent);
 			Assert::AreEqual(10, viewport.subtitleTargetBufferPixels);
 			Assert::IsTrue(RendererProfileConfig::ResolveViewport(
@@ -2219,6 +2221,7 @@ namespace Tests
 			Assert::IsTrue(viewport.hasScreenAspect);
 			Assert::IsTrue(viewport.automaticCrop);
 			Assert::IsTrue(viewport.subtitleFit);
+			Assert::IsTrue(viewport.hdrPeakAnalysisMotionCompensation);
 			Assert::AreEqual(70, viewport.hdrPeakAnalysisHeightPercent);
 			Assert::AreEqual<uint64_t>(
 				2000, viewport.subtitleHoldMilliseconds);
@@ -2262,6 +2265,10 @@ namespace Tests
 				"viewport", "hdr_peak_analysis_height_percent", "9", expected));
 			Assert::IsFalse(RendererProfileConfig::ValidateProfileSetting(
 				"viewport", "hdr_peak_analysis_height_percent", "101", expected));
+			Assert::IsTrue(RendererProfileConfig::ValidateProfileSetting(
+				"viewport", "hdr_peak_analysis_motion_compensation", "true", expected));
+			Assert::IsFalse(RendererProfileConfig::ValidateProfileSetting(
+				"viewport", "hdr_peak_analysis_motion_compensation", "sometimes", expected));
 
 			RendererProfileConfig::Model model;
 			RendererProfileConfig::Profile scope;
