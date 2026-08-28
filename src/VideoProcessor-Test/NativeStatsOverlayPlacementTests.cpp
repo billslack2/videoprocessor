@@ -69,7 +69,7 @@ namespace Tests
 			Assert::IsTrue(std::fabs(result.panel.bottom - 401.0f) < 0.01f);
 		}
 
-		TEST_METHOD(ProfileBannerScalesWithOutputResolution)
+		TEST_METHOD(ProfileBannerScalesWithVisiblePictureResolution)
 		{
 			Assert::IsTrue(std::fabs(ProfileOverlayScale(1080.0f) - 1.275f) <
 				0.01f);
@@ -79,6 +79,38 @@ namespace Tests
 				0.01f);
 			Assert::IsTrue(std::fabs(ProfileOverlayScale(720.0f) - 0.85f) <
 				0.01f);
+		}
+
+		TEST_METHOD(ProfileBannerScalesFromVisibleZoomPicture)
+		{
+			const Rect output{ 0.0f, 0.0f, 2560.0f, 1440.0f };
+			const Rect zoomCrop{ -120.0f, 175.0f, 2680.0f, 1265.0f };
+			const Rect visible = Intersect(zoomCrop, output);
+			Assert::IsTrue(std::fabs(visible.Height() - 1090.0f) < 0.01f);
+			Assert::IsTrue(std::fabs(ProfileOverlayScale(visible.Height()) -
+				1.2868f) < 0.01f);
+
+			const Rect localPicture{
+				visible.left - zoomCrop.left, visible.top - zoomCrop.top,
+				visible.right - zoomCrop.left, visible.bottom - zoomCrop.top };
+			const Rect localOutput{
+				output.left - zoomCrop.left, output.top - zoomCrop.top,
+				output.right - zoomCrop.left, output.bottom - zoomCrop.top };
+			const Result result = PlaceTopLeft(localPicture, localOutput,
+				760.0f * ProfileOverlayScale(visible.Height()),
+				88.0f * ProfileOverlayScale(visible.Height()),
+				kProfileOverlayInsetPixels);
+			const Rect absolutePanel{
+				result.panel.left + zoomCrop.left,
+				result.panel.top + zoomCrop.top,
+				result.panel.right + zoomCrop.left,
+				result.panel.bottom + zoomCrop.top };
+			Assert::IsTrue(absolutePanel.left >= visible.left);
+			Assert::IsTrue(absolutePanel.top >= visible.top);
+			Assert::IsTrue(absolutePanel.right <= visible.right);
+			Assert::IsTrue(absolutePanel.bottom <= visible.bottom);
+			Assert::IsTrue(std::fabs(absolutePanel.left - 30.0f) < 0.01f);
+			Assert::IsTrue(std::fabs(absolutePanel.top - 205.0f) < 0.01f);
 		}
 
 		TEST_METHOD(LetterboxAndPillarboxUseTheirActualPictureBounds)
