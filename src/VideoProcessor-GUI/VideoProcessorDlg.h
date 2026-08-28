@@ -647,6 +647,9 @@ protected:
 	// configured queue-reset delay is measured against a usable renderer.
 	bool m_fullscreenEntryTransitionPending = false;
 	bool m_rendererSwitchTransitionPending = false;
+	// A renderer-family swap clears manual profile overrides only after the
+	// exact successor generation reaches the accepted running boundary.
+	uint32_t m_rendererSwitchProfileReapplyGeneration = 0;
 	double m_alphaRefreshTransitionPreviousRateHz = 0.0;
 	double m_alphaRefreshTransitionCurrentRateHz = 0.0;
 	// Initial DirectShow starts and backend handoffs need the proven madVR

@@ -6206,6 +6206,27 @@ LRESULT CVideoProcessorDlg::OnMessageRendererStateChange(WPARAM wParam, LPARAM l
 			m_rendererSwitchTransitionPending;
 		m_fullscreenEntryTransitionPending = false;
 		m_rendererSwitchTransitionPending = false;
+		if (RendererGenerationGate::ConsumePostSwapRuleReapply(
+			m_rendererSwitchProfileReapplyGeneration,
+			messageGeneration, currentGeneration,
+			m_videoRenderer != nullptr,
+			m_rendererState == RendererState::RENDERSTATE_RENDERING))
+		{
+			DebugLog::Log(
+				"Post-swap profile rules reapply: renderer=%S generation=%u "
+				"state=running action=reapply-rules",
+				m_activeRendererName.GetString(), messageGeneration);
+			OnCommandReapplyRules();
+			if (m_rendererState != RendererState::RENDERSTATE_RENDERING ||
+				m_wantToRestartRenderer)
+			{
+				DebugLog::Log(
+					"Post-swap profile rules reapply: renderer=%S generation=%u "
+					"outcome=successor-restart-requested",
+					m_activeRendererName.GetString(), messageGeneration);
+				break;
+			}
+		}
 		if (m_activeRendererIsDirectShow)
 		{
 			if (fullscreenEntryTransition || rendererSwitchTransition)
@@ -8762,6 +8783,19 @@ void CVideoProcessorDlg::RenderStart()
 	}
 	const uint32_t rendererGeneration =
 		m_rendererGeneration.fetch_add(1, std::memory_order_acq_rel) + 1;
+	const bool acceptedRendererDiffers = !m_acceptedRendererName.IsEmpty() &&
+		m_acceptedRendererName.CompareNoCase(m_activeRendererName) != 0;
+	m_rendererSwitchProfileReapplyGeneration =
+		RendererGenerationGate::ArmPostSwapRuleReapply(
+			acceptedRendererDiffers, rendererGeneration);
+	if (m_rendererSwitchProfileReapplyGeneration != 0)
+	{
+		DebugLog::Log(
+			"Post-swap profile rules reapply armed: accepted=%S successor=%S "
+			"generation=%u state=awaiting-running",
+			m_acceptedRendererName.GetString(), m_activeRendererName.GetString(),
+			rendererGeneration);
+	}
 	const bool recoveryRecreation = m_nextRendererIsRecoveryRecreation;
 	m_nextRendererIsRecoveryRecreation = false;
 	m_directShowRecoveryRecreatedGeneration =

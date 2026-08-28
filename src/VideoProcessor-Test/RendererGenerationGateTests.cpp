@@ -24,6 +24,38 @@ namespace Tests
 			Assert::IsFalse(RendererGenerationGate::Accept(0, 0, true));
 		}
 
+		TEST_METHOD(PostSwapRuleReapplyArmsForBothRendererDirections)
+		{
+			const uint32_t madvrToAlpha =
+				RendererGenerationGate::ArmPostSwapRuleReapply(true, 21);
+			const uint32_t alphaToMadvr =
+				RendererGenerationGate::ArmPostSwapRuleReapply(true, 22);
+			const uint32_t sameRendererRestart =
+				RendererGenerationGate::ArmPostSwapRuleReapply(false, 23);
+
+			Assert::AreEqual(static_cast<uint32_t>(21), madvrToAlpha);
+			Assert::AreEqual(static_cast<uint32_t>(22), alphaToMadvr);
+			Assert::AreEqual(static_cast<uint32_t>(0), sameRendererRestart);
+		}
+
+		TEST_METHOD(PostSwapRuleReapplyConsumesOnlyTheRunningSuccessorOnce)
+		{
+			uint32_t pending =
+				RendererGenerationGate::ArmPostSwapRuleReapply(true, 31);
+
+			Assert::IsFalse(RendererGenerationGate::ConsumePostSwapRuleReapply(
+				pending, 30, 31, true, true));
+			Assert::IsFalse(RendererGenerationGate::ConsumePostSwapRuleReapply(
+				pending, 31, 31, true, false));
+			Assert::IsFalse(RendererGenerationGate::ConsumePostSwapRuleReapply(
+				pending, 31, 32, true, true));
+			Assert::IsTrue(RendererGenerationGate::ConsumePostSwapRuleReapply(
+				pending, 31, 31, true, true));
+			Assert::AreEqual(static_cast<uint32_t>(0), pending);
+			Assert::IsFalse(RendererGenerationGate::ConsumePostSwapRuleReapply(
+				pending, 31, 31, true, true));
+		}
+
 		TEST_METHOD(RetiringRendererAcceptsOnlyExactRefreshRestored)
 		{
 			Assert::IsTrue(
