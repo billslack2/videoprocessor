@@ -6,9 +6,9 @@ story may have ordered child-task IDs as defined below.
 
 ## Registry state
 
-- Last assigned root story: `VP-0155`
-- Next root story number: `VP-0156`
-- Total indexed items: 174
+- Last assigned root story: `VP-0156`
+- Next root story number: `VP-0157`
+- Total indexed items: 175
 
 ## Story locations
 
@@ -191,6 +191,7 @@ they must not contain requirements that are absent from this file.
 | VP-0153 | Done | Reset queues after every display transition |
 | VP-0154 | Done | Automatic black-bar crop and aspect-limit fill |
 | VP-0155 | Done | Honor vertical picture alignment for configured screen viewports |
+| VP-0156 | In Progress | Eliminate transient four-sided bars during live Screen and Zoom profile changes |
 | VP-0066-1 | Done | Characterize the live output pipeline with replayable golden traces |
 | VP-0066-2 | Done | Extract a graph-independent video timing controller |
 | VP-0066-3 | Done | Extract epoch-aware frame transport and processing components |
