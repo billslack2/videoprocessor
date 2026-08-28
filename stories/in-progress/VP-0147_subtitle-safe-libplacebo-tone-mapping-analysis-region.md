@@ -23,6 +23,28 @@ shipping and any upstream submission remain separate reviewed decisions.
 Do not ship a cached-metadata or subtitle-duration freeze as an interim
 solution.
 
+## Local proof checkpoint (2026-08-28)
+
+Local libplacebo 7.360.1 branch `codex/vp0147-analysis-roi-v7`, commit
+`c3a3d203`, now provides the API-360 analysis crop. Its no-push URL remains
+`no-push://libplacebo-local-only`; nothing was submitted upstream. The x64
+Release DLL hash is `D2BCC6E62DF86760825639949448594D69024C0C2544D0DFC3D6C58D05E23507`.
+On all three D3D11 adapters the controlled full max/average PQ
+`0.565607/0.419726` changed to ROI `0.544772/0.388818`, matching the
+independent ROI reference `0.544777/0.387234`.
+
+VP commit `b08251b` adds the default-off Zoom / Subtitles toggle, fail-open
+trusted-geometry policy, policy-transition evidence, and five-second aggregate
+ROI/metadata metrics. The full x64 Release solution builds; ROI policy tests
+pass 4/4, libplacebo parameter/ABI tests pass 11/11, and the offscreen Config
+suite passes. The full VP suite passes 954/955, with only the beta tip's
+pre-existing HTML inventory mismatch for four crop-to-fill fields failing.
+
+This is not deployed and is not yet the spike's final GO. Live subtitle A/B,
+the input/refresh/NLS timing matrix, reset/scene/dynamic-metadata coverage, and
+queue/presentation measurements remain. Keep the story In Progress and the
+feature off by default until that evidence is recorded.
+
 ## User story
 
 As a VP Renderer user watching HDR material with burned-in subtitles in black
