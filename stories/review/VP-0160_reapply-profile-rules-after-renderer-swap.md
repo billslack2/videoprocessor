@@ -35,6 +35,17 @@ Validation and release evidence:
 - Both hashes exactly match their build artifacts. No configuration or state
   file was edited; the active `VideoProcessor.cfg` hash remained
   `41D10C9DD49BB920BED4222D530E0196D092078DA7577AA52E1A0EB069572AA9`.
+- A fresh detached worktree at the current remote `v1.3.003-beta` tip
+  `0cf07a95` completed a full x64 Release solution build. The clean build's
+  `VideoProcessorConfigTests.exe` also passed with exit code 0.
+- The canonical release manifest staged and verified 57 immutable files, then
+  produced `VideoProcessor-v1.3.003-beta.zip` with the expected top-level
+  `VideoProcessor` directory and empty `logs` directory. The archive exactly
+  matches the verified stage, contains only `VideoProcessor.cfg.example`, and
+  contains no mutable configuration/state, symbols, import libraries, backup
+  files, or shader cache.
+- Release archive size: `29315295` bytes. SHA-256:
+  `31CAF5D4A2F3BF89426D25F7EF7733887104F862155FB9988E41921BD7861100`.
 
 Remaining acceptance is the live hardware exercise: establish a manual
 profile override, switch madVR to Alpha and Alpha to madVR, and confirm each
