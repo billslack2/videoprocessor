@@ -49,6 +49,28 @@ the deployed VP Renderer plugin passed a `LoadLibraryEx` smoke test with API 14
 and all required exports. The toggle remains omitted/default-off until the user
 enables it in Config.
 
+After the later VP-0161 render-health deployment exposed that its beta-only
+executable did not recognize VP-0147's active
+`hdr_peak_analysis_picture_only` setting, the user requested a combined local
+build. VP-0161 was applied without conflicts to the exact local VP-0147 tip
+`f99541f8` on local-only branch `codex/vp0147-vp0161-render-health`, producing
+commit `651ec669`. The clean x64 Release solution build passed; 29 focused
+ROI/parameter/plugin/health tests passed, the offscreen Config suite passed,
+and the complete native suite passed 965/966 with only the same pre-existing
+HTML inventory mismatch failing.
+
+That combined build now supersedes the earlier local deployment. Its backup is
+`C:\Videoprocessor\vp\backup-before-vp0147-vp0161-20260828-181044`.
+The deployed executable SHA-256 is
+`7FE58AE4F3531ACCD6E34B848FBBC3193BC05073C0F8222C28C64504CA2825CB`,
+the renderer DLL SHA-256 is
+`38B6C7F439894EF15F5A54EF323788BCA35BC359E153FE69D3DF2684E8DD2D10`,
+and the matching local libplacebo fork remains
+`D2BCC6E62DF86760825639949448594D69024C0C2544D0DFC3D6C58D05E23507`.
+The active configuration was not edited and remains SHA-256
+`DAC456C0D12657A2B4D10569D79D5B4DDCF7FB0816D8C6F70F53965E8FFBD7C3`.
+The VP-0147 fork and combined branch remain local and were not pushed.
+
 This test deployment is not yet the spike's final GO. Live subtitle A/B, the
 input/refresh/NLS timing matrix, reset/scene/dynamic-metadata coverage, and
 queue/presentation measurements remain. Keep the story In Progress until that

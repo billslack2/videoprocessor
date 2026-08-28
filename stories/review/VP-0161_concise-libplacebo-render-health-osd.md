@@ -38,6 +38,30 @@ Validation evidence:
   remained
   `DAC456C0D12657A2B4D10569D79D5B4DDCF7FB0816D8C6F70F53965E8FFBD7C3`.
 
+The beta-only deployment above was subsequently superseded at the user's
+request because the active configuration contains VP-0147's local
+`hdr_peak_analysis_picture_only` setting. The published VP-0161 change applied
+without conflicts to local VP-0147 tip `f99541f8`, producing local-only branch
+`codex/vp0147-vp0161-render-health` at commit `651ec669`. Its clean x64 Release
+solution build passed; 29 focused ROI/parameter/plugin/health tests passed,
+the offscreen Config suite passed, and the complete native suite passed
+965/966 with only the same pre-existing HTML inventory mismatch failing.
+
+The combined deployment backup is
+`C:\Videoprocessor\vp\backup-before-vp0147-vp0161-20260828-181044`.
+Deployed SHA-256 values are:
+
+- `VideoProcessor.exe`:
+  `7FE58AE4F3531ACCD6E34B848FBBC3193BC05073C0F8222C28C64504CA2825CB`.
+- `vprenderer\VideoProcessorVPRenderer.dll`:
+  `38B6C7F439894EF15F5A54EF323788BCA35BC359E153FE69D3DF2684E8DD2D10`.
+- VP-0147 local `vprenderer\libplacebo-360.dll`:
+  `D2BCC6E62DF86760825639949448594D69024C0C2544D0DFC3D6C58D05E23507`.
+
+All hashes match the combined build. The active configuration was not edited
+and retained SHA-256
+`DAC456C0D12657A2B4D10569D79D5B4DDCF7FB0816D8C6F70F53965E8FFBD7C3`.
+
 Remaining acceptance is the live Alpha UI exercise: open Ctrl+I during video,
 confirm the six rows fit without clipping, verify warm-up settles to `Good`,
 and observe that a real renderer drop or material render stall temporarily
