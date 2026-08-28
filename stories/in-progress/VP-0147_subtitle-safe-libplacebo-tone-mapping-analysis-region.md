@@ -40,10 +40,19 @@ pass 4/4, libplacebo parameter/ABI tests pass 11/11, and the offscreen Config
 suite passes. The full VP suite passes 954/955, with only the beta tip's
 pre-existing HTML inventory mismatch for four crop-to-fill fields failing.
 
-This is not deployed and is not yet the spike's final GO. Live subtitle A/B,
-the input/refresh/NLS timing matrix, reset/scene/dynamic-metadata coverage, and
-queue/presentation measurements remain. Keep the story In Progress and the
-feature off by default until that evidence is recorded.
+At the user's direction, the exact committed x64 Release package was deployed
+locally to `C:\Videoprocessor\vp` for live testing. The pre-deployment files
+and an unchanged safety copy of `VideoProcessor.cfg` are under
+`deployment-backups\vp0147-20260828-125543`. All 57 staged immutable files
+match the deployed tree, the active configuration hash remained unchanged, and
+the deployed VP Renderer plugin passed a `LoadLibraryEx` smoke test with API 14
+and all required exports. The toggle remains omitted/default-off until the user
+enables it in Config.
+
+This test deployment is not yet the spike's final GO. Live subtitle A/B, the
+input/refresh/NLS timing matrix, reset/scene/dynamic-metadata coverage, and
+queue/presentation measurements remain. Keep the story In Progress until that
+evidence is recorded.
 
 ## User story
 
