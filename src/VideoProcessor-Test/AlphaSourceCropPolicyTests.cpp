@@ -846,6 +846,48 @@ namespace Tests
 			AssertFullRaster(Evaluate(picture));
 		}
 
+		TEST_METHOD(PendingVerticalInspectionRetainsTrustedCropBeforeDenseBaseExists)
+		{
+			Input input = TrustedScopeCrop();
+			input.latestObservationSupportsCrop = false;
+			input.latestObservationIsProvisional = true;
+			input.latestObservationClassification =
+				ActivePictureClassification::PROVISIONAL;
+			input.frameLocalPresentationRetentionEvaluated = true;
+			input.frameLocalPresentationRetentionSafe = false;
+			input.verticalInspectionPending = true;
+
+			// This is the first dense-inspection frame. No dense translation base or
+			// evidence generation has been established yet.
+			Assert::AreEqual(0ull, input.verticalTranslationSourceGeneration);
+
+			const Decision retained = Evaluate(input);
+			Assert::IsTrue(retained.applyCrop);
+			Assert::IsFalse(retained.outwardExpanded);
+			Assert::IsFalse(retained.verticallyTranslated);
+			Assert::AreEqual(274, retained.sourceBounds.top);
+			Assert::AreEqual(1884, retained.sourceBounds.bottom);
+			Assert::IsTrue(retained.reason.find("inspection") !=
+				std::string::npos);
+
+			Input noInspection = input;
+			noInspection.verticalInspectionPending = false;
+			AssertFullRaster(Evaluate(noInspection));
+
+			Input trustedFullRaster = input;
+			trustedFullRaster.fullRasterPresentationAuthoritative = true;
+			AssertFullRaster(Evaluate(trustedFullRaster));
+
+			Input observedFullRaster = input;
+			observedFullRaster.latestObservationClassification =
+				ActivePictureClassification::FULL_RASTER_TRUSTED;
+			AssertFullRaster(Evaluate(observedFullRaster));
+
+			Input staleGeometry = input;
+			staleGeometry.geometrySourceGeneration = 6;
+			AssertFullRaster(Evaluate(staleGeometry));
+		}
+
 		TEST_METHOD(PendingDenseFitRetainsTrustedCropWithoutFullRasterFlash)
 		{
 			Input input = TrustedScopeCrop();

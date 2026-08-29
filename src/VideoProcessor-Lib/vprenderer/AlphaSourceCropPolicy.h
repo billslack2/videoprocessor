@@ -588,6 +588,11 @@ namespace AlphaSourceCrop
 		bool frameLocalPresentationRetentionEvaluated = false;
 		bool frameLocalPresentationRetentionSafe = false;
 		bool presentationFailOpen = false;
+		// A current, bounded vertical-only envelope is awaiting its first dense
+		// classification. Retain the generation-current trusted geometry without
+		// depending on dense-analysis base state, which may not exist yet on this
+		// first inspection frame. This never grants or renews crop authority.
+		bool verticalInspectionPending = false;
 		// A trusted bar observation may disagree slightly with the retained crop
 		// while the transition model is still confirming the replacement. Keep the
 		// last trusted presentation during that bounded confirmation instead of

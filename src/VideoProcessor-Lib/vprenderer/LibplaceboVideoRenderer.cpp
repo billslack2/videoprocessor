@@ -9063,6 +9063,7 @@ struct LibplaceboVideoRenderer::Impl
 				latestActivePicturePresentationRetentionEvaluated;
 			cropInput.presentationFailOpen =
 				verticalFailOpen || outwardExpansionInvalid;
+			cropInput.verticalInspectionPending = verticalInspectionPending;
 			const bool barCropRefinementPending =
 				latestActivePictureEvidenceAvailable &&
 				latestActivePictureEvidenceClassification ==
@@ -9072,13 +9073,9 @@ struct LibplaceboVideoRenderer::Impl
 				!effectiveLatestSupportsCrop;
 			cropInput.barCropRefinementPending = barCropRefinementPending;
 			const bool verticalTranslationConfirmationPending =
-				scopeSubtitleTranslationConfirmation.confirmations != 0 ||
-				(verticalInspectionPending &&
-				 currentDetectorTopExpansion != currentDetectorBottomExpansion);
+				scopeSubtitleTranslationConfirmation.confirmations != 0;
 			const bool verticalFitConfirmationPending =
-				scopeSubtitleFitConfirmation.confirmations != 0 ||
-				(verticalInspectionPending && currentDetectorTopExpansion &&
-				 currentDetectorBottomExpansion);
+				scopeSubtitleFitConfirmation.confirmations != 0;
 			cropInput.verticalTranslationConfirmationPending =
 				verticalTranslationConfirmationPending;
 			cropInput.verticalFitConfirmationPending =

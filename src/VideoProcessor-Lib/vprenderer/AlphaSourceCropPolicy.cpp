@@ -1288,6 +1288,10 @@ namespace AlphaSourceCrop
 			input.barCropRefinementPending &&
 			input.latestObservationClassification ==
 				ActivePictureClassification::BAR_CROP_TRUSTED;
+		const bool boundedVerticalInspectionRetention =
+			input.verticalInspectionPending &&
+			input.latestObservationClassification !=
+				ActivePictureClassification::FULL_RASTER_TRUSTED;
 		const bool boundedOutwardExpansion =
 			input.outwardPresentationActive &&
 			input.outwardExpansionAvailable &&
@@ -1335,6 +1339,7 @@ namespace AlphaSourceCrop
 			!boundedSceneVerificationRetention &&
 			!boundedAmbiguousRetention && !pixelSafeAmbiguousRetention &&
 			!boundedBarCropRefinementRetention &&
+			!boundedVerticalInspectionRetention &&
 			!boundedOutwardExpansion && !boundedVerticalTranslation &&
 			!boundedVerticalBaseRetention &&
 			!boundedVerticalEngageBaseRetention &&
@@ -1462,6 +1467,8 @@ namespace AlphaSourceCrop
 					? "trusted crop retained while vertical fit confirms"
 				: (boundedVerticalConfirmationRetention
 					? "trusted crop retained while subtitle translation target confirms"
+				: (boundedVerticalInspectionRetention
+					? "trusted crop retained while vertical overlay inspection completes"
 				: (decision.outwardExpanded
 					? "bounded outward presentation expansion accepted"
 					: (input.latestObservationSupportsCrop
@@ -1470,7 +1477,7 @@ namespace AlphaSourceCrop
 				? "frame-local pixel-safe presentation retained prior crop"
 				: (boundedSceneVerificationRetention
 					? "bounded scene verification retained current trusted crop"
-					: "bounded ambiguity hold retained current trusted crop")))))))));
+					: "bounded ambiguity hold retained current trusted crop"))))))))));
 		return decision;
 	}
 
