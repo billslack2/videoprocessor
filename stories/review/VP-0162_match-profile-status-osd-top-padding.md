@@ -34,3 +34,8 @@ As a VideoProcessor operator, I want the Alpha profile-status OSD to have the sa
 
 - Changing profile-status content, fade timing, or the Ctrl+I diagnostics OSD.
 - Changing user configuration values.
+
+The change was integrated onto the confirmed latest beta branch
+`v1.3.003-beta` at commit `d07ddb9` (remote beta base `0cf07a95`). A clean
+beta worktree built the focused x64 Release test target and passed the same
+11/11 placement tests.
