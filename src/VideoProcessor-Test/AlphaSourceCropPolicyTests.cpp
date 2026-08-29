@@ -927,6 +927,7 @@ namespace Tests
 			decision = UpdateVerticalInspectionBridge(input);
 			Assert::IsFalse(decision.retain);
 			Assert::IsTrue(decision.expired);
+			Assert::IsTrue(decision.state.failOpenLatched);
 		}
 
 		TEST_METHOD(VerticalInspectionBridgeRearmsOnlyForResolvedOrNewProvenance)
@@ -943,7 +944,7 @@ namespace Tests
 			Assert::IsTrue(decision.retain);
 
 			input.previous = decision.state;
-			input.authorityResolved = true;
+			input.fullRasterAuthorityResolved = true;
 			input.candidate = false;
 			input.retentionRequested = false;
 			input.sourceSequence = 101;
@@ -951,7 +952,7 @@ namespace Tests
 			Assert::IsFalse(decision.state.active);
 
 			input.previous = decision.state;
-			input.authorityResolved = false;
+			input.fullRasterAuthorityResolved = false;
 			input.candidate = true;
 			input.retentionRequested = true;
 			input.sourceSequence = 102;

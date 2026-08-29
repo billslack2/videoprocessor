@@ -182,6 +182,7 @@ namespace AlphaSourceCrop
 		bool active = false;
 		bool retentionConsumed = false;
 		bool denseAnalysisCompleted = false;
+		bool failOpenLatched = false;
 		uint64_t sourceGeneration = 0;
 		uint64_t presentationEpoch = 0;
 		ActivePictureBounds trustedBase;
@@ -198,7 +199,8 @@ namespace AlphaSourceCrop
 		// Positive crop/full-raster authority closes the unresolved episode.
 		// A mere coarse-candidate dropout does not, because sparse dark pixels
 		// must not rearm alternating scope/full/scope decisions.
-		bool authorityResolved = false;
+		bool cropAuthorityResolved = false;
+		bool fullRasterAuthorityResolved = false;
 		uint64_t sourceGeneration = 0;
 		uint64_t presentationEpoch = 0;
 		ActivePictureBounds trustedBase;

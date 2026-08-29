@@ -3241,6 +3241,7 @@ struct LibplaceboVideoRenderer::Impl
 	bool presentationOwnedGeometryTransitionDeferred = false;
 	bool latestActivePicturePresentationRetentionSafe = false;
 	bool latestActivePicturePresentationRetentionEvaluated = false;
+	bool latestActivePictureGlobalNearBlack = false;
 	std::string latestActivePicturePresentationRetentionReason;
 	bool fullRasterPresentationAuthorityAvailable = false;
 	uint64_t fullRasterPresentationAuthoritySourceGeneration = 0;
@@ -7183,6 +7184,7 @@ struct LibplaceboVideoRenderer::Impl
 		presentationOwnedGeometryTransitionDeferred = false;
 		latestActivePicturePresentationRetentionSafe = false;
 		latestActivePicturePresentationRetentionEvaluated = false;
+		latestActivePictureGlobalNearBlack = false;
 		latestActivePicturePresentationRetentionReason.clear();
 		fullRasterPresentationAuthorityAvailable = false;
 		fullRasterPresentationAuthoritySourceGeneration = 0;
@@ -7339,6 +7341,9 @@ struct LibplaceboVideoRenderer::Impl
 			latestActivePicturePresentationRetentionEvaluated =
 				hadCompatiblePresentation && retentionEvidence.analysisValid &&
 				retentionEvidence.presentationValid;
+			latestActivePictureGlobalNearBlack =
+				hadCompatiblePresentation && retentionEvidence.analysisValid &&
+				retentionEvidence.globalNearBlack;
 			latestActivePicturePresentationRetentionReason =
 				hadCompatiblePresentation ? retentionEvidence.reason :
 					"no compatible retained presentation";
@@ -8864,6 +8869,8 @@ struct LibplaceboVideoRenderer::Impl
 					scopeSubtitleFit,
 					currentDetectorEnvelope,
 					latestObservationIsProvisional ||
+						(latestObservationIsUnavailable &&
+						 latestActivePictureGlobalNearBlack) ||
 						(!effectiveLatestSupportsCrop &&
 						 latestActivePictureEvidenceClassification ==
 							ActivePictureClassification::BAR_CROP_TRUSTED),
@@ -9095,8 +9102,22 @@ struct LibplaceboVideoRenderer::Impl
 				latestActivePicturePresentationRetentionSafe;
 			cropInput.frameLocalPresentationRetentionEvaluated =
 				latestActivePicturePresentationRetentionEvaluated;
+			const bool sameInspectionEpisode =
+				scopeVerticalInspectionBridge.active &&
+				scopeVerticalInspectionBridge.sourceGeneration == frameGeneration &&
+				scopeVerticalInspectionBridge.presentationEpoch ==
+					viewportRequestSerial &&
+				effectiveGeometryAvailable &&
+				scopeVerticalInspectionBridge.trustedBase.left == effectiveGeometry.left &&
+				scopeVerticalInspectionBridge.trustedBase.top == effectiveGeometry.top &&
+				scopeVerticalInspectionBridge.trustedBase.right == effectiveGeometry.right &&
+				scopeVerticalInspectionBridge.trustedBase.bottom == effectiveGeometry.bottom;
 			cropInput.presentationFailOpen =
-				verticalFailOpen || outwardExpansionInvalid;
+				verticalFailOpen || outwardExpansionInvalid ||
+				(sameInspectionEpisode &&
+				 scopeVerticalInspectionBridge.failOpenLatched &&
+				 (latestObservationIsUnavailable ||
+				  latestObservationIsProvisional));
 			const bool barCropRefinementHorizontalConflict =
 				currentDetectorLeftExpansion || currentDetectorRightExpansion ||
 				(latestActivePictureEvidenceAvailable &&
@@ -9168,7 +9189,8 @@ struct LibplaceboVideoRenderer::Impl
 				verticalInspectionFallbackRequested;
 			inspectionInput.denseAnalysisCompleted =
 				subtitleBarAnalysisCompleted;
-			inspectionInput.authorityResolved = effectiveLatestSupportsCrop ||
+			inspectionInput.cropAuthorityResolved = effectiveLatestSupportsCrop;
+			inspectionInput.fullRasterAuthorityResolved =
 				latestActivePictureEvidenceClassification ==
 					ActivePictureClassification::FULL_RASTER_TRUSTED;
 			inspectionInput.sourceGeneration = frameGeneration;
@@ -9180,6 +9202,12 @@ struct LibplaceboVideoRenderer::Impl
 				inspectionDecision =
 					AlphaSourceCrop::UpdateVerticalInspectionBridge(inspectionInput);
 			scopeVerticalInspectionBridge = inspectionDecision.state;
+			if (scopeVerticalInspectionBridge.failOpenLatched &&
+				!cropInput.presentationFailOpen)
+			{
+				cropInput.presentationFailOpen = true;
+				cropDecision = AlphaSourceCrop::Evaluate(cropInput);
+			}
 			const bool verticalInspectionPending = inspectionDecision.retain;
 			if (verticalInspectionPending)
 			{
