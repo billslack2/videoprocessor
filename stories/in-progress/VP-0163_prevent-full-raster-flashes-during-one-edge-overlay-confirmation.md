@@ -7,9 +7,9 @@ before assignment and its 181 canonical items matched the index with no
 duplicate or missing IDs. GitHub was queried directly and confirmed
 `v1.3.003-beta` as the current default integration branch at
 `338460cb2fe553d825a0d8fa02d5051c83bed784`. It was queried again immediately
-before deployment and had advanced to
-`8746e8b5246652e13278e476f4876df93ab5af37` with GUI-only LLDV decision
-diagnostics.
+before the NLS follow-up and had advanced to
+`d0647ad5a935fd6cc054821e776a1b69b53f63ce`. The implementation branch was
+cleanly rebased onto that exact current beta tip before the NLS correction.
 
 Implementation branch `codex/vp-0163-stable-overlay-presentation` was cleanly
 rebased onto that exact latest remote tip in worktree
@@ -228,6 +228,40 @@ owns the decision.
   a separate smoothing follow-up; scene detection is not geometry authority.
 - Source commit: `86244a8a`. Clean x64 Release build succeeded. Full test run:
   968 passed, with the pre-existing CONFIGURATION.html inventory test failing.
+
+## 2026-08-29 NLS presentation-ownership follow-up
+
+The Eternals replay also exposed a deterministic presentation shift when
+standard NLS was toggled. With the viewport presenting the accepted translated
+scope rectangle `0,212-3840,1812`, enabling NLS passthrough replaced it with
+the raw detector rectangle `0,284-3840,1884`. The destination rectangle did
+not change, so every toggle produced an exact 72-source-pixel vertical pan even
+though mapping remained linear with stretch 1.0.
+
+Commit `40d43d7e` makes an accepted viewport crop authoritative for NLS source
+selection, including same-size subtitle translation, outward expansion, and
+aspect-limit fill. Linear passthrough inherits that presentation. The existing
+NLS-only encoded-bar removal contract remains intact when ordinary automatic
+crop is off, and intentional NLS+ presentation crop remains NLS-owned. An
+explicit presentation fail-open now suppresses both NLS geometry ownership and
+the NLS hook for that frame, preserving the complete raster.
+
+Focused tests cover the exact 3840x2160 translated replay, passthrough
+ownership, the no-automatic-crop bar-removal exception, intentional crop, and
+fail-open precedence. All four focused tests pass. The clean x64 Release build
+succeeds, and the full native suite reports 971/972 with only the pre-existing
+`ConfigurationReferenceMatchesPublicFieldInventory` documentation mismatch.
+
+The matched clean Release host/plugin pair was deployed from commit
+`40d43d7e` and loaded successfully at VP Renderer API 14. Its prior pair is
+recoverable at
+`C:\Videoprocessor\vp\deployment-backups\vp0163-40d43d7e-20260829-101348`.
+The deployed SHA-256 values are:
+
+- `VideoProcessor.exe`:
+  `62BDF4FBD209B2B6B1B2313354C5EE2F807EE9880047F8A38FD3B40CF214E239`;
+- `VideoProcessorVPRenderer.dll`:
+  `91D6878F99E190FF83EE73D0440F237896684ED658BAF750DDF71BF2F69730B2`.
 
 ## Related stories
 
