@@ -85,6 +85,17 @@ if ([String]::IsNullOrWhiteSpace($VerBranch)) {
   }
 }
 
+# The beta integration line is a moving branch rather than a rolling tag.
+# A descendant build must not inherit an unrelated historical tag (for
+# example v1.1.016-beta) from git describe.
+if ($DefaultBranch -match '^v\d+\.\d+\.\d+-beta$' -and
+    -not [String]::IsNullOrWhiteSpace($VerCommitShort)) {
+  & git merge-base --is-ancestor $DefaultRemoteRef HEAD 2>$null
+  if ($LASTEXITCODE -eq 0) {
+    $VerDescribe = "$DefaultBranch-$VerCommitShort"
+  }
+}
+
 if (-not [String]::IsNullOrWhiteSpace($VerBranch)) {
   $VerBranch = $VerBranch.Trim()
   $VerBranch = $VerBranch -replace '^refs/heads/', ''
