@@ -361,6 +361,35 @@ boundaries at sequences 54, 135, and 160. Every recorded final layout remained
 `0,0-3840,2160`, linear, centered, and untranslated. Replaying the Eternals
 opening is the remaining operator validation.
 
+## 2026-08-29 operator acceptance and beta integration
+
+The final Eternals replay at 12:49:32-12:49:46 confirmed the intended
+monotonic behavior. Raw detector candidates followed individual scrolling
+title strokes, but remained provisional and never controlled presentation.
+The near-black episode retained `0,276-3840,1884` for the complete title,
+with no crop/full-raster alternation, translation, subtitle shift, reset, or
+profile boundary. The scene boundary ended the episode once while preserving
+the same presentation rectangle. The operator reported that the replay looked
+good, and the trace contained no errors, device loss, or timeouts.
+
+The story branch was fast-forward merged into the current remote integration
+branch `v1.3.003-beta`, advancing it from `d0647ad5` to `292f5e4e`. A clean
+x64 Release solution rebuild completed from the merged beta branch. The native
+suite passed 978/979 tests; the sole failure remains the unrelated
+`ConfigurationReferenceMatchesPublicFieldInventory` documentation mismatch.
+All Config UI tests and all near-black presentation fixtures passed.
+
+The manifest release packager verified all 57 allowlisted files. The tester
+archive is `VideoProcessor-v1.3.003-beta.zip`; it contains only the example
+configuration, no active configuration, and no symbols, import libraries,
+caches, backups, or runtime state. Package SHA-256 values are:
+
+- archive: `1B6EDBB2DF7984088268C2DA21878F967C3A24B2DA88F6E18E8005F5777E65B8`;
+- `VideoProcessor.exe`:
+  `DE1FD7FAD88AF0AC998249C8D9D4BE3958D920BA51AF9F7AC43DD2BA77B74FA3`;
+- `VideoProcessorVPRenderer.dll`:
+  `698A1B6C8D4A5032B596754E3264CD938DD87D342733ABC8F2ECF1B1498A1B65`.
+
 ## Related stories
 
 - VP-0129: Retain scope through vertical overlay arbitration.
