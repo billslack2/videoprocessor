@@ -6,8 +6,8 @@ story may have ordered child-task IDs as defined below.
 
 ## Registry state
 
-- Last assigned root story: `VP-0161`
-- Next root story number: `VP-0162`
+- Last assigned root story: `VP-0162`
+- Next root story number: `VP-0163`
 - Total indexed items: 180
 
 ## Story locations
@@ -197,6 +197,7 @@ they must not contain requirements that are absent from this file.
 | VP-0159 | Backlog | Consolidate profile-like configuration lists on one shared UI component |
 | VP-0160 | Review | Reapply profile rules after every renderer swap |
 | VP-0161 | Review | Concise libplacebo-style renderer health OSD |
+| VP-0162 | Review | Match profile-status OSD top padding to its horizontal padding |
 | VP-0066-1 | Done | Characterize the live output pipeline with replayable golden traces |
 | VP-0066-2 | Done | Extract a graph-independent video timing controller |
 | VP-0066-3 | Done | Extract epoch-aware frame transport and processing components |
