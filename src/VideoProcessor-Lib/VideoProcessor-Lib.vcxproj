@@ -233,6 +233,7 @@
     <ClInclude Include="vprenderer\\AlphaSourceCropPolicy.h" />
     <ClInclude Include="vprenderer\\LibplaceboOutputPolicy.h" />
     <ClInclude Include="vprenderer\\LibplaceboRenderParameters.h" />
+    <ClInclude Include="vprenderer\\HdrPeakAnalysisCrop.h" />
     <ClInclude Include="vprenderer\\LibplaceboPluginVideoRenderer.h" />
     <ClInclude Include="vprenderer\\LibplaceboRendererPluginApi.h" />
     <ClInclude Include="vprenderer\\OptionalRendererLayout.h" />

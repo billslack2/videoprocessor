@@ -2036,6 +2036,26 @@ void testScreenConfigSectionsAndInlineUnits()
         "Zoom does not use the expected Subtitles section heading and state");
     subtitles->click();
     QCoreApplication::processEvents();
+	QComboBox* hdrAnalysisMode = requireControl<QComboBox>(window,
+		QStringLiteral(
+			"config.vprenderer.zoom.hdr_peak_analysis_mode"));
+	require(hdrAnalysisMode->currentData().toString() == QStringLiteral("off") &&
+		hdrAnalysisMode->accessibleName() ==
+			QStringLiteral("HDR analysis protection") &&
+		hdrAnalysisMode->count() == 3 &&
+		hdrAnalysisMode->itemText(0) == QStringLiteral("Off") &&
+		hdrAnalysisMode->itemData(0).toString() == QStringLiteral("off") &&
+		hdrAnalysisMode->itemText(1) == QStringLiteral("Smart (Experimental)") &&
+		hdrAnalysisMode->itemData(1).toString() == QStringLiteral("automatic") &&
+		hdrAnalysisMode->itemText(2) == QStringLiteral("Percentage (Beta)") &&
+		hdrAnalysisMode->itemData(2).toString() == QStringLiteral("fixed"),
+		"Zoom subtitles do not expose the default-off exclusive HDR analysis modes");
+	QLineEdit* hdrAnalysisHeight = requireControl<QLineEdit>(window,
+		QStringLiteral(
+			"config.vprenderer.zoom.hdr_peak_analysis_height_percent"));
+	require(hdrAnalysisHeight->text() == QStringLiteral("75") &&
+		!hdrAnalysisHeight->isEnabled(),
+		"HDR analysis height does not default to 75% or follow the disabled toggle");
     QLineEdit* hold = requireControl<QLineEdit>(window,
         QStringLiteral("config.vprenderer.zoom.subtitle_hold_seconds"));
     QLabel* holdUnit = requireControl<QLabel>(window,
@@ -2057,9 +2077,23 @@ void testScreenConfigSectionsAndInlineUnits()
         "Zoom unit input is not consistently sized, aligned, and labeled");
 
     hold->setText(QStringLiteral("1500"));
+	selectData(hdrAnalysisMode, QStringLiteral("fixed"));
+	require(hdrAnalysisHeight->isEnabled(),
+		"HDR analysis height did not enable in fixed-percentage mode");
+	hdrAnalysisHeight->setText(QStringLiteral("70"));
+	selectData(hdrAnalysisMode, QStringLiteral("automatic"));
+	require(!hdrAnalysisHeight->isEnabled(),
+		"HDR analysis height remained enabled in automatic-movement mode");
     save(window);
-    require(readBytes(path).contains("subtitle_hold_seconds: 1.5"),
+    const QByteArray saved = readBytes(path);
+    require(saved.contains("subtitle_hold_seconds: 1.5"),
         "Millisecond subtitle hold did not preserve the seconds-based config contract");
+	require(saved.contains("hdr_peak_analysis_picture_only: false"),
+		"Automatic mode did not disable fixed-percentage HDR analysis");
+	require(saved.contains("hdr_peak_analysis_motion_compensation: true"),
+		"Automatic movement mode was not persisted in Zoom");
+	require(saved.contains("hdr_peak_analysis_height_percent: 70"),
+		"HDR active-picture analysis height was not persisted in Zoom");
 
     QListWidget* profiles = requireControl<QListWidget>(window,
         QStringLiteral("config.vprenderer.zoom.profiles"));

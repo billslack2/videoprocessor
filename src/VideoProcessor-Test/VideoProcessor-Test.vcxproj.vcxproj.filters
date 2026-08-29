@@ -22,6 +22,9 @@
     <ClCompile Include="AlphaSourceCropPolicyTests.cpp">
       <Filter>Resource Files</Filter>
     </ClCompile>
+    <ClCompile Include="HdrPeakAnalysisCropTests.cpp">
+      <Filter>Resource Files</Filter>
+    </ClCompile>
     <ClCompile Include="LibplaceboOutputPolicyTests.cpp">
       <Filter>Resource Files</Filter>
     </ClCompile>

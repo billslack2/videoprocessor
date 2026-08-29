@@ -95,6 +95,9 @@ vprenderer.viewport.<variant>.subtitle_engage_drift_ms	viewport-subtitle-engage-
 vprenderer.viewport.<variant>.subtitle_release_drift_ms	viewport-subtitle-release-drift-ms	VP Renderer viewport	no
 vprenderer.viewport.<variant>.subtitle_padding_pixels	viewport-subtitle-padding-pixels	VP Renderer viewport	no
 vprenderer.viewport.<variant>.subtitle_target_buffer_pixels	viewport-subtitle-target-buffer-pixels	VP Renderer viewport	no
+vprenderer.zoom.<variant>.hdr_peak_analysis_picture_only	zoom-hdr-peak-analysis-picture-only	VP Renderer Zoom	no
+vprenderer.zoom.<variant>.hdr_peak_analysis_motion_compensation	zoom-hdr-peak-analysis-motion-compensation	VP Renderer Zoom	no
+vprenderer.zoom.<variant>.hdr_peak_analysis_height_percent	zoom-hdr-peak-analysis-height-percent	VP Renderer Zoom	no
 shader.<group>.type	shader-group-type	Shader selection	no
 shader.<group>.when	shader-group-when	Shader selection	no
 shader.<group>.shortcut	shader-group-shortcut	Shader selection	no
