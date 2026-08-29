@@ -213,6 +213,22 @@ owns the decision.
   final trailer transition.
 - Redesigning active-picture detection or mixed-aspect support.
 
+## 2026-08-29 Eternals replay follow-up
+
+- The black scrolling-title replay reproduced repeated crop/full decisions
+  while evidence was unavailable and frame-local pixel safety alternated,
+  including a six-transition burst. No scene event occurred during the burst.
+- Near-black unavailable evidence with a bounded vertical-only envelope may
+  now enter the existing one-source inspection bridge. If dense inspection
+  cannot resolve that episode, full-raster fail-open is latched until positive
+  crop/full authority or new provenance; pixel-safe ambiguous frames cannot
+  toggle the crop back on.
+- The later NLS passthrough-to-active change was an authoritative 2.400 to
+  1.897 picture transition at a detected cut. Its abrupt visual handoff remains
+  a separate smoothing follow-up; scene detection is not geometry authority.
+- Source commit: `86244a8a`. Clean x64 Release build succeeded. Full test run:
+  968 passed, with the pre-existing CONFIGURATION.html inventory test failing.
+
 ## Related stories
 
 - VP-0129: Retain scope through vertical overlay arbitration.
