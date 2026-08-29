@@ -223,9 +223,10 @@ owns the decision.
   cannot resolve that episode, full-raster fail-open is latched until positive
   crop/full authority or new provenance; pixel-safe ambiguous frames cannot
   toggle the crop back on.
-- The later NLS passthrough-to-active change was an authoritative 2.400 to
-  1.897 picture transition at a detected cut. Its abrupt visual handoff remains
-  a separate smoothing follow-up; scene detection is not geometry authority.
+- The operator's follow-up established that NLS was not enabled during the
+  black scrolling-title failure. The earlier NLS attribution is withdrawn;
+  this replay is an automatic active-picture/crop-authority defect. Scene
+  detection alone is not geometry authority.
 - Source commit: `86244a8a`. Clean x64 Release build succeeded. Full test run:
   968 passed, with the pre-existing CONFIGURATION.html inventory test failing.
 
@@ -262,6 +263,52 @@ The deployed SHA-256 values are:
   `62BDF4FBD209B2B6B1B2313354C5EE2F807EE9880047F8A38FD3B40CF214E239`;
 - `VideoProcessorVPRenderer.dll`:
   `91D6878F99E190FF83EE73D0440F237896684ED658BAF750DDF71BF2F69730B2`.
+
+## 2026-08-29 near-black title and status follow-up
+
+The replay beginning at approximately 10:17 confirmed that NLS was off and
+behaving correctly. Scrolling program titles on a globally near-black frame
+were instead misclassified as new top excluded-band content. Three stable
+samples accepted an upper translation (approximately -176 source pixels),
+which moved the whole presentation even though the retained movie geometry had
+not changed. Later crawl geometry could also leave translation evidence ready
+to apply when crop authority returned.
+
+Commit `421543e8` constrains that path without changing normal subtitle or NLS
+mapping behavior. A globally near-black frame may reaffirm retained geometry,
+but different geometry is downgraded to provisional and cannot acquire or hold
+bar-overlay translation authority. Telemetry now includes
+`global_near_black` so the next replay can verify the gate directly. The new
+`NearBlackFrameCannotReplaceRetainedPresentationGeometry` regression fixture
+passes, as does the existing on-to-off NLS overlay fixture.
+
+The same commit publishes the transient profile-change overlay for explicit
+shader selections after the resolved section changes. Consequently selecting
+NLS Off now reports `NLS / Off`, matching the feedback shown for the active NLS
+choices; this is a UI-status correction independent of the Eternals crop fix.
+
+Commit `00a3d9a3` restores beta-line build identity protection so descendants
+of the moving default beta branch cannot inherit the historical v1.1.016 tag.
+The clean build reports `v1.3.003-beta-00a3d9a` and
+`VERSION_DIRTY=false`.
+
+Validation and deployment at `00a3d9a3`:
+
+- clean x64 Release solution build succeeded;
+- 972 of 973 complete native tests passed; the sole failure is the existing
+  `ConfigurationReferenceMatchesPublicFieldInventory` documentation mismatch;
+- the focused NLS Off overlay and near-black geometry tests both pass;
+- the matched host/plugin pair was deployed without changing configuration,
+  and the live log confirms VP Renderer API 14; and
+- the previous pair is recoverable from
+  `C:\Videoprocessor\vp\deployment-backups\vp0163-00a3d9a3-20260829-103638`.
+
+Deployed SHA-256 values:
+
+- `VideoProcessor.exe`:
+  `6660E7C812BC7E3A1F92A973C33805C68FE69A8418178543CB34DCE160B02F47`;
+- `VideoProcessorVPRenderer.dll`:
+  `8CBF3524FEB90CF94814F0B02DDB33856EE40D67176E4320E2A326E514AE7195`.
 
 ## Related stories
 
