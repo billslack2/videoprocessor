@@ -2,20 +2,24 @@
 
 ## Status
 
-Review (2026-08-29). Implemented and pushed on remote branch
+Done (2026-08-29). The user accepted the completed implementation and requested
+story closure. Implemented and pushed directly on remote beta integration branch
 `v1.3.004-beta` at source commit
 `66f22307158b2da40f2cdb0ee398ea6ab62c5997`, starting from the verified remote
 `v1.3.003-beta` tip `61869a01cece715c007d93583d323bc1cd1c44d9`.
 The final clean x64 Release solution build recorded
 `VERSION_BRANCH=v1.3.004-beta` and `VERSION_DIRTY=false`.
 
+GitHub has no pull/merge request whose head or base is `v1.3.004-beta`; this
+change was already integrated by committing directly to the beta branch, so
+there is no separate merge commit to record. Unrelated open draft PRs were left
+untouched. Deferred performance and policy experiments are tracked separately
+in VP-0165.
+
 The implementation is intentionally narrower than the reverted VP-0136 dwell:
 it may change only the effective frame association of a transition the existing
 model has already confirmed. It may not add a confirmation vote, change
 detector cadence, manufacture a decision, or delay a genuine aspect change.
-
-Live operator replay and the VP-0124 preview-p99 performance gate remain for
-review; this implementation pass did not deploy or replace the active build.
 
 ## Verification evidence
 
