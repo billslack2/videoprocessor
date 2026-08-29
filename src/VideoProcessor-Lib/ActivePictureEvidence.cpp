@@ -640,6 +640,50 @@ ActivePictureEvidence ExtractP010ActivePictureEvidence(
 }
 
 
+ActivePictureGlobalNearBlackEvidence EvaluateActivePictureGlobalNearBlack(
+	const AnalysisLumaSource& source)
+{
+	ActivePictureGlobalNearBlackEvidence result;
+	if (!source.IsValid() || source.width < 16 || source.height < 16)
+		return result;
+
+	result.evaluated = true;
+	SampleContext samples{ source };
+	std::vector<int> globalLuma;
+	globalLuma.reserve(kGlobalGridWidth * kGlobalGridHeight);
+	for (int row = 0; row < kGlobalGridHeight; ++row)
+	{
+		const int y = ((row * 2 + 1) * source.height) /
+			(kGlobalGridHeight * 2);
+		for (int column = 0; column < kGlobalGridWidth; ++column)
+		{
+			const int x = ((column * 2 + 1) * source.width) /
+				(kGlobalGridWidth * 2);
+			globalLuma.push_back(samples.Luma(x, y));
+		}
+	}
+	result.lumaP90 = Percentile(globalLuma, 0.90);
+	result.nearBlack = result.lumaP90 <= kGlobalNearBlackP90;
+	result.lumaSamples = samples.lumaSamples;
+	return result;
+}
+
+
+ActivePictureGlobalNearBlackEvidence EvaluateP010ActivePictureGlobalNearBlack(
+	const P010PlaneView& view)
+{
+	AnalysisLumaSource source;
+	source.data = view.data;
+	source.dataBytes = view.dataBytes;
+	source.width = view.width;
+	source.height = view.height;
+	source.rowBytes = view.lumaPitchBytes;
+	source.chromaRowBytes = view.chromaPitchBytes;
+	source.format = AnalysisLumaFormat::P010;
+	return EvaluateActivePictureGlobalNearBlack(source);
+}
+
+
 ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRetention(
 	const AnalysisLumaSource& source,
 	const ActivePictureBounds& trustedPresentation)
@@ -661,22 +705,13 @@ ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRete
 	}
 	result.presentationValid = true;
 
+	const ActivePictureGlobalNearBlackEvidence global =
+		EvaluateActivePictureGlobalNearBlack(source);
+	result.globalLumaP90 = global.lumaP90;
+	result.globalNearBlack = global.nearBlack;
+	result.lumaSamples += global.lumaSamples;
+
 	SampleContext samples{ source };
-	std::vector<int> globalLuma;
-	globalLuma.reserve(kGlobalGridWidth * kGlobalGridHeight);
-	for (int row = 0; row < kGlobalGridHeight; ++row)
-	{
-		const int y = ((row * 2 + 1) * source.height) /
-			(kGlobalGridHeight * 2);
-		for (int column = 0; column < kGlobalGridWidth; ++column)
-		{
-			const int x = ((column * 2 + 1) * source.width) /
-				(kGlobalGridWidth * 2);
-			globalLuma.push_back(samples.Luma(x, y));
-		}
-	}
-	result.globalLumaP90 = Percentile(globalLuma, 0.90);
-	result.globalNearBlack = result.globalLumaP90 <= kGlobalNearBlackP90;
 
 	std::vector<int> perimeter;
 	perimeter.reserve(256);
@@ -828,5 +863,25 @@ ActivePictureEvidence ConstrainNearBlackGeometryChange(
 	evidence.proposedBounds = observed;
 	evidence.reason =
 		"near-black frame cannot replace retained presentation geometry";
+	return evidence;
+}
+
+
+ActivePictureEvidence ConstrainNearBlackCropAcquisition(
+	const ActivePictureEvidence& observed,
+	bool nearBlackEpisodeActive)
+{
+	ActivePictureEvidence evidence = observed;
+	if (!nearBlackEpisodeActive || !evidence.available ||
+		evidence.classification !=
+			ActivePictureClassification::BAR_CROP_TRUSTED)
+	{
+		return evidence;
+	}
+
+	evidence.classification = ActivePictureClassification::PROVISIONAL;
+	evidence.proposedBounds = evidence.trustedBounds;
+	evidence.reason =
+		"near-black title episode cannot acquire bar-crop authority";
 	return evidence;
 }

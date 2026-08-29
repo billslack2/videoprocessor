@@ -739,5 +739,45 @@ namespace VideoProcessorTest
 				ActivePictureClassification::BAR_CROP_TRUSTED),
 				static_cast<int>(unchanged.classification));
 		}
+
+		TEST_METHOD(GlobalNearBlackIsEvaluatedWithoutTrustedPresentation)
+		{
+			P010Frame frame(320, 180);
+			frame.Fill(64, 512, 512);
+			// Sparse bright title strokes occupy far less than the global P90 grid.
+			frame.FillRectangle(112, 68, 208, 76, 700);
+			frame.FillRectangle(96, 92, 224, 100, 700);
+
+			const auto global = EvaluateP010ActivePictureGlobalNearBlack(
+				frame.View());
+			Assert::IsTrue(global.evaluated);
+			Assert::IsTrue(global.nearBlack);
+			Assert::IsTrue(global.lumaP90 <= 96.0);
+			Assert::AreEqual(static_cast<size_t>(256), global.lumaSamples);
+		}
+
+		TEST_METHOD(NearBlackEpisodeBlocksOnlyNewBarCropAuthority)
+		{
+			ActivePictureEvidence bars;
+			bars.available = true;
+			bars.classification =
+				ActivePictureClassification::BAR_CROP_TRUSTED;
+			bars.trustedBounds = ScopePresentation(320, 180, 22, 158);
+
+			const auto blocked = ConstrainNearBlackCropAcquisition(bars, true);
+			Assert::AreEqual(static_cast<int>(
+				ActivePictureClassification::PROVISIONAL),
+				static_cast<int>(blocked.classification));
+			Assert::AreEqual(22, blocked.proposedBounds.top);
+			Assert::AreEqual(158, blocked.proposedBounds.bottom);
+
+			bars.classification =
+				ActivePictureClassification::FULL_RASTER_TRUSTED;
+			bars.trustedBounds = ScopePresentation(320, 180, 0, 180);
+			const auto full = ConstrainNearBlackCropAcquisition(bars, true);
+			Assert::AreEqual(static_cast<int>(
+				ActivePictureClassification::FULL_RASTER_TRUSTED),
+				static_cast<int>(full.classification));
+		}
 	};
 }

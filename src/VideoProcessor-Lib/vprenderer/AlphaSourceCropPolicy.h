@@ -620,9 +620,56 @@ namespace AlphaSourceCrop
 		bool eligibleAfterTrustedCrop = false;
 	};
 
+	enum class NearBlackPresentationMode
+	{
+		INACTIVE,
+		RETAIN_CROP,
+		FULL_RASTER,
+	};
+
+	struct NearBlackPresentationEpisodeState
+	{
+		NearBlackPresentationMode mode = NearBlackPresentationMode::INACTIVE;
+		uint64_t sourceGeneration = 0;
+		uint64_t startedSourceSequence = 0;
+	};
+
+	struct NearBlackPresentationEpisodeInput
+	{
+		NearBlackPresentationEpisodeState previous;
+		bool measurementCurrent = false;
+		bool nearBlackEvaluated = false;
+		bool globalNearBlack = false;
+		bool sceneBoundary = false;
+		bool trustedCropAvailable = false;
+		bool boundedVisibleContentOutsideCrop = false;
+		bool fullRasterAuthorityAvailable = false;
+		uint64_t sourceGeneration = 0;
+		uint64_t sourceSequence = 0;
+	};
+
+	struct NearBlackPresentationEpisodeDecision
+	{
+		NearBlackPresentationEpisodeState state;
+		bool started = false;
+		bool changedToFullRaster = false;
+		bool ended = false;
+		std::string reason;
+	};
+
+	// A sparse near-black episode chooses one safe presentation on entry. It can
+	// only move from a retained crop to full raster when bounded visible content
+	// reaches the excluded area; it cannot reacquire crop until a scene/source
+	// boundary or authoritative full raster ends the episode.
+	NearBlackPresentationEpisodeDecision EvaluateNearBlackPresentationEpisode(
+		const NearBlackPresentationEpisodeInput& input);
+	const char* NearBlackPresentationModeName(NearBlackPresentationMode mode);
+
 	struct Input
 	{
 		bool automaticCropEnabled = false;
+		bool nearBlackEpisodeRetainCrop = false;
+		bool nearBlackEpisodeFullRaster = false;
 		bool fullRasterPresentationAuthoritative = false;
 		bool sharedGeometryAvailable = false;
 		bool latestObservationSupportsCrop = false;
@@ -710,6 +757,7 @@ namespace AlphaSourceCrop
 		FIT_CONFIRMATION,
 		ENGAGE_BASE,
 		RELEASE_BASE,
+		NEAR_BLACK_EPISODE,
 		OUTWARD_FIT,
 		VERTICAL_TRANSLATION,
 	};

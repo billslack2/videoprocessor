@@ -3767,5 +3767,93 @@ namespace Tests
 			Assert::AreEqual(crop.geometry.top, retained.sourceBounds.top);
 			Assert::AreEqual(crop.geometry.bottom, retained.sourceBounds.bottom);
 		}
+
+		TEST_METHOD(NearBlackStartupEpisodeStaysFullRasterUntilSceneBoundary)
+		{
+			NearBlackPresentationEpisodeInput input;
+			input.measurementCurrent = true;
+			input.nearBlackEvaluated = true;
+			input.globalNearBlack = true;
+			input.sourceGeneration = 19;
+			input.sourceSequence = 100;
+
+			auto decision = EvaluateNearBlackPresentationEpisode(input);
+			Assert::IsTrue(decision.started);
+			Assert::AreEqual(static_cast<int>(
+				NearBlackPresentationMode::FULL_RASTER),
+				static_cast<int>(decision.state.mode));
+
+			// Sparse title strokes may push the sampled P90 above the threshold.
+			// That single observation cannot re-arm crop acquisition.
+			input.previous = decision.state;
+			input.globalNearBlack = false;
+			input.sourceSequence = 104;
+			decision = EvaluateNearBlackPresentationEpisode(input);
+			Assert::AreEqual(static_cast<int>(
+				NearBlackPresentationMode::FULL_RASTER),
+				static_cast<int>(decision.state.mode));
+
+			input.previous = decision.state;
+			input.sceneBoundary = true;
+			input.sourceSequence = 108;
+			decision = EvaluateNearBlackPresentationEpisode(input);
+			Assert::IsTrue(decision.ended);
+			Assert::AreEqual(static_cast<int>(
+				NearBlackPresentationMode::INACTIVE),
+				static_cast<int>(decision.state.mode));
+		}
+
+		TEST_METHOD(NearBlackRetainedCropCanOnlyMoveOnceToFullRaster)
+		{
+			NearBlackPresentationEpisodeInput input;
+			input.measurementCurrent = true;
+			input.nearBlackEvaluated = true;
+			input.globalNearBlack = true;
+			input.trustedCropAvailable = true;
+			input.sourceGeneration = 23;
+			input.sourceSequence = 200;
+
+			auto decision = EvaluateNearBlackPresentationEpisode(input);
+			Assert::AreEqual(static_cast<int>(
+				NearBlackPresentationMode::RETAIN_CROP),
+				static_cast<int>(decision.state.mode));
+
+			input.previous = decision.state;
+			input.boundedVisibleContentOutsideCrop = true;
+			input.sourceSequence = 204;
+			decision = EvaluateNearBlackPresentationEpisode(input);
+			Assert::IsTrue(decision.changedToFullRaster);
+			Assert::AreEqual(static_cast<int>(
+				NearBlackPresentationMode::FULL_RASTER),
+				static_cast<int>(decision.state.mode));
+
+			input.previous = decision.state;
+			input.boundedVisibleContentOutsideCrop = false;
+			input.sourceSequence = 208;
+			decision = EvaluateNearBlackPresentationEpisode(input);
+			Assert::AreEqual(static_cast<int>(
+				NearBlackPresentationMode::FULL_RASTER),
+				static_cast<int>(decision.state.mode));
+		}
+
+		TEST_METHOD(NearBlackEpisodePresentationOverridesTransientCropArbitration)
+		{
+			Input crop = TrustedScopeCrop();
+			crop.latestObservationSupportsCrop = false;
+			crop.latestObservationIsProvisional = true;
+			crop.nearBlackEpisodeRetainCrop = true;
+			Decision decision = Evaluate(crop);
+			Assert::IsTrue(decision.applyCrop);
+			Assert::AreEqual(static_cast<int>(
+				DecisionOwner::NEAR_BLACK_EPISODE),
+				static_cast<int>(decision.owner));
+
+			crop.nearBlackEpisodeRetainCrop = false;
+			crop.nearBlackEpisodeFullRaster = true;
+			decision = Evaluate(crop);
+			AssertFullRaster(decision);
+			Assert::IsTrue(decision.reason.find("near-black title episode") !=
+				std::string::npos);
+		}
 	};
 }

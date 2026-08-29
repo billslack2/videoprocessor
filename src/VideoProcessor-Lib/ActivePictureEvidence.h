@@ -52,6 +52,18 @@ struct ActivePictureEvidence
 };
 
 
+// Frame-global darkness is presentation-independent. In particular, startup
+// title cards must be classifiable before any trusted crop exists; "false" and
+// "not evaluated" are deliberately separate states.
+struct ActivePictureGlobalNearBlackEvidence
+{
+	bool evaluated = false;
+	double lumaP90 = 0.0;
+	bool nearBlack = false;
+	size_t lumaSamples = 0;
+};
+
+
 // Per-frame pixel evidence for retaining an already trusted presentation
 // rectangle. This does not grant crop authority and does not apply temporal
 // policy. It only answers whether this frame is valid to inspect, whether the
@@ -100,6 +112,12 @@ ActivePictureEvidence ExtractP010ActivePictureEvidence(
 ActivePictureEvidence ExtractActivePictureEvidence(
 	const AnalysisLumaSource& source);
 
+ActivePictureGlobalNearBlackEvidence EvaluateActivePictureGlobalNearBlack(
+	const AnalysisLumaSource& source);
+
+ActivePictureGlobalNearBlackEvidence EvaluateP010ActivePictureGlobalNearBlack(
+	const P010PlaneView& view);
+
 // Startup-only recovery for a scope frame whose subtitle/UI contaminates one
 // encoded bar before any trusted presentation exists. One clean bar is mirrored
 // and the opposite bar must still be predominantly coherent black with a broad
@@ -129,3 +147,11 @@ ActivePicturePresentationRetentionEvidence
 ActivePictureEvidence ConstrainNearBlackGeometryChange(
 	const ActivePicturePresentationRetentionEvidence& retention,
 	const ActivePictureBounds& trustedPresentation);
+
+// While a sparse near-black title episode is active, a plausible pair of bars
+// may be the moving title bounds rather than picture geometry. Full-raster
+// authority remains safe, but new bar-crop authority is provisional until the
+// episode ends.
+ActivePictureEvidence ConstrainNearBlackCropAcquisition(
+	const ActivePictureEvidence& evidence,
+	bool nearBlackEpisodeActive);

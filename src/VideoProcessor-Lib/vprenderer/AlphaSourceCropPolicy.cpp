@@ -114,6 +114,8 @@ namespace AlphaSourceCrop
 			return "engage-base";
 		case DecisionOwner::RELEASE_BASE:
 			return "release-base";
+		case DecisionOwner::NEAR_BLACK_EPISODE:
+			return "near-black-episode";
 		case DecisionOwner::OUTWARD_FIT:
 			return "fit";
 		case DecisionOwner::VERTICAL_TRANSLATION:
@@ -121,6 +123,20 @@ namespace AlphaSourceCrop
 		case DecisionOwner::FULL_RASTER:
 		default:
 			return "full-raster";
+		}
+	}
+
+	const char* NearBlackPresentationModeName(
+		NearBlackPresentationMode mode)
+	{
+		switch (mode)
+		{
+		case NearBlackPresentationMode::RETAIN_CROP:
+			return "retain-crop";
+		case NearBlackPresentationMode::FULL_RASTER:
+			return "full-raster";
+		default:
+			return "inactive";
 		}
 	}
 
@@ -1361,6 +1377,74 @@ namespace AlphaSourceCrop
 			ownerSourceGeneration == sourceGeneration;
 	}
 
+	NearBlackPresentationEpisodeDecision EvaluateNearBlackPresentationEpisode(
+		const NearBlackPresentationEpisodeInput& input)
+	{
+		NearBlackPresentationEpisodeDecision decision;
+		decision.state = input.previous;
+
+		if (decision.state.mode != NearBlackPresentationMode::INACTIVE &&
+			decision.state.sourceGeneration != input.sourceGeneration)
+		{
+			decision.state = {};
+			decision.ended = true;
+			decision.reason = "source generation ended near-black title episode";
+		}
+
+		if (input.sceneBoundary &&
+			decision.state.mode != NearBlackPresentationMode::INACTIVE)
+		{
+			decision.state = {};
+			decision.ended = true;
+			decision.reason = "scene boundary ended near-black title episode";
+		}
+
+		if (input.fullRasterAuthorityAvailable &&
+			decision.state.mode != NearBlackPresentationMode::INACTIVE &&
+			input.nearBlackEvaluated && !input.globalNearBlack)
+		{
+			decision.state = {};
+			decision.ended = true;
+			decision.reason =
+				"non-near-black full-raster authority ended title episode";
+		}
+
+		if (input.measurementCurrent && input.nearBlackEvaluated &&
+			input.globalNearBlack &&
+			decision.state.mode == NearBlackPresentationMode::INACTIVE)
+		{
+			decision.state.mode = input.trustedCropAvailable &&
+				!input.boundedVisibleContentOutsideCrop
+				? NearBlackPresentationMode::RETAIN_CROP
+				: NearBlackPresentationMode::FULL_RASTER;
+			decision.state.sourceGeneration = input.sourceGeneration;
+			decision.state.startedSourceSequence = input.sourceSequence;
+			decision.started = true;
+			decision.reason = decision.state.mode ==
+				NearBlackPresentationMode::RETAIN_CROP
+				? "near-black title episode retained current crop"
+				: "near-black title episode started at full raster";
+		}
+
+		if (decision.state.mode == NearBlackPresentationMode::RETAIN_CROP &&
+			input.measurementCurrent && input.boundedVisibleContentOutsideCrop)
+		{
+			decision.state.mode = NearBlackPresentationMode::FULL_RASTER;
+			decision.changedToFullRaster = true;
+			decision.reason =
+				"bounded visible title content latched full raster for episode";
+		}
+
+		if (decision.reason.empty())
+		{
+			decision.reason = decision.state.mode ==
+				NearBlackPresentationMode::INACTIVE
+				? "near-black title episode inactive"
+				: "near-black title episode presentation retained";
+		}
+		return decision;
+	}
+
 	Decision Evaluate(const Input& input)
 	{
 		Decision decision;
@@ -1373,6 +1457,12 @@ namespace AlphaSourceCrop
 		if (!input.automaticCropEnabled)
 		{
 			decision.reason = "automatic crop is off; preserving full raster";
+			return decision;
+		}
+		if (input.nearBlackEpisodeFullRaster)
+		{
+			decision.reason =
+				"near-black title episode latched full-raster presentation";
 			return decision;
 		}
 		if (input.fullRasterPresentationAuthoritative)
@@ -1427,6 +1517,8 @@ namespace AlphaSourceCrop
 			input.ambiguityHoldActive;
 		const bool pixelSafeAmbiguousRetention = ambiguousObservation &&
 			input.frameLocalPresentationRetentionSafe;
+		const bool nearBlackEpisodeRetention =
+			input.nearBlackEpisodeRetainCrop;
 		const bool boundedBarCropRefinementRetention =
 			input.barCropRefinementPending &&
 			!input.barCropRefinementHorizontalConflict &&
@@ -1488,6 +1580,7 @@ namespace AlphaSourceCrop
 		if (!input.latestObservationSupportsCrop &&
 			!boundedSceneVerificationRetention &&
 			!boundedAmbiguousRetention && !pixelSafeAmbiguousRetention &&
+			!nearBlackEpisodeRetention &&
 			!boundedBarCropRefinementRetention &&
 			!boundedVerticalInspectionRetention &&
 			!boundedOutwardExpansion && !boundedVerticalTranslation &&
@@ -1623,6 +1716,12 @@ namespace AlphaSourceCrop
 			decision.owner = DecisionOwner::RELEASE_BASE;
 			decision.reason =
 				"subtitle release settled at current trusted base";
+		}
+		else if (nearBlackEpisodeRetention)
+		{
+			decision.owner = DecisionOwner::NEAR_BLACK_EPISODE;
+			decision.reason =
+				"trusted crop retained for near-black title episode";
 		}
 		else if (boundedBarCropRefinementRetention)
 		{
