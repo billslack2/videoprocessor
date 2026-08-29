@@ -12,6 +12,29 @@ Implementation branch `codex/vp-0163-stable-overlay-presentation` starts at
 that exact remote tip in clean worktree
 `C:\Videoprocessor\vp\worktrees\vp0163-overlay-presentation`.
 
+Implementation commit `d7f26b3d00b04d1245f00d3766b80dc7f57ffff1` is
+pushed to `origin/codex/vp-0163-stable-overlay-presentation`. It gives the
+bounded first dense-inspection frame its own final-crop retention input, so it
+uses the already-validated generation-current shared geometry instead of
+depending on dense translation base state which does not exist yet. Renderer
+telemetry now reports inspection, translation confirmation, and Fit
+confirmation as distinct states.
+
+Validation at `d7f26b3d`:
+
+- the new first-inspection regression fixture failed before the policy change
+  and passes afterward;
+- all 104 focused `AlphaSourceCropPolicyTests` pass;
+- the complete x64 Release solution builds successfully from the clean commit;
+- the complete native suite reports 961/962, with only the pre-existing
+  `ConfigurationReferenceMatchesPublicFieldInventory` failure; that exact test
+  also fails against the untouched beta-tip build at `338460cb`; and
+- the standalone x64 Release `VideoProcessorConfigTests.exe` suite passes.
+
+No deployment, configuration edit, beta merge, or pull request was performed.
+Live replay of the reported trailer/volume-overlay sequence remains the next
+validation step before review or integration.
+
 ## User story
 
 As a scope-screen operator, I want top receiver/volume overlays and bottom
