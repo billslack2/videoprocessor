@@ -16,6 +16,12 @@ there is no separate merge commit to record. Unrelated open draft PRs were left
 untouched. Deferred performance and policy experiments are tracked separately
 in VP-0165.
 
+The repository default was promoted to `v1.3.004-beta` on 2026-08-29 after an
+authoritative remote refresh proved `v1.3.003-beta` tip `61869a01` is the exact
+parent/merge base of `v1.3.004-beta` tip `66f22307`. The ahead/behind comparison
+was `0/1`: `.004` contains every `.003` commit and adds only the VP-0164 source
+commit.
+
 The implementation is intentionally narrower than the reverted VP-0136 dwell:
 it may change only the effective frame association of a transition the existing
 model has already confirmed. It may not add a confirmation vote, change
