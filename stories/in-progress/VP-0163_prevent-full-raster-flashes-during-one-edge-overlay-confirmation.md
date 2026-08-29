@@ -24,18 +24,40 @@ Follow-up commit `50b662c0` records the operator's dark star-field scene-cut
 trigger in the focused fixture. The fixture keeps scene verification active,
 marks the provisional frame pixel-unsafe, leaves dense base state absent, and
 proves that vertical inspection still retains the trusted scope crop. The
-focused suite remains 104/104.
+focused suite remained 104/104 at that commit.
 
-Validation at `d7f26b3d`:
+Hardening and diagnostic commit
+`e6e81f12cbe7aa9aa124b60743838ac30e49e439` is pushed to the same branch. It
+bounds the inspection bridge to one decoded source sequence per unresolved
+authority episode; prevents sparse/noisy dropout from re-arming a spent bridge;
+deduplicates active-picture, outward-picture, translation, and Fit confirmation
+counts by decoded source sequence; gives horizontal refinement conflict global
+fail-open precedence over every provisional crop owner; and replaces
+reason-string inference with structured withdrawal causes and decision owners.
+
+The transition-only `Alpha source crop` diagnostic now reports source sequence
+and generation, structured decision owner, cut/scene state, retention outcome,
+horizontal conflict, inspection episode lifecycle, current coarse evidence,
+dense scan status, selected authority, and translation/Fit confirmation state.
+Its suppression key excludes raw extent jitter and periodic scan cadence. On the
+captured five-minute log shape, the semantic signature would reduce the 988
+repetitive vertical-content lines to approximately 17 state transitions.
+
+Validation at `e6e81f12`:
 
 - the new first-inspection regression fixture failed before the policy change
   and passes afterward;
-- all 104 focused `AlphaSourceCropPolicyTests` pass;
-- the complete x64 Release solution builds successfully from the clean commit;
-- the complete native suite reports 961/962, with only the pre-existing
-  `ConfigurationReferenceMatchesPublicFieldInventory` failure; that exact test
-  also fails against the untouched beta-tip build at `338460cb`; and
-- the standalone x64 Release `VideoProcessorConfigTests.exe` suite passes.
+- all 158 focused source-crop, transition-model, and decision-timeline tests
+  pass;
+- the complete x64 Release solution rebuilds successfully from the beta-based
+  worktree;
+- the complete native suite reports 967/969. The only failures are
+  `ConfigurationReferenceMatchesPublicFieldInventory` and
+  `ConfigEditorCoreLoadsAndValidatesCurrentDeployedFixture`; both exact tests
+  also fail against the untouched beta-tip Release build at `338460cb` in the
+  same environment; and
+- three independent final-diff reviews found no remaining concrete high-severity
+  correctness, test-coverage, or logging-volume blocker.
 
 No deployment, configuration edit, beta merge, or pull request was performed.
 Live replay of the reported trailer/volume-overlay sequence remains the next
@@ -112,6 +134,10 @@ owns the decision.
 7. Make final crop telemetry identify the presentation owner and agree with
    the dense overlay pending/accepted state without logging every insignificant
    raw extent change.
+8. Count confirmation evidence by decoded source sequence, not presentation
+   cadence, so a repeated frame cannot satisfy a multi-frame contract.
+9. Give horizontal refinement conflict fail-open precedence over every
+   provisional presentation owner.
 
 ## Acceptance criteria
 
@@ -131,6 +157,10 @@ owns the decision.
 7. Stale generations, malformed bounds, horizontal involvement, impossible
    translation, and explicit fail-open remain fail-open.
 8. Focused composed-policy tests and the complete x64 Release test suite pass.
+9. Re-presenting one decoded frame cannot advance active-picture, outward-fit,
+   translation, or Fit confirmation counts.
+10. Decision telemetry identifies the owning policy state and suppresses raw
+    detector jitter while still logging meaningful transitions.
 
 ## Implementation plan
 
