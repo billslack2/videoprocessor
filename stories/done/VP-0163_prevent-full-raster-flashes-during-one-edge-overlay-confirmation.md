@@ -2,7 +2,7 @@
 
 ## Status
 
-In Progress (2026-08-29). The tracker was synchronized with `origin/main`
+Done (2026-08-29). The tracker was synchronized with `origin/main`
 before assignment and its 181 canonical items matched the index with no
 duplicate or missing IDs. GitHub was queried directly and confirmed
 `v1.3.003-beta` as the current default integration branch at
@@ -389,6 +389,16 @@ caches, backups, or runtime state. Package SHA-256 values are:
   `DE1FD7FAD88AF0AC998249C8D9D4BE3958D920BA51AF9F7AC43DD2BA77B74FA3`;
 - `VideoProcessorVPRenderer.dll`:
   `698A1B6C8D4A5032B596754E3264CD938DD87D342733ABC8F2ECF1B1498A1B65`.
+
+Post-integration follow-up commit `61869a01` prevents a resolved crop from
+rearming the same subtitle fail-open bridge. It was fast-forwarded to
+`v1.3.003-beta`, rebuilt clean as x64 Release, and validated by the focused
+regression, 979/979 otherwise-applicable native tests (excluding the known
+configuration-reference inventory mismatch), and the complete Config UI
+suite. The verified tester archive is
+`VideoProcessor-v1.3.003-beta-win-x64-61869a0.zip`, SHA-256
+`22A3F222A8A20B0A9458D54F1FE3468114AAE405890BA7619C102C0405EF6CD7`.
+This follow-up package was not deployed.
 
 ## Related stories
 
