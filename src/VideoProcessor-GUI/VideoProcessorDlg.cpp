@@ -11051,6 +11051,67 @@ bool CVideoProcessorDlg::BuildPushVideoState()
 		? (m_newLldvCandidateConfirmed &&
 			IsNewLldvModeSelected())
 		: isLegacyHDFuryLLDV;
+	const std::string rawEotf =
+		CStringA(ToString(m_captureDeviceVideoState->eotf)).GetString();
+	const std::string rawColorspace =
+		CStringA(ToString(m_captureDeviceVideoState->colorspace)).GetString();
+	std::string lldvDecisionReason;
+	if (!m_captureDeviceVideoState->valid)
+	{
+		lldvDecisionReason = "rejected: capture state is invalid";
+	}
+	else if (m_useNewLldvHeuristic)
+	{
+		if (!IsNewLldvModeSelected())
+			lldvDecisionReason =
+				"rejected: newlldv requires both Follow input (LLDV) modes";
+		else if (isHDFuryLLDV)
+			lldvDecisionReason = "new-match: stabilized BT.2020 + SDR candidate";
+		else if (m_captureDeviceVideoState->colorspace == ColorSpace::BT_2020 &&
+			m_captureDeviceVideoState->eotf == EOTF::SDR && !rawHdrData)
+			lldvDecisionReason = "new-candidate-waiting: stabilization not complete";
+		else
+			lldvDecisionReason =
+				"rejected: newlldv expects BT.2020 + SDR without static HDR metadata";
+	}
+	else if (isLegacyHDFuryLLDV)
+	{
+		lldvDecisionReason = hasVertex2CustomHdrSignature
+			? "classic-match: Vertex2 custom HDR signature"
+			: "classic-match: BT.2020 + PQ without static HDR metadata";
+	}
+	else if (m_captureDeviceVideoState->colorspace != ColorSpace::BT_2020)
+	{
+		lldvDecisionReason = "rejected: colorspace is not BT.2020";
+	}
+	else if (m_captureDeviceVideoState->eotf != EOTF::PQ)
+	{
+		lldvDecisionReason = "rejected: EOTF is not PQ";
+	}
+	else
+	{
+		lldvDecisionReason =
+			"rejected: static HDR metadata is not the Vertex2 LLDV signature";
+	}
+
+	const std::string lldvDecisionDiagnostic =
+		"LLDV decision: " + lldvDecisionReason +
+		" raw_eotf=" + rawEotf +
+		" raw_colorspace=" + rawColorspace +
+		" raw_hdr=" + (rawHdrData ? "1" : "0") +
+		" newlldv=" + (m_useNewLldvHeuristic ? "1" : "0") +
+		" lldv_modes_selected=" + (IsNewLldvModeSelected() ? "1" : "0");
+	if (lldvDecisionDiagnostic != m_lastLldvDecisionDiagnostic)
+	{
+		DebugLog::Log("%s", lldvDecisionDiagnostic.c_str());
+		m_lastLldvDecisionDiagnostic = lldvDecisionDiagnostic;
+	}
+	if (!isHDFuryLLDV && m_lldvDiagnosticWasApplied)
+	{
+		DebugLog::Log("LLDV ended: reason=%s raw_eotf=%s raw_colorspace=%s",
+			lldvDecisionReason.c_str(), rawEotf.c_str(), rawColorspace.c_str());
+	}
+	m_lldvDiagnosticWasApplied = isHDFuryLLDV;
 
 	if (m_useNewLldvHeuristic && isHDFuryLLDV)
 		videoState->eotf = EOTF::PQ;
@@ -11217,6 +11278,34 @@ bool CVideoProcessorDlg::BuildPushVideoState()
 
 	m_builtVideoState = videoState;
 	m_lastEffectiveEotf = m_builtVideoState->eotf;
+	const auto logLldvEffectiveState = [this, &rawEotf, &rawColorspace,
+		isHDFuryLLDV](const char* rendererResult)
+	{
+		if (!isHDFuryLLDV)
+			return;
+
+		const HDRData* effectiveHdrData = m_builtVideoState->hdrData.get();
+		const std::string diagnostic =
+			std::string("LLDV applied: path=") +
+			(m_useNewLldvHeuristic ? "new" : "classic") +
+			" raw=" + rawColorspace + "/" + rawEotf +
+			" effective=" +
+			std::string(CStringA(ToString(m_builtVideoState->colorspace)).GetString()) +
+			"/" +
+			std::string(CStringA(ToString(m_builtVideoState->eotf)).GetString()) +
+			" effective_hdr=" + (effectiveHdrData ? "1" : "0") +
+			" effective_values=" +
+			std::to_string(effectiveHdrData ? effectiveHdrData->maxCll : -1.0) + "/" +
+			std::to_string(effectiveHdrData ? effectiveHdrData->maxFall : -1.0) + "/" +
+			std::to_string(effectiveHdrData ? effectiveHdrData->masteringDisplayMinLuminance : -1.0) + "/" +
+			std::to_string(effectiveHdrData ? effectiveHdrData->masteringDisplayMaxLuminance : -1.0) +
+			" renderer=" + rendererResult;
+		if (diagnostic != m_lastLldvEffectiveDiagnostic)
+		{
+			DebugLog::Log("%s", diagnostic.c_str());
+			m_lastLldvEffectiveDiagnostic = diagnostic;
+		}
+	};
 
 	UnifiedProfileRuntime::RefreshResult profileRefresh;
 	std::string profileError;
@@ -11326,6 +11415,7 @@ bool CVideoProcessorDlg::BuildPushVideoState()
 	{
 		DbgLog((LOG_TRACE, 1,
 			TEXT("CVideoProcessorDlg::BuildPushVideoState(): Renderer stopping; state retained for next graph")));
+		logLldvEffectiveState("state-retained-while-stopping");
 		return true;
 	}
 
@@ -11351,6 +11441,7 @@ bool CVideoProcessorDlg::BuildPushVideoState()
 				CStringA(ToString(m_builtVideoState->eotf)).GetString(),
 				CStringA(ToString(m_builtVideoState->colorspace)).GetString());
 		}
+		logLldvEffectiveState(rendererAcceptedState ? "accepted" : "rejected");
 
 		return rendererAcceptedState;
 	}
@@ -11358,6 +11449,7 @@ bool CVideoProcessorDlg::BuildPushVideoState()
 	{
 		DbgLog((LOG_TRACE, 1,
 			TEXT("CVideoProcessorDlg::BuildPushVideoState(): Renderer unavailable; state retained for next graph")));
+		logLldvEffectiveState("state-retained-renderer-unavailable");
 		return true;
 	}
 }
