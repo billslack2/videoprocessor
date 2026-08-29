@@ -121,3 +121,11 @@ ActivePicturePresentationRetentionEvidence
 	EvaluateP010ActivePicturePresentationRetention(
 		const P010PlaneView& view,
 		const ActivePictureBounds& trustedPresentation);
+
+// Sparse program content on an otherwise near-black frame (for example a
+// scrolling title crawl) can resemble a new pair of encoded bars. Such a
+// frame may describe visible pixels, but it cannot replace a different
+// already-trusted presentation rectangle.
+ActivePictureEvidence ConstrainNearBlackGeometryChange(
+	const ActivePicturePresentationRetentionEvidence& retention,
+	const ActivePictureBounds& trustedPresentation);

@@ -7281,7 +7281,8 @@ struct LibplaceboVideoRenderer::Impl
 				retentionEvidence =
 					EvaluateActivePicturePresentationRetention(
 						analysisSource, presentationBeforeObservation);
-				evidence = retentionEvidence.activePicture;
+				evidence = ConstrainNearBlackGeometryChange(
+					retentionEvidence, presentationBeforeObservation);
 			}
 			else
 			{
@@ -7642,7 +7643,7 @@ struct LibplaceboVideoRenderer::Impl
 			if (transition.diagnostic)
 			{
 				DebugLog::Log(
-					"Alpha NLS active picture: state=%d frame=%llu rect=%d,%d-%d,%d aspect=%.4f stable=%d clear=%d classification=%d retention_safe=%d reason=\"%s; %s; %s\"",
+					"Alpha NLS active picture: state=%d frame=%llu rect=%d,%d-%d,%d aspect=%.4f stable=%d clear=%d classification=%d retention_safe=%d global_near_black=%d reason=\"%s; %s; %s\"",
 					static_cast<int>(transition.state),
 					static_cast<unsigned long long>(frameNumber),
 					transition.bounds.left, transition.bounds.top,
@@ -7652,6 +7653,7 @@ struct LibplaceboVideoRenderer::Impl
 					transition.clearTransition ? 1 : 0,
 					static_cast<int>(evidence.classification),
 					latestActivePicturePresentationRetentionSafe ? 1 : 0,
+					latestActivePictureGlobalNearBlack ? 1 : 0,
 					transition.reason.c_str(), evidence.reason.c_str(),
 					latestActivePicturePresentationRetentionReason.c_str());
 			}
@@ -8240,6 +8242,7 @@ struct LibplaceboVideoRenderer::Impl
 			activePictureAmbiguityHold.IsActive(
 				GetTickCount64(), frameGeneration);
 		const bool latestEvidenceAllowsBarOverlay =
+			!latestActivePictureGlobalNearBlack &&
 			latestActivePictureEvidenceAvailable &&
 			(latestActivePictureEvidenceClassification ==
 				ActivePictureClassification::BAR_CROP_TRUSTED ||
@@ -8312,6 +8315,7 @@ struct LibplaceboVideoRenderer::Impl
 		heldAnalysisInput.holdMs = scopeSubtitleHoldMs;
 		heldAnalysisInput.currentSourceSequence = sourceSequence;
 		const bool heldBarAnalysisAuthority =
+			!latestActivePictureGlobalNearBlack &&
 			AlphaSourceCrop::CanAnalyzeHeldVerticalBarGeometry(
 				heldAnalysisInput);
 		const ActivePictureBounds* subtitleBarAuthority =

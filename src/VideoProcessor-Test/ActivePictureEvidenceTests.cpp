@@ -709,5 +709,35 @@ namespace VideoProcessorTest
 			Assert::IsFalse(retention.excludedBandsPixelSafe);
 			Assert::IsFalse(retention.currentlyPixelSafe);
 		}
+
+		TEST_METHOD(NearBlackFrameCannotReplaceRetainedPresentationGeometry)
+		{
+			ActivePicturePresentationRetentionEvidence retention;
+			retention.analysisValid = true;
+			retention.presentationValid = true;
+			retention.globalNearBlack = true;
+			retention.activePicture.available = true;
+			retention.activePicture.classification =
+				ActivePictureClassification::BAR_CROP_TRUSTED;
+			retention.activePicture.trustedBounds =
+				ScopePresentation(320, 180, 8, 172);
+
+			const ActivePictureBounds retained =
+				ScopePresentation(320, 180, 22, 158);
+			const auto constrained = ConstrainNearBlackGeometryChange(
+				retention, retained);
+			Assert::AreEqual(static_cast<int>(
+				ActivePictureClassification::PROVISIONAL),
+				static_cast<int>(constrained.classification));
+			Assert::AreEqual(8, constrained.proposedBounds.top);
+			Assert::AreEqual(172, constrained.proposedBounds.bottom);
+
+			retention.activePicture.trustedBounds = retained;
+			const auto unchanged = ConstrainNearBlackGeometryChange(
+				retention, retained);
+			Assert::AreEqual(static_cast<int>(
+				ActivePictureClassification::BAR_CROP_TRUSTED),
+				static_cast<int>(unchanged.classification));
+		}
 	};
 }

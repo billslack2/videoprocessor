@@ -798,3 +798,35 @@ ActivePicturePresentationRetentionEvidence
 	return EvaluateActivePicturePresentationRetention(source,
 		trustedPresentation);
 }
+
+
+ActivePictureEvidence ConstrainNearBlackGeometryChange(
+	const ActivePicturePresentationRetentionEvidence& retention,
+	const ActivePictureBounds& trustedPresentation)
+{
+	ActivePictureEvidence evidence = retention.activePicture;
+	if (!retention.analysisValid || !retention.presentationValid ||
+		!retention.globalNearBlack || !evidence.available ||
+		evidence.classification == ActivePictureClassification::UNAVAILABLE ||
+		evidence.classification == ActivePictureClassification::PROVISIONAL)
+	{
+		return evidence;
+	}
+
+	const ActivePictureBounds& observed = evidence.trustedBounds;
+	const bool samePresentation =
+		observed.left == trustedPresentation.left &&
+		observed.top == trustedPresentation.top &&
+		observed.right == trustedPresentation.right &&
+		observed.bottom == trustedPresentation.bottom &&
+		observed.rasterWidth == trustedPresentation.rasterWidth &&
+		observed.rasterHeight == trustedPresentation.rasterHeight;
+	if (samePresentation)
+		return evidence;
+
+	evidence.classification = ActivePictureClassification::PROVISIONAL;
+	evidence.proposedBounds = observed;
+	evidence.reason =
+		"near-black frame cannot replace retained presentation geometry";
+	return evidence;
+}

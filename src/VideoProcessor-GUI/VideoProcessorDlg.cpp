@@ -7171,6 +7171,10 @@ void CVideoProcessorDlg::ApplyShaderRuleCommand(UINT commandId)
 	}
 	m_requestedShaderSelector = rule->second;
 	PublishActiveProfileStatus();
+	// Explicit shader shortcuts update the resolved section selection before the
+	// render thread consumes it. Publish that selection now so terminal choices
+	// such as NLS Off receive the same transient feedback as active NLS modes.
+	PublishProfileChangeOverlay(m_profileRuntime.GetSnapshot());
 	DEBUGLOG("Shader rule changed to '%S'", static_cast<LPCTSTR>(activeRule));
 	if (rendererRestartRequired)
 	{
