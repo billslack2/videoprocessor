@@ -846,7 +846,7 @@ namespace Tests
 			AssertFullRaster(Evaluate(picture));
 		}
 
-		TEST_METHOD(PendingVerticalInspectionRetainsTrustedCropBeforeDenseBaseExists)
+		TEST_METHOD(DarkSceneCutInspectionRetainsTrustedCropBeforeDenseBaseExists)
 		{
 			Input input = TrustedScopeCrop();
 			input.latestObservationSupportsCrop = false;
@@ -855,10 +855,13 @@ namespace Tests
 				ActivePictureClassification::PROVISIONAL;
 			input.frameLocalPresentationRetentionEvaluated = true;
 			input.frameLocalPresentationRetentionSafe = false;
+			input.sceneVerificationHoldActive = true;
 			input.verticalInspectionPending = true;
 
-			// This is the first dense-inspection frame. No dense translation base or
-			// evidence generation has been established yet.
+			// A dark star-field scene cut can make the first overlay/envelope sample
+			// provisional and frame-local pixel-unsafe. The scene hold cannot retain
+			// that frame, and no dense translation base or evidence generation has
+			// been established yet.
 			Assert::AreEqual(0ull, input.verticalTranslationSourceGeneration);
 
 			const Decision retained = Evaluate(input);
