@@ -459,7 +459,7 @@ namespace AlphaSourceCrop
 	{
 		VerticalInspectionBridgeDecision decision;
 		if (input.sourceGeneration == 0 || input.sourceSequence == 0 ||
-			input.fullRasterAuthorityResolved)
+			input.cropAuthorityResolved || input.fullRasterAuthorityResolved)
 		{
 			return decision;
 		}
@@ -472,14 +472,6 @@ namespace AlphaSourceCrop
 			input.previous.sourceGeneration == input.sourceGeneration &&
 			input.previous.presentationEpoch == input.presentationEpoch &&
 			sameBase;
-		if (sameEpisode && input.cropAuthorityResolved)
-		{
-			decision.state = input.previous;
-			decision.state.failOpenLatched = false;
-			return decision;
-		}
-		if (input.cropAuthorityResolved)
-			return decision;
 		if (!sameEpisode)
 		{
 			if (!input.candidate)

@@ -982,6 +982,114 @@ namespace Tests
 			Assert::IsTrue(decision.retain);
 		}
 
+		TEST_METHOD(ResolvedCropRearmsLaterSubtitleWithoutFullRasterFlash)
+		{
+			VerticalInspectionBridgeInput bridge;
+			bridge.candidate = true;
+			bridge.retentionRequested = true;
+			bridge.sourceGeneration = 7;
+			bridge.presentationEpoch = 11;
+			bridge.trustedBase = TrustedScopeCrop().geometry;
+			bridge.sourceSequence = 421;
+
+			auto decision = UpdateVerticalInspectionBridge(bridge);
+			Assert::IsTrue(decision.retain);
+
+			// Dense analysis spends this unresolved episode. It must stay spent
+			// through candidate dropouts, but not through later trusted authority.
+			bridge.previous = decision.state;
+			bridge.sourceSequence = 422;
+			bridge.denseAnalysisCompleted = true;
+			decision = UpdateVerticalInspectionBridge(bridge);
+			Assert::IsFalse(decision.retain);
+			Assert::IsTrue(decision.expired);
+			Assert::IsTrue(decision.state.denseAnalysisCompleted);
+			Assert::IsTrue(decision.state.failOpenLatched);
+
+			bridge.previous = decision.state;
+			bridge.candidate = false;
+			bridge.retentionRequested = false;
+			bridge.denseAnalysisCompleted = false;
+			bridge.cropAuthorityResolved = true;
+			bridge.sourceSequence = 500;
+			decision = UpdateVerticalInspectionBridge(bridge);
+			Assert::IsFalse(decision.state.active);
+			Assert::IsFalse(decision.state.retentionConsumed);
+			Assert::IsFalse(decision.state.denseAnalysisCompleted);
+			Assert::IsFalse(decision.state.failOpenLatched);
+
+			// A later subtitle is a new unresolved episode even though it uses the
+			// same source, profile epoch, and trusted base as the earlier subtitle.
+			bridge.previous = decision.state;
+			bridge.candidate = true;
+			bridge.retentionRequested = true;
+			bridge.cropAuthorityResolved = false;
+			bridge.sourceSequence = 8782;
+			decision = UpdateVerticalInspectionBridge(bridge);
+			Assert::IsTrue(decision.started);
+			Assert::IsTrue(decision.retain);
+			Assert::IsFalse(decision.expired);
+
+			Input pending = TrustedScopeCrop();
+			pending.latestObservationSupportsCrop = false;
+			pending.latestObservationIsProvisional = true;
+			pending.latestObservationClassification =
+				ActivePictureClassification::PROVISIONAL;
+			pending.frameLocalPresentationRetentionEvaluated = true;
+			pending.frameLocalPresentationRetentionSafe = false;
+			pending.verticalInspectionPending = decision.retain;
+			pending.verticalInspectionSourceGeneration =
+				bridge.sourceGeneration;
+			pending.verticalInspectionSourceSequence = bridge.sourceSequence;
+			pending.frameSourceSequence = bridge.sourceSequence;
+			const Decision retained = Evaluate(pending);
+			Assert::IsTrue(retained.applyCrop);
+			Assert::IsFalse(retained.outwardExpanded);
+			Assert::AreEqual(static_cast<int>(
+				DecisionOwner::VERTICAL_INSPECTION),
+				static_cast<int>(retained.owner));
+			Assert::AreEqual(0, retained.sourceBounds.left);
+			Assert::AreEqual(274, retained.sourceBounds.top);
+			Assert::AreEqual(3840, retained.sourceBounds.right);
+			Assert::AreEqual(1884, retained.sourceBounds.bottom);
+
+			// Once confirmed, the existing subtitle policy translates the same-size
+			// window. Rearming the bridge must not change aspect ratio or NLS input.
+			Input translated = pending;
+			translated.verticalInspectionPending = false;
+			translated.verticalTranslationActive = true;
+			translated.verticalTranslationPixels = 212;
+			translated.verticalTranslationBase = translated.geometry;
+			translated.verticalTranslationSourceGeneration = 7;
+			const Decision presented = Evaluate(translated);
+			Assert::IsTrue(presented.applyCrop);
+			Assert::IsFalse(presented.outwardExpanded);
+			Assert::IsTrue(presented.verticallyTranslated);
+			Assert::AreEqual(212, presented.verticalTranslationPixels);
+			Assert::AreEqual(static_cast<int>(
+				DecisionOwner::VERTICAL_TRANSLATION),
+				static_cast<int>(presented.owner));
+			Assert::AreEqual(0, presented.sourceBounds.left);
+			Assert::AreEqual(486, presented.sourceBounds.top);
+			Assert::AreEqual(3840, presented.sourceBounds.right);
+			Assert::AreEqual(2096, presented.sourceBounds.bottom);
+			Assert::AreEqual(
+				retained.sourceBounds.right - retained.sourceBounds.left,
+				presented.sourceBounds.right - presented.sourceBounds.left);
+			Assert::AreEqual(
+				retained.sourceBounds.bottom - retained.sourceBounds.top,
+				presented.sourceBounds.bottom - presented.sourceBounds.top);
+
+			// Rearming restores exactly one retained decoded sequence; it does not
+			// create an open-ended hold when authority remains unresolved.
+			bridge.previous = decision.state;
+			bridge.sourceSequence = 8783;
+			decision = UpdateVerticalInspectionBridge(bridge);
+			Assert::IsFalse(decision.retain);
+			Assert::IsTrue(decision.expired);
+			Assert::IsTrue(decision.state.failOpenLatched);
+		}
+
 		TEST_METHOD(PendingTranslationRetainsTrustedCropWithoutFullRasterFlash)
 		{
 			Input input = TrustedScopeCrop();
