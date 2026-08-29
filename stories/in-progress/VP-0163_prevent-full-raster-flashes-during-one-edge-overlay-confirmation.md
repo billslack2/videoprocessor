@@ -310,6 +310,57 @@ Deployed SHA-256 values:
 - `VideoProcessorVPRenderer.dll`:
   `8CBF3524FEB90CF94814F0B02DDB33856EE40D67176E4320E2A326E514AE7195`.
 
+## 2026-08-29 monotonic near-black title episodes
+
+The next Eternals replay at approximately 10:41:33–10:41:38 showed that the
+first near-black geometry constraint removed subtitle translation but did not
+remove crop/full-raster oscillation. Sparse scrolling text repeatedly produced
+plausible full-width bar rectangles: presentation cropped at source sequences
+516, 537–539, and 582–584, then failed open at 518, 540, and 585. The detector
+bounds tracked the title strokes and ranged from approximately 1.57:1 to
+3.96:1; they were not stable picture geometry. NLS remained off and final
+mapping remained linear.
+
+Commit `4f61b340` introduces presentation-independent global near-black
+measurement and a generation-local title episode. A near-black episode without
+existing crop authority latches full raster and downgrades every apparent bar
+crop to provisional. An episode with a retained crop can keep it, but bounded
+visible content or loss of that geometry makes one monotonic transition to
+full raster; crop cannot reacquire until a real scene/source boundary. Normal
+full-raster authority remains immediately safe.
+
+Live startup validation exposed two lifecycle details which were corrected
+before handoff. Commit `dc6b8089` preserves the episode across profile
+publication and converts lost retained geometry to the one-way full-raster
+state. Commit `292f5e4e` narrows episode reset to an actual decoded-source
+generation replacement: the temporary analysis-authority reset used by profile
+publication is not a source change.
+
+The final clean x64 Release build identifies as
+`v1.3.003-beta-292f5e4` with `VERSION_DIRTY=false`. Seven focused near-black,
+episode, lifecycle, and retained-geometry fixtures pass. The complete suite
+reports 977/979; the two failures are the existing
+`ConfigurationReferenceMatchesPublicFieldInventory` documentation mismatch and
+the current deployed-configuration fixture validation, neither in renderer
+presentation code.
+
+The matched host/plugin pair was deployed without configuration changes. The
+previous pair is recoverable from
+`C:\Videoprocessor\vp\deployment-backups\vp0163-292f5e4e-20260829-120637`.
+Deployed SHA-256 values are:
+
+- `VideoProcessor.exe`:
+  `1F0FD1B9EE89452A8DB2E24BE5349632FA978D0BD622322F7CDFDD068BF25121`;
+- `VideoProcessorVPRenderer.dll`:
+  `6E615F64B22AE08A6520F669A4F76A0FA67A26C92E4C25FF1D16A9DC49185401`.
+
+The deployed API-14 renderer's 12:06 live trace started the title episode at
+sequence 1 with P90 4, held full raster when title pixels raised P90 to 225,
+and remained `near_black_episode=full-raster` across automatic profile
+boundaries at sequences 54, 135, and 160. Every recorded final layout remained
+`0,0-3840,2160`, linear, centered, and untranslated. Replaying the Eternals
+opening is the remaining operator validation.
+
 ## Related stories
 
 - VP-0129: Retain scope through vertical overlay arbitration.
