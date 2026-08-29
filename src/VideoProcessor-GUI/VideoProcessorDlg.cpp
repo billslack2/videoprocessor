@@ -12531,7 +12531,7 @@ BOOL CVideoProcessorDlg::OnInitDialog()
 
 	CString title;
 	const std::wstring buildIdentity = BuildIdentityPolicy::Format(
-		VERSION_BRANCH, VERSION_COMMIT_SHORT, VERSION_DESCRIBE);
+		VERSION_BRANCH, VERSION_COMMIT_SHORT, VERSION_DESCRIBE, VERSION_DIRTY);
 	title.Format(_T("VideoProcessor (%s)"), buildIdentity.c_str());
 	SetWindowText(title.GetBuffer());
 

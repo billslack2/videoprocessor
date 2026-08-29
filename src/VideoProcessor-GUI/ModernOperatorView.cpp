@@ -321,7 +321,7 @@ void ModernOperatorView::OnPaint()
 		Px(207), static_cast<int>(client.right) - Px(252));
 	CRect versionRect(Px(207), Px(20), versionRight, Px(40));
 	const std::wstring buildIdentity = BuildIdentityPolicy::Format(
-		VERSION_BRANCH, VERSION_COMMIT_SHORT, VERSION_DESCRIBE);
+		VERSION_BRANCH, VERSION_COMMIT_SHORT, VERSION_DESCRIBE, VERSION_DIRTY);
 	dc.DrawText(buildIdentity.c_str(), versionRect,
 		DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
 

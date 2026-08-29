@@ -14,14 +14,15 @@ namespace BuildIdentityPolicy
 	}
 
 	inline std::wstring Format(const std::wstring& branch,
-		const std::wstring& shortCommit, const std::wstring& fallbackVersion)
+		const std::wstring& shortCommit, const std::wstring& fallbackVersion,
+		const bool dirty)
 	{
 		const std::wstring cleanBranch = Trim(branch);
 		const std::wstring cleanCommit = Trim(shortCommit);
 		const std::wstring cleanFallback = Trim(fallbackVersion);
 		const std::wstring identity = !cleanBranch.empty() ? cleanBranch :
 			(!cleanFallback.empty() ? cleanFallback : L"detached");
-		return cleanCommit.empty() ? identity :
+		return !dirty || cleanCommit.empty() ? identity :
 			identity + L" @ " + cleanCommit;
 	}
 }

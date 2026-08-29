@@ -58,20 +58,22 @@ namespace VideoProcessorTest
 				TEXT("NOT_A_CONVERSION"), parsed));
 		}
 
-		TEST_METHOD(ModernOperatorBuildIdentityUsesBranchAndCommit)
+		TEST_METHOD(ModernOperatorBuildIdentityUsesBranchForCleanBuildsAndCommitForDirtyBuilds)
 		{
-			Assert::AreEqual(std::wstring(
-				L"codex/vp-0103-live-configuration @ 5be29d3"),
+			Assert::AreEqual(std::wstring(L"v1.3.003-beta"),
 				BuildIdentityPolicy::Format(
-					L" codex/vp-0103-live-configuration ",
-					L"5be29d3", L"v1.1.016-beta-60-g5be29d3"));
+					L" v1.3.003-beta ", L"9a5dd0b",
+					L"v1.1.016-beta-326-g9a5dd0b", false));
 			Assert::AreEqual(std::wstring(L"ci/merge @ abc1234"),
-				BuildIdentityPolicy::Format(L"ci/merge", L"abc1234", L"tag"));
+				BuildIdentityPolicy::Format(L"ci/merge", L"abc1234", L"tag", true));
+			Assert::AreEqual(std::wstring(L"v1.2.3-gabc1234"),
+				BuildIdentityPolicy::Format(L"", L"abc1234",
+					L"v1.2.3-gabc1234", false));
 			Assert::AreEqual(std::wstring(L"v1.2.3-gabc1234 @ abc1234"),
 				BuildIdentityPolicy::Format(L"", L"abc1234",
-					L"v1.2.3-gabc1234"));
+					L"v1.2.3-gabc1234", true));
 			Assert::AreEqual(std::wstring(L"detached"),
-				BuildIdentityPolicy::Format(L"", L"", L""));
+				BuildIdentityPolicy::Format(L"", L"", L"", false));
 		}
 
 		TEST_METHOD(FullscreenActivationNeverStealsAnotherProcessForeground)
