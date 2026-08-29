@@ -72,6 +72,18 @@ using Microsoft::WRL::ComPtr;
 constexpr wchar_t ConfigurationEditorRelativePath[] =
 	L"config\\VideoProcessorConfig.exe";
 
+CString FormatHdrLuminance(double value)
+{
+	// Keep the customary one decimal place, but retain meaningful precision
+	// for metadata such as a 0.001-nit mastering minimum.
+	CString text;
+	text.Format(_T("%.05f"), value);
+	text.TrimRight(_T('0'));
+	if (text[text.GetLength() - 1] == _T('.'))
+		text += _T('0');
+	return text;
+}
+
 void LogRendererResourceCensus(uint32_t generation, const CString& renderer,
 	uint64_t token)
 {
@@ -11366,18 +11378,14 @@ bool CVideoProcessorDlg::BuildPushVideoState()
 	{
 		const HDRData hdrData = *(videoState->hdrData);
 
-		CString cstring;
-		cstring.Format(_T("%.01f"), hdrData.maxCll);
-		m_hdrLuminanceMaxCll.SetWindowText(cstring);
-
-		cstring.Format(_T("%.01f"), hdrData.maxFall);
-		m_hdrLuminanceMaxFall.SetWindowText(cstring);
-
-		cstring.Format(_T("%.05f"), hdrData.masteringDisplayMinLuminance);
-		m_hdrLuminanceMasterMin.SetWindowText(cstring);
-
-		cstring.Format(_T("%.01f"), hdrData.masteringDisplayMaxLuminance);
-		m_hdrLuminanceMasterMax.SetWindowText(cstring);
+		m_hdrLuminanceMaxCll.SetWindowText(
+			FormatHdrLuminance(hdrData.maxCll));
+		m_hdrLuminanceMaxFall.SetWindowText(
+			FormatHdrLuminance(hdrData.maxFall));
+		m_hdrLuminanceMasterMin.SetWindowText(
+			FormatHdrLuminance(hdrData.masteringDisplayMinLuminance));
+		m_hdrLuminanceMasterMax.SetWindowText(
+			FormatHdrLuminance(hdrData.masteringDisplayMaxLuminance));
 
 		m_hdrColorspaceREdit.SetWindowTextW(
 			CieXYToString(hdrData.displayPrimaryRedX, hdrData.displayPrimaryRedY));
