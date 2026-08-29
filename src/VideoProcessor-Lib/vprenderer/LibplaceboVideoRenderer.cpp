@@ -7222,7 +7222,12 @@ struct LibplaceboVideoRenderer::Impl
 			nlsGeometrySourceGeneration = 0;
 			activePictureAnalysisSourceGeneration = analysisSource.generation;
 			activePictureAmbiguityHold.Reset();
-			nearBlackPresentationEpisode = {};
+			if (nearBlackPresentationEpisode.sourceGeneration != 0 &&
+				nearBlackPresentationEpisode.sourceGeneration !=
+					analysisSource.generation)
+			{
+				nearBlackPresentationEpisode = {};
+			}
 			ClearSceneVerificationSnapshot();
 			ClearLatestActivePictureEvidence();
 			ClearScopeSubtitleEvidence();
