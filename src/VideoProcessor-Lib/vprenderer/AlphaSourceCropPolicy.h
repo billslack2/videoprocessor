@@ -16,6 +16,7 @@ namespace AlphaSourceCrop
 		ActivePictureBounds candidate;
 		uint32_t confirmations = 0;
 		uint64_t sourceGeneration = 0;
+		uint64_t lastObservedSourceSequence = 0;
 	};
 
 	struct OutwardPictureConfirmationDecision
@@ -35,7 +36,8 @@ namespace AlphaSourceCrop
 		const ActivePictureBounds& trustedGeometry,
 		const ActivePictureBounds& candidate,
 		const ActivePicturePresentationRetentionEvidence& evidence,
-		uint64_t sourceGeneration);
+		uint64_t sourceGeneration,
+		uint64_t sourceSequence = 0);
 
 	enum class BarContentEdge
 	{
@@ -103,6 +105,7 @@ namespace AlphaSourceCrop
 	{
 		float candidateTranslationPixels = 0.0f;
 		uint32_t confirmations = 0;
+		uint64_t lastObservedSourceSequence = 0;
 	};
 
 	struct VerticalTranslationConfirmationInput
@@ -118,6 +121,9 @@ namespace AlphaSourceCrop
 		// Positive values cap the buffered magnitude at the source raster edge.
 		// Zero leaves the policy uncapped for callers without geometry context.
 		float maximumTranslationMagnitudePixels = 0.0f;
+		// A cadence repeat may render one decoded source frame more than once.
+		// One source sequence can contribute at most one confirmation.
+		uint64_t sourceSequence = 0;
 	};
 
 	struct VerticalTranslationConfirmationDecision
@@ -141,6 +147,7 @@ namespace AlphaSourceCrop
 	struct VerticalFitConfirmationState
 	{
 		uint32_t confirmations = 0;
+		uint64_t lastObservedSourceSequence = 0;
 	};
 
 	struct VerticalFitConfirmationDecision
@@ -153,7 +160,8 @@ namespace AlphaSourceCrop
 
 	VerticalFitConfirmationDecision ConfirmVerticalFit(
 		const VerticalFitConfirmationState& previous,
-		const VerticalBarContentDecision& observed);
+		const VerticalBarContentDecision& observed,
+		uint64_t sourceSequence = 0);
 
 	// A current provisional envelope which expands one or both vertical edges is
 	// eligible for trusted-base retention until the first dense sample. This
@@ -168,6 +176,51 @@ namespace AlphaSourceCrop
 		bool topExpansion,
 		bool rightExpansion,
 		bool bottomExpansion);
+
+	struct VerticalInspectionBridgeState
+	{
+		bool active = false;
+		bool retentionConsumed = false;
+		bool denseAnalysisCompleted = false;
+		uint64_t sourceGeneration = 0;
+		uint64_t presentationEpoch = 0;
+		ActivePictureBounds trustedBase;
+		uint64_t firstCandidateSourceSequence = 0;
+		uint64_t retainedSourceSequence = 0;
+	};
+
+	struct VerticalInspectionBridgeInput
+	{
+		VerticalInspectionBridgeState previous;
+		bool candidate = false;
+		bool retentionRequested = false;
+		bool denseAnalysisCompleted = false;
+		// Positive crop/full-raster authority closes the unresolved episode.
+		// A mere coarse-candidate dropout does not, because sparse dark pixels
+		// must not rearm alternating scope/full/scope decisions.
+		bool authorityResolved = false;
+		uint64_t sourceGeneration = 0;
+		uint64_t presentationEpoch = 0;
+		ActivePictureBounds trustedBase;
+		uint64_t sourceSequence = 0;
+	};
+
+	struct VerticalInspectionBridgeDecision
+	{
+		VerticalInspectionBridgeState state;
+		bool retain = false;
+		bool started = false;
+		bool expired = false;
+	};
+
+	// Blind retention is limited to one decoded source sequence of one unresolved
+	// authority episode. Repeated presentation of that exact source sequence is
+	// idempotent. Candidate dropouts keep the spent lockout; only resolved
+	// authority, a new trusted base/profile epoch, or a new source generation can
+	// rearm it. Once dense classification completes, later frames need an explicit
+	// translation/Fit owner.
+	VerticalInspectionBridgeDecision UpdateVerticalInspectionBridge(
+		const VerticalInspectionBridgeInput& input);
 
 	struct VerticalBarPresentationState
 	{
@@ -588,16 +641,21 @@ namespace AlphaSourceCrop
 		bool frameLocalPresentationRetentionEvaluated = false;
 		bool frameLocalPresentationRetentionSafe = false;
 		bool presentationFailOpen = false;
-		// A current, bounded vertical-only envelope is awaiting its first dense
-		// classification. Retain the generation-current trusted geometry without
-		// depending on dense-analysis base state, which may not exist yet on this
-		// first inspection frame. This never grants or renews crop authority.
+		// A current, bounded vertical-only envelope reached final crop arbitration
+		// without another presentation owner. Retain the generation-current trusted
+		// geometry for this one source sequence without depending on dense-analysis
+		// base state. This never grants or renews crop authority.
 		bool verticalInspectionPending = false;
+		uint64_t verticalInspectionSourceGeneration = 0;
+		uint64_t verticalInspectionSourceSequence = 0;
 		// A trusted bar observation may disagree slightly with the retained crop
 		// while the transition model is still confirming the replacement. Keep the
 		// last trusted presentation during that bounded confirmation instead of
 		// exposing full raster between old and new bar geometries.
 		bool barCropRefinementPending = false;
+		// A refinement observation which expands left or right can expose live
+		// picture pixels. It must fail open instead of retaining an older crop.
+		bool barCropRefinementHorizontalConflict = false;
 		// A first dense subtitle observation is not yet a stable motion target.
 		// Retain the current trusted base for the bounded three-sample confirmation
 		// instead of flashing to full raster. This may briefly clip the newly seen
@@ -632,9 +690,35 @@ namespace AlphaSourceCrop
 		uint64_t geometrySourceGeneration = 0;
 		uint64_t outwardExpansionSourceGeneration = 0;
 		uint64_t frameSourceGeneration = 0;
+		uint64_t frameSourceSequence = 0;
 		int rasterWidth = 0;
 		int rasterHeight = 0;
 	};
+
+	enum class DecisionOwner
+	{
+		FULL_RASTER,
+		TRUSTED_CROP,
+		PIXEL_SAFE_RETENTION,
+		SCENE_HOLD,
+		AMBIGUITY_HOLD,
+		BAR_REFINEMENT,
+		VERTICAL_INSPECTION,
+		TRANSLATION_CONFIRMATION,
+		FIT_CONFIRMATION,
+		ENGAGE_BASE,
+		RELEASE_BASE,
+		OUTWARD_FIT,
+		VERTICAL_TRANSLATION,
+	};
+
+	enum class WithdrawalCause
+	{
+		NONE,
+		LATEST_OBSERVATION_UNREAFFIRMED,
+	};
+
+	const char* DecisionOwnerName(DecisionOwner owner);
 
 	struct Decision
 	{
@@ -643,6 +727,8 @@ namespace AlphaSourceCrop
 		bool outwardExpanded = false;
 		bool verticallyTranslated = false;
 		int verticalTranslationPixels = 0;
+		DecisionOwner owner = DecisionOwner::FULL_RASTER;
+		WithdrawalCause withdrawalCause = WithdrawalCause::NONE;
 		std::string reason;
 	};
 

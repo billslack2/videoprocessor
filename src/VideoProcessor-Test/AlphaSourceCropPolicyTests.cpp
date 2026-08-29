@@ -377,6 +377,52 @@ namespace Tests
 				static_cast<int>(decision.effective.action));
 		}
 
+		TEST_METHOD(CadenceRepeatCannotAdvanceDenseConfirmations)
+		{
+			VerticalBarContentDecision fit;
+			fit.action = VerticalBarPresentationAction::FIT;
+			auto fitDecision = ConfirmVerticalFit({}, fit, 50);
+			Assert::AreEqual(1U, fitDecision.state.confirmations);
+			fitDecision = ConfirmVerticalFit(fitDecision.state, fit, 50);
+			Assert::IsTrue(fitDecision.pending);
+			Assert::AreEqual(1U, fitDecision.state.confirmations);
+			fitDecision = ConfirmVerticalFit(fitDecision.state, fit, 51);
+			Assert::IsTrue(fitDecision.newlyAccepted);
+
+			VerticalTranslationConfirmationInput translation;
+			translation.observed.action =
+				VerticalBarPresentationAction::TRANSLATE;
+			translation.observed.translationPixels = 192.0f;
+			translation.sourceSequence = 60;
+			auto translationDecision =
+				ConfirmVerticalTranslation(translation);
+			Assert::AreEqual(1U,
+				translationDecision.state.confirmations);
+
+			translation.previous = translationDecision.state;
+			translationDecision = ConfirmVerticalTranslation(translation);
+			Assert::IsTrue(translationDecision.pending);
+			Assert::AreEqual(1U,
+				translationDecision.state.confirmations);
+
+			translation.previous = translationDecision.state;
+			translation.sourceSequence = 61;
+			translationDecision = ConfirmVerticalTranslation(translation);
+			Assert::AreEqual(2U,
+				translationDecision.state.confirmations);
+
+			translation.previous = translationDecision.state;
+			translationDecision = ConfirmVerticalTranslation(translation);
+			Assert::IsTrue(translationDecision.pending);
+			Assert::AreEqual(2U,
+				translationDecision.state.confirmations);
+
+			translation.previous = translationDecision.state;
+			translation.sourceSequence = 62;
+			translationDecision = ConfirmVerticalTranslation(translation);
+			Assert::IsTrue(translationDecision.newlyAccepted);
+		}
+
 		TEST_METHOD(DenseArbitrationSuppressesCoarseTwoEdgeFitUntilAccepted)
 		{
 			VerticalBarPresentationResolutionInput input;
@@ -426,6 +472,9 @@ namespace Tests
 			presented = Evaluate(crop);
 			Assert::IsTrue(presented.applyCrop);
 			Assert::IsTrue(presented.outwardExpanded);
+			Assert::AreEqual(static_cast<int>(
+				DecisionOwner::OUTWARD_FIT),
+				static_cast<int>(presented.owner));
 			Assert::AreEqual(148, presented.sourceBounds.top);
 			Assert::AreEqual(1960, presented.sourceBounds.bottom);
 		}
@@ -801,6 +850,135 @@ namespace Tests
 				true, true, true, false, true, false, true));
 			Assert::IsFalse(ShouldRetainTrustedBaseForVerticalInspection(
 				true, true, true, true, true, false, true));
+			Assert::IsFalse(ShouldRetainTrustedBaseForVerticalInspection(
+				true, true, true, false, true, true, false));
+		}
+
+		TEST_METHOD(VerticalInspectionBridgeStopsAfterDenseClassification)
+		{
+			VerticalInspectionBridgeInput input;
+			input.candidate = true;
+			input.sourceGeneration = 7;
+			input.presentationEpoch = 11;
+			input.trustedBase = TrustedScopeCrop().geometry;
+			input.sourceSequence = 100;
+
+			auto decision = UpdateVerticalInspectionBridge(input);
+			Assert::IsTrue(decision.started);
+			Assert::IsFalse(decision.retain);
+			Assert::IsFalse(decision.expired);
+			Assert::IsFalse(decision.state.retentionConsumed);
+
+			input.previous = decision.state;
+			input.sourceSequence = 101;
+			input.denseAnalysisCompleted = true;
+			decision = UpdateVerticalInspectionBridge(input);
+			Assert::IsFalse(decision.retain);
+			Assert::IsFalse(decision.expired);
+			Assert::IsTrue(decision.state.denseAnalysisCompleted);
+
+			input.previous = decision.state;
+			input.sourceSequence = 102;
+			input.denseAnalysisCompleted = false;
+			input.retentionRequested = true;
+			decision = UpdateVerticalInspectionBridge(input);
+			Assert::IsFalse(decision.retain);
+			Assert::IsTrue(decision.expired);
+			Assert::IsFalse(decision.state.retentionConsumed);
+		}
+
+		TEST_METHOD(VerticalInspectionBridgeRepeatIsIdempotentAndDropoutDoesNotRearm)
+		{
+			VerticalInspectionBridgeInput input;
+			input.candidate = true;
+			input.retentionRequested = true;
+			input.sourceGeneration = 7;
+			input.presentationEpoch = 11;
+			input.trustedBase = TrustedScopeCrop().geometry;
+			input.sourceSequence = 100;
+
+			auto decision = UpdateVerticalInspectionBridge(input);
+			Assert::IsTrue(decision.retain);
+			Assert::IsFalse(decision.expired);
+			Assert::AreEqual(100ull,
+				decision.state.retainedSourceSequence);
+
+			// Cadence repeats render the same decoded sequence again. The already
+			// chosen presentation must be stable for every presentation of it.
+			input.previous = decision.state;
+			decision = UpdateVerticalInspectionBridge(input);
+			Assert::IsTrue(decision.retain);
+			Assert::IsFalse(decision.expired);
+
+			// Losing the coarse envelope for one dark/noisy frame preserves the
+			// spent episode lockout instead of silently rearming it.
+			input.previous = decision.state;
+			input.candidate = false;
+			input.retentionRequested = false;
+			input.sourceSequence = 101;
+			decision = UpdateVerticalInspectionBridge(input);
+			Assert::IsTrue(decision.state.active);
+			Assert::IsTrue(decision.state.retentionConsumed);
+
+			input.previous = decision.state;
+			input.candidate = true;
+			input.retentionRequested = true;
+			input.sourceSequence = 102;
+			decision = UpdateVerticalInspectionBridge(input);
+			Assert::IsFalse(decision.retain);
+			Assert::IsTrue(decision.expired);
+		}
+
+		TEST_METHOD(VerticalInspectionBridgeRearmsOnlyForResolvedOrNewProvenance)
+		{
+			VerticalInspectionBridgeInput input;
+			input.candidate = true;
+			input.retentionRequested = true;
+			input.sourceGeneration = 7;
+			input.presentationEpoch = 11;
+			input.trustedBase = TrustedScopeCrop().geometry;
+			input.sourceSequence = 100;
+
+			auto decision = UpdateVerticalInspectionBridge(input);
+			Assert::IsTrue(decision.retain);
+
+			input.previous = decision.state;
+			input.authorityResolved = true;
+			input.candidate = false;
+			input.retentionRequested = false;
+			input.sourceSequence = 101;
+			decision = UpdateVerticalInspectionBridge(input);
+			Assert::IsFalse(decision.state.active);
+
+			input.previous = decision.state;
+			input.authorityResolved = false;
+			input.candidate = true;
+			input.retentionRequested = true;
+			input.sourceSequence = 102;
+			decision = UpdateVerticalInspectionBridge(input);
+			Assert::IsTrue(decision.started);
+			Assert::IsTrue(decision.retain);
+
+			input.previous = decision.state;
+			input.presentationEpoch = 12;
+			input.sourceSequence = 103;
+			decision = UpdateVerticalInspectionBridge(input);
+			Assert::IsTrue(decision.started);
+			Assert::IsTrue(decision.retain);
+
+			input.previous = decision.state;
+			input.trustedBase.top += 2;
+			input.sourceSequence = 104;
+			decision = UpdateVerticalInspectionBridge(input);
+			Assert::IsTrue(decision.started);
+			Assert::IsTrue(decision.retain);
+
+			input.previous = decision.state;
+			input.sourceGeneration = 8;
+			input.sourceSequence = 200;
+			decision = UpdateVerticalInspectionBridge(input);
+			Assert::IsTrue(decision.started);
+			Assert::IsTrue(decision.retain);
 		}
 
 		TEST_METHOD(PendingTranslationRetainsTrustedCropWithoutFullRasterFlash)
@@ -857,6 +1035,9 @@ namespace Tests
 			input.frameLocalPresentationRetentionSafe = false;
 			input.sceneVerificationHoldActive = true;
 			input.verticalInspectionPending = true;
+			input.verticalInspectionSourceGeneration = 7;
+			input.verticalInspectionSourceSequence = 5257;
+			input.frameSourceSequence = 5257;
 
 			// A dark star-field scene cut can make the first overlay/envelope sample
 			// provisional and frame-local pixel-unsafe. The scene hold cannot retain
@@ -870,12 +1051,19 @@ namespace Tests
 			Assert::IsFalse(retained.verticallyTranslated);
 			Assert::AreEqual(274, retained.sourceBounds.top);
 			Assert::AreEqual(1884, retained.sourceBounds.bottom);
+			Assert::AreEqual(static_cast<int>(
+				DecisionOwner::VERTICAL_INSPECTION),
+				static_cast<int>(retained.owner));
 			Assert::IsTrue(retained.reason.find("inspection") !=
 				std::string::npos);
 
 			Input noInspection = input;
 			noInspection.verticalInspectionPending = false;
-			AssertFullRaster(Evaluate(noInspection));
+			const Decision withdrawn = Evaluate(noInspection);
+			AssertFullRaster(withdrawn);
+			Assert::AreEqual(static_cast<int>(
+				WithdrawalCause::LATEST_OBSERVATION_UNREAFFIRMED),
+				static_cast<int>(withdrawn.withdrawalCause));
 
 			Input trustedFullRaster = input;
 			trustedFullRaster.fullRasterPresentationAuthoritative = true;
@@ -889,6 +1077,18 @@ namespace Tests
 			Input staleGeometry = input;
 			staleGeometry.geometrySourceGeneration = 6;
 			AssertFullRaster(Evaluate(staleGeometry));
+
+			Input staleInspection = input;
+			staleInspection.verticalInspectionSourceGeneration = 6;
+			AssertFullRaster(Evaluate(staleInspection));
+
+			Input nextProvisionalFrame = input;
+			nextProvisionalFrame.frameSourceSequence = 5258;
+			AssertFullRaster(Evaluate(nextProvisionalFrame));
+
+			Input explicitFailOpen = input;
+			explicitFailOpen.presentationFailOpen = true;
+			AssertFullRaster(Evaluate(explicitFailOpen));
 		}
 
 		TEST_METHOD(PendingDenseFitRetainsTrustedCropWithoutFullRasterFlash)
@@ -915,6 +1115,9 @@ namespace Tests
 			Assert::IsFalse(retained.verticallyTranslated);
 			Assert::AreEqual(360, retained.sourceBounds.top);
 			Assert::AreEqual(1800, retained.sourceBounds.bottom);
+			Assert::AreEqual(static_cast<int>(
+				DecisionOwner::FIT_CONFIRMATION),
+				static_cast<int>(retained.owner));
 			Assert::IsTrue(retained.reason.find("fit") != std::string::npos);
 
 			Input stale = input;
@@ -940,12 +1143,31 @@ namespace Tests
 			Assert::IsTrue(retained.applyCrop);
 			Assert::AreEqual(274, retained.sourceBounds.top);
 			Assert::AreEqual(1884, retained.sourceBounds.bottom);
+			Assert::AreEqual(static_cast<int>(
+				DecisionOwner::BAR_REFINEMENT),
+				static_cast<int>(retained.owner));
 			Assert::IsTrue(retained.reason.find("bar refinement") !=
 				std::string::npos);
+
+			Input composed = input;
+			composed.outwardPresentationActive = true;
+			composed.outwardExpansionAvailable = true;
+			composed.outwardExpansion = composed.geometry;
+			composed.outwardExpansion.bottom = 2000;
+			composed.outwardExpansionSourceGeneration = 7;
+			const Decision composedDecision = Evaluate(composed);
+			Assert::IsTrue(composedDecision.outwardExpanded);
+			Assert::AreEqual(static_cast<int>(
+				DecisionOwner::BAR_REFINEMENT),
+				static_cast<int>(composedDecision.owner));
 
 			Input unbounded = input;
 			unbounded.barCropRefinementPending = false;
 			AssertFullRaster(Evaluate(unbounded));
+
+			Input horizontalConflict = input;
+			horizontalConflict.barCropRefinementHorizontalConflict = true;
+			AssertFullRaster(Evaluate(horizontalConflict));
 
 			Input fullRaster = input;
 			fullRaster.fullRasterPresentationAuthoritative = true;
@@ -954,6 +1176,53 @@ namespace Tests
 			Input stale = input;
 			stale.geometrySourceGeneration = 6;
 			AssertFullRaster(Evaluate(stale));
+		}
+
+		TEST_METHOD(HorizontalConflictOverridesEveryProvisionalCropOwner)
+		{
+			Input base = TrustedScopeCrop();
+			base.latestObservationSupportsCrop = false;
+			base.latestObservationIsProvisional = true;
+			base.latestObservationClassification =
+				ActivePictureClassification::PROVISIONAL;
+			base.frameLocalPresentationRetentionEvaluated = true;
+			base.frameLocalPresentationRetentionSafe = false;
+
+			Input translation = base;
+			translation.verticalTranslationConfirmationPending = true;
+			translation.verticalTranslationBase = translation.geometry;
+			translation.verticalTranslationSourceGeneration = 7;
+			Assert::IsTrue(Evaluate(translation).applyCrop);
+			translation.barCropRefinementHorizontalConflict = true;
+			AssertFullRaster(Evaluate(translation));
+
+			Input fit = base;
+			fit.verticalFitConfirmationPending = true;
+			fit.verticalTranslationBase = fit.geometry;
+			fit.verticalTranslationSourceGeneration = 7;
+			Assert::IsTrue(Evaluate(fit).applyCrop);
+			fit.barCropRefinementHorizontalConflict = true;
+			AssertFullRaster(Evaluate(fit));
+
+			Input scene = base;
+			scene.frameLocalPresentationRetentionEvaluated = false;
+			scene.sceneVerificationHoldActive = true;
+			Assert::IsTrue(Evaluate(scene).applyCrop);
+			scene.barCropRefinementHorizontalConflict = true;
+			AssertFullRaster(Evaluate(scene));
+
+			Input outward = base;
+			outward.geometry = {
+				480, 0, 3360, 2160, 3840, 2160, 4.0 / 3.0,
+				ActivePictureBounds::BarAxes::LEFT_RIGHT };
+			outward.outwardPresentationActive = true;
+			outward.outwardExpansionAvailable = true;
+			outward.outwardExpansion = outward.geometry;
+			outward.outwardExpansion.left = 400;
+			outward.outwardExpansionSourceGeneration = 7;
+			Assert::IsTrue(Evaluate(outward).applyCrop);
+			outward.barCropRefinementHorizontalConflict = true;
+			AssertFullRaster(Evaluate(outward));
 		}
 
 		TEST_METHOD(ZeroDurationEngageStillAllowsTimedRelease)
@@ -1585,6 +1854,47 @@ namespace Tests
 			decision = ConfirmOutwardPictureTransition(state, scope, full,
 				evidence, 7);
 			Assert::AreEqual(1U, decision.state.confirmations);
+		}
+
+		TEST_METHOD(CadenceRepeatCannotAdvanceOutwardPictureConfirmation)
+		{
+			const ActivePictureBounds scope = {
+				0, 276, 3840, 1884, 3840, 2160, 3840.0 / 1608.0,
+				ActivePictureBounds::BarAxes::TOP_BOTTOM };
+			const ActivePictureBounds full = {
+				0, 0, 3840, 2160, 3840, 2160, 16.0 / 9.0,
+				ActivePictureBounds::BarAxes::NONE };
+			ActivePicturePresentationRetentionEvidence evidence;
+			evidence.excludedTop.barPixels = 276;
+			evidence.excludedTop.blackFraction = 0.30;
+			evidence.excludedTop.continuity = 0.40;
+			evidence.excludedTop.lumaP90 = 500.0;
+			evidence.excludedBottom = evidence.excludedTop;
+
+			OutwardPictureConfirmationState state;
+			auto decision = ConfirmOutwardPictureTransition(
+				state, scope, full, evidence, 7, 100);
+			Assert::AreEqual(1U, decision.state.confirmations);
+
+			decision = ConfirmOutwardPictureTransition(
+				decision.state, scope, full, evidence, 7, 100);
+			Assert::AreEqual(1U, decision.state.confirmations);
+			Assert::IsFalse(decision.authoritative);
+
+			decision = ConfirmOutwardPictureTransition(
+				decision.state, scope, full, evidence, 7, 101);
+			Assert::AreEqual(2U, decision.state.confirmations);
+			Assert::IsFalse(decision.authoritative);
+
+			decision = ConfirmOutwardPictureTransition(
+				decision.state, scope, full, evidence, 7, 101);
+			Assert::AreEqual(2U, decision.state.confirmations);
+			Assert::IsFalse(decision.authoritative);
+
+			decision = ConfirmOutwardPictureTransition(
+				decision.state, scope, full, evidence, 7, 102);
+			Assert::AreEqual(3U, decision.state.confirmations);
+			Assert::IsTrue(decision.authoritative);
 		}
 
 		TEST_METHOD(FreshOneEdgeEvidenceIntentionallyReplacesHeldFit)

@@ -122,6 +122,15 @@ namespace VideoProcessorTest
 			}
 		}
 
+		TEST_METHOD(AnalysisCadenceRejectsRepeatedOrOutOfOrderSourceSequence)
+		{
+			ActivePictureTransitionModel model;
+			Assert::IsTrue(model.ShouldAnalyze(100, 60.0));
+			Assert::IsFalse(model.ShouldAnalyze(100, 60.0));
+			Assert::IsFalse(model.ShouldAnalyze(99, 60.0));
+			Assert::IsTrue(model.ShouldAnalyze(105, 60.0));
+		}
+
 		TEST_METHOD(InitialGeometryRequiresFourConsistentObservations)
 		{
 			ActivePictureTransitionModel model;
@@ -620,6 +629,12 @@ namespace VideoProcessorTest
 			Assert::IsFalse(probing.clearTransition);
 			Assert::AreEqual(ScopeBounds().top, probing.stableBounds.top);
 
+			const auto repeated = Observe(model, full, frame,
+				ActivePictureClassification::FULL_RASTER_TRUSTED);
+			Assert::IsFalse(repeated.publish);
+			Assert::AreEqual(1U,
+				static_cast<unsigned int>(repeated.matchingCandidates));
+
 			const auto confirmed = Observe(model, full, frame + 1,
 				ActivePictureClassification::FULL_RASTER_TRUSTED);
 			Assert::IsTrue(confirmed.publish);
@@ -799,6 +814,11 @@ namespace VideoProcessorTest
 				ActivePictureClassification::FULL_RASTER_TRUSTED);
 			Assert::IsFalse(beforeCut.publish);
 			model.ResetCandidateEvidence();
+			const auto repeatedCutFrame = Observe(model, full, frame - 1,
+				ActivePictureClassification::FULL_RASTER_TRUSTED);
+			Assert::IsFalse(repeatedCutFrame.publish);
+			Assert::AreEqual(0U, static_cast<unsigned int>(
+				repeatedCutFrame.matchingCandidates));
 
 			const auto firstAfterCut = Observe(model, full, frame++,
 				ActivePictureClassification::FULL_RASTER_TRUSTED);
@@ -809,6 +829,10 @@ namespace VideoProcessorTest
 			const auto secondAfterCut = Observe(model, full, frame,
 				ActivePictureClassification::FULL_RASTER_TRUSTED);
 			Assert::IsTrue(secondAfterCut.publish);
+			const auto repeatedPublication = Observe(model, full, frame,
+				ActivePictureClassification::FULL_RASTER_TRUSTED);
+			Assert::IsFalse(repeatedPublication.publish);
+			Assert::IsTrue(repeatedPublication.stable);
 		}
 	};
 }

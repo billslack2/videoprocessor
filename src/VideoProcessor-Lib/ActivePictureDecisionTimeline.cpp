@@ -194,11 +194,12 @@ void ActivePictureDecisionTimeline::MarkDiscarded(
 
 
 void ActivePictureDecisionTimeline::BreakContinuity(
-	uint64_t detectorFrameNumber)
+	uint64_t /* detectorFrameNumber */)
 {
-	ActivePictureObservation unavailable;
-	unavailable.frameNumber = detectorFrameNumber;
-	(void)m_transition.Observe(unavailable);
+	// A continuity break invalidates partial proof but is not itself a decoded
+	// source observation. Resetting candidate evidence lets the current real
+	// frame contribute once while retaining the last affirmative geometry.
+	m_transition.ResetCandidateEvidence();
 	m_observed.clear();
 }
 

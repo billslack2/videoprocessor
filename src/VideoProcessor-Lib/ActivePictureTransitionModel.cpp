@@ -23,6 +23,7 @@ void ActivePictureTransitionModel::Reset()
 	ClearCandidate();
 	m_unavailableCandidates = 0;
 	m_lastAnalyzedFrame = 0;
+	m_lastObservedFrame = 0;
 }
 
 
@@ -76,6 +77,8 @@ bool ActivePictureTransitionModel::ShouldAnalyze(
 {
 	const uint64_t interval = m_candidateUsesKnownTrustedGeometry ?
 		1 : AnalysisIntervalFrames(framesPerSecond);
+	if (m_lastAnalyzedFrame != 0 && frameNumber <= m_lastAnalyzedFrame)
+		return false;
 	if (m_lastAnalyzedFrame != 0 &&
 		frameNumber > m_lastAnalyzedFrame &&
 		frameNumber - m_lastAnalyzedFrame < interval)
@@ -347,6 +350,24 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 	decision.bounds = m_hasStable ? m_stable : ActivePictureBounds{};
 	decision.stableBounds = m_hasStable ? m_stable : ActivePictureBounds{};
 	decision.stable = m_hasStable;
+	if (observation.frameNumber != 0 && m_lastObservedFrame != 0 &&
+		observation.frameNumber <= m_lastObservedFrame)
+	{
+		if (m_matchingCandidates != 0)
+		{
+			decision.state =
+				ActivePictureTransitionState::CANDIDATE_TRANSITION;
+			decision.bounds = m_candidate;
+			decision.matchingCandidates = m_matchingCandidates;
+			decision.contradictoryCandidates = m_contradictoryCandidates;
+			decision.candidateReversals = m_candidateReversals;
+			decision.firstContradictoryFrame =
+				m_firstContradictoryFrame;
+		}
+		return decision;
+	}
+	if (observation.frameNumber != 0)
+		m_lastObservedFrame = observation.frameNumber;
 
 	if (!observation.available)
 	{

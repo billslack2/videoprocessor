@@ -3196,6 +3196,8 @@ struct LibplaceboVideoRenderer::Impl
 		scopeSubtitleTranslationConfirmation;
 	AlphaSourceCrop::VerticalFitConfirmationState
 		scopeSubtitleFitConfirmation;
+	AlphaSourceCrop::VerticalInspectionBridgeState
+		scopeVerticalInspectionBridge;
 	AlphaSourceCrop::OutwardPictureConfirmationState
 		outwardPictureConfirmation;
 	AlphaSourceCrop::VerticalTranslationDrift scopeSubtitleDrift;
@@ -4508,8 +4510,14 @@ struct LibplaceboVideoRenderer::Impl
 		const ActivePictureBounds* barAuthority,
 		uint64_t sourceSequence,
 		bool forceAnalysis = false,
-		bool heldBarAnalysisAuthority = false)
+		bool heldBarAnalysisAuthority = false,
+		bool* analysisScheduled = nullptr,
+		bool* analysisCompleted = nullptr)
 	{
+		if (analysisScheduled)
+			*analysisScheduled = false;
+		if (analysisCompleted)
+			*analysisCompleted = false;
 		const uint64_t now = GetTickCount64();
 		const bool sourceIsCurrent = source && source->IsValid() &&
 			source->width == width && source->height == height &&
@@ -4604,8 +4612,11 @@ struct LibplaceboVideoRenderer::Impl
 		// while still reacting in roughly 50-125 ms.
 		const bool subtitleAnalysisScheduled = authorityIsCurrentBars &&
 			++scopeSubtitleAnalysisFrame % 3 == 0;
-		if (authorityIsCurrentBars &&
-			(forceAnalysis || subtitleAnalysisScheduled))
+		const bool subtitleAnalysisEvaluated = authorityIsCurrentBars &&
+			(forceAnalysis || subtitleAnalysisScheduled);
+		if (analysisScheduled)
+			*analysisScheduled = subtitleAnalysisEvaluated;
+		if (subtitleAnalysisEvaluated)
 		{
 			if (forceAnalysis && !subtitleAnalysisScheduled)
 			{
@@ -4811,6 +4822,8 @@ struct LibplaceboVideoRenderer::Impl
 				verticalInput.lowerRequiredShift = lowerRequiredShift;
 				AlphaSourceCrop::VerticalBarContentDecision verticalDecision =
 					AlphaSourceCrop::EvaluateVerticalBarContent(verticalInput);
+				if (analysisCompleted)
+					*analysisCompleted = true;
 				const bool upperOverlayLike = verticalDecision.upperOverlayLike;
 				const bool lowerOverlayLike = verticalDecision.lowerOverlayLike;
 				AlphaSourceCrop::VerticalTranslationConfirmationInput
@@ -4830,13 +4843,16 @@ struct LibplaceboVideoRenderer::Impl
 					verticalDecision.translationPixels < 0.0f
 					? static_cast<float>(trustedPicture.top)
 					: static_cast<float>(height - trustedPicture.bottom);
+				confirmationInput.sourceSequence = sourceSequence;
 				const auto confirmation =
 					AlphaSourceCrop::ConfirmVerticalTranslation(confirmationInput);
 				scopeSubtitleTranslationConfirmation = confirmation.state;
 				if (confirmation.pending)
 				{
 					DebugLog::Log(
-						"Alpha vertical bar translation: candidate pending confirmation %u/%u target=%.1f px retained=%.1f px",
+						"Alpha vertical bar translation: sequence=%llu generation=%llu candidate pending confirmation %u/%u target=%.1f px retained=%.1f px",
+						static_cast<unsigned long long>(sourceSequence),
+						static_cast<unsigned long long>(source->generation),
 						confirmation.state.confirmations,
 						AlphaSourceCrop::
 							VERTICAL_TRANSLATION_CONFIRMATIONS_REQUIRED,
@@ -4847,7 +4863,9 @@ struct LibplaceboVideoRenderer::Impl
 				else if (confirmation.newlyAccepted)
 				{
 					DebugLog::Log(
-						"Alpha vertical bar translation: candidate accepted target=%.1f px buffer=%d px after %u stable samples",
+						"Alpha vertical bar translation: sequence=%llu generation=%llu candidate accepted target=%.1f px buffer=%d px after %u stable samples",
+						static_cast<unsigned long long>(sourceSequence),
+						static_cast<unsigned long long>(source->generation),
 						confirmation.effective.translationPixels,
 						scopeSubtitleTargetBufferPixels,
 						AlphaSourceCrop::
@@ -4856,12 +4874,15 @@ struct LibplaceboVideoRenderer::Impl
 				verticalDecision = confirmation.effective;
 				const auto fitConfirmation =
 					AlphaSourceCrop::ConfirmVerticalFit(
-						scopeSubtitleFitConfirmation, verticalDecision);
+						scopeSubtitleFitConfirmation, verticalDecision,
+						sourceSequence);
 				scopeSubtitleFitConfirmation = fitConfirmation.state;
 				if (fitConfirmation.pending)
 				{
 					DebugLog::Log(
-						"Alpha vertical bar fit: candidate pending confirmation %u/%u; retaining trusted presentation",
+						"Alpha vertical bar fit: sequence=%llu generation=%llu candidate pending confirmation %u/%u; retaining trusted presentation",
+						static_cast<unsigned long long>(sourceSequence),
+						static_cast<unsigned long long>(source->generation),
 						fitConfirmation.state.confirmations,
 						AlphaSourceCrop::
 							VERTICAL_FIT_CONFIRMATIONS_REQUIRED);
@@ -4869,7 +4890,9 @@ struct LibplaceboVideoRenderer::Impl
 				else if (fitConfirmation.newlyAccepted)
 				{
 					DebugLog::Log(
-						"Alpha vertical bar fit: candidate accepted after %u consecutive dense samples",
+						"Alpha vertical bar fit: sequence=%llu generation=%llu candidate accepted after %u consecutive dense samples",
+						static_cast<unsigned long long>(sourceSequence),
+						static_cast<unsigned long long>(source->generation),
 						AlphaSourceCrop::
 							VERTICAL_FIT_CONFIRMATIONS_REQUIRED);
 				}
@@ -4908,22 +4931,27 @@ struct LibplaceboVideoRenderer::Impl
 					policy << upperContent << upperOverlayLike << '|'
 						<< lowerContent << lowerOverlayLike << '|'
 						<< static_cast<int>(action) << '|'
-						<< upperContentTop << ',' << upperContentBottom << ','
-						<< upperMaximumContentSamples << '|'
-						<< lowerContentTop << ',' << lowerContentBottom << ','
-						<< lowerMaximumContentSamples;
+						<< scopeSubtitleTranslationConfirmation.confirmations << '|'
+						<< scopeSubtitleFitConfirmation.confirmations;
 					if (policy.str() != lastScopeVerticalOverlayPolicy)
 					{
 						lastScopeVerticalOverlayPolicy = policy.str();
 						DebugLog::Log(
-							"Alpha vertical bar content: top=%d overlay_top=%d top_extent=%d..%d top_peak=%d bottom=%d overlay_bottom=%d bottom_extent=%d..%d bottom_peak=%d decision=%s",
+							"Alpha vertical bar content: sequence=%llu generation=%llu top=%d overlay_top=%d top_extent=%d..%d top_peak=%d bottom=%d overlay_bottom=%d bottom_extent=%d..%d bottom_peak=%d decision=%s translation_confirm=%u/%u fit_confirm=%u/%u",
+							static_cast<unsigned long long>(sourceSequence),
+							static_cast<unsigned long long>(source->generation),
 							upperContent ? 1 : 0, upperOverlayLike ? 1 : 0,
 							upperContentTop, upperContentBottom,
 							upperMaximumContentSamples,
 							lowerContent ? 1 : 0, lowerOverlayLike ? 1 : 0,
 							lowerContentTop, lowerContentBottom,
 							lowerMaximumContentSamples,
-							actionLabel);
+							actionLabel,
+							scopeSubtitleTranslationConfirmation.confirmations,
+							AlphaSourceCrop::
+								VERTICAL_TRANSLATION_CONFIRMATIONS_REQUIRED,
+							scopeSubtitleFitConfirmation.confirmations,
+							AlphaSourceCrop::VERTICAL_FIT_CONFIRMATIONS_REQUIRED);
 					}
 				}
 			}
@@ -5009,8 +5037,6 @@ struct LibplaceboVideoRenderer::Impl
 			}
 		}
 
-		const bool subtitleAnalysisEvaluated = authorityIsCurrentBars &&
-			(forceAnalysis || subtitleAnalysisScheduled);
 		const bool verticalPresentationActive =
 			AlphaSourceCrop::IsVerticalBarPresentationActiveForFrame(
 				scopeVerticalBarPresentation, now, scopeSubtitleHoldMs,
@@ -7462,7 +7488,7 @@ struct LibplaceboVideoRenderer::Impl
 				? AlphaSourceCrop::ConfirmOutwardPictureTransition(
 					outwardPictureConfirmation, presentationBeforeObservation,
 					latestActivePictureEvidenceBounds, retentionEvidence,
-					analysisSource.generation)
+					analysisSource.generation, frameNumber)
 				: AlphaSourceCrop::OutwardPictureConfirmationDecision{};
 			outwardPictureConfirmation = outwardConfirmation.state;
 			const bool deferOutwardLogicalTransition =
@@ -7748,6 +7774,7 @@ struct LibplaceboVideoRenderer::Impl
 			// bridge it with the source-picture geometry retained above.
 			ClearScopeSubtitleEvidence();
 			ClearScopePresentationEvidence();
+			scopeVerticalInspectionBridge = {};
 			nlsDecision = {};
 			renderParams.hooks = nullptr;
 			renderParams.num_hooks = 0;
@@ -8316,11 +8343,14 @@ struct LibplaceboVideoRenderer::Impl
 				subtitleTranslationAlreadyActive) ||
 			(latestActivePictureEvidenceWasStartupHypothesis &&
 			 subtitleBarAuthority != nullptr);
+		bool subtitleBarAnalysisScheduled = false;
+		bool subtitleBarAnalysisCompleted = false;
 		const float subtitleShiftSourcePixels =
 			UpdateScopeSubtitleShift(&analysisSource,
 				width, height, configuredScreenActive, subtitleBarAuthority,
 				sourceSequence, forceSubtitleBarAnalysis,
-				heldBarAnalysisAuthority);
+				heldBarAnalysisAuthority, &subtitleBarAnalysisScheduled,
+				&subtitleBarAnalysisCompleted);
 		float hdrPeakAnalysisMotionProtectionPixels = 0.0f;
 		if (hdrPeakAnalysisMotionCompensation &&
 			!hdrPeakAnalysisPictureOnly)
@@ -8689,7 +8719,11 @@ struct LibplaceboVideoRenderer::Impl
 
 		auto configureViewport =
 			[this, &image, width, height, frameGeneration, sourceSequence,
-			 sceneHold, subtitleShiftSourcePixels,
+			 viewportRequestSerial,
+			 sceneHold, sceneResult, subtitleShiftSourcePixels,
+			 subtitleBarAnalysisScheduled, subtitleBarAnalysisCompleted,
+			 forceSubtitleBarAnalysis,
+			 currentBarAuthority, sceneBarAuthority, heldBarAnalysisAuthority,
 			 &hdrPeakAnalysisMotionProtectionPixels](
 				struct pl_frame& source,
 				struct pl_frame& target,
@@ -8825,7 +8859,7 @@ struct LibplaceboVideoRenderer::Impl
 			const bool currentDetectorBottomExpansion = currentDetectorEnvelope &&
 				effectiveGeometryAvailable &&
 				scopePresentationCurrentBounds.bottom > effectiveGeometry.bottom;
-			const bool verticalInspectionPending =
+			const bool verticalInspectionCandidate =
 				AlphaSourceCrop::ShouldRetainTrustedBaseForVerticalInspection(
 					scopeSubtitleFit,
 					currentDetectorEnvelope,
@@ -9063,7 +9097,12 @@ struct LibplaceboVideoRenderer::Impl
 				latestActivePicturePresentationRetentionEvaluated;
 			cropInput.presentationFailOpen =
 				verticalFailOpen || outwardExpansionInvalid;
-			cropInput.verticalInspectionPending = verticalInspectionPending;
+			const bool barCropRefinementHorizontalConflict =
+				currentDetectorLeftExpansion || currentDetectorRightExpansion ||
+				(latestActivePictureEvidenceAvailable &&
+				 effectiveGeometryAvailable &&
+				 (latestActivePictureEvidenceBounds.left < effectiveGeometry.left ||
+				  latestActivePictureEvidenceBounds.right > effectiveGeometry.right));
 			const bool barCropRefinementPending =
 				latestActivePictureEvidenceAvailable &&
 				latestActivePictureEvidenceClassification ==
@@ -9072,10 +9111,14 @@ struct LibplaceboVideoRenderer::Impl
 					ActivePictureClassification::BAR_CROP_TRUSTED &&
 				!effectiveLatestSupportsCrop;
 			cropInput.barCropRefinementPending = barCropRefinementPending;
+			cropInput.barCropRefinementHorizontalConflict =
+				barCropRefinementHorizontalConflict;
 			const bool verticalTranslationConfirmationPending =
 				scopeSubtitleTranslationConfirmation.confirmations != 0;
 			const bool verticalFitConfirmationPending =
-				scopeSubtitleFitConfirmation.confirmations != 0;
+				scopeSubtitleFitConfirmation.confirmations != 0 &&
+				scopeSubtitleFitConfirmation.confirmations <
+					AlphaSourceCrop::VERTICAL_FIT_CONFIRMATIONS_REQUIRED;
 			cropInput.verticalTranslationConfirmationPending =
 				verticalTranslationConfirmationPending;
 			cropInput.verticalFitConfirmationPending =
@@ -9108,10 +9151,45 @@ struct LibplaceboVideoRenderer::Impl
 					? scopeSubtitleEvidenceSourceGeneration
 					: scopePresentationEvidenceSourceGeneration;
 			cropInput.frameSourceGeneration = frameGeneration;
+			cropInput.frameSourceSequence = sourceSequence;
 			cropInput.rasterWidth = width;
 			cropInput.rasterHeight = height;
-			const AlphaSourceCrop::Decision cropDecision =
+			AlphaSourceCrop::Decision cropDecision =
 				AlphaSourceCrop::Evaluate(cropInput);
+			const bool verticalInspectionFallbackRequested =
+				verticalInspectionCandidate && !cropDecision.applyCrop &&
+				cropDecision.withdrawalCause ==
+					AlphaSourceCrop::WithdrawalCause::
+						LATEST_OBSERVATION_UNREAFFIRMED;
+			AlphaSourceCrop::VerticalInspectionBridgeInput inspectionInput;
+			inspectionInput.previous = scopeVerticalInspectionBridge;
+			inspectionInput.candidate = verticalInspectionCandidate;
+			inspectionInput.retentionRequested =
+				verticalInspectionFallbackRequested;
+			inspectionInput.denseAnalysisCompleted =
+				subtitleBarAnalysisCompleted;
+			inspectionInput.authorityResolved = effectiveLatestSupportsCrop ||
+				latestActivePictureEvidenceClassification ==
+					ActivePictureClassification::FULL_RASTER_TRUSTED;
+			inspectionInput.sourceGeneration = frameGeneration;
+			inspectionInput.presentationEpoch = viewportRequestSerial;
+			inspectionInput.trustedBase = effectiveGeometryAvailable
+				? effectiveGeometry : ActivePictureBounds{};
+			inspectionInput.sourceSequence = sourceSequence;
+			const AlphaSourceCrop::VerticalInspectionBridgeDecision
+				inspectionDecision =
+					AlphaSourceCrop::UpdateVerticalInspectionBridge(inspectionInput);
+			scopeVerticalInspectionBridge = inspectionDecision.state;
+			const bool verticalInspectionPending = inspectionDecision.retain;
+			if (verticalInspectionPending)
+			{
+				cropInput.verticalInspectionPending = true;
+				cropInput.verticalInspectionSourceGeneration =
+					scopeVerticalInspectionBridge.sourceGeneration;
+				cropInput.verticalInspectionSourceSequence =
+					scopeVerticalInspectionBridge.retainedSourceSequence;
+				cropDecision = AlphaSourceCrop::Evaluate(cropInput);
+			}
 			AlphaSourceCrop::AspectLimitFillDecision aspectLimitFill;
 			if (nlsRequested)
 			{
@@ -9170,12 +9248,24 @@ struct LibplaceboVideoRenderer::Impl
 				<< sceneVerificationHoldActive << '|'
 				<< ambiguityHoldActive << '|'
 				<< latestObservationIsProvisional << '|'
+				<< latestActivePicturePresentationRetentionEvaluated << '|'
 				<< latestActivePicturePresentationRetentionSafe << '|'
 				<< detectorEnvelopeActive << '|'
 				<< barCropRefinementPending << '|'
+				<< barCropRefinementHorizontalConflict << '|'
+				<< verticalInspectionCandidate << '|'
+				<< verticalInspectionFallbackRequested << '|'
 				<< verticalInspectionPending << '|'
+				<< inspectionDecision.expired << '|'
+				<< scopeVerticalInspectionBridge.retentionConsumed << '|'
+				<< scopeVerticalInspectionBridge.denseAnalysisCompleted << '|'
 				<< verticalTranslationConfirmationPending << '|'
 				<< verticalFitConfirmationPending << '|'
+				<< storedVerticalBaseMatchesEffectiveGeometry << '|'
+				<< forceSubtitleBarAnalysis << '|'
+				<< currentBarAuthority << sceneBarAuthority
+				<< heldBarAnalysisAuthority << '|'
+				<< sceneResult.safeBoundary << '|' << sceneResult.eventId << '|'
 				<< engageDriftBaseRetention << '|'
 				<< releaseDriftBaseRetention << '|'
 				<< static_cast<int>(verticalResolution.action) << '|'
@@ -9206,8 +9296,23 @@ struct LibplaceboVideoRenderer::Impl
 				const char* verticalActionLabel = verticalTranslationActive
 					? "translate" : (verticalFitActive ? "fit" :
 						(verticalFailOpen ? "fail-open" : "none"));
+			const char* denseScanLabel = subtitleBarAnalysisScheduled
+				? (forceSubtitleBarAnalysis ? "forced" : "scheduled")
+				: "skipped";
+				const char* barAuthorityLabel = currentBarAuthority
+					? "current" : (sceneBarAuthority ? "scene" :
+						(heldBarAnalysisAuthority ? "held" : "none"));
+				const char* inspectionPhaseLabel = !verticalInspectionCandidate
+					? "none" : (verticalInspectionPending ? "fallback" :
+						(inspectionDecision.expired ? "expired" :
+							(scopeVerticalInspectionBridge.denseAnalysisCompleted
+								? "dense-complete" :
+								(scopeVerticalInspectionBridge.retentionConsumed
+									? "consumed" : "candidate"))));
+			const char* presentationOwnerLabel =
+				AlphaSourceCrop::DecisionOwnerName(cropDecision.owner);
 				DebugLog::Log(
-					"Alpha source crop: sequence=%llu enabled=%d applied=%d expanded=%d translated=%d vertical_action=%s shift_request=%d shift_applied=%d latest_trusted=%d scene_hold=%d ambiguity_hold=%d retention_safe=%d latest_evidence=%d detector_envelope=%d bar_wait=%d inspection_wait=%d translation_wait=%d fit_wait=%d engage_base=%d release_settle=%d envelope_state=%s edges=%c%c%c%c evidence_rect=%d,%d-%d,%d rect=%d,%d-%d,%d fill_rect=%d,%d-%d,%d content_aspect=%.5f screen_aspect=%.5f narrower_fill=%d narrower_limit=%s%.5f wider_fill=%d wider_limit=%s%.5f fill_applied=%d classification=%d geometry_generation=%llu frame_generation=%llu reason=\"%s; %s; %s; %s\"",
+					"Alpha source crop: sequence=%llu enabled=%d applied=%d expanded=%d translated=%d vertical_action=%s shift_request=%d shift_applied=%d latest_trusted=%d scene_hold=%d ambiguity_hold=%d retention_safe=%d latest_evidence=%d detector_envelope=%d bar_wait=%d inspection_wait=%d translation_wait=%d fit_wait=%d engage_base=%d release_settle=%d envelope_state=%s selected_edges=%c%c%c%c fit_evidence_rect=%d,%d-%d,%d rect=%d,%d-%d,%d fill_rect=%d,%d-%d,%d content_aspect=%.5f screen_aspect=%.5f narrower_fill=%d narrower_limit=%s%.5f wider_fill=%d wider_limit=%s%.5f fill_applied=%d classification=%d geometry_generation=%llu frame_generation=%llu owner=%s cut=%d scene_event=%llu retention_eval=%d refinement_horizontal=%d inspection_candidate=%d inspection_request=%d inspection_consumed=%d inspection_dense=%d inspection_phase=%s inspection_first=%llu inspection_retained=%llu coarse_edges=%c%c%c%c coarse_current=%d observation_rect=%d,%d-%d,%d coarse_rect=%d,%d-%d,%d dense_base=%d dense_generation=%llu dense_scan=%s dense_evaluated=%d authority=%s translation_confirm=%u/%u fit_confirm=%u/%u reason=\"%s; %s; %s; %s\"",
 					static_cast<unsigned long long>(sourceSequence),
 					automaticSourceCrop ? 1 : 0,
 					cropDecision.applyCrop ? 1 : 0,
@@ -9264,6 +9369,49 @@ struct LibplaceboVideoRenderer::Impl
 					static_cast<unsigned long long>(
 						effectiveGeometrySourceGeneration),
 					static_cast<unsigned long long>(frameGeneration),
+					presentationOwnerLabel,
+					sceneResult.safeBoundary ? 1 : 0,
+					static_cast<unsigned long long>(sceneResult.eventId),
+					latestActivePicturePresentationRetentionEvaluated ? 1 : 0,
+					barCropRefinementHorizontalConflict ? 1 : 0,
+					verticalInspectionCandidate ? 1 : 0,
+					verticalInspectionFallbackRequested ? 1 : 0,
+					scopeVerticalInspectionBridge.retentionConsumed ? 1 : 0,
+					scopeVerticalInspectionBridge.denseAnalysisCompleted ? 1 : 0,
+					inspectionPhaseLabel,
+					static_cast<unsigned long long>(
+						scopeVerticalInspectionBridge.
+							firstCandidateSourceSequence),
+					static_cast<unsigned long long>(
+						scopeVerticalInspectionBridge.retainedSourceSequence),
+					currentDetectorLeftExpansion ? 'L' : '-',
+					currentDetectorTopExpansion ? 'T' : '-',
+					currentDetectorRightExpansion ? 'R' : '-',
+					currentDetectorBottomExpansion ? 'B' : '-',
+					currentDetectorEnvelope ? 1 : 0,
+					latestActivePictureEvidenceBounds.left,
+					latestActivePictureEvidenceBounds.top,
+					latestActivePictureEvidenceBounds.right,
+					latestActivePictureEvidenceBounds.bottom,
+					currentDetectorEnvelope
+						? scopePresentationCurrentBounds.left : 0,
+					currentDetectorEnvelope
+						? scopePresentationCurrentBounds.top : 0,
+					currentDetectorEnvelope
+						? scopePresentationCurrentBounds.right : 0,
+					currentDetectorEnvelope
+						? scopePresentationCurrentBounds.bottom : 0,
+					storedVerticalBaseMatchesEffectiveGeometry ? 1 : 0,
+					static_cast<unsigned long long>(
+						scopeSubtitleEvidenceSourceGeneration),
+					denseScanLabel,
+					subtitleBarAnalysisCompleted ? 1 : 0,
+					barAuthorityLabel,
+					scopeSubtitleTranslationConfirmation.confirmations,
+					AlphaSourceCrop::
+						VERTICAL_TRANSLATION_CONFIRMATIONS_REQUIRED,
+					scopeSubtitleFitConfirmation.confirmations,
+					AlphaSourceCrop::VERTICAL_FIT_CONFIRMATIONS_REQUIRED,
 					cropDecision.reason.c_str(),
 					envelopeDecision.reason,
 					latestActivePicturePresentationRetentionReason.c_str(),
@@ -9402,7 +9550,9 @@ struct LibplaceboVideoRenderer::Impl
 					return;
 				lastFinalLayoutPolicy = policy.str();
 				DebugLog::Log(
-					"Alpha final layout: raster=%dx%d trusted=%d,%d-%d,%d envelope=%d,%d-%d,%d presentation=%d,%d-%d,%d screen_aspect=%.5f screen=%.1f,%.1f-%.1f,%.1f picture=%.1f,%.1f-%.1f,%.1f unused_axis=%s mapping=%s vertical_alignment=%s subtitle_shift_source_pixels=%d anamorphic=%.5f",
+					"Alpha final layout: sequence=%llu generation=%llu raster=%dx%d trusted=%d,%d-%d,%d envelope=%d,%d-%d,%d presentation=%d,%d-%d,%d screen_aspect=%.5f screen=%.1f,%.1f-%.1f,%.1f picture=%.1f,%.1f-%.1f,%.1f unused_axis=%s mapping=%s vertical_alignment=%s subtitle_shift_source_pixels=%d anamorphic=%.5f crop_reason=\"%s\"",
+					static_cast<unsigned long long>(sourceSequence),
+					static_cast<unsigned long long>(frameGeneration),
 					width, height,
 					effectiveGeometry.left, effectiveGeometry.top,
 					effectiveGeometry.right, effectiveGeometry.bottom,
@@ -9422,7 +9572,8 @@ struct LibplaceboVideoRenderer::Impl
 					AlphaSourceCrop::UnusedSpaceAxisName(axis), mapping,
 					verticalAlignment.c_str(),
 					cropDecision.verticalTranslationPixels,
-					anamorphicScale);
+					anamorphicScale,
+					cropDecision.reason.c_str());
 			};
 
 			if (nlsRequested)

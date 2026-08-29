@@ -90,6 +90,40 @@ namespace AlphaSourceCrop
 		}
 	}
 
+	const char* DecisionOwnerName(DecisionOwner owner)
+	{
+		switch (owner)
+		{
+		case DecisionOwner::TRUSTED_CROP:
+			return "trusted";
+		case DecisionOwner::PIXEL_SAFE_RETENTION:
+			return "pixel-safe";
+		case DecisionOwner::SCENE_HOLD:
+			return "scene-hold";
+		case DecisionOwner::AMBIGUITY_HOLD:
+			return "ambiguity-hold";
+		case DecisionOwner::BAR_REFINEMENT:
+			return "bar-refinement";
+		case DecisionOwner::VERTICAL_INSPECTION:
+			return "inspection";
+		case DecisionOwner::TRANSLATION_CONFIRMATION:
+			return "translation-confirm";
+		case DecisionOwner::FIT_CONFIRMATION:
+			return "fit-confirm";
+		case DecisionOwner::ENGAGE_BASE:
+			return "engage-base";
+		case DecisionOwner::RELEASE_BASE:
+			return "release-base";
+		case DecisionOwner::OUTWARD_FIT:
+			return "fit";
+		case DecisionOwner::VERTICAL_TRANSLATION:
+			return "translation";
+		case DecisionOwner::FULL_RASTER:
+		default:
+			return "full-raster";
+		}
+	}
+
 	BarContentEdge SelectVerticalBarContentEdge(
 		float upperRequiredShift, float lowerRequiredShift)
 	{
@@ -237,6 +271,20 @@ namespace AlphaSourceCrop
 			std::abs(input.previous.candidateTranslationPixels -
 				input.observed.translationPixels) <=
 				VERTICAL_TRANSLATION_STABILITY_PIXELS;
+		const bool repeatedSourceSample = candidateMatches &&
+			input.sourceSequence != 0 &&
+			input.previous.lastObservedSourceSequence == input.sourceSequence;
+		if (repeatedSourceSample)
+		{
+			decision.state = input.previous;
+			decision.pending = true;
+			if (acceptedSameDirection)
+				decision.effective.translationPixels =
+					input.acceptedTranslationPixels;
+			else
+				decision.effective = {};
+			return decision;
+		}
 		decision.state.candidateTranslationPixels = candidateMatches
 			? (input.observed.translationPixels < 0.0f
 				? std::min(input.previous.candidateTranslationPixels,
@@ -246,6 +294,7 @@ namespace AlphaSourceCrop
 			: input.observed.translationPixels;
 		decision.state.confirmations = candidateMatches
 			? input.previous.confirmations + 1 : 1;
+		decision.state.lastObservedSourceSequence = input.sourceSequence;
 		if (decision.state.confirmations >=
 			VERTICAL_TRANSLATION_CONFIRMATIONS_REQUIRED)
 		{
@@ -286,7 +335,8 @@ namespace AlphaSourceCrop
 		const ActivePictureBounds& trustedGeometry,
 		const ActivePictureBounds& candidate,
 		const ActivePicturePresentationRetentionEvidence& evidence,
-		uint64_t sourceGeneration)
+		uint64_t sourceGeneration,
+		uint64_t sourceSequence)
 	{
 		OutwardPictureConfirmationDecision decision;
 		const bool compatible = sourceGeneration != 0 &&
@@ -321,11 +371,15 @@ namespace AlphaSourceCrop
 
 		const bool continues = previous.sourceGeneration == sourceGeneration &&
 			previous.confirmations != 0 && SameBounds(previous.candidate, candidate);
+		const bool repeatedSourceSample = continues && sourceSequence != 0 &&
+			previous.lastObservedSourceSequence == sourceSequence;
 		decision.state.candidate = candidate;
 		decision.state.sourceGeneration = sourceGeneration;
-		decision.state.confirmations = continues
+		decision.state.lastObservedSourceSequence = sourceSequence;
+		decision.state.confirmations = repeatedSourceSample
+			? previous.confirmations : (continues
 			? std::min(OUTWARD_PICTURE_CONFIRMATIONS_REQUIRED,
-				previous.confirmations + 1) : 1;
+				previous.confirmations + 1) : 1);
 		decision.authoritative = decision.state.confirmations >=
 			OUTWARD_PICTURE_CONFIRMATIONS_REQUIRED;
 		return decision;
@@ -333,16 +387,29 @@ namespace AlphaSourceCrop
 
 	VerticalFitConfirmationDecision ConfirmVerticalFit(
 		const VerticalFitConfirmationState& previous,
-		const VerticalBarContentDecision& observed)
+		const VerticalBarContentDecision& observed,
+		uint64_t sourceSequence)
 	{
 		VerticalFitConfirmationDecision decision;
 		decision.effective = observed;
 		if (observed.action != VerticalBarPresentationAction::FIT)
 			return decision;
+		if (sourceSequence != 0 &&
+			previous.lastObservedSourceSequence == sourceSequence &&
+			previous.confirmations != 0)
+		{
+			decision.state = previous;
+			decision.pending = previous.confirmations <
+				VERTICAL_FIT_CONFIRMATIONS_REQUIRED;
+			if (decision.pending)
+				decision.effective = {};
+			return decision;
+		}
 
 		decision.state.confirmations = std::min(
 			VERTICAL_FIT_CONFIRMATIONS_REQUIRED,
 			previous.confirmations + 1);
+		decision.state.lastObservedSourceSequence = sourceSequence;
 		if (decision.state.confirmations <
 			VERTICAL_FIT_CONFIRMATIONS_REQUIRED)
 		{
@@ -369,6 +436,64 @@ namespace AlphaSourceCrop
 			latestObservationCanAwaitInspection &&
 			!leftExpansion && !rightExpansion &&
 			(topExpansion || bottomExpansion);
+	}
+
+	VerticalInspectionBridgeDecision UpdateVerticalInspectionBridge(
+		const VerticalInspectionBridgeInput& input)
+	{
+		VerticalInspectionBridgeDecision decision;
+		if (input.sourceGeneration == 0 || input.sourceSequence == 0 ||
+			input.authorityResolved)
+		{
+			return decision;
+		}
+
+		const bool sameBase = SameBounds(
+			input.previous.trustedBase, input.trustedBase) &&
+			input.previous.trustedBase.trustedBarAxes ==
+				input.trustedBase.trustedBarAxes;
+		const bool sameEpisode = input.previous.active &&
+			input.previous.sourceGeneration == input.sourceGeneration &&
+			input.previous.presentationEpoch == input.presentationEpoch &&
+			sameBase;
+		if (!sameEpisode)
+		{
+			if (!input.candidate)
+				return decision;
+			decision.state.active = true;
+			decision.state.retentionConsumed = false;
+			decision.state.denseAnalysisCompleted = false;
+			decision.state.sourceGeneration = input.sourceGeneration;
+			decision.state.presentationEpoch = input.presentationEpoch;
+			decision.state.trustedBase = input.trustedBase;
+			decision.state.firstCandidateSourceSequence = input.sourceSequence;
+			decision.state.retainedSourceSequence = 0;
+			decision.started = true;
+		}
+		else
+		{
+			decision.state = input.previous;
+		}
+		if (input.denseAnalysisCompleted)
+			decision.state.denseAnalysisCompleted = true;
+		if (!input.candidate)
+			return decision;
+
+		const bool repeatedRetainedSource =
+			decision.state.retentionConsumed &&
+			decision.state.retainedSourceSequence == input.sourceSequence;
+		decision.retain = input.retentionRequested &&
+			(repeatedRetainedSource ||
+			 (!decision.state.retentionConsumed &&
+			  !decision.state.denseAnalysisCompleted));
+		if (decision.retain && !repeatedRetainedSource)
+		{
+			decision.state.retentionConsumed = true;
+			decision.state.retainedSourceSequence = input.sourceSequence;
+		}
+		decision.expired =
+			input.retentionRequested && !decision.retain;
+		return decision;
 	}
 
 	bool IsVerticalBarPresentationActive(
@@ -1264,6 +1389,12 @@ namespace AlphaSourceCrop
 				: "shared geometry lacks crop authority";
 			return decision;
 		}
+		if (input.barCropRefinementHorizontalConflict)
+		{
+			decision.reason =
+				"horizontal expansion requires full-raster fail-open";
+			return decision;
+		}
 		const bool ambiguousObservation =
 			input.latestObservationIsProvisional ||
 			input.latestObservationIsUnavailable;
@@ -1286,10 +1417,17 @@ namespace AlphaSourceCrop
 			input.frameLocalPresentationRetentionSafe;
 		const bool boundedBarCropRefinementRetention =
 			input.barCropRefinementPending &&
+			!input.barCropRefinementHorizontalConflict &&
 			input.latestObservationClassification ==
 				ActivePictureClassification::BAR_CROP_TRUSTED;
 		const bool boundedVerticalInspectionRetention =
 			input.verticalInspectionPending &&
+			input.verticalInspectionSourceGeneration != 0 &&
+			input.verticalInspectionSourceGeneration ==
+				input.frameSourceGeneration &&
+			input.verticalInspectionSourceSequence != 0 &&
+			input.verticalInspectionSourceSequence ==
+				input.frameSourceSequence &&
 			input.latestObservationClassification !=
 				ActivePictureClassification::FULL_RASTER_TRUSTED;
 		const bool boundedOutwardExpansion =
@@ -1346,6 +1484,8 @@ namespace AlphaSourceCrop
 			!boundedVerticalConfirmationRetention &&
 			!boundedVerticalFitConfirmationRetention)
 		{
+			decision.withdrawalCause =
+				WithdrawalCause::LATEST_OBSERVATION_UNREAFFIRMED;
 			decision.reason =
 				"latest observation does not reaffirm crop authority";
 			return decision;
@@ -1453,31 +1593,79 @@ namespace AlphaSourceCrop
 
 		decision.sourceBounds = presentation;
 		decision.applyCrop = true;
-		decision.reason = decision.verticallyTranslated
-			? (decision.outwardExpanded
+		if (decision.verticallyTranslated)
+		{
+			decision.owner = DecisionOwner::VERTICAL_TRANSLATION;
+			decision.reason = decision.outwardExpanded
 				? "bounded outward fit and same-size vertical translation accepted"
-				: "same-size vertical presentation translation accepted")
-			: (boundedVerticalEngageBaseRetention
-				? "trusted crop retained at timed subtitle engage origin"
-				: (boundedVerticalBaseRetention
-				? "subtitle release settled at current trusted base"
-				: (boundedBarCropRefinementRetention
-					? "trusted crop retained while bar refinement confirms"
-				: (boundedVerticalFitConfirmationRetention
-					? "trusted crop retained while vertical fit confirms"
-				: (boundedVerticalConfirmationRetention
-					? "trusted crop retained while subtitle translation target confirms"
-				: (boundedVerticalInspectionRetention
-					? "trusted crop retained while vertical overlay inspection completes"
-				: (decision.outwardExpanded
-					? "bounded outward presentation expansion accepted"
-					: (input.latestObservationSupportsCrop
-			? "generation-current shared crop authority accepted"
-			: (pixelSafeAmbiguousRetention
-				? "frame-local pixel-safe presentation retained prior crop"
-				: (boundedSceneVerificationRetention
-					? "bounded scene verification retained current trusted crop"
-					: "bounded ambiguity hold retained current trusted crop"))))))))));
+				: "same-size vertical presentation translation accepted";
+		}
+		else if (boundedVerticalEngageBaseRetention)
+		{
+			decision.owner = DecisionOwner::ENGAGE_BASE;
+			decision.reason =
+				"trusted crop retained at timed subtitle engage origin";
+		}
+		else if (boundedVerticalBaseRetention)
+		{
+			decision.owner = DecisionOwner::RELEASE_BASE;
+			decision.reason =
+				"subtitle release settled at current trusted base";
+		}
+		else if (boundedBarCropRefinementRetention)
+		{
+			decision.owner = DecisionOwner::BAR_REFINEMENT;
+			decision.reason =
+				"trusted crop retained while bar refinement confirms";
+		}
+		else if (boundedVerticalFitConfirmationRetention)
+		{
+			decision.owner = DecisionOwner::FIT_CONFIRMATION;
+			decision.reason =
+				"trusted crop retained while vertical fit confirms";
+		}
+		else if (boundedVerticalConfirmationRetention)
+		{
+			decision.owner = DecisionOwner::TRANSLATION_CONFIRMATION;
+			decision.reason =
+				"trusted crop retained while subtitle translation target confirms";
+		}
+		else if (boundedVerticalInspectionRetention)
+		{
+			decision.owner = DecisionOwner::VERTICAL_INSPECTION;
+			decision.reason =
+				"trusted crop retained while vertical overlay inspection completes";
+		}
+		else if (decision.outwardExpanded)
+		{
+			decision.owner = DecisionOwner::OUTWARD_FIT;
+			decision.reason =
+				"bounded outward presentation expansion accepted";
+		}
+		else if (input.latestObservationSupportsCrop)
+		{
+			decision.owner = DecisionOwner::TRUSTED_CROP;
+			decision.reason =
+				"generation-current shared crop authority accepted";
+		}
+		else if (pixelSafeAmbiguousRetention)
+		{
+			decision.owner = DecisionOwner::PIXEL_SAFE_RETENTION;
+			decision.reason =
+				"frame-local pixel-safe presentation retained prior crop";
+		}
+		else if (boundedSceneVerificationRetention)
+		{
+			decision.owner = DecisionOwner::SCENE_HOLD;
+			decision.reason =
+				"bounded scene verification retained current trusted crop";
+		}
+		else
+		{
+			decision.owner = DecisionOwner::AMBIGUITY_HOLD;
+			decision.reason =
+				"bounded ambiguity hold retained current trusted crop";
+		}
 		return decision;
 	}
 

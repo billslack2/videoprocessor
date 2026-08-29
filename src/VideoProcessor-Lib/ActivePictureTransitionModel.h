@@ -211,6 +211,9 @@ private:
 	uint8_t m_unavailableCandidates = 0;
 	uint64_t m_firstContradictoryFrame = 0;
 	uint64_t m_lastAnalyzedFrame = 0;
+	// Cadence correction can present one decoded source sequence repeatedly.
+	// Observation confidence is source-frame based, never presentation based.
+	uint64_t m_lastObservedFrame = 0;
 	double m_stableGeometryDeadbandPercent =
 		DEFAULT_STABLE_GEOMETRY_DEADBAND_PERCENT;
 };
