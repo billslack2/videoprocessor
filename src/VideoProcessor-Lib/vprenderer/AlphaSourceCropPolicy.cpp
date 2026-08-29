@@ -1434,6 +1434,15 @@ namespace AlphaSourceCrop
 			decision.reason =
 				"bounded visible title content latched full raster for episode";
 		}
+		else if (decision.state.mode ==
+			NearBlackPresentationMode::RETAIN_CROP &&
+			!input.trustedCropAvailable)
+		{
+			decision.state.mode = NearBlackPresentationMode::FULL_RASTER;
+			decision.changedToFullRaster = true;
+			decision.reason =
+				"lost retained title geometry latched full raster for episode";
+		}
 
 		if (decision.reason.empty())
 		{

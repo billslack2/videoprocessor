@@ -3836,6 +3836,34 @@ namespace Tests
 				static_cast<int>(decision.state.mode));
 		}
 
+		TEST_METHOD(NearBlackEpisodeSurvivesProfileGeometryWithdrawal)
+		{
+			NearBlackPresentationEpisodeInput input;
+			input.measurementCurrent = true;
+			input.nearBlackEvaluated = true;
+			input.globalNearBlack = true;
+			input.trustedCropAvailable = true;
+			input.sourceGeneration = 29;
+			input.sourceSequence = 300;
+			auto decision = EvaluateNearBlackPresentationEpisode(input);
+			Assert::AreEqual(static_cast<int>(
+				NearBlackPresentationMode::RETAIN_CROP),
+				static_cast<int>(decision.state.mode));
+
+			// Profile publication may withdraw profile-dependent geometry without
+			// replacing the decoded source generation. The title episode remains
+			// active and makes the only safe monotonic transition.
+			input.previous = decision.state;
+			input.measurementCurrent = false;
+			input.trustedCropAvailable = false;
+			input.sourceSequence = 301;
+			decision = EvaluateNearBlackPresentationEpisode(input);
+			Assert::IsTrue(decision.changedToFullRaster);
+			Assert::AreEqual(static_cast<int>(
+				NearBlackPresentationMode::FULL_RASTER),
+				static_cast<int>(decision.state.mode));
+		}
+
 		TEST_METHOD(NearBlackEpisodePresentationOverridesTransientCropArbitration)
 		{
 			Input crop = TrustedScopeCrop();

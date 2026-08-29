@@ -7802,7 +7802,6 @@ struct LibplaceboVideoRenderer::Impl
 			ClearSceneVerificationSnapshot();
 			ClearLatestActivePictureEvidence();
 			activePictureAmbiguityHold.Reset();
-			nearBlackPresentationEpisode = {};
 			// Subtitle evidence is profile-dependent presentation state. Never
 			// bridge it with the source-picture geometry retained above.
 			ClearScopeSubtitleEvidence();
