@@ -20,6 +20,12 @@ depending on dense translation base state which does not exist yet. Renderer
 telemetry now reports inspection, translation confirmation, and Fit
 confirmation as distinct states.
 
+Follow-up commit `50b662c0` records the operator's dark star-field scene-cut
+trigger in the focused fixture. The fixture keeps scene verification active,
+marks the provisional frame pixel-unsafe, leaves dense base state absent, and
+proves that vertical inspection still retains the trusted scope crop. The
+focused suite remains 104/104.
+
 Validation at `d7f26b3d`:
 
 - the new first-inspection regression fixture failed before the policy change
@@ -47,6 +53,15 @@ movie to full-raster mapping or oscillate its apparent aspect ratio.
 The deployed v1.3.003-beta log from the Mandalorian and Grogu trailer session,
 approximately 00:10:52–00:15:19 on 2026-08-29, established trusted active
 picture `0,280-3840,1880` (2.4000:1) on a 2.3500:1 screen.
+
+The operator identified the visible trigger as a scene change involving a dark
+star-field/space background. This matches the recorded failing state: the new
+scene produced provisional or non-contained evidence, frame-local retention
+was evaluated as pixel-unsafe, and vertical inspection was pending before its
+dense base/generation state existed. A scene-verification hold alone cannot
+retain that combination, so the regression fixture explicitly covers a dark
+scene cut with active scene hold, unsafe provisional evidence, and no dense
+base.
 
 - At 00:11:02, a bottom subtitle completed three stable confirmations and
   correctly used a same-size `+96 px` translation with smooth engage, hold,
