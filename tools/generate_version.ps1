@@ -59,26 +59,29 @@ if ([String]::IsNullOrWhiteSpace($VerBranch)) {
     Where-Object { -not [String]::IsNullOrWhiteSpace($_) } |
     Select-Object -First 1
 }
-# A clean detached checkout is the normal deployment form. If it points
-# exactly at the remote default branch, report that durable branch identity
-# rather than falling back to an older nearest tag from `git describe`.
+# A clean detached checkout is the normal deployment form. Resolve a remote
+# branch that points exactly at HEAD, preferring a beta integration branch.
+# This prevents a new beta build from inheriting an unrelated historical tag
+# from `git describe`.
 if ([String]::IsNullOrWhiteSpace($VerBranch)) {
-  if (-not [String]::IsNullOrWhiteSpace($DefaultRemoteRef)) {
-    $PointsAtDefault = Invoke-GitText -GitArguments @("merge-base", "--is-ancestor", "HEAD", $DefaultRemoteRef)
-    if ($LASTEXITCODE -eq 0) {
+  $ExactRemoteBranches = @(
+    (& git for-each-ref '--format=%(refname:short)' --points-at HEAD refs/remotes/origin 2>$null) |
+      Where-Object {
+        -not [String]::IsNullOrWhiteSpace($_) -and $_ -ne 'origin/HEAD'
+      })
+  $VerBranch = $ExactRemoteBranches |
+    Where-Object { $_ -match '^origin/v\d+\.\d+\.\d+-beta$' } |
+    Select-Object -First 1
+  if ([String]::IsNullOrWhiteSpace($VerBranch)) {
+    $VerBranch = $ExactRemoteBranches | Select-Object -First 1
+  }
+  if ([String]::IsNullOrWhiteSpace($VerBranch) -and
+      -not [String]::IsNullOrWhiteSpace($DefaultRemoteRef)) {
+    $DefaultHead = Invoke-GitText -GitArguments @("rev-parse", $DefaultRemoteRef)
+    $Head = Invoke-GitText -GitArguments @("rev-parse", "HEAD")
+    if (-not [String]::IsNullOrWhiteSpace($Head) -and $Head -eq $DefaultHead) {
       $VerBranch = $DefaultRemoteRef
     }
-  }
-}
-
-# The current beta line is deliberately a branch rather than a rolling Git tag.
-# When that default branch is an ancestor of this build, do not label a new beta
-# artifact with an old nearest historical tag (for example v1.1.016-beta).
-if ($DefaultBranch -match '^v\d+\.\d+\.\d+-beta$' -and
-    -not [String]::IsNullOrWhiteSpace($VerCommitShort)) {
-  & git merge-base --is-ancestor $DefaultRemoteRef HEAD 2>$null
-  if ($LASTEXITCODE -eq 0) {
-    $VerDescribe = "$DefaultBranch-$VerCommitShort"
   }
 }
 
