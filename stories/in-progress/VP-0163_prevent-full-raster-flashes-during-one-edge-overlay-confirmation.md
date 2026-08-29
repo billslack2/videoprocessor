@@ -6,28 +6,33 @@ In Progress (2026-08-29). The tracker was synchronized with `origin/main`
 before assignment and its 181 canonical items matched the index with no
 duplicate or missing IDs. GitHub was queried directly and confirmed
 `v1.3.003-beta` as the current default integration branch at
-`338460cb2fe553d825a0d8fa02d5051c83bed784`.
+`338460cb2fe553d825a0d8fa02d5051c83bed784`. It was queried again immediately
+before deployment and had advanced to
+`8746e8b5246652e13278e476f4876df93ab5af37` with GUI-only LLDV decision
+diagnostics.
 
-Implementation branch `codex/vp-0163-stable-overlay-presentation` starts at
-that exact remote tip in clean worktree
-`C:\Videoprocessor\vp\worktrees\vp0163-overlay-presentation`.
+Implementation branch `codex/vp-0163-stable-overlay-presentation` was cleanly
+rebased onto that exact latest remote tip in worktree
+`C:\Videoprocessor\vp\worktrees\vp0163-overlay-presentation`, then safely
+force-pushed with an explicit lease. The rebased commits are `86851d3d` (crop
+retention), `aa27ab23` (dark scene-cut fixture), and `d6293284` (arbitration
+hardening and diagnostics).
 
-Implementation commit `d7f26b3d00b04d1245f00d3766b80dc7f57ffff1` is
-pushed to `origin/codex/vp-0163-stable-overlay-presentation`. It gives the
+Implementation commit `86851d3d` gives the
 bounded first dense-inspection frame its own final-crop retention input, so it
 uses the already-validated generation-current shared geometry instead of
 depending on dense translation base state which does not exist yet. Renderer
 telemetry now reports inspection, translation confirmation, and Fit
 confirmation as distinct states.
 
-Follow-up commit `50b662c0` records the operator's dark star-field scene-cut
+Follow-up commit `aa27ab23` records the operator's dark star-field scene-cut
 trigger in the focused fixture. The fixture keeps scene verification active,
 marks the provisional frame pixel-unsafe, leaves dense base state absent, and
 proves that vertical inspection still retains the trusted scope crop. The
 focused suite remained 104/104 at that commit.
 
 Hardening and diagnostic commit
-`e6e81f12cbe7aa9aa124b60743838ac30e49e439` is pushed to the same branch. It
+`d6293284dff4c5dc2f40f38ab05da4bb6168886d` is pushed to the same branch. It
 bounds the inspection bridge to one decoded source sequence per unresolved
 authority episode; prevents sparse/noisy dropout from re-arming a spent bridge;
 deduplicates active-picture, outward-picture, translation, and Fit confirmation
@@ -43,14 +48,14 @@ Its suppression key excludes raw extent jitter and periodic scan cadence. On the
 captured five-minute log shape, the semantic signature would reduce the 988
 repetitive vertical-content lines to approximately 17 state transitions.
 
-Validation at `e6e81f12`:
+Validation at `d6293284`:
 
 - the new first-inspection regression fixture failed before the policy change
   and passes afterward;
 - all 158 focused source-crop, transition-model, and decision-timeline tests
   pass;
 - the complete x64 Release solution rebuilds successfully from the beta-based
-  worktree;
+  worktree with `VERSION_DIRTY=false` and exact commit identity;
 - the complete native suite reports 967/969. The only failures are
   `ConfigurationReferenceMatchesPublicFieldInventory` and
   `ConfigEditorCoreLoadsAndValidatesCurrentDeployedFixture`; both exact tests
@@ -59,9 +64,23 @@ Validation at `e6e81f12`:
 - three independent final-diff reviews found no remaining concrete high-severity
   correctness, test-coverage, or logging-volume blocker.
 
-No deployment, configuration edit, beta merge, or pull request was performed.
-Live replay of the reported trailer/volume-overlay sequence remains the next
-validation step before review or integration.
+The matched x64 Release host and VP Renderer pair was deployed to
+`C:\Videoprocessor\vp` on 2026-08-29. The prior pair is recoverable at
+`C:\Videoprocessor\vp\deployment-backups\vp0163-d6293284-20260829-091711`.
+Post-copy SHA-256 values exactly match the build:
+
+- `VideoProcessor.exe`:
+  `A905220F1E2FA6325A32A6A5AD5F54C35506554AFE748F50B4A9DF75EBC939F7`;
+- `VideoProcessorVPRenderer.dll`:
+  `21EBAF71B49D6C64CBECBE4EE714F8C34EF38787A22DA99D82E9335373F66FDF`.
+
+Active configuration, runtime state, and shader-cache hashes were unchanged by
+deployment. The deployed application launched and responded with clean branch
+identity `codex/vp-0163-stable-overlay-presentation`; the live log confirmed the
+renderer probe and successful `API=14` plugin load from the deployed path. No
+configuration edit, beta merge, or pull request was performed. Live replay of
+the reported trailer/volume-overlay sequence remains the next validation step
+before integration.
 
 ## User story
 
