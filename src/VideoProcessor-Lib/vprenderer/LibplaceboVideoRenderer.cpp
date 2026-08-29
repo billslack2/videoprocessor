@@ -9218,8 +9218,58 @@ struct LibplaceboVideoRenderer::Impl
 					scopeVerticalInspectionBridge.retainedSourceSequence;
 				cropDecision = AlphaSourceCrop::Evaluate(cropInput);
 			}
+			const double panelTargetAspect = pl_rect2df_aspect(&target.crop);
+			const double finalTargetAspect = ResolveNlsTargetAspect(
+				configuredScreenActive, configuredScreenAspect, panelTargetAspect);
+			const bool nlsPresentationFailOpen = nlsRequested &&
+				cropInput.presentationFailOpen;
+			const bool nlsActivePictureAvailable = nlsRequested &&
+				!nlsPresentationFailOpen && effectiveGeometryAvailable &&
+				effectiveGeometrySourceGeneration == frameGeneration;
+			const NlsSourceGeometry nlsCandidateSourceGeometry =
+				ResolveNlsPresentationSourceGeometry(
+					nlsRequested && !nlsPresentationFailOpen,
+					nlsActivePictureAvailable,
+					effectiveGeometry.left, effectiveGeometry.top,
+					effectiveGeometry.right, effectiveGeometry.bottom,
+					cropDecision.applyCrop,
+					cropDecision.sourceBounds.left,
+					cropDecision.sourceBounds.top,
+					cropDecision.sourceBounds.right,
+					cropDecision.sourceBounds.bottom,
+					width, height);
+			NlsPresentationCropDecision nlsCandidatePresentationCrop;
+			nlsCandidatePresentationCrop.source = nlsCandidateSourceGeometry;
+			if (nlsRequested && !nlsPresentationFailOpen)
+			{
+				nlsCandidatePresentationCrop = ResolveNlsPresentationCrop(
+					nlsCandidateSourceGeometry, finalTargetAspect,
+					nlsRule.aspectTolerancePercent,
+					nlsRule.activeAspectMinimum, nlsRule.aspectDirection,
+					nlsRule.maximumStretchRatio,
+					nlsRule.vpRendererMaximumCropPercent,
+					nlsRule.vpRendererCropPreference);
+			}
+			const NlsMappingDecision nlsCandidateDecision = EvaluateNlsMapping(
+				nlsCandidatePresentationCrop.source.valid,
+				nlsCandidatePresentationCrop.source.aspect, finalTargetAspect,
+				nlsRule.aspectTolerancePercent,
+				nlsRule.activeAspectMinimum, nlsRule.aspectDirection,
+				nlsRule.maximumStretchRatio);
+			const bool nlsOwnsPresentationGeometry =
+				NlsOwnsPresentationGeometry(nlsRequested,
+					nlsPresentationFailOpen, nlsActivePictureAvailable,
+					cropDecision.applyCrop, nlsCandidateDecision.mode,
+					nlsCandidatePresentationCrop.applied);
+
 			AlphaSourceCrop::AspectLimitFillDecision aspectLimitFill;
-			if (nlsRequested)
+			if (nlsPresentationFailOpen)
+			{
+				aspectLimitFill.sourceBounds = cropDecision.sourceBounds;
+				aspectLimitFill.reason =
+					"presentation fail-open requires the complete raster";
+			}
+			else if (nlsOwnsPresentationGeometry)
 			{
 				aspectLimitFill.sourceBounds = cropDecision.sourceBounds;
 				const int cropWidth = cropDecision.sourceBounds.right -
@@ -9480,9 +9530,6 @@ struct LibplaceboVideoRenderer::Impl
 			// hook, runtime geometry, status, and destination layout as one decision.
 			renderParams.hooks = nullptr;
 			renderParams.num_hooks = 0;
-			const double panelTargetAspect = pl_rect2df_aspect(&target.crop);
-			const double finalTargetAspect = ResolveNlsTargetAspect(
-				configuredScreenActive, configuredScreenAspect, panelTargetAspect);
 			// Crop evidence decides whether bars may be removed. It must not veto
 			// NLS geometry when the crop policy is already presenting the complete
 			// raster. In that case the source aspect is known directly from the
@@ -9491,21 +9538,20 @@ struct LibplaceboVideoRenderer::Impl
 			// This is part of the established NLS presentation contract and is
 			// independent of the viewport's ordinary automatic-crop setting. NLS-off
 			// presentation remains governed exclusively by cropDecision above.
-			const bool nlsActivePictureCropApplied = nlsRequested &&
-				effectiveGeometryAvailable &&
-				effectiveGeometrySourceGeneration == frameGeneration;
+			const bool nlsActivePictureCropApplied =
+				nlsOwnsPresentationGeometry && nlsActivePictureAvailable &&
+				!cropDecision.applyCrop;
 			const NlsSourceGeometry finalSourceGeometry =
-				ResolveNlsPresentationSourceGeometry(nlsRequested,
-					nlsActivePictureCropApplied,
-					effectiveGeometry.left, effectiveGeometry.top,
-					effectiveGeometry.right, effectiveGeometry.bottom,
-					cropDecision.applyCrop,
-					cropDecision.sourceBounds.left,
-					cropDecision.sourceBounds.top,
-					cropDecision.sourceBounds.right,
-					cropDecision.sourceBounds.bottom,
+				nlsOwnsPresentationGeometry ? nlsCandidateSourceGeometry :
+				ResolveNlsSourceGeometry(
+					cropDecision.applyCrop || aspectLimitFill.applied,
+					presentationCropBounds.left,
+					presentationCropBounds.top,
+					presentationCropBounds.right,
+					presentationCropBounds.bottom,
 					width, height);
-			if (nlsActivePictureCropApplied && finalSourceGeometry.valid)
+			if ((nlsOwnsPresentationGeometry || cropDecision.applyCrop ||
+				aspectLimitFill.applied) && finalSourceGeometry.valid)
 			{
 				source.crop.x0 = static_cast<float>(finalSourceGeometry.left);
 				source.crop.y0 = static_cast<float>(finalSourceGeometry.top);
@@ -9514,15 +9560,9 @@ struct LibplaceboVideoRenderer::Impl
 			}
 			NlsPresentationCropDecision nlsPresentationCrop;
 			nlsPresentationCrop.source = finalSourceGeometry;
-			if (nlsRequested)
+			if (nlsOwnsPresentationGeometry)
 			{
-				nlsPresentationCrop = ResolveNlsPresentationCrop(
-					finalSourceGeometry, finalTargetAspect,
-					nlsRule.aspectTolerancePercent,
-					nlsRule.activeAspectMinimum, nlsRule.aspectDirection,
-					nlsRule.maximumStretchRatio,
-					nlsRule.vpRendererMaximumCropPercent,
-					nlsRule.vpRendererCropPreference);
+				nlsPresentationCrop = nlsCandidatePresentationCrop;
 				if (nlsPresentationCrop.applied)
 				{
 					source.crop.x0 = static_cast<float>(
@@ -9539,8 +9579,8 @@ struct LibplaceboVideoRenderer::Impl
 				nlsPresentationCrop.source;
 			const double finalSourceAspect =
 				presentationSourceGeometry.aspect;
-			const bool finalBoundsAuthoritative = finalSourceGeometry.valid &&
-				presentationSourceGeometry.valid;
+			const bool finalBoundsAuthoritative = !nlsPresentationFailOpen &&
+				finalSourceGeometry.valid && presentationSourceGeometry.valid;
 			const double screenLayoutAspect = configuredScreenActive || nlsRequested
 				? finalTargetAspect : pl_rect2df_aspect(&target.crop);
 			// The configured screen is itself a fitted destination rectangle. Apply
@@ -9613,7 +9653,10 @@ struct LibplaceboVideoRenderer::Impl
 						nlsRule.aspectTolerancePercent,
 						nlsRule.activeAspectMinimum, nlsRule.aspectDirection,
 						nlsRule.maximumStretchRatio);
-				if (!finalBoundsAuthoritative)
+				if (nlsPresentationFailOpen)
+					finalNlsDecision.reason =
+						"presentation fail-open suppresses NLS geometry";
+				else if (!finalBoundsAuthoritative)
 					finalNlsDecision.reason =
 						"final crop decision lacks current aspect authority";
 				if (finalNlsDecision.mode == NlsMappingMode::ACTIVE &&
@@ -9754,7 +9797,8 @@ struct LibplaceboVideoRenderer::Impl
 					SetShaderStatus("NLS: Active");
 					break;
 				case NlsMappingMode::LINEAR_PASSTHROUGH:
-					SetShaderStatus("NLS: Passthrough");
+					SetShaderStatus(nlsPresentationCrop.applied ?
+						"NLS: Crop only" : "NLS: Passthrough");
 					break;
 				case NlsMappingMode::SAFE_FIT:
 					SetShaderStatus("NLS: Safe fit");

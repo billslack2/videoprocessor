@@ -83,15 +83,24 @@ NlsSourceGeometry ResolveNlsSourceGeometry(bool trustedCropApplied,
 	int cropLeft, int cropTop, int cropRight, int cropBottom,
 	int rasterWidth, int rasterHeight);
 
-// NLS always maps the trusted active picture, independently of whether the
-// viewport's ordinary automatic crop is enabled. When NLS is off or detector
-// authority is unavailable, the established viewport/full-raster source wins.
+// An accepted viewport crop is the presentation authority, including any
+// subtitle-driven translation or outward expansion. When no viewport crop is
+// active, NLS may still map the trusted active picture so encoded bars can be
+// removed independently of the ordinary automatic-crop setting.
 NlsSourceGeometry ResolveNlsPresentationSourceGeometry(bool nlsRequested,
 	bool activePictureAvailable,
 	int activeLeft, int activeTop, int activeRight, int activeBottom,
 	bool viewportCropApplied,
 	int viewportLeft, int viewportTop, int viewportRight, int viewportBottom,
 	int rasterWidth, int rasterHeight);
+
+// Decide whether NLS owns the source rectangle for this frame. Linear
+// passthrough inherits an accepted viewport presentation, but retains the
+// established NLS-only bar-removal contract when no viewport crop exists.
+bool NlsOwnsPresentationGeometry(bool nlsRequested,
+	bool presentationFailOpen, bool activePictureAvailable,
+	bool viewportCropApplied, NlsMappingMode mappingMode,
+	bool presentationCropApplied);
 
 
 double ResolveNlsTargetAspect(bool configuredTarget,

@@ -104,6 +104,40 @@ namespace VideoProcessorTest
 			Assert::AreEqual(1920, nlsOff.right);
 		}
 
+		TEST_METHOD(VpRendererNlsPreservesAcceptedTranslatedPresentation)
+		{
+			const NlsSourceGeometry selected =
+				ResolveNlsPresentationSourceGeometry(true, true,
+					0, 284, 3840, 1884, true,
+					0, 212, 3840, 1812, 3840, 2160);
+			Assert::IsTrue(selected.valid);
+			Assert::AreEqual(0, selected.left);
+			Assert::AreEqual(212, selected.top);
+			Assert::AreEqual(3840, selected.right);
+			Assert::AreEqual(1812, selected.bottom);
+			Assert::AreEqual(2.4, selected.aspect, 0.000001);
+		}
+
+		TEST_METHOD(VpRendererNlsPassthroughInheritsViewportPresentation)
+		{
+			Assert::IsFalse(NlsOwnsPresentationGeometry(true, false, true,
+				true, NlsMappingMode::LINEAR_PASSTHROUGH, false));
+			Assert::IsTrue(NlsOwnsPresentationGeometry(true, false, true,
+				false, NlsMappingMode::LINEAR_PASSTHROUGH, false));
+			Assert::IsTrue(NlsOwnsPresentationGeometry(true, false, true,
+				true, NlsMappingMode::ACTIVE, false));
+			Assert::IsTrue(NlsOwnsPresentationGeometry(true, false, true,
+				true, NlsMappingMode::LINEAR_PASSTHROUGH, true));
+		}
+
+		TEST_METHOD(VpRendererNlsNeverOverridesPresentationFailOpen)
+		{
+			Assert::IsFalse(NlsOwnsPresentationGeometry(true, true, true,
+				false, NlsMappingMode::ACTIVE, true));
+			Assert::IsFalse(NlsOwnsPresentationGeometry(true, true, true,
+				false, NlsMappingMode::SAFE_FIT, false));
+		}
+
 		TEST_METHOD(WaitingCannotExposeNlsOutputContract)
 		{
 			MadVRShaderRuntimeSnapshot snapshot;
