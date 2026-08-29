@@ -1,6 +1,7 @@
 #include "pch.h"
 
 #include <ActivePictureEvidence.h>
+#include <ActivePictureDecisionTimeline.h>
 #include <vprenderer/AlphaSourceCropPolicy.h>
 #include "CppUnitTest.h"
 
@@ -136,6 +137,136 @@ namespace VideoProcessorTest
 	TEST_CLASS(ActivePictureEvidenceTests)
 	{
 	public:
+		TEST_METHOD(GeneratedFramesCertifyExactInwardProofAndNearBlackVeto)
+		{
+			auto observation = [](
+				uint64_t frameNumber,
+				const ActivePictureEvidence& evidence)
+			{
+				ActivePictureObservation value;
+				value.frameNumber = frameNumber;
+				value.available = evidence.available;
+				value.classification = evidence.classification;
+				value.bounds = evidence.classification ==
+					ActivePictureClassification::BAR_CROP_TRUSTED
+					? evidence.trustedBounds : evidence.proposedBounds;
+				return value;
+			};
+			auto identity = [](uint64_t sequence, uint64_t frameNumber)
+			{
+				return ActivePictureFrameIdentity{
+					61, sequence, frameNumber, frameNumber * 1000 };
+			};
+
+			P010Frame shallow(320, 180);
+			shallow.BlackOutside(0, 8, 320, 172);
+			P010Frame deep(320, 180);
+			deep.BlackOutside(0, 22, 320, 158);
+			const ActivePictureEvidence shallowEvidence =
+				ExtractActivePictureEvidence(shallow.P010Source());
+			const ActivePictureEvidence deepEvidence =
+				ExtractActivePictureEvidence(deep.P010Source());
+			const ActivePictureGlobalNearBlackEvidence deepNearBlack =
+				EvaluateActivePictureGlobalNearBlack(deep.P010Source());
+			Assert::AreEqual(static_cast<int>(
+				ActivePictureClassification::BAR_CROP_TRUSTED),
+				static_cast<int>(shallowEvidence.classification));
+			Assert::AreEqual(static_cast<int>(
+				ActivePictureClassification::BAR_CROP_TRUSTED),
+				static_cast<int>(deepEvidence.classification));
+			Assert::IsTrue(deepNearBlack.evaluated);
+			Assert::IsFalse(deepNearBlack.nearBlack);
+
+			ActivePictureDecisionTimeline timeline;
+			timeline.Reset(61);
+			ActivePictureFrameDecision published;
+			uint64_t sequence = 1;
+			for (uint64_t frame = 1;
+				frame <= ActivePictureTransitionModel::INITIAL_CONFIRMATIONS;
+				++frame)
+			{
+				const bool didPublish = timeline.SubmitScheduledObservation(
+					identity(sequence++, frame),
+					observation(frame, shallowEvidence), 0, 0, published);
+				Assert::AreEqual(
+					frame == ActivePictureTransitionModel::INITIAL_CONFIRMATIONS,
+					didPublish);
+			}
+			const auto candidate = identity(sequence++, 602);
+			const auto skipped = identity(sequence++, 603);
+			const auto confirmation = identity(sequence++, 604);
+			Assert::IsTrue(timeline.TrackAcceptedFrame(candidate));
+			Assert::IsTrue(timeline.TrackAcceptedFrame(skipped));
+			Assert::IsTrue(timeline.TrackAcceptedFrame(confirmation));
+			for (const auto& current : { candidate, skipped, confirmation })
+			{
+				Assert::IsTrue(timeline.TrackLookaheadEvidence(
+					current,
+					observation(current.sourceFrameNumber, deepEvidence),
+					deepNearBlack.evaluated, deepNearBlack.nearBlack));
+			}
+			Assert::IsFalse(timeline.SubmitScheduledObservation(
+				candidate, observation(602, deepEvidence), 5, 4, published));
+			Assert::IsTrue(timeline.SubmitScheduledObservation(
+				confirmation, observation(604, deepEvidence), 5, 4, published));
+			Assert::AreEqual(candidate.acceptedSequence,
+				published.effectiveIdentity.acceptedSequence);
+			Assert::AreEqual(static_cast<int>(
+				ActivePictureDecisionAssociation::EXACT_INWARD),
+				static_cast<int>(published.association));
+
+			P010Frame sparseTitle(320, 180);
+			sparseTitle.Fill(90, 512, 512);
+			sparseTitle.BlackOutside(0, 22, 320, 158);
+			sparseTitle.FillRectangle(148, 84, 172, 96, 700);
+			const ActivePictureEvidence titleEvidence =
+				ExtractActivePictureEvidence(sparseTitle.P010Source());
+			const ActivePictureGlobalNearBlackEvidence titleNearBlack =
+				EvaluateActivePictureGlobalNearBlack(sparseTitle.P010Source());
+			Assert::AreEqual(static_cast<int>(
+				ActivePictureClassification::BAR_CROP_TRUSTED),
+				static_cast<int>(titleEvidence.classification));
+			Assert::AreEqual(deepEvidence.trustedBounds.top,
+				titleEvidence.trustedBounds.top);
+			Assert::AreEqual(deepEvidence.trustedBounds.bottom,
+				titleEvidence.trustedBounds.bottom);
+			Assert::IsTrue(titleNearBlack.evaluated);
+			Assert::IsTrue(titleNearBlack.nearBlack);
+
+			ActivePictureDecisionTimeline veto;
+			veto.Reset(61);
+			sequence = 1;
+			for (uint64_t frame = 1;
+				frame <= ActivePictureTransitionModel::INITIAL_CONFIRMATIONS;
+				++frame)
+			{
+				veto.SubmitScheduledObservation(identity(sequence++, frame),
+					observation(frame, shallowEvidence), 0, 0, published);
+			}
+			const auto vetoCandidate = identity(sequence++, 702);
+			const auto vetoSkipped = identity(sequence++, 703);
+			const auto vetoConfirmation = identity(sequence++, 704);
+			Assert::IsTrue(veto.TrackAcceptedFrame(vetoCandidate));
+			Assert::IsTrue(veto.TrackAcceptedFrame(vetoSkipped));
+			Assert::IsTrue(veto.TrackAcceptedFrame(vetoConfirmation));
+			Assert::IsTrue(veto.TrackLookaheadEvidence(vetoCandidate,
+				observation(702, deepEvidence), true, false));
+			Assert::IsFalse(veto.SubmitScheduledObservation(vetoCandidate,
+				observation(702, deepEvidence), 5, 4, published));
+			Assert::IsTrue(veto.TrackLookaheadEvidence(vetoSkipped,
+				observation(703, titleEvidence),
+				titleNearBlack.evaluated, titleNearBlack.nearBlack));
+			Assert::IsTrue(veto.TrackLookaheadEvidence(vetoConfirmation,
+				observation(704, deepEvidence), true, false));
+			Assert::IsTrue(veto.SubmitScheduledObservation(vetoConfirmation,
+				observation(704, deepEvidence), 5, 4, published));
+			Assert::AreEqual(static_cast<int>(
+				ActivePictureInwardProofValidation::EVIDENCE_NEAR_BLACK),
+				static_cast<int>(published.inwardProof));
+			Assert::AreEqual(vetoConfirmation.acceptedSequence,
+				published.effectiveIdentity.acceptedSequence);
+		}
+
 		TEST_METHOD(FullRasterIsTrustedImmediately)
 		{
 			P010Frame frame(320, 180, 16);

@@ -7654,7 +7654,7 @@ struct LibplaceboVideoRenderer::Impl
 			if (applyScheduledDecision)
 			{
 				DebugLog::Log(
-					"Alpha active-picture look-ahead applied: generation=%llu observed=%llu effective=%llu frame=%llu rect=%d,%d-%d,%d classification=%d runtime-apply=1",
+					"Alpha active-picture look-ahead applied: generation=%llu observed=%llu effective=%llu frame=%llu backdated_frames=%llu association=%s inward_proof=%s proof_frames=%u rect=%d,%d-%d,%d classification=%d runtime-apply=1",
 					static_cast<unsigned long long>(
 						scheduledDecision->effectiveIdentity.transportGeneration),
 					static_cast<unsigned long long>(
@@ -7662,6 +7662,16 @@ struct LibplaceboVideoRenderer::Impl
 					static_cast<unsigned long long>(
 						scheduledDecision->effectiveIdentity.acceptedSequence),
 					static_cast<unsigned long long>(frameNumber),
+					static_cast<unsigned long long>(
+						scheduledDecision->observationIdentity.acceptedSequence >=
+							scheduledDecision->effectiveIdentity.acceptedSequence
+						? scheduledDecision->observationIdentity.acceptedSequence -
+							scheduledDecision->effectiveIdentity.acceptedSequence : 0),
+					ActivePictureDecisionAssociationName(
+						scheduledDecision->association),
+					ActivePictureInwardProofValidationName(
+						scheduledDecision->inwardProof),
+					static_cast<unsigned>(scheduledDecision->proofFrameCount),
 					transition.bounds.left, transition.bounds.top,
 					transition.bounds.right, transition.bounds.bottom,
 					static_cast<int>(evidence.classification));
@@ -8057,6 +8067,12 @@ struct LibplaceboVideoRenderer::Impl
 			currentActivePictureIdentity.viewportGeneration =
 				viewportRequestSerial;
 			currentActivePictureIdentity.rendererGeneration = frameGeneration;
+			// Scene detection resets temporal candidates above, but it is not crop
+			// authority and therefore is not a blanket veto for a scheduled decision.
+			// In particular, EXACT_INWARD remains eligible when the current cut frame
+			// and every buffered frame through confirmation independently carry the
+			// same trusted, non-near-black pixel certificate. Rejecting that certificate
+			// at the cut would recreate the one-frame confirmed-geometry flash.
 			UpdateNlsForFrame(analysisSource, sourceSequence,
 				currentActivePictureIdentity,
 				state.displayMode->RefreshRateHz(),
@@ -12043,11 +12059,29 @@ void LibplaceboVideoRenderer::SetQueueFramePolicy(
 void LibplaceboVideoRenderer::SetActivePictureLookaheadFrames(size_t frames)
 {
 	const size_t boundedFrames = (std::min)(frames, size_t{ 8 });
-	m_activePictureLookaheadFrames.store(
-		boundedFrames, std::memory_order_release);
+	size_t previousFrames = 0;
+	bool policyInvalidated = false;
+	bool candidateReset = false;
+	{
+		std::lock_guard<std::mutex> queueGuard(m_queueMutex);
+		previousFrames = m_activePictureLookaheadFrames.load(
+			std::memory_order_relaxed);
+		if (previousFrames != boundedFrames)
+		{
+			m_activePictureLookaheadFrames.store(
+				boundedFrames, std::memory_order_release);
+			candidateReset = (previousFrames == 0) != (boundedFrames == 0);
+			m_activePictureTimeline.InvalidateLookaheadPolicy(candidateReset);
+			m_activePictureLookaheadLoggedAvailable = 0xff;
+			policyInvalidated = true;
+		}
+	}
 	DebugLog::Log(
-		"Alpha active-picture look-ahead retained: configured=%zu queue-unchanged=1 runtime-active=0",
-		boundedFrames);
+		"Alpha active-picture look-ahead configured: previous=%zu configured=%zu changed=%d decision-invalidated=%d candidate-reset=%d evidence-retained=%d queue-unchanged=1 runtime-active=%d",
+		previousFrames, boundedFrames, policyInvalidated ? 1 : 0,
+		policyInvalidated ? 1 : 0, candidateReset ? 1 : 0,
+		policyInvalidated && !candidateReset ? 1 : 0,
+		boundedFrames > 0 ? 1 : 0);
 }
 
 
@@ -12575,13 +12609,16 @@ bool LibplaceboVideoRenderer::GetFrameRateAndPPM(
 
 void LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
 	std::vector<QueuedFrame>& previewFrames,
-	uint8_t availableLookahead)
+	uint8_t availableLookahead,
+	uint64_t lookaheadPolicyGeneration)
 {
 	struct PreviewEvidence
 	{
 		ActivePictureFrameIdentity identity;
 		ActivePictureObservation observation;
 		double framesPerSecond = 0.0;
+		bool nearBlackEvaluated = false;
+		bool nearBlack = false;
 	};
 	std::vector<PreviewEvidence> observations;
 	observations.reserve(previewFrames.size());
@@ -12624,6 +12661,14 @@ void LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
 				ActivePictureClassification::BAR_CROP_TRUSTED
 				? evidence.trustedBounds : evidence.proposedBounds;
 			preview.observation.classification = evidence.classification;
+			if (evidence.classification ==
+				ActivePictureClassification::BAR_CROP_TRUSTED)
+			{
+				const ActivePictureGlobalNearBlackEvidence globalNearBlack =
+					EvaluateActivePictureGlobalNearBlack(source);
+				preview.nearBlackEvaluated = globalNearBlack.evaluated;
+				preview.nearBlack = globalNearBlack.nearBlack;
+			}
 		}
 		preview.framesPerSecond = state.displayMode->RefreshRateHz();
 		observations.push_back(preview);
@@ -12634,6 +12679,17 @@ void LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
 		size_t{ ActivePictureDecisionTimeline::MAX_LOOKAHEAD_FRAMES }));
 	{
 		std::lock_guard<std::mutex> queueGuard(m_queueMutex);
+		if (lookaheadPolicyGeneration !=
+			m_activePictureTimeline.LookaheadPolicyGeneration())
+		{
+			DebugLog::Log(
+				"Alpha active-picture look-ahead preview rejected: generation=%llu policy_generation=%llu current_policy_generation=%llu reason=policy_changed",
+				static_cast<unsigned long long>(m_queueGeneration),
+				static_cast<unsigned long long>(lookaheadPolicyGeneration),
+				static_cast<unsigned long long>(
+					m_activePictureTimeline.LookaheadPolicyGeneration()));
+			return;
+		}
 		if (m_activePictureLookaheadLoggedGeneration != m_queueGeneration ||
 			m_activePictureLookaheadLoggedAvailable != availableLookahead)
 		{
@@ -12660,6 +12716,18 @@ void LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
 				queued->activePicturePreviewAnalyzed)
 				continue;
 			queued->activePicturePreviewAnalyzed = true;
+			if (!m_activePictureTimeline.TrackLookaheadEvidence(
+				preview.identity, preview.observation,
+				preview.nearBlackEvaluated, preview.nearBlack))
+			{
+				DebugLog::Log(
+					"Alpha active-picture look-ahead evidence rejected: generation=%llu source=%llu reason=stale_or_conflicting_identity",
+					static_cast<unsigned long long>(
+						preview.identity.transportGeneration),
+					static_cast<unsigned long long>(
+						preview.identity.acceptedSequence));
+				continue;
+			}
 			if (!m_activePictureTimeline.ShouldAnalyze(
 				preview.observation.frameNumber, preview.framesPerSecond))
 				continue;
@@ -12681,7 +12749,7 @@ void LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
 			target->activePicturePreviewDecision = decision;
 			target->activePicturePreviewDecisionAvailable = true;
 			DebugLog::Log(
-				"Alpha active-picture look-ahead decision: generation=%llu observed=%llu effective=%llu configured=%u available=%u effective_lead=%u late=%d rect=%d,%d-%d,%d runtime-apply=pending",
+				"Alpha active-picture look-ahead decision: generation=%llu observed=%llu effective=%llu configured=%u available=%u effective_lead=%u backdated_frames=%llu association=%s inward_proof=%s proof_frames=%u late=%d rect=%d,%d-%d,%d runtime-apply=pending",
 				static_cast<unsigned long long>(
 					decision.observationIdentity.transportGeneration),
 				static_cast<unsigned long long>(
@@ -12691,6 +12759,14 @@ void LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
 				static_cast<unsigned>(decision.configuredLookahead),
 				static_cast<unsigned>(decision.availableLookahead),
 				static_cast<unsigned>(decision.effectiveLookahead),
+				static_cast<unsigned long long>(
+					decision.observationIdentity.acceptedSequence >=
+						decision.effectiveIdentity.acceptedSequence
+					? decision.observationIdentity.acceptedSequence -
+						decision.effectiveIdentity.acceptedSequence : 0),
+				ActivePictureDecisionAssociationName(decision.association),
+				ActivePictureInwardProofValidationName(decision.inwardProof),
+				static_cast<unsigned>(decision.proofFrameCount),
 				decision.late ? 1 : 0,
 				decision.transition.bounds.left,
 				decision.transition.bounds.top,
@@ -12761,6 +12837,10 @@ void LibplaceboVideoRenderer::RenderLoop()
 		uint64_t sourceSequence = 0;
 		ActivePictureFrameIdentity activePictureIdentity;
 		bool activePicturePreviewDecisionAvailable = false;
+		bool activePicturePreviewTimelineMatches = false;
+		bool activePicturePreviewPolicyMatches = false;
+		bool activePicturePreviewIdentityMatches = false;
+		uint64_t activePictureCurrentPolicyGeneration = 0;
 		ActivePictureFrameDecision activePicturePreviewDecision;
 		int64_t enqueueQpc = 0;
 		int64_t dequeueQpc = 0;
@@ -12769,6 +12849,7 @@ void LibplaceboVideoRenderer::RenderLoop()
 		double oldestQueuedAgeMs = 0.0;
 		std::vector<QueuedFrame> activePicturePreviewFrames;
 		uint8_t activePictureAvailableLookahead = 0;
+		uint64_t activePictureLookaheadPolicyGeneration = 0;
 		bool cadenceRepeat = false;
 		uint64_t cadenceActionId = 0;
 		uint64_t cadencePolicyGeneration = 0;
@@ -12835,6 +12916,8 @@ void LibplaceboVideoRenderer::RenderLoop()
 			const size_t requestedLookahead = (std::min)(
 				m_activePictureLookaheadFrames.load(std::memory_order_acquire),
 				size_t{ ActivePictureDecisionTimeline::MAX_LOOKAHEAD_FRAMES });
+			activePictureLookaheadPolicyGeneration =
+				m_activePictureTimeline.LookaheadPolicyGeneration();
 			if (requestedLookahead > 0)
 			{
 				size_t sourceLead = 0;
@@ -12906,13 +12989,15 @@ void LibplaceboVideoRenderer::RenderLoop()
 			}
 		}
 
-		if (m_activePictureLookaheadFrames.load(std::memory_order_acquire) > 0)
+		if (!activePicturePreviewFrames.empty() &&
+			m_activePictureLookaheadFrames.load(std::memory_order_acquire) > 0)
 		{
 			try
 			{
 				AnalyzeActivePictureLookahead(
 					activePicturePreviewFrames,
-					activePictureAvailableLookahead);
+					activePictureAvailableLookahead,
+					activePictureLookaheadPolicyGeneration);
 			}
 			catch (const std::exception& e)
 			{
@@ -12925,9 +13010,12 @@ void LibplaceboVideoRenderer::RenderLoop()
 				DebugLog::Log(
 					"Alpha active-picture look-ahead preview failed: unknown exception");
 			}
-			for (QueuedFrame& preview : activePicturePreviewFrames)
-				preview.frame.SourceBufferRelease();
 		}
+		// References are acquired while selecting preview work. A live profile
+		// change may disable analysis after selection, so release independently
+		// of the current policy and of analysis success.
+		for (QueuedFrame& preview : activePicturePreviewFrames)
+			preview.frame.SourceBufferRelease();
 
 		if (prefillReleased)
 		{
@@ -12936,23 +13024,6 @@ void LibplaceboVideoRenderer::RenderLoop()
 				static_cast<unsigned long long>(frameGeneration),
 				prefillDepth,
 				prefillTarget);
-		}
-		const ActivePictureFrameIdentity& effectiveIdentity =
-			activePicturePreviewDecision.effectiveIdentity;
-		const bool activePicturePreviewIdentityMatches =
-			activePicturePreviewDecisionAvailable &&
-			SameActivePictureFrameIdentity(
-				effectiveIdentity, activePictureIdentity);
-		if (activePicturePreviewDecisionAvailable &&
-			!activePicturePreviewIdentityMatches)
-		{
-			DebugLog::Log(
-				"Alpha active-picture look-ahead rejected: generation=%llu source=%llu observed=%llu effective=%llu reason=identity_mismatch runtime-apply=0",
-				static_cast<unsigned long long>(frameGeneration),
-				static_cast<unsigned long long>(sourceSequence),
-				static_cast<unsigned long long>(
-					activePicturePreviewDecision.observationIdentity.acceptedSequence),
-				static_cast<unsigned long long>(effectiveIdentity.acceptedSequence));
 		}
 		if (depthSummaryReady)
 		{
@@ -12999,6 +13070,41 @@ void LibplaceboVideoRenderer::RenderLoop()
 				std::lock_guard<std::mutex> queueGuard(m_queueMutex);
 				staleGeneration =
 					m_stopRequested || frameGeneration != m_queueGeneration;
+				activePicturePreviewTimelineMatches =
+					activePicturePreviewDecisionAvailable &&
+					m_activePictureTimeline.IsDecisionCurrent(
+						activePicturePreviewDecision);
+				activePictureCurrentPolicyGeneration =
+					m_activePictureTimeline.LookaheadPolicyGeneration();
+				activePicturePreviewPolicyMatches =
+					activePicturePreviewDecisionAvailable &&
+					activePicturePreviewDecision.lookaheadPolicyGeneration ==
+						activePictureCurrentPolicyGeneration;
+				activePicturePreviewIdentityMatches =
+					activePicturePreviewDecisionAvailable &&
+					activePicturePreviewTimelineMatches &&
+					SameActivePictureFrameIdentity(
+						activePicturePreviewDecision.effectiveIdentity,
+						activePictureIdentity);
+			}
+			if (activePicturePreviewDecisionAvailable &&
+				!activePicturePreviewIdentityMatches)
+			{
+				DebugLog::Log(
+					"Alpha active-picture look-ahead rejected: generation=%llu source=%llu observed=%llu effective=%llu policy_generation=%llu current_policy_generation=%llu reason=%s runtime-apply=0",
+					static_cast<unsigned long long>(frameGeneration),
+					static_cast<unsigned long long>(sourceSequence),
+					static_cast<unsigned long long>(
+						activePicturePreviewDecision.observationIdentity.acceptedSequence),
+					static_cast<unsigned long long>(
+						activePicturePreviewDecision.effectiveIdentity.acceptedSequence),
+					static_cast<unsigned long long>(
+						activePicturePreviewDecision.lookaheadPolicyGeneration),
+					static_cast<unsigned long long>(
+						activePictureCurrentPolicyGeneration),
+					!activePicturePreviewPolicyMatches ? "policy_mismatch" :
+						(activePicturePreviewTimelineMatches ?
+							"identity_mismatch" : "continuity_mismatch"));
 			}
 			if (!staleGeneration)
 			{
