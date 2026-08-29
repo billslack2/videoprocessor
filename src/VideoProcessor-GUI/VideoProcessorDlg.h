@@ -320,6 +320,11 @@ protected:
 	// Optional LLDV heuristic.  DeckLink does not expose the HDMI VSIF, so
 	// BT.2020 + SDR + no static HDR metadata is only a best-effort signal.
 	bool m_useNewLldvHeuristic = false;
+	// Tester-facing LLDV diagnostics are emitted only when the decision or
+	// effective result changes, rather than for every state rebuild.
+	std::string m_lastLldvDecisionDiagnostic;
+	std::string m_lastLldvEffectiveDiagnostic;
+	bool m_lldvDiagnosticWasApplied = false;
 	// Negative means "use the profile/default fallback". Explicit command-line
 	// overrides intentionally win over a selected LLDV profile on both the
 	// legacy and new detection paths.
