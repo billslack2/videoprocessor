@@ -4428,7 +4428,7 @@ namespace VideoProcessorTest
 			DeleteFileA(path.c_str());
 		}
 
-		TEST_METHOD(CanonicalRendererAcceptsDocumentedPeakAndLutValues)
+		TEST_METHOD(CanonicalRendererAcceptsCalibrationLutContractValues)
 		{
 			char temporaryDirectory[MAX_PATH] = {};
 			Assert::IsTrue(GetTempPathA(
@@ -4439,10 +4439,23 @@ namespace VideoProcessorTest
 				std::ofstream file(path, std::ios::out | std::ios::trunc);
 				file << "[vpvr.display]\n"
 					"peak_detection: high_quality\n"
+					"output_presentation: calibrated_direct\n"
+					"lut: calibration.cube\n"
 					"lut_reference_primaries: P3_D65\n"
 					"lut_reference_transfer: BT1886\n"
-					"lut_reference_range: AUTO\n"
-					"lut_reference_nits: AUTO\n";
+					"lut_reference_range: full\n"
+					"lut_reference_nits: 100\n"
+					"lut_reference_black_nits: 0.005\n"
+					"lut_authoring_code_depth: 10\n"
+					"lut_cube_size: 65\n"
+					"lut_content_sha256: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n"
+					"lut_carrier_identity_sha256: 00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff\n"
+					"lut_direct_delivery_authority: external_attested\n"
+					"lut_external_color_management: none_attested\n"
+					"lut_display_mode: calibrated_sdr\n"
+					"lut_display_mode_authority: manual_attested\n"
+					"lut_attestation_record_sha256: abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789\n"
+					"lut_external_analyzer_record_sha256: fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210\n";
 			}
 
 			ConfigFile config;

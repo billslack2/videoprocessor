@@ -46,8 +46,11 @@
 
 #include <dxgi1_6.h>
 #include <nvapi.h>
+#include <setupapi.h>
 #include <wincodec.h>
 #include <bcrypt.h>
+
+#pragma comment(lib, "setupapi.lib")
 
 #include <algorithm>
 #include <array>
@@ -970,7 +973,30 @@ namespace
 		std::string lutReferenceTransfer = "auto";
 		std::string lutReferenceRange = "auto";
 		double lutReferenceNits = 0.0;
+		bool lutReferenceBlackConfigured = false;
+		double lutReferenceBlackNits = 0.0;
+		unsigned int lutAuthoringCodeDepth = 0;
+		unsigned int lutCubeSize = 0;
+		std::string lutContentSha256;
+		std::string lutCarrierIdentitySha256;
+		// Observed on-disk identity used only to detect an explicit configuration
+		// reapply after an in-place file replacement. It is never contract proof.
+		std::string lutDiskContentSha256;
+		std::string lutDirectDeliveryAuthority;
+		std::string lutExternalColorManagement;
+		std::string lutDisplayMode;
+		std::string lutDisplayModeAuthority;
+		std::string lutAttestationRecordSha256;
+		std::string lutExternalAnalyzerRecordSha256;
+		bool lutSelectedProfile = false;
+		std::string lutSelectedProfileName;
 	};
+
+	bool VpOwnedPresenterRequested(const RendererSettings& settings)
+	{
+		return settings.outputPresentation == "calibrated_direct" ||
+			settings.diagnosticVpOwnedDxgiPresenter;
+	}
 
 	AlphaSourceCrop::VerticalPictureAlignment ResolveVerticalPictureAlignment(
 		const std::string& alignment)
@@ -1041,7 +1067,53 @@ namespace
 			<< settings.lutPath << '|'
 			<< settings.lutPathRejected << '|' << settings.lutReferencePrimaries << '|'
 			<< settings.lutReferenceTransfer << '|' << settings.lutReferenceRange << '|'
-			<< settings.lutReferenceNits;
+			<< settings.lutReferenceNits << '|'
+			<< settings.lutReferenceBlackConfigured << '|'
+			<< settings.lutReferenceBlackNits << '|'
+			<< settings.lutAuthoringCodeDepth << '|' << settings.lutCubeSize << '|'
+			<< settings.lutContentSha256 << '|'
+			<< settings.lutCarrierIdentitySha256 << '|'
+			<< settings.lutDiskContentSha256 << '|'
+			<< settings.lutDirectDeliveryAuthority << '|'
+			<< settings.lutExternalColorManagement << '|'
+			<< settings.lutDisplayMode << '|'
+			<< settings.lutDisplayModeAuthority << '|'
+			<< settings.lutAttestationRecordSha256 << '|'
+			<< settings.lutExternalAnalyzerRecordSha256 << '|'
+			<< settings.lutSelectedProfile << '|'
+			<< settings.lutSelectedProfileName;
+		return stream.str();
+	}
+
+	std::string LutContractDeclarationFingerprint(
+		const RendererSettings& settings)
+	{
+		std::ostringstream stream;
+		stream.imbue(std::locale::classic());
+		stream.precision(17);
+		stream << settings.lutPath << '|' << settings.lutPathRejected << '|'
+			<< settings.lutConstrainedBaseDirectory << '|'
+			<< settings.lutReferencePrimaries << '|'
+			<< settings.lutReferenceTransfer << '|'
+			<< settings.lutReferenceRange << '|' << settings.lutReferenceNits << '|'
+			<< settings.lutReferenceBlackConfigured << '|'
+			<< settings.lutReferenceBlackNits << '|'
+			<< settings.lutAuthoringCodeDepth << '|' << settings.lutCubeSize << '|'
+			<< settings.lutContentSha256 << '|'
+			<< settings.lutCarrierIdentitySha256 << '|'
+			<< settings.lutDirectDeliveryAuthority << '|'
+			<< settings.lutExternalColorManagement << '|'
+			<< settings.lutDisplayMode << '|'
+			<< settings.lutDisplayModeAuthority << '|'
+			<< settings.lutAttestationRecordSha256 << '|'
+			<< settings.lutExternalAnalyzerRecordSha256 << '|'
+			<< settings.lutSelectedProfile << '|'
+			<< settings.lutSelectedProfileName << '|'
+			<< settings.sdrTargetPrimaries << '|' << settings.sdrTargetNits << '|'
+			<< settings.sdrBlackNits << '|' << settings.outputPresentation << '|'
+			<< settings.outputRange << '|' << settings.outputTransportGamma << '|'
+			<< settings.outputGamma << '|' << settings.displayBitDepth << '|'
+			<< settings.reportBt2020ToDisplay;
 		return stream.str();
 	}
 
@@ -1681,7 +1753,7 @@ namespace
 		readChoice("display_bit_depth", settings.displayBitDepth,
 			{ "auto", "8", "10" });
 		readChoice("output_presentation", settings.outputPresentation,
-			{ "auto", "composed", "direct" });
+			{ "auto", "composed", "direct", "calibrated_direct" });
 		readChoice("output_range", settings.outputRange, { "auto", "full", "limited" });
 		readChoice("output_transport_gamma", settings.outputTransportGamma,
 			{ "auto", "2.2", "2.4" });
@@ -1744,10 +1816,80 @@ namespace
 				}
 			}
 		}
-		if (config.TryGetString(rule.section, "lut", raw))
+		const char* lutContractKeys[] = {
+			"lut_reference_primaries", "lut_reference_transfer",
+			"lut_reference_range", "lut_reference_nits",
+			"lut_reference_black_nits", "lut_authoring_code_depth",
+			"lut_cube_size", "lut_content_sha256",
+			"lut_carrier_identity_sha256",
+			"lut_direct_delivery_authority",
+			"lut_external_color_management", "lut_display_mode",
+			"lut_display_mode_authority", "lut_attestation_record_sha256",
+			"lut_external_analyzer_record_sha256" };
+		std::string sectionLut;
+		const bool sectionOwnsLut =
+			config.TryGetString(rule.section, "lut", sectionLut);
+		bool sectionOverridesContract = false;
+		for (const char* key : lutContractKeys)
+		{
+			std::string declaration;
+			if (config.TryGetString(rule.section, key, declaration))
+				sectionOverridesContract = true;
+		}
+		if (!sectionOwnsLut && sectionOverridesContract &&
+			settings.lutSelectedProfile)
+		{
+			settings.lutSelectedProfile = false;
+			settings.lutSelectedProfileName.clear();
+			DebugLog::Log(
+				"display rule '%s': LUT declarations override another LUT-bearing profile; activation will fail closed",
+				rule.name.c_str());
+		}
+		if (sectionOwnsLut)
+		{
 			settings.lutPath = ResolveConfigRelativePath(
-				config, raw, &settings.lutPathRejected,
+				config, sectionLut, &settings.lutPathRejected,
 				&settings.lutConstrainedBaseDirectory);
+			// Contract origin is earned only when the selected section itself owns
+			// the cube and every v1 declaration. Inherited root values may remain
+			// readable for compatibility, but cannot masquerade as one calibrated
+			// profile record.
+			std::string expectedSetting;
+			bool completeRecord = RendererProfileConfig::ValidateProfileSetting(
+				"display", "lut", sectionLut, expectedSetting);
+			for (const char* key : lutContractKeys)
+			{
+				if (std::string(key) == "lut_external_analyzer_record_sha256")
+					continue;
+				std::string declaration;
+				if (!config.TryGetString(rule.section, key, declaration) ||
+					!RendererProfileConfig::ValidateProfileSetting(
+						"display", key, declaration, expectedSetting))
+					completeRecord = false;
+			}
+			std::string authority;
+			if (config.TryGetString(
+				rule.section, "lut_display_mode_authority", authority) &&
+				ConfigFile::NormalizeName(authority) ==
+					"nvidia_external_verified")
+			{
+				std::string analyzerRecord;
+				if (!config.TryGetString(rule.section,
+					"lut_external_analyzer_record_sha256", analyzerRecord) ||
+					!RendererProfileConfig::ValidateProfileSetting(
+						"display", "lut_external_analyzer_record_sha256",
+						analyzerRecord, expectedSetting))
+					completeRecord = false;
+			}
+			settings.lutSelectedProfile = completeRecord;
+			settings.lutSelectedProfileName = completeRecord ? rule.name : "";
+			if (!completeRecord)
+			{
+				DebugLog::Log(
+					"display rule '%s': LUT contract is not wholly declared in the selected profile; activation will fail closed",
+					rule.name.c_str());
+			}
+		}
 		readChoice("lut_reference_primaries", settings.lutReferencePrimaries,
 			{ "auto", "rec709", "p3_d65", "bt2020" });
 		readChoice("lut_reference_transfer", settings.lutReferenceTransfer,
@@ -1772,6 +1914,41 @@ namespace
 						raw.c_str());
 			}
 		}
+		if (config.TryGetString(rule.section, "lut_reference_black_nits", raw))
+		{
+			double value = 0.0;
+			if (ParseDouble(raw, value) && value >= 0.0 && value < 500.0)
+			{
+				settings.lutReferenceBlackConfigured = true;
+				settings.lutReferenceBlackNits = value;
+			}
+		}
+		if (config.TryGetString(rule.section, "lut_authoring_code_depth", raw))
+		{
+			int value = 0;
+			if (ParseInteger(raw, 10, 10, value))
+				settings.lutAuthoringCodeDepth = static_cast<unsigned int>(value);
+		}
+		if (config.TryGetString(rule.section, "lut_cube_size", raw))
+		{
+			int value = 0;
+			if (ParseInteger(raw, 2, 128, value))
+				settings.lutCubeSize = static_cast<unsigned int>(value);
+		}
+		auto readLutString = [&config, &rule](const char* key, std::string& value)
+		{
+			std::string candidate;
+			if (config.TryGetString(rule.section, key, candidate))
+				value = ConfigFile::Trim(candidate);
+		};
+		readLutString("lut_content_sha256", settings.lutContentSha256);
+		readLutString("lut_carrier_identity_sha256", settings.lutCarrierIdentitySha256);
+		readLutString("lut_direct_delivery_authority", settings.lutDirectDeliveryAuthority);
+		readLutString("lut_external_color_management", settings.lutExternalColorManagement);
+		readLutString("lut_display_mode", settings.lutDisplayMode);
+		readLutString("lut_display_mode_authority", settings.lutDisplayModeAuthority);
+		readLutString("lut_attestation_record_sha256", settings.lutAttestationRecordSha256);
+		readLutString("lut_external_analyzer_record_sha256", settings.lutExternalAnalyzerRecordSha256);
 		const auto readViewportString = [&](const char* genericKey,
 			std::string& value)
 		{
@@ -2032,7 +2209,7 @@ namespace
 			config, "display_bit_depth", "auto", { "auto", "8", "10" });
 		settings.outputPresentation = ReadChoice(
 			config, "output_presentation", "auto",
-			{ "auto", "composed", "direct" });
+			{ "auto", "composed", "direct", "calibrated_direct" });
 		settings.outputRange = ReadChoice(
 			config, "output_range", "auto", { "auto", "full", "limited" });
 		settings.outputTransportGamma = ReadChoice(
@@ -2157,6 +2334,41 @@ namespace
 				DebugLog::Log(
 					"display: lut_reference_nits must be AUTO or between 40 and 500; using AUTO");
 		}
+		if (TryGetDisplayString(config, "lut_reference_black_nits", rawValue))
+		{
+			double parsed = 0.0;
+			if (ParseDouble(rawValue, parsed) && parsed >= 0.0 && parsed < 500.0)
+			{
+				settings.lutReferenceBlackConfigured = true;
+				settings.lutReferenceBlackNits = parsed;
+			}
+		}
+		if (TryGetDisplayString(config, "lut_authoring_code_depth", rawValue))
+		{
+			int parsed = 0;
+			if (ParseInteger(rawValue, 10, 10, parsed))
+				settings.lutAuthoringCodeDepth = static_cast<unsigned int>(parsed);
+		}
+		if (TryGetDisplayString(config, "lut_cube_size", rawValue))
+		{
+			int parsed = 0;
+			if (ParseInteger(rawValue, 2, 128, parsed))
+				settings.lutCubeSize = static_cast<unsigned int>(parsed);
+		}
+		auto readLutString = [&config](const char* key, std::string& value)
+		{
+			std::string candidate;
+			if (TryGetDisplayString(config, key, candidate))
+				value = ConfigFile::Trim(candidate);
+		};
+		readLutString("lut_content_sha256", settings.lutContentSha256);
+		readLutString("lut_carrier_identity_sha256", settings.lutCarrierIdentitySha256);
+		readLutString("lut_direct_delivery_authority", settings.lutDirectDeliveryAuthority);
+		readLutString("lut_external_color_management", settings.lutExternalColorManagement);
+		readLutString("lut_display_mode", settings.lutDisplayMode);
+		readLutString("lut_display_mode_authority", settings.lutDisplayModeAuthority);
+		readLutString("lut_attestation_record_sha256", settings.lutAttestationRecordSha256);
+		readLutString("lut_external_analyzer_record_sha256", settings.lutExternalAnalyzerRecordSha256);
 		if (TryGetDisplayString(config, "subtitle_fit", rawValue) &&
 			!TryGetDisplayBool(config, "subtitle_fit", settings.scopeSubtitleFit))
 		{
@@ -2511,6 +2723,14 @@ namespace
 		// dependency once all profiles have been applied, so it never reaches the
 		// output path in an invalid state.
 		NormalizeSdrBlackLevel(settings);
+		if (!settings.lutPath.empty() && !settings.lutPathRejected)
+		{
+			LibplaceboDisplayLut::LoadResult diskProbe =
+				LibplaceboDisplayLut::Load(nullptr, settings.lutPath,
+					settings.lutConstrainedBaseDirectory);
+			settings.lutDiskContentSha256 = diskProbe.contentSha256;
+			pl_lut_free(&diskProbe.lut);
+		}
 		return settings;
 	}
 
@@ -2710,12 +2930,14 @@ namespace
 		UINT32& modeCount,
 		size_t& matchingPath)
 	{
+		const UINT32 queryFlags =
+			QDC_ONLY_ACTIVE_PATHS | QDC_VIRTUAL_MODE_AWARE;
 		for (int attempt = 0; attempt < 3; ++attempt)
 		{
 			pathCount = 0;
 			modeCount = 0;
 			if (GetDisplayConfigBufferSizes(
-				QDC_ONLY_ACTIVE_PATHS, &pathCount, &modeCount) != ERROR_SUCCESS ||
+				queryFlags, &pathCount, &modeCount) != ERROR_SUCCESS ||
 				pathCount == 0)
 			{
 				return false;
@@ -2724,7 +2946,7 @@ namespace
 			paths.resize(pathCount);
 			modes.resize(modeCount);
 			const LONG queryResult = QueryDisplayConfig(
-				QDC_ONLY_ACTIVE_PATHS,
+				queryFlags,
 				&pathCount,
 				paths.data(),
 				&modeCount,
@@ -2735,6 +2957,7 @@ namespace
 			if (queryResult != ERROR_SUCCESS)
 				return false;
 
+			size_t matchCount = 0;
 			for (UINT32 pathIndex = 0; pathIndex < pathCount; ++pathIndex)
 			{
 				DISPLAYCONFIG_SOURCE_DEVICE_NAME sourceName{};
@@ -2746,12 +2969,375 @@ namespace
 					displayDeviceName == sourceName.viewGdiDeviceName)
 				{
 					matchingPath = pathIndex;
-					return true;
+					++matchCount;
 				}
 			}
-			return false;
+			// A cloned source can feed multiple physical targets. Calibration
+			// evidence may only bind a route when its target is unambiguous.
+			return matchCount == 1;
 		}
 		return false;
+	}
+
+	LibplaceboLutContract::OutputTechnology TranslateOutputTechnology(
+		DISPLAYCONFIG_VIDEO_OUTPUT_TECHNOLOGY technology)
+	{
+		using LibplaceboLutContract::OutputTechnology;
+		switch (technology)
+		{
+		case DISPLAYCONFIG_OUTPUT_TECHNOLOGY_HDMI:
+			return OutputTechnology::HDMI;
+		case DISPLAYCONFIG_OUTPUT_TECHNOLOGY_DISPLAYPORT_EXTERNAL:
+			return OutputTechnology::DISPLAYPORT;
+		case DISPLAYCONFIG_OUTPUT_TECHNOLOGY_DVI:
+			return OutputTechnology::DVI;
+		case DISPLAYCONFIG_OUTPUT_TECHNOLOGY_LVDS:
+		case DISPLAYCONFIG_OUTPUT_TECHNOLOGY_DISPLAYPORT_EMBEDDED:
+		case DISPLAYCONFIG_OUTPUT_TECHNOLOGY_UDI_EMBEDDED:
+		case DISPLAYCONFIG_OUTPUT_TECHNOLOGY_INTERNAL:
+			return OutputTechnology::INTERNAL;
+		default:
+			return OutputTechnology::UNKNOWN;
+		}
+	}
+
+	std::string ReadEdidSha256(const std::wstring& monitorDevicePath)
+	{
+		if (monitorDevicePath.empty())
+			return {};
+
+		const GUID monitorInterfaceGuid =
+			{ 0xe6f07b5f, 0xee97, 0x4a90,
+			{ 0xb0, 0x76, 0x33, 0xf5, 0x7b, 0xf4, 0xea, 0xa7 } };
+		HDEVINFO devices = SetupDiGetClassDevsW(
+			&monitorInterfaceGuid, nullptr, nullptr,
+			DIGCF_PRESENT | DIGCF_DEVICEINTERFACE);
+		if (devices == INVALID_HANDLE_VALUE)
+			return {};
+
+		std::string digest;
+		for (DWORD index = 0; ; ++index)
+		{
+			SP_DEVICE_INTERFACE_DATA interfaceData{};
+			interfaceData.cbSize = sizeof(interfaceData);
+			if (!SetupDiEnumDeviceInterfaces(
+				devices, nullptr, &monitorInterfaceGuid, index, &interfaceData))
+			{
+				break;
+			}
+
+			DWORD required = 0;
+			SetupDiGetDeviceInterfaceDetailW(
+				devices, &interfaceData, nullptr, 0, &required, nullptr);
+			if (required < sizeof(SP_DEVICE_INTERFACE_DETAIL_DATA_W))
+				continue;
+			std::vector<unsigned char> detailBytes(required);
+			auto* detail = reinterpret_cast<SP_DEVICE_INTERFACE_DETAIL_DATA_W*>(
+				detailBytes.data());
+			detail->cbSize = sizeof(SP_DEVICE_INTERFACE_DETAIL_DATA_W);
+			SP_DEVINFO_DATA deviceData{};
+			deviceData.cbSize = sizeof(deviceData);
+			if (!SetupDiGetDeviceInterfaceDetailW(
+				devices, &interfaceData, detail, required, nullptr, &deviceData) ||
+				_wcsicmp(detail->DevicePath, monitorDevicePath.c_str()) != 0)
+			{
+				continue;
+			}
+
+			HKEY key = SetupDiOpenDevRegKey(
+				devices, &deviceData, DICS_FLAG_GLOBAL, 0, DIREG_DEV, KEY_READ);
+			if (key == INVALID_HANDLE_VALUE)
+				break;
+			DWORD type = 0;
+			DWORD bytes = 0;
+			LONG status = RegQueryValueExW(
+				key, L"EDID", nullptr, &type, nullptr, &bytes);
+			if (status == ERROR_SUCCESS && type == REG_BINARY &&
+				bytes >= 128 && bytes % 128 == 0)
+			{
+				std::string edid(bytes, '\0');
+				status = RegQueryValueExW(
+					key, L"EDID", nullptr, &type,
+					reinterpret_cast<LPBYTE>(&edid[0]), &bytes);
+				if (status == ERROR_SUCCESS && type == REG_BINARY)
+				{
+					edid.resize(bytes);
+					static const unsigned char header[] =
+						{ 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00 };
+					bool valid = edid.size() >= 128 && edid.size() % 128 == 0 &&
+						std::memcmp(edid.data(), header, sizeof(header)) == 0 &&
+						static_cast<unsigned char>(edid[126]) + 1 ==
+							edid.size() / 128;
+					for (size_t block = 0; valid && block < edid.size(); block += 128)
+					{
+						unsigned int checksum = 0;
+						for (size_t offset = 0; offset < 128; ++offset)
+							checksum += static_cast<unsigned char>(edid[block + offset]);
+						valid = (checksum & 0xff) == 0;
+					}
+					if (valid)
+						LibplaceboDisplayLut::ComputeSha256(edid, digest);
+				}
+			}
+			RegCloseKey(key);
+			break;
+		}
+		SetupDiDestroyDeviceInfoList(devices);
+		return digest;
+	}
+
+	struct ObservedDisplayRoute
+	{
+		LibplaceboLutContract::AdvancedColorState advancedColor =
+			LibplaceboLutContract::AdvancedColorState::UNKNOWN;
+		unsigned int displayBitDepth = 0;
+		LibplaceboLutContract::CarrierIdentity identity;
+	};
+
+	std::string CanonicalCarrierIdentity(
+		const LibplaceboLutContract::CarrierIdentity& identity)
+	{
+		std::ostringstream value;
+		value.imbue(std::locale::classic());
+		value << "schema=" << identity.schemaVersion <<
+			";edid=" << ConfigFile::NormalizeName(identity.edidSha256) <<
+			";monitor_path=" << ConfigFile::NormalizeName(
+				identity.monitorDevicePathSha256) <<
+			";dc_adapter_known=" << identity.displayConfigAdapter.known <<
+			";dc_adapter_high=" << identity.displayConfigAdapter.highPart <<
+			";dc_adapter_low=" << identity.displayConfigAdapter.lowPart <<
+			";dc_target_known=" << identity.displayConfigTargetKnown <<
+			";dc_target=" << identity.displayConfigTargetId <<
+			";connector_known=" << identity.connectorInstanceKnown <<
+			";connector=" << identity.connectorInstance <<
+			";technology=" << static_cast<int>(identity.outputTechnology) <<
+			";width=" << identity.activeWidth <<
+			";height=" << identity.activeHeight <<
+			";refresh_n=" << identity.refreshNumerator <<
+			";refresh_d=" << identity.refreshDenominator <<
+			";scanline_known=" << identity.scanlineOrderingKnown <<
+			";scanline=" << identity.scanlineOrdering <<
+			";scaling_known=" << identity.scalingKnown <<
+			";scaling=" << identity.scaling <<
+			";renderer_adapter_known=" << identity.rendererAdapter.known <<
+			";renderer_adapter_high=" << identity.rendererAdapter.highPart <<
+			";renderer_adapter_low=" << identity.rendererAdapter.lowPart <<
+			";driver_known=" << identity.driverVersionKnown <<
+			";driver=" << identity.driverVersion;
+		return value.str();
+	}
+
+	std::string CarrierIdentitySha256(
+		const LibplaceboLutContract::CarrierIdentity& identity)
+	{
+		std::string digest;
+		LibplaceboDisplayLut::ComputeSha256(
+			CanonicalCarrierIdentity(identity), digest);
+		return digest;
+	}
+
+	ObservedDisplayRoute QueryObservedDisplayRoute(
+		const std::wstring& deviceName,
+		HMONITOR monitor,
+		ID3D11Device* d3dDevice,
+		IDXGISwapChain* presentationSwapchain,
+		std::wstring& cachedEdidDevicePath,
+		std::string& cachedEdidSha256,
+		bool refreshEdid)
+	{
+		ObservedDisplayRoute observed;
+		using LibplaceboLutContract::AdvancedColorState;
+		std::vector<DISPLAYCONFIG_PATH_INFO> paths;
+		std::vector<DISPLAYCONFIG_MODE_INFO> modes;
+		UINT32 pathCount = 0;
+		UINT32 modeCount = 0;
+		size_t pathIndex = 0;
+		if (deviceName.empty() || !QueryDisplayPath(
+			deviceName, paths, modes, pathCount, modeCount, pathIndex))
+		{
+			return observed;
+		}
+		const DISPLAYCONFIG_PATH_TARGET_INFO& target =
+			paths[pathIndex].targetInfo;
+		if (!target.targetAvailable)
+			return observed;
+		observed.identity.schemaVersion =
+			LibplaceboLutContract::CARRIER_IDENTITY_SCHEMA_VERSION;
+		observed.identity.displayConfigAdapter.known = true;
+		observed.identity.displayConfigAdapter.highPart =
+			target.adapterId.HighPart;
+		observed.identity.displayConfigAdapter.lowPart =
+			target.adapterId.LowPart;
+		observed.identity.displayConfigTargetKnown = true;
+		observed.identity.displayConfigTargetId = target.id;
+		observed.identity.outputTechnology =
+			TranslateOutputTechnology(target.outputTechnology);
+		observed.identity.refreshNumerator = target.refreshRate.Numerator;
+		observed.identity.refreshDenominator = target.refreshRate.Denominator;
+		observed.identity.scanlineOrderingKnown =
+			target.scanLineOrdering !=
+				DISPLAYCONFIG_SCANLINE_ORDERING_UNSPECIFIED;
+		observed.identity.scanlineOrdering =
+			static_cast<uint32_t>(target.scanLineOrdering);
+		observed.identity.scalingKnown =
+			target.scaling != static_cast<DISPLAYCONFIG_SCALING>(0) &&
+			target.scaling != DISPLAYCONFIG_SCALING_FORCE_UINT32;
+		observed.identity.scaling = static_cast<uint32_t>(target.scaling);
+
+		const UINT32 targetModeIndex =
+			(paths[pathIndex].flags & DISPLAYCONFIG_PATH_SUPPORT_VIRTUAL_MODE) != 0 ?
+				target.targetModeInfoIdx : target.modeInfoIdx;
+		if (targetModeIndex < modeCount)
+		{
+			const DISPLAYCONFIG_MODE_INFO& mode = modes[targetModeIndex];
+			if (mode.infoType == DISPLAYCONFIG_MODE_INFO_TYPE_TARGET &&
+				mode.id == target.id &&
+				mode.adapterId.HighPart == target.adapterId.HighPart &&
+				mode.adapterId.LowPart == target.adapterId.LowPart)
+			{
+				const DISPLAYCONFIG_VIDEO_SIGNAL_INFO& signal =
+					mode.targetMode.targetVideoSignalInfo;
+				observed.identity.activeWidth = signal.activeSize.cx;
+				observed.identity.activeHeight = signal.activeSize.cy;
+				if (signal.vSyncFreq.Numerator > 0 &&
+					signal.vSyncFreq.Denominator > 0)
+				{
+					observed.identity.refreshNumerator =
+						signal.vSyncFreq.Numerator;
+					observed.identity.refreshDenominator =
+						signal.vSyncFreq.Denominator;
+				}
+				observed.identity.scanlineOrderingKnown =
+					signal.scanLineOrdering !=
+						DISPLAYCONFIG_SCANLINE_ORDERING_UNSPECIFIED;
+				observed.identity.scanlineOrdering =
+					static_cast<uint32_t>(signal.scanLineOrdering);
+			}
+		}
+
+		DISPLAYCONFIG_TARGET_DEVICE_NAME targetName{};
+		targetName.header.type = DISPLAYCONFIG_DEVICE_INFO_GET_TARGET_NAME;
+		targetName.header.size = sizeof(targetName);
+		targetName.header.adapterId = target.adapterId;
+		targetName.header.id = target.id;
+		if (DisplayConfigGetDeviceInfo(&targetName.header) == ERROR_SUCCESS &&
+			targetName.flags.edidIdsValid && targetName.monitorDevicePath[0])
+		{
+			const std::wstring monitorPath = targetName.monitorDevicePath;
+			std::string normalizedMonitorPath = ConfigFile::NormalizeName(
+				WideToUtf8(monitorPath));
+			LibplaceboDisplayLut::ComputeSha256(
+				normalizedMonitorPath,
+				observed.identity.monitorDevicePathSha256);
+			observed.identity.connectorInstanceKnown = true;
+			observed.identity.connectorInstance = targetName.connectorInstance;
+			if (refreshEdid || cachedEdidDevicePath != monitorPath)
+			{
+				cachedEdidSha256 = ReadEdidSha256(monitorPath);
+				cachedEdidDevicePath = monitorPath;
+			}
+			observed.identity.edidSha256 = cachedEdidSha256;
+		}
+
+		unsigned int displayConfigBitDepth = 0;
+		DISPLAYCONFIG_GET_ADVANCED_COLOR_INFO_2 information2{};
+		information2.header.type =
+			DISPLAYCONFIG_DEVICE_INFO_GET_ADVANCED_COLOR_INFO_2;
+		information2.header.size = sizeof(information2);
+		information2.header.adapterId = target.adapterId;
+		information2.header.id = target.id;
+		if (DisplayConfigGetDeviceInfo(&information2.header) == ERROR_SUCCESS)
+		{
+			const bool confirmedSdr =
+				information2.activeColorMode ==
+					DISPLAYCONFIG_ADVANCED_COLOR_MODE_SDR &&
+				!information2.advancedColorActive &&
+				!information2.highDynamicRangeUserEnabled &&
+				!information2.wideColorUserEnabled;
+			observed.advancedColor = confirmedSdr ?
+				AdvancedColorState::DISABLED : AdvancedColorState::ENABLED;
+			if (information2.colorEncoding == DISPLAYCONFIG_COLOR_ENCODING_RGB)
+				displayConfigBitDepth = information2.bitsPerColorChannel;
+		}
+		else
+		{
+			DISPLAYCONFIG_GET_ADVANCED_COLOR_INFO information{};
+			information.header.type =
+				DISPLAYCONFIG_DEVICE_INFO_GET_ADVANCED_COLOR_INFO;
+			information.header.size = sizeof(information);
+			information.header.adapterId = target.adapterId;
+			information.header.id = target.id;
+			if (DisplayConfigGetDeviceInfo(&information.header) == ERROR_SUCCESS)
+			{
+				const bool confirmedLegacySdr =
+					!information.advancedColorEnabled &&
+					!information.wideColorEnforced;
+				observed.advancedColor = confirmedLegacySdr ?
+					AdvancedColorState::DISABLED : AdvancedColorState::ENABLED;
+				if (information.colorEncoding == DISPLAYCONFIG_COLOR_ENCODING_RGB)
+					displayConfigBitDepth = information.bitsPerColorChannel;
+			}
+		}
+
+		CComQIPtr<IDXGIDevice> dxgiDevice(d3dDevice);
+		CComPtr<IDXGIAdapter> adapter;
+		if (dxgiDevice && SUCCEEDED(dxgiDevice->GetAdapter(&adapter)) && adapter)
+		{
+			DXGI_ADAPTER_DESC adapterDescription{};
+			LARGE_INTEGER driverVersion{};
+			if (SUCCEEDED(adapter->GetDesc(&adapterDescription)))
+			{
+				observed.identity.rendererAdapter.known = true;
+				observed.identity.rendererAdapter.highPart =
+					adapterDescription.AdapterLuid.HighPart;
+				observed.identity.rendererAdapter.lowPart =
+					adapterDescription.AdapterLuid.LowPart;
+			}
+			if (SUCCEEDED(adapter->CheckInterfaceSupport(
+				__uuidof(IDXGIDevice), &driverVersion)))
+			{
+				observed.identity.driverVersionKnown = true;
+				observed.identity.driverVersion =
+					(static_cast<uint64_t>(
+						static_cast<uint32_t>(driverVersion.HighPart)) << 32) |
+					static_cast<uint32_t>(driverVersion.LowPart);
+			}
+		}
+		const bool sameAdapter =
+			observed.identity.rendererAdapter.known &&
+			observed.identity.displayConfigAdapter.known &&
+			observed.identity.rendererAdapter.highPart ==
+				observed.identity.displayConfigAdapter.highPart &&
+			observed.identity.rendererAdapter.lowPart ==
+				observed.identity.displayConfigAdapter.lowPart;
+		if (!sameAdapter)
+		{
+			observed.identity.rendererAdapter = {};
+			observed.identity.driverVersionKnown = false;
+			observed.identity.driverVersion = 0;
+			return observed;
+		}
+
+		CComPtr<IDXGIOutput> containingOutput;
+		DXGI_OUTPUT_DESC outputDescription{};
+		CComQIPtr<IDXGIOutput6> output6;
+		DXGI_OUTPUT_DESC1 outputDescription1{};
+		if (presentationSwapchain &&
+			SUCCEEDED(presentationSwapchain->GetContainingOutput(&containingOutput)) &&
+			containingOutput &&
+			SUCCEEDED(containingOutput->GetDesc(&outputDescription)) &&
+			deviceName == outputDescription.DeviceName &&
+			monitor && monitor == outputDescription.Monitor)
+		{
+			output6 = containingOutput;
+			if (output6 && SUCCEEDED(output6->GetDesc1(&outputDescription1)) &&
+				displayConfigBitDepth > 0 &&
+				outputDescription1.BitsPerColor == displayConfigBitDepth)
+			{
+				observed.displayBitDepth = outputDescription1.BitsPerColor;
+			}
+		}
+		return observed;
 	}
 
 	LONG ApplyDisplayRefreshRate(
@@ -3118,6 +3704,9 @@ struct LibplaceboVideoRenderer::Impl
 	bool displayLutParsed = false;
 	bool displayLutActive = false;
 	uint64_t displayLutReloadGeneration = 0;
+	LibplaceboLutContract::ResolvedContract displayLutContract;
+	LibplaceboLutContract::ActiveResourceEvidence displayLutResourceEvidence;
+	uint64_t calibrationContractGeneration = 0;
 	std::unique_ptr<IVideoFrameFormatter> formatter;
 	VideoStateComPtr formatterState;
 	std::vector<BYTE> convertedFrame;
@@ -3170,6 +3759,9 @@ struct LibplaceboVideoRenderer::Impl
 	bool reportBt2020ToDisplay = false;
 	bool bt2020SignalingFailed = false;
 	std::wstring negotiatedDisplayDeviceName;
+	mutable std::wstring carrierEdidDevicePath;
+	mutable std::string carrierEdidSha256;
+	mutable ULONGLONG nextCarrierEdidRefreshTick = 0;
 	NvidiaBt2020Reporter nvidiaBt2020Reporter;
 	bool swapchainBlit = true;
 	bool suppressLimitedNegotiation = false;
@@ -5372,6 +5964,9 @@ struct LibplaceboVideoRenderer::Impl
 		}
 		vpOwnedSwapchain = created;
 		++vpOwnedSwapchainGeneration;
+		carrierEdidDevicePath.clear();
+		carrierEdidSha256.clear();
+		nextCarrierEdidRefreshTick = 0;
 		vpOwnedAppliedEncoding = "unapplied";
 		vpOwnedColorSpaceResult = E_PENDING;
 		vpOwnedColorSpaceVerified = false;
@@ -5840,8 +6435,8 @@ struct LibplaceboVideoRenderer::Impl
 		// clear already demonstrated that mismatch). Keep Composed on the proven
 		// libplacebo-owned path instead of presenting a black experimental surface.
 		const bool useVpOwnedDxgiPresenter =
-			activeSettings.diagnosticVpOwnedDxgiPresenter && !blit;
-		if (activeSettings.diagnosticVpOwnedDxgiPresenter && blit)
+			VpOwnedPresenterRequested(activeSettings) && !blit;
+		if (VpOwnedPresenterRequested(activeSettings) && blit)
 		{
 			DebugLog::Log(
 				"VP-owned DXGI swapchain: requested=1 applied=0 trigger=%s reason=the VP-owned beta presenter supports flip/direct only; using libplacebo-owned composed swapchain",
@@ -5968,7 +6563,144 @@ struct LibplaceboVideoRenderer::Impl
 		return separator == std::string::npos ? path : path.substr(separator + 1);
 	}
 
-	void LoadDisplayLut(const RendererSettings& settings)
+	void FreezeDisplayLutContract(const RendererSettings& settings)
+	{
+		using namespace LibplaceboLutContract;
+		const auto primaries = [](enum pl_color_primaries value)
+		{
+			switch (value)
+			{
+			case PL_COLOR_PRIM_BT_709: return InputPrimaries::REC709;
+			case PL_COLOR_PRIM_BT_2020: return InputPrimaries::BT2020;
+			case PL_COLOR_PRIM_DISPLAY_P3: return InputPrimaries::P3_D65;
+			case PL_COLOR_PRIM_UNKNOWN: return InputPrimaries::UNKNOWN;
+			default: return InputPrimaries::OTHER;
+			}
+		};
+		const auto transfer = [](enum pl_color_transfer value)
+		{
+			switch (value)
+			{
+			case PL_COLOR_TRC_SRGB: return InputTransfer::SRGB;
+			case PL_COLOR_TRC_GAMMA22: return InputTransfer::GAMMA22;
+			case PL_COLOR_TRC_GAMMA24: return InputTransfer::GAMMA24;
+			case PL_COLOR_TRC_BT_1886: return InputTransfer::BT1886;
+			case PL_COLOR_TRC_PQ: return InputTransfer::PQ;
+			case PL_COLOR_TRC_HLG: return InputTransfer::HLG;
+			case PL_COLOR_TRC_UNKNOWN: return InputTransfer::UNKNOWN;
+			default: return InputTransfer::OTHER;
+			}
+		};
+
+		ResolvedContract resolved;
+		resolved.role = Role::TARGET_DISPLAY_CALIBRATION;
+		resolved.scope = Scope::VIDEO_PICTURE;
+		resolved.attachmentStage =
+			AttachmentStage::TARGET_NATIVE_POST_ENCODE_PRE_DITHER;
+		resolved.nativeOutputSemantics =
+			NativeOutputSemantics::OPAQUE_DEVICE_DRIVE;
+		resolved.origin = settings.lutSelectedProfile ?
+			ContractOrigin::SELECTED_RENDERER_PROFILE : ContractOrigin::UNKNOWN;
+
+		enum pl_color_primaries expectedPrimaries =
+			settings.sdrTargetPrimaries == "bt2020" ?
+				PL_COLOR_PRIM_BT_2020 : PL_COLOR_PRIM_BT_709;
+		if (settings.lutReferencePrimaries == "rec709")
+			expectedPrimaries = PL_COLOR_PRIM_BT_709;
+		else if (settings.lutReferencePrimaries == "p3_d65")
+			expectedPrimaries = PL_COLOR_PRIM_DISPLAY_P3;
+		else if (settings.lutReferencePrimaries == "bt2020")
+			expectedPrimaries = PL_COLOR_PRIM_BT_2020;
+		resolved.inputPrimaries = primaries(expectedPrimaries);
+		resolved.inputTransfer = transfer(
+			settings.lutReferenceTransfer == "auto" ?
+				ResolvedPixelTransfer(actualOutput.encoding, actualOutput.targetTransfer) :
+				TranslateOutputGamma(settings.lutReferenceTransfer));
+		resolved.inputRange = settings.lutReferenceRange == "limited" ?
+			InputRange::LIMITED : InputRange::FULL;
+		resolved.authoringCodeDepth = settings.lutAuthoringCodeDepth;
+		resolved.referenceWhite = {
+			settings.lutReferenceNits > 0.0 ?
+				settings.lutReferenceNits : settings.sdrTargetNits,
+			settings.lutReferenceNits > 0.0 ? ReferenceOrigin::EXPLICIT_PROFILE :
+				ReferenceOrigin::INHERITED_TARGET };
+		resolved.referenceBlack = {
+			settings.lutReferenceBlackConfigured ?
+				settings.lutReferenceBlackNits : settings.sdrBlackNits,
+			settings.lutReferenceBlackConfigured ? ReferenceOrigin::EXPLICIT_PROFILE :
+				ReferenceOrigin::INHERITED_TARGET };
+		resolved.cube.canonicalPath = NormalizePathForComparison(
+			CanonicalFullPath(settings.lutPath));
+		resolved.cube.contentSha256 =
+			ConfigFile::NormalizeName(settings.lutContentSha256);
+		resolved.cube.cubeSize = settings.lutCubeSize;
+		resolved.cube.reloadGeneration = displayLutReloadGeneration;
+		if (ConfigFile::NormalizeName(settings.lutDirectDeliveryAuthority) ==
+			"external_attested")
+		{
+			resolved.installation.directDeliveryAuthority =
+				DirectDeliveryAuthority::EXTERNAL_ATTESTED;
+		}
+		if (ConfigFile::NormalizeName(settings.lutExternalColorManagement) ==
+			"none_attested")
+		{
+			resolved.installation.externalColorManagement =
+				ExternalColorManagement::NONE_ATTESTED;
+		}
+		resolved.installation.displayMode = settings.lutDisplayMode;
+		const std::string modeAuthority =
+			ConfigFile::NormalizeName(settings.lutDisplayModeAuthority);
+		if (modeAuthority == "manual_attested")
+			resolved.installation.displayModeAuthority =
+				DisplayModeAuthority::MANUAL_ATTESTED;
+		else if (modeAuthority == "nvidia_external_verified")
+			resolved.installation.displayModeAuthority =
+				DisplayModeAuthority::NVIDIA_EXTERNAL_VERIFIED;
+		resolved.installation.attestationRecordSha256 =
+			ConfigFile::NormalizeName(settings.lutAttestationRecordSha256);
+		resolved.installation.externalAnalyzerRecordSha256 =
+			ConfigFile::NormalizeName(settings.lutExternalAnalyzerRecordSha256);
+		const std::wstring boundDeviceName =
+			negotiatedDisplayDeviceName.empty() ?
+				DisplayDeviceNameForWindow(videoHwnd) :
+				negotiatedDisplayDeviceName;
+		const HMONITOR boundMonitor = negotiatedMonitor ?
+			negotiatedMonitor : MonitorFromWindow(
+				videoHwnd, MONITOR_DEFAULTTONEAREST);
+		const ObservedDisplayRoute observedRoute = QueryObservedDisplayRoute(
+			boundDeviceName,
+			boundMonitor,
+			d3d11 ? d3d11->device : nullptr,
+			vpOwnedSwapchain,
+			carrierEdidDevicePath,
+			carrierEdidSha256,
+			true);
+		const std::string observedCarrierHash =
+			IsCompleteCarrierIdentity(observedRoute.identity) ?
+				CarrierIdentitySha256(observedRoute.identity) : std::string();
+		const std::string declaredCarrierHash = ConfigFile::NormalizeName(
+			settings.lutCarrierIdentitySha256);
+		const bool carrierIdentityMatched =
+			!declaredCarrierHash.empty() && !observedCarrierHash.empty() &&
+			declaredCarrierHash == observedCarrierHash;
+		if (carrierIdentityMatched)
+		{
+			resolved.expectedCarrierIdentity = observedRoute.identity;
+		}
+		DebugLog::Log(
+			"display: LUT carrier identity declared=%s observed=%s match=%d canonical=%s",
+			declaredCarrierHash.empty() ? "missing" : declaredCarrierHash.c_str(),
+			observedCarrierHash.empty() ? "unavailable" : observedCarrierHash.c_str(),
+			carrierIdentityMatched ? 1 : 0,
+			CanonicalCarrierIdentity(observedRoute.identity).c_str());
+		resolved.expectedCarrierGeneration = vpOwnedSwapchainGeneration;
+		resolved.calibrationContractGeneration = ++calibrationContractGeneration;
+		displayLutContract = std::move(resolved);
+	}
+
+	bool LoadDisplayLut(
+		const RendererSettings& settings,
+		bool preserveActiveOnRejectedCandidate = false)
 	{
 		displayLutPath = settings.lutPath;
 		displayLutConstrainedBaseDirectory = settings.lutConstrainedBaseDirectory;
@@ -5979,46 +6711,110 @@ struct LibplaceboVideoRenderer::Impl
 
 		if (settings.lutPathRejected)
 		{
+			pl_lut_free(&displayLut);
+			displayLutParsed = false;
+			displayLutActive = false;
+			displayLutContract = {};
+			displayLutResourceEvidence = {};
 			displayLutStatus = "Rejected: bad path";
 			DebugLog::Log(
 				"display: LUT rejected because its relative path escaped the configuration directory; rendering without a LUT");
-			return;
+			return true;
 		}
 
-		const LibplaceboDisplayLut::LoadResult result =
+		LibplaceboDisplayLut::LoadResult result =
 			LibplaceboDisplayLut::Load(
 				log, displayLutPath, displayLutConstrainedBaseDirectory);
-		displayLut = result.lut;
-		displayLutActive = false;
-		displayLutParsed =
-			result.status == LibplaceboDisplayLut::Status::ACTIVE;
 		if (result.status == LibplaceboDisplayLut::Status::DISABLED)
 		{
+			pl_lut_free(&displayLut);
+			displayLutParsed = false;
+			displayLutActive = false;
+			displayLutContract = {};
+			displayLutResourceEvidence = {};
 			displayLutStatus = "Disabled";
-			return;
+			return true;
 		}
 		if (result.status == LibplaceboDisplayLut::Status::REJECTED)
 		{
 			const char* reason =
 				LibplaceboDisplayLut::ShortReason(result.rejection);
+			if (preserveActiveOnRejectedCandidate &&
+				displayLutParsed && displayLut)
+			{
+				displayLutStatus = std::string("Active; candidate rejected: ") + reason;
+				DebugLog::Log(
+					"display: same-contract LUT replacement rejected (%s); retaining active SHA-256=%s",
+					reason,
+					displayLutResourceEvidence.contentSha256.c_str());
+				return false;
+			}
+			pl_lut_free(&displayLut);
+			displayLutParsed = false;
+			displayLutActive = false;
+			displayLutContract = {};
+			displayLutResourceEvidence = {};
 			displayLutStatus = std::string("Rejected: ") + reason;
 			DebugLog::Log(
 				"display: LUT rejected (%s); rendering without a LUT: %s",
 				reason,
 				displayLutPath.c_str());
-			return;
+			return true;
 		}
+		const std::string expectedHash =
+			ConfigFile::NormalizeName(settings.lutContentSha256);
+		const bool identityMismatch =
+			!expectedHash.empty() && result.contentSha256 != expectedHash;
+		const bool sizeMismatch = settings.lutCubeSize != 0 &&
+			static_cast<unsigned int>(result.lut->size[0]) != settings.lutCubeSize;
+		if (identityMismatch || sizeMismatch)
+		{
+			pl_lut_free(&result.lut);
+			const char* reason = identityMismatch ?
+				"configured hash mismatch" : "configured size mismatch";
+			if (preserveActiveOnRejectedCandidate &&
+				displayLutParsed && displayLut)
+			{
+				displayLutStatus = std::string("Active; candidate rejected: ") + reason;
+				DebugLog::Log(
+					"display: same-contract LUT replacement rejected (%s); retaining active SHA-256=%s",
+					reason,
+					displayLutResourceEvidence.contentSha256.c_str());
+				return false;
+			}
+			pl_lut_free(&displayLut);
+			displayLutParsed = false;
+			displayLutActive = false;
+			displayLutContract = {};
+			displayLutResourceEvidence = {};
+			displayLutStatus = std::string("Rejected: ") + reason;
+			return true;
+		}
+		// Parse and identify the replacement while the prior resource is still
+		// held, then cross the render-thread safe point with one resource swap.
+		pl_lut_free(&displayLut);
+		displayLut = result.lut;
+		displayLutActive = false;
+		displayLutParsed = true;
 		++displayLutReloadGeneration;
+		displayLutResourceEvidence.canonicalPath = result.canonicalPath;
+		displayLutResourceEvidence.contentSha256 = result.contentSha256;
+		displayLutResourceEvidence.cubeSize =
+			static_cast<unsigned int>(displayLut->size[0]);
+		displayLutResourceEvidence.reloadGeneration = displayLutReloadGeneration;
+		FreezeDisplayLutContract(settings);
 
 		DebugLog::Log(
-			"display: parsed 3D LUT %s (%d x %d x %d, %zu bytes, signature=%016llX); target contract validation pending",
+			"display: parsed 3D LUT %s (%d x %d x %d, %zu bytes, SHA-256=%s, signature=%016llX); target contract validation pending",
 			displayLutPath.c_str(),
 			displayLut->size[0],
 			displayLut->size[1],
 			displayLut->size[2],
 			result.fileBytes,
+			result.contentSha256.c_str(),
 			static_cast<unsigned long long>(displayLut->signature));
 		displayLutStatus = "Loaded: validating";
+		return true;
 	}
 
 	void RejectDisplayLutAfterRenderFailure()
@@ -6095,59 +6891,10 @@ struct LibplaceboVideoRenderer::Impl
 			return InputRange::UNKNOWN;
 		};
 
-		enum pl_color_primaries expectedPrimaries = target.color.primaries;
-		if (lutReferencePrimaries == "rec709")
-			expectedPrimaries = PL_COLOR_PRIM_BT_709;
-		else if (lutReferencePrimaries == "p3_d65")
-			expectedPrimaries = PL_COLOR_PRIM_DISPLAY_P3;
-		else if (lutReferencePrimaries == "bt2020")
-			expectedPrimaries = PL_COLOR_PRIM_BT_2020;
-		const enum pl_color_transfer expectedTransfer =
-			lutReferenceTransfer == "auto" ? target.color.transfer :
-			TranslateOutputGamma(lutReferenceTransfer);
-		const enum pl_color_levels expectedRange =
-			lutReferenceRange == "auto" ? target.repr.levels :
-			(lutReferenceRange == "limited" ? PL_COLOR_LEVELS_LIMITED :
-				PL_COLOR_LEVELS_FULL);
-
-		ResolvedContract contract;
-		contract.role = Role::TARGET_DISPLAY_CALIBRATION;
-		contract.scope = Scope::VIDEO_PICTURE;
-		contract.attachmentStage =
-			AttachmentStage::TARGET_NATIVE_POST_ENCODE_PRE_DITHER;
-		contract.nativeOutputSemantics =
-			NativeOutputSemantics::OPAQUE_DEVICE_DRIVE;
-		// The current flattened settings do not retain proof that the cube and
-		// every semantic declaration came from one selected calibration-profile
-		// record. Do not manufacture that provenance here.
-		contract.origin = ContractOrigin::UNKNOWN;
-		contract.inputPrimaries = primaries(expectedPrimaries);
-		contract.inputTransfer = transfer(expectedTransfer);
-		contract.inputRange = range(expectedRange);
-		// R10 is carrier storage, not evidence of the cube's authoring grid.
-		contract.authoringCodeDepth = 0;
-		contract.referenceWhite = {
-			lutReferenceNits > 0.0 ? lutReferenceNits : sdrTargetNits,
-			lutReferenceNits > 0.0 ? ReferenceOrigin::EXPLICIT_PROFILE :
-				ReferenceOrigin::INHERITED_TARGET };
-		// There is not yet a public LUT authoring-black field. Preserve the real
-		// target black and its inherited provenance so power/BT.1886 contracts
-		// reject rather than pretending this value was authored with the cube.
-		contract.referenceBlack = {
-			sdrBlackNits, ReferenceOrigin::INHERITED_TARGET };
-		// Expected path/hash/size/generation must come from the frozen selected
-		// profile contract, independently of the held resource below. Installation
-		// attestations, physical carrier identity, and calibration generation are
-		// likewise left unknown until their record/probes exist. The typed
-		// validator therefore fails closed instead of self-binding or inheriting
-		// the legacy gate.
-
 		ActivationContext context;
-		// The loader does not yet return its handle-resolved canonical identity or
-		// content SHA-256, so those observed fields remain unknown as well.
-		context.resource.cubeSize =
-			static_cast<unsigned int>(displayLut->size[0]);
-		context.resource.reloadGeneration = displayLutReloadGeneration;
+		context.resource = displayLutResourceEvidence;
+		context.currentCalibrationContractGeneration =
+			calibrationContractGeneration;
 		context.carrier.safeToRender = actualOutput.safeToRender;
 		context.carrier.declaredDxgiColorSpaceActive =
 			actualOutput.requestedEncodingActive && vpOwnedColorSpaceVerified;
@@ -6175,7 +6922,22 @@ struct LibplaceboVideoRenderer::Impl
 		context.carrier.sampleBitDepth = target.repr.bits.sample_depth;
 		context.carrier.colorBitDepth = target.repr.bits.color_depth;
 		context.carrier.bitShift = target.repr.bits.bit_shift;
-		context.carrier.displayBitDepth = target.repr.bits.color_depth;
+		// The libplacebo target depth describes only the render surface. Bind the
+		// OS/driver-reported active RGB wire depth through two live output APIs.
+		const ULONGLONG carrierProbeTick = GetTickCount64();
+		const bool refreshLiveEdid =
+			carrierProbeTick >= nextCarrierEdidRefreshTick;
+		if (refreshLiveEdid)
+			nextCarrierEdidRefreshTick = carrierProbeTick + 1000;
+		const ObservedDisplayRoute liveRoute = QueryObservedDisplayRoute(
+			DisplayDeviceNameForWindow(videoHwnd),
+			MonitorFromWindow(videoHwnd, MONITOR_DEFAULTTONEAREST),
+			d3d11 ? d3d11->device : nullptr,
+			vpOwnedSwapchain,
+			carrierEdidDevicePath,
+			carrierEdidSha256,
+			refreshLiveEdid);
+		context.carrier.displayBitDepth = liveRoute.displayBitDepth;
 		context.carrier.finalTargetSystem =
 			target.repr.sys == PL_COLOR_SYSTEM_RGB ?
 				TargetSystem::RGB : TargetSystem::OTHER;
@@ -6188,12 +6950,16 @@ struct LibplaceboVideoRenderer::Impl
 		context.carrier.finalTargetRange = range(target.repr.levels);
 		context.carrier.finalTargetWhiteNits = sdrTargetNits;
 		context.carrier.finalTargetBlackNits = sdrBlackNits;
+		context.carrier.advancedColor = liveRoute.advancedColor;
+		context.carrier.targetIcc = !target.icc && !target.profile.data ?
+			TargetIccState::ABSENT : TargetIccState::ATTACHED;
 		context.carrier.targetBt2020 = targetBt2020;
 		context.carrier.nvidiaBt2020SetAndReadbackVerified =
 			nvidiaBt2020Reporter.IsReadbackVerified();
+		context.carrier.identity = liveRoute.identity;
 		context.carrier.carrierGeneration = vpOwnedSwapchainGeneration;
 
-		const Rejection rejection = ValidateActivation(contract, context);
+		const Rejection rejection = ValidateActivation(displayLutContract, context);
 		return rejection == Rejection::NONE ? nullptr : ShortReason(rejection);
 	}
 
@@ -6325,7 +7091,7 @@ struct LibplaceboVideoRenderer::Impl
 				settings.outputTransportGamma : settings.outputGamma);
 		outputRequest.allowLimitedG22Experiment = settings.diagnosticAllowLimitedG22;
 		outputRequest.allowFullG22Experiment = settings.diagnosticAllowFullG22;
-		outputRequest.vpOwnedPresenter = settings.diagnosticVpOwnedDxgiPresenter;
+		outputRequest.vpOwnedPresenter = VpOwnedPresenterRequested(settings);
 		const LibplaceboOutput::SdrTargetPrimaries requestedTarget =
 			settings.sdrTargetPrimaries == "bt2020"
 				? LibplaceboOutput::SdrTargetPrimaries::BT2020
@@ -6389,8 +7155,8 @@ struct LibplaceboVideoRenderer::Impl
 		swapchainParams.disable_10bit_sdr =
 			settings.diagnosticForce8BitSdrSwapchain;
 		const bool initializeVpOwnedPresenter =
-			settings.diagnosticVpOwnedDxgiPresenter && !outputPlan.useBlit;
-		if (settings.diagnosticVpOwnedDxgiPresenter && outputPlan.useBlit)
+			VpOwnedPresenterRequested(settings) && !outputPlan.useBlit;
+		if (VpOwnedPresenterRequested(settings) && outputPlan.useBlit)
 		{
 			DebugLog::Log(
 				"VP-owned DXGI swapchain: requested=1 applied=0 trigger=initialize reason=the VP-owned beta presenter supports flip/direct only; using libplacebo-owned composed swapchain");
@@ -6657,6 +7423,21 @@ struct LibplaceboVideoRenderer::Impl
 		currentTransport.lutReferenceTransfer = next.lutReferenceTransfer;
 		currentTransport.lutReferenceRange = next.lutReferenceRange;
 		currentTransport.lutReferenceNits = next.lutReferenceNits;
+		currentTransport.lutReferenceBlackConfigured = next.lutReferenceBlackConfigured;
+		currentTransport.lutReferenceBlackNits = next.lutReferenceBlackNits;
+		currentTransport.lutAuthoringCodeDepth = next.lutAuthoringCodeDepth;
+		currentTransport.lutCubeSize = next.lutCubeSize;
+		currentTransport.lutContentSha256 = next.lutContentSha256;
+		currentTransport.lutCarrierIdentitySha256 = next.lutCarrierIdentitySha256;
+		currentTransport.lutDiskContentSha256 = next.lutDiskContentSha256;
+		currentTransport.lutDirectDeliveryAuthority = next.lutDirectDeliveryAuthority;
+		currentTransport.lutExternalColorManagement = next.lutExternalColorManagement;
+		currentTransport.lutDisplayMode = next.lutDisplayMode;
+		currentTransport.lutDisplayModeAuthority = next.lutDisplayModeAuthority;
+		currentTransport.lutAttestationRecordSha256 = next.lutAttestationRecordSha256;
+		currentTransport.lutExternalAnalyzerRecordSha256 = next.lutExternalAnalyzerRecordSha256;
+		currentTransport.lutSelectedProfile = next.lutSelectedProfile;
+		currentTransport.lutSelectedProfileName = next.lutSelectedProfileName;
 		nextTransport.sdrTargetPrimaries = "rec709";
 		nextTransport.reportBt2020ToDisplay = false;
 		return EffectiveSettingsFingerprint(currentTransport, false) ==
@@ -6703,7 +7484,22 @@ struct LibplaceboVideoRenderer::Impl
 			current.lutReferencePrimaries != next.lutReferencePrimaries ||
 			current.lutReferenceTransfer != next.lutReferenceTransfer ||
 			current.lutReferenceRange != next.lutReferenceRange ||
-			current.lutReferenceNits != next.lutReferenceNits, "lut");
+			current.lutReferenceNits != next.lutReferenceNits ||
+			current.lutReferenceBlackConfigured != next.lutReferenceBlackConfigured ||
+			current.lutReferenceBlackNits != next.lutReferenceBlackNits ||
+			current.lutAuthoringCodeDepth != next.lutAuthoringCodeDepth ||
+			current.lutCubeSize != next.lutCubeSize ||
+			current.lutContentSha256 != next.lutContentSha256 ||
+			current.lutCarrierIdentitySha256 != next.lutCarrierIdentitySha256 ||
+			current.lutDiskContentSha256 != next.lutDiskContentSha256 ||
+			current.lutDirectDeliveryAuthority != next.lutDirectDeliveryAuthority ||
+			current.lutExternalColorManagement != next.lutExternalColorManagement ||
+			current.lutDisplayMode != next.lutDisplayMode ||
+			current.lutDisplayModeAuthority != next.lutDisplayModeAuthority ||
+			current.lutAttestationRecordSha256 != next.lutAttestationRecordSha256 ||
+			current.lutExternalAnalyzerRecordSha256 != next.lutExternalAnalyzerRecordSha256 ||
+			current.lutSelectedProfile != next.lutSelectedProfile ||
+			current.lutSelectedProfileName != next.lutSelectedProfileName, "lut");
 		changed(current.outputPresentation != next.outputPresentation,
 			"output_presentation");
 		changed(current.outputRange != next.outputRange, "output_range");
@@ -6829,24 +7625,30 @@ struct LibplaceboVideoRenderer::Impl
 			return false;
 		}
 
+		const bool sameContractReplacement =
+			LutContractDeclarationFingerprint(activeSettings) ==
+			LutContractDeclarationFingerprint(settings);
+		const std::string acceptedDiskContentSha256 =
+			activeSettings.lutDiskContentSha256;
 		const bool lutChanged =
 			activeSettings.lutPath != settings.lutPath ||
 			activeSettings.lutPathRejected != settings.lutPathRejected ||
 			activeSettings.lutConstrainedBaseDirectory !=
-				settings.lutConstrainedBaseDirectory;
+				settings.lutConstrainedBaseDirectory ||
+			activeSettings.lutContentSha256 != settings.lutContentSha256 ||
+			activeSettings.lutCubeSize != settings.lutCubeSize ||
+			activeSettings.lutDiskContentSha256 != settings.lutDiskContentSha256;
 		const bool diagnosticsEnabled =
 			!outputDiagnostics && settings.outputDiagnostics;
+		bool lutReloadCommitted = true;
 		if (lutChanged)
 		{
 			// libplacebo keys custom LUT state by the LUT's content signature and
 			// invalidates only the outdated resource itself. Its renderer API
 			// explicitly supports image/color/target changes without a cache flush,
 			// so preserve compiled programs while replacing the parsed LUT.
-			pl_lut_free(&displayLut);
-			displayLutParsed = false;
-			displayLutActive = false;
-			displayLutStatus = "Disabled";
-			LoadDisplayLut(settings);
+			lutReloadCommitted = LoadDisplayLut(
+				settings, sameContractReplacement);
 		}
 		// Reference metadata describes how the already loaded LUT is interpreted;
 		// changing it does not require reparsing the LUT file itself.
@@ -6867,13 +7669,15 @@ struct LibplaceboVideoRenderer::Impl
 		requestedTransport.allowFullG22Experiment =
 			settings.diagnosticAllowFullG22;
 		requestedTransport.vpOwnedPresenter =
-			settings.diagnosticVpOwnedDxgiPresenter;
+			VpOwnedPresenterRequested(settings);
 		const auto target = settings.sdrTargetPrimaries == "bt2020"
 			? LibplaceboOutput::SdrTargetPrimaries::BT2020
 			: LibplaceboOutput::SdrTargetPrimaries::REC709;
 		const auto contract = LibplaceboOutput::MakeSdrOutputContract(
 			requestedTransport, target, settings.reportBt2020ToDisplay);
 		activeSettings = settings;
+		if (!lutReloadCommitted)
+			activeSettings.lutDiskContentSha256 = acceptedDiskContentSha256;
 		sdrTargetNits = settings.sdrTargetNits;
 		sdrBlackNits = settings.sdrBlackNits;
 		sdrInputTransfer = TranslateOutputGamma(settings.sdrInputTransfer);
@@ -6883,6 +7687,8 @@ struct LibplaceboVideoRenderer::Impl
 		targetBt2020 = contract.target ==
 			LibplaceboOutput::SdrTargetPrimaries::BT2020;
 		reportBt2020ToDisplay = contract.reportBt2020ToDisplay;
+		if (!lutChanged && displayLutParsed && displayLut)
+			FreezeDisplayLutContract(settings);
 		bt2020SignalingFailed = false;
 		// F5/F6 retain the already negotiated P709/sRGB transport. Do not replace
 		// observed output state with a newly requested plan, and do not submit a
@@ -6900,7 +7706,7 @@ struct LibplaceboVideoRenderer::Impl
 		}
 		ConfigureRenderParams(settings, "live profile update",
 			displayLutActive);
-		PublishSettingsState(settings);
+		PublishSettingsState(activeSettings);
 
 		if (targetBt2020 && reportBt2020ToDisplay)
 		{
@@ -12389,7 +13195,7 @@ bool LibplaceboVideoRenderer::GetOutputModeInfo(CString& details) const
 			outputStatus = "Windows-compatible RGB active";
 		}
 	}
-	if (m_impl->activeSettings.diagnosticVpOwnedDxgiPresenter &&
+	if (VpOwnedPresenterRequested(m_impl->activeSettings) &&
 		m_impl->swapchainBlit)
 	{
 		if (!outputStatus.IsEmpty()) outputStatus += "; ";

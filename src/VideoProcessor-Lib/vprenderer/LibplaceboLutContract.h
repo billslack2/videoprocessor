@@ -143,6 +143,8 @@ namespace LibplaceboLutContract
 		ENABLED
 	};
 
+	// This is the ICC payload attached to libplacebo's render target, not the
+	// Windows color-management profile associated with the physical monitor.
 	enum class TargetIccState
 	{
 		UNKNOWN,
@@ -179,10 +181,16 @@ namespace LibplaceboLutContract
 	struct CarrierIdentity
 	{
 		uint32_t schemaVersion = 0;
+		// Hash of the validated effective EDID bytes reported by Windows. This is
+		// a route fingerprint; external attestation remains responsible for
+		// projector modes, intermediaries, overrides, and code preservation.
 		std::string edidSha256;
+		std::string monitorDevicePathSha256;
 		AdapterLuidIdentity displayConfigAdapter;
 		bool displayConfigTargetKnown = false;
 		uint32_t displayConfigTargetId = 0;
+		bool connectorInstanceKnown = false;
+		uint32_t connectorInstance = 0;
 		OutputTechnology outputTechnology = OutputTechnology::UNKNOWN;
 		uint32_t activeWidth = 0;
 		uint32_t activeHeight = 0;
@@ -386,6 +394,7 @@ namespace LibplaceboLutContract
 		BELOW_LIBPLACEBO_FLOOR
 	};
 
+	bool IsCompleteCarrierIdentity(const CarrierIdentity& identity);
 	Rejection ValidateResolvedContract(const ResolvedContract& contract);
 	// This is the only public activation gate. It validates the contract first,
 	// then its bound resource/generations, then every carrier predicate.

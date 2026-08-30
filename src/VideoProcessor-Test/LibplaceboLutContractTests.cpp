@@ -31,9 +31,12 @@ namespace
 		CarrierIdentity identity;
 		identity.schemaVersion = CARRIER_IDENTITY_SCHEMA_VERSION;
 		identity.edidSha256 = EDID_HASH;
+		identity.monitorDevicePathSha256 = CUBE_HASH;
 		identity.displayConfigAdapter = { true, 1, 2 };
 		identity.displayConfigTargetKnown = true;
 		identity.displayConfigTargetId = 3;
+		identity.connectorInstanceKnown = true;
+		identity.connectorInstance = 1;
 		identity.outputTechnology = OutputTechnology::HDMI;
 		identity.activeWidth = 3840;
 		identity.activeHeight = 2160;

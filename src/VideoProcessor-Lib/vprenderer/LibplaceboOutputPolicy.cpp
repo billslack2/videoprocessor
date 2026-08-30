@@ -22,7 +22,7 @@ namespace LibplaceboOutput
 	{
 		if (value == "composed")
 			return PresentationRequest::COMPOSED;
-		if (value == "direct")
+		if (value == "direct" || value == "calibrated_direct")
 			return PresentationRequest::DIRECT;
 		return PresentationRequest::AUTO;
 	}

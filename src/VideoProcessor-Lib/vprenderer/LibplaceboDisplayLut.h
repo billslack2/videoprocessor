@@ -28,6 +28,8 @@ namespace LibplaceboDisplayLut
 		EMPTY,
 		TOO_LARGE,
 		READ_FAILED,
+		PATH_IDENTITY_FAILED,
+		HASH_FAILED,
 		PATH_OUTSIDE_BASE,
 		INVALID_CUBE,
 		ONE_DIMENSIONAL,
@@ -41,10 +43,15 @@ namespace LibplaceboDisplayLut
 		Status status = Status::DISABLED;
 		Rejection rejection = Rejection::NONE;
 		size_t fileBytes = 0;
+		// Identity of the exact handle whose bytes were parsed. These values are
+		// runtime evidence, not declarations from the selected calibration profile.
+		std::string canonicalPath;
+		std::string contentSha256;
 	};
 
 	// When constrainedBaseDirectory is supplied, the file opened at path must
 	// resolve below that directory. Validation and reading use the same handle.
+	bool ComputeSha256(const std::string& contents, std::string& digest);
 	LoadResult Load(
 		pl_log log,
 		const std::string& path,

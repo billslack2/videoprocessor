@@ -7,6 +7,9 @@
 #include <sstream>
 #include <vector>
 #include <windows.h>
+#include <bcrypt.h>
+
+#pragma comment(lib, "bcrypt.lib")
 
 namespace LibplaceboDisplayLut
 {
@@ -36,9 +39,18 @@ namespace LibplaceboDisplayLut
 		const DWORD written = GetFinalPathNameByHandleA(
 			handle, result.data(), static_cast<DWORD>(result.size()),
 			FILE_NAME_NORMALIZED | VOLUME_NAME_DOS);
-		return written == 0 || written >= result.size()
-			? std::string()
-			: std::string(result.data(), written);
+		if (written == 0 || written >= result.size())
+			return std::string();
+		std::string path(result.data(), written);
+		if (path.rfind("\\\\?\\UNC\\", 0) == 0)
+			path = "\\\\" + path.substr(8);
+		else if (path.rfind("\\\\?\\", 0) == 0)
+			path.erase(0, 4);
+		std::replace(path.begin(), path.end(), '/', '\\');
+		std::transform(path.begin(), path.end(), path.begin(),
+			[](unsigned char character)
+			{ return static_cast<char>(std::tolower(character)); });
+		return path;
 	}
 
 	std::string NormalizePathForComparison(std::string value)
@@ -103,6 +115,62 @@ namespace LibplaceboDisplayLut
 		return false;
 	}
 
+	bool ComputeSha256(const std::string& contents, std::string& digest)
+	{
+		BCRYPT_ALG_HANDLE algorithm = nullptr;
+		BCRYPT_HASH_HANDLE hash = nullptr;
+		DWORD objectBytes = 0;
+		DWORD digestBytes = 0;
+		DWORD returned = 0;
+		std::vector<unsigned char> object;
+		std::vector<unsigned char> bytes;
+		bool succeeded = false;
+
+		if (!BCRYPT_SUCCESS(BCryptOpenAlgorithmProvider(
+			&algorithm, BCRYPT_SHA256_ALGORITHM, nullptr, 0)))
+			goto done;
+		if (!BCRYPT_SUCCESS(BCryptGetProperty(
+			algorithm, BCRYPT_OBJECT_LENGTH,
+			reinterpret_cast<PUCHAR>(&objectBytes), sizeof(objectBytes),
+			&returned, 0)))
+			goto done;
+		if (!BCRYPT_SUCCESS(BCryptGetProperty(
+			algorithm, BCRYPT_HASH_LENGTH,
+			reinterpret_cast<PUCHAR>(&digestBytes), sizeof(digestBytes),
+			&returned, 0)))
+			goto done;
+		object.resize(objectBytes);
+		bytes.resize(digestBytes);
+		if (!BCRYPT_SUCCESS(BCryptCreateHash(
+			algorithm, &hash, object.data(), objectBytes, nullptr, 0, 0)))
+			goto done;
+		if (!BCRYPT_SUCCESS(BCryptHashData(
+			hash,
+			reinterpret_cast<PUCHAR>(const_cast<char*>(contents.data())),
+			static_cast<ULONG>(contents.size()), 0)))
+			goto done;
+		if (!BCRYPT_SUCCESS(BCryptFinishHash(
+			hash, bytes.data(), digestBytes, 0)))
+			goto done;
+
+		{
+			static constexpr char HEX[] = "0123456789abcdef";
+			digest.resize(bytes.size() * 2);
+			for (size_t index = 0; index < bytes.size(); ++index)
+			{
+				digest[index * 2] = HEX[bytes[index] >> 4];
+				digest[index * 2 + 1] = HEX[bytes[index] & 0x0f];
+			}
+		}
+		succeeded = true;
+
+	done:
+		if (hash) BCryptDestroyHash(hash);
+		if (algorithm) BCryptCloseAlgorithmProvider(algorithm, 0);
+		if (!succeeded) digest.clear();
+		return succeeded;
+	}
+
 	bool ContainsNonDefaultDomain(const std::string& contents)
 	{
 		std::istringstream input(contents);
@@ -148,6 +216,14 @@ namespace LibplaceboDisplayLut
 			return result;
 		}
 
+		result.canonicalPath = FinalPathForHandle(input.Get());
+		if (result.canonicalPath.empty())
+		{
+			result.status = Status::REJECTED;
+			result.rejection = Rejection::PATH_IDENTITY_FAILED;
+			return result;
+		}
+
 		if (!constrainedBaseDirectory.empty())
 		{
 			const ScopedHandle base(CreateFileA(
@@ -156,9 +232,8 @@ namespace LibplaceboDisplayLut
 				nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr));
 			const std::string finalBase =
 				base.Get() == INVALID_HANDLE_VALUE ? std::string() : FinalPathForHandle(base.Get());
-			const std::string finalPath = FinalPathForHandle(input.Get());
-			if (finalBase.empty() || finalPath.empty() ||
-				!IsPathWithin(finalBase, finalPath))
+			if (finalBase.empty() ||
+				!IsPathWithin(finalBase, result.canonicalPath))
 			{
 				result.status = Status::REJECTED;
 				result.rejection = Rejection::PATH_OUTSIDE_BASE;
@@ -200,6 +275,12 @@ namespace LibplaceboDisplayLut
 			{
 				result.status = Status::REJECTED;
 				result.rejection = Rejection::READ_FAILED;
+				return result;
+			}
+			if (!ComputeSha256(contents, result.contentSha256))
+			{
+				result.status = Status::REJECTED;
+				result.rejection = Rejection::HASH_FAILED;
 				return result;
 			}
 			if (ContainsOneDimensionalCubeDirective(contents))
@@ -278,6 +359,8 @@ namespace LibplaceboDisplayLut
 		case Rejection::EMPTY: return "empty file";
 		case Rejection::TOO_LARGE: return "file too large";
 		case Rejection::READ_FAILED: return "read failed";
+		case Rejection::PATH_IDENTITY_FAILED: return "path identity failed";
+		case Rejection::HASH_FAILED: return "hash failed";
 		case Rejection::PATH_OUTSIDE_BASE: return "bad path";
 		case Rejection::INVALID_CUBE: return "invalid cube";
 		case Rejection::ONE_DIMENSIONAL: return "1D not supported";
