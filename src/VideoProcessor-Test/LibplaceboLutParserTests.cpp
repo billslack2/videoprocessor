@@ -1021,6 +1021,32 @@ namespace VideoProcessorTest
 				static_cast<int>(frameTarget.lut_type));
 		}
 
+		TEST_METHOD(ExternalHdrPresentRequiresCarrierLutAndSuccessfulRender)
+		{
+			LibplaceboHdr10Output::CarrierState carrier;
+			carrier.phase =
+				LibplaceboHdr10Output::CarrierPhase::HDR10_ACTIVE;
+			carrier.swapchainGeneration = 3;
+			carrier.applicationGeneration = 5;
+			carrier.lutTransactionGeneration = 7;
+			carrier.activation.active = true;
+			LibplaceboExternalHdrLut::FrameProjection projection;
+			projection.resolved.transactionGeneration = 7;
+			Assert::IsFalse(LibplaceboExternalHdrLut::FramePresentAllowed(
+				carrier, 3, 5, projection, true));
+			projection.attached = true;
+			Assert::IsFalse(LibplaceboExternalHdrLut::FramePresentAllowed(
+				carrier, 4, 5, projection, true));
+			Assert::IsFalse(LibplaceboExternalHdrLut::FramePresentAllowed(
+				carrier, 3, 5, projection, false));
+			projection.resolved.transactionGeneration = 8;
+			Assert::IsFalse(LibplaceboExternalHdrLut::FramePresentAllowed(
+				carrier, 3, 5, projection, true));
+			projection.resolved.transactionGeneration = 7;
+			Assert::IsTrue(LibplaceboExternalHdrLut::FramePresentAllowed(
+				carrier, 3, 5, projection, true));
+		}
+
 		TEST_METHOD(ExternalHdrFrameProjectionUsesConversionLutAndExactMetadata)
 		{
 			TemporaryDirectory directory;

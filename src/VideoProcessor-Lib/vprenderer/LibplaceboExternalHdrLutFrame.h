@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vprenderer/LibplaceboExternalHdrLutSet.h>
+#include <vprenderer/LibplaceboHdr10OutputPolicy.h>
 
 #pragma warning(push)
 #pragma warning(disable: 4244)
@@ -14,6 +15,20 @@ namespace LibplaceboExternalHdrLut
 		ResolvedResource resolved;
 		bool attached = false;
 	};
+
+	// External HDR presentation is a frame-local authorization. A current HDR
+	// carrier alone is insufficient: this exact frame must also have attached
+	// the selected conversion LUT and completed rendering successfully.
+	inline bool FramePresentAllowed(
+		const LibplaceboHdr10Output::CarrierState& carrier,
+		uint64_t swapchainGeneration, uint64_t applicationGeneration,
+		const FrameProjection& projection, bool rendered)
+	{
+		return projection.attached && rendered &&
+			carrier.ExternalHdrPresentAllowed(
+				swapchainGeneration, applicationGeneration,
+				projection.resolved.transactionGeneration);
+	}
 
 	inline enum pl_color_primaries SlotPrimaries(Slot slot)
 	{

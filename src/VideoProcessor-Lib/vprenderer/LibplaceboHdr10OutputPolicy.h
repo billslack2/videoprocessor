@@ -165,4 +165,151 @@ namespace LibplaceboHdr10Output
 			 evidence.rollbackSdrVerified);
 		return result;
 	}
+
+	enum class CarrierPhase
+	{
+		SDR,
+		HDR10_ACTIVE,
+		SUPPRESS_RECREATE
+	};
+
+	// The renderer supplies the DXGI operations while this policy owns their
+	// ordering. Keeping the mutation sequence here makes every partial failure
+	// deterministic and independently testable without a real display.
+	class CarrierOperations
+	{
+	public:
+		virtual ~CarrierOperations() = default;
+		virtual bool CheckHdrColorSpaceSupport() = 0;
+		virtual bool SetHdrColorSpace() = 0;
+		virtual bool SetHdrMetadata(const StaticMetadata& metadata) = 0;
+		virtual bool ClearHdrMetadata() = 0;
+		virtual bool CheckSdrColorSpaceSupport() = 0;
+		virtual bool SetSdrColorSpace() = 0;
+		virtual bool RecheckSdrColorSpaceSupportAfterSet() = 0;
+	};
+
+	struct CarrierState
+	{
+		CarrierPhase phase = CarrierPhase::SDR;
+		uint64_t swapchainGeneration = 0;
+		uint64_t applicationGeneration = 0;
+		uint64_t lutTransactionGeneration = 0;
+		MetadataResult metadata;
+		Evidence evidence;
+		Activation activation;
+
+		bool Current(uint64_t swapchain, uint64_t application,
+			uint64_t lutTransaction) const
+		{
+			return phase == CarrierPhase::HDR10_ACTIVE &&
+				swapchain != 0 && application != 0 && lutTransaction != 0 &&
+				swapchainGeneration == swapchain &&
+				applicationGeneration == application &&
+				lutTransactionGeneration == lutTransaction && activation.active;
+		}
+
+		bool ExternalHdrPresentAllowed(uint64_t swapchain, uint64_t application,
+			uint64_t lutTransaction) const
+		{
+			return Current(swapchain, application, lutTransaction);
+		}
+	};
+
+	inline bool PreflightReady(const MetadataResult& metadata,
+		const Evidence& evidence)
+	{
+		return metadata.valid && evidence.topLevelWindow &&
+			evidence.vpOwnedPresentation && evidence.flipPresentation &&
+			evidence.r10Swapchain && evidence.advancedColorActive &&
+			evidence.hasSwapchain3 && evidence.hasSwapchain4;
+	}
+
+	inline void Rollback(CarrierState& state, CarrierOperations& operations)
+	{
+		state.evidence.hdrCarrierWasActive =
+			state.evidence.hdrCarrierWasActive ||
+			state.phase == CarrierPhase::SUPPRESS_RECREATE ||
+			state.phase == CarrierPhase::HDR10_ACTIVE ||
+			state.evidence.g2084SetSucceeded ||
+			state.evidence.metadataSetSucceeded;
+		state.evidence.rollbackMetadataClearSucceeded =
+			operations.ClearHdrMetadata();
+		const bool sdrSupportedBeforeSet =
+			operations.CheckSdrColorSpaceSupport();
+		state.evidence.rollbackSdrSetSucceeded = sdrSupportedBeforeSet &&
+			operations.SetSdrColorSpace();
+		state.evidence.rollbackSdrVerified =
+			state.evidence.rollbackSdrSetSucceeded &&
+			operations.RecheckSdrColorSpaceSupportAfterSet();
+		// Evaluate the post-rollback carrier, not the superseded activation.
+		state.evidence.g2084SetSucceeded = false;
+		state.evidence.g2084SupportedAfterSet = false;
+		state.evidence.metadataSetSucceeded = false;
+		state.activation = Evaluate(state.metadata, state.evidence);
+		state.phase = state.activation.safeToPresentInternalSdr ?
+			CarrierPhase::SDR : CarrierPhase::SUPPRESS_RECREATE;
+	}
+
+	inline const CarrierState& Activate(CarrierState& state,
+		uint64_t swapchainGeneration, uint64_t applicationGeneration,
+		uint64_t lutTransactionGeneration, const MetadataResult& metadata,
+		Evidence evidence, CarrierOperations& operations)
+	{
+		if (state.swapchainGeneration == swapchainGeneration)
+		{
+			if (state.phase == CarrierPhase::SUPPRESS_RECREATE)
+				return state;
+			if (state.phase == CarrierPhase::HDR10_ACTIVE)
+			{
+				Rollback(state, operations);
+				if (state.phase != CarrierPhase::SDR)
+					return state;
+			}
+		}
+		// A different generation proves that the prior DXGI object was replaced;
+		// only that boundary may discard a suppressed carrier without rollback.
+		state = {};
+		state.swapchainGeneration = swapchainGeneration;
+		state.applicationGeneration = applicationGeneration;
+		state.lutTransactionGeneration = lutTransactionGeneration;
+		state.metadata = metadata;
+		state.evidence = evidence;
+		if (swapchainGeneration == 0 || applicationGeneration == 0 ||
+			lutTransactionGeneration == 0)
+			return state;
+
+		if (!PreflightReady(metadata, evidence))
+		{
+			state.activation = Evaluate(metadata, evidence);
+			return state;
+		}
+
+		state.evidence.g2084SupportedBeforeSet =
+			operations.CheckHdrColorSpaceSupport();
+		if (state.evidence.g2084SupportedBeforeSet)
+		{
+			state.evidence.g2084SetSucceeded = operations.SetHdrColorSpace();
+			if (state.evidence.g2084SetSucceeded)
+			{
+				state.evidence.g2084SupportedAfterSet =
+					operations.CheckHdrColorSpaceSupport();
+				if (state.evidence.g2084SupportedAfterSet)
+					state.evidence.metadataSetSucceeded =
+						operations.SetHdrMetadata(metadata.metadata);
+			}
+		}
+
+		state.activation = Evaluate(metadata, state.evidence);
+		if (state.activation.active)
+		{
+			state.phase = CarrierPhase::HDR10_ACTIVE;
+			return state;
+		}
+
+		if (state.activation.clearHdrMetadata ||
+			state.activation.restoreSdrColorSpace)
+			Rollback(state, operations);
+		return state;
+	}
 }

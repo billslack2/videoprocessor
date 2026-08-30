@@ -6,6 +6,8 @@
 #include <vprenderer/LibplaceboHdr10OutputPolicy.h>
 #include <ActiveOutputSweepPolicy.h>
 
+#include <vector>
+
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 using namespace LibplaceboOutput;
@@ -235,6 +237,248 @@ namespace Tests
 			Assert::IsTrue(rejectedContract.restoreSdrColorSpace);
 			Assert::IsFalse(Evaluate(BuildStaticMetadata(
 				Primaries::BT2020, 0.0), complete).active);
+		}
+
+		TEST_METHOD(ExternalHdrCarrierTransactionUsesFrozenActivationOrder)
+		{
+			using namespace LibplaceboHdr10Output;
+			class Operations final : public CarrierOperations
+			{
+			public:
+				std::vector<std::string> calls;
+				bool CheckHdrColorSpaceSupport() override
+				{
+					calls.push_back("check-hdr"); return true;
+				}
+				bool SetHdrColorSpace() override
+				{
+					calls.push_back("set-hdr"); return true;
+				}
+				bool SetHdrMetadata(const StaticMetadata&) override
+				{
+					calls.push_back("set-metadata"); return true;
+				}
+				bool ClearHdrMetadata() override
+				{
+					calls.push_back("clear-metadata"); return true;
+				}
+				bool CheckSdrColorSpaceSupport() override
+				{
+					calls.push_back("check-sdr"); return true;
+				}
+				bool SetSdrColorSpace() override
+				{
+					calls.push_back("set-sdr"); return true;
+				}
+				bool RecheckSdrColorSpaceSupportAfterSet() override
+				{
+					calls.push_back("recheck-sdr"); return true;
+				}
+			};
+
+			LibplaceboHdr10Output::Evidence evidence;
+			evidence.topLevelWindow = true;
+			evidence.vpOwnedPresentation = true;
+			evidence.flipPresentation = true;
+			evidence.r10Swapchain = true;
+			evidence.advancedColorActive = true;
+			evidence.hasSwapchain3 = true;
+			evidence.hasSwapchain4 = true;
+			Operations operations;
+			CarrierState state;
+			Activate(state, 17, 7, 11,
+				BuildStaticMetadata(Primaries::BT2020, 1000.0),
+				evidence, operations);
+			Assert::IsTrue(state.Current(17, 7, 11));
+			Assert::IsFalse(state.Current(18, 7, 11));
+			Assert::IsFalse(state.Current(17, 8, 11));
+			Assert::IsFalse(state.Current(17, 7, 12));
+			const std::vector<std::string> expected{
+				"check-hdr", "set-hdr", "check-hdr", "set-metadata" };
+			Assert::IsTrue(operations.calls == expected);
+		}
+
+		TEST_METHOD(ExternalHdrCarrierTransactionRollsBackInFrozenOrder)
+		{
+			using namespace LibplaceboHdr10Output;
+			class Operations final : public CarrierOperations
+			{
+			public:
+				std::vector<std::string> calls;
+				bool rollbackSucceeds = true;
+				bool CheckHdrColorSpaceSupport() override
+				{
+					calls.push_back("check-hdr"); return true;
+				}
+				bool SetHdrColorSpace() override
+				{
+					calls.push_back("set-hdr"); return true;
+				}
+				bool SetHdrMetadata(const StaticMetadata&) override
+				{
+					calls.push_back("set-metadata"); return false;
+				}
+				bool ClearHdrMetadata() override
+				{
+					calls.push_back("clear-metadata"); return rollbackSucceeds;
+				}
+				bool CheckSdrColorSpaceSupport() override
+				{
+					calls.push_back("check-sdr"); return rollbackSucceeds;
+				}
+				bool SetSdrColorSpace() override
+				{
+					calls.push_back("set-sdr"); return rollbackSucceeds;
+				}
+				bool RecheckSdrColorSpaceSupportAfterSet() override
+				{
+					calls.push_back("recheck-sdr"); return rollbackSucceeds;
+				}
+			};
+
+			LibplaceboHdr10Output::Evidence evidence;
+			evidence.topLevelWindow = true;
+			evidence.vpOwnedPresentation = true;
+			evidence.flipPresentation = true;
+			evidence.r10Swapchain = true;
+			evidence.advancedColorActive = true;
+			evidence.hasSwapchain3 = true;
+			evidence.hasSwapchain4 = true;
+			Operations operations;
+			CarrierState state;
+			Activate(state, 23, 7, 11,
+				BuildStaticMetadata(Primaries::P3_D65, 200.0),
+				evidence, operations);
+			Assert::AreEqual(static_cast<int>(CarrierPhase::SDR),
+				static_cast<int>(state.phase));
+			const std::vector<std::string> expected{
+				"check-hdr", "set-hdr", "check-hdr", "set-metadata",
+				"clear-metadata", "check-sdr", "set-sdr", "recheck-sdr" };
+			Assert::IsTrue(operations.calls == expected);
+
+			operations.calls.clear();
+			operations.rollbackSucceeds = false;
+			Activate(state, 24, 8, 12,
+				BuildStaticMetadata(Primaries::P3_D65, 200.0),
+				evidence, operations);
+			Assert::AreEqual(static_cast<int>(CarrierPhase::SUPPRESS_RECREATE),
+				static_cast<int>(state.phase));
+			Assert::IsFalse(state.ExternalHdrPresentAllowed(24, 8, 12));
+		}
+
+		TEST_METHOD(ExternalHdrActiveCarrierMustRollbackBeforeReactivation)
+		{
+			using namespace LibplaceboHdr10Output;
+			class Operations final : public CarrierOperations
+			{
+			public:
+				std::vector<std::string> calls;
+				bool rollbackSucceeds = true;
+				bool CheckHdrColorSpaceSupport() override
+				{
+					calls.push_back("check-hdr"); return true;
+				}
+				bool SetHdrColorSpace() override
+				{
+					calls.push_back("set-hdr"); return true;
+				}
+				bool SetHdrMetadata(const StaticMetadata&) override
+				{
+					calls.push_back("set-metadata"); return true;
+				}
+				bool ClearHdrMetadata() override
+				{
+					calls.push_back("clear-metadata"); return rollbackSucceeds;
+				}
+				bool CheckSdrColorSpaceSupport() override
+				{
+					calls.push_back("check-sdr"); return rollbackSucceeds;
+				}
+				bool SetSdrColorSpace() override
+				{
+					calls.push_back("set-sdr"); return rollbackSucceeds;
+				}
+				bool RecheckSdrColorSpaceSupportAfterSet() override
+				{
+					calls.push_back("recheck-sdr"); return rollbackSucceeds;
+				}
+			};
+
+			LibplaceboHdr10Output::Evidence evidence;
+			evidence.topLevelWindow = true;
+			evidence.vpOwnedPresentation = true;
+			evidence.flipPresentation = true;
+			evidence.r10Swapchain = true;
+			evidence.advancedColorActive = true;
+			evidence.hasSwapchain3 = true;
+			evidence.hasSwapchain4 = true;
+			Operations operations;
+			CarrierState state;
+			const MetadataResult metadata =
+				BuildStaticMetadata(Primaries::BT2020, 1000.0);
+			Activate(state, 31, 9, 14, metadata, evidence, operations);
+			Assert::IsTrue(state.Current(31, 9, 14));
+
+			operations.calls.clear();
+			Rollback(state, operations);
+			Assert::AreEqual(static_cast<int>(CarrierPhase::SDR),
+				static_cast<int>(state.phase));
+			Assert::IsFalse(state.Current(31, 9, 14));
+			const std::vector<std::string> rollbackExpected{
+				"clear-metadata", "check-sdr", "set-sdr", "recheck-sdr" };
+			Assert::IsTrue(operations.calls == rollbackExpected);
+
+			operations.calls.clear();
+			Activate(state, 31, 9, 14, metadata, evidence, operations);
+			operations.calls.clear();
+			Activate(state, 31, 10, 15,
+				BuildStaticMetadata(Primaries::UNKNOWN, 1000.0),
+				evidence, operations);
+			Assert::AreEqual(static_cast<int>(CarrierPhase::SDR),
+				static_cast<int>(state.phase));
+			Assert::IsTrue(operations.calls == rollbackExpected);
+
+			operations.calls.clear();
+			Activate(state, 31, 9, 14, metadata, evidence, operations);
+			operations.rollbackSucceeds = false;
+			operations.calls.clear();
+			// Reactivation on the same live object must first retire its active
+			// carrier. A failed retirement leaves it suppressed and performs no
+			// second HDR activation attempt.
+			Activate(state, 31, 10, 15, metadata, evidence, operations);
+			Assert::AreEqual(static_cast<int>(CarrierPhase::SUPPRESS_RECREATE),
+				static_cast<int>(state.phase));
+			const std::vector<std::string> failedRollbackExpected{
+				"clear-metadata", "check-sdr" };
+			Assert::IsTrue(operations.calls == failedRollbackExpected);
+
+			operations.calls.clear();
+			Rollback(state, operations);
+			Assert::AreEqual(static_cast<int>(CarrierPhase::SUPPRESS_RECREATE),
+				static_cast<int>(state.phase));
+			Assert::IsTrue(operations.calls == failedRollbackExpected);
+
+			operations.rollbackSucceeds = true;
+			operations.calls.clear();
+			Rollback(state, operations);
+			Assert::AreEqual(static_cast<int>(CarrierPhase::SDR),
+				static_cast<int>(state.phase));
+			Assert::IsTrue(operations.calls == rollbackExpected);
+
+			operations.rollbackSucceeds = false;
+			Activate(state, 31, 9, 14, metadata, evidence, operations);
+			operations.calls.clear();
+			Activate(state, 31, 10, 15, metadata, evidence, operations);
+			operations.calls.clear();
+			Activate(state, 31, 11, 16, metadata, evidence, operations);
+			Assert::AreEqual(static_cast<int>(CarrierPhase::SUPPRESS_RECREATE),
+				static_cast<int>(state.phase));
+			Assert::IsTrue(operations.calls.empty());
+			Activate(state, 32, 11, 16,
+				BuildStaticMetadata(Primaries::UNKNOWN, 1000.0),
+				evidence, operations);
+			Assert::AreEqual(static_cast<int>(CarrierPhase::SDR),
+				static_cast<int>(state.phase));
 		}
 
 		TEST_METHOD(ExternalHdrRejectsEveryUnauthoritativePresentationShape)
