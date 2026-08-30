@@ -1,5 +1,68 @@
 # VP-0166: madVR-style external HDR 3D LUT tone mapping
 
+## Controlling correction — 2026-08-30: external LUT tone maps to SDR
+
+This section supersedes every earlier PQ-output, HDR10-carrier, outgoing-HDR-
+metadata, and Windows Advanced Color activation requirement in this story.
+
+The beta product contract is:
+
+- **Tone map HDR using external 3D LUT** means the selected Cube replaces VP's
+  internal HDR tone and gamut mapping and produces the normal SDR presentation
+  target selected by the active VP profile.
+- The external Cube accepts HDR10/PQ nonlinear RGB coordinates in the selected
+  BT.709, P3-D65, or BT.2020 input-gamut slot and declares its SDR output role
+  through this VP mode. VP does not infer or activate PQ/HDR output from a
+  generic `.cube` file.
+- No HDR10 metadata is emitted, Windows HDR/Advanced Color is not required,
+  and the LUT must work in the embedded SDR preview as well as fullscreen.
+- The outgoing-HDR metadata gamut and peak controls are removed from this
+  mode. Legacy keys remain parseable but are inert.
+- **Pass HDR through to display** is disabled for this beta. It is absent from
+  the editor, and a legacy `passthrough` value resolves safely to VP's internal
+  HDR-to-SDR pixel-shader path.
+- A missing, invalid, stale, or incompatible Cube falls back to the internal
+  HDR-to-SDR pixel-shader path. A successfully selected Cube attaches exactly
+  once as `PL_LUT_CONVERSION`, disables internal peak analysis for that frame,
+  masks the separate final-calibration LUT, and retains normal final dithering.
+
+madVR can distinguish PQ-output and SDR-output LUT roles in its native LUT
+metadata. VP's `.cube` contract cannot, so this beta deliberately implements
+only the explicitly selected SDR-output role. Any future PQ-output external-
+LUT role requires a separate visible output-role contract and is not inferred
+from this mode or from the presence of HDR source metadata.
+
+### Corrected implementation checkpoint — 2026-08-30
+
+The controlling HDR-to-SDR contract is implemented, reviewed, and pushed as
+source commit `a7ba2924` on `codex/vp-0166-madvr-external-lut`:
+
+- the Cube is attached frame-locally as `PL_LUT_CONVERSION` from PQ nonlinear
+  RGB into the active profile's ordinary SDR target;
+- exact and documented fallback input-gamut slots are atomic by generation;
+  an attached-LUT render failure quarantines that generation and restores the
+  internal shader path until a newer generation is committed;
+- peak analysis is suppressed only when the Cube will actually attach, the
+  separate final-calibration LUT is masked only for that frame, dithering is
+  retained, and failed rendering is never presented;
+- the editor exposes only internal pixel-shader and external-Cube tone mapping.
+  Legacy `passthrough` values migrate to the internal path, outgoing-HDR
+  metadata controls are removed and their legacy keys are operationally inert,
+  and inherited enable/disable state gates all Cube controls on first display;
+- a real libplacebo/WARP GPU test proves a synthetic grayscale Cube produces
+  neutral RGB, alongside exact-slot and preconversion fallback readbacks; and
+- 162 focused renderer tests and the complete standalone Config editor test
+  executable pass. x64 Release builds of the GUI, renderer plug-in, and Config
+  editor also succeed. The full solution's unrelated OutputProbe project still
+  encounters the host's duplicate `Path`/`PATH` Visual Studio environment bug;
+  affected production projects build successfully through the normalized
+  environment used for Config.
+
+Three independent final reviews (madVR contract, libplacebo pipeline seam, and
+profile/editor model) report no remaining blocker, P1, or P2. Dormant legacy
+HDR-carrier helper code is unreachable cleanup debt and is not an activation
+path for this mode.
+
 ## Status
 
 In Progress. Created on 2026-08-29 as the consolidated replacement for VP-0100
