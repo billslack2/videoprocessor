@@ -2,6 +2,7 @@
 #include "CppUnitTest.h"
 
 #include <vprenderer/LibplaceboOutputPolicy.h>
+#include <vprenderer/LibplaceboExternalHdrLutPolicy.h>
 #include <ActiveOutputSweepPolicy.h>
 
 
@@ -13,6 +14,108 @@ namespace Tests
 	TEST_CLASS(LibplaceboOutputPolicyTests)
 	{
 	public:
+		TEST_METHOD(ExternalHdrLutDefaultsToExistingPixelShaderMode)
+		{
+			using namespace LibplaceboExternalHdrLut;
+			Assert::AreEqual(static_cast<int>(ToneMappingMode::PIXEL_SHADERS),
+				static_cast<int>(ParseToneMappingMode("")));
+			Assert::AreEqual(static_cast<int>(ToneMappingMode::PIXEL_SHADERS),
+				static_cast<int>(ParseToneMappingMode("invalid")));
+			Assert::AreEqual(static_cast<int>(ToneMappingMode::EXTERNAL_3DLUT),
+				static_cast<int>(ParseToneMappingMode("external_3dlut")));
+			Assert::AreEqual(static_cast<int>(ToneMappingMode::EXTERNAL_3DLUT),
+				static_cast<int>(ParseToneMappingMode("EXTERNAL_3DLUT")));
+			Assert::AreEqual(static_cast<int>(
+				LibplaceboExternalHdrLut::Primaries::P3_D65),
+				static_cast<int>(ParsePrimaries("P3_D65")));
+		}
+
+		TEST_METHOD(ExternalHdrModesOwnDistinctMetadataContracts)
+		{
+			using namespace LibplaceboExternalHdrLut;
+			const auto shaders = Select(ToneMappingMode::PIXEL_SHADERS, true,
+				LibplaceboExternalHdrLut::Primaries::BT2020, {});
+			Assert::AreEqual(static_cast<int>(EffectiveMode::PIXEL_SHADERS),
+				static_cast<int>(shaders.effectiveMode));
+			Assert::AreEqual(static_cast<int>(MetadataOwner::INTERNAL_PIPELINE),
+				static_cast<int>(shaders.metadataOwner));
+			Assert::AreEqual(static_cast<int>(FinalCalibrationStage::APPLY),
+				static_cast<int>(shaders.finalCalibrationStage));
+
+			const auto passthrough = Select(ToneMappingMode::PASS_THROUGH, true,
+				LibplaceboExternalHdrLut::Primaries::BT2020, {});
+			Assert::AreEqual(static_cast<int>(EffectiveMode::PASS_THROUGH),
+				static_cast<int>(passthrough.effectiveMode));
+			Assert::AreEqual(static_cast<int>(MetadataOwner::SOURCE_PASSTHROUGH),
+				static_cast<int>(passthrough.metadataOwner));
+			Assert::AreEqual(static_cast<int>(FinalCalibrationStage::MASK),
+				static_cast<int>(passthrough.finalCalibrationStage));
+			Assert::IsTrue(std::string(passthrough.reason).find("passthrough") !=
+				std::string::npos);
+		}
+
+		TEST_METHOD(ExternalHdrLutUsesExactSlotBeforeFallback)
+		{
+			using namespace LibplaceboExternalHdrLut;
+			const AvailableSlots all{ true, true, true };
+			const auto p3 = Select(ToneMappingMode::EXTERNAL_3DLUT, true,
+				LibplaceboExternalHdrLut::Primaries::P3_D65, all);
+			Assert::IsTrue(p3.useExternalLut);
+			Assert::AreEqual(static_cast<int>(FinalCalibrationStage::MASK),
+				static_cast<int>(p3.finalCalibrationStage));
+			Assert::AreEqual(static_cast<int>(Slot::P3_D65),
+				static_cast<int>(p3.slot));
+			Assert::IsFalse(p3.requiresExplicitPrimariesTransform);
+
+			const auto bt2020 = Select(ToneMappingMode::EXTERNAL_3DLUT, true,
+				LibplaceboExternalHdrLut::Primaries::BT2020, all);
+			Assert::AreEqual(static_cast<int>(Slot::BT2020),
+				static_cast<int>(bt2020.slot));
+			Assert::IsFalse(bt2020.requiresExplicitPrimariesTransform);
+		}
+
+		TEST_METHOD(ExternalHdrLutFallbackOrderIsFrozenAndExplicit)
+		{
+			using namespace LibplaceboExternalHdrLut;
+			const auto p3To2020 = Select(ToneMappingMode::EXTERNAL_3DLUT, true,
+				LibplaceboExternalHdrLut::Primaries::P3_D65,
+				{ true, false, true });
+			Assert::AreEqual(static_cast<int>(Slot::BT2020),
+				static_cast<int>(p3To2020.slot));
+			Assert::IsTrue(p3To2020.requiresExplicitPrimariesTransform);
+
+			const auto bt2020ToP3 = Select(ToneMappingMode::EXTERNAL_3DLUT, true,
+				LibplaceboExternalHdrLut::Primaries::BT2020,
+				{ true, true, false });
+			Assert::AreEqual(static_cast<int>(Slot::P3_D65),
+				static_cast<int>(bt2020ToP3.slot));
+			Assert::IsTrue(bt2020ToP3.requiresExplicitPrimariesTransform);
+
+			const auto bt709NoReverseFallback = Select(
+				ToneMappingMode::EXTERNAL_3DLUT, true,
+				LibplaceboExternalHdrLut::Primaries::BT709,
+				{ false, true, true });
+			Assert::IsFalse(bt709NoReverseFallback.useExternalLut);
+		}
+
+		TEST_METHOD(ExternalHdrLutRejectsNonPqAndUnknownInput)
+		{
+			using namespace LibplaceboExternalHdrLut;
+			const auto nonPq = Select(ToneMappingMode::EXTERNAL_3DLUT, false,
+				LibplaceboExternalHdrLut::Primaries::BT2020,
+				{ false, false, true });
+			Assert::IsFalse(nonPq.useExternalLut);
+			Assert::AreEqual(static_cast<int>(EffectiveMode::PIXEL_SHADERS),
+				static_cast<int>(nonPq.effectiveMode));
+			Assert::AreEqual(static_cast<int>(MetadataOwner::INTERNAL_PIPELINE),
+				static_cast<int>(nonPq.metadataOwner));
+			Assert::AreEqual(static_cast<int>(FinalCalibrationStage::APPLY),
+				static_cast<int>(nonPq.finalCalibrationStage));
+			Assert::IsFalse(Select(ToneMappingMode::EXTERNAL_3DLUT, true,
+				LibplaceboExternalHdrLut::Primaries::UNKNOWN,
+				{ true, true, true }).useExternalLut);
+		}
+
 		TEST_METHOD(SdrGammaMissingOrOnPreservesCurrentManagedBehavior)
 		{
 			Assert::AreEqual(static_cast<int>(SdrAdjustGamma::ON),

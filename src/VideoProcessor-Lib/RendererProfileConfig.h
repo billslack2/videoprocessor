@@ -496,6 +496,20 @@ namespace RendererProfileConfig
 		}
 		if (group == "display")
 		{
+			if (key == "hdr_tone_mapping_mode")
+				return IsChoice(value, { "pixel_shaders", "passthrough", "external_3dlut" });
+			if (key == "hdr_output_metadata_primaries")
+				return IsChoice(value, { "bt709", "p3_d65", "bt2020" });
+			if (key == "hdr_output_metadata_peak_nits")
+				return IsNumberInRange(value, 1.0, 10000.0);
+			if (key == "hdr_external_3dlut_bt709" ||
+				key == "hdr_external_3dlut_p3_d65" ||
+				key == "hdr_external_3dlut_bt2020")
+			{
+				const std::string normalized = ConfigFile::NormalizeName(value);
+				return normalized.size() > 5 &&
+					normalized.substr(normalized.size() - 5) == ".cube";
+			}
 			if (key == "display_bit_depth") return IsChoice(value, { "auto", "8", "10" });
 			if (key == "sdr_target_nits") return IsNumberInRange(value, 40.0, 500.0);
 			if (key == "lut_reference_nits") return IsChoice(value, { "auto" }) || IsNumberInRange(value, 40.0, 500.0);
@@ -761,6 +775,41 @@ namespace RendererProfileConfig
 			key == "crop_wider_content_to_fill_screen" ||
 			key == "crop_wider_content_aspect_limit") return false;
 		return ValidateBaseSetting(key, value);
+	}
+
+	inline bool ValidateExternalHdrLutProfile(const Profile& profile,
+		const std::string& section, std::string& error)
+	{
+		const auto mode = profile.settings.find("hdr_tone_mapping_mode");
+		if (mode == profile.settings.end() ||
+			ConfigFile::NormalizeName(mode->second) != "external_3dlut")
+			return true;
+
+		const bool hasSlot =
+			profile.settings.find("hdr_external_3dlut_bt709") != profile.settings.end() ||
+			profile.settings.find("hdr_external_3dlut_p3_d65") != profile.settings.end() ||
+			profile.settings.find("hdr_external_3dlut_bt2020") != profile.settings.end();
+		if (!hasSlot)
+		{
+			error = "[" + section + "] external_3dlut requires at least one hdr_external_3dlut_* slot";
+			return false;
+		}
+		// External HDR LUT mode already owns the target transform. Preserve an
+		// inherited/configured legacy final-calibration declaration, but mask that
+		// later stage while external_3dlut is effective. Rejecting it here would
+		// make an external named profile impossible whenever its baseline carries
+		// calibration and the profile model cannot explicitly unset inheritance.
+		if (profile.settings.find("hdr_output_metadata_primaries") == profile.settings.end())
+		{
+			error = "[" + section + "] external_3dlut requires hdr_output_metadata_primaries";
+			return false;
+		}
+		if (profile.settings.find("hdr_output_metadata_peak_nits") == profile.settings.end())
+		{
+			error = "[" + section + "] external_3dlut requires hdr_output_metadata_peak_nits";
+			return false;
+		}
+		return true;
 	}
 
 	// Color Config is deliberately narrower than a general Rendering profile:
@@ -1174,6 +1223,17 @@ namespace RendererProfileConfig
 				 !ValidateExpressionVariables(base.whenExpression,
 					expressionVariables, "[" + prefix + baselineName + "] when=", error)))
 				return false;
+			if (std::string(spec.name) == "display")
+			{
+				Profile externalContract = base;
+				if (baselineValues)
+					for (const auto& entry : *baselineValues)
+						if (entry.first.rfind("hdr_", 0) == 0 || entry.first == "lut")
+							externalContract.settings[entry.first] = entry.second;
+				if (!ValidateExternalHdrLutProfile(externalContract,
+					namedBaseline ? prefix + baselineName : section, error))
+					return false;
+			}
 			model.profiles.emplace(group.name + "." + baselineName, base);
 
 			for (const std::string& variant : variants)
@@ -1247,6 +1307,21 @@ namespace RendererProfileConfig
 					 !ValidateExpressionVariables(profile.whenExpression,
 						expressionVariables, "[" + variantSection + "] when=", error)))
 					return false;
+				if (std::string(spec.name) == "display")
+				{
+					Profile externalContract = profile;
+					if (baselineValues)
+						for (const auto& entry : *baselineValues)
+							if (entry.first.rfind("hdr_", 0) == 0 || entry.first == "lut")
+								externalContract.settings[entry.first] = entry.second;
+					if (values)
+						for (const auto& entry : *values)
+							if (entry.first.rfind("hdr_", 0) == 0 || entry.first == "lut")
+								externalContract.settings[entry.first] = entry.second;
+					if (!ValidateExternalHdrLutProfile(
+						externalContract, variantSection, error))
+						return false;
+				}
 				group.profiles.push_back(variant);
 				model.profiles.emplace(group.name + "." + variant,
 					std::move(profile));
@@ -1609,6 +1684,9 @@ namespace RendererProfileConfig
 						  "cadence", "width", "height", "resolution", "renderer",
 						  "actual_refresh", "key" },
 						"[" + profileSection + "] when=", error)))
+					return false;
+				if (groupName == "display" &&
+					!ValidateExternalHdrLutProfile(profile, profileSection, error))
 					return false;
 				model.profiles.emplace(groupName + "." + profileName, std::move(profile));
 			}

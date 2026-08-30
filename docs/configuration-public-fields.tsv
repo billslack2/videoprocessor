@@ -45,6 +45,12 @@ shortcuts.show_profiles	shortcut-show-profiles	VP profile overlay	no
 vprenderer.when	vprenderer-when	VP Renderer	no
 vprenderer.shortcut	vprenderer-shortcut	VP Renderer	no
 vprenderer.quality	vprenderer-quality	VP Renderer	no
+vprenderer.hdr_tone_mapping_mode	vprenderer-external-hdr-lut	VP Renderer HDR	no
+vprenderer.hdr_external_3dlut_bt709	vprenderer-external-hdr-lut	VP Renderer HDR	no
+vprenderer.hdr_external_3dlut_p3_d65	vprenderer-external-hdr-lut	VP Renderer HDR	no
+vprenderer.hdr_external_3dlut_bt2020	vprenderer-external-hdr-lut	VP Renderer HDR	no
+vprenderer.hdr_output_metadata_primaries	vprenderer-external-hdr-lut	VP Renderer HDR	no
+vprenderer.hdr_output_metadata_peak_nits	vprenderer-external-hdr-lut	VP Renderer HDR	no
 vprenderer.tone_mapping	vprenderer-tone-mapping	VP Renderer	no
 vprenderer.gamut_mapping	vprenderer-gamut-mapping	VP Renderer	no
 vprenderer.peak_detection	vprenderer-peak-detection	VP Renderer	no

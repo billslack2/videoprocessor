@@ -796,6 +796,9 @@ QString friendlyChoiceLabel(const QString& raw)
         { QStringLiteral("P3_DCI"), QStringLiteral("DCI-P3") },
         { QStringLiteral("P3_D60"), QStringLiteral("P3-D60") },
         { QStringLiteral("HIGH_QUALITY"), QStringLiteral("High quality") },
+		{ QStringLiteral("PIXEL_SHADERS"), QStringLiteral("Tone map HDR using pixel shaders") },
+		{ QStringLiteral("EXTERNAL_3DLUT"), QStringLiteral("Tone map HDR using external 3D LUT") },
+		{ QStringLiteral("PASSTHROUGH"), QStringLiteral("Pass HDR through to display") },
         { QStringLiteral("EWA_LANCZOSSHARP"), QStringLiteral("EWA Lanczos sharp") },
         { QStringLiteral("EWA_LANCZOS"), QStringLiteral("EWA Lanczos") },
         { QStringLiteral("EWA_LANCZOS4SHARPEST"), QStringLiteral("EWA Lanczos 4 sharpest") },
@@ -3784,6 +3787,22 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         form = addCollapsibleSection(QStringLiteral("toneMapping"),
             QStringLiteral("Tone mapping"), QStringLiteral(
                 "HDR tone mapping, gamut compression, dynamic peak handling, and contrast recovery."), false);
+		auto* hdrToneMappingMode = addChoice(QStringLiteral("HDR processing mode"),
+			QStringLiteral("hdr_tone_mapping_mode"),
+			{ QStringLiteral("pixel_shaders"), QStringLiteral("external_3dlut"),
+				QStringLiteral("passthrough") });
+		hdrToneMappingMode->setItemText(
+			hdrToneMappingMode->findData(QStringLiteral("pixel_shaders")),
+			QStringLiteral("Tone map HDR using pixel shaders"));
+		hdrToneMappingMode->setItemText(
+			hdrToneMappingMode->findData(QStringLiteral("external_3dlut")),
+			QStringLiteral("Tone map HDR using external 3D LUT"));
+		hdrToneMappingMode->setItemText(
+			hdrToneMappingMode->findData(QStringLiteral("passthrough")),
+			QStringLiteral("Pass HDR through to display"));
+		hdrToneMappingMode->setToolTip(QStringLiteral(
+			"These modes are mutually exclusive. External 3D LUT mode gives the Cube "
+			"ownership of HDR tone and gamut mapping."));
         auto* sdrTargetWhiteLevel = addText(QStringLiteral("Target white level"),
             QStringLiteral("sdr_target_nits"), QStringLiteral("nits"));
         connect(sdrTargetWhiteLevel, &QLineEdit::textChanged, this,
@@ -3855,8 +3874,9 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             "Native display precision used as the dithering target. Auto uses the active RGB swapchain depth."));
         addRendererAutoStatus(QStringLiteral("display_bit_depth"), displayBitDepth);
 
-		form = addCollapsibleSection(QStringLiteral("lut"), QStringLiteral("Calibration LUT (3D LUT)"),
-            QStringLiteral("Optional lookup-table file and the signal reference used to interpret it."), false);
+		form = addCollapsibleSection(QStringLiteral("externalHdrLut"),
+			QStringLiteral("External HDR 3D LUT"), QStringLiteral(
+				"madVR-style input-gamut slots. The selected Cube owns HDR tone and gamut mapping."), false);
         const QString lutDirectoryPath = QFileInfo(configPath_).absoluteDir()
             .filePath(QStringLiteral("luts"));
         const auto discoveredLuts = [lutDirectoryPath]()
@@ -3870,30 +3890,48 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                 result << QStringLiteral("luts/%1").arg(lutFile.fileName());
             return result;
         };
-        auto* lutSelector = addChoice(QStringLiteral("3D LUT file"),
-            QStringLiteral("lut"), discoveredLuts());
-        lutSelector->setToolTip(QStringLiteral(
-            "Select a .cube file from VP's luts folder. The selected file is stored relative to the configuration."));
-        const auto refreshLutSelector = [this, state, lutSelector, discoveredLuts]
+		auto* lutBt709 = addChoice(QStringLiteral("BT.709 input LUT"),
+			QStringLiteral("hdr_external_3dlut_bt709"), discoveredLuts());
+		auto* lutP3 = addChoice(QStringLiteral("P3-D65 input LUT"),
+			QStringLiteral("hdr_external_3dlut_p3_d65"), discoveredLuts());
+		auto* lutBt2020 = addChoice(QStringLiteral("BT.2020 input LUT"),
+			QStringLiteral("hdr_external_3dlut_bt2020"), discoveredLuts());
+		const QList<QComboBox*> externalLutSelectors = {
+			lutBt709, lutP3, lutBt2020
+		};
+		for (QComboBox* selector : externalLutSelectors)
+			selector->setToolTip(QStringLiteral(
+				"The slot name describes the nonlinear PQ RGB input coordinates expected by the Cube, "
+				"not the display gamut or outgoing HDR metadata."));
+		const auto refreshLutSelectors = [externalLutSelectors, discoveredLuts]
         {
-            const QSignalBlocker blocker(lutSelector);
-            const QString selected = lutSelector->currentData().toString();
             const QStringList available = discoveredLuts();
-            const bool selectionWasRemoved = !selected.isEmpty() &&
-                !available.contains(selected, Qt::CaseInsensitive);
-            if (selectionWasRemoved && !state->loading && !state->section.isEmpty() && document_)
-            {
-                document_->RemoveKnown(state->section.toStdString(), "lut");
-                markDirty();
-            }
-            lutSelector->clear();
-            lutSelector->addItem(QStringLiteral("Inherited / not set"), QString());
-            for (const QString& lut : available)
-                lutSelector->addItem(lut, lut);
-            lutSelector->setCurrentIndex(selectionWasRemoved ? 0 :
-                std::max(0, lutSelector->findData(selected)));
+			for (QComboBox* selector : externalLutSelectors)
+			{
+				const QSignalBlocker blocker(selector);
+				const QString selected = selector->currentData().toString();
+				const QString effective = selected.isEmpty() ?
+					selector->property("effectiveValue").toString() : selected;
+				selector->clear();
+				const bool effectiveMissing = !effective.isEmpty() &&
+					!available.contains(effective, Qt::CaseInsensitive);
+				selector->addItem(selected.isEmpty() && effectiveMissing ?
+					QStringLiteral("Inherited - Missing: %1").arg(effective) :
+					QStringLiteral("Inherited / not set"), QString());
+				for (const QString& lut : available)
+					selector->addItem(lut, lut);
+				int index = selector->findData(selected, Qt::UserRole,
+					Qt::MatchFixedString);
+				if (index < 0 && !selected.isEmpty())
+				{
+					selector->addItem(QStringLiteral("Missing: %1").arg(selected), selected);
+					index = selector->count() - 1;
+					selector->setItemData(index, true, Qt::UserRole + 1);
+				}
+				selector->setCurrentIndex(std::max(0, index));
+			}
         };
-        auto* lutWatcher = new QFileSystemWatcher(lutSelector);
+		auto* lutWatcher = new QFileSystemWatcher(lutBt709);
         const auto watchLutDirectory = [lutWatcher, lutDirectoryPath]
         {
             if (QDir(lutDirectoryPath).exists() &&
@@ -3902,15 +3940,15 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         };
         watchLutDirectory();
         connect(lutWatcher, &QFileSystemWatcher::directoryChanged, this,
-            [refreshLutSelector](const QString&) { refreshLutSelector(); });
+			[refreshLutSelectors](const QString&) { refreshLutSelectors(); });
         auto* openLutFolder = new QPushButton;
-        openLutFolder->setObjectName(QStringLiteral("config.vprenderer.lut.open_folder"));
+		openLutFolder->setObjectName(QStringLiteral("config.vprenderer.external_hdr_lut.open_folder"));
         openLutFolder->setText(QStringLiteral("Open LUT folder"));
         openLutFolder->setToolTip(QStringLiteral("Open the folder where VideoProcessor discovers 3D LUT files."));
         openLutFolder->setAccessibleName(QStringLiteral("Open LUT folder"));
         openLutFolder->setMaximumWidth(170);
         connect(openLutFolder, &QPushButton::clicked, this,
-            [this, lutDirectoryPath, watchLutDirectory, refreshLutSelector]
+			[this, lutDirectoryPath, watchLutDirectory, refreshLutSelectors]
         {
             if (!QDir().mkpath(lutDirectoryPath))
             {
@@ -3919,7 +3957,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                 return;
             }
             watchLutDirectory();
-            refreshLutSelector();
+			refreshLutSelectors();
             if (!openPathExternally(lutDirectoryPath))
                 QMessageBox::warning(this, QStringLiteral("LUT folder"),
                     QStringLiteral("Windows could not open the LUT folder."));
@@ -3927,27 +3965,140 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         form->addRow(QString(), openLutFolder);
         form->addRow(QString(), helpLabel(QStringLiteral(
             "Put .cube files in the luts folder next to VideoProcessor.cfg (normally the VP installation). "
-            "The selector refreshes automatically when the folder changes. If a selected file is removed, "
-            "VP returns that profile to its inherited LUT setting; Reload also refreshes the list.")));
-        auto* lutReferenceLuminance = addChoice(
-            QStringLiteral("LUT reference luminance (nits)"),
-            QStringLiteral("lut_reference_nits"),
-            { QStringLiteral("AUTO"), QStringLiteral("40"),
-                QStringLiteral("80"),
-                QStringLiteral("100"), QStringLiteral("120"),
-                QStringLiteral("160"), QStringLiteral("203"),
-                QStringLiteral("250"), QStringLiteral("300"),
-                QStringLiteral("400"), QStringLiteral("500") });
-        lutReferenceLuminance->setToolTip(QStringLiteral(
-            "Choose Auto or a common reference luminance from 40 to 500 nits. "
-            "Existing custom values remain available in their profile."));
-        addRendererAutoStatus(QStringLiteral("lut_reference_nits"), lutReferenceLuminance);
-        auto* lutReferenceRange = addChoice(QStringLiteral("LUT reference range"), QStringLiteral("lut_reference_range"), { QStringLiteral("AUTO"), QStringLiteral("full"), QStringLiteral("limited") });
-        addRendererAutoStatus(QStringLiteral("lut_reference_range"), lutReferenceRange);
-        auto* lutReferenceTransfer = addChoice(QStringLiteral("LUT reference transfer"), QStringLiteral("lut_reference_transfer"), { QStringLiteral("AUTO"), QStringLiteral("srgb"), QStringLiteral("bt1886"), QStringLiteral("2.2"), QStringLiteral("2.4") });
-        addRendererAutoStatus(QStringLiteral("lut_reference_transfer"), lutReferenceTransfer);
-        auto* lutReferencePrimaries = addChoice(QStringLiteral("LUT reference primaries"), QStringLiteral("lut_reference_primaries"), { QStringLiteral("AUTO"), QStringLiteral("REC709"), QStringLiteral("P3_D65"), QStringLiteral("BT2020") });
-        addRendererAutoStatus(QStringLiteral("lut_reference_primaries"), lutReferencePrimaries);
+			"A missing selected file remains configured and is reported as Missing; VP must fall back to its internal shader path.")));
+		auto* outputMetadataPrimaries = addChoice(
+			QStringLiteral("Outgoing HDR metadata gamut"),
+			QStringLiteral("hdr_output_metadata_primaries"),
+			{ QStringLiteral("BT709"), QStringLiteral("P3_D65"),
+				QStringLiteral("BT2020") });
+		outputMetadataPrimaries->setToolTip(QStringLiteral(
+			"Declares mastering primaries in outgoing HDR10 metadata. It is independent of the selected LUT input slot."));
+		auto* outputMetadataPeak = addText(
+			QStringLiteral("Outgoing HDR metadata peak"),
+			QStringLiteral("hdr_output_metadata_peak_nits"),
+			QStringLiteral("nits"));
+		outputMetadataPeak->setPlaceholderText(QStringLiteral("1 to 10000"));
+		outputMetadataPeak->setToolTip(QStringLiteral(
+			"Declares the external LUT's intended HDR output peak. It does not select a LUT slot."));
+
+		form = addCollapsibleSection(QStringLiteral("calibrationLut"),
+			QStringLiteral("Existing final calibration (legacy inspection)"), QStringLiteral(
+				"A separate SDR post-mapping display-calibration stage. HDR passthrough and external HDR 3D LUT modes preserve this declaration but mask the stage while active."), false);
+		form->addRow(QString(), helpLabel(QStringLiteral(
+			"Inspection/recovery only: existing declarations are preserved and can be cleared. "
+			"Selecting a Cube here does not create the required hashes, carrier identity, delivery authority, "
+			"or attestation fields; an incomplete final-calibration declaration fails closed.")));
+		auto* calibrationLut = addChoice(QStringLiteral("Calibration 3D LUT file"),
+			QStringLiteral("lut"), discoveredLuts());
+		calibrationLut->setToolTip(QStringLiteral(
+			"Existing final display-calibration Cube. This is not a madVR external HDR tone-mapping slot."));
+		auto* lutReferenceLuminance = addChoice(
+			QStringLiteral("LUT reference luminance (nits)"),
+			QStringLiteral("lut_reference_nits"),
+			{ QStringLiteral("AUTO"), QStringLiteral("40"), QStringLiteral("80"),
+				QStringLiteral("100"), QStringLiteral("120"), QStringLiteral("160"),
+				QStringLiteral("203"), QStringLiteral("250"), QStringLiteral("300"),
+				QStringLiteral("400"), QStringLiteral("500") });
+		addRendererAutoStatus(QStringLiteral("lut_reference_nits"), lutReferenceLuminance);
+		auto* lutReferenceRange = addChoice(QStringLiteral("LUT reference range"),
+			QStringLiteral("lut_reference_range"),
+			{ QStringLiteral("AUTO"), QStringLiteral("full"), QStringLiteral("limited") });
+		addRendererAutoStatus(QStringLiteral("lut_reference_range"), lutReferenceRange);
+		auto* lutReferenceTransfer = addChoice(QStringLiteral("LUT reference transfer"),
+			QStringLiteral("lut_reference_transfer"),
+			{ QStringLiteral("AUTO"), QStringLiteral("srgb"), QStringLiteral("bt1886"),
+				QStringLiteral("2.2"), QStringLiteral("2.4") });
+		addRendererAutoStatus(QStringLiteral("lut_reference_transfer"), lutReferenceTransfer);
+		auto* lutReferencePrimaries = addChoice(QStringLiteral("LUT reference primaries"),
+			QStringLiteral("lut_reference_primaries"),
+			{ QStringLiteral("AUTO"), QStringLiteral("REC709"),
+				QStringLiteral("P3_D65"), QStringLiteral("BT2020") });
+		addRendererAutoStatus(QStringLiteral("lut_reference_primaries"), lutReferencePrimaries);
+		connect(lutWatcher, &QFileSystemWatcher::directoryChanged, this,
+			[calibrationLut, discoveredLuts](const QString&)
+			{
+				const QSignalBlocker blocker(calibrationLut);
+				const QString selected = calibrationLut->currentData().toString();
+				const QStringList available = discoveredLuts();
+				calibrationLut->clear();
+				calibrationLut->addItem(QStringLiteral("Inherited / not set"), QString());
+				for (const QString& lut : available)
+					calibrationLut->addItem(lut, lut);
+				int index = calibrationLut->findData(selected);
+				if (index < 0 && !selected.isEmpty())
+				{
+					calibrationLut->addItem(QStringLiteral("Missing: %1").arg(selected), selected);
+					index = calibrationLut->count() - 1;
+				}
+				calibrationLut->setCurrentIndex(std::max(0, index));
+			});
+
+		const QList<QWidget*> internalToneMapControls = {
+			sdrTargetWhiteLevel, sdrBlackLevel, toneMapping, gamutMapping,
+			peakDetection, contrastRecovery
+		};
+		const QList<QWidget*> calibrationControls = {
+			calibrationLut,
+			lutReferenceLuminance, lutReferenceRange, lutReferenceTransfer,
+			lutReferencePrimaries
+		};
+		const QList<QWidget*> externalToneMapControls = {
+			lutBt709, lutP3, lutBt2020, outputMetadataPrimaries,
+			outputMetadataPeak, openLutFolder
+		};
+		const auto updateHdrModeControls = [hdrToneMappingMode,
+			internalToneMapControls, calibrationControls, externalToneMapControls]
+		{
+			QString mode = hdrToneMappingMode->currentData().toString().trimmed().toLower();
+			if (mode.isEmpty())
+				mode = hdrToneMappingMode->property("effectiveValue").toString().trimmed().toLower();
+			if (mode.isEmpty()) mode = QStringLiteral("pixel_shaders");
+			const bool internal = mode == QStringLiteral("pixel_shaders");
+			const bool external = mode == QStringLiteral("external_3dlut");
+			for (QWidget* control : internalToneMapControls)
+				control->setEnabled(internal);
+			for (QWidget* control : calibrationControls)
+				control->setEnabled(internal);
+			for (QWidget* control : externalToneMapControls)
+				control->setEnabled(external);
+		};
+		connect(hdrToneMappingMode, qOverload<int>(&QComboBox::currentIndexChanged),
+			this, [this, state, hdrToneMappingMode, outputMetadataPrimaries,
+				outputMetadataPeak, updateHdrModeControls](int)
+			{
+				const QString mode = hdrToneMappingMode->currentData().toString().trimmed().toLower();
+				if (!state->loading && document_ && !state->section.isEmpty() &&
+					mode == QStringLiteral("external_3dlut"))
+				{
+					const auto persistEffective = [this, state](
+						const QString& key, QWidget* control, const QString& fallback)
+					{
+						if (!value(state->section, key).isEmpty()) return;
+						QString effective = control->property("effectiveValue").toString();
+						if (effective.isEmpty()) effective = fallback;
+						document_->SetKnown(state->section.toStdString(),
+							key.toStdString().c_str(), effective.toLocal8Bit().constData());
+						control->setProperty("inherited", false);
+						control->setProperty("effectiveValue", effective);
+						if (auto* combo = qobject_cast<QComboBox*>(control))
+						{
+							const QSignalBlocker blocker(combo);
+							const int index = combo->findData(effective, Qt::UserRole,
+								Qt::MatchFixedString);
+							if (index >= 0) combo->setCurrentIndex(index);
+						}
+					};
+					persistEffective(QStringLiteral("hdr_output_metadata_primaries"),
+						outputMetadataPrimaries, QStringLiteral("BT2020"));
+					persistEffective(QStringLiteral("hdr_output_metadata_peak_nits"),
+						outputMetadataPeak, QStringLiteral("1000"));
+				}
+				updateHdrModeControls();
+				// Field loading assigns generic enabled state after each value.
+				// Reapply the mutually-exclusive mode once that pass completes.
+				QTimer::singleShot(0, hdrToneMappingMode, updateHdrModeControls);
+			});
+		updateHdrModeControls();
 
     }
     else if (sectionPrefix == QStringLiteral("vprenderer.output"))
@@ -4564,6 +4715,12 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             if (sectionPrefix == QStringLiteral("vprenderer"))
             {
                 if (key == QStringLiteral("quality")) return QStringLiteral("high");
+				if (key == QStringLiteral("hdr_tone_mapping_mode"))
+					return QStringLiteral("pixel_shaders");
+				if (key == QStringLiteral("hdr_output_metadata_peak_nits"))
+					return QStringLiteral("1000");
+				if (key == QStringLiteral("hdr_output_metadata_primaries"))
+					return QStringLiteral("BT2020");
                 if (key == QStringLiteral("output_path_profile")) return QStringLiteral("legacy");
                 if (key == QStringLiteral("sdr_target_primaries")) return QStringLiteral("REC709");
                 if (key == QStringLiteral("sdr_target_nits")) return QStringLiteral("203");
@@ -4572,6 +4729,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                     key == QStringLiteral("lut_reference_nits")) return QStringLiteral("Auto");
                 if (key == QStringLiteral("deband_strength")) return QStringLiteral("AUTO");
                 if (key == QStringLiteral("lut")) return {};
+				if (key.startsWith(QStringLiteral("hdr_external_3dlut_"))) return {};
                 if (key == QStringLiteral("report_bt2020_to_display") ||
                     key == QStringLiteral("output_diagnostics") ||
                     key == QStringLiteral("diagnostic_disable_shader_cache") ||
@@ -4671,6 +4829,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 				field.widget->setEnabled(mode &&
 					mode->currentData().toString() == QStringLiteral("fixed"));
 			}
+			field.widget->setProperty("effectiveValue", configured);
 			field.widget->setProperty("inherited", raw.isEmpty() && !defaultProfile);
 			field.widget->setToolTip(raw.isEmpty() ?
                 (defaultProfile ?
@@ -4727,7 +4886,19 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                 const QString inheritedDisplay = friendlyChoiceLabel(configured);
                 if (hasUnspecifiedChoice)
                 {
-                    if (raw.isEmpty() && !configured.isEmpty())
+					const int externalLutEffectiveIndex = combo->findData(
+						configured, Qt::UserRole, Qt::MatchFixedString);
+					const bool inheritedMissingExternalLut =
+						sectionPrefix == QStringLiteral("vprenderer") &&
+						field.key.startsWith(QStringLiteral("hdr_external_3dlut_")) &&
+						raw.isEmpty() && !configured.isEmpty() &&
+						(externalLutEffectiveIndex < 0 || combo->itemData(
+							externalLutEffectiveIndex, Qt::UserRole + 1).toBool());
+					if (inheritedMissingExternalLut)
+						combo->setItemText(0, defaultProfile ?
+							QStringLiteral("Default - Missing: %1").arg(configured) :
+							QStringLiteral("Inherited - Missing: %1").arg(configured));
+					else if (raw.isEmpty() && !configured.isEmpty())
                         combo->setItemText(0, defaultProfile ?
                             QStringLiteral("Default: %1").arg(inheritedDisplay) :
                             QStringLiteral("Inherited: %1").arg(inheritedDisplay));
@@ -4746,16 +4917,16 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                         if (combo->itemData(candidate).toString().compare(
                             configured, Qt::CaseInsensitive) == 0)
                         { index = candidate; break; }
-                if (index < 0 && sectionPrefix == QStringLiteral("vprenderer") &&
-                    field.key == QStringLiteral("lut") && !raw.isEmpty())
-                {
-                    // LUTs are deliberately selected only from VP's luts
-                    // directory. A removed file must not linger as a fake
-                    // selector item; clear it in the pending document and
-                    // let the user save that removal explicitly.
-                    document_->RemoveKnown(section.toStdString(), "lut");
-                    markDirty();
-                    index = 0;
+				if (index < 0 && sectionPrefix == QStringLiteral("vprenderer") &&
+					field.key.startsWith(QStringLiteral("hdr_external_3dlut_")) &&
+					!raw.isEmpty())
+				{
+					// Retain missing paths so the runtime can report the broken
+					// slot and safely select its internal shader fallback.
+					combo->addItem(QStringLiteral("Missing: %1").arg(configured),
+						configured);
+					index = combo->count() - 1;
+					combo->setItemData(index, true, Qt::UserRole + 1);
                 }
                 else if (index < 0)
                 {

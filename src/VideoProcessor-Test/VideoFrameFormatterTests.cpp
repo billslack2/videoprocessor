@@ -2303,6 +2303,140 @@ namespace Tests
 				std::string::npos);
 		}
 
+		TEST_METHOD(RendererProfileConfigValidatesExternalHdrLutContract)
+		{
+			std::string expected;
+			Assert::IsTrue(RendererProfileConfig::ValidateProfileSetting(
+				"display", "hdr_tone_mapping_mode", "external_3dlut", expected));
+			Assert::IsTrue(RendererProfileConfig::ValidateProfileSetting(
+				"display", "hdr_external_3dlut_bt2020", "luts/hdr.cube", expected));
+			Assert::IsFalse(RendererProfileConfig::ValidateProfileSetting(
+				"display", "hdr_external_3dlut_bt2020", "luts/hdr.3dlut", expected));
+			Assert::IsTrue(RendererProfileConfig::ValidateProfileSetting(
+				"display", "hdr_output_metadata_peak_nits", "1000", expected));
+			Assert::IsFalse(RendererProfileConfig::ValidateProfileSetting(
+				"display", "hdr_output_metadata_peak_nits", "10001", expected));
+
+			RendererProfileConfig::Profile profile;
+			profile.settings["hdr_tone_mapping_mode"] = "external_3dlut";
+			std::string error;
+			Assert::IsFalse(RendererProfileConfig::ValidateExternalHdrLutProfile(
+				profile, "vprenderer", error));
+			Assert::IsTrue(error.find("at least one") != std::string::npos);
+			profile.settings["hdr_external_3dlut_bt2020"] = "luts/hdr.cube";
+			Assert::IsFalse(RendererProfileConfig::ValidateExternalHdrLutProfile(
+				profile, "vprenderer", error));
+			Assert::IsTrue(error.find("metadata_primaries") != std::string::npos);
+			profile.settings["hdr_output_metadata_primaries"] = "p3_d65";
+			Assert::IsFalse(RendererProfileConfig::ValidateExternalHdrLutProfile(
+				profile, "vprenderer", error));
+			profile.settings["hdr_output_metadata_peak_nits"] = "200";
+			Assert::IsTrue(RendererProfileConfig::ValidateExternalHdrLutProfile(
+				profile, "vprenderer", error));
+			profile.settings["lut"] = "luts/final-calibration.cube";
+			Assert::IsTrue(RendererProfileConfig::ValidateExternalHdrLutProfile(
+				profile, "vprenderer", error));
+			profile.settings.erase("lut");
+
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(ARRAYSIZE(temporaryDirectory),
+				temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) +
+				"VideoProcessor-vp0166-external-hdr-lut.cfg";
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[vprenderer]\n"
+					"hdr_tone_mapping_mode: external_3dlut\n"
+					"hdr_external_3dlut_bt2020: luts/hdr.cube\n";
+			}
+			ConfigFile incomplete;
+			Assert::IsTrue(incomplete.Load(path));
+			RendererProfileConfig::Model model;
+			Assert::IsFalse(RendererProfileConfig::Read(
+				incomplete, model, error));
+			Assert::IsTrue(error.find("metadata_primaries") !=
+				std::string::npos);
+
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[vprenderer]\n"
+					"hdr_tone_mapping_mode: external_3dlut\n"
+					"hdr_external_3dlut_bt2020: luts/hdr.cube\n"
+					"hdr_output_metadata_primaries: bt2020\n"
+					"hdr_output_metadata_peak_nits: 1000\n";
+			}
+			ConfigFile complete;
+			Assert::IsTrue(complete.Load(path));
+			Assert::IsTrue(RendererProfileConfig::Read(
+				complete, model, error),
+				std::wstring(error.begin(), error.end()).c_str());
+
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[vprenderer]\n"
+					"lut: luts/final-calibration.cube\n"
+					"hdr_tone_mapping_mode: external_3dlut\n"
+					"hdr_external_3dlut_bt2020: luts/hdr.cube\n"
+					"hdr_output_metadata_primaries: bt2020\n"
+					"hdr_output_metadata_peak_nits: 1000\n";
+			}
+			ConfigFile completeWithMaskedCalibration;
+			Assert::IsTrue(completeWithMaskedCalibration.Load(path));
+			Assert::IsTrue(RendererProfileConfig::Read(
+				completeWithMaskedCalibration, model, error),
+				std::wstring(error.begin(), error.end()).c_str());
+
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[vprenderer]\n"
+					"lut: luts/final-calibration.cube\n"
+					"[vprenderer.external]\n"
+					"hdr_tone_mapping_mode: external_3dlut\n"
+					"hdr_external_3dlut_bt2020: luts/hdr.cube\n"
+					"hdr_output_metadata_primaries: bt2020\n"
+					"hdr_output_metadata_peak_nits: 1000\n";
+			}
+			ConfigFile inheritedMaskedCalibration;
+			Assert::IsTrue(inheritedMaskedCalibration.Load(path));
+			Assert::IsTrue(RendererProfileConfig::Read(
+				inheritedMaskedCalibration, model, error),
+				std::wstring(error.begin(), error.end()).c_str());
+
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[general]\n"
+					"[profile_groups.display]\n"
+					"profiles: hdr\n"
+					"default: hdr\n"
+					"[profiles.display.hdr]\n"
+					"hdr_tone_mapping_mode: external_3dlut\n";
+			}
+			ConfigFile unifiedIncomplete;
+			Assert::IsTrue(unifiedIncomplete.Load(path));
+			Assert::IsFalse(RendererProfileConfig::Read(
+				unifiedIncomplete, model, error));
+			Assert::IsTrue(error.find("at least one") != std::string::npos);
+
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[general]\n"
+					"[profile_groups.display]\n"
+					"profiles: hdr\n"
+					"default: hdr\n"
+					"[profiles.display.hdr]\n"
+					"hdr_tone_mapping_mode: external_3dlut\n"
+					"hdr_external_3dlut_p3_d65: luts/hdr.cube\n"
+					"hdr_output_metadata_primaries: p3_d65\n"
+					"hdr_output_metadata_peak_nits: 200\n";
+			}
+			ConfigFile unifiedComplete;
+			Assert::IsTrue(unifiedComplete.Load(path));
+			Assert::IsTrue(RendererProfileConfig::Read(
+				unifiedComplete, model, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			DeleteFileA(path.c_str());
+		}
+
 		TEST_METHOD(UnifiedProfileRuntimeRestoresPublishesAndPersistsViewport)
 		{
 			char temporaryDirectory[MAX_PATH] = {};
