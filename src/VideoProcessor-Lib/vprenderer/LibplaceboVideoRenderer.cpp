@@ -18,6 +18,7 @@
 #include <vprenderer/AlphaCadenceCorrectionPolicy.h>
 #include <vprenderer/AlphaQueuePolicy.h>
 #include <vprenderer/LibplaceboDisplayLut.h>
+#include <vprenderer/LibplaceboLutContract.h>
 #include <vprenderer/AlphaPresentationTelemetry.h>
 #include <vprenderer/AlphaNativeRgbIngress.h>
 #include <vprenderer/AlphaSourceCropPolicy.h>
@@ -2524,6 +2525,24 @@ namespace
 		if (gamma == "2.6") return PL_COLOR_TRC_GAMMA26;
 		if (gamma == "2.8") return PL_COLOR_TRC_GAMMA28;
 		return PL_COLOR_TRC_UNKNOWN;
+	}
+
+	float AdaptKnownSdrBlackForLibplacebo(double semanticBlackNits)
+	{
+		const LibplaceboLutContract::ReferenceLuminance black = {
+			semanticBlackNits,
+			LibplaceboLutContract::ReferenceOrigin::INHERITED_TARGET };
+		float adapted = 0.0f;
+		if (LibplaceboLutContract::ResolveLibplaceboBlackNits(
+			black, adapted) ==
+			LibplaceboLutContract::SemanticBlackRejection::NONE)
+		{
+			return adapted;
+		}
+		// Existing non-LUT configurations may contain a positive value below
+		// libplacebo's semantic floor. Preserve their prior behavior; the strict
+		// LUT contract rejects that value before activation.
+		return static_cast<float>(semanticBlackNits);
 	}
 
 	double RefreshRateHz(const DISPLAYCONFIG_RATIONAL& rate)
@@ -5261,7 +5280,8 @@ struct LibplaceboVideoRenderer::Impl
 			ResolvedPixelTransfer(encoding, targetTransfer);
 		configuredOutputColor.transfer =
 			transfer == PL_COLOR_TRC_UNKNOWN ? PL_COLOR_TRC_SRGB : transfer;
-		configuredOutputColor.hdr.min_luma = static_cast<float>(sdrBlackNits);
+		configuredOutputColor.hdr.min_luma =
+			AdaptKnownSdrBlackForLibplacebo(sdrBlackNits);
 		configuredOutputColor.hdr.max_luma = static_cast<float>(sdrTargetNits);
 		// libplacebo applies a colour-space hint lazily while starting a frame.
 		// Do not give it that authority for the VP-owned path: VP applies the
@@ -8599,7 +8619,8 @@ struct LibplaceboVideoRenderer::Impl
 		// tone-mapping path.
 		if (state.eotf == EOTF::SDR)
 		{
-			image.color.hdr.min_luma = static_cast<float>(sdrBlackNits);
+			image.color.hdr.min_luma =
+				AdaptKnownSdrBlackForLibplacebo(sdrBlackNits);
 			image.color.hdr.max_luma = static_cast<float>(sdrTargetNits);
 			image.color.hdr.max_cll = 0.0f;
 			image.color.hdr.max_fall = 0.0f;
@@ -8746,7 +8767,8 @@ struct LibplaceboVideoRenderer::Impl
 		{
 			baseTarget.color.primaries = PL_COLOR_PRIM_BT_709;
 		}
-		baseTarget.color.hdr.min_luma = static_cast<float>(sdrBlackNits);
+		baseTarget.color.hdr.min_luma =
+			AdaptKnownSdrBlackForLibplacebo(sdrBlackNits);
 		baseTarget.color.hdr.max_luma = static_cast<float>(sdrTargetNits);
 		ConfigureDisplayLutForTarget(
 			baseTarget, returnedTargetMatchesActualOutput);

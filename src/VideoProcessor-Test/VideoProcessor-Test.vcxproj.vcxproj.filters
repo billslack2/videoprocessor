@@ -31,6 +31,9 @@
     <ClCompile Include="LibplaceboLutParserTests.cpp">
       <Filter>Resource Files</Filter>
     </ClCompile>
+    <ClCompile Include="LibplaceboLutContractTests.cpp">
+      <Filter>Resource Files</Filter>
+    </ClCompile>
     <ClCompile Include="LibplaceboRenderParametersTests.cpp">
       <Filter>Resource Files</Filter>
     </ClCompile>
