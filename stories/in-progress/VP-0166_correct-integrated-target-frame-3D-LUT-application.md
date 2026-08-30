@@ -194,6 +194,41 @@ attaches the resolved LUT through frame-local `pl_render_params.lut` with
 `PL_LUT_CONVERSION`; HDR10 carrier activation and rollback remain gated until
 the corresponding live DXGI calls are integrated and verified.
 
+### Contract checkpoint 5: renderer resources loaded but activation blocked
+
+The selected renderer settings and initialization resource layer are committed
+and pushed as `6c12d5f9`. Root and selected-profile resolution now carry the
+typed HDR mode, all three independent slot declarations, outgoing metadata
+primaries, and metadata peak. Each relative path has independent configured,
+resolved, constrained-base, and preflight-rejection evidence; a path escape
+therefore remains visibly configured and rejected rather than collapsing into
+an unconfigured slot. Every semantic field participates in the effective and
+restart fingerprints. External-HDR changes remain a conservative renderer-
+rebuild boundary in this slice.
+
+After the libplacebo log exists and before D3D/render startup, initialization
+loads and atomically commits the complete three-slot generation. Retirement
+releases the set before destroying the log. The renderer records only
+`Loaded; HDR carrier not armed` or internal fallback status: it never resolves
+the set for a frame, attaches `target.lut` or `pl_render_params.lut`, changes
+the output target, submits HDR metadata, or arms a PQ/BT.2020 carrier. Current
+pixel-shader/SDR rendering and the separate legacy final-calibration path are
+unchanged.
+
+The x64 Release build succeeds, the external-HDR set passes 13/13, and the
+complete LUT-parser class passes 20/20. Independent madVR-contract, profile,
+and render-seam reviews report no P1/P2 and approve this as a safe, bounded,
+initialization-only slice. Per-renderer transaction `1` is acceptable only
+because no resource can authorize pixels or display state yet. Before live
+reload or activation, bind candidate identity to the application/profile
+generation, add same-path content-identity detection, prepare candidates
+outside the render mutex, atomically commit paired settings/resources at the
+pre-frame safe point, and preserve the resolve/current-check/render interval.
+
+This remains not tester-ready. The next activation slice must first implement
+the gated frame-local `PL_LUT_CONVERSION` path and then join it atomically to
+the verified HDR10 carrier/rollback state; neither half may present alone.
+
 ## Implementation progress — 2026-08-29
 
 The first source slice is committed and pushed on
