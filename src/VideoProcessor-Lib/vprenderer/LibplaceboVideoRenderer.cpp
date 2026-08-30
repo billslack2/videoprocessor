@@ -19,7 +19,6 @@
 #include <vprenderer/AlphaQueuePolicy.h>
 #include <vprenderer/LibplaceboDisplayLut.h>
 #include <vprenderer/LibplaceboExternalHdrLutFrame.h>
-#include <vprenderer/LibplaceboHdr10OutputPolicy.h>
 #include <vprenderer/LibplaceboLutContract.h>
 #include <vprenderer/AlphaPresentationTelemetry.h>
 #include <vprenderer/AlphaNativeRgbIngress.h>
@@ -1009,90 +1008,6 @@ namespace
 		return settings.outputPresentation == "calibrated_direct" ||
 			settings.diagnosticVpOwnedDxgiPresenter;
 	}
-
-	class DxgiHdrCarrierOperations final :
-		public LibplaceboHdr10Output::CarrierOperations
-	{
-	public:
-		explicit DxgiHdrCarrierOperations(IDXGISwapChain1* swapchain)
-		{
-			if (swapchain)
-			{
-				swapchain->QueryInterface(IID_PPV_ARGS(&swapchain3_));
-				swapchain->QueryInterface(IID_PPV_ARGS(&swapchain4_));
-			}
-		}
-
-		bool HasSwapchain3() const { return swapchain3_ != nullptr; }
-		bool HasSwapchain4() const { return swapchain4_ != nullptr; }
-
-		bool CheckHdrColorSpaceSupport() override
-		{
-			return Check(DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020);
-		}
-
-		bool SetHdrColorSpace() override
-		{
-			return swapchain3_ && SUCCEEDED(swapchain3_->SetColorSpace1(
-				DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020));
-		}
-
-		bool SetHdrMetadata(
-			const LibplaceboHdr10Output::StaticMetadata& metadata) override
-		{
-			if (!swapchain4_) return false;
-			DXGI_HDR_METADATA_HDR10 dxgi{};
-			dxgi.RedPrimary[0] = metadata.red.x;
-			dxgi.RedPrimary[1] = metadata.red.y;
-			dxgi.GreenPrimary[0] = metadata.green.x;
-			dxgi.GreenPrimary[1] = metadata.green.y;
-			dxgi.BluePrimary[0] = metadata.blue.x;
-			dxgi.BluePrimary[1] = metadata.blue.y;
-			dxgi.WhitePoint[0] = metadata.white.x;
-			dxgi.WhitePoint[1] = metadata.white.y;
-			dxgi.MaxMasteringLuminance = metadata.maxMasteringLuminance;
-			dxgi.MinMasteringLuminance = metadata.minMasteringLuminance;
-			dxgi.MaxContentLightLevel = metadata.maxContentLightLevel;
-			dxgi.MaxFrameAverageLightLevel =
-				metadata.maxFrameAverageLightLevel;
-			return SUCCEEDED(swapchain4_->SetHDRMetaData(
-				DXGI_HDR_METADATA_TYPE_HDR10, sizeof(dxgi), &dxgi));
-		}
-
-		bool ClearHdrMetadata() override
-		{
-			return swapchain4_ && SUCCEEDED(swapchain4_->SetHDRMetaData(
-				DXGI_HDR_METADATA_TYPE_NONE, 0, nullptr));
-		}
-
-		bool CheckSdrColorSpaceSupport() override
-		{
-			return Check(DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709);
-		}
-
-		bool SetSdrColorSpace() override
-		{
-			return swapchain3_ && SUCCEEDED(swapchain3_->SetColorSpace1(
-				DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709));
-		}
-
-		bool RecheckSdrColorSpaceSupportAfterSet() override
-		{
-			return Check(DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709);
-		}
-
-	private:
-		bool Check(DXGI_COLOR_SPACE_TYPE colorSpace) const
-		{
-			UINT support = 0;
-			return swapchain3_ && SUCCEEDED(
-				swapchain3_->CheckColorSpaceSupport(colorSpace, &support)) &&
-				(support & DXGI_SWAP_CHAIN_COLOR_SPACE_SUPPORT_FLAG_PRESENT) != 0;
-		}
-
-		CComPtr<IDXGISwapChain3> swapchain3_;
-		CComPtr<IDXGISwapChain4> swapchain4_;
-	};
 
 	AlphaSourceCrop::VerticalPictureAlignment ResolveVerticalPictureAlignment(
 		const std::string& alignment)
@@ -3935,8 +3850,6 @@ struct LibplaceboVideoRenderer::Impl
 	LibplaceboExternalHdrLut::ActiveSet externalHdrLuts;
 	uint64_t nextExternalHdrLutTransactionGeneration = 1;
 	uint64_t expectedExternalHdrLutTransactionGeneration = 0;
-	uint64_t activeApplicationProfileGeneration = 0;
-	LibplaceboHdr10Output::CarrierState externalHdrCarrier;
 	std::string externalHdrLutStatus = "Disabled";
 	std::string externalHdrFrameDecisionSignature;
 	const struct pl_gamut_map_function* externalHdrFallbackGamutMapper = nullptr;
@@ -4161,7 +4074,6 @@ struct LibplaceboVideoRenderer::Impl
 	std::mutex renderMutex;
 	std::mutex pendingProfileMutex;
 	std::unique_ptr<RendererSettings> pendingProfileSettings;
-	uint64_t pendingApplicationProfileGeneration = 0;
 	std::atomic_bool resizePending{ false };
 	std::atomic_bool outputRenegotiationPending{ false };
 	EOTF lastRenderedEotf = EOTF::UNKNOWN;
@@ -4463,7 +4375,7 @@ struct LibplaceboVideoRenderer::Impl
 					pl_tex_destroy(d3d11->gpu, &texture);
 			}
 			pl_swapchain_destroy(&swapchain);
-			ReleaseVpOwnedSwapchain();
+			vpOwnedSwapchain.Release();
 			SaveShaderCache();
 			pl_d3d11_destroy(&d3d11);
 			pl_cache_destroy(&cache);
@@ -4518,15 +4430,6 @@ struct LibplaceboVideoRenderer::Impl
 	{
 		if (!d3d11 || !d3d11->gpu || !swapchain)
 			return false;
-		if (externalHdrCarrier.phase !=
-			LibplaceboHdr10Output::CarrierPhase::SDR)
-		{
-			DebugLog::Log(
-				"external HDR10 carrier: terminal black Present suppressed phase=%d generation=%llu",
-				static_cast<int>(externalHdrCarrier.phase),
-				static_cast<unsigned long long>(vpOwnedSwapchainGeneration));
-			return false;
-		}
 
 		if (vpOwnedSwapchain)
 		{
@@ -6186,24 +6089,12 @@ struct LibplaceboVideoRenderer::Impl
 	void ReleaseVpOwnedSwapchain()
 	{
 		if (!vpOwnedSwapchain) return;
-		if (externalHdrCarrier.phase !=
-			LibplaceboHdr10Output::CarrierPhase::SDR)
-		{
-			DxgiHdrCarrierOperations operations(vpOwnedSwapchain);
-			LibplaceboHdr10Output::Rollback(externalHdrCarrier, operations);
-			DebugLog::Log(
-				"external HDR10 carrier: release rollback generation=%llu phase=%d reason=%s",
-				static_cast<unsigned long long>(vpOwnedSwapchainGeneration),
-				static_cast<int>(externalHdrCarrier.phase),
-				externalHdrCarrier.activation.reason);
-		}
 		DebugLog::Log(
 			"VP-owned DXGI swapchain: releasing generation=%llu applied_record=%s verified=%d present_owner=VP",
 			static_cast<unsigned long long>(vpOwnedSwapchainGeneration),
 			vpOwnedAppliedEncoding.c_str(),
 			vpOwnedColorSpaceVerified ? 1 : 0);
 		vpOwnedSwapchain.Release();
-		externalHdrCarrier = {};
 		vpOwnedAppliedEncoding = "unapplied";
 		vpOwnedColorSpaceResult = E_PENDING;
 		vpOwnedColorSpaceVerified = false;
@@ -6288,128 +6179,6 @@ struct LibplaceboVideoRenderer::Impl
 			static_cast<unsigned int>(desc.SwapEffect), desc.BufferCount,
 			desc.BufferUsage, desc.Width, desc.Height);
 		return true;
-	}
-
-	bool RollbackExternalHdrCarrier(const char* trigger)
-	{
-		using LibplaceboHdr10Output::CarrierPhase;
-		if (externalHdrCarrier.phase == CarrierPhase::SDR)
-			return true;
-		if (!vpOwnedSwapchain)
-			return false;
-		DxgiHdrCarrierOperations operations(vpOwnedSwapchain);
-		LibplaceboHdr10Output::Rollback(externalHdrCarrier, operations);
-		DebugLog::Log(
-			"external HDR10 carrier: rollback trigger=%s generation=%llu phase=%d metadata_clear=%d sdr_set=%d sdr_recheck=%d reason=%s",
-			trigger,
-			static_cast<unsigned long long>(vpOwnedSwapchainGeneration),
-			static_cast<int>(externalHdrCarrier.phase),
-			externalHdrCarrier.evidence.rollbackMetadataClearSucceeded ? 1 : 0,
-			externalHdrCarrier.evidence.rollbackSdrSetSucceeded ? 1 : 0,
-			externalHdrCarrier.evidence.rollbackSdrVerified ? 1 : 0,
-			externalHdrCarrier.activation.reason);
-		return externalHdrCarrier.phase == CarrierPhase::SDR;
-	}
-
-	bool EnsureExternalHdrCarrier(const struct pl_color_space& sourceColor)
-	{
-		using namespace LibplaceboExternalHdrLut;
-		using namespace LibplaceboHdr10Output;
-		const bool requested = activeSettings.externalHdrToneMappingMode ==
-			ToneMappingMode::EXTERNAL_3DLUT;
-		const bool unsupportedPassthrough =
-			activeSettings.externalHdrToneMappingMode ==
-				ToneMappingMode::PASS_THROUGH;
-		if (unsupportedPassthrough)
-		{
-			externalHdrLutStatus =
-				"Unavailable: HDR passthrough is not implemented";
-		}
-		const Primaries sourcePrimaries =
-			FromLibplaceboPrimaries(sourceColor.primaries);
-		const bool inputIsPq = sourceColor.transfer == PL_COLOR_TRC_PQ;
-		const ResolvedResource resolved = externalHdrLuts.Resolve(
-			expectedExternalHdrLutTransactionGeneration,
-			activeSettings.externalHdrToneMappingMode,
-			inputIsPq, sourcePrimaries);
-		const bool usable = requested && inputIsPq && resolved.lut &&
-			resolved.selection.useExternalLut && externalHdrLuts.IsCurrent(resolved) &&
-			(!resolved.selection.requiresExplicitPrimariesTransform ||
-				externalHdrFallbackGamutMapper != nullptr);
-		if (!usable)
-		{
-			if (!RollbackExternalHdrCarrier("frame no longer eligible"))
-				RecreateSwapchain(false, false,
-					"external HDR rollback recovery");
-			return false;
-		}
-
-		if (externalHdrCarrier.Current(vpOwnedSwapchainGeneration,
-			activeApplicationProfileGeneration,
-			resolved.transactionGeneration))
-		{
-			return true;
-		}
-
-		if (externalHdrCarrier.phase == CarrierPhase::SUPPRESS_RECREATE)
-		{
-			RecreateSwapchain(false, false,
-				"external HDR suppressed carrier recovery");
-			return false;
-		}
-
-		Evidence evidence;
-		evidence.vpOwnedPresentation = vpOwnedSwapchain != nullptr;
-		SetLastError(ERROR_SUCCESS);
-		const LONG_PTR windowStyle = GetWindowLongPtr(videoHwnd, GWL_STYLE);
-		evidence.topLevelWindow =
-			(windowStyle != 0 || GetLastError() == ERROR_SUCCESS) &&
-			(windowStyle & WS_CHILD) == 0;
-		DXGI_SWAP_CHAIN_DESC description{};
-		if (vpOwnedSwapchain && SUCCEEDED(vpOwnedSwapchain->GetDesc(&description)))
-		{
-			evidence.flipPresentation =
-				description.SwapEffect == DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL ||
-				description.SwapEffect == DXGI_SWAP_EFFECT_FLIP_DISCARD;
-			evidence.r10Swapchain =
-				description.BufferDesc.Format == DXGI_FORMAT_R10G10B10A2_UNORM;
-		}
-		const ObservedDisplayRoute route = QueryObservedDisplayRoute(
-			DisplayDeviceNameForWindow(videoHwnd),
-			MonitorFromWindow(videoHwnd, MONITOR_DEFAULTTONEAREST),
-			d3d11 ? d3d11->device : nullptr, vpOwnedSwapchain,
-			carrierEdidDevicePath, carrierEdidSha256, true);
-		evidence.advancedColorActive = route.advancedColor ==
-			LibplaceboLutContract::AdvancedColorState::ENABLED;
-		if (displayLutActive)
-			SetDisplayLutActive(false);
-		const MetadataResult metadata = BuildStaticMetadata(
-			activeSettings.externalHdrOutputMetadataPrimaries,
-			activeSettings.externalHdrOutputMetadataPeakNits);
-		{
-			DxgiHdrCarrierOperations operations(vpOwnedSwapchain);
-			evidence.hasSwapchain3 = operations.HasSwapchain3();
-			evidence.hasSwapchain4 = operations.HasSwapchain4();
-			Activate(externalHdrCarrier, vpOwnedSwapchainGeneration,
-				activeApplicationProfileGeneration, resolved.transactionGeneration,
-				metadata, evidence, operations);
-		}
-		DebugLog::Log(
-			"external HDR10 carrier: activation generation=%llu application=%llu lut_transaction=%llu phase=%d active=%d reason=%s",
-			static_cast<unsigned long long>(vpOwnedSwapchainGeneration),
-			static_cast<unsigned long long>(activeApplicationProfileGeneration),
-			static_cast<unsigned long long>(resolved.transactionGeneration),
-			static_cast<int>(externalHdrCarrier.phase),
-			externalHdrCarrier.activation.active ? 1 : 0,
-			externalHdrCarrier.activation.reason);
-		if (externalHdrCarrier.phase == CarrierPhase::SUPPRESS_RECREATE)
-		{
-			RecreateSwapchain(false, false,
-				"external HDR activation rollback failure");
-			return false;
-		}
-		return externalHdrCarrier.Current(vpOwnedSwapchainGeneration,
-			activeApplicationProfileGeneration, resolved.transactionGeneration);
 	}
 
 	void ConfigureSwapchainOutput(const char* trigger)
@@ -6957,13 +6726,6 @@ struct LibplaceboVideoRenderer::Impl
 
 	void RetryAutoLimitedCandidate(const char* trigger)
 	{
-		if (externalHdrCarrier.phase !=
-			LibplaceboHdr10Output::CarrierPhase::SDR)
-		{
-			RollbackExternalHdrCarrier(trigger);
-			RecreateSwapchain(outputPlan.useBlit, false, trigger);
-			return;
-		}
 		if (suppressLimitedNegotiation &&
 			outputPlan.request.presentation ==
 				LibplaceboOutput::PresentationRequest::AUTO &&
@@ -7556,9 +7318,6 @@ struct LibplaceboVideoRenderer::Impl
 		// Frame-local PL_LUT_CONVERSION attachment replaces libplacebo's internal
 		// HDR-to-SDR tone/gamut conversion only when the selected Cube is current.
 		LoadExternalHdrLuts(settings, applicationProfileGeneration);
-		activeApplicationProfileGeneration = applicationProfileGeneration ?
-			applicationProfileGeneration :
-			expectedExternalHdrLutTransactionGeneration;
 		externalHdrFallbackGamutMapper =
 			&LibplaceboExportedData<pl_gamut_map_function>("pl_gamut_map_clip");
 
@@ -7785,14 +7544,12 @@ struct LibplaceboVideoRenderer::Impl
 			sdrTargetNits);
 	}
 
-	void ApplyViewportSettings(const RendererSettings& settings,
-		uint64_t applicationProfileGeneration = 0)
+	void ApplyViewportSettings(const RendererSettings& settings)
 	{
 		// UI-facing methods only publish immutable intent. All libplacebo and
 		// output work runs at the render-thread safe point.
 		std::lock_guard<std::mutex> pendingGuard(pendingProfileMutex);
 		pendingProfileSettings.reset(new RendererSettings(settings));
-		pendingApplicationProfileGeneration = applicationProfileGeneration;
 		DebugLog::Log(
 			"libplacebo viewport settings queued for render thread");
 	}
@@ -8152,8 +7909,7 @@ struct LibplaceboVideoRenderer::Impl
 		return LiveProfileSettingsCompatible(publishedActiveSettings, settings);
 	}
 
-	bool ApplyProfileSettingsLive(const RendererSettings& settings,
-		uint64_t applicationProfileGeneration)
+	bool ApplyProfileSettingsLive(const RendererSettings& settings)
 	{
 		if (!CanApplyProfileSettingsLive(settings))
 		{
@@ -8163,7 +7919,6 @@ struct LibplaceboVideoRenderer::Impl
 		}
 		std::lock_guard<std::mutex> pendingGuard(pendingProfileMutex);
 		pendingProfileSettings.reset(new RendererSettings(settings));
-		pendingApplicationProfileGeneration = applicationProfileGeneration;
 		DebugLog::Log(
 			"libplacebo live profile update queued for render thread");
 		return true;
@@ -8286,12 +8041,9 @@ struct LibplaceboVideoRenderer::Impl
 	void ApplyPendingProfileSettingsLocked()
 	{
 		std::unique_ptr<RendererSettings> pending;
-		uint64_t applicationProfileGeneration = 0;
 		{
 			std::lock_guard<std::mutex> pendingGuard(pendingProfileMutex);
 			pending.swap(pendingProfileSettings);
-			applicationProfileGeneration = pendingApplicationProfileGeneration;
-			pendingApplicationProfileGeneration = 0;
 		}
 		if (!pending)
 			return;
@@ -8301,14 +8053,10 @@ struct LibplaceboVideoRenderer::Impl
 				"libplacebo queued live profile update was rejected on render thread");
 			return;
 		}
-		if (applicationProfileGeneration != 0 &&
-			applicationProfileGeneration != activeApplicationProfileGeneration)
+		else
 		{
 			activeApplicationProfileGeneration = applicationProfileGeneration;
 		}
-		ApplyViewportSettingsLocked(*pending);
-		DebugLog::Log(
-			"libplacebo queued profile and viewport settings applied on render thread");
 	}
 
 	void SetShaderStatus(const std::string& status)
@@ -9399,14 +9147,6 @@ struct LibplaceboVideoRenderer::Impl
 		const HMONITOR currentMonitor = MonitorFromWindow(
 			videoHwnd,
 			MONITOR_DEFAULTTONEAREST);
-		if (currentMonitor && currentMonitor != negotiatedMonitor &&
-			externalHdrCarrier.phase !=
-				LibplaceboHdr10Output::CarrierPhase::SDR)
-		{
-			RollbackExternalHdrCarrier("monitor transition");
-			RecreateSwapchain(outputPlan.useBlit, false,
-				"external HDR monitor transition");
-		}
 		if (currentMonitor && currentMonitor != negotiatedMonitor)
 			RetryAutoLimitedCandidate("monitor transition");
 		if (!actualOutput.safeToRender)
@@ -10391,34 +10131,29 @@ struct LibplaceboVideoRenderer::Impl
 		}
 		const struct pl_color_repr returnedRepr = baseTarget.repr;
 		const struct pl_color_space returnedColor = baseTarget.color;
+		LibplaceboRenderParameters::ApplyDisplayBitDepth(
+			activeSettings.displayBitDepth, baseTarget.repr);
+		// The frame returned by libplacebo is the default host/compositor contract.
+		// Override it only after the matching studio DXGI declaration was advertised
+		// and accepted. Requested settings never flow directly into the target.
+		baseTarget.repr.levels = EncodingLevels(actualOutput.encoding);
+		const enum pl_color_transfer acceptedTransfer =
+			ResolvedPixelTransfer(actualOutput.encoding,
+				actualOutput.targetTransfer);
+		if (acceptedTransfer != PL_COLOR_TRC_UNKNOWN)
+			baseTarget.color.transfer = acceptedTransfer;
+		if (targetBt2020)
 		{
-			LibplaceboRenderParameters::ApplyDisplayBitDepth(
-				activeSettings.displayBitDepth, baseTarget.repr);
-			// The frame returned by libplacebo is the default host/compositor
-			// contract. Requested SDR settings never flow directly into the target.
-			baseTarget.repr.levels = EncodingLevels(actualOutput.encoding);
-			const enum pl_color_transfer acceptedTransfer =
-				ResolvedPixelTransfer(actualOutput.encoding,
-					actualOutput.targetTransfer);
-			if (acceptedTransfer != PL_COLOR_TRC_UNKNOWN)
-				baseTarget.color.transfer = acceptedTransfer;
-			baseTarget.color.primaries = targetBt2020 ?
-				PL_COLOR_PRIM_BT_2020 : PL_COLOR_PRIM_BT_709;
-			baseTarget.color.hdr.min_luma =
-				AdaptKnownSdrBlackForLibplacebo(sdrBlackNits);
-			baseTarget.color.hdr.max_luma = static_cast<float>(sdrTargetNits);
-			if (activeSettings.externalHdrToneMappingMode !=
-				LibplaceboExternalHdrLut::ToneMappingMode::PASS_THROUGH)
-			{
-				ConfigureDisplayLutForTarget(baseTarget);
-			}
-			else
-			{
-				baseTarget.lut = nullptr;
-				baseTarget.lut_type = PL_LUT_UNKNOWN;
-				SetDisplayLutActive(false);
-			}
+			baseTarget.color.primaries = PL_COLOR_PRIM_BT_2020;
 		}
+		else
+		{
+			baseTarget.color.primaries = PL_COLOR_PRIM_BT_709;
+		}
+		baseTarget.color.hdr.min_luma =
+			AdaptKnownSdrBlackForLibplacebo(sdrBlackNits);
+		baseTarget.color.hdr.max_luma = static_cast<float>(sdrTargetNits);
+		ConfigureDisplayLutForTarget(baseTarget);
 		if (outputDiagnostics && !outputContractLogged)
 		{
 			DebugLog::Log(
@@ -12166,6 +11901,11 @@ struct LibplaceboVideoRenderer::Impl
 		struct pl_render_params frameRenderParams{};
 		struct pl_custom_lut frameExternalHdrLut{};
 		struct pl_color_map_params frameExternalHdrColorMap{};
+		// Deliberately false until the VP-owned R10/PQ/BT.2020 carrier and HDR10
+		// metadata transaction have both been applied and verified. Keeping the
+		// projection call here freezes the exact no-Commit frame-local seam without
+		// allowing a loaded Cube to affect the current SDR presentation path.
+		constexpr bool externalHdrCarrierArmed = false;
 		const auto externalHdrProjection =
 			LibplaceboExternalHdrLut::PrepareFrameProjection(
 				externalHdrLuts,
@@ -12524,14 +12264,6 @@ struct LibplaceboVideoRenderer::Impl
 	{
 		if (!swapchain)
 			return;
-		if (externalHdrCarrier.phase !=
-			LibplaceboHdr10Output::CarrierPhase::SDR &&
-			!RollbackExternalHdrCarrier("resize"))
-		{
-			RecreateSwapchain(outputPlan.useBlit, false,
-				"external HDR resize rollback recovery");
-			return;
-		}
 
 		RECT client{};
 		if (!GetClientRect(videoHwnd, &client))
@@ -12726,8 +12458,7 @@ bool LibplaceboVideoRenderer::OnVideoState(VideoStateComPtr& videoState)
 			EffectiveSettingsFingerprint(nextSettings) !=
 				currentEffectiveFingerprint)
 		{
-			m_impl->ApplyViewportSettings(
-				nextSettings, m_applicationProfileGeneration);
+			m_impl->ApplyViewportSettings(nextSettings);
 			ApplyViewportTarget(nextSettings.configuredScreenTarget,
 				nextSettings.configuredScreenAspect, "automatic profile refresh");
 			DebugLog::Log(
@@ -13369,8 +13100,7 @@ bool LibplaceboVideoRenderer::ApplyApplicationState(
 		// This preserves the renderer and its libplacebo/D3D resources when an
 		// editor changes values inside the already selected profile. The immutable
 		// intent is consumed only by the render thread's existing safe point.
-		if (!m_impl->ApplyProfileSettingsLive(
-			candidateSettings, snapshot.generation))
+		if (!m_impl->ApplyProfileSettingsLive(candidateSettings))
 		{
 			rendererRestartRequired = false;
 			DebugLog::Log(
@@ -13416,7 +13146,8 @@ bool LibplaceboVideoRenderer::ApplyApplicationState(
 			changedFields.c_str());
 	}
 	m_manualUnifiedProfiles = next;
-	m_applicationProfileGeneration = snapshot.generation;
+	if (!m_impl || rendererRestartRequired)
+		m_applicationProfileGeneration = snapshot.generation;
 
 	if (rendererRestartRequired)
 	{
@@ -13437,8 +13168,7 @@ bool LibplaceboVideoRenderer::ApplyApplicationState(
 		// applies its viewport portion at the same render-thread safe point.
 		// Do not replace that intent with a second UI-thread queue operation.
 		if (!liveProfileUpdateQueued)
-			m_impl->ApplyViewportSettings(
-				candidateSettings, snapshot.generation);
+			m_impl->ApplyViewportSettings(candidateSettings);
 		ApplyViewportTarget(candidateSettings.configuredScreenTarget,
 			candidateSettings.configuredScreenAspect, "application snapshot");
 		DebugLog::Log(
