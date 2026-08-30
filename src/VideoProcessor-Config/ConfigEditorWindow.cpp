@@ -1705,8 +1705,8 @@ void ConfigEditorWindow::refreshRendererAutoStatus()
         }
         else if (binding.key == QStringLiteral("dithering"))
         {
-            text = qualityValue(QStringLiteral("Blue-noise dithering"),
-                QStringLiteral("Blue-noise dithering"), QStringLiteral("Off"));
+            text = qualityValue(QStringLiteral("On (blue-noise dithering)"),
+                QStringLiteral("On (blue-noise dithering)"), QStringLiteral("Off"));
         }
         else if (binding.key == QStringLiteral("display_bit_depth"))
             text = QStringLiteral("Output format");
@@ -3814,7 +3814,9 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         dithering->setItemText(2, QStringLiteral("On"));
         dithering->setItemText(3, QStringLiteral("Off"));
         dithering->setToolTip(QStringLiteral(
-            "Auto uses the rendering-quality preset. On uses libplacebo's default dithering. Off disables dithering."));
+            "Auto follows the rendering-quality preset: On (blue-noise dithering) "
+            "for Balanced and High, or Off for Fast. On explicitly uses "
+            "libplacebo's default blue-noise dithering. Off disables dithering."));
         addRendererAutoStatus(QStringLiteral("dithering"), dithering);
         auto* displayBitDepth = addChoice(QStringLiteral("Display bit depth"),
             QStringLiteral("display_bit_depth"),

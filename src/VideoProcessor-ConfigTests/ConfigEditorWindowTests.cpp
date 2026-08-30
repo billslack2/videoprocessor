@@ -2514,6 +2514,10 @@ void testChoiceLabelsAndVpRendererName()
     require(upscalerStatus->text() == QStringLiteral("Auto: EWA Lanczos sharp") &&
         upscalerStatus->font().italic(),
         "Auto upscaler does not use a concise italic effective-value label");
+    require(requireControl<QLabel>(window,
+        QStringLiteral("config.vprenderer.dithering.auto_status"))->text() ==
+            QStringLiteral("Auto: On (blue-noise dithering)"),
+        "Auto dithering does not identify blue-noise dithering as its On policy");
     selectData(quality, QStringLiteral("balanced"));
     require(upscalerStatus->text() == QStringLiteral("Auto: Lanczos"),
         "Auto policy preview did not refresh after rendering quality changed");
