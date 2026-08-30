@@ -2,17 +2,22 @@
 
 ## Status
 
-Backlog. Created on 2026-08-29 as the consolidated replacement for VP-0100
-and VP-0101. Readiness review is complete against
-`origin/v1.3.004-beta` at `66f22307158b2da40f2cdb0ee398ea6ab62c5997`:
-the target-frame libplacebo attachment, presenter, and backbuffer are suitable;
-the remaining work is a bounded LUT contract and lifecycle correction, not a
-renderer or presenter redesign.
+In Progress. Created on 2026-08-29 as the consolidated replacement for VP-0100
+and VP-0101; the consolidation was committed and synchronized to tracker
+`main` as `c0a5480641c20101bb34392315687fbc20b68774` before source work began.
 
-The user explicitly selected the latest `004-beta` integration branch as the
-implementation base. Commit and synchronize this tracker consolidation before
-starting source work. When implementation begins, move this record to
-`in-progress/` and record its clean source branch/worktree.
+Implementation started on 2026-08-29 from freshly fetched
+`origin/v1.3.004-beta` at
+`66f22307158b2da40f2cdb0ee398ea6ab62c5997`, on source branch
+`codex/vp-0166-lut-contract` in the clean worktree
+`C:\Videoprocessor\vp\vprenderer\.codex-worktrees\vp-0166-lut-contract`.
+The first slice resolves a typed Rec.709/SDR-BT.2020 LUT-input and carrier
+contract, semantic-zero black handling, and focused contract tests before the
+reload-state refactor.
+
+Readiness review is complete: the target-frame libplacebo attachment,
+presenter, and backbuffer are suitable; the remaining work is a bounded LUT
+contract and lifecycle correction, not a renderer or presenter redesign.
 
 ## User story
 

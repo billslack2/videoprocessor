@@ -201,7 +201,7 @@ they must not contain requirements that are absent from this file.
 | VP-0163 | Done | Prevent full-raster flashes during one-edge overlay confirmation |
 | VP-0164 | Done | Backdate fully proven inward lookahead transitions |
 | VP-0165 | Backlog | Evaluate safe active-picture lookahead refinements |
-| VP-0166 | Backlog | Correct integrated target-frame 3D LUT application |
+| VP-0166 | In Progress | Correct integrated target-frame 3D LUT application |
 | VP-0066-1 | Done | Characterize the live output pipeline with replayable golden traces |
 | VP-0066-2 | Done | Extract a graph-independent video timing controller |
 | VP-0066-3 | Done | Extract epoch-aware frame transport and processing components |
