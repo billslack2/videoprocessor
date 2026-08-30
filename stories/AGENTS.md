@@ -59,3 +59,12 @@
   integration base. Use a different branch only when the user explicitly
   requests one. Before creating source branches or pull requests, also verify
   the current GitHub default branch.
+- Windows environment-variable names are case-insensitive: `Path` and `PATH`
+  are one environment entry, never two. Do not declare, pass, or document
+  them as separate variables, and do not use `$PATH` as a PowerShell variable.
+  Use task-specific names such as `$vpPathValue` for local path strings. When
+  changing the process search path, read and update only `$env:Path` (preserve
+  its existing value and append/prepend the required directory); use a
+  task-specific environment variable such as `$env:VP_*` for all other
+  settings. Before running a command, inspect the effective `$env:Path` if
+  path resolution matters.
