@@ -417,8 +417,17 @@ exist only in the public inventory and one HDR-analysis-position field exists
 only in `CONFIGURATION.html`), not a LUT/rendering failure. Independent
 pipeline, profile-generation, and madVR-contract re-reviews report no
 remaining P1/P2. The pre-test deployment and configuration were restored
-byte-for-byte; no rebased test package is deployed yet. The next acceptance
-step remains an isolated x64 Release build and controlled HDR-display run.
+byte-for-byte; no rebased test package is deployed yet.
+
+Fresh x64 Release rebuilds of the renderer, main GUI, configuration editor,
+and configuration-editor tests now succeed at `df8df7d`. The previously noted
+Config/ConfigTests build obstacle was environmental rather than a source
+failure: the Codex child environment exported distinct `PATH` and `Path`
+entries, while a child with one canonical `PATH` builds normally. The complete
+configuration-editor executable test run, including LUT discovery and
+inherited external-HDR control state, exits successfully. The next acceptance
+step is the controlled HDR-display run; deployment remains intentionally
+restored until that isolated test begins.
 
 ## Implementation progress — 2026-08-29
 
