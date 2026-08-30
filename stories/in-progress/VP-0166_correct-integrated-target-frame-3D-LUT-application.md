@@ -138,6 +138,30 @@ tester build: the next work is loading/selecting runtime Cube resources at the
 `pl_render_params.lut` / `PL_LUT_CONVERSION` seam and applying/verifying the
 full-range PQ/BT.2020 DXGI color space and HDR10 metadata atomically.
 
+### Contract checkpoint 3: HDR10 metadata and rollback policy reviewed
+
+The pure HDR10 output gate is committed and pushed on the source branch as
+`e1eaf4b1`. It builds exact BT.709, P3-D65, or BT.2020 mastering-primary
+coordinates with D65 white, whole-nit maximum mastering luminance, zero
+minimum, and zero MaxCLL/MaxFALL (unknown rather than invented). The focused
+external-HDR policy set now passes 9/9.
+
+Activation requires valid built metadata, a top-level VP-owned flip presenter,
+R10, active Windows Advanced Color, Check/Set/recheck acceptance of full-range
+G2084/P2020, IDXGISwapChain4, and accepted HDR10 metadata submission. The state
+is explicitly API-accepted, not claimed wire-verified. Prior HDR state, a
+successful color-space mutation, or a successful metadata mutation requires
+metadata clear plus set-and-verify SDR rollback. Internal SDR presentation
+remains unsafe until all rollback evidence succeeds; otherwise the live wiring
+must suppress Present and recreate the output contract.
+
+Independent pipeline and calibration reviews caught and corrected a critical
+DXGI unit mistake before runtime wiring (maximum mastering luminance is whole
+nits, while only minimum uses 0.0001-nit units), plus metadata-validity and
+rollback atomicity gaps. Their final reviews report no remaining P1/P2 in this
+policy slice. Runtime API calls and Cube resources are still unwired, so this
+remains not tester-ready.
+
 ## Implementation progress — 2026-08-29
 
 The first source slice is committed and pushed on
