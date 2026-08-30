@@ -229,6 +229,40 @@ This remains not tester-ready. The next activation slice must first implement
 the gated frame-local `PL_LUT_CONVERSION` path and then join it atomically to
 the verified HDR10 carrier/rollback state; neither half may present alone.
 
+### Contract checkpoint 6: frame-local conversion seam gated fail-closed
+
+The selected external resource can now be projected into a complete
+frame-local render description at the image-side `pl_render_params.lut` /
+`PL_LUT_CONVERSION` seam. This is committed and pushed on the source branch as
+`396a07c9`. Runtime activation remains a compile-time false carrier gate, so a
+loaded Cube still cannot change presentation in this checkpoint.
+
+Attachment requires the current profile transaction, HDR10/PQ source input,
+and a VP-owned target description that is RGB, full range, 10-bit, PQ, and
+BT.2020. Exact-gamut attachment preserves source metadata. A P3/BT.2020
+fallback retags only the frame-local LUT input and pins only a frame-local copy
+of libplacebo color-map parameters to `pl_gamut_map_clip`, causing libplacebo
+to convert source primaries into the chosen slot before lookup. A missing clip
+mapper fails closed. Successful external attachment disables peak detection
+and masks the separate legacy target/native calibration LUT for that frame;
+every rejected or unarmed path preserves the shared target, render parameters,
+dither, peak detection, and legacy LUT unchanged.
+
+The x64 Release rebuild succeeds after clearing one incremental-linker
+`LNK1103` artifact. The external-HDR set passes 17/17 and the complete LUT-
+parser/GPU class passes 24/24. Tests cover the hard-false carrier, exact
+metadata, non-RGB and non-PQ target rejection, explicit clipped fallback,
+missing fallback mapper, legacy-LUT masking/preservation, and end-to-end stale
+profile-generation rejection. Independent madVR-contract, profile-state, and
+render-seam reviews report no remaining P1/P2 and approve this inert seam.
+
+This is still not tester-ready. Before activation, join LUT selection and the
+HDR10 output mutation into one frame transaction: requested external mode with
+any unattached component must suppress Present and roll back/rebuild, and the
+legacy target-LUT error-diffusion workaround must not leak into the external
+conversion path. An offscreen `PL_LUT_CONVERSION` golden-pixel test, including
+fallback-gamut conversion, is required before the carrier gate is armed.
+
 ## Implementation progress — 2026-08-29
 
 The first source slice is committed and pushed on
