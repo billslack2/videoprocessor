@@ -1609,12 +1609,10 @@ void testRendererProfileSectionsCollapseAndPersist()
         QStringLiteral("rendererSection.processing"));
 	QToolButton* lut = requireControl<QToolButton>(window,
 		QStringLiteral("rendererSection.externalHdrLut"));
-	QToolButton* calibrationLut = requireControl<QToolButton>(window,
-		QStringLiteral("rendererSection.calibrationLut"));
     QStackedWidget* pages = requireControl<QStackedWidget>(window,
         QStringLiteral("settingsPages"));
 	require(!toneMapping->isChecked() && !processing->isChecked() &&
-		!lut->isChecked() && !calibrationLut->isChecked(),
+		!lut->isChecked(),
         "A renderer section was not collapsed initially");
     require(processing->text() == QStringLiteral("Processing") &&
         !processing->text().contains(u'_'),
@@ -1807,12 +1805,9 @@ void testRendererProfileSectionsCollapseAndPersist()
     require(displayBitDepth->itemData(2).toString() == QStringLiteral("10") &&
         displayBitDepth->itemData(3).toString() == QStringLiteral("8"),
         "Display bit-depth choices are not ordered from highest quality to lowest");
-    require(!requireControl<QWidget>(window,
+	require(!requireControl<QWidget>(window,
 		QStringLiteral("rendererSection.externalHdrLut.content"))->isVisibleTo(&window),
         "3D LUT renderer content is visible while collapsed");
-	require(!requireControl<QWidget>(window,
-		QStringLiteral("rendererSection.calibrationLut.content"))->isVisibleTo(&window),
-		"Final calibration LUT content is visible while collapsed");
     require(!calibrationContent->isVisibleTo(&window),
         "Display calibration content is visible while collapsed");
 
@@ -2289,7 +2284,13 @@ void testQueueUnitsAndLutControlsUseConsistentRows()
     QCoreApplication::processEvents();
 	QComboBox* mode = requireControl<QComboBox>(window,
 		QStringLiteral("config.vprenderer.hdr_tone_mapping_mode"));
-	selectData(mode, QStringLiteral("external_3dlut"));
+	QCheckBox* enabled = requireControl<QCheckBox>(window,
+		QStringLiteral("config.vprenderer.external_hdr_3dlut_enabled"));
+	require(!enabled->isChecked(),
+		"External HDR 3D LUT enable control did not reflect internal mode");
+	enabled->click();
+	require(mode->currentData().toString() == QStringLiteral("external_3dlut"),
+		"External HDR 3D LUT enable control did not select external mode");
 	QComboBox* bt709 = requireControl<QComboBox>(window,
 		QStringLiteral("config.vprenderer.hdr_external_3dlut_bt709"));
 	QComboBox* p3 = requireControl<QComboBox>(window,
@@ -2303,6 +2304,13 @@ void testQueueUnitsAndLutControlsUseConsistentRows()
 		"External HDR LUT slot controls do not share aligned dropdown geometry");
 	QLineEdit* peak = requireControl<QLineEdit>(window,
 		QStringLiteral("config.vprenderer.hdr_output_metadata_peak_nits"));
+	QComboBox* metadataGamut = requireControl<QComboBox>(window,
+		QStringLiteral("config.vprenderer.hdr_output_metadata_primaries"));
+	require(metadataGamut->currentData().toString().isEmpty() &&
+		metadataGamut->currentText().contains(QStringLiteral("Required")) &&
+		peak->text().isEmpty() && peak->placeholderText().contains(
+			QStringLiteral("Required")),
+		"Required HDR metadata fields still expose fabricated defaults");
 	require(requireControl<QLabel>(window,
 		QStringLiteral("config.vprenderer.hdr_output_metadata_peak_nits.unit"))->text() ==
 		QStringLiteral("nits"),
@@ -2310,13 +2318,14 @@ void testQueueUnitsAndLutControlsUseConsistentRows()
 	require(bt709->isEnabled() && p3->isEnabled() && bt2020->isEnabled() &&
 		peak->isEnabled(),
 		"External HDR LUT controls did not enable with external mode");
-	QComboBox* calibration = requireControl<QComboBox>(window,
-		QStringLiteral("config.vprenderer.lut"));
-	require(!calibration->isEnabled(),
-		"External HDR LUT mode did not visibly mask final calibration");
+	require(window.findChild<QComboBox*>(
+		QStringLiteral("config.vprenderer.lut")) == nullptr &&
+		window.findChild<QToolButton*>(
+			QStringLiteral("rendererSection.calibrationLut")) == nullptr,
+		"Legacy calibration inspection controls remain on the editor surface");
 	selectData(mode, QStringLiteral("passthrough"));
-	require(!calibration->isEnabled() && !bt2020->isEnabled(),
-		"HDR passthrough did not mask the SDR-only final-calibration stage");
+	require(!enabled->isChecked() && !bt2020->isEnabled(),
+		"HDR passthrough did not disable the external HDR LUT controls");
 }
 
 void testActiveProfileMarkersCoverRelevantLists()
@@ -2465,10 +2474,15 @@ void testLutSelectorDiscoversInstallationLutFiles()
 		QStringLiteral("config.vprenderer.external_hdr_lut.open_folder"))->text() == QStringLiteral("Open LUT folder"),
         "The LUT folder action is missing");
 
-	selectData(requireControl<QComboBox>(window,
-		QStringLiteral("config.vprenderer.hdr_tone_mapping_mode")),
-		QStringLiteral("external_3dlut"));
+	requireControl<QCheckBox>(window,
+		QStringLiteral("config.vprenderer.external_hdr_3dlut_enabled"))->click();
     selectData(selector, QStringLiteral("luts/Test-Calibration.cube"));
+	selectData(requireControl<QComboBox>(window,
+		QStringLiteral("config.vprenderer.hdr_output_metadata_primaries")),
+		QStringLiteral("BT2020"));
+	requireControl<QLineEdit>(window,
+		QStringLiteral("config.vprenderer.hdr_output_metadata_peak_nits"))->setText(
+		QStringLiteral("1000"));
     save(window);
 	const QByteArray configured = readBytes(path);
 	require(configured.contains(
