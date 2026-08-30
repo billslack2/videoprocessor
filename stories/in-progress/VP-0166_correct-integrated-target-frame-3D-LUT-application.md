@@ -102,6 +102,42 @@ used as acceptance evidence. Source work continues on
 `codex/vp-0166-lut-contract` branch is retained only as implementation history
 and a source of reusable strict-Cube and atomic-reload code.
 
+### Contract checkpoint 2: profile schema and editor reviewed
+
+The reviewed configuration foundation is committed and pushed on
+`codex/vp-0166-madvr-external-lut` as `cc946c4c`. It defines the three
+HDR modes, three input-gamut Cube slots, and independent outgoing HDR10 gamut
+and peak declarations. The pure selection policy freezes exact-slot priority,
+the conservative P3/BT.2020 fallback order, explicit preconversion on every
+fallback, HDR10/PQ-only v1 eligibility, and internal-shader fallback for every
+missing, unsupported, or ambiguous case. Omitted or invalid mode tokens retain
+the existing internal pixel-shader behavior.
+
+The Cube boundary is normalized nonlinear picture RGB: source range decoding
+maps nominal black/white to 0/1, and the first output milestone is full-range
+PQ/BT.2020. Outgoing metadata uses the configured primaries, D65 white,
+configured mastering maximum, zero mastering minimum, and zero MaxCLL/MaxFALL
+to mean unknown rather than fabricated content measurements. External values
+are suppressed whenever the external LUT is not active.
+
+The legacy final-calibration declaration remains a separate SDR post-mapping
+stage. It is available with internal tone mapping. HDR passthrough masks it
+because that path retains an HDR target outside the existing calibration
+contract, and external HDR LUT mode masks it because the external LUT already
+owns the target transform. The declaration is preserved in both cases, keeping
+a named external profile representable when it inherits legacy calibration.
+An external failure that atomically restores internal pixel-shader tone mapping
+also restores eligible final calibration. Pure-policy, editor, and
+inherited/root profile tests freeze these ownership transitions.
+
+Independent profile and madVR-contract reviews report no remaining P1/P2 issue
+in this schema/editor/policy slice. The focused external-HDR tests pass 6/6 and
+the complete Config editor test executable passes after the final ownership
+reconciliation. This checkpoint is not a
+tester build: the next work is loading/selecting runtime Cube resources at the
+`pl_render_params.lut` / `PL_LUT_CONVERSION` seam and applying/verifying the
+full-range PQ/BT.2020 DXGI color space and HDR10 metadata atomically.
+
 ## Implementation progress — 2026-08-29
 
 The first source slice is committed and pushed on
