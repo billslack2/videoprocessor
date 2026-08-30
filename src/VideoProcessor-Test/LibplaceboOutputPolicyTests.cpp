@@ -3,6 +3,7 @@
 
 #include <vprenderer/LibplaceboOutputPolicy.h>
 #include <vprenderer/LibplaceboExternalHdrLutPolicy.h>
+#include <vprenderer/LibplaceboHdr10OutputPolicy.h>
 #include <ActiveOutputSweepPolicy.h>
 
 
@@ -114,6 +115,152 @@ namespace Tests
 			Assert::IsFalse(Select(ToneMappingMode::EXTERNAL_3DLUT, true,
 				LibplaceboExternalHdrLut::Primaries::UNKNOWN,
 				{ true, true, true }).useExternalLut);
+		}
+
+		TEST_METHOD(ExternalHdrBuildsExactHdr10StaticMetadata)
+		{
+			using namespace LibplaceboHdr10Output;
+			const auto bt2020 = BuildStaticMetadata(Primaries::BT2020, 1000.0);
+			Assert::IsTrue(bt2020.valid);
+			Assert::AreEqual<unsigned int>(35400, bt2020.metadata.red.x);
+			Assert::AreEqual<unsigned int>(14600, bt2020.metadata.red.y);
+			Assert::AreEqual<unsigned int>(8500, bt2020.metadata.green.x);
+			Assert::AreEqual<unsigned int>(39850, bt2020.metadata.green.y);
+			Assert::AreEqual<unsigned int>(6550, bt2020.metadata.blue.x);
+			Assert::AreEqual<unsigned int>(2300, bt2020.metadata.blue.y);
+			Assert::AreEqual<unsigned int>(15635, bt2020.metadata.white.x);
+			Assert::AreEqual<unsigned int>(16450, bt2020.metadata.white.y);
+			Assert::AreEqual<uint32_t>(1000,
+				bt2020.metadata.maxMasteringLuminance);
+			Assert::AreEqual<uint32_t>(0,
+				bt2020.metadata.minMasteringLuminance);
+			Assert::AreEqual<unsigned int>(0,
+				bt2020.metadata.maxContentLightLevel);
+			Assert::AreEqual<unsigned int>(0,
+				bt2020.metadata.maxFrameAverageLightLevel);
+
+			const auto p3 = BuildStaticMetadata(Primaries::P3_D65, 200.0);
+			Assert::IsTrue(p3.valid);
+			Assert::AreEqual<unsigned int>(34000, p3.metadata.red.x);
+			Assert::AreEqual<unsigned int>(16000, p3.metadata.red.y);
+			Assert::AreEqual<unsigned int>(13250, p3.metadata.green.x);
+			Assert::AreEqual<unsigned int>(34500, p3.metadata.green.y);
+			Assert::AreEqual<unsigned int>(7500, p3.metadata.blue.x);
+			Assert::AreEqual<unsigned int>(3000, p3.metadata.blue.y);
+			Assert::AreEqual<unsigned int>(15635, p3.metadata.white.x);
+			Assert::AreEqual<unsigned int>(16450, p3.metadata.white.y);
+			Assert::AreEqual<uint32_t>(200,
+				p3.metadata.maxMasteringLuminance);
+			Assert::AreEqual<uint32_t>(0, p3.metadata.minMasteringLuminance);
+			Assert::AreEqual<unsigned int>(0, p3.metadata.maxContentLightLevel);
+			Assert::AreEqual<unsigned int>(0,
+				p3.metadata.maxFrameAverageLightLevel);
+
+			const auto rec709 = BuildStaticMetadata(Primaries::BT709, 100.0);
+			Assert::IsTrue(rec709.valid);
+			Assert::AreEqual<unsigned int>(32000, rec709.metadata.red.x);
+			Assert::AreEqual<unsigned int>(16500, rec709.metadata.red.y);
+			Assert::AreEqual<unsigned int>(15000, rec709.metadata.green.x);
+			Assert::AreEqual<unsigned int>(30000, rec709.metadata.green.y);
+			Assert::AreEqual<unsigned int>(7500, rec709.metadata.blue.x);
+			Assert::AreEqual<unsigned int>(3000, rec709.metadata.blue.y);
+			Assert::AreEqual<unsigned int>(15635, rec709.metadata.white.x);
+			Assert::AreEqual<unsigned int>(16450, rec709.metadata.white.y);
+			Assert::AreEqual<uint32_t>(100,
+				rec709.metadata.maxMasteringLuminance);
+			Assert::AreEqual<uint32_t>(0, rec709.metadata.minMasteringLuminance);
+			Assert::AreEqual<unsigned int>(0, rec709.metadata.maxContentLightLevel);
+			Assert::AreEqual<unsigned int>(0,
+				rec709.metadata.maxFrameAverageLightLevel);
+			Assert::IsFalse(BuildStaticMetadata(Primaries::UNKNOWN, 1000.0).valid);
+			Assert::IsFalse(BuildStaticMetadata(Primaries::BT2020, 0.0).valid);
+		}
+
+		TEST_METHOD(ExternalHdrPublishesOnlyCompleteApiAcceptedHdr10Carrier)
+		{
+			using namespace LibplaceboHdr10Output;
+			using HdrEvidence = LibplaceboHdr10Output::Evidence;
+			const auto metadata = BuildStaticMetadata(Primaries::BT2020, 1000.0);
+			HdrEvidence complete{ true, true, true, true, true, true,
+				true, true, true, true, true };
+			const auto active = Evaluate(metadata, complete);
+			Assert::IsTrue(active.active);
+			Assert::IsFalse(active.fallbackRequired);
+			Assert::IsFalse(active.restoreSdrColorSpace);
+			Assert::IsFalse(active.clearHdrMetadata);
+
+			HdrEvidence metadataFailure = complete;
+			metadataFailure.metadataSetSucceeded = false;
+			const auto rejectedMetadata = Evaluate(metadata, metadataFailure);
+			Assert::IsFalse(rejectedMetadata.active);
+			Assert::IsTrue(rejectedMetadata.fallbackRequired);
+			Assert::IsTrue(rejectedMetadata.restoreSdrColorSpace);
+			Assert::IsTrue(rejectedMetadata.clearHdrMetadata);
+			Assert::IsFalse(rejectedMetadata.safeToPresentInternalSdr);
+			metadataFailure.rollbackMetadataClearSucceeded = true;
+			metadataFailure.rollbackSdrSetSucceeded = true;
+			metadataFailure.rollbackSdrVerified = true;
+			Assert::IsTrue(Evaluate(metadata,
+				metadataFailure).safeToPresentInternalSdr);
+
+			HdrEvidence postSetFailure = complete;
+			postSetFailure.g2084SupportedAfterSet = false;
+			Assert::IsTrue(Evaluate(metadata,
+				postSetFailure).restoreSdrColorSpace);
+			HdrEvidence setFailure = complete;
+			setFailure.g2084SetSucceeded = false;
+			setFailure.metadataSetSucceeded = false;
+			Assert::IsFalse(Evaluate(metadata,
+				setFailure).restoreSdrColorSpace);
+			Assert::IsFalse(Evaluate(metadata, setFailure).clearHdrMetadata);
+			Assert::IsTrue(Evaluate(metadata,
+				setFailure).safeToPresentInternalSdr);
+			setFailure.hdrCarrierWasActive = true;
+			Assert::IsTrue(Evaluate(metadata,
+				setFailure).restoreSdrColorSpace);
+			Assert::IsFalse(Evaluate(metadata,
+				setFailure).safeToPresentInternalSdr);
+			setFailure.hdrCarrierWasActive = false;
+			setFailure.metadataSetSucceeded = true;
+			Assert::IsTrue(Evaluate(metadata,
+				setFailure).restoreSdrColorSpace);
+			Assert::IsTrue(Evaluate(metadata,
+				setFailure).clearHdrMetadata);
+
+			const auto invalidMetadata = BuildStaticMetadata(
+				Primaries::UNKNOWN, 1000.0);
+			const auto rejectedContract = Evaluate(invalidMetadata, complete);
+			Assert::IsFalse(rejectedContract.active);
+			Assert::IsTrue(rejectedContract.fallbackRequired);
+			Assert::IsTrue(rejectedContract.restoreSdrColorSpace);
+			Assert::IsFalse(Evaluate(BuildStaticMetadata(
+				Primaries::BT2020, 0.0), complete).active);
+		}
+
+		TEST_METHOD(ExternalHdrRejectsEveryUnauthoritativePresentationShape)
+		{
+			using namespace LibplaceboHdr10Output;
+			using HdrEvidence = LibplaceboHdr10Output::Evidence;
+			const auto metadata = BuildStaticMetadata(Primaries::BT2020, 1000.0);
+			HdrEvidence evidence{ true, true, true, true, true, true,
+				true, true, true, true, true };
+			for (bool HdrEvidence::* field : {
+				&HdrEvidence::topLevelWindow,
+				&HdrEvidence::vpOwnedPresentation,
+				&HdrEvidence::flipPresentation,
+				&HdrEvidence::r10Swapchain,
+				&HdrEvidence::advancedColorActive,
+				&HdrEvidence::hasSwapchain3,
+				&HdrEvidence::g2084SupportedBeforeSet,
+				&HdrEvidence::hasSwapchain4 })
+			{
+				HdrEvidence incomplete = evidence;
+				incomplete.*field = false;
+				const auto rejected = Evaluate(metadata, incomplete);
+				Assert::IsFalse(rejected.active);
+				Assert::IsTrue(rejected.fallbackRequired);
+				Assert::IsTrue(rejected.clearHdrMetadata);
+			}
 		}
 
 		TEST_METHOD(SdrGammaMissingOrOnPreservesCurrentManagedBehavior)
