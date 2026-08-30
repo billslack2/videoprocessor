@@ -187,12 +187,25 @@ struct CaptureVideoStateNotification
 using ConfigurationSnapshot =
 	std::map<std::string, std::map<std::string, std::string>>;
 
+constexpr const char* kSnapshotSectionOrderKey = "\x1eprofile_section_order";
+
 ConfigurationSnapshot CaptureConfigurationSnapshot(const ConfigFile& config)
 {
 	ConfigurationSnapshot snapshot;
+	std::map<std::string, size_t> profileOrder;
 	for (const std::string& section : config.GetSectionNames())
 		if (const auto* values = config.GetSectionValues(section))
+		{
 			snapshot[section] = *values;
+			const std::string profileGroup =
+				ConfigurationApplyPolicy::OrderedProfileGroup(section);
+			if (!profileGroup.empty())
+			{
+				// Preserve executable profile precedence for live-apply comparison.
+				snapshot[section][kSnapshotSectionOrderKey] =
+					std::to_string(profileOrder[profileGroup]++);
+			}
+		}
 	return snapshot;
 }
 
@@ -11664,6 +11677,17 @@ CVideoProcessorDlg::GetProfileOverlaySelections(
 			optionCounts[group.name] = group.profiles.size();
 		selections = ProfileChangeOverlay::FilterSingleOptionGroups(
 			selections, optionCounts);
+		// The persisted identifier may be technical (for example
+		// viewport_16x9). The overlay must show the configured profile label,
+		// not a prettified section suffix.
+		for (auto& selection : selections)
+		{
+			const auto profile = profileModel.profiles.find(
+				selection.first + "." + selection.second);
+			if (profile != profileModel.profiles.end() &&
+				!ConfigFile::Trim(profile->second.label).empty())
+				selection.second = ConfigFile::Trim(profile->second.label);
+		}
 	}
 
 	size_t nlsOptionCount = 0;

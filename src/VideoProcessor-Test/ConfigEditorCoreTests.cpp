@@ -201,6 +201,21 @@ namespace VideoProcessorTest
 				static_cast<int>(ConfigurationApplyPolicy::ClassifySection("GENERAL")));
 		}
 
+		TEST_METHOD(ConfigurationApplyPolicyGroupsOnlyOrderedProfiles)
+		{
+			using ConfigurationApplyPolicy::OrderedProfileGroup;
+			Assert::AreEqual(std::string("vprenderer.viewport"),
+				OrderedProfileGroup("vprenderer.viewport.viewport_16x9"));
+			Assert::AreEqual(std::string("vprenderer.zoom"),
+				OrderedProfileGroup("vprenderer.zoom.close"));
+			Assert::AreEqual(std::string("shader.nls"),
+				OrderedProfileGroup("shader.nls.film"));
+			Assert::AreEqual(std::string("queue"),
+				OrderedProfileGroup("queue.low_latency"));
+			Assert::AreEqual(std::string(), OrderedProfileGroup("general"));
+			Assert::AreEqual(std::string(), OrderedProfileGroup("vprenderer.input_processing"));
+		}
+
 		TEST_METHOD(ConfigurationApplyPolicyClassifiesShortcutOnlyChangesForLiveReload)
 		{
 			using ConfigurationApplyPolicy::Action;

@@ -91,14 +91,27 @@ constexpr int kRendererNameRole = Qt::UserRole + 1;
 
 using DocumentSection = std::map<std::string, std::string>;
 using DocumentSnapshot = std::map<std::string, DocumentSection>;
+constexpr const char* kSnapshotSectionOrderKey = "\x1eprofile_section_order";
 
 DocumentSnapshot captureDocumentSnapshot(
     const ConfigEditorCore::ConfigDocument& document)
 {
     DocumentSnapshot snapshot;
-    for (const std::string& section : document.SectionNames())
+    const std::vector<std::string> orderedSections = document.SectionNames();
+    std::map<std::string, size_t> profileOrder;
+    for (const std::string& section : orderedSections)
     {
         snapshot[section];
+        const std::string profileGroup =
+            ConfigurationApplyPolicy::OrderedProfileGroup(section);
+        if (!profileGroup.empty())
+        {
+            // Section order is executable profile precedence. Keep it in the
+            // in-memory comparison only so an order-only Apply still tells VP
+            // to rebuild its ordered profile model.
+            snapshot[section][kSnapshotSectionOrderKey] =
+                std::to_string(profileOrder[profileGroup]++);
+        }
         for (const auto& setting : document.SectionSettings(section))
             snapshot[section][setting.first] = setting.second;
     }

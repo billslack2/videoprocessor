@@ -135,6 +135,30 @@ namespace ConfigurationApplyPolicy
 		return HasPrefix(NormalizeSection(rawSection), "vprenderer.scaling");
 	}
 
+	// Profiles are selected by their source-file order, but only relative to
+	// other profiles in the same family.  This gives configuration snapshots a
+	// stable way to identify ordering changes without treating an unrelated
+	// section insertion as a renderer change.
+	inline std::string OrderedProfileGroup(const std::string& rawSection)
+	{
+		const std::string section = NormalizeSection(rawSection);
+		if (HasPrefix(section, "queue")) return "queue";
+		if (HasPrefix(section, "lldv")) return "lldv";
+		if (HasPrefix(section, "shader.nls")) return "shader.nls";
+		if (HasPrefix(section, "shaders.nls")) return "shaders.nls";
+		if (HasPrefix(section, "profiles.queue")) return "profiles.queue";
+		if (HasPrefix(section, "profiles.lldv")) return "profiles.lldv";
+		if (HasPrefix(section, "profiles.renderer")) return "profiles.renderer";
+		if (HasPrefix(section, "profiles.viewport")) return "profiles.viewport";
+		if (HasPrefix(section, "profiles.shader")) return "profiles.shader";
+		if (IsViewportProfileSection(section))
+			return HasPrefix(section, "vprenderer.zoom") ?
+				"vprenderer.zoom" : "vprenderer.viewport";
+		if (IsScalingProfileSection(section)) return "vprenderer.scaling";
+		if (IsRenderingProfileSection(section)) return "vprenderer";
+		return {};
+	}
+
 	inline Action ClassifySection(const std::string& section,
 		bool directShowRendererActive = true)
 	{
