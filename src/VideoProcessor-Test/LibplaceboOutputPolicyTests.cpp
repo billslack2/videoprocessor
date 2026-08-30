@@ -321,6 +321,13 @@ namespace Tests
 				static_cast<int>(actual.presentationModel));
 		}
 
+		TEST_METHOD(CalibratedDirectSelectsTheProductionDirectPlan)
+		{
+			Assert::AreEqual(
+				static_cast<int>(PresentationRequest::DIRECT),
+				static_cast<int>(ParsePresentation("calibrated_direct")));
+		}
+
 		TEST_METHOD(LimitedG22IsDisabledUnlessTheExperimentIsExplicitlyEnabled)
 		{
 			Request request;

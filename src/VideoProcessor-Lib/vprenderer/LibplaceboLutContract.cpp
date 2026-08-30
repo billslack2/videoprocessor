@@ -62,9 +62,14 @@ namespace LibplaceboLutContract
 		{
 			return identity.schemaVersion == CARRIER_IDENTITY_SCHEMA_VERSION &&
 				IsSha256(identity.edidSha256) &&
+				IsSha256(identity.monitorDevicePathSha256) &&
 				identity.displayConfigAdapter.known &&
 				identity.displayConfigTargetKnown &&
-				identity.outputTechnology != OutputTechnology::UNKNOWN &&
+				identity.connectorInstanceKnown &&
+				(identity.outputTechnology == OutputTechnology::HDMI ||
+				 identity.outputTechnology == OutputTechnology::DISPLAYPORT ||
+				 identity.outputTechnology == OutputTechnology::DVI ||
+				 identity.outputTechnology == OutputTechnology::INTERNAL) &&
 				identity.activeWidth > 0 &&
 				identity.activeHeight > 0 &&
 				identity.refreshNumerator > 0 &&
@@ -82,12 +87,17 @@ namespace LibplaceboLutContract
 		{
 			return expected.schemaVersion == actual.schemaVersion &&
 				expected.edidSha256 == actual.edidSha256 &&
+				expected.monitorDevicePathSha256 ==
+					actual.monitorDevicePathSha256 &&
 				SameAdapter(expected.displayConfigAdapter,
 					actual.displayConfigAdapter) &&
 				expected.displayConfigTargetKnown ==
 					actual.displayConfigTargetKnown &&
 				expected.displayConfigTargetId ==
 					actual.displayConfigTargetId &&
+				expected.connectorInstanceKnown ==
+					actual.connectorInstanceKnown &&
+				expected.connectorInstance == actual.connectorInstance &&
 				expected.outputTechnology == actual.outputTechnology &&
 				expected.activeWidth == actual.activeWidth &&
 				expected.activeHeight == actual.activeHeight &&
@@ -178,6 +188,11 @@ namespace LibplaceboLutContract
 				return Rejection::CARRIER_GENERATION_MISMATCH;
 			return Rejection::NONE;
 		}
+	}
+
+	bool IsCompleteCarrierIdentity(const CarrierIdentity& identity)
+	{
+		return IsComplete(identity);
 	}
 
 	Rejection ValidateResolvedContract(const ResolvedContract& contract)

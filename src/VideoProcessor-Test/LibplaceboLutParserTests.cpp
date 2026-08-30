@@ -7,6 +7,8 @@
 #include <libplacebo/shaders/custom.h>
 
 #include <cstdint>
+#include <algorithm>
+#include <cctype>
 #include <fstream>
 #include <iterator>
 #include <map>
@@ -550,6 +552,15 @@ namespace VideoProcessorTest
 			Assert::AreEqual(2, result.lut->size[1]);
 			Assert::AreEqual(2, result.lut->size[2]);
 			Assert::IsTrue(result.fileBytes > 0);
+			std::string expectedPath = file.Path();
+			std::replace(expectedPath.begin(), expectedPath.end(), '/', '\\');
+			std::transform(expectedPath.begin(), expectedPath.end(),
+				expectedPath.begin(), [](unsigned char character)
+				{ return static_cast<char>(std::tolower(character)); });
+			Assert::AreEqual(expectedPath.c_str(), result.canonicalPath.c_str());
+			Assert::AreEqual(
+				"a36fd00b830ba2f99a71de82196021619310c7a00aa2a96a3a202d3a6bc2a312",
+				result.contentSha256.c_str());
 			Free(result);
 			Assert::IsNull(result.lut);
 		}
@@ -662,7 +673,8 @@ namespace VideoProcessorTest
 		{
 			for (const Rejection rejection : {
 				Rejection::UNREADABLE, Rejection::EMPTY, Rejection::TOO_LARGE,
-				Rejection::READ_FAILED, Rejection::PATH_OUTSIDE_BASE,
+				Rejection::READ_FAILED, Rejection::PATH_IDENTITY_FAILED,
+				Rejection::HASH_FAILED, Rejection::PATH_OUTSIDE_BASE,
 				Rejection::INVALID_CUBE,
 				Rejection::ONE_DIMENSIONAL, Rejection::UNSUPPORTED_DOMAIN,
 				Rejection::UNSAFE_DIMENSIONS })

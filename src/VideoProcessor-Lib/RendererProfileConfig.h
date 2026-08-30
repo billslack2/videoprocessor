@@ -334,6 +334,14 @@ namespace RendererProfileConfig
 		return IsChoice(value, { "1", "0", "true", "false", "yes", "no", "on", "off" });
 	}
 
+	inline bool IsSha256(const std::string& value)
+	{
+		const std::string trimmed = ConfigFile::Trim(value);
+		return trimmed.size() == 64 && std::all_of(
+			trimmed.begin(), trimmed.end(), [](unsigned char character)
+			{ return std::isxdigit(character) != 0; });
+	}
+
 	inline bool ParseBoolean(const std::string& text, bool& value)
 	{
 		const std::string normalized = ConfigFile::NormalizeName(text);
@@ -491,6 +499,24 @@ namespace RendererProfileConfig
 			if (key == "display_bit_depth") return IsChoice(value, { "auto", "8", "10" });
 			if (key == "sdr_target_nits") return IsNumberInRange(value, 40.0, 500.0);
 			if (key == "lut_reference_nits") return IsChoice(value, { "auto" }) || IsNumberInRange(value, 40.0, 500.0);
+			if (key == "lut_reference_black_nits") return IsNumberInRange(value, 0.0, 500.0, false);
+			if (key == "lut_authoring_code_depth") return ConfigFile::Trim(value) == "10";
+			if (key == "lut_cube_size")
+			{
+				int size = 0;
+				return ParseInteger(ConfigFile::Trim(value), 2, 128, size);
+			}
+			if (key == "lut_content_sha256" ||
+				key == "lut_carrier_identity_sha256" ||
+				key == "lut_attestation_record_sha256" ||
+				key == "lut_external_analyzer_record_sha256") return IsSha256(value);
+			if (key == "lut_direct_delivery_authority")
+				return IsChoice(value, { "external_attested" });
+			if (key == "lut_external_color_management")
+				return IsChoice(value, { "none_attested" });
+			if (key == "lut_display_mode") return !ConfigFile::Trim(value).empty();
+			if (key == "lut_display_mode_authority")
+				return IsChoice(value, { "manual_attested", "nvidia_external_verified" });
 			if (key == "sdr_black_nits") return IsChoice(value, { "auto" }) || IsNumberInRange(value, 0.0, 500.0, false);
 			if (key == "lut_reference_range") return IsChoice(value, { "auto", "full", "limited" });
 			if (key == "output_gamma") return IsChoice(value, { "auto", "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" });
@@ -508,7 +534,7 @@ namespace RendererProfileConfig
 		if (group == "output")
 		{
 			if (key == "output_path_profile") return IsChoice(value, { "legacy", "proposed", "custom" });
-			if (key == "output_presentation") return IsChoice(value, { "auto", "composed", "direct" });
+			if (key == "output_presentation") return IsChoice(value, { "auto", "composed", "direct", "calibrated_direct" });
 			if (key == "output_range") return IsChoice(value, { "auto", "full", "limited" });
 			if (key == "output_transport_gamma") return IsChoice(value, { "auto", "2.2", "2.4" });
 			if (key == "output_diagnostics" ||
