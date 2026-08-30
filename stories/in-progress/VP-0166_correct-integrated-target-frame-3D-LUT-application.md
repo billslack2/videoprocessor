@@ -263,6 +263,30 @@ legacy target-LUT error-diffusion workaround must not leak into the external
 conversion path. An offscreen `PL_LUT_CONVERSION` golden-pixel test, including
 fallback-gamut conversion, is required before the carrier gate is armed.
 
+### Contract checkpoint 7: conversion-LUT GPU path proven
+
+The offscreen WARP proof is committed and pushed as `eab0621e`. It invokes the
+production frame-projection helper, attaches the selected Cube on the image-
+side `PL_LUT_CONVERSION` seam, and reads back the rendered pixel. A nonlinear
+PQ sample `(200,136,48)` through the asymmetric R/B-swap Cube produces the
+exact-slot golden `(48,136,200)`. With only the P3-D65 slot available, an
+independent double-precision ST-2084 decode, linear BT.2020-to-P3-D65 matrix,
+clip, ST-2084 encode, then Cube oracle predicts `(56,112,208)`; WARP matches
+within two 8-bit codes per channel. Every fallback channel is at least eight
+codes from the exact result, so a skipped primaries conversion cannot pass.
+
+The fixture uses libplacebo's real `pl_gamut_map_clip`, disables nondeterministic
+processing, and proves the external path masks a pre-existing target/native LUT
+and peak detector. The x64 Release build succeeds; external-HDR tests pass
+19/19 and the complete LUT-parser/GPU class passes 26/26. Independent madVR-
+contract review reports no P1/P2. This is GPU seam evidence, not an R10 carrier
+or physical-display proof, and it does not make the build tester-ready.
+
+Carrier arming remains blocked on two prerequisites: bind resource work to the
+application/profile generation with same-path content identity and last-known-
+good rules, then land the indivisible live vertical slice comprising the HDR10
+DXGI transaction/rollback, PQ target, LUT attachment, and Present suppression.
+
 ## Implementation progress — 2026-08-29
 
 The first source slice is committed and pushed on
