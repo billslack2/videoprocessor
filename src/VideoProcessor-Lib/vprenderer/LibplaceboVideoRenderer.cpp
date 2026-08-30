@@ -7310,8 +7310,7 @@ struct LibplaceboVideoRenderer::Impl
 		const bool forceStartupBootstrapAnalysis =
 			nearBlackPresentationEpisode.mode ==
 				AlphaSourceCrop::NearBlackPresentationMode::FULL_RASTER &&
-			!nearBlackPresentationEpisode.entryTrustedCropAvailable &&
-			nearBlackPresentationEpisode.bootstrapCandidateAvailable;
+			!nearBlackPresentationEpisode.entryTrustedCropAvailable;
 		if (scheduledAnalysis || forceAnalysis || hasScheduledDecision ||
 			forceRetentionSafetyAnalysis || forceStartupBootstrapAnalysis)
 		{
@@ -7336,6 +7335,10 @@ struct LibplaceboVideoRenderer::Impl
 			ActivePictureEvidence nativeBootstrapEvidence;
 			const ActivePictureGlobalNearBlackEvidence globalNearBlack =
 				EvaluateActivePictureGlobalNearBlack(analysisSource);
+			const bool needsNativeBootstrapEvidence =
+				nearBlackPresentationEpisode.mode ==
+					AlphaSourceCrop::NearBlackPresentationMode::FULL_RASTER &&
+				!nearBlackPresentationEpisode.entryTrustedCropAvailable;
 			if (hadCompatiblePresentation)
 			{
 				retentionEvidence =
@@ -7343,6 +7346,16 @@ struct LibplaceboVideoRenderer::Impl
 						analysisSource, presentationBeforeObservation);
 				evidence = ConstrainNearBlackGeometryChange(
 					retentionEvidence, presentationBeforeObservation);
+				if (needsNativeBootstrapEvidence)
+				{
+					// A full-raster episode caused by an overlay cannot recover through
+					// the old crop's retention path: it would simply keep seeing that
+					// old geometry forever. Inspect the raw current frame separately.
+					// It is only eligible as a bootstrap contract after the episode
+					// policy verifies current, pixel-safe, non-outward evidence.
+					nativeBootstrapEvidence =
+						ExtractActivePictureEvidence(analysisSource);
+				}
 			}
 			else
 			{
@@ -7350,7 +7363,7 @@ struct LibplaceboVideoRenderer::Impl
 				nativeBootstrapEvidence = evidence;
 			}
 			latestNativeBootstrapContractAvailable =
-				!hadCompatiblePresentation && nativeBootstrapEvidence.available &&
+				nativeBootstrapEvidence.available &&
 				nativeBootstrapEvidence.classification ==
 					ActivePictureClassification::BAR_CROP_TRUSTED &&
 				nativeBootstrapEvidence.trustedBounds.trustedBarAxes !=
@@ -7385,6 +7398,35 @@ struct LibplaceboVideoRenderer::Impl
 				latestNativeBootstrapSourceGeneration = 0;
 				latestNativeBootstrapSourceSequence = 0;
 				latestNativeBootstrapPresentationEpoch = 0;
+			}
+			if (needsNativeBootstrapEvidence)
+			{
+				const uint64_t bootstrapProbeInterval = std::max<uint64_t>(1,
+					static_cast<uint64_t>(std::llround(std::max(1.0,
+						framesPerSecond))));
+				if (frameNumber % bootstrapProbeInterval == 0)
+				{
+					DebugLog::Log(
+						"Alpha near-black bootstrap probe: sequence=%llu generation=%llu raw_available=%d raw_classification=%d raw_rect=%d,%d-%d,%d contract=%d retention=%d/%d outward=%d global_near_black=%d global_evaluated=%d episode_epoch=%llu input_epoch=%llu",
+						static_cast<unsigned long long>(frameNumber),
+						static_cast<unsigned long long>(analysisSource.generation),
+						nativeBootstrapEvidence.available ? 1 : 0,
+						static_cast<int>(nativeBootstrapEvidence.classification),
+						nativeBootstrapEvidence.trustedBounds.left,
+						nativeBootstrapEvidence.trustedBounds.top,
+						nativeBootstrapEvidence.trustedBounds.right,
+						nativeBootstrapEvidence.trustedBounds.bottom,
+						latestNativeBootstrapContractAvailable ? 1 : 0,
+						latestNativeBootstrapRetentionEvaluated ? 1 : 0,
+						latestNativeBootstrapRetentionSafe ? 1 : 0,
+						latestNativeBootstrapOutwardVisible ? 1 : 0,
+						globalNearBlack.nearBlack ? 1 : 0,
+						globalNearBlack.evaluated ? 1 : 0,
+						static_cast<unsigned long long>(
+							nearBlackPresentationEpisode.presentationEpoch),
+						static_cast<unsigned long long>(
+							currentIdentity.viewportGeneration));
+				}
 			}
 			latestActivePictureEvidenceWasStartupHypothesis = false;
 			if (!hadCompatiblePresentation && evidence.available &&

@@ -102,8 +102,11 @@ namespace AlphaSourceCrop
 		{
 			if (!std::isfinite(framesPerSecond) || framesPerSecond <= 0.0)
 				framesPerSecond = 60.0;
+			// Bootstrap only reopens the independently verified normal acquisition
+			// path. Keep enough time for the second gate while keeping their combined
+			// recovery below about 0.7 seconds for 24 Hz sources.
 			return static_cast<uint32_t>(std::max(2.0,
-				std::ceil(framesPerSecond * 0.500) + 1.0));
+				std::ceil(framesPerSecond * 0.375) + 1.0));
 		}
 
 		bool ChromaAlignedTrustedContract(const ActivePictureBounds& bounds)

@@ -4205,13 +4205,13 @@ namespace Tests
 			input.nativeBootstrapRetentionSafe = true;
 			input.nativeBootstrapSourceGeneration = input.sourceGeneration;
 			input.nativeBootstrapPresentationEpoch = input.presentationEpoch;
-			for (uint64_t sequence = 2; sequence <= 14; ++sequence)
+			for (uint64_t sequence = 2; sequence <= 11; ++sequence)
 			{
 				input.previous = decision.state;
 				input.sourceSequence = sequence;
 				input.nativeBootstrapSourceSequence = sequence;
 				decision = EvaluateNearBlackPresentationEpisode(input);
-				if (sequence < 14)
+				if (sequence < 11)
 				{
 					Assert::IsFalse(decision.bootstrapReleased);
 					Assert::AreEqual(static_cast<int>(
@@ -4223,6 +4223,51 @@ namespace Tests
 			Assert::IsTrue(decision.resetTransitionEvidence);
 			Assert::IsFalse(decision.releasedToTrustedCrop);
 			Assert::IsTrue(decision.ended);
+			Assert::AreEqual(static_cast<int>(
+				NearBlackPresentationMode::INACTIVE),
+				static_cast<int>(decision.state.mode));
+		}
+
+		TEST_METHOD(NearBlackOutwardOverlayCanBootstrapBackToSafeNativeCrop)
+		{
+			const ActivePictureBounds scope = TrustedScopeCrop().geometry;
+			NearBlackPresentationEpisodeInput input;
+			input.measurementCurrent = true;
+			input.nearBlackEvaluated = true;
+			input.globalNearBlack = true;
+			input.trustedCropAvailable = true;
+			input.trustedCrop = scope;
+			input.boundedVisibleContentOutsideCrop = true;
+			input.presentationEpoch = 52;
+			input.sourceGeneration = 51;
+			input.sourceSequence = 1;
+			input.framesPerSecond = 23.976;
+			auto decision = EvaluateNearBlackPresentationEpisode(input);
+			Assert::AreEqual(static_cast<int>(
+				NearBlackPresentationMode::FULL_RASTER),
+				static_cast<int>(decision.state.mode));
+			Assert::IsFalse(decision.state.entryTrustedCropAvailable);
+
+			input.globalNearBlack = false;
+			input.boundedVisibleContentOutsideCrop = false;
+			input.nativeBootstrapContractAvailable = true;
+			input.nativeBootstrapContract = scope;
+			input.nativeBootstrapRetentionEvaluated = true;
+			input.nativeBootstrapRetentionSafe = true;
+			input.nativeBootstrapSourceGeneration = input.sourceGeneration;
+			input.nativeBootstrapPresentationEpoch = input.presentationEpoch;
+			for (uint64_t sequence = 2; sequence <= 11; ++sequence)
+			{
+				input.previous = decision.state;
+				input.sourceSequence = sequence;
+				input.nativeBootstrapSourceSequence = sequence;
+				decision = EvaluateNearBlackPresentationEpisode(input);
+			}
+
+			Assert::AreEqual(10u, decision.bootstrapSamplesRequired);
+			Assert::IsTrue(decision.bootstrapReleased);
+			Assert::IsTrue(decision.resetTransitionEvidence);
+			Assert::IsFalse(decision.releasedToTrustedCrop);
 			Assert::AreEqual(static_cast<int>(
 				NearBlackPresentationMode::INACTIVE),
 				static_cast<int>(decision.state.mode));
@@ -4286,7 +4331,7 @@ namespace Tests
 			input.previous.bootstrapCandidateAvailable = true;
 			input.previous.bootstrapCandidate = scope;
 			input.previous.bootstrapLastSourceSequence = 42;
-			input.previous.bootstrapSamples = 13;
+			input.previous.bootstrapSamples = 10;
 			input.measurementCurrent = true;
 			input.nearBlackEvaluated = true;
 			input.nativeBootstrapContractAvailable = true;
@@ -4311,7 +4356,7 @@ namespace Tests
 				NearBlackPresentationMode::FULL_RASTER),
 				static_cast<int>(decision.state.mode));
 
-			for (uint64_t sequence = 257; sequence <= 268; ++sequence)
+			for (uint64_t sequence = 257; sequence <= 265; ++sequence)
 			{
 				input.previous = decision.state;
 				input.sourceSequence = sequence;
