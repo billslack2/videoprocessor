@@ -429,6 +429,25 @@ inherited external-HDR control state, exits successfully. The next acceptance
 step is the controlled HDR-display run; deployment remains intentionally
 restored until that isolated test begins.
 
+### Contract checkpoint 12: explicit operator controls
+
+Tester review corrected four misleading editor affordances in `145a48db`.
+The External HDR 3D LUT card now has an explicit enable checkbox tied to the
+existing mutually exclusive processing mode. Outgoing metadata gamut no
+longer displays an inherited/default BT.2020 choice, and outgoing peak nits no
+longer receives a fabricated 1000-nit value when external mode is selected;
+both remain visibly required and unset until the operator supplies them. The
+legacy final-calibration inspection card is removed from the editor surface.
+Compatibility parsing remains intact so opening and saving an older file does
+not destroy its declarations.
+
+The complete x64 Release configuration-editor test executable passes,
+including enable/mode synchronization, required-empty metadata, explicit
+persistence, missing-Cube retention, inherited external mode, and absence of
+the legacy card. A fresh editor and main executable build succeeds. A matching
+non-deployed standalone test directory is available at
+`C:\Users\bslac\Documents\ChatGPT\Done\VP-0166-145a48d-standalone`.
+
 ## Implementation progress — 2026-08-29
 
 The first source slice is committed and pushed on
