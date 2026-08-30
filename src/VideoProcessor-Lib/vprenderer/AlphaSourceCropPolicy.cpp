@@ -1434,6 +1434,7 @@ namespace AlphaSourceCrop
 	{
 		NearBlackPresentationEpisodeDecision decision;
 		decision.state = input.previous;
+		bool presentationEpochChanged = false;
 		decision.revalidationSamplesRequired =
 			NearBlackCropRevalidationSamples(input.framesPerSecond);
 		decision.bootstrapSamplesRequired =
@@ -1445,6 +1446,27 @@ namespace AlphaSourceCrop
 			decision.state = {};
 			decision.ended = true;
 			decision.reason = "source generation ended near-black title episode";
+		}
+
+		if (decision.state.mode == NearBlackPresentationMode::FULL_RASTER &&
+			!decision.state.entryTrustedCropAvailable &&
+			decision.state.sourceGeneration == input.sourceGeneration &&
+			decision.state.presentationEpoch != input.presentationEpoch)
+		{
+			// A live profile/viewport boundary invalidates every certificate from
+			// the old presentation epoch, but it must not strand the episode there.
+			// Preserve the conservative presentation choice (and any confirmed
+			// outward-content latch), then restart only the partial proof on the
+			// current epoch. Fresh current-frame pixels are still required below.
+			decision.state.presentationEpoch = input.presentationEpoch;
+			decision.state.fullRasterStartedSourceSequence = input.sourceSequence;
+			ResetNearBlackCropRevalidation(decision.state);
+			ResetNearBlackBootstrap(decision.state);
+			decision.state.outwardConfirmationLastSourceSequence = 0;
+			decision.state.outwardConfirmationSamples = 0;
+			presentationEpochChanged = true;
+			decision.reason =
+				"presentation epoch changed; near-black proof restarted";
 		}
 
 		if (input.sceneBoundary &&
@@ -1731,7 +1753,8 @@ namespace AlphaSourceCrop
 				decision.state.revalidationSamples;
 		if (!decision.bootstrapReleased)
 			decision.bootstrapSamples = decision.state.bootstrapSamples;
-		decision.revalidationChanged = decision.releasedToTrustedCrop ||
+		decision.revalidationChanged = presentationEpochChanged ||
+			decision.releasedToTrustedCrop ||
 			decision.bootstrapReleased ||
 			decision.revalidationSamples !=
 				input.previous.revalidationSamples ||

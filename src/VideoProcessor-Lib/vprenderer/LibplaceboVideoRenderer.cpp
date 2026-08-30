@@ -8903,9 +8903,10 @@ struct LibplaceboVideoRenderer::Impl
 			outputContractLogged = true;
 		}
 
+		const double nominalSourceRateHz = state.displayMode->RefreshRateHz();
 		auto configureViewport =
 			[this, &image, width, height, frameGeneration, sourceSequence,
-			 viewportRequestSerial, captureRateHz,
+			 viewportRequestSerial, captureRateHz, nominalSourceRateHz,
 			 sceneHold, sceneResult, cadenceRepeat, subtitleShiftSourcePixels,
 			 subtitleBarAnalysisScheduled, subtitleBarAnalysisCompleted,
 			 forceSubtitleBarAnalysis,
@@ -9337,7 +9338,9 @@ struct LibplaceboVideoRenderer::Impl
 				latestNativeBootstrapSourceSequence;
 			episodeInput.nativeBootstrapPresentationEpoch =
 				latestNativeBootstrapPresentationEpoch;
-			episodeInput.framesPerSecond = captureRateHz;
+			episodeInput.framesPerSecond =
+				std::isfinite(nominalSourceRateHz) && nominalSourceRateHz > 0.0
+					? nominalSourceRateHz : captureRateHz;
 			episodeInput.currentTick = GetTickCount64();
 			episodeInput.presentationEpoch = viewportRequestSerial;
 			episodeInput.sourceGeneration = frameGeneration;
@@ -9351,7 +9354,7 @@ struct LibplaceboVideoRenderer::Impl
 				episodeDecision.revalidationChanged)
 			{
 				DebugLog::Log(
-					"Alpha near-black presentation episode: sequence=%llu generation=%llu mode=%s started=%d to_full=%d to_crop=%d bootstrap_exit=%d ended=%d proof=%u/%u bootstrap=%u/%u sticky=%d evaluated=%d near_black=%d luma_p90=%.1f trusted_crop=%d reacquired=%d current_assoc=%d native_bootstrap=%d retention_safe=%d outward_visible=%d scene=%d reason=\"%s\"",
+					"Alpha near-black presentation episode: sequence=%llu generation=%llu mode=%s started=%d to_full=%d to_crop=%d bootstrap_exit=%d ended=%d proof=%u/%u bootstrap=%u/%u sticky=%d evaluated=%d near_black=%d luma_p90=%.1f trusted_crop=%d reacquired=%d current_assoc=%d native_bootstrap=%d native_rect=%d,%d-%d,%d native_retention=%d/%d native_outward=%d measurement_current=%d cadence_repeat=%d episode_epoch=%llu input_epoch=%llu native_epoch=%llu source_hz=%.5f measured_hz=%.5f chosen_hz=%.5f retention_safe=%d outward_visible=%d scene=%d reason=\"%s\"",
 					static_cast<unsigned long long>(sourceSequence),
 					static_cast<unsigned long long>(frameGeneration),
 					AlphaSourceCrop::NearBlackPresentationModeName(
@@ -9376,6 +9379,28 @@ struct LibplaceboVideoRenderer::Impl
 					episodeInput.knownTrustedGeometryReacquired ? 1 : 0,
 					episodeInput.reacquisitionIsCurrentAssociation ? 1 : 0,
 					episodeInput.nativeBootstrapContractAvailable ? 1 : 0,
+					episodeInput.nativeBootstrapContractAvailable
+						? episodeInput.nativeBootstrapContract.left : 0,
+					episodeInput.nativeBootstrapContractAvailable
+						? episodeInput.nativeBootstrapContract.top : 0,
+					episodeInput.nativeBootstrapContractAvailable
+						? episodeInput.nativeBootstrapContract.right : 0,
+					episodeInput.nativeBootstrapContractAvailable
+						? episodeInput.nativeBootstrapContract.bottom : 0,
+					episodeInput.nativeBootstrapRetentionEvaluated ? 1 : 0,
+					episodeInput.nativeBootstrapRetentionSafe ? 1 : 0,
+					episodeInput.nativeBootstrapOutwardVisible ? 1 : 0,
+					episodeInput.measurementCurrent ? 1 : 0,
+					episodeInput.cadenceRepeat ? 1 : 0,
+					static_cast<unsigned long long>(
+						episodeDecision.state.presentationEpoch),
+					static_cast<unsigned long long>(
+						episodeInput.presentationEpoch),
+					static_cast<unsigned long long>(
+						episodeInput.nativeBootstrapPresentationEpoch),
+					nominalSourceRateHz,
+					captureRateHz,
+					episodeInput.framesPerSecond,
 					episodeInput.retentionSafe ? 1 : 0,
 					episodeInput.boundedVisibleContentOutsideCrop ? 1 : 0,
 					episodeInput.sceneBoundary ? 1 : 0,

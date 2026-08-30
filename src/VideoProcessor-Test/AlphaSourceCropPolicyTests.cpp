@@ -4275,6 +4275,79 @@ namespace Tests
 			Assert::IsTrue(decision.ended);
 		}
 
+		TEST_METHOD(NearBlackStartupBootstrapRestartsOnCurrentProfileEpoch)
+		{
+			const ActivePictureBounds scope = TrustedScopeCrop().geometry;
+			NearBlackPresentationEpisodeInput input;
+			input.previous.mode = NearBlackPresentationMode::FULL_RASTER;
+			input.previous.sourceGeneration = 42;
+			input.previous.presentationEpoch = 1;
+			input.previous.fullRasterStartedSourceSequence = 1;
+			input.previous.bootstrapCandidateAvailable = true;
+			input.previous.bootstrapCandidate = scope;
+			input.previous.bootstrapLastSourceSequence = 42;
+			input.previous.bootstrapSamples = 13;
+			input.measurementCurrent = true;
+			input.nearBlackEvaluated = true;
+			input.nativeBootstrapContractAvailable = true;
+			input.nativeBootstrapContract = scope;
+			input.nativeBootstrapRetentionEvaluated = true;
+			input.nativeBootstrapRetentionSafe = true;
+			input.nativeBootstrapSourceGeneration = 42;
+			input.nativeBootstrapSourceSequence = 256;
+			input.nativeBootstrapPresentationEpoch = 3;
+			input.presentationEpoch = 3;
+			input.sourceGeneration = 42;
+			input.sourceSequence = 256;
+			input.framesPerSecond = 23.976;
+
+			auto decision = EvaluateNearBlackPresentationEpisode(input);
+			Assert::IsTrue(decision.revalidationChanged);
+			Assert::AreEqual(3ull, decision.state.presentationEpoch);
+			Assert::AreEqual(1u, decision.state.bootstrapSamples);
+			Assert::AreEqual(256ull,
+				decision.state.fullRasterStartedSourceSequence);
+			Assert::AreEqual(static_cast<int>(
+				NearBlackPresentationMode::FULL_RASTER),
+				static_cast<int>(decision.state.mode));
+
+			for (uint64_t sequence = 257; sequence <= 268; ++sequence)
+			{
+				input.previous = decision.state;
+				input.sourceSequence = sequence;
+				input.nativeBootstrapSourceSequence = sequence;
+				decision = EvaluateNearBlackPresentationEpisode(input);
+			}
+			Assert::IsTrue(decision.bootstrapReleased);
+			Assert::IsTrue(decision.resetTransitionEvidence);
+			Assert::IsTrue(decision.ended);
+			Assert::AreEqual(static_cast<int>(
+				NearBlackPresentationMode::INACTIVE),
+				static_cast<int>(decision.state.mode));
+		}
+
+		TEST_METHOD(NearBlackProfileEpochRestartIsObservableWithoutCropEvidence)
+		{
+			NearBlackPresentationEpisodeInput input;
+			input.previous.mode = NearBlackPresentationMode::FULL_RASTER;
+			input.previous.sourceGeneration = 42;
+			input.previous.presentationEpoch = 1;
+			input.previous.fullRasterStartedSourceSequence = 1;
+			input.presentationEpoch = 3;
+			input.sourceGeneration = 42;
+			input.sourceSequence = 256;
+			input.framesPerSecond = 23.976;
+
+			const auto decision = EvaluateNearBlackPresentationEpisode(input);
+			Assert::IsTrue(decision.revalidationChanged);
+			Assert::IsFalse(decision.bootstrapReleased);
+			Assert::IsFalse(decision.state.bootstrapCandidateAvailable);
+			Assert::AreEqual(3ull, decision.state.presentationEpoch);
+			Assert::AreEqual(static_cast<int>(
+				NearBlackPresentationMode::FULL_RASTER),
+				static_cast<int>(decision.state.mode));
+		}
+
 		TEST_METHOD(NearBlackPausedBootstrapOverlayResetsTimedDwell)
 		{
 			const ActivePictureBounds scope = TrustedScopeCrop().geometry;
