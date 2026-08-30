@@ -1,5 +1,34 @@
 # VP-0166: madVR-style external HDR 3D LUT tone mapping
 
+## Controlling product contract — 2026-08-30: external LUT tone maps HDR to SDR
+
+This section is authoritative and supersedes every PQ-to-PQ/HDR-carrier
+interpretation below. The required VP behavior is:
+
+`HDR/PQ source -> selected external 3D LUT -> tone-mapped SDR presentation`
+
+The external Cube replaces VP's internal HDR-to-SDR tone/gamut mapper. The
+existing SDR presentation and backbuffer path remains authoritative. External
+LUT mode must not arm an HDR10/PQ carrier, call the display into HDR mode,
+require or enable Windows HDR/Advanced Color, or send HDR static metadata as a
+condition of presentation. Embedded and fullscreen presentation must both
+remain SDR.
+
+The three BT.709, P3-D65, and BT.2020 selectors identify the HDR/PQ input-gamut
+slot whose Cube should be used. Gamut and nits controls remain part of the
+madVR-style tone-mapping configuration, but they must be defined and consumed
+within the HDR-to-SDR LUT contract; they must never be interpreted as authority
+to switch the output to HDR. Their exact runtime semantics and validation must
+be frozen against the madVR comparison before another tester build is accepted.
+
+Source commit `a2f87283` and package
+`VP-0166-a2f8728-PQ-to-PQ-HDR-3DLUT-tester.zip` implement the wrong HDR-output
+contract and are withdrawn. They were moved recoverably to `Done\Withdrawn`
+and must not be shared or used as acceptance evidence. Local testing is blocked
+until the HDR-carrier changes are removed, the Cube is again applied in the
+SDR tone-mapping path, SDR fallback/presentation tests pass, and a new x64
+Release package is built from the corrected clean commit.
+
 ## Controlling correction — 2026-08-30: madVR external HDR LUT is PQ to PQ
 
 This section supersedes the withdrawn HDR-to-SDR interpretation immediately
