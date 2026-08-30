@@ -448,6 +448,14 @@ the legacy card. A fresh editor and main executable build succeeds. A matching
 non-deployed standalone test directory is available at
 `C:\Users\bslac\Documents\ChatGPT\Done\VP-0166-145a48d-standalone`.
 
+Follow-up tester review in `eb7dd38e` removes the remaining fabricated slot
+default: an unpopulated root BT.709, P3-D65, or BT.2020 selector now reads
+`None`. The three slots are optional individually, as in madVR; external mode
+still requires at least one usable Cube. Named VP profiles identify a genuine
+inherited Cube path rather than calling it a default. The full editor test
+executable passes, and the refreshed standalone directory is
+`C:\Users\bslac\Documents\ChatGPT\Done\VP-0166-eb7dd38-standalone`.
+
 ## Implementation progress — 2026-08-29
 
 The first source slice is committed and pushed on
