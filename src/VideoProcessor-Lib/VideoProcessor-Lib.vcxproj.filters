@@ -72,6 +72,9 @@
 	<ClInclude Include="vprenderer\\LibplaceboExternalHdrLutPolicy.h">
 	  <Filter>Header Files</Filter>
 	</ClInclude>
+	<ClInclude Include="vprenderer\\LibplaceboExternalHdrLutSet.h">
+	  <Filter>Header Files\libplacebo</Filter>
+	</ClInclude>
 	<ClInclude Include="vprenderer\\LibplaceboHdr10OutputPolicy.h">
 	  <Filter>Header Files\libplacebo</Filter>
 	</ClInclude>

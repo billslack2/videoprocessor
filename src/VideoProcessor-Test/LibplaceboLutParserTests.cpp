@@ -2,6 +2,7 @@
 #include "CppUnitTest.h"
 
 #include <vprenderer/LibplaceboDisplayLut.h>
+#include <vprenderer/LibplaceboExternalHdrLutSet.h>
 #include <libplacebo/d3d11.h>
 #include <libplacebo/renderer.h>
 #include <libplacebo/shaders/custom.h>
@@ -696,6 +697,156 @@ namespace VideoProcessorTest
 				static_cast<int>(lut.rejection));
 			Assert::AreEqual("domain unsupported", ShortReason(lut.rejection));
 			Assert::IsNull(lut.lut);
+		}
+
+		TEST_METHOD(ExternalHdrCandidateSetLoadsAllSlotsBeforeSelection)
+		{
+			TemporaryDirectory directory;
+			const std::string bt709 = directory.Write("bt709.cube", Valid3dCube);
+			const std::string p3 = directory.Write("p3.cube", Green3dCube);
+			const std::string missing = directory.Path() + "\\missing.cube";
+			LibplaceboExternalHdrLut::Declarations declarations;
+			declarations.bt709 = { bt709, directory.Path() };
+			declarations.p3D65 = { p3, directory.Path() };
+			declarations.bt2020 = { missing, directory.Path() };
+
+			auto candidate = LibplaceboExternalHdrLut::CandidateSet::Load(
+				nullptr, declarations, 1);
+			const auto availability = candidate.Availability();
+			Assert::IsTrue(availability.bt709);
+			Assert::IsTrue(availability.p3D65);
+			Assert::IsFalse(availability.bt2020);
+			const auto& missingResource = candidate.Resource(
+				LibplaceboExternalHdrLut::Slot::BT2020);
+			Assert::IsTrue(missingResource.Configured());
+			Assert::AreEqual(missing.c_str(),
+				missingResource.ConfiguredPath().c_str());
+			Assert::AreEqual(static_cast<int>(Status::REJECTED),
+				static_cast<int>(missingResource.Result().status));
+			Assert::AreEqual(static_cast<int>(Rejection::UNREADABLE),
+				static_cast<int>(missingResource.Result().rejection));
+			LibplaceboExternalHdrLut::ActiveSet active;
+			Assert::AreEqual(static_cast<int>(
+				LibplaceboExternalHdrLut::CommitDisposition::COMMIT_USABLE_GENERATION),
+				static_cast<int>(active.Commit(std::move(candidate))));
+
+			const auto resolved = active.Resolve(
+				1,
+				LibplaceboExternalHdrLut::ToneMappingMode::EXTERNAL_3DLUT,
+				true, LibplaceboExternalHdrLut::Primaries::BT2020);
+			Assert::AreEqual(static_cast<int>(
+				LibplaceboExternalHdrLut::Slot::P3_D65),
+				static_cast<int>(resolved.selection.slot));
+			Assert::IsTrue(resolved.selection.requiresExplicitPrimariesTransform);
+			Assert::IsNotNull(resolved.lut);
+			Assert::IsTrue(active.IsCurrent(resolved));
+		}
+
+		TEST_METHOD(ExternalHdrCommitPublishesFallbackAndRejectsStaleWork)
+		{
+			TemporaryDirectory directory;
+			const std::string valid = directory.Write("valid.cube", Valid3dCube);
+			const std::string invalid = directory.Write("invalid.cube",
+				"LUT_3D_SIZE 2\n0 0 0\n");
+			LibplaceboExternalHdrLut::Declarations activeDeclarations;
+			activeDeclarations.bt2020 = { valid, directory.Path() };
+			auto initialCandidate = LibplaceboExternalHdrLut::CandidateSet::Load(
+				nullptr, activeDeclarations, 1);
+			Assert::IsFalse(initialCandidate.Resource(
+				LibplaceboExternalHdrLut::Slot::BT709).Configured());
+			Assert::AreEqual(static_cast<int>(Status::DISABLED),
+				static_cast<int>(initialCandidate.Resource(
+					LibplaceboExternalHdrLut::Slot::BT709).Result().status));
+			LibplaceboExternalHdrLut::ActiveSet active;
+			Assert::AreEqual(static_cast<int>(
+				LibplaceboExternalHdrLut::CommitDisposition::COMMIT_USABLE_GENERATION),
+				static_cast<int>(active.Commit(std::move(initialCandidate))));
+			const auto prior = active.Resolve(
+				1,
+				LibplaceboExternalHdrLut::ToneMappingMode::EXTERNAL_3DLUT,
+				true, LibplaceboExternalHdrLut::Primaries::BT2020);
+			Assert::IsNotNull(prior.lut);
+
+			const auto inFlight = active.Resolve(
+				2,
+				LibplaceboExternalHdrLut::ToneMappingMode::EXTERNAL_3DLUT,
+				true, LibplaceboExternalHdrLut::Primaries::BT2020);
+			Assert::IsNull(inFlight.lut);
+			Assert::AreEqual(static_cast<int>(
+				LibplaceboExternalHdrLut::EffectiveMode::PIXEL_SHADERS),
+				static_cast<int>(inFlight.selection.effectiveMode));
+			Assert::AreEqual("external 3D LUT profile generation is not ready",
+				inFlight.selection.reason);
+
+			LibplaceboExternalHdrLut::Declarations badDeclarations;
+			badDeclarations.bt2020 = { invalid, directory.Path() };
+			auto rejected = LibplaceboExternalHdrLut::CandidateSet::Load(
+				nullptr, badDeclarations, 2);
+			Assert::AreEqual(static_cast<int>(
+				LibplaceboExternalHdrLut::CommitDisposition::COMMIT_INTERNAL_FALLBACK),
+				static_cast<int>(active.Commit(std::move(rejected))));
+			const auto fallback = active.Resolve(
+				2,
+				LibplaceboExternalHdrLut::ToneMappingMode::EXTERNAL_3DLUT,
+				true, LibplaceboExternalHdrLut::Primaries::BT2020);
+			Assert::IsNull(fallback.lut);
+			Assert::AreEqual(static_cast<int>(
+				LibplaceboExternalHdrLut::EffectiveMode::PIXEL_SHADERS),
+				static_cast<int>(fallback.selection.effectiveMode));
+			Assert::IsFalse(active.IsCurrent(prior));
+
+			auto stale = LibplaceboExternalHdrLut::CandidateSet::Load(
+				nullptr, activeDeclarations, 1);
+			Assert::AreEqual(static_cast<int>(
+				LibplaceboExternalHdrLut::CommitDisposition::REJECT_STALE_TRANSACTION),
+				static_cast<int>(active.Commit(std::move(stale))));
+			auto duplicate = LibplaceboExternalHdrLut::CandidateSet::Load(
+				nullptr, activeDeclarations, 2);
+			Assert::AreEqual(static_cast<int>(
+				LibplaceboExternalHdrLut::CommitDisposition::REJECT_STALE_TRANSACTION),
+				static_cast<int>(active.Commit(std::move(duplicate))));
+			Assert::AreEqual<uint64_t>(2, active.TransactionGeneration());
+			Assert::IsTrue(active.IsCurrent(fallback));
+		}
+
+		TEST_METHOD(ExternalHdrPartialGenerationNeverMixesPriorProfileSlots)
+		{
+			TemporaryDirectory directory;
+			const std::string bt2020 = directory.Write("bt2020.cube", Valid3dCube);
+			const std::string p3 = directory.Write("p3.cube", Green3dCube);
+			LibplaceboExternalHdrLut::Declarations firstDeclarations;
+			firstDeclarations.bt2020 = { bt2020, directory.Path() };
+			auto first = LibplaceboExternalHdrLut::CandidateSet::Load(
+				nullptr, firstDeclarations, 1);
+			LibplaceboExternalHdrLut::ActiveSet active;
+			Assert::AreEqual(static_cast<int>(
+				LibplaceboExternalHdrLut::CommitDisposition::COMMIT_USABLE_GENERATION),
+				static_cast<int>(active.Commit(std::move(first))));
+			const auto prior = active.Resolve(
+				1,
+				LibplaceboExternalHdrLut::ToneMappingMode::EXTERNAL_3DLUT,
+				true, LibplaceboExternalHdrLut::Primaries::BT2020);
+			Assert::AreEqual(static_cast<int>(LibplaceboExternalHdrLut::Slot::BT2020),
+				static_cast<int>(prior.selection.slot));
+
+			LibplaceboExternalHdrLut::Declarations secondDeclarations;
+			secondDeclarations.p3D65 = { p3, directory.Path() };
+			auto second = LibplaceboExternalHdrLut::CandidateSet::Load(
+				nullptr, secondDeclarations, 2);
+			Assert::AreEqual(static_cast<int>(
+				LibplaceboExternalHdrLut::CommitDisposition::COMMIT_USABLE_GENERATION),
+				static_cast<int>(active.Commit(std::move(second))));
+			Assert::IsFalse(active.IsCurrent(prior));
+			Assert::IsFalse(active.Resources().Resource(
+				LibplaceboExternalHdrLut::Slot::BT2020).Available());
+			const auto current = active.Resolve(
+				2,
+				LibplaceboExternalHdrLut::ToneMappingMode::EXTERNAL_3DLUT,
+				true, LibplaceboExternalHdrLut::Primaries::BT2020);
+			Assert::AreEqual(static_cast<int>(LibplaceboExternalHdrLut::Slot::P3_D65),
+				static_cast<int>(current.selection.slot));
+			Assert::IsTrue(current.selection.requiresExplicitPrimariesTransform);
+			Assert::IsNotNull(current.lut);
 		}
 
 		TEST_METHOD(PinnedInternetNonlinearCubeAppliesItsPublishedLatticeValue)

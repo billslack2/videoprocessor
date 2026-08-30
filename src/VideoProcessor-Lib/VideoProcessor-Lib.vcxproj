@@ -233,6 +233,7 @@
     <ClInclude Include="vprenderer\\AlphaSourceCropPolicy.h" />
     <ClInclude Include="vprenderer\\LibplaceboOutputPolicy.h" />
 	<ClInclude Include="vprenderer\\LibplaceboExternalHdrLutPolicy.h" />
+	<ClInclude Include="vprenderer\\LibplaceboExternalHdrLutSet.h" />
 	<ClInclude Include="vprenderer\\LibplaceboHdr10OutputPolicy.h" />
     <ClInclude Include="vprenderer\\LibplaceboRenderParameters.h" />
     <ClInclude Include="vprenderer\\HdrPeakAnalysisCrop.h" />
