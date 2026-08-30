@@ -1,67 +1,55 @@
 # VP-0166: madVR-style external HDR 3D LUT tone mapping
 
-## Controlling correction — 2026-08-30: external LUT tone maps to SDR
+## Controlling correction — 2026-08-30: madVR external HDR LUT is PQ to PQ
 
-This section supersedes every earlier PQ-output, HDR10-carrier, outgoing-HDR-
-metadata, and Windows Advanced Color activation requirement in this story.
+This section supersedes the withdrawn HDR-to-SDR interpretation immediately
+below it in repository history. Research against madVR's own issue tracker and
+independent render/profile reviews establish two distinct madVR roles:
 
-The beta product contract is:
+- **process/tone map HDR using external 3DLUT** is PQ HDR input to PQ HDR
+  output, with the Cube owning tone and gamut mapping;
+- **convert HDR content to SDR using an external 3DLUT** is a separate role
+  that VP does not expose in this milestone.
 
-- **Tone map HDR using external 3D LUT** means the selected Cube replaces VP's
-  internal HDR tone and gamut mapping and produces the normal SDR presentation
-  target selected by the active VP profile.
-- The external Cube accepts HDR10/PQ nonlinear RGB coordinates in the selected
-  BT.709, P3-D65, or BT.2020 input-gamut slot and declares its SDR output role
-  through this VP mode. VP does not infer or activate PQ/HDR output from a
-  generic `.cube` file.
-- No HDR10 metadata is emitted, Windows HDR/Advanced Color is not required,
-  and the LUT must work in the embedded SDR preview as well as fullscreen.
-- The outgoing-HDR metadata gamut and peak controls are removed from this
-  mode. Legacy keys remain parseable but are inert.
-- **Pass HDR through to display** is disabled for this beta. It is absent from
-  the editor, and a legacy `passthrough` value resolves safely to VP's internal
-  HDR-to-SDR pixel-shader path.
-- A missing, invalid, stale, or incompatible Cube falls back to the internal
-  HDR-to-SDR pixel-shader path. A successfully selected Cube attaches exactly
-  once as `PL_LUT_CONVERSION`, disables internal peak analysis for that frame,
-  masks the separate final-calibration LUT, and retains normal final dithering.
+VP's external HDR mode therefore selects a Cube by its expected nonlinear PQ
+RGB input gamut (BT.709, P3-D65, or BT.2020), applies it exactly once as
+`PL_LUT_CONVERSION`, and emits normalized nonlinear PQ RGB through a verified
+full-range 10-bit BT.2020 HDR10 carrier. The selected input slot is independent
+of the required profile-owned outgoing HDR metadata gamut and peak nits.
 
-madVR can distinguish PQ-output and SDR-output LUT roles in its native LUT
-metadata. VP's `.cube` contract cannot, so this beta deliberately implements
-only the explicitly selected SDR-output role. Any future PQ-output external-
-LUT role requires a separate visible output-role contract and is not inferred
-from this mode or from the presence of HDR source metadata.
+HDR presentation is frame-local and fail closed. VP may Present PQ only after
+the exact swapchain, application profile, and LUT transaction generations have
+accepted the HDR color space and static metadata, the selected LUT attached,
+and rendering succeeded. Missing/invalid/stale LUTs, unresolved metadata,
+carrier failure, or render failure roll back to the internal HDR-to-SDR shader
+path; VP never presents unsignaled PQ. Legacy passthrough remains hidden and
+resolves to the internal path during this beta.
 
-### Corrected implementation checkpoint — 2026-08-30
+MadVR parity does not require Windows HDR/Advanced Color to be enabled before
+playback. VP attempts the HDR color-space and metadata transition on its owned
+flip-model R10 swapchain and treats the actual DXGI results as authoritative.
+A Cube generation that fails during rendering is quarantined until a newer
+generation is committed, preventing a persistent arm/fail/rollback loop.
 
-The controlling HDR-to-SDR contract is implemented, reviewed, and pushed as
-source commit `a7ba2924` on `codex/vp-0166-madvr-external-lut`:
+Source commit `a7ba2924` and its tester archive implemented the disproven SDR
+role and are withdrawn acceptance evidence. Corrected source commit `a2f87283`
+restores the reviewed HDR10 carrier seam while retaining the
+hidden-passthrough, inherited-control, friendly-filename, failed-frame
+submission, and failed-generation quarantine fixes. It is committed and pushed
+on `codex/vp-0166-madvr-external-lut`.
 
-- the Cube is attached frame-locally as `PL_LUT_CONVERSION` from PQ nonlinear
-  RGB into the active profile's ordinary SDR target;
-- exact and documented fallback input-gamut slots are atomic by generation;
-  an attached-LUT render failure quarantines that generation and restores the
-  internal shader path until a newer generation is committed;
-- peak analysis is suppressed only when the Cube will actually attach, the
-  separate final-calibration LUT is masked only for that frame, dithering is
-  retained, and failed rendering is never presented;
-- the editor exposes only internal pixel-shader and external-Cube tone mapping.
-  Legacy `passthrough` values migrate to the internal path, outgoing-HDR
-  metadata controls are removed and their legacy keys are operationally inert,
-  and inherited enable/disable state gates all Cube controls on first display;
-- a real libplacebo/WARP GPU test proves a synthetic grayscale Cube produces
-  neutral RGB, alongside exact-slot and preconversion fallback readbacks; and
-- 162 focused renderer tests and the complete standalone Config editor test
-  executable pass. x64 Release builds of the GUI, renderer plug-in, and Config
-  editor also succeed. The full solution's unrelated OutputProbe project still
-  encounters the host's duplicate `Path`/`PATH` Visual Studio environment bug;
-  affected production projects build successfully through the normalized
-  environment used for Config.
-
-Three independent final reviews (madVR contract, libplacebo pipeline seam, and
-profile/editor model) report no remaining blocker, P1, or P2. Dormant legacy
-HDR-carrier helper code is unreachable cleanup debt and is not an activation
-path for this mode.
+Independent madVR-contract, pipeline, and profile-model reviews report no
+remaining blocker, P1, or P2 issue. Validation includes 163 focused
+renderer/profile/GPU tests, the complete standalone Config editor test
+executable, and clean-commit x64 Release GUI, Config, and VP Renderer builds.
+The wider renderer suite passes 1067/1068; its sole failure is the beta
+baseline's unrelated `CONFIGURATION.html`/public-field inventory mismatch for
+four viewport crop fields, not this change. The standalone tester is
+`VP-0166-a2f8728-PQ-to-PQ-HDR-3DLUT-tester.zip` (SHA-256
+`48F487AB0D95832D8CCB213CD9FBBC9F94461DEF69092BE91484673FE9F2C75B`). It
+includes a grayscale 65^3 Cube and BT.2020/1000-nit metadata for live embedded
+and fullscreen validation with Windows HDR initially off. Actual display/GPU
+evidence remains required before acceptance.
 
 ## Status
 
