@@ -56,8 +56,12 @@ Validation from the exact source commit:
 - configuration reference/public-field inventory: synchronized and passing.
 
 The earlier `a2f87283` tester and all PQ-to-PQ/HDR-carrier claims are withdrawn
-and must not be used as acceptance evidence. A new clean-commit standalone
-tester archive is required before user testing resumes.
+and must not be used as acceptance evidence. The corrected clean-commit tester
+is `VP-0166-21044a3-HDR-to-SDR-3DLUT-tester.zip` (SHA-256
+`A05548C1F86F3ADE79BA89BC2E489EFBB3CB640903BD037DF9AD8440F289377E`). It
+contains the verified 57-file release layout plus an active standalone test
+configuration, the synthetic grayscale Cube, and focused test instructions. It
+does not contain logs, shader caches, symbols, or a deployed/user configuration.
 
 ## Withdrawn historical correction — 2026-08-30: PQ-to-PQ interpretation
 
