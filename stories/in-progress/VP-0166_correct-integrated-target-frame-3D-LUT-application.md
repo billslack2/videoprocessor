@@ -115,6 +115,61 @@ path/SHA-256 evidence, and populate the installation, Advanced Color/ICC, and
 carrier identity/generation proofs. Transactional same-path replacement and a
 nonlinear independent tetrahedral/clamp oracle remain required afterward.
 
+### Carrier-bound runtime and tester package — 2026-08-29
+
+The activation and lifecycle slice is complete and pushed on
+`codex/vp-0166-lut-contract` as
+`0416d22c7365de5e436f836a10bc66c21906bc8e`. It adds:
+
+- an immutable selected-profile record that must own the cube and every v1
+  declaration, including authoring depth, cube size/content hash, installation
+  attestations, display-mode authority, and the declared carrier-identity hash;
+- SHA-256 and canonical-path evidence calculated from the exact opened Cube
+  handle, plus bounded same-path content detection on configuration reapply;
+- atomic last-known-good candidate replacement, with a rejected same-contract
+  replacement recorded separately and retried without publishing its identity;
+- the production `output_presentation: calibrated_direct` selector for the
+  existing top-level VP-owned R10 flip presenter, with no backbuffer/presenter
+  redesign;
+- live fail-closed carrier evidence from exact DisplayConfig path/mode indices,
+  adapter/target IDs, supported connector technology, physical mode and refresh,
+  renderer adapter/driver, validated OS-effective EDID, normalized monitor path,
+  connector instance, swapchain output, and mutually corroborated reported RGB
+  bit depth;
+- Windows Advanced Color v2 checks that accept only explicit SDR state and
+  reject active HDR/WCG, unknown/virtual output technology, incomplete EDID or
+  topology evidence, cross-adapter routes, and any declared/observed carrier
+  mismatch; and
+- a canonical carrier log/hash bootstrap and swapchain-generation invalidation
+  so the operator can bind a profile to the measured route without treating a
+  stale current route as its expected identity.
+
+The final independent renderer/API/calibration reviews found no serious design
+issue and no need to move the LUT from the established target-native seam. Their
+last two P1 findings—fail-open unknown output technology and incomplete Windows
+Advanced Color v2 interpretation—were corrected before packaging. The remaining
+engineering observation is performance rather than correctness: the active LUT
+safety guard re-queries display topology on the render path. This is intentionally
+retained for the targeted test build; presentation/drop telemetry must establish
+whether it needs an event-driven snapshot optimization before production release.
+
+The post-commit x64 Release solution build succeeds and identifies clean commit
+`0416d22c`. The focused parser/contract/render/output suite passes 47/47. The
+complete test DLL passes 1015/1016; the sole failure is the same
+`ConfigurationReferenceMatchesPublicFieldInventory` viewport-documentation
+mismatch reproduced on untouched `v1.3.004-beta`, not a LUT regression.
+
+The end-user test archive is
+`VP-0166-3D-LUT-Test-v1.3.004-beta-0416d22.zip` (SHA-256
+`9B3F617A903A198CF91241AE1B3EA39EB102324F60158A3218BCB000120BA629`). It
+contains the verified immutable release layout, safe merge instructions, a
+two-pass carrier/attestation template, an identity cube, an obvious synthetic
+red/blue-swap cube, and the exact licensed nonlinear Cube example pinned from
+the internet source. The fixtures prove loading, ordering, and application;
+they are not represented as physical display calibrations. Real-output
+measurement and performance telemetry remain the acceptance work before this
+story can move to Done.
+
 ## User story
 
 As a calibrated-display user, I want VP Renderer to feed a 3D `.cube` file the
