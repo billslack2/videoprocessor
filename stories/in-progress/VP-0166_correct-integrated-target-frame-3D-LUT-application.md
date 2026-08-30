@@ -94,6 +94,18 @@ legacy contract tests were removed, the expanded focused suite passed 51/51.
 The complete test DLL passed 1020/1021; its sole failure remains the existing
 `CONFIGURATION.html`/public-field inventory mismatch, outside the LUT files.
 
+A follow-up proof commit,
+`0479fe02b00292f1f28ba0453270ae17f18817f8`, embeds the exact 3,406-byte
+nonlinear 4x4x4 Cube example published by MIT-licensed
+`cube-lut-factory.js` at pinned commit
+`fde633ad057e514bd3f04049cee3289af93cef2b`. The test independently evaluates
+the published formula/lattice value: WARP maps 8-bit input `(85,170,255)` to
+approximately `(99,82,198)`. The embedded bytes match the pinned README source
+exactly, and the focused suite now passes 45/45. This complements the
+OpenColorIO semantic-rejection fixture with a real internet Cube that parses
+and applies at a numerically predictable point; neither fixture is represented
+as a physical display-calibration profile.
+
 Two independent specialist reviews approved the carrier split, activation
 state transitions, evidence labeling, and deterministic fail-closed behavior.
 This is a go for the wiring/test foundation, not yet a go for production LUT
