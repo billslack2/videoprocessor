@@ -18,7 +18,7 @@
 #include <vprenderer/AlphaCadenceCorrectionPolicy.h>
 #include <vprenderer/AlphaQueuePolicy.h>
 #include <vprenderer/LibplaceboDisplayLut.h>
-#include <vprenderer/LibplaceboExternalHdrLutSet.h>
+#include <vprenderer/LibplaceboExternalHdrLutFrame.h>
 #include <vprenderer/LibplaceboLutContract.h>
 #include <vprenderer/AlphaPresentationTelemetry.h>
 #include <vprenderer/AlphaNativeRgbIngress.h>
@@ -3899,6 +3899,7 @@ struct LibplaceboVideoRenderer::Impl
 	uint64_t nextExternalHdrLutTransactionGeneration = 1;
 	uint64_t expectedExternalHdrLutTransactionGeneration = 0;
 	std::string externalHdrLutStatus = "Disabled";
+	const struct pl_gamut_map_function* externalHdrFallbackGamutMapper = nullptr;
 	pl_custom_lut* displayLut = nullptr;
 	// Kept deliberately short for the Ctrl+I OSD: "Disabled",
 	// "Loaded: validating", "Active: name (65^3)", or "Rejected: reason".
@@ -7340,6 +7341,8 @@ struct LibplaceboVideoRenderer::Impl
 		// but keep it render-inert until the verified HDR carrier and frame-local
 		// PL_LUT_CONVERSION attachment are both implemented.
 		LoadExternalHdrLuts(settings);
+		externalHdrFallbackGamutMapper =
+			&LibplaceboExportedData<pl_gamut_map_function>("pl_gamut_map_clip");
 
 		struct pl_d3d11_params deviceParams =
 			LibplaceboExportedData<pl_d3d11_params>("pl_d3d11_default_params");
@@ -11908,15 +11911,38 @@ struct LibplaceboVideoRenderer::Impl
 			target.num_overlays = overlayCount;
 		}
 		const SteadyClock::time_point renderStart = SteadyClock::now();
+		struct pl_frame frameTarget{};
+		struct pl_render_params frameRenderParams{};
+		struct pl_custom_lut frameExternalHdrLut{};
+		struct pl_color_map_params frameExternalHdrColorMap{};
+		// Deliberately false until the VP-owned R10/PQ/BT.2020 carrier and HDR10
+		// metadata transaction have both been applied and verified. Keeping the
+		// projection call here freezes the exact no-Commit frame-local seam without
+		// allowing a loaded Cube to affect the current SDR presentation path.
+		constexpr bool externalHdrCarrierArmed = false;
+		const auto externalHdrProjection =
+			LibplaceboExternalHdrLut::PrepareFrameProjection(
+				externalHdrLuts,
+				expectedExternalHdrLutTransactionGeneration,
+				activeSettings.externalHdrToneMappingMode,
+				externalHdrCarrierArmed,
+				LibplaceboExternalHdrLut::FromLibplaceboPrimaries(
+					renderImage.color.primaries),
+				renderImage.color, target, renderParams,
+				externalHdrFallbackGamutMapper,
+				frameTarget, frameRenderParams, frameExternalHdrLut,
+				frameExternalHdrColorMap);
+		(void)externalHdrProjection;
 		const bool targetLutApplied =
-			target.lut == displayLut && target.lut_type == PL_LUT_NATIVE;
+			frameTarget.lut == displayLut &&
+			frameTarget.lut_type == PL_LUT_NATIVE;
 		libplaceboRenderStartedTick.store(GetTickCount64(),
 			std::memory_order_release);
 		const bool rendered = pl_render_image(
 			renderer,
 			&renderImage,
-			&target,
-			&renderParams);
+			&frameTarget,
+			&frameRenderParams);
 		libplaceboRenderStartedTick.store(0, std::memory_order_release);
 		LogHdrPeakAnalysisMetrics(
 			hdrPeakAnalysisDecision, sourceSequence, rendered);

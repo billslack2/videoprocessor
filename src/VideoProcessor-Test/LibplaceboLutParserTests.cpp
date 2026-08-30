@@ -2,7 +2,7 @@
 #include "CppUnitTest.h"
 
 #include <vprenderer/LibplaceboDisplayLut.h>
-#include <vprenderer/LibplaceboExternalHdrLutSet.h>
+#include <vprenderer/LibplaceboExternalHdrLutFrame.h>
 #include <libplacebo/d3d11.h>
 #include <libplacebo/renderer.h>
 #include <libplacebo/shaders/custom.h>
@@ -760,6 +760,284 @@ namespace VideoProcessorTest
 			Assert::AreEqual(static_cast<int>(Rejection::PATH_OUTSIDE_BASE),
 				static_cast<int>(resource.Result().rejection));
 			Assert::IsFalse(resource.Available());
+		}
+
+		TEST_METHOD(ExternalHdrFrameProjectionCannotAttachWithoutCarrier)
+		{
+			TemporaryDirectory directory;
+			const std::string cube = directory.Write("bt2020.cube", Valid3dCube);
+			LibplaceboExternalHdrLut::Declarations declarations;
+			declarations.bt2020 = { cube, directory.Path() };
+			auto candidate = LibplaceboExternalHdrLut::CandidateSet::Load(
+				nullptr, declarations, 1);
+			LibplaceboExternalHdrLut::ActiveSet active;
+			active.Commit(std::move(candidate));
+
+			struct pl_peak_detect_params peak{};
+			struct pl_dither_params dither{};
+			struct pl_render_params shared{};
+			shared.peak_detect_params = &peak;
+			shared.dither_params = &dither;
+			struct pl_render_params frame{};
+			struct pl_custom_lut frameLut{};
+			struct pl_color_space source{};
+			source.primaries = PL_COLOR_PRIM_BT_2020;
+			source.transfer = PL_COLOR_TRC_PQ;
+			struct pl_frame target{};
+			target.color = source;
+			target.repr.sys = PL_COLOR_SYSTEM_RGB;
+			target.repr.levels = PL_COLOR_LEVELS_FULL;
+			target.repr.bits.sample_depth = 10;
+			target.repr.bits.color_depth = 10;
+			struct pl_custom_lut legacyTargetLut{};
+			target.lut = &legacyTargetLut;
+			target.lut_type = PL_LUT_NATIVE;
+			struct pl_frame frameTarget{};
+			struct pl_color_map_params frameColorMap{};
+			struct pl_gamut_map_function clip{};
+
+			const auto projection =
+				LibplaceboExternalHdrLut::PrepareFrameProjection(
+					active, 1,
+					LibplaceboExternalHdrLut::ToneMappingMode::EXTERNAL_3DLUT,
+					false, LibplaceboExternalHdrLut::Primaries::BT2020,
+					source, target, shared, &clip, frameTarget, frame, frameLut,
+					frameColorMap);
+			Assert::IsFalse(projection.attached);
+			Assert::IsNull(frame.lut);
+			Assert::AreEqual(static_cast<int>(
+				LibplaceboExternalHdrLut::EffectiveMode::PIXEL_SHADERS),
+				static_cast<int>(projection.resolved.selection.effectiveMode));
+			Assert::IsTrue(frame.peak_detect_params == &peak);
+			Assert::IsTrue(frame.dither_params == &dither);
+			Assert::IsTrue(frameTarget.lut == &legacyTargetLut);
+			Assert::AreEqual(static_cast<int>(PL_LUT_NATIVE),
+				static_cast<int>(frameTarget.lut_type));
+		}
+
+		TEST_METHOD(ExternalHdrFrameProjectionUsesConversionLutAndExactMetadata)
+		{
+			TemporaryDirectory directory;
+			const std::string cube = directory.Write("bt2020.cube", Valid3dCube);
+			LibplaceboExternalHdrLut::Declarations declarations;
+			declarations.bt2020 = { cube, directory.Path() };
+			auto candidate = LibplaceboExternalHdrLut::CandidateSet::Load(
+				nullptr, declarations, 1);
+			LibplaceboExternalHdrLut::ActiveSet active;
+			active.Commit(std::move(candidate));
+
+			struct pl_peak_detect_params peak{};
+			struct pl_dither_params dither{};
+			struct pl_render_params shared{};
+			shared.peak_detect_params = &peak;
+			shared.dither_params = &dither;
+			struct pl_render_params frame{};
+			struct pl_custom_lut frameLut{};
+			struct pl_color_space source{};
+			source.primaries = PL_COLOR_PRIM_BT_2020;
+			source.transfer = PL_COLOR_TRC_PQ;
+			struct pl_frame target{};
+			target.color = source;
+			target.repr.sys = PL_COLOR_SYSTEM_RGB;
+			target.repr.levels = PL_COLOR_LEVELS_FULL;
+			target.repr.bits.sample_depth = 10;
+			target.repr.bits.color_depth = 10;
+			struct pl_custom_lut legacyTargetLut{};
+			target.lut = &legacyTargetLut;
+			target.lut_type = PL_LUT_NATIVE;
+			struct pl_frame frameTarget{};
+			struct pl_color_map_params frameColorMap{};
+			struct pl_gamut_map_function clip{};
+
+			const auto projection =
+				LibplaceboExternalHdrLut::PrepareFrameProjection(
+					active, 1,
+					LibplaceboExternalHdrLut::ToneMappingMode::EXTERNAL_3DLUT,
+					true, LibplaceboExternalHdrLut::Primaries::BT2020,
+					source, target, shared, &clip, frameTarget, frame, frameLut,
+					frameColorMap);
+			Assert::IsTrue(projection.attached);
+			Assert::IsTrue(frame.lut == &frameLut);
+			Assert::AreEqual(static_cast<int>(PL_LUT_CONVERSION),
+				static_cast<int>(frame.lut_type));
+			Assert::IsNull(frame.peak_detect_params);
+			Assert::IsTrue(frame.dither_params == &dither);
+			Assert::IsNull(frameTarget.lut);
+			Assert::AreEqual(static_cast<int>(PL_LUT_UNKNOWN),
+				static_cast<int>(frameTarget.lut_type));
+			Assert::AreEqual(static_cast<int>(PL_COLOR_PRIM_BT_2020),
+				static_cast<int>(frameLut.color_in.primaries));
+			Assert::AreEqual(static_cast<int>(PL_COLOR_TRC_PQ),
+				static_cast<int>(frameLut.color_in.transfer));
+			Assert::AreEqual(static_cast<int>(PL_COLOR_PRIM_BT_2020),
+				static_cast<int>(frameLut.color_out.primaries));
+
+			target.color.transfer = PL_COLOR_TRC_SRGB;
+			struct pl_frame sdrFrameTarget{};
+			struct pl_render_params sdrFrame{};
+			struct pl_custom_lut sdrFrameLut{};
+			struct pl_color_map_params sdrColorMap{};
+			const auto sdrProjection =
+				LibplaceboExternalHdrLut::PrepareFrameProjection(
+					active, 1,
+					LibplaceboExternalHdrLut::ToneMappingMode::EXTERNAL_3DLUT,
+					true, LibplaceboExternalHdrLut::Primaries::BT2020,
+					source, target, shared, &clip, sdrFrameTarget, sdrFrame,
+					sdrFrameLut, sdrColorMap);
+			Assert::IsFalse(sdrProjection.attached);
+			Assert::IsNull(sdrFrame.lut);
+			Assert::IsTrue(sdrFrameTarget.lut == &legacyTargetLut);
+
+			target.color.transfer = PL_COLOR_TRC_PQ;
+			target.repr.sys = PL_COLOR_SYSTEM_BT_2020_NC;
+			struct pl_frame yuvFrameTarget{};
+			struct pl_render_params yuvFrame{};
+			struct pl_custom_lut yuvFrameLut{};
+			struct pl_color_map_params yuvColorMap{};
+			const auto yuvProjection =
+				LibplaceboExternalHdrLut::PrepareFrameProjection(
+					active, 1,
+					LibplaceboExternalHdrLut::ToneMappingMode::EXTERNAL_3DLUT,
+					true, LibplaceboExternalHdrLut::Primaries::BT2020,
+					source, target, shared, &clip, yuvFrameTarget, yuvFrame,
+					yuvFrameLut, yuvColorMap);
+			Assert::IsFalse(yuvProjection.attached);
+			Assert::IsNull(yuvFrame.lut);
+			Assert::IsTrue(yuvFrameTarget.lut == &legacyTargetLut);
+		}
+
+		TEST_METHOD(ExternalHdrFrameProjectionTagsFallbackInputPrimaries)
+		{
+			TemporaryDirectory directory;
+			const std::string cube = directory.Write("p3.cube", Green3dCube);
+			LibplaceboExternalHdrLut::Declarations declarations;
+			declarations.p3D65 = { cube, directory.Path() };
+			auto candidate = LibplaceboExternalHdrLut::CandidateSet::Load(
+				nullptr, declarations, 1);
+			LibplaceboExternalHdrLut::ActiveSet active;
+			active.Commit(std::move(candidate));
+			struct pl_render_params shared{};
+			struct pl_render_params frame{};
+			struct pl_custom_lut frameLut{};
+			struct pl_color_space source{};
+			source.primaries = PL_COLOR_PRIM_BT_2020;
+			source.transfer = PL_COLOR_TRC_PQ;
+			struct pl_frame target{};
+			target.color = source;
+			target.repr.sys = PL_COLOR_SYSTEM_RGB;
+			target.repr.levels = PL_COLOR_LEVELS_FULL;
+			target.repr.bits.sample_depth = 10;
+			target.repr.bits.color_depth = 10;
+			struct pl_frame frameTarget{};
+			struct pl_color_map_params frameColorMap{};
+			struct pl_gamut_map_function sharedMapper{};
+			struct pl_gamut_map_function clip{};
+			struct pl_color_map_params sharedColorMap{};
+			sharedColorMap.gamut_mapping = &sharedMapper;
+			shared.color_map_params = &sharedColorMap;
+
+			const auto projection =
+				LibplaceboExternalHdrLut::PrepareFrameProjection(
+					active, 1,
+					LibplaceboExternalHdrLut::ToneMappingMode::EXTERNAL_3DLUT,
+					true, LibplaceboExternalHdrLut::Primaries::BT2020,
+					source, target, shared, &clip, frameTarget, frame, frameLut,
+					frameColorMap);
+			Assert::IsTrue(projection.attached);
+			Assert::AreEqual(static_cast<int>(
+				LibplaceboExternalHdrLut::Slot::P3_D65),
+				static_cast<int>(projection.resolved.selection.slot));
+			Assert::IsTrue(
+				projection.resolved.selection.requiresExplicitPrimariesTransform);
+			Assert::AreEqual(static_cast<int>(PL_COLOR_PRIM_DISPLAY_P3),
+				static_cast<int>(frameLut.color_in.primaries));
+			Assert::AreEqual(static_cast<int>(PL_COLOR_TRC_PQ),
+				static_cast<int>(frameLut.color_in.transfer));
+			Assert::AreEqual(static_cast<int>(PL_COLOR_PRIM_BT_2020),
+				static_cast<int>(frameLut.color_out.primaries));
+			Assert::IsTrue(shared.color_map_params->gamut_mapping == &sharedMapper);
+			Assert::IsTrue(frame.color_map_params == &frameColorMap);
+			Assert::IsTrue(frameColorMap.gamut_mapping == &clip);
+
+			struct pl_frame missingMapperTarget{};
+			struct pl_render_params missingMapperFrame{};
+			struct pl_custom_lut missingMapperLut{};
+			struct pl_color_map_params missingMapperColorMap{};
+			const auto missingMapper =
+				LibplaceboExternalHdrLut::PrepareFrameProjection(
+					active, 1,
+					LibplaceboExternalHdrLut::ToneMappingMode::EXTERNAL_3DLUT,
+					true, LibplaceboExternalHdrLut::Primaries::BT2020,
+					source, target, shared, nullptr, missingMapperTarget,
+					missingMapperFrame, missingMapperLut, missingMapperColorMap);
+			Assert::IsFalse(missingMapper.attached);
+			Assert::IsNull(missingMapperFrame.lut);
+			Assert::IsTrue(missingMapperFrame.color_map_params == &sharedColorMap);
+		}
+
+		TEST_METHOD(ExternalHdrFrameProjectionRejectsReplacedProfileGeneration)
+		{
+			TemporaryDirectory directory;
+			const std::string bt2020 = directory.Write("bt2020.cube", Valid3dCube);
+			const std::string p3 = directory.Write("p3.cube", Green3dCube);
+			LibplaceboExternalHdrLut::Declarations firstDeclarations;
+			firstDeclarations.bt2020 = { bt2020, directory.Path() };
+			auto first = LibplaceboExternalHdrLut::CandidateSet::Load(
+				nullptr, firstDeclarations, 1);
+			LibplaceboExternalHdrLut::ActiveSet active;
+			active.Commit(std::move(first));
+
+			LibplaceboExternalHdrLut::Declarations secondDeclarations;
+			secondDeclarations.p3D65 = { p3, directory.Path() };
+			auto second = LibplaceboExternalHdrLut::CandidateSet::Load(
+				nullptr, secondDeclarations, 2);
+			active.Commit(std::move(second));
+
+			struct pl_peak_detect_params peak{};
+			struct pl_render_params shared{};
+			shared.peak_detect_params = &peak;
+			struct pl_render_params staleFrame{};
+			struct pl_custom_lut staleLut{};
+			struct pl_color_space source{};
+			source.primaries = PL_COLOR_PRIM_BT_2020;
+			source.transfer = PL_COLOR_TRC_PQ;
+			struct pl_frame target{};
+			target.color = source;
+			target.repr.sys = PL_COLOR_SYSTEM_RGB;
+			target.repr.levels = PL_COLOR_LEVELS_FULL;
+			target.repr.bits.sample_depth = 10;
+			target.repr.bits.color_depth = 10;
+			struct pl_frame staleTarget{};
+			struct pl_color_map_params staleColorMap{};
+			struct pl_gamut_map_function clip{};
+			const auto stale =
+				LibplaceboExternalHdrLut::PrepareFrameProjection(
+					active, 1,
+					LibplaceboExternalHdrLut::ToneMappingMode::EXTERNAL_3DLUT,
+					true, LibplaceboExternalHdrLut::Primaries::BT2020,
+					source, target, shared, &clip, staleTarget, staleFrame, staleLut,
+					staleColorMap);
+			Assert::IsFalse(stale.attached);
+			Assert::IsNull(staleFrame.lut);
+			Assert::IsTrue(staleFrame.peak_detect_params == &peak);
+
+			struct pl_render_params currentFrame{};
+			struct pl_custom_lut currentLut{};
+			struct pl_frame currentTarget{};
+			struct pl_color_map_params currentColorMap{};
+			const auto current =
+				LibplaceboExternalHdrLut::PrepareFrameProjection(
+					active, 2,
+					LibplaceboExternalHdrLut::ToneMappingMode::EXTERNAL_3DLUT,
+					true, LibplaceboExternalHdrLut::Primaries::BT2020,
+					source, target, shared, &clip, currentTarget, currentFrame,
+					currentLut, currentColorMap);
+			Assert::IsTrue(current.attached);
+			Assert::AreEqual(static_cast<int>(
+				LibplaceboExternalHdrLut::Slot::P3_D65),
+				static_cast<int>(current.resolved.selection.slot));
+			Assert::AreEqual(static_cast<int>(PL_COLOR_PRIM_DISPLAY_P3),
+				static_cast<int>(currentLut.color_in.primaries));
 		}
 
 		TEST_METHOD(ExternalHdrCommitPublishesFallbackAndRejectsStaleWork)
