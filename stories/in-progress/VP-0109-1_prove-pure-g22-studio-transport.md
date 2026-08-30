@@ -33,7 +33,7 @@ transfer definitions are identical.
    the repeatable madVR/reference result. Capture wire evidence if suitable
    HDMI equipment is available.
 5. Record one explicit decision: approve the pairing for VP-0109-2, reject it,
-   or defer to VP-0100/VP-0101.
+   or defer any calibration-LUT use to VP-0166's future limited-range extension.
 
 The probe must not change production defaults, documentation promises,
 deployed binaries, or active user configuration.

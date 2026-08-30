@@ -2,12 +2,11 @@
 
 ## Status
 
-Will Not Do. Superseded by VP-0047 on 2026-08-02, then ultimately by VP-0100
-and VP-0101 on 2026-08-08 when the roadmap was separated into presentation
-proof and production implementation. Its transfer/range requirements now
-belong to VP-0101, gated by the pixel-preservation evidence required by
-VP-0100. Retain this record for discovery evidence; do not implement it as an
-independent story.
+Will Not Do. Superseded by VP-0047 on 2026-08-02, by VP-0100/VP-0101 on
+2026-08-08, and ultimately by VP-0166 on 2026-08-29. VP-0166 carries forward
+the useful explicit transfer/range/white/black requirements and deliberately
+limits its first production cube contract to full-range RGB. Retain this
+record for discovery evidence; do not implement it independently.
 
 ## User story
 

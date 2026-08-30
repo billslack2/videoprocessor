@@ -314,8 +314,9 @@ and regression acceptance above is recorded.
 
 ## Non-goals
 
-- Arbitrary power gammas, custom DXGI transports, pixel-owned output, P3-D65,
-  or a new calibration/3D-LUT workflow. VP-0100/VP-0101 own those paths.
+- Arbitrary power gammas, custom DXGI transports, P3-D65, or a new
+  calibration/3D-LUT workflow. VP-0166 owns the full-range calibration path;
+  limited-range LUT activation remains a deliberately separate extension.
 - Changing Alpha ingress range handling; VP-0096 owns the independent ingress
   mismatch.
 - Changing the DirectShow nominal-range control, madVR rendering, NVIDIA global
@@ -330,9 +331,9 @@ and regression acceptance above is recorded.
 - VP-0093 is authoritative for BT.2020 target pixels over P709 DXGI transport
   plus optional NVIDIA AVI signaling.
 - VP-0096 remains responsible for the independent Alpha ingress-range issue.
-- VP-0100/VP-0101 remain the path if the deliberate Studio/G22 pairing cannot
-  meet the measurement gate or a standards-exact pixel-owned contract is
-  required.
+- VP-0166 remains the calibration-LUT path, but its v1 contract rejects Studio
+  range until an explicit normalization or storage-code-authored extension is
+  separately approved and proven.
 - VP-0103 supplies live-configuration rejection/rollback semantics.
 - Source evidence:
   `C:\Users\bslac\Downloads\alpha_output_range_gamma_findings (2).pdf`.

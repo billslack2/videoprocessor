@@ -2,18 +2,16 @@
 
 ## Status
 
-Will Not Do. Superseded on 2026-08-08 by the deliberately separated VP-0100
-pixel-owned-output proof and VP-0101 production calibrated-output
-implementation. This story correctly distinguished the P3-D65/gamma-2.2 LUT
-input from projector-native post-LUT values, but it still mixed the unknown
-presentation-path proof with production configuration and implementation.
+Will Not Do. Superseded on 2026-08-08 by VP-0100 and VP-0101, then ultimately
+by VP-0166 on 2026-08-29. This story correctly distinguished the P3-D65 LUT
+input from projector-native post-LUT values, but mixed presentation proof with
+production configuration and implementation.
 
-Retain the research below as historical evidence. VP-0100 carries forward the
-unresolved requirement to prove that Windows, DXGI, the GPU driver, and the
-physical output preserve renderer-owned code values. VP-0101 carries forward
-the P3-D65 target, transfer/range, gamut-mapping, calibration-LUT, diagnostics,
-fallback, and real-projector requirements. VP-0048 and VP-0029 are also
-superseded and must not be implemented separately.
+Retain the research below as historical evidence. VP-0166 carries forward the
+P3-D65 target, explicit independent transfer/range/white/black contract,
+gamut-mapping, calibration-LUT, diagnostics, fallback, and real-display
+requirements while preserving the established `004-beta` presentation path.
+VP-0048 and VP-0029 are also superseded and must not be implemented separately.
 
 ## User story
 

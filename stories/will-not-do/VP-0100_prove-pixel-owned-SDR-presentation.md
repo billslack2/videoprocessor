@@ -2,15 +2,17 @@
 
 ## Status
 
-Backlog. This is a bounded architecture and validation spike. It must finish
-with reproducible evidence and a go/no-go decision before VP-0101 can expose a
-production pixel-owned output mode or accept calibration contracts that do not
-match a named DXGI color space.
+Will Not Do. Superseded on 2026-08-29 by VP-0166 and retained as historical
+presentation-path research. The current `v1.3.004-beta` renderer, presenter,
+and authoritative backbuffer work provide the accepted implementation
+baseline; presentation proof is no longer a separate prerequisite for the
+requested 3D-LUT integration.
 
-No implementation branch has been selected. Before source work starts, query
-the current default branch of `billslack2/videoprocessor`, report it to the
-developer, and obtain explicit confirmation of that implementation base under
-the tracker workflow.
+This disposition does not claim universal bit-perfect behavior for every
+Windows/GPU/display combination. VP-0166 deliberately keeps the established
+presentation carrier, states its installation assumptions, and focuses on the
+remaining LUT-input contract, cube handling, lifecycle, and validation. Do not
+implement this spike separately.
 
 ## User story
 

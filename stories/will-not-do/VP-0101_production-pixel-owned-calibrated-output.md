@@ -2,15 +2,16 @@
 
 ## Status
 
-Backlog. This is the single remaining production story for exact Alpha SDR
-output and calibrated target-frame 3D LUT workflows. It must not move to In
-Progress until VP-0100 records an accepted pixel-preserving presentation
-contract and VP-0096's applicable range-correct conversion work is accepted.
+Will Not Do. Superseded on 2026-08-29 by VP-0166. This record mixed the useful
+target-frame calibration-LUT work with a broader pixel-owned presentation
+redesign and left key cube/range semantics unresolved. The user accepted the
+current `v1.3.004-beta` renderer, presenter, and backbuffer as the baseline and
+asked that implementation concentrate on correct integrated 3D-LUT use.
 
-No implementation branch has been selected. Before source work starts, query
-the current default branch of `billslack2/videoprocessor`, report it to the
-developer, and obtain explicit confirmation of that implementation base under
-the tracker workflow.
+VP-0166 carries forward the useful contract, P3-D65, BT.1886, cube parsing,
+diagnostic, fallback, and validation requirements with a narrower, testable
+video-picture LUT boundary. Retain this record for history; do not implement
+it separately.
 
 ## User story
 

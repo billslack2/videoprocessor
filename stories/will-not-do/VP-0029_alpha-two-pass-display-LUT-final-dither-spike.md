@@ -2,12 +2,12 @@
 
 ## Status
 
-Will Not Do. Superseded on 2026-08-08 by VP-0100 and VP-0101. Final dithering
-is not useful as a separate architectural spike while Alpha's more fundamental
-post-render presentation contract remains unresolved. VP-0100 now owns proof
-of a pixel-preserving output path; VP-0101 owns the production LUT pipeline,
-including whether a two-pass identity stage is necessary to restore final
-error-diffusion dithering safely.
+Will Not Do. Superseded on 2026-08-08 by VP-0100 and VP-0101, then ultimately
+by VP-0166 on 2026-08-29. Final dithering is not useful as a separate
+architectural spike. VP-0166 keeps ordinary dither after the target LUT,
+restores normal dither state whenever the LUT is inactive, and requires proof
+before any incompatible error-diffusion path is enabled. It does not add an
+unnecessary two-pass pipeline.
 
 Retain the investigation below as historical evidence. The current VP-0011
 single-pass behavior remains the safe production baseline: when the bundled

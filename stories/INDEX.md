@@ -6,9 +6,9 @@ story may have ordered child-task IDs as defined below.
 
 ## Registry state
 
-- Last assigned root story: `VP-0165`
-- Next root story number: `VP-0166`
-- Total indexed items: 184
+- Last assigned root story: `VP-0166`
+- Next root story number: `VP-0167`
+- Total indexed items: 185
 
 ## Story locations
 
@@ -73,7 +73,7 @@ they must not contain requirements that are absent from this file.
 | VP-0045 | Done | Namespace built-in renderer configuration as vpvr |
 | VP-0046 | Backlog | DirectShow event plumbing and passive health diagnostics |
 | VP-0047 | Will Not Do | P3-D65 LUT-input and calibrated SDR output contract |
-| VP-0048 | Will Not Do | Explicit SDR LUT transfer and range contracts (superseded by VP-0100/VP-0101) |
+| VP-0048 | Will Not Do | Explicit SDR LUT transfer and range contracts (superseded by VP-0166) |
 | VP-0049 | Done | Complete canonical CONFIGURATION.html reference |
 | VP-0050 | Done | Put Alpha first and reverse renderer order |
 | VP-0051 | Backlog | Generic Alpha shader-chain support |
@@ -130,8 +130,8 @@ they must not contain requirements that are absent from this file.
 | VP-0097 | Done | Safe standalone configuration editor and VP integration |
 | VP-0098 | Done | Fit trusted active-picture envelopes correctly on arbitrary CIH screens |
 | VP-0099 | Done | Dynamic, renderer-neutral NLS geometry and safety policy |
-| VP-0100 | Backlog | Prove pixel-owned SDR presentation for Alpha |
-| VP-0101 | Backlog | Implement production pixel-owned calibrated output and 3D LUTs |
+| VP-0100 | Will Not Do | Prove pixel-owned SDR presentation for Alpha |
+| VP-0101 | Will Not Do | Implement production pixel-owned calibrated output and 3D LUTs |
 | VP-0102 | Done | Dual-mode classic and modern operator UI |
 | VP-0103 | Done | Apply saved configuration safely to a running VideoProcessor |
 | VP-0104 | Done | Allow NLS without trusted crop on known scope viewports |
@@ -201,6 +201,7 @@ they must not contain requirements that are absent from this file.
 | VP-0163 | Done | Prevent full-raster flashes during one-edge overlay confirmation |
 | VP-0164 | Done | Backdate fully proven inward lookahead transitions |
 | VP-0165 | Backlog | Evaluate safe active-picture lookahead refinements |
+| VP-0166 | Backlog | Correct integrated target-frame 3D LUT application |
 | VP-0066-1 | Done | Characterize the live output pipeline with replayable golden traces |
 | VP-0066-2 | Done | Extract a graph-independent video timing controller |
 | VP-0066-3 | Done | Extract epoch-aware frame transport and processing components |

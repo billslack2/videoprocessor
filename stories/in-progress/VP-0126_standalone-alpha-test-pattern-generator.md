@@ -158,9 +158,9 @@ without starting capture or the normal VP runtime.
 
 ## Dependencies and risks
 
-- VP-0100/VP-0101 and VP-0125 contain broader pixel-owned output and VP-owned
-  DXGI presentation work. This story may reuse safe presentation mechanisms but
-  does not claim their unfinished physical-output proofs.
+- VP-0166 and VP-0125 contain the focused calibration-LUT and VP-owned DXGI
+  presentation work. This story may reuse safe presentation mechanisms but
+  does not itself claim physical-output calibration proof.
 - VP-0127 owns authoritative format enforcement and the shared
   render/submission/display-delivery classification consumed by this story.
 - Desktop composition, ICC/LUT state, driver range, and capture-card conversion
