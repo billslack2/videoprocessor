@@ -1,4 +1,4 @@
-# VP-0166: Correct integrated target-frame 3D LUT application
+# VP-0166: madVR-style external HDR 3D LUT tone mapping
 
 ## Status
 
@@ -15,9 +15,92 @@ The first slice resolves a typed Rec.709/SDR-BT.2020 LUT-input and carrier
 contract, semantic-zero black handling, and focused contract tests before the
 reload-state refactor.
 
-Readiness review is complete: the target-frame libplacebo attachment,
-presenter, and backbuffer are suitable; the remaining work is a bounded LUT
-contract and lifecycle correction, not a renderer or presenter redesign.
+## Direction correction — 2026-08-30
+
+The prior target-frame display-calibration interpretation is withdrawn. The
+requested product contract is the distinct madVR HDR mode shown as **tone map
+HDR using external 3DLUT**, owned by each tone-mapping/Rendering profile. Where
+this section conflicts with the 2026-08-29 implementation history or the old
+user story below, this section controls until the obsolete text is rewritten.
+
+Behavioral parity means:
+
+- the Rendering profile selects one of three HDR paths: passthrough to the
+  display, VP/libplacebo shader tone mapping, or external 3D-LUT tone mapping;
+- external mode owns three independently configured LUT slots labeled BT.709,
+  DCI-P3, and BT.2020, and VP selects the appropriate slot from authoritative
+  source/content gamut evidence rather than from the display target label;
+- the selected LUT replaces internal HDR tone and gamut mapping exactly once;
+  it is not a display-calibration cube applied after VP has already tone mapped;
+- each external-LUT profile owns the outgoing HDR metadata gamut and peak-nits
+  values sent to the display;
+- slot selection, missing-slot conversion/fallback, source-gamut ambiguity,
+  Cube input/output transfer and range, HDR signaling failure, reload, and
+  no-LUT fallback are deterministic, fail closed, logged, and independently
+  tested; and
+- VP continues to accept a documented `.cube` contract. Behavioral parity does
+  not silently imply binary compatibility with PC madVR `.3dlut` files.
+
+The separately advertised Luma feature "multiple LUTs per frame ADL" is a
+relevant future extension, not evidence of madVR behavior. Preserve a schema
+path from each gamut slot to an ordered Average Display Level LUT bank, but the
+first madVR-parity milestone binds exactly one cube per gamut slot. ADL-bank
+acceptance additionally requires a defined ADL measurement domain/window,
+scene-cut behavior, temporal smoothing/hysteresis, endpoint policy, compatible
+cube dimensions/domains, two-LUT GPU interpolation without per-frame resource
+recreation, and tests for monotonic transitions and flicker. The existing Cube
+parser already accepts dimensions beyond the advertised 2^3 through 65^3
+range; file dimension alone does not implement ADL adaptation.
+
+### Contract checkpoint 1: madVR behavior reviewed
+
+The first independent madVR review closes the observable product contract:
+
+- the three slot names are the **nonlinear RGB input gamut expected by the
+  LUT**, not its output gamut and not the outgoing HDMI metadata gamut;
+- external mode is static LUT-owned tone and gamut mapping, mutually exclusive
+  with passthrough and internal pixel-shader tone mapping;
+- exact-gamut selection wins. The documented wide-gamut fallback is frozen as
+  `P3: P3 -> 2020 -> 709` and `BT.2020: 2020 -> P3 -> 709`. BT.709 selects
+  only the 709 slot; if it is absent VP uses the internal shader path because
+  PC madVR's reverse BT.709-to-wide-slot behavior is not authoritative. Any
+  accepted fallback converts source RGB into the selected LUT's declared input
+  primaries before lookup and logs that fact;
+- slot selection uses resolved stream/source primaries. It does not inspect
+  pixel coverage or reinterpret an ordinary BT.2020 container as P3 from
+  mastering-display coordinates in v1. Unknown primaries fail to the configured
+  internal shader path;
+- v1 external HDR LUT input is HDR10/PQ only. HLG, unknown transfer, HDR10+,
+  and Dolby Vision are rejected to the configured internal shader path rather
+  than silently preconverted;
+- a VP `.cube` coordinate in `[0,1]` represents normalized nominal nonlinear
+  RGB picture code. Range normalization/restoration occurs outside the cube;
+  Cube files do not inherit madVR binary-header semantics;
+- the first runtime milestone is PQ input to PQ output. The profile declares
+  LUT-output primaries and peak luminance separately from the input-gamut slot;
+  a later explicit SDR-output role may reuse the loader but is not inferred;
+- outgoing HDR10 metadata gamut and peak nits are profile-owned and independent
+  of the slot selected. VP must verify the applied DXGI/PQ output state and
+  must not reproduce PC madVR's known path where configured metadata may not
+  actually reach the output; and
+- a missing, invalid, ambiguous, or runtime-failed LUT falls back to that
+  profile's explicitly configured VP/libplacebo shader tone mapper. It never
+  falls through to unsafe HDR passthrough.
+
+The established presenter/backbuffer may be reused, but the old
+`target.lut = ...; PL_LUT_NATIVE` seam is rejected for this mode. Pinned
+libplacebo's `pl_render_params.lut` with `PL_LUT_CONVERSION` is the required
+candidate because it replaces image-to-target color conversion, including tone
+mapping. The pipeline checkpoint must prove the pre-LUT gamut conversion and
+PQ-in/PQ-out metadata rather than assuming them from the enum name.
+
+The former archive
+`VP-0166-3D-LUT-Test-v1.3.004-beta-0416d22.zip` is withdrawn and was moved to
+`Done\Withdrawn` as a recoverable `.WITHDRAWN.zip`. It must not be shared or
+used as acceptance evidence. Source work continues on
+`codex/vp-0166-madvr-external-lut`; the old
+`codex/vp-0166-lut-contract` branch is retained only as implementation history
+and a source of reusable strict-Cube and atomic-reload code.
 
 ## Implementation progress — 2026-08-29
 
