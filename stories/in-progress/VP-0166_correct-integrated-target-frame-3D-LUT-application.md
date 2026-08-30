@@ -456,6 +456,14 @@ inherited Cube path rather than calling it a default. The full editor test
 executable passes, and the refreshed standalone directory is
 `C:\Users\bslac\Documents\ChatGPT\Done\VP-0166-eb7dd38-standalone`.
 
+First-open testing found that generic profile loading could re-enable the LUT
+fields after their initial mode gate when the mode selector emitted no change.
+`2002519e` reapplies the gate unconditionally after the initial event turn.
+The regression test now proves all external LUT and metadata controls are
+disabled before the first toggle. The full editor test executable passes; the
+refreshed standalone directory is
+`C:\Users\bslac\Documents\ChatGPT\Done\VP-0166-2002519-standalone`.
+
 ## Implementation progress — 2026-08-29
 
 The first source slice is committed and pushed on
