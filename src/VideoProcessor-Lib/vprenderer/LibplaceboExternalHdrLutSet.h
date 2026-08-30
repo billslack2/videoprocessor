@@ -12,8 +12,12 @@ namespace LibplaceboExternalHdrLut
 {
 	struct SlotDeclaration
 	{
+		// path is the canonical/safely resolved load target. configuredPath keeps
+		// the user's declaration visible when preflight rejects that target.
 		std::string path;
 		std::string constrainedBaseDirectory;
+		std::string configuredPath;
+		bool pathRejected = false;
 	};
 
 	struct Declarations
@@ -59,10 +63,18 @@ namespace LibplaceboExternalHdrLut
 	private:
 		friend class CandidateSet;
 		SlotResource(const SlotDeclaration& declaration, pl_log log) :
-			configuredPath_(declaration.path),
-			result_(LibplaceboDisplayLut::Load(log, declaration.path,
-				declaration.constrainedBaseDirectory))
+			configuredPath_(declaration.configuredPath.empty() ?
+				declaration.path : declaration.configuredPath)
 		{
+			if (declaration.pathRejected)
+			{
+				result_.status = LibplaceboDisplayLut::Status::REJECTED;
+				result_.rejection =
+					LibplaceboDisplayLut::Rejection::PATH_OUTSIDE_BASE;
+				return;
+			}
+			result_ = LibplaceboDisplayLut::Load(log, declaration.path,
+				declaration.constrainedBaseDirectory);
 		}
 
 		void MoveFrom(SlotResource& other)

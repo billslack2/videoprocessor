@@ -742,6 +742,26 @@ namespace VideoProcessorTest
 			Assert::IsTrue(active.IsCurrent(resolved));
 		}
 
+		TEST_METHOD(ExternalHdrCandidatePreservesRejectedConfiguredPath)
+		{
+			LibplaceboExternalHdrLut::Declarations declarations;
+			declarations.bt2020.path.clear();
+			declarations.bt2020.configuredPath = "..\\outside\\hdr.cube";
+			declarations.bt2020.pathRejected = true;
+			auto candidate = LibplaceboExternalHdrLut::CandidateSet::Load(
+				nullptr, declarations, 1);
+			const auto& resource = candidate.Resource(
+				LibplaceboExternalHdrLut::Slot::BT2020);
+			Assert::IsTrue(resource.Configured());
+			Assert::AreEqual("..\\outside\\hdr.cube",
+				resource.ConfiguredPath().c_str());
+			Assert::AreEqual(static_cast<int>(Status::REJECTED),
+				static_cast<int>(resource.Result().status));
+			Assert::AreEqual(static_cast<int>(Rejection::PATH_OUTSIDE_BASE),
+				static_cast<int>(resource.Result().rejection));
+			Assert::IsFalse(resource.Available());
+		}
+
 		TEST_METHOD(ExternalHdrCommitPublishesFallbackAndRejectsStaleWork)
 		{
 			TemporaryDirectory directory;

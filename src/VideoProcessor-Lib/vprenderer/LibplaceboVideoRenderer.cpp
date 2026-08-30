@@ -18,6 +18,7 @@
 #include <vprenderer/AlphaCadenceCorrectionPolicy.h>
 #include <vprenderer/AlphaQueuePolicy.h>
 #include <vprenderer/LibplaceboDisplayLut.h>
+#include <vprenderer/LibplaceboExternalHdrLutSet.h>
 #include <vprenderer/LibplaceboLutContract.h>
 #include <vprenderer/AlphaPresentationTelemetry.h>
 #include <vprenderer/AlphaNativeRgbIngress.h>
@@ -968,6 +969,14 @@ namespace
 			RendererProfileConfig::DEFAULT_SUBTITLE_TARGET_BUFFER_PIXELS;
 		uint64_t refreshRateCommandDelayMs = 5000;
 		std::vector<RefreshRateCommandRule> refreshRateCommandRules;
+		LibplaceboExternalHdrLut::ToneMappingMode externalHdrToneMappingMode =
+			LibplaceboExternalHdrLut::ToneMappingMode::PIXEL_SHADERS;
+		LibplaceboExternalHdrLut::SlotDeclaration externalHdrBt709;
+		LibplaceboExternalHdrLut::SlotDeclaration externalHdrP3D65;
+		LibplaceboExternalHdrLut::SlotDeclaration externalHdrBt2020;
+		LibplaceboExternalHdrLut::Primaries externalHdrOutputMetadataPrimaries =
+			LibplaceboExternalHdrLut::Primaries::UNKNOWN;
+		double externalHdrOutputMetadataPeakNits = 0.0;
 		std::string lutPath;
 		bool lutPathRejected = false;
 		std::string lutConstrainedBaseDirectory;
@@ -1077,6 +1086,21 @@ namespace
 				<< settings.scopeSubtitleTargetBufferPixels << '|';
 		}
 		stream
+			<< static_cast<int>(settings.externalHdrToneMappingMode) << '|'
+			<< settings.externalHdrBt709.configuredPath << '|'
+			<< settings.externalHdrBt709.path << '|'
+			<< settings.externalHdrBt709.constrainedBaseDirectory << '|'
+			<< settings.externalHdrBt709.pathRejected << '|'
+			<< settings.externalHdrP3D65.configuredPath << '|'
+			<< settings.externalHdrP3D65.path << '|'
+			<< settings.externalHdrP3D65.constrainedBaseDirectory << '|'
+			<< settings.externalHdrP3D65.pathRejected << '|'
+			<< settings.externalHdrBt2020.configuredPath << '|'
+			<< settings.externalHdrBt2020.path << '|'
+			<< settings.externalHdrBt2020.constrainedBaseDirectory << '|'
+			<< settings.externalHdrBt2020.pathRejected << '|'
+			<< static_cast<int>(settings.externalHdrOutputMetadataPrimaries) << '|'
+			<< settings.externalHdrOutputMetadataPeakNits << '|'
 			<< settings.lutPath << '|'
 			<< settings.lutPathRejected << '|' << settings.lutReferencePrimaries << '|'
 			<< settings.lutReferenceTransfer << '|' << settings.lutReferenceRange << '|'
@@ -1561,6 +1585,19 @@ namespace
 		return candidate;
 	}
 
+	void ResolveExternalHdrSlot(const ConfigFile& config,
+		const std::string& configured,
+		LibplaceboExternalHdrLut::SlotDeclaration& declaration)
+	{
+		declaration = {};
+		declaration.configuredPath = ConfigFile::Trim(configured);
+		if (declaration.configuredPath.empty())
+			return;
+		declaration.path = ResolveConfigRelativePath(config,
+			declaration.configuredPath, &declaration.pathRejected,
+			&declaration.constrainedBaseDirectory);
+	}
+
 	std::string ReadChoice(
 		const ConfigFile& config,
 		const char* key,
@@ -1869,6 +1906,62 @@ namespace
 					settings.hasContrastRecovery = true;
 					settings.contrastRecovery = static_cast<float>(value);
 				}
+			}
+		}
+		if (config.TryGetString(rule.section, "hdr_tone_mapping_mode", raw))
+		{
+			const std::string value = ConfigFile::NormalizeName(raw);
+			if (value == "pixel_shaders" || value == "passthrough" ||
+				value == "external_3dlut")
+			{
+				settings.externalHdrToneMappingMode =
+					LibplaceboExternalHdrLut::ParseToneMappingMode(value);
+			}
+			else
+			{
+				DebugLog::Log(
+					"display rule '%s': invalid hdr_tone_mapping_mode value '%s'; retaining base setting",
+					rule.name.c_str(), raw.c_str());
+			}
+		}
+		auto readExternalHdrSlot = [&config, &rule](const char* key,
+			LibplaceboExternalHdrLut::SlotDeclaration& declaration)
+		{
+			std::string configured;
+			if (config.TryGetString(rule.section, key, configured))
+				ResolveExternalHdrSlot(config, configured, declaration);
+		};
+		readExternalHdrSlot("hdr_external_3dlut_bt709",
+			settings.externalHdrBt709);
+		readExternalHdrSlot("hdr_external_3dlut_p3_d65",
+			settings.externalHdrP3D65);
+		readExternalHdrSlot("hdr_external_3dlut_bt2020",
+			settings.externalHdrBt2020);
+		if (config.TryGetString(
+			rule.section, "hdr_output_metadata_primaries", raw))
+		{
+			const auto primaries = LibplaceboExternalHdrLut::ParsePrimaries(raw);
+			if (primaries != LibplaceboExternalHdrLut::Primaries::UNKNOWN)
+				settings.externalHdrOutputMetadataPrimaries = primaries;
+			else
+				DebugLog::Log(
+					"display rule '%s': invalid hdr_output_metadata_primaries value '%s'; retaining base setting",
+					rule.name.c_str(), raw.c_str());
+		}
+		if (config.TryGetString(
+			rule.section, "hdr_output_metadata_peak_nits", raw))
+		{
+			double value = 0.0;
+			if (ParseDouble(raw, value) &&
+				LibplaceboExternalHdrLut::IsValidMetadataPeakNits(value))
+			{
+				settings.externalHdrOutputMetadataPeakNits = value;
+			}
+			else
+			{
+				DebugLog::Log(
+					"display rule '%s': invalid hdr_output_metadata_peak_nits value '%s'; retaining base setting",
+					rule.name.c_str(), raw.c_str());
 			}
 		}
 		const char* lutContractKeys[] = {
@@ -2376,6 +2469,42 @@ namespace
 		}
 		settings.verticalAlignment = ReadChoice(config,
 			"vertical_alignment", "center", { "top", "center", "bottom" });
+		settings.externalHdrToneMappingMode =
+			LibplaceboExternalHdrLut::ParseToneMappingMode(ReadChoice(config,
+				"hdr_tone_mapping_mode", "pixel_shaders",
+				{ "pixel_shaders", "passthrough", "external_3dlut" }));
+		auto readExternalHdrSlot = [&config](const char* key,
+			LibplaceboExternalHdrLut::SlotDeclaration& declaration)
+		{
+			std::string configured;
+			if (TryGetDisplayString(config, key, configured))
+				ResolveExternalHdrSlot(config, configured, declaration);
+		};
+		readExternalHdrSlot("hdr_external_3dlut_bt709",
+			settings.externalHdrBt709);
+		readExternalHdrSlot("hdr_external_3dlut_p3_d65",
+			settings.externalHdrP3D65);
+		readExternalHdrSlot("hdr_external_3dlut_bt2020",
+			settings.externalHdrBt2020);
+		settings.externalHdrOutputMetadataPrimaries =
+			LibplaceboExternalHdrLut::ParsePrimaries(ReadChoice(config,
+				"hdr_output_metadata_primaries", "",
+				{ "bt709", "p3_d65", "bt2020" }));
+		if (TryGetDisplayString(config,
+			"hdr_output_metadata_peak_nits", rawValue))
+		{
+			double parsed = 0.0;
+			if (ParseDouble(rawValue, parsed) &&
+				LibplaceboExternalHdrLut::IsValidMetadataPeakNits(parsed))
+			{
+				settings.externalHdrOutputMetadataPeakNits = parsed;
+			}
+			else
+			{
+				DebugLog::Log(
+					"libplacebo: hdr_output_metadata_peak_nits must be between 1 and 10000; leaving external HDR metadata unresolved");
+			}
+		}
 		if (TryGetDisplayString(config, "lut", rawValue))
 			settings.lutPath = ResolveConfigRelativePath(
 				config, rawValue, &settings.lutPathRejected,
@@ -3766,6 +3895,10 @@ struct LibplaceboVideoRenderer::Impl
 	bool hasSweepOverlayPlacement = false;
 	NativeStatsOverlayPlacement::Result lastProfileOverlayPlacement;
 	bool hasProfileOverlayPlacement = false;
+	LibplaceboExternalHdrLut::ActiveSet externalHdrLuts;
+	uint64_t nextExternalHdrLutTransactionGeneration = 1;
+	uint64_t expectedExternalHdrLutTransactionGeneration = 0;
+	std::string externalHdrLutStatus = "Disabled";
 	pl_custom_lut* displayLut = nullptr;
 	// Kept deliberately short for the Ctrl+I OSD: "Disabled",
 	// "Loaded: validating", "Active: name (65^3)", or "Rejected: reason".
@@ -4276,6 +4409,8 @@ struct LibplaceboVideoRenderer::Impl
 			captureWorkers.clear();
 			pl_mpv_user_shader_destroy(&nlsHook);
 			pl_renderer_destroy(&renderer);
+			externalHdrLuts = {};
+			expectedExternalHdrLutTransactionGeneration = 0;
 			pl_lut_free(&displayLut);
 			if (d3d11)
 			{
@@ -6797,6 +6932,67 @@ struct LibplaceboVideoRenderer::Impl
 		displayLutContract = std::move(resolved);
 	}
 
+	void LoadExternalHdrLuts(const RendererSettings& settings)
+	{
+		LibplaceboExternalHdrLut::Declarations declarations;
+		declarations.bt709 = settings.externalHdrBt709;
+		declarations.p3D65 = settings.externalHdrP3D65;
+		declarations.bt2020 = settings.externalHdrBt2020;
+		const uint64_t transactionGeneration =
+			nextExternalHdrLutTransactionGeneration++;
+		auto candidate = LibplaceboExternalHdrLut::CandidateSet::Load(
+			log, declarations, transactionGeneration);
+
+		auto logSlot = [](const char* name,
+			const LibplaceboExternalHdrLut::SlotResource& resource)
+		{
+			const auto& result = resource.Result();
+			DebugLog::Log(
+				"external HDR 3D LUT slot: slot=%s configured=%d path=%s status=%d rejection=%s sha256=%s",
+				name, resource.Configured() ? 1 : 0,
+				resource.ConfiguredPath().empty() ? "none" :
+					resource.ConfiguredPath().c_str(),
+				static_cast<int>(result.status),
+				LibplaceboDisplayLut::ShortReason(result.rejection),
+				result.contentSha256.empty() ? "unavailable" :
+					result.contentSha256.c_str());
+		};
+		logSlot("BT709", candidate.Resource(
+			LibplaceboExternalHdrLut::Slot::BT709));
+		logSlot("P3_D65", candidate.Resource(
+			LibplaceboExternalHdrLut::Slot::P3_D65));
+		logSlot("BT2020", candidate.Resource(
+			LibplaceboExternalHdrLut::Slot::BT2020));
+
+		const auto disposition = externalHdrLuts.Commit(std::move(candidate));
+		if (disposition ==
+			LibplaceboExternalHdrLut::CommitDisposition::REJECT_STALE_TRANSACTION)
+		{
+			DebugLog::Log(
+				"external HDR 3D LUT generation rejected as stale: transaction=%llu active=%llu",
+				static_cast<unsigned long long>(transactionGeneration),
+				static_cast<unsigned long long>(
+					externalHdrLuts.TransactionGeneration()));
+			return;
+		}
+		expectedExternalHdrLutTransactionGeneration = transactionGeneration;
+		externalHdrLutStatus = disposition ==
+			LibplaceboExternalHdrLut::CommitDisposition::COMMIT_USABLE_GENERATION ?
+			"Loaded; HDR carrier not armed" : "Internal fallback; no usable Cube";
+		DebugLog::Log(
+			"external HDR 3D LUT generation committed: transaction=%llu resource_generation=%llu mode=%s status=%s activation=blocked",
+			static_cast<unsigned long long>(transactionGeneration),
+			static_cast<unsigned long long>(
+				externalHdrLuts.ResourceGeneration()),
+			settings.externalHdrToneMappingMode ==
+				LibplaceboExternalHdrLut::ToneMappingMode::EXTERNAL_3DLUT ?
+				"external_3dlut" :
+			(settings.externalHdrToneMappingMode ==
+				LibplaceboExternalHdrLut::ToneMappingMode::PASS_THROUGH ?
+				"passthrough" : "pixel_shaders"),
+			externalHdrLutStatus.c_str());
+	}
+
 	bool LoadDisplayLut(
 		const RendererSettings& settings,
 		bool preserveActiveOnRejectedCandidate = false)
@@ -7140,6 +7336,10 @@ struct LibplaceboVideoRenderer::Impl
 		log = pl_log_create(PL_API_VER, &logParams);
 		if (!log)
 			throw std::runtime_error("Failed to create libplacebo log context");
+		// Load and atomically publish the complete three-slot resource generation,
+		// but keep it render-inert until the verified HDR carrier and frame-local
+		// PL_LUT_CONVERSION attachment are both implemented.
+		LoadExternalHdrLuts(settings);
 
 		struct pl_d3d11_params deviceParams =
 			LibplaceboExportedData<pl_d3d11_params>("pl_d3d11_default_params");
@@ -7581,6 +7781,34 @@ struct LibplaceboVideoRenderer::Impl
 			"sdr_display_target");
 		changed(current.outputDiagnostics != next.outputDiagnostics,
 			"output_diagnostics");
+		changed(current.externalHdrToneMappingMode !=
+				next.externalHdrToneMappingMode ||
+			current.externalHdrBt709.path != next.externalHdrBt709.path ||
+			current.externalHdrBt709.configuredPath !=
+				next.externalHdrBt709.configuredPath ||
+			current.externalHdrBt709.constrainedBaseDirectory !=
+				next.externalHdrBt709.constrainedBaseDirectory ||
+			current.externalHdrBt709.pathRejected !=
+				next.externalHdrBt709.pathRejected ||
+			current.externalHdrP3D65.path != next.externalHdrP3D65.path ||
+			current.externalHdrP3D65.configuredPath !=
+				next.externalHdrP3D65.configuredPath ||
+			current.externalHdrP3D65.constrainedBaseDirectory !=
+				next.externalHdrP3D65.constrainedBaseDirectory ||
+			current.externalHdrP3D65.pathRejected !=
+				next.externalHdrP3D65.pathRejected ||
+			current.externalHdrBt2020.path != next.externalHdrBt2020.path ||
+			current.externalHdrBt2020.configuredPath !=
+				next.externalHdrBt2020.configuredPath ||
+			current.externalHdrBt2020.constrainedBaseDirectory !=
+				next.externalHdrBt2020.constrainedBaseDirectory ||
+			current.externalHdrBt2020.pathRejected !=
+				next.externalHdrBt2020.pathRejected ||
+			current.externalHdrOutputMetadataPrimaries !=
+				next.externalHdrOutputMetadataPrimaries ||
+			current.externalHdrOutputMetadataPeakNits !=
+				next.externalHdrOutputMetadataPeakNits,
+			"external_hdr_3dlut");
 		changed(current.lutPath != next.lutPath ||
 			current.lutPathRejected != next.lutPathRejected ||
 			current.lutConstrainedBaseDirectory != next.lutConstrainedBaseDirectory ||
