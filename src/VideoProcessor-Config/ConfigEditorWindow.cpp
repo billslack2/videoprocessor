@@ -3937,9 +3937,12 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 				selector->clear();
 				const bool effectiveMissing = !effective.isEmpty() &&
 					!available.contains(effective, Qt::CaseInsensitive);
-				selector->addItem(selected.isEmpty() && effectiveMissing ?
-					QStringLiteral("Inherited - Missing: %1").arg(effective) :
-					QStringLiteral("Inherited / not set"), QString());
+				QString emptyLabel = QStringLiteral("None");
+				if (selected.isEmpty() && effectiveMissing)
+					emptyLabel = QStringLiteral("Inherited - Missing: %1").arg(effective);
+				else if (selected.isEmpty() && !effective.isEmpty())
+					emptyLabel = QStringLiteral("Inherited: %1").arg(effective);
+				selector->addItem(emptyLabel, QString());
 				for (const QString& lut : available)
 					selector->addItem(lut, lut);
 				int index = selector->findData(selected, Qt::UserRole,
@@ -4838,6 +4841,12 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                 {
 					if (requiresExplicitValue && raw.isEmpty())
 						combo->setItemText(0, QStringLiteral("Required - select gamut"));
+					const bool emptyExternalLutSlot =
+						sectionPrefix == QStringLiteral("vprenderer") &&
+						field.key.startsWith(QStringLiteral("hdr_external_3dlut_")) &&
+						raw.isEmpty() && configured.isEmpty();
+					if (emptyExternalLutSlot)
+						combo->setItemText(0, QStringLiteral("None"));
 					const int externalLutEffectiveIndex = combo->findData(
 						configured, Qt::UserRole, Qt::MatchFixedString);
 					const bool inheritedMissingExternalLut =
@@ -4846,7 +4855,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 						raw.isEmpty() && !configured.isEmpty() &&
 						(externalLutEffectiveIndex < 0 || combo->itemData(
 							externalLutEffectiveIndex, Qt::UserRole + 1).toBool());
-					if (requiresExplicitValue && raw.isEmpty())
+					if ((requiresExplicitValue && raw.isEmpty()) || emptyExternalLutSlot)
 					{
 						// Keep the explicit required placeholder established above.
 					}

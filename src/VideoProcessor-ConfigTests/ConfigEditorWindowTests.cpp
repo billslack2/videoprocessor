@@ -2297,6 +2297,13 @@ void testQueueUnitsAndLutControlsUseConsistentRows()
 		QStringLiteral("config.vprenderer.hdr_external_3dlut_p3_d65"));
 	QComboBox* bt2020 = requireControl<QComboBox>(window,
 		QStringLiteral("config.vprenderer.hdr_external_3dlut_bt2020"));
+	require(bt709->currentData().toString().isEmpty() &&
+		p3->currentData().toString().isEmpty() &&
+		bt2020->currentData().toString().isEmpty() &&
+		bt709->currentText() == QStringLiteral("None") &&
+		p3->currentText() == QStringLiteral("None") &&
+		bt2020->currentText() == QStringLiteral("None"),
+		"Unused external HDR LUT slots still expose a fabricated default");
 	const QPoint bt709Position = bt709->mapTo(&window, QPoint(0, 0));
 	const QPoint p3Position = p3->mapTo(&window, QPoint(0, 0));
 	require(bt709Position.x() == p3Position.x() &&
