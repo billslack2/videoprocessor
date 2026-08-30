@@ -287,6 +287,44 @@ application/profile generation with same-path content identity and last-known-
 good rules, then land the indivisible live vertical slice comprising the HDR10
 DXGI transaction/rollback, PQ target, LUT attachment, and Present suppression.
 
+### Contract checkpoint 8: profile-bound reload transaction foundation
+
+The resource transaction foundation is committed and pushed as `6ab7c588`.
+The GUI's already-available application profile generation is captured before
+`Build`, frozen into renderer initialization without a plugin ABI change, and
+reserved on the active LUT set before any Cube file I/O. Initial candidate
+identity is therefore application/profile-bound rather than a renderer-local
+constant. Unrelated compatible live snapshot generations do not stale LUTs.
+
+The active set now has separate latest-requested, latest-processed, and active-
+resource transaction generations. `BeginRequest` makes newer work supersede an
+older load while both are still in flight; reload completion requires exact
+reservation equality, and delayed or duplicate completion is rejected. Loader
+identity compares status/rejection, exact opened canonical path, byte count,
+SHA-256, and cube dimension for all three slots.
+
+Same-contract unchanged bytes retain the active transaction. A valid same-path
+replacement atomically advances the complete three-slot generation. If a same-
+contract candidate makes any formerly available slot unavailable, the entire
+last-known-good set remains authorized; its active transaction is deliberately
+unchanged while request/processed watermarks advance. A changed-contract
+failure bypasses retention and commits internal fallback, so an old profile's
+LUT can never masquerade under new settings.
+
+The x64 Release build succeeds; external-HDR tests pass 22/22 and the complete
+LUT-parser/GPU class passes 29/29. Independent profile, render-seam, and madVR-
+contract reviews found and corrected the pre-I/O latest-request race, then
+reported no remaining P1/P2. Runtime asynchronous configuration reloading is
+not yet connected to this policy and carrier activation remains false, so this
+checkpoint is still not tester-ready.
+
+The next safe live work is the indivisible carrier vertical slice already
+mapped in review: force/verify the top-level VP-owned flip/R10 path, perform the
+PQ/BT.2020 color-space and HDR10 metadata transaction with reverse-order SDR
+rollback, construct the PQ target, require frame LUT attachment, and suppress
+Present on any mismatch or render failure. Resize, recreation, monitor change,
+terminal black, and retirement must all participate in the same state machine.
+
 ## Implementation progress — 2026-08-29
 
 The first source slice is committed and pushed on
