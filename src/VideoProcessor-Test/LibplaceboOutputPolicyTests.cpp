@@ -28,12 +28,14 @@ namespace Tests
 				static_cast<int>(ParseToneMappingMode("external_3dlut")));
 			Assert::AreEqual(static_cast<int>(ToneMappingMode::EXTERNAL_3DLUT),
 				static_cast<int>(ParseToneMappingMode("EXTERNAL_3DLUT")));
+			Assert::AreEqual(static_cast<int>(ToneMappingMode::PIXEL_SHADERS),
+				static_cast<int>(ParseToneMappingMode("passthrough")));
 			Assert::AreEqual(static_cast<int>(
 				LibplaceboExternalHdrLut::Primaries::P3_D65),
 				static_cast<int>(ParsePrimaries("P3_D65")));
 		}
 
-		TEST_METHOD(ExternalHdrModesOwnDistinctMetadataContracts)
+		TEST_METHOD(DisabledHdrPassthroughFallsBackToInternalToneMapping)
 		{
 			using namespace LibplaceboExternalHdrLut;
 			const auto shaders = Select(ToneMappingMode::PIXEL_SHADERS, true,
@@ -47,11 +49,11 @@ namespace Tests
 
 			const auto passthrough = Select(ToneMappingMode::PASS_THROUGH, true,
 				LibplaceboExternalHdrLut::Primaries::BT2020, {});
-			Assert::AreEqual(static_cast<int>(EffectiveMode::PASS_THROUGH),
+			Assert::AreEqual(static_cast<int>(EffectiveMode::PIXEL_SHADERS),
 				static_cast<int>(passthrough.effectiveMode));
-			Assert::AreEqual(static_cast<int>(MetadataOwner::SOURCE_PASSTHROUGH),
+			Assert::AreEqual(static_cast<int>(MetadataOwner::INTERNAL_PIPELINE),
 				static_cast<int>(passthrough.metadataOwner));
-			Assert::AreEqual(static_cast<int>(FinalCalibrationStage::MASK),
+			Assert::AreEqual(static_cast<int>(FinalCalibrationStage::APPLY),
 				static_cast<int>(passthrough.finalCalibrationStage));
 			Assert::IsTrue(std::string(passthrough.reason).find("passthrough") !=
 				std::string::npos);

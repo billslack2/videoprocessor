@@ -77,7 +77,10 @@ namespace LibplaceboExternalHdrLut
 	inline ToneMappingMode ParseToneMappingMode(const std::string& value)
 	{
 		const std::string normalized = NormalizeToken(value);
-		if (normalized == "passthrough") return ToneMappingMode::PASS_THROUGH;
+		// HDR passthrough is intentionally disabled for this beta slice. Preserve
+		// safe playback for legacy configuration by resolving it to VP's internal
+		// HDR-to-SDR tone mapper.
+		if (normalized == "passthrough") return ToneMappingMode::PIXEL_SHADERS;
 		if (normalized == "external_3dlut") return ToneMappingMode::EXTERNAL_3DLUT;
 		// Omitted and unrecognized values preserve the v1.3.004-beta behavior.
 		return ToneMappingMode::PIXEL_SHADERS;
@@ -105,9 +108,9 @@ namespace LibplaceboExternalHdrLut
 				MetadataOwner::INTERNAL_PIPELINE, false, Slot::NONE, false,
 				"internal pixel shaders selected" };
 		if (mode == ToneMappingMode::PASS_THROUGH)
-			return { EffectiveMode::PASS_THROUGH,
-				MetadataOwner::SOURCE_PASSTHROUGH, false, Slot::NONE, false,
-				"HDR passthrough selected", FinalCalibrationStage::MASK };
+			return { EffectiveMode::PIXEL_SHADERS,
+				MetadataOwner::INTERNAL_PIPELINE, false, Slot::NONE, false,
+				"HDR passthrough is disabled; internal pixel shaders selected" };
 		if (!inputIsPq)
 			return { EffectiveMode::PIXEL_SHADERS,
 				MetadataOwner::INTERNAL_PIPELINE, false, Slot::NONE, false,

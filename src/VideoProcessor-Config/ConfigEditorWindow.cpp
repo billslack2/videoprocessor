@@ -3789,20 +3789,17 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                 "HDR tone mapping, gamut compression, dynamic peak handling, and contrast recovery."), false);
 		auto* hdrToneMappingMode = addChoice(QStringLiteral("HDR processing mode"),
 			QStringLiteral("hdr_tone_mapping_mode"),
-			{ QStringLiteral("pixel_shaders"), QStringLiteral("external_3dlut"),
-				QStringLiteral("passthrough") });
+			{ QStringLiteral("pixel_shaders"), QStringLiteral("external_3dlut") });
 		hdrToneMappingMode->setItemText(
 			hdrToneMappingMode->findData(QStringLiteral("pixel_shaders")),
 			QStringLiteral("Tone map HDR using pixel shaders"));
 		hdrToneMappingMode->setItemText(
 			hdrToneMappingMode->findData(QStringLiteral("external_3dlut")),
 			QStringLiteral("Tone map HDR using external 3D LUT"));
-		hdrToneMappingMode->setItemText(
-			hdrToneMappingMode->findData(QStringLiteral("passthrough")),
-			QStringLiteral("Pass HDR through to display"));
 		hdrToneMappingMode->setToolTip(QStringLiteral(
-			"These modes are mutually exclusive. External 3D LUT mode gives the Cube "
-			"ownership of HDR tone and gamut mapping."));
+			"These tone-mapping modes are mutually exclusive. External 3D LUT mode "
+			"gives the Cube ownership of HDR-to-SDR tone and gamut mapping. HDR "
+			"passthrough is disabled in this beta."));
         auto* sdrTargetWhiteLevel = addText(QStringLiteral("Target white level"),
             QStringLiteral("sdr_target_nits"), QStringLiteral("nits"));
         connect(sdrTargetWhiteLevel, &QLineEdit::textChanged, this,
@@ -3876,7 +3873,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 
 		form = addCollapsibleSection(QStringLiteral("externalHdrLut"),
 			QStringLiteral("External HDR 3D LUT"), QStringLiteral(
-				"madVR-style input-gamut slots. The selected Cube owns HDR tone and gamut mapping."), false);
+				"madVR-style input-gamut slots. The selected Cube maps HDR/PQ input to the active SDR output target."), false);
 		auto* externalHdrLutEnabled = new QCheckBox;
 		externalHdrLutEnabled->setObjectName(
 			QStringLiteral("config.vprenderer.external_hdr_3dlut_enabled"));
@@ -3891,8 +3888,11 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 			[state, hdrToneMappingMode](bool enabled)
 			{
 				if (state->loading) return;
-				const QString mode = hdrToneMappingMode->currentData().toString()
+				QString mode = hdrToneMappingMode->currentData().toString()
 					.trimmed().toLower();
+				if (mode.isEmpty())
+					mode = hdrToneMappingMode->property("effectiveValue").toString()
+						.trimmed().toLower();
 				const int nextIndex = hdrToneMappingMode->findData(enabled ?
 					QStringLiteral("external_3dlut") :
 					QStringLiteral("pixel_shaders"));
@@ -3924,7 +3924,8 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 		for (QComboBox* selector : externalLutSelectors)
 			selector->setToolTip(QStringLiteral(
 				"The slot name describes the nonlinear PQ RGB input coordinates expected by the Cube, "
-				"not the display gamut or outgoing HDR metadata."));
+				"not the display gamut. Cube output is normalized nonlinear RGB in the active SDR "
+				"target primaries and transfer; output-range encoding is applied afterward."));
 		const auto refreshLutSelectors = [externalLutSelectors, discoveredLuts]
         {
             const QStringList available = discoveredLuts();
@@ -3991,33 +3992,12 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         form->addRow(QString(), helpLabel(QStringLiteral(
             "Put .cube files in the luts folder next to VideoProcessor.cfg (normally the VP installation). "
 			"A missing selected file remains configured and is reported as Missing; VP must fall back to its internal shader path.")));
-		auto* outputMetadataPrimaries = addChoice(
-			QStringLiteral("Outgoing HDR metadata gamut"),
-			QStringLiteral("hdr_output_metadata_primaries"),
-			{ QStringLiteral("BT709"), QStringLiteral("P3_D65"),
-				QStringLiteral("BT2020") });
-		outputMetadataPrimaries->setItemText(0,
-			QStringLiteral("Required - select gamut"));
-		outputMetadataPrimaries->setProperty("requiresExplicitValue", true);
-		outputMetadataPrimaries->setToolTip(QStringLiteral(
-			"Required when external HDR 3D LUT is enabled. Declares mastering "
-			"primaries in outgoing HDR10 metadata independently of the selected LUT input slot."));
-		auto* outputMetadataPeak = addText(
-			QStringLiteral("Outgoing HDR metadata peak"),
-			QStringLiteral("hdr_output_metadata_peak_nits"),
-			QStringLiteral("nits"));
-		outputMetadataPeak->setPlaceholderText(QStringLiteral("Required: 1 to 10000"));
-		outputMetadataPeak->setProperty("requiresExplicitValue", true);
-		outputMetadataPeak->setToolTip(QStringLiteral(
-			"Required when external HDR 3D LUT is enabled. Declares the LUT's intended HDR output peak; it does not select a LUT slot."));
-
 		const QList<QWidget*> internalToneMapControls = {
 			sdrTargetWhiteLevel, sdrBlackLevel, toneMapping, gamutMapping,
 			peakDetection, contrastRecovery
 		};
 		const QList<QWidget*> externalToneMapControls = {
-			lutBt709, lutP3, lutBt2020, outputMetadataPrimaries,
-			outputMetadataPeak, openLutFolder
+			lutBt709, lutP3, lutBt2020, openLutFolder
 		};
 		const auto updateHdrModeControls = [hdrToneMappingMode,
 			externalHdrLutEnabled, internalToneMapControls, externalToneMapControls]
@@ -4773,9 +4753,23 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                     profileValue(list->item(0)->data(Qt::UserRole).toString(), field.key);
 			if (!requiresExplicitValue && configured.isEmpty())
 				configured = fallback(field.key);
-            if (defaultOnlyField && !defaultProfile && list->count() > 0)
-                configured = value(list->item(0)->data(Qt::UserRole).toString(), field.key, fallback(field.key));
-            field.widget->setEnabled(!defaultOnlyField || defaultProfile);
+			if (defaultOnlyField && !defaultProfile && list->count() > 0)
+				configured = value(list->item(0)->data(Qt::UserRole).toString(), field.key, fallback(field.key));
+			if (sectionPrefix == QStringLiteral("vprenderer") &&
+				field.key == QStringLiteral("hdr_tone_mapping_mode") &&
+				configured.compare(QStringLiteral("passthrough"),
+					Qt::CaseInsensitive) == 0)
+			{
+				configured = QStringLiteral("pixel_shaders");
+				if (!raw.isEmpty())
+				{
+					document_->SetKnown(section.toStdString(),
+						"hdr_tone_mapping_mode", "pixel_shaders");
+					raw = configured;
+					markDirty();
+				}
+			}
+			field.widget->setEnabled(!defaultOnlyField || defaultProfile);
 			if (field.widget->property("requiresHdrFixedMode").toBool())
 			{
 				auto* mode = findChild<QComboBox*>(controlName(sectionPrefix,

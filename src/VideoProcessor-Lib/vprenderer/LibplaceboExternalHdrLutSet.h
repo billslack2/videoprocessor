@@ -268,6 +268,7 @@ namespace LibplaceboExternalHdrLut
 			resources_ = std::move(candidate);
 			transactionGeneration_ = transactionGeneration;
 			++resourceGeneration_;
+			runtimeRejected_ = false;
 			return usable ? CommitDisposition::COMMIT_USABLE_GENERATION :
 				CommitDisposition::COMMIT_INTERNAL_FALLBACK;
 		}
@@ -288,6 +289,13 @@ namespace LibplaceboExternalHdrLut
 					"external 3D LUT profile generation is not ready" };
 				return resolved;
 			}
+			if (mode == ToneMappingMode::EXTERNAL_3DLUT && runtimeRejected_)
+			{
+				resolved.selection = { EffectiveMode::PIXEL_SHADERS,
+					MetadataOwner::INTERNAL_PIPELINE, false, Slot::NONE, false,
+					"external 3D LUT generation failed during rendering" };
+				return resolved;
+			}
 			resolved.selection = Select(mode, inputIsPq, sourcePrimaries,
 				resources_.Availability());
 			if (resolved.selection.useExternalLut)
@@ -305,6 +313,14 @@ namespace LibplaceboExternalHdrLut
 				resolved.resourceGeneration == resourceGeneration_;
 		}
 
+		bool RejectRuntimeGeneration(const ResolvedResource& resolved)
+		{
+			if (!resolved.lut || !IsCurrent(resolved))
+				return false;
+			runtimeRejected_ = true;
+			return true;
+		}
+
 		uint64_t TransactionGeneration() const { return transactionGeneration_; }
 		uint64_t ResourceGeneration() const { return resourceGeneration_; }
 		const CandidateSet& Resources() const { return resources_; }
@@ -315,5 +331,6 @@ namespace LibplaceboExternalHdrLut
 		uint64_t latestProcessedGeneration_ = 0;
 		uint64_t transactionGeneration_ = 0;
 		uint64_t resourceGeneration_ = 0;
+		bool runtimeRejected_ = false;
 	};
 }

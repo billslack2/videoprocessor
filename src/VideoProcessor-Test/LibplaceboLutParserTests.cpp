@@ -153,6 +153,18 @@ namespace
 		"1.0 1.0 0.0\n"
 		"1.0 1.0 1.0\n";
 
+	const char* Grayscale3dCube =
+		"TITLE \"VP synthetic grayscale\"\n"
+		"LUT_3D_SIZE 2\n"
+		"0.0000 0.0000 0.0000\n"
+		"0.2126 0.2126 0.2126\n"
+		"0.7152 0.7152 0.7152\n"
+		"0.9278 0.9278 0.9278\n"
+		"0.0722 0.0722 0.0722\n"
+		"0.2848 0.2848 0.2848\n"
+		"0.7874 0.7874 0.7874\n"
+		"1.0000 1.0000 1.0000\n";
+
 	// Unmodified ASWF OpenColorIO interoperability fixture, pinned at commit
 	// 5a808fb57a94c7229640a97835c420c9a1fbd1fe (Git blob
 	// 04934465ae6e99416c347897aa5b2cc1a8257432). OpenColorIO is BSD-3-Clause;
@@ -534,8 +546,8 @@ DOMAIN_MAX 1 1 1
 			image.color.primaries = PL_COLOR_PRIM_BT_2020;
 			image.color.transfer = PL_COLOR_TRC_PQ;
 			pl_frame target = MakeRgbFrame(targetTexture);
-			target.color.primaries = PL_COLOR_PRIM_BT_2020;
-			target.color.transfer = PL_COLOR_TRC_PQ;
+			target.color.primaries = PL_COLOR_PRIM_BT_709;
+			target.color.transfer = PL_COLOR_TRC_SRGB;
 			target.repr.bits.sample_depth = 10;
 			target.repr.bits.color_depth = 10;
 			pl_custom_lut legacyTargetLut{};
@@ -913,6 +925,42 @@ namespace VideoProcessorTest
 			Assert::IsFalse(resource.Available());
 		}
 
+		TEST_METHOD(ExternalHdrRuntimeFailureQuarantinesOnlyCurrentGeneration)
+		{
+			TemporaryDirectory directory;
+			const std::string cube = directory.Write("bt2020.cube", Valid3dCube);
+			LibplaceboExternalHdrLut::Declarations declarations;
+			declarations.bt2020 = { cube, directory.Path() };
+			LibplaceboExternalHdrLut::ActiveSet active;
+			auto first = LibplaceboExternalHdrLut::CandidateSet::Load(
+				nullptr, declarations, 1);
+			active.Commit(std::move(first));
+			const auto failed = active.Resolve(
+				1, LibplaceboExternalHdrLut::ToneMappingMode::EXTERNAL_3DLUT,
+				true, LibplaceboExternalHdrLut::Primaries::BT2020);
+			Assert::IsTrue(failed.selection.useExternalLut);
+			Assert::IsTrue(active.RejectRuntimeGeneration(failed));
+
+			const auto quarantined = active.Resolve(
+				1, LibplaceboExternalHdrLut::ToneMappingMode::EXTERNAL_3DLUT,
+				true, LibplaceboExternalHdrLut::Primaries::BT2020);
+			Assert::IsFalse(quarantined.selection.useExternalLut);
+			Assert::IsNull(quarantined.lut);
+			Assert::AreEqual(
+				"external 3D LUT generation failed during rendering",
+				quarantined.selection.reason);
+
+			auto replacement = LibplaceboExternalHdrLut::CandidateSet::Load(
+				nullptr, declarations, 2);
+			active.Commit(std::move(replacement));
+			const auto restored = active.Resolve(
+				2, LibplaceboExternalHdrLut::ToneMappingMode::EXTERNAL_3DLUT,
+				true, LibplaceboExternalHdrLut::Primaries::BT2020);
+			Assert::IsTrue(restored.selection.useExternalLut);
+			Assert::IsNotNull(restored.lut);
+			Assert::IsFalse(active.RejectRuntimeGeneration(failed));
+		}
+
 		TEST_METHOD(ExternalHdrConversionLutGpuExactSlotUsesPqCubeCoordinates)
 		{
 			TemporaryDirectory directory;
@@ -939,6 +987,31 @@ namespace VideoProcessorTest
 			Assert::IsTrue(result.peakDetectionDisabled);
 			AssertPixelNear(result.pixel, {
 				source.b / 255.0, source.g / 255.0, source.r / 255.0 });
+		}
+
+		TEST_METHOD(ExternalHdrToSdrGrayscaleCubeProducesNeutralRgb)
+		{
+			TemporaryDirectory directory;
+			const std::string cube = directory.Write(
+				"bt2020-grayscale.cube", Grayscale3dCube);
+			LibplaceboExternalHdrLut::Declarations declarations;
+			declarations.bt2020 = { cube, directory.Path() };
+			auto candidate = LibplaceboExternalHdrLut::CandidateSet::Load(
+				nullptr, declarations, 1);
+			LibplaceboExternalHdrLut::ActiveSet active;
+			active.Commit(std::move(candidate));
+
+			TargetLutGpuFixture fixture;
+			Assert::IsTrue(fixture.Create(), L"WARP/libplacebo GPU unavailable");
+			const auto result = fixture.RenderExternalConversion(
+				active, 1, LibplaceboExternalHdrLut::Primaries::BT2020,
+				{ 200, 136, 48, 255 });
+			Assert::IsTrue(result.projection.attached);
+			Assert::IsTrue(result.usesConversionLut);
+			Assert::IsTrue(std::abs(static_cast<int>(result.pixel.r) -
+				static_cast<int>(result.pixel.g)) <= 1);
+			Assert::IsTrue(std::abs(static_cast<int>(result.pixel.g) -
+				static_cast<int>(result.pixel.b)) <= 1);
 		}
 
 		TEST_METHOD(ExternalHdrConversionLutGpuFallbackConvertsToP3BeforeCube)
@@ -968,7 +1041,7 @@ namespace VideoProcessorTest
 			AssertPixelNear(result.pixel, Bt2020PqToP3PqAndSwap(source));
 		}
 
-		TEST_METHOD(ExternalHdrFrameProjectionCannotAttachWithoutCarrier)
+		TEST_METHOD(ExternalHdrFrameProjectionCannotAttachWithoutSdrOutputRole)
 		{
 			TemporaryDirectory directory;
 			const std::string cube = directory.Write("bt2020.cube", Valid3dCube);
@@ -990,7 +1063,8 @@ namespace VideoProcessorTest
 			source.primaries = PL_COLOR_PRIM_BT_2020;
 			source.transfer = PL_COLOR_TRC_PQ;
 			struct pl_frame target{};
-			target.color = source;
+			target.color.primaries = PL_COLOR_PRIM_BT_709;
+			target.color.transfer = PL_COLOR_TRC_SRGB;
 			target.repr.sys = PL_COLOR_SYSTEM_RGB;
 			target.repr.levels = PL_COLOR_LEVELS_FULL;
 			target.repr.bits.sample_depth = 10;
@@ -1021,33 +1095,7 @@ namespace VideoProcessorTest
 				static_cast<int>(frameTarget.lut_type));
 		}
 
-		TEST_METHOD(ExternalHdrPresentRequiresCarrierLutAndSuccessfulRender)
-		{
-			LibplaceboHdr10Output::CarrierState carrier;
-			carrier.phase =
-				LibplaceboHdr10Output::CarrierPhase::HDR10_ACTIVE;
-			carrier.swapchainGeneration = 3;
-			carrier.applicationGeneration = 5;
-			carrier.lutTransactionGeneration = 7;
-			carrier.activation.active = true;
-			LibplaceboExternalHdrLut::FrameProjection projection;
-			projection.resolved.transactionGeneration = 7;
-			Assert::IsFalse(LibplaceboExternalHdrLut::FramePresentAllowed(
-				carrier, 3, 5, projection, true));
-			projection.attached = true;
-			Assert::IsFalse(LibplaceboExternalHdrLut::FramePresentAllowed(
-				carrier, 4, 5, projection, true));
-			Assert::IsFalse(LibplaceboExternalHdrLut::FramePresentAllowed(
-				carrier, 3, 5, projection, false));
-			projection.resolved.transactionGeneration = 8;
-			Assert::IsFalse(LibplaceboExternalHdrLut::FramePresentAllowed(
-				carrier, 3, 5, projection, true));
-			projection.resolved.transactionGeneration = 7;
-			Assert::IsTrue(LibplaceboExternalHdrLut::FramePresentAllowed(
-				carrier, 3, 5, projection, true));
-		}
-
-		TEST_METHOD(ExternalHdrFrameProjectionUsesConversionLutAndExactMetadata)
+		TEST_METHOD(ExternalHdrFrameProjectionUsesConversionLutForSdrTarget)
 		{
 			TemporaryDirectory directory;
 			const std::string cube = directory.Write("bt2020.cube", Valid3dCube);
@@ -1069,7 +1117,8 @@ namespace VideoProcessorTest
 			source.primaries = PL_COLOR_PRIM_BT_2020;
 			source.transfer = PL_COLOR_TRC_PQ;
 			struct pl_frame target{};
-			target.color = source;
+			target.color.primaries = PL_COLOR_PRIM_BT_709;
+			target.color.transfer = PL_COLOR_TRC_SRGB;
 			target.repr.sys = PL_COLOR_SYSTEM_RGB;
 			target.repr.levels = PL_COLOR_LEVELS_FULL;
 			target.repr.bits.sample_depth = 10;
@@ -1101,26 +1150,28 @@ namespace VideoProcessorTest
 				static_cast<int>(frameLut.color_in.primaries));
 			Assert::AreEqual(static_cast<int>(PL_COLOR_TRC_PQ),
 				static_cast<int>(frameLut.color_in.transfer));
-			Assert::AreEqual(static_cast<int>(PL_COLOR_PRIM_BT_2020),
+			Assert::AreEqual(static_cast<int>(PL_COLOR_PRIM_BT_709),
 				static_cast<int>(frameLut.color_out.primaries));
+			Assert::AreEqual(static_cast<int>(PL_COLOR_TRC_SRGB),
+				static_cast<int>(frameLut.color_out.transfer));
 
-			target.color.transfer = PL_COLOR_TRC_SRGB;
-			struct pl_frame sdrFrameTarget{};
-			struct pl_render_params sdrFrame{};
-			struct pl_custom_lut sdrFrameLut{};
-			struct pl_color_map_params sdrColorMap{};
-			const auto sdrProjection =
+			target.color.transfer = PL_COLOR_TRC_PQ;
+			struct pl_frame hdrFrameTarget{};
+			struct pl_render_params hdrFrame{};
+			struct pl_custom_lut hdrFrameLut{};
+			struct pl_color_map_params hdrColorMap{};
+			const auto hdrProjection =
 				LibplaceboExternalHdrLut::PrepareFrameProjection(
 					active, 1,
 					LibplaceboExternalHdrLut::ToneMappingMode::EXTERNAL_3DLUT,
 					true, LibplaceboExternalHdrLut::Primaries::BT2020,
-					source, target, shared, &clip, sdrFrameTarget, sdrFrame,
-					sdrFrameLut, sdrColorMap);
-			Assert::IsFalse(sdrProjection.attached);
-			Assert::IsNull(sdrFrame.lut);
-			Assert::IsTrue(sdrFrameTarget.lut == &legacyTargetLut);
+					source, target, shared, &clip, hdrFrameTarget, hdrFrame,
+					hdrFrameLut, hdrColorMap);
+			Assert::IsFalse(hdrProjection.attached);
+			Assert::IsNull(hdrFrame.lut);
+			Assert::IsTrue(hdrFrameTarget.lut == &legacyTargetLut);
 
-			target.color.transfer = PL_COLOR_TRC_PQ;
+			target.color.transfer = PL_COLOR_TRC_SRGB;
 			target.repr.sys = PL_COLOR_SYSTEM_BT_2020_NC;
 			struct pl_frame yuvFrameTarget{};
 			struct pl_render_params yuvFrame{};
@@ -1155,7 +1206,8 @@ namespace VideoProcessorTest
 			source.primaries = PL_COLOR_PRIM_BT_2020;
 			source.transfer = PL_COLOR_TRC_PQ;
 			struct pl_frame target{};
-			target.color = source;
+			target.color.primaries = PL_COLOR_PRIM_BT_709;
+			target.color.transfer = PL_COLOR_TRC_SRGB;
 			target.repr.sys = PL_COLOR_SYSTEM_RGB;
 			target.repr.levels = PL_COLOR_LEVELS_FULL;
 			target.repr.bits.sample_depth = 10;
@@ -1185,7 +1237,7 @@ namespace VideoProcessorTest
 				static_cast<int>(frameLut.color_in.primaries));
 			Assert::AreEqual(static_cast<int>(PL_COLOR_TRC_PQ),
 				static_cast<int>(frameLut.color_in.transfer));
-			Assert::AreEqual(static_cast<int>(PL_COLOR_PRIM_BT_2020),
+			Assert::AreEqual(static_cast<int>(PL_COLOR_PRIM_BT_709),
 				static_cast<int>(frameLut.color_out.primaries));
 			Assert::IsTrue(shared.color_map_params->gamut_mapping == &sharedMapper);
 			Assert::IsTrue(frame.color_map_params == &frameColorMap);
@@ -1234,7 +1286,8 @@ namespace VideoProcessorTest
 			source.primaries = PL_COLOR_PRIM_BT_2020;
 			source.transfer = PL_COLOR_TRC_PQ;
 			struct pl_frame target{};
-			target.color = source;
+			target.color.primaries = PL_COLOR_PRIM_BT_709;
+			target.color.transfer = PL_COLOR_TRC_SRGB;
 			target.repr.sys = PL_COLOR_SYSTEM_RGB;
 			target.repr.levels = PL_COLOR_LEVELS_FULL;
 			target.repr.bits.sample_depth = 10;

@@ -497,6 +497,8 @@ namespace RendererProfileConfig
 		if (group == "display")
 		{
 			if (key == "hdr_tone_mapping_mode")
+				// Keep legacy passthrough text loadable; runtime deliberately resolves
+				// it to the internal tone mapper while the UI does not expose it.
 				return IsChoice(value, { "pixel_shaders", "passthrough", "external_3dlut" });
 			if (key == "hdr_output_metadata_primaries")
 				return IsChoice(value, { "bt709", "p3_d65", "bt2020" });
@@ -799,16 +801,6 @@ namespace RendererProfileConfig
 		// later stage while external_3dlut is effective. Rejecting it here would
 		// make an external named profile impossible whenever its baseline carries
 		// calibration and the profile model cannot explicitly unset inheritance.
-		if (profile.settings.find("hdr_output_metadata_primaries") == profile.settings.end())
-		{
-			error = "[" + section + "] external_3dlut requires hdr_output_metadata_primaries";
-			return false;
-		}
-		if (profile.settings.find("hdr_output_metadata_peak_nits") == profile.settings.end())
-		{
-			error = "[" + section + "] external_3dlut requires hdr_output_metadata_peak_nits";
-			return false;
-		}
 		return true;
 	}
 
