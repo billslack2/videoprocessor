@@ -819,6 +819,7 @@ protected:
 	EventActionLauncher::PendingActionCoalescer m_unifiedActionCoalescer;
 	EventActionLauncher::ProfileActionCircuitBreaker m_profileActionCircuitBreaker;
 	std::mutex m_profileActionLaunchMutex;
+	std::atomic<uint64_t> m_profileActionDebounceGeneration = 0;
 	std::atomic<uint64_t> m_profileActionCircuitGeneration = 0;
 	std::vector<std::thread> m_unifiedActionWorkers;
 	std::map<WORD, CString> m_unifiedProfileShortcutKeys;

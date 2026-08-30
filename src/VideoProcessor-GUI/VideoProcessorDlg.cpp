@@ -12437,6 +12437,19 @@ void CVideoProcessorDlg::ScheduleUnifiedProfileActionsForRenderer(
 	if (!m_unifiedActionCancelEvent || actions.empty())
 		return;
 	const std::string configPath = m_profileRuntime.ConfigPath();
+	const bool hasProfileTransition = std::any_of(actions.begin(), actions.end(),
+		[](const UnifiedProfileRuntime::ActionInvocation& invocation)
+		{
+			return invocation.event.rfind("profile.", 0) == 0 &&
+				invocation.event.size() > strlen("profile..changed") &&
+				invocation.event.compare(invocation.event.size() - strlen(".changed"),
+					strlen(".changed"), ".changed") == 0;
+		});
+	// A profile selection is a transaction. Rapid cycling must replace the
+	// entire pending profile-action batch, not merely actions with the same
+	// coalesce role, so only the final settled profile state is allowed to run.
+	const uint64_t profileDebounceGeneration = hasProfileTransition ?
+		m_profileActionDebounceGeneration.fetch_add(1) + 1 : 0;
 	std::map<std::string, const UnifiedProfileRuntime::ActionInvocation*> latest;
 	for (const UnifiedProfileRuntime::ActionInvocation& invocation : actions)
 	{
@@ -12492,7 +12505,8 @@ void CVideoProcessorDlg::ScheduleUnifiedProfileActionsForRenderer(
 			invocation.reason.c_str(), delayMs,
 			identity.c_str(), static_cast<unsigned long long>(generation), this);
 		m_unifiedActionWorkers.emplace_back([this, invocation, configPath,
-			delayMs, identity, generation, profileTransition, circuitGeneration]()
+			delayMs, identity, generation, profileTransition, circuitGeneration,
+			profileDebounceGeneration]()
 			{
 				if (m_unifiedActionCancelEvent &&
 					WaitForSingleObject(m_unifiedActionCancelEvent, delayMs) ==
@@ -12502,6 +12516,14 @@ void CVideoProcessorDlg::ScheduleUnifiedProfileActionsForRenderer(
 					{
 						std::unique_lock<std::mutex> launchLock(
 							m_profileActionLaunchMutex);
+						if (profileDebounceGeneration !=
+							m_profileActionDebounceGeneration.load())
+						{
+							DebugLog::Log(
+								"event action debounce replaced profile batch: action='%s' role=%s",
+								invocation.action.name.c_str(), identity.c_str());
+							return;
+						}
 						if (circuitGeneration !=
 							m_profileActionCircuitGeneration.load())
 						{
