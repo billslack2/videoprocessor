@@ -448,6 +448,10 @@ namespace VideoProcessorTest
 				ActivePictureClassification::PROVISIONAL);
 			Assert::IsTrue(reacquired.publish);
 			Assert::IsTrue(reacquired.stable);
+			Assert::IsTrue(reacquired.knownTrustedGeometryReacquired);
+			Assert::AreEqual(static_cast<int>(
+				ActivePictureClassification::BAR_CROP_TRUSTED),
+				static_cast<int>(reacquired.authoritativeClassification));
 			Assert::AreEqual(
 				static_cast<unsigned long long>(1),
 				static_cast<unsigned long long>(
@@ -482,6 +486,10 @@ namespace VideoProcessorTest
 			const auto confirmed = Observe(model, ScopeBounds(), frame + 1,
 				ActivePictureClassification::PROVISIONAL);
 			Assert::IsTrue(confirmed.publish);
+			Assert::IsTrue(confirmed.knownTrustedGeometryReacquired);
+			Assert::AreEqual(static_cast<int>(
+				ActivePictureClassification::BAR_CROP_TRUSTED),
+				static_cast<int>(confirmed.authoritativeClassification));
 			Assert::AreEqual(ScopeBounds().top, confirmed.bounds.top);
 			Assert::AreEqual(ScopeBounds().bottom, confirmed.bounds.bottom);
 		}

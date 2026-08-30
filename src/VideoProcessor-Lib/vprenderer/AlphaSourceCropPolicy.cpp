@@ -2,6 +2,8 @@
 
 #include "AlphaSourceCropPolicy.h"
 
+#include <cmath>
+
 
 namespace AlphaSourceCrop
 {
@@ -78,6 +80,30 @@ namespace AlphaSourceCrop
 				left.right == right.right && left.bottom == right.bottom &&
 				left.rasterWidth == right.rasterWidth &&
 				left.rasterHeight == right.rasterHeight;
+		}
+
+		bool SameTrustedCropContract(const ActivePictureBounds& left,
+			const ActivePictureBounds& right)
+		{
+			return SameBounds(left, right) &&
+				left.trustedBarAxes == right.trustedBarAxes &&
+				left.trustedBarAxes != ActivePictureBounds::BarAxes::NONE;
+		}
+
+		uint32_t NearBlackCropRevalidationSamples(double framesPerSecond)
+		{
+			if (!std::isfinite(framesPerSecond) || framesPerSecond <= 0.0)
+				framesPerSecond = 60.0;
+			return static_cast<uint32_t>(std::max(2.0,
+				std::ceil(framesPerSecond * 0.250) + 1.0));
+		}
+
+		void ResetNearBlackCropRevalidation(
+			NearBlackPresentationEpisodeState& state)
+		{
+			state.revalidationStartedSourceSequence = 0;
+			state.revalidationLastSourceSequence = 0;
+			state.revalidationSamples = 0;
 		}
 
 		int ChromaAlignedDisplacement(int pixels)
@@ -1374,6 +1400,8 @@ namespace AlphaSourceCrop
 	{
 		NearBlackPresentationEpisodeDecision decision;
 		decision.state = input.previous;
+		decision.revalidationSamplesRequired =
+			NearBlackCropRevalidationSamples(input.framesPerSecond);
 
 		if (decision.state.mode != NearBlackPresentationMode::INACTIVE &&
 			decision.state.sourceGeneration != input.sourceGeneration)
@@ -1411,6 +1439,14 @@ namespace AlphaSourceCrop
 				: NearBlackPresentationMode::FULL_RASTER;
 			decision.state.sourceGeneration = input.sourceGeneration;
 			decision.state.startedSourceSequence = input.sourceSequence;
+			decision.state.presentationEpoch = input.presentationEpoch;
+			decision.state.entryTrustedCropAvailable =
+				decision.state.mode == NearBlackPresentationMode::RETAIN_CROP;
+			if (decision.state.entryTrustedCropAvailable)
+				decision.state.entryTrustedCrop = input.trustedCrop;
+			if (decision.state.mode == NearBlackPresentationMode::FULL_RASTER)
+				decision.state.fullRasterStartedSourceSequence =
+					input.sourceSequence;
 			decision.started = true;
 			decision.reason = decision.state.mode ==
 				NearBlackPresentationMode::RETAIN_CROP
@@ -1422,6 +1458,8 @@ namespace AlphaSourceCrop
 			input.measurementCurrent && input.boundedVisibleContentOutsideCrop)
 		{
 			decision.state.mode = NearBlackPresentationMode::FULL_RASTER;
+			decision.state.fullRasterStartedSourceSequence =
+				input.sourceSequence;
 			decision.changedToFullRaster = true;
 			decision.reason =
 				"bounded visible title content latched full raster for episode";
@@ -1431,10 +1469,89 @@ namespace AlphaSourceCrop
 			!input.trustedCropAvailable)
 		{
 			decision.state.mode = NearBlackPresentationMode::FULL_RASTER;
+			decision.state.fullRasterStartedSourceSequence =
+				input.sourceSequence;
 			decision.changedToFullRaster = true;
 			decision.reason =
 				"lost retained title geometry latched full raster for episode";
 		}
+
+		if (decision.state.mode == NearBlackPresentationMode::FULL_RASTER &&
+			decision.state.entryTrustedCropAvailable && !input.cadenceRepeat &&
+			input.sourceSequence !=
+				decision.state.revalidationLastSourceSequence)
+		{
+			const bool exactEntryContract =
+				input.knownTrustedGeometryReacquired &&
+				input.reacquiredTrustedClassification ==
+					ActivePictureClassification::BAR_CROP_TRUSTED &&
+				input.reacquisitionIsCurrentAssociation &&
+				input.reacquiredSourceGeneration == input.sourceGeneration &&
+				input.reacquiredSourceSequence >=
+					decision.state.fullRasterStartedSourceSequence &&
+				input.reacquiredSourceSequence <= input.sourceSequence &&
+				input.reacquiredPresentationEpoch ==
+					decision.state.presentationEpoch &&
+				SameTrustedCropContract(input.reacquiredTrustedGeometry,
+					decision.state.entryTrustedCrop);
+			const bool exactCurrentObservation =
+				input.currentObservationAvailable &&
+				SameBounds(input.currentObservation,
+					decision.state.entryTrustedCrop);
+			const bool exactCurrentSafety = input.retentionEvaluated &&
+				input.retentionSafe &&
+				input.retentionSourceSequence == input.sourceSequence &&
+				SameBounds(input.retentionBounds,
+					decision.state.entryTrustedCrop);
+			const bool qualifies = input.measurementCurrent &&
+				input.nearBlackEvaluated && !input.globalNearBlack &&
+				!input.boundedVisibleContentOutsideCrop &&
+				!input.fullRasterAuthorityAvailable &&
+				input.presentationEpoch == decision.state.presentationEpoch &&
+				exactEntryContract && exactCurrentObservation &&
+				exactCurrentSafety;
+
+			if (qualifies)
+			{
+				if (decision.state.revalidationLastSourceSequence != 0 &&
+					input.sourceSequence ==
+						decision.state.revalidationLastSourceSequence + 1)
+				{
+					++decision.state.revalidationSamples;
+				}
+				else
+				{
+					decision.state.revalidationStartedSourceSequence =
+						input.sourceSequence;
+					decision.state.revalidationSamples = 1;
+				}
+				decision.state.revalidationLastSourceSequence =
+					input.sourceSequence;
+			}
+			else
+			{
+				ResetNearBlackCropRevalidation(decision.state);
+			}
+
+			if (decision.state.revalidationSamples >=
+				decision.revalidationSamplesRequired)
+			{
+				decision.revalidationSamples =
+					decision.state.revalidationSamples;
+				decision.state = {};
+				decision.releasedToTrustedCrop = true;
+				decision.ended = true;
+				decision.reason =
+					"exact entry crop revalidated after pixel-safe dwell";
+			}
+		}
+
+		if (!decision.releasedToTrustedCrop)
+			decision.revalidationSamples =
+				decision.state.revalidationSamples;
+		decision.revalidationChanged = decision.releasedToTrustedCrop ||
+			decision.revalidationSamples !=
+				input.previous.revalidationSamples;
 
 		if (decision.reason.empty())
 		{

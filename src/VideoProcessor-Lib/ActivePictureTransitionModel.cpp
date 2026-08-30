@@ -318,6 +318,9 @@ ActivePictureTransitionModel::CommitCandidate(
 	decision.publish = true;
 	decision.stable = true;
 	decision.diagnostic = true;
+	decision.authoritativeClassification = m_candidateClassification;
+	decision.knownTrustedGeometryReacquired =
+		m_candidateUsesKnownTrustedGeometry;
 	decision.matchingCandidates = m_matchingCandidates;
 	decision.contradictoryCandidates = m_contradictoryCandidates;
 	decision.candidateReversals = m_candidateReversals;
@@ -350,6 +353,9 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 	decision.bounds = m_hasStable ? m_stable : ActivePictureBounds{};
 	decision.stableBounds = m_hasStable ? m_stable : ActivePictureBounds{};
 	decision.stable = m_hasStable;
+	decision.authoritativeClassification = m_hasStable
+		? m_stableClassification
+		: ActivePictureClassification::UNAVAILABLE;
 	if (observation.frameNumber != 0 && m_lastObservedFrame != 0 &&
 		observation.frameNumber <= m_lastObservedFrame)
 	{

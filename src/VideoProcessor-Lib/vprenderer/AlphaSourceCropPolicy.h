@@ -632,6 +632,13 @@ namespace AlphaSourceCrop
 		NearBlackPresentationMode mode = NearBlackPresentationMode::INACTIVE;
 		uint64_t sourceGeneration = 0;
 		uint64_t startedSourceSequence = 0;
+		uint64_t presentationEpoch = 0;
+		bool entryTrustedCropAvailable = false;
+		ActivePictureBounds entryTrustedCrop;
+		uint64_t fullRasterStartedSourceSequence = 0;
+		uint64_t revalidationStartedSourceSequence = 0;
+		uint64_t revalidationLastSourceSequence = 0;
+		uint32_t revalidationSamples = 0;
 	};
 
 	struct NearBlackPresentationEpisodeInput
@@ -642,8 +649,26 @@ namespace AlphaSourceCrop
 		bool globalNearBlack = false;
 		bool sceneBoundary = false;
 		bool trustedCropAvailable = false;
+		ActivePictureBounds trustedCrop;
 		bool boundedVisibleContentOutsideCrop = false;
 		bool fullRasterAuthorityAvailable = false;
+		bool cadenceRepeat = false;
+		bool currentObservationAvailable = false;
+		ActivePictureBounds currentObservation;
+		bool retentionEvaluated = false;
+		bool retentionSafe = false;
+		ActivePictureBounds retentionBounds;
+		uint64_t retentionSourceSequence = 0;
+		bool knownTrustedGeometryReacquired = false;
+		ActivePictureBounds reacquiredTrustedGeometry;
+		ActivePictureClassification reacquiredTrustedClassification =
+			ActivePictureClassification::UNAVAILABLE;
+		uint64_t reacquiredSourceGeneration = 0;
+		uint64_t reacquiredSourceSequence = 0;
+		uint64_t reacquiredPresentationEpoch = 0;
+		bool reacquisitionIsCurrentAssociation = false;
+		double framesPerSecond = 60.0;
+		uint64_t presentationEpoch = 0;
 		uint64_t sourceGeneration = 0;
 		uint64_t sourceSequence = 0;
 	};
@@ -653,14 +678,19 @@ namespace AlphaSourceCrop
 		NearBlackPresentationEpisodeState state;
 		bool started = false;
 		bool changedToFullRaster = false;
+		bool releasedToTrustedCrop = false;
+		bool revalidationChanged = false;
+		uint32_t revalidationSamples = 0;
+		uint32_t revalidationSamplesRequired = 0;
 		bool ended = false;
 		std::string reason;
 	};
 
 	// A sparse near-black episode chooses one safe presentation on entry. It can
-	// only move from a retained crop to full raster when bounded visible content
-	// reaches the excluded area; it cannot reacquire crop until a scene/source
-	// boundary or authoritative full raster ends the episode.
+	// move from retained crop to full raster immediately for visibility. A
+	// full-raster episode may restore only its exact entry crop after a bounded,
+	// current-frame pixel-safe revalidation dwell; it never grants authority to
+	// startup or unrelated recent geometry.
 	NearBlackPresentationEpisodeDecision EvaluateNearBlackPresentationEpisode(
 		const NearBlackPresentationEpisodeInput& input);
 	const char* NearBlackPresentationModeName(NearBlackPresentationMode mode);

@@ -3241,10 +3241,21 @@ struct LibplaceboVideoRenderer::Impl
 	bool presentationOwnedGeometryTransitionDeferred = false;
 	bool latestActivePicturePresentationRetentionSafe = false;
 	bool latestActivePicturePresentationRetentionEvaluated = false;
+	ActivePictureBounds latestActivePicturePresentationRetentionBounds;
+	uint64_t latestActivePicturePresentationRetentionSourceGeneration = 0;
+	uint64_t latestActivePicturePresentationRetentionSourceSequence = 0;
 	bool latestActivePictureGlobalNearBlackEvaluated = false;
 	bool latestActivePictureGlobalNearBlack = false;
 	double latestActivePictureGlobalLumaP90 = 0.0;
 	bool latestActivePictureOutwardVisibleBoundsAvailable = false;
+	bool latestKnownTrustedReacquisitionAvailable = false;
+	ActivePictureBounds latestKnownTrustedReacquisitionBounds;
+	ActivePictureClassification latestKnownTrustedReacquisitionClassification =
+		ActivePictureClassification::UNAVAILABLE;
+	uint64_t latestKnownTrustedReacquisitionSourceGeneration = 0;
+	uint64_t latestKnownTrustedReacquisitionSourceSequence = 0;
+	uint64_t latestKnownTrustedReacquisitionPresentationEpoch = 0;
+	bool latestKnownTrustedReacquisitionCurrentAssociation = false;
 	AlphaSourceCrop::NearBlackPresentationEpisodeState
 		nearBlackPresentationEpisode;
 	std::string latestActivePicturePresentationRetentionReason;
@@ -7189,10 +7200,21 @@ struct LibplaceboVideoRenderer::Impl
 		presentationOwnedGeometryTransitionDeferred = false;
 		latestActivePicturePresentationRetentionSafe = false;
 		latestActivePicturePresentationRetentionEvaluated = false;
+		latestActivePicturePresentationRetentionBounds = {};
+		latestActivePicturePresentationRetentionSourceGeneration = 0;
+		latestActivePicturePresentationRetentionSourceSequence = 0;
 		latestActivePictureGlobalNearBlackEvaluated = false;
 		latestActivePictureGlobalNearBlack = false;
 		latestActivePictureGlobalLumaP90 = 0.0;
 		latestActivePictureOutwardVisibleBoundsAvailable = false;
+		latestKnownTrustedReacquisitionAvailable = false;
+		latestKnownTrustedReacquisitionBounds = {};
+		latestKnownTrustedReacquisitionClassification =
+			ActivePictureClassification::UNAVAILABLE;
+		latestKnownTrustedReacquisitionSourceGeneration = 0;
+		latestKnownTrustedReacquisitionSourceSequence = 0;
+		latestKnownTrustedReacquisitionPresentationEpoch = 0;
+		latestKnownTrustedReacquisitionCurrentAssociation = false;
 		latestActivePicturePresentationRetentionReason.clear();
 		fullRasterPresentationAuthorityAvailable = false;
 		fullRasterPresentationAuthoritySourceGeneration = 0;
@@ -7364,6 +7386,15 @@ struct LibplaceboVideoRenderer::Impl
 			latestActivePicturePresentationRetentionEvaluated =
 				hadCompatiblePresentation && retentionEvidence.analysisValid &&
 				retentionEvidence.presentationValid;
+			latestActivePicturePresentationRetentionBounds =
+				latestActivePicturePresentationRetentionEvaluated
+					? presentationBeforeObservation : ActivePictureBounds{};
+			latestActivePicturePresentationRetentionSourceGeneration =
+				latestActivePicturePresentationRetentionEvaluated
+					? analysisSource.generation : 0;
+			latestActivePicturePresentationRetentionSourceSequence =
+				latestActivePicturePresentationRetentionEvaluated
+					? frameNumber : 0;
 			latestActivePictureGlobalNearBlackEvaluated =
 				globalNearBlack.evaluated;
 			latestActivePictureGlobalNearBlack = globalNearBlack.nearBlack;
@@ -7577,7 +7608,34 @@ struct LibplaceboVideoRenderer::Impl
 			}
 			const ActivePictureTransitionDecision transition =
 				applyScheduledDecision ? scheduledDecision->transition :
-				nlsTransition.Observe(observation);
+					nlsTransition.Observe(observation);
+			if (transition.publish)
+			{
+				latestKnownTrustedReacquisitionAvailable =
+					transition.knownTrustedGeometryReacquired;
+				latestKnownTrustedReacquisitionBounds =
+					transition.knownTrustedGeometryReacquired
+						? transition.bounds : ActivePictureBounds{};
+				latestKnownTrustedReacquisitionClassification =
+					transition.knownTrustedGeometryReacquired
+						? transition.authoritativeClassification
+						: ActivePictureClassification::UNAVAILABLE;
+				latestKnownTrustedReacquisitionSourceGeneration =
+					transition.knownTrustedGeometryReacquired
+						? analysisSource.generation : 0;
+				latestKnownTrustedReacquisitionSourceSequence =
+					transition.knownTrustedGeometryReacquired ? frameNumber : 0;
+				latestKnownTrustedReacquisitionPresentationEpoch =
+					transition.knownTrustedGeometryReacquired
+						? currentIdentity.viewportGeneration : 0;
+				latestKnownTrustedReacquisitionCurrentAssociation =
+					transition.knownTrustedGeometryReacquired &&
+					!applyScheduledDecision;
+			}
+			const bool suppressEpisodeKnownTrustedPublication =
+				transition.publish && transition.stable &&
+				transition.knownTrustedGeometryReacquired &&
+				nearBlackAcquisitionBlocked;
 			if (hasScheduledDecision && !applyScheduledDecision)
 			{
 				DebugLog::Log(
@@ -7603,18 +7661,24 @@ struct LibplaceboVideoRenderer::Impl
 				latestActivePictureObservationSupportsCrop = false;
 				nlsGeometrySourceGeneration = 0;
 			}
-			else if (transition.publish && transition.stable)
+			else if (transition.publish && transition.stable &&
+				!suppressEpisodeKnownTrustedPublication)
 			{
 				nlsGeometry = transition.bounds;
 				nlsGeometryAvailable = true;
 				nlsTransitionWithdrawn = false;
-				nlsGeometryClassification = evidence.classification;
+				nlsGeometryClassification =
+					transition.authoritativeClassification !=
+						ActivePictureClassification::UNAVAILABLE
+					? transition.authoritativeClassification
+					: evidence.classification;
 				nlsGeometrySourceGeneration = analysisSource.generation;
 				nlsGeometrySourceFormatKey =
 					currentIdentity.sourceFormatGeneration;
 				++nlsGeometryGeneration;
 			}
-			else if (transition.stable && !nlsTransitionWithdrawn)
+			else if (transition.stable && !nlsTransitionWithdrawn &&
+				!suppressEpisodeKnownTrustedPublication)
 			{
 				// Retain the published geometry as temporal context for NLS. The
 				// source-crop policy independently requires the latest observation
@@ -8782,7 +8846,7 @@ struct LibplaceboVideoRenderer::Impl
 
 		auto configureViewport =
 			[this, &image, width, height, frameGeneration, sourceSequence,
-			 viewportRequestSerial,
+			 viewportRequestSerial, captureRateHz,
 			 sceneHold, sceneResult, cadenceRepeat, subtitleShiftSourcePixels,
 			 subtitleBarAnalysisScheduled, subtitleBarAnalysisCompleted,
 			 forceSubtitleBarAnalysis,
@@ -9153,12 +9217,50 @@ struct LibplaceboVideoRenderer::Impl
 				effectiveClassification ==
 					ActivePictureClassification::BAR_CROP_TRUSTED &&
 				effectiveGeometrySourceGeneration == frameGeneration;
+			episodeInput.trustedCrop = episodeInput.trustedCropAvailable
+				? effectiveGeometry : ActivePictureBounds{};
 			episodeInput.boundedVisibleContentOutsideCrop =
 				episodeInput.measurementCurrent &&
 				latestActivePictureOutwardVisibleBoundsAvailable;
 			episodeInput.fullRasterAuthorityAvailable =
 				fullRasterPresentationAuthorityAvailable &&
 				fullRasterPresentationAuthoritySourceGeneration == frameGeneration;
+			episodeInput.cadenceRepeat = cadenceRepeat;
+			episodeInput.currentObservationAvailable =
+				episodeInput.measurementCurrent &&
+				latestActivePictureEvidenceAvailable;
+			episodeInput.currentObservation =
+				episodeInput.currentObservationAvailable
+					? latestActivePictureEvidenceBounds : ActivePictureBounds{};
+			episodeInput.retentionEvaluated =
+				latestActivePicturePresentationRetentionEvaluated &&
+				latestActivePicturePresentationRetentionSourceGeneration ==
+					frameGeneration;
+			episodeInput.retentionSafe =
+				episodeInput.retentionEvaluated &&
+				latestActivePicturePresentationRetentionSafe;
+			episodeInput.retentionBounds = episodeInput.retentionEvaluated
+				? latestActivePicturePresentationRetentionBounds
+				: ActivePictureBounds{};
+			episodeInput.retentionSourceSequence =
+				episodeInput.retentionEvaluated
+					? latestActivePicturePresentationRetentionSourceSequence : 0;
+			episodeInput.knownTrustedGeometryReacquired =
+				latestKnownTrustedReacquisitionAvailable;
+			episodeInput.reacquiredTrustedGeometry =
+				latestKnownTrustedReacquisitionBounds;
+			episodeInput.reacquiredTrustedClassification =
+				latestKnownTrustedReacquisitionClassification;
+			episodeInput.reacquiredSourceGeneration =
+				latestKnownTrustedReacquisitionSourceGeneration;
+			episodeInput.reacquiredSourceSequence =
+				latestKnownTrustedReacquisitionSourceSequence;
+			episodeInput.reacquiredPresentationEpoch =
+				latestKnownTrustedReacquisitionPresentationEpoch;
+			episodeInput.reacquisitionIsCurrentAssociation =
+				latestKnownTrustedReacquisitionCurrentAssociation;
+			episodeInput.framesPerSecond = captureRateHz;
+			episodeInput.presentationEpoch = viewportRequestSerial;
 			episodeInput.sourceGeneration = frameGeneration;
 			episodeInput.sourceSequence = sourceSequence;
 			const AlphaSourceCrop::NearBlackPresentationEpisodeDecision
@@ -9166,21 +9268,30 @@ struct LibplaceboVideoRenderer::Impl
 					AlphaSourceCrop::EvaluateNearBlackPresentationEpisode(
 						episodeInput);
 			if (episodeDecision.started || episodeDecision.changedToFullRaster ||
-				episodeDecision.ended)
+				episodeDecision.releasedToTrustedCrop || episodeDecision.ended ||
+				episodeDecision.revalidationChanged)
 			{
 				DebugLog::Log(
-					"Alpha near-black presentation episode: sequence=%llu generation=%llu mode=%s started=%d to_full=%d ended=%d evaluated=%d near_black=%d luma_p90=%.1f trusted_crop=%d outward_visible=%d scene=%d reason=\"%s\"",
+					"Alpha near-black presentation episode: sequence=%llu generation=%llu mode=%s started=%d to_full=%d to_crop=%d ended=%d proof=%u/%u evaluated=%d near_black=%d luma_p90=%.1f trusted_crop=%d reacquired=%d current_assoc=%d retention_safe=%d outward_visible=%d scene=%d reason=\"%s\"",
 					static_cast<unsigned long long>(sourceSequence),
 					static_cast<unsigned long long>(frameGeneration),
 					AlphaSourceCrop::NearBlackPresentationModeName(
 						episodeDecision.state.mode),
 					episodeDecision.started ? 1 : 0,
 					episodeDecision.changedToFullRaster ? 1 : 0,
+					episodeDecision.releasedToTrustedCrop ? 1 : 0,
 					episodeDecision.ended ? 1 : 0,
+					static_cast<unsigned>(
+						episodeDecision.revalidationSamples),
+					static_cast<unsigned>(
+						episodeDecision.revalidationSamplesRequired),
 					episodeInput.nearBlackEvaluated ? 1 : 0,
 					episodeInput.globalNearBlack ? 1 : 0,
 					latestActivePictureGlobalLumaP90,
 					episodeInput.trustedCropAvailable ? 1 : 0,
+					episodeInput.knownTrustedGeometryReacquired ? 1 : 0,
+					episodeInput.reacquisitionIsCurrentAssociation ? 1 : 0,
+					episodeInput.retentionSafe ? 1 : 0,
 					episodeInput.boundedVisibleContentOutsideCrop ? 1 : 0,
 					episodeInput.sceneBoundary ? 1 : 0,
 					episodeDecision.reason.c_str());

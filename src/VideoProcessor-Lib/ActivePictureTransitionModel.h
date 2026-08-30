@@ -109,6 +109,12 @@ struct ActivePictureTransitionDecision
 	bool stable = false;
 	bool diagnostic = false;
 	bool clearTransition = false;
+	// The authority owned by the published stable contract. This may differ
+	// from the current raw observation when a provisional sample exactly
+	// reacquires geometry that was trusted earlier in the source generation.
+	ActivePictureClassification authoritativeClassification =
+		ActivePictureClassification::UNAVAILABLE;
+	bool knownTrustedGeometryReacquired = false;
 	uint8_t matchingCandidates = 0;
 	uint8_t contradictoryCandidates = 0;
 	uint8_t candidateReversals = 0;
