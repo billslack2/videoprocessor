@@ -325,6 +325,70 @@ rollback, construct the PQ target, require frame LUT attachment, and suppress
 Present on any mismatch or render failure. Resize, recreation, monitor change,
 terminal black, and retirement must all participate in the same state machine.
 
+### Contract checkpoint 9: fail-closed HDR10 carrier transaction
+
+The pure/injected carrier transaction is committed and pushed as `e946565f`.
+It owns the exact Check/Set/recheck/HDR10-metadata activation order and the
+metadata-clear/Full-G22-P709-set/recheck rollback order. State is bound to
+nonzero, exact swapchain, application-profile, and active LUT transaction
+generations. An active or suppressed live swapchain cannot be reset by another
+activation request; only verified rollback or destruction/replacement by a new
+swapchain generation clears that ownership.
+
+Repeated rollback failure remains `SUPPRESS_RECREATE`; a later complete retry
+may return to SDR. Frame presentation authorization joins the carrier state to
+the projection's actual LUT transaction and additionally requires that this
+frame attached the conversion LUT and rendered successfully. Tests cover
+activation and rollback order, active-to-invalid-profile retirement, failed
+rollback retries, suppression persistence, generation mismatches, and the
+carrier/LUT/render Present truth table.
+
+The x64 Release renderer and test projects build, the output-policy class
+passes 57/57, and the LUT-parser/GPU class passes 30/30. Independent pipeline,
+profile-generation, and madVR-contract reviews report no remaining P1/P2. This
+checkpoint remains unarmed by itself and is not tester-ready.
+
+### Contract checkpoint 10: live external-HDR carrier and frame transaction
+
+The live vertical slice is committed and pushed as `241e8a9d`. External 3D-LUT
+mode now forces the top-level VP-owned flip/R10 presenter with one verified
+Full/sRGB/Rec.709 rollback and internal-fallback baseline. For an eligible PQ
+frame with a current selected slot, VP checks/sets/rechecks full-range
+G2084/P2020, submits the independently configured HDR10 metadata, constructs a
+10-bit Full RGB PQ/BT.2020 libplacebo target, masks the legacy target/native LUT,
+and attaches the selected Cube only as frame-local `PL_LUT_CONVERSION`.
+
+Present occurs only after the exact carrier/application/LUT generations join,
+the selected LUT is attached to that frame, and `pl_render_image` succeeds.
+GetBuffer/wrapped-target failure, render or attachment failure, resize, monitor
+change, deferred output renegotiation, terminal black, profile-generation
+change, recreation, and retirement all rollback or suppress/recreate the
+carrier. DXGI interface references are released before recreating a flip chain.
+Live and no-delta profile intents carry settings and application generation as
+one render-safe-point value, including automatic source/viewport refresh, so an
+old carrier cannot authorize a newer profile.
+
+HDR passthrough is deliberately not claimed by this checkpoint: runtime reports
+it unavailable and masks the legacy calibration LUT rather than silently
+aliasing it to a completed passthrough path. ADL LUT banks and asynchronous
+runtime Cube reload remain future work.
+
+Validation passes the fresh x64 Release VPRenderer rebuild plus 57/57 output-
+policy and 30/30 LUT/parser/GPU tests. Three rounds of independent pipeline,
+profile-generation, and madVR-contract review found and corrected swapchain-
+reference lifetime, early-exit rollback, fallback-baseline, legacy-parameter,
+generation-coalescing, and viewport-state defects; final reviews report no
+remaining P1/P2 in the external-3DLUT slice. A full solution build could not be
+used as final evidence in this environment: VS2019 lacks the required v143
+toolset, while VS18 hits the existing ConfigTests `Path`/`PATH` child-process
+environment collision. The directly affected x64 Release products and focused
+tests succeed.
+
+This is the first end-to-end implementation checkpoint, but it is not yet a
+tester package. Next acceptance work is a controlled real-display run on an
+Advanced Color/HDR-capable top-level output, confirming activation/rollback
+logs, HDR metadata, non-identity Cube effect, and no Present on forced failure.
+
 ## Implementation progress — 2026-08-29
 
 The first source slice is committed and pushed on
