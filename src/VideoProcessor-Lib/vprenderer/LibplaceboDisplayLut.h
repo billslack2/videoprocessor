@@ -31,6 +31,7 @@ namespace LibplaceboDisplayLut
 		PATH_OUTSIDE_BASE,
 		INVALID_CUBE,
 		ONE_DIMENSIONAL,
+		UNSUPPORTED_DOMAIN,
 		UNSAFE_DIMENSIONS
 	};
 
@@ -42,14 +43,6 @@ namespace LibplaceboDisplayLut
 		size_t fileBytes = 0;
 	};
 
-	enum class ContractRejection
-	{
-		NONE,
-		OUTPUT_NOT_SIGNALED,
-		P3_NOT_SUPPORTED,
-		PROFILE_MISMATCH
-	};
-
 	// When constrainedBaseDirectory is supplied, the file opened at path must
 	// resolve below that directory. Validation and reading use the same handle.
 	LoadResult Load(
@@ -57,22 +50,4 @@ namespace LibplaceboDisplayLut
 		const std::string& path,
 		const std::string& constrainedBaseDirectory = std::string());
 	const char* ShortReason(Rejection rejection);
-	bool TargetMatchesSignal(
-		enum pl_color_primaries targetPrimaries,
-		enum pl_color_transfer targetTransfer,
-		enum pl_color_levels targetRange,
-		enum pl_color_primaries signalPrimaries,
-		enum pl_color_transfer signalTransfer,
-		enum pl_color_levels signalRange);
-	ContractRejection ValidateContract(
-		enum pl_color_primaries requestedPrimaries,
-		enum pl_color_transfer requestedTransfer,
-		enum pl_color_levels requestedRange,
-		double requestedNits,
-		enum pl_color_primaries targetPrimaries,
-		enum pl_color_transfer targetTransfer,
-		enum pl_color_levels targetRange,
-		double targetNits,
-		bool targetMatchesSignaledOutput);
-	const char* ShortReason(ContractRejection rejection);
 }
