@@ -1767,11 +1767,26 @@ void testRendererProfileSectionsCollapseAndPersist()
         QStringLiteral("config.vprenderer.dithering"));
     require(dithering->itemText(dithering->findData(QStringLiteral("AUTO"))) ==
         QStringLiteral("Auto") &&
-        dithering->itemText(dithering->findData(QStringLiteral("on"))) ==
-        QStringLiteral("On") &&
+        dithering->itemText(dithering->findData(QStringLiteral("blue_noise"))) ==
+        QStringLiteral("Blue noise") &&
+        dithering->itemText(dithering->findData(QStringLiteral("ordered_lut"))) ==
+        QStringLiteral("Ordered (LUT)") &&
+        dithering->itemText(dithering->findData(QStringLiteral("ordered_fixed"))) ==
+        QStringLiteral("Ordered (fixed)") &&
+        dithering->itemText(dithering->findData(QStringLiteral("white_noise"))) ==
+        QStringLiteral("White noise") &&
+        dithering->itemText(dithering->findData(
+            QStringLiteral("error_diffusion_sierra_lite"))) ==
+        QStringLiteral("Error diffusion: Sierra Lite") &&
+        dithering->itemText(dithering->findData(
+            QStringLiteral("error_diffusion_floyd_steinberg"))) ==
+        QStringLiteral("Error diffusion: Floyd-Steinberg") &&
+        dithering->itemText(dithering->findData(
+            QStringLiteral("error_diffusion_sierra3"))) ==
+        QStringLiteral("Error diffusion: Sierra 3") &&
         dithering->itemText(dithering->findData(QStringLiteral("off"))) ==
         QStringLiteral("Off"),
-        "The dithering selector does not use concise Auto/On/Off labels");
+        "The dithering selector does not expose every libplacebo method");
     QComboBox* displayBitDepth = requireControl<QComboBox>(window,
         QStringLiteral("config.vprenderer.display_bit_depth"));
     require(displayBitDepth->currentData().toString() == QStringLiteral("AUTO") &&
@@ -2516,8 +2531,8 @@ void testChoiceLabelsAndVpRendererName()
         "Auto upscaler does not use a concise italic effective-value label");
     require(requireControl<QLabel>(window,
         QStringLiteral("config.vprenderer.dithering.auto_status"))->text() ==
-            QStringLiteral("Auto: On (blue-noise dithering)"),
-        "Auto dithering does not identify blue-noise dithering as its On policy");
+            QStringLiteral("Auto: Blue noise"),
+        "Auto dithering does not identify its blue-noise policy");
     selectData(quality, QStringLiteral("balanced"));
     require(upscalerStatus->text() == QStringLiteral("Auto: Lanczos"),
         "Auto policy preview did not refresh after rendering quality changed");

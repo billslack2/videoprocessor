@@ -475,7 +475,14 @@ namespace RendererProfileConfig
 					"bicubic", "gaussian", "catmull_rom", "mitchell", "lanczos",
 					"none", "ewa_lanczos" });
 			}
-			if (key == "sigmoid" || key == "dithering") return IsChoice(value, { "auto", "on", "off" });
+			if (key == "sigmoid") return IsChoice(value, { "auto", "on", "off" });
+			if (key == "dithering") return IsChoice(value, { "auto", "on", "off",
+				"blue_noise", "ordered_lut", "ordered_fixed", "white_noise",
+				"error_diffusion_simple", "error_diffusion_false_fs",
+				"error_diffusion_sierra_lite", "error_diffusion_floyd_steinberg",
+				"error_diffusion_atkinson", "error_diffusion_jarvis_judice_ninke",
+				"error_diffusion_stucki", "error_diffusion_burkes",
+				"error_diffusion_sierra2", "error_diffusion_sierra3" });
 			if (key == "deband_strength") return IsChoice(value, { "auto", "off", "light", "default" });
 			expected = "a scaling-owned setting"; return false;
 		}

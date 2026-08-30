@@ -147,8 +147,9 @@ namespace
 			settings.deband = ToggleFromProfileSetting(deband->second);
 		settings.sigmoid = ToggleFromProfileSetting(
 			RequiredProfileSetting(profile, "sigmoid"));
-		settings.dithering = ToggleFromProfileSetting(
+		settings.dithering = ConfigFile::NormalizeName(
 			RequiredProfileSetting(profile, "dithering"));
+		if (settings.dithering == "on") settings.dithering = "blue_noise";
 		const std::string contrast = RequiredProfileSetting(profile,
 			"contrast_recovery");
 		settings.hasContrastRecovery = ConfigFile::NormalizeName(contrast) != "auto";
@@ -397,7 +398,7 @@ namespace VideoProcessorTest
 			settings.sigmoid = Toggle::On;
 			settings.peakDetection = PeakDetection::HighQuality;
 			settings.deband = Toggle::On;
-			settings.dithering = Toggle::On;
+			settings.dithering = "blue_noise";
 			Projection projection;
 			BuildOrFail(settings, false, projection);
 
@@ -437,10 +438,36 @@ namespace VideoProcessorTest
 			Assert::IsTrue(projection.renderParams.error_diffusion == nullptr,
 				L"Explicit dithering must not be replaced by a preset's error diffusion.");
 
+			const std::pair<const char*, const pl_error_diffusion_kernel*> errorDiffusion[] =
+			{
+				{ "error_diffusion_simple", &pl_error_diffusion_simple },
+				{ "error_diffusion_false_fs", &pl_error_diffusion_false_fs },
+				{ "error_diffusion_sierra_lite", &pl_error_diffusion_sierra_lite },
+				{ "error_diffusion_floyd_steinberg", &pl_error_diffusion_floyd_steinberg },
+				{ "error_diffusion_atkinson", &pl_error_diffusion_atkinson },
+				{ "error_diffusion_jarvis_judice_ninke", &pl_error_diffusion_jarvis_judice_ninke },
+				{ "error_diffusion_stucki", &pl_error_diffusion_stucki },
+				{ "error_diffusion_burkes", &pl_error_diffusion_burkes },
+				{ "error_diffusion_sierra2", &pl_error_diffusion_sierra2 },
+				{ "error_diffusion_sierra3", &pl_error_diffusion_sierra3 },
+			};
+			for (const auto& selection : errorDiffusion)
+			{
+				settings.dithering = selection.first;
+				BuildOrFail(settings, false, projection);
+				Assert::IsTrue(projection.renderParams.dither_params == nullptr,
+					L"Explicit error diffusion must not retain ordinary dithering.");
+				Assert::IsTrue(projection.renderParams.error_diffusion == selection.second,
+					L"The selected error-diffusion kernel was not forwarded to libplacebo.");
+				BuildOrFail(settings, true, projection);
+				Assert::IsTrue(projection.renderParams.error_diffusion == nullptr,
+					L"A display 3D LUT must use the compatible non-error-diffusion path.");
+			}
+
 			settings.sigmoid = Toggle::Off;
 			settings.peakDetection = PeakDetection::Off;
 			settings.deband = Toggle::Off;
-			settings.dithering = Toggle::Off;
+			settings.dithering = "off";
 			BuildOrFail(settings, false, projection);
 			Assert::IsTrue(projection.renderParams.sigmoid_params == nullptr);
 			Assert::IsTrue(projection.renderParams.peak_detect_params == nullptr);

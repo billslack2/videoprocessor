@@ -77,6 +77,21 @@ namespace
 		if (downscaler == "bilinear") return "pl_filter_bilinear";
 		return nullptr;
 	}
+
+	const pl_error_diffusion_kernel* ErrorDiffusionKernel(const std::string& value)
+	{
+		if (value == "error_diffusion_simple") return &pl_error_diffusion_simple;
+		if (value == "error_diffusion_false_fs") return &pl_error_diffusion_false_fs;
+		if (value == "error_diffusion_sierra_lite") return &pl_error_diffusion_sierra_lite;
+		if (value == "error_diffusion_floyd_steinberg") return &pl_error_diffusion_floyd_steinberg;
+		if (value == "error_diffusion_atkinson") return &pl_error_diffusion_atkinson;
+		if (value == "error_diffusion_jarvis_judice_ninke") return &pl_error_diffusion_jarvis_judice_ninke;
+		if (value == "error_diffusion_stucki") return &pl_error_diffusion_stucki;
+		if (value == "error_diffusion_burkes") return &pl_error_diffusion_burkes;
+		if (value == "error_diffusion_sierra2") return &pl_error_diffusion_sierra2;
+		if (value == "error_diffusion_sierra3") return &pl_error_diffusion_sierra3;
+		return nullptr;
+	}
 }
 
 namespace LibplaceboRenderParameters
@@ -243,7 +258,7 @@ namespace LibplaceboRenderParameters
 
 		auto setDithering = [&]() -> bool
 		{
-			if (settings.dithering == Toggle::Off)
+			if (settings.dithering == "off")
 			{
 				// libplacebo treats error diffusion as a separate, preferred
 				// dithering path. Both pointers must be cleared for Off to mean Off.
@@ -251,16 +266,33 @@ namespace LibplaceboRenderParameters
 				projection.renderParams.error_diffusion = nullptr;
 				return true;
 			}
-			if (settings.dithering == Toggle::On)
+			if (const pl_error_diffusion_kernel* kernel =
+				ErrorDiffusionKernel(settings.dithering))
+			{
+				// This needs compute-shader and image-storage support. A display 3D
+				// LUT uses the renderer's compatible target-LUT path instead.
+				projection.renderParams.dither_params = nullptr;
+				projection.renderParams.error_diffusion = hasDisplayLut ? nullptr : kernel;
+				return true;
+			}
+			if (settings.dithering != "auto")
 			{
 				const pl_dither_params* defaults =
 					ReadLibplaceboData<pl_dither_params>(
 						"pl_dither_default_params", error);
 				if (!defaults) return false;
 				projection.ditherParams = *defaults;
+				if (settings.dithering == "ordered_lut")
+					projection.ditherParams.method = PL_DITHER_ORDERED_LUT;
+				else if (settings.dithering == "ordered_fixed")
+					projection.ditherParams.method = PL_DITHER_ORDERED_FIXED;
+				else if (settings.dithering == "white_noise")
+					projection.ditherParams.method = PL_DITHER_WHITE_NOISE;
+				else
+					projection.ditherParams.method = PL_DITHER_BLUE_NOISE;
 				projection.renderParams.dither_params = &projection.ditherParams;
-				// On explicitly selects libplacebo's ordinary, gamma-aware default
-				// instead of inheriting a preset's error-diffusion kernel.
+				// An explicit method selects ordinary, gamma-aware dithering instead
+				// of inheriting a preset's error-diffusion kernel.
 				projection.renderParams.error_diffusion = nullptr;
 				return true;
 			}

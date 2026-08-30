@@ -915,7 +915,7 @@ namespace
 		std::string debandStrength = "auto";
 		AutoToggle deband = AutoToggle::AUTO;
 		AutoToggle sigmoid = AutoToggle::AUTO;
-		AutoToggle dithering = AutoToggle::AUTO;
+		std::string dithering = "auto";
 		std::string displayBitDepth = "auto";
 		std::string outputPresentation = "auto";
 		std::string outputRange = "auto";
@@ -1012,7 +1012,7 @@ namespace
 			<< settings.debandStrength << '|'
 			<< static_cast<int>(settings.deband) << '|'
 			<< static_cast<int>(settings.sigmoid) << '|'
-			<< static_cast<int>(settings.dithering) << '|'
+			<< settings.dithering << '|'
 			<< settings.displayBitDepth << '|'
 			<< settings.outputPresentation << '|' << settings.outputRange << '|'
 			<< settings.outputTransportGamma << '|' << settings.outputGamma << '|'
@@ -1535,6 +1535,28 @@ namespace
 		return defaultValue;
 	}
 
+	std::string ReadDithering(const ConfigFile& config, const char* key)
+	{
+		std::string rawValue;
+		if (!TryGetDisplayString(config, key, rawValue)) return "auto";
+		const std::string value = ConfigFile::NormalizeName(rawValue);
+		if (value == "on" || value == "true") return "blue_noise";
+		if (value == "off" || value == "false") return "off";
+		if (value == "auto" || value == "blue_noise" ||
+			value == "ordered_lut" || value == "ordered_fixed" ||
+			value == "white_noise" || value == "error_diffusion_simple" ||
+			value == "error_diffusion_false_fs" ||
+			value == "error_diffusion_sierra_lite" ||
+			value == "error_diffusion_floyd_steinberg" ||
+			value == "error_diffusion_atkinson" ||
+			value == "error_diffusion_jarvis_judice_ninke" ||
+			value == "error_diffusion_stucki" || value == "error_diffusion_burkes" ||
+			value == "error_diffusion_sierra2" || value == "error_diffusion_sierra3") return value;
+		DebugLog::Log("libplacebo: invalid %s value '%s'; using auto",
+			key, rawValue.c_str());
+		return "auto";
+	}
+
 	PeakDetection ReadPeakDetection(const ConfigFile& config, const char* key,
 		PeakDetection defaultValue = PeakDetection::Auto)
 	{
@@ -1623,6 +1645,26 @@ namespace
 			if (config.TryGetBool(rule.section, key, enabled)) { target = enabled ? AutoToggle::ON : AutoToggle::OFF; return; }
 			DebugLog::Log("display rule '%s': invalid %s value '%s'; retaining base setting", rule.name.c_str(), key, raw.c_str());
 		};
+		auto readDithering = [&config, &rule](std::string& target)
+		{
+			std::string raw;
+			if (!config.TryGetString(rule.section, "dithering", raw)) return;
+			const std::string value = ConfigFile::NormalizeName(raw);
+			if (value == "on" || value == "true") { target = "blue_noise"; return; }
+			if (value == "off" || value == "false") { target = "off"; return; }
+			if (value == "auto" || value == "blue_noise" ||
+				value == "ordered_lut" || value == "ordered_fixed" ||
+				value == "white_noise" || value == "error_diffusion_simple" ||
+				value == "error_diffusion_false_fs" ||
+				value == "error_diffusion_sierra_lite" ||
+				value == "error_diffusion_floyd_steinberg" ||
+				value == "error_diffusion_atkinson" ||
+				value == "error_diffusion_jarvis_judice_ninke" ||
+				value == "error_diffusion_stucki" || value == "error_diffusion_burkes" ||
+				value == "error_diffusion_sierra2" || value == "error_diffusion_sierra3") { target = value; return; }
+			DebugLog::Log("display rule '%s': invalid dithering value '%s'; retaining base setting",
+				rule.name.c_str(), raw.c_str());
+		};
 		auto readPeakDetection = [&config, &rule](PeakDetection& target)
 		{
 			std::string raw;
@@ -1689,7 +1731,7 @@ namespace
 					rule.name.c_str(), raw.c_str());
 		}
 		readToggle("sigmoid", settings.sigmoid);
-		readToggle("dithering", settings.dithering);
+		readDithering(settings.dithering);
 		readChoice("display_bit_depth", settings.displayBitDepth,
 			{ "auto", "8", "10" });
 		readChoice("output_presentation", settings.outputPresentation,
@@ -2049,7 +2091,7 @@ namespace
 					"libplacebo: deband_strength must be Auto, off, light, or default; retaining the debanding setting");
 		}
 		settings.sigmoid = ReadAutoToggle(config, "sigmoid");
-		settings.dithering = ReadAutoToggle(config, "dithering");
+		settings.dithering = ReadDithering(config, "dithering");
 		settings.displayBitDepth = ReadChoice(
 			config, "display_bit_depth", "auto", { "auto", "8", "10" });
 		settings.outputPresentation = ReadChoice(
@@ -4280,8 +4322,7 @@ struct LibplaceboVideoRenderer::Impl
 			static_cast<LibplaceboRenderParameters::Toggle>(settings.deband);
 		parameterSettings.sigmoid =
 			static_cast<LibplaceboRenderParameters::Toggle>(settings.sigmoid);
-		parameterSettings.dithering =
-			static_cast<LibplaceboRenderParameters::Toggle>(settings.dithering);
+		parameterSettings.dithering = settings.dithering;
 		// Output geometry is live state. Without dynamic constants libplacebo
 		// includes dimensions and related values in generated shader programs,
 		// turning every previously unseen window size into a cold compile.
@@ -4339,7 +4380,7 @@ struct LibplaceboVideoRenderer::Impl
 				(renderParams.deband_params ? "auto/on" : "auto/off") :
 				settings.debandStrength.c_str(),
 			renderParams.error_diffusion ? "auto/error-diffusion" :
-				(renderParams.dither_params ? "on" : "off"),
+				(renderParams.dither_params ? settings.dithering.c_str() : "off"),
 			renderParams.dynamic_constants ? 1 : 0,
 			settings.displayBitDepth.c_str(),
 			settings.outputPresentation.c_str(),

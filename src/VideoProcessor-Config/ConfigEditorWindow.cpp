@@ -1705,8 +1705,8 @@ void ConfigEditorWindow::refreshRendererAutoStatus()
         }
         else if (binding.key == QStringLiteral("dithering"))
         {
-            text = qualityValue(QStringLiteral("On (blue-noise dithering)"),
-                QStringLiteral("On (blue-noise dithering)"), QStringLiteral("Off"));
+            text = qualityValue(QStringLiteral("Blue noise"),
+                QStringLiteral("Blue noise"), QStringLiteral("Off"));
         }
         else if (binding.key == QStringLiteral("display_bit_depth"))
             text = QStringLiteral("Output format");
@@ -3809,14 +3809,41 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         auto* debanding = addChoice(QStringLiteral("Debanding"), QStringLiteral("deband_strength"), { QStringLiteral("AUTO"), QStringLiteral("default"), QStringLiteral("light"), QStringLiteral("off") });
         addRendererAutoStatus(QStringLiteral("deband_strength"), debanding);
         auto* dithering = addChoice(QStringLiteral("Dithering"), QStringLiteral("dithering"),
-            { QStringLiteral("AUTO"), QStringLiteral("on"), QStringLiteral("off") });
+            { QStringLiteral("AUTO"), QStringLiteral("blue_noise"),
+                QStringLiteral("ordered_lut"), QStringLiteral("ordered_fixed"),
+                QStringLiteral("white_noise"), QStringLiteral("error_diffusion_simple"),
+                QStringLiteral("error_diffusion_false_fs"),
+                QStringLiteral("error_diffusion_sierra_lite"),
+                QStringLiteral("error_diffusion_floyd_steinberg"),
+                QStringLiteral("error_diffusion_atkinson"),
+                QStringLiteral("error_diffusion_jarvis_judice_ninke"),
+                QStringLiteral("error_diffusion_stucki"),
+                QStringLiteral("error_diffusion_burkes"),
+                QStringLiteral("error_diffusion_sierra2"),
+                QStringLiteral("error_diffusion_sierra3"), QStringLiteral("off") });
         dithering->setItemText(1, QStringLiteral("Auto"));
-        dithering->setItemText(2, QStringLiteral("On"));
-        dithering->setItemText(3, QStringLiteral("Off"));
+        dithering->setItemText(2, QStringLiteral("Blue noise"));
+        dithering->setItemText(3, QStringLiteral("Ordered (LUT)"));
+        dithering->setItemText(4, QStringLiteral("Ordered (fixed)"));
+        dithering->setItemText(5, QStringLiteral("White noise"));
+        dithering->setItemText(6, QStringLiteral("Error diffusion: Simple"));
+        dithering->setItemText(7, QStringLiteral("Error diffusion: False Floyd-Steinberg"));
+        dithering->setItemText(8, QStringLiteral("Error diffusion: Sierra Lite"));
+        dithering->setItemText(9, QStringLiteral("Error diffusion: Floyd-Steinberg"));
+        dithering->setItemText(10, QStringLiteral("Error diffusion: Atkinson"));
+        dithering->setItemText(11, QStringLiteral("Error diffusion: Jarvis-Judice-Ninke"));
+        dithering->setItemText(12, QStringLiteral("Error diffusion: Stucki"));
+        dithering->setItemText(13, QStringLiteral("Error diffusion: Burkes"));
+        dithering->setItemText(14, QStringLiteral("Error diffusion: Sierra 2"));
+        dithering->setItemText(15, QStringLiteral("Error diffusion: Sierra 3"));
+        dithering->setItemText(16, QStringLiteral("Off"));
         dithering->setToolTip(QStringLiteral(
-            "Auto follows the rendering-quality preset: On (blue-noise dithering) "
-            "for Balanced and High, or Off for Fast. On explicitly uses "
-            "libplacebo's default blue-noise dithering. Off disables dithering."));
+            "Auto follows the rendering-quality preset: Blue noise for Balanced "
+            "and High, or Off for Fast. Blue noise is libplacebo's default and "
+            "recommended mode. Ordered modes and White noise are alternate "
+            "libplacebo methods. Error-diffusion modes require compute shaders "
+            "and are substantially more expensive; they are unavailable while an "
+            "external 3D display LUT is active. Off disables dithering."));
         addRendererAutoStatus(QStringLiteral("dithering"), dithering);
         auto* displayBitDepth = addChoice(QStringLiteral("Display bit depth"),
             QStringLiteral("display_bit_depth"),

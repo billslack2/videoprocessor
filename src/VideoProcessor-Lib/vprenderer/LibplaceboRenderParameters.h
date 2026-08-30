@@ -45,7 +45,9 @@ namespace LibplaceboRenderParameters
 		std::string debandStrength = "auto";
 		Toggle deband = Toggle::Auto;
 		Toggle sigmoid = Toggle::Auto;
-		Toggle dithering = Toggle::Auto;
+		// auto uses the quality preset; the remaining values name the
+		// libplacebo PL_DITHER_* methods, with off disabling dithering.
+		std::string dithering = "auto";
 		// VP is an interactive renderer: output dimensions, crop geometry and
 		// presentation properties can change while the renderer remains live.
 		// Keep those values out of compiled program keys so a window resize does
