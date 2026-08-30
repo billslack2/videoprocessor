@@ -2496,6 +2496,21 @@ namespace VideoProcessorTest
 			Assert::IsTrue(coalescer.Claim(colorIdentity, newColor));
 		}
 
+		TEST_METHOD(ProfileActionCircuitBreakerBoundsRecursiveLaunches)
+		{
+			using Decision = EventActionLauncher::ProfileActionCircuitBreaker::Decision;
+			EventActionLauncher::ProfileActionCircuitBreaker breaker;
+			for (uint64_t now : { 1000ull, 2000ull, 3000ull, 4000ull })
+				Assert::AreEqual(static_cast<int>(Decision::Allow),
+					static_cast<int>(breaker.BeginLaunch(now)));
+			Assert::AreEqual(static_cast<int>(Decision::Tripped),
+				static_cast<int>(breaker.BeginLaunch(5000)));
+			Assert::AreEqual(static_cast<int>(Decision::Suppressed),
+				static_cast<int>(breaker.BeginLaunch(12000)));
+			Assert::AreEqual(static_cast<int>(Decision::Allow),
+				static_cast<int>(breaker.BeginLaunch(15001)));
+		}
+
 		TEST_METHOD(ProfileChangeOverlayUsesFriendlyOrderedLabels)
 		{
 			const auto defaultTiming = ProfileChangeOverlay::ResolveTiming(5);

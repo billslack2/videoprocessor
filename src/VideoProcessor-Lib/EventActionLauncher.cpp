@@ -90,7 +90,8 @@ namespace EventActionLauncher
 	}
 
 	void Launch(const RendererProfileConfig::Model::EventAction& action,
-		const std::string& configPath)
+		const std::string& configPath, bool waitForExit,
+		uintptr_t cancellationEvent)
 	{
 		const std::string configDirectory = ParentPath(configPath);
 		std::string program = ConfigFile::Trim(action.program);
@@ -159,10 +160,43 @@ namespace EventActionLauncher
 		}
 		const DWORD processId = processInfo.dwProcessId;
 		CloseHandle(processInfo.hThread);
-		CloseHandle(processInfo.hProcess);
 		DebugLog::Log(
 			"event action process created: action='%s' role=%s pid=%lu program=%s",
 			action.name.c_str(), ActionIdentity(action).c_str(), processId,
 			program.c_str());
+		if (!waitForExit)
+		{
+			CloseHandle(processInfo.hProcess);
+			return;
+		}
+
+		const HANDLE cancel = reinterpret_cast<HANDLE>(cancellationEvent);
+		const HANDLE waitHandles[] = { processInfo.hProcess, cancel };
+		const DWORD waitCount = cancel ? 2 : 1;
+		const DWORD waitResult = WaitForMultipleObjects(waitCount, waitHandles,
+			FALSE, INFINITE);
+		if (waitResult == WAIT_OBJECT_0)
+		{
+			DWORD exitCode = STILL_ACTIVE;
+			GetExitCodeProcess(processInfo.hProcess, &exitCode);
+			DebugLog::Log(
+				"event action serialized completion: action='%s' role=%s pid=%lu exit=%lu",
+				action.name.c_str(), ActionIdentity(action).c_str(), processId,
+				exitCode);
+		}
+		else if (cancel && waitResult == WAIT_OBJECT_0 + 1)
+		{
+			DebugLog::Log(
+				"event action serialized wait released by shutdown: action='%s' role=%s pid=%lu",
+				action.name.c_str(), ActionIdentity(action).c_str(), processId);
+		}
+		else
+		{
+			DebugLog::Log(
+				"event action serialized wait failed: action='%s' role=%s pid=%lu error=%lu",
+				action.name.c_str(), ActionIdentity(action).c_str(), processId,
+				GetLastError());
+		}
+		CloseHandle(processInfo.hProcess);
 	}
 }

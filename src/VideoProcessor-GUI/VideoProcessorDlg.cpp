@@ -12468,7 +12468,14 @@ void CVideoProcessorDlg::ScheduleUnifiedProfileActionsForRenderer(
 	{
 		const std::string identity = pending.first;
 		const UnifiedProfileRuntime::ActionInvocation invocation = *pending.second;
+		const bool profileTransition =
+			invocation.event.rfind("profile.", 0) == 0 &&
+			invocation.event.size() > strlen("profile..changed") &&
+			invocation.event.compare(invocation.event.size() - strlen(".changed"),
+				strlen(".changed"), ".changed") == 0;
 		const uint64_t generation = m_unifiedActionCoalescer.Schedule(identity);
+		const uint64_t circuitGeneration = profileTransition ?
+			m_profileActionCircuitGeneration.load() : 0;
 		if (generation > 1)
 		{
 			DebugLog::Log(
@@ -12485,13 +12492,58 @@ void CVideoProcessorDlg::ScheduleUnifiedProfileActionsForRenderer(
 			invocation.reason.c_str(), delayMs,
 			identity.c_str(), static_cast<unsigned long long>(generation), this);
 		m_unifiedActionWorkers.emplace_back([this, invocation, configPath,
-			delayMs, identity, generation]()
+			delayMs, identity, generation, profileTransition, circuitGeneration]()
 			{
 				if (m_unifiedActionCancelEvent &&
 					WaitForSingleObject(m_unifiedActionCancelEvent, delayMs) ==
-						WAIT_TIMEOUT)
+					WAIT_TIMEOUT)
 				{
-					if (m_unifiedActionCoalescer.Claim(identity, generation))
+					if (profileTransition)
+					{
+						std::unique_lock<std::mutex> launchLock(
+							m_profileActionLaunchMutex);
+						if (circuitGeneration !=
+							m_profileActionCircuitGeneration.load())
+						{
+							DebugLog::Log(
+								"event action loop guard cancelled pending profile action: action='%s' role=%s",
+								invocation.action.name.c_str(), identity.c_str());
+							return;
+						}
+						if (!m_unifiedActionCoalescer.Claim(identity, generation))
+						{
+							DebugLog::Log(
+								"event action debounce skipped: action='%s' role=%s generation=%llu reason=newer-role-owner",
+								invocation.action.name.c_str(), identity.c_str(),
+								static_cast<unsigned long long>(generation));
+							return;
+						}
+						const auto decision = m_profileActionCircuitBreaker.BeginLaunch(
+							GetTickCount64());
+						if (decision != EventActionLauncher::ProfileActionCircuitBreaker::Decision::Allow)
+						{
+							if (decision == EventActionLauncher::ProfileActionCircuitBreaker::Decision::Tripped)
+							{
+								m_profileActionCircuitGeneration.fetch_add(1);
+								DebugLog::Log(
+									"event action loop guard tripped: profile actions suppressed for 10000ms after repeated launches");
+							}
+							else
+							{
+								DebugLog::Log(
+									"event action loop guard suppressed profile action: action='%s' role=%s",
+									invocation.action.name.c_str(), identity.c_str());
+							}
+							return;
+						}
+						DebugLog::Log(
+							"event action debounce claimed: action='%s' role=%s generation=%llu result=serialized-profile-launch",
+							invocation.action.name.c_str(), identity.c_str(),
+							static_cast<unsigned long long>(generation));
+						EventActionLauncher::Launch(invocation.action, configPath, true,
+							reinterpret_cast<uintptr_t>(m_unifiedActionCancelEvent));
+					}
+					else if (m_unifiedActionCoalescer.Claim(identity, generation))
 					{
 						DebugLog::Log(
 							"event action debounce claimed: action='%s' role=%s "

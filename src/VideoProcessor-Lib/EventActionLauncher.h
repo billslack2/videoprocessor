@@ -47,6 +47,49 @@ namespace EventActionLauncher
 		std::map<std::string, uint64_t> m_generations;
 	};
 
+	// Profile actions may execute arbitrary user scripts.  Some legacy scripts
+	// send VP shortcuts, so a malformed configuration can accidentally form an
+	// action -> shortcut -> profile-change loop.  Bound the number of actual
+	// process launches in that feedback path; delayed actions already waiting
+	// for their debounce window are invalidated by the owner when this trips.
+	class ProfileActionCircuitBreaker
+	{
+	public:
+		enum class Decision
+		{
+			Allow,
+			Suppressed,
+			Tripped
+		};
+
+		Decision BeginLaunch(uint64_t nowMilliseconds)
+		{
+			std::lock_guard<std::mutex> lock(m_mutex);
+			if (nowMilliseconds < m_suppressedUntilMilliseconds)
+				return Decision::Suppressed;
+			while (!m_recentLaunches.empty() &&
+				nowMilliseconds - m_recentLaunches.front() > kWindowMilliseconds)
+				m_recentLaunches.erase(m_recentLaunches.begin());
+			if (m_recentLaunches.size() >= kMaximumLaunches)
+			{
+				m_recentLaunches.clear();
+				m_suppressedUntilMilliseconds = nowMilliseconds +
+					kSuppressionMilliseconds;
+				return Decision::Tripped;
+			}
+			m_recentLaunches.push_back(nowMilliseconds);
+			return Decision::Allow;
+		}
+
+	private:
+		static constexpr uint64_t kWindowMilliseconds = 10000;
+		static constexpr uint64_t kSuppressionMilliseconds = 10000;
+		static constexpr size_t kMaximumLaunches = 4;
+		std::mutex m_mutex;
+		std::vector<uint64_t> m_recentLaunches;
+		uint64_t m_suppressedUntilMilliseconds = 0;
+	};
+
 	inline std::string ActionIdentity(
 		const RendererProfileConfig::Model::EventAction& action)
 	{
@@ -67,5 +110,6 @@ namespace EventActionLauncher
 		std::string& error);
 
 	void Launch(const RendererProfileConfig::Model::EventAction& action,
-		const std::string& configPath);
+		const std::string& configPath, bool waitForExit = false,
+		uintptr_t cancellationEvent = 0);
 }
