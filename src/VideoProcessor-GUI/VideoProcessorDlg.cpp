@@ -12443,8 +12443,33 @@ void CVideoProcessorDlg::ScheduleUnifiedProfileActionsForRenderer(
 			return invocation.event.rfind("profile.", 0) == 0 &&
 				invocation.event.size() > strlen("profile..changed") &&
 				invocation.event.compare(invocation.event.size() - strlen(".changed"),
-					strlen(".changed"), ".changed") == 0;
+				strlen(".changed"), ".changed") == 0;
 		});
+	// Scripts such as set_hdr.bat can inject a regular profile shortcut while
+	// they are still running. That change is an effect of the action already
+	// being processed, not a new user request; scheduling it would recreate the
+	// action loop. A cycle request remains eligible so rapid cycling can replace
+	// the queued selection even while the previous script is active.
+	const bool actionFeedback = hasProfileTransition &&
+		m_profileActionProcessActive.load() &&
+		std::any_of(actions.begin(), actions.end(),
+			[](const UnifiedProfileRuntime::ActionInvocation& invocation)
+			{
+				return invocation.event.rfind("profile.", 0) == 0 &&
+					invocation.reason == "manual";
+			});
+	if (actionFeedback)
+	{
+		for (const UnifiedProfileRuntime::ActionInvocation& invocation : actions)
+		{
+			DebugLog::Log(
+				"event action feedback ignored while profile action is running: "
+				"action='%s' event=%s reason=%s",
+				invocation.action.name.c_str(), invocation.event.c_str(),
+				invocation.reason.c_str());
+		}
+		return;
+	}
 	// A profile selection is a transaction. Rapid cycling must replace the
 	// entire pending profile-action batch, not merely actions with the same
 	// coalesce role, so only the final settled profile state is allowed to run.
@@ -12487,8 +12512,6 @@ void CVideoProcessorDlg::ScheduleUnifiedProfileActionsForRenderer(
 			invocation.event.compare(invocation.event.size() - strlen(".changed"),
 				strlen(".changed"), ".changed") == 0;
 		const uint64_t generation = m_unifiedActionCoalescer.Schedule(identity);
-		const uint64_t circuitGeneration = profileTransition ?
-			m_profileActionCircuitGeneration.load() : 0;
 		if (generation > 1)
 		{
 			DebugLog::Log(
@@ -12505,7 +12528,7 @@ void CVideoProcessorDlg::ScheduleUnifiedProfileActionsForRenderer(
 			invocation.reason.c_str(), delayMs,
 			identity.c_str(), static_cast<unsigned long long>(generation), this);
 		m_unifiedActionWorkers.emplace_back([this, invocation, configPath,
-			delayMs, identity, generation, profileTransition, circuitGeneration,
+			delayMs, identity, generation, profileTransition,
 			profileDebounceGeneration]()
 			{
 				if (m_unifiedActionCancelEvent &&
@@ -12524,14 +12547,6 @@ void CVideoProcessorDlg::ScheduleUnifiedProfileActionsForRenderer(
 								invocation.action.name.c_str(), identity.c_str());
 							return;
 						}
-						if (circuitGeneration !=
-							m_profileActionCircuitGeneration.load())
-						{
-							DebugLog::Log(
-								"event action loop guard cancelled pending profile action: action='%s' role=%s",
-								invocation.action.name.c_str(), identity.c_str());
-							return;
-						}
 						if (!m_unifiedActionCoalescer.Claim(identity, generation))
 						{
 							DebugLog::Log(
@@ -12540,30 +12555,14 @@ void CVideoProcessorDlg::ScheduleUnifiedProfileActionsForRenderer(
 								static_cast<unsigned long long>(generation));
 							return;
 						}
-						const auto decision = m_profileActionCircuitBreaker.BeginLaunch(
-							GetTickCount64());
-						if (decision != EventActionLauncher::ProfileActionCircuitBreaker::Decision::Allow)
-						{
-							if (decision == EventActionLauncher::ProfileActionCircuitBreaker::Decision::Tripped)
-							{
-								m_profileActionCircuitGeneration.fetch_add(1);
-								DebugLog::Log(
-									"event action loop guard tripped: profile actions suppressed for 10000ms after repeated launches");
-							}
-							else
-							{
-								DebugLog::Log(
-									"event action loop guard suppressed profile action: action='%s' role=%s",
-									invocation.action.name.c_str(), identity.c_str());
-							}
-							return;
-						}
 						DebugLog::Log(
 							"event action debounce claimed: action='%s' role=%s generation=%llu result=serialized-profile-launch",
 							invocation.action.name.c_str(), identity.c_str(),
 							static_cast<unsigned long long>(generation));
+						m_profileActionProcessActive.store(true);
 						EventActionLauncher::Launch(invocation.action, configPath, true,
 							reinterpret_cast<uintptr_t>(m_unifiedActionCancelEvent));
+						m_profileActionProcessActive.store(false);
 					}
 					else if (m_unifiedActionCoalescer.Claim(identity, generation))
 					{
