@@ -62,6 +62,47 @@ gate with `ValidateActivation`, and make dither depend on `Active` rather than
 merely parsed state. Strict cube canonicalization and atomic reload/failure
 lifecycle follow that activation wiring.
 
+### Fail-closed runtime wiring and Cube proof — 2026-08-29
+
+The next source slice is committed and pushed on
+`codex/vp-0166-lut-contract` as
+`2ed16b05fa3fd3cb143a2ba2f9d0c56a777abff4`. It:
+
+- removes the legacy target/signal validator from runtime and calls the typed
+  `LibplaceboLutContract::ValidateActivation` gate with independently labeled
+  expected-contract and observed-resource/carrier evidence;
+- leaves selected-profile provenance, authoring depth, expected cube SHA-256,
+  installation attestations, Advanced Color/ICC proof, carrier identity, and
+  contract generations explicitly unresolved. The runtime therefore rejects
+  at `CONTRACT_ORIGIN_UNKNOWN`, keeps `target.lut` null, and retains ordinary
+  dither until those facts are implemented; it does not mislabel this
+  intermediate state as active calibration;
+- separates a Rec.709 or SDR BT.2020 LUT-input target from the inert P709 DXGI
+  carrier instead of requiring their primaries labels to match;
+- makes LUT activity and its render-parameter projection atomic, and ensures a
+  render-rejected resource is not retried even if ordinary-parameter
+  restoration throws;
+- rejects non-default Cube `DOMAIN_MIN/MAX` before pinned libplacebo can apply
+  its incompatible output-rescale interpretation; and
+- replaces the silently skipped external-fixture test with a deterministic
+  WARP channel-swap application/order test plus an exact, licensed OpenColorIO
+  interoperability fixture pinned by source commit and Git blob.
+
+The x64 Release solution and VPRenderer project build successfully. The final
+focused parser/typed-contract/render-parameter suite passes 44/44. Before the
+legacy contract tests were removed, the expanded focused suite passed 51/51.
+The complete test DLL passed 1020/1021; its sole failure remains the existing
+`CONFIGURATION.html`/public-field inventory mismatch, outside the LUT files.
+
+Two independent specialist reviews approved the carrier split, activation
+state transitions, evidence labeling, and deterministic fail-closed behavior.
+This is a go for the wiring/test foundation, not yet a go for production LUT
+activation. The next slice must freeze a selected calibration-profile record,
+add LUT authoring black/depth and independent opened-resource canonical
+path/SHA-256 evidence, and populate the installation, Advanced Color/ICC, and
+carrier identity/generation proofs. Transactional same-path replacement and a
+nonlinear independent tetrahedral/clamp oracle remain required afterward.
+
 ## User story
 
 As a calibrated-display user, I want VP Renderer to feed a 3D `.cube` file the
