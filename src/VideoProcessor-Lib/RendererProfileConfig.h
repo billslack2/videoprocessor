@@ -34,6 +34,7 @@ namespace RendererProfileConfig
 	constexpr int DEFAULT_HDR_PEAK_ANALYSIS_HEIGHT_PERCENT = 75;
 	constexpr int MIN_HDR_PEAK_ANALYSIS_HEIGHT_PERCENT = 10;
 	constexpr int MAX_HDR_PEAK_ANALYSIS_HEIGHT_PERCENT = 100;
+	constexpr const char* DEFAULT_HDR_PEAK_ANALYSIS_POSITION = "top";
 
 	inline bool OwnsSection(const std::string& section)
 	{
@@ -158,6 +159,8 @@ namespace RendererProfileConfig
 		bool hdrPeakAnalysisMotionCompensation = false;
 		int hdrPeakAnalysisHeightPercent =
 			DEFAULT_HDR_PEAK_ANALYSIS_HEIGHT_PERCENT;
+		std::string hdrPeakAnalysisPosition =
+			DEFAULT_HDR_PEAK_ANALYSIS_POSITION;
 		uint64_t subtitleHoldMilliseconds = 2000;
 		uint64_t subtitleEngageDriftMilliseconds = 0;
 		uint64_t subtitleReleaseDriftMilliseconds = 0;
@@ -543,6 +546,8 @@ namespace RendererProfileConfig
 					MIN_HDR_PEAK_ANALYSIS_HEIGHT_PERCENT,
 					MAX_HDR_PEAK_ANALYSIS_HEIGHT_PERCENT, parsed);
 			}
+			if (key == "hdr_peak_analysis_position")
+				return IsChoice(value, { "top", "center", "bottom" });
 			if (key == "subtitle_engage_drift_ms" ||
 				key == "subtitle_release_drift_ms")
 			{
@@ -1421,6 +1426,7 @@ namespace RendererProfileConfig
 				"hdr_peak_analysis_picture_only",
 				"hdr_peak_analysis_motion_compensation",
 				"hdr_peak_analysis_height_percent",
+				"hdr_peak_analysis_position",
 				"subtitle_hold_seconds", "subtitle_engage_drift_ms",
 				"subtitle_release_drift_ms",
 				"subtitle_padding_pixels", "subtitle_target_buffer_pixels"
@@ -1969,6 +1975,16 @@ namespace RendererProfileConfig
 				"] hdr_peak_analysis_height_percent is invalid";
 			return false;
 		}
+		value = settings.find("hdr_peak_analysis_position");
+		if (value != settings.end() &&
+			!IsChoice(value->second, { "top", "center", "bottom" }))
+		{
+			error = "[profiles.viewport." + viewport.profile +
+				"] hdr_peak_analysis_position is invalid";
+			return false;
+		}
+		if (value != settings.end())
+			viewport.hdrPeakAnalysisPosition = value->second;
 		value = settings.find("subtitle_hold_seconds");
 		if (value != settings.end())
 		{
@@ -2124,6 +2140,16 @@ namespace RendererProfileConfig
 				"] hdr_peak_analysis_height_percent is invalid";
 			return false;
 		}
+		value = settings.find("hdr_peak_analysis_position");
+		if (value != settings.end() &&
+			!IsChoice(value->second, { "top", "center", "bottom" }))
+		{
+			error = "[profiles.zoom." + viewport.zoomProfile +
+				"] hdr_peak_analysis_position is invalid";
+			return false;
+		}
+		if (value != settings.end())
+			viewport.hdrPeakAnalysisPosition = value->second;
 		value = settings.find("subtitle_hold_seconds");
 		if (value != settings.end())
 		{

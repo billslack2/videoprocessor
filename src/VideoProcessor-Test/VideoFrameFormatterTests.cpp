@@ -2195,6 +2195,7 @@ namespace Tests
 			cinema.settings["subtitle_fit"] = "true";
 			cinema.settings["hdr_peak_analysis_motion_compensation"] = "true";
 			cinema.settings["hdr_peak_analysis_height_percent"] = "70";
+			cinema.settings["hdr_peak_analysis_position"] = "bottom";
 			cinema.settings["subtitle_hold_seconds"] = "2";
 			cinema.settings["subtitle_engage_drift_ms"] = "300";
 			cinema.settings["subtitle_release_drift_ms"] = "3000";
@@ -2213,6 +2214,7 @@ namespace Tests
 			Assert::IsFalse(viewport.subtitleFit);
 			Assert::IsFalse(viewport.hdrPeakAnalysisMotionCompensation);
 			Assert::AreEqual(75, viewport.hdrPeakAnalysisHeightPercent);
+			Assert::AreEqual(std::string("top"), viewport.hdrPeakAnalysisPosition);
 			Assert::AreEqual(10, viewport.subtitleTargetBufferPixels);
 			Assert::IsTrue(RendererProfileConfig::ResolveViewport(
 				model, "cinema", 2, viewport, error));
@@ -2223,6 +2225,7 @@ namespace Tests
 			Assert::IsTrue(viewport.subtitleFit);
 			Assert::IsTrue(viewport.hdrPeakAnalysisMotionCompensation);
 			Assert::AreEqual(70, viewport.hdrPeakAnalysisHeightPercent);
+			Assert::AreEqual(std::string("bottom"), viewport.hdrPeakAnalysisPosition);
 			Assert::AreEqual<uint64_t>(
 				2000, viewport.subtitleHoldMilliseconds);
 			Assert::AreEqual<uint64_t>(
@@ -2265,6 +2268,14 @@ namespace Tests
 				"viewport", "hdr_peak_analysis_height_percent", "9", expected));
 			Assert::IsFalse(RendererProfileConfig::ValidateProfileSetting(
 				"viewport", "hdr_peak_analysis_height_percent", "101", expected));
+			Assert::IsTrue(RendererProfileConfig::ValidateProfileSetting(
+				"viewport", "hdr_peak_analysis_position", "top", expected));
+			Assert::IsTrue(RendererProfileConfig::ValidateProfileSetting(
+				"viewport", "hdr_peak_analysis_position", "center", expected));
+			Assert::IsTrue(RendererProfileConfig::ValidateProfileSetting(
+				"viewport", "hdr_peak_analysis_position", "bottom", expected));
+			Assert::IsFalse(RendererProfileConfig::ValidateProfileSetting(
+				"viewport", "hdr_peak_analysis_position", "middle", expected));
 			Assert::IsTrue(RendererProfileConfig::ValidateProfileSetting(
 				"viewport", "hdr_peak_analysis_motion_compensation", "true", expected));
 			Assert::IsFalse(RendererProfileConfig::ValidateProfileSetting(

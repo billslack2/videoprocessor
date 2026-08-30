@@ -954,6 +954,8 @@ namespace
 		bool hdrPeakAnalysisMotionCompensation = false;
 		int hdrPeakAnalysisHeightPercent =
 			RendererProfileConfig::DEFAULT_HDR_PEAK_ANALYSIS_HEIGHT_PERCENT;
+		std::string hdrPeakAnalysisPosition =
+			RendererProfileConfig::DEFAULT_HDR_PEAK_ANALYSIS_POSITION;
 		uint64_t scopeSubtitleHoldMs = 2000;
 		uint64_t scopeSubtitleEngageDriftMs = 0;
 		uint64_t scopeSubtitleReleaseDriftMs = 0;
@@ -979,6 +981,16 @@ namespace
 		if (alignment == "bottom")
 			return AlphaSourceCrop::VerticalPictureAlignment::BOTTOM;
 		return AlphaSourceCrop::VerticalPictureAlignment::CENTER;
+	}
+
+	HdrPeakAnalysisCrop::VerticalAnchor ResolveHdrPeakAnalysisPosition(
+		const std::string& position)
+	{
+		if (position == "center")
+			return HdrPeakAnalysisCrop::VerticalAnchor::CENTER;
+		if (position == "bottom")
+			return HdrPeakAnalysisCrop::VerticalAnchor::BOTTOM;
+		return HdrPeakAnalysisCrop::VerticalAnchor::TOP;
 	}
 
 	std::string EffectiveSettingsFingerprint(
@@ -1030,6 +1042,7 @@ namespace
 				<< settings.hdrPeakAnalysisPictureOnly << '|'
 				<< settings.hdrPeakAnalysisMotionCompensation << '|'
 				<< settings.hdrPeakAnalysisHeightPercent << '|'
+				<< settings.hdrPeakAnalysisPosition << '|'
 				<< settings.scopeSubtitleHoldMs << '|'
 				<< settings.scopeSubtitleEngageDriftMs << '|'
 				<< settings.scopeSubtitleReleaseDriftMs << '|'
@@ -1895,6 +1908,16 @@ namespace
 					RendererProfileConfig::DEFAULT_HDR_PEAK_ANALYSIS_HEIGHT_PERCENT);
 			}
 		}
+		if (readViewportString("hdr_peak_analysis_position", raw))
+		{
+			const std::string position = ConfigFile::NormalizeName(raw);
+			if (position == "top" || position == "center" || position == "bottom")
+				settings.hdrPeakAnalysisPosition = position;
+			else
+				DebugLog::Log("profile '%s': invalid hdr_peak_analysis_position '%s'; using %s",
+					rule.name.c_str(), raw.c_str(),
+					RendererProfileConfig::DEFAULT_HDR_PEAK_ANALYSIS_POSITION);
+		}
 		if (readViewportString("subtitle_hold_seconds", raw))
 		{
 			double seconds = 0.0;
@@ -2202,6 +2225,16 @@ namespace
 					RendererProfileConfig::MAX_HDR_PEAK_ANALYSIS_HEIGHT_PERCENT,
 					RendererProfileConfig::DEFAULT_HDR_PEAK_ANALYSIS_HEIGHT_PERCENT);
 			}
+		}
+		if (TryGetDisplayString(config, "hdr_peak_analysis_position", rawValue))
+		{
+			const std::string position = ConfigFile::NormalizeName(rawValue);
+			if (position == "top" || position == "center" || position == "bottom")
+				settings.hdrPeakAnalysisPosition = position;
+			else
+				DebugLog::Log("libplacebo: invalid hdr_peak_analysis_position value '%s'; using %s",
+					rawValue.c_str(),
+					RendererProfileConfig::DEFAULT_HDR_PEAK_ANALYSIS_POSITION);
 		}
 		if (TryGetDisplayString(config, "automatic_crop", rawValue) &&
 			!TryGetDisplayBool(config, "automatic_crop",
@@ -3174,6 +3207,8 @@ struct LibplaceboVideoRenderer::Impl
 	bool hdrPeakAnalysisMotionCompensation = false;
 	int hdrPeakAnalysisHeightPercent =
 		RendererProfileConfig::DEFAULT_HDR_PEAK_ANALYSIS_HEIGHT_PERCENT;
+	std::string hdrPeakAnalysisPosition =
+		RendererProfileConfig::DEFAULT_HDR_PEAK_ANALYSIS_POSITION;
 	uint64_t scopeSubtitleHoldMs = 2000;
 	uint64_t scopeSubtitleEngageDriftMs = 0;
 	uint64_t scopeSubtitleReleaseDriftMs = 0;
@@ -4283,7 +4318,7 @@ struct LibplaceboVideoRenderer::Impl
 			projection.renderParams.dither_params ? &ditherParams : nullptr;
 
 		DebugLog::Log(
-			"libplacebo settings: quality=%s tone_mapping=%s gamut_mapping=%s peak_detection=%s hdr_peak_analysis_picture_only=%d hdr_peak_analysis_motion_compensation=%d hdr_peak_analysis_height_percent=%d libplacebo_version=%s api=%d local_analysis_crop=vp0147-motion-v1 contrast_recovery=%.2f upscaler=%s downscaler=%s deband=%s dithering=%s dynamic_constants=%d display_bit_depth=%s output_presentation=%s output_range=%s output_transport_gamma=%s output_gamma=%s sdr_input_transfer=%s sdr_adjust_gamma=%s target=%.1f nits black=%.3f profile_update_mode=%s output_diagnostics=%d diagnostic_disable_shader_cache=%d diagnostic_disable_compute=%d diagnostic_force_8bit_sdr_swapchain=%d diagnostic_allow_limited_g22=%d diagnostic_allow_full_g22=%d diagnostic_vp_owned_dxgi_presenter=%d refresh_switch=%d refresh_command_delay=%llus refresh_commands=%u viewport_target=%s screen_aspect=%.4f automatic_crop=%d subtitle_fit=%d subtitle_hold=%llums subtitle_engage_drift=%llums subtitle_release_drift=%llums subtitle_padding=%dpx subtitle_target_buffer=%dpx",
+			"libplacebo settings: quality=%s tone_mapping=%s gamut_mapping=%s peak_detection=%s hdr_peak_analysis_picture_only=%d hdr_peak_analysis_motion_compensation=%d hdr_peak_analysis_height_percent=%d hdr_peak_analysis_position=%s libplacebo_version=%s api=%d local_analysis_crop=vp0147-motion-v1 contrast_recovery=%.2f upscaler=%s downscaler=%s deband=%s dithering=%s dynamic_constants=%d display_bit_depth=%s output_presentation=%s output_range=%s output_transport_gamma=%s output_gamma=%s sdr_input_transfer=%s sdr_adjust_gamma=%s target=%.1f nits black=%.3f profile_update_mode=%s output_diagnostics=%d diagnostic_disable_shader_cache=%d diagnostic_disable_compute=%d diagnostic_force_8bit_sdr_swapchain=%d diagnostic_allow_limited_g22=%d diagnostic_allow_full_g22=%d diagnostic_vp_owned_dxgi_presenter=%d refresh_switch=%d refresh_command_delay=%llus refresh_commands=%u viewport_target=%s screen_aspect=%.4f automatic_crop=%d subtitle_fit=%d subtitle_hold=%llums subtitle_engage_drift=%llums subtitle_release_drift=%llums subtitle_padding=%dpx subtitle_target_buffer=%dpx",
 			settings.quality.c_str(),
 			colorMapParams.tone_mapping_function
 				? colorMapParams.tone_mapping_function->name : "none",
@@ -4292,6 +4327,7 @@ struct LibplaceboVideoRenderer::Impl
 			settings.hdrPeakAnalysisPictureOnly ? 1 : 0,
 			settings.hdrPeakAnalysisMotionCompensation ? 1 : 0,
 			settings.hdrPeakAnalysisHeightPercent,
+			settings.hdrPeakAnalysisPosition.c_str(),
 			PL_VERSION,
 			PL_API_VER,
 			colorMapParams.contrast_recovery,
@@ -4350,7 +4386,8 @@ struct LibplaceboVideoRenderer::Impl
 			HdrPeakAnalysisCrop::ResolvePolicy(hdrPeakAnalysisPictureOnly,
 				hdrPeakAnalysisMotionCompensation, peakDetectionActive,
 				frameGeneration, trustedPicture, presentationCrop,
-				hdrPeakAnalysisHeightPercent, motionProtectionPixels);
+				hdrPeakAnalysisHeightPercent, motionProtectionPixels,
+				ResolveHdrPeakAnalysisPosition(hdrPeakAnalysisPosition));
 		if (peakDetectionActive && decision.AppliesRestriction())
 			peakDetectParams.analysis_crop = decision.normalizedCrop;
 
@@ -4389,6 +4426,7 @@ struct LibplaceboVideoRenderer::Impl
 		signature << hdrPeakAnalysisPictureOnly << '|'
 			<< hdrPeakAnalysisMotionCompensation << '|'
 			<< hdrPeakAnalysisHeightPercent << '|'
+			<< hdrPeakAnalysisPosition << '|'
 			<< motionProtectionPixels << '|'
 			<< peakDetectionActive << '|' << frameGeneration << '|'
 			<< trustedPicture.available << '|'
@@ -4410,7 +4448,7 @@ struct LibplaceboVideoRenderer::Impl
 		{
 			lastHdrPeakAnalysisPolicy = signature.str();
 			DebugLog::Log(
-				"libplacebo HDR analysis ROI policy: enabled=%d mode=%s fixed_enabled=%d motion_enabled=%d motion_protection_pixels=%.1f peak_detection=%d fork=vp0147-motion-v1 api=%d version=%s analysis_height_percent=%.1f source_generation=%llu source_sequence=%llu trusted_available=%d trusted_generation=%llu trusted=%d,%d-%d,%d raster=%dx%d presentation=%.3f,%.3f-%.3f,%.3f analysis_intersection=%.3f,%.3f-%.3f,%.3f normalized=%.6f,%.6f-%.6f,%.6f excluded_pixels=%.0f excluded_percent=%.3f outcome=%s reason=\"%s\"",
+				"libplacebo HDR analysis ROI policy: enabled=%d mode=%s fixed_enabled=%d motion_enabled=%d motion_protection_pixels=%.1f peak_detection=%d fork=vp0147-motion-v1 api=%d version=%s analysis_height_percent=%.1f analysis_position=%s source_generation=%llu source_sequence=%llu trusted_available=%d trusted_generation=%llu trusted=%d,%d-%d,%d raster=%dx%d presentation=%.3f,%.3f-%.3f,%.3f analysis_intersection=%.3f,%.3f-%.3f,%.3f normalized=%.6f,%.6f-%.6f,%.6f excluded_pixels=%.0f excluded_percent=%.3f outcome=%s reason=\"%s\"",
 				analysisProtectionEnabled ? 1 : 0,
 				hdrPeakAnalysisPictureOnly ? "fixed" :
 					(hdrPeakAnalysisMotionCompensation ? "motion" : "off"),
@@ -4420,6 +4458,7 @@ struct LibplaceboVideoRenderer::Impl
 				peakDetectionActive ? 1 : 0,
 				PL_API_VER, PL_VERSION,
 				static_cast<double>(hdrPeakAnalysisHeightPercent),
+				hdrPeakAnalysisPosition.c_str(),
 				static_cast<unsigned long long>(frameGeneration),
 				static_cast<unsigned long long>(sourceSequence),
 				trustedPicture.available ? 1 : 0,
@@ -6328,6 +6367,7 @@ struct LibplaceboVideoRenderer::Impl
 			settings.hdrPeakAnalysisMotionCompensation;
 		hdrPeakAnalysisHeightPercent =
 			settings.hdrPeakAnalysisHeightPercent;
+		hdrPeakAnalysisPosition = settings.hdrPeakAnalysisPosition;
 		scopeSubtitleHoldMs = settings.scopeSubtitleHoldMs;
 		scopeSubtitleEngageDriftMs = settings.scopeSubtitleEngageDriftMs;
 		scopeSubtitleReleaseDriftMs = settings.scopeSubtitleReleaseDriftMs;
@@ -6421,6 +6461,7 @@ struct LibplaceboVideoRenderer::Impl
 				settings.hdrPeakAnalysisMotionCompensation ||
 			hdrPeakAnalysisHeightPercent !=
 				settings.hdrPeakAnalysisHeightPercent ||
+			hdrPeakAnalysisPosition != settings.hdrPeakAnalysisPosition ||
 			scopeSubtitleHoldMs != settings.scopeSubtitleHoldMs ||
 			scopeSubtitleEngageDriftMs != settings.scopeSubtitleEngageDriftMs ||
 			scopeSubtitleReleaseDriftMs != settings.scopeSubtitleReleaseDriftMs ||
@@ -6451,6 +6492,7 @@ struct LibplaceboVideoRenderer::Impl
 			settings.hdrPeakAnalysisMotionCompensation;
 		hdrPeakAnalysisHeightPercent =
 			settings.hdrPeakAnalysisHeightPercent;
+		hdrPeakAnalysisPosition = settings.hdrPeakAnalysisPosition;
 		scopeSubtitleHoldMs = settings.scopeSubtitleHoldMs;
 		scopeSubtitleEngageDriftMs = settings.scopeSubtitleEngageDriftMs;
 		scopeSubtitleReleaseDriftMs = settings.scopeSubtitleReleaseDriftMs;
@@ -6481,6 +6523,7 @@ struct LibplaceboVideoRenderer::Impl
 			settings.hdrPeakAnalysisMotionCompensation;
 		activeSettings.hdrPeakAnalysisHeightPercent =
 			settings.hdrPeakAnalysisHeightPercent;
+		activeSettings.hdrPeakAnalysisPosition = settings.hdrPeakAnalysisPosition;
 		activeSettings.scopeSubtitleHoldMs = settings.scopeSubtitleHoldMs;
 		activeSettings.scopeSubtitleEngageDriftMs =
 			settings.scopeSubtitleEngageDriftMs;
@@ -6630,6 +6673,7 @@ struct LibplaceboVideoRenderer::Impl
 				next.hdrPeakAnalysisMotionCompensation ||
 			current.hdrPeakAnalysisHeightPercent !=
 				next.hdrPeakAnalysisHeightPercent ||
+			current.hdrPeakAnalysisPosition != next.hdrPeakAnalysisPosition ||
 			current.scopeSubtitleHoldMs != next.scopeSubtitleHoldMs ||
 			current.scopeSubtitleEngageDriftMs != next.scopeSubtitleEngageDriftMs ||
 			current.scopeSubtitleReleaseDriftMs != next.scopeSubtitleReleaseDriftMs ||
@@ -8581,7 +8625,7 @@ struct LibplaceboVideoRenderer::Impl
 				&subtitleBarAnalysisCompleted);
 		float hdrPeakAnalysisMotionProtectionPixels = 0.0f;
 		if (hdrPeakAnalysisMotionCompensation &&
-			!hdrPeakAnalysisPictureOnly)
+			!hdrPeakAnalysisPictureOnly && subtitleBarAuthority)
 		{
 			if (std::abs(subtitleShiftSourcePixels) > 0.5f)
 				hdrPeakAnalysisMotionProtectionPixels =
@@ -8953,6 +8997,7 @@ struct LibplaceboVideoRenderer::Impl
 			 subtitleBarAnalysisScheduled, subtitleBarAnalysisCompleted,
 			 forceSubtitleBarAnalysis,
 			 currentBarAuthority, sceneBarAuthority, heldBarAnalysisAuthority,
+			 subtitleBarAuthority,
 			 &hdrPeakAnalysisMotionProtectionPixels](
 				struct pl_frame& source,
 				struct pl_frame& target,
@@ -8993,20 +9038,26 @@ struct LibplaceboVideoRenderer::Impl
 					? sceneVerificationGeometrySourceGeneration
 					: nlsGeometrySourceGeneration;
 			if (hdrTrustedPicture && effectiveGeometryAvailable &&
-				effectiveGeometrySourceGeneration == frameGeneration &&
-				effectiveClassification ==
-					ActivePictureClassification::BAR_CROP_TRUSTED)
+				effectiveGeometrySourceGeneration == frameGeneration)
 			{
-				*hdrTrustedPicture = {
-					effectiveGeometry.left,
-					effectiveGeometry.top,
-					effectiveGeometry.right,
-					effectiveGeometry.bottom,
-					effectiveGeometry.rasterWidth,
-					effectiveGeometry.rasterHeight,
-					effectiveGeometrySourceGeneration,
+				// Match the subtitle path's authority gate. Retained scope geometry is
+				// useful while a bar transition is unresolved, but must never carry an
+				// HDR ROI into a frame whose current evidence is full raster.
+				const ActivePictureBounds& hdrGeometry = subtitleBarAuthority
+					? *subtitleBarAuthority : effectiveGeometry;
+				const HdrPeakAnalysisCrop::TrustedPicture candidate = {
+					hdrGeometry.left,
+					hdrGeometry.top,
+					hdrGeometry.right,
+					hdrGeometry.bottom,
+					hdrGeometry.rasterWidth,
+					hdrGeometry.rasterHeight,
+					frameGeneration,
 					true
 				};
+				*hdrTrustedPicture =
+					HdrPeakAnalysisCrop::RequireBarAuthority(candidate,
+						subtitleBarAuthority != nullptr);
 			}
 			const uint64_t overlayNow = GetTickCount64();
 			const bool ambiguityHoldActive =

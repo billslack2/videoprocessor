@@ -2056,8 +2056,23 @@ void testScreenConfigSectionsAndInlineUnits()
 	require(hdrAnalysisHeight->text() == QStringLiteral("75") &&
 		!hdrAnalysisHeight->isEnabled(),
 		"HDR analysis height does not default to 75% or follow the disabled toggle");
+	QComboBox* hdrAnalysisPosition = requireControl<QComboBox>(window,
+		QStringLiteral("config.vprenderer.zoom.hdr_peak_analysis_position"));
+	require(hdrAnalysisPosition->currentData().toString() == QStringLiteral("top") &&
+		!hdrAnalysisPosition->isEnabled(),
+		"HDR analysis position does not default to disabled Top");
+	QCheckBox* subtitleFit = requireControl<QCheckBox>(window,
+		QStringLiteral("config.vprenderer.zoom.subtitle_fit"));
     QLineEdit* hold = requireControl<QLineEdit>(window,
         QStringLiteral("config.vprenderer.zoom.subtitle_hold_seconds"));
+	QLineEdit* engageDrift = requireControl<QLineEdit>(window,
+		QStringLiteral("config.vprenderer.zoom.subtitle_engage_drift_ms"));
+	QLineEdit* releaseDrift = requireControl<QLineEdit>(window,
+		QStringLiteral("config.vprenderer.zoom.subtitle_release_drift_ms"));
+	QLineEdit* padding = requireControl<QLineEdit>(window,
+		QStringLiteral("config.vprenderer.zoom.subtitle_padding_pixels"));
+	QLineEdit* targetBuffer = requireControl<QLineEdit>(window,
+		QStringLiteral("config.vprenderer.zoom.subtitle_target_buffer_pixels"));
     QLabel* holdUnit = requireControl<QLabel>(window,
         QStringLiteral("config.vprenderer.zoom.subtitle_hold_seconds.unit"));
     QLabel* engageUnit = requireControl<QLabel>(window,
@@ -2070,6 +2085,18 @@ void testScreenConfigSectionsAndInlineUnits()
         "Zoom fixed-unit inputs are missing inline unit labels");
     require(hold->text() == QStringLiteral("2000"),
         "Subtitle hold is not presented in milliseconds");
+	subtitleFit->setChecked(false);
+	require(!hold->isEnabled() &&
+		!engageDrift->isEnabled() && !releaseDrift->isEnabled() &&
+		!padding->isEnabled() && !targetBuffer->isEnabled(),
+		"Subtitle-fit-only controls remain editable while fitting is disabled");
+	require(hdrAnalysisMode->isEnabled(),
+		"Independent HDR analysis protection was disabled with subtitle fitting");
+	subtitleFit->setChecked(true);
+	require(hold->isEnabled() && engageDrift->isEnabled() &&
+		releaseDrift->isEnabled() && padding->isEnabled() &&
+		targetBuffer->isEnabled(),
+		"Subtitle-fit-only controls did not enable with subtitle fitting");
     require(hold->minimumWidth() > 0 &&
         hold->minimumWidth() == hold->maximumWidth() &&
         hold->alignment() == Qt::AlignRight &&
@@ -2080,10 +2107,13 @@ void testScreenConfigSectionsAndInlineUnits()
 	selectData(hdrAnalysisMode, QStringLiteral("fixed"));
 	require(hdrAnalysisHeight->isEnabled(),
 		"HDR analysis height did not enable in fixed-percentage mode");
+	require(hdrAnalysisPosition->isEnabled(),
+		"HDR analysis position did not enable in fixed-percentage mode");
 	hdrAnalysisHeight->setText(QStringLiteral("70"));
+	selectData(hdrAnalysisPosition, QStringLiteral("bottom"));
 	selectData(hdrAnalysisMode, QStringLiteral("automatic"));
-	require(!hdrAnalysisHeight->isEnabled(),
-		"HDR analysis height remained enabled in automatic-movement mode");
+	require(!hdrAnalysisHeight->isEnabled() && !hdrAnalysisPosition->isEnabled(),
+		"HDR fixed-percentage controls remained enabled in automatic-movement mode");
     save(window);
     const QByteArray saved = readBytes(path);
     require(saved.contains("subtitle_hold_seconds: 1.5"),
@@ -2094,6 +2124,8 @@ void testScreenConfigSectionsAndInlineUnits()
 		"Automatic movement mode was not persisted in Zoom");
 	require(saved.contains("hdr_peak_analysis_height_percent: 70"),
 		"HDR active-picture analysis height was not persisted in Zoom");
+	require(saved.contains("hdr_peak_analysis_position: bottom"),
+		"HDR analysis position was not persisted in Zoom");
 
     QListWidget* profiles = requireControl<QListWidget>(window,
         QStringLiteral("config.vprenderer.zoom.profiles"));

@@ -1082,6 +1082,7 @@ void ConfigEditorWindow::migrateViewportZoomProfiles()
         QStringLiteral("hdr_peak_analysis_picture_only"),
 		QStringLiteral("hdr_peak_analysis_motion_compensation"),
 		QStringLiteral("hdr_peak_analysis_height_percent"),
+		QStringLiteral("hdr_peak_analysis_position"),
         QStringLiteral("subtitle_hold_seconds"),
         QStringLiteral("subtitle_engage_drift_ms"),
         QStringLiteral("subtitle_release_drift_ms"),
@@ -3448,6 +3449,13 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 	QCheckBox* pictureOnlyHdrAnalysis = nullptr;
 	QCheckBox* motionCompensatedHdrAnalysis = nullptr;
 	QLineEdit* hdrAnalysisHeight = nullptr;
+	QComboBox* hdrAnalysisPosition = nullptr;
+	QCheckBox* subtitleFit = nullptr;
+	QLineEdit* subtitleHold = nullptr;
+	QLineEdit* subtitleEngageDrift = nullptr;
+	QLineEdit* subtitleReleaseDrift = nullptr;
+	QLineEdit* subtitlePadding = nullptr;
+	QLineEdit* subtitleTargetBuffer = nullptr;
     const int fixedUnitFieldWidth = QLineEdit().sizeHint().width();
     const auto deprecatedViewportAlias = [sectionPrefix](const QString& key) -> QString
     {
@@ -4264,16 +4272,19 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             QStringLiteral("Subtitles"), QStringLiteral(
                 "Keep subtitle content visible, control how VP moves it into the screen, "
                 "and keep edge overlays out of HDR peak analysis."), false);
-        addBoolean(QStringLiteral("Keep subtitles inside screen bounds"), QStringLiteral("subtitle_fit"));
+		subtitleFit = addBoolean(
+			QStringLiteral("Keep subtitles inside screen bounds"),
+			QStringLiteral("subtitle_fit"));
 		pictureOnlyHdrAnalysis = addBoolean(
             QStringLiteral("Limit HDR analysis to picture center"),
             QStringLiteral("hdr_peak_analysis_picture_only"));
         pictureOnlyHdrAnalysis->setToolTip(QStringLiteral(
             "When a current trusted active-picture rectangle is available, "
-            "use its configured central height and full available width for "
-            "libplacebo's HDR peak and average-luminance analysis. This inset "
-            "rejects subtitles and OSDs that cross from a black bar into the "
-            "picture. Invalid or stale geometry falls back to full-frame analysis."));
+			"use its configured central height and full available width for "
+			"libplacebo's HDR peak and average-luminance analysis. This inset "
+			"rejects subtitles and OSDs that cross from a black bar into the "
+			"picture. Full-raster, invalid, or stale geometry falls back to "
+			"full-frame analysis."));
 		motionCompensatedHdrAnalysis = addBoolean(
 			QStringLiteral("Protect HDR analysis during subtitle movement"),
 			QStringLiteral("hdr_peak_analysis_motion_compensation"));
@@ -4305,7 +4316,9 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 		hdrAnalysisMode->setToolTip(QStringLiteral(
 			"Off uses normal full-presentation HDR analysis. Smart protects only the "
 			"active-picture edge affected by VP's subtitle-picture movement. Percentage "
-			"always analyzes the configured central band."));
+			"uses the configured top, center, or bottom band. On bar-cropped content it "
+			"uses the visible active picture; on full-raster content it uses the final "
+			"presentation crop."));
 		form->addRow(QStringLiteral("HDR analysis protection"), hdrAnalysisMode);
 		hdrAnalysisHeight = addText(
 			QStringLiteral("HDR analysis height"),
@@ -4313,34 +4326,46 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 			QStringLiteral("%"));
 		hdrAnalysisHeight->setValidator(new QIntValidator(10, 100, hdrAnalysisHeight));
 		hdrAnalysisHeight->setToolTip(QStringLiteral(
-			"Percentage of the detected active-picture height analyzed by libplacebo, "
-			"centered vertically. Use 75% as the default compromise; smaller values "
+			"Percentage of visible picture height analyzed by libplacebo. Smaller values "
 			"exclude more subtitle and OSD area."));
 		hdrAnalysisHeight->setEnabled(false);
+		hdrAnalysisPosition = addChoice(QStringLiteral("HDR analysis position"),
+			QStringLiteral("hdr_peak_analysis_position"),
+			{ QStringLiteral("top"), QStringLiteral("center"),
+				QStringLiteral("bottom") }, false);
+		hdrAnalysisPosition->setToolTip(QStringLiteral(
+			"Anchors the percentage band within the visible picture. Top is the default "
+			"because subtitles are usually at the bottom."));
+		hdrAnalysisPosition->setProperty("requiresHdrFixedMode", true);
+		hdrAnalysisPosition->setEnabled(false);
 		connect(hdrAnalysisMode,
 			qOverload<int>(&QComboBox::currentIndexChanged), this,
 			[state, hdrAnalysisMode, pictureOnlyHdrAnalysis,
-			 motionCompensatedHdrAnalysis, hdrAnalysisHeight](int index)
+			 motionCompensatedHdrAnalysis, hdrAnalysisHeight, hdrAnalysisPosition](int index)
 			{
 				if (index < 0) return;
 				const QString mode = hdrAnalysisMode->itemData(index).toString();
 				const bool fixed = mode == QStringLiteral("fixed");
 				const bool automatic = mode == QStringLiteral("automatic");
 				hdrAnalysisHeight->setEnabled(fixed);
+				hdrAnalysisPosition->setEnabled(fixed);
 				if (state->loading) return;
 				pictureOnlyHdrAnalysis->setChecked(fixed);
 				motionCompensatedHdrAnalysis->setChecked(automatic);
 			});
-        auto* subtitleHold = addText(QStringLiteral("Subtitle hold"),
+		subtitleHold = addText(QStringLiteral("Subtitle hold"),
             QStringLiteral("subtitle_hold_seconds"), QStringLiteral("ms"), 1000.0);
         subtitleHold->setValidator(new QIntValidator(250, 30000, subtitleHold));
         subtitleHold->setToolTip(QStringLiteral(
             "Must be between 250 and 30000 ms. The minimum spans the "
             "renderer's scheduled subtitle-analysis cadence."));
-        addText(QStringLiteral("Subtitle engage drift"), QStringLiteral("subtitle_engage_drift_ms"), QStringLiteral("ms"));
-        addText(QStringLiteral("Subtitle release drift"), QStringLiteral("subtitle_release_drift_ms"), QStringLiteral("ms"));
-        addText(QStringLiteral("Subtitle padding"), QStringLiteral("subtitle_padding_pixels"), QStringLiteral("pixels"));
-        auto* subtitleTargetBuffer = addText(
+		subtitleEngageDrift = addText(QStringLiteral("Subtitle engage drift"),
+			QStringLiteral("subtitle_engage_drift_ms"), QStringLiteral("ms"));
+		subtitleReleaseDrift = addText(QStringLiteral("Subtitle release drift"),
+			QStringLiteral("subtitle_release_drift_ms"), QStringLiteral("ms"));
+		subtitlePadding = addText(QStringLiteral("Subtitle padding"),
+			QStringLiteral("subtitle_padding_pixels"), QStringLiteral("pixels"));
+		subtitleTargetBuffer = addText(
             QStringLiteral("Subtitle target buffer"),
             QStringLiteral("subtitle_target_buffer_pixels"),
             QStringLiteral("pixels"));
@@ -4348,6 +4373,19 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             "Must be between 0 and 50 pixels. Adds outward reserve to an "
             "accepted subtitle target so small later extent changes do not "
             "start another movement."));
+		const auto updateSubtitleFitControls = [subtitleHold,
+			subtitleEngageDrift, subtitleReleaseDrift, subtitlePadding,
+			subtitleTargetBuffer](bool enabled)
+		{
+			subtitleHold->setEnabled(enabled);
+			subtitleEngageDrift->setEnabled(enabled);
+			subtitleReleaseDrift->setEnabled(enabled);
+			subtitlePadding->setEnabled(enabled);
+			subtitleTargetBuffer->setEnabled(enabled);
+		};
+		updateSubtitleFitControls(subtitleFit->isChecked());
+		connect(subtitleFit, &QCheckBox::toggled, this,
+			updateSubtitleFitControls);
 		}
     }
     else
@@ -4416,7 +4454,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
     auto loadDetails = [this, state, fields, selectedTitle, name, shortcut, rule, ruleField, useRule, remove, up, down, list,
 		profileFields, sectionPrefix, anamorphicEnabled, anamorphicValue,
 		hdrAnalysisMode, pictureOnlyHdrAnalysis,
-		motionCompensatedHdrAnalysis, hdrAnalysisHeight,
+		motionCompensatedHdrAnalysis, hdrAnalysisHeight, hdrAnalysisPosition,
         deprecatedViewportAlias, queuePolicy, updateQueuePolicyFromValues](QListWidgetItem* current)
     {
         state->loading = true;
@@ -4474,6 +4512,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             {
                 if (key == QStringLiteral("subtitle_hold_seconds")) return QStringLiteral("2");
 				if (key == QStringLiteral("hdr_peak_analysis_height_percent")) return QStringLiteral("75");
+				if (key == QStringLiteral("hdr_peak_analysis_position")) return QStringLiteral("top");
                 if (key == QStringLiteral("subtitle_engage_drift_ms")) return QStringLiteral("0");
                 if (key == QStringLiteral("subtitle_release_drift_ms")) return QStringLiteral("0");
                 if (key == QStringLiteral("subtitle_padding_pixels")) return QStringLiteral("20");
@@ -4596,6 +4635,13 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             if (defaultOnlyField && !defaultProfile && list->count() > 0)
                 configured = value(list->item(0)->data(Qt::UserRole).toString(), field.key, fallback(field.key));
             field.widget->setEnabled(!defaultOnlyField || defaultProfile);
+			if (field.widget->property("requiresHdrFixedMode").toBool())
+			{
+				auto* mode = findChild<QComboBox*>(controlName(sectionPrefix,
+					QStringLiteral("hdr_peak_analysis_mode")));
+				field.widget->setEnabled(mode &&
+					mode->currentData().toString() == QStringLiteral("fixed"));
+			}
 			field.widget->setProperty("inherited", raw.isEmpty() && !defaultProfile);
 			field.widget->setToolTip(raw.isEmpty() ?
                 (defaultProfile ?
@@ -4698,7 +4744,8 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             if (configured.isEmpty()) anamorphicValue->setText(QStringLiteral("1:1"));
         }
 		if (hdrAnalysisMode && pictureOnlyHdrAnalysis &&
-			motionCompensatedHdrAnalysis && hdrAnalysisHeight)
+			motionCompensatedHdrAnalysis && hdrAnalysisHeight &&
+			hdrAnalysisPosition)
 		{
 			const QString mode = pictureOnlyHdrAnalysis->isChecked()
 				? QStringLiteral("fixed")
@@ -4707,6 +4754,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 			const QSignalBlocker blocker(hdrAnalysisMode);
 			hdrAnalysisMode->setCurrentIndex(hdrAnalysisMode->findData(mode));
 			hdrAnalysisHeight->setEnabled(mode == QStringLiteral("fixed"));
+			hdrAnalysisPosition->setEnabled(mode == QStringLiteral("fixed"));
 		}
         if (queuePolicy)
             updateQueuePolicyFromValues();

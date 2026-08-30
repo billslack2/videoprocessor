@@ -79,6 +79,8 @@ namespace
 				right.viewport.hdrPeakAnalysisMotionCompensation &&
 			left.viewport.hdrPeakAnalysisHeightPercent ==
 				right.viewport.hdrPeakAnalysisHeightPercent &&
+			left.viewport.hdrPeakAnalysisPosition ==
+				right.viewport.hdrPeakAnalysisPosition &&
 			left.viewport.subtitleHoldMilliseconds ==
 				right.viewport.subtitleHoldMilliseconds &&
 			left.viewport.subtitleEngageDriftMilliseconds ==
@@ -878,6 +880,8 @@ namespace UnifiedProfileRuntime
 		variables["hdr_peak_analysis_height_percent"] =
 			StateVariables::Value::Number(
 				static_cast<double>(viewport.hdrPeakAnalysisHeightPercent));
+		variables["hdr_peak_analysis_position"] =
+			StateVariables::Value::Text(viewport.hdrPeakAnalysisPosition);
 		variables["subtitle_hold_seconds"] =
 			StateVariables::Value::Number(
 				viewport.subtitleHoldMilliseconds / 1000.0);

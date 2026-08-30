@@ -13,6 +13,24 @@ namespace HdrPeakAnalysisCrop
 	constexpr double MIN_ANALYSIS_HEIGHT_PERCENT = 10.0;
 	constexpr double MAX_ANALYSIS_HEIGHT_PERCENT = 100.0;
 
+	enum class VerticalAnchor
+	{
+		TOP,
+		CENTER,
+		BOTTOM
+	};
+
+	inline const char* VerticalAnchorName(VerticalAnchor anchor)
+	{
+		switch (anchor)
+		{
+		case VerticalAnchor::TOP: return "top";
+		case VerticalAnchor::CENTER: return "center";
+		case VerticalAnchor::BOTTOM: return "bottom";
+		default: return "unknown";
+		}
+	}
+
 	enum class Outcome
 	{
 		DISABLED,
@@ -60,16 +78,41 @@ namespace HdrPeakAnalysisCrop
 		}
 	};
 
+	// An existing bar crop can be retained briefly while an active-picture
+	// transition settles. HDR analysis must follow current subtitle/bar
+	// authority instead, so trusted full-raster evidence withdraws the ROI
+	// immediately rather than letting the retained crop affect peak smoothing.
+	inline TrustedPicture RequireBarAuthority(
+		const TrustedPicture& candidate, bool barAuthorityAvailable)
+	{
+		return barAuthorityAvailable ? candidate : TrustedPicture{};
+	}
+
 	inline bool IsFiniteRect(const pl_rect2df& rectangle)
 	{
 		return std::isfinite(rectangle.x0) && std::isfinite(rectangle.y0) &&
 			std::isfinite(rectangle.x1) && std::isfinite(rectangle.y1);
 	}
 
+	inline bool HasCurrentValidTrustedPicture(uint64_t frameSourceGeneration,
+		const TrustedPicture& trusted)
+	{
+		return trusted.available &&
+			trusted.sourceGeneration == frameSourceGeneration &&
+			trusted.rasterWidth > 0 && trusted.rasterHeight > 0 &&
+			trusted.left >= 0 && trusted.top >= 0 &&
+			trusted.right <= trusted.rasterWidth &&
+			trusted.bottom <= trusted.rasterHeight &&
+			trusted.left < trusted.right && trusted.top < trusted.bottom;
+	}
+
+	// Omitted anchors deliberately default to Top: subtitles are normally
+	// bottom-aligned, including on full-raster 16:9 presentation.
 	inline Decision Resolve(bool enabled, bool peakDetectionActive,
 		uint64_t frameSourceGeneration, const TrustedPicture& trusted,
 		const pl_rect2df& presentation,
-		double analysisHeightPercent = DEFAULT_ANALYSIS_HEIGHT_PERCENT)
+		double analysisHeightPercent = DEFAULT_ANALYSIS_HEIGHT_PERCENT,
+		VerticalAnchor anchor = VerticalAnchor::TOP)
 	{
 		Decision decision;
 		if (!enabled)
@@ -79,20 +122,6 @@ namespace HdrPeakAnalysisCrop
 		if (!peakDetectionActive)
 		{
 			decision.reason = "peak detection is inactive";
-			return decision;
-		}
-		if (!trusted.available || trusted.sourceGeneration != frameSourceGeneration)
-		{
-			decision.reason = "no current trusted active picture";
-			return decision;
-		}
-		if (trusted.rasterWidth <= 0 || trusted.rasterHeight <= 0 ||
-			trusted.left < 0 || trusted.top < 0 ||
-			trusted.right > trusted.rasterWidth ||
-			trusted.bottom > trusted.rasterHeight ||
-			trusted.left >= trusted.right || trusted.top >= trusted.bottom)
-		{
-			decision.reason = "trusted active-picture geometry is invalid";
 			return decision;
 		}
 		if (!IsFiniteRect(presentation) || presentation.x0 >= presentation.x1 ||
@@ -109,24 +138,50 @@ namespace HdrPeakAnalysisCrop
 			return decision;
 		}
 
-		const double trustedHeight = static_cast<double>(
-			trusted.bottom - trusted.top);
+		// Trusted bar geometry removes letterbox/pillarbox pixels when available.
+		// Full-raster video has no such geometry, but must still be protectable:
+		// use the final presentation crop itself as the analysis source rectangle.
+		const bool hasTrustedPicture =
+			HasCurrentValidTrustedPicture(frameSourceGeneration, trusted);
+		const float sourceLeft = hasTrustedPicture ?
+			static_cast<float>(trusted.left) : presentation.x0;
+		const float sourceTop = hasTrustedPicture ?
+			static_cast<float>(trusted.top) : presentation.y0;
+		const float sourceRight = hasTrustedPicture ?
+			static_cast<float>(trusted.right) : presentation.x1;
+		const float sourceBottom = hasTrustedPicture ?
+			static_cast<float>(trusted.bottom) : presentation.y1;
+		const double trustedHeight =
+			static_cast<double>(sourceBottom - sourceTop);
 		const double analysisHeightFraction = analysisHeightPercent / 100.0;
-		const double verticalInset =
-			trustedHeight * (1.0 - analysisHeightFraction) * 0.5;
-		const float analysisTop = static_cast<float>(trusted.top + verticalInset);
-		const float analysisBottom = static_cast<float>(trusted.bottom - verticalInset);
+		const double excludedHeight =
+			trustedHeight * (1.0 - analysisHeightFraction);
+		float analysisTop = sourceTop;
+		switch (anchor)
+		{
+		case VerticalAnchor::CENTER:
+			analysisTop += static_cast<float>(excludedHeight * 0.5);
+			break;
+		case VerticalAnchor::BOTTOM:
+			analysisTop += static_cast<float>(excludedHeight);
+			break;
+		case VerticalAnchor::TOP:
+		default:
+			break;
+		}
+		const float analysisBottom = analysisTop +
+			static_cast<float>(trustedHeight * analysisHeightFraction);
 
 		decision.trustedIntersection = {
-			std::max(presentation.x0, static_cast<float>(trusted.left)),
+			std::max(presentation.x0, sourceLeft),
 			std::max(presentation.y0, analysisTop),
-			std::min(presentation.x1, static_cast<float>(trusted.right)),
+			std::min(presentation.x1, sourceRight),
 			std::min(presentation.y1, analysisBottom)
 		};
 		if (decision.trustedIntersection.x0 >= decision.trustedIntersection.x1 ||
 			decision.trustedIntersection.y0 >= decision.trustedIntersection.y1)
 		{
-			decision.reason = "central active-picture band does not intersect presentation crop";
+			decision.reason = "configured analysis band does not intersect presentation crop";
 			return decision;
 		}
 
@@ -149,7 +204,7 @@ namespace HdrPeakAnalysisCrop
 		if (decision.excludedFraction <= minimumMeaningfulExclusion)
 		{
 			decision.outcome = Outcome::FULL_PRESENTATION;
-			decision.reason = "presentation is already inside central active-picture band";
+			decision.reason = "presentation is already inside configured analysis band";
 			return decision;
 		}
 
@@ -177,7 +232,9 @@ namespace HdrPeakAnalysisCrop
 		}
 
 		decision.outcome = Outcome::RESTRICTED;
-		decision.reason = "configured central active-picture height restricts HDR analysis";
+		decision.reason = hasTrustedPicture
+			? "configured active-picture analysis band restricts HDR analysis"
+			: "configured presentation analysis band restricts HDR analysis";
 		return decision;
 	}
 
@@ -203,6 +260,12 @@ namespace HdrPeakAnalysisCrop
 		{
 			decision.outcome = Outcome::FULL_PRESENTATION;
 			decision.reason = "no pending or active subtitle movement";
+			return decision;
+		}
+		if (!HasCurrentValidTrustedPicture(frameSourceGeneration, trusted))
+		{
+			decision.outcome = Outcome::FALLBACK;
+			decision.reason = "no current trusted active picture for motion compensation";
 			return decision;
 		}
 
@@ -285,14 +348,15 @@ namespace HdrPeakAnalysisCrop
 		bool motionCompensationEnabled, bool peakDetectionActive,
 		uint64_t frameSourceGeneration, const TrustedPicture& trusted,
 		const pl_rect2df& presentation, double analysisHeightPercent,
-		double signedProtectionPixels)
+		double signedProtectionPixels,
+		VerticalAnchor anchor = VerticalAnchor::TOP)
 	{
 		// Fixed mode is the established behavior and always wins. Keeping this
 		// precedence at the policy seam makes a simultaneously configured
 		// experimental option incapable of changing its rectangle.
 		if (fixedPercentageEnabled)
 			return Resolve(true, peakDetectionActive, frameSourceGeneration,
-				trusted, presentation, analysisHeightPercent);
+				trusted, presentation, analysisHeightPercent, anchor);
 		return ResolveMotionCompensated(motionCompensationEnabled,
 			peakDetectionActive, frameSourceGeneration, trusted, presentation,
 			signedProtectionPixels);

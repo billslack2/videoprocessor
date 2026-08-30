@@ -18,7 +18,8 @@ namespace Tests
 			};
 			const HdrPeakAnalysisCrop::Decision decision =
 				HdrPeakAnalysisCrop::Resolve(true, true, 7, trusted,
-					pl_rect2df{ 0.0f, 0.0f, 1920.0f, 1080.0f });
+					pl_rect2df{ 0.0f, 0.0f, 1920.0f, 1080.0f }, 75.0,
+					HdrPeakAnalysisCrop::VerticalAnchor::CENTER);
 
 			Assert::IsTrue(decision.AppliesRestriction());
 			Assert::AreEqual(240.0f / 1080.0f,
@@ -36,7 +37,8 @@ namespace Tests
 			};
 			const HdrPeakAnalysisCrop::Decision decision =
 				HdrPeakAnalysisCrop::Resolve(true, true, 11, trusted,
-					pl_rect2df{ 0.0f, 100.0f, 1920.0f, 1000.0f });
+					pl_rect2df{ 0.0f, 100.0f, 1920.0f, 1000.0f }, 75.0,
+					HdrPeakAnalysisCrop::VerticalAnchor::CENTER);
 
 			Assert::IsTrue(decision.AppliesRestriction());
 			Assert::AreEqual(140.0f / 900.0f,
@@ -56,7 +58,8 @@ namespace Tests
 			};
 			const HdrPeakAnalysisCrop::Decision decision =
 				HdrPeakAnalysisCrop::Resolve(true, true, 12, trusted,
-					pl_rect2df{ 0.0f, 0.0f, 1920.0f, 1080.0f });
+					pl_rect2df{ 0.0f, 0.0f, 1920.0f, 1080.0f }, 75.0,
+					HdrPeakAnalysisCrop::VerticalAnchor::CENTER);
 
 			Assert::IsTrue(decision.AppliesRestriction());
 			Assert::AreEqual(200.0f / 1920.0f,
@@ -76,7 +79,8 @@ namespace Tests
 			};
 			const HdrPeakAnalysisCrop::Decision decision =
 				HdrPeakAnalysisCrop::Resolve(true, true, 13, trusted,
-					pl_rect2df{ 400.0f, 100.0f, 1500.0f, 900.0f });
+					pl_rect2df{ 400.0f, 100.0f, 1500.0f, 900.0f }, 75.0,
+					HdrPeakAnalysisCrop::VerticalAnchor::CENTER);
 
 			Assert::IsTrue(decision.AppliesRestriction());
 			Assert::AreEqual(0.0f, decision.normalizedCrop.x0, 0.000001f);
@@ -96,13 +100,76 @@ namespace Tests
 			};
 			const HdrPeakAnalysisCrop::Decision decision =
 				HdrPeakAnalysisCrop::Resolve(true, true, 4, trusted,
-					pl_rect2df{ 100.0f, 300.0f, 1820.0f, 800.0f });
+					pl_rect2df{ 100.0f, 300.0f, 1820.0f, 800.0f }, 75.0,
+					HdrPeakAnalysisCrop::VerticalAnchor::CENTER);
 
 			Assert::IsFalse(decision.AppliesRestriction());
 			Assert::AreEqual(
 				static_cast<int>(HdrPeakAnalysisCrop::Outcome::FULL_PRESENTATION),
 				static_cast<int>(decision.outcome));
 			Assert::AreEqual(0.0, decision.excludedFraction, 0.000001);
+		}
+
+		TEST_METHOD(FullRasterEvidenceUsesTopPresentationBandNotRetainedBarAnalysis)
+		{
+			const HdrPeakAnalysisCrop::TrustedPicture retainedBar = {
+				0, 140, 1920, 940, 1920, 1080, 18, true
+			};
+			const HdrPeakAnalysisCrop::TrustedPicture hdrTrusted =
+				HdrPeakAnalysisCrop::RequireBarAuthority(retainedBar, false);
+			const HdrPeakAnalysisCrop::Decision decision =
+				HdrPeakAnalysisCrop::ResolvePolicy(
+					true, false, true, 18, hdrTrusted,
+					pl_rect2df{ 0.0f, 0.0f, 1920.0f, 1080.0f }, 80.0, 0.0);
+
+			Assert::IsTrue(decision.AppliesRestriction());
+			Assert::AreEqual(0.0f, decision.trustedIntersection.y0, 0.000001f);
+			Assert::AreEqual(864.0f, decision.trustedIntersection.y1, 0.000001f);
+		}
+
+		TEST_METHOD(CurrentBarAuthorityRetainsFixedAnalysis)
+		{
+			const HdrPeakAnalysisCrop::TrustedPicture bar = {
+				0, 140, 1920, 940, 1920, 1080, 19, true
+			};
+			const HdrPeakAnalysisCrop::TrustedPicture hdrTrusted =
+				HdrPeakAnalysisCrop::RequireBarAuthority(bar, true);
+			const HdrPeakAnalysisCrop::Decision decision =
+				HdrPeakAnalysisCrop::ResolvePolicy(
+					true, false, true, 19, hdrTrusted,
+					pl_rect2df{ 0.0f, 0.0f, 1920.0f, 1080.0f }, 80.0, 0.0,
+					HdrPeakAnalysisCrop::VerticalAnchor::CENTER);
+
+			Assert::IsTrue(decision.AppliesRestriction());
+			Assert::AreEqual(220.0f, decision.trustedIntersection.y0, 0.000001f);
+			Assert::AreEqual(860.0f, decision.trustedIntersection.y1, 0.000001f);
+		}
+
+		TEST_METHOD(NoBarAuthorityUsesConfiguredFullRasterPresentationBand)
+		{
+			const HdrPeakAnalysisCrop::TrustedPicture retainedBar = {
+				0, 140, 1920, 940, 1920, 1080, 20, true
+			};
+			const HdrPeakAnalysisCrop::TrustedPicture hdrTrusted =
+				HdrPeakAnalysisCrop::RequireBarAuthority(retainedBar, false);
+			const pl_rect2df presentation = {
+				100.0f, 120.0f, 1820.0f, 960.0f
+			};
+
+			const HdrPeakAnalysisCrop::Decision fixed =
+				HdrPeakAnalysisCrop::ResolvePolicy(
+					true, false, true, 20, hdrTrusted, presentation, 80.0, 0.0);
+			const HdrPeakAnalysisCrop::Decision motion =
+				HdrPeakAnalysisCrop::ResolvePolicy(
+					false, true, true, 20, hdrTrusted, presentation, 80.0, 120.0);
+
+			Assert::IsTrue(fixed.AppliesRestriction());
+			Assert::IsFalse(motion.AppliesRestriction());
+			Assert::AreEqual(120.0f, fixed.trustedIntersection.y0, 0.000001f);
+			Assert::AreEqual(792.0f, fixed.trustedIntersection.y1, 0.000001f);
+			Assert::AreEqual(
+				static_cast<int>(HdrPeakAnalysisCrop::Outcome::FALLBACK),
+				static_cast<int>(motion.outcome));
 		}
 
 		TEST_METHOD(ConfiguredHeightChangesCentralBand)
@@ -112,14 +179,15 @@ namespace Tests
 			};
 			const HdrPeakAnalysisCrop::Decision decision =
 				HdrPeakAnalysisCrop::Resolve(true, true, 14, trusted,
-					pl_rect2df{ 0.0f, 0.0f, 1920.0f, 1080.0f }, 50.0);
+					pl_rect2df{ 0.0f, 0.0f, 1920.0f, 1080.0f }, 50.0,
+					HdrPeakAnalysisCrop::VerticalAnchor::CENTER);
 
 			Assert::IsTrue(decision.AppliesRestriction());
 			Assert::AreEqual(300.0f, decision.trustedIntersection.y0, 0.000001f);
 			Assert::AreEqual(700.0f, decision.trustedIntersection.y1, 0.000001f);
 		}
 
-		TEST_METHOD(FailsOpenForStaleGeometryOrInactivePeakDetection)
+		TEST_METHOD(FixedBandIgnoresStaleGeometryAndRequiresPeakDetection)
 		{
 			HdrPeakAnalysisCrop::TrustedPicture trusted = {
 				0, 140, 1920, 940, 1920, 1080, 8, true
@@ -128,8 +196,10 @@ namespace Tests
 				0.0f, 0.0f, 1920.0f, 1080.0f
 			};
 
-			Assert::IsFalse(HdrPeakAnalysisCrop::Resolve(
-				true, true, 9, trusted, presentation).AppliesRestriction());
+			const auto stale = HdrPeakAnalysisCrop::Resolve(
+				true, true, 9, trusted, presentation);
+			Assert::IsTrue(stale.AppliesRestriction());
+			Assert::AreEqual(0.0f, stale.trustedIntersection.y0, 0.000001f);
 			Assert::IsFalse(HdrPeakAnalysisCrop::Resolve(
 				true, false, 8, trusted, presentation).AppliesRestriction());
 			Assert::IsFalse(HdrPeakAnalysisCrop::Resolve(
@@ -178,10 +248,33 @@ namespace Tests
 			};
 			const auto decision = HdrPeakAnalysisCrop::ResolvePolicy(
 				true, true, true, 17, trusted,
-				pl_rect2df{ 0.0f, 0.0f, 1920.0f, 1080.0f }, 50.0, 300.0);
+				pl_rect2df{ 0.0f, 0.0f, 1920.0f, 1080.0f }, 50.0, 300.0,
+				HdrPeakAnalysisCrop::VerticalAnchor::CENTER);
 			Assert::IsTrue(decision.AppliesRestriction());
 			Assert::AreEqual(300.0f, decision.trustedIntersection.y0, 0.000001f);
 			Assert::AreEqual(700.0f, decision.trustedIntersection.y1, 0.000001f);
+		}
+
+		TEST_METHOD(FullRasterPositionAnchorsTheConfiguredBand)
+		{
+			const pl_rect2df presentation = { 0.0f, 0.0f, 1920.0f, 1080.0f };
+			const HdrPeakAnalysisCrop::TrustedPicture noBarAuthority;
+			const auto top = HdrPeakAnalysisCrop::Resolve(
+				true, true, 21, noBarAuthority, presentation, 80.0,
+				HdrPeakAnalysisCrop::VerticalAnchor::TOP);
+			const auto center = HdrPeakAnalysisCrop::Resolve(
+				true, true, 21, noBarAuthority, presentation, 80.0,
+				HdrPeakAnalysisCrop::VerticalAnchor::CENTER);
+			const auto bottom = HdrPeakAnalysisCrop::Resolve(
+				true, true, 21, noBarAuthority, presentation, 80.0,
+				HdrPeakAnalysisCrop::VerticalAnchor::BOTTOM);
+
+			Assert::AreEqual(0.0f, top.trustedIntersection.y0, 0.000001f);
+			Assert::AreEqual(864.0f, top.trustedIntersection.y1, 0.000001f);
+			Assert::AreEqual(108.0f, center.trustedIntersection.y0, 0.000001f);
+			Assert::AreEqual(972.0f, center.trustedIntersection.y1, 0.000001f);
+			Assert::AreEqual(216.0f, bottom.trustedIntersection.y0, 0.000001f);
+			Assert::AreEqual(1080.0f, bottom.trustedIntersection.y1, 0.000001f);
 		}
 	};
 }
