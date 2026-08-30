@@ -389,6 +389,37 @@ tester package. Next acceptance work is a controlled real-display run on an
 Advanced Color/HDR-capable top-level output, confirming activation/rollback
 logs, HDR metadata, non-identity Cube effect, and no Present on forced failure.
 
+### Contract checkpoint 11: current-beta rebase and HDR-analysis isolation
+
+The VP-0166 branch is rebased onto the fetched `origin/v1.3.004-beta` tip
+`f30ebdef052d921d74560a45d483f812ab817c87`; its reviewed tip is now
+`df8df7d269024e51d3f5377d12582bd728169159`. The prior remote history ended at
+`241e8a9d` on base `66f22307` and was therefore not current. A local safety
+branch preserves that pre-rebase tip, and the remote feature branch was
+updated with an explicit old-object force-with-lease after comparison showed
+the same thirteen VP-0166 changes rebased, not unrelated remote work.
+
+The single textual conflict combined the beta's fixed-mode HDR-analysis
+control enablement with VP-0166's inherited/effective-value tracking. Rebase
+review then found one substantive integration defect: external-LUT frames
+disabled frame-local libplacebo peak detection but the new beta analysis crop
+and telemetry still consulted the shared configured parameter. Those frames
+could therefore report restricted/stale analysis despite the external LUT
+owning the complete PQ transform. Commit `df8df7d2` now derives crop and
+metadata telemetry from actual per-frame peak-detection activity, clears
+shared crop state, and resets interval counters while the external carrier is
+armed.
+
+The combined HDR-analysis, output-policy, and LUT/parser/GPU suite passes
+102/102. The complete C++ test DLL passes 1065/1066; the sole failure is the
+current beta's configuration-reference mismatch (four viewport crop fields
+exist only in the public inventory and one HDR-analysis-position field exists
+only in `CONFIGURATION.html`), not a LUT/rendering failure. Independent
+pipeline, profile-generation, and madVR-contract re-reviews report no
+remaining P1/P2. The pre-test deployment and configuration were restored
+byte-for-byte; no rebased test package is deployed yet. The next acceptance
+step remains an isolated x64 Release build and controlled HDR-display run.
+
 ## Implementation progress — 2026-08-29
 
 The first source slice is committed and pushed on
