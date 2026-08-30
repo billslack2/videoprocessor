@@ -9,7 +9,9 @@
 
 #include <cstdint>
 #include <algorithm>
+#include <array>
 #include <cctype>
+#include <cmath>
 #include <fstream>
 #include <iterator>
 #include <map>
@@ -260,6 +262,55 @@ DOMAIN_MAX 1 1 1
 		uint8_t a;
 	};
 
+	std::array<double, 3> Bt2020PqToP3PqAndSwap(RgbaPixel source)
+	{
+		constexpr double m1 = 2610.0 / 16384.0;
+		constexpr double m2 = 2523.0 / 32.0;
+		constexpr double c1 = 3424.0 / 4096.0;
+		constexpr double c2 = 2413.0 / 128.0;
+		constexpr double c3 = 2392.0 / 128.0;
+		auto eotf = [=](double value)
+		{
+			const double p = std::pow(value, 1.0 / m2);
+			return std::pow(std::max(p - c1, 0.0) / (c2 - c3 * p),
+				1.0 / m1);
+		};
+		auto inverseEotf = [=](double value)
+		{
+			const double p = std::pow(std::min(std::max(value, 0.0), 1.0), m1);
+			return std::pow((c1 + c2 * p) / (1.0 + c3 * p), m2);
+		};
+		const double bt2020[3] = {
+			eotf(source.r / 255.0),
+			eotf(source.g / 255.0),
+			eotf(source.b / 255.0),
+		};
+		const double p3[3] = {
+			1.343578253 * bt2020[0] - 0.282179671 * bt2020[1] -
+				0.061398582 * bt2020[2],
+			-0.065297453 * bt2020[0] + 1.075787916 * bt2020[1] -
+				0.010490463 * bt2020[2],
+			0.002821787 * bt2020[0] - 0.019598495 * bt2020[1] +
+				1.016776707 * bt2020[2],
+		};
+		// The Cube swaps R/B after libplacebo has converted nonlinear BT.2020
+		// coordinates to nonlinear P3-D65 using the hard-clip policy.
+		return {
+			inverseEotf(p3[2]), inverseEotf(p3[1]), inverseEotf(p3[0]) };
+	}
+
+	void AssertPixelNear(RgbaPixel actual,
+		const std::array<double, 3>& expected, int tolerance = 2)
+	{
+		const int expectedR = static_cast<int>(std::lround(expected[0] * 255.0));
+		const int expectedG = static_cast<int>(std::lround(expected[1] * 255.0));
+		const int expectedB = static_cast<int>(std::lround(expected[2] * 255.0));
+		Assert::IsTrue(std::abs(static_cast<int>(actual.r) - expectedR) <= tolerance);
+		Assert::IsTrue(std::abs(static_cast<int>(actual.g) - expectedG) <= tolerance);
+		Assert::IsTrue(std::abs(static_cast<int>(actual.b) - expectedB) <= tolerance);
+		Assert::AreEqual(255, static_cast<int>(actual.a));
+	}
+
 	std::string LoadBundledShader(const char* fileName)
 	{
 		std::string path = __FILE__;
@@ -342,6 +393,15 @@ DOMAIN_MAX 1 1 1
 	class TargetLutGpuFixture
 	{
 	public:
+		struct ExternalConversionResult
+		{
+			RgbaPixel pixel{};
+			LibplaceboExternalHdrLut::FrameProjection projection;
+			bool usesConversionLut = false;
+			bool targetLutMasked = false;
+			bool peakDetectionDisabled = false;
+		};
+
 		~TargetLutGpuFixture()
 		{
 			if (m_renderer)
@@ -435,6 +495,97 @@ DOMAIN_MAX 1 1 1
 			pl_tex_destroy(gpu, &targetTexture);
 			pl_tex_destroy(gpu, &sourceTexture);
 			return result[0];
+		}
+
+		ExternalConversionResult RenderExternalConversion(
+			const LibplaceboExternalHdrLut::ActiveSet& active,
+			uint64_t expectedGeneration,
+			LibplaceboExternalHdrLut::Primaries sourcePrimaries,
+			RgbaPixel source)
+		{
+			pl_gpu gpu = m_d3d11->gpu;
+			const enum pl_fmt_caps requiredCaps = static_cast<enum pl_fmt_caps>(
+				PL_FMT_CAP_SAMPLEABLE | PL_FMT_CAP_RENDERABLE |
+				PL_FMT_CAP_HOST_READABLE);
+			pl_fmt format = pl_find_fmt(
+				gpu, PL_FMT_UNORM, 4, 8, 8, requiredCaps);
+			Assert::IsNotNull(format);
+
+			const RgbaPixel sourcePixels[4] = { source, source, source, source };
+			pl_tex_params sourceParams{};
+			sourceParams.w = 2;
+			sourceParams.h = 2;
+			sourceParams.format = format;
+			sourceParams.sampleable = true;
+			sourceParams.initial_data = sourcePixels;
+			pl_tex sourceTexture = pl_tex_create(gpu, &sourceParams);
+			Assert::IsNotNull(sourceTexture);
+
+			pl_tex_params targetParams{};
+			targetParams.w = 2;
+			targetParams.h = 2;
+			targetParams.format = format;
+			targetParams.renderable = true;
+			targetParams.host_readable = true;
+			pl_tex targetTexture = pl_tex_create(gpu, &targetParams);
+			Assert::IsNotNull(targetTexture);
+
+			pl_frame image = MakeRgbFrame(sourceTexture);
+			image.color.primaries = PL_COLOR_PRIM_BT_2020;
+			image.color.transfer = PL_COLOR_TRC_PQ;
+			pl_frame target = MakeRgbFrame(targetTexture);
+			target.color.primaries = PL_COLOR_PRIM_BT_2020;
+			target.color.transfer = PL_COLOR_TRC_PQ;
+			target.repr.bits.sample_depth = 10;
+			target.repr.bits.color_depth = 10;
+			pl_custom_lut legacyTargetLut{};
+			target.lut = &legacyTargetLut;
+			target.lut_type = PL_LUT_NATIVE;
+
+			pl_render_params shared = pl_render_fast_params;
+			pl_peak_detect_params peak{};
+			shared.peak_detect_params = &peak;
+			shared.dither_params = nullptr;
+			shared.error_diffusion = nullptr;
+			shared.deband_params = nullptr;
+			shared.sigmoid_params = nullptr;
+			shared.hooks = nullptr;
+			shared.num_hooks = 0;
+			pl_frame frameTarget{};
+			pl_render_params frameParams{};
+			pl_custom_lut frameLut{};
+			pl_color_map_params frameColorMap{};
+			const pl_gamut_map_function* clip =
+				pl_find_gamut_map_function("clip");
+			Assert::IsNotNull(clip);
+
+			ExternalConversionResult result;
+			result.projection =
+				LibplaceboExternalHdrLut::PrepareFrameProjection(
+					active, expectedGeneration,
+					LibplaceboExternalHdrLut::ToneMappingMode::EXTERNAL_3DLUT,
+					true, sourcePrimaries, image.color, target, shared, clip,
+					frameTarget, frameParams, frameLut, frameColorMap);
+			result.usesConversionLut = frameParams.lut == &frameLut &&
+				frameParams.lut_type == PL_LUT_CONVERSION;
+			result.targetLutMasked = frameTarget.lut == nullptr &&
+				frameTarget.lut_type == PL_LUT_UNKNOWN;
+			result.peakDetectionDisabled =
+				frameParams.peak_detect_params == nullptr;
+			Assert::IsTrue(result.projection.attached);
+			Assert::IsTrue(pl_render_image(
+				m_renderer, &image, &frameTarget, &frameParams));
+			pl_gpu_finish(gpu);
+
+			RgbaPixel pixels[4] = {};
+			pl_tex_transfer_params download{};
+			download.tex = targetTexture;
+			download.ptr = pixels;
+			Assert::IsTrue(pl_tex_download(gpu, &download));
+			result.pixel = pixels[0];
+			pl_tex_destroy(gpu, &targetTexture);
+			pl_tex_destroy(gpu, &sourceTexture);
+			return result;
 		}
 
 		pl_gpu Gpu() const
@@ -760,6 +911,61 @@ namespace VideoProcessorTest
 			Assert::AreEqual(static_cast<int>(Rejection::PATH_OUTSIDE_BASE),
 				static_cast<int>(resource.Result().rejection));
 			Assert::IsFalse(resource.Available());
+		}
+
+		TEST_METHOD(ExternalHdrConversionLutGpuExactSlotUsesPqCubeCoordinates)
+		{
+			TemporaryDirectory directory;
+			const std::string cube = directory.Write(
+				"bt2020-swap.cube", SwapRedBlue3dCube);
+			LibplaceboExternalHdrLut::Declarations declarations;
+			declarations.bt2020 = { cube, directory.Path() };
+			auto candidate = LibplaceboExternalHdrLut::CandidateSet::Load(
+				nullptr, declarations, 1);
+			LibplaceboExternalHdrLut::ActiveSet active;
+			active.Commit(std::move(candidate));
+
+			TargetLutGpuFixture fixture;
+			Assert::IsTrue(fixture.Create(), L"WARP/libplacebo GPU unavailable");
+			const RgbaPixel source{ 200, 136, 48, 255 };
+			const auto result = fixture.RenderExternalConversion(
+				active, 1, LibplaceboExternalHdrLut::Primaries::BT2020, source);
+			Assert::AreEqual(static_cast<int>(LibplaceboExternalHdrLut::Slot::BT2020),
+				static_cast<int>(result.projection.resolved.selection.slot));
+			Assert::IsFalse(result.projection.resolved.selection.
+				requiresExplicitPrimariesTransform);
+			Assert::IsTrue(result.usesConversionLut);
+			Assert::IsTrue(result.targetLutMasked);
+			Assert::IsTrue(result.peakDetectionDisabled);
+			AssertPixelNear(result.pixel, {
+				source.b / 255.0, source.g / 255.0, source.r / 255.0 });
+		}
+
+		TEST_METHOD(ExternalHdrConversionLutGpuFallbackConvertsToP3BeforeCube)
+		{
+			TemporaryDirectory directory;
+			const std::string cube = directory.Write(
+				"p3-swap.cube", SwapRedBlue3dCube);
+			LibplaceboExternalHdrLut::Declarations declarations;
+			declarations.p3D65 = { cube, directory.Path() };
+			auto candidate = LibplaceboExternalHdrLut::CandidateSet::Load(
+				nullptr, declarations, 1);
+			LibplaceboExternalHdrLut::ActiveSet active;
+			active.Commit(std::move(candidate));
+
+			TargetLutGpuFixture fixture;
+			Assert::IsTrue(fixture.Create(), L"WARP/libplacebo GPU unavailable");
+			const RgbaPixel source{ 200, 136, 48, 255 };
+			const auto result = fixture.RenderExternalConversion(
+				active, 1, LibplaceboExternalHdrLut::Primaries::BT2020, source);
+			Assert::AreEqual(static_cast<int>(LibplaceboExternalHdrLut::Slot::P3_D65),
+				static_cast<int>(result.projection.resolved.selection.slot));
+			Assert::IsTrue(result.projection.resolved.selection.
+				requiresExplicitPrimariesTransform);
+			Assert::IsTrue(result.usesConversionLut);
+			Assert::IsTrue(result.targetLutMasked);
+			Assert::IsTrue(result.peakDetectionDisabled);
+			AssertPixelNear(result.pixel, Bt2020PqToP3PqAndSwap(source));
 		}
 
 		TEST_METHOD(ExternalHdrFrameProjectionCannotAttachWithoutCarrier)
