@@ -3992,11 +3992,29 @@ namespace Tests
 				static_cast<int>(decision.state.mode));
 
 			input.previous = decision.state;
-			input.globalNearBlack = false;
 			input.boundedVisibleContentOutsideCrop = true;
 			input.sourceSequence = 1001;
 			decision = EvaluateNearBlackPresentationEpisode(input);
 			Assert::IsTrue(decision.changedToFullRaster);
+			for (uint64_t sequence = 1002; sequence <= 1008; ++sequence)
+			{
+				input.previous = decision.state;
+				input.sourceSequence = sequence;
+				decision = EvaluateNearBlackPresentationEpisode(input);
+				Assert::IsFalse(decision.state.confirmedNonNearBlackContent);
+			}
+
+			input.previous = decision.state;
+			input.globalNearBlack = false;
+			input.sourceSequence = 1009;
+			input.retentionEvaluated = true;
+			input.retentionSafe = false;
+			input.retentionBounds = scope;
+			input.retentionSourceGeneration = input.sourceGeneration;
+			input.retentionSourceSequence = input.sourceSequence;
+			decision = EvaluateNearBlackPresentationEpisode(input);
+			Assert::AreEqual(1u,
+				decision.state.outwardConfirmationSamples);
 
 			input.boundedVisibleContentOutsideCrop = false;
 			input.currentObservationAvailable = true;
@@ -4004,22 +4022,24 @@ namespace Tests
 			input.retentionEvaluated = true;
 			input.retentionSafe = true;
 			input.retentionBounds = scope;
+			input.retentionSourceGeneration = input.sourceGeneration;
 			input.knownTrustedGeometryReacquired = true;
 			input.reacquiredTrustedGeometry = scope;
 			input.reacquiredTrustedClassification =
 				ActivePictureClassification::BAR_CROP_TRUSTED;
 			input.reacquiredSourceGeneration = input.sourceGeneration;
-			input.reacquiredSourceSequence = 1002;
+			input.reacquiredSourceSequence = 1010;
 			input.reacquiredPresentationEpoch = input.presentationEpoch;
 			input.reacquisitionIsCurrentAssociation = true;
 
-			for (uint64_t sequence = 1002; sequence <= 1008; ++sequence)
+			for (uint64_t sequence = 1010; sequence <= 1016; ++sequence)
 			{
 				input.previous = decision.state;
 				input.sourceSequence = sequence;
 				input.retentionSourceSequence = sequence;
+				input.reacquiredSourceSequence = sequence;
 				decision = EvaluateNearBlackPresentationEpisode(input);
-				if (sequence < 1008)
+				if (sequence < 1016)
 				{
 					Assert::IsFalse(decision.releasedToTrustedCrop);
 					Assert::AreEqual(static_cast<int>(
@@ -4043,6 +4063,216 @@ namespace Tests
 			Assert::IsTrue(restored.applyCrop);
 			Assert::AreEqual(scope.top, restored.sourceBounds.top);
 			Assert::AreEqual(scope.bottom, restored.sourceBounds.bottom);
+		}
+
+		TEST_METHOD(NearBlackSustainedNonNearBlackOutwardContentStaysSticky)
+		{
+			const ActivePictureBounds scope = TrustedScopeCrop().geometry;
+			NearBlackPresentationEpisodeInput input;
+			input.measurementCurrent = true;
+			input.nearBlackEvaluated = true;
+			input.globalNearBlack = true;
+			input.trustedCropAvailable = true;
+			input.trustedCrop = scope;
+			input.presentationEpoch = 45;
+			input.sourceGeneration = 39;
+			input.sourceSequence = 2100;
+			input.framesPerSecond = 23.976;
+			auto decision = EvaluateNearBlackPresentationEpisode(input);
+
+			input.globalNearBlack = false;
+			input.boundedVisibleContentOutsideCrop = true;
+			input.retentionEvaluated = true;
+			input.retentionSafe = false;
+			input.retentionBounds = scope;
+			input.retentionSourceGeneration = input.sourceGeneration;
+			for (uint64_t sequence = 2101; sequence <= 2113; ++sequence)
+			{
+				input.previous = decision.state;
+				input.sourceSequence = sequence;
+				input.retentionSourceSequence = sequence;
+				decision = EvaluateNearBlackPresentationEpisode(input);
+			}
+			Assert::IsTrue(decision.state.confirmedNonNearBlackContent);
+
+			input.boundedVisibleContentOutsideCrop = false;
+			input.currentObservationAvailable = true;
+			input.currentObservation = scope;
+			input.retentionEvaluated = true;
+			input.retentionSafe = true;
+			input.retentionBounds = scope;
+			input.knownTrustedGeometryReacquired = true;
+			input.reacquiredTrustedGeometry = scope;
+			input.reacquiredTrustedClassification =
+				ActivePictureClassification::BAR_CROP_TRUSTED;
+			input.reacquiredSourceGeneration = input.sourceGeneration;
+			input.reacquiredPresentationEpoch = input.presentationEpoch;
+			input.reacquisitionIsCurrentAssociation = true;
+			for (uint64_t sequence = 2114; sequence <= 2140; ++sequence)
+			{
+				input.previous = decision.state;
+				input.sourceSequence = sequence;
+				input.retentionSourceSequence = sequence;
+				input.reacquiredSourceSequence = sequence;
+				decision = EvaluateNearBlackPresentationEpisode(input);
+				Assert::IsFalse(decision.releasedToTrustedCrop);
+			}
+			Assert::AreEqual(static_cast<int>(
+				NearBlackPresentationMode::FULL_RASTER),
+				static_cast<int>(decision.state.mode));
+		}
+
+		TEST_METHOD(NearBlackOutwardConfirmationRequiresExactCurrentEntryRetention)
+		{
+			const ActivePictureBounds scope = TrustedScopeCrop().geometry;
+			NearBlackPresentationEpisodeInput input;
+			input.measurementCurrent = true;
+			input.nearBlackEvaluated = true;
+			input.globalNearBlack = true;
+			input.trustedCropAvailable = true;
+			input.trustedCrop = scope;
+			input.presentationEpoch = 46;
+			input.sourceGeneration = 40;
+			input.sourceSequence = 2200;
+			input.framesPerSecond = 23.976;
+			auto decision = EvaluateNearBlackPresentationEpisode(input);
+
+			input.globalNearBlack = false;
+			input.boundedVisibleContentOutsideCrop = true;
+			input.retentionEvaluated = true;
+			input.retentionBounds = scope;
+			input.retentionBounds.top += 2;
+			input.retentionSourceGeneration = input.sourceGeneration;
+			for (uint64_t sequence = 2201; sequence <= 2214; ++sequence)
+			{
+				input.previous = decision.state;
+				input.sourceSequence = sequence;
+				input.retentionSourceSequence = sequence;
+				decision = EvaluateNearBlackPresentationEpisode(input);
+			}
+			Assert::IsFalse(decision.state.confirmedNonNearBlackContent);
+			Assert::AreEqual(0u, decision.state.outwardConfirmationSamples);
+
+			input.retentionBounds = scope;
+			input.previous = decision.state;
+			input.sourceSequence = 2215;
+			input.retentionSourceSequence = 2214;
+			decision = EvaluateNearBlackPresentationEpisode(input);
+			Assert::AreEqual(0u, decision.state.outwardConfirmationSamples);
+
+			input.previous = decision.state;
+			input.sourceSequence = 2216;
+			input.retentionSourceSequence = 2216;
+			input.retentionSourceGeneration = input.sourceGeneration + 1;
+			decision = EvaluateNearBlackPresentationEpisode(input);
+			Assert::AreEqual(0u, decision.state.outwardConfirmationSamples);
+		}
+
+		TEST_METHOD(NearBlackEpisodeSuppressesPublishedAndHeldBarGeometryMutation)
+		{
+			Assert::IsTrue(ShouldSuppressNearBlackBarGeometryMutation(true, true,
+				ActivePictureClassification::BAR_CROP_TRUSTED));
+			// The following non-publish stable frame has the same typed decision.
+			Assert::IsTrue(ShouldSuppressNearBlackBarGeometryMutation(true, true,
+				ActivePictureClassification::BAR_CROP_TRUSTED));
+			Assert::IsFalse(ShouldSuppressNearBlackBarGeometryMutation(true, true,
+				ActivePictureClassification::FULL_RASTER_TRUSTED));
+			Assert::IsFalse(ShouldSuppressNearBlackBarGeometryMutation(false, true,
+				ActivePictureClassification::BAR_CROP_TRUSTED));
+		}
+
+		TEST_METHOD(NearBlackStartupBootstrapOnlyReopensNormalAcquisition)
+		{
+			const ActivePictureBounds scope = TrustedScopeCrop().geometry;
+			NearBlackPresentationEpisodeInput input;
+			input.measurementCurrent = true;
+			input.nearBlackEvaluated = true;
+			input.globalNearBlack = true;
+			input.presentationEpoch = 47;
+			input.sourceGeneration = 41;
+			input.sourceSequence = 1;
+			input.framesPerSecond = 23.976;
+			auto decision = EvaluateNearBlackPresentationEpisode(input);
+			Assert::AreEqual(static_cast<int>(
+				NearBlackPresentationMode::FULL_RASTER),
+				static_cast<int>(decision.state.mode));
+			Assert::IsFalse(decision.state.entryTrustedCropAvailable);
+
+			input.globalNearBlack = false;
+			input.nativeBootstrapContractAvailable = true;
+			input.nativeBootstrapContract = scope;
+			input.nativeBootstrapRetentionEvaluated = true;
+			input.nativeBootstrapRetentionSafe = true;
+			input.nativeBootstrapSourceGeneration = input.sourceGeneration;
+			input.nativeBootstrapPresentationEpoch = input.presentationEpoch;
+			for (uint64_t sequence = 2; sequence <= 14; ++sequence)
+			{
+				input.previous = decision.state;
+				input.sourceSequence = sequence;
+				input.nativeBootstrapSourceSequence = sequence;
+				decision = EvaluateNearBlackPresentationEpisode(input);
+				if (sequence < 14)
+				{
+					Assert::IsFalse(decision.bootstrapReleased);
+					Assert::AreEqual(static_cast<int>(
+						NearBlackPresentationMode::FULL_RASTER),
+						static_cast<int>(decision.state.mode));
+				}
+			}
+			Assert::IsTrue(decision.bootstrapReleased);
+			Assert::IsTrue(decision.resetTransitionEvidence);
+			Assert::IsFalse(decision.releasedToTrustedCrop);
+			Assert::IsTrue(decision.ended);
+			Assert::AreEqual(static_cast<int>(
+				NearBlackPresentationMode::INACTIVE),
+				static_cast<int>(decision.state.mode));
+		}
+
+		TEST_METHOD(NearBlackStartupBootstrapResetsOnMismatchRepeatAndNearBlack)
+		{
+			const ActivePictureBounds scope = TrustedScopeCrop().geometry;
+			NearBlackPresentationEpisodeInput input;
+			input.previous.mode = NearBlackPresentationMode::FULL_RASTER;
+			input.previous.sourceGeneration = 43;
+			input.previous.presentationEpoch = 49;
+			input.measurementCurrent = true;
+			input.nearBlackEvaluated = true;
+			input.nativeBootstrapContractAvailable = true;
+			input.nativeBootstrapContract = scope;
+			input.nativeBootstrapRetentionEvaluated = true;
+			input.nativeBootstrapRetentionSafe = true;
+			input.nativeBootstrapSourceGeneration = 43;
+			input.nativeBootstrapPresentationEpoch = 49;
+			input.presentationEpoch = 49;
+			input.sourceGeneration = 43;
+			input.sourceSequence = 6000;
+			input.nativeBootstrapSourceSequence = 6000;
+			auto decision = EvaluateNearBlackPresentationEpisode(input);
+			Assert::AreEqual(1u, decision.state.bootstrapSamples);
+
+			input.previous = decision.state;
+			input.sourceSequence = 6001;
+			input.nativeBootstrapSourceSequence = 6001;
+			input.nativeBootstrapContract.top += 2;
+			input.nativeBootstrapContract.bottom -= 2;
+			decision = EvaluateNearBlackPresentationEpisode(input);
+			Assert::AreEqual(1u, decision.state.bootstrapSamples);
+
+			input.previous = decision.state;
+			input.sourceSequence = 6002;
+			input.nativeBootstrapSourceSequence = 6002;
+			input.cadenceRepeat = true;
+			decision = EvaluateNearBlackPresentationEpisode(input);
+			Assert::AreEqual(1u, decision.state.bootstrapSamples);
+
+			input.previous = decision.state;
+			input.sourceSequence = 6003;
+			input.nativeBootstrapSourceSequence = 6003;
+			input.cadenceRepeat = false;
+			input.globalNearBlack = true;
+			decision = EvaluateNearBlackPresentationEpisode(input);
+			Assert::AreEqual(0u, decision.state.bootstrapSamples);
+			Assert::IsFalse(decision.bootstrapReleased);
 		}
 
 		TEST_METHOD(NearBlackCropRevalidationResetsAcrossSubtitleGap)

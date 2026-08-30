@@ -636,9 +636,16 @@ namespace AlphaSourceCrop
 		bool entryTrustedCropAvailable = false;
 		ActivePictureBounds entryTrustedCrop;
 		uint64_t fullRasterStartedSourceSequence = 0;
+		bool confirmedNonNearBlackContent = false;
+		uint64_t outwardConfirmationLastSourceSequence = 0;
+		uint32_t outwardConfirmationSamples = 0;
 		uint64_t revalidationStartedSourceSequence = 0;
 		uint64_t revalidationLastSourceSequence = 0;
 		uint32_t revalidationSamples = 0;
+		bool bootstrapCandidateAvailable = false;
+		ActivePictureBounds bootstrapCandidate;
+		uint64_t bootstrapLastSourceSequence = 0;
+		uint32_t bootstrapSamples = 0;
 	};
 
 	struct NearBlackPresentationEpisodeInput
@@ -658,6 +665,7 @@ namespace AlphaSourceCrop
 		bool retentionEvaluated = false;
 		bool retentionSafe = false;
 		ActivePictureBounds retentionBounds;
+		uint64_t retentionSourceGeneration = 0;
 		uint64_t retentionSourceSequence = 0;
 		bool knownTrustedGeometryReacquired = false;
 		ActivePictureBounds reacquiredTrustedGeometry;
@@ -667,6 +675,14 @@ namespace AlphaSourceCrop
 		uint64_t reacquiredSourceSequence = 0;
 		uint64_t reacquiredPresentationEpoch = 0;
 		bool reacquisitionIsCurrentAssociation = false;
+		bool nativeBootstrapContractAvailable = false;
+		ActivePictureBounds nativeBootstrapContract;
+		bool nativeBootstrapRetentionEvaluated = false;
+		bool nativeBootstrapRetentionSafe = false;
+		bool nativeBootstrapOutwardVisible = false;
+		uint64_t nativeBootstrapSourceGeneration = 0;
+		uint64_t nativeBootstrapSourceSequence = 0;
+		uint64_t nativeBootstrapPresentationEpoch = 0;
 		double framesPerSecond = 60.0;
 		uint64_t presentationEpoch = 0;
 		uint64_t sourceGeneration = 0;
@@ -679,9 +695,13 @@ namespace AlphaSourceCrop
 		bool started = false;
 		bool changedToFullRaster = false;
 		bool releasedToTrustedCrop = false;
+		bool bootstrapReleased = false;
+		bool resetTransitionEvidence = false;
 		bool revalidationChanged = false;
 		uint32_t revalidationSamples = 0;
 		uint32_t revalidationSamplesRequired = 0;
+		uint32_t bootstrapSamples = 0;
+		uint32_t bootstrapSamplesRequired = 0;
 		bool ended = false;
 		std::string reason;
 	};
@@ -694,6 +714,8 @@ namespace AlphaSourceCrop
 	NearBlackPresentationEpisodeDecision EvaluateNearBlackPresentationEpisode(
 		const NearBlackPresentationEpisodeInput& input);
 	const char* NearBlackPresentationModeName(NearBlackPresentationMode mode);
+	bool ShouldSuppressNearBlackBarGeometryMutation(bool acquisitionBlocked,
+		bool stable, ActivePictureClassification classification);
 
 	struct Input
 	{

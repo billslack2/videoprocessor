@@ -3256,6 +3256,14 @@ struct LibplaceboVideoRenderer::Impl
 	uint64_t latestKnownTrustedReacquisitionSourceSequence = 0;
 	uint64_t latestKnownTrustedReacquisitionPresentationEpoch = 0;
 	bool latestKnownTrustedReacquisitionCurrentAssociation = false;
+	bool latestNativeBootstrapContractAvailable = false;
+	ActivePictureBounds latestNativeBootstrapContract;
+	bool latestNativeBootstrapRetentionEvaluated = false;
+	bool latestNativeBootstrapRetentionSafe = false;
+	bool latestNativeBootstrapOutwardVisible = false;
+	uint64_t latestNativeBootstrapSourceGeneration = 0;
+	uint64_t latestNativeBootstrapSourceSequence = 0;
+	uint64_t latestNativeBootstrapPresentationEpoch = 0;
 	AlphaSourceCrop::NearBlackPresentationEpisodeState
 		nearBlackPresentationEpisode;
 	std::string latestActivePicturePresentationRetentionReason;
@@ -7215,6 +7223,14 @@ struct LibplaceboVideoRenderer::Impl
 		latestKnownTrustedReacquisitionSourceSequence = 0;
 		latestKnownTrustedReacquisitionPresentationEpoch = 0;
 		latestKnownTrustedReacquisitionCurrentAssociation = false;
+		latestNativeBootstrapContractAvailable = false;
+		latestNativeBootstrapContract = {};
+		latestNativeBootstrapRetentionEvaluated = false;
+		latestNativeBootstrapRetentionSafe = false;
+		latestNativeBootstrapOutwardVisible = false;
+		latestNativeBootstrapSourceGeneration = 0;
+		latestNativeBootstrapSourceSequence = 0;
+		latestNativeBootstrapPresentationEpoch = 0;
 		latestActivePicturePresentationRetentionReason.clear();
 		fullRasterPresentationAuthorityAvailable = false;
 		fullRasterPresentationAuthoritySourceGeneration = 0;
@@ -7291,8 +7307,13 @@ struct LibplaceboVideoRenderer::Impl
 				trustedCropIsCurrentGeneration,
 				sceneSnapshotIsCurrentGeneration,
 				latestActivePicturePresentationRetentionSafe);
+		const bool forceStartupBootstrapAnalysis =
+			nearBlackPresentationEpisode.mode ==
+				AlphaSourceCrop::NearBlackPresentationMode::FULL_RASTER &&
+			!nearBlackPresentationEpisode.entryTrustedCropAvailable &&
+			nearBlackPresentationEpisode.bootstrapCandidateAvailable;
 		if (scheduledAnalysis || forceAnalysis || hasScheduledDecision ||
-			forceRetentionSafetyAnalysis)
+			forceRetentionSafetyAnalysis || forceStartupBootstrapAnalysis)
 		{
 			const bool hadCurrentTrustedCropGeometry =
 				trustedCropIsCurrentGeneration;
@@ -7312,6 +7333,7 @@ struct LibplaceboVideoRenderer::Impl
 			}
 			ActivePicturePresentationRetentionEvidence retentionEvidence;
 			ActivePictureEvidence evidence;
+			ActivePictureEvidence nativeBootstrapEvidence;
 			const ActivePictureGlobalNearBlackEvidence globalNearBlack =
 				EvaluateActivePictureGlobalNearBlack(analysisSource);
 			if (hadCompatiblePresentation)
@@ -7325,6 +7347,44 @@ struct LibplaceboVideoRenderer::Impl
 			else
 			{
 				evidence = ExtractActivePictureEvidence(analysisSource);
+				nativeBootstrapEvidence = evidence;
+			}
+			latestNativeBootstrapContractAvailable =
+				!hadCompatiblePresentation && nativeBootstrapEvidence.available &&
+				nativeBootstrapEvidence.classification ==
+					ActivePictureClassification::BAR_CROP_TRUSTED &&
+				nativeBootstrapEvidence.trustedBounds.trustedBarAxes !=
+					ActivePictureBounds::BarAxes::NONE;
+			if (latestNativeBootstrapContractAvailable)
+			{
+				latestNativeBootstrapContract =
+					nativeBootstrapEvidence.trustedBounds;
+				const ActivePicturePresentationRetentionEvidence
+					bootstrapRetention =
+						EvaluateActivePicturePresentationRetention(
+							analysisSource, latestNativeBootstrapContract);
+				latestNativeBootstrapRetentionEvaluated =
+					bootstrapRetention.analysisValid &&
+					bootstrapRetention.presentationValid;
+				latestNativeBootstrapRetentionSafe =
+					latestNativeBootstrapRetentionEvaluated &&
+					bootstrapRetention.currentlyPixelSafe;
+				latestNativeBootstrapOutwardVisible =
+					bootstrapRetention.outwardVisibleBoundsAvailable;
+				latestNativeBootstrapSourceGeneration = analysisSource.generation;
+				latestNativeBootstrapSourceSequence = frameNumber;
+				latestNativeBootstrapPresentationEpoch =
+					currentIdentity.viewportGeneration;
+			}
+			else
+			{
+				latestNativeBootstrapContract = {};
+				latestNativeBootstrapRetentionEvaluated = false;
+				latestNativeBootstrapRetentionSafe = false;
+				latestNativeBootstrapOutwardVisible = false;
+				latestNativeBootstrapSourceGeneration = 0;
+				latestNativeBootstrapSourceSequence = 0;
+				latestNativeBootstrapPresentationEpoch = 0;
 			}
 			latestActivePictureEvidenceWasStartupHypothesis = false;
 			if (!hadCompatiblePresentation && evidence.available &&
@@ -7609,33 +7669,32 @@ struct LibplaceboVideoRenderer::Impl
 			const ActivePictureTransitionDecision transition =
 				applyScheduledDecision ? scheduledDecision->transition :
 					nlsTransition.Observe(observation);
-			if (transition.publish)
-			{
-				latestKnownTrustedReacquisitionAvailable =
-					transition.knownTrustedGeometryReacquired;
-				latestKnownTrustedReacquisitionBounds =
-					transition.knownTrustedGeometryReacquired
-						? transition.bounds : ActivePictureBounds{};
-				latestKnownTrustedReacquisitionClassification =
-					transition.knownTrustedGeometryReacquired
-						? transition.authoritativeClassification
-						: ActivePictureClassification::UNAVAILABLE;
-				latestKnownTrustedReacquisitionSourceGeneration =
-					transition.knownTrustedGeometryReacquired
-						? analysisSource.generation : 0;
-				latestKnownTrustedReacquisitionSourceSequence =
-					transition.knownTrustedGeometryReacquired ? frameNumber : 0;
-				latestKnownTrustedReacquisitionPresentationEpoch =
-					transition.knownTrustedGeometryReacquired
-						? currentIdentity.viewportGeneration : 0;
-				latestKnownTrustedReacquisitionCurrentAssociation =
-					transition.knownTrustedGeometryReacquired &&
-					!applyScheduledDecision;
-			}
-			const bool suppressEpisodeKnownTrustedPublication =
-				transition.publish && transition.stable &&
-				transition.knownTrustedGeometryReacquired &&
-				nearBlackAcquisitionBlocked;
+			const bool localStableTrustedContract = !applyScheduledDecision &&
+				transition.stable &&
+				transition.authoritativeClassification ==
+					ActivePictureClassification::BAR_CROP_TRUSTED;
+			latestKnownTrustedReacquisitionAvailable =
+				localStableTrustedContract;
+			latestKnownTrustedReacquisitionBounds =
+				localStableTrustedContract
+					? transition.stableBounds : ActivePictureBounds{};
+			latestKnownTrustedReacquisitionClassification =
+				localStableTrustedContract
+					? transition.authoritativeClassification
+					: ActivePictureClassification::UNAVAILABLE;
+			latestKnownTrustedReacquisitionSourceGeneration =
+				localStableTrustedContract ? analysisSource.generation : 0;
+			latestKnownTrustedReacquisitionSourceSequence =
+				localStableTrustedContract ? frameNumber : 0;
+			latestKnownTrustedReacquisitionPresentationEpoch =
+				localStableTrustedContract
+					? currentIdentity.viewportGeneration : 0;
+			latestKnownTrustedReacquisitionCurrentAssociation =
+				localStableTrustedContract;
+			const bool suppressEpisodeBarGeometryMutation =
+				AlphaSourceCrop::ShouldSuppressNearBlackBarGeometryMutation(
+					nearBlackAcquisitionBlocked, transition.stable,
+					transition.authoritativeClassification);
 			if (hasScheduledDecision && !applyScheduledDecision)
 			{
 				DebugLog::Log(
@@ -7662,7 +7721,7 @@ struct LibplaceboVideoRenderer::Impl
 				nlsGeometrySourceGeneration = 0;
 			}
 			else if (transition.publish && transition.stable &&
-				!suppressEpisodeKnownTrustedPublication)
+				!suppressEpisodeBarGeometryMutation)
 			{
 				nlsGeometry = transition.bounds;
 				nlsGeometryAvailable = true;
@@ -7678,7 +7737,7 @@ struct LibplaceboVideoRenderer::Impl
 				++nlsGeometryGeneration;
 			}
 			else if (transition.stable && !nlsTransitionWithdrawn &&
-				!suppressEpisodeKnownTrustedPublication)
+				!suppressEpisodeBarGeometryMutation)
 			{
 				// Retain the published geometry as temporal context for NLS. The
 				// source-crop policy independently requires the latest observation
@@ -9242,6 +9301,9 @@ struct LibplaceboVideoRenderer::Impl
 			episodeInput.retentionBounds = episodeInput.retentionEvaluated
 				? latestActivePicturePresentationRetentionBounds
 				: ActivePictureBounds{};
+			episodeInput.retentionSourceGeneration =
+				episodeInput.retentionEvaluated
+					? latestActivePicturePresentationRetentionSourceGeneration : 0;
 			episodeInput.retentionSourceSequence =
 				episodeInput.retentionEvaluated
 					? latestActivePicturePresentationRetentionSourceSequence : 0;
@@ -9259,6 +9321,22 @@ struct LibplaceboVideoRenderer::Impl
 				latestKnownTrustedReacquisitionPresentationEpoch;
 			episodeInput.reacquisitionIsCurrentAssociation =
 				latestKnownTrustedReacquisitionCurrentAssociation;
+			episodeInput.nativeBootstrapContractAvailable =
+				latestNativeBootstrapContractAvailable;
+			episodeInput.nativeBootstrapContract =
+				latestNativeBootstrapContract;
+			episodeInput.nativeBootstrapRetentionEvaluated =
+				latestNativeBootstrapRetentionEvaluated;
+			episodeInput.nativeBootstrapRetentionSafe =
+				latestNativeBootstrapRetentionSafe;
+			episodeInput.nativeBootstrapOutwardVisible =
+				latestNativeBootstrapOutwardVisible;
+			episodeInput.nativeBootstrapSourceGeneration =
+				latestNativeBootstrapSourceGeneration;
+			episodeInput.nativeBootstrapSourceSequence =
+				latestNativeBootstrapSourceSequence;
+			episodeInput.nativeBootstrapPresentationEpoch =
+				latestNativeBootstrapPresentationEpoch;
 			episodeInput.framesPerSecond = captureRateHz;
 			episodeInput.presentationEpoch = viewportRequestSerial;
 			episodeInput.sourceGeneration = frameGeneration;
@@ -9272,7 +9350,7 @@ struct LibplaceboVideoRenderer::Impl
 				episodeDecision.revalidationChanged)
 			{
 				DebugLog::Log(
-					"Alpha near-black presentation episode: sequence=%llu generation=%llu mode=%s started=%d to_full=%d to_crop=%d ended=%d proof=%u/%u evaluated=%d near_black=%d luma_p90=%.1f trusted_crop=%d reacquired=%d current_assoc=%d retention_safe=%d outward_visible=%d scene=%d reason=\"%s\"",
+					"Alpha near-black presentation episode: sequence=%llu generation=%llu mode=%s started=%d to_full=%d to_crop=%d bootstrap_exit=%d ended=%d proof=%u/%u bootstrap=%u/%u sticky=%d evaluated=%d near_black=%d luma_p90=%.1f trusted_crop=%d reacquired=%d current_assoc=%d native_bootstrap=%d retention_safe=%d outward_visible=%d scene=%d reason=\"%s\"",
 					static_cast<unsigned long long>(sourceSequence),
 					static_cast<unsigned long long>(frameGeneration),
 					AlphaSourceCrop::NearBlackPresentationModeName(
@@ -9280,21 +9358,33 @@ struct LibplaceboVideoRenderer::Impl
 					episodeDecision.started ? 1 : 0,
 					episodeDecision.changedToFullRaster ? 1 : 0,
 					episodeDecision.releasedToTrustedCrop ? 1 : 0,
+					episodeDecision.bootstrapReleased ? 1 : 0,
 					episodeDecision.ended ? 1 : 0,
 					static_cast<unsigned>(
 						episodeDecision.revalidationSamples),
 					static_cast<unsigned>(
 						episodeDecision.revalidationSamplesRequired),
+					static_cast<unsigned>(episodeDecision.bootstrapSamples),
+					static_cast<unsigned>(
+						episodeDecision.bootstrapSamplesRequired),
+					episodeDecision.state.confirmedNonNearBlackContent ? 1 : 0,
 					episodeInput.nearBlackEvaluated ? 1 : 0,
 					episodeInput.globalNearBlack ? 1 : 0,
 					latestActivePictureGlobalLumaP90,
 					episodeInput.trustedCropAvailable ? 1 : 0,
 					episodeInput.knownTrustedGeometryReacquired ? 1 : 0,
 					episodeInput.reacquisitionIsCurrentAssociation ? 1 : 0,
+					episodeInput.nativeBootstrapContractAvailable ? 1 : 0,
 					episodeInput.retentionSafe ? 1 : 0,
 					episodeInput.boundedVisibleContentOutsideCrop ? 1 : 0,
 					episodeInput.sceneBoundary ? 1 : 0,
 					episodeDecision.reason.c_str());
+			}
+			if (episodeDecision.resetTransitionEvidence)
+			{
+				nlsTransition.ResetCandidateEvidence();
+				latestKnownTrustedReacquisitionAvailable = false;
+				latestKnownTrustedReacquisitionCurrentAssociation = false;
 			}
 			nearBlackPresentationEpisode = episodeDecision.state;
 			const bool nearBlackEpisodeRetainCrop =

@@ -98,6 +98,22 @@ namespace AlphaSourceCrop
 				std::ceil(framesPerSecond * 0.250) + 1.0));
 		}
 
+		uint32_t NearBlackBootstrapSamples(double framesPerSecond)
+		{
+			if (!std::isfinite(framesPerSecond) || framesPerSecond <= 0.0)
+				framesPerSecond = 60.0;
+			return static_cast<uint32_t>(std::max(2.0,
+				std::ceil(framesPerSecond * 0.500) + 1.0));
+		}
+
+		bool ChromaAlignedTrustedContract(const ActivePictureBounds& bounds)
+		{
+			return ValidBounds(bounds, bounds.rasterWidth, bounds.rasterHeight) &&
+				bounds.trustedBarAxes != ActivePictureBounds::BarAxes::NONE &&
+				(bounds.left & 1) == 0 && (bounds.top & 1) == 0 &&
+				(bounds.right & 1) == 0 && (bounds.bottom & 1) == 0;
+		}
+
 		void ResetNearBlackCropRevalidation(
 			NearBlackPresentationEpisodeState& state)
 		{
@@ -164,6 +180,13 @@ namespace AlphaSourceCrop
 		default:
 			return "inactive";
 		}
+	}
+
+	bool ShouldSuppressNearBlackBarGeometryMutation(bool acquisitionBlocked,
+		bool stable, ActivePictureClassification classification)
+	{
+		return acquisitionBlocked && stable && classification ==
+			ActivePictureClassification::BAR_CROP_TRUSTED;
 	}
 
 	BarContentEdge SelectVerticalBarContentEdge(
@@ -1402,6 +1425,8 @@ namespace AlphaSourceCrop
 		decision.state = input.previous;
 		decision.revalidationSamplesRequired =
 			NearBlackCropRevalidationSamples(input.framesPerSecond);
+		decision.bootstrapSamplesRequired =
+			NearBlackBootstrapSamples(input.framesPerSecond);
 
 		if (decision.state.mode != NearBlackPresentationMode::INACTIVE &&
 			decision.state.sourceGeneration != input.sourceGeneration)
@@ -1477,7 +1502,49 @@ namespace AlphaSourceCrop
 		}
 
 		if (decision.state.mode == NearBlackPresentationMode::FULL_RASTER &&
+			decision.state.entryTrustedCropAvailable &&
+			input.measurementCurrent && !input.cadenceRepeat &&
+			input.sourceSequence != 0 && input.nearBlackEvaluated)
+		{
+			const bool exactCurrentEntryRetention = input.retentionEvaluated &&
+				input.retentionSourceGeneration == input.sourceGeneration &&
+				input.retentionSourceSequence == input.sourceSequence &&
+				SameBounds(input.retentionBounds,
+					decision.state.entryTrustedCrop);
+			if (!input.globalNearBlack &&
+				input.boundedVisibleContentOutsideCrop &&
+				exactCurrentEntryRetention)
+			{
+				if (decision.state.outwardConfirmationLastSourceSequence != 0 &&
+					input.sourceSequence ==
+						decision.state.outwardConfirmationLastSourceSequence + 1)
+				{
+					++decision.state.outwardConfirmationSamples;
+				}
+				else
+				{
+					decision.state.outwardConfirmationSamples = 1;
+				}
+				decision.state.outwardConfirmationLastSourceSequence =
+					input.sourceSequence;
+				if (decision.state.outwardConfirmationSamples >=
+					decision.bootstrapSamplesRequired)
+				{
+					decision.state.confirmedNonNearBlackContent = true;
+					decision.reason =
+						"sustained non-near-black outward content kept full raster";
+				}
+			}
+			else
+			{
+				decision.state.outwardConfirmationLastSourceSequence = 0;
+				decision.state.outwardConfirmationSamples = 0;
+			}
+		}
+
+		if (decision.state.mode == NearBlackPresentationMode::FULL_RASTER &&
 			decision.state.entryTrustedCropAvailable && !input.cadenceRepeat &&
+			!decision.state.confirmedNonNearBlackContent &&
 			input.sourceSequence !=
 				decision.state.revalidationLastSourceSequence)
 		{
@@ -1546,12 +1613,81 @@ namespace AlphaSourceCrop
 			}
 		}
 
+		if (decision.state.mode == NearBlackPresentationMode::FULL_RASTER &&
+			!decision.state.entryTrustedCropAvailable && !input.cadenceRepeat &&
+			input.sourceSequence != decision.state.bootstrapLastSourceSequence)
+		{
+			const bool bootstrapQualifies = input.measurementCurrent &&
+				input.nearBlackEvaluated && !input.globalNearBlack &&
+				!input.fullRasterAuthorityAvailable &&
+				input.nativeBootstrapContractAvailable &&
+				input.nativeBootstrapRetentionEvaluated &&
+				input.nativeBootstrapRetentionSafe &&
+				!input.nativeBootstrapOutwardVisible &&
+				input.nativeBootstrapSourceGeneration == input.sourceGeneration &&
+				input.nativeBootstrapSourceSequence == input.sourceSequence &&
+				input.nativeBootstrapPresentationEpoch ==
+					decision.state.presentationEpoch &&
+				input.presentationEpoch == decision.state.presentationEpoch &&
+				ChromaAlignedTrustedContract(
+					input.nativeBootstrapContract);
+			const bool sameCandidate = bootstrapQualifies &&
+				decision.state.bootstrapCandidateAvailable &&
+				SameTrustedCropContract(decision.state.bootstrapCandidate,
+					input.nativeBootstrapContract);
+			if (bootstrapQualifies)
+			{
+				if (sameCandidate &&
+					decision.state.bootstrapLastSourceSequence != 0 &&
+					input.sourceSequence ==
+						decision.state.bootstrapLastSourceSequence + 1)
+				{
+					++decision.state.bootstrapSamples;
+				}
+				else
+				{
+					decision.state.bootstrapCandidateAvailable = true;
+					decision.state.bootstrapCandidate =
+						input.nativeBootstrapContract;
+					decision.state.bootstrapSamples = 1;
+				}
+				decision.state.bootstrapLastSourceSequence = input.sourceSequence;
+			}
+			else
+			{
+				decision.state.bootstrapCandidateAvailable = false;
+				decision.state.bootstrapCandidate = {};
+				decision.state.bootstrapLastSourceSequence = 0;
+				decision.state.bootstrapSamples = 0;
+			}
+
+			if (decision.state.bootstrapSamples >=
+				decision.bootstrapSamplesRequired)
+			{
+				decision.bootstrapSamples = decision.state.bootstrapSamples;
+				decision.state = {};
+				decision.bootstrapReleased = true;
+				decision.resetTransitionEvidence = true;
+				decision.ended = true;
+				decision.reason =
+					"startup crop bootstrap verified; normal acquisition reopened";
+			}
+		}
+
 		if (!decision.releasedToTrustedCrop)
 			decision.revalidationSamples =
 				decision.state.revalidationSamples;
+		if (!decision.bootstrapReleased)
+			decision.bootstrapSamples = decision.state.bootstrapSamples;
 		decision.revalidationChanged = decision.releasedToTrustedCrop ||
+			decision.bootstrapReleased ||
 			decision.revalidationSamples !=
-				input.previous.revalidationSamples;
+				input.previous.revalidationSamples ||
+			decision.bootstrapSamples != input.previous.bootstrapSamples ||
+			decision.state.outwardConfirmationSamples !=
+				input.previous.outwardConfirmationSamples ||
+			decision.state.confirmedNonNearBlackContent !=
+				input.previous.confirmedNonNearBlackContent;
 
 		if (decision.reason.empty())
 		{
