@@ -29,7 +29,37 @@ until the HDR-carrier changes are removed, the Cube is again applied in the
 SDR tone-mapping path, SDR fallback/presentation tests pass, and a new x64
 Release package is built from the corrected clean commit.
 
-## Controlling correction — 2026-08-30: madVR external HDR LUT is PQ to PQ
+## Corrected implementation evidence — 2026-08-30
+
+Source commit `21044a35` on `codex/vp-0166-madvr-external-lut` implements the
+controlling HDR-to-SDR contract above, rebased on fetched
+`origin/v1.3.004-beta` commit `d6e7fab2`. It removes the feature's HDR10 carrier
+transaction and output-metadata settings. The external Cube now attaches only
+for PQ input and an ordinary SDR RGB target, owns tone/gamut mapping for that
+frame, and receives an explicit required SDR output gamut and 40–500 nit target
+reference. It cannot attach to a PQ/HLG target and does not change DXGI HDR
+signaling.
+
+The editor now starts with all external controls correctly disabled, exposes no
+HDR passthrough option, requires the SDR gamut and peak without fabricated
+defaults, and shows Cube basenames without `luts/` or `.cube` while preserving
+the configuration-relative stored path. `luts/VP-Test-Grayscale.cube` is the
+synthetic visual acceptance LUT: colored HDR program material must become
+neutral grayscale while Windows and the display remain in SDR mode.
+
+Validation from the exact source commit:
+
+- x64 Release VP GUI rebuilt successfully;
+- x64 Release VP Renderer rebuilt successfully;
+- complete native renderer suite: 1063/1063 passed;
+- complete standalone Config editor suite: passed;
+- configuration reference/public-field inventory: synchronized and passing.
+
+The earlier `a2f87283` tester and all PQ-to-PQ/HDR-carrier claims are withdrawn
+and must not be used as acceptance evidence. A new clean-commit standalone
+tester archive is required before user testing resumes.
+
+## Withdrawn historical correction — 2026-08-30: PQ-to-PQ interpretation
 
 This section supersedes the withdrawn HDR-to-SDR interpretation immediately
 below it in repository history. Research against madVR's own issue tracker and
