@@ -9,6 +9,11 @@ namespace AlphaSourceCrop
 {
 	namespace
 	{
+		// At 24 fps this is at most 125 ms: enough for the queued dense scan to
+		// publish its first overlay result, but too short to hide a real geometry
+		// change behind a stale trusted crop.
+		constexpr uint64_t VERTICAL_INSPECTION_MAX_SOURCE_SEQUENCES = 3;
+
 		bool BroadPictureLike(const ActivePictureEdgeEvidence& edge)
 		{
 			return edge.barPixels > 0 && edge.blackFraction <= 0.80 &&
@@ -552,7 +557,8 @@ namespace AlphaSourceCrop
 		VerticalInspectionBridgeDecision decision;
 		if (input.sourceGeneration == 0 || input.sourceSequence == 0 ||
 			input.cropAuthorityResolved || input.fullRasterAuthorityResolved ||
-			input.confirmedVerticalFitResolved)
+			input.confirmedVerticalFitResolved ||
+			input.verticalPresentationOwnerAvailable)
 		{
 			return decision;
 		}
@@ -591,10 +597,14 @@ namespace AlphaSourceCrop
 		const bool repeatedRetainedSource =
 			decision.state.retentionConsumed &&
 			decision.state.retainedSourceSequence == input.sourceSequence;
+		const bool insideBoundedInspectionWindow =
+			input.sourceSequence >= decision.state.firstCandidateSourceSequence &&
+			input.sourceSequence - decision.state.firstCandidateSourceSequence <
+				VERTICAL_INSPECTION_MAX_SOURCE_SEQUENCES;
 		decision.retain = input.retentionRequested &&
 			(repeatedRetainedSource ||
-			 (!decision.state.retentionConsumed &&
-			  !decision.state.denseAnalysisCompleted));
+			 (!decision.state.denseAnalysisCompleted &&
+			  insideBoundedInspectionWindow));
 		if (decision.retain && !repeatedRetainedSource)
 		{
 			decision.state.retentionConsumed = true;

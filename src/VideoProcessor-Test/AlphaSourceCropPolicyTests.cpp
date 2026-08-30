@@ -925,6 +925,14 @@ namespace Tests
 			input.retentionRequested = true;
 			input.sourceSequence = 102;
 			decision = UpdateVerticalInspectionBridge(input);
+			Assert::IsTrue(decision.retain);
+			Assert::IsFalse(decision.expired);
+
+			// The bounded handoff is not a rearm: the next fresh source sample
+			// fails open when dense analysis has still not published a result.
+			input.previous = decision.state;
+			input.sourceSequence = 103;
+			decision = UpdateVerticalInspectionBridge(input);
 			Assert::IsFalse(decision.retain);
 			Assert::IsTrue(decision.expired);
 			Assert::IsTrue(decision.state.failOpenLatched);
@@ -968,7 +976,7 @@ namespace Tests
 			Assert::IsFalse(decision.state.active);
 			Assert::IsFalse(decision.state.failOpenLatched);
 
-			// The next subtitle episode can now use its one-frame retention normally.
+			// The next subtitle episode can now use its bounded inspection handoff.
 			input.previous = decision.state;
 			input.confirmedVerticalFitResolved = false;
 			input.retentionRequested = true;
@@ -1172,14 +1180,52 @@ namespace Tests
 				retained.sourceBounds.bottom - retained.sourceBounds.top,
 				presented.sourceBounds.bottom - presented.sourceBounds.top);
 
-			// Rearming restores exactly one retained decoded sequence; it does not
+			// Rearming restores only the bounded analysis handoff; it does not
 			// create an open-ended hold when authority remains unresolved.
 			bridge.previous = decision.state;
 			bridge.sourceSequence = 8783;
 			decision = UpdateVerticalInspectionBridge(bridge);
+			Assert::IsTrue(decision.retain);
+			Assert::IsFalse(decision.expired);
+
+			bridge.previous = decision.state;
+			bridge.sourceSequence = 8784;
+			decision = UpdateVerticalInspectionBridge(bridge);
+			Assert::IsTrue(decision.retain);
+			Assert::IsFalse(decision.expired);
+
+			bridge.previous = decision.state;
+			bridge.sourceSequence = 8785;
+			decision = UpdateVerticalInspectionBridge(bridge);
 			Assert::IsFalse(decision.retain);
 			Assert::IsTrue(decision.expired);
 			Assert::IsTrue(decision.state.failOpenLatched);
+		}
+
+		TEST_METHOD(DenseVerticalOwnerClosesInspectionBeforeFailOpen)
+		{
+			VerticalInspectionBridgeInput input;
+			input.candidate = true;
+			input.retentionRequested = true;
+			input.sourceGeneration = 7;
+			input.presentationEpoch = 11;
+			input.trustedBase = TrustedScopeCrop().geometry;
+			input.sourceSequence = 100;
+
+			auto decision = UpdateVerticalInspectionBridge(input);
+			Assert::IsTrue(decision.retain);
+
+			// Dense analysis has identified a vertical overlay and transferred the
+			// following confirmation samples to the translation/Fit policy.
+			input.previous = decision.state;
+			input.denseAnalysisCompleted = true;
+			input.verticalPresentationOwnerAvailable = true;
+			input.sourceSequence = 101;
+			decision = UpdateVerticalInspectionBridge(input);
+			Assert::IsFalse(decision.state.active);
+			Assert::IsFalse(decision.state.failOpenLatched);
+			Assert::IsFalse(decision.retain);
+			Assert::IsFalse(decision.expired);
 		}
 
 		TEST_METHOD(PendingTranslationRetainsTrustedCropWithoutFullRasterFlash)

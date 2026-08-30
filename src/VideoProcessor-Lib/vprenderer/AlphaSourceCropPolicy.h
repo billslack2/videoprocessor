@@ -215,6 +215,10 @@ namespace AlphaSourceCrop
 		bool candidate = false;
 		bool retentionRequested = false;
 		bool denseAnalysisCompleted = false;
+		// A current dense result has handed presentation to the bounded
+		// translation/Fit confirmation path. That path owns the remaining
+		// confirmation frames, so the inspection bridge must not fail open first.
+		bool verticalPresentationOwnerAvailable = false;
 		// Positive crop/full-raster authority, or a verified current vertical Fit,
 		// closes the unresolved episode.
 		// A mere coarse-candidate dropout does not, because sparse dark pixels
@@ -236,12 +240,12 @@ namespace AlphaSourceCrop
 		bool expired = false;
 	};
 
-	// Blind retention is limited to one decoded source sequence of one unresolved
-	// authority episode. Repeated presentation of that exact source sequence is
-	// idempotent. Candidate dropouts keep the spent lockout; only resolved
-	// authority, a new trusted base/profile epoch, or a new source generation can
-	// rearm it. Once dense classification completes, later frames need an explicit
-	// translation/Fit owner.
+	// Blind retention is limited to the short, bounded dense-analysis handoff of
+	// one unresolved authority episode. Repeated presentation is idempotent, and
+	// the bridge cannot outlive three decoded source sequences. Candidate dropouts
+	// do not rearm it; only resolved authority, a new trusted base/profile epoch,
+	// or a new source generation can do that. Once dense classification completes,
+	// later frames need an explicit translation/Fit owner.
 	VerticalInspectionBridgeDecision UpdateVerticalInspectionBridge(
 		const VerticalInspectionBridgeInput& input);
 

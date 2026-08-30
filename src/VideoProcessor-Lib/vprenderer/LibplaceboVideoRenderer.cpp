@@ -9651,6 +9651,10 @@ struct LibplaceboVideoRenderer::Impl
 				verticalInspectionFallbackRequested;
 			inspectionInput.denseAnalysisCompleted =
 				subtitleBarAnalysisCompleted;
+			inspectionInput.verticalPresentationOwnerAvailable =
+				verticalTranslationConfirmationPending ||
+				verticalFitConfirmationPending || verticalTranslationActive ||
+				verticalFitActive;
 			inspectionInput.cropAuthorityResolved = effectiveLatestSupportsCrop;
 			inspectionInput.fullRasterAuthorityResolved =
 				latestActivePictureEvidenceClassification ==
