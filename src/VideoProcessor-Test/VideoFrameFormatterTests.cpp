@@ -2303,7 +2303,7 @@ namespace Tests
 				std::string::npos);
 		}
 
-		TEST_METHOD(RendererProfileConfigValidatesExternalHdrToSdrLutContract)
+		TEST_METHOD(RendererProfileConfigValidatesExternalHdrLutContract)
 		{
 			std::string expected;
 			Assert::IsTrue(RendererProfileConfig::ValidateProfileSetting(
@@ -2314,10 +2314,14 @@ namespace Tests
 				"display", "hdr_external_3dlut_bt2020", "luts/hdr.3dlut", expected));
 			Assert::IsTrue(RendererProfileConfig::ValidateProfileSetting(
 				"display", "hdr_tone_mapping_mode", "passthrough", expected));
-			// Legacy HDR-output metadata keys remain parseable for compatibility,
-			// but are not required or used by the SDR-output LUT role.
 			Assert::IsTrue(RendererProfileConfig::ValidateProfileSetting(
 				"display", "hdr_output_metadata_peak_nits", "1000", expected));
+			Assert::IsTrue(RendererProfileConfig::ValidateProfileSetting(
+				"display", "hdr_output_metadata_peak_nits", "1", expected));
+			Assert::IsTrue(RendererProfileConfig::ValidateProfileSetting(
+				"display", "hdr_output_metadata_peak_nits", "10000", expected));
+			Assert::IsFalse(RendererProfileConfig::ValidateProfileSetting(
+				"display", "hdr_output_metadata_peak_nits", "0", expected));
 			Assert::IsFalse(RendererProfileConfig::ValidateProfileSetting(
 				"display", "hdr_output_metadata_peak_nits", "10001", expected));
 
@@ -2328,9 +2332,13 @@ namespace Tests
 				profile, "vprenderer", error));
 			Assert::IsTrue(error.find("at least one") != std::string::npos);
 			profile.settings["hdr_external_3dlut_bt2020"] = "luts/hdr.cube";
-			Assert::IsTrue(RendererProfileConfig::ValidateExternalHdrLutProfile(
+			Assert::IsFalse(RendererProfileConfig::ValidateExternalHdrLutProfile(
 				profile, "vprenderer", error));
+			Assert::IsTrue(error.find("metadata_primaries") != std::string::npos);
 			profile.settings["hdr_output_metadata_primaries"] = "p3_d65";
+			Assert::IsFalse(RendererProfileConfig::ValidateExternalHdrLutProfile(
+				profile, "vprenderer", error));
+			Assert::IsTrue(error.find("metadata_peak_nits") != std::string::npos);
 			profile.settings["hdr_output_metadata_peak_nits"] = "200";
 			Assert::IsTrue(RendererProfileConfig::ValidateExternalHdrLutProfile(
 				profile, "vprenderer", error));
@@ -2353,9 +2361,10 @@ namespace Tests
 			ConfigFile incomplete;
 			Assert::IsTrue(incomplete.Load(path));
 			RendererProfileConfig::Model model;
-			Assert::IsTrue(RendererProfileConfig::Read(
-				incomplete, model, error),
-				std::wstring(error.begin(), error.end()).c_str());
+			Assert::IsFalse(RendererProfileConfig::Read(
+				incomplete, model, error));
+			Assert::IsTrue(error.find("metadata_primaries") !=
+				std::string::npos);
 
 			{
 				std::ofstream file(path, std::ios::out | std::ios::trunc);

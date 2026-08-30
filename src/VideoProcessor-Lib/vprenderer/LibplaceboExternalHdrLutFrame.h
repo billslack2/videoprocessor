@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vprenderer/LibplaceboExternalHdrLutSet.h>
+#include <vprenderer/LibplaceboHdr10OutputPolicy.h>
 
 #pragma warning(push)
 #pragma warning(disable: 4244)
@@ -14,6 +15,20 @@ namespace LibplaceboExternalHdrLut
 		ResolvedResource resolved;
 		bool attached = false;
 	};
+
+	// External HDR presentation is a frame-local authorization. A current HDR
+	// carrier alone is insufficient: this exact frame must also have attached
+	// the selected conversion LUT and completed rendering successfully.
+	inline bool FramePresentAllowed(
+		const LibplaceboHdr10Output::CarrierState& carrier,
+		uint64_t swapchainGeneration, uint64_t applicationGeneration,
+		const FrameProjection& projection, bool rendered)
+	{
+		return projection.attached && rendered &&
+			carrier.ExternalHdrPresentAllowed(
+				swapchainGeneration, applicationGeneration,
+				projection.resolved.transactionGeneration);
+	}
 
 	inline enum pl_color_primaries SlotPrimaries(Slot slot)
 	{
@@ -37,25 +52,14 @@ namespace LibplaceboExternalHdrLut
 		}
 	}
 
-	inline bool IsSdrOutputTarget(bool sdrOutputRole,
-		const struct pl_frame& target)
-	{
-		return sdrOutputRole && target.repr.sys == PL_COLOR_SYSTEM_RGB &&
-			target.color.transfer != PL_COLOR_TRC_UNKNOWN &&
-			target.color.transfer != PL_COLOR_TRC_PQ &&
-			target.color.transfer != PL_COLOR_TRC_HLG;
-	}
-
 	// Produces the complete frame-local render description. The caller owns both
-	// output objects until the synchronous pl_render_image call returns. The
-	// external Cube replaces HDR tone/gamut conversion and produces the ordinary
-	// SDR target selected by the active VP profile. If that complete contract is
-	// unavailable, the shared internal tone-mapping description remains intact.
+	// output objects until the synchronous pl_render_image call returns. A false
+	// carrier gate always leaves the shared render description behavior intact.
 	inline FrameProjection PrepareFrameProjection(
 		const ActiveSet& activeSet,
 		uint64_t expectedTransactionGeneration,
 		ToneMappingMode requestedMode,
-		bool sdrOutputRole,
+		bool carrierArmed,
 		Primaries sourcePrimaries,
 		const struct pl_color_space& sourceColor,
 		const struct pl_frame& sharedTarget,
@@ -70,14 +74,19 @@ namespace LibplaceboExternalHdrLut
 		frameParams = sharedParams;
 		FrameProjection projection;
 		const bool inputIsPq = sourceColor.transfer == PL_COLOR_TRC_PQ;
-		const bool targetIsSdrRgb = IsSdrOutputTarget(
-			sdrOutputRole, sharedTarget);
+		const bool targetIsAuthoritativeHdr10 =
+			sharedTarget.color.transfer == PL_COLOR_TRC_PQ &&
+			sharedTarget.color.primaries == PL_COLOR_PRIM_BT_2020 &&
+			sharedTarget.repr.sys == PL_COLOR_SYSTEM_RGB &&
+			sharedTarget.repr.levels == PL_COLOR_LEVELS_FULL &&
+			sharedTarget.repr.bits.sample_depth == 10 &&
+			sharedTarget.repr.bits.color_depth == 10;
 		projection.resolved = activeSet.Resolve(
 			expectedTransactionGeneration,
-			inputIsPq && targetIsSdrRgb ? requestedMode :
-				ToneMappingMode::PIXEL_SHADERS,
+			carrierArmed && inputIsPq && targetIsAuthoritativeHdr10 ?
+				requestedMode : ToneMappingMode::PIXEL_SHADERS,
 			inputIsPq, sourcePrimaries);
-		if (!inputIsPq || !targetIsSdrRgb ||
+		if (!carrierArmed || !inputIsPq || !targetIsAuthoritativeHdr10 ||
 			!projection.resolved.selection.useExternalLut ||
 			!projection.resolved.lut ||
 			!activeSet.IsCurrent(projection.resolved))
