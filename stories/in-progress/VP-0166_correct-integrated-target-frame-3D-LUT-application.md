@@ -162,6 +162,38 @@ rollback atomicity gaps. Their final reviews report no remaining P1/P2 in this
 policy slice. Runtime API calls and Cube resources are still unwired, so this
 remains not tester-ready.
 
+### Contract checkpoint 4: atomic three-slot resource generation reviewed
+
+The external HDR Cube resource seam is committed and pushed on the source
+branch as `2314f9cd`. A candidate loads BT.709, P3-D65, and BT.2020 off-side,
+then publishes or discards the complete set as one render-thread generation.
+Partial-valid generations replace all prior slots without mixing profiles;
+zero-valid generations deliberately publish internal fallback so a prior
+profile's LUT cannot remain authorized.
+
+The monotonic profile transaction is bound to the candidate before file I/O.
+Older and duplicate completions cannot be relabeled or committed. Resolution
+requires the currently expected profile transaction and returns internal
+pixel-shader rendering with no LUT while a newer profile's files are in flight.
+Borrowed LUT lifetime is limited to one render-thread interval with no commit:
+resolve, verify the generation, copy the descriptor into frame-local render
+parameters, and synchronously render.
+
+Regression tests distinguish unconfigured, configured-missing, invalid, and
+available slots; cover exact and explicit-gamut fallback selection; prove
+zero-valid fallback, older/equal transaction rejection, in-flight profile
+fallback, old-resolution invalidation, and no cross-profile slot reuse. The
+x64 Release build succeeds, the external-HDR set passes 12/12, and the complete
+LUT-parser class passes 19/19. Independent madVR-contract, profile, and render-
+seam reviews report no remaining P1/P2. ADL LUT banks remain a future extension
+and are neither implemented nor blocked by this single-LUT-per-gamut set.
+
+This checkpoint is still not tester-ready. The next slice wires selected
+profile declarations and transaction generation into renderer state, then
+attaches the resolved LUT through frame-local `pl_render_params.lut` with
+`PL_LUT_CONVERSION`; HDR10 carrier activation and rollback remain gated until
+the corresponding live DXGI calls are integrated and verified.
+
 ## Implementation progress — 2026-08-29
 
 The first source slice is committed and pushed on
