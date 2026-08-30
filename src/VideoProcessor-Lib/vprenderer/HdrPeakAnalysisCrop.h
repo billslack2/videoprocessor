@@ -94,6 +94,15 @@ namespace HdrPeakAnalysisCrop
 			std::isfinite(rectangle.x1) && std::isfinite(rectangle.y1);
 	}
 
+	// An external HDR 3D-LUT owns the complete PQ transform for its frame.
+	// Shared peak-detection configuration must therefore not drive either
+	// libplacebo analysis or analysis telemetry while that carrier is armed.
+	inline bool PeakDetectionRunsForFrame(bool configured,
+		bool externalHdrCarrierArmed)
+	{
+		return configured && !externalHdrCarrierArmed;
+	}
+
 	inline bool HasCurrentValidTrustedPicture(uint64_t frameSourceGeneration,
 		const TrustedPicture& trusted)
 	{

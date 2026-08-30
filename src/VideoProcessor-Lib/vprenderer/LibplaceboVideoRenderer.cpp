@@ -5270,10 +5270,15 @@ struct LibplaceboVideoRenderer::Impl
 	HdrPeakAnalysisCrop::Decision ApplyHdrPeakAnalysisCrop(
 		uint64_t frameGeneration, uint64_t sourceSequence,
 		const HdrPeakAnalysisCrop::TrustedPicture& trustedPicture,
-		const pl_rect2df& presentationCrop, double motionProtectionPixels)
+		const pl_rect2df& presentationCrop, double motionProtectionPixels,
+		bool externalHdrCarrierArmed)
 	{
-		const bool peakDetectionActive = renderParams.peak_detect_params != nullptr;
-		if (peakDetectionActive)
+		const bool peakDetectionConfigured =
+			renderParams.peak_detect_params != nullptr;
+		const bool peakDetectionActive =
+			HdrPeakAnalysisCrop::PeakDetectionRunsForFrame(
+				peakDetectionConfigured, externalHdrCarrierArmed);
+		if (peakDetectionConfigured)
 			peakDetectParams.analysis_crop = {};
 
 		const HdrPeakAnalysisCrop::Decision decision =
@@ -5285,8 +5290,10 @@ struct LibplaceboVideoRenderer::Impl
 		if (peakDetectionActive && decision.AppliesRestriction())
 			peakDetectParams.analysis_crop = decision.normalizedCrop;
 
-		const bool analysisProtectionEnabled = hdrPeakAnalysisPictureOnly ||
+		const bool analysisProtectionConfigured = hdrPeakAnalysisPictureOnly ||
 			hdrPeakAnalysisMotionCompensation;
+		const bool analysisProtectionEnabled =
+			analysisProtectionConfigured && peakDetectionActive;
 		if (analysisProtectionEnabled)
 		{
 			++hdrPeakAnalysisFrames;
@@ -5379,10 +5386,12 @@ struct LibplaceboVideoRenderer::Impl
 
 	void LogHdrPeakAnalysisMetrics(
 		const HdrPeakAnalysisCrop::Decision& decision,
-		uint64_t sourceSequence, bool rendered)
+		uint64_t sourceSequence, bool rendered, bool framePeakDetectionActive)
 	{
 		if (!hdrPeakAnalysisPictureOnly &&
 			!hdrPeakAnalysisMotionCompensation)
+			return;
+		if (!framePeakDetectionActive)
 			return;
 
 		const uint64_t now = GetTickCount64();
@@ -5395,7 +5404,7 @@ struct LibplaceboVideoRenderer::Impl
 
 		pl_hdr_metadata metadata{};
 		const bool metadataAvailable = rendered &&
-			renderParams.peak_detect_params &&
+			framePeakDetectionActive &&
 			pl_renderer_get_hdr_metadata(renderer, &metadata);
 		const float maxNits = metadataAvailable
 			? pl_hdr_rescale(PL_HDR_PQ, PL_HDR_NITS, metadata.max_pq_y)
@@ -11893,7 +11902,8 @@ struct LibplaceboVideoRenderer::Impl
 		const HdrPeakAnalysisCrop::Decision hdrPeakAnalysisDecision =
 			ApplyHdrPeakAnalysisCrop(frameGeneration, sourceSequence,
 				hdrTrustedPicture, renderImage.crop,
-				hdrPeakAnalysisMotionProtectionPixels);
+				hdrPeakAnalysisMotionProtectionPixels,
+				externalHdrCarrierArmed);
 		std::vector<uint8_t> overlayPixels;
 		int overlayWidth = 0;
 		int overlayHeight = 0;
@@ -12288,7 +12298,8 @@ struct LibplaceboVideoRenderer::Impl
 				activeApplicationProfileGeneration,
 				externalHdrProjection, rendered);
 		LogHdrPeakAnalysisMetrics(
-			hdrPeakAnalysisDecision, sourceSequence, rendered);
+			hdrPeakAnalysisDecision, sourceSequence, rendered,
+			frameRenderParams.peak_detect_params != nullptr);
 		const double renderMs = std::chrono::duration<double, std::milli>(
 			SteadyClock::now() - renderStart).count();
 		if (!rendered && targetLutApplied)

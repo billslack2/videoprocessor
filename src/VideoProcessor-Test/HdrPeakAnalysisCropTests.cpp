@@ -11,6 +11,16 @@ namespace Tests
 	TEST_CLASS(HdrPeakAnalysisCropTests)
 	{
 	public:
+		TEST_METHOD(ExternalHdrLutCarrierDisablesPeakAnalysisForItsFrame)
+		{
+			Assert::IsTrue(HdrPeakAnalysisCrop::PeakDetectionRunsForFrame(
+				true, false));
+			Assert::IsFalse(HdrPeakAnalysisCrop::PeakDetectionRunsForFrame(
+				true, true));
+			Assert::IsFalse(HdrPeakAnalysisCrop::PeakDetectionRunsForFrame(
+				false, false));
+		}
+
 		TEST_METHOD(RestrictsFullRasterToCentralTrustedPictureBand)
 		{
 			HdrPeakAnalysisCrop::TrustedPicture trusted = {
