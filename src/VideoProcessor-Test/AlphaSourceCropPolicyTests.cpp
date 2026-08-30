@@ -4228,7 +4228,139 @@ namespace Tests
 				static_cast<int>(decision.state.mode));
 		}
 
-		TEST_METHOD(NearBlackStartupBootstrapResetsOnMismatchRepeatAndNearBlack)
+		TEST_METHOD(NearBlackStartupBootstrapAcceptsExactPausedFrameAfterTimedDwell)
+		{
+			const ActivePictureBounds scope = TrustedScopeCrop().geometry;
+			NearBlackPresentationEpisodeInput input;
+			input.previous.mode = NearBlackPresentationMode::FULL_RASTER;
+			input.previous.sourceGeneration = 42;
+			input.previous.presentationEpoch = 48;
+			input.measurementCurrent = true;
+			input.nearBlackEvaluated = true;
+			input.nativeBootstrapContractAvailable = true;
+			input.nativeBootstrapContract = scope;
+			input.nativeBootstrapRetentionEvaluated = true;
+			input.nativeBootstrapRetentionSafe = true;
+			input.nativeBootstrapSourceGeneration = 42;
+			input.nativeBootstrapSourceSequence = 5000;
+			input.nativeBootstrapPresentationEpoch = 48;
+			input.presentationEpoch = 48;
+			input.sourceGeneration = 42;
+			input.sourceSequence = 5000;
+			input.currentTick = 1000;
+			auto decision = EvaluateNearBlackPresentationEpisode(input);
+			Assert::AreEqual(1u, decision.state.bootstrapSamples);
+
+			input.previous = decision.state;
+			input.cadenceRepeat = true;
+			for (uint64_t tick = 1050; tick <= 1450; tick += 50)
+			{
+				input.currentTick = tick;
+				decision = EvaluateNearBlackPresentationEpisode(input);
+				Assert::IsFalse(decision.bootstrapReleased);
+				Assert::AreEqual(1u, decision.state.bootstrapSamples);
+				input.previous = decision.state;
+			}
+			input.currentTick = 1499;
+			decision = EvaluateNearBlackPresentationEpisode(input);
+			Assert::IsFalse(decision.bootstrapReleased);
+			Assert::AreEqual(1u, decision.state.bootstrapSamples);
+
+			input.previous = decision.state;
+			input.currentTick = 1500;
+			decision = EvaluateNearBlackPresentationEpisode(input);
+			Assert::IsTrue(decision.bootstrapReleased);
+			Assert::IsTrue(decision.resetTransitionEvidence);
+			Assert::IsFalse(decision.releasedToTrustedCrop);
+			Assert::IsTrue(decision.ended);
+		}
+
+		TEST_METHOD(NearBlackPausedBootstrapOverlayResetsTimedDwell)
+		{
+			const ActivePictureBounds scope = TrustedScopeCrop().geometry;
+			NearBlackPresentationEpisodeInput input;
+			input.previous.mode = NearBlackPresentationMode::FULL_RASTER;
+			input.previous.sourceGeneration = 42;
+			input.previous.presentationEpoch = 48;
+			input.measurementCurrent = true;
+			input.nearBlackEvaluated = true;
+			input.nativeBootstrapContractAvailable = true;
+			input.nativeBootstrapContract = scope;
+			input.nativeBootstrapRetentionEvaluated = true;
+			input.nativeBootstrapRetentionSafe = true;
+			input.nativeBootstrapSourceGeneration = 42;
+			input.nativeBootstrapSourceSequence = 5100;
+			input.nativeBootstrapPresentationEpoch = 48;
+			input.presentationEpoch = 48;
+			input.sourceGeneration = 42;
+			input.sourceSequence = 5100;
+			input.currentTick = 2000;
+			auto decision = EvaluateNearBlackPresentationEpisode(input);
+
+			input.previous = decision.state;
+			input.cadenceRepeat = true;
+			input.currentTick = 2499;
+			input.nativeBootstrapContractAvailable = false;
+			decision = EvaluateNearBlackPresentationEpisode(input);
+			Assert::AreEqual(0u, decision.state.bootstrapSamples);
+			Assert::AreEqual(0ull,
+				decision.state.bootstrapCandidateStartedTick);
+
+			input.previous = decision.state;
+			input.nativeBootstrapContractAvailable = true;
+			input.currentTick = 2500;
+			decision = EvaluateNearBlackPresentationEpisode(input);
+			Assert::IsFalse(decision.bootstrapReleased);
+			Assert::AreEqual(0u, decision.state.bootstrapSamples);
+
+			input.previous = decision.state;
+			input.cadenceRepeat = false;
+			input.currentTick = 2501;
+			decision = EvaluateNearBlackPresentationEpisode(input);
+			Assert::AreEqual(1u, decision.state.bootstrapSamples);
+		}
+
+		TEST_METHOD(NearBlackPausedBootstrapRejectsRepeatOnlyAndStalledEvidence)
+		{
+			const ActivePictureBounds scope = TrustedScopeCrop().geometry;
+			NearBlackPresentationEpisodeInput input;
+			input.previous.mode = NearBlackPresentationMode::FULL_RASTER;
+			input.previous.sourceGeneration = 42;
+			input.previous.presentationEpoch = 48;
+			input.measurementCurrent = true;
+			input.nearBlackEvaluated = true;
+			input.nativeBootstrapContractAvailable = true;
+			input.nativeBootstrapContract = scope;
+			input.nativeBootstrapRetentionEvaluated = true;
+			input.nativeBootstrapRetentionSafe = true;
+			input.nativeBootstrapSourceGeneration = 42;
+			input.nativeBootstrapSourceSequence = 5200;
+			input.nativeBootstrapPresentationEpoch = 48;
+			input.presentationEpoch = 48;
+			input.sourceGeneration = 42;
+			input.sourceSequence = 5200;
+			input.currentTick = 3000;
+			input.cadenceRepeat = true;
+			auto decision = EvaluateNearBlackPresentationEpisode(input);
+			Assert::AreEqual(0u, decision.state.bootstrapSamples);
+			Assert::IsFalse(decision.state.bootstrapCandidateAvailable);
+
+			input.previous = decision.state;
+			input.cadenceRepeat = false;
+			input.currentTick = 3100;
+			decision = EvaluateNearBlackPresentationEpisode(input);
+			Assert::AreEqual(1u, decision.state.bootstrapSamples);
+
+			input.previous = decision.state;
+			input.cadenceRepeat = true;
+			input.currentTick = 3601;
+			decision = EvaluateNearBlackPresentationEpisode(input);
+			Assert::IsFalse(decision.bootstrapReleased);
+			Assert::AreEqual(0u, decision.state.bootstrapSamples);
+			Assert::IsFalse(decision.state.bootstrapCandidateAvailable);
+		}
+
+		TEST_METHOD(NearBlackStartupBootstrapResetsOnMismatchAndNearBlack)
 		{
 			const ActivePictureBounds scope = TrustedScopeCrop().geometry;
 			NearBlackPresentationEpisodeInput input;
@@ -4263,7 +4395,7 @@ namespace Tests
 			input.nativeBootstrapSourceSequence = 6002;
 			input.cadenceRepeat = true;
 			decision = EvaluateNearBlackPresentationEpisode(input);
-			Assert::AreEqual(1u, decision.state.bootstrapSamples);
+			Assert::AreEqual(0u, decision.state.bootstrapSamples);
 
 			input.previous = decision.state;
 			input.sourceSequence = 6003;

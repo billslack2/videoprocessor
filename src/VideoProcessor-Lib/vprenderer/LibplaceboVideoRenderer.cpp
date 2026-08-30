@@ -9338,6 +9338,7 @@ struct LibplaceboVideoRenderer::Impl
 			episodeInput.nativeBootstrapPresentationEpoch =
 				latestNativeBootstrapPresentationEpoch;
 			episodeInput.framesPerSecond = captureRateHz;
+			episodeInput.currentTick = GetTickCount64();
 			episodeInput.presentationEpoch = viewportRequestSerial;
 			episodeInput.sourceGeneration = frameGeneration;
 			episodeInput.sourceSequence = sourceSequence;

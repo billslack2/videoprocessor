@@ -644,6 +644,8 @@ namespace AlphaSourceCrop
 		uint32_t revalidationSamples = 0;
 		bool bootstrapCandidateAvailable = false;
 		ActivePictureBounds bootstrapCandidate;
+		uint64_t bootstrapCandidateStartedTick = 0;
+		uint64_t bootstrapLastQualifiedTick = 0;
 		uint64_t bootstrapLastSourceSequence = 0;
 		uint32_t bootstrapSamples = 0;
 	};
@@ -684,6 +686,7 @@ namespace AlphaSourceCrop
 		uint64_t nativeBootstrapSourceSequence = 0;
 		uint64_t nativeBootstrapPresentationEpoch = 0;
 		double framesPerSecond = 60.0;
+		uint64_t currentTick = 0;
 		uint64_t presentationEpoch = 0;
 		uint64_t sourceGeneration = 0;
 		uint64_t sourceSequence = 0;

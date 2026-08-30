@@ -122,6 +122,17 @@ namespace AlphaSourceCrop
 			state.revalidationSamples = 0;
 		}
 
+		void ResetNearBlackBootstrap(
+			NearBlackPresentationEpisodeState& state)
+		{
+			state.bootstrapCandidateAvailable = false;
+			state.bootstrapCandidate = {};
+			state.bootstrapCandidateStartedTick = 0;
+			state.bootstrapLastQualifiedTick = 0;
+			state.bootstrapLastSourceSequence = 0;
+			state.bootstrapSamples = 0;
+		}
+
 		int ChromaAlignedDisplacement(int pixels)
 		{
 			if (pixels > 0)
@@ -1614,8 +1625,7 @@ namespace AlphaSourceCrop
 		}
 
 		if (decision.state.mode == NearBlackPresentationMode::FULL_RASTER &&
-			!decision.state.entryTrustedCropAvailable && !input.cadenceRepeat &&
-			input.sourceSequence != decision.state.bootstrapLastSourceSequence)
+			!decision.state.entryTrustedCropAvailable)
 		{
 			const bool bootstrapQualifies = input.measurementCurrent &&
 				input.nearBlackEvaluated && !input.globalNearBlack &&
@@ -1635,34 +1645,76 @@ namespace AlphaSourceCrop
 				decision.state.bootstrapCandidateAvailable &&
 				SameTrustedCropContract(decision.state.bootstrapCandidate,
 					input.nativeBootstrapContract);
-			if (bootstrapQualifies)
+			const bool timingContinuous = input.currentTick == 0 ||
+				decision.state.bootstrapLastQualifiedTick == 0 ||
+				(input.currentTick >=
+					decision.state.bootstrapLastQualifiedTick &&
+				 input.currentTick -
+					decision.state.bootstrapLastQualifiedTick <= 100);
+			auto seedCandidate = [&]()
 			{
-				if (sameCandidate &&
-					decision.state.bootstrapLastSourceSequence != 0 &&
-					input.sourceSequence ==
-						decision.state.bootstrapLastSourceSequence + 1)
+				decision.state.bootstrapCandidateAvailable = true;
+				decision.state.bootstrapCandidate = input.nativeBootstrapContract;
+				decision.state.bootstrapCandidateStartedTick = input.currentTick;
+				decision.state.bootstrapLastQualifiedTick = input.currentTick;
+				decision.state.bootstrapLastSourceSequence = input.sourceSequence;
+				decision.state.bootstrapSamples = 1;
+			};
+			if (!bootstrapQualifies)
+			{
+				ResetNearBlackBootstrap(decision.state);
+			}
+			else if (!decision.state.bootstrapCandidateAvailable)
+			{
+				// Cached cadence repeats cannot invent an acquisition candidate.
+				if (!input.cadenceRepeat)
+					seedCandidate();
+			}
+			else if (!sameCandidate || !timingContinuous)
+			{
+				ResetNearBlackBootstrap(decision.state);
+				if (!input.cadenceRepeat)
+					seedCandidate();
+			}
+			else if (input.cadenceRepeat)
+			{
+				if (input.sourceSequence ==
+					decision.state.bootstrapLastSourceSequence)
 				{
-					++decision.state.bootstrapSamples;
+					// Re-evaluate the identical decoded frame without counting it as
+					// a new independent sample.
+					decision.state.bootstrapLastQualifiedTick = input.currentTick;
 				}
 				else
 				{
-					decision.state.bootstrapCandidateAvailable = true;
-					decision.state.bootstrapCandidate =
-						input.nativeBootstrapContract;
-					decision.state.bootstrapSamples = 1;
+					ResetNearBlackBootstrap(decision.state);
 				}
+			}
+			else if (input.sourceSequence ==
+				decision.state.bootstrapLastSourceSequence + 1)
+			{
+				++decision.state.bootstrapSamples;
 				decision.state.bootstrapLastSourceSequence = input.sourceSequence;
+				decision.state.bootstrapLastQualifiedTick = input.currentTick;
 			}
 			else
 			{
-				decision.state.bootstrapCandidateAvailable = false;
-				decision.state.bootstrapCandidate = {};
-				decision.state.bootstrapLastSourceSequence = 0;
-				decision.state.bootstrapSamples = 0;
+				ResetNearBlackBootstrap(decision.state);
+				seedCandidate();
 			}
 
+			const bool pausedDwellComplete = bootstrapQualifies &&
+				input.cadenceRepeat &&
+				decision.state.bootstrapCandidateAvailable &&
+				input.sourceSequence ==
+					decision.state.bootstrapLastSourceSequence &&
+				SameTrustedCropContract(decision.state.bootstrapCandidate,
+					input.nativeBootstrapContract) &&
+				decision.state.bootstrapCandidateStartedTick != 0 &&
+				input.currentTick >= decision.state.bootstrapCandidateStartedTick &&
+				input.currentTick - decision.state.bootstrapCandidateStartedTick >= 500;
 			if (decision.state.bootstrapSamples >=
-				decision.bootstrapSamplesRequired)
+					decision.bootstrapSamplesRequired || pausedDwellComplete)
 			{
 				decision.bootstrapSamples = decision.state.bootstrapSamples;
 				decision.state = {};

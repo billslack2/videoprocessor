@@ -842,5 +842,32 @@ namespace VideoProcessorTest
 			Assert::IsFalse(repeatedPublication.publish);
 			Assert::IsTrue(repeatedPublication.stable);
 		}
+
+		TEST_METHOD(BootstrapResetCannotAcquireFromPausedFrameDuplicates)
+		{
+			ActivePictureTransitionModel model;
+			const uint64_t pausedFrame = 5000;
+			const auto blocked = Observe(model, ScopeBounds(), pausedFrame,
+				ActivePictureClassification::PROVISIONAL);
+			Assert::IsFalse(blocked.publish);
+
+			model.ResetCandidateEvidence();
+			const auto duplicate = Observe(model, ScopeBounds(), pausedFrame,
+				ActivePictureClassification::BAR_CROP_TRUSTED);
+			Assert::IsFalse(duplicate.publish);
+			Assert::AreEqual(0U, static_cast<unsigned int>(
+				duplicate.matchingCandidates));
+
+			ActivePictureTransitionDecision acquired;
+			for (uint8_t count = 0;
+				count < ActivePictureTransitionModel::INITIAL_CONFIRMATIONS;
+				++count)
+			{
+				acquired = Observe(model, ScopeBounds(),
+					pausedFrame + 1 + count);
+			}
+			Assert::IsTrue(acquired.publish);
+			Assert::IsTrue(acquired.stable);
+		}
 	};
 }
