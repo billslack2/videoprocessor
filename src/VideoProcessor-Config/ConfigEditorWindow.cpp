@@ -4046,6 +4046,11 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 				QTimer::singleShot(0, hdrToneMappingMode, updateHdrModeControls);
 			});
 		updateHdrModeControls();
+		// Generic profile loading assigns each field's enabled state after the
+		// page is constructed. Reapply the mutually-exclusive HDR mode once the
+		// initial load/event turn is complete even when the mode index did not
+		// change and therefore emitted no signal.
+		QTimer::singleShot(0, hdrToneMappingMode, updateHdrModeControls);
 
     }
     else if (sectionPrefix == QStringLiteral("vprenderer.output"))

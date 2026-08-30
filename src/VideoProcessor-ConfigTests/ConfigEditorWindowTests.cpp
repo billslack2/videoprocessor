@@ -2288,15 +2288,17 @@ void testQueueUnitsAndLutControlsUseConsistentRows()
 		QStringLiteral("config.vprenderer.external_hdr_3dlut_enabled"));
 	require(!enabled->isChecked(),
 		"External HDR 3D LUT enable control did not reflect internal mode");
-	enabled->click();
-	require(mode->currentData().toString() == QStringLiteral("external_3dlut"),
-		"External HDR 3D LUT enable control did not select external mode");
 	QComboBox* bt709 = requireControl<QComboBox>(window,
 		QStringLiteral("config.vprenderer.hdr_external_3dlut_bt709"));
 	QComboBox* p3 = requireControl<QComboBox>(window,
 		QStringLiteral("config.vprenderer.hdr_external_3dlut_p3_d65"));
 	QComboBox* bt2020 = requireControl<QComboBox>(window,
 		QStringLiteral("config.vprenderer.hdr_external_3dlut_bt2020"));
+	require(!bt709->isEnabled() && !p3->isEnabled() && !bt2020->isEnabled(),
+		"External HDR LUT selectors are interactive on first open while disabled");
+	enabled->click();
+	require(mode->currentData().toString() == QStringLiteral("external_3dlut"),
+		"External HDR 3D LUT enable control did not select external mode");
 	require(bt709->currentData().toString().isEmpty() &&
 		p3->currentData().toString().isEmpty() &&
 		bt2020->currentData().toString().isEmpty() &&
