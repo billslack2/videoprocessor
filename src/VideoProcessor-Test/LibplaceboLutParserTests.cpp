@@ -1313,6 +1313,145 @@ namespace VideoProcessorTest
 			Assert::IsTrue(active.IsCurrent(fallback));
 		}
 
+		TEST_METHOD(ExternalHdrSamePathReloadPreservesUnchangedAndLastKnownGood)
+		{
+			TemporaryDirectory directory;
+			const std::string path = directory.Write("same.cube", Valid3dCube);
+			LibplaceboExternalHdrLut::Declarations declarations;
+			declarations.bt2020 = { path, directory.Path() };
+			auto first = LibplaceboExternalHdrLut::CandidateSet::Load(
+				nullptr, declarations, 10);
+			LibplaceboExternalHdrLut::ActiveSet active;
+			Assert::AreEqual(static_cast<int>(
+				LibplaceboExternalHdrLut::CommitDisposition::COMMIT_USABLE_GENERATION),
+				static_cast<int>(active.Commit(std::move(first))));
+
+			Assert::IsTrue(active.BeginRequest(11));
+			Assert::IsTrue(active.BeginRequest(12));
+			auto supersededBeforeCompletion =
+				LibplaceboExternalHdrLut::CandidateSet::Load(
+					nullptr, declarations, 11);
+			Assert::AreEqual(static_cast<int>(
+				LibplaceboExternalHdrLut::CommitDisposition::REJECT_STALE_TRANSACTION),
+				static_cast<int>(active.CommitReload(
+					std::move(supersededBeforeCompletion),
+					LibplaceboExternalHdrLut::ReloadIntent::
+						SAME_CONTRACT_CONTENT_CHECK)));
+			Assert::AreEqual<uint64_t>(10, active.TransactionGeneration());
+			auto unchanged = LibplaceboExternalHdrLut::CandidateSet::Load(
+				nullptr, declarations, 12);
+			Assert::AreEqual(static_cast<int>(
+				LibplaceboExternalHdrLut::CommitDisposition::
+					RETAIN_UNCHANGED_GENERATION),
+				static_cast<int>(active.CommitReload(std::move(unchanged),
+					LibplaceboExternalHdrLut::ReloadIntent::
+						SAME_CONTRACT_CONTENT_CHECK)));
+			Assert::AreEqual<uint64_t>(10, active.TransactionGeneration());
+			Assert::AreEqual<uint64_t>(12, active.LatestRequestGeneration());
+			Assert::AreEqual<uint64_t>(12, active.LatestProcessedGeneration());
+
+			directory.Write("same.cube", "LUT_3D_SIZE 2\n0 0 0\n");
+			Assert::IsTrue(active.BeginRequest(13));
+			Assert::IsTrue(active.BeginRequest(14));
+			auto supersededInvalid =
+				LibplaceboExternalHdrLut::CandidateSet::Load(
+					nullptr, declarations, 13);
+			Assert::AreEqual(static_cast<int>(
+				LibplaceboExternalHdrLut::CommitDisposition::REJECT_STALE_TRANSACTION),
+				static_cast<int>(active.CommitReload(
+					std::move(supersededInvalid),
+					LibplaceboExternalHdrLut::ReloadIntent::
+						SAME_CONTRACT_CONTENT_CHECK)));
+			auto invalid = LibplaceboExternalHdrLut::CandidateSet::Load(
+				nullptr, declarations, 14);
+			Assert::AreEqual(static_cast<int>(
+				LibplaceboExternalHdrLut::CommitDisposition::RETAIN_LAST_KNOWN_GOOD),
+				static_cast<int>(active.CommitReload(std::move(invalid),
+					LibplaceboExternalHdrLut::ReloadIntent::
+						SAME_CONTRACT_CONTENT_CHECK)));
+			Assert::AreEqual<uint64_t>(10, active.TransactionGeneration());
+			Assert::AreEqual<uint64_t>(14, active.LatestRequestGeneration());
+			Assert::AreEqual<uint64_t>(14, active.LatestProcessedGeneration());
+			const auto retained = active.Resolve(10,
+				LibplaceboExternalHdrLut::ToneMappingMode::EXTERNAL_3DLUT,
+				true, LibplaceboExternalHdrLut::Primaries::BT2020);
+			Assert::IsNotNull(retained.lut);
+			auto delayedAfterRetention =
+				LibplaceboExternalHdrLut::CandidateSet::Load(
+					nullptr, declarations, 13);
+			Assert::AreEqual(static_cast<int>(
+				LibplaceboExternalHdrLut::CommitDisposition::REJECT_STALE_TRANSACTION),
+				static_cast<int>(active.CommitReload(
+					std::move(delayedAfterRetention),
+					LibplaceboExternalHdrLut::ReloadIntent::
+						SAME_CONTRACT_CONTENT_CHECK)));
+			auto duplicateRetained =
+				LibplaceboExternalHdrLut::CandidateSet::Load(
+					nullptr, declarations, 14);
+			Assert::AreEqual(static_cast<int>(
+				LibplaceboExternalHdrLut::CommitDisposition::REJECT_STALE_TRANSACTION),
+				static_cast<int>(active.CommitReload(
+					std::move(duplicateRetained),
+					LibplaceboExternalHdrLut::ReloadIntent::
+						SAME_CONTRACT_CONTENT_CHECK)));
+		}
+
+		TEST_METHOD(ExternalHdrSamePathValidChangeAdvancesWholeGeneration)
+		{
+			TemporaryDirectory directory;
+			const std::string path = directory.Write("same.cube", Valid3dCube);
+			LibplaceboExternalHdrLut::Declarations declarations;
+			declarations.bt2020 = { path, directory.Path() };
+			auto first = LibplaceboExternalHdrLut::CandidateSet::Load(
+				nullptr, declarations, 20);
+			LibplaceboExternalHdrLut::ActiveSet active;
+			active.Commit(std::move(first));
+			const std::string firstHash = active.Resources().Resource(
+				LibplaceboExternalHdrLut::Slot::BT2020).Result().contentSha256;
+
+			directory.Write("same.cube", SwapRedBlue3dCube);
+			Assert::IsTrue(active.BeginRequest(21));
+			auto replacement = LibplaceboExternalHdrLut::CandidateSet::Load(
+				nullptr, declarations, 21);
+			Assert::AreEqual(static_cast<int>(
+				LibplaceboExternalHdrLut::CommitDisposition::COMMIT_USABLE_GENERATION),
+				static_cast<int>(active.CommitReload(std::move(replacement),
+					LibplaceboExternalHdrLut::ReloadIntent::
+						SAME_CONTRACT_CONTENT_CHECK)));
+			Assert::AreEqual<uint64_t>(21, active.TransactionGeneration());
+			Assert::IsTrue(firstHash != active.Resources().Resource(
+				LibplaceboExternalHdrLut::Slot::BT2020).Result().contentSha256);
+		}
+
+		TEST_METHOD(ExternalHdrContractChangeCannotRetainInvalidPriorLut)
+		{
+			TemporaryDirectory directory;
+			const std::string valid = directory.Write("valid.cube", Valid3dCube);
+			const std::string invalid = directory.Write(
+				"invalid.cube", "LUT_3D_SIZE 2\n0 0 0\n");
+			LibplaceboExternalHdrLut::Declarations firstDeclarations;
+			firstDeclarations.bt2020 = { valid, directory.Path() };
+			auto first = LibplaceboExternalHdrLut::CandidateSet::Load(
+				nullptr, firstDeclarations, 30);
+			LibplaceboExternalHdrLut::ActiveSet active;
+			active.Commit(std::move(first));
+
+			LibplaceboExternalHdrLut::Declarations changedDeclarations;
+			changedDeclarations.p3D65 = { invalid, directory.Path() };
+			Assert::IsTrue(active.BeginRequest(31));
+			auto changed = LibplaceboExternalHdrLut::CandidateSet::Load(
+				nullptr, changedDeclarations, 31);
+			Assert::AreEqual(static_cast<int>(
+				LibplaceboExternalHdrLut::CommitDisposition::COMMIT_INTERNAL_FALLBACK),
+				static_cast<int>(active.CommitReload(std::move(changed),
+					LibplaceboExternalHdrLut::ReloadIntent::CONTRACT_CHANGE)));
+			Assert::AreEqual<uint64_t>(31, active.TransactionGeneration());
+			const auto fallback = active.Resolve(31,
+				LibplaceboExternalHdrLut::ToneMappingMode::EXTERNAL_3DLUT,
+				true, LibplaceboExternalHdrLut::Primaries::BT2020);
+			Assert::IsNull(fallback.lut);
+		}
+
 		TEST_METHOD(ExternalHdrPartialGenerationNeverMixesPriorProfileSlots)
 		{
 			TemporaryDirectory directory;

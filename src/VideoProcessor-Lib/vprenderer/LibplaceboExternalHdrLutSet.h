@@ -59,6 +59,18 @@ namespace LibplaceboExternalHdrLut
 		const std::string& ConfiguredPath() const { return configuredPath_; }
 		const LibplaceboDisplayLut::LoadResult& Result() const { return result_; }
 		const pl_custom_lut* Lut() const { return result_.lut; }
+		bool SameContentIdentity(const SlotResource& other) const
+		{
+			const int dimension = result_.lut ? result_.lut->size[0] : 0;
+			const int otherDimension = other.result_.lut ?
+				other.result_.lut->size[0] : 0;
+			return result_.status == other.result_.status &&
+				result_.rejection == other.result_.rejection &&
+				result_.fileBytes == other.result_.fileBytes &&
+				result_.canonicalPath == other.result_.canonicalPath &&
+				result_.contentSha256 == other.result_.contentSha256 &&
+				dimension == otherDimension;
+		}
 
 	private:
 		friend class CandidateSet;
@@ -139,6 +151,20 @@ namespace LibplaceboExternalHdrLut
 			}
 		}
 
+		bool SameContentIdentity(const CandidateSet& other) const
+		{
+			return bt709_.SameContentIdentity(other.bt709_) &&
+				p3D65_.SameContentIdentity(other.p3D65_) &&
+				bt2020_.SameContentIdentity(other.bt2020_);
+		}
+
+		bool RegressesAvailableSlot(const CandidateSet& active) const
+		{
+			return (active.bt709_.Available() && !bt709_.Available()) ||
+				(active.p3D65_.Available() && !p3D65_.Available()) ||
+				(active.bt2020_.Available() && !bt2020_.Available());
+		}
+
 	private:
 		uint64_t transactionGeneration_ = 0;
 		SlotResource none_;
@@ -151,7 +177,15 @@ namespace LibplaceboExternalHdrLut
 	{
 		COMMIT_USABLE_GENERATION,
 		COMMIT_INTERNAL_FALLBACK,
+		RETAIN_UNCHANGED_GENERATION,
+		RETAIN_LAST_KNOWN_GOOD,
 		REJECT_STALE_TRANSACTION
+	};
+
+	enum class ReloadIntent
+	{
+		CONTRACT_CHANGE,
+		SAME_CONTRACT_CONTENT_CHECK
 	};
 
 	struct ResolvedResource
@@ -171,12 +205,65 @@ namespace LibplaceboExternalHdrLut
 	class ActiveSet
 	{
 	public:
+		// Reserve before file I/O begins. A completion is accepted only if no newer
+		// request has superseded it, even when that newer load is still in flight.
+		bool BeginRequest(uint64_t transactionGeneration)
+		{
+			if (transactionGeneration <= latestRequestGeneration_)
+				return false;
+			latestRequestGeneration_ = transactionGeneration;
+			return true;
+		}
+
 		CommitDisposition Commit(CandidateSet&& candidate)
 		{
 			const uint64_t transactionGeneration =
 				candidate.TransactionGeneration();
-			if (transactionGeneration <= transactionGeneration_)
+			if (transactionGeneration < latestRequestGeneration_ ||
+				transactionGeneration <= latestProcessedGeneration_)
 				return CommitDisposition::REJECT_STALE_TRANSACTION;
+			if (transactionGeneration > latestRequestGeneration_)
+				latestRequestGeneration_ = transactionGeneration;
+			latestProcessedGeneration_ = transactionGeneration;
+			return CommitAccepted(std::move(candidate));
+		}
+
+		CommitDisposition CommitReload(CandidateSet&& candidate,
+			ReloadIntent intent)
+		{
+			// RETAIN_* advances request/processed watermarks but deliberately leaves
+			// TransactionGeneration() on the authorized last-known-good resource.
+			// Callers must keep their expected generation equal to that active value.
+			const uint64_t transactionGeneration =
+				candidate.TransactionGeneration();
+			if (transactionGeneration != latestRequestGeneration_ ||
+				transactionGeneration <= latestProcessedGeneration_)
+				return CommitDisposition::REJECT_STALE_TRANSACTION;
+			latestProcessedGeneration_ = transactionGeneration;
+			if (intent == ReloadIntent::SAME_CONTRACT_CONTENT_CHECK)
+			{
+				if (candidate.SameContentIdentity(resources_))
+					return CommitDisposition::RETAIN_UNCHANGED_GENERATION;
+				if (candidate.RegressesAvailableSlot(resources_))
+					return CommitDisposition::RETAIN_LAST_KNOWN_GOOD;
+			}
+			return CommitAccepted(std::move(candidate));
+		}
+
+		uint64_t LatestRequestGeneration() const
+		{
+			return latestRequestGeneration_;
+		}
+		uint64_t LatestProcessedGeneration() const
+		{
+			return latestProcessedGeneration_;
+		}
+
+	private:
+		CommitDisposition CommitAccepted(CandidateSet&& candidate)
+		{
+			const uint64_t transactionGeneration =
+				candidate.TransactionGeneration();
 			const bool usable = candidate.HasAvailableSlot();
 			resources_ = std::move(candidate);
 			transactionGeneration_ = transactionGeneration;
@@ -185,6 +272,7 @@ namespace LibplaceboExternalHdrLut
 				CommitDisposition::COMMIT_INTERNAL_FALLBACK;
 		}
 
+	public:
 		ResolvedResource Resolve(uint64_t expectedTransactionGeneration,
 			ToneMappingMode mode, bool inputIsPq, Primaries sourcePrimaries) const
 		{
@@ -223,6 +311,8 @@ namespace LibplaceboExternalHdrLut
 
 	private:
 		CandidateSet resources_;
+		uint64_t latestRequestGeneration_ = 0;
+		uint64_t latestProcessedGeneration_ = 0;
 		uint64_t transactionGeneration_ = 0;
 		uint64_t resourceGeneration_ = 0;
 	};

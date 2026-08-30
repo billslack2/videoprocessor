@@ -6933,14 +6933,27 @@ struct LibplaceboVideoRenderer::Impl
 		displayLutContract = std::move(resolved);
 	}
 
-	void LoadExternalHdrLuts(const RendererSettings& settings)
+	void LoadExternalHdrLuts(const RendererSettings& settings,
+		uint64_t applicationProfileGeneration)
 	{
 		LibplaceboExternalHdrLut::Declarations declarations;
 		declarations.bt709 = settings.externalHdrBt709;
 		declarations.p3D65 = settings.externalHdrP3D65;
 		declarations.bt2020 = settings.externalHdrBt2020;
-		const uint64_t transactionGeneration =
-			nextExternalHdrLutTransactionGeneration++;
+		const uint64_t transactionGeneration = applicationProfileGeneration ?
+			applicationProfileGeneration : nextExternalHdrLutTransactionGeneration++;
+		if (applicationProfileGeneration >= nextExternalHdrLutTransactionGeneration)
+			nextExternalHdrLutTransactionGeneration =
+				applicationProfileGeneration + 1;
+		if (!externalHdrLuts.BeginRequest(transactionGeneration))
+		{
+			DebugLog::Log(
+				"external HDR 3D LUT load request rejected before I/O as stale: transaction=%llu latest=%llu",
+				static_cast<unsigned long long>(transactionGeneration),
+				static_cast<unsigned long long>(
+					externalHdrLuts.LatestRequestGeneration()));
+			return;
+		}
 		auto candidate = LibplaceboExternalHdrLut::CandidateSet::Load(
 			log, declarations, transactionGeneration);
 
@@ -7321,6 +7334,7 @@ struct LibplaceboVideoRenderer::Impl
 
 	void Initialize(HWND videoHwnd, VideoStateComPtr& state, const std::string& manualRule,
 		const std::map<std::string, std::string>& manualUnifiedProfiles,
+		uint64_t applicationProfileGeneration,
 		VideoConversionOverride videoConversionOverride)
 	{
 		this->videoHwnd = videoHwnd;
@@ -7340,7 +7354,7 @@ struct LibplaceboVideoRenderer::Impl
 		// Load and atomically publish the complete three-slot resource generation,
 		// but keep it render-inert until the verified HDR carrier and frame-local
 		// PL_LUT_CONVERSION attachment are both implemented.
-		LoadExternalHdrLuts(settings);
+		LoadExternalHdrLuts(settings, applicationProfileGeneration);
 		externalHdrFallbackGamutMapper =
 			&LibplaceboExportedData<pl_gamut_map_function>("pl_gamut_map_clip");
 
@@ -12739,6 +12753,7 @@ void LibplaceboVideoRenderer::Build()
 		state = m_videoState;
 		manualRule = m_manualDisplayRule;
 		manualUnifiedProfiles = m_manualUnifiedProfiles;
+		m_buildApplicationProfileGeneration = m_applicationProfileGeneration;
 	}
 
 	// D3D11 device/swapchain creation and persistent cache loading can enter the
@@ -13037,6 +13052,7 @@ bool LibplaceboVideoRenderer::ApplyApplicationState(
 	if (m_impl && !m_implInitialized.load(std::memory_order_acquire))
 	{
 		m_manualUnifiedProfiles = next;
+		m_applicationProfileGeneration = snapshot.generation;
 		rendererRestartRequired = true;
 		activeState = TEXT("Renderer initialization superseded by profile change");
 		DebugLog::Log(
@@ -13118,6 +13134,8 @@ bool LibplaceboVideoRenderer::ApplyApplicationState(
 			changedFields.c_str());
 	}
 	m_manualUnifiedProfiles = next;
+	if (!m_impl || rendererRestartRequired)
+		m_applicationProfileGeneration = snapshot.generation;
 
 	if (rendererRestartRequired)
 	{
@@ -14376,6 +14394,7 @@ void LibplaceboVideoRenderer::RenderLoop()
 					m_buildVideoState,
 					m_buildManualRule,
 					m_buildManualUnifiedProfiles,
+					m_buildApplicationProfileGeneration,
 					m_videoConversionOverride);
 				m_configuredScreenActive.store(
 					m_impl->configuredScreenTarget, std::memory_order_release);

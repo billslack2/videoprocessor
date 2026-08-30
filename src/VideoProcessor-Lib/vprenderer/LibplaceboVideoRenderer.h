@@ -198,6 +198,7 @@ private:
 	VideoStateComPtr m_buildVideoState;
 	std::string m_buildManualRule;
 	std::map<std::string, std::string> m_buildManualUnifiedProfiles;
+	uint64_t m_buildApplicationProfileGeneration = 0;
 	std::atomic_bool m_implInitialized{false};
 	std::atomic<double> m_entryLatencyMs{0.0};
 	std::atomic<double> m_exitLatencyMs{0.0};
@@ -258,4 +259,7 @@ private:
 	// One manual selection per independent unified profile group. This state is
 	// copied into rebuilt renderer instances only after the selection is accepted.
 	std::map<std::string, std::string> m_manualUnifiedProfiles;
+	// Captured only for the profile state that will construct/reconstruct this
+	// renderer. Unrelated live snapshot generations must not stale LUT resources.
+	uint64_t m_applicationProfileGeneration = 0;
 };
