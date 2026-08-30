@@ -599,6 +599,19 @@ namespace AlphaSourceCrop
 	AspectLimitFillDecision EvaluateAspectLimitFill(
 		const AspectLimitFillInput& input);
 
+	struct FixedAspectCropInput
+	{
+		bool trustedContentAuthorityAccepted = false;
+		double fixedAspect = 0.0;
+		ActivePictureBounds sourceBounds;
+	};
+
+	// Center-crop an accepted current picture to an operator-selected source
+	// aspect. This deliberately has no knowledge of the physical screen: the
+	// regular destination fit happens after this source-geometry decision.
+	AspectLimitFillDecision EvaluateFixedAspectCrop(
+		const FixedAspectCropInput& input);
+
 	struct ProfileTransitionRetentionInput
 	{
 		bool geometryAvailable = false;

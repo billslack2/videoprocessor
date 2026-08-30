@@ -156,6 +156,11 @@ namespace RendererProfileConfig
 		bool cropWiderContentToFillScreen = false;
 		AspectRatio cropWiderContentAspectLimit{ 1, 1, 1.0 };
 		bool hasCropWiderContentAspectLimit = false;
+		// A fixed crop is independent of the physical screen aspect. When set,
+		// trusted content is center-cropped to this exact source aspect before
+		// the normal screen fit is performed.
+		AspectRatio fixedCropAspect{ 1, 1, 1.0 };
+		bool hasFixedCropAspect = false;
 		bool subtitleFit = false;
 		bool hdrPeakAnalysisPictureOnly = false;
 		bool hdrPeakAnalysisMotionCompensation = false;
@@ -546,6 +551,8 @@ namespace RendererProfileConfig
 				// absent or malformed value means no limit.
 				// ResolveViewport disables the limit when it cannot parse it.
 				return true;
+			if (group == "zoom" && key == "fixed_crop_aspect")
+				return IsAspectInRange(value, 1.0, 4.0);
 			if (key == "subtitle_hold_seconds")
 				return IsNumberInRange(value, MIN_SUBTITLE_HOLD_SECONDS,
 					MAX_SUBTITLE_HOLD_SECONDS);
@@ -735,7 +742,8 @@ namespace RendererProfileConfig
 			key == "crop_narrower_content_to_fill_screen" ||
 			key == "crop_narrower_content_aspect_limit" ||
 			key == "crop_wider_content_to_fill_screen" ||
-			key == "crop_wider_content_aspect_limit") return false;
+			key == "crop_wider_content_aspect_limit" ||
+			key == "fixed_crop_aspect") return false;
 		return ValidateBaseSetting(key, value);
 	}
 
@@ -1452,7 +1460,7 @@ namespace RendererProfileConfig
 				"automatic_crop", "crop_narrower_content_to_fill_screen",
 				"crop_narrower_content_aspect_limit",
 				"crop_wider_content_to_fill_screen",
-				"crop_wider_content_aspect_limit", "subtitle_fit",
+				"crop_wider_content_aspect_limit", "fixed_crop_aspect", "subtitle_fit",
 				"hdr_peak_analysis_picture_only",
 				"hdr_peak_analysis_motion_compensation",
 				"hdr_peak_analysis_height_percent",
@@ -2171,6 +2179,16 @@ namespace RendererProfileConfig
 					viewport.cropWiderContentAspectLimit, error);
 			if (!viewport.hasCropWiderContentAspectLimit) error.clear();
 		}
+		value = settings.find("fixed_crop_aspect");
+		if (value != settings.end() &&
+			!AspectRatioParser::Parse(value->second, 1.0, 4.0,
+				viewport.fixedCropAspect, error))
+		{
+			error = "[profiles.zoom." + viewport.zoomProfile +
+				"] fixed_crop_aspect: " + error;
+			return false;
+		}
+		viewport.hasFixedCropAspect = value != settings.end();
 		value = settings.find("subtitle_fit");
 		if (value != settings.end() && !ParseBoolean(value->second,
 			viewport.subtitleFit))

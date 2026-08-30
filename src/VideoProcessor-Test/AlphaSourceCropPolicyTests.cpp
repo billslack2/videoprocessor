@@ -2976,6 +2976,35 @@ namespace Tests
 			}
 		}
 
+		TEST_METHOD(FixedAspectCropIsIndependentOfThePhysicalScreen)
+		{
+			FixedAspectCropInput input;
+			input.trustedContentAuthorityAccepted = true;
+			input.fixedAspect = 2.0;
+			input.sourceBounds = {
+				0, 0, 3840, 2020, 3840, 2160,
+				3840.0 / 2020.0, ActivePictureBounds::BarAxes::TOP_BOTTOM };
+			const AspectLimitFillDecision widened = EvaluateFixedAspectCrop(input);
+			Assert::IsTrue(widened.applied);
+			Assert::AreEqual(2.0,
+				static_cast<double>(widened.sourceBounds.right - widened.sourceBounds.left) /
+				(widened.sourceBounds.bottom - widened.sourceBounds.top), 0.002);
+
+			input.sourceBounds = {
+				0, 0, 3840, 1600, 3840, 2160,
+				2.4, ActivePictureBounds::BarAxes::TOP_BOTTOM };
+			const AspectLimitFillDecision narrowed = EvaluateFixedAspectCrop(input);
+			Assert::IsTrue(narrowed.applied);
+			Assert::AreEqual(2.0,
+				static_cast<double>(narrowed.sourceBounds.right - narrowed.sourceBounds.left) /
+				(narrowed.sourceBounds.bottom - narrowed.sourceBounds.top), 0.002);
+			Assert::IsTrue(narrowed.sourceBounds.left > input.sourceBounds.left);
+
+			input.trustedContentAuthorityAccepted = false;
+			const AspectLimitFillDecision untrusted = EvaluateFixedAspectCrop(input);
+			Assert::IsFalse(untrusted.applied);
+		}
+
 		TEST_METHOD(TwoToOneLensPrecompressesSixteenByNineToEightByNine)
 		{
 			const double sourceAspect = 16.0 / 9.0;

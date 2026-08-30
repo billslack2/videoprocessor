@@ -1400,6 +1400,71 @@ namespace AlphaSourceCrop
 		return decision;
 	}
 
+	AspectLimitFillDecision EvaluateFixedAspectCrop(
+		const FixedAspectCropInput& input)
+	{
+		AspectLimitFillDecision decision;
+		decision.sourceBounds = input.sourceBounds;
+		const int width = input.sourceBounds.right - input.sourceBounds.left;
+		const int height = input.sourceBounds.bottom - input.sourceBounds.top;
+		if (width <= 0 || height <= 0)
+		{
+			decision.reason = "trusted crop bounds are invalid";
+			return decision;
+		}
+		decision.contentAspect = static_cast<double>(width) / height;
+		if (!input.trustedContentAuthorityAccepted)
+		{
+			decision.reason = "trusted active-picture authority is unavailable";
+			return decision;
+		}
+		if (!std::isfinite(input.fixedAspect) || input.fixedAspect < 1.0 ||
+			input.fixedAspect > 4.0)
+		{
+			decision.reason = "fixed crop aspect is invalid";
+			return decision;
+		}
+		const double epsilon = 1e-6;
+		if (decision.contentAspect < input.fixedAspect - epsilon)
+		{
+			int croppedHeight = static_cast<int>(std::floor(width / input.fixedAspect));
+			croppedHeight &= ~1;
+			if (croppedHeight <= 0 || croppedHeight >= height)
+			{
+				decision.reason = "centered fixed crop would not remove source rows";
+				return decision;
+			}
+			const int topInset = ((height - croppedHeight) / 2) & ~1;
+			decision.sourceBounds.top += topInset;
+			decision.sourceBounds.bottom = decision.sourceBounds.top + croppedHeight;
+		}
+		else if (decision.contentAspect > input.fixedAspect + epsilon)
+		{
+			int croppedWidth = static_cast<int>(std::floor(height * input.fixedAspect));
+			croppedWidth &= ~1;
+			if (croppedWidth <= 0 || croppedWidth >= width)
+			{
+				decision.reason = "centered fixed crop would not remove source columns";
+				return decision;
+			}
+			const int leftInset = ((width - croppedWidth) / 2) & ~1;
+			decision.sourceBounds.left += leftInset;
+			decision.sourceBounds.right = decision.sourceBounds.left + croppedWidth;
+		}
+		else
+		{
+			decision.reason = "content already matches the fixed crop aspect";
+			return decision;
+		}
+		const int finalWidth = decision.sourceBounds.right - decision.sourceBounds.left;
+		const int finalHeight = decision.sourceBounds.bottom - decision.sourceBounds.top;
+		decision.sourceBounds.aspectRatio = static_cast<double>(finalWidth) / finalHeight;
+		decision.sourceBounds.trustedBarAxes = ActivePictureBounds::BarAxes::NONE;
+		decision.applied = true;
+		decision.reason = "trusted content center-cropped to the fixed aspect";
+		return decision;
+	}
+
 	const char* VerticalPictureAlignmentName(
 		VerticalPictureAlignment alignment)
 	{

@@ -1091,6 +1091,7 @@ void ConfigEditorWindow::migrateViewportZoomProfiles()
         QStringLiteral("crop_narrower_content_aspect_limit"),
         QStringLiteral("crop_wider_content_to_fill_screen"),
         QStringLiteral("crop_wider_content_aspect_limit"),
+		QStringLiteral("fixed_crop_aspect"),
         QStringLiteral("subtitle_fit"),
         QStringLiteral("hdr_peak_analysis_picture_only"),
 		QStringLiteral("hdr_peak_analysis_motion_compensation"),
@@ -4313,6 +4314,12 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 		connect(cropWider, &QCheckBox::toggled, this,
 			[cropWiderLimit](bool enabled)
 			{ cropWiderLimit->setEnabled(enabled); });
+		auto* fixedCropAspect = addText(QStringLiteral("Fixed crop aspect"),
+			QStringLiteral("fixed_crop_aspect"));
+		fixedCropAspect->setPlaceholderText(QStringLiteral("Off; e.g. 2.00:1"));
+		fixedCropAspect->setToolTip(QStringLiteral(
+			"Center-crop trusted content to this exact aspect before fitting it to the physical screen. "
+			"This overrides the fill-screen crop choices for this Zoom profile."));
 
         form = addCollapsibleSection(QStringLiteral("subtitles"),
             QStringLiteral("Subtitles"), QStringLiteral(
@@ -4658,7 +4665,8 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 			const bool viewportAspectLimit =
 				sectionPrefix == QStringLiteral("vprenderer.zoom") &&
 				(field.key == QStringLiteral("crop_narrower_content_aspect_limit") ||
-				 field.key == QStringLiteral("crop_wider_content_aspect_limit"));
+				 field.key == QStringLiteral("crop_wider_content_aspect_limit") ||
+				 field.key == QStringLiteral("fixed_crop_aspect"));
 			if (viewportAspectLimit && !raw.isEmpty())
 			{
 				AspectRatio ignored;

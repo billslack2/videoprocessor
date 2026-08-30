@@ -72,6 +72,11 @@ namespace
 				right.viewport.cropWiderContentAspectLimit.numerator &&
 			left.viewport.cropWiderContentAspectLimit.denominator ==
 				right.viewport.cropWiderContentAspectLimit.denominator &&
+			left.viewport.hasFixedCropAspect == right.viewport.hasFixedCropAspect &&
+			left.viewport.fixedCropAspect.numerator ==
+				right.viewport.fixedCropAspect.numerator &&
+			left.viewport.fixedCropAspect.denominator ==
+				right.viewport.fixedCropAspect.denominator &&
 			left.viewport.subtitleFit == right.viewport.subtitleFit &&
 			left.viewport.hdrPeakAnalysisPictureOnly ==
 				right.viewport.hdrPeakAnalysisPictureOnly &&
@@ -926,6 +931,9 @@ namespace UnifiedProfileRuntime
 			variables["crop_wider_content_aspect_limit"] =
 				StateVariables::Value::Aspect(
 					viewport.cropWiderContentAspectLimit);
+		if (viewport.hasFixedCropAspect)
+			variables["fixed_crop_aspect"] = StateVariables::Value::Aspect(
+				viewport.fixedCropAspect);
 		variables["subtitle_fit"] =
 			StateVariables::Value::Boolean(viewport.subtitleFit);
 		variables["hdr_peak_analysis_picture_only"] =

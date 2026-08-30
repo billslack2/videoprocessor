@@ -949,6 +949,8 @@ namespace
 		bool cropWiderContentToFillScreen = false;
 		bool cropWiderContentAspectLimitConfigured = false;
 		double cropWiderContentAspectLimit = 0.0;
+		bool fixedCropAspectConfigured = false;
+		double fixedCropAspect = 0.0;
 		bool scopeSubtitleFit = false;
 		bool hdrPeakAnalysisPictureOnly = false;
 		bool hdrPeakAnalysisMotionCompensation = false;
@@ -1038,6 +1040,8 @@ namespace
 				<< settings.cropWiderContentToFillScreen << '|'
 				<< settings.cropWiderContentAspectLimitConfigured << '|'
 				<< settings.cropWiderContentAspectLimit << '|'
+				<< settings.fixedCropAspectConfigured << '|'
+				<< settings.fixedCropAspect << '|'
 				<< settings.scopeSubtitleFit << '|'
 				<< settings.hdrPeakAnalysisPictureOnly << '|'
 				<< settings.hdrPeakAnalysisMotionCompensation << '|'
@@ -1909,9 +1913,23 @@ namespace
 				DebugLog::Log("profile '%s': invalid crop_wider_content_aspect_limit '%s'",
 					rule.name.c_str(), raw.c_str());
 		}
+		if (readViewportString("fixed_crop_aspect", raw))
+		{
+			settings.fixedCropAspectConfigured = false;
+			double value = 0.0;
+			if (ConfigFile::NormalizeName(raw) == "none")
+				settings.fixedCropAspect = 0.0;
+			else if (ParseAspectRatio(raw, value) && value >= 1.0 && value <= 4.0)
+			{
+				settings.fixedCropAspect = value;
+				settings.fixedCropAspectConfigured = true;
+			}
+			else DebugLog::Log("profile '%s': invalid fixed_crop_aspect '%s'",
+				rule.name.c_str(), raw.c_str());
+		}
 		settings.automaticSourceCrop = settings.automaticSourceCrop ||
 			settings.cropNarrowerContentToFillScreen ||
-			settings.cropWiderContentToFillScreen;
+			settings.cropWiderContentToFillScreen || settings.fixedCropAspectConfigured;
 		if (!readViewportBool("subtitle_fit", settings.scopeSubtitleFit) &&
 			readViewportString("subtitle_fit", raw))
 			DebugLog::Log("profile '%s': invalid subtitle_fit '%s'",
@@ -2337,9 +2355,22 @@ namespace
 			else
 				DebugLog::Log("libplacebo: crop_wider_content_aspect_limit must be a ratio or decimal between 1.0 and 4.0; disabling the limit");
 		}
+		if (TryGetDisplayString(config, "fixed_crop_aspect", rawValue))
+		{
+			settings.fixedCropAspectConfigured = false;
+			double parsed = 0.0;
+			if (ConfigFile::NormalizeName(rawValue) == "none")
+				settings.fixedCropAspect = 0.0;
+			else if (ParseAspectRatio(rawValue, parsed) && parsed >= 1.0 && parsed <= 4.0)
+			{
+				settings.fixedCropAspect = parsed;
+				settings.fixedCropAspectConfigured = true;
+			}
+			else DebugLog::Log("libplacebo: fixed_crop_aspect must be a ratio or decimal between 1.0 and 4.0; disabling it");
+		}
 		settings.automaticSourceCrop = settings.automaticSourceCrop ||
 			settings.cropNarrowerContentToFillScreen ||
-			settings.cropWiderContentToFillScreen;
+			settings.cropWiderContentToFillScreen || settings.fixedCropAspectConfigured;
 		if (TryGetDisplayString(config, "subtitle_hold_seconds", rawValue))
 		{
 			double seconds = 0.0;
@@ -3244,6 +3275,8 @@ struct LibplaceboVideoRenderer::Impl
 	bool cropWiderContentToFillScreen = false;
 	bool cropWiderContentAspectLimitConfigured = false;
 	double cropWiderContentAspectLimit = 0.0;
+	bool fixedCropAspectConfigured = false;
+	double fixedCropAspect = 0.0;
 	bool scopeSubtitleFit = false;
 	bool hdrPeakAnalysisPictureOnly = false;
 	bool hdrPeakAnalysisMotionCompensation = false;
@@ -6401,6 +6434,8 @@ struct LibplaceboVideoRenderer::Impl
 			settings.cropWiderContentAspectLimitConfigured;
 		cropWiderContentAspectLimit =
 			settings.cropWiderContentAspectLimit;
+		fixedCropAspectConfigured = settings.fixedCropAspectConfigured;
+		fixedCropAspect = settings.fixedCropAspect;
 		scopeSubtitleFit = settings.scopeSubtitleFit;
 		hdrPeakAnalysisPictureOnly =
 			settings.hdrPeakAnalysisPictureOnly;
@@ -6495,6 +6530,8 @@ struct LibplaceboVideoRenderer::Impl
 				settings.cropWiderContentAspectLimitConfigured ||
 			cropWiderContentAspectLimit !=
 				settings.cropWiderContentAspectLimit ||
+			fixedCropAspectConfigured != settings.fixedCropAspectConfigured ||
+			fixedCropAspect != settings.fixedCropAspect ||
 			scopeSubtitleFit != settings.scopeSubtitleFit ||
 			hdrPeakAnalysisPictureOnly !=
 				settings.hdrPeakAnalysisPictureOnly ||
@@ -6526,6 +6563,8 @@ struct LibplaceboVideoRenderer::Impl
 			settings.cropWiderContentAspectLimitConfigured;
 		cropWiderContentAspectLimit =
 			settings.cropWiderContentAspectLimit;
+		fixedCropAspectConfigured = settings.fixedCropAspectConfigured;
+		fixedCropAspect = settings.fixedCropAspect;
 		scopeSubtitleFit = settings.scopeSubtitleFit;
 		hdrPeakAnalysisPictureOnly =
 			settings.hdrPeakAnalysisPictureOnly;
@@ -6557,6 +6596,8 @@ struct LibplaceboVideoRenderer::Impl
 			settings.cropWiderContentAspectLimitConfigured;
 		activeSettings.cropWiderContentAspectLimit =
 			settings.cropWiderContentAspectLimit;
+		activeSettings.fixedCropAspectConfigured = settings.fixedCropAspectConfigured;
+		activeSettings.fixedCropAspect = settings.fixedCropAspect;
 		activeSettings.scopeSubtitleFit = settings.scopeSubtitleFit;
 		activeSettings.hdrPeakAnalysisPictureOnly =
 			settings.hdrPeakAnalysisPictureOnly;
@@ -6707,6 +6748,8 @@ struct LibplaceboVideoRenderer::Impl
 				next.cropWiderContentAspectLimitConfigured ||
 			current.cropWiderContentAspectLimit !=
 				next.cropWiderContentAspectLimit ||
+			current.fixedCropAspectConfigured != next.fixedCropAspectConfigured ||
+			current.fixedCropAspect != next.fixedCropAspect ||
 			current.scopeSubtitleFit != next.scopeSubtitleFit ||
 			current.hdrPeakAnalysisPictureOnly !=
 				next.hdrPeakAnalysisPictureOnly ||
@@ -9791,6 +9834,17 @@ struct LibplaceboVideoRenderer::Impl
 				aspectLimitFill.reason =
 					"NLS owns final source geometry; aspect-limit fill withheld";
 			}
+			else if (fixedCropAspectConfigured)
+			{
+				AlphaSourceCrop::FixedAspectCropInput fixedCropInput;
+				fixedCropInput.trustedContentAuthorityAccepted =
+					cropDecision.applyCrop ||
+					cropInput.fullRasterPresentationAuthoritative;
+				fixedCropInput.fixedAspect = fixedCropAspect;
+				fixedCropInput.sourceBounds = cropDecision.sourceBounds;
+				aspectLimitFill = AlphaSourceCrop::EvaluateFixedAspectCrop(
+					fixedCropInput);
+			}
 			else if (!configuredScreenActive)
 			{
 				aspectLimitFill.sourceBounds = cropDecision.sourceBounds;
@@ -9870,6 +9924,8 @@ struct LibplaceboVideoRenderer::Impl
 				<< cropWiderContentToFillScreen << '|'
 				<< cropWiderContentAspectLimitConfigured << '|'
 				<< cropWiderContentAspectLimit << '|'
+				<< fixedCropAspectConfigured << '|'
+				<< fixedCropAspect << '|'
 				<< aspectLimitFill.contentAspect << '|'
 				<< aspectLimitFill.applied << '|'
 				<< presentationCropBounds.left << ','
