@@ -2,9 +2,9 @@
 
 #include <algorithm>
 #include <cctype>
-#include <cmath>
 #include <limits>
 #include <new>
+#include <sstream>
 #include <vector>
 #include <windows.h>
 
@@ -103,6 +103,31 @@ namespace LibplaceboDisplayLut
 		return false;
 	}
 
+	bool ContainsNonDefaultDomain(const std::string& contents)
+	{
+		std::istringstream input(contents);
+		std::string line;
+		while (std::getline(input, line))
+		{
+			std::istringstream fields(line);
+			std::string keyword;
+			fields >> keyword;
+			if (keyword != "DOMAIN_MIN" && keyword != "DOMAIN_MAX")
+				continue;
+
+			double values[3] = {};
+			if (!(fields >> values[0] >> values[1] >> values[2]))
+				continue; // The authoritative Cube parser rejects malformed input.
+			const double expected = keyword == "DOMAIN_MIN" ? 0.0 : 1.0;
+			if (values[0] != expected || values[1] != expected ||
+				values[2] != expected)
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
 	LoadResult Load(
 		pl_log log,
 		const std::string& path,
@@ -183,6 +208,16 @@ namespace LibplaceboDisplayLut
 				result.rejection = Rejection::ONE_DIMENSIONAL;
 				return result;
 			}
+			// VP's v1 calibration contract is normalized RGB in/out. The bundled
+			// libplacebo parser treats Cube DOMAIN values as an output rescale,
+			// while the Adobe Cube specification defines them as the input domain.
+			// Reject that unsupported semantic instead of applying the wrong LUT.
+			if (ContainsNonDefaultDomain(contents))
+			{
+				result.status = Status::REJECTED;
+				result.rejection = Rejection::UNSUPPORTED_DOMAIN;
+				return result;
+			}
 
 			result.lut =
 				pl_lut_parse_cube(log, contents.data(), contents.size());
@@ -246,68 +281,10 @@ namespace LibplaceboDisplayLut
 		case Rejection::PATH_OUTSIDE_BASE: return "bad path";
 		case Rejection::INVALID_CUBE: return "invalid cube";
 		case Rejection::ONE_DIMENSIONAL: return "1D not supported";
+		case Rejection::UNSUPPORTED_DOMAIN: return "domain unsupported";
 		case Rejection::UNSAFE_DIMENSIONS: return "unsupported size";
 		default: return "";
 		}
 	}
 
-	bool TargetMatchesSignal(
-		enum pl_color_primaries targetPrimaries,
-		enum pl_color_transfer targetTransfer,
-		enum pl_color_levels targetRange,
-		enum pl_color_primaries signalPrimaries,
-		enum pl_color_transfer signalTransfer,
-		enum pl_color_levels signalRange)
-	{
-		return signalPrimaries != PL_COLOR_PRIM_UNKNOWN &&
-			signalTransfer != PL_COLOR_TRC_UNKNOWN &&
-			signalRange != PL_COLOR_LEVELS_UNKNOWN &&
-			targetPrimaries == signalPrimaries &&
-			targetTransfer == signalTransfer &&
-			targetRange == signalRange;
-	}
-
-	ContractRejection ValidateContract(
-		enum pl_color_primaries requestedPrimaries,
-		enum pl_color_transfer requestedTransfer,
-		enum pl_color_levels requestedRange,
-		double requestedNits,
-		enum pl_color_primaries targetPrimaries,
-		enum pl_color_transfer targetTransfer,
-		enum pl_color_levels targetRange,
-		double targetNits,
-		bool targetMatchesSignaledOutput)
-	{
-		if (!targetMatchesSignaledOutput)
-			return ContractRejection::OUTPUT_NOT_SIGNALED;
-		if (requestedPrimaries == PL_COLOR_PRIM_DISPLAY_P3)
-			return ContractRejection::P3_NOT_SUPPORTED;
-		if ((requestedPrimaries != PL_COLOR_PRIM_UNKNOWN &&
-			 requestedPrimaries != targetPrimaries) ||
-			(requestedTransfer != PL_COLOR_TRC_UNKNOWN &&
-			 requestedTransfer != targetTransfer) ||
-			(requestedRange != PL_COLOR_LEVELS_UNKNOWN &&
-			 requestedRange != targetRange) ||
-			(requestedNits > 0.0 &&
-			 std::abs(requestedNits - targetNits) > 0.01))
-		{
-			return ContractRejection::PROFILE_MISMATCH;
-		}
-		return ContractRejection::NONE;
-	}
-
-	const char* ShortReason(ContractRejection rejection)
-	{
-		switch (rejection)
-		{
-		case ContractRejection::OUTPUT_NOT_SIGNALED:
-			return "output not signaled";
-		case ContractRejection::P3_NOT_SUPPORTED:
-			return "P3 not supported";
-		case ContractRejection::PROFILE_MISMATCH:
-			return "profile mismatch";
-		default:
-			return "";
-		}
-	}
 }

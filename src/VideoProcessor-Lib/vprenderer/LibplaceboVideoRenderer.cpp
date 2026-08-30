@@ -3116,6 +3116,8 @@ struct LibplaceboVideoRenderer::Impl
 	std::string lutReferenceRange = "auto";
 	double lutReferenceNits = 0.0;
 	bool displayLutParsed = false;
+	bool displayLutActive = false;
+	uint64_t displayLutReloadGeneration = 0;
 	std::unique_ptr<IVideoFrameFormatter> formatter;
 	VideoStateComPtr formatterState;
 	std::vector<BYTE> convertedFrame;
@@ -4229,7 +4231,7 @@ struct LibplaceboVideoRenderer::Impl
 	}
 
 	void ConfigureRenderParams(const RendererSettings& settings,
-		const char* lifecycle)
+		const char* lifecycle, bool requestedDisplayLutActive)
 	{
 		LibplaceboRenderParameters::Settings parameterSettings;
 		parameterSettings.quality = settings.quality;
@@ -4255,12 +4257,13 @@ struct LibplaceboVideoRenderer::Impl
 		LibplaceboRenderParameters::Projection projection;
 		std::string projectionError;
 		if (!LibplaceboRenderParameters::Build(parameterSettings,
-			displayLutParsed && displayLut, projection, projectionError))
+			requestedDisplayLutActive, projection, projectionError))
 		{
 			throw std::runtime_error(
 				"could not configure libplacebo render parameters: " + projectionError);
 		}
-		if (displayLutParsed && displayLut && projection.renderParams.error_diffusion == nullptr)
+		if (requestedDisplayLutActive &&
+			projection.renderParams.error_diffusion == nullptr)
 		{
 			DebugLog::Log(
 				"display: disabled error-diffusion dithering while a 3D LUT is active; using the compatible target-LUT render path");
@@ -4281,6 +4284,10 @@ struct LibplaceboVideoRenderer::Impl
 			projection.renderParams.deband_params ? &debandParams : nullptr;
 		renderParams.dither_params =
 			projection.renderParams.dither_params ? &ditherParams : nullptr;
+		// Build the complete projection before publishing either half of this
+		// transition. A failed rebuild must not leave Active paired with the
+		// ordinary no-LUT parameters (or vice versa).
+		displayLutActive = requestedDisplayLutActive;
 
 		DebugLog::Log(
 			"libplacebo settings: quality=%s tone_mapping=%s gamut_mapping=%s peak_detection=%s hdr_peak_analysis_picture_only=%d hdr_peak_analysis_motion_compensation=%d hdr_peak_analysis_height_percent=%d libplacebo_version=%s api=%d local_analysis_crop=vp0147-motion-v1 contrast_recovery=%.2f upscaler=%s downscaler=%s deband=%s dithering=%s dynamic_constants=%d display_bit_depth=%s output_presentation=%s output_range=%s output_transport_gamma=%s output_gamma=%s sdr_input_transfer=%s sdr_adjust_gamma=%s target=%.1f nits black=%.3f profile_update_mode=%s output_diagnostics=%d diagnostic_disable_shader_cache=%d diagnostic_disable_compute=%d diagnostic_force_8bit_sdr_swapchain=%d diagnostic_allow_limited_g22=%d diagnostic_allow_full_g22=%d diagnostic_vp_owned_dxgi_presenter=%d refresh_switch=%d refresh_command_delay=%llus refresh_commands=%u viewport_target=%s screen_aspect=%.4f automatic_crop=%d subtitle_fit=%d subtitle_hold=%llums subtitle_engage_drift=%llums subtitle_release_drift=%llums subtitle_padding=%dpx subtitle_target_buffer=%dpx",
@@ -5290,22 +5297,6 @@ struct LibplaceboVideoRenderer::Impl
 			pl_swapchain_colorspace_hint(swapchain, &configuredOutputColor);
 	}
 
-	bool ReturnedTargetMatchesActualOutput(
-		const struct pl_color_repr& repr,
-		const struct pl_color_space& color) const
-	{
-		return actualOutput.safeToRender &&
-			LibplaceboDisplayLut::TargetMatchesSignal(
-				color.primaries,
-				color.transfer,
-				repr.levels,
-				EncodingUsesBt2020(actualOutput.encoding)
-					? PL_COLOR_PRIM_BT_2020 : PL_COLOR_PRIM_BT_709,
-				ResolvedPixelTransfer(actualOutput.encoding,
-					actualOutput.targetTransfer),
-				EncodingLevels(actualOutput.encoding));
-	}
-
 	void ReleaseVpOwnedSwapchain()
 	{
 		if (!vpOwnedSwapchain) return;
@@ -5998,6 +5989,7 @@ struct LibplaceboVideoRenderer::Impl
 			LibplaceboDisplayLut::Load(
 				log, displayLutPath, displayLutConstrainedBaseDirectory);
 		displayLut = result.lut;
+		displayLutActive = false;
 		displayLutParsed =
 			result.status == LibplaceboDisplayLut::Status::ACTIVE;
 		if (result.status == LibplaceboDisplayLut::Status::DISABLED)
@@ -6016,6 +6008,7 @@ struct LibplaceboVideoRenderer::Impl
 				displayLutPath.c_str());
 			return;
 		}
+		++displayLutReloadGeneration;
 
 		DebugLog::Log(
 			"display: parsed 3D LUT %s (%d x %d x %d, %zu bytes, signature=%016llX); target contract validation pending",
@@ -6037,67 +6030,185 @@ struct LibplaceboVideoRenderer::Impl
 			"display: LUT render failed; disabling %s for this renderer instance and continuing without a LUT",
 			displayLutPath.c_str());
 		displayLutStatus = "Rejected: render error";
+		try
+		{
+			SetDisplayLutActive(false);
+		}
+		catch (...)
+		{
+			// Never retry a resource after pl_render rejected it. The previous
+			// parameters are conservative (error diffusion remains disabled),
+			// and a later successful settings projection restores normal dither.
+			displayLutActive = false;
+			displayLutParsed = false;
+			pl_lut_free(&displayLut);
+			throw;
+		}
 		displayLutParsed = false;
 		pl_lut_free(&displayLut);
 	}
 
+	void SetDisplayLutActive(bool active)
+	{
+		if (displayLutActive == active)
+			return;
+		ConfigureRenderParams(activeSettings,
+			active ? "LUT activation" : "LUT contract rejection", active);
+	}
+
 	const char* DisplayLutContractMismatch(
-		const struct pl_frame& target,
-		bool returnedTargetMatchesActualOutput) const
+		const struct pl_frame& target) const
 	{
 		if (!displayLutParsed || !displayLut)
 			return nullptr;
-		if (!actualOutput.safeToRender)
-			return "output not signaled";
 
-		enum pl_color_primaries expectedPrimaries = PL_COLOR_PRIM_UNKNOWN;
+		using namespace LibplaceboLutContract;
+		const auto primaries = [](enum pl_color_primaries value)
+		{
+			switch (value)
+			{
+			case PL_COLOR_PRIM_BT_709: return InputPrimaries::REC709;
+			case PL_COLOR_PRIM_BT_2020: return InputPrimaries::BT2020;
+			case PL_COLOR_PRIM_DISPLAY_P3: return InputPrimaries::P3_D65;
+			case PL_COLOR_PRIM_UNKNOWN: return InputPrimaries::UNKNOWN;
+			default: return InputPrimaries::OTHER;
+			}
+		};
+		const auto transfer = [](enum pl_color_transfer value)
+		{
+			switch (value)
+			{
+			case PL_COLOR_TRC_SRGB: return InputTransfer::SRGB;
+			case PL_COLOR_TRC_GAMMA22: return InputTransfer::GAMMA22;
+			case PL_COLOR_TRC_GAMMA24: return InputTransfer::GAMMA24;
+			case PL_COLOR_TRC_BT_1886: return InputTransfer::BT1886;
+			case PL_COLOR_TRC_PQ: return InputTransfer::PQ;
+			case PL_COLOR_TRC_HLG: return InputTransfer::HLG;
+			case PL_COLOR_TRC_UNKNOWN: return InputTransfer::UNKNOWN;
+			default: return InputTransfer::OTHER;
+			}
+		};
+		const auto range = [](enum pl_color_levels value)
+		{
+			if (value == PL_COLOR_LEVELS_FULL) return InputRange::FULL;
+			if (value == PL_COLOR_LEVELS_LIMITED) return InputRange::LIMITED;
+			return InputRange::UNKNOWN;
+		};
+
+		enum pl_color_primaries expectedPrimaries = target.color.primaries;
 		if (lutReferencePrimaries == "rec709")
 			expectedPrimaries = PL_COLOR_PRIM_BT_709;
 		else if (lutReferencePrimaries == "p3_d65")
 			expectedPrimaries = PL_COLOR_PRIM_DISPLAY_P3;
 		else if (lutReferencePrimaries == "bt2020")
 			expectedPrimaries = PL_COLOR_PRIM_BT_2020;
-
 		const enum pl_color_transfer expectedTransfer =
-			lutReferenceTransfer == "auto"
-				? PL_COLOR_TRC_UNKNOWN
-				: TranslateOutputGamma(lutReferenceTransfer);
+			lutReferenceTransfer == "auto" ? target.color.transfer :
+			TranslateOutputGamma(lutReferenceTransfer);
 		const enum pl_color_levels expectedRange =
-			lutReferenceRange == "auto"
-				? PL_COLOR_LEVELS_UNKNOWN
-				: lutReferenceRange == "limited"
-					? PL_COLOR_LEVELS_LIMITED
-					: PL_COLOR_LEVELS_FULL;
+			lutReferenceRange == "auto" ? target.repr.levels :
+			(lutReferenceRange == "limited" ? PL_COLOR_LEVELS_LIMITED :
+				PL_COLOR_LEVELS_FULL);
 
-		const LibplaceboDisplayLut::ContractRejection rejection =
-			LibplaceboDisplayLut::ValidateContract(
-				expectedPrimaries,
-				expectedTransfer,
-				expectedRange,
-				lutReferenceNits,
-				target.color.primaries,
-				target.color.transfer,
-				target.repr.levels,
-				target.color.hdr.max_luma,
-				returnedTargetMatchesActualOutput);
-		return rejection == LibplaceboDisplayLut::ContractRejection::NONE
-			? nullptr
-			: LibplaceboDisplayLut::ShortReason(rejection);
+		ResolvedContract contract;
+		contract.role = Role::TARGET_DISPLAY_CALIBRATION;
+		contract.scope = Scope::VIDEO_PICTURE;
+		contract.attachmentStage =
+			AttachmentStage::TARGET_NATIVE_POST_ENCODE_PRE_DITHER;
+		contract.nativeOutputSemantics =
+			NativeOutputSemantics::OPAQUE_DEVICE_DRIVE;
+		// The current flattened settings do not retain proof that the cube and
+		// every semantic declaration came from one selected calibration-profile
+		// record. Do not manufacture that provenance here.
+		contract.origin = ContractOrigin::UNKNOWN;
+		contract.inputPrimaries = primaries(expectedPrimaries);
+		contract.inputTransfer = transfer(expectedTransfer);
+		contract.inputRange = range(expectedRange);
+		// R10 is carrier storage, not evidence of the cube's authoring grid.
+		contract.authoringCodeDepth = 0;
+		contract.referenceWhite = {
+			lutReferenceNits > 0.0 ? lutReferenceNits : sdrTargetNits,
+			lutReferenceNits > 0.0 ? ReferenceOrigin::EXPLICIT_PROFILE :
+				ReferenceOrigin::INHERITED_TARGET };
+		// There is not yet a public LUT authoring-black field. Preserve the real
+		// target black and its inherited provenance so power/BT.1886 contracts
+		// reject rather than pretending this value was authored with the cube.
+		contract.referenceBlack = {
+			sdrBlackNits, ReferenceOrigin::INHERITED_TARGET };
+		// Expected path/hash/size/generation must come from the frozen selected
+		// profile contract, independently of the held resource below. Installation
+		// attestations, physical carrier identity, and calibration generation are
+		// likewise left unknown until their record/probes exist. The typed
+		// validator therefore fails closed instead of self-binding or inheriting
+		// the legacy gate.
+
+		ActivationContext context;
+		// The loader does not yet return its handle-resolved canonical identity or
+		// content SHA-256, so those observed fields remain unknown as well.
+		context.resource.cubeSize =
+			static_cast<unsigned int>(displayLut->size[0]);
+		context.resource.reloadGeneration = displayLutReloadGeneration;
+		context.carrier.safeToRender = actualOutput.safeToRender;
+		context.carrier.declaredDxgiColorSpaceActive =
+			actualOutput.requestedEncodingActive && vpOwnedColorSpaceVerified;
+		context.carrier.presentationModel =
+			actualOutput.presentationModel ==
+				LibplaceboOutput::PresentationModel::FLIP ?
+				PresentationModel::FLIP :
+			(actualOutput.presentationModel ==
+				LibplaceboOutput::PresentationModel::BITBLT ?
+				PresentationModel::BITBLT : PresentationModel::UNKNOWN);
+		context.carrier.vpOwnsPresentation = vpOwnedSwapchain != nullptr;
+		SetLastError(ERROR_SUCCESS);
+		const LONG_PTR windowStyle =
+			GetWindowLongPtr(videoHwnd, GWL_STYLE);
+		context.carrier.topLevelPresenter =
+			(windowStyle != 0 || GetLastError() == ERROR_SUCCESS) &&
+			(windowStyle & WS_CHILD) == 0;
+		context.carrier.dxgiColorSpaceTag =
+			actualOutput.encoding ==
+				LibplaceboOutput::DxgiEncoding::FULL_G22_P709 ?
+				DxgiCarrierTag::FULL_G22_P709 : DxgiCarrierTag::OTHER;
+		context.carrier.surfaceFormat =
+			negotiatedSwapchainFormat == DXGI_FORMAT_R10G10B10A2_UNORM ?
+				SurfaceFormat::R10G10B10A2_UNORM : SurfaceFormat::OTHER;
+		context.carrier.sampleBitDepth = target.repr.bits.sample_depth;
+		context.carrier.colorBitDepth = target.repr.bits.color_depth;
+		context.carrier.bitShift = target.repr.bits.bit_shift;
+		context.carrier.displayBitDepth = target.repr.bits.color_depth;
+		context.carrier.finalTargetSystem =
+			target.repr.sys == PL_COLOR_SYSTEM_RGB ?
+				TargetSystem::RGB : TargetSystem::OTHER;
+		context.carrier.finalTargetPrimaries =
+			primaries(target.color.primaries);
+		context.carrier.acceptedOutputTransfer = transfer(
+			ResolvedPixelTransfer(actualOutput.encoding,
+				actualOutput.targetTransfer));
+		context.carrier.finalTargetTransfer = transfer(target.color.transfer);
+		context.carrier.finalTargetRange = range(target.repr.levels);
+		context.carrier.finalTargetWhiteNits = sdrTargetNits;
+		context.carrier.finalTargetBlackNits = sdrBlackNits;
+		context.carrier.targetBt2020 = targetBt2020;
+		context.carrier.nvidiaBt2020SetAndReadbackVerified =
+			nvidiaBt2020Reporter.IsReadbackVerified();
+		context.carrier.carrierGeneration = vpOwnedSwapchainGeneration;
+
+		const Rejection rejection = ValidateActivation(contract, context);
+		return rejection == Rejection::NONE ? nullptr : ShortReason(rejection);
 	}
 
 	void ConfigureDisplayLutForTarget(
-		struct pl_frame& target,
-		bool returnedTargetMatchesActualOutput)
+		struct pl_frame& target)
 	{
 		target.lut = nullptr;
 		target.lut_type = PL_LUT_UNKNOWN;
 		if (!displayLutParsed || !displayLut)
 			return;
 
-		const char* mismatch = DisplayLutContractMismatch(
-			target, returnedTargetMatchesActualOutput);
+		const char* mismatch = DisplayLutContractMismatch(target);
 		if (mismatch)
 		{
+			SetDisplayLutActive(false);
 			const std::string status = std::string("Rejected: ") + mismatch;
 			if (displayLutStatus != status)
 			{
@@ -6120,6 +6231,7 @@ struct LibplaceboVideoRenderer::Impl
 			return;
 		}
 
+		SetDisplayLutActive(true);
 		target.lut = displayLut;
 		target.lut_type = PL_LUT_NATIVE;
 		std::ostringstream label;
@@ -6370,7 +6482,8 @@ struct LibplaceboVideoRenderer::Impl
 			convertedFrame.resize(static_cast<size_t>(formatter->GetOutFrameSize()));
 		}
 		LoadDisplayLut(settings);
-		ConfigureRenderParams(settings, "renderer initialization");
+		ConfigureRenderParams(settings, "renderer initialization",
+			displayLutActive);
 
 		DebugLog::Log(
 			"libplacebo initialized: D3D11, %s upload, SDR target request=%s %.1f nits",
@@ -6731,6 +6844,7 @@ struct LibplaceboVideoRenderer::Impl
 			// so preserve compiled programs while replacing the parsed LUT.
 			pl_lut_free(&displayLut);
 			displayLutParsed = false;
+			displayLutActive = false;
 			displayLutStatus = "Disabled";
 			LoadDisplayLut(settings);
 		}
@@ -6784,7 +6898,8 @@ struct LibplaceboVideoRenderer::Impl
 			diagnosticReadbackAttempts = 0;
 			diagnosticReadbackNonBlack = false;
 		}
-		ConfigureRenderParams(settings, "live profile update");
+		ConfigureRenderParams(settings, "live profile update",
+			displayLutActive);
 		PublishSettingsState(settings);
 
 		if (targetBt2020 && reportBt2020ToDisplay)
@@ -6804,7 +6919,7 @@ struct LibplaceboVideoRenderer::Impl
 			targetBt2020 ? "BT.2020" : "Rec.709",
 			sdrTargetNits,
 			sdrBlackNits,
-			displayLutParsed && displayLut ? "active" : "disabled",
+			displayLutActive ? "active" : "disabled",
 			reportBt2020ToDisplay ? "requested" : "disabled");
 		return true;
 	}
@@ -8589,7 +8704,7 @@ struct LibplaceboVideoRenderer::Impl
 			<< static_cast<int>(lastSdrGammaDecision.actualTarget) << '|'
 			<< actualOutput.requestedEncodingActive << '|'
 			<< gammaRangeConversion << '|' << gammaPrimariesConversion << '|'
-			<< (displayLutParsed && displayLut);
+			<< displayLutActive;
 		if (lastSdrGammaDecisionSignature != gammaSignature.str())
 		{
 			lastSdrGammaDecisionSignature = gammaSignature.str();
@@ -8607,7 +8722,7 @@ struct LibplaceboVideoRenderer::Impl
 				actualOutput.requestedEncodingActive ? 0 : 1,
 				gammaRangeConversion ? 1 : 0,
 				gammaPrimariesConversion ? 1 : 0,
-				displayLutParsed && displayLut ? 1 : 0,
+				displayLutActive ? 1 : 0,
 				renderParams.dither_params ? 1 : 0,
 				renderParams.deband_params ? 1 : 0,
 				lastSdrGammaDecision.reason.c_str());
@@ -8748,8 +8863,6 @@ struct LibplaceboVideoRenderer::Impl
 		const struct pl_color_space returnedColor = baseTarget.color;
 		LibplaceboRenderParameters::ApplyDisplayBitDepth(
 			activeSettings.displayBitDepth, baseTarget.repr);
-		const bool returnedTargetMatchesActualOutput =
-			ReturnedTargetMatchesActualOutput(returnedRepr, returnedColor);
 		// The frame returned by libplacebo is the default host/compositor contract.
 		// Override it only after the matching studio DXGI declaration was advertised
 		// and accepted. Requested settings never flow directly into the target.
@@ -8770,8 +8883,7 @@ struct LibplaceboVideoRenderer::Impl
 		baseTarget.color.hdr.min_luma =
 			AdaptKnownSdrBlackForLibplacebo(sdrBlackNits);
 		baseTarget.color.hdr.max_luma = static_cast<float>(sdrTargetNits);
-		ConfigureDisplayLutForTarget(
-			baseTarget, returnedTargetMatchesActualOutput);
+		ConfigureDisplayLutForTarget(baseTarget);
 		if (outputDiagnostics && !outputContractLogged)
 		{
 			DebugLog::Log(

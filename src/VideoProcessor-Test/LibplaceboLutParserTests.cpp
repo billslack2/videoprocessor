@@ -136,6 +136,37 @@ namespace
 		"0.0 1.0 0.0\n"
 		"0.0 1.0 0.0\n";
 
+	const char* SwapRedBlue3dCube =
+		"TITLE \"VP synthetic R/B swap\"\n"
+		"LUT_3D_SIZE 2\n"
+		"0.0 0.0 0.0\n"
+		"0.0 0.0 1.0\n"
+		"0.0 1.0 0.0\n"
+		"0.0 1.0 1.0\n"
+		"1.0 0.0 0.0\n"
+		"1.0 0.0 1.0\n"
+		"1.0 1.0 0.0\n"
+		"1.0 1.0 1.0\n";
+
+	// Unmodified ASWF OpenColorIO interoperability fixture, pinned at commit
+	// 5a808fb57a94c7229640a97835c420c9a1fbd1fe (Git blob
+	// 04934465ae6e99416c347897aa5b2cc1a8257432). OpenColorIO is BSD-3-Clause;
+	// redistributed under 3rdparty/opencolorio-fixture/LICENSE.txt.
+	const char* OpenColorIoIridas3dCube =
+		"TITLE \"A test 3D-LUT.\"\n"
+		"LUT_3D_SIZE 2\n"
+		"DOMAIN_MIN 0.0 1.0 0.0\n"
+		"DOMAIN_MAX 2.0 2.0 1.0\n"
+		"\n"
+		"0.0 0.0 0.0\n"
+		"2.0 0.0 0.0\n"
+		"0.0 2.0 0.0\n"
+		"2.0 2.0 0.0\n"
+		"0.0 0.0 2.0\n"
+		"2.0 0.0 2.0\n"
+		"0.0 2.0 2.0\n"
+		"2.0 2.0 2.0\n";
+
 	struct RgbaPixel
 	{
 		uint8_t r;
@@ -257,12 +288,25 @@ namespace
 
 		RgbaPixel Render(const pl_custom_lut* lut)
 		{
-			return Render(lut, pl_render_fast_params);
+			return Render(lut, pl_render_fast_params, { 255, 0, 0, 255 });
+		}
+
+		RgbaPixel Render(const pl_custom_lut* lut, RgbaPixel source)
+		{
+			return Render(lut, pl_render_fast_params, source);
 		}
 
 		RgbaPixel Render(
 			const pl_custom_lut* lut,
 			const struct pl_render_params& params)
+		{
+			return Render(lut, params, { 255, 0, 0, 255 });
+		}
+
+		RgbaPixel Render(
+			const pl_custom_lut* lut,
+			const struct pl_render_params& params,
+			RgbaPixel source)
 		{
 			pl_gpu gpu = m_d3d11->gpu;
 			const enum pl_fmt_caps requiredCaps = static_cast<enum pl_fmt_caps>(
@@ -271,8 +315,7 @@ namespace
 			Assert::IsNotNull(format, L"No host-readable RGBA8 render format is available");
 
 			const RgbaPixel sourcePixels[4] = {
-				{ 255, 0, 0, 255 }, { 255, 0, 0, 255 },
-				{ 255, 0, 0, 255 }, { 255, 0, 0, 255 },
+				source, source, source, source,
 			};
 			pl_tex_params sourceParams{};
 			sourceParams.w = 2;
@@ -539,7 +582,8 @@ namespace VideoProcessorTest
 				Rejection::UNREADABLE, Rejection::EMPTY, Rejection::TOO_LARGE,
 				Rejection::READ_FAILED, Rejection::PATH_OUTSIDE_BASE,
 				Rejection::INVALID_CUBE,
-				Rejection::ONE_DIMENSIONAL, Rejection::UNSAFE_DIMENSIONS })
+				Rejection::ONE_DIMENSIONAL, Rejection::UNSUPPORTED_DOMAIN,
+				Rejection::UNSAFE_DIMENSIONS })
 			{
 				const std::string reason = ShortReason(rejection);
 				Assert::IsFalse(reason.empty());
@@ -547,168 +591,36 @@ namespace VideoProcessorTest
 			}
 		}
 
-		TEST_METHOD(ExactDisplayContractIsAccepted)
+		TEST_METHOD(PinnedOpenColorIoCubeRejectsUnsupportedDomainSemantics)
 		{
-			const ContractRejection rejection = ValidateContract(
-				PL_COLOR_PRIM_BT_2020,
-				PL_COLOR_TRC_GAMMA22,
-				PL_COLOR_LEVELS_LIMITED,
-				100.0,
-				PL_COLOR_PRIM_BT_2020,
-				PL_COLOR_TRC_GAMMA22,
-				PL_COLOR_LEVELS_LIMITED,
-				100.0,
-				true);
+			TemporaryFile file;
+			file.Write(OpenColorIoIridas3dCube);
+			const LoadResult lut = Load(nullptr, file.Path());
 			Assert::AreEqual(
-				static_cast<int>(ContractRejection::NONE),
-				static_cast<int>(rejection));
+				static_cast<int>(Status::REJECTED), static_cast<int>(lut.status));
+			Assert::AreEqual(static_cast<int>(Rejection::UNSUPPORTED_DOMAIN),
+				static_cast<int>(lut.rejection));
+			Assert::AreEqual("domain unsupported", ShortReason(lut.rejection));
+			Assert::IsNull(lut.lut);
 		}
 
-		TEST_METHOD(TargetSignalMatchRequiresPrimariesTransferAndRange)
+		TEST_METHOD(SyntheticChannelSwapProvesCubeApplicationAndChannelOrdering)
 		{
-			Assert::IsTrue(TargetMatchesSignal(
-				PL_COLOR_PRIM_BT_2020, PL_COLOR_TRC_GAMMA24,
-				PL_COLOR_LEVELS_LIMITED,
-				PL_COLOR_PRIM_BT_2020, PL_COLOR_TRC_GAMMA24,
-				PL_COLOR_LEVELS_LIMITED));
-			Assert::IsFalse(TargetMatchesSignal(
-				PL_COLOR_PRIM_BT_2020, PL_COLOR_TRC_SRGB,
-				PL_COLOR_LEVELS_LIMITED,
-				PL_COLOR_PRIM_BT_2020, PL_COLOR_TRC_GAMMA24,
-				PL_COLOR_LEVELS_LIMITED));
-			Assert::IsFalse(TargetMatchesSignal(
-				PL_COLOR_PRIM_BT_2020, PL_COLOR_TRC_GAMMA24,
-				PL_COLOR_LEVELS_FULL,
-				PL_COLOR_PRIM_BT_2020, PL_COLOR_TRC_GAMMA24,
-				PL_COLOR_LEVELS_LIMITED));
-			Assert::IsFalse(TargetMatchesSignal(
-				PL_COLOR_PRIM_BT_709, PL_COLOR_TRC_SRGB,
-				PL_COLOR_LEVELS_FULL,
-				PL_COLOR_PRIM_BT_2020, PL_COLOR_TRC_SRGB,
-				PL_COLOR_LEVELS_FULL));
-		}
-
-		TEST_METHOD(AutoDisplayContractAcceptsTheSignaledTarget)
-		{
-			const ContractRejection rejection = ValidateContract(
-				PL_COLOR_PRIM_UNKNOWN,
-				PL_COLOR_TRC_UNKNOWN,
-				PL_COLOR_LEVELS_UNKNOWN,
-				0.0,
-				PL_COLOR_PRIM_BT_709,
-				PL_COLOR_TRC_SRGB,
-				PL_COLOR_LEVELS_FULL,
-				120.0,
-				true);
+			TemporaryFile file;
+			file.Write(SwapRedBlue3dCube);
+			LoadResult lut = Load(nullptr, file.Path());
 			Assert::AreEqual(
-				static_cast<int>(ContractRejection::NONE),
-				static_cast<int>(rejection));
-		}
+				static_cast<int>(Status::ACTIVE), static_cast<int>(lut.status));
 
-		TEST_METHOD(P3DisplayContractIsExplicitlyRejected)
-		{
-			const ContractRejection rejection = ValidateContract(
-				PL_COLOR_PRIM_DISPLAY_P3,
-				PL_COLOR_TRC_SRGB,
-				PL_COLOR_LEVELS_FULL,
-				100.0,
-				PL_COLOR_PRIM_BT_709,
-				PL_COLOR_TRC_SRGB,
-				PL_COLOR_LEVELS_FULL,
-				100.0,
-				true);
-			Assert::AreEqual(
-				static_cast<int>(ContractRejection::P3_NOT_SUPPORTED),
-				static_cast<int>(rejection));
-			Assert::AreEqual("P3 not supported", ShortReason(rejection));
-		}
-
-		TEST_METHOD(UnsignaledAndMismatchedContractsAreRejected)
-		{
-			Assert::AreEqual(
-				static_cast<int>(ContractRejection::OUTPUT_NOT_SIGNALED),
-				static_cast<int>(ValidateContract(
-					PL_COLOR_PRIM_UNKNOWN,
-					PL_COLOR_TRC_UNKNOWN,
-					PL_COLOR_LEVELS_UNKNOWN,
-					0.0,
-					PL_COLOR_PRIM_BT_2020,
-					PL_COLOR_TRC_GAMMA22,
-					PL_COLOR_LEVELS_FULL,
-					100.0,
-					false)));
-
-			for (const ContractRejection rejection : {
-				ValidateContract(
-					PL_COLOR_PRIM_BT_2020, PL_COLOR_TRC_UNKNOWN,
-					PL_COLOR_LEVELS_UNKNOWN, 0.0,
-					PL_COLOR_PRIM_BT_709, PL_COLOR_TRC_SRGB,
-					PL_COLOR_LEVELS_FULL, 100.0, true),
-				ValidateContract(
-					PL_COLOR_PRIM_UNKNOWN, PL_COLOR_TRC_GAMMA24,
-					PL_COLOR_LEVELS_UNKNOWN, 0.0,
-					PL_COLOR_PRIM_BT_709, PL_COLOR_TRC_SRGB,
-					PL_COLOR_LEVELS_FULL, 100.0, true),
-				ValidateContract(
-					PL_COLOR_PRIM_UNKNOWN, PL_COLOR_TRC_UNKNOWN,
-					PL_COLOR_LEVELS_LIMITED, 0.0,
-					PL_COLOR_PRIM_BT_709, PL_COLOR_TRC_SRGB,
-					PL_COLOR_LEVELS_FULL, 100.0, true),
-				ValidateContract(
-					PL_COLOR_PRIM_UNKNOWN, PL_COLOR_TRC_UNKNOWN,
-					PL_COLOR_LEVELS_UNKNOWN, 120.0,
-					PL_COLOR_PRIM_BT_709, PL_COLOR_TRC_SRGB,
-					PL_COLOR_LEVELS_FULL, 100.0, true) })
-			{
-				Assert::AreEqual(
-					static_cast<int>(ContractRejection::PROFILE_MISMATCH),
-					static_cast<int>(rejection));
-			}
-		}
-
-		TEST_METHOD(EveryContractRejectionHasAShortOsdSafeReason)
-		{
-			for (const ContractRejection rejection : {
-				ContractRejection::OUTPUT_NOT_SIGNALED,
-				ContractRejection::P3_NOT_SUPPORTED,
-				ContractRejection::PROFILE_MISMATCH })
-			{
-				const std::string reason = ShortReason(rejection);
-				Assert::IsFalse(reason.empty());
-				Assert::IsTrue(
-					reason.size() <= 20,
-					L"LUT contract rejection reason is too long for the OSD");
-			}
-		}
-
-		TEST_METHOD(ConfiguredExternalCubeExamplesLoadWhenProvided)
-		{
-			char directory[MAX_PATH] = {};
-			const DWORD length = GetEnvironmentVariableA(
-				"VP_LUT_EXAMPLE_DIR", directory, ARRAYSIZE(directory));
-			if (length == 0)
-				return;
-			Assert::IsTrue(length < ARRAYSIZE(directory));
-
-			std::string root(directory);
-			if (!root.empty() && root.back() != '\\' && root.back() != '/')
-				root.push_back('\\');
-			for (const char* name : {
-				"10^3 CENTER PKCHR 1886 20260126_BMD65.cube",
-				"BW_BMD65.cube",
-				"Unity_BMD65.cube" })
-			{
-				LoadResult result = Load(nullptr, root + name);
-				Assert::AreEqual(
-					static_cast<int>(Status::ACTIVE),
-					static_cast<int>(result.status),
-					std::wstring(name, name + strlen(name)).c_str());
-				Assert::IsNotNull(result.lut);
-				Assert::AreEqual(65, result.lut->size[0]);
-				Assert::AreEqual(65, result.lut->size[1]);
-				Assert::AreEqual(65, result.lut->size[2]);
-				Free(result);
-			}
+			TargetLutGpuFixture fixture;
+			Assert::IsTrue(fixture.Create(),
+				L"Could not create the libplacebo WARP test device");
+			const RgbaPixel transformed = fixture.Render(
+				lut.lut, { 64, 128, 192, 255 });
+			Free(lut);
+			Assert::IsTrue(transformed.r >= 190 && transformed.r <= 194);
+			Assert::IsTrue(transformed.g >= 126 && transformed.g <= 130);
+			Assert::IsTrue(transformed.b >= 62 && transformed.b <= 66);
 		}
 
 		TEST_METHOD(TargetLutGpuReadbackProvesIdentityAndNonIdentityPathsDiffer)
