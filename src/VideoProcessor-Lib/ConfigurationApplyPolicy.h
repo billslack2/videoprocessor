@@ -48,7 +48,8 @@ namespace ConfigurationApplyPolicy
 	{
 		const std::string section = NormalizeSection(change.section);
 		if (section == "shortcuts") return true;
-		if (NormalizeSection(change.key) != "shortcut") return false;
+		const std::string key = NormalizeSection(change.key);
+		if (key != "shortcut" && key != "cycle_shortcut") return false;
 
 		// Ordered profile shortcuts select live queue, LLDV, renderer,
 		// viewport, and shader profiles. Keep this list aligned with the profile

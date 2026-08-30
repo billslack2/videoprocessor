@@ -127,6 +127,7 @@ namespace MainConfigSchema
 		const std::vector<ConfigSchema::KeyRule> queueRules = {
 			ConfigSchema::Any("when"),
 			ConfigSchema::Any("shortcut"),
+			ConfigSchema::Any("cycle_shortcut"),
 			ConfigSchema::Integer("queue_size", 1, INT_MAX),
 			ConfigSchema::Integer("lead_frames", 0, 16),
 			ConfigSchema::Integer("target_frames", 0, 16),
@@ -289,6 +290,7 @@ namespace MainConfigSchema
 		const std::vector<ConfigSchema::KeyRule> lldvRules = {
 			ConfigSchema::Any("when"),
 			ConfigSchema::Any("shortcut"),
+			ConfigSchema::Any("cycle_shortcut"),
 			ConfigSchema::NumberAtLeast("max_cll", 0.0),
 			ConfigSchema::NumberAtLeast("max_fall", 0.0),
 			ConfigSchema::NumberAtLeast("mastering_min_luminance", 0.0),

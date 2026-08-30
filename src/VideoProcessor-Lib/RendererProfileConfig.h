@@ -74,6 +74,8 @@ namespace RendererProfileConfig
 		std::string name;
 		// Operator-facing name, currently configured for Screen Config profiles.
 		std::string label;
+		// An optional chord that advances through matching profiles in this group.
+		std::string cycleShortcut;
 		std::string when;
 		DisplayRuleExpression::Expression whenExpression;
 		int priority = 0;
@@ -1037,6 +1039,7 @@ namespace RendererProfileConfig
 			base.name = baselineName;
 			std::string baseShortcut;
 			std::string resetShortcut;
+			std::string baseCycleShortcut;
 			if (baselineValues)
 				for (const auto& entry : *baselineValues)
 				{
@@ -1077,6 +1080,11 @@ namespace RendererProfileConfig
 					{
 						if (namedBaseline) baseShortcut = entry.second;
 						else resetShortcut = entry.second;
+						continue;
+					}
+					if (entry.first == "cycle_shortcut")
+					{
+						baseCycleShortcut = entry.second;
 						continue;
 					}
 					if (std::string(spec.name) == "queue")
@@ -1138,6 +1146,13 @@ namespace RendererProfileConfig
 			if (!MergeShortcutIntoWhen(resetShortcut, "[" + section + "]", group.resetWhen, error) ||
 				!MergeShortcutIntoWhen(baseShortcut, "[" + prefix + baselineName + "]", base.when, error))
 				return false;
+			if (!baseCycleShortcut.empty() &&
+				!CanonicalizeKeyChord(baseCycleShortcut, base.cycleShortcut))
+			{
+				error = "[" + (namedBaseline ? prefix + baselineName : section) +
+					"] cycle_shortcut is not a valid shortcut";
+				return false;
+			}
 			if (!group.resetWhen.empty() &&
 				(!group.resetExpression.Compile(group.resetWhen, error, true) ||
 				 !ValidateExpressionVariables(group.resetExpression, { "key" },
@@ -1162,6 +1177,7 @@ namespace RendererProfileConfig
 				profile.whenExpression = {};
 				profile.priority = 0;
 				std::string profileShortcut;
+				std::string profileCycleShortcut;
 				for (const auto& entry : *values)
 				{
 					if ((std::string(spec.name) == "viewport" ||
@@ -1186,6 +1202,7 @@ namespace RendererProfileConfig
 					}
 					if (entry.first == "when") { profile.when = entry.second; continue; }
 					if (entry.first == "shortcut") { profileShortcut = entry.second; continue; }
+					if (entry.first == "cycle_shortcut") { profileCycleShortcut = entry.second; continue; }
 					if (entry.first == "priority")
 					{
 						if (!ParseInteger(entry.second, -100000, 100000, profile.priority))
@@ -1216,6 +1233,12 @@ namespace RendererProfileConfig
 				}
 				if (!MergeShortcutIntoWhen(profileShortcut, "[" + variantSection + "]", profile.when, error))
 					return false;
+				if (!profileCycleShortcut.empty() &&
+					!CanonicalizeKeyChord(profileCycleShortcut, profile.cycleShortcut))
+				{
+					error = "[" + variantSection + "] cycle_shortcut is not a valid shortcut";
+					return false;
+				}
 				if (!profile.when.empty() &&
 					(!profile.whenExpression.Compile(profile.when, error, true) ||
 					 !ValidateExpressionVariables(profile.whenExpression,
@@ -2056,6 +2079,41 @@ namespace RendererProfileConfig
 		return true;
 	}
 
+	// Cycle keys are independent from normal shortcut expressions. Each group
+	// advances only through profiles that explicitly share the pressed chord;
+	// an inactive/non-member current profile starts at the first match.
+	inline bool SelectCycleForKey(const Model& model, const std::string& key,
+		const std::map<std::string, std::string>& currentSelections,
+		std::vector<KeySelection>& selections, std::string& error)
+	{
+		selections.clear();
+		error.clear();
+		std::string canonicalKey;
+		if (!CanonicalizeKeyChord(key, canonicalKey))
+		{
+			error = "key '" + key + "' is not a registrable shortcut";
+			return false;
+		}
+		for (const Group& group : model.groups)
+		{
+			std::vector<std::string> matches;
+			for (const std::string& name : group.profiles)
+			{
+				const Profile& profile = model.profiles.at(group.name + "." + name);
+				if (profile.cycleShortcut == canonicalKey)
+					matches.push_back(name);
+			}
+			if (matches.empty()) continue;
+			const auto current = currentSelections.find(group.name);
+			auto selected = current == currentSelections.end() ? matches.end() :
+				std::find(matches.begin(), matches.end(), current->second);
+			const size_t next = selected == matches.end() ? 0 :
+				(static_cast<size_t>(selected - matches.begin()) + 1) % matches.size();
+			selections.push_back({ group.name, matches[next], false });
+		}
+		return true;
+	}
+
 	// Zoom is a second, independently selected profile family. It deliberately
 	// overlays only crop and subtitle controls, leaving the selected physical
 	// screen geometry untouched.
@@ -2393,6 +2451,7 @@ namespace RendererProfileConfig
 			{
 				const Profile& profile = model.profiles.at(group.name + "." + name);
 				if (!profile.when.empty()) collect(profile.whenExpression);
+				if (!profile.cycleShortcut.empty()) chords.push_back(profile.cycleShortcut);
 			}
 		}
 		std::sort(chords.begin(), chords.end());

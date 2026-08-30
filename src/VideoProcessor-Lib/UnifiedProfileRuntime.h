@@ -80,6 +80,11 @@ namespace UnifiedProfileRuntime
 			const DisplayRuleExpression::ValueLookup& sourceValues,
 			SelectionResult& result, std::string& error);
 
+		// Advances each ordered group whose profiles share this cycle key.
+		bool SelectCycleKey(const std::string& key,
+			const DisplayRuleExpression::ValueLookup& sourceValues,
+			SelectionResult& result, std::string& error);
+
 		// Re-resolves automatic profiles after source state changes. Persisted
 		// choices are fallbacks; a live shortcut remains a session override.
 		bool Refresh(const DisplayRuleExpression::ValueLookup& sourceValues,

@@ -549,7 +549,7 @@ bool isSharedInputSetting(const QString& key)
 bool isShaderStructuralKey(const QString& key)
 {
     static const QStringList keys = {
-        QStringLiteral("label"), QStringLiteral("shortcut"), QStringLiteral("when"),
+        QStringLiteral("label"), QStringLiteral("shortcut"), QStringLiteral("cycle_shortcut"), QStringLiteral("when"),
         QStringLiteral("type"),
         QStringLiteral("shader_type"), QStringLiteral("hlsl_file"),
         QStringLiteral("glsl_file"), QStringLiteral("stage"), QStringLiteral("order")
@@ -1129,7 +1129,7 @@ void ConfigEditorWindow::migrateViewportZoomProfiles()
         // owned Zoom fields. This preserves F2's matching Scope zoom profile
         // while letting Shift+2 affect Zoom alone.
         for (const QString& selector : { QStringLiteral("shortcut"),
-            QStringLiteral("when") })
+            QStringLiteral("cycle_shortcut"), QStringLiteral("when") })
         {
             const QString configured = value(legacySection, selector);
             if (!configured.isEmpty() && value(zoomSection, selector).isEmpty())
@@ -1227,7 +1227,7 @@ void ConfigEditorWindow::migrateSeparatedRendererProfiles()
             // a target family that actually received settings from this
             // profile; the old family is pruned below when it owns nothing.
             for (const QString& selector : { QStringLiteral("shortcut"),
-                QStringLiteral("when") })
+                QStringLiteral("cycle_shortcut"), QStringLiteral("when") })
             {
                 const QString configured = value(renderingSection, selector);
                 if (!configured.isEmpty() && value(targetSection, selector).isEmpty())
@@ -3361,6 +3361,10 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
     shortcut->setObjectName(controlName(sectionPrefix, QStringLiteral("shortcut")));
     detailLayout->addWidget(fieldWithHelp(QStringLiteral("Shortcut key"), shortcut,
         QStringLiteral("Optional. Activates this profile in addition to its rule.")));
+    auto* cycleShortcut = new QLineEdit;
+    cycleShortcut->setObjectName(controlName(sectionPrefix, QStringLiteral("cycle_shortcut")));
+    detailLayout->addWidget(fieldWithHelp(QStringLiteral("Cycle shortcut key"), cycleShortcut,
+        QStringLiteral("Optional. Cycles through profiles that use the same key, in list order.")));
     auto* useRule = new QCheckBox(QStringLiteral("Use rule"));
     useRule->setObjectName(controlName(sectionPrefix, QStringLiteral("use_rule")));
     detailLayout->addWidget(useRule);
@@ -4480,7 +4484,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         updateQueuePolicyPresentation();
     };
 
-    auto loadDetails = [this, state, fields, selectedTitle, name, shortcut, rule, ruleField, useRule, remove, up, down, list,
+    auto loadDetails = [this, state, fields, selectedTitle, name, shortcut, cycleShortcut, rule, ruleField, useRule, remove, up, down, list,
 		profileFields, sectionPrefix, anamorphicEnabled, anamorphicValue,
 		hdrAnalysisMode, pictureOnlyHdrAnalysis,
 		motionCompensatedHdrAnalysis, hdrAnalysisHeight, hdrAnalysisPosition,
@@ -4491,6 +4495,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         const bool available = !state->section.isEmpty();
         name->setEnabled(available);
         shortcut->setEnabled(available);
+        cycleShortcut->setEnabled(available);
         useRule->setEnabled(available);
         rule->setEnabled(available && useRule->isChecked());
         profileFields->setEnabled(available);
@@ -4502,6 +4507,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             selectedTitle->setText(QStringLiteral("Add a profile to configure it"));
             name->clear();
             shortcut->clear();
+            cycleShortcut->clear();
             useRule->setChecked(false);
             ruleField->setVisible(false);
             state->loading = false;
@@ -4515,6 +4521,8 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         name->setText(display);
         shortcut->setText(canonicalShortcutText(
             value(section, QStringLiteral("shortcut"))));
+        cycleShortcut->setText(canonicalShortcutText(
+            value(section, QStringLiteral("cycle_shortcut"))));
         const QString expression = value(section, QStringLiteral("when"));
         rule->setPlainText(expression);
         useRule->setChecked(!expression.isEmpty());
@@ -4899,6 +4907,29 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         if (normalized == shortcut->text()) return;
         shortcut->setText(normalized);
         document_->SetKnown(state->section.toStdString(), "shortcut", canonical);
+        markDirty();
+    });
+    connect(cycleShortcut, &QLineEdit::textChanged, this, [this, state](const QString& text)
+    {
+        if (state->loading || state->section.isEmpty()) return;
+        if (text.trimmed().isEmpty()) document_->RemoveKnown(state->section.toStdString(), "cycle_shortcut");
+        else document_->SetKnown(state->section.toStdString(), "cycle_shortcut", text.toLocal8Bit().constData());
+        markDirty();
+    });
+    connect(cycleShortcut, &QLineEdit::editingFinished, this, [this, state, cycleShortcut]
+    {
+        if (state->loading || state->section.isEmpty() || cycleShortcut->text().trimmed().isEmpty()) return;
+        std::string canonical;
+        if (!RendererProfileConfig::CanonicalizeKeyChord(cycleShortcut->text().toStdString(), canonical))
+        {
+            QMessageBox::warning(this, QStringLiteral("Cycle shortcut key"),
+                QStringLiteral("Use one key with optional Ctrl, Alt, or Shift modifiers (for example Ctrl+F2)."));
+            return;
+        }
+        const QString normalized = QString::fromStdString(canonical);
+        if (normalized == cycleShortcut->text()) return;
+        cycleShortcut->setText(normalized);
+        document_->SetKnown(state->section.toStdString(), "cycle_shortcut", canonical);
         markDirty();
     });
     connect(useRule, &QCheckBox::toggled, this, [this, state, rule, ruleField](bool enabled)
@@ -5471,6 +5502,11 @@ QWidget* ConfigEditorWindow::createNlsShadersPage()
     shortcut->setMaximumWidth(280);
     detailsLayout->addWidget(fieldWithHelp(QStringLiteral("Shortcut key"), shortcut,
         QStringLiteral("Optional. Selects this NLS mode; Off disables NLS.")));
+    auto* cycleShortcut = new QLineEdit;
+    cycleShortcut->setObjectName(QStringLiteral("config.shader.nls.cycle_shortcut"));
+    cycleShortcut->setMaximumWidth(280);
+    detailsLayout->addWidget(fieldWithHelp(QStringLiteral("Cycle shortcut key"), cycleShortcut,
+        QStringLiteral("Optional. Cycles through NLS modes that use the same key, in list order.")));
     auto* useRule = new QCheckBox(QStringLiteral("Select automatically with a rule"));
     useRule->setObjectName(QStringLiteral("config.shader.nls.use_rule"));
     detailsLayout->addWidget(useRule);
@@ -5563,6 +5599,21 @@ QWidget* ConfigEditorWindow::createNlsShadersPage()
         const QString normalized = QString::fromStdString(canonical);
         if (normalized != shortcut->text()) shortcut->setText(normalized);
     });
+    connect(cycleShortcut, &QLineEdit::textChanged, this,
+        [setText](const QString& text) { setText("cycle_shortcut", text); });
+    connect(cycleShortcut, &QLineEdit::editingFinished, this, [this, state, cycleShortcut]
+    {
+        if (state->loading || state->section.isEmpty() || cycleShortcut->text().trimmed().isEmpty()) return;
+        std::string canonical;
+        if (!RendererProfileConfig::CanonicalizeKeyChord(cycleShortcut->text().toStdString(), canonical))
+        {
+            QMessageBox::warning(this, QStringLiteral("Cycle shortcut key"),
+                QStringLiteral("Use one key with optional Ctrl, Alt, or Shift modifiers."));
+            return;
+        }
+        const QString normalized = QString::fromStdString(canonical);
+        if (normalized != cycleShortcut->text()) cycleShortcut->setText(normalized);
+    });
     auto setChoice = [this, state](const char* key, QComboBox* combo)
     {
         if (state->loading || state->section.isEmpty() || !document_) return;
@@ -5596,7 +5647,7 @@ QWidget* ConfigEditorWindow::createNlsShadersPage()
         markDirty();
     });
 
-    auto load = [this, state, root, title, shortcut, useRule, rule, ruleField,
+    auto load = [this, state, root, title, shortcut, cycleShortcut, useRule, rule, ruleField,
         normalFields, parameterEditor, advanced, offExplanation, label,
         stage, hlsl, glsl]
         (QListWidgetItem* item)
@@ -5607,6 +5658,7 @@ QWidget* ConfigEditorWindow::createNlsShadersPage()
         const bool member = available && state->section.compare(root, Qt::CaseInsensitive) != 0;
         title->setText(item ? item->text() : QStringLiteral("No NLS modes are configured"));
         shortcut->setEnabled(available);
+        cycleShortcut->setEnabled(available);
         useRule->setEnabled(available);
         normalFields->setVisible(member);
         advanced->setVisible(member);
@@ -5614,6 +5666,7 @@ QWidget* ConfigEditorWindow::createNlsShadersPage()
         if (!available)
         {
             shortcut->clear();
+            cycleShortcut->clear();
             useRule->setChecked(false);
             ruleField->setVisible(false);
             parameterEditor.reload();
@@ -5623,6 +5676,8 @@ QWidget* ConfigEditorWindow::createNlsShadersPage()
         }
         shortcut->setText(canonicalShortcutText(
             value(state->section, QStringLiteral("shortcut"))));
+        cycleShortcut->setText(canonicalShortcutText(
+            value(state->section, QStringLiteral("cycle_shortcut"))));
         const QString expression = value(state->section, QStringLiteral("when"));
         useRule->setChecked(!expression.isEmpty());
         rule->setPlainText(expression);

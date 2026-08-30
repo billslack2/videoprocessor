@@ -869,6 +869,54 @@ HACCEL CreateConfiguredAccelerators(
 	// Shader-rule shortcuts live with their rule rather than in the fixed
 	// shortcut table. This permits any external shader chain to be selected at
 	// runtime without adding a new command or rebuilding the application.
+	// NLS modes are an ordered single-selection group. A cycle binding is
+	// represented as one selector carrying the participating sections; the
+	// command handler resolves the next section from the current selection.
+	if (hasMainConfig)
+	{
+		std::map<std::string, std::vector<std::string>> nlsCycles;
+		for (const std::string& section : mainConfig.GetSectionNames())
+		{
+			if (section != "shader.nls" && section.rfind("shader.nls.", 0) != 0)
+				continue;
+			std::string chord;
+			if (!mainConfig.TryGetString(section, "cycle_shortcut", chord) ||
+				ConfigFile::Trim(chord).empty()) continue;
+			std::string canonical;
+			if (!RendererProfileConfig::CanonicalizeKeyChord(chord, canonical))
+			{
+				if (rejectInvalidBindings) { failBinding("invalid NLS cycle shortcut in [" + section + "]"); return nullptr; }
+				continue;
+			}
+			nlsCycles[canonical].push_back(section);
+		}
+		WORD nextCommand = ID_COMMAND_SHADER_RULE_FIRST;
+		for (const auto& cycle : nlsCycles)
+		{
+			while (shaderShortcutRules.find(nextCommand) != shaderShortcutRules.end()) ++nextCommand;
+			if (nextCommand > ID_COMMAND_SHADER_RULE_LAST) break;
+			ACCEL accelerator = {};
+			if (!TryParseShortcut(cycle.first, accelerator)) continue;
+			const unsigned int binding = (static_cast<unsigned int>(accelerator.fVirt) << 16) | accelerator.key;
+			if (!bindings.insert(binding).second)
+			{
+				if (rejectInvalidBindings) { failBinding("duplicate NLS cycle shortcut " + cycle.first); return nullptr; }
+				continue;
+			}
+			accelerator.cmd = nextCommand;
+			accelerators.push_back(accelerator);
+			CString selector(TEXT("@shader-cycle:"));
+			for (size_t i = 0; i < cycle.second.size(); ++i)
+			{
+				if (i) selector += TEXT("|");
+				selector += CString(CStringA(cycle.second[i].c_str()));
+			}
+			shaderShortcutRules[nextCommand] = selector;
+			shaderShortcutKeys.insert(accelerator.key);
+			++nextCommand;
+		}
+	}
+
 	std::string ruleList;
 	if (hasMainConfig && mainConfig.TryGetString("shaders", "rules", ruleList))
 	{
@@ -877,6 +925,7 @@ HACCEL CreateConfiguredAccelerators(
 		WORD nextCommand = ID_COMMAND_SHADER_RULE_FIRST;
 		for (const std::string& configuredRule : SplitConfiguredList(ruleList))
 		{
+			while (shaderShortcutRules.find(nextCommand) != shaderShortcutRules.end()) ++nextCommand;
 			if (nextCommand > ID_COMMAND_SHADER_RULE_LAST)
 				break;
 			const std::string rule = ConfigFile::NormalizeName(configuredRule);
@@ -986,6 +1035,7 @@ HACCEL CreateConfiguredAccelerators(
 			}
 			for (const std::string& chord : expression.KeyChords())
 			{
+				while (shaderShortcutRules.find(nextCommand) != shaderShortcutRules.end()) ++nextCommand;
 				if (nextCommand > ID_COMMAND_SHADER_RULE_LAST)
 					break;
 				ACCEL accelerator = {};
@@ -7159,17 +7209,35 @@ void CVideoProcessorDlg::ApplyShaderRuleCommand(UINT commandId)
 	const auto rule = m_shaderShortcutRules.find(static_cast<WORD>(commandId));
 	if (rule == m_shaderShortcutRules.end() || !m_videoRenderer)
 		return;
+	CString selector = rule->second;
+	const std::string requested = CStringA(selector).GetString();
+	constexpr const char* cyclePrefix = "@shader-cycle:";
+	if (requested.rfind(cyclePrefix, 0) == 0)
+	{
+		std::vector<std::string> candidates;
+		std::stringstream values(requested.substr(std::strlen(cyclePrefix)));
+		std::string candidate;
+		while (std::getline(values, candidate, '|'))
+			if (!candidate.empty()) candidates.push_back(candidate);
+		if (candidates.empty()) return;
+		const std::string current = CStringA(m_requestedShaderSelector).GetString();
+		auto active = std::find(candidates.begin(), candidates.end(), current);
+		const size_t next = active == candidates.end() ? 0 :
+			(static_cast<size_t>(active - candidates.begin()) + 1) % candidates.size();
+		selector = CString(CStringA(candidates[next].c_str()));
+		DEBUGLOG("NLS cycle shortcut selected '%S'", static_cast<LPCTSTR>(selector));
+	}
 
 	CString activeRule;
 	bool rendererRestartRequired = false;
-	if (!m_videoRenderer->SelectShaderRule(rule->second, activeRule,
+	if (!m_videoRenderer->SelectShaderRule(selector, activeRule,
 		rendererRestartRequired))
 	{
 		DEBUGLOG("Shader rule '%S' ignored: selected renderer does not support it or the rule is invalid",
 			static_cast<LPCTSTR>(rule->second));
 		return;
 	}
-	m_requestedShaderSelector = rule->second;
+	m_requestedShaderSelector = selector;
 	PublishActiveProfileStatus();
 	// Explicit shader shortcuts update the resolved section selection before the
 	// render thread consumes it. Publish that selection now so terminal choices
@@ -7242,13 +7310,23 @@ void CVideoProcessorDlg::OnCommandDisplayRule(UINT commandId)
 		m_lastUnifiedProfileCommandTime = commandTime;
 		UnifiedProfileRuntime::SelectionResult result;
 		std::string error;
-		if (!m_profileRuntime.SelectKey(
+		if (!m_profileRuntime.SelectCycleKey(
 			CStringA(unifiedKey->second).GetString(),
 			GetUnifiedProfileSourceLookup(), result, error))
 		{
 			DebugLog::Log("Unified profile key '%s' is unavailable: %s",
 				CStringA(unifiedKey->second).GetString(),
 				error.c_str());
+			return;
+		}
+		// Existing per-profile shortcuts keep their current behavior. A chord
+		// becomes a normal selector only when it did not match any cycle group.
+		if (result.selections.empty() && !m_profileRuntime.SelectKey(
+			CStringA(unifiedKey->second).GetString(),
+			GetUnifiedProfileSourceLookup(), result, error))
+		{
+			DebugLog::Log("Unified profile key '%s' is unavailable: %s",
+				CStringA(unifiedKey->second).GetString(), error.c_str());
 			return;
 		}
 		std::ostringstream activeProfiles;
