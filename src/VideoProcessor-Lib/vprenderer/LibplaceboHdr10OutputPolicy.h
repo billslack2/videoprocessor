@@ -129,6 +129,8 @@ namespace LibplaceboHdr10Output
 			result.reason = "HDR10 output requires flip-model presentation";
 		else if (!evidence.r10Swapchain)
 			result.reason = "HDR10 output requires an R10G10B10A2 swapchain";
+		else if (!evidence.advancedColorActive)
+			result.reason = "Windows Advanced Color is not active";
 		else if (!evidence.hasSwapchain3)
 			result.reason = "IDXGISwapChain3 is unavailable";
 		else if (!evidence.g2084SupportedBeforeSet)
@@ -219,7 +221,7 @@ namespace LibplaceboHdr10Output
 	{
 		return metadata.valid && evidence.topLevelWindow &&
 			evidence.vpOwnedPresentation && evidence.flipPresentation &&
-			evidence.r10Swapchain &&
+			evidence.r10Swapchain && evidence.advancedColorActive &&
 			evidence.hasSwapchain3 && evidence.hasSwapchain4;
 	}
 

@@ -495,6 +495,7 @@ namespace Tests
 				&HdrEvidence::vpOwnedPresentation,
 				&HdrEvidence::flipPresentation,
 				&HdrEvidence::r10Swapchain,
+				&HdrEvidence::advancedColorActive,
 				&HdrEvidence::hasSwapchain3,
 				&HdrEvidence::g2084SupportedBeforeSet,
 				&HdrEvidence::hasSwapchain4 })
@@ -506,37 +507,6 @@ namespace Tests
 				Assert::IsTrue(rejected.fallbackRequired);
 				Assert::IsTrue(rejected.clearHdrMetadata);
 			}
-		}
-
-		TEST_METHOD(ExternalHdrCanActivateWhenWindowsAdvancedColorStartsOff)
-		{
-			using namespace LibplaceboHdr10Output;
-			class Operations final : public CarrierOperations
-			{
-			public:
-				bool CheckHdrColorSpaceSupport() override { return true; }
-				bool SetHdrColorSpace() override { return true; }
-				bool SetHdrMetadata(const StaticMetadata&) override { return true; }
-				bool ClearHdrMetadata() override { return true; }
-				bool CheckSdrColorSpaceSupport() override { return true; }
-				bool SetSdrColorSpace() override { return true; }
-				bool RecheckSdrColorSpaceSupportAfterSet() override { return true; }
-			};
-			const auto metadata = BuildStaticMetadata(Primaries::BT2020, 1000.0);
-			LibplaceboHdr10Output::Evidence evidence;
-			evidence.topLevelWindow = true;
-			evidence.vpOwnedPresentation = true;
-			evidence.flipPresentation = true;
-			evidence.r10Swapchain = true;
-			evidence.advancedColorActive = false;
-			evidence.hasSwapchain3 = true;
-			evidence.hasSwapchain4 = true;
-			Operations operations;
-			CarrierState state;
-			Activate(state, 41, 9, 17, metadata, evidence, operations);
-			Assert::AreEqual(static_cast<int>(CarrierPhase::HDR10_ACTIVE),
-				static_cast<int>(state.phase));
-			Assert::IsTrue(state.activation.active);
 		}
 
 		TEST_METHOD(SdrGammaMissingOrOnPreservesCurrentManagedBehavior)
