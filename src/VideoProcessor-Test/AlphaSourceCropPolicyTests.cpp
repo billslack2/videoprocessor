@@ -930,6 +930,98 @@ namespace Tests
 			Assert::IsTrue(decision.state.failOpenLatched);
 		}
 
+		TEST_METHOD(ConfirmedCurrentVerticalFitResolvesSpentInspectionBridge)
+		{
+			VerticalInspectionBridgeInput input;
+			input.candidate = true;
+			input.retentionRequested = true;
+			input.sourceGeneration = 7;
+			input.presentationEpoch = 11;
+			input.trustedBase = TrustedScopeCrop().geometry;
+			input.sourceSequence = 100;
+
+			auto decision = UpdateVerticalInspectionBridge(input);
+			Assert::IsTrue(decision.retain);
+
+			// A later unresolved sample spends the single retained source sequence
+			// and latches fail-open.
+			input.previous = decision.state;
+			input.denseAnalysisCompleted = true;
+			input.sourceSequence = 101;
+			decision = UpdateVerticalInspectionBridge(input);
+			Assert::IsTrue(decision.expired);
+			Assert::IsTrue(decision.state.failOpenLatched);
+
+			// A mere candidate cannot clear the spent episode.
+			input.previous = decision.state;
+			input.retentionRequested = false;
+			input.denseAnalysisCompleted = false;
+			input.sourceSequence = 102;
+			decision = UpdateVerticalInspectionBridge(input);
+			Assert::IsTrue(decision.state.failOpenLatched);
+
+			// Only the renderer's verified, current dense-Fit result may close it.
+			input.previous = decision.state;
+			input.confirmedVerticalFitResolved = true;
+			input.sourceSequence = 103;
+			decision = UpdateVerticalInspectionBridge(input);
+			Assert::IsFalse(decision.state.active);
+			Assert::IsFalse(decision.state.failOpenLatched);
+
+			// The next subtitle episode can now use its one-frame retention normally.
+			input.previous = decision.state;
+			input.confirmedVerticalFitResolved = false;
+			input.retentionRequested = true;
+			input.sourceSequence = 104;
+			decision = UpdateVerticalInspectionBridge(input);
+			Assert::IsTrue(decision.started);
+			Assert::IsTrue(decision.retain);
+		}
+
+		TEST_METHOD(OnlyCurrentFullWidthVerticalDenseFitMayResolveInspection)
+		{
+			VerticalInspectionFitResolutionInput input;
+			input.confirmedDenseFit = true;
+			input.denseAnalysisCurrent = true;
+			input.outwardExpansionAvailable = true;
+			input.trustedBase = TrustedScopeCrop().geometry;
+			input.outwardExpansion = input.trustedBase;
+			input.outwardExpansion.bottom = 2116;
+			input.outwardExpansion.aspectRatio = 3840.0 / (2116 - 274);
+			input.outwardExpansion.trustedBarAxes =
+				ActivePictureBounds::BarAxes::NONE;
+			input.outwardExpansionSourceGeneration = 7;
+			input.frameSourceGeneration = 7;
+			Assert::IsTrue(CanResolveVerticalInspectionWithConfirmedFit(input));
+
+			input.confirmedDenseFit = false;
+			Assert::IsFalse(CanResolveVerticalInspectionWithConfirmedFit(input));
+			input.confirmedDenseFit = true;
+			input.denseAnalysisCurrent = false;
+			Assert::IsFalse(CanResolveVerticalInspectionWithConfirmedFit(input));
+			input.denseAnalysisCurrent = true;
+			input.outwardExpansionAvailable = false;
+			Assert::IsFalse(CanResolveVerticalInspectionWithConfirmedFit(input));
+			input.outwardExpansionAvailable = true;
+			input.currentHorizontalExpansion = true;
+			Assert::IsFalse(CanResolveVerticalInspectionWithConfirmedFit(input));
+			input.currentHorizontalExpansion = false;
+			input.outwardExpansion.left = 2;
+			Assert::IsFalse(CanResolveVerticalInspectionWithConfirmedFit(input));
+			input.outwardExpansion.left = 0;
+			input.outwardExpansion.right = 3838;
+			Assert::IsFalse(CanResolveVerticalInspectionWithConfirmedFit(input));
+			input.outwardExpansion.right = 3840;
+			input.outwardExpansion.bottom = 2115;
+			Assert::IsFalse(CanResolveVerticalInspectionWithConfirmedFit(input));
+			input.outwardExpansion.bottom = 2116;
+			input.outwardExpansionSourceGeneration = 6;
+			Assert::IsFalse(CanResolveVerticalInspectionWithConfirmedFit(input));
+			input.outwardExpansionSourceGeneration = 7;
+			input.outwardExpansion = input.trustedBase;
+			Assert::IsFalse(CanResolveVerticalInspectionWithConfirmedFit(input));
+		}
+
 		TEST_METHOD(VerticalInspectionBridgeRearmsOnlyForResolvedOrNewProvenance)
 		{
 			VerticalInspectionBridgeInput input;

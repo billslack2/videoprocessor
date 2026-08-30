@@ -190,17 +190,38 @@ namespace AlphaSourceCrop
 		uint64_t retainedSourceSequence = 0;
 	};
 
+	// A spent vertical-inspection bridge may be resolved by an already accepted
+	// dense Fit only when the same source sample supplies a valid, full-width,
+	// vertical-only outward envelope. This deliberately excludes provisional,
+	// horizontal, and held-fit evidence.
+	struct VerticalInspectionFitResolutionInput
+	{
+		bool confirmedDenseFit = false;
+		bool denseAnalysisCurrent = false;
+		bool outwardExpansionAvailable = false;
+		bool currentHorizontalExpansion = false;
+		ActivePictureBounds trustedBase;
+		ActivePictureBounds outwardExpansion;
+		uint64_t outwardExpansionSourceGeneration = 0;
+		uint64_t frameSourceGeneration = 0;
+	};
+
+	bool CanResolveVerticalInspectionWithConfirmedFit(
+		const VerticalInspectionFitResolutionInput& input);
+
 	struct VerticalInspectionBridgeInput
 	{
 		VerticalInspectionBridgeState previous;
 		bool candidate = false;
 		bool retentionRequested = false;
 		bool denseAnalysisCompleted = false;
-		// Positive crop/full-raster authority closes the unresolved episode.
+		// Positive crop/full-raster authority, or a verified current vertical Fit,
+		// closes the unresolved episode.
 		// A mere coarse-candidate dropout does not, because sparse dark pixels
 		// must not rearm alternating scope/full/scope decisions.
 		bool cropAuthorityResolved = false;
 		bool fullRasterAuthorityResolved = false;
+		bool confirmedVerticalFitResolved = false;
 		uint64_t sourceGeneration = 0;
 		uint64_t presentationEpoch = 0;
 		ActivePictureBounds trustedBase;

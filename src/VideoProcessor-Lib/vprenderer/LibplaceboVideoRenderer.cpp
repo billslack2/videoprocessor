@@ -9304,6 +9304,26 @@ struct LibplaceboVideoRenderer::Impl
 					outwardExpansionAvailable = expansion.expanded;
 				}
 			}
+			AlphaSourceCrop::VerticalInspectionFitResolutionInput
+				verticalFitResolutionInput;
+			verticalFitResolutionInput.confirmedDenseFit =
+				detailedVerticalFitEvidence;
+			verticalFitResolutionInput.denseAnalysisCurrent =
+				subtitleBarAnalysisCompleted;
+			verticalFitResolutionInput.outwardExpansionAvailable =
+				outwardExpansionAvailable;
+			verticalFitResolutionInput.currentHorizontalExpansion =
+				currentDetectorLeftExpansion || currentDetectorRightExpansion;
+			verticalFitResolutionInput.trustedBase = effectiveGeometry;
+			verticalFitResolutionInput.outwardExpansion = outwardExpansion;
+			verticalFitResolutionInput.outwardExpansionSourceGeneration =
+				denseFitEvidenceActive
+					? scopeSubtitleEvidenceSourceGeneration
+					: scopePresentationEvidenceSourceGeneration;
+			verticalFitResolutionInput.frameSourceGeneration = frameGeneration;
+			const bool confirmedCurrentVerticalFit =
+				AlphaSourceCrop::CanResolveVerticalInspectionWithConfirmedFit(
+					verticalFitResolutionInput);
 			AlphaSourceCrop::NearBlackPresentationEpisodeInput episodeInput;
 			episodeInput.previous = nearBlackPresentationEpisode;
 			episodeInput.measurementCurrent =
@@ -9503,6 +9523,7 @@ struct LibplaceboVideoRenderer::Impl
 				(verticalFailOpen || outwardExpansionInvalid ||
 				(sameInspectionEpisode &&
 				 scopeVerticalInspectionBridge.failOpenLatched &&
+				 !confirmedCurrentVerticalFit &&
 				 (latestObservationIsUnavailable ||
 				  latestObservationIsProvisional)));
 			const bool barCropRefinementHorizontalConflict =
@@ -9583,6 +9604,8 @@ struct LibplaceboVideoRenderer::Impl
 			inspectionInput.fullRasterAuthorityResolved =
 				latestActivePictureEvidenceClassification ==
 					ActivePictureClassification::FULL_RASTER_TRUSTED;
+			inspectionInput.confirmedVerticalFitResolved =
+				confirmedCurrentVerticalFit;
 			inspectionInput.sourceGeneration = frameGeneration;
 			inspectionInput.presentationEpoch = viewportRequestSerial;
 			inspectionInput.trustedBase = effectiveGeometryAvailable
@@ -9728,6 +9751,7 @@ struct LibplaceboVideoRenderer::Impl
 				<< barCropRefinementHorizontalConflict << '|'
 				<< verticalInspectionCandidate << '|'
 				<< verticalInspectionFallbackRequested << '|'
+				<< confirmedCurrentVerticalFit << '|'
 				<< verticalInspectionPending << '|'
 				<< inspectionDecision.expired << '|'
 				<< scopeVerticalInspectionBridge.retentionConsumed << '|'
@@ -9785,7 +9809,7 @@ struct LibplaceboVideoRenderer::Impl
 			const char* presentationOwnerLabel =
 				AlphaSourceCrop::DecisionOwnerName(cropDecision.owner);
 				DebugLog::Log(
-					"Alpha source crop: sequence=%llu enabled=%d applied=%d expanded=%d translated=%d vertical_action=%s shift_request=%d shift_applied=%d latest_trusted=%d scene_hold=%d ambiguity_hold=%d retention_safe=%d latest_evidence=%d detector_envelope=%d bar_wait=%d inspection_wait=%d translation_wait=%d fit_wait=%d engage_base=%d release_settle=%d envelope_state=%s selected_edges=%c%c%c%c fit_evidence_rect=%d,%d-%d,%d rect=%d,%d-%d,%d fill_rect=%d,%d-%d,%d content_aspect=%.5f screen_aspect=%.5f narrower_fill=%d narrower_limit=%s%.5f wider_fill=%d wider_limit=%s%.5f fill_applied=%d classification=%d geometry_generation=%llu frame_generation=%llu owner=%s cut=%d scene_event=%llu retention_eval=%d near_black_eval=%d near_black=%d near_black_p90=%.1f near_black_episode=%s near_black_start=%llu refinement_horizontal=%d inspection_candidate=%d inspection_request=%d inspection_consumed=%d inspection_dense=%d inspection_phase=%s inspection_first=%llu inspection_retained=%llu coarse_edges=%c%c%c%c coarse_current=%d observation_rect=%d,%d-%d,%d coarse_rect=%d,%d-%d,%d dense_base=%d dense_generation=%llu dense_scan=%s dense_evaluated=%d authority=%s translation_confirm=%u/%u fit_confirm=%u/%u reason=\"%s; %s; %s; %s\"",
+					"Alpha source crop: sequence=%llu enabled=%d applied=%d expanded=%d translated=%d vertical_action=%s shift_request=%d shift_applied=%d latest_trusted=%d scene_hold=%d ambiguity_hold=%d retention_safe=%d latest_evidence=%d detector_envelope=%d bar_wait=%d inspection_wait=%d translation_wait=%d fit_wait=%d engage_base=%d release_settle=%d envelope_state=%s selected_edges=%c%c%c%c fit_evidence_rect=%d,%d-%d,%d rect=%d,%d-%d,%d fill_rect=%d,%d-%d,%d content_aspect=%.5f screen_aspect=%.5f narrower_fill=%d narrower_limit=%s%.5f wider_fill=%d wider_limit=%s%.5f fill_applied=%d classification=%d geometry_generation=%llu frame_generation=%llu owner=%s cut=%d scene_event=%llu retention_eval=%d near_black_eval=%d near_black=%d near_black_p90=%.1f near_black_episode=%s near_black_start=%llu refinement_horizontal=%d inspection_candidate=%d inspection_request=%d inspection_fit_resolved=%d inspection_consumed=%d inspection_dense=%d inspection_phase=%s inspection_first=%llu inspection_retained=%llu coarse_edges=%c%c%c%c coarse_current=%d observation_rect=%d,%d-%d,%d coarse_rect=%d,%d-%d,%d dense_base=%d dense_generation=%llu dense_scan=%s dense_evaluated=%d authority=%s translation_confirm=%u/%u fit_confirm=%u/%u reason=\"%s; %s; %s; %s\"",
 					static_cast<unsigned long long>(sourceSequence),
 					automaticSourceCrop ? 1 : 0,
 					cropDecision.applyCrop ? 1 : 0,
@@ -9856,6 +9880,7 @@ struct LibplaceboVideoRenderer::Impl
 					barCropRefinementHorizontalConflict ? 1 : 0,
 					verticalInspectionCandidate ? 1 : 0,
 					verticalInspectionFallbackRequested ? 1 : 0,
+					confirmedCurrentVerticalFit ? 1 : 0,
 					scopeVerticalInspectionBridge.retentionConsumed ? 1 : 0,
 					scopeVerticalInspectionBridge.denseAnalysisCompleted ? 1 : 0,
 					inspectionPhaseLabel,

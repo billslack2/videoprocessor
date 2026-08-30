@@ -517,12 +517,42 @@ namespace AlphaSourceCrop
 			(topExpansion || bottomExpansion);
 	}
 
+	bool CanResolveVerticalInspectionWithConfirmedFit(
+		const VerticalInspectionFitResolutionInput& input)
+	{
+		if (!input.confirmedDenseFit || !input.denseAnalysisCurrent ||
+			!input.outwardExpansionAvailable ||
+			input.currentHorizontalExpansion ||
+			input.outwardExpansionSourceGeneration == 0 ||
+			input.outwardExpansionSourceGeneration !=
+				input.frameSourceGeneration)
+		{
+			return false;
+		}
+
+		const int width = input.trustedBase.rasterWidth;
+		const int height = input.trustedBase.rasterHeight;
+		if (!ValidBounds(input.trustedBase, width, height) ||
+			!CropEdgesAreChromaAligned(input.trustedBase, width, height) ||
+			!ValidBounds(input.outwardExpansion, width, height) ||
+			!CropEdgesAreChromaAligned(input.outwardExpansion, width, height))
+		{
+			return false;
+		}
+
+		return input.outwardExpansion.left == input.trustedBase.left &&
+			input.outwardExpansion.right == input.trustedBase.right &&
+			(input.outwardExpansion.top < input.trustedBase.top ||
+			 input.outwardExpansion.bottom > input.trustedBase.bottom);
+	}
+
 	VerticalInspectionBridgeDecision UpdateVerticalInspectionBridge(
 		const VerticalInspectionBridgeInput& input)
 	{
 		VerticalInspectionBridgeDecision decision;
 		if (input.sourceGeneration == 0 || input.sourceSequence == 0 ||
-			input.cropAuthorityResolved || input.fullRasterAuthorityResolved)
+			input.cropAuthorityResolved || input.fullRasterAuthorityResolved ||
+			input.confirmedVerticalFitResolved)
 		{
 			return decision;
 		}
