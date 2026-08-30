@@ -19,6 +19,49 @@ Readiness review is complete: the target-frame libplacebo attachment,
 presenter, and backbuffer are suitable; the remaining work is a bounded LUT
 contract and lifecycle correction, not a renderer or presenter redesign.
 
+## Implementation progress — 2026-08-29
+
+The first source slice is committed and pushed on
+`codex/vp-0166-lut-contract` as
+`16377298ebfb4b0a235c4edc5b48fdcf8e160fab`. It adds:
+
+- `LibplaceboLutContract`, a pure resolved-contract and activation validator
+  for the v1 Rec.709/SDR-BT.2020, full-range, R10, video-picture target/native
+  stage;
+- exact cube path/hash/size/reload, calibration generation, typed presentation
+  route, display-mode/installation attestation, final target, semantic `Lw/Lb`,
+  Advanced Color/ICC, and NVIDIA BT.2020 proof bindings;
+- fail-closed rejection reasons for unsupported or stale contracts, including
+  P3, limited range, PQ/HLG target cubes, unresolved `AUTO` values, route or
+  resource changes, and incomplete BT.2020 carrier evidence;
+- semantic-zero black adaptation to `PL_COLOR_HDR_BLACK` at all three existing
+  SDR libplacebo metadata write sites while retaining semantic zero in the VP
+  contract; and
+- 18 focused contract tests, including the accepted Rec.709 and SDR BT.2020
+  matrix and inert-P709-carrier/BT.2020-target independence.
+
+Both VPRenderer and the test project build successfully in x64 Release. The
+focused contract suite passes 18/18 and the complete `Libplacebo`-named test
+set passes 97/97. The whole test DLL passes 1018/1019; its sole failure is the
+pre-existing configuration-reference inventory mismatch on four viewport crop
+fields. `CONFIGURATION.html`, both inventory files, and that test are unchanged
+from the `v1.3.004-beta` base, so it is recorded as an upstream baseline issue,
+not a LUT regression.
+
+Three independent AI specialist passes covered the current VP source seam,
+mpv/MPC/madVR precedent, and calibration/BT.2020 correctness, then cross-checked
+the fixes. Their final reviews found the contract foundation safe to wire. One
+important wiring invariant is retained in the header: populate final `Lw/Lb`
+evidence from the semantic pre-adapter doubles, never from libplacebo's float
+metadata where semantic zero is represented by a sentinel.
+
+This commit is deliberately a foundation, not completed runtime activation.
+The next slice must resolve selected-profile configuration into this object,
+populate live carrier evidence, replace the legacy pre-override/wildcard LUT
+gate with `ValidateActivation`, and make dither depend on `Active` rather than
+merely parsed state. Strict cube canonicalization and atomic reload/failure
+lifecycle follow that activation wiring.
+
 ## User story
 
 As a calibrated-display user, I want VP Renderer to feed a 3D `.cube` file the
