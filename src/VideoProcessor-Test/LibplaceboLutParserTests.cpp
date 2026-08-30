@@ -576,7 +576,8 @@ DOMAIN_MAX 1 1 1
 				LibplaceboExternalHdrLut::PrepareFrameProjection(
 					active, expectedGeneration,
 					LibplaceboExternalHdrLut::ToneMappingMode::EXTERNAL_3DLUT,
-					true, sourcePrimaries, image.color, target, shared, clip,
+					{ LibplaceboExternalHdrLut::Primaries::BT709, 100.0 },
+					sourcePrimaries, image.color, target, shared, clip,
 					frameTarget, frameParams, frameLut, frameColorMap);
 			result.usesConversionLut = frameParams.lut == &frameLut &&
 				frameParams.lut_type == PL_LUT_CONVERSION;
@@ -1041,7 +1042,7 @@ namespace VideoProcessorTest
 			AssertPixelNear(result.pixel, Bt2020PqToP3PqAndSwap(source));
 		}
 
-		TEST_METHOD(ExternalHdrFrameProjectionCannotAttachWithoutSdrOutputRole)
+		TEST_METHOD(ExternalHdrFrameProjectionCannotAttachToHdrTarget)
 		{
 			TemporaryDirectory directory;
 			const std::string cube = directory.Write("bt2020.cube", Valid3dCube);
@@ -1064,7 +1065,7 @@ namespace VideoProcessorTest
 			source.transfer = PL_COLOR_TRC_PQ;
 			struct pl_frame target{};
 			target.color.primaries = PL_COLOR_PRIM_BT_709;
-			target.color.transfer = PL_COLOR_TRC_SRGB;
+			target.color.transfer = PL_COLOR_TRC_PQ;
 			target.repr.sys = PL_COLOR_SYSTEM_RGB;
 			target.repr.levels = PL_COLOR_LEVELS_FULL;
 			target.repr.bits.sample_depth = 10;
@@ -1080,7 +1081,8 @@ namespace VideoProcessorTest
 				LibplaceboExternalHdrLut::PrepareFrameProjection(
 					active, 1,
 					LibplaceboExternalHdrLut::ToneMappingMode::EXTERNAL_3DLUT,
-					false, LibplaceboExternalHdrLut::Primaries::BT2020,
+					{ LibplaceboExternalHdrLut::Primaries::BT709, 100.0 },
+					LibplaceboExternalHdrLut::Primaries::BT2020,
 					source, target, shared, &clip, frameTarget, frame, frameLut,
 					frameColorMap);
 			Assert::IsFalse(projection.attached);
@@ -1134,7 +1136,8 @@ namespace VideoProcessorTest
 				LibplaceboExternalHdrLut::PrepareFrameProjection(
 					active, 1,
 					LibplaceboExternalHdrLut::ToneMappingMode::EXTERNAL_3DLUT,
-					true, LibplaceboExternalHdrLut::Primaries::BT2020,
+					{ LibplaceboExternalHdrLut::Primaries::BT709, 100.0 },
+					LibplaceboExternalHdrLut::Primaries::BT2020,
 					source, target, shared, &clip, frameTarget, frame, frameLut,
 					frameColorMap);
 			Assert::IsTrue(projection.attached);
@@ -1154,6 +1157,25 @@ namespace VideoProcessorTest
 				static_cast<int>(frameLut.color_out.primaries));
 			Assert::AreEqual(static_cast<int>(PL_COLOR_TRC_SRGB),
 				static_cast<int>(frameLut.color_out.transfer));
+			Assert::AreEqual(static_cast<int>(PL_COLOR_PRIM_BT_709),
+				static_cast<int>(frameTarget.color.primaries));
+			Assert::AreEqual(100.0f, frameTarget.color.hdr.max_luma);
+
+			struct pl_frame missingReferenceTarget{};
+			struct pl_render_params missingReferenceFrame{};
+			struct pl_custom_lut missingReferenceLut{};
+			struct pl_color_map_params missingReferenceColorMap{};
+			const auto missingReference =
+				LibplaceboExternalHdrLut::PrepareFrameProjection(
+					active, 1,
+					LibplaceboExternalHdrLut::ToneMappingMode::EXTERNAL_3DLUT,
+					{}, LibplaceboExternalHdrLut::Primaries::BT2020,
+					source, target, shared, &clip, missingReferenceTarget,
+					missingReferenceFrame, missingReferenceLut,
+					missingReferenceColorMap);
+			Assert::IsFalse(missingReference.attached);
+			Assert::IsNull(missingReferenceFrame.lut);
+			Assert::IsTrue(missingReferenceFrame.peak_detect_params == &peak);
 
 			target.color.transfer = PL_COLOR_TRC_PQ;
 			struct pl_frame hdrFrameTarget{};
@@ -1164,7 +1186,8 @@ namespace VideoProcessorTest
 				LibplaceboExternalHdrLut::PrepareFrameProjection(
 					active, 1,
 					LibplaceboExternalHdrLut::ToneMappingMode::EXTERNAL_3DLUT,
-					true, LibplaceboExternalHdrLut::Primaries::BT2020,
+					{ LibplaceboExternalHdrLut::Primaries::BT709, 100.0 },
+					LibplaceboExternalHdrLut::Primaries::BT2020,
 					source, target, shared, &clip, hdrFrameTarget, hdrFrame,
 					hdrFrameLut, hdrColorMap);
 			Assert::IsFalse(hdrProjection.attached);
@@ -1181,7 +1204,8 @@ namespace VideoProcessorTest
 				LibplaceboExternalHdrLut::PrepareFrameProjection(
 					active, 1,
 					LibplaceboExternalHdrLut::ToneMappingMode::EXTERNAL_3DLUT,
-					true, LibplaceboExternalHdrLut::Primaries::BT2020,
+					{ LibplaceboExternalHdrLut::Primaries::BT709, 100.0 },
+					LibplaceboExternalHdrLut::Primaries::BT2020,
 					source, target, shared, &clip, yuvFrameTarget, yuvFrame,
 					yuvFrameLut, yuvColorMap);
 			Assert::IsFalse(yuvProjection.attached);
@@ -1224,7 +1248,8 @@ namespace VideoProcessorTest
 				LibplaceboExternalHdrLut::PrepareFrameProjection(
 					active, 1,
 					LibplaceboExternalHdrLut::ToneMappingMode::EXTERNAL_3DLUT,
-					true, LibplaceboExternalHdrLut::Primaries::BT2020,
+					{ LibplaceboExternalHdrLut::Primaries::BT709, 100.0 },
+					LibplaceboExternalHdrLut::Primaries::BT2020,
 					source, target, shared, &clip, frameTarget, frame, frameLut,
 					frameColorMap);
 			Assert::IsTrue(projection.attached);
@@ -1251,7 +1276,8 @@ namespace VideoProcessorTest
 				LibplaceboExternalHdrLut::PrepareFrameProjection(
 					active, 1,
 					LibplaceboExternalHdrLut::ToneMappingMode::EXTERNAL_3DLUT,
-					true, LibplaceboExternalHdrLut::Primaries::BT2020,
+					{ LibplaceboExternalHdrLut::Primaries::BT709, 100.0 },
+					LibplaceboExternalHdrLut::Primaries::BT2020,
 					source, target, shared, nullptr, missingMapperTarget,
 					missingMapperFrame, missingMapperLut, missingMapperColorMap);
 			Assert::IsFalse(missingMapper.attached);
@@ -1299,7 +1325,8 @@ namespace VideoProcessorTest
 				LibplaceboExternalHdrLut::PrepareFrameProjection(
 					active, 1,
 					LibplaceboExternalHdrLut::ToneMappingMode::EXTERNAL_3DLUT,
-					true, LibplaceboExternalHdrLut::Primaries::BT2020,
+					{ LibplaceboExternalHdrLut::Primaries::BT709, 100.0 },
+					LibplaceboExternalHdrLut::Primaries::BT2020,
 					source, target, shared, &clip, staleTarget, staleFrame, staleLut,
 					staleColorMap);
 			Assert::IsFalse(stale.attached);
@@ -1314,7 +1341,8 @@ namespace VideoProcessorTest
 				LibplaceboExternalHdrLut::PrepareFrameProjection(
 					active, 2,
 					LibplaceboExternalHdrLut::ToneMappingMode::EXTERNAL_3DLUT,
-					true, LibplaceboExternalHdrLut::Primaries::BT2020,
+					{ LibplaceboExternalHdrLut::Primaries::BT709, 100.0 },
+					LibplaceboExternalHdrLut::Primaries::BT2020,
 					source, target, shared, &clip, currentTarget, currentFrame,
 					currentLut, currentColorMap);
 			Assert::IsTrue(current.attached);

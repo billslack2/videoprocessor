@@ -2314,12 +2314,14 @@ namespace Tests
 				"display", "hdr_external_3dlut_bt2020", "luts/hdr.3dlut", expected));
 			Assert::IsTrue(RendererProfileConfig::ValidateProfileSetting(
 				"display", "hdr_tone_mapping_mode", "passthrough", expected));
-			// Legacy HDR-output metadata keys remain parseable for compatibility,
-			// but are not required or used by the SDR-output LUT role.
 			Assert::IsTrue(RendererProfileConfig::ValidateProfileSetting(
-				"display", "hdr_output_metadata_peak_nits", "1000", expected));
+				"display", "hdr_external_3dlut_sdr_peak_nits", "100", expected));
 			Assert::IsFalse(RendererProfileConfig::ValidateProfileSetting(
-				"display", "hdr_output_metadata_peak_nits", "10001", expected));
+				"display", "hdr_external_3dlut_sdr_peak_nits", "501", expected));
+			Assert::IsTrue(RendererProfileConfig::ValidateProfileSetting(
+				"display", "hdr_external_3dlut_sdr_primaries", "p3_d65", expected));
+			Assert::IsFalse(RendererProfileConfig::ValidateProfileSetting(
+				"display", "hdr_output_metadata_peak_nits", "1000", expected));
 
 			RendererProfileConfig::Profile profile;
 			profile.settings["hdr_tone_mapping_mode"] = "external_3dlut";
@@ -2328,10 +2330,12 @@ namespace Tests
 				profile, "vprenderer", error));
 			Assert::IsTrue(error.find("at least one") != std::string::npos);
 			profile.settings["hdr_external_3dlut_bt2020"] = "luts/hdr.cube";
-			Assert::IsTrue(RendererProfileConfig::ValidateExternalHdrLutProfile(
+			Assert::IsFalse(RendererProfileConfig::ValidateExternalHdrLutProfile(
 				profile, "vprenderer", error));
-			profile.settings["hdr_output_metadata_primaries"] = "p3_d65";
-			profile.settings["hdr_output_metadata_peak_nits"] = "200";
+			profile.settings["hdr_external_3dlut_sdr_primaries"] = "p3_d65";
+			Assert::IsFalse(RendererProfileConfig::ValidateExternalHdrLutProfile(
+				profile, "vprenderer", error));
+			profile.settings["hdr_external_3dlut_sdr_peak_nits"] = "200";
 			Assert::IsTrue(RendererProfileConfig::ValidateExternalHdrLutProfile(
 				profile, "vprenderer", error));
 			profile.settings["lut"] = "luts/final-calibration.cube";
@@ -2353,17 +2357,20 @@ namespace Tests
 			ConfigFile incomplete;
 			Assert::IsTrue(incomplete.Load(path));
 			RendererProfileConfig::Model model;
-			Assert::IsTrue(RendererProfileConfig::Read(
-				incomplete, model, error),
-				std::wstring(error.begin(), error.end()).c_str());
+			Assert::IsFalse(RendererProfileConfig::Read(
+				incomplete, model, error));
+			Assert::IsTrue(error.find(
+				"hdr_external_3dlut_sdr_primaries") != std::string::npos ||
+				error.find("hdr_external_3dlut_sdr_peak_nits") !=
+					std::string::npos);
 
 			{
 				std::ofstream file(path, std::ios::out | std::ios::trunc);
 				file << "[vprenderer]\n"
 					"hdr_tone_mapping_mode: external_3dlut\n"
 					"hdr_external_3dlut_bt2020: luts/hdr.cube\n"
-					"hdr_output_metadata_primaries: bt2020\n"
-					"hdr_output_metadata_peak_nits: 1000\n";
+					"hdr_external_3dlut_sdr_primaries: bt2020\n"
+					"hdr_external_3dlut_sdr_peak_nits: 100\n";
 			}
 			ConfigFile complete;
 			Assert::IsTrue(complete.Load(path));
@@ -2377,8 +2384,8 @@ namespace Tests
 					"lut: luts/final-calibration.cube\n"
 					"hdr_tone_mapping_mode: external_3dlut\n"
 					"hdr_external_3dlut_bt2020: luts/hdr.cube\n"
-					"hdr_output_metadata_primaries: bt2020\n"
-					"hdr_output_metadata_peak_nits: 1000\n";
+					"hdr_external_3dlut_sdr_primaries: bt2020\n"
+					"hdr_external_3dlut_sdr_peak_nits: 100\n";
 			}
 			ConfigFile completeWithMaskedCalibration;
 			Assert::IsTrue(completeWithMaskedCalibration.Load(path));
@@ -2393,8 +2400,8 @@ namespace Tests
 					"[vprenderer.external]\n"
 					"hdr_tone_mapping_mode: external_3dlut\n"
 					"hdr_external_3dlut_bt2020: luts/hdr.cube\n"
-					"hdr_output_metadata_primaries: bt2020\n"
-					"hdr_output_metadata_peak_nits: 1000\n";
+					"hdr_external_3dlut_sdr_primaries: bt2020\n"
+					"hdr_external_3dlut_sdr_peak_nits: 100\n";
 			}
 			ConfigFile inheritedMaskedCalibration;
 			Assert::IsTrue(inheritedMaskedCalibration.Load(path));
@@ -2426,8 +2433,8 @@ namespace Tests
 					"[profiles.display.hdr]\n"
 					"hdr_tone_mapping_mode: external_3dlut\n"
 					"hdr_external_3dlut_p3_d65: luts/hdr.cube\n"
-					"hdr_output_metadata_primaries: p3_d65\n"
-					"hdr_output_metadata_peak_nits: 200\n";
+					"hdr_external_3dlut_sdr_primaries: p3_d65\n"
+					"hdr_external_3dlut_sdr_peak_nits: 200\n";
 			}
 			ConfigFile unifiedComplete;
 			Assert::IsTrue(unifiedComplete.Load(path));

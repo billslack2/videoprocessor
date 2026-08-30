@@ -96,11 +96,11 @@ namespace HdrPeakAnalysisCrop
 
 	// An external HDR 3D-LUT owns the complete PQ transform for its frame.
 	// Shared peak-detection configuration must therefore not drive either
-	// libplacebo analysis or analysis telemetry while that carrier is armed.
+	// libplacebo analysis or analysis telemetry while the Cube owns mapping.
 	inline bool PeakDetectionRunsForFrame(bool configured,
-		bool externalHdrCarrierArmed)
+		bool externalLutOwnsToneMapping)
 	{
-		return configured && !externalHdrCarrierArmed;
+		return configured && !externalLutOwnsToneMapping;
 	}
 
 	inline bool HasCurrentValidTrustedPicture(uint64_t frameSourceGeneration,

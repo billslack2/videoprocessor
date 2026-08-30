@@ -3921,12 +3921,17 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 		const QList<QComboBox*> externalLutSelectors = {
 			lutBt709, lutP3, lutBt2020
 		};
+		const auto lutDisplayName = [](const QString& configuredPath)
+		{
+			return QFileInfo(configuredPath).completeBaseName();
+		};
 		for (QComboBox* selector : externalLutSelectors)
 			selector->setToolTip(QStringLiteral(
 				"The slot name describes the nonlinear PQ RGB input coordinates expected by the Cube, "
 				"not the display gamut. Cube output is normalized nonlinear RGB in the active SDR "
 				"target primaries and transfer; output-range encoding is applied afterward."));
-		const auto refreshLutSelectors = [externalLutSelectors, discoveredLuts]
+		const auto refreshLutSelectors = [externalLutSelectors, discoveredLuts,
+			lutDisplayName]
         {
             const QStringList available = discoveredLuts();
 			for (QComboBox* selector : externalLutSelectors)
@@ -3940,23 +3945,29 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 					!available.contains(effective, Qt::CaseInsensitive);
 				QString emptyLabel = QStringLiteral("None");
 				if (selected.isEmpty() && effectiveMissing)
-					emptyLabel = QStringLiteral("Inherited - Missing: %1").arg(effective);
+					emptyLabel = QStringLiteral("Inherited - Missing: %1").arg(
+						lutDisplayName(effective));
 				else if (selected.isEmpty() && !effective.isEmpty())
-					emptyLabel = QStringLiteral("Inherited: %1").arg(effective);
+					emptyLabel = QStringLiteral("Inherited: %1").arg(
+						lutDisplayName(effective));
 				selector->addItem(emptyLabel, QString());
 				for (const QString& lut : available)
-					selector->addItem(lut, lut);
+					selector->addItem(lutDisplayName(lut), lut);
 				int index = selector->findData(selected, Qt::UserRole,
 					Qt::MatchFixedString);
 				if (index < 0 && !selected.isEmpty())
 				{
-					selector->addItem(QStringLiteral("Missing: %1").arg(selected), selected);
+					selector->addItem(QStringLiteral("Missing: %1").arg(
+						lutDisplayName(selected)), selected);
 					index = selector->count() - 1;
 					selector->setItemData(index, true, Qt::UserRole + 1);
 				}
 				selector->setCurrentIndex(std::max(0, index));
 			}
         };
+		// Apply the same friendly, path-free labels on first construction that
+		// subsequent directory-change refreshes use.
+		refreshLutSelectors();
 		auto* lutWatcher = new QFileSystemWatcher(lutBt709);
         const auto watchLutDirectory = [lutWatcher, lutDirectoryPath]
         {
@@ -3989,15 +4000,36 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                     QStringLiteral("Windows could not open the LUT folder."));
         });
         form->addRow(QString(), openLutFolder);
-        form->addRow(QString(), helpLabel(QStringLiteral(
-            "Put .cube files in the luts folder next to VideoProcessor.cfg (normally the VP installation). "
+		form->addRow(QString(), helpLabel(QStringLiteral(
+			"Put .cube files in the luts folder next to VideoProcessor.cfg (normally the VP installation). "
 			"A missing selected file remains configured and is reported as Missing; VP must fall back to its internal shader path.")));
+		auto* externalSdrPrimaries = addChoice(
+			QStringLiteral("LUT SDR output gamut"),
+			QStringLiteral("hdr_external_3dlut_sdr_primaries"),
+			{ QStringLiteral("REC709"), QStringLiteral("P3_D65"),
+				QStringLiteral("BT2020") });
+		externalSdrPrimaries->setItemText(0,
+			QStringLiteral("Required - select gamut"));
+		externalSdrPrimaries->setProperty("requiresExplicitValue", true);
+		externalSdrPrimaries->setToolTip(QStringLiteral(
+			"Required in external mode. Describes the calibrated SDR RGB output "
+			"coordinates produced by the Cube; it never enables HDR signaling."));
+		auto* externalSdrPeak = addText(
+			QStringLiteral("LUT SDR target peak"),
+			QStringLiteral("hdr_external_3dlut_sdr_peak_nits"),
+			QStringLiteral("nits"));
+		externalSdrPeak->setPlaceholderText(QStringLiteral("Required: 40 to 500"));
+		externalSdrPeak->setProperty("requiresExplicitValue", true);
+		externalSdrPeak->setToolTip(QStringLiteral(
+			"Required in external mode. Describes the calibrated SDR peak the Cube "
+			"was authored for; it never sends HDR metadata to the display."));
 		const QList<QWidget*> internalToneMapControls = {
 			sdrTargetWhiteLevel, sdrBlackLevel, toneMapping, gamutMapping,
 			peakDetection, contrastRecovery
 		};
 		const QList<QWidget*> externalToneMapControls = {
-			lutBt709, lutP3, lutBt2020, openLutFolder
+			lutBt709, lutP3, lutBt2020, externalSdrPrimaries,
+			externalSdrPeak, openLutFolder
 		};
 		const auto updateHdrModeControls = [hdrToneMappingMode,
 			externalHdrLutEnabled, internalToneMapControls, externalToneMapControls]
@@ -4649,8 +4681,8 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                 if (key == QStringLiteral("quality")) return QStringLiteral("high");
 				if (key == QStringLiteral("hdr_tone_mapping_mode"))
 					return QStringLiteral("pixel_shaders");
-				if (key == QStringLiteral("hdr_output_metadata_peak_nits") ||
-					key == QStringLiteral("hdr_output_metadata_primaries"))
+				if (key == QStringLiteral("hdr_external_3dlut_sdr_peak_nits") ||
+					key == QStringLiteral("hdr_external_3dlut_sdr_primaries"))
 					return {};
                 if (key == QStringLiteral("output_path_profile")) return QStringLiteral("legacy");
                 if (key == QStringLiteral("sdr_target_primaries")) return QStringLiteral("REC709");
@@ -4748,9 +4780,14 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                  field.key == QStringLiteral("diagnostic_disable_shader_cache"));
             const bool defaultOnlyField = defaultOnlyRendererField;
             QString configured = raw;
-			if (!requiresExplicitValue && configured.isEmpty() && list->count() > 0)
-                configured = defaultProfile ? fallback(field.key) :
-                    profileValue(list->item(0)->data(Qt::UserRole).toString(), field.key);
+			if (configured.isEmpty() && list->count() > 0)
+			{
+				if (!defaultProfile)
+					configured = profileValue(
+						list->item(0)->data(Qt::UserRole).toString(), field.key);
+				else if (!requiresExplicitValue)
+					configured = fallback(field.key);
+			}
 			if (!requiresExplicitValue && configured.isEmpty())
 				configured = fallback(field.key);
 			if (defaultOnlyField && !defaultProfile && list->count() > 0)
@@ -4779,8 +4816,8 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 			}
 			field.widget->setProperty("effectiveValue", configured);
 			field.widget->setProperty("inherited",
-				!requiresExplicitValue && raw.isEmpty() && !defaultProfile);
-			if (requiresExplicitValue && raw.isEmpty())
+				raw.isEmpty() && !defaultProfile && !configured.isEmpty());
+			if (requiresExplicitValue && configured.isEmpty())
 				field.widget->setToolTip(QStringLiteral(
 					"Required when external HDR 3D LUT is enabled."));
 			else field.widget->setToolTip(raw.isEmpty() ?
@@ -4836,32 +4873,36 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                     view->setRowHidden(0, hasUnspecifiedChoice &&
                         hideUnspecifiedChoice);
                 const QString inheritedDisplay = friendlyChoiceLabel(configured);
-                if (hasUnspecifiedChoice)
-                {
-					if (requiresExplicitValue && raw.isEmpty())
+				if (hasUnspecifiedChoice)
+				{
+					const bool externalLutSlot =
+						field.key == QStringLiteral("hdr_external_3dlut_bt709") ||
+						field.key == QStringLiteral("hdr_external_3dlut_p3_d65") ||
+						field.key == QStringLiteral("hdr_external_3dlut_bt2020");
+					if (requiresExplicitValue && configured.isEmpty())
 						combo->setItemText(0, QStringLiteral("Required - select gamut"));
 					const bool emptyExternalLutSlot =
-						sectionPrefix == QStringLiteral("vprenderer") &&
-						field.key.startsWith(QStringLiteral("hdr_external_3dlut_")) &&
+						sectionPrefix == QStringLiteral("vprenderer") && externalLutSlot &&
 						raw.isEmpty() && configured.isEmpty();
 					if (emptyExternalLutSlot)
 						combo->setItemText(0, QStringLiteral("None"));
 					const int externalLutEffectiveIndex = combo->findData(
 						configured, Qt::UserRole, Qt::MatchFixedString);
 					const bool inheritedMissingExternalLut =
-						sectionPrefix == QStringLiteral("vprenderer") &&
-						field.key.startsWith(QStringLiteral("hdr_external_3dlut_")) &&
+						sectionPrefix == QStringLiteral("vprenderer") && externalLutSlot &&
 						raw.isEmpty() && !configured.isEmpty() &&
 						(externalLutEffectiveIndex < 0 || combo->itemData(
 							externalLutEffectiveIndex, Qt::UserRole + 1).toBool());
-					if ((requiresExplicitValue && raw.isEmpty()) || emptyExternalLutSlot)
+					if ((requiresExplicitValue && configured.isEmpty()) || emptyExternalLutSlot)
 					{
 						// Keep the explicit required placeholder established above.
 					}
 					else if (inheritedMissingExternalLut)
 						combo->setItemText(0, defaultProfile ?
-							QStringLiteral("Default - Missing: %1").arg(configured) :
-							QStringLiteral("Inherited - Missing: %1").arg(configured));
+							QStringLiteral("Default - Missing: %1").arg(
+								QFileInfo(configured).completeBaseName()) :
+							QStringLiteral("Inherited - Missing: %1").arg(
+								QFileInfo(configured).completeBaseName()));
 					else if (raw.isEmpty() && !configured.isEmpty())
                         combo->setItemText(0, defaultProfile ?
                             QStringLiteral("Default: %1").arg(inheritedDisplay) :

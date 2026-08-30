@@ -118,6 +118,17 @@ namespace Tests
 				{ true, true, true }).useExternalLut);
 		}
 
+		TEST_METHOD(ExternalHdrToSdrOutputReferenceIsExplicitAndBounded)
+		{
+			using namespace LibplaceboExternalHdrLut;
+			Assert::IsTrue(SdrOutputReference{ Primaries::BT709, 40.0 }.Valid());
+			Assert::IsTrue(SdrOutputReference{ Primaries::P3_D65, 200.0 }.Valid());
+			Assert::IsTrue(SdrOutputReference{ Primaries::BT2020, 500.0 }.Valid());
+			Assert::IsFalse(SdrOutputReference{ Primaries::UNKNOWN, 100.0 }.Valid());
+			Assert::IsFalse(SdrOutputReference{ Primaries::BT709, 39.0 }.Valid());
+			Assert::IsFalse(SdrOutputReference{ Primaries::BT709, 501.0 }.Valid());
+		}
+
 		TEST_METHOD(SdrGammaMissingOrOnPreservesCurrentManagedBehavior)
 		{
 			Assert::AreEqual(static_cast<int>(SdrAdjustGamma::ON),

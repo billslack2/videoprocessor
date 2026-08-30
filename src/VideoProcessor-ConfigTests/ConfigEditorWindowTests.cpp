@@ -2294,7 +2294,12 @@ void testQueueUnitsAndLutControlsUseConsistentRows()
 		QStringLiteral("config.vprenderer.hdr_external_3dlut_p3_d65"));
 	QComboBox* bt2020 = requireControl<QComboBox>(window,
 		QStringLiteral("config.vprenderer.hdr_external_3dlut_bt2020"));
-	require(!bt709->isEnabled() && !p3->isEnabled() && !bt2020->isEnabled(),
+	QComboBox* outputGamut = requireControl<QComboBox>(window,
+		QStringLiteral("config.vprenderer.hdr_external_3dlut_sdr_primaries"));
+	QLineEdit* outputPeak = requireControl<QLineEdit>(window,
+		QStringLiteral("config.vprenderer.hdr_external_3dlut_sdr_peak_nits"));
+	require(!bt709->isEnabled() && !p3->isEnabled() && !bt2020->isEnabled() &&
+		!outputGamut->isEnabled() && !outputPeak->isEnabled(),
 		"External HDR LUT selectors are interactive on first open while disabled");
 	enabled->click();
 	require(mode->currentData().toString() == QStringLiteral("external_3dlut"),
@@ -2311,12 +2316,18 @@ void testQueueUnitsAndLutControlsUseConsistentRows()
 	require(bt709Position.x() == p3Position.x() &&
 		bt709->width() == p3->width() && p3->width() == bt2020->width(),
 		"External HDR LUT slot controls do not share aligned dropdown geometry");
+	require(outputGamut->currentData().toString().isEmpty() &&
+		outputGamut->currentText().contains(QStringLiteral("Required")) &&
+		outputPeak->text().isEmpty() &&
+		outputPeak->placeholderText().contains(QStringLiteral("Required")),
+		"External SDR output reference fabricated defaults");
 	require(window.findChild<QWidget*>(
 		QStringLiteral("config.vprenderer.hdr_output_metadata_peak_nits")) == nullptr &&
 		window.findChild<QWidget*>(
 			QStringLiteral("config.vprenderer.hdr_output_metadata_primaries")) == nullptr,
-		"HDR-output metadata controls remain visible for the SDR LUT path");
-	require(bt709->isEnabled() && p3->isEnabled() && bt2020->isEnabled(),
+		"Obsolete HDR-output metadata controls remain visible");
+	require(bt709->isEnabled() && p3->isEnabled() && bt2020->isEnabled() &&
+		outputGamut->isEnabled() && outputPeak->isEnabled(),
 		"External HDR LUT controls did not enable with external mode");
 	require(window.findChild<QComboBox*>(
 		QStringLiteral("config.vprenderer.lut")) == nullptr &&
@@ -2467,15 +2478,24 @@ void testLutSelectorDiscoversInstallationLutFiles()
     ConfigEditorWindow window(path, 0, true);
 	QComboBox* selector = requireControl<QComboBox>(window,
 		QStringLiteral("config.vprenderer.hdr_external_3dlut_bt2020"));
-    require(selector->findData(QStringLiteral("luts/Test-Calibration.cube")) >= 0,
-        "The LUT selector did not discover a .cube file from the installation LUT folder");
+	const int discoveredIndex = selector->findData(
+		QStringLiteral("luts/Test-Calibration.cube"));
+	require(discoveredIndex >= 0 &&
+		selector->itemText(discoveredIndex) == QStringLiteral("Test-Calibration"),
+		"The LUT selector did not discover a .cube file from the installation LUT folder");
     require(requireControl<QPushButton>(window,
 		QStringLiteral("config.vprenderer.external_hdr_lut.open_folder"))->text() == QStringLiteral("Open LUT folder"),
         "The LUT folder action is missing");
 
 	requireControl<QCheckBox>(window,
 		QStringLiteral("config.vprenderer.external_hdr_3dlut_enabled"))->click();
-    selectData(selector, QStringLiteral("luts/Test-Calibration.cube"));
+	selectData(selector, QStringLiteral("luts/Test-Calibration.cube"));
+	selectData(requireControl<QComboBox>(window,
+		QStringLiteral("config.vprenderer.hdr_external_3dlut_sdr_primaries")),
+		QStringLiteral("REC709"));
+	requireControl<QLineEdit>(window,
+		QStringLiteral("config.vprenderer.hdr_external_3dlut_sdr_peak_nits"))->setText(
+		QStringLiteral("100"));
     save(window);
 	const QByteArray configured = readBytes(path);
 	require(configured.contains(
@@ -2490,7 +2510,7 @@ void testLutSelectorDiscoversInstallationLutFiles()
 		"Could not refresh external LUT selectors after file removal");
 	require(selector->currentData().toString() ==
 		QStringLiteral("luts/Test-Calibration.cube") &&
-		selector->currentText().startsWith(QStringLiteral("Missing:")),
+		selector->currentText() == QStringLiteral("Missing: Test-Calibration"),
 		"A missing selected LUT was silently removed instead of being retained and reported");
 	require(readBytes(path).contains(
 		"hdr_external_3dlut_bt2020: luts/Test-Calibration.cube"),
@@ -2506,8 +2526,8 @@ void testInheritedExternalHdrModeUsesEffectiveControlState()
 		"[vprenderer.rec709]\n"
 		"hdr_tone_mapping_mode: external_3dlut\n"
 		"hdr_external_3dlut_bt2020: luts/Missing-HDR.cube\n"
-		"hdr_output_metadata_primaries: BT2020\n"
-		"hdr_output_metadata_peak_nits: 1000\n";
+		"hdr_external_3dlut_sdr_primaries: REC709\n"
+		"hdr_external_3dlut_sdr_peak_nits: 100\n";
 	require(configuration.contains("[vprenderer.rec709]\n"),
 		"Could not locate inherited external HDR profile fixture baseline");
 	configuration.replace("[vprenderer.rec709]\n", baseline);

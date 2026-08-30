@@ -1,0 +1,14 @@
+TITLE "VP Test Grayscale HDR-to-SDR LUT - not for calibration"
+# Synthetic acceptance fixture. Any colored input becomes neutral RGB.
+LUT_3D_SIZE 2
+DOMAIN_MIN 0.0 0.0 0.0
+DOMAIN_MAX 1.0 1.0 1.0
+
+0.0000 0.0000 0.0000
+0.2126 0.2126 0.2126
+0.7152 0.7152 0.7152
+0.9278 0.9278 0.9278
+0.0722 0.0722 0.0722
+0.2848 0.2848 0.2848
+0.7874 0.7874 0.7874
+1.0000 1.0000 1.0000

@@ -54,6 +54,18 @@ namespace LibplaceboExternalHdrLut
 		bool bt2020 = false;
 	};
 
+	struct SdrOutputReference
+	{
+		Primaries primaries = Primaries::UNKNOWN;
+		double peakNits = 0.0;
+
+		bool Valid() const
+		{
+			return primaries != Primaries::UNKNOWN &&
+				peakNits >= 40.0 && peakNits <= 500.0;
+		}
+	};
+
 	struct Selection
 	{
 		EffectiveMode effectiveMode = EffectiveMode::PIXEL_SHADERS;
@@ -93,11 +105,6 @@ namespace LibplaceboExternalHdrLut
 		if (normalized == "p3_d65") return Primaries::P3_D65;
 		if (normalized == "bt2020") return Primaries::BT2020;
 		return Primaries::UNKNOWN;
-	}
-
-	inline bool IsValidMetadataPeakNits(double peakNits)
-	{
-		return peakNits >= 1.0 && peakNits <= 10000.0;
 	}
 
 	inline Selection Select(ToneMappingMode mode, bool inputIsPq,

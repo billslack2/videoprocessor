@@ -32,10 +32,9 @@ vprenderer.quality	balanced
 vprenderer.quality	high
 vprenderer.hdr_tone_mapping_mode	pixel_shaders
 vprenderer.hdr_tone_mapping_mode	external_3dlut
-vprenderer.hdr_tone_mapping_mode	passthrough
-vprenderer.hdr_output_metadata_primaries	BT709
-vprenderer.hdr_output_metadata_primaries	P3_D65
-vprenderer.hdr_output_metadata_primaries	BT2020
+vprenderer.hdr_external_3dlut_sdr_primaries	REC709
+vprenderer.hdr_external_3dlut_sdr_primaries	P3_D65
+vprenderer.hdr_external_3dlut_sdr_primaries	BT2020
 vprenderer.tone_mapping	AUTO
 vprenderer.tone_mapping	spline
 vprenderer.tone_mapping	bt2390

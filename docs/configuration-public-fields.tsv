@@ -49,8 +49,8 @@ vprenderer.hdr_tone_mapping_mode	vprenderer-external-hdr-lut	VP Renderer HDR	no
 vprenderer.hdr_external_3dlut_bt709	vprenderer-external-hdr-lut	VP Renderer HDR	no
 vprenderer.hdr_external_3dlut_p3_d65	vprenderer-external-hdr-lut	VP Renderer HDR	no
 vprenderer.hdr_external_3dlut_bt2020	vprenderer-external-hdr-lut	VP Renderer HDR	no
-vprenderer.hdr_output_metadata_primaries	vprenderer-external-hdr-lut	VP Renderer HDR	no
-vprenderer.hdr_output_metadata_peak_nits	vprenderer-external-hdr-lut	VP Renderer HDR	no
+vprenderer.hdr_external_3dlut_sdr_primaries	vprenderer-external-hdr-lut	VP Renderer HDR	no
+vprenderer.hdr_external_3dlut_sdr_peak_nits	vprenderer-external-hdr-lut	VP Renderer HDR	no
 vprenderer.tone_mapping	vprenderer-tone-mapping	VP Renderer	no
 vprenderer.gamut_mapping	vprenderer-gamut-mapping	VP Renderer	no
 vprenderer.peak_detection	vprenderer-peak-detection	VP Renderer	no
@@ -104,6 +104,7 @@ vprenderer.viewport.<variant>.subtitle_target_buffer_pixels	viewport-subtitle-ta
 vprenderer.zoom.<variant>.hdr_peak_analysis_picture_only	zoom-hdr-peak-analysis-picture-only	VP Renderer Zoom	no
 vprenderer.zoom.<variant>.hdr_peak_analysis_motion_compensation	zoom-hdr-peak-analysis-motion-compensation	VP Renderer Zoom	no
 vprenderer.zoom.<variant>.hdr_peak_analysis_height_percent	zoom-hdr-peak-analysis-height-percent	VP Renderer Zoom	no
+vprenderer.zoom.<variant>.hdr_peak_analysis_position	zoom-hdr-peak-analysis-position	VP Renderer Zoom	no
 shader.<group>.type	shader-group-type	Shader selection	no
 shader.<group>.when	shader-group-when	Shader selection	no
 shader.<group>.shortcut	shader-group-shortcut	Shader selection	no

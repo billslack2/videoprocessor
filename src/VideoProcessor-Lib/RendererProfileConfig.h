@@ -500,10 +500,10 @@ namespace RendererProfileConfig
 				// Keep legacy passthrough text loadable; runtime deliberately resolves
 				// it to the internal tone mapper while the UI does not expose it.
 				return IsChoice(value, { "pixel_shaders", "passthrough", "external_3dlut" });
-			if (key == "hdr_output_metadata_primaries")
-				return IsChoice(value, { "bt709", "p3_d65", "bt2020" });
-			if (key == "hdr_output_metadata_peak_nits")
-				return IsNumberInRange(value, 1.0, 10000.0);
+			if (key == "hdr_external_3dlut_sdr_primaries")
+				return IsChoice(value, { "rec709", "p3_d65", "bt2020" });
+			if (key == "hdr_external_3dlut_sdr_peak_nits")
+				return IsNumberInRange(value, 40.0, 500.0);
 			if (key == "hdr_external_3dlut_bt709" ||
 				key == "hdr_external_3dlut_p3_d65" ||
 				key == "hdr_external_3dlut_bt2020")
@@ -794,6 +794,18 @@ namespace RendererProfileConfig
 		if (!hasSlot)
 		{
 			error = "[" + section + "] external_3dlut requires at least one hdr_external_3dlut_* slot";
+			return false;
+		}
+		if (profile.settings.find("hdr_external_3dlut_sdr_primaries") ==
+			profile.settings.end())
+		{
+			error = "[" + section + "] external_3dlut requires hdr_external_3dlut_sdr_primaries";
+			return false;
+		}
+		if (profile.settings.find("hdr_external_3dlut_sdr_peak_nits") ==
+			profile.settings.end())
+		{
+			error = "[" + section + "] external_3dlut requires hdr_external_3dlut_sdr_peak_nits";
 			return false;
 		}
 		// External HDR LUT mode already owns the target transform. Preserve an

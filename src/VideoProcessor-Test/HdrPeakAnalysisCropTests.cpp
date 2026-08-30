@@ -11,7 +11,7 @@ namespace Tests
 	TEST_CLASS(HdrPeakAnalysisCropTests)
 	{
 	public:
-		TEST_METHOD(ExternalHdrLutCarrierDisablesPeakAnalysisForItsFrame)
+		TEST_METHOD(ExternalHdrLutOwnershipDisablesPeakAnalysisForItsFrame)
 		{
 			Assert::IsTrue(HdrPeakAnalysisCrop::PeakDetectionRunsForFrame(
 				true, false));

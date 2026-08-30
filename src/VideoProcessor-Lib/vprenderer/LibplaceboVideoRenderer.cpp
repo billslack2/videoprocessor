@@ -974,9 +974,7 @@ namespace
 		LibplaceboExternalHdrLut::SlotDeclaration externalHdrBt709;
 		LibplaceboExternalHdrLut::SlotDeclaration externalHdrP3D65;
 		LibplaceboExternalHdrLut::SlotDeclaration externalHdrBt2020;
-		LibplaceboExternalHdrLut::Primaries externalHdrOutputMetadataPrimaries =
-			LibplaceboExternalHdrLut::Primaries::UNKNOWN;
-		double externalHdrOutputMetadataPeakNits = 0.0;
+		LibplaceboExternalHdrLut::SdrOutputReference externalHdrSdrOutput;
 		std::string lutPath;
 		bool lutPathRejected = false;
 		std::string lutConstrainedBaseDirectory;
@@ -1099,6 +1097,8 @@ namespace
 			<< settings.externalHdrBt2020.path << '|'
 			<< settings.externalHdrBt2020.constrainedBaseDirectory << '|'
 			<< settings.externalHdrBt2020.pathRejected << '|'
+			<< static_cast<int>(settings.externalHdrSdrOutput.primaries) << '|'
+			<< settings.externalHdrSdrOutput.peakNits << '|'
 			<< settings.lutPath << '|'
 			<< settings.lutPathRejected << '|' << settings.lutReferencePrimaries << '|'
 			<< settings.lutReferenceTransfer << '|' << settings.lutReferenceRange << '|'
@@ -1935,6 +1935,20 @@ namespace
 			settings.externalHdrP3D65);
 		readExternalHdrSlot("hdr_external_3dlut_bt2020",
 			settings.externalHdrBt2020);
+		if (config.TryGetString(rule.section,
+			"hdr_external_3dlut_sdr_primaries", raw))
+		{
+			const auto parsed = LibplaceboExternalHdrLut::ParsePrimaries(raw);
+			if (parsed != LibplaceboExternalHdrLut::Primaries::UNKNOWN)
+				settings.externalHdrSdrOutput.primaries = parsed;
+		}
+		if (config.TryGetString(rule.section,
+			"hdr_external_3dlut_sdr_peak_nits", raw))
+		{
+			double parsed = 0.0;
+			if (ParseDouble(raw, parsed) && parsed >= 40.0 && parsed <= 500.0)
+				settings.externalHdrSdrOutput.peakNits = parsed;
+		}
 		const char* lutContractKeys[] = {
 			"lut_reference_primaries", "lut_reference_transfer",
 			"lut_reference_range", "lut_reference_nits",
@@ -2457,6 +2471,19 @@ namespace
 			settings.externalHdrP3D65);
 		readExternalHdrSlot("hdr_external_3dlut_bt2020",
 			settings.externalHdrBt2020);
+		if (TryGetDisplayString(config,
+			"hdr_external_3dlut_sdr_primaries", rawValue))
+		{
+			settings.externalHdrSdrOutput.primaries =
+				LibplaceboExternalHdrLut::ParsePrimaries(rawValue);
+		}
+		if (TryGetDisplayString(config,
+			"hdr_external_3dlut_sdr_peak_nits", rawValue))
+		{
+			double parsed = 0.0;
+			if (ParseDouble(rawValue, parsed) && parsed >= 40.0 && parsed <= 500.0)
+				settings.externalHdrSdrOutput.peakNits = parsed;
+		}
 		if (TryGetDisplayString(config, "lut", rawValue))
 			settings.lutPath = ResolveConfigRelativePath(
 				config, rawValue, &settings.lutPathRejected,
@@ -5125,13 +5152,13 @@ struct LibplaceboVideoRenderer::Impl
 		uint64_t frameGeneration, uint64_t sourceSequence,
 		const HdrPeakAnalysisCrop::TrustedPicture& trustedPicture,
 		const pl_rect2df& presentationCrop, double motionProtectionPixels,
-		bool externalHdrCarrierArmed)
+		bool externalLutOwnsToneMapping)
 	{
 		const bool peakDetectionConfigured =
 			renderParams.peak_detect_params != nullptr;
 		const bool peakDetectionActive =
 			HdrPeakAnalysisCrop::PeakDetectionRunsForFrame(
-				peakDetectionConfigured, externalHdrCarrierArmed);
+				peakDetectionConfigured, externalLutOwnsToneMapping);
 		if (peakDetectionConfigured)
 			peakDetectParams.analysis_crop = {};
 
@@ -6957,7 +6984,7 @@ struct LibplaceboVideoRenderer::Impl
 			"Loaded; eligible for HDR-to-SDR conversion" :
 			"Internal fallback; no usable Cube";
 		DebugLog::Log(
-			"external HDR 3D LUT generation committed: transaction=%llu resource_generation=%llu mode=%s status=%s output=SDR",
+			"external HDR 3D LUT generation committed: transaction=%llu resource_generation=%llu mode=%s status=%s output=SDR sdr_primaries=%d sdr_peak_nits=%.1f hdr_signaling=disabled",
 			static_cast<unsigned long long>(transactionGeneration),
 			static_cast<unsigned long long>(
 				externalHdrLuts.ResourceGeneration()),
@@ -6967,7 +6994,9 @@ struct LibplaceboVideoRenderer::Impl
 			(settings.externalHdrToneMappingMode ==
 				LibplaceboExternalHdrLut::ToneMappingMode::PASS_THROUGH ?
 				"passthrough" : "pixel_shaders"),
-			externalHdrLutStatus.c_str());
+			externalHdrLutStatus.c_str(),
+			static_cast<int>(settings.externalHdrSdrOutput.primaries),
+			settings.externalHdrSdrOutput.peakNits);
 	}
 
 	bool LoadDisplayLut(
@@ -7783,7 +7812,11 @@ struct LibplaceboVideoRenderer::Impl
 			current.externalHdrBt2020.constrainedBaseDirectory !=
 				next.externalHdrBt2020.constrainedBaseDirectory ||
 			current.externalHdrBt2020.pathRejected !=
-				next.externalHdrBt2020.pathRejected,
+				next.externalHdrBt2020.pathRejected ||
+			current.externalHdrSdrOutput.primaries !=
+				next.externalHdrSdrOutput.primaries ||
+			current.externalHdrSdrOutput.peakNits !=
+				next.externalHdrSdrOutput.peakNits,
 			"external_hdr_3dlut");
 		changed(current.lutPath != next.lutPath ||
 			current.lutPathRejected != next.lutPathRejected ||
@@ -8053,10 +8086,9 @@ struct LibplaceboVideoRenderer::Impl
 				"libplacebo queued live profile update was rejected on render thread");
 			return;
 		}
-		else
-		{
-			activeApplicationProfileGeneration = applicationProfileGeneration;
-		}
+		ApplyViewportSettingsLocked(*pending);
+		DebugLog::Log(
+			"libplacebo queued profile and viewport settings applied on render thread");
 	}
 
 	void SetShaderStatus(const std::string& status)
@@ -10011,6 +10043,7 @@ struct LibplaceboVideoRenderer::Impl
 			LibplaceboExternalHdrLut::FromLibplaceboPrimaries(
 				image.color.primaries));
 		const bool externalHdrLutReady =
+			activeSettings.externalHdrSdrOutput.Valid() &&
 			externalHdrResolution.selection.useExternalLut &&
 			externalHdrResolution.lut &&
 			externalHdrLuts.IsCurrent(externalHdrResolution) &&
@@ -11530,7 +11563,7 @@ struct LibplaceboVideoRenderer::Impl
 			&trustedActivePicture,
 			&hdrTrustedPicture);
 		const bool externalHdrLutWillAttach = externalHdrLutReady &&
-			LibplaceboExternalHdrLut::IsSdrOutputTarget(true, target);
+			LibplaceboExternalHdrLut::IsSdrOutputTarget(target);
 		const HdrPeakAnalysisCrop::Decision hdrPeakAnalysisDecision =
 			ApplyHdrPeakAnalysisCrop(frameGeneration, sourceSequence,
 				hdrTrustedPicture, renderImage.crop,
@@ -11901,17 +11934,14 @@ struct LibplaceboVideoRenderer::Impl
 		struct pl_render_params frameRenderParams{};
 		struct pl_custom_lut frameExternalHdrLut{};
 		struct pl_color_map_params frameExternalHdrColorMap{};
-		// Deliberately false until the VP-owned R10/PQ/BT.2020 carrier and HDR10
-		// metadata transaction have both been applied and verified. Keeping the
-		// projection call here freezes the exact no-Commit frame-local seam without
-		// allowing a loaded Cube to affect the current SDR presentation path.
-		constexpr bool externalHdrCarrierArmed = false;
+		// The selected Cube owns HDR-to-SDR tone/gamut conversion for this frame.
+		// Presentation remains on the ordinary SDR target used by the internal path.
 		const auto externalHdrProjection =
 			LibplaceboExternalHdrLut::PrepareFrameProjection(
 				externalHdrLuts,
 				expectedExternalHdrLutTransactionGeneration,
 				activeSettings.externalHdrToneMappingMode,
-				true,
+				activeSettings.externalHdrSdrOutput,
 				LibplaceboExternalHdrLut::FromLibplaceboPrimaries(
 					renderImage.color.primaries),
 				renderImage.color, target, renderParams,
@@ -11925,12 +11955,14 @@ struct LibplaceboVideoRenderer::Impl
 				<< externalHdrProjection.attached << '|'
 				<< static_cast<int>(externalHdrProjection.resolved.selection.slot) << '|'
 				<< externalHdrProjection.resolved.selection.requiresExplicitPrimariesTransform
+				<< '|' << static_cast<int>(activeSettings.externalHdrSdrOutput.primaries)
+				<< '|' << activeSettings.externalHdrSdrOutput.peakNits
 				<< '|' << externalHdrProjection.resolved.selection.reason;
 			if (decision.str() != externalHdrFrameDecisionSignature)
 			{
 				externalHdrFrameDecisionSignature = decision.str();
 				DebugLog::Log(
-					"external HDR-to-SDR frame decision: transaction=%llu resource_generation=%llu attached=%d slot=%d preconvert=%d reason=%s",
+					"external HDR-to-SDR frame decision: transaction=%llu resource_generation=%llu attached=%d slot=%d preconvert=%d sdr_primaries=%d sdr_peak_nits=%.1f hdr_signaling=disabled reason=%s",
 					static_cast<unsigned long long>(
 						externalHdrProjection.resolved.transactionGeneration),
 					static_cast<unsigned long long>(
@@ -11940,6 +11972,8 @@ struct LibplaceboVideoRenderer::Impl
 						externalHdrProjection.resolved.selection.slot),
 					externalHdrProjection.resolved.selection.
 						requiresExplicitPrimariesTransform ? 1 : 0,
+					static_cast<int>(activeSettings.externalHdrSdrOutput.primaries),
+					activeSettings.externalHdrSdrOutput.peakNits,
 					externalHdrProjection.resolved.selection.reason);
 			}
 		}

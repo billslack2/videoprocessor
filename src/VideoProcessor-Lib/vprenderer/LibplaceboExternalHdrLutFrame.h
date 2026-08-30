@@ -26,6 +26,17 @@ namespace LibplaceboExternalHdrLut
 		}
 	}
 
+	inline enum pl_color_primaries OutputPrimaries(Primaries primaries)
+	{
+		switch (primaries)
+		{
+		case Primaries::BT709: return PL_COLOR_PRIM_BT_709;
+		case Primaries::P3_D65: return PL_COLOR_PRIM_DISPLAY_P3;
+		case Primaries::BT2020: return PL_COLOR_PRIM_BT_2020;
+		default: return PL_COLOR_PRIM_UNKNOWN;
+		}
+	}
+
 	inline Primaries FromLibplaceboPrimaries(enum pl_color_primaries primaries)
 	{
 		switch (primaries)
@@ -37,10 +48,9 @@ namespace LibplaceboExternalHdrLut
 		}
 	}
 
-	inline bool IsSdrOutputTarget(bool sdrOutputRole,
-		const struct pl_frame& target)
+	inline bool IsSdrOutputTarget(const struct pl_frame& target)
 	{
-		return sdrOutputRole && target.repr.sys == PL_COLOR_SYSTEM_RGB &&
+		return target.repr.sys == PL_COLOR_SYSTEM_RGB &&
 			target.color.transfer != PL_COLOR_TRC_UNKNOWN &&
 			target.color.transfer != PL_COLOR_TRC_PQ &&
 			target.color.transfer != PL_COLOR_TRC_HLG;
@@ -55,7 +65,7 @@ namespace LibplaceboExternalHdrLut
 		const ActiveSet& activeSet,
 		uint64_t expectedTransactionGeneration,
 		ToneMappingMode requestedMode,
-		bool sdrOutputRole,
+		SdrOutputReference outputReference,
 		Primaries sourcePrimaries,
 		const struct pl_color_space& sourceColor,
 		const struct pl_frame& sharedTarget,
@@ -70,14 +80,13 @@ namespace LibplaceboExternalHdrLut
 		frameParams = sharedParams;
 		FrameProjection projection;
 		const bool inputIsPq = sourceColor.transfer == PL_COLOR_TRC_PQ;
-		const bool targetIsSdrRgb = IsSdrOutputTarget(
-			sdrOutputRole, sharedTarget);
+		const bool targetIsSdrRgb = IsSdrOutputTarget(sharedTarget);
 		projection.resolved = activeSet.Resolve(
 			expectedTransactionGeneration,
-			inputIsPq && targetIsSdrRgb ? requestedMode :
+			inputIsPq && targetIsSdrRgb && outputReference.Valid() ? requestedMode :
 				ToneMappingMode::PIXEL_SHADERS,
 			inputIsPq, sourcePrimaries);
-		if (!inputIsPq || !targetIsSdrRgb ||
+		if (!inputIsPq || !targetIsSdrRgb || !outputReference.Valid() ||
 			!projection.resolved.selection.useExternalLut ||
 			!projection.resolved.lut ||
 			!activeSet.IsCurrent(projection.resolved))
@@ -98,7 +107,10 @@ namespace LibplaceboExternalHdrLut
 			frameColorMapParams.gamut_mapping = fallbackGamutMapper;
 			frameParams.color_map_params = &frameColorMapParams;
 		}
-		frameLut.color_out = sharedTarget.color;
+		frameTarget.color.primaries = OutputPrimaries(outputReference.primaries);
+		frameTarget.color.hdr.max_luma =
+			static_cast<float>(outputReference.peakNits);
+		frameLut.color_out = frameTarget.color;
 		frameParams.lut = &frameLut;
 		frameParams.lut_type = PL_LUT_CONVERSION;
 		frameParams.peak_detect_params = nullptr;
