@@ -2844,74 +2844,51 @@ namespace
 	}
 
 	bool QuerySupportedRefreshRates(
-		const DISPLAYCONFIG_PATH_INFO& activePath,
+		const std::wstring& displayDeviceName,
 		UINT32 sourceWidth,
 		UINT32 sourceHeight,
 		std::vector<DISPLAYCONFIG_RATIONAL>& refreshRates)
 	{
 		refreshRates.clear();
-		for (int attempt = 0; attempt < 3; ++attempt)
-		{
-			UINT32 pathCount = 0;
-			UINT32 modeCount = 0;
-			if (GetDisplayConfigBufferSizes(
-				QDC_ALL_PATHS, &pathCount, &modeCount) != ERROR_SUCCESS ||
-				pathCount == 0)
-			{
-				return false;
-			}
-			std::vector<DISPLAYCONFIG_PATH_INFO> paths(pathCount);
-			std::vector<DISPLAYCONFIG_MODE_INFO> modes(modeCount);
-			const LONG result = QueryDisplayConfig(QDC_ALL_PATHS,
-				&pathCount, paths.data(), &modeCount, modes.data(), nullptr);
-			if (result == ERROR_INSUFFICIENT_BUFFER)
-				continue;
-			if (result != ERROR_SUCCESS)
-				return false;
+		if (displayDeviceName.empty())
+			return false;
 
-			for (UINT32 index = 0; index < pathCount; ++index)
+		// QDC_ALL_PATHS returns the paths in the current topology.  It does not
+		// enumerate every timing that the target can select, so using it here
+		// silently reduces the candidate set to the active refresh rate.  The
+		// Win32 display-mode enumeration is the API that exposes the selectable
+		// modes for this GDI display.  Its refresh member is nominal/integer,
+		// which is sufficient for choosing the mode; SetDisplayConfig resolves
+		// the driver's precise target timing when it applies the selected mode.
+		for (DWORD index = 0;; ++index)
+		{
+			DEVMODEW candidate{};
+			candidate.dmSize = sizeof(candidate);
+			if (!EnumDisplaySettingsExW(
+				displayDeviceName.c_str(), index, &candidate, 0))
+				break;
+			if (candidate.dmDisplayFrequency == 0 ||
+				(sourceWidth > 0 && sourceHeight > 0 &&
+					(candidate.dmPelsWidth != sourceWidth ||
+						candidate.dmPelsHeight != sourceHeight)))
 			{
-				const DISPLAYCONFIG_PATH_INFO& candidate = paths[index];
-				if (candidate.sourceInfo.id != activePath.sourceInfo.id ||
-					candidate.sourceInfo.adapterId.HighPart !=
-						activePath.sourceInfo.adapterId.HighPart ||
-					candidate.sourceInfo.adapterId.LowPart !=
-						activePath.sourceInfo.adapterId.LowPart ||
-					!candidate.targetInfo.targetAvailable)
-				{
-					continue;
-				}
-				if (sourceWidth > 0 && sourceHeight > 0)
-				{
-					const UINT32 sourceModeIndex = candidate.sourceInfo.modeInfoIdx;
-					if (sourceModeIndex == DISPLAYCONFIG_PATH_MODE_IDX_INVALID ||
-						sourceModeIndex >= modeCount ||
-						modes[sourceModeIndex].infoType !=
-							DISPLAYCONFIG_MODE_INFO_TYPE_SOURCE ||
-						modes[sourceModeIndex].sourceMode.width != sourceWidth ||
-						modes[sourceModeIndex].sourceMode.height != sourceHeight)
-					{
-						continue;
-					}
-				}
-				const DISPLAYCONFIG_RATIONAL& rate = candidate.targetInfo.refreshRate;
-				if (rate.Numerator == 0 || rate.Denominator == 0)
-					continue;
-				bool duplicate = false;
-				for (const DISPLAYCONFIG_RATIONAL& existing : refreshRates)
-					if (DisplayRefreshRatesExactlyEqual(
-						{ existing.Numerator, existing.Denominator },
-						{ rate.Numerator, rate.Denominator }))
-					{
-						duplicate = true;
-						break;
-					}
-				if (!duplicate)
-					refreshRates.push_back(rate);
+				continue;
 			}
-			return !refreshRates.empty();
+			const DISPLAYCONFIG_RATIONAL rate{
+				candidate.dmDisplayFrequency, 1 };
+			bool duplicate = false;
+			for (const DISPLAYCONFIG_RATIONAL& existing : refreshRates)
+				if (DisplayRefreshRatesExactlyEqual(
+					{ existing.Numerator, existing.Denominator },
+					{ rate.Numerator, rate.Denominator }))
+				{
+					duplicate = true;
+					break;
+				}
+			if (!duplicate)
+				refreshRates.push_back(rate);
 		}
-		return false;
+		return !refreshRates.empty();
 	}
 
 	LONG ApplyDisplayRefreshRate(
@@ -3020,7 +2997,7 @@ namespace
 			const BOOL currentModeKnown = EnumDisplaySettingsW(
 				m_displayDeviceName.c_str(), ENUM_CURRENT_SETTINGS, &currentMode);
 			std::vector<DISPLAYCONFIG_RATIONAL> supportedRefreshRates;
-			if (!QuerySupportedRefreshRates(paths[pathIndex],
+			if (!QuerySupportedRefreshRates(m_displayDeviceName,
 				currentModeKnown ? currentMode.dmPelsWidth : 0,
 				currentModeKnown ? currentMode.dmPelsHeight : 0,
 				supportedRefreshRates))

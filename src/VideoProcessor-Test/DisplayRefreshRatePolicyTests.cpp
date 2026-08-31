@@ -244,6 +244,22 @@ namespace Tests
 			Assert::AreEqual(1u, selection.selected.denominator);
 		}
 
+		TEST_METHOD(ModeSelectorAcceptsIntegerWindowsModeForFractionalInput)
+		{
+			// EnumDisplaySettings reports the selectable 59.94 family as its
+			// nominal 60 Hz value, while the applied display timing remains a
+			// driver-provided rational such as 60000/1001.
+			const DisplayRefreshModeSelection selection =
+				SelectDisplayRefreshMode({ 60000, 1001 },
+					{ { 75, 1 }, { 60, 1 } });
+
+			Assert::AreEqual(
+				static_cast<int>(DisplayRefreshModeSelectionPath::ClosestInRange),
+				static_cast<int>(selection.path));
+			Assert::AreEqual(60u, selection.selected.numerator);
+			Assert::AreEqual(1u, selection.selected.denominator);
+		}
+
 		TEST_METHOD(ModeSelectorRejectsUnrelatedFallbackFamilies)
 		{
 			const DisplayRefreshModeSelection selection =
