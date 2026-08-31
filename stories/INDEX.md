@@ -189,7 +189,7 @@ they must not contain requirements that are absent from this file.
 | VP-0151 | Backlog | Reliable explicit BT.2020 exit signaling |
 | VP-0152 | Done | Coordinated profile selection, actions, and on-screen feedback |
 | VP-0153 | Done | Reset queues after every display transition |
-| VP-0154 | Review | Automatic black-bar crop and aspect-limit fill |
+| VP-0154 | Done | Automatic black-bar crop and aspect-limit fill |
 | VP-0155 | Done | Honor vertical picture alignment for configured screen viewports |
 | VP-0156 | Review | Eliminate transient four-sided bars during live Screen and Zoom profile changes |
 | VP-0157 | Review | Expose direct GPU sampling for VP Renderer downscaling |

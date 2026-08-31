@@ -2,7 +2,7 @@
 
 ## Status
 
-Review (2026-08-28). Implementation was completed on
+Done (2026-08-31). Implementation was completed on
 `codex/vp-0154-black-bar-crop-limit` at `383762df`, rebased on current
 `v1.3.001-beta` tip `85abed0`. Config now has two independent controls, both
 off by default: **Crop narrower content to fill screen** and **Crop wider
@@ -22,9 +22,9 @@ verified x64 Release package from `ee17077` was deployed to
 `C:\Videoprocessor\vp` for operator testing; its host and renderer hashes
 matched the package, and the active `VideoProcessor.cfg` remained unchanged.
 
-The tested integration containing VP-0154 is now `v1.3.002-beta` at
-`3d23a55b`; that branch became the repository default on 2026-08-28. The story
-remains in Review pending operator acceptance.
+The first tested integration containing VP-0154 was `v1.3.002-beta` at
+`3d23a55b`; that branch became the repository default on 2026-08-28 and the
+story remained in Review at that stage pending operator acceptance.
 
 The latest review commits also make newly entered profile overrides immediately
 use the normal bright field colour, label the profile currently being edited as
@@ -65,6 +65,29 @@ Release build completed, Config tests passed, and the native suite passed
 The canonical 57-file release manifest produced and verified
 `VideoProcessor-v1.3.001-beta.zip`; it contains only
 `VideoProcessor.cfg.example`, never the operator's active configuration.
+
+Operator-acceptance follow-ups on `v1.3.004-beta` add the fixed crop aspect
+control and complete its runtime contract. Commits `a7fcb416`, `82fe5fe7`,
+`79bcc2d4`, `3a81224b`, `9784af22`, and `5e20e71d` add the UI/profile setting,
+fixed source-aspect crop, black matte and visible-picture OSD placement, and
+atomic transition/reset state. Commit `5d266d6a` keeps the fixed crop
+authoritative through detector timeouts and NLS ACTIVE/SAFE_FIT geometry while
+preserving final-visible-picture HDR analysis. Final acceptance commit
+`2ecc3d39` separates fixed aspect from automatic crop: menu/subtitle geometry
+may reposition the fixed view only when automatic crop or **Keep subtitles
+inside screen bounds** is explicitly enabled. With both controls off, the
+fixed rectangle remains anchored.
+
+`v1.3.004-beta` was fast-forwarded to `2ecc3d39` and verified as the exact
+remote integration tip. The final x64 Release renderer build passed all seven
+focused transition regressions and all 206 broader crop, HDR-analysis,
+render-parameter, and NLS tests. It was deployed to
+`C:\Videoprocessor\vp\vprenderer\VideoProcessorVPRenderer.dll` with SHA-256
+`EE0DD57899670A603966784905DD096BB96F6FC94CF875945D4D0FB05DA8794D`;
+the prior renderer is recoverable from
+`C:\Videoprocessor\vp\deployment-backups\vp0163-fixed-subtitle-gate-20260831-102835`.
+The operator confirmed the final behavior looked correct, completing
+acceptance.
 
 ## User story
 
