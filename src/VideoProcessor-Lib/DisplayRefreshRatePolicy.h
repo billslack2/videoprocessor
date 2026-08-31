@@ -88,6 +88,13 @@ struct DisplayRefreshModeSelection
 	double differenceHz = 0.0;
 };
 
+enum class RefreshRateSwitchMode
+{
+	Never,
+	FullscreenOnly,
+	Always
+};
+
 double DisplayRefreshRateHz(const DisplayRefreshRational& rate);
 
 // Select a display mode in two intentional passes. The first pass accepts an
@@ -113,6 +120,11 @@ bool DisplayRefreshRatesEquivalentForRestore(
 // Refresh switching is display-global. Only a top-level presentation surface
 // may own that transition; an embedded preview must not change desktop timing
 // while a fullscreen renderer is being retired or replaced.
+bool ShouldSwitchRefreshRateForPresentationTarget(bool isChildWindow,
+	RefreshRateSwitchMode mode);
+
+// Compatibility overload for existing callers/tests: the former checked
+// setting maps to the new Fullscreen Only policy.
 bool ShouldSwitchRefreshRateForPresentationTarget(bool isChildWindow);
 
 class DisplayRefreshRestoreVerifier

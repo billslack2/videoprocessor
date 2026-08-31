@@ -890,6 +890,22 @@ namespace
 		return true;
 	}
 
+	bool ParseRefreshRateSwitchMode(const std::string& raw,
+		RefreshRateSwitchMode& mode)
+	{
+		const std::string normalized = ConfigFile::NormalizeName(raw);
+		if (normalized == "never" || normalized == "false" || normalized == "off" || normalized == "0")
+			mode = RefreshRateSwitchMode::Never;
+		else if (normalized == "always")
+			mode = RefreshRateSwitchMode::Always;
+		else if (normalized == "fullscreen_only" || normalized == "full_screen_only" ||
+			normalized == "true" || normalized == "on" || normalized == "1")
+			mode = RefreshRateSwitchMode::FullscreenOnly;
+		else
+			return false;
+		return true;
+	}
+
 	struct RefreshRateCommandRule
 	{
 		int minimumRate = 0;
@@ -906,6 +922,8 @@ namespace
 		// current program instead of requesting a new variant.
 		ProfileUpdateMode profileUpdateMode = ProfileUpdateMode::REBUILD;
 		bool switchRefreshRate = true;
+		RefreshRateSwitchMode refreshRateSwitchMode =
+			RefreshRateSwitchMode::FullscreenOnly;
 		std::string quality = "high";
 		std::string toneMapping = "auto";
 		std::string gamutMapping = "auto";
@@ -1008,7 +1026,7 @@ namespace
 		stream.precision(17);
 		stream
 			<< settings.sdrTargetNits << '|' << settings.sdrBlackNits << '|'
-			<< settings.switchRefreshRate << '|' << settings.quality << '|'
+			<< static_cast<int>(settings.refreshRateSwitchMode) << '|' << settings.quality << '|'
 			<< settings.toneMapping << '|' << settings.gamutMapping << '|'
 			<< static_cast<int>(settings.peakDetection) << '|'
 			<< settings.hasContrastRecovery << '|' << settings.contrastRecovery << '|'
@@ -1718,10 +1736,11 @@ namespace
 					settings.sdrBlackNits = value;
 			}
 		}
-		if (config.TryGetString(rule.section, "switch_refresh_rate", raw))
+		if (config.TryGetString(rule.section, "switch_refresh_rate", raw) &&
+			ParseRefreshRateSwitchMode(raw, settings.refreshRateSwitchMode))
 		{
-			bool value = false;
-			if (config.TryGetBool(rule.section, "switch_refresh_rate", value)) settings.switchRefreshRate = value;
+			settings.switchRefreshRate =
+				settings.refreshRateSwitchMode != RefreshRateSwitchMode::Never;
 		}
 		readChoice("quality", settings.quality, { "fast", "balanced", "high" });
 		readChoice("tone_mapping", settings.toneMapping, { "auto", "spline", "bt2390", "st2094-40", "reinhard" });
@@ -2080,13 +2099,17 @@ namespace
 		}
 
 		if (TryGetDisplayString(config, "switch_refresh_rate", rawValue) &&
-			!TryGetDisplayBool(config, "switch_refresh_rate", settings.switchRefreshRate))
+			!ParseRefreshRateSwitchMode(rawValue, settings.refreshRateSwitchMode))
 		{
 			DebugLog::Log(
-				"libplacebo: invalid switch_refresh_rate value '%s'; using true",
+				"libplacebo: invalid switch_refresh_rate value '%s'; using fullscreen_only",
 				rawValue.c_str());
 			settings.switchRefreshRate = true;
+			settings.refreshRateSwitchMode = RefreshRateSwitchMode::FullscreenOnly;
 		}
+		else
+			settings.switchRefreshRate =
+				settings.refreshRateSwitchMode != RefreshRateSwitchMode::Never;
 
 		settings.quality = ReadChoice(
 			config, "quality", "high", { "fast", "balanced", "high" });
@@ -2484,11 +2507,13 @@ namespace
 				ProfileUpdateMode::LIVE : ProfileUpdateMode::REBUILD;
 		}
 		if (rendererConfig.TryGetPolicyString(
-			"switch_refresh_rate", rawValue) &&
-			!rendererConfig.TryGetPolicyBool(
-				"switch_refresh_rate", settings.switchRefreshRate))
+			"switch_refresh_rate", rawValue))
 		{
-			DebugLog::Log("libplacebo: invalid switch_refresh_rate policy '%s'; retaining display setting", rawValue.c_str());
+			if (!ParseRefreshRateSwitchMode(rawValue, settings.refreshRateSwitchMode))
+				DebugLog::Log("libplacebo: invalid switch_refresh_rate policy '%s'; retaining display setting", rawValue.c_str());
+			else
+				settings.switchRefreshRate =
+					settings.refreshRateSwitchMode != RefreshRateSwitchMode::Never;
 		}
 		if (rendererConfig.TryGetPolicyString(
 			"output_diagnostics", rawValue) &&
@@ -6661,11 +6686,12 @@ struct LibplaceboVideoRenderer::Impl
 		// the desktop timing. Query and select the content rate only after that
 		// transition has completed; an earlier verified no-op could otherwise
 		// leave this newly initialized renderer running at the restored rate.
-		if (ShouldSwitchRefreshRateForPresentationTarget(embeddedPreview))
+		if (ShouldSwitchRefreshRateForPresentationTarget(embeddedPreview,
+			settings.refreshRateSwitchMode))
 		{
 			displayRefreshRate.Switch(videoHwnd, *state, settings);
 		}
-		else if (settings.switchRefreshRate)
+		else if (settings.refreshRateSwitchMode == RefreshRateSwitchMode::FullscreenOnly)
 		{
 			DebugLog::Log(
 				"libplacebo refresh-rate switch skipped: presentation=embedded-child reason=display-global timing belongs to top-level presentation surfaces");
@@ -6850,6 +6876,7 @@ struct LibplaceboVideoRenderer::Impl
 		RendererSettings currentTransport = current;
 		RendererSettings nextTransport = next;
 		currentTransport.switchRefreshRate = next.switchRefreshRate;
+		currentTransport.refreshRateSwitchMode = next.refreshRateSwitchMode;
 		currentTransport.sdrTargetNits = next.sdrTargetNits;
 		currentTransport.sdrBlackNits = next.sdrBlackNits;
 		currentTransport.quality = next.quality;
@@ -6896,7 +6923,7 @@ struct LibplaceboVideoRenderer::Impl
 		};
 		changed(current.sdrTargetNits != next.sdrTargetNits, "sdr_target_nits");
 		changed(current.sdrBlackNits != next.sdrBlackNits, "sdr_black_nits");
-		changed(current.switchRefreshRate != next.switchRefreshRate,
+		changed(current.refreshRateSwitchMode != next.refreshRateSwitchMode,
 			"switch_refresh_rate");
 		changed(current.quality != next.quality, "quality");
 		changed(current.toneMapping != next.toneMapping, "tone_mapping");

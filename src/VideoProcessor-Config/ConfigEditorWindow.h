@@ -121,6 +121,7 @@ private:
     void loadConfiguration();
     void migrateLldvSingleton();
     void migrateSharedRefreshRate();
+	void migrateRefreshRateSwitchMode();
     void migrateSeparatedRendererProfiles();
     void migrateViewportZoomProfiles();
     void loadDiscoveryCache();

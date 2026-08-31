@@ -1735,11 +1735,18 @@ void testRendererProfileSectionsCollapseAndPersist()
 		downscaler->findData(QStringLiteral("none")) < 0 &&
 		downscaler->findData(QStringLiteral("ewa_lanczos")) < 0,
 		"Downscaler choices include a removed or pathologically expensive mode");
-    require(pages->widget(0)->findChild<QCheckBox*>(
-        QStringLiteral("config.general.switch_refresh_rate")) != nullptr &&
-        pages->widget(2)->findChild<QCheckBox*>(
+    QComboBox* refreshRateSwitch = pages->widget(0)->findChild<QComboBox*>(
+        QStringLiteral("config.general.switch_refresh_rate"));
+    require(refreshRateSwitch != nullptr &&
+        refreshRateSwitch->itemData(0).toString() == QStringLiteral("never") &&
+        refreshRateSwitch->itemText(0) == QStringLiteral("Never") &&
+        refreshRateSwitch->itemData(1).toString() == QStringLiteral("fullscreen_only") &&
+        refreshRateSwitch->itemText(1) == QStringLiteral("Full Screen Only") &&
+        refreshRateSwitch->itemData(2).toString() == QStringLiteral("always") &&
+        refreshRateSwitch->itemText(2) == QStringLiteral("Always") &&
+        pages->widget(2)->findChild<QComboBox*>(
         QStringLiteral("config.general.switch_refresh_rate")) == nullptr,
-        "Switch refresh rate was not moved from Renderer Basic to General Display");
+        "Switch refresh rate selector was not moved from Renderer Basic to General Display");
     QComboBox* debanding = requireControl<QComboBox>(window,
         QStringLiteral("config.vprenderer.deband_strength"));
     require(debanding->findData(QStringLiteral("AUTO")) >= 0 &&
@@ -2856,9 +2863,11 @@ void testGeneralInputApplyPreservesBackendOverrides()
     // Keep [general] without an explicit conversion default and save an
     // unrelated General edit. The two backend-specific values must remain
     // independent instead of being flattened into the shared default.
-    QCheckBox* switchRefreshRate = requireControl<QCheckBox>(window,
+    QComboBox* switchRefreshRate = requireControl<QComboBox>(window,
         QStringLiteral("config.general.switch_refresh_rate"));
-    switchRefreshRate->setChecked(!switchRefreshRate->isChecked());
+    const int always = switchRefreshRate->findData(QStringLiteral("always"));
+    require(always >= 0, "The Always refresh-rate switching option is missing");
+    switchRefreshRate->setCurrentIndex(always);
     const QString effectSummary = requireControl<QLabel>(window,
         QStringLiteral("configurationEffectSummary"))->text();
     const std::string effectFailure = QStringLiteral(

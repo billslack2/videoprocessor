@@ -168,9 +168,17 @@ bool DisplayRefreshRatesEquivalentForRestore(
 			RESTORE_EQUIVALENCE_TOLERANCE_HZ);
 }
 
+bool ShouldSwitchRefreshRateForPresentationTarget(bool isChildWindow,
+	RefreshRateSwitchMode mode)
+{
+	return mode == RefreshRateSwitchMode::Always ||
+		(mode == RefreshRateSwitchMode::FullscreenOnly && !isChildWindow);
+}
+
 bool ShouldSwitchRefreshRateForPresentationTarget(bool isChildWindow)
 {
-	return !isChildWindow;
+	return ShouldSwitchRefreshRateForPresentationTarget(isChildWindow,
+		RefreshRateSwitchMode::FullscreenOnly);
 }
 
 

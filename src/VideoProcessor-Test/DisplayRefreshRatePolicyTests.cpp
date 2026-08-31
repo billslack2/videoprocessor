@@ -294,5 +294,17 @@ namespace Tests
 			Assert::IsFalse(
 				ShouldSwitchRefreshRateForPresentationTarget(true));
 		}
+
+		TEST_METHOD(RefreshSwitchModeControlsEmbeddedPresentation)
+		{
+			Assert::IsFalse(ShouldSwitchRefreshRateForPresentationTarget(false,
+				RefreshRateSwitchMode::Never));
+			Assert::IsFalse(ShouldSwitchRefreshRateForPresentationTarget(true,
+				RefreshRateSwitchMode::FullscreenOnly));
+			Assert::IsTrue(ShouldSwitchRefreshRateForPresentationTarget(false,
+				RefreshRateSwitchMode::FullscreenOnly));
+			Assert::IsTrue(ShouldSwitchRefreshRateForPresentationTarget(true,
+				RefreshRateSwitchMode::Always));
+		}
 	};
 }

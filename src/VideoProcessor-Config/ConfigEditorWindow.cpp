@@ -905,6 +905,7 @@ ConfigEditorWindow::ConfigEditorWindow(QString configPath, quintptr ownerHandle,
     loadConfiguration();
     migrateLldvSingleton();
     migrateSharedRefreshRate();
+	migrateRefreshRateSwitchMode();
     migrateSeparatedRendererProfiles();
     migrateViewportZoomProfiles();
     if (!testMode_) loadDiscoveryCache();
@@ -1391,6 +1392,28 @@ void ConfigEditorWindow::migrateSharedRefreshRate()
     }
     if (document_->SectionSettings(root.toStdString()).empty())
         document_->RemoveSection(root.toStdString());
+}
+
+void ConfigEditorWindow::migrateRefreshRateSwitchMode()
+{
+	if (!configurationLoaded_ || !document_) return;
+	const QString raw = value(QStringLiteral("general"),
+		QStringLiteral("switch_refresh_rate")).trimmed().toLower();
+	QString migrated = raw;
+	if (raw.isEmpty() || raw == QStringLiteral("true") || raw == QStringLiteral("yes") ||
+		raw == QStringLiteral("on") || raw == QStringLiteral("1"))
+		migrated = QStringLiteral("fullscreen_only");
+	else if (raw == QStringLiteral("false") || raw == QStringLiteral("no") ||
+		raw == QStringLiteral("off") || raw == QStringLiteral("0"))
+		migrated = QStringLiteral("never");
+	if (migrated != raw)
+	{
+		document_->AddSection("general");
+		document_->SetKnown("general", "switch_refresh_rate",
+			migrated.toLocal8Bit().constData());
+		dirty_ = true;
+		hasPendingMigrations_ = true;
+	}
 }
 
 void ConfigEditorWindow::refreshActiveProfileIndicators()
@@ -3099,9 +3122,12 @@ QWidget* ConfigEditorWindow::createStartupPage()
     });
     applyRendererVisibilityFilter(hideLegacy);
     prepareRendererPopup();
-    sourceForm->addRow(QString(), bindCheckField(
-        QStringLiteral("Switch refresh rate"), QStringLiteral("general"),
-        QStringLiteral("switch_refresh_rate"), true));
+	sourceForm->addRow(QStringLiteral("Switch refresh rate"), bindChoiceField(
+		QStringLiteral("general"), QStringLiteral("switch_refresh_rate"),
+		{ QStringLiteral("never"), QStringLiteral("fullscreen_only"),
+		  QStringLiteral("always") },
+		{ QStringLiteral("Never"), QStringLiteral("Full Screen Only"),
+		  QStringLiteral("Always") }));
 	auto* profileChangeDisplay = new QSpinBox;
 	profileChangeDisplay->setObjectName(controlName(QStringLiteral("general"),
 		QStringLiteral("profile_change_display_seconds")));

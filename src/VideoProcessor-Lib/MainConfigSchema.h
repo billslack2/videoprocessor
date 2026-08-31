@@ -98,7 +98,8 @@ namespace MainConfigSchema
 			ConfigSchema::Boolean("startminimized"),
 			ConfigSchema::Boolean("start_minimized"),
 			ConfigSchema::Any("capture_input"),
-			ConfigSchema::Boolean("switch_refresh_rate"),
+			ConfigSchema::Choice("switch_refresh_rate",
+				{ "true", "false", "never", "fullscreen_only", "full_screen_only", "always" }),
 			ConfigSchema::Boolean("persist_profile_selection"),
 			ConfigSchema::Integer("profile_change_display_seconds", 0, 60)
 		};
