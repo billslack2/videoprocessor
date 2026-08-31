@@ -2843,11 +2843,17 @@ namespace
 		return false;
 	}
 
+	struct DisplayRefreshModeCandidate
+	{
+		DISPLAYCONFIG_RATIONAL refreshRate{};
+		DEVMODEW displayMode{};
+	};
+
 	bool QuerySupportedRefreshRates(
 		const std::wstring& displayDeviceName,
 		UINT32 sourceWidth,
 		UINT32 sourceHeight,
-		std::vector<DISPLAYCONFIG_RATIONAL>& refreshRates)
+		std::vector<DisplayRefreshModeCandidate>& refreshRates)
 	{
 		refreshRates.clear();
 		if (displayDeviceName.empty())
@@ -2874,21 +2880,25 @@ namespace
 			{
 				continue;
 			}
-			const DISPLAYCONFIG_RATIONAL rate{
-				candidate.dmDisplayFrequency, 1 };
-			bool duplicate = false;
-			for (const DISPLAYCONFIG_RATIONAL& existing : refreshRates)
-				if (DisplayRefreshRatesExactlyEqual(
-					{ existing.Numerator, existing.Denominator },
-					{ rate.Numerator, rate.Denominator }))
-				{
-					duplicate = true;
-					break;
-				}
-			if (!duplicate)
-				refreshRates.push_back(rate);
+			// Keep modes with the same nominal rate separate.  The display driver
+			// may reject one timing variant but accept another, so the switch path
+			// must be able to try every concrete DEVMODE selected by the policy.
+			refreshRates.push_back({
+				{ candidate.dmDisplayFrequency, 1 }, candidate });
 		}
 		return !refreshRates.empty();
+	}
+
+	LONG ApplyDisplayMode(const std::wstring& displayDeviceName,
+		const DEVMODEW& displayMode)
+	{
+		DEVMODEW mode = displayMode;
+		const LONG testResult = ChangeDisplaySettingsExW(
+			displayDeviceName.c_str(), &mode, nullptr, CDS_TEST, nullptr);
+		if (testResult != DISP_CHANGE_SUCCESSFUL)
+			return testResult;
+		return ChangeDisplaySettingsExW(
+			displayDeviceName.c_str(), &mode, nullptr, CDS_FULLSCREEN, nullptr);
 	}
 
 	LONG ApplyDisplayRefreshRate(
@@ -2991,12 +3001,16 @@ namespace
 				(contentRate > 24.1 && contentRate < 31.0);
 			if (useDoubleRate)
 				targetRefreshRate.Numerator *= 2;
+			const DISPLAYCONFIG_RATIONAL requestedRefreshRate = targetRefreshRate;
 
 			DEVMODEW currentMode{};
 			currentMode.dmSize = sizeof(currentMode);
 			const BOOL currentModeKnown = EnumDisplaySettingsW(
 				m_displayDeviceName.c_str(), ENUM_CURRENT_SETTINGS, &currentMode);
-			std::vector<DISPLAYCONFIG_RATIONAL> supportedRefreshRates;
+			m_originalDisplayModeKnown = currentModeKnown == TRUE;
+			if (m_originalDisplayModeKnown)
+				m_originalDisplayMode = currentMode;
+			std::vector<DisplayRefreshModeCandidate> supportedRefreshRates;
 			if (!QuerySupportedRefreshRates(m_displayDeviceName,
 				currentModeKnown ? currentMode.dmPelsWidth : 0,
 				currentModeKnown ? currentMode.dmPelsHeight : 0,
@@ -3009,26 +3023,76 @@ namespace
 			}
 			std::vector<DisplayRefreshRational> candidates;
 			candidates.reserve(supportedRefreshRates.size());
-			for (const DISPLAYCONFIG_RATIONAL& rate : supportedRefreshRates)
-				candidates.push_back({ rate.Numerator, rate.Denominator });
-			const DisplayRefreshModeSelection selection = SelectDisplayRefreshMode(
-				{ targetRefreshRate.Numerator, targetRefreshRate.Denominator }, candidates);
-			if (selection.path == DisplayRefreshModeSelectionPath::None)
+			for (const DisplayRefreshModeCandidate& candidate : supportedRefreshRates)
+				candidates.push_back({ candidate.refreshRate.Numerator,
+					candidate.refreshRate.Denominator });
+
+			DisplayRefreshModeSelection selection{};
+			bool modeApplied = false;
+			unsigned int attempt = 0;
+			while (!candidates.empty())
+			{
+				selection = SelectDisplayRefreshMode(
+					{ requestedRefreshRate.Numerator, requestedRefreshRate.Denominator }, candidates);
+				if (selection.path == DisplayRefreshModeSelectionPath::None)
+					break;
+				targetRefreshRate.Numerator = selection.selected.numerator;
+				targetRefreshRate.Denominator = selection.selected.denominator;
+				DebugLog::Log(
+					"libplacebo refresh-rate selection: input=%.6f Hz requested=%.6f Hz selected=%.6f Hz path=%s difference=%.6f Hz candidates=%zu attempt=%u",
+					contentRate, selection.requestedRateHz, selection.selectedRateHz,
+					selection.path == DisplayRefreshModeSelectionPath::ExactOrClose ?
+						"exact-or-close" : "closest-in-range",
+					selection.differenceHz, candidates.size(), attempt + 1);
+				if (currentModeKnown &&
+					selection.selected.denominator == 1 &&
+					currentMode.dmDisplayFrequency == selection.selected.numerator)
+				{
+					DebugLog::Log(
+						"libplacebo refresh-rate switch: display already nominal %lu Hz for %.6f Hz input",
+						currentMode.dmDisplayFrequency, contentRate);
+					RunRefreshRateCommand(settings, RefreshRateHz(m_originalRefreshRate));
+					PublishEvent("refresh.confirmed",
+						RefreshRateHz(m_originalRefreshRate),
+						RefreshRateHz(targetRefreshRate),
+						RefreshRateHz(m_originalRefreshRate));
+					return;
+				}
+
+				for (const DisplayRefreshModeCandidate& candidate : supportedRefreshRates)
+				{
+					if (!DisplayRefreshRatesExactlyEqual(
+						{ candidate.refreshRate.Numerator, candidate.refreshRate.Denominator },
+						selection.selected))
+						continue;
+					++attempt;
+					const LONG switchResult = ApplyDisplayMode(
+						m_displayDeviceName, candidate.displayMode);
+					if (switchResult == DISP_CHANGE_SUCCESSFUL)
+					{
+						modeApplied = true;
+						break;
+					}
+					DebugLog::Log(
+						"libplacebo refresh-rate switch candidate rejected: input=%.6f Hz target=%.6f Hz error=%ld attempt=%u",
+						contentRate, RefreshRateHz(targetRefreshRate), switchResult, attempt);
+				}
+				if (modeApplied)
+					break;
+				candidates.erase(std::remove_if(candidates.begin(), candidates.end(),
+					[&selection](const DisplayRefreshRational& candidate)
+					{
+						return DisplayRefreshRatesExactlyEqual(candidate, selection.selected);
+					}), candidates.end());
+			}
+			if (!modeApplied)
 			{
 				DebugLog::Log(
-					"libplacebo refresh-rate switch: no exact/close or in-range mode for input=%.6f Hz target=%.6f Hz candidates=%zu; retaining %.6f Hz",
-					contentRate, RefreshRateHz(targetRefreshRate), candidates.size(),
+					"libplacebo refresh-rate switch: all eligible modes rejected for input=%.6f Hz requested=%.6f Hz attempts=%u; retaining %.6f Hz",
+					contentRate, RefreshRateHz(targetRefreshRate), attempt,
 					RefreshRateHz(m_originalRefreshRate));
 				return;
 			}
-			targetRefreshRate.Numerator = selection.selected.numerator;
-			targetRefreshRate.Denominator = selection.selected.denominator;
-			DebugLog::Log(
-				"libplacebo refresh-rate selection: input=%.6f Hz requested=%.6f Hz selected=%.6f Hz path=%s difference=%.6f Hz candidates=%zu",
-				contentRate, selection.requestedRateHz, selection.selectedRateHz,
-				selection.path == DisplayRefreshModeSelectionPath::ExactOrClose ?
-					"exact-or-close" : "closest-in-range",
-				selection.differenceHz, candidates.size());
 
 			if (RefreshRatesEqual(m_originalRefreshRate, targetRefreshRate))
 			{
@@ -3041,23 +3105,6 @@ namespace
 					RefreshRateHz(m_originalRefreshRate),
 					RefreshRateHz(targetRefreshRate),
 					RefreshRateHz(m_originalRefreshRate));
-				return;
-			}
-
-			const LONG switchResult = ApplyDisplayRefreshRate(
-				paths,
-				modes,
-				pathCount,
-				modeCount,
-				pathIndex,
-				targetRefreshRate);
-			if (switchResult != ERROR_SUCCESS)
-			{
-				DebugLog::Log(
-					"libplacebo refresh-rate switch failed: input=%.6f Hz target=%.6f Hz error=%ld; continuing with current display mode",
-					contentRate,
-					RefreshRateHz(targetRefreshRate),
-					switchResult);
 				return;
 			}
 
@@ -3129,14 +3176,11 @@ namespace
 				return false;
 			}
 
-			const LONG restoreResult = ApplyDisplayRefreshRate(
-				paths,
-				modes,
-				pathCount,
-				modeCount,
-				pathIndex,
-				m_originalRefreshRate);
-			if (restoreResult != ERROR_SUCCESS)
+			const LONG restoreResult = m_originalDisplayModeKnown ?
+				ApplyDisplayMode(m_displayDeviceName, m_originalDisplayMode) :
+				ApplyDisplayRefreshRate(paths, modes, pathCount, modeCount, pathIndex,
+					m_originalRefreshRate);
+			if (restoreResult != DISP_CHANGE_SUCCESSFUL)
 			{
 				++m_restoreFailureCount;
 				DebugLog::Log(
@@ -3215,6 +3259,8 @@ namespace
 
 		std::wstring m_displayDeviceName;
 		DISPLAYCONFIG_RATIONAL m_originalRefreshRate{};
+		DEVMODEW m_originalDisplayMode{};
+		bool m_originalDisplayModeKnown = false;
 		unsigned int m_restoreFailureCount = 0;
 		bool m_changed = false;
 		bool m_finalRestoreAttempted = false;
