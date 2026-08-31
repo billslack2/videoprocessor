@@ -3404,6 +3404,8 @@ struct LibplaceboVideoRenderer::Impl
 	std::atomic<uint64_t> postStallResetTelemetrySuppressUntilTick{ 0 };
 	uint64_t lastSubmittedScreenProfileRequest = 0;
 	uint64_t activePictureScreenProfileRequestSerial = 0;
+	std::atomic<uint64_t> requestedPresentationResetEpoch{ 0 };
+	uint64_t consumedPresentationResetEpoch = 0;
 	std::mutex renderMutex;
 	std::mutex pendingProfileMutex;
 	std::unique_ptr<RendererSettings> pendingProfileSettings;
@@ -6505,9 +6507,18 @@ struct LibplaceboVideoRenderer::Impl
 		// UI-facing methods only publish immutable intent. All libplacebo and
 		// output work runs at the render-thread safe point.
 		std::lock_guard<std::mutex> pendingGuard(pendingProfileMutex);
+		const bool supersededPendingSettings =
+			pendingProfileSettings != nullptr;
 		pendingProfileSettings.reset(new RendererSettings(settings));
 		DebugLog::Log(
-			"libplacebo viewport settings queued for render thread");
+			"libplacebo viewport settings queued for render thread (superseded_pending=%d)",
+			supersededPendingSettings ? 1 : 0);
+	}
+
+	bool HasPendingProfileSettings()
+	{
+		std::lock_guard<std::mutex> pendingGuard(pendingProfileMutex);
+		return pendingProfileSettings != nullptr;
 	}
 
 	void ApplyViewportSettingsLocked(const RendererSettings& settings)
@@ -6828,9 +6839,12 @@ struct LibplaceboVideoRenderer::Impl
 			return false;
 		}
 		std::lock_guard<std::mutex> pendingGuard(pendingProfileMutex);
+		const bool supersededPendingSettings =
+			pendingProfileSettings != nullptr;
 		pendingProfileSettings.reset(new RendererSettings(settings));
 		DebugLog::Log(
-			"libplacebo live profile update queued for render thread");
+			"libplacebo live profile update queued for render thread (superseded_pending=%d)",
+			supersededPendingSettings ? 1 : 0);
 		return true;
 	}
 
@@ -7362,6 +7376,53 @@ struct LibplaceboVideoRenderer::Impl
 		latestActivePicturePresentationRetentionReason.clear();
 		fullRasterPresentationAuthorityAvailable = false;
 		fullRasterPresentationAuthoritySourceGeneration = 0;
+	}
+
+	void RequestPresentationStateReset()
+	{
+		requestedPresentationResetEpoch.fetch_add(1,
+			std::memory_order_release);
+	}
+
+	void ClearPresentationStateForReset(uint64_t resetEpoch)
+	{
+		// A renderer/refresh reset starts a new source generation. Never bridge
+		// source-derived crop, subtitle, NLS, or HDR-analysis authority across
+		// that boundary. This deliberately retains libplacebo's device, shader
+		// cache, colour-map configuration, and output negotiation.
+		nlsTransition.Reset();
+		outwardPictureConfirmation = {};
+		nlsGeometryAvailable = false;
+		nlsTransitionWithdrawn = true;
+		nlsGeometry = {};
+		nlsGeometryClassification =
+			ActivePictureClassification::UNAVAILABLE;
+		nlsGeometrySourceGeneration = 0;
+		nlsGeometrySourceFormatKey = 0;
+		activePictureAnalysisSourceGeneration = 0;
+		latestActivePictureObservationSupportsCrop = false;
+		activePictureAmbiguityHold.Reset();
+		nearBlackPresentationEpisode = {};
+		ClearSceneVerificationSnapshot();
+		ClearLatestActivePictureEvidence();
+		ClearScopeSubtitleEvidence();
+		ClearScopePresentationEvidence();
+		scopeVerticalInspectionBridge = {};
+		scopeSubtitleRetentionWasUnsafe = false;
+		scopeSubtitleRetentionGeneration = 0;
+		nlsDecision = {};
+		renderParams.hooks = nullptr;
+		renderParams.num_hooks = 0;
+		if (renderParams.peak_detect_params)
+			peakDetectParams.analysis_crop = {};
+		lastSourceCropPolicy.clear();
+		lastFinalPresentationPolicy.clear();
+		lastFinalLayoutPolicy.clear();
+		lastHdrPeakAnalysisPolicy.clear();
+		activePictureScreenProfileRequestSerial = 0;
+		DebugLog::Log(
+			"Alpha presentation reset boundary: epoch=%llu source_geometry=cleared subtitle_state=cleared nls_state=cleared hdr_analysis_roi=cleared shader_cache=retained output_contract=retained",
+			static_cast<unsigned long long>(resetEpoch));
 	}
 
 	void UpdateNlsForFrame(const AnalysisLumaSource& analysisSource,
@@ -8063,6 +8124,13 @@ struct LibplaceboVideoRenderer::Impl
 		if (!swapchain)
 			return false;
 		const VideoState& state = *statePtr;
+		const uint64_t requestedResetEpoch =
+			requestedPresentationResetEpoch.load(std::memory_order_acquire);
+		if (requestedResetEpoch != consumedPresentationResetEpoch)
+		{
+			consumedPresentationResetEpoch = requestedResetEpoch;
+			ClearPresentationStateForReset(requestedResetEpoch);
+		}
 		bool verifyRetainedProfileGeometryThisFrame = false;
 		if (viewportRequestSerial !=
 			activePictureScreenProfileRequestSerial)
@@ -11293,9 +11361,15 @@ bool LibplaceboVideoRenderer::OnVideoState(VideoStateComPtr& videoState)
 				nextRule.empty() ? "base" : nextRule.c_str());
 			return false;
 		}
+		// The published snapshot can lag a UI profile transition by one render
+		// frame. If so, a source/refresh transition must replace that pending
+		// intent even when it happens to match the published settings; otherwise
+		// the stale queued viewport can be consumed with this newer viewport
+		// request and briefly describe the wrong picture geometry.
 		if (hasUnifiedSettings &&
-			EffectiveSettingsFingerprint(nextSettings) !=
-				currentEffectiveFingerprint)
+			(m_impl->HasPendingProfileSettings() ||
+			 EffectiveSettingsFingerprint(nextSettings) !=
+				currentEffectiveFingerprint))
 		{
 			m_impl->ApplyViewportSettings(nextSettings);
 			ApplyViewportTarget(nextSettings.configuredScreenTarget,
@@ -11922,9 +11996,16 @@ bool LibplaceboVideoRenderer::ApplyApplicationState(
 	rendererRestartRequired = m_impl != nullptr &&
 		(!state || EffectiveSettingsFingerprint(candidateSettings, false) !=
 			currentRestartFingerprint);
+	// A profile request is coalesced on the render thread. Compare against both
+	// the last applied snapshot and the existence of a queued one: A -> B -> A
+	// before the next render must replace B with A, rather than treating the
+	// final A as a no-op and letting B pair with A's viewport request.
+	const bool pendingProfileSettings = m_impl &&
+		m_impl->HasPendingProfileSettings();
 	const bool anyRendererSettingChanged = m_impl &&
-		EffectiveSettingsFingerprint(candidateSettings) !=
-			currentEffectiveFingerprint;
+		(pendingProfileSettings ||
+		 EffectiveSettingsFingerprint(candidateSettings) !=
+			currentEffectiveFingerprint);
 	std::string changedFields = "none";
 	bool liveProfileUpdateQueued = false;
 	const bool liveSettingsCompatible = state && m_impl &&
@@ -12190,6 +12271,10 @@ void LibplaceboVideoRenderer::Reset()
 	BeginQueueGeneration("renderer reset");
 	if (m_impl)
 	{
+		// Source-derived presentation authority belongs to the discarded queue
+		// generation. Consume this request at the next render-thread safe point;
+		// do not take the render lock or flush libplacebo here.
+		m_impl->RequestPresentationStateReset();
 		// HDMI and presentation resets retain the same renderer/device. Flushing
 		// here throws away compiled programs and turns the next frame into a long
 		// blocking shader build. libplacebo reconciles changed frame/target data
