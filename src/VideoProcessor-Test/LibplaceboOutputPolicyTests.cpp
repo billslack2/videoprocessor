@@ -39,17 +39,17 @@ namespace Tests
 				true, true, true).enabled);
 		}
 
-		TEST_METHOD(CalibrationTargetTransferIsExplicitAndCarrierIndependent)
+		TEST_METHOD(CalibrationTargetTransferIsExplicitAndLutToggleIndependent)
 		{
 			Assert::AreEqual(static_cast<int>(SdrTransfer::BT1886),
 				static_cast<int>(ResolveCalibrationTargetTransfer(
-					GammaRequest::BT1886, true, SdrTransfer::SRGB)));
-			Assert::AreEqual(static_cast<int>(SdrTransfer::GAMMA22),
-				static_cast<int>(ResolveCalibrationTargetTransfer(
-					GammaRequest::AUTO, true, SdrTransfer::GAMMA24)));
+					GammaRequest::BT1886, SdrTransfer::SRGB)));
 			Assert::AreEqual(static_cast<int>(SdrTransfer::GAMMA24),
 				static_cast<int>(ResolveCalibrationTargetTransfer(
-					GammaRequest::AUTO, false, SdrTransfer::GAMMA24)));
+					GammaRequest::AUTO, SdrTransfer::GAMMA24)));
+			Assert::AreEqual(static_cast<int>(SdrTransfer::GAMMA24),
+				static_cast<int>(ResolveCalibrationTargetTransfer(
+					GammaRequest::GAMMA24, SdrTransfer::SRGB)));
 		}
 
 		TEST_METHOD(SdrGammaMissingOrOnPreservesCurrentManagedBehavior)

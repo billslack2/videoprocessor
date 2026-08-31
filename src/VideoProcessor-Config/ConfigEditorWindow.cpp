@@ -1701,11 +1701,7 @@ void ConfigEditorWindow::refreshRendererAutoStatus()
         }
 		else if (binding.key == QStringLiteral("output_gamma"))
 		{
-			const auto* calibrationEnabled = findChild<QCheckBox*>(
-				QStringLiteral("config.vprenderer.calibration_lut_enabled"));
-			text = calibrationEnabled && calibrationEnabled->isChecked()
-				? QStringLiteral("Gamma 2.2 (calibration LUT)")
-				: QStringLiteral("sRGB");
+			text = QStringLiteral("sRGB");
 		}
         else if (binding.key == QStringLiteral("sdr_adjust_gamma"))
             // This selector controls the conversion policy, rather than
@@ -3794,7 +3790,10 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                 QStringLiteral("2.8") });
         outputGamma->setToolTip(QStringLiteral(
             "The calibrated display transfer VP targets during color-managed rendering. "
-            "It does not change Windows' normal Full RGB / sRGB presentation declaration."));
+			"Auto follows the accepted presentation transfer (normally sRGB). "
+			"Enabling a calibration LUT does not select a gamma; choose the measured "
+			"display transfer explicitly when the Cube expects Gamma 2.2, BT.1886, or another curve. "
+			"This setting does not change Windows' normal Full RGB / sRGB presentation declaration."));
         addRendererAutoStatus(QStringLiteral("output_gamma"), outputGamma);
         addBoolean(QStringLiteral("Report BT.2020 to display"),
             QStringLiteral("report_bt2020_to_display"));

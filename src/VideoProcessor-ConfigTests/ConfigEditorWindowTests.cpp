@@ -2659,8 +2659,8 @@ void testChoiceLabelsAndVpRendererName()
 	QCoreApplication::processEvents();
 	require(requireControl<QLabel>(window,
 		QStringLiteral("config.vprenderer.color.output_gamma.auto_status"))->text() ==
-			QStringLiteral("Auto: Gamma 2.2 (calibration LUT)"),
-		"Calibration LUT did not make Auto gamma explicitly carrier-independent");
+			QStringLiteral("Auto: sRGB"),
+		"Calibration LUT enablement unexpectedly changed Auto gamma");
 	calibrationEnabled->setChecked(false);
 	require(requireControl<QLabel>(window,
 		QStringLiteral("config.vprenderer.color.sdr_adjust_gamma.auto_status"))->text() ==

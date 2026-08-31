@@ -3417,6 +3417,7 @@ struct LibplaceboVideoRenderer::Impl
 	uint64_t displayLutObservedBytes = 0;
 	uint64_t displayLutObservedWriteTime = 0;
 	uint64_t displayLutNextVersionCheckTick = 0;
+	bool displayCalibrationContractLogged = false;
 	std::unique_ptr<IVideoFrameFormatter> formatter;
 	VideoStateComPtr formatterState;
 	std::vector<BYTE> convertedFrame;
@@ -7192,6 +7193,7 @@ struct LibplaceboVideoRenderer::Impl
 		lastSdrGammaDecision = {};
 		lastSdrGammaDecisionSignature.clear();
 		outputContractLogged = false;
+		displayCalibrationContractLogged = false;
 		if (diagnosticsEnabled)
 		{
 			diagnosticReadbackFramesRemaining = 30;
@@ -9372,13 +9374,15 @@ struct LibplaceboVideoRenderer::Impl
 		// The calibrated display response is independent of the DXGI transport
 		// declaration. In particular, Limited/G24 is a carrier representation;
 		// it must not change a BT.1886 or Gamma-2.2 Cube's input coordinates.
+		const auto configuredCalibrationGamma =
+			LibplaceboOutput::ParseGamma(activeSettings.outputGamma);
 		const enum pl_color_transfer calibrationTransfer =
 			FromSdrTransfer(LibplaceboOutput::ResolveCalibrationTargetTransfer(
 				// outputPlan.request.gamma may contain output_transport_gamma for a
 				// Limited carrier. The calibration domain is owned exclusively by
 				// output_gamma and must never inherit that transport declaration.
-				LibplaceboOutput::ParseGamma(activeSettings.outputGamma),
-				activeSettings.calibrationLutEnabled,
+				// LUT enablement only attaches the Cube; it never selects gamma.
+				configuredCalibrationGamma,
 				ToSdrTransfer(acceptedTransfer)));
 		if (calibrationTransfer != PL_COLOR_TRC_UNKNOWN)
 			baseTarget.color.transfer = calibrationTransfer;
@@ -9386,6 +9390,20 @@ struct LibplaceboVideoRenderer::Impl
 		baseTarget.color.hdr.min_luma = static_cast<float>(sdrBlackNits);
 		baseTarget.color.hdr.max_luma = static_cast<float>(sdrTargetNits);
 		ConfigureDisplayLutForTarget(baseTarget);
+		if (!displayCalibrationContractLogged)
+		{
+			displayCalibrationContractLogged = true;
+			DebugLog::Log(
+				"display calibration contract: enabled=%d attached=%d configured_transfer=%s resolved_target_transfer=%s carrier_transfer=%s target_primaries=%s target_luminance=%.4f..%.1f nits stage=post-DTM-gamma/pre-range enable_effect=attach-only",
+				activeSettings.calibrationLutEnabled ? 1 : 0,
+				displayLutParsed && displayLut ? 1 : 0,
+				activeSettings.outputGamma.c_str(),
+				pl_color_transfer_name(baseTarget.color.transfer),
+				pl_color_transfer_name(acceptedTransfer),
+				pl_color_primaries_name(baseTarget.color.primaries),
+				baseTarget.color.hdr.min_luma,
+				baseTarget.color.hdr.max_luma);
+		}
 		if (outputDiagnostics && !outputContractLogged)
 		{
 			DebugLog::Log(

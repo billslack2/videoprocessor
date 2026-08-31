@@ -129,7 +129,6 @@ namespace LibplaceboOutput
 
 	SdrTransfer ResolveCalibrationTargetTransfer(
 		GammaRequest configuredOutputGamma,
-		bool calibrationLutEnabled,
 		SdrTransfer acceptedOutputTransfer)
 	{
 		switch (configuredOutputGamma)
@@ -143,9 +142,7 @@ namespace LibplaceboOutput
 		case GammaRequest::GAMMA26: return SdrTransfer::GAMMA26;
 		case GammaRequest::GAMMA28: return SdrTransfer::GAMMA28;
 		case GammaRequest::AUTO:
-			return calibrationLutEnabled
-				? SdrTransfer::GAMMA22
-				: acceptedOutputTransfer;
+			return acceptedOutputTransfer;
 		default:
 			return acceptedOutputTransfer;
 		}
