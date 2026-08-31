@@ -96,6 +96,7 @@ public:
 	bool GetConversionPerformance(
 		double& currentUs, double& avg10s, double& max10s) const override;
 	bool GetFrameRateAndPPM(double& measuredFps, int& ppmDeviation) const override;
+	bool GetDetectedDisplayRefreshRate(double& refreshRateHz) const override;
 
 private:
 	IVideoRenderer* m_renderer = nullptr;

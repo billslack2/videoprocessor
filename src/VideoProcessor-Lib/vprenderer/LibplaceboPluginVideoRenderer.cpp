@@ -538,3 +538,10 @@ bool LibplaceboPluginVideoRenderer::GetFrameRateAndPPM(
 {
 	return m_renderer->GetFrameRateAndPPM(measuredFps, ppmDeviation);
 }
+
+bool LibplaceboPluginVideoRenderer::GetDetectedDisplayRefreshRate(
+	double& refreshRateHz) const
+{
+	return m_renderer && m_renderer->GetDetectedDisplayRefreshRate(
+		refreshRateHz);
+}

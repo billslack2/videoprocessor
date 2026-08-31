@@ -13291,6 +13291,33 @@ bool LibplaceboVideoRenderer::GetPresentationTimingStatus(CString& status) const
 	return true;
 }
 
+bool LibplaceboVideoRenderer::GetDetectedDisplayRefreshRate(
+	double& refreshRateHz) const
+{
+	refreshRateHz = 0.0;
+	if (!m_impl)
+		return false;
+
+	// The telemetry is derived from the native libplacebo swapchain's DXGI
+	// frame statistics. It is presenter-tied, and therefore preferred over
+	// the host's independent WaitForVBlank sampler once it is stable.
+	std::unique_lock<std::mutex> guard(
+		m_impl->renderMutex, std::try_to_lock);
+	if (!guard.owns_lock())
+		return false;
+	const AlphaPresentationSnapshot snapshot =
+		m_impl->presentationTelemetry.Snapshot();
+	if (snapshot.evidence != AlphaPresentationEvidence::Stable ||
+		snapshot.measuredDisplayHz < 10.0 ||
+		snapshot.measuredDisplayHz > 500.0)
+	{
+		return false;
+	}
+
+	refreshRateHz = snapshot.measuredDisplayHz;
+	return true;
+}
+
 bool LibplaceboVideoRenderer::SetNativeStatsOverlay(
 	const uint8_t* pixels, size_t byteCount, int width, int height, int stride)
 {
