@@ -130,6 +130,15 @@ Automated evidence completed 2026-08-31:
 - Final independent madVR/display-calibration and libplacebo 7.360.1 reviews
   reported no remaining actionable P1 or P2 findings.
 
+Standalone local-test artifact:
+
+- `VP-0166-a317c31-display-calibration-LUT-tester.zip`
+- SHA-256:
+  `C182234BC0CD748CCA4ADA2CB66ED50B417A5EE705940C842A248649F63430B4`
+- Contains the x64 Release product, an isolated active test configuration,
+  instructions, and a synthetic grayscale diagnostic Cube. It explicitly
+  supersedes the withdrawn `VP-0166-21044a3-HDR-to-SDR-3DLUT-tester.zip`.
+
 ## Non-goals
 
 - No external HDR tone-mapping Cube and no HDR passthrough.
