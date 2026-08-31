@@ -2,7 +2,7 @@
 
 ## Status
 
-Done (2026-08-31). The corrected rational switching path was merged to origin/v1.3.004-beta at 26877ce1 and verified live after x64 Release deployment.
+In Progress (reopened 2026-08-31). The rational Windows fallback is live-verified, but explicit DXGI rational candidate ordering and rejection verification are now being added.
 
 VP Renderer currently submits one content-derived rational refresh request to
 `SetDisplayConfig` with `SDC_ALLOW_CHANGES`; it does not enumerate and rank
@@ -25,6 +25,10 @@ and policy-test projects build successfully; the four new ranking tests pass.
 ## Correction in progress
 
 2026-08-31: The nominal-integer EnumDisplaySettings path has been discarded. Commit 26877ce1 restores the exact rational SetDisplayConfig request and SDC_ALLOW_CHANGES, allowing Windows/the driver to resolve the compatible timing without collapsing 24000/1001 to 24 or 60000/1001 to 60. Release x64 renderer and GUI builds completed; 18 refresh-policy tests passed. Deployment replaced the x64 Release host and renderer pair; hashes matched the build output. Live testing confirmed improved switching behavior for the fractional refresh modes.
+
+## DXGI candidate-ordering follow-up
+
+2026-08-31: Commit 4f2ef020 enumerates the active DXGI output's rational modes at the current resolution, ranks exact/tight rational candidates before bounded fallbacks, applies them in order, and requires two post-modeset observations before accepting a candidate. Any unverified candidate is rolled back before another is tried; no verified candidate leaves the original refresh active. Release x64 renderer and tests build successfully; live hardware validation is pending.
 
 ## User story
 
