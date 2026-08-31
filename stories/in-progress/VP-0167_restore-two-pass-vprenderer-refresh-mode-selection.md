@@ -2,15 +2,29 @@
 
 ## Status
 
-Backlog (2026-08-31). Investigation found that VP Renderer currently submits
-one content-derived rational refresh request to `SetDisplayConfig` with
-`SDC_ALLOW_CHANGES`; it does not enumerate and rank the target display's
-supported modes. This leaves the choice of an unsupported exact rate to
-Windows and does not implement the established madVR-style fallback policy.
+In Progress (2026-08-31). The user confirmed `v1.3.004-beta` as the
+implementation base at `5d266d6a`. Work is on
+`codex/vp-0167-refresh-mode-selection` in
+`C:\Videoprocessor\vp\vprenderer\.codex-worktrees\vp-0167-refresh-mode-selection`.
+
+VP Renderer currently submits one content-derived rational refresh request to
+`SetDisplayConfig` with `SDC_ALLOW_CHANGES`; it does not enumerate and rank
+the target display's supported modes. This leaves the choice of an unsupported
+exact rate to Windows and does not implement the established madVR-style
+fallback policy.
 
 The creation audit found 164 canonical story files and 186 index rows. The
 pre-existing count mismatch is recorded here and is not silently repaired.
 
+## Implementation progress
+
+2026-08-31: Added a platform-independent two-pass ranking helper and unit
+tests: exact rational equivalence or tight driver rounding wins first; only a
+0.5% closest-in-range candidate can be used as fallback, with a deterministic
+tie-breaker. VP Renderer now enumerates candidate target refresh rationals for
+the active source path, logs its selected path, and retains the current mode
+when enumeration finds no acceptable candidate. The x64 Release VP Renderer
+and policy-test projects build successfully; the four new ranking tests pass.
 ## User story
 
 As a VP Renderer user, I want automatic refresh switching to choose the best
