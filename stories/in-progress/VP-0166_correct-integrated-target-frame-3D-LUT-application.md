@@ -55,9 +55,11 @@ with manual display-mode responsibility, just as BT.2020 pixel targeting is
 kept distinct from its transport/signaling policy.
 
 The active Color Config also owns target white, black, and display gamma.
-When calibration is enabled and `output_gamma` is `AUTO`, it resolves to Gamma
-2.2 rather than inheriting sRGB or Gamma 2.4 from the output carrier. An
-explicit characterized gamma remains preferred.
+`output_gamma: AUTO` follows the accepted presentation transfer (normally
+sRGB). Enabling or disabling the Cube never selects or changes gamma; choose
+Gamma 2.2, BT.1886, or another characterized display response explicitly when
+the calibration was built for it. This attachment-only invariant is required
+for a no-LUT versus identity-LUT comparison to be visually identical.
 
 ## Cube and failure contract
 
@@ -125,19 +127,35 @@ Automated evidence completed 2026-08-31:
   Cube, Gamma-2.2 Cube coordinates, Limited packing after the Cube, and actual
   error-diffusion shader dispatch after calibration.
 - Transactional same-path replacement, last-known-good retention/retry,
-  default-domain validation, P3-D65 exact-slot selection, and carrier-independent
-  Auto Gamma 2.2 are covered directly.
+  default-domain validation, P3-D65 exact-slot selection, and LUT-toggle
+  transfer invariance are covered directly.
 - Final independent madVR/display-calibration and libplacebo 7.360.1 reviews
   reported no remaining actionable P1 or P2 findings.
 
+Identity-toggle defect found and corrected 2026-08-31:
+
+- Tester logs proved that the original Auto policy changed the target from
+  sRGB with the LUT disabled to pure Gamma 2.2 with it enabled. The Cube was
+  identity; the checkbox was incorrectly selecting transfer state.
+- Commit `fd8825e4` removes LUT enablement from transfer resolution. The
+  checkbox now only attaches/detaches the Cube.
+- A `display calibration contract` log line now records enabled/attached,
+  configured and resolved target transfer, carrier transfer, primaries,
+  luminance, stage, and `enable_effect=attach-only` after initialization and
+  every live profile change.
+- The 1,038-test native suite, real GPU LUT regressions, x64 Release renderer,
+  x64 Release Config build, and standalone Config/UI suite all pass after the
+  correction.
+
 Standalone local-test artifact:
 
-- `VP-0166-a317c31-display-calibration-LUT-tester.zip`
+- `VP-0166-fd8825e-identity-toggle-fix-tester.zip`
 - SHA-256:
-  `C182234BC0CD748CCA4ADA2CB66ED50B417A5EE705940C842A248649F63430B4`
+  `B122B3CA8E2682D29EF3A2DE4625F56C334B65047C6B3804A8F2F1101E6EF2DF`
 - Contains the x64 Release product, an isolated active test configuration,
-  instructions, and a synthetic grayscale diagnostic Cube. It explicitly
-  supersedes the withdrawn `VP-0166-21044a3-HDR-to-SDR-3DLUT-tester.zip`.
+  instructions, a synthetic identity Cube, and a grayscale activation Cube.
+  It supersedes both the `a317c31` tester and the withdrawn
+  `VP-0166-21044a3-HDR-to-SDR-3DLUT-tester.zip`.
 
 ## Non-goals
 
