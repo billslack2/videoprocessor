@@ -1,6 +1,7 @@
 #include <pch.h>
 
 #include "LibplaceboVideoRenderer.h"
+#include <vprenderer/PresentationResetEpoch.h>
 
 #include <ConfigFile.h>
 #include <EventActionLauncher.h>
@@ -3404,7 +3405,7 @@ struct LibplaceboVideoRenderer::Impl
 	std::atomic<uint64_t> postStallResetTelemetrySuppressUntilTick{ 0 };
 	uint64_t lastSubmittedScreenProfileRequest = 0;
 	uint64_t activePictureScreenProfileRequestSerial = 0;
-	std::atomic<uint64_t> requestedPresentationResetEpoch{ 0 };
+	PresentationResetEpoch presentationResetEpoch;
 	uint64_t consumedPresentationResetEpoch = 0;
 	std::mutex renderMutex;
 	std::mutex pendingProfileMutex;
@@ -7380,8 +7381,7 @@ struct LibplaceboVideoRenderer::Impl
 
 	void RequestPresentationStateReset()
 	{
-		requestedPresentationResetEpoch.fetch_add(1,
-			std::memory_order_release);
+		presentationResetEpoch.Request();
 	}
 
 	void ClearPresentationStateForReset(uint64_t resetEpoch)
@@ -8124,9 +8124,8 @@ struct LibplaceboVideoRenderer::Impl
 		if (!swapchain)
 			return false;
 		const VideoState& state = *statePtr;
-		const uint64_t requestedResetEpoch =
-			requestedPresentationResetEpoch.load(std::memory_order_acquire);
-		if (requestedResetEpoch != consumedPresentationResetEpoch)
+		uint64_t requestedResetEpoch = consumedPresentationResetEpoch;
+		if (presentationResetEpoch.Consume(requestedResetEpoch))
 		{
 			consumedPresentationResetEpoch = requestedResetEpoch;
 			ClearPresentationStateForReset(requestedResetEpoch);
@@ -12268,13 +12267,18 @@ void LibplaceboVideoRenderer::Reset()
 	// Queue invalidation is CPU-side state and must never wait for an in-flight
 	// libplacebo compile. In particular, HDMI re-sync can arrive on the UI
 	// thread while pl_render_image is building a new program.
-	BeginQueueGeneration("renderer reset");
 	if (m_impl)
 	{
 		// Source-derived presentation authority belongs to the discarded queue
 		// generation. Consume this request at the next render-thread safe point;
-		// do not take the render lock or flush libplacebo here.
+		// do not take the render lock or flush libplacebo here. This must precede
+		// opening the new generation, so its first admitted frame cannot present
+		// with geometry from the discarded generation.
 		m_impl->RequestPresentationStateReset();
+	}
+	BeginQueueGeneration("renderer reset");
+	if (m_impl)
+	{
 		// HDMI and presentation resets retain the same renderer/device. Flushing
 		// here throws away compiled programs and turns the next frame into a long
 		// blocking shader build. libplacebo reconciles changed frame/target data
@@ -12303,6 +12307,10 @@ void LibplaceboVideoRenderer::ResetLiveQueue()
 {
 	// This may be called from UI/profile application paths. It only advances
 	// queue state, so waiting for the GPU render/compile lock is unnecessary.
+	// It nevertheless discards source frames, so the next generation must not
+	// reuse source-derived crop/presentation authority from the old queue.
+	if (m_impl)
+		m_impl->RequestPresentationStateReset();
 	BeginQueueGeneration("live queue reset");
 	m_sceneDetectorGeneration.fetch_add(1, std::memory_order_acq_rel);
 }

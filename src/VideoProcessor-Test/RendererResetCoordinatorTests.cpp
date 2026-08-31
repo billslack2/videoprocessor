@@ -4,6 +4,7 @@
 #include <RendererResetCoordinator.h>
 #include <RendererRetirementService.h>
 #include <IRenderer.h>
+#include <vprenderer/PresentationResetEpoch.h>
 
 #include <atomic>
 #include <chrono>
@@ -237,6 +238,27 @@ namespace Tests
 	TEST_CLASS(RendererResetCoordinatorTests)
 	{
 	public:
+		TEST_METHOD(PresentationResetEpochInvalidatesPriorGeometryForLiveQueueReset)
+		{
+			PresentationResetEpoch resetEpoch;
+			uint64_t consumedEpoch = 0;
+			uint64_t queueGeneration = 41;
+
+			// A refresh-transition uses ResetLiveQueue. Its first new frame must
+			// see this request before the reset publishes generation 42; otherwise
+			// old 2:1 crop authority could be presented once as Scope.
+			resetEpoch.Request();
+			++queueGeneration;
+			Assert::AreEqual<uint64_t>(42, queueGeneration);
+			Assert::IsTrue(resetEpoch.Consume(consumedEpoch));
+			Assert::AreEqual<uint64_t>(1, consumedEpoch);
+			Assert::IsFalse(resetEpoch.Consume(consumedEpoch));
+
+			resetEpoch.Request();
+			Assert::IsTrue(resetEpoch.Consume(consumedEpoch));
+			Assert::AreEqual<uint64_t>(2, consumedEpoch);
+		}
+
 		TEST_METHOD(IncompleteRetirementPolicySeparatesShutdownConversionFromRetention)
 		{
 			using Action = RendererRetirementService::IncompleteAction;
