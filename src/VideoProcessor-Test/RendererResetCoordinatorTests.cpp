@@ -5,6 +5,7 @@
 #include <RendererRetirementService.h>
 #include <IRenderer.h>
 #include <vprenderer/PresentationResetEpoch.h>
+#include <vprenderer/ViewportIntentMailbox.h>
 
 #include <atomic>
 #include <chrono>
@@ -257,6 +258,24 @@ namespace Tests
 			resetEpoch.Request();
 			Assert::IsTrue(resetEpoch.Consume(consumedEpoch));
 			Assert::AreEqual<uint64_t>(2, consumedEpoch);
+		}
+
+		TEST_METHOD(ViewportIntentCoalescingCannotSplitSettingsFromGeometry)
+		{
+			ViewportIntentMailbox<int> mailbox;
+			Assert::IsFalse(mailbox.Publish(220, true, 17, 1700));
+			Assert::IsTrue(mailbox.Publish(235, true, 18, 1800));
+			Assert::IsTrue(mailbox.Publish(0, true, 19, 1900));
+
+			ViewportIntentMailbox<int>::Intent consumed;
+			Assert::IsTrue(mailbox.Consume(consumed));
+			// The automatic Scope/F2 request replaces the entire fixed-crop
+			// transaction, including its boundary metadata.
+			Assert::AreEqual(0, consumed.settings);
+			Assert::IsTrue(consumed.configuredScreenActive);
+			Assert::AreEqual<uint64_t>(19, consumed.viewportRequestSerial);
+			Assert::AreEqual<int64_t>(1900, consumed.viewportRequestNs);
+			Assert::IsFalse(mailbox.Consume(consumed));
 		}
 
 		TEST_METHOD(IncompleteRetirementPolicySeparatesShutdownConversionFromRetention)

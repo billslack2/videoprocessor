@@ -2,6 +2,7 @@
 
 #include "LibplaceboVideoRenderer.h"
 #include <vprenderer/PresentationResetEpoch.h>
+#include <vprenderer/ViewportIntentMailbox.h>
 
 #include <ConfigFile.h>
 #include <EventActionLauncher.h>
@@ -3408,8 +3409,10 @@ struct LibplaceboVideoRenderer::Impl
 	PresentationResetEpoch presentationResetEpoch;
 	uint64_t consumedPresentationResetEpoch = 0;
 	std::mutex renderMutex;
-	std::mutex pendingProfileMutex;
-	std::unique_ptr<RendererSettings> pendingProfileSettings;
+	ViewportIntentMailbox<RendererSettings> pendingProfileIntent;
+	bool renderConfiguredScreenActive = false;
+	uint64_t renderViewportRequestSerial = 0;
+	int64_t renderViewportRequestNs = 0;
 	std::atomic_bool resizePending{ false };
 	std::atomic_bool outputRenegotiationPending{ false };
 	EOTF lastRenderedEotf = EOTF::UNKNOWN;
@@ -6503,14 +6506,14 @@ struct LibplaceboVideoRenderer::Impl
 			sdrTargetNits);
 	}
 
-	void ApplyViewportSettings(const RendererSettings& settings)
+	void ApplyViewportSettings(const RendererSettings& settings,
+		uint64_t viewportRequestSerial, int64_t viewportRequestNs)
 	{
-		// UI-facing methods only publish immutable intent. All libplacebo and
-		// output work runs at the render-thread safe point.
-		std::lock_guard<std::mutex> pendingGuard(pendingProfileMutex);
-		const bool supersededPendingSettings =
-			pendingProfileSettings != nullptr;
-		pendingProfileSettings.reset(new RendererSettings(settings));
+		// Settings and their viewport generation are one immutable intent. The
+		// render thread must never pair a new target serial with old crop settings.
+		const bool supersededPendingSettings = pendingProfileIntent.Publish(
+			settings, settings.configuredScreenTarget,
+			viewportRequestSerial, viewportRequestNs);
 		DebugLog::Log(
 			"libplacebo viewport settings queued for render thread (superseded_pending=%d)",
 			supersededPendingSettings ? 1 : 0);
@@ -6518,8 +6521,7 @@ struct LibplaceboVideoRenderer::Impl
 
 	bool HasPendingProfileSettings()
 	{
-		std::lock_guard<std::mutex> pendingGuard(pendingProfileMutex);
-		return pendingProfileSettings != nullptr;
+		return pendingProfileIntent.HasPending();
 	}
 
 	void ApplyViewportSettingsLocked(const RendererSettings& settings)
@@ -6831,7 +6833,8 @@ struct LibplaceboVideoRenderer::Impl
 		return LiveProfileSettingsCompatible(publishedActiveSettings, settings);
 	}
 
-	bool ApplyProfileSettingsLive(const RendererSettings& settings)
+	bool ApplyProfileSettingsLive(const RendererSettings& settings,
+		uint64_t viewportRequestSerial, int64_t viewportRequestNs)
 	{
 		if (!CanApplyProfileSettingsLive(settings))
 		{
@@ -6839,10 +6842,9 @@ struct LibplaceboVideoRenderer::Impl
 				"libplacebo live profile update rejected before queueing: transport, device, or shader-cache policy differs");
 			return false;
 		}
-		std::lock_guard<std::mutex> pendingGuard(pendingProfileMutex);
-		const bool supersededPendingSettings =
-			pendingProfileSettings != nullptr;
-		pendingProfileSettings.reset(new RendererSettings(settings));
+		const bool supersededPendingSettings = pendingProfileIntent.Publish(
+			settings, settings.configuredScreenTarget,
+			viewportRequestSerial, viewportRequestNs);
 		DebugLog::Log(
 			"libplacebo live profile update queued for render thread (superseded_pending=%d)",
 			supersededPendingSettings ? 1 : 0);
@@ -6953,14 +6955,10 @@ struct LibplaceboVideoRenderer::Impl
 
 	void ApplyPendingProfileSettingsLocked()
 	{
-		std::unique_ptr<RendererSettings> pending;
-		{
-			std::lock_guard<std::mutex> pendingGuard(pendingProfileMutex);
-			pending.swap(pendingProfileSettings);
-		}
-		if (!pending)
+		ViewportIntentMailbox<RendererSettings>::Intent pending;
+		if (!pendingProfileIntent.Consume(pending))
 			return;
-		if (!ApplyProfileSettingsLiveLocked(*pending))
+		if (!ApplyProfileSettingsLiveLocked(pending.settings))
 		{
 			DebugLog::Log(
 				"libplacebo queued live profile update was rejected on render thread");
@@ -6968,9 +6966,13 @@ struct LibplaceboVideoRenderer::Impl
 		}
 		else
 		{
-			ApplyViewportSettingsLocked(*pending);
+			ApplyViewportSettingsLocked(pending.settings);
+			renderConfiguredScreenActive = pending.configuredScreenActive;
+			renderViewportRequestSerial = pending.viewportRequestSerial;
+			renderViewportRequestNs = pending.viewportRequestNs;
 			DebugLog::Log(
-				"libplacebo queued profile and viewport settings applied on render thread");
+				"libplacebo queued profile and viewport intent applied atomically on render thread: request=%llu",
+				static_cast<unsigned long long>(renderViewportRequestSerial));
 		}
 	}
 
@@ -11370,9 +11372,11 @@ bool LibplaceboVideoRenderer::OnVideoState(VideoStateComPtr& videoState)
 			 EffectiveSettingsFingerprint(nextSettings) !=
 				currentEffectiveFingerprint))
 		{
-			m_impl->ApplyViewportSettings(nextSettings);
 			ApplyViewportTarget(nextSettings.configuredScreenTarget,
 				nextSettings.configuredScreenAspect, "automatic profile refresh");
+			m_impl->ApplyViewportSettings(nextSettings,
+				m_viewportRequestSerial.load(std::memory_order_acquire),
+				m_viewportRequestNs.load(std::memory_order_relaxed));
 			DebugLog::Log(
 				"profiles: applied automatic viewport settings live without renderer rebuild");
 		}
@@ -12017,15 +12021,6 @@ bool LibplaceboVideoRenderer::ApplyApplicationState(
 		// This preserves the renderer and its libplacebo/D3D resources when an
 		// editor changes values inside the already selected profile. The immutable
 		// intent is consumed only by the render thread's existing safe point.
-		if (!m_impl->ApplyProfileSettingsLive(candidateSettings))
-		{
-			rendererRestartRequired = false;
-			DebugLog::Log(
-				"application profile generation %llu live update rejected after compatible classification: fields=%s",
-				static_cast<unsigned long long>(snapshot.generation),
-				changedFields.c_str());
-			return false;
-		}
 		rendererRestartRequired = false;
 		liveProfileUpdateQueued = true;
 		// Compatible Screen, Zoom, Scaling, Color, and Processing changes are
@@ -12079,13 +12074,29 @@ bool LibplaceboVideoRenderer::ApplyApplicationState(
 	}
 	if (!rendererRestartRequired && m_impl)
 	{
-		// ApplyProfileSettingsLive already queues the full immutable snapshot and
-		// applies its viewport portion at the same render-thread safe point.
-		// Do not replace that intent with a second UI-thread queue operation.
-		if (!liveProfileUpdateQueued)
-			m_impl->ApplyViewportSettings(candidateSettings);
 		ApplyViewportTarget(candidateSettings.configuredScreenTarget,
 			candidateSettings.configuredScreenAspect, "application snapshot");
+		const uint64_t viewportRequestSerial =
+			m_viewportRequestSerial.load(std::memory_order_acquire);
+		const int64_t viewportRequestNs =
+			m_viewportRequestNs.load(std::memory_order_relaxed);
+		if (liveProfileUpdateQueued)
+		{
+			if (!m_impl->ApplyProfileSettingsLive(candidateSettings,
+				viewportRequestSerial, viewportRequestNs))
+			{
+				DebugLog::Log(
+					"application profile generation %llu live update rejected after compatible classification: fields=%s",
+					static_cast<unsigned long long>(snapshot.generation),
+					changedFields.c_str());
+				return false;
+			}
+		}
+		else
+		{
+			m_impl->ApplyViewportSettings(candidateSettings,
+				viewportRequestSerial, viewportRequestNs);
+		}
 		DebugLog::Log(
 			"application viewport state applied live: %s target=%s explicit=%d vertical_alignment=%s",
 			snapshot.viewport.profile.c_str(),
@@ -13337,6 +13348,8 @@ void LibplaceboVideoRenderer::RenderLoop()
 					m_videoConversionOverride);
 				m_configuredScreenActive.store(
 					m_impl->configuredScreenTarget, std::memory_order_release);
+				m_impl->renderConfiguredScreenActive =
+					m_impl->configuredScreenTarget;
 				m_implInitialized.store(true, std::memory_order_release);
 			}
 			// A graph stop/run may follow an HDMI re-sync while retaining this
@@ -13665,9 +13678,9 @@ void LibplaceboVideoRenderer::RenderLoop()
 					oldestQueuedAgeMs,
 					cadenceRepeat,
 					captureRateHz,
-					m_configuredScreenActive.load(std::memory_order_acquire),
-					m_viewportRequestSerial.load(std::memory_order_acquire),
-					m_viewportRequestNs.load(std::memory_order_relaxed),
+					m_impl->renderConfiguredScreenActive,
+					m_impl->renderViewportRequestSerial,
+					m_impl->renderViewportRequestNs,
 					m_sceneDetectionEnabled.load(std::memory_order_acquire),
 					m_videoConversionOverride,
 					m_sceneDetectorGeneration.load(std::memory_order_acquire),
