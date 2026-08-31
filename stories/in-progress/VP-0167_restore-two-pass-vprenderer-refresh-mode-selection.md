@@ -90,3 +90,21 @@ Live validation remains required before deployment: test a display with an
 exact 24000/1001 mode, one requiring the bounded 24.000 fallback, and one
 with no same-family fallback. Verify the `libplacebo refresh-rate selection`
 log reports the expected path and the desktop resolution remains unchanged.
+
+## Deployment
+
+2026-08-31: Rebase check against the current `origin/v1.3.004-beta` tip
+`5d266d6a` was already current; VP-0167 remains commit `56d67d56`. The x64
+Release `VideoProcessor-VPRenderer.vcxproj` and `VideoProcessor-GUI.vcxproj`
+artifacts built successfully. The complete solution build was blocked only in
+unrelated ConfigTests, OutputProbe, and Config projects by the host environment
+having both `Path` and `PATH`, which MSBuild passes as duplicate CL.exe
+variables. The modified VP Renderer project itself completed successfully.
+
+Deployed only `vprenderer\VideoProcessorVPRenderer.dll`; no configuration file
+was changed. The previous DLL is backed up at
+`C:\Videoprocessor\vp\deployment-backups\vp0167-refresh-mode-selection-20260831-110656`.
+The deployed DLL SHA-256 is
+`B2E1288F132B6A88DF556EECD5331F9C8D65C1B7C73EEEA8D340B382BEF16859`, verified
+against the Release build output. Live two-pass selection validation remains
+required before moving this story to Review.
