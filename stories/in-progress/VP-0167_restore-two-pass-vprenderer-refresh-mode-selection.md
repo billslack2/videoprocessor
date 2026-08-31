@@ -75,3 +75,18 @@ playback uses a predictable cadence rather than an opaque Windows fallback.
 The implementation must begin from a clean worktree based on the confirmed
 current beta integration branch. The discovered default branch on 2026-08-31
 is `v1.3.004-beta`; confirmation is required before source implementation.
+
+## Validation
+
+2026-08-31: Source commit `56d67d56` (`Restore two-pass VP Renderer refresh
+selection`) completed on `codex/vp-0167-refresh-mode-selection`.
+
+- `Release|x64` build passed for `VideoProcessor-VPRenderer.vcxproj`.
+- `Release|x64` build passed for `VideoProcessor-Test.vcxproj.vcxproj`.
+- Targeted VSTest policy selection passed: 4/4 new exact, fallback, rejection,
+  and tie-breaker cases.
+
+Live validation remains required before deployment: test a display with an
+exact 24000/1001 mode, one requiring the bounded 24.000 fallback, and one
+with no same-family fallback. Verify the `libplacebo refresh-rate selection`
+log reports the expected path and the desktop resolution remains unchanged.
