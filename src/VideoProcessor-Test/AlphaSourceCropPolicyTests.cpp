@@ -2979,7 +2979,6 @@ namespace Tests
 		TEST_METHOD(FixedAspectCropIsIndependentOfThePhysicalScreen)
 		{
 			FixedAspectCropInput input;
-			input.trustedContentAuthorityAccepted = true;
 			input.fixedAspect = 2.0;
 			input.sourceBounds = {
 				0, 0, 3840, 2020, 3840, 2160,
@@ -3000,9 +2999,17 @@ namespace Tests
 				(narrowed.sourceBounds.bottom - narrowed.sourceBounds.top), 0.002);
 			Assert::IsTrue(narrowed.sourceBounds.left > input.sourceBounds.left);
 
-			input.trustedContentAuthorityAccepted = false;
-			const AspectLimitFillDecision untrusted = EvaluateFixedAspectCrop(input);
-			Assert::IsFalse(untrusted.applied);
+			// A detector timeout/fail-open supplies the complete raster. The
+			// operator-selected crop remains fixed and cannot fall back to fit.
+			input.fixedAspect = 2.35;
+			input.sourceBounds = {
+				0, 0, 3840, 2160, 3840, 2160,
+				16.0 / 9.0, ActivePictureBounds::BarAxes::NONE };
+			const AspectLimitFillDecision failOpen = EvaluateFixedAspectCrop(input);
+			Assert::IsTrue(failOpen.applied);
+			Assert::AreEqual(2.35,
+				static_cast<double>(failOpen.sourceBounds.right - failOpen.sourceBounds.left) /
+				(failOpen.sourceBounds.bottom - failOpen.sourceBounds.top), 0.002);
 		}
 
 		TEST_METHOD(TwoToOneLensPrecompressesSixteenByNineToEightByNine)

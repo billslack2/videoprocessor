@@ -1409,15 +1409,10 @@ namespace AlphaSourceCrop
 		const int height = input.sourceBounds.bottom - input.sourceBounds.top;
 		if (width <= 0 || height <= 0)
 		{
-			decision.reason = "trusted crop bounds are invalid";
+			decision.reason = "fixed crop bounds are invalid";
 			return decision;
 		}
 		decision.contentAspect = static_cast<double>(width) / height;
-		if (!input.trustedContentAuthorityAccepted)
-		{
-			decision.reason = "trusted active-picture authority is unavailable";
-			return decision;
-		}
 		if (!std::isfinite(input.fixedAspect) || input.fixedAspect < 1.0 ||
 			input.fixedAspect > 4.0)
 		{
@@ -1461,7 +1456,7 @@ namespace AlphaSourceCrop
 		decision.sourceBounds.aspectRatio = static_cast<double>(finalWidth) / finalHeight;
 		decision.sourceBounds.trustedBarAxes = ActivePictureBounds::BarAxes::NONE;
 		decision.applied = true;
-		decision.reason = "trusted content center-cropped to the fixed aspect";
+		decision.reason = "current presentation center-cropped to the fixed aspect";
 		return decision;
 	}
 

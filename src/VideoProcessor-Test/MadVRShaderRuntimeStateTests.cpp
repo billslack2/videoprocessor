@@ -121,21 +121,29 @@ namespace VideoProcessorTest
 		TEST_METHOD(VpRendererNlsPassthroughInheritsViewportPresentation)
 		{
 			Assert::IsFalse(NlsOwnsPresentationGeometry(true, false, true,
-				true, NlsMappingMode::LINEAR_PASSTHROUGH, false));
+				true, false, NlsMappingMode::LINEAR_PASSTHROUGH, false));
 			Assert::IsTrue(NlsOwnsPresentationGeometry(true, false, true,
-				false, NlsMappingMode::LINEAR_PASSTHROUGH, false));
+				false, false, NlsMappingMode::LINEAR_PASSTHROUGH, false));
 			Assert::IsTrue(NlsOwnsPresentationGeometry(true, false, true,
-				true, NlsMappingMode::ACTIVE, false));
+				true, false, NlsMappingMode::ACTIVE, false));
 			Assert::IsTrue(NlsOwnsPresentationGeometry(true, false, true,
-				true, NlsMappingMode::LINEAR_PASSTHROUGH, true));
+				true, false, NlsMappingMode::LINEAR_PASSTHROUGH, true));
+		}
+
+		TEST_METHOD(VpRendererNlsCannotOverrideFixedViewportCrop)
+		{
+			Assert::IsFalse(NlsOwnsPresentationGeometry(true, false, true,
+				true, true, NlsMappingMode::ACTIVE, true));
+			Assert::IsFalse(NlsOwnsPresentationGeometry(true, false, true,
+				false, true, NlsMappingMode::SAFE_FIT, false));
 		}
 
 		TEST_METHOD(VpRendererNlsNeverOverridesPresentationFailOpen)
 		{
 			Assert::IsFalse(NlsOwnsPresentationGeometry(true, true, true,
-				false, NlsMappingMode::ACTIVE, true));
+				false, false, NlsMappingMode::ACTIVE, true));
 			Assert::IsFalse(NlsOwnsPresentationGeometry(true, true, true,
-				false, NlsMappingMode::SAFE_FIT, false));
+				false, false, NlsMappingMode::SAFE_FIT, false));
 		}
 
 		TEST_METHOD(WaitingCannotExposeNlsOutputContract)

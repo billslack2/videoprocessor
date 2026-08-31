@@ -99,7 +99,8 @@ NlsSourceGeometry ResolveNlsPresentationSourceGeometry(bool nlsRequested,
 // established NLS-only bar-removal contract when no viewport crop exists.
 bool NlsOwnsPresentationGeometry(bool nlsRequested,
 	bool presentationFailOpen, bool activePictureAvailable,
-	bool viewportCropApplied, NlsMappingMode mappingMode,
+	bool viewportCropApplied, bool viewportCropIsFixed,
+	NlsMappingMode mappingMode,
 	bool presentationCropApplied);
 
 

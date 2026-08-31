@@ -9884,11 +9884,23 @@ struct LibplaceboVideoRenderer::Impl
 			const bool nlsOwnsPresentationGeometry =
 				NlsOwnsPresentationGeometry(nlsRequested,
 					nlsPresentationFailOpen, nlsActivePictureAvailable,
-					cropDecision.applyCrop, nlsCandidateDecision.mode,
+					cropDecision.applyCrop, fixedCropAspectConfigured,
+					nlsCandidateDecision.mode,
 					nlsCandidatePresentationCrop.applied);
 
 			AlphaSourceCrop::AspectLimitFillDecision aspectLimitFill;
-			if (nlsPresentationFailOpen)
+			if (fixedCropAspectConfigured)
+			{
+				// Fixed means fixed: detector/NLS fail-open and authority timeouts may
+				// choose the complete raster as the input bounds, but they must not
+				// bypass the operator-selected source aspect.
+				AlphaSourceCrop::FixedAspectCropInput fixedCropInput;
+				fixedCropInput.fixedAspect = fixedCropAspect;
+				fixedCropInput.sourceBounds = cropDecision.sourceBounds;
+				aspectLimitFill = AlphaSourceCrop::EvaluateFixedAspectCrop(
+					fixedCropInput);
+			}
+			else if (nlsPresentationFailOpen)
 			{
 				aspectLimitFill.sourceBounds = cropDecision.sourceBounds;
 				aspectLimitFill.reason =
@@ -9905,17 +9917,6 @@ struct LibplaceboVideoRenderer::Impl
 					static_cast<double>(cropWidth) / cropHeight : 0.0;
 				aspectLimitFill.reason =
 					"NLS owns final source geometry; aspect-limit fill withheld";
-			}
-			else if (fixedCropAspectConfigured)
-			{
-				AlphaSourceCrop::FixedAspectCropInput fixedCropInput;
-				fixedCropInput.trustedContentAuthorityAccepted =
-					cropDecision.applyCrop ||
-					cropInput.fullRasterPresentationAuthoritative;
-				fixedCropInput.fixedAspect = fixedCropAspect;
-				fixedCropInput.sourceBounds = cropDecision.sourceBounds;
-				aspectLimitFill = AlphaSourceCrop::EvaluateFixedAspectCrop(
-					fixedCropInput);
 			}
 			else if (!configuredScreenActive)
 			{

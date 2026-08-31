@@ -601,14 +601,14 @@ namespace AlphaSourceCrop
 
 	struct FixedAspectCropInput
 	{
-		bool trustedContentAuthorityAccepted = false;
 		double fixedAspect = 0.0;
 		ActivePictureBounds sourceBounds;
 	};
 
-	// Center-crop an accepted current picture to an operator-selected source
-	// aspect. This deliberately has no knowledge of the physical screen: the
-	// regular destination fit happens after this source-geometry decision.
+	// Center-crop the current presentation bounds to an operator-selected source
+	// aspect. This is unconditional while configured: automatic crop authority
+	// may refine the input bounds, but its expiry must not disable the fixed crop.
+	// The regular physical-screen fit happens after this source decision.
 	AspectLimitFillDecision EvaluateFixedAspectCrop(
 		const FixedAspectCropInput& input);
 

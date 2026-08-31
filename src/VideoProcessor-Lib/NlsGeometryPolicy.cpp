@@ -175,10 +175,13 @@ NlsSourceGeometry ResolveNlsPresentationSourceGeometry(bool nlsRequested,
 
 bool NlsOwnsPresentationGeometry(bool nlsRequested,
 	bool presentationFailOpen, bool activePictureAvailable,
-	bool viewportCropApplied, NlsMappingMode mappingMode,
+	bool viewportCropApplied, bool viewportCropIsFixed,
+	NlsMappingMode mappingMode,
 	bool presentationCropApplied)
 {
-	if (!nlsRequested || presentationFailOpen)
+	// A fixed viewport crop is an explicit operator geometry contract. NLS may
+	// map within that rectangle, but must never replace or further crop it.
+	if (!nlsRequested || presentationFailOpen || viewportCropIsFixed)
 		return false;
 	if (presentationCropApplied || mappingMode == NlsMappingMode::ACTIVE ||
 		mappingMode == NlsMappingMode::SAFE_FIT)
