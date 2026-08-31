@@ -9001,13 +9001,16 @@ struct LibplaceboVideoRenderer::Impl
 
 		struct pl_frame baseTarget{};
 		pl_frame_from_swapchain(&baseTarget, &swapchainFrame);
+		// The selected source crop is handed to pl_render_image below, so colour
+		// mapping and peak detection operate on picture pixels only. Clear the
+		// output surface separately before that pass: any area outside target.crop
+		// is the intentional, display-referred black matte for the fitted picture.
+		// This must apply to both VP-owned and libplacebo-owned presentation paths;
+		// a smaller fixed-aspect destination must never inherit prior-frame pixels.
+		const float black[] = { 0.0f, 0.0f, 0.0f };
+		pl_frame_clear(d3d11->gpu, &baseTarget, black);
 		if (vpOwnedSwapchain)
 		{
-			// Flip-discard backbuffers contain undefined prior contents. Rendering a
-			// smaller destination rectangle must therefore begin with a full target
-			// clear, otherwise old pixels can survive around a resized viewport.
-			const float black[] = { 0.0f, 0.0f, 0.0f };
-			pl_frame_clear(d3d11->gpu, &baseTarget, black);
 			if (vpOwnedClearLoggedGeneration != vpOwnedSwapchainGeneration)
 			{
 				vpOwnedClearLoggedGeneration = vpOwnedSwapchainGeneration;
