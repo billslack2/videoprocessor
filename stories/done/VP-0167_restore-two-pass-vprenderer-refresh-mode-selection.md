@@ -2,10 +2,9 @@
 
 ## Status
 
-In Progress (2026-08-31). The user confirmed `v1.3.004-beta` as the
-implementation base at `5d266d6a`. Work is on
-`codex/vp-0167-refresh-mode-selection` in
-`C:\Videoprocessor\vp\vprenderer\.codex-worktrees\vp-0167-refresh-mode-selection`.
+Done (2026-08-31). The implementation was merged to
+origin/v1.3.004-beta at 9d3118f1 and packaged from a clean x64 Release
+build.
 
 VP Renderer currently submits one content-derived rational refresh request to
 `SetDisplayConfig` with `SDC_ALLOW_CHANGES`; it does not enumerate and rank
@@ -108,3 +107,17 @@ The deployed DLL SHA-256 is
 `B2E1288F132B6A88DF556EECD5331F9C8D65C1B7C73EEEA8D340B382BEF16859`, verified
 against the Release build output. Live two-pass selection validation remains
 required before moving this story to Review.
+
+
+## Completion
+
+2026-08-31: Live diagnostics confirmed that the two-pass policy selected the
+60 Hz nominal fallback for 59.940060 Hz input from three enumerated display
+modes. Windows rejected the original rational-only configuration request, so
+the implementation was corrected to apply the concrete selected DEVMODE and
+retry eligible timing variants on rejection. The final fixes were merged to
+1.3.004-beta as 30a3a3b4, 2373f78, and 9d3118f1.
+
+A clean x64 Release build was staged and verified against the 57-file release
+manifest. The share package is
+VP-0167-9d3118f-refresh-rate-fallback-tester.zip.
