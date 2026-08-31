@@ -286,5 +286,13 @@ namespace Tests
 			Assert::IsFalse(verifier.Observe(true, { 120000, 2002 }));
 			Assert::IsTrue(verifier.Observe(true, { 59951, 1000 }));
 		}
+
+		TEST_METHOD(RefreshSwitchOwnershipExcludesEmbeddedPreview)
+		{
+			Assert::IsTrue(
+				ShouldSwitchRefreshRateForPresentationTarget(false));
+			Assert::IsFalse(
+				ShouldSwitchRefreshRateForPresentationTarget(true));
+		}
 	};
 }

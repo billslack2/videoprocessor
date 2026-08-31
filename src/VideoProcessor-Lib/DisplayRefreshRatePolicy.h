@@ -110,6 +110,11 @@ bool DisplayRefreshRatesEquivalentForRestore(
 	const DisplayRefreshRational& first,
 	const DisplayRefreshRational& second);
 
+// Refresh switching is display-global. Only a top-level presentation surface
+// may own that transition; an embedded preview must not change desktop timing
+// while a fullscreen renderer is being retired or replaced.
+bool ShouldSwitchRefreshRateForPresentationTarget(bool isChildWindow);
+
 class DisplayRefreshRestoreVerifier
 {
 public:

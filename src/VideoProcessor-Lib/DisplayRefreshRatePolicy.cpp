@@ -168,6 +168,11 @@ bool DisplayRefreshRatesEquivalentForRestore(
 			RESTORE_EQUIVALENCE_TOLERANCE_HZ);
 }
 
+bool ShouldSwitchRefreshRateForPresentationTarget(bool isChildWindow)
+{
+	return !isChildWindow;
+}
+
 
 bool DisplayRefreshRestoreVerifier::Observe(
 	bool querySucceeded, DisplayRefreshRational observed)

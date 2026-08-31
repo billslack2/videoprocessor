@@ -6365,7 +6365,8 @@ struct LibplaceboVideoRenderer::Impl
 		// fullscreen direct/BT.2020 request. Keep the configured request intact
 		// for a later top-level fullscreen renderer generation.
 		const LONG_PTR targetStyle = GetWindowLongPtr(videoHwnd, GWL_STYLE);
-		if ((targetStyle & WS_CHILD) != 0)
+		const bool embeddedPreview = (targetStyle & WS_CHILD) != 0;
+		if (embeddedPreview)
 		{
 			effectiveOutputRequest.presentation =
 				LibplaceboOutput::PresentationRequest::COMPOSED;
@@ -6467,7 +6468,15 @@ struct LibplaceboVideoRenderer::Impl
 		// the desktop timing. Query and select the content rate only after that
 		// transition has completed; an earlier verified no-op could otherwise
 		// leave this newly initialized renderer running at the restored rate.
-		displayRefreshRate.Switch(videoHwnd, *state, settings);
+		if (ShouldSwitchRefreshRateForPresentationTarget(embeddedPreview))
+		{
+			displayRefreshRate.Switch(videoHwnd, *state, settings);
+		}
+		else if (settings.switchRefreshRate)
+		{
+			DebugLog::Log(
+				"libplacebo refresh-rate switch skipped: presentation=embedded-child reason=display-global timing belongs to top-level presentation surfaces");
+		}
 		// Negotiate only after libplacebo has applied its hint and completed the
 		// initial ResizeBuffers operation; either may otherwise replace DXGI state.
 		ConfigureAndFallback("initialize");
