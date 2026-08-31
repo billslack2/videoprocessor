@@ -2,9 +2,7 @@
 
 ## Status
 
-Done (2026-08-31). The implementation was merged to
-origin/v1.3.004-beta at 9d3118f1 and packaged from a clean x64 Release
-build.
+In Progress (reopened 2026-08-31). Live validation proved that the nominal-integer fallback at 9d3118f1 selected 24.000/60.000 for fractional 23.976/59.94 content.
 
 VP Renderer currently submits one content-derived rational refresh request to
 `SetDisplayConfig` with `SDC_ALLOW_CHANGES`; it does not enumerate and rank
@@ -24,6 +22,10 @@ tie-breaker. VP Renderer now enumerates candidate target refresh rationals for
 the active source path, logs its selected path, and retains the current mode
 when enumeration finds no acceptable candidate. The x64 Release VP Renderer
 and policy-test projects build successfully; the four new ranking tests pass.
+## Correction in progress
+
+2026-08-31: The nominal-integer EnumDisplaySettings path has been discarded. Commit 26877ce1 restores the exact rational SetDisplayConfig request and SDC_ALLOW_CHANGES, allowing Windows/the driver to resolve the compatible timing without collapsing 24000/1001 to 24 or 60000/1001 to 60. Release x64 renderer and GUI builds completed; 18 refresh-policy tests passed. Live verification of the corrected rational result is pending deployment.
+
 ## User story
 
 As a VP Renderer user, I want automatic refresh switching to choose the best
