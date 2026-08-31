@@ -13,7 +13,7 @@ existing sampler only as the fallback for unavailable/disjoint/BitBlt timing.
 Implementation is committed as `e3814472` on `codex/vp0169-present-timing`,
 based on `origin/v1.3.004-beta` at `d1f43bc6`. The x64 Release GUI and renderer
 projects built successfully and the focused Alpha presentation telemetry tests
-passed 9/9. Deployment and live flip-model validation remain to be recorded.
+passed 9/9. Deployed the matched x64 Release pair to `C:\Videoprocessor\vp` on 2026-08-31; the prior EXE/DLL pair is preserved at `backup-before-vp0088-presenter-timing-20260831-171630`. Deployed hashes match the build (`VideoProcessor.exe` `A4A71DE0...81A95`, `VideoProcessorVPRenderer.dll` `139FF312...60098`); active `VideoProcessor.cfg` was not modified (SHA-256 `E1B76448...6C7A9`). Live flip-model validation remains.
 
 ## Implementation progress
 
