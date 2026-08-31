@@ -522,6 +522,12 @@ namespace AlphaSourceCrop
 			(topExpansion || bottomExpansion);
 	}
 
+	bool ShouldTrackDynamicPresentationGeometry(
+		bool automaticCropEnabled, bool subtitleFitEnabled)
+	{
+		return automaticCropEnabled || subtitleFitEnabled;
+	}
+
 	bool CanResolveVerticalInspectionWithConfirmedFit(
 		const VerticalInspectionFitResolutionInput& input)
 	{

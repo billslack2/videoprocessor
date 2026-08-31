@@ -1931,7 +1931,7 @@ namespace
 		}
 		settings.automaticSourceCrop = settings.automaticSourceCrop ||
 			settings.cropNarrowerContentToFillScreen ||
-			settings.cropWiderContentToFillScreen || settings.fixedCropAspectConfigured;
+			settings.cropWiderContentToFillScreen;
 		if (!readViewportBool("subtitle_fit", settings.scopeSubtitleFit) &&
 			readViewportString("subtitle_fit", raw))
 			DebugLog::Log("profile '%s': invalid subtitle_fit '%s'",
@@ -2372,7 +2372,7 @@ namespace
 		}
 		settings.automaticSourceCrop = settings.automaticSourceCrop ||
 			settings.cropNarrowerContentToFillScreen ||
-			settings.cropWiderContentToFillScreen || settings.fixedCropAspectConfigured;
+			settings.cropWiderContentToFillScreen;
 		if (TryGetDisplayString(config, "subtitle_hold_seconds", rawValue))
 		{
 			double seconds = 0.0;
@@ -9690,7 +9690,9 @@ struct LibplaceboVideoRenderer::Impl
 					AlphaSourceCrop::NearBlackPresentationMode::FULL_RASTER;
 
 			AlphaSourceCrop::Input cropInput;
-			cropInput.automaticCropEnabled = automaticSourceCrop;
+			cropInput.automaticCropEnabled =
+				AlphaSourceCrop::ShouldTrackDynamicPresentationGeometry(
+					automaticSourceCrop, scopeSubtitleFit);
 			cropInput.nearBlackEpisodeRetainCrop =
 				nearBlackEpisodeRetainCrop;
 			cropInput.nearBlackEpisodeFullRaster =

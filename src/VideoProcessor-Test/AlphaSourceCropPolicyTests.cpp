@@ -854,6 +854,45 @@ namespace Tests
 				true, true, true, false, true, true, false));
 		}
 
+		TEST_METHOD(FixedCropTracksMenusOnlyWhenDynamicGeometryIsEnabled)
+		{
+			Assert::IsFalse(ShouldTrackDynamicPresentationGeometry(
+				false, false));
+			Assert::IsTrue(ShouldTrackDynamicPresentationGeometry(
+				true, false));
+			Assert::IsTrue(ShouldTrackDynamicPresentationGeometry(
+				false, true));
+			Assert::IsTrue(ShouldTrackDynamicPresentationGeometry(
+				true, true));
+
+			Input menu = TrustedScopeCrop();
+			menu.geometry = {
+				0, 120, 3840, 2116, 3840, 2160,
+				3840.0 / 1996.0, ActivePictureBounds::BarAxes::TOP_BOTTOM };
+			menu.automaticCropEnabled =
+				ShouldTrackDynamicPresentationGeometry(false, false);
+			const Decision anchoredSource = Evaluate(menu);
+			AssertFullRaster(anchoredSource);
+
+			FixedAspectCropInput fixed;
+			fixed.fixedAspect = 2.4;
+			fixed.sourceBounds = anchoredSource.sourceBounds;
+			const AspectLimitFillDecision anchored =
+				EvaluateFixedAspectCrop(fixed);
+			Assert::AreEqual(280, anchored.sourceBounds.top);
+			Assert::AreEqual(1880, anchored.sourceBounds.bottom);
+
+			menu.automaticCropEnabled =
+				ShouldTrackDynamicPresentationGeometry(false, true);
+			const Decision subtitleSource = Evaluate(menu);
+			Assert::IsTrue(subtitleSource.applyCrop);
+			fixed.sourceBounds = subtitleSource.sourceBounds;
+			const AspectLimitFillDecision subtitleAdjusted =
+				EvaluateFixedAspectCrop(fixed);
+			Assert::AreEqual(318, subtitleAdjusted.sourceBounds.top);
+			Assert::AreEqual(1918, subtitleAdjusted.sourceBounds.bottom);
+		}
+
 		TEST_METHOD(VerticalInspectionBridgeStopsAfterDenseClassification)
 		{
 			VerticalInspectionBridgeInput input;

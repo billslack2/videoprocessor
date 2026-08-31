@@ -177,6 +177,12 @@ namespace AlphaSourceCrop
 		bool rightExpansion,
 		bool bottomExpansion);
 
+	// Dynamic detector geometry may reposition a presentation only when the
+	// operator explicitly enabled automatic crop or subtitle containment.
+	// Merely configuring a fixed aspect must not opt into either behavior.
+	bool ShouldTrackDynamicPresentationGeometry(
+		bool automaticCropEnabled, bool subtitleFitEnabled);
+
 	struct VerticalInspectionBridgeState
 	{
 		bool active = false;
