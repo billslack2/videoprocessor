@@ -160,7 +160,7 @@ they must not contain requirements that are absent from this file.
 | VP-0125 | Done | Diagnose Alpha fullscreen target-nits colour crushing and provide Output Experiments |
 | VP-0126 | In Progress | Standalone Alpha test-pattern generator |
 | VP-0127 | Done | Enforce output format and prove composed display delivery |
-| VP-0128 | Backlog | Audit VP Renderer option parity and resolved defaults |
+| VP-0128 | Review | Audit VP Renderer option parity and resolved defaults |
 | VP-0129 | Done | Retain scope through vertical overlay arbitration |
 | VP-0130 | Done | Renderer telemetry and live input-configuration clarity |
 | VP-0131 | Done | VP Renderer NLS-V and bounded presentation crop |

@@ -2,7 +2,17 @@
 
 ## Status
 
-Backlog (2026-08-14). Review the complete VP Renderer configuration surface
+Review (2026-08-30). The dithering parity increment is implemented in
+`billslack2/videoprocessor` commit `d6e7fab2` on `v1.3.004-beta`: the editor,
+profile validation, runtime mapping, and diagnostics now expose Auto, the four
+ordinary libplacebo dithering methods, all ten error-diffusion kernels, and
+Off. Legacy `on` continues to resolve to Blue noise. Error diffusion is
+intentionally disabled while a display 3D LUT is active; this is a compatible
+render-path constraint, not a LUT requirement for dithering. The targeted
+native mapping test and x64 Release renderer build passed; the deployed
+configuration editor is ready for reviewer validation.
+
+The remaining audit scope covers the complete VP Renderer configuration surface
 before changing behavior. The immediate confirmed inconsistency is that
 `quality: high` plus `downscaler: AUTO` resolves to libplacebo's Hermite
 downscaler, while VP's configuration UI and parser expose only `AUTO`, EWA
