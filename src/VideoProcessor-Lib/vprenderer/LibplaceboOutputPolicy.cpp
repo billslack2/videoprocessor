@@ -127,6 +127,30 @@ namespace LibplaceboOutput
 		return result;
 	}
 
+	SdrTransfer ResolveCalibrationTargetTransfer(
+		GammaRequest configuredOutputGamma,
+		bool calibrationLutEnabled,
+		SdrTransfer acceptedOutputTransfer)
+	{
+		switch (configuredOutputGamma)
+		{
+		case GammaRequest::SRGB: return SdrTransfer::SRGB;
+		case GammaRequest::BT1886: return SdrTransfer::BT1886;
+		case GammaRequest::GAMMA18: return SdrTransfer::GAMMA18;
+		case GammaRequest::GAMMA20: return SdrTransfer::GAMMA20;
+		case GammaRequest::GAMMA22: return SdrTransfer::GAMMA22;
+		case GammaRequest::GAMMA24: return SdrTransfer::GAMMA24;
+		case GammaRequest::GAMMA26: return SdrTransfer::GAMMA26;
+		case GammaRequest::GAMMA28: return SdrTransfer::GAMMA28;
+		case GammaRequest::AUTO:
+			return calibrationLutEnabled
+				? SdrTransfer::GAMMA22
+				: acceptedOutputTransfer;
+		default:
+			return acceptedOutputTransfer;
+		}
+	}
+
 	Plan MakePlan(const Request& request)
 	{
 		Plan result;

@@ -460,8 +460,8 @@ namespace VideoProcessorTest
 				Assert::IsTrue(projection.renderParams.error_diffusion == selection.second,
 					L"The selected error-diffusion kernel was not forwarded to libplacebo.");
 				BuildOrFail(settings, true, projection);
-				Assert::IsTrue(projection.renderParams.error_diffusion == nullptr,
-					L"A display 3D LUT must use the compatible non-error-diffusion path.");
+				Assert::IsTrue(projection.renderParams.error_diffusion == selection.second,
+					L"A calibration 3D LUT must preserve the selected final error-diffusion stage.");
 			}
 
 			settings.sigmoid = Toggle::Off;
@@ -542,7 +542,7 @@ namespace VideoProcessorTest
 				L"Light debanding must reduce added grain.");
 		}
 
-		TEST_METHOD(ContrastRecoveryAndDisplayLutCompatibilityReachRenderParameters)
+		TEST_METHOD(ContrastRecoveryAndCalibrationLutPreserveRenderParameters)
 		{
 			Settings settings;
 			settings.hasContrastRecovery = true;
@@ -558,11 +558,31 @@ namespace VideoProcessorTest
 			const pl_render_params* highQuality =
 				NativeData<pl_render_params>("pl_render_high_quality_params");
 			BuildOrFail(settings, true, projection);
-			Assert::IsTrue(projection.renderParams.error_diffusion == nullptr,
-				L"A loaded target LUT must remove incompatible error diffusion.");
-			if (highQuality->error_diffusion)
-				Assert::IsTrue(highQuality->error_diffusion !=
-					projection.renderParams.error_diffusion);
+			Assert::IsTrue(projection.renderParams.error_diffusion ==
+				highQuality->error_diffusion,
+				L"A calibration LUT must not alter final error diffusion.");
+		}
+
+		TEST_METHOD(CalibrationLutDoesNotReplaceDtmOrPeakDetection)
+		{
+			Settings settings;
+			settings.toneMapping = "bt2390";
+			settings.gamutMapping = "relative";
+			settings.peakDetection = PeakDetection::HighQuality;
+			Projection withoutLut;
+			Projection withLut;
+			BuildOrFail(settings, false, withoutLut);
+			BuildOrFail(settings, true, withLut);
+
+			Assert::IsNotNull(withLut.renderParams.color_map_params);
+			Assert::IsNotNull(withLut.renderParams.peak_detect_params);
+			Assert::IsTrue(withLut.colorMapParams.tone_mapping_function ==
+				withoutLut.colorMapParams.tone_mapping_function);
+			Assert::IsTrue(withLut.colorMapParams.gamut_mapping ==
+				withoutLut.colorMapParams.gamut_mapping);
+			Assert::IsTrue(withLut.renderParams.lut == nullptr);
+			Assert::AreEqual(static_cast<int>(PL_LUT_UNKNOWN),
+				static_cast<int>(withLut.renderParams.lut_type));
 		}
 
 		TEST_METHOD(SelectedVPRendererProfileProjectsResolvedValuesToLibplacebo)

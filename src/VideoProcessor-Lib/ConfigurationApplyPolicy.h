@@ -142,6 +142,7 @@ namespace ConfigurationApplyPolicy
 	inline std::string OrderedProfileGroup(const std::string& rawSection)
 	{
 		const std::string section = NormalizeSection(rawSection);
+		if (section == "vprenderer.input_processing") return {};
 		if (HasPrefix(section, "queue")) return "queue";
 		if (HasPrefix(section, "lldv")) return "lldv";
 		if (HasPrefix(section, "shader.nls")) return "shader.nls";

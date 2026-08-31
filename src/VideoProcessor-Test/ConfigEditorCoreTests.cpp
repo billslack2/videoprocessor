@@ -770,8 +770,7 @@ namespace VideoProcessorTest
 				"tone_mapping: auto\ngamut_mapping: auto\npeak_detection: auto\ncontrast_recovery: auto\n"
 				"upscaler: auto\ndownscaler: auto\ndeband: auto\ndeband_strength: off\n"
 				"sigmoid: auto\ndithering: auto\ndisplay_bit_depth: auto\nsdr_input_transfer: auto\nsdr_target_primaries: rec709\n"
-				"lut: calibration.cube\nlut_reference_nits: auto\nlut_reference_range: auto\n"
-				"lut_reference_transfer: auto\nlut_reference_primaries: auto\n"
+				"calibration_lut_enabled: true\ncalibration_lut_bt709: calibration.cube\n"
 				"report_bt2020_to_display: false\nswitch_refresh_rate: true\n"
 				"[vprenderer.bt2020]\nshortcut: F5\nsdr_target_primaries: bt2020\nreport_bt2020_to_display: true\n"
 				"[vprenderer.output.default]\noutput_presentation: auto\noutput_range: full\n"
@@ -979,11 +978,8 @@ namespace VideoProcessorTest
 				{ "vprenderer.rec709", "deband_strength", "light" },
 				{ "vprenderer.rec709", "sigmoid", "on" },
 				{ "vprenderer.rec709", "dithering", "on" },
-				{ "vprenderer.rec709", "lut", "calibration.cube" },
-				{ "vprenderer.rec709", "lut_reference_nits", "203" },
-				{ "vprenderer.rec709", "lut_reference_range", "full" },
-				{ "vprenderer.rec709", "lut_reference_transfer", "2.4" },
-				{ "vprenderer.rec709", "lut_reference_primaries", "REC709" },
+				{ "vprenderer.rec709", "calibration_lut_enabled", "true" },
+				{ "vprenderer.rec709", "calibration_lut_bt709", "calibration.cube" },
 				{ "vprenderer.rec709", "report_bt2020_to_display", "false" },
 				{ "vprenderer.rec709", "switch_refresh_rate", "true" },
 				{ "vprenderer.output.default", "output_presentation", "composed" },

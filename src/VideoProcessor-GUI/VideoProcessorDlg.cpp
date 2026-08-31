@@ -3607,8 +3607,10 @@ bool CVideoProcessorDlg::EvaluateActiveOutputSweepCase(
 	const std::string configuredPrimaries = m_activeOutputSweepDocument ?
 		m_activeOutputSweepDocument->Get("vprenderer", "sdr_target_primaries") :
 		std::string();
-	expected.primaries = ConfigFile::NormalizeName(configuredPrimaries) == "bt2020" ?
-		Primaries::BT2020 : Primaries::REC709;
+	const std::string normalizedPrimaries =
+		ConfigFile::NormalizeName(configuredPrimaries);
+	expected.primaries = normalizedPrimaries == "bt2020" ? Primaries::BT2020 :
+		normalizedPrimaries == "p3_d65" ? Primaries::P3_D65 : Primaries::REC709;
 	const bool hdrSuite = m_activeOutputSweepSuite.CompareNoCase(L"hdr") == 0;
 	expected.measurementRequired = !expectedFallback &&
 		(hdrSuite || strcmp(test.gamma, "auto") != 0 || limited || test.force8Bit);
@@ -3630,7 +3632,8 @@ bool CVideoProcessorDlg::EvaluateActiveOutputSweepCase(
 		actual.transfer == Transfer::SRGB ? L"sRGB" : L"Unknown";
 	const wchar_t* owner = actual.vpOwnsPresentation ? L"VP" : L"libplacebo";
 	const wchar_t* primaries = actual.primaries == Primaries::BT2020 ?
-		L"BT.2020" : actual.primaries == Primaries::REC709 ? L"Rec.709" : L"Unknown";
+		L"BT.2020" : actual.primaries == Primaries::P3_D65 ? L"P3-D65" :
+		actual.primaries == Primaries::REC709 ? L"Rec.709" : L"Unknown";
 	const wchar_t* content = actual.rendererContent ==
 		RendererContentEvidence::NONBLACK ? L"nonblack" :
 		actual.rendererContent == RendererContentEvidence::ALL_BLACK ? L"black" :

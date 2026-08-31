@@ -2303,6 +2303,23 @@ namespace Tests
 				std::string::npos);
 		}
 
+		TEST_METHOD(RendererProfileConfigValidatesCalibrationLutContract)
+		{
+			std::string expected;
+			Assert::IsTrue(RendererProfileConfig::ValidateProfileSetting(
+				"display", "calibration_lut_enabled", "true", expected));
+			Assert::IsFalse(RendererProfileConfig::ValidateProfileSetting(
+				"display", "calibration_lut_enabled", "maybe", expected));
+			Assert::IsTrue(RendererProfileConfig::ValidateProfileSetting(
+				"display", "calibration_lut_bt2020", "luts/calibration.cube", expected));
+			Assert::IsFalse(RendererProfileConfig::ValidateProfileSetting(
+				"display", "calibration_lut_bt2020", "luts/calibration.3dlut", expected));
+
+			Assert::IsTrue(RendererProfileConfig::ValidateProfileSetting(
+				"display", "sdr_target_nits", "100", expected),
+				L"Calibration LUT slots remain optional; target luminance is still owned by DTM.");
+		}
+
 		TEST_METHOD(UnifiedProfileRuntimeRestoresPublishesAndPersistsViewport)
 		{
 			char temporaryDirectory[MAX_PATH] = {};

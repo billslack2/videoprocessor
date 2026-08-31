@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <string>
 
 #pragma warning(push)
@@ -12,7 +13,9 @@
 namespace LibplaceboDisplayLut
 {
 	constexpr size_t MAX_FILE_BYTES = 64u * 1024u * 1024u;
-	constexpr int MAX_3D_SIZE = 128;
+	// Match the interoperable madVR calibration range. Larger tables are not
+	// useful for this path and can create disproportionate GPU allocations.
+	constexpr int MAX_3D_SIZE = 65;
 
 	enum class Status
 	{
@@ -31,7 +34,15 @@ namespace LibplaceboDisplayLut
 		PATH_OUTSIDE_BASE,
 		INVALID_CUBE,
 		ONE_DIMENSIONAL,
+		UNSUPPORTED_DOMAIN,
 		UNSAFE_DIMENSIONS
+	};
+
+	struct FileVersion
+	{
+		bool available = false;
+		uint64_t fileBytes = 0;
+		uint64_t fileWriteTime = 0;
 	};
 
 	struct LoadResult
@@ -40,14 +51,11 @@ namespace LibplaceboDisplayLut
 		Status status = Status::DISABLED;
 		Rejection rejection = Rejection::NONE;
 		size_t fileBytes = 0;
-	};
-
-	enum class ContractRejection
-	{
-		NONE,
-		OUTPUT_NOT_SIGNALED,
-		P3_NOT_SUPPORTED,
-		PROFILE_MISMATCH
+		uint64_t fileWriteTime = 0;
+		// Captured from the same handle whose bytes were parsed. Callers must use
+		// this observation, rather than probing the path again, when deciding
+		// whether a failed transactional reload needs another attempt.
+		FileVersion fileVersion;
 	};
 
 	// When constrainedBaseDirectory is supplied, the file opened at path must
@@ -56,23 +64,7 @@ namespace LibplaceboDisplayLut
 		pl_log log,
 		const std::string& path,
 		const std::string& constrainedBaseDirectory = std::string());
+	FileVersion ProbeFileVersion(const std::string& path);
+	bool SameFileVersion(const FileVersion& left, const FileVersion& right);
 	const char* ShortReason(Rejection rejection);
-	bool TargetMatchesSignal(
-		enum pl_color_primaries targetPrimaries,
-		enum pl_color_transfer targetTransfer,
-		enum pl_color_levels targetRange,
-		enum pl_color_primaries signalPrimaries,
-		enum pl_color_transfer signalTransfer,
-		enum pl_color_levels signalRange);
-	ContractRejection ValidateContract(
-		enum pl_color_primaries requestedPrimaries,
-		enum pl_color_transfer requestedTransfer,
-		enum pl_color_levels requestedRange,
-		double requestedNits,
-		enum pl_color_primaries targetPrimaries,
-		enum pl_color_transfer targetTransfer,
-		enum pl_color_levels targetRange,
-		double targetNits,
-		bool targetMatchesSignaledOutput);
-	const char* ShortReason(ContractRejection rejection);
 }

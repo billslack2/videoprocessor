@@ -2,6 +2,7 @@
 #include "CppUnitTest.h"
 
 #include <vprenderer/LibplaceboOutputPolicy.h>
+#include <vprenderer/LibplaceboCalibrationLutPolicy.h>
 #include <ActiveOutputSweepPolicy.h>
 
 
@@ -13,6 +14,44 @@ namespace Tests
 	TEST_CLASS(LibplaceboOutputPolicyTests)
 	{
 	public:
+		TEST_METHOD(CalibrationLutSelectsConfiguredDisplayTargetOnly)
+		{
+			using namespace LibplaceboCalibrationLut;
+			const auto p3 = Select(true, Primaries::P3_D65, true, true, true);
+			Assert::IsTrue(p3.enabled);
+			Assert::AreEqual(static_cast<int>(Slot::P3_D65),
+				static_cast<int>(p3.slot));
+			const auto bt2020 = Select(true, Primaries::BT2020, true, true, true);
+			Assert::AreEqual(static_cast<int>(Slot::BT2020),
+				static_cast<int>(bt2020.slot));
+			Assert::AreEqual(static_cast<int>(Primaries::P3_D65),
+				static_cast<int>(ParsePrimaries("P3_D65")));
+		}
+
+		TEST_METHOD(CalibrationLutNeverFallsBackAcrossTargetGamuts)
+		{
+			using namespace LibplaceboCalibrationLut;
+			Assert::IsFalse(Select(true, Primaries::BT2020,
+				true, true, false).enabled);
+			Assert::IsFalse(Select(false, Primaries::BT709,
+				true, true, true).enabled);
+			Assert::IsFalse(Select(true, Primaries::UNKNOWN,
+				true, true, true).enabled);
+		}
+
+		TEST_METHOD(CalibrationTargetTransferIsExplicitAndCarrierIndependent)
+		{
+			Assert::AreEqual(static_cast<int>(SdrTransfer::BT1886),
+				static_cast<int>(ResolveCalibrationTargetTransfer(
+					GammaRequest::BT1886, true, SdrTransfer::SRGB)));
+			Assert::AreEqual(static_cast<int>(SdrTransfer::GAMMA22),
+				static_cast<int>(ResolveCalibrationTargetTransfer(
+					GammaRequest::AUTO, true, SdrTransfer::GAMMA24)));
+			Assert::AreEqual(static_cast<int>(SdrTransfer::GAMMA24),
+				static_cast<int>(ResolveCalibrationTargetTransfer(
+					GammaRequest::AUTO, false, SdrTransfer::GAMMA24)));
+		}
+
 		TEST_METHOD(SdrGammaMissingOrOnPreservesCurrentManagedBehavior)
 		{
 			Assert::AreEqual(static_cast<int>(SdrAdjustGamma::ON),
@@ -300,6 +339,19 @@ namespace Tests
 			const SdrOutputContract contract = MakeSdrOutputContract(
 				{}, SdrTargetPrimaries::REC709, true);
 			Assert::AreEqual(static_cast<int>(SdrTargetPrimaries::REC709),
+				static_cast<int>(contract.target));
+			Assert::AreEqual(static_cast<int>(PrimariesRequest::REC709),
+				static_cast<int>(contract.transport.primaries));
+			Assert::IsFalse(contract.reportBt2020ToDisplay);
+		}
+
+		TEST_METHOD(P3D65TargetRetainsP709CarrierAndCannotRequestBt2020Signaling)
+		{
+			Request transport;
+			transport.primaries = PrimariesRequest::BT2020;
+			const SdrOutputContract contract = MakeSdrOutputContract(
+				transport, SdrTargetPrimaries::P3_D65, true);
+			Assert::AreEqual(static_cast<int>(SdrTargetPrimaries::P3_D65),
 				static_cast<int>(contract.target));
 			Assert::AreEqual(static_cast<int>(PrimariesRequest::REC709),
 				static_cast<int>(contract.transport.primaries));

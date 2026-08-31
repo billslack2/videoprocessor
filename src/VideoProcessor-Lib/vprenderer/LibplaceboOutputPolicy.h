@@ -130,6 +130,7 @@ namespace LibplaceboOutput
 	enum class SdrTargetPrimaries
 	{
 		REC709,
+		P3_D65,
 		BT2020,
 	};
 
@@ -232,6 +233,13 @@ namespace LibplaceboOutput
 		GammaRequest configuredOutputGamma,
 		SdrTransfer declaredSource,
 		SdrTransfer actualTarget);
+	// Resolve the pixel-domain transfer independently from the Full/Limited
+	// carrier. Calibration Auto means Gamma 2.2; ordinary Auto retains the
+	// transfer of the accepted output contract.
+	SdrTransfer ResolveCalibrationTargetTransfer(
+		GammaRequest configuredOutputGamma,
+		bool calibrationLutEnabled,
+		SdrTransfer acceptedOutputTransfer);
 	Plan MakePlan(const Request& request);
 	SdrOutputContract MakeSdrOutputContract(
 		Request requestedTransport,
