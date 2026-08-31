@@ -139,6 +139,20 @@ namespace Tests
 			Assert::IsTrue(std::fabs(pillarbox.panel.right - 3320.0f) < 0.01f);
 		}
 
+		TEST_METHOD(FixedCropUsesTheFinalVisiblePictureInsteadOfThePhysicalScreen)
+		{
+			// A 2.00:1 fixed crop fitted to a 2.35:1 CIH screen leaves
+			// pillarbox mattes. The OSD must follow the 2.00:1 visible picture,
+			// never the wider physical screen rectangle.
+			const Rect screen{ 0.0f, 0.0f, 3840.0f, 1634.0f };
+			const Rect fixedCropPicture{ 286.0f, 0.0f, 3554.0f, 1634.0f };
+			const Result result = Place(fixedCropPicture, screen, 420.0f, 600.0f);
+			Assert::IsTrue(std::fabs(result.panel.left - 3094.0f) < 0.01f);
+			Assert::IsTrue(std::fabs(result.panel.right - 3514.0f) < 0.01f);
+			Assert::IsTrue(std::fabs(result.panel.top - 994.0f) < 0.01f);
+			Assert::IsTrue(std::fabs(result.panel.bottom - 1594.0f) < 0.01f);
+		}
+
 		TEST_METHOD(SmallPictureScalesUniformlyAndRemainsContained)
 		{
 			const Result result = Place(
