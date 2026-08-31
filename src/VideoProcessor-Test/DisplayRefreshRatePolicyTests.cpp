@@ -217,6 +217,56 @@ namespace Tests
 				{ 60000, 0 }, { 60000, 1001 }));
 		}
 
+		TEST_METHOD(ModeSelectorPrefersEquivalentExactRational)
+		{
+			const DisplayRefreshModeSelection selection =
+				SelectDisplayRefreshMode({ 24000, 1001 },
+					{ { 24, 1 }, { 120000, 5005 }, { 60000, 1000 } });
+
+			Assert::AreEqual(
+				static_cast<int>(DisplayRefreshModeSelectionPath::ExactOrClose),
+				static_cast<int>(selection.path));
+			Assert::AreEqual(120000u, selection.selected.numerator);
+			Assert::AreEqual(5005u, selection.selected.denominator);
+			Assert::AreEqual(0.0, selection.differenceHz, 0.0000001);
+		}
+
+		TEST_METHOD(ModeSelectorUsesClosestInRangeFallback)
+		{
+			const DisplayRefreshModeSelection selection =
+				SelectDisplayRefreshMode({ 24000, 1001 },
+					{ { 24, 1 }, { 60, 1 }, { 50, 1 } });
+
+			Assert::AreEqual(
+				static_cast<int>(DisplayRefreshModeSelectionPath::ClosestInRange),
+				static_cast<int>(selection.path));
+			Assert::AreEqual(24u, selection.selected.numerator);
+			Assert::AreEqual(1u, selection.selected.denominator);
+		}
+
+		TEST_METHOD(ModeSelectorRejectsUnrelatedFallbackFamilies)
+		{
+			const DisplayRefreshModeSelection selection =
+				SelectDisplayRefreshMode({ 24000, 1001 },
+					{ { 50, 1 }, { 60, 1 } });
+
+			Assert::AreEqual(
+				static_cast<int>(DisplayRefreshModeSelectionPath::None),
+				static_cast<int>(selection.path));
+		}
+
+		TEST_METHOD(ModeSelectorTiesPreferHigherRefresh)
+		{
+			const DisplayRefreshModeSelection selection =
+				SelectDisplayRefreshMode({ 60, 1 },
+					{ { 5999, 100 }, { 6001, 100 } });
+
+			Assert::AreEqual(
+				static_cast<int>(DisplayRefreshModeSelectionPath::ExactOrClose),
+				static_cast<int>(selection.path));
+			Assert::AreEqual(6001u, selection.selected.numerator);
+		}
+
 		TEST_METHOD(RestoreEquivalenceAllowsTightDriverRoundingOnly)
 		{
 			Assert::IsTrue(DisplayRefreshRatesEquivalentForRestore(

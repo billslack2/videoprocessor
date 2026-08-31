@@ -21,6 +21,9 @@ constexpr double MINIMUM_STARTUP_OBSERVATION_SECONDS = 2.0;
 constexpr double MINIMUM_READINESS_OBSERVATION_SECONDS = 10.0;
 constexpr double RESTORE_EQUIVALENCE_TOLERANCE_RATIO = 0.0005;
 constexpr double RESTORE_EQUIVALENCE_TOLERANCE_HZ = 0.02;
+constexpr double MODE_CLOSE_TOLERANCE_RATIO = 0.0005;
+constexpr double MODE_CLOSE_TOLERANCE_HZ = 0.02;
+constexpr double MODE_FALLBACK_TOLERANCE_RATIO = 0.005;
 
 double AllowedDifference(double rateHz, double ratio, double minimumHz)
 {
@@ -61,6 +64,76 @@ DisplayRefreshRateResult Result(
 	result.shouldRecalculate = shouldRecalculate;
 	return result;
 }
+}
+
+
+double DisplayRefreshRateHz(const DisplayRefreshRational& rate)
+{
+	return rate.denominator > 0 ?
+		static_cast<double>(rate.numerator) / rate.denominator : 0.0;
+}
+
+
+DisplayRefreshModeSelection SelectDisplayRefreshMode(
+	const DisplayRefreshRational& requested,
+	const std::vector<DisplayRefreshRational>& candidates)
+{
+	DisplayRefreshModeSelection result;
+	result.requestedRateHz = DisplayRefreshRateHz(requested);
+	if (!std::isfinite(result.requestedRateHz) ||
+		result.requestedRateHz <= 0.0)
+	{
+		return result;
+	}
+
+	const auto selectClosest = [&](double toleranceHz,
+		DisplayRefreshModeSelectionPath path) {
+		bool found = false;
+		for (const DisplayRefreshRational& candidate : candidates)
+		{
+			const double candidateRateHz = DisplayRefreshRateHz(candidate);
+			if (!std::isfinite(candidateRateHz) || candidateRateHz <= 0.0)
+				continue;
+			const double differenceHz = std::fabs(
+				candidateRateHz - result.requestedRateHz);
+			if (differenceHz > toleranceHz)
+				continue;
+			// Stable tie-breaker: retain the higher supported refresh when cadence
+			// distance is indistinguishable, preserving presentation headroom.
+			if (!found || differenceHz < result.differenceHz - 0.000001 ||
+				(std::fabs(differenceHz - result.differenceHz) <= 0.000001 &&
+					candidateRateHz > result.selectedRateHz))
+			{
+				found = true;
+				result.path = path;
+				result.selected = candidate;
+				result.selectedRateHz = candidateRateHz;
+				result.differenceHz = differenceHz;
+			}
+		}
+		return found;
+	};
+
+	for (const DisplayRefreshRational& candidate : candidates)
+	{
+		if (DisplayRefreshRatesExactlyEqual(requested, candidate))
+		{
+			result.path = DisplayRefreshModeSelectionPath::ExactOrClose;
+			result.selected = candidate;
+			result.selectedRateHz = DisplayRefreshRateHz(candidate);
+			result.differenceHz = 0.0;
+			return result;
+		}
+	}
+	if (selectClosest(std::max(MODE_CLOSE_TOLERANCE_HZ,
+		result.requestedRateHz * MODE_CLOSE_TOLERANCE_RATIO),
+		DisplayRefreshModeSelectionPath::ExactOrClose))
+	{
+		return result;
+	}
+	selectClosest(result.requestedRateHz * MODE_FALLBACK_TOLERANCE_RATIO,
+		DisplayRefreshModeSelectionPath::ClosestInRange);
+	return result;
 }
 
 

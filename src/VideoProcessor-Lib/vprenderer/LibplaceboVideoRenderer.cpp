@@ -2843,6 +2843,77 @@ namespace
 		return false;
 	}
 
+	bool QuerySupportedRefreshRates(
+		const DISPLAYCONFIG_PATH_INFO& activePath,
+		UINT32 sourceWidth,
+		UINT32 sourceHeight,
+		std::vector<DISPLAYCONFIG_RATIONAL>& refreshRates)
+	{
+		refreshRates.clear();
+		for (int attempt = 0; attempt < 3; ++attempt)
+		{
+			UINT32 pathCount = 0;
+			UINT32 modeCount = 0;
+			if (GetDisplayConfigBufferSizes(
+				QDC_ALL_PATHS, &pathCount, &modeCount) != ERROR_SUCCESS ||
+				pathCount == 0)
+			{
+				return false;
+			}
+			std::vector<DISPLAYCONFIG_PATH_INFO> paths(pathCount);
+			std::vector<DISPLAYCONFIG_MODE_INFO> modes(modeCount);
+			const LONG result = QueryDisplayConfig(QDC_ALL_PATHS,
+				&pathCount, paths.data(), &modeCount, modes.data(), nullptr);
+			if (result == ERROR_INSUFFICIENT_BUFFER)
+				continue;
+			if (result != ERROR_SUCCESS)
+				return false;
+
+			for (UINT32 index = 0; index < pathCount; ++index)
+			{
+				const DISPLAYCONFIG_PATH_INFO& candidate = paths[index];
+				if (candidate.sourceInfo.id != activePath.sourceInfo.id ||
+					candidate.sourceInfo.adapterId.HighPart !=
+						activePath.sourceInfo.adapterId.HighPart ||
+					candidate.sourceInfo.adapterId.LowPart !=
+						activePath.sourceInfo.adapterId.LowPart ||
+					!candidate.targetInfo.targetAvailable)
+				{
+					continue;
+				}
+				if (sourceWidth > 0 && sourceHeight > 0)
+				{
+					const UINT32 sourceModeIndex = candidate.sourceInfo.modeInfoIdx;
+					if (sourceModeIndex == DISPLAYCONFIG_PATH_MODE_IDX_INVALID ||
+						sourceModeIndex >= modeCount ||
+						modes[sourceModeIndex].infoType !=
+							DISPLAYCONFIG_MODE_INFO_TYPE_SOURCE ||
+						modes[sourceModeIndex].sourceMode.width != sourceWidth ||
+						modes[sourceModeIndex].sourceMode.height != sourceHeight)
+					{
+						continue;
+					}
+				}
+				const DISPLAYCONFIG_RATIONAL& rate = candidate.targetInfo.refreshRate;
+				if (rate.Numerator == 0 || rate.Denominator == 0)
+					continue;
+				bool duplicate = false;
+				for (const DISPLAYCONFIG_RATIONAL& existing : refreshRates)
+					if (DisplayRefreshRatesExactlyEqual(
+						{ existing.Numerator, existing.Denominator },
+						{ rate.Numerator, rate.Denominator }))
+					{
+						duplicate = true;
+						break;
+					}
+				if (!duplicate)
+					refreshRates.push_back(rate);
+			}
+			return !refreshRates.empty();
+		}
+		return false;
+	}
+
 	LONG ApplyDisplayRefreshRate(
 		std::vector<DISPLAYCONFIG_PATH_INFO>& paths,
 		std::vector<DISPLAYCONFIG_MODE_INFO>& modes,
@@ -2869,7 +2940,7 @@ namespace
 			paths.data(),
 			modeCount,
 			modes.data(),
-			SDC_APPLY | SDC_USE_SUPPLIED_DISPLAY_CONFIG | SDC_ALLOW_CHANGES);
+			SDC_APPLY | SDC_USE_SUPPLIED_DISPLAY_CONFIG);
 	}
 
 	class ScopedDisplayRefreshRate
@@ -2943,6 +3014,44 @@ namespace
 				(contentRate > 24.1 && contentRate < 31.0);
 			if (useDoubleRate)
 				targetRefreshRate.Numerator *= 2;
+
+			DEVMODEW currentMode{};
+			currentMode.dmSize = sizeof(currentMode);
+			const BOOL currentModeKnown = EnumDisplaySettingsW(
+				m_displayDeviceName.c_str(), ENUM_CURRENT_SETTINGS, &currentMode);
+			std::vector<DISPLAYCONFIG_RATIONAL> supportedRefreshRates;
+			if (!QuerySupportedRefreshRates(paths[pathIndex],
+				currentModeKnown ? currentMode.dmPelsWidth : 0,
+				currentModeKnown ? currentMode.dmPelsHeight : 0,
+				supportedRefreshRates))
+			{
+				DebugLog::Log(
+					"libplacebo refresh-rate switch: supported mode enumeration failed; retaining %.6f Hz",
+					RefreshRateHz(m_originalRefreshRate));
+				return;
+			}
+			std::vector<DisplayRefreshRational> candidates;
+			candidates.reserve(supportedRefreshRates.size());
+			for (const DISPLAYCONFIG_RATIONAL& rate : supportedRefreshRates)
+				candidates.push_back({ rate.Numerator, rate.Denominator });
+			const DisplayRefreshModeSelection selection = SelectDisplayRefreshMode(
+				{ targetRefreshRate.Numerator, targetRefreshRate.Denominator }, candidates);
+			if (selection.path == DisplayRefreshModeSelectionPath::None)
+			{
+				DebugLog::Log(
+					"libplacebo refresh-rate switch: no exact/close or in-range mode for input=%.6f Hz target=%.6f Hz candidates=%zu; retaining %.6f Hz",
+					contentRate, RefreshRateHz(targetRefreshRate), candidates.size(),
+					RefreshRateHz(m_originalRefreshRate));
+				return;
+			}
+			targetRefreshRate.Numerator = selection.selected.numerator;
+			targetRefreshRate.Denominator = selection.selected.denominator;
+			DebugLog::Log(
+				"libplacebo refresh-rate selection: input=%.6f Hz requested=%.6f Hz selected=%.6f Hz path=%s difference=%.6f Hz candidates=%zu",
+				contentRate, selection.requestedRateHz, selection.selectedRateHz,
+				selection.path == DisplayRefreshModeSelectionPath::ExactOrClose ?
+					"exact-or-close" : "closest-in-range",
+				selection.differenceHz, candidates.size());
 
 			if (RefreshRatesEqual(m_originalRefreshRate, targetRefreshRate))
 			{

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <vector>
 
 enum class DisplayRefreshRateDecision
 {
@@ -69,6 +70,33 @@ struct DisplayRefreshRational
 	uint32_t numerator = 0;
 	uint32_t denominator = 0;
 };
+
+enum class DisplayRefreshModeSelectionPath
+{
+	None,
+	ExactOrClose,
+	ClosestInRange
+};
+
+struct DisplayRefreshModeSelection
+{
+	DisplayRefreshModeSelectionPath path =
+		DisplayRefreshModeSelectionPath::None;
+	DisplayRefreshRational selected{};
+	double requestedRateHz = 0.0;
+	double selectedRateHz = 0.0;
+	double differenceHz = 0.0;
+};
+
+double DisplayRefreshRateHz(const DisplayRefreshRational& rate);
+
+// Select a display mode in two intentional passes. The first pass accepts an
+// exactly equivalent rational or tight driver rounding. Only if that fails is
+// the closest cadence-family candidate accepted within the bounded fallback
+// window; this must not turn a 24 Hz source into an unrelated 50/60 Hz mode.
+DisplayRefreshModeSelection SelectDisplayRefreshMode(
+	const DisplayRefreshRational& requested,
+	const std::vector<DisplayRefreshRational>& candidates);
 
 bool DisplayRefreshRatesExactlyEqual(
 	const DisplayRefreshRational& first,
