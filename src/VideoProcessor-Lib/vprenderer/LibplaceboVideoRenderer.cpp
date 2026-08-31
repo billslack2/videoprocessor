@@ -2843,6 +2843,130 @@ namespace
 		return false;
 	}
 
+	struct RankedDisplayRefreshRate
+	{
+		DISPLAYCONFIG_RATIONAL refreshRate{};
+		DisplayRefreshModeSelectionPath selectionPath =
+			DisplayRefreshModeSelectionPath::None;
+	};
+
+	bool QueryDxgiSupportedRefreshRates(const std::wstring& displayDeviceName,
+		std::vector<DISPLAYCONFIG_RATIONAL>& refreshRates)
+	{
+		refreshRates.clear();
+		if (displayDeviceName.empty())
+			return false;
+
+		DEVMODEW currentMode{};
+		currentMode.dmSize = sizeof(currentMode);
+		if (!EnumDisplaySettingsW(displayDeviceName.c_str(),
+			ENUM_CURRENT_SETTINGS, &currentMode))
+		{
+			return false;
+		}
+
+		CComPtr<IDXGIFactory1> factory;
+		if (FAILED(CreateDXGIFactory1(IID_PPV_ARGS(&factory))) || !factory)
+			return false;
+
+		const DXGI_FORMAT formats[] =
+		{
+			DXGI_FORMAT_R8G8B8A8_UNORM,
+			DXGI_FORMAT_R10G10B10A2_UNORM
+		};
+		for (UINT adapterIndex = 0;; ++adapterIndex)
+		{
+			CComPtr<IDXGIAdapter1> adapter;
+			if (factory->EnumAdapters1(adapterIndex, &adapter) == DXGI_ERROR_NOT_FOUND)
+				break;
+			if (!adapter)
+				continue;
+			for (UINT outputIndex = 0;; ++outputIndex)
+			{
+				CComPtr<IDXGIOutput> output;
+				if (adapter->EnumOutputs(outputIndex, &output) == DXGI_ERROR_NOT_FOUND)
+					break;
+				if (!output)
+					continue;
+				DXGI_OUTPUT_DESC outputDesc{};
+				if (FAILED(output->GetDesc(&outputDesc)) ||
+					_wcsicmp(outputDesc.DeviceName, displayDeviceName.c_str()) != 0)
+				{
+					continue;
+				}
+				CComQIPtr<IDXGIOutput1> output1(output);
+				if (!output1)
+					return false;
+				for (const DXGI_FORMAT format : formats)
+				{
+					UINT modeCount = 0;
+					if (FAILED(output1->GetDisplayModeList1(format, 0,
+						&modeCount, nullptr)) || modeCount == 0)
+					{
+						continue;
+					}
+					std::vector<DXGI_MODE_DESC1> modes(modeCount);
+					if (FAILED(output1->GetDisplayModeList1(format, 0,
+						&modeCount, modes.data())))
+					{
+						continue;
+					}
+					for (const DXGI_MODE_DESC1& mode : modes)
+					{
+						if (mode.Width != currentMode.dmPelsWidth ||
+							mode.Height != currentMode.dmPelsHeight ||
+							mode.RefreshRate.Numerator == 0 ||
+							mode.RefreshRate.Denominator == 0)
+						{
+							continue;
+						}
+						const DISPLAYCONFIG_RATIONAL candidate =
+							{ mode.RefreshRate.Numerator, mode.RefreshRate.Denominator };
+						const bool alreadyPresent = std::any_of(
+							refreshRates.begin(), refreshRates.end(),
+							[&candidate](const DISPLAYCONFIG_RATIONAL& existing)
+							{
+								return DisplayRefreshRatesExactlyEqual(
+									{ existing.Numerator, existing.Denominator },
+									{ candidate.Numerator, candidate.Denominator });
+							});
+						if (!alreadyPresent)
+							refreshRates.push_back(candidate);
+					}
+				}
+				return !refreshRates.empty();
+			}
+		}
+		return false;
+	}
+
+	std::vector<RankedDisplayRefreshRate> RankDisplayRefreshRates(
+		const DISPLAYCONFIG_RATIONAL& requested,
+		const std::vector<DISPLAYCONFIG_RATIONAL>& supportedRates)
+	{
+		std::vector<DisplayRefreshRational> remaining;
+		remaining.reserve(supportedRates.size());
+		for (const DISPLAYCONFIG_RATIONAL& rate : supportedRates)
+			remaining.push_back({ rate.Numerator, rate.Denominator });
+
+		std::vector<RankedDisplayRefreshRate> ranked;
+		while (!remaining.empty())
+		{
+			const DisplayRefreshModeSelection selection = SelectDisplayRefreshMode(
+				{ requested.Numerator, requested.Denominator }, remaining);
+			if (selection.path == DisplayRefreshModeSelectionPath::None)
+				break;
+			ranked.push_back({ { selection.selected.numerator,
+				selection.selected.denominator }, selection.path });
+			remaining.erase(std::remove_if(remaining.begin(), remaining.end(),
+				[&selection](const DisplayRefreshRational& candidate)
+				{
+					return DisplayRefreshRatesExactlyEqual(candidate, selection.selected);
+				}), remaining.end());
+		}
+		return ranked;
+	}
+
 	LONG ApplyDisplayRefreshRate(
 		std::vector<DISPLAYCONFIG_PATH_INFO>& paths,
 		std::vector<DISPLAYCONFIG_MODE_INFO>& modes,
@@ -2957,50 +3081,99 @@ namespace
 				return;
 			}
 
-			// Preserve the exact source rational (for example 24000/1001 or
-			// 60000/1001).  EnumDisplaySettings only exposes nominal integer
-			// frequencies and cannot distinguish these modes.  The Windows display
-			// configuration path is the authoritative selector; SDC_ALLOW_CHANGES
-			// permits the driver to resolve the compatible timing without changing
-			// the source desktop resolution or topology.
-			const LONG switchResult = ApplyDisplayRefreshRate(
-				paths, modes, pathCount, modeCount, pathIndex, targetRefreshRate);
-			if (switchResult != ERROR_SUCCESS)
+			std::vector<DISPLAYCONFIG_RATIONAL> supportedRates;
+			if (!QueryDxgiSupportedRefreshRates(m_displayDeviceName, supportedRates))
 			{
 				DebugLog::Log(
-					"libplacebo refresh-rate switch failed: input=%.6f Hz target=%.6f Hz error=%ld; continuing with current display mode",
-					contentRate, RefreshRateHz(targetRefreshRate), switchResult);
+					"libplacebo refresh-rate switch: DXGI rational mode enumeration failed; retaining %.6f Hz",
+					RefreshRateHz(m_originalRefreshRate));
+				return;
+			}
+			const std::vector<RankedDisplayRefreshRate> rankedRates =
+				RankDisplayRefreshRates(targetRefreshRate, supportedRates);
+			if (rankedRates.empty())
+			{
+				DebugLog::Log(
+					"libplacebo refresh-rate switch: no safe DXGI candidate for input=%.6f Hz target=%.6f Hz candidates=%zu; retaining %.6f Hz",
+					contentRate, RefreshRateHz(targetRefreshRate), supportedRates.size(),
+					RefreshRateHz(m_originalRefreshRate));
 				return;
 			}
 
-			m_changed = true;
-			DISPLAYCONFIG_RATIONAL actualRefreshRate{};
-			const bool actualRateAvailable = GetCurrentRefreshRate(actualRefreshRate);
-			if (actualRateAvailable)
+			for (size_t attempt = 0; attempt < rankedRates.size(); ++attempt)
 			{
+				const RankedDisplayRefreshRate& candidate = rankedRates[attempt];
 				DebugLog::Log(
-					"libplacebo refresh-rate switch applied: input=%.6f Hz target=%.6f Hz previous=%.6f Hz actual=%.6f Hz",
-					contentRate,
-					RefreshRateHz(targetRefreshRate),
-					RefreshRateHz(m_originalRefreshRate),
-					RefreshRateHz(actualRefreshRate));
-			}
-			else
-			{
+					"libplacebo refresh-rate candidate: input=%.6f Hz requested=%.6f Hz candidate=%.6f Hz path=%s attempt=%zu/%zu available=%zu",
+					contentRate, RefreshRateHz(targetRefreshRate),
+					RefreshRateHz(candidate.refreshRate),
+					candidate.selectionPath == DisplayRefreshModeSelectionPath::ExactOrClose ?
+						"exact-or-close" : "closest-in-range",
+					attempt + 1, rankedRates.size(), supportedRates.size());
+
+				std::vector<DISPLAYCONFIG_PATH_INFO> candidatePaths;
+				std::vector<DISPLAYCONFIG_MODE_INFO> candidateModes;
+				UINT32 candidatePathCount = 0;
+				UINT32 candidateModeCount = 0;
+				size_t candidatePathIndex = 0;
+				if (!QueryDisplayPath(m_displayDeviceName, candidatePaths,
+					candidateModes, candidatePathCount, candidateModeCount,
+					candidatePathIndex))
+				{
+					DebugLog::Log("libplacebo refresh-rate candidate skipped: active display path disappeared");
+					break;
+				}
+				const LONG switchResult = ApplyDisplayRefreshRate(candidatePaths,
+					candidateModes, candidatePathCount, candidateModeCount,
+					candidatePathIndex, candidate.refreshRate);
+				if (switchResult != ERROR_SUCCESS)
+				{
+					DebugLog::Log(
+						"libplacebo refresh-rate candidate rejected: candidate=%.6f Hz error=%ld attempt=%zu/%zu",
+						RefreshRateHz(candidate.refreshRate), switchResult,
+						attempt + 1, rankedRates.size());
+					continue;
+				}
+
+				DISPLAYCONFIG_RATIONAL actualRefreshRate{};
+				if (VerifyCurrentRefreshRate(candidate.refreshRate, actualRefreshRate))
+				{
+					m_changed = true;
+					DebugLog::Log(
+						"libplacebo refresh-rate switch verified: input=%.6f Hz target=%.6f Hz previous=%.6f Hz actual=%.6f Hz attempt=%zu/%zu",
+						contentRate, RefreshRateHz(candidate.refreshRate),
+						RefreshRateHz(m_originalRefreshRate),
+						RefreshRateHz(actualRefreshRate), attempt + 1, rankedRates.size());
+					RunRefreshRateCommand(settings, RefreshRateHz(actualRefreshRate));
+					PublishEvent("refresh.applied", RefreshRateHz(actualRefreshRate),
+						RefreshRateHz(candidate.refreshRate),
+						RefreshRateHz(m_originalRefreshRate));
+					return;
+				}
+
 				DebugLog::Log(
-					"libplacebo refresh-rate switch applied: input=%.6f Hz target=%.6f Hz previous=%.6f Hz",
-					contentRate,
-					RefreshRateHz(targetRefreshRate),
-					RefreshRateHz(m_originalRefreshRate));
+					"libplacebo refresh-rate candidate unverified: candidate=%.6f Hz actual=%.6f Hz; restoring before next candidate",
+					RefreshRateHz(candidate.refreshRate), RefreshRateHz(actualRefreshRate));
+				std::vector<DISPLAYCONFIG_PATH_INFO> restorePaths;
+				std::vector<DISPLAYCONFIG_MODE_INFO> restoreModes;
+				UINT32 restorePathCount = 0;
+				UINT32 restoreModeCount = 0;
+				size_t restorePathIndex = 0;
+				if (!QueryDisplayPath(m_displayDeviceName, restorePaths, restoreModes,
+					restorePathCount, restoreModeCount, restorePathIndex) ||
+					ApplyDisplayRefreshRate(restorePaths, restoreModes, restorePathCount,
+						restoreModeCount, restorePathIndex, m_originalRefreshRate) != ERROR_SUCCESS ||
+					!VerifyCurrentRefreshRate(m_originalRefreshRate, actualRefreshRate))
+				{
+					DebugLog::Log(
+						"libplacebo refresh-rate candidate rollback failed; retaining unverified display state");
+					return;
+				}
 			}
-			RunRefreshRateCommand(
-				settings,
-				actualRateAvailable
-					? RefreshRateHz(actualRefreshRate)
-					: RefreshRateHz(targetRefreshRate));
-			PublishEvent("refresh.applied",
-				actualRateAvailable ? RefreshRateHz(actualRefreshRate) : RefreshRateHz(targetRefreshRate),
-				RefreshRateHz(targetRefreshRate), RefreshRateHz(m_originalRefreshRate));
+
+			DebugLog::Log(
+				"libplacebo refresh-rate switch: all %zu ranked DXGI candidates failed verification; retaining %.6f Hz",
+				rankedRates.size(), RefreshRateHz(m_originalRefreshRate));
 		}
 
 	private:
@@ -3018,6 +3191,26 @@ namespace
 			}
 			refreshRate = paths[pathIndex].targetInfo.refreshRate;
 			return true;
+		}
+
+		bool VerifyCurrentRefreshRate(const DISPLAYCONFIG_RATIONAL& expected,
+			DISPLAYCONFIG_RATIONAL& observed) const
+		{
+			DisplayRefreshRestoreVerifier verifier(
+				{ expected.Numerator, expected.Denominator });
+			const ULONGLONG deadline = GetTickCount64() + 2000;
+			do
+			{
+				const bool querySucceeded = GetCurrentRefreshRate(observed);
+				if (verifier.Observe(querySucceeded,
+					{ observed.Numerator, observed.Denominator }))
+				{
+					return true;
+				}
+				Sleep(50);
+			}
+			while (GetTickCount64() < deadline);
+			return false;
 		}
 
 		bool Restore()
