@@ -2,12 +2,18 @@
 
 ## Status
 
-In progress (2026-08-05). Live validation rejected the deployed Alpha
-completion-clock fallback: it reported approximately 57 Hz during a composed
-swap-chain transition while madVR correctly reported 59.950622 Hz. The
-corrective candidate uses a target-bound physical vblank clock for Alpha and
-madVR's own runtime value for madVR. It is built and tested but **not deployed**
-pending user review.
+In progress (2026-08-31). The VP Renderer already collected presenter-tied
+DXGI frame statistics from libplacebo's native D3D11 swapchain, but its stable
+measurement was not exposed through `IRenderer`, so the OSD continued to select
+the independent `WaitForVBlank` sampler. The renderer now publishes that stable
+measurement through the plugin proxy. The OSD therefore uses it automatically
+after it has enough coherent flip-model frame-statistics samples, retaining the
+existing sampler only as the fallback for unavailable/disjoint/BitBlt timing.
+
+Implementation is committed as `e3814472` on `codex/vp0169-present-timing`,
+based on `origin/v1.3.004-beta` at `d1f43bc6`. The x64 Release GUI and renderer
+projects built successfully and the focused Alpha presentation telemetry tests
+passed 9/9. Deployment and live flip-model validation remain to be recorded.
 
 ## Implementation progress
 
