@@ -2,7 +2,7 @@
 
 ## Status
 
-In Progress (reopened 2026-08-31). Live validation proved that the nominal-integer fallback at 9d3118f1 selected 24.000/60.000 for fractional 23.976/59.94 content.
+Done (2026-08-31). The corrected rational switching path was merged to origin/v1.3.004-beta at 26877ce1 and verified live after x64 Release deployment.
 
 VP Renderer currently submits one content-derived rational refresh request to
 `SetDisplayConfig` with `SDC_ALLOW_CHANGES`; it does not enumerate and rank
@@ -24,7 +24,7 @@ when enumeration finds no acceptable candidate. The x64 Release VP Renderer
 and policy-test projects build successfully; the four new ranking tests pass.
 ## Correction in progress
 
-2026-08-31: The nominal-integer EnumDisplaySettings path has been discarded. Commit 26877ce1 restores the exact rational SetDisplayConfig request and SDC_ALLOW_CHANGES, allowing Windows/the driver to resolve the compatible timing without collapsing 24000/1001 to 24 or 60000/1001 to 60. Release x64 renderer and GUI builds completed; 18 refresh-policy tests passed. Live verification of the corrected rational result is pending deployment.
+2026-08-31: The nominal-integer EnumDisplaySettings path has been discarded. Commit 26877ce1 restores the exact rational SetDisplayConfig request and SDC_ALLOW_CHANGES, allowing Windows/the driver to resolve the compatible timing without collapsing 24000/1001 to 24 or 60000/1001 to 60. Release x64 renderer and GUI builds completed; 18 refresh-policy tests passed. Deployment replaced the x64 Release host and renderer pair; hashes matched the build output. Live testing confirmed improved switching behavior for the fractional refresh modes.
 
 ## User story
 
