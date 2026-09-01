@@ -119,7 +119,7 @@ active, but visual program material alone cannot validate calibration.
 
 Automated evidence completed 2026-08-31:
 
-- x64 Release native suite: 1,038/1,038 passed.
+- x64 Release native suite: 1,045/1,045 passed after the latest-beta rebase.
 - x64 Release standalone Config/UI suite: passed in full.
 - x64 Release VP Renderer, VideoProcessor GUI, and Config product builds:
   successful.
@@ -137,24 +137,33 @@ Identity-toggle defect found and corrected 2026-08-31:
 - Tester logs proved that the original Auto policy changed the target from
   sRGB with the LUT disabled to pure Gamma 2.2 with it enabled. The Cube was
   identity; the checkbox was incorrectly selecting transfer state.
-- Commit `fd8825e4` removes LUT enablement from transfer resolution. The
+- Rebased commit `455783da` removes LUT enablement from transfer resolution. The
   checkbox now only attaches/detaches the Cube.
 - A `display calibration contract` log line now records enabled/attached,
   configured and resolved target transfer, carrier transfer, primaries,
   luminance, stage, and `enable_effect=attach-only` after initialization and
   every live profile change.
-- The 1,038-test native suite, real GPU LUT regressions, x64 Release renderer,
+- The 1,045-test native suite, real GPU LUT regressions, x64 Release renderer,
   x64 Release Config build, and standalone Config/UI suite all pass after the
   correction.
 
+Latest-beta integration refreshed 2026-09-01:
+
+- The branch was rebased without conflicts onto current
+  `origin/v1.3.004-beta` commit `e9ed97c2`.
+- The rebased feature commits are `c7ff0343` and `455783da`; the remote feature
+  branch was updated with force-with-lease.
+- The canonical release packager verified its complete 57-file allowlisted
+  layout before tester-only configuration, instructions, and Cubes were added.
+
 Standalone local-test artifact:
 
-- `VP-0166-fd8825e-identity-toggle-fix-tester.zip`
+- `VP-0166-455783d-rebased-3DLUT-tester.zip`
 - SHA-256:
-  `B122B3CA8E2682D29EF3A2DE4625F56C334B65047C6B3804A8F2F1101E6EF2DF`
+  `3AA4B645DE9CF6B09883ACFB34F3C33A81AD0FFB8C54695DD352774CF909B04A`
 - Contains the x64 Release product, an isolated active test configuration,
   instructions, a synthetic identity Cube, and a grayscale activation Cube.
-  It supersedes both the `a317c31` tester and the withdrawn
+  It supersedes the `fd8825e`, `a317c31`, and withdrawn
   `VP-0166-21044a3-HDR-to-SDR-3DLUT-tester.zip`.
 
 ## Non-goals
