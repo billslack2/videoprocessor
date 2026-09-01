@@ -6,9 +6,9 @@ story may have ordered child-task IDs as defined below.
 
 ## Registry state
 
-- Last assigned root story: `VP-0167`
-- Next root story number: `VP-0168`
-- Total indexed items: 186
+- Last assigned root story: `VP-0168`
+- Next root story number: `VP-0169`
+- Total indexed items: 187
 
 ## Story locations
 
@@ -203,6 +203,7 @@ they must not contain requirements that are absent from this file.
 | VP-0165 | Backlog | Evaluate safe active-picture lookahead refinements |
 | VP-0166 | In Progress | Correct integrated target-frame 3D LUT application |
 | VP-0167 | In Progress | Restore madVR-style two-pass VP Renderer refresh-mode selection |
+| VP-0168 | Backlog | Native LAN configuration editor discovery and apply parity |
 | VP-0066-1 | Done | Characterize the live output pipeline with replayable golden traces |
 | VP-0066-2 | Done | Extract a graph-independent video timing controller |
 | VP-0066-3 | Done | Extract epoch-aware frame transport and processing components |
