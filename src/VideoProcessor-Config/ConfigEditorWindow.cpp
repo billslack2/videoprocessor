@@ -3932,13 +3932,24 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 		const QList<QComboBox*> externalLutSelectors = {
 			lutBt709, lutP3, lutBt2020
 		};
+		lutBt709->setProperty("lutConfigKey", QStringLiteral("calibration_lut_bt709"));
+		lutP3->setProperty("lutConfigKey", QStringLiteral("calibration_lut_p3_d65"));
+		lutBt2020->setProperty("lutConfigKey", QStringLiteral("calibration_lut_bt2020"));
 		for (QComboBox* selector : externalLutSelectors)
 			selector->setToolTip(QStringLiteral(
 				"The slot follows the configured SDR calibration target, never the source gamut. "
 				"The Cube receives full-domain RGB encoded with the target display gamma."));
-		const auto refreshLutSelectors = [externalLutSelectors, discoveredLuts]
+		const auto refreshLutSelectors = [this, state, externalLutSelectors, discoveredLuts]
         {
             const QStringList available = discoveredLuts();
+			const auto availablePath = [&available](const QString& configured)
+			{
+				const QString normalized = QDir::fromNativeSeparators(configured.trimmed());
+				for (const QString& candidate : available)
+					if (candidate.compare(normalized, Qt::CaseInsensitive) == 0)
+						return candidate;
+				return QString();
+			};
 			const auto displayName = [](const QString& path)
 			{
 				return QFileInfo(path).completeBaseName();
@@ -3949,26 +3960,25 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 				const QString selected = selector->currentData().toString();
 				const QString effective = selected.isEmpty() ?
 					selector->property("effectiveValue").toString() : selected;
+				const QString resolvedSelected = availablePath(selected);
+				const QString resolvedEffective = availablePath(effective);
 				selector->clear();
-				const bool effectiveMissing = !effective.isEmpty() &&
-					!available.contains(effective, Qt::CaseInsensitive);
 				QString emptyLabel = QStringLiteral("None");
-				if (selected.isEmpty() && effectiveMissing)
-					emptyLabel = QStringLiteral("Inherited - Missing: %1").arg(displayName(effective));
-				else if (selected.isEmpty() && !effective.isEmpty())
-					emptyLabel = QStringLiteral("Inherited: %1").arg(displayName(effective));
+				if (selected.isEmpty() && !resolvedEffective.isEmpty())
+					emptyLabel = QStringLiteral("Inherited: %1").arg(displayName(resolvedEffective));
 				selector->addItem(emptyLabel, QString());
 				for (const QString& lut : available)
 					selector->addItem(displayName(lut), lut);
-				int index = selector->findData(selected, Qt::UserRole,
+				const int index = selector->findData(resolvedSelected, Qt::UserRole,
 					Qt::MatchFixedString);
-				if (index < 0 && !selected.isEmpty())
-				{
-					selector->addItem(QStringLiteral("Missing: %1").arg(displayName(selected)), selected);
-					index = selector->count() - 1;
-					selector->setItemData(index, true, Qt::UserRole + 1);
-				}
 				selector->setCurrentIndex(std::max(0, index));
+				if (!selected.isEmpty() && resolvedSelected.isEmpty() && document_ &&
+					!state->section.isEmpty())
+				{
+					document_->RemoveKnown(state->section.toStdString(),
+						selector->property("lutConfigKey").toString().toStdString().c_str());
+					markDirty();
+				}
 			}
         };
 		refreshLutSelectors();
@@ -4702,6 +4712,29 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 		for (const Field& field : *fields)
 		{
             QString raw = profileValue(section, field.key);
+			const bool calibrationLutSlot =
+				sectionPrefix == QStringLiteral("vprenderer") &&
+				field.key.startsWith(QStringLiteral("calibration_lut_")) &&
+				field.key != QStringLiteral("calibration_lut_enabled");
+			if (calibrationLutSlot && !raw.isEmpty())
+			{
+				const QString normalized = QDir::fromNativeSeparators(raw.trimmed());
+				const QString absolute = QFileInfo(configPath_).absoluteDir().filePath(normalized);
+				if (!QFileInfo(absolute).isFile())
+				{
+					document_->RemoveKnown(section.toStdString(),
+						field.key.toStdString().c_str());
+					raw.clear();
+					markDirty();
+				}
+				else if (normalized != raw)
+				{
+					document_->SetKnown(section.toStdString(),
+						field.key.toStdString().c_str(), normalized.toLocal8Bit().constData());
+					raw = normalized;
+					markDirty();
+				}
+			}
 			const bool requiresExplicitValue =
 				field.widget->property("requiresExplicitValue").toBool();
 			const bool scalingDownscaler =
@@ -4825,10 +4858,6 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                 if (auto* view = qobject_cast<QListView*>(combo->view()))
                     view->setRowHidden(0, hasUnspecifiedChoice &&
                         hideUnspecifiedChoice);
-				const bool calibrationLutSlot =
-					sectionPrefix == QStringLiteral("vprenderer") &&
-					field.key.startsWith(QStringLiteral("calibration_lut_")) &&
-					field.key != QStringLiteral("calibration_lut_enabled");
 				const QString inheritedDisplay = calibrationLutSlot
 					? QFileInfo(configured).completeBaseName()
 					: friendlyChoiceLabel(configured);
@@ -4875,18 +4904,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                         if (combo->itemData(candidate).toString().compare(
                             configured, Qt::CaseInsensitive) == 0)
                         { index = candidate; break; }
-				if (index < 0 && calibrationLutSlot &&
-					!raw.isEmpty())
-				{
-					// Retain missing paths so the runtime can report the broken
-					// slot and safely select its internal shader fallback.
-					combo->addItem(QStringLiteral("Missing: %1").arg(
-						QFileInfo(configured).completeBaseName()),
-						configured);
-					index = combo->count() - 1;
-					combo->setItemData(index, true, Qt::UserRole + 1);
-                }
-                else if (index < 0)
+				if (index < 0)
                 {
                     combo->addItem(friendlyChoiceLabel(configured), configured);
                     index = combo->count() - 1;

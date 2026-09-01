@@ -2524,6 +2524,16 @@ void testLutSelectorDiscoversInstallationLutFiles()
     require(lut.open(QIODevice::WriteOnly), "Cannot create the temporary LUT fixture");
     lut.write("TITLE \"Test LUT\"\nLUT_3D_SIZE 2\n");
     lut.close();
+	QByteArray configuration = readBytes(path);
+	require(configuration.contains("[vprenderer.rec709]\n"),
+		"Could not locate the renderer profile fixture baseline");
+	configuration.replace("[vprenderer.rec709]\n",
+		"[vprenderer.rec709]\ncalibration_lut_bt2020: luts\\Test-Calibration.cube\n");
+	QFile configurationFile(path);
+	require(configurationFile.open(QIODevice::WriteOnly | QIODevice::Truncate) &&
+		configurationFile.write(configuration) == configuration.size(),
+		"Could not write the Windows-path LUT fixture");
+	configurationFile.close();
 
 	ConfigEditorWindow window(path, 0, true);
 	QComboBox* selector = requireControl<QComboBox>(window,
@@ -2534,6 +2544,9 @@ void testLutSelectorDiscoversInstallationLutFiles()
 		QStringLiteral("luts/Test-Calibration.cube"))) ==
 		QStringLiteral("Test-Calibration"),
 		"The LUT selector exposes its path or .cube extension");
+	require(selector->currentData().toString() ==
+		QStringLiteral("luts/Test-Calibration.cube"),
+		"A valid hand-written Windows LUT path was not normalized and selected");
     require(requireControl<QPushButton>(window,
 		QStringLiteral("config.vprenderer.calibration_lut.open_folder"))->text() == QStringLiteral("Open LUT folder"),
         "The LUT folder action is missing");
@@ -2554,13 +2567,13 @@ void testLutSelectorDiscoversInstallationLutFiles()
 	require(QMetaObject::invokeMethod(watcher, "directoryChanged",
 		Qt::DirectConnection, Q_ARG(QString, lutDirectory)),
 		"Could not refresh calibration LUT selectors after file removal");
-	require(selector->currentData().toString() ==
-		QStringLiteral("luts/Test-Calibration.cube") &&
-		selector->currentText().startsWith(QStringLiteral("Missing:")),
-		"A missing selected LUT was silently removed instead of being retained and reported");
-	require(readBytes(path).contains(
-		"calibration_lut_bt2020: luts/Test-Calibration.cube"),
-		"Refreshing after LUT removal deleted the configured missing path");
+	require(selector->currentData().toString().isEmpty() &&
+		selector->currentText() == QStringLiteral("None") &&
+		selector->findText(QStringLiteral("Missing:"), Qt::MatchStartsWith) < 0,
+		"A removed LUT was not silently collapsed to None");
+	save(window);
+	require(!readBytes(path).contains("calibration_lut_bt2020:"),
+		"Saving did not remove the stale LUT path");
 }
 
 void testInheritedCalibrationLutUsesEffectiveControlState()
@@ -2599,8 +2612,12 @@ void testInheritedCalibrationLutUsesEffectiveControlState()
 	require(slot->isEnabled() && internalToneMap->isEnabled(),
 		"Calibration inheritance incorrectly disables DTM controls");
 	require(slot->currentData().toString().isEmpty() &&
-		slot->currentText().contains(QStringLiteral("Missing:")),
-		"Inherited missing LUT path is not retained and reported");
+		slot->currentText() == QStringLiteral("None") &&
+		slot->findText(QStringLiteral("Missing:"), Qt::MatchStartsWith) < 0,
+		"An inherited missing LUT path was not silently collapsed to None");
+	save(window);
+	require(!readBytes(path).contains("calibration_lut_bt2020:"),
+		"Saving did not clean the inherited stale LUT path");
 }
 
 void testChoiceLabelsAndVpRendererName()
