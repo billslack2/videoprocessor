@@ -32,6 +32,10 @@ namespace ConfigEditorCore
 		std::string Get(const char* section, const char* key) const;
 		bool SetExisting(const char* section, const char* key,
 			const std::string& value);
+		// Updates a recognized setting and creates its section when necessary.
+		// GUI controls may expose an optional section that is not present in an
+		// older or minimal configuration, so a user edit must never be dropped
+		// solely because the section header has not been written yet.
 		bool SetKnown(const std::string& wantedSection, const char* key,
 			const std::string& value);
 		bool RemoveKnown(const std::string& wantedSection, const char* key);

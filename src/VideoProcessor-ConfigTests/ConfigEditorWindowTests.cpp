@@ -1371,6 +1371,63 @@ void testLldvMetadataMigratesToEnabledSingleton()
         "Explicit LLDV metadata remained silently disabled by FOLLOW_INPUT");
 }
 
+void testOptionalSectionsAreCreatedWhenEdited()
+{
+    QTemporaryDir directory;
+    require(directory.isValid(), "Cannot create optional-section test directory");
+    const QString path = copyFixture(directory);
+    QByteArray config = readBytes(path);
+    const auto removeSection = [&config](const QByteArray& section)
+    {
+        const int start = config.indexOf(section);
+        require(start >= 0, "Optional-section fixture is missing a section");
+        const int next = config.indexOf("\n[", start + section.size());
+        config.remove(start, next < 0 ? config.size() - start : next - start + 1);
+    };
+    removeSection("[lldv]\n");
+    removeSection("[logging]\n");
+    removeSection("[shortcuts]\n");
+    QFile file(path);
+    require(file.open(QIODevice::WriteOnly | QIODevice::Truncate),
+        "Cannot write optional-section fixture");
+    require(file.write(config) == config.size(),
+        "Cannot replace optional-section fixture");
+    file.close();
+
+    ConfigEditorWindow window(path, 0, true);
+    requireControl<QLineEdit>(window, QStringLiteral("config.lldv.max_cll"))
+        ->setText(QStringLiteral("1200"));
+    requireControl<QLineEdit>(window, QStringLiteral("config.lldv.max_fall"))
+        ->setText(QStringLiteral("400"));
+    requireControl<QLineEdit>(window,
+        QStringLiteral("config.lldv.mastering_min_luminance"))
+        ->setText(QStringLiteral("0.002"));
+    requireControl<QLineEdit>(window,
+        QStringLiteral("config.lldv.mastering_max_luminance"))
+        ->setText(QStringLiteral("3500"));
+    requireControl<QCheckBox>(window, QStringLiteral("config.logging.debug"))
+        ->setChecked(true);
+    requireControl<QLineEdit>(window,
+        QStringLiteral("config.shortcuts.fullscreen_toggle"))
+        ->setText(QStringLiteral("Ctrl+Alt+F"));
+    save(window);
+
+    const QByteArray saved = readBytes(path);
+    const int lldvStart = saved.indexOf("[lldv]\n");
+    const int lldvEnd = saved.indexOf("\n[", lldvStart + 1);
+    const QByteArray lldv = saved.mid(lldvStart,
+        lldvEnd < 0 ? -1 : lldvEnd - lldvStart);
+    require(lldvStart >= 0 && lldv.contains("max_cll: 1200") &&
+        lldv.contains("max_fall: 400") &&
+        lldv.contains("mastering_min_luminance: 0.002") &&
+        lldv.contains("mastering_max_luminance: 3500"),
+        "Editing LLDV metadata did not create and populate the [lldv] section");
+    require(saved.contains("[logging]\ndebug: true"),
+        "Editing a logging control did not create the [logging] section");
+    require(saved.contains("[shortcuts]\nfullscreen_toggle: Ctrl+Alt+F"),
+        "Editing a shortcut did not create the [shortcuts] section");
+}
+
 void answerInputDialog(const QString& text)
 {
     auto* timer = new QTimer(qApp);
@@ -4569,6 +4626,8 @@ int main(int argc, char** argv)
         testLegacyVpInputOverrideMigratesToIndependentPolicySection);
     failures += run("LLDV metadata migrates to enabled singleton",
         testLldvMetadataMigratesToEnabledSingleton);
+    failures += run("optional config sections are created when edited",
+        testOptionalSectionsAreCreatedWhenEdited);
     failures += run("profile lifecycle through widgets", testProfileLifecycleThroughWidgets);
     failures += run("unrelated content remains exact", testUnrelatedContentRemainsExact);
     failures += run("scene detection defaults off and hides manual overrides",

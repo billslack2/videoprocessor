@@ -235,7 +235,12 @@ namespace ConfigEditorCore
 				std::string(key) + ": " + value);
 			return true;
 		}
-		return false;
+
+		// SetKnown is the editor's write operation, not an update-only helper.
+		// Optional sections are legitimately absent from minimal and older
+		// configurations; add the section before writing the first edited key.
+		if (!AddSection(wantedSection)) return false;
+		return SetKnown(wantedSection, key, value);
 	}
 
 	bool ConfigDocument::RemoveKnown(const std::string& wantedSection,
