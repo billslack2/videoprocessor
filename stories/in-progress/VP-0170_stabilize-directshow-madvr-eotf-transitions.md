@@ -2,7 +2,47 @@
 
 ## Status
 
-Backlog. Created 2026-09-02 from a user report against `v1.3.004-beta-e9ed97c2`.
+In Progress. Implementation is active on branch
+`codex/vp-0170-eotf-transitions` in clean worktree
+`C:\Videoprocessor\vp\vprenderer\.codex-worktrees\vp-0170-eotf-transitions`,
+based on remote `v1.3.005-beta` tip `1d5c731b` (verified 2026-09-02).
+
+Initial implementation consolidates capture-event and periodic EOTF detection
+behind one graph-independent stabilization policy. A candidate requires two
+matching valid observations over a documented 5000 ms settling window, cancels
+when the signal returns to the renderer baseline, and defers its sole renderer
+rebuild commit while another renderer/display reset is active. The prior
+periodic full-capture restart path has been removed.
+
+Source commit `dfcf1eac` is pushed on the feature branch. Validation so far:
+x64 Release `VideoProcessor-Test` and `VideoProcessor-GUI` targets build
+successfully; all five focused `EotfTransitionStabilizerTests` pass. The full
+suite passes 1042/1044 tests. Its two failures,
+`ConfigurationReferenceMatchesPublicFieldInventory` and
+`ConfigurationApplyPolicyGroupsOnlyOrderedProfiles`, reproduce unchanged on
+the untouched `v1.3.005-beta` baseline and are unrelated to VP-0170. Hardware
+acceptance remains outstanding.
+
+### Readiness review (2026-09-02)
+
+- Configuration: no new setting is needed; the existing automatic EOTF restart
+  behavior remains enabled and its stabilization contract is made explicit.
+- API and pipeline: DirectShow renderer media types are immutable per renderer
+  generation; capture video-state notifications and the one-second periodic UI
+  timer are the two observation sources, while the existing renderer-reset
+  coordinator continues to own display-transition queue re-primes.
+- Resource lifetime: the policy owns values and monotonic timestamps only. It
+  does not own MFC timers, renderers, capture devices, windows, or graph objects.
+  Renderer stop clears the pending candidate and renderer start establishes the
+  new active baseline.
+- Dependencies/platform: implementation uses existing MFC timers and
+  `GetTickCount64`; no new runtime or hardware dependency is introduced.
+- Validation boundary: deterministic tests cover stable commit, flip-back
+  cancellation, event/periodic coalescing, invalid observations, and deferral
+  through a madVR-style display transition. x64 Release compilation proves host
+  integration; DeckLink/madVR hardware replay remains the acceptance boundary.
+- Worktree: clean branch was created from the freshly fetched authoritative
+  remote beta tip; existing local checkouts were not used as a baseline.
 
 ## User story
 
