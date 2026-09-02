@@ -212,6 +212,7 @@
     <ClInclude Include="RendererLiveness.h" />
     <ClInclude Include="RendererPostStallResetAdvisor.h" />
     <ClInclude Include="RendererIngressState.h" />
+	<ClInclude Include="EotfTransitionStabilizer.h" />
     <ClInclude Include="RendererResetCoordinator.h" />
     <ClInclude Include="RendererResetPolicy.h" />
     <ClInclude Include="RendererResetRequest.h" />
@@ -337,6 +338,7 @@
     <ClCompile Include="HDRData.cpp" />
     <ClCompile Include="InputLocked.cpp" />
     <ClCompile Include="IRenderer.cpp" />
+	<ClCompile Include="EotfTransitionStabilizer.cpp" />
     <ClCompile Include="RendererResetCoordinator.cpp" />
     <ClCompile Include="RendererTransitionModel.cpp" />
 	<ClCompile Include="RendererQueueLaunchContractModel.cpp" />

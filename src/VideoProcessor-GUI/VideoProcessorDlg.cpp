@@ -5884,41 +5884,8 @@ LRESULT CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange(WPARAM wParam
 	m_resyncPendingResetSeconds = -1;
 	DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange(): Reset refresh rate tracking")));
 
-	// EOTF CHANGE DETECTION: Check if EOTF changed during active stream (e.g., SDR↔HDR switching)
-	// Only check if renderer is actively rendering and feature is enabled
-	if (m_enableEotfChangeRestart &&
-		m_rendererState == RendererState::RENDERSTATE_RENDERING &&
-		(!m_videoRenderer || !m_videoRenderer->SupportsDynamicVideoState()) &&
-		videoState->valid &&
-		m_eotfChangeRestartCooldownSeconds < 0)  // Not in cooldown period
-	{
-		// Initialize on first valid state
-		if (m_lastKnownEotf == EOTF::UNKNOWN && videoState->eotf != EOTF:: UNKNOWN)
-		{
-			m_lastKnownEotf = videoState->eotf;
-			DbgLog((LOG_TRACE, 1, TEXT("VideoStateChange: Initialized EOTF tracking to %s"),
-				ToString(videoState->eotf)));
-		}
-		// Detect actual EOTF change (not initialization)
-		else if (m_lastKnownEotf != EOTF::UNKNOWN &&
-			videoState->eotf != EOTF::UNKNOWN &&
-			m_lastKnownEotf != videoState->eotf)
-		{
-			DbgLog((LOG_TRACE, 1, TEXT("VideoStateChange: EOTF changed %s -> %s - scheduling renderer restart in 3 seconds"),
-				ToString(m_lastKnownEotf), ToString(videoState->eotf)));
-
-			DebugLog::Log("EOTF change detected: %s -> %s - renderer restart in 3 seconds",
-				CStringA(ToString(m_lastKnownEotf)).GetString(),
-				CStringA(ToString(videoState->eotf)).GetString());
-
-			// Update tracked EOTF immediately to prevent re-triggering
-			m_lastKnownEotf = videoState->eotf;
-
-			// Schedule restart with 3-second delay to allow signal to stabilize
-			m_eotfChangeRestartCooldownSeconds = 5;
-			SetTimer(EOTF_CHANGE_RESTART_TIMER_ID, 1000, nullptr);  // 1-second tick
-		}
-	}
+	ObserveEotfTransition(videoState->eotf, videoState->valid,
+		"capture-state");
 
 	const bool rendererAcceptedState = BuildPushVideoState();
 	if (rendererAcceptedState &&
@@ -5981,7 +5948,7 @@ LRESULT CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange(WPARAM wParam
 			DebugLog::Log(
 				"Renderer video-state update rejected during pending LLDV promotion; action=keep scheduled PQ restart");
 		}
-		else if (m_eotfChangeRestartCooldownSeconds >= 0)
+		else if (m_eotfTransition.HasPendingCandidate())
 		{
 			// The raw EOTF path has already scheduled its stabilization restart.
 			// Preserve that delay instead of performing a second immediate restart.
@@ -6225,18 +6192,17 @@ LRESULT CVideoProcessorDlg::OnMessageRendererStateChange(WPARAM wParam, LPARAM l
 			"Renderer accepted for configuration fallback: renderer=%S generation=%u",
 			m_acceptedRendererName.GetString(),
 			m_rendererGeneration.load(std::memory_order_acquire));
-		// EOTF TRACKING: Store the EOTF the renderer was started with
+		// A fresh renderer establishes the only baseline used by event and
+		// periodic EOTF observations.
 		if (m_captureDeviceVideoState && m_captureDeviceVideoState->valid)
 		{
-			m_rendererStartedWithEotf = m_captureDeviceVideoState->eotf;
-			m_lastKnownEotf = m_captureDeviceVideoState->eotf;  // Sync to prevent false detection
-			m_eotfCheckCooldownSeconds = 5;  // Wait 5 seconds before checking for changes
-			DbgLog((LOG_TRACE, 1, TEXT("Renderer started with EOTF: %s, will check for changes in 5 seconds"), ToString(m_rendererStartedWithEotf)));
+			m_eotfTransition.Reset(m_captureDeviceVideoState->eotf);
+			DebugLog::Log("EOTF transition baseline: active=%s source=renderer-start",
+				CStringA(ToString(m_captureDeviceVideoState->eotf)).GetString());
 		}
 		else
 		{
-			m_rendererStartedWithEotf = EOTF::UNKNOWN;
-			m_eotfCheckCooldownSeconds = 0;
+			m_eotfTransition.Reset(EOTF::UNKNOWN);
 		}
 
 		if (m_captureDeviceState == CaptureDeviceState::CAPTUREDEVICESTATE_CAPTURING &&
@@ -9430,13 +9396,12 @@ void CVideoProcessorDlg::RenderStop()
 	KillTimer(EOTF_CHANGE_RESTART_TIMER_ID);
 	KillTimer(LLDV_CHANGE_RESTART_TIMER_ID);
 	KillTimer(LLDV_PROFILE_APPLY_TIMER_ID);
-	m_eotfChangeRestartCooldownSeconds = -1;
+	m_eotfTransition.Reset(EOTF::UNKNOWN);
 	m_lldvChangeRestartDelaySeconds = -1;
 	m_lldvProfileApplyPending = false;
 	m_lldvRestartPending = false;
 	// A renderer-only restart must preserve a confirmed LLDV candidate. The
 	// capture-state path clears it when the input genuinely returns to SDR.
-	m_eotfCheckCooldownSeconds = 0;
 
 	assert(m_captureDevice);
 	assert(m_captureDeviceState == CaptureDeviceState::CAPTUREDEVICESTATE_CAPTURING);
@@ -12627,6 +12592,65 @@ void CVideoProcessorDlg::BuildPushRestartVideoState()
 	}
 }
 
+void CVideoProcessorDlg::ObserveEotfTransition(
+	EOTF observed, bool valid, const char* source)
+{
+	if (!m_enableEotfChangeRestart ||
+		m_rendererState != RendererState::RENDERSTATE_RENDERING ||
+		!m_videoRenderer || m_videoRenderer->SupportsDynamicVideoState())
+	{
+		return;
+	}
+
+	const EotfTransitionResult result =
+		m_eotfTransition.Observe(observed, valid, GetTickCount64());
+	const CStringA activeText(ToString(result.active));
+	const CStringA candidateText(ToString(result.candidate));
+	const char* active = activeText.GetString();
+	const char* candidate = candidateText.GetString();
+	switch (result.action)
+	{
+	case EotfTransitionAction::CandidateStarted:
+		DebugLog::Log(
+			"EOTF transition candidate: source=%s active=%s candidate=%s "
+			"observations=%u settling_ms=%llu",
+			source, active, candidate, result.matchingObservations,
+			static_cast<unsigned long long>(
+				EotfTransitionStabilizer::DefaultSettlingWindowMs));
+		SetTimer(EOTF_CHANGE_RESTART_TIMER_ID, 1000, nullptr);
+		break;
+	case EotfTransitionAction::CandidateChanged:
+		DebugLog::Log(
+			"EOTF transition candidate replaced: source=%s active=%s "
+			"candidate=%s observations=%u action=restart-settling-window",
+			source, active, candidate, result.matchingObservations);
+		SetTimer(EOTF_CHANGE_RESTART_TIMER_ID, 1000, nullptr);
+		break;
+	case EotfTransitionAction::CandidateConfirmed:
+		DebugLog::Log(
+			"EOTF transition confirmed: source=%s active=%s candidate=%s "
+			"observations=%u action=await-settling-window",
+			source, active, candidate, result.matchingObservations);
+		break;
+	case EotfTransitionAction::CandidateCancelled:
+		DebugLog::Log(
+			"EOTF transition cancelled: source=%s active=%s candidate=%s "
+			"observations=%u action=retain-renderer",
+			source, active, candidate, result.matchingObservations);
+		KillTimer(EOTF_CHANGE_RESTART_TIMER_ID);
+		break;
+	case EotfTransitionAction::ObservationCoalesced:
+		DebugLog::Log(
+			"EOTF transition observation coalesced: source=%s active=%s "
+			"candidate=%s observations=%u",
+			source, active, candidate, result.matchingObservations);
+		break;
+	default:
+		break;
+	}
+}
+
+
 void CVideoProcessorDlg::ScheduleNewLldvRendererRestart()
 {
 	if (!m_videoRenderer)
@@ -14388,35 +14412,46 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 		return;
 	}
 
-	// EOTF CHANGE RESTART TIMER: Countdown to renderer restart after EOTF change
+	// The timer only evaluates the shared policy. It never invents a second
+	// transition, and it waits behind an in-flight madVR display re-prime.
 	if (nIDEvent == EOTF_CHANGE_RESTART_TIMER_ID)
 	{
-		if (m_eotfChangeRestartCooldownSeconds > 0)
+		if (!m_eotfTransition.HasPendingCandidate())
 		{
-			m_eotfChangeRestartCooldownSeconds--;
-
-			if (m_eotfChangeRestartCooldownSeconds == 0)
-			{
-				// Cooldown complete - execute restart
-				KillTimer(EOTF_CHANGE_RESTART_TIMER_ID);
-
-				if (m_videoRenderer && m_rendererState == RendererState::RENDERSTATE_RENDERING)
-				{
-					DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnTimer(): EOTF_CHANGE - Executing renderer restart")));
-					DebugLog::Log("EOTF change: Executing renderer restart after stabilization period");
-
-					m_wantToRestartRenderer = true;
-					UpdateState();
-				}
-
-				m_eotfChangeRestartCooldownSeconds = -1;  // Reset cooldown
-			}
-		}
-		else
-		{
-			// Cooldown is -1, kill the timer
 			KillTimer(EOTF_CHANGE_RESTART_TIMER_ID);
-			m_eotfChangeRestartCooldownSeconds = -1;
+			return;
+		}
+
+		const bool commitAllowed =
+			m_videoRenderer &&
+			m_rendererState == RendererState::RENDERSTATE_RENDERING &&
+			!RendererResetOperationInProgress() &&
+			!m_wantToRestartCapture &&
+			!m_wantToRestartRenderer;
+		const EotfTransitionResult result =
+			m_eotfTransition.Evaluate(GetTickCount64(), commitAllowed);
+		if (result.action == EotfTransitionAction::CommitDeferred)
+		{
+			DebugLog::Log(
+				"EOTF transition coalesced: active=%s candidate=%s "
+				"observations=%u action=defer-behind-renderer-transition",
+				CStringA(ToString(result.active)).GetString(),
+				CStringA(ToString(result.candidate)).GetString(),
+				result.matchingObservations);
+		}
+		else if (result.action == EotfTransitionAction::CommitRestart)
+		{
+			KillTimer(EOTF_CHANGE_RESTART_TIMER_ID);
+			DebugLog::Log(
+				"EOTF transition committed: active=%s candidate=%s "
+				"observations=%u settling_ms=%llu action=restart-renderer",
+				CStringA(ToString(result.active)).GetString(),
+				CStringA(ToString(result.candidate)).GetString(),
+				result.matchingObservations,
+				static_cast<unsigned long long>(
+					EotfTransitionStabilizer::DefaultSettlingWindowMs));
+			m_wantToRestartRenderer = true;
+			UpdateState();
 		}
 		return;
 	}
@@ -14474,46 +14509,6 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 			}
 		}
 
-		// EOTF CHANGE CHECK: Decrement cooldown timer if set
-		if (m_eotfCheckCooldownSeconds > 0)
-		{
-			m_eotfCheckCooldownSeconds--;
-		}
-
-		// SIMPLE EOTF CHANGE DETECTION: Every 5 seconds, check if EOTF changed since renderer started
-		if (m_rendererState == RendererState::RENDERSTATE_RENDERING &&
-			(!m_videoRenderer || !m_videoRenderer->SupportsDynamicVideoState()) &&
-			m_timerSeconds % 5 == 0 &&
-			m_eotfCheckCooldownSeconds == 0 &&  // Cooldown expired
-			m_captureDeviceVideoState &&
-			m_captureDeviceVideoState->valid &&
-			m_rendererStartedWithEotf != EOTF::UNKNOWN &&
-			m_captureDeviceVideoState->eotf != EOTF::UNKNOWN &&
-			!m_wantToRestartCapture &&  // Don't trigger if restart already pending
-			!m_wantToRestartRenderer)   // Don't trigger if restart already pending
-		{
-			// Check if EOTF changed since renderer started
-			if (m_captureDeviceVideoState->eotf != m_rendererStartedWithEotf)
-			{
-				DbgLog((LOG_TRACE, 1, TEXT("EOTF changed %s -> %s while rendering - restarting capture"),
-					ToString(m_rendererStartedWithEotf), ToString(m_captureDeviceVideoState->eotf)));
-
-				DebugLog::Log("EOTF changed %s -> %s - restarting capture",
-					CStringA(ToString(m_rendererStartedWithEotf)).GetString(),
-					CStringA(ToString(m_captureDeviceVideoState->eotf)).GetString());
-
-				// Trigger capture restart (which will restart renderer)
-				if (m_captureDeviceState == CaptureDeviceState::CAPTUREDEVICESTATE_FAILED)
-					m_captureDeviceState = CaptureDeviceState::CAPTUREDEVICESTATE_UNKNOWN;
-
-				m_wantToRestartCapture = true;
-				UpdateState();
-
-				// Reset cooldown to prevent rapid restarts
-				m_eotfCheckCooldownSeconds = 5;
-			}
-		}
-
 		CString cstring;
 
 		if (m_rendererState == RendererState::RENDERSTATE_RENDERING)
@@ -14537,41 +14532,13 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 				}
 			}
 
-			// PERIODIC EOTF CHANGE DETECTION (every 5 seconds)
-			// Catches EOTF changes that don't trigger full video state updates
+			// The periodic sampler corroborates (or cancels) the same candidate
+			// created by capture-state notifications.
 			if (m_timerSeconds % 5 == 0 &&
-				m_enableEotfChangeRestart &&
-				m_captureDeviceVideoState &&
-				m_captureDeviceVideoState->valid &&
-				m_eotfChangeRestartCooldownSeconds < 0)  // Not in cooldown
+				m_captureDeviceVideoState)
 			{
-				EOTF currentEotf = m_captureDeviceVideoState->eotf;
-				
-				// Initialize tracking on first valid check
-				if (m_lastKnownEotf == EOTF::UNKNOWN && currentEotf != EOTF::UNKNOWN)
-				{
-					m_lastKnownEotf = currentEotf;
-					DbgLog((LOG_TRACE, 1, TEXT("Periodic EOTF check: Initialized to %s"), ToString(currentEotf)));
-				}
-				// Detect EOTF change
-				else if (m_lastKnownEotf != EOTF::UNKNOWN &&
-						 currentEotf != EOTF::UNKNOWN &&
-						 m_lastKnownEotf != currentEotf)
-				{
-					DbgLog((LOG_TRACE, 1, TEXT("Periodic EOTF check: EOTF changed %s -> %s - scheduling renderer restart"),
-						ToString(m_lastKnownEotf), ToString(currentEotf)));
-
-					DebugLog::Log("Periodic EOTF change detected: %s -> %s - renderer restart in 5 seconds",
-						CStringA(ToString(m_lastKnownEotf)).GetString(),
-						CStringA(ToString(currentEotf)).GetString());
-
-					// Update tracked EOTF immediately
-					m_lastKnownEotf = currentEotf;
-
-					// Schedule restart with delay
-					m_eotfChangeRestartCooldownSeconds = 5;
-					SetTimer(EOTF_CHANGE_RESTART_TIMER_ID, 1000, nullptr);
-				}
+				ObserveEotfTransition(m_captureDeviceVideoState->eotf,
+					m_captureDeviceVideoState->valid, "periodic");
 			}
 
 			const size_t rawQueueSize = m_videoRenderer->GetFrameQueueSize();

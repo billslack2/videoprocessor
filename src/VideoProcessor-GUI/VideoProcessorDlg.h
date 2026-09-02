@@ -32,6 +32,7 @@
 #include <RendererResetPolicy.h>
 #include <RendererRetirementService.h>
 #include <RendererTransitionModel.h>
+#include <EotfTransitionStabilizer.h>
 #include <RendererQueueLaunchContractModel.h>
 #include <QueueProfileRestartPolicy.h>
 #include <EventActionLauncher.h>
@@ -307,15 +308,10 @@ protected:
 	double m_lastKnownRefreshRate = 0.0;  // Track last refresh rate for change detection (0 = not initialized)
 	std::map<int, double> m_displayRefreshRateOverridesHz;
 
-	// EOTF change detection for SDR/HDR switching
-	// Feature flag: Set to true to enable automatic renderer restart on EOTF change
-	bool m_enableEotfChangeRestart = true;  // TODO: Make this configurable via UI or config file
-	EOTF m_lastKnownEotf = EOTF::UNKNOWN;  // Track last EOTF for change detection
-	int m_eotfChangeRestartCooldownSeconds = -1;  // Cooldown timer to prevent restart loops (-1 = no cooldown active
-	
-	// SIMPLIFIED EOTF TRACKING: Store the EOTF when renderer starts, detect changes while rendering
-	EOTF m_rendererStartedWithEotf = EOTF::UNKNOWN;
-	int m_eotfCheckCooldownSeconds = 0;  // Cooldown to wait before checking EOTF changes (starts at 5 seconds after renderer start)
+	// One shared transition state receives both capture-event and periodic EOTF
+	// observations. Only its confirmed commit may rebuild a non-dynamic renderer.
+	bool m_enableEotfChangeRestart = true;
+	EotfTransitionStabilizer m_eotfTransition;
 
 	// Optional LLDV heuristic.  DeckLink does not expose the HDMI VSIF, so
 	// BT.2020 + SDR + no static HDR metadata is only a best-effort signal.
@@ -1050,6 +1046,7 @@ protected:
 	bool BuildPushVideoState();
 	void BuildPushRestartVideoState();
 	void ScheduleNewLldvRendererRestart();
+	void ObserveEotfTransition(EOTF observed, bool valid, const char* source);
 	DisplayRuleExpression::ValueLookup GetUnifiedProfileSourceLookup();
 	void RefreshUnifiedProfilesForRuleContext(const char* reason);
 	void PublishActiveProfileStatus();
