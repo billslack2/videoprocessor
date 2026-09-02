@@ -25,6 +25,21 @@ acceptance remains outstanding.
 
 ### Readiness review (2026-09-02)
 
+A canonical x64 Release package was built from source commit `dfcf1eac` at
+`artifacts\release\VideoProcessor-v1.3.005-beta-vp0170-dfcf1eac.zip`. The
+archive SHA-256 is
+`C2A576A34249272E875CDD02D2CE7E673175897C6D3B969D830AD4C448047B29`
+and its size is 30,457,305 bytes. Packaging verification found an exact
+57-file match with the canonical staged manifest, one `VideoProcessor/`
+top-level directory, `VideoProcessor.cfg.example` but no active
+`VideoProcessor.cfg`, and no PDB, import-library, export, incremental-link,
+state, cache, or backup payloads. The staged executable SHA-256 is
+`54AADEE2A1E565E4C739378C49E6F65BD34DEA794462C035860900713C72BCB3`;
+the staged renderer DLL SHA-256 is
+`EE4D0474F8A8770DD875D5962405FF115AE5C1D6FBC8B8985071D3408FE5B530`.
+All five focused transition tests pass against the final x64 Release build.
+The package has not been deployed; hardware acceptance remains outstanding.
+
 - Configuration: no new setting is needed; the existing automatic EOTF restart
   behavior remains enabled and its stabilization contract is made explicit.
 - API and pipeline: DirectShow renderer media types are immutable per renderer
