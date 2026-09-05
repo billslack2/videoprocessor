@@ -4443,7 +4443,7 @@ namespace VideoProcessorTest
 			DeleteFileA(path.c_str());
 		}
 
-		TEST_METHOD(CanonicalRendererAcceptsDocumentedPeakAndLutValues)
+		TEST_METHOD(CanonicalRendererAcceptsDocumentedPeakAndCalibrationLutValues)
 		{
 			char temporaryDirectory[MAX_PATH] = {};
 			Assert::IsTrue(GetTempPathA(
@@ -4454,10 +4454,8 @@ namespace VideoProcessorTest
 				std::ofstream file(path, std::ios::out | std::ios::trunc);
 				file << "[vpvr.display]\n"
 					"peak_detection: high_quality\n"
-					"lut_reference_primaries: P3_D65\n"
-					"lut_reference_transfer: BT1886\n"
-					"lut_reference_range: AUTO\n"
-					"lut_reference_nits: AUTO\n";
+					"calibration_lut_enabled: true\n"
+					"calibration_lut_p3_d65: luts/projector-p3.cube\n";
 			}
 
 			ConfigFile config;

@@ -36,6 +36,7 @@ namespace RendererOutputContract
 	{
 		UNKNOWN,
 		REC709,
+		P3_D65,
 		BT2020,
 	};
 

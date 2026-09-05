@@ -130,6 +130,7 @@ namespace LibplaceboOutput
 	enum class SdrTargetPrimaries
 	{
 		REC709,
+		P3_D65,
 		BT2020,
 	};
 
@@ -232,6 +233,12 @@ namespace LibplaceboOutput
 		GammaRequest configuredOutputGamma,
 		SdrTransfer declaredSource,
 		SdrTransfer actualTarget);
+	// Resolve the pixel-domain transfer independently from LUT attachment.
+	// Explicit display calibration wins; Auto retains the transfer of the
+	// accepted output contract. Enabling an identity LUT must not change gamma.
+	SdrTransfer ResolveCalibrationTargetTransfer(
+		GammaRequest configuredOutputGamma,
+		SdrTransfer acceptedOutputTransfer);
 	Plan MakePlan(const Request& request);
 	SdrOutputContract MakeSdrOutputContract(
 		Request requestedTransport,

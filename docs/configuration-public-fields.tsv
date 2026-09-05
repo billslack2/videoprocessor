@@ -45,6 +45,10 @@ shortcuts.show_profiles	shortcut-show-profiles	VP profile overlay	no
 vprenderer.when	vprenderer-when	VP Renderer	no
 vprenderer.shortcut	vprenderer-shortcut	VP Renderer	no
 vprenderer.quality	vprenderer-quality	VP Renderer	no
+vprenderer.calibration_lut_enabled	vprenderer-calibration-lut	VP Renderer calibration	no
+vprenderer.calibration_lut_bt709	vprenderer-calibration-lut	VP Renderer calibration	no
+vprenderer.calibration_lut_p3_d65	vprenderer-calibration-lut	VP Renderer calibration	no
+vprenderer.calibration_lut_bt2020	vprenderer-calibration-lut	VP Renderer calibration	no
 vprenderer.tone_mapping	vprenderer-tone-mapping	VP Renderer	no
 vprenderer.gamut_mapping	vprenderer-gamut-mapping	VP Renderer	no
 vprenderer.peak_detection	vprenderer-peak-detection	VP Renderer	no
@@ -85,10 +89,11 @@ vprenderer.viewport.<variant>.screen_aspect	viewport-screen-aspect	VP Renderer v
 vprenderer.viewport.<variant>.vertical_alignment	viewport-vertical-alignment	VP Renderer viewport	no
 vprenderer.viewport.<variant>.anamorphic_scale	viewport-anamorphic-scale	VP Renderer viewport	no
 vprenderer.viewport.<variant>.automatic_crop	viewport-automatic-crop	VP Renderer viewport	no
-vprenderer.viewport.<variant>.crop_narrower_content_to_fill_screen	viewport-crop-narrower-content-to-fill-screen	VP Renderer viewport	no
-vprenderer.viewport.<variant>.crop_narrower_content_aspect_limit	viewport-crop-narrower-content-aspect-limit	VP Renderer viewport	no
-vprenderer.viewport.<variant>.crop_wider_content_to_fill_screen	viewport-crop-wider-content-to-fill-screen	VP Renderer viewport	no
-vprenderer.viewport.<variant>.crop_wider_content_aspect_limit	viewport-crop-wider-content-aspect-limit	VP Renderer viewport	no
+vprenderer.zoom.<variant>.crop_narrower_content_to_fill_screen	zoom-crop-narrower-content-to-fill-screen	VP Renderer Zoom	no
+vprenderer.zoom.<variant>.crop_narrower_content_aspect_limit	zoom-crop-narrower-content-aspect-limit	VP Renderer Zoom	no
+vprenderer.zoom.<variant>.crop_wider_content_to_fill_screen	zoom-crop-wider-content-to-fill-screen	VP Renderer Zoom	no
+vprenderer.zoom.<variant>.crop_wider_content_aspect_limit	zoom-crop-wider-content-aspect-limit	VP Renderer Zoom	no
+vprenderer.zoom.<variant>.fixed_crop_aspect	zoom-fixed-crop-aspect	VP Renderer Zoom	no
 vprenderer.viewport.<variant>.subtitle_fit	viewport-subtitle-fit	VP Renderer viewport	no
 vprenderer.viewport.<variant>.subtitle_hold_seconds	viewport-subtitle-hold-seconds	VP Renderer viewport	no
 vprenderer.viewport.<variant>.subtitle_engage_drift_ms	viewport-subtitle-engage-drift-ms	VP Renderer viewport	no
@@ -98,6 +103,7 @@ vprenderer.viewport.<variant>.subtitle_target_buffer_pixels	viewport-subtitle-ta
 vprenderer.zoom.<variant>.hdr_peak_analysis_picture_only	zoom-hdr-peak-analysis-picture-only	VP Renderer Zoom	no
 vprenderer.zoom.<variant>.hdr_peak_analysis_motion_compensation	zoom-hdr-peak-analysis-motion-compensation	VP Renderer Zoom	no
 vprenderer.zoom.<variant>.hdr_peak_analysis_height_percent	zoom-hdr-peak-analysis-height-percent	VP Renderer Zoom	no
+vprenderer.zoom.<variant>.hdr_peak_analysis_position	zoom-hdr-peak-analysis-position	VP Renderer Zoom	no
 shader.<group>.type	shader-group-type	Shader selection	no
 shader.<group>.when	shader-group-when	Shader selection	no
 shader.<group>.shortcut	shader-group-shortcut	Shader selection	no

@@ -74,8 +74,9 @@ namespace LibplaceboRenderParameters
 		pl_dither_params ditherParams{};
 	};
 
-	// `hasDisplayLut` preserves VP's compatible-LUT behavior: error diffusion
-	// from a quality preset is removed before render parameters are used.
+	// The target calibration LUT is attached to pl_frame, not render parameters;
+	// `hasDisplayLut` remains for source compatibility and does not alter DTM,
+	// peak detection, dither, or error diffusion.
 	// Returns false only when the expected libplacebo runtime data cannot be
 	// obtained. The caller receives a human-readable error in `error`.
 	bool Build(const Settings& settings, bool hasDisplayLut,

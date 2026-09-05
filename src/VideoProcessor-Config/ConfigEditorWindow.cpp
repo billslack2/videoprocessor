@@ -809,6 +809,9 @@ QString friendlyChoiceLabel(const QString& raw)
         { QStringLiteral("P3_DCI"), QStringLiteral("DCI-P3") },
         { QStringLiteral("P3_D60"), QStringLiteral("P3-D60") },
         { QStringLiteral("HIGH_QUALITY"), QStringLiteral("High quality") },
+		{ QStringLiteral("PIXEL_SHADERS"), QStringLiteral("Tone map HDR using pixel shaders") },
+		{ QStringLiteral("EXTERNAL_3DLUT"), QStringLiteral("Tone map HDR using external 3D LUT") },
+		{ QStringLiteral("PASSTHROUGH"), QStringLiteral("Pass HDR through to display") },
         { QStringLiteral("EWA_LANCZOSSHARP"), QStringLiteral("EWA Lanczos sharp") },
         { QStringLiteral("EWA_LANCZOS"), QStringLiteral("EWA Lanczos") },
         { QStringLiteral("EWA_LANCZOS4SHARPEST"), QStringLiteral("EWA Lanczos 4 sharpest") },
@@ -1696,8 +1699,10 @@ void ConfigEditorWindow::refreshRendererAutoStatus()
                 whiteNits / 1000.0, 'f', 3) + QStringLiteral(" nits") :
                 QStringLiteral("0.203 nits");
         }
-        else if (binding.key == QStringLiteral("output_gamma"))
-            text = QStringLiteral("sRGB");
+		else if (binding.key == QStringLiteral("output_gamma"))
+		{
+			text = QStringLiteral("sRGB");
+		}
         else if (binding.key == QStringLiteral("sdr_adjust_gamma"))
             // This selector controls the conversion policy, rather than
             // declaring the input transfer. Do not echo the live input EOTF
@@ -1747,14 +1752,7 @@ void ConfigEditorWindow::refreshRendererAutoStatus()
         }
         else if (binding.key == QStringLiteral("display_bit_depth"))
             text = QStringLiteral("Output format");
-        else if (binding.key == QStringLiteral("lut_reference_nits") ||
-            binding.key == QStringLiteral("lut_reference_range") ||
-            binding.key == QStringLiteral("lut_reference_transfer") ||
-            binding.key == QStringLiteral("lut_reference_primaries"))
-        {
-            text = QStringLiteral("Not constrained");
-        }
-        else if (binding.sectionPrefix == QStringLiteral("vprenderer.output") &&
+		else if (binding.sectionPrefix == QStringLiteral("vprenderer.output") &&
             binding.key == QStringLiteral("output_presentation"))
         {
             text = QStringLiteral("Flip");
@@ -3778,10 +3776,11 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
     {
         form = addCollapsibleSection(QStringLiteral("calibration"),
             QStringLiteral("Display calibration"), QStringLiteral(
-                "Describe the calibrated Rec.709 or BT.2020 display response this Color Config targets."), false);
-        addChoice(QStringLiteral("Display primaries"),
-            QStringLiteral("sdr_target_primaries"),
-            { QStringLiteral("REC709"), QStringLiteral("BT2020") }, false);
+				"Describe the calibrated Rec.709, P3-D65, or BT.2020 display response this Color Config targets."), false);
+		addChoice(QStringLiteral("Display primaries"),
+			QStringLiteral("sdr_target_primaries"),
+			{ QStringLiteral("REC709"), QStringLiteral("P3_D65"),
+				QStringLiteral("BT2020") }, false);
         auto* outputGamma = addChoice(QStringLiteral("Display transfer / gamma"),
             QStringLiteral("output_gamma"),
             { QStringLiteral("AUTO"), QStringLiteral("bt1886"),
@@ -3791,7 +3790,10 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                 QStringLiteral("2.8") });
         outputGamma->setToolTip(QStringLiteral(
             "The calibrated display transfer VP targets during color-managed rendering. "
-            "It does not change Windows' normal Full RGB / sRGB presentation declaration."));
+			"Auto follows the accepted presentation transfer (normally sRGB). "
+			"Enabling a calibration LUT does not select a gamma; choose the measured "
+			"display transfer explicitly when the Cube expects Gamma 2.2, BT.1886, or another curve. "
+			"This setting does not change Windows' normal Full RGB / sRGB presentation declaration."));
         addRendererAutoStatus(QStringLiteral("output_gamma"), outputGamma);
         addBoolean(QStringLiteral("Report BT.2020 to display"),
             QStringLiteral("report_bt2020_to_display"));
@@ -3886,8 +3888,8 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             "and High, or Off for Fast. Blue noise is libplacebo's default and "
             "recommended mode. Ordered modes and White noise are alternate "
             "libplacebo methods. Error-diffusion modes require compute shaders "
-            "and are substantially more expensive; they are unavailable while an "
-            "external 3D display LUT is active. Off disables dithering."));
+            "and are substantially more expensive. The display-calibration LUT "
+            "runs before this final dithering stage. Off disables dithering."));
         addRendererAutoStatus(QStringLiteral("dithering"), dithering);
         auto* displayBitDepth = addChoice(QStringLiteral("Display bit depth"),
             QStringLiteral("display_bit_depth"),
@@ -3899,8 +3901,15 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             "Native display precision used as the dithering target. Auto uses the active RGB swapchain depth."));
         addRendererAutoStatus(QStringLiteral("display_bit_depth"), displayBitDepth);
 
-		form = addCollapsibleSection(QStringLiteral("lut"), QStringLiteral("Calibration LUT (3D LUT)"),
-            QStringLiteral("Optional lookup-table file and the signal reference used to interpret it."), false);
+		form = addCollapsibleSection(QStringLiteral("externalHdrLut"),
+			QStringLiteral("Display calibration LUT (3D LUT)"), QStringLiteral(
+				"madVR-style calibration slots applied after HDR dynamic tone and gamut mapping."), false);
+		auto* calibrationLutEnabled = addBoolean(
+			QStringLiteral("Enable display calibration 3D LUT"),
+			QStringLiteral("calibration_lut_enabled"));
+		calibrationLutEnabled->setToolTip(QStringLiteral(
+			"Applies the selected Cube to the gamma-encoded SDR calibration target. "
+			"HDR peak analysis and pixel-shader tone mapping remain active."));
         const QString lutDirectoryPath = QFileInfo(configPath_).absoluteDir()
             .filePath(QStringLiteral("luts"));
         const auto discoveredLuts = [lutDirectoryPath]()
@@ -3914,30 +3923,66 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                 result << QStringLiteral("luts/%1").arg(lutFile.fileName());
             return result;
         };
-        auto* lutSelector = addChoice(QStringLiteral("3D LUT file"),
-            QStringLiteral("lut"), discoveredLuts());
-        lutSelector->setToolTip(QStringLiteral(
-            "Select a .cube file from VP's luts folder. The selected file is stored relative to the configuration."));
-        const auto refreshLutSelector = [this, state, lutSelector, discoveredLuts]
+		auto* lutBt709 = addChoice(QStringLiteral("BT.709 calibration LUT"),
+			QStringLiteral("calibration_lut_bt709"), discoveredLuts());
+		auto* lutP3 = addChoice(QStringLiteral("P3-D65 calibration LUT"),
+			QStringLiteral("calibration_lut_p3_d65"), discoveredLuts());
+		auto* lutBt2020 = addChoice(QStringLiteral("BT.2020 calibration LUT"),
+			QStringLiteral("calibration_lut_bt2020"), discoveredLuts());
+		const QList<QComboBox*> externalLutSelectors = {
+			lutBt709, lutP3, lutBt2020
+		};
+		lutBt709->setProperty("lutConfigKey", QStringLiteral("calibration_lut_bt709"));
+		lutP3->setProperty("lutConfigKey", QStringLiteral("calibration_lut_p3_d65"));
+		lutBt2020->setProperty("lutConfigKey", QStringLiteral("calibration_lut_bt2020"));
+		for (QComboBox* selector : externalLutSelectors)
+			selector->setToolTip(QStringLiteral(
+				"The slot follows the configured SDR calibration target, never the source gamut. "
+				"The Cube receives full-domain RGB encoded with the target display gamma."));
+		const auto refreshLutSelectors = [this, state, externalLutSelectors, discoveredLuts]
         {
-            const QSignalBlocker blocker(lutSelector);
-            const QString selected = lutSelector->currentData().toString();
             const QStringList available = discoveredLuts();
-            const bool selectionWasRemoved = !selected.isEmpty() &&
-                !available.contains(selected, Qt::CaseInsensitive);
-            if (selectionWasRemoved && !state->loading && !state->section.isEmpty() && document_)
-            {
-                document_->RemoveKnown(state->section.toStdString(), "lut");
-                markDirty();
-            }
-            lutSelector->clear();
-            lutSelector->addItem(QStringLiteral("Inherited / not set"), QString());
-            for (const QString& lut : available)
-                lutSelector->addItem(lut, lut);
-            lutSelector->setCurrentIndex(selectionWasRemoved ? 0 :
-                std::max(0, lutSelector->findData(selected)));
+			const auto availablePath = [&available](const QString& configured)
+			{
+				const QString normalized = QDir::fromNativeSeparators(configured.trimmed());
+				for (const QString& candidate : available)
+					if (candidate.compare(normalized, Qt::CaseInsensitive) == 0)
+						return candidate;
+				return QString();
+			};
+			const auto displayName = [](const QString& path)
+			{
+				return QFileInfo(path).completeBaseName();
+			};
+			for (QComboBox* selector : externalLutSelectors)
+			{
+				const QSignalBlocker blocker(selector);
+				const QString selected = selector->currentData().toString();
+				const QString effective = selected.isEmpty() ?
+					selector->property("effectiveValue").toString() : selected;
+				const QString resolvedSelected = availablePath(selected);
+				const QString resolvedEffective = availablePath(effective);
+				selector->clear();
+				QString emptyLabel = QStringLiteral("None");
+				if (selected.isEmpty() && !resolvedEffective.isEmpty())
+					emptyLabel = QStringLiteral("Inherited: %1").arg(displayName(resolvedEffective));
+				selector->addItem(emptyLabel, QString());
+				for (const QString& lut : available)
+					selector->addItem(displayName(lut), lut);
+				const int index = selector->findData(resolvedSelected, Qt::UserRole,
+					Qt::MatchFixedString);
+				selector->setCurrentIndex(std::max(0, index));
+				if (!selected.isEmpty() && resolvedSelected.isEmpty() && document_ &&
+					!state->section.isEmpty())
+				{
+					document_->RemoveKnown(state->section.toStdString(),
+						selector->property("lutConfigKey").toString().toStdString().c_str());
+					markDirty();
+				}
+			}
         };
-        auto* lutWatcher = new QFileSystemWatcher(lutSelector);
+		refreshLutSelectors();
+		auto* lutWatcher = new QFileSystemWatcher(lutBt709);
         const auto watchLutDirectory = [lutWatcher, lutDirectoryPath]
         {
             if (QDir(lutDirectoryPath).exists() &&
@@ -3946,15 +3991,15 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         };
         watchLutDirectory();
         connect(lutWatcher, &QFileSystemWatcher::directoryChanged, this,
-            [refreshLutSelector](const QString&) { refreshLutSelector(); });
+			[refreshLutSelectors](const QString&) { refreshLutSelectors(); });
         auto* openLutFolder = new QPushButton;
-        openLutFolder->setObjectName(QStringLiteral("config.vprenderer.lut.open_folder"));
+		openLutFolder->setObjectName(QStringLiteral("config.vprenderer.calibration_lut.open_folder"));
         openLutFolder->setText(QStringLiteral("Open LUT folder"));
         openLutFolder->setToolTip(QStringLiteral("Open the folder where VideoProcessor discovers 3D LUT files."));
         openLutFolder->setAccessibleName(QStringLiteral("Open LUT folder"));
         openLutFolder->setMaximumWidth(170);
         connect(openLutFolder, &QPushButton::clicked, this,
-            [this, lutDirectoryPath, watchLutDirectory, refreshLutSelector]
+			[this, lutDirectoryPath, watchLutDirectory, refreshLutSelectors]
         {
             if (!QDir().mkpath(lutDirectoryPath))
             {
@@ -3963,7 +4008,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                 return;
             }
             watchLutDirectory();
-            refreshLutSelector();
+			refreshLutSelectors();
             if (!openPathExternally(lutDirectoryPath))
                 QMessageBox::warning(this, QStringLiteral("LUT folder"),
                     QStringLiteral("Windows could not open the LUT folder."));
@@ -3971,27 +4016,29 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         form->addRow(QString(), openLutFolder);
         form->addRow(QString(), helpLabel(QStringLiteral(
             "Put .cube files in the luts folder next to VideoProcessor.cfg (normally the VP installation). "
-            "The selector refreshes automatically when the folder changes. If a selected file is removed, "
-            "VP returns that profile to its inherited LUT setting; Reload also refreshes the list.")));
-        auto* lutReferenceLuminance = addChoice(
-            QStringLiteral("LUT reference luminance (nits)"),
-            QStringLiteral("lut_reference_nits"),
-            { QStringLiteral("AUTO"), QStringLiteral("40"),
-                QStringLiteral("80"),
-                QStringLiteral("100"), QStringLiteral("120"),
-                QStringLiteral("160"), QStringLiteral("203"),
-                QStringLiteral("250"), QStringLiteral("300"),
-                QStringLiteral("400"), QStringLiteral("500") });
-        lutReferenceLuminance->setToolTip(QStringLiteral(
-            "Choose Auto or a common reference luminance from 40 to 500 nits. "
-            "Existing custom values remain available in their profile."));
-        addRendererAutoStatus(QStringLiteral("lut_reference_nits"), lutReferenceLuminance);
-        auto* lutReferenceRange = addChoice(QStringLiteral("LUT reference range"), QStringLiteral("lut_reference_range"), { QStringLiteral("AUTO"), QStringLiteral("full"), QStringLiteral("limited") });
-        addRendererAutoStatus(QStringLiteral("lut_reference_range"), lutReferenceRange);
-        auto* lutReferenceTransfer = addChoice(QStringLiteral("LUT reference transfer"), QStringLiteral("lut_reference_transfer"), { QStringLiteral("AUTO"), QStringLiteral("srgb"), QStringLiteral("bt1886"), QStringLiteral("2.2"), QStringLiteral("2.4") });
-        addRendererAutoStatus(QStringLiteral("lut_reference_transfer"), lutReferenceTransfer);
-        auto* lutReferencePrimaries = addChoice(QStringLiteral("LUT reference primaries"), QStringLiteral("lut_reference_primaries"), { QStringLiteral("AUTO"), QStringLiteral("REC709"), QStringLiteral("P3_D65"), QStringLiteral("BT2020") });
-        addRendererAutoStatus(QStringLiteral("lut_reference_primaries"), lutReferencePrimaries);
+			"A missing or invalid selection falls back to the normal tone-mapped image. "
+			"Target nits are set above; target gamut and gamma are set by the active Color Config.")));
+
+		const QList<QWidget*> calibrationLutControls = {
+			lutBt709, lutP3, lutBt2020, openLutFolder
+		};
+		const auto updateCalibrationLutControls = [calibrationLutEnabled,
+			calibrationLutControls]
+		{
+			for (QWidget* control : calibrationLutControls)
+				control->setEnabled(calibrationLutEnabled->isChecked());
+		};
+		connect(calibrationLutEnabled, &QCheckBox::toggled, this,
+			[this, updateCalibrationLutControls](bool)
+			{
+				updateCalibrationLutControls();
+				refreshRendererAutoStatus();
+			});
+		updateCalibrationLutControls();
+		// Generic field loading occurs after page construction; reapply gating on
+		// the first event turn so disabled profiles are correct on first open.
+		QTimer::singleShot(0, calibrationLutEnabled,
+			updateCalibrationLutControls);
 
     }
     else if (sectionPrefix == QStringLiteral("vprenderer.output"))
@@ -4621,12 +4668,13 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                 if (key == QStringLiteral("output_path_profile")) return QStringLiteral("legacy");
                 if (key == QStringLiteral("sdr_target_primaries")) return QStringLiteral("REC709");
                 if (key == QStringLiteral("sdr_target_nits")) return QStringLiteral("203");
-                if (key == QStringLiteral("sdr_black_nits") ||
-                    key == QStringLiteral("contrast_recovery") ||
-                    key == QStringLiteral("lut_reference_nits")) return QStringLiteral("Auto");
-                if (key == QStringLiteral("deband_strength")) return QStringLiteral("AUTO");
-                if (key == QStringLiteral("lut")) return {};
-                if (key == QStringLiteral("report_bt2020_to_display") ||
+				if (key == QStringLiteral("sdr_black_nits") ||
+					key == QStringLiteral("contrast_recovery")) return QStringLiteral("Auto");
+				if (key == QStringLiteral("deband_strength")) return QStringLiteral("AUTO");
+				if (key.startsWith(QStringLiteral("calibration_lut_")) &&
+					key != QStringLiteral("calibration_lut_enabled")) return {};
+				if (key == QStringLiteral("report_bt2020_to_display") ||
+					key == QStringLiteral("calibration_lut_enabled") ||
                     key == QStringLiteral("output_diagnostics") ||
                     key == QStringLiteral("diagnostic_disable_shader_cache") ||
                     key == QStringLiteral("diagnostic_disable_compute") ||
@@ -4661,9 +4709,34 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                 configured = value(profileSection, alias);
             return configured;
         };
-        for (const Field& field : *fields)
-        {
+		for (const Field& field : *fields)
+		{
             QString raw = profileValue(section, field.key);
+			const bool calibrationLutSlot =
+				sectionPrefix == QStringLiteral("vprenderer") &&
+				field.key.startsWith(QStringLiteral("calibration_lut_")) &&
+				field.key != QStringLiteral("calibration_lut_enabled");
+			if (calibrationLutSlot && !raw.isEmpty())
+			{
+				const QString normalized = QDir::fromNativeSeparators(raw.trimmed());
+				const QString absolute = QFileInfo(configPath_).absoluteDir().filePath(normalized);
+				if (!QFileInfo(absolute).isFile())
+				{
+					document_->RemoveKnown(section.toStdString(),
+						field.key.toStdString().c_str());
+					raw.clear();
+					markDirty();
+				}
+				else if (normalized != raw)
+				{
+					document_->SetKnown(section.toStdString(),
+						field.key.toStdString().c_str(), normalized.toLocal8Bit().constData());
+					raw = normalized;
+					markDirty();
+				}
+			}
+			const bool requiresExplicitValue =
+				field.widget->property("requiresExplicitValue").toBool();
 			const bool scalingDownscaler =
 				sectionPrefix == QStringLiteral("vprenderer.scaling") &&
 				field.key == QStringLiteral("downscaler");
@@ -4712,10 +4785,11 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                  field.key == QStringLiteral("diagnostic_disable_shader_cache"));
             const bool defaultOnlyField = defaultOnlyRendererField;
             QString configured = raw;
-			if (configured.isEmpty() && list->count() > 0)
+			if (!requiresExplicitValue && configured.isEmpty() && list->count() > 0)
                 configured = defaultProfile ? fallback(field.key) :
                     profileValue(list->item(0)->data(Qt::UserRole).toString(), field.key);
-            if (configured.isEmpty()) configured = fallback(field.key);
+			if (!requiresExplicitValue && configured.isEmpty())
+				configured = fallback(field.key);
             if (defaultOnlyField && !defaultProfile && list->count() > 0)
                 configured = value(list->item(0)->data(Qt::UserRole).toString(), field.key, fallback(field.key));
             field.widget->setEnabled(!defaultOnlyField || defaultProfile);
@@ -4726,12 +4800,17 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 				field.widget->setEnabled(mode &&
 					mode->currentData().toString() == QStringLiteral("fixed"));
 			}
-			field.widget->setProperty("inherited", raw.isEmpty() && !defaultProfile);
-			field.widget->setToolTip(raw.isEmpty() ?
+			field.widget->setProperty("effectiveValue", configured);
+			field.widget->setProperty("inherited",
+				!requiresExplicitValue && raw.isEmpty() && !defaultProfile);
+			if (requiresExplicitValue && raw.isEmpty())
+				field.widget->setToolTip(QStringLiteral(
+					"An explicit value is required for this setting."));
+			else field.widget->setToolTip(raw.isEmpty() ?
                 (defaultProfile ?
                     QStringLiteral("Using the built-in default. Editing creates an explicit setting.") :
                     QStringLiteral("Inherited from the default profile. Editing creates an override.")) :
-                QString());
+                    QString());
             field.widget->style()->unpolish(field.widget);
             field.widget->style()->polish(field.widget);
             if (field.kind == Field::Text)
@@ -4779,10 +4858,34 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                 if (auto* view = qobject_cast<QListView*>(combo->view()))
                     view->setRowHidden(0, hasUnspecifiedChoice &&
                         hideUnspecifiedChoice);
-                const QString inheritedDisplay = friendlyChoiceLabel(configured);
+				const QString inheritedDisplay = calibrationLutSlot
+					? QFileInfo(configured).completeBaseName()
+					: friendlyChoiceLabel(configured);
                 if (hasUnspecifiedChoice)
                 {
-                    if (raw.isEmpty() && !configured.isEmpty())
+					if (requiresExplicitValue && raw.isEmpty())
+						combo->setItemText(0, QStringLiteral("Required - select gamut"));
+					const bool emptyExternalLutSlot =
+						calibrationLutSlot &&
+						raw.isEmpty() && configured.isEmpty();
+					if (emptyExternalLutSlot)
+						combo->setItemText(0, QStringLiteral("None"));
+					const int externalLutEffectiveIndex = combo->findData(
+						configured, Qt::UserRole, Qt::MatchFixedString);
+					const bool inheritedMissingExternalLut =
+						calibrationLutSlot &&
+						raw.isEmpty() && !configured.isEmpty() &&
+						(externalLutEffectiveIndex < 0 || combo->itemData(
+							externalLutEffectiveIndex, Qt::UserRole + 1).toBool());
+					if ((requiresExplicitValue && raw.isEmpty()) || emptyExternalLutSlot)
+					{
+						// Keep the explicit required placeholder established above.
+					}
+					else if (inheritedMissingExternalLut)
+						combo->setItemText(0, defaultProfile ?
+							QStringLiteral("Default - Missing: %1").arg(inheritedDisplay) :
+							QStringLiteral("Inherited - Missing: %1").arg(inheritedDisplay));
+					else if (raw.isEmpty() && !configured.isEmpty())
                         combo->setItemText(0, defaultProfile ?
                             QStringLiteral("Default: %1").arg(inheritedDisplay) :
                             QStringLiteral("Inherited: %1").arg(inheritedDisplay));
@@ -4801,18 +4904,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                         if (combo->itemData(candidate).toString().compare(
                             configured, Qt::CaseInsensitive) == 0)
                         { index = candidate; break; }
-                if (index < 0 && sectionPrefix == QStringLiteral("vprenderer") &&
-                    field.key == QStringLiteral("lut") && !raw.isEmpty())
-                {
-                    // LUTs are deliberately selected only from VP's luts
-                    // directory. A removed file must not linger as a fake
-                    // selector item; clear it in the pending document and
-                    // let the user save that removal explicitly.
-                    document_->RemoveKnown(section.toStdString(), "lut");
-                    markDirty();
-                    index = 0;
-                }
-                else if (index < 0)
+				if (index < 0)
                 {
                     combo->addItem(friendlyChoiceLabel(configured), configured);
                     index = combo->count() - 1;

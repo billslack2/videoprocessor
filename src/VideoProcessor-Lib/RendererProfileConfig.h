@@ -495,21 +495,21 @@ namespace RendererProfileConfig
 		}
 		if (group == "display")
 		{
-			if (key == "display_bit_depth") return IsChoice(value, { "auto", "8", "10" });
-			if (key == "sdr_target_nits") return IsNumberInRange(value, 40.0, 500.0);
-			if (key == "lut_reference_nits") return IsChoice(value, { "auto" }) || IsNumberInRange(value, 40.0, 500.0);
-			if (key == "sdr_black_nits") return IsChoice(value, { "auto" }) || IsNumberInRange(value, 0.0, 500.0, false);
-			if (key == "lut_reference_range") return IsChoice(value, { "auto", "full", "limited" });
-			if (key == "output_gamma") return IsChoice(value, { "auto", "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" });
-			if (key == "lut_reference_transfer") return IsChoice(value, { "auto", "srgb", "bt1886", "2.2", "2.4" });
-			if (key == "sdr_target_primaries") return IsChoice(value, { "rec709", "bt2020" });
-			if (key == "lut_reference_primaries") return IsChoice(value, { "auto", "rec709", "p3_d65", "bt2020" });
-			if (key == "report_bt2020_to_display") return IsBoolean(value);
-			if (key == "lut")
+			if (key == "calibration_lut_enabled") return IsBoolean(value);
+			if (key == "calibration_lut_bt709" ||
+				key == "calibration_lut_p3_d65" ||
+				key == "calibration_lut_bt2020")
 			{
 				const std::string normalized = ConfigFile::NormalizeName(value);
-				return normalized.empty() || (normalized.size() > 5 && normalized.substr(normalized.size() - 5) == ".cube");
+				return normalized.size() > 5 &&
+					normalized.substr(normalized.size() - 5) == ".cube";
 			}
+			if (key == "display_bit_depth") return IsChoice(value, { "auto", "8", "10" });
+			if (key == "sdr_target_nits") return IsNumberInRange(value, 40.0, 500.0);
+			if (key == "sdr_black_nits") return IsChoice(value, { "auto" }) || IsNumberInRange(value, 0.0, 500.0, false);
+			if (key == "output_gamma") return IsChoice(value, { "auto", "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" });
+			if (key == "sdr_target_primaries") return IsChoice(value, { "rec709", "p3_d65", "bt2020" });
+			if (key == "report_bt2020_to_display") return IsBoolean(value);
 			expected = "a display-owned setting"; return false;
 		}
 		if (group == "output")

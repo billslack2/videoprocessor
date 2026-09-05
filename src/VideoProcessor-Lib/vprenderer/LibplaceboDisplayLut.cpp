@@ -5,6 +5,7 @@
 #include <cmath>
 #include <limits>
 #include <new>
+#include <sstream>
 #include <vector>
 #include <windows.h>
 
@@ -103,6 +104,76 @@ namespace LibplaceboDisplayLut
 		return false;
 	}
 
+	uint64_t FileTimeValue(const FILETIME& value)
+	{
+		return static_cast<uint64_t>(value.dwLowDateTime) |
+			(static_cast<uint64_t>(value.dwHighDateTime) << 32);
+	}
+
+	FileVersion ProbeHandleVersion(HANDLE input)
+	{
+		FileVersion result;
+		LARGE_INTEGER length{};
+		FILETIME writeTime{};
+		if (input == INVALID_HANDLE_VALUE || !GetFileSizeEx(input, &length) ||
+			length.QuadPart < 0 ||
+			!GetFileTime(input, nullptr, nullptr, &writeTime))
+			return result;
+		result.available = true;
+		result.fileBytes = static_cast<uint64_t>(length.QuadPart);
+		result.fileWriteTime = FileTimeValue(writeTime);
+		return result;
+	}
+
+	FileVersion ProbeFileVersion(const std::string& path)
+	{
+		FileVersion result;
+		if (path.empty())
+			return result;
+		const ScopedHandle input(CreateFileA(path.c_str(), FILE_READ_ATTRIBUTES,
+			FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
+			OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr));
+		if (input.Get() == INVALID_HANDLE_VALUE)
+			return result;
+		return ProbeHandleVersion(input.Get());
+	}
+
+	bool SameFileVersion(const FileVersion& left, const FileVersion& right)
+	{
+		return left.available == right.available &&
+			left.fileBytes == right.fileBytes &&
+			left.fileWriteTime == right.fileWriteTime;
+	}
+
+	bool HasUnsupportedDomainDirective(const std::string& contents)
+	{
+		std::istringstream stream(contents);
+		std::string line;
+		while (std::getline(stream, line))
+		{
+			const size_t comment = line.find('#');
+			if (comment != std::string::npos)
+				line.resize(comment);
+			std::istringstream tokens(line);
+			std::string directive;
+			if (!(tokens >> directive))
+				continue;
+			std::transform(directive.begin(), directive.end(), directive.begin(),
+				[](unsigned char c) { return static_cast<char>(std::toupper(c)); });
+			if (directive != "DOMAIN_MIN" && directive != "DOMAIN_MAX")
+				continue;
+
+			double values[3] = {};
+			if (!(tokens >> values[0] >> values[1] >> values[2]))
+				continue;
+			const double expected = directive == "DOMAIN_MIN" ? 0.0 : 1.0;
+			for (const double value : values)
+				if (!std::isfinite(value) || std::fabs(value - expected) > 1e-9)
+					return true;
+		}
+		return false;
+	}
+
 	LoadResult Load(
 		pl_log log,
 		const std::string& path,
@@ -114,7 +185,7 @@ namespace LibplaceboDisplayLut
 
 		const ScopedHandle input(CreateFileA(
 			path.c_str(), GENERIC_READ,
-			FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+			FILE_SHARE_READ | FILE_SHARE_DELETE,
 			nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr));
 		if (input.Get() == INVALID_HANDLE_VALUE)
 		{
@@ -141,21 +212,21 @@ namespace LibplaceboDisplayLut
 			}
 		}
 
-		LARGE_INTEGER length{};
-		if (!GetFileSizeEx(input.Get(), &length) || length.QuadPart < 0)
+		result.fileVersion = ProbeHandleVersion(input.Get());
+		if (!result.fileVersion.available)
 		{
 			result.status = Status::REJECTED;
 			result.rejection = Rejection::READ_FAILED;
 			return result;
 		}
-		if (length.QuadPart == 0)
+		if (result.fileVersion.fileBytes == 0)
 		{
 			result.status = Status::REJECTED;
 			result.rejection = Rejection::EMPTY;
 			return result;
 		}
-		if (static_cast<unsigned long long>(length.QuadPart) > MAX_FILE_BYTES ||
-			static_cast<unsigned long long>(length.QuadPart) >
+		if (result.fileVersion.fileBytes > MAX_FILE_BYTES ||
+			result.fileVersion.fileBytes >
 				static_cast<unsigned long long>(
 					(std::numeric_limits<size_t>::max)()))
 		{
@@ -164,7 +235,8 @@ namespace LibplaceboDisplayLut
 			return result;
 		}
 
-		result.fileBytes = static_cast<size_t>(length.QuadPart);
+		result.fileBytes = static_cast<size_t>(result.fileVersion.fileBytes);
+		result.fileWriteTime = result.fileVersion.fileWriteTime;
 		try
 		{
 			std::string contents(result.fileBytes, '\0');
@@ -181,6 +253,22 @@ namespace LibplaceboDisplayLut
 			{
 				result.status = Status::REJECTED;
 				result.rejection = Rejection::ONE_DIMENSIONAL;
+				return result;
+			}
+			// The content handle denies concurrent writers. A replace-by-rename is
+			// permitted, but it leaves this handle on a stable old file and will be
+			// discovered by the caller's next path probe.
+			if (!SameFileVersion(result.fileVersion,
+				ProbeHandleVersion(input.Get())))
+			{
+				result.status = Status::REJECTED;
+				result.rejection = Rejection::READ_FAILED;
+				return result;
+			}
+			if (HasUnsupportedDomainDirective(contents))
+			{
+				result.status = Status::REJECTED;
+				result.rejection = Rejection::UNSUPPORTED_DOMAIN;
 				return result;
 			}
 
@@ -246,68 +334,10 @@ namespace LibplaceboDisplayLut
 		case Rejection::PATH_OUTSIDE_BASE: return "bad path";
 		case Rejection::INVALID_CUBE: return "invalid cube";
 		case Rejection::ONE_DIMENSIONAL: return "1D not supported";
+		case Rejection::UNSUPPORTED_DOMAIN: return "non-default domain";
 		case Rejection::UNSAFE_DIMENSIONS: return "unsupported size";
 		default: return "";
 		}
 	}
 
-	bool TargetMatchesSignal(
-		enum pl_color_primaries targetPrimaries,
-		enum pl_color_transfer targetTransfer,
-		enum pl_color_levels targetRange,
-		enum pl_color_primaries signalPrimaries,
-		enum pl_color_transfer signalTransfer,
-		enum pl_color_levels signalRange)
-	{
-		return signalPrimaries != PL_COLOR_PRIM_UNKNOWN &&
-			signalTransfer != PL_COLOR_TRC_UNKNOWN &&
-			signalRange != PL_COLOR_LEVELS_UNKNOWN &&
-			targetPrimaries == signalPrimaries &&
-			targetTransfer == signalTransfer &&
-			targetRange == signalRange;
-	}
-
-	ContractRejection ValidateContract(
-		enum pl_color_primaries requestedPrimaries,
-		enum pl_color_transfer requestedTransfer,
-		enum pl_color_levels requestedRange,
-		double requestedNits,
-		enum pl_color_primaries targetPrimaries,
-		enum pl_color_transfer targetTransfer,
-		enum pl_color_levels targetRange,
-		double targetNits,
-		bool targetMatchesSignaledOutput)
-	{
-		if (!targetMatchesSignaledOutput)
-			return ContractRejection::OUTPUT_NOT_SIGNALED;
-		if (requestedPrimaries == PL_COLOR_PRIM_DISPLAY_P3)
-			return ContractRejection::P3_NOT_SUPPORTED;
-		if ((requestedPrimaries != PL_COLOR_PRIM_UNKNOWN &&
-			 requestedPrimaries != targetPrimaries) ||
-			(requestedTransfer != PL_COLOR_TRC_UNKNOWN &&
-			 requestedTransfer != targetTransfer) ||
-			(requestedRange != PL_COLOR_LEVELS_UNKNOWN &&
-			 requestedRange != targetRange) ||
-			(requestedNits > 0.0 &&
-			 std::abs(requestedNits - targetNits) > 0.01))
-		{
-			return ContractRejection::PROFILE_MISMATCH;
-		}
-		return ContractRejection::NONE;
-	}
-
-	const char* ShortReason(ContractRejection rejection)
-	{
-		switch (rejection)
-		{
-		case ContractRejection::OUTPUT_NOT_SIGNALED:
-			return "output not signaled";
-		case ContractRejection::P3_NOT_SUPPORTED:
-			return "P3 not supported";
-		case ContractRejection::PROFILE_MISMATCH:
-			return "profile mismatch";
-		default:
-			return "";
-		}
-	}
 }

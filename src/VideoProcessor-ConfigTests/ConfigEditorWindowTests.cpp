@@ -18,6 +18,7 @@
 #include <QDir>
 #include <QElapsedTimer>
 #include <QFile>
+#include <QFileSystemWatcher>
 #include <QFileInfo>
 #include <QEventLoop>
 #include <QFrame>
@@ -1663,12 +1664,12 @@ void testRendererProfileSectionsCollapseAndPersist()
         QStringLiteral("rendererSection.toneMapping"));
     QToolButton* processing = requireControl<QToolButton>(window,
         QStringLiteral("rendererSection.processing"));
-    QToolButton* lut = requireControl<QToolButton>(window,
-        QStringLiteral("rendererSection.lut"));
+	QToolButton* lut = requireControl<QToolButton>(window,
+		QStringLiteral("rendererSection.externalHdrLut"));
     QStackedWidget* pages = requireControl<QStackedWidget>(window,
         QStringLiteral("settingsPages"));
-    require(!toneMapping->isChecked() && !processing->isChecked() &&
-        !lut->isChecked(),
+	require(!toneMapping->isChecked() && !processing->isChecked() &&
+		!lut->isChecked(),
         "A renderer section was not collapsed initially");
     require(processing->text() == QStringLiteral("Processing") &&
         !processing->text().contains(u'_'),
@@ -1868,8 +1869,8 @@ void testRendererProfileSectionsCollapseAndPersist()
     require(displayBitDepth->itemData(2).toString() == QStringLiteral("10") &&
         displayBitDepth->itemData(3).toString() == QStringLiteral("8"),
         "Display bit-depth choices are not ordered from highest quality to lowest");
-    require(!requireControl<QWidget>(window,
-        QStringLiteral("rendererSection.lut.content"))->isVisibleTo(&window),
+	require(!requireControl<QWidget>(window,
+		QStringLiteral("rendererSection.externalHdrLut.content"))->isVisibleTo(&window),
         "3D LUT renderer content is visible while collapsed");
     require(!calibrationContent->isVisibleTo(&window),
         "Display calibration content is visible while collapsed");
@@ -2341,28 +2342,50 @@ void testQueueUnitsAndLutControlsUseConsistentRows()
         "Queue unit label is not aligned beside its bounded value input");
 
     window.selectPage(3);
-    QToolButton* lutSection = requireControl<QToolButton>(window,
-        QStringLiteral("rendererSection.lut"));
+	QToolButton* lutSection = requireControl<QToolButton>(window,
+		QStringLiteral("rendererSection.externalHdrLut"));
     if (!lutSection->isChecked()) lutSection->click();
     QCoreApplication::processEvents();
-    QComboBox* luminance = requireControl<QComboBox>(window,
-        QStringLiteral("config.vprenderer.lut_reference_nits"));
-    QComboBox* range = requireControl<QComboBox>(window,
-        QStringLiteral("config.vprenderer.lut_reference_range"));
-    require(!luminance->isEditable() &&
-        luminance->findData(QStringLiteral("AUTO")) >= 0 &&
-        luminance->findData(QStringLiteral("203")) >= 0,
-        "LUT reference luminance is not a dropdown with common presets");
-    const QPoint luminancePosition = luminance->mapTo(&window, QPoint(0, 0));
-    const QPoint rangePosition = range->mapTo(&window, QPoint(0, 0));
-    require(luminancePosition.x() == rangePosition.x() &&
-        luminance->width() == range->width(),
-        "LUT reference controls do not share aligned dropdown geometry");
-
-    selectData(luminance, QStringLiteral("250"));
-    save(window);
-    require(readBytes(path).contains("lut_reference_nits: 250"),
-        "Custom LUT reference luminance did not persist");
+	QCheckBox* enabled = requireControl<QCheckBox>(window,
+		QStringLiteral("config.vprenderer.calibration_lut_enabled"));
+	require(!enabled->isChecked(),
+		"Display calibration LUT did not default to disabled");
+	QComboBox* bt709 = requireControl<QComboBox>(window,
+		QStringLiteral("config.vprenderer.calibration_lut_bt709"));
+	QComboBox* p3 = requireControl<QComboBox>(window,
+		QStringLiteral("config.vprenderer.calibration_lut_p3_d65"));
+	QComboBox* bt2020 = requireControl<QComboBox>(window,
+		QStringLiteral("config.vprenderer.calibration_lut_bt2020"));
+	require(!bt709->isEnabled() && !p3->isEnabled() && !bt2020->isEnabled(),
+		"Calibration LUT selectors are interactive on first open while disabled");
+	enabled->click();
+	require(bt709->currentData().toString().isEmpty() &&
+		p3->currentData().toString().isEmpty() &&
+		bt2020->currentData().toString().isEmpty() &&
+		bt709->currentText() == QStringLiteral("None") &&
+		p3->currentText() == QStringLiteral("None") &&
+		bt2020->currentText() == QStringLiteral("None"),
+		"Unused calibration LUT slots still expose a fabricated default");
+	const QPoint bt709Position = bt709->mapTo(&window, QPoint(0, 0));
+	const QPoint p3Position = p3->mapTo(&window, QPoint(0, 0));
+	require(bt709Position.x() == p3Position.x() &&
+		bt709->width() == p3->width() && p3->width() == bt2020->width(),
+		"Calibration LUT slot controls do not share aligned dropdown geometry");
+	require(bt709->isEnabled() && p3->isEnabled() && bt2020->isEnabled(),
+		"Calibration LUT controls did not enable with the calibration stage");
+	require(requireControl<QComboBox>(window,
+		QStringLiteral("config.vprenderer.tone_mapping"))->isEnabled() &&
+		requireControl<QComboBox>(window,
+		QStringLiteral("config.vprenderer.peak_detection"))->isEnabled(),
+		"Enabling calibration incorrectly disabled DTM or peak analysis");
+	require(window.findChild<QComboBox*>(
+		QStringLiteral("config.vprenderer.lut")) == nullptr &&
+		window.findChild<QToolButton*>(
+			QStringLiteral("rendererSection.calibrationLut")) == nullptr,
+		"Legacy calibration inspection controls remain on the editor surface");
+	enabled->click();
+	require(!bt2020->isEnabled(),
+		"Disabling calibration did not gate its selectors");
 }
 
 void testActiveProfileMarkersCoverRelevantLists()
@@ -2501,20 +2524,100 @@ void testLutSelectorDiscoversInstallationLutFiles()
     require(lut.open(QIODevice::WriteOnly), "Cannot create the temporary LUT fixture");
     lut.write("TITLE \"Test LUT\"\nLUT_3D_SIZE 2\n");
     lut.close();
+	QByteArray configuration = readBytes(path);
+	require(configuration.contains("[vprenderer.rec709]\n"),
+		"Could not locate the renderer profile fixture baseline");
+	configuration.replace("[vprenderer.rec709]\n",
+		"[vprenderer.rec709]\ncalibration_lut_bt2020: luts\\Test-Calibration.cube\n");
+	QFile configurationFile(path);
+	require(configurationFile.open(QIODevice::WriteOnly | QIODevice::Truncate) &&
+		configurationFile.write(configuration) == configuration.size(),
+		"Could not write the Windows-path LUT fixture");
+	configurationFile.close();
 
-    ConfigEditorWindow window(path, 0, true);
-    QComboBox* selector = requireControl<QComboBox>(window,
-        QStringLiteral("config.vprenderer.lut"));
-    require(selector->findData(QStringLiteral("luts/Test-Calibration.cube")) >= 0,
+	ConfigEditorWindow window(path, 0, true);
+	QComboBox* selector = requireControl<QComboBox>(window,
+		QStringLiteral("config.vprenderer.calibration_lut_bt2020"));
+	require(selector->findData(QStringLiteral("luts/Test-Calibration.cube")) >= 0,
         "The LUT selector did not discover a .cube file from the installation LUT folder");
+	require(selector->itemText(selector->findData(
+		QStringLiteral("luts/Test-Calibration.cube"))) ==
+		QStringLiteral("Test-Calibration"),
+		"The LUT selector exposes its path or .cube extension");
+	require(selector->currentData().toString() ==
+		QStringLiteral("luts/Test-Calibration.cube"),
+		"A valid hand-written Windows LUT path was not normalized and selected");
     require(requireControl<QPushButton>(window,
-        QStringLiteral("config.vprenderer.lut.open_folder"))->text() == QStringLiteral("Open LUT folder"),
+		QStringLiteral("config.vprenderer.calibration_lut.open_folder"))->text() == QStringLiteral("Open LUT folder"),
         "The LUT folder action is missing");
 
+	requireControl<QCheckBox>(window,
+		QStringLiteral("config.vprenderer.calibration_lut_enabled"))->click();
     selectData(selector, QStringLiteral("luts/Test-Calibration.cube"));
     save(window);
-    require(readBytes(path).contains("lut: luts/Test-Calibration.cube"),
+	const QByteArray configured = readBytes(path);
+	require(configured.contains(
+		"calibration_lut_enabled: true") && configured.contains(
+		"calibration_lut_bt2020: luts/Test-Calibration.cube"),
         "The LUT selector did not persist a configuration-relative path");
+	require(QFile::remove(lut.fileName()),
+		"Could not remove the temporary LUT fixture");
+	QFileSystemWatcher* watcher = window.findChild<QFileSystemWatcher*>();
+	require(watcher != nullptr, "The calibration LUT directory watcher is missing");
+	require(QMetaObject::invokeMethod(watcher, "directoryChanged",
+		Qt::DirectConnection, Q_ARG(QString, lutDirectory)),
+		"Could not refresh calibration LUT selectors after file removal");
+	require(selector->currentData().toString().isEmpty() &&
+		selector->currentText() == QStringLiteral("None") &&
+		selector->findText(QStringLiteral("Missing:"), Qt::MatchStartsWith) < 0,
+		"A removed LUT was not silently collapsed to None");
+	save(window);
+	require(!readBytes(path).contains("calibration_lut_bt2020:"),
+		"Saving did not remove the stale LUT path");
+}
+
+void testInheritedCalibrationLutUsesEffectiveControlState()
+{
+	QTemporaryDir directory;
+	const QString path = copyFixture(directory);
+	QByteArray configuration = readBytes(path);
+	const QByteArray baseline =
+		"[vprenderer.rec709]\n"
+		"calibration_lut_enabled: true\n"
+		"calibration_lut_bt2020: luts/Missing-Calibration.cube\n";
+	require(configuration.contains("[vprenderer.rec709]\n"),
+		"Could not locate inherited calibration profile fixture baseline");
+	configuration.replace("[vprenderer.rec709]\n", baseline);
+	QFile file(path);
+	require(file.open(QIODevice::WriteOnly | QIODevice::Truncate) &&
+		file.write(configuration) == configuration.size(),
+		"Could not write inherited calibration profile fixture");
+	file.close();
+
+	ConfigEditorWindow window(path, 0, true);
+	QListWidget* profiles = requireControl<QListWidget>(window,
+		QStringLiteral("config.vprenderer.profiles"));
+	require(profiles->count() >= 2,
+		"Inherited calibration fixture has no named variant");
+	profiles->setCurrentRow(1);
+	QCoreApplication::processEvents();
+	QCheckBox* enabled = requireControl<QCheckBox>(window,
+		QStringLiteral("config.vprenderer.calibration_lut_enabled"));
+	QComboBox* slot = requireControl<QComboBox>(window,
+		QStringLiteral("config.vprenderer.calibration_lut_bt2020"));
+	QComboBox* internalToneMap = requireControl<QComboBox>(window,
+		QStringLiteral("config.vprenderer.tone_mapping"));
+	require(enabled->isChecked(),
+		"Named profile does not display its inherited calibration enable state");
+	require(slot->isEnabled() && internalToneMap->isEnabled(),
+		"Calibration inheritance incorrectly disables DTM controls");
+	require(slot->currentData().toString().isEmpty() &&
+		slot->currentText() == QStringLiteral("None") &&
+		slot->findText(QStringLiteral("Missing:"), Qt::MatchStartsWith) < 0,
+		"An inherited missing LUT path was not silently collapsed to None");
+	save(window);
+	require(!readBytes(path).contains("calibration_lut_bt2020:"),
+		"Saving did not clean the inherited stale LUT path");
 }
 
 void testChoiceLabelsAndVpRendererName()
@@ -2557,24 +2660,41 @@ void testChoiceLabelsAndVpRendererName()
         QStringLiteral("config.vprenderer.quality"));
     QComboBox* displayPrimaries = requireControl<QComboBox>(window,
         QStringLiteral("config.vprenderer.color.sdr_target_primaries"));
-    require(displayPrimaries->count() == 2 &&
-        displayPrimaries->currentData().toString() == QStringLiteral("REC709") &&
+	require(displayPrimaries->count() == 3 &&
+		displayPrimaries->currentData().toString() == QStringLiteral("REC709") &&
+		displayPrimaries->findData(QStringLiteral("P3_D65")) >= 0 &&
         displayPrimaries->findText(QStringLiteral("Default"),
             Qt::MatchStartsWith) < 0,
         "Display primaries still exposes Default as a separate choice");
-    require(requireControl<QLabel>(window,
-        QStringLiteral("config.vprenderer.color.output_gamma.auto_status"))->text() ==
-            QStringLiteral("Auto: sRGB") &&
-        requireControl<QLabel>(window,
-        QStringLiteral("config.vprenderer.color.sdr_adjust_gamma.auto_status"))->text() ==
-            QStringLiteral("Auto: Conditional SDR-to-sRGB policy") &&
-        requireControl<QLabel>(window,
-        QStringLiteral("config.vprenderer.color.sdr_input_transfer.auto_status"))->text() ==
-            QStringLiteral("Auto: Source unavailable") &&
-        requireControl<QLabel>(window,
-        QStringLiteral("config.vprenderer.display_bit_depth.auto_status"))->text() ==
-            QStringLiteral("Auto: Output format"),
-        "A VP Renderer Auto control does not identify its effective policy");
+	require(requireControl<QLabel>(window,
+		QStringLiteral("config.vprenderer.color.output_gamma.auto_status"))->text() ==
+			QStringLiteral("Auto: sRGB"),
+		"Output gamma Auto control does not identify its effective policy");
+	auto* calibrationEnabled = requireControl<QCheckBox>(window,
+		QStringLiteral("config.vprenderer.calibration_lut_enabled"));
+	calibrationEnabled->setChecked(true);
+	QCoreApplication::processEvents();
+	require(requireControl<QLabel>(window,
+		QStringLiteral("config.vprenderer.color.output_gamma.auto_status"))->text() ==
+			QStringLiteral("Auto: sRGB"),
+		"Calibration LUT enablement unexpectedly changed Auto gamma");
+	calibrationEnabled->setChecked(false);
+	require(requireControl<QLabel>(window,
+		QStringLiteral("config.vprenderer.color.sdr_adjust_gamma.auto_status"))->text() ==
+			QStringLiteral("Auto: Conditional SDR-to-sRGB policy"),
+		"SDR gamma adjustment Auto control does not identify its effective policy");
+	const QString sdrInputAutoText = requireControl<QLabel>(window,
+		QStringLiteral("config.vprenderer.color.sdr_input_transfer.auto_status"))->text();
+	const QByteArray sdrInputAutoFailure = QStringLiteral(
+		"SDR input transfer Auto control text was '%1'").arg(
+			sdrInputAutoText).toLocal8Bit();
+	require(sdrInputAutoText.startsWith(QStringLiteral("Auto: ")) &&
+		sdrInputAutoText.size() > QStringLiteral("Auto: ").size(),
+		sdrInputAutoFailure.constData());
+	require(requireControl<QLabel>(window,
+		QStringLiteral("config.vprenderer.display_bit_depth.auto_status"))->text() ==
+			QStringLiteral("Auto: Output format"),
+		"Display bit-depth Auto control does not identify its effective policy");
     QLineEdit* targetWhiteLevel = requireControl<QLineEdit>(window,
         QStringLiteral("config.vprenderer.sdr_target_nits"));
     QLineEdit* targetBlackLevel = requireControl<QLineEdit>(window,
@@ -4651,6 +4771,8 @@ int main(int argc, char** argv)
     failures += run("active shader status rejects stale generation", testActiveShaderStatusRejectsStaleGeneration);
     failures += run("standalone Config reads live active profile status", testStandaloneConfigAcceptsLiveActiveProfileStatus);
     failures += run("LUT selector discovers installation LUT files", testLutSelectorDiscoversInstallationLutFiles);
+	failures += run("inherited calibration LUT uses effective control state",
+		testInheritedCalibrationLutUsesEffectiveControlState);
     failures += run("choice labels and VP Renderer name", testChoiceLabelsAndVpRendererName);
     failures += run("legacy renderer visibility defaults hidden and preserves shortcuts", testLegacyRendererVisibilityDefaultsHiddenAndPreservesShortcuts);
 	failures += run("legacy renderer visibility filters existing UI immediately",

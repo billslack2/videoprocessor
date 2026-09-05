@@ -113,7 +113,7 @@ namespace LibplaceboRenderParameters
 		targetRepresentation.bits.bit_shift = sampleDepth - effectiveDepth;
 	}
 
-	bool Build(const Settings& settings, bool hasDisplayLut,
+	bool Build(const Settings& settings, bool /*hasDisplayLut*/,
 		Projection& projection, std::string& error)
 	{
 		projection = Projection{};
@@ -126,11 +126,6 @@ namespace LibplaceboRenderParameters
 		projection.renderParams = *preset;
 		projection.renderParams.dynamic_constants = settings.dynamicConstants;
 
-		// A target display LUT has a known incompatible path with the preset's
-		// error-diffusion shader. It remains an output-LUT decision, not a user
-		// dithering preference.
-		if (hasDisplayLut)
-			projection.renderParams.error_diffusion = nullptr;
 		projection.renderParams.lut = nullptr;
 		projection.renderParams.lut_type = PL_LUT_UNKNOWN;
 
@@ -269,10 +264,10 @@ namespace LibplaceboRenderParameters
 			if (const pl_error_diffusion_kernel* kernel =
 				ErrorDiffusionKernel(settings.dithering))
 			{
-				// This needs compute-shader and image-storage support. A display 3D
-				// LUT uses the renderer's compatible target-LUT path instead.
+				// This needs compute-shader and image-storage support. Target-frame
+				// calibration LUTs run earlier and do not displace this final stage.
 				projection.renderParams.dither_params = nullptr;
-				projection.renderParams.error_diffusion = hasDisplayLut ? nullptr : kernel;
+				projection.renderParams.error_diffusion = kernel;
 				return true;
 			}
 			if (settings.dithering != "auto")

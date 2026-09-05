@@ -2,11 +2,14 @@
 #include "CppUnitTest.h"
 
 #include <vprenderer/LibplaceboDisplayLut.h>
+#include <vprenderer/LibplaceboCalibrationLutPolicy.h>
 #include <libplacebo/d3d11.h>
 #include <libplacebo/renderer.h>
 #include <libplacebo/shaders/custom.h>
 
 #include <cstdint>
+#include <cstring>
+#include <algorithm>
 #include <fstream>
 #include <iterator>
 #include <map>
@@ -136,12 +139,52 @@ namespace
 		"0.0 1.0 0.0\n"
 		"0.0 1.0 0.0\n";
 
+	// Encodes the LUT input's red coordinate as green and its inverse as red.
+	// A 25% linear-light gray encoded with Gamma 2.2 reaches the LUT near 53%,
+	// so green must exceed red if the target LUT receives gamma-coded RGB.
+	const char* GammaCoordinateProbeCube =
+		"TITLE \"VP0166 gamma-coordinate probe\"\n"
+		"LUT_3D_SIZE 2\n"
+		"1.0 0.0 0.0\n"
+		"0.0 1.0 0.0\n"
+		"1.0 0.0 0.0\n"
+		"0.0 1.0 0.0\n"
+		"1.0 0.0 0.0\n"
+		"0.0 1.0 0.0\n"
+		"1.0 0.0 0.0\n"
+		"0.0 1.0 0.0\n";
+
 	struct RgbaPixel
 	{
 		uint8_t r;
 		uint8_t g;
 		uint8_t b;
 		uint8_t a;
+	};
+
+	struct RenderStepCapture
+	{
+		bool errorDiffusion = false;
+
+		static void Callback(void* privateData, const pl_render_info* info)
+		{
+			RenderStepCapture* capture =
+				static_cast<RenderStepCapture*>(privateData);
+			if (!capture || !info || !info->pass || !info->pass->shader)
+				return;
+			const pl_shader_info shader = info->pass->shader;
+			for (int index = 0; index < shader->num_steps; ++index)
+			{
+				std::string step = shader->steps[index] ? shader->steps[index] : "";
+				std::transform(step.begin(), step.end(), step.begin(),
+					[](unsigned char value) {
+						return static_cast<char>(std::tolower(value));
+					});
+				if (step.find("error diffusion") != std::string::npos ||
+					step.find("error-diffusion") != std::string::npos)
+					capture->errorDiffusion = true;
+			}
+		}
 	};
 
 	std::string LoadBundledShader(const char* fileName)
@@ -257,12 +300,22 @@ namespace
 
 		RgbaPixel Render(const pl_custom_lut* lut)
 		{
-			return Render(lut, pl_render_fast_params);
+			return Render(lut, pl_render_fast_params,
+				PL_COLOR_LEVELS_FULL, PL_LUT_NORMALIZED);
 		}
 
 		RgbaPixel Render(
 			const pl_custom_lut* lut,
-			const struct pl_render_params& params)
+			const struct pl_render_params& params,
+			enum pl_color_levels targetLevels = PL_COLOR_LEVELS_FULL,
+			enum pl_lut_type lutType = PL_LUT_NORMALIZED,
+			RgbaPixel sourcePixel = { 255, 0, 0, 255 },
+			enum pl_color_transfer sourceTransfer = PL_COLOR_TRC_SRGB,
+			enum pl_color_transfer targetTransfer = PL_COLOR_TRC_SRGB,
+			enum pl_color_primaries sourcePrimaries = PL_COLOR_PRIM_BT_709,
+			enum pl_color_primaries targetPrimaries = PL_COLOR_PRIM_BT_709,
+			float sourceMaxNits = 0.0f,
+			float targetMaxNits = 0.0f)
 		{
 			pl_gpu gpu = m_d3d11->gpu;
 			const enum pl_fmt_caps requiredCaps = static_cast<enum pl_fmt_caps>(
@@ -271,8 +324,7 @@ namespace
 			Assert::IsNotNull(format, L"No host-readable RGBA8 render format is available");
 
 			const RgbaPixel sourcePixels[4] = {
-				{ 255, 0, 0, 255 }, { 255, 0, 0, 255 },
-				{ 255, 0, 0, 255 }, { 255, 0, 0, 255 },
+				sourcePixel, sourcePixel, sourcePixel, sourcePixel,
 			};
 			pl_tex_params sourceParams{};
 			sourceParams.w = 2;
@@ -294,8 +346,21 @@ namespace
 
 			pl_frame image = MakeRgbFrame(sourceTexture);
 			pl_frame target = MakeRgbFrame(targetTexture);
+			image.color.transfer = sourceTransfer;
+			image.color.primaries = sourcePrimaries;
+			image.color.hdr.max_luma = sourceMaxNits;
+			if (sourceMaxNits > 0.0f)
+				image.color.hdr.min_luma = PL_COLOR_HDR_BLACK;
+			image.color.hdr.max_cll = sourceMaxNits;
+			image.color.hdr.max_fall = sourceMaxNits;
+			target.repr.levels = targetLevels;
+			target.color.transfer = targetTransfer;
+			target.color.primaries = targetPrimaries;
+			target.color.hdr.max_luma = targetMaxNits;
+			if (targetMaxNits > 0.0f)
+				target.color.hdr.min_luma = PL_COLOR_HDR_BLACK;
 			target.lut = lut;
-			target.lut_type = PL_LUT_NATIVE;
+			target.lut_type = lut ? lutType : PL_LUT_UNKNOWN;
 			Assert::IsTrue(pl_render_image(m_renderer, &image, &target, &params));
 			pl_gpu_finish(gpu);
 
@@ -312,6 +377,16 @@ namespace
 		pl_gpu Gpu() const
 		{
 			return m_d3d11 ? m_d3d11->gpu : nullptr;
+		}
+
+		pl_render_errors Errors() const
+		{
+			return pl_renderer_get_errors(m_renderer);
+		}
+
+		bool DetectedHdrMetadata(pl_hdr_metadata& metadata) const
+		{
+			return pl_renderer_get_hdr_metadata(m_renderer, &metadata);
 		}
 
 		std::vector<RgbaPixel> RenderCoordinateField(
@@ -477,6 +552,37 @@ namespace VideoProcessorTest
 			Assert::IsNull(result.lut);
 		}
 
+		TEST_METHOD(NonDefaultCubeDomainIsRejectedInsteadOfMisinterpreted)
+		{
+			TemporaryFile file;
+			const std::string contents = std::string(
+				"DOMAIN_MIN 0.1 0.0 0.0\n"
+				"DOMAIN_MAX 1.0 1.0 1.0\n") + Valid3dCube;
+			file.Write(contents.c_str());
+
+			const LoadResult result = Load(nullptr, file.Path());
+			Assert::AreEqual(static_cast<int>(Status::REJECTED),
+				static_cast<int>(result.status));
+			Assert::AreEqual(static_cast<int>(Rejection::UNSUPPORTED_DOMAIN),
+				static_cast<int>(result.rejection));
+			Assert::AreEqual("non-default domain", ShortReason(result.rejection));
+			Assert::IsNull(result.lut);
+		}
+
+		TEST_METHOD(DefaultCubeDomainRemainsSupported)
+		{
+			TemporaryFile file;
+			const std::string contents = std::string(
+				"DOMAIN_MIN 0.0 0.0 0.0\n"
+				"DOMAIN_MAX 1.0 1.0 1.0\n") + Valid3dCube;
+			file.Write(contents.c_str());
+
+			LoadResult result = Load(nullptr, file.Path());
+			Assert::AreEqual(static_cast<int>(Status::ACTIVE),
+				static_cast<int>(result.status));
+			Free(result);
+		}
+
 		TEST_METHOD(EmptyFileIsRejectedWithoutLut)
 		{
 			TemporaryFile file;
@@ -493,6 +599,39 @@ namespace VideoProcessorTest
 			Assert::AreEqual(static_cast<int>(Status::REJECTED), static_cast<int>(result.status));
 			Assert::AreEqual(static_cast<int>(Rejection::UNREADABLE), static_cast<int>(result.rejection));
 			Assert::IsNull(result.lut);
+		}
+
+		TEST_METHOD(PartialSamePathReplacementRetainsThenRetriesFinalCube)
+		{
+			TemporaryFile file;
+			file.Write(Valid3dCube);
+			LoadResult initial = Load(nullptr, file.Path());
+			Assert::AreEqual(static_cast<int>(Status::ACTIVE),
+				static_cast<int>(initial.status));
+			const uint64_t initialSignature = initial.lut->signature;
+
+			file.Write("invalid replacement");
+			const LoadResult partial = Load(nullptr, file.Path());
+			Assert::AreEqual(static_cast<int>(Status::REJECTED),
+				static_cast<int>(partial.status));
+			Assert::IsTrue(partial.fileVersion.available);
+			Assert::AreEqual(
+				static_cast<int>(LibplaceboCalibrationLut::ReloadFailureAction::RETAIN_LAST_KNOWN_GOOD),
+				static_cast<int>(LibplaceboCalibrationLut::ResolveReloadFailure(true, true)));
+			Assert::AreEqual(initialSignature, initial.lut->signature,
+				L"The last-known-good Cube must remain owned during a failed reload");
+
+			file.Write(Green3dCube);
+			const FileVersion completed = ProbeFileVersion(file.Path());
+			Assert::IsFalse(SameFileVersion(partial.fileVersion, completed),
+				L"Completion after a partial write must schedule another reload");
+			LoadResult replacement = Load(nullptr, file.Path());
+			Assert::AreEqual(static_cast<int>(Status::ACTIVE),
+				static_cast<int>(replacement.status));
+			Assert::AreNotEqual(initialSignature, replacement.lut->signature,
+				L"The completed same-path Cube was not validated and swapped");
+			Free(replacement);
+			Free(initial);
 		}
 
 		TEST_METHOD(FileLargerThanLimitIsRejectedBeforeParsing)
@@ -539,7 +678,8 @@ namespace VideoProcessorTest
 				Rejection::UNREADABLE, Rejection::EMPTY, Rejection::TOO_LARGE,
 				Rejection::READ_FAILED, Rejection::PATH_OUTSIDE_BASE,
 				Rejection::INVALID_CUBE,
-				Rejection::ONE_DIMENSIONAL, Rejection::UNSAFE_DIMENSIONS })
+				Rejection::ONE_DIMENSIONAL, Rejection::UNSUPPORTED_DOMAIN,
+				Rejection::UNSAFE_DIMENSIONS })
 			{
 				const std::string reason = ShortReason(rejection);
 				Assert::IsFalse(reason.empty());
@@ -547,141 +687,7 @@ namespace VideoProcessorTest
 			}
 		}
 
-		TEST_METHOD(ExactDisplayContractIsAccepted)
-		{
-			const ContractRejection rejection = ValidateContract(
-				PL_COLOR_PRIM_BT_2020,
-				PL_COLOR_TRC_GAMMA22,
-				PL_COLOR_LEVELS_LIMITED,
-				100.0,
-				PL_COLOR_PRIM_BT_2020,
-				PL_COLOR_TRC_GAMMA22,
-				PL_COLOR_LEVELS_LIMITED,
-				100.0,
-				true);
-			Assert::AreEqual(
-				static_cast<int>(ContractRejection::NONE),
-				static_cast<int>(rejection));
-		}
-
-		TEST_METHOD(TargetSignalMatchRequiresPrimariesTransferAndRange)
-		{
-			Assert::IsTrue(TargetMatchesSignal(
-				PL_COLOR_PRIM_BT_2020, PL_COLOR_TRC_GAMMA24,
-				PL_COLOR_LEVELS_LIMITED,
-				PL_COLOR_PRIM_BT_2020, PL_COLOR_TRC_GAMMA24,
-				PL_COLOR_LEVELS_LIMITED));
-			Assert::IsFalse(TargetMatchesSignal(
-				PL_COLOR_PRIM_BT_2020, PL_COLOR_TRC_SRGB,
-				PL_COLOR_LEVELS_LIMITED,
-				PL_COLOR_PRIM_BT_2020, PL_COLOR_TRC_GAMMA24,
-				PL_COLOR_LEVELS_LIMITED));
-			Assert::IsFalse(TargetMatchesSignal(
-				PL_COLOR_PRIM_BT_2020, PL_COLOR_TRC_GAMMA24,
-				PL_COLOR_LEVELS_FULL,
-				PL_COLOR_PRIM_BT_2020, PL_COLOR_TRC_GAMMA24,
-				PL_COLOR_LEVELS_LIMITED));
-			Assert::IsFalse(TargetMatchesSignal(
-				PL_COLOR_PRIM_BT_709, PL_COLOR_TRC_SRGB,
-				PL_COLOR_LEVELS_FULL,
-				PL_COLOR_PRIM_BT_2020, PL_COLOR_TRC_SRGB,
-				PL_COLOR_LEVELS_FULL));
-		}
-
-		TEST_METHOD(AutoDisplayContractAcceptsTheSignaledTarget)
-		{
-			const ContractRejection rejection = ValidateContract(
-				PL_COLOR_PRIM_UNKNOWN,
-				PL_COLOR_TRC_UNKNOWN,
-				PL_COLOR_LEVELS_UNKNOWN,
-				0.0,
-				PL_COLOR_PRIM_BT_709,
-				PL_COLOR_TRC_SRGB,
-				PL_COLOR_LEVELS_FULL,
-				120.0,
-				true);
-			Assert::AreEqual(
-				static_cast<int>(ContractRejection::NONE),
-				static_cast<int>(rejection));
-		}
-
-		TEST_METHOD(P3DisplayContractIsExplicitlyRejected)
-		{
-			const ContractRejection rejection = ValidateContract(
-				PL_COLOR_PRIM_DISPLAY_P3,
-				PL_COLOR_TRC_SRGB,
-				PL_COLOR_LEVELS_FULL,
-				100.0,
-				PL_COLOR_PRIM_BT_709,
-				PL_COLOR_TRC_SRGB,
-				PL_COLOR_LEVELS_FULL,
-				100.0,
-				true);
-			Assert::AreEqual(
-				static_cast<int>(ContractRejection::P3_NOT_SUPPORTED),
-				static_cast<int>(rejection));
-			Assert::AreEqual("P3 not supported", ShortReason(rejection));
-		}
-
-		TEST_METHOD(UnsignaledAndMismatchedContractsAreRejected)
-		{
-			Assert::AreEqual(
-				static_cast<int>(ContractRejection::OUTPUT_NOT_SIGNALED),
-				static_cast<int>(ValidateContract(
-					PL_COLOR_PRIM_UNKNOWN,
-					PL_COLOR_TRC_UNKNOWN,
-					PL_COLOR_LEVELS_UNKNOWN,
-					0.0,
-					PL_COLOR_PRIM_BT_2020,
-					PL_COLOR_TRC_GAMMA22,
-					PL_COLOR_LEVELS_FULL,
-					100.0,
-					false)));
-
-			for (const ContractRejection rejection : {
-				ValidateContract(
-					PL_COLOR_PRIM_BT_2020, PL_COLOR_TRC_UNKNOWN,
-					PL_COLOR_LEVELS_UNKNOWN, 0.0,
-					PL_COLOR_PRIM_BT_709, PL_COLOR_TRC_SRGB,
-					PL_COLOR_LEVELS_FULL, 100.0, true),
-				ValidateContract(
-					PL_COLOR_PRIM_UNKNOWN, PL_COLOR_TRC_GAMMA24,
-					PL_COLOR_LEVELS_UNKNOWN, 0.0,
-					PL_COLOR_PRIM_BT_709, PL_COLOR_TRC_SRGB,
-					PL_COLOR_LEVELS_FULL, 100.0, true),
-				ValidateContract(
-					PL_COLOR_PRIM_UNKNOWN, PL_COLOR_TRC_UNKNOWN,
-					PL_COLOR_LEVELS_LIMITED, 0.0,
-					PL_COLOR_PRIM_BT_709, PL_COLOR_TRC_SRGB,
-					PL_COLOR_LEVELS_FULL, 100.0, true),
-				ValidateContract(
-					PL_COLOR_PRIM_UNKNOWN, PL_COLOR_TRC_UNKNOWN,
-					PL_COLOR_LEVELS_UNKNOWN, 120.0,
-					PL_COLOR_PRIM_BT_709, PL_COLOR_TRC_SRGB,
-					PL_COLOR_LEVELS_FULL, 100.0, true) })
-			{
-				Assert::AreEqual(
-					static_cast<int>(ContractRejection::PROFILE_MISMATCH),
-					static_cast<int>(rejection));
-			}
-		}
-
-		TEST_METHOD(EveryContractRejectionHasAShortOsdSafeReason)
-		{
-			for (const ContractRejection rejection : {
-				ContractRejection::OUTPUT_NOT_SIGNALED,
-				ContractRejection::P3_NOT_SUPPORTED,
-				ContractRejection::PROFILE_MISMATCH })
-			{
-				const std::string reason = ShortReason(rejection);
-				Assert::IsFalse(reason.empty());
-				Assert::IsTrue(
-					reason.size() <= 20,
-					L"LUT contract rejection reason is too long for the OSD");
-			}
-		}
-
-		TEST_METHOD(ConfiguredExternalCubeExamplesLoadWhenProvided)
+		TEST_METHOD(ConfiguredCalibrationCubeExamplesLoadWhenProvided)
 		{
 			char directory[MAX_PATH] = {};
 			const DWORD length = GetEnvironmentVariableA(
@@ -744,7 +750,55 @@ namespace VideoProcessorTest
 				L"The target LUT did not produce its expected green output");
 		}
 
-		TEST_METHOD(TargetLutGpuReadbackSupportsHighQualityWithoutErrorDiffusion)
+		TEST_METHOD(NormalizedCalibrationLutRunsBeforeLimitedRangeEncoding)
+		{
+			TemporaryFile greenFile;
+			greenFile.Write(Green3dCube);
+			LoadResult greenLut = Load(nullptr, greenFile.Path());
+			Assert::AreEqual(static_cast<int>(Status::ACTIVE),
+				static_cast<int>(greenLut.status));
+
+			TargetLutGpuFixture fixture;
+			Assert::IsTrue(fixture.Create(),
+				L"Could not create the libplacebo WARP test device");
+			const RgbaPixel normalized = fixture.Render(greenLut.lut,
+				pl_render_fast_params, PL_COLOR_LEVELS_LIMITED,
+				PL_LUT_NORMALIZED);
+			const RgbaPixel native = fixture.Render(greenLut.lut,
+				pl_render_fast_params, PL_COLOR_LEVELS_LIMITED,
+				PL_LUT_NATIVE);
+			Free(greenLut);
+
+			Assert::IsTrue(normalized.r >= 14 && normalized.r <= 18 &&
+				normalized.g >= 233 && normalized.g <= 237 &&
+				normalized.b >= 14 && normalized.b <= 18,
+				L"Normalized target LUT was not followed by legal-range encoding");
+			Assert::IsTrue(native.r < 4 && native.g > 251 && native.b < 4,
+				L"Native target LUT unexpectedly ran before legal-range encoding");
+		}
+
+		TEST_METHOD(NormalizedCalibrationLutReceivesTargetGammaCoordinates)
+		{
+			TemporaryFile probeFile;
+			probeFile.Write(GammaCoordinateProbeCube);
+			LoadResult probeLut = Load(nullptr, probeFile.Path());
+			Assert::AreEqual(static_cast<int>(Status::ACTIVE),
+				static_cast<int>(probeLut.status));
+
+			TargetLutGpuFixture fixture;
+			Assert::IsTrue(fixture.Create(),
+				L"Could not create the libplacebo WARP test device");
+			const RgbaPixel result = fixture.Render(probeLut.lut,
+				pl_render_fast_params, PL_COLOR_LEVELS_FULL,
+				PL_LUT_NORMALIZED, { 64, 64, 64, 255 },
+				PL_COLOR_TRC_LINEAR, PL_COLOR_TRC_GAMMA22);
+			Free(probeLut);
+
+			Assert::IsTrue(result.g > result.r && result.g >= 130,
+				L"Calibration Cube did not receive Gamma-2.2 encoded target RGB");
+		}
+
+		TEST_METHOD(TargetLutGpuReadbackPreservesHighQualityErrorDiffusion)
 		{
 			TemporaryFile greenFile;
 			greenFile.Write(Green3dCube);
@@ -754,14 +808,82 @@ namespace VideoProcessorTest
 				static_cast<int>(greenLut.status));
 
 			pl_render_params compatibleParams = pl_render_high_quality_params;
-			compatibleParams.error_diffusion = nullptr;
+			compatibleParams.error_diffusion =
+				&pl_error_diffusion_floyd_steinberg;
+			compatibleParams.dither_params = nullptr;
+			RenderStepCapture steps;
+			compatibleParams.info_callback = &RenderStepCapture::Callback;
+			compatibleParams.info_priv = &steps;
 			TargetLutGpuFixture fixture;
 			Assert::IsTrue(fixture.Create(), L"Could not create the libplacebo WARP test device");
 			const RgbaPixel calibrated = fixture.Render(greenLut.lut, compatibleParams);
 			Free(greenLut);
 
 			Assert::IsTrue(calibrated.r < 15 && calibrated.g > 240 && calibrated.b < 15,
-				L"The compatible high-quality target LUT path did not produce green output");
+				L"Calibration LUT plus final error diffusion did not produce green output");
+			Assert::IsTrue(steps.errorDiffusion,
+				L"The renderer did not dispatch the requested error-diffusion shader");
+			Assert::IsTrue((fixture.Errors().errors &
+				PL_RENDER_ERR_ERROR_DIFFUSION) == 0,
+				L"libplacebo reported error-diffusion failure");
+		}
+
+		TEST_METHOD(PqHdrDynamicToneMappingRunsBeforeCalibrationLut)
+		{
+			TemporaryFile identityFile;
+			identityFile.Write(Valid3dCube);
+			LoadResult identity = Load(nullptr, identityFile.Path());
+			TemporaryFile greenFile;
+			greenFile.Write(Green3dCube);
+			LoadResult green = Load(nullptr, greenFile.Path());
+			Assert::AreEqual(static_cast<int>(Status::ACTIVE),
+				static_cast<int>(identity.status));
+			Assert::AreEqual(static_cast<int>(Status::ACTIVE),
+				static_cast<int>(green.status));
+
+			pl_render_params params = pl_render_high_quality_params;
+			TargetLutGpuFixture fixture;
+			Assert::IsTrue(fixture.Create(),
+				L"Could not create the libplacebo WARP test device");
+			const auto render = [&](const pl_custom_lut* lut, float targetNits)
+			{
+				return fixture.Render(lut, params, PL_COLOR_LEVELS_FULL,
+					PL_LUT_NORMALIZED, { 160, 160, 160, 255 },
+					PL_COLOR_TRC_PQ, PL_COLOR_TRC_GAMMA22,
+					PL_COLOR_PRIM_BT_2020, PL_COLOR_PRIM_BT_709,
+					1000.0f, targetNits);
+			};
+			const RgbaPixel baseline = render(nullptr, 100.0f);
+			pl_hdr_metadata detected{};
+			const bool detectedAvailable = fixture.DetectedHdrMetadata(detected);
+			const RgbaPixel alternateTarget = render(nullptr, 400.0f);
+			const RgbaPixel withIdentity = render(identity.lut, 100.0f);
+			const RgbaPixel withCalibration = render(green.lut, 100.0f);
+			Free(identity);
+			Free(green);
+
+			Assert::IsTrue(std::abs(static_cast<int>(baseline.r) -
+					static_cast<int>(baseline.g)) <= 2 &&
+				std::abs(static_cast<int>(baseline.g) -
+					static_cast<int>(baseline.b)) <= 2 &&
+				std::abs(static_cast<int>(baseline.r) -
+					static_cast<int>(alternateTarget.r)) >= 3,
+				L"HDR/PQ result did not respond to the SDR DTM target luminance");
+			Assert::IsTrue(detectedAvailable && detected.max_pq_y > 0.0f,
+				L"Dynamic HDR peak analysis did not produce CIE-Y metadata");
+			Assert::IsTrue((fixture.Errors().errors &
+				PL_RENDER_ERR_PEAK_DETECT) == 0,
+				L"libplacebo reported a dynamic peak-analysis failure");
+			Assert::IsTrue(std::abs(static_cast<int>(baseline.r) -
+				static_cast<int>(withIdentity.r)) <= 2 &&
+				std::abs(static_cast<int>(baseline.g) -
+					static_cast<int>(withIdentity.g)) <= 2 &&
+				std::abs(static_cast<int>(baseline.b) -
+					static_cast<int>(withIdentity.b)) <= 2,
+				L"Identity target LUT replaced or perturbed the HDR-to-SDR DTM result");
+			Assert::IsTrue(withCalibration.r < 15 &&
+				withCalibration.g > 240 && withCalibration.b < 15,
+				L"Distinct calibration LUT was not applied after HDR-to-SDR DTM");
 		}
 
 		TEST_METHOD(BundledNlsGlSlHooksMovePixelsOnTheRealGpuPath)
