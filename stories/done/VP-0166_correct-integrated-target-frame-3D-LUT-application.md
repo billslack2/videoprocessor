@@ -2,18 +2,16 @@
 
 ## Status
 
-Implemented; ready for local display validation. This story supersedes every earlier VP-0166 interpretation in
+Done. Merged into `v1.3.005-beta` through
+[`billslack2/videoprocessor#74`](https://github.com/billslack2/videoprocessor/pull/74)
+on 2026-09-05 as merge commit `2af7f64b`. This story supersedes every earlier VP-0166 interpretation in
 which a Cube replaced HDR tone mapping or produced an HDR/PQ carrier. Those
 implementations and tester archives are withdrawn and are not acceptance
 evidence.
 
-Implementation branch: `codex/vp-0166-display-calibration-lut`, created from
-freshly fetched `origin/v1.3.004-beta` at
-`5d266d6a28970e3d476004a25bad0cbbcaae9b58`.
-
-Implementation commit: `a317c318` (`Implement post-DTM display calibration
-LUTs`). The branch contains this one consolidated change over the beta tip;
-the superseded external-HDR intermediate commits are not part of its history.
+Final implementation commits on the merged branch were `f2e25def`, `e32f7163`,
+and `440ee833`, rebased onto `v1.3.005-beta` at `1d5c731b`. The superseded
+external-HDR intermediate implementation is not part of the merged history.
 
 ## Controlling product contract
 
@@ -165,6 +163,25 @@ Standalone local-test artifact:
   instructions, a synthetic identity Cube, and a grayscale activation Cube.
   It supersedes the `fd8825e`, `a317c31`, and withdrawn
   `VP-0166-21044a3-HDR-to-SDR-3DLUT-tester.zip`.
+
+Final 005-beta integration artifact:
+
+- `VP-0166-440ee83-005beta-3DLUT-tester.zip`
+- SHA-256:
+  `6758056D2EB20940600050CF83371DD7F95583583E9F88D78904801BAB117F3D`
+- Produced after a successful x64 Release solution build, 1,045/1,045 native
+  tests, and the complete standalone Config/UI suite. The canonical 57-file
+  release layout was verified before the isolated test configuration and
+  diagnostic Cubes were added.
+
+## Follow-up boundary
+
+The merged feature owns the correct post-DTM calibration-LUT stage and its
+loading, failure, slot-selection, gamma-invariance, range, depth, and SDR
+presentation contracts. Subsequent work may improve how the already-shared
+calibration target gamut, gamma, white/black luminance, and LUT controls are
+grouped in Config, and may add broader measured-display validation. Those are
+follow-ups rather than blockers for this completed implementation.
 
 ## Non-goals
 
