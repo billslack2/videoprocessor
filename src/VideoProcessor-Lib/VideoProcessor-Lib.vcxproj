@@ -200,6 +200,7 @@
 	<ClInclude Include="LiveFrameCounterTracker.h" />
 	<ClInclude Include="ConsecutiveFrameDurationHistory.h" />
 	<ClInclude Include="OutputReadinessController.h" />
+    <ClInclude Include="ProcessCpuUsageMeter.h" />
 	<ClInclude Include="RationalLiveOutputSequencer.h" />
     <ClInclude Include="framework.h" />
     <ClInclude Include="guid.h" />
@@ -222,6 +223,7 @@
 	<ClInclude Include="RendererGenerationGate.h" />
     <ClInclude Include="vprenderer\\AlphaCadenceCorrectionPolicy.h" />
     <ClInclude Include="vprenderer\\AlphaPresentationTelemetry.h" />
+    <ClInclude Include="vprenderer\\AlphaRenderLoadMeter.h" />
     <ClInclude Include="ActivePictureDecisionTimeline.h" />
     <ClInclude Include="ActivePictureTransitionModel.h" />
 	<ClInclude Include="AnalysisLumaSource.h" />

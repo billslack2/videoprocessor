@@ -105,6 +105,41 @@ struct StatsData
 	CString activeShaderRule;
 	std::vector<CString> activeShaders;
 
+	// Render cost over every presented frame, from the renderer's own window
+	// rather than a periodic spot sample. `renderLoadGpuValid` stays false
+	// until the GPU timer queries resolve, and `renderLoadSettling` is true
+	// while warm-up frames are being discarded; the OSD must say so in both
+	// cases rather than print a zero that reads as "free".
+	bool renderLoadKnown = false;
+	bool renderLoadGpuValid = false;
+	bool renderLoadSettling = false;
+	size_t renderLoadFrames = 0;
+	double renderLoadFramePeriodMs = 0.0;
+	// False when the budget fell back to the source rate. Percentages are
+	// suppressed in that case rather than computed against the wrong clock.
+	bool renderLoadFramePeriodFromDisplay = false;
+	double renderLoadWindowSeconds = 0.0;
+	double renderLoadGpuLastMs = 0.0;
+	double renderLoadGpuAvgMs = 0.0;
+	double renderLoadGpuPeakMs = 0.0;
+	double renderLoadGpuPercent = 0.0;
+	int renderLoadGpuPasses = 0;
+	double renderLoadRenderAvgMs = 0.0;
+	double renderLoadRenderPeakMs = 0.0;
+	double renderLoadSwapAvgMs = 0.0;
+	// Worst frame of the session, warm-up excluded. Survives the backlog
+	// recovery that clears the rolling window.
+	bool renderLoadSessionPeakValid = false;
+	uint64_t renderLoadSessionFrames = 0;
+	double renderLoadSessionGpuPeakMs = 0.0;
+	double renderLoadSessionGpuPercent = 0.0;
+
+	// CPU actually charged to the process, as a share of the whole machine.
+	// Not wall time around a call - see ProcessCpuUsageMeter.
+	bool cpuUsageKnown = false;
+	double cpuUsagePercent = 0.0;
+	double cpuUsagePeakPercent = 0.0;
+
 	// Conversion performance (NEW - for V210?P010 etc.)
 	double currentConversionTimeUs = 0.0;      // Latest conversion time in microseconds
 	double avgConversionTime10s = 0.0;         // 10-second rolling average (?s)

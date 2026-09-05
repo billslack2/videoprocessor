@@ -77,6 +77,7 @@ public:
 	double EntryLatencyMs() const override;
 	double ExitLatencyMs() const override;
 	uint64_t DroppedFrameCount() const override;
+	bool GetRenderLoad(RendererRenderLoad& load) const override;
 	bool GetOutputModeInfo(CString& details) const override;
 	bool GetOutputContractStatus(
 		RendererOutputContract::Status& status) const override;
