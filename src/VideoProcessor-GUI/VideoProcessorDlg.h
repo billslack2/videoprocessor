@@ -27,6 +27,7 @@
 #include <ShortcutRepeatGuard.h>
 #include <CCie1931Control.h>
 #include <IRenderer.h>
+#include <ProcessCpuUsageMeter.h>
 #include <RendererPostStallResetAdvisor.h>
 #include <RendererResetCoordinator.h>
 #include <RendererResetPolicy.h>
@@ -846,6 +847,18 @@ protected:
 	bool m_wantToTerminate = false;
 
 	// Stats overlay
+	// CPU actually charged to the process. Sampled here rather than in the
+	// renderer because capture and pixel-format conversion cost more CPU than
+	// the render call does.
+	ProcessCpuUsageMeter m_processCpuUsage;
+	double m_loggedCpuPeakPercent = 0.0;
+	// A new CPU peak is logged only when it is anomalous against this
+	// machine's own baseline (see ProcessCpuUsageMeter) AND beats the last
+	// logged one by this much, so a slowly climbing peak cannot write a line
+	// a second. A FIXED threshold was tried first and was useless: VP idles
+	// at 4-5%, so 50% would never have fired at all.
+	static constexpr double CPU_PEAK_LOG_STEP_PERCENT = 5.0;
+
 	StatsOverlayWindow* m_statsOverlay = nullptr;
 	StatsData* m_lastStatsData = nullptr;
 	// Renderer telemetry getters are deliberately nonblocking. Retain their

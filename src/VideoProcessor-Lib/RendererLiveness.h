@@ -88,6 +88,73 @@ struct RendererLatencySnapshot
 	double scheduledLatencyMs = 0.0;
 };
 
+
+// One measured render cost over a rolling window of presented frames.
+struct RendererRenderLoadStat
+{
+	double last = 0.0;
+	double average = 0.0;
+	double peak = 0.0;
+};
+
+
+// How much of each frame period the renderer is actually consuming.
+//
+// The three costs are NOT interchangeable and must never be summed:
+//   gpu     GPU execution time for the render passes. This is the only figure
+//           that scales with the quality settings and the only one that says
+//           whether the GPU has headroom.
+//   render  CPU wall time around the render call - command submission and
+//           driver back-pressure, not shader cost.
+//   swap    Wall time around the present, dominated by the vsync wait. A large
+//           value normally means the renderer finished early and waited.
+struct RendererRenderLoad
+{
+	bool supported = false;
+	bool valid = false;         // false until the window has a sample
+	size_t frames = 0;
+	double framePeriodMs = 0.0; // one display refresh, 0 if unknown
+	// False when framePeriodMs fell back to the SOURCE rate because the display
+	// rate was not measured. At 60 Hz output with 24p content the two differ by
+	// 2.5x, so a percentage computed against the source rate would read 16% for
+	// a frame actually using 40% of the refresh. Percentages are suppressed
+	// rather than shown wrong.
+	bool framePeriodFromDisplay = false;
+	RendererRenderLoadStat gpu;
+	RendererRenderLoadStat render;
+	RendererRenderLoadStat swap;
+	bool gpuValid = false;      // false until GPU timer queries resolve
+	int gpuPasses = 0;          // shader passes in the last completed frame
+	// Peak GPU cost as a percentage of one frame period. Peak rather than
+	// average because a single overrun is visible on screen, and an average
+	// that hides it is what makes a marginal setting look safe.
+	double gpuLoadPercent = 0.0;
+
+	// The rolling window above is measured in SECONDS, not frames, so a 24p
+	// and a 60p run describe the same span and can be compared.
+	double windowSeconds = 0.0;       // nominal window length
+	double windowFilledSeconds = 0.0; // how much of it has filled
+
+	// True while warm-up samples are being discarded - shader compilation and
+	// pipeline priming after a start, a renderer restart, or a backlog
+	// recovery. The OSD must say "settling" rather than print a figure that
+	// describes compilation rather than render cost.
+	bool settling = false;
+
+	// Worst frame of the whole session, excluding warm-up.
+	//
+	// This is the figure that answers "did we EVER hit the ceiling", and the
+	// only one that cannot be recovered after the fact: the rolling window is
+	// cleared by ResetTimingAfterBacklogRecovery, which is triggered BY a
+	// render stall, so without this a stall bad enough to drop frames erases
+	// its own evidence. It therefore survives that reset by design.
+	bool sessionPeakValid = false;
+	uint64_t sessionFrames = 0;
+	double sessionGpuPeakMs = 0.0;
+	double sessionRenderPeakMs = 0.0;
+	double sessionGpuPercent = 0.0; // session peak against one frame period
+};
+
 // A graph-clock rollback can create a new timestamp lineage without changing
 // the VP queue epoch. Keep the slow 10-second trend identity separate so no
 // delta or slope spans that rebase boundary.

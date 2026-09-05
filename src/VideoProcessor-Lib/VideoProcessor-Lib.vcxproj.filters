@@ -81,6 +81,12 @@
     <ClInclude Include="vprenderer\\AlphaPresentationTelemetry.h">
       <Filter>Header Files\libplacebo</Filter>
     </ClInclude>
+    <ClInclude Include="vprenderer\\AlphaRenderLoadMeter.h">
+      <Filter>Header Files\libplacebo</Filter>
+    </ClInclude>
+    <ClInclude Include="ProcessCpuUsageMeter.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="vprenderer\\AlphaNativeRgbIngress.h">
       <Filter>Header Files\libplacebo</Filter>
     </ClInclude>
