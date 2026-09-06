@@ -14,14 +14,21 @@ of latency.
 
 VP owns a fixed ring of 16 D3D11 query sets. Each set contains:
 
-- a timestamp immediately before `pl_render_image`
-- a timestamp immediately after `pl_render_image`
-- the enclosing `D3D11_QUERY_TIMESTAMP_DISJOINT` query
+- one enclosing `D3D11_QUERY_TIMESTAMP_DISJOINT` query
+- fixed timestamp pairs around source-plane upload, target clear, changed OSD
+  texture uploads, and `pl_render_image`
 
-The timestamp interval measures the GPU timeline occupied by commands issued
-for that render call. It includes barriers and GPU contention inside the
-interval, which is intentional: those costs also determine whether the frame
-fits its refresh budget. It does not include `Present` or CPU-side vsync waits.
+The primary duration is the GPU timeline envelope from the first source-upload
+timestamp to the final render timestamp. It measures the end-to-end GPU work VP
+must finish for that submission while avoiding double-counting copy and shader
+work that a driver may overlap. It includes barriers, intervening GPU queue
+delay, target clear, and OSD upload work inside the interval. It excludes
+`Present`, DWM composition, physical scanout, CPU-side vsync waits, and later
+capture/readback work.
+
+The paired VP libplacebo build disables allocation of libplacebo's own per-pass
+D3D11 timer queries before renderer creation. That leaves only VP's one
+timestamp-disjoint interval for a frame, avoiding nested disjoint queries.
 
 Every query slot carries three provenance values:
 
@@ -64,10 +71,11 @@ therefore intentionally a few frames late in the OSD, but video is not held for
 them. Telemetry records `gpu_source`, `gpu_submission`, and `gpu_lag_frames` so
 that delay is observable.
 
-The measurement still has small, non-zero command and polling overhead. The
-libplacebo per-pass info callback is left null, avoiding its sample-history copy
-and VP's former per-pass mutex, but on-hardware A/B measurement is still needed
-before claiming zero performance impact.
+The measurement still has small, non-zero timestamp-command and polling
+overhead. The libplacebo per-pass info callback is left null, avoiding its
+sample-history copy and VP's former per-pass mutex. All query objects are
+preallocated, and no per-frame allocation or synchronization is introduced,
+but on-hardware A/B measurement is still needed before claiming zero impact.
 
 ## Statistics
 
@@ -119,8 +127,12 @@ same source tree.
 
 ## Verification status
 
-The x64 Release library, GUI, and renderer plugin build successfully. Automated
-tests cover exact generation/source/submission matching, stale results after a
-reset, repeated source sequences, invalid duration rejection, and suppression
-of source-rate percentages. Hardware A/B timing and visual inspection remain
-required because unit tests cannot measure driver overhead or scanout.
+The paired x64 Release libplacebo and VP builds complete successfully.
+Libplacebo's 14 runnable tests and VP's 1,054 core tests pass; the complete
+configuration/UI executable test suite also passes. Automated tests cover exact
+generation/source/submission matching, stale
+results after a reset, repeated source sequences, segment provenance, invalid
+duration rejection, suppression of source-rate percentages, and retention of
+the display period belonging to a peak. Hardware A/B timing and visual
+inspection remain required because unit tests cannot measure driver overhead
+or scanout.

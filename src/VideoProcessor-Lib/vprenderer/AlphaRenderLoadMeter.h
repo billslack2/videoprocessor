@@ -82,6 +82,9 @@ public:
 		sample.eligible = GuardLiftedLocked(now);
 		sample.renderMs = Sanitized(renderMs);
 		sample.swapMs = Sanitized(swapMs);
+		sample.framePeriodMs = Sanitized(framePeriodMs);
+		sample.framePeriodFromDisplay = framePeriodFromDisplay &&
+			sample.framePeriodMs > 0.0;
 		++m_count;
 		if (!sample.eligible)
 			return;
@@ -96,7 +99,7 @@ public:
 	// evidence and is counted, then discarded.
 	bool RecordGpuFrame(uint64_t generation, uint64_t sourceSequence,
 		uint64_t submissionSerial,
-		double gpuMs, uint64_t lagFrames)
+		double gpuMs, uint64_t lagFrames, size_t segmentCount = 0)
 	{
 		std::lock_guard<std::mutex> guard(m_mutex);
 		gpuMs = Sanitized(gpuMs);
@@ -105,7 +108,6 @@ public:
 			++m_invalidGpuSamples;
 			return false;
 		}
-		m_gpuEverTimed = true;
 		const Clock::time_point now = Clock::now();
 		EvictExpiredLocked(now);
 		Sample* const matched = FindSubmissionLocked(submissionSerial);
@@ -113,9 +115,11 @@ public:
 			matched->sourceSequence == sourceSequence && !matched->gpuTimed)
 		{
 			Sample& sample = *matched;
+			m_gpuEverTimed = true;
 			sample.gpuMs = gpuMs;
 			sample.gpuTimed = true;
 			sample.gpuLagFrames = lagFrames;
+			sample.gpuSegmentCount = segmentCount;
 			if (!sample.eligible)
 			{
 				++m_warmupGpuSamples;
@@ -124,7 +128,13 @@ public:
 			m_latestGpuSourceSequence = sourceSequence;
 			m_latestGpuSubmissionSerial = submissionSerial;
 			m_latestGpuLagFrames = lagFrames;
-			m_sessionGpuPeakMs = (std::max)(m_sessionGpuPeakMs, gpuMs);
+			m_latestGpuSegments = segmentCount;
+			if (!m_sessionPeakValid || gpuMs > m_sessionGpuPeakMs)
+			{
+				m_sessionGpuPeakMs = gpuMs;
+				m_sessionGpuPercent = sample.framePeriodFromDisplay ?
+					100.0 * gpuMs / sample.framePeriodMs : 0.0;
+			}
 			m_sessionPeakValid = true;
 			++m_sessionGpuFrames;
 			return true;
@@ -144,6 +154,7 @@ public:
 		result.latestGpuSourceSequence = m_latestGpuSourceSequence;
 		result.latestGpuSubmissionSerial = m_latestGpuSubmissionSerial;
 		result.latestGpuLagFrames = m_latestGpuLagFrames;
+		result.latestGpuSegments = m_latestGpuSegments;
 		result.unmatchedGpuSamples = m_unmatchedGpuSamples;
 		result.invalidGpuSamples = m_invalidGpuSamples;
 		result.warmupGpuSamples = m_warmupGpuSamples;
@@ -155,12 +166,7 @@ public:
 		result.sessionGpuFrames = m_sessionGpuFrames;
 		result.sessionGpuPeakMs = m_sessionGpuPeakMs;
 		result.sessionRenderPeakMs = m_sessionRenderPeakMs;
-		if (m_framePeriodFromDisplay && m_framePeriodMs > 0.0 &&
-			m_sessionPeakValid)
-		{
-			result.sessionGpuPercent =
-				100.0 * m_sessionGpuPeakMs / m_framePeriodMs;
-		}
+		result.sessionGpuPercent = m_sessionGpuPercent;
 
 		result.windowFilledSeconds = WindowSpanMsLocked(now) / 1000.0;
 		size_t live = 0;
@@ -178,7 +184,12 @@ public:
 			{
 				gpuTotal += sample.gpuMs;
 				++gpuTimed;
-				result.gpu.peak = (std::max)(result.gpu.peak, sample.gpuMs);
+				if (sample.gpuMs > result.gpu.peak)
+				{
+					result.gpu.peak = sample.gpuMs;
+					result.gpuLoadPercent = sample.framePeriodFromDisplay ?
+						100.0 * sample.gpuMs / sample.framePeriodMs : 0.0;
+				}
 				result.gpu.last = sample.gpuMs;
 			}
 			renderTotal += sample.renderMs;
@@ -200,8 +211,6 @@ public:
 			result.render.average = renderTotal / static_cast<double>(live);
 			result.swap.average = swapTotal / static_cast<double>(live);
 		}
-		if (m_framePeriodFromDisplay && result.framePeriodMs > 0.0 && gpuTimed > 0)
-			result.gpuLoadPercent = 100.0 * result.gpu.peak / result.framePeriodMs;
 		return result;
 	}
 
@@ -213,11 +222,14 @@ private:
 		uint64_t sourceSequence = 0;
 		uint64_t submissionSerial = 0;
 		uint64_t gpuLagFrames = 0;
+		size_t gpuSegmentCount = 0;
 		double gpuMs = 0.0;
 		double renderMs = 0.0;
 		double swapMs = 0.0;
+		double framePeriodMs = 0.0;
 		bool gpuTimed = false;
 		bool eligible = false;
+		bool framePeriodFromDisplay = false;
 	};
 
 	static double Sanitized(double milliseconds)
@@ -304,6 +316,7 @@ private:
 	Clock::time_point m_guardStart{};
 
 	double m_sessionGpuPeakMs = 0.0;
+	double m_sessionGpuPercent = 0.0;
 	double m_sessionRenderPeakMs = 0.0;
 	bool m_sessionPeakValid = false;
 	uint64_t m_sessionFrames = 0;
@@ -311,6 +324,7 @@ private:
 	uint64_t m_latestGpuSourceSequence = 0;
 	uint64_t m_latestGpuSubmissionSerial = 0;
 	uint64_t m_latestGpuLagFrames = 0;
+	size_t m_latestGpuSegments = 0;
 	uint64_t m_unmatchedGpuSamples = 0;
 	uint64_t m_invalidGpuSamples = 0;
 	uint64_t m_warmupGpuSamples = 0;

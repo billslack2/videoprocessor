@@ -79,6 +79,33 @@ namespace Tests
 			Assert::AreEqual(7.0, snapshot.gpu.peak, 0.001);
 		}
 
+		TEST_METHOD(ReportsSegmentCountForExactMatchedSubmission)
+		{
+			AlphaRenderLoadMeter meter(0.0);
+			meter.CommitFrame(2, 9, 4, 1.0, 0.1, 20.0, true);
+
+			Assert::IsTrue(meter.RecordGpuFrame(2, 9, 4, 3.0, 2, 7));
+			const RendererRenderLoad snapshot = meter.Snapshot();
+			Assert::AreEqual<size_t>(7, snapshot.latestGpuSegments);
+		}
+
+		TEST_METHOD(PeakPercentageUsesThatFramesDisplayPeriod)
+		{
+			AlphaRenderLoadMeter meter(0.0);
+			meter.CommitFrame(1, 1, 1, 1.0, 0.1, 20.0, true);
+			Assert::IsTrue(meter.RecordGpuFrame(1, 1, 1, 8.0, 2));
+
+			// A later, faster refresh must not reinterpret the earlier peak.
+			meter.CommitFrame(1, 2, 2, 1.0, 0.1, 10.0, true);
+			Assert::IsTrue(meter.RecordGpuFrame(1, 2, 2, 4.0, 2));
+
+			const RendererRenderLoad snapshot = meter.Snapshot();
+			Assert::AreEqual(8.0, snapshot.gpu.peak, 0.001);
+			Assert::AreEqual(40.0, snapshot.gpuLoadPercent, 0.001);
+			Assert::AreEqual(8.0, snapshot.sessionGpuPeakMs, 0.001);
+			Assert::AreEqual(40.0, snapshot.sessionGpuPercent, 0.001);
+		}
+
 		TEST_METHOD(SuppressesPercentagesWithoutDisplayPeriod)
 		{
 			AlphaRenderLoadMeter meter(0.0);

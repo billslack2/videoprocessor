@@ -3353,6 +3353,98 @@ namespace
 }
 
 
+// Owns one timestamp-disjoint query for a candidate output frame. Individual
+// GPU operations receive timestamp pairs under that one query. The timer uses
+// the first start and final end as one end-to-end GPU envelope, avoiding both
+// nested disjoint intervals and double-counting work that overlaps between
+// engines. Any early return closes and rejects the query automatically.
+class AlphaFrameGpuTimingScope
+{
+public:
+	class Segment
+	{
+	public:
+		explicit Segment(AlphaFrameGpuTimingScope& owner)
+			: m_owner(owner), m_started(owner.BeginSegment())
+		{
+		}
+
+		~Segment()
+		{
+			if (m_started)
+				m_owner.EndSegment();
+		}
+
+		Segment(const Segment&) = delete;
+		Segment& operator=(const Segment&) = delete;
+
+	private:
+		AlphaFrameGpuTimingScope& m_owner;
+		bool m_started = false;
+	};
+
+	AlphaFrameGpuTimingScope(AlphaD3D11FrameGpuTimer& timer,
+		ID3D11DeviceContext* context, uint64_t generation,
+		uint64_t sourceSequence)
+		: m_timer(timer), m_context(context),
+		m_issued(timer.BeginFrame(context, generation, sourceSequence))
+	{
+	}
+
+	~AlphaFrameGpuTimingScope()
+	{
+		Reject();
+	}
+
+	AlphaFrameGpuTimingScope(const AlphaFrameGpuTimingScope&) = delete;
+	AlphaFrameGpuTimingScope& operator=(const AlphaFrameGpuTimingScope&) = delete;
+
+	void EndGpuOperations()
+	{
+		if (m_issued && !m_ended)
+		{
+			m_timer.EndFrame(m_context);
+			m_ended = true;
+		}
+	}
+
+	void Accept(uint64_t submissionSerial)
+	{
+		if (!m_issued || m_finalized)
+			return;
+		EndGpuOperations();
+		m_timer.SetFrameOutcome(true, submissionSerial);
+		m_finalized = true;
+	}
+
+	void Reject()
+	{
+		if (!m_issued || m_finalized)
+			return;
+		EndGpuOperations();
+		m_timer.SetFrameOutcome(false);
+		m_finalized = true;
+	}
+
+private:
+	bool BeginSegment()
+	{
+		return m_issued && !m_ended && m_timer.BeginSegment(m_context);
+	}
+
+	void EndSegment()
+	{
+		m_timer.EndSegment(m_context);
+	}
+
+	AlphaD3D11FrameGpuTimer& m_timer;
+	ID3D11DeviceContext* m_context = nullptr;
+	bool m_issued = false;
+	bool m_ended = false;
+	bool m_finalized = false;
+};
+
+
 struct LibplaceboVideoRenderer::Impl
 {
 	SceneDetector sceneDetector;
@@ -6570,8 +6662,16 @@ struct LibplaceboVideoRenderer::Impl
 		d3d11 = pl_d3d11_create(log, &deviceParams);
 		if (!d3d11)
 			throw std::runtime_error("Failed to create libplacebo D3D11 device");
+		// VP owns the one frame-level timestamp-disjoint query. Disable
+		// libplacebo's otherwise unconditional per-pass timers before the
+		// renderer can allocate any of them, so the query scopes never nest.
+		if (!pl_d3d11_set_timer_queries_enabled(d3d11, false))
+		{
+			throw std::runtime_error(
+				"Failed to disable libplacebo internal GPU timers");
+		}
 		DebugLog::Log(
-			"libplacebo D3D11 device: feature_level=0x%04X software=%d allow_software=%d no_compute=%d max_frame_latency=%d",
+			"libplacebo D3D11 device: feature_level=0x%04X software=%d allow_software=%d no_compute=%d max_frame_latency=%d internal_pass_timers=disabled",
 			static_cast<unsigned int>(d3d11->device->GetFeatureLevel()),
 			d3d11->software ? 1 : 0,
 			deviceParams.allow_software ? 1 : 0,
@@ -9113,6 +9213,33 @@ struct LibplaceboVideoRenderer::Impl
 			}
 		}
 
+		// Resolve only old query slots and never flush. Drain a small bounded
+		// number if the driver made several available together; stop immediately
+		// at the first unresolved oldest slot.
+		for (size_t resolved = 0; resolved < 4; ++resolved)
+		{
+			AlphaD3D11FrameGpuTimer::Sample gpuSample;
+			const AlphaD3D11FrameGpuTimer::ResolveResult resolveResult =
+				gpuFrameTimer.TryResolveOldest(renderTimingContext, gpuSample);
+			if (resolveResult ==
+				AlphaD3D11FrameGpuTimer::ResolveResult::Resolved)
+			{
+				renderLoadMeter.RecordGpuFrame(gpuSample.generation,
+					gpuSample.sourceSequence, gpuSample.submissionSerial,
+					gpuSample.milliseconds, gpuSample.lagFrames,
+					gpuSample.segmentCount);
+				continue;
+			}
+			if (resolveResult ==
+				AlphaD3D11FrameGpuTimer::ResolveResult::Discarded)
+			{
+				continue;
+			}
+			break;
+		}
+		AlphaFrameGpuTimingScope gpuTiming(gpuFrameTimer,
+			renderTimingContext, frameGeneration, sourceSequence);
+
 		struct pl_frame image{};
 		if (nativeRgbUpload)
 		{
@@ -9125,9 +9252,12 @@ struct LibplaceboVideoRenderer::Impl
 			plane.pixels = videoFrame.GetData();
 			plane.swapped = nativeRgbLayout.swapped;
 			pl_plane_data_from_mask(&plane, nativeRgbLayout.masks);
-			if (!pl_upload_plane(d3d11->gpu, &image.planes[0],
-				&textures[0], &plane))
-				return false;
+			{
+				AlphaFrameGpuTimingScope::Segment gpuSegment(gpuTiming);
+				if (!pl_upload_plane(d3d11->gpu, &image.planes[0],
+					&textures[0], &plane))
+					return false;
+			}
 			image.num_planes = 1;
 			image.planes[0].shift_x = 0.0f;
 			image.planes[0].shift_y = 0.0f;
@@ -9163,9 +9293,12 @@ struct LibplaceboVideoRenderer::Impl
 			image.num_planes = 2;
 			for (int plane = 0; plane < 2; ++plane)
 			{
-				if (!pl_upload_plane(d3d11->gpu, &image.planes[plane],
-					&textures[plane], &planes[plane]))
-					return false;
+				{
+					AlphaFrameGpuTimingScope::Segment gpuSegment(gpuTiming);
+					if (!pl_upload_plane(d3d11->gpu, &image.planes[plane],
+						&textures[plane], &planes[plane]))
+						return false;
+				}
 				image.planes[plane].shift_x = 0.0f;
 				image.planes[plane].shift_y = 0.0f;
 				image.planes[plane].flipped = state.invertedVertical;
@@ -9394,7 +9527,10 @@ struct LibplaceboVideoRenderer::Impl
 		// This must apply to both VP-owned and libplacebo-owned presentation paths;
 		// a smaller fixed-aspect destination must never inherit prior-frame pixels.
 		const float black[] = { 0.0f, 0.0f, 0.0f };
-		pl_frame_clear(d3d11->gpu, &baseTarget, black);
+		{
+			AlphaFrameGpuTimingScope::Segment gpuSegment(gpuTiming);
+			pl_frame_clear(d3d11->gpu, &baseTarget, black);
+		}
 		if (vpOwnedSwapchain)
 		{
 			if (vpOwnedClearLoggedGeneration != vpOwnedSwapchainGeneration)
@@ -10876,8 +11012,13 @@ struct LibplaceboVideoRenderer::Impl
 					0x00FF0000, 0x0000FF00, 0x000000FF, 0xFF000000
 				};
 				pl_plane_data_from_mask(&plane, masks);
-				if (!pl_upload_plane(
-					d3d11->gpu, nullptr, &statsOverlayTexture, &plane))
+				bool uploaded = false;
+				{
+					AlphaFrameGpuTimingScope::Segment gpuSegment(gpuTiming);
+					uploaded = pl_upload_plane(
+						d3d11->gpu, nullptr, &statsOverlayTexture, &plane);
+				}
+				if (!uploaded)
 				{
 					DebugLog::Log("Alpha native OSD texture upload failed");
 				}
@@ -10920,8 +11061,13 @@ struct LibplaceboVideoRenderer::Impl
 					0x00FF0000, 0x0000FF00, 0x000000FF, 0xFF000000
 				};
 				pl_plane_data_from_mask(&plane, masks);
-				if (!pl_upload_plane(
-					d3d11->gpu, nullptr, &sweepOverlayTexture, &plane))
+				bool uploaded = false;
+				{
+					AlphaFrameGpuTimingScope::Segment gpuSegment(gpuTiming);
+					uploaded = pl_upload_plane(
+						d3d11->gpu, nullptr, &sweepOverlayTexture, &plane);
+				}
+				if (!uploaded)
 				{
 					DebugLog::Log("Alpha native output sweep banner texture upload failed");
 				}
@@ -10963,8 +11109,13 @@ struct LibplaceboVideoRenderer::Impl
 					0x00FF0000, 0x0000FF00, 0x000000FF, 0xFF000000
 				};
 				pl_plane_data_from_mask(&plane, masks);
-				if (!pl_upload_plane(
-					d3d11->gpu, nullptr, &profileOverlayTexture, &plane))
+				bool uploaded = false;
+				{
+					AlphaFrameGpuTimingScope::Segment gpuSegment(gpuTiming);
+					uploaded = pl_upload_plane(
+						d3d11->gpu, nullptr, &profileOverlayTexture, &plane);
+				}
+				if (!uploaded)
 				{
 					DebugLog::Log(
 						"Alpha native profile-change texture upload failed");
@@ -11204,44 +11355,21 @@ struct LibplaceboVideoRenderer::Impl
 			target.overlays = overlays;
 			target.num_overlays = overlayCount;
 		}
-		// Resolve only old query slots and never flush. Drain a small bounded
-		// number if the driver made several available together; stop immediately
-		// at the first unresolved oldest slot.
-		for (size_t resolved = 0; resolved < 4; ++resolved)
-		{
-			AlphaD3D11FrameGpuTimer::Sample gpuSample;
-			const AlphaD3D11FrameGpuTimer::ResolveResult resolveResult =
-				gpuFrameTimer.TryResolveOldest(renderTimingContext, gpuSample);
-			if (resolveResult ==
-				AlphaD3D11FrameGpuTimer::ResolveResult::Resolved)
-			{
-				renderLoadMeter.RecordGpuFrame(gpuSample.generation,
-					gpuSample.sourceSequence, gpuSample.submissionSerial,
-					gpuSample.milliseconds,
-					gpuSample.lagFrames);
-				continue;
-			}
-			if (resolveResult ==
-				AlphaD3D11FrameGpuTimer::ResolveResult::Discarded)
-			{
-				continue;
-			}
-			break;
-		}
-		const bool gpuTimingIssued = gpuFrameTimer.BeginFrame(
-			renderTimingContext, frameGeneration, sourceSequence);
 		const SteadyClock::time_point renderStart = SteadyClock::now();
 		const bool targetLutApplied =
 			target.lut == displayLut && target.lut_type == PL_LUT_NORMALIZED;
 		libplaceboRenderStartedTick.store(GetTickCount64(),
 			std::memory_order_release);
-		const bool rendered = pl_render_image(
-			renderer,
-			&renderImage,
-			&target,
-			&renderParams);
-		if (gpuTimingIssued)
-			gpuFrameTimer.EndFrame(renderTimingContext);
+		bool rendered = false;
+		{
+			AlphaFrameGpuTimingScope::Segment gpuSegment(gpuTiming);
+			rendered = pl_render_image(
+				renderer,
+				&renderImage,
+				&target,
+				&renderParams);
+		}
+		gpuTiming.EndGpuOperations();
 		libplaceboRenderStartedTick.store(0, std::memory_order_release);
 		LogHdrPeakAnalysisMetrics(
 			hdrPeakAnalysisDecision, sourceSequence, rendered);
@@ -11317,14 +11445,13 @@ struct LibplaceboVideoRenderer::Impl
 				? static_cast<double>(swapEndQpc - swapStartQpc) * 1000.0 /
 					static_cast<double>(qpcFrequency.QuadPart)
 				: 0.0;
-		if (gpuTimingIssued && (!rendered || !submitted))
-			gpuFrameTimer.SetFrameOutcome(false);
+		if (!rendered || !submitted)
+			gpuTiming.Reject();
 		if (rendered && submitted)
 		{
 			++successfulPresentCount;
 			++renderLoadSubmissionSerial;
-			if (gpuTimingIssued)
-				gpuFrameTimer.SetFrameOutcome(true, renderLoadSubmissionSerial);
+			gpuTiming.Accept(renderLoadSubmissionSerial);
 			AlphaPresentationRecord record;
 			record.generation = frameGeneration;
 			record.sourceSequence = sourceSequence;
@@ -11439,9 +11566,9 @@ struct LibplaceboVideoRenderer::Impl
 				framePeriodFromDisplay ?
 					1000.0 / presentationSnapshot.measuredDisplayHz :
 					captureRateHz >= 10.0 ? 1000.0 / captureRateHz : 0.0;
-			// Every presented frame enters the render-load window here, which
-			// is what makes the OSD peak trustworthy: the telemetry line below
-			// only samples one frame in roughly 120.
+			// Every successfully submitted frame enters the render-load window
+			// here, which is what makes the OSD peak trustworthy: the telemetry
+			// line below only samples one frame in roughly 120.
 			renderLoadMeter.CommitFrame(frameGeneration, sourceSequence,
 				renderLoadSubmissionSerial,
 				renderMs, swapBlockMs, resetObservation.framePeriodMs,
@@ -11489,7 +11616,7 @@ struct LibplaceboVideoRenderer::Impl
 					presentationTelemetry.Snapshot();
 				const RendererRenderLoad load = RenderLoadSnapshot();
 				DebugLog::Log(
-					"Alpha presentation telemetry: generation=%llu evidence=%d timing=%s frame_stats_hr=0x%08lX retained=%zu source=%llu presented=%llu debt=%llu present_id=%u refresh=%u display_hz=%.5f cadence_samples=%u queue_after=%zu oldest_ms=%.2f render_ms=%.2f swap_ms=%.2f gpu_timed=%d presented_window_frames=%zu gpu_frames=%zu gpu_ms=%.3f gpu_avg_ms=%.3f gpu_peak_ms=%.3f gpu_load_pct=%.1f gpu_source=%llu gpu_submission=%llu gpu_lag_frames=%llu gpu_pending=%llu gpu_resolved=%llu gpu_not_ready=%llu gpu_disjoint=%llu gpu_query_failures=%llu gpu_rejected=%llu gpu_overruns=%llu gpu_unmatched=%llu gpu_invalid=%llu gpu_warmup=%llu render_avg_ms=%.2f render_peak_ms=%.2f gpu_session_peak_ms=%.3f gpu_session_pct=%.1f session_frames=%llu session_gpu_frames=%llu settling=%d window_s=%.1f frame_period_src=%s",
+					"Alpha presentation telemetry: generation=%llu evidence=%d timing=%s frame_stats_hr=0x%08lX retained=%zu source=%llu presented=%llu debt=%llu present_id=%u refresh=%u display_hz=%.5f cadence_samples=%u queue_after=%zu oldest_ms=%.2f render_ms=%.2f swap_ms=%.2f gpu_timed=%d presented_window_frames=%zu gpu_frames=%zu gpu_ms=%.3f gpu_avg_ms=%.3f gpu_peak_ms=%.3f gpu_load_pct=%.1f gpu_source=%llu gpu_submission=%llu gpu_lag_frames=%llu gpu_segments=%zu gpu_pending=%llu gpu_resolved=%llu gpu_not_ready=%llu gpu_disjoint=%llu gpu_query_failures=%llu gpu_rejected=%llu gpu_overruns=%llu gpu_unmatched=%llu gpu_invalid=%llu gpu_warmup=%llu render_avg_ms=%.2f render_peak_ms=%.2f gpu_session_peak_ms=%.3f gpu_session_pct=%.1f session_frames=%llu session_gpu_frames=%llu settling=%d window_s=%.1f frame_period_src=%s",
 					static_cast<unsigned long long>(snapshot.generation),
 					static_cast<int>(snapshot.evidence),
 					AlphaPresentationTimingStatusText(snapshot.timingStatus),
@@ -11521,6 +11648,7 @@ struct LibplaceboVideoRenderer::Impl
 					static_cast<unsigned long long>(
 						load.latestGpuSubmissionSerial),
 					static_cast<unsigned long long>(load.latestGpuLagFrames),
+					load.latestGpuSegments,
 					static_cast<unsigned long long>(load.gpuQueriesPending),
 					static_cast<unsigned long long>(load.gpuQueriesResolved),
 					static_cast<unsigned long long>(load.gpuQueriesNotReady),

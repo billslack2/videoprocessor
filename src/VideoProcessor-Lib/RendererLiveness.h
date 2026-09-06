@@ -89,7 +89,7 @@ struct RendererLatencySnapshot
 };
 
 
-// One measured render cost over a rolling window of presented frames.
+// One measured render cost over a rolling window of successful submissions.
 struct RendererRenderLoadStat
 {
 	double last = 0.0;
@@ -101,9 +101,10 @@ struct RendererRenderLoadStat
 // How much of each frame period the renderer is actually consuming.
 //
 // The three costs are NOT interchangeable and must never be summed:
-//   gpu     GPU timestamp interval enclosing commands issued by the render
-//           call. This is the only figure that scales with quality settings
-//           and the only one that says whether the GPU has headroom.
+//   gpu     GPU timestamp envelope from source upload through final rendering
+//           for one successful submission. This is the only figure that scales
+//           with quality settings and the only one that says whether the GPU
+//           has headroom. Present, DWM composition, and scanout are excluded.
 //   render  CPU wall time around the render call - command submission and
 //           driver back-pressure, not shader cost.
 //   swap    Wall time around the present, dominated by the vsync wait. A large
@@ -131,6 +132,7 @@ struct RendererRenderLoad
 	uint64_t latestGpuSourceSequence = 0;
 	uint64_t latestGpuSubmissionSerial = 0;
 	uint64_t latestGpuLagFrames = 0;
+	size_t latestGpuSegments = 0;
 	// Peak GPU cost as a percentage of one frame period. Peak rather than
 	// average because a single overrun is visible on screen, and an average
 	// that hides it is what makes a marginal setting look safe.
