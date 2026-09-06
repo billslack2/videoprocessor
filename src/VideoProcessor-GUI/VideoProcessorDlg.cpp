@@ -11885,6 +11885,31 @@ void CVideoProcessorDlg::ApplyUnifiedProfileSnapshot(
 	PublishActiveProfileStatus();
 	PublishProfileChangeOverlay(snapshot);
 
+	// Capture validated shader intent before any renderer-transition or missing-
+	// renderer early return below. Config apply can publish the new profile
+	// snapshot before the replacement renderer is constructed; the fresh
+	// renderer must replay this exact selection rather than start in Off.
+	if (snapshot->managesShaderProfiles || m_hasRequestedShaderProfiles)
+	{
+		std::vector<std::string> shaderProfiles;
+		auto appendShaderProfiles = [&snapshot, &shaderProfiles](
+			const char* group, const char* sectionName)
+		{
+			const auto selected = snapshot->effectiveSelections.find(group);
+			if (selected == snapshot->effectiveSelections.end()) return;
+			for (const std::string& name : selected->second)
+				shaderProfiles.push_back(std::string(sectionName) +
+					(name == "base" ? "" : "." + name));
+		};
+		appendShaderProfiles("nls", "nls");
+		appendShaderProfiles("standard_shaders", "standard");
+		m_requestedShaderProfiles = std::move(shaderProfiles);
+		m_hasRequestedShaderProfiles = true;
+		m_requestedShaderSelector.Empty();
+		DebugLog::Log("Unified shader profile intent retained: count=%llu",
+			static_cast<unsigned long long>(m_requestedShaderProfiles.size()));
+	}
+
 	// A paired renderer/profile shortcut can commit a new queue while the old
 	// renderer is being retired. In particular, a DirectShow graph owns madVR's
 	// filter callbacks until its asynchronous teardown completes. Do not mutate
@@ -11981,33 +12006,19 @@ void CVideoProcessorDlg::ApplyUnifiedProfileSnapshot(
 	if (!m_videoRenderer)
 		return;
 	bool shaderRestartRequired = false;
-	std::vector<std::string> shaderProfiles;
-	auto appendShaderProfiles = [&snapshot, &shaderProfiles](
-		const char* group, const char* sectionName)
-	{
-		const auto selected = snapshot->effectiveSelections.find(group);
-		if (selected == snapshot->effectiveSelections.end()) return;
-		for (const std::string& name : selected->second)
-			shaderProfiles.push_back(std::string(sectionName) +
-				(name == "base" ? "" : "." + name));
-	};
-	appendShaderProfiles("nls", "nls");
-	appendShaderProfiles("standard_shaders", "standard");
 	CString activeRule;
-	if ((snapshot->managesShaderProfiles || m_hasRequestedShaderProfiles) &&
+	if (m_hasRequestedShaderProfiles &&
 		m_videoRenderer->SelectShaderProfiles(
-		shaderProfiles, activeRule, shaderRestartRequired))
+		m_requestedShaderProfiles, activeRule, shaderRestartRequired))
 	{
-		m_requestedShaderProfiles = shaderProfiles;
-		m_hasRequestedShaderProfiles = true;
-		m_requestedShaderSelector.Empty();
 		DebugLog::Log("Unified shader profiles applied: count=%llu active=%s",
-			static_cast<unsigned long long>(shaderProfiles.size()),
+			static_cast<unsigned long long>(m_requestedShaderProfiles.size()),
 			CStringA(activeRule).GetString());
 	}
-	else if (snapshot->managesShaderProfiles || m_hasRequestedShaderProfiles)
+	else if (m_hasRequestedShaderProfiles)
 	{
-		DebugLog::Log("Unified shader profiles are not supported by the active renderer");
+		DebugLog::Log(
+			"Unified shader profiles are not yet applicable; retained for renderer construction");
 	}
 	if (m_activeRendererIsDirectShow && selectedQueueDesiredKnown)
 	{

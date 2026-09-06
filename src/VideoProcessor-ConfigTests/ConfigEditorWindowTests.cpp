@@ -4856,6 +4856,33 @@ void testNormalWindowArchitectureHasNoLeasePolling()
         "Config editor still contains polling, popup, or foreground lease logic");
 }
 
+void testShaderProfileIntentIsRetainedBeforeRendererConstruction()
+{
+    const QByteArray source = readBytes(repositoryPath(QStringLiteral(
+        "src/VideoProcessor-GUI/VideoProcessorDlg.cpp")));
+    const qsizetype functionStart = source.indexOf(
+        "void CVideoProcessorDlg::ApplyUnifiedProfileSnapshot(");
+    const qsizetype functionEnd = source.indexOf(
+        "void CVideoProcessorDlg::QueueUnifiedQueueProfileReset(",
+        functionStart);
+    require(functionStart >= 0 && functionEnd > functionStart,
+        "Cannot locate unified profile snapshot application");
+    const QByteArray applyPath = source.mid(functionStart,
+        functionEnd - functionStart);
+    const qsizetype retain = applyPath.indexOf(
+        "m_requestedShaderProfiles = std::move(shaderProfiles);");
+    const qsizetype transitionGuard = applyPath.indexOf(
+        "const bool selectedRendererDiffers");
+    const qsizetype missingRendererGuard = applyPath.indexOf(
+        "if (!m_videoRenderer)");
+    const qsizetype apply = applyPath.indexOf(
+        "m_videoRenderer->SelectShaderProfiles(");
+    require(retain >= 0 && transitionGuard > retain &&
+        missingRendererGuard > retain && apply > missingRendererGuard,
+        "Shader profile intent is not retained before renderer-transition "
+        "and missing-renderer exits");
+}
+
 void testSharedProfileListControllerContract()
 {
     QWidget parent;
@@ -5061,6 +5088,8 @@ int main(int argc, char** argv)
         testOrdinaryEditsDoNotRequireDiskValidation);
     failures += run("warm reveal grants foreground permission",
         testWarmRevealPathGrantsForegroundPermission);
+    failures += run("shader profile intent survives renderer construction",
+        testShaderProfileIntentIsRetainedBeforeRendererConstruction);
     failures += run("native owner preserves Qt input and popup association",
         testNativeOwnerPreservesQtInputAndPopupAssociation);
     failures += run("real configuration dropdown remains clickable",

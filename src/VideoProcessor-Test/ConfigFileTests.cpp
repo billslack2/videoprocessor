@@ -3822,6 +3822,58 @@ namespace VideoProcessorTest
 			DeleteFileA(path.c_str());
 		}
 
+		TEST_METHOD(Vp0159ReorderedNlsFallbackSelectsFirstProfile)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(
+				ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) +
+				"VideoProcessor-vp0159-reordered-nls.cfg";
+			const std::string statePath = std::string(temporaryDirectory) +
+				"VideoProcessor-vp0159-reordered-nls.state";
+			DeleteFileA(statePath.c_str());
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[shader.nls.stretch]\n"
+					"label: Nonlinear Stretch\n"
+					"shader_type: nls\n"
+					"hlsl_file: NLS.hlsl\n"
+					"glsl_file: NLS.glsl\n"
+					"[shader.nls.off]\n"
+					"label: Off\n"
+					"shader_type: nls\n";
+			}
+
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			std::string error;
+			Assert::IsTrue(ShaderConfigValidation::Validate(config, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			auto noRules = [](const std::string&, std::string&) { return false; };
+			UnifiedProfileRuntime::Runtime runtime;
+			Assert::IsTrue(runtime.Initialize(config, noRules, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			Assert::AreEqual("stretch", RendererProfileConfig::FormatSelection(
+				runtime.GetSnapshot()->effectiveSelections.at("nls")).c_str(),
+				L"The first reordered NLS profile must become the fallback");
+
+			std::vector<ConfiguredShaderRule> selection;
+			std::vector<std::string> activeSections;
+			Assert::IsTrue(MadVRShaderLoader::ResolveConfiguredRuleSelection(
+				config, "@shader-profiles:nls.stretch",
+				ShaderRendererBackend::LIBPLACEBO, selection, activeSections,
+				error), std::wstring(error.begin(), error.end()).c_str());
+			Assert::AreEqual(static_cast<size_t>(1), selection.size());
+			Assert::IsTrue(selection.front().nls);
+			Assert::IsFalse(selection.front().none);
+			Assert::AreEqual("NLS.glsl", selection.front().filename.c_str());
+			Assert::AreEqual(static_cast<size_t>(1), activeSections.size());
+			Assert::AreEqual("shader.nls.stretch",
+				activeSections.front().c_str());
+			DeleteFileA(statePath.c_str());
+			DeleteFileA(path.c_str());
+		}
+
 		TEST_METHOD(Vp0099MaximumStretchRatioIsValidatedAndPublished)
 		{
 			char temporaryDirectory[MAX_PATH] = {};
