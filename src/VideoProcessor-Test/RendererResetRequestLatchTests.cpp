@@ -3,6 +3,7 @@
 
 #include <RendererResetRequestLatch.h>
 #include <RendererIngressState.h>
+#include <CaptureVideoStatePolicy.h>
 #include <microsoft_directshow/video_renderers/DirectShowGraphExecutor.h>
 
 #include <chrono>
@@ -151,6 +152,87 @@ namespace Tests
 					RetainCurrentRendererState);
 
 			Assert::IsTrue(static_cast<bool>(ingress->TryAcquire()));
+		}
+
+		TEST_METHOD(StaticHdrMetadataOnlyChangeRetainsLiveIngress)
+		{
+			VideoState previous;
+			previous.valid = true;
+			previous.displayMode = std::make_shared<DisplayMode>(
+				3840, 2160, false, 24000, 1001);
+			previous.videoFrameEncoding = VideoFrameEncoding::V210;
+			previous.eotf = EOTF::PQ;
+			previous.colorspace = ColorSpace::BT_2020;
+			previous.hdrData = std::make_shared<HDRData>();
+			previous.hdrData->maxCll = 1000.0;
+
+			VideoState current(previous);
+			current.hdrData = nullptr;
+			const CaptureVideoStateChangeClass changeClass =
+				ClassifyCaptureVideoStateChange(&previous, current);
+
+			Assert::IsTrue(changeClass ==
+				CaptureVideoStateChangeClass::StaticHdrMetadataOnly);
+			Assert::IsTrue(
+				CaptureStateChangeMayRetainRendererIngress(changeClass));
+		}
+
+		TEST_METHOD(MaterialCaptureContractChangeStillGatesIngress)
+		{
+			VideoState previous;
+			previous.valid = true;
+			previous.displayMode = std::make_shared<DisplayMode>(
+				3840, 2160, false, 24000, 1001);
+			previous.videoFrameEncoding = VideoFrameEncoding::V210;
+			previous.eotf = EOTF::PQ;
+			previous.colorspace = ColorSpace::BT_2020;
+
+			VideoState current(previous);
+			current.eotf = EOTF::SDR;
+			const CaptureVideoStateChangeClass changeClass =
+				ClassifyCaptureVideoStateChange(&previous, current);
+
+			Assert::IsTrue(changeClass ==
+				CaptureVideoStateChangeClass::MaterialSignal);
+			Assert::IsFalse(
+				CaptureStateChangeMayRetainRendererIngress(changeClass));
+		}
+
+		TEST_METHOD(MetadataOnlyChangeCannotBypassPendingMaterialState)
+		{
+			std::shared_ptr<RendererIngressState> ingress =
+				std::make_shared<RendererIngressState>();
+			ingress->OpenAdmission();
+			const uint64_t materialSequence =
+				ingress->PublishCaptureSequence(
+					RendererIngressState::CaptureSequencePublication::
+						RequiresRendererAcknowledgement);
+			const RendererIngressState::CaptureSequenceSnapshot pending =
+				ingress->CaptureSequences();
+			Assert::IsTrue(pending.required == materialSequence);
+			Assert::IsTrue(pending.required != pending.acknowledged);
+
+			const bool retainMetadata =
+				CaptureStateChangeMayRetainRendererIngress(
+					CaptureVideoStateChangeClass::StaticHdrMetadataOnly,
+					pending.required != pending.acknowledged);
+			Assert::IsFalse(retainMetadata);
+			const uint64_t metadataSequence =
+				ingress->PublishCaptureSequence(
+					retainMetadata ?
+						RendererIngressState::CaptureSequencePublication::
+							RetainCurrentRendererState :
+						RendererIngressState::CaptureSequencePublication::
+							RequiresRendererAcknowledgement);
+			Assert::IsFalse(static_cast<bool>(ingress->TryAcquire()));
+			Assert::IsTrue(
+				ingress->AcknowledgeCaptureSequence(metadataSequence));
+			Assert::IsTrue(static_cast<bool>(ingress->TryAcquire()));
+
+			Assert::IsFalse(CaptureStateChangeMayRetainRendererIngress(
+				CaptureVideoStateChangeClass::Duplicate, true));
+			Assert::IsTrue(CaptureStateChangeMayRetainRendererIngress(
+				CaptureVideoStateChangeClass::Invalid, true));
 		}
 
 		TEST_METHOD(PublishesImmediatelyAndOnlyOnceWhilePending)
