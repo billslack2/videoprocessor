@@ -14868,6 +14868,15 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		configuredDisplayRefreshRate :
 		(madVRDetectedRefreshRateKnown ? madVRDetectedRefreshRate :
 			measuredDisplayRefreshRate);
+	// The renderer's GPU budget must use the same monitor-qualified rate as the
+	// rest of this OSD. The active target rational is an authoritative fallback
+	// while the WaitForVBlank estimator is warming.
+	if (m_videoRenderer)
+	{
+		m_videoRenderer->SetRenderLoadDisplayRefreshRate(
+			displayRefreshRate >= 10.0 ? displayRefreshRate :
+			activeTargetRefreshRate);
+	}
 	const std::wstring monitorDeviceName = GetMonitorDeviceName(displayWindow);
 	const double dxgiTargetMismatchPpm =
 		sampledDisplayTiming.refreshRateHz > 0.0 &&
@@ -15746,6 +15755,7 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 			stats.renderLoadGpuPercentValid =
 				renderLoad.gpuLoadPercentValid;
 			stats.renderLoadGpuPercent = renderLoad.gpuLoadPercent;
+			stats.renderLoadGpuWorstLoadMs = renderLoad.gpuWorstLoadMs;
 			stats.renderLoadGpuFrames = renderLoad.gpuFrames;
 			stats.renderLoadRenderAvgMs = renderLoad.render.average;
 			stats.renderLoadRenderPeakMs = renderLoad.render.peak;
@@ -15757,6 +15767,8 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 			stats.renderLoadSessionGpuPercentValid =
 				renderLoad.sessionGpuPercentValid;
 			stats.renderLoadSessionGpuPercent = renderLoad.sessionGpuPercent;
+			stats.renderLoadSessionGpuWorstLoadMs =
+				renderLoad.sessionGpuWorstLoadMs;
 		}
 
 		// CPU is sampled here rather than in the renderer because it is a

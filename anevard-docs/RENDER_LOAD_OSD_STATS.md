@@ -15,16 +15,16 @@ of latency.
 VP owns a fixed ring of 16 D3D11 query sets. Each set contains:
 
 - one enclosing `D3D11_QUERY_TIMESTAMP_DISJOINT` query
-- one start timestamp immediately before source-plane upload
-- one end timestamp immediately after `pl_render_image`
+- one timestamp pair for each explicitly scoped GPU operation (at most eight)
 
-The primary duration is the GPU timeline envelope from the first source-upload
-timestamp to the final render timestamp. It measures the end-to-end GPU work VP
-must finish for that submission while avoiding double-counting copy and shader
-work that a driver may overlap. It includes barriers, intervening GPU queue
-delay, target clear, and OSD upload work inside the interval. It excludes
-`Present`, DWM composition, physical scanout, CPU-side vsync waits, and later
-capture/readback work.
+The primary duration is the sum of those operation intervals: source-plane
+uploads, target clear, changed OSD texture uploads, and `pl_render_image`.
+Timestamp commands are ordered on the same immediate context, so each interval
+ends before the next begins. CPU submission gaps between operations are not
+charged as GPU work. The outer first-to-last timestamp envelope and the
+difference between it and the summed work are retained in the log as
+`gpu_envelope_ms` and `gpu_idle_ms`. `Present`, DWM composition, physical
+scanout, CPU-side vsync waits, and later capture/readback work remain excluded.
 
 The paired VP libplacebo build disables allocation of libplacebo's own per-pass
 D3D11 timer queries before renderer creation. That leaves only VP's one
@@ -58,9 +58,8 @@ current source frame, so its results cannot form an exact per-frame ledger.
 ## No-wait rule
 
 The segment counter verifies that source upload, target clear, changed OSD
-texture uploads, and `pl_render_image` were all bracketed, but those operations
-do not each allocate or issue an extra timestamp. Query objects are allocated
-once during renderer initialization. During rendering VP:
+texture uploads, and `pl_render_image` were all bracketed. Query objects are
+allocated once during renderer initialization. During rendering VP:
 
 1. polls only the oldest query, at least two issued frames later
 2. passes `D3D11_ASYNC_GETDATA_DONOTFLUSH`
@@ -73,7 +72,7 @@ therefore intentionally a few frames late in the OSD, but video is not held for
 them. Telemetry records `gpu_source`, `gpu_submission`, and `gpu_lag_frames` so
 that delay is observable.
 
-The measurement still has small, non-zero two-timestamp-command and polling
+The measurement still has small, non-zero timestamp-command and polling
 overhead. The libplacebo per-pass info callback is left null, avoiding its
 sample-history copy and VP's former per-pass mutex. All query objects are
 preallocated, and no render-path operation waits for telemetry synchronization,
@@ -93,8 +92,10 @@ timing reset. A backlog recovery clears the recent window and re-arms warm-up;
 the renderer-session peak survives so the recovery cannot erase the evidence
 that motivated it. Constructing a new renderer creates a new session.
 
-Load percentages are calculated only when the period came from measured display
-timing. A source-rate fallback may be useful elsewhere, but it is not a valid
+Load percentages use the monitor-qualified display rate already selected for
+the rest of the OSD. DXGI swapchain frame-statistics cadence is cross-checked
+against that rate and discarded when it belongs to another output. A
+source-rate fallback may be useful elsewhere, but it is not a valid
 display-frame budget and produces no percentage in either the OSD or log.
 
 ## OSD
@@ -102,9 +103,9 @@ display-frame budget and produces no percentage in either the OSD or log.
 The four compact rows fit the existing 540-pixel panel:
 
 ```text
-GPU 10s:         avg 4.42, peak 6.71 ms, max 19%
+GPU 10s:         avg 4.42, worst 6.71 ms, max 19%
 GPU budget:      41.71 ms @ 23.976 Hz
-GPU session:     peak 7.94 ms, max 23%
+GPU session:     worst 7.94 ms, max 23%
 CPU process:     now 12%, peak 34%
 ```
 

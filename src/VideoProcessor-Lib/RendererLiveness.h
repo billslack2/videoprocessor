@@ -101,10 +101,10 @@ struct RendererRenderLoadStat
 // How much of each frame period the renderer is actually consuming.
 //
 // The three costs are NOT interchangeable and must never be summed:
-//   gpu     GPU timestamp envelope from source upload through final rendering
-//           for one successful submission. This is the only figure that scales
-//           with quality settings and the only one that says whether the GPU
-//           has headroom. Present, DWM composition, and scanout are excluded.
+//   gpu     Sum of timestamped GPU work phases from source upload through final
+//           rendering for one successful submission. CPU gaps between phases,
+//           Present, DWM composition, and scanout are excluded. This is the
+//           figure that scales with quality settings and indicates GPU headroom.
 //   render  CPU wall time around the render call - command submission and
 //           driver back-pressure, not shader cost.
 //   swap    Wall time around the present, dominated by the vsync wait. A large

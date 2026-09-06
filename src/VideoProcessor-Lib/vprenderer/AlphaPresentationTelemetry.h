@@ -65,6 +65,9 @@ struct AlphaDxgiPresentationSample
 	uint32_t syncRefreshCount = 0;
 	int64_t syncQpc = 0;
 	int64_t qpcFrequency = 0;
+	// Monitor-qualified rate supplied by the host. A nonzero value constrains
+	// frame-statistics cadence so counters from another output fail closed.
+	double expectedDisplayHz = 0.0;
 };
 
 struct AlphaPresentationSnapshot

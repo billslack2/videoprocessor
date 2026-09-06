@@ -124,6 +124,7 @@ struct StatsData
 	double renderLoadGpuPeakMs = 0.0;
 	bool renderLoadGpuPercentValid = false;
 	double renderLoadGpuPercent = 0.0;
+	double renderLoadGpuWorstLoadMs = 0.0;
 	size_t renderLoadGpuFrames = 0;
 	double renderLoadRenderAvgMs = 0.0;
 	double renderLoadRenderPeakMs = 0.0;
@@ -136,6 +137,7 @@ struct StatsData
 	double renderLoadSessionGpuPeakMs = 0.0;
 	bool renderLoadSessionGpuPercentValid = false;
 	double renderLoadSessionGpuPercent = 0.0;
+	double renderLoadSessionGpuWorstLoadMs = 0.0;
 
 	// CPU actually charged to the process, as a share of the whole machine.
 	// Not wall time around a call - see ProcessCpuUsageMeter.

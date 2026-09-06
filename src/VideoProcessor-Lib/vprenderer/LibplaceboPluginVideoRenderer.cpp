@@ -494,6 +494,13 @@ bool LibplaceboPluginVideoRenderer::GetRenderLoad(RendererRenderLoad& load) cons
 }
 
 
+void LibplaceboPluginVideoRenderer::SetRenderLoadDisplayRefreshRate(
+	double refreshRateHz)
+{
+	m_renderer->SetRenderLoadDisplayRefreshRate(refreshRateHz);
+}
+
+
 bool LibplaceboPluginVideoRenderer::GetOutputModeInfo(CString& details) const
 {
 	return m_renderer->GetOutputModeInfo(details);

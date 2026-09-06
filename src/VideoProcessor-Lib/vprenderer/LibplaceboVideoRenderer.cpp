@@ -3530,6 +3530,12 @@ struct LibplaceboVideoRenderer::Impl
 	// Per-frame render cost. Query results arrive later, then match the exact
 	// successful submission by generation, source sequence, and submission ID.
 	AlphaRenderLoadMeter renderLoadMeter;
+	// Supplied by the host's monitor-qualified display-rate estimator. Never
+	// infer a render budget from DXGI frame-statistics counters alone: drivers
+	// can silently switch those counters to another output.
+	std::atomic<double> renderLoadDisplayRefreshHz{ 0.0 };
+	double latestGpuEnvelopeMs = 0.0;
+	double latestGpuIdleMs = 0.0;
 	ActivePictureTransitionModel nlsTransition;
 	ConfiguredShaderRule nlsRule;
 	std::string requestedShaderSelector;
@@ -9225,6 +9231,8 @@ struct LibplaceboVideoRenderer::Impl
 			if (resolveResult ==
 				AlphaD3D11FrameGpuTimer::ResolveResult::Resolved)
 			{
+				latestGpuEnvelopeMs = gpuSample.envelopeMilliseconds;
+				latestGpuIdleMs = gpuSample.idleMilliseconds;
 				renderLoadMeter.RecordGpuFrame(gpuSample.generation,
 					gpuSample.sourceSequence, gpuSample.submissionSerial,
 					gpuSample.milliseconds, gpuSample.lagFrames,
@@ -11469,6 +11477,8 @@ struct LibplaceboVideoRenderer::Impl
 			AlphaDxgiPresentationSample sample;
 			sample.generation = frameGeneration;
 			sample.qpcFrequency = qpcFrequency.QuadPart;
+			sample.expectedDisplayHz =
+				renderLoadDisplayRefreshHz.load(std::memory_order_acquire);
 			CComPtr<IDXGISwapChain> nativeSwapchain;
 			nativeSwapchain.Attach(pl_d3d11_swapchain_unwrap(swapchain));
 			if (nativeSwapchain)
@@ -11561,11 +11571,14 @@ struct LibplaceboVideoRenderer::Impl
 			resetObservation.healthyQueueDepth = desiredQueueDepth;
 			// Whether this is the DISPLAY rate or the source-rate fallback
 			// decides whether a load percentage can honestly be shown at all.
+			const double authoritativeDisplayHz =
+				renderLoadDisplayRefreshHz.load(std::memory_order_acquire);
 			const bool framePeriodFromDisplay =
-				presentationSnapshot.measuredDisplayHz >= 10.0;
+				authoritativeDisplayHz >= 10.0 &&
+				authoritativeDisplayHz <= 500.0;
 			resetObservation.framePeriodMs =
 				framePeriodFromDisplay ?
-					1000.0 / presentationSnapshot.measuredDisplayHz :
+					1000.0 / authoritativeDisplayHz :
 					captureRateHz >= 10.0 ? 1000.0 / captureRateHz : 0.0;
 			// Every successfully submitted frame enters the render-load window
 			// here, which is what makes the OSD peak trustworthy: the telemetry
@@ -11617,7 +11630,7 @@ struct LibplaceboVideoRenderer::Impl
 					presentationTelemetry.Snapshot();
 				const RendererRenderLoad load = RenderLoadSnapshot();
 				DebugLog::Log(
-					"Alpha presentation telemetry: generation=%llu evidence=%d timing=%s frame_stats_hr=0x%08lX retained=%zu source=%llu presented=%llu debt=%llu present_id=%u refresh=%u display_hz=%.5f cadence_samples=%u queue_after=%zu oldest_ms=%.2f render_ms=%.2f swap_ms=%.2f gpu_timed=%d submitted_window_frames=%zu gpu_frames=%zu gpu_ms=%.3f gpu_avg_ms=%.3f gpu_peak_ms=%.3f gpu_load_valid=%d gpu_load_pct=%.1f gpu_load_ms=%.3f gpu_load_period_ms=%.3f gpu_source=%llu gpu_submission=%llu gpu_lag_frames=%llu gpu_segments=%zu gpu_pending=%llu gpu_resolved=%llu gpu_not_ready=%llu gpu_disjoint=%llu gpu_query_failures=%llu gpu_rejected=%llu gpu_overruns=%llu gpu_unmatched=%llu gpu_invalid=%llu gpu_warmup=%llu gpu_lock_drops=%llu render_avg_ms=%.2f render_peak_ms=%.2f gpu_session_peak_ms=%.3f gpu_session_load_valid=%d gpu_session_pct=%.1f gpu_session_load_ms=%.3f gpu_session_load_period_ms=%.3f session_frames=%llu session_gpu_frames=%llu settling=%d window_s=%.1f frame_period_src=%s",
+					"Alpha presentation telemetry: generation=%llu evidence=%d timing=%s frame_stats_hr=0x%08lX retained=%zu source=%llu presented=%llu debt=%llu present_id=%u refresh=%u display_hz=%.5f display_target_hz=%.5f cadence_samples=%u queue_after=%zu oldest_ms=%.2f render_ms=%.2f swap_ms=%.2f gpu_timed=%d submitted_window_frames=%zu gpu_frames=%zu gpu_ms=%.3f gpu_envelope_ms=%.3f gpu_idle_ms=%.3f gpu_avg_ms=%.3f gpu_peak_ms=%.3f gpu_load_valid=%d gpu_load_pct=%.1f gpu_load_ms=%.3f gpu_load_period_ms=%.3f gpu_source=%llu gpu_submission=%llu gpu_lag_frames=%llu gpu_segments=%zu gpu_pending=%llu gpu_resolved=%llu gpu_not_ready=%llu gpu_disjoint=%llu gpu_query_failures=%llu gpu_rejected=%llu gpu_overruns=%llu gpu_unmatched=%llu gpu_invalid=%llu gpu_warmup=%llu gpu_lock_drops=%llu render_avg_ms=%.2f render_peak_ms=%.2f gpu_session_peak_ms=%.3f gpu_session_load_valid=%d gpu_session_pct=%.1f gpu_session_load_ms=%.3f gpu_session_load_period_ms=%.3f session_frames=%llu session_gpu_frames=%llu settling=%d window_s=%.1f frame_period_src=%s",
 					static_cast<unsigned long long>(snapshot.generation),
 					static_cast<int>(snapshot.evidence),
 					AlphaPresentationTimingStatusText(snapshot.timingStatus),
@@ -11632,6 +11645,7 @@ struct LibplaceboVideoRenderer::Impl
 					snapshot.lastPresentId,
 					snapshot.lastPresentRefresh,
 					snapshot.measuredDisplayHz,
+					renderLoadDisplayRefreshHz.load(std::memory_order_acquire),
 					snapshot.cadenceSamples,
 					queueDepthAfterDequeue,
 					oldestQueuedAgeMs,
@@ -11641,6 +11655,8 @@ struct LibplaceboVideoRenderer::Impl
 					load.frames,
 					load.gpuFrames,
 					load.gpu.last,
+					latestGpuEnvelopeMs,
+					latestGpuIdleMs,
 					load.gpu.average,
 					load.gpu.peak,
 					load.gpuLoadPercentValid ? 1 : 0,
@@ -13597,6 +13613,19 @@ bool LibplaceboVideoRenderer::GetRenderLoad(RendererRenderLoad& load) const
 	// reads `settling` and `gpuValid` to decide what to print; whether a
 	// sample happens to be in the window is not the caller's question.
 	return load.supported;
+}
+
+
+void LibplaceboVideoRenderer::SetRenderLoadDisplayRefreshRate(
+	double refreshRateHz)
+{
+	if (!m_impl)
+		return;
+	const double validated = std::isfinite(refreshRateHz) &&
+		refreshRateHz >= 10.0 && refreshRateHz <= 500.0 ?
+		refreshRateHz : 0.0;
+	m_impl->renderLoadDisplayRefreshHz.store(
+		validated, std::memory_order_release);
 }
 
 

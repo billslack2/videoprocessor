@@ -1141,8 +1141,9 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 			line.Format(TEXT("GPU 10s:         measuring..."));
 		else if (m_stats.renderLoadGpuPercentValid)
 			line.Format(
-				TEXT("GPU 10s:         avg %.2f, peak %.2f ms, max %.0f%%"),
-				m_stats.renderLoadGpuAvgMs, m_stats.renderLoadGpuPeakMs,
+				TEXT("GPU 10s:         avg %.2f, worst %.2f ms, max %.0f%%"),
+				m_stats.renderLoadGpuAvgMs,
+				m_stats.renderLoadGpuWorstLoadMs,
 				m_stats.renderLoadGpuPercent);
 		else
 			line.Format(TEXT("GPU 10s:         avg %.2f, peak %.2f ms"),
@@ -1175,8 +1176,8 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 		if (!m_stats.renderLoadSessionPeakValid)
 			line.Format(TEXT("GPU session:     measuring..."));
 		else if (m_stats.renderLoadSessionGpuPercentValid)
-			line.Format(TEXT("GPU session:     peak %.2f ms, max %.0f%%"),
-				m_stats.renderLoadSessionGpuPeakMs,
+			line.Format(TEXT("GPU session:     worst %.2f ms, max %.0f%%"),
+				m_stats.renderLoadSessionGpuWorstLoadMs,
 				m_stats.renderLoadSessionGpuPercent);
 		else
 			line.Format(TEXT("GPU session:     peak %.2f ms"),

@@ -41,7 +41,11 @@ public:
 		uint64_t submissionSerial = 0;
 		uint64_t lagFrames = 0;
 		size_t segmentCount = 0;
+		// Sum of the explicitly scoped GPU operations. CPU submission gaps are
+		// excluded, while envelopeMilliseconds remains available for diagnosis.
 		double milliseconds = 0.0;
+		double envelopeMilliseconds = 0.0;
+		double idleMilliseconds = 0.0;
 	};
 
 	struct Diagnostics
@@ -73,11 +77,16 @@ public:
 				ReleaseResources();
 				return false;
 			}
-			if (FAILED(device->CreateQuery(&timestamp, &slot.frameStart)) ||
-				FAILED(device->CreateQuery(&timestamp, &slot.frameEnd)))
+			for (size_t segment = 0; segment < MAX_SEGMENTS; ++segment)
 			{
-				ReleaseResources();
-				return false;
+				if (FAILED(device->CreateQuery(&timestamp,
+					&slot.segmentStart[segment])) ||
+					FAILED(device->CreateQuery(&timestamp,
+						&slot.segmentEnd[segment])))
+				{
+					ReleaseResources();
+					return false;
+				}
 			}
 		}
 		m_supported.store(true, std::memory_order_release);
@@ -138,10 +147,9 @@ public:
 		return true;
 	}
 
-	// One frame owns one disjoint query and exactly two timestamp commands. The
-	// first operation emits frameStart; EndFrame emits frameEnd after the final
-	// operation. Segment count remains a coverage diagnostic but does not add
-	// per-operation query overhead.
+	// One frame owns one disjoint query. Each explicitly scoped GPU operation
+	// owns a timestamp pair, allowing resolution to sum GPU work without
+	// charging CPU time between command-submission phases.
 	bool BeginSegment(ID3D11DeviceContext* context)
 	{
 		if (!m_active || m_segmentActive || !context ||
@@ -152,8 +160,7 @@ public:
 			return false;
 		}
 		Slot& slot = m_slots[m_activeIndex];
-		if (m_segmentCount == 0)
-			context->End(slot.frameStart);
+		context->End(slot.segmentStart[m_segmentCount]);
 		m_segmentActive = true;
 		return true;
 	}
@@ -163,6 +170,7 @@ public:
 		if (!m_active || !m_segmentActive || !context)
 			return;
 		Slot& slot = m_slots[m_activeIndex];
+		context->End(slot.segmentEnd[m_segmentCount]);
 		++m_segmentCount;
 		m_segmentActive = false;
 	}
@@ -175,7 +183,6 @@ public:
 		if (m_segmentActive)
 			EndSegment(context);
 		Slot& slot = m_slots[m_activeIndex];
-		context->End(slot.frameEnd);
 		context->End(slot.disjoint);
 		slot.segmentCount = m_segmentCount;
 		slot.measurementValid = m_measurementValid && m_segmentCount > 0;
@@ -238,34 +245,48 @@ public:
 			return DiscardOldest(m_disjoint);
 
 		UINT64 firstStart = 0;
+		UINT64 previousEnd = 0;
 		UINT64 lastEnd = 0;
-		result = context->GetData(slot.frameStart, &firstStart,
-			sizeof(firstStart), flags);
-		if (result == S_FALSE)
+		UINT64 workTicks = 0;
+		for (size_t segment = 0; segment < slot.segmentCount; ++segment)
 		{
-			m_notReady.fetch_add(1, std::memory_order_relaxed);
-			return ResolveResult::NotReady;
+			UINT64 start = 0;
+			UINT64 end = 0;
+			result = context->GetData(slot.segmentStart[segment], &start,
+				sizeof(start), flags);
+			if (result == S_FALSE)
+			{
+				m_notReady.fetch_add(1, std::memory_order_relaxed);
+				return ResolveResult::NotReady;
+			}
+			if (result != S_OK)
+				return DiscardOldest(m_queryFailures);
+			result = context->GetData(slot.segmentEnd[segment], &end,
+				sizeof(end), flags);
+			if (result == S_FALSE)
+			{
+				m_notReady.fetch_add(1, std::memory_order_relaxed);
+				return ResolveResult::NotReady;
+			}
+			if (result != S_OK || end <= start ||
+				(segment != 0 && start < previousEnd))
+			{
+				return DiscardOldest(m_queryFailures);
+			}
+			if (segment == 0)
+				firstStart = start;
+			workTicks += end - start;
+			previousEnd = end;
+			lastEnd = end;
 		}
-		if (result != S_OK)
-			return DiscardOldest(m_queryFailures);
-		result = context->GetData(slot.frameEnd, &lastEnd,
-			sizeof(lastEnd), flags);
-		if (result == S_FALSE)
-		{
-			m_notReady.fetch_add(1, std::memory_order_relaxed);
-			return ResolveResult::NotReady;
-		}
-		if (result != S_OK)
-			return DiscardOldest(m_queryFailures);
-		if (lastEnd <= firstStart)
+		const UINT64 envelopeTicks = lastEnd - firstStart;
+		if (workTicks == 0 || workTicks > envelopeTicks)
 			return DiscardOldest(m_queryFailures);
 
-		// The refresh-budget metric is the end-to-end GPU timeline from the
-		// first source upload through final rendering. Do not sum phase durations:
-		// a driver may overlap copy and shader engines, and summing would count
-		// that overlap twice.
-		const double milliseconds = static_cast<double>(lastEnd - firstStart) *
-			1000.0 /
+		const double milliseconds = static_cast<double>(workTicks) * 1000.0 /
+			static_cast<double>(timing.Frequency);
+		const double envelopeMilliseconds =
+			static_cast<double>(envelopeTicks) * 1000.0 /
 			static_cast<double>(timing.Frequency);
 		if (!std::isfinite(milliseconds) || milliseconds <= 0.0 ||
 			milliseconds > MAXIMUM_VALID_FRAME_MS)
@@ -279,6 +300,8 @@ public:
 		sample.lagFrames = m_frameOrdinal - slot.ordinal;
 		sample.segmentCount = slot.segmentCount;
 		sample.milliseconds = milliseconds;
+		sample.envelopeMilliseconds = envelopeMilliseconds;
+		sample.idleMilliseconds = envelopeMilliseconds - milliseconds;
 		m_resolved.fetch_add(1, std::memory_order_relaxed);
 		PopOldest();
 		return ResolveResult::Resolved;
@@ -302,8 +325,8 @@ private:
 	struct Slot
 	{
 		CComPtr<ID3D11Query> disjoint;
-		CComPtr<ID3D11Query> frameStart;
-		CComPtr<ID3D11Query> frameEnd;
+		std::array<CComPtr<ID3D11Query>, MAX_SEGMENTS> segmentStart;
+		std::array<CComPtr<ID3D11Query>, MAX_SEGMENTS> segmentEnd;
 		uint64_t generation = 0;
 		uint64_t sourceSequence = 0;
 		uint64_t submissionSerial = 0;

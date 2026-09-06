@@ -4,23 +4,21 @@ The Ctrl+I additions answer one question: how much of the measured display
 refresh is consumed by VP Renderer's GPU work?
 
 ```text
-GPU 10s:         avg 4.42, peak 6.71 ms, max 19%
+GPU 10s:         avg 4.42, worst 6.71 ms, max 19%
 GPU budget:      41.71 ms @ 23.976 Hz
-GPU session:     peak 7.94 ms, max 23%
+GPU session:     worst 7.94 ms, max 23%
 CPU process:     now 12%, peak 34%
 ```
 
-`GPU 10s` shows the average and largest accepted end-to-end VP GPU interval in
-the latest ten seconds. The interval begins with source upload and ends after
-final rendering; it includes clear and changed OSD texture uploads but excludes
-Present, DWM composition, and scanout. `max` is the largest percentage of a
-measured display period used by any sample in the window. It is tracked
-independently from the largest millisecond interval, because a shorter interval
-at a faster refresh rate can consume more of the available budget.
+`GPU 10s` shows the average summed VP GPU work in the latest ten seconds and the
+sample that consumed the largest share of one display refresh. Source upload,
+clear, changed OSD texture uploads, and final rendering are included. CPU gaps
+between those phases, Present, DWM composition, and scanout are excluded.
 
-`GPU budget` is one measured display refresh. At 23.976 Hz it is about 41.71
-ms; at 59.94 Hz it is about 16.68 ms. If display timing is unavailable, VP says
-so and suppresses percentages rather than substituting the source period.
+`GPU budget` is one monitor-qualified display refresh. At 23.976 Hz it is about
+41.71 ms; at 59.94 Hz it is about 16.68 ms. If display timing is unavailable,
+VP says so and suppresses percentages rather than substituting the source
+period. Swapchain cadence that disagrees with the selected output is discarded.
 
 `GPU session` is the worst accepted interval since this renderer instance
 started, excluding warm-up. It does not decay with the ten-second window. A
@@ -57,7 +55,8 @@ Useful GPU fields on `Alpha presentation telemetry:` include:
 
 | Field | Meaning |
 |---|---|
-| `gpu_ms`, `gpu_avg_ms`, `gpu_peak_ms` | newest, average, and ten-second peak |
+| `gpu_ms`, `gpu_avg_ms`, `gpu_peak_ms` | newest, average, and ten-second GPU work |
+| `gpu_envelope_ms`, `gpu_idle_ms` | first-to-last envelope and excluded inter-phase gap |
 | `gpu_load_valid`, `gpu_load_pct` | validity and worst ten-second budget utilization |
 | `gpu_load_ms`, `gpu_load_period_ms` | interval and display period belonging to that utilization |
 | `gpu_session_peak_ms`, `gpu_session_pct` | renderer-session peak |
