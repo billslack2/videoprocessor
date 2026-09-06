@@ -144,6 +144,7 @@ PL_API pl_d3d11 pl_d3d11_create(pl_log log, const struct pl_d3d11_params *params
 // backend. This must be called before creating any object which may allocate a
 // `pl_timer` (for example, before `pl_renderer_create`). Returns false if timer
 // objects are already alive, leaving the current setting unchanged.
+// This initialization-only function is not thread-safe.
 //
 // Disabling timer queries does not affect rendering. `pl_timer_create` returns
 // NULL while disabled, suppressing timing samples normally exposed through

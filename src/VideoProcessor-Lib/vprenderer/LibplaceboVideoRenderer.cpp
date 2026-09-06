@@ -11616,7 +11616,7 @@ struct LibplaceboVideoRenderer::Impl
 					presentationTelemetry.Snapshot();
 				const RendererRenderLoad load = RenderLoadSnapshot();
 				DebugLog::Log(
-					"Alpha presentation telemetry: generation=%llu evidence=%d timing=%s frame_stats_hr=0x%08lX retained=%zu source=%llu presented=%llu debt=%llu present_id=%u refresh=%u display_hz=%.5f cadence_samples=%u queue_after=%zu oldest_ms=%.2f render_ms=%.2f swap_ms=%.2f gpu_timed=%d presented_window_frames=%zu gpu_frames=%zu gpu_ms=%.3f gpu_avg_ms=%.3f gpu_peak_ms=%.3f gpu_load_pct=%.1f gpu_source=%llu gpu_submission=%llu gpu_lag_frames=%llu gpu_segments=%zu gpu_pending=%llu gpu_resolved=%llu gpu_not_ready=%llu gpu_disjoint=%llu gpu_query_failures=%llu gpu_rejected=%llu gpu_overruns=%llu gpu_unmatched=%llu gpu_invalid=%llu gpu_warmup=%llu render_avg_ms=%.2f render_peak_ms=%.2f gpu_session_peak_ms=%.3f gpu_session_pct=%.1f session_frames=%llu session_gpu_frames=%llu settling=%d window_s=%.1f frame_period_src=%s",
+					"Alpha presentation telemetry: generation=%llu evidence=%d timing=%s frame_stats_hr=0x%08lX retained=%zu source=%llu presented=%llu debt=%llu present_id=%u refresh=%u display_hz=%.5f cadence_samples=%u queue_after=%zu oldest_ms=%.2f render_ms=%.2f swap_ms=%.2f gpu_timed=%d submitted_window_frames=%zu gpu_frames=%zu gpu_ms=%.3f gpu_avg_ms=%.3f gpu_peak_ms=%.3f gpu_load_valid=%d gpu_load_pct=%.1f gpu_load_ms=%.3f gpu_load_period_ms=%.3f gpu_source=%llu gpu_submission=%llu gpu_lag_frames=%llu gpu_segments=%zu gpu_pending=%llu gpu_resolved=%llu gpu_not_ready=%llu gpu_disjoint=%llu gpu_query_failures=%llu gpu_rejected=%llu gpu_overruns=%llu gpu_unmatched=%llu gpu_invalid=%llu gpu_warmup=%llu gpu_lock_drops=%llu render_avg_ms=%.2f render_peak_ms=%.2f gpu_session_peak_ms=%.3f gpu_session_load_valid=%d gpu_session_pct=%.1f gpu_session_load_ms=%.3f gpu_session_load_period_ms=%.3f session_frames=%llu session_gpu_frames=%llu settling=%d window_s=%.1f frame_period_src=%s",
 					static_cast<unsigned long long>(snapshot.generation),
 					static_cast<int>(snapshot.evidence),
 					AlphaPresentationTimingStatusText(snapshot.timingStatus),
@@ -11642,7 +11642,10 @@ struct LibplaceboVideoRenderer::Impl
 					load.gpu.last,
 					load.gpu.average,
 					load.gpu.peak,
+					load.gpuLoadPercentValid ? 1 : 0,
 					load.gpuLoadPercent,
+					load.gpuWorstLoadMs,
+					load.gpuWorstLoadFramePeriodMs,
 					static_cast<unsigned long long>(
 						load.latestGpuSourceSequence),
 					static_cast<unsigned long long>(
@@ -11659,10 +11662,15 @@ struct LibplaceboVideoRenderer::Impl
 					static_cast<unsigned long long>(load.unmatchedGpuSamples),
 					static_cast<unsigned long long>(load.invalidGpuSamples),
 					static_cast<unsigned long long>(load.warmupGpuSamples),
+					static_cast<unsigned long long>(
+						load.telemetryContentionDrops),
 					load.render.average,
 					load.render.peak,
 					load.sessionGpuPeakMs,
+					load.sessionGpuPercentValid ? 1 : 0,
 					load.sessionGpuPercent,
+					load.sessionGpuWorstLoadMs,
+					load.sessionGpuWorstLoadFramePeriodMs,
 					static_cast<unsigned long long>(load.sessionFrames),
 					static_cast<unsigned long long>(load.sessionGpuFrames),
 					load.settling ? 1 : 0,

@@ -89,21 +89,29 @@ namespace Tests
 			Assert::AreEqual<size_t>(7, snapshot.latestGpuSegments);
 		}
 
-		TEST_METHOD(PeakPercentageUsesThatFramesDisplayPeriod)
+		TEST_METHOD(WorstLoadIsIndependentFromLargestMillisecondPeak)
 		{
 			AlphaRenderLoadMeter meter(0.0);
-			meter.CommitFrame(1, 1, 1, 1.0, 0.1, 20.0, true);
+			meter.CommitFrame(1, 1, 1, 1.0, 0.1, 40.0, true);
 			Assert::IsTrue(meter.RecordGpuFrame(1, 1, 1, 8.0, 2));
 
-			// A later, faster refresh must not reinterpret the earlier peak.
+			// A shorter interval at a faster refresh can consume more budget.
 			meter.CommitFrame(1, 2, 2, 1.0, 0.1, 10.0, true);
-			Assert::IsTrue(meter.RecordGpuFrame(1, 2, 2, 4.0, 2));
+			Assert::IsTrue(meter.RecordGpuFrame(1, 2, 2, 7.0, 2));
 
 			const RendererRenderLoad snapshot = meter.Snapshot();
 			Assert::AreEqual(8.0, snapshot.gpu.peak, 0.001);
-			Assert::AreEqual(40.0, snapshot.gpuLoadPercent, 0.001);
+			Assert::IsTrue(snapshot.gpuLoadPercentValid);
+			Assert::AreEqual(70.0, snapshot.gpuLoadPercent, 0.001);
+			Assert::AreEqual(7.0, snapshot.gpuWorstLoadMs, 0.001);
+			Assert::AreEqual(10.0,
+				snapshot.gpuWorstLoadFramePeriodMs, 0.001);
 			Assert::AreEqual(8.0, snapshot.sessionGpuPeakMs, 0.001);
-			Assert::AreEqual(40.0, snapshot.sessionGpuPercent, 0.001);
+			Assert::IsTrue(snapshot.sessionGpuPercentValid);
+			Assert::AreEqual(70.0, snapshot.sessionGpuPercent, 0.001);
+			Assert::AreEqual(7.0, snapshot.sessionGpuWorstLoadMs, 0.001);
+			Assert::AreEqual(10.0,
+				snapshot.sessionGpuWorstLoadFramePeriodMs, 0.001);
 		}
 
 		TEST_METHOD(SuppressesPercentagesWithoutDisplayPeriod)
@@ -114,7 +122,9 @@ namespace Tests
 
 			const RendererRenderLoad snapshot = meter.Snapshot();
 			Assert::IsTrue(snapshot.gpuValid);
+			Assert::IsFalse(snapshot.gpuLoadPercentValid);
 			Assert::AreEqual(0.0, snapshot.gpuLoadPercent, 0.001);
+			Assert::IsFalse(snapshot.sessionGpuPercentValid);
 			Assert::AreEqual(0.0, snapshot.sessionGpuPercent, 0.001);
 		}
 

@@ -15743,6 +15743,8 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 			stats.renderLoadGpuLastMs = renderLoad.gpu.last;
 			stats.renderLoadGpuAvgMs = renderLoad.gpu.average;
 			stats.renderLoadGpuPeakMs = renderLoad.gpu.peak;
+			stats.renderLoadGpuPercentValid =
+				renderLoad.gpuLoadPercentValid;
 			stats.renderLoadGpuPercent = renderLoad.gpuLoadPercent;
 			stats.renderLoadGpuFrames = renderLoad.gpuFrames;
 			stats.renderLoadRenderAvgMs = renderLoad.render.average;
@@ -15752,6 +15754,8 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 			stats.renderLoadSessionFrames = renderLoad.sessionFrames;
 			stats.renderLoadSessionGpuFrames = renderLoad.sessionGpuFrames;
 			stats.renderLoadSessionGpuPeakMs = renderLoad.sessionGpuPeakMs;
+			stats.renderLoadSessionGpuPercentValid =
+				renderLoad.sessionGpuPercentValid;
 			stats.renderLoadSessionGpuPercent = renderLoad.sessionGpuPercent;
 		}
 

@@ -133,10 +133,13 @@ struct RendererRenderLoad
 	uint64_t latestGpuSubmissionSerial = 0;
 	uint64_t latestGpuLagFrames = 0;
 	size_t latestGpuSegments = 0;
-	// Peak GPU cost as a percentage of one frame period. Peak rather than
-	// average because a single overrun is visible on screen, and an average
-	// that hides it is what makes a marginal setting look safe.
+	// Worst valid refresh-budget utilization is tracked independently from the
+	// largest millisecond interval. This remains correct if refresh rate changes
+	// while the rolling window is populated.
+	bool gpuLoadPercentValid = false;
 	double gpuLoadPercent = 0.0;
+	double gpuWorstLoadMs = 0.0;
+	double gpuWorstLoadFramePeriodMs = 0.0;
 
 	// The rolling window above is measured in SECONDS, not frames, so a 24p
 	// and a 60p run describe the same span and can be compared.
@@ -161,7 +164,10 @@ struct RendererRenderLoad
 	uint64_t sessionGpuFrames = 0;
 	double sessionGpuPeakMs = 0.0;
 	double sessionRenderPeakMs = 0.0;
-	double sessionGpuPercent = 0.0; // session peak against one frame period
+	bool sessionGpuPercentValid = false;
+	double sessionGpuPercent = 0.0;
+	double sessionGpuWorstLoadMs = 0.0;
+	double sessionGpuWorstLoadFramePeriodMs = 0.0;
 
 	// Fail-closed query diagnostics. None of these samples enter the load
 	// statistics above.
@@ -175,6 +181,7 @@ struct RendererRenderLoad
 	uint64_t unmatchedGpuSamples = 0;
 	uint64_t invalidGpuSamples = 0;
 	uint64_t warmupGpuSamples = 0;
+	uint64_t telemetryContentionDrops = 0;
 };
 
 // A graph-clock rollback can create a new timestamp lineage without changing

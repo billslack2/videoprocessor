@@ -15,8 +15,8 @@ of latency.
 VP owns a fixed ring of 16 D3D11 query sets. Each set contains:
 
 - one enclosing `D3D11_QUERY_TIMESTAMP_DISJOINT` query
-- fixed timestamp pairs around source-plane upload, target clear, changed OSD
-  texture uploads, and `pl_render_image`
+- one start timestamp immediately before source-plane upload
+- one end timestamp immediately after `pl_render_image`
 
 The primary duration is the GPU timeline envelope from the first source-upload
 timestamp to the final render timestamp. It measures the end-to-end GPU work VP
@@ -57,8 +57,10 @@ current source frame, so its results cannot form an exact per-frame ledger.
 
 ## No-wait rule
 
-Query objects are allocated once during renderer initialization. During
-rendering VP:
+The segment counter verifies that source upload, target clear, changed OSD
+texture uploads, and `pl_render_image` were all bracketed, but those operations
+do not each allocate or issue an extra timestamp. Query objects are allocated
+once during renderer initialization. During rendering VP:
 
 1. polls only the oldest query, at least two issued frames later
 2. passes `D3D11_ASYNC_GETDATA_DONOTFLUSH`
@@ -71,10 +73,10 @@ therefore intentionally a few frames late in the OSD, but video is not held for
 them. Telemetry records `gpu_source`, `gpu_submission`, and `gpu_lag_frames` so
 that delay is observable.
 
-The measurement still has small, non-zero timestamp-command and polling
+The measurement still has small, non-zero two-timestamp-command and polling
 overhead. The libplacebo per-pass info callback is left null, avoiding its
 sample-history copy and VP's former per-pass mutex. All query objects are
-preallocated, and no per-frame allocation or synchronization is introduced,
+preallocated, and no render-path operation waits for telemetry synchronization,
 but on-hardware A/B measurement is still needed before claiming zero impact.
 
 ## Statistics
@@ -82,8 +84,9 @@ but on-hardware A/B measurement is still needed before claiming zero impact.
 Accepted samples feed:
 
 - average over a 10-second time window
-- peak over that 10-second window
-- peak over the renderer session
+- peak milliseconds and worst display-budget utilization over that 10-second
+  window, tracked independently so refresh-rate changes cannot hide risk
+- peak milliseconds and worst utilization over the renderer session
 
 Warm-up samples are excluded for at least three seconds after renderer start or
 timing reset. A backlog recovery clears the recent window and re-arms warm-up;
@@ -99,9 +102,9 @@ display-frame budget and produces no percentage in either the OSD or log.
 The four compact rows fit the existing 540-pixel panel:
 
 ```text
-GPU 10s:         avg 4.42, peak 6.71 ms (16%)
+GPU 10s:         avg 4.42, peak 6.71 ms, max 19%
 GPU budget:      41.71 ms @ 23.976 Hz
-GPU session:     peak 7.94 ms (19%)
+GPU session:     peak 7.94 ms, max 23%
 CPU process:     now 12%, peak 34%
 ```
 
@@ -119,7 +122,9 @@ interval.
 The existing `Alpha presentation telemetry:` line retains its earlier fields
 and appends window, session, provenance, query-health, and discard counters.
 `render_ms` and `swap_ms` remain CPU wall-time diagnostics and are not displayed
-as GPU cost.
+as GPU cost. Render-thread updates and snapshots use fail-open lock acquisition:
+if another thread owns the telemetry lock, that diagnostic operation is dropped
+and counted in `gpu_lock_drops` rather than delaying presentation.
 
 `GetRenderLoad` changes the renderer interface, so the plugin API version is
 bumped and the host and `VideoProcessorVPRenderer.dll` must be built from the
@@ -130,9 +135,9 @@ same source tree.
 The paired x64 Release libplacebo and VP builds complete successfully.
 Libplacebo's 14 runnable tests and VP's 1,054 core tests pass; the complete
 configuration/UI executable test suite also passes. Automated tests cover exact
-generation/source/submission matching, stale
-results after a reset, repeated source sequences, segment provenance, invalid
-duration rejection, suppression of source-rate percentages, and retention of
-the display period belonging to a peak. Hardware A/B timing and visual
+generation/source/submission matching, stale results after a reset, repeated
+source sequences, segment provenance, invalid duration rejection, suppression
+of source-rate percentages, and independent worst-budget tracking across
+refresh-rate changes. Hardware A/B timing and visual
 inspection remain required because unit tests cannot measure driver overhead
 or scanout.

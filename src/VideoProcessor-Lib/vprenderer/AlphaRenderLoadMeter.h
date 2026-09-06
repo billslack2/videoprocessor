@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstddef>
@@ -44,11 +45,14 @@ public:
 	// new meter and therefore starts a genuinely new session.
 	void Reset()
 	{
-		std::lock_guard<std::mutex> guard(m_mutex);
-		m_head = 0;
-		m_count = 0;
-		m_gpuEverTimed = false;
-		m_guardStart = Clock::now();
+		std::unique_lock<std::mutex> guard(m_mutex, std::try_to_lock);
+		if (!guard.owns_lock())
+		{
+			m_resetPending.store(true, std::memory_order_release);
+			m_contentionDrops.fetch_add(1, std::memory_order_relaxed);
+			return;
+		}
+		ResetWindowLocked();
 	}
 
 	// Records identity and CPU wall-time diagnostics only after both render and
@@ -58,7 +62,13 @@ public:
 		double renderMs, double swapMs, double framePeriodMs,
 		bool framePeriodFromDisplay)
 	{
-		std::lock_guard<std::mutex> guard(m_mutex);
+		std::unique_lock<std::mutex> guard(m_mutex, std::try_to_lock);
+		if (!guard.owns_lock())
+		{
+			m_contentionDrops.fetch_add(1, std::memory_order_relaxed);
+			return;
+		}
+		ApplyPendingResetLocked();
 		if (framePeriodMs > 0.0)
 		{
 			m_framePeriodMs = Sanitized(framePeriodMs);
@@ -101,7 +111,13 @@ public:
 		uint64_t submissionSerial,
 		double gpuMs, uint64_t lagFrames, size_t segmentCount = 0)
 	{
-		std::lock_guard<std::mutex> guard(m_mutex);
+		std::unique_lock<std::mutex> guard(m_mutex, std::try_to_lock);
+		if (!guard.owns_lock())
+		{
+			m_contentionDrops.fetch_add(1, std::memory_order_relaxed);
+			return false;
+		}
+		ApplyPendingResetLocked();
 		gpuMs = Sanitized(gpuMs);
 		if (gpuMs <= 0.0 || gpuMs > MAXIMUM_VALID_GPU_MS)
 		{
@@ -130,12 +146,22 @@ public:
 			m_latestGpuLagFrames = lagFrames;
 			m_latestGpuSegments = segmentCount;
 			if (!m_sessionPeakValid || gpuMs > m_sessionGpuPeakMs)
-			{
 				m_sessionGpuPeakMs = gpuMs;
-				m_sessionGpuPercent = sample.framePeriodFromDisplay ?
-					100.0 * gpuMs / sample.framePeriodMs : 0.0;
-			}
 			m_sessionPeakValid = true;
+			if (sample.framePeriodFromDisplay)
+			{
+				const double percent =
+					100.0 * gpuMs / sample.framePeriodMs;
+				if (!m_sessionGpuPercentValid ||
+					percent > m_sessionGpuPercent)
+				{
+					m_sessionGpuPercentValid = true;
+					m_sessionGpuPercent = percent;
+					m_sessionGpuWorstLoadMs = gpuMs;
+					m_sessionGpuWorstLoadFramePeriodMs =
+						sample.framePeriodMs;
+				}
+			}
 			++m_sessionGpuFrames;
 			return true;
 		}
@@ -145,9 +171,15 @@ public:
 
 	RendererRenderLoad Snapshot() const
 	{
-		std::lock_guard<std::mutex> guard(m_mutex);
+		std::unique_lock<std::mutex> guard(m_mutex, std::try_to_lock);
 		RendererRenderLoad result;
 		result.supported = true;
+		if (!guard.owns_lock())
+		{
+			result.telemetryContentionDrops =
+				m_contentionDrops.fetch_add(1, std::memory_order_relaxed) + 1;
+			return result;
+		}
 		result.windowSeconds = WINDOW_SECONDS;
 		result.framePeriodMs = m_framePeriodMs;
 		result.framePeriodFromDisplay = m_framePeriodFromDisplay;
@@ -166,7 +198,13 @@ public:
 		result.sessionGpuFrames = m_sessionGpuFrames;
 		result.sessionGpuPeakMs = m_sessionGpuPeakMs;
 		result.sessionRenderPeakMs = m_sessionRenderPeakMs;
+		result.sessionGpuPercentValid = m_sessionGpuPercentValid;
 		result.sessionGpuPercent = m_sessionGpuPercent;
+		result.sessionGpuWorstLoadMs = m_sessionGpuWorstLoadMs;
+		result.sessionGpuWorstLoadFramePeriodMs =
+			m_sessionGpuWorstLoadFramePeriodMs;
+		result.telemetryContentionDrops =
+			m_contentionDrops.load(std::memory_order_relaxed);
 
 		result.windowFilledSeconds = WindowSpanMsLocked(now) / 1000.0;
 		size_t live = 0;
@@ -184,11 +222,20 @@ public:
 			{
 				gpuTotal += sample.gpuMs;
 				++gpuTimed;
-				if (sample.gpuMs > result.gpu.peak)
+				result.gpu.peak = (std::max)(result.gpu.peak, sample.gpuMs);
+				if (sample.framePeriodFromDisplay)
 				{
-					result.gpu.peak = sample.gpuMs;
-					result.gpuLoadPercent = sample.framePeriodFromDisplay ?
-						100.0 * sample.gpuMs / sample.framePeriodMs : 0.0;
+					const double percent =
+						100.0 * sample.gpuMs / sample.framePeriodMs;
+					if (!result.gpuLoadPercentValid ||
+						percent > result.gpuLoadPercent)
+					{
+						result.gpuLoadPercentValid = true;
+						result.gpuLoadPercent = percent;
+						result.gpuWorstLoadMs = sample.gpuMs;
+						result.gpuWorstLoadFramePeriodMs =
+							sample.framePeriodMs;
+					}
 				}
 				result.gpu.last = sample.gpuMs;
 			}
@@ -215,6 +262,25 @@ public:
 	}
 
 private:
+	void ResetWindowLocked()
+	{
+		m_head = 0;
+		m_count = 0;
+		m_gpuEverTimed = false;
+		m_guardStart = Clock::now();
+		m_latestGpuSourceSequence = 0;
+		m_latestGpuSubmissionSerial = 0;
+		m_latestGpuLagFrames = 0;
+		m_latestGpuSegments = 0;
+		m_resetPending.store(false, std::memory_order_release);
+	}
+
+	void ApplyPendingResetLocked()
+	{
+		if (m_resetPending.exchange(false, std::memory_order_acq_rel))
+			ResetWindowLocked();
+	}
+
 	struct Sample
 	{
 		Clock::time_point stamp{};
@@ -316,7 +382,10 @@ private:
 	Clock::time_point m_guardStart{};
 
 	double m_sessionGpuPeakMs = 0.0;
+	bool m_sessionGpuPercentValid = false;
 	double m_sessionGpuPercent = 0.0;
+	double m_sessionGpuWorstLoadMs = 0.0;
+	double m_sessionGpuWorstLoadFramePeriodMs = 0.0;
 	double m_sessionRenderPeakMs = 0.0;
 	bool m_sessionPeakValid = false;
 	uint64_t m_sessionFrames = 0;
@@ -328,4 +397,6 @@ private:
 	uint64_t m_unmatchedGpuSamples = 0;
 	uint64_t m_invalidGpuSamples = 0;
 	uint64_t m_warmupGpuSamples = 0;
+	std::atomic_bool m_resetPending{ false };
+	mutable std::atomic<uint64_t> m_contentionDrops{ 0 };
 };
