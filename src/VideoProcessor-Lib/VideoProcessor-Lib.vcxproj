@@ -204,6 +204,7 @@
     <ClInclude Include="framework.h" />
     <ClInclude Include="guid.h" />
     <ClInclude Include="HDRData.h" />
+	<ClInclude Include="CaptureVideoStatePolicy.h" />
     <ClInclude Include="InputLocked.h" />
     <ClInclude Include="IntegerMath.h" />
 	<ClInclude Include="LiveOutputTrace.h" />

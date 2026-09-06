@@ -171,6 +171,9 @@
     <ClInclude Include="HDRData.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+	<ClInclude Include="CaptureVideoStatePolicy.h">
+	  <Filter>Header Files</Filter>
+	</ClInclude>
     <ClInclude Include="IRenderer.h">
       <Filter>Header Files</Filter>
     </ClInclude>

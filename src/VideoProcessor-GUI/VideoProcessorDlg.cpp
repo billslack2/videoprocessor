@@ -51,6 +51,7 @@
 #include <guid.h>
 #include <ConfigFile.h>
 #include <ConfigurationLiveApply.h>
+#include <CaptureVideoStatePolicy.h>
 #include <ActiveProfileStatus.h>
 #include <ActiveOutputSweepPolicy.h>
 #include <EventActionLauncher.h>
@@ -182,6 +183,10 @@ struct CaptureVideoStateNotification
 	uint64_t sequence = 0;
 	uint64_t ingressPublicationUs = 0;
 	bool retainedRendererIngress = false;
+	CaptureVideoStateChangeClass changeClass =
+		CaptureVideoStateChangeClass::Initial;
+	uint64_t captureFrameCounter = 0;
+	std::chrono::steady_clock::time_point publicationTime;
 };
 
 using ConfigurationSnapshot =
@@ -5744,6 +5749,10 @@ LRESULT CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange(WPARAM wParam
 	VideoStateComPtr videoState = notification->state;
 	const uint64_t captureEpoch = notification->captureEpoch;
 	const uint64_t notificationSequence = notification->sequence;
+	const uint64_t handlerLatencyUs = static_cast<uint64_t>(
+		std::chrono::duration_cast<std::chrono::microseconds>(
+			std::chrono::steady_clock::now() -
+			notification->publicationTime).count());
 	{
 		std::lock_guard<std::mutex> sourceLock(
 			m_captureVideoStateNotificationMutex);
@@ -5779,10 +5788,13 @@ LRESULT CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange(WPARAM wParam
 	{
 		DebugLog::Log(
 			"Capture video-state notification superseded before UI handling: "
-			"sequence=%llu latest=%llu valid=%d action=ignore",
+			"sequence=%llu latest=%llu valid=%d change_class=%s "
+			"handler_latency_us=%llu action=ignore",
 			static_cast<unsigned long long>(notificationSequence),
 			static_cast<unsigned long long>(latestNotificationSequence),
-			videoState->valid ? 1 : 0);
+			videoState->valid ? 1 : 0,
+			ToString(notification->changeClass),
+			static_cast<unsigned long long>(handlerLatencyUs));
 		return 0;
 	}
 	m_appliedCaptureVideoStateNotificationSequence =
@@ -5827,16 +5839,19 @@ LRESULT CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange(WPARAM wParam
 		DebugLog::Log(
 			"Transient invalid capture video state deferred: sequence=%llu "
 			"grace_ms=%u captured_frames=%llu action=retain-last-valid-state "
-			"ingress=%s publication_us=%llu "
+			"change_class=%s ingress=%s publication_us=%llu "
+			"handler_latency_us=%llu "
 			"published=%llu required=%llu acknowledged=%llu admitted=%d",
 			static_cast<unsigned long long>(notificationSequence),
 			transientInvalidGraceMs,
 			static_cast<unsigned long long>(
 				m_deferredInvalidCaptureVideoStateFrameCount),
+			ToString(notification->changeClass),
 			notification->retainedRendererIngress ?
 				"retained-at-source" : "awaiting-renderer-acknowledgement",
 			static_cast<unsigned long long>(
 				notification->ingressPublicationUs),
+			static_cast<unsigned long long>(handlerLatencyUs),
 			static_cast<unsigned long long>(ingress.published),
 			static_cast<unsigned long long>(ingress.required),
 			static_cast<unsigned long long>(ingress.acknowledged),
@@ -5850,6 +5865,14 @@ LRESULT CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange(WPARAM wParam
 
 	assert(videoState);
 	assert(m_captureDevice);
+	const CaptureVideoStateChangeClass appliedChangeClass =
+		ClassifyCaptureVideoStateChange(
+			m_captureDeviceVideoState,
+			*videoState);
+	const bool metadataOnlyUpdate = appliedChangeClass ==
+		CaptureVideoStateChangeClass::StaticHdrMetadataOnly;
+	const VideoStateComPtr previousCaptureVideoState =
+		m_captureDeviceVideoState;
 
 	const bool wasNewLldvEffective =
 		m_useNewLldvHeuristic &&
@@ -5882,10 +5905,35 @@ LRESULT CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange(WPARAM wParam
 		}
 	}
 
-	// Reset refresh rate tracking on video state change to prevent false positive detection
-	m_lastKnownRefreshRate = 0.0;
-	m_resyncPendingResetSeconds = -1;
-	DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange(): Reset refresh rate tracking")));
+	// Static HDR metadata is not part of the live-video cadence contract. Some
+	// sources briefly withdraw and re-publish that block while format, EOTF, and
+	// colorspace remain unchanged. Retain timing evidence for those updates.
+	if (metadataOnlyUpdate)
+	{
+		if (DebugLog::IsEnhancedLoggingEnabled())
+		{
+			DebugLog::Log(
+				"Capture video state metadata-only update: raw_eotf=%s "
+				"raw_colorspace=%s hdr_previous=%d hdr_current=%d "
+				"source_change_class=%s applied_change_class=%s ingress=%s "
+				"action=retain-cadence-tracking",
+				CStringA(ToString(videoState->eotf)).GetString(),
+				CStringA(ToString(videoState->colorspace)).GetString(),
+				previousCaptureVideoState->hdrData ? 1 : 0,
+				videoState->hdrData ? 1 : 0,
+				ToString(notification->changeClass),
+				ToString(appliedChangeClass),
+				notification->retainedRendererIngress ? "retained" : "gated");
+		}
+	}
+	else
+	{
+		// Reset refresh-rate tracking on a material signal-contract change to
+		// prevent false-positive detection.
+		m_lastKnownRefreshRate = 0.0;
+		m_resyncPendingResetSeconds = -1;
+		DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange(): Reset refresh rate tracking")));
+	}
 
 	// EOTF CHANGE DETECTION: Check if EOTF changed during active stream (e.g., SDR↔HDR switching)
 	// Only check if renderer is actively rendering and feature is enabled
@@ -5931,8 +5979,28 @@ LRESULT CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange(WPARAM wParam
 	{
 		m_rendererCaptureVideoStateNotificationSequence =
 			notificationSequence;
-		m_rendererIngressState->AcknowledgeCaptureSequence(
-			notificationSequence);
+		const bool currentAcknowledged =
+			m_rendererIngressState->AcknowledgeCaptureSequence(
+				notificationSequence);
+		if (DebugLog::IsEnhancedLoggingEnabled())
+		{
+			const RendererIngressState::CaptureSequenceSnapshot ingress =
+				m_rendererIngressState->CaptureSequences();
+			DebugLog::Log(
+				"Capture video-state acknowledgement: sequence=%llu "
+				"source_change_class=%s applied_change_class=%s ingress=%s "
+				"handler_latency_us=%llu current=%d published=%llu "
+				"required=%llu acknowledged=%llu",
+				static_cast<unsigned long long>(notificationSequence),
+				ToString(notification->changeClass),
+				ToString(appliedChangeClass),
+				notification->retainedRendererIngress ? "retained" : "gated",
+				static_cast<unsigned long long>(handlerLatencyUs),
+				currentAcknowledged ? 1 : 0,
+				static_cast<unsigned long long>(ingress.published),
+				static_cast<unsigned long long>(ingress.required),
+				static_cast<unsigned long long>(ingress.acknowledged));
+		}
 	}
 
 	// If the renderer did not accept the new state we need to restart the renderer
@@ -7827,7 +7895,20 @@ void CVideoProcessorDlg::OnCaptureDeviceVideoStateChange(
 		return;
 	}
 
-	const bool retainRendererIngress = !videoState->valid;
+	const CaptureVideoStateChangeClass changeClass =
+		ClassifyCaptureVideoStateChange(
+			m_lastPublishedValidCaptureVideoState,
+			*videoState);
+	if (videoState->valid)
+		m_lastPublishedValidCaptureVideoState = videoState;
+	m_latestCaptureVideoStateChangeClass = changeClass;
+	const RendererIngressState::CaptureSequenceSnapshot beforePublication =
+		m_rendererIngressState->CaptureSequences();
+	const bool materialStateAcknowledgementPending =
+		beforePublication.required != beforePublication.acknowledged;
+	const bool retainRendererIngress =
+		CaptureStateChangeMayRetainRendererIngress(
+			changeClass, materialStateAcknowledgementPending);
 	const std::chrono::steady_clock::time_point ingressStart =
 		std::chrono::steady_clock::now();
 	const uint64_t notificationSequence =
@@ -7848,6 +7929,22 @@ void CVideoProcessorDlg::OnCaptureDeviceVideoStateChange(
 	notification->sequence = notificationSequence;
 	notification->ingressPublicationUs = ingressPublicationUs;
 	notification->retainedRendererIngress = retainRendererIngress;
+	notification->changeClass = changeClass;
+	notification->captureFrameCounter = source->VideoFrameCapturedCount();
+	notification->publicationTime = ingressStart;
+	if (DebugLog::IsEnhancedLoggingEnabled())
+	{
+		DebugLog::Log(
+			"Capture video-state publication: sequence=%llu change_class=%s "
+			"ingress=%s capture_counter=%llu publication_us=%llu "
+			"material_ack_pending=%d",
+			static_cast<unsigned long long>(notificationSequence),
+			ToString(changeClass),
+			retainRendererIngress ? "retained" : "gated",
+			static_cast<unsigned long long>(notification->captureFrameCounter),
+			static_cast<unsigned long long>(ingressPublicationUs),
+			materialStateAcknowledgementPending ? 1 : 0);
+	}
 	if (!PostMessage(
 		WM_MESSAGE_CAPTURE_DEVICE_VIDEO_STATE_CHANGE,
 		reinterpret_cast<WPARAM>(notification.get()),
@@ -7871,6 +7968,15 @@ void CVideoProcessorDlg::OnCaptureDeviceVideoFrame(
 	// WARNING: Most likely to be called from some internal capture card thread!
 
 	RendererIngressState::Lease ingressLease;
+	RendererIngressState::CaptureSequenceSnapshot rejectedSnapshot;
+	CaptureVideoStateChangeClass latestChangeClass =
+		CaptureVideoStateChangeClass::Initial;
+	uint64_t rejectedFrameOrdinal = 0;
+	uint64_t rejectedSinceRecovery = 0;
+	uint64_t recoveredRejectedFrameCount = 0;
+	uint64_t recoveredFirstFrameCounter = 0;
+	uint64_t recoveredLastFrameCounter = 0;
+	uint64_t recoveredTotalRejectedFrameCount = 0;
 	{
 		std::lock_guard<std::mutex> sourceLock(
 			m_captureVideoStateNotificationMutex);
@@ -7878,9 +7984,73 @@ void CVideoProcessorDlg::OnCaptureDeviceVideoFrame(
 			captureRunToken != m_captureVideoStateSourceEpoch)
 			return;
 		ingressLease = m_rendererIngressState->TryAcquire();
+		if (!ingressLease)
+		{
+			rejectedSnapshot = m_rendererIngressState->CaptureSequences();
+			latestChangeClass = m_latestCaptureVideoStateChangeClass;
+			rejectedFrameOrdinal = ++m_captureIngressRejectedFrameCount;
+			rejectedSinceRecovery = ++m_captureIngressRejectedSinceRecovery;
+			if (rejectedSinceRecovery == 1)
+				m_captureIngressFirstRejectedFrameCounter =
+					videoFrame.GetCounter();
+			m_captureIngressLastRejectedFrameCounter = videoFrame.GetCounter();
+		}
+		else if (m_captureIngressRejectedSinceRecovery != 0)
+		{
+			recoveredRejectedFrameCount =
+				m_captureIngressRejectedSinceRecovery;
+			recoveredFirstFrameCounter =
+				m_captureIngressFirstRejectedFrameCounter;
+			recoveredLastFrameCounter =
+				m_captureIngressLastRejectedFrameCounter;
+			recoveredTotalRejectedFrameCount =
+				m_captureIngressRejectedFrameCount;
+			m_captureIngressRejectedSinceRecovery = 0;
+			m_captureIngressFirstRejectedFrameCounter = 0;
+			m_captureIngressLastRejectedFrameCounter = 0;
+		}
 	}
 	if (!ingressLease)
+	{
+		// Keep diagnostics sparse on this timing-sensitive callback: log the
+		// first rejection and powers of two, then summarize when delivery resumes.
+		const bool shouldLogRejectedFrame =
+			rejectedSinceRecovery != 0 &&
+			(rejectedSinceRecovery & (rejectedSinceRecovery - 1)) == 0;
+		if (shouldLogRejectedFrame && DebugLog::IsEnhancedLoggingEnabled())
+		{
+			DebugLog::Log(
+				"Capture frame ingress rejected: ordinal=%llu streak=%llu counter=%llu "
+				"timing_timestamp=%lld capture_timestamp=%lld reason=%s "
+				"latest_change_class=%s published=%llu required=%llu "
+				"acknowledged=%llu admission=%d",
+				static_cast<unsigned long long>(rejectedFrameOrdinal),
+				static_cast<unsigned long long>(rejectedSinceRecovery),
+				static_cast<unsigned long long>(videoFrame.GetCounter()),
+				static_cast<long long>(videoFrame.GetTimingTimestamp()),
+				static_cast<long long>(videoFrame.GetCaptureTimingTimestamp()),
+				rejectedSnapshot.admissionOpen ? "awaiting-state-ack" :
+					"admission-closed",
+				ToString(latestChangeClass),
+				static_cast<unsigned long long>(rejectedSnapshot.published),
+				static_cast<unsigned long long>(rejectedSnapshot.required),
+				static_cast<unsigned long long>(rejectedSnapshot.acknowledged),
+				rejectedSnapshot.admissionOpen ? 1 : 0);
+		}
 		return;
+	}
+	if (recoveredRejectedFrameCount != 0 &&
+		DebugLog::IsEnhancedLoggingEnabled())
+	{
+		DebugLog::Log(
+			"Capture frame ingress recovered: rejected=%llu "
+			"first_counter=%llu last_counter=%llu total_rejected=%llu",
+			static_cast<unsigned long long>(recoveredRejectedFrameCount),
+			static_cast<unsigned long long>(recoveredFirstFrameCounter),
+			static_cast<unsigned long long>(recoveredLastFrameCounter),
+			static_cast<unsigned long long>(
+				recoveredTotalRejectedFrameCount));
+	}
 
 	const std::shared_ptr<IVideoRenderer> renderer =
 		std::atomic_load_explicit(
@@ -8649,6 +8819,13 @@ void CVideoProcessorDlg::CaptureStart()
 		m_captureVideoStateSource = m_captureDevice.p;
 		m_captureVideoStateSourceEpoch =
 			++m_captureVideoStateNextEpoch;
+		m_lastPublishedValidCaptureVideoState.Release();
+		m_latestCaptureVideoStateChangeClass =
+			CaptureVideoStateChangeClass::Initial;
+		m_captureIngressRejectedFrameCount = 0;
+		m_captureIngressRejectedSinceRecovery = 0;
+		m_captureIngressFirstRejectedFrameCounter = 0;
+		m_captureIngressLastRejectedFrameCounter = 0;
 		captureRunToken = m_captureVideoStateSourceEpoch;
 	}
 
@@ -8676,6 +8853,9 @@ void CVideoProcessorDlg::CaptureStop()
 			m_captureVideoStateNotificationMutex);
 		m_captureVideoStateSource = nullptr;
 		m_captureVideoStateSourceEpoch = 0;
+		m_lastPublishedValidCaptureVideoState.Release();
+		m_latestCaptureVideoStateChangeClass =
+			CaptureVideoStateChangeClass::Initial;
 	}
 
 	DebugLog::Log(
@@ -8728,6 +8908,9 @@ void CVideoProcessorDlg::CaptureRemove()
 			m_captureVideoStateNotificationMutex);
 		m_captureVideoStateSource = nullptr;
 		m_captureVideoStateSourceEpoch = 0;
+		m_lastPublishedValidCaptureVideoState.Release();
+		m_latestCaptureVideoStateChangeClass =
+			CaptureVideoStateChangeClass::Initial;
 	}
 	m_captureDevice->SetCallbackHandler(nullptr);
 	m_captureDevice.Release();

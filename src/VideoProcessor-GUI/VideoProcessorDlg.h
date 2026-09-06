@@ -48,6 +48,7 @@
 #include <StatsOverlayWindow.h>
 #include <ApplicationInterface.h>
 #include <ConfigurationApplyPolicy.h>
+#include <CaptureVideoStatePolicy.h>
 #include <ConfigEditorCore.h>
 #include "ModernOperatorView.h"
 
@@ -803,6 +804,13 @@ protected:
 	ACaptureDevice* m_captureVideoStateSource = nullptr;
 	uint64_t m_captureVideoStateSourceEpoch = 0;
 	uint64_t m_captureVideoStateNextEpoch = 0;
+	VideoStateComPtr m_lastPublishedValidCaptureVideoState;
+	CaptureVideoStateChangeClass m_latestCaptureVideoStateChangeClass =
+		CaptureVideoStateChangeClass::Initial;
+	uint64_t m_captureIngressRejectedFrameCount = 0;
+	uint64_t m_captureIngressRejectedSinceRecovery = 0;
+	uint64_t m_captureIngressFirstRejectedFrameCounter = 0;
+	uint64_t m_captureIngressLastRejectedFrameCounter = 0;
 	uint64_t m_appliedCaptureVideoStateNotificationSequence = 0;
 	uint64_t m_rendererCaptureVideoStateNotificationSequence = 0;
 	// Some capture drivers briefly publish UNKNOWN video state while frames are
