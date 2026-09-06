@@ -123,7 +123,7 @@ struct StatsData
 	double renderLoadGpuAvgMs = 0.0;
 	double renderLoadGpuPeakMs = 0.0;
 	double renderLoadGpuPercent = 0.0;
-	int renderLoadGpuPasses = 0;
+	size_t renderLoadGpuFrames = 0;
 	double renderLoadRenderAvgMs = 0.0;
 	double renderLoadRenderPeakMs = 0.0;
 	double renderLoadSwapAvgMs = 0.0;
@@ -131,6 +131,7 @@ struct StatsData
 	// recovery that clears the rolling window.
 	bool renderLoadSessionPeakValid = false;
 	uint64_t renderLoadSessionFrames = 0;
+	uint64_t renderLoadSessionGpuFrames = 0;
 	double renderLoadSessionGpuPeakMs = 0.0;
 	double renderLoadSessionGpuPercent = 0.0;
 

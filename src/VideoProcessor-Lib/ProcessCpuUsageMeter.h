@@ -60,7 +60,22 @@ public:
 		GetSystemInfo(&systemInfo);
 		m_processors = systemInfo.dwNumberOfProcessors > 0 ?
 			systemInfo.dwNumberOfProcessors : 1;
+		Reset();
+	}
+
+	// A CPU session follows one renderer/host generation. Startup is guarded
+	// again so a newly constructed pipeline cannot become its own peak.
+	void Reset()
+	{
 		m_startTick = GetTickCount64();
+		m_lastTick = 0;
+		m_lastBusy100ns = 0;
+		m_sessionPeakTick = 0;
+		m_currentPercent = 0.0;
+		m_averagePercent = 0.0;
+		m_sessionPeakPercent = 0.0;
+		m_valid = false;
+		m_peakIsNew = false;
 	}
 
 	// Cheap to call at any rate; it only recomputes once per interval.

@@ -15541,6 +15541,34 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		m_activeOutputSweepSummaryVisible) &&
 		!m_activeOutputSweepPaused && m_activeOutputSweepShowInfo && m_videoRenderer &&
 		m_videoRenderer->SupportsNativeStatsOverlay();
+	const IVideoRenderer* const statsRenderer = m_videoRenderer.get();
+	if (statsRenderer != m_cpuUsageRenderer ||
+		m_transitionGeneration != m_cpuUsageRendererGeneration)
+	{
+		m_processCpuUsage.Reset();
+		m_cpuUsageRenderer = statsRenderer;
+		m_cpuUsageRendererGeneration = m_transitionGeneration;
+		m_loggedCpuPeakPercent = 0.0;
+	}
+	// CPU accounting is session telemetry, not an OSD paint effect. Sample on
+	// the existing one-second UI timer even while Ctrl+I is hidden, so reopening
+	// the panel cannot average the whole hidden interval or miss its peak.
+	if (statsRenderer)
+	{
+		m_processCpuUsage.Sample();
+		if (m_processCpuUsage.ConsumeNewPeak() &&
+			m_processCpuUsage.SessionPeakIsAnomalous() &&
+			m_processCpuUsage.SessionPeakPercent() >=
+				m_loggedCpuPeakPercent + CPU_PEAK_LOG_STEP_PERCENT)
+		{
+			m_loggedCpuPeakPercent = m_processCpuUsage.SessionPeakPercent();
+			DebugLog::Log(
+				"Process CPU peak: percent=%.1f baseline=%.1f processors=%lu note=share-of-whole-machine",
+				m_processCpuUsage.SessionPeakPercent(),
+				m_processCpuUsage.AveragePercent(),
+				static_cast<unsigned long>(m_processCpuUsage.Processors()));
+		}
+	}
 	// Native-overlay support can appear after the renderer plugin finishes its
 	// handoff. Close the legacy window on that transition as well as in the
 	// immediate toggle path, otherwise both panels remain visible and the
@@ -15573,7 +15601,6 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 	stats.surfaceMode = m_fullScreenVideoWindow &&
 		::IsWindow(m_fullScreenVideoWindow->GetHWND()) ?
 		TEXT("Fullscreen") : TEXT("Windowed");
-	const IVideoRenderer* const statsRenderer = m_videoRenderer.get();
 	const bool sameStatsTelemetryGeneration = statsRenderer != nullptr &&
 		statsRenderer == m_lastStatsTelemetryRenderer &&
 		m_transitionGeneration == m_lastStatsTelemetryGeneration;
@@ -15717,12 +15744,13 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 			stats.renderLoadGpuAvgMs = renderLoad.gpu.average;
 			stats.renderLoadGpuPeakMs = renderLoad.gpu.peak;
 			stats.renderLoadGpuPercent = renderLoad.gpuLoadPercent;
-			stats.renderLoadGpuPasses = renderLoad.gpuPasses;
+			stats.renderLoadGpuFrames = renderLoad.gpuFrames;
 			stats.renderLoadRenderAvgMs = renderLoad.render.average;
 			stats.renderLoadRenderPeakMs = renderLoad.render.peak;
 			stats.renderLoadSwapAvgMs = renderLoad.swap.average;
 			stats.renderLoadSessionPeakValid = renderLoad.sessionPeakValid;
 			stats.renderLoadSessionFrames = renderLoad.sessionFrames;
+			stats.renderLoadSessionGpuFrames = renderLoad.sessionGpuFrames;
 			stats.renderLoadSessionGpuPeakMs = renderLoad.sessionGpuPeakMs;
 			stats.renderLoadSessionGpuPercent = renderLoad.sessionGpuPercent;
 		}
@@ -15730,26 +15758,11 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		// CPU is sampled here rather than in the renderer because it is a
 		// property of the whole process - capture and pixel-format conversion
 		// cost more CPU than the render call does.
-		if (m_processCpuUsage.Sample())
+		if (m_processCpuUsage.Valid())
 		{
 			stats.cpuUsageKnown = true;
 			stats.cpuUsagePercent = m_processCpuUsage.CurrentPercent();
 			stats.cpuUsagePeakPercent = m_processCpuUsage.SessionPeakPercent();
-		}
-		// Deliberately silent unless the CPU actually peaks: a line every
-		// second would be noise, and the figure only matters when it is high
-		// enough to threaten a frame.
-		if (m_processCpuUsage.ConsumeNewPeak() &&
-			m_processCpuUsage.SessionPeakIsAnomalous() &&
-			m_processCpuUsage.SessionPeakPercent() >=
-				m_loggedCpuPeakPercent + CPU_PEAK_LOG_STEP_PERCENT)
-		{
-			m_loggedCpuPeakPercent = m_processCpuUsage.SessionPeakPercent();
-			DebugLog::Log(
-				"Process CPU peak: percent=%.1f baseline=%.1f processors=%lu note=share-of-whole-machine",
-				m_processCpuUsage.SessionPeakPercent(),
-				m_processCpuUsage.AveragePercent(),
-				static_cast<unsigned long>(m_processCpuUsage.Processors()));
 		}
 		stats.queueDroppedFrames = m_videoRenderer->DroppedFrameCount();
 		if (!m_videoRenderer->GetOutputModeInfo(stats.outputMode) &&

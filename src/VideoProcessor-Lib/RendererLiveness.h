@@ -101,9 +101,9 @@ struct RendererRenderLoadStat
 // How much of each frame period the renderer is actually consuming.
 //
 // The three costs are NOT interchangeable and must never be summed:
-//   gpu     GPU execution time for the render passes. This is the only figure
-//           that scales with the quality settings and the only one that says
-//           whether the GPU has headroom.
+//   gpu     GPU timestamp interval enclosing commands issued by the render
+//           call. This is the only figure that scales with quality settings
+//           and the only one that says whether the GPU has headroom.
 //   render  CPU wall time around the render call - command submission and
 //           driver back-pressure, not shader cost.
 //   swap    Wall time around the present, dominated by the vsync wait. A large
@@ -124,7 +124,13 @@ struct RendererRenderLoad
 	RendererRenderLoadStat render;
 	RendererRenderLoadStat swap;
 	bool gpuValid = false;      // false until GPU timer queries resolve
-	int gpuPasses = 0;          // shader passes in the last completed frame
+	size_t gpuFrames = 0;       // exact matched GPU samples in the window
+	// GPU timestamps resolve asynchronously. These fields prove which source
+	// frame supplied the newest result and how many subsequent render attempts
+	// had been issued when it became available.
+	uint64_t latestGpuSourceSequence = 0;
+	uint64_t latestGpuSubmissionSerial = 0;
+	uint64_t latestGpuLagFrames = 0;
 	// Peak GPU cost as a percentage of one frame period. Peak rather than
 	// average because a single overrun is visible on screen, and an average
 	// that hides it is what makes a marginal setting look safe.
@@ -150,9 +156,23 @@ struct RendererRenderLoad
 	// its own evidence. It therefore survives that reset by design.
 	bool sessionPeakValid = false;
 	uint64_t sessionFrames = 0;
+	uint64_t sessionGpuFrames = 0;
 	double sessionGpuPeakMs = 0.0;
 	double sessionRenderPeakMs = 0.0;
 	double sessionGpuPercent = 0.0; // session peak against one frame period
+
+	// Fail-closed query diagnostics. None of these samples enter the load
+	// statistics above.
+	uint64_t gpuQueriesPending = 0;
+	uint64_t gpuQueriesResolved = 0;
+	uint64_t gpuQueriesNotReady = 0;
+	uint64_t gpuDisjointQueries = 0;
+	uint64_t gpuQueryFailures = 0;
+	uint64_t gpuRejectedFrames = 0;
+	uint64_t gpuRingOverruns = 0;
+	uint64_t unmatchedGpuSamples = 0;
+	uint64_t invalidGpuSamples = 0;
+	uint64_t warmupGpuSamples = 0;
 };
 
 // A graph-clock rollback can create a new timestamp lineage without changing

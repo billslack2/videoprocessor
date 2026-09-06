@@ -81,6 +81,9 @@
     <ClInclude Include="vprenderer\\AlphaPresentationTelemetry.h">
       <Filter>Header Files\libplacebo</Filter>
     </ClInclude>
+    <ClInclude Include="vprenderer\\AlphaD3D11FrameGpuTimer.h">
+      <Filter>Header Files\libplacebo</Filter>
+    </ClInclude>
     <ClInclude Include="vprenderer\\AlphaRenderLoadMeter.h">
       <Filter>Header Files\libplacebo</Filter>
     </ClInclude>

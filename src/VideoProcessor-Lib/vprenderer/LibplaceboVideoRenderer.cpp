@@ -22,6 +22,7 @@
 #include <vprenderer/LibplaceboDisplayLut.h>
 #include <vprenderer/LibplaceboCalibrationLutPolicy.h>
 #include <vprenderer/AlphaPresentationTelemetry.h>
+#include <vprenderer/AlphaD3D11FrameGpuTimer.h>
 #include <vprenderer/AlphaRenderLoadMeter.h>
 #include <vprenderer/AlphaNativeRgbIngress.h>
 #include <vprenderer/AlphaSourceCropPolicy.h>
@@ -3352,23 +3353,6 @@ namespace
 }
 
 
-// libplacebo calls this once per shader pass inside pl_render_image, with that
-// pass's most recently resolved GPU timer result. Summing the passes gives the
-// GPU cost of a frame - the only figure that actually tracks the quality
-// settings, as distinct from the CPU-side render_ms already being logged.
-//
-// Both render stages are counted. VP does not call pl_render_image_mix, so in
-// practice only PL_RENDER_STAGE_FRAME occurs; counting both means a future
-// blend pass is measured rather than silently omitted.
-static void AlphaRenderLoadInfoCallback(
-	void* priv, const struct pl_render_info* info)
-{
-	if (!priv || !info || !info->pass)
-		return;
-	static_cast<AlphaRenderLoadMeter*>(priv)->AddPass(info->pass->last);
-}
-
-
 struct LibplaceboVideoRenderer::Impl
 {
 	SceneDetector sceneDetector;
@@ -3388,6 +3372,10 @@ struct LibplaceboVideoRenderer::Impl
 	uint64_t vpOwnedTargetFailureLoggedGeneration = 0;
 	uint64_t vpOwnedPresentFailureLoggedGeneration = 0;
 	uint64_t successfulPresentCount = 0;
+	// Monotonic for the life of this renderer. Unlike successfulPresentCount,
+	// this never resets when a swapchain is recreated, so it is safe as the
+	// ordered key for delayed GPU-query correlation.
+	uint64_t renderLoadSubmissionSerial = 0;
 	uint64_t vpOwnedClearLoggedGeneration = 0;
 	std::string vpOwnedAppliedEncoding = "unapplied";
 	HRESULT vpOwnedColorSpaceResult = E_PENDING;
@@ -3444,8 +3432,10 @@ struct LibplaceboVideoRenderer::Impl
 	std::mutex ingressStatusMutex;
 	std::string ingressStatus = "P010 (initializing)";
 	struct pl_render_params renderParams{};
-	// Per-frame render cost. The presentation telemetry above samples one
-	// frame every few seconds; this one sees every frame.
+	CComPtr<ID3D11DeviceContext> renderTimingContext;
+	AlphaD3D11FrameGpuTimer gpuFrameTimer;
+	// Per-frame render cost. Query results arrive later, then match the exact
+	// successful submission by generation, source sequence, and submission ID.
 	AlphaRenderLoadMeter renderLoadMeter;
 	ActivePictureTransitionModel nlsTransition;
 	ConfiguredShaderRule nlsRule;
@@ -3963,6 +3953,22 @@ struct LibplaceboVideoRenderer::Impl
 		cadenceNextDueSummaryTick = 0;
 	}
 
+	RendererRenderLoad RenderLoadSnapshot() const
+	{
+		RendererRenderLoad load = renderLoadMeter.Snapshot();
+		const AlphaD3D11FrameGpuTimer::Diagnostics timing =
+			gpuFrameTimer.Snapshot();
+		load.supported = timing.supported;
+		load.gpuQueriesPending = timing.pending;
+		load.gpuQueriesResolved = timing.resolved;
+		load.gpuQueriesNotReady = timing.notReady;
+		load.gpuDisjointQueries = timing.disjoint;
+		load.gpuQueryFailures = timing.queryFailures;
+		load.gpuRejectedFrames = timing.rejectedFrames;
+		load.gpuRingOverruns = timing.ringOverruns;
+		return load;
+	}
+
 	bool RetireOutput()
 	{
 		if (!outputResourcesRetired)
@@ -3983,6 +3989,8 @@ struct LibplaceboVideoRenderer::Impl
 			}
 			pl_swapchain_destroy(&swapchain);
 			vpOwnedSwapchain.Release();
+			gpuFrameTimer.ReleaseResources();
+			renderTimingContext.Release();
 			SaveShaderCache();
 			pl_d3d11_destroy(&d3d11);
 			pl_cache_destroy(&cache);
@@ -4660,12 +4668,11 @@ struct LibplaceboVideoRenderer::Impl
 			projection.renderParams.deband_params ? &debandParams : nullptr;
 		renderParams.dither_params =
 			projection.renderParams.dither_params ? &ditherParams : nullptr;
-		// Setting this is all that enables per-pass GPU timing: libplacebo
-		// always creates the timer queries and only skips the callback when
-		// this field is null. The queries are read back asynchronously, so
-		// nothing here blocks the render thread.
-		renderParams.info_callback = AlphaRenderLoadInfoCallback;
-		renderParams.info_priv = &renderLoadMeter;
+		// VP owns one frame-scoped asynchronous timer. Leaving libplacebo's
+		// per-pass callback null avoids copying its 256-entry timing history and
+		// taking a VP mutex once per shader pass.
+		renderParams.info_callback = nullptr;
+		renderParams.info_priv = nullptr;
 
 		DebugLog::Log(
 			"libplacebo settings: quality=%s tone_mapping=%s gamut_mapping=%s peak_detection=%s hdr_peak_analysis_picture_only=%d hdr_peak_analysis_motion_compensation=%d hdr_peak_analysis_height_percent=%d hdr_peak_analysis_position=%s libplacebo_version=%s api=%d local_analysis_crop=vp0147-motion-v1 contrast_recovery=%.2f upscaler=%s downscaler=%s deband=%s dithering=%s dynamic_constants=%d display_bit_depth=%s output_presentation=%s output_range=%s output_transport_gamma=%s output_gamma=%s sdr_input_transfer=%s sdr_adjust_gamma=%s target=%.1f nits black=%.3f profile_update_mode=%s output_diagnostics=%d diagnostic_disable_shader_cache=%d diagnostic_disable_compute=%d diagnostic_force_8bit_sdr_swapchain=%d diagnostic_allow_limited_g22=%d diagnostic_allow_full_g22=%d diagnostic_vp_owned_dxgi_presenter=%d refresh_switch=%d refresh_command_delay=%llus refresh_commands=%u viewport_target=%s screen_aspect=%.4f automatic_crop=%d subtitle_fit=%d subtitle_hold=%llums subtitle_engage_drift=%llums subtitle_release_drift=%llums subtitle_padding=%dpx subtitle_target_buffer=%dpx",
@@ -6570,6 +6577,15 @@ struct LibplaceboVideoRenderer::Impl
 			deviceParams.allow_software ? 1 : 0,
 			deviceParams.no_compute ? 1 : 0,
 			deviceParams.max_frame_latency);
+		d3d11->device->GetImmediateContext(&renderTimingContext);
+		const bool gpuFrameTimingAvailable = renderTimingContext &&
+			gpuFrameTimer.Initialize(d3d11->device);
+		DebugLog::Log(
+			"Alpha GPU frame timing: supported=%d ring=%zu minimum_lag_frames=%llu polling=donotflush",
+			gpuFrameTimingAvailable ? 1 : 0,
+			AlphaD3D11FrameGpuTimer::CAPACITY,
+			static_cast<unsigned long long>(
+				AlphaD3D11FrameGpuTimer::MINIMUM_RESOLVE_LAG_FRAMES));
 
 		struct pl_cache_params cacheParams =
 			LibplaceboExportedData<pl_cache_params>("pl_cache_default_params");
@@ -11188,6 +11204,32 @@ struct LibplaceboVideoRenderer::Impl
 			target.overlays = overlays;
 			target.num_overlays = overlayCount;
 		}
+		// Resolve only old query slots and never flush. Drain a small bounded
+		// number if the driver made several available together; stop immediately
+		// at the first unresolved oldest slot.
+		for (size_t resolved = 0; resolved < 4; ++resolved)
+		{
+			AlphaD3D11FrameGpuTimer::Sample gpuSample;
+			const AlphaD3D11FrameGpuTimer::ResolveResult resolveResult =
+				gpuFrameTimer.TryResolveOldest(renderTimingContext, gpuSample);
+			if (resolveResult ==
+				AlphaD3D11FrameGpuTimer::ResolveResult::Resolved)
+			{
+				renderLoadMeter.RecordGpuFrame(gpuSample.generation,
+					gpuSample.sourceSequence, gpuSample.submissionSerial,
+					gpuSample.milliseconds,
+					gpuSample.lagFrames);
+				continue;
+			}
+			if (resolveResult ==
+				AlphaD3D11FrameGpuTimer::ResolveResult::Discarded)
+			{
+				continue;
+			}
+			break;
+		}
+		const bool gpuTimingIssued = gpuFrameTimer.BeginFrame(
+			renderTimingContext, frameGeneration, sourceSequence);
 		const SteadyClock::time_point renderStart = SteadyClock::now();
 		const bool targetLutApplied =
 			target.lut == displayLut && target.lut_type == PL_LUT_NORMALIZED;
@@ -11198,6 +11240,8 @@ struct LibplaceboVideoRenderer::Impl
 			&renderImage,
 			&target,
 			&renderParams);
+		if (gpuTimingIssued)
+			gpuFrameTimer.EndFrame(renderTimingContext);
 		libplaceboRenderStartedTick.store(0, std::memory_order_release);
 		LogHdrPeakAnalysisMetrics(
 			hdrPeakAnalysisDecision, sourceSequence, rendered);
@@ -11273,9 +11317,14 @@ struct LibplaceboVideoRenderer::Impl
 				? static_cast<double>(swapEndQpc - swapStartQpc) * 1000.0 /
 					static_cast<double>(qpcFrequency.QuadPart)
 				: 0.0;
+		if (gpuTimingIssued && (!rendered || !submitted))
+			gpuFrameTimer.SetFrameOutcome(false);
 		if (rendered && submitted)
 		{
 			++successfulPresentCount;
+			++renderLoadSubmissionSerial;
+			if (gpuTimingIssued)
+				gpuFrameTimer.SetFrameOutcome(true, renderLoadSubmissionSerial);
 			AlphaPresentationRecord record;
 			record.generation = frameGeneration;
 			record.sourceSequence = sourceSequence;
@@ -11393,8 +11442,10 @@ struct LibplaceboVideoRenderer::Impl
 			// Every presented frame enters the render-load window here, which
 			// is what makes the OSD peak trustworthy: the telemetry line below
 			// only samples one frame in roughly 120.
-			renderLoadMeter.CommitFrame(renderMs, swapBlockMs,
-				resetObservation.framePeriodMs, framePeriodFromDisplay);
+			renderLoadMeter.CommitFrame(frameGeneration, sourceSequence,
+				renderLoadSubmissionSerial,
+				renderMs, swapBlockMs, resetObservation.framePeriodMs,
+				framePeriodFromDisplay);
 			resetObservation.oldestQueuedAgeMs = oldestQueuedAgeMs;
 			resetObservation.renderMs = renderMs;
 			resetObservation.swapBlockMs = swapBlockMs;
@@ -11436,10 +11487,9 @@ struct LibplaceboVideoRenderer::Impl
 						PostStallResetDiagnosticState::Monitoring ? 5000 : 2000);
 				const AlphaPresentationSnapshot snapshot =
 					presentationTelemetry.Snapshot();
-				const RendererRenderLoad load =
-					renderLoadMeter.Snapshot();
+				const RendererRenderLoad load = RenderLoadSnapshot();
 				DebugLog::Log(
-					"Alpha presentation telemetry: generation=%llu evidence=%d timing=%s frame_stats_hr=0x%08lX retained=%zu source=%llu presented=%llu debt=%llu present_id=%u refresh=%u display_hz=%.5f cadence_samples=%u queue_after=%zu oldest_ms=%.2f render_ms=%.2f swap_ms=%.2f gpu_timed=%d gpu_frames=%zu gpu_ms=%.3f gpu_avg_ms=%.3f gpu_peak_ms=%.3f gpu_load_pct=%.1f gpu_passes=%d render_avg_ms=%.2f render_peak_ms=%.2f gpu_session_peak_ms=%.3f gpu_session_pct=%.1f session_frames=%llu settling=%d window_s=%.1f frame_period_src=%s",
+					"Alpha presentation telemetry: generation=%llu evidence=%d timing=%s frame_stats_hr=0x%08lX retained=%zu source=%llu presented=%llu debt=%llu present_id=%u refresh=%u display_hz=%.5f cadence_samples=%u queue_after=%zu oldest_ms=%.2f render_ms=%.2f swap_ms=%.2f gpu_timed=%d presented_window_frames=%zu gpu_frames=%zu gpu_ms=%.3f gpu_avg_ms=%.3f gpu_peak_ms=%.3f gpu_load_pct=%.1f gpu_source=%llu gpu_submission=%llu gpu_lag_frames=%llu gpu_pending=%llu gpu_resolved=%llu gpu_not_ready=%llu gpu_disjoint=%llu gpu_query_failures=%llu gpu_rejected=%llu gpu_overruns=%llu gpu_unmatched=%llu gpu_invalid=%llu gpu_warmup=%llu render_avg_ms=%.2f render_peak_ms=%.2f gpu_session_peak_ms=%.3f gpu_session_pct=%.1f session_frames=%llu session_gpu_frames=%llu settling=%d window_s=%.1f frame_period_src=%s",
 					static_cast<unsigned long long>(snapshot.generation),
 					static_cast<int>(snapshot.evidence),
 					AlphaPresentationTimingStatusText(snapshot.timingStatus),
@@ -11461,19 +11511,36 @@ struct LibplaceboVideoRenderer::Impl
 					swapBlockMs,
 					load.gpuValid ? 1 : 0,
 					load.frames,
+					load.gpuFrames,
 					load.gpu.last,
 					load.gpu.average,
 					load.gpu.peak,
 					load.gpuLoadPercent,
-					load.gpuPasses,
+					static_cast<unsigned long long>(
+						load.latestGpuSourceSequence),
+					static_cast<unsigned long long>(
+						load.latestGpuSubmissionSerial),
+					static_cast<unsigned long long>(load.latestGpuLagFrames),
+					static_cast<unsigned long long>(load.gpuQueriesPending),
+					static_cast<unsigned long long>(load.gpuQueriesResolved),
+					static_cast<unsigned long long>(load.gpuQueriesNotReady),
+					static_cast<unsigned long long>(load.gpuDisjointQueries),
+					static_cast<unsigned long long>(load.gpuQueryFailures),
+					static_cast<unsigned long long>(load.gpuRejectedFrames),
+					static_cast<unsigned long long>(load.gpuRingOverruns),
+					static_cast<unsigned long long>(load.unmatchedGpuSamples),
+					static_cast<unsigned long long>(load.invalidGpuSamples),
+					static_cast<unsigned long long>(load.warmupGpuSamples),
 					load.render.average,
 					load.render.peak,
 					load.sessionGpuPeakMs,
 					load.sessionGpuPercent,
 					static_cast<unsigned long long>(load.sessionFrames),
+					static_cast<unsigned long long>(load.sessionGpuFrames),
 					load.settling ? 1 : 0,
 					load.windowFilledSeconds,
-					load.framePeriodFromDisplay ? "display" : "source");
+					load.framePeriodFromDisplay ? "display" :
+						load.framePeriodMs > 0.0 ? "source" : "unavailable");
 			}
 		}
 		if (rendered && submitted)
@@ -13385,7 +13452,7 @@ bool LibplaceboVideoRenderer::GetRenderLoad(RendererRenderLoad& load) const
 	// this never contends with renderMutex and cannot be starved by a busy
 	// render thread - the OSD would otherwise blank exactly when the machine
 	// is under the load being measured.
-	load = m_impl->renderLoadMeter.Snapshot();
+	load = m_impl->RenderLoadSnapshot();
 	// `supported`, not `valid`. The window is deliberately EMPTY during the
 	// warm-up guard, so returning `valid` here hid the whole panel for the
 	// first seconds after every start, restart and backlog recovery - and hid
