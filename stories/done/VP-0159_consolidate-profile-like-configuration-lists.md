@@ -2,10 +2,19 @@
 
 ## Status
 
-Backlog (2026-08-28). Begin with a code-level inventory and architecture
-review. No implementation should start until a principal UI engineer has
-reviewed the inventory, the required semantic variants, and the proposed
-shared-component boundary.
+Done (2026-09-06). Implemented in source commit `2fdbe66f` after the required
+inventory and corrective architecture/senior-UI reviews. Both final reviews
+approved the completed implementation. A clean x64 Release solution rebuild,
+all 1,047 core tests, and the complete configuration-editor executable suite
+passed before deployment to `C:\Videoprocessor\vp`.
+
+The deployed host, Config editor, discovery DLL, and VP Renderer plugin match
+the verified release package byte-for-byte. The existing active configuration
+already expressed the required NLS and Standard shader profiles, so it was
+preserved byte-for-byte (SHA-256
+`DF8CED6401AAB9D69272D4BA8FB4C735DF88D2048DE9453AB3F141120EC5C7F1`). The
+recoverable pre-deployment backup is
+`deployment-backups\vp-0159-before-2fdbe66f-20260906-130958`.
 
 ## User story
 
