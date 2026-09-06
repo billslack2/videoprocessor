@@ -16,6 +16,27 @@ preserved byte-for-byte (SHA-256
 recoverable pre-deployment backup is
 `deployment-backups\vp-0159-before-2fdbe66f-20260906-130958`.
 
+### Post-deployment correction
+
+Live testing found that a changed or reset shader-profile selection could be
+published before the replacement renderer existed. The profile runtime and
+Config active marker therefore showed the newly selected NLS profile while
+the renderer retained Off. Commit `d0d18f31` fixes the renderer handoff by
+retaining every validated shader-profile selection before renderer-transition
+and missing-renderer exits, then replaying that selection during renderer
+construction.
+
+Regression coverage now verifies both sides of the failure: reordering a
+configured NLS profile to first makes it the no-match fallback and resolves its
+GLSL shader, and the GUI host cannot discard shader intent before renderer
+construction. A clean x64 Release solution rebuild, all 1,048 core tests, and
+the complete configuration-editor executable suite passed. The four corrected
+Release binaries were redeployed and matched the verified package byte-for-byte.
+The user's reordered active configuration remained byte-for-byte unchanged;
+its SHA-256 is `2B6FBFF340A2D87E36C48A0892532844598C4AB2055EABCC1B42670154CD3439`.
+The second recoverable backup is `deployment-backups\vp-0159-replay-before-
+d0d18f31-20260906-134118`.
+
 ## User story
 
 As a VideoProcessor maintainer, I want profile and profile-like configuration
