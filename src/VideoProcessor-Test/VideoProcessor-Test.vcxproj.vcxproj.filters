@@ -22,9 +22,6 @@
     <ClCompile Include="AlphaSourceCropPolicyTests.cpp">
       <Filter>Resource Files</Filter>
     </ClCompile>
-    <ClCompile Include="AlphaRenderLoadMeterTests.cpp">
-      <Filter>Resource Files</Filter>
-    </ClCompile>
     <ClCompile Include="HdrPeakAnalysisCropTests.cpp">
       <Filter>Resource Files</Filter>
     </ClCompile>
@@ -37,9 +34,12 @@
     <ClCompile Include="LibplaceboRenderParametersTests.cpp">
       <Filter>Resource Files</Filter>
     </ClCompile>
-    <ClCompile Include="SceneDetectorTests.cpp">
-      <Filter>Resource Files</Filter>
-    </ClCompile>
+	<ClCompile Include="SceneDetectorTests.cpp">
+	  <Filter>Resource Files</Filter>
+	</ClCompile>
+	<ClCompile Include="AlphaRenderLoadMeterTests.cpp">
+	  <Filter>Resource Files</Filter>
+	</ClCompile>
     <ClCompile Include="NativeRgbAnalysisTests.cpp">
       <Filter>Resource Files</Filter>
     </ClCompile>

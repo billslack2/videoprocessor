@@ -105,8 +105,8 @@ struct StatsData
 	CString activeShaderRule;
 	std::vector<CString> activeShaders;
 
-	// Render cost over every successfully submitted frame, from the renderer's
-	// own window rather than a periodic spot sample. `renderLoadGpuValid` stays false
+	// Recent asynchronous render-pass cost over every submitted frame, from the renderer's own window
+	// rather than a periodic spot sample. `renderLoadGpuValid` stays false
 	// until the GPU timer queries resolve, and `renderLoadSettling` is true
 	// while warm-up frames are being discarded; the OSD must say so in both
 	// cases rather than print a zero that reads as "free".

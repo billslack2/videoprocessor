@@ -14868,9 +14868,8 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		configuredDisplayRefreshRate :
 		(madVRDetectedRefreshRateKnown ? madVRDetectedRefreshRate :
 			measuredDisplayRefreshRate);
-	// The renderer's GPU budget must use the same monitor-qualified rate as the
-	// rest of this OSD. The active target rational is an authoritative fallback
-	// while the WaitForVBlank estimator is warming.
+	// Feed the renderer the same monitor-qualified rate shown by the OSD. The
+	// target rational is authoritative while the local estimator is warming.
 	if (m_videoRenderer)
 	{
 		m_videoRenderer->SetRenderLoadDisplayRefreshRate(
@@ -15559,9 +15558,7 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		m_cpuUsageRendererGeneration = m_transitionGeneration;
 		m_loggedCpuPeakPercent = 0.0;
 	}
-	// CPU accounting is session telemetry, not an OSD paint effect. Sample on
-	// the existing one-second UI timer even while Ctrl+I is hidden, so reopening
-	// the panel cannot average the whole hidden interval or miss its peak.
+	// Sample on the existing one-second UI timer even while Ctrl+I is hidden.
 	if (statsRenderer)
 	{
 		m_processCpuUsage.Sample();

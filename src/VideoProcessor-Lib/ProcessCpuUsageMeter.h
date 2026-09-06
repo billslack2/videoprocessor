@@ -63,8 +63,6 @@ public:
 		Reset();
 	}
 
-	// A CPU session follows one renderer/host generation. Startup is guarded
-	// again so a newly constructed pipeline cannot become its own peak.
 	void Reset()
 	{
 		m_startTick = GetTickCount64();

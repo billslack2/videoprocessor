@@ -1136,17 +1136,17 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 		// is the window PEAK against one refresh, so it is the headroom that
 		// matters rather than a flattering average.
 		if (m_stats.renderLoadSettling)
-			line.Format(TEXT("GPU 10s:         settling..."));
+			line.Format(TEXT("GPU render 10s:  settling..."));
 		else if (!m_stats.renderLoadGpuValid)
-			line.Format(TEXT("GPU 10s:         measuring..."));
+			line.Format(TEXT("GPU render 10s:  measuring..."));
 		else if (m_stats.renderLoadGpuPercentValid)
 			line.Format(
-				TEXT("GPU 10s:         avg %.2f, worst %.2f ms, max %.0f%%"),
+				TEXT("GPU render 10s:  avg %.2f, worst %.2f ms, max %.0f%%"),
 				m_stats.renderLoadGpuAvgMs,
 				m_stats.renderLoadGpuWorstLoadMs,
 				m_stats.renderLoadGpuPercent);
 		else
-			line.Format(TEXT("GPU 10s:         avg %.2f, peak %.2f ms"),
+			line.Format(TEXT("GPU render 10s:  avg %.2f, peak %.2f ms"),
 				m_stats.renderLoadGpuAvgMs, m_stats.renderLoadGpuPeakMs);
 		DrawText(hdc, line, PADDING, y);
 		y += lineHeight;
@@ -1161,8 +1161,9 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 				m_stats.renderLoadFramePeriodMs,
 				1000.0 / m_stats.renderLoadFramePeriodMs);
 		else if (m_stats.renderLoadFramePeriodMs > 0.0)
-			// Never present the source period as a GPU budget. It can differ from
-			// the actual display refresh by a cadence multiple.
+			// Source rate, not the display rate. Say so, because at 60 Hz
+			// output with 24p content this budget is 2.5x too generous and a
+			// percentage computed from it would be badly flattering.
 			line.Format(TEXT("GPU budget:      display timing unavailable"));
 		else
 			line.Format(TEXT("GPU budget:      measuring..."));
