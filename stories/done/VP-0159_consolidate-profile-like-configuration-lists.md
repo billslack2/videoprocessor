@@ -37,6 +37,9 @@ its SHA-256 is `2B6FBFF340A2D87E36C48A0892532844598C4AB2055EABCC1B42670154CD3439
 The second recoverable backup is `deployment-backups\vp-0159-replay-before-
 d0d18f31-20260906-134118`.
 
+The completed change was merged into `v1.3.005-beta` through PR #76 on
+2026-09-06. The beta integration branch advanced to merge commit `aa1bd026`.
+
 ## User story
 
 As a VideoProcessor maintainer, I want profile and profile-like configuration
