@@ -3354,10 +3354,11 @@ namespace
 
 
 // Owns one timestamp-disjoint query for a candidate output frame. Individual
-// GPU operations receive timestamp pairs under that one query. The timer uses
-// the first start and final end as one end-to-end GPU envelope, avoiding both
-// nested disjoint intervals and double-counting work that overlaps between
-// engines. Any early return closes and rejects the query automatically.
+// The first GPU operation emits the start timestamp and the final operation is
+// followed by the end timestamp under that one query. Intermediate operations
+// only increment a coverage counter. This produces one end-to-end GPU envelope
+// without nested disjoint intervals or double-counting overlapping engines.
+// Any early return closes and rejects the query automatically.
 class AlphaFrameGpuTimingScope
 {
 public:

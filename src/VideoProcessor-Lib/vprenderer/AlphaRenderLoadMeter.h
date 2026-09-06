@@ -52,6 +52,7 @@ public:
 			m_contentionDrops.fetch_add(1, std::memory_order_relaxed);
 			return;
 		}
+		m_resetPending.store(false, std::memory_order_release);
 		ResetWindowLocked();
 	}
 
@@ -272,7 +273,6 @@ private:
 		m_latestGpuSubmissionSerial = 0;
 		m_latestGpuLagFrames = 0;
 		m_latestGpuSegments = 0;
-		m_resetPending.store(false, std::memory_order_release);
 	}
 
 	void ApplyPendingResetLocked()

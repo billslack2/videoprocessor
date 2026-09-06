@@ -14,7 +14,7 @@ Published base branch: codex/vp0147-analysis-roi-v7
 Current-upstream review branch: codex/vp0147-analysis-roi
 libplacebo-360.dll SHA-256: FEFC9B85A521C09025298754959D1A68EB00FEF9FF343C65EEAFE1A9EDBBFAD5
 Corresponding source: source/libplacebo-7.360.1-vp-source.zip
-Source archive SHA-256: 2F0FE14F51FC433B9406BF673C09605EFEFD581FFF8F5842517A268CC12EA44B
+Source archive SHA-256: 5E4BAAACB4B7E8AF1EEE42F556B26B2D49A95039537FBCFB1824611E7A18D91D
 License: LGPL-2.1-or-later (see LICENSE.txt)
 
 The libplacebo DLL was built locally as an x64 Release binary with D3D11,
@@ -24,8 +24,9 @@ histogram, and scene-change analysis to a normalized active-picture region.
 It also adds a D3D11 backend switch which prevents libplacebo from allocating
 timer queries while VP owns one frame-scoped timestamp-disjoint interval. The
 analysis-crop base is published only to the billslack2 review fork. The complete
-source corresponding to this DLL, including the timer control commit and build
-files, is bundled in the source archive named above. No pull request, merge
+source corresponding to this DLL, including the timer control commit, build
+files, all six pinned submodules, and a revision/build manifest, is bundled in
+the source archive named above. No pull request, merge
 request, issue, or other submission has been made against upstream libplacebo.
 The local upstream remote remains fetch-only with pushing disabled.
 The libplacebo DLL is dynamically linked so it remains independently
