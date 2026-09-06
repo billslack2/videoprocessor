@@ -1666,7 +1666,7 @@ namespace VideoProcessorTest
 			Assert::IsTrue(RendererProfileConfig::Read(config, model, error),
 				std::wstring(error.begin(), error.end()).c_str());
 			Assert::IsTrue(model.persistSelection);
-			Assert::AreEqual(static_cast<size_t>(3), model.groups.size());
+			Assert::AreEqual(static_cast<size_t>(4), model.groups.size());
 
 			std::vector<RendererProfileConfig::KeySelection> selections;
 			Assert::IsTrue(RendererProfileConfig::SelectForKey(model, "Shift+L",
@@ -1674,13 +1674,13 @@ namespace VideoProcessorTest
 				selections, error));
 			Assert::AreEqual(static_cast<size_t>(1), selections.size());
 			Assert::AreEqual("queue", selections.front().group.c_str());
-			Assert::AreEqual("low_latency", selections.front().profile.c_str());
+			Assert::AreEqual("low_latency", selections.front().profiles.front().c_str());
 
 			Assert::IsTrue(RendererProfileConfig::SelectForKey(model, "F2",
 				[](const std::string&, std::string&) { return false; },
 				selections, error));
 			Assert::AreEqual("viewport", selections.front().group.c_str());
-			Assert::AreEqual("scope", selections.front().profile.c_str());
+			Assert::AreEqual("scope", selections.front().profiles.front().c_str());
 			RendererProfileConfig::ResolvedViewport viewport;
 			Assert::IsTrue(RendererProfileConfig::ResolveViewport(model,
 				"scope", 1, viewport, error));
@@ -2441,16 +2441,16 @@ namespace VideoProcessorTest
 				rec709Selection, error),
 				std::wstring(error.begin(), error.end()).c_str());
 			Assert::IsTrue(rec709Selection.changed);
-			Assert::AreEqual("rec709", rec709Selection.snapshot->
-				effectiveSelections.at("color").c_str());
+			Assert::AreEqual("rec709", RendererProfileConfig::FormatSelection(
+				rec709Selection.snapshot->effectiveSelections.at("color")).c_str());
 
 			UnifiedProfileRuntime::SelectionResult colorSelection;
 			Assert::IsTrue(runtime.SelectKey("F6", source("sdr", "bt2020"),
 				colorSelection, error),
 				std::wstring(error.begin(), error.end()).c_str());
 			Assert::IsTrue(colorSelection.changed);
-			Assert::AreEqual("bt2020", colorSelection.snapshot->
-				effectiveSelections.at("color").c_str());
+			Assert::AreEqual("bt2020", RendererProfileConfig::FormatSelection(
+				colorSelection.snapshot->effectiveSelections.at("color")).c_str());
 			Assert::IsTrue(hasInvocation(colorSelection.actions, "color_bt2020",
 				"profile.color.changed"));
 			DeleteFileA(path.c_str());
@@ -2578,6 +2578,49 @@ namespace VideoProcessorTest
 			Assert::AreEqual("Off", disabled[1].value.c_str());
 			Assert::IsTrue(disabled[1].indicator ==
 				ProfileChangeOverlay::Item::Indicator::Off);
+
+			const auto removed = ProfileChangeOverlay::CollectChanges(
+				current, { { "display", "rec709_scope_med" },
+					{ "queue", "low_latency" } });
+			Assert::AreEqual(static_cast<size_t>(1), removed.size());
+			Assert::AreEqual("NLS", removed.front().label.c_str());
+			Assert::AreEqual("Off", removed.front().value.c_str());
+			Assert::IsTrue(removed.front().indicator ==
+				ProfileChangeOverlay::Item::Indicator::Off);
+		}
+
+		TEST_METHOD(ProfileOverlayDerivesShaderOffFromFilesNotNames)
+		{
+			RendererProfileConfig::Model model;
+			RendererProfileConfig::Profile empty;
+			empty.group = "nls";
+			empty.name = "cinema";
+			empty.label = "Cinema stretch";
+			model.profiles.emplace("nls.cinema", empty);
+			Assert::AreEqual("off", ProfileChangeOverlay::ShaderSelectionStatus(
+				model, "nls", { "cinema" }).c_str(),
+				L"A named profile with no shader files must be Off");
+
+			RendererProfileConfig::Profile namedOff;
+			namedOff.group = "nls";
+			namedOff.name = "off";
+			namedOff.label = "Off";
+			namedOff.settings["hlsl_file"] = "NLS.hlsl";
+			model.profiles.emplace("nls.off", namedOff);
+			Assert::AreEqual("on:Off", ProfileChangeOverlay::ShaderSelectionStatus(
+				model, "nls", { "off" }).c_str(),
+				L"The word Off must not disable a configured shader profile");
+
+			RendererProfileConfig::Profile sharpen;
+			sharpen.group = "standard_shaders";
+			sharpen.name = "adaptive_sharpen";
+			sharpen.settings["glsl_file"] = "sharpen.glsl";
+			model.profiles.emplace("standard_shaders.empty", empty);
+			model.profiles.emplace("standard_shaders.adaptive_sharpen", sharpen);
+			Assert::AreEqual("on:Adaptive Sharpen",
+				ProfileChangeOverlay::ShaderSelectionStatus(model,
+					"standard_shaders",
+					{ "empty", "adaptive_sharpen" }).c_str());
 		}
 
 		TEST_METHOD(ProfileOverlayOmitsGroupsWithoutAChoice)
@@ -2860,18 +2903,18 @@ namespace VideoProcessorTest
 				[](const std::string&, std::string&) { return false; },
 				automatic, error));
 			Assert::AreEqual(static_cast<size_t>(1), automatic.size());
-			Assert::AreEqual("rec709", automatic.front().profile.c_str());
+			Assert::AreEqual("rec709", automatic.front().profiles.front().c_str());
 			Assert::IsTrue(automatic.front().configuredDefault);
 
 			std::vector<RendererProfileConfig::KeySelection> selections;
 			Assert::IsTrue(RendererProfileConfig::SelectForKey(model, "F4",
 				[](const std::string&, std::string&) { return false; },
 				selections, error));
-			Assert::AreEqual("rec709", selections.front().profile.c_str());
+			Assert::AreEqual("rec709", selections.front().profiles.front().c_str());
 			Assert::IsTrue(RendererProfileConfig::SelectForKey(model, "F5",
 				[](const std::string&, std::string&) { return false; },
 				selections, error));
-			Assert::AreEqual("bt2020", selections.front().profile.c_str());
+			Assert::AreEqual("bt2020", selections.front().profiles.front().c_str());
 			DeleteFileA(path.c_str());
 		}
 
@@ -2935,7 +2978,8 @@ namespace VideoProcessorTest
 				[](const RendererProfileConfig::AutomaticSelection& selection)
 				{ return selection.group == "viewport"; });
 			Assert::IsTrue(automaticViewport != automatic.end());
-			Assert::AreEqual("scope_cinema", automaticViewport->profile.c_str());
+			Assert::AreEqual("scope_cinema",
+				automaticViewport->profiles.front().c_str());
 			Assert::IsTrue(automaticViewport->configuredDefault);
 
 			std::vector<RendererProfileConfig::KeySelection> selections;
@@ -2945,7 +2989,7 @@ namespace VideoProcessorTest
 				[](const RendererProfileConfig::KeySelection& selection)
 				{ return selection.group == "viewport"; });
 			Assert::IsTrue(selectedViewport != selections.end());
-			Assert::AreEqual("flat", selectedViewport->profile.c_str());
+			Assert::AreEqual("flat", selectedViewport->profiles.front().c_str());
 			DeleteFileA(path.c_str());
 		}
 
@@ -3055,12 +3099,14 @@ namespace VideoProcessorTest
 				[](const std::string&, std::string&) { return false; }, selections, error));
 			Assert::IsTrue(std::any_of(selections.begin(), selections.end(),
 				[](const RendererProfileConfig::KeySelection& selected)
-					{ return selected.group == "display" && selected.profile == "cinema"; }));
+					{ return selected.group == "display" &&
+						selected.profiles == RendererProfileConfig::Selection{ "cinema" }; }));
 			Assert::IsTrue(RendererProfileConfig::SelectForKey(model, "Shift+L",
 				[](const std::string&, std::string&) { return false; }, selections, error));
 			Assert::IsTrue(std::any_of(selections.begin(), selections.end(),
 				[](const RendererProfileConfig::KeySelection& selected)
-					{ return selected.group == "queue" && selected.profile == "low_latency"; }));
+					{ return selected.group == "queue" &&
+						selected.profiles == RendererProfileConfig::Selection{ "low_latency" }; }));
 			std::string canonical;
 			Assert::IsTrue(RendererProfileConfig::CanonicalizeKeyChord(
 				"Control+f2", canonical));
@@ -3086,7 +3132,8 @@ namespace VideoProcessorTest
 				}, automatic, error));
 			Assert::IsTrue(std::any_of(automatic.begin(), automatic.end(),
 				[](const RendererProfileConfig::AutomaticSelection& selected)
-					{ return selected.group == "display" && selected.profile == "cinema"; }));
+					{ return selected.group == "display" &&
+						selected.profiles == RendererProfileConfig::Selection{ "cinema" }; }));
 
 			{
 				std::ofstream file(path, std::ios::out | std::ios::trunc);
@@ -3133,7 +3180,7 @@ namespace VideoProcessorTest
 					[](const RendererProfileConfig::AutomaticSelection& selected)
 					{ return selected.group == "queue"; });
 				Assert::IsTrue(queue != selections.end());
-				return queue->profile;
+				return queue->profiles.front();
 			};
 			Assert::AreEqual("madvr", selectQueue("madVR", "59.94").c_str());
 			Assert::AreEqual("vp_60", selectQueue("VP Renderer", "59.94").c_str());
@@ -3178,8 +3225,10 @@ namespace VideoProcessorTest
 			const std::shared_ptr<const UnifiedProfileRuntime::Snapshot> snapshot =
 				runtime.GetSnapshot();
 			Assert::IsTrue(snapshot != nullptr);
-			Assert::AreEqual("vp_24", snapshot->manualSelections.at("queue").c_str());
-			Assert::AreEqual("vp_60", snapshot->effectiveSelections.at("queue").c_str());
+			Assert::AreEqual("vp_24", RendererProfileConfig::FormatSelection(
+				snapshot->manualSelections.at("queue")).c_str());
+			Assert::AreEqual("vp_60", RendererProfileConfig::FormatSelection(
+				snapshot->effectiveSelections.at("queue")).c_str());
 
 			UnifiedProfileRuntime::Runtime fallbackRuntime;
 			Assert::IsTrue(fallbackRuntime.Initialize(config,
@@ -3191,7 +3240,8 @@ namespace VideoProcessorTest
 			const std::shared_ptr<const UnifiedProfileRuntime::Snapshot> fallback =
 				fallbackRuntime.GetSnapshot();
 			Assert::IsTrue(fallback != nullptr);
-			Assert::AreEqual("vp_24", fallback->effectiveSelections.at("queue").c_str());
+			Assert::AreEqual("vp_24", RendererProfileConfig::FormatSelection(
+				fallback->effectiveSelections.at("queue")).c_str());
 
 			UnifiedProfileRuntime::SelectionResult selection;
 			Assert::IsTrue(runtime.SelectKey("Shift+L",
@@ -3203,7 +3253,8 @@ namespace VideoProcessorTest
 				}, selection, error), std::wstring(error.begin(), error.end()).c_str());
 			Assert::IsTrue(selection.snapshot != nullptr);
 			Assert::AreEqual("low_latency",
-				selection.snapshot->effectiveSelections.at("queue").c_str());
+				RendererProfileConfig::FormatSelection(
+					selection.snapshot->effectiveSelections.at("queue")).c_str());
 			UnifiedProfileRuntime::RefreshResult refreshed;
 			Assert::IsTrue(runtime.Refresh(
 				[](const std::string& variable, std::string& value)
@@ -3213,7 +3264,8 @@ namespace VideoProcessorTest
 					return false;
 				}, refreshed, error), std::wstring(error.begin(), error.end()).c_str());
 			Assert::AreEqual("low_latency",
-				refreshed.snapshot->effectiveSelections.at("queue").c_str());
+				RendererProfileConfig::FormatSelection(
+					refreshed.snapshot->effectiveSelections.at("queue")).c_str());
 
 			UnifiedProfileRuntime::RefreshResult reapplied;
 			std::vector<std::string> clearedGroups;
@@ -3229,9 +3281,11 @@ namespace VideoProcessorTest
 			Assert::AreEqual(static_cast<size_t>(1), clearedGroups.size());
 			Assert::AreEqual("queue", clearedGroups.front().c_str());
 			Assert::AreEqual("vp_60",
-				reapplied.snapshot->effectiveSelections.at("queue").c_str());
+				RendererProfileConfig::FormatSelection(
+					reapplied.snapshot->effectiveSelections.at("queue")).c_str());
 			Assert::AreEqual("low_latency",
-				reapplied.snapshot->manualSelections.at("queue").c_str());
+				RendererProfileConfig::FormatSelection(
+					reapplied.snapshot->manualSelections.at("queue")).c_str());
 
 			std::ifstream persistedState(statePath);
 			const std::string persistedText((std::istreambuf_iterator<char>(persistedState)),
@@ -3252,7 +3306,8 @@ namespace VideoProcessorTest
 			Assert::IsFalse(idempotent.changed);
 			Assert::IsTrue(clearedGroups.empty());
 			Assert::AreEqual("vp_60",
-				idempotent.snapshot->effectiveSelections.at("queue").c_str());
+				RendererProfileConfig::FormatSelection(
+					idempotent.snapshot->effectiveSelections.at("queue")).c_str());
 
 			UnifiedProfileRuntime::RefreshResult rememberedFallback;
 			Assert::IsTrue(runtime.Refresh(
@@ -3263,8 +3318,8 @@ namespace VideoProcessorTest
 				}, rememberedFallback, error),
 				std::wstring(error.begin(), error.end()).c_str());
 			Assert::IsTrue(rememberedFallback.changed);
-			Assert::AreEqual("low_latency", rememberedFallback.snapshot->
-				effectiveSelections.at("queue").c_str());
+			Assert::AreEqual("low_latency", RendererProfileConfig::FormatSelection(
+				rememberedFallback.snapshot->effectiveSelections.at("queue")).c_str());
 
 			UnifiedProfileRuntime::Runtime restartedRuntime;
 			Assert::IsTrue(restartedRuntime.Initialize(config,
@@ -3274,8 +3329,8 @@ namespace VideoProcessorTest
 					if (variable == "source_rate") { value = "59"; return true; }
 					return false;
 				}, error), std::wstring(error.begin(), error.end()).c_str());
-			Assert::AreEqual("vp_60", restartedRuntime.GetSnapshot()->
-				effectiveSelections.at("queue").c_str());
+			Assert::AreEqual("vp_60", RendererProfileConfig::FormatSelection(
+				restartedRuntime.GetSnapshot()->effectiveSelections.at("queue")).c_str());
 			DeleteFileA(statePath.c_str());
 			DeleteFileA(path.c_str());
 		}
@@ -3356,7 +3411,7 @@ namespace VideoProcessorTest
 				[](const RendererProfileConfig::AutomaticSelection& selection)
 					{ return selection.group == "display"; });
 			Assert::IsTrue(display != automatic.end());
-			Assert::AreEqual("first", display->profile.c_str());
+			Assert::AreEqual("first", display->profiles.front().c_str());
 
 			std::vector<RendererProfileConfig::KeySelection> keys;
 			Assert::IsTrue(RendererProfileConfig::SelectForKey(model, "f4",
@@ -3365,7 +3420,7 @@ namespace VideoProcessorTest
 				[](const RendererProfileConfig::KeySelection& selection)
 					{ return selection.group == "display"; });
 			Assert::IsTrue(root != keys.end());
-			Assert::AreEqual("base", root->profile.c_str());
+			Assert::AreEqual("base", root->profiles.front().c_str());
 			Assert::IsFalse(root->resetToAutomatic);
 			DeleteFileA(path.c_str());
 		}
@@ -3564,6 +3619,258 @@ namespace VideoProcessorTest
 			Assert::AreEqual(static_cast<size_t>(1), activeSections.size());
 			Assert::AreEqual("shader.nls.standard",
 				activeSections.front().c_str());
+			DeleteFileA(path.c_str());
+		}
+
+		TEST_METHOD(Vp0159ShaderProfilesShareRulesWithoutInheritance)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(
+				ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) +
+				"VideoProcessor-vp0159-shader-profiles.cfg";
+			const std::string statePath = std::string(temporaryDirectory) +
+				"VideoProcessor-vp0159-shader-profiles.state";
+			DeleteFileA(statePath.c_str());
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[shader.nls]\n"
+					"label: Default NLS\n"
+					"shader_type: nls\n"
+					"strength: 0.4\n"
+					"[shader.nls.classic]\n"
+					"label: Classic\n"
+					"when: ${transfer} == \"HDR\"\n"
+					"shortcut: Ctrl+N\n"
+					"shader_type: nls\n"
+					"[shader.nls.protected]\n"
+					"label: Protected\n"
+					"when: ${transfer} == \"HDR\"\n"
+					"shortcut: Ctrl+P\n"
+					"shader_type: nls\n"
+					"[shader.standard]\n"
+					"type: multi\n"
+					"shortcut: Ctrl+O\n"
+					"[shader.standard.deband]\n"
+					"when: ${transfer} == \"HDR\"\n"
+					"shortcut: Ctrl+S\n"
+					"shader_type: custom\n"
+					"stage: pre_resize\n"
+					"order: 90\n"
+					"hlsl_file: Deband.hlsl\n"
+					"[shader.standard.sharpen]\n"
+					"when: ${transfer} == \"HDR\"\n"
+					"shortcut: Ctrl+S\n"
+					"shader_type: custom\n"
+					"stage: pre_resize\n"
+					"order: 10\n"
+					"hlsl_file: Sharpen.hlsl\n"
+					"[actions.shader_changed]\n"
+					"on: profile.nls.changed, profile.standard_shaders.changed\n"
+					"run: C:\\Windows\\System32\\cmd.exe /c exit 0\n";
+			}
+
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			std::string error;
+			Assert::IsTrue(ShaderConfigValidation::Validate(config, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			std::vector<ConfiguredShaderRule> offSelection;
+			std::vector<std::string> activeSections;
+			Assert::IsTrue(MadVRShaderLoader::ResolveConfiguredRuleSelection(
+				config, "@shader-profiles:nls|standard",
+				ShaderRendererBackend::LIBPLACEBO, offSelection,
+				activeSections, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			Assert::AreEqual(static_cast<size_t>(1), offSelection.size());
+			Assert::IsTrue(offSelection.front().none,
+				L"Profiles without shader files must resolve to Off");
+			Assert::AreEqual(static_cast<size_t>(2), activeSections.size());
+			std::vector<ConfiguredShaderRule> orderedStandard;
+			Assert::IsTrue(MadVRShaderLoader::ResolveConfiguredRuleSelection(
+				config, "@shader-profiles:standard.deband|standard.sharpen",
+				ShaderRendererBackend::MADVR, orderedStandard, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			Assert::AreEqual(static_cast<size_t>(2), orderedStandard.size());
+			Assert::AreEqual("standard.deband",
+				orderedStandard[0].name.c_str());
+			Assert::AreEqual("standard.sharpen",
+				orderedStandard[1].name.c_str());
+			Assert::AreEqual(0u,
+				orderedStandard[0].profileSelectionOrder);
+			Assert::AreEqual(1u,
+				orderedStandard[1].profileSelectionOrder);
+			Assert::AreEqual(90u, orderedStandard[0].stageOrder);
+			Assert::AreEqual(10u, orderedStandard[1].stageOrder,
+				L"Legacy stage order must not override Standard profile-list order");
+			RendererProfileConfig::Model model;
+			Assert::IsTrue(RendererProfileConfig::Read(config, model, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			const auto classic = model.profiles.find("nls.classic");
+			Assert::IsTrue(classic != model.profiles.end());
+			Assert::IsTrue(classic->second.settings.find("strength") ==
+				classic->second.settings.end(),
+				L"Shader profiles must not inherit root settings");
+
+			auto sdr = [](const std::string& name, std::string& value)
+			{
+				if (name == "transfer") { value = "SDR"; return true; }
+				return false;
+			};
+			auto hdr = [](const std::string& name, std::string& value)
+			{
+				if (name == "transfer") { value = "HDR"; return true; }
+				return false;
+			};
+			UnifiedProfileRuntime::Runtime runtime;
+			Assert::IsTrue(runtime.Initialize(config, sdr, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			const auto initial = runtime.GetSnapshot();
+			Assert::AreEqual("base", RendererProfileConfig::FormatSelection(
+				initial->effectiveSelections.at("nls")).c_str());
+			Assert::AreEqual("base",
+				RendererProfileConfig::FormatSelection(
+					initial->effectiveSelections.at("standard_shaders")).c_str());
+			UnifiedProfileRuntime::SelectionResult selected;
+			Assert::IsTrue(runtime.SelectKey("Ctrl+P", sdr, selected, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			Assert::AreEqual("protected",
+				RendererProfileConfig::FormatSelection(
+					selected.snapshot->effectiveSelections.at("nls")).c_str());
+			Assert::IsTrue(runtime.SelectKey("Ctrl+S", sdr, selected, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			Assert::AreEqual("deband|sharpen",
+				RendererProfileConfig::FormatSelection(
+					selected.snapshot->effectiveSelections.at("standard_shaders")).c_str(),
+				L"A shared standard shortcut replaces the complete selection");
+			Assert::IsTrue(runtime.SelectKey("Ctrl+O", sdr, selected, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			Assert::AreEqual("base",
+				RendererProfileConfig::FormatSelection(
+					selected.snapshot->effectiveSelections.at("standard_shaders")).c_str(),
+				L"An empty ordinary profile can replace standard shaders with Off");
+			UnifiedProfileRuntime::RefreshResult reapplied;
+			std::vector<std::string> clearedGroups;
+			Assert::IsTrue(runtime.ReapplyRules(sdr, reapplied, clearedGroups, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			Assert::AreEqual("protected",
+				RendererProfileConfig::FormatSelection(
+					reapplied.snapshot->effectiveSelections.at("nls")).c_str());
+
+			// A fresh runtime has no live shortcut override. It restores the manual
+			// choices, then lets matching rules replace the configured defaults and
+			// persisted fallbacks.
+			UnifiedProfileRuntime::Runtime restoredRuntime;
+			Assert::IsTrue(restoredRuntime.Initialize(config, sdr, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			Assert::AreEqual("protected", RendererProfileConfig::FormatSelection(
+				restoredRuntime.GetSnapshot()->effectiveSelections.at("nls")).c_str());
+			UnifiedProfileRuntime::RefreshResult refresh;
+			Assert::IsTrue(restoredRuntime.Refresh(hdr, refresh, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			Assert::IsTrue(refresh.changed);
+			Assert::AreEqual("classic",
+				RendererProfileConfig::FormatSelection(
+					refresh.snapshot->effectiveSelections.at("nls")).c_str());
+			Assert::AreEqual("deband|sharpen",
+				RendererProfileConfig::FormatSelection(
+					refresh.snapshot->effectiveSelections.at("standard_shaders")).c_str());
+			Assert::AreEqual(static_cast<size_t>(2), refresh.actions.size(),
+				L"Profile-change actions must run for both shader profile groups");
+
+			{
+				std::ofstream state(statePath,
+					std::ios::out | std::ios::trunc);
+				state << "profile.nls: classic|protected\n"
+					"profile.standard_shaders: deband|deband\n";
+			}
+			UnifiedProfileRuntime::Runtime invalidStateRuntime;
+			Assert::IsTrue(invalidStateRuntime.Initialize(config, sdr, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			const auto invalidState = invalidStateRuntime.GetSnapshot();
+			Assert::IsTrue(invalidState->manualSelections.find("nls") ==
+				invalidState->manualSelections.end());
+			Assert::IsTrue(invalidState->manualSelections.find(
+				"standard_shaders") == invalidState->manualSelections.end());
+			Assert::AreEqual("base", RendererProfileConfig::FormatSelection(
+				invalidState->effectiveSelections.at("nls")).c_str(),
+				L"A corrupt multi-NLS state must fall back to the configured profile");
+			Assert::AreEqual("base", RendererProfileConfig::FormatSelection(
+				invalidState->effectiveSelections.at(
+					"standard_shaders")).c_str(),
+				L"A duplicate Standard state must fall back to the configured profile");
+
+			// Removing the final configured shader profile must still send an
+			// explicit empty typed selection to clear a previously active chain.
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[general]\n";
+			}
+			ConfigFile clearedConfig;
+			Assert::IsTrue(clearedConfig.Load(path));
+			offSelection.clear();
+			activeSections.clear();
+			Assert::IsTrue(MadVRShaderLoader::ResolveConfiguredRuleSelection(
+				clearedConfig, "@shader-profiles:",
+				ShaderRendererBackend::LIBPLACEBO, offSelection,
+				activeSections, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			Assert::AreEqual(static_cast<size_t>(1), offSelection.size());
+			Assert::IsTrue(offSelection.front().none);
+			Assert::IsTrue(activeSections.empty());
+			DeleteFileA(statePath.c_str());
+			DeleteFileA(path.c_str());
+		}
+
+		TEST_METHOD(Vp0159ReorderedNlsFallbackSelectsFirstProfile)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(
+				ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) +
+				"VideoProcessor-vp0159-reordered-nls.cfg";
+			const std::string statePath = std::string(temporaryDirectory) +
+				"VideoProcessor-vp0159-reordered-nls.state";
+			DeleteFileA(statePath.c_str());
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[shader.nls.stretch]\n"
+					"label: Nonlinear Stretch\n"
+					"shader_type: nls\n"
+					"hlsl_file: NLS.hlsl\n"
+					"glsl_file: NLS.glsl\n"
+					"[shader.nls.off]\n"
+					"label: Off\n"
+					"shader_type: nls\n";
+			}
+
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			std::string error;
+			Assert::IsTrue(ShaderConfigValidation::Validate(config, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			auto noRules = [](const std::string&, std::string&) { return false; };
+			UnifiedProfileRuntime::Runtime runtime;
+			Assert::IsTrue(runtime.Initialize(config, noRules, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			Assert::AreEqual("stretch", RendererProfileConfig::FormatSelection(
+				runtime.GetSnapshot()->effectiveSelections.at("nls")).c_str(),
+				L"The first reordered NLS profile must become the fallback");
+
+			std::vector<ConfiguredShaderRule> selection;
+			std::vector<std::string> activeSections;
+			Assert::IsTrue(MadVRShaderLoader::ResolveConfiguredRuleSelection(
+				config, "@shader-profiles:nls.stretch",
+				ShaderRendererBackend::LIBPLACEBO, selection, activeSections,
+				error), std::wstring(error.begin(), error.end()).c_str());
+			Assert::AreEqual(static_cast<size_t>(1), selection.size());
+			Assert::IsTrue(selection.front().nls);
+			Assert::IsFalse(selection.front().none);
+			Assert::AreEqual("NLS.glsl", selection.front().filename.c_str());
+			Assert::AreEqual(static_cast<size_t>(1), activeSections.size());
+			Assert::AreEqual("shader.nls.stretch",
+				activeSections.front().c_str());
+			DeleteFileA(statePath.c_str());
 			DeleteFileA(path.c_str());
 		}
 
@@ -4085,7 +4392,8 @@ namespace VideoProcessorTest
 			Assert::IsTrue(std::abs(selection.snapshot->lldv.
 				masteringMinLuminance - 0.001) < 1e-12);
 			Assert::AreEqual("pq",
-				selection.snapshot->effectiveSelections.at("lldv").c_str());
+				RendererProfileConfig::FormatSelection(
+					selection.snapshot->effectiveSelections.at("lldv")).c_str());
 
 			const RendererProfileConfig::LldvMetadata legacyDefaults =
 				RendererProfileConfig::DefaultLldvMetadata(false);

@@ -408,6 +408,16 @@ bool LibplaceboPluginVideoRenderer::SelectShaderRule(
 }
 
 
+bool LibplaceboPluginVideoRenderer::SelectShaderProfiles(
+	const std::vector<std::string>& profileSections,
+	CString& activeState,
+	bool& rendererRestartRequired)
+{
+	return m_renderer->SelectShaderProfiles(profileSections, activeState,
+		rendererRestartRequired);
+}
+
+
 bool LibplaceboPluginVideoRenderer::GetRenderStallStatus(
 	CString& status) const
 {

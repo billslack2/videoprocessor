@@ -1262,7 +1262,8 @@ namespace
 					const auto automaticSelection = selectedByGroup.find(group.name);
 					if (automaticSelection == selectedByGroup.end())
 						continue;
-					profileName = automaticSelection->second.profile;
+					if (automaticSelection->second.profiles.empty()) continue;
+					profileName = automaticSelection->second.profiles.front();
 				}
 				const auto profile = model.profiles.find(group.name + "." + profileName);
 				if (profile == model.profiles.end()) continue;
@@ -12130,7 +12131,8 @@ bool LibplaceboVideoRenderer::SelectShaderRule(
 		std::lock_guard<std::mutex> stateGuard(m_stateMutex);
 		m_activeShaderSections = activeSections;
 		m_activeShaderSectionsAvailable =
-			selector.rfind("@shader-key:", 0) == 0;
+			selector.rfind("@shader-key:", 0) == 0 ||
+			selector.rfind("@shader-profiles:", 0) == 0;
 	}
 	{
 		std::lock_guard<std::mutex> pendingGuard(m_pendingShaderMutex);
@@ -12145,6 +12147,20 @@ bool LibplaceboVideoRenderer::SelectShaderRule(
 			selector.c_str());
 	}
 	return true;
+}
+
+
+bool LibplaceboVideoRenderer::SelectShaderProfiles(
+	const std::vector<std::string>& profileSections,
+	CString& activeState,
+	bool& rendererRestartRequired)
+{
+	// The render-thread queue predates unified profiles and remains string keyed.
+	// Encode only here, at that compatibility boundary.
+	const std::string selector = "@shader-profiles:" +
+		RendererProfileConfig::FormatSelection(profileSections);
+	return SelectShaderRule(CString(CStringA(selector.c_str())), activeState,
+		rendererRestartRequired);
 }
 
 
@@ -12261,8 +12277,8 @@ bool LibplaceboVideoRenderer::ApplyApplicationState(
 	liveResetRequired = false;
 
 	std::unique_lock<std::mutex> guard(m_stateMutex);
-	const std::map<std::string, std::string>& next =
-		snapshot.effectiveSelections;
+	const std::map<std::string, std::string> next =
+		RendererProfileConfig::FormatSelections(snapshot.effectiveSelections);
 	VideoStateComPtr state = m_videoState;
 	std::string candidateProfiles;
 	const RendererSettings candidateSettings = state ?

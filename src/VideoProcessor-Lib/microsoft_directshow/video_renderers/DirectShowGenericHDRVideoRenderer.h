@@ -61,6 +61,9 @@ public:
 	CString ActiveShaderRule() const override { return m_activeShaderRule; }
 	bool SelectShaderRule(const CString& ruleName, CString& activeRule,
 		bool& rendererRestartRequired) override;
+	bool SelectShaderProfiles(
+		const std::vector<std::string>& profileSections,
+		CString& activeState, bool& rendererRestartRequired) override;
 	bool RefreshShaderRule(CString& activeRule,
 		bool& rendererRestartRequired) override;
 	bool ApplyApplicationState(

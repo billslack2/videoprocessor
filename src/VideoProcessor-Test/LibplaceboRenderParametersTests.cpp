@@ -630,7 +630,7 @@ namespace VideoProcessorTest
 				selections, error), Wide(error).c_str());
 			Assert::AreEqual(static_cast<size_t>(1), selections.size());
 			Assert::AreEqual("display", selections.front().group.c_str());
-			Assert::AreEqual("cinema", selections.front().profile.c_str());
+			Assert::AreEqual("cinema", selections.front().profiles.front().c_str());
 
 			const auto selected = model.profiles.find("display.cinema");
 			Assert::IsTrue(selected != model.profiles.end());

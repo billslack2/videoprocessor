@@ -3,6 +3,7 @@
 #include <windows.h>
 
 #include "ConfigEditorWindow.h"
+#include "../VideoProcessor-Config/ProfileListController.h"
 #include "VpTheme.h"
 #include <ActiveProfileStatus.h>
 #include <ConfigurationLiveApply.h>
@@ -73,6 +74,7 @@ uint32_t testPresentationTargetAcknowledgementSequence = 0;
 HWND testPresentationTargetAcknowledgementEditor = nullptr;
 
 void answerInputDialog(const QString& text);
+void answerMessageBox(int result);
 
 bool appearsAbove(HWND first, HWND second)
 {
@@ -656,6 +658,34 @@ void testEveryPageRoundTrips()
     QListWidget* shaders = requireControl<QListWidget>(window,
         QStringLiteral("config.shader.nls.modes"));
     require(shaders->count() > 1, "NLS fixture did not load");
+    require(!shaders->item(0)->text().contains(QStringLiteral("(Default)")),
+        "NLS still displays a hard-coded Default role beside the profile name");
+    shaders->setCurrentRow(0);
+    requireControl<QLineEdit>(window, QStringLiteral("config.shader.nls.label"))
+        ->setText(QStringLiteral("Off"));
+    require(shaders->currentItem()->text() == QStringLiteral("Off"),
+        "A root NLS profile named Off was replaced by hard-coded Default text");
+    require(shaders->dragDropMode() == QAbstractItemView::InternalMove,
+        "NLS profiles do not support drag reordering");
+    QPushButton* addNls = requireControl<QPushButton>(window,
+        QStringLiteral("config.shader.nls.add"));
+    QPushButton* removeNls = requireControl<QPushButton>(window,
+        QStringLiteral("config.shader.nls.remove"));
+    shaders->setCurrentRow(0);
+    require(removeNls->isEnabled(),
+        "The first NLS profile is still protected as a fixed Default row");
+    const int nlsCountBeforeAdd = shaders->count();
+    addNls->click();
+    require(shaders->count() == nlsCountBeforeAdd + 1 && shaders->currentItem(),
+        "Add NLS profile did not create and select a named profile");
+    requireControl<QLineEdit>(window, QStringLiteral("config.shader.nls.label"))
+        ->setText(QStringLiteral("Temporary NLS"));
+    require(shaders->currentItem()->text() == QStringLiteral("Temporary NLS"),
+        "NLS display-name changes did not update the shared list immediately");
+    answerMessageBox(QMessageBox::Yes);
+    removeNls->click();
+    require(shaders->count() == nlsCountBeforeAdd,
+        "Remove NLS profile did not remove the selected named profile");
     shaders->setCurrentRow(1);
     requireControl<QLineEdit>(window, QStringLiteral("config.shader.nls.label"))
         ->setText(QStringLiteral("Verified Stretch"));
@@ -695,7 +725,10 @@ void testEveryPageRoundTrips()
             break;
         }
     require(changedParameter, "Structured shader parameter did not load");
-    requireControl<QPushButton>(window, QStringLiteral("config.shader.nls.move_down"))->click();
+    const int nlsDragSource = shaders->currentRow();
+    require(shaders->model()->moveRow(QModelIndex(), nlsDragSource,
+        QModelIndex(), nlsDragSource + 2),
+        "The shared NLS list model rejected a drag reorder");
 
     int nlsPlusRow = -1;
     for (int row = 0; row < shaders->count(); ++row)
@@ -712,6 +745,11 @@ void testEveryPageRoundTrips()
     require(requireControl<QLineEdit>(window,
         QStringLiteral("config.shader.nls.glsl_file"))->text() == QStringLiteral("NLSPlus.glsl"),
         "NLS+ did not retain its VP Renderer implementation");
+    shaders->setCurrentRow(0);
+    answerMessageBox(QMessageBox::Yes);
+    removeNls->click();
+    require(shaders->count() == nlsCountBeforeAdd - 1,
+        "The first NLS profile could not be removed through the shared lifecycle");
 
     window.selectPage(14);
     QTabBar* shaderSections = requireControl<QTabBar>(window,
@@ -743,8 +781,32 @@ void testEveryPageRoundTrips()
         "Clear shader cache did not leave a request for the active renderer shutdown path");
     QListWidget* standardShaders = requireControl<QListWidget>(window,
         QStringLiteral("config.shader.standard.items"));
-    require(standardShaders->count() == 1,
+    require(standardShaders->count() == 2,
         "Standard shader fixture did not load");
+    require(standardShaders->dragDropMode() == QAbstractItemView::InternalMove,
+        "Standard profiles do not support drag reordering");
+    require(!standardShaders->item(0)->text().contains(
+        QStringLiteral("(Default)")),
+        "Standard shaders still display a hard-coded Default role");
+    standardShaders->setCurrentRow(0);
+    requireControl<QLineEdit>(window,
+        QStringLiteral("config.shader.standard.label"))->setText(
+            QStringLiteral("Off"));
+    require(standardShaders->currentItem()->text() == QStringLiteral("Off"),
+        "A root Standard profile named Off was replaced by hard-coded Default text");
+
+    const auto hasExactHelp = [&window](const QString& sentence)
+    {
+        const QList<QLabel*> labels = window.findChildren<QLabel*>();
+        return std::any_of(labels.begin(), labels.end(), [&sentence](QLabel* label)
+            { return label->text() == sentence; });
+    };
+    require(hasExactHelp(QStringLiteral(
+        "A single NLS profile can be active.")),
+        "The required NLS active-profile explanation is missing");
+    require(hasExactHelp(QStringLiteral(
+        "Multiple standard shaders profile can be active.")),
+        "The required Standard active-profile explanation is missing");
     int debandingRow = -1;
     for (int row = 0; row < standardShaders->count(); ++row)
         if (standardShaders->item(row)->text() == QStringLiteral("Debanding Mild"))
@@ -779,13 +841,15 @@ void testEveryPageRoundTrips()
     requireControl<QLineEdit>(window,
         QStringLiteral("config.shader.standard.shortcut"))->setText(QStringLiteral("Ctrl+d"));
     const int standardCountBeforeAdd = standardShaders->count();
-    answerInputDialog(QStringLiteral("Temporary Shader"));
     requireControl<QPushButton>(window, QStringLiteral("config.shader.standard.add"))->click();
     require(standardShaders->count() == standardCountBeforeAdd + 1,
         "Add standard shader did not create a shader configuration");
-    require(standardShaders->currentItem() &&
-        standardShaders->currentItem()->text() == QStringLiteral("Temporary Shader"),
+    require(standardShaders->currentItem(),
         "New standard shader was not selected");
+    requireControl<QLineEdit>(window, QStringLiteral("config.shader.standard.label"))
+        ->setText(QStringLiteral("Temporary Shader"));
+    require(standardShaders->currentItem()->text() == QStringLiteral("Temporary Shader"),
+        "Standard display-name changes did not update the shared list immediately");
     require(requireControl<QLineEdit>(window,
         QStringLiteral("config.shader.standard.shortcut"))->text().isEmpty(),
         "New standard shader unexpectedly received a shortcut");
@@ -794,6 +858,26 @@ void testEveryPageRoundTrips()
         requireControl<QLineEdit>(window,
             QStringLiteral("config.shader.standard.glsl_file"))->text().isEmpty(),
         "New standard shader did not begin with intentionally blank backend files");
+    requireControl<QPushButton>(window,
+        QStringLiteral("config.shader.standard.move_up"))->click();
+    require(standardShaders->currentRow() == 1 &&
+        standardShaders->currentItem()->text() == QStringLiteral("Temporary Shader"),
+        "Move up did not reorder the selected standard shader profile");
+    requireControl<QPushButton>(window, QStringLiteral("config.shader.standard.add"))->click();
+    requireControl<QLineEdit>(window, QStringLiteral("config.shader.standard.label"))
+        ->setText(QStringLiteral("Transient Shader"));
+    require(standardShaders->currentItem()->text() == QStringLiteral("Transient Shader"),
+        "Second standard shader profile was not created");
+    answerMessageBox(QMessageBox::Yes);
+    requireControl<QPushButton>(window, QStringLiteral("config.shader.standard.remove"))->click();
+    require(standardShaders->count() == standardCountBeforeAdd + 1,
+        "Remove standard shader did not remove the selected named profile");
+    standardShaders->setCurrentRow(0);
+    answerMessageBox(QMessageBox::Yes);
+    requireControl<QPushButton>(window,
+        QStringLiteral("config.shader.standard.remove"))->click();
+    require(standardShaders->count() == standardCountBeforeAdd,
+        "The first Standard profile could not be removed through the shared lifecycle");
 
     save(window);
     const QByteArray saved = readBytes(path);
@@ -821,7 +905,7 @@ void testEveryPageRoundTrips()
         "renderer: *", "run: C:\\Tools\\verified-action.cmd 42",
         "enabled: false", "debug: false", "debug_log_retention: 25",
         "label: Verified Stretch", "order: 10", "strength: 0.85", "threshold: 28",
-        "shortcut: Ctrl+D", "[shader.standard.temporary_shader]",
+        "shortcut: Ctrl+D", "[shader.standard.New_1]",
         "label: Temporary Shader"
     };
     for (const QByteArray& text : expected)
@@ -836,6 +920,9 @@ void testEveryPageRoundTrips()
         "VP Renderer input override was not saved in its independent input-policy section");
     require(saved.indexOf("[shader.nls.protected]") < saved.indexOf("[shader.nls.standard]"),
         "NLS selection order was not persisted through section order");
+    require(saved.indexOf("[shader.standard.New_1]") <
+        saved.indexOf("[shader.standard.debanding_mild]"),
+        "Standard profile execution order was not persisted through section order");
 
     ConfigEditorWindow reloaded(path, 0, true);
     require(!requireControl<QCheckBox>(reloaded,
@@ -1060,22 +1147,25 @@ void testEmptyStandardShadersCanCreateFirstShader()
     QListWidget* standardShaders = requireControl<QListWidget>(window,
         QStringLiteral("config.shader.standard.items"));
     require(standardShaders->count() == 0,
-        "The no-default fixture unexpectedly contains a standard shader");
+        "The editor synthesized a Standard profile that is not configured");
 
-    answerInputDialog(QStringLiteral("My First Shader"));
     requireControl<QPushButton>(window, QStringLiteral("config.shader.standard.add"))->click();
-    require(standardShaders->count() == 1 && standardShaders->currentItem() &&
-        standardShaders->currentItem()->text() == QStringLiteral("My First Shader"),
+    require(standardShaders->count() == 1 && standardShaders->currentItem(),
         "The first Standard shader was not created and selected");
+    requireControl<QLineEdit>(window, QStringLiteral("config.shader.standard.label"))
+        ->setText(QStringLiteral("My First Shader"));
+    require(standardShaders->currentItem()->text().startsWith(
+        QStringLiteral("My First Shader")),
+        "The first Standard shader name did not update immediately");
     require(requireControl<QLineEdit>(window,
         QStringLiteral("config.shader.standard.shortcut"))->text().isEmpty(),
         "The first Standard shader unexpectedly received a shortcut");
 
     save(window);
     const QByteArray saved = readBytes(path);
-    require(saved.contains("[shader.standard]\ntype: multi"),
-        "Creating the first shader did not create the Standard shader group");
-    const int sectionStart = saved.indexOf("[shader.standard.my_first_shader]");
+    require(!saved.contains("[shader.standard]\ntype: multi"),
+        "Creating a profile recreated the obsolete fixed Standard root");
+    const int sectionStart = saved.indexOf("[shader.standard.New_1]");
     const int sectionEnd = saved.indexOf(QByteArray("\n["), sectionStart + 1);
     const QByteArray created = sectionStart >= 0 ? saved.mid(sectionStart,
         sectionEnd < 0 ? -1 : sectionEnd - sectionStart) : QByteArray();
@@ -1594,28 +1684,107 @@ void testVirtualShaderOffOptionPersistsWhenConfigured()
     configuration.remove(rootStart, nextSection - rootStart + 1);
     QFile file(path);
     require(file.open(QIODevice::WriteOnly | QIODevice::Truncate),
-        "Cannot prepare shader fixture without an Off section");
+        "Cannot prepare shader fixture without a default profile section");
     require(file.write(configuration) == configuration.size(),
-        "Cannot write shader fixture without an Off section");
+        "Cannot write shader fixture without a default profile section");
     file.close();
 
     ConfigEditorWindow window(path, 0, true);
     QListWidget* modes = requireControl<QListWidget>(window,
         QStringLiteral("config.shader.nls.modes"));
-    require(modes->count() >= 1 && modes->item(0)->text() == QStringLiteral("Off"),
-        "The virtual Off option was not created without a root section");
+    require(modes->count() >= 1 &&
+        modes->item(0)->data(Qt::UserRole).toString().compare(
+            QStringLiteral("shader.nls"), Qt::CaseInsensitive) != 0,
+        "The editor synthesized a fixed Default profile without a root section");
     modes->setCurrentRow(0);
+    const QString selectedSection = modes->currentItem()->data(Qt::UserRole).toString();
     QLineEdit* shortcut = requireControl<QLineEdit>(window,
         QStringLiteral("config.shader.nls.shortcut"));
-    require(shortcut->text().isEmpty(),
-        "A virtual Off option unexpectedly received a shortcut");
     shortcut->setText(QStringLiteral("Ctrl+0"));
     save(window);
     const QByteArray saved = readBytes(path);
-    require(saved.contains("[shader.nls]"),
-        "Editing virtual Off did not create its configuration section");
-    require(saved.contains("shortcut: Ctrl+0"),
-        "Editing virtual Off did not persist its shortcut");
+    require(!saved.contains("[shader.nls]\n"),
+        "Editing the first named profile recreated the removed fixed root");
+    const QByteArray header = "[" + selectedSection.toLocal8Bit() + "]";
+    const qsizetype selectedStart = saved.indexOf(header);
+    const qsizetype selectedEnd = saved.indexOf("\n[", selectedStart + 1);
+    const QByteArray selected = saved.mid(selectedStart,
+        selectedEnd < 0 ? -1 : selectedEnd - selectedStart);
+    require(selected.contains("shortcut: Ctrl+0"),
+        "Editing the first named profile did not persist its shortcut");
+}
+
+void testShaderProfileListsCanReturnToEmptyWithoutSyntheticRoots()
+{
+    QTemporaryDir directory;
+    const QString path = copyFixture(directory);
+    QByteArray configuration = readBytes(path);
+    QList<QByteArray> retained;
+    bool skip = false;
+    for (const QByteArray& line : configuration.split('\n'))
+    {
+        const QByteArray trimmed = line.trimmed();
+        if (trimmed.startsWith('['))
+            skip = trimmed.startsWith("[shader.nls") ||
+                trimmed.startsWith("[shader.standard");
+        if (!skip) retained.push_back(line);
+    }
+    configuration = retained.join('\n');
+    QFile file(path);
+    require(file.open(QIODevice::WriteOnly | QIODevice::Truncate) &&
+        file.write(configuration) == configuration.size(),
+        "Cannot create an empty shader-profile fixture");
+    file.close();
+
+    ConfigEditorWindow window(path, 0, true);
+    QListWidget* nls = requireControl<QListWidget>(window,
+        QStringLiteral("config.shader.nls.modes"));
+    QListWidget* standard = requireControl<QListWidget>(window,
+        QStringLiteral("config.shader.standard.items"));
+    require(nls->count() == 0 && standard->count() == 0,
+        "An empty shader family synthesized a profile row");
+
+    requireControl<QPushButton>(window,
+        QStringLiteral("config.shader.nls.add"))->click();
+    require(nls->count() == 1 && nls->currentItem(),
+        "NLS could not create its first ordinary profile");
+    requireControl<QLineEdit>(window,
+        QStringLiteral("config.shader.nls.label"))->setText(
+            QStringLiteral("Off"));
+    require(nls->currentItem()->text() == QStringLiteral("Off"),
+        "First NLS profile did not use its configured name");
+    answerMessageBox(QMessageBox::Yes);
+    requireControl<QPushButton>(window,
+        QStringLiteral("config.shader.nls.remove"))->click();
+    require(nls->count() == 0,
+        "NLS could not remove its final configured profile");
+
+    requireControl<QPushButton>(window,
+        QStringLiteral("config.shader.standard.add"))->click();
+    require(standard->count() == 1 && standard->currentItem(),
+        "Standard could not create its first ordinary profile");
+    requireControl<QLineEdit>(window,
+        QStringLiteral("config.shader.standard.label"))->setText(
+            QStringLiteral("Off"));
+    require(standard->currentItem()->text() == QStringLiteral("Off"),
+        "First Standard profile did not use its configured name");
+    answerMessageBox(QMessageBox::Yes);
+    requireControl<QPushButton>(window,
+        QStringLiteral("config.shader.standard.remove"))->click();
+    require(standard->count() == 0,
+        "Standard could not remove its final configured profile");
+
+    save(window);
+    const QByteArray saved = readBytes(path);
+    require(!saved.contains("[shader.nls") &&
+        !saved.contains("[shader.standard"),
+        "Saving empty shader lists recreated a synthetic root section");
+    ConfigEditorWindow reloaded(path, 0, true);
+    require(requireControl<QListWidget>(reloaded,
+        QStringLiteral("config.shader.nls.modes"))->count() == 0 &&
+        requireControl<QListWidget>(reloaded,
+            QStringLiteral("config.shader.standard.items"))->count() == 0,
+        "Empty shader lists did not survive save and reload");
 }
 
 void testDisablingShaderRulePreservesShortcut()
@@ -2450,18 +2619,18 @@ void testActiveShaderMarkersUseAuthoritativeSet()
     auto* shader = requireControl<QListWidget>(window,
         QStringLiteral("config.shader.nls.modes"));
     require(shader->count() >= 3,
-        "Shader fixture does not expose Off and two shader members");
+        "Shader fixture does not expose a default profile and two shader members");
 
     shader->setCurrentRow(2);
-    const QString off = shader->item(0)->data(Qt::UserRole).toString();
+    const QString defaultProfile = shader->item(0)->data(Qt::UserRole).toString();
     const QString first = shader->item(1)->data(Qt::UserRole).toString();
     const QString second = shader->item(2)->data(Qt::UserRole).toString();
 
-    window.setActiveProfileStatusForTesting({}, {}, {}, {}, { off });
+    window.setActiveProfileStatusForTesting({}, {}, {}, {}, { defaultProfile });
     require(shader->currentRow() == 2 &&
         shader->item(0)->data(Qt::UserRole + 12).toBool() &&
         !shader->item(2)->data(Qt::UserRole + 12).toBool(),
-        "Off activity was confused with the selected editing row");
+        "Default-profile activity was confused with the selected editing row");
 
     window.setActiveProfileStatusForTesting({}, {}, {}, {}, { first });
     require(!shader->item(0)->data(Qt::UserRole + 12).toBool() &&
@@ -4687,6 +4856,116 @@ void testNormalWindowArchitectureHasNoLeasePolling()
         "Config editor still contains polling, popup, or foreground lease logic");
 }
 
+void testShaderProfileIntentIsRetainedBeforeRendererConstruction()
+{
+    const QByteArray source = readBytes(repositoryPath(QStringLiteral(
+        "src/VideoProcessor-GUI/VideoProcessorDlg.cpp")));
+    const qsizetype functionStart = source.indexOf(
+        "void CVideoProcessorDlg::ApplyUnifiedProfileSnapshot(");
+    const qsizetype functionEnd = source.indexOf(
+        "void CVideoProcessorDlg::QueueUnifiedQueueProfileReset(",
+        functionStart);
+    require(functionStart >= 0 && functionEnd > functionStart,
+        "Cannot locate unified profile snapshot application");
+    const QByteArray applyPath = source.mid(functionStart,
+        functionEnd - functionStart);
+    const qsizetype retain = applyPath.indexOf(
+        "m_requestedShaderProfiles = std::move(shaderProfiles);");
+    const qsizetype transitionGuard = applyPath.indexOf(
+        "const bool selectedRendererDiffers");
+    const qsizetype missingRendererGuard = applyPath.indexOf(
+        "if (!m_videoRenderer)");
+    const qsizetype apply = applyPath.indexOf(
+        "m_videoRenderer->SelectShaderProfiles(");
+    require(retain >= 0 && transitionGuard > retain &&
+        missingRendererGuard > retain && apply > missingRendererGuard,
+        "Shader profile intent is not retained before renderer-transition "
+        "and missing-renderer exits");
+}
+
+void testSharedProfileListControllerContract()
+{
+    QWidget parent;
+    QListWidget list;
+    list.setDragDropMode(QAbstractItemView::InternalMove);
+    QPushButton add;
+    QPushButton remove;
+    QPushButton up;
+    QPushButton down;
+    QStringList sections = { QStringLiteral("profile.root"),
+        QStringLiteral("profile.second") };
+    int dirtyCount = 0;
+    int detailLoads = 0;
+
+    ProfileListPolicy policy;
+    policy.sections = [&sections] { return sections; };
+    policy.displayName = [](const QString& section)
+        { return section.section(u'.', -1); };
+    policy.addProfile = [&sections]
+    {
+        const QString section = QStringLiteral("profile.third");
+        sections.push_back(section);
+        return section;
+    };
+    policy.removeProfile = [&sections](const QString& section)
+    {
+        return sections.removeOne(section);
+    };
+    policy.normalizeForOrdering = [](const QString& section)
+        { return section; };
+    policy.moveAfter = [&sections](const QString& wanted,
+        const QString& previous)
+    {
+        if (wanted == previous) return false;
+        const int previousIndex = sections.indexOf(previous);
+        const int wantedIndex = sections.indexOf(wanted);
+        if (previousIndex < 0 || wantedIndex < 0) return false;
+        sections.removeAt(wantedIndex);
+        sections.insert(sections.indexOf(previous) + 1, wanted);
+        return true;
+    };
+    policy.markDirty = [&dirtyCount] { ++dirtyCount; };
+
+    ProfileListController controller(&parent, &parent, &list, &add, &remove,
+        &up, &down, std::move(policy));
+    controller.setCurrentChanged([&detailLoads](QListWidgetItem*)
+        { ++detailLoads; });
+    controller.refresh(QStringLiteral("profile.root"));
+    require(list.count() == 2 && list.currentRow() == 0,
+        "Shared profile component did not load the requested edit selection");
+    require(list.item(0)->text() == QStringLiteral("root  (Default)"),
+        "Shared profile component did not derive Default from first position");
+    require(remove.isEnabled() && !up.isEnabled() && down.isEnabled(),
+        "Shared profile component exposed incorrect first-row actions");
+
+    controller.updateCurrentLabel(QStringLiteral("Live name"));
+    require(list.item(0)->text() == QStringLiteral("Live name  (Default)"),
+        "Shared profile component did not update its current name immediately");
+    down.click();
+    require(sections == QStringList{ QStringLiteral("profile.second"),
+        QStringLiteral("profile.root") } && list.currentRow() == 1,
+        "Shared profile component did not persist button reordering");
+
+    require(list.model()->moveRow(QModelIndex(), 1, QModelIndex(), 0),
+        "Shared profile component rejected model drag reordering");
+    require(sections.front() == QStringLiteral("profile.root") &&
+        list.currentRow() == 0,
+        "Shared profile component did not persist drag reordering");
+
+    add.click();
+    require(sections.back() == QStringLiteral("profile.third") &&
+        list.currentItem()->data(Qt::UserRole).toString() ==
+            QStringLiteral("profile.third"),
+        "Shared profile component did not add and select a profile");
+    answerMessageBox(QMessageBox::Yes);
+    remove.click();
+    require(!sections.contains(QStringLiteral("profile.third")) &&
+        list.count() == 2,
+        "Shared profile component did not remove its selected profile");
+    require(dirtyCount >= 4 && detailLoads >= 5,
+        "Shared profile component did not publish mutations and selection loads");
+}
+
 int run(const char* name, const std::function<void()>& test)
 {
     if (!testNameFilter.isEmpty() &&
@@ -4724,11 +5003,15 @@ int main(int argc, char** argv)
     QApplication::setStyle(VpTheme::CreateStyle());
     application.setStyleSheet(VpTheme::StyleSheet());
     int failures = 0;
+    failures += run("shared profile list controller contract",
+        testSharedProfileListControllerContract);
     failures += run("every page round trips", testEveryPageRoundTrips);
     failures += run("renderer section tabs stay synchronized during rapid clicks",
         testRendererSectionTabsRemainSynchronizedDuringRapidClicks);
     failures += run("empty Standard shaders can create first shader",
         testEmptyStandardShadersCanCreateFirstShader);
+    failures += run("shader profile lists can return to empty without synthetic roots",
+        testShaderProfileListsCanReturnToEmptyWithoutSyntheticRoots);
     failures += run("two-column cards share row height", testTwoColumnCardsShareRowHeight);
     failures += run("inherited renderer Input selectors use effective labels",
         testInheritedRendererInputSelectorsUseEffectiveLabels);
@@ -4805,6 +5088,8 @@ int main(int argc, char** argv)
         testOrdinaryEditsDoNotRequireDiskValidation);
     failures += run("warm reveal grants foreground permission",
         testWarmRevealPathGrantsForegroundPermission);
+    failures += run("shader profile intent survives renderer construction",
+        testShaderProfileIntentIsRetainedBeforeRendererConstruction);
     failures += run("native owner preserves Qt input and popup association",
         testNativeOwnerPreservesQtInputAndPopupAssociation);
     failures += run("real configuration dropdown remains clickable",

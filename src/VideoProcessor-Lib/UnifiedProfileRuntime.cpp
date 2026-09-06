@@ -41,6 +41,7 @@ namespace
 	{
 		if (!(left.manualSelections == right.manualSelections &&
 			left.effectiveSelections == right.effectiveSelections &&
+			left.managesShaderProfiles == right.managesShaderProfiles &&
 			left.viewport.profile == right.viewport.profile &&
 			left.viewport.zoomProfile == right.viewport.zoomProfile &&
 			left.viewport.screenAspect.numerator ==
@@ -263,7 +264,7 @@ namespace UnifiedProfileRuntime
 		m_configPath = config.GetLoadedPath();
 		m_statePath = m_model.persistSelection ?
 			RendererProfileConfig::StatePath(config) : std::string();
-		std::map<std::string, std::string> restored;
+		RendererProfileConfig::Selections restored;
 		if (m_model.persistSelection &&
 			!LoadPersistedSelections(restored, error))
 			return false;
@@ -313,9 +314,9 @@ namespace UnifiedProfileRuntime
 			RendererProfileConfig::StatePath(config) : std::string();
 
 		std::shared_ptr<const Snapshot> candidate;
-		std::map<std::string, std::string> manual = previous ?
+		RendererProfileConfig::Selections manual = previous ?
 			previous->manualSelections :
-			std::map<std::string, std::string>();
+			RendererProfileConfig::Selections();
 		std::set<std::string> sessionOverrides = m_sessionOverrideGroups;
 		for (auto selection = manual.begin(); selection != manual.end();)
 		{
@@ -326,8 +327,7 @@ namespace UnifiedProfileRuntime
 					return candidate.name == selection->first;
 				});
 			const bool valid = group != m_model.groups.end() &&
-				std::find(group->profiles.begin(), group->profiles.end(),
-					selection->second) != group->profiles.end();
+				IsPersistedSelectionValid(selection->first, selection->second);
 			if (!valid)
 			{
 				sessionOverrides.erase(selection->first);
@@ -396,9 +396,9 @@ namespace UnifiedProfileRuntime
 			return true;
 		}
 
-		std::map<std::string, std::string> manual =
+		RendererProfileConfig::Selections manual =
 			current ? current->manualSelections :
-			std::map<std::string, std::string>();
+			RendererProfileConfig::Selections();
 		std::set<std::string> sessionOverrides = m_sessionOverrideGroups;
 		for (const RendererProfileConfig::KeySelection& selection :
 			result.selections)
@@ -410,7 +410,7 @@ namespace UnifiedProfileRuntime
 			}
 			else
 			{
-				manual[selection.group] = selection.profile;
+				manual[selection.group] = selection.profiles;
 				sessionOverrides.insert(selection.group);
 			}
 		}
@@ -462,8 +462,8 @@ namespace UnifiedProfileRuntime
 		const DisplayRuleExpression::ValueLookup values = sourceValues ? sourceValues :
 			[](const std::string&, std::string&) { return false; };
 		const std::shared_ptr<const Snapshot> current = std::atomic_load(&m_snapshot);
-		const std::map<std::string, std::string> currentSelections = current ?
-			current->effectiveSelections : std::map<std::string, std::string>();
+		const RendererProfileConfig::Selections currentSelections = current ?
+			current->effectiveSelections : RendererProfileConfig::Selections();
 		if (!RendererProfileConfig::SelectCycleForKey(m_model, key,
 			currentSelections, result.selections, error))
 			return false;
@@ -472,12 +472,12 @@ namespace UnifiedProfileRuntime
 			result.snapshot = current;
 			return true;
 		}
-		std::map<std::string, std::string> manual = current ? current->manualSelections :
-			std::map<std::string, std::string>();
+		RendererProfileConfig::Selections manual = current ? current->manualSelections :
+			RendererProfileConfig::Selections();
 		std::set<std::string> sessionOverrides = m_sessionOverrideGroups;
 		for (const RendererProfileConfig::KeySelection& selection : result.selections)
 		{
-			manual[selection.group] = selection.profile;
+			manual[selection.group] = selection.profiles;
 			sessionOverrides.insert(selection.group);
 		}
 		std::shared_ptr<const Snapshot> candidate;
@@ -716,11 +716,14 @@ namespace UnifiedProfileRuntime
 		bool profileChanged = false;
 		for (const std::string& group : groups)
 		{
-			const std::string before = previous &&
+			const RendererProfileConfig::Selection before = previous &&
 				previous->effectiveSelections.count(group) ?
-				previous->effectiveSelections.at(group) : std::string();
-			const std::string after = current->effectiveSelections.count(group) ?
-				current->effectiveSelections.at(group) : std::string();
+				previous->effectiveSelections.at(group) :
+				RendererProfileConfig::Selection();
+			const RendererProfileConfig::Selection after =
+				current->effectiveSelections.count(group) ?
+				current->effectiveSelections.at(group) :
+				RendererProfileConfig::Selection();
 			if (before == after)
 				continue;
 			profileChanged = true;
@@ -737,7 +740,7 @@ namespace UnifiedProfileRuntime
 
 
 	bool Runtime::LoadPersistedSelections(
-		std::map<std::string, std::string>& selections,
+		RendererProfileConfig::Selections& selections,
 		std::string& error) const
 	{
 		selections.clear();
@@ -763,8 +766,10 @@ namespace UnifiedProfileRuntime
 			if (key.compare(0, 8, "profile.") != 0)
 				continue;
 			const std::string group = key.substr(8);
-			if (IsPersistedSelectionValid(group, value))
-				selections[group] = value;
+			const RendererProfileConfig::Selection parsed =
+				RendererProfileConfig::ParseSelection(value);
+			if (IsPersistedSelectionValid(group, parsed))
+				selections[group] = parsed;
 			else
 				DebugLog::Log(
 					"unified profile state ignored invalid selection %s=%s",
@@ -776,7 +781,7 @@ namespace UnifiedProfileRuntime
 
 
 	bool Runtime::PersistSelections(
-		const std::map<std::string, std::string>& selections,
+		const RendererProfileConfig::Selections& selections,
 		std::string& error) const
 	{
 		error.clear();
@@ -819,7 +824,7 @@ namespace UnifiedProfileRuntime
 			const auto selection = selections.find(group.name);
 			if (selection != selections.end())
 				output << "profile." << group.name << ": " <<
-					selection->second << "\n";
+					RendererProfileConfig::FormatSelection(selection->second) << "\n";
 		}
 		output.close();
 		if (!output)
@@ -845,7 +850,7 @@ namespace UnifiedProfileRuntime
 
 
 	bool Runtime::BuildSnapshot(
-		const std::map<std::string, std::string>& manualSelections,
+		const RendererProfileConfig::Selections& manualSelections,
 		const std::set<std::string>& sessionOverrideGroups,
 		const DisplayRuleExpression::ValueLookup& sourceValues,
 		uint64_t generation, std::shared_ptr<const Snapshot>& snapshot,
@@ -863,10 +868,19 @@ namespace UnifiedProfileRuntime
 		// A saved key selection is a fallback for groups without a matching rule.
 		// Source-driven rules can move persisted settings, while an explicit
 		// shortcut is a deliberate session override until this process exits.
-		std::map<std::string, std::string> effective = manualSelections;
+		RendererProfileConfig::Selections effective = manualSelections;
 		for (const RendererProfileConfig::AutomaticSelection& selection :
 			automatic)
 		{
+			const RendererProfileConfig::Group* group = nullptr;
+			for (const RendererProfileConfig::Group& candidate : m_model.groups)
+				if (candidate.name == selection.group)
+				{
+					group = &candidate;
+					break;
+				}
+			if (!group)
+				continue;
 			// A configured default supplies an otherwise-unselected group; it is
 			// not a source rule and must not cancel an operator shortcut. A real
 			// when: match remains authoritative over persisted state.
@@ -874,33 +888,34 @@ namespace UnifiedProfileRuntime
 				sessionOverrideGroups.find(selection.group) ==
 					sessionOverrideGroups.end()) ||
 				effective.find(selection.group) == effective.end())
-				effective[selection.group] = selection.profile;
+				effective[selection.group] = selection.profiles;
 		}
 
 		std::string viewportProfile = "default";
 		const auto selectedViewport = effective.find("viewport");
-		if (selectedViewport != effective.end())
-			viewportProfile = selectedViewport->second;
+		if (selectedViewport != effective.end() &&
+			!selectedViewport->second.empty())
+			viewportProfile = selectedViewport->second.front();
 		RendererProfileConfig::ResolvedViewport viewport;
 		if (!RendererProfileConfig::ResolveViewport(
 			m_model, viewportProfile, generation, viewport, error))
 			return false;
 		const auto selectedZoom = effective.find("zoom");
-		if (selectedZoom != effective.end() &&
-			!RendererProfileConfig::ResolveZoom(m_model, selectedZoom->second,
+		if (selectedZoom != effective.end() && !selectedZoom->second.empty() &&
+			!RendererProfileConfig::ResolveZoom(m_model, selectedZoom->second.front(),
 				viewport, error))
 			return false;
 		RendererProfileConfig::ResolvedQueue queue;
 		const auto selectedQueue = effective.find("queue");
-		if (selectedQueue != effective.end() &&
+		if (selectedQueue != effective.end() && !selectedQueue->second.empty() &&
 			!RendererProfileConfig::ResolveQueue(
-				m_model, selectedQueue->second, queue, error))
+				m_model, selectedQueue->second.front(), queue, error))
 			return false;
 		RendererProfileConfig::ResolvedLldv lldv;
 		const auto selectedLldv = effective.find("lldv");
-		if (selectedLldv != effective.end() &&
+		if (selectedLldv != effective.end() && !selectedLldv->second.empty() &&
 			!RendererProfileConfig::ResolveLldv(
-				m_model, selectedLldv->second, lldv, error))
+				m_model, selectedLldv->second.front(), lldv, error))
 			return false;
 
 		std::map<std::string, StateVariables::Value> variables;
@@ -967,12 +982,15 @@ namespace UnifiedProfileRuntime
 				static_cast<double>(generation));
 		for (const auto& selection : effective)
 		{
+			if (selection.second.empty()) continue;
 			variables["profile." + selection.first] =
-				StateVariables::Value::Text(selection.second);
+				StateVariables::Value::Text(
+					RendererProfileConfig::FormatSelection(selection.second));
 			if (selection.first == "viewport")
 			{
-				std::string label = selection.second;
-				const auto profile = m_model.profiles.find("viewport." + selection.second);
+				std::string label = selection.second.front();
+				const auto profile = m_model.profiles.find(
+					"viewport." + selection.second.front());
 				if (profile != m_model.profiles.end() && !profile->second.label.empty())
 					label = profile->second.label;
 				variables["screen_config"] =
@@ -982,8 +1000,9 @@ namespace UnifiedProfileRuntime
 			}
 			else if (selection.first == "zoom")
 			{
-				std::string label = selection.second;
-				const auto profile = m_model.profiles.find("zoom." + selection.second);
+				std::string label = selection.second.front();
+				const auto profile = m_model.profiles.find(
+					"zoom." + selection.second.front());
 				if (profile != m_model.profiles.end() && !profile->second.label.empty())
 					label = profile->second.label;
 				variables["zoom_config"] = StateVariables::Value::Text(label);
@@ -996,6 +1015,12 @@ namespace UnifiedProfileRuntime
 		next->generation = generation;
 		next->manualSelections = manualSelections;
 		next->effectiveSelections = effective;
+		next->managesShaderProfiles = std::any_of(m_model.groups.begin(),
+			m_model.groups.end(), [](const RendererProfileConfig::Group& group)
+			{
+				return group.name == "nls" ||
+					group.name == "standard_shaders";
+			});
 		next->viewport = viewport;
 		next->queue = queue;
 		next->lldv = lldv;
@@ -1008,14 +1033,21 @@ namespace UnifiedProfileRuntime
 
 	bool Runtime::IsPersistedSelectionValid(
 		const std::string& groupName,
-		const std::string& profileName) const
+		const RendererProfileConfig::Selection& profiles) const
 	{
 		for (const RendererProfileConfig::Group& group : m_model.groups)
 		{
 			if (group.name != groupName || !group.persistSelection)
 				continue;
-			return std::find(group.profiles.begin(), group.profiles.end(),
-				profileName) != group.profiles.end();
+			if (profiles.empty() || (!group.multiSelection && profiles.size() != 1))
+				return false;
+			std::set<std::string> unique;
+			for (const std::string& profile : profiles)
+				if (!unique.insert(profile).second ||
+					std::find(group.profiles.begin(), group.profiles.end(),
+						profile) == group.profiles.end())
+					return false;
+			return true;
 		}
 		return false;
 	}
