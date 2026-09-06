@@ -2644,7 +2644,7 @@ namespace Tests
 					{ if (name == "transfer") { value = "PQ"; return true; } return false; },
 				selections, error));
 			Assert::AreEqual(static_cast<size_t>(1), selections.size());
-			Assert::AreEqual("f5", selections[0].profile.c_str());
+			Assert::AreEqual("f5", selections[0].profiles.front().c_str());
 		}
 
 		TEST_METHOD(RendererProfileConfigResetChordDoesNotSuppressOtherProfileKeys)
@@ -2674,7 +2674,7 @@ namespace Tests
 			Assert::IsTrue(RendererProfileConfig::SelectForKey(model, "F5",
 				[](const std::string&, std::string&) { return false; }, selections, error));
 			Assert::AreEqual(static_cast<size_t>(1), selections.size());
-			Assert::AreEqual("rec709", selections[0].profile.c_str());
+			Assert::AreEqual("rec709", selections[0].profiles.front().c_str());
 		}
 
 		TEST_METHOD(RendererProfileConfigCheckedInExamplesPassStartupValidation)
@@ -2782,7 +2782,7 @@ namespace Tests
 					return false;
 				}, selections, error));
 			Assert::AreEqual(static_cast<size_t>(1), selections.size());
-			Assert::AreEqual("pq", selections[0].profile.c_str());
+			Assert::AreEqual("pq", selections[0].profiles.front().c_str());
 			Assert::IsFalse(selections[0].configuredDefault);
 		}
 

@@ -93,6 +93,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="ConfigEditorWindow.h" />
+    <ClInclude Include="ProfileListController.h" />
     <ClInclude Include="Resource.h" />
     <ClInclude Include="VpTheme.h" />
     <ClInclude Include="..\VideoProcessor-ConfigCore\ConfigEditorCore.h" />

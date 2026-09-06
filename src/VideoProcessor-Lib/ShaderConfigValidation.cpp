@@ -103,16 +103,13 @@ bool ShaderConfigValidation::Validate(const ConfigFile& config,
 				children = true;
 				if (!ValidShortcut(config, child, reason)) return false;
 			}
-			if (effect && children)
-			{
-				reason = "[" + section + "] cannot define an effect and child members";
-				return false;
-			}
-			if (multi && effect)
-			{
-				reason = "[" + section + "] type=multi requires child members";
-				return false;
-			}
+			// A root is an ordinary selectable profile, not an inherited group
+			// template. It may have files even when named profiles exist; callers
+			// select one profile at a time (or compose Standard members) without
+			// merging them.
+			(void)effect;
+			(void)children;
+			(void)multi;
 		}
 
 		const auto* values = config.GetSectionValues(section);

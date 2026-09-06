@@ -722,7 +722,7 @@ namespace VideoProcessorTest
 			Assert::IsTrue(document.SetKnown(
 				"shader.nls.standard", "type", "multi"));
 			Assert::IsFalse(ConfigEditorCore::ValidateCandidate(document, error));
-			Assert::IsTrue(error.find(L"shader group") != std::wstring::npos,
+			Assert::IsTrue(error.find(L"type=multi") != std::wstring::npos,
 				error.c_str());
 			DeleteFileW(path.c_str());
 		}

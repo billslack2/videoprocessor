@@ -270,6 +270,18 @@ public:
 		rendererRestartRequired = false;
 		return false;
 	}
+	// Applies the already-resolved shader profile sections selected by the
+	// application profile runtime. An empty list explicitly clears all profile
+	// shaders. Renderers may translate this typed boundary to a legacy selector
+	// internally, but callers never encode or interpret that representation.
+	virtual bool SelectShaderProfiles(
+		const std::vector<std::string>& profileSections,
+		CString& activeState, bool& rendererRestartRequired)
+	{
+		activeState.Empty();
+		rendererRestartRequired = false;
+		return false;
+	}
 	// Reports a slow rendering call that is currently in flight. The GUI paints
 	// the returned status independently of the renderer thread.
 	virtual bool GetRenderStallStatus(CString& status) const

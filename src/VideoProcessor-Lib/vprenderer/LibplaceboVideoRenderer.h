@@ -82,6 +82,9 @@ public:
 		bool& rendererRestartRequired) override;
 	bool SelectShaderRule(const CString& ruleName, CString& activeRule,
 		bool& rendererRestartRequired) override;
+	bool SelectShaderProfiles(
+		const std::vector<std::string>& profileSections,
+		CString& activeState, bool& rendererRestartRequired) override;
 	bool GetRenderStallStatus(CString& status) const override;
 	bool RefreshShaderRule(CString& activeRule,
 		bool& rendererRestartRequired) override;

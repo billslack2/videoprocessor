@@ -20,8 +20,9 @@ namespace UnifiedProfileRuntime
 		uint64_t generation = 0;
 		// Manual selections are durable user choices. Effective selections also
 		// include configured defaults and automatic source-driven choices.
-		std::map<std::string, std::string> manualSelections;
-		std::map<std::string, std::string> effectiveSelections;
+		RendererProfileConfig::Selections manualSelections;
+		RendererProfileConfig::Selections effectiveSelections;
+		bool managesShaderProfiles = false;
 		RendererProfileConfig::ResolvedViewport viewport;
 		RendererProfileConfig::ResolvedQueue queue;
 		RendererProfileConfig::ResolvedLldv lldv;
@@ -113,13 +114,13 @@ namespace UnifiedProfileRuntime
 
 	private:
 		bool LoadPersistedSelections(
-			std::map<std::string, std::string>& selections,
+			RendererProfileConfig::Selections& selections,
 			std::string& error) const;
 		bool PersistSelections(
-			const std::map<std::string, std::string>& selections,
+			const RendererProfileConfig::Selections& selections,
 			std::string& error) const;
 		bool BuildSnapshot(
-			const std::map<std::string, std::string>& manualSelections,
+			const RendererProfileConfig::Selections& manualSelections,
 			const std::set<std::string>& sessionOverrideGroups,
 			const DisplayRuleExpression::ValueLookup& sourceValues,
 			uint64_t generation, std::shared_ptr<const Snapshot>& snapshot,
@@ -136,7 +137,7 @@ namespace UnifiedProfileRuntime
 			std::vector<ActionInvocation>& actions, std::string& error,
 			const EventActionLauncher::ActionValueLookup& eventValues = {}) const;
 		bool IsPersistedSelectionValid(const std::string& group,
-			const std::string& profile) const;
+			const RendererProfileConfig::Selection& profiles) const;
 
 		mutable std::mutex m_mutex;
 		RendererProfileConfig::Model m_model;

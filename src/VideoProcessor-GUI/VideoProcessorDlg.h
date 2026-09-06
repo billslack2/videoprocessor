@@ -561,6 +561,8 @@ protected:
 	std::set<WORD> m_shaderShortcutKeys;
 	ShortcutDebounceState m_shaderShortcutDebounce;
 	CString m_requestedShaderSelector;
+	std::vector<std::string> m_requestedShaderProfiles;
+	bool m_hasRequestedShaderProfiles = false;
 	std::map<WORD, CString> m_displayRuleShortcutRules;
 	std::map<WORD, unsigned int> m_rendererShortcutIndices;
 

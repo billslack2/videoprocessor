@@ -12,6 +12,7 @@
 #include <VideoState.h>
 #include <microsoft_directshow/MadVRShaderRuntimeState.h>
 #include <map>
+#include <climits>
 #include <string>
 #include <vector>
 
@@ -54,6 +55,10 @@ struct ConfiguredShaderRule
 	std::map<std::string, std::string> parameters;
 	bool nls = false;
 	bool none = false;
+	// Unified profile selections execute primarily in this list order. The
+	// per-profile stage order remains a secondary ordering key.
+	unsigned int profileSelectionOrder = UINT_MAX;
+	unsigned int stageOrder = 0;
 	double aspectTolerancePercent = 5.0;
 	double maximumStretchRatio = NLS_DEFAULT_MAXIMUM_STRETCH_RATIO;
 	double stableGeometryDeadbandPercent = 2.0;

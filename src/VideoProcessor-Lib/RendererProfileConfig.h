@@ -68,6 +68,41 @@ namespace RendererProfileConfig
 		return path + ".state";
 	}
 
+	using Selection = std::vector<std::string>;
+	using Selections = std::map<std::string, Selection>;
+
+	// Multi-member choices are typed throughout the resolver. Encoding exists
+	// only at the durable state and legacy renderer-selector boundaries.
+	inline Selection ParseSelection(const std::string& value)
+	{
+		std::vector<std::string> selections;
+		std::istringstream input(value);
+		std::string selection;
+		while (std::getline(input, selection, '|'))
+			if (!selection.empty()) selections.push_back(selection);
+		return selections;
+	}
+
+	inline std::string FormatSelection(const Selection& selections)
+	{
+		std::ostringstream output;
+		for (size_t index = 0; index < selections.size(); ++index)
+		{
+			if (index) output << '|';
+			output << selections[index];
+		}
+		return output.str();
+	}
+
+	inline std::map<std::string, std::string> FormatSelections(
+		const Selections& selections)
+	{
+		std::map<std::string, std::string> formatted;
+		for (const auto& selection : selections)
+			formatted.emplace(selection.first, FormatSelection(selection.second));
+		return formatted;
+	}
+
 	struct Profile
 	{
 		std::string group;
@@ -87,6 +122,10 @@ namespace RendererProfileConfig
 		std::string name;
 		std::vector<std::string> profiles;
 		std::string defaultSelection;
+		// Shader groups use a section namespace rather than inheriting settings
+		// into a renderer configuration.  Standard shaders are intentionally
+		// composable; every matching member is selected in file order.
+		bool multiSelection = false;
 		std::string resetWhen;
 		DisplayRuleExpression::Expression resetExpression;
 		bool persistSelection = true;
@@ -125,14 +164,14 @@ namespace RendererProfileConfig
 	struct KeySelection
 	{
 		std::string group;
-		std::string profile;
+		Selection profiles;
 		bool resetToAutomatic = false;
 	};
 
 	struct AutomaticSelection
 	{
 		std::string group;
-		std::string profile;
+		Selection profiles;
 		bool configuredDefault = false;
 	};
 
@@ -1260,6 +1299,136 @@ namespace RendererProfileConfig
 			model.groups.push_back(std::move(group));
 		}
 
+		// Shader profiles share the rule/shortcut runtime with the renderer
+		// profile families, but shader files are never inherited.  A root
+		// section, when present, is one ordinary selectable profile (and may
+		// intentionally contain no files, which is unconfigured/off at runtime).
+		const struct ShaderGroupSpec
+		{
+			const char* name;
+			const char* section;
+			bool multiSelection;
+			const char* expectedShaderType;
+		} shaderSpecs[] = {
+			{ "nls", "shader.nls", false, "nls" },
+			{ "standard_shaders", "shader.standard", true, "custom" }
+		};
+		for (const ShaderGroupSpec& spec : shaderSpecs)
+		{
+			const std::string rootSection(spec.section);
+			const std::string prefix = rootSection + ".";
+			const auto* rootValues = config.GetSectionValues(rootSection);
+			std::vector<std::string> variants;
+			for (const std::string& section : config.GetSectionNames())
+			{
+				if (section.rfind(prefix, 0) != 0)
+					continue;
+				const std::string name = section.substr(prefix.size());
+				if (name.find('.') != std::string::npos || !IsIdentifier(name))
+				{
+					error = "[" + section + "] must be exactly one named shader profile";
+					return false;
+				}
+				// Only profiles for this shader family participate in the shared
+				// selector.  Other direct shader sections are legacy/manual effects
+				// and must remain untouched rather than being mistaken for inherited
+				// shader settings (for example, a custom effect beside NLS profiles).
+				std::string shaderType;
+				if (!config.TryGetString(section, "shader_type", shaderType) ||
+					ConfigFile::NormalizeName(shaderType) != spec.expectedShaderType)
+					continue;
+				variants.push_back(name);
+			}
+			if (!rootValues && variants.empty())
+				continue;
+
+			Group group;
+			group.name = spec.name;
+			group.multiSelection = spec.multiSelection;
+			group.defaultSelection = rootValues ? "base" : variants.front();
+			// Shader profiles follow the same durable manual-selection contract as
+			// every other profile family. A group may still opt out globally through
+			// [general] persist_profile_selection: false.
+			group.persistSelection = model.persistSelection;
+			if (rootValues) group.profiles.push_back("base");
+			auto readShaderProfile = [&](const std::string& name,
+				const std::string& section, const std::map<std::string, std::string>& values,
+				Profile& profile) -> bool
+			{
+				profile.group = group.name;
+				profile.name = name;
+				std::string shortcut;
+				for (const auto& entry : values)
+				{
+					if (entry.first == "label") { profile.label = entry.second; continue; }
+					if (entry.first == "when") { profile.when = entry.second; continue; }
+					if (entry.first == "shortcut") { shortcut = entry.second; continue; }
+					if (entry.first == "cycle_shortcut")
+					{
+						if (spec.multiSelection)
+						{
+							error = "[" + section + "] cycle_shortcut is not supported for standard shaders";
+							return false;
+						}
+						if (!CanonicalizeKeyChord(entry.second, profile.cycleShortcut))
+						{
+							error = "[" + section + "] cycle_shortcut is not a valid shortcut";
+							return false;
+						}
+						continue;
+					}
+					if (entry.first == "priority")
+					{
+						model.warnings.push_back("[" + section +
+							"] priority is deprecated and ignored; file order is priority");
+						continue;
+					}
+					if (entry.first == "type")
+					{
+						if (section == rootSection && spec.multiSelection &&
+							ConfigFile::NormalizeName(entry.second) == "multi")
+							continue;
+						error = "[" + section + "] does not support type=" + entry.second;
+						return false;
+					}
+					if (entry.first == "shader_type" &&
+						ConfigFile::NormalizeName(entry.second) != spec.expectedShaderType)
+					{
+						error = "[" + section + "] shader_type must be " +
+							spec.expectedShaderType;
+						return false;
+					}
+					profile.settings.emplace(entry.first, entry.second);
+				}
+				if (!MergeShortcutIntoWhen(shortcut, "[" + section + "]", profile.when, error))
+					return false;
+				if (!profile.when.empty() &&
+					(!profile.whenExpression.Compile(profile.when, error, true) ||
+					 !ValidateExpressionVariables(profile.whenExpression,
+						expressionVariables, "[" + section + "] when=", error)))
+					return false;
+				return true;
+			};
+			if (rootValues)
+			{
+				Profile base;
+				if (!readShaderProfile("base", rootSection, *rootValues, base))
+					return false;
+				model.profiles.emplace(group.name + ".base", std::move(base));
+			}
+			for (const std::string& variant : variants)
+			{
+				const std::string section = prefix + variant;
+				Profile profile;
+				if (!readShaderProfile(variant, section,
+					*config.GetSectionValues(section), profile))
+					return false;
+				group.profiles.push_back(variant);
+				model.profiles.emplace(group.name + "." + variant, std::move(profile));
+			}
+			model.groups.push_back(std::move(group));
+		}
+
 		std::string configuredActionDelay;
 		if (config.TryGetString("general", "event_action_delay_seconds",
 			configuredActionDelay))
@@ -1858,13 +2027,13 @@ namespace RendererProfileConfig
 					if (matchesReset)
 					{
 						selections.push_back({ group.name,
-							group.defaultSelection, false });
+							{ group.defaultSelection }, false });
 						continue;
 					}
 				}
 			}
 
-			std::string selected;
+			std::vector<std::string> selected;
 			for (const std::string& profileName : group.profiles)
 			{
 				const Profile& profile = model.profiles.at(group.name + "." + profileName);
@@ -1876,11 +2045,12 @@ namespace RendererProfileConfig
 				if (!matchesProfile && !error.empty()) return false;
 				if (!matchesProfile)
 					continue;
-				selected = profileName;
-				break;
+				selected.push_back(profileName);
+				if (!group.multiSelection)
+					break;
 			}
 			if (!selected.empty())
-				selections.push_back({ group.name, selected, false });
+				selections.push_back({ group.name, std::move(selected), false });
 		}
 		return true;
 	}
@@ -2093,7 +2263,7 @@ namespace RendererProfileConfig
 	// advances only through profiles that explicitly share the pressed chord;
 	// an inactive/non-member current profile starts at the first match.
 	inline bool SelectCycleForKey(const Model& model, const std::string& key,
-		const std::map<std::string, std::string>& currentSelections,
+		const Selections& currentSelections,
 		std::vector<KeySelection>& selections, std::string& error)
 	{
 		selections.clear();
@@ -2106,6 +2276,8 @@ namespace RendererProfileConfig
 		}
 		for (const Group& group : model.groups)
 		{
+			if (group.multiSelection)
+				continue;
 			std::vector<std::string> matches;
 			for (const std::string& name : group.profiles)
 			{
@@ -2115,11 +2287,12 @@ namespace RendererProfileConfig
 			}
 			if (matches.empty()) continue;
 			const auto current = currentSelections.find(group.name);
-			auto selected = current == currentSelections.end() ? matches.end() :
-				std::find(matches.begin(), matches.end(), current->second);
+			const std::string currentName = current == currentSelections.end() ||
+				current->second.empty() ? std::string() : current->second.front();
+			auto selected = std::find(matches.begin(), matches.end(), currentName);
 			const size_t next = selected == matches.end() ? 0 :
 				(static_cast<size_t>(selected - matches.begin()) + 1) % matches.size();
-			selections.push_back({ group.name, matches[next], false });
+			selections.push_back({ group.name, { matches[next] }, false });
 		}
 		return true;
 	}
@@ -2403,8 +2576,8 @@ namespace RendererProfileConfig
 	}
 
 	// Select every group from one immutable source snapshot. The first matching
-	// non-default profile in declared/file order wins. If nothing matches, the
-	// configured first/default profile is selected; default=auto intentionally
+	// non-fallback profile in declared/file order wins. If nothing matches, the
+	// configured first/fallback profile is selected; default=auto intentionally
 	// leaves that group without an override.
 	inline bool SelectAutomatic(const Model& model,
 		const DisplayRuleExpression::ValueLookup& sourceValues,
@@ -2421,7 +2594,7 @@ namespace RendererProfileConfig
 
 		for (const Group& group : model.groups)
 		{
-			const Profile* selected = nullptr;
+			std::vector<const Profile*> selected;
 			for (const std::string& profileName : group.profiles)
 			{
 				if (profileName == group.defaultSelection) continue;
@@ -2432,16 +2605,20 @@ namespace RendererProfileConfig
 					values, specificity, error);
 				if (!matches && !error.empty()) return false;
 				if (!matches) continue;
-				selected = &profile;
-				break;
+				selected.push_back(&profile);
+				if (!group.multiSelection)
+					break;
 			}
-			if (selected)
+			if (!selected.empty())
 			{
-				selections.push_back({ group.name, selected->name, false });
+				std::vector<std::string> names;
+				for (const Profile* profile : selected) names.push_back(profile->name);
+				selections.push_back({ group.name, std::move(names), false });
 			}
 			else if (group.defaultSelection != "auto")
 			{
-				selections.push_back({ group.name, group.defaultSelection, true });
+				selections.push_back({ group.name,
+					{ group.defaultSelection }, true });
 			}
 		}
 		return true;

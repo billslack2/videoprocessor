@@ -1001,6 +1001,19 @@ bool DirectShowGenericHDRVideoRenderer::SelectShaderRule(const CString& ruleName
 }
 
 
+bool DirectShowGenericHDRVideoRenderer::SelectShaderProfiles(
+	const std::vector<std::string>& profileSections,
+	CString& activeState, bool& rendererRestartRequired)
+{
+	// MadVR's existing runtime state still uses a selector string. Keep that
+	// compatibility encoding wholly behind the typed renderer boundary.
+	const std::string selector = "@shader-profiles:" +
+		RendererProfileConfig::FormatSelection(profileSections);
+	return SelectShaderRule(CString(CStringA(selector.c_str())), activeState,
+		rendererRestartRequired);
+}
+
+
 bool DirectShowGenericHDRVideoRenderer::RefreshShaderRule(CString& activeRule,
 	bool& rendererRestartRequired)
 {

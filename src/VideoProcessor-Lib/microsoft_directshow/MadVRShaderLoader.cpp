@@ -279,6 +279,7 @@ struct ShaderEntry
 	std::string displayName;
 	std::map<std::string, std::string> parameters;
 	bool nlsRuntimeParameters = false;
+	unsigned int profileSelectionOrder = UINT_MAX;
 };
 
 
@@ -346,6 +347,9 @@ struct ShaderRule
 	std::string inactiveRule;
 	std::vector<ShaderEntry> preScale;
 	std::vector<ShaderEntry> postScale;
+	// Set only by the unified profile-selection path. Legacy rule selectors
+	// retain UINT_MAX and continue to use their explicit order values.
+	unsigned int profileSelectionOrder = UINT_MAX;
 };
 
 
@@ -1545,14 +1549,82 @@ bool LoadTargetRuleSelectionForBackend(const ConfigFile& config,
 }
 
 
+// The application profile runtime has already evaluated source rules and
+// shortcuts before this loader is called.  Resolve only the selected shader
+// profiles here; in particular, do not evaluate `when` a second time in a
+// renderer backend.  Empty profiles are a valid unconfigured/off selection.
+bool LoadTargetProfileSelectionForBackend(const ConfigFile& config,
+	const std::string& selectedProfiles, ShaderRendererBackend backend,
+	std::vector<ShaderRule>& rules, std::string& reason,
+	std::vector<std::string>* activeSections = nullptr)
+{
+	rules.clear();
+	if (activeSections) activeSections->clear();
+	std::set<std::string> seen;
+	unsigned int profileSelectionOrder = 0;
+	for (const std::string& name : RendererProfileConfig::ParseSelection(
+		selectedProfiles))
+	{
+		if (!seen.insert(name).second) continue;
+		const std::string section = "shader." + name;
+		const auto* settings = config.GetSectionValues(section);
+		if (!settings)
+		{
+			reason = "configured shader profile [" + section + "] does not exist";
+			return false;
+		}
+		if (activeSections) activeSections->push_back(section);
+		std::string hlsl;
+		std::string glsl;
+		config.TryGetString(section, "hlsl_file", hlsl);
+		config.TryGetString(section, "glsl_file", glsl);
+		if (ConfigFile::Trim(hlsl).empty() && ConfigFile::Trim(glsl).empty())
+			continue;
+		ShaderRule rule = LoadTargetRule(config, name, backend);
+		if (!rule.valid)
+		{
+			reason = section + " is invalid";
+			return false;
+		}
+		rule.profileSelectionOrder = profileSelectionOrder++;
+		if (RuleAppliesToBackend(rule, backend))
+			rules.push_back(std::move(rule));
+	}
+	if (std::count_if(rules.begin(), rules.end(),
+		[](const ShaderRule& rule) { return rule.nls; }) > 1)
+	{
+		reason = "only one NLS profile may be active";
+		return false;
+	}
+	if (rules.empty())
+	{
+		ShaderRule off;
+		off.name = "off";
+		off.label = "Off";
+		off.none = true;
+		rules.push_back(std::move(off));
+	}
+	return true;
+}
+
+
 bool LoadRuleSelectionForBackend(const ConfigFile& config,
 	const std::string& selector, ShaderRendererBackend backend,
 	std::vector<ShaderRule>& rules)
 {
-	if (IsTargetShaderConfiguration(config))
+	constexpr const char* TARGET_KEY = "@shader-key:";
+	constexpr const char* TARGET_PROFILES = "@shader-profiles:";
+	const std::string trimmed = ConfigFile::Trim(selector);
+	if (IsTargetShaderConfiguration(config) ||
+		trimmed.rfind(TARGET_PROFILES, 0) == 0)
 	{
-		constexpr const char* TARGET_KEY = "@shader-key:";
-		const std::string trimmed = ConfigFile::Trim(selector);
+		if (trimmed.rfind(TARGET_PROFILES, 0) == 0)
+		{
+			std::string reason;
+			return LoadTargetProfileSelectionForBackend(config,
+				trimmed.substr(std::char_traits<char>::length(TARGET_PROFILES)),
+				backend, rules, reason);
+		}
 		if (trimmed.rfind(TARGET_KEY, 0) != 0)
 			return false;
 		std::string reason;
@@ -1610,6 +1682,11 @@ ConfiguredShaderRule ToConfiguredShaderRule(const ShaderRule& rule)
 	configured.parameters = rule.parameters;
 	configured.nls = rule.nls;
 	configured.none = rule.none;
+	configured.profileSelectionOrder = rule.profileSelectionOrder;
+	if (!rule.preScale.empty())
+		configured.stageOrder = rule.preScale.front().order;
+	else if (!rule.postScale.empty())
+		configured.stageOrder = rule.postScale.front().order;
 	configured.aspectTolerancePercent =
 		std::max(0.0, rule.aspectTolerancePercent);
 	configured.maximumStretchRatio = rule.maximumStretchRatio;
@@ -1873,6 +1950,7 @@ void AppendRuleEntries(const ShaderRule& rule,
 	{
 		for (ShaderEntry entry : source)
 		{
+			entry.profileSelectionOrder = rule.profileSelectionOrder;
 			if (entry.order == 0)
 				entry.order = static_cast<unsigned int>(target.size() + 1);
 			entry.displayName = rule.label;
@@ -2229,19 +2307,29 @@ MadVRShaderSelection MadVRShaderLoader::ApplyConfiguredShaders(IBaseFilter* rend
 	ConfigFile config;
 	if (!config.Load())
 		return selection;
-	if (IsTargetShaderConfiguration(config))
+	constexpr const char* TARGET_KEY = "@shader-key:";
+	constexpr const char* TARGET_PROFILES = "@shader-profiles:";
+	const MadVRShaderRuntimeSnapshot profileRuntimeState =
+		g_runtimeState.GetSnapshot();
+	const std::string selector = profileRuntimeState.effectiveRule;
+	if (IsTargetShaderConfiguration(config) ||
+		selector.rfind(TARGET_PROFILES, 0) == 0)
 	{
-		constexpr const char* TARGET_KEY = "@shader-key:";
-		const MadVRShaderRuntimeSnapshot runtime = g_runtimeState.GetSnapshot();
-		const std::string selector = runtime.effectiveRule;
-		const std::string key = selector.rfind(TARGET_KEY, 0) == 0 ?
-			selector.substr(std::char_traits<char>::length(TARGET_KEY)) :
-			std::string();
 		std::vector<ShaderRule> rules;
 		std::string reason;
-		if (!LoadTargetRuleSelectionForBackend(config, key,
-			TargetVideoLookup(videoState), ShaderRendererBackend::MADVR,
-			rules, reason, &selection.activeSections))
+		const bool profileSelection = selector.rfind(TARGET_PROFILES, 0) == 0;
+		const bool loaded = profileSelection ?
+			LoadTargetProfileSelectionForBackend(config,
+				selector.substr(std::char_traits<char>::length(TARGET_PROFILES)),
+				ShaderRendererBackend::MADVR, rules, reason,
+				&selection.activeSections) :
+			LoadTargetRuleSelectionForBackend(config,
+				selector.rfind(TARGET_KEY, 0) == 0 ?
+				selector.substr(std::char_traits<char>::length(TARGET_KEY)) :
+				std::string(), TargetVideoLookup(videoState),
+				ShaderRendererBackend::MADVR, rules, reason,
+				&selection.activeSections);
+		if (!loaded)
 		{
 			DebugLog::Log("Shaders: VP-0079 selection failed: %s", reason.c_str());
 			return selection;
@@ -2252,7 +2340,7 @@ MadVRShaderSelection MadVRShaderLoader::ApplyConfiguredShaders(IBaseFilter* rend
 		for (ShaderRule rule : rules)
 		{
 			bool waiting = false;
-			if (!ResolveNlsRuleForFrame(rule, runtime, videoState,
+			if (!ResolveNlsRuleForFrame(rule, profileRuntimeState, videoState,
 				selection.outputAspectRatioX, selection.outputAspectRatioY,
 				waiting))
 				continue;
@@ -2262,10 +2350,18 @@ MadVRShaderSelection MadVRShaderLoader::ApplyConfiguredShaders(IBaseFilter* rend
 		}
 		std::stable_sort(preScale.begin(), preScale.end(),
 			[](const ShaderEntry& left, const ShaderEntry& right)
-			{ return left.order < right.order; });
+			{
+				return left.profileSelectionOrder == right.profileSelectionOrder ?
+					left.order < right.order :
+					left.profileSelectionOrder < right.profileSelectionOrder;
+			});
 		std::stable_sort(postScale.begin(), postScale.end(),
 			[](const ShaderEntry& left, const ShaderEntry& right)
-			{ return left.order < right.order; });
+			{
+				return left.profileSelectionOrder == right.profileSelectionOrder ?
+					left.order < right.order :
+					left.profileSelectionOrder < right.profileSelectionOrder;
+			});
 		ApplyShaderEntries(renderer, preScale, postScale, "ps_3_0", selection);
 		return selection;
 	}
@@ -2662,6 +2758,7 @@ std::string MadVRShaderLoader::CanonicalizeRuleSelector(
 	const std::string& selector)
 {
 	constexpr const char* TARGET_KEY = "@shader-key:";
+	constexpr const char* TARGET_PROFILES = "@shader-profiles:";
 	const std::string trimmed = ConfigFile::Trim(selector);
 	if (trimmed.rfind(TARGET_KEY, 0) == 0)
 	{
@@ -2670,6 +2767,15 @@ std::string MadVRShaderLoader::CanonicalizeRuleSelector(
 			std::char_traits<char>::length(TARGET_KEY));
 		return RendererProfileConfig::CanonicalizeKeyChord(key, canonical) ?
 			std::string(TARGET_KEY) + canonical : trimmed;
+	}
+	if (trimmed.rfind(TARGET_PROFILES, 0) == 0)
+	{
+		std::vector<std::string> profiles;
+		for (const std::string& profile : RendererProfileConfig::ParseSelection(
+			trimmed.substr(std::char_traits<char>::length(TARGET_PROFILES))))
+			profiles.push_back(ConfigFile::NormalizeName(profile));
+		return std::string(TARGET_PROFILES) +
+			RendererProfileConfig::FormatSelection(profiles);
 	}
 	return ConfigFile::NormalizeName(trimmed);
 }
@@ -2856,16 +2962,25 @@ bool MadVRShaderLoader::ResolveConfiguredRuleSelection(const ConfigFile& config,
 	reason.clear();
 
 	std::vector<ShaderRule> rules;
-	if (IsTargetShaderConfiguration(config))
+	constexpr const char* TARGET_KEY = "@shader-key:";
+	constexpr const char* TARGET_PROFILES = "@shader-profiles:";
+	const std::string trimmed = ConfigFile::Trim(ruleName);
+	if (IsTargetShaderConfiguration(config) ||
+		trimmed.rfind(TARGET_PROFILES, 0) == 0)
 	{
-		constexpr const char* TARGET_KEY = "@shader-key:";
-		const std::string trimmed = ConfigFile::Trim(ruleName);
-		if (trimmed.rfind(TARGET_KEY, 0) != 0)
+		if (trimmed.rfind(TARGET_PROFILES, 0) == 0)
+		{
+			if (!LoadTargetProfileSelectionForBackend(config,
+				trimmed.substr(std::char_traits<char>::length(TARGET_PROFILES)),
+				backend, rules, reason, &activeSections))
+				return false;
+		}
+		else if (trimmed.rfind(TARGET_KEY, 0) != 0)
 		{
 			reason = "target shader selector is invalid";
 			return false;
 		}
-		if (!LoadTargetRuleSelectionForBackend(config,
+		else if (!LoadTargetRuleSelectionForBackend(config,
 			trimmed.substr(std::char_traits<char>::length(TARGET_KEY)),
 			DisplayRuleExpression::ValueLookup(), backend, rules, reason,
 			&activeSections))

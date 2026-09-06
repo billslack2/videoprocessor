@@ -5,6 +5,7 @@
 #include <objbase.h>
 
 #include "ConfigEditorWindow.h"
+#include "ProfileListController.h"
 #include <ConfigurationApplyPolicy.h>
 #include <ConfigurationLiveApply.h>
 #include <ActiveProfileStatus.h>
@@ -78,6 +79,7 @@
 #include <algorithm>
 #include <functional>
 #include <cctype>
+#include <cstring>
 #include <limits>
 #include <map>
 #include <set>
@@ -5003,28 +5005,74 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                 });
     }
 
-    std::function<void(const QString&)> refresh = [this, list, sectionPrefix, loadDetails](const QString& wanted)
+    ProfileListPolicy listPolicy;
+    listPolicy.sections = [this, sectionPrefix]
+        { return profileSections(sectionPrefix); };
+    listPolicy.displayName = [this, sectionPrefix](const QString& section)
     {
-        list->clear();
-        const QStringList sections = profileSections(sectionPrefix);
-        int selected = 0;
-        for (int index = 0; index < sections.size(); ++index)
-        {
-            const QString configuredLabel = value(sections[index], QStringLiteral("label"));
-            const QString shown = configuredLabel.isEmpty() ? displayName(sections[index], sectionPrefix) : configuredLabel;
-            auto* item = new QListWidgetItem(index == 0 ? shown + QStringLiteral("  (Default)") : shown);
-            item->setData(Qt::UserRole, sections[index]);
-            item->setData(Qt::UserRole + 1, shown);
-            item->setSizeHint(QSize(0, 36));
-            list->addItem(item);
-            if (sections[index] == wanted) selected = index;
-        }
-        if (list->count() == 0) loadDetails(nullptr);
-        else list->setCurrentRow(selected);
-        refreshActiveProfileIndicators();
+        const QString configuredLabel = value(section, QStringLiteral("label"));
+        return configuredLabel.isEmpty() ?
+            ::displayName(section, sectionPrefix) : configuredLabel;
     };
-
-    connect(list, &QListWidget::currentItemChanged, this, [loadDetails](QListWidgetItem* current) { loadDetails(current); });
+    listPolicy.addProfile = [this, sectionPrefix]() -> QString
+    {
+        if (!document_) return {};
+        const QStringList existing = profileSections(sectionPrefix);
+        for (int number = 1; number <= 1000; ++number)
+        {
+            const QString requested = QStringLiteral("New %1").arg(number);
+            const QString candidate = sectionPrefix + u'.' +
+                profileIdentifier(requested);
+            bool nameInUse = false;
+            for (const QString& existingSection : existing)
+            {
+                const QString configuredLabel = value(existingSection,
+                    QStringLiteral("label"));
+                const QString existingName = configuredLabel.isEmpty() ?
+                    ::displayName(existingSection, sectionPrefix) : configuredLabel;
+                nameInUse = nameInUse ||
+                    existingName.compare(requested, Qt::CaseInsensitive) == 0;
+            }
+            if (!nameInUse && !existing.contains(candidate, Qt::CaseInsensitive) &&
+                document_->AddSection(candidate.toStdString()))
+                return candidate;
+        }
+        setStatus(QStringLiteral(
+            "Cannot add profile: New 1 through New 1000 are already in use."), true);
+        return {};
+    };
+    listPolicy.removeProfile = [this](const QString& section)
+    {
+        return document_ && document_->RemoveSection(section.toStdString());
+    };
+    listPolicy.normalizeForOrdering = [this, sectionPrefix](const QString& section)
+    {
+        if (!document_ || section.compare(sectionPrefix,
+            Qt::CaseInsensitive) != 0)
+            return section;
+        const QStringList sections = profileSections(sectionPrefix);
+        QString renamed = sectionPrefix + QStringLiteral(".profile_1");
+        int suffix = 2;
+        while (sections.contains(renamed, Qt::CaseInsensitive))
+            renamed = sectionPrefix + QStringLiteral(".profile_%1").arg(suffix++);
+        if (!document_->RenameSection(sectionPrefix.toStdString(),
+            renamed.toStdString()))
+            return section;
+        markDirty();
+        return renamed;
+    };
+    listPolicy.moveAfter = [this](const QString& section, const QString& previous)
+    {
+        return document_ && document_->MoveSectionAfter(
+            section.toStdString(), previous.toStdString());
+    };
+    listPolicy.markDirty = [this] { markDirty(); };
+    listPolicy.refreshIndicators = [this] { refreshActiveProfileIndicators(); };
+    auto* profileList = new ProfileListController(this, this, list, add,
+        remove, up, down, std::move(listPolicy));
+    profileList->setCurrentChanged(loadDetails);
+    std::function<void(const QString&)> refresh = [profileList](const QString& wanted)
+        { profileList->refresh(wanted); };
     connect(shortcut, &QLineEdit::textChanged, this, [this, state](const QString& text)
     {
         if (state->loading || state->section.isEmpty()) return;
@@ -5088,6 +5136,11 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         else document_->SetKnown(state->section.toStdString(), "when", text.toLocal8Bit().constData());
         markDirty();
     });
+    connect(name, &QLineEdit::textChanged, this,
+        [state, profileList](const QString& text)
+    {
+        if (!state->loading) profileList->updateCurrentLabel(text);
+    });
     connect(name, &QLineEdit::editingFinished, this, [this, state, name, sectionPrefix, refresh]
     {
         if (state->loading || state->section.isEmpty() || !document_) return;
@@ -5139,136 +5192,6 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         state->section = renamed;
         markDirty();
         refresh(renamed);
-    });
-    connect(add, &QPushButton::clicked, this, [this, sectionPrefix, refresh]
-    {
-        if (!document_) return;
-        const QStringList existing = profileSections(sectionPrefix);
-        QString section;
-        for (int number = 1; number <= 1000; ++number)
-        {
-            const QString requested = QStringLiteral("New %1").arg(number);
-            bool nameInUse = false;
-            for (const QString& existingSection : existing)
-            {
-                const QString configuredLabel = value(existingSection, QStringLiteral("label"));
-                const QString existingName = configuredLabel.isEmpty() ?
-                    displayName(existingSection, sectionPrefix) : configuredLabel;
-                if (existingName.compare(requested, Qt::CaseInsensitive) == 0)
-                {
-                    nameInUse = true;
-                    break;
-                }
-            }
-            const QString candidate = sectionPrefix + u'.' + profileIdentifier(requested);
-            if (!nameInUse && !existing.contains(candidate, Qt::CaseInsensitive))
-            {
-                section = candidate;
-                break;
-            }
-        }
-        if (section.isEmpty())
-        {
-            setStatus(QStringLiteral(
-                "Cannot add profile: New 1 through New 1000 are already in use."), true);
-            return;
-        }
-        if (!document_->AddSection(section.toStdString())) return;
-        markDirty();
-        refresh(section);
-    });
-    auto transferDefaultOnlySettings = [this, sectionPrefix](const QString& from, const QString& to)
-    {
-        if (from.isEmpty() || to.isEmpty() || from == to) return;
-        QStringList keys;
-        for (const QString& keyText : keys)
-        {
-            const std::string key = keyText.toStdString();
-            const QString configured = value(from, keyText);
-            if (configured.isEmpty()) continue;
-            document_->RemoveKnown(from.toStdString(), key.c_str());
-            document_->SetKnown(to.toStdString(), key.c_str(), configured.toLocal8Bit().constData());
-        }
-    };
-    auto normalizeRootForOrdering = [this, state, sectionPrefix, refresh]()
-    {
-        const QStringList sections = profileSections(sectionPrefix);
-        if (!sections.contains(sectionPrefix, Qt::CaseInsensitive)) return;
-        QString identifier = QStringLiteral("profile_1");
-        QString renamed = sectionPrefix + u'.' + identifier;
-        int suffix = 2;
-        while (sections.contains(renamed, Qt::CaseInsensitive))
-            renamed = sectionPrefix + QStringLiteral(".profile_%1").arg(suffix++);
-        const QString wanted = state->section.compare(sectionPrefix, Qt::CaseInsensitive) == 0 ? renamed : state->section;
-        if (!document_->RenameSection(sectionPrefix.toStdString(), renamed.toStdString())) return;
-        state->section = wanted;
-        refresh(wanted);
-    };
-    connect(remove, &QPushButton::clicked, this, [this, state, refresh, list, transferDefaultOnlySettings]
-    {
-        if (state->section.isEmpty() || QMessageBox::question(this, QStringLiteral("Remove profile"),
-            QStringLiteral("Remove this profile?"), QMessageBox::Yes | QMessageBox::Cancel,
-            QMessageBox::Cancel) != QMessageBox::Yes) return;
-        if (list->currentRow() == 0 && list->count() > 1)
-            transferDefaultOnlySettings(state->section, list->item(1)->data(Qt::UserRole).toString());
-        document_->RemoveSection(state->section.toStdString());
-        markDirty();
-        refresh({});
-    });
-    auto move = [this, state, list, refresh, transferDefaultOnlySettings, normalizeRootForOrdering](int delta)
-    {
-        normalizeRootForOrdering();
-        const int source = list->currentRow();
-        const int target = source + delta;
-        if (source < 0 || target < 0 || target >= list->count()) return;
-        const QString moved = state->section;
-        const QString other = list->item(target)->data(Qt::UserRole).toString();
-        const QString previousDefault = list->item(0)->data(Qt::UserRole).toString();
-        const bool changed = delta < 0 ? document_->MoveSectionBefore(moved.toStdString(), other.toStdString()) :
-            document_->MoveSectionAfter(moved.toStdString(), other.toStdString());
-        if (!changed) return;
-        const QString newDefault = target == 0 ? moved : (source == 0 ? other : previousDefault);
-        transferDefaultOnlySettings(previousDefault, newDefault);
-        markDirty();
-        refresh(moved);
-    };
-    connect(up, &QPushButton::clicked, this, [move] { move(-1); });
-    connect(down, &QPushButton::clicked, this, [move] { move(1); });
-    auto reordering = std::make_shared<bool>(false);
-    connect(list->model(), &QAbstractItemModel::rowsMoved, this,
-        [this, state, list, refresh, sectionPrefix, transferDefaultOnlySettings, reordering]
-        (const QModelIndex&, int sourceStart, int, const QModelIndex&, int destinationRow)
-    {
-        if (*reordering || list->count() < 2) return;
-        *reordering = true;
-        QStringList ordered;
-        for (int index = 0; index < list->count(); ++index)
-            ordered.push_back(list->item(index)->data(Qt::UserRole).toString());
-        const int movedIndex = destinationRow > sourceStart ? destinationRow - 1 : destinationRow;
-        QString oldDefault = sourceStart == 0 ? ordered.value(movedIndex) :
-            (movedIndex == 0 ? ordered.value(1) : ordered.value(0));
-        const int rootIndex = ordered.indexOf(sectionPrefix);
-        if (rootIndex >= 0)
-        {
-            const QStringList existing = profileSections(sectionPrefix);
-            QString renamed = sectionPrefix + QStringLiteral(".profile_1");
-            int suffix = 2;
-            while (existing.contains(renamed, Qt::CaseInsensitive))
-                renamed = sectionPrefix + QStringLiteral(".profile_%1").arg(suffix++);
-            if (document_->RenameSection(sectionPrefix.toStdString(), renamed.toStdString()))
-            {
-                ordered[rootIndex] = renamed;
-                if (oldDefault == sectionPrefix) oldDefault = renamed;
-            }
-        }
-        for (int index = 1; index < ordered.size(); ++index)
-            document_->MoveSectionAfter(ordered[index].toStdString(), ordered[index - 1].toStdString());
-        const QString newDefault = ordered.value(0);
-        transferDefaultOnlySettings(oldDefault, newDefault);
-        const QString selected = ordered.value(qBound(0, movedIndex, ordered.size() - 1));
-        markDirty();
-        refresh(selected);
-        *reordering = false;
     });
     refresh({});
 
@@ -5558,9 +5481,9 @@ QWidget* ConfigEditorWindow::createNlsShadersPage()
     selectionLayout->setContentsMargins(0, 0, 0, 0);
     selectionLayout->setSpacing(10);
     auto* list = new QListWidget;
-    list->setAccessibleName(QStringLiteral("NLS modes"));
+    list->setAccessibleName(QStringLiteral("NLS profiles"));
     list->setAccessibleDescription(
-        QStringLiteral("Shipped nonlinear-stretch modes plus the special Off option."));
+        QStringLiteral("Configured nonlinear-stretch profiles."));
     list->setObjectName(QStringLiteral("config.shader.nls.modes"));
     list->setSelectionMode(QAbstractItemView::SingleSelection);
     list->setDragDropMode(QAbstractItemView::InternalMove);
@@ -5568,32 +5491,44 @@ QWidget* ConfigEditorWindow::createNlsShadersPage()
     list->setDragDropOverwriteMode(false);
     list->setItemDelegate(new ProfileStateItemDelegate(list));
     activeProfileLists_.push_back({ list, QStringLiteral("shader.nls") });
+    auto* profileActions = new QHBoxLayout;
+    auto* addProfile = new QPushButton(QStringLiteral("+ Add profile"));
+    addProfile->setObjectName(QStringLiteral("config.shader.nls.add"));
+    addProfile->setAccessibleDescription(
+        QStringLiteral("Add a named NLS shader profile."));
+    auto* removeProfile = new QPushButton(QStringLiteral("Remove selected"));
+    removeProfile->setObjectName(QStringLiteral("config.shader.nls.remove"));
+    removeProfile->setProperty("danger", true);
+    removeProfile->setAccessibleDescription(
+        QStringLiteral("Remove the selected named NLS shader profile."));
+    profileActions->addWidget(addProfile);
+    profileActions->addWidget(removeProfile);
+    profileActions->addStretch();
+    selectionLayout->addLayout(profileActions);
     auto* orderActions = new QHBoxLayout;
     auto* moveUp = new QPushButton(QStringLiteral("Move up"));
     auto* moveDown = new QPushButton(QStringLiteral("Move down"));
     moveUp->setObjectName(QStringLiteral("config.shader.nls.move_up"));
     moveDown->setObjectName(QStringLiteral("config.shader.nls.move_down"));
     moveUp->setAccessibleDescription(
-        QStringLiteral("Move the selected NLS mode earlier in the selection order."));
+        QStringLiteral("Move the selected named NLS profile earlier in the selection order."));
     moveDown->setAccessibleDescription(
-        QStringLiteral("Move the selected NLS mode later in the selection order."));
+        QStringLiteral("Move the selected named NLS profile later in the selection order."));
     orderActions->addWidget(moveUp);
     orderActions->addWidget(moveDown);
     orderActions->addStretch();
     selectionLayout->addLayout(orderActions);
+    selectionLayout->addWidget(helpLabel(
+        QStringLiteral("A single NLS profile can be active.")));
     selectionLayout->addWidget(list, 1);
 
     QStringList manualSections;
-    QStringList nlsSections;
     bool editableSingleGroup = true;
     if (document_)
     {
         const QString groupType = value(root, QStringLiteral("type")).trimmed();
-        const bool rootIsEffect = !value(root, QStringLiteral("shader_type")).trimmed().isEmpty() ||
-            !value(root, QStringLiteral("hlsl_file")).trimmed().isEmpty() ||
-            !value(root, QStringLiteral("glsl_file")).trimmed().isEmpty();
-        editableSingleGroup = !rootIsEffect &&
-            (groupType.isEmpty() || groupType.compare(QStringLiteral("single"), Qt::CaseInsensitive) == 0);
+        editableSingleGroup = groupType.isEmpty() ||
+            groupType.compare(QStringLiteral("single"), Qt::CaseInsensitive) == 0;
         for (const std::string& section : document_->SectionNamesWithPrefix("shader"))
         {
             const QString name = QString::fromStdString(section);
@@ -5602,11 +5537,11 @@ QWidget* ConfigEditorWindow::createNlsShadersPage()
             const bool standardSection = name.compare(
                 QStringLiteral("shader.standard"), Qt::CaseInsensitive) == 0 ||
                 name.startsWith(QStringLiteral("shader.standard."), Qt::CaseInsensitive);
-            if (editableSingleGroup && directNlsChild &&
+            const bool managedNlsProfile = editableSingleGroup && directNlsChild &&
                 value(name, QStringLiteral("shader_type")).compare(
-                    QStringLiteral("nls"), Qt::CaseInsensitive) == 0)
-                nlsSections.push_back(name);
-            else if (name.compare(root, Qt::CaseInsensitive) != 0 && !standardSection)
+                    QStringLiteral("nls"), Qt::CaseInsensitive) == 0;
+            if (!managedNlsProfile &&
+                name.compare(root, Qt::CaseInsensitive) != 0 && !standardSection)
                 manualSections.push_back(name);
         }
     }
@@ -5640,7 +5575,7 @@ QWidget* ConfigEditorWindow::createNlsShadersPage()
     shortcut->setObjectName(QStringLiteral("config.shader.nls.shortcut"));
     shortcut->setMaximumWidth(280);
     detailsLayout->addWidget(fieldWithHelp(QStringLiteral("Shortcut key"), shortcut,
-        QStringLiteral("Optional. Selects this NLS mode; Off disables NLS.")));
+        QStringLiteral("Optional. Selects this NLS profile.")));
     auto* cycleShortcut = new QLineEdit;
     cycleShortcut->setObjectName(QStringLiteral("config.shader.nls.cycle_shortcut"));
     cycleShortcut->setMaximumWidth(280);
@@ -5656,7 +5591,7 @@ QWidget* ConfigEditorWindow::createNlsShadersPage()
     rule->setMaximumBlockCount(3);
     rule->setPlaceholderText(QStringLiteral("${eotf} == \"HDR\""));
     auto* ruleField = fieldWithHelp(QStringLiteral("Rule"), rule,
-        QStringLiteral("Optional source-condition rule. Shortcut and rule are alternatives; either may select this mode."));
+        QStringLiteral("Optional source-condition rule. Shortcut and rule are alternatives; either may select this profile."));
     detailsLayout->addWidget(ruleField);
 
     auto* normalFields = new QWidget;
@@ -5666,7 +5601,7 @@ QWidget* ConfigEditorWindow::createNlsShadersPage()
     auto* label = new QLineEdit;
     label->setObjectName(QStringLiteral("config.shader.nls.label"));
     normalLayout->addWidget(fieldWithHelp(QStringLiteral("Display name"), label,
-        QStringLiteral("The friendly name shown for this included shader mode.")));
+        QStringLiteral("The friendly name shown for this NLS profile.")));
     detailsLayout->addWidget(normalFields);
 
     auto* advanced = new QWidget;
@@ -5696,10 +5631,6 @@ QWidget* ConfigEditorWindow::createNlsShadersPage()
         this, this, detailsLayout, state, [this] { return document_.get(); },
         [this] { markDirty(); }, QStringLiteral("config.shader.nls"),
         QStringLiteral("Shader parameters"), QStringLiteral("shader mode"));
-    auto* offExplanation = helpLabel(QStringLiteral(
-        "NLS is disabled. Choose an included mode on the left to configure its stretch behavior."));
-    offExplanation->setProperty("emptyState", true);
-    detailsLayout->addWidget(offExplanation);
     detailsLayout->addStretch();
 
     auto setText = [this, state](const char* key, const QString& text)
@@ -5711,16 +5642,17 @@ QWidget* ConfigEditorWindow::createNlsShadersPage()
         else
         {
             document_->AddSection(state->section.toStdString());
+			if ((std::strcmp(key, "hlsl_file") == 0 ||
+				std::strcmp(key, "glsl_file") == 0) &&
+				value(state->section, QStringLiteral("shader_type")).trimmed().isEmpty())
+				document_->SetKnown(state->section.toStdString(), "shader_type", "nls");
             document_->SetKnown(state->section.toStdString(), keyBytes.constData(),
                 text.trimmed().toLocal8Bit().constData());
         }
         markDirty();
     };
-    const std::vector<std::pair<QLineEdit*, const char*>> textFields = {
-        { label, "label" },
-        { hlsl, "hlsl_file" }, { glsl, "glsl_file" }
-    };
-    for (const auto& field : textFields)
+    for (const auto& field : std::vector<std::pair<QLineEdit*, const char*>>{
+        { hlsl, "hlsl_file" }, { glsl, "glsl_file" } })
         connect(field.first, &QLineEdit::textChanged, this,
             [setText, field](const QString& text) { setText(field.second, text); });
     connect(shortcut, &QLineEdit::textChanged, this,
@@ -5787,21 +5719,19 @@ QWidget* ConfigEditorWindow::createNlsShadersPage()
     });
 
     auto load = [this, state, root, title, shortcut, cycleShortcut, useRule, rule, ruleField,
-        normalFields, parameterEditor, advanced, offExplanation, label,
+        normalFields, parameterEditor, advanced, label,
         stage, hlsl, glsl]
         (QListWidgetItem* item)
     {
         state->loading = true;
         state->section = item ? item->data(Qt::UserRole).toString() : QString();
         const bool available = !state->section.isEmpty();
-        const bool member = available && state->section.compare(root, Qt::CaseInsensitive) != 0;
-        title->setText(item ? item->text() : QStringLiteral("No NLS modes are configured"));
+        title->setText(item ? item->text() : QStringLiteral("No NLS profiles are configured"));
         shortcut->setEnabled(available);
         cycleShortcut->setEnabled(available);
         useRule->setEnabled(available);
-        normalFields->setVisible(member);
-        advanced->setVisible(member);
-        offExplanation->setVisible(available && !member);
+        normalFields->setVisible(available);
+        advanced->setVisible(available);
         if (!available)
         {
             shortcut->clear();
@@ -5837,98 +5767,113 @@ QWidget* ConfigEditorWindow::createNlsShadersPage()
         };
         loadCombo(stage, QStringLiteral("stage"), QStringLiteral("pre_resize"));
         parameterEditor.reload();
-        parameterEditor.toggle->setVisible(member);
-        parameterEditor.fields->setVisible(member && parameterEditor.toggle->isChecked());
+        parameterEditor.toggle->setVisible(available);
+        parameterEditor.fields->setVisible(available && parameterEditor.toggle->isChecked());
         // A logical shader member may implement only one renderer. Preserve an
         // omitted backend file as blank rather than silently substituting NLS.
         hlsl->setText(value(state->section, QStringLiteral("hlsl_file")));
         glsl->setText(value(state->section, QStringLiteral("glsl_file")));
         state->loading = false;
     };
-    connect(list, &QListWidget::currentItemChanged, this,
-        [load](QListWidgetItem* current) { load(current); });
-
+    ProfileListPolicy listPolicy;
+    listPolicy.sections = [this, root]
     {
-        QStringList sections{ root };
-        if (document_)
-            sections.append(nlsSections);
-        for (const QString& section : sections)
+        QStringList sections;
+        if (!document_) return sections;
+        for (const std::string& raw : document_->SectionNamesWithPrefix("shader"))
         {
-            const bool off = section.compare(root, Qt::CaseInsensitive) == 0;
-            QString shown = off ? QStringLiteral("Off") : value(section, QStringLiteral("label"));
-            if (shown.isEmpty()) shown = displayName(section, root);
-            auto* item = new QListWidgetItem(shown);
-            item->setData(Qt::UserRole, section);
-            item->setSizeHint(QSize(0, 34));
-            if (off)
-                item->setFlags(item->flags() & ~Qt::ItemIsDragEnabled & ~Qt::ItemIsDropEnabled);
-            list->addItem(item);
+            const QString section = QString::fromStdString(raw);
+            if (section.compare(root, Qt::CaseInsensitive) == 0)
+            {
+                sections.push_back(section);
+                continue;
+            }
+            if (!section.startsWith(root + u'.', Qt::CaseInsensitive) ||
+                section.mid(root.size() + 1).contains(u'.'))
+                continue;
+            if (value(section, QStringLiteral("shader_type")).compare(
+                QStringLiteral("nls"), Qt::CaseInsensitive) == 0)
+                sections.push_back(section);
         }
-    }
-    // NLS is an exclusive group: list/file order determines which matching
-    // mode wins. The special Off entry stays fixed; numeric shader `order`
-    // remains a manual-only setting for custom multi-effect shader stacks.
-    auto updateMoveActions = [list, moveUp, moveDown]
-    {
-        const int row = list->currentRow();
-        moveUp->setEnabled(row > 1);
-        moveDown->setEnabled(row > 0 && row < list->count() - 1);
+        return sections;
     };
-    auto persistModeOrder = [this, list, root]()
+    listPolicy.displayName = [this, root](const QString& section)
     {
-        if (!document_ || list->count() < 2) return;
-        bool changed = false;
-        QString previous = root;
-        for (int row = 1; row < list->count(); ++row)
+        const QString configured = value(section, QStringLiteral("label"));
+        return configured.isEmpty() ?
+            (section.compare(root, Qt::CaseInsensitive) == 0 ?
+                QStringLiteral("Unnamed profile") : ::displayName(section, root)) :
+            configured;
+    };
+    listPolicy.addProfile = [this, root]() -> QString
+    {
+        if (!document_) return {};
+        const QStringList existing = profileSections(root);
+        for (int number = 1; number <= 1000; ++number)
         {
-            const QString section = list->item(row)->data(Qt::UserRole).toString();
-            if (section.isEmpty()) continue;
-            changed = document_->MoveSectionAfter(section.toStdString(),
-                previous.toStdString()) || changed;
-            previous = section;
+            const QString shown = QStringLiteral("New %1").arg(number);
+            const QString section = root + u'.' + profileIdentifier(shown);
+            if (existing.contains(section, Qt::CaseInsensitive)) continue;
+            if (!document_->AddSection(section.toStdString())) return {};
+            document_->SetKnown(section.toStdString(), "shader_type", "nls");
+            document_->SetKnown(section.toStdString(), "label",
+                shown.toLocal8Bit().constData());
+            document_->SetKnown(section.toStdString(), "stage", "pre_resize");
+            return section;
         }
-        if (changed) markDirty();
+        return {};
     };
-    auto move = [list, persistModeOrder, updateMoveActions](int delta)
+    listPolicy.removeProfile = [this](const QString& section)
     {
-        const int source = list->currentRow();
-        const int target = source + delta;
-        if (source <= 0 || target <= 0 || target >= list->count()) return;
-        QListWidgetItem* item = list->takeItem(source);
-        list->insertItem(target, item);
-        list->setCurrentRow(target);
-        persistModeOrder();
-        updateMoveActions();
+        return document_ && document_->RemoveSection(section.toStdString());
     };
-    connect(moveUp, &QPushButton::clicked, this, [move] { move(-1); });
-    connect(moveDown, &QPushButton::clicked, this, [move] { move(1); });
-    connect(list, &QListWidget::currentRowChanged, this,
-        [updateMoveActions](int) { updateMoveActions(); });
-    auto modeReordering = std::make_shared<bool>(false);
-    connect(list->model(), &QAbstractItemModel::rowsMoved, this,
-        [persistModeOrder, updateMoveActions, modeReordering]
-        (const QModelIndex&, int, int, const QModelIndex&, int)
+    listPolicy.normalizeForOrdering = [this, root](const QString& section)
     {
-        if (*modeReordering) return;
-        *modeReordering = true;
-        persistModeOrder();
-        updateMoveActions();
-        *modeReordering = false;
+        if (!document_ || section.compare(root, Qt::CaseInsensitive) != 0)
+            return section;
+        const QStringList existing = profileSections(root);
+        QString renamed = root + QStringLiteral(".profile_1");
+        int suffix = 2;
+        while (existing.contains(renamed, Qt::CaseInsensitive))
+            renamed = root + QStringLiteral(".profile_%1").arg(suffix++);
+        if (!document_->RenameSection(root.toStdString(), renamed.toStdString()))
+            return section;
+        document_->SetKnown(renamed.toStdString(), "shader_type", "nls");
+        markDirty();
+        return renamed;
+    };
+    listPolicy.moveAfter = [this](const QString& section, const QString& previous)
+    {
+        return document_ && document_->MoveSectionAfter(
+            section.toStdString(), previous.toStdString());
+    };
+    listPolicy.markDirty = [this] { markDirty(); };
+    listPolicy.refreshIndicators = [this] { refreshActiveProfileIndicators(); };
+    listPolicy.removeTitle = QStringLiteral("Remove NLS profile");
+    listPolicy.removeQuestion = QStringLiteral(
+        "Remove '%1'? This does not delete either shader file.");
+    listPolicy.decorateFirstAsDefault = false;
+    listPolicy.enabled = editableSingleGroup;
+    auto* profileList = new ProfileListController(this, this, list, addProfile,
+        removeProfile, moveUp, moveDown, std::move(listPolicy));
+    profileList->setCurrentChanged(load);
+    connect(label, &QLineEdit::textChanged, this,
+        [state, setText, profileList](const QString& text)
+    {
+        setText("label", text);
+        if (!state->loading) profileList->updateCurrentLabel(text);
     });
-    if (list->count() > 0) list->setCurrentRow(0);
-    else load(nullptr);
-    refreshActiveProfileIndicators();
-    updateMoveActions();
+    profileList->refresh();
 
-    splitter->addWidget(createCard(QStringLiteral("NLS modes"),
-        QStringLiteral("Off disables NLS. Reorder included modes by dragging or using the buttons; the first matching mode wins."), selection));
-    splitter->addWidget(createCard(QStringLiteral("Mode details"),
-        QStringLiteral("Required shader setup is always visible. Custom shader parameters can be edited separately."), details));
+    splitter->addWidget(createCard(QStringLiteral("NLS profiles"),
+        QStringLiteral("A profile with no shader files is unconfigured (Off). Reorder profiles by dragging or using the buttons; when no shortcut or rule matches, the first profile is selected."), selection));
+    splitter->addWidget(createCard(QStringLiteral("Profile details"),
+        QStringLiteral("NLS profiles do not inherit shader settings. Clear both shader files to leave the selected profile unconfigured."), details));
     splitter->setStretchFactor(0, 0);
     splitter->setStretchFactor(1, 1);
     splitter->setSizes({ 310, 620 });
     return createPage(QStringLiteral("NLS"),
-        QStringLiteral("Configure included nonlinear stretch (NLS) modes without rewriting custom shader sections."), splitter);
+        QStringLiteral("Configure nonlinear stretch (NLS) profiles. A single NLS profile can be active."), splitter);
 }
 
 QWidget* ConfigEditorWindow::createShadersSetupPage()
@@ -6018,28 +5963,46 @@ QWidget* ConfigEditorWindow::createStandardShadersPage()
     list->setObjectName(QStringLiteral("config.shader.standard.items"));
     list->setAccessibleName(QStringLiteral("Standard shaders"));
     list->setAccessibleDescription(QStringLiteral(
-        "Included ordinary shader configurations. They remain inactive until given a shortcut or rule."));
+        "Configured standard shader profiles. Multiple matching profiles compose in list order."));
     list->setSelectionMode(QAbstractItemView::SingleSelection);
+    list->setDragDropMode(QAbstractItemView::InternalMove);
+    list->setDefaultDropAction(Qt::MoveAction);
+    list->setDragDropOverwriteMode(false);
     list->setItemDelegate(new ProfileStateItemDelegate(list));
     activeProfileLists_.push_back({ list, root });
-    auto* addShader = new QPushButton(QStringLiteral("+ Add shader"));
+    auto* addShader = new QPushButton(QStringLiteral("+ Add profile"));
     addShader->setObjectName(QStringLiteral("config.shader.standard.add"));
     addShader->setAccessibleDescription(
-        QStringLiteral("Add a new standard custom shader configuration."));
+        QStringLiteral("Add a standard shader profile."));
     auto* removeShader = new QPushButton(QStringLiteral("Remove selected"));
     removeShader->setObjectName(QStringLiteral("config.shader.standard.remove"));
     removeShader->setProperty("danger", true);
     removeShader->setAccessibleDescription(
-        QStringLiteral("Remove the selected standard shader configuration."));
+        QStringLiteral("Remove the selected standard shader profile."));
     auto* shaderButtons = new QHBoxLayout;
     shaderButtons->setContentsMargins(0, 0, 0, 0);
     shaderButtons->addWidget(addShader);
     shaderButtons->addWidget(removeShader);
     shaderButtons->addStretch();
     selectionLayout->addLayout(shaderButtons);
+    auto* orderActions = new QHBoxLayout;
+    auto* moveUp = new QPushButton(QStringLiteral("Move up"));
+    auto* moveDown = new QPushButton(QStringLiteral("Move down"));
+    moveUp->setObjectName(QStringLiteral("config.shader.standard.move_up"));
+    moveDown->setObjectName(QStringLiteral("config.shader.standard.move_down"));
+    moveUp->setAccessibleDescription(
+        QStringLiteral("Move the selected named standard shader profile earlier in execution order."));
+    moveDown->setAccessibleDescription(
+        QStringLiteral("Move the selected named standard shader profile later in execution order."));
+    orderActions->addWidget(moveUp);
+    orderActions->addWidget(moveDown);
+    orderActions->addStretch();
+    selectionLayout->addLayout(orderActions);
+    selectionLayout->addWidget(helpLabel(
+        QStringLiteral("Multiple standard shaders profile can be active.")));
     selectionLayout->addWidget(list, 1);
     selectionLayout->addWidget(helpLabel(QStringLiteral(
-        "These entries are independent effects. By default none has a shortcut or rule, so none is active.")));
+        "Standard profiles do not inherit shader settings. A profile with no shader files is unconfigured (Off). Matching profiles compose in this order.")));
     auto* details = new QWidget;
     auto* detailsLayout = new QVBoxLayout(details);
     detailsLayout->setContentsMargins(0, 0, 0, 0);
@@ -6051,7 +6014,7 @@ QWidget* ConfigEditorWindow::createStandardShadersPage()
     shortcut->setObjectName(QStringLiteral("config.shader.standard.shortcut"));
     shortcut->setMaximumWidth(280);
     detailsLayout->addWidget(fieldWithHelp(QStringLiteral("Shortcut key"), shortcut,
-        QStringLiteral("Optional. Leave blank to keep this shader inactive.")));
+        QStringLiteral("Optional. Selects this standard shader profile.")));
     auto* useRule = new QCheckBox(QStringLiteral("Select automatically with a rule"));
     useRule->setObjectName(QStringLiteral("config.shader.standard.use_rule"));
     detailsLayout->addWidget(useRule);
@@ -6062,13 +6025,13 @@ QWidget* ConfigEditorWindow::createStandardShadersPage()
     rule->setMaximumBlockCount(3);
     rule->setPlaceholderText(QStringLiteral("${eotf} == \"HDR\""));
     auto* ruleField = fieldWithHelp(QStringLiteral("Rule"), rule,
-        QStringLiteral("Optional source-condition rule. Shortcut and rule are alternatives; either may select this shader."));
+        QStringLiteral("Optional source-condition rule. Shortcut and rule are alternatives; either may select this profile."));
     detailsLayout->addWidget(ruleField);
 
     auto* label = new QLineEdit;
     label->setObjectName(QStringLiteral("config.shader.standard.label"));
     detailsLayout->addWidget(fieldWithHelp(QStringLiteral("Display name"), label,
-        QStringLiteral("The friendly name shown for this standard shader.")));
+        QStringLiteral("The friendly name shown for this standard shader profile.")));
     auto* form = new QFormLayout;
     form->setContentsMargins(0, 0, 0, 0);
     form->setHorizontalSpacing(18);
@@ -6104,7 +6067,7 @@ QWidget* ConfigEditorWindow::createStandardShadersPage()
     detailsLayout->addWidget(empty);
     detailsLayout->addStretch();
 
-    auto setText = [this, state](const char* key, const QString& text)
+    auto setText = [this, state, root](const char* key, const QString& text)
     {
         if (state->loading || state->section.isEmpty() || !document_) return;
         const QByteArray keyBytes(key);
@@ -6113,13 +6076,19 @@ QWidget* ConfigEditorWindow::createStandardShadersPage()
         else
         {
             document_->AddSection(state->section.toStdString());
+			if (state->section.compare(root, Qt::CaseInsensitive) == 0)
+				document_->SetKnown(root.toStdString(), "type", "multi");
+			if ((std::strcmp(key, "hlsl_file") == 0 ||
+				std::strcmp(key, "glsl_file") == 0) &&
+				value(state->section, QStringLiteral("shader_type")).trimmed().isEmpty())
+				document_->SetKnown(state->section.toStdString(), "shader_type", "custom");
             document_->SetKnown(state->section.toStdString(), keyBytes.constData(),
                 text.trimmed().toLocal8Bit().constData());
         }
         markDirty();
     };
     for (const auto& field : std::vector<std::pair<QLineEdit*, const char*>>{
-        { label, "label" }, { hlsl, "hlsl_file" }, { glsl, "glsl_file" } })
+        { hlsl, "hlsl_file" }, { glsl, "glsl_file" } })
         connect(field.first, &QLineEdit::textChanged, this,
             [setText, field](const QString& text) { setText(field.second, text); });
     connect(shortcut, &QLineEdit::textChanged, this,
@@ -6166,65 +6135,6 @@ QWidget* ConfigEditorWindow::createStandardShadersPage()
         markDirty();
     });
 
-    connect(addShader, &QPushButton::clicked, this, [this, list, state, root]
-    {
-        if (!document_) return;
-        bool accepted = false;
-        const QString name = QInputDialog::getText(this, QStringLiteral("Add standard shader"),
-            QStringLiteral("Shader name"), QLineEdit::Normal, QString(), &accepted).trimmed();
-        if (!accepted || name.isEmpty()) return;
-        QString member = name.toLower();
-        member.replace(QRegularExpression(QStringLiteral("[^A-Za-z0-9_]+")),
-            QStringLiteral("_"));
-        member.remove(QRegularExpression(QStringLiteral("^_+|_+$")));
-        if (member.isEmpty())
-        {
-            QMessageBox::warning(this, QStringLiteral("Standard shader"),
-                QStringLiteral("Use a shader name containing at least one letter or number."));
-            return;
-        }
-        if (member.front().isDigit()) member.prepend(QStringLiteral("shader_"));
-        const QString section = root + u'.' + member;
-        for (int row = 0; row < list->count(); ++row)
-            if (list->item(row)->data(Qt::UserRole).toString().compare(
-                section, Qt::CaseInsensitive) == 0)
-            {
-                QMessageBox::warning(this, QStringLiteral("Standard shader"),
-                    QStringLiteral("A standard shader with that name already exists."));
-                return;
-            }
-        document_->AddSection(root.toStdString());
-        document_->SetKnown(root.toStdString(), "type", "multi");
-        document_->AddSection(section.toStdString());
-        document_->SetKnown(section.toStdString(), "shader_type", "custom");
-        document_->SetKnown(section.toStdString(), "label", name.toLocal8Bit().constData());
-        document_->SetKnown(section.toStdString(), "stage", "pre_resize");
-        auto* item = new QListWidgetItem(name);
-        item->setData(Qt::UserRole, section);
-        item->setSizeHint(QSize(0, 34));
-        list->addItem(item);
-        list->setCurrentItem(item);
-        markDirty();
-    });
-    connect(removeShader, &QPushButton::clicked, this, [this, list, state]
-    {
-        QListWidgetItem* item = list->currentItem();
-        if (!item || !document_) return;
-        const QString section = item->data(Qt::UserRole).toString();
-        if (section.isEmpty()) return;
-        if (QMessageBox::question(this, QStringLiteral("Remove standard shader"),
-            QStringLiteral("Remove '%1'? This does not delete either shader file.")
-                .arg(item->text()),
-            QMessageBox::Yes | QMessageBox::Cancel,
-            QMessageBox::Cancel) != QMessageBox::Yes) return;
-        document_->RemoveSection(section.toStdString());
-        const int row = list->row(item);
-        delete list->takeItem(row);
-        if (list->count() > 0) list->setCurrentRow(qMin(row, list->count() - 1));
-        else state->section.clear();
-        markDirty();
-    });
-
     auto load = [this, state, title, shortcut, useRule, rule, ruleField, label,
         stage, hlsl, glsl, parameterEditor, empty, unsupported](QListWidgetItem* item)
     {
@@ -6267,38 +6177,105 @@ QWidget* ConfigEditorWindow::createStandardShadersPage()
         parameterEditor.reload();
         state->loading = false;
     };
-    connect(list, &QListWidget::currentItemChanged, this,
-        [load](QListWidgetItem* current) { load(current); });
-
-    if (document_)
-        for (const std::string& raw : document_->SectionNamesWithPrefix(root.toStdString()))
+    ProfileListPolicy listPolicy;
+    listPolicy.sections = [this, root]
+    {
+        QStringList sections;
+        if (!document_) return sections;
+        for (const std::string& raw : document_->SectionNamesWithPrefix("shader"))
         {
             const QString section = QString::fromStdString(raw);
-            const QString member = section.mid(root.size() + 1);
-            if (member.isEmpty() || member.contains(u'.') ||
-                value(section, QStringLiteral("shader_type")).compare(
-                    QStringLiteral("custom"), Qt::CaseInsensitive) != 0)
+            if (section.compare(root, Qt::CaseInsensitive) == 0)
+            {
+                sections.push_back(section);
                 continue;
-            QString shown = value(section, QStringLiteral("label"));
-            if (shown.isEmpty()) shown = displayName(section, root);
-            auto* item = new QListWidgetItem(shown);
-            item->setData(Qt::UserRole, section);
-            item->setSizeHint(QSize(0, 34));
-            list->addItem(item);
+            }
+            if (!section.startsWith(root + u'.', Qt::CaseInsensitive) ||
+                section.mid(root.size() + 1).contains(u'.'))
+                continue;
+            if (value(section, QStringLiteral("shader_type")).compare(
+                QStringLiteral("custom"), Qt::CaseInsensitive) == 0)
+                sections.push_back(section);
         }
-    if (list->count() > 0) list->setCurrentRow(0);
-    else load(nullptr);
-    refreshActiveProfileIndicators();
+        return sections;
+    };
+    listPolicy.displayName = [this, root](const QString& section)
+    {
+        const QString configured = value(section, QStringLiteral("label"));
+        return configured.isEmpty() ?
+            (section.compare(root, Qt::CaseInsensitive) == 0 ?
+                QStringLiteral("Unnamed profile") : ::displayName(section, root)) :
+            configured;
+    };
+    listPolicy.addProfile = [this, root]() -> QString
+    {
+        if (!document_) return {};
+        const QStringList existing = profileSections(root);
+        for (int number = 1; number <= 1000; ++number)
+        {
+            const QString shown = QStringLiteral("New %1").arg(number);
+            const QString section = root + u'.' + profileIdentifier(shown);
+            if (existing.contains(section, Qt::CaseInsensitive)) continue;
+            if (!document_->AddSection(section.toStdString())) return {};
+            document_->SetKnown(section.toStdString(), "shader_type", "custom");
+            document_->SetKnown(section.toStdString(), "label",
+                shown.toLocal8Bit().constData());
+            document_->SetKnown(section.toStdString(), "stage", "pre_resize");
+            return section;
+        }
+        return {};
+    };
+    listPolicy.removeProfile = [this](const QString& section)
+    {
+        return document_ && document_->RemoveSection(section.toStdString());
+    };
+    listPolicy.normalizeForOrdering = [this, root](const QString& section)
+    {
+        if (!document_ || section.compare(root, Qt::CaseInsensitive) != 0)
+            return section;
+        const QStringList existing = profileSections(root);
+        QString renamed = root + QStringLiteral(".profile_1");
+        int suffix = 2;
+        while (existing.contains(renamed, Qt::CaseInsensitive))
+            renamed = root + QStringLiteral(".profile_%1").arg(suffix++);
+        if (!document_->RenameSection(root.toStdString(), renamed.toStdString()))
+            return section;
+        document_->RemoveKnown(renamed.toStdString(), "type");
+        document_->SetKnown(renamed.toStdString(), "shader_type", "custom");
+        markDirty();
+        return renamed;
+    };
+    listPolicy.moveAfter = [this](const QString& section, const QString& previous)
+    {
+        return document_ && document_->MoveSectionAfter(
+            section.toStdString(), previous.toStdString());
+    };
+    listPolicy.markDirty = [this] { markDirty(); };
+    listPolicy.refreshIndicators = [this] { refreshActiveProfileIndicators(); };
+    listPolicy.removeTitle = QStringLiteral("Remove standard shader profile");
+    listPolicy.removeQuestion = QStringLiteral(
+        "Remove '%1'? This does not delete either shader file.");
+    listPolicy.decorateFirstAsDefault = false;
+    auto* profileList = new ProfileListController(this, this, list, addShader,
+        removeShader, moveUp, moveDown, std::move(listPolicy));
+    profileList->setCurrentChanged(load);
+    connect(label, &QLineEdit::textChanged, this,
+        [state, setText, profileList](const QString& text)
+    {
+        setText("label", text);
+        if (!state->loading) profileList->updateCurrentLabel(text);
+    });
+    profileList->refresh();
 
     splitter->addWidget(createCard(QStringLiteral("Standard shaders"),
-        QStringLiteral("Optional included effects. They may be selected independently; no default shortcut is assigned."), selection));
-    splitter->addWidget(createCard(QStringLiteral("Shader details"),
-        QStringLiteral("Configure the selected standard shader without changing NLS modes or other manual shader sections."), details));
+        QStringLiteral("A profile with no shader files is unconfigured (Off). Reorder profiles by dragging or using the buttons; matching profiles compose in this order, and the first profile is selected when no shortcut or rule matches."), selection));
+    splitter->addWidget(createCard(QStringLiteral("Profile details"),
+        QStringLiteral("Standard shader profiles do not inherit shader settings. Clear both shader files to leave the selected profile unconfigured."), details));
     splitter->setStretchFactor(0, 0);
     splitter->setStretchFactor(1, 1);
     splitter->setSizes({ 310, 620 });
     return createPage(QStringLiteral("Standard"),
-        QStringLiteral("Configure optional ordinary shader effects separately from NLS."), splitter);
+        QStringLiteral("Configure standard shader profiles separately from NLS. Multiple standard shaders profile can be active."), splitter);
 }
 
 QWidget* ConfigEditorWindow::createActionsPage()

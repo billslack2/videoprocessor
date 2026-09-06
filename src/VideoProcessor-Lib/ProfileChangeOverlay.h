@@ -1,5 +1,7 @@
 #pragma once
 
+#include "RendererProfileConfig.h"
+
 #include <algorithm>
 #include <cctype>
 #include <map>
@@ -52,6 +54,7 @@ namespace ProfileChangeOverlay
 		if (group == "queue") return "Queue";
 		if (group == "lldv") return "LLDV";
 		if (group == "nls") return "NLS";
+		if (group == "standard_shaders") return "Standard shaders";
 		if (group.empty()) return "Profile";
 		std::string label = group;
 		label[0] = static_cast<char>(std::toupper(
@@ -109,11 +112,52 @@ namespace ProfileChangeOverlay
 		return result.empty() ? profile : result;
 	}
 
+	inline bool HasConfiguredShaderFile(
+		const RendererProfileConfig::Profile& profile)
+	{
+		for (const char* key : { "hlsl_file", "glsl_file" })
+		{
+			const auto file = profile.settings.find(key);
+			if (file != profile.settings.end() &&
+				!ConfigFile::Trim(file->second).empty())
+				return true;
+		}
+		return false;
+	}
+
+	// OSD meaning is derived from configured files, never from an identifier or
+	// label. Thus a profile named "Off" may enable a shader, while any profile
+	// with both backend files blank is displayed as Off.
+	inline std::string ShaderSelectionStatus(
+		const RendererProfileConfig::Model& model,
+		const std::string& groupName,
+		const RendererProfileConfig::Selection& selection)
+	{
+		std::vector<std::string> labels;
+		for (const std::string& name : selection)
+		{
+			const auto profile = model.profiles.find(groupName + "." + name);
+			if (profile == model.profiles.end() ||
+				!HasConfiguredShaderFile(profile->second))
+				continue;
+			std::string label = ConfigFile::Trim(profile->second.label);
+			labels.push_back(label.empty() ? ProfileLabel(name) : label);
+		}
+		if (labels.empty()) return "off";
+		std::string status = "on:";
+		for (size_t index = 0; index < labels.size(); ++index)
+		{
+			if (index) status += " + ";
+			status += labels[index];
+		}
+		return status;
+	}
+
 	inline const std::vector<std::string>& PreferredOrder()
 	{
 		static const std::vector<std::string> order = {
 			"display", "color", "output", "viewport", "zoom", "input",
-			"scaling", "queue", "lldv", "nls"
+			"scaling", "queue", "lldv", "standard_shaders", "nls"
 		};
 		return order;
 	}
@@ -135,7 +179,7 @@ namespace ProfileChangeOverlay
 			const auto selection = current.find(group);
 			if (selection == current.end()) continue;
 			Item item{ group, GroupLabel(group), ProfileLabel(selection->second) };
-			if (group == "nls")
+			if (group == "nls" || group == "standard_shaders")
 			{
 				constexpr const char* EnabledPrefix = "on:";
 				if (selection->second.rfind(EnabledPrefix, 0) == 0)
@@ -183,6 +227,7 @@ namespace ProfileChangeOverlay
 		const std::string& visibleScreenName = {})
 	{
 		std::set<std::string> changed;
+		auto displayCurrent = current;
 		for (const auto& selection : current)
 		{
 			const auto old = previous.find(selection.first);
@@ -191,8 +236,16 @@ namespace ProfileChangeOverlay
 		}
 		for (const auto& selection : previous)
 			if (current.find(selection.first) == current.end())
+			{
 				changed.insert(selection.first);
+				// Removing the final shader profile is an explicit transition to
+				// unconfigured/Off, even though the group no longer exists in the
+				// current selection map.
+				if (selection.first == "nls" ||
+					selection.first == "standard_shaders")
+					displayCurrent[selection.first] = "off";
+			}
 
-		return Collect(changed, current, visibleScreenName);
+		return Collect(changed, displayCurrent, visibleScreenName);
 	}
 }
