@@ -3,11 +3,23 @@
 #include "AlphaPresentationTelemetry.h"
 
 #include <algorithm>
+#include <cmath>
 
 namespace
 {
 	constexpr uint32_t MIN_STABLE_SAMPLES = 8;
 	constexpr double MIN_STABLE_SECONDS = 0.25;
+	constexpr double MAX_EXPECTED_RATE_RELATIVE_ERROR = 0.01;
+
+	bool MatchesExpectedDisplayRate(double observed, double expected)
+	{
+		if (expected < 10.0 || expected > 500.0)
+			return true;
+		return std::isfinite(observed) && observed >= 10.0 &&
+			observed <= 500.0 &&
+			std::abs(observed - expected) / expected <=
+				MAX_EXPECTED_RATE_RELATIVE_ERROR;
+	}
 }
 
 AlphaPresentationTelemetry::AlphaPresentationTelemetry(size_t capacity)
@@ -68,6 +80,24 @@ void AlphaPresentationTelemetry::Observe(
 		ResetCadence(AlphaPresentationEvidence::Disjoint);
 		return;
 	}
+	if (m_cadenceSamples != 0 && sample.expectedDisplayHz >= 10.0)
+	{
+		const uint32_t intervalRefreshes =
+			sample.syncRefreshCount - m_lastSyncRefresh;
+		const int64_t intervalQpc = sample.syncQpc - m_lastSyncQpc;
+		if (intervalRefreshes > 0 && intervalQpc > 0)
+		{
+			const double intervalSeconds = static_cast<double>(intervalQpc) /
+				static_cast<double>(sample.qpcFrequency);
+			const double intervalHz =
+				static_cast<double>(intervalRefreshes) / intervalSeconds;
+			if (!MatchesExpectedDisplayRate(intervalHz, sample.expectedDisplayHz))
+			{
+				ResetCadence(AlphaPresentationEvidence::Disjoint);
+				return;
+			}
+		}
+	}
 
 	for (AlphaPresentationRecord& record : m_records)
 	{
@@ -103,10 +133,14 @@ void AlphaPresentationTelemetry::Observe(
 	{
 		const double measured =
 			static_cast<double>(refreshDelta) / elapsedSeconds;
-		if (measured >= 10.0 && measured <= 500.0)
+		if (MatchesExpectedDisplayRate(measured, sample.expectedDisplayHz))
 		{
 			m_measuredDisplayHz = measured;
 			m_evidence = AlphaPresentationEvidence::Stable;
+		}
+		else
+		{
+			ResetCadence(AlphaPresentationEvidence::Disjoint);
 		}
 	}
 }

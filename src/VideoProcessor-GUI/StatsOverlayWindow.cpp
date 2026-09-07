@@ -1126,6 +1126,78 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 	DrawText(hdc, line, PADDING, y);
 	y += lineHeight;
 
+	// Render cost. GPU time is the only figure here that scales with the
+	// quality settings; each row states the span it covers, because they are
+	// not the same - the window is 10 s, the budget is constant, and the last
+	// two cover the whole session.
+	if (m_stats.renderLoadKnown)
+	{
+		// Row 1 - what it costs now, over the rolling window. The percentage
+		// is the window PEAK against one refresh, so it is the headroom that
+		// matters rather than a flattering average.
+		if (m_stats.renderLoadSettling)
+			line.Format(TEXT("GPU render 10s:  settling..."));
+		else if (!m_stats.renderLoadGpuValid)
+			line.Format(TEXT("GPU render 10s:  measuring..."));
+		else if (m_stats.renderLoadGpuPercentValid)
+			line.Format(
+				TEXT("GPU render 10s:  avg %.2f, worst %.2f ms, max %.0f%%"),
+				m_stats.renderLoadGpuAvgMs,
+				m_stats.renderLoadGpuWorstLoadMs,
+				m_stats.renderLoadGpuPercent);
+		else
+			line.Format(TEXT("GPU render 10s:  avg %.2f, peak %.2f ms"),
+				m_stats.renderLoadGpuAvgMs, m_stats.renderLoadGpuPeakMs);
+		DrawText(hdc, line, PADDING, y);
+		y += lineHeight;
+
+		// Row 2 - the budget every figure above is spent against. It is a
+		// property of the refresh rate and CONSTANT for the session, so it
+		// carries no window; the refresh rate is printed with it rather than
+		// leaving the reader to work out where the number came from.
+		if (m_stats.renderLoadFramePeriodMs > 0.0 &&
+			m_stats.renderLoadFramePeriodFromDisplay)
+			line.Format(TEXT("GPU budget:      %.2f ms @ %.3f Hz"),
+				m_stats.renderLoadFramePeriodMs,
+				1000.0 / m_stats.renderLoadFramePeriodMs);
+		else if (m_stats.renderLoadFramePeriodMs > 0.0)
+			// Source rate, not the display rate. Say so, because at 60 Hz
+			// output with 24p content this budget is 2.5x too generous and a
+			// percentage computed from it would be badly flattering.
+			line.Format(TEXT("GPU budget:      display timing unavailable"));
+		else
+			line.Format(TEXT("GPU budget:      measuring..."));
+		DrawText(hdc, line, PADDING, y);
+		y += lineHeight;
+
+		// Row 3 - the whole point. The window peak above decays after 10 s, so
+		// without this the worst frame of the session is unrecoverable - and a
+		// backlog recovery would have wiped the record of the stall that
+		// caused it.
+		if (!m_stats.renderLoadSessionPeakValid)
+			line.Format(TEXT("GPU session:     measuring..."));
+		else if (m_stats.renderLoadSessionGpuPercentValid)
+			line.Format(TEXT("GPU session:     worst %.2f ms, max %.0f%%"),
+				m_stats.renderLoadSessionGpuWorstLoadMs,
+				m_stats.renderLoadSessionGpuPercent);
+		else
+			line.Format(TEXT("GPU session:     peak %.2f ms"),
+				m_stats.renderLoadSessionGpuPeakMs);
+		DrawText(hdc, line, PADDING, y);
+		y += lineHeight;
+
+		// Row 4 - CPU actually charged to the process, not wall time around a
+		// call. Present because a CPU spike drops frames just as a GPU one
+		// does, and nothing else in the OSD would show it.
+		if (!m_stats.cpuUsageKnown)
+			line.Format(TEXT("CPU process:     measuring..."));
+		else
+			line.Format(TEXT("CPU process:     now %.0f%%, peak %.0f%%"),
+				m_stats.cpuUsagePercent, m_stats.cpuUsagePeakPercent);
+		DrawText(hdc, line, PADDING, y);
+		y += lineHeight;
+	}
+
 	// Frame stats
 	line.Format(TEXT("VFrames:          %llu"), m_stats.rendererCapturedFrames);
 	DrawText(hdc, line, PADDING, y);
@@ -1233,6 +1305,8 @@ int StatsOverlayWindow::CalculateRequiredHeight(const StatsData& stats) const
 	// optional conditions in DrawStats so the background follows its content.
 	size_t lineCount = stats.isAlphaRenderer ? 22 : 24;
 	++lineCount; // Surface mode is always shown.
+	if (stats.renderLoadKnown)
+		lineCount += 4; // GPU render, budget, session peak, CPU.
 	if (!stats.outputSweep.IsEmpty())
 		++lineCount;
 	if (stats.measuredRefreshRate > 0.0)

@@ -108,6 +108,44 @@ namespace Tests
 			Assert::AreEqual(10.0, snapshot.measuredDisplayHz, 0.001);
 		}
 
+		TEST_METHOD(AcceptsCadenceMatchingExpectedOutput)
+		{
+			AlphaPresentationTelemetry telemetry;
+			for (uint32_t index = 1; index <= 10; ++index)
+			{
+				AlphaDxgiPresentationSample sample =
+					Sample(index * 6, index * 100);
+				sample.expectedDisplayHz = 60.0;
+				telemetry.Observe(sample);
+			}
+
+			const AlphaPresentationSnapshot snapshot = telemetry.Snapshot();
+			Assert::AreEqual(static_cast<int>(AlphaPresentationEvidence::Stable),
+				static_cast<int>(snapshot.evidence));
+			Assert::AreEqual(60.0, snapshot.measuredDisplayHz, 0.001);
+		}
+
+		TEST_METHOD(RejectsCadenceFromDifferentOutput)
+		{
+			AlphaPresentationTelemetry telemetry;
+			for (uint32_t index = 1; index <= 10; ++index)
+			{
+				AlphaDxgiPresentationSample sample =
+					Sample(index * 6, index * 100);
+				sample.expectedDisplayHz = 60.0;
+				telemetry.Observe(sample);
+			}
+			AlphaDxgiPresentationSample wrongOutput = Sample(75, 1200);
+			wrongOutput.expectedDisplayHz = 60.0;
+			telemetry.Observe(wrongOutput);
+
+			const AlphaPresentationSnapshot snapshot = telemetry.Snapshot();
+			Assert::AreEqual(static_cast<int>(AlphaPresentationEvidence::Disjoint),
+				static_cast<int>(snapshot.evidence));
+			Assert::AreEqual(0.0, snapshot.measuredDisplayHz);
+			Assert::AreEqual(static_cast<uint32_t>(0), snapshot.cadenceSamples);
+		}
+
 		TEST_METHOD(DisjointEvidenceFailsClosedUntilRestabilized)
 		{
 			AlphaPresentationTelemetry telemetry;
