@@ -865,6 +865,9 @@ protected:
 	uint32_t m_lastStatsTelemetryGeneration = 0;
 	bool m_statsOverlayRequestedVisible = false;
 	bool m_profileChangeOverlayInitialized = false;
+	bool m_profileChangeOverlaySelectionResolutionInitialized = false;
+	RendererProfileConfig::Selections
+		m_profileChangeOverlayEffectiveSelections;
 	std::map<std::string, std::string> m_profileChangeOverlaySelections;
 	std::vector<ProfileChangeOverlay::Item> m_profileChangeOverlayItems;
 	unsigned int m_profileChangeDisplaySeconds =
@@ -1067,7 +1070,8 @@ protected:
 		const std::shared_ptr<const UnifiedProfileRuntime::Snapshot>& snapshot,
 		bool allowRestart, bool queueProfileResetPending = false);
 	void PublishProfileChangeOverlay(
-		const std::shared_ptr<const UnifiedProfileRuntime::Snapshot>& snapshot);
+		const std::shared_ptr<const UnifiedProfileRuntime::Snapshot>& snapshot,
+		bool forceSelectionResolution = false);
 	std::map<std::string, std::string> GetProfileOverlaySelections(
 		const UnifiedProfileRuntime::Snapshot& snapshot) const;
 	void ShowProfileOverlayItems(

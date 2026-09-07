@@ -221,6 +221,20 @@ namespace ProfileChangeOverlay
 		return filtered;
 	}
 
+	// Resolving operator-facing labels parses the optional renderer profile
+	// configuration. Source facts such as hdr_metadata can change a runtime
+	// snapshot without changing any selected profile; those updates do not need
+	// to repeat that work. Explicit shader-state changes and configuration
+	// publication may force a refresh through the same boundary.
+	inline bool NeedsSelectionResolution(
+		bool initialized,
+		const RendererProfileConfig::Selections& previous,
+		const RendererProfileConfig::Selections& current,
+		bool force = false)
+	{
+		return force || !initialized || previous != current;
+	}
+
 	inline std::vector<Item> CollectChanges(
 		const std::map<std::string, std::string>& previous,
 		const std::map<std::string, std::string>& current,

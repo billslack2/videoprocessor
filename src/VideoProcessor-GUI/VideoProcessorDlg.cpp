@@ -4702,6 +4702,10 @@ bool CVideoProcessorDlg::PublishStagedConfiguration(bool replaceAccelerators)
 	PublishStagedRuntimeSettings();
 	m_configurationSnapshot =
 		CaptureConfigurationSnapshot(*m_stagedConfiguration);
+	// Profile labels and option counts may change without changing the selected
+	// profile identifiers. Rebuild their cached presentation from the newly
+	// published configuration on the next overlay update.
+	m_profileChangeOverlaySelectionResolutionInitialized = false;
 	ApplyUnifiedProfileSnapshot(result.snapshot ? result.snapshot :
 		m_profileRuntime.GetSnapshot(),
 		m_stagedConfigurationAction ==
@@ -7329,7 +7333,7 @@ void CVideoProcessorDlg::ApplyShaderRuleCommand(UINT commandId)
 	// Explicit shader shortcuts update the resolved section selection before the
 	// render thread consumes it. Publish that selection now so terminal choices
 	// such as NLS Off receive the same transient feedback as active NLS modes.
-	PublishProfileChangeOverlay(m_profileRuntime.GetSnapshot());
+	PublishProfileChangeOverlay(m_profileRuntime.GetSnapshot(), true);
 	DEBUGLOG("Shader rule changed to '%S'", static_cast<LPCTSTR>(activeRule));
 	if (rendererRestartRequired)
 	{
@@ -11985,10 +11989,21 @@ void CVideoProcessorDlg::ShowProfileOverlayItems(
 }
 
 void CVideoProcessorDlg::PublishProfileChangeOverlay(
-	const std::shared_ptr<const UnifiedProfileRuntime::Snapshot>& snapshot)
+	const std::shared_ptr<const UnifiedProfileRuntime::Snapshot>& snapshot,
+	bool forceSelectionResolution)
 {
 	if (!snapshot)
 		return;
+	if (!ProfileChangeOverlay::NeedsSelectionResolution(
+			m_profileChangeOverlaySelectionResolutionInitialized,
+			m_profileChangeOverlayEffectiveSelections,
+			snapshot->effectiveSelections,
+			forceSelectionResolution))
+	{
+		return;
+	}
+	m_profileChangeOverlayEffectiveSelections = snapshot->effectiveSelections;
+	m_profileChangeOverlaySelectionResolutionInitialized = true;
 	const auto currentSelections = GetProfileOverlaySelections(*snapshot);
 	if (!m_profileChangeOverlayInitialized)
 	{
@@ -14454,7 +14469,7 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 					refreshedShaderRule, shaderRestartRequired))
 			{
 				PublishActiveProfileStatus();
-				PublishProfileChangeOverlay(m_profileRuntime.GetSnapshot());
+				PublishProfileChangeOverlay(m_profileRuntime.GetSnapshot(), true);
 				if (shaderRestartRequired)
 				{
 					DEBUGLOG(

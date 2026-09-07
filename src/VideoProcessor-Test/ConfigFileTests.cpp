@@ -24,6 +24,7 @@
 #include <ShaderConfigValidation.h>
 #include <UnifiedProfileRuntime.h>
 #include <VideoConversionOverride.h>
+#include <vprenderer/LibplaceboRendererPluginApi.h>
 #include "CppUnitTest.h"
 
 #include <cmath>
@@ -2645,6 +2646,31 @@ namespace VideoProcessorTest
 			Assert::IsTrue(filtered.find("nls") != filtered.end());
 			Assert::IsTrue(filtered.find("queue") == filtered.end());
 			Assert::IsTrue(filtered.find("scaling") == filtered.end());
+		}
+
+		TEST_METHOD(ProfileOverlaySkipsResolutionWhenSelectionsAreUnchanged)
+		{
+			const RendererProfileConfig::Selections selections = {
+				{ "display", { "cinema" } },
+				{ "queue", { "low_latency" } }
+			};
+			Assert::IsTrue(ProfileChangeOverlay::NeedsSelectionResolution(
+				false, selections, selections));
+			Assert::IsFalse(ProfileChangeOverlay::NeedsSelectionResolution(
+				true, selections, selections));
+
+			auto changed = selections;
+			changed["queue"] = { "normal" };
+			Assert::IsTrue(ProfileChangeOverlay::NeedsSelectionResolution(
+				true, selections, changed));
+			Assert::IsTrue(ProfileChangeOverlay::NeedsSelectionResolution(
+				true, selections, selections, true));
+		}
+
+		TEST_METHOD(LibplaceboPluginApiVersionCoversShaderProfileVtable)
+		{
+			Assert::AreEqual(static_cast<uint32_t>(15),
+				VP_LIBPLACEBO_PLUGIN_API_VERSION);
 		}
 
 		TEST_METHOD(ProfileChangeDisplayDurationIsBoundedAndLive)
