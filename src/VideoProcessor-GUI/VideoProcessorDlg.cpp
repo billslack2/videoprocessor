@@ -15066,6 +15066,14 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		configuredDisplayRefreshRate :
 		(madVRDetectedRefreshRateKnown ? madVRDetectedRefreshRate :
 			measuredDisplayRefreshRate);
+	// Feed the renderer the same monitor-qualified rate shown by the OSD. The
+	// target rational is authoritative while the local estimator is warming.
+	if (m_videoRenderer)
+	{
+		m_videoRenderer->SetRenderLoadDisplayRefreshRate(
+			displayRefreshRate >= 10.0 ? displayRefreshRate :
+			activeTargetRefreshRate);
+	}
 	const std::wstring monitorDeviceName = GetMonitorDeviceName(displayWindow);
 	const double dxgiTargetMismatchPpm =
 		sampledDisplayTiming.refreshRateHz > 0.0 &&
@@ -15739,6 +15747,32 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		m_activeOutputSweepSummaryVisible) &&
 		!m_activeOutputSweepPaused && m_activeOutputSweepShowInfo && m_videoRenderer &&
 		m_videoRenderer->SupportsNativeStatsOverlay();
+	const IVideoRenderer* const statsRenderer = m_videoRenderer.get();
+	if (statsRenderer != m_cpuUsageRenderer ||
+		m_transitionGeneration != m_cpuUsageRendererGeneration)
+	{
+		m_processCpuUsage.Reset();
+		m_cpuUsageRenderer = statsRenderer;
+		m_cpuUsageRendererGeneration = m_transitionGeneration;
+		m_loggedCpuPeakPercent = 0.0;
+	}
+	// Sample on the existing one-second UI timer even while Ctrl+I is hidden.
+	if (statsRenderer)
+	{
+		m_processCpuUsage.Sample();
+		if (m_processCpuUsage.ConsumeNewPeak() &&
+			m_processCpuUsage.SessionPeakIsAnomalous() &&
+			m_processCpuUsage.SessionPeakPercent() >=
+				m_loggedCpuPeakPercent + CPU_PEAK_LOG_STEP_PERCENT)
+		{
+			m_loggedCpuPeakPercent = m_processCpuUsage.SessionPeakPercent();
+			DebugLog::Log(
+				"Process CPU peak: percent=%.1f baseline=%.1f processors=%lu note=share-of-whole-machine",
+				m_processCpuUsage.SessionPeakPercent(),
+				m_processCpuUsage.AveragePercent(),
+				static_cast<unsigned long>(m_processCpuUsage.Processors()));
+		}
+	}
 	// Native-overlay support can appear after the renderer plugin finishes its
 	// handoff. Close the legacy window on that transition as well as in the
 	// immediate toggle path, otherwise both panels remain visible and the
@@ -15771,7 +15805,6 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 	stats.surfaceMode = m_fullScreenVideoWindow &&
 		::IsWindow(m_fullScreenVideoWindow->GetHWND()) ?
 		TEXT("Fullscreen") : TEXT("Windowed");
-	const IVideoRenderer* const statsRenderer = m_videoRenderer.get();
 	const bool sameStatsTelemetryGeneration = statsRenderer != nullptr &&
 		statsRenderer == m_lastStatsTelemetryRenderer &&
 		m_transitionGeneration == m_lastStatsTelemetryGeneration;
@@ -15899,6 +15932,48 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 					stats.captureToPresentationTargetMs);
 			m_videoRenderer->GetPresentationTimingStatus(
 				stats.presentationTimingStatus);
+		}
+		RendererRenderLoad renderLoad;
+		if (m_videoRenderer->GetRenderLoad(renderLoad))
+		{
+			stats.renderLoadKnown = true;
+			stats.renderLoadGpuValid = renderLoad.gpuValid;
+			stats.renderLoadSettling = renderLoad.settling;
+			stats.renderLoadFrames = renderLoad.frames;
+			stats.renderLoadFramePeriodMs = renderLoad.framePeriodMs;
+			stats.renderLoadFramePeriodFromDisplay =
+				renderLoad.framePeriodFromDisplay;
+			stats.renderLoadWindowSeconds = renderLoad.windowSeconds;
+			stats.renderLoadGpuLastMs = renderLoad.gpu.last;
+			stats.renderLoadGpuAvgMs = renderLoad.gpu.average;
+			stats.renderLoadGpuPeakMs = renderLoad.gpu.peak;
+			stats.renderLoadGpuPercentValid =
+				renderLoad.gpuLoadPercentValid;
+			stats.renderLoadGpuPercent = renderLoad.gpuLoadPercent;
+			stats.renderLoadGpuWorstLoadMs = renderLoad.gpuWorstLoadMs;
+			stats.renderLoadGpuFrames = renderLoad.gpuFrames;
+			stats.renderLoadRenderAvgMs = renderLoad.render.average;
+			stats.renderLoadRenderPeakMs = renderLoad.render.peak;
+			stats.renderLoadSwapAvgMs = renderLoad.swap.average;
+			stats.renderLoadSessionPeakValid = renderLoad.sessionPeakValid;
+			stats.renderLoadSessionFrames = renderLoad.sessionFrames;
+			stats.renderLoadSessionGpuFrames = renderLoad.sessionGpuFrames;
+			stats.renderLoadSessionGpuPeakMs = renderLoad.sessionGpuPeakMs;
+			stats.renderLoadSessionGpuPercentValid =
+				renderLoad.sessionGpuPercentValid;
+			stats.renderLoadSessionGpuPercent = renderLoad.sessionGpuPercent;
+			stats.renderLoadSessionGpuWorstLoadMs =
+				renderLoad.sessionGpuWorstLoadMs;
+		}
+
+		// CPU is sampled here rather than in the renderer because it is a
+		// property of the whole process - capture and pixel-format conversion
+		// cost more CPU than the render call does.
+		if (m_processCpuUsage.Valid())
+		{
+			stats.cpuUsageKnown = true;
+			stats.cpuUsagePercent = m_processCpuUsage.CurrentPercent();
+			stats.cpuUsagePeakPercent = m_processCpuUsage.SessionPeakPercent();
 		}
 		stats.queueDroppedFrames = m_videoRenderer->DroppedFrameCount();
 		if (!m_videoRenderer->GetOutputModeInfo(stats.outputMode) &&

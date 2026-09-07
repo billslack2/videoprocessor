@@ -403,6 +403,20 @@ public:
 		return false;
 	}
 
+	// Rolling render cost, for judging whether a quality setting fits inside a
+	// frame period on this machine. Renderers without per-frame instrumentation
+	// return false so the OSD does not imply a measurement it does not have.
+	virtual bool GetRenderLoad(RendererRenderLoad& load) const
+	{
+		load = {};
+		return false;
+	}
+
+	// Supplies the display rate already validated for the renderer's target
+	// monitor. GPU load percentages must not infer this from frame-statistics
+	// counters that may belong to a different output.
+	virtual void SetRenderLoadDisplayRefreshRate(double) {}
+
 	// Optional renderer-native OSD. The renderer must deep-copy the BGRA pixels
 	// before returning; callers retain ownership of the supplied buffer.
 	virtual bool SupportsNativeStatsOverlay() const { return false; }

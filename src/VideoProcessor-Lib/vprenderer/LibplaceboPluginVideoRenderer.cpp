@@ -488,6 +488,19 @@ uint64_t LibplaceboPluginVideoRenderer::DroppedFrameCount() const
 }
 
 
+bool LibplaceboPluginVideoRenderer::GetRenderLoad(RendererRenderLoad& load) const
+{
+	return m_renderer->GetRenderLoad(load);
+}
+
+
+void LibplaceboPluginVideoRenderer::SetRenderLoadDisplayRefreshRate(
+	double refreshRateHz)
+{
+	m_renderer->SetRenderLoadDisplayRefreshRate(refreshRateHz);
+}
+
+
 bool LibplaceboPluginVideoRenderer::GetOutputModeInfo(CString& details) const
 {
 	return m_renderer->GetOutputModeInfo(details);
