@@ -15751,11 +15751,37 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		configuredDisplayRefreshRate : 0.0;
 	cadenceContract.rateSource = displayRefreshRateOverridden ? 1 :
 		(madVRDetectedRefreshRateKnown ? 2 : 3);
+	const double cadenceDisplayRate = displayRefreshRateOverridden ?
+		configuredDisplayRefreshRate : (madVRDetectedRefreshRateKnown ?
+			madVRDetectedRefreshRate :
+			CadenceIntervalEstimate::SelectPhysicalDisplayRate(
+				displayRateResult, readinessRateResult, startupRateResult));
+	const bool cadenceCaptureActive =
+		m_rendererState == RendererState::RENDERSTATE_RENDERING &&
+		m_cadenceInputLocked != InputLocked::NO &&
+		m_captureDeviceState == CaptureDeviceState::CAPTUREDEVICESTATE_CAPTURING &&
+		m_captureDeviceVideoState && m_captureDeviceVideoState->valid;
+	const bool cadenceWaitingForRates = cadenceCaptureActive &&
+		((!hasMeasuredCaptureRate && cadenceDisplayRate > 0.0) ||
+			(cadenceDisplayRate <= 0.0 &&
+				displayRateResult.decision == DisplayRefreshRateDecision::Warming));
 	m_cadenceIntervalEstimate.Update(GetTickCount64(),
-		hasMeasuredCaptureRate && m_cadenceInputLocked != InputLocked::NO &&
-			m_captureDeviceState == CaptureDeviceState::CAPTUREDEVICESTATE_CAPTURING ?
-			measuredCaptureRate : 0.0,
-		displayRefreshRate, cadenceContract);
+		hasMeasuredCaptureRate && cadenceCaptureActive ? measuredCaptureRate : 0.0,
+		cadenceDisplayRate, cadenceContract, cadenceWaitingForRates);
+	const ULONGLONG cadenceLogTick = GetTickCount64();
+	if (cadenceCaptureActive &&
+		cadenceLogTick - m_lastCadenceIntervalLogTick >= 10000)
+	{
+		m_lastCadenceIntervalLogTick = cadenceLogTick;
+		DebugLog::Log(
+			"OSD cadence interval: capture_hz=%.9f display_hz=%.9f "
+			"source=%d evidence_s=%.1f mean_difference_hz=%.9f status=%S",
+			hasMeasuredCaptureRate ? measuredCaptureRate : 0.0,
+			cadenceDisplayRate, cadenceContract.rateSource,
+			m_cadenceIntervalEstimate.EvidenceSeconds(),
+			m_cadenceIntervalEstimate.MeanDifferenceHz(),
+			m_cadenceIntervalEstimate.Text().c_str());
+	}
 
 	const bool nativeOverlay = m_statsOverlayRequestedVisible && m_videoRenderer &&
 		m_videoRenderer->SupportsNativeStatsOverlay();

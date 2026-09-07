@@ -1,5 +1,7 @@
 #pragma once
 
+#include "DisplayRefreshRatePolicy.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -28,19 +30,36 @@ public:
         }
     };
 
+    // Diagnostics can accumulate validated physical measurements while the
+    // longer scene-correction phase-confidence gate is still warming.
+    static double SelectPhysicalDisplayRate(const DisplayRefreshRateResult& phase,
+        const DisplayRefreshRateResult& readiness,
+        const DisplayRefreshRateResult& startup)
+    {
+        if (phase.decision == DisplayRefreshRateDecision::Accepted)
+            return phase.selectedRateHz;
+        if (readiness.readinessValidated)
+            return readiness.readinessRateHz;
+        if (startup.startupValidated)
+            return startup.startupRateHz;
+        return 0.0;
+    }
+
     void Reset()
     {
         m_samples.clear();
         m_started = false;
+        m_waitingForRates = false;
     }
 
     void Update(uint64_t nowMs, double captureHz, double displayHz,
-        const Contract& contract)
+        const Contract& contract, bool waitingForRates = false)
     {
         if (!std::isfinite(captureHz) || !std::isfinite(displayHz) ||
             captureHz <= 0.0 || displayHz <= 0.0)
         {
             Reset();
+            m_waitingForRates = waitingForRates;
             return;
         }
         if (m_started && (!(contract == m_contract) || nowMs < m_lastMs ||
@@ -87,7 +106,7 @@ public:
     std::wstring Text() const
     {
         if (!m_started)
-            return L"Unavailable";
+            return m_waitingForRates ? L"Warming" : L"Unavailable";
         if (EvidenceSeconds() < 30.0)
             return L"Warming";
         const double difference = MeanDifferenceHz();
@@ -121,4 +140,5 @@ private:
     Contract m_contract;
     uint64_t m_lastMs = 0;
     bool m_started = false;
+    bool m_waitingForRates = false;
 };

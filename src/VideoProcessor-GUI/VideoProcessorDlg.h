@@ -860,6 +860,7 @@ protected:
 	StatsOverlayWindow* m_statsOverlay = nullptr;
 	InputLocked m_cadenceInputLocked = InputLocked::UNKNOWN;
 	CadenceIntervalEstimate m_cadenceIntervalEstimate;
+	ULONGLONG m_lastCadenceIntervalLogTick = 0;
 	StatsData* m_lastStatsData = nullptr;
 	// Renderer telemetry getters are deliberately nonblocking. Retain their
 	// last valid values only within the same renderer/host generation when a

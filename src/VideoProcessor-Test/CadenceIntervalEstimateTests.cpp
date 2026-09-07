@@ -17,6 +17,61 @@ namespace Tests
                 estimate.Update(ms, 24.0 + difference, 24.0, contract);
         }
     public:
+        TEST_METHOD(ValidatedStartupFeedsEstimateBeforeScenePhaseIsReady)
+        {
+            DisplayRefreshRateInput input;
+            input.candidateRateHz = 59.9508;
+            input.rawWaitRateHz = 59.9508;
+            input.nominalRateHz = 59.951;
+            input.minimumWaitIntervalMs = 16.5;
+            input.maximumWaitIntervalMs = 16.9;
+            input.rawWaitIntervals = 120;
+            input.compensatedIntervals = 120;
+            input.fresh = true;
+            const auto phase = EvaluateDisplayRefreshRate(input);
+            input.startupObservationSeconds = 2.0;
+            const auto startup = EvaluateDisplayRefreshRate(input);
+            Assert::AreEqual(0.0, phase.selectedRateHz);
+            Assert::IsTrue(startup.startupValidated);
+            const double rate = Estimate::SelectPhysicalDisplayRate(phase, {}, startup);
+            Assert::AreEqual(59.9508, rate, 1e-9);
+            Estimate estimate;
+            for (uint64_t ms = 0; ms <= 30000; ms += 1000)
+                estimate.Update(ms, 59.941078, rate, {});
+            Assert::AreEqual(L"Repeat every 1m43s", estimate.Text().c_str());
+        }
+        TEST_METHOD(UnvalidatedOrStaleStartupCannotFeedTheEstimate)
+        {
+            DisplayRefreshRateInput input;
+            input.candidateRateHz = 59.95;
+            input.rawWaitRateHz = 59.95;
+            input.nominalRateHz = 59.951;
+            input.minimumWaitIntervalMs = 16.5;
+            input.maximumWaitIntervalMs = 16.9;
+            input.rawWaitIntervals = 120;
+            input.compensatedIntervals = 120;
+            input.startupObservationSeconds = 2.0;
+            input.fresh = false;
+            const auto stale = EvaluateDisplayRefreshRate(input);
+            Assert::AreEqual(0.0, Estimate::SelectPhysicalDisplayRate({}, {}, stale));
+            input.fresh = true;
+            input.candidateRateHz = 119.9;
+            const auto rejected = EvaluateDisplayRefreshRate(input);
+            Assert::AreEqual(0.0, Estimate::SelectPhysicalDisplayRate({}, {}, rejected));
+        }
+        TEST_METHOD(WaitingForMeasurementsIsWarmingAndRestartsEvidence)
+        {
+            Estimate estimate;
+            estimate.Update(0, 0.0, 0.0, {}, true);
+            Assert::AreEqual(L"Warming", estimate.Text().c_str());
+            Feed(estimate, 1000, 31000, 0.001);
+            Assert::AreEqual(L"Drop every 16m40s", estimate.Text().c_str());
+            estimate.Update(32000, 24.001, 0.0, {}, true);
+            Assert::AreEqual(L"Warming", estimate.Text().c_str());
+            Assert::AreEqual(0.0, estimate.EvidenceSeconds());
+            estimate.Update(33000, 0.0, 0.0, {}, false);
+            Assert::AreEqual(L"Unavailable", estimate.Text().c_str());
+        }
         TEST_METHOD(FormatsRequestedIntervalsAndRoundingBoundaries)
         {
             Assert::AreEqual(L"1h5m30s", Estimate::FormatInterval(3930.0).c_str());
