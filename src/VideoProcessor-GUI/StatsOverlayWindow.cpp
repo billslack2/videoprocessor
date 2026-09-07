@@ -1135,6 +1135,12 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 	DrawText(hdc, line, PADDING, y);
 	y += lineHeight;
 
+	line.Format(TEXT("D/R estimate:     %s"),
+		m_stats.cadenceIntervalEstimate.IsEmpty() ? TEXT("Unavailable") :
+			static_cast<LPCTSTR>(m_stats.cadenceIntervalEstimate));
+	DrawText(hdc, line, PADDING, y);
+	y += lineHeight;
+
 	line.Format(TEXT("Scene Mode:       %-s"),
 		m_stats.sceneDetectMode.IsEmpty() ? TEXT("Off") :
 			static_cast<LPCTSTR>(m_stats.sceneDetectMode));
@@ -1157,60 +1163,6 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 	DrawText(hdc, line, PADDING, y);
 	y += lineHeight;
 
-	// Only advertise a correction that is concrete and close enough to be
-	// meaningful. A multi-day estimate is effectively no actionable plan.
-	constexpr double kMaximumPlanSeconds = 24.0 * 60.0 * 60.0;
-	const bool hasActionablePlan =
-		!sceneModeOff &&
-		m_stats.sceneTimingReady &&
-		m_stats.sceneTimingRatesCompatible &&
-		m_stats.sceneCorrectionPredictionValid &&
-		std::isfinite(m_stats.sceneSecondsUntilCorrection) &&
-		std::fabs(m_stats.sceneSecondsUntilCorrection) <= kMaximumPlanSeconds;
-	// For five seconds after a correction, use the Forecast row to confirm how the
-	// scene boundary lined up with its deadline. It then automatically returns
-	// to the live signed countdown for the next correction.
-	constexpr uint64_t kCorrectionResultVisibilityMs = 5000;
-	constexpr double kOnTimeToleranceSeconds = 1.0;
-	const uint64_t nowTick = GetTickCount64();
-	const bool showLastCorrection =
-		!sceneModeOff &&
-		m_stats.sceneLastCorrectionValid &&
-		nowTick >= m_stats.sceneLastCorrectionTick &&
-		(nowTick - m_stats.sceneLastCorrectionTick) <= kCorrectionResultVisibilityMs;
-	if (showLastCorrection)
-	{
-		const TCHAR* action = m_stats.sceneLastCorrectionAction > 0 ?
-			TEXT("Repeat") : TEXT("Drop");
-		const double timing = m_stats.sceneLastCorrectionSecondsFromDeadline;
-		if (std::fabs(timing) <= kOnTimeToleranceSeconds)
-			line.Format(TEXT(" - Forecast:      %s On-Time"), action);
-		else
-			line.Format(TEXT(" - Forecast:      %s %s (%s)"), action,
-				timing > 0.0 ? TEXT("Early") : TEXT("Late"),
-				static_cast<LPCTSTR>(FormatTime(std::fabs(timing))));
-	}
-	else if (m_stats.sceneCorrectionDue &&
-		m_stats.sceneCorrectionAction != 0)
-	{
-		line.Format(TEXT(" - Forecast:      %s due - %s"),
-			m_stats.sceneCorrectionAction > 0 ? TEXT("Repeat") : TEXT("Drop"),
-			m_stats.sceneCorrectionBlockReason.IsEmpty()
-				? TEXT("blocked")
-				: static_cast<LPCTSTR>(m_stats.sceneCorrectionBlockReason));
-	}
-	else if (hasActionablePlan)
-	{
-		line.Format(TEXT(" - Forecast:      %s in %s"),
-			m_stats.sceneCorrectionAction > 0 ? TEXT("Repeat") : TEXT("Drop"),
-			static_cast<LPCTSTR>(FormatTime(m_stats.sceneSecondsUntilCorrection)));
-	}
-	else
-	{
-		line.Format(TEXT(" - Forecast:      None"));
-	}
-	DrawText(hdc, line, PADDING, y);
-	y += lineHeight;
 
 	// These are source-side actions at detected scene boundaries.
 	line.Format(TEXT(" - Action D/R:    %llu / %llu"),
@@ -1281,25 +1233,6 @@ int StatsOverlayWindow::CalculateRequiredHeight(const StatsData& stats) const
 void StatsOverlayWindow::DrawText(HDC hdc, const CString& text, int x, int y)
 {
 	TextOut(hdc, x, y, text, text.GetLength());
-}
-
-CString StatsOverlayWindow::FormatTime(double seconds)
-{
-	CString result;
-	const bool negative = seconds < 0.0;
-	const uint64_t totalSeconds = static_cast<uint64_t>(
-		std::ceil(std::fabs(seconds)));
-	const uint64_t hours = totalSeconds / 3600;
-	const uint64_t minutes = (totalSeconds % 3600) / 60;
-	const uint64_t secs = totalSeconds % 60;
-	if (hours > 0)
-		result.Format(negative ? TEXT("-%lluh%llum%llus") : TEXT("%lluh%llum%llus"), hours, minutes, secs);
-	else if (minutes > 0)
-		result.Format(negative ? TEXT("-%llum%llus") : TEXT("%llum%llus"), minutes, secs);
-	else
-		result.Format(negative ? TEXT("-%llus") : TEXT("%llus"), secs);
-
-	return result;
 }
 
 CString StatsOverlayWindow::FormatQueueStatus()
