@@ -66,7 +66,6 @@ private:
     QWidget* createRendererPage();
 	QWidget* createScalingPage();
     QWidget* createColorConfigPage();
-    QWidget* createOutputPage();
     QWidget* createDirectShowPage();
     QWidget* createInputProcessingPage(const QString& title, const QString& description,
         const QString& section);
@@ -123,6 +122,7 @@ private:
     void migrateSharedRefreshRate();
 	void migrateRefreshRateSwitchMode();
     void migrateSeparatedRendererProfiles();
+    void migrateUnifiedColorOutputProfiles();
     void migrateViewportZoomProfiles();
     void loadDiscoveryCache();
     void applyMonitorDiscovery(const QStringList& discovered);

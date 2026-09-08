@@ -6,6 +6,7 @@
 #include <ModernOperatorLayout.h>
 #include <ModernOperatorStatusPolicy.h>
 #include <ConfigFile.h>
+#include <ColorOutputProfileMigration.h>
 #include <ConfigurationLiveApply.h>
 #include <ConfigurationApplyPolicy.h>
 #include <DisplayTopologySession.h>
@@ -39,6 +40,75 @@ namespace VideoProcessorTest
 	TEST_CLASS(ConfigFileTests)
 	{
 	public:
+        TEST_METHOD(UnifiedColorOutputMigrationPreservesEveryBaselineSettingAndArchivesSelectors)
+        {
+            using namespace ColorOutputProfileMigration;
+            Settings baseline = {
+                {"output_presentation","direct"}, {"output_range","limited"},
+                {"output_transport_gamma","2.2"}, {"output_path_profile","custom"},
+                {"output_diagnostics","true"}, {"diagnostic_disable_shader_cache","true"},
+                {"diagnostic_disable_compute","true"}, {"diagnostic_force_8bit_sdr_swapchain","true"},
+                {"diagnostic_allow_limited_g22","true"}, {"diagnostic_allow_full_g22","false"},
+                {"diagnostic_vp_owned_dxgi_presenter","true"}, {"shortcut","F9"},
+                {"when","${width} > 1"}, {"cycle_shortcut","F10"} };
+            Sections sections = {{"vprenderer.output.first",baseline},
+                {"vprenderer.output.second",{{"output_range","full"},{"shortcut","F11"}}},
+                {"vprenderer.color.rec709",{{"output_gamma","2.2"},{"shortcut","F5"}}},
+                {"vprenderer.color.bt2020",{{"sdr_target_primaries","bt2020"},{"shortcut","F6"}}}};
+            std::vector<std::string> order = {"vprenderer.output.first","vprenderer.output.second",
+                "vprenderer.color.rec709","vprenderer.color.bt2020"};
+            Assert::IsTrue(Apply(sections, order));
+            for (const auto* color : {"vprenderer.color.rec709","vprenderer.color.bt2020"})
+                for (const auto& setting : baseline)
+                    if (!IsSelector(setting.first)) Assert::AreEqual(setting.second,
+                        sections.at(color).at(setting.first));
+            Assert::AreEqual(std::string("F5"), sections.at("vprenderer.color.rec709").at("shortcut"));
+            Assert::IsTrue(sections.at("legacy_output.first") == baseline);
+            Assert::AreEqual(std::string("F11"), sections.at("legacy_output.second").at("shortcut"));
+            Assert::IsFalse(Apply(sections, order));
+            Sections only = {{"vprenderer.output",baseline}};
+            std::vector<std::string> onlyOrder = {"vprenderer.output"};
+            Assert::IsTrue(Apply(only, onlyOrder));
+            Assert::AreEqual(std::string("limited"), only.at("vprenderer.color.default").at("output_range"));
+        }
+
+        TEST_METHOD(UnifiedColorOutputRuntimeMigrationRetainsRulesAndRejectsMalformedProfiles)
+        {
+            char directory[MAX_PATH] = {};
+            Assert::IsTrue(GetTempPathA(ARRAYSIZE(directory), directory) > 0);
+            const std::string path = std::string(directory) + "VP0174-runtime-migration.cfg";
+            {
+                std::ofstream file(path);
+                file << "[vprenderer.color.Rec709]\noutput_gamma: 2.2\nshortcut: F5\n"
+                    "[vprenderer.color.BT2020]\nwhen: ${width} > 1920\nsdr_target_primaries: bt2020\n"
+                    "[vprenderer.output.First]\noutput_range: limited\noutput_transport_gamma: 2.2\n"
+                    "diagnostic_allow_limited_g22: true\nshortcut: F9\n"
+                    "[vprenderer.output.First_2]\noutput_range: full\n"
+                    "[legacy_output.first]\noriginal: retained\n";
+            }
+            ConfigFile config;
+            Assert::IsTrue(config.Load(path));
+            RendererProfileConfig::Model model;
+            std::string error;
+            Assert::IsTrue(RendererProfileConfig::Read(config, model, error),
+                std::wstring(error.begin(), error.end()).c_str());
+            for (const auto& group : model.groups) Assert::IsTrue(group.name != "output");
+            const auto& second = model.profiles.at("color.bt2020");
+            Assert::AreEqual(std::string("limited"), second.settings.at("output_range"));
+            Assert::AreEqual(std::string("2.2"), second.settings.at("output_gamma"));
+            Assert::AreEqual(std::string("${width} > 1920"), second.when);
+            Assert::IsTrue(config.HasSection("legacy_output.first_2"));
+            Assert::IsTrue(config.HasSection("legacy_output.first_2_2"));
+            Assert::AreEqual(std::string("retained"), config.GetSectionValues("legacy_output.first")->at("original"));
+            {
+                std::ofstream file(path);
+                file << "[vprenderer.output.bad.nested]\noutput_range: limited\n";
+            }
+            Assert::IsTrue(config.Load(path));
+            Assert::IsFalse(RendererProfileConfig::Read(config, model, error));
+            DeleteFileA(path.c_str());
+        }
+
 		TEST_METHOD(VideoConversionOverrideAcceptsConfiguredDisabledValues)
 		{
 			VideoConversionOverride parsed =
@@ -2538,7 +2608,7 @@ namespace VideoProcessorTest
 			Assert::AreEqual(static_cast<size_t>(3), items.size());
 			Assert::AreEqual("Rendering", items[0].label.c_str());
 			Assert::AreEqual("Rec709 Scope Med", items[0].value.c_str());
-			Assert::AreEqual("Color", items[1].label.c_str());
+			Assert::AreEqual("Color / Output", items[1].label.c_str());
 			Assert::AreEqual("Rec709", items[1].value.c_str());
 			Assert::AreEqual("Screen", items[2].label.c_str());
 			Assert::AreEqual("Scope", items[2].value.c_str());

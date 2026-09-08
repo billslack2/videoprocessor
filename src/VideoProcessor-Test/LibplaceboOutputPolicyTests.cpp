@@ -14,6 +14,23 @@ namespace Tests
 	TEST_CLASS(LibplaceboOutputPolicyTests)
 	{
 	public:
+        TEST_METHOD(LutInputDomainIsIndependentAndMissingLutUsesDisplay)
+        {
+            for (auto carrier : { SdrTransfer::SRGB, SdrTransfer::GAMMA22, SdrTransfer::GAMMA24 })
+            {
+                Assert::IsTrue(ResolveRenderTargetTransfer(GammaRequest::GAMMA22,
+                    GammaRequest::BT1886, true, carrier) == SdrTransfer::BT1886);
+                Assert::IsTrue(ResolveRenderTargetTransfer(GammaRequest::GAMMA22,
+                    GammaRequest::BT1886, false, carrier) == SdrTransfer::GAMMA22);
+                Assert::IsTrue(ResolveRenderTargetTransfer(GammaRequest::GAMMA22,
+                    GammaRequest::UNSUPPORTED, true, carrier) == SdrTransfer::GAMMA22);
+            }
+            const auto pass = ResolveSdrGamma(ParseSdrAdjustGamma("passthrough"), true, true,
+                GammaRequest::GAMMA22, SdrTransfer::BT1886, SdrTransfer::GAMMA22);
+            Assert::IsTrue(pass.action == SdrGammaAction::SUPPRESS);
+            Assert::IsTrue(pass.effectiveSource == SdrTransfer::GAMMA22);
+        }
+
 		TEST_METHOD(CalibrationLutSelectsConfiguredDisplayTargetOnly)
 		{
 			using namespace LibplaceboCalibrationLut;

@@ -946,6 +946,7 @@ namespace
 		// the calibrated display transfer selected by a rendering profile.
 		std::string outputTransportGamma = "auto";
 		std::string outputGamma = "auto";
+        std::string calibrationLutInputGamma = "display";
 		std::string sdrTargetPrimaries = "rec709";
 		bool reportBt2020ToDisplay = false;
 		std::string sdrInputTransfer = "auto";
@@ -1043,7 +1044,7 @@ namespace
 			<< settings.outputPresentation << '|' << settings.outputRange << '|'
 			<< settings.outputTransportGamma << '|' << settings.outputGamma << '|'
 			<< settings.sdrTargetPrimaries << '|'
-			<< settings.reportBt2020ToDisplay << '|' << settings.sdrInputTransfer << '|'
+			<< settings.reportBt2020ToDisplay << '|' << settings.calibrationLutInputGamma << '|' << settings.sdrInputTransfer << '|'
 			<< settings.sdrAdjustGamma << '|'
 			<< settings.outputDiagnostics << '|' << settings.diagnosticDisableShaderCache << '|'
 			<< settings.diagnosticDisableCompute << '|'
@@ -1819,7 +1820,9 @@ namespace
 		}
 		readChoice("sdr_input_transfer", settings.sdrInputTransfer, { "auto", "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" });
 		readChoice("sdr_adjust_gamma", settings.sdrAdjustGamma,
-			{ "auto", "on", "off" });
+			{ "auto", "on", "off", "passthrough" });
+        readChoice("calibration_lut_input_gamma", settings.calibrationLutInputGamma,
+            { "display", "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" });
 		if (config.TryGetString(rule.section, "contrast_recovery", raw))
 		{
 			settings.hasContrastRecovery = false;
@@ -2161,7 +2164,9 @@ namespace
 			{ "auto", "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" });
 		settings.sdrAdjustGamma = ReadChoice(
 			config, "sdr_adjust_gamma", "on",
-			{ "auto", "on", "off" });
+			{ "auto", "on", "off", "passthrough" });
+        settings.calibrationLutInputGamma = ReadChoice(config, "calibration_lut_input_gamma", "display",
+            { "display", "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" });
 		if (TryGetDisplayString(config, "output_diagnostics", rawValue) &&
 			!TryGetDisplayBool(config, "output_diagnostics", settings.outputDiagnostics))
 		{
@@ -6701,7 +6706,6 @@ struct LibplaceboVideoRenderer::Impl
 
 	void ConfigureDisplayLutForTarget(struct pl_frame& target)
 	{
-		MaybeReloadDisplayLut();
 		target.lut = nullptr;
 		target.lut_type = PL_LUT_UNKNOWN;
 		if (!displayLutParsed || !displayLut)
@@ -7185,6 +7189,7 @@ struct LibplaceboVideoRenderer::Impl
 		currentTransport.reportBt2020ToDisplay = false;
 		currentTransport.sdrInputTransfer = next.sdrInputTransfer;
 		currentTransport.sdrAdjustGamma = next.sdrAdjustGamma;
+        currentTransport.calibrationLutInputGamma = next.calibrationLutInputGamma;
 		currentTransport.outputDiagnostics = next.outputDiagnostics;
 		currentTransport.calibrationLutEnabled = next.calibrationLutEnabled;
 		currentTransport.calibrationLutBt709Path = next.calibrationLutBt709Path;
@@ -7214,6 +7219,7 @@ struct LibplaceboVideoRenderer::Impl
 			if (differs)
 				fields.push_back(name);
 		};
+		changed(current.calibrationLutInputGamma != next.calibrationLutInputGamma, "calibration_lut_input_gamma");
 		changed(current.sdrTargetNits != next.sdrTargetNits, "sdr_target_nits");
 		changed(current.sdrBlackNits != next.sdrBlackNits, "sdr_black_nits");
 		changed(current.refreshRateSwitchMode != next.refreshRateSwitchMode,
@@ -9523,13 +9529,22 @@ struct LibplaceboVideoRenderer::Impl
 		const enum pl_color_transfer acceptedOutputTransfer =
 			ResolvedPixelTransfer(actualOutput.encoding,
 				actualOutput.targetTransfer);
+        // Resolve the active LUT before interpreting SDR. Missing/disabled LUTs
+        // always fall back to physical display encoding, never a stale LUT domain.
+        MaybeReloadDisplayLut();
+        const auto renderTargetTransfer = FromSdrTransfer(
+            LibplaceboOutput::ResolveRenderTargetTransfer(
+                LibplaceboOutput::ParseGamma(activeSettings.outputGamma),
+                LibplaceboOutput::ParseGamma(activeSettings.calibrationLutInputGamma),
+                displayLutParsed && displayLut, ToSdrTransfer(acceptedOutputTransfer)));
 		lastSdrGammaDecision = LibplaceboOutput::ResolveSdrGamma(
 			sdrAdjustGamma,
 			state.eotf == EOTF::SDR,
 			actualOutput.safeToRender,
 			LibplaceboOutput::ParseGamma(activeSettings.outputGamma),
 			ToSdrTransfer(declaredSourceTransfer),
-			ToSdrTransfer(acceptedOutputTransfer));
+			ToSdrTransfer(sdrAdjustGamma == LibplaceboOutput::SdrAdjustGamma::PRESERVE_CODES ?
+                renderTargetTransfer : acceptedOutputTransfer));
 		if (lastSdrGammaDecision.action ==
 			LibplaceboOutput::SdrGammaAction::SUPPRESS)
 		{
@@ -9711,21 +9726,10 @@ struct LibplaceboVideoRenderer::Impl
 		const enum pl_color_transfer acceptedTransfer =
 			ResolvedPixelTransfer(actualOutput.encoding,
 				actualOutput.targetTransfer);
-		// The calibrated display response is independent of the DXGI transport
-		// declaration. In particular, Limited/G24 is a carrier representation;
-		// it must not change a BT.1886 or Gamma-2.2 Cube's input coordinates.
-		const auto configuredCalibrationGamma =
-			LibplaceboOutput::ParseGamma(activeSettings.outputGamma);
-		const enum pl_color_transfer calibrationTransfer =
-			FromSdrTransfer(LibplaceboOutput::ResolveCalibrationTargetTransfer(
-				// outputPlan.request.gamma may contain output_transport_gamma for a
-				// Limited carrier. The calibration domain is owned exclusively by
-				// output_gamma and must never inherit that transport declaration.
-				// LUT enablement only attaches the Cube; it never selects gamma.
-				configuredCalibrationGamma,
-				ToSdrTransfer(acceptedTransfer)));
-		if (calibrationTransfer != PL_COLOR_TRC_UNKNOWN)
-			baseTarget.color.transfer = calibrationTransfer;
+        // Physical display transfer without a LUT; explicitly declared LUT input
+        // domain with one. The LUT owns any subsequent display correction.
+        if (renderTargetTransfer != PL_COLOR_TRC_UNKNOWN)
+            baseTarget.color.transfer = renderTargetTransfer;
 		baseTarget.color.primaries = TargetPlPrimaries();
 		LibplaceboRenderParameters::ApplyTargetLuminance(
 			state.eotf == EOTF::SDR, static_cast<float>(sdrTargetNits),
@@ -9760,10 +9764,11 @@ struct LibplaceboVideoRenderer::Impl
 		{
 			displayCalibrationContractLogged = true;
 			DebugLog::Log(
-				"display calibration contract: enabled=%d attached=%d configured_transfer=%s resolved_target_transfer=%s carrier_transfer=%s target_primaries=%s target_luminance=%.4f..%.1f nits stage=post-DTM-gamma/pre-range enable_effect=attach-only",
+				"display calibration contract: enabled=%d attached=%d configured_transfer=%s lut_input_transfer=%s resolved_target_transfer=%s carrier_transfer=%s target_primaries=%s target_luminance=%.4f..%.1f nits stage=post-DTM-gamma/pre-range",
 				activeSettings.calibrationLutEnabled ? 1 : 0,
 				displayLutParsed && displayLut ? 1 : 0,
 				activeSettings.outputGamma.c_str(),
+                activeSettings.calibrationLutInputGamma.c_str(),
 				pl_color_transfer_name(baseTarget.color.transfer),
 				pl_color_transfer_name(acceptedTransfer),
 				pl_color_primaries_name(baseTarget.color.primaries),
@@ -13829,6 +13834,7 @@ bool LibplaceboVideoRenderer::GetOutputContractStatus(
         << "; dither target " << settings.displayBitDepth << " -> " << ditherDepth
         << " bits (surface " << status.swapchainBitDepth << ")"
         << "\nLUT: " << m_impl->displayLutStatus
+        << "; declared input transfer: " << settings.calibrationLutInputGamma
         << "; BT.2020 signaling: " << (!m_impl->reportBt2020ToDisplay ? "not requested / not applicable" :
             m_impl->bt2020SignalingFailed ? "failed" : "requested (wire unverified)")
         << "\n" << status.reason;

@@ -62,6 +62,7 @@ namespace LibplaceboOutput
 	SdrAdjustGamma ParseSdrAdjustGamma(const std::string& value)
 	{
 		if (value == "auto") return SdrAdjustGamma::AUTO;
+        if (value == "passthrough") return SdrAdjustGamma::PRESERVE_CODES;
 		if (value == "off" || value == "no") return SdrAdjustGamma::OFF;
 		return SdrAdjustGamma::ON;
 	}
@@ -99,7 +100,7 @@ namespace LibplaceboOutput
 			return result;
 		}
 
-		bool suppress = requested == SdrAdjustGamma::OFF;
+		bool suppress = requested == SdrAdjustGamma::OFF || requested == SdrAdjustGamma::PRESERVE_CODES;
 		if (requested == SdrAdjustGamma::AUTO)
 		{
 			const bool commonAmbiguousSource =
@@ -115,7 +116,9 @@ namespace LibplaceboOutput
 			result.effectiveSource = actualTarget;
 			result.reason = requested == SdrAdjustGamma::AUTO
 				? "automatic sRGB output with an ambiguous common SDR source"
-				: "SDR source treated as already encoded for the accepted output transfer";
+				: requested == SdrAdjustGamma::PRESERVE_CODES
+                    ? "SDR tone codes preserved into the display or active LUT input domain"
+                    : "SDR source treated as already encoded for the accepted output transfer";
 		}
 		else
 		{
@@ -147,6 +150,16 @@ namespace LibplaceboOutput
 			return acceptedOutputTransfer;
 		}
 	}
+
+    SdrTransfer ResolveRenderTargetTransfer(GammaRequest displayGamma,
+        GammaRequest lutInputGamma, bool lutActive, SdrTransfer acceptedTransfer)
+    {
+        const auto display = ResolveCalibrationTargetTransfer(displayGamma, acceptedTransfer);
+        // Unsupported here represents the explicit "display" compatibility choice.
+        return lutActive && lutInputGamma != GammaRequest::UNSUPPORTED &&
+            lutInputGamma != GammaRequest::AUTO ?
+            ResolveCalibrationTargetTransfer(lutInputGamma, display) : display;
+    }
 
 	Plan MakePlan(const Request& request)
 	{
@@ -487,6 +500,7 @@ namespace LibplaceboOutput
 		{
 		case SdrAdjustGamma::AUTO: return "AUTO";
 		case SdrAdjustGamma::OFF: return "OFF";
+        case SdrAdjustGamma::PRESERVE_CODES: return "PASSTHROUGH";
 		default: return "ON";
 		}
 	}

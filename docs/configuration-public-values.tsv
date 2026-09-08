@@ -162,3 +162,13 @@ actions.<name>.on	source.cadence.changed
 actions.<name>.on	source.width.changed
 actions.<name>.on	source.height.changed
 actions.<name>.on	renderer.ready
+vprenderer.sdr_adjust_gamma	passthrough
+vprenderer.calibration_lut_input_gamma	display
+vprenderer.calibration_lut_input_gamma	bt1886
+vprenderer.calibration_lut_input_gamma	srgb
+vprenderer.calibration_lut_input_gamma	1.8
+vprenderer.calibration_lut_input_gamma	2.0
+vprenderer.calibration_lut_input_gamma	2.2
+vprenderer.calibration_lut_input_gamma	2.4
+vprenderer.calibration_lut_input_gamma	2.6
+vprenderer.calibration_lut_input_gamma	2.8

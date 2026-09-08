@@ -22,6 +22,7 @@ namespace ConfigEditorCore
 		// explicitly request an overwrite instead of rejecting a stale-file conflict.
 		std::string loadedBytes;
 		bool existedAtLoad = false;
+        bool requiresMigrationBackup = false;
 
 		bool Load(const std::wstring& input, std::wstring& error);
 

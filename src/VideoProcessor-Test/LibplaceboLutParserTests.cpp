@@ -9,6 +9,8 @@
 #include <libplacebo/shaders/custom.h>
 
 #include <cstdint>
+#include <cmath>
+#include <sstream>
 #include <cstring>
 #include <algorithm>
 #include <fstream>
@@ -386,6 +388,62 @@ namespace
 			return result[0];
 		}
 
+        std::vector<int> RenderGammaRamp(int bits, bool limited,
+            pl_color_transfer sourceTransfer, pl_color_transfer targetTransfer,
+            const pl_custom_lut* lut = nullptr)
+        {
+            pl_gpu gpu = m_d3d11->gpu;
+            constexpr int count = 33;
+            std::vector<float> input(count * 4);
+            for (int i = 0; i < count; ++i)
+            {
+                input[4*i] = input[4*i+1] = input[4*i+2] = i / 32.0f;
+                input[4*i+3] = 1.0f;
+            }
+            auto sourceFormat = pl_find_fmt(gpu, PL_FMT_FLOAT, 4, 32, 32, PL_FMT_CAP_SAMPLEABLE);
+            Assert::IsNotNull(sourceFormat);
+            pl_fmt targetFormat = nullptr;
+            const auto caps = PL_FMT_CAP_RENDERABLE | PL_FMT_CAP_HOST_READABLE;
+            for (int i = 0; i < gpu->num_formats; ++i)
+            {
+                auto f = gpu->formats[i];
+                if (f->type == PL_FMT_UNORM && f->num_components == 4 &&
+                    f->component_depth[0] == bits && f->component_depth[1] == bits &&
+                    f->component_depth[2] == bits && f->texel_size == 4 &&
+                    (f->caps & caps) == caps && f->host_bits[0] == bits)
+                { targetFormat = f; break; }
+            }
+            Assert::IsNotNull(targetFormat, L"Required RGBA8/RGB10A2 readback format unavailable");
+            pl_tex_params sp{}; sp.w=count; sp.h=1; sp.format=sourceFormat;
+            sp.sampleable=true; sp.initial_data=input.data();
+            pl_tex source = pl_tex_create(gpu, &sp);
+            pl_tex_params tp{}; tp.w=count; tp.h=1; tp.format=targetFormat;
+            tp.renderable=true; tp.host_readable=true;
+            pl_tex target = pl_tex_create(gpu, &tp);
+            Assert::IsNotNull(source); Assert::IsNotNull(target);
+            auto image = MakeRgbFrame(source); auto output = MakeRgbFrame(target);
+            image.color.transfer=sourceTransfer; output.color.transfer=targetTransfer;
+            LibplaceboRenderParameters::ApplySourceLuminance(true, image.color);
+            LibplaceboRenderParameters::ApplyTargetLuminance(true, 100.0f, 0.0f, output.color);
+            output.repr.levels=limited ? PL_COLOR_LEVELS_LIMITED : PL_COLOR_LEVELS_FULL;
+            output.repr.bits.sample_depth=bits; output.repr.bits.color_depth=bits;
+            output.lut=lut; output.lut_type=lut ? PL_LUT_NORMALIZED : PL_LUT_UNKNOWN;
+            auto params=pl_render_fast_params;
+            params.dither_params=nullptr; params.error_diffusion=nullptr;
+            Assert::IsTrue(pl_render_image(m_renderer, &image, &output, &params));
+            pl_gpu_finish(gpu);
+            std::vector<uint32_t> downloaded(count);
+            pl_tex_transfer_params download{}; download.tex=target; download.ptr=downloaded.data();
+            Assert::IsTrue(pl_tex_download(gpu, &download));
+            std::vector<int> codes;
+            const unsigned mask=(1u << bits)-1;
+            // Every RGB component has the same grayscale value, irrespective of
+            // RGBA/BGRA ordering. Packed formats on D3D11 put RGB before alpha.
+            for (auto pixel : downloaded) codes.push_back(static_cast<int>(pixel & mask));
+            pl_tex_destroy(gpu,&source); pl_tex_destroy(gpu,&target);
+            return codes;
+        }
+
 		pl_gpu Gpu() const
 		{
 			return m_d3d11 ? m_d3d11->gpu : nullptr;
@@ -548,6 +606,51 @@ namespace VideoProcessorTest
 	TEST_CLASS(LibplaceboLutParserTests)
 	{
 	public:
+
+        TEST_METHOD(NoLutGamma22FullLimitedRampsMatchReferenceAt8And10Bits)
+        {
+            TargetLutGpuFixture fixture;
+            Assert::IsTrue(fixture.Create());
+            for (int bits : {8,10}) for (bool limited : {false,true})
+            {
+                const auto pass = fixture.RenderGammaRamp(bits,limited,PL_COLOR_TRC_GAMMA22,PL_COLOR_TRC_GAMMA22);
+                const auto converted = fixture.RenderGammaRamp(bits,limited,PL_COLOR_TRC_GAMMA24,PL_COLOR_TRC_GAMMA22);
+                const int low=limited ? (16 << (bits-8)) : 0;
+                const int high=limited ? (235 << (bits-8)) : ((1 << bits)-1);
+                for (int i=0;i<33;++i)
+                {
+                    const double x=i/32.0;
+                    const int expectedPass=static_cast<int>(std::lround(low+(high-low)*x));
+                    const int expectedConverted=static_cast<int>(std::lround(low+(high-low)*std::pow(x,2.4/2.2)));
+                    Assert::IsTrue(std::abs(pass[i]-expectedPass)<=1,L"Pass-through gamma/range mismatch");
+                    Assert::IsTrue(std::abs(converted[i]-expectedConverted)<=2,L"Reference-preserving gamma/range mismatch");
+                }
+                Assert::IsTrue(converted[16]<pass[16],L"2.4 reference was silently reinterpreted as 2.2");
+            }
+        }
+
+        TEST_METHOD(ConvertingTargetLutMatchesNoLutGammaCorrectionExactlyOnce)
+        {
+            std::ostringstream cube; cube << "LUT_3D_SIZE 33\n";
+            for (int b=0;b<33;++b) for(int g=0;g<33;++g) for(int r=0;r<33;++r)
+                cube << std::pow(r/32.0,2.4/2.2) << ' ' << std::pow(g/32.0,2.4/2.2) << ' '
+                    << std::pow(b/32.0,2.4/2.2) << '\n';
+            TemporaryFile file; file.Write(cube.str().c_str());
+            auto loaded=Load(nullptr,file.Path());
+            Assert::IsTrue(loaded.status==Status::ACTIVE);
+            TargetLutGpuFixture fixture; Assert::IsTrue(fixture.Create());
+            for(int bits : {8,10}) for(bool limited : {false,true})
+            {
+                const auto direct=fixture.RenderGammaRamp(bits,limited,PL_COLOR_TRC_GAMMA24,PL_COLOR_TRC_GAMMA22);
+                const auto viaLut=fixture.RenderGammaRamp(bits,limited,PL_COLOR_TRC_GAMMA24,PL_COLOR_TRC_GAMMA24,loaded.lut);
+                const auto duplicate=fixture.RenderGammaRamp(bits,limited,PL_COLOR_TRC_GAMMA24,PL_COLOR_TRC_GAMMA22,loaded.lut);
+                for(int i=0;i<33;++i)
+                    Assert::IsTrue(std::abs(direct[i]-viaLut[i])<=2,L"LUT-domain conversion does not match direct correction");
+                Assert::IsTrue(duplicate[16]<viaLut[16]-3,L"Probe cannot detect duplicate gamma correction");
+            }
+            Free(loaded);
+        }
+
 		TEST_METHOD(SdrLuminanceGpuReadbackIsInvariantForUnityAndScaling)
 		{
 			for (int size : { 32, 64, 96 })

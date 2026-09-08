@@ -89,6 +89,7 @@ namespace ConfigEditorCore
 {
 	bool ConfigDocument::Load(const std::wstring& input, std::wstring& error)
 	{
+		requiresMigrationBackup = false;
 		path = input;
 		std::ifstream inputFile(ToNarrow(path), std::ios::binary);
 		if (!inputFile)
@@ -573,6 +574,16 @@ namespace ConfigEditorCore
 			error = L"Could not write the temporary configuration. The configuration was not changed.";
 			return false;
 		}
+        if (document.requiresMigrationBackup && !creatingConfiguration)
+        {
+            result.backupPath = document.path + L".before-unified-color-output." +
+                std::to_wstring(GetTickCount64()) + L".bak";
+            if (!CopyFileW(document.path.c_str(), result.backupPath.c_str(), TRUE))
+            {
+                error = L"Could not back up the original configuration before profile migration.";
+                return false;
+            }
+        }
 		if (!MoveFileExW(temporary.c_str(), document.path.c_str(),
 			MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
 		{
@@ -581,6 +592,7 @@ namespace ConfigEditorCore
 				L"Could not replace the configuration. The configuration was not changed.";
 			return false;
 		}
+        document.requiresMigrationBackup = false;
 		document.loadedBytes = document.Serialize();
 		document.existedAtLoad = true;
 		return true;

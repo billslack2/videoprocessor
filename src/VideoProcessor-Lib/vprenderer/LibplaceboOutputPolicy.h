@@ -74,7 +74,8 @@ namespace LibplaceboOutput
 	{
 		AUTO,
 		ON,
-		OFF
+		OFF,
+        PRESERVE_CODES
 	};
 
 	// Renderer-independent transfer names used by the SDR gamma policy. The
@@ -236,6 +237,9 @@ namespace LibplaceboOutput
 	// Resolve the pixel-domain transfer independently from LUT attachment.
 	// Explicit display calibration wins; Auto retains the transfer of the
 	// accepted output contract. Enabling an identity LUT must not change gamma.
+    SdrTransfer ResolveRenderTargetTransfer(GammaRequest displayGamma,
+        GammaRequest lutInputGamma, bool lutActive, SdrTransfer acceptedTransfer);
+
 	SdrTransfer ResolveCalibrationTargetTransfer(
 		GammaRequest configuredOutputGamma,
 		SdrTransfer acceptedOutputTransfer);

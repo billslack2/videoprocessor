@@ -504,7 +504,7 @@ namespace RendererProfileConfig
 			if (key == "peak_detection") return IsChoice(value, { "auto", "off", "default", "high_quality", "on" });
 			if (key == "contrast_recovery") return IsChoice(value, { "auto" }) || IsNumberInRange(value, 0.0, 2.0);
 			if (key == "sdr_input_transfer") return IsChoice(value, { "auto", "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" });
-			if (key == "sdr_adjust_gamma") return IsChoice(value, { "auto", "on", "off" });
+			if (key == "sdr_adjust_gamma") return IsChoice(value, { "auto", "on", "off", "passthrough" });
 			expected = "an input-owned setting"; return false;
 		}
 		if (group == "scaling")
@@ -550,6 +550,7 @@ namespace RendererProfileConfig
 				return IsNumberInRange(value, 40.0, 500.0);
 			}
 			if (key == "sdr_black_nits") return IsChoice(value, { "auto" }) || IsNumberInRange(value, 0.0, 500.0, false);
+			if (key == "calibration_lut_input_gamma") return IsChoice(value, { "display", "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" });
 			if (key == "output_gamma") return IsChoice(value, { "auto", "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" });
 			if (key == "sdr_target_primaries") return IsChoice(value, { "rec709", "p3_d65", "bt2020" });
 			if (key == "report_bt2020_to_display") return IsBoolean(value);
@@ -689,7 +690,7 @@ namespace RendererProfileConfig
 			return ValidateBaseSetting(key, value);
 		std::string ignored;
 		// Legacy [vpvr.display] and literal [vprenderer] files may still carry
-		// output transport. New target-model files use [vprenderer.output.*].
+		// output transport. Current files keep transport in [vprenderer.color.*].
 		for (const char* group : { "input", "scaling", "display", "output" })
 			if (ValidateProfileSetting(group, key, value, ignored)) return true;
 		return key == "deband" &&
@@ -800,9 +801,11 @@ namespace RendererProfileConfig
 		static const std::set<std::string> colorKeys = {
 			"sdr_target_primaries", "output_gamma",
 			"report_bt2020_to_display", "sdr_adjust_gamma",
-			"sdr_input_transfer" };
-		return colorKeys.find(key) != colorKeys.end() &&
-			ValidateTargetRendererSetting(key, value);
+			"sdr_input_transfer", "calibration_lut_input_gamma" };
+		std::string expected;
+		return (colorKeys.find(key) != colorKeys.end() &&
+			ValidateTargetRendererSetting(key, value)) ||
+			ValidateProfileSetting("output", key, value, expected);
 	}
 
 	inline bool ParseTargetActionRun(const std::string& value,
@@ -994,6 +997,15 @@ namespace RendererProfileConfig
 			return false;
 		}
 
+        // Valid legacy Output profiles have already migrated during Load.
+        // Any remaining member is malformed and must not disappear silently.
+        for (const auto& section : config.GetSectionNames())
+            if (section == "vprenderer.output" || section.rfind("vprenderer.output.", 0) == 0)
+            {
+                error = "Malformed legacy Output profile [" + section + "]";
+                return false;
+            }
+
 		RendererConfigView rendererConfig(config);
 		if (!rendererConfig.Validate(error, model.warnings) ||
 			!ValidateCanonicalRendererSections(config, error))
@@ -1035,7 +1047,7 @@ namespace RendererProfileConfig
 			{ "scaling", "vprenderer.scaling", true },
 			{ "display", "vprenderer", false },
 			{ "color", "vprenderer.color", true },
-			{ "output", "vprenderer.output", true },
+
 			{ "viewport", "vprenderer.viewport", true },
 			{ "zoom", "vprenderer.zoom", true },
 			{ "queue", "queue", true },
@@ -1533,6 +1545,8 @@ namespace RendererProfileConfig
 		for (const std::string& section : config.GetSectionNames())
 			if (!MainConfigSchema::OwnsSection(section) &&
 				!RendererConfigView::OwnsSection(section) &&
+                section != "legacy_output" && section.rfind("legacy_output.", 0) != 0 &&
+                section.rfind("legacy_output_", 0) != 0 &&
 				section.rfind("actions.", 0) != 0 &&
 				section.rfind("shader.", 0) != 0)
 			{
@@ -1548,6 +1562,15 @@ namespace RendererProfileConfig
 			return ReadTarget(config, model, error);
 		model = {};
 		error.clear();
+        // Valid legacy Output profiles have already migrated during Load.
+        // Any remaining member is malformed and must not disappear silently.
+        for (const auto& section : config.GetSectionNames())
+            if (section == "vprenderer.output" || section.rfind("vprenderer.output.", 0) == 0)
+            {
+                error = "Malformed legacy Output profile [" + section + "]";
+                return false;
+            }
+
 		RendererConfigView rendererConfig(config);
 		if (!rendererConfig.Validate(error, model.warnings) ||
 			!ValidateCanonicalRendererSections(config, error))
