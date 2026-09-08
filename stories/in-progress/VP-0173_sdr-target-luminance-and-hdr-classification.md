@@ -2,9 +2,20 @@
 
 ## Status
 
-Backlog (2026-09-07). Derived from code-review findings against the documented
-VP/libplacebo versions. The precise current fork and source sites must be
-re-verified on the beta integration base before implementation.
+In Progress (2026-09-08). Implementation on `codex/vp-0173-sdr-luminance`
+in `E:\codex\videoprocessor\vp-0173-sdr-luminance`, based on current
+`origin/v1.3.005-beta` at `d663773cedabcfa9e9c197046839ea99dd1ed965`.
+
+User clarification: no separate SDR brightness setting. Preserve SDR input
+apart from scaling and explicitly enabled color processing. Existing
+`sdr_target_nits` / `sdr_black_nits` remain compatible configuration keys for
+the HDR-to-SDR tone-map destination; SDR uses a fixed internal reference.
+
+Verified bundled libplacebo c3a3d203 DLL classifies SDR max_luma > 203 as HDR.
+Upstream transport fix 4dbc490b0770539942abb3cc61fdce5438d06331 is absent.
+Implement VP-side containment at both existing hint call sites through one
+helper, preserving the fork and its analysis-crop ABI. GPU readback, scaling,
+gamut-mismatch, transport, configuration validation and Release build pending.
 
 ## User story
 
