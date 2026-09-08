@@ -413,9 +413,12 @@ public:
 	}
 
 	// Supplies the display rate already validated for the renderer's target
-	// monitor. GPU load percentages must not infer this from frame-statistics
-	// counters that may belong to a different output.
-	virtual void SetRenderLoadDisplayRefreshRate(double) {}
+	// monitor. Renderers with GPU load telemetry use this instead of inferring a
+	// budget from swapchain frame-statistics counters, which can come from a
+	// different output after a presentation-model transition.
+	virtual void SetRenderLoadDisplayRefreshRate(double refreshRateHz)
+	{
+	}
 
 	// Optional renderer-native OSD. The renderer must deep-copy the BGRA pixels
 	// before returning; callers retain ownership of the supplied buffer.

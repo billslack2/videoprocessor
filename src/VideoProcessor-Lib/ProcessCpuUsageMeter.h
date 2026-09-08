@@ -11,6 +11,8 @@
 #include <windows.h>
 
 #include <algorithm>
+#include <ProcessCpuUsageWindow.h>
+#include <OsdTimingPolicy.h>
 #include <cstdint>
 
 // How much CPU VideoProcessor is actually using.
@@ -42,7 +44,7 @@ public:
 	// Nothing is reported until this has elapsed. Startup - shader
 	// compilation, device creation, cache load - is not representative, and
 	// without this it would always be the session peak.
-	static constexpr uint64_t GUARD_MS = 3000;
+	static constexpr uint64_t GUARD_MS = OsdTimingPolicy::WarmingEnabled ? 3000 : 0;
 
 	// Weight of each new sample in the running baseline. Slow enough that a
 	// spike does not drag the baseline up behind it and mask itself.
@@ -63,6 +65,8 @@ public:
 		Reset();
 	}
 
+	// A CPU session follows one renderer/host generation. Startup is guarded
+	// again so a newly constructed pipeline cannot become its own peak.
 	void Reset()
 	{
 		m_startTick = GetTickCount64();
@@ -72,6 +76,7 @@ public:
 		m_currentPercent = 0.0;
 		m_averagePercent = 0.0;
 		m_sessionPeakPercent = 0.0;
+		m_window.Reset();
 		m_valid = false;
 		m_peakIsNew = false;
 	}
@@ -122,6 +127,7 @@ public:
 			(std::max)(0.0, (std::min)(100.0, 100.0 * busyMs / availableMs));
 
 		m_currentPercent = percent;
+		m_window.Record(nowTick, elapsedMs, percent);
 		// Running baseline of what "normal" looks like on this machine, so a
 		// spike can be judged as a multiple of it rather than against a fixed
 		// number nobody can pick in advance. Measured on the rig: VP idles at
@@ -143,6 +149,8 @@ public:
 	bool Valid() const { return m_valid; }
 	double CurrentPercent() const { return m_currentPercent; }
 	double AveragePercent() const { return m_averagePercent; }
+	double WindowAveragePercent() const { return m_window.AveragePercent(); }
+	double WindowPeakPercent() const { return m_window.PeakPercent(); }
 
 	// True when the session peak is a genuine outlier against this machine's
 	// own baseline - the test for "did the CPU ever spike", which a fixed
@@ -166,6 +174,7 @@ public:
 	}
 
 private:
+
 	static uint64_t ToUint64(const FILETIME& value)
 	{
 		ULARGE_INTEGER converted{};
@@ -182,6 +191,7 @@ private:
 	double m_currentPercent = 0.0;
 	double m_averagePercent = 0.0;
 	double m_sessionPeakPercent = 0.0;
+	ProcessCpuUsageWindow m_window;
 	bool m_valid = false;
 	bool m_peakIsNew = false;
 };

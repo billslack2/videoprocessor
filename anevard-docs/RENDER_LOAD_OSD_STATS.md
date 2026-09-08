@@ -1,34 +1,59 @@
-# Render-load OSD stats
+# Render-load OSD implementation
 
-This change adds madVR-style GPU render headroom to the Ctrl+I OSD without
-adding synchronous GPU work or altering the rendered picture.
+The current beta cadence/OSD policy is combined with the corrected same-frame
+timing series through 8c3429df. The old Expected D/R and comparison presentation
+experiments are excluded. The OSD shows GPU frame average/maximum milliseconds,
+one CPU/GPU-budget average/maximum load row, and the source frame budget.
+Native bitmap and fallback windows share drawing and dynamic height calculation.
 
-## Design
+## Measurement and cost
 
-- Use libplacebo's existing `pl_render_params.info_callback` and asynchronous
-  per-pass timers. Sum the latest resolved passes once per successful submit.
-- Mark a frame boundary before each `pl_render_image` call so a failed render
-  cannot leak pending pass values into the next submitted sample.
-- Do not create a second D3D11 timer layer, patch libplacebo, flush, poll, or
-  wait for same-frame query completion.
-- Keep a time-based ten-second window and a session maximum. Warm-up and live
-  shader/profile transitions settle before either statistic accepts samples.
-- Pair every load percentage with the monitor-qualified refresh period recorded
-  for that sample. The host supplies that rate through the renderer interface.
-- Cross-check DXGI presentation cadence against the expected target and fail
-  closed when frame statistics appear to come from another output.
+One preallocated ring contains 16 D3D11 query sets, each with a frame-owned
+disjoint query and up to six timestamp pairs. The headline sums bounded source
+upload, changed overlay upload, and core pl_render_image stages. Stage ends
+perform an asynchronous context Flush to submit complete timestamp pairs; this
+retains the validated correction for driver batching and Present contamination.
+It is not a wait for GPU completion, but adds real command-submission overhead.
 
-The OSD is telemetry-only. Rendering parameters, textures, overlays, frame
-ordering, queue policy, and presentation behavior are unchanged.
+Staged timing alternates with the legacy pass-sum diagnostic. Libplacebo's
+internal queries are suspended on staged frames to avoid nested disjoint
+queries. The core diagnostic is derived from the same staged sample. Legacy
+pass->last values have no proven source-frame provenance and never feed the
+headline. Coverage is normally near 50% and is recorded in logs.
 
-## Scope of the number
+Polling uses DONOTFLUSH after at least two subsequently issued samples, stops
+when the oldest query is not ready, and skips new timing when the ring is full.
+No polling loop waits or spins. Telemetry locks use try-lock and count discarded
+operations. Submission matching uses binary lookup in the bounded window.
 
-The result is a recent asynchronous estimate of libplacebo render-pass GPU
-execution. It is useful for comparing shader/profile cost and judging display
-budget headroom. It is intentionally not described as exact same-frame timing
-or total GPU submission cost. See `RENDER_LOAD_INTERPRETATION.md` for operator
-guidance and log-field semantics.
+Accepted results must match generation, source sequence, and successful
+submission serial. Reject failed submissions, duplicates, expired records,
+disjoint/invalid queries, and mismatched identities. Queue-generation resets
+also reject an old in-flight submission that completes after the reset.
 
-The renderer plugin API is version 17 because the host-to-renderer display-rate
-setter changes the shared C++ vtable. Host and plugin must be built and deployed
-together; a stale plugin is rejected by the existing API-version check.
+## Windows and resets
+
+GPU average and maximum cover accepted samples in the trailing ten seconds.
+Budget percentages use each sample's validated source/render period. CPU uses
+GetProcessTimes on the existing UI timer regardless of OSD visibility; average
+weights elapsed intervals clipped to their overlap with the ten-second window.
+No claim of hardware-engine occupancy is made.
+
+Optional warmup follows OsdTimingPolicy, disabled by default. Queue/HDMI resets
+clear GPU windows; CPU resets on input lock loss, material source changes, and
+renderer/host generation changes. Pipeline shader/profile changes clear windows
+and session peaks. Backlog recovery clears windows but retains session peaks.
+
+## Compatibility and validation
+
+Plugin ABI 19 protects the expanded shared render-load structure. GUI and plugin
+must be built and deployed together from x64 Release. The checked-in custom
+libplacebo timing dependency must match the installed dependency; no application
+configuration is required for this integration.
+
+Regression coverage includes same-frame identity, duplicate rejection, repeated
+sources, old in-flight generation results, pipeline/session reset semantics,
+optional warmup, independent millisecond/percentage peaks, and time-weighted
+CPU window clipping. The full core and Config suites and live hardware telemetry
+must be checked for each deployed build. Unit tests cannot establish driver
+overhead or visual quality on their own.
