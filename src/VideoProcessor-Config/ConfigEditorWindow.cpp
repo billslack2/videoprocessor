@@ -3870,12 +3870,6 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
              sectionPrefix != QStringLiteral("vprenderer.color")) ||
             !form || !control)
             return;
-        if (auto* combo = qobject_cast<QComboBox*>(control))
-        {
-            static const QStringList presetKeys = { "tone_mapping", "gamut_mapping", "peak_detection", "upscaler", "downscaler", "sigmoid", "deband_strength", "dithering" };
-            if (presetKeys.contains(key))
-                combo->setItemText(combo->findData(QStringLiteral("AUTO")), QStringLiteral("Use quality preset"));
-        }
         auto* status = helpLabel(QString());
         status->setObjectName(controlName(sectionPrefix, key) +
             QStringLiteral(".auto_status"));
@@ -5142,15 +5136,16 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                     sectionPrefix == QStringLiteral("vprenderer") &&
                     (field.key == QStringLiteral("quality") ||
                      field.key == QStringLiteral("sdr_target_primaries"));
+                const bool scalingAutoChoice = sectionPrefix == QStringLiteral("vprenderer.scaling") && autoIndex >= 0;
                 const bool hasUnspecifiedChoice = combo->count() > 0 &&
                     combo->itemData(0).toString().isEmpty();
                 static const QStringList calibratedKeys = { "output_gamma", "output_range", "output_transport_gamma", "sdr_adjust_gamma", "sdr_input_transfer", "display_bit_depth" };
                 const bool retiredRootDefault = defaultProfile && calibratedKeys.contains(field.key);
                 if (hasUnspecifiedChoice)
                     if (auto* model = qobject_cast<QStandardItemModel*>(combo->model()))
-                        model->item(0)->setEnabled(!retiredRootDefault);
+                        model->item(0)->setEnabled(!retiredRootDefault && !(defaultProfile && scalingAutoChoice));
                 const bool hideUnspecifiedChoice = (retiredRootDefault && !raw.isEmpty()) || rootRendererExplicitDefault ||
-                    (defaultProfile && sectionPrefix == QStringLiteral("vprenderer") &&
+                    (defaultProfile && (sectionPrefix == QStringLiteral("vprenderer") || scalingAutoChoice) &&
                         autoIndex >= 0);
                 if (auto* view = qobject_cast<QListView*>(combo->view()))
                     view->setRowHidden(0, hasUnspecifiedChoice &&
@@ -5190,6 +5185,8 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                         combo->setItemText(0, defaultProfile ?
                             QStringLiteral("Use default") : QStringLiteral("Use inherited value"));
                 }
+                if (hasUnspecifiedChoice && scalingAutoChoice && !defaultProfile)
+                    combo->setItemText(0, QStringLiteral("Inherit from default profile"));
                 const int effectiveIndex = autoIndex >= 0 ? autoIndex :
                     combo->findData(configured, Qt::UserRole, Qt::MatchFixedString);
                 int index = raw.isEmpty() ?

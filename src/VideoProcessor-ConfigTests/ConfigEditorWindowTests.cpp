@@ -2157,7 +2157,7 @@ void testRendererProfileSectionsCollapseAndPersist()
     QComboBox* dithering = requireControl<QComboBox>(window,
         QStringLiteral("config.vprenderer.dithering"));
     require(dithering->itemText(dithering->findData(QStringLiteral("AUTO"))) ==
-        QStringLiteral("Use quality preset") &&
+        QStringLiteral("Auto") &&
         dithering->itemText(dithering->findData(QStringLiteral("blue_noise"))) ==
         QStringLiteral("Blue noise") &&
         dithering->itemText(dithering->findData(QStringLiteral("ordered_lut"))) ==
@@ -2967,7 +2967,7 @@ void testChoiceLabelsAndVpRendererName()
 
     QComboBox* peakDetection = requireControl<QComboBox>(window,
         QStringLiteral("config.vprenderer.peak_detection"));
-    require(peakDetection->findText(QStringLiteral("Use quality preset")) >= 0 &&
+    require(peakDetection->findText(QStringLiteral("Auto")) >= 0 &&
         peakDetection->findText(QStringLiteral("AUTO")) < 0 &&
         peakDetection->findText(QStringLiteral("Standard")) >= 0 &&
         peakDetection->findData(QStringLiteral("default")) < 0,
@@ -3021,6 +3021,15 @@ void testChoiceLabelsAndVpRendererName()
         QStringLiteral("config.vprenderer.scaling.upscaler"));
     QLabel* upscalerStatus = requireControl<QLabel>(window,
         QStringLiteral("config.vprenderer.scaling.upscaler.auto_status"));
+    for (const QString key : { QStringLiteral("upscaler"), QStringLiteral("downscaler"), QStringLiteral("sigmoid") })
+    {
+        auto* choice = requireControl<QComboBox>(window, "config.vprenderer.scaling." + key);
+        require(qobject_cast<QListView*>(choice->view())->isRowHidden(0) &&
+            !(choice->model()->flags(choice->model()->index(0, 0)) & Qt::ItemIsEnabled),
+            "Default scaling profile still offers a redundant default choice");
+        require(choice->currentData().toString() == "AUTO" && choice->currentText() == "Auto",
+            "Omitted scaling setting does not display Auto");
+    }
     require(upscalerStatus->text() == QStringLiteral("Auto: EWA Lanczos sharp") &&
         upscalerStatus->font().italic(),
         "Auto upscaler does not use a concise italic effective-value label");

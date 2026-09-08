@@ -38,8 +38,8 @@ retires that selection. A missing LUT file is shown and preserved, not deleted.
 | Target nits | 100 | Numeric; HDR tone mapping only |
 | Target black | 0 | Numeric; old Auto preserved |
 | Dither target depth | 10 | Removed; old surface-following policy preserved |
-| Dithering | Use quality preset | Retained, including Off under Fast |
-| Processing and scaling | Use quality preset | Retained with resolved-value explanation |
+| Dithering | Auto | Retained, including Off under Fast |
+| Processing and scaling | Auto | Retained with resolved-value explanation |
 | Presentation | Prefer flip (allow fallback) | Retained |
 
 All explicit gamma choices stay together. Flip model replaces the misleading Direct
@@ -233,3 +233,13 @@ Rendering > Display calibration LUT (3D LUT) contains the single editable
 duplicate saved-value row. Default and inheritance labels describe input gamma
 without exposing the previous storage location. Existing configuration loading
 and rendering behavior are unchanged.
+
+
+## Scaling default cleanup (2026-09-08)
+
+Automatic processing choices are labeled **Auto**, with the resolved setting
+shown below the control. The default Scaling profile no longer offers an additional
+**Use default** choice for Upscaler, Downscaler or Anti-ringing. Other Scaling
+profiles offer **Inherit from default profile**, which remains distinct from Auto:
+an inherited explicit scaler follows the default profile; Auto follows the active
+quality preset. Configuration tokens, inheritance and renderer behavior are unchanged.
