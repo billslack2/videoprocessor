@@ -2,7 +2,8 @@
 
 ## Status
 
-Review (2026-09-08). Startup compatibility regression fixed and deployed.
+In Progress (2026-09-08). Direct Config descriptions and window-order correction.
+Startup compatibility regression previously fixed and deployed.
 Latest correction `4cfb56cd`; prior unified-profile implementation `2c0e0223`.
 Commit `2c0e0223` on `codex/vp-0174-config-ui`, based on verified latest beta
 `v1.3.005-beta` at `38e7508f`.
@@ -245,3 +246,15 @@ old and saved migrated files before a new Release deployment. No user config edi
 - Active config SHA256: `69CDA6889972E43D80EFB2D24B01A4A9D4528041384F3E21923D4943252EE9EA`.
 - This corrects a real validation coverage miss in the original deployment;
   Config-only startup testing had not exercised the host ownership check.
+
+## Direct wording and window-order follow-up
+
+User requested direct behavioral descriptions instead of legacy labels, and
+reported Config no longer remaining modal over VP. Source trace found earlier
+cross-process modality removal. Clarification requested about blocking VP input;
+pending that preference, the independently confirmed stacking regression is fixed:
+VP's topmost fullscreen surface could cover Config although both had TOPMOST set.
+A foreground event now triggers a relative-order check and nonactivating repair.
+No polling or cross-process native owner is introduced. Regression reproduced
+before the change and passed after it. SDR labels now describe all three behaviors;
+saved config tokens retain semantics. Complete Release validation/deployment pending.
