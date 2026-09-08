@@ -8,6 +8,7 @@
 #pragma once
 
 #include <RendererLiveness.h>
+#include <OsdTimingPolicy.h>
 
 #include <algorithm>
 #include <array>
@@ -35,8 +36,8 @@ public:
 	static constexpr size_t CAPACITY = 2400;
 	static constexpr uint64_t ABSURD_PASS_NS = 1000000000ULL;
 
-	explicit AlphaRenderLoadMeter(double guardSeconds = GUARD_SECONDS,
-		double guardMaxSeconds = GUARD_MAX_SECONDS)
+	explicit AlphaRenderLoadMeter(double guardSeconds = OsdTimingPolicy::WarmingEnabled ? GUARD_SECONDS : 0.0,
+		double guardMaxSeconds = OsdTimingPolicy::WarmingEnabled ? GUARD_MAX_SECONDS : 0.0)
 		: m_guardSeconds((std::max)(0.0, guardSeconds)),
 		m_guardMaxSeconds((std::max)(m_guardSeconds, guardMaxSeconds)),
 		m_guardStart(Clock::now())

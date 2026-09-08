@@ -35,6 +35,19 @@ namespace Tests
 			return sample;
 		}
 
+		TEST_METHOD(OsdRateIsAvailableBeforeStableEvidenceAndResetsOnDisjoint)
+		{
+			AlphaPresentationTelemetry telemetry;
+			telemetry.Observe(Sample(1, 1000));
+			telemetry.Observe(Sample(2, 1040));
+			Assert::AreEqual(25.0, telemetry.Snapshot().observedDisplayHz, 0.001);
+			Assert::AreEqual(0.0, telemetry.Snapshot().measuredDisplayHz);
+			Assert::IsTrue(telemetry.Snapshot().evidence == AlphaPresentationEvidence::Warming);
+			auto disjoint = Sample(3, 1080);
+			disjoint.disjoint = true;
+			telemetry.Observe(disjoint);
+			Assert::AreEqual(0.0, telemetry.Snapshot().observedDisplayHz);
+		}
 		TEST_METHOD(BoundsRetainedCorrelationRecords)
 		{
 			AlphaPresentationTelemetry telemetry(3);

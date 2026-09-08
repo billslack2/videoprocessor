@@ -189,6 +189,8 @@
     <ClInclude Include="DisplayRefreshRatePolicy.h" />
 	<ClInclude Include="DisplayRefreshRateEstimator.h" />
 	<ClInclude Include="DisplayRefreshRateWindow.h" />
+	<ClInclude Include="CadenceIntervalEstimate.h" />
+	<ClInclude Include="OsdTimingPolicy.h" />
 	<ClInclude Include="DisplayTopologySession.h" />
 	<ClInclude Include="DirectShowFrameDeliverer.h" />
 	<ClInclude Include="DirectShowDeliveryOutcome.h" />

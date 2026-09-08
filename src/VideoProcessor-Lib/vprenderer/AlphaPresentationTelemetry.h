@@ -83,6 +83,8 @@ struct AlphaPresentationSnapshot
 	uint64_t sourceToPresentDebt = 0;
 	uint32_t lastPresentId = 0;
 	uint32_t lastPresentRefresh = 0;
+	// Current counter average for OSD only; does not grant stable evidence.
+	double observedDisplayHz = 0.0;
 	double measuredDisplayHz = 0.0;
 	uint32_t cadenceSamples = 0;
 };
