@@ -241,6 +241,7 @@
 	<ClCompile Include="DirectShowFrameDelivererTests.cpp" />
 	<ClCompile Include="DirectShowDeliveryOutcomeTests.cpp" />
 	<ClCompile Include="DirectShowSegmentTransitionTests.cpp" />
+	<ClCompile Include="CaptureResyncHardeningTests.cpp" />
 	<ClCompile Include="DirectShowGraphExecutorTests.cpp" />
 	<ClCompile Include="DirectShowQueueConstructionContractTests.cpp" />
 	<ClCompile Include="EpochBoundedQueueTests.cpp" />

@@ -4256,6 +4256,8 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 	DWORD lastSlowConversionLogTime = 0;
 	uint64_t slowConversionsSinceLastLog = 0;
 	uint64_t maxSlowConversionUs = 0;
+	uint64_t allocatorFailures = 0;
+	ULONGLONG lastAllocatorFailureLogTick = 0;
 	SceneDetector sceneDetector;
 	uint64_t sceneDetectorGeneration = m_sceneDetectorGeneration.load(std::memory_order_acquire);
 	// FrameProcessor survives a DirectShow graph reset, but its conversion
@@ -4393,15 +4395,25 @@ DWORD CBufferedLiveSourceVideoOutputPin::ConversionWorker()
 
 			// Allocate sample for conversion
 			IMediaSample* pSample = nullptr;
-			HRESULT hr = GetDeliveryBuffer(&pSample, nullptr, nullptr, 0);
+			// A renderer may retain allocator samples across a resync. Never
+			// wait inside its allocator while owning a DeckLink frame: that can
+			// prevent capture restart and worker shutdown from making progress.
+			HRESULT hr = GetDeliveryBuffer(&pSample, nullptr, nullptr, AM_GBF_NOWAIT);
 			if (FAILED(hr))
 			{
-				DebugLog::Log("CONVERSION WORKER: GetDeliveryBuffer FAILED hr=0x%08x, dropping frame counter=%llu",
-					hr, videoFrame.GetCounter());
 				videoFrame.SourceBufferRelease();
 				m_sourceBufferConversionInFlight.store(false, std::memory_order_release);
 				m_sourceBufferConversionCaptureArrivalTick.store(0, std::memory_order_release);
 				m_droppedFrameCount.fetch_add(1, std::memory_order_relaxed);
+				++allocatorFailures;
+				const ULONGLONG now = GetTickCount64();
+				if (lastAllocatorFailureLogTick == 0 || now - lastAllocatorFailureLogTick >= 5000)
+				{
+					DebugLog::Log("CONVERSION WORKER: nonblocking allocator unavailable hr=0x%08x dropped=%llu frame=%llu epoch=%llu action=release-capture-frame",
+						hr, allocatorFailures, videoFrame.GetCounter(), frameQueueEpoch);
+					lastAllocatorFailureLogTick = now;
+					allocatorFailures = 0;
+				}
 				continue;
 			}
 
