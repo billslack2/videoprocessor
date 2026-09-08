@@ -281,3 +281,36 @@ saved config tokens retain semantics. Complete Release validation/deployment pen
 - Backup: C:\Videoprocessor\vp\backup-before-vp0174-wording-20260908-120902.
 - Active configuration edits: none. SHA256 remains
   69CDA6889972E43D80EFB2D24B01A4A9D4528041384F3E21923D4943252EE9EA.
+
+### SDR/LUT UI refactor completed and deployed (2026-09-08)
+
+- Commit c5aa1b74 on PR #82. Continued from verified beta tip 38e7508f4 in
+  E:\codex\videoprocessor\vp-0174-sdr-lut, carrying the existing VP-0174 changes.
+- Enable SDR gamma processing replaces the three-choice dropdown: checked=on,
+  unchecked=passthrough. Saved off/AUTO retain semantics and are explained using
+  a partially checked state until explicitly changed. Use profile default restores
+  inheritance. Desired SDR gamma offers explicit values; saved AUTO remains
+  readable as the BT.1886 assumption. Fresh display/desired defaults remain 2.2.
+- New Rendering-owned calibration_lut_input_transfer is beside LUT enablement/files
+  and applies to all three slots. An explicit value (including display) overrides
+  old Color calibration_lut_input_gamma after profile selection. Omission retains
+  the previous contract; no existing settings are moved or discarded on load/save.
+- LUT reload identity includes input transfer; changing a display-dependent input
+  also tracks calibrated display gamma. Rejected changed contracts detach rather
+  than retain old LUT bytes under a new interpretation. Missing/disabled LUTs use
+  physical display gamma. HDR Target nits/black and DTM remain active with LUTs.
+- Preset gamuts only: Rec.709, P3-D65, BT.2020. No custom xy/HDR metadata UI added.
+- Independent rendering/calibration specialist reviewed implementation and six real
+  runtime logs; no blocker. Verified Rendering override, independent Color choice,
+  omitted override, inherited Rendering value, explicit display, and missing-LUT
+  fallback. These were separate launches, not continuous live-switch tests.
+- Clean full x64 Release rebuild succeeded. Native 1,110/1,111 passed; sole docs
+  inventory check corrected and passed focused rerun. Full updated UI 63/66 passed;
+  three intermittent window/popup tests passed in separate focused processes.
+  All changed SDR/LUT/migration cases passed. Physical HDMI response unmeasured.
+- Release staging: all 58 immutable files verified. Matched host/renderer pair,
+  Config and help deployed; installed hashes verified. Active configuration edits:
+  none. SHA256 69CDA6889972E43D80EFB2D24B01A4A9D4528041384F3E21923D4943252EE9EA.
+- Backup: C:\Videoprocessor\vp\backup-before-vp0174-sdr-lut-20260908-131507.
+- Runtime evidence: C:\Users\bslac\AppData\Local\Temp\vp0174-sdr-runtime-20260908-131042.
+  Existing Config session preserved; save edits, tray Exit and reopen to load update.
