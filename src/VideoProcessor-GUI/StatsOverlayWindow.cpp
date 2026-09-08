@@ -1151,7 +1151,7 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 		if (m_stats.renderLoadGpuPercentValid)
 			gpuLoad.Format(TEXT("%.0f/%.0f%%"),
 				m_stats.renderLoadGpuAvgPercent, m_stats.renderLoadGpuPercent);
-		line.Format(TEXT("Load avg/max:    CPU %s, GPU budget %s (10 s)"),
+		line.Format(TEXT("10s avg/max: CPU %s, GPU budget %s"),
 			static_cast<LPCTSTR>(cpuLoad), static_cast<LPCTSTR>(gpuLoad));
 		DrawText(hdc, line, PADDING, y);
 		y += lineHeight;

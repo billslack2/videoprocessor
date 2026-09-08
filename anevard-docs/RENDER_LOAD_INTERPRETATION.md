@@ -4,7 +4,7 @@ The Ctrl+I panel reports a rolling ten-second view:
 
 ```text
 GPU frame:       avg 2.10, max 2.62 ms (10 s)
-Load avg/max:    CPU 12/34%, GPU budget 13/16% (10 s)
+10s avg/max: CPU 12/34%, GPU budget 13/16%
 Frame budget:    16.68 ms @ 59.941 fps
 ```
 
