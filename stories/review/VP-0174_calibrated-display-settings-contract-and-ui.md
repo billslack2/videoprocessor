@@ -335,3 +335,23 @@ saved config tokens retain semantics. Complete Release validation/deployment pen
   C:\Videoprocessor\vp\backup-before-vp0174-lut-cleanup-20260908-141743.
   No older Config process was running at deployment; the updated Config was opened
   on Rendering afterward.
+
+
+### Auto and Scaling defaults cleanup deployed (2026-09-08)
+
+- User requested a single automatic choice and confirmed **Auto** is appropriate
+  for these processing settings. Restored Auto instead of Use quality preset,
+  retaining resolved-value status below the controls.
+- Default Scaling profile hides and disables the redundant Use default entry for
+  Upscaler, Downscaler and Anti-ringing. Other Scaling profiles explicitly offer
+  Inherit from default profile, preserving the distinction between inheritance of
+  an explicit scaler and selecting the quality preset's automatic scaler.
+- Commit 52b1c7d3 on PR #82. Clean worktree from current beta ee9b3f73 plus prior
+  VP-0174 changes. Full x64 Release rebuild passed; five focused UI tests passed:
+  choice labels/effective Auto previews, profile sections, profile lifecycle,
+  calibrated defaults, and every-page configuration round trips.
+- Verified all 58 staging files; deployed matched host/renderer, Config/helper
+  and documentation with matching hashes. No active configuration edits; preserved
+  its current SHA256 04A295CFEE4213E9D68CC4376278431C1B6057E488DBCC931930B0F91BD05228.
+- Backup: C:\Videoprocessor\vp\backup-before-vp0174-scaling-default-20260908-142657.
+  Opened the updated Config app on Scaling after deployment.
