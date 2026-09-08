@@ -2667,9 +2667,9 @@ namespace VideoProcessorTest
 				true, selections, selections, true));
 		}
 
-		TEST_METHOD(LibplaceboPluginApiVersionCoversShaderProfileVtable)
+		TEST_METHOD(LibplaceboPluginApiVersionCoversShaderProfilesAndRenderLoad)
 		{
-			Assert::AreEqual(static_cast<uint32_t>(18),
+			Assert::AreEqual(static_cast<uint32_t>(19),
 				VP_LIBPLACEBO_PLUGIN_API_VERSION);
 		}
 
