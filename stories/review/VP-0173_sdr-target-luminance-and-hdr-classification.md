@@ -2,8 +2,11 @@
 
 ## Status
 
-Review (2026-09-08). Implemented in draft PR
-https://github.com/billslack2/videoprocessor/pull/81 against `v1.3.005-beta`.
+Review (2026-09-08). PR https://github.com/billslack2/videoprocessor/pull/81
+merged into `v1.3.005-beta` at the user's request. Merge commit:
+`38e7508f4d2dc66325a3846cbfb8c75d588c1dc8` (2026-09-08 13:39 UTC).
+Implementation is integrated; this record remains in Review for the
+outstanding physical display validation. No deployment was requested.
 Source commits: `b1d7eb2b` (implementation), `829493db` (validation evidence).
 Current integration base: `e5f80f89a564a7600957013d2efcdfa4d7764426`.
 Worktree: `E:\codex\videoprocessor\vp-0173-sdr-luminance`.
@@ -24,7 +27,7 @@ P3/BT.2020-to-Rec.709 perceptual gamut mapping now consistently uses the
 existing 203-nit reference behavior, independent of the HDR target. Measured
 old-versus-corrected differences at 75/400 nits reach 25 8-bit codes in the
 fixture; the full table is recorded for review. Physical GPU/HDMI/projector
-validation and merge/release decision remain outstanding. No deployment.
+validation and deployment/release decision remain outstanding. No deployment.
 
 User clarification: SDR is not literal passthrough. Selected debanding,
 scaling and other enabled non-tone-mapping processing still apply. No separate
