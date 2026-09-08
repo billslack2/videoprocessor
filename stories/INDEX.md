@@ -6,9 +6,9 @@ story may have ordered child-task IDs as defined below.
 
 ## Registry state
 
-- Last assigned root story: `VP-0170`
-- Next root story number: `VP-0171`
-- Total indexed items: 189
+- Last assigned root story: `VP-0174`
+- Next root story number: `VP-0175`
+- Total indexed items: 192
 
 ## Story locations
 
@@ -206,6 +206,9 @@ they must not contain requirements that are absent from this file.
 | VP-0168 | Backlog | Native LAN configuration editor discovery and apply parity |
 | VP-0169 | Done | Persist GUI edits into missing configuration sections |
 | VP-0170 | In Progress | Stabilize DirectShow/madVR EOTF transitions |
+| VP-0172 | Backlog | Source-driven output display-mode selection |
+| VP-0173 | Backlog | Decouple SDR target luminance from HDR classification |
+| VP-0174 | Backlog | Calibrated display settings contract and Color/Output UI |
 | VP-0066-1 | Done | Characterize the live output pipeline with replayable golden traces |
 | VP-0066-2 | Done | Extract a graph-independent video timing controller |
 | VP-0066-3 | Done | Extract epoch-aware frame transport and processing components |
