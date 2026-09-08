@@ -74,6 +74,8 @@ struct StatsData
 	double presentationTargetLeadMs = 0.0;
 	double captureToPresentationTargetMs = 0.0;
 
+	CString cadenceIntervalEstimate; // Smoothed capture/display rate mismatch interval.
+
 	// Frame counts
 	uint64_t capturedFrames = 0;
 	uint64_t rendererCapturedFrames = 0;
@@ -252,7 +254,6 @@ private:
 	int CalculateRequiredHeight(const StatsData& stats) const;
 
 	// Formatting helpers
-	CString FormatTime(double seconds);
 	CString FormatQueueStatus();
 
 	// Force redraw

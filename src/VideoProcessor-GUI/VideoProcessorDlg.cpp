@@ -5674,6 +5674,7 @@ LRESULT	CVideoProcessorDlg::OnMessageCaptureDeviceStateChange(WPARAM wParam, LPA
 
 	assert(newState != m_captureDeviceState);
 	m_captureDeviceState = newState;
+	m_cadenceIntervalEstimate.Reset();
 
 	bool enableButtons = false;
 
@@ -5713,6 +5714,10 @@ LRESULT CVideoProcessorDlg::OnMessageCaptureDeviceCardStateChange(WPARAM wParam,
 		ToString(cardState->inputLocked),
 		cardState->inputDisplayMode ? cardState->inputDisplayMode->ToString() : TEXT("")
 		));
+
+	m_cadenceInputLocked = cardState->inputLocked;
+	if (cardState->inputLocked != InputLocked::YES)
+		m_cadenceIntervalEstimate.Reset();
 
 	// Input fields
 	m_inputLockedText.SetWindowText(ToString(cardState->inputLocked));
@@ -5936,6 +5941,7 @@ LRESULT CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange(WPARAM wParam
 		// Reset refresh-rate tracking on a material signal-contract change to
 		// prevent false-positive detection.
 		m_lastKnownRefreshRate = 0.0;
+		m_cadenceIntervalEstimate.Reset();
 		m_resyncPendingResetSeconds = -1;
 		DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange(): Reset refresh rate tracking")));
 	}
@@ -14084,6 +14090,8 @@ void CVideoProcessorDlg::OnDisplayChange(UINT bitsPerPixel, int width, int heigh
 	if (g_displayRefreshRateSampler)
 		g_displayRefreshRateSampler->ResetMeasurement();
 
+	m_cadenceIntervalEstimate.Reset();
+
 	// A display notification is a recovery boundary even when the renderer is
 	// not rebuilt.  Give Windows and the HDMI chain the configured settle time,
 	// then always re-prime VP's queue so it cannot retain pre-transition frames.
@@ -15741,6 +15749,48 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		}
 	}
 
+	// Sample independently of OSD visibility and scene-correction mode. Never
+	// treat the theoretical capture fallback as measured drift evidence.
+	CadenceIntervalEstimate::Contract cadenceContract;
+	cadenceContract.monitor = monitorDeviceName;
+	cadenceContract.captureNominalHz = nominalInputRefreshRate;
+	cadenceContract.displayNominalHz = activeTargetRefreshRate;
+	cadenceContract.overrideHz = displayRefreshRateOverridden ?
+		configuredDisplayRefreshRate : 0.0;
+	cadenceContract.rateSource = displayRefreshRateOverridden ? 1 :
+		(madVRDetectedRefreshRateKnown ? 2 : 3);
+	const double cadenceDisplayRate = displayRefreshRateOverridden ?
+		configuredDisplayRefreshRate : (madVRDetectedRefreshRateKnown ?
+			madVRDetectedRefreshRate :
+			CadenceIntervalEstimate::SelectPhysicalDisplayRate(
+				displayRateResult, readinessRateResult, startupRateResult));
+	const bool cadenceCaptureActive =
+		m_rendererState == RendererState::RENDERSTATE_RENDERING &&
+		m_cadenceInputLocked != InputLocked::NO &&
+		m_captureDeviceState == CaptureDeviceState::CAPTUREDEVICESTATE_CAPTURING &&
+		m_captureDeviceVideoState && m_captureDeviceVideoState->valid;
+	const bool cadenceWaitingForRates = cadenceCaptureActive &&
+		((!hasMeasuredCaptureRate && cadenceDisplayRate > 0.0) ||
+			(cadenceDisplayRate <= 0.0 &&
+				displayRateResult.decision == DisplayRefreshRateDecision::Warming));
+	m_cadenceIntervalEstimate.Update(GetTickCount64(),
+		hasMeasuredCaptureRate && cadenceCaptureActive ? measuredCaptureRate : 0.0,
+		cadenceDisplayRate, cadenceContract, cadenceWaitingForRates);
+	const ULONGLONG cadenceLogTick = GetTickCount64();
+	if (cadenceCaptureActive &&
+		cadenceLogTick - m_lastCadenceIntervalLogTick >= 10000)
+	{
+		m_lastCadenceIntervalLogTick = cadenceLogTick;
+		DebugLog::Log(
+			"OSD cadence interval: capture_hz=%.9f display_hz=%.9f "
+			"source=%d evidence_s=%.1f mean_difference_hz=%.9f status=%S",
+			hasMeasuredCaptureRate ? measuredCaptureRate : 0.0,
+			cadenceDisplayRate, cadenceContract.rateSource,
+			m_cadenceIntervalEstimate.EvidenceSeconds(),
+			m_cadenceIntervalEstimate.MeanDifferenceHz(),
+			m_cadenceIntervalEstimate.Text().c_str());
+	}
+
 	const bool nativeOverlay = m_statsOverlayRequestedVisible && m_videoRenderer &&
 		m_videoRenderer->SupportsNativeStatsOverlay();
 	const bool nativeSweepBanner = (m_activeOutputSweepRunning ||
@@ -15801,6 +15851,7 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		m_statsOverlay->UpdatePosition(displayWindow ? displayWindow : GetSafeHwnd());
 
 	StatsData stats;
+	stats.cadenceIntervalEstimate = m_cadenceIntervalEstimate.Text().c_str();
 	stats.outputSweep = m_activeOutputSweepStatus;
 	stats.surfaceMode = m_fullScreenVideoWindow &&
 		::IsWindow(m_fullScreenVideoWindow->GetHWND()) ?

@@ -47,6 +47,7 @@
 #include <microsoft_directshow/DirectShowDefines.h>
 #include <microsoft_directshow/video_renderers/DirectShowVideoRenderer.h>
 #include <StatsOverlayWindow.h>
+#include <CadenceIntervalEstimate.h>
 #include <ApplicationInterface.h>
 #include <ConfigurationApplyPolicy.h>
 #include <CaptureVideoStatePolicy.h>
@@ -872,6 +873,9 @@ protected:
 	static constexpr double CPU_PEAK_LOG_STEP_PERCENT = 5.0;
 
 	StatsOverlayWindow* m_statsOverlay = nullptr;
+	InputLocked m_cadenceInputLocked = InputLocked::UNKNOWN;
+	CadenceIntervalEstimate m_cadenceIntervalEstimate;
+	ULONGLONG m_lastCadenceIntervalLogTick = 0;
 	StatsData* m_lastStatsData = nullptr;
 	// Renderer telemetry getters are deliberately nonblocking. Retain their
 	// last valid values only within the same renderer/host generation when a
