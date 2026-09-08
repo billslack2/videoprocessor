@@ -7,6 +7,7 @@
 #include "VpTheme.h"
 #include <ActiveProfileStatus.h>
 #include <ConfigurationLiveApply.h>
+#include <RendererProfileConfig.h>
 
 #include <QApplication>
 #include <QAccessible>
@@ -1470,7 +1471,7 @@ void testLegacyVpInputOverrideMigratesToIndependentPolicySection()
         "Migrating input policy created a synthetic display profile");
 }
 
-void testLldvMetadataMigratesToEnabledSingleton()
+void testLldvNamedMetadataIsPreserved()
 {
     QTemporaryDir directory;
     require(directory.isValid(), "Cannot create LLDV migration directory");
@@ -1497,12 +1498,12 @@ void testLldvMetadataMigratesToEnabledSingleton()
         "LLDV metadata handling is always enabled and must not be exposed as a toggle");
     require(requireControl<QLineEdit>(window,
         QStringLiteral("config.lldv.max_cll"))->text() == QStringLiteral("1234"),
-        "Canonical LLDV singleton did not retain MaxCLL");
+        "Named LLDV profile did not retain MaxCLL");
 
     save(window);
     const QByteArray saved = readBytes(path);
-    require(saved.contains("[lldv]") && !saved.contains("[lldv.default]"),
-        "Named LLDV configuration did not migrate to the singleton section");
+    require(!saved.contains("[lldv]") && saved.contains("[lldv.default]"),
+        "Named LLDV profile was unexpectedly renamed");
     require(saved.contains("hdr_colorspace: FOLLOW_INPUT_LLDV") &&
         saved.contains("hdr_luminance: FOLLOW_INPUT_LLDV"),
         "Explicit LLDV metadata remained silently disabled by FOLLOW_INPUT");
@@ -1532,6 +1533,7 @@ void testOptionalSectionsAreCreatedWhenEdited()
     file.close();
 
     ConfigEditorWindow window(path, 0, true);
+    requireControl<QPushButton>(window, QStringLiteral("config.lldv.add_profile"))->click();
     requireControl<QLineEdit>(window, QStringLiteral("config.lldv.max_cll"))
         ->setText(QStringLiteral("1200"));
     requireControl<QLineEdit>(window, QStringLiteral("config.lldv.max_fall"))
@@ -1550,7 +1552,7 @@ void testOptionalSectionsAreCreatedWhenEdited()
     save(window);
 
     const QByteArray saved = readBytes(path);
-    const int lldvStart = saved.indexOf("[lldv]\n");
+    const int lldvStart = saved.toLower().indexOf("[lldv.new_1]\n");
     const int lldvEnd = saved.indexOf("\n[", lldvStart + 1);
     const QByteArray lldv = saved.mid(lldvStart,
         lldvEnd < 0 ? -1 : lldvEnd - lldvStart);
@@ -1558,7 +1560,7 @@ void testOptionalSectionsAreCreatedWhenEdited()
         lldv.contains("max_fall: 400") &&
         lldv.contains("mastering_min_luminance: 0.002") &&
         lldv.contains("mastering_max_luminance: 3500"),
-        "Editing LLDV metadata did not create and populate the [lldv] section");
+        "Editing LLDV metadata did not create and populate a named LLDV profile");
     require(saved.contains("[logging]\ndebug: true"),
         "Editing a logging control did not create the [logging] section");
     require(saved.contains("[shortcuts]\nfullscreen_toggle: Ctrl+Alt+F"),
@@ -1606,6 +1608,76 @@ void answerMessageBox(int result)
     timer->start();
 }
 
+void testLldvStandardProfiles()
+{
+    QTemporaryDir directory;
+    const QString path = copyFixture(directory);
+    QByteArray original = readBytes(path);
+    original.replace("#max_cll: 1000", "max_cll: 1234");
+    QFile fixture(path);
+    require(fixture.open(QIODevice::WriteOnly | QIODevice::Truncate), "Cannot update LLDV fixture");
+    require(fixture.write(original) == original.size(), "Cannot write LLDV singleton metadata");
+    fixture.close();
+    ConfigEditorWindow window(path, 0, true);
+    auto* list = requireControl<QListWidget>(window, QStringLiteral("config.lldv.profiles"));
+    require(list->count() == 1, "Singleton migration must produce exactly one LLDV profile");
+    require(list->item(0)->data(Qt::UserRole).toString() == QStringLiteral("lldv.profile_1"),
+        "Singleton was not migrated to a standard named profile");
+    require(readBytes(path) == original, "Migration changed disk before saving");
+    auto* cll = requireControl<QLineEdit>(window, QStringLiteral("config.lldv.max_cll"));
+    require(cll->text() == QStringLiteral("1234"), "Singleton migration changed existing metadata");
+    requireControl<QLineEdit>(window, QStringLiteral("config.lldv.max_fall"))->setText(QStringLiteral("432"));
+    requireControl<QLineEdit>(window, QStringLiteral("config.lldv.mastering_min_luminance"))->setText(QStringLiteral("0.002"));
+    requireControl<QLineEdit>(window, QStringLiteral("config.lldv.mastering_max_luminance"))->setText(QStringLiteral("3500"));
+    requireControl<QPushButton>(window, QStringLiteral("config.lldv.add_profile"))->click();
+    require(list->count() == 2, "Cannot add an LLDV profile");
+    cll->setText(QStringLiteral("2000"));
+    auto* name = requireControl<QLineEdit>(window, QStringLiteral("config.lldv.name"));
+    name->setText(QStringLiteral("Cinema"));
+    QMetaObject::invokeMethod(name, "editingFinished", Qt::DirectConnection);
+    requireControl<QLineEdit>(window, QStringLiteral("config.lldv.shortcut"))->setText(QStringLiteral("Ctrl+Alt+L"));
+    requireControl<QLineEdit>(window, QStringLiteral("config.lldv.cycle_shortcut"))->setText(QStringLiteral("Ctrl+Shift+L"));
+    requireControl<QCheckBox>(window, QStringLiteral("config.lldv.use_rule"))->setChecked(true);
+    requireControl<QPlainTextEdit>(window, QStringLiteral("config.lldv.when"))->setPlainText(QStringLiteral("${eotf} == \"HDR\""));
+    requireControl<QPushButton>(window, QStringLiteral("config.lldv.move_up"))->click();
+    require(list->currentRow() == 0, "LLDV reorder failed");
+    list->setCurrentRow(1);
+    require(cll->text() == QStringLiteral("1234"), "LLDV profiles share edited values");
+    save(window);
+    const QByteArray saved = readBytes(path).toLower();
+    require(!saved.contains("[lldv]"), "Saved LLDV configuration still uses the singleton");
+    require(saved.indexOf("[lldv.cinema]") < saved.indexOf("[lldv.profile_1]"),
+        "LLDV profile order did not persist");
+    require(saved.contains("#mastering_max_luminance: 4000"), "LLDV migration lost comments");
+    ConfigFile config;
+    require(config.Load(path.toStdString()), "Cannot load saved LLDV profiles");
+    RendererProfileConfig::Model model;
+    RendererProfileConfig::ResolvedLldv resolved;
+    std::string error;
+    require(RendererProfileConfig::Read(config, model, error), error.c_str());
+    require(RendererProfileConfig::ResolveLldv(model, "cinema", resolved, error), error.c_str());
+    require(resolved.hasMaxCll && resolved.maxCll == 2000, "Runtime did not resolve Cinema metadata");
+    require(RendererProfileConfig::ResolveLldv(model, "profile_1", resolved, error), error.c_str());
+    require(resolved.maxCll == 1234 && resolved.maxFall == 432 &&
+        resolved.masteringMinLuminance == 0.002 && resolved.masteringMaxLuminance == 3500,
+        "Runtime did not resolve migrated metadata");
+    ConfigEditorWindow reopened(path, 0, true);
+    require(requireControl<QLineEdit>(reopened, QStringLiteral("config.lldv.cycle_shortcut"))->text() == QStringLiteral("Ctrl+Shift+L"),
+        "LLDV cycle shortcut did not persist");
+    require(requireControl<QPlainTextEdit>(reopened, QStringLiteral("config.lldv.when"))->toPlainText() == QStringLiteral("${eotf} == \"HDR\""),
+        "LLDV rule did not persist");
+    auto* reopenedList = requireControl<QListWidget>(reopened, QStringLiteral("config.lldv.profiles"));
+    require(reopenedList->count() == 2, "Named LLDV profiles did not survive reopening");
+    require(requireControl<QLineEdit>(reopened, QStringLiteral("config.lldv.max_cll"))->text() == QStringLiteral("2000"),
+        "First LLDV profile did not retain its own metadata");
+    reopenedList->setCurrentRow(1);
+    require(requireControl<QLineEdit>(reopened, QStringLiteral("config.lldv.mastering_max_luminance"))->text() == QStringLiteral("3500"),
+        "Migrated LLDV metadata did not survive reopening");
+    answerMessageBox(QMessageBox::Yes);
+    requireControl<QPushButton>(reopened, QStringLiteral("config.lldv.remove_profile"))->click();
+    require(reopenedList->count() == 1, "Cannot remove an LLDV profile");
+    save(reopened);
+}
 void testProfileLifecycleThroughWidgets()
 {
     QTemporaryDir directory;
@@ -5075,10 +5147,11 @@ int main(int argc, char** argv)
         testSeparatedProfilesDoNotLeaveShortcutShellsBehind);
     failures += run("legacy VP input override migrates independently",
         testLegacyVpInputOverrideMigratesToIndependentPolicySection);
-    failures += run("LLDV metadata migrates to enabled singleton",
-        testLldvMetadataMigratesToEnabledSingleton);
+    failures += run("LLDV named metadata is preserved",
+        testLldvNamedMetadataIsPreserved);
     failures += run("optional config sections are created when edited",
         testOptionalSectionsAreCreatedWhenEdited);
+    failures += run("LLDV standard profiles", testLldvStandardProfiles);
     failures += run("profile lifecycle through widgets", testProfileLifecycleThroughWidgets);
     failures += run("unrelated content remains exact", testUnrelatedContentRemainsExact);
     failures += run("scene detection defaults off and hides manual overrides",

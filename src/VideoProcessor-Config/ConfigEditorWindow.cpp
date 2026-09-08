@@ -908,7 +908,7 @@ ConfigEditorWindow::ConfigEditorWindow(QString configPath, quintptr ownerHandle,
     resize(1040, 700);
     setMinimumSize(1040, 700);
     loadConfiguration();
-    migrateLldvSingleton();
+    migrateLldvInputPolicy();
     migrateSharedRefreshRate();
 	migrateRefreshRateSwitchMode();
     migrateSeparatedRendererProfiles();
@@ -1312,35 +1312,14 @@ void ConfigEditorWindow::loadDiscoveryCache()
     allRenderers_ = discoverValues("VPDiscoverRenderers", false);
 }
 
-void ConfigEditorWindow::migrateLldvSingleton()
+void ConfigEditorWindow::migrateLldvInputPolicy()
 {
     if (!configurationLoaded_ || !document_) return;
 
     QStringList sections = profileSections(QStringLiteral("lldv"));
     if (sections.isEmpty()) return;
 
-    QString section;
-    for (const QString& candidate : sections)
-        if (candidate.compare(QStringLiteral("lldv"), Qt::CaseInsensitive) == 0)
-        {
-            section = candidate;
-            break;
-        }
-
-    // LLDV metadata is one application-wide input contract, not a selectable
-    // rendering profile. Canonicalize the common one-named-section form while
-    // retaining multi-section files for backwards-compatible manual recovery.
-    if (section.isEmpty() && sections.size() == 1)
-    {
-        const QString legacy = sections.front();
-        if (document_->RenameSection(legacy.toStdString(), "lldv"))
-        {
-            section = QStringLiteral("lldv");
-            dirty_ = true;
-            hasPendingMigrations_ = true;
-        }
-    }
-    if (section.isEmpty()) section = sections.front();
+    const QString section = sections.front();
 
     bool hasMetadata = false;
     for (const char* key : { "max_cll", "max_fall",
@@ -4559,6 +4538,15 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         addText(QStringLiteral("Mastering minimum"), QStringLiteral("mastering_min_luminance"), QStringLiteral("nits"));
         addText(QStringLiteral("Mastering maximum"), QStringLiteral("mastering_max_luminance"), QStringLiteral("nits"));
     }
+    if (sectionPrefix == QStringLiteral("lldv"))
+    {
+        detailLayout->addWidget(helpLabel(QStringLiteral(
+            "Uses the selected profile for recognized HDFury LLDV input and sends the same effective metadata to DirectShow and VP Renderer.")));
+        detailLayout->addWidget(bindCheckField(QStringLiteral("Alternate LLDV detection"),
+            QStringLiteral("general"), QStringLiteral("newlldv")));
+        detailLayout->addWidget(helpLabel(QStringLiteral(
+            "Applies to all LLDV profiles. Uses VP's newer LLDV detection heuristic. Restart VideoProcessor after changing this setting.")));
+    }
     detailLayout->addWidget(profileFields);
     detailLayout->addStretch();
 
@@ -5438,71 +5426,9 @@ QWidget* ConfigEditorWindow::createZoomPage()
 
 QWidget* ConfigEditorWindow::createLldvPage()
 {
-    const QStringList sections = profileSections(QStringLiteral("lldv"));
-    const QString section = sections.isEmpty() ? QStringLiteral("lldv") : sections.front();
-
-    auto* content = new QWidget;
-    auto* layout = new QVBoxLayout(content);
-    layout->setContentsMargins(0, 0, 0, 0);
-    layout->setSpacing(12);
-
-    layout->addWidget(helpLabel(QStringLiteral(
-        "Uses these values for recognized HDFury LLDV input and sends the same effective metadata to DirectShow and VP Renderer.")));
-    layout->addWidget(bindCheckField(QStringLiteral("Alternate LLDV detection"),
-        QStringLiteral("general"), QStringLiteral("newlldv")));
-    layout->addWidget(helpLabel(QStringLiteral(
-        "Uses VP's newer LLDV metadata detection heuristic. Restart VideoProcessor after changing this setting.")));
-
-    if (sections.size() > 1)
-    {
-        auto* preserved = helpLabel(QStringLiteral(
-            "This file contains %1 additional LLDV section(s). The editor uses the first section and preserves the others unchanged.")
-            .arg(sections.size() - 1));
-        preserved->setProperty("warning", true);
-        preserved->setToolTip(sections.mid(1).join(u'\n'));
-        layout->addWidget(preserved);
-    }
-
-    QString enabled = value(QStringLiteral("general"), QStringLiteral("newlldv"));
-    if (enabled.isEmpty()) enabled = value(QStringLiteral("general"), QStringLiteral("new_lldv"));
-    if (enabled.isEmpty()) enabled = value(QStringLiteral("command_line"), QStringLiteral("newlldv"));
-    if (enabled.isEmpty()) enabled = value(QStringLiteral("command_line"), QStringLiteral("new_lldv"));
-    const QString normalized = enabled.trimmed().toLower();
-    const bool modern = normalized == QStringLiteral("true") || normalized == QStringLiteral("yes") ||
-        normalized == QStringLiteral("on") || normalized == QStringLiteral("1");
-
-    auto* formContent = new QWidget;
-    auto* form = new QFormLayout(formContent);
-    form->setContentsMargins(0, 0, 0, 0);
-    form->setHorizontalSpacing(20);
-    form->setVerticalSpacing(12);
-    const auto addValue = [this, form, section](const QString& label, const QString& key,
-        const QString& fallback)
-    {
-        auto* edit = bindTextField(section, key, fallback);
-        edit->setMaximumWidth(320);
-        auto* row = new QWidget;
-        auto* rowLayout = new QHBoxLayout(row);
-        rowLayout->setContentsMargins(0, 0, 0, 0);
-        rowLayout->addWidget(edit);
-        rowLayout->addWidget(new QLabel(QStringLiteral("nits")));
-        rowLayout->addStretch();
-        form->addRow(label, row);
-    };
-    addValue(QStringLiteral("MaxCLL"), QStringLiteral("max_cll"), QStringLiteral("1000"));
-    addValue(QStringLiteral("MaxFALL"), QStringLiteral("max_fall"),
-        modern ? QStringLiteral("401") : QStringLiteral("1000"));
-    addValue(QStringLiteral("Mastering minimum"), QStringLiteral("mastering_min_luminance"),
-        modern ? QStringLiteral("0.001") : QStringLiteral("0.0001"));
-    addValue(QStringLiteral("Mastering maximum"), QStringLiteral("mastering_max_luminance"),
-        modern ? QStringLiteral("4000") : QStringLiteral("1000"));
-    layout->addWidget(formContent);
-
-    return createPage(QStringLiteral("LLDV"),
-        QStringLiteral("Configure the LLDV metadata values shared by every renderer."),
-        createCard(QStringLiteral("LLDV metadata"),
-            QStringLiteral("LLDV is one shared input-metadata policy. Config saves it in the singleton [lldv] section."),
-            content));
+    return createProfilePage(QStringLiteral("LLDV"),
+        QStringLiteral("Configure ordered LLDV metadata profiles shared by every renderer. The first profile is the default."),
+        QStringLiteral("lldv"));
 }
 
 QWidget* ConfigEditorWindow::createNlsShadersPage()

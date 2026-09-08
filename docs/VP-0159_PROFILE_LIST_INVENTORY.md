@@ -32,7 +32,7 @@ profile active-state concepts.
 | Standard shaders | `createStandardShadersPage` plus `ProfileListController` | ordered `shader.standard` sections adapted to `standard_shaders`; no inheritance | composable runtime selection in file order; typed renderer boundary | shared controller; Standard add/remove/reorder; VP-0159 multi-selection tests | duplicated behavior normalized through adapter |
 | Actions | `createActionsPage` | `actions.*` command definitions, enabled drafts, event selection | `EventActionLauncher`; never a runtime profile | action draft, round-trip, validation and scheduling tests | visually similar, deliberately separate |
 | Input Processing | `createInputProcessingPage` | singleton backend policy sections | renderer input-policy application | input migration and selector refresh tests | not a list; retain |
-| LLDV metadata | `createLldvPage` | singleton metadata section | resolved LLDV snapshot | LLDV migration/runtime tests | not a list; retain |
+| LLDV metadata | `createProfilePage("LLDV", "lldv")` | ordered named metadata profiles; legacy singleton migrates on save | exclusive resolved LLDV snapshot shared by both renderers | LLDV migration/lifecycle/runtime tests | true profile; shared code (VP-0176) |
 | Shader Setup, Shortcuts, Logs | dedicated non-profile pages | singleton settings/commands | dedicated paths | page-level editor tests | not profile lists; retain |
 
 ## Deviation and retention matrix

@@ -119,7 +119,7 @@ private:
     bool notifyVideoProcessor();
     void refreshShaderCacheStatus();
     void loadConfiguration();
-    void migrateLldvSingleton();
+    void migrateLldvInputPolicy();
     void migrateSharedRefreshRate();
 	void migrateRefreshRateSwitchMode();
     void migrateSeparatedRendererProfiles();
