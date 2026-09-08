@@ -9,6 +9,7 @@
 #include <pch.h>
 
 #include <DebugLog.h>
+#include <CaptureCallbackBoundary.h>
 
 #pragma warning(disable : 26812)  // class enum over class in BM API
 
@@ -445,8 +446,11 @@ HRESULT STDMETHODCALLTYPE BlackMagicDeckLinkCaptureDevice::VideoInputFormatChang
 	IDeckLinkDisplayMode* newMode,
 	BMDDetectedVideoInputFormatFlags detectedSignalFlags)
 {
+	return CaptureCallbackBoundary([&]() -> HRESULT
+	{
 	// WARNING: Called from some internal capture card thread!
-	// TODO: We can be nicer and "return E_INVALIDARG;" for the throws, investigate how that's handled gracefully
+	if (!newMode)
+		return E_INVALIDARG;
 
 	const CaptureRunToken captureRunToken =
 		m_captureRunToken.load(std::memory_order_acquire);
@@ -588,37 +592,36 @@ HRESULT STDMETHODCALLTYPE BlackMagicDeckLinkCaptureDevice::VideoInputFormatChang
 		//
 		// Restart stream with new input mode
 		//
-		IF_NOT_S_OK(m_deckLinkInput->StopStreams())
+		const HRESULT stopResult = m_deckLinkInput->StopStreams();
+		DebugLog::Log("BlackMagic: resync StopStreams hr=0x%08lx", stopResult);
+		if (stopResult != S_OK)
 		{
-			m_deckLinkInput.Release();
-			m_deckLinkInput = nullptr;
-
+			// Keep the capture interface alive for later callbacks and StopCapture.
+			// Releasing it here leaves a live driver callback with a null input.
 			Error(TEXT("Failed to stop streams"));
 			return E_FAIL;
 		}
 
 		// Set the video input mode
-		IF_NOT_S_OK(m_deckLinkInput->EnableVideoInput(
+		const HRESULT enableResult = m_deckLinkInput->EnableVideoInput(
 			newMode->GetDisplayMode(),
 			bmdPixelFormat,
-			bmdVideoInputFlagDefault | bmdVideoInputEnableFormatDetection))
+			bmdVideoInputFlagDefault | bmdVideoInputEnableFormatDetection);
+		DebugLog::Log("BlackMagic: resync EnableVideoInput hr=0x%08lx", enableResult);
+		if (enableResult != S_OK)
 		{
 			// TODO: StopStreams() or how does this work under failure conditions?
-
-			m_deckLinkInput.Release();
-			m_deckLinkInput = nullptr;
 
 			Error(TEXT("Failed to set video input"));
 			return E_FAIL;
 		}
 
 		// Start the capture
-		IF_NOT_S_OK(m_deckLinkInput->StartStreams())
+		const HRESULT startResult = m_deckLinkInput->StartStreams();
+		DebugLog::Log("BlackMagic: resync StartStreams hr=0x%08lx", startResult);
+		if (startResult != S_OK)
 		{
 			// TODO: StopStreams() or how does this work under failure conditions?
-
-			m_deckLinkInput.Release();
-			m_deckLinkInput = nullptr;
 
 			Error(TEXT("Failed to start stream"));
 			return E_FAIL;
@@ -631,6 +634,10 @@ HRESULT STDMETHODCALLTYPE BlackMagicDeckLinkCaptureDevice::VideoInputFormatChang
 	// No action needed here - the queue handles it when frames arrive with large timestamp jumps.
 
 	return S_OK;
+	}, [](const char* error)
+	{
+		DebugLog::Log("BlackMagic: VideoInputFormatChanged exception contained: %s", error);
+	});
 }
 
 
@@ -638,6 +645,8 @@ HRESULT STDMETHODCALLTYPE BlackMagicDeckLinkCaptureDevice::VideoInputFrameArrive
 	IDeckLinkVideoInputFrame* videoFrame,
 	IDeckLinkAudioInputPacket* audioPacket)
 {
+	return CaptureCallbackBoundary([&]() -> HRESULT
+	{
 	// WARNING: Called from some internal capture card thread!
 
 	const CaptureRunToken captureRunToken =
@@ -904,6 +913,10 @@ HRESULT STDMETHODCALLTYPE BlackMagicDeckLinkCaptureDevice::VideoInputFrameArrive
 	}  // videoFrame
 
 	return S_OK;
+	}, [](const char* error)
+	{
+		DebugLog::Log("BlackMagic: VideoInputFrameArrived exception contained: %s", error);
+	});
 }
 
 //
@@ -914,6 +927,8 @@ HRESULT STDMETHODCALLTYPE BlackMagicDeckLinkCaptureDevice::VideoInputFrameArrive
 HRESULT	STDMETHODCALLTYPE BlackMagicDeckLinkCaptureDevice::ProfileChanging(
 	IDeckLinkProfile* profileToBeActivated, BOOL streamsWillBeForcedToStop)
 {
+	return CaptureCallbackBoundary([&]() -> HRESULT
+	{
 	// WARNING: Called from some internal capture card thread!
 
 	if (streamsWillBeForcedToStop)
@@ -923,6 +938,10 @@ HRESULT	STDMETHODCALLTYPE BlackMagicDeckLinkCaptureDevice::ProfileChanging(
 	}
 
 	return S_OK;
+	}, [](const char* error)
+	{
+		DebugLog::Log("BlackMagic: ProfileChanging exception contained: %s", error);
+	});
 }
 
 
@@ -942,6 +961,8 @@ HRESULT	STDMETHODCALLTYPE BlackMagicDeckLinkCaptureDevice::ProfileActivated(IDec
 
 HRESULT BlackMagicDeckLinkCaptureDevice::Notify(BMDNotifications topic, uint64_t param1, uint64_t param2)
 {
+	return CaptureCallbackBoundary([&]() -> HRESULT
+	{
 	// WARNING: Called from some internal capture card thread!
 
 	switch (topic)
@@ -960,6 +981,10 @@ HRESULT BlackMagicDeckLinkCaptureDevice::Notify(BMDNotifications topic, uint64_t
 	}
 
 	return S_OK;
+	}, [](const char* error)
+	{
+		DebugLog::Log("BlackMagic: Notify exception contained: %s", error);
+	});
 }
 
 //
