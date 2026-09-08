@@ -39,3 +39,16 @@ The MSVC import library was generated from the exported symbols of
 libplacebo-360.dll; it contains no libplacebo implementation code. Built plugin
 packs are staged under x64\<configuration>\vprenderer so the normal executable
 can be distributed independently.
+
+VP-0173 SDR transport containment
+--------------------------------
+The pinned fork predates upstream commit
+4dbc490b0770539942abb3cc61fdce5438d06331 (D3D11: respect transfer set in hint).
+VP contains the older backend's luminance-based HDR decision in
+LibplaceboRenderParameters::MakeSwapchainColorHint, used by the renderer's
+single ApplySwapchainColorHint submission boundary. SDR hints use fixed SDR
+reference metadata; explicit HDR-transfer hints pass through unchanged.
+The render target is separate and retains configured luminance for HDR input.
+This avoids changing the bundled DLL or its VP-0147 analysis-crop ABI.
+Do not remove the containment on a DLL upgrade without transport regression
+coverage. See docs/VP-0173-validation.md for implementation and test evidence.

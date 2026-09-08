@@ -6,6 +6,13 @@
 
 namespace
 {
+	void SetSdrReference(pl_color_space& color)
+	{
+		color.hdr = {};
+		color.hdr.min_luma = PL_COLOR_SDR_WHITE / PL_COLOR_SDR_CONTRAST;
+		color.hdr.max_luma = PL_COLOR_SDR_WHITE;
+	}
+
 	template<typename T>
 	const T* ReadLibplaceboData(const char* exportName, std::string& error)
 	{
@@ -96,6 +103,32 @@ namespace
 
 namespace LibplaceboRenderParameters
 {
+	void ApplySourceLuminance(bool inputIsSdr, pl_color_space& source)
+	{
+		if (inputIsSdr)
+			SetSdrReference(source);
+	}
+
+	void ApplyTargetLuminance(bool inputIsSdr, float targetNits, float blackNits,
+		pl_color_space& target)
+	{
+		if (inputIsSdr)
+			SetSdrReference(target);
+		else
+		{
+			target.hdr.min_luma = blackNits;
+			target.hdr.max_luma = targetNits;
+		}
+	}
+
+	pl_color_space MakeSwapchainColorHint(const pl_color_space& output)
+	{
+		pl_color_space hint = output;
+		if (!pl_color_transfer_is_hdr(hint.transfer))
+			SetSdrReference(hint);
+		return hint;
+	}
+
 	void ApplyDisplayBitDepth(const std::string& displayBitDepth,
 		pl_color_repr& targetRepresentation)
 	{

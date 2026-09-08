@@ -2,6 +2,7 @@
 #include "CppUnitTest.h"
 
 #include <vprenderer/LibplaceboDisplayLut.h>
+#include <vprenderer/LibplaceboRenderParameters.h>
 #include <vprenderer/LibplaceboCalibrationLutPolicy.h>
 #include <libplacebo/d3d11.h>
 #include <libplacebo/renderer.h>
@@ -266,6 +267,17 @@ namespace
 			L"Bundled NLS shader did not expose both dynamic parameters");
 	}
 
+	struct LuminanceCase
+	{
+		float targetNits = 203.0f;
+		float blackNits = 0.203f;
+		bool legacy = false;
+		bool hdr = false;
+		bool deband = false;
+		pl_color_primaries primaries = PL_COLOR_PRIM_BT_709;
+		int outputSize = 64;
+	};
+
 	class TargetLutGpuFixture
 	{
 	public:
@@ -390,7 +402,8 @@ namespace
 		}
 
 		std::vector<RgbaPixel> RenderCoordinateField(
-			const pl_hook* hook, int width = 64, int height = 64)
+			const pl_hook* hook, int width = 64, int height = 64,
+			const LuminanceCase* luminance = nullptr)
 		{
 			pl_gpu gpu = m_d3d11->gpu;
 			const enum pl_fmt_caps requiredCaps = static_cast<enum pl_fmt_caps>(
@@ -419,8 +432,8 @@ namespace
 			Assert::IsNotNull(sourceTexture);
 
 			pl_tex_params targetParams{};
-			targetParams.w = width;
-			targetParams.h = height;
+			targetParams.w = luminance ? luminance->outputSize : width;
+			targetParams.h = luminance ? luminance->outputSize : height;
 			targetParams.format = format;
 			targetParams.renderable = true;
 			targetParams.host_readable = true;
@@ -430,6 +443,24 @@ namespace
 			pl_frame image = MakeRgbFrame(sourceTexture);
 			pl_frame target = MakeRgbFrame(targetTexture);
 			pl_render_params params = pl_render_fast_params;
+			if (luminance)
+			{
+				params = pl_render_high_quality_params;
+				params.dither_params = nullptr; // deterministic readback
+				params.deband_params = luminance->deband ? &pl_deband_default_params : nullptr;
+				image.color.primaries = luminance->primaries;
+				image.color.transfer = luminance->hdr ? PL_COLOR_TRC_PQ : PL_COLOR_TRC_SRGB;
+				image.color.hdr.max_luma = luminance->hdr ? 1000.0f : luminance->targetNits;
+				image.color.hdr.min_luma = luminance->hdr ? 0.005f : luminance->blackNits;
+				target.color.hdr.max_luma = luminance->targetNits;
+				target.color.hdr.min_luma = luminance->blackNits;
+				if (!luminance->legacy)
+				{
+					LibplaceboRenderParameters::ApplySourceLuminance(!luminance->hdr, image.color);
+					LibplaceboRenderParameters::ApplyTargetLuminance(!luminance->hdr,
+						luminance->targetNits, luminance->blackNits, target.color);
+				}
+			}
 			if (hook)
 			{
 				params.hooks = &hook;
@@ -439,7 +470,7 @@ namespace
 				m_renderer, &image, &target, &params));
 			pl_gpu_finish(gpu);
 
-			std::vector<RgbaPixel> result(width * height);
+			std::vector<RgbaPixel> result(targetParams.w * targetParams.h);
 			pl_tex_transfer_params download{};
 			download.tex = targetTexture;
 			download.ptr = result.data();
@@ -447,6 +478,44 @@ namespace
 			pl_tex_destroy(gpu, &targetTexture);
 			pl_tex_destroy(gpu, &sourceTexture);
 			return result;
+		}
+
+		void CheckSdrSwapchain(float nits, bool force8bit)
+		{
+			HWND window = CreateWindowExW(0, L"STATIC", L"VP-0173 test", WS_POPUP,
+				0, 0, 64, 64, nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
+			Assert::IsNotNull(window);
+			pl_d3d11_swapchain_params params{};
+			params.window = window;
+			params.disable_10bit_sdr = force8bit;
+			pl_swapchain sw = pl_d3d11_create_swapchain(m_d3d11, &params);
+			Assert::IsNotNull(sw);
+			pl_color_space output{};
+			output.primaries = PL_COLOR_PRIM_BT_709;
+			output.transfer = PL_COLOR_TRC_SRGB;
+			output.hdr.max_luma = nits;
+			const auto hint = LibplaceboRenderParameters::MakeSwapchainColorHint(output);
+			pl_swapchain_colorspace_hint(sw, &hint);
+			int width = 64, height = 64;
+			Assert::IsTrue(pl_swapchain_resize(sw, &width, &height));
+			pl_swapchain_frame frame{};
+			Assert::IsTrue(pl_swapchain_start_frame(sw, &frame));
+			Assert::IsFalse(pl_color_space_is_hdr(&frame.color_space));
+			Assert::AreEqual(static_cast<int>(PL_COLOR_TRC_SRGB),
+				static_cast<int>(frame.color_space.transfer));
+			IDXGISwapChain* dxgi = pl_d3d11_swapchain_unwrap(sw);
+			DXGI_SWAP_CHAIN_DESC desc{};
+			Assert::IsTrue(SUCCEEDED(dxgi->GetDesc(&desc)));
+			if (force8bit)
+				Assert::AreEqual(static_cast<int>(DXGI_FORMAT_R8G8B8A8_UNORM),
+					static_cast<int>(desc.BufferDesc.Format));
+			Logger::WriteMessage(("VP-0173 swapchain nits=" + std::to_string(nits) +
+				" force8=" + std::to_string(force8bit) + " DXGI_FORMAT=" +
+				std::to_string(desc.BufferDesc.Format) + " transfer=sRGB\n").c_str());
+			dxgi->Release();
+			Assert::IsTrue(pl_swapchain_submit_frame(sw));
+			pl_swapchain_destroy(&sw);
+			DestroyWindow(window);
 		}
 
 	private:
@@ -479,6 +548,117 @@ namespace VideoProcessorTest
 	TEST_CLASS(LibplaceboLutParserTests)
 	{
 	public:
+		TEST_METHOD(SdrLuminanceGpuReadbackIsInvariantForUnityAndScaling)
+		{
+			for (int size : { 32, 64, 96 })
+			{
+				std::vector<RgbaPixel> reference;
+				for (float nits : { 75.0f, 203.0f, 400.0f, 500.0f })
+				{
+					TargetLutGpuFixture fixture;
+					Assert::IsTrue(fixture.Create());
+					LuminanceCase test;
+					test.targetNits = nits; test.blackNits = nits / 1000.0f;
+					test.outputSize = size;
+					const auto pixels = fixture.RenderCoordinateField(nullptr, 64, 64, &test);
+					if (reference.empty()) reference = pixels;
+					Assert::AreEqual(0, std::memcmp(reference.data(), pixels.data(), pixels.size() * sizeof(RgbaPixel)));
+					if (size == 64)
+						for (int y = 0; y < 64; ++y)
+							for (int x = 0; x < 64; ++x)
+							{
+								const RgbaPixel expected = { static_cast<uint8_t>(x * 255 / 63),
+									static_cast<uint8_t>(y * 255 / 63),
+									static_cast<uint8_t>((x + y) * 255 / 126), 255 };
+								Assert::AreEqual(0, std::memcmp(&expected, &pixels[y * 64 + x], sizeof(expected)),
+									L"Unity SDR did not preserve input code values");
+							}
+					pl_hdr_metadata metadata{};
+					Assert::IsFalse(fixture.DetectedHdrMetadata(metadata), L"SDR triggered HDR peak detection");
+				}
+			}
+		}
+
+		TEST_METHOD(SdrLuminanceGpuRetainsOptionalDebandingWithoutToneMapping)
+		{
+			std::vector<RgbaPixel> reference;
+			for (float nits : { 75.0f, 203.0f, 400.0f, 500.0f })
+			{
+				LuminanceCase test; test.targetNits = nits;
+				test.blackNits = nits / 1000.0f; test.deband = true;
+				TargetLutGpuFixture fixture; Assert::IsTrue(fixture.Create());
+				const auto pixels = fixture.RenderCoordinateField(nullptr, 64, 64, &test);
+				if (reference.empty()) reference = pixels;
+				Assert::AreEqual(0, std::memcmp(reference.data(), pixels.data(), pixels.size() * sizeof(RgbaPixel)),
+					L"HDR destination changed SDR debanding output");
+				pl_hdr_metadata metadata{};
+				Assert::IsFalse(fixture.DetectedHdrMetadata(metadata));
+			}
+			LuminanceCase plain;
+			TargetLutGpuFixture fixture; Assert::IsTrue(fixture.Create());
+			const auto unprocessed = fixture.RenderCoordinateField(nullptr, 64, 64, &plain);
+			Assert::IsTrue(std::memcmp(reference.data(), unprocessed.data(), reference.size() * sizeof(RgbaPixel)) != 0,
+				L"SDR must still apply explicitly enabled debanding");
+		}
+
+		TEST_METHOD(SdrLuminanceGpuGamutMismatchMeasuresLegacyDifference)
+		{
+			for (auto primaries : { PL_COLOR_PRIM_BT_2020, PL_COLOR_PRIM_DISPLAY_P3 })
+			{
+				std::vector<RgbaPixel> reference;
+				for (float nits : { 75.0f, 203.0f, 400.0f })
+				{
+					LuminanceCase test;
+					test.primaries = primaries; test.targetNits = nits;
+					test.blackNits = nits / 1000.0f;
+					TargetLutGpuFixture before, after;
+					Assert::IsTrue(before.Create()); Assert::IsTrue(after.Create());
+					test.legacy = true;
+					const auto oldPixels = before.RenderCoordinateField(nullptr, 64, 64, &test);
+					test.legacy = false;
+					const auto pixels = after.RenderCoordinateField(nullptr, 64, 64, &test);
+					if (reference.empty()) reference = pixels;
+					Assert::AreEqual(0, std::memcmp(reference.data(), pixels.data(), pixels.size() * sizeof(RgbaPixel)));
+					size_t changed = 0; int maximumDelta = 0;
+					const auto* a = reinterpret_cast<const uint8_t*>(oldPixels.data());
+					const auto* b = reinterpret_cast<const uint8_t*>(pixels.data());
+					for (size_t i = 0; i < pixels.size() * sizeof(RgbaPixel); ++i)
+					{
+						if (a[i] != b[i]) ++changed;
+						maximumDelta = std::max(maximumDelta, std::abs(int(a[i]) - int(b[i])));
+					}
+					Logger::WriteMessage(("VP-0173 gamut=" + std::to_string(primaries) +
+						" nits=" + std::to_string(nits) + " changed_bytes=" + std::to_string(changed) +
+						" max_code_delta=" + std::to_string(maximumDelta) + "\n").c_str());
+					if (nits == 203.0f) Assert::AreEqual(size_t(0), changed);
+				}
+			}
+		}
+
+		TEST_METHOD(HdrLuminanceGpuReadbackPreservesToneMappingAbove203Nits)
+		{
+			for (float nits : { 400.0f, 500.0f })
+			{
+				LuminanceCase test; test.hdr = true; test.targetNits = nits;
+				test.blackNits = nits / 1000.0f; test.primaries = PL_COLOR_PRIM_BT_2020;
+				TargetLutGpuFixture before, after;
+				Assert::IsTrue(before.Create()); Assert::IsTrue(after.Create());
+				test.legacy = true;
+				const auto original = before.RenderCoordinateField(nullptr, 64, 64, &test);
+				test.legacy = false;
+				const auto pixels = after.RenderCoordinateField(nullptr, 64, 64, &test);
+				Assert::AreEqual(0, std::memcmp(original.data(), pixels.data(), pixels.size() * sizeof(RgbaPixel)));
+			}
+		}
+
+		TEST_METHOD(SdrLuminanceD3D11HintKeepsSdrAndForced8BitTransport)
+		{
+			TargetLutGpuFixture fixture; Assert::IsTrue(fixture.Create());
+			for (bool force8bit : { false, true })
+				for (float nits : { 40.0f, 75.0f, 203.0f, 203.01f, 400.0f, 500.0f })
+					fixture.CheckSdrSwapchain(nits, force8bit);
+		}
+
 		TEST_METHOD(EmptyPathLeavesLutDisabled)
 		{
 			const LoadResult result = Load(nullptr, "");

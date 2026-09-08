@@ -82,6 +82,17 @@ namespace LibplaceboRenderParameters
 	bool Build(const Settings& settings, bool hasDisplayLut,
 		Projection& projection, std::string& error);
 
+	// SDR is display-referred: brightness controls belong only to HDR tone mapping.
+	// Equal fixed source/target references preserve SDR code values and keep the
+	// renderer's HDR-only scaling/peak decisions independent of display settings.
+	void ApplySourceLuminance(bool inputIsSdr, pl_color_space& source);
+	void ApplyTargetLuminance(bool inputIsSdr, float targetNits, float blackNits,
+		pl_color_space& target);
+
+	// Contain the pre-upstream-4dbc490b D3D11 max_luma-based HDR selection.
+	// This copy is transport metadata only; HDR tone mapping keeps its target.
+	pl_color_space MakeSwapchainColorHint(const pl_color_space& output);
+
 	// Applies the user-declared native display precision to an already resolved
 	// target representation. The storage depth remains unchanged; lower display
 	// precision is represented MSB-aligned so libplacebo dithers and writes the

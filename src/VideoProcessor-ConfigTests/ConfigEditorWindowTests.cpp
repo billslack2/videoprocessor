@@ -385,6 +385,52 @@ void save(ConfigEditorWindow& window)
     require(!button->isEnabled(), "Apply did not complete successfully");
 }
 
+void testHdrTargetLuminanceValidationRetainsSavedValue()
+{
+    QTemporaryDir directory;
+    const QString path = copyFixture(directory);
+    ConfigEditorWindow window(path, 0, true);
+    auto* edit = requireControl<QLineEdit>(window,
+        QStringLiteral("config.vprenderer.sdr_target_nits"));
+    edit->setText(QStringLiteral("400"));
+    save(window);
+    const QByteArray saved = readBytes(path);
+    auto* apply = requireControl<QPushButton>(window, QStringLiteral("applyConfiguration"));
+    auto* status = requireControl<QLabel>(window, QStringLiteral("configurationStatus"));
+    for (const QString& invalid : { QStringLiteral("501"), QStringLiteral("600"),
+        QStringLiteral("39"), QStringLiteral("nan") })
+    {
+        edit->setText(invalid);
+        QCoreApplication::processEvents();
+        require(!apply->isEnabled(), "Invalid HDR destination can be saved");
+        require(status->text().contains(QStringLiteral("40 through 500")),
+            "HDR destination validation must explain the accepted range");
+        require(edit->text() == invalid && readBytes(path) == saved,
+            "Invalid HDR destination silently replaced the entered or saved value");
+    }
+    edit->setText(QStringLiteral("500"));
+    save(window);
+    require(readBytes(path).contains("sdr_target_nits: 500"),
+        "Maximum supported HDR destination was not saved");
+    const QByteArray savedAt500 = readBytes(path);
+    auto* black = requireControl<QLineEdit>(window,
+        QStringLiteral("config.vprenderer.sdr_black_nits"));
+    for (const QString& invalid : { QStringLiteral("-1"), QStringLiteral("500"),
+        QStringLiteral("nan") })
+    {
+        black->setText(invalid);
+        QCoreApplication::processEvents();
+        require(!apply->isEnabled() && status->text().contains(QStringLiteral("sdr_black_nits")),
+            "Invalid HDR destination black was not visibly rejected");
+        require(readBytes(path) == savedAt500, "Invalid black changed the saved configuration");
+    }
+    black->setText(QStringLiteral("Auto"));
+    edit->setText(QStringLiteral("40"));
+    save(window);
+    require(readBytes(path).contains("sdr_target_nits: 40"),
+        "Minimum supported HDR destination was not saved");
+}
+
 void testEveryPageRoundTrips()
 {
     QTemporaryDir directory;
@@ -5005,6 +5051,8 @@ int main(int argc, char** argv)
     int failures = 0;
     failures += run("shared profile list controller contract",
         testSharedProfileListControllerContract);
+    failures += run("HDR target luminance validation retains saved value",
+        testHdrTargetLuminanceValidationRetainsSavedValue);
     failures += run("every page round trips", testEveryPageRoundTrips);
     failures += run("renderer section tabs stay synchronized during rapid clicks",
         testRendererSectionTabsRemainSynchronizedDuringRapidClicks);

@@ -3628,6 +3628,7 @@ struct LibplaceboVideoRenderer::Impl
 	double sdrTargetNits = PL_COLOR_SDR_WHITE;
 	double sdrBlackNits = PL_COLOR_SDR_WHITE / PL_COLOR_SDR_CONTRAST;
 	struct pl_color_space configuredOutputColor{};
+	std::string lastLuminanceSignature;
 	LibplaceboOutput::Plan requestedOutputPlan;
 	LibplaceboOutput::Plan outputPlan;
 	LibplaceboOutput::Actual actualOutput;
@@ -5855,6 +5856,15 @@ struct LibplaceboVideoRenderer::Impl
 			isChild ? "embedded child preview" : "none");
 	}
 
+	void ApplySwapchainColorHint()
+	{
+		if (!swapchain || vpOwnedSwapchain)
+			return;
+		const auto hint = LibplaceboRenderParameters::MakeSwapchainColorHint(
+			configuredOutputColor);
+		pl_swapchain_colorspace_hint(swapchain, &hint);
+	}
+
 	void SetSwapchainColorHint(LibplaceboOutput::DxgiEncoding encoding,
 		LibplaceboOutput::TargetTransfer targetTransfer)
 	{
@@ -5871,8 +5881,7 @@ struct LibplaceboVideoRenderer::Impl
 		// libplacebo applies a colour-space hint lazily while starting a frame.
 		// Do not give it that authority for the VP-owned path: VP applies the
 		// DXGI state synchronously and tracks that applied transition below.
-		if (swapchain && !vpOwnedSwapchain)
-			pl_swapchain_colorspace_hint(swapchain, &configuredOutputColor);
+		ApplySwapchainColorHint();
 	}
 
 	void ReleaseVpOwnedSwapchain()
@@ -6450,8 +6459,7 @@ struct LibplaceboVideoRenderer::Impl
 			return false;
 		}
 
-		if (!vpOwnedSwapchain)
-			pl_swapchain_colorspace_hint(swapchain, &configuredOutputColor);
+		ApplySwapchainColorHint();
 		RECT client{};
 		if (!GetClientRect(videoHwnd, &client))
 		{
@@ -9567,18 +9575,9 @@ struct LibplaceboVideoRenderer::Impl
 				renderParams.deband_params ? 1 : 0,
 				lastSdrGammaDecision.reason.c_str());
 		}
-		// SDR is already display-referred. Match its nominal luminance to the SDR
-		// render target so libplacebo performs range/matrix/transfer conversion but
-		// does not tone-map an inferred 203-nit SDR source into a different target.
-		// HDR inputs retain their source/mastering luminance and use the configured
-		// tone-mapping path.
-		if (state.eotf == EOTF::SDR)
-		{
-			image.color.hdr.min_luma = static_cast<float>(sdrBlackNits);
-			image.color.hdr.max_luma = static_cast<float>(sdrTargetNits);
-			image.color.hdr.max_cll = 0.0f;
-			image.color.hdr.max_fall = 0.0f;
-		}
+		// SDR never inherits the HDR tone-map destination or its black level.
+		LibplaceboRenderParameters::ApplySourceLuminance(
+			state.eotf == EOTF::SDR, image.color);
 		image.crop.x0 = 0.0f;
 		image.crop.y0 = 0.0f;
 		image.crop.x1 = static_cast<float>(width);
@@ -9728,8 +9727,34 @@ struct LibplaceboVideoRenderer::Impl
 		if (calibrationTransfer != PL_COLOR_TRC_UNKNOWN)
 			baseTarget.color.transfer = calibrationTransfer;
 		baseTarget.color.primaries = TargetPlPrimaries();
-		baseTarget.color.hdr.min_luma = static_cast<float>(sdrBlackNits);
-		baseTarget.color.hdr.max_luma = static_cast<float>(sdrTargetNits);
+		LibplaceboRenderParameters::ApplyTargetLuminance(
+			state.eotf == EOTF::SDR, static_cast<float>(sdrTargetNits),
+			static_cast<float>(sdrBlackNits), baseTarget.color);
+		std::ostringstream luminanceSignature;
+		luminanceSignature << static_cast<int>(state.eotf) << '|'
+			<< image.color.transfer << '|' << image.color.hdr.min_luma << '|'
+			<< image.color.hdr.max_luma << '|' << baseTarget.color.transfer << '|'
+			<< baseTarget.color.hdr.min_luma << '|' << baseTarget.color.hdr.max_luma
+			<< '|' << sdrTargetNits << '|' << sdrBlackNits << '|'
+			<< static_cast<int>(actualOutput.encoding) << '|'
+			<< swapchainFrame.fbo->params.format->name;
+		if (lastLuminanceSignature != luminanceSignature.str())
+		{
+			lastLuminanceSignature = luminanceSignature.str();
+			DebugLog::Log(
+				"LUMINANCE_CONTRACT input_sdr=%d source_transfer=%s source_luma=%.4f..%.2f source_effective_hdr=%d target_transfer=%s target_luma=%.4f..%.2f target_effective_hdr=%d hdr_destination=%.4f..%.2f format=%s dxgi=%s peak_eligible=%d",
+				state.eotf == EOTF::SDR ? 1 : 0,
+				pl_color_transfer_name(image.color.transfer),
+				image.color.hdr.min_luma, image.color.hdr.max_luma,
+				pl_color_space_is_hdr(&image.color) ? 1 : 0,
+				pl_color_transfer_name(baseTarget.color.transfer),
+				baseTarget.color.hdr.min_luma, baseTarget.color.hdr.max_luma,
+				pl_color_space_is_hdr(&baseTarget.color) ? 1 : 0,
+				sdrBlackNits, sdrTargetNits,
+				swapchainFrame.fbo->params.format->name,
+				LibplaceboOutput::ToString(actualOutput.encoding),
+				renderParams.peak_detect_params && pl_color_space_is_hdr(&image.color) ? 1 : 0);
+		}
 		ConfigureDisplayLutForTarget(baseTarget);
 		if (!displayCalibrationContractLogged)
 		{
