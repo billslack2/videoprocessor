@@ -2,39 +2,52 @@
 
 ## Status
 
-In Progress (2026-09-08). Implementation on `codex/vp-0173-sdr-luminance`
-in `E:\codex\videoprocessor\vp-0173-sdr-luminance`, based on current
-`origin/v1.3.005-beta` at `d663773cedabcfa9e9c197046839ea99dd1ed965`.
+Review (2026-09-08). Implemented in draft PR
+https://github.com/billslack2/videoprocessor/pull/81 against `v1.3.005-beta`.
+Source commits: `b1d7eb2b` (implementation), `829493db` (validation evidence).
+Current integration base: `e5f80f89a564a7600957013d2efcdfa4d7764426`.
+Worktree: `E:\codex\videoprocessor\vp-0173-sdr-luminance`.
 
-User clarification: no separate SDR brightness setting. Preserve SDR input
-apart from scaling and explicitly enabled color processing. Existing
-`sdr_target_nits` / `sdr_black_nits` remain compatible configuration keys for
-the HDR-to-SDR tone-map destination; SDR uses a fixed internal reference.
+Clean x64 Release solution rebuild passes. 245/245 native tests and 2/2
+Qt editor tests pass. GPU readbacks use bundled libplacebo on D3D11 WARP:
+SDR unity/up/down scaling invariant at 75/203/400/500 nits, optional debanding
+still applies and remains invariant, HDR 400/500-nit output unchanged, and
+SDR/forced-8-bit swapchains remain SDR through 500 nits. Invalid white/black
+input is visibly rejected with the saved value retained.
 
-Verified bundled libplacebo c3a3d203 DLL classifies SDR max_luma > 203 as HDR.
-Upstream transport fix 4dbc490b0770539942abb3cc61fdce5438d06331 is absent.
-Implement VP-side containment at both existing hint call sites through one
-helper, preserving the fork and its analysis-crop ABI. GPU readback, scaling,
-gamut-mismatch, transport, configuration validation and Release build pending.
+Final libplacebo fork: `c646b39886d6172b853eafe82e6d6e5c2aeb5de0`; corresponding
+source archive inspected. It still lacks upstream 4dbc490b. VP-side hint
+containment is implemented; no DLL update/cherry-pick. Exact hashes and
+reproduction commands are in `docs/VP-0173-validation.md` in the PR.
+
+P3/BT.2020-to-Rec.709 perceptual gamut mapping now consistently uses the
+existing 203-nit reference behavior, independent of the HDR target. Measured
+old-versus-corrected differences at 75/400 nits reach 25 8-bit codes in the
+fixture; the full table is recorded for review. Physical GPU/HDMI/projector
+validation and merge/release decision remain outstanding. No deployment.
+
+User clarification: SDR is not literal passthrough. Selected debanding,
+scaling and other enabled non-tone-mapping processing still apply. No separate
+SDR brightness control is added; existing luminance keys control HDR-to-SDR
+tone mapping only.
 
 ## User story
 
-As a VP Renderer operator with a bright calibrated SDR display, I want to set
-its real SDR peak luminance without changing SDR content classification,
-scaling behavior, peak detection, or display signaling, so calibration metadata
-does not accidentally make SDR behave as HDR.
+As a VP Renderer operator, I want SDR input to retain its intended appearance
+with selected scaling, debanding and other explicitly enabled processing,
+without tone mapping or changes caused by HDR destination luminance settings.
 
 ## Product contract
 
-For an SDR source, SDR target/display luminance is display metadata, not an HDR
-classification input. Raising it above the libplacebo SDR-white threshold must
-not enable HDR-only renderer behavior, alter SDR scaler selection or peak
-detection, negotiate PQ/BT.2020 transport, or otherwise change a matched SDR
-presentation.
+For SDR input, `sdr_target_nits` and `sdr_black_nits` do not control image
+brightness or luminance remapping. Matched fixed internal luminance references
+prevent HDR-only classification and keep SDR scaling, peak detection and
+transport independent of these settings. Physical display brightness remains
+controlled by the display/calibration. No separate SDR luminance setting is
+needed. Existing debanding, gamma, gamut and calibration processing is retained.
 
-For an HDR source, the configured target luminance remains the legitimate
-tone-map destination. This story must preserve HDR tone mapping and avoid
-conflating the SDR display-peak role with the HDR tone-map target role.
+For HDR input, the existing configuration keys remain the HDR-to-SDR tone-map
+destination white/black controls. Preserve source HDR metadata and tone mapping.
 
 ## Scope
 
@@ -45,8 +58,7 @@ conflating the SDR display-peak role with the HDR tone-map target role.
 2. On the VP SDR render path, prevent `sdr_target_nits` from populating source
    or destination luminance in a way that classifies an SDR frame as HDR.
    Keep SDR source/target luminance at SDR white for the render-path
-   classification inputs while preserving the configured display metadata where
-   it is genuinely needed.
+   classification inputs while preserving configured destination luminance for HDR input only.
 3. Review the setting model and editor validation. Values above the existing
    ceiling must either be accepted safely or rejected explicitly in the UI and
    documentation; they must never silently revert to a default value.
