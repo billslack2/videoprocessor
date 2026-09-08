@@ -28,3 +28,7 @@ The shared editor now supplies LLDV list management, naming, ordering, rules, sh
 Validation: x64 Release configuration app and test executable built successfully. Final focused tests passed: LLDV standard profiles (including migration values/comments, lifecycle, rules, cycle shortcut persistence, and runtime metadata resolution), named metadata preservation, optional-section creation, and every-page round trips. Full suite: 63 passes and one window-topmost timing failure; the failing stable-reveal test passed in isolation. Existing compiler shadowing and Qt deployment-environment warnings remain.
 
 Remaining: code review and user acceptance before merge/release. No deployed binaries or active user configuration were changed.
+## Test deployment — 2026-09-08
+At the user's request, deployed commit 971b6fad from a successfully completed x64 Release build to C:\Videoprocessor\vp. Replaced and SHA-256 verified the matching VideoProcessor.exe and vprenderer\VideoProcessorVPRenderer.dll, plus config\VideoProcessorConfig.exe, config\VideoProcessorConfigDiscovery.dll, and docs\CONFIGURATION.html. Installed runtime dependency hashes already match the build inputs.
+
+Backup: C:\Videoprocessor\vp\backups\20260908-151408-vp0176-971b6fad (includes the original configuration and deployment.json hash record). Active VideoProcessor.cfg remained byte-identical; no configuration edits were made. VideoProcessor was closed during deployment and is ready for the user's test. LLDV migration occurs on editor save. Awaiting user acceptance; PR remains draft and unmerged.
