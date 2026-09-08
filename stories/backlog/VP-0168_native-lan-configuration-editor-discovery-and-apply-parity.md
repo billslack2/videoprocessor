@@ -8,7 +8,9 @@ running VideoProcessor instance on the same LAN.
 
 2026-09-08: Scope refined to the existing Windows config executable, three
 RPC operations, local loopback from the first implementation, and tray-based
-selection with a remembered target and a ten-instance discovery limit.
+selection with a remembered target and a ten-instance discovery limit across
+the network. Discovery must find both the local and remote running VP systems;
+multiple versions across the LAN are the concern, not a same-computer feature.
 
 ## User story
 
@@ -46,11 +48,19 @@ the real display update when I choose **Apply** or **OK**.
    between local and remote use. Both exercise the same serialization,
    validation, persistence, and runtime apply implementation. Existing local
    functionality and Apply/OK behavior must remain equivalent to today.
-7. Discovery uses a fixed-port UDP LAN query/reply protocol: the editor sends
-   a discovery request and each current VP instance replies with a stable
-   instance ID, friendly machine/display name, VP version, and RPC endpoint.
-   The picker also permits a manual host/address for cases where broadcasts
-   are unavailable.
+7. Every running VP host exposes a discovery responder for the lifetime of its
+   RPC endpoint, independently of whether its config editor is open. Discovery
+   uses a fixed-port UDP LAN query/reply protocol: the config editor broadcasts
+   a discovery request on the local network and each running VP host advertises
+   its availability by replying with a stable instance ID, computer name, VP
+   version, protocol version, and reachable RPC endpoint. This advertisement
+   is a response to discovery; periodic unsolicited announcements are not
+   required. Include a loopback discovery query so the local running VP is
+   discovered even when the network does not echo broadcasts to the sender.
+   Deduplicate local and LAN replies for the same instance. Discover hosts
+   without requiring users to enter their addresses or open remote config
+   editors. Manual host/address entry remains a fallback when broadcasts are
+   unavailable.
 8. The apply response reports success or a user-facing validation/save error
    and the accepted runtime action. Distinguish an accepted/requested reset or
    restart from a completed one; the current local path requests transitions
@@ -66,11 +76,14 @@ the real display update when I choose **Apply** or **OK**.
     is unavailable, show that state and allow another selection; do not silently
     redirect pending edits to a different host. Resolve unsaved edits before
     changing targets using the existing save/discard interaction.
-11. Treat discovery results as VP instances, not just computer names or version
-    strings. Multiple versions/installations may run on one computer. Retain
-    stable instance identity and endpoint, and show version plus an instance
-    qualifier when needed to disambiguate otherwise identical names (including
-    multiple `LOCAL` entries).
+11. Discover and distinguish running VP instances across the same NETWORK,
+    including different VP versions running on different computers. Identify
+    targets by stable instance identity and endpoint, retaining computer name
+    and version for selection. Two computers running the same VP version are
+    two targets, not a duplicate. Use `LOCAL` for this computer and the computer
+    name for remote targets; show a version/instance qualifier only when needed
+    to disambiguate names. Multiple installations on one computer are an edge
+    case rather than the focus of this requirement.
 12. Stop each discovery scan once ten distinct valid VP instances have been
     collected, counting local and remote instances together. Deduplicate
     replies before counting, ignore further results for that scan, and display
@@ -114,12 +127,18 @@ the real display update when I choose **Apply** or **OK**.
 
 - Starting the same native config executable locally opens the established Qt
   configuration UI and applies changes through the shared target-side API.
-- Starting it on a laptop discovers responding VP instances on the same LAN
-  subnet up to the ten-instance limit; a manually entered host can also be
-  selected.
+- Starting the config editor discovers both local and remote running VP hosts
+  on the same LAN subnet, up to ten distinct instances network-wide. Verify
+  discovery across multiple computers with both matching and differing VP
+  versions, without manually entering addresses or opening config editors on
+  those hosts. A manually entered host can also be selected.
+- Each running VP host answers discovery while its RPC endpoint is available;
+  a new scan no longer advertises a stopped host. Loopback and LAN responses
+  for one instance produce one entry, and two hosts sharing a version remain
+  separate entries.
 - Tray actions use `Open Configuration (LOCAL)` or
-  `Open Configuration (<computer name>)` as appropriate. Multiple instances
-  on the same machine remain distinguishable and independently selectable.
+  `Open Configuration (<computer name>)` as appropriate. Discovered systems
+  across the network remain distinguishable and independently selectable.
 - The last explicitly selected target is restored after reopening/restarting
   the client; an unavailable target does not cause silent fallback or writes
   to another computer.
