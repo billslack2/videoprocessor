@@ -9,6 +9,7 @@
 #include <pch.h>
 #include <ApplicationShutdownPolicy.h>
 #include <DebugLog.h>
+#include <OsdTimingPolicy.h>
 #include "StatsOverlayWindow.h"
 #include <algorithm>
 #include <cmath>
@@ -1097,7 +1098,7 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 				m_stats.presentationTargetLeadMs);
 		else if (!m_stats.presentationTimingStatus.IsEmpty())
 			line.Format(TEXT("%-15s--- (%s)"), TEXT("- Present:"),
-				static_cast<LPCTSTR>(m_stats.presentationTimingStatus));
+				OsdTimingPolicy::Status(m_stats.presentationTimingStatus.GetString()).c_str());
 		else
 			line.Format(TEXT("%-15s---"), TEXT("- Present:"));
 	}
@@ -1135,7 +1136,7 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 		// Row 1 - what it costs now, over the rolling window. The percentage
 		// is the window PEAK against one refresh, so it is the headroom that
 		// matters rather than a flattering average.
-		if (m_stats.renderLoadSettling)
+		if (OsdTimingPolicy::WarmingEnabled && m_stats.renderLoadSettling)
 			line.Format(TEXT("GPU render 10s:  settling..."));
 		else if (!m_stats.renderLoadGpuValid)
 			line.Format(TEXT("GPU render 10s:  measuring..."));
@@ -1225,9 +1226,10 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 		line.Format(TEXT(" - Status:        None"));
 	else if (!m_stats.sceneTimingStatus.IsEmpty())
 		line.Format(TEXT(" - Status:        %-s"),
-			static_cast<LPCTSTR>(m_stats.sceneTimingStatus));
+			OsdTimingPolicy::Status(m_stats.sceneTimingStatus.GetString()).c_str());
 	else if (!m_stats.sceneTimingReady)
-		line.Format(TEXT(" - Status:        Warming"));
+		line.Format(TEXT(" - Status:        %s"),
+			OsdTimingPolicy::WarmingEnabled ? TEXT("Warming") : TEXT("Measuring"));
 	else if (!m_stats.sceneTimingRatesCompatible)
 		line.Format(TEXT(" - Status:        Unavailable"));
 	else

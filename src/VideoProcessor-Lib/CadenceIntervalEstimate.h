@@ -1,6 +1,7 @@
 #pragma once
 
 #include "DisplayRefreshRatePolicy.h"
+#include "OsdTimingPolicy.h"
 
 #include <algorithm>
 #include <cmath>
@@ -50,6 +51,7 @@ public:
         m_samples.clear();
         m_started = false;
         m_waitingForRates = false;
+        m_initialDifferenceHz = 0.0;
     }
 
     void Update(uint64_t nowMs, double captureHz, double displayHz,
@@ -67,6 +69,7 @@ public:
             Reset();
         if (!m_started)
         {
+            m_initialDifferenceHz = captureHz - displayHz;
             m_contract = contract;
             m_lastMs = nowMs;
             m_started = true;
@@ -100,14 +103,14 @@ public:
             weighted += sample.differenceHz * ms;
             duration += ms;
         }
-        return duration > 0.0 ? weighted / duration : 0.0;
+        return duration > 0.0 ? weighted / duration : m_initialDifferenceHz;
     }
 
-    std::wstring Text() const
+    std::wstring Text(bool warmingEnabled = OsdTimingPolicy::WarmingEnabled) const
     {
         if (!m_started)
-            return m_waitingForRates ? L"Warming" : L"Unavailable";
-        if (EvidenceSeconds() < 30.0)
+            return warmingEnabled && m_waitingForRates ? L"Warming" : L"Unavailable";
+        if (warmingEnabled && EvidenceSeconds() < 30.0)
             return L"Warming";
         const double difference = MeanDifferenceHz();
         if (std::fabs(difference) <= 1e-12)
@@ -139,6 +142,7 @@ private:
     std::deque<Sample> m_samples;
     Contract m_contract;
     uint64_t m_lastMs = 0;
+    double m_initialDifferenceHz = 0.0;
     bool m_started = false;
     bool m_waitingForRates = false;
 };

@@ -15759,11 +15759,16 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		configuredDisplayRefreshRate : 0.0;
 	cadenceContract.rateSource = displayRefreshRateOverridden ? 1 :
 		(madVRDetectedRefreshRateKnown ? 2 : 3);
+	double osdPhysicalDisplayRate = OsdTimingPolicy::WarmingEnabled ?
+		CadenceIntervalEstimate::SelectPhysicalDisplayRate(
+			displayRateResult, readinessRateResult, startupRateResult) :
+		OsdTimingPolicy::DisplayRate(displayRateInput);
+	if (!OsdTimingPolicy::WarmingEnabled && osdPhysicalDisplayRate <= 0.0)
+		osdPhysicalDisplayRate = OsdTimingPolicy::DisplayRate(startupRateInput);
 	const double cadenceDisplayRate = displayRefreshRateOverridden ?
 		configuredDisplayRefreshRate : (madVRDetectedRefreshRateKnown ?
 			madVRDetectedRefreshRate :
-			CadenceIntervalEstimate::SelectPhysicalDisplayRate(
-				displayRateResult, readinessRateResult, startupRateResult));
+			osdPhysicalDisplayRate);
 	const bool cadenceCaptureActive =
 		m_rendererState == RendererState::RENDERSTATE_RENDERING &&
 		m_cadenceInputLocked != InputLocked::NO &&
@@ -15873,15 +15878,20 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		// Keep the accepted/renderer-selected value authoritative for timing.
 		// During DXGI warm-up, the provisional candidate is still useful OSD
 		// telemetry when labelled as such; it is never fed to timing consumers.
-		stats.displayRefreshRate = displayRefreshRate > 0.0 ?
-			displayRefreshRate : sampledDisplayTiming.refreshRateHz;
+		stats.displayRefreshRate = OsdTimingPolicy::WarmingEnabled ?
+			(displayRefreshRate > 0.0 ? displayRefreshRate :
+				sampledDisplayTiming.refreshRateHz) : cadenceDisplayRate;
 		stats.displayRefreshRateOverridden = displayRefreshRateOverridden;
 		if (!displayRefreshRateOverridden &&
 			displayRateResult.decision !=
 				DisplayRefreshRateDecision::Accepted)
 		{
-			stats.displayRefreshRateStatus.Format(TEXT("%S"),
-				ToString(displayRateResult.decision));
+			if (OsdTimingPolicy::WarmingEnabled ||
+				displayRateResult.decision != DisplayRefreshRateDecision::Warming)
+			{
+				stats.displayRefreshRateStatus.Format(TEXT("%S"),
+					ToString(displayRateResult.decision));
+			}
 		}
 		stats.sceneTimingIntervals = sampledDisplayTiming.intervalsObserved;
 		stats.sceneTimingElapsedSeconds = sceneTimingElapsedSeconds;

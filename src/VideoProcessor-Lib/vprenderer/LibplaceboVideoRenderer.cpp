@@ -11349,15 +11349,18 @@ struct LibplaceboVideoRenderer::Impl
 			presentationTelemetry.Observe(sample);
 			const AlphaPresentationSnapshot presentationSnapshot =
 				presentationTelemetry.Snapshot();
+			const double osdPresentationHz = OsdTimingPolicy::WarmingEnabled ?
+				presentationSnapshot.measuredDisplayHz : presentationSnapshot.observedDisplayHz;
 			if (sample.available &&
-				presentationSnapshot.evidence == AlphaPresentationEvidence::Stable &&
-				presentationSnapshot.measuredDisplayHz >= 10.0 &&
+				(!OsdTimingPolicy::WarmingEnabled ||
+					presentationSnapshot.evidence == AlphaPresentationEvidence::Stable) &&
+				osdPresentationHz >= 10.0 && osdPresentationHz <= 240.0 &&
 				sample.qpcFrequency > 0 && sample.syncQpc > 0 &&
 				swapEndQpc > 0)
 			{
 				const int64_t periodQpc = static_cast<int64_t>(std::llround(
 					static_cast<double>(sample.qpcFrequency) /
-					presentationSnapshot.measuredDisplayHz));
+					osdPresentationHz));
 				if (periodQpc > 0)
 				{
 					int64_t targetQpc = sample.syncQpc + periodQpc;

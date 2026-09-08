@@ -148,6 +148,11 @@ void AlphaPresentationTelemetry::Observe(
 AlphaPresentationSnapshot AlphaPresentationTelemetry::Snapshot() const
 {
 	AlphaPresentationSnapshot snapshot;
+	if (m_lastSyncQpc > m_firstSyncQpc && m_qpcFrequency > 0 &&
+		m_lastSyncRefresh > m_firstSyncRefresh)
+		snapshot.observedDisplayHz = static_cast<double>(m_lastSyncRefresh -
+			m_firstSyncRefresh) * static_cast<double>(m_qpcFrequency) /
+			static_cast<double>(m_lastSyncQpc - m_firstSyncQpc);
 	snapshot.evidence = m_evidence;
 	snapshot.timingStatus = m_timingStatus;
 	snapshot.frameStatisticsResult = m_frameStatisticsResult;

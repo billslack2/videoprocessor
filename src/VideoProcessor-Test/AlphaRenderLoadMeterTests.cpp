@@ -10,6 +10,25 @@ namespace Tests
 	TEST_CLASS(AlphaRenderLoadMeterTests)
 	{
 	public:
+		TEST_METHOD(DefaultOsdPolicyPublishesFirstSampleAndKeepsAveraging)
+		{
+			AlphaRenderLoadMeter meter;
+			meter.AddPass(2000000);
+			meter.CommitFrame(2.0, 0.1, 16.67, true);
+			Assert::IsTrue(meter.Snapshot().gpuValid);
+			Assert::IsFalse(meter.Snapshot().settling);
+			meter.AddPass(4000000);
+			meter.CommitFrame(4.0, 0.1, 16.67, true);
+			Assert::AreEqual(3.0, meter.Snapshot().gpu.average, 0.001);
+		}
+		TEST_METHOD(ExplicitWarmupStillHoldsSamples)
+		{
+			AlphaRenderLoadMeter meter(100.0, 100.0);
+			meter.AddPass(2000000);
+			meter.CommitFrame(2.0, 0.1, 16.67, true);
+			Assert::IsTrue(meter.Snapshot().settling);
+			Assert::IsFalse(meter.Snapshot().gpuValid);
+		}
 		TEST_METHOD(SumsResolvedLibplaceboPasses)
 		{
 			AlphaRenderLoadMeter meter(0.0, 0.0);
