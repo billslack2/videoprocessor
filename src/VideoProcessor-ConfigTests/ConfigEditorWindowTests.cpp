@@ -2147,8 +2147,8 @@ void testRendererProfileSectionsCollapseAndPersist()
     QComboBox* displayBitDepth = requireControl<QComboBox>(window,
         QStringLiteral("config.vprenderer.display_bit_depth"));
     require(displayBitDepth->property("effectiveValue").toString().compare(QStringLiteral("auto"), Qt::CaseInsensitive) == 0 &&
-        displayBitDepth->currentText().contains(QStringLiteral("Legacy")),
-        "Existing automatic dither depth was not preserved as legacy state");
+        displayBitDepth->currentText().startsWith(QStringLiteral("When unset:")),
+        "Existing automatic dither depth was not preserved with its direct label");
     require(displayBitDepth->itemText(displayBitDepth->findData(QStringLiteral("8"))) == QStringLiteral("8-bit") &&
         displayBitDepth->itemText(displayBitDepth->findData(QStringLiteral("10"))) == QStringLiteral("10-bit"),
         "Explicit dither depth choices missing");
