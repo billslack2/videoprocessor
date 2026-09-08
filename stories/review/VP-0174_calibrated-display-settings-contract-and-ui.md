@@ -369,3 +369,22 @@ saved config tokens retain semantics. Complete Release validation/deployment pen
 - Backup: C:\Videoprocessor\vp\backup-before-vp0174-requested-rebuild-20260908-145330.
   Running Config images retained in that backup to preserve the user's open session
   and unsaved edits. Tray Exit and reopen loads the freshly rebuilt executable.
+
+
+### Rebased onto merged LLDV beta and deployed for testing (2026-09-08)
+
+- User requested waiting for their beta merge, then rebasing, rebuilding and deploying.
+  PR #84 (VP-0176 Standard LLDV profiles) was merged; latest beta tip is 89d55ca5.
+- Clean worktree E:\codex\videoprocessor\vp-0174-post-lldv. Rebased all nine VP-0174
+  commits without conflicts. Range-diff confirms each patch is unchanged. New head
+  eb7b22f3 published to PR #82 with an exact force-with-lease protecting its prior head.
+- Full clean x64 Release build succeeded. All 1,115 native tests and seven focused UI
+  tests passed: LLDV standard profiles, preserved LLDV metadata, unified Color/Output
+  migration, SDR/LUT gamma controls, Auto labels, calibrated defaults, and every-page
+  round trips. Verified all 58 staged Release files.
+- Deployed matched host/renderer, Config/helper and documentation. All installed hashes
+  match staged artifacts. Configuration edits: none; current user configuration SHA256
+  60023E9F60E3DCD3E92D607E0D9BE880CF7DBB94CF52B9965DE8934D16538A74 preserved.
+- Backup: C:\Videoprocessor\vp\backup-before-vp0174-post-lldv-20260908-152045.
+  Open Config session preserved by retaining loaded images in the backup. Save edits,
+  tray Exit and reopen Config before testing the newly merged LLDV/profile UI.
