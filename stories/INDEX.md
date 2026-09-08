@@ -209,7 +209,7 @@ they must not contain requirements that are absent from this file.
 | VP-0171 | Backlog | Opt-in ICC/ICM display-calibration profiles for VP Renderer |
 | VP-0172 | Backlog | Source-driven output display-mode selection |
 | VP-0173 | Review | Decouple SDR target luminance from HDR classification |
-| VP-0174 | Backlog | Calibrated display settings contract and Color/Output UI |
+| VP-0174 | Review | Calibrated display settings contract and Color/Output UI |
 | VP-0066-1 | Done | Characterize the live output pipeline with replayable golden traces |
 | VP-0066-2 | Done | Extract a graph-independent video timing controller |
 | VP-0066-3 | Done | Extract epoch-aware frame transport and processing components |

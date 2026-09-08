@@ -2,8 +2,9 @@
 
 ## Status
 
-In progress (2026-09-08). Implementation on `codex/vp-0174-config-ui` from
-current beta `38e7508f`, in `E:\codex\videoprocessor\vp-0174-config-ui`.
+Review (2026-09-08). Implemented and deployed from `033f5cc3` on
+`codex/vp-0174-config-ui`, based on current beta `38e7508f`.
+PR: https://github.com/billslack2/videoprocessor/pull/82 (not merged).
 
 Originally backlog (2026-09-07). Created from an operator-facing settings guide and the
 request to make the renderer's calibrated-display choices explicit, stable,
@@ -122,7 +123,8 @@ or deployed configuration merely to apply these defaults.
 
 ## Approved implementation clarifications (2026-09-08)
 
-- Config UI only; DeckLink configuration-only keys excluded. No deployment requested.
+- Config UI only; DeckLink configuration-only keys excluded. Deployment subsequently
+  authorized explicitly, followed by a no-LUT Gamma 2.2 architectural review.
 - Combine Color and Output tab, retaining independent profile families and inheritance.
 - Remove new Auto choices for display gamma, range, Limited transfer, SDR handling,
   dither depth and numeric black. Preserve legacy/omitted behavior in existing files.
@@ -141,3 +143,27 @@ or deployed configuration merely to apply these defaults.
 - Readiness review completed with an independent specialist agent; proceed with
   the above corrections. Physical display coverage is beta feedback, not a gate
   withholding the agreed Limited2.2 choice.
+
+## Completion and deployment evidence (2026-09-08)
+
+- Full x64 Release solution build succeeded. Native tests: 1,102 passed.
+- Final complete Config UI run: 65 passed, zero failures, process exit 0.
+  A physical two-monitor test was unavailable; synthetic negative-origin clamp
+  and live target-window coverage ran.
+- Independent implementation review completed; affected-profile flag syncing,
+  retired-Auto omission and same-value activation findings fixed.
+- Deployed matching host/renderer plus Config UI and documentation to
+  `C:\Videoprocessor\vp`, with hashes checked against staged Release artifacts.
+- Backup: `C:\Videoprocessor\vp\backup-before-vp0174-20260908-101306`.
+  Active configuration SHA256 unchanged:
+  `69CDA6889972E43D80EFB2D24B01A4A9D4528041384F3E21923D4943252EE9EA`.
+- No tone-mapping math changed. Physical HDMI/display response is unmeasured;
+  beta feedback is accepted for the Limited 2.2 default.
+- Architectural review: high confidence in internal no-LUT pure-2.2 rendering
+  and single accepted-range conversion in both Full and Limited. DXGI Full G22
+  means piecewise sRGB and Studio G22 means piecewise BT.709, so downstream
+  interpretation remains a concrete concern. Dedicated no-LUT Full/Limited
+  grayscale sweeps are a coverage gap. Full report: [architectural review](../work/vp0174-gamma22-architecture-review.md).
+- Ready for PR review and user beta validation; no automatic merge performed.
+- Tracker correction: the prior index still said Backlog despite the in-progress
+  file. This transition updates both to Review.
