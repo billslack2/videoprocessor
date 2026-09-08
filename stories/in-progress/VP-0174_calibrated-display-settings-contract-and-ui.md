@@ -2,7 +2,10 @@
 
 ## Status
 
-Backlog (2026-09-07). Created from an operator-facing settings guide and the
+In progress (2026-09-08). Implementation on `codex/vp-0174-config-ui` from
+current beta `38e7508f`, in `E:\codex\videoprocessor\vp-0174-config-ui`.
+
+Originally backlog (2026-09-07). Created from an operator-facing settings guide and the
 request to make the renderer's calibrated-display choices explicit, stable,
 and easier to find. The guide is useful input, not verified product behavior;
 its pipeline claims and all current setting semantics must be checked against
@@ -17,7 +20,9 @@ and HDR tone-mapping path without hidden automatic decisions.
 
 ## Product contract
 
-Except where automatic behavior is essential to tone mapping, user-visible
+As clarified in the approved Config UI review, processing-preset inheritance,
+source metadata following, and presentation preference may remain automatic.
+For calibrated display choices, user-visible
 color and output controls must resolve to an explicit effective value. An
 absent setting may receive a documented default, but an `Auto` UI option must
 not silently select a different color/output contract from one presentation or
@@ -33,8 +38,12 @@ The baseline default calibrated-display profile is:
 | SDR input transfer | Gamma 2.2 |
 | Display transfer | Gamma 2.2 |
 | RGB output range | Full |
-| Limited transport transfer | Ignored while output is Full |
-| Limited + pure Gamma 2.2 experiment | Off |
+| Limited transport transfer | 2.2 beta, inactive while output is Full |
+| Target nits (HDR tone mapping) | 100 |
+| Target black (HDR tone mapping) | 0 |
+| Dither target depth | 10-bit, clamped to output surface |
+| Dithering | Use quality preset |
+| Limited + pure Gamma 2.2 flag | Derived: On only for Limited + 2.2 |
 
 The implementation must preserve an operator's existing explicit values during
 configuration migration. It must not overwrite calibration, profile overrides,
@@ -110,3 +119,25 @@ or deployed configuration merely to apply these defaults.
   readiness review on the current beta integration base. Capture representative
   effective-settings logs and fullscreen readbacks for the baseline default,
   Limited Gamma 2.2/2.4, P3/BT.2020 targets, HDR input, and rejected settings.
+
+## Approved implementation clarifications (2026-09-08)
+
+- Config UI only; DeckLink configuration-only keys excluded. No deployment requested.
+- Combine Color and Output tab, retaining independent profile families and inheritance.
+- Remove new Auto choices for display gamma, range, Limited transfer, SDR handling,
+  dither depth and numeric black. Preserve legacy/omitted behavior in existing files.
+- SDR input defaults 2.2; retain explicitly named Follow source metadata.
+- Retain all explicit gamma choices in the ordinary selector. Presentation labels
+  become Prefer flip (allow fallback), Flip model, Legacy BitBlt.
+- Keep processing/scaling/dithering preset inheritance and DirectShow Auto.
+- Limited2.2 is included now for beta feedback. Editing range/transfer synchronizes
+  and saves its flag; diagnostic presets cannot contradict the derived selection.
+- Target nits retains its familiar label and defaults 100 for fresh profiles;
+  target black defaults zero. VP-0173 is merged and owns HDR-only luminance behavior.
+- Correct SDR Off help: it currently follows carrier reinterpretation, not a full
+  calibrated-target bypass. No tone-mapping mathematics change is authorized here.
+- Show live requested/effective state and unavailable/rejected/fallback status;
+  do not claim measured Windows/HDMI behavior. Preserve missing LUT references.
+- Readiness review completed with an independent specialist agent; proceed with
+  the above corrections. Physical display coverage is beta feedback, not a gate
+  withholding the agreed Limited2.2 choice.
