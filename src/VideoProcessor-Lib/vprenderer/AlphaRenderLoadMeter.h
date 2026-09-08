@@ -100,7 +100,16 @@ public:
 	void ResetForGeneration(uint64_t generation)
 	{
 		m_requiredGeneration.store(generation, std::memory_order_release);
-		Reset();
+		// Keep completed samples and their original periods in the rolling window.
+		// The generation gate still rejects every unresolved old-generation result.
+	}
+
+	// Backlog recovery invalidates unresolved queries, not completed measurements.
+	void DiscardPendingSamples()
+	{
+		m_minimumGpuSubmissionSerial.store(
+			m_lastCommittedSubmissionSerial.load(std::memory_order_acquire) + 1,
+			std::memory_order_release);
 	}
 
 	void ResetForPipelineChange()
@@ -153,6 +162,7 @@ public:
 		sample.framePeriodFromRenderCadence = framePeriodFromRenderCadence &&
 			sample.framePeriodMs > 0.0;
 		++m_count;
+		m_lastCommittedSubmissionSerial.store(submissionSerial, std::memory_order_release);
 		if (!sample.eligible)
 			return;
 		++m_sessionFrames;
@@ -176,7 +186,8 @@ public:
 		}
 		ApplyPendingResetLocked();
 		const uint64_t required = m_requiredGeneration.load(std::memory_order_acquire);
-		if (required != 0 && generation != required)
+		if ((required != 0 && generation != required) ||
+			submissionSerial < m_minimumGpuSubmissionSerial.load(std::memory_order_acquire))
 		{
 			++m_unmatchedGpuSamples;
 			return false;
@@ -477,6 +488,8 @@ private:
 	uint64_t m_unmatchedGpuSamples = 0;
 	uint64_t m_invalidGpuSamples = 0;
 	uint64_t m_warmupGpuSamples = 0;
+	std::atomic<uint64_t> m_lastCommittedSubmissionSerial{ 0 };
+	std::atomic<uint64_t> m_minimumGpuSubmissionSerial{ 0 };
 	std::atomic<uint64_t> m_requiredGeneration{ 0 };
 	std::atomic_bool m_pipelineResetPending{ false };
 	std::atomic_bool m_resetPending{ false };

@@ -4097,9 +4097,9 @@ struct LibplaceboVideoRenderer::Impl
 	{
 		cadenceCorrectionPolicy.Reset(queueGeneration);
 		presentationTelemetry.Reset(queueGeneration);
-		renderLoadMeter.Reset();
-		coreRenderLoadMeter.Reset();
-		originalPrRenderLoadMeter.Reset();
+		renderLoadMeter.DiscardPendingSamples();
+		coreRenderLoadMeter.DiscardPendingSamples();
+		originalPrRenderLoadMeter.DiscardPendingSamples();
 		latestGpuSourceUploadMs.store(0.0, std::memory_order_relaxed);
 		latestGpuOverlayUploadMs.store(0.0, std::memory_order_relaxed);
 		latestGpuCoreRenderMs.store(0.0, std::memory_order_relaxed);
@@ -11742,10 +11742,11 @@ struct LibplaceboVideoRenderer::Impl
 			// renders new source frames, not the monitor scanout rate. A 24p
 			// source on a 75 Hz display has about 41.7 ms to render each new
 			// source frame; repeated scanouts do not create additional GPU work.
-			const bool framePeriodFromRenderCadence =
-				captureRateHz >= 10.0 && captureRateHz <= 500.0;
+			const double budgetRateHz = OsdTimingPolicy::FrameBudgetRate(
+				captureRateHz, nominalSourceRateHz);
+			const bool framePeriodFromRenderCadence = budgetRateHz > 0.0;
 			resetObservation.framePeriodMs = framePeriodFromRenderCadence ?
-				1000.0 / captureRateHz : 0.0;
+				1000.0 / budgetRateHz : 0.0;
 			// Every successfully submitted frame enters the render-load window
 			// here, which is what makes the OSD peak trustworthy: the telemetry
 			// line below only samples one frame in roughly 120.

@@ -177,19 +177,22 @@ namespace Tests
 			Assert::AreEqual(4.0, snapshot.gpu.last, 0.001);
 		}
 
-		TEST_METHOD(GenerationResetRejectsLateOldSubmission)
+		TEST_METHOD(GenerationResetKeepsCompletedMeasurementsAndRejectsLateOldSubmission)
 		{
 			AlphaRenderLoadMeter meter(0.0);
 			meter.CommitFrame(1, 1, 1, 1.0, 0.1, 20.0, true);
 			Assert::IsTrue(meter.RecordGpuFrame(1, 1, 1, 8.0, 2));
 			meter.ResetForGeneration(2);
-			Assert::IsFalse(meter.Snapshot().valid);
-			Assert::AreEqual(0.0, meter.Snapshot().framePeriodMs, 0.001);
+			Assert::IsTrue(meter.Snapshot().gpuValid);
+			Assert::IsFalse(meter.Snapshot().settling);
+			Assert::AreEqual(8.0, meter.Snapshot().gpu.peak, 0.001);
+			Assert::AreEqual(20.0, meter.Snapshot().framePeriodMs, 0.001);
 			meter.CommitFrame(1, 2, 2, 1.0, 0.1, 20.0, true);
 			Assert::IsFalse(meter.RecordGpuFrame(1, 2, 2, 50.0, 2));
 			meter.CommitFrame(2, 3, 3, 1.0, 0.1, 20.0, true);
 			Assert::IsTrue(meter.RecordGpuFrame(2, 3, 3, 2.0, 2));
-			Assert::AreEqual(2.0, meter.Snapshot().gpu.peak, 0.001);
+			Assert::AreEqual(8.0, meter.Snapshot().gpu.peak, 0.001);
+			Assert::AreEqual(5.0, meter.Snapshot().gpu.average, 0.001);
 		}
 
 		TEST_METHOD(PipelineChangeClearsSessionPeakButBacklogResetPreservesIt)
@@ -203,6 +206,24 @@ namespace Tests
 			Assert::IsFalse(meter.Snapshot().sessionPeakValid);
 			Assert::IsFalse(meter.Snapshot().gpuValid);
 			Assert::IsFalse(meter.RecordGpuFrame(1, 1, 1, 8.0, 2));
+		}
+
+		TEST_METHOD(BacklogResetKeepsCompletedSamplesButDiscardsPendingQueries)
+		{
+			AlphaRenderLoadMeter meter(0.0);
+			meter.CommitFrame(1, 1, 1, 1.0, 0.1, 20.0, true);
+			Assert::IsTrue(meter.RecordGpuFrame(1, 1, 1, 8.0, 2));
+			meter.CommitFrame(1, 2, 2, 1.0, 0.1, 20.0, true);
+			meter.DiscardPendingSamples();
+			Assert::IsTrue(meter.Snapshot().gpuValid);
+			Assert::AreEqual(8.0, meter.Snapshot().gpu.average, 0.001);
+			Assert::IsFalse(meter.RecordGpuFrame(1, 2, 2, 50.0, 2));
+			meter.CommitFrame(1, 3, 3, 1.0, 0.1, 20.0, true);
+			Assert::IsTrue(meter.RecordGpuFrame(1, 3, 3, 4.0, 2));
+			Assert::AreEqual(6.0, meter.Snapshot().gpu.average, 0.001);
+			AlphaRenderLoadMeter restarted(0.0);
+			Assert::IsFalse(restarted.Snapshot().gpuValid);
+			Assert::AreEqual(0.0, restarted.Snapshot().framePeriodMs, 0.001);
 		}
 
 		TEST_METHOD(RejectsInvalidGpuDurations)

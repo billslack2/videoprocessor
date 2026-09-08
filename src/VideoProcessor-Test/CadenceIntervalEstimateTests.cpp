@@ -59,7 +59,7 @@ namespace Tests
             const auto rejected = EvaluateDisplayRefreshRate(input);
             Assert::AreEqual(0.0, Estimate::SelectPhysicalDisplayRate({}, {}, rejected));
         }
-        TEST_METHOD(WaitingForMeasurementsIsWarmingAndRestartsEvidence)
+        TEST_METHOD(ResetWaitPreservesEstablishedEstimateButInactiveInputClearsIt)
         {
             Estimate estimate;
             estimate.Update(0, 0.0, 0.0, {}, true);
@@ -67,8 +67,9 @@ namespace Tests
             Feed(estimate, 1000, 31000, 0.001);
             Assert::AreEqual(L"Drop every 16m40s", estimate.Text(true).c_str());
             estimate.Update(32000, 24.001, 0.0, {}, true);
-            Assert::AreEqual(L"Warming", estimate.Text(true).c_str());
-            Assert::AreEqual(0.0, estimate.EvidenceSeconds());
+            Assert::AreEqual(L"Drop every 16m40s", estimate.Text(true).c_str());
+            Assert::AreEqual(30.0, estimate.EvidenceSeconds());
+            Assert::IsTrue(estimate.HoldingMeasurements());
             estimate.Update(33000, 0.0, 0.0, {}, false);
             Assert::AreEqual(L"Unavailable", estimate.Text(true).c_str());
         }
@@ -101,6 +102,44 @@ namespace Tests
             Assert::AreEqual(0.0, OsdTimingPolicy::DisplayRate(input, false));
             Assert::AreEqual(L"Measuring", OsdTimingPolicy::Status(L"Warming", false).c_str());
             Assert::AreEqual(L"Warming", OsdTimingPolicy::Status(L"Warming", true).c_str());
+        }
+        TEST_METHOD(ResetPauseNeverAddsSyntheticEvidenceAndResumesSmoothing)
+        {
+            Estimate estimate;
+            Feed(estimate, 0, 30000, 0.001);
+            for (uint64_t ms = 31000; ms <= 90000; ms += 1000)
+                estimate.Update(ms, 0.0, 0.0, {}, true);
+            Assert::AreEqual(L"Drop every 16m40s", estimate.Text(true).c_str());
+            Assert::AreEqual(30.0, estimate.EvidenceSeconds());
+            estimate.Update(91000, 24.003, 24.0, {});
+            Assert::IsFalse(estimate.HoldingMeasurements());
+            Assert::AreEqual(30.0, estimate.EvidenceSeconds());
+            Assert::AreEqual(0.001, estimate.MeanDifferenceHz(), 1e-12);
+            estimate.Update(92000, 24.003, 24.0, {});
+            Assert::AreEqual(31.0, estimate.EvidenceSeconds());
+            Assert::AreEqual(0.033 / 31.0, estimate.MeanDifferenceHz(), 1e-12);
+            estimate.Reset(); // Renderer restart creates a new session.
+            Assert::AreEqual(L"Unavailable", estimate.Text(false).c_str());
+        }
+        TEST_METHOD(RealContractChangeWhileWaitingCannotKeepOldEstimate)
+        {
+            Estimate estimate;
+            Estimate::Contract contract;
+            contract.captureNominalHz = 24.0;
+            Feed(estimate, 0, 30000, 0.001, contract);
+            contract.captureNominalHz = 60.0;
+            estimate.Update(31000, 0.0, 0.0, contract, true);
+            Assert::AreEqual(L"Unavailable", estimate.Text(false).c_str());
+            Assert::AreEqual(0.0, estimate.EvidenceSeconds());
+        }
+        TEST_METHOD(FrameBudgetSurvivesMeasuredRateResetUsingKnownInputRate)
+        {
+            Assert::AreEqual(59.941, OsdTimingPolicy::FrameBudgetRate(59.941, 59.94));
+            Assert::AreEqual(59.94, OsdTimingPolicy::FrameBudgetRate(0.0, 59.94));
+            Assert::AreEqual(23.976, OsdTimingPolicy::FrameBudgetRate(
+                std::numeric_limits<double>::quiet_NaN(), 23.976));
+            Assert::AreEqual(0.0, OsdTimingPolicy::FrameBudgetRate(0.0, 0.0));
+            Assert::AreEqual(0.0, OsdTimingPolicy::FrameBudgetRate(600.0, 1.0));
         }
         TEST_METHOD(FormatsRequestedIntervalsAndRoundingBoundaries)
         {
@@ -163,7 +202,7 @@ namespace Tests
             Feed(estimate, 244000, 244000, 0.001, contract);
             Assert::AreEqual(0.0, estimate.EvidenceSeconds());
         }
-        TEST_METHOD(MissingInvalidAndStaleRatesCannotRetainAnEstimate)
+        TEST_METHOD(InvalidInputClearsEstimateButSameContractTimingGapRetainsIt)
         {
             Estimate estimate;
             Feed(estimate, 0, 30000, 0.001);
@@ -174,7 +213,7 @@ namespace Tests
             Assert::AreEqual(L"Unavailable", estimate.Text(true).c_str());
             Feed(estimate, 64000, 94000, 0.001);
             estimate.Update(100000, 24.001, 24.0, {});
-            Assert::AreEqual(L"Warming", estimate.Text(true).c_str());
+            Assert::AreEqual(L"Drop every 16m40s", estimate.Text(true).c_str());
             estimate.Update(99000, 24.001, 24.0, {});
             Assert::AreEqual(0.0, estimate.EvidenceSeconds());
         }

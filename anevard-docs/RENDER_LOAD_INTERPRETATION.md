@@ -19,7 +19,11 @@ GPU budget percentages divide each sample by its own validated source/render
 period. At 23.976 fps the budget is approximately 41.71 ms, even when the monitor
 scans out repeated frames at a higher rate. This is frame-budget utilization,
 not GPU hardware-engine occupancy. Average and maximum percentages are tracked
-independently of maximum milliseconds. Invalid cadence suppresses percentages.
+independently of maximum milliseconds. During an ordinary reset, the known input format rate keeps the budget
+available while the measured drift tracker recovers. If neither input rate is
+valid, percentages are suppressed. Completed GPU history and the established
+D/R estimate survive a reset; restart or real contract/pipeline changes begin
+a new measurement session.
 
 CPU is processor time charged to all VP threads, divided by elapsed time and
 logical processor count. Its average weights each interval by its overlap with

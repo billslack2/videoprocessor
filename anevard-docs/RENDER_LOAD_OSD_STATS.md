@@ -39,10 +39,14 @@ GetProcessTimes on the existing UI timer regardless of OSD visibility; average
 weights elapsed intervals clipped to their overlap with the ten-second window.
 No claim of hardware-engine occupancy is made.
 
-Optional warmup follows OsdTimingPolicy, disabled by default. Queue/HDMI resets
-clear GPU windows; CPU resets on input lock loss, material source changes, and
+Optional warmup follows OsdTimingPolicy, disabled by default. Ordinary queue/HDMI renderer resets preserve completed GPU samples while
+rejecting unresolved old-generation results. CPU resets on input lock loss, material source changes, and
 renderer/host generation changes. Pipeline shader/profile changes clear windows
-and session peaks. Backlog recovery clears windows but retains session peaks.
+and session peaks. Backlog recovery drops pending query evidence while retaining completed samples
+and session peaks. D/R holds its established estimate during same-contract
+measurement pauses without assigning evidence weight to the gap; restart or
+contract changes clear it. GPU budget falls back to the known input format rate
+while the measured drift tracker recovers, without changing cadence correction.
 
 ## Compatibility and validation
 

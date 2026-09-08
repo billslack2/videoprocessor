@@ -5940,7 +5940,7 @@ LRESULT CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange(WPARAM wParam
 				notification->retainedRendererIngress ? "retained" : "gated");
 		}
 	}
-	else
+	else if (appliedChangeClass != CaptureVideoStateChangeClass::Duplicate)
 	{
 		// Reset refresh-rate tracking on a material signal-contract change to
 		// prevent false-positive detection.
@@ -14096,7 +14096,8 @@ void CVideoProcessorDlg::OnDisplayChange(UINT bitsPerPixel, int width, int heigh
 	if (g_displayRefreshRateSampler)
 		g_displayRefreshRateSampler->ResetMeasurement();
 
-	m_cadenceIntervalEstimate.Reset();
+	// A same-mode display reset does not invalidate the OSD estimate. Its
+	// contract check will discard history if the monitor or actual rate changes.
 
 	// A display notification is a recovery boundary even when the renderer is
 	// not rebuilt.  Give Windows and the HDMI chain the configured settle time,
@@ -15781,9 +15782,7 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		m_captureDeviceState == CaptureDeviceState::CAPTUREDEVICESTATE_CAPTURING &&
 		m_captureDeviceVideoState && m_captureDeviceVideoState->valid;
 	const bool cadenceWaitingForRates = cadenceCaptureActive &&
-		((!hasMeasuredCaptureRate && cadenceDisplayRate > 0.0) ||
-			(cadenceDisplayRate <= 0.0 &&
-				displayRateResult.decision == DisplayRefreshRateDecision::Warming));
+		(!hasMeasuredCaptureRate || cadenceDisplayRate <= 0.0);
 	m_cadenceIntervalEstimate.Update(GetTickCount64(),
 		hasMeasuredCaptureRate && cadenceCaptureActive ? measuredCaptureRate : 0.0,
 		cadenceDisplayRate, cadenceContract, cadenceWaitingForRates);
@@ -15794,11 +15793,12 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		m_lastCadenceIntervalLogTick = cadenceLogTick;
 		DebugLog::Log(
 			"OSD cadence interval: capture_hz=%.9f display_hz=%.9f "
-			"source=%d evidence_s=%.1f mean_difference_hz=%.9f status=%S",
+			"source=%d evidence_s=%.1f mean_difference_hz=%.9f holding=%d status=%S",
 			hasMeasuredCaptureRate ? measuredCaptureRate : 0.0,
 			cadenceDisplayRate, cadenceContract.rateSource,
 			m_cadenceIntervalEstimate.EvidenceSeconds(),
 			m_cadenceIntervalEstimate.MeanDifferenceHz(),
+			m_cadenceIntervalEstimate.HoldingMeasurements() ? 1 : 0,
 			m_cadenceIntervalEstimate.Text().c_str());
 	}
 
@@ -15813,6 +15813,7 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		m_transitionGeneration != m_cpuUsageRendererGeneration)
 	{
 		m_processCpuUsage.Reset();
+		m_cadenceIntervalEstimate.Reset();
 		m_cpuUsageRenderer = statsRenderer;
 		m_cpuUsageRendererGeneration = m_transitionGeneration;
 		m_loggedCpuPeakPercent = 0.0;
