@@ -1,7 +1,7 @@
 # VP-0176: Standard LLDV profiles
 
 ## Status
-Review
+Done
 
 Implementing on codex/lldv-standard-profiles in E:\codex\videoprocessor\lldv-standard-profiles, based on freshly fetched origin/v1.3.005-beta at ee9b3f73. The user's standing instructions authorize the discovered latest beta base.
 
@@ -32,3 +32,6 @@ Remaining: code review and user acceptance before merge/release. No deployed bin
 At the user's request, deployed commit 971b6fad from a successfully completed x64 Release build to C:\Videoprocessor\vp. Replaced and SHA-256 verified the matching VideoProcessor.exe and vprenderer\VideoProcessorVPRenderer.dll, plus config\VideoProcessorConfig.exe, config\VideoProcessorConfigDiscovery.dll, and docs\CONFIGURATION.html. Installed runtime dependency hashes already match the build inputs.
 
 Backup: C:\Videoprocessor\vp\backups\20260908-151408-vp0176-971b6fad (includes the original configuration and deployment.json hash record). Active VideoProcessor.cfg remained byte-identical; no configuration edits were made. VideoProcessor was closed during deployment and is ready for the user's test. LLDV migration occurs on editor save. Awaiting user acceptance; PR remains draft and unmerged.
+
+## Acceptance and merge
+2026-09-08: User requested merge after the test deployment. PR #84 merged into v1.3.005-beta as 89d55ca5791af7e357b213878fe2f75e126c84bc, containing tested/deployed implementation 971b6fad. GitHub reported clean mergeability and no configured PR checks. Release build and regression evidence above remain applicable. User acceptance and merge complete; prior review/pending notes are historical.

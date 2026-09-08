@@ -210,7 +210,7 @@ they must not contain requirements that are absent from this file.
 | VP-0172 | Backlog | Source-driven output display-mode selection |
 | VP-0173 | Review | Decouple SDR target luminance from HDR classification |
 | VP-0174 | Review | Calibrated display settings contract and Color/Output UI |
-| VP-0176 | Review | Standard LLDV profiles |
+| VP-0176 | Done | Standard LLDV profiles |
 | VP-0175 | Review | Harden capture callbacks and allocator exhaustion during HDMI resync |
 | VP-0066-1 | Done | Characterize the live output pipeline with replayable golden traces |
 | VP-0066-2 | Done | Extract a graph-independent video timing controller |
