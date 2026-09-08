@@ -314,3 +314,24 @@ saved config tokens retain semantics. Complete Release validation/deployment pen
 - Backup: C:\Videoprocessor\vp\backup-before-vp0174-sdr-lut-20260908-131507.
 - Runtime evidence: C:\Users\bslac\AppData\Local\Temp\vp0174-sdr-runtime-20260908-131042.
   Existing Config session preserved; save edits, tray Exit and reopen to load update.
+
+
+### LUT control cleanup deployed (2026-09-08)
+
+- User approved removing the duplicate compatibility row instead of retaining it
+  in Color / Output. The sole editable control is now **Gamma expected by the LUT**
+  under Rendering > Display calibration LUT (3D LUT). Default/inheritance labels
+  no longer mention the old Color storage. Older values still load internally;
+  this cleanup does not change rendering math or discard saved settings.
+- Commit 1256d0d6 on PR #82, built in the clean E:\codex\videoprocessor\vp-0174-lut-wording
+  worktree from latest beta ee9b3f73 plus the preceding VP-0174 changes.
+- Clean full x64 Release rebuild passed. All 1,115 native tests and five focused UI
+  scenarios passed, including control removal/label checks, saved-value persistence,
+  unified profile migration, section behavior, choice labels, and defaults.
+- All 58 staging files verified. Matched host/renderer, Config/helper and help deployed;
+  every deployed hash matched its staged artifact. Active configuration edits: none.
+  SHA256 remains 69CDA6889972E43D80EFB2D24B01A4A9D4528041384F3E21923D4943252EE9EA.
+- Backup and deployment evidence:
+  C:\Videoprocessor\vp\backup-before-vp0174-lut-cleanup-20260908-141743.
+  No older Config process was running at deployment; the updated Config was opened
+  on Rendering afterward.
