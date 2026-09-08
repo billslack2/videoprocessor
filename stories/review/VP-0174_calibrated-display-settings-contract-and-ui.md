@@ -2,8 +2,8 @@
 
 ## Status
 
-In Progress (2026-09-08). Correcting startup rejection of migrated Output archives.
-Prior unified-profile follow-up implemented and deployed.
+Review (2026-09-08). Startup compatibility regression fixed and deployed.
+Latest correction `4cfb56cd`; prior unified-profile implementation `2c0e0223`.
 Commit `2c0e0223` on `codex/vp-0174-config-ui`, based on verified latest beta
 `v1.3.005-beta` at `38e7508f`.
 PR: https://github.com/billslack2/videoprocessor/pull/82 (not merged).
@@ -227,3 +227,21 @@ still has vprenderer.output.Default: ConfigFile creates the archive in memory.
 Renderer/Config validation accepted it but a separate host ownership check rejected
 it. Share archive ownership and the host/Config ownership validation; regression-test
 old and saved migrated files before a new Release deployment. No user config edit required.
+
+### Startup correction completion
+
+- Commit `4cfb56cd` published to PR #82. Archive ownership now shared by host
+  startup and Config Save/Apply. Both original vprenderer.output and already-saved
+  legacy_output sections pass; unrelated unknown sections remain rejected.
+- Clean full x64 Release rebuild passed. Full native run: **1,108 passed**.
+  Complete Config run: **66 passed**, exit 0.
+- Actual VideoProcessor host startup tested with a byte-identical isolated copy
+  of the active configuration and copied selection state. Logs confirm configuration
+  acceptance, capture/rendering startup, and normal clean shutdown. Original
+  configuration/state paths were not used for test writes.
+- Corrected Release host/renderer pair and Config executable/discovery DLL deployed
+  and SHA256 verified. Active configuration edits: **none**.
+- Backup: `C:\Videoprocessor\vp\backup-before-vp0174-startup-20260908-114705`.
+- Active config SHA256: `69CDA6889972E43D80EFB2D24B01A4A9D4528041384F3E21923D4943252EE9EA`.
+- This corrects a real validation coverage miss in the original deployment;
+  Config-only startup testing had not exercised the host ownership check.
