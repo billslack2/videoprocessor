@@ -2,7 +2,8 @@
 
 ## Status
 
-Review (2026-09-08). Implemented and deployed from `0a6a12e1` on
+In Progress (2026-09-08). Follow-up approved: one combined profile, lossless
+legacy records, explicit SDR interpretation and LUT-input transfer. Prior deployment `0a6a12e1` on
 `codex/vp-0174-config-ui`, based on current beta `38e7508f`.
 PR: https://github.com/billslack2/videoprocessor/pull/82 (not merged).
 
@@ -178,3 +179,7 @@ or deployed configuration merely to apply these defaults.
 - Corrected Config UI and matching Release host/renderer pair deployed and
   SHA256 verified. Active configuration unchanged.
 - Backup: `C:\Videoprocessor\vp\backup-before-vp0174-profile-visible-20260908-103822`.
+
+## Approved unified-profile follow-up
+
+Keep Color names, rules and shortcuts; copy the first Output baseline settings into Color profiles. Archive all old Output sections with comments rather than delete them. Preserve saved gamma choices and expose LUT input transfer independently. Test migration idempotence, selection, save/reload and numerical no-LUT/LUT Full/Limited gamma ramps. Continue on PR #82 from verified beta 38e7508f.
