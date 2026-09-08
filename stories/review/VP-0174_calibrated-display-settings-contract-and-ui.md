@@ -2,7 +2,7 @@
 
 ## Status
 
-In Progress (2026-09-08). Direct Config descriptions and window-order correction.
+Review (2026-09-08). Direct Config descriptions and window-order correction deployed.
 Startup compatibility regression previously fixed and deployed.
 Latest correction `4cfb56cd`; prior unified-profile implementation `2c0e0223`.
 Commit `2c0e0223` on `codex/vp-0174-config-ui`, based on verified latest beta
@@ -258,3 +258,26 @@ A foreground event now triggers a relative-order check and nonactivating repair.
 No polling or cross-process native owner is introduced. Regression reproduced
 before the change and passed after it. SDR labels now describe all three behaviors;
 saved config tokens retain semantics. Complete Release validation/deployment pending.
+
+### Wording and relative window-order completion
+
+- Runtime commit c22fd327; test-only assertion correction 1d9f0859, both on PR #82.
+- Direct labels: Convert SDR reference to target; Keep SDR tone values unchanged;
+  Use transport transfer as SDR input. LUT input: Same as display transfer.
+  BitBlt model, Saved automatic policy and When unset replace misleading labels.
+  No saved configuration token or gamma behavior changed.
+- Cross-process Windows fixture explicitly raises a VP-like topmost fullscreen
+  surface. The strengthened test failed before the change and passed afterward.
+  Config responds to VP foreground changes by checking actual relative order and
+  raising without activation when covered. Popup deferral remains; no focus polling
+  or native cross-process ownership. VP interaction is not blocked; clarification
+  about full blocking modality remains pending.
+- Clean full x64 Release rebuild succeeded. Help inventory check passed. Full UI
+  run passed 65/66; remaining stale-label assertion corrected and its complete
+  profile/persistence scenario passed on focused rerun. Window/popup cases passed.
+- Verified 58-file Release staging. Matched host/renderer plus Config/help deployed,
+  all hashes verified. Running Config process and unsaved document preserved by
+  retaining loaded images in backup; tray Exit and reopen loads the updated UI.
+- Backup: C:\Videoprocessor\vp\backup-before-vp0174-wording-20260908-120902.
+- Active configuration edits: none. SHA256 remains
+  69CDA6889972E43D80EFB2D24B01A4A9D4528041384F3E21923D4943252EE9EA.
