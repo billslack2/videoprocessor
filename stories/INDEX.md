@@ -6,9 +6,9 @@ story may have ordered child-task IDs as defined below.
 
 ## Registry state
 
-- Last assigned root story: `VP-0175`
-- Next root story number: `VP-0176`
-- Total indexed items: 194
+- Last assigned root story: `VP-0176`
+- Next root story number: `VP-0177`
+- Total indexed items: 195
 
 ## Story locations
 
@@ -210,6 +210,7 @@ they must not contain requirements that are absent from this file.
 | VP-0172 | Backlog | Source-driven output display-mode selection |
 | VP-0173 | Review | Decouple SDR target luminance from HDR classification |
 | VP-0174 | Review | Calibrated display settings contract and Color/Output UI |
+| VP-0176 | In Progress | Standard LLDV profiles |
 | VP-0175 | Review | Harden capture callbacks and allocator exhaustion during HDMI resync |
 | VP-0066-1 | Done | Characterize the live output pipeline with replayable golden traces |
 | VP-0066-2 | Done | Extract a graph-independent video timing controller |
