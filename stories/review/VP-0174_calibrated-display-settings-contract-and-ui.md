@@ -2,7 +2,7 @@
 
 ## Status
 
-Review (2026-09-08). Implemented and deployed from `033f5cc3` on
+Review (2026-09-08). Implemented and deployed from `0a6a12e1` on
 `codex/vp-0174-config-ui`, based on current beta `38e7508f`.
 PR: https://github.com/billslack2/videoprocessor/pull/82 (not merged).
 
@@ -167,3 +167,14 @@ or deployed configuration merely to apply these defaults.
 - Ready for PR review and user beta validation; no automatic merge performed.
 - Tracker correction: the prior index still said Backlog despite the in-progress
   file. This transition updates both to Review.
+
+## UI consistency correction (2026-09-08)
+
+- User review: profile name, shortcuts and rule must always remain visible,
+  matching other profile tabs. Removed the Color/Output-only collapse wrapper.
+- Commit `0a6a12e1`, pushed to PR #82. Full x64 Release build succeeded;
+  existing renderer-profile layout/persistence test passed; Windows screenshot
+  verified the profile fields are visible without an expander.
+- Corrected Config UI and matching Release host/renderer pair deployed and
+  SHA256 verified. Active configuration unchanged.
+- Backup: `C:\Videoprocessor\vp\backup-before-vp0174-profile-visible-20260908-103822`.
