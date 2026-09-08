@@ -2,7 +2,8 @@
 
 ## Status
 
-Review (2026-09-08). Approved unified-profile follow-up implemented and deployed.
+In Progress (2026-09-08). Correcting startup rejection of migrated Output archives.
+Prior unified-profile follow-up implemented and deployed.
 Commit `2c0e0223` on `codex/vp-0174-config-ui`, based on verified latest beta
 `v1.3.005-beta` at `38e7508f`.
 PR: https://github.com/billslack2/videoprocessor/pull/82 (not merged).
@@ -218,3 +219,11 @@ Keep Color names, rules and shortcuts; copy the first Output baseline settings i
 - Full file hashes: deployment-evidence.json in that backup folder.
 - Detailed follow-up architectural assessment is recorded in
   [Gamma 2.2 review](../work/vp0174-gamma22-architecture-review.md).
+
+## Startup compatibility correction
+
+User reported fatal unknown section legacy_output.default. The original configuration
+still has vprenderer.output.Default: ConfigFile creates the archive in memory.
+Renderer/Config validation accepted it but a separate host ownership check rejected
+it. Share archive ownership and the host/Config ownership validation; regression-test
+old and saved migrated files before a new Release deployment. No user config edit required.
