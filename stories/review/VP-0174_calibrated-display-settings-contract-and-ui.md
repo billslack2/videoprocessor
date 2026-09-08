@@ -355,3 +355,17 @@ saved config tokens retain semantics. Complete Release validation/deployment pen
   its current SHA256 04A295CFEE4213E9D68CC4376278431C1B6057E488DBCC931930B0F91BD05228.
 - Backup: C:\Videoprocessor\vp\backup-before-vp0174-scaling-default-20260908-142657.
   Opened the updated Config app on Scaling after deployment.
+
+
+### Requested clean rebuild and redeployment (2026-09-08)
+
+- User explicitly requested build and deploy again. Verified GitHub beta remains
+  ee9b3f73 and PR #82 head remains 52b1c7d3; the build includes both.
+- Fresh full x64 Release rebuild succeeded. Choice labels and VP Renderer name
+  smoke test passed, including Auto/default assertions. All 58 staging files verified.
+- Deployed matched host/renderer, Config/helper and help; all installed hashes match
+  this fresh build. Active configuration unchanged (SHA256
+  04A295CFEE4213E9D68CC4376278431C1B6057E488DBCC931930B0F91BD05228).
+- Backup: C:\Videoprocessor\vp\backup-before-vp0174-requested-rebuild-20260908-145330.
+  Running Config images retained in that backup to preserve the user's open session
+  and unsaved edits. Tray Exit and reopen loads the freshly rebuilt executable.
