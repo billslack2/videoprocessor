@@ -89,6 +89,15 @@
 
 namespace
 {
+// OUTOFCONTEXT events arrive on the Qt thread that installed the hook.
+// No window ownership changes, cross-process SendMessage or recurring polling.
+std::map<HWINEVENTHOOK, std::function<void()>> configForegroundHandlers;
+void CALLBACK configForegroundChanged(HWINEVENTHOOK hook, DWORD, HWND,
+    LONG, LONG, DWORD, DWORD)
+{
+    const auto found = configForegroundHandlers.find(hook);
+    if (found != configForegroundHandlers.end()) found->second();
+}
 constexpr int kPageMargin = 16;
 constexpr int kCardPadding = 12;
 constexpr int kResponsiveContentWidth = 720;
@@ -969,6 +978,14 @@ ConfigEditorWindow::ConfigEditorWindow(QString configPath, quintptr ownerHandle,
         });
     }
 
+    const HWINEVENTHOOK foregroundHook = SetWinEventHook(
+        EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND, nullptr,
+        configForegroundChanged, 0, 0, WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
+    foregroundEventHook_ = foregroundHook;
+    if (foregroundHook)
+        configForegroundHandlers.emplace(foregroundHook,
+            [this] { repairOrderAboveVideoProcessor(); });
+
     if (ownerHandle_)
     {
         // A background/warm editor still needs a usable native receiver.  Do
@@ -982,6 +999,12 @@ ConfigEditorWindow::ConfigEditorWindow(QString configPath, quintptr ownerHandle,
 
 ConfigEditorWindow::~ConfigEditorWindow()
 {
+    if (foregroundEventHook_)
+    {
+        const auto hook = static_cast<HWINEVENTHOOK>(foregroundEventHook_);
+        configForegroundHandlers.erase(hook);
+        UnhookWinEvent(hook);
+    }
 	if (monitorDiscoveryThread_)
 	{
 		monitorDiscoveryThread_->requestInterruption();
@@ -1202,7 +1225,7 @@ void ConfigEditorWindow::refreshLimitedTransportControls()
     flag->setEnabled(false);
     const bool desired = limited && effective("output_transport_gamma") == QStringLiteral("2.2");
     flag->setToolTip(desired != flag->isChecked() ?
-        QStringLiteral("Legacy flag differs from the selected transport. Reselect the range or transfer to synchronize it; opening this profile preserves the saved behavior.") :
+        QStringLiteral("Saved flag differs from the selected transport. Reselect the range or transfer to synchronize it; opening this profile preserves the saved behavior.") :
         QStringLiteral("Saved automatically: enabled only for Limited + 2.2. This is not an independent setting."));
 }
 
@@ -1813,7 +1836,7 @@ void ConfigEditorWindow::refreshRendererAutoStatus()
         }
 		else if (binding.key == QStringLiteral("output_gamma"))
 		{
-			text = QStringLiteral("Legacy: follows accepted transport; see live output");
+			text = QStringLiteral("Follows accepted transport; see live output");
 		}
         else if (binding.key == QStringLiteral("sdr_adjust_gamma"))
             // This selector controls the conversion policy, rather than
@@ -2423,6 +2446,39 @@ void ConfigEditorWindow::positionForReveal()
         frame, workArea);
     SetWindowPos(editor, nullptr, placed.left(), placed.top(), 0, 0,
         SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
+}
+
+void ConfigEditorWindow::repairOrderAboveVideoProcessor()
+{
+    if (foregroundRepairQueued_ || !isVisible() || isMinimized() || !nativeOwnerIsValid())
+        return;
+    DWORD foregroundProcess = 0;
+    const HWND foreground = GetForegroundWindow();
+    if (foreground) GetWindowThreadProcessId(foreground, &foregroundProcess);
+    if (foregroundProcess != ownerProcessId_) return;
+    foregroundRepairQueued_ = true;
+    QTimer::singleShot(0, this, [this]
+    {
+        foregroundRepairQueued_ = false;
+        if (!isVisible() || isMinimized() || !nativeOwnerIsValid()) return;
+        const HWND foreground = GetForegroundWindow();
+        DWORD process = 0;
+        if (foreground) GetWindowThreadProcessId(foreground, &process);
+        if (process != ownerProcessId_) return;
+        const HWND editor = reinterpret_cast<HWND>(effectiveWinId());
+        // Keep the relative order above VP, rather than merely checking the
+        // WS_EX_TOPMOST bit shared by both Config and fullscreen presentation.
+        for (HWND window = GetTopWindow(nullptr); window; window = GetWindow(window, GW_HWNDNEXT))
+        {
+            if (window == editor) return;
+            if (window == foreground)
+            {
+                pendingTopmostReassert_ = true;
+                applyScopedTopmost();
+                return;
+            }
+        }
+    });
 }
 
 void ConfigEditorWindow::applyScopedTopmost()
@@ -3958,23 +4014,23 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
               QStringLiteral("1.8"), QStringLiteral("2.0"), QStringLiteral("2.2"),
               QStringLiteral("2.4"), QStringLiteral("2.6"), QStringLiteral("2.8") });
         lutInput->setItemText(lutInput->findData(QStringLiteral("display")),
-            QStringLiteral("Same as display (legacy behavior)"));
+            QStringLiteral("Same as display transfer"));
         lutInput->setToolTip(QStringLiteral("Expected input to an active calibration LUT. For a LUT that converts BT.1886-reference codes to a measured 2.2 display, choose BT.1886 here and preserve the BT.1886 SDR reference. This avoids duplicate correction. Without a usable LUT, VP uses the physical display transfer."));
         addBoolean(QStringLiteral("Report BT.2020 to display"),
             QStringLiteral("report_bt2020_to_display"));
 
         form = addCollapsibleSection(QStringLiteral("sourceColor"),
             QStringLiteral("Source transfer"), QStringLiteral(
-                "How VP interprets SDR source transfer before this Color Config maps it to the calibrated display target."), false);
+                "Choose whether VP converts from the SDR reference response, keeps SDR tone values unchanged, or interprets SDR using the output transport transfer."), false);
         auto* sdrAdjustGamma = addChoice(QStringLiteral("SDR source transfer handling"),
             QStringLiteral("sdr_adjust_gamma"),
             { QStringLiteral("on"), QStringLiteral("passthrough"), QStringLiteral("off") });
-        sdrAdjustGamma->setItemText(sdrAdjustGamma->findData(QStringLiteral("on")), QStringLiteral("Preserve reference appearance"));
-        sdrAdjustGamma->setItemText(sdrAdjustGamma->findData(QStringLiteral("passthrough")), QStringLiteral("Pass through SDR tone response"));
-        sdrAdjustGamma->setItemText(sdrAdjustGamma->findData(QStringLiteral("off")), QStringLiteral("Off (legacy handling)"));
-        sdrAdjustGamma->setToolTip(QStringLiteral("Off reinterprets SDR using the accepted transport transfer, which can differ from display gamma. It does not bypass other color processing."));
+        sdrAdjustGamma->setItemText(sdrAdjustGamma->findData(QStringLiteral("on")), QStringLiteral("Convert SDR reference to target"));
+        sdrAdjustGamma->setItemText(sdrAdjustGamma->findData(QStringLiteral("passthrough")), QStringLiteral("Keep SDR tone values unchanged"));
+        sdrAdjustGamma->setItemText(sdrAdjustGamma->findData(QStringLiteral("off")), QStringLiteral("Use transport transfer as SDR input"));
+        sdrAdjustGamma->setToolTip(QStringLiteral("Convert SDR reference to target: convert the selected SDR reference response to the display transfer or active LUT input transfer. Keep SDR tone values unchanged: use matching input and target transfers. Use transport transfer as SDR input: interpret SDR using the accepted output transport transfer, then map it to the target; this can still change tone values. Range, gamut, LUT and other processing still apply."));
         addRendererAutoStatus(QStringLiteral("sdr_adjust_gamma"), sdrAdjustGamma);
-        auto* sdrInputTransfer = addChoice(QStringLiteral("SDR reference / intended response"),
+        auto* sdrInputTransfer = addChoice(QStringLiteral("SDR reference transfer"),
             QStringLiteral("sdr_input_transfer"),
             { QStringLiteral("AUTO"), QStringLiteral("bt1886"), QStringLiteral("srgb"),
                 QStringLiteral("1.8"), QStringLiteral("2.0"), QStringLiteral("2.2"),
@@ -3998,10 +4054,10 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                 QStringLiteral("composed") });
         outputPresentation->setItemText(outputPresentation->findData(QStringLiteral("AUTO")), QStringLiteral("Prefer flip (allow fallback)"));
         outputPresentation->setItemText(outputPresentation->findData(QStringLiteral("direct")), QStringLiteral("Flip model"));
-        outputPresentation->setItemText(outputPresentation->findData(QStringLiteral("composed")), QStringLiteral("Legacy BitBlt"));
+        outputPresentation->setItemText(outputPresentation->findData(QStringLiteral("composed")), QStringLiteral("BitBlt model"));
         outputPresentation->setToolTip(QStringLiteral(
             "Flip model does not guarantee DirectFlip: Windows may compose it. "
-            "Legacy BitBlt is a compatibility path. Fallback may change RGB range; check live status."));
+            "BitBlt uses the copy-based presentation path. Fallback may change RGB range; check live status."));
 		addRendererAutoStatus(QStringLiteral("output_presentation"), outputPresentation);
         auto* outputRange = addChoice(QStringLiteral("RGB output range"),
             QStringLiteral("output_range"),
@@ -5081,7 +5137,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 							QStringLiteral("Inherited - Missing: %1").arg(inheritedDisplay));
 					else if (raw.isEmpty() && !configured.isEmpty())
                         combo->setItemText(0, defaultProfile ?
-                            (retiredRootDefault ? QStringLiteral("Legacy default: %1") : QStringLiteral("Default: %1")).arg(inheritedDisplay) :
+                            (retiredRootDefault ? QStringLiteral("When unset: %1") : QStringLiteral("Default: %1")).arg(inheritedDisplay) :
                             QStringLiteral("Inherited: %1").arg(inheritedDisplay));
                     else
                         combo->setItemText(0, defaultProfile ?
@@ -5101,7 +5157,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 				if (index < 0)
                 {
                     const bool legacyAuto = configured.compare(QStringLiteral("auto"), Qt::CaseInsensitive) == 0;
-                    combo->addItem(legacyAuto ? QStringLiteral("Legacy automatic policy (preserved)") :
+                    combo->addItem(legacyAuto ? QStringLiteral("Saved automatic policy") :
                         calibrationLutSlot ? QStringLiteral("Missing: %1").arg(configured) : friendlyChoiceLabel(configured), configured);
                     if (calibrationLutSlot)
                         combo->setItemData(combo->count() - 1, true, Qt::UserRole + 1);

@@ -32,7 +32,7 @@ retires that selection. A missing LUT file is shown and preserved, not deleted.
 | Display primaries | Rec.709 | Explicit |
 | Display transfer | Gamma 2.2 | Removed; legacy requests preserved |
 | SDR reference / intended response | Gamma 2.2 | Renamed Follow source metadata |
-| SDR handling | Preserve reference appearance | Removed; legacy requests preserved |
+| SDR handling | Convert SDR reference to target | Removed; legacy requests preserved |
 | RGB range | Full | Removed; legacy requests preserved |
 | Limited transport | 2.2 (inactive for Full) | Removed; legacy requests preserved |
 | Target nits | 100 | Numeric; HDR tone mapping only |
@@ -43,7 +43,7 @@ retires that selection. A missing LUT file is shown and preserved, not deleted.
 | Presentation | Prefer flip (allow fallback) | Retained |
 
 All explicit gamma choices stay together. Flip model replaces the misleading Direct
-label; Legacy BitBlt replaces Composed. Flip does not guarantee independent flip or
+label; BitBlt model replaces Composed. Flip does not guarantee independent flip or
 bypass desktop composition. Dither depth does not configure the GPU/HDMI wire depth.
 SDR handling Off remains labeled legacy: it reinterprets source transfer using the
 accepted carrier, which can differ from calibrated display gamma.
@@ -157,3 +157,18 @@ The earlier conceptual mockup's Dithering section did not imply deleting or
 silently moving per-Rendering-profile settings. Additional Output profiles are
 archived in full, including unfamiliar keys; an unknown active baseline key is
 not silently dropped and remains subject to ordinary validation.
+
+## Direct UI descriptions and window order
+
+SDR handling choices describe behavior: Convert SDR reference to target, Keep SDR
+tone values unchanged, and Use transport transfer as SDR input. The saved on,
+passthrough and off tokens and their behavior are unchanged. LUT input uses Same
+as display transfer; saved automatic values and unset defaults are described
+directly without calling them legacy. BitBlt is labeled by its presentation model.
+
+Config responds to VP foreground activation by checking relative window order.
+If VP's topmost fullscreen window has covered Config, Config raises itself without
+requesting foreground. This is event-driven, preserves popup handling, and does not
+add native cross-process ownership or recurring focus polling. The cross-process
+regression checks actual relative order, not only the WS_EX_TOPMOST style bit.
+This restores staying above VP; it does not disable VP's controls.

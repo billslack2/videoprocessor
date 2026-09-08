@@ -163,6 +163,8 @@ LRESULT CALLBACK externalHostProcedure(HWND window, UINT message,
         L"VideoProcessor.ConfigTests.ZOrderFixture.RequestForeground.v1");
     if (context && message == requestMessage)
     {
+        SetWindowPos(window, HWND_TOPMOST, 0, 0, 0, 0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
         const bool foregrounded = SetForegroundWindow(window) != FALSE &&
             GetForegroundWindow() == window;
         static const UINT foregroundMessage = RegisterWindowMessageW(
@@ -1374,9 +1376,9 @@ void testSdrGammaAdjustmentLabelsAndPersistence()
         QComboBox* adjustment = requireControl<QComboBox>(window,
             QStringLiteral("config.vprenderer.color.sdr_adjust_gamma"));
         require(adjustment->findText(QStringLiteral("Auto")) < 0 &&
-            adjustment->findText(QStringLiteral("Preserve reference appearance")) >= 0 &&
-            adjustment->findText(QStringLiteral("Pass through SDR tone response")) >= 0 &&
-            adjustment->findText(QStringLiteral("Off (legacy handling)")) >= 0,
+            adjustment->findText(QStringLiteral("Convert SDR reference to target")) >= 0 &&
+            adjustment->findText(QStringLiteral("Keep SDR tone values unchanged")) >= 0 &&
+            adjustment->findText(QStringLiteral("Use transport transfer as SDR input")) >= 0,
             "SDR transfer handling does not expose concise labels");
         selectData(adjustment, QStringLiteral("off"));
         save(window);
@@ -2947,7 +2949,7 @@ void testChoiceLabelsAndVpRendererName()
         "Display primaries still exposes Default as a separate choice");
 	require(requireControl<QLabel>(window,
 		QStringLiteral("config.vprenderer.color.output_gamma.auto_status"))->text() ==
-			QStringLiteral("Auto: Legacy: follows accepted transport; see live output"),
+			QStringLiteral("Auto: Follows accepted transport; see live output"),
 		"Output gamma Auto control does not identify its effective policy");
 	auto* calibrationEnabled = requireControl<QCheckBox>(window,
 		QStringLiteral("config.vprenderer.calibration_lut_enabled"));
@@ -2955,7 +2957,7 @@ void testChoiceLabelsAndVpRendererName()
 	QCoreApplication::processEvents();
 	require(requireControl<QLabel>(window,
 		QStringLiteral("config.vprenderer.color.output_gamma.auto_status"))->text() ==
-			QStringLiteral("Auto: Legacy: follows accepted transport; see live output"),
+			QStringLiteral("Auto: Follows accepted transport; see live output"),
 		"Calibration LUT enablement unexpectedly changed Auto gamma");
 	calibrationEnabled->setChecked(false);
 	require(requireControl<QLabel>(window,
@@ -4736,6 +4738,7 @@ void testExternalForegroundLeavesConfigTopmost()
     bool popupKeptForeground = false;
     bool externalForegroundKeepsConfigTopmost = false;
     bool hostUnchanged = false;
+    bool editorAboveReactivatedHost = false;
     bool spoofedTargetRejected = false;
     bool targetPlacementValid = false;
     bool independentOwnerPreserved = false;
@@ -4826,6 +4829,18 @@ void testExternalForegroundLeavesConfigTopmost()
                 (exStyleBefore & WS_EX_TOPMOST) != 0 &&
                 (styleBefore & WS_POPUP) != 0;
             popup.hide();
+            SetForegroundWindow(editor);
+            AllowSetForegroundWindow(process.dwProcessId);
+            PostMessageW(fixture.host, requestMessage, 0, 0);
+            const ULONGLONG foregroundDeadline = GetTickCount64() + 1500;
+            while (GetTickCount64() < foregroundDeadline)
+            {
+                QCoreApplication::processEvents();
+                Sleep(5);
+            }
+            // A topmost style bit alone is insufficient: a second topmost
+            // fullscreen window can still cover Config after VP is activated.
+            editorAboveReactivatedHost = appearsAbove(editor, fixture.host);
 
             SetWindowPos(editor, nullptr, work.right - 100, work.bottom - 100,
                 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
@@ -4874,6 +4889,8 @@ void testExternalForegroundLeavesConfigTopmost()
         "Visible Config lost topmost placement after external foreground activation");
     require(hostUnchanged,
         "Config foreground recovery changed fullscreen host rect or styles");
+    require(editorAboveReactivatedHost,
+        "Reactivating VP placed its topmost fullscreen host above Config");
 }
 
 void testSyntheticPresentationTargetClamp()
