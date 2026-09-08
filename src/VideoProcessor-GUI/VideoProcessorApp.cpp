@@ -557,14 +557,9 @@ void ValidateRendererConfigRules()
 
 	auto validateOwnedSections = [](const ConfigFile& config)
 	{
-		for (const std::string& section : config.GetSectionNames())
-			if (!MainConfigSchema::OwnsSection(section) &&
-				!RendererProfileConfig::OwnsSection(section))
-			{
-				throw std::runtime_error(
-					"Invalid " + ConfigLocation(config) +
-					" unknown configuration section [" + section + "]");
-			}
+        std::string ownershipError;
+        if (!RendererProfileConfig::ValidateOwnedSections(config, ownershipError))
+            throw std::runtime_error("Invalid " + ConfigLocation(config) + " " + ownershipError);
 	};
 	if (hasMainConfig)
 		validateOwnedSections(mainConfig);

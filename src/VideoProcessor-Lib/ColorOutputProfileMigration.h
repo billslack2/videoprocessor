@@ -22,6 +22,11 @@ namespace ColorOutputProfileMigration
         return section == root || (section.rfind(root + ".", 0) == 0 && section.size() > root.size() + 1 &&
             section.find('.', root.size() + 1) == std::string::npos);
     }
+    inline bool IsArchive(const std::string& section)
+    {
+        return section == "legacy_output" || section.rfind("legacy_output.", 0) == 0 ||
+            section.rfind("legacy_output_", 0) == 0;
+    }
     inline bool IsSelector(const std::string& key)
     {
         return key == "when" || key == "shortcut" || key == "cycle_shortcut" ||

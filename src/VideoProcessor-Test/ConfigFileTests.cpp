@@ -92,6 +92,8 @@ namespace VideoProcessorTest
             std::string error;
             Assert::IsTrue(RendererProfileConfig::Read(config, model, error),
                 std::wstring(error.begin(), error.end()).c_str());
+            Assert::IsTrue(RendererProfileConfig::ValidateOwnedSections(config, error),
+                L"Startup rejected editor-compatible migrated Output archives");
             for (const auto& group : model.groups) Assert::IsTrue(group.name != "output");
             const auto& second = model.profiles.at("color.bt2020");
             Assert::AreEqual(std::string("limited"), second.settings.at("output_range"));
@@ -106,6 +108,32 @@ namespace VideoProcessorTest
             }
             Assert::IsTrue(config.Load(path));
             Assert::IsFalse(RendererProfileConfig::Read(config, model, error));
+            DeleteFileA(path.c_str());
+        }
+
+        TEST_METHOD(StartupOwnershipAcceptsOldAndSavedOutputArchivesButRejectsUnknownSections)
+        {
+            char directory[MAX_PATH] = {};
+            Assert::IsTrue(GetTempPathA(ARRAYSIZE(directory), directory) > 0);
+            const std::string path = std::string(directory) + "VP0174-startup-compatibility.cfg";
+            for (const char* section : {"vprenderer.output.Default", "legacy_output.default",
+                "legacy_output", "legacy_output_2", "legacy_output.default_2"})
+            {
+                { std::ofstream file(path); file << "[vprenderer.color.Rec709]\noutput_gamma: 2.2\n["
+                    << section << "]\noutput_range: limited\n"; }
+                ConfigFile config;
+                Assert::IsTrue(config.Load(path));
+                std::string error;
+                Assert::IsTrue(RendererProfileConfig::ValidateOwnedSections(config, error));
+                RendererProfileConfig::Model model;
+                Assert::IsTrue(RendererProfileConfig::Read(config, model, error));
+            }
+            // Only the reserved archive namespace is accepted, not arbitrary unknown owners.
+            { std::ofstream file(path); file << "[unknown_settings]\nvalue: kept\n"; }
+            ConfigFile config;
+            Assert::IsTrue(config.Load(path));
+            std::string error;
+            Assert::IsFalse(RendererProfileConfig::ValidateOwnedSections(config, error));
             DeleteFileA(path.c_str());
         }
 

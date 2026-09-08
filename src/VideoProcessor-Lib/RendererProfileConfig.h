@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ConfigFile.h"
+#include "ColorOutputProfileMigration.h"
 #include "ConfigSchema.h"
 #include "MainConfigSchema.h"
 #include "RendererConfigView.h"
@@ -39,6 +40,7 @@ namespace RendererProfileConfig
 	inline bool OwnsSection(const std::string& section)
 	{
 		return RendererConfigView::OwnsSection(section) ||
+            ColorOutputProfileMigration::IsArchive(section) ||
 			section == "general" ||
 			section == "profile_groups" ||
 			section == "profiles.input" ||
@@ -54,6 +56,20 @@ namespace RendererProfileConfig
 			section.rfind("actions.", 0) == 0 ||
 			section.rfind("display_rules.", 0) == 0;
 	}
+
+    // Shared by application startup and Config Save/Apply. Keep this check in
+    // one place so an editor-accepted migration cannot fail only at startup.
+    inline bool ValidateOwnedSections(const ConfigFile& config, std::string& error)
+    {
+        error.clear();
+        for (const auto& section : config.GetSectionNames())
+            if (!MainConfigSchema::OwnsSection(section) && !OwnsSection(section))
+            {
+                error = "unknown configuration section [" + section + "]";
+                return false;
+            }
+        return true;
+    }
 
 	inline std::string StatePath(const ConfigFile& config)
 	{
@@ -1545,8 +1561,7 @@ namespace RendererProfileConfig
 		for (const std::string& section : config.GetSectionNames())
 			if (!MainConfigSchema::OwnsSection(section) &&
 				!RendererConfigView::OwnsSection(section) &&
-                section != "legacy_output" && section.rfind("legacy_output.", 0) != 0 &&
-                section.rfind("legacy_output_", 0) != 0 &&
+                !ColorOutputProfileMigration::IsArchive(section) &&
 				section.rfind("actions.", 0) != 0 &&
 				section.rfind("shader.", 0) != 0)
 			{
@@ -1974,7 +1989,8 @@ namespace RendererProfileConfig
 		for (const std::string& section : config.GetSectionNames())
 			if (expectedSections.find(section) == expectedSections.end() &&
 				!MainConfigSchema::OwnsSection(section) &&
-				!RendererConfigView::OwnsSection(section))
+				!RendererConfigView::OwnsSection(section) &&
+                !ColorOutputProfileMigration::IsArchive(section))
 			{
 				error = "unified renderer configuration has unknown or orphan section [" + section + "]";
 				return false;

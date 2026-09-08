@@ -513,7 +513,8 @@ namespace ConfigEditorCore
 		}
 		std::string schemaError;
 		RendererProfileConfig::Model rendererModel;
-		if (!MainConfigSchema::Validate(config, schemaError) ||
+		if (!RendererProfileConfig::ValidateOwnedSections(config, schemaError) ||
+            !MainConfigSchema::Validate(config, schemaError) ||
 			!RendererProfileConfig::Read(config, rendererModel, schemaError) ||
 			!ShaderConfigValidation::Validate(config, schemaError))
 		{
