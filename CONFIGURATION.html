@@ -93,7 +93,7 @@ quality: high</pre>
 </section>
 
 <h2 id="lldv">LLDV metadata</h2>
-<p>LLDV metadata is one application-wide input contract shared by DirectShow and VP Renderer. Store it in the singleton <code>[lldv]</code> section. Config migrates a lone legacy named section such as <code>[lldv.default]</code> to this form.</p>
+<p>LLDV uses ordered named profiles such as <code>[lldv.cinema]</code>, with the same profile list, shortcuts, cycling and rules as the other profile groups. The first profile is the default; one profile is active at a time and supplies the same metadata to DirectShow and VP Renderer. Config migrates an existing <code>[lldv]</code> section into one named profile on save, preserving its settings and comments. Existing named profiles keep their names. Alternate LLDV detection remains a global setting and requires a restart.</p>
 <div class="group">
 <article id="lldv-max-cll" data-fields="lldv.max_cll"><h3><code>max_cll</code></h3><p class="meta"><strong>Purpose:</strong> overrides synthesized LLDV maximum content light level metadata. <strong>Syntax:</strong> non-negative luminance value in nits. <strong>Omitted:</strong> uses VP's mode-specific default.</p></article>
 <article id="lldv-max-fall" data-fields="lldv.max_fall"><h3><code>max_fall</code></h3><p class="meta"><strong>Purpose:</strong> overrides synthesized LLDV maximum frame-average light level metadata. <strong>Syntax:</strong> non-negative luminance value in nits. <strong>Omitted:</strong> uses VP's mode-specific default.</p></article>
@@ -103,7 +103,7 @@ quality: high</pre>
 
 <section class="section-examples" aria-labelledby="lldv-examples">
 <h3 id="lldv-examples">Example</h3>
-<pre data-ini-example="lldv">[lldv]
+<pre data-ini-example="lldv">[lldv.cinema]
 max_cll: 1000
 max_fall: 401
 mastering_min_luminance: 0.001
