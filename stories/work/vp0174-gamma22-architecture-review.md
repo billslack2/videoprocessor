@@ -39,3 +39,39 @@ Add a no-LUT grayscale readback sweep for Full/Limited 2.2, including near-black
 ## Deployment evidence
 
 Successfully built x64 Release; native suite passed 1,102 tests; final complete Config UI suite passed all 65 scenarios. Matching host and renderer DLL plus Config UI deployed to C:\Videoprocessor\vp and hashes verified against staged build artifacts. Backup: C:\Videoprocessor\vp\backup-before-vp0174-20260908-101306. Active configuration SHA256 remained 69CDA6889972E43D80EFB2D24B01A4A9D4528041384F3E21923D4943252EE9EA. No new physical display measurement was performed. Independent specialist review agreed with the architectural conclusion above.
+
+## Post-refactor assessment (2c0e0223, 2026-09-08)
+
+High confidence in the internal implementation remains justified, now supported by
+numerical 8/10-bit Full/Limited GPU ramps. A 33-point grayscale sweep preserves
+2.2-to-2.2 codes (within one code value) and matches pow(x, 2.4/2.2) for a 2.4
+reference displayed at 2.2 (within two code values). A converting 33-cube LUT fed
+its matching 2.4 input domain agrees within two codes with direct conversion;
+applying both conversions produces a detectably darker midpoint. This closes the
+component-level no-LUT sweep gap identified above. These are actual libplacebo
+texture readbacks on WARP, not deployed swapchain/HDMI or optical measurements.
+
+The corrected semantic contract is explicit. SDR reference/intended response is
+not the Rec.709 camera OETF. Matching 2.2 values intentionally produce a 2.2 response;
+preserving a 2.4 reference on a physical 2.2 display requires conversion. At ideal
+zero black BT.1886 reduces to gamma 2.4; the new pure-power tests do not establish
+all finite-black BT.1886 calibration behavior. Saved gamma choices remain intact.
+
+With a usable LUT, calibration_lut_input_gamma selects pre-LUT encoding; omission
+or display retains the former behavior. Missing/disabled/rejected-without-fallback
+LUTs use physical display gamma. Last-known-good LUT retention remains attached
+and therefore keeps the declared LUT input domain. Explicit passthrough reinterprets
+SDR in that same target domain. There is one LUT attachment and no later VP gamma
+correction. Legacy Off stays carrier-based for compatibility. The independent
+specialist reviewed these exact paths and found no blocker.
+
+The physical-chain concerns above remain: Full G22 declares piecewise sRGB and
+Studio G22 piecewise BT.709, so acceptance alone cannot guarantee a pure-power
+2.2 optical result or Full/Limited equivalence. Present mode, driver conversions,
+GPU/display range agreement and calibration still require real setup feedback.
+We can proceed with the approved beta behavior while stating this limit clearly.
+
+All 16 prior Color/Output keys are retained in the unified profile or inactive
+legacy archives; runtime and UI share the migration plan. Build/test/deployment
+records for this follow-up are in the current VP-0174 story. No active user
+configuration values were changed during deployment.

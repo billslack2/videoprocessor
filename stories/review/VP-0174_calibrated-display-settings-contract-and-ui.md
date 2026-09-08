@@ -2,9 +2,9 @@
 
 ## Status
 
-In Progress (2026-09-08). Follow-up approved: one combined profile, lossless
-legacy records, explicit SDR interpretation and LUT-input transfer. Prior deployment `0a6a12e1` on
-`codex/vp-0174-config-ui`, based on current beta `38e7508f`.
+Review (2026-09-08). Approved unified-profile follow-up implemented and deployed.
+Commit `2c0e0223` on `codex/vp-0174-config-ui`, based on verified latest beta
+`v1.3.005-beta` at `38e7508f`.
 PR: https://github.com/billslack2/videoprocessor/pull/82 (not merged).
 
 Originally backlog (2026-09-07). Created from an operator-facing settings guide and the
@@ -183,3 +183,38 @@ or deployed configuration merely to apply these defaults.
 ## Approved unified-profile follow-up
 
 Keep Color names, rules and shortcuts; copy the first Output baseline settings into Color profiles. Archive all old Output sections with comments rather than delete them. Preserve saved gamma choices and expose LUT input transfer independently. Test migration idempotence, selection, save/reload and numerical no-LUT/LUT Full/Limited gamma ramps. Continue on PR #82 from verified beta 38e7508f.
+
+## Unified-profile completion and deployment (2026-09-08)
+
+- One Color / Output profile family now owns all 16 previous Color/Output keys.
+  First legacy Output baseline copied to every Color profile; Color selectors
+  retained. Extra Output profiles and all their settings/comments/selectors are
+  archived in inactive legacy_output sections. Exact original-byte backup precedes
+  the first migration save. No settings silently discarded.
+- New explicit passthrough and calibration_lut_input_gamma separate SDR reference,
+  physical display response and LUT input encoding. Legacy Off/Auto and existing
+  gamma values retain their interpretation. Existing fresh 2.2 choices preserved.
+- LUT paths/enable, dithering/depth and HDR nits/black remain Rendering-owned.
+- Clean full x64 Release solution rebuild succeeded. Incremental PDB corruption
+  was resolved by clean rebuild; failed incremental artifacts were not deployed.
+- Native: 1,107 exercised, 1,106 passed full run; sole help-inventory failure
+  corrected and passed focused rerun. Config UI: all 66 passed, exit 0.
+- New GPU grayscale readbacks cover 8/10-bit Full/Limited, 2.2 unity, 2.4-to-2.2
+  reference preservation and LUT conversion once; intentionally duplicated
+  correction is distinguishable. Runtime migration, archive collisions, malformed
+  legacy sections, rules, unknown inactive keys, backup and save idempotence tested.
+- Independent specialist source review found no migration, double-gamma or LUT
+  fallback blocker. Numerical rendering coverage is stronger; HDMI/optical response
+  remains unmeasured, including downstream DXGI G22 interpretation concerns.
+- Windows screenshot verified one profile list and always-visible identity fields.
+  Deployed Config startup succeeded, exit 0. Physical two-monitor placement unavailable;
+  synthetic negative-origin and live-window placement coverage ran.
+- Release package verified 58 immutable files. Seven runtime/help files replaced:
+  matched host/renderer pair, Config executable/discovery DLL, root and docs help,
+  and VP-0174 configuration guide. All deployed hashes match staged Release artifacts.
+- Backup: `C:\Videoprocessor\vp\backup-before-vp0174-unified-20260908-113649` (includes unchanged original active config).
+- Active configuration edits: **none**. SHA256 remains
+  `69CDA6889972E43D80EFB2D24B01A4A9D4528041384F3E21923D4943252EE9EA`.
+- Full file hashes: deployment-evidence.json in that backup folder.
+- Detailed follow-up architectural assessment is recorded in
+  [Gamma 2.2 review](../work/vp0174-gamma22-architecture-review.md).
