@@ -2,10 +2,11 @@
 
 ## Status
 
-In Progress. Implementation is active on branch
-`codex/vp-0170-eotf-transitions` in clean worktree
-`C:\Videoprocessor\vp\vprenderer\.codex-worktrees\vp-0170-eotf-transitions`,
-based on remote `v1.3.005-beta` tip `1d5c731b` (verified 2026-09-02).
+In Progress — merged to beta; hardware acceptance remains outstanding.
+PR [#80](https://github.com/billslack2/videoprocessor/pull/80) merged the
+current-beta port `93eb9370` into `v1.3.005-beta` as merge commit `534c1e6a`
+on 2026-09-07 EDT (2026-09-08 UTC). The original implementation is source
+commit `dfcf1eac`.
 
 Initial implementation consolidates capture-event and periodic EOTF detection
 behind one graph-independent stabilization policy. A candidate requires two
@@ -14,14 +15,16 @@ when the signal returns to the renderer baseline, and defers its sole renderer
 rebuild commit while another renderer/display reset is active. The prior
 periodic full-capture restart path has been removed.
 
-Source commit `dfcf1eac` is pushed on the feature branch. Validation so far:
-x64 Release `VideoProcessor-Test` and `VideoProcessor-GUI` targets build
-successfully; all five focused `EotfTransitionStabilizerTests` pass. The full
-suite passes 1042/1044 tests. Its two failures,
-`ConfigurationReferenceMatchesPublicFieldInventory` and
-`ConfigurationApplyPolicyGroupsOnlyOrderedProfiles`, reproduce unchanged on
-the untouched `v1.3.005-beta` baseline and are unrelated to VP-0170. Hardware
-acceptance remains outstanding.
+The merge review found no superseding EOTF stabilization on the current beta:
+both legacy independent detection paths and the periodic full-capture restart
+were still present. The port preserved the newer metadata-only capture-state,
+transient-invalid-state, renderer-ingress, shader-profile, calibration-LUT,
+and OSD changes. A complete x64 Release solution rebuild passed, all five
+focused `EotfTransitionStabilizerTests` passed, and the full core suite passed
+1082/1082 tests. The separate configuration UI suite had one foreground/
+topmost-window timing failure that reproduced identically on untouched beta
+`d663773c`; VP-0170 does not modify that code path. Hardware acceptance remains
+outstanding.
 
 ### Readiness review (2026-09-02)
 
