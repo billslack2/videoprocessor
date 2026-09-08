@@ -188,8 +188,7 @@ Rendering now owns calibration_lut_input_transfer beside its LUT enablement and
 files. One declaration applies to all three gamut slots. An explicit value,
 including display, overrides the old calibration_lut_input_gamma after independent
 profile selections are merged. Omission preserves the old Color/base contract;
-no cross-product migration or silent rewriting is performed. The old Color setting
-is visible read-only. Fresh Rendering profiles use explicit display. Display gamma
+no cross-product migration or silent rewriting is performed. The old Color setting remains loadable internally and has no separate UI control. Fresh Rendering profiles use explicit display. Display gamma
 remains editable: no usable LUT means physical gamma, and an active LUT with input
 display still depends on it. HDR Target nits, black and dynamic tone mapping remain
 active, because these LUTs calibrate the tone-mapped result.
@@ -225,3 +224,12 @@ mapping plus an SDR calibration LUT: https://bugs.madshi.net/view.php?id=659.
   Physical HDMI/display response remains unmeasured.
 - Release staging verified all 58 immutable files. Read-only Windows screenshot
   confirmed the combined profile page still loads against the active configuration.
+
+
+## LUT control cleanup (2026-09-08)
+
+Rendering > Display calibration LUT (3D LUT) contains the single editable
+**Gamma expected by the LUT** control. Color / Output no longer displays a
+duplicate saved-value row. Default and inheritance labels describe input gamma
+without exposing the previous storage location. Existing configuration loading
+and rendering behavior are unchanged.

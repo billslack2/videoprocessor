@@ -4012,17 +4012,6 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             "With a usable LUT, its declared input transfer determines pre-LUT encoding; Same as calibrated display gamma still follows this control. "
 			"This setting does not change Windows' normal Full RGB / sRGB presentation declaration."));
         addRendererAutoStatus(QStringLiteral("output_gamma"), outputGamma);
-        // Old Color-owned declarations remain readable and visible, but new
-        // declarations are edited with the Rendering profile's LUT files.
-        auto* savedLutInput = addChoice(QStringLiteral("Saved LUT input transfer"),
-            QStringLiteral("calibration_lut_input_gamma"),
-            { QStringLiteral("display"), QStringLiteral("bt1886"), QStringLiteral("srgb"),
-              QStringLiteral("1.8"), QStringLiteral("2.0"), QStringLiteral("2.2"),
-              QStringLiteral("2.4"), QStringLiteral("2.6"), QStringLiteral("2.8") });
-        savedLutInput->setProperty("derivedSetting", true);
-        savedLutInput->setItemText(savedLutInput->findData(QStringLiteral("display")),
-            QStringLiteral("Same as calibrated display gamma"));
-        savedLutInput->setToolTip(QStringLiteral("Retained for existing configurations. An explicit LUT input transfer in the active Rendering profile takes precedence. Edit LUT input transfer beside the calibration LUT files in Rendering."));
         addBoolean(QStringLiteral("Report BT.2020 to display"),
             QStringLiteral("report_bt2020_to_display"));
 
@@ -4407,7 +4396,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 		calibrationLutEnabled->setToolTip(QStringLiteral(
 			"Applies the selected Cube to the gamma-encoded SDR calibration target. "
 			"HDR peak analysis and pixel-shader tone mapping remain active."));
-        auto* lutInput = addChoice(QStringLiteral("LUT input transfer"),
+        auto* lutInput = addChoice(QStringLiteral("Gamma expected by the LUT"),
             QStringLiteral("calibration_lut_input_transfer"),
             { QStringLiteral("display"), QStringLiteral("bt1886"), QStringLiteral("srgb"),
               QStringLiteral("1.8"), QStringLiteral("2.0"), QStringLiteral("2.2"),
@@ -5225,8 +5214,8 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                     index = combo->count() - 1;
                 }
                 if (field.key == QStringLiteral("calibration_lut_input_transfer") && hasUnspecifiedChoice)
-                    combo->setItemText(0, defaultProfile ? QStringLiteral("Use saved Color input transfer") :
-                        configured.isEmpty() ? QStringLiteral("Inherited: use saved Color input transfer") : QStringLiteral("Inherited: %1").arg(friendlyChoiceLabel(configured)));
+                    combo->setItemText(0, defaultProfile ? QStringLiteral("Use default input gamma") :
+                        configured.isEmpty() ? QStringLiteral("Use inherited input gamma") : QStringLiteral("Inherited: %1").arg(friendlyChoiceLabel(configured)));
                 combo->setCurrentIndex(index);
             }
         }

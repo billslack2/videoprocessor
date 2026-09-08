@@ -1375,6 +1375,10 @@ void testSdrGammaAdjustmentLabelsAndPersistence()
         ConfigEditorWindow window(path, 0, true);
         auto* adjustment = requireControl<QCheckBox>(window, "config.vprenderer.color.sdr_adjust_gamma");
         auto* desired = requireControl<QComboBox>(window, "config.vprenderer.color.sdr_input_transfer");
+        require(window.findChild<QWidget*>("config.vprenderer.color.calibration_lut_input_gamma") == nullptr,
+            "Color / Output still exposes a saved LUT compatibility control");
+        require(requireControl<QComboBox>(window, "config.vprenderer.calibration_lut_input_transfer")->accessibleName() == "Gamma expected by the LUT",
+            "Rendering LUT input label is unclear");
         require(adjustment->accessibleName() == "Enable SDR gamma processing", "Missing gamma checkbox label");
         const int automatic = desired->findData("AUTO", Qt::UserRole, Qt::MatchFixedString);
         if (automatic >= 0)
