@@ -1373,24 +1373,54 @@ void testSdrGammaAdjustmentLabelsAndPersistence()
     const QString path = copyFixture(directory);
     {
         ConfigEditorWindow window(path, 0, true);
-        QComboBox* adjustment = requireControl<QComboBox>(window,
-            QStringLiteral("config.vprenderer.color.sdr_adjust_gamma"));
-        require(adjustment->findText(QStringLiteral("Auto")) < 0 &&
-            adjustment->findText(QStringLiteral("Convert SDR reference to target")) >= 0 &&
-            adjustment->findText(QStringLiteral("Keep SDR tone values unchanged")) >= 0 &&
-            adjustment->findText(QStringLiteral("Use transport transfer as SDR input")) >= 0,
-            "SDR transfer handling does not expose concise labels");
-        selectData(adjustment, QStringLiteral("off"));
+        auto* adjustment = requireControl<QCheckBox>(window, "config.vprenderer.color.sdr_adjust_gamma");
+        auto* desired = requireControl<QComboBox>(window, "config.vprenderer.color.sdr_input_transfer");
+        require(adjustment->accessibleName() == "Enable SDR gamma processing", "Missing gamma checkbox label");
+        const int automatic = desired->findData("AUTO", Qt::UserRole, Qt::MatchFixedString);
+        if (automatic >= 0)
+            require(!(desired->model()->flags(desired->model()->index(automatic, 0)) & Qt::ItemIsEnabled),
+                "Saved automatic assumption is offered as a new choice");
+        adjustment->setCheckState(Qt::Checked);
+        require(desired->isEnabled(), "Desired gamma disabled with processing on");
+        adjustment->setCheckState(Qt::Unchecked);
+        require(!desired->isEnabled(), "Desired gamma enabled with processing off");
         save(window);
     }
-    require(readBytes(path).contains("sdr_adjust_gamma: off"),
-        "SDR gamma adjustment did not persist in the renderer profile");
+    require(readBytes(path).contains("sdr_adjust_gamma: passthrough"), "Unchecked checkbox did not save passthrough");
     {
         ConfigEditorWindow window(path, 0, true);
-        QComboBox* adjustment = requireControl<QComboBox>(window,
-            QStringLiteral("config.vprenderer.color.sdr_adjust_gamma"));
-        require(adjustment->currentData().toString() == QStringLiteral("off"),
-            "SDR gamma adjustment did not reload from the renderer profile");
+        require(requireControl<QCheckBox>(window, "config.vprenderer.color.sdr_adjust_gamma")->checkState() == Qt::Unchecked,
+            "Pass-through did not reload unchecked");
+    }
+    // Previously saved off and AUTO must retain meaning on open/save, even
+    // across inherited profiles, until the user explicitly changes the checkbox.
+    for (const QByteArray mode : { QByteArray("off"), QByteArray("AUTO") })
+    {
+        QFile file(path);
+        require(file.open(QIODevice::WriteOnly | QIODevice::Truncate), "Cannot write compatibility fixture");
+        file.write("[general]\nrenderer: VP Renderer\n[vprenderer.Default]\nquality: high\n"
+            "[vprenderer.color.First]\nsdr_adjust_gamma: " + mode +
+            "\nsdr_input_transfer: AUTO\ncalibration_lut_input_gamma: bt1886\n"
+            "[vprenderer.color.Second]\noutput_gamma: 2.2\n");
+        file.close();
+        ConfigEditorWindow window(path, 0, true);
+        auto* adjustment = requireControl<QCheckBox>(window, "config.vprenderer.color.sdr_adjust_gamma");
+        auto* profiles = requireControl<QListWidget>(window, "config.vprenderer.color.profiles");
+        require(adjustment->checkState() == Qt::PartiallyChecked, "Saved mode incorrectly shown as On or Off");
+        profiles->setCurrentRow(1);
+        require(adjustment->checkState() == Qt::PartiallyChecked, "Inherited saved mode lost");
+        save(window);
+        require(readBytes(path).contains("sdr_adjust_gamma: " + mode), "Opening/saving changed saved mode");
+        require(readBytes(path).contains("sdr_input_transfer: AUTO"), "Opening/saving changed SDR assumption");
+        adjustment->click();
+        require(adjustment->checkState() == Qt::Checked && !adjustment->isTristate(), "Explicit click did not select processing");
+        save(window);
+        require(readBytes(path).contains("sdr_adjust_gamma: on"), "Explicit processing did not persist");
+        requireControl<QPushButton>(window, "config.vprenderer.color.sdr_adjust_gamma.inherit")->click();
+        require(adjustment->checkState() == Qt::PartiallyChecked, "Returning to profile default lost saved mode");
+        save(window);
+        require(!readBytes(path).contains("sdr_adjust_gamma: on"), "Returning to inheritance left an explicit override");
+        require(readBytes(path).contains("calibration_lut_input_gamma: bt1886"), "Saved Color LUT input was lost");
     }
 }
 
@@ -1985,9 +2015,9 @@ void testRendererProfileSectionsCollapseAndPersist()
         QStringLiteral("rendererSection.sourceColor"));
     QWidget* calibrationContent = requireControl<QWidget>(window,
         QStringLiteral("rendererSection.calibration.content"));
-    require(calibration->isChecked() && !sourceColor->isChecked(),
-        "A Color Config section was not collapsed initially");
-    require(sourceColor->text() == QStringLiteral("Source transfer"),
+    require(calibration->isChecked() && sourceColor->isChecked(),
+        "Display calibration and SDR gamma processing should initially be expanded");
+    require(sourceColor->text() == QStringLiteral("SDR gamma processing"),
         "The SDR input-transfer controls are not grouped under Color Config Source transfer");
     require(calibrationContent->findChild<QLineEdit*>(
         QStringLiteral("config.vprenderer.color.sdr_target_nits")) == nullptr &&
@@ -2160,6 +2190,8 @@ void testRendererProfileSectionsCollapseAndPersist()
         "Display calibration content is visible while collapsed");
 
     window.selectPage(16);
+    sourceColor->click();
+    require(!sourceColor->isChecked(), "SDR gamma processing did not collapse");
     sourceColor->click();
     require(sourceColor->isChecked() && requireControl<QWidget>(window,
         QStringLiteral("rendererSection.sourceColor.content"))->isVisibleTo(&window),
@@ -2960,18 +2992,12 @@ void testChoiceLabelsAndVpRendererName()
 			QStringLiteral("Auto: Follows accepted transport; see live output"),
 		"Calibration LUT enablement unexpectedly changed Auto gamma");
 	calibrationEnabled->setChecked(false);
-	require(requireControl<QLabel>(window,
-		QStringLiteral("config.vprenderer.color.sdr_adjust_gamma.auto_status"))->text() ==
-			QStringLiteral("Auto: Conditional SDR-to-sRGB policy"),
-		"SDR gamma adjustment Auto control does not identify its effective policy");
-	const QString sdrInputAutoText = requireControl<QLabel>(window,
-		QStringLiteral("config.vprenderer.color.sdr_input_transfer.auto_status"))->text();
-	const QByteArray sdrInputAutoFailure = QStringLiteral(
-		"SDR input transfer Auto control text was '%1'").arg(
-			sdrInputAutoText).toLocal8Bit();
-	require(sdrInputAutoText.startsWith(QStringLiteral("Auto: ")) &&
-		sdrInputAutoText.size() > QStringLiteral("Auto: ").size(),
-		sdrInputAutoFailure.constData());
+    require(requireControl<QCheckBox>(window, "config.vprenderer.color.sdr_adjust_gamma")->checkState() == Qt::PartiallyChecked,
+        "Saved automatic gamma policy not indicated");
+    require(requireControl<QLabel>(window, "config.vprenderer.color.sdr_adjust_gamma.status")->text().contains("Saved behavior retained"),
+        "Saved automatic gamma policy not explained");
+    require(requireControl<QComboBox>(window, "config.vprenderer.color.sdr_input_transfer")->currentText().contains("BT.1886"),
+        "Saved SDR automatic assumption not explained");
 	require(requireControl<QLabel>(window,
 		QStringLiteral("config.vprenderer.display_bit_depth.auto_status"))->text() ==
 			QStringLiteral("Auto: Output format"),
@@ -3027,8 +3053,8 @@ void testChoiceLabelsAndVpRendererName()
         require(edit->text() != QStringLiteral("AUTO"),
             "A text field still exposes AUTO instead of Auto");
     for (QCheckBox* check : window.findChildren<QCheckBox*>())
-        require(!check->isTristate(),
-            "A checkbox still exposes an indeterminate third state");
+        require(!check->isTristate() || check->objectName() == "config.vprenderer.color.sdr_adjust_gamma",
+            "An unrelated checkbox exposes an indeterminate third state");
 
     window.selectPage(4);
     QCheckBox* cropNarrower = requireControl<QCheckBox>(window,
@@ -5172,7 +5198,9 @@ void testUnifiedColorOutputMigrationAndTransferRoundTrip()
     const QString path = directory.filePath("VideoProcessor.cfg");
     QFile file(path);
     require(file.open(QIODevice::WriteOnly), "Cannot create migration fixture");
-    const QByteArray original = R"cfg([vprenderer.color.Rec709]
+    const QByteArray original = R"cfg([vprenderer.Default]
+quality: high
+[vprenderer.color.Rec709]
 shortcut: F5
 output_gamma: 2.2
 sdr_input_transfer: bt1886
@@ -5203,8 +5231,8 @@ output_range: full
     require(range->currentData().toString() == "limited", "First Output was not copied to second Color");
     require(requireControl<QLineEdit>(window,"config.vprenderer.color.shortcut")->text() == "F6",
         "Output shortcut replaced Color shortcut");
-    selectData(requireControl<QComboBox>(window,"config.vprenderer.color.calibration_lut_input_gamma"), "bt1886");
-    selectData(requireControl<QComboBox>(window,"config.vprenderer.color.sdr_adjust_gamma"), "passthrough");
+    selectData(requireControl<QComboBox>(window,"config.vprenderer.calibration_lut_input_transfer"), "bt1886");
+    requireControl<QCheckBox>(window,"config.vprenderer.color.sdr_adjust_gamma")->setCheckState(Qt::Unchecked);
     save(window);
     const QByteArray saved = readBytes(path);
     require(saved.contains("[legacy_output.first]") && saved.contains("[legacy_output.unused]") &&
@@ -5215,9 +5243,9 @@ output_range: full
         "Migration did not preserve an exact original-file backup");
     ConfigEditorWindow reloaded(path, 0, true);
     requireControl<QListWidget>(reloaded,"config.vprenderer.color.profiles")->setCurrentRow(1);
-    require(requireControl<QComboBox>(reloaded,"config.vprenderer.color.calibration_lut_input_gamma")->currentData().toString() == "bt1886",
+    require(requireControl<QComboBox>(reloaded,"config.vprenderer.calibration_lut_input_transfer")->currentData().toString() == "bt1886",
         "LUT domain changed on reload");
-    require(requireControl<QComboBox>(reloaded,"config.vprenderer.color.sdr_adjust_gamma")->currentData().toString() == "passthrough",
+    require(requireControl<QCheckBox>(reloaded,"config.vprenderer.color.sdr_adjust_gamma")->checkState() == Qt::Unchecked,
         "Explicit pass-through changed on reload");
     require(!requireControl<QPushButton>(reloaded, "applyConfiguration")->isEnabled(),
         "Reload unexpectedly scheduled another migration");

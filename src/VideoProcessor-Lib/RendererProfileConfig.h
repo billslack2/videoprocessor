@@ -566,7 +566,7 @@ namespace RendererProfileConfig
 				return IsNumberInRange(value, 40.0, 500.0);
 			}
 			if (key == "sdr_black_nits") return IsChoice(value, { "auto" }) || IsNumberInRange(value, 0.0, 500.0, false);
-			if (key == "calibration_lut_input_gamma") return IsChoice(value, { "display", "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" });
+			if (key == "calibration_lut_input_gamma" || key == "calibration_lut_input_transfer") return IsChoice(value, { "display", "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" });
 			if (key == "output_gamma") return IsChoice(value, { "auto", "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" });
 			if (key == "sdr_target_primaries") return IsChoice(value, { "rec709", "p3_d65", "bt2020" });
 			if (key == "report_bt2020_to_display") return IsBoolean(value);

@@ -4875,6 +4875,17 @@ namespace VideoProcessorTest
 			DeleteFileA(path.c_str());
 		}
 
+        TEST_METHOD(LutInputTransferBelongsToRenderingAndAcceptsOldColorFallback)
+        {
+            for (const std::string value : { "display", "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" })
+            {
+                Assert::IsTrue(RendererProfileConfig::ValidateTargetRendererSetting("calibration_lut_input_transfer", value));
+                Assert::IsFalse(RendererProfileConfig::ValidateColorConfigSetting("calibration_lut_input_transfer", value));
+                Assert::IsTrue(RendererProfileConfig::ValidateColorConfigSetting("calibration_lut_input_gamma", value));
+            }
+            Assert::IsFalse(RendererProfileConfig::ValidateTargetRendererSetting("calibration_lut_input_transfer", "auto"));
+        }
+
 		TEST_METHOD(CanonicalRendererAcceptsDocumentedPeakAndCalibrationLutValues)
 		{
 			char temporaryDirectory[MAX_PATH] = {};

@@ -607,6 +607,33 @@ namespace VideoProcessorTest
 	{
 	public:
 
+        TEST_METHOD(RenderingLutInputOverridesColorWithoutChangingOmittedConfigurations)
+        {
+            using namespace LibplaceboCalibrationLut;
+            // Changing either independent profile uses the same precedence.
+            for (const std::string color : { "display", "bt1886", "2.2", "2.4" })
+            {
+                Assert::AreEqual(color, ResolveInputTransfer(color, ""));
+                for (const std::string rendering : { "display", "2.2", "2.4", "bt1886" })
+                    Assert::AreEqual(rendering, ResolveInputTransfer(color, rendering));
+            }
+        }
+
+        TEST_METHOD(RejectedReloadRetainsLutOnlyWithSameInputContract)
+        {
+            using namespace LibplaceboCalibrationLut;
+            Contract loaded{ "luts/screen.cube", "BT709", "2.4", "base" };
+            Contract next = loaded;
+            Assert::IsTrue(ResolveReloadFailure(loaded == next, true) == ReloadFailureAction::RETAIN_LAST_KNOWN_GOOD);
+            next.inputTransfer = "2.2";
+            Assert::IsTrue(ResolveReloadFailure(loaded == next, true) == ReloadFailureAction::DETACH);
+            next = loaded; next.gamut = "P3-D65";
+            Assert::IsTrue(ResolveReloadFailure(loaded == next, true) == ReloadFailureAction::DETACH);
+            loaded.inputTransfer = InputContractKey("display", "2.2");
+            next = loaded; next.inputTransfer = InputContractKey("display", "2.4");
+            Assert::IsTrue(ResolveReloadFailure(loaded == next, true) == ReloadFailureAction::DETACH);
+        }
+
         TEST_METHOD(NoLutGamma22FullLimitedRampsMatchReferenceAt8And10Bits)
         {
             TargetLutGpuFixture fixture;

@@ -31,8 +31,8 @@ retires that selection. A missing LUT file is shown and preserved, not deleted.
 | --- | --- | --- |
 | Display primaries | Rec.709 | Explicit |
 | Display transfer | Gamma 2.2 | Removed; legacy requests preserved |
-| SDR reference / intended response | Gamma 2.2 | Renamed Follow source metadata |
-| SDR handling | Convert SDR reference to target | Removed; legacy requests preserved |
+| Desired SDR gamma | Gamma 2.2 | Removed; saved BT.1886 assumption retained |
+| Enable SDR gamma processing | Checked (on) | Saved off/Auto retained until explicit edit |
 | RGB range | Full | Removed; legacy requests preserved |
 | Limited transport | 2.2 (inactive for Full) | Removed; legacy requests preserved |
 | Target nits | 100 | Numeric; HDR tone mapping only |
@@ -45,8 +45,8 @@ retires that selection. A missing LUT file is shown and preserved, not deleted.
 All explicit gamma choices stay together. Flip model replaces the misleading Direct
 label; BitBlt model replaces Composed. Flip does not guarantee independent flip or
 bypass desktop composition. Dither depth does not configure the GPU/HDMI wire depth.
-SDR handling Off remains labeled legacy: it reinterprets source transfer using the
-accepted carrier, which can differ from calibrated display gamma.
+Saved SDR handling off reinterprets source transfer using the accepted carrier.
+It is displayed as a retained behavior, not an unchecked gamma checkbox.
 
 ## Derived Limited 2.2 flag
 
@@ -172,3 +172,56 @@ requesting foreground. This is event-driven, preserves popup handling, and does 
 add native cross-process ownership or recurring focus polling. The cross-process
 regression checks actual relative order, not only the WS_EX_TOPMOST style bit.
 This restores staying above VP; it does not disable VP's controls.
+
+## SDR controls and Rendering-owned LUT input (2026-09-08)
+
+The current UI uses Enable SDR gamma processing and Desired SDR gamma, separating
+calibrated physical display response from desired viewing response. Checked saves
+on; unchecked saves passthrough. Existing off and AUTO show a partially checked
+checkbox with an explanation. Opening/saving preserves them; an explicit click
+selects the new behavior. Desired gamma is inactive when processing is disabled.
+All explicit gamma choices remain together. SDR input AUTO is no longer offered:
+the current capture path maps generic SDR to BT.1886, not a detected mastering gamma.
+Fresh desired/display gamma remain 2.2. P3-D65 labels and preset gamut support remain.
+
+Rendering now owns calibration_lut_input_transfer beside its LUT enablement and
+files. One declaration applies to all three gamut slots. An explicit value,
+including display, overrides the old calibration_lut_input_gamma after independent
+profile selections are merged. Omission preserves the old Color/base contract;
+no cross-product migration or silent rewriting is performed. The old Color setting
+is visible read-only. Fresh Rendering profiles use explicit display. Display gamma
+remains editable: no usable LUT means physical gamma, and an active LUT with input
+display still depends on it. HDR Target nits, black and dynamic tone mapping remain
+active, because these LUTs calibrate the tone-mapped result.
+
+LUT reload identity includes file path, gamut, input transfer and constrained base.
+For input display it also includes calibrated display gamma. Rejected same-contract
+file reloads retain the previous valid LUT. A changed input declaration requires
+revalidation; failure detaches the LUT and uses physical display gamma.
+
+This follows the madVR distinction between calibrated display response and optional
+gamma processing, without claiming identical implementation or copying HDR metadata
+controls into SDR tone-mapping settings. Madshi's recommendation for dynamic tone
+mapping plus an SDR calibration LUT: https://bugs.madshi.net/view.php?id=659.
+
+### SDR/LUT follow-up validation
+
+- Clean full x64 Release rebuild succeeded after switching to Qt's current
+  checkStateChanged signal. No runtime changes followed that successful build.
+- Native suite: 1,110/1,111 passed; the sole documentation inventory failure was
+  corrected and its focused rerun passed. All renderer, LUT, profile ownership,
+  compatibility, Full/Limited and 8/10-bit numerical checks passed.
+- Updated full UI run: 63/66 passed. Three window/popup checks were intermittent
+  in the suite; all three passed in separate focused processes. All changed SDR,
+  inheritance, LUT persistence and migration scenarios passed in the full run.
+- Six isolated actual-VP startup/render cases verified Rendering override,
+  independent Color selection, omission fallback, Rendering inheritance, explicit
+  display override and missing-LUT fallback. Valid identity LUTs attached with the
+  expected input; missing LUT resolved to physical display gamma. Test-only
+  configurations/state were used; active user configuration was untouched.
+- Independent rendering/calibration specialist reviewed code and all six runtime
+  logs and found no blocker for this focused beta change. Continuous live profile
+  switching was inspected in code, not demonstrated by these separate launches.
+  Physical HDMI/display response remains unmeasured.
+- Release staging verified all 58 immutable files. Read-only Windows screenshot
+  confirmed the combined profile page still loads against the active configuration.

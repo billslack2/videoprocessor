@@ -4,6 +4,28 @@
 
 namespace LibplaceboCalibrationLut
 {
+    struct Contract
+    {
+        std::string path, gamut, inputTransfer, baseDirectory;
+        bool operator==(const Contract& other) const
+        {
+            return path == other.path && gamut == other.gamut &&
+                inputTransfer == other.inputTransfer && baseDirectory == other.baseDirectory;
+        }
+    };
+    inline std::string InputContractKey(const std::string& input, const std::string& display)
+    {
+        return input == "display" ? "display:" + display : input;
+    }
+
+    // Empty Rendering input retains existing Color/base behavior; 'display'
+    // is an explicit override, not omission.
+    inline std::string ResolveInputTransfer(const std::string& savedInput,
+        const std::string& renderingInput)
+    {
+        return renderingInput.empty() ? savedInput : renderingInput;
+    }
+
 	enum class Primaries
 	{
 		UNKNOWN,

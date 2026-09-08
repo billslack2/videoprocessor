@@ -947,6 +947,7 @@ namespace
 		std::string outputTransportGamma = "auto";
 		std::string outputGamma = "auto";
         std::string calibrationLutInputGamma = "display";
+        std::string calibrationLutInputTransfer; // Rendering-owned override; empty preserves saved Color behavior.
 		std::string sdrTargetPrimaries = "rec709";
 		bool reportBt2020ToDisplay = false;
 		std::string sdrInputTransfer = "auto";
@@ -1823,6 +1824,8 @@ namespace
 			{ "auto", "on", "off", "passthrough" });
         readChoice("calibration_lut_input_gamma", settings.calibrationLutInputGamma,
             { "display", "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" });
+        readChoice("calibration_lut_input_transfer", settings.calibrationLutInputTransfer,
+            { "display", "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" });
 		if (config.TryGetString(rule.section, "contrast_recovery", raw))
 		{
 			settings.hasContrastRecovery = false;
@@ -2167,6 +2170,8 @@ namespace
 			{ "auto", "on", "off", "passthrough" });
         settings.calibrationLutInputGamma = ReadChoice(config, "calibration_lut_input_gamma", "display",
             { "display", "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" });
+        settings.calibrationLutInputTransfer = ReadChoice(config, "calibration_lut_input_transfer", "",
+            { "display", "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" });
 		if (TryGetDisplayString(config, "output_diagnostics", rawValue) &&
 			!TryGetDisplayBool(config, "output_diagnostics", settings.outputDiagnostics))
 		{
@@ -2485,6 +2490,14 @@ namespace
 			DebugLog::Log("display: selected %s rule '%s' (priority %d)",
 				manualRule.empty() ? "automatic" : "manual", activeRule.c_str(), selectedRule.priority);
 		}
+
+        // Resolve after all independently selected profiles, regardless of their
+        // application order. An explicit Rendering 'display' also wins.
+        DebugLog::Log("calibration LUT input: rendering=%s saved=%s profiles=%s",
+            settings.calibrationLutInputTransfer.empty() ? "unset" : settings.calibrationLutInputTransfer.c_str(),
+            settings.calibrationLutInputGamma.c_str(), activeProfiles.c_str());
+        settings.calibrationLutInputGamma = LibplaceboCalibrationLut::ResolveInputTransfer(
+            settings.calibrationLutInputGamma, settings.calibrationLutInputTransfer);
 
 		// [vpvr.general] owns cross-profile renderer behavior. Deprecated
 		// [general], [display], and [libplacebo] locations remain readable
@@ -3562,6 +3575,7 @@ struct LibplaceboVideoRenderer::Impl
 	std::string displayLutPath;
 	std::string displayLutConstrainedBaseDirectory;
 	std::string displayLutTarget = "none";
+    std::string displayLutInputTransfer;
 	bool displayLutParsed = false;
 	bool displayLutObservedAvailable = false;
 	uint64_t displayLutObservedBytes = 0;
@@ -6614,10 +6628,13 @@ struct LibplaceboVideoRenderer::Impl
 			return;
 		}
 
-		const bool sameContract = displayLutParsed && displayLut &&
-			displayLutPath == candidatePath &&
-			displayLutTarget == candidateTarget &&
-			displayLutConstrainedBaseDirectory == candidateBase;
+        const std::string candidateInput = LibplaceboCalibrationLut::InputContractKey(
+            settings.calibrationLutInputGamma, settings.outputGamma);
+        const bool sameContract = displayLutParsed && displayLut &&
+            LibplaceboCalibrationLut::Contract{ displayLutPath, displayLutTarget,
+                displayLutInputTransfer, displayLutConstrainedBaseDirectory } ==
+            LibplaceboCalibrationLut::Contract{ candidatePath, candidateTarget,
+                candidateInput, candidateBase };
 		const LibplaceboDisplayLut::LoadResult result =
 			LibplaceboDisplayLut::Load(log, candidatePath, candidateBase);
 		// Acknowledge exactly the file handle version that was parsed. A second
@@ -6648,6 +6665,7 @@ struct LibplaceboVideoRenderer::Impl
 			DetachDisplayLut(std::string("Rejected: ") + reason);
 			displayLutPath = candidatePath;
 			displayLutTarget = candidateTarget;
+            displayLutInputTransfer = candidateInput;
 			displayLutConstrainedBaseDirectory = candidateBase;
 			DebugLog::Log(
 				"display calibration LUT rejected (%s); preserving ordinary DTM output: %s",
@@ -6660,6 +6678,7 @@ struct LibplaceboVideoRenderer::Impl
 		displayLutParsed = true;
 		displayLutPath = candidatePath;
 		displayLutTarget = candidateTarget;
+            displayLutInputTransfer = candidateInput;
 		displayLutConstrainedBaseDirectory = candidateBase;
 		pl_lut_free(&previous);
 		DebugLog::Log(
@@ -7389,6 +7408,8 @@ struct LibplaceboVideoRenderer::Impl
 		}
 
 		const bool lutChanged =
+            LibplaceboCalibrationLut::InputContractKey(activeSettings.calibrationLutInputGamma, activeSettings.outputGamma) !=
+                LibplaceboCalibrationLut::InputContractKey(settings.calibrationLutInputGamma, settings.outputGamma) ||
 			activeSettings.calibrationLutEnabled !=
 				settings.calibrationLutEnabled ||
 			activeSettings.calibrationLutBt709Path !=
