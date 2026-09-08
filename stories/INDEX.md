@@ -8,7 +8,7 @@ story may have ordered child-task IDs as defined below.
 
 - Last assigned root story: `VP-0174`
 - Next root story number: `VP-0175`
-- Total indexed items: 192
+- Total indexed items: 193
 
 ## Story locations
 
@@ -194,7 +194,7 @@ they must not contain requirements that are absent from this file.
 | VP-0156 | Review | Eliminate transient four-sided bars during live Screen and Zoom profile changes |
 | VP-0157 | Review | Expose direct GPU sampling for VP Renderer downscaling |
 | VP-0158 | Review | Zoom-safe active-profile OSD and meaningful status filtering |
-| VP-0159 | Backlog | Consolidate profile-like configuration lists on one shared UI component |
+| VP-0159 | Done | Consolidate profile-like configuration lists on one shared UI component |
 | VP-0160 | Review | Reapply profile rules after every renderer swap |
 | VP-0161 | Review | Concise libplacebo-style renderer health OSD |
 | VP-0162 | Review | Match profile-status OSD top padding to its horizontal padding |
@@ -202,10 +202,11 @@ they must not contain requirements that are absent from this file.
 | VP-0164 | Done | Backdate fully proven inward lookahead transitions |
 | VP-0165 | Backlog | Evaluate safe active-picture lookahead refinements |
 | VP-0166 | Done | Correct integrated target-frame 3D LUT application |
-| VP-0167 | In Progress | Restore madVR-style two-pass VP Renderer refresh-mode selection |
+| VP-0167 | Review | Restore madVR-style two-pass VP Renderer refresh-mode selection |
 | VP-0168 | Backlog | Native LAN configuration editor discovery and apply parity |
 | VP-0169 | Done | Persist GUI edits into missing configuration sections |
 | VP-0170 | In Progress | Stabilize DirectShow/madVR EOTF transitions |
+| VP-0171 | Backlog | Opt-in ICC/ICM display-calibration profiles for VP Renderer |
 | VP-0172 | Backlog | Source-driven output display-mode selection |
 | VP-0173 | Backlog | Decouple SDR target luminance from HDR classification |
 | VP-0174 | Backlog | Calibrated display settings contract and Color/Output UI |

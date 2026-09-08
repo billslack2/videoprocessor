@@ -2,7 +2,13 @@
 
 ## Status
 
-In Progress (reopened 2026-08-31). The rational Windows fallback is live-verified, but explicit DXGI rational candidate ordering and rejection verification are now being added.
+Review. Tracker audit repair (2026-09-07): status and index now agree with
+the recorded move to `review/` in tracker commit `64f831c`. Implementation,
+build, deployment, and live-diagnostic evidence is retained below. Final review
+must reconcile the historical validation notes and confirm remaining acceptance
+coverage before closing this story.
+
+The following describes the original issue and historical implementation work.
 
 VP Renderer currently submits one content-derived rational refresh request to
 `SetDisplayConfig` with `SDC_ALLOW_CHANGES`; it does not enumerate and rank

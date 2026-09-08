@@ -91,8 +91,8 @@ may change, desktop raster does not.
 ## Dependencies and readiness
 
 - VP-0167 owns the existing rational candidate ranking, verification, and
-  rollback behavior. Reconcile its current Review folder with its stale
-  `In Progress` index row before relying on its recorded state.
+  rollback behavior. Its tracker state is Review; confirm its acceptance
+  coverage before extending the existing transition policy.
 - Before implementation, verify the current configuration namespace and exact
   `SetDisplayConfig` mode-info ownership on the current beta integration base.
 - The DCI bench case requires the target driver to enumerate the requested DCI
