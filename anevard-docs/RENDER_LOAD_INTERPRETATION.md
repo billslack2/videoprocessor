@@ -1,64 +1,47 @@
 # Reading the render-load stats
 
-The Ctrl+I rows answer whether the VP Renderer shader pipeline has comfortable
-GPU headroom at the active display refresh rate.
+The Ctrl+I panel reports a rolling ten-second view:
 
-```
-GPU render 10s:  avg 4.27, worst 4.85 ms, max 29%
-GPU budget:      16.68 ms @ 59.941 Hz
-GPU session:     worst 5.31 ms, max 32%
-CPU process:     now 3%, peak 6%
+```text
+GPU frame:       avg 2.10, max 2.62 ms (10 s)
+10s avg/max: CPU 12/34%, GPU budget 13/16%
+Frame budget:    16.68 ms @ 59.941 fps
 ```
 
-- `GPU render 10s` is the mean recent render-pass cost and the highest share of
-  a refresh period seen in the rolling ten-second window.
-- `GPU budget` comes from the same monitor-qualified display rate used by the
-  rest of the OSD. A source-frame period is never presented as a display budget.
-- `GPU session` is the highest load since the current shader/profile pipeline
-  settled. A live NLS or profile change clears it and starts another settling
-  period, so old and new pipelines are not mixed.
-- `CPU process` is VideoProcessor's process-wide CPU usage, comparable to Task
-  Manager's whole-machine percentage.
+GPU frame is the sum of source upload, changed overlay upload, and core render
+GPU timestamp intervals belonging to one successfully submitted frame. Gaps
+between these stages, CPU conversion, Present waiting, and scanout are excluded.
+Average and maximum describe accepted samples in the trailing ten seconds.
+Timing alternates with the legacy pass diagnostic, so the maximum is the maximum
+sampled cost; it is not a guarantee that every frame was timed.
 
-## Important timing semantics
+GPU budget percentages divide each sample by its own validated source/render
+period. At 23.976 fps the budget is approximately 41.71 ms, even when the monitor
+scans out repeated frames at a higher rate. This is frame-budget utilization,
+not GPU hardware-engine occupancy. Average and maximum percentages are tracked
+independently of maximum milliseconds. During an ordinary reset, the known input format rate keeps the budget
+available while the measured drift tracker recovers. If neither input rate is
+valid, percentages are suppressed. Completed GPU history and the established
+D/R estimate survive a reset; restart or real contract/pipeline changes begin
+a new measurement session.
 
-The GPU figures are libplacebo's native per-pass timer results. libplacebo
-resolves its D3D11 timestamp queries asynchronously and reports the latest
-available result for each pass. Values may lag by several frames or be absent
-temporarily. They are therefore accurate recent render-pass costs, but they are
-not an exact timing ledger for the frame currently being presented.
+CPU is processor time charged to all VP threads, divided by elapsed time and
+logical processor count. Its average weights each interval by its overlap with
+the last ten seconds; its maximum is the largest overlapping sample percentage.
+For example, one saturated thread on 12 logical processors reads about 8%.
 
-VideoProcessor does not add D3D11 timestamp queries, nest disjoint intervals,
-call `Flush`, poll for completion, or wait on the GPU. Doing any of those to
-force same-frame attribution would perturb the latency being measured.
+Available measurements appear immediately by default; unresolved values say
+measuring. The shared OsdTimingPolicy::WarmingEnabled switch can restore optional
+warmup. D/R estimate uses the beta's smoothed interval estimator and validated
+startup display rates in both native and fallback paths.
 
-The measurement covers libplacebo render passes. It does not claim to be total
-GPU occupancy for uploads, presentation, unrelated processes, or work running
-concurrently on other GPU engines. Use a GPU profiler when that distinction
-matters.
+Compare demanding content over a full rolling window after changing settings.
+Late GPU results are telemetry delay, not an intentional delay to video.
+Session peaks and core/legacy pass diagnostics remain in logs only.
 
-## Comparing settings
-
-After playback starts or a shader/profile changes, wait until `settling...`
-disappears. Then compare the ten-second average and maximum using the same
-content and display mode. A single maximum near 100% means there is little or no
-headroom for that workload, but it does not by itself prove the corresponding
-present missed its deadline because timer delivery is asynchronous.
-
-The window and session percentages are paired with the display period that was
-active when each GPU sample was recorded. This prevents a refresh-rate change
-from applying today's budget to an older millisecond peak.
-
-`render_ms` and `swap_ms` remain diagnostic log fields only. They are CPU wall
-times around calls and can include driver back-pressure or display pacing; they
-must not be added to the GPU number or interpreted as shader execution time.
-
-## Log fields
-
-`Alpha presentation telemetry:` includes `gpu_recent_estimate_ms`,
-`gpu_avg_ms`, `gpu_peak_ms`, `gpu_load_pct`, `gpu_load_ms`,
-`gpu_load_period_ms`, `gpu_passes`, and corresponding session fields. The line
-ends with `timer_semantics=libplacebo-recent-async` to make the attribution
-limit explicit. `display_target_hz` is the monitor-qualified budget authority;
-the separate DXGI `display_hz` measurement is rejected if its cadence conflicts
-with that target.
+Useful log fields include gpu_frame_avg_ms, gpu_frame_peak_ms,
+gpu_load_avg_pct, gpu_load_pct, gpu_frame_coverage_pct, gpu_source,
+gpu_submission, gpu_lag_frames, gpu_unmatched, gpu_query_failures,
+gpu_disjoint, gpu_overruns, and gpu_lock_drops. Process CPU load reports
+the rolling average and maximum every ten seconds. render_ms and swap_ms
+remain CPU wall-time diagnostics, not GPU execution or process CPU use.

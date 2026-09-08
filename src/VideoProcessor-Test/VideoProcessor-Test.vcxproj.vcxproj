@@ -201,9 +201,10 @@
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="SceneDetectorTests.cpp" />
-	<ClCompile Include="AlphaPresentationTelemetryTests.cpp" />
-	<ClCompile Include="AlphaRenderLoadMeterTests.cpp" />
+    <ClCompile Include="AlphaPresentationTelemetryTests.cpp" />
+    <ClCompile Include="AlphaRenderLoadMeterTests.cpp" />
     <ClCompile Include="AlphaCadenceCorrectionPolicyTests.cpp" />
+	<ClCompile Include="ProcessCpuUsageWindowTests.cpp" />
     <ClCompile Include="ConfigFileTests.cpp" />
     <ClCompile Include="ConfigEditorCoreTests.cpp" />
     <ClCompile Include="..\VideoProcessor-ConfigCore\ConfigEditorCore.cpp">

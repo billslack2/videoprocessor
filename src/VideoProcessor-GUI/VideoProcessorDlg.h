@@ -860,6 +860,7 @@ protected:
 	ProcessCpuUsageMeter m_processCpuUsage;
 	const IVideoRenderer* m_cpuUsageRenderer = nullptr;
 	uint32_t m_cpuUsageRendererGeneration = 0;
+	uint64_t m_lastCpuLoadLogTick = 0;
 	double m_loggedCpuPeakPercent = 0.0;
 	// A new CPU peak is logged only when it is anomalous against this
 	// machine's own baseline (see ProcessCpuUsageMeter) AND beats the last

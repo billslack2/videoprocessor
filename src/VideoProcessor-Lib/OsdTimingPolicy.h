@@ -11,6 +11,16 @@ namespace OsdTimingPolicy
 // immediately by default. Renderer readiness/correction gates are independent.
 constexpr bool WarmingEnabled = false;
 
+// Capacity uses the known input format while reset temporarily invalidates
+// the measured drift estimate. This fallback never feeds cadence correction.
+inline double FrameBudgetRate(double measuredHz, double nominalHz)
+{
+    const auto valid = [](double hz) {
+        return std::isfinite(hz) && hz >= 10.0 && hz <= 500.0;
+    };
+    return valid(measuredHz) ? measuredHz : (valid(nominalHz) ? nominalHz : 0.0);
+}
+
 inline double DisplayRate(DisplayRefreshRateInput input,
     bool warmingEnabled = WarmingEnabled)
 {

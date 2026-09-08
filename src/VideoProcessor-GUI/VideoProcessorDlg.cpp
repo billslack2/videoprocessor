@@ -5717,7 +5717,11 @@ LRESULT CVideoProcessorDlg::OnMessageCaptureDeviceCardStateChange(WPARAM wParam,
 
 	m_cadenceInputLocked = cardState->inputLocked;
 	if (cardState->inputLocked != InputLocked::YES)
+	{
 		m_cadenceIntervalEstimate.Reset();
+		m_processCpuUsage.Reset();
+		m_loggedCpuPeakPercent = 0.0;
+	}
 
 	// Input fields
 	m_inputLockedText.SetWindowText(ToString(cardState->inputLocked));
@@ -5936,12 +5940,14 @@ LRESULT CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange(WPARAM wParam
 				notification->retainedRendererIngress ? "retained" : "gated");
 		}
 	}
-	else
+	else if (appliedChangeClass != CaptureVideoStateChangeClass::Duplicate)
 	{
 		// Reset refresh-rate tracking on a material signal-contract change to
 		// prevent false-positive detection.
 		m_lastKnownRefreshRate = 0.0;
 		m_cadenceIntervalEstimate.Reset();
+		m_processCpuUsage.Reset();
+		m_loggedCpuPeakPercent = 0.0;
 		m_resyncPendingResetSeconds = -1;
 		DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange(): Reset refresh rate tracking")));
 	}
@@ -14114,7 +14120,8 @@ void CVideoProcessorDlg::OnDisplayChange(UINT bitsPerPixel, int width, int heigh
 	if (g_displayRefreshRateSampler)
 		g_displayRefreshRateSampler->ResetMeasurement();
 
-	m_cadenceIntervalEstimate.Reset();
+	// A same-mode display reset does not invalidate the OSD estimate. Its
+	// contract check will discard history if the monitor or actual rate changes.
 
 	// A display notification is a recovery boundary even when the renderer is
 	// not rebuilt.  Give Windows and the HDMI chain the configured settle time,
@@ -15041,8 +15048,8 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		configuredDisplayRefreshRate :
 		(madVRDetectedRefreshRateKnown ? madVRDetectedRefreshRate :
 			measuredDisplayRefreshRate);
-	// Feed the renderer the same monitor-qualified rate shown by the OSD. The
-	// target rational is authoritative while the local estimator is warming.
+	// Keep the renderer informed of the monitor-qualified display rate.
+	// Its GPU capacity budget is separately based on the source/render cadence.
 	if (m_videoRenderer)
 	{
 		m_videoRenderer->SetRenderLoadDisplayRefreshRate(
@@ -15742,9 +15749,7 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		m_captureDeviceState == CaptureDeviceState::CAPTUREDEVICESTATE_CAPTURING &&
 		m_captureDeviceVideoState && m_captureDeviceVideoState->valid;
 	const bool cadenceWaitingForRates = cadenceCaptureActive &&
-		((!hasMeasuredCaptureRate && cadenceDisplayRate > 0.0) ||
-			(cadenceDisplayRate <= 0.0 &&
-				displayRateResult.decision == DisplayRefreshRateDecision::Warming));
+		(!hasMeasuredCaptureRate || cadenceDisplayRate <= 0.0);
 	m_cadenceIntervalEstimate.Update(GetTickCount64(),
 		hasMeasuredCaptureRate && cadenceCaptureActive ? measuredCaptureRate : 0.0,
 		cadenceDisplayRate, cadenceContract, cadenceWaitingForRates);
@@ -15755,11 +15760,12 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		m_lastCadenceIntervalLogTick = cadenceLogTick;
 		DebugLog::Log(
 			"OSD cadence interval: capture_hz=%.9f display_hz=%.9f "
-			"source=%d evidence_s=%.1f mean_difference_hz=%.9f status=%S",
+			"source=%d evidence_s=%.1f mean_difference_hz=%.9f holding=%d status=%S",
 			hasMeasuredCaptureRate ? measuredCaptureRate : 0.0,
 			cadenceDisplayRate, cadenceContract.rateSource,
 			m_cadenceIntervalEstimate.EvidenceSeconds(),
 			m_cadenceIntervalEstimate.MeanDifferenceHz(),
+			m_cadenceIntervalEstimate.HoldingMeasurements() ? 1 : 0,
 			m_cadenceIntervalEstimate.Text().c_str());
 	}
 
@@ -15774,14 +15780,28 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		m_transitionGeneration != m_cpuUsageRendererGeneration)
 	{
 		m_processCpuUsage.Reset();
+		m_cadenceIntervalEstimate.Reset();
 		m_cpuUsageRenderer = statsRenderer;
 		m_cpuUsageRendererGeneration = m_transitionGeneration;
 		m_loggedCpuPeakPercent = 0.0;
 	}
-	// Sample on the existing one-second UI timer even while Ctrl+I is hidden.
+	// CPU accounting is session telemetry, not an OSD paint effect. Sample on
+	// the existing one-second UI timer even while Ctrl+I is hidden, so reopening
+	// the panel cannot average the whole hidden interval or miss its peak.
 	if (statsRenderer)
 	{
 		m_processCpuUsage.Sample();
+		const uint64_t cpuLogTick = GetTickCount64();
+		if (m_processCpuUsage.Valid() && cpuLogTick - m_lastCpuLoadLogTick >= 10000)
+		{
+			m_lastCpuLoadLogTick = cpuLogTick;
+			DebugLog::Log(
+				"Process CPU load: window_s=10 avg_pct=%.2f max_pct=%.2f processors=%lu generation=%llu note=process-wide-time-weighted-share-of-whole-machine",
+				m_processCpuUsage.WindowAveragePercent(),
+				m_processCpuUsage.WindowPeakPercent(),
+				static_cast<unsigned long>(m_processCpuUsage.Processors()),
+				static_cast<unsigned long long>(m_transitionGeneration));
+		}
 		if (m_processCpuUsage.ConsumeNewPeak() &&
 			m_processCpuUsage.SessionPeakIsAnomalous() &&
 			m_processCpuUsage.SessionPeakPercent() >=
@@ -15969,14 +15989,16 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 			stats.renderLoadSettling = renderLoad.settling;
 			stats.renderLoadFrames = renderLoad.frames;
 			stats.renderLoadFramePeriodMs = renderLoad.framePeriodMs;
-			stats.renderLoadFramePeriodFromDisplay =
-				renderLoad.framePeriodFromDisplay;
+			stats.renderLoadFramePeriodFromRenderCadence =
+				renderLoad.framePeriodFromRenderCadence;
 			stats.renderLoadWindowSeconds = renderLoad.windowSeconds;
 			stats.renderLoadGpuLastMs = renderLoad.gpu.last;
 			stats.renderLoadGpuAvgMs = renderLoad.gpu.average;
 			stats.renderLoadGpuPeakMs = renderLoad.gpu.peak;
 			stats.renderLoadGpuPercentValid =
 				renderLoad.gpuLoadPercentValid;
+			stats.renderLoadGpuAvgPercent =
+				renderLoad.gpuAverageLoadPercent;
 			stats.renderLoadGpuPercent = renderLoad.gpuLoadPercent;
 			stats.renderLoadGpuWorstLoadMs = renderLoad.gpuWorstLoadMs;
 			stats.renderLoadGpuFrames = renderLoad.gpuFrames;
@@ -16000,8 +16022,10 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		if (m_processCpuUsage.Valid())
 		{
 			stats.cpuUsageKnown = true;
-			stats.cpuUsagePercent = m_processCpuUsage.CurrentPercent();
-			stats.cpuUsagePeakPercent = m_processCpuUsage.SessionPeakPercent();
+			stats.cpuUsageAvgPercent =
+				m_processCpuUsage.WindowAveragePercent();
+			stats.cpuUsagePeakPercent =
+				m_processCpuUsage.WindowPeakPercent();
 		}
 		stats.queueDroppedFrames = m_videoRenderer->DroppedFrameCount();
 		if (!m_videoRenderer->GetOutputModeInfo(stats.outputMode) &&

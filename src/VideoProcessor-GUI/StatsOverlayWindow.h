@@ -107,8 +107,8 @@ struct StatsData
 	CString activeShaderRule;
 	std::vector<CString> activeShaders;
 
-	// Recent asynchronous render-pass cost over every submitted frame, from the renderer's own window
-	// rather than a periodic spot sample. `renderLoadGpuValid` stays false
+	// Render cost over every successfully submitted frame, from the renderer's
+	// own window rather than a periodic spot sample. `renderLoadGpuValid` stays false
 	// until the GPU timer queries resolve, and `renderLoadSettling` is true
 	// while warm-up frames are being discarded; the OSD must say so in both
 	// cases rather than print a zero that reads as "free".
@@ -117,14 +117,14 @@ struct StatsData
 	bool renderLoadSettling = false;
 	size_t renderLoadFrames = 0;
 	double renderLoadFramePeriodMs = 0.0;
-	// False when the budget fell back to the source rate. Percentages are
-	// suppressed in that case rather than computed against the wrong clock.
-	bool renderLoadFramePeriodFromDisplay = false;
+	// True only when the budget comes from a validated source/render cadence.
+	bool renderLoadFramePeriodFromRenderCadence = false;
 	double renderLoadWindowSeconds = 0.0;
 	double renderLoadGpuLastMs = 0.0;
 	double renderLoadGpuAvgMs = 0.0;
 	double renderLoadGpuPeakMs = 0.0;
 	bool renderLoadGpuPercentValid = false;
+	double renderLoadGpuAvgPercent = 0.0;
 	double renderLoadGpuPercent = 0.0;
 	double renderLoadGpuWorstLoadMs = 0.0;
 	size_t renderLoadGpuFrames = 0;
@@ -141,10 +141,10 @@ struct StatsData
 	double renderLoadSessionGpuPercent = 0.0;
 	double renderLoadSessionGpuWorstLoadMs = 0.0;
 
-	// CPU actually charged to the process, as a share of the whole machine.
-	// Not wall time around a call - see ProcessCpuUsageMeter.
+	// Rolling 10-second CPU usage actually charged to the process, as a share
+	// of the whole machine. Not wall time around a call - see ProcessCpuUsageMeter.
 	bool cpuUsageKnown = false;
-	double cpuUsagePercent = 0.0;
+	double cpuUsageAvgPercent = 0.0;
 	double cpuUsagePeakPercent = 0.0;
 
 	// Conversion performance (NEW - for V210?P010 etc.)

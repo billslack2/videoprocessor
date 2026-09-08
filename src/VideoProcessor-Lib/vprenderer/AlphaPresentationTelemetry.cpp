@@ -91,7 +91,8 @@ void AlphaPresentationTelemetry::Observe(
 				static_cast<double>(sample.qpcFrequency);
 			const double intervalHz =
 				static_cast<double>(intervalRefreshes) / intervalSeconds;
-			if (!MatchesExpectedDisplayRate(intervalHz, sample.expectedDisplayHz))
+			if (!MatchesExpectedDisplayRate(
+				intervalHz, sample.expectedDisplayHz))
 			{
 				ResetCadence(AlphaPresentationEvidence::Disjoint);
 				return;

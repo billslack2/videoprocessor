@@ -1,8 +1,9 @@
 /*
  * Copyright(C) 2025 Dennis Fleurbaaij <mail@dennisfleurbaaij.com>
  *
- * This program is free software: you can redistribute it and/or modify it under
- * the terms of the GNU General Public License, version 3.
+ * This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 3.
+ * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+ * You should have received a copy of the GNU General Public License along with this program. If not, see < https://www.gnu.org/licenses/>.
  */
 
 #pragma once
@@ -12,19 +13,53 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <mutex>
 
-// Rolling render-load telemetry for the Ctrl+I OSD.
-//
-// GPU values come directly from libplacebo's asynchronous per-pass timers.
-// A callback reports the most recently resolved value for each pass; it may lag
-// or be omitted while a query is unresolved. Consequently a committed sample is
-// a recent render-cost estimate, not an exact timestamp ledger for the frame
-// currently being submitted. We intentionally never flush or wait for a query.
+// Reproduces PR #75's synchronous collection policy: each callback contributes
+// the pass's latest asynchronously resolved libplacebo duration to the estimate
+// assigned to the current comparison frame. This intentionally preserves the
+// original method's lack of per-frame provenance so it can be compared fairly.
+// Used only by the alternating-frame diagnostic comparison build.
+class AlphaPr75PassAccumulator
+{
+public:
+	static constexpr uint64_t MAXIMUM_VALID_PASS_NS = 1000000000ULL;
+
+	void BeginFrame()
+	{
+		m_nanoseconds = 0;
+		m_passes = 0;
+	}
+
+	void AddPass(uint64_t nanoseconds)
+	{
+		++m_passes;
+		if (nanoseconds == 0 || nanoseconds > MAXIMUM_VALID_PASS_NS)
+			return;
+		m_nanoseconds += nanoseconds;
+	}
+
+	bool HasTiming() const { return m_nanoseconds > 0; }
+	double Milliseconds() const
+	{
+		return static_cast<double>(m_nanoseconds) / 1000000.0;
+	}
+	size_t Passes() const { return m_passes; }
+
+private:
+	uint64_t m_nanoseconds = 0;
+	size_t m_passes = 0;
+};
+
+// Correlates asynchronously resolved GPU durations with exact successful
+// submission records. GPU results that cannot match renderer generation,
+// source sequence, and submission serial are discarded; they can never leak
+// into a later frame.
 class AlphaRenderLoadMeter
 {
 public:
@@ -34,7 +69,7 @@ public:
 	static constexpr double GUARD_SECONDS = 3.0;
 	static constexpr double GUARD_MAX_SECONDS = 10.0;
 	static constexpr size_t CAPACITY = 2400;
-	static constexpr uint64_t ABSURD_PASS_NS = 1000000000ULL;
+	static constexpr double MAXIMUM_VALID_GPU_MS = 1000.0;
 
 	explicit AlphaRenderLoadMeter(double guardSeconds = OsdTimingPolicy::WarmingEnabled ? GUARD_SECONDS : 0.0,
 		double guardMaxSeconds = OsdTimingPolicy::WarmingEnabled ? GUARD_MAX_SECONDS : 0.0)
@@ -44,123 +79,190 @@ public:
 	{
 	}
 
-	// Render-thread boundary. This prevents unresolved values left by a failed
-	// render from leaking into the next successfully submitted frame.
-	void BeginFrame()
+	// Clears only the recent window and re-arms warm-up. Whole-renderer session
+	// peaks survive a backlog recovery, but a new renderer instance constructs a
+	// new meter and therefore starts a genuinely new session.
+	void Reset()
 	{
-		m_pendingGpuNs = 0;
-		m_pendingPasses = 0;
-		m_pendingGpuTimed = false;
-	}
-
-	// Called synchronously by libplacebo on the render thread. Pending state is
-	// render-thread-only, avoiding a mutex operation for every shader pass.
-	void AddPass(uint64_t nanoseconds)
-	{
-		++m_pendingPasses;
-		if (nanoseconds == 0 || nanoseconds > ABSURD_PASS_NS)
+		std::unique_lock<std::mutex> guard(m_mutex, std::try_to_lock);
+		if (!guard.owns_lock())
+		{
+			m_resetPending.store(true, std::memory_order_release);
+			m_contentionDrops.fetch_add(1, std::memory_order_relaxed);
 			return;
-		m_pendingGpuNs += nanoseconds;
-		m_pendingGpuTimed = true;
+		}
+		m_resetPending.store(false, std::memory_order_release);
+		ResetWindowLocked();
 	}
 
-	void CommitFrame(double renderMs, double swapMs, double framePeriodMs,
-		bool framePeriodFromDisplay)
+	// A queue generation can change while an old render is still completing.
+	// Reject that in-flight frame even if it commits after the reset request.
+	void ResetForGeneration(uint64_t generation)
 	{
-		const uint64_t pendingGpuNs = m_pendingGpuNs;
-		const int pendingPasses = m_pendingPasses;
-		const bool pendingGpuTimed = m_pendingGpuTimed;
-		BeginFrame();
+		m_requiredGeneration.store(generation, std::memory_order_release);
+		// Keep completed samples and their original periods in the rolling window.
+		// The generation gate still rejects every unresolved old-generation result.
+	}
 
-		std::lock_guard<std::mutex> guard(m_mutex);
-		renderMs = Sanitized(renderMs);
-		swapMs = Sanitized(swapMs);
-		const double gpuMs = Sanitized(
-			static_cast<double>(pendingGpuNs) / 1000000.0);
-		m_lastPasses = pendingPasses;
-		m_gpuEverTimed = m_gpuEverTimed || pendingGpuTimed;
+	// Backlog recovery invalidates unresolved queries, not completed measurements.
+	void DiscardPendingSamples()
+	{
+		m_minimumGpuSubmissionSerial.store(
+			m_lastCommittedSubmissionSerial.load(std::memory_order_acquire) + 1,
+			std::memory_order_release);
+	}
+
+	void ResetForPipelineChange()
+	{
+		m_pipelineResetPending.store(true, std::memory_order_release);
+		Reset();
+	}
+
+	// Records identity and CPU wall-time diagnostics only after both render and
+	// submission succeeded. The GPU duration is associated later.
+	void CommitFrame(uint64_t generation, uint64_t sourceSequence,
+		uint64_t submissionSerial,
+		double renderMs, double swapMs, double framePeriodMs,
+		bool framePeriodFromRenderCadence)
+	{
+		std::unique_lock<std::mutex> guard(m_mutex, std::try_to_lock);
+		if (!guard.owns_lock())
+		{
+			m_contentionDrops.fetch_add(1, std::memory_order_relaxed);
+			return;
+		}
+		ApplyPendingResetLocked();
+		const uint64_t required = m_requiredGeneration.load(std::memory_order_acquire);
+		if (required != 0 && generation != required)
+			return;
 		if (framePeriodMs > 0.0)
 		{
 			m_framePeriodMs = Sanitized(framePeriodMs);
-			m_framePeriodFromDisplay = framePeriodFromDisplay;
+			m_framePeriodFromRenderCadence = framePeriodFromRenderCadence;
 		}
 
 		const Clock::time_point now = Clock::now();
-		if (!GuardLiftedLocked(now))
-			return;
-
 		EvictExpiredLocked(now);
 		if (m_count == CAPACITY)
 		{
 			m_head = (m_head + 1) % CAPACITY;
 			--m_count;
 		}
-		Sample& sample = m_samples[(m_head + m_count) % CAPACITY];
-		sample.stamp = now;
-		sample.gpuMs = gpuMs;
-		sample.gpuTimed = pendingGpuTimed;
-		sample.renderMs = renderMs;
-		sample.swapMs = swapMs;
-		sample.framePeriodMs = m_framePeriodMs;
-		sample.framePeriodFromDisplay = m_framePeriodFromDisplay;
-		++m_count;
 
+		Sample& sample = m_samples[(m_head + m_count) % CAPACITY];
+		sample = {};
+		sample.stamp = now;
+		sample.generation = generation;
+		sample.sourceSequence = sourceSequence;
+		sample.submissionSerial = submissionSerial;
+		sample.eligible = GuardLiftedLocked(now);
+		sample.renderMs = Sanitized(renderMs);
+		sample.swapMs = Sanitized(swapMs);
+		sample.framePeriodMs = Sanitized(framePeriodMs);
+		sample.framePeriodFromRenderCadence = framePeriodFromRenderCadence &&
+			sample.framePeriodMs > 0.0;
+		++m_count;
+		m_lastCommittedSubmissionSerial.store(submissionSerial, std::memory_order_release);
+		if (!sample.eligible)
+			return;
 		++m_sessionFrames;
-		m_sessionRenderPeakMs = (std::max)(m_sessionRenderPeakMs, renderMs);
-		if (pendingGpuTimed)
+		m_sessionRenderPeakMs =
+			(std::max)(m_sessionRenderPeakMs, sample.renderMs);
+	}
+
+	// Attaches one asynchronously resolved pl_render_image interval to the matching
+	// successful submission. Repeated presentation of one source sequence is
+	// therefore handled in submission order. Any identity mismatch is stale
+	// evidence and is counted, then discarded.
+	bool RecordGpuFrame(uint64_t generation, uint64_t sourceSequence,
+		uint64_t submissionSerial,
+		double gpuMs, uint64_t lagFrames)
+	{
+		std::unique_lock<std::mutex> guard(m_mutex, std::try_to_lock);
+		if (!guard.owns_lock())
 		{
-			++m_sessionGpuFrames;
-			m_sessionPeakValid = true;
-			m_sessionGpuPeakMs = (std::max)(m_sessionGpuPeakMs, gpuMs);
-			if (sample.framePeriodFromDisplay && sample.framePeriodMs > 0.0)
+			m_contentionDrops.fetch_add(1, std::memory_order_relaxed);
+			return false;
+		}
+		ApplyPendingResetLocked();
+		const uint64_t required = m_requiredGeneration.load(std::memory_order_acquire);
+		if ((required != 0 && generation != required) ||
+			submissionSerial < m_minimumGpuSubmissionSerial.load(std::memory_order_acquire))
+		{
+			++m_unmatchedGpuSamples;
+			return false;
+		}
+		gpuMs = Sanitized(gpuMs);
+		if (gpuMs <= 0.0 || gpuMs > MAXIMUM_VALID_GPU_MS)
+		{
+			++m_invalidGpuSamples;
+			return false;
+		}
+		const Clock::time_point now = Clock::now();
+		EvictExpiredLocked(now);
+		Sample* const matched = FindSubmissionLocked(submissionSerial);
+		if (matched && matched->generation == generation &&
+			matched->sourceSequence == sourceSequence && !matched->gpuTimed)
+		{
+			Sample& sample = *matched;
+			m_gpuEverTimed = true;
+			sample.gpuMs = gpuMs;
+			sample.gpuTimed = true;
+			sample.gpuLagFrames = lagFrames;
+			if (!sample.eligible)
 			{
-				const double percent = 100.0 * gpuMs / sample.framePeriodMs;
+				++m_warmupGpuSamples;
+				return true;
+			}
+			m_latestGpuSourceSequence = sourceSequence;
+			m_latestGpuSubmissionSerial = submissionSerial;
+			m_latestGpuLagFrames = lagFrames;
+			if (!m_sessionPeakValid || gpuMs > m_sessionGpuPeakMs)
+				m_sessionGpuPeakMs = gpuMs;
+			m_sessionPeakValid = true;
+			if (sample.framePeriodFromRenderCadence)
+			{
+				const double percent =
+					100.0 * gpuMs / sample.framePeriodMs;
 				if (!m_sessionGpuPercentValid ||
 					percent > m_sessionGpuPercent)
 				{
 					m_sessionGpuPercentValid = true;
 					m_sessionGpuPercent = percent;
 					m_sessionGpuWorstLoadMs = gpuMs;
-					m_sessionGpuWorstLoadFramePeriodMs = sample.framePeriodMs;
+					m_sessionGpuWorstLoadFramePeriodMs =
+						sample.framePeriodMs;
 				}
 			}
+			++m_sessionGpuFrames;
+			return true;
 		}
-	}
-
-	// Backlog recovery clears the recent window but preserves evidence of an
-	// earlier peak. It also re-arms startup/compile settling.
-	void Reset()
-	{
-		std::lock_guard<std::mutex> guard(m_mutex);
-		ResetWindowLocked();
-	}
-
-	// A live shader/profile change creates a different render pipeline. Neither
-	// warm-up frames nor peaks from the old pipeline should describe the new one.
-	void ResetForPipelineChange()
-	{
-		std::lock_guard<std::mutex> guard(m_mutex);
-		ResetWindowLocked();
-		m_sessionFrames = 0;
-		m_sessionGpuFrames = 0;
-		m_sessionGpuPeakMs = 0.0;
-		m_sessionRenderPeakMs = 0.0;
-		m_sessionPeakValid = false;
-		m_sessionGpuPercentValid = false;
-		m_sessionGpuPercent = 0.0;
-		m_sessionGpuWorstLoadMs = 0.0;
-		m_sessionGpuWorstLoadFramePeriodMs = 0.0;
+		++m_unmatchedGpuSamples;
+		return false;
 	}
 
 	RendererRenderLoad Snapshot() const
 	{
-		std::lock_guard<std::mutex> guard(m_mutex);
+		std::unique_lock<std::mutex> guard(m_mutex, std::try_to_lock);
 		RendererRenderLoad result;
 		result.supported = true;
+		if (!guard.owns_lock())
+		{
+			result.telemetryContentionDrops =
+				m_contentionDrops.fetch_add(1, std::memory_order_relaxed) + 1;
+			return result;
+		}
+		if (m_resetPending.load(std::memory_order_acquire))
+			return result;
 		result.windowSeconds = WINDOW_SECONDS;
 		result.framePeriodMs = m_framePeriodMs;
-		result.framePeriodFromDisplay = m_framePeriodFromDisplay;
-		result.gpuPasses = m_lastPasses;
+		result.framePeriodFromRenderCadence = m_framePeriodFromRenderCadence;
+		result.latestGpuSourceSequence = m_latestGpuSourceSequence;
+		result.latestGpuSubmissionSerial = m_latestGpuSubmissionSerial;
+		result.latestGpuLagFrames = m_latestGpuLagFrames;
+		result.unmatchedGpuSamples = m_unmatchedGpuSamples;
+		result.invalidGpuSamples = m_invalidGpuSamples;
+		result.warmupGpuSamples = m_warmupGpuSamples;
 
 		const Clock::time_point now = Clock::now();
 		result.settling = !GuardLiftedLocked(now);
@@ -174,37 +276,45 @@ public:
 		result.sessionGpuWorstLoadMs = m_sessionGpuWorstLoadMs;
 		result.sessionGpuWorstLoadFramePeriodMs =
 			m_sessionGpuWorstLoadFramePeriodMs;
-		result.windowFilledSeconds = WindowSpanSecondsLocked(now);
+		result.telemetryContentionDrops =
+			m_contentionDrops.load(std::memory_order_relaxed);
 
+		result.windowFilledSeconds = WindowSpanMsLocked(now) / 1000.0;
 		size_t live = 0;
 		double gpuTotal = 0.0;
+		double gpuLoadPercentTotal = 0.0;
 		double renderTotal = 0.0;
 		double swapTotal = 0.0;
+		size_t gpuTimed = 0;
+		size_t gpuLoadPercentSamples = 0;
 		for (size_t index = 0; index < m_count; ++index)
 		{
 			const Sample& sample = m_samples[(m_head + index) % CAPACITY];
-			if (ExpiredLocked(sample, now))
+			if (ExpiredLocked(sample, now) || !sample.eligible)
 				continue;
 			++live;
 			if (sample.gpuTimed)
 			{
 				gpuTotal += sample.gpuMs;
-				++result.gpuFrames;
+				++gpuTimed;
 				result.gpu.peak = (std::max)(result.gpu.peak, sample.gpuMs);
-				result.gpu.last = sample.gpuMs;
-				if (sample.framePeriodFromDisplay && sample.framePeriodMs > 0.0)
+				if (sample.framePeriodFromRenderCadence)
 				{
 					const double percent =
 						100.0 * sample.gpuMs / sample.framePeriodMs;
+					gpuLoadPercentTotal += percent;
+					++gpuLoadPercentSamples;
 					if (!result.gpuLoadPercentValid ||
 						percent > result.gpuLoadPercent)
 					{
 						result.gpuLoadPercentValid = true;
 						result.gpuLoadPercent = percent;
 						result.gpuWorstLoadMs = sample.gpuMs;
-						result.gpuWorstLoadFramePeriodMs = sample.framePeriodMs;
+						result.gpuWorstLoadFramePeriodMs =
+							sample.framePeriodMs;
 					}
 				}
+				result.gpu.last = sample.gpuMs;
 			}
 			renderTotal += sample.renderMs;
 			swapTotal += sample.swapMs;
@@ -215,10 +325,14 @@ public:
 		}
 
 		result.frames = live;
+		result.gpuFrames = gpuTimed;
 		result.valid = live > 0;
-		result.gpuValid = result.gpuFrames > 0;
-		if (result.gpuFrames > 0)
-			result.gpu.average = gpuTotal / static_cast<double>(result.gpuFrames);
+		result.gpuValid = gpuTimed > 0;
+		if (gpuTimed > 0)
+			result.gpu.average = gpuTotal / static_cast<double>(gpuTimed);
+		if (gpuLoadPercentSamples > 0)
+			result.gpuAverageLoadPercent = gpuLoadPercentTotal /
+				static_cast<double>(gpuLoadPercentSamples);
 		if (live > 0)
 		{
 			result.render.average = renderTotal / static_cast<double>(live);
@@ -228,15 +342,51 @@ public:
 	}
 
 private:
+	void ResetWindowLocked()
+	{
+		if (m_pipelineResetPending.exchange(false, std::memory_order_acq_rel))
+		{
+			m_sessionFrames = 0;
+			m_sessionGpuFrames = 0;
+			m_sessionGpuPeakMs = 0.0;
+			m_sessionRenderPeakMs = 0.0;
+			m_sessionPeakValid = false;
+			m_sessionGpuPercentValid = false;
+			m_sessionGpuPercent = 0.0;
+			m_sessionGpuWorstLoadMs = 0.0;
+			m_sessionGpuWorstLoadFramePeriodMs = 0.0;
+		}
+		m_head = 0;
+		m_count = 0;
+		m_gpuEverTimed = false;
+		m_framePeriodMs = 0.0;
+		m_framePeriodFromRenderCadence = false;
+		m_guardStart = Clock::now();
+		m_latestGpuSourceSequence = 0;
+		m_latestGpuSubmissionSerial = 0;
+		m_latestGpuLagFrames = 0;
+	}
+
+	void ApplyPendingResetLocked()
+	{
+		if (m_resetPending.exchange(false, std::memory_order_acq_rel))
+			ResetWindowLocked();
+	}
+
 	struct Sample
 	{
 		Clock::time_point stamp{};
+		uint64_t generation = 0;
+		uint64_t sourceSequence = 0;
+		uint64_t submissionSerial = 0;
+		uint64_t gpuLagFrames = 0;
 		double gpuMs = 0.0;
 		double renderMs = 0.0;
 		double swapMs = 0.0;
 		double framePeriodMs = 0.0;
 		bool gpuTimed = false;
-		bool framePeriodFromDisplay = false;
+		bool eligible = false;
+		bool framePeriodFromRenderCadence = false;
 	};
 
 	static double Sanitized(double milliseconds)
@@ -250,12 +400,41 @@ private:
 		return std::chrono::duration<double>(to - from).count();
 	}
 
+	// Successful-submission serials are strictly increasing in the ring. Use
+	// them as the lookup key so one resolved query costs O(log N), rather than
+	// scanning up to ten seconds of frames on the render thread.
+	Sample* FindSubmissionLocked(uint64_t submissionSerial)
+	{
+		size_t first = 0;
+		size_t count = m_count;
+		while (count > 0)
+		{
+			const size_t step = count / 2;
+			const size_t middle = first + step;
+			Sample& sample = m_samples[(m_head + middle) % CAPACITY];
+			if (sample.submissionSerial < submissionSerial)
+			{
+				first = middle + 1;
+				count -= step + 1;
+			}
+			else
+			{
+				count = step;
+			}
+		}
+		if (first >= m_count)
+			return nullptr;
+		Sample& sample = m_samples[(m_head + first) % CAPACITY];
+		return sample.submissionSerial == submissionSerial ? &sample : nullptr;
+	}
+
 	bool GuardLiftedLocked(Clock::time_point now) const
 	{
 		const double elapsed = ElapsedSeconds(m_guardStart, now);
 		if (elapsed < m_guardSeconds)
 			return false;
-		return m_gpuEverTimed || elapsed >= m_guardMaxSeconds;
+		return m_gpuEverTimed || elapsed >= m_guardMaxSeconds ||
+			m_guardSeconds == 0.0;
 	}
 
 	bool ExpiredLocked(const Sample& sample, Clock::time_point now) const
@@ -272,49 +451,47 @@ private:
 		}
 	}
 
-	double WindowSpanSecondsLocked(Clock::time_point now) const
+	double WindowSpanMsLocked(Clock::time_point now) const
 	{
 		for (size_t index = 0; index < m_count; ++index)
 		{
 			const Sample& sample = m_samples[(m_head + index) % CAPACITY];
-			if (!ExpiredLocked(sample, now))
-				return ElapsedSeconds(sample.stamp, now);
+			if (!ExpiredLocked(sample, now) && sample.eligible)
+				return ElapsedSeconds(sample.stamp, now) * 1000.0;
 		}
 		return 0.0;
-	}
-
-	void ResetWindowLocked()
-	{
-		m_head = 0;
-		m_count = 0;
-		BeginFrame();
-		m_lastPasses = 0;
-		m_gpuEverTimed = false;
-		m_guardStart = Clock::now();
 	}
 
 	mutable std::mutex m_mutex;
 	std::array<Sample, CAPACITY> m_samples{};
 	size_t m_head = 0;
 	size_t m_count = 0;
-	uint64_t m_pendingGpuNs = 0;
-	int m_pendingPasses = 0;
-	bool m_pendingGpuTimed = false;
-	int m_lastPasses = 0;
 	bool m_gpuEverTimed = false;
 	double m_framePeriodMs = 0.0;
-	bool m_framePeriodFromDisplay = false;
-	const double m_guardSeconds;
-	const double m_guardMaxSeconds;
+	bool m_framePeriodFromRenderCadence = false;
+	double m_guardSeconds = GUARD_SECONDS;
+	double m_guardMaxSeconds = GUARD_MAX_SECONDS;
 	Clock::time_point m_guardStart{};
 
 	double m_sessionGpuPeakMs = 0.0;
-	double m_sessionRenderPeakMs = 0.0;
-	bool m_sessionPeakValid = false;
-	uint64_t m_sessionFrames = 0;
-	uint64_t m_sessionGpuFrames = 0;
 	bool m_sessionGpuPercentValid = false;
 	double m_sessionGpuPercent = 0.0;
 	double m_sessionGpuWorstLoadMs = 0.0;
 	double m_sessionGpuWorstLoadFramePeriodMs = 0.0;
+	double m_sessionRenderPeakMs = 0.0;
+	bool m_sessionPeakValid = false;
+	uint64_t m_sessionFrames = 0;
+	uint64_t m_sessionGpuFrames = 0;
+	uint64_t m_latestGpuSourceSequence = 0;
+	uint64_t m_latestGpuSubmissionSerial = 0;
+	uint64_t m_latestGpuLagFrames = 0;
+	uint64_t m_unmatchedGpuSamples = 0;
+	uint64_t m_invalidGpuSamples = 0;
+	uint64_t m_warmupGpuSamples = 0;
+	std::atomic<uint64_t> m_lastCommittedSubmissionSerial{ 0 };
+	std::atomic<uint64_t> m_minimumGpuSubmissionSerial{ 0 };
+	std::atomic<uint64_t> m_requiredGeneration{ 0 };
+	std::atomic_bool m_pipelineResetPending{ false };
+	std::atomic_bool m_resetPending{ false };
+	mutable std::atomic<uint64_t> m_contentionDrops{ 0 };
 };

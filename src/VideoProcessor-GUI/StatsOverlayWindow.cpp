@@ -1127,76 +1127,49 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 	DrawText(hdc, line, PADDING, y);
 	y += lineHeight;
 
-	// Render cost. GPU time is the only figure here that scales with the
-	// quality settings; each row states the span it covers, because they are
-	// not the same - the window is 10 s, the budget is constant, and the last
-	// two cover the whole session.
+	// Render cost. GPU frame is the rolling average of the tightly bounded
+	// source-upload, changed-overlay-upload, and core-render stages from one
+	// frame. Keep the comparison and diagnostic detail in telemetry; the OSD
+	// presents one authoritative number.
 	if (m_stats.renderLoadKnown)
 	{
-		// Row 1 - what it costs now, over the rolling window. The percentage
-		// is the window PEAK against one refresh, so it is the headroom that
-		// matters rather than a flattering average.
 		if (OsdTimingPolicy::WarmingEnabled && m_stats.renderLoadSettling)
-			line.Format(TEXT("GPU render 10s:  settling..."));
+			line.Format(TEXT("GPU frame:       settling..."));
 		else if (!m_stats.renderLoadGpuValid)
-			line.Format(TEXT("GPU render 10s:  measuring..."));
-		else if (m_stats.renderLoadGpuPercentValid)
-			line.Format(
-				TEXT("GPU render 10s:  avg %.2f, worst %.2f ms, max %.0f%%"),
-				m_stats.renderLoadGpuAvgMs,
-				m_stats.renderLoadGpuWorstLoadMs,
-				m_stats.renderLoadGpuPercent);
+			line.Format(TEXT("GPU frame:       measuring..."));
 		else
-			line.Format(TEXT("GPU render 10s:  avg %.2f, peak %.2f ms"),
+			line.Format(TEXT("GPU frame:       avg %.2f, max %.2f ms (10 s)"),
 				m_stats.renderLoadGpuAvgMs, m_stats.renderLoadGpuPeakMs);
 		DrawText(hdc, line, PADDING, y);
 		y += lineHeight;
 
-		// Row 2 - the budget every figure above is spent against. It is a
-		// property of the refresh rate and CONSTANT for the session, so it
-		// carries no window; the refresh rate is printed with it rather than
-		// leaving the reader to work out where the number came from.
+		CString cpuLoad(TEXT("measuring"));
+		CString gpuLoad(TEXT("measuring"));
+		if (m_stats.cpuUsageKnown)
+			cpuLoad.Format(TEXT("%.0f/%.0f%%"),
+				m_stats.cpuUsageAvgPercent, m_stats.cpuUsagePeakPercent);
+		if (m_stats.renderLoadGpuPercentValid)
+			gpuLoad.Format(TEXT("%.0f/%.0f%%"),
+				m_stats.renderLoadGpuAvgPercent, m_stats.renderLoadGpuPercent);
+		line.Format(TEXT("10s avg/max: CPU %s, GPU budget %s"),
+			static_cast<LPCTSTR>(cpuLoad), static_cast<LPCTSTR>(gpuLoad));
+		DrawText(hdc, line, PADDING, y);
+		y += lineHeight;
+
+		// The validated source/render period associated with these samples.
 		if (m_stats.renderLoadFramePeriodMs > 0.0 &&
-			m_stats.renderLoadFramePeriodFromDisplay)
-			line.Format(TEXT("GPU budget:      %.2f ms @ %.3f Hz"),
+			m_stats.renderLoadFramePeriodFromRenderCadence)
+			line.Format(TEXT("Frame budget:    %.2f ms @ %.3f fps"),
 				m_stats.renderLoadFramePeriodMs,
 				1000.0 / m_stats.renderLoadFramePeriodMs);
 		else if (m_stats.renderLoadFramePeriodMs > 0.0)
-			// Source rate, not the display rate. Say so, because at 60 Hz
-			// output with 24p content this budget is 2.5x too generous and a
-			// percentage computed from it would be badly flattering.
-			line.Format(TEXT("GPU budget:      display timing unavailable"));
+			// Do not show a percentage unless the source/render cadence is valid.
+			line.Format(TEXT("Frame budget:    cadence unavailable"));
 		else
-			line.Format(TEXT("GPU budget:      measuring..."));
+			line.Format(TEXT("Frame budget:    measuring..."));
 		DrawText(hdc, line, PADDING, y);
 		y += lineHeight;
 
-		// Row 3 - the whole point. The window peak above decays after 10 s, so
-		// without this the worst frame of the session is unrecoverable - and a
-		// backlog recovery would have wiped the record of the stall that
-		// caused it.
-		if (!m_stats.renderLoadSessionPeakValid)
-			line.Format(TEXT("GPU session:     measuring..."));
-		else if (m_stats.renderLoadSessionGpuPercentValid)
-			line.Format(TEXT("GPU session:     worst %.2f ms, max %.0f%%"),
-				m_stats.renderLoadSessionGpuWorstLoadMs,
-				m_stats.renderLoadSessionGpuPercent);
-		else
-			line.Format(TEXT("GPU session:     peak %.2f ms"),
-				m_stats.renderLoadSessionGpuPeakMs);
-		DrawText(hdc, line, PADDING, y);
-		y += lineHeight;
-
-		// Row 4 - CPU actually charged to the process, not wall time around a
-		// call. Present because a CPU spike drops frames just as a GPU one
-		// does, and nothing else in the OSD would show it.
-		if (!m_stats.cpuUsageKnown)
-			line.Format(TEXT("CPU process:     measuring..."));
-		else
-			line.Format(TEXT("CPU process:     now %.0f%%, peak %.0f%%"),
-				m_stats.cpuUsagePercent, m_stats.cpuUsagePeakPercent);
-		DrawText(hdc, line, PADDING, y);
-		y += lineHeight;
 	}
 
 	// Frame stats
@@ -1257,10 +1230,10 @@ int StatsOverlayWindow::CalculateRequiredHeight(const StatsData& stats) const
 	// Alpha omits two DirectShow-only rows (sample timestamp method and frame
 	// offset). The remaining rows mirror the exact
 	// optional conditions in DrawStats so the background follows its content.
-	size_t lineCount = stats.isAlphaRenderer ? 22 : 24;
+	size_t lineCount = stats.isAlphaRenderer ? 23 : 25;
 	++lineCount; // Surface mode is always shown.
 	if (stats.renderLoadKnown)
-		lineCount += 4; // GPU render, budget, session peak, CPU.
+		lineCount += 3;
 	if (!stats.outputSweep.IsEmpty())
 		++lineCount;
 	if (stats.measuredRefreshRate > 0.0)

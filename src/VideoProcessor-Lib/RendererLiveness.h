@@ -89,7 +89,7 @@ struct RendererLatencySnapshot
 };
 
 
-// One measured render cost over a rolling window of presented frames.
+// One measured render cost over a rolling window of successful submissions.
 struct RendererRenderLoadStat
 {
 	double last = 0.0;
@@ -98,12 +98,13 @@ struct RendererRenderLoadStat
 };
 
 
-// How much of each frame period the renderer is actually consuming.
+// How much of each submitted source-frame period the renderer is consuming.
 //
 // The three costs are NOT interchangeable and must never be summed:
-//   gpu     GPU execution time for the render passes. This is the only figure
-//           that scales with the quality settings and the only one that says
-//           whether the GPU has headroom.
+//   gpu     Sum of tightly bounded GPU-command stages from one successful
+//           submission: source uploads, changed overlay uploads, and core
+//           rendering. CPU submission gaps, Present/VSync, DWM composition,
+//           and scanout are excluded. This is the headline GPU frame cost.
 //   render  CPU wall time around the render call - command submission and
 //           driver back-pressure, not shader cost.
 //   swap    Wall time around the present, dominated by the vsync wait. A large
@@ -113,26 +114,36 @@ struct RendererRenderLoad
 	bool supported = false;
 	bool valid = false;         // false until the window has a sample
 	size_t frames = 0;
-	double framePeriodMs = 0.0; // one display refresh, 0 if unknown
-	// False when framePeriodMs fell back to the SOURCE rate because the display
-	// rate was not measured. At 60 Hz output with 24p content the two differ by
-	// 2.5x, so a percentage computed against the source rate would read 16% for
-	// a frame actually using 40% of the refresh. Percentages are suppressed
-	// rather than shown wrong.
-	bool framePeriodFromDisplay = false;
+	double framePeriodMs = 0.0; // one submitted source-frame period, 0 if unknown
+	// True only when framePeriodMs came from the renderer's validated capture
+	// cadence. Display refresh is deliberately not substituted: a 24p source
+	// presented on a 75 Hz display still supplies one new frame every 41.7 ms.
+	bool framePeriodFromRenderCadence = false;
 	RendererRenderLoadStat gpu;
 	RendererRenderLoadStat render;
 	RendererRenderLoadStat swap;
 	bool gpuValid = false;      // false until GPU timer queries resolve
-	size_t gpuFrames = 0;       // samples with a resolved libplacebo timer
-	int gpuPasses = 0;          // shader passes in the last completed frame
-	// Peak GPU cost as a percentage of one frame period. Peak rather than
-	// average because a single overrun is visible on screen, and an average
-	// that hides it is what makes a marginal setting look safe.
-	double gpuLoadPercent = 0.0;
+	size_t gpuFrames = 0;       // exact matched GPU samples in the window
+	// GPU timestamps resolve asynchronously. These fields prove which source
+	// frame supplied the newest result and how many subsequent render attempts
+	// had been issued when it became available.
+	uint64_t latestGpuSourceSequence = 0;
+	uint64_t latestGpuSubmissionSerial = 0;
+	uint64_t latestGpuLagFrames = 0;
+	// Average and worst valid render-cadence-budget utilization are tracked
+	// independently from millisecond intervals. They remain correct if cadence
+	// changes while the rolling window is populated.
 	bool gpuLoadPercentValid = false;
+	double gpuAverageLoadPercent = 0.0;
+	double gpuLoadPercent = 0.0;
 	double gpuWorstLoadMs = 0.0;
 	double gpuWorstLoadFramePeriodMs = 0.0;
+	// Latest resolved same-frame stage breakdown. These parts are already
+	// included in `gpu` and are telemetry only; never add them to it again.
+	double gpuLatestSourceUploadMs = 0.0;
+	double gpuLatestOverlayUploadMs = 0.0;
+	double gpuLatestCoreRenderMs = 0.0;
+	size_t gpuLatestStages = 0;
 
 	// The rolling window above is measured in SECONDS, not frames, so a 24p
 	// and a 60p run describe the same span and can be compared.
@@ -157,10 +168,47 @@ struct RendererRenderLoad
 	uint64_t sessionGpuFrames = 0;
 	double sessionGpuPeakMs = 0.0;
 	double sessionRenderPeakMs = 0.0;
-	double sessionGpuPercent = 0.0; // session peak against one frame period
 	bool sessionGpuPercentValid = false;
+	double sessionGpuPercent = 0.0;
 	double sessionGpuWorstLoadMs = 0.0;
 	double sessionGpuWorstLoadFramePeriodMs = 0.0;
+
+	// Fail-closed query diagnostics. None of these samples enter the load
+	// statistics above.
+	uint64_t gpuQueriesPending = 0;
+	uint64_t gpuQueriesIssued = 0;
+	uint64_t gpuQueriesResolved = 0;
+	uint64_t gpuQueriesNotReady = 0;
+	uint64_t gpuDisjointQueries = 0;
+	uint64_t gpuQueryFailures = 0;
+	uint64_t gpuRejectedFrames = 0;
+	uint64_t gpuRingOverruns = 0;
+	uint64_t unmatchedGpuSamples = 0;
+	uint64_t invalidGpuSamples = 0;
+	uint64_t warmupGpuSamples = 0;
+	uint64_t telemetryContentionDrops = 0;
+
+	// Narrow v2 diagnostic: exact pl_render_image stage from the same sampled
+	// frame as `gpu`, using the same disjoint query. It is part of total cost.
+	RendererRenderLoadStat coreGpu;
+	bool coreGpuValid = false;
+	size_t coreSubmittedFrames = 0;
+	size_t coreGpuFrames = 0;
+	bool coreGpuLoadPercentValid = false;
+	double coreGpuLoadPercent = 0.0;
+	double coreGpuWorstLoadMs = 0.0;
+
+	// Diagnostic A/B data from PR #75's original sum of pass->last values.
+	// It runs on its own rotating sample frames, never inside a VP interval.
+	bool comparisonEnabled = false;
+	RendererRenderLoadStat originalPrGpu;
+	bool originalPrGpuValid = false;
+	size_t originalPrSubmittedFrames = 0;
+	size_t originalPrGpuFrames = 0;
+	bool originalPrGpuLoadPercentValid = false;
+	double originalPrGpuLoadPercent = 0.0;
+	double originalPrGpuWorstLoadMs = 0.0;
+	size_t originalPrPasses = 0;
 };
 
 // A graph-clock rollback can create a new timestamp lineage without changing

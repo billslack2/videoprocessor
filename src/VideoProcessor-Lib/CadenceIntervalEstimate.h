@@ -51,22 +51,35 @@ public:
         m_samples.clear();
         m_started = false;
         m_waitingForRates = false;
+        m_ratesPaused = false;
         m_initialDifferenceHz = 0.0;
     }
 
     void Update(uint64_t nowMs, double captureHz, double displayHz,
         const Contract& contract, bool waitingForRates = false)
     {
+        // Contract changes and actual restarts invalidate old measurements.
+        // A reset merely pauses fresh evidence while the timing trackers recover.
+        if (m_started && (!(contract == m_contract) || nowMs < m_lastMs))
+            Reset();
         if (!std::isfinite(captureHz) || !std::isfinite(displayHz) ||
             captureHz <= 0.0 || displayHz <= 0.0)
         {
+            if (waitingForRates && m_started)
+            {
+                m_ratesPaused = true;
+                return; // Display the established estimate; add no synthetic evidence.
+            }
             Reset();
             m_waitingForRates = waitingForRates;
             return;
         }
-        if (m_started && (!(contract == m_contract) || nowMs < m_lastMs ||
-            nowMs - m_lastMs > 5000))
-            Reset();
+        if (m_started && (m_ratesPaused || nowMs - m_lastMs > 5000))
+        {
+            m_lastMs = nowMs;
+            m_ratesPaused = false;
+            return; // Never weight the unmeasured reset gap as a fresh observation.
+        }
         if (!m_started)
         {
             m_initialDifferenceHz = captureHz - displayHz;
@@ -89,9 +102,13 @@ public:
 
     double EvidenceSeconds() const
     {
-        return m_samples.empty() ? 0.0 :
-            (m_samples.back().endMs - m_samples.front().startMs) / 1000.0;
+        uint64_t evidenceMs = 0;
+        for (const auto& sample : m_samples)
+            evidenceMs += sample.endMs - sample.startMs;
+        return evidenceMs / 1000.0;
     }
+
+    bool HoldingMeasurements() const { return m_ratesPaused; }
 
     double MeanDifferenceHz() const
     {
@@ -145,4 +162,5 @@ private:
     double m_initialDifferenceHz = 0.0;
     bool m_started = false;
     bool m_waitingForRates = false;
+    bool m_ratesPaused = false;
 };

@@ -140,6 +140,30 @@ PL_API extern const struct pl_d3d11_params pl_d3d11_default_params;
 // that will be released in `pl_d3d11_destroy`.
 PL_API pl_d3d11 pl_d3d11_create(pl_log log, const struct pl_d3d11_params *params);
 
+// Enables or disables all libplacebo timer-query allocation for this D3D11
+// backend. This must be called before creating any object which may allocate a
+// `pl_timer` (for example, before `pl_renderer_create`). Returns false if timer
+// objects are already alive, leaving the current setting unchanged.
+// This initialization-only function is not thread-safe.
+//
+// Disabling timer queries does not affect rendering. `pl_timer_create` returns
+// NULL while disabled, suppressing timing samples normally exposed through
+// renderer/dispatch info callbacks as well as explicitly requested timers.
+// Applications which own a frame-scoped D3D11 timestamp interval can use this
+// to avoid nesting timestamp-disjoint queries.
+PL_API bool pl_d3d11_set_timer_queries_enabled(pl_d3d11 d3d11, bool enabled);
+
+// Temporarily suppress all D3D11 timer query issue and readback while retaining
+// already-created `pl_timer` objects and their pending results. This is intended
+// for diagnostic interleaving with an application-owned timestamp-disjoint
+// interval. Change this only between complete GPU operations; do not change it
+// between a timer's start and end calls.
+//
+// Rendering is unaffected. Pending timer results remain queued and are read
+// after suspension is cleared.
+PL_API bool pl_d3d11_set_timer_queries_suspended(pl_d3d11 d3d11,
+                                                 bool suspended);
+
 // Release the D3D11 device.
 //
 // Note that all libplacebo objects allocated from this pl_d3d11 object (e.g.
