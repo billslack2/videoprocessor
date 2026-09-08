@@ -164,6 +164,50 @@ namespace VideoProcessorTest
 	TEST_CLASS(LibplaceboRenderParametersTests)
 	{
 	public:
+		TEST_METHOD(SdrLuminanceIgnoresHdrDestinationAndClearsStaleMetadata)
+		{
+			for (auto transfer : { PL_COLOR_TRC_SRGB, PL_COLOR_TRC_BT_1886,
+				PL_COLOR_TRC_GAMMA22, PL_COLOR_TRC_GAMMA24 })
+				for (float nits : { 40.0f, 75.0f, 203.0f, 203.01f, 400.0f, 500.0f })
+				{
+					pl_color_space source = *NativeData<pl_color_space>("pl_color_space_hdr10");
+					source.transfer = transfer;
+					source.hdr.scene_avg = 800.0f;
+					pl_color_space target = source;
+					ApplySourceLuminance(true, source);
+					ApplyTargetLuminance(true, nits, nits / 500.0f, target);
+					Assert::IsFalse(pl_color_space_is_hdr(&source));
+					Assert::IsFalse(pl_color_space_is_hdr(&target));
+					Assert::AreEqual(203.0f, source.hdr.max_luma);
+					Assert::AreEqual(0.203f, source.hdr.min_luma);
+					Assert::AreEqual(0.0f, source.hdr.scene_avg);
+					Assert::AreEqual(static_cast<int>(transfer), static_cast<int>(source.transfer));
+					AssertSameData(&source, &target, sizeof(source), L"SDR endpoints must match");
+				}
+		}
+
+		TEST_METHOD(HdrLuminanceRetainsSourceMetadataAndConfiguredDestination)
+		{
+			for (auto transfer : { PL_COLOR_TRC_PQ, PL_COLOR_TRC_HLG })
+				for (float nits : { 75.0f, 203.0f, 400.0f, 500.0f })
+				{
+					pl_color_space source = *NativeData<pl_color_space>("pl_color_space_hdr10");
+					source.transfer = transfer;
+					const pl_color_space original = source;
+					ApplySourceLuminance(false, source);
+					AssertSameData(&original, &source, sizeof(source), L"HDR source changed");
+					pl_color_space target = *NativeData<pl_color_space>("pl_color_space_bt709");
+					ApplyTargetLuminance(false, nits, 0.01f, target);
+					Assert::AreEqual(nits, target.hdr.max_luma);
+					Assert::AreEqual(0.01f, target.hdr.min_luma);
+					const auto hint = MakeSwapchainColorHint(target);
+					Assert::IsFalse(pl_color_space_is_hdr(&hint));
+					Assert::AreEqual(nits, target.hdr.max_luma, L"Hint must not mutate tone-map target");
+					const auto hdrHint = MakeSwapchainColorHint(source);
+					AssertSameData(&source, &hdrHint, sizeof(source), L"HDR transport changed");
+				}
+		}
+
 		TEST_METHOD(EveryQualityPresetProjectsTheNativeLibplaceboPreset)
 		{
 			const struct

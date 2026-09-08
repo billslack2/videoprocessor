@@ -544,7 +544,11 @@ namespace RendererProfileConfig
 					normalized.substr(normalized.size() - 5) == ".cube";
 			}
 			if (key == "display_bit_depth") return IsChoice(value, { "auto", "8", "10" });
-			if (key == "sdr_target_nits") return IsNumberInRange(value, 40.0, 500.0);
+			if (key == "sdr_target_nits")
+			{
+				expected = "an HDR-to-SDR target from 40 through 500 nits (SDR input is unaffected)";
+				return IsNumberInRange(value, 40.0, 500.0);
+			}
 			if (key == "sdr_black_nits") return IsChoice(value, { "auto" }) || IsNumberInRange(value, 0.0, 500.0, false);
 			if (key == "output_gamma") return IsChoice(value, { "auto", "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" });
 			if (key == "sdr_target_primaries") return IsChoice(value, { "rec709", "p3_d65", "bt2020" });
