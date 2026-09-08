@@ -137,6 +137,10 @@ private:
         const QString& zoom = {}, const QString& scaling = {},
         const QString& output = {});
     void refreshRendererAutoStatus();
+    void seedCalibratedProfile(const QString& root, const QString& section);
+    QMap<QString, QString> outputTransportSelections() const;
+    void synchronizeLimitedTransportFlags(const QMap<QString, QString>& before, const QString& editedSection = {});
+    void refreshLimitedTransportControls();
 
     QString configPath_;
     quintptr ownerHandle_ = 0;

@@ -1,4 +1,4 @@
-#define NOMINMAX
+﻿#define NOMINMAX
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
@@ -43,6 +43,7 @@
 #include <QScrollBar>
 #include <QShortcut>
 #include <QSpinBox>
+#include <QStandardItemModel>
 #include <QSplitter>
 #include <QStackedWidget>
 #include <QTableWidget>
@@ -501,7 +502,7 @@ void testEveryPageRoundTrips()
         QStringLiteral("NLS") });
     vpRenderer->click();
     requireTabs({ QStringLiteral("Rendering"), QStringLiteral("Scaling"),
-        QStringLiteral("Color"), QStringLiteral("Output"),
+        QStringLiteral("Color / Output"),
         QStringLiteral("Screen"), QStringLiteral("Zoom"),
         QStringLiteral("Processing") });
     directShow->click();
@@ -1098,21 +1099,21 @@ void testRendererSectionTabsRemainSynchronizedDuringRapidClicks()
     };
 
     requireTabs({ QStringLiteral("Rendering"), QStringLiteral("Scaling"),
-        QStringLiteral("Color"), QStringLiteral("Output"),
+        QStringLiteral("Color / Output"),
         QStringLiteral("Screen"), QStringLiteral("Zoom"),
         QStringLiteral("Processing") });
     runSequence({
-        { 3, 13, "Output", "config.vprenderer.output.profiles" },
-        { 4, 4, "Screen", "config.vprenderer.viewport.profiles" },
-        { 5, 18, "Zoom", "config.vprenderer.zoom.crop_narrower_content_to_fill_screen" },
-        { 6, 11, "Input processing", "config.vprenderer.input_processing.video_conversion" },
-        { 2, 16, "Color Config", "config.vprenderer.color.profiles" },
+        { 2, 16, "Color / Output", "config.vprenderer.output.profiles" },
+        { 3, 4, "Screen", "config.vprenderer.viewport.profiles" },
+        { 4, 18, "Zoom", "config.vprenderer.zoom.crop_narrower_content_to_fill_screen" },
+        { 5, 11, "Input processing", "config.vprenderer.input_processing.video_conversion" },
+        { 2, 16, "Color / Output", "config.vprenderer.color.profiles" },
         { 1, 17, "Scaling", "config.vprenderer.scaling.profiles" },
         { 0, 2, "Rendering", "config.vprenderer.profiles" },
-        { 6, 11, "Input processing", "config.vprenderer.input_processing.video_conversion" },
-        { 5, 18, "Zoom", "config.vprenderer.zoom.crop_narrower_content_to_fill_screen" },
-        { 4, 4, "Screen", "config.vprenderer.viewport.profiles" },
-        { 2, 16, "Color Config", "config.vprenderer.color.profiles" },
+        { 5, 11, "Input processing", "config.vprenderer.input_processing.video_conversion" },
+        { 4, 18, "Zoom", "config.vprenderer.zoom.crop_narrower_content_to_fill_screen" },
+        { 3, 4, "Screen", "config.vprenderer.viewport.profiles" },
+        { 2, 16, "Color / Output", "config.vprenderer.color.profiles" },
         { 1, 17, "Scaling", "config.vprenderer.scaling.profiles" },
         { 0, 2, "Rendering", "config.vprenderer.profiles" }
     });
@@ -1371,9 +1372,9 @@ void testSdrGammaAdjustmentLabelsAndPersistence()
         ConfigEditorWindow window(path, 0, true);
         QComboBox* adjustment = requireControl<QComboBox>(window,
             QStringLiteral("config.vprenderer.color.sdr_adjust_gamma"));
-        require(adjustment->findText(QStringLiteral("Auto")) >= 0 &&
-            adjustment->findText(QStringLiteral("On")) >= 0 &&
-            adjustment->findText(QStringLiteral("Off")) >= 0,
+        require(adjustment->findText(QStringLiteral("Auto")) < 0 &&
+            adjustment->findText(QStringLiteral("Honor input and display transfers")) >= 0 &&
+            adjustment->findText(QStringLiteral("Off (legacy handling)")) >= 0,
             "SDR transfer handling does not expose concise labels");
         selectData(adjustment, QStringLiteral("off"));
         save(window);
@@ -1980,7 +1981,7 @@ void testRendererProfileSectionsCollapseAndPersist()
         QStringLiteral("rendererSection.sourceColor"));
     QWidget* calibrationContent = requireControl<QWidget>(window,
         QStringLiteral("rendererSection.calibration.content"));
-    require(!calibration->isChecked() && !sourceColor->isChecked(),
+    require(calibration->isChecked() && !sourceColor->isChecked(),
         "A Color Config section was not collapsed initially");
     require(sourceColor->text() == QStringLiteral("Source transfer"),
         "The SDR input-transfer controls are not grouped under Color Config Source transfer");
@@ -2005,8 +2006,8 @@ void testRendererProfileSectionsCollapseAndPersist()
         "Output experiments were expanded initially");
     QToolButton* advancedOutput = requireControl<QToolButton>(window,
         QStringLiteral("rendererSection.advancedOutput"));
-    require(!advancedOutput->isChecked(),
-        "Advanced output was expanded initially");
+    require(advancedOutput->isChecked(),
+        "Output transport should be discoverable initially");
     QCheckBox* vpOwnedPresenter = requireControl<QCheckBox>(window,
         QStringLiteral("config.vprenderer.output.diagnostic_vp_owned_dxgi_presenter"));
     require(requireControl<QCheckBox>(window,
@@ -2070,13 +2071,13 @@ void testRendererProfileSectionsCollapseAndPersist()
         QStringLiteral("ewa_lanczos4sharpest") &&
         upscaler->itemData(3).toString() == QStringLiteral("ewa_lanczossharp") &&
         upscaler->itemData(12).toString() == QStringLiteral("none") &&
-        upscaler->itemText(12) == QStringLiteral("Use GPU"),
+        upscaler->itemText(12) == QStringLiteral("Built-in GPU sampling"),
 		"Upscaler choices are not quality ordered or accurately labelled");
 	require(downscaler->itemData(2).toString() == QStringLiteral("lanczos") &&
 		downscaler->itemData(8).toString() == QStringLiteral("bilinear") &&
 		downscaler->itemData(9).toString() == QStringLiteral("box") &&
 		downscaler->itemData(10).toString() == QStringLiteral("gpu") &&
-		downscaler->itemText(10) == QStringLiteral("Use GPU") &&
+		downscaler->itemText(10) == QStringLiteral("Built-in GPU sampling") &&
 		downscaler->findData(QStringLiteral("none")) < 0 &&
 		downscaler->findData(QStringLiteral("ewa_lanczos")) < 0,
 		"Downscaler choices include a removed or pathologically expensive mode");
@@ -2118,7 +2119,7 @@ void testRendererProfileSectionsCollapseAndPersist()
     QComboBox* dithering = requireControl<QComboBox>(window,
         QStringLiteral("config.vprenderer.dithering"));
     require(dithering->itemText(dithering->findData(QStringLiteral("AUTO"))) ==
-        QStringLiteral("Auto") &&
+        QStringLiteral("Use quality preset") &&
         dithering->itemText(dithering->findData(QStringLiteral("blue_noise"))) ==
         QStringLiteral("Blue noise") &&
         dithering->itemText(dithering->findData(QStringLiteral("ordered_lut"))) ==
@@ -2141,25 +2142,17 @@ void testRendererProfileSectionsCollapseAndPersist()
         "The dithering selector does not expose every libplacebo method");
     QComboBox* displayBitDepth = requireControl<QComboBox>(window,
         QStringLiteral("config.vprenderer.display_bit_depth"));
-    require(displayBitDepth->currentData().toString() == QStringLiteral("AUTO") &&
-        displayBitDepth->currentText() == QStringLiteral("Auto") &&
-        qobject_cast<QListView*>(displayBitDepth->view())->isRowHidden(0),
-        "A quality-governed renderer selector still exposes a separate Use default choice");
-    require(displayBitDepth->itemText(
-        displayBitDepth->findData(QStringLiteral("AUTO"))) == QStringLiteral("Auto") &&
-        displayBitDepth->itemText(
-        displayBitDepth->findData(QStringLiteral("8"))) == QStringLiteral("8-bit") &&
-        displayBitDepth->itemText(
-        displayBitDepth->findData(QStringLiteral("10"))) ==
-        QStringLiteral("10-bit or higher"),
-        "The display bit-depth selector is missing an expected value");
-    require(displayBitDepth->itemData(2).toString() == QStringLiteral("10") &&
-        displayBitDepth->itemData(3).toString() == QStringLiteral("8"),
-        "Display bit-depth choices are not ordered from highest quality to lowest");
+    require(displayBitDepth->property("effectiveValue").toString().compare(QStringLiteral("auto"), Qt::CaseInsensitive) == 0 &&
+        displayBitDepth->currentText().contains(QStringLiteral("Legacy")),
+        "Existing automatic dither depth was not preserved as legacy state");
+    require(displayBitDepth->itemText(displayBitDepth->findData(QStringLiteral("8"))) == QStringLiteral("8-bit") &&
+        displayBitDepth->itemText(displayBitDepth->findData(QStringLiteral("10"))) == QStringLiteral("10-bit"),
+        "Explicit dither depth choices missing");
+
 	require(!requireControl<QWidget>(window,
 		QStringLiteral("rendererSection.externalHdrLut.content"))->isVisibleTo(&window),
         "3D LUT renderer content is visible while collapsed");
-    require(!calibrationContent->isVisibleTo(&window),
+    require(calibrationContent->isVisibleTo(&window),
         "Display calibration content is visible while collapsed");
 
     window.selectPage(16);
@@ -2232,10 +2225,10 @@ void testOutputExperimentsPersistAndRestoreDefaults()
         QStringLiteral("config.vprenderer.output.diagnostic_vp_owned_dxgi_presenter"));
     selectData(outputPresentation, QStringLiteral("direct"));
     selectData(outputRange, QStringLiteral("limited"));
-    selectData(outputTransportGamma, QStringLiteral("2.4"));
+    selectData(outputTransportGamma, QStringLiteral("2.2"));
     require(outputPathProfile->currentData().toString() == QStringLiteral("proposed"),
         "Editing ordinary output or display calibration changed the diagnostic preset");
-    limitedG22->setChecked(true);
+    require(limitedG22->isChecked() && !limitedG22->isEnabled(), "Limited2.2 did not derive its read-only flag");
     noCompute->setChecked(true);
     force8Bit->setChecked(true);
     vpOwned->setChecked(true);
@@ -2247,14 +2240,14 @@ void testOutputExperimentsPersistAndRestoreDefaults()
         configured.contains("diagnostic_disable_compute: true") &&
         configured.contains("diagnostic_force_8bit_sdr_swapchain: true") &&
         configured.contains("diagnostic_vp_owned_dxgi_presenter: true") &&
-        configured.contains("output_transport_gamma: 2.4") &&
+        configured.contains("output_transport_gamma: 2.2") &&
         configured.contains("output_path_profile: custom"),
         "Output experiment controls did not persist with the renderer profile");
 
     answerMessageBox(QMessageBox::Yes);
     requireControl<QPushButton>(window,
         QStringLiteral("config.vprenderer.output.output_experiments.reset_defaults"))->click();
-    require(!limitedG22->isChecked() && !noCompute->isChecked() &&
+    require(limitedG22->isChecked() && !noCompute->isChecked() &&
         !force8Bit->isChecked() && !vpOwned->isChecked(),
         "Restore Normal Diagnostics did not reset the output experiment controls");
     require(outputPathProfile->currentData().toString() == QStringLiteral("legacy"),
@@ -2263,19 +2256,19 @@ void testOutputExperimentsPersistAndRestoreDefaults()
         QStringLiteral("direct"), Qt::CaseInsensitive) == 0 &&
         outputRange->currentData().toString().compare(
         QStringLiteral("limited"), Qt::CaseInsensitive) == 0 &&
-        outputTransportGamma->currentData().toString() == QStringLiteral("2.4") &&
+        outputTransportGamma->currentData().toString() == QStringLiteral("2.2") &&
         outputGamma->currentData().toString() == originalGamma,
         "Restore Normal Diagnostics changed ordinary output or calibration controls");
     save(window);
     const QByteArray restored = readBytes(path);
-    require(restored.contains("diagnostic_allow_limited_g22: false") &&
+    require(restored.contains("diagnostic_allow_limited_g22: true") &&
         restored.contains("diagnostic_disable_compute: false") &&
         restored.contains("diagnostic_force_8bit_sdr_swapchain: false") &&
         restored.contains("diagnostic_vp_owned_dxgi_presenter: false") &&
         restored.contains("output_path_profile: legacy") &&
         restored.toLower().contains("output_presentation: direct") &&
         restored.toLower().contains("output_range: limited") &&
-        restored.contains("output_transport_gamma: 2.4"),
+        restored.contains("output_transport_gamma: 2.2"),
         "Restored normal diagnostics changed ordinary output or calibration settings");
 }
 
@@ -2854,13 +2847,11 @@ void testLutSelectorDiscoversInstallationLutFiles()
 	require(QMetaObject::invokeMethod(watcher, "directoryChanged",
 		Qt::DirectConnection, Q_ARG(QString, lutDirectory)),
 		"Could not refresh calibration LUT selectors after file removal");
-	require(selector->currentData().toString().isEmpty() &&
-		selector->currentText() == QStringLiteral("None") &&
-		selector->findText(QStringLiteral("Missing:"), Qt::MatchStartsWith) < 0,
-		"A removed LUT was not silently collapsed to None");
-	save(window);
-	require(!readBytes(path).contains("calibration_lut_bt2020:"),
-		"Saving did not remove the stale LUT path");
+	require(selector->currentData().toString() == QStringLiteral("luts/Test-Calibration.cube") &&
+		selector->currentText().startsWith(QStringLiteral("Missing:")),
+		"A removed LUT was not preserved as a missing reference");
+	require(readBytes(path).contains("calibration_lut_bt2020:"),
+		"File watcher removed the saved LUT path");
 }
 
 void testInheritedCalibrationLutUsesEffectiveControlState()
@@ -2899,12 +2890,11 @@ void testInheritedCalibrationLutUsesEffectiveControlState()
 	require(slot->isEnabled() && internalToneMap->isEnabled(),
 		"Calibration inheritance incorrectly disables DTM controls");
 	require(slot->currentData().toString().isEmpty() &&
-		slot->currentText() == QStringLiteral("None") &&
-		slot->findText(QStringLiteral("Missing:"), Qt::MatchStartsWith) < 0,
-		"An inherited missing LUT path was not silently collapsed to None");
+		slot->currentText().contains(QStringLiteral("Missing:")),
+		"An inherited missing LUT path was not preserved as a missing reference");
 	save(window);
-	require(!readBytes(path).contains("calibration_lut_bt2020:"),
-		"Saving did not clean the inherited stale LUT path");
+	require(readBytes(path).contains("calibration_lut_bt2020:"),
+		"Saving removed the inherited stale LUT path");
 }
 
 void testChoiceLabelsAndVpRendererName()
@@ -2937,7 +2927,7 @@ void testChoiceLabelsAndVpRendererName()
 
     QComboBox* peakDetection = requireControl<QComboBox>(window,
         QStringLiteral("config.vprenderer.peak_detection"));
-    require(peakDetection->findText(QStringLiteral("Auto")) >= 0 &&
+    require(peakDetection->findText(QStringLiteral("Use quality preset")) >= 0 &&
         peakDetection->findText(QStringLiteral("AUTO")) < 0 &&
         peakDetection->findText(QStringLiteral("Standard")) >= 0 &&
         peakDetection->findData(QStringLiteral("default")) < 0,
@@ -2955,7 +2945,7 @@ void testChoiceLabelsAndVpRendererName()
         "Display primaries still exposes Default as a separate choice");
 	require(requireControl<QLabel>(window,
 		QStringLiteral("config.vprenderer.color.output_gamma.auto_status"))->text() ==
-			QStringLiteral("Auto: sRGB"),
+			QStringLiteral("Auto: Legacy: follows accepted transport; see live output"),
 		"Output gamma Auto control does not identify its effective policy");
 	auto* calibrationEnabled = requireControl<QCheckBox>(window,
 		QStringLiteral("config.vprenderer.calibration_lut_enabled"));
@@ -2963,7 +2953,7 @@ void testChoiceLabelsAndVpRendererName()
 	QCoreApplication::processEvents();
 	require(requireControl<QLabel>(window,
 		QStringLiteral("config.vprenderer.color.output_gamma.auto_status"))->text() ==
-			QStringLiteral("Auto: sRGB"),
+			QStringLiteral("Auto: Legacy: follows accepted transport; see live output"),
 		"Calibration LUT enablement unexpectedly changed Auto gamma");
 	calibrationEnabled->setChecked(false);
 	require(requireControl<QLabel>(window,
@@ -5084,6 +5074,79 @@ void testSharedProfileListControllerContract()
         "Shared profile component did not publish mutations and selection loads");
 }
 
+void testCalibratedUiDefaultsAndDerivedTransport()
+{
+    QTemporaryDir directory;
+    const QString path = directory.filePath(QStringLiteral("VideoProcessor.cfg"));
+    {
+        ConfigEditorWindow window(path, 0, true);
+        window.selectPage(13);
+        require(requireControl<QStackedWidget>(window, QStringLiteral("settingsPages"))->currentIndex() == 16,
+            "Old Output page link did not open the combined page");
+        auto combo = [&](const char* name) { return requireControl<QComboBox>(window, QString::fromLatin1(name)); };
+        require(combo("config.vprenderer.color.output_gamma")->currentData() == QStringLiteral("2.2"), "Fresh display gamma is not 2.2");
+        require(combo("config.vprenderer.color.sdr_input_transfer")->currentData() == QStringLiteral("2.2"), "Fresh input gamma is not 2.2");
+        require(combo("config.vprenderer.display_bit_depth")->currentData() == QStringLiteral("10"), "Fresh dither depth is not 10");
+        require(requireControl<QLineEdit>(window, QStringLiteral("config.vprenderer.sdr_target_nits"))->text() == QStringLiteral("100"), "Fresh target nits is not 100");
+        require(requireControl<QLineEdit>(window, QStringLiteral("config.vprenderer.sdr_black_nits"))->text() == QStringLiteral("0"), "Fresh target black is not 0");
+        auto* range = combo("config.vprenderer.output.output_range");
+        auto* gamma = combo("config.vprenderer.output.output_transport_gamma");
+        auto* flag = requireControl<QCheckBox>(window, QStringLiteral("config.vprenderer.output.diagnostic_allow_limited_g22"));
+        require(range->currentData() == QStringLiteral("full") && !gamma->isEnabled(), "Full does not disable Limited transport");
+        require(!qobject_cast<QStandardItemModel*>(combo("config.vprenderer.color.output_gamma")->model())->item(0)->isEnabled(), "Fresh root omission can recreate removed Auto");
+        require(range->findData(QStringLiteral("AUTO")) < 0 && combo("config.vprenderer.color.output_gamma")->findData(QStringLiteral("AUTO")) < 0, "Fresh calibrated selector exposes Auto");
+        selectData(range, QStringLiteral("limited"));
+        require(gamma->isEnabled() && flag->isChecked() && !flag->isEnabled(), "Limited2.2 flag not derived");
+        selectData(gamma, QStringLiteral("2.4"));
+        require(!flag->isChecked(), "Limited2.4 did not clear flag");
+        selectData(gamma, QStringLiteral("2.2"));
+        selectData(range, QStringLiteral("full"));
+        require(!flag->isChecked() && gamma->currentData() == QStringLiteral("2.2"), "Full did not preserve dormant transfer and clear flag");
+        save(window);
+    }
+    const QByteArray saved = readBytes(path);
+    require(saved.contains("sdr_target_nits: 100") && saved.contains("sdr_black_nits: 0") && saved.contains("output_gamma: 2.2") && saved.contains("diagnostic_allow_limited_g22: false"), "Fresh defaults did not persist");
+    ConfigEditorWindow reloaded(path, 0, true);
+    auto* range = requireControl<QComboBox>(reloaded, QStringLiteral("config.vprenderer.output.output_range"));
+    selectData(range, QStringLiteral("limited"));
+    save(reloaded);
+    require(readBytes(path).contains("diagnostic_allow_limited_g22: true"), "Reloaded Limited selection did not persist its flag");
+}
+
+void testCalibratedLegacyAndInheritedOutputPreserved()
+{
+    QTemporaryDir directory;
+    const QString path = directory.filePath(QStringLiteral("VideoProcessor.cfg"));
+    QFile file(path);
+    require(file.open(QIODevice::WriteOnly), "Cannot create legacy fixture");
+    file.write("[vprenderer.Default]\nsdr_target_nits: 175\nsdr_black_nits: auto\n[vprenderer.color.Default]\noutput_gamma: auto\nsdr_input_transfer: 2.4\n[vprenderer.output.Default]\noutput_range: limited\noutput_transport_gamma: 2.2\ndiagnostic_allow_limited_g22: false\n[vprenderer.output.Full]\noutput_range: full\n[vprenderer.output.Unrelated]\noutput_range: limited\noutput_transport_gamma: 2.2\ndiagnostic_allow_limited_g22: false\n");
+    file.close();
+    ConfigEditorWindow window(path, 0, true);
+    auto* flag = requireControl<QCheckBox>(window, QStringLiteral("config.vprenderer.output.diagnostic_allow_limited_g22"));
+    require(!flag->isChecked(), "Opening legacy mismatch silently enabled experiment");
+    save(window);
+    require(readBytes(path).contains("output_gamma: auto") && readBytes(path).contains("sdr_target_nits: 175"), "Legacy calibration changed");
+    auto* gamma = requireControl<QComboBox>(window, QStringLiteral("config.vprenderer.output.output_transport_gamma"));
+    selectData(gamma, QStringLiteral("2.4"));
+    selectData(gamma, QStringLiteral("2.2"));
+    require(flag->isChecked(), "Edited base did not enable Limited2.2");
+    auto* profiles = requireControl<QListWidget>(window, QStringLiteral("config.vprenderer.output.profiles"));
+    profiles->setCurrentRow(1);
+    require(!flag->isChecked() && !gamma->isEnabled(), "Full child inherited incompatible flag");
+    profiles->setCurrentRow(2);
+    require(!flag->isChecked(), "Editing base repaired an unrelated legacy gate");
+    requireControl<QPushButton>(window, QStringLiteral("config.vprenderer.output.add_profile"))->click();
+    profiles->setCurrentRow(2);
+    require(!flag->isChecked(), "Adding profile repaired an unrelated legacy gate");
+    require(QMetaObject::invokeMethod(gamma, "activated", Qt::DirectConnection, Q_ARG(int, gamma->currentIndex())), "Cannot activate existing transport choice");
+    require(flag->isChecked(), "Reselecting legacy2.2 did not synchronize gate");
+    save(window);
+    ConfigEditorWindow reloaded(path, 0, true);
+    auto* reloadedProfiles = requireControl<QListWidget>(reloaded, QStringLiteral("config.vprenderer.output.profiles"));
+    reloadedProfiles->setCurrentRow(1);
+    require(!requireControl<QCheckBox>(reloaded, QStringLiteral("config.vprenderer.output.diagnostic_allow_limited_g22"))->isChecked(), "Child flag changed on reload");
+}
+
 int run(const char* name, const std::function<void()>& test)
 {
     if (!testNameFilter.isEmpty() &&
@@ -5121,6 +5184,8 @@ int main(int argc, char** argv)
     QApplication::setStyle(VpTheme::CreateStyle());
     application.setStyleSheet(VpTheme::StyleSheet());
     int failures = 0;
+    failures += run("calibrated UI defaults and derived transport", testCalibratedUiDefaultsAndDerivedTransport);
+    failures += run("calibrated legacy and inherited output preserved", testCalibratedLegacyAndInheritedOutputPreserved);
     failures += run("shared profile list controller contract",
         testSharedProfileListControllerContract);
     failures += run("HDR target luminance validation retains saved value",

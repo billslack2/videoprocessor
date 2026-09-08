@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright(C) 2021 Dennis Fleurbaaij <mail@dennisfleurbaaij.com>
  *
  * This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 3.
@@ -11840,10 +11840,12 @@ void CVideoProcessorDlg::PublishActiveProfileStatus()
 		CStringA(ToString(m_builtVideoState->eotf)).GetString() : std::string();
 	const std::string sourceColorSpace = m_builtVideoState && m_builtVideoState->valid ?
 		CStringA(ToString(m_builtVideoState->colorspace)).GetString() : std::string();
+    RendererOutputContract::Status outputStatus;
+    const bool outputAvailable = m_videoRenderer && m_videoRenderer->GetOutputContractStatus(outputStatus);
 	ActiveProfileStatus::Publish(GetCurrentProcessId(), snapshot->generation,
 		RendererProfileConfig::FormatSelections(snapshot->effectiveSelections),
 		rendererGeneration, shaderAvailable,
-		shaderSections, sourceEotf, sourceColorSpace);
+		shaderSections, sourceEotf, sourceColorSpace, outputAvailable ? outputStatus.uiSummary : std::string());
 }
 
 std::map<std::string, std::string>

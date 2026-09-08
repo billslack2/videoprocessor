@@ -1,4 +1,4 @@
-#define NOMINMAX
+﻿#define NOMINMAX
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <shellapi.h>
@@ -18,6 +18,8 @@
 #include <QAbstractSpinBox>
 #include <QAccessible>
 #include <QApplication>
+#include <QDoubleValidator>
+#include <QStandardItemModel>
 #include <QButtonGroup>
 #include <QCheckBox>
 #include <QCloseEvent>
@@ -920,6 +922,7 @@ ConfigEditorWindow::ConfigEditorWindow(QString configPath, quintptr ownerHandle,
         allRenderers_ = testAllRenderers;
     }
     setCentralWidget(createShell());
+    refreshLimitedTransportControls();
     if (!testMode_)
     {
         activeProfileTimer_ = new QTimer(this);
@@ -997,6 +1000,7 @@ ConfigEditorWindow::~ConfigEditorWindow()
 void ConfigEditorWindow::selectPage(int index)
 {
     if (!pages_ || index < 0 || index >= pages_->count()) return;
+    if (index == 13) index = 16; // Preserve old Output page links.
     pages_->setCurrentIndex(index);
     if (!navigation_) return;
     const int navigationIndex = index == 4 || index == 11 || index == 13 ? 2 :
@@ -1081,6 +1085,95 @@ void ConfigEditorWindow::loadConfiguration()
 	dirty_ = configurationLoaded_ && (!document_->existedAtLoad ||
 		migratedLegacyInputPolicy);
 	hasPendingMigrations_ = migratedLegacyInputPolicy;
+    if (configurationLoaded_ && !document_->existedAtLoad)
+    {
+        seedCalibratedProfile(QStringLiteral("vprenderer"), QStringLiteral("vprenderer.Default"));
+        seedCalibratedProfile(QStringLiteral("vprenderer.color"), QStringLiteral("vprenderer.color.Default"));
+        seedCalibratedProfile(QStringLiteral("vprenderer.output"), QStringLiteral("vprenderer.output.Default"));
+    }
+}
+
+void ConfigEditorWindow::seedCalibratedProfile(const QString& root, const QString& section)
+{
+    if (!document_) return;
+    document_->AddSection(section.toStdString());
+    const auto set = [&](const char* key, const char* value)
+    { document_->SetKnown(section.toStdString(), key, value); };
+    if (root == QStringLiteral("vprenderer"))
+    {
+        set("quality", "high"); set("sdr_target_nits", "100");
+        set("sdr_black_nits", "0"); set("display_bit_depth", "10");
+        set("dithering", "auto");
+    }
+    else if (root == QStringLiteral("vprenderer.color"))
+    {
+        set("sdr_target_primaries", "rec709"); set("output_gamma", "2.2");
+        set("sdr_input_transfer", "2.2"); set("sdr_adjust_gamma", "on");
+        set("report_bt2020_to_display", "false");
+    }
+    else if (root == QStringLiteral("vprenderer.output"))
+    {
+        set("output_range", "full"); set("output_transport_gamma", "2.2");
+        set("output_presentation", "auto"); set("diagnostic_allow_limited_g22", "false");
+    }
+}
+
+QMap<QString, QString> ConfigEditorWindow::outputTransportSelections() const
+{
+    QMap<QString, QString> result;
+    const QStringList profiles = profileSections(QStringLiteral("vprenderer.output"));
+    if (profiles.isEmpty()) return result;
+    for (const QString& section : profiles)
+    {
+        const auto effective = [&](const char* key)
+        {
+            QString setting = value(section, QString::fromLatin1(key));
+            if (setting.isEmpty()) setting = value(profiles.front(), QString::fromLatin1(key));
+            return setting.trimmed().toLower();
+        };
+        result.insert(section, effective("output_range") + u'/' + effective("output_transport_gamma"));
+    }
+    return result;
+}
+
+void ConfigEditorWindow::synchronizeLimitedTransportFlags(
+    const QMap<QString, QString>& before, const QString& editedSection)
+{
+    if (!document_) return;
+    const auto after = outputTransportSelections();
+    for (auto it = after.cbegin(); it != after.cend(); ++it)
+    {
+        // Repair only the explicitly edited profile or profiles whose effective
+        // inherited transport actually changed. Unrelated legacy gates survive.
+        if (it.key() != editedSection && before.contains(it.key()) && before.value(it.key()) == it.value()) continue;
+        document_->SetKnown(it.key().toStdString(), "diagnostic_allow_limited_g22",
+            it.value() == QStringLiteral("limited/2.2") ? "true" : "false");
+    }
+}
+
+void ConfigEditorWindow::refreshLimitedTransportControls()
+{
+    auto* range = findChild<QComboBox*>(QStringLiteral("config.vprenderer.output.output_range"));
+    auto* gamma = findChild<QComboBox*>(QStringLiteral("config.vprenderer.output.output_transport_gamma"));
+    auto* flag = findChild<QCheckBox*>(QStringLiteral("config.vprenderer.output.diagnostic_allow_limited_g22"));
+    if (!range || !gamma || !flag || !document_) return;
+    const QString section = range->property("profileSection").toString();
+    const QStringList profiles = profileSections(QStringLiteral("vprenderer.output"));
+    const auto effective = [&](const char* key)
+    {
+        QString result = value(section, QString::fromLatin1(key));
+        if (result.isEmpty() && !profiles.isEmpty()) result = value(profiles.front(), QString::fromLatin1(key));
+        return result.trimmed().toLower();
+    };
+    const bool limited = effective("output_range") == QStringLiteral("limited");
+    gamma->setEnabled(!section.isEmpty() && limited);
+    const QSignalBlocker blocker(flag);
+    flag->setChecked(effective("diagnostic_allow_limited_g22") == QStringLiteral("true"));
+    flag->setEnabled(false);
+    const bool desired = limited && effective("output_transport_gamma") == QStringLiteral("2.2");
+    flag->setToolTip(desired != flag->isChecked() ?
+        QStringLiteral("Legacy flag differs from the selected transport. Reselect the range or transfer to synchronize it; opening this profile preserves the saved behavior.") :
+        QStringLiteral("Saved automatically: enabled only for Limited + 2.2. This is not an independent setting."));
 }
 
 void ConfigEditorWindow::migrateViewportZoomProfiles()
@@ -1432,6 +1525,11 @@ void ConfigEditorWindow::refreshActiveProfileIndicators()
     applyActiveProfileIndicators(available, queue, renderer, color, viewport,
         shaders, shaderAvailable, zoom, scaling, output);
     refreshRendererAutoStatus();
+    if (auto* label = findChild<QLabel*>(QStringLiteral("config.color_output.live_status")))
+        label->setText(available && active.outputSummary[0] ?
+            QStringLiteral("Live output — Color: %1; Output: %2\n%3\nApplies to the running renderer, not unsaved edits. Windows/HDMI wire state is not measured here.")
+                .arg(color, output, QString::fromLocal8Bit(active.outputSummary)) :
+            QStringLiteral("Live output unavailable. Saved preferences are not proof of the active output contract."));
 }
 
 void ConfigEditorWindow::setActiveProfileStatusForTesting(const QString& queue,
@@ -1650,8 +1748,11 @@ void ConfigEditorWindow::refreshRendererAutoStatus()
     const auto isAuto = [](QWidget* control)
     {
         if (const auto* combo = qobject_cast<QComboBox*>(control))
-            return combo->currentData().toString().trimmed().compare(
+        {
+            const QString selected = combo->currentData().toString();
+            return (selected.isEmpty() ? combo->property("effectiveValue").toString() : selected).trimmed().compare(
                 QStringLiteral("auto"), Qt::CaseInsensitive) == 0;
+        }
         if (const auto* edit = qobject_cast<QLineEdit*>(control))
             return edit->text().trimmed().compare(QStringLiteral("auto"),
                 Qt::CaseInsensitive) == 0;
@@ -1682,7 +1783,7 @@ void ConfigEditorWindow::refreshRendererAutoStatus()
         }
 		else if (binding.key == QStringLiteral("output_gamma"))
 		{
-			text = QStringLiteral("sRGB");
+			text = QStringLiteral("Legacy: follows accepted transport; see live output");
 		}
         else if (binding.key == QStringLiteral("sdr_adjust_gamma"))
             // This selector controls the conversion policy, rather than
@@ -2683,7 +2784,7 @@ QWidget* ConfigEditorWindow::createShell()
         QStringLiteral("Input processing"),
         QStringLiteral("Override the General input policy for DirectShow, or inherit it."),
         QStringLiteral("directshow")));
-    pages_->addWidget(createOutputPage());
+    pages_->addWidget(new QWidget); // Former Output page; selectPage redirects to Color / Output.
     pages_->addWidget(createShadersSetupPage());
     pages_->addWidget(createShortcutsSetupPage());
     pages_->addWidget(createColorConfigPage());
@@ -2766,8 +2867,7 @@ QWidget* ConfigEditorWindow::createShell()
             vpNavigation->setChecked(true);
             showSectionTabs({ { QStringLiteral("Rendering"), 2 },
 				{ QStringLiteral("Scaling"), 17 },
-				{ QStringLiteral("Color"), 16 },
-                { QStringLiteral("Output"), 13 },
+				{ QStringLiteral("Color / Output"), 16 },
 				{ QStringLiteral("Screen"), 4 },
 				{ QStringLiteral("Zoom"), 18 },
 				{ QStringLiteral("Processing"), 11 } }, page);
@@ -3402,21 +3502,43 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
     auto* selectedTitle = new QLabel(QStringLiteral("Profile"));
     selectedTitle->setProperty("cardTitle", true);
     detailLayout->addWidget(selectedTitle);
+    QVBoxLayout* profileMetaLayout = detailLayout;
+    if (sectionPrefix == QStringLiteral("vprenderer.color") || sectionPrefix == QStringLiteral("vprenderer.output"))
+    {
+        auto* metadata = new QWidget(detail);
+        profileMetaLayout = new QVBoxLayout(metadata);
+        profileMetaLayout->setContentsMargins(0, 0, 0, 0);
+        auto* toggle = new QToolButton(detail);
+        toggle->setText(QStringLiteral("Profile name, shortcuts and rule"));
+        toggle->setProperty("profileSection", true);
+        toggle->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        toggle->setCheckable(true);
+        toggle->setArrowType(Qt::RightArrow);
+        toggle->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+        detailLayout->addWidget(toggle);
+        detailLayout->addWidget(metadata);
+        metadata->hide();
+        connect(toggle, &QToolButton::toggled, metadata, [toggle, metadata](bool expanded)
+        {
+            metadata->setVisible(expanded);
+            toggle->setArrowType(expanded ? Qt::DownArrow : Qt::RightArrow);
+        });
+    }
     auto* name = new QLineEdit;
     name->setObjectName(controlName(sectionPrefix, QStringLiteral("name")));
-    detailLayout->addWidget(fieldWithHelp(QStringLiteral("Name"), name,
+    profileMetaLayout->addWidget(fieldWithHelp(QStringLiteral("Name"), name,
         QStringLiteral("The first profile in the list is the default; list order determines precedence.")));
     auto* shortcut = new QLineEdit;
     shortcut->setObjectName(controlName(sectionPrefix, QStringLiteral("shortcut")));
-    detailLayout->addWidget(fieldWithHelp(QStringLiteral("Shortcut key"), shortcut,
+    profileMetaLayout->addWidget(fieldWithHelp(QStringLiteral("Shortcut key"), shortcut,
         QStringLiteral("Optional. Activates this profile in addition to its rule.")));
     auto* cycleShortcut = new QLineEdit;
     cycleShortcut->setObjectName(controlName(sectionPrefix, QStringLiteral("cycle_shortcut")));
-    detailLayout->addWidget(fieldWithHelp(QStringLiteral("Cycle shortcut key"), cycleShortcut,
+    profileMetaLayout->addWidget(fieldWithHelp(QStringLiteral("Cycle shortcut key"), cycleShortcut,
         QStringLiteral("Optional. Cycles through profiles that use the same key, in list order.")));
     auto* useRule = new QCheckBox(QStringLiteral("Use rule"));
     useRule->setObjectName(controlName(sectionPrefix, QStringLiteral("use_rule")));
-    detailLayout->addWidget(useRule);
+    profileMetaLayout->addWidget(useRule);
     auto* rule = new QPlainTextEdit;
     rule->setObjectName(controlName(sectionPrefix, QStringLiteral("when")));
     rule->setPlaceholderText(QStringLiteral("${key} == \"F2\""));
@@ -3425,7 +3547,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
     rule->setMaximumHeight(96);
     auto* ruleField = fieldWithHelp(QStringLiteral("When should VP use this profile?"), rule,
         QStringLiteral("Optional source-condition rule. Example: ${width} >= 1920 && ${eotf} == \"HDR\"."));
-    detailLayout->addWidget(ruleField);
+    profileMetaLayout->addWidget(ruleField);
 
     auto* profileFields = new QWidget;
     auto* profileFieldsLayout = new QVBoxLayout(profileFields);
@@ -3633,6 +3755,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             [this, state, key, combo, sectionPrefix](int index)
         {
             if (state->loading || state->section.isEmpty() || !document_ || index < 0) return;
+            const auto previousTransport = outputTransportSelections();
             const QString selected = combo->itemData(index).toString();
             const bool inherited = selected.isEmpty() &&
                 state->section != sectionPrefix;
@@ -3655,8 +3778,21 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             {
                 document_->SetKnown(state->section.toStdString(), key.toStdString().c_str(), selected.toLocal8Bit().constData());
             }
+            if (sectionPrefix == QStringLiteral("vprenderer.output") &&
+                (key == QStringLiteral("output_range") || key == QStringLiteral("output_transport_gamma")))
+                synchronizeLimitedTransportFlags(previousTransport, state->section);
             markDirty();
+            refreshLimitedTransportControls();
         });
+        if (sectionPrefix == QStringLiteral("vprenderer.output") &&
+            (key == QStringLiteral("output_range") || key == QStringLiteral("output_transport_gamma")))
+            connect(combo, qOverload<int>(&QComboBox::activated), this, [this, state](int)
+            {
+                if (state->loading || state->section.isEmpty()) return;
+                synchronizeLimitedTransportFlags(outputTransportSelections(), state->section);
+                refreshLimitedTransportControls();
+                markDirty();
+            });
         return combo;
     };
     const auto addRendererAutoStatus = [this, &form, sectionPrefix](
@@ -3668,6 +3804,12 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
              sectionPrefix != QStringLiteral("vprenderer.output")) ||
             !form || !control)
             return;
+        if (auto* combo = qobject_cast<QComboBox*>(control))
+        {
+            static const QStringList presetKeys = { "tone_mapping", "gamut_mapping", "peak_detection", "upscaler", "downscaler", "sigmoid", "deband_strength", "dithering" };
+            if (presetKeys.contains(key))
+                combo->setItemText(combo->findData(QStringLiteral("AUTO")), QStringLiteral("Use quality preset"));
+        }
         auto* status = helpLabel(QString());
         status->setObjectName(controlName(sectionPrefix, key) +
             QStringLiteral(".auto_status"));
@@ -3787,14 +3929,14 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
     {
         form = addCollapsibleSection(QStringLiteral("calibration"),
             QStringLiteral("Display calibration"), QStringLiteral(
-				"Describe the calibrated Rec.709, P3-D65, or BT.2020 display response this Color Config targets."), false);
+				"Describe the calibrated Rec.709, P3-D65, or BT.2020 display response this Color Config targets."), true);
 		addChoice(QStringLiteral("Display primaries"),
 			QStringLiteral("sdr_target_primaries"),
 			{ QStringLiteral("REC709"), QStringLiteral("P3_D65"),
 				QStringLiteral("BT2020") }, false);
         auto* outputGamma = addChoice(QStringLiteral("Display transfer / gamma"),
             QStringLiteral("output_gamma"),
-            { QStringLiteral("AUTO"), QStringLiteral("bt1886"),
+            {  QStringLiteral("bt1886"),
                 QStringLiteral("srgb"), QStringLiteral("1.8"),
                 QStringLiteral("2.0"), QStringLiteral("2.2"),
                 QStringLiteral("2.4"), QStringLiteral("2.6"),
@@ -3814,10 +3956,10 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                 "How VP interprets SDR source transfer before this Color Config maps it to the calibrated display target."), false);
         auto* sdrAdjustGamma = addChoice(QStringLiteral("SDR source transfer handling"),
             QStringLiteral("sdr_adjust_gamma"),
-            { QStringLiteral("AUTO"), QStringLiteral("on"), QStringLiteral("off") });
-        sdrAdjustGamma->setItemText(1, QStringLiteral("Auto"));
-        sdrAdjustGamma->setItemText(2, QStringLiteral("On"));
-        sdrAdjustGamma->setItemText(3, QStringLiteral("Off"));
+            {  QStringLiteral("on"), QStringLiteral("off") });
+        sdrAdjustGamma->setItemText(sdrAdjustGamma->findData(QStringLiteral("on")), QStringLiteral("Honor input and display transfers"));
+        sdrAdjustGamma->setItemText(sdrAdjustGamma->findData(QStringLiteral("off")), QStringLiteral("Off (legacy handling)"));
+        sdrAdjustGamma->setToolTip(QStringLiteral("Off reinterprets SDR using the accepted transport transfer, which can differ from display gamma. It does not bypass other color processing."));
         addRendererAutoStatus(QStringLiteral("sdr_adjust_gamma"), sdrAdjustGamma);
         auto* sdrInputTransfer = addChoice(QStringLiteral("SDR input transfer"),
             QStringLiteral("sdr_input_transfer"),
@@ -3826,6 +3968,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                 QStringLiteral("2.4"), QStringLiteral("2.6"), QStringLiteral("2.8") });
         sdrInputTransfer->setToolTip(QStringLiteral(
             "Declares how SDR source codes are interpreted when gamma adjustment is On."));
+        sdrInputTransfer->setItemText(sdrInputTransfer->findData(QStringLiteral("AUTO")), QStringLiteral("Follow source metadata"));
         addRendererAutoStatus(QStringLiteral("sdr_input_transfer"), sdrInputTransfer);
 
     }
@@ -3841,7 +3984,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         form = addCollapsibleSection(QStringLiteral("toneMapping"),
             QStringLiteral("Tone mapping"), QStringLiteral(
                 "HDR tone mapping, gamut compression, dynamic peak handling, and contrast recovery."), false);
-        auto* sdrTargetWhiteLevel = addText(QStringLiteral("HDR tone-map target white"),
+        auto* sdrTargetWhiteLevel = addText(QStringLiteral("Target nits"),
             QStringLiteral("sdr_target_nits"), QStringLiteral("nits"));
         sdrTargetWhiteLevel->setToolTip(QStringLiteral(
             "HDR-to-SDR tone-mapping destination: 40 through 500 nits. "
@@ -3853,7 +3996,8 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             QStringLiteral("sdr_black_nits"), QStringLiteral("nits"));
         sdrBlackLevel->setToolTip(QStringLiteral(
             "Black level for HDR-to-SDR tone mapping only. SDR input is unaffected."));
-        sdrBlackLevel->setPlaceholderText(QStringLiteral("Auto or a numeric value"));
+        sdrBlackLevel->setPlaceholderText(QStringLiteral("0 or a measured black level"));
+        sdrBlackLevel->setValidator(new QDoubleValidator(0.0, 500.0, 6, sdrBlackLevel));
         addRendererAutoStatus(QStringLiteral("sdr_black_nits"), sdrBlackLevel);
         auto* toneMapping = addChoice(QStringLiteral("Tone mapping"), QStringLiteral("tone_mapping"), { QStringLiteral("AUTO"), QStringLiteral("spline"), QStringLiteral("bt2390"), QStringLiteral("st2094-40"), QStringLiteral("reinhard") });
         addRendererAutoStatus(QStringLiteral("tone_mapping"), toneMapping);
@@ -3870,6 +4014,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         form = addCollapsibleSection(QStringLiteral("processing"), QStringLiteral("Processing"),
             QString(), false);
         auto* debanding = addChoice(QStringLiteral("Debanding"), QStringLiteral("deband_strength"), { QStringLiteral("AUTO"), QStringLiteral("default"), QStringLiteral("light"), QStringLiteral("off") });
+        debanding->setItemText(debanding->findData(QStringLiteral("default")), QStringLiteral("Standard"));
         addRendererAutoStatus(QStringLiteral("deband_strength"), debanding);
         auto* dithering = addChoice(QStringLiteral("Dithering"), QStringLiteral("dithering"),
             { QStringLiteral("AUTO"), QStringLiteral("blue_noise"),
@@ -3908,14 +4053,13 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             "and are substantially more expensive. The display-calibration LUT "
             "runs before this final dithering stage. Off disables dithering."));
         addRendererAutoStatus(QStringLiteral("dithering"), dithering);
-        auto* displayBitDepth = addChoice(QStringLiteral("Display bit depth"),
+        auto* displayBitDepth = addChoice(QStringLiteral("Dither target depth"),
             QStringLiteral("display_bit_depth"),
-            { QStringLiteral("AUTO"), QStringLiteral("10"), QStringLiteral("8") });
-        displayBitDepth->setItemText(1, QStringLiteral("Auto"));
-        displayBitDepth->setItemText(2, QStringLiteral("10-bit or higher"));
-        displayBitDepth->setItemText(3, QStringLiteral("8-bit"));
+            {  QStringLiteral("10"), QStringLiteral("8") });
+        displayBitDepth->setItemText(displayBitDepth->findData(QStringLiteral("10")), QStringLiteral("10-bit"));
+        displayBitDepth->setItemText(displayBitDepth->findData(QStringLiteral("8")), QStringLiteral("8-bit"));
         displayBitDepth->setToolTip(QStringLiteral(
-            "Native display precision used as the dithering target. Auto uses the active RGB swapchain depth."));
+            "Dithering precision, clamped to the active surface depth. This does not configure GPU/HDMI bit depth or detect panel precision."));
         addRendererAutoStatus(QStringLiteral("display_bit_depth"), displayBitDepth);
 
 		form = addCollapsibleSection(QStringLiteral("externalHdrLut"),
@@ -3986,16 +4130,12 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 				selector->addItem(emptyLabel, QString());
 				for (const QString& lut : available)
 					selector->addItem(displayName(lut), lut);
-				const int index = selector->findData(resolvedSelected, Qt::UserRole,
-					Qt::MatchFixedString);
-				selector->setCurrentIndex(std::max(0, index));
-				if (!selected.isEmpty() && resolvedSelected.isEmpty() && document_ &&
-					!state->section.isEmpty())
-				{
-					document_->RemoveKnown(state->section.toStdString(),
-						selector->property("lutConfigKey").toString().toStdString().c_str());
-					markDirty();
-				}
+                if (selected.isEmpty() && !effective.isEmpty() && resolvedEffective.isEmpty())
+                    selector->setItemText(0, QStringLiteral("Inherited - Missing: %1").arg(effective));
+                if (!selected.isEmpty() && resolvedSelected.isEmpty())
+                    selector->addItem(QStringLiteral("Missing: %1").arg(selected), selected);
+                const QString selection = resolvedSelected.isEmpty() ? selected : resolvedSelected;
+                selector->setCurrentIndex(std::max(0, selector->findData(selection, Qt::UserRole, Qt::MatchFixedString)));
 			}
         };
 		refreshLutSelectors();
@@ -4063,35 +4203,37 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         form = addCollapsibleSection(QStringLiteral("advancedOutput"),
             QStringLiteral("Advanced output"), QStringLiteral(
                 "Presentation preference and RGB transport for this output path. "
-                "Windows determines the final presentation path."), false);
+                "Windows determines the final presentation path."), true);
         form->addRow(QString(), helpLabel(QStringLiteral(
-            "Keep these controls on Auto unless the display chain has a known "
-            "transport requirement; the OSD reports the effective transport.")));
+            "Full RGB is the default. Limited transport uses 2.2 for the beta; "
+            "the live status reports whether the requested contract is active.")));
         auto* outputPresentation = addChoice(QStringLiteral("Presentation preference"),
             QStringLiteral("output_presentation"),
             { QStringLiteral("AUTO"), QStringLiteral("direct"),
                 QStringLiteral("composed") });
+        outputPresentation->setItemText(outputPresentation->findData(QStringLiteral("AUTO")), QStringLiteral("Prefer flip (allow fallback)"));
+        outputPresentation->setItemText(outputPresentation->findData(QStringLiteral("direct")), QStringLiteral("Flip model"));
+        outputPresentation->setItemText(outputPresentation->findData(QStringLiteral("composed")), QStringLiteral("Legacy BitBlt"));
         outputPresentation->setToolTip(QStringLiteral(
-            "Auto is recommended. Direct and Composed are compatibility preferences; "
-            "Windows and the renderer choose the effective presentation path."));
+            "Flip model does not guarantee DirectFlip: Windows may compose it. "
+            "Legacy BitBlt is a compatibility path. Fallback may change RGB range; check live status."));
 		addRendererAutoStatus(QStringLiteral("output_presentation"), outputPresentation);
         auto* outputRange = addChoice(QStringLiteral("RGB output range"),
             QStringLiteral("output_range"),
-            { QStringLiteral("AUTO"), QStringLiteral("full"),
+            {  QStringLiteral("full"),
                 QStringLiteral("limited") });
         outputRange->setToolTip(QStringLiteral(
-            "Auto normally uses Full RGB. Select Limited only for a known "
+            "Full RGB is the fresh-profile default. Select Limited only for a known "
             "limited-range display chain or a transport diagnostic."));
 		addRendererAutoStatus(QStringLiteral("output_range"), outputRange);
         auto* outputTransportGamma = addChoice(
             QStringLiteral("Limited transport transfer"),
             QStringLiteral("output_transport_gamma"),
-            { QStringLiteral("AUTO"), QStringLiteral("2.2"),
+            {  QStringLiteral("2.2"),
                 QStringLiteral("2.4") });
         outputTransportGamma->setToolTip(QStringLiteral(
-            "Only applies when RGB output range is Limited. Auto uses the "
-            "standard limited-range transport. Display calibration remains "
-            "part of the selected Color Config."));
+            "Only active for Limited RGB. Selecting 2.2 enables its beta transport flag; "
+            "2.4 or Full disables it. Display gamma remains independent."));
 		addRendererAutoStatus(QStringLiteral("output_transport_gamma"), outputTransportGamma);
         auto* outputCompatibility = helpLabel(QString());
         outputCompatibility->setObjectName(
@@ -4118,8 +4260,10 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             QStringLiteral("Output investigation"));
         outputPathProfile->setItemText(outputPathProfile->findData(QStringLiteral("custom")),
             QStringLiteral("Custom diagnostics"));
-		addBoolean(QStringLiteral("Enable limited + pure Gamma 2.2 experiment"),
-			QStringLiteral("diagnostic_allow_limited_g22"));
+        auto* limitedFlag = addBoolean(QStringLiteral("Limited 2.2 beta transport (derived)"),
+            QStringLiteral("diagnostic_allow_limited_g22"));
+        limitedFlag->setProperty("derivedSetting", true);
+        limitedFlag->setEnabled(false);
         addBoolean(QStringLiteral("Disable D3D11 compute shaders"),
             QStringLiteral("diagnostic_disable_compute"));
         addBoolean(QStringLiteral("Force 8-bit SDR swapchain"),
@@ -4201,7 +4345,6 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                 profile.isEmpty() || profile == QStringLiteral("custom")) return;
             struct Value { const char* key; const char* value; };
 		static constexpr Value legacy[] = {
-				{ "diagnostic_allow_limited_g22", "false" },
 				{ "diagnostic_disable_compute", "false" },
                 { "diagnostic_force_8bit_sdr_swapchain", "false" },
                 { "diagnostic_vp_owned_dxgi_presenter", "false" },
@@ -4209,7 +4352,6 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                 { "diagnostic_disable_shader_cache", "false" }
             };
 		static constexpr Value proposed[] = {
-				{ "diagnostic_allow_limited_g22", "true" },
                 { "diagnostic_disable_compute", "false" },
                 { "diagnostic_force_8bit_sdr_swapchain", "false" },
                 { "diagnostic_vp_owned_dxgi_presenter", "false" },
@@ -4243,6 +4385,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             const QSignalBlocker profileBlocker(outputPathProfile);
             outputPathProfile->setCurrentIndex(outputPathProfile->findData(profile));
             updateOutputCompatibility();
+            refreshLimitedTransportControls();
             markDirty();
         };
         connect(outputPathProfile, qOverload<int>(&QComboBox::currentIndexChanged), this,
@@ -4305,7 +4448,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 			QStringLiteral("oversample"), QStringLiteral("bilinear"),
 			QStringLiteral("nearest"), QStringLiteral("none") });
 		upscaler->setItemText(upscaler->findData(QStringLiteral("none")),
-			QStringLiteral("Use GPU"));
+			QStringLiteral("Built-in GPU sampling"));
 		addRendererAutoStatus(QStringLiteral("upscaler"), upscaler);
 		auto* downscaler = addChoice(QStringLiteral("Downscaler"),
 			QStringLiteral("downscaler"), { QStringLiteral("AUTO"),
@@ -4315,7 +4458,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 			QStringLiteral("hermite"), QStringLiteral("bilinear"),
 			QStringLiteral("box"), QStringLiteral("gpu") });
 		downscaler->setItemText(downscaler->findData(QStringLiteral("gpu")),
-			QStringLiteral("Use GPU"));
+			QStringLiteral("Built-in GPU sampling"));
 		addRendererAutoStatus(QStringLiteral("downscaler"), downscaler);
 		auto* antiRinging = addChoice(QStringLiteral("Anti-ringing"),
 			QStringLiteral("sigmoid"), { QStringLiteral("AUTO"),
@@ -4648,6 +4791,19 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         ruleField->setVisible(!expression.isEmpty());
         auto fallback = [this, sectionPrefix](const QString& key) -> QString
         {
+            if (sectionPrefix == QStringLiteral("vprenderer.color"))
+            {
+                if (key == QStringLiteral("sdr_target_primaries")) return QStringLiteral("rec709");
+                if (key == QStringLiteral("sdr_adjust_gamma")) return QStringLiteral("on");
+                if (key == QStringLiteral("report_bt2020_to_display")) return QStringLiteral("false");
+                return QStringLiteral("auto");
+            }
+            if (sectionPrefix == QStringLiteral("vprenderer.output"))
+            {
+                if (key.startsWith(QStringLiteral("diagnostic_")) || key == QStringLiteral("output_diagnostics")) return QStringLiteral("false");
+                if (key == QStringLiteral("output_path_profile")) return QStringLiteral("legacy");
+                return QStringLiteral("auto");
+            }
             if (sectionPrefix == QStringLiteral("queue"))
             {
                 if (key == QStringLiteral("queue_size")) return QStringLiteral("32");
@@ -4742,25 +4898,16 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 				sectionPrefix == QStringLiteral("vprenderer") &&
 				field.key.startsWith(QStringLiteral("calibration_lut_")) &&
 				field.key != QStringLiteral("calibration_lut_enabled");
-			if (calibrationLutSlot && !raw.isEmpty())
-			{
-				const QString normalized = QDir::fromNativeSeparators(raw.trimmed());
-				const QString absolute = QFileInfo(configPath_).absoluteDir().filePath(normalized);
-				if (!QFileInfo(absolute).isFile())
-				{
-					document_->RemoveKnown(section.toStdString(),
-						field.key.toStdString().c_str());
-					raw.clear();
-					markDirty();
-				}
-				else if (normalized != raw)
-				{
-					document_->SetKnown(section.toStdString(),
-						field.key.toStdString().c_str(), normalized.toLocal8Bit().constData());
-					raw = normalized;
-					markDirty();
-				}
-			}
+            if (calibrationLutSlot && !raw.isEmpty())
+            {
+                const QString normalized = QDir::fromNativeSeparators(raw);
+                if (normalized != raw)
+                {
+                    document_->SetKnown(section.toStdString(), field.key.toStdString().c_str(), normalized.toStdString());
+                    raw = normalized;
+                    markDirty();
+                }
+            }
 			const bool requiresExplicitValue =
 				field.widget->property("requiresExplicitValue").toBool();
 			const bool scalingDownscaler =
@@ -4818,7 +4965,9 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 				configured = fallback(field.key);
             if (defaultOnlyField && !defaultProfile && list->count() > 0)
                 configured = value(list->item(0)->data(Qt::UserRole).toString(), field.key, fallback(field.key));
-            field.widget->setEnabled(!defaultOnlyField || defaultProfile);
+            field.widget->setEnabled((!defaultOnlyField || defaultProfile) &&
+                !field.widget->property("derivedSetting").toBool());
+            field.widget->setProperty("profileSection", section);
 			if (field.widget->property("requiresHdrFixedMode").toBool())
 			{
 				auto* mode = findChild<QComboBox*>(controlName(sectionPrefix,
@@ -4832,11 +4981,16 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 			if (requiresExplicitValue && raw.isEmpty())
 				field.widget->setToolTip(QStringLiteral(
 					"An explicit value is required for this setting."));
-			else field.widget->setToolTip(raw.isEmpty() ?
+			            else
+            {
+                if (!field.widget->property("settingHelp").isValid())
+                    field.widget->setProperty("settingHelp", field.widget->toolTip());
+                field.widget->setToolTip(field.widget->property("settingHelp").toString() + QStringLiteral("\n") + (raw.isEmpty() ?
                 (defaultProfile ?
                     QStringLiteral("Using the built-in default. Editing creates an explicit setting.") :
                     QStringLiteral("Inherited from the default profile. Editing creates an override.")) :
-                    QString());
+                    QString()));
+            }
             field.widget->style()->unpolish(field.widget);
             field.widget->style()->polish(field.widget);
             if (field.kind == Field::Text)
@@ -4878,7 +5032,12 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                      field.key == QStringLiteral("sdr_target_primaries"));
                 const bool hasUnspecifiedChoice = combo->count() > 0 &&
                     combo->itemData(0).toString().isEmpty();
-                const bool hideUnspecifiedChoice = rootRendererExplicitDefault ||
+                static const QStringList calibratedKeys = { "output_gamma", "output_range", "output_transport_gamma", "sdr_adjust_gamma", "display_bit_depth" };
+                const bool retiredRootDefault = defaultProfile && calibratedKeys.contains(field.key);
+                if (hasUnspecifiedChoice)
+                    if (auto* model = qobject_cast<QStandardItemModel*>(combo->model()))
+                        model->item(0)->setEnabled(!retiredRootDefault);
+                const bool hideUnspecifiedChoice = (retiredRootDefault && !raw.isEmpty()) || rootRendererExplicitDefault ||
                     (defaultProfile && sectionPrefix == QStringLiteral("vprenderer") &&
                         autoIndex >= 0);
                 if (auto* view = qobject_cast<QListView*>(combo->view()))
@@ -4913,7 +5072,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 							QStringLiteral("Inherited - Missing: %1").arg(inheritedDisplay));
 					else if (raw.isEmpty() && !configured.isEmpty())
                         combo->setItemText(0, defaultProfile ?
-                            QStringLiteral("Default: %1").arg(inheritedDisplay) :
+                            (retiredRootDefault ? QStringLiteral("Legacy default: %1") : QStringLiteral("Default: %1")).arg(inheritedDisplay) :
                             QStringLiteral("Inherited: %1").arg(inheritedDisplay));
                     else
                         combo->setItemText(0, defaultProfile ?
@@ -4932,7 +5091,14 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                         { index = candidate; break; }
 				if (index < 0)
                 {
-                    combo->addItem(friendlyChoiceLabel(configured), configured);
+                    const bool legacyAuto = configured.compare(QStringLiteral("auto"), Qt::CaseInsensitive) == 0;
+                    combo->addItem(legacyAuto ? QStringLiteral("Legacy automatic policy (preserved)") :
+                        calibrationLutSlot ? QStringLiteral("Missing: %1").arg(configured) : friendlyChoiceLabel(configured), configured);
+                    if (calibrationLutSlot)
+                        combo->setItemData(combo->count() - 1, true, Qt::UserRole + 1);
+                    if (legacyAuto)
+                        if (auto* model = qobject_cast<QStandardItemModel*>(combo->model()))
+                            model->item(combo->count() - 1)->setEnabled(false);
                     index = combo->count() - 1;
                 }
                 combo->setCurrentIndex(index);
@@ -4961,6 +5127,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         if (queuePolicy)
             updateQueuePolicyFromValues();
         state->loading = false;
+        refreshLimitedTransportControls();
         if (sectionPrefix == QStringLiteral("vprenderer") ||
 			sectionPrefix == QStringLiteral("vprenderer.scaling") ||
             sectionPrefix == QStringLiteral("vprenderer.color") ||
@@ -5041,6 +5208,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
     listPolicy.addProfile = [this, sectionPrefix]() -> QString
     {
         if (!document_) return {};
+        const auto previousTransport = outputTransportSelections();
         const QStringList existing = profileSections(sectionPrefix);
         for (int number = 1; number <= 1000; ++number)
         {
@@ -5059,15 +5227,22 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             }
             if (!nameInUse && !existing.contains(candidate, Qt::CaseInsensitive) &&
                 document_->AddSection(candidate.toStdString()))
+            {
+                if (existing.isEmpty()) seedCalibratedProfile(sectionPrefix, candidate);
+                if (sectionPrefix == QStringLiteral("vprenderer.output")) synchronizeLimitedTransportFlags(previousTransport);
                 return candidate;
+            }
         }
         setStatus(QStringLiteral(
             "Cannot add profile: New 1 through New 1000 are already in use."), true);
         return {};
     };
-    listPolicy.removeProfile = [this](const QString& section)
+    listPolicy.removeProfile = [this, sectionPrefix](const QString& section)
     {
-        return document_ && document_->RemoveSection(section.toStdString());
+        const auto before = outputTransportSelections();
+        const bool changed = document_ && document_->RemoveSection(section.toStdString());
+        if (changed && sectionPrefix == QStringLiteral("vprenderer.output")) synchronizeLimitedTransportFlags(before);
+        return changed;
     };
     listPolicy.normalizeForOrdering = [this, sectionPrefix](const QString& section)
     {
@@ -5085,10 +5260,12 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         markDirty();
         return renamed;
     };
-    listPolicy.moveAfter = [this](const QString& section, const QString& previous)
+    listPolicy.moveAfter = [this, sectionPrefix](const QString& section, const QString& previous)
     {
-        return document_ && document_->MoveSectionAfter(
-            section.toStdString(), previous.toStdString());
+        const auto before = outputTransportSelections();
+        const bool changed = document_ && document_->MoveSectionAfter(section.toStdString(), previous.toStdString());
+        if (changed && sectionPrefix == QStringLiteral("vprenderer.output")) synchronizeLimitedTransportFlags(before);
+        return changed;
     };
     listPolicy.markDirty = [this] { markDirty(); };
     listPolicy.refreshIndicators = [this] { refreshActiveProfileIndicators(); };
@@ -5251,9 +5428,25 @@ QWidget* ConfigEditorWindow::createScalingPage()
 
 QWidget* ConfigEditorWindow::createColorConfigPage()
 {
-    return createProfilePage(QStringLiteral("Color Config"),
-        QStringLiteral("Select independent Rec.709 or BT.2020 configurations before rendering. Each Color Config owns display calibration and SDR source-transfer handling; Screen Config selection remains independent."),
-        QStringLiteral("vprenderer.color"));
+    auto* body = new QWidget;
+    auto* layout = new QVBoxLayout(body);
+    layout->setContentsMargins(0, 0, 0, 0);
+    auto* live = helpLabel(QStringLiteral("Live output unavailable. Saved preferences are not proof of the active output contract."));
+    live->setObjectName(QStringLiteral("config.color_output.live_status"));
+    layout->addWidget(live);
+    // One scrollable page, while each family keeps its independent profiles,
+    // rules, shortcuts, inheritance and existing widget identifiers.
+    for (QWidget* family : {
+        createProfilePage(QStringLiteral("Display color"),
+            QStringLiteral("Calibrated primaries and transfer. HDR target nits, target black and calibration LUT files remain in Rendering."),
+            QStringLiteral("vprenderer.color")), createOutputPage() })
+    {
+        auto* scroll = qobject_cast<QScrollArea*>(family);
+        layout->addWidget(scroll->takeWidget());
+        delete scroll;
+    }
+    return createPage(QStringLiteral("Color / Output"),
+        QStringLiteral("Configure the display target and RGB transport together. Color and Output profiles remain independently selectable."), body);
 }
 
 void ConfigEditorWindow::refreshShaderCacheStatus()

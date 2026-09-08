@@ -75,5 +75,6 @@ namespace RendererOutputContract
 		std::string dxgiDeclaration;
 		std::string swapchainFormat;
 		std::string reason;
+		std::string uiSummary;
 	};
 }

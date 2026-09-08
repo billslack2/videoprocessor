@@ -1,4 +1,4 @@
-#include <pch.h>
+﻿#include <pch.h>
 
 #include "LibplaceboVideoRenderer.h"
 #include <vprenderer/PresentationResetEpoch.h>
@@ -13807,6 +13807,32 @@ bool LibplaceboVideoRenderer::GetOutputContractStatus(
 		m_impl->negotiatedSwapchainFormat == DXGI_FORMAT_R8G8B8A8_UNORM ?
 			"R8G8B8A8_UNORM" : "UNKNOWN";
 	status.reason = m_impl->actualOutput.reason;
+    const auto& settings = m_impl->activeSettings;
+    const auto calibration = LibplaceboOutput::ResolveCalibrationTargetTransfer(
+        LibplaceboOutput::ParseGamma(settings.outputGamma),
+        Impl::ToSdrTransfer(transfer));
+    int ditherDepth = static_cast<int>(status.swapchainBitDepth);
+    if (settings.displayBitDepth == "8" || settings.displayBitDepth == "10")
+        ditherDepth = (std::min)(ditherDepth, std::stoi(settings.displayBitDepth));
+    std::ostringstream summary;
+    summary << (status.safeToRender && status.requestedContractActive &&
+        !(settings.outputRange == "limited" && status.range != Range::LIMITED) ? "Requested transport active" : "OUTPUT MISMATCH / NOT ACTIVE")
+        << ": requested " << settings.outputRange << "/" << settings.outputTransportGamma
+        << "; effective " << LibplaceboOutput::ToRangeString(m_impl->actualOutput.encoding)
+        << "; carrier " << pl_color_transfer_name(transfer)
+        << "; presentation " << (status.presentation == Presentation::FLIP ? "Flip model" :
+            status.presentation == Presentation::BITBLT ? "Legacy BitBlt" : "Unknown")
+        << "\nDisplay target: " << settings.sdrTargetPrimaries << "/"
+        << LibplaceboOutput::ToString(calibration)
+        << "; SDR input: " << LibplaceboOutput::ToString(m_impl->lastSdrGammaDecision.declaredSource)
+        << " -> " << LibplaceboOutput::ToString(m_impl->lastSdrGammaDecision.effectiveSource)
+        << "; dither target " << settings.displayBitDepth << " -> " << ditherDepth
+        << " bits (surface " << status.swapchainBitDepth << ")"
+        << "\nLUT: " << m_impl->displayLutStatus
+        << "; BT.2020 signaling: " << (!m_impl->reportBt2020ToDisplay ? "not requested / not applicable" :
+            m_impl->bt2020SignalingFailed ? "failed" : "requested (wire unverified)")
+        << "\n" << status.reason;
+    status.uiSummary = summary.str();
 	return true;
 }
 
