@@ -85,7 +85,7 @@ and visual review are required before the implementation is marked ready.
   and legacy/inheritance tests were also rerun successfully after review fixes.
 - Independent review findings fixed: synchronize only affected profiles, prevent
   root omission from recreating retired Auto, and handle explicit reactivation.
-- Windows screenshot reviewed; calibration is visible before collapsed profile
-  metadata. Offscreen rendering lacks fonts on this host and was not used for QA.
+- Windows screenshot reviewed. Profile name, shortcuts and rule remain always
+  visible, matching other profile tabs. Offscreen rendering lacks fonts on this host and was not used for QA.
 - Release packaging verified 58 immutable files. No active configuration migration
   or physical HDMI/display calibration measurement is part of this deployment.

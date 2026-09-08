@@ -3502,43 +3502,21 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
     auto* selectedTitle = new QLabel(QStringLiteral("Profile"));
     selectedTitle->setProperty("cardTitle", true);
     detailLayout->addWidget(selectedTitle);
-    QVBoxLayout* profileMetaLayout = detailLayout;
-    if (sectionPrefix == QStringLiteral("vprenderer.color") || sectionPrefix == QStringLiteral("vprenderer.output"))
-    {
-        auto* metadata = new QWidget(detail);
-        profileMetaLayout = new QVBoxLayout(metadata);
-        profileMetaLayout->setContentsMargins(0, 0, 0, 0);
-        auto* toggle = new QToolButton(detail);
-        toggle->setText(QStringLiteral("Profile name, shortcuts and rule"));
-        toggle->setProperty("profileSection", true);
-        toggle->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-        toggle->setCheckable(true);
-        toggle->setArrowType(Qt::RightArrow);
-        toggle->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-        detailLayout->addWidget(toggle);
-        detailLayout->addWidget(metadata);
-        metadata->hide();
-        connect(toggle, &QToolButton::toggled, metadata, [toggle, metadata](bool expanded)
-        {
-            metadata->setVisible(expanded);
-            toggle->setArrowType(expanded ? Qt::DownArrow : Qt::RightArrow);
-        });
-    }
     auto* name = new QLineEdit;
     name->setObjectName(controlName(sectionPrefix, QStringLiteral("name")));
-    profileMetaLayout->addWidget(fieldWithHelp(QStringLiteral("Name"), name,
+    detailLayout->addWidget(fieldWithHelp(QStringLiteral("Name"), name,
         QStringLiteral("The first profile in the list is the default; list order determines precedence.")));
     auto* shortcut = new QLineEdit;
     shortcut->setObjectName(controlName(sectionPrefix, QStringLiteral("shortcut")));
-    profileMetaLayout->addWidget(fieldWithHelp(QStringLiteral("Shortcut key"), shortcut,
+    detailLayout->addWidget(fieldWithHelp(QStringLiteral("Shortcut key"), shortcut,
         QStringLiteral("Optional. Activates this profile in addition to its rule.")));
     auto* cycleShortcut = new QLineEdit;
     cycleShortcut->setObjectName(controlName(sectionPrefix, QStringLiteral("cycle_shortcut")));
-    profileMetaLayout->addWidget(fieldWithHelp(QStringLiteral("Cycle shortcut key"), cycleShortcut,
+    detailLayout->addWidget(fieldWithHelp(QStringLiteral("Cycle shortcut key"), cycleShortcut,
         QStringLiteral("Optional. Cycles through profiles that use the same key, in list order.")));
     auto* useRule = new QCheckBox(QStringLiteral("Use rule"));
     useRule->setObjectName(controlName(sectionPrefix, QStringLiteral("use_rule")));
-    profileMetaLayout->addWidget(useRule);
+    detailLayout->addWidget(useRule);
     auto* rule = new QPlainTextEdit;
     rule->setObjectName(controlName(sectionPrefix, QStringLiteral("when")));
     rule->setPlaceholderText(QStringLiteral("${key} == \"F2\""));
@@ -3547,7 +3525,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
     rule->setMaximumHeight(96);
     auto* ruleField = fieldWithHelp(QStringLiteral("When should VP use this profile?"), rule,
         QStringLiteral("Optional source-condition rule. Example: ${width} >= 1920 && ${eotf} == \"HDR\"."));
-    profileMetaLayout->addWidget(ruleField);
+    detailLayout->addWidget(ruleField);
 
     auto* profileFields = new QWidget;
     auto* profileFieldsLayout = new QVBoxLayout(profileFields);
