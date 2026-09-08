@@ -33,20 +33,95 @@ DXGI contract and peak eligibility when those inputs change.
 ## Baseline and dependency
 
 - Source base: `origin/v1.3.005-beta`,
-  `d663773cedabcfa9e9c197046839ea99dd1ed965` (queried and fetched 2026-09-08).
-- Bundled libplacebo: 7.360.1 plus VP-0147 analysis crop, fork `c3a3d203`.
-- DLL SHA-256: `D2BCC6E62DF86760825639949448594D69024C0C2544D0DFC3D6C58D05E23507`.
+  `e5f80f89a564a7600957013d2efcdfa4d7764426` (queried and fetched 2026-09-08).
+  Initial investigation used d663773c; the branch was rebased and final tests
+  rerun against e5f80f89 and its updated dependency. Fetch used an explicit
+  branch-to-tracking-ref refspec because the shared checkout tracks only a
+  small branch subset by default.
+- Bundled libplacebo: 7.360.1 plus VP analysis crop and D3D11 timer controls,
+  fork `c646b39886d6172b853eafe82e6d6e5c2aeb5de0` (source archive manifest).
+- DLL SHA-256: `2BEFD13B92CCC8C034CD2EBEE6E3BDDC7F8FC1323B135AE005F11506C086C572`.
 - Upstream transport correction: [4dbc490b0770539942abb3cc61fdce5438d06331](https://github.com/haasn/libplacebo/commit/4dbc490b0770539942abb3cc61fdce5438d06331).
-  The pinned source still uses `pl_color_space_is_hdr` in the three affected
+  The bundled corresponding source archive was inspected: it still uses `pl_color_space_is_hdr` in the three affected
   D3D11 decisions. VP-side containment is used; no DLL update or cherry-pick.
-- Direct calls to the pinned DLL confirmed SDR classification is false at
+- Initial direct calls to the c3a3d203 DLL confirmed SDR classification is false at
   203 nits and true at 203.01, 400 and 500 nits before normalization.
 
 ## Validation
 
-Release build and focused regression results are recorded below after execution.
+Validation completed on 2026-09-08 against implementation commit `b1d7eb2b`.
+Subsequent edits to this record and the dependency README are documentation only.
 GPU fixtures use the actual bundled libplacebo D3D11 backend with WARP and a
 64x64 RGBA8 gradient, with optional debanding and dithering disabled for exact
 readback. Scaling cases use 32x32, 64x64 and 96x96 destinations and the native
 high-quality scaler/sigmoid/peak parameters. These are repeatable software-GPU
 checks, not physical HDMI/projector measurements. No deployment is performed.
+
+### Results
+
+- Clean solution x64 Release rebuild: passed, 0 errors. Projects use their
+  declared toolsets (v142 for VP/MFC, v143 for Qt). An incremental LTCG cache
+  produced LNK1103 during development; the final clean build used full LTCG
+  (`/p:LinkTimeCodeGeneration=UseLinkTimeCodeGeneration`).
+- VSTest: **245 passed / 245**, including all LibplaceboRenderParameters,
+  LibplaceboLutParser, LibplaceboOutputPolicy, ConfigFile and ConfigEditorCore
+  tests. No failed or skipped tests in the selected run.
+- Qt offscreen editor: **2 passed / 2**: `HDR target luminance validation
+  retains saved value` and `every page round trips`. Explicit checks cover
+  40/500 accepted, 39/501/600/NaN rejected, invalid black rejected, and the
+  saved file retained. Controls retain existing configuration key names.
+- SDR RGBA8 readback at 75, 203, 400 and 500 nits: byte-identical across each
+  32x32 / 64x64 / 96x96 output size. At unity with optional processing off,
+  output also matches every input byte. HDR peak metadata is absent.
+- SDR debanding enabled: output differs from the unprocessed input, but is
+  byte-identical across those four target settings; HDR peak metadata remains
+  absent. Production debanding settings have not been disabled or changed.
+- HDR PQ BT.2020-to-SDR at 400/500 nits: old and corrected render-policy
+  readbacks are byte-identical. Unit coverage also verifies unchanged PQ/HLG
+  source metadata, destination white/black, and HDR-transfer transport hints.
+- Native D3D11 SDR hints at 40, 75, 203, 203.01, 400 and 500 nits: returned
+  transfer is sRGB throughout. Normal output stays R10G10B10A2_UNORM
+  (DXGI_FORMAT 24); forced 8-bit stays R8G8B8A8_UNORM (DXGI_FORMAT 28).
+  The tests create hidden windows and submit frames through real swapchains.
+
+### Gamut-mismatch measurements
+
+Perceptual gamut mapping into Rec.709, same 64x64 gradient, 16,384 RGBA bytes:
+
+| SDR source | Old target nits | Changed bytes, old versus corrected | Maximum 8-bit code delta |
+| --- | ---: | ---: | ---: |
+| BT.2020 | 75 | 2266 | 25 |
+| BT.2020 | 203 | 0 | 0 |
+| BT.2020 | 400 | 1775 | 20 |
+| P3-D65 | 75 | 1946 | 24 |
+| P3-D65 | 203 | 0 | 0 |
+| P3-D65 | 400 | 1661 | 22 |
+
+The corrected output is byte-identical across target settings within each
+source gamut. It intentionally matches the existing 203-nit reference behavior;
+gamut-mapped output previously calculated at 75 or 400 nits can change. This
+removes the unintended dependency on an HDR-only control, while retaining gamut
+mapping itself. These differences are exposed for review, not described as
+legacy-output equivalence or literal SDR passthrough.
+
+### Reproduction and limits
+
+From the source worktree, using Visual Studio's MSBuild and VSTest:
+
+```powershell
+MSBuild.exe VideoProcessor.sln /t:Rebuild /m:4 /p:Configuration=Release /p:Platform=x64 /p:LinkTimeCodeGeneration=UseLinkTimeCodeGeneration
+vstest.console.exe x64/Release/VideoProcessor-Test.dll /Platform:x64 /TestCaseFilter:"FullyQualifiedName~LibplaceboRenderParametersTests|FullyQualifiedName~LibplaceboLutParserTests|FullyQualifiedName~LibplaceboOutputPolicyTests|FullyQualifiedName~ConfigFileTests|FullyQualifiedName~ConfigEditorCoreTests"
+$env:QT_QPA_PLATFORM='offscreen'
+./x64/Release/VideoProcessorConfigTests.exe --test 'HDR target luminance validation retains saved value'
+./x64/Release/VideoProcessorConfigTests.exe --test 'every page round trips'
+```
+
+Local execution artifacts: `tmp/vp0173-release.log`,
+`tmp/TestResults/vp0173-final.trx`, `tmp/vp0173-tests.log`, and
+`tmp/vp0173-editor.log`. The built host is `x64/Release/VideoProcessor-GUI.exe`
+and its paired renderer is `x64/Release/vprenderer/VideoProcessorVPRenderer.dll`.
+The staged libplacebo DLL hash matches the dependency hash above.
+
+Physical GPU/HDMI signaling and projector observation remain operator validation;
+WARP swapchain/readback tests do not claim those results. No active configuration
+or deployed runtime was changed.

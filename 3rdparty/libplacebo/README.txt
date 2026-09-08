@@ -42,7 +42,7 @@ can be distributed independently.
 
 VP-0173 SDR transport containment
 --------------------------------
-The pinned fork predates upstream commit
+The pinned fork does not include upstream commit
 4dbc490b0770539942abb3cc61fdce5438d06331 (D3D11: respect transfer set in hint).
 VP contains the older backend's luminance-based HDR decision in
 LibplaceboRenderParameters::MakeSwapchainColorHint, used by the renderer's
