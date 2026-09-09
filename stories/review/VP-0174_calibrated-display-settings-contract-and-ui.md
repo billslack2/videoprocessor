@@ -501,3 +501,15 @@ The current calibration contract is:
   render graph, so actual capture/live LUT replacement and optical output were
   not validated. The open Config session was preserved with its loaded images in
   the backup; save edits, tray Exit and reopen Config to use the deployed UI.
+
+### 2026-09-09: Renderer tab order
+
+- Swapped Scaling and Color / Output at the user's request: Rendering, Color /
+  Output, Scaling, Screen, Zoom, Processing. Stable page IDs and settings are unchanged.
+- Source `e00c46a854af1de1632680a7fa5c7c74f2ce335b` published to PR #82.
+  x64 Release solution build passed; existing rapid-tab navigation and every-page
+  round-trip checks passed. All 58 staged artifacts verified.
+- Deployed Release host/renderer and Config/helper; installed hashes match staging.
+  Active configuration unchanged. Backup and deployment evidence:
+  `C:\Videoprocessor\vp\backup-before-vp0174-tab-order-20260909-091805`.
+  VP and Config were not running at deployment time.
