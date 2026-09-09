@@ -2,6 +2,7 @@
 
 #include "ConfigFile.h"
 #include "ColorOutputProfileMigration.h"
+#include "CalibrationProfileMigration.h"
 #include "ConfigSchema.h"
 #include "MainConfigSchema.h"
 #include "RendererConfigView.h"
@@ -40,7 +41,7 @@ namespace RendererProfileConfig
 	inline bool OwnsSection(const std::string& section)
 	{
 		return RendererConfigView::OwnsSection(section) ||
-            ColorOutputProfileMigration::IsArchive(section) ||
+            ColorOutputProfileMigration::IsArchive(section) || CalibrationProfileMigration::IsArchive(section) ||
 			section == "general" ||
 			section == "profile_groups" ||
 			section == "profiles.input" ||
@@ -556,8 +557,8 @@ namespace RendererProfileConfig
 				key == "calibration_lut_bt2020")
 			{
 				const std::string normalized = ConfigFile::NormalizeName(value);
-				return normalized.size() > 5 &&
-					normalized.substr(normalized.size() - 5) == ".cube";
+				return normalized == "none" || (normalized.size() > 5 &&
+					normalized.substr(normalized.size() - 5) == ".cube");
 			}
 			if (key == "display_bit_depth") return IsChoice(value, { "auto", "8", "10" });
 			if (key == "sdr_target_nits")
@@ -798,6 +799,7 @@ namespace RendererProfileConfig
 	inline bool ValidateTargetRendererSetting(const std::string& key,
 		const std::string& value)
 	{
+        if (CalibrationProfileMigration::IsKey(key)) return false;
 		// automatic_crop is viewport-owned. Reject it from renderer/display
 		// variants so the same setting cannot acquire two owners.
 		if (key == "automatic_crop" ||
@@ -818,10 +820,12 @@ namespace RendererProfileConfig
 		static const std::set<std::string> colorKeys = {
 			"target_primaries", "sdr_target_primaries", "output_gamma",
 			"report_bt2020_to_display", "sdr_adjust_gamma",
-			"sdr_input_transfer", "calibration_lut_input_gamma" };
+			"sdr_input_transfer", "calibration_lut_input_gamma", "calibration_lut_input_transfer",
+            "calibration_lut_enabled", "calibration_lut_bt709", "calibration_lut_p3_d65",
+            "calibration_lut_bt2020", "hdr_tone_map_target_gamma" };
 		std::string expected;
 		return (colorKeys.find(key) != colorKeys.end() &&
-			ValidateTargetRendererSetting(key, value)) ||
+			ValidateBaseSetting(key, value)) ||
 			ValidateProfileSetting("output", key, value, expected);
 	}
 
@@ -928,7 +932,7 @@ namespace RendererProfileConfig
             section.rfind("vprenderer.color.", 0) == 0;
         if (canonicalKey == "target_primaries" && (rendering || color))
             return "sdr_target_primaries";
-        if (canonicalKey == "hdr_tone_map_target_gamma" && rendering)
+        if (canonicalKey == "hdr_tone_map_target_gamma" && (rendering || color))
             return "calibration_lut_input_transfer";
         return {};
     }
@@ -1612,6 +1616,7 @@ namespace RendererProfileConfig
 			if (!MainConfigSchema::OwnsSection(section) &&
 				!RendererConfigView::OwnsSection(section) &&
                 !ColorOutputProfileMigration::IsArchive(section) &&
+                !CalibrationProfileMigration::IsArchive(section) &&
 				section.rfind("actions.", 0) != 0 &&
 				section.rfind("shader.", 0) != 0)
 			{
@@ -2041,7 +2046,8 @@ namespace RendererProfileConfig
 			if (expectedSections.find(section) == expectedSections.end() &&
 				!MainConfigSchema::OwnsSection(section) &&
 				!RendererConfigView::OwnsSection(section) &&
-                !ColorOutputProfileMigration::IsArchive(section))
+                !ColorOutputProfileMigration::IsArchive(section) &&
+                !CalibrationProfileMigration::IsArchive(section))
 			{
 				error = "unified renderer configuration has unknown or orphan section [" + section + "]";
 				return false;

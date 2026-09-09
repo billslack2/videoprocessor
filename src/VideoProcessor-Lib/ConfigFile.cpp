@@ -10,6 +10,7 @@
 #include "ConfigurationIdentity.h"
 #include "ConfigFile.h"
 #include "ColorOutputProfileMigration.h"
+#include "CalibrationProfileMigration.h"
 
 #include <algorithm>
 #include <cctype>
@@ -316,6 +317,7 @@ bool ConfigFile::Load(const std::string& filename)
 	}
 
 	ColorOutputProfileMigration::Apply(m_sections, m_sectionOrder);
+    CalibrationProfileMigration::Apply(m_sections, m_sectionOrder);
 	m_loaded = true;
 	return true;
 }

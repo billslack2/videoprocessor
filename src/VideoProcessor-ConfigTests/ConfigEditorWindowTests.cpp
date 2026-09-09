@@ -388,6 +388,10 @@ void save(ConfigEditorWindow& window)
     require(button->isEnabled(), "Apply button was not enabled after an edit");
     button->click();
     QCoreApplication::processEvents();
+    const QString status = requireControl<QLabel>(window, QStringLiteral("configurationStatus"))->text();
+    require(status.startsWith(QStringLiteral("Changes saved")) ||
+        status.startsWith(QStringLiteral("Configuration created safely")),
+        (std::string("Apply did not save: ") + status.toStdString()).c_str());
     require(!button->isEnabled(), "Apply did not complete successfully");
 }
 
@@ -1378,7 +1382,7 @@ void testSdrGammaAdjustmentLabelsAndPersistence()
         auto* desired = requireControl<QComboBox>(window, "config.vprenderer.color.sdr_input_transfer");
         require(window.findChild<QWidget*>("config.vprenderer.color.calibration_lut_input_gamma") == nullptr,
             "Color / Output still exposes a saved LUT compatibility control");
-        require(requireControl<QComboBox>(window, "config.vprenderer.hdr_tone_map_target_gamma")->accessibleName() == "HDR tone-map target gamma",
+        require(requireControl<QComboBox>(window, "config.vprenderer.color.hdr_tone_map_target_gamma")->accessibleName() == "HDR tone-map target gamma",
             "Rendering HDR target gamma label is unclear");
         require(adjustment->accessibleName() == "Enable SDR gamma processing", "Missing gamma checkbox label");
         const int automatic = desired->findData("AUTO", Qt::UserRole, Qt::MatchFixedString);
@@ -1437,25 +1441,25 @@ void testCalibrationControlsFollowConfirmedRuntimeLut()
     auto* display = requireControl<QComboBox>(window, "config.vprenderer.color.output_gamma");
     auto* source = requireControl<QComboBox>(window, "config.vprenderer.color.sdr_input_transfer");
     auto* conversion = requireControl<QCheckBox>(window, "config.vprenderer.color.sdr_adjust_gamma");
-    auto* hdr = requireControl<QComboBox>(window, "config.vprenderer.hdr_tone_map_target_gamma");
-    auto* enabled = requireControl<QCheckBox>(window, "config.vprenderer.calibration_lut_enabled");
+    auto* hdr = requireControl<QComboBox>(window, "config.vprenderer.color.hdr_tone_map_target_gamma");
+    auto* enabled = requireControl<QCheckBox>(window, "config.vprenderer.color.calibration_lut_enabled");
     auto* status = requireControl<QLabel>(window, "config.vprenderer.color.output_gamma.status");
     require(source->accessibleName() == "Expected source SDR gamma", "Source SDR response label is ambiguous");
     require(requireControl<QComboBox>(window, "config.vprenderer.color.target_primaries")->accessibleName() == "Target gamut",
         "Target gamut label was not updated");
     require(requireControl<QToolButton>(window, "rendererSection.calibration")->text() == "Display target",
         "Display target group label was not updated");
-    require(requireControl<QWidget>(window, "rendererSection.toneMapping.content")->isAncestorOf(hdr),
-        "HDR target gamma is not beside tone mapping and Target nits");
+    require(requireControl<QWidget>(window, "rendererSection.externalHdrLut.content")->isAncestorOf(hdr),
+        "HDR target gamma is not inside the calibration LUT section");
     require(hdr->findData("AUTO") < 0 && hdr->findData("display") < 0,
         "HDR target gamma exposes a second display/default policy");
-    require(window.findChild<QWidget*>("config.vprenderer.calibration_lut_input_transfer") == nullptr,
+    require(window.findChild<QWidget*>("config.vprenderer.color.calibration_lut_input_transfer") == nullptr,
         "Old LUT input transfer remains exposed");
     enabled->setChecked(true);
     selectData(display, "2.2");
     conversion->setCheckState(Qt::Checked);
     if (requireControl<QPushButton>(window, "applyConfiguration")->isEnabled()) save(window);
-    const QString rendering = hdr->property("profileSection").toString();
+    const QString rendering = requireControl<QComboBox>(window, "config.vprenderer.quality")->property("profileSection").toString();
     const QString color = display->property("profileSection").toString();
     quint64 identity = ConfigurationIdentity::FromText(readBytes(path).toStdString());
     const auto publish = [&](bool attached, bool hdrSource)
@@ -1492,7 +1496,7 @@ void testCalibrationControlsFollowConfirmedRuntimeLut()
     auto* renderingProfiles = requireControl<QListWidget>(window, "config.vprenderer.profiles");
     require(renderingProfiles->count() > 1, "Fixture lacks an independent Rendering profile");
     renderingProfiles->setCurrentRow(1);
-    require(display->isEnabled(), "Active LUT disabled a different Rendering profile pair");
+    require(!display->isEnabled(), "Browsing Rendering incorrectly changed active Color calibration gating");
     renderingProfiles->setCurrentRow(0);
 
     window.setCalibrationStatusForTesting(true, true, identity, directory.filePath("Other.cfg"), rendering, color, true);
@@ -1502,6 +1506,74 @@ void testCalibrationControlsFollowConfirmedRuntimeLut()
     publish(false, true);
     require(display->isEnabled() && conversion->isEnabled() && !hdr->isEnabled(),
         "LUT rejection/detachment did not restore the no-LUT controls");
+}
+
+void testCalibrationProfileOwnsLutAndHdrGamma()
+{
+    QTemporaryDir directory;
+    const QString path = directory.filePath("VideoProcessor.cfg");
+    QFile file(path);
+    require(file.open(QIODevice::WriteOnly), "Cannot create calibration ownership fixture");
+    file.write("[general]\nrenderer: VP Renderer\nswitch_refresh_rate: fullscreen_only\n"
+        "[vprenderer.Default]\nquality: high\nsdr_target_nits: 100\nsdr_black_nits: 0\n"
+        "[vprenderer.Other]\nquality: fast\n"
+        "[vprenderer.color.First]\ntarget_primaries: rec709\ncalibration_lut_enabled: true\n"
+        "calibration_lut_bt709: luts/First.cube\ncalibration_lut_p3_d65: none\n"
+        "calibration_lut_bt2020: none\nhdr_tone_map_target_gamma: 2.2\n"
+        "[vprenderer.color.Second]\ntarget_primaries: p3_d65\ncalibration_lut_enabled: false\n"
+        "calibration_lut_bt709: none\ncalibration_lut_p3_d65: luts/Second.cube\n"
+        "hdr_tone_map_target_gamma: 2.4\n"
+        "[vprenderer.color.Third]\ntarget_primaries: bt2020\ncalibration_lut_enabled: false\n");
+    file.close();
+    ConfigEditorWindow window(path, 0, true);
+    auto* pages = requireControl<QStackedWidget>(window, "settingsPages");
+    auto* colorProfiles = requireControl<QListWidget>(window, "config.vprenderer.color.profiles");
+    auto* renderingProfiles = requireControl<QListWidget>(window, "config.vprenderer.profiles");
+    auto* enabled = requireControl<QCheckBox>(window, "config.vprenderer.color.calibration_lut_enabled");
+    auto* slot = requireControl<QComboBox>(window, "config.vprenderer.color.calibration_lut_bt709");
+    auto* p3 = requireControl<QComboBox>(window, "config.vprenderer.color.calibration_lut_p3_d65");
+    auto* gamma = requireControl<QComboBox>(window, "config.vprenderer.color.hdr_tone_map_target_gamma");
+    auto* section = requireControl<QWidget>(window, "rendererSection.externalHdrLut.content");
+    require(pages->widget(16)->isAncestorOf(section) && section->isAncestorOf(gamma),
+        "Calibration LUTs and their HDR input gamma are not in one Color / Output section");
+    require(pages->widget(2)->findChild<QWidget*>("rendererSection.externalHdrLut.content") == nullptr &&
+        window.findChild<QWidget*>("config.vprenderer.hdr_tone_map_target_gamma") == nullptr &&
+        window.findChild<QWidget*>("config.vprenderer.calibration_lut_enabled") == nullptr,
+        "Rendering still exposes a duplicate calibration control");
+    require(pages->widget(2)->isAncestorOf(requireControl<QLineEdit>(window, "config.vprenderer.sdr_target_nits")) &&
+        pages->widget(2)->isAncestorOf(requireControl<QLineEdit>(window, "config.vprenderer.sdr_black_nits")),
+        "General tone-map luminance controls moved away from Rendering");
+    QCoreApplication::processEvents();
+    require(enabled->isChecked() && slot->isEnabled() && slot->currentData().toString() == "luts/First.cube" &&
+        gamma->currentData().toString() == "2.2", "First calibration profile did not load its complete contract");
+    renderingProfiles->setCurrentRow(1);
+    require(slot->currentData().toString() == "luts/First.cube" && gamma->currentData().toString() == "2.2",
+        "Selecting Rendering changed the Color calibration contract");
+    colorProfiles->setCurrentRow(1);
+    require(!enabled->isChecked() && !slot->isEnabled() && slot->currentData().toString() == "none" &&
+        p3->currentData().toString() == "luts/Second.cube" && gamma->currentData().toString() == "2.4",
+        "Second calibration profile did not switch files, enablement and HDR gamma together");
+    colorProfiles->setCurrentRow(2);
+    require(!enabled->isChecked() && !slot->isEnabled(),
+        "Switching between disabled profiles re-enabled LUT selectors");
+    require(slot->currentData().toString().isEmpty() && slot->property("effectiveValue").toString() == "luts/First.cube",
+        "A omitted LUT slot did not inherit from the default Color profile");
+    enabled->click();
+    selectData(slot, "none");
+    save(window);
+    ConfigEditorWindow reloaded(path, 0, true);
+    requireControl<QListWidget>(reloaded, "config.vprenderer.color.profiles")->setCurrentRow(2);
+    auto* reloadedSlot = requireControl<QComboBox>(reloaded, "config.vprenderer.color.calibration_lut_bt709");
+    require(reloadedSlot->currentData().toString() == "none" && reloadedSlot->currentText() == "None",
+        "Explicit None resurrected the inherited LUT after saving");
+    ConfigEditorCore::ConfigDocument saved;
+    std::wstring error;
+    require(saved.Load(path.toStdWString(), error), "Cannot read saved calibration ownership fixture");
+    require(saved.Get("vprenderer.color.Third", "calibration_lut_bt709") == "none" &&
+        saved.Get("vprenderer.color.Second", "calibration_lut_p3_d65") == "luts/Second.cube" &&
+        saved.Get("vprenderer.Default", "hdr_tone_map_target_gamma").empty() &&
+        saved.Get("vprenderer.Other", "calibration_lut_enabled").empty(),
+        "Saving leaked calibration values into Rendering or discarded another profile's LUT");
 }
 
 void testHdrTargetGammaLoadsPriorInputAliases()
@@ -1515,21 +1587,31 @@ void testHdrTargetGammaLoadsPriorInputAliases()
         file.write("[general]\nrenderer: VP Renderer\nswitch_refresh_rate: fullscreen_only\n"
             "[vprenderer.Default]\nquality: high\ncalibration_lut_input_transfer: " + prior +
             "\n[vprenderer.Other]\nquality: high\n[vprenderer.color.Default]\n"
-            "sdr_target_primaries: p3_d65\noutput_gamma: 2.2\ncalibration_lut_input_gamma: 2.6\n");
+            "sdr_target_primaries: p3_d65\noutput_gamma: 2.2\ncalibration_lut_input_gamma: 2.6\n[vprenderer.color.Other]\noutput_gamma: 2.4\n");
         file.close();
         ConfigEditorWindow window(path, 0, true);
-        auto* hdr = requireControl<QComboBox>(window, "config.vprenderer.hdr_tone_map_target_gamma");
+        auto* hdr = requireControl<QComboBox>(window, "config.vprenderer.color.hdr_tone_map_target_gamma");
         const QString expected = prior == "display" ? QStringLiteral("2.2") : QStringLiteral("2.4");
         require(hdr->currentData().toString() == expected, "Prior Rendering LUT input did not load as explicit HDR gamma");
         auto* gamut = requireControl<QComboBox>(window, "config.vprenderer.color.target_primaries");
         require(gamut->currentData().toString().compare("p3_d65", Qt::CaseInsensitive) == 0,
             "Prior target primaries did not load in Target gamut");
-        requireControl<QListWidget>(window, "config.vprenderer.profiles")->setCurrentRow(1);
+        requireControl<QListWidget>(window, "config.vprenderer.color.profiles")->setCurrentRow(1);
         require(hdr->property("effectiveValue").toString() == expected, "Prior input gamma inheritance was lost");
         selectData(hdr, "bt1886");
         save(window);
         const QByteArray saved = readBytes(path);
-        require(saved.contains("hdr_tone_map_target_gamma: bt1886"), "HDR target gamma did not save canonically");
+        ConfigEditorCore::ConfigDocument persisted;
+        std::wstring error;
+        require(persisted.Load(path.toStdWString(), error), "Cannot reload HDR gamma alias fixture");
+        const std::string selectedSection = hdr->property("profileSection").toString().toStdString();
+        const auto selectedSettings = persisted.SectionSettings(selectedSection);
+        const auto canonical = std::find_if(selectedSettings.begin(), selectedSettings.end(), [](const auto& setting)
+        { return setting.first == "hdr_tone_map_target_gamma"; });
+        require(canonical != selectedSettings.end() && canonical->second == "bt1886",
+            (std::string("HDR target gamma did not save canonically in ") + selectedSection +
+            "; current=" + persisted.Get(selectedSection.c_str(), "hdr_tone_map_target_gamma") +
+            "; selected=" + hdr->currentData().toString().toStdString()).c_str());
         require(saved.contains("calibration_lut_input_gamma: 2.6"), "Ignored Color compatibility value was needlessly discarded");
     }
 }
@@ -2767,27 +2849,27 @@ void testQueueUnitsAndLutControlsUseConsistentRows()
     require(queueUnit->x() >= queueDepth->x() + queueDepth->width(),
         "Queue unit label is not aligned beside its bounded value input");
 
-    window.selectPage(3);
+    window.selectPage(16);
 	QToolButton* lutSection = requireControl<QToolButton>(window,
 		QStringLiteral("rendererSection.externalHdrLut"));
     if (!lutSection->isChecked()) lutSection->click();
     QCoreApplication::processEvents();
 	QCheckBox* enabled = requireControl<QCheckBox>(window,
-		QStringLiteral("config.vprenderer.calibration_lut_enabled"));
+		QStringLiteral("config.vprenderer.color.calibration_lut_enabled"));
 	require(!enabled->isChecked(),
 		"Display calibration LUT did not default to disabled");
 	QComboBox* bt709 = requireControl<QComboBox>(window,
-		QStringLiteral("config.vprenderer.calibration_lut_bt709"));
+		QStringLiteral("config.vprenderer.color.calibration_lut_bt709"));
 	QComboBox* p3 = requireControl<QComboBox>(window,
-		QStringLiteral("config.vprenderer.calibration_lut_p3_d65"));
+		QStringLiteral("config.vprenderer.color.calibration_lut_p3_d65"));
 	QComboBox* bt2020 = requireControl<QComboBox>(window,
-		QStringLiteral("config.vprenderer.calibration_lut_bt2020"));
+		QStringLiteral("config.vprenderer.color.calibration_lut_bt2020"));
 	require(!bt709->isEnabled() && !p3->isEnabled() && !bt2020->isEnabled(),
 		"Calibration LUT selectors are interactive on first open while disabled");
 	enabled->click();
-	require(bt709->currentData().toString().isEmpty() &&
-		p3->currentData().toString().isEmpty() &&
-		bt2020->currentData().toString().isEmpty() &&
+	require(bt709->currentData().toString() == QStringLiteral("none") &&
+		p3->currentData().toString() == QStringLiteral("none") &&
+		bt2020->currentData().toString() == QStringLiteral("none") &&
 		bt709->currentText() == QStringLiteral("None") &&
 		p3->currentText() == QStringLiteral("None") &&
 		bt2020->currentText() == QStringLiteral("None"),
@@ -2954,10 +3036,10 @@ void testLutSelectorDiscoversInstallationLutFiles()
     lut.write("TITLE \"Test LUT\"\nLUT_3D_SIZE 2\n");
     lut.close();
 	QByteArray configuration = readBytes(path);
-	require(configuration.contains("[vprenderer.rec709]\n"),
+	require(configuration.contains("[vprenderer.color.rec709]\n"),
 		"Could not locate the renderer profile fixture baseline");
-	configuration.replace("[vprenderer.rec709]\n",
-		"[vprenderer.rec709]\ncalibration_lut_bt2020: luts\\Test-Calibration.cube\n");
+	configuration.replace("[vprenderer.color.rec709]\n",
+		"[vprenderer.color.rec709]\ncalibration_lut_bt2020: luts\\Test-Calibration.cube\n");
 	QFile configurationFile(path);
 	require(configurationFile.open(QIODevice::WriteOnly | QIODevice::Truncate) &&
 		configurationFile.write(configuration) == configuration.size(),
@@ -2966,7 +3048,7 @@ void testLutSelectorDiscoversInstallationLutFiles()
 
 	ConfigEditorWindow window(path, 0, true);
 	QComboBox* selector = requireControl<QComboBox>(window,
-		QStringLiteral("config.vprenderer.calibration_lut_bt2020"));
+		QStringLiteral("config.vprenderer.color.calibration_lut_bt2020"));
 	require(selector->findData(QStringLiteral("luts/Test-Calibration.cube")) >= 0,
         "The LUT selector did not discover a .cube file from the installation LUT folder");
 	require(selector->itemText(selector->findData(
@@ -2977,11 +3059,11 @@ void testLutSelectorDiscoversInstallationLutFiles()
 		QStringLiteral("luts/Test-Calibration.cube"),
 		"A valid hand-written Windows LUT path was not normalized and selected");
     require(requireControl<QPushButton>(window,
-		QStringLiteral("config.vprenderer.calibration_lut.open_folder"))->text() == QStringLiteral("Open LUT folder"),
+		QStringLiteral("config.vprenderer.color.calibration_lut.open_folder"))->text() == QStringLiteral("Open LUT folder"),
         "The LUT folder action is missing");
 
 	requireControl<QCheckBox>(window,
-		QStringLiteral("config.vprenderer.calibration_lut_enabled"))->click();
+		QStringLiteral("config.vprenderer.color.calibration_lut_enabled"))->click();
     selectData(selector, QStringLiteral("luts/Test-Calibration.cube"));
     save(window);
 	const QByteArray configured = readBytes(path);
@@ -3009,12 +3091,12 @@ void testInheritedCalibrationLutUsesEffectiveControlState()
 	const QString path = copyFixture(directory);
 	QByteArray configuration = readBytes(path);
 	const QByteArray baseline =
-		"[vprenderer.rec709]\n"
+		"[vprenderer.color.rec709]\n"
 		"calibration_lut_enabled: true\n"
 		"calibration_lut_bt2020: luts/Missing-Calibration.cube\n";
-	require(configuration.contains("[vprenderer.rec709]\n"),
+	require(configuration.contains("[vprenderer.color.rec709]\n"),
 		"Could not locate inherited calibration profile fixture baseline");
-	configuration.replace("[vprenderer.rec709]\n", baseline);
+	configuration.replace("[vprenderer.color.rec709]\n", baseline);
 	QFile file(path);
 	require(file.open(QIODevice::WriteOnly | QIODevice::Truncate) &&
 		file.write(configuration) == configuration.size(),
@@ -3023,15 +3105,15 @@ void testInheritedCalibrationLutUsesEffectiveControlState()
 
 	ConfigEditorWindow window(path, 0, true);
 	QListWidget* profiles = requireControl<QListWidget>(window,
-		QStringLiteral("config.vprenderer.profiles"));
+		QStringLiteral("config.vprenderer.color.profiles"));
 	require(profiles->count() >= 2,
 		"Inherited calibration fixture has no named variant");
 	profiles->setCurrentRow(1);
 	QCoreApplication::processEvents();
 	QCheckBox* enabled = requireControl<QCheckBox>(window,
-		QStringLiteral("config.vprenderer.calibration_lut_enabled"));
+		QStringLiteral("config.vprenderer.color.calibration_lut_enabled"));
 	QComboBox* slot = requireControl<QComboBox>(window,
-		QStringLiteral("config.vprenderer.calibration_lut_bt2020"));
+		QStringLiteral("config.vprenderer.color.calibration_lut_bt2020"));
 	QComboBox* internalToneMap = requireControl<QComboBox>(window,
 		QStringLiteral("config.vprenderer.tone_mapping"));
 	require(enabled->isChecked(),
@@ -3097,7 +3179,7 @@ void testChoiceLabelsAndVpRendererName()
 			QStringLiteral("Auto: Follows accepted transport; see live output"),
 		"Output gamma Auto control does not identify its effective policy");
 	auto* calibrationEnabled = requireControl<QCheckBox>(window,
-		QStringLiteral("config.vprenderer.calibration_lut_enabled"));
+		QStringLiteral("config.vprenderer.color.calibration_lut_enabled"));
 	calibrationEnabled->setChecked(true);
 	QCoreApplication::processEvents();
 	require(requireControl<QLabel>(window,
@@ -5353,7 +5435,7 @@ output_range: full
     require(range->currentData().toString() == "limited", "First Output was not copied to second Color");
     require(requireControl<QLineEdit>(window,"config.vprenderer.color.shortcut")->text() == "F6",
         "Output shortcut replaced Color shortcut");
-    selectData(requireControl<QComboBox>(window,"config.vprenderer.hdr_tone_map_target_gamma"), "bt1886");
+    selectData(requireControl<QComboBox>(window,"config.vprenderer.color.hdr_tone_map_target_gamma"), "bt1886");
     requireControl<QCheckBox>(window,"config.vprenderer.color.sdr_adjust_gamma")->setCheckState(Qt::Unchecked);
     save(window);
     const QByteArray saved = readBytes(path);
@@ -5365,7 +5447,7 @@ output_range: full
         "Migration did not preserve an exact original-file backup");
     ConfigEditorWindow reloaded(path, 0, true);
     requireControl<QListWidget>(reloaded,"config.vprenderer.color.profiles")->setCurrentRow(1);
-    require(requireControl<QComboBox>(reloaded,"config.vprenderer.hdr_tone_map_target_gamma")->currentData().toString() == "bt1886",
+    require(requireControl<QComboBox>(reloaded,"config.vprenderer.color.hdr_tone_map_target_gamma")->currentData().toString() == "bt1886",
         "LUT domain changed on reload");
     require(requireControl<QCheckBox>(reloaded,"config.vprenderer.color.sdr_adjust_gamma")->checkState() == Qt::Unchecked,
         "Explicit pass-through changed on reload");
@@ -5442,6 +5524,7 @@ int main(int argc, char** argv)
         testSdrGammaAdjustmentLabelsAndPersistence);
     failures += run("calibration controls follow confirmed runtime LUT", testCalibrationControlsFollowConfirmedRuntimeLut);
     failures += run("HDR target gamma loads prior input aliases", testHdrTargetGammaLoadsPriorInputAliases);
+    failures += run("calibration profile owns LUT and HDR gamma", testCalibrationProfileOwnsLutAndHdrGamma);
     failures += run("legacy Rendering color settings migrate to Color Config",
         testLegacyRendererColorSettingsMigrateToColorConfigs);
     failures += run("separated profiles do not leave shortcut shells behind",

@@ -8,15 +8,16 @@ record earlier stages and do not override the REQ-004 behavior.
 ## Current SDR/HDR calibration contract (REQ-004)
 
 Each setting has one role. Color / Output contains **Display target**, **Target
-gamut**, **Calibrated display gamma**, and **Expected source SDR gamma**. Rendering
-contains calibration LUT enablement/files and **HDR tone-map target gamma** beside
-**Target nits** under Tone mapping. Rendering and Color / Output profiles retain
-their independent identities, rules, selection and inheritance.
+gamut**, **Calibrated display gamma**, **Expected source SDR gamma**, calibration
+LUT enablement/files and **HDR tone-map target gamma**. These form one Color / Output
+calibration profile. Rendering retains **Target nits**, **Target black**, quality
+and general tone-mapping policy. Changing Rendering profiles cannot select a
+different LUT or gamma declaration independently of Color / Output.
 
 | Actual rendering state | Source description and target transfer |
 | --- | --- |
 | SDR with a usable attached LUT | Retain the declared source response and encode the pre-LUT target with that same response. The LUT performs reference-to-display calibration. |
-| HDR with a usable attached LUT | Decode HDR normally; tone/gamut map, then encode with the Rendering profile's explicit HDR target gamma, default 2.2, before calibration. |
+| HDR with a usable attached LUT | Decode HDR normally; tone/gamut map, then encode with the Color / Output profile's explicit HDR target gamma, default 2.2, before calibration. |
 | No usable attached LUT | Preserve the existing physical-display gamma path and saved SDR gamma-processing behavior. |
 
 An enabled setting or populated filename does not establish that a LUT is usable.
@@ -41,15 +42,15 @@ reference/input gamut, not measured display gamut limits. No custom xy controls
 are introduced. The old spelling remains accepted; canonical wins within a
 section and a child alias overrides inherited baseline values.
 
-`hdr_tone_map_target_gamma` is Rendering-owned, accepts the explicit BT.1886,
+`hdr_tone_map_target_gamma` is Color / Output-owned, accepts the explicit BT.1886,
 sRGB and 1.8/2.0/2.2/2.4/2.6/2.8 responses, and defaults to 2.2. Old Rendering
 `calibration_lut_input_transfer` values load as this HDR-only setting; `display`
 becomes 2.2. Explicit canonical values win within the same section. The old
 Color/base `calibration_lut_input_gamma` remains accepted but is ignored with a
-diagnostic. It does not silently couple profiles. No first-profile collapse or
-cross-product migration is performed. Canonical alias reads do not rewrite the
-file; explicit edits rename an old key in place, preserving comments, and an
-inheritance reset removes both spellings from that profile.
+diagnostic. Old Rendering calibration values migrate as described below. Within
+Color, canonical alias reads do not rewrite the file; explicit edits rename an old
+key in place, preserving comments, and an inheritance reset removes both spellings.
+The explicit LUT path value `none` clears an inherited slot; omission inherits.
 
 The UI applies live inactivity only when renderer evidence matches the current
 configuration path/content identity and selected Rendering/Color profile pair.
@@ -57,6 +58,34 @@ Offline, pending-edit or different-profile views keep conditional controls edita
 and explain when they will apply. Saved enablement alone never marks calibration
 active. Runtime status reports source/target transfer and actual LUT attachment;
 physical HDMI/display response still requires measurement.
+
+## Calibration ownership migration (2026-09-09)
+
+The runtime and Config share one migration plan for old `vprenderer` profiles.
+The literal Rendering root is the baseline when present; otherwise its first named
+profile is the baseline. Existing Color profiles receive complete effective baseline
+calibration values, preserving any already explicit Color calibration choices and
+all original Color identities, rules and shortcuts.
+
+Each other distinct effective Rendering calibration set becomes a manual variant
+of every original Color profile, copying that Color profile's effective target,
+gamma and output settings. Names identify both original profiles, with collision
+suffixes where necessary. No old automatic rules or shortcuts are copied onto these
+extra variants. Equivalent calibration sets are deduplicated. If explicit Color
+settings replace the old Rendering baseline, that displaced set is also retained
+as a manual variant. With no Color profiles, one default is created.
+
+Complete migrated contracts contain enabled false, explicit `none` for every empty
+slot and HDR target gamma 2.2 as defaults. This prevents accidental inheritance
+from another set. Full original Rendering sections remain in inactive
+`calibration_archive.*` sections with their settings and comments. Only calibration
+keys leave the active Rendering sections. General processing settings, Target nits,
+Target black and Rendering selection rules remain in place.
+
+Runtime loading does this in memory; Config applies the same plan after earlier
+split-profile migrations and backs up the original file on Save/Apply. Reloading a
+migrated configuration is idempotent. Older non-target `[display]`/`[profiles.*]`
+configurations retain their previous loading path rather than being reconstructed.
 
 ## Scope and compatibility
 
@@ -172,7 +201,7 @@ Choosing 2.2 for both is deliberate, not a claim about every Rec.709 mastering.
 With a usable calibration LUT, `sdr_input_transfer` establishes the declared SDR
 source response and the pre-LUT target uses that same response. The gamma-processing
 switch is inactive. The LUT must supply any reference-to-display correction.
-For HDR, Rendering's `hdr_tone_map_target_gamma` establishes the pre-LUT encoding;
+For HDR, Color / Output's `hdr_tone_map_target_gamma` establishes the pre-LUT encoding;
 HDR Target nits, Target black and dynamic tone mapping still apply.
 
 Without a usable LUT, saved `passthrough`, `off` and `AUTO` retain their existing
@@ -205,8 +234,9 @@ physical display gamma. Range, gamut, scaling, shaders and dithering continue.
 | calibration_lut_input_gamma | Accepted but ignored; no compatibility UI |
 | hdr_tone_map_target_gamma (old Rendering calibration_lut_input_transfer alias) | HDR-only pre-LUT transfer; default 2.2 |
 
-Dithering, dither target depth, HDR nits/black, and LUT enable/path controls were
-Rendering-owned before this merge and remain there, with all values preserved.
+Dithering, dither target depth and HDR nits/black remain Rendering-owned. LUT
+enablement/files and HDR target gamma now belong to Color / Output through the
+loss-preserving migration above.
 The earlier conceptual mockup's Dithering section did not imply deleting or
 silently moving per-Rendering-profile settings. Additional Output profiles are
 archived in full, including unfamiliar keys; an unknown active baseline key is

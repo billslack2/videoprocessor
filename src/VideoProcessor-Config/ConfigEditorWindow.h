@@ -127,6 +127,7 @@ private:
 	void migrateRefreshRateSwitchMode();
     void migrateSeparatedRendererProfiles();
     void migrateUnifiedColorOutputProfiles();
+    void migrateCalibrationProfiles();
     void migrateViewportZoomProfiles();
     void loadDiscoveryCache();
     void applyMonitorDiscovery(const QStringList& discovered);

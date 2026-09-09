@@ -136,6 +136,54 @@ namespace ConfigEditorCore
 		return true;
 	}
 
+    bool ConfigDocument::MigrateCalibrationProfiles()
+    {
+        CalibrationProfileMigration::Sections sections;
+        std::vector<std::string> order;
+        std::map<std::string, std::string> originalNames;
+        for (const auto& section : SectionNames())
+        {
+            const std::string normalized = ConfigFile::NormalizeName(section);
+            order.push_back(normalized);
+            originalNames[normalized] = section;
+            auto& values = sections[normalized];
+            for (const auto& value : SectionSettings(section))
+                values[ConfigFile::NormalizeName(value.first)] = value.second;
+        }
+        const auto plan = CalibrationProfileMigration::Build(sections, order);
+        if (plan.Empty()) return false;
+        // Copy whole original sections before removing their calibration keys.
+        // This preserves selector/context values and every original comment.
+        for (const auto& archived : plan.archives)
+        {
+            size_t header = 0, start = 0, end = 0;
+            if (!FindSectionHeader(originalNames.at(archived.first), header, start, end)) continue;
+            std::vector<std::string> original;
+            for (size_t index = header + 1; index < lines.size(); ++index)
+            {
+                const std::string text = ConfigFile::Trim(StripComment(lines[index]));
+                if (text.size() >= 2 && text.front() == '[' && text.back() == ']') break;
+                original.push_back(lines[index]);
+            }
+            if (!lines.empty() && !lines.back().empty()) lines.push_back({});
+            lines.push_back("[" + archived.second + "]");
+            lines.insert(lines.end(), original.begin(), original.end());
+        }
+        for (const auto& item : plan.removals)
+            for (const auto& key : item.second)
+                RemoveKnown(originalNames.at(item.first), key.c_str());
+        for (const auto& name : plan.additionOrder)
+        {
+            const auto existing = originalNames.find(name);
+            const std::string destination = existing == originalNames.end() ? name : existing->second;
+            AddSection(destination);
+            for (const auto& value : plan.additions.at(name))
+                SetKnown(destination, value.first.c_str(), value.second);
+        }
+        requiresMigrationBackup = existedAtLoad;
+        return true;
+    }
+
 	std::string ConfigDocument::StripComment(const std::string& value)
 	{
 		for (size_t index = 0; index < value.size(); ++index)

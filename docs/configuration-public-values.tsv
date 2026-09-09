@@ -192,3 +192,6 @@ vprenderer.calibration_lut_input_transfer	2.2
 vprenderer.calibration_lut_input_transfer	2.4
 vprenderer.calibration_lut_input_transfer	2.6
 vprenderer.calibration_lut_input_transfer	2.8
+vprenderer.calibration_lut_bt709	none
+vprenderer.calibration_lut_p3_d65	none
+vprenderer.calibration_lut_bt2020	none

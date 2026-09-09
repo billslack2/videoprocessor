@@ -1287,6 +1287,12 @@ namespace
 										(group.name == "viewport" ? "vprenderer.viewport" :
 											(group.name == "zoom" ? "vprenderer.zoom" :
 												group.name))))));
+                    // A named Color profile inherits its literal root too.
+                    // Apply the complete calibration baseline before overrides.
+                    if (group.name == "color" && profileName != "base" && config.HasSection(root)) {
+                        const DisplayRule colorBaseline = { "color/base", root, 0, 0 };
+                        ApplyDisplayRuleOverrides(config, colorBaseline, settings);
+                    }
 					if (!config.HasSection(root) &&
 						group.defaultSelection != "base")
 					{
@@ -1829,12 +1835,20 @@ namespace
 			{ "auto", "on", "off", "passthrough" });
         readChoice("calibration_lut_input_gamma", settings.calibrationLutInputGamma,
             { "display", "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" });
-        readChoice("calibration_lut_input_transfer", settings.calibrationLutInputTransfer,
-            { "display", "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" });
-        if (config.TryGetString(rule.section, "calibration_lut_input_transfer", raw))
-            settings.hdrToneMapTargetGamma = LibplaceboCalibrationLut::ResolveHdrTargetGamma({}, settings.calibrationLutInputTransfer);
-        readChoice("hdr_tone_map_target_gamma", settings.hdrToneMapTargetGamma,
-            { "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" });
+        // Calibration is owned by the selected Color profile. Old Rendering
+        // contracts are migrated before profile selection, so a Rendering
+        // switch must never overwrite the active Color profile's LUT encoding.
+        const bool ownsCalibration = !RendererProfileConfig::IsTargetModel(config) ||
+            rule.section == "vprenderer.color" ||
+            rule.section.rfind("vprenderer.color.", 0) == 0;
+        if (ownsCalibration) {
+            readChoice("calibration_lut_input_transfer", settings.calibrationLutInputTransfer,
+                { "display", "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" });
+            if (config.TryGetString(rule.section, "calibration_lut_input_transfer", raw))
+                settings.hdrToneMapTargetGamma = LibplaceboCalibrationLut::ResolveHdrTargetGamma({}, settings.calibrationLutInputTransfer);
+            readChoice("hdr_tone_map_target_gamma", settings.hdrToneMapTargetGamma,
+                { "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" });
+        }
 		if (config.TryGetString(rule.section, "contrast_recovery", raw))
 		{
 			settings.hasContrastRecovery = false;
@@ -1848,23 +1862,27 @@ namespace
 				}
 			}
 		}
-		readBoolean("calibration_lut_enabled", settings.calibrationLutEnabled);
-		const auto readCalibrationLut = [&](const char* key, std::string& path,
-			bool& rejected)
-		{
-			if (config.TryGetString(rule.section, key, raw))
-				path = ResolveConfigRelativePath(config, raw, &rejected,
-					&settings.calibrationLutConstrainedBaseDirectory);
-		};
-		readCalibrationLut("calibration_lut_bt709",
-			settings.calibrationLutBt709Path,
-			settings.calibrationLutBt709PathRejected);
-		readCalibrationLut("calibration_lut_p3_d65",
-			settings.calibrationLutP3D65Path,
-			settings.calibrationLutP3D65PathRejected);
-		readCalibrationLut("calibration_lut_bt2020",
-			settings.calibrationLutBt2020Path,
-			settings.calibrationLutBt2020PathRejected);
+        if (ownsCalibration) {
+            readBoolean("calibration_lut_enabled", settings.calibrationLutEnabled);
+            const auto readCalibrationLut = [&](const char* key, std::string& path, bool& rejected)
+            {
+                if (config.TryGetString(rule.section, key, raw)) {
+                    if (ConfigFile::NormalizeName(raw) == "none") {
+                        path.clear();
+                        rejected = false;
+                    } else {
+                        path = ResolveConfigRelativePath(config, raw, &rejected,
+                            &settings.calibrationLutConstrainedBaseDirectory);
+                    }
+                }
+            };
+            readCalibrationLut("calibration_lut_bt709",
+                settings.calibrationLutBt709Path, settings.calibrationLutBt709PathRejected);
+            readCalibrationLut("calibration_lut_p3_d65",
+                settings.calibrationLutP3D65Path, settings.calibrationLutP3D65PathRejected);
+            readCalibrationLut("calibration_lut_bt2020",
+                settings.calibrationLutBt2020Path, settings.calibrationLutBt2020PathRejected);
+        }
 		const auto readViewportString = [&](const char* genericKey,
 			std::string& value)
 		{
@@ -2278,9 +2296,15 @@ namespace
 		const auto readCalibrationLut = [&](const char* key, std::string& path,
 			bool& rejected)
 		{
-			if (TryGetDisplayString(config, key, rawValue))
-				path = ResolveConfigRelativePath(config, rawValue, &rejected,
-					&settings.calibrationLutConstrainedBaseDirectory);
+			if (TryGetDisplayString(config, key, rawValue)) {
+                if (ConfigFile::NormalizeName(rawValue) == "none") {
+                    path.clear();
+                    rejected = false;
+                } else {
+                    path = ResolveConfigRelativePath(config, rawValue, &rejected,
+                        &settings.calibrationLutConstrainedBaseDirectory);
+                }
+            }
 		};
 		readCalibrationLut("calibration_lut_bt709",
 			settings.calibrationLutBt709Path,
@@ -2511,7 +2535,7 @@ namespace
         DebugLog::Log("calibration workflow: hdr_target_gamma=%s; SDR retains declared source response; profiles=%s",
             settings.hdrToneMapTargetGamma.c_str(), activeProfiles.c_str());
         if (settings.calibrationLutInputGamma != "display")
-            DebugLog::Log("calibration migration: saved Color calibration_lut_input_gamma=%s is accepted but no longer controls LUT/HDR encoding; use Rendering hdr_tone_map_target_gamma",
+            DebugLog::Log("calibration migration: saved Color calibration_lut_input_gamma=%s is accepted but no longer controls LUT/HDR encoding; use Color / Output hdr_tone_map_target_gamma",
                 settings.calibrationLutInputGamma.c_str());
         if (settings.calibrationLutInputTransfer == "display")
             DebugLog::Log("calibration migration: Rendering LUT input 'display' now uses explicit HDR target gamma 2.2 unless overridden; physical display gamma only applies without a usable LUT");
