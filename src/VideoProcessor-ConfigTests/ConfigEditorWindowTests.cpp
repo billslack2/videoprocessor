@@ -1416,8 +1416,13 @@ void testSdrGammaAdjustmentLabelsAndPersistence()
         auto* adjustment = requireControl<QCheckBox>(window, "config.vprenderer.color.sdr_adjust_gamma");
         auto* profiles = requireControl<QListWidget>(window, "config.vprenderer.color.profiles");
         require(adjustment->checkState() == Qt::PartiallyChecked, "Saved mode incorrectly shown as On or Off");
+        auto* referenceHelp = requireControl<QLabel>(window, "config.vprenderer.color.sdr_input_transfer.help");
+        require(referenceHelp->text().contains("Saved Auto") && referenceHelp->text().contains("1000:1"),
+            "Saved Auto omitted its current BT.1886 reference contrast");
         profiles->setCurrentRow(1);
         require(adjustment->checkState() == Qt::PartiallyChecked, "Inherited saved mode lost");
+        require(referenceHelp->text().contains("Saved Auto") && referenceHelp->text().contains("1000:1"),
+            "Inherited Auto omitted its current BT.1886 reference contrast");
         save(window);
         require(readBytes(path).contains("sdr_adjust_gamma: " + mode), "Opening/saving changed saved mode");
         require(readBytes(path).contains("sdr_input_transfer: AUTO"), "Opening/saving changed SDR assumption");

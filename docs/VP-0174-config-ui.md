@@ -23,7 +23,7 @@ different LUT or gamma declaration independently of Color / Output.
 An enabled setting or populated filename does not establish that a LUT is usable.
 A failed replacement can retain an existing usable LUT only under the same
 contract. If none is attached, physical display gamma applies. A usable LUT makes
-physical display gamma and the SDR gamma-processing switch inactive. Expected
+physical display gamma and the SDR gamma-processing switch inactive. The
 SDR reference for LUT remains relevant for SDR with a LUT. HDR target gamma applies
 only to HDR with a LUT; Target nits, Target black and dynamic tone mapping remain
 active for HDR. The existing paired fixed SDR source/target minimum and maximum

@@ -1883,7 +1883,10 @@ void ConfigEditorWindow::refreshCalibrationControls()
             "If no usable LUT is attached, the same value is used as Desired SDR gamma when gamma processing is enabled.") :
             QStringLiteral("Choose the SDR response you want to see. With gamma processing enabled, VP compensates for calibrated display gamma. "
                 "For example, Desired 2.4 and Display 2.2 produces a 2.4 response. This is a viewing choice, not detected source metadata.");
-        if (effectiveChoice(sourceGamma) == QStringLiteral("bt1886"))
+        const QString reference = effectiveChoice(sourceGamma);
+        if (reference == QStringLiteral("auto"))
+            help += QStringLiteral(" Saved Auto follows the capture transfer declaration, currently BT.1886 for generic SDR; this does not detect mastering gamma.");
+        if (reference == QStringLiteral("bt1886") || reference == QStringLiteral("auto"))
             help += QStringLiteral(" BT.1886 uses a fixed SDR reference contrast of 1000:1, not a measured black level. Use 2.4 for a pure power curve.");
         sourceGamma->setToolTip(help);
         if (auto* hint = findChild<QLabel*>(QStringLiteral("config.vprenderer.color.sdr_input_transfer.help")))
