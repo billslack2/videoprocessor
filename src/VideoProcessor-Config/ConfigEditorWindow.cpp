@@ -3043,8 +3043,8 @@ QWidget* ConfigEditorWindow::createShell()
         {
             vpNavigation->setChecked(true);
             showSectionTabs({ { QStringLiteral("Rendering"), 2 },
-				{ QStringLiteral("Scaling"), 17 },
 				{ QStringLiteral("Color / Output"), 16 },
+				{ QStringLiteral("Scaling"), 17 },
 				{ QStringLiteral("Screen"), 4 },
 				{ QStringLiteral("Zoom"), 18 },
 				{ QStringLiteral("Processing"), 11 } }, page);

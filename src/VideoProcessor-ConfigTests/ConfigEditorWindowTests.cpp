@@ -509,8 +509,8 @@ void testEveryPageRoundTrips()
     requireTabs({ QStringLiteral("Setup"), QStringLiteral("Standard"),
         QStringLiteral("NLS") });
     vpRenderer->click();
-    requireTabs({ QStringLiteral("Rendering"), QStringLiteral("Scaling"),
-        QStringLiteral("Color / Output"),
+    requireTabs({ QStringLiteral("Rendering"), QStringLiteral("Color / Output"),
+        QStringLiteral("Scaling"),
         QStringLiteral("Screen"), QStringLiteral("Zoom"),
         QStringLiteral("Processing") });
     directShow->click();
@@ -1106,23 +1106,23 @@ void testRendererSectionTabsRemainSynchronizedDuringRapidClicks()
         }
     };
 
-    requireTabs({ QStringLiteral("Rendering"), QStringLiteral("Scaling"),
-        QStringLiteral("Color / Output"),
+    requireTabs({ QStringLiteral("Rendering"), QStringLiteral("Color / Output"),
+        QStringLiteral("Scaling"),
         QStringLiteral("Screen"), QStringLiteral("Zoom"),
         QStringLiteral("Processing") });
     runSequence({
-        { 2, 16, "Color / Output", "config.vprenderer.color.profiles" },
+        { 1, 16, "Color / Output", "config.vprenderer.color.profiles" },
         { 3, 4, "Screen", "config.vprenderer.viewport.profiles" },
         { 4, 18, "Zoom", "config.vprenderer.zoom.crop_narrower_content_to_fill_screen" },
         { 5, 11, "Input processing", "config.vprenderer.input_processing.video_conversion" },
-        { 2, 16, "Color / Output", "config.vprenderer.color.profiles" },
-        { 1, 17, "Scaling", "config.vprenderer.scaling.profiles" },
+        { 1, 16, "Color / Output", "config.vprenderer.color.profiles" },
+        { 2, 17, "Scaling", "config.vprenderer.scaling.profiles" },
         { 0, 2, "Rendering", "config.vprenderer.profiles" },
         { 5, 11, "Input processing", "config.vprenderer.input_processing.video_conversion" },
         { 4, 18, "Zoom", "config.vprenderer.zoom.crop_narrower_content_to_fill_screen" },
         { 3, 4, "Screen", "config.vprenderer.viewport.profiles" },
-        { 2, 16, "Color / Output", "config.vprenderer.color.profiles" },
-        { 1, 17, "Scaling", "config.vprenderer.scaling.profiles" },
+        { 1, 16, "Color / Output", "config.vprenderer.color.profiles" },
+        { 2, 17, "Scaling", "config.vprenderer.scaling.profiles" },
         { 0, 2, "Rendering", "config.vprenderer.profiles" }
     });
     require(navigationButton(QStringLiteral("VP Renderer")) &&
