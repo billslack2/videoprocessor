@@ -513,3 +513,33 @@ The current calibration contract is:
   Active configuration unchanged. Backup and deployment evidence:
   `C:\Videoprocessor\vp\backup-before-vp0174-tab-order-20260909-091805`.
   VP and Config were not running at deployment time.
+### 2026-09-09: Desired SDR gamma wording and LUT enablement
+
+- No-LUT UI now says Desired SDR gamma; enabling LUTs changes the same saved
+  reference control to SDR reference for LUT. Help explains that the LUT sets the
+  displayed gamma and that missing/rejected-LUT fallback uses the same reference
+  as Desired SDR gamma when gamma processing is enabled. The label follows edited
+  LUT enablement, remaining stable through pending edits and unavailable live state.
+- HDR tone-map target gamma is disabled when LUT enablement is off. It remains
+  editable when enabled, including offline and during SDR playback; status still
+  distinguishes preparation from actual HDR/usable-LUT operation.
+- Conditional BT.1886 help discloses fixed 1000:1 SDR reference contrast, including
+  retained/inherited Auto. Physical display BT.1886 distinguishes SDR from HDR;
+  HDR BT.1886 uses Rendering's Target nits and Target black. No pixel math, stored
+  keys, default values or saved user choices changed.
+- Independent madVR/Envy/libplacebo rendering specialist approved the final diff
+  after the retained-Auto explanation and its existing round-trip checks were
+  added. No outstanding review blockers.
+- Source `16a8102f900e28bfe7501a9c6add80e8bf324952` is published to PR #82.
+  Full x64 Release and final committed incremental Release builds passed;
+  embedded commit 16a8102, dirty=false. All seven relevant Config checks passed
+  (live LUT state, SDR label/persistence, calibration ownership, HDR aliases,
+  every-page round trip, card layout, rapid tab navigation), along with the
+  public configuration reference inventory test. All 58 staged artifacts verified.
+- Deployed matched Release host/renderer and Config/helper with matching hashes.
+  Backup/evidence: `C:\Videoprocessor\vp\backup-before-vp0174-gamma-wording-20260909-100328`.
+  Active configuration edits: none; SHA256 remains
+  `1431C7A86D2362C13026372896DB83AEF015720E1F17BF1880D1669B0153FBD7`.
+  VP closed normally and restarted as PID49224; startup remained awaiting input
+  graph. Physical output remains unmeasured. Open Config and its unsaved document
+  were preserved; save edits, tray Exit and reopen Config to load the updated UI.
