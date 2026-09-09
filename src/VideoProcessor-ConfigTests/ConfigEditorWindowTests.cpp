@@ -1444,7 +1444,21 @@ void testCalibrationControlsFollowConfirmedRuntimeLut()
     auto* hdr = requireControl<QComboBox>(window, "config.vprenderer.color.hdr_tone_map_target_gamma");
     auto* enabled = requireControl<QCheckBox>(window, "config.vprenderer.color.calibration_lut_enabled");
     auto* status = requireControl<QLabel>(window, "config.vprenderer.color.output_gamma.status");
-    require(source->accessibleName() == "Expected source SDR gamma", "Source SDR response label is ambiguous");
+    auto* hdrStatus = requireControl<QLabel>(window, "config.vprenderer.color.hdr_tone_map_target_gamma.status");
+    auto* sourceLabel = requireControl<QLabel>(window, "config.vprenderer.color.sdr_input_transfer.label");
+    auto* sourceHelp = requireControl<QLabel>(window, "config.vprenderer.color.sdr_input_transfer.help");
+    enabled->setChecked(false);
+    require(enabled->isEnabled() && !hdr->isEnabled() && display->isEnabled() && conversion->isEnabled(),
+        "Offline LUT-off state did not disable only LUT preparation controls");
+    require(hdrStatus->text().contains("LUT is disabled"), "Disabled LUT status is ambiguous");
+    require(source->accessibleName() == "Desired SDR gamma" && sourceLabel->text() == source->accessibleName(),
+        "No-LUT SDR label is not the desired display response");
+    selectData(source, "bt1886");
+    require(sourceHelp->text().contains("1000:1") && sourceHelp->text().contains("not a measured"),
+        "SDR BT.1886 reference contrast is hidden");
+    selectData(display, "bt1886");
+    require(status->text().contains("1000:1") && status->text().contains("For HDR"),
+        "Display BT.1886 does not distinguish SDR and HDR black references");
     require(requireControl<QComboBox>(window, "config.vprenderer.color.target_primaries")->accessibleName() == "Target gamut",
         "Target gamut label was not updated");
     require(requireControl<QToolButton>(window, "rendererSection.calibration")->text() == "Display target",
@@ -1456,6 +1470,16 @@ void testCalibrationControlsFollowConfirmedRuntimeLut()
     require(window.findChild<QWidget*>("config.vprenderer.color.calibration_lut_input_transfer") == nullptr,
         "Old LUT input transfer remains exposed");
     enabled->setChecked(true);
+    require(hdr->isEnabled() && sourceLabel->text() == "SDR reference for LUT" &&
+        source->accessibleName() == sourceLabel->text(), "Offline LUT preparation or reference label is incorrect");
+    require(sourceHelp->text().contains("Desired SDR gamma"), "LUT fallback does not explain the shared SDR reference");
+    selectData(hdr, "bt1886");
+    require(hdrStatus->text().contains("Target nits and Target black") && !hdrStatus->text().contains("1000:1"),
+        "HDR LUT BT.1886 incorrectly uses the SDR contrast assumption");
+    selectData(hdr, "2.4");
+    enabled->setChecked(false);
+    require(!hdr->isEnabled() && hdr->currentData().toString() == "2.4", "Disabling LUT lost saved HDR gamma");
+    enabled->setChecked(true);
     selectData(display, "2.2");
     conversion->setCheckState(Qt::Checked);
     if (requireControl<QPushButton>(window, "applyConfiguration")->isEnabled()) save(window);
@@ -1466,11 +1490,13 @@ void testCalibrationControlsFollowConfirmedRuntimeLut()
     { window.setCalibrationStatusForTesting(true, attached, identity, path, rendering, color, hdrSource); };
 
     publish(false, true);
-    require(display->isEnabled() && conversion->isEnabled() && source->isEnabled() && !hdr->isEnabled(),
-        "An enabled LUT checkbox was mistaken for an attached usable LUT");
+    require(display->isEnabled() && conversion->isEnabled() && source->isEnabled() && hdr->isEnabled(),
+        "An enabled LUT checkbox was mistaken for attached calibration or blocked HDR preparation");
+    require(hdrStatus->text().contains("no usable LUT"), "Detached LUT was presented as active");
     publish(true, false);
-    require(!display->isEnabled() && !conversion->isEnabled() && source->isEnabled() && !hdr->isEnabled(),
-        "SDR usable-LUT control state is incorrect");
+    require(!display->isEnabled() && !conversion->isEnabled() && source->isEnabled() && hdr->isEnabled(),
+        "SDR playback blocked preparing HDR LUT gamma");
+    require(hdrStatus->text().contains("Inactive for the current SDR source"), "HDR gamma falsely reported active for SDR");
     require(status->text().contains("A usable LUT is active"), "Usable LUT state is not explained");
     publish(true, true);
     require(!display->isEnabled() && !conversion->isEnabled() && hdr->isEnabled() && source->isEnabled(),
@@ -1480,6 +1506,8 @@ void testCalibrationControlsFollowConfirmedRuntimeLut()
     // the live gate until the renderer confirms the edited document.
     selectData(source, "2.4");
     require(display->isEnabled() && conversion->isEnabled(), "Unsaved values inherited stale LUT control gating");
+    require(sourceLabel->text() == "SDR reference for LUT", "Editing the reference relabeled it from stale runtime evidence");
+    require(!sourceHelp->text().contains("1000:1"), "Pure 2.4 still shows a BT.1886 assumption");
     save(window);
     publish(true, true);
     require(display->isEnabled(), "Saved-but-not-applied values inherited stale LUT gating");
@@ -1504,8 +1532,15 @@ void testCalibrationControlsFollowConfirmedRuntimeLut()
     window.setCalibrationStatusForTesting(false, true, identity, path, rendering, color, true);
     require(display->isEnabled() && source->isEnabled(), "Unavailable renderer evidence disabled offline editing");
     publish(false, true);
-    require(display->isEnabled() && conversion->isEnabled() && !hdr->isEnabled(),
-        "LUT rejection/detachment did not restore the no-LUT controls");
+    require(display->isEnabled() && conversion->isEnabled() && hdr->isEnabled(),
+        "LUT rejection/detachment did not restore fallback controls while allowing HDR preparation");
+    enabled->setChecked(false);
+    require(!hdr->isEnabled() && sourceLabel->text() == "Desired SDR gamma", "LUT-off edit retained active LUT controls");
+    save(window);
+    ConfigEditorWindow reloaded(path, 0, true);
+    auto* savedHdr = requireControl<QComboBox>(reloaded, "config.vprenderer.color.hdr_tone_map_target_gamma");
+    require(!savedHdr->isEnabled() && savedHdr->currentData().toString() == "2.4",
+        "Saving disabled LUT discarded HDR gamma or reopened its control");
 }
 
 void testCalibrationProfileOwnsLutAndHdrGamma()
@@ -1545,17 +1580,17 @@ void testCalibrationProfileOwnsLutAndHdrGamma()
         "General tone-map luminance controls moved away from Rendering");
     QCoreApplication::processEvents();
     require(enabled->isChecked() && slot->isEnabled() && slot->currentData().toString() == "luts/First.cube" &&
-        gamma->currentData().toString() == "2.2", "First calibration profile did not load its complete contract");
+        gamma->isEnabled() && gamma->currentData().toString() == "2.2", "First calibration profile did not load its complete contract");
     renderingProfiles->setCurrentRow(1);
     require(slot->currentData().toString() == "luts/First.cube" && gamma->currentData().toString() == "2.2",
         "Selecting Rendering changed the Color calibration contract");
     colorProfiles->setCurrentRow(1);
     require(!enabled->isChecked() && !slot->isEnabled() && slot->currentData().toString() == "none" &&
-        p3->currentData().toString() == "luts/Second.cube" && gamma->currentData().toString() == "2.4",
+        p3->currentData().toString() == "luts/Second.cube" && !gamma->isEnabled() && gamma->currentData().toString() == "2.4",
         "Second calibration profile did not switch files, enablement and HDR gamma together");
     colorProfiles->setCurrentRow(2);
-    require(!enabled->isChecked() && !slot->isEnabled(),
-        "Switching between disabled profiles re-enabled LUT selectors");
+    require(!enabled->isChecked() && !slot->isEnabled() && !gamma->isEnabled(),
+        "Switching between disabled profiles re-enabled LUT controls");
     require(slot->currentData().toString().isEmpty() && slot->property("effectiveValue").toString() == "luts/First.cube",
         "A omitted LUT slot did not inherit from the default Color profile");
     enabled->click();

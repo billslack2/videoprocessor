@@ -8,7 +8,7 @@ record earlier stages and do not override the REQ-004 behavior.
 ## Current SDR/HDR calibration contract (REQ-004)
 
 Each setting has one role. Color / Output contains **Display target**, **Target
-gamut**, **Calibrated display gamma**, **Expected source SDR gamma**, calibration
+gamut**, **Calibrated display gamma**, **Desired SDR gamma** (or **SDR reference for LUT** when LUT enablement is on), calibration
 LUT enablement/files and **HDR tone-map target gamma**. These form one Color / Output
 calibration profile. Rendering retains **Target nits**, **Target black**, quality
 and general tone-mapping policy. Changing Rendering profiles cannot select a
@@ -24,7 +24,7 @@ An enabled setting or populated filename does not establish that a LUT is usable
 A failed replacement can retain an existing usable LUT only under the same
 contract. If none is attached, physical display gamma applies. A usable LUT makes
 physical display gamma and the SDR gamma-processing switch inactive. Expected
-source SDR gamma remains relevant for SDR with a LUT. HDR target gamma applies
+SDR reference for LUT remains relevant for SDR with a LUT. HDR target gamma applies
 only to HDR with a LUT; Target nits, Target black and dynamic tone mapping remain
 active for HDR. The existing paired fixed SDR source/target minimum and maximum
 luminance references are unchanged.
@@ -53,9 +53,11 @@ key in place, preserving comments, and an inheritance reset removes both spellin
 The explicit LUT path value `none` clears an inherited slot; omission inherits.
 
 The UI applies live inactivity only when renderer evidence matches the current
-configuration path/content identity and selected Rendering/Color profile pair.
-Offline, pending-edit or different-profile views keep conditional controls editable
-and explain when they will apply. Saved enablement alone never marks calibration
+configuration path/content identity and selected Color profile.
+Physical display/conversion controls remain editable without confirmed attachment.
+HDR tone-map target gamma follows the edited profile's LUT enablement: disabled
+when unchecked, editable when checked even offline or during SDR playback. Help
+distinguishes preparing a value from its actual live use. Saved enablement alone never marks calibration
 active. Runtime status reports source/target transfer and actual LUT attachment;
 physical HDMI/display response still requires measurement.
 
@@ -193,6 +195,29 @@ and visual review are required before the implementation is marked ready.
 
 ## SDR reference and LUT domain
 
+The UI uses **Desired SDR gamma** without configured LUTs and **SDR reference for
+LUT** when LUT enablement is on. This label follows the edited profile, not live
+attachment, so edits and offline use do not unexpectedly rename it. The underlying
+`sdr_input_transfer` value and defaults are unchanged. With no usable LUT, the
+same value supplies the desired response when SDR gamma processing is enabled;
+this includes missing/rejected-LUT fallback. With a usable LUT, match the reference
+used to create the LUT; the LUT determines the final displayed gamma.
+
+BT.1886 is a black-dependent reference EOTF, not detected mastering metadata or a
+synonym for pure gamma 2.4. VP's SDR source and target use fixed 203-nit white and
+0.203-nit black (1000:1 reference contrast). UI help discloses this when BT.1886 is
+selected; these are model assumptions, not measurements. HDR target BT.1886 uses
+Rendering's Target nits and Target black instead, whether encoded directly for the
+display or into a calibration LUT. The LUT must match that response. Pure 2.4 stays
+an explicit choice; this UI change neither modifies pixel math nor substitutes a
+new reference/default in saved profiles.
+
+The madVR-style distinction is calibrated physical display response versus desired
+SDR response. Envy's calibration workflow similarly requires matching the HDR LUT
+gamma (2.2 is the example, 2.4 is supported when declared), and SDR's final gamma is
+chosen in LUT generation. References: [Envy calibration guide](https://madvrenvy.com/wp-content/uploads/madVR-Envy-ColourSpace-Calibration-Guide.pdf?r=092),
+[mpv SDR interpretation](https://mpv.io/manual/master/#options-sdr-adjust-gamma).
+
 `output_gamma` describes physical display response. `sdr_input_transfer` describes
 the expected SDR reference response, not a camera OETF. Without a usable LUT,
 `sdr_adjust_gamma: on` converts a 2.4 reference to a 2.2 physical display as before.
@@ -216,7 +241,7 @@ physical display gamma. Range, gamut, scaling, shaders and dithering continue.
 | target_primaries (old sdr_target_primaries alias) | Target gamut for SDR/HDR; exact LUT slot selection |
 | output_gamma | Physical display transfer; all explicit/legacy values retained |
 | report_bt2020_to_display | Display signaling request; retained |
-| sdr_input_transfer | Expected source SDR gamma; retained for processing with an active LUT |
+| sdr_input_transfer | Desired SDR gamma without configured LUTs; SDR reference for LUT when enabled; one saved reference also used by no-LUT fallback |
 | sdr_adjust_gamma | SDR handling; legacy values retained, explicit passthrough added |
 | output_presentation | Output transport; retained |
 | output_range | Output transport; retained |
