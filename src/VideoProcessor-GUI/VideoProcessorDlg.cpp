@@ -3355,7 +3355,7 @@ bool CVideoProcessorDlg::ApplyActiveOutputSweepCase(size_t index)
 			if (test.contrastRecovery)
 				document.SetKnown(section, "contrast_recovery", test.contrastRecovery);
 			if (test.targetPrimaries)
-				document.SetKnown(section, "sdr_target_primaries", test.targetPrimaries);
+				document.SetKnown(section, "target_primaries", test.targetPrimaries);
 			if (test.reportBt2020ToDisplay)
 				document.SetKnown(section, "report_bt2020_to_display",
 					test.reportBt2020ToDisplay);
@@ -3397,7 +3397,7 @@ bool CVideoProcessorDlg::ApplyActiveOutputSweepCase(size_t index)
 	if (hdrSuite)
 	{
 		const std::string targetPrimaries = document.Get("vprenderer",
-			"sdr_target_primaries");
+			"target_primaries");
 		const std::string reportBt2020 = document.Get("vprenderer",
 			"report_bt2020_to_display");
 		m_activeOutputSweepStatus.Format(
@@ -3611,7 +3611,7 @@ bool CVideoProcessorDlg::EvaluateActiveOutputSweepCase(
 	expected.swapchainBitDepth = expected.requireVpOwner ?
 		(test.force8Bit ? 8u : 10u) : 0u;
 	const std::string configuredPrimaries = m_activeOutputSweepDocument ?
-		m_activeOutputSweepDocument->Get("vprenderer", "sdr_target_primaries") :
+		m_activeOutputSweepDocument->Get("vprenderer", "target_primaries") :
 		std::string();
 	const std::string normalizedPrimaries =
 		ConfigFile::NormalizeName(configuredPrimaries);
@@ -11845,7 +11845,11 @@ void CVideoProcessorDlg::PublishActiveProfileStatus()
 	ActiveProfileStatus::Publish(GetCurrentProcessId(), snapshot->generation,
 		RendererProfileConfig::FormatSelections(snapshot->effectiveSelections),
 		rendererGeneration, shaderAvailable,
-		shaderSections, sourceEotf, sourceColorSpace, outputAvailable ? outputStatus.uiSummary : std::string());
+		shaderSections, sourceEotf, sourceColorSpace, outputAvailable ? outputStatus.uiSummary : std::string(),
+        outputAvailable && outputStatus.calibrationStatusAvailable,
+        outputAvailable && outputStatus.calibrationLutAttached,
+        outputAvailable ? outputStatus.calibrationConfigIdentity : 0,
+        outputAvailable ? outputStatus.calibrationConfigPath : std::string());
 }
 
 std::map<std::string, std::string>

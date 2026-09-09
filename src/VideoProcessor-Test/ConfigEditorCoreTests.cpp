@@ -1,6 +1,8 @@
 #include "pch.h"
 
 #include <ConfigEditorCore.h>
+#include <ConfigFile.h>
+#include <ConfigurationIdentity.h>
 #include <ConfigurationApplyPolicy.h>
 #include <RendererResetPolicy.h>
 #include "CppUnitTest.h"
@@ -44,6 +46,111 @@ namespace VideoProcessorTest
 	TEST_CLASS(ConfigEditorCoreTests)
 	{
 	public:
+        TEST_METHOD(RendererAndEditorConfigurationIdentityAgreeAcrossTextFormatsAndEdits)
+        {
+            const std::wstring path = MakeTemporaryConfigPath(L"vpc");
+            const int pathBytes = WideCharToMultiByte(CP_ACP, 0, path.c_str(),
+                static_cast<int>(path.size()), nullptr, 0, nullptr, nullptr);
+            Assert::IsTrue(pathBytes > 0);
+            std::string parserPath(static_cast<size_t>(pathBytes), '\0');
+            Assert::AreEqual(pathBytes, WideCharToMultiByte(CP_ACP, 0, path.c_str(),
+                static_cast<int>(path.size()), &parserPath[0], pathBytes, nullptr, nullptr));
+            uint64_t identitiesByBom[2] = {};
+            for (const bool withBom : { false, true })
+                for (const char* newline : { "\n", "\r\n" })
+                    for (const bool terminalNewline : { false, true })
+                    {
+                        const std::string original = (withBom ? "\xEF\xBB\xBF" : "") +
+                            std::string("# calibration identity") + newline +
+                            "[vprenderer.Default]" + newline +
+                            "hdr_tone_map_target_gamma: 2.2" +
+                            (terminalNewline ? newline : "");
+                        WriteBytes(path, original);
+                        ConfigFile parsed;
+                        Assert::IsTrue(parsed.Load(parserPath));
+                        std::string gamma;
+                        Assert::IsTrue(parsed.TryGetString("vprenderer.Default",
+                            "hdr_tone_map_target_gamma", gamma));
+                        Assert::AreEqual(std::string("2.2"), gamma);
+                        ConfigEditorCore::ConfigDocument document;
+                        std::wstring error;
+                        Assert::IsTrue(document.Load(path, error), error.c_str());
+                        Assert::AreEqual(original, document.Serialize());
+                        const uint64_t identity = parsed.GetContentIdentity();
+                        Assert::IsTrue(identity == ConfigurationIdentity::FromText(document.Serialize()),
+                            L"Running parser and editor must identify the same loaded document");
+                        uint64_t& baseline = identitiesByBom[withBom ? 1 : 0];
+                        if (baseline == 0) baseline = identity;
+                        Assert::IsTrue(identity == baseline,
+                            L"Line-ending style and the final newline must not change identity");
+
+                        ConfigEditorCore::ConfigDocument commentEdit = document;
+                        commentEdit.lines.front() += " changed";
+                        WriteBytes(path, commentEdit.Serialize());
+                        Assert::IsTrue(parsed.Load(parserPath));
+                        Assert::IsTrue(parsed.GetContentIdentity() != identity,
+                            L"A comment edit must invalidate the conservative live identity");
+                        Assert::IsTrue(parsed.GetContentIdentity() ==
+                            ConfigurationIdentity::FromText(commentEdit.Serialize()));
+
+                        Assert::IsTrue(document.SetKnown("vprenderer.Default",
+                            "hdr_tone_map_target_gamma", "2.4"));
+                        WriteBytes(path, document.Serialize());
+                        Assert::IsTrue(parsed.Load(parserPath));
+                        Assert::IsTrue(parsed.GetContentIdentity() != identity,
+                            L"A changed setting must invalidate live configuration evidence");
+                        Assert::IsTrue(parsed.GetContentIdentity() ==
+                            ConfigurationIdentity::FromText(document.Serialize()));
+                    }
+            DeleteFileW(path.c_str());
+        }
+
+        TEST_METHOD(CalibrationAliasesLoadWithoutRewritingTheDocument)
+        {
+            const std::wstring path = MakeTemporaryConfigPath(L"vpc");
+            const std::string original =
+                "[vprenderer.Default]\r\ncalibration_lut_input_transfer: display # old input\r\n"
+                "[vprenderer.Other]\r\ncalibration_lut_input_transfer: 2.4\r\nhdr_tone_map_target_gamma: 2.6\r\n"
+                "[vprenderer.color.Default]\r\nsdr_target_primaries: BT2020\r\ncalibration_lut_input_gamma: 2.8\r\n"
+                "[vprenderer.color.Other]\r\nsdr_target_primaries: REC709\r\ntarget_primaries: P3_D65\r\n";
+            WriteBytes(path, original);
+            ConfigEditorCore::ConfigDocument document;
+            std::wstring error;
+            Assert::IsTrue(document.Load(path, error), error.c_str());
+            Assert::AreEqual(std::string("2.2"), document.Get("vprenderer.Default", "hdr_tone_map_target_gamma"));
+            Assert::AreEqual(std::string("2.6"), document.Get("vprenderer.Other", "hdr_tone_map_target_gamma"));
+            Assert::AreEqual(std::string("BT2020"), document.Get("vprenderer.color.Default", "target_primaries"));
+            Assert::AreEqual(std::string("P3_D65"), document.Get("vprenderer.color.Other", "target_primaries"));
+            Assert::IsTrue(document.Get("vprenderer.color.Default", "hdr_tone_map_target_gamma").empty(),
+                L"Old Color input must not become a hidden HDR setting");
+            Assert::AreEqual(original, document.Serialize());
+            Assert::AreEqual(original, ReadBytes(path));
+            Assert::IsTrue(ConfigEditorCore::ValidateCandidate(document, error), error.c_str());
+            DeleteFileW(path.c_str());
+        }
+
+        TEST_METHOD(CalibrationAliasEditsPreserveCommentsAndResetCannotRestoreOldOverrides)
+        {
+            const std::wstring path = MakeTemporaryConfigPath(L"vpc");
+            WriteBytes(path,
+                "[vprenderer.Default]\r\n  CALIBRATION_LUT_INPUT_TRANSFER = display # calibration\r\n"
+                "[vprenderer.color.Default]\r\n  sdr_target_primaries: rec709 # gamut\r\n"
+                "[vprenderer.color.Other]\r\nsdr_target_primaries: rec709\r\ntarget_primaries: bt2020\r\n");
+            ConfigEditorCore::ConfigDocument document;
+            std::wstring error;
+            Assert::IsTrue(document.Load(path, error), error.c_str());
+            Assert::IsTrue(document.SetKnown("vprenderer.Default", "hdr_tone_map_target_gamma", "2.4"));
+            Assert::IsTrue(document.SetKnown("vprenderer.color.Default", "target_primaries", "p3_d65"));
+            Assert::IsTrue(document.Serialize().find("  hdr_tone_map_target_gamma = 2.4 # calibration") != std::string::npos);
+            Assert::IsTrue(document.Serialize().find("  target_primaries: p3_d65 # gamut") != std::string::npos);
+            Assert::IsTrue(document.Get("vprenderer.Default", "calibration_lut_input_transfer").empty());
+            Assert::IsTrue(document.RemoveKnown("vprenderer.color.Other", "target_primaries"));
+            Assert::IsTrue(document.Get("vprenderer.color.Other", "target_primaries").empty());
+            Assert::IsTrue(document.Get("vprenderer.color.Other", "sdr_target_primaries").empty());
+            Assert::IsTrue(ConfigEditorCore::ValidateCandidate(document, error), error.c_str());
+            DeleteFileW(path.c_str());
+        }
+
 		TEST_METHOD(MissingConfigurationLoadsAsCreatableDocumentAndSavesAtomically)
 		{
 			const std::wstring path = MakeTemporaryConfigPath(L"vpc");

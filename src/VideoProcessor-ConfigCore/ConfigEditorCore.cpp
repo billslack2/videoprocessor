@@ -190,8 +190,14 @@ namespace ConfigEditorCore
 	std::string ConfigDocument::Get(const char* section, const char* key) const
 	{
 		size_t line = 0, start = 0, end = 0;
-		return Find(section, key, line, start, end) ?
-			lines[line].substr(start, end - start) : std::string();
+        if (Find(section, key, line, start, end))
+            return lines[line].substr(start, end - start);
+        const std::string canonical = ConfigFile::NormalizeName(key);
+        const std::string alias = RendererProfileConfig::SettingAlias(section, canonical);
+        if (!alias.empty() && Find(section, alias, line, start, end))
+            return RendererProfileConfig::CanonicalAliasValue(canonical,
+                lines[line].substr(start, end - start));
+        return {};
 	}
 
 	bool ConfigDocument::SetExisting(const char* section, const char* key,
@@ -212,6 +218,18 @@ namespace ConfigEditorCore
 			lines[line].replace(start, end - start, value);
 			return true;
 		}
+
+        // Editing a value loaded through an old spelling replaces that key
+        // in place, preserving its comments and section position.
+        const std::string alias = RendererProfileConfig::SettingAlias(
+            wantedSection, ConfigFile::NormalizeName(key));
+        if (!alias.empty() && Find(wantedSection, alias, line, start, end))
+        {
+            lines[line].replace(start, end - start, value);
+            const size_t keyStart = lines[line].find_first_not_of(" \t");
+            lines[line].replace(keyStart, alias.size(), key);
+            return true;
+        }
 
 		const std::string normalized = ConfigFile::NormalizeName(wantedSection);
 		for (size_t index = 0; index < lines.size(); ++index)
@@ -247,10 +265,21 @@ namespace ConfigEditorCore
 	bool ConfigDocument::RemoveKnown(const std::string& wantedSection,
 		const char* key)
 	{
-		size_t line = 0, start = 0, end = 0;
-		if (!Find(wantedSection, key, line, start, end)) return false;
-		lines.erase(lines.begin() + line);
-		return true;
+        size_t line = 0, start = 0, end = 0;
+        bool removed = false;
+        if (Find(wantedSection, key, line, start, end))
+        {
+            lines.erase(lines.begin() + line);
+            removed = true;
+        }
+        const std::string alias = RendererProfileConfig::SettingAlias(
+            wantedSection, ConfigFile::NormalizeName(key));
+        if (!alias.empty() && Find(wantedSection, alias, line, start, end))
+        {
+            lines.erase(lines.begin() + line);
+            removed = true;
+        }
+        return removed;
 	}
 
 	bool ConfigDocument::AddSection(const std::string& section)

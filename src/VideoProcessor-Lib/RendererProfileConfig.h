@@ -566,9 +566,10 @@ namespace RendererProfileConfig
 				return IsNumberInRange(value, 40.0, 500.0);
 			}
 			if (key == "sdr_black_nits") return IsChoice(value, { "auto" }) || IsNumberInRange(value, 0.0, 500.0, false);
+			if (key == "hdr_tone_map_target_gamma") return IsChoice(value, { "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" });
 			if (key == "calibration_lut_input_gamma" || key == "calibration_lut_input_transfer") return IsChoice(value, { "display", "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" });
 			if (key == "output_gamma") return IsChoice(value, { "auto", "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" });
-			if (key == "sdr_target_primaries") return IsChoice(value, { "rec709", "p3_d65", "bt2020" });
+			if (key == "target_primaries" || key == "sdr_target_primaries") return IsChoice(value, { "rec709", "p3_d65", "bt2020" });
 			if (key == "report_bt2020_to_display") return IsBoolean(value);
 			expected = "a display-owned setting"; return false;
 		}
@@ -815,7 +816,7 @@ namespace RendererProfileConfig
 		const std::string& value)
 	{
 		static const std::set<std::string> colorKeys = {
-			"sdr_target_primaries", "output_gamma",
+			"target_primaries", "sdr_target_primaries", "output_gamma",
 			"report_bt2020_to_display", "sdr_adjust_gamma",
 			"sdr_input_transfer", "calibration_lut_input_gamma" };
 		std::string expected;
@@ -908,6 +909,52 @@ namespace RendererProfileConfig
 		return name.find('.') == std::string::npos &&
 			IsRendererChildNamespace(name);
 	}
+
+    // Alias resolution is performed per section, before profile inheritance.
+    // A child alias overrides its inherited value; an explicit canonical key
+    // wins when both spellings occur in the same section. ConfigDocument uses
+    // the same mapping without rewriting the file merely by opening it.
+    inline std::string SettingAlias(const std::string& sectionName,
+        const std::string& canonicalKey)
+    {
+        const std::string section = ConfigFile::NormalizeName(sectionName);
+        const bool rendering = section == "vprenderer" ||
+            (section.rfind("vprenderer.", 0) == 0 &&
+                section.substr(11).find('.') == std::string::npos &&
+                !IsRendererChildNamespace(section.substr(11))) ||
+            section == "vpvr.display" || section == "display" ||
+            section == "libplacebo" || section.rfind("profiles.display.", 0) == 0;
+        const bool color = section == "vprenderer.color" ||
+            section.rfind("vprenderer.color.", 0) == 0;
+        if (canonicalKey == "target_primaries" && (rendering || color))
+            return "sdr_target_primaries";
+        if (canonicalKey == "hdr_tone_map_target_gamma" && rendering)
+            return "calibration_lut_input_transfer";
+        return {};
+    }
+
+    inline std::string CanonicalAliasValue(const std::string& canonicalKey,
+        const std::string& value)
+    {
+        if (canonicalKey == "hdr_tone_map_target_gamma" &&
+            ConfigFile::NormalizeName(value) == "display") return "2.2";
+        return value;
+    }
+
+    inline void ApplySectionSetting(std::map<std::string, std::string>& settings,
+        const std::string& section,
+        const std::map<std::string, std::string>& sectionValues,
+        const std::string& key, const std::string& value)
+    {
+        for (const char* canonical : { "target_primaries", "hdr_tone_map_target_gamma" })
+        {
+            if (SettingAlias(section, canonical) != key) continue;
+            if (sectionValues.find(canonical) == sectionValues.end())
+                settings[canonical] = CanonicalAliasValue(canonical, value);
+            return;
+        }
+        settings[key] = value;
+    }
 
 	inline bool IsSupportedActionEvent(const std::string& event)
 	{
@@ -1221,7 +1268,9 @@ namespace RendererProfileConfig
 						}
 					}
 					if (spec.inheritRoot || namedBaseline)
-						base.settings.emplace(entry.first, entry.second);
+						ApplySectionSetting(base.settings,
+                            namedBaseline ? prefix + baselineName : section,
+                            *baselineValues, entry.first, entry.second);
 				}
 			if (!MergeShortcutIntoWhen(resetShortcut, "[" + section + "]", group.resetWhen, error) ||
 				!MergeShortcutIntoWhen(baseShortcut, "[" + prefix + baselineName + "]", base.when, error))
@@ -1309,7 +1358,8 @@ namespace RendererProfileConfig
 							"' value '" + entry.second + "' is not valid for " + spec.name;
 						return false;
 					}
-					profile.settings[entry.first] = entry.second;
+					ApplySectionSetting(profile.settings, variantSection,
+                        *values, entry.first, entry.second);
 				}
 				if (!MergeShortcutIntoWhen(profileShortcut, "[" + variantSection + "]", profile.when, error))
 					return false;
@@ -1662,7 +1712,7 @@ namespace RendererProfileConfig
 				"contrast_recovery", "upscaler", "downscaler", "deband",
 				"deband_strength", "sigmoid", "dithering", "display_bit_depth", "output_presentation",
 				"output_range", "output_gamma", "output_path_profile",
-				"sdr_target_primaries", "report_bt2020_to_display",
+				"target_primaries", "sdr_target_primaries", "report_bt2020_to_display",
 				"sdr_input_transfer", "sdr_adjust_gamma", "output_diagnostics",
 				"diagnostic_disable_shader_cache", "diagnostic_disable_compute",
 				"diagnostic_force_8bit_sdr_swapchain",
@@ -1816,7 +1866,8 @@ namespace RendererProfileConfig
 								"' has invalid value '" + value.second + "'; expected " + expected;
 							return false;
 						}
-						profile.settings.emplace(settingKey, value.second);
+						ApplySectionSetting(profile.settings, profileSection,
+                            *values, settingKey, value.second);
 					}
 				}
 				if (!profile.when.empty() &&

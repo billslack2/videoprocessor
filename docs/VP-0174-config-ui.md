@@ -1,12 +1,68 @@
 # VP-0174: Color / Output configuration UI
 
-Implementation base: `v1.3.005-beta`, `38e7508f` (includes VP-0173).
+Original implementation base: `v1.3.005-beta`, `38e7508f` (includes VP-0173).
+
+The current contract is described below. Dated implementation/validation sections
+record earlier stages and do not override the REQ-004 behavior.
+
+## Current SDR/HDR calibration contract (REQ-004)
+
+Each setting has one role. Color / Output contains **Display target**, **Target
+gamut**, **Calibrated display gamma**, and **Expected source SDR gamma**. Rendering
+contains calibration LUT enablement/files and **HDR tone-map target gamma** beside
+**Target nits** under Tone mapping. Rendering and Color / Output profiles retain
+their independent identities, rules, selection and inheritance.
+
+| Actual rendering state | Source description and target transfer |
+| --- | --- |
+| SDR with a usable attached LUT | Retain the declared source response and encode the pre-LUT target with that same response. The LUT performs reference-to-display calibration. |
+| HDR with a usable attached LUT | Decode HDR normally; tone/gamut map, then encode with the Rendering profile's explicit HDR target gamma, default 2.2, before calibration. |
+| No usable attached LUT | Preserve the existing physical-display gamma path and saved SDR gamma-processing behavior. |
+
+An enabled setting or populated filename does not establish that a LUT is usable.
+A failed replacement can retain an existing usable LUT only under the same
+contract. If none is attached, physical display gamma applies. A usable LUT makes
+physical display gamma and the SDR gamma-processing switch inactive. Expected
+source SDR gamma remains relevant for SDR with a LUT. HDR target gamma applies
+only to HDR with a LUT; Target nits, Target black and dynamic tone mapping remain
+active for HDR. The existing paired fixed SDR source/target minimum and maximum
+luminance references are unchanged.
+
+LUTs must be prepared for the expected SDR reference codes and selected target
+gamut, and for the chosen HDR target encoding when processing HDR. This calibration workflow requires matching LUTs; arbitrary conversion or creative
+LUTs can contain transforms that do not match it. Keeping source and
+target transfers equal preserves the SDR transfer stage; gamut mapping and other
+linear-light processing can still change pixels. It is not raw-byte passthrough.
+The source description is retained for decoding, gamut conversion and scaling.
+
+`target_primaries` replaces `sdr_target_primaries` and applies to SDR and HDR. It
+selects the exact Rec.709, P3-D65 or BT.2020 calibration LUT slot. It describes a
+reference/input gamut, not measured display gamut limits. No custom xy controls
+are introduced. The old spelling remains accepted; canonical wins within a
+section and a child alias overrides inherited baseline values.
+
+`hdr_tone_map_target_gamma` is Rendering-owned, accepts the explicit BT.1886,
+sRGB and 1.8/2.0/2.2/2.4/2.6/2.8 responses, and defaults to 2.2. Old Rendering
+`calibration_lut_input_transfer` values load as this HDR-only setting; `display`
+becomes 2.2. Explicit canonical values win within the same section. The old
+Color/base `calibration_lut_input_gamma` remains accepted but is ignored with a
+diagnostic. It does not silently couple profiles. No first-profile collapse or
+cross-product migration is performed. Canonical alias reads do not rewrite the
+file; explicit edits rename an old key in place, preserving comments, and an
+inheritance reset removes both spellings from that profile.
+
+The UI applies live inactivity only when renderer evidence matches the current
+configuration path/content identity and selected Rendering/Color profile pair.
+Offline, pending-edit or different-profile views keep conditional controls editable
+and explain when they will apply. Saved enablement alone never marks calibration
+active. Runtime status reports source/target transfer and actual LUT attachment;
+physical HDMI/display response still requires measurement.
 
 ## Scope and compatibility
 
 Color and Output use one profile family: `[vprenderer.color.<name>]`. One rule,
 shortcut and active selection control both. Old Output page index 13 redirects
-to the combined page at index 16. Settings within the profile retain their keys.
+to the combined page at index 16. Settings retain their values, subject to the documented canonical aliases and REQ-004 transfer changes above.
 
 Legacy loading copies every non-selector setting from the first Output baseline
 into each Color profile, without overriding already unified explicit values.
@@ -22,19 +78,20 @@ Reopening a migrated file does not reapply or duplicate the migration.
 This is a Config UI contract, not a wholesale change to renderer parser defaults.
 A configuration created by the editor and the release sample explicitly store the
 new defaults below. The first profile created in an empty family gets that family's
-new defaults; additional profiles inherit. Existing gamma choices, including omitted or saved Auto values, retain their
-interpretation. The removal of independent Output selection is intentional. Removed Auto choices
+new defaults; additional profiles inherit. Existing no-LUT gamma choices, including omitted or saved Auto values, retain their
+interpretation. The active-LUT workflow follows the current REQ-004 contract above. The removal of independent Output selection is intentional. Removed Auto choices
 appear as disabled legacy entries when necessary; changing to an explicit value
 retires that selection. A missing LUT file is shown and preserved, not deleted.
 
 | Control | Fresh profile | Auto treatment |
 | --- | --- | --- |
-| Display primaries | Rec.709 | Explicit |
+| Target gamut | Rec.709 | Explicit |
 | Display transfer | Gamma 2.2 | Removed; legacy requests preserved |
-| Desired SDR gamma | Gamma 2.2 | Removed; saved BT.1886 assumption retained |
+| Expected source SDR gamma | Gamma 2.2 | Removed; saved BT.1886 assumption retained |
 | Enable SDR gamma processing | Checked (on) | Saved off/Auto retained until explicit edit |
 | RGB range | Full | Removed; legacy requests preserved |
 | Limited transport | 2.2 (inactive for Full) | Removed; legacy requests preserved |
+| HDR tone-map target gamma | Gamma 2.2 | Explicit; HDR with a usable LUT only |
 | Target nits | 100 | Numeric; HDR tone mapping only |
 | Target black | 0 | Numeric; old Auto preserved |
 | Dither target depth | 10 | Removed; old surface-following policy preserved |
@@ -45,7 +102,7 @@ retires that selection. A missing LUT file is shown and preserved, not deleted.
 All explicit gamma choices stay together. Flip model replaces the misleading Direct
 label; BitBlt model replaces Composed. Flip does not guarantee independent flip or
 bypass desktop composition. Dither depth does not configure the GPU/HDMI wire depth.
-Saved SDR handling off reinterprets source transfer using the accepted carrier.
+Without a usable LUT, saved SDR handling off reinterprets source transfer using the accepted carrier.
 It is displayed as a retained behavior, not an unchecked gamma checkbox.
 
 ## Derived Limited 2.2 flag
@@ -71,13 +128,13 @@ The shared snapshot uses a new versioned mapping to avoid reading older layouts.
 
 | Display target | Full carrier | Limited carrier | LUT coordinates |
 | --- | --- | --- | --- |
-| Rec.709, P3-D65 or BT.2020 / gamma 2.2 or 2.4 | Normal Windows full SDR declaration | Explicit 2.2 beta or 2.4, subject to acceptance | Configured target primaries and declared LUT input transfer |
+| Rec.709, P3-D65 or BT.2020 / gamma 2.2 or 2.4 | Normal Windows full SDR declaration | Explicit 2.2 beta or 2.4, subject to acceptance | Target gamut; expected SDR response or HDR tone-map target gamma |
 
 This is the source-level configuration contract, not certification of every driver,
 projector or preview path. Embedded preview has constrained presentation/range.
 Limited2.2 is intentionally included for beta feedback. Gamma/range/primaries remain
-separate. With a usable LUT, the explicit LUT input transfer selects pre-LUT
-encoding; without one the physical display transfer is used. VP-0173 owns HDR destination
+separate. With a usable LUT, SDR retains its declared source transfer at the input,
+and HDR uses its explicit target gamma. Without one the physical display transfer is used. VP-0173 owns HDR destination
 white/black handling; these controls do not alter SDR brightness.
 
 ## Validation
@@ -107,34 +164,30 @@ and visual review are required before the implementation is marked ready.
 
 ## SDR reference and LUT domain
 
-`output_gamma` describes the physical display response. `sdr_input_transfer`
-describes the SDR reference response to preserve, not the camera OETF. With
-`sdr_adjust_gamma: on`, a 2.4 reference and 2.2 display receive a 2.4-to-2.2
-conversion. The preserved fresh choice 2.2-to-2.2 is a deliberate 2.2 response,
-not a claim that every Rec.709 source was mastered for it. BT.1886 and sRGB remain
-available alongside every existing pure-power value.
+`output_gamma` describes physical display response. `sdr_input_transfer` describes
+the expected SDR reference response, not a camera OETF. Without a usable LUT,
+`sdr_adjust_gamma: on` converts a 2.4 reference to a 2.2 physical display as before.
+Choosing 2.2 for both is deliberate, not a claim about every Rec.709 mastering.
 
-`calibration_lut_input_gamma` is the expected transfer at an active LUT's input.
-`display` (also the omission default) preserves the previous output_gamma behavior.
-An explicitly selected BT.1886/2.4 LUT domain permits a full reference-to-display
-LUT to own that correction exactly once. Missing, rejected-without-active-fallback,
-or disabled LUTs use physical display gamma. LUT enablement and paths remain in
-Rendering; target nits/black remain HDR-only there as well.
+With a usable calibration LUT, `sdr_input_transfer` establishes the declared SDR
+source response and the pre-LUT target uses that same response. The gamma-processing
+switch is inactive. The LUT must supply any reference-to-display correction.
+For HDR, Rendering's `hdr_tone_map_target_gamma` establishes the pre-LUT encoding;
+HDR Target nits, Target black and dynamic tone mapping still apply.
 
-`sdr_adjust_gamma: passthrough` is a new explicit choice: reinterpret SDR in the
-resolved pre-LUT/display domain, preserving its tone response through that transfer
-stage. Range, gamut, scaling, LUT and other processing still apply. `off` retains
-its old carrier-based interpretation for saved compatibility. HDR input ignores
-SDR reinterpretation and still tone maps into the selected output/LUT domain.
+Without a usable LUT, saved `passthrough`, `off` and `AUTO` retain their existing
+SDR handling. With a LUT they do not replace the declared source transfer.
+Disabled, missing or rejected LUTs with no retained usable fallback return to
+physical display gamma. Range, gamut, scaling, shaders and dithering continue.
 
 ## Complete Color / Output setting inventory
 
 | Existing key | Unified destination / treatment |
 | --- | --- |
-| sdr_target_primaries | Display calibration; retained |
+| target_primaries (old sdr_target_primaries alias) | Target gamut for SDR/HDR; exact LUT slot selection |
 | output_gamma | Physical display transfer; all explicit/legacy values retained |
 | report_bt2020_to_display | Display signaling request; retained |
-| sdr_input_transfer | SDR reference / intended response; retained |
+| sdr_input_transfer | Expected source SDR gamma; retained for processing with an active LUT |
 | sdr_adjust_gamma | SDR handling; legacy values retained, explicit passthrough added |
 | output_presentation | Output transport; retained |
 | output_range | Output transport; retained |
@@ -149,7 +202,8 @@ SDR reinterpretation and still tone maps into the selected output/LUT domain.
 | diagnostic_vp_owned_dxgi_presenter | Diagnostics; retained |
 | Color name, shortcut, cycle_shortcut, when | One common profile identity and activation |
 | Old Output identity, shortcut, cycle_shortcut, when | Preserved in inactive legacy_output sections |
-| calibration_lut_input_gamma (new) | Explicit LUT input-domain selector |
+| calibration_lut_input_gamma | Accepted but ignored; no compatibility UI |
+| hdr_tone_map_target_gamma (old Rendering calibration_lut_input_transfer alias) | HDR-only pre-LUT transfer; default 2.2 |
 
 Dithering, dither target depth, HDR nits/black, and LUT enable/path controls were
 Rendering-owned before this merge and remain there, with all values preserved.
@@ -173,9 +227,9 @@ add native cross-process ownership or recurring focus polling. The cross-process
 regression checks actual relative order, not only the WS_EX_TOPMOST style bit.
 This restores staying above VP; it does not disable VP's controls.
 
-## SDR controls and Rendering-owned LUT input (2026-09-08)
+## Earlier SDR controls and Rendering-owned LUT input (2026-09-08)
 
-The current UI uses Enable SDR gamma processing and Desired SDR gamma, separating
+At this earlier stage, the UI used Enable SDR gamma processing and Desired SDR gamma, separating
 calibrated physical display response from desired viewing response. Checked saves
 on; unchecked saves passthrough. Existing off and AUTO show a partially checked
 checkbox with an explanation. Opening/saving preserves them; an explicit click
@@ -184,7 +238,7 @@ All explicit gamma choices remain together. SDR input AUTO is no longer offered:
 the current capture path maps generic SDR to BT.1886, not a detected mastering gamma.
 Fresh desired/display gamma remain 2.2. P3-D65 labels and preset gamut support remain.
 
-Rendering now owns calibration_lut_input_transfer beside its LUT enablement and
+At this earlier stage, Rendering owned calibration_lut_input_transfer beside its LUT enablement and
 files. One declaration applies to all three gamut slots. An explicit value,
 including display, overrides the old calibration_lut_input_gamma after independent
 profile selections are merged. Omission preserves the old Color/base contract;
@@ -226,10 +280,10 @@ mapping plus an SDR calibration LUT: https://bugs.madshi.net/view.php?id=659.
   confirmed the combined profile page still loads against the active configuration.
 
 
-## LUT control cleanup (2026-09-08)
+## Earlier LUT control cleanup (2026-09-08)
 
-Rendering > Display calibration LUT (3D LUT) contains the single editable
-**Gamma expected by the LUT** control. Color / Output no longer displays a
+At this earlier stage, Rendering > Display calibration LUT (3D LUT) contained
+the single editable **Gamma expected by the LUT** control. Color / Output no longer displays a
 duplicate saved-value row. Default and inheritance labels describe input gamma
 without exposing the previous storage location. Existing configuration loading
 and rendering behavior are unchanged.

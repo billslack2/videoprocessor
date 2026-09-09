@@ -152,13 +152,33 @@ namespace LibplaceboOutput
 	}
 
     SdrTransfer ResolveRenderTargetTransfer(GammaRequest displayGamma,
-        GammaRequest lutInputGamma, bool lutActive, SdrTransfer acceptedTransfer)
+        GammaRequest hdrTargetGamma, bool lutActive, SdrTransfer acceptedTransfer)
     {
-        const auto display = ResolveCalibrationTargetTransfer(displayGamma, acceptedTransfer);
-        // Unsupported here represents the explicit "display" compatibility choice.
-        return lutActive && lutInputGamma != GammaRequest::UNSUPPORTED &&
-            lutInputGamma != GammaRequest::AUTO ?
-            ResolveCalibrationTargetTransfer(lutInputGamma, display) : display;
+        return lutActive ? ResolveCalibrationTargetTransfer(hdrTargetGamma, SdrTransfer::GAMMA22)
+            : ResolveCalibrationTargetTransfer(displayGamma, acceptedTransfer);
+    }
+
+    CalibrationTransferDecision ResolveCalibrationTransfers(bool inputIsSdr,
+        bool outputSafe, bool lutActive, SdrAdjustGamma requested,
+        GammaRequest displayGamma, GammaRequest hdrTargetGamma,
+        SdrTransfer declaredSource, SdrTransfer acceptedTransfer)
+    {
+        CalibrationTransferDecision result;
+        result.targetTransfer = lutActive && inputIsSdr ? declaredSource :
+            ResolveRenderTargetTransfer(displayGamma, hdrTargetGamma, lutActive, acceptedTransfer);
+        result.sdr = ResolveSdrGamma(requested, inputIsSdr, outputSafe,
+            displayGamma, declaredSource, requested == SdrAdjustGamma::PRESERVE_CODES ?
+                result.targetTransfer : acceptedTransfer);
+        if (lutActive && inputIsSdr) {
+            // Keep the source description truthful for all linear-light work.
+            // Re-encoding to the same response avoids a separate gamma change.
+            result.sdr.effectiveSource = declaredSource;
+            result.sdr.actualTarget = declaredSource;
+            result.sdr.action = outputSafe ? SdrGammaAction::SUPPRESS : SdrGammaAction::BLOCKED;
+            result.sdr.reason = outputSafe ? "calibration LUT: SDR source response retained through processing" :
+                "the accepted output contract is unsafe";
+        }
+        return result;
     }
 
 	Plan MakePlan(const Request& request)

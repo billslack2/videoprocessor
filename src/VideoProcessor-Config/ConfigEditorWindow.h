@@ -48,6 +48,9 @@ public:
         const QStringList& shaders, bool shaderAvailable = true,
         const QString& zoom = {}, const QString& scaling = {},
         const QString& output = {});
+    void setCalibrationStatusForTesting(bool available, bool attached,
+        quint64 configIdentity, const QString& configPath,
+        const QString& renderer, const QString& color, bool hdrSource = false);
     void setRendererDiscoveryForTesting(const QStringList& allRenderers,
         const QStringList& filteredRenderers);
 
@@ -138,6 +141,7 @@ private:
         const QString& zoom = {}, const QString& scaling = {},
         const QString& output = {});
     void refreshRendererAutoStatus();
+    void refreshCalibrationControls();
     void seedCalibratedProfile(const QString& root, const QString& section);
     QMap<QString, QString> outputTransportSelections() const;
     void synchronizeLimitedTransportFlags(const QMap<QString, QString>& before, const QString& editedSection = {});
@@ -205,4 +209,11 @@ private:
     };
     std::vector<RendererAutoStatusBinding> rendererAutoStatusBindings_;
     QString liveSourceTransfer_;
+    bool liveCalibrationAvailable_ = false;
+    bool liveCalibrationLutAttached_ = false;
+    bool liveCalibrationHdrSource_ = false;
+    quint64 liveCalibrationConfigIdentity_ = 0;
+    QString liveCalibrationConfigPath_;
+    QString liveCalibrationRenderer_;
+    QString liveCalibrationColor_;
 };

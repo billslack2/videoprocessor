@@ -13,17 +13,17 @@ namespace LibplaceboCalibrationLut
                 inputTransfer == other.inputTransfer && baseDirectory == other.baseDirectory;
         }
     };
-    inline std::string InputContractKey(const std::string& input, const std::string& display)
+    // HDR output encoding is owned by Rendering. Old "display"/omitted values
+    // become the explicit beta default, never a dependency on physical gamma.
+    inline std::string ResolveHdrTargetGamma(const std::string& canonical,
+        const std::string& legacyRendering)
     {
-        return input == "display" ? "display:" + display : input;
+        const std::string value = canonical.empty() ? legacyRendering : canonical;
+        return value.empty() || value == "display" || value == "auto" ? "2.2" : value;
     }
-
-    // Empty Rendering input retains existing Color/base behavior; 'display'
-    // is an explicit override, not omission.
-    inline std::string ResolveInputTransfer(const std::string& savedInput,
-        const std::string& renderingInput)
+    inline std::string HdrInputContractKey(const std::string& hdrGamma)
     {
-        return renderingInput.empty() ? savedInput : renderingInput;
+        return "sdr-source/hdr:" + ResolveHdrTargetGamma(hdrGamma, {});
     }
 
 	enum class Primaries

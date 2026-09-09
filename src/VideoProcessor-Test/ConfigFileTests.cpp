@@ -3017,7 +3017,7 @@ namespace VideoProcessorTest
 			Assert::AreEqual("high", bt2020->second.settings.at("quality").c_str());
 			Assert::AreEqual("bt2020",
 				ConfigFile::NormalizeName(
-					bt2020->second.settings.at("sdr_target_primaries")).c_str());
+					bt2020->second.settings.at("target_primaries")).c_str());
 			Assert::AreEqual("true",
 				ConfigFile::NormalizeName(
 					bt2020->second.settings.at("report_bt2020_to_display")).c_str());
@@ -4875,7 +4875,68 @@ namespace VideoProcessorTest
 			DeleteFileA(path.c_str());
 		}
 
-        TEST_METHOD(LutInputTransferBelongsToRenderingAndAcceptsOldColorFallback)
+        TEST_METHOD(HdrToneMapTargetGammaAndTargetPrimariesValidateCanonicalAndOldKeys)
+        {
+            for (const std::string value : { "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" })
+            {
+                Assert::IsTrue(RendererProfileConfig::ValidateTargetRendererSetting("hdr_tone_map_target_gamma", value));
+                Assert::IsFalse(RendererProfileConfig::ValidateColorConfigSetting("hdr_tone_map_target_gamma", value));
+            }
+            for (const std::string value : { "auto", "display", "pq", "2.5", "" })
+                Assert::IsFalse(RendererProfileConfig::ValidateTargetRendererSetting("hdr_tone_map_target_gamma", value));
+            for (const std::string value : { "rec709", "p3_d65", "bt2020" })
+                for (const std::string key : { "target_primaries", "sdr_target_primaries" })
+                {
+                    Assert::IsTrue(RendererProfileConfig::ValidateTargetRendererSetting(key, value));
+                    Assert::IsTrue(RendererProfileConfig::ValidateColorConfigSetting(key, value));
+                }
+            Assert::IsFalse(RendererProfileConfig::ValidateColorConfigSetting("target_primaries", "auto"));
+        }
+
+        TEST_METHOD(RendererAliasesResolvePerSectionBeforeProfileInheritance)
+        {
+            char directory[MAX_PATH] = {};
+            Assert::IsTrue(GetTempPathA(ARRAYSIZE(directory), directory) > 0);
+            const std::string path = std::string(directory) + "VP0174-renderer-alias-inheritance.cfg";
+            // Exercise both an explicit root baseline and a first named profile.
+            for (const char* root : { "vprenderer", "vprenderer.Default" })
+            {
+                {
+                    std::ofstream file(path);
+                    file << "[" << root << "]\nhdr_tone_map_target_gamma: 2.6\n"
+                        "[vprenderer.OldChild]\ncalibration_lut_input_transfer: 2.4\n"
+                        "[vprenderer.DisplayChild]\ncalibration_lut_input_transfer: display\n"
+                        "[vprenderer.BothChild]\nhdr_tone_map_target_gamma: 2.0\ncalibration_lut_input_transfer: 2.8\n"
+                        "[vprenderer.Inherited]\nquality: high\n"
+                        "[vprenderer.color.Default]\ntarget_primaries: rec709\n"
+                        "[vprenderer.color.OldChild]\nsdr_target_primaries: bt2020\n"
+                        "[vprenderer.color.BothChild]\ntarget_primaries: p3_d65\nsdr_target_primaries: bt2020\n";
+                }
+                ConfigFile config;
+                Assert::IsTrue(config.Load(path));
+                RendererProfileConfig::Model model;
+                std::string error;
+                Assert::IsTrue(RendererProfileConfig::Read(config, model, error),
+                    std::wstring(error.begin(), error.end()).c_str());
+                Assert::AreEqual(std::string("2.4"), model.profiles.at("display.oldchild").settings.at("hdr_tone_map_target_gamma"));
+                Assert::AreEqual(std::string("2.2"), model.profiles.at("display.displaychild").settings.at("hdr_tone_map_target_gamma"));
+                Assert::AreEqual(std::string("2.0"), model.profiles.at("display.bothchild").settings.at("hdr_tone_map_target_gamma"));
+                if (std::string(root) == "vprenderer")
+                    Assert::IsTrue(model.profiles.at("display.inherited").settings.count("hdr_tone_map_target_gamma") == 0,
+                        L"Root Rendering values are applied by the runtime baseline, not copied into profiles");
+                else
+                    Assert::AreEqual(std::string("2.6"), model.profiles.at("display.inherited").settings.at("hdr_tone_map_target_gamma"));
+                Assert::AreEqual(std::string("bt2020"), model.profiles.at("color.oldchild").settings.at("target_primaries"));
+                Assert::AreEqual(std::string("p3_d65"), model.profiles.at("color.bothchild").settings.at("target_primaries"));
+                Assert::IsTrue(model.profiles.at("display.oldchild").settings.count("calibration_lut_input_transfer") == 0);
+                Assert::IsTrue(model.profiles.at("color.oldchild").settings.count("sdr_target_primaries") == 0);
+                // The parsed source retains its original spelling for diagnostics.
+                Assert::IsTrue(config.GetSectionValues("vprenderer.oldchild")->count("calibration_lut_input_transfer") == 1);
+            }
+            DeleteFileA(path.c_str());
+        }
+
+        TEST_METHOD(OldLutInputKeysRemainLoadableInTheirOriginalSections)
         {
             for (const std::string value : { "display", "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" })
             {

@@ -9,6 +9,7 @@
 #pragma once
 
 #include <map>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -22,6 +23,7 @@ public:
 	bool Load(const std::string& filename = DEFAULT_FILENAME);
 	bool IsLoaded() const { return m_loaded; }
 	const std::string& GetLoadedPath() const { return m_loadedPath; }
+    uint64_t GetContentIdentity() const { return m_contentIdentity; }
 	const std::vector<std::string>& GetWarnings() const { return m_warnings; }
 	bool HasSection(const std::string& section) const;
 	bool TryGetString(const std::string& section, const std::string& key, std::string& value) const;
@@ -57,4 +59,5 @@ private:
 	std::vector<std::string> m_warnings;
 	std::string m_loadedPath;
 	bool m_loaded = false;
+    uint64_t m_contentIdentity = 0;
 };
