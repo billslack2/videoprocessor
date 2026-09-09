@@ -2,12 +2,17 @@
 
 ## Status
 
-Review (2026-09-08). Direct Config descriptions and window-order correction deployed.
-Startup compatibility regression previously fixed and deployed.
-Latest correction `4cfb56cd`; prior unified-profile implementation `2c0e0223`.
-Commit `2c0e0223` on `codex/vp-0174-config-ui`, based on verified latest beta
-`v1.3.005-beta` at `38e7508f`.
+Review (2026-09-08). REQ-004 SDR/HDR calibration workflow implemented, independently
+reviewed and deployed for beta testing. Current source commit `1940d790` on
+`codex/vp-0174-config-ui`, based on verified beta `v1.3.005-beta` at `89d55ca5`.
+Full x64 Release build, 1,123 native tests, an additional configuration-identity
+test and nine focused UI scenarios passed. Actual capture, continuous live LUT
+replacement and physical HDMI/display response remain unverified this session:
+DeckLink input 2 produced no frames during the capture smoke test.
 PR: https://github.com/billslack2/videoprocessor/pull/82 (not merged).
+
+The current REQ-004 contract below supersedes earlier historical LUT-input-gamma
+semantics in this story. No active user configuration was edited during deployment.
 
 Originally backlog (2026-09-07). Created from an operator-facing settings guide and the
 request to make the renderer's calibrated-display choices explicit, stable,
@@ -38,18 +43,19 @@ The baseline default calibrated-display profile is:
 
 | Setting | Default effective value |
 | --- | --- |
-| Display primaries | Rec.709 |
-| SDR input transfer | Gamma 2.2 |
+| Target gamut | Rec.709 |
+| Expected source SDR gamma | Gamma 2.2 |
 | Display transfer | Gamma 2.2 |
 | RGB output range | Full |
 | Limited transport transfer | 2.2 beta, inactive while output is Full |
+| HDR tone-map target gamma (with usable LUT) | Gamma 2.2 |
 | Target nits (HDR tone mapping) | 100 |
 | Target black (HDR tone mapping) | 0 |
 | Dither target depth | 10-bit, clamped to output surface |
-| Dithering | Use quality preset |
+| Dithering | Auto (quality preset) |
 | Limited + pure Gamma 2.2 flag | Derived: On only for Limited + 2.2 |
 
-The implementation must preserve an operator's existing explicit values during
+Except for documented, user-approved beta behavior changes, preserve an operator's existing explicit values during
 configuration migration. It must not overwrite calibration, profile overrides,
 or deployed configuration merely to apply these defaults.
 
@@ -388,3 +394,54 @@ saved config tokens retain semantics. Complete Release validation/deployment pen
 - Backup: C:\Videoprocessor\vp\backup-before-vp0174-post-lldv-20260908-152045.
   Open Config session preserved by retaining loaded images in the backup. Save edits,
   tray Exit and reopen Config before testing the newly merged LLDV/profile UI.
+
+### REQ-004: One job per gamma setting, implemented and deployed (2026-09-08)
+
+The user approved implementation after an independent rendering specialist review.
+The current calibration contract is:
+
+| Rendering state | Transfer behavior |
+| --- | --- |
+| SDR with a usable attached LUT | Keep the declared source response; encode the pre-LUT target with that same response. Physical display gamma, SDR gamma processing and HDR target gamma do not change this SDR transfer stage. |
+| HDR with a usable attached LUT | Preserve the HDR source description; tone/gamut map and encode using the Rendering profile's explicit HDR tone-map target gamma, default 2.2. |
+| No usable LUT | Preserve the existing physical-display gamma path and saved SDR gamma-processing behavior. HDR target gamma is inactive. |
+
+- Rendering owns **HDR tone-map target gamma** beside Target nits and the LUT
+  workflow. Color / Output uses **Display target**, **Target gamut**, and
+  **Expected source SDR gamma**. The source field remains editable; inactive
+  controls follow confirmed runtime attachment only when the configuration path,
+  content identity and selected Color/Rendering profiles match the editor.
+- `target_primaries` is canonical for SDR and HDR; the old `sdr_target_primaries`
+  spelling still loads. Old Rendering `calibration_lut_input_transfer` values
+  load as HDR target gamma, with `display` mapping to 2.2. Old Color
+  `calibration_lut_input_gamma` loads without error but is ignored with a
+  diagnostic. Canonical values win within a section; child aliases override
+  inherited values. Explicit edits preserve comments while replacing old keys.
+- Source and target transfers matching preserves the SDR transfer stage; gamut
+  mapping, range handling, scaling and LUT correction still operate. This is not
+  raw-byte passthrough. Supported LUTs must be prepared for the declared SDR
+  response, selected target gamut and HDR target encoding. Existing paired SDR
+  source/target luminance references and all no-LUT behavior remain unchanged.
+- Independent reviewer approved beta deployment with no implementation blocker.
+  A review finding about document identity forcing unnecessary live rebuilds was
+  corrected before the successful final build.
+- Commit `1940d790ff505d68437859198e596ec96e9d1b2b` is published to PR #82 from
+  `E:\codex\videoprocessor\vp-0174-lut-workflow`, retaining the latest merged
+  LLDV beta base `89d55ca5`.
+- Full x64 Release build passed. All 1,123 native tests passed, including GPU
+  SDR/HDR ramps, Full/Limited transport, gamut mapping, corrective LUT application,
+  missing-LUT fallback, aliases and no-LUT compatibility. An additional native
+  configuration-identity test passed across eight LF/CRLF, BOM and final-newline
+  combinations. Nine focused Config UI scenarios passed.
+- Capture smoke could not reach rendering: DeckLink input 2 reported raw=0 and
+  converted=0. The test instance was closed normally. Actual capture, continuous
+  live LUT replacement and physical HDMI/display response are not hardware-validated
+  in this session; synthetic GPU tests do not establish optical correctness.
+- Matched Release host/renderer, Config/helper and current documentation deployed.
+  Every installed file hash matches its staged artifact. Backup/evidence:
+  `C:\Videoprocessor\vp\backup-before-vp0174-req004-20260908-231130`.
+  Active configuration edits: none; SHA256
+  `1431C7A86D2362C13026372896DB83AEF015720E1F17BF1880D1669B0153FBD7`.
+- The running Config session and its unsaved document were preserved by retaining
+  loaded images in the backup. Save edits, use tray Exit, then reopen Config to
+  load the updated application. PR #82 remains open for review.
