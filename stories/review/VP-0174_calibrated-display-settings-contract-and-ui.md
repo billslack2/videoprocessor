@@ -2,17 +2,24 @@
 
 ## Status
 
-Review (2026-09-08). REQ-004 SDR/HDR calibration workflow implemented, independently
-reviewed and deployed for beta testing. Current source commit `1940d790` on
-`codex/vp-0174-config-ui`, based on verified beta `v1.3.005-beta` at `89d55ca5`.
-Full x64 Release build, 1,123 native tests, an additional configuration-identity
-test and nine focused UI scenarios passed. Actual capture, continuous live LUT
-replacement and physical HDMI/display response remain unverified this session:
-DeckLink input 2 produced no frames during the capture smoke test.
+Review (2026-09-09). Complete Color / Output calibration profiles implemented,
+independently reviewed and deployed for beta testing. Current source commit
+`40d339d8` on PR #82, based on beta `v1.3.005-beta` at `89d55ca5`.
+LUT enablement/files and HDR tone-map target gamma now belong to Color / Output;
+general tone mapping, Target nits and Target black remain in Rendering.
+
+Clean x64 Release rebuild and final committed Release build passed. All native
+failures are resolved across the 1,130-test run and its documentation-only focused
+rerun; all 14 focused Config scenarios passed. Both outstanding synthetic GPU
+comparisons passed. Actual capture, continuous live LUT replacement and physical
+HDMI/display response remain unverified. Deployed VP restarted and loaded the
+existing configuration successfully; the configuration file was not edited.
 PR: https://github.com/billslack2/videoprocessor/pull/82 (not merged).
 
-The current REQ-004 contract below supersedes earlier historical LUT-input-gamma
-semantics in this story. No active user configuration was edited during deployment.
+The latest completion entry below supersedes earlier historical ownership and
+LUT-input-gamma semantics. One Color selection now supplies the full calibration
+contract. Prior Rendering calibration sets are preserved by the documented
+migration, including manual variants for distinct sets and inactive originals.
 
 Originally backlog (2026-09-07). Created from an operator-facing settings guide and the
 request to make the renderer's calibrated-display choices explicit, stable,
@@ -445,3 +452,52 @@ The current calibration contract is:
 - The running Config session and its unsaved document were preserved by retaining
   loaded images in the backup. Save edits, use tray Exit, then reopen Config to
   load the updated application. PR #82 remains open for review.
+
+### Complete Color / Output calibration profile deployed (2026-09-09)
+
+- User approved moving the existing Display calibration LUT section from Rendering
+  into Color / Output, with HDR tone-map target gamma inside that LUT section.
+  General tone mapping, Target nits and Target black stay in Rendering.
+- A selected Color profile now supplies target gamut, physical display response,
+  LUT enablement, all three files, HDR gamma and output transport together.
+  Rendering profile changes cannot overwrite its calibration contract. Runtime
+  now applies a literal Color-root baseline before a selected child. Explicit
+  `none` clears a LUT slot; omission inherits. Live inactivity follows the active
+  Color profile and matching configuration path/content rather than the browsed
+  Rendering profile. No production SDR/HDR pixel math changed in this move.
+- Migration resolves the first effective Rendering calibration set into existing
+  Color profiles, retaining explicit Color calibration choices. Other distinct or
+  displaced sets become manual Color variants, copying effective Color settings.
+  Existing Color names/default/rules/shortcuts remain. Extra variants have no
+  invented automatic rules or shortcuts; old Rendering activation of those LUT
+  sets does not automatically carry over. Complete contracts preserve explicit
+  false/none/default gamma; equivalent sets are deduplicated.
+- Original Rendering sections, selectors and comments survive in inactive
+  `calibration_archive.*` records. Only calibration keys leave active Rendering.
+  Runtime loading migrates in memory. Config saves with an exact-original backup;
+  actual migration, save, reload, validation and idempotence are tested. Both
+  target and older parser paths accept archived sections. No user config overwrite.
+- Independent rendering specialist review approved beta deployment with no
+  remaining implementation blocker. New GPU checks pass for finite-black
+  BT.1886 versus 2.4 SDR and colored PQ/HLG BT.2020 mapped into P3-D65 versus
+  Rec.709, including downstream LUT correction. These close the two synthetic
+  validation gaps recorded in the original feedback review.
+- Clean x64 Release rebuild passed. Final native run: 1,129 of 1,130 passed;
+  the sole documentation-reference failure was corrected and its focused rerun
+  passed. All 14 Config scenarios passed, including real save acknowledgement,
+  alias migration, ownership, profile switching, None/inheritance, LUT discovery,
+  section layout, every-page round trips and unchanged luminance/LLDV controls.
+  Final committed Release build passed and reports `40d339d`, dirty=false.
+- Source `40d339d8e5ef4a5a2ea22251966745b58db6a08a` published to PR #82 from
+  `E:\codex\videoprocessor\vp-0174-calibration-profile`. Verified beta remains
+  `89d55ca5`. All 58 staged Release artifacts verified before deployment.
+- Deployed matched host/renderer, Config/helper and current documentation; installed
+  hashes match staged files. Backup and evidence:
+  `C:\Videoprocessor\vp\backup-before-vp0174-calibration-profile-20260909-083627`.
+  Configuration edits: none. Preserved SHA256:
+  `1431C7A86D2362C13026372896DB83AEF015720E1F17BF1880D1669B0153FBD7`.
+- VP was closed normally and restarted as PID46064. Startup accepted the active
+  configuration and restored its saved profile state. It remained awaiting a
+  render graph, so actual capture/live LUT replacement and optical output were
+  not validated. The open Config session was preserved with its loaded images in
+  the backup; save edits, tray Exit and reopen Config to use the deployed UI.
