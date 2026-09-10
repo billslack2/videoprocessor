@@ -11,7 +11,7 @@
 
 #include <video_frame_formatter/IVideoFrameFormatter.h>
 #include <thread>
-#include <atomic>
+#include <condition_variable>
 #include <mutex>
 #include <functional>
 
@@ -55,6 +55,7 @@ public:
 		return { VideoFrameSampleRange::LIMITED, 10, 6 };
 	}
 
+	// Configure/reload only between FormatVideoFrame calls; the formatter has one caller.
 	// Configuration methods for conversion behavior
 	void SetConversionMethod(ConversionMethod method) { m_conversionMethod = method; }
 	ConversionMethod GetConversionMethod() const { return m_conversionMethod; }
@@ -81,7 +82,7 @@ private:
 
 	// ========================================
 	// Thread pool for parallel processing
-	// Uses simple spin-wait pattern for low latency
+	// Sleeps on work/completion predicates instead of polling
 	// Dynamically scales based on available CPU cores
 	// ========================================
 	uint32_t GetMaxThreadCount() const
@@ -123,7 +124,10 @@ private:
 	struct ThreadContext
 	{
 		std::thread thread;
-		std::atomic<int> state{0};  // 0=idle, 1=working, 2=exit
+		std::mutex mutex;
+		std::condition_variable workReady;
+		std::condition_variable workDone;
+		int state = 0;  // Protected by mutex: 0=idle, 1=working, 2=exit
 		ThreadWorkItem work;
 		
 		ThreadContext() = default;
@@ -136,8 +140,10 @@ private:
 	
 	std::unique_ptr<ThreadContext[]> m_threadContexts;
 	bool m_threadsInitialized = false;
+	bool m_threadPoolUnavailable = false;
+	uint32_t m_startedThreadCount = 0;
 	
-	void InitializeThreadPool();
+	bool InitializeThreadPool();
 	void ShutdownThreadPool();
 	static void ThreadWorkerStatic(CV210toP010VideoFrameFormatter* self, uint32_t threadIndex);
 	

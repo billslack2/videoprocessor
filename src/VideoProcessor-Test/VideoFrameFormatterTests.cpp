@@ -1944,6 +1944,133 @@ namespace Tests
 		}
 
 
+
+		TEST_METHOD(V210P010PacedCpuBenchmark)
+		{
+			// Opt-in measurement: run this test alone with VP_P010_CPU_BENCHMARK=1.
+			// CPU is test-host process time, normalized over logical processors.
+			if (GetEnvironmentVariableA("VP_P010_CPU_BENCHMARK", nullptr, 0) == 0)
+				return;
+			using Formatter = CV210toP010VideoFrameFormatter;
+			using Clock = std::chrono::steady_clock;
+			const auto processCpuMs = []() {
+				FILETIME created{}, exited{}, kernel{}, user{};
+				Assert::IsTrue(GetProcessTimes(GetCurrentProcess(), &created, &exited, &kernel, &user) != FALSE);
+				ULARGE_INTEGER k{}, u{};
+				k.LowPart = kernel.dwLowDateTime; k.HighPart = kernel.dwHighDateTime;
+				u.LowPart = user.dwLowDateTime; u.HighPart = user.dwHighDateTime;
+				return static_cast<double>(k.QuadPart + u.QuadPart) / 10000.0;
+			};
+			const double logicalProcessors = std::max(1U, std::thread::hardware_concurrency());
+			VideoStateComPtr state = new VideoState();
+			state->valid = true;
+			state->displayMode = std::make_shared<DisplayMode>(3840, 2160, false, 60, 1);
+			state->videoFrameEncoding = VideoFrameEncoding::V210;
+			std::vector<std::vector<BYTE>> inputs(8), outputs(8);
+			for (size_t slot = 0; slot < inputs.size(); ++slot)
+			{
+				inputs[slot].resize(state->BytesPerFrame());
+				FillBenchmarkPattern(inputs[slot], static_cast<uint32_t>(slot + 1));
+				outputs[slot].resize(3840ULL * 2160ULL * 3ULL);
+			}
+			for (const auto policy : { Formatter::ChromaDownsampling::AVERAGE, Formatter::ChromaDownsampling::LEGACY })
+				for (const uint32_t helpers : { 1U, 2U })
+				{
+					Formatter formatter;
+					formatter.SetConversionMethod(Formatter::ConversionMethod::SIMD);
+					formatter.SetChromaDownsampling(policy);
+					formatter.SetMinCoreCount(1);
+					formatter.SetMaxCoreCount(helpers);
+					formatter.OnVideoState(state);
+					for (size_t n = 0; n < 16; ++n)
+					{
+						const size_t slot = n % inputs.size();
+						VideoFrame frame(inputs[slot].data(), n + 1, 0, nullptr);
+						Assert::IsTrue(formatter.FormatVideoFrame(frame, outputs[slot].data()));
+					}
+					const double idleCpuStart = processCpuMs();
+					const auto idleStart = Clock::now();
+					std::this_thread::sleep_for(std::chrono::milliseconds(400));
+					const double idleMs = std::chrono::duration<double, std::milli>(Clock::now() - idleStart).count();
+					const double idleCpuMs = processCpuMs() - idleCpuStart;
+					wchar_t line[400];
+					swprintf_s(line, L"P010CPU|policy=%s|helpers=%u|fps=0|wall_ms=%.1f|cpu_ms=%.1f|cpu_percent=%.2f|logical=%.0f",
+						policy == Formatter::ChromaDownsampling::AVERAGE ? L"AVERAGE" : L"LEGACY",
+						helpers, idleMs, idleCpuMs, 100.0 * idleCpuMs / idleMs / logicalProcessors, logicalProcessors);
+					Logger::WriteMessage(line);
+					for (const int fps : {24, 60})
+					{
+						std::vector<double> conversionMs;
+						const int frameCount = fps * 2;
+						const double cpuStart = processCpuMs();
+						const auto start = Clock::now();
+						for (int n = 0; n < frameCount; ++n)
+						{
+							const size_t slot = static_cast<size_t>(n) % inputs.size();
+							VideoFrame frame(inputs[slot].data(), n + 1, 0, nullptr);
+							const auto begin = Clock::now();
+							Assert::IsTrue(formatter.FormatVideoFrame(frame, outputs[slot].data()));
+							conversionMs.push_back(std::chrono::duration<double, std::milli>(Clock::now() - begin).count());
+							std::this_thread::sleep_until(start + std::chrono::microseconds(1000000LL * (n + 1) / fps));
+						}
+						const double wallMs = std::chrono::duration<double, std::milli>(Clock::now() - start).count();
+						const double cpuMs = processCpuMs() - cpuStart;
+						const double avg = std::accumulate(conversionMs.begin(), conversionMs.end(), 0.0) / conversionMs.size();
+						std::sort(conversionMs.begin(), conversionMs.end());
+						swprintf_s(line, L"P010CPU|policy=%s|helpers=%u|fps=%d|frames=%d|wall_ms=%.1f|cpu_ms=%.1f|cpu_percent=%.2f|avg_ms=%.3f|p95_ms=%.3f|max_ms=%.3f",
+							policy == Formatter::ChromaDownsampling::AVERAGE ? L"AVERAGE" : L"LEGACY",
+							helpers, fps, frameCount, wallMs, cpuMs, 100.0 * cpuMs / wallMs / logicalProcessors,
+							avg, BenchmarkPercentile(conversionMs, 0.95), conversionMs.back());
+						Logger::WriteMessage(line);
+					}
+				}
+		}
+
+
+		TEST_METHOD(V210P010BlockingWorkersWakeAndReloadWithoutStaleFrames)
+		{
+			using Formatter = CV210toP010VideoFrameFormatter;
+			char directory[MAX_PATH] = {}, filename[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(MAX_PATH, directory) > 0);
+			Assert::IsTrue(GetTempFileNameA(directory, "vpw", 0, filename) != 0);
+			struct Cleanup { const char* path; ~Cleanup() { DeleteFileA(path); } } cleanup{filename};
+			VideoStateComPtr state = new VideoState();
+			state->valid = true;
+			state->displayMode = std::make_shared<DisplayMode>(100, 722, false, 60, 1);
+			state->videoFrameEncoding = VideoFrameEncoding::V210;
+			std::vector<BYTE> input(state->BytesPerFrame()), expected(100U * 722U * 3U), output(expected.size());
+			for (int cycle = 0; cycle < 3; ++cycle)
+			{
+				Formatter threaded;
+				for (const auto policy : { Formatter::ChromaDownsampling::AVERAGE, Formatter::ChromaDownsampling::LEGACY })
+					for (const uint32_t helpers : {1U, 2U, 8U, 1U})
+					{
+						{
+							std::ofstream config(filename, std::ios::trunc);
+							config << "[directshow.conversion]\nconversion_method: SIMD\nmin_core_count: 1\nmax_core_count: " << helpers
+								<< "\nchroma_downsampling: " << (policy == Formatter::ChromaDownsampling::AVERAGE ? "AVERAGE" : "LEGACY") << "\n";
+						}
+						Assert::IsTrue(threaded.LoadConfigurationFile(filename));
+						threaded.OnVideoState(state);
+						Formatter scalar;
+						scalar.SetConversionMethod(Formatter::ConversionMethod::STANDARD);
+						scalar.SetChromaDownsampling(policy);
+						scalar.OnVideoState(state);
+						for (uint32_t n = 0; n < 32; ++n)
+						{
+							FillBenchmarkPattern(input, 1U + n + cycle * 32U);
+							VideoFrame frame(input.data(), n + 1, 0, nullptr);
+							Assert::IsTrue(scalar.FormatVideoFrame(frame, expected.data()));
+							Assert::IsTrue(threaded.FormatVideoFrame(frame, output.data()));
+							Assert::IsTrue(expected == output, L"A wakeup returned incomplete or stale pixels");
+							if (n % 8 == 0) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+						}
+						// Reload and destruction must wake helpers that are parked for work.
+						std::this_thread::sleep_for(std::chrono::milliseconds(2));
+					}
+			}
+		}
+
 		TEST_METHOD(V210P010ChromaPoliciesMatchIndependentPixelOracle)
 		{
 			using Formatter = CV210toP010VideoFrameFormatter;

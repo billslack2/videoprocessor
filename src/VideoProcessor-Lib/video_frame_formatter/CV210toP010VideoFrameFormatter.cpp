@@ -130,6 +130,7 @@ bool CV210toP010VideoFrameFormatter::LoadConfigurationFile(const char* filename)
     m_maxCoreCount = 1;
     m_actualMaxThreads = 0;
     m_cpuFeaturesChecked = false;
+    m_threadPoolUnavailable = false;
 
     ConfigFile unifiedConfig;
     if (unifiedConfig.Load(filename))
@@ -218,78 +219,80 @@ bool CV210toP010VideoFrameFormatter::LoadConfigurationFile(const char* filename)
 }
 
 // =====================================================================
-// Thread Pool Management - Simple spin-wait for low latency
+// Thread Pool Management - Blocking work and completion notifications
 // =====================================================================
-void CV210toP010VideoFrameFormatter::InitializeThreadPool()
+bool CV210toP010VideoFrameFormatter::InitializeThreadPool()
 {
     if (m_threadsInitialized)
-        return;
-    
-    uint32_t threadCount = GetActualMaxThreads();
-    m_threadContexts = std::make_unique<ThreadContext[]>(threadCount);
-    
-    for (uint32_t i = 0; i < threadCount; i++)
+        return true;
+    if (m_threadPoolUnavailable)
+        return false;
+
+    try
     {
-        m_threadContexts[i].state.store(0); // idle
-        m_threadContexts[i].thread = std::thread(ThreadWorkerStatic, this, i);
+        const uint32_t threadCount = GetActualMaxThreads();
+        m_threadContexts = std::make_unique<ThreadContext[]>(threadCount);
+        for (uint32_t i = 0; i < threadCount; ++i)
+        {
+            m_threadContexts[i].thread = std::thread(ThreadWorkerStatic, this, i);
+            ++m_startedThreadCount;
+        }
+        m_threadsInitialized = true;
+        return true;
     }
-    
-    m_threadsInitialized = true;
+    catch (...)
+    {
+        // Clean up even if only some helpers were started. A failed pool must
+        // not terminate the noexcept conversion path or retry every frame.
+        ShutdownThreadPool();
+        m_threadPoolUnavailable = true;
+        return false;
+    }
 }
 
 void CV210toP010VideoFrameFormatter::ShutdownThreadPool()
 {
-    if (!m_threadsInitialized)
-        return;
-    
-    uint32_t threadCount = GetActualMaxThreads();
-    
-    // Signal all threads to exit
-    for (uint32_t i = 0; i < threadCount; i++)
+    // The caller has finished its last frame before reload/destruction.
+    // Count started threads rather than configured threads for partial startup.
+    for (uint32_t i = 0; i < m_startedThreadCount; ++i)
     {
-        m_threadContexts[i].state.store(2); // exit
+        ThreadContext& ctx = m_threadContexts[i];
+        {
+            std::lock_guard<std::mutex> lock(ctx.mutex);
+            ctx.state = 2;
+        }
+        ctx.workReady.notify_one();
     }
-    
-    // Wait for all threads to finish
-    for (uint32_t i = 0; i < threadCount; i++)
+    for (uint32_t i = 0; i < m_startedThreadCount; ++i)
     {
         if (m_threadContexts[i].thread.joinable())
-        {
             m_threadContexts[i].thread.join();
-        }
     }
-    
     m_threadContexts.reset();
+    m_startedThreadCount = 0;
     m_threadsInitialized = false;
 }
 
 void CV210toP010VideoFrameFormatter::ThreadWorkerStatic(CV210toP010VideoFrameFormatter* self, uint32_t threadIndex)
 {
     ThreadContext& ctx = self->m_threadContexts[threadIndex];
-    
-    while (true)
+    std::unique_lock<std::mutex> lock(ctx.mutex);
+    for (;;)
     {
-        // Spin-wait for work (state == 1) or exit (state == 2)
-        int state;
-        while ((state = ctx.state.load(std::memory_order_acquire)) == 0)
-        {
-            // Yield to avoid burning CPU while idle
-            std::this_thread::yield();
-        }
-        
-        // Check if we should exit
-        if (state == 2)
-            break;
-            
-        // Do the work
-        self->ProcessLineSegment(
-            ctx.work.srcData, ctx.work.srcStride,
-            ctx.work.dstY, ctx.work.dstUV,
-            ctx.work.width, ctx.work.startLine, ctx.work.endLine
-        );
-        
-        // Signal completion by going back to idle
-        ctx.state.store(0, std::memory_order_release);
+        // Predicate handles spurious wakes and work published before we wait.
+        ctx.workReady.wait(lock, [&ctx] { return ctx.state != 0; });
+        if (ctx.state == 2)
+            return;
+
+        const ThreadWorkItem work = ctx.work;
+        lock.unlock();
+        self->ProcessLineSegment(work.srcData, work.srcStride,
+            work.dstY, work.dstUV, work.width, work.startLine, work.endLine);
+        lock.lock();
+        ctx.state = 0;
+        // Publishing completion under the mutex makes pixel writes visible
+        // before the caller returns the output buffer to the renderer.
+        ctx.workDone.notify_one();
     }
 }
 
@@ -503,14 +506,11 @@ bool CV210toP010VideoFrameFormatter::ConvertV210ToP010_Threaded(
     uint32_t width,
     uint32_t height) noexcept
 {
-    // Initialize thread pool if not already done
-    if (!m_threadsInitialized)
-    {
-        InitializeThreadPool();
-    }
-    
-    uint32_t threadCount = GetActualMaxThreads();
-    
+    if (!InitializeThreadPool())
+        return ConvertV210ToP010_SIMD(srcData, srcStride, dstY, dstUV, width, height);
+
+    const uint32_t threadCount = m_startedThreadCount;
+
     // Calculate line pairs per thread (must be even for P010 4:2:0)
     const uint32_t totalLinePairs = height / 2;
     const uint32_t linePairsPerThread = totalLinePairs / (threadCount + 1); // +1 for main thread
@@ -522,34 +522,28 @@ bool CV210toP010VideoFrameFormatter::ConvertV210ToP010_Threaded(
     {
         ThreadContext& ctx = m_threadContexts[i];
         
-        // Set up work item
-        ctx.work.srcData = srcData;
-        ctx.work.srcStride = srcStride;
-        ctx.work.dstY = dstY;
-        ctx.work.dstUV = dstUV;
-        ctx.work.width = width;
-        ctx.work.startLine = currentLine;
-        ctx.work.endLine = currentLine + linesPerThread;
-        
+        {
+            std::lock_guard<std::mutex> lock(ctx.mutex);
+            ctx.work = { srcData, srcStride, dstY, dstUV, width,
+                currentLine, currentLine + linesPerThread };
+            ctx.state = 1;
+        }
         currentLine += linesPerThread;
-        
-        // Signal work available (must be after work item is set up)
-        ctx.state.store(1, std::memory_order_release);
+        ctx.workReady.notify_one();
     }
-    
+
     // Main thread processes the remaining lines
     ProcessLineSegment(srcData, srcStride, dstY, dstUV, width, currentLine, height);
     
-    // Wait for all worker threads to complete (spin-wait)
-    for (uint32_t i = 0; i < threadCount; i++)
+    // Usually already complete; otherwise park until the helper publishes
+    // its output. No spinning while another thread is descheduled.
+    for (uint32_t i = 0; i < threadCount; ++i)
     {
-        while (m_threadContexts[i].state.load(std::memory_order_acquire) != 0)
-        {
-            // Brief pause to reduce bus contention
-            _mm_pause();
-        }
+        ThreadContext& ctx = m_threadContexts[i];
+        std::unique_lock<std::mutex> lock(ctx.mutex);
+        ctx.workDone.wait(lock, [&ctx] { return ctx.state == 0; });
     }
-    
+
     return true;
 }
 
