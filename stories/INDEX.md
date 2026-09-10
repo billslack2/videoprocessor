@@ -232,7 +232,7 @@ they must not contain requirements that are absent from this file.
 | VP-0179 | In progress | madVR BT.2020-to-Rec.709 return regression |
 | VP-0180 | Review | Remove standalone stats OSD window |
 
-| VP-0181 | Backlog | P010 default maximum one helper |
+| VP-0181 | Review | Reduce P010 CPU use with blocking waits and configurable chroma |
 
 ## Codex story workflow
 
@@ -399,3 +399,4 @@ blocker. Set its status to `Blocked` and record the evidence, exact blocker,
 safe interim behavior, and objective condition that resumes work. `Blocked` is
 not a parking state: when a concrete next action exists, move the story to the
 appropriate active state and record why.
+
