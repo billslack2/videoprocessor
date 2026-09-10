@@ -9,7 +9,7 @@ class InvalidCaptureStateGrace
 public:
 	static constexpr uint64_t DurationMs = 1500;
 
-	explicit InvalidCaptureStateGrace(bool boundedRecovery = false) :
+	explicit InvalidCaptureStateGrace(bool boundedRecovery = true) :
 		m_boundedRecovery(boundedRecovery) {}
 
 	void Configure(bool boundedRecovery)
@@ -46,7 +46,7 @@ public:
 	}
 
 private:
-	bool m_boundedRecovery = false;
+	bool m_boundedRecovery = true;
 	uint64_t m_capturedFrames = 0;
 	bool m_pending = false;
 	uint64_t m_startedMs = 0;

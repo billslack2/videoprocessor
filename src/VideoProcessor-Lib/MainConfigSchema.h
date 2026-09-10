@@ -50,9 +50,9 @@ namespace MainConfigSchema
 
 	inline bool BoundedInvalidCaptureRecoveryEnabled(const ConfigFile& config)
 	{
-		bool enabled = false;
-		return config.TryGetBool("general", "bounded_invalid_capture_recovery",
-			enabled) && enabled;
+		bool enabled = true;
+		config.TryGetBool("general", "bounded_invalid_capture_recovery", enabled);
+		return enabled;
 	}
 
 	inline bool Validate(const ConfigFile& config, std::string& error)

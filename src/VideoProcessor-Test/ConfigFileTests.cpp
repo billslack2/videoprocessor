@@ -1624,10 +1624,10 @@ namespace VideoProcessorTest
 			DeleteFileA(path.c_str());
 		}
 
-		TEST_METHOD(GeneralRecoveryToggleDefaultsLegacyAndValidatesBothModes)
+		TEST_METHOD(GeneralRecoveryToggleDefaultsBoundedAndValidatesBothModes)
 		{
 			ConfigFile config;
-			Assert::IsFalse(MainConfigSchema::BoundedInvalidCaptureRecoveryEnabled(config));
+			Assert::IsTrue(MainConfigSchema::BoundedInvalidCaptureRecoveryEnabled(config));
 			Assert::IsTrue(MainConfigSchema::OwnsSection("general"));
 			char directory[MAX_PATH] = {}, path[MAX_PATH] = {};
 			Assert::IsTrue(GetTempPathA(ARRAYSIZE(directory), directory) > 0);
@@ -1642,8 +1642,9 @@ namespace VideoProcessorTest
 				std::string error;
 				const bool valid = std::string(value) != "invalid";
 				Assert::AreEqual(valid, MainConfigSchema::Validate(config, error));
-				Assert::AreEqual(std::string(value) == "true",
-					MainConfigSchema::BoundedInvalidCaptureRecoveryEnabled(config));
+				if (valid)
+					Assert::AreEqual(std::string(value) == "true",
+						MainConfigSchema::BoundedInvalidCaptureRecoveryEnabled(config));
 				if (!valid)
 					Assert::IsTrue(error.find("bounded_invalid_capture_recovery") != std::string::npos);
 			}

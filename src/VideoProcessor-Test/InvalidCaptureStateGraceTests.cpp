@@ -9,9 +9,9 @@ namespace Tests
 	TEST_CLASS(InvalidCaptureStateGraceTests)
 	{
 	public:
-		TEST_METHOD(DefaultLegacyModeExtendsGraceAndRetainsAdvancingFrames)
+		TEST_METHOD(ExplicitLegacyModeExtendsGraceAndRetainsAdvancingFrames)
 		{
-			InvalidCaptureStateGrace grace;
+			InvalidCaptureStateGrace grace(false);
 			grace.ObserveInvalid(0, 100);
 			grace.ObserveInvalid(1000, 150);
 			Assert::AreEqual<uint64_t>(1000, grace.RemainingMs(1500));
@@ -20,9 +20,9 @@ namespace Tests
 			Assert::IsFalse(grace.RetainExpiredState(150));
 		}
 
-		TEST_METHOD(BoundedModeExpiresDespiteAdvancingFrames)
+		TEST_METHOD(DefaultBoundedModeExpiresDespiteAdvancingFrames)
 		{
-			InvalidCaptureStateGrace grace(true);
+			InvalidCaptureStateGrace grace;
 			grace.ObserveInvalid(0, 100);
 			grace.ObserveInvalid(1000, 150);
 			Assert::AreEqual<uint64_t>(0, grace.RemainingMs(1500));
@@ -31,7 +31,7 @@ namespace Tests
 
 		TEST_METHOD(ConfigurationSelectsModeAndClearsPendingEpisode)
 		{
-			InvalidCaptureStateGrace grace;
+			InvalidCaptureStateGrace grace(false);
 			grace.ObserveInvalid(0, 100);
 			grace.Configure(true);
 			Assert::IsFalse(grace.Pending());
