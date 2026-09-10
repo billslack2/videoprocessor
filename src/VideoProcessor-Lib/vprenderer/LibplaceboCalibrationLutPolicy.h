@@ -4,6 +4,28 @@
 
 namespace LibplaceboCalibrationLut
 {
+    struct Contract
+    {
+        std::string path, gamut, inputTransfer, baseDirectory;
+        bool operator==(const Contract& other) const
+        {
+            return path == other.path && gamut == other.gamut &&
+                inputTransfer == other.inputTransfer && baseDirectory == other.baseDirectory;
+        }
+    };
+    // HDR output encoding is owned by Rendering. Old "display"/omitted values
+    // become the explicit beta default, never a dependency on physical gamma.
+    inline std::string ResolveHdrTargetGamma(const std::string& canonical,
+        const std::string& legacyRendering)
+    {
+        const std::string value = canonical.empty() ? legacyRendering : canonical;
+        return value.empty() || value == "display" || value == "auto" ? "2.2" : value;
+    }
+    inline std::string HdrInputContractKey(const std::string& hdrGamma)
+    {
+        return "sdr-source/hdr:" + ResolveHdrTargetGamma(hdrGamma, {});
+    }
+
 	enum class Primaries
 	{
 		UNKNOWN,

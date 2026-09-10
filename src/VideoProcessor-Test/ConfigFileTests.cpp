@@ -6,6 +6,7 @@
 #include <ModernOperatorLayout.h>
 #include <ModernOperatorStatusPolicy.h>
 #include <ConfigFile.h>
+#include <ColorOutputProfileMigration.h>
 #include <ConfigurationLiveApply.h>
 #include <ConfigurationApplyPolicy.h>
 #include <DisplayTopologySession.h>
@@ -39,6 +40,103 @@ namespace VideoProcessorTest
 	TEST_CLASS(ConfigFileTests)
 	{
 	public:
+        TEST_METHOD(UnifiedColorOutputMigrationPreservesEveryBaselineSettingAndArchivesSelectors)
+        {
+            using namespace ColorOutputProfileMigration;
+            Settings baseline = {
+                {"output_presentation","direct"}, {"output_range","limited"},
+                {"output_transport_gamma","2.2"}, {"output_path_profile","custom"},
+                {"output_diagnostics","true"}, {"diagnostic_disable_shader_cache","true"},
+                {"diagnostic_disable_compute","true"}, {"diagnostic_force_8bit_sdr_swapchain","true"},
+                {"diagnostic_allow_limited_g22","true"}, {"diagnostic_allow_full_g22","false"},
+                {"diagnostic_vp_owned_dxgi_presenter","true"}, {"shortcut","F9"},
+                {"when","${width} > 1"}, {"cycle_shortcut","F10"} };
+            Sections sections = {{"vprenderer.output.first",baseline},
+                {"vprenderer.output.second",{{"output_range","full"},{"shortcut","F11"}}},
+                {"vprenderer.color.rec709",{{"output_gamma","2.2"},{"shortcut","F5"}}},
+                {"vprenderer.color.bt2020",{{"sdr_target_primaries","bt2020"},{"shortcut","F6"}}}};
+            std::vector<std::string> order = {"vprenderer.output.first","vprenderer.output.second",
+                "vprenderer.color.rec709","vprenderer.color.bt2020"};
+            Assert::IsTrue(Apply(sections, order));
+            for (const auto* color : {"vprenderer.color.rec709","vprenderer.color.bt2020"})
+                for (const auto& setting : baseline)
+                    if (!IsSelector(setting.first)) Assert::AreEqual(setting.second,
+                        sections.at(color).at(setting.first));
+            Assert::AreEqual(std::string("F5"), sections.at("vprenderer.color.rec709").at("shortcut"));
+            Assert::IsTrue(sections.at("legacy_output.first") == baseline);
+            Assert::AreEqual(std::string("F11"), sections.at("legacy_output.second").at("shortcut"));
+            Assert::IsFalse(Apply(sections, order));
+            Sections only = {{"vprenderer.output",baseline}};
+            std::vector<std::string> onlyOrder = {"vprenderer.output"};
+            Assert::IsTrue(Apply(only, onlyOrder));
+            Assert::AreEqual(std::string("limited"), only.at("vprenderer.color.default").at("output_range"));
+        }
+
+        TEST_METHOD(UnifiedColorOutputRuntimeMigrationRetainsRulesAndRejectsMalformedProfiles)
+        {
+            char directory[MAX_PATH] = {};
+            Assert::IsTrue(GetTempPathA(ARRAYSIZE(directory), directory) > 0);
+            const std::string path = std::string(directory) + "VP0174-runtime-migration.cfg";
+            {
+                std::ofstream file(path);
+                file << "[vprenderer.color.Rec709]\noutput_gamma: 2.2\nshortcut: F5\n"
+                    "[vprenderer.color.BT2020]\nwhen: ${width} > 1920\nsdr_target_primaries: bt2020\n"
+                    "[vprenderer.output.First]\noutput_range: limited\noutput_transport_gamma: 2.2\n"
+                    "diagnostic_allow_limited_g22: true\nshortcut: F9\n"
+                    "[vprenderer.output.First_2]\noutput_range: full\n"
+                    "[legacy_output.first]\noriginal: retained\n";
+            }
+            ConfigFile config;
+            Assert::IsTrue(config.Load(path));
+            RendererProfileConfig::Model model;
+            std::string error;
+            Assert::IsTrue(RendererProfileConfig::Read(config, model, error),
+                std::wstring(error.begin(), error.end()).c_str());
+            Assert::IsTrue(RendererProfileConfig::ValidateOwnedSections(config, error),
+                L"Startup rejected editor-compatible migrated Output archives");
+            for (const auto& group : model.groups) Assert::IsTrue(group.name != "output");
+            const auto& second = model.profiles.at("color.bt2020");
+            Assert::AreEqual(std::string("limited"), second.settings.at("output_range"));
+            Assert::AreEqual(std::string("2.2"), second.settings.at("output_gamma"));
+            Assert::AreEqual(std::string("${width} > 1920"), second.when);
+            Assert::IsTrue(config.HasSection("legacy_output.first_2"));
+            Assert::IsTrue(config.HasSection("legacy_output.first_2_2"));
+            Assert::AreEqual(std::string("retained"), config.GetSectionValues("legacy_output.first")->at("original"));
+            {
+                std::ofstream file(path);
+                file << "[vprenderer.output.bad.nested]\noutput_range: limited\n";
+            }
+            Assert::IsTrue(config.Load(path));
+            Assert::IsFalse(RendererProfileConfig::Read(config, model, error));
+            DeleteFileA(path.c_str());
+        }
+
+        TEST_METHOD(StartupOwnershipAcceptsOldAndSavedOutputArchivesButRejectsUnknownSections)
+        {
+            char directory[MAX_PATH] = {};
+            Assert::IsTrue(GetTempPathA(ARRAYSIZE(directory), directory) > 0);
+            const std::string path = std::string(directory) + "VP0174-startup-compatibility.cfg";
+            for (const char* section : {"vprenderer.output.Default", "legacy_output.default",
+                "legacy_output", "legacy_output_2", "legacy_output.default_2"})
+            {
+                { std::ofstream file(path); file << "[vprenderer.color.Rec709]\noutput_gamma: 2.2\n["
+                    << section << "]\noutput_range: limited\n"; }
+                ConfigFile config;
+                Assert::IsTrue(config.Load(path));
+                std::string error;
+                Assert::IsTrue(RendererProfileConfig::ValidateOwnedSections(config, error));
+                RendererProfileConfig::Model model;
+                Assert::IsTrue(RendererProfileConfig::Read(config, model, error));
+            }
+            // Only the reserved archive namespace is accepted, not arbitrary unknown owners.
+            { std::ofstream file(path); file << "[unknown_settings]\nvalue: kept\n"; }
+            ConfigFile config;
+            Assert::IsTrue(config.Load(path));
+            std::string error;
+            Assert::IsFalse(RendererProfileConfig::ValidateOwnedSections(config, error));
+            DeleteFileA(path.c_str());
+        }
+
 		TEST_METHOD(VideoConversionOverrideAcceptsConfiguredDisabledValues)
 		{
 			VideoConversionOverride parsed =
@@ -2538,7 +2636,7 @@ namespace VideoProcessorTest
 			Assert::AreEqual(static_cast<size_t>(3), items.size());
 			Assert::AreEqual("Rendering", items[0].label.c_str());
 			Assert::AreEqual("Rec709 Scope Med", items[0].value.c_str());
-			Assert::AreEqual("Color", items[1].label.c_str());
+			Assert::AreEqual("Color / Output", items[1].label.c_str());
 			Assert::AreEqual("Rec709", items[1].value.c_str());
 			Assert::AreEqual("Screen", items[2].label.c_str());
 			Assert::AreEqual("Scope", items[2].value.c_str());
@@ -2919,7 +3017,7 @@ namespace VideoProcessorTest
 			Assert::AreEqual("high", bt2020->second.settings.at("quality").c_str());
 			Assert::AreEqual("bt2020",
 				ConfigFile::NormalizeName(
-					bt2020->second.settings.at("sdr_target_primaries")).c_str());
+					bt2020->second.settings.at("target_primaries")).c_str());
 			Assert::AreEqual("true",
 				ConfigFile::NormalizeName(
 					bt2020->second.settings.at("report_bt2020_to_display")).c_str());
@@ -4776,6 +4874,185 @@ namespace VideoProcessorTest
 				error.find("switch_refresh_rate") != std::string::npos);
 			DeleteFileA(path.c_str());
 		}
+
+        TEST_METHOD(HdrToneMapTargetGammaAndTargetPrimariesValidateCanonicalAndOldKeys)
+        {
+            for (const std::string value : { "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" })
+            {
+                Assert::IsFalse(RendererProfileConfig::ValidateTargetRendererSetting("hdr_tone_map_target_gamma", value));
+                Assert::IsTrue(RendererProfileConfig::ValidateColorConfigSetting("hdr_tone_map_target_gamma", value));
+            }
+            for (const std::string value : { "auto", "display", "pq", "2.5", "" })
+                Assert::IsFalse(RendererProfileConfig::ValidateColorConfigSetting("hdr_tone_map_target_gamma", value));
+            for (const std::string value : { "rec709", "p3_d65", "bt2020" })
+                for (const std::string key : { "target_primaries", "sdr_target_primaries" })
+                {
+                    Assert::IsTrue(RendererProfileConfig::ValidateTargetRendererSetting(key, value));
+                    Assert::IsTrue(RendererProfileConfig::ValidateColorConfigSetting(key, value));
+                }
+            Assert::IsFalse(RendererProfileConfig::ValidateColorConfigSetting("target_primaries", "auto"));
+        }
+
+        TEST_METHOD(ColorCalibrationAliasesResolveBeforeInheritance)
+        {
+            char directory[MAX_PATH] = {};
+            Assert::IsTrue(GetTempPathA(ARRAYSIZE(directory), directory) > 0);
+            const std::string path = std::string(directory) + "VP0174-color-calibration-inheritance.cfg";
+            for (const char* root : { "vprenderer.color", "vprenderer.color.Default" })
+            {
+                {
+                    std::ofstream file(path);
+                    file << "[vprenderer.Default]\nquality: high\n"
+                        "[vprenderer.Fast]\nquality: fast\nwhen: ${width} > 2000\n"
+                        "[" << root << "]\nhdr_tone_map_target_gamma: 2.6\ntarget_primaries: rec709\n"
+                        "calibration_lut_enabled: true\ncalibration_lut_bt709: root.cube\n"
+                        "[vprenderer.color.OldChild]\ncalibration_lut_input_transfer: 2.4\nsdr_target_primaries: bt2020\n"
+                        "[vprenderer.color.DisplayChild]\ncalibration_lut_input_transfer: display\n"
+                        "[vprenderer.color.BothChild]\nhdr_tone_map_target_gamma: 2.0\ncalibration_lut_input_transfer: 2.8\n"
+                        "target_primaries: p3_d65\nsdr_target_primaries: bt2020\n"
+                        "[vprenderer.color.Inherited]\noutput_gamma: 2.2\n"
+                        "[vprenderer.color.Clear]\ncalibration_lut_enabled: false\ncalibration_lut_bt709: none\n";
+                }
+                ConfigFile config;
+                Assert::IsTrue(config.Load(path));
+                RendererProfileConfig::Model model;
+                std::string error;
+                Assert::IsTrue(RendererProfileConfig::Read(config, model, error),
+                    std::wstring(error.begin(), error.end()).c_str());
+                Assert::AreEqual(std::string("2.4"), model.profiles.at("color.oldchild").settings.at("hdr_tone_map_target_gamma"));
+                Assert::AreEqual(std::string("2.2"), model.profiles.at("color.displaychild").settings.at("hdr_tone_map_target_gamma"));
+                Assert::AreEqual(std::string("2.0"), model.profiles.at("color.bothchild").settings.at("hdr_tone_map_target_gamma"));
+                Assert::AreEqual(std::string("2.6"), model.profiles.at("color.inherited").settings.at("hdr_tone_map_target_gamma"));
+                Assert::AreEqual(std::string("root.cube"), model.profiles.at("color.inherited").settings.at("calibration_lut_bt709"));
+                Assert::AreEqual(std::string("true"), model.profiles.at("color.inherited").settings.at("calibration_lut_enabled"));
+                Assert::AreEqual(std::string("none"), model.profiles.at("color.clear").settings.at("calibration_lut_bt709"));
+                Assert::AreEqual(std::string("false"), model.profiles.at("color.clear").settings.at("calibration_lut_enabled"));
+                Assert::AreEqual(std::string("bt2020"), model.profiles.at("color.oldchild").settings.at("target_primaries"));
+                Assert::AreEqual(std::string("p3_d65"), model.profiles.at("color.bothchild").settings.at("target_primaries"));
+                for (const char* rendering : { "display.default", "display.fast" })
+                    for (const auto& value : model.profiles.at(rendering).settings)
+                        Assert::IsFalse(CalibrationProfileMigration::IsKey(value.first));
+                std::string colorSelection;
+                for (const char* width : { "1920", "3840" })
+                {
+                    std::vector<RendererProfileConfig::AutomaticSelection> selected;
+                    Assert::IsTrue(RendererProfileConfig::SelectAutomatic(model,
+                        [width](const std::string& key, std::string& value)
+                        { if (key != "width") return false; value = width; return true; }, selected, error));
+                    for (const auto& item : selected)
+                        if (item.group == "color")
+                        {
+                            Assert::IsFalse(item.profiles.empty());
+                            if (colorSelection.empty()) colorSelection = item.profiles.front();
+                            Assert::AreEqual(colorSelection, item.profiles.front());
+                        }
+                }
+                Assert::IsFalse(colorSelection.empty());
+            }
+            DeleteFileA(path.c_str());
+        }
+
+        TEST_METHOD(CalibrationArchivesPassRuntimeValidationForTargetAndOlderFormats)
+        {
+            char directory[MAX_PATH] = {};
+            Assert::IsTrue(GetTempPathA(ARRAYSIZE(directory), directory) > 0);
+            const std::string path = std::string(directory) + "VP0174-calibration-archive-ownership.cfg";
+            for (const char* section : { "vprenderer.color.default", "display" })
+                for (const char* archive : { "calibration_archive", "calibration_archive.default", "calibration_archive.default_2" })
+                {
+                    {
+                        std::ofstream file(path);
+                        file << "[" << section << "]\noutput_gamma: 2.2\n[" << archive << "]\n"
+                            "calibration_lut_input_transfer: display\nunknown_original_setting: preserved\n"
+                            "when: original selector retained verbatim\n";
+                    }
+                    ConfigFile config;
+                    Assert::IsTrue(config.Load(path));
+                    RendererProfileConfig::Model model;
+                    std::string error;
+                    Assert::IsTrue(RendererProfileConfig::ValidateOwnedSections(config, error),
+                        std::wstring(error.begin(), error.end()).c_str());
+                    const bool read = RendererProfileConfig::Read(config, model, error);
+                    Assert::IsTrue(read, std::wstring(error.begin(), error.end()).c_str());
+                    Assert::AreEqual(std::string("preserved"), config.GetSectionValues(archive)->at("unknown_original_setting"));
+                }
+            DeleteFileA(path.c_str());
+        }
+
+        TEST_METHOD(CalibrationMigrationPreservesDistinctSetsSelectorsAndArchiveCollisions)
+        {
+            using namespace CalibrationProfileMigration;
+            Sections sections = {
+                {"vprenderer.default", {{"quality","high"},{"calibration_lut_enabled","true"},{"calibration_lut_bt709","a.cube"},{"hdr_tone_map_target_gamma","2.2"},{"shortcut","F8"}}},
+                {"vprenderer.cinema", {{"quality","balanced"},{"calibration_lut_bt709","b.cube"},{"hdr_tone_map_target_gamma","2.4"},{"when","${width} > 2000"}}},
+                {"vprenderer.duplicate", {{"calibration_lut_bt709","b.cube"},{"calibration_lut_input_transfer","2.4"}}},
+                {"vprenderer.color.rec709", {{"target_primaries","rec709"},{"output_gamma","2.2"},{"shortcut","F5"}}},
+                {"vprenderer.color.bt2020", {{"target_primaries","bt2020"},{"output_gamma","2.4"},{"when","${width} > 2000"}}},
+                {"calibration_archive.cinema", {{"prior","retained"}}} };
+            std::vector<std::string> order = {"vprenderer.default","vprenderer.cinema","vprenderer.duplicate",
+                "vprenderer.color.rec709","vprenderer.color.bt2020","calibration_archive.cinema"};
+            Assert::IsTrue(Apply(sections, order));
+            for (const char* color : {"vprenderer.color.rec709","vprenderer.color.bt2020"})
+            {
+                Assert::AreEqual(std::string("a.cube"), sections.at(color).at("calibration_lut_bt709"));
+                Assert::AreEqual(std::string("none"), sections.at(color).at("calibration_lut_p3_d65"));
+                const auto& extra = sections.at(std::string(color)+"_lut_cinema");
+                Assert::AreEqual(std::string("b.cube"), extra.at("calibration_lut_bt709"));
+                Assert::AreEqual(std::string("2.4"), extra.at("hdr_tone_map_target_gamma"));
+                Assert::AreEqual(sections.at(color).at("target_primaries"), extra.at("target_primaries"));
+                Assert::AreEqual(sections.at(color).at("output_gamma"), extra.at("output_gamma"));
+                for (const auto& setting : extra) Assert::IsFalse(ColorOutputProfileMigration::IsSelector(setting.first));
+                Assert::IsTrue(sections.count(std::string(color)+"_lut_duplicate") == 0);
+            }
+            Assert::AreEqual(std::string("F5"), sections.at("vprenderer.color.rec709").at("shortcut"));
+            Assert::AreEqual(std::string("balanced"), sections.at("vprenderer.cinema").at("quality"));
+            Assert::AreEqual(std::string("${width} > 2000"), sections.at("vprenderer.cinema").at("when"));
+            Assert::AreEqual(std::string("b.cube"), sections.at("calibration_archive.cinema_2").at("calibration_lut_bt709"));
+            Assert::AreEqual(std::string("retained"), sections.at("calibration_archive.cinema").at("prior"));
+            for (const char* name : {"vprenderer.default","vprenderer.cinema","vprenderer.duplicate"})
+                for (const auto& value : sections.at(name)) Assert::IsFalse(IsKey(value.first));
+            const auto savedSections = sections;
+            const auto savedOrder = order;
+            Assert::IsFalse(Apply(sections, order));
+            Assert::IsTrue(savedSections == sections && savedOrder == order);
+        }
+
+        TEST_METHOD(CalibrationMigrationUsesLiteralRootAndPreservesMixedColorOverrides)
+        {
+            using namespace CalibrationProfileMigration;
+            Sections sections = {
+                {"vprenderer.first", {{"calibration_lut_enabled","true"},{"calibration_lut_bt709","first.cube"}}},
+                {"vprenderer", {{"calibration_lut_enabled","false"},{"calibration_lut_input_transfer","display"}}},
+                {"vprenderer.color.default", {{"calibration_lut_enabled","true"},{"calibration_lut_bt709","color.cube"},{"hdr_tone_map_target_gamma","2.6"}}} };
+            std::vector<std::string> order = {"vprenderer.first","vprenderer","vprenderer.color.default"};
+            Assert::IsTrue(Apply(sections, order));
+            Assert::AreEqual(std::string("color.cube"), sections.at("vprenderer.color.default").at("calibration_lut_bt709"));
+            Assert::AreEqual(std::string("2.6"), sections.at("vprenderer.color.default").at("hdr_tone_map_target_gamma"));
+            const auto& root = sections.at("vprenderer.color.default_lut_default");
+            Assert::AreEqual(std::string("false"), root.at("calibration_lut_enabled"));
+            Assert::AreEqual(std::string("none"), root.at("calibration_lut_bt709"));
+            Assert::AreEqual(std::string("2.2"), root.at("hdr_tone_map_target_gamma"));
+            Assert::AreEqual(std::string("first.cube"), sections.at("vprenderer.color.default_lut_first").at("calibration_lut_bt709"));
+            Sections noColor = {{"vprenderer.default",{{"calibration_lut_enabled","false"}}}};
+            std::vector<std::string> noColorOrder = {"vprenderer.default"};
+            Assert::IsTrue(Apply(noColor, noColorOrder));
+            Assert::IsTrue(noColor.at("vprenderer.color.default") == Defaults());
+            Sections oldFormat = {{"display",{{"calibration_lut_bt709","old.cube"}}}};
+            std::vector<std::string> oldOrder = {"display"};
+            Assert::IsFalse(Apply(oldFormat, oldOrder));
+            Assert::AreEqual(std::string("old.cube"), oldFormat.at("display").at("calibration_lut_bt709"));
+        }
+
+        TEST_METHOD(OldLutInputKeysRemainLoadableInTheirOriginalSections)
+        {
+            for (const std::string value : { "display", "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" })
+            {
+                Assert::IsFalse(RendererProfileConfig::ValidateTargetRendererSetting("calibration_lut_input_transfer", value));
+                Assert::IsTrue(RendererProfileConfig::ValidateColorConfigSetting("calibration_lut_input_transfer", value));
+                Assert::IsTrue(RendererProfileConfig::ValidateColorConfigSetting("calibration_lut_input_gamma", value));
+            }
+            Assert::IsFalse(RendererProfileConfig::ValidateTargetRendererSetting("calibration_lut_input_transfer", "auto"));
+        }
 
 		TEST_METHOD(CanonicalRendererAcceptsDocumentedPeakAndCalibrationLutValues)
 		{

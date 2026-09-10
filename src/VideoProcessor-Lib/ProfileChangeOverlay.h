@@ -46,7 +46,7 @@ namespace ProfileChangeOverlay
 	inline std::string GroupLabel(const std::string& group)
 	{
 		if (group == "display") return "Rendering";
-		if (group == "color") return "Color";
+		if (group == "color") return "Color / Output";
 		if (group == "output") return "Output";
 		if (group == "viewport") return "Screen";
 		if (group == "input") return "Input";

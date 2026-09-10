@@ -11,8 +11,8 @@
 
 namespace ActiveProfileStatus
 {
-    constexpr uint32_t Version = 7;
-    constexpr wchar_t MappingName[] = L"Local\\VideoProcessor.ActiveProfileStatus.v7";
+    constexpr uint32_t Version = 9;
+    constexpr wchar_t MappingName[] = L"Local\\VideoProcessor.ActiveProfileStatus.v9";
     constexpr size_t MaximumActiveShaders = 16;
 
     struct Snapshot
@@ -34,6 +34,11 @@ namespace ActiveProfileStatus
         char shaders[MaximumActiveShaders][96]{};
         char sourceEotf[32]{};
         char sourceColorSpace[32]{};
+        char outputSummary[2048]{};
+        uint32_t calibrationStatusAvailable = 0;
+        uint32_t calibrationLutAttached = 0;
+        uint64_t calibrationConfigIdentity = 0;
+        char calibrationConfigPath[1024]{};
     };
 
     inline void Copy(char* destination, size_t count, const std::string& value)
@@ -60,7 +65,12 @@ namespace ActiveProfileStatus
         uint64_t rendererGeneration, bool shaderAvailable,
         const std::vector<std::string>& shaders,
         const std::string& sourceEotf = {},
-        const std::string& sourceColorSpace = {})
+        const std::string& sourceColorSpace = {},
+        const std::string& outputSummary = {},
+        bool calibrationStatusAvailable = false,
+        bool calibrationLutAttached = false,
+        uint64_t calibrationConfigIdentity = 0,
+        const std::string& calibrationConfigPath = {})
     {
         static HANDLE mapping = nullptr;
         static Snapshot* shared = nullptr;
@@ -110,6 +120,11 @@ namespace ActiveProfileStatus
             Copy(next.shaders[index], sizeof(next.shaders[index]), shaders[index]);
         Copy(next.sourceEotf, sizeof(next.sourceEotf), sourceEotf);
         Copy(next.sourceColorSpace, sizeof(next.sourceColorSpace), sourceColorSpace);
+        Copy(next.outputSummary, sizeof(next.outputSummary), outputSummary);
+        next.calibrationStatusAvailable = calibrationStatusAvailable ? 1u : 0u;
+        next.calibrationLutAttached = calibrationLutAttached ? 1u : 0u;
+        next.calibrationConfigIdentity = calibrationConfigIdentity;
+        Copy(next.calibrationConfigPath, sizeof(next.calibrationConfigPath), calibrationConfigPath);
         *shared = next;
         MemoryBarrier();
     }

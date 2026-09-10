@@ -4,11 +4,14 @@
 #include <vprenderer/LibplaceboDisplayLut.h>
 #include <vprenderer/LibplaceboRenderParameters.h>
 #include <vprenderer/LibplaceboCalibrationLutPolicy.h>
+#include <vprenderer/LibplaceboOutputPolicy.h>
 #include <libplacebo/d3d11.h>
 #include <libplacebo/renderer.h>
 #include <libplacebo/shaders/custom.h>
 
 #include <cstdint>
+#include <cmath>
+#include <sstream>
 #include <cstring>
 #include <algorithm>
 #include <fstream>
@@ -278,6 +281,31 @@ namespace
 		int outputSize = 64;
 	};
 
+    pl_color_transfer TestTransfer(LibplaceboOutput::SdrTransfer transfer)
+    {
+        using LibplaceboOutput::SdrTransfer;
+        switch (transfer)
+        {
+        case SdrTransfer::BT1886: return PL_COLOR_TRC_BT_1886;
+        case SdrTransfer::SRGB: return PL_COLOR_TRC_SRGB;
+        case SdrTransfer::GAMMA18: return PL_COLOR_TRC_GAMMA18;
+        case SdrTransfer::GAMMA20: return PL_COLOR_TRC_GAMMA20;
+        case SdrTransfer::GAMMA22: return PL_COLOR_TRC_GAMMA22;
+        case SdrTransfer::GAMMA24: return PL_COLOR_TRC_GAMMA24;
+        case SdrTransfer::GAMMA26: return PL_COLOR_TRC_GAMMA26;
+        case SdrTransfer::GAMMA28: return PL_COLOR_TRC_GAMMA28;
+        default: Assert::Fail(L"GPU case has no concrete SDR transfer");
+        }
+        return PL_COLOR_TRC_UNKNOWN;
+    }
+
+    int PixelDistance(RgbaPixel a, RgbaPixel b)
+    {
+        return std::abs(static_cast<int>(a.r) - b.r) +
+            std::abs(static_cast<int>(a.g) - b.g) +
+            std::abs(static_cast<int>(a.b) - b.b);
+    }
+
 	class TargetLutGpuFixture
 	{
 	public:
@@ -327,7 +355,8 @@ namespace
 			enum pl_color_primaries sourcePrimaries = PL_COLOR_PRIM_BT_709,
 			enum pl_color_primaries targetPrimaries = PL_COLOR_PRIM_BT_709,
 			float sourceMaxNits = 0.0f,
-			float targetMaxNits = 0.0f)
+			float targetMaxNits = 0.0f,
+            bool useSdrReference = false)
 		{
 			pl_gpu gpu = m_d3d11->gpu;
 			const enum pl_fmt_caps requiredCaps = static_cast<enum pl_fmt_caps>(
@@ -371,6 +400,11 @@ namespace
 			target.color.hdr.max_luma = targetMaxNits;
 			if (targetMaxNits > 0.0f)
 				target.color.hdr.min_luma = PL_COLOR_HDR_BLACK;
+            if (useSdrReference)
+            {
+                LibplaceboRenderParameters::ApplySourceLuminance(true, image.color);
+                LibplaceboRenderParameters::ApplyTargetLuminance(true, 100.0f, 0.0f, target.color);
+            }
 			target.lut = lut;
 			target.lut_type = lut ? lutType : PL_LUT_UNKNOWN;
 			Assert::IsTrue(pl_render_image(m_renderer, &image, &target, &params));
@@ -385,6 +419,62 @@ namespace
 			pl_tex_destroy(gpu, &sourceTexture);
 			return result[0];
 		}
+
+        std::vector<int> RenderGammaRamp(int bits, bool limited,
+            pl_color_transfer sourceTransfer, pl_color_transfer targetTransfer,
+            const pl_custom_lut* lut = nullptr)
+        {
+            pl_gpu gpu = m_d3d11->gpu;
+            constexpr int count = 33;
+            std::vector<float> input(count * 4);
+            for (int i = 0; i < count; ++i)
+            {
+                input[4*i] = input[4*i+1] = input[4*i+2] = i / 32.0f;
+                input[4*i+3] = 1.0f;
+            }
+            auto sourceFormat = pl_find_fmt(gpu, PL_FMT_FLOAT, 4, 32, 32, PL_FMT_CAP_SAMPLEABLE);
+            Assert::IsNotNull(sourceFormat);
+            pl_fmt targetFormat = nullptr;
+            const auto caps = PL_FMT_CAP_RENDERABLE | PL_FMT_CAP_HOST_READABLE;
+            for (int i = 0; i < gpu->num_formats; ++i)
+            {
+                auto f = gpu->formats[i];
+                if (f->type == PL_FMT_UNORM && f->num_components == 4 &&
+                    f->component_depth[0] == bits && f->component_depth[1] == bits &&
+                    f->component_depth[2] == bits && f->texel_size == 4 &&
+                    (f->caps & caps) == caps && f->host_bits[0] == bits)
+                { targetFormat = f; break; }
+            }
+            Assert::IsNotNull(targetFormat, L"Required RGBA8/RGB10A2 readback format unavailable");
+            pl_tex_params sp{}; sp.w=count; sp.h=1; sp.format=sourceFormat;
+            sp.sampleable=true; sp.initial_data=input.data();
+            pl_tex source = pl_tex_create(gpu, &sp);
+            pl_tex_params tp{}; tp.w=count; tp.h=1; tp.format=targetFormat;
+            tp.renderable=true; tp.host_readable=true;
+            pl_tex target = pl_tex_create(gpu, &tp);
+            Assert::IsNotNull(source); Assert::IsNotNull(target);
+            auto image = MakeRgbFrame(source); auto output = MakeRgbFrame(target);
+            image.color.transfer=sourceTransfer; output.color.transfer=targetTransfer;
+            LibplaceboRenderParameters::ApplySourceLuminance(true, image.color);
+            LibplaceboRenderParameters::ApplyTargetLuminance(true, 100.0f, 0.0f, output.color);
+            output.repr.levels=limited ? PL_COLOR_LEVELS_LIMITED : PL_COLOR_LEVELS_FULL;
+            output.repr.bits.sample_depth=bits; output.repr.bits.color_depth=bits;
+            output.lut=lut; output.lut_type=lut ? PL_LUT_NORMALIZED : PL_LUT_UNKNOWN;
+            auto params=pl_render_fast_params;
+            params.dither_params=nullptr; params.error_diffusion=nullptr;
+            Assert::IsTrue(pl_render_image(m_renderer, &image, &output, &params));
+            pl_gpu_finish(gpu);
+            std::vector<uint32_t> downloaded(count);
+            pl_tex_transfer_params download{}; download.tex=target; download.ptr=downloaded.data();
+            Assert::IsTrue(pl_tex_download(gpu, &download));
+            std::vector<int> codes;
+            const unsigned mask=(1u << bits)-1;
+            // Every RGB component has the same grayscale value, irrespective of
+            // RGBA/BGRA ordering. Packed formats on D3D11 put RGB before alpha.
+            for (auto pixel : downloaded) codes.push_back(static_cast<int>(pixel & mask));
+            pl_tex_destroy(gpu,&source); pl_tex_destroy(gpu,&target);
+            return codes;
+        }
 
 		pl_gpu Gpu() const
 		{
@@ -548,6 +638,332 @@ namespace VideoProcessorTest
 	TEST_CLASS(LibplaceboLutParserTests)
 	{
 	public:
+
+        TEST_METHOD(HdrTargetGammaMigratesRenderingAliasWithoutDisplayDependency)
+        {
+            using namespace LibplaceboCalibrationLut;
+            Assert::AreEqual(std::string("2.4"), ResolveHdrTargetGamma("2.4", "2.2"));
+            Assert::AreEqual(std::string("2.4"), ResolveHdrTargetGamma("", "2.4"));
+            for (const std::string legacy : { "", "display", "auto" })
+                Assert::AreEqual(std::string("2.2"), ResolveHdrTargetGamma("", legacy));
+            for (const std::string explicitGamma : { "bt1886", "srgb", "1.8", "2.0",
+                "2.2", "2.4", "2.6", "2.8" })
+                Assert::AreEqual(explicitGamma, ResolveHdrTargetGamma(explicitGamma, "display"));
+        }
+
+        TEST_METHOD(RejectedReloadRetainsLutOnlyWithSameInputContract)
+        {
+            using namespace LibplaceboCalibrationLut;
+            Contract loaded{ "luts/screen.cube", "BT709", "2.4", "base" };
+            Contract next = loaded;
+            Assert::IsTrue(ResolveReloadFailure(loaded == next, true) == ReloadFailureAction::RETAIN_LAST_KNOWN_GOOD);
+            next.inputTransfer = "2.2";
+            Assert::IsTrue(ResolveReloadFailure(loaded == next, true) == ReloadFailureAction::DETACH);
+            next = loaded; next.gamut = "P3-D65";
+            Assert::IsTrue(ResolveReloadFailure(loaded == next, true) == ReloadFailureAction::DETACH);
+            loaded.inputTransfer = HdrInputContractKey("2.2");
+            next = loaded; next.inputTransfer = HdrInputContractKey("2.4");
+            Assert::IsTrue(ResolveReloadFailure(loaded == next, true) == ReloadFailureAction::DETACH);
+        }
+
+        TEST_METHOD(NoLutGamma22FullLimitedRampsMatchReferenceAt8And10Bits)
+        {
+            TargetLutGpuFixture fixture;
+            Assert::IsTrue(fixture.Create());
+            for (int bits : {8,10}) for (bool limited : {false,true})
+            {
+                const auto pass = fixture.RenderGammaRamp(bits,limited,PL_COLOR_TRC_GAMMA22,PL_COLOR_TRC_GAMMA22);
+                const auto converted = fixture.RenderGammaRamp(bits,limited,PL_COLOR_TRC_GAMMA24,PL_COLOR_TRC_GAMMA22);
+                const int low=limited ? (16 << (bits-8)) : 0;
+                const int high=limited ? (235 << (bits-8)) : ((1 << bits)-1);
+                for (int i=0;i<33;++i)
+                {
+                    const double x=i/32.0;
+                    const int expectedPass=static_cast<int>(std::lround(low+(high-low)*x));
+                    const int expectedConverted=static_cast<int>(std::lround(low+(high-low)*std::pow(x,2.4/2.2)));
+                    Assert::IsTrue(std::abs(pass[i]-expectedPass)<=1,L"Pass-through gamma/range mismatch");
+                    Assert::IsTrue(std::abs(converted[i]-expectedConverted)<=2,L"Reference-preserving gamma/range mismatch");
+                }
+                Assert::IsTrue(converted[16]<pass[16],L"2.4 reference was silently reinterpreted as 2.2");
+            }
+        }
+
+        TEST_METHOD(ConvertingTargetLutMatchesNoLutGammaCorrectionExactlyOnce)
+        {
+            std::ostringstream cube; cube << "LUT_3D_SIZE 33\n";
+            for (int b=0;b<33;++b) for(int g=0;g<33;++g) for(int r=0;r<33;++r)
+                cube << std::pow(r/32.0,2.4/2.2) << ' ' << std::pow(g/32.0,2.4/2.2) << ' '
+                    << std::pow(b/32.0,2.4/2.2) << '\n';
+            TemporaryFile file; file.Write(cube.str().c_str());
+            auto loaded=Load(nullptr,file.Path());
+            Assert::IsTrue(loaded.status==Status::ACTIVE);
+            TargetLutGpuFixture fixture; Assert::IsTrue(fixture.Create());
+            for(int bits : {8,10}) for(bool limited : {false,true})
+            {
+                using namespace LibplaceboOutput;
+                const auto noLut = ResolveCalibrationTransfers(true, true, false,
+                    SdrAdjustGamma::ON, GammaRequest::GAMMA22, GammaRequest::GAMMA22,
+                    SdrTransfer::GAMMA24, SdrTransfer::GAMMA22);
+                const auto withLut = ResolveCalibrationTransfers(true, true, true,
+                    SdrAdjustGamma::ON, GammaRequest::GAMMA22, GammaRequest::GAMMA22,
+                    SdrTransfer::GAMMA24, SdrTransfer::GAMMA22);
+                const auto direct=fixture.RenderGammaRamp(bits,limited,
+                    TestTransfer(noLut.sdr.effectiveSource),TestTransfer(noLut.targetTransfer));
+                const auto viaLut=fixture.RenderGammaRamp(bits,limited,
+                    TestTransfer(withLut.sdr.effectiveSource),TestTransfer(withLut.targetTransfer),loaded.lut);
+                const auto duplicate=fixture.RenderGammaRamp(bits,limited,PL_COLOR_TRC_GAMMA24,PL_COLOR_TRC_GAMMA22,loaded.lut);
+                for(int i=0;i<33;++i)
+                    Assert::IsTrue(std::abs(direct[i]-viaLut[i])<=2,L"LUT-domain conversion does not match direct correction");
+                Assert::IsTrue(duplicate[16]<viaLut[16]-3,L"Probe cannot detect duplicate gamma correction");
+            }
+            Free(loaded);
+        }
+
+        TEST_METHOD(CalibrationWorkflowSdrLutPreservesRampsAcrossControlsAndTransports)
+        {
+            using namespace LibplaceboOutput;
+            TemporaryFile file; file.Write(Valid3dCube);
+            auto identity = Load(nullptr, file.Path());
+            Assert::IsTrue(identity.status == Status::ACTIVE);
+            TargetLutGpuFixture fixture; Assert::IsTrue(fixture.Create());
+            for (int bits : { 8, 10 }) for (bool limited : { false, true })
+            {
+                const int low = limited ? (16 << (bits - 8)) : 0;
+                const int high = limited ? (235 << (bits - 8)) : ((1 << bits) - 1);
+                for (auto source : { SdrTransfer::BT1886, SdrTransfer::GAMMA22, SdrTransfer::GAMMA24 })
+                for (auto requested : { SdrAdjustGamma::ON, SdrAdjustGamma::OFF,
+                    SdrAdjustGamma::AUTO, SdrAdjustGamma::PRESERVE_CODES })
+                for (auto display : { GammaRequest::GAMMA22, GammaRequest::GAMMA24 })
+                {
+                    const auto hdr = display == GammaRequest::GAMMA22 ?
+                        GammaRequest::GAMMA24 : GammaRequest::GAMMA22;
+                    const auto decision = ResolveCalibrationTransfers(true, true, true,
+                        requested, display, hdr, source,
+                        limited ? SdrTransfer::GAMMA22 : SdrTransfer::SRGB);
+                    const auto codes = fixture.RenderGammaRamp(bits, limited,
+                        TestTransfer(decision.sdr.effectiveSource),
+                        TestTransfer(decision.targetTransfer), identity.lut);
+                    for (int i = 0; i < 33; ++i)
+                    {
+                        const int expected = static_cast<int>(std::lround(low + (high - low) * i / 32.0));
+                        Assert::IsTrue(std::abs(codes[i] - expected) <= 1,
+                            L"An inactive display/conversion/HDR control changed SDR LUT input codes");
+                    }
+                }
+            }
+            Free(identity);
+        }
+
+        TEST_METHOD(CalibrationWorkflowSdrGamutMappingKeepsDeclaredSourceTransfer)
+        {
+            using namespace LibplaceboOutput;
+            TemporaryFile file; file.Write(Valid3dCube);
+            auto identity = Load(nullptr, file.Path());
+            Assert::IsTrue(identity.status == Status::ACTIVE);
+            TargetLutGpuFixture fixture; Assert::IsTrue(fixture.Create());
+            auto params = pl_render_high_quality_params;
+            params.dither_params = nullptr; params.error_diffusion = nullptr;
+            params.deband_params = nullptr; params.peak_detect_params = nullptr;
+            const RgbaPixel patches[] = { { 164, 94, 52, 255 }, { 77, 151, 109, 255 },
+                { 114, 73, 171, 255 } };
+            int maximumDifference = 0;
+            for (const auto patch : patches)
+            {
+                RgbaPixel previous{};
+                for (auto declared : { SdrTransfer::GAMMA22, SdrTransfer::GAMMA24 })
+                {
+                    const auto decision = ResolveCalibrationTransfers(true, true, true,
+                        SdrAdjustGamma::ON, GammaRequest::GAMMA28, GammaRequest::GAMMA18,
+                        declared, SdrTransfer::SRGB);
+                    const auto render = [&](pl_color_primaries sourcePrimaries,
+                        pl_color_transfer sourceTransfer, pl_color_transfer targetTransfer)
+                    {
+                        return fixture.Render(identity.lut, params, PL_COLOR_LEVELS_FULL,
+                            PL_LUT_NORMALIZED, patch, sourceTransfer, targetTransfer,
+                            sourcePrimaries, PL_COLOR_PRIM_BT_709, 0.0f, 0.0f, true);
+                    };
+                    const auto matched = render(PL_COLOR_PRIM_BT_709,
+                        TestTransfer(decision.sdr.effectiveSource), TestTransfer(decision.targetTransfer));
+                    Assert::IsTrue(PixelDistance(matched, patch) <= 3,
+                        L"Matched-gamut LUT input must retain normalized SDR tone codes");
+                    const auto mapped = render(PL_COLOR_PRIM_BT_2020,
+                        TestTransfer(decision.sdr.effectiveSource), TestTransfer(decision.targetTransfer));
+                    // Independent reference declares the expected transfer on both sides
+                    // of genuine linear-light BT.2020-to-BT.709 gamut mapping.
+                    const auto reference = render(PL_COLOR_PRIM_BT_2020,
+                        TestTransfer(declared), TestTransfer(declared));
+                    Assert::IsTrue(PixelDistance(mapped, reference) <= 3,
+                        L"SDR gamut mapping decoded or encoded with a display/HDR gamma instead of the source declaration");
+                    if (declared == SdrTransfer::GAMMA24)
+                        maximumDifference = std::max(maximumDifference, PixelDistance(previous, mapped));
+                    previous = mapped;
+                }
+            }
+            Assert::IsTrue(maximumDifference >= 3,
+                L"Wide-gamut probe did not detect the declared source gamma in linear-light processing");
+            Free(identity);
+        }
+
+        TEST_METHOD(CalibrationWorkflowFiniteBlackBt1886ChangesWideGamutSdrOnly)
+        {
+            using namespace LibplaceboOutput;
+            pl_color_space sourceReference{}, targetReference{};
+            LibplaceboRenderParameters::ApplySourceLuminance(true, sourceReference);
+            LibplaceboRenderParameters::ApplyTargetLuminance(true, 100.0f, 0.0f, targetReference);
+            Assert::IsTrue(sourceReference.hdr.min_luma > 0.0f,
+                L"BT.1886 versus pure 2.4 needs a finite-black reference to be a meaningful probe");
+            Assert::AreEqual(sourceReference.hdr.min_luma, targetReference.hdr.min_luma);
+            Assert::AreEqual(sourceReference.hdr.max_luma, targetReference.hdr.max_luma);
+            TemporaryFile file; file.Write(Valid3dCube);
+            auto identity = Load(nullptr, file.Path());
+            Assert::IsTrue(identity.status == Status::ACTIVE);
+            TargetLutGpuFixture fixture; Assert::IsTrue(fixture.Create());
+            auto params = pl_render_high_quality_params;
+            params.dither_params = nullptr; params.error_diffusion = nullptr;
+            params.deband_params = nullptr; params.peak_detect_params = nullptr;
+            const RgbaPixel patches[] = { { 48, 31, 14, 255 }, { 108, 64, 33, 255 },
+                { 36, 82, 53, 255 }, { 164, 94, 52, 255 } };
+            int maximumDifference = 0;
+            for (const auto patch : patches)
+            {
+                RgbaPixel bt1886{};
+                for (auto declared : { SdrTransfer::BT1886, SdrTransfer::GAMMA24 })
+                {
+                    const auto decision = ResolveCalibrationTransfers(true, true, true,
+                        SdrAdjustGamma::ON, GammaRequest::GAMMA22, GammaRequest::GAMMA22,
+                        declared, SdrTransfer::SRGB);
+                    const auto render = [&](pl_color_primaries primaries,
+                        pl_color_transfer source, pl_color_transfer target)
+                    {
+                        // The same finite-black source/target metadata as the real
+                        // renderer is applied by the final true argument.
+                        return fixture.Render(identity.lut, params, PL_COLOR_LEVELS_FULL,
+                            PL_LUT_NORMALIZED, patch, source, target, primaries,
+                            PL_COLOR_PRIM_BT_709, 0.0f, 0.0f, true);
+                    };
+                    const auto matched = render(PL_COLOR_PRIM_BT_709,
+                        TestTransfer(decision.sdr.effectiveSource), TestTransfer(decision.targetTransfer));
+                    Assert::IsTrue(PixelDistance(matched, patch) <= 3,
+                        L"Finite-black matched-gamut SDR changed tone codes before the identity LUT");
+                    const auto mapped = render(PL_COLOR_PRIM_BT_2020,
+                        TestTransfer(decision.sdr.effectiveSource), TestTransfer(decision.targetTransfer));
+                    const auto reference = render(PL_COLOR_PRIM_BT_2020,
+                        TestTransfer(declared), TestTransfer(declared));
+                    Assert::IsTrue(PixelDistance(mapped, reference) <= 3,
+                        L"The policy substituted another transfer during BT.1886 gamut processing");
+                    if (declared == SdrTransfer::BT1886) bt1886 = mapped;
+                    else maximumDifference = std::max(maximumDifference, PixelDistance(bt1886, mapped));
+                }
+            }
+            Logger::WriteMessage(("BT.1886 vs 2.4 finite-black SDR gamut maximum RGB code distance=" +
+                std::to_string(maximumDifference) + "\n").c_str());
+            Assert::IsTrue(maximumDifference >= 3,
+                L"Finite-black BT.1886 and pure 2.4 did not produce distinct wide-gamut SDR processing");
+            Free(identity);
+        }
+
+        TEST_METHOD(CalibrationWorkflowColoredHdrMapsSelectedGamutBeforeLut)
+        {
+            using namespace LibplaceboOutput;
+            TemporaryFile identityFile; identityFile.Write(Valid3dCube);
+            auto identity = Load(nullptr, identityFile.Path());
+            TemporaryFile probeFile; probeFile.Write(GammaCoordinateProbeCube);
+            auto probe = Load(nullptr, probeFile.Path());
+            Assert::IsTrue(identity.status == Status::ACTIVE && probe.status == Status::ACTIVE);
+            TargetLutGpuFixture fixture; Assert::IsTrue(fixture.Create());
+            auto params = pl_render_high_quality_params;
+            params.dither_params = nullptr; params.error_diffusion = nullptr;
+            params.deband_params = nullptr; params.peak_detect_params = nullptr;
+            const RgbaPixel patches[] = { { 140, 90, 60, 255 }, { 75, 130, 95, 255 },
+                { 95, 70, 140, 255 } };
+            for (auto hdrSource : { PL_COLOR_TRC_PQ, PL_COLOR_TRC_HLG })
+            {
+                int maximumGamutDifference = 0;
+                for (const auto patch : patches)
+                {
+                    RgbaPixel rec709{};
+                    for (auto targetPrimaries : { PL_COLOR_PRIM_BT_709, PL_COLOR_PRIM_DISPLAY_P3 })
+                    {
+                        const auto selection = LibplaceboCalibrationLut::Select(true,
+                            targetPrimaries == PL_COLOR_PRIM_BT_709 ?
+                                LibplaceboCalibrationLut::Primaries::BT709 :
+                                LibplaceboCalibrationLut::Primaries::P3_D65, true, true, true);
+                        Assert::IsTrue(selection.enabled);
+                        Assert::IsTrue(selection.slot == (targetPrimaries == PL_COLOR_PRIM_BT_709 ?
+                            LibplaceboCalibrationLut::Slot::BT709 : LibplaceboCalibrationLut::Slot::P3_D65));
+                        const auto decision = ResolveCalibrationTransfers(false, true, true,
+                            SdrAdjustGamma::ON, GammaRequest::GAMMA28, GammaRequest::GAMMA22,
+                            SdrTransfer::OTHER, SdrTransfer::SRGB);
+                        const auto render = [&](const pl_custom_lut* lut, pl_color_transfer targetTransfer)
+                        {
+                            return fixture.Render(lut, params, PL_COLOR_LEVELS_FULL, PL_LUT_NORMALIZED,
+                                patch, hdrSource, targetTransfer, PL_COLOR_PRIM_BT_2020,
+                                targetPrimaries, 1000.0f, 100.0f);
+                        };
+                        const auto mapped = render(identity.lut, TestTransfer(decision.targetTransfer));
+                        // Explicit target reference with no LUT: the identity must
+                        // preserve actual HDR tone/gamut mapping for each gamut.
+                        const auto reference = render(nullptr, PL_COLOR_TRC_GAMMA22);
+                        Assert::IsTrue(PixelDistance(mapped, reference) <= 3,
+                            L"Identity LUT disturbed the selected HDR gamut-mapping target");
+                        const auto calibrated = render(probe.lut, TestTransfer(decision.targetTransfer));
+                        Assert::IsTrue(std::abs(static_cast<int>(calibrated.g) - mapped.r) <= 2 &&
+                            std::abs(static_cast<int>(calibrated.r) - (255 - mapped.r)) <= 2 && calibrated.b <= 2,
+                            L"Calibration LUT did not receive the gamut-mapped HDR code coordinates");
+                        if (targetPrimaries == PL_COLOR_PRIM_BT_709) rec709 = mapped;
+                        else maximumGamutDifference = std::max(maximumGamutDifference,
+                            PixelDistance(rec709, mapped));
+                    }
+                }
+                Logger::WriteMessage(("Colored HDR target-gamut maximum RGB code distance=" +
+                    std::to_string(maximumGamutDifference) + "\n").c_str());
+                Assert::IsTrue(maximumGamutDifference >= 3,
+                    L"BT.2020 HDR produced the same coded colors for P3-D65 and Rec.709 targets");
+            }
+            Free(probe); Free(identity);
+        }
+
+        TEST_METHOD(CalibrationWorkflowHdrLutUsesHdrGammaAndDetachmentRestoresDisplay)
+        {
+            using namespace LibplaceboOutput;
+            TemporaryFile file; file.Write(Valid3dCube);
+            auto identity = Load(nullptr, file.Path());
+            Assert::IsTrue(identity.status == Status::ACTIVE);
+            TargetLutGpuFixture fixture; Assert::IsTrue(fixture.Create());
+            auto params = pl_render_high_quality_params;
+            params.dither_params = nullptr; params.error_diffusion = nullptr;
+            params.deband_params = nullptr; params.peak_detect_params = nullptr;
+            for (auto hdrSourceTransfer : { PL_COLOR_TRC_PQ, PL_COLOR_TRC_HLG })
+            {
+                const auto render = [&](bool lutActive, GammaRequest display, GammaRequest hdr)
+                {
+                    const auto decision = ResolveCalibrationTransfers(false, true, lutActive,
+                        SdrAdjustGamma::ON, display, hdr, SdrTransfer::OTHER, SdrTransfer::SRGB);
+                    return fixture.Render(lutActive ? identity.lut : nullptr, params,
+                        PL_COLOR_LEVELS_FULL, PL_LUT_NORMALIZED, { 96, 96, 96, 255 },
+                        hdrSourceTransfer, TestTransfer(decision.targetTransfer),
+                        PL_COLOR_PRIM_BT_2020, PL_COLOR_PRIM_BT_709, 1000.0f, 100.0f);
+                };
+                const auto gamma22 = render(true, GammaRequest::GAMMA22, GammaRequest::GAMMA22);
+                const auto changedDisplay = render(true, GammaRequest::GAMMA28, GammaRequest::GAMMA22);
+                const auto gamma24 = render(true, GammaRequest::GAMMA22, GammaRequest::GAMMA24);
+                Assert::IsTrue(PixelDistance(gamma22, changedDisplay) == 0,
+                    L"Physical display gamma changed HDR output while the LUT owned calibration");
+                Assert::IsTrue(static_cast<int>(gamma24.r) - gamma22.r >= 3,
+                    L"HDR target gamma did not change the tone-mapped encoding");
+                Assert::IsTrue(std::abs(std::pow(gamma22.r / 255.0, 2.2) -
+                    std::pow(gamma24.r / 255.0, 2.4)) < 0.01,
+                    L"HDR target gamma unexpectedly changed the tone-mapped linear result");
+                const auto detached = render(false, GammaRequest::GAMMA24, GammaRequest::GAMMA22);
+                const auto detachedChangedHdr = render(false, GammaRequest::GAMMA24, GammaRequest::GAMMA28);
+                Assert::IsTrue(PixelDistance(detached, gamma24) <= 3,
+                    L"LUT detachment did not restore physical display encoding");
+                Assert::IsTrue(PixelDistance(detached, detachedChangedHdr) == 0,
+                    L"Inactive HDR LUT gamma changed the no-LUT output");
+            }
+            Free(identity);
+        }
+
 		TEST_METHOD(SdrLuminanceGpuReadbackIsInvariantForUnityAndScaling)
 		{
 			for (int size : { 32, 64, 96 })

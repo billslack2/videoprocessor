@@ -57,6 +57,10 @@ namespace RendererOutputContract
 	struct Status
 	{
 		bool available = false;
+        bool calibrationStatusAvailable = false;
+        bool calibrationLutAttached = false;
+        uint64_t calibrationConfigIdentity = 0;
+        std::string calibrationConfigPath;
 		bool safeToRender = false;
 		bool requestedContractActive = false;
 		bool vpOwnsPresentation = false;
@@ -75,5 +79,6 @@ namespace RendererOutputContract
 		std::string dxgiDeclaration;
 		std::string swapchainFormat;
 		std::string reason;
+		std::string uiSummary;
 	};
 }

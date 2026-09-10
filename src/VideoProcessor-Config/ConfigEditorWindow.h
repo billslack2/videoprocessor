@@ -48,6 +48,9 @@ public:
         const QStringList& shaders, bool shaderAvailable = true,
         const QString& zoom = {}, const QString& scaling = {},
         const QString& output = {});
+    void setCalibrationStatusForTesting(bool available, bool attached,
+        quint64 configIdentity, const QString& configPath,
+        const QString& renderer, const QString& color, bool hdrSource = false);
     void setRendererDiscoveryForTesting(const QStringList& allRenderers,
         const QStringList& filteredRenderers);
 
@@ -66,7 +69,6 @@ private:
     QWidget* createRendererPage();
 	QWidget* createScalingPage();
     QWidget* createColorConfigPage();
-    QWidget* createOutputPage();
     QWidget* createDirectShowPage();
     QWidget* createInputProcessingPage(const QString& title, const QString& description,
         const QString& section);
@@ -109,6 +111,7 @@ private:
     bool savedForegroundOnlyEnabled() const;
     void returnFocusToPresentationTarget(const char* reason);
     void applyScopedTopmost();
+    void repairOrderAboveVideoProcessor();
     void removeScopedTopmost();
     bool hasActiveOwnedPopup() const;
     bool nativeOwnerIsValid() const;
@@ -123,6 +126,8 @@ private:
     void migrateSharedRefreshRate();
 	void migrateRefreshRateSwitchMode();
     void migrateSeparatedRendererProfiles();
+    void migrateUnifiedColorOutputProfiles();
+    void migrateCalibrationProfiles();
     void migrateViewportZoomProfiles();
     void loadDiscoveryCache();
     void applyMonitorDiscovery(const QStringList& discovered);
@@ -137,6 +142,11 @@ private:
         const QString& zoom = {}, const QString& scaling = {},
         const QString& output = {});
     void refreshRendererAutoStatus();
+    void refreshCalibrationControls();
+    void seedCalibratedProfile(const QString& root, const QString& section);
+    QMap<QString, QString> outputTransportSelections() const;
+    void synchronizeLimitedTransportFlags(const QMap<QString, QString>& before, const QString& editedSection = {});
+    void refreshLimitedTransportControls();
 
     QString configPath_;
     quintptr ownerHandle_ = 0;
@@ -146,6 +156,8 @@ private:
     quint32 presentationTargetProcessId_ = 0;
     quintptr presentationTargetAcknowledgementHandle_ = 0;
     quint32 presentationTargetAcknowledgementProcessId_ = 0;
+    void* foregroundEventHook_ = nullptr;
+    bool foregroundRepairQueued_ = false;
     bool pendingTopmostReassert_ = false;
     bool topmostReassertDeferredForPopup_ = false;
     bool scopedTopmost_ = false;
@@ -198,4 +210,11 @@ private:
     };
     std::vector<RendererAutoStatusBinding> rendererAutoStatusBindings_;
     QString liveSourceTransfer_;
+    bool liveCalibrationAvailable_ = false;
+    bool liveCalibrationLutAttached_ = false;
+    bool liveCalibrationHdrSource_ = false;
+    quint64 liveCalibrationConfigIdentity_ = 0;
+    QString liveCalibrationConfigPath_;
+    QString liveCalibrationRenderer_;
+    QString liveCalibrationColor_;
 };

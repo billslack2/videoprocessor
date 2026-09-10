@@ -62,6 +62,7 @@ namespace LibplaceboOutput
 	SdrAdjustGamma ParseSdrAdjustGamma(const std::string& value)
 	{
 		if (value == "auto") return SdrAdjustGamma::AUTO;
+        if (value == "passthrough") return SdrAdjustGamma::PRESERVE_CODES;
 		if (value == "off" || value == "no") return SdrAdjustGamma::OFF;
 		return SdrAdjustGamma::ON;
 	}
@@ -99,7 +100,7 @@ namespace LibplaceboOutput
 			return result;
 		}
 
-		bool suppress = requested == SdrAdjustGamma::OFF;
+		bool suppress = requested == SdrAdjustGamma::OFF || requested == SdrAdjustGamma::PRESERVE_CODES;
 		if (requested == SdrAdjustGamma::AUTO)
 		{
 			const bool commonAmbiguousSource =
@@ -115,7 +116,9 @@ namespace LibplaceboOutput
 			result.effectiveSource = actualTarget;
 			result.reason = requested == SdrAdjustGamma::AUTO
 				? "automatic sRGB output with an ambiguous common SDR source"
-				: "SDR source treated as already encoded for the accepted output transfer";
+				: requested == SdrAdjustGamma::PRESERVE_CODES
+                    ? "SDR tone codes preserved into the display or active LUT input domain"
+                    : "SDR source treated as already encoded for the accepted output transfer";
 		}
 		else
 		{
@@ -147,6 +150,36 @@ namespace LibplaceboOutput
 			return acceptedOutputTransfer;
 		}
 	}
+
+    SdrTransfer ResolveRenderTargetTransfer(GammaRequest displayGamma,
+        GammaRequest hdrTargetGamma, bool lutActive, SdrTransfer acceptedTransfer)
+    {
+        return lutActive ? ResolveCalibrationTargetTransfer(hdrTargetGamma, SdrTransfer::GAMMA22)
+            : ResolveCalibrationTargetTransfer(displayGamma, acceptedTransfer);
+    }
+
+    CalibrationTransferDecision ResolveCalibrationTransfers(bool inputIsSdr,
+        bool outputSafe, bool lutActive, SdrAdjustGamma requested,
+        GammaRequest displayGamma, GammaRequest hdrTargetGamma,
+        SdrTransfer declaredSource, SdrTransfer acceptedTransfer)
+    {
+        CalibrationTransferDecision result;
+        result.targetTransfer = lutActive && inputIsSdr ? declaredSource :
+            ResolveRenderTargetTransfer(displayGamma, hdrTargetGamma, lutActive, acceptedTransfer);
+        result.sdr = ResolveSdrGamma(requested, inputIsSdr, outputSafe,
+            displayGamma, declaredSource, requested == SdrAdjustGamma::PRESERVE_CODES ?
+                result.targetTransfer : acceptedTransfer);
+        if (lutActive && inputIsSdr) {
+            // Keep the source description truthful for all linear-light work.
+            // Re-encoding to the same response avoids a separate gamma change.
+            result.sdr.effectiveSource = declaredSource;
+            result.sdr.actualTarget = declaredSource;
+            result.sdr.action = outputSafe ? SdrGammaAction::SUPPRESS : SdrGammaAction::BLOCKED;
+            result.sdr.reason = outputSafe ? "calibration LUT: SDR source response retained through processing" :
+                "the accepted output contract is unsafe";
+        }
+        return result;
+    }
 
 	Plan MakePlan(const Request& request)
 	{
@@ -487,6 +520,7 @@ namespace LibplaceboOutput
 		{
 		case SdrAdjustGamma::AUTO: return "AUTO";
 		case SdrAdjustGamma::OFF: return "OFF";
+        case SdrAdjustGamma::PRESERVE_CODES: return "PASSTHROUGH";
 		default: return "ON";
 		}
 	}

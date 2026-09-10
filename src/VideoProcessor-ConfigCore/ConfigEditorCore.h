@@ -22,8 +22,12 @@ namespace ConfigEditorCore
 		// explicitly request an overwrite instead of rejecting a stale-file conflict.
 		std::string loadedBytes;
 		bool existedAtLoad = false;
+        bool requiresMigrationBackup = false;
 
 		bool Load(const std::wstring& input, std::wstring& error);
+        // Invoke after older split-profile migrations. Archives original text
+        // and requests an original-byte backup when saved. No disk writes.
+        bool MigrateCalibrationProfiles();
 
 		static std::string StripComment(const std::string& value);
 		bool Find(const std::string& wantedSection,

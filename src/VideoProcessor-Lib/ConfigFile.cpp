@@ -7,7 +7,10 @@
  */
 
 #include <pch.h>
+#include "ConfigurationIdentity.h"
 #include "ConfigFile.h"
+#include "ColorOutputProfileMigration.h"
+#include "CalibrationProfileMigration.h"
 
 #include <algorithm>
 #include <cctype>
@@ -131,6 +134,7 @@ bool ConfigFile::Load(const std::string& filename)
 	m_warnings.clear();
 	m_loadedPath.clear();
 	m_loaded = false;
+    m_contentIdentity = ConfigurationIdentity::Seed;
 
 	std::ifstream configFile;
 	const bool rendererRequest =
@@ -227,6 +231,7 @@ bool ConfigFile::Load(const std::string& filename)
 
 	while (std::getline(configFile, line))
 	{
+        ConfigurationIdentity::AppendLine(m_contentIdentity, line);
 		++lineNumber;
 		if (lineNumber == 1 && line.size() >= 3 &&
 			static_cast<unsigned char>(line[0]) == 0xEF &&
@@ -311,6 +316,8 @@ bool ConfigFile::Load(const std::string& filename)
 		}
 	}
 
+	ColorOutputProfileMigration::Apply(m_sections, m_sectionOrder);
+    CalibrationProfileMigration::Apply(m_sections, m_sectionOrder);
 	m_loaded = true;
 	return true;
 }

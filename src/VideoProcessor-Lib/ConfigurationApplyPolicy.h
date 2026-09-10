@@ -91,7 +91,8 @@ namespace ConfigurationApplyPolicy
 	// makes each test equivalent to a fresh capture/render initialization.
 	inline bool IsOutputExperimentChange(const Change& change)
 	{
-		if (!HasPrefix(NormalizeSection(change.section), "vprenderer.output"))
+		if (!HasPrefix(NormalizeSection(change.section), "vprenderer.output") &&
+            !HasPrefix(NormalizeSection(change.section), "vprenderer.color"))
 			return false;
 		const std::string key = NormalizeSection(change.key);
 		return key == "output_path_profile" ||
@@ -156,6 +157,7 @@ namespace ConfigurationApplyPolicy
 			return HasPrefix(section, "vprenderer.zoom") ?
 				"vprenderer.zoom" : "vprenderer.viewport";
 		if (IsScalingProfileSection(section)) return "vprenderer.scaling";
+        if (HasPrefix(section, "vprenderer.color")) return "vprenderer.color";
 		if (IsRenderingProfileSection(section)) return "vprenderer";
 		return {};
 	}

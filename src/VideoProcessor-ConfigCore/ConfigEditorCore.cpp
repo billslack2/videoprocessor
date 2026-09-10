@@ -89,6 +89,7 @@ namespace ConfigEditorCore
 {
 	bool ConfigDocument::Load(const std::wstring& input, std::wstring& error)
 	{
+		requiresMigrationBackup = false;
 		path = input;
 		std::ifstream inputFile(ToNarrow(path), std::ios::binary);
 		if (!inputFile)
@@ -134,6 +135,54 @@ namespace ConfigEditorCore
 		}
 		return true;
 	}
+
+    bool ConfigDocument::MigrateCalibrationProfiles()
+    {
+        CalibrationProfileMigration::Sections sections;
+        std::vector<std::string> order;
+        std::map<std::string, std::string> originalNames;
+        for (const auto& section : SectionNames())
+        {
+            const std::string normalized = ConfigFile::NormalizeName(section);
+            order.push_back(normalized);
+            originalNames[normalized] = section;
+            auto& values = sections[normalized];
+            for (const auto& value : SectionSettings(section))
+                values[ConfigFile::NormalizeName(value.first)] = value.second;
+        }
+        const auto plan = CalibrationProfileMigration::Build(sections, order);
+        if (plan.Empty()) return false;
+        // Copy whole original sections before removing their calibration keys.
+        // This preserves selector/context values and every original comment.
+        for (const auto& archived : plan.archives)
+        {
+            size_t header = 0, start = 0, end = 0;
+            if (!FindSectionHeader(originalNames.at(archived.first), header, start, end)) continue;
+            std::vector<std::string> original;
+            for (size_t index = header + 1; index < lines.size(); ++index)
+            {
+                const std::string text = ConfigFile::Trim(StripComment(lines[index]));
+                if (text.size() >= 2 && text.front() == '[' && text.back() == ']') break;
+                original.push_back(lines[index]);
+            }
+            if (!lines.empty() && !lines.back().empty()) lines.push_back({});
+            lines.push_back("[" + archived.second + "]");
+            lines.insert(lines.end(), original.begin(), original.end());
+        }
+        for (const auto& item : plan.removals)
+            for (const auto& key : item.second)
+                RemoveKnown(originalNames.at(item.first), key.c_str());
+        for (const auto& name : plan.additionOrder)
+        {
+            const auto existing = originalNames.find(name);
+            const std::string destination = existing == originalNames.end() ? name : existing->second;
+            AddSection(destination);
+            for (const auto& value : plan.additions.at(name))
+                SetKnown(destination, value.first.c_str(), value.second);
+        }
+        requiresMigrationBackup = existedAtLoad;
+        return true;
+    }
 
 	std::string ConfigDocument::StripComment(const std::string& value)
 	{
@@ -189,8 +238,14 @@ namespace ConfigEditorCore
 	std::string ConfigDocument::Get(const char* section, const char* key) const
 	{
 		size_t line = 0, start = 0, end = 0;
-		return Find(section, key, line, start, end) ?
-			lines[line].substr(start, end - start) : std::string();
+        if (Find(section, key, line, start, end))
+            return lines[line].substr(start, end - start);
+        const std::string canonical = ConfigFile::NormalizeName(key);
+        const std::string alias = RendererProfileConfig::SettingAlias(section, canonical);
+        if (!alias.empty() && Find(section, alias, line, start, end))
+            return RendererProfileConfig::CanonicalAliasValue(canonical,
+                lines[line].substr(start, end - start));
+        return {};
 	}
 
 	bool ConfigDocument::SetExisting(const char* section, const char* key,
@@ -211,6 +266,18 @@ namespace ConfigEditorCore
 			lines[line].replace(start, end - start, value);
 			return true;
 		}
+
+        // Editing a value loaded through an old spelling replaces that key
+        // in place, preserving its comments and section position.
+        const std::string alias = RendererProfileConfig::SettingAlias(
+            wantedSection, ConfigFile::NormalizeName(key));
+        if (!alias.empty() && Find(wantedSection, alias, line, start, end))
+        {
+            lines[line].replace(start, end - start, value);
+            const size_t keyStart = lines[line].find_first_not_of(" \t");
+            lines[line].replace(keyStart, alias.size(), key);
+            return true;
+        }
 
 		const std::string normalized = ConfigFile::NormalizeName(wantedSection);
 		for (size_t index = 0; index < lines.size(); ++index)
@@ -246,10 +313,21 @@ namespace ConfigEditorCore
 	bool ConfigDocument::RemoveKnown(const std::string& wantedSection,
 		const char* key)
 	{
-		size_t line = 0, start = 0, end = 0;
-		if (!Find(wantedSection, key, line, start, end)) return false;
-		lines.erase(lines.begin() + line);
-		return true;
+        size_t line = 0, start = 0, end = 0;
+        bool removed = false;
+        if (Find(wantedSection, key, line, start, end))
+        {
+            lines.erase(lines.begin() + line);
+            removed = true;
+        }
+        const std::string alias = RendererProfileConfig::SettingAlias(
+            wantedSection, ConfigFile::NormalizeName(key));
+        if (!alias.empty() && Find(wantedSection, alias, line, start, end))
+        {
+            lines.erase(lines.begin() + line);
+            removed = true;
+        }
+        return removed;
 	}
 
 	bool ConfigDocument::AddSection(const std::string& section)
@@ -512,7 +590,8 @@ namespace ConfigEditorCore
 		}
 		std::string schemaError;
 		RendererProfileConfig::Model rendererModel;
-		if (!MainConfigSchema::Validate(config, schemaError) ||
+		if (!RendererProfileConfig::ValidateOwnedSections(config, schemaError) ||
+            !MainConfigSchema::Validate(config, schemaError) ||
 			!RendererProfileConfig::Read(config, rendererModel, schemaError) ||
 			!ShaderConfigValidation::Validate(config, schemaError))
 		{
@@ -573,6 +652,16 @@ namespace ConfigEditorCore
 			error = L"Could not write the temporary configuration. The configuration was not changed.";
 			return false;
 		}
+        if (document.requiresMigrationBackup && !creatingConfiguration)
+        {
+            result.backupPath = document.path + L".before-unified-color-output." +
+                std::to_wstring(GetTickCount64()) + L".bak";
+            if (!CopyFileW(document.path.c_str(), result.backupPath.c_str(), TRUE))
+            {
+                error = L"Could not back up the original configuration before profile migration.";
+                return false;
+            }
+        }
 		if (!MoveFileExW(temporary.c_str(), document.path.c_str(),
 			MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
 		{
@@ -581,6 +670,7 @@ namespace ConfigEditorCore
 				L"Could not replace the configuration. The configuration was not changed.";
 			return false;
 		}
+        document.requiresMigrationBackup = false;
 		document.loadedBytes = document.Serialize();
 		document.existedAtLoad = true;
 		return true;

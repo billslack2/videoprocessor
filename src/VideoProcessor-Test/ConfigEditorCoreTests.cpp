@@ -1,6 +1,8 @@
 #include "pch.h"
 
 #include <ConfigEditorCore.h>
+#include <ConfigFile.h>
+#include <ConfigurationIdentity.h>
 #include <ConfigurationApplyPolicy.h>
 #include <RendererResetPolicy.h>
 #include "CppUnitTest.h"
@@ -44,6 +46,156 @@ namespace VideoProcessorTest
 	TEST_CLASS(ConfigEditorCoreTests)
 	{
 	public:
+        TEST_METHOD(RendererAndEditorConfigurationIdentityAgreeAcrossTextFormatsAndEdits)
+        {
+            const std::wstring path = MakeTemporaryConfigPath(L"vpc");
+            const int pathBytes = WideCharToMultiByte(CP_ACP, 0, path.c_str(),
+                static_cast<int>(path.size()), nullptr, 0, nullptr, nullptr);
+            Assert::IsTrue(pathBytes > 0);
+            std::string parserPath(static_cast<size_t>(pathBytes), '\0');
+            Assert::AreEqual(pathBytes, WideCharToMultiByte(CP_ACP, 0, path.c_str(),
+                static_cast<int>(path.size()), &parserPath[0], pathBytes, nullptr, nullptr));
+            uint64_t identitiesByBom[2] = {};
+            for (const bool withBom : { false, true })
+                for (const char* newline : { "\n", "\r\n" })
+                    for (const bool terminalNewline : { false, true })
+                    {
+                        const std::string original = (withBom ? "\xEF\xBB\xBF" : "") +
+                            std::string("# calibration identity") + newline +
+                            "[vprenderer.color.Default]" + newline +
+                            "hdr_tone_map_target_gamma: 2.2" +
+                            (terminalNewline ? newline : "");
+                        WriteBytes(path, original);
+                        ConfigFile parsed;
+                        Assert::IsTrue(parsed.Load(parserPath));
+                        std::string gamma;
+                        Assert::IsTrue(parsed.TryGetString("vprenderer.color.Default",
+                            "hdr_tone_map_target_gamma", gamma));
+                        Assert::AreEqual(std::string("2.2"), gamma);
+                        ConfigEditorCore::ConfigDocument document;
+                        std::wstring error;
+                        Assert::IsTrue(document.Load(path, error), error.c_str());
+                        Assert::AreEqual(original, document.Serialize());
+                        const uint64_t identity = parsed.GetContentIdentity();
+                        Assert::IsTrue(identity == ConfigurationIdentity::FromText(document.Serialize()),
+                            L"Running parser and editor must identify the same loaded document");
+                        uint64_t& baseline = identitiesByBom[withBom ? 1 : 0];
+                        if (baseline == 0) baseline = identity;
+                        Assert::IsTrue(identity == baseline,
+                            L"Line-ending style and the final newline must not change identity");
+
+                        ConfigEditorCore::ConfigDocument commentEdit = document;
+                        commentEdit.lines.front() += " changed";
+                        WriteBytes(path, commentEdit.Serialize());
+                        Assert::IsTrue(parsed.Load(parserPath));
+                        Assert::IsTrue(parsed.GetContentIdentity() != identity,
+                            L"A comment edit must invalidate the conservative live identity");
+                        Assert::IsTrue(parsed.GetContentIdentity() ==
+                            ConfigurationIdentity::FromText(commentEdit.Serialize()));
+
+                        Assert::IsTrue(document.SetKnown("vprenderer.color.Default",
+                            "hdr_tone_map_target_gamma", "2.4"));
+                        WriteBytes(path, document.Serialize());
+                        Assert::IsTrue(parsed.Load(parserPath));
+                        Assert::IsTrue(parsed.GetContentIdentity() != identity,
+                            L"A changed setting must invalidate live configuration evidence");
+                        Assert::IsTrue(parsed.GetContentIdentity() ==
+                            ConfigurationIdentity::FromText(document.Serialize()));
+                    }
+            DeleteFileW(path.c_str());
+        }
+
+        TEST_METHOD(CalibrationProfileMigrationPreservesRawArchivesAndBacksUpOriginalOnSave)
+        {
+            const std::wstring path = MakeTemporaryConfigPath(L"vpc");
+            const std::string original =
+                "# user preamble\r\n[vprenderer.Default]\r\nquality: high # processing stays\r\n"
+                "calibration_lut_enabled: true # measured calibration\r\n"
+                "calibration_lut_bt709: old.cube # keep this file\r\n"
+                "calibration_lut_input_transfer: display # original transfer declaration\r\n"
+                "[vprenderer.Cinema]\r\ncalibration_lut_bt709: cinema.cube\r\n"
+                "calibration_lut_input_transfer: 2.4\r\nwhen: ${width} > 2000\r\n"
+                "[vprenderer.color.Rec709]\r\ntarget_primaries: rec709\r\nshortcut: F5\r\n";
+            WriteBytes(path, original);
+            ConfigEditorCore::ConfigDocument document;
+            std::wstring error;
+            Assert::IsTrue(document.Load(path, error), error.c_str());
+            Assert::IsTrue(document.MigrateCalibrationProfiles());
+            Assert::IsTrue(document.requiresMigrationBackup);
+            Assert::AreEqual(original, ReadBytes(path));
+            Assert::AreEqual(std::string("high"), document.Get("vprenderer.Default", "quality"));
+            Assert::IsTrue(document.Get("vprenderer.Default", "calibration_lut_bt709").empty());
+            Assert::AreEqual(std::string("old.cube"), document.Get("vprenderer.color.Rec709", "calibration_lut_bt709"));
+            Assert::AreEqual(std::string("none"), document.Get("vprenderer.color.Rec709", "calibration_lut_bt2020"));
+            Assert::AreEqual(std::string("F5"), document.Get("vprenderer.color.Rec709", "shortcut"));
+            Assert::AreEqual(std::string("cinema.cube"), document.Get("vprenderer.color.rec709_lut_cinema", "calibration_lut_bt709"));
+            Assert::IsTrue(document.Get("vprenderer.color.rec709_lut_cinema", "when").empty());
+            Assert::IsTrue(document.Serialize().find("calibration_lut_bt709: old.cube # keep this file") != std::string::npos);
+            Assert::AreEqual(std::string("true"), document.Get("calibration_archive.default", "calibration_lut_enabled"));
+            Assert::AreEqual(std::string("display"), document.Get("calibration_archive.default", "calibration_lut_input_transfer"));
+            Assert::AreEqual(std::string("2.2"), document.Get("vprenderer.color.Rec709", "hdr_tone_map_target_gamma"));
+            Assert::AreEqual(std::string("2.4"), document.Get("vprenderer.color.rec709_lut_cinema", "hdr_tone_map_target_gamma"));
+            Assert::AreEqual(std::string("${width} > 2000"), document.Get("calibration_archive.cinema", "when"));
+            Assert::IsTrue(ConfigEditorCore::ValidateCandidate(document, error), error.c_str());
+            ConfigEditorCore::SaveResult result;
+            Assert::IsTrue(ConfigEditorCore::SaveSafely(document, result, error), error.c_str());
+            Assert::IsFalse(result.backupPath.empty());
+            Assert::AreEqual(original, ReadBytes(result.backupPath));
+            ConfigEditorCore::ConfigDocument reloaded;
+            Assert::IsTrue(reloaded.Load(path, error), error.c_str());
+            Assert::IsFalse(reloaded.MigrateCalibrationProfiles());
+            Assert::IsTrue(ConfigEditorCore::ValidateCandidate(reloaded, error), error.c_str());
+            Assert::AreEqual(document.Serialize(), reloaded.Serialize());
+            DeleteFileW(result.backupPath.c_str());
+            DeleteFileW(path.c_str());
+        }
+
+        TEST_METHOD(CalibrationAliasesLoadWithoutRewritingTheDocument)
+        {
+            const std::wstring path = MakeTemporaryConfigPath(L"vpc");
+            const std::string original =
+                "[vprenderer.Default]\r\ncalibration_lut_input_transfer: display # old input\r\n"
+                "[vprenderer.Other]\r\ncalibration_lut_input_transfer: 2.4\r\nhdr_tone_map_target_gamma: 2.6\r\n"
+                "[vprenderer.color.Default]\r\nsdr_target_primaries: BT2020\r\ncalibration_lut_input_gamma: 2.8\r\n"
+                "[vprenderer.color.Other]\r\nsdr_target_primaries: REC709\r\ntarget_primaries: P3_D65\r\n";
+            WriteBytes(path, original);
+            ConfigEditorCore::ConfigDocument document;
+            std::wstring error;
+            Assert::IsTrue(document.Load(path, error), error.c_str());
+            Assert::AreEqual(std::string("2.2"), document.Get("vprenderer.Default", "hdr_tone_map_target_gamma"));
+            Assert::AreEqual(std::string("2.6"), document.Get("vprenderer.Other", "hdr_tone_map_target_gamma"));
+            Assert::AreEqual(std::string("BT2020"), document.Get("vprenderer.color.Default", "target_primaries"));
+            Assert::AreEqual(std::string("P3_D65"), document.Get("vprenderer.color.Other", "target_primaries"));
+            Assert::IsTrue(document.Get("vprenderer.color.Default", "hdr_tone_map_target_gamma").empty(),
+                L"Old Color input must not become a hidden HDR setting");
+            Assert::AreEqual(original, document.Serialize());
+            Assert::AreEqual(original, ReadBytes(path));
+            Assert::IsTrue(ConfigEditorCore::ValidateCandidate(document, error), error.c_str());
+            DeleteFileW(path.c_str());
+        }
+
+        TEST_METHOD(CalibrationAliasEditsPreserveCommentsAndResetCannotRestoreOldOverrides)
+        {
+            const std::wstring path = MakeTemporaryConfigPath(L"vpc");
+            WriteBytes(path,
+                "[vprenderer.Default]\r\n  CALIBRATION_LUT_INPUT_TRANSFER = display # calibration\r\n"
+                "[vprenderer.color.Default]\r\n  sdr_target_primaries: rec709 # gamut\r\n"
+                "[vprenderer.color.Other]\r\nsdr_target_primaries: rec709\r\ntarget_primaries: bt2020\r\n");
+            ConfigEditorCore::ConfigDocument document;
+            std::wstring error;
+            Assert::IsTrue(document.Load(path, error), error.c_str());
+            Assert::IsTrue(document.SetKnown("vprenderer.Default", "hdr_tone_map_target_gamma", "2.4"));
+            Assert::IsTrue(document.SetKnown("vprenderer.color.Default", "target_primaries", "p3_d65"));
+            Assert::IsTrue(document.Serialize().find("  hdr_tone_map_target_gamma = 2.4 # calibration") != std::string::npos);
+            Assert::IsTrue(document.Serialize().find("  target_primaries: p3_d65 # gamut") != std::string::npos);
+            Assert::IsTrue(document.Get("vprenderer.Default", "calibration_lut_input_transfer").empty());
+            Assert::IsTrue(document.RemoveKnown("vprenderer.color.Other", "target_primaries"));
+            Assert::IsTrue(document.Get("vprenderer.color.Other", "target_primaries").empty());
+            Assert::IsTrue(document.Get("vprenderer.color.Other", "sdr_target_primaries").empty());
+            Assert::IsTrue(ConfigEditorCore::ValidateCandidate(document, error), error.c_str());
+            DeleteFileW(path.c_str());
+        }
+
 		TEST_METHOD(MissingConfigurationLoadsAsCreatableDocumentAndSavesAtomically)
 		{
 			const std::wstring path = MakeTemporaryConfigPath(L"vpc");
@@ -770,9 +922,9 @@ namespace VideoProcessorTest
 				"tone_mapping: auto\ngamut_mapping: auto\npeak_detection: auto\ncontrast_recovery: auto\n"
 				"upscaler: auto\ndownscaler: auto\ndeband: auto\ndeband_strength: off\n"
 				"sigmoid: auto\ndithering: auto\ndisplay_bit_depth: auto\nsdr_input_transfer: auto\nsdr_target_primaries: rec709\n"
-				"calibration_lut_enabled: true\ncalibration_lut_bt709: calibration.cube\n"
 				"report_bt2020_to_display: false\nswitch_refresh_rate: true\n"
 				"[vprenderer.bt2020]\nshortcut: F5\nsdr_target_primaries: bt2020\nreport_bt2020_to_display: true\n"
+				"[vprenderer.color.primary]\ncalibration_lut_enabled: true\ncalibration_lut_bt709: calibration.cube\n"
 				"[vprenderer.output.default]\noutput_presentation: auto\noutput_range: full\n"
 				"output_transport_gamma: auto\noutput_diagnostics: false\n"
 				"diagnostic_disable_shader_cache: false\ndiagnostic_disable_compute: false\n"
@@ -978,8 +1130,8 @@ namespace VideoProcessorTest
 				{ "vprenderer.rec709", "deband_strength", "light" },
 				{ "vprenderer.rec709", "sigmoid", "on" },
 				{ "vprenderer.rec709", "dithering", "on" },
-				{ "vprenderer.rec709", "calibration_lut_enabled", "true" },
-				{ "vprenderer.rec709", "calibration_lut_bt709", "calibration.cube" },
+				{ "vprenderer.color.rec709", "calibration_lut_enabled", "true" },
+				{ "vprenderer.color.rec709", "calibration_lut_bt709", "calibration.cube" },
 				{ "vprenderer.rec709", "report_bt2020_to_display", "false" },
 				{ "vprenderer.rec709", "switch_refresh_rate", "true" },
 				{ "vprenderer.output.default", "output_presentation", "composed" },

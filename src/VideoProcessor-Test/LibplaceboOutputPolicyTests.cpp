@@ -14,6 +14,44 @@ namespace Tests
 	TEST_CLASS(LibplaceboOutputPolicyTests)
 	{
 	public:
+        TEST_METHOD(HdrLutTargetIsIndependentAndMissingLutUsesDisplay)
+        {
+            for (auto carrier : { SdrTransfer::SRGB, SdrTransfer::GAMMA22, SdrTransfer::GAMMA24 })
+            {
+                Assert::IsTrue(ResolveRenderTargetTransfer(GammaRequest::GAMMA22,
+                    GammaRequest::BT1886, true, carrier) == SdrTransfer::BT1886);
+                Assert::IsTrue(ResolveRenderTargetTransfer(GammaRequest::GAMMA22,
+                    GammaRequest::BT1886, false, carrier) == SdrTransfer::GAMMA22);
+                Assert::IsTrue(ResolveRenderTargetTransfer(GammaRequest::GAMMA24,
+                    GammaRequest::UNSUPPORTED, true, carrier) == SdrTransfer::GAMMA22);
+            }
+            const auto pass = ResolveSdrGamma(ParseSdrAdjustGamma("passthrough"), true, true,
+                GammaRequest::GAMMA22, SdrTransfer::BT1886, SdrTransfer::GAMMA22);
+            Assert::IsTrue(pass.action == SdrGammaAction::SUPPRESS);
+            Assert::IsTrue(pass.effectiveSource == SdrTransfer::GAMMA22);
+        }
+
+        TEST_METHOD(CalibrationWorkflowKeepsNoLutPolicyAndBlocksUnsafeOutput)
+        {
+            for (auto mode : { SdrAdjustGamma::ON, SdrAdjustGamma::OFF, SdrAdjustGamma::AUTO, SdrAdjustGamma::PRESERVE_CODES })
+            for (auto display : { GammaRequest::AUTO, GammaRequest::GAMMA22, GammaRequest::GAMMA24 })
+            for (auto carrier : { SdrTransfer::SRGB, SdrTransfer::GAMMA22, SdrTransfer::GAMMA24 })
+            {
+                const auto actual = ResolveCalibrationTransfers(true,true,false,mode,display,
+                    GammaRequest::BT1886,SdrTransfer::BT1886,carrier);
+                const auto expectedTarget = ResolveCalibrationTargetTransfer(display,carrier);
+                const auto expected = ResolveSdrGamma(mode,true,true,display,SdrTransfer::BT1886,
+                    mode == SdrAdjustGamma::PRESERVE_CODES ? expectedTarget : carrier);
+                Assert::IsTrue(actual.targetTransfer == expectedTarget);
+                Assert::IsTrue(actual.sdr.effectiveSource == expected.effectiveSource);
+                Assert::IsTrue(actual.sdr.action == expected.action);
+                const auto blocked = ResolveCalibrationTransfers(true,false,true,mode,display,
+                    GammaRequest::GAMMA22,SdrTransfer::BT1886,carrier);
+                Assert::IsTrue(blocked.sdr.action == SdrGammaAction::BLOCKED);
+                Assert::IsTrue(blocked.sdr.effectiveSource == SdrTransfer::BT1886);
+            }
+        }
+
 		TEST_METHOD(CalibrationLutSelectsConfiguredDisplayTargetOnly)
 		{
 			using namespace LibplaceboCalibrationLut;

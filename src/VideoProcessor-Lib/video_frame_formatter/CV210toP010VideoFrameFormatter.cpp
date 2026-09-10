@@ -118,21 +118,22 @@ CV210toP010VideoFrameFormatter::~CV210toP010VideoFrameFormatter()
 // =====================================================================
 void CV210toP010VideoFrameFormatter::LoadConfigurationFile()
 {
-    auto useSmartDefaults = [this]()
-    {
-        m_conversionMethod = ConversionMethod::AUTO;
+    LoadConfigurationFile(ConfigFile::DEFAULT_FILENAME);
+}
 
-        uint32_t physicalCores = GetPhysicalCoreCount();
-        if (physicalCores >= 8)
-            m_maxCoreCount = 2;
-        else
-            m_maxCoreCount = 1;
-
-        m_minCoreCount = 1;
-    };
+bool CV210toP010VideoFrameFormatter::LoadConfigurationFile(const char* filename)
+{
+    ShutdownThreadPool();
+    m_conversionMethod = ConversionMethod::AUTO;
+    m_chromaDownsampling = ChromaDownsampling::AVERAGE;
+    m_minCoreCount = 1;
+    m_maxCoreCount = 1;
+    m_actualMaxThreads = 0;
+    m_cpuFeaturesChecked = false;
+    m_threadPoolUnavailable = false;
 
     ConfigFile unifiedConfig;
-    if (unifiedConfig.Load())
+    if (unifiedConfig.Load(filename))
     {
         if (!unifiedConfig.GetWarnings().empty())
         {
@@ -141,9 +142,8 @@ void CV210toP010VideoFrameFormatter::LoadConfigurationFile()
                 DbgLog((LOG_WARNING, 1, TEXT("CV210toP010VideoFrameFormatter: Invalid VideoProcessor.cfg syntax: %S"), warning.c_str()));
             }
 
-            DbgLog((LOG_WARNING, 1, TEXT("CV210toP010VideoFrameFormatter: VideoProcessor.cfg has syntax errors - using smart defaults")));
-            useSmartDefaults();
-            return;
+            DbgLog((LOG_WARNING, 1, TEXT("CV210toP010VideoFrameFormatter: VideoProcessor.cfg has syntax errors - using defaults")));
+            return false;
         }
 
         const bool targetConfiguration =
@@ -152,8 +152,7 @@ void CV210toP010VideoFrameFormatter::LoadConfigurationFile()
             "directshow.conversion" : "p010_conversion";
         if (!unifiedConfig.HasSection(conversionSection))
         {
-            useSmartDefaults();
-            return;
+            return true;
         }
 
         const auto* conversionSettings = unifiedConfig.GetSectionValues(conversionSection);
@@ -177,6 +176,16 @@ void CV210toP010VideoFrameFormatter::LoadConfigurationFile()
                             m_conversionMethod = ConversionMethod::STANDARD;
                         else
                             DbgLog((LOG_WARNING, 1, TEXT("CV210toP010VideoFrameFormatter: Invalid ConversionMethod in VideoProcessor.cfg: %S"), setting.second.c_str()));
+                    }
+                    else if (targetConfiguration && setting.first == "chroma_downsampling")
+                    {
+                        const std::string policy = ConfigFile::NormalizeName(setting.second);
+                        if (policy == "average")
+                            m_chromaDownsampling = ChromaDownsampling::AVERAGE;
+                        else if (policy == "legacy")
+                            m_chromaDownsampling = ChromaDownsampling::LEGACY;
+                        else
+                            DbgLog((LOG_WARNING, 1, TEXT("CV210toP010VideoFrameFormatter: Invalid chroma_downsampling: %S; using AVERAGE"), setting.second.c_str()));
                     }
                     else if (setting.first == (targetConfiguration ?
                         "min_core_count" : "mincorecount"))
@@ -203,117 +212,87 @@ void CV210toP010VideoFrameFormatter::LoadConfigurationFile()
             }
         }
 
-        return;
+        return true;
     }
 
-    useSmartDefaults();
-}
-
-// Helper function to get physical core count (excluding E-cores on Intel)
-uint32_t CV210toP010VideoFrameFormatter::GetPhysicalCoreCount() const
-{
-    // Use Windows API to get physical core count (ignores E-cores)
-    SYSTEM_INFO sysInfo;
-    GetSystemInfo(&sysInfo);
-    
-    // This returns the number of LOGICAL processors
-    // On systems with E-cores, we need a more sophisticated approach
-    // For now, use a heuristic: assume P-cores are roughly half the logical cores on modern Intel
-    uint32_t logicalCores = sysInfo.dwNumberOfProcessors;
-    
-    // Better approach: Try to get physical core count via WMI or CPUID
-    // For simplicity, use logical cores / 2 as estimate for P-core count on hybrid systems
-    // This is conservative and safe for thread pool sizing
-    
-    // Check for hybrid architecture (Intel 12th gen Alder Lake and later)
-    // These systems have a mix of P-cores and E-cores
-    // For P-core only systems, return logical core count
-    // For hybrid systems, estimate P-cores as roughly half
-    
-    // Conservative approach: assume hybrid if logical > 12 cores
-    if (logicalCores > 12)
-    {
-        // Likely a hybrid system, return roughly P-core count (estimate)
-        return std::max(1u, logicalCores / 2);
-    }
-    
-    // Non-hybrid or small system: all cores are P-cores (or equivalent)
-    return logicalCores;
+    return false;
 }
 
 // =====================================================================
-// Thread Pool Management - Simple spin-wait for low latency
+// Thread Pool Management - Blocking work and completion notifications
 // =====================================================================
-void CV210toP010VideoFrameFormatter::InitializeThreadPool()
+bool CV210toP010VideoFrameFormatter::InitializeThreadPool()
 {
     if (m_threadsInitialized)
-        return;
-    
-    uint32_t threadCount = GetActualMaxThreads();
-    m_threadContexts = std::make_unique<ThreadContext[]>(threadCount);
-    
-    for (uint32_t i = 0; i < threadCount; i++)
+        return true;
+    if (m_threadPoolUnavailable)
+        return false;
+
+    try
     {
-        m_threadContexts[i].state.store(0); // idle
-        m_threadContexts[i].thread = std::thread(ThreadWorkerStatic, this, i);
+        const uint32_t threadCount = GetActualMaxThreads();
+        m_threadContexts = std::make_unique<ThreadContext[]>(threadCount);
+        for (uint32_t i = 0; i < threadCount; ++i)
+        {
+            m_threadContexts[i].thread = std::thread(ThreadWorkerStatic, this, i);
+            ++m_startedThreadCount;
+        }
+        m_threadsInitialized = true;
+        return true;
     }
-    
-    m_threadsInitialized = true;
+    catch (...)
+    {
+        // Clean up even if only some helpers were started. A failed pool must
+        // not terminate the noexcept conversion path or retry every frame.
+        ShutdownThreadPool();
+        m_threadPoolUnavailable = true;
+        return false;
+    }
 }
 
 void CV210toP010VideoFrameFormatter::ShutdownThreadPool()
 {
-    if (!m_threadsInitialized)
-        return;
-    
-    uint32_t threadCount = GetActualMaxThreads();
-    
-    // Signal all threads to exit
-    for (uint32_t i = 0; i < threadCount; i++)
+    // The caller has finished its last frame before reload/destruction.
+    // Count started threads rather than configured threads for partial startup.
+    for (uint32_t i = 0; i < m_startedThreadCount; ++i)
     {
-        m_threadContexts[i].state.store(2); // exit
+        ThreadContext& ctx = m_threadContexts[i];
+        {
+            std::lock_guard<std::mutex> lock(ctx.mutex);
+            ctx.state = 2;
+        }
+        ctx.workReady.notify_one();
     }
-    
-    // Wait for all threads to finish
-    for (uint32_t i = 0; i < threadCount; i++)
+    for (uint32_t i = 0; i < m_startedThreadCount; ++i)
     {
         if (m_threadContexts[i].thread.joinable())
-        {
             m_threadContexts[i].thread.join();
-        }
     }
-    
     m_threadContexts.reset();
+    m_startedThreadCount = 0;
     m_threadsInitialized = false;
 }
 
 void CV210toP010VideoFrameFormatter::ThreadWorkerStatic(CV210toP010VideoFrameFormatter* self, uint32_t threadIndex)
 {
     ThreadContext& ctx = self->m_threadContexts[threadIndex];
-    
-    while (true)
+    std::unique_lock<std::mutex> lock(ctx.mutex);
+    for (;;)
     {
-        // Spin-wait for work (state == 1) or exit (state == 2)
-        int state;
-        while ((state = ctx.state.load(std::memory_order_acquire)) == 0)
-        {
-            // Yield to avoid burning CPU while idle
-            std::this_thread::yield();
-        }
-        
-        // Check if we should exit
-        if (state == 2)
-            break;
-            
-        // Do the work
-        self->ProcessLineSegment(
-            ctx.work.srcData, ctx.work.srcStride,
-            ctx.work.dstY, ctx.work.dstUV,
-            ctx.work.width, ctx.work.startLine, ctx.work.endLine
-        );
-        
-        // Signal completion by going back to idle
-        ctx.state.store(0, std::memory_order_release);
+        // Predicate handles spurious wakes and work published before we wait.
+        ctx.workReady.wait(lock, [&ctx] { return ctx.state != 0; });
+        if (ctx.state == 2)
+            return;
+
+        const ThreadWorkItem work = ctx.work;
+        lock.unlock();
+        self->ProcessLineSegment(work.srcData, work.srcStride,
+            work.dstY, work.dstUV, work.width, work.startLine, work.endLine);
+        lock.lock();
+        ctx.state = 0;
+        // Publishing completion under the mutex makes pixel writes visible
+        // before the caller returns the output buffer to the renderer.
+        ctx.workDone.notify_one();
     }
 }
 
@@ -321,6 +300,19 @@ void CV210toP010VideoFrameFormatter::ThreadWorkerStatic(CV210toP010VideoFrameFor
 // Process a segment of line pairs (used by threads and main thread)
 // =====================================================================
 void CV210toP010VideoFrameFormatter::ProcessLineSegment(
+    const uint8_t* srcData, uint32_t srcStride,
+    uint16_t* dstY, uint16_t* dstUV,
+    uint32_t width, uint32_t startLine, uint32_t endLine) noexcept
+{
+    if (m_chromaDownsampling == ChromaDownsampling::AVERAGE)
+        ProcessLineSegmentImpl<true>(srcData, srcStride, dstY, dstUV, width, startLine, endLine);
+    else
+        ProcessLineSegmentImpl<false>(srcData, srcStride, dstY, dstUV, width, startLine, endLine);
+}
+
+// Template constants eliminate the unused chroma work in Release builds.
+template<bool AverageChroma>
+void CV210toP010VideoFrameFormatter::ProcessLineSegmentImpl(
     const uint8_t* srcData, uint32_t srcStride,
     uint16_t* dstY, uint16_t* dstUV,
     uint32_t width, uint32_t startLine, uint32_t endLine) noexcept
@@ -434,28 +426,35 @@ void CV210toP010VideoFrameFormatter::ProcessLineSegment(
                 lineY_odd += 12;
             }
 
-            // Downsample 4:2:2 to 4:2:0 using the same rounded vertical
-            // average as the UYVY converter.
+            // LEGACY selects even-row chroma; AVERAGE also unpacks the odd row.
             __m256i uv0_even = _mm256_permutevar8x32_epi32(in_even, uv_idx0);
             uv0_even = _mm256_and_si256(
                 _mm256_srlv_epi32(uv0_even, uv_shift0), mask_3ff);
-            __m256i uv0_odd = _mm256_permutevar8x32_epi32(in_odd, uv_idx0);
-            uv0_odd = _mm256_and_si256(
-                _mm256_srlv_epi32(uv0_odd, uv_shift0), mask_3ff);
-            __m256i uv0 = _mm256_srli_epi32(_mm256_add_epi32(
-                _mm256_add_epi32(uv0_even, uv0_odd),
-                _mm256_set1_epi32(1)), 1);
+            __m256i uv0 = uv0_even;
+            if (AverageChroma)
+            {
+                __m256i uv0_odd = _mm256_permutevar8x32_epi32(in_odd, uv_idx0);
+                uv0_odd = _mm256_and_si256(
+                    _mm256_srlv_epi32(uv0_odd, uv_shift0), mask_3ff);
+                uv0 = _mm256_srli_epi32(_mm256_add_epi32(
+                    _mm256_add_epi32(uv0_even, uv0_odd),
+                    _mm256_set1_epi32(1)), 1);
+            }
             uv0 = _mm256_slli_epi32(uv0, 6);
 
             __m256i uv1_even = _mm256_permutevar8x32_epi32(in_even, uv_idx1);
             uv1_even = _mm256_and_si256(
                 _mm256_srlv_epi32(uv1_even, uv_shift1), mask_3ff);
-            __m256i uv1_odd = _mm256_permutevar8x32_epi32(in_odd, uv_idx1);
-            uv1_odd = _mm256_and_si256(
-                _mm256_srlv_epi32(uv1_odd, uv_shift1), mask_3ff);
-            __m256i uv1 = _mm256_srli_epi32(_mm256_add_epi32(
-                _mm256_add_epi32(uv1_even, uv1_odd),
-                _mm256_set1_epi32(1)), 1);
+            __m256i uv1 = uv1_even;
+            if (AverageChroma)
+            {
+                __m256i uv1_odd = _mm256_permutevar8x32_epi32(in_odd, uv_idx1);
+                uv1_odd = _mm256_and_si256(
+                    _mm256_srlv_epi32(uv1_odd, uv_shift1), mask_3ff);
+                uv1 = _mm256_srli_epi32(_mm256_add_epi32(
+                    _mm256_add_epi32(uv1_even, uv1_odd),
+                    _mm256_set1_epi32(1)), 1);
+            }
             uv1 = _mm256_slli_epi32(uv1, 6);
 
             // Store UV
@@ -487,7 +486,8 @@ void CV210toP010VideoFrameFormatter::ProcessLineSegment(
                 WriteV210PackToP010(evenPack, pixelCount, lineY_even, lineUV);
                 uint16_t* noChroma = nullptr;
                 WriteV210PackToP010(oddPack, pixelCount, lineY_odd, noChroma);
-                AverageV210PackChromaIntoP010(oddPack, pixelCount, tailUV);
+                if (AverageChroma)
+                    AverageV210PackChromaIntoP010(oddPack, pixelCount, tailUV);
                 remaining -= pixelCount;
             }
         }
@@ -506,14 +506,11 @@ bool CV210toP010VideoFrameFormatter::ConvertV210ToP010_Threaded(
     uint32_t width,
     uint32_t height) noexcept
 {
-    // Initialize thread pool if not already done
-    if (!m_threadsInitialized)
-    {
-        InitializeThreadPool();
-    }
-    
-    uint32_t threadCount = GetActualMaxThreads();
-    
+    if (!InitializeThreadPool())
+        return ConvertV210ToP010_SIMD(srcData, srcStride, dstY, dstUV, width, height);
+
+    const uint32_t threadCount = m_startedThreadCount;
+
     // Calculate line pairs per thread (must be even for P010 4:2:0)
     const uint32_t totalLinePairs = height / 2;
     const uint32_t linePairsPerThread = totalLinePairs / (threadCount + 1); // +1 for main thread
@@ -525,34 +522,28 @@ bool CV210toP010VideoFrameFormatter::ConvertV210ToP010_Threaded(
     {
         ThreadContext& ctx = m_threadContexts[i];
         
-        // Set up work item
-        ctx.work.srcData = srcData;
-        ctx.work.srcStride = srcStride;
-        ctx.work.dstY = dstY;
-        ctx.work.dstUV = dstUV;
-        ctx.work.width = width;
-        ctx.work.startLine = currentLine;
-        ctx.work.endLine = currentLine + linesPerThread;
-        
+        {
+            std::lock_guard<std::mutex> lock(ctx.mutex);
+            ctx.work = { srcData, srcStride, dstY, dstUV, width,
+                currentLine, currentLine + linesPerThread };
+            ctx.state = 1;
+        }
         currentLine += linesPerThread;
-        
-        // Signal work available (must be after work item is set up)
-        ctx.state.store(1, std::memory_order_release);
+        ctx.workReady.notify_one();
     }
-    
+
     // Main thread processes the remaining lines
     ProcessLineSegment(srcData, srcStride, dstY, dstUV, width, currentLine, height);
     
-    // Wait for all worker threads to complete (spin-wait)
-    for (uint32_t i = 0; i < threadCount; i++)
+    // Usually already complete; otherwise park until the helper publishes
+    // its output. No spinning while another thread is descheduled.
+    for (uint32_t i = 0; i < threadCount; ++i)
     {
-        while (m_threadContexts[i].state.load(std::memory_order_acquire) != 0)
-        {
-            // Brief pause to reduce bus contention
-            _mm_pause();
-        }
+        ThreadContext& ctx = m_threadContexts[i];
+        std::unique_lock<std::mutex> lock(ctx.mutex);
+        ctx.workDone.wait(lock, [&ctx] { return ctx.state == 0; });
     }
-    
+
     return true;
 }
 
@@ -730,7 +721,22 @@ bool CV210toP010VideoFrameFormatter::ConvertV210ToP010_SIMD(
     const uint8_t* srcData,
     uint32_t srcStride,
     uint16_t* dstY,
-    uint16_t* dstUV, 
+    uint16_t* dstUV,
+    uint32_t width,
+    uint32_t height) noexcept
+{
+    if (m_chromaDownsampling == ChromaDownsampling::AVERAGE)
+        return ConvertV210ToP010_SIMDImpl<true>(srcData, srcStride, dstY, dstUV, width, height);
+    else
+        return ConvertV210ToP010_SIMDImpl<false>(srcData, srcStride, dstY, dstUV, width, height);
+}
+
+template<bool AverageChroma>
+bool CV210toP010VideoFrameFormatter::ConvertV210ToP010_SIMDImpl(
+    const uint8_t* srcData,
+    uint32_t srcStride,
+    uint16_t* dstY,
+    uint16_t* dstUV,
     uint32_t width,
     uint32_t height) noexcept
 {
@@ -830,27 +836,35 @@ bool CV210toP010VideoFrameFormatter::ConvertV210ToP010_SIMD(
                 lineY_odd += 12;
             }
 
-            // Rounded vertical chroma average, matching UYVY->P010.
+            // LEGACY selects even-row chroma; AVERAGE also unpacks the odd row.
             __m256i uv0_even = _mm256_permutevar8x32_epi32(in_even, uv_idx0);
             uv0_even = _mm256_and_si256(
                 _mm256_srlv_epi32(uv0_even, uv_shift0), mask_3ff);
-            __m256i uv0_odd = _mm256_permutevar8x32_epi32(in_odd, uv_idx0);
-            uv0_odd = _mm256_and_si256(
-                _mm256_srlv_epi32(uv0_odd, uv_shift0), mask_3ff);
-            __m256i uv0 = _mm256_srli_epi32(_mm256_add_epi32(
-                _mm256_add_epi32(uv0_even, uv0_odd),
-                _mm256_set1_epi32(1)), 1);
+            __m256i uv0 = uv0_even;
+            if (AverageChroma)
+            {
+                __m256i uv0_odd = _mm256_permutevar8x32_epi32(in_odd, uv_idx0);
+                uv0_odd = _mm256_and_si256(
+                    _mm256_srlv_epi32(uv0_odd, uv_shift0), mask_3ff);
+                uv0 = _mm256_srli_epi32(_mm256_add_epi32(
+                    _mm256_add_epi32(uv0_even, uv0_odd),
+                    _mm256_set1_epi32(1)), 1);
+            }
             uv0 = _mm256_slli_epi32(uv0, 6);
 
             __m256i uv1_even = _mm256_permutevar8x32_epi32(in_even, uv_idx1);
             uv1_even = _mm256_and_si256(
                 _mm256_srlv_epi32(uv1_even, uv_shift1), mask_3ff);
-            __m256i uv1_odd = _mm256_permutevar8x32_epi32(in_odd, uv_idx1);
-            uv1_odd = _mm256_and_si256(
-                _mm256_srlv_epi32(uv1_odd, uv_shift1), mask_3ff);
-            __m256i uv1 = _mm256_srli_epi32(_mm256_add_epi32(
-                _mm256_add_epi32(uv1_even, uv1_odd),
-                _mm256_set1_epi32(1)), 1);
+            __m256i uv1 = uv1_even;
+            if (AverageChroma)
+            {
+                __m256i uv1_odd = _mm256_permutevar8x32_epi32(in_odd, uv_idx1);
+                uv1_odd = _mm256_and_si256(
+                    _mm256_srlv_epi32(uv1_odd, uv_shift1), mask_3ff);
+                uv1 = _mm256_srli_epi32(_mm256_add_epi32(
+                    _mm256_add_epi32(uv1_even, uv1_odd),
+                    _mm256_set1_epi32(1)), 1);
+            }
             uv1 = _mm256_slli_epi32(uv1, 6);
 
             // Store UV
@@ -882,7 +896,8 @@ bool CV210toP010VideoFrameFormatter::ConvertV210ToP010_SIMD(
                 WriteV210PackToP010(evenPack, pixelCount, lineY_even, lineUV);
                 uint16_t* noChroma = nullptr;
                 WriteV210PackToP010(oddPack, pixelCount, lineY_odd, noChroma);
-                AverageV210PackChromaIntoP010(oddPack, pixelCount, tailUV);
+                if (AverageChroma)
+                    AverageV210PackChromaIntoP010(oddPack, pixelCount, tailUV);
                 remaining -= pixelCount;
             }
         }
@@ -896,7 +911,22 @@ bool CV210toP010VideoFrameFormatter::ConvertV210ToP010_Optimized(
     const uint8_t* srcData,
     uint32_t srcStride,
     uint16_t* dstY,
-    uint16_t* dstUV, 
+    uint16_t* dstUV,
+    uint32_t width,
+    uint32_t height) noexcept
+{
+    if (m_chromaDownsampling == ChromaDownsampling::AVERAGE)
+        return ConvertV210ToP010_OptimizedImpl<true>(srcData, srcStride, dstY, dstUV, width, height);
+    else
+        return ConvertV210ToP010_OptimizedImpl<false>(srcData, srcStride, dstY, dstUV, width, height);
+}
+
+template<bool AverageChroma>
+bool CV210toP010VideoFrameFormatter::ConvertV210ToP010_OptimizedImpl(
+    const uint8_t* srcData,
+    uint32_t srcStride,
+    uint16_t* dstY,
+    uint16_t* dstUV,
     uint32_t width,
     uint32_t height) noexcept
 {
@@ -948,23 +978,23 @@ bool CV210toP010VideoFrameFormatter::ConvertV210ToP010_Optimized(
                 // Odd line: write Y and complete the rounded vertical chroma
                 // average started by the preceding even line.
                 V210_READ_PACK_BLOCK(u, y1, v);
-                *dstUV_ptr = AverageP010Chroma(*dstUV_ptr, u); ++dstUV_ptr;
+                if (AverageChroma) { *dstUV_ptr = AverageP010Chroma(*dstUV_ptr, u); ++dstUV_ptr; }
                 *dstY_ptr++ = y1 << 6;
-                *dstUV_ptr = AverageP010Chroma(*dstUV_ptr, v); ++dstUV_ptr;
+                if (AverageChroma) { *dstUV_ptr = AverageP010Chroma(*dstUV_ptr, v); ++dstUV_ptr; }
                 
                 V210_READ_PACK_BLOCK(y1, u, y2);
                 *dstY_ptr++ = y1 << 6; 
-                *dstUV_ptr = AverageP010Chroma(*dstUV_ptr, u); ++dstUV_ptr;
+                if (AverageChroma) { *dstUV_ptr = AverageP010Chroma(*dstUV_ptr, u); ++dstUV_ptr; }
                 *dstY_ptr++ = y2 << 6;
                 
                 V210_READ_PACK_BLOCK(v, y1, u);
-                *dstUV_ptr = AverageP010Chroma(*dstUV_ptr, v); ++dstUV_ptr;
+                if (AverageChroma) { *dstUV_ptr = AverageP010Chroma(*dstUV_ptr, v); ++dstUV_ptr; }
                 *dstY_ptr++ = y1 << 6;
-                *dstUV_ptr = AverageP010Chroma(*dstUV_ptr, u); ++dstUV_ptr;
+                if (AverageChroma) { *dstUV_ptr = AverageP010Chroma(*dstUV_ptr, u); ++dstUV_ptr; }
                 
                 V210_READ_PACK_BLOCK(y1, v, y2);
                 *dstY_ptr++ = y1 << 6; 
-                *dstUV_ptr = AverageP010Chroma(*dstUV_ptr, v); ++dstUV_ptr;
+                if (AverageChroma) { *dstUV_ptr = AverageP010Chroma(*dstUV_ptr, v); ++dstUV_ptr; }
                 *dstY_ptr++ = y2 << 6;
             }
         }
@@ -979,7 +1009,8 @@ bool CV210toP010VideoFrameFormatter::ConvertV210ToP010_Optimized(
             {
                 uint16_t* noChroma = nullptr;
                 WriteV210PackToP010(tail, tailPixels, dstY_ptr, noChroma);
-                AverageV210PackChromaIntoP010(tail, tailPixels, dstUV_ptr);
+                if (AverageChroma)
+                    AverageV210PackChromaIntoP010(tail, tailPixels, dstUV_ptr);
             }
         }
     }
@@ -989,6 +1020,21 @@ bool CV210toP010VideoFrameFormatter::ConvertV210ToP010_Optimized(
 
 // =====================================================================
 bool CV210toP010VideoFrameFormatter::ConvertV210ToP010_Standard(
+    const uint8_t* srcData,
+    uint32_t srcStride,
+    uint16_t* dstY,
+    uint16_t* dstUV,
+    uint32_t width,
+    uint32_t height) noexcept
+{
+    if (m_chromaDownsampling == ChromaDownsampling::AVERAGE)
+        return ConvertV210ToP010_StandardImpl<true>(srcData, srcStride, dstY, dstUV, width, height);
+    else
+        return ConvertV210ToP010_StandardImpl<false>(srcData, srcStride, dstY, dstUV, width, height);
+}
+
+template<bool AverageChroma>
+bool CV210toP010VideoFrameFormatter::ConvertV210ToP010_StandardImpl(
     const uint8_t* srcData,
     uint32_t srcStride,
     uint16_t* dstY,
@@ -1045,23 +1091,23 @@ bool CV210toP010VideoFrameFormatter::ConvertV210ToP010_Standard(
             {
                 // Odd line completes the rounded vertical chroma average.
                 V210_READ_PACK_BLOCK(u, y1, v);
-                *dstUV_ptr = AverageP010Chroma(*dstUV_ptr, u); ++dstUV_ptr;
+                if (AverageChroma) { *dstUV_ptr = AverageP010Chroma(*dstUV_ptr, u); ++dstUV_ptr; }
                 *dstY_ptr++ = y1 << 6;
-                *dstUV_ptr = AverageP010Chroma(*dstUV_ptr, v); ++dstUV_ptr;
+                if (AverageChroma) { *dstUV_ptr = AverageP010Chroma(*dstUV_ptr, v); ++dstUV_ptr; }
                 
                 V210_READ_PACK_BLOCK(y1, u, y2);
                 *dstY_ptr++ = y1 << 6;
-                *dstUV_ptr = AverageP010Chroma(*dstUV_ptr, u); ++dstUV_ptr;
+                if (AverageChroma) { *dstUV_ptr = AverageP010Chroma(*dstUV_ptr, u); ++dstUV_ptr; }
                 *dstY_ptr++ = y2 << 6;
                 
                 V210_READ_PACK_BLOCK(v, y1, u);
-                *dstUV_ptr = AverageP010Chroma(*dstUV_ptr, v); ++dstUV_ptr;
+                if (AverageChroma) { *dstUV_ptr = AverageP010Chroma(*dstUV_ptr, v); ++dstUV_ptr; }
                 *dstY_ptr++ = y1 << 6;
-                *dstUV_ptr = AverageP010Chroma(*dstUV_ptr, u); ++dstUV_ptr;
+                if (AverageChroma) { *dstUV_ptr = AverageP010Chroma(*dstUV_ptr, u); ++dstUV_ptr; }
                 
                 V210_READ_PACK_BLOCK(y1, v, y2);
                 *dstY_ptr++ = y1 << 6;
-                *dstUV_ptr = AverageP010Chroma(*dstUV_ptr, v); ++dstUV_ptr;
+                if (AverageChroma) { *dstUV_ptr = AverageP010Chroma(*dstUV_ptr, v); ++dstUV_ptr; }
                 *dstY_ptr++ = y2 << 6;
             }
         }
@@ -1076,7 +1122,8 @@ bool CV210toP010VideoFrameFormatter::ConvertV210ToP010_Standard(
             {
                 uint16_t* noChroma = nullptr;
                 WriteV210PackToP010(tail, tailPixels, dstY_ptr, noChroma);
-                AverageV210PackChromaIntoP010(tail, tailPixels, dstUV_ptr);
+                if (AverageChroma)
+                    AverageV210PackChromaIntoP010(tail, tailPixels, dstUV_ptr);
             }
         }
     }

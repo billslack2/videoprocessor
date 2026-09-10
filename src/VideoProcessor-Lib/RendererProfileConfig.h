@@ -1,6 +1,8 @@
 #pragma once
 
 #include "ConfigFile.h"
+#include "ColorOutputProfileMigration.h"
+#include "CalibrationProfileMigration.h"
 #include "ConfigSchema.h"
 #include "MainConfigSchema.h"
 #include "RendererConfigView.h"
@@ -39,6 +41,7 @@ namespace RendererProfileConfig
 	inline bool OwnsSection(const std::string& section)
 	{
 		return RendererConfigView::OwnsSection(section) ||
+            ColorOutputProfileMigration::IsArchive(section) || CalibrationProfileMigration::IsArchive(section) ||
 			section == "general" ||
 			section == "profile_groups" ||
 			section == "profiles.input" ||
@@ -54,6 +57,20 @@ namespace RendererProfileConfig
 			section.rfind("actions.", 0) == 0 ||
 			section.rfind("display_rules.", 0) == 0;
 	}
+
+    // Shared by application startup and Config Save/Apply. Keep this check in
+    // one place so an editor-accepted migration cannot fail only at startup.
+    inline bool ValidateOwnedSections(const ConfigFile& config, std::string& error)
+    {
+        error.clear();
+        for (const auto& section : config.GetSectionNames())
+            if (!MainConfigSchema::OwnsSection(section) && !OwnsSection(section))
+            {
+                error = "unknown configuration section [" + section + "]";
+                return false;
+            }
+        return true;
+    }
 
 	inline std::string StatePath(const ConfigFile& config)
 	{
@@ -504,7 +521,7 @@ namespace RendererProfileConfig
 			if (key == "peak_detection") return IsChoice(value, { "auto", "off", "default", "high_quality", "on" });
 			if (key == "contrast_recovery") return IsChoice(value, { "auto" }) || IsNumberInRange(value, 0.0, 2.0);
 			if (key == "sdr_input_transfer") return IsChoice(value, { "auto", "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" });
-			if (key == "sdr_adjust_gamma") return IsChoice(value, { "auto", "on", "off" });
+			if (key == "sdr_adjust_gamma") return IsChoice(value, { "auto", "on", "off", "passthrough" });
 			expected = "an input-owned setting"; return false;
 		}
 		if (group == "scaling")
@@ -540,8 +557,8 @@ namespace RendererProfileConfig
 				key == "calibration_lut_bt2020")
 			{
 				const std::string normalized = ConfigFile::NormalizeName(value);
-				return normalized.size() > 5 &&
-					normalized.substr(normalized.size() - 5) == ".cube";
+				return normalized == "none" || (normalized.size() > 5 &&
+					normalized.substr(normalized.size() - 5) == ".cube");
 			}
 			if (key == "display_bit_depth") return IsChoice(value, { "auto", "8", "10" });
 			if (key == "sdr_target_nits")
@@ -550,8 +567,10 @@ namespace RendererProfileConfig
 				return IsNumberInRange(value, 40.0, 500.0);
 			}
 			if (key == "sdr_black_nits") return IsChoice(value, { "auto" }) || IsNumberInRange(value, 0.0, 500.0, false);
+			if (key == "hdr_tone_map_target_gamma") return IsChoice(value, { "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" });
+			if (key == "calibration_lut_input_gamma" || key == "calibration_lut_input_transfer") return IsChoice(value, { "display", "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" });
 			if (key == "output_gamma") return IsChoice(value, { "auto", "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" });
-			if (key == "sdr_target_primaries") return IsChoice(value, { "rec709", "p3_d65", "bt2020" });
+			if (key == "target_primaries" || key == "sdr_target_primaries") return IsChoice(value, { "rec709", "p3_d65", "bt2020" });
 			if (key == "report_bt2020_to_display") return IsBoolean(value);
 			expected = "a display-owned setting"; return false;
 		}
@@ -689,7 +708,7 @@ namespace RendererProfileConfig
 			return ValidateBaseSetting(key, value);
 		std::string ignored;
 		// Legacy [vpvr.display] and literal [vprenderer] files may still carry
-		// output transport. New target-model files use [vprenderer.output.*].
+		// output transport. Current files keep transport in [vprenderer.color.*].
 		for (const char* group : { "input", "scaling", "display", "output" })
 			if (ValidateProfileSetting(group, key, value, ignored)) return true;
 		return key == "deband" &&
@@ -780,6 +799,7 @@ namespace RendererProfileConfig
 	inline bool ValidateTargetRendererSetting(const std::string& key,
 		const std::string& value)
 	{
+        if (CalibrationProfileMigration::IsKey(key)) return false;
 		// automatic_crop is viewport-owned. Reject it from renderer/display
 		// variants so the same setting cannot acquire two owners.
 		if (key == "automatic_crop" ||
@@ -798,11 +818,15 @@ namespace RendererProfileConfig
 		const std::string& value)
 	{
 		static const std::set<std::string> colorKeys = {
-			"sdr_target_primaries", "output_gamma",
+			"target_primaries", "sdr_target_primaries", "output_gamma",
 			"report_bt2020_to_display", "sdr_adjust_gamma",
-			"sdr_input_transfer" };
-		return colorKeys.find(key) != colorKeys.end() &&
-			ValidateTargetRendererSetting(key, value);
+			"sdr_input_transfer", "calibration_lut_input_gamma", "calibration_lut_input_transfer",
+            "calibration_lut_enabled", "calibration_lut_bt709", "calibration_lut_p3_d65",
+            "calibration_lut_bt2020", "hdr_tone_map_target_gamma" };
+		std::string expected;
+		return (colorKeys.find(key) != colorKeys.end() &&
+			ValidateBaseSetting(key, value)) ||
+			ValidateProfileSetting("output", key, value, expected);
 	}
 
 	inline bool ParseTargetActionRun(const std::string& value,
@@ -889,6 +913,52 @@ namespace RendererProfileConfig
 		return name.find('.') == std::string::npos &&
 			IsRendererChildNamespace(name);
 	}
+
+    // Alias resolution is performed per section, before profile inheritance.
+    // A child alias overrides its inherited value; an explicit canonical key
+    // wins when both spellings occur in the same section. ConfigDocument uses
+    // the same mapping without rewriting the file merely by opening it.
+    inline std::string SettingAlias(const std::string& sectionName,
+        const std::string& canonicalKey)
+    {
+        const std::string section = ConfigFile::NormalizeName(sectionName);
+        const bool rendering = section == "vprenderer" ||
+            (section.rfind("vprenderer.", 0) == 0 &&
+                section.substr(11).find('.') == std::string::npos &&
+                !IsRendererChildNamespace(section.substr(11))) ||
+            section == "vpvr.display" || section == "display" ||
+            section == "libplacebo" || section.rfind("profiles.display.", 0) == 0;
+        const bool color = section == "vprenderer.color" ||
+            section.rfind("vprenderer.color.", 0) == 0;
+        if (canonicalKey == "target_primaries" && (rendering || color))
+            return "sdr_target_primaries";
+        if (canonicalKey == "hdr_tone_map_target_gamma" && (rendering || color))
+            return "calibration_lut_input_transfer";
+        return {};
+    }
+
+    inline std::string CanonicalAliasValue(const std::string& canonicalKey,
+        const std::string& value)
+    {
+        if (canonicalKey == "hdr_tone_map_target_gamma" &&
+            ConfigFile::NormalizeName(value) == "display") return "2.2";
+        return value;
+    }
+
+    inline void ApplySectionSetting(std::map<std::string, std::string>& settings,
+        const std::string& section,
+        const std::map<std::string, std::string>& sectionValues,
+        const std::string& key, const std::string& value)
+    {
+        for (const char* canonical : { "target_primaries", "hdr_tone_map_target_gamma" })
+        {
+            if (SettingAlias(section, canonical) != key) continue;
+            if (sectionValues.find(canonical) == sectionValues.end())
+                settings[canonical] = CanonicalAliasValue(canonical, value);
+            return;
+        }
+        settings[key] = value;
+    }
 
 	inline bool IsSupportedActionEvent(const std::string& event)
 	{
@@ -994,6 +1064,15 @@ namespace RendererProfileConfig
 			return false;
 		}
 
+        // Valid legacy Output profiles have already migrated during Load.
+        // Any remaining member is malformed and must not disappear silently.
+        for (const auto& section : config.GetSectionNames())
+            if (section == "vprenderer.output" || section.rfind("vprenderer.output.", 0) == 0)
+            {
+                error = "Malformed legacy Output profile [" + section + "]";
+                return false;
+            }
+
 		RendererConfigView rendererConfig(config);
 		if (!rendererConfig.Validate(error, model.warnings) ||
 			!ValidateCanonicalRendererSections(config, error))
@@ -1035,7 +1114,7 @@ namespace RendererProfileConfig
 			{ "scaling", "vprenderer.scaling", true },
 			{ "display", "vprenderer", false },
 			{ "color", "vprenderer.color", true },
-			{ "output", "vprenderer.output", true },
+
 			{ "viewport", "vprenderer.viewport", true },
 			{ "zoom", "vprenderer.zoom", true },
 			{ "queue", "queue", true },
@@ -1193,7 +1272,9 @@ namespace RendererProfileConfig
 						}
 					}
 					if (spec.inheritRoot || namedBaseline)
-						base.settings.emplace(entry.first, entry.second);
+						ApplySectionSetting(base.settings,
+                            namedBaseline ? prefix + baselineName : section,
+                            *baselineValues, entry.first, entry.second);
 				}
 			if (!MergeShortcutIntoWhen(resetShortcut, "[" + section + "]", group.resetWhen, error) ||
 				!MergeShortcutIntoWhen(baseShortcut, "[" + prefix + baselineName + "]", base.when, error))
@@ -1281,7 +1362,8 @@ namespace RendererProfileConfig
 							"' value '" + entry.second + "' is not valid for " + spec.name;
 						return false;
 					}
-					profile.settings[entry.first] = entry.second;
+					ApplySectionSetting(profile.settings, variantSection,
+                        *values, entry.first, entry.second);
 				}
 				if (!MergeShortcutIntoWhen(profileShortcut, "[" + variantSection + "]", profile.when, error))
 					return false;
@@ -1533,6 +1615,8 @@ namespace RendererProfileConfig
 		for (const std::string& section : config.GetSectionNames())
 			if (!MainConfigSchema::OwnsSection(section) &&
 				!RendererConfigView::OwnsSection(section) &&
+                !ColorOutputProfileMigration::IsArchive(section) &&
+                !CalibrationProfileMigration::IsArchive(section) &&
 				section.rfind("actions.", 0) != 0 &&
 				section.rfind("shader.", 0) != 0)
 			{
@@ -1548,6 +1632,15 @@ namespace RendererProfileConfig
 			return ReadTarget(config, model, error);
 		model = {};
 		error.clear();
+        // Valid legacy Output profiles have already migrated during Load.
+        // Any remaining member is malformed and must not disappear silently.
+        for (const auto& section : config.GetSectionNames())
+            if (section == "vprenderer.output" || section.rfind("vprenderer.output.", 0) == 0)
+            {
+                error = "Malformed legacy Output profile [" + section + "]";
+                return false;
+            }
+
 		RendererConfigView rendererConfig(config);
 		if (!rendererConfig.Validate(error, model.warnings) ||
 			!ValidateCanonicalRendererSections(config, error))
@@ -1624,7 +1717,7 @@ namespace RendererProfileConfig
 				"contrast_recovery", "upscaler", "downscaler", "deband",
 				"deband_strength", "sigmoid", "dithering", "display_bit_depth", "output_presentation",
 				"output_range", "output_gamma", "output_path_profile",
-				"sdr_target_primaries", "report_bt2020_to_display",
+				"target_primaries", "sdr_target_primaries", "report_bt2020_to_display",
 				"sdr_input_transfer", "sdr_adjust_gamma", "output_diagnostics",
 				"diagnostic_disable_shader_cache", "diagnostic_disable_compute",
 				"diagnostic_force_8bit_sdr_swapchain",
@@ -1778,7 +1871,8 @@ namespace RendererProfileConfig
 								"' has invalid value '" + value.second + "'; expected " + expected;
 							return false;
 						}
-						profile.settings.emplace(settingKey, value.second);
+						ApplySectionSetting(profile.settings, profileSection,
+                            *values, settingKey, value.second);
 					}
 				}
 				if (!profile.when.empty() &&
@@ -1951,7 +2045,9 @@ namespace RendererProfileConfig
 		for (const std::string& section : config.GetSectionNames())
 			if (expectedSections.find(section) == expectedSections.end() &&
 				!MainConfigSchema::OwnsSection(section) &&
-				!RendererConfigView::OwnsSection(section))
+				!RendererConfigView::OwnsSection(section) &&
+                !ColorOutputProfileMigration::IsArchive(section) &&
+                !CalibrationProfileMigration::IsArchive(section))
 			{
 				error = "unified renderer configuration has unknown or orphan section [" + section + "]";
 				return false;

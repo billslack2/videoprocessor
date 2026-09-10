@@ -37,6 +37,7 @@ directshow.renderer_nominal_range	directshow-renderer-nominal-range	DirectShow	n
 directshow.conversion.conversion_method	directshow-conversion-method	DirectShow conversion	no
 directshow.conversion.min_core_count	directshow-conversion-min-cores	DirectShow conversion	no
 directshow.conversion.max_core_count	directshow-conversion-max-cores	DirectShow conversion	no
+directshow.conversion.chroma_downsampling	directshow-conversion-chroma	DirectShow conversion	no
 directshow.ppm.ppm	directshow-ppm	DirectShow timing	no
 shortcuts.render.<index>	render-shortcut	VP shortcut	no
 shortcuts.foreground_only	shortcut-foreground-only	VP shortcut focus	no
@@ -45,10 +46,10 @@ shortcuts.show_profiles	shortcut-show-profiles	VP profile overlay	no
 vprenderer.when	vprenderer-when	VP Renderer	no
 vprenderer.shortcut	vprenderer-shortcut	VP Renderer	no
 vprenderer.quality	vprenderer-quality	VP Renderer	no
-vprenderer.calibration_lut_enabled	vprenderer-calibration-lut	VP Renderer calibration	no
-vprenderer.calibration_lut_bt709	vprenderer-calibration-lut	VP Renderer calibration	no
-vprenderer.calibration_lut_p3_d65	vprenderer-calibration-lut	VP Renderer calibration	no
-vprenderer.calibration_lut_bt2020	vprenderer-calibration-lut	VP Renderer calibration	no
+vprenderer.calibration_lut_enabled	vprenderer-calibration-lut	Color / Output calibration	no
+vprenderer.calibration_lut_bt709	vprenderer-calibration-lut	Color / Output calibration	no
+vprenderer.calibration_lut_p3_d65	vprenderer-calibration-lut	Color / Output calibration	no
+vprenderer.calibration_lut_bt2020	vprenderer-calibration-lut	Color / Output calibration	no
 vprenderer.tone_mapping	vprenderer-tone-mapping	VP Renderer	no
 vprenderer.gamut_mapping	vprenderer-gamut-mapping	VP Renderer	no
 vprenderer.peak_detection	vprenderer-peak-detection	VP Renderer	no
@@ -70,6 +71,7 @@ vprenderer.diagnostic_allow_limited_g22	vprenderer-diagnostic-output-experiments
 vprenderer.diagnostic_vp_owned_dxgi_presenter	vprenderer-diagnostic-output-experiments	VP Renderer diagnostics	no
 vprenderer.sdr_input_transfer	vprenderer-sdr-input-transfer	VP Renderer	no
 vprenderer.sdr_adjust_gamma	vprenderer-sdr-adjust-gamma	VP Renderer	no
+vprenderer.target_primaries	vprenderer-target-primaries	VP Renderer	no
 vprenderer.sdr_target_primaries	vprenderer-sdr-target-primaries	VP Renderer	no
 vprenderer.report_bt2020_to_display	vprenderer-report-bt2020	VP Renderer	no
 general.switch_refresh_rate	general-switch-refresh-rate	General	no
@@ -136,3 +138,6 @@ actions.<name>.delay_seconds	action-delay	Event action	no
 actions.<name>.on	action-on	Event action	no
 actions.<name>.when	action-when	Event action	no
 actions.<name>.run	action-run	Event action	no
+vprenderer.calibration_lut_input_gamma	vprenderer-calibration-lut-input-gamma	Color / Output calibration	no
+vprenderer.hdr_tone_map_target_gamma	vprenderer-hdr-tone-map-target-gamma	Color / Output calibration	no
+vprenderer.calibration_lut_input_transfer	vprenderer-calibration-lut-input-transfer	Color / Output calibration	no
