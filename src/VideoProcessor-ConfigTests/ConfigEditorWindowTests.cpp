@@ -16,6 +16,8 @@
 #include <QAbstractButton>
 #include <QAbstractItemView>
 #include <QCheckBox>
+#include <QRadioButton>
+#include <QFontDatabase>
 #include <QColor>
 #include <QComboBox>
 #include <QDialog>
@@ -1382,7 +1384,7 @@ void testSdrGammaAdjustmentLabelsAndPersistence()
         auto* desired = requireControl<QComboBox>(window, "config.vprenderer.color.sdr_input_transfer");
         require(window.findChild<QWidget*>("config.vprenderer.color.calibration_lut_input_gamma") == nullptr,
             "Color / Output still exposes a saved LUT compatibility control");
-        require(requireControl<QComboBox>(window, "config.vprenderer.color.hdr_tone_map_target_gamma")->accessibleName() == "HDR tone-map target gamma",
+        require(requireControl<QComboBox>(window, "config.vprenderer.color.hdr_tone_map_target_gamma")->accessibleName() == "HDR LUT input gamma",
             "Rendering HDR target gamma label is unclear");
         require(adjustment->accessibleName() == "Enable SDR gamma processing", "Missing gamma checkbox label");
         const int automatic = desired->findData("AUTO", Qt::UserRole, Qt::MatchFixedString);
@@ -1443,109 +1445,107 @@ void testCalibrationControlsFollowConfirmedRuntimeLut()
     QTemporaryDir directory;
     const QString path = copyFixture(directory);
     ConfigEditorWindow window(path, 0, true);
+    auto* vp = requireControl<QRadioButton>(window, "config.vprenderer.color.calibration_method.vp");
+    auto* lut = requireControl<QRadioButton>(window, "config.vprenderer.color.calibration_method.lut");
     auto* display = requireControl<QComboBox>(window, "config.vprenderer.color.output_gamma");
     auto* source = requireControl<QComboBox>(window, "config.vprenderer.color.sdr_input_transfer");
-    auto* conversion = requireControl<QCheckBox>(window, "config.vprenderer.color.sdr_adjust_gamma");
+    auto* response = requireControl<QComboBox>(window, "config.vprenderer.color.sdr_response");
     auto* hdr = requireControl<QComboBox>(window, "config.vprenderer.color.hdr_tone_map_target_gamma");
-    auto* enabled = requireControl<QCheckBox>(window, "config.vprenderer.color.calibration_lut_enabled");
-    auto* status = requireControl<QLabel>(window, "config.vprenderer.color.output_gamma.status");
-    auto* hdrStatus = requireControl<QLabel>(window, "config.vprenderer.color.hdr_tone_map_target_gamma.status");
-    auto* sourceLabel = requireControl<QLabel>(window, "config.vprenderer.color.sdr_input_transfer.label");
-    auto* sourceHelp = requireControl<QLabel>(window, "config.vprenderer.color.sdr_input_transfer.help");
-    enabled->setChecked(false);
-    require(enabled->isEnabled() && !hdr->isEnabled() && display->isEnabled() && conversion->isEnabled(),
-        "Offline LUT-off state did not disable only LUT preparation controls");
-    require(hdrStatus->text().contains("LUT is disabled"), "Disabled LUT status is ambiguous");
-    require(source->accessibleName() == "Desired SDR gamma" && sourceLabel->text() == source->accessibleName(),
-        "No-LUT SDR label is not the desired display response");
-    selectData(source, "bt1886");
-    require(sourceHelp->text().contains("1000:1") && sourceHelp->text().contains("not a measured"),
-        "SDR BT.1886 reference contrast is hidden");
-    selectData(display, "bt1886");
-    require(status->text().contains("1000:1") && status->text().contains("For HDR"),
-        "Display BT.1886 does not distinguish SDR and HDR black references");
-    require(requireControl<QComboBox>(window, "config.vprenderer.color.target_primaries")->accessibleName() == "Target gamut",
-        "Target gamut label was not updated");
-    require(requireControl<QToolButton>(window, "rendererSection.calibration")->text() == "Display calibration",
-        "Display target group label was not updated");
-    require(requireControl<QWidget>(window, "rendererSection.calibration.content")->isAncestorOf(hdr),
-        "HDR target gamma is not inside the calibration LUT section");
-    require(hdr->findData("AUTO") < 0 && hdr->findData("display") < 0,
-        "HDR target gamma exposes a second display/default policy");
-    require(window.findChild<QWidget*>("config.vprenderer.color.calibration_lut_input_transfer") == nullptr,
-        "Old LUT input transfer remains exposed");
-    enabled->setChecked(true);
-    require(hdr->isEnabled() && sourceLabel->text() == "SDR reference for LUT" &&
-        source->accessibleName() == sourceLabel->text(), "Offline LUT preparation or reference label is incorrect");
-    require(sourceHelp->text().contains("Desired SDR gamma"), "LUT fallback does not explain the shared SDR reference");
-    selectData(hdr, "bt1886");
-    require(hdrStatus->text().contains("Target nits and Target black") && !hdrStatus->text().contains("1000:1"),
-        "HDR LUT BT.1886 incorrectly uses the SDR contrast assumption");
-    selectData(hdr, "2.4");
-    enabled->setChecked(false);
-    require(!hdr->isEnabled() && hdr->currentData().toString() == "2.4", "Disabling LUT lost saved HDR gamma");
-    enabled->setChecked(true);
+    auto* fallback = requireControl<QPushButton>(window, "config.vprenderer.color.edit_fallback");
+    auto* status = requireControl<QLabel>(window, "config.vprenderer.color.lut_attachment_status");
+    auto* gamutLabel = requireControl<QLabel>(window, "config.vprenderer.color.target_primaries.label");
+    window.selectPage(16);
+    window.resize(1500, 1100);
+    window.show();
+    QCoreApplication::processEvents();
+    vp->click();
     selectData(display, "2.2");
-    conversion->setCheckState(Qt::Checked);
-    if (requireControl<QPushButton>(window, "applyConfiguration")->isEnabled()) save(window);
-    const QString rendering = requireControl<QComboBox>(window, "config.vprenderer.quality")->property("profileSection").toString();
-    const QString color = display->property("profileSection").toString();
-    quint64 identity = ConfigurationIdentity::FromText(readBytes(path).toStdString());
-    const auto publish = [&](bool attached, bool hdrSource)
-    { window.setCalibrationStatusForTesting(true, attached, identity, path, rendering, color, hdrSource); };
-
-    publish(false, true);
-    require(display->isEnabled() && conversion->isEnabled() && source->isEnabled() && hdr->isEnabled(),
-        "An enabled LUT checkbox was mistaken for attached calibration or blocked HDR preparation");
-    require(hdrStatus->text().contains("no usable LUT"), "Detached LUT was presented as active");
-    publish(true, false);
-    require(!display->isEnabled() && !conversion->isEnabled() && source->isEnabled() && hdr->isEnabled(),
-        "SDR playback blocked preparing HDR LUT gamma");
-    require(hdrStatus->text().contains("Inactive for the current SDR source"), "HDR gamma falsely reported active for SDR");
-    require(status->text().contains("A usable LUT is active"), "Usable LUT state is not explained");
-    publish(true, true);
-    require(!display->isEnabled() && !conversion->isEnabled() && hdr->isEnabled() && source->isEnabled(),
-        "HDR usable-LUT control state is incorrect");
-
-    // Source assumptions stay editable, then exact-content matching invalidates
-    // the live gate until the renderer confirms the edited document.
-    selectData(source, "2.4");
-    require(display->isEnabled() && conversion->isEnabled(), "Unsaved values inherited stale LUT control gating");
-    require(sourceLabel->text() == "SDR reference for LUT", "Editing the reference relabeled it from stale runtime evidence");
-    require(!sourceHelp->text().contains("1000:1"), "Pure 2.4 still shows a BT.1886 assumption");
+    selectData(response, "2.4");
+    require(source->currentData().toString() == "2.4", "Combined SDR gamma failed to set the reference");
+    selectData(response, "passthrough");
+    require(source->currentData().toString() == "2.4", "No gamma adjustment discarded the remembered gamma");
     save(window);
-    publish(true, true);
-    require(display->isEnabled(), "Saved-but-not-applied values inherited stale LUT gating");
-    identity = ConfigurationIdentity::FromText(readBytes(path).toStdString());
-    publish(true, true);
-    require(!display->isEnabled(), "Applied document identity did not restore live LUT gating");
+    require(readBytes(path).contains("sdr_adjust_gamma: passthrough"), "No-adjustment choice did not persist");
+    selectData(response, "2.4");
+    require(display->isVisibleTo(&window) && response->isVisibleTo(&window) && !source->isVisibleTo(&window) &&
+        !hdr->isVisibleTo(&window) && gamutLabel->text() == "Display calibrated gamut",
+        "VP mode is not a compact display-only editor");
+    const QString captures = qEnvironmentVariable("VP_CONFIG_REVIEW_IMAGES");
+    const auto captureCalibration = [&](const QString& file)
+    {
+        auto* section = requireControl<QWidget>(window, "rendererSection.calibration.content")->parentWidget();
+        for (QWidget* parent = section->parentWidget(); parent; parent = parent->parentWidget())
+            if (auto* scroll = qobject_cast<QScrollArea*>(parent)) { scroll->ensureWidgetVisible(section); break; }
+        QCoreApplication::processEvents();
+        window.grab().copy(QRect(section->mapTo(&window, QPoint()), section->size())).save(file);
+    };
 
-    auto* colorProfiles = requireControl<QListWidget>(window, "config.vprenderer.color.profiles");
-    require(colorProfiles->count() > 1, "Fixture lacks an independent Color profile");
-    colorProfiles->setCurrentRow(1);
-    require(display->isEnabled() && conversion->isEnabled(), "Active LUT disabled a different Color profile");
-    colorProfiles->setCurrentRow(0);
-    require(!display->isEnabled(), "Selecting the active Color profile did not restore live gating");
-    auto* renderingProfiles = requireControl<QListWidget>(window, "config.vprenderer.profiles");
-    require(renderingProfiles->count() > 1, "Fixture lacks an independent Rendering profile");
-    renderingProfiles->setCurrentRow(1);
-    require(!display->isEnabled(), "Browsing Rendering incorrectly changed active Color calibration gating");
-    renderingProfiles->setCurrentRow(0);
-
-    window.setCalibrationStatusForTesting(true, true, identity, directory.filePath("Other.cfg"), rendering, color, true);
-    require(display->isEnabled(), "Another Config file's renderer disabled these controls");
-    window.setCalibrationStatusForTesting(false, true, identity, path, rendering, color, true);
-    require(display->isEnabled() && source->isEnabled(), "Unavailable renderer evidence disabled offline editing");
-    publish(false, true);
-    require(display->isEnabled() && conversion->isEnabled() && hdr->isEnabled(),
-        "LUT rejection/detachment did not restore fallback controls while allowing HDR preparation");
-    enabled->setChecked(false);
-    require(!hdr->isEnabled() && sourceLabel->text() == "Desired SDR gamma", "LUT-off edit retained active LUT controls");
+    if (!captures.isEmpty())
+    {
+        QCoreApplication::processEvents();
+        captureCalibration(captures + "/vp.png");
+    }
+    auto* calibrationSection = requireControl<QWidget>(window, "rendererSection.calibration.content");
+    auto* gamut = requireControl<QComboBox>(window, "config.vprenderer.color.target_primaries");
+    const int valueColumn = gamut->mapTo(calibrationSection, QPoint()).x();
+    lut->click();
+    QCoreApplication::processEvents();
+    require(gamut->mapTo(calibrationSection, QPoint()).x() == valueColumn, "Changing calibration mode shifted the value column");
+    require(lut->isChecked() && !vp->isChecked(), "Calibration radio buttons are not exclusive");
+    require(!display->isVisibleTo(&window) && !response->isVisibleTo(&window) && source->isVisibleTo(&window) &&
+        hdr->isVisibleTo(&window) && gamutLabel->text() == "LUT input gamut", "LUT mode retained irrelevant display controls");
+    selectData(hdr, "2.2");
+    require(source->currentData().toString() == "2.4", "HDR LUT gamma changed the SDR reference");
+    if (!captures.isEmpty())
+    {
+        QCoreApplication::processEvents();
+        captureCalibration(captures + "/lut.png");
+    }
+    save(window);
+    const QByteArray beforeLive = readBytes(path);
+    const quint64 identity = ConfigurationIdentity::FromText(beforeLive.toStdString());
+    const QString color = display->property("profileSection").toString();
+    const QString rendering = requireControl<QComboBox>(window, "config.vprenderer.quality")->property("profileSection").toString();
+    for (bool attached : { false, true })
+        for (bool hdrSource : { false, true })
+        {
+            window.setCalibrationStatusForTesting(true, attached, identity, path, rendering, color, hdrSource);
+            require(!display->isVisibleTo(&window) && !response->isVisibleTo(&window) &&
+                source->isEnabled() && hdr->isEnabled(), "Playback state changed the LUT editing layout");
+            require(status->text().contains(attached ? "Attached" : "Not attached"), "Confirmed LUT status is incorrect");
+        }
+    window.setCalibrationStatusForTesting(false, false, 0, path, rendering, color, false);
+    require(status->text().contains("unavailable"), "Unavailable status is reported as LUT failure");
+    fallback->click();
+    require(display->isVisibleTo(&window) && response->isVisibleTo(&window) && lut->isChecked(),
+        "Fallback editing switched mode or left the fallback inaccessible");
+    require(display->isEnabled() && response->isEnabled(), "Runtime attachment blocked editing fallback settings");
+    fallback->click();
+    require(!requireControl<QPushButton>(window, "applyConfiguration")->isEnabled(), "Opening fallback marked the config dirty");
+    require(readBytes(path) == beforeLive, "Changing live status or opening fallback rewrote configuration");
+    vp->click();
+    require(response->currentData().toString() == "2.4" && display->currentData().toString() == "2.2" &&
+        hdr->currentData().toString() == "2.2", "Switching modes lost independent gamma values");
     save(window);
     ConfigEditorWindow reloaded(path, 0, true);
-    auto* savedHdr = requireControl<QComboBox>(reloaded, "config.vprenderer.color.hdr_tone_map_target_gamma");
-    require(!savedHdr->isEnabled() && savedHdr->currentData().toString() == "2.4",
-        "Saving disabled LUT discarded HDR gamma or reopened its control");
+    require(requireControl<QRadioButton>(reloaded, "config.vprenderer.color.calibration_method.vp")->isChecked() &&
+        requireControl<QComboBox>(reloaded, "config.vprenderer.color.sdr_response")->currentData().toString() == "2.4",
+        "Radio mode or combined SDR gamma failed save/reload");
+    auto* profiles = requireControl<QListWidget>(window, "config.vprenderer.color.profiles");
+    require(profiles->count() > 1, "Fixture lacks an inherited calibration profile");
+    profiles->setCurrentRow(1);
+    selectData(response, "2.6");
+    require(requireControl<QPushButton>(window, "applyConfiguration")->isEnabled(),
+        (QStringLiteral("Named gamma edit could not save: ") + requireControl<QLabel>(window, "configurationStatus")->text()).toStdString().c_str());
+    save(window);
+    selectData(response, "__inherit");
+    require(requireControl<QPushButton>(window, "applyConfiguration")->isEnabled(),
+        (QStringLiteral("Restoring inheritance could not save: ") + requireControl<QLabel>(window, "configurationStatus")->text()).toStdString().c_str());
+    save(window);
+    require(response->currentData().toString() == "2.4", "Combined SDR response did not restore profile inheritance");
+    requireControl<QPushButton>(window, "config.vprenderer.color.luminance_link")->click();
+    require(requireControl<QStackedWidget>(window, "settingsPages")->currentIndex() == 2 &&
+        requireControl<QToolButton>(window, "rendererSection.toneMapping")->isChecked(), "Luminance link did not reveal Rendering controls");
 }
 
 void testCalibrationProfileOwnsLutAndHdrGamma()
@@ -3195,7 +3195,7 @@ void testCalibrationLayoutKeepsIndependentLutSlots()
     QTemporaryDir directory;
     const QString path = copyFixture(directory);
     ConfigEditorWindow window(path, 0, true);
-    auto* method = requireControl<QComboBox>(window, "config.vprenderer.color.calibration_method");
+    auto* method = requireControl<QRadioButton>(window, "config.vprenderer.color.calibration_method.lut");
     auto* enabled = requireControl<QCheckBox>(window, "config.vprenderer.color.calibration_lut_enabled");
     auto* gamut = requireControl<QComboBox>(window, "config.vprenderer.color.target_primaries");
     auto* rec = requireControl<QComboBox>(window, "config.vprenderer.color.calibration_lut_bt709");
@@ -3203,7 +3203,7 @@ void testCalibrationLayoutKeepsIndependentLutSlots()
     auto* bt = requireControl<QComboBox>(window, "config.vprenderer.color.calibration_lut_bt2020");
     enabled->setChecked(true);
     QCoreApplication::processEvents();
-    require(method->currentIndex() == 1, "Calibration method did not reflect profile enablement");
+    require(method->isChecked(), "Calibration method did not reflect profile enablement");
     gamut->setCurrentIndex(gamut->findData("REC709"));
     require(!rec->isHidden() && p3->isHidden() && bt->isHidden(), "LUT layout did not select Rec709 slot");
     const QVariant savedRec = rec->currentData();
@@ -3211,7 +3211,7 @@ void testCalibrationLayoutKeepsIndependentLutSlots()
     require(rec->isHidden() && !p3->isHidden() && bt->isHidden(), "LUT layout did not select P3 slot");
     require(rec->currentData() == savedRec, "Changing visible gamut modified the other LUT slot");
     enabled->setChecked(false);
-    require(method->currentIndex() == 0 && rec->isHidden() && p3->isHidden() && bt->isHidden(),
+    require(!method->isChecked() && rec->isHidden() && p3->isHidden() && bt->isHidden(),
         "Display calibration mode left LUT selectors visible");
 }
 
@@ -5583,6 +5583,8 @@ int main(int argc, char** argv)
         QStringLiteral("--test"))
         testNameFilter = QString::fromLocal8Bit(argv[2]);
     QApplication application(argc, argv);
+    if (!qEnvironmentVariable("VP_CONFIG_REVIEW_IMAGES").isEmpty())
+        QFontDatabase::addApplicationFont(QStringLiteral("C:/Windows/Fonts/segoeui.ttf"));
     QApplication::setStyle(VpTheme::CreateStyle());
     application.setStyleSheet(VpTheme::StyleSheet());
     int failures = 0;
