@@ -234,7 +234,7 @@ they must not contain requirements that are absent from this file.
 
 | VP-0181 | Review | Reduce P010 CPU use with blocking waits and configurable chroma |
 
-| VP-0182 | In Progress | Config-only ADVANCED Lanczos chroma downsampling |
+| VP-0182 | Review | Config-only ADVANCED Lanczos chroma downsampling |
 
 ## Codex story workflow
 

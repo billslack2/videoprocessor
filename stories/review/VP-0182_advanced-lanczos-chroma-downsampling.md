@@ -2,7 +2,7 @@
 
 ## Status
 
-In Progress
+Review
 
 2026-09-10: User authorized adding ADVANCED while leaving AVERAGE/LEGACY and
 AVERAGE default unchanged. Existing implementations will not be rewritten.
@@ -46,3 +46,29 @@ of universally better images. Visual hardware acceptance remains separate.
 
 200 files/index IDs matched before allocation, no duplicate or missing IDs;
 registry max 0181 and next 0182 agree. Unrelated capitalization retained.
+
+## Implementation and review evidence
+
+Commit 0b13008e7cbb6f6e9eb037d5f68fba3012b0f6bd, branch
+codex/p010-advanced-chroma; draft PR https://github.com/billslack2/videoprocessor/pull/90
+against v1.3.005-beta. Existing AVERAGE/LEGACY kernel lines and defaults are
+unchanged; config schema/parser adds ADVANCED. New scalar/AVX2 filter is separate.
+
+x64 Release build passed with zero errors (existing compiler and Qt packaging
+warnings). All 1,146 native tests passed. Independent analytic Lanczos oracle
+covers Q14 accuracy within one 10-bit code, exact scalar/SIMD output, image edges,
+all SIMD tails, UHD/DCI, source/output guards and 1/2/8 helper partitions.
+Lifecycle coverage now includes 1,152 changing frames across all three policies.
+Focused UI save test preserves LEGACY and ADVANCED without exposing a control.
+
+Short same-machine 4K60 benchmark, one helper, 16 logical processors:
+AVERAGE 2.115 ms mean / 1.07% normalized converter-host CPU;
+LEGACY 2.037 ms / 1.07%; ADVANCED 3.732 ms / 3.71%.
+All idle windows measured zero process CPU time. These are converter-only
+measurements, not whole VP/madVR CPU or end-to-end playback guarantees.
+
+Full filter specification, renderer routing evidence, 24/60 fps measurements and
+limitations are in source docs/VP-0182-advanced-chroma.md. ADVANCED can ring and is
+frame-based, not field-aware interlaced downsampling. User visual/hardware
+acceptance and merge/deployment decisions remain pending; nothing was deployed
+or changed in active configuration for this feature.
