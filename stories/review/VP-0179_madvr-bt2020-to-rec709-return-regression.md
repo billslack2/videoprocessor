@@ -2,14 +2,14 @@
 
 ## Status
 
-Review (2026-09-10). File-only, startup-only recovery toggle implemented in
-`3717c8b8`, based on current beta `30f36307` with the original `5bad3a3f` fix
-merged into the clean toggle worktree. Draft PR #87:
+Review (2026-09-10). PR #87 merged into `v1.3.005-beta` as
+`cc04476a15c435952dd9c4e94c9efec7af43eaf7` (source head `3717c8b8`).
 https://github.com/billslack2/videoprocessor/pull/87
-Legacy behavior remains the default; set
-`[general] bounded_invalid_capture_recovery: true` and restart VP to test the
-bounded fix. Full x64 Release build and 198 selected tests passed. Hardware
-confirmation remains pending. Not merged or deployed.
+Full x64 Release build and 198 selected tests passed before merge.
+`[general] bounded_invalid_capture_recovery` remains file-only and startup-only:
+false/absent keeps legacy behavior; true enables bounded recovery. Hardware
+confirmation of the reported madVR regression remains pending, so this story
+remains in Review. Not deployed.
 
 ## User story
 
@@ -300,3 +300,11 @@ the editor fixture uses the canonical [vprenderer] format so [general] is
 interpreted as startup settings. Results are in
 `C:\Users\bslac\Documents\ChatGPT\Done\VP-0179-general-test-results`.
 No active configuration or deployed binary changed. Hardware acceptance pending.
+
+## Merge record (2026-09-10)
+
+User authorized merge. PR #87 was mergeable with no GitHub checks reported;
+verified head 3717c8b8 was merged using the exact-head guard into v1.3.005-beta.
+GitHub confirms MERGED at 2026-09-10T15:55:28Z, merge commit cc04476a.
+The opt-in default remains false. Deployment and hardware A/B acceptance are
+not performed by this merge; the review state tracks that remaining validation.
