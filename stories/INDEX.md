@@ -6,9 +6,9 @@ story may have ordered child-task IDs as defined below.
 
 ## Registry state
 
-- Last assigned root story: `VP-0176`
-- Next root story number: `VP-0177`
-- Total indexed items: 195
+- Last assigned root story: `VP-0177`
+- Next root story number: `VP-0178`
+- Total indexed items: 196
 
 ## Story locations
 
@@ -227,6 +227,7 @@ they must not contain requirements that are absent from this file.
 | VP-0027 | Done | Alpha display-verified scene-safe cadence correction |
 | VP-0028 | Done | Renderer configuration profile, hotkey, and event-action unification |
 | VP-0029 | Will Not Do | Alpha two-pass display LUT and final-dither pipeline spike |
+| VP-0177 | Backlog | P010 legacy chroma and single-helper default |
 
 ## Codex story workflow
 
