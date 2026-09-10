@@ -169,6 +169,7 @@ public:
 	void SceneCorrectionUpstreamSample(bool enabled);
 	void SubtitleRepositioning(SubtitleRepositionMode mode);
 	void EnableNewLldvHeuristic(bool enabled = true);
+	void EnableBoundedInvalidCaptureRecovery(bool enabled);
 	void SetLldvMaxCll(double value);
 	void SetLldvMaxFall(double value);
 	void SetLldvMasteringMinLuminance(double value);

@@ -713,6 +713,22 @@ namespace VideoProcessorTest
 			DeleteFileW(path.c_str());
 		}
 
+		TEST_METHOD(FileOnlyInternalRecoveryToggleSurvivesUnrelatedEditorChanges)
+		{
+			const std::wstring path = MakeTemporaryConfigPath(L"vpi");
+			WriteBytes(path, "[logging]\nenabled: true\n[internal]\n"
+				"# A/B comparison\nbounded_invalid_capture_recovery: true\n");
+			ConfigEditorCore::ConfigDocument document;
+			std::wstring error;
+			Assert::IsTrue(document.Load(path, error), error.c_str());
+			Assert::IsTrue(ConfigEditorCore::ValidateCandidate(document, error), error.c_str());
+			Assert::IsTrue(document.SetExisting("logging", "enabled", "false"));
+			Assert::IsTrue(ConfigEditorCore::ValidateCandidate(document, error), error.c_str());
+			Assert::AreEqual(std::string("[logging]\nenabled: false\n[internal]\n"
+				"# A/B comparison\nbounded_invalid_capture_recovery: true\n"), document.Serialize());
+			DeleteFileW(path.c_str());
+		}
+
 		TEST_METHOD(ConfigEditorCoreNoOpRoundTripIsByteIdentical)
 		{
 			const std::wstring path = MakeTemporaryConfigPath(L"vpc");

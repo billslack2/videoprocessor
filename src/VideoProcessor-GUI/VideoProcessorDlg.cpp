@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright(C) 2021 Dennis Fleurbaaij <mail@dennisfleurbaaij.com>
  *
  * This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 3.
@@ -4958,6 +4958,14 @@ void CVideoProcessorDlg::SubtitleRepositioning(SubtitleRepositionMode mode)
 	m_subtitleRepositionMode = SubtitleRepositionMode::DISABLED;
 }
 
+void CVideoProcessorDlg::EnableBoundedInvalidCaptureRecovery(bool enabled)
+{
+	m_invalidCaptureStateGrace.Configure(enabled);
+	DebugLog::Log("Invalid capture recovery policy: mode=%s grace_ms=1500 "
+		"config=[internal].bounded_invalid_capture_recovery startup_only=1",
+		enabled ? "bounded" : "legacy");
+}
+
 void CVideoProcessorDlg::EnableNewLldvHeuristic(bool enabled)
 {
 	m_useNewLldvHeuristic = enabled;
@@ -5828,8 +5836,8 @@ LRESULT CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange(WPARAM wParam
 			static_cast<unsigned long long>(notificationSequence));
 	}
 
-	// Keep one bounded grace period for a running graph. Repeated invalid
-	// notifications update the pending state but cannot postpone its deadline.
+	// Bounded mode keeps the first deadline; legacy mode preserves the old
+	// behavior of restarting the grace on each invalid notification.
 	if (!videoState->valid &&
 		m_videoRenderer &&
 		m_rendererState == RendererState::RENDERSTATE_RENDERING &&
@@ -5837,7 +5845,8 @@ LRESULT CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange(WPARAM wParam
 		m_captureDeviceVideoState->valid)
 	{
 		const ULONGLONG now = GetTickCount64();
-		m_invalidCaptureStateGrace.ObserveInvalid(now);
+		m_invalidCaptureStateGrace.ObserveInvalid(now,
+			m_captureDevice ? m_captureDevice->VideoFrameCapturedCount() : 0);
 		const uint64_t remainingMs = m_invalidCaptureStateGrace.RemainingMs(now);
 		if (remainingMs > 0)
 		{
@@ -14361,6 +14370,17 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 		{
 			SetTimer(TRANSIENT_INVALID_VIDEO_STATE_TIMER_ID,
 				static_cast<UINT>(remainingMs), nullptr);
+			return;
+		}
+
+		const uint64_t capturedFrames = m_captureDevice ?
+			m_captureDevice->VideoFrameCapturedCount() : 0;
+		if (m_invalidCaptureStateGrace.RetainExpiredState(capturedFrames))
+		{
+			m_deferredInvalidCaptureVideoState.Release();
+			m_invalidCaptureStateGrace.Reset();
+			DebugLog::Log("Transient invalid capture video state ignored: "
+				"mode=legacy capture advanced action=retain-live-renderer");
 			return;
 		}
 

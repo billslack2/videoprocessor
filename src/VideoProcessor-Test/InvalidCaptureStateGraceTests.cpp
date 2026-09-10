@@ -9,9 +9,41 @@ namespace Tests
 	TEST_CLASS(InvalidCaptureStateGraceTests)
 	{
 	public:
-		TEST_METHOD(PersistentInvalidStateExpiresAtOriginalDeadline)
+		TEST_METHOD(DefaultLegacyModeExtendsGraceAndRetainsAdvancingFrames)
 		{
 			InvalidCaptureStateGrace grace;
+			grace.ObserveInvalid(0, 100);
+			grace.ObserveInvalid(1000, 150);
+			Assert::AreEqual<uint64_t>(1000, grace.RemainingMs(1500));
+			Assert::AreEqual<uint64_t>(0, grace.RemainingMs(2500));
+			Assert::IsTrue(grace.RetainExpiredState(200));
+			Assert::IsFalse(grace.RetainExpiredState(150));
+		}
+
+		TEST_METHOD(BoundedModeExpiresDespiteAdvancingFrames)
+		{
+			InvalidCaptureStateGrace grace(true);
+			grace.ObserveInvalid(0, 100);
+			grace.ObserveInvalid(1000, 150);
+			Assert::AreEqual<uint64_t>(0, grace.RemainingMs(1500));
+			Assert::IsFalse(grace.RetainExpiredState(200));
+		}
+
+		TEST_METHOD(ConfigurationSelectsModeAndClearsPendingEpisode)
+		{
+			InvalidCaptureStateGrace grace;
+			grace.ObserveInvalid(0, 100);
+			grace.Configure(true);
+			Assert::IsFalse(grace.Pending());
+			Assert::IsFalse(grace.RetainExpiredState(200));
+			grace.Configure(false);
+			grace.ObserveInvalid(1000, 200);
+			Assert::IsTrue(grace.RetainExpiredState(300));
+		}
+
+		TEST_METHOD(PersistentInvalidStateExpiresAtOriginalDeadline)
+		{
+			InvalidCaptureStateGrace grace(true);
 			grace.ObserveInvalid(100);
 			Assert::AreEqual<uint64_t>(1, grace.RemainingMs(1599));
 			Assert::AreEqual<uint64_t>(0, grace.RemainingMs(1600));
@@ -20,7 +52,7 @@ namespace Tests
 
 		TEST_METHOD(ContinuousInvalidNotificationsCannotExtendGrace)
 		{
-			InvalidCaptureStateGrace grace;
+			InvalidCaptureStateGrace grace(true);
 			// Simulate callbacks on every frame, including no-input frames.
 			for (uint64_t now = 0; now < 1500; now += 10)
 			{
@@ -35,7 +67,7 @@ namespace Tests
 
 		TEST_METHOD(ValidRecoveryCancelsPendingExpiry)
 		{
-			InvalidCaptureStateGrace grace;
+			InvalidCaptureStateGrace grace(true);
 			grace.ObserveInvalid(100);
 			// The valid-state handler cancels the timer and resets the policy.
 			grace.Reset();
@@ -45,7 +77,7 @@ namespace Tests
 
 		TEST_METHOD(NewEpisodeAfterRecoveryGetsItsOwnGrace)
 		{
-			InvalidCaptureStateGrace grace;
+			InvalidCaptureStateGrace grace(true);
 			grace.ObserveInvalid(100);
 			grace.Reset();
 			grace.ObserveInvalid(1000);
@@ -55,7 +87,7 @@ namespace Tests
 
 		TEST_METHOD(CaptureTeardownCancelsOldRunDeadline)
 		{
-			InvalidCaptureStateGrace grace;
+			InvalidCaptureStateGrace grace(true);
 			grace.ObserveInvalid(0);
 			grace.Reset();
 			Assert::IsFalse(grace.Pending());

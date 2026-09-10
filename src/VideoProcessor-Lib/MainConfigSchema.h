@@ -38,6 +38,7 @@ namespace MainConfigSchema
 			section == "lldv" ||
 			section.rfind("lldv.", 0) == 0 ||
 			section == "logging" ||
+			section == "internal" ||
 			section == "decklink" ||
 			section == "shortcuts" ||
 			section == "p010_conversion" ||
@@ -48,9 +49,19 @@ namespace MainConfigSchema
 			section.rfind("shader.", 0) == 0;
 	}
 
+	inline bool BoundedInvalidCaptureRecoveryEnabled(const ConfigFile& config)
+	{
+		bool enabled = false;
+		return config.TryGetBool("internal", "bounded_invalid_capture_recovery",
+			enabled) && enabled;
+	}
+
 	inline bool Validate(const ConfigFile& config, std::string& error)
 	{
 		error.clear();
+		if (!ConfigSchema::ValidateSection(config, "internal",
+			{ ConfigSchema::Boolean("bounded_invalid_capture_recovery") }, error))
+			return false;
 		const std::vector<ConfigSchema::KeyRule> commandLineRules = {
 			ConfigSchema::Boolean("fullscreen"),
 			ConfigSchema::Boolean("windowedfullscreenmode"),
