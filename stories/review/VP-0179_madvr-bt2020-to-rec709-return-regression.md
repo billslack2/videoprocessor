@@ -2,11 +2,12 @@
 
 ## Status
 
-In progress (2026-09-10). Implementing bounded invalid-state recovery and regression tests; hardware confirmation of the reported madVR incident remains pending. Reporter says recent builds fail to return from BT.2020
-to Rec.709 after HDR playback; a build based on July 31, 2026 works. Exact
-known-good/failing SHAs, converter patch, configuration and transition logs
-are missing. This is a separate incident from conversion CPU performance.
-No reproduced root cause or fix is claimed.
+Review (2026-09-10). Bounded invalid-state recovery implemented in `5bad3a3f`
+on `codex/vp-0179-bounded-invalid-state`, based on freshly fetched beta
+`v1.3.005-beta` at `89d55ca5`. Draft PR:
+https://github.com/billslack2/videoprocessor/pull/87
+Full x64 Release build and 23 targeted tests passed. Hardware confirmation
+of the reported madVR regression remains pending; not merged or deployed.
 
 ## User story
 
@@ -215,3 +216,41 @@ fallback with stabilized renderer-only restart and reset-operation deferral.
 That is a separate behavioral difference worth testing if a capture restart
 restores the reporter's state, but inspection did not establish a reset deadlock.
 Do not restore the old unconditional capture restart on this evidence alone.
+
+## Implementation ready for review (2026-09-10)
+
+- Added InvalidCaptureStateGrace: one 1500 ms interval per invalid episode.
+  Repeated invalid notifications retain the original deadline. Notifications
+  arriving at/after expiry apply the invalid state even if timer delivery is
+  delayed. Valid recovery cancels the pending timer and state.
+- Removed callback/frame-count progress as proof of signal recovery. Timer
+  expiry always applies the pending invalid state through BuildPushVideoState
+  and UpdateState. CaptureStop clears deferred state before retiring the run.
+- Added five native regression tests for deadline expiry, continuous invalid
+  notifications, valid recovery, a new episode and capture-run reset.
+- Source worktree: `E:\codex\videoprocessor\vp-0179-bounded-invalid-state`.
+  Commit `5bad3a3f` pushed; source worktree clean. Draft PR #87 targets the
+  current beta, not main. Hardware evidence is required before claiming the
+  reported HDR-to-Rec.709 incident resolved.
+
+Validation:
+
+- Full `VideoProcessor.sln` x64 Release build succeeded (0 errors, 24 warnings)
+  with the repository-configured toolsets. An initial forced-v143 attempt
+  failed because that installed toolset lacks MFC; the configured v142 toolset
+  uses the installed VS2019 MFC libraries and succeeded without source changes.
+- VSTest: 23/23 passed across InvalidCaptureStateGraceTests,
+  EotfTransitionStabilizerTests and RendererResetRequestLatchTests.
+- An isolated MSVC harness using the extracted production notification and
+  timer blocks passed five integration checks: timer expiry with repeated
+  invalid notifications, notification-driven expiry under continuous traffic,
+  valid recovery plus stale timer, later invalid episode, and early timer.
+  This is simulated integration evidence, not a hardware test.
+- Test results: `C:\Users\bslac\Documents\ChatGPT\Done\VP-0179-test-results`.
+- No runtime configuration, deployed binaries or source beta branch changed.
+
+Remaining acceptance: repeat hardware HDR-to-SDR/menu transitions and test
+brief resync recovery within the grace, persistent invalid metadata/no-input
+callbacks beyond it, repeated invalid events and eventual valid Rec.709 return.
+The intended behavior can stop/rebuild the graph on sources whose invalid
+interval exceeds the grace; do not interpret callback progress as validity.
