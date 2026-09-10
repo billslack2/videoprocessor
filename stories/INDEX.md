@@ -6,9 +6,9 @@ story may have ordered child-task IDs as defined below.
 
 ## Registry state
 
-- Last assigned root story: `VP-0181`
-- Next root story number: `VP-0182`
-- Total indexed items: 200
+- Last assigned root story: `VP-0182`
+- Next root story number: `VP-0183`
+- Total indexed items: 201
 
 ## Story locations
 
@@ -233,6 +233,8 @@ they must not contain requirements that are absent from this file.
 | VP-0180 | Review | Remove standalone stats OSD window |
 
 | VP-0181 | Review | Reduce P010 CPU use with blocking waits and configurable chroma |
+
+| VP-0182 | In Progress | Config-only ADVANCED Lanczos chroma downsampling |
 
 ## Codex story workflow
 
