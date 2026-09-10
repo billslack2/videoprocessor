@@ -2,10 +2,11 @@
 
 ## Status
 
-In Progress (2026-09-10). User approved improving wasted waiting CPU in
-both existing CPU paths (AVERAGE and LEGACY). Implement blocking work and
-completion waits, then compare before/after CPU and conversion latency.
-GPU implementation remains outside the approved scope.
+Review (2026-09-10). Blocking work/completion waits implemented and deployed
+for both AVERAGE and LEGACY as commit 6ca021b9. All 1,134 native tests passed;
+measured converter CPU reduction and unchanged pixel output documented below.
+GPU implementation remains outside scope. Await user playback/CPU acceptance
+and review of draft PR #85.
 
 ## Report and evidence
 
@@ -38,7 +39,7 @@ for frames 1-13). Dispatch=0.00-0.01 ms is not established GPU execution time.
   data-flow estimate, not a measured PCIe bandwidth or CPU cost. CPU conversion
   followed by one P010 upload has 1.493 GB/s nominal GPU upload at 60p.
 - The existing CPU formatter helpers spin with this_thread::yield between
-  frames. This predates July 31 and remains in the current implementation.
+  frames. This predates July 31 and was present in baseline 04d3988c.
   Replacing the formatter may remove idle spin overhead as well as arithmetic.
   Do not label the full 55-60% as AVX2 cost without per-thread profiling.
 - Local current CPU benchmark examples are about 2-3 ms, but hardware/build/
@@ -69,7 +70,8 @@ for frames 1-13). Dispatch=0.00-0.01 ms is not established GPU execution time.
 
 ## Boundaries
 
-No deployment/source changes in this assessment. Separate from madVR color
+Initial assessment made no deployment/source changes. The subsequently
+approved CPU-wait implementation is recorded below. Separate from madVR color
 exit regression VP-0179 and from completed LEGACY controls VP-0177.
 Exact CPU cause and GPU pixel correctness remain unverified.
 
@@ -95,3 +97,42 @@ Validation: baseline and changed Release measurements for both chroma modes,
 pool reload/destruction coverage; existing pixel oracle and full native suite.
 This is a scheduling change. Hardware playback/image acceptance remains user
 validation after a successful x64 Release build and authorized deployment.
+
+## Blocking-wait implementation and validation
+
+- Commit: 6ca021b95e0862c335f6b3b218e7dc647514f97a, on
+  codex/p010-legacy-chroma; retains local VP-0174 base 16a8102f.
+- Per-helper work/completion condition variables use mutex-protected
+  predicates. Helpers sleep between frames; caller parks for pending output.
+  Pixel buffers are published/completed under that synchronization. Shutdown
+  wakes sleeping helpers and joins actual started count. Partial pool startup
+  cleans up and falls back to existing single-thread SIMD without per-frame
+  retries; configuration reload permits a new attempt. No new config required.
+- Independent pixel oracle passed unchanged. New repeated-frame test compares
+  768 changing frames with scalar across 1/2/8/1 helpers, both policies,
+  parked reload/destruction and three formatter lifetimes.
+- Clean x64 Release solution rebuild and committed incremental build passed
+  with zero errors. All 1,134 native tests passed. Partial thread-creation
+  failure cleanup was source-reviewed, not fault-injected.
+- Same-machine short converter-harness measurements, 4K60, 16 logical CPUs:
+  AVERAGE/1 helper CPU 6.64% -> 0.98%, mean 2.153 -> 2.179 ms;
+  LEGACY/1 helper CPU 6.62% -> 1.22%, mean 2.155 -> 2.102 ms.
+  Idle: about 6% per helper -> zero measured process CPU in 400 ms windows.
+  Two helpers: AVERAGE 13.16% -> 2.14%, LEGACY 13.43% -> 1.99% at 60 fps.
+  These are short, process-time measurements of the converter test host, not
+  whole-application madVR performance claims. Full 24/60 fps data and method:
+  E:\codex\videoprocessor\p010-legacy-chroma\docs\VP-0178-p010-wait-validation.md
+- Baseline/changed benchmark TRX and full suite results are under the source
+  worktree x64/Release/TestResults. Draft PR:
+  https://github.com/billslack2/videoprocessor/pull/85
+
+## Deployment
+
+Refreshed the authorized deployment at C:\Videoprocessor\vp with the matched
+Release executable and renderer DLL from 6ca021b9. Verified both installed
+SHA256 hashes against build artifacts and backup hashes against prior files.
+Backup: C:\Videoprocessor\vp\backup-before-vp0178-20260910-095246
+Exact hashes: deployment.json in that directory. Configuration hash unchanged.
+No settings or editor files changed. Config editor left running; VP was closed.
+Remaining validation: user whole-VP CPU/image/playback comparison. GPU adoption
+and separate madVR Rec.709 issue VP-0179 are not implemented by this change.

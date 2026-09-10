@@ -228,7 +228,7 @@ they must not contain requirements that are absent from this file.
 | VP-0028 | Done | Renderer configuration profile, hotkey, and event-action unification |
 | VP-0029 | Will Not Do | Alpha two-pass display LUT and final-dither pipeline spike |
 | VP-0177 | Review | P010 legacy chroma and single-helper default |
-| VP-0178 | In Progress | Assess P010 CPU waits versus GPU readback |
+| VP-0178 | Review | Assess P010 CPU waits versus GPU readback |
 | VP-0179 | Backlog | madVR BT.2020-to-Rec.709 return regression |
 
 ## Codex story workflow
