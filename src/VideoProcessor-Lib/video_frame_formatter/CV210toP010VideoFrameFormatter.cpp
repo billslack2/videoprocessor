@@ -184,6 +184,8 @@ bool CV210toP010VideoFrameFormatter::LoadConfigurationFile(const char* filename)
                             m_chromaDownsampling = ChromaDownsampling::AVERAGE;
                         else if (policy == "legacy")
                             m_chromaDownsampling = ChromaDownsampling::LEGACY;
+                        else if (policy == "advanced")
+                            m_chromaDownsampling = ChromaDownsampling::ADVANCED;
                         else
                             DbgLog((LOG_WARNING, 1, TEXT("CV210toP010VideoFrameFormatter: Invalid chroma_downsampling: %S; using AVERAGE"), setting.second.c_str()));
                     }
@@ -304,6 +306,11 @@ void CV210toP010VideoFrameFormatter::ProcessLineSegment(
     uint16_t* dstY, uint16_t* dstUV,
     uint32_t width, uint32_t startLine, uint32_t endLine) noexcept
 {
+    if (m_chromaDownsampling == ChromaDownsampling::ADVANCED)
+    {
+        ProcessAdvancedSegment(srcData, srcStride, dstY, dstUV, width, startLine, endLine, true);
+        return;
+    }
     if (m_chromaDownsampling == ChromaDownsampling::AVERAGE)
         ProcessLineSegmentImpl<true>(srcData, srcStride, dstY, dstUV, width, startLine, endLine);
     else
@@ -670,6 +677,18 @@ bool CV210toP010VideoFrameFormatter::ConvertV210ToP010(
     uint32_t width,
     uint32_t height) noexcept
 {
+    // Keep both existing policy paths intact. ADVANCED owns its filter and uses
+    // the same parked helpers only for AUTO/SIMD on AVX2-capable CPUs.
+    if (m_chromaDownsampling == ChromaDownsampling::ADVANCED)
+    {
+        const bool useSimd = (m_conversionMethod == ConversionMethod::AUTO ||
+            m_conversionMethod == ConversionMethod::SIMD) && CheckCPUFeatures();
+        if (useSimd && height >= MIN_LINES_FOR_THREADING)
+            return ConvertV210ToP010_Threaded(srcData, srcStride, dstY, dstUV, width, height);
+        ProcessAdvancedSegment(srcData, srcStride, dstY, dstUV, width, 0, height, useSimd);
+        return true;
+    }
+
     // Respect the configured conversion method at every resolution.
     ConversionMethod method = m_conversionMethod;
 
@@ -725,6 +744,11 @@ bool CV210toP010VideoFrameFormatter::ConvertV210ToP010_SIMD(
     uint32_t width,
     uint32_t height) noexcept
 {
+    if (m_chromaDownsampling == ChromaDownsampling::ADVANCED)
+    {
+        ProcessAdvancedSegment(srcData, srcStride, dstY, dstUV, width, 0, height, true);
+        return true;
+    }
     if (m_chromaDownsampling == ChromaDownsampling::AVERAGE)
         return ConvertV210ToP010_SIMDImpl<true>(srcData, srcStride, dstY, dstUV, width, height);
     else
@@ -1147,4 +1171,94 @@ void CV210toP010VideoFrameFormatter::LogConversionPerformance(uint64_t conversio
         LogPerformanceStats();
     }
 #endif
+}
+
+
+// Lanczos-3 at half-row phase, widened by 2 for the 2:1 vertical reduction.
+// w[t] = sinc((t-5.5)/2) * sinc((t-5.5)/6), normalized and rounded to Q14.
+// Coefficients sum exactly to 16384; constants remain exact, signed lobes are
+// retained until final rounding and 0..1023 saturation (not nominal-range clipping).
+// Source halos clamp to frame edges, never to helper partition edges.
+void CV210toP010VideoFrameFormatter::ProcessAdvancedSegment(
+    const uint8_t* srcData, uint32_t srcStride, uint16_t* dstY, uint16_t* dstUV,
+    uint32_t width, uint32_t startLine, uint32_t endLine, bool useSimd) noexcept
+{
+    static constexpr int weights[12] = {
+        60, 247, -557, -1092, 2220, 7314, 7314, 2220, -1092, -557, 247, 60
+    };
+    const auto sample = [](const uint32_t* row, uint32_t component) {
+        return static_cast<int>((row[component / 3] >> ((component % 3) * 10)) & 1023U);
+    };
+    for (uint32_t line = startLine; line < endLine; line += 2)
+    {
+        const uint32_t* rows[12];
+        for (int tap = 0; tap < 12; ++tap)
+        {
+            const int sourceLine = (std::max)(0, (std::min)(
+                static_cast<int>(m_height) - 1, static_cast<int>(line) + tap - 5));
+            rows[tap] = reinterpret_cast<const uint32_t*>(
+                srcData + static_cast<size_t>(sourceLine) * srcStride);
+        }
+        auto* y0 = dstY + static_cast<size_t>(line) * width;
+        auto* y1 = y0 + width;
+        auto* uv = dstUV + static_cast<size_t>(line / 2) * width;
+        uint32_t x = 0;
+        if (useSimd)
+        {
+            const __m256i mask = _mm256_set1_epi32(1023);
+            const __m256i yi0 = _mm256_setr_epi32(0, 1, 1, 2, 3, 3, 4, 5);
+            const __m256i ys0 = _mm256_setr_epi32(10, 0, 20, 10, 0, 20, 10, 0);
+            const __m256i yi1 = _mm256_setr_epi32(5, 6, 7, 7, 0, 0, 0, 0);
+            const __m256i ys1 = _mm256_setr_epi32(20, 10, 0, 20, 0, 0, 0, 0);
+            const __m256i ci0 = _mm256_setr_epi32(0, 0, 1, 2, 2, 3, 4, 4);
+            const __m256i cs0 = _mm256_setr_epi32(0, 20, 10, 0, 20, 10, 0, 20);
+            const __m256i ci1 = _mm256_setr_epi32(5, 6, 6, 7, 0, 0, 0, 0);
+            const __m256i cs1 = _mm256_setr_epi32(10, 0, 20, 10, 0, 0, 0, 0);
+            const auto unpack = [&](const __m256i packed, const __m256i indices, const __m256i shifts) {
+                return _mm256_and_si256(_mm256_srlv_epi32(
+                    _mm256_permutevar8x32_epi32(packed, indices), shifts), mask);
+            };
+            const auto store = [](uint16_t* out, __m256i first, __m256i last) {
+                const __m128i a = _mm_packus_epi32(_mm256_castsi256_si128(first),
+                    _mm256_extracti128_si256(first, 1));
+                const __m128i b = _mm_packus_epi32(_mm256_castsi256_si128(last),
+                    _mm256_castsi256_si128(last));
+                _mm_storeu_si128(reinterpret_cast<__m128i*>(out), a);
+                _mm_storel_epi64(reinterpret_cast<__m128i*>(out + 8), b);
+            };
+            for (; x + 12 <= width; x += 12)
+            {
+                const uint32_t offset = (x / 6) * 4;
+                const __m256i even = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(rows[5] + offset));
+                const __m256i odd = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(rows[6] + offset));
+                store(y0 + x, _mm256_slli_epi32(unpack(even, yi0, ys0), 6),
+                    _mm256_slli_epi32(unpack(even, yi1, ys1), 6));
+                store(y1 + x, _mm256_slli_epi32(unpack(odd, yi0, ys0), 6),
+                    _mm256_slli_epi32(unpack(odd, yi1, ys1), 6));
+                __m256i sum0 = _mm256_set1_epi32(8192);
+                __m256i sum1 = sum0;
+                for (int tap = 0; tap < 12; ++tap)
+                {
+                    const __m256i packed = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(rows[tap] + offset));
+                    const __m256i weight = _mm256_set1_epi32(weights[tap]);
+                    sum0 = _mm256_add_epi32(sum0, _mm256_mullo_epi32(unpack(packed, ci0, cs0), weight));
+                    sum1 = _mm256_add_epi32(sum1, _mm256_mullo_epi32(unpack(packed, ci1, cs1), weight));
+                }
+                const auto finish = [&](const __m256i sum) {
+                    return _mm256_slli_epi32(_mm256_min_epi32(mask, _mm256_max_epi32(
+                        _mm256_setzero_si256(), _mm256_srai_epi32(sum, 14))), 6);
+                };
+                store(uv + x, finish(sum0), finish(sum1));
+            }
+        }
+        for (; x < width; ++x)
+        {
+            y0[x] = static_cast<uint16_t>(sample(rows[5], x * 2 + 1) << 6);
+            y1[x] = static_cast<uint16_t>(sample(rows[6], x * 2 + 1) << 6);
+            int sum = 8192;
+            for (int tap = 0; tap < 12; ++tap)
+                sum += weights[tap] * sample(rows[tap], x * 2);
+            uv[x] = static_cast<uint16_t>((std::min)(1023, (std::max)(0, sum) / 16384) << 6);
+        }
+    }
 }

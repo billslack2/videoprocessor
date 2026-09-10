@@ -1973,7 +1973,7 @@ namespace Tests
 				FillBenchmarkPattern(inputs[slot], static_cast<uint32_t>(slot + 1));
 				outputs[slot].resize(3840ULL * 2160ULL * 3ULL);
 			}
-			for (const auto policy : { Formatter::ChromaDownsampling::AVERAGE, Formatter::ChromaDownsampling::LEGACY })
+			for (const auto policy : { Formatter::ChromaDownsampling::AVERAGE, Formatter::ChromaDownsampling::LEGACY, Formatter::ChromaDownsampling::ADVANCED })
 				for (const uint32_t helpers : { 1U, 2U })
 				{
 					Formatter formatter;
@@ -1995,7 +1995,7 @@ namespace Tests
 					const double idleCpuMs = processCpuMs() - idleCpuStart;
 					wchar_t line[400];
 					swprintf_s(line, L"P010CPU|policy=%s|helpers=%u|fps=0|wall_ms=%.1f|cpu_ms=%.1f|cpu_percent=%.2f|logical=%.0f",
-						policy == Formatter::ChromaDownsampling::AVERAGE ? L"AVERAGE" : L"LEGACY",
+						policy == Formatter::ChromaDownsampling::AVERAGE ? L"AVERAGE" : (policy == Formatter::ChromaDownsampling::LEGACY ? L"LEGACY" : L"ADVANCED"),
 						helpers, idleMs, idleCpuMs, 100.0 * idleCpuMs / idleMs / logicalProcessors, logicalProcessors);
 					Logger::WriteMessage(line);
 					for (const int fps : {24, 60})
@@ -2018,7 +2018,7 @@ namespace Tests
 						const double avg = std::accumulate(conversionMs.begin(), conversionMs.end(), 0.0) / conversionMs.size();
 						std::sort(conversionMs.begin(), conversionMs.end());
 						swprintf_s(line, L"P010CPU|policy=%s|helpers=%u|fps=%d|frames=%d|wall_ms=%.1f|cpu_ms=%.1f|cpu_percent=%.2f|avg_ms=%.3f|p95_ms=%.3f|max_ms=%.3f",
-							policy == Formatter::ChromaDownsampling::AVERAGE ? L"AVERAGE" : L"LEGACY",
+							policy == Formatter::ChromaDownsampling::AVERAGE ? L"AVERAGE" : (policy == Formatter::ChromaDownsampling::LEGACY ? L"LEGACY" : L"ADVANCED"),
 							helpers, fps, frameCount, wallMs, cpuMs, 100.0 * cpuMs / wallMs / logicalProcessors,
 							avg, BenchmarkPercentile(conversionMs, 0.95), conversionMs.back());
 						Logger::WriteMessage(line);
@@ -2042,13 +2042,13 @@ namespace Tests
 			for (int cycle = 0; cycle < 3; ++cycle)
 			{
 				Formatter threaded;
-				for (const auto policy : { Formatter::ChromaDownsampling::AVERAGE, Formatter::ChromaDownsampling::LEGACY })
+				for (const auto policy : { Formatter::ChromaDownsampling::AVERAGE, Formatter::ChromaDownsampling::LEGACY, Formatter::ChromaDownsampling::ADVANCED })
 					for (const uint32_t helpers : {1U, 2U, 8U, 1U})
 					{
 						{
 							std::ofstream config(filename, std::ios::trunc);
 							config << "[directshow.conversion]\nconversion_method: SIMD\nmin_core_count: 1\nmax_core_count: " << helpers
-								<< "\nchroma_downsampling: " << (policy == Formatter::ChromaDownsampling::AVERAGE ? "AVERAGE" : "LEGACY") << "\n";
+								<< "\nchroma_downsampling: " << (policy == Formatter::ChromaDownsampling::AVERAGE ? "AVERAGE" : (policy == Formatter::ChromaDownsampling::LEGACY ? "LEGACY" : "ADVANCED")) << "\n";
 						}
 						Assert::IsTrue(threaded.LoadConfigurationFile(filename));
 						threaded.OnVideoState(state);
@@ -2149,6 +2149,105 @@ namespace Tests
 			}
 		}
 
+
+        TEST_METHOD(V210P010AdvancedMatchesAnalyticLanczosOracle)
+        {
+            using Formatter = CV210toP010VideoFrameFormatter;
+            const double pi = std::acos(-1.0);
+            double weights[12], total = 0;
+            int fixed[12], fixedTotal = 0;
+            for (int tap = 0; tap < 12; ++tap)
+            {
+                const double distance = (tap - 5.5) / 2.0;
+                weights[tap] = std::sin(pi * distance) / (pi * distance) *
+                    std::sin(pi * distance / 3) / (pi * distance / 3);
+                total += weights[tap];
+            }
+            for (int tap = 0; tap < 12; ++tap)
+            {
+                weights[tap] /= total;
+                fixed[tap] = static_cast<int>(std::lround(weights[tap] * 16384));
+                fixedTotal += fixed[tap];
+            }
+            Assert::AreEqual(16384, fixedTotal);
+            const std::pair<uint32_t, uint32_t> sizes[] = {
+                {100, 100}, {102, 100}, {104, 100}, {106, 100}, {108, 100}, {110, 100},
+                {100, 722}, {1280, 720}, {1920, 1080}, {3840, 2160}, {4096, 2160}
+            };
+            for (const auto& size : sizes)
+            {
+                const uint32_t width = size.first, height = size.second;
+                VideoStateComPtr state = new VideoState();
+                state->valid = true;
+                state->displayMode = std::make_shared<DisplayMode>(width, height, false, 60, 1);
+                state->videoFrameEncoding = VideoFrameEncoding::V210;
+                for (int pattern = 0; pattern < (width == 100 ? 6 : 1); ++pattern)
+                {
+                    const auto yCode = [](uint32_t row, uint32_t x) {
+                        return static_cast<uint16_t>((row * 73U + x * 31U) & 1023U);
+                    };
+                    const auto chroma = [&](uint32_t row, uint32_t x, bool v) {
+                        switch (pattern)
+                        {
+                        case 1: return static_cast<uint16_t>(v ? 940 : 64); // constant, including borders
+                        case 2: return static_cast<uint16_t>(row < height / 2 ? 0 : 1023); // step/overshoot
+                        case 3: return static_cast<uint16_t>((row & 1) ? 1023 : 0); // Nyquist
+                        case 4: return static_cast<uint16_t>(row == height / 2 ? 1023 : 0); // impulse
+                        case 5: return static_cast<uint16_t>((row * 3U + (v ? 91U : 0U)) & 1023U);
+                        default: return static_cast<uint16_t>((row * (v ? 211U : 107U) + x * 53U + (v ? 1U : 0U)) & 1023U);
+                        }
+                    };
+                    std::vector<BYTE> input(state->BytesPerFrame(), 0xFF);
+                    for (uint32_t row = 0; row < height; ++row)
+                        for (uint32_t x = 0; x < width; x += 6)
+                            WriteV210Pack(input.data() + static_cast<size_t>(row) * state->BytesPerRow() + x / 6 * 16,
+                                chroma(row,x,false), yCode(row,x), chroma(row,x,true), yCode(row,x+1),
+                                chroma(row,x+2,false), yCode(row,x+2), chroma(row,x+2,true), yCode(row,x+3),
+                                chroma(row,x+4,false), yCode(row,x+4), chroma(row,x+4,true), yCode(row,x+5));
+                    const auto original = input;
+                    std::vector<uint16_t> expected(static_cast<size_t>(width) * height * 3 / 2);
+                    for (uint32_t row = 0; row < height; ++row)
+                        for (uint32_t x = 0; x < width; ++x)
+                            expected[static_cast<size_t>(row) * width + x] = yCode(row,x) << 6;
+                    for (uint32_t row = 0; row < height; row += 2)
+                        for (uint32_t x = 0; x < width; ++x)
+                        {
+                            double floating = 0;
+                            int sum = 0;
+                            for (int tap = 0; tap < 12; ++tap)
+                            {
+                                const int sourceRow = std::max(0, std::min(static_cast<int>(height)-1, static_cast<int>(row)+tap-5));
+                                const auto value = chroma(sourceRow, x & ~1U, (x & 1) != 0);
+                                sum += fixed[tap] * value;
+                                floating += weights[tap] * value;
+                            }
+                            const int result = std::max(0, std::min(1023, static_cast<int>(std::floor(sum / 16384.0 + 0.5))));
+                            const int analytic = std::max(0, std::min(1023, static_cast<int>(std::floor(floating + 0.5))));
+                            Assert::IsTrue(std::abs(result - analytic) <= 1, L"Fixed point exceeds one 10-bit code of analytic Lanczos");
+                            expected[static_cast<size_t>(width)*height + static_cast<size_t>(row/2)*width+x] = result << 6;
+                        }
+                    VideoFrame frame(input.data(), 1, 0, nullptr);
+                    for (const auto method : { Formatter::ConversionMethod::STANDARD, Formatter::ConversionMethod::OPTIMIZED,
+                        Formatter::ConversionMethod::SIMD, Formatter::ConversionMethod::AUTO })
+                        for (const uint32_t helpers : {1U, 2U, 8U})
+                        {
+                            if (helpers != 1 && width != 100) continue;
+                            Formatter formatter;
+                            formatter.SetConversionMethod(method);
+                            formatter.SetChromaDownsampling(Formatter::ChromaDownsampling::ADVANCED);
+                            formatter.SetMaxCoreCount(helpers);
+                            formatter.OnVideoState(state);
+                            std::vector<BYTE> output(formatter.GetOutFrameSize()+4, 0xA5);
+                            Assert::IsTrue(formatter.FormatVideoFrame(frame, output.data()+2));
+                            Assert::IsTrue(std::memcmp(output.data()+2, expected.data(), expected.size()*2) == 0,
+                                L"ADVANCED differs from independent Lanczos oracle");
+                            Assert::IsTrue(output[0]==0xA5 && output[1]==0xA5 && output[output.size()-2]==0xA5 && output.back()==0xA5);
+                        }
+                    Assert::IsTrue(input == original);
+                }
+            }
+        }
+
 		TEST_METHOD(V210P010ConfigurationDefaultsAndExplicitOverrides)
 		{
 			using Formatter = CV210toP010VideoFrameFormatter;
@@ -2182,6 +2281,10 @@ namespace Tests
 			load("[directshow.conversion]\nchroma_downsampling: LEGACY\n");
 			Assert::AreEqual(1U, formatter.GetMaxCoreCount());
 			Assert::IsTrue(formatter.GetChromaDownsampling() == Formatter::ChromaDownsampling::LEGACY);
+            load("[directshow.conversion]\nchroma_downsampling: advanced\n");
+            Assert::IsTrue(formatter.GetChromaDownsampling() == Formatter::ChromaDownsampling::ADVANCED);
+            Assert::IsTrue(config.Load(filename));
+            Assert::IsTrue(MainConfigSchema::Validate(config, error));
 			load("[directshow.conversion]\nchroma_downsampling: ALTERNATE\n");
 			Assert::IsTrue(config.Load(filename));
 			Assert::IsFalse(MainConfigSchema::Validate(config, error));
