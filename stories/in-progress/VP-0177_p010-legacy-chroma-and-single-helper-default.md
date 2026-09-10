@@ -2,7 +2,8 @@
 
 ## Status
 
-Backlog (2026-09-10). User approved implementation with the token LEGACY.
+In Progress (2026-09-10). Implementing approved LEGACY configuration and
+single-helper defaults in the recorded clean beta worktree.
 
 ## User story
 

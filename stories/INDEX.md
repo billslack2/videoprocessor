@@ -227,7 +227,7 @@ they must not contain requirements that are absent from this file.
 | VP-0027 | Done | Alpha display-verified scene-safe cadence correction |
 | VP-0028 | Done | Renderer configuration profile, hotkey, and event-action unification |
 | VP-0029 | Will Not Do | Alpha two-pass display LUT and final-dither pipeline spike |
-| VP-0177 | Backlog | P010 legacy chroma and single-helper default |
+| VP-0177 | In Progress | P010 legacy chroma and single-helper default |
 
 ## Codex story workflow
 
@@ -378,7 +378,7 @@ default branch may change.
 6. Move a story to `done/` only after acceptance, appropriate validation, and
    merge or deliberate release. Set its status to `Done` and record the final
    commit/PR/release reference.
-7. A story may move backward—for example Review to In Progress after a failed
+7. A story may move backwardâ€”for example Review to In Progress after a failed
    test, or In Progress to Backlog when a new prerequisite is found. Record why
    in `## Status`; do not invent additional state names.
 
