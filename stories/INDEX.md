@@ -229,7 +229,7 @@ they must not contain requirements that are absent from this file.
 | VP-0029 | Will Not Do | Alpha two-pass display LUT and final-dither pipeline spike |
 | VP-0177 | Review | P010 legacy chroma and single-helper default |
 | VP-0178 | Review | Assess P010 CPU waits versus GPU readback |
-| VP-0179 | Review | madVR BT.2020-to-Rec.709 return regression |
+| VP-0179 | In Progress | madVR BT.2020-to-Rec.709 return regression |
 | VP-0180 | Review | Remove standalone stats OSD window |
 
 | VP-0181 | Review | Reduce P010 CPU use with blocking waits and configurable chroma |

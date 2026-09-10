@@ -2,7 +2,7 @@
 
 ## Status
 
-Review (2026-09-10). PR #87 merged into `v1.3.005-beta` as
+In Progress (2026-09-10). Enabling bounded recovery by default at user request; retaining explicit false rollback. PR #87 merged into `v1.3.005-beta` as
 `cc04476a15c435952dd9c4e94c9efec7af43eaf7` (source head `3717c8b8`).
 https://github.com/billslack2/videoprocessor/pull/87
 Full x64 Release build and 198 selected tests passed before merge.
