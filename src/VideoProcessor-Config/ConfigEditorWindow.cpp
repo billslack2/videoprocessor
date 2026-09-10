@@ -1832,6 +1832,26 @@ void ConfigEditorWindow::refreshCalibrationControls()
     auto* hdrGamma = findChild<QComboBox*>(QStringLiteral("config.vprenderer.color.hdr_tone_map_target_gamma"));
     const auto* enabled = findChild<QCheckBox*>(QStringLiteral("config.vprenderer.color.calibration_lut_enabled"));
     const bool lutConfigured = enabled && enabled->isChecked();
+    if (auto* method = findChild<QComboBox*>(QStringLiteral("config.vprenderer.color.calibration_method")))
+    {
+        const QSignalBlocker blocker(method);
+        method->setCurrentIndex(lutConfigured ? 1 : 0);
+    }
+    const auto* gamut = findChild<QComboBox*>(QStringLiteral("config.vprenderer.color.target_primaries"));
+    QString selectedGamut = gamut ? gamut->currentData().toString() : QString();
+    if (gamut && selectedGamut.isEmpty()) selectedGamut = gamut->property("effectiveValue").toString();
+    const QString slot = selectedGamut.compare(QStringLiteral("BT2020"), Qt::CaseInsensitive) == 0 ?
+        QStringLiteral("calibration_lut_bt2020") :
+        selectedGamut.compare(QStringLiteral("P3_D65"), Qt::CaseInsensitive) == 0 ?
+        QStringLiteral("calibration_lut_p3_d65") : QStringLiteral("calibration_lut_bt709");
+    for (QWidget* control : findChildren<QWidget*>())
+    {
+        if (!control->property("lutOnlyRow").toBool()) continue;
+        auto* layout = qobject_cast<QFormLayout*>(control->property("calibrationForm").value<QObject*>());
+        const QString key = control->property("lutConfigKey").toString();
+        if (layout) layout->setRowVisible(control, lutConfigured && (key.isEmpty() || key == slot));
+    }
+
     if (enabled)
         for (const QString& key : { QStringLiteral("calibration_lut_bt709"), QStringLiteral("calibration_lut_p3_d65"),
             QStringLiteral("calibration_lut_bt2020"), QStringLiteral("calibration_lut.open_folder") })
@@ -4121,12 +4141,26 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
     else if (sectionPrefix == QStringLiteral("vprenderer.color"))
     {
         form = addCollapsibleSection(QStringLiteral("calibration"),
-            QStringLiteral("Display target"), QStringLiteral(
-                "Set the target gamut for SDR and HDR. This also selects the matching calibration LUT slot."), true);
-		addChoice(QStringLiteral("Target gamut"),
+            QStringLiteral("Display calibration"), QStringLiteral(
+                "Configure the display response or a calibration LUT. Target white and black remain in Rendering."), true);
+        auto* calibrationForm = form;
+        auto* calibrationLutEnabled = addBoolean(
+            QStringLiteral("Enable display calibration 3D LUT"),
+            QStringLiteral("calibration_lut_enabled"));
+        form->setRowVisible(calibrationLutEnabled, false);
+        auto* calibrationMethod = new QComboBox;
+        calibrationMethod->setObjectName(QStringLiteral("config.vprenderer.color.calibration_method"));
+        calibrationMethod->addItem(QStringLiteral("Display calibration"));
+        calibrationMethod->addItem(QStringLiteral("3D LUT calibration"));
+        form->addRow(QStringLiteral("Calibration method"), calibrationMethod);
+        connect(calibrationMethod, qOverload<int>(&QComboBox::activated), this,
+            [calibrationLutEnabled](int index) { calibrationLutEnabled->setChecked(index == 1); });
+		auto* targetGamut = addChoice(QStringLiteral("Target gamut"),
 			QStringLiteral("target_primaries"),
 			{ QStringLiteral("REC709"), QStringLiteral("P3_D65"),
 				QStringLiteral("BT2020") }, false);
+        connect(targetGamut, qOverload<int>(&QComboBox::currentIndexChanged), this,
+            [this](int) { refreshCalibrationControls(); });
         auto* outputGamma = addChoice(QStringLiteral("Calibrated display gamma"),
             QStringLiteral("output_gamma"),
             {  QStringLiteral("bt1886"),
@@ -4142,12 +4176,6 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         auto* calibrationStatus = helpLabel(QString());
         calibrationStatus->setObjectName(QStringLiteral("config.vprenderer.color.output_gamma.status"));
         form->addRow(QString(), calibrationStatus);
-        addBoolean(QStringLiteral("Report BT.2020 to display"),
-            QStringLiteral("report_bt2020_to_display"));
-
-        form = addCollapsibleSection(QStringLiteral("sourceColor"),
-            QStringLiteral("SDR gamma processing"), QStringLiteral(
-                "Choose the desired SDR response without a LUT, or the SDR reference expected by a calibration LUT."), true);
         sdrGammaEnabled = new QCheckBox;
         sdrGammaEnabled->setObjectName(controlName(sectionPrefix, QStringLiteral("sdr_adjust_gamma")));
         sdrGammaEnabled->setAccessibleName(QStringLiteral("Enable SDR gamma processing"));
@@ -4194,12 +4222,6 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             markDirty();
         });
 
-		form = addCollapsibleSection(QStringLiteral("externalHdrLut"),
-			QStringLiteral("Display calibration LUT (3D LUT)"), QStringLiteral(
-				"Calibration for incoming SDR code values and HDR tone-mapped SDR output. Gamut mapping runs before the selected LUT."), false);
-		auto* calibrationLutEnabled = addBoolean(
-			QStringLiteral("Enable display calibration 3D LUT"),
-			QStringLiteral("calibration_lut_enabled"));
 		calibrationLutEnabled->setToolTip(QStringLiteral(
 			"A usable LUT handles display calibration. SDR retains its source encoding through the pre-LUT transfer stage; HDR is encoded with HDR tone-map target gamma. "
             "HDR peak analysis and pixel-shader tone mapping remain active."));
@@ -4228,11 +4250,11 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                 result << QStringLiteral("luts/%1").arg(lutFile.fileName());
             return result;
         };
-		auto* lutBt709 = addChoice(QStringLiteral("BT.709 calibration LUT"),
+		auto* lutBt709 = addChoice(QStringLiteral("LUT file"),
 			QStringLiteral("calibration_lut_bt709"), QStringList{ QStringLiteral("none") } + discoveredLuts());
-		auto* lutP3 = addChoice(QStringLiteral("P3-D65 calibration LUT"),
+		auto* lutP3 = addChoice(QStringLiteral("LUT file"),
 			QStringLiteral("calibration_lut_p3_d65"), QStringList{ QStringLiteral("none") } + discoveredLuts());
-		auto* lutBt2020 = addChoice(QStringLiteral("BT.2020 calibration LUT"),
+		auto* lutBt2020 = addChoice(QStringLiteral("LUT file"),
 			QStringLiteral("calibration_lut_bt2020"), QStringList{ QStringLiteral("none") } + discoveredLuts());
 		const QList<QComboBox*> externalLutSelectors = {
 			lutBt709, lutP3, lutBt2020
@@ -4324,11 +4346,19 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                     QStringLiteral("Windows could not open the LUT folder."));
         });
         form->addRow(QString(), openLutFolder);
-        form->addRow(QString(), helpLabel(QStringLiteral(
+        auto* lutFolderHelp = helpLabel(QStringLiteral(
             "Put .cube files in the luts folder next to VideoProcessor.cfg (normally the VP installation). "
 			"A missing or invalid selection falls back to the normal tone-mapped image. "
 			"Target gamut above selects the LUT slot. HDR tone-map target gamma belongs to this calibration profile; Target nits and target black remain in Rendering. "
-            "A retained last-known-good LUT remains active if a replacement for the same contract is rejected.")));
+            "A retained last-known-good LUT remains active if a replacement for the same contract is rejected."));
+        form->addRow(QString(), lutFolderHelp);
+
+        for (QWidget* control : QList<QWidget*>{ hdrTargetGamma, hdrGammaStatus,
+            lutBt709, lutP3, lutBt2020, openLutFolder, lutFolderHelp })
+        {
+            control->setProperty("calibrationForm", QVariant::fromValue(static_cast<QObject*>(calibrationForm)));
+            control->setProperty("lutOnlyRow", true);
+        }
 
 		const QList<QWidget*> calibrationLutControls = {
 			lutBt709, lutP3, lutBt2020, openLutFolder
@@ -4352,7 +4382,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 			updateCalibrationLutControls);
 
         form = addCollapsibleSection(QStringLiteral("advancedOutput"),
-            QStringLiteral("Output transport"), QStringLiteral(
+            QStringLiteral("Output"), QStringLiteral(
                 "Presentation preference and RGB transport for this output path. "
                 "Windows determines the final presentation path."), true);
         form->addRow(QString(), helpLabel(QStringLiteral(
@@ -4391,6 +4421,10 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             QStringLiteral("config.vprenderer.color.advanced_output.compatibility"));
         form->addRow(QString(), outputCompatibility);
 
+        addBoolean(QStringLiteral("Report BT.2020 to display"),
+            QStringLiteral("report_bt2020_to_display"))->setToolTip(QStringLiteral(
+                "Request BT.2020 signalling to the display. This does not change the rendering gamut."));
+
         form = addCollapsibleSection(QStringLiteral("outputExperiments"),
             QStringLiteral("Output Experiments (beta)"), QStringLiteral(
                 "Implementation diagnostics for repeatable renderer testing. "
@@ -4415,6 +4449,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             QStringLiteral("diagnostic_allow_limited_g22"));
         limitedFlag->setProperty("derivedSetting", true);
         limitedFlag->setEnabled(false);
+        form->setRowVisible(limitedFlag, false);
         addBoolean(QStringLiteral("Disable D3D11 compute shaders"),
             QStringLiteral("diagnostic_disable_compute"));
         addBoolean(QStringLiteral("Force 8-bit SDR swapchain"),
@@ -4453,7 +4488,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 					(!limitedG22 || !limitedG22->isChecked()))
 				{
 					notices << QStringLiteral(
-						"Blocked: Limited RGB with Gamma 2.2 transport is a diagnostic experiment. Use Auto for normal output.");
+						"Limited 2.2 requires the beta transport flag. Selecting Limited + 2.2 enables it automatically.");
 				}
 				else if (gamma != QStringLiteral("AUTO") &&
 					gamma != QStringLiteral("2.4") && gamma != QStringLiteral("2.2"))
@@ -4464,7 +4499,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 				else
 				{
 					notices << QStringLiteral(
-						"Limited RGB changes output transport only; display calibration remains in Rendering.");
+						"Limited RGB changes output transport only; display calibration remains independent.");
 				}
 			}
             outputCompatibility->setText(notices.join(QStringLiteral("\n")));

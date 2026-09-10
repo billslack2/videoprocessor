@@ -1466,9 +1466,9 @@ void testCalibrationControlsFollowConfirmedRuntimeLut()
         "Display BT.1886 does not distinguish SDR and HDR black references");
     require(requireControl<QComboBox>(window, "config.vprenderer.color.target_primaries")->accessibleName() == "Target gamut",
         "Target gamut label was not updated");
-    require(requireControl<QToolButton>(window, "rendererSection.calibration")->text() == "Display target",
+    require(requireControl<QToolButton>(window, "rendererSection.calibration")->text() == "Display calibration",
         "Display target group label was not updated");
-    require(requireControl<QWidget>(window, "rendererSection.externalHdrLut.content")->isAncestorOf(hdr),
+    require(requireControl<QWidget>(window, "rendererSection.calibration.content")->isAncestorOf(hdr),
         "HDR target gamma is not inside the calibration LUT section");
     require(hdr->findData("AUTO") < 0 && hdr->findData("display") < 0,
         "HDR target gamma exposes a second display/default policy");
@@ -1573,10 +1573,10 @@ void testCalibrationProfileOwnsLutAndHdrGamma()
     auto* slot = requireControl<QComboBox>(window, "config.vprenderer.color.calibration_lut_bt709");
     auto* p3 = requireControl<QComboBox>(window, "config.vprenderer.color.calibration_lut_p3_d65");
     auto* gamma = requireControl<QComboBox>(window, "config.vprenderer.color.hdr_tone_map_target_gamma");
-    auto* section = requireControl<QWidget>(window, "rendererSection.externalHdrLut.content");
+    auto* section = requireControl<QWidget>(window, "rendererSection.calibration.content");
     require(pages->widget(16)->isAncestorOf(section) && section->isAncestorOf(gamma),
         "Calibration LUTs and their HDR input gamma are not in one Color / Output section");
-    require(pages->widget(2)->findChild<QWidget*>("rendererSection.externalHdrLut.content") == nullptr &&
+    require(pages->widget(2)->findChild<QWidget*>("rendererSection.calibration.content") == nullptr &&
         window.findChild<QWidget*>("config.vprenderer.hdr_tone_map_target_gamma") == nullptr &&
         window.findChild<QWidget*>("config.vprenderer.calibration_lut_enabled") == nullptr,
         "Rendering still exposes a duplicate calibration control");
@@ -2238,11 +2238,11 @@ void testRendererProfileSectionsCollapseAndPersist()
     QToolButton* processing = requireControl<QToolButton>(window,
         QStringLiteral("rendererSection.processing"));
 	QToolButton* lut = requireControl<QToolButton>(window,
-		QStringLiteral("rendererSection.externalHdrLut"));
+		QStringLiteral("rendererSection.calibration"));
     QStackedWidget* pages = requireControl<QStackedWidget>(window,
         QStringLiteral("settingsPages"));
 	require(!toneMapping->isChecked() && !processing->isChecked() &&
-		!lut->isChecked(),
+		lut->isChecked(),
         "A renderer section was not collapsed initially");
     require(processing->text() == QStringLiteral("Processing") &&
         !processing->text().contains(u'_'),
@@ -2262,13 +2262,12 @@ void testRendererProfileSectionsCollapseAndPersist()
     window.selectPage(16);
     QToolButton* calibration = requireControl<QToolButton>(window,
         QStringLiteral("rendererSection.calibration"));
-    QToolButton* sourceColor = requireControl<QToolButton>(window,
-        QStringLiteral("rendererSection.sourceColor"));
+    QToolButton* sourceColor = calibration;
     QWidget* calibrationContent = requireControl<QWidget>(window,
         QStringLiteral("rendererSection.calibration.content"));
     require(calibration->isChecked() && sourceColor->isChecked(),
         "Display calibration and SDR gamma processing should initially be expanded");
-    require(sourceColor->text() == QStringLiteral("SDR gamma processing"),
+    require(sourceColor->text() == QStringLiteral("Display calibration"),
         "The SDR input-transfer controls are not grouped under Color Config Source transfer");
     require(calibrationContent->findChild<QLineEdit*>(
         QStringLiteral("config.vprenderer.color.sdr_target_nits")) == nullptr &&
@@ -2434,9 +2433,8 @@ void testRendererProfileSectionsCollapseAndPersist()
         displayBitDepth->itemText(displayBitDepth->findData(QStringLiteral("10"))) == QStringLiteral("10-bit"),
         "Explicit dither depth choices missing");
 
-	require(!requireControl<QWidget>(window,
-		QStringLiteral("rendererSection.externalHdrLut.content"))->isVisibleTo(&window),
-        "3D LUT renderer content is visible while collapsed");
+    require(window.findChild<QWidget*>(QStringLiteral("rendererSection.externalHdrLut.content")) == nullptr,
+        "Separate LUT section remains after calibration grouping");
     require(calibrationContent->isVisibleTo(&window),
         "Display calibration content is visible while collapsed");
 
@@ -2445,7 +2443,7 @@ void testRendererProfileSectionsCollapseAndPersist()
     require(!sourceColor->isChecked(), "SDR gamma processing did not collapse");
     sourceColor->click();
     require(sourceColor->isChecked() && requireControl<QWidget>(window,
-        QStringLiteral("rendererSection.sourceColor.content"))->isVisibleTo(&window),
+        QStringLiteral("rendererSection.calibration.content"))->isVisibleTo(&window),
         "Source transfer section did not expand");
     QListWidget* colorProfiles = requireControl<QListWidget>(window,
         QStringLiteral("config.vprenderer.color.profiles"));
@@ -2910,7 +2908,7 @@ void testQueueUnitsAndLutControlsUseConsistentRows()
 
     window.selectPage(16);
 	QToolButton* lutSection = requireControl<QToolButton>(window,
-		QStringLiteral("rendererSection.externalHdrLut"));
+		QStringLiteral("rendererSection.calibration"));
     if (!lutSection->isChecked()) lutSection->click();
     QCoreApplication::processEvents();
 	QCheckBox* enabled = requireControl<QCheckBox>(window,
@@ -2933,11 +2931,16 @@ void testQueueUnitsAndLutControlsUseConsistentRows()
 		p3->currentText() == QStringLiteral("None") &&
 		bt2020->currentText() == QStringLiteral("None"),
 		"Unused calibration LUT slots still expose a fabricated default");
-	const QPoint bt709Position = bt709->mapTo(&window, QPoint(0, 0));
-	const QPoint p3Position = p3->mapTo(&window, QPoint(0, 0));
-	require(bt709Position.x() == p3Position.x() &&
-		bt709->width() == p3->width() && p3->width() == bt2020->width(),
-		"Calibration LUT slot controls do not share aligned dropdown geometry");
+    auto* gamut = requireControl<QComboBox>(window,
+        QStringLiteral("config.vprenderer.color.target_primaries"));
+    selectData(gamut, QStringLiteral("REC709"));
+    QCoreApplication::processEvents();
+    const int slotX = bt709->mapTo(&window, QPoint()).x();
+    const int slotWidth = bt709->width();
+    selectData(gamut, QStringLiteral("P3_D65"));
+    QCoreApplication::processEvents();
+    require(p3->mapTo(&window, QPoint()).x() == slotX && p3->width() == slotWidth,
+        "Switching LUT gamut changed the visible dropdown geometry");
 	require(bt709->isEnabled() && p3->isEnabled() && bt2020->isEnabled(),
 		"Calibration LUT controls did not enable with the calibration stage");
 	require(requireControl<QComboBox>(window,
@@ -3185,6 +3188,31 @@ void testInheritedCalibrationLutUsesEffectiveControlState()
 	save(window);
 	require(readBytes(path).contains("calibration_lut_bt2020:"),
 		"Saving removed the inherited stale LUT path");
+}
+
+void testCalibrationLayoutKeepsIndependentLutSlots()
+{
+    QTemporaryDir directory;
+    const QString path = copyFixture(directory);
+    ConfigEditorWindow window(path, 0, true);
+    auto* method = requireControl<QComboBox>(window, "config.vprenderer.color.calibration_method");
+    auto* enabled = requireControl<QCheckBox>(window, "config.vprenderer.color.calibration_lut_enabled");
+    auto* gamut = requireControl<QComboBox>(window, "config.vprenderer.color.target_primaries");
+    auto* rec = requireControl<QComboBox>(window, "config.vprenderer.color.calibration_lut_bt709");
+    auto* p3 = requireControl<QComboBox>(window, "config.vprenderer.color.calibration_lut_p3_d65");
+    auto* bt = requireControl<QComboBox>(window, "config.vprenderer.color.calibration_lut_bt2020");
+    enabled->setChecked(true);
+    QCoreApplication::processEvents();
+    require(method->currentIndex() == 1, "Calibration method did not reflect profile enablement");
+    gamut->setCurrentIndex(gamut->findData("REC709"));
+    require(!rec->isHidden() && p3->isHidden() && bt->isHidden(), "LUT layout did not select Rec709 slot");
+    const QVariant savedRec = rec->currentData();
+    gamut->setCurrentIndex(gamut->findData("P3_D65"));
+    require(rec->isHidden() && !p3->isHidden() && bt->isHidden(), "LUT layout did not select P3 slot");
+    require(rec->currentData() == savedRec, "Changing visible gamut modified the other LUT slot");
+    enabled->setChecked(false);
+    require(method->currentIndex() == 0 && rec->isHidden() && p3->isHidden() && bt->isHidden(),
+        "Display calibration mode left LUT selectors visible");
 }
 
 void testChoiceLabelsAndVpRendererName()
@@ -5581,6 +5609,7 @@ int main(int argc, char** argv)
         testEmptyShortcutsSurviveNlsBackendEdit);
     failures += run("SDR gamma adjustment labels and persistence",
         testSdrGammaAdjustmentLabelsAndPersistence);
+    failures += run("calibration layout preserves independent slots", testCalibrationLayoutKeepsIndependentLutSlots);
     failures += run("calibration controls follow confirmed runtime LUT", testCalibrationControlsFollowConfirmedRuntimeLut);
     failures += run("HDR target gamma loads prior input aliases", testHdrTargetGammaLoadsPriorInputAliases);
     failures += run("calibration profile owns LUT and HDR gamma", testCalibrationProfileOwnsLutAndHdrGamma);
