@@ -2,14 +2,15 @@
 
 ## Status
 
-In Progress (2026-09-10). Enabling bounded recovery by default at user request; retaining explicit false rollback. PR #87 merged into `v1.3.005-beta` as
-`cc04476a15c435952dd9c4e94c9efec7af43eaf7` (source head `3717c8b8`).
-https://github.com/billslack2/videoprocessor/pull/87
-Full x64 Release build and 198 selected tests passed before merge.
-`[general] bounded_invalid_capture_recovery` remains file-only and startup-only:
-false/absent keeps legacy behavior; true enables bounded recovery. Hardware
-confirmation of the reported madVR regression remains pending, so this story
-remains in Review. Not deployed.
+Review (2026-09-10). PR #89 merged into `v1.3.005-beta` as
+`a33c5bf31b5aad1dcbc43eda7e419f7b16707f61` (source head `4d89613a`).
+https://github.com/billslack2/videoprocessor/pull/89
+Bounded recovery now defaults to enabled: `[general] bounded_invalid_capture_recovery`
+is true when absent; explicit false retains legacy behavior. The setting remains
+file-only and startup-only. This supersedes the earlier default-false policy
+introduced by PR #87. Full x64 Release build and 198 selected regression tests
+passed. Hardware confirmation of the reported madVR regression remains pending.
+Not deployed; active user configuration was not modified.
 
 ## User story
 
