@@ -2,7 +2,7 @@
 
 ## Status
 
-Review
+Done
 
 2026-09-10: User authorized adding ADVANCED while leaving AVERAGE/LEGACY and
 AVERAGE default unchanged. Existing implementations will not be rewritten.
@@ -87,3 +87,17 @@ VP was closed and was not started. The existing running config-editor executable
 was preserved under the backup as config/VideoProcessorConfig.running.exe;
 reopen the editor to use the updated schema. Story remains Review pending visual
 hardware acceptance and PR merge.
+
+## Acceptance and merge
+
+2026-09-10: User authorized merging the completed three-policy implementation.
+PR #90 merged into v1.3.005-beta at 23:44:28 UTC, merge commit
+94d2efe29fd3030e5bc62739457d873246ecf3ee. Fetched remote beta and verified
+implementation 0b13008e is an ancestor. AVERAGE remains default; both existing
+kernels are unchanged; LEGACY and ADVANCED remain config-only.
+
+Accepted for integration using the successful Release build, 1,146 passing
+native tests, UI preservation check and recorded benchmark. Previously deployed
+runtime remains in place; no additional deployment/configuration change needed.
+This closes implementation and merge work; no claim of independently verified
+visual hardware quality is made. Earlier pending notes above are historical.
