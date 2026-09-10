@@ -72,3 +72,18 @@ limitations are in source docs/VP-0182-advanced-chroma.md. ADVANCED can ring and
 frame-based, not field-aware interlaced downsampling. User visual/hardware
 acceptance and merge/deployment decisions remain pending; nothing was deployed
 or changed in active configuration for this feature.
+## Deployment 2026-09-10
+
+On user request, deployed commit 0b13008e7cbb6f6e9eb037d5f68fba3012b0f6bd
+from a successful x64 Release build (advanced-deploy-build.log, zero errors).
+EXE and renderer DLL deployed together and SHA256 verified against build outputs;
+updated config editor and CONFIGURATION.html copies deployed as well.
+Backup: C:\Videoprocessor\vp\backup-before-vp0182-20260910-193636.
+Its deployment.json records all old/new hashes and configuration hash.
+EXE SHA256: 626D9ECB5FB6A1818D9DE31F54B3028F36BED89CE4D3D5D28418FC0EA2AE8BCA.
+Renderer SHA256: E21F25EB18BCD88C8A9F7767E2F93F854BE7C466EAB12D2053FFEA8C63B6133F.
+Active configuration was unchanged and already explicitly selected ADVANCED.
+VP was closed and was not started. The existing running config-editor executable
+was preserved under the backup as config/VideoProcessorConfig.running.exe;
+reopen the editor to use the updated schema. Story remains Review pending visual
+hardware acceptance and PR merge.
