@@ -48,9 +48,24 @@ namespace MainConfigSchema
 			section.rfind("shader.", 0) == 0;
 	}
 
+	inline bool BoundedInvalidCaptureRecoveryEnabled(const ConfigFile& config)
+	{
+		bool enabled = false;
+		return config.TryGetBool("general", "bounded_invalid_capture_recovery",
+			enabled) && enabled;
+	}
+
 	inline bool Validate(const ConfigFile& config, std::string& error)
 	{
 		error.clear();
+		const auto recoveryRule = ConfigSchema::Boolean("bounded_invalid_capture_recovery");
+		std::string recoveryValue;
+		if (config.TryGetString("general", recoveryRule.key, recoveryValue) &&
+			!recoveryRule.validator(recoveryValue))
+		{
+			error = "[general] key 'bounded_invalid_capture_recovery' must be a Boolean";
+			return false;
+		}
 		const std::vector<ConfigSchema::KeyRule> commandLineRules = {
 			ConfigSchema::Boolean("fullscreen"),
 			ConfigSchema::Boolean("windowedfullscreenmode"),
@@ -117,9 +132,11 @@ namespace MainConfigSchema
 					hasUnifiedRenderer = true;
 					break;
 				}
+		auto generalRules = commandLineRules;
+		generalRules.push_back(recoveryRule);
 		if (hasUnifiedRenderer &&
 			!ConfigSchema::ValidateSection(
-				config, "general", commandLineRules, error))
+				config, "general", generalRules, error))
 			return false;
 
 		// Queue policy is deliberately expressed in whole frames and capped so

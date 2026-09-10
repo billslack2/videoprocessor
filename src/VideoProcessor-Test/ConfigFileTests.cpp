@@ -1624,6 +1624,32 @@ namespace VideoProcessorTest
 			DeleteFileA(path.c_str());
 		}
 
+		TEST_METHOD(GeneralRecoveryToggleDefaultsLegacyAndValidatesBothModes)
+		{
+			ConfigFile config;
+			Assert::IsFalse(MainConfigSchema::BoundedInvalidCaptureRecoveryEnabled(config));
+			Assert::IsTrue(MainConfigSchema::OwnsSection("general"));
+			char directory[MAX_PATH] = {}, path[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(ARRAYSIZE(directory), directory) > 0);
+			Assert::IsTrue(GetTempFileNameA(directory, "vpi", 0, path) != 0);
+			for (const char* value : { "false", "true", "invalid" })
+			{
+				{
+					std::ofstream file(path, std::ios::out | std::ios::trunc);
+					file << "[general]\nbounded_invalid_capture_recovery: " << value << "\n";
+				}
+				Assert::IsTrue(config.Load(path));
+				std::string error;
+				const bool valid = std::string(value) != "invalid";
+				Assert::AreEqual(valid, MainConfigSchema::Validate(config, error));
+				Assert::AreEqual(std::string(value) == "true",
+					MainConfigSchema::BoundedInvalidCaptureRecoveryEnabled(config));
+				if (!valid)
+					Assert::IsTrue(error.find("bounded_invalid_capture_recovery") != std::string::npos);
+			}
+			DeleteFileA(path);
+		}
+
 		TEST_METHOD(MainConfigSchemaValidatesTargetOnlyDisplaySessionMode)
 		{
 			char temporaryDirectory[MAX_PATH] = {};
