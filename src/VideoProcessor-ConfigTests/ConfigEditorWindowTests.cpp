@@ -2031,6 +2031,19 @@ void testUnrelatedContentRemainsExact()
     const QByteArray saved = readBytes(path);
     for (const QByteArray& block : preservedBlocks)
         require(saved.contains(block), "An unrelated manual block changed during UI save");
+    QByteArray advanced = saved;
+    advanced.replace("chroma_downsampling: LEGACY", "chroma_downsampling: ADVANCED");
+    {
+        QFile file(path);
+        require(file.open(QIODevice::WriteOnly | QIODevice::Truncate), "Cannot prepare ADVANCED settings");
+        file.write(advanced);
+    }
+    ConfigEditorWindow advancedWindow(path, 0, true);
+    requireControl<QCheckBox>(advancedWindow, QStringLiteral("config.general.scene_detect"))->setChecked(true);
+    save(advancedWindow);
+    require(readBytes(path).contains("chroma_downsampling: ADVANCED"), "UI save changed ADVANCED");
+    require(advancedWindow.findChild<QWidget*>(QStringLiteral("config.directshow.conversion.chroma_downsampling")) == nullptr,
+        "Manual chroma policy leaked into UI");
 }
 
 void testSceneDetectionDefaultsOffAndHidesManualOverrides()

@@ -41,6 +41,7 @@ public:
 	{
 		AVERAGE, // Rounded average of adjacent rows (default)
 		LEGACY,  // Chroma from zero-based even rows only
+		ADVANCED, // Scale-aware Lanczos-3 vertical decimation (12 taps)
 	};
 
 	void SetChromaDownsampling(ChromaDownsampling policy) { m_chromaDownsampling = policy; }
@@ -157,6 +158,10 @@ private:
 		const uint8_t* srcData, uint32_t srcStride,
 		uint16_t* dstY, uint16_t* dstUV,
 		uint32_t width, uint32_t startLine, uint32_t endLine) noexcept;
+
+	void ProcessAdvancedSegment(const uint8_t* srcData, uint32_t srcStride,
+		uint16_t* dstY, uint16_t* dstUV, uint32_t width,
+		uint32_t startLine, uint32_t endLine, bool useSimd) noexcept;
 
 	// Performance tracking and optimization features
 #ifdef _DEBUG

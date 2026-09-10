@@ -215,7 +215,7 @@ namespace MainConfigSchema
 				{ "auto", "simd", "optimized", "standard" }),
 			ConfigSchema::Integer("min_core_count", 1, INT_MAX),
 			ConfigSchema::Integer("max_core_count", 1, INT_MAX),
-			ConfigSchema::Choice("chroma_downsampling", { "AVERAGE", "LEGACY" })
+			ConfigSchema::Choice("chroma_downsampling", { "AVERAGE", "LEGACY", "ADVANCED" })
 		};
 		if (!ConfigSchema::ValidateSection(
 			config, "directshow.conversion", conversionRules, error))
