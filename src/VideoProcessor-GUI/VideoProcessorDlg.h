@@ -34,6 +34,7 @@
 #include <RendererRetirementService.h>
 #include <RendererTransitionModel.h>
 #include <EotfTransitionStabilizer.h>
+#include <InvalidCaptureStateGrace.h>
 #include <RendererQueueLaunchContractModel.h>
 #include <QueueProfileRestartPolicy.h>
 #include <EventActionLauncher.h>
@@ -817,8 +818,7 @@ protected:
 	// still flowing.  Hold the last valid state for a short, bounded interval so
 	// that one notification cannot tear down the DirectShow/madVR graph.
 	VideoStateComPtr m_deferredInvalidCaptureVideoState;
-	ULONGLONG m_deferredInvalidCaptureVideoStateDeadlineTick = 0;
-	uint64_t m_deferredInvalidCaptureVideoStateFrameCount = 0;
+	InvalidCaptureStateGrace m_invalidCaptureStateGrace;
 	bool m_rendererStartEvaluationPosted = false;
 	std::unique_ptr<RendererResetCoordinator> m_rendererResetCoordinator;
 	RendererBindingToken m_rendererResetBindingToken = 0;

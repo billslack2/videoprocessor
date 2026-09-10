@@ -5821,57 +5821,46 @@ LRESULT CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange(WPARAM wParam
 	{
 		KillTimer(TRANSIENT_INVALID_VIDEO_STATE_TIMER_ID);
 		m_deferredInvalidCaptureVideoState.Release();
-		m_deferredInvalidCaptureVideoStateDeadlineTick = 0;
-		m_deferredInvalidCaptureVideoStateFrameCount = 0;
+		m_invalidCaptureStateGrace.Reset();
 		DebugLog::Log(
 			"Transient invalid capture video state cleared by valid notification: "
 			"sequence=%llu",
 			static_cast<unsigned long long>(notificationSequence));
 	}
 
-	// Do not immediately tear down a running renderer on a single invalid state
-	// notification.  A sustained loss still follows the ordinary invalid-signal
-	// stop path after this bounded grace period; a real valid update cancels it.
+	// Keep one bounded grace period for a running graph. Repeated invalid
+	// notifications update the pending state but cannot postpone its deadline.
 	if (!videoState->valid &&
 		m_videoRenderer &&
 		m_rendererState == RendererState::RENDERSTATE_RENDERING &&
 		m_captureDeviceVideoState &&
 		m_captureDeviceVideoState->valid)
 	{
-		constexpr UINT transientInvalidGraceMs = 1500;
-		m_deferredInvalidCaptureVideoState = videoState;
-		m_deferredInvalidCaptureVideoStateDeadlineTick =
-			GetTickCount64() + transientInvalidGraceMs;
-		m_deferredInvalidCaptureVideoStateFrameCount = m_captureDevice ?
-			m_captureDevice->VideoFrameCapturedCount() : 0;
-		SetTimer(
-			TRANSIENT_INVALID_VIDEO_STATE_TIMER_ID,
-			transientInvalidGraceMs,
-			nullptr);
-		const RendererIngressState::CaptureSequenceSnapshot ingress =
-			m_rendererIngressState->CaptureSequences();
+		const ULONGLONG now = GetTickCount64();
+		m_invalidCaptureStateGrace.ObserveInvalid(now);
+		const uint64_t remainingMs = m_invalidCaptureStateGrace.RemainingMs(now);
+		if (remainingMs > 0)
+		{
+			m_deferredInvalidCaptureVideoState = videoState;
+			SetTimer(TRANSIENT_INVALID_VIDEO_STATE_TIMER_ID,
+				static_cast<UINT>(remainingMs), nullptr);
+			DebugLog::Log(
+				"Transient invalid capture video state deferred: sequence=%llu "
+				"remaining_ms=%llu action=retain-last-valid-state-until-deadline",
+				static_cast<unsigned long long>(notificationSequence),
+				static_cast<unsigned long long>(remainingMs));
+			return 0;
+		}
 		DebugLog::Log(
-			"Transient invalid capture video state deferred: sequence=%llu "
-			"grace_ms=%u captured_frames=%llu action=retain-last-valid-state "
-			"change_class=%s ingress=%s publication_us=%llu "
-			"handler_latency_us=%llu "
-			"published=%llu required=%llu acknowledged=%llu admitted=%d",
-			static_cast<unsigned long long>(notificationSequence),
-			transientInvalidGraceMs,
-			static_cast<unsigned long long>(
-				m_deferredInvalidCaptureVideoStateFrameCount),
-			ToString(notification->changeClass),
-			notification->retainedRendererIngress ?
-				"retained-at-source" : "awaiting-renderer-acknowledgement",
-			static_cast<unsigned long long>(
-				notification->ingressPublicationUs),
-			static_cast<unsigned long long>(handlerLatencyUs),
-			static_cast<unsigned long long>(ingress.published),
-			static_cast<unsigned long long>(ingress.required),
-			static_cast<unsigned long long>(ingress.acknowledged),
-			ingress.admissionOpen ? 1 : 0);
-		return 0;
+			"Transient invalid capture video state persisted through grace; "
+			"source=notification action=apply-invalid-state");
 	}
+
+	// The ordinary state path now owns this notification (including expiry
+	// before the timer runs). No stale timer may overwrite a subsequent state.
+	KillTimer(TRANSIENT_INVALID_VIDEO_STATE_TIMER_ID);
+	m_deferredInvalidCaptureVideoState.Release();
+	m_invalidCaptureStateGrace.Reset();
 
 	DbgLog((LOG_TRACE, 1,
 		TEXT("CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange(): Valid=%s"),
@@ -8826,6 +8815,11 @@ void CVideoProcessorDlg::CaptureStart()
 
 void CVideoProcessorDlg::CaptureStop()
 {
+	// Deferred capture state belongs only to the current capture run.
+	KillTimer(TRANSIENT_INVALID_VIDEO_STATE_TIMER_ID);
+	m_deferredInvalidCaptureVideoState.Release();
+	m_invalidCaptureStateGrace.Reset();
+
 	DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::CaptureStop(): Begin")));
 
 	assert(m_captureDevice);
@@ -14361,49 +14355,23 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 		if (!m_deferredInvalidCaptureVideoState)
 			return;
 
-		const ULONGLONG now = GetTickCount64();
-		if (now < m_deferredInvalidCaptureVideoStateDeadlineTick)
+		const uint64_t remainingMs =
+			m_invalidCaptureStateGrace.RemainingMs(GetTickCount64());
+		if (remainingMs > 0)
 		{
-			SetTimer(
-				TRANSIENT_INVALID_VIDEO_STATE_TIMER_ID,
-				static_cast<UINT>(
-					m_deferredInvalidCaptureVideoStateDeadlineTick - now),
-				nullptr);
+			SetTimer(TRANSIENT_INVALID_VIDEO_STATE_TIMER_ID,
+				static_cast<UINT>(remainingMs), nullptr);
 			return;
 		}
 
-		const uint64_t capturedFramesNow = m_captureDevice ?
-			m_captureDevice->VideoFrameCapturedCount() : 0;
-		if (capturedFramesNow > m_deferredInvalidCaptureVideoStateFrameCount)
-		{
-			const uint64_t capturedFramesAtDeferral =
-				m_deferredInvalidCaptureVideoStateFrameCount;
-			m_deferredInvalidCaptureVideoState.Release();
-			m_deferredInvalidCaptureVideoStateDeadlineTick = 0;
-			m_deferredInvalidCaptureVideoStateFrameCount = 0;
-			const RendererIngressState::CaptureSequenceSnapshot ingress =
-				m_rendererIngressState->CaptureSequences();
-			DebugLog::Log(
-				"Transient invalid capture video state ignored: capture advanced "
-				"from=%llu to=%llu action=retain-live-renderer "
-				"published=%llu required=%llu acknowledged=%llu admitted=%d",
-				static_cast<unsigned long long>(
-					capturedFramesAtDeferral),
-				static_cast<unsigned long long>(capturedFramesNow),
-				static_cast<unsigned long long>(ingress.published),
-				static_cast<unsigned long long>(ingress.required),
-				static_cast<unsigned long long>(ingress.acknowledged),
-				ingress.admissionOpen ? 1 : 0);
-			return;
-		}
-
+		// An advancing frame counter does not prove valid input. Apply the
+		// pending invalid state even if no-input callbacks keep arriving.
 		m_captureDeviceVideoState = m_deferredInvalidCaptureVideoState;
 		m_deferredInvalidCaptureVideoState.Release();
-		m_deferredInvalidCaptureVideoStateDeadlineTick = 0;
-		m_deferredInvalidCaptureVideoStateFrameCount = 0;
+		m_invalidCaptureStateGrace.Reset();
 		DebugLog::Log(
 			"Transient invalid capture video state persisted through grace; "
-			"action=apply-invalid-state");
+			"source=timer action=apply-invalid-state");
 		BuildPushVideoState();
 		UpdateState();
 		return;
