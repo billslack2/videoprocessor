@@ -7,8 +7,6 @@
  */
 
 #include <pch.h>
-#include <ApplicationShutdownPolicy.h>
-#include <DebugLog.h>
 #include <OsdTimingPolicy.h>
 #include "StatsOverlayWindow.h"
 #include <algorithm>
@@ -17,19 +15,9 @@
 #include <sstream>
 #include <iomanip>
 
-// Static members
-const TCHAR* StatsOverlayWindow::WINDOW_CLASS_NAME = TEXT("VideoProcessorStatsOverlay");
-bool StatsOverlayWindow::s_classRegistered = false;
-
+// Bitmap rasterizer only: the active renderer owns OSD presentation.
 StatsOverlayWindow::StatsOverlayWindow()
-	: m_hwnd(nullptr)
-	, m_parentHwnd(nullptr)
-	, m_isVisible(false)
-	, m_isCreated(false)
-	, m_windowHeight(610)
-	, m_font(nullptr)
-	, m_boldFont(nullptr)
-	, m_alphaFont(nullptr)
+	: m_windowHeight(610), m_font(nullptr), m_alphaFont(nullptr)
 {
 }
 
@@ -38,134 +26,29 @@ StatsOverlayWindow::~StatsOverlayWindow()
 	Destroy();
 }
 
-void StatsOverlayWindow::RegisterWindowClass()
+bool StatsOverlayWindow::Initialize()
 {
-	if (s_classRegistered)
-		return;
-
-	WNDCLASS wc = {};
-	wc.lpfnWndProc = StaticWndProc;
-	wc.hInstance = GetModuleHandle(nullptr);
-	wc.lpszClassName = WINDOW_CLASS_NAME;
-	wc.hbrBackground = nullptr; // No background brush for transparency
-	wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
-
-	if (RegisterClass(&wc))
-	{
-		s_classRegistered = true;
-	}
-	// If registration fails, s_classRegistered stays false and Create will fail gracefully
-}
-
-bool StatsOverlayWindow::Create(HWND parentHwnd)
-{
-	if (m_isCreated)
+	if (m_font && m_alphaFont)
 		return true;
-
-	m_parentHwnd = parentHwnd;
-
-	RegisterWindowClass();
-	
-	// If class registration failed, return false
-	if (!s_classRegistered)
-		return false;
-
-	// Get the monitor info for screen-based positioning
-	HMONITOR hMonitor = MonitorFromWindow(parentHwnd, MONITOR_DEFAULTTONEAREST);
-	MONITORINFO monitorInfo = { sizeof(MONITORINFO) };
-	if (!GetMonitorInfo(hMonitor, &monitorInfo))
-	{
-		// Fallback to primary monitor
-		monitorInfo.rcMonitor.right = GetSystemMetrics(SM_CXSCREEN);
-		monitorInfo.rcMonitor.bottom = GetSystemMetrics(SM_CYSCREEN);
-	}
-
-	// Position relative to the screen (100px from right, 300px from bottom)
-	int x = monitorInfo.rcMonitor.right - MARGIN_RIGHT - WINDOW_WIDTH;
-	int y = monitorInfo.rcMonitor.bottom - MARGIN_BOTTOM - m_windowHeight;
-
-	// Create the overlay window with layered window style for transparency
-	m_hwnd = CreateWindowEx(
-		WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW,
-		WINDOW_CLASS_NAME,
-		TEXT("Stats Overlay"),
-		WS_POPUP,
-		x, y, WINDOW_WIDTH, m_windowHeight,
-		nullptr,                      // No parent window
-		nullptr,                      // No menu
-		GetModuleHandle(nullptr),     // hInstance
-		(LPVOID)this);                // lpParam
-
-	if (!m_hwnd)
-	{
-		return false;
-	}
-
-	// Keep the legacy fallback visually aligned with the native Alpha/madVR
-	// bitmaps, which carry 220/255 per-pixel alpha.
-	SetLayeredWindowAttributes(m_hwnd, RGB(0, 0, 0), 220, LWA_ALPHA);
-
-	// Create fonts - match MadVR stats overlay style but 50% larger
-	HDC hdc = GetDC(m_hwnd);
-	if (!hdc)
-	{
-		DestroyWindow(m_hwnd);
-		m_hwnd = nullptr;
-		return false;
-	}
-	
-	// One shared raster style for the legacy fallback and both native OSD
-	// backends. Alpha established 20 px as the readable in-frame size.
-	int fontHeight = ALPHA_LINE_HEIGHT;
-
-	m_font = CreateFont(
-		fontHeight, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+	Destroy();
+	m_font = CreateFont(LINE_HEIGHT, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
 		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
 		CLEARTYPE_QUALITY, FIXED_PITCH | FF_MODERN, TEXT("Consolas"));
-
-	m_boldFont = CreateFont(
-		fontHeight, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+	m_alphaFont = CreateFont(ALPHA_LINE_HEIGHT, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
 		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
 		CLEARTYPE_QUALITY, FIXED_PITCH | FF_MODERN, TEXT("Consolas"));
-
-	// Alpha draws this bitmap directly into the video frame, where the legacy
-	// font is visually oversized. Keep the legacy overlay unchanged.
-	m_alphaFont = CreateFont(
-		ALPHA_LINE_HEIGHT, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
-		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-		CLEARTYPE_QUALITY, FIXED_PITCH | FF_MODERN, TEXT("Consolas"));
-
-	ReleaseDC(m_hwnd, hdc);
-
-	if (!m_font || !m_boldFont || !m_alphaFont)
-	{
-		DestroyWindow(m_hwnd);
-		m_hwnd = nullptr;
-		return false;
-	}
-
-	m_isCreated = true;
-	return true;
+	if (m_font && m_alphaFont)
+		return true;
+	Destroy();
+	return false;
 }
 
 void StatsOverlayWindow::Destroy()
 {
-	if (m_hwnd)
-	{
-		DestroyWindow(m_hwnd);
-		m_hwnd = nullptr;
-	}
-
 	if (m_font)
 	{
 		DeleteObject(m_font);
 		m_font = nullptr;
-	}
-
-	if (m_boldFont)
-	{
-		DeleteObject(m_boldFont);
-		m_boldFont = nullptr;
 	}
 
 	if (m_alphaFont)
@@ -173,56 +56,20 @@ void StatsOverlayWindow::Destroy()
 		DeleteObject(m_alphaFont);
 		m_alphaFont = nullptr;
 	}
-
-	m_isCreated = false;
-	m_isVisible = false;
-}
-
-void StatsOverlayWindow::Show(bool show)
-{
-	if (!m_isCreated)
-		return;
-
-	m_isVisible = show;
-	ShowWindow(m_hwnd, show ? SW_SHOWNOACTIVATE : SW_HIDE);
-
-	if (show)
-	{
-		// Update position when showing
-		UpdatePosition(m_parentHwnd);
-		ForceRedraw();
-	}
-}
-
-void StatsOverlayWindow::Toggle()
-{
-	Show(!m_isVisible);
 }
 
 void StatsOverlayWindow::UpdateStats(const StatsData& stats)
 {
-	int requiredHeight = 0;
-	{
-		std::lock_guard<std::mutex> lock(m_statsMutex);
-		m_stats = stats;
-		requiredHeight = CalculateRequiredHeight(m_stats);
-	}
-
-	if (requiredHeight != m_windowHeight)
-	{
-		m_windowHeight = requiredHeight;
-		UpdatePosition(m_parentHwnd);
-	}
-
-	if (m_isVisible)
-	{
-		ForceRedraw();
-	}
+	std::lock_guard<std::mutex> lock(m_statsMutex);
+	m_stats = stats;
+	m_windowHeight = CalculateRequiredHeight(m_stats);
 }
 
 bool StatsOverlayWindow::RenderBgra(
 	std::vector<uint8_t>& pixels, int& width, int& height, int& stride)
 {
+	if (!Initialize())
+		return false;
 	width = WINDOW_WIDTH;
 	height = m_windowHeight;
 	stride = width * 4;
@@ -615,137 +462,6 @@ bool StatsOverlayWindow::RenderSweepSummaryBgra(
 	DeleteDC(memory);
 	DeleteObject(bitmap);
 	return true;
-}
-
-void StatsOverlayWindow::ForceRedraw()
-{
-	if (m_hwnd && m_isVisible)
-	{
-		InvalidateRect(m_hwnd, nullptr, TRUE);
-	}
-}
-
-void StatsOverlayWindow::UpdatePosition(HWND parentHwnd)
-{
-	if (!m_hwnd || !parentHwnd)
-		return;
-
-	// Get the monitor info for screen-based positioning
-	HMONITOR hMonitor = MonitorFromWindow(parentHwnd, MONITOR_DEFAULTTONEAREST);
-	MONITORINFO monitorInfo = { sizeof(MONITORINFO) };
-	GetMonitorInfo(hMonitor, &monitorInfo);
-
-	// Position relative to the screen (100px from right, 300px from bottom)
-	int x = monitorInfo.rcMonitor.right - MARGIN_RIGHT - WINDOW_WIDTH;
-	int y = monitorInfo.rcMonitor.bottom - MARGIN_BOTTOM - m_windowHeight;
-	y = std::max(y, static_cast<int>(monitorInfo.rcMonitor.top));
-
-	SetWindowPos(m_hwnd, HWND_TOPMOST, x, y, WINDOW_WIDTH, m_windowHeight,
-		SWP_NOACTIVATE);
-}
-
-LRESULT CALLBACK StatsOverlayWindow::StaticWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
-{
-	StatsOverlayWindow* pThis = nullptr;
-
-	if (msg == WM_CREATE)
-	{
-		CREATESTRUCT* pCreate = reinterpret_cast<CREATESTRUCT*>(lParam);
-		pThis = reinterpret_cast<StatsOverlayWindow*>(pCreate->lpCreateParams);
-		SetWindowLongPtr(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(pThis));
-	}
-	else
-	{
-		pThis = reinterpret_cast<StatsOverlayWindow*>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
-	}
-
-	if (pThis)
-	{
-		return pThis->WndProc(hwnd, msg, wParam, lParam);
-	}
-
-	return DefWindowProc(hwnd, msg, wParam, lParam);
-}
-
-LRESULT StatsOverlayWindow::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
-{
-	switch (msg)
-	{
-	case WM_CLOSE:
-		DebugLog::Log(
-			"Application close surface route: source=stats-overlay hwnd=%p main=%p consume_original=1",
-			hwnd, m_parentHwnd);
-		if (m_parentHwnd && IsWindow(m_parentHwnd))
-			PostMessage(m_parentHwnd, WM_CLOSE, 0, 0);
-		return 0;
-
-	case WM_SYSCOMMAND:
-		if (ApplicationShutdownPolicy::IsCloseSystemCommand(wParam))
-		{
-			DebugLog::Log(
-				"Application close surface route: source=stats-overlay-system-command hwnd=%p main=%p consume_original=1",
-				hwnd, m_parentHwnd);
-			if (m_parentHwnd && IsWindow(m_parentHwnd))
-				PostMessage(m_parentHwnd, WM_CLOSE, 0, 0);
-			return 0;
-		}
-		break;
-
-	case WM_PAINT:
-	{
-		PAINTSTRUCT ps;
-		HDC hdc = BeginPaint(hwnd, &ps);
-		OnPaint(hdc);
-		EndPaint(hwnd, &ps);
-		return 0;
-	}
-
-	case WM_ERASEBKGND:
-		return 1; // We handle background in OnPaint
-
-	case WM_NCHITTEST:
-		return HTTRANSPARENT; // Allow clicks to pass through
-
-	default:
-		return DefWindowProc(hwnd, msg, wParam, lParam);
-	}
-	return DefWindowProc(hwnd, msg, wParam, lParam);
-}
-
-void StatsOverlayWindow::OnPaint(HDC hdc)
-{
-	RECT clientRect;
-	GetClientRect(m_hwnd, &clientRect);
-
-	// Create memory DC for double buffering
-	HDC memDC = CreateCompatibleDC(hdc);
-	HBITMAP memBitmap = CreateCompatibleBitmap(hdc, clientRect.right, clientRect.bottom);
-	HBITMAP oldBitmap = (HBITMAP)SelectObject(memDC, memBitmap);
-
-	// Draw background and stats
-	DrawBackground(memDC);
-	DrawStats(memDC);
-
-	// Blit to screen
-	BitBlt(hdc, 0, 0, clientRect.right, clientRect.bottom, memDC, 0, 0, SRCCOPY);
-
-	// Cleanup
-	SelectObject(memDC, oldBitmap);
-	DeleteObject(memBitmap);
-	DeleteDC(memDC);
-}
-
-void StatsOverlayWindow::DrawBackground(HDC hdc)
-{
-	RECT rect;
-	GetClientRect(m_hwnd, &rect);
-
-	// Create semi-transparent background (no border)
-	HBRUSH brush = CreateSolidBrush(BACKGROUND_COLOR);
-	FillRect(hdc, &rect, brush);
-	DeleteObject(brush);
-
-	// Border removed as requested
 }
 
 void StatsOverlayWindow::DrawStats(HDC hdc)

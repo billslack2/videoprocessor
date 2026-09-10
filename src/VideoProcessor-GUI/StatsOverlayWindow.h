@@ -214,15 +214,8 @@ public:
 	StatsOverlayWindow();
 	~StatsOverlayWindow();
 
-	// Lifecycle
-	bool Create(HWND parentHwnd);
+	// Resources for renderer-owned bitmap presentation; no overlay HWND.
 	void Destroy();
-
-	// Visibility
-	void Show(bool show);
-	void Toggle();
-	bool IsVisible() const { return m_isVisible; }
-	bool IsCreated() const { return m_isCreated; }
 
 	// Data update
 	void UpdateStats(const StatsData& stats);
@@ -238,17 +231,10 @@ public:
 		uint8_t opacity, std::vector<uint8_t>& pixels,
 		int& width, int& height, int& stride);
 
-	// Position update
-	void UpdatePosition(HWND parentHwnd);
-
 private:
-	// Window procedure
-	static LRESULT CALLBACK StaticWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
-	LRESULT WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+	bool Initialize();
 
 	// Drawing
-	void OnPaint(HDC hdc);
-	void DrawBackground(HDC hdc);
 	void DrawStats(HDC hdc);
 	void DrawText(HDC hdc, const CString& text, int x, int y);
 	int CalculateRequiredHeight(const StatsData& stats) const;
@@ -256,33 +242,17 @@ private:
 	// Formatting helpers
 	CString FormatQueueStatus();
 
-	// Force redraw
-	void ForceRedraw();
-
-	// Class registration
-	static void RegisterWindowClass();
-	static bool s_classRegistered;
-	static const TCHAR* WINDOW_CLASS_NAME;
-
-	// Window handles and state
-	HWND m_hwnd;
-	HWND m_parentHwnd;
-	bool m_isVisible;
-	bool m_isCreated;
 	int m_windowHeight;
 
 	// Fonts
 	HFONT m_font;
-	HFONT m_boldFont;
 	HFONT m_alphaFont;
 
 	// Stats data with mutex protection
 	std::mutex m_statsMutex;
 	StatsData m_stats;
 
-	// Window constants - shared 20px native/fallback OSD typography.
-	static const int MARGIN_RIGHT = 500;
-	static const int MARGIN_BOTTOM = 320;    // Move up 20 pixels (was 300)
+	// Bitmap constants - shared 20px native OSD typography.
 	static const int WINDOW_WIDTH = 540;     // Fit compact output-contract diagnostics
 	static const int PADDING = 10;
 	static const int LINE_HEIGHT = 20;

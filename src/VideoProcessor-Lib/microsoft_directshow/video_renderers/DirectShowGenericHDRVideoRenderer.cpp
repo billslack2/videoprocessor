@@ -189,7 +189,7 @@ void DirectShowGenericHDRVideoRenderer::RendererBuild()
 		DebugLog::Log("madVR OSD: renderer generation %llu bitmap service available",
 			static_cast<unsigned long long>(m_rendererGeneration));
 	else
-		DebugLog::Log("madVR OSD: renderer generation %llu bitmap service unavailable (0x%08lX); using legacy overlay",
+		DebugLog::Log("madVR OSD: renderer generation %llu bitmap service unavailable (0x%08lX); native stats overlay disabled",
 			static_cast<unsigned long long>(m_rendererGeneration), osdResult);
 }
 
@@ -242,7 +242,7 @@ void DirectShowGenericHDRVideoRenderer::ApplyNativeStatsOverlayOnGraphThread()
 	if (FAILED(rectResult))
 	{
 		if (!m_osdFailureLogged)
-			DebugLog::Log("madVR OSD: OsdGetVideoRects failed (0x%08lX); falling back", rectResult);
+			DebugLog::Log("madVR OSD: OsdGetVideoRects failed (0x%08lX); native stats overlay disabled", rectResult);
 		m_osdFailureLogged = true;
 		return;
 	}
@@ -308,7 +308,7 @@ void DirectShowGenericHDRVideoRenderer::ApplyNativeStatsOverlayOnGraphThread()
 	{
 		DeleteObject(bitmap);
 		if (!m_osdFailureLogged)
-			DebugLog::Log("madVR OSD: OsdSetBitmap failed (0x%08lX); falling back", setResult);
+			DebugLog::Log("madVR OSD: OsdSetBitmap failed (0x%08lX); native stats overlay disabled", setResult);
 		m_osdFailureLogged = true;
 		return;
 	}

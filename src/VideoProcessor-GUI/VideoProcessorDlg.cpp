@@ -7790,25 +7790,12 @@ void CVideoProcessorDlg::ApplyStatsOverlayForActiveRenderer()
 {
 	if (!m_statsOverlay)
 		return;
-	const bool native = m_videoRenderer &&
-		m_videoRenderer->SupportsNativeStatsOverlay();
-	if (native)
-	{
-		if (!m_statsOverlay->IsCreated() &&
-			!m_statsOverlay->Create(this->GetSafeHwnd()))
-			return;
-		if (m_statsOverlay->IsVisible())
-			m_statsOverlay->Show(false);
-		if (m_statsOverlayRequestedVisible)
-			UpdateStatsOverlay();
-		else
-			m_videoRenderer->SetNativeStatsOverlay(nullptr, 0, 0, 0, 0);
+	if (!m_videoRenderer || !m_videoRenderer->SupportsNativeStatsOverlay())
 		return;
-	}
-	if (!m_statsOverlay->IsCreated() && m_statsOverlayRequestedVisible &&
-		!m_statsOverlay->Create(this->GetSafeHwnd()))
-		return;
-	m_statsOverlay->Show(m_statsOverlayRequestedVisible);
+	if (m_statsOverlayRequestedVisible)
+		UpdateStatsOverlay();
+	else
+		m_videoRenderer->SetNativeStatsOverlay(nullptr, 0, 0, 0, 0);
 }
 
 //
@@ -14027,13 +14014,6 @@ void CVideoProcessorDlg::OnSize(UINT nType, int cx, int cy)
 		SetTimer(UI_LAYOUT_RESTORE_TIMER_ID, 75, nullptr);
 	}
 
-	// Update stats overlay position
-	if (m_statsOverlay && m_statsOverlay->IsVisible())
-	{
-		m_statsOverlay->UpdatePosition(this->GetSafeHwnd());
-	}
-	
-
 	// Track if this is a significant resize (not just minimize/restore)
 	static CSize lastSize(0, 0);
 	CSize currentSize(cx, cy);
@@ -15815,32 +15795,10 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 				static_cast<unsigned long>(m_processCpuUsage.Processors()));
 		}
 	}
-	// Native-overlay support can appear after the renderer plugin finishes its
-	// handoff. Close the legacy window on that transition as well as in the
-	// immediate toggle path, otherwise both panels remain visible and the
-	// legacy copy contains only the pre-handoff empty snapshot.
-	if (nativeOverlay && m_statsOverlay && m_statsOverlay->IsVisible())
-		m_statsOverlay->Show(false);
-	// A madVR OSD API failure is diagnostics-only.  On the following periodic
-	// refresh, make the existing window overlay visible rather than leaving the
-	// requested panel absent or attempting repeated failing submissions.
-	if (m_statsOverlayRequestedVisible && !nativeOverlay && m_statsOverlay &&
-		!m_statsOverlay->IsVisible())
-	{
-		if (!m_statsOverlay->IsCreated())
-			m_statsOverlay->Create(GetSafeHwnd());
-		m_statsOverlay->Show(m_statsOverlay->IsCreated());
-	}
-	if (!m_statsOverlay ||
-		(!m_statsOverlay->IsVisible() && !nativeOverlay && !nativeSweepBanner) ||
-		!m_lastStatsData)
+	// Preserve the requested visibility through renderer handoff. The next
+	// refresh submits to the native API once ready; never create a desktop OSD.
+	if (!m_statsOverlay || (!nativeOverlay && !nativeSweepBanner) || !m_lastStatsData)
 		return;
-
-	// Fullscreen/windowed changes can put a no-activate layered overlay behind
-	// a renderer window.  Reassert topmost only every five seconds while it is
-	// visible; this is UI-only and does not touch the DirectShow graph.
-	if (!nativeOverlay && m_timerSeconds % 5 == 0)
-		m_statsOverlay->UpdatePosition(displayWindow ? displayWindow : GetSafeHwnd());
 
 	StatsData stats;
 	stats.cadenceIntervalEstimate = m_cadenceIntervalEstimate.Text().c_str();
