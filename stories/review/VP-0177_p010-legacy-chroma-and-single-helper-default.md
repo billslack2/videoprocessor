@@ -13,7 +13,7 @@ because it used dimensions rejected by DisplayMode. Corrected the fixture to
 supported sizes; both new oracle/configuration tests then passed. All 1,108
 native tests have passing coverage across the full run and targeted rerun.
 UI test "unrelated content remains exact" passed with LEGACY and one helper.
-Source review and git diff --check passed. No deployment performed.
+Source review and git diff --check passed. Deployed on user request below.
 
 Pending: PR review/merge and user hardware validation of CPU usage/image
 quality with conversion active. Existing helper spin-wait is unchanged.
@@ -75,3 +75,20 @@ and preservation of manual controls through a UI save.
 - Native results: x64/Release/TestResults/p010-native-tests.trx and
   x64/Release/TestResults/p010-focused-tests.trx in the source worktree.
 - UI result: p010-ui-preservation.log in the source worktree.
+
+## Deployment (2026-09-10)
+
+User explicitly requested deployment. Refreshed x64 Release solution build
+passed with zero errors. Deployed commit 7a85f41b to C:\Videoprocessor\vp:
+VideoProcessor.exe and vprenderer/VideoProcessorVPRenderer.dll as a matched
+pair, plus config/VideoProcessorConfig.exe for the new schema and both
+configuration reference copies. Verified every installed SHA256 against
+its source and every backup against the previous installed file.
+
+Backup: C:\Videoprocessor\vp\backup-before-vp0177-20260910-083425
+Exact hashes are recorded in deployment.json in that backup directory.
+
+No configuration edit was needed: user already had LEGACY, min_core_count=1
+and max_core_count=1. Configuration hash verified unchanged. DirectShow
+video_conversion remains NONE. VP and Config were closed; left closed.
+Story remains Review pending hardware CPU/image validation and PR review.
