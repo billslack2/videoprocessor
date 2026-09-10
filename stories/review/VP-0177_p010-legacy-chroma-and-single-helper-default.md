@@ -2,8 +2,9 @@
 
 ## Status
 
-In Progress (2026-09-10). Rebasing and validating on the latest local VP-0174
-branch at user request. Previous implementation commit `7a85f41b` pushed to
+Review (2026-09-10). Rebased commit `04d3988c` is built, tested, pushed and
+deployed on the requested VP-0174 base `16a8102f`. See final evidence below.
+Previous implementation commit `7a85f41b` pushed to
 `codex/p010-legacy-chroma`; draft PR:
 https://github.com/billslack2/videoprocessor/pull/85
 Base reverified at `89d55ca5` on `v1.3.005-beta` before committing.
@@ -101,3 +102,23 @@ User requested the latest local VP-0174 branch. Selected
 and existing worktree. Rebased only the P010 commit onto that tip cleanly.
 Rebuilding/testing the combined version before refreshing the authorized
 deployment. VP-0174 includes the newer calibration/Color Output UI behavior.
+
+## Final rebased validation and deployment
+
+- User-selected latest local base: codex/vp-0174-gamma-wording at 16a8102f.
+- Rebased source: 04d3988c71d6f610d78620d087aa8363e8501871. Clean rebase;
+  git range-diff reports the conversion patch unchanged. Worktree clean.
+- Clean x64 Release rebuild passed with zero errors. Initial incremental
+  link failed with cached PDB corruption; clean rebuild resolved it.
+- All 1,132 native tests passed (p010-vp0174-native.log / matching TRX).
+- Four UI checks passed: unrelated manual content, Color Output migration,
+  calibration LUT/HDR gamma ownership and SDR gamma label persistence.
+- Draft PR #85 updated with an exact force-with-lease. Its beta-relative
+  diff includes the local VP-0174 prerequisites; no merge performed.
+- Refreshed the authorized deployment with the matched executable/renderer
+  DLL, configuration editor and references. All installed hashes match the
+  Release artifacts. Configuration hash unchanged (LEGACY, helpers=1,
+  DirectShow conversion=NONE). VP and Config remain closed.
+- Backup: C:\Videoprocessor\vp\backup-before-vp0177-vp0174-20260910-085709
+  deployment.json contains exact before/after hashes for all six files.
+- Remains Review for user CPU/image validation and review of combined PR.
