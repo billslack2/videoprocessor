@@ -2,7 +2,7 @@
 
 ## Status
 
-Review (2026-09-10). Bounded invalid-state recovery implemented in `5bad3a3f`
+In Progress (2026-09-10). Adding a startup-only file-config toggle for legacy/bounded A/B testing, defaulting to legacy until hardware validation. Bounded invalid-state recovery implemented in `5bad3a3f`
 on `codex/vp-0179-bounded-invalid-state`, based on freshly fetched beta
 `v1.3.005-beta` at `89d55ca5`. Draft PR:
 https://github.com/billslack2/videoprocessor/pull/87
