@@ -2,8 +2,10 @@
 
 ## Status
 
-Backlog (2026-09-10). Bounded performance investigation; no GPU implementation
-approved or adopted. User requested assessment of cinillo2's GPU results.
+In Progress (2026-09-10). User approved improving wasted waiting CPU in
+both existing CPU paths (AVERAGE and LEGACY). Implement blocking work and
+completion waits, then compare before/after CPU and conversion latency.
+GPU implementation remains outside the approved scope.
 
 ## Report and evidence
 
@@ -76,3 +78,20 @@ Exact CPU cause and GPU pixel correctness remain unverified.
 - https://learn.microsoft.com/en-us/windows/win32/api/d3d11/ne-d3d11-d3d11_query
 - https://learn.microsoft.com/en-us/windows/uwp/graphics-concepts/copying-and-accessing-resource-data
 - https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-switchtothread
+
+## CPU-wait implementation readiness
+
+Continue on codex/p010-legacy-chroma at 04d3988c, preserving the explicitly
+requested local VP-0174 base 16a8102f. Clean worktree:
+E:\codex\videoprocessor\p010-legacy-chroma.
+Both chroma modes share one helper pool; helpers spin/yield while idle and
+the caller spins on completion. Replace both with predicate-based condition
+variable waits using a mutex per helper. Preserve work publication and
+completion ordering, wake idle helpers for shutdown, and safely clean up
+partially started pools. No sleep polling, GPU conversion or pixel changes.
+
+Validation: baseline and changed Release measurements for both chroma modes,
+1/2 helpers, idle and paced 24/60 fps; repeated frame correctness, wakeup and
+pool reload/destruction coverage; existing pixel oracle and full native suite.
+This is a scheduling change. Hardware playback/image acceptance remains user
+validation after a successful x64 Release build and authorized deployment.
