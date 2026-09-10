@@ -3,9 +3,8 @@
 ## Status
 
 Review (2026-09-10). Created in Backlog, then promoted to Review at the
-user's request. Implementation and x64 Release build are complete. Merge
-into v1.3.005-beta is authorized; deployment/live playback validation remain
-pending. Retain Review until that validation is accepted.
+user's request. Implementation and x64 Release build are complete. Merged into `v1.3.005-beta` via PR #86; deployment/live playback validation
+remain pending. Retain Review until that validation is accepted.
 
 ## User story
 
@@ -50,3 +49,13 @@ Before allocation: 198 canonical files and 198 index rows; maximum root 0179;
 registry count/next ID agree, with no duplicate IDs or missing records.
 Existing VP-0088 status and VP-0179 status/index use 'In progress' instead of
 canonical 'In Progress'; left unchanged as unrelated records.
+
+## Merge evidence
+
+- PR: https://github.com/billslack2/videoprocessor/pull/86
+- Merged 2026-09-10 at 15:03:04 UTC into `v1.3.005-beta`.
+- Merge commit: `6f8e6a3a023e2d3199a04ebf4ac7a9a27ba0309d`.
+- Implementation head: `5aa445b6274233e647687e8e6531cf7035df7738`.
+- GitHub reported clean/mergeable with no check runs attached; local x64
+  Release build evidence is recorded above.
+- Story intentionally remains Review per user request, pending live validation.
