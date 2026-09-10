@@ -72,3 +72,68 @@ are ignored. Raw versus effective LLDV EOTF/primaries need separate tracing.
 - src/VideoProcessor-Lib/EotfTransitionStabilizer.h/.cpp
 - src/VideoProcessor-Lib/microsoft_directshow/video_renderers/DirectShowGenericHDRVideoRenderer.cpp
 - src/VideoProcessor-Lib/microsoft_directshow/DirectShowTranslations.cpp
+
+## Investigation update (2026-09-10)
+
+Inspected the freshly fetched GitHub beta `v1.3.005-beta` at `89d55ca5`
+(Merge PR #84), in clean detached worktree
+`E:\codex\videoprocessor\vp-0179-investigation`. No source edits, build,
+deployment or hardware reproduction performed. Story remains backlog pending
+incident evidence. The linked AVSForum post could not be retrieved during this
+pass; the report above is not independently verified.
+
+### Established source behavior
+
+- `DirectShowVideoRenderer.cpp:129-175` rejects changes to colorspace or EOTF
+  on both the caller admission path and graph-thread path. The GUI rejection
+  handler (`VideoProcessorDlg.cpp:5995-6055`) schedules a restart, with explicit
+  LLDV and pending EOTF stabilization exceptions. Thus a constant-EOTF
+  BT.2020 -> Rec.709 change is not generally ignored.
+- `CaptureVideoStatePolicy.h:36-59` includes colorspace and EOTF in the material
+  contract. The metadata-only ingress retention change `f9242793` does not
+  classify a real colorspace change as metadata-only.
+- `DirectShowGenericHDRVideoRenderer.cpp:473-486` derives media-type primaries,
+  matrix and transfer function from effective state unless forced. Confirm
+  those overrides before attributing output to raw capture metadata.
+
+### Concrete gaps, not a reproduced root cause
+
+1. `BlackMagicDeckLinkCaptureDevice.cpp:751-772`: unsuccessful EOTF or
+   colorspace GetInt calls leave the cached value unchanged; loss of the
+   metadata interface also skips those updates. If return-to-menu stops
+   reporting these properties, VP can retain its previous raw contract.
+   Blame dates this read-success-only behavior to `d71bde25d` (2021), so it
+   is not evidence of a newly introduced regression. Capture each HRESULT,
+   metadata-interface availability, frame flags and cached values to test it.
+2. `DirectShowGenericHDRVideoRenderer.cpp:140-141` skips null HDR updates;
+   `ALiveSourceVideoOutputPin.cpp:540-548` explicitly rejects null HDR data.
+   Therefore metadata withdrawal with an otherwise unchanged contract does
+   not clear the existing source's cached HDR block. The asynchronous guard
+   dates to `ec59c0b85` (2026-07-29); the synchronous non-null-only behavior
+   is older. This is relevant to metadata-only transitions, but does not by
+   itself explain failure after a successful Rec.709 graph replacement.
+   Removing the guard alone would hit the source's null rejection.
+
+### Available runtime evidence and next discriminator
+
+The configured guidance path `C:\logs\vp.log` is absent. Inspected available
+`C:\Videoprocessor\vp\logs\vp.log` and rotations `.0` through `.8` instead.
+They contain SDR EOTF baselines and madVR runtime examples with
+`yuv_matrix='TV.709'`, `hdr_output=0`; the targeted searches found no pending
+EOTF transition or BT.2020 raw-state evidence establishing this incident.
+These are local-session observations, not the reporter's failing capture or
+proof of HDR-to-SDR recovery.
+
+Obtain exact good/failing source revisions and the same CPU-conversion setup.
+For one reproduced exit, determine the first failing boundary:
+
+- Raw VP remains BT.2020: inspect DeckLink read results and source HDMI state.
+- Raw is Rec.709, effective remains BT.2020/PQ: inspect forced settings, active
+  profiles and LLDV decision traces.
+- Effective is Rec.709, madVR remains BT.2020: inspect rejection, deferred
+  restart, replacement generation and negotiated media type.
+- madVR reports TV.709/SDR but the display remains BT.2020: obtain receiver /
+  projector signaling evidence; matrix alone does not prove HDMI primaries.
+
+Do not select a bisect endpoint from the July 31 calendar date or implement a
+speculative metadata reset before identifying the failing boundary.
