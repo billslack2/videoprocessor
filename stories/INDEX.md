@@ -230,7 +230,7 @@ they must not contain requirements that are absent from this file.
 | VP-0177 | Review | P010 legacy chroma and single-helper default |
 | VP-0178 | Review | Assess P010 CPU waits versus GPU readback |
 | VP-0179 | In progress | madVR BT.2020-to-Rec.709 return regression |
-| VP-0180 | Backlog | Remove standalone stats OSD window |
+| VP-0180 | Review | Remove standalone stats OSD window |
 
 ## Codex story workflow
 

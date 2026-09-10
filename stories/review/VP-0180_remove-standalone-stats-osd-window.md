@@ -2,9 +2,10 @@
 
 ## Status
 
-Backlog (2026-09-10). Created at the user's request to track the already
-implemented removal. The user requests promotion to Review and merge into
-the current beta; live playback validation remains pending.
+Review (2026-09-10). Created in Backlog, then promoted to Review at the
+user's request. Implementation and x64 Release build are complete. Merge
+into v1.3.005-beta is authorized; deployment/live playback validation remain
+pending. Retain Review until that validation is accepted.
 
 ## User story
 
