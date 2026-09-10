@@ -1624,11 +1624,11 @@ namespace VideoProcessorTest
 			DeleteFileA(path.c_str());
 		}
 
-		TEST_METHOD(InternalRecoveryToggleDefaultsLegacyAndValidatesBothModes)
+		TEST_METHOD(GeneralRecoveryToggleDefaultsLegacyAndValidatesBothModes)
 		{
 			ConfigFile config;
 			Assert::IsFalse(MainConfigSchema::BoundedInvalidCaptureRecoveryEnabled(config));
-			Assert::IsTrue(MainConfigSchema::OwnsSection("internal"));
+			Assert::IsTrue(MainConfigSchema::OwnsSection("general"));
 			char directory[MAX_PATH] = {}, path[MAX_PATH] = {};
 			Assert::IsTrue(GetTempPathA(ARRAYSIZE(directory), directory) > 0);
 			Assert::IsTrue(GetTempFileNameA(directory, "vpi", 0, path) != 0);
@@ -1636,7 +1636,7 @@ namespace VideoProcessorTest
 			{
 				{
 					std::ofstream file(path, std::ios::out | std::ios::trunc);
-					file << "[internal]\nbounded_invalid_capture_recovery: " << value << "\n";
+					file << "[general]\nbounded_invalid_capture_recovery: " << value << "\n";
 				}
 				Assert::IsTrue(config.Load(path));
 				std::string error;

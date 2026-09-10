@@ -1399,10 +1399,10 @@ BOOL CVideoProcessorApp::InitInstance()
 		std::vector<std::wstring> configuredArguments =
 			LoadConfiguredCommandLineArguments(configuredInterface);
 		// Internal A/B switch is file-only and fixed for this process lifetime.
-		ConfigFile internalConfig;
-		internalConfig.Load();
+		ConfigFile startupConfig;
+		startupConfig.Load();
 		dlg.EnableBoundedInvalidCaptureRecovery(
-			MainConfigSchema::BoundedInvalidCaptureRecoveryEnabled(internalConfig));
+			MainConfigSchema::BoundedInvalidCaptureRecoveryEnabled(startupConfig));
 		const std::wstring configuredFullscreenMonitorName =
 			LoadConfiguredFullscreenMonitorName();
 		if (!configuredFullscreenMonitorName.empty())

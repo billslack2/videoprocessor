@@ -4962,7 +4962,7 @@ void CVideoProcessorDlg::EnableBoundedInvalidCaptureRecovery(bool enabled)
 {
 	m_invalidCaptureStateGrace.Configure(enabled);
 	DebugLog::Log("Invalid capture recovery policy: mode=%s grace_ms=1500 "
-		"config=[internal].bounded_invalid_capture_recovery startup_only=1",
+		"config=[general].bounded_invalid_capture_recovery startup_only=1",
 		enabled ? "bounded" : "legacy");
 }
 
