@@ -217,6 +217,7 @@
     <ClInclude Include="RendererLiveness.h" />
     <ClInclude Include="RendererPostStallResetAdvisor.h" />
     <ClInclude Include="RendererIngressState.h" />
+	<ClInclude Include="InvalidCaptureStateGrace.h" />
 	<ClInclude Include="EotfTransitionStabilizer.h" />
     <ClInclude Include="RendererResetCoordinator.h" />
     <ClInclude Include="RendererResetPolicy.h" />
