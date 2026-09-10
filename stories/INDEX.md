@@ -227,7 +227,7 @@ they must not contain requirements that are absent from this file.
 | VP-0027 | Done | Alpha display-verified scene-safe cadence correction |
 | VP-0028 | Done | Renderer configuration profile, hotkey, and event-action unification |
 | VP-0029 | Will Not Do | Alpha two-pass display LUT and final-dither pipeline spike |
-| VP-0177 | Review | P010 legacy chroma and single-helper default |
+| VP-0177 | In Progress | P010 legacy chroma and single-helper default |
 
 ## Codex story workflow
 

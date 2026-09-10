@@ -2,7 +2,8 @@
 
 ## Status
 
-Review (2026-09-10). Implementation commit `7a85f41b` pushed to
+In Progress (2026-09-10). Rebasing and validating on the latest local VP-0174
+branch at user request. Previous implementation commit `7a85f41b` pushed to
 `codex/p010-legacy-chroma`; draft PR:
 https://github.com/billslack2/videoprocessor/pull/85
 Base reverified at `89d55ca5` on `v1.3.005-beta` before committing.
@@ -92,3 +93,11 @@ No configuration edit was needed: user already had LEGACY, min_core_count=1
 and max_core_count=1. Configuration hash verified unchanged. DirectShow
 video_conversion remains NONE. VP and Config were closed; left closed.
 Story remains Review pending hardware CPU/image validation and PR review.
+
+## Requested local base correction
+
+User requested the latest local VP-0174 branch. Selected
+`codex/vp-0174-gamma-wording` at `16a8102f`; retained its untracked artifacts
+and existing worktree. Rebased only the P010 commit onto that tip cleanly.
+Rebuilding/testing the combined version before refreshing the authorized
+deployment. VP-0174 includes the newer calibration/Color Output UI behavior.
