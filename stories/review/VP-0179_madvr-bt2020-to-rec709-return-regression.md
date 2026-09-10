@@ -2,12 +2,14 @@
 
 ## Status
 
-In Progress (2026-09-10). Adding a startup-only file-config toggle for legacy/bounded A/B testing, defaulting to legacy until hardware validation. Bounded invalid-state recovery implemented in `5bad3a3f`
-on `codex/vp-0179-bounded-invalid-state`, based on freshly fetched beta
-`v1.3.005-beta` at `89d55ca5`. Draft PR:
+Review (2026-09-10). File-only, startup-only recovery toggle implemented in
+`794cc80b`, based on current beta `30f36307` with the original `5bad3a3f` fix
+merged into the clean toggle worktree. Draft PR #87:
 https://github.com/billslack2/videoprocessor/pull/87
-Full x64 Release build and 23 targeted tests passed. Hardware confirmation
-of the reported madVR regression remains pending; not merged or deployed.
+Legacy behavior remains the default; set
+`[internal] bounded_invalid_capture_recovery: true` and restart VP to test the
+bounded fix. Full x64 Release build and 198 selected tests passed. Hardware
+confirmation remains pending. Not merged or deployed.
 
 ## User story
 
@@ -254,3 +256,31 @@ brief resync recovery within the grace, persistent invalid metadata/no-input
 callbacks beyond it, repeated invalid events and eventual valid Rec.709 return.
 The intended behavior can stop/rebuild the graph on sources whose invalid
 interval exceeds the grace; do not interpret callback progress as validity.
+
+## File-only A/B toggle (2026-09-10)
+
+This supersedes the original unconditional correction described above.
+
+- `[internal] bounded_invalid_capture_recovery: false` (also the absent-key
+  default) retains legacy counter-based dismissal and grace extension on
+  repeated invalid notifications. `true` enables the bounded correction.
+- Startup-only: restart VP after changing the file. There is no GUI field,
+  command-line switch, or live application of the value. The startup log
+  reports `Invalid capture recovery policy: mode=legacy` or `mode=bounded`.
+- Strict Boolean schema validation and section ownership added. Editor
+  round-trip tests confirm the internal setting/comment survives unrelated
+  changes. The source example config documents the switch with false default;
+  the user's deployed config is untouched.
+- Fresh worktree `E:\codex\videoprocessor\vp-0179-recovery-toggle` started from
+  fetched beta `30f36307`; the existing fix was merged, then the toggle was
+  committed as `794cc80b`. Existing source worktrees were preserved. Pushed to
+  the existing PR head `codex/vp-0179-bounded-invalid-state`; draft PR #87 updated.
+- Full x64 Release solution build succeeded: 0 errors, 45 warnings.
+  198/198 selected native tests passed (recovery policy, config-file schema,
+  config-editor preservation, EOTF and capture-ingress suites).
+- Five isolated production-handler checks passed: legacy advancing counter,
+  legacy stationary counter, bounded deadline despite advancing frames,
+  bounded notification expiry under continuous traffic, and valid recovery
+  canceling stale timers in both modes. Hardware A/B acceptance is still open.
+- Results: `C:\Users\bslac\Documents\ChatGPT\Done\VP-0179-toggle-test-results`.
+- No merge, deployment, or active user configuration edit performed.
