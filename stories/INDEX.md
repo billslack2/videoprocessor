@@ -6,9 +6,9 @@ story may have ordered child-task IDs as defined below.
 
 ## Registry state
 
-- Last assigned root story: `VP-0180`
-- Next root story number: `VP-0181`
-- Total indexed items: 199
+- Last assigned root story: `VP-0181`
+- Next root story number: `VP-0182`
+- Total indexed items: 200
 
 ## Story locations
 
@@ -231,6 +231,8 @@ they must not contain requirements that are absent from this file.
 | VP-0178 | Review | Assess P010 CPU waits versus GPU readback |
 | VP-0179 | In progress | madVR BT.2020-to-Rec.709 return regression |
 | VP-0180 | Review | Remove standalone stats OSD window |
+
+| VP-0181 | Backlog | P010 default maximum one helper |
 
 ## Codex story workflow
 
