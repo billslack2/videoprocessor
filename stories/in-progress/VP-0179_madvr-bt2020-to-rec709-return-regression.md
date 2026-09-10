@@ -2,7 +2,7 @@
 
 ## Status
 
-Backlog (2026-09-10). Reporter says recent builds fail to return from BT.2020
+In progress (2026-09-10). Implementing bounded invalid-state recovery and regression tests; hardware confirmation of the reported madVR incident remains pending. Reporter says recent builds fail to return from BT.2020
 to Rec.709 after HDR playback; a build based on July 31, 2026 works. Exact
 known-good/failing SHAs, converter patch, configuration and transition logs
 are missing. This is a separate incident from conversion CPU performance.
