@@ -5938,7 +5938,7 @@ struct LibplaceboVideoRenderer::Impl
 			ResolvedPixelTransfer(encoding, targetTransfer);
 		configuredOutputColor.transfer =
 			transfer == PL_COLOR_TRC_UNKNOWN ? PL_COLOR_TRC_SRGB : transfer;
-		configuredOutputColor.hdr.min_luma = static_cast<float>(sdrBlackNits);
+		configuredOutputColor.hdr.min_luma = LibplaceboRenderParameters::ResolveTargetBlack(static_cast<float>(sdrBlackNits));
 		configuredOutputColor.hdr.max_luma = static_cast<float>(sdrTargetNits);
 		// libplacebo applies a colour-space hint lazily while starting a frame.
 		// Do not give it that authority for the VP-owned path: VP applies the
