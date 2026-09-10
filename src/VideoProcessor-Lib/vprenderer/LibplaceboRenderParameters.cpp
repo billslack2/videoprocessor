@@ -116,7 +116,7 @@ namespace LibplaceboRenderParameters
 			SetSdrReference(target);
 		else
 		{
-			target.hdr.min_luma = blackNits;
+			target.hdr.min_luma = ResolveTargetBlack(blackNits);
 			target.hdr.max_luma = targetNits;
 		}
 	}

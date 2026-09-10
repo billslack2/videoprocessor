@@ -208,6 +208,19 @@ namespace VideoProcessorTest
 				}
 		}
 
+        TEST_METHOD(ExplicitZeroBlackSurvivesLibplaceboInference)
+        {
+            for (auto transfer : { PL_COLOR_TRC_GAMMA22, PL_COLOR_TRC_GAMMA24, PL_COLOR_TRC_BT_1886 })
+                for (float white : { 100.0f, 350.0f })
+                    for (float black : { 0.0f, 0.003f, 1.0f }) {
+                        pl_color_space target{};
+                        target.transfer = transfer;
+                        ApplyTargetLuminance(false, white, black, target);
+                        pl_color_space_infer(&target);
+                        Assert::AreEqual(black == 0.0f ? PL_COLOR_HDR_BLACK : black, target.hdr.min_luma);
+                        Assert::AreEqual(white, target.hdr.max_luma);
+                    }
+        }
 		TEST_METHOD(EveryQualityPresetProjectsTheNativeLibplaceboPreset)
 		{
 			const struct

@@ -4610,7 +4610,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         auto* sdrBlackLevel = addText(QStringLiteral("HDR tone-map target black"),
             QStringLiteral("sdr_black_nits"), QStringLiteral("nits"));
         sdrBlackLevel->setToolTip(QStringLiteral(
-            "Black level for HDR-to-SDR tone mapping only. SDR input is unaffected."));
+            "Black level for HDR-to-SDR tone mapping only. 0 assumes effectively perfect black (0.000001 nit internally); positive values are used as entered. SDR input is unaffected."));
         sdrBlackLevel->setPlaceholderText(QStringLiteral("0 or a measured black level"));
         sdrBlackLevel->setValidator(new QDoubleValidator(0.0, 500.0, 6, sdrBlackLevel));
         addRendererAutoStatus(QStringLiteral("sdr_black_nits"), sdrBlackLevel);

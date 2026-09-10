@@ -10,6 +10,12 @@
 
 namespace LibplaceboRenderParameters
 {
+    // A saved zero is explicit black, not libplacebo's unspecified sentinel.
+    inline float ResolveTargetBlack(float blackNits)
+    {
+        return blackNits == 0.0f ? PL_COLOR_HDR_BLACK : blackNits;
+    }
+
 	// "Auto" deliberately means retain the selected quality preset's value.
 	enum class Toggle
 	{
