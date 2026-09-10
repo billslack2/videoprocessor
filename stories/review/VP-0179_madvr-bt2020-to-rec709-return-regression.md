@@ -2,12 +2,12 @@
 
 ## Status
 
-In Progress (2026-09-10). Moving the toggle to [general] at user request. File-only, startup-only recovery toggle implemented in
-`794cc80b`, based on current beta `30f36307` with the original `5bad3a3f` fix
+Review (2026-09-10). File-only, startup-only recovery toggle implemented in
+`3717c8b8`, based on current beta `30f36307` with the original `5bad3a3f` fix
 merged into the clean toggle worktree. Draft PR #87:
 https://github.com/billslack2/videoprocessor/pull/87
 Legacy behavior remains the default; set
-`[internal] bounded_invalid_capture_recovery: true` and restart VP to test the
+`[general] bounded_invalid_capture_recovery: true` and restart VP to test the
 bounded fix. Full x64 Release build and 198 selected tests passed. Hardware
 confirmation remains pending. Not merged or deployed.
 
@@ -261,7 +261,7 @@ interval exceeds the grace; do not interpret callback progress as validity.
 
 This supersedes the original unconditional correction described above.
 
-- `[internal] bounded_invalid_capture_recovery: false` (also the absent-key
+- `[general] bounded_invalid_capture_recovery: false` (also the absent-key
   default) retains legacy counter-based dismissal and grace extension on
   repeated invalid notifications. `true` enables the bounded correction.
 - Startup-only: restart VP after changing the file. There is no GUI field,
@@ -284,3 +284,19 @@ This supersedes the original unconditional correction described above.
   canceling stale timers in both modes. Hardware A/B acceptance is still open.
 - Results: `C:\Users\bslac\Documents\ChatGPT\Done\VP-0179-toggle-test-results`.
 - No merge, deployment, or active user configuration edit performed.
+
+## General-section follow-up (2026-09-10)
+
+At user request, the startup-only toggle now lives exclusively under [general]:
+`bounded_invalid_capture_recovery: false`. Commit `3717c8b8`, pushed to PR #87.
+All setting examples above use the current location. The former [internal]
+section is no longer registered. False/absent remains legacy; true enables the
+bounded correction; restart VP after changes. No GUI or command-line field.
+
+Updated strict validation, startup loading/logging, source sample and parser /
+editor-preservation tests. Full x64 Release clean rebuild succeeded after an
+incremental linker debug-information failure. All 198 selected tests passed;
+the editor fixture uses the canonical [vprenderer] format so [general] is
+interpreted as startup settings. Results are in
+`C:\Users\bslac\Documents\ChatGPT\Done\VP-0179-general-test-results`.
+No active configuration or deployed binary changed. Hardware acceptance pending.
