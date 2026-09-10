@@ -1,6 +1,8 @@
 #include "pch.h"
 #include "CppUnitTest.h"
 
+#include <ConfigFile.h>
+#include <MainConfigSchema.h>
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -1939,6 +1941,132 @@ namespace Tests
 				L"A sustained converter average exceeds one 60 fps frame period");
 			Assert::IsTrue(allP95sMeet60Fps,
 				L"A sustained converter p95 exceeds one 60 fps frame period");
+		}
+
+
+		TEST_METHOD(V210P010ChromaPoliciesMatchIndependentPixelOracle)
+		{
+			using Formatter = CV210toP010VideoFrameFormatter;
+			// All SIMD tail lengths, padded widths, 720p, 1080p and UHD/DCI.
+			// 722 lines leaves an uneven final partition with multiple helpers.
+			const std::pair<uint32_t, uint32_t> sizes[] = {
+				{100, 100}, {102, 100}, {104, 100}, {106, 100}, {108, 100}, {110, 100}, {100, 722},
+				{1280, 720}, {1920, 1080}, {3840, 2160}, {4096, 2160}
+			};
+			const auto yCode = [](uint32_t row, uint32_t x) {
+				return static_cast<uint16_t>((row * 73U + x * 31U) & 1023U);
+			};
+			const auto uCode = [](uint32_t row, uint32_t x) {
+				return static_cast<uint16_t>((row * 107U + x * 53U) & 1023U);
+			};
+			const auto vCode = [](uint32_t row, uint32_t x) {
+				return static_cast<uint16_t>((row * 211U + x * 97U + 1U) & 1023U);
+			};
+			for (const auto& size : sizes)
+			{
+				const uint32_t width = size.first, height = size.second;
+				VideoStateComPtr state = new VideoState();
+				state->valid = true;
+				state->displayMode = std::make_shared<DisplayMode>(width, height, false, 60, 1);
+				state->videoFrameEncoding = VideoFrameEncoding::V210;
+				std::vector<BYTE> input(state->BytesPerFrame(), 0xFF);
+				for (uint32_t row = 0; row < height; ++row)
+					for (uint32_t x = 0; x < width; x += 6)
+						WriteV210Pack(input.data() + static_cast<size_t>(row) * state->BytesPerRow() + (x / 6U) * 16U,
+							uCode(row, x), yCode(row, x), vCode(row, x), yCode(row, x + 1),
+							uCode(row, x + 2), yCode(row, x + 2), vCode(row, x + 2), yCode(row, x + 3),
+							uCode(row, x + 4), yCode(row, x + 4), vCode(row, x + 4), yCode(row, x + 5));
+				const auto originalInput = input;
+				VideoFrame frame(input.data(), 1, 0, nullptr);
+				for (const auto policy : { Formatter::ChromaDownsampling::AVERAGE, Formatter::ChromaDownsampling::LEGACY })
+				{
+					std::vector<uint16_t> expected(static_cast<size_t>(width) * height * 3U / 2U);
+					for (uint32_t row = 0; row < height; ++row)
+						for (uint32_t x = 0; x < width; ++x)
+							expected[static_cast<size_t>(row) * width + x] = yCode(row, x) << 6;
+					for (uint32_t row = 0; row < height; row += 2)
+						for (uint32_t x = 0; x < width; x += 2)
+						{
+							const size_t offset = static_cast<size_t>(width) * height + static_cast<size_t>(row / 2) * width + x;
+							const bool average = policy == Formatter::ChromaDownsampling::AVERAGE;
+							expected[offset] = static_cast<uint16_t>((average ?
+								(uCode(row, x) + uCode(row + 1, x) + 1U) / 2U : uCode(row, x)) << 6);
+							expected[offset + 1] = static_cast<uint16_t>((average ?
+								(vCode(row, x) + vCode(row + 1, x) + 1U) / 2U : vCode(row, x)) << 6);
+						}
+					for (const auto method : { Formatter::ConversionMethod::STANDARD, Formatter::ConversionMethod::OPTIMIZED,
+						Formatter::ConversionMethod::SIMD, Formatter::ConversionMethod::AUTO })
+					{
+						// Exercise a single helper and the old/multi-helper partitioning.
+						for (const uint32_t helpers : { 1U, 2U, 8U })
+						{
+							if (helpers != 1U && width != 100U) continue;
+							Formatter formatter;
+							formatter.SetConversionMethod(method);
+							formatter.SetChromaDownsampling(policy);
+							formatter.SetMinCoreCount(1);
+							formatter.SetMaxCoreCount(helpers);
+							formatter.OnVideoState(state);
+							// Offset by two bytes to exercise unaligned SIMD stores; guards detect tail overruns.
+							std::vector<BYTE> output(formatter.GetOutFrameSize() + 4, 0xA5);
+							Assert::IsTrue(formatter.FormatVideoFrame(frame, output.data() + 2));
+							Assert::IsTrue(std::memcmp(output.data() + 2, expected.data(), expected.size() * sizeof(uint16_t)) == 0,
+								L"Chroma policy differs from the independent pixel oracle");
+							Assert::IsTrue(output[0] == 0xA5 && output[1] == 0xA5 &&
+								output[output.size() - 2] == 0xA5 && output.back() == 0xA5,
+								L"Conversion overwrote an output guard");
+						}
+					}
+				}
+				Assert::IsTrue(input == originalInput, L"Conversion modified packed source data");
+			}
+		}
+
+		TEST_METHOD(V210P010ConfigurationDefaultsAndExplicitOverrides)
+		{
+			using Formatter = CV210toP010VideoFrameFormatter;
+			char directory[MAX_PATH] = {}, filename[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(MAX_PATH, directory) > 0);
+			Assert::IsTrue(GetTempFileNameA(directory, "vpc", 0, filename) != 0);
+			struct Cleanup { const char* path; ~Cleanup() { DeleteFileA(path); } } cleanup{filename};
+			Formatter formatter;
+			const auto load = [&](const char* text) {
+				{ std::ofstream file(filename, std::ios::trunc); file << text; }
+				Assert::IsTrue(formatter.LoadConfigurationFile(filename));
+			};
+			const auto defaults = [&]() {
+				Assert::AreEqual(1U, formatter.GetMinCoreCount());
+				Assert::AreEqual(1U, formatter.GetMaxCoreCount());
+				Assert::IsTrue(formatter.GetChromaDownsampling() == Formatter::ChromaDownsampling::AVERAGE);
+			};
+			load("[general]\nvideo_conversion: V210_TO_P010\n");
+			defaults();
+			load("[directshow.conversion]\nconversion_method: SIMD\n");
+			defaults();
+			load("[directshow.conversion]\nchroma_downsampling: legacy\nmin_core_count: 1\nmax_core_count: 2\n");
+			Assert::AreEqual(2U, formatter.GetMaxCoreCount());
+			Assert::IsTrue(formatter.GetChromaDownsampling() == Formatter::ChromaDownsampling::LEGACY);
+			ConfigFile config;
+			std::string error;
+			Assert::IsTrue(config.Load(filename));
+			Assert::IsTrue(MainConfigSchema::Validate(config, error));
+			load("[directshow.conversion]\nchroma_downsampling: AVERAGE\n");
+			defaults();
+			load("[directshow.conversion]\nchroma_downsampling: LEGACY\n");
+			Assert::AreEqual(1U, formatter.GetMaxCoreCount());
+			Assert::IsTrue(formatter.GetChromaDownsampling() == Formatter::ChromaDownsampling::LEGACY);
+			load("[directshow.conversion]\nchroma_downsampling: ALTERNATE\n");
+			Assert::IsTrue(config.Load(filename));
+			Assert::IsFalse(MainConfigSchema::Validate(config, error));
+			Assert::IsTrue(error.find("chroma_downsampling") != std::string::npos);
+			defaults();
+			load("[p010_conversion]\nConversionMethod: SIMD\nMinCoreCount: 1\nMaxCoreCount: 2\n");
+			Assert::AreEqual(2U, formatter.GetMaxCoreCount());
+			Assert::IsTrue(formatter.GetConversionMethod() == Formatter::ConversionMethod::SIMD);
+			Assert::IsTrue(formatter.GetChromaDownsampling() == Formatter::ChromaDownsampling::AVERAGE);
+			DeleteFileA(filename);
+			Assert::IsFalse(formatter.LoadConfigurationFile(filename));
+			defaults();
 		}
 
 		TEST_METHOD(P010ConvertersUseOneVerticalChromaDownsamplingPolicy)

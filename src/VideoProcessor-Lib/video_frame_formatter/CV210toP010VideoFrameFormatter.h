@@ -37,6 +37,15 @@ public:
 		STANDARD,       // Standard scalar implementation (baseline)
 	};
 
+	enum class ChromaDownsampling
+	{
+		AVERAGE, // Rounded average of adjacent rows (default)
+		LEGACY,  // Chroma from zero-based even rows only
+	};
+
+	void SetChromaDownsampling(ChromaDownsampling policy) { m_chromaDownsampling = policy; }
+	ChromaDownsampling GetChromaDownsampling() const { return m_chromaDownsampling; }
+
 	// IVideoFrameFormatter
 	void OnVideoState(VideoStateComPtr& videoState) override;
 	bool FormatVideoFrame(const VideoFrame& inFrame, BYTE* outBuffer) override;
@@ -66,8 +75,9 @@ private:
 
 	// Configuration for conversion method and threading
 	ConversionMethod m_conversionMethod = ConversionMethod::AUTO;
+	ChromaDownsampling m_chromaDownsampling = ChromaDownsampling::AVERAGE;
 	uint32_t m_minCoreCount = 1;    // Minimum cores to use (default: 1)
-	uint32_t m_maxCoreCount = 2;    // Maximum cores to use (default: 2, 0 = auto-detect)
+	uint32_t m_maxCoreCount = 1;    // Helper limit (default: 1, caller also processes pixels)
 
 	// ========================================
 	// Thread pool for parallel processing
@@ -136,6 +146,11 @@ private:
 		const uint8_t* srcData, uint32_t srcStride,
 		uint16_t* dstY, uint16_t* dstUV,
 		uint32_t width, uint32_t startLine, uint32_t endLine) noexcept;
+	template<bool AverageChroma>
+	void ProcessLineSegmentImpl(
+		const uint8_t* srcData, uint32_t srcStride,
+		uint16_t* dstY, uint16_t* dstUV,
+		uint32_t width, uint32_t startLine, uint32_t endLine) noexcept;
 
 	// Performance tracking and optimization features
 #ifdef _DEBUG
@@ -197,7 +212,6 @@ private:
 	bool CheckCPUFeatures() const;
 	bool HasAVX2MemoryOps() const;
 	uint32_t GetActualMaxThreads() const;
-	uint32_t GetPhysicalCoreCount() const;  // Get physical core count (ignoring E-cores)
 	void LogPerformanceStats() const;
 	
 public:
@@ -215,9 +229,18 @@ private:
 	                      uint16_t* dstY, uint16_t* dstUV, uint32_t width, uint32_t height) noexcept;
 	bool ConvertV210ToP010_Standard(const uint8_t* srcData, uint32_t srcStride,
 	                               uint16_t* dstY, uint16_t* dstUV, uint32_t width, uint32_t height) noexcept;
+	template<bool AverageChroma>
+	bool ConvertV210ToP010_StandardImpl(const uint8_t* srcData, uint32_t srcStride,
+	                               uint16_t* dstY, uint16_t* dstUV, uint32_t width, uint32_t height) noexcept;
 	bool ConvertV210ToP010_Optimized(const uint8_t* srcData, uint32_t srcStride,
 	                                  uint16_t* dstY, uint16_t* dstUV, uint32_t width, uint32_t height) noexcept;
+	template<bool AverageChroma>
+	bool ConvertV210ToP010_OptimizedImpl(const uint8_t* srcData, uint32_t srcStride,
+	                                  uint16_t* dstY, uint16_t* dstUV, uint32_t width, uint32_t height) noexcept;
 	bool ConvertV210ToP010_SIMD(const uint8_t* srcData, uint32_t srcStride,
+	                           uint16_t* dstY, uint16_t* dstUV, uint32_t width, uint32_t height) noexcept;
+	template<bool AverageChroma>
+	bool ConvertV210ToP010_SIMDImpl(const uint8_t* srcData, uint32_t srcStride,
 	                           uint16_t* dstY, uint16_t* dstUV, uint32_t width, uint32_t height) noexcept;
 	bool ConvertV210ToP010_Threaded(const uint8_t* srcData, uint32_t srcStride,
 	                               uint16_t* dstY, uint16_t* dstUV, uint32_t width, uint32_t height) noexcept;
@@ -227,12 +250,4 @@ public:
 	// Load configuration from a file
 	bool LoadConfigurationFile(const char* filename);
 	
-private:
-	// Configuration values
-	uint32_t m_configuredMinCoreCount = 2;
-	uint32_t m_configuredMaxCoreCount = 0;
-	ConversionMethod m_configuredConversionMethod = ConversionMethod::AUTO;
-	
-	// Apply the current configuration settings
-	void ApplyConfiguration();
 };

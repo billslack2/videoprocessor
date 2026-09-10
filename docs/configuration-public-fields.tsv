@@ -37,6 +37,7 @@ directshow.renderer_nominal_range	directshow-renderer-nominal-range	DirectShow	n
 directshow.conversion.conversion_method	directshow-conversion-method	DirectShow conversion	no
 directshow.conversion.min_core_count	directshow-conversion-min-cores	DirectShow conversion	no
 directshow.conversion.max_core_count	directshow-conversion-max-cores	DirectShow conversion	no
+directshow.conversion.chroma_downsampling	directshow-conversion-chroma	DirectShow conversion	no
 directshow.ppm.ppm	directshow-ppm	DirectShow timing	no
 shortcuts.render.<index>	render-shortcut	VP shortcut	no
 shortcuts.foreground_only	shortcut-foreground-only	VP shortcut focus	no

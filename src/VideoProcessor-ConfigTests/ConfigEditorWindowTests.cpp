@@ -2009,9 +2009,15 @@ void testUnrelatedContentRemainsExact()
 {
     QTemporaryDir directory;
     const QString path = copyFixture(directory);
-    const QByteArray original = readBytes(path);
+    QByteArray original = readBytes(path);
+    original.replace("max_core_count: 2\n", "max_core_count: 1\nchroma_downsampling: LEGACY\n");
+    {
+        QFile file(path);
+        require(file.open(QIODevice::WriteOnly | QIODevice::Truncate), "Cannot prepare manual conversion settings");
+        file.write(original);
+    }
     const QList<QByteArray> preservedBlocks = {
-        "[directshow.conversion]\nconversion_method: SIMD\nmin_core_count: 1\nmax_core_count: 2",
+        "[directshow.conversion]\nconversion_method: SIMD\nmin_core_count: 1\nmax_core_count: 1\nchroma_downsampling: LEGACY",
         "[directshow.ppm]\nppm: auto",
         "# These audio scripts deliberately keep their millisecond delay arguments literal.",
         "# Disabled after VP-0095 topology-mode regression; retained for later retest: fullscreen_monitor_session_mode: target-only"
