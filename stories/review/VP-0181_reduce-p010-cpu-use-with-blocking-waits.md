@@ -60,3 +60,11 @@ LEGACY. Mean conversion stayed around 2.1-2.2 ms. Idle helper CPU fell from
 about 6% per helper to zero measured in the short sample. These are not
 whole-application CPU promises. Repeated wake/reload tests covered 768 changing
 frames across 1/2/8 helpers. All 1,134 native tests passed.
+
+## Merge evidence
+
+PR #85 merged into remote v1.3.005-beta on 2026-09-10 at 15:09:34 UTC.
+Merge commit: 30f36307dec1002a22a549599ee989fa6f0a971d.
+Merged implementation head: 6ca021b95e0862c335f6b3b218e7dc647514f97a.
+Story remains Review as requested, for user hardware feedback. No GPU converter
+was added. No additional deployment or configuration change was necessary.

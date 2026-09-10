@@ -399,4 +399,3 @@ blocker. Set its status to `Blocked` and record the evidence, exact blocker,
 safe interim behavior, and objective condition that resumes work. `Blocked` is
 not a parking state: when a concrete next action exists, move the story to the
 appropriate active state and record why.
-
