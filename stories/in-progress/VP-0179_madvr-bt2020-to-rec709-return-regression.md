@@ -2,7 +2,7 @@
 
 ## Status
 
-Review (2026-09-10). File-only, startup-only recovery toggle implemented in
+In Progress (2026-09-10). Moving the toggle to [general] at user request. File-only, startup-only recovery toggle implemented in
 `794cc80b`, based on current beta `30f36307` with the original `5bad3a3f` fix
 merged into the clean toggle worktree. Draft PR #87:
 https://github.com/billslack2/videoprocessor/pull/87
