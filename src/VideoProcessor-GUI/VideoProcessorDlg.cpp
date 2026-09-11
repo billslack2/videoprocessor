@@ -183,6 +183,7 @@ struct CaptureVideoStateNotification
 	uint64_t sequence = 0;
 	uint64_t ingressPublicationUs = 0;
 	bool retainedRendererIngress = false;
+	bool traceColorChange = false;
 	CaptureVideoStateChangeClass changeClass =
 		CaptureVideoStateChangeClass::Initial;
 	uint64_t captureFrameCounter = 0;
@@ -5184,6 +5185,7 @@ void CVideoProcessorDlg::OnCaptureInputSelected()
 
 void CVideoProcessorDlg::OnBnClickedCaptureRestart()
 {
+	LogColorPipelineState("restart-capture-command");
 	DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnBnClickedCaptureRestart()")));
 
 	if (m_captureDeviceState == CaptureDeviceState::CAPTUREDEVICESTATE_FAILED)
@@ -5271,6 +5273,7 @@ bool CVideoProcessorDlg::EstablishSessionRendererOverrideFromSelection(
 
 void CVideoProcessorDlg::OnBnClickedRendererRestart()
 {
+	LogColorPipelineState("restart-renderer-command");
 	DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnBnClickedRendererRestart()")));
 	if (m_queueLaunchContractTerminalFailure)
 	{
@@ -6052,6 +6055,9 @@ LRESULT CVideoProcessorDlg::OnMessageCaptureDeviceVideoStateChange(WPARAM wParam
 			m_wantToRestartRenderer = true;
 		}
 	}
+	if (notification->traceColorChange || !rendererAcceptedState)
+		LogColorPipelineState(rendererAcceptedState ?
+			"capture-applied-accepted" : "capture-applied-rejected");
 	// Note: Automatic reset for signal changes is now handled at the lower level
 	// by CBufferedLiveSourceVideoOutputPin detecting frame counter changes
 
@@ -6307,6 +6313,7 @@ LRESULT CVideoProcessorDlg::OnMessageRendererStateChange(WPARAM wParam, LPARAM l
 			m_rendererFrameBaselineValid = false;
 		}
 		ResumeRendererIngress();
+		LogColorPipelineState("renderer-running");
 		enableButtons = true;
 		m_rendererTransitionWindow.KeepOnTop();
 		m_rendererStateText.SetWindowText(TEXT("Rendering"));
@@ -7885,6 +7892,13 @@ void CVideoProcessorDlg::OnCaptureDeviceVideoStateChange(
 		ClassifyCaptureVideoStateChange(
 			m_lastPublishedValidCaptureVideoState,
 			*videoState);
+	const bool traceColorChange =
+		changeClass == CaptureVideoStateChangeClass::Initial ||
+		changeClass == CaptureVideoStateChangeClass::MaterialSignal ||
+		changeClass == CaptureVideoStateChangeClass::Invalid ||
+		(m_lastPublishedValidCaptureVideoState &&
+			static_cast<bool>(m_lastPublishedValidCaptureVideoState->hdrData) !=
+				static_cast<bool>(videoState->hdrData));
 	if (videoState->valid)
 		m_lastPublishedValidCaptureVideoState = videoState;
 	m_latestCaptureVideoStateChangeClass = changeClass;
@@ -7916,8 +7930,24 @@ void CVideoProcessorDlg::OnCaptureDeviceVideoStateChange(
 	notification->ingressPublicationUs = ingressPublicationUs;
 	notification->retainedRendererIngress = retainRendererIngress;
 	notification->changeClass = changeClass;
+	notification->traceColorChange = traceColorChange;
 	notification->captureFrameCounter = source->VideoFrameCapturedCount();
 	notification->publicationTime = ingressStart;
+	if (traceColorChange)
+	{
+		DebugLog::Log(
+			"Color pipeline: stage=capture-publish run=%llu sequence=%llu "
+			"counter=%llu valid=%d raw_eotf=%s raw_colorspace=%s raw_hdr=%d "
+			"change_class=%s ingress=%s",
+			static_cast<unsigned long long>(captureRunToken),
+			static_cast<unsigned long long>(notificationSequence),
+			static_cast<unsigned long long>(notification->captureFrameCounter),
+			videoState->valid ? 1 : 0,
+			CStringA(ToString(videoState->eotf)).GetString(),
+			CStringA(ToString(videoState->colorspace)).GetString(),
+			videoState->hdrData ? 1 : 0, ToString(changeClass),
+			retainRendererIngress ? "retained" : "gated");
+	}
 	if (DebugLog::IsEnhancedLoggingEnabled())
 	{
 		DebugLog::Log(
@@ -9582,6 +9612,7 @@ void CVideoProcessorDlg::RenderStart()
 
 void CVideoProcessorDlg::RenderStop()
 {
+	LogColorPipelineState("renderer-stop-request");
 	DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::RenderStop(): Begin")));
 
 	if (RendererResetOperationInProgress())
@@ -11274,6 +11305,46 @@ bool CVideoProcessorDlg::UpdateNewLldvCandidate()
 	}
 
 	return false;
+}
+
+// UI-owned snapshot. It never probes capture/renderer COM interfaces or
+// changes recovery policy. Periodic evidence also shows a stuck transition
+// when neither capture nor the renderer produces another state notification.
+void CVideoProcessorDlg::LogColorPipelineState(const char* stage)
+{
+	const auto sequences = m_rendererIngressState->CaptureSequences();
+	const auto* raw = m_captureDeviceVideoState.p;
+	const auto* effective = m_builtVideoState.p;
+	DebugLog::Log(
+		"Color pipeline: stage=%s run=%llu generation=%u renderer=%S renderer_state=%s "
+		"capture_state=%s published=%llu required=%llu acknowledged=%llu applied=%llu "
+		"renderer_sequence=%llu raw_valid=%d raw_eotf=%s raw_colorspace=%s raw_hdr=%d "
+		"effective_valid=%d effective_eotf=%s effective_colorspace=%s effective_hdr=%d "
+		"restart_capture=%d restart_renderer=%d reset_active=%d invalid_pending=%d "
+		"eotf_enabled=%d eotf_active=%s eotf_candidate=%s observations=%u lldv_pending=%d",
+		stage, static_cast<unsigned long long>(m_captureVideoStateSourceEpoch),
+		m_rendererGeneration.load(std::memory_order_acquire),
+		m_activeRendererName.GetString(), CStringA(ToString(m_rendererState)).GetString(),
+		CStringA(ToString(m_captureDeviceState)).GetString(),
+		static_cast<unsigned long long>(sequences.published),
+		static_cast<unsigned long long>(sequences.required),
+		static_cast<unsigned long long>(sequences.acknowledged),
+		static_cast<unsigned long long>(m_appliedCaptureVideoStateNotificationSequence),
+		static_cast<unsigned long long>(m_rendererCaptureVideoStateNotificationSequence),
+		raw && raw->valid ? 1 : 0,
+		CStringA(ToString(raw ? raw->eotf : EOTF::UNKNOWN)).GetString(),
+		CStringA(ToString(raw ? raw->colorspace : ColorSpace::UNKNOWN)).GetString(),
+		raw && raw->hdrData ? 1 : 0, effective && effective->valid ? 1 : 0,
+		CStringA(ToString(effective ? effective->eotf : EOTF::UNKNOWN)).GetString(),
+		CStringA(ToString(effective ? effective->colorspace : ColorSpace::UNKNOWN)).GetString(),
+		effective && effective->hdrData ? 1 : 0,
+		m_wantToRestartCapture ? 1 : 0, m_wantToRestartRenderer ? 1 : 0,
+		RendererResetOperationInProgress() ? 1 : 0, m_invalidCaptureStateGrace.Pending() ? 1 : 0,
+		m_enableEotfChangeRestart ? 1 : 0,
+		CStringA(ToString(m_eotfTransition.Active())).GetString(),
+		CStringA(ToString(m_eotfTransition.Candidate())).GetString(),
+		m_eotfTransition.MatchingObservations(),
+		(m_lldvRestartPending || m_lldvChangeRestartDelaySeconds >= 0) ? 1 : 0);
 }
 
 bool CVideoProcessorDlg::BuildPushVideoState()
@@ -14712,6 +14783,8 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 		if (m_failedRendererRetirement)
 			UpdateState();
 		UpdateActiveOutputSweep(uiNow);
+		if (m_captureDevice && m_timerSeconds % 10 == 0)
+			LogColorPipelineState("periodic-10s");
 
 		// A source can publish its BT.2020/SDR state only once at startup.
 		// Re-evaluate the opt-in LLDV candidate here so confirmation does not

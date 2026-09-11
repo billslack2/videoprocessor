@@ -87,4 +87,7 @@
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="CaptureColorTraceTests.cpp" />
+  </ItemGroup>
 </Project>

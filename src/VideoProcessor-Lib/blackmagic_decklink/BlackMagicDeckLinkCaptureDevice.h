@@ -17,6 +17,7 @@
 #include <VideoFrame.h>
 #include <ACaptureDevice.h>
 #include <ITimingClock.h>
+#include <CaptureColorTrace.h>
 #include <blackmagic_decklink/BlackMagicDeckLinkTranslate.h>
 
 
@@ -124,6 +125,7 @@ private:
 	LONGLONG m_videoColorSpace = BMD_COLOR_SPACE_INVALID;
 	bool m_videoHasHdrData = false;
 	HDRData m_videoHdrData;
+	CaptureColorTrace m_colorTrace; // Owned only by VideoInputFrameArrived.
 	uint64_t m_capturedVideoFrameCount = 0;
 	uint64_t m_missedVideoFrameCount = 0;
 	timingclocktime_t m_previousTimingClockFrameTime = TIMING_CLOCK_TIME_INVALID;

@@ -138,7 +138,12 @@ bool DirectShowGenericHDRVideoRenderer::OnVideoState(VideoStateComPtr& videoStat
 			[this, state]()
 			{
 				if (!m_liveSource || !state->hdrData)
+				{
+					if (m_liveSource && m_videoState && m_videoState->hdrData && !state->hdrData)
+						DebugLog::Log("Color pipeline: stage=hdr-update generation=%u incoming_hdr=0 retained_hdr=1 action=existing-null-update-skipped",
+							m_callbackGeneration);
 					return;
+				}
 				if (FAILED(m_liveSource->OnHDRData(state->hdrData)))
 					throw std::runtime_error("Failed to set HDR data");
 				m_videoState->hdrData = state->hdrData;
@@ -498,6 +503,44 @@ void DirectShowGenericHDRVideoRenderer::MediaTypeGenerate()
 }
 
 
+void DirectShowGenericHDRVideoRenderer::LogColorMediaType(
+	const char* stage, const AM_MEDIA_TYPE& mediaType)
+{
+	AssertGraphThread();
+	wchar_t subtype[40] = {}, format[40] = {};
+	StringFromGUID2(mediaType.subtype, subtype, ARRAYSIZE(subtype));
+	StringFromGUID2(mediaType.formattype, format, ARRAYSIZE(format));
+	if (mediaType.formattype != FORMAT_VideoInfo2 || !mediaType.pbFormat ||
+		mediaType.cbFormat < sizeof(VIDEOINFOHEADER2))
+	{
+		DebugLog::Log(
+			"Color pipeline: stage=%s generation=%u subtype=%ls format=%ls bytes=%lu colorinfo_available=0",
+			stage, m_callbackGeneration, subtype, format, mediaType.cbFormat);
+		return;
+	}
+	const auto* video = reinterpret_cast<const VIDEOINFOHEADER2*>(mediaType.pbFormat);
+	const auto* color = reinterpret_cast<const DXVA_ExtendedFormat*>(&video->dwControlFlags);
+	DebugLog::Log(
+		"Color pipeline: stage=%s generation=%u subtype=%ls size=%ldx%ld "
+		"input_eotf=%s input_colorspace=%s input_hdr=%d control=0x%08lx colorinfo_present=%d "
+		"primaries=%u matrix=%u transfer=%u range=%u "
+		"forced_primaries=%u forced_matrix=%u forced_transfer=%u forced_range=%u",
+		stage, m_callbackGeneration, subtype,
+		video->bmiHeader.biWidth, video->bmiHeader.biHeight,
+		CStringA(ToString(m_videoState->eotf)).GetString(),
+		CStringA(ToString(m_videoState->colorspace)).GetString(),
+		m_videoState->hdrData ? 1 : 0, video->dwControlFlags,
+		(video->dwControlFlags & AMCONTROL_COLORINFO_PRESENT) ? 1 : 0,
+		static_cast<unsigned>(color->VideoPrimaries),
+		static_cast<unsigned>(color->VideoTransferMatrix),
+		static_cast<unsigned>(color->VideoTransferFunction),
+		static_cast<unsigned>(color->NominalRange),
+		static_cast<unsigned>(m_forceVideoPrimaries),
+		static_cast<unsigned>(m_forceVideoTransferMatrix),
+		static_cast<unsigned>(m_forceVideoTransferFunction),
+		static_cast<unsigned>(m_forceNominalRange));
+}
+
 void DirectShowGenericHDRVideoRenderer::RendererConnect()
 {
 	AssertGraphThread();
@@ -541,14 +584,28 @@ void DirectShowGenericHDRVideoRenderer::RendererConnect()
 	pEnum->Release();
 	pEnum = nullptr;
 
-	// Directly connect
-	if (FAILED(m_pGraph->ConnectDirect(pLiveSourceOutputPin, pRendererInputPin, &m_pmt)))
+	// Record the offered contract and the actual input-pin contract once per
+	// construction. A diagnostic query failure must never fail graph startup.
+	LogColorMediaType("media-type-offered", m_pmt);
+	const HRESULT connectResult =
+		m_pGraph->ConnectDirect(pLiveSourceOutputPin, pRendererInputPin, &m_pmt);
+	DebugLog::Log("Color pipeline: stage=graph-connect generation=%u hr=0x%08lx",
+		m_callbackGeneration, connectResult);
+	if (FAILED(connectResult))
 	{
 		pLiveSourceOutputPin->Release();
 		pRendererInputPin->Release();
 
 		throw std::runtime_error("Failed to connect pins");
 	}
+
+	AM_MEDIA_TYPE connectedType = {};
+	const HRESULT mediaTypeResult = pRendererInputPin->ConnectionMediaType(&connectedType);
+	DebugLog::Log("Color pipeline: stage=connected-type-query generation=%u hr=0x%08lx",
+		m_callbackGeneration, mediaTypeResult);
+	if (SUCCEEDED(mediaTypeResult))
+		LogColorMediaType("media-type-connected", connectedType);
+	FreeMediaType(connectedType);
 
 	pLiveSourceOutputPin->Release();
 	pRendererInputPin->Release();

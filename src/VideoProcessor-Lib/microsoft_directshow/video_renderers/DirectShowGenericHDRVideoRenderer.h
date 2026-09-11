@@ -91,6 +91,7 @@ protected:
 		LONG& height) const override;
 
 private:
+	void LogColorMediaType(const char* stage, const AM_MEDIA_TYPE& mediaType);
 	void UpdateActiveShaderSelection(const MadVRShaderSelection& selection);
 	void RestoreRuntimeShaderRequest();
 	void UpdateNlsOsdMode(MadVRNlsMappingMode mode);

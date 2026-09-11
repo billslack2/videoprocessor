@@ -636,4 +636,7 @@
   <ItemGroup>
     <Text Include="microsoft_directshow\live_source_filter\ALiveSourceVideoOutputPin_tracking_snippet.txt" />
   </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="CaptureColorTrace.h" />
+  </ItemGroup>
 </Project>

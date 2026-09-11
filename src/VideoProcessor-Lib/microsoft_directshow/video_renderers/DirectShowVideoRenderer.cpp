@@ -2406,8 +2406,8 @@ void DirectShowVideoRenderer::LogMadVRRuntimeInfo(
 		if (!requireAnyKnownValue)
 		{
 			DebugLog::Log(
-				"madVR runtime info: source=%s unavailable renderer=%p occupancy=unobservable",
-				source, m_pRenderer);
+				"madVR runtime info: source=%s generation=%u unavailable renderer=%p occupancy=unobservable",
+				source, m_callbackGeneration, m_pRenderer);
 		}
 		return;
 	}
@@ -2471,8 +2471,8 @@ void DirectShowVideoRenderer::LogMadVRRuntimeInfo(
 	if (!requireAnyKnownValue || anyKnownValue)
 	{
 		DebugLog::Log(
-			"madVR runtime info: source=%s version='%ls' version_known=%d detected_refresh_hz=%.6f refresh_known=%d post_deinterlace_fps=%.6f frame_rate_known=%d display_mode=%ldx%ld display_mode_known=%d hdr_output=%d hdr_known=%d exclusive=%d exclusive_known=%d yuv_matrix='%ls' yuv_matrix_known=%d original_video=%ldx%ld original_video_known=%d ar_adjusted_video=%ldx%ld ar_adjusted_video_known=%d video_crop=%ld,%ld,%ld,%ld video_crop_known=%d video_output=%ld,%ld,%ld,%ld video_output_known=%d cropped_video_output=%ld,%ld,%ld,%ld cropped_video_output_known=%d osd_latency_ms=%d osd_latency_known=%d dxva_decode=%d dxva_deinterlace=%d dxva_scaling=%d ivtc=%d occupancy=unobservable",
-			source, madvrVersion ? madvrVersion : L"", versionKnown ? 1 : 0,
+			"madVR runtime info: source=%s generation=%u version='%ls' version_known=%d detected_refresh_hz=%.6f refresh_known=%d post_deinterlace_fps=%.6f frame_rate_known=%d display_mode=%ldx%ld display_mode_known=%d hdr_output=%d hdr_known=%d exclusive=%d exclusive_known=%d yuv_matrix='%ls' yuv_matrix_known=%d original_video=%ldx%ld original_video_known=%d ar_adjusted_video=%ldx%ld ar_adjusted_video_known=%d video_crop=%ld,%ld,%ld,%ld video_crop_known=%d video_output=%ld,%ld,%ld,%ld video_output_known=%d cropped_video_output=%ld,%ld,%ld,%ld cropped_video_output_known=%d osd_latency_ms=%d osd_latency_known=%d dxva_decode=%d dxva_deinterlace=%d dxva_scaling=%d ivtc=%d occupancy=unobservable",
+			source, m_callbackGeneration, madvrVersion ? madvrVersion : L"", versionKnown ? 1 : 0,
 			refreshRate, refreshKnown ? 1 : 0,
 			postDeinterlaceFps, frameRateKnown ? 1 : 0,
 			static_cast<long>(displayMode.cx), static_cast<long>(displayMode.cy),

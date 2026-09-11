@@ -224,6 +224,7 @@
 	<ClCompile Include="ActivePictureAnalyzerTests.cpp" />
     <ClCompile Include="ActivePictureEvidenceTests.cpp" />
 	<ClCompile Include="InvalidCaptureStateGraceTests.cpp" />
+    <ClCompile Include="CaptureColorTraceTests.cpp" />
 	<ClCompile Include="EotfTransitionStabilizerTests.cpp" />
     <ClCompile Include="NativeRgbAnalysisTests.cpp" />
     <ClCompile Include="RendererIdTests.cpp" />

@@ -730,7 +730,8 @@ HRESULT STDMETHODCALLTYPE BlackMagicDeckLinkCaptureDevice::VideoInputFrameArrive
 		LONGLONG intValue = 0;
 
 		// Input changed
-		const bool hasInput = ((videoFrame->GetFlags() & bmdFrameHasNoInputSource) == 0);
+		const BMDFrameFlags inputFrameFlags = videoFrame->GetFlags();
+		const bool hasInput = ((inputFrameFlags & bmdFrameHasNoInputSource) == 0);
 		if (hasInput)
 		{
 			if (!m_videoHasInputSource)
@@ -747,13 +748,23 @@ HRESULT STDMETHODCALLTYPE BlackMagicDeckLinkCaptureDevice::VideoInputFrameArrive
 			videoStateChanged = true;
 		}
 
-		// Metdata
+		// Diagnostic samples reuse the exact metadata reads below; no extra COM
+		// queries and no fallback values are applied to capture state.
+		CaptureColorTraceSample colorTrace;
+		colorTrace.run = captureRunToken;
+		colorTrace.flags = static_cast<uint32_t>(inputFrameFlags);
+		colorTrace.eotfResult = colorTrace.colorspaceResult = E_NOINTERFACE;
+		// Metadata
 		CComQIPtr<IDeckLinkVideoFrameMetadataExtensions> metadataExtensions(videoFrame);
 		if (metadataExtensions)
 		{
+			colorTrace.metadataAvailable = true;
 			// EOTF
-			IF_S_OK(metadataExtensions->GetInt(bmdDeckLinkFrameMetadataHDRElectroOpticalTransferFunc, &intValue))
+			colorTrace.eotfResult = metadataExtensions->GetInt(
+				bmdDeckLinkFrameMetadataHDRElectroOpticalTransferFunc, &intValue);
+			if (colorTrace.eotfResult == S_OK)
 			{
+				colorTrace.readEotf = intValue;
 				if (m_videoEotf != intValue)
 				{
 					m_videoEotf = intValue;
@@ -762,8 +773,11 @@ HRESULT STDMETHODCALLTYPE BlackMagicDeckLinkCaptureDevice::VideoInputFrameArrive
 			}
 
 			// Color space
-			IF_S_OK(metadataExtensions->GetInt(bmdDeckLinkFrameMetadataColorspace, &intValue))
+			colorTrace.colorspaceResult = metadataExtensions->GetInt(
+				bmdDeckLinkFrameMetadataColorspace, &intValue);
+			if (colorTrace.colorspaceResult == S_OK)
 			{
+				colorTrace.readColorspace = intValue;
 				if (m_videoColorSpace != intValue)
 				{
 					m_videoColorSpace = intValue;
@@ -892,6 +906,32 @@ HRESULT STDMETHODCALLTYPE BlackMagicDeckLinkCaptureDevice::VideoInputFrameArrive
 					// This eliminates ~900 unnecessary COM calls per second for 59.94fps SDR content
 				}
 			}
+		}
+
+		colorTrace.cachedEotf = m_videoEotf;
+		colorTrace.cachedColorspace = m_videoColorSpace;
+		colorTrace.cachedHdr = m_videoHasHdrData;
+		const auto traceWindow = m_colorTrace.Observe(colorTrace, GetTickCount64());
+		if (traceWindow.emit)
+		{
+			DebugLog::Log(
+				"Color pipeline: stage=decklink run=%llu counter=%llu "
+				"flags=0x%08x input=%d hdr_flag=%d metadata_interface=%d "
+				"eotf_hr=0x%08x eotf_read=%lld colorspace_hr=0x%08x colorspace_read=%lld "
+				"cached_eotf=%lld cached_colorspace=%lld cached_hdr=%d state_changed=%d "
+				"window_frames=%llu window_changes=%llu missing_interface=%llu "
+				"eotf_read_failures=%llu colorspace_read_failures=%llu",
+				static_cast<unsigned long long>(captureRunToken),
+				static_cast<unsigned long long>(m_capturedVideoFrameCount),
+				colorTrace.flags, hasInput ? 1 : 0,
+				(colorTrace.flags & bmdFrameContainsHDRMetadata) ? 1 : 0,
+				colorTrace.metadataAvailable ? 1 : 0,
+				static_cast<unsigned>(colorTrace.eotfResult), colorTrace.readEotf,
+				static_cast<unsigned>(colorTrace.colorspaceResult), colorTrace.readColorspace,
+				colorTrace.cachedEotf, colorTrace.cachedColorspace,
+				colorTrace.cachedHdr ? 1 : 0, videoStateChanged ? 1 : 0,
+				traceWindow.observations, traceWindow.changes, traceWindow.missingInterface,
+				traceWindow.eotfReadFailures, traceWindow.colorspaceReadFailures);
 		}
 
 		if (videoStateChanged)

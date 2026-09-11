@@ -1077,6 +1077,7 @@ protected:
 	bool IsNewLldvModeSelected();
 
 
+	void LogColorPipelineState(const char* stage);
 	bool BuildPushVideoState();
 	void BuildPushRestartVideoState();
 	void ScheduleNewLldvRendererRestart();
