@@ -335,8 +335,8 @@ code/story records do not name Fire TV or Android specifically:
   input reinitialization to refresh colorspace metadata, rebuilding madVR
   alone cannot provide that recovery.
 
-This removal is a concrete behavioral change and a priority regression
-candidate, not a reproduced root cause. In particular, the removed fallback
+This removal is a concrete recovery-policy difference, not the original regression
+cause: the user confirms the failure predates VP-0170. The removed fallback
 was triggered by EOTF mismatch, so it does not by itself explain every
 constant-EOTF SDR/BT.2020-to-SDR/Rec.709 case. VP-0170 also addressed observed
 restart/HDMI-resync loops, so restoring its old independent timers wholesale
@@ -361,3 +361,17 @@ A local September 11 00:42 exit reaches raw SDR/Rec.709 after a format resync,
 but that session uses VP Renderer and is not the reporter's madVR failure.
 Source worktree E:\codex\videoprocessor\vp-0179-madvr-return-followup remains
 clean at fetched beta a33c5bf3.
+### Chronology correction (2026-09-11)
+
+The user confirms VP-0170 was an attempt to repair an already-broken version.
+Therefore its removal of the full-capture fallback cannot explain the original
+regression. The earlier elevation of that removal as a leading cause was
+incorrect; retain it only as a possible difference in present-day recovery.
+
+Compared 785e5911 with 93eb9370's parent: the old periodic full-capture EOTF
+fallback, renderer-start EOTF baseline and event/timer checks are still present
+before VP-0170, with no substantive change to those checks in that comparison.
+The primary investigation window must end at an affected pre-VP-0170 build.
+Investigate earlier capture publication, effective-state changes and renderer
+lifecycle behavior that could prevent the existing recovery from taking effect.
+No root cause or new fix is established by the full-capture-history finding.
