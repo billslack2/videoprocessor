@@ -4,8 +4,9 @@
 
 In Progress (2026-09-11). Reopened after user feedback that return from HDR or
 BT.2020 content still fails to reach Rec.709, while retesting "1.15 beta
-(August 1, 2026)" succeeds. The exact failing build and startup recovery mode
-have been requested; the working binary is not yet mapped to a source SHA.
+(August 1, 2026)" succeeds. User confirms the failing build is our latest ZIP, containing a33c5bf3 and
+the default-enabled bounded policy. The working version remains the same
+1.15 beta reported above; no further version clarification is needed.
 PR #87/#89 bounded recovery remains merged and enabled by default, but the
 reported incident is unresolved. Investigating current remote beta a33c5bf3
 in a fresh E: worktree. No new source fix or deployment yet.
@@ -307,3 +308,56 @@ verified head 3717c8b8 was merged using the exact-head guard into v1.3.005-beta.
 GitHub confirms MERGED at 2026-09-10T15:55:28Z, merge commit cc04476a.
 The opt-in default remains false. Deployment and hardware A/B acceptance are
 not performed by this merge; the review state tracks that remaining validation.
+## Reopened investigation and earlier restart workaround (2026-09-11)
+
+The user confirms the failed test used the latest ZIP we built,
+VideoProcessor-v1.3.005-beta-a33c5bf3-x64-Release.zip. Retesting the same
+1.15 beta dated August 1, 2026 still returns correctly to Rec.709. Treat
+VP-0179's invalid-state correction as insufficient for the reported incident.
+
+The user recalls an Android/Fire TV source needing a special restart. Source
+history verifies an older full-capture restart fallback, although the searched
+code/story records do not name Fire TV or Android specifically:
+
+- 47489950 (February 7, 2026) added a periodic comparison of current raw EOTF
+  with the EOTF at renderer start. On mismatch it requested capture restart,
+  which also rebuilt the renderer. Later fixes retained this fallback.
+- The fallback exists in inspected historical 785e5911 and the v1.1.015-beta
+  branch history. That branch's current tip is August 5, so it is not itself
+  an exact identity for the reporter's August 1 binary.
+- VP-0170 commit 93eb9370, integrated by 534c1e6a on September 7, deleted the
+  full-capture restart block. Its replacement requires repeated valid EOTF
+  observations over 5000 ms and then requests renderer restart only.
+  https://github.com/billslack2/videoprocessor/commit/93eb937080e631732ac0fd9e0e67a7373dc3ee83
+- These operations are materially different. Capture stop disables DeckLink
+  input and detaches its callback; start re-enables input/format detection.
+  Renderer-only recreation leaves capture running. If a source/driver needs
+  input reinitialization to refresh colorspace metadata, rebuilding madVR
+  alone cannot provide that recovery.
+
+This removal is a concrete behavioral change and a priority regression
+candidate, not a reproduced root cause. In particular, the removed fallback
+was triggered by EOTF mismatch, so it does not by itself explain every
+constant-EOTF SDR/BT.2020-to-SDR/Rec.709 case. VP-0170 also addressed observed
+restart/HDMI-resync loops, so restoring its old independent timers wholesale
+would discard that protection.
+
+Further inspection confirms current valid colorspace changes are rejected by
+the existing DirectShow graph and normally request replacement. The new
+invalid-signal toggle does not change that valid-state path or restore capture
+restart. Old metadata-read failures can retain cached EOTF/colorspace; that
+code predates this regression but could interact with removal of the restart.
+
+Next discriminating hardware check: while stuck, compare Restart Renderer
+with Restart Capture, retaining logs from the failing exit and each action.
+If only capture restart repairs the return, test one stabilized full-capture
+restart per confirmed transition while keeping VP-0170's debounce/coalescing.
+Do not claim that intervention is proven until exercised on the reporter's
+source chain. No speculative source fix, merge, or deployment in this pass.
+
+Local log inspection: the configured vp_debug.log is absent; available
+C:\Videoprocessor\vp\logs\vp.log and indexed rotations were inspected instead.
+A local September 11 00:42 exit reaches raw SDR/Rec.709 after a format resync,
+but that session uses VP Renderer and is not the reporter's madVR failure.
+Source worktree E:\codex\videoprocessor\vp-0179-madvr-return-followup remains
+clean at fetched beta a33c5bf3.
