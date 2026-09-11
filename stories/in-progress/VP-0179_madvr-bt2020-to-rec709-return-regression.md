@@ -2,15 +2,13 @@
 
 ## Status
 
-Review (2026-09-10). PR #89 merged into `v1.3.005-beta` as
-`a33c5bf31b5aad1dcbc43eda7e419f7b16707f61` (source head `4d89613a`).
-https://github.com/billslack2/videoprocessor/pull/89
-Bounded recovery now defaults to enabled: `[general] bounded_invalid_capture_recovery`
-is true when absent; explicit false retains legacy behavior. The setting remains
-file-only and startup-only. This supersedes the earlier default-false policy
-introduced by PR #87. Full x64 Release build and 198 selected regression tests
-passed. Hardware confirmation of the reported madVR regression remains pending.
-Not deployed; active user configuration was not modified.
+In Progress (2026-09-11). Reopened after user feedback that return from HDR or
+BT.2020 content still fails to reach Rec.709, while retesting "1.15 beta
+(August 1, 2026)" succeeds. The exact failing build and startup recovery mode
+have been requested; the working binary is not yet mapped to a source SHA.
+PR #87/#89 bounded recovery remains merged and enabled by default, but the
+reported incident is unresolved. Investigating current remote beta a33c5bf3
+in a fresh E: worktree. No new source fix or deployment yet.
 
 ## User story
 
