@@ -2,14 +2,16 @@
 
 ## Status
 
-In Progress (2026-09-11). Reopened after user feedback that return from HDR or
-BT.2020 content still fails to reach Rec.709, while retesting "1.15 beta
-(August 1, 2026)" succeeds. User confirms the failing build is our latest ZIP, containing a33c5bf3 and
-the default-enabled bounded policy. The working version remains the same
-1.15 beta reported above; no further version clarification is needed.
-PR #87/#89 bounded recovery remains merged and enabled by default, but the
-reported incident is unresolved. Investigating current remote beta a33c5bf3
-in a fresh E: worktree. No new source fix or deployment yet.
+Review (2026-09-11). Diagnostic build ready in draft PR #91, source b70f8518,
+based on current beta a33c5bf3. The reported Rec.709 return failure remains
+unresolved; latest default-enabled recovery ZIP fails while the same August 1
+1.15 beta succeeds. VP-0170 is a later repair attempt, not the original cause.
+
+Added capture-to-madVR color tracing without changing recovery policy. Clean
+x64 Release solution rebuild succeeded and 203 selected tests passed. The
+verified diagnostic ZIP and guide are available for reporter reproduction.
+PR #91 is open/draft, not merged. No deployment or active configuration edit.
+https://github.com/billslack2/videoprocessor/pull/91
 
 ## User story
 
@@ -375,3 +377,50 @@ The primary investigation window must end at an affected pre-VP-0170 build.
 Investigate earlier capture publication, effective-state changes and renderer
 lifecycle behavior that could prevent the existing recovery from taking effect.
 No root cause or new fix is established by the full-capture-history finding.
+## Diagnostic implementation and package (2026-09-11)
+
+The additional pre-VP-0170 comparison did not establish a root cause. DeckLink
+EOTF/colorspace success-only cache reads remain unchanged; the metadata-only
+classification still marks EOTF/colorspace changes as material, and formatter
+range changes do not replace DirectShow primaries/matrix translation. Earlier
+capture/renderer lifecycle changes remain candidates requiring runtime evidence.
+
+At the user's request, added normal-level diagnostics at these boundaries:
+
+- DeckLink: existing metadata read HRESULTs, observed versus cached values,
+  frame/input/HDR flags, missing interfaces and read-failure counts. First
+  sample per capture run, up to one change report per second, and a ten-second
+  steady heartbeat. Suppressed changes, including brief reversions, are counted.
+  No extra metadata COM reads, per-frame allocation or recovery changes.
+- Capture publication and UI: run/sequence, raw versus effective color state,
+  admission result, ingress required/acknowledged/applied sequences, restart
+  intents, reset deferral, invalid grace and EOTF candidate. Ten-second UI
+  snapshots preserve evidence even when state notifications stop.
+- DirectShow/madVR: offered and connected input media types, color-info flag,
+  explicit overrides and HRESULTs, queried on the graph owner once per graph.
+  Existing runtime samples now carry generation IDs. Existing null-HDR-update
+  retention is logged without changing it. Recovery commands have markers.
+
+Source: b70f851829e1a3cf7b3fabdfe329bbec9d7675d8 in
+E:\codex\videoprocessor\vp-0179-madvr-return-followup. Branch pushed and clean.
+Draft PR #91 targets v1.3.005-beta. Full clean x64 Release solution build:
+0 errors, 45 warnings. An incremental final-identity build hit the known
+LNK1103 debug-information error; clean rebuild succeeded with configured toolsets.
+203/203 selected tests passed, including five new trace tests for heartbeat,
+rate limiting, brief reversions, read failures and capture-run isolation.
+Test results: C:\Users\bslac\Documents\ChatGPT\Done\VP-0179-diagnostics-test-results.
+
+Package:
+C:\Users\bslac\Documents\ChatGPT\Done\VideoProcessor-v1.3.005-beta-VP0179-diagnostics-b70f8518-x64-Release.zip
+30,782,903 bytes, 58 files, verified byte-for-byte against canonical staging.
+Both runtime binaries match the successful Release build. The package includes
+only the example configuration, not an active VideoProcessor.cfg.
+SHA-256: CB7925C0664A30FAA786E3613E7A6A6C5E315263621DD76F1643E243AC5E63D6.
+
+Guide:
+C:\Users\bslac\Documents\ChatGPT\Done\VP-0179-diagnostics-b70f8518-guide.md
+Source guide: docs/VP-0179_COLOR_TRANSITION_DIAGNOSTICS.md.
+Reproduce the same exit, wait at least 35 seconds, then compare Restart Renderer
+with Restart Capture if still stuck. Preserve vp.log and numbered rotations
+and identify which VP/madVR/display indication remains BT.2020. Hardware
+acceptance remains outstanding; this is a diagnostic build, not a claimed fix.
