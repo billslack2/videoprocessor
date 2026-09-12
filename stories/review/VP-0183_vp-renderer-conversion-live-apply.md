@@ -2,7 +2,7 @@
 
 ## Status
 
-In Progress
+Review
 
 2026-09-12: User authorized fixing confirmed live conversion failure.
 
@@ -33,3 +33,24 @@ or merge requested for this fix yet.
 
 201 canonical files/index rows agree; no duplicates or missing IDs; registry
 max 0182, next 0183. Existing unrelated capitalization is preserved.
+
+## Implementation and validation
+
+Commit 3b5b6cfe101382ce1ded3a6db9ca73313da4cf3f; draft PR
+https://github.com/billslack2/videoprocessor/pull/92 against v1.3.005-beta.
+Canonical/legacy VP input sections and legacy renderer-root input keys now
+require restart. Shared directshow.conversion settings conservatively restart
+either backend; other DirectShow-only settings still stay save-only under VP.
+Pixel kernels and config precedence are unchanged.
+
+x64 Release build passed, zero errors (existing warnings). All 1,147 native
+tests passed; focused UI tests for General input Apply preserving overrides and
+DirectShow-only effects not restarting Alpha passed. Change classification is
+value-independent and covers on/off/add/remove via the same changed key.
+Logs: conversion-fix-build.log, conversion-fix-native.log and corresponding TRX
+in source worktree. Source diff check passed.
+
+Pending review/merge and deployment; active config and installed binaries were
+not changed. Hardware acceptance: toggle VP input NONE -> V210_TO_P010 -> NONE,
+verify Restart renderer and P010/P210 ingress after each Apply; repeat with
+inherited General conversion. No live hardware toggle test has been performed.
