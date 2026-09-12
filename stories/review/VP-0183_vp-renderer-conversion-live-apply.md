@@ -54,3 +54,18 @@ Pending review/merge and deployment; active config and installed binaries were
 not changed. Hardware acceptance: toggle VP input NONE -> V210_TO_P010 -> NONE,
 verify Restart renderer and P010/P210 ingress after each Apply; repeat with
 inherited General conversion. No live hardware toggle test has been performed.
+## Deployment 2026-09-12
+
+User requested deployment for testing. Deployed commit
+3b5b6cfe101382ce1ded3a6db9ca73313da4cf3f from successful x64 Release build
+(conversion-fix-deploy-build.log, zero errors). Runtime EXE and renderer DLL
+replaced together, plus config editor using the corrected shared apply policy.
+All three SHA256 hashes verified against build outputs. VP/editor were closed;
+not launched. Active VideoProcessor.cfg hash verified unchanged.
+Backup: C:\Videoprocessor\vp\backup-before-vp0183-20260912-141045.
+Deployment manifest there records old/new hashes and config hash.
+EXE: 9A5F4A4354661635BAEB35F5BA54C5E0A337DB12B0497EE447209C17D9F1A524.
+Renderer: 0B67C340500A8467CA237FCBFA7CD82C3CC056F8D0CAFDBD0F465C29DC38E290.
+Editor: 442BFF79B76144D29478F867A5CB91B4265CEA4142545167C1C740D294737852.
+Review remains pending user toggle test and merge; previous not-deployed note
+is superseded by this deployment.
