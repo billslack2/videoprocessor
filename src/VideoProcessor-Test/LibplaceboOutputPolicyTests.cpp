@@ -14,6 +14,24 @@ namespace Tests
 	TEST_CLASS(LibplaceboOutputPolicyTests)
 	{
 	public:
+        TEST_METHOD(LimitedDeclarationReportsRenderedGammaAndUnknownLutOutput)
+        {
+            for (auto g24 : { DxgiEncoding::STUDIO_G24_P709, DxgiEncoding::STUDIO_G24_P2020 })
+            {
+                Assert::IsTrue(DescribeLimitedTransfer(g24, SdrTransfer::GAMMA22, true, false).find("GAMMA MISMATCH") != std::string::npos);
+                Assert::IsTrue(DescribeLimitedTransfer(g24, SdrTransfer::GAMMA24, true, false).find("declaration agrees") != std::string::npos);
+                Assert::IsTrue(DescribeLimitedTransfer(g24, SdrTransfer::GAMMA24, true, true).find("post-LUT gamma unknown") != std::string::npos);
+                Assert::IsTrue(DescribeLimitedTransfer(g24, SdrTransfer::GAMMA24, false, true).find("no confirmed frame") != std::string::npos);
+                Assert::IsTrue(DescribeLimitedTransfer(g24, SdrTransfer::UNKNOWN, true, false).find("agreement unknown") != std::string::npos);
+            }
+            for (auto g22 : { DxgiEncoding::STUDIO_G22_P709, DxgiEncoding::STUDIO_G22_P2020 })
+            {
+                Assert::IsTrue(DescribeLimitedTransfer(g22, SdrTransfer::GAMMA22, true, false).find("not an exact pure-2.2") != std::string::npos);
+                Assert::IsTrue(DescribeLimitedTransfer(g22, SdrTransfer::GAMMA24, true, false).find("GAMMA MISMATCH") != std::string::npos);
+                Assert::IsTrue(DescribeLimitedTransfer(g22, SdrTransfer::GAMMA22, true, true).find("post-LUT gamma unknown") != std::string::npos);
+            }
+            Assert::IsTrue(DescribeLimitedTransfer(DxgiEncoding::FULL_G22_P709, SdrTransfer::GAMMA24, true, false).empty());
+        }
         TEST_METHOD(HdrLutTargetIsIndependentAndMissingLutUsesDisplay)
         {
             for (auto carrier : { SdrTransfer::SRGB, SdrTransfer::GAMMA22, SdrTransfer::GAMMA24 })

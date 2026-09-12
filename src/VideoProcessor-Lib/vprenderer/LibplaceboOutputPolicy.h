@@ -275,6 +275,10 @@ namespace LibplaceboOutput
 	const char* ToString(RangeRequest value);
 	const char* ToString(GammaRequest value);
 	const char* ToString(SdrAdjustGamma value);
+    // Compare the actual frame target, never a LUT's input contract, to DXGI.
+    std::string DescribeLimitedTransfer(DxgiEncoding encoding, SdrTransfer rendered,
+        bool frameAvailable, bool lutAttached);
+
 	const char* ToString(SdrTransfer value);
 	const char* ToString(SdrGammaAction value);
 	const char* ToString(PrimariesRequest value);

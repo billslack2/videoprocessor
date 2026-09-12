@@ -1239,6 +1239,43 @@ void ConfigEditorWindow::refreshLimitedTransportControls()
         return result.trimmed().toLower();
     };
     const bool limited = effective("output_range") == QStringLiteral("limited");
+    auto* notice = findChild<QLabel*>(QStringLiteral("config.vprenderer.color.transport_gamma_notice"));
+    auto* match = findChild<QPushButton*>(QStringLiteral("config.vprenderer.color.match_transport_gamma"));
+    const QString display = effective("output_gamma");
+    const QString savedTransport = effective("output_transport_gamma");
+    const QString transport = savedTransport.isEmpty() ? QStringLiteral("2.2") :
+        savedTransport == QStringLiteral("auto") ? QStringLiteral("2.4") : savedTransport;
+    const bool lut = effective("calibration_lut_enabled") == QStringLiteral("true");
+    const bool canMatch = limited && !lut &&
+        (display == QStringLiteral("2.2") || display == QStringLiteral("2.4")) && display != transport;
+    if (match)
+    {
+        match->setVisible(canMatch);
+        match->setEnabled(canMatch);
+        match->setProperty("matchingGamma", canMatch ? display : QString());
+        match->setText(QStringLiteral("Set Limited transfer to %1").arg(display));
+    }
+    if (notice)
+    {
+        QString text;
+        if (limited)
+        {
+            if (lut)
+                text = QStringLiteral("Selected profile: the LUT determines the final output response. Its input gamma does not establish its output gamma; transport agreement cannot be inferred. Check the live status for LUT fallback.");
+            else if (display.isEmpty() || display == QStringLiteral("auto"))
+                text = QStringLiteral("Selected profile: display gamma follows the accepted output. Check live status for the rendered encoding and DXGI declaration.");
+            else if (display != transport)
+                text = QStringLiteral("Selected profile: gamma mismatch - display gamma %1, Limited transfer %2. Changing the transport declaration does not change calibrated pixels.").arg(display, transport);
+            else
+                text = QStringLiteral("Selected profile: display gamma and Limited transfer are both %1. This does not verify the display signal.").arg(display);
+            if (transport == QStringLiteral("2.2"))
+                text += QStringLiteral(" Windows G22 is not an exact pure-2.2 declaration; this remains the beta transport path.");
+            if (!lut && !canMatch && !display.isEmpty() && display != transport && display != QStringLiteral("auto"))
+                text += QStringLiteral(" Limited transport has no matching declaration for this display gamma.");
+        }
+        notice->setText(text);
+        notice->setVisible(!text.isEmpty());
+    }
     gamma->setEnabled(!section.isEmpty() && limited);
     const QSignalBlocker blocker(flag);
     flag->setChecked(effective("diagnostic_allow_limited_g22") == QStringLiteral("true"));
@@ -1830,6 +1867,7 @@ void ConfigEditorWindow::setCalibrationStatusForTesting(bool available, bool att
 
 void ConfigEditorWindow::refreshCalibrationControls()
 {
+    refreshLimitedTransportControls();
     auto* displayGamma = findChild<QComboBox*>(QStringLiteral("config.vprenderer.color.output_gamma"));
     auto* sourceGamma = findChild<QComboBox*>(QStringLiteral("config.vprenderer.color.sdr_input_transfer"));
     auto* conversion = findChild<QCheckBox*>(QStringLiteral("config.vprenderer.color.sdr_adjust_gamma"));
@@ -4562,6 +4600,21 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 		addRendererAutoStatus(QStringLiteral("output_transport_gamma"), outputTransportGamma);
         if (auto* label = qobject_cast<QLabel*>(form->labelForField(outputTransportGamma->parentWidget())))
             label->setContentsMargins(16, 0, 0, 0);
+
+        auto* transportGammaNotice = helpLabel(QString());
+        transportGammaNotice->setObjectName(QStringLiteral("config.vprenderer.color.transport_gamma_notice"));
+        form->addRow(QString(), transportGammaNotice);
+        auto* matchTransportGamma = new QPushButton;
+        matchTransportGamma->setObjectName(QStringLiteral("config.vprenderer.color.match_transport_gamma"));
+        matchTransportGamma->setToolTip(QStringLiteral("Update this profile's Limited transport declaration and derived beta flag. Display calibration and pixel processing stay unchanged. Save with Apply or OK."));
+        form->addRow(QString(), matchTransportGamma);
+        connect(matchTransportGamma, &QPushButton::clicked, this,
+            [outputTransportGamma, matchTransportGamma]()
+            {
+                const QString gamma = matchTransportGamma->property("matchingGamma").toString();
+                const int index = outputTransportGamma->findData(gamma);
+                if (!gamma.isEmpty() && index >= 0) outputTransportGamma->setCurrentIndex(index);
+            });
 
         auto* outputCompatibility = helpLabel(QString());
         outputCompatibility->setObjectName(

@@ -5439,6 +5439,58 @@ void testSharedProfileListControllerContract()
         "Shared profile component did not publish mutations and selection loads");
 }
 
+void testLimitedTransportGammaNoticeAndCorrection()
+{
+    QTemporaryDir directory;
+    const QString path = directory.filePath("VideoProcessor.cfg");
+    QFile file(path);
+    require(file.open(QIODevice::WriteOnly), "Cannot create transport fixture");
+    file.write("[vprenderer.Default]\nsdr_target_nits: 100\nsdr_black_nits: 0\n"
+        "[vprenderer.color.First]\noutput_gamma: 2.2\noutput_range: limited\noutput_transport_gamma: 2.4\ncalibration_lut_enabled: false\n"
+        "[vprenderer.color.Second]\noutput_transport_gamma: 2.4\n");
+    file.close();
+    const auto original = readBytes(path);
+    {
+        ConfigEditorWindow window(path, 0, true);
+        auto* profiles = requireControl<QListWidget>(window, "config.vprenderer.color.profiles");
+        auto* display = requireControl<QComboBox>(window, "config.vprenderer.color.output_gamma");
+        auto* range = requireControl<QComboBox>(window, "config.vprenderer.color.output_range");
+        auto* transport = requireControl<QComboBox>(window, "config.vprenderer.color.output_transport_gamma");
+        auto* flag = requireControl<QCheckBox>(window, "config.vprenderer.color.diagnostic_allow_limited_g22");
+        auto* notice = requireControl<QLabel>(window, "config.vprenderer.color.transport_gamma_notice");
+        auto* match = requireControl<QPushButton>(window, "config.vprenderer.color.match_transport_gamma");
+        require(notice->text().contains("gamma mismatch") && !match->isHidden(), "Missing explicit gamma mismatch and correction");
+        profiles->setCurrentRow(1);
+        require(notice->text().contains("display gamma 2.2") && match->isEnabled(), "Inherited display/range did not drive notice");
+        require(readBytes(path) == original, "Inspecting profiles changed saved settings");
+        match->click();
+        require(transport->currentData() == "2.2" && flag->isChecked(), "Correction did not update transport and beta flag");
+        require(notice->text().contains("not an exact pure-2.2") && match->isHidden(), "G22 incorrectly reported as exact agreement");
+        selectData(display, "2.4");
+        match->click();
+        require(transport->currentData() == "2.4" && !flag->isChecked(), "G24 correction did not clear beta flag");
+        selectData(display, "2.6");
+        require(notice->text().contains("no matching declaration") && match->isHidden(), "Unsupported gamma offered an invented correction");
+        requireControl<QRadioButton>(window, "config.vprenderer.color.calibration_method.lut")->click();
+        require(notice->text().contains("cannot be inferred") && match->isHidden(), "LUT input gamma treated as its output gamma");
+        requireControl<QRadioButton>(window, "config.vprenderer.color.calibration_method.vp")->click();
+        selectData(range, "full");
+        require(notice->isHidden() && match->isHidden(), "Full output has a Limited warning");
+        selectData(display, "2.2");
+        selectData(range, "limited");
+        match->click();
+        save(window);
+    }
+    const auto saved = readBytes(path).replace("\r\n", "\n");
+    require(saved.contains("[vprenderer.color.first]\noutput_gamma: 2.2\noutput_range: limited\noutput_transport_gamma: 2.4") ||
+        saved.contains("[vprenderer.color.First]\noutput_gamma: 2.2\noutput_range: limited\noutput_transport_gamma: 2.4"), "Correction changed a different profile");
+    ConfigEditorWindow reloaded(path, 0, true);
+    requireControl<QListWidget>(reloaded, "config.vprenderer.color.profiles")->setCurrentRow(1);
+    require(requireControl<QComboBox>(reloaded, "config.vprenderer.color.output_gamma")->currentData() == "2.2" &&
+        requireControl<QComboBox>(reloaded, "config.vprenderer.color.output_transport_gamma")->currentData() == "2.2" &&
+        requireControl<QCheckBox>(reloaded, "config.vprenderer.color.diagnostic_allow_limited_g22")->isChecked(), "Correction failed to persist");
+}
+
 void testCalibratedUiDefaultsAndDerivedTransport()
 {
     QTemporaryDir directory;
@@ -5622,6 +5674,7 @@ int main(int argc, char** argv)
     failures += run("calibrated legacy and inherited output preserved", testCalibratedLegacyAndInheritedOutputPreserved);
     failures += run("shared profile list controller contract",
         testSharedProfileListControllerContract);
+    failures += run("Limited transport gamma notice and correction", testLimitedTransportGammaNoticeAndCorrection);
     failures += run("HDR target luminance validation retains saved value",
         testHdrTargetLuminanceValidationRetainsSavedValue);
     failures += run("every page round trips", testEveryPageRoundTrips);

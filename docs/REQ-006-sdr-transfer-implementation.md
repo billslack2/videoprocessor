@@ -37,7 +37,7 @@ Opening a file does not overwrite it. Explicit power/sRGB choices remain intact.
 
 HDR target white and black remain in Rendering and do not control SDR luminance.
 The fixed internal SDR reference is unchanged; configurable finite-black BT.1886
-is outside this implementation. Existing white bounds remain 40�500 nits, with
+is outside this implementation. Existing white bounds remain 40–500 nits, with
 live numeric validation added. Black must be finite, nonnegative and below white;
 there is no arbitrary 1-nit cap. Saved HDR black zero still maps to 1e-6 nit.
 Luminance diagnostics now print enough precision to distinguish this from unset.
@@ -54,3 +54,41 @@ encoding, invalid/missing LUT fallback, and Full/Limited output separately.
 - Both calibration modes were captured and visually reviewed.
 - x64 Release host, renderer and configuration builds completed.
 - Display measurements and real Full/Limited HDMI captures remain outstanding.
+
+
+## Limited transfer follow-up
+
+The Output section reports disagreement between the selected profile's display
+response and Limited transport setting. In VP calibration mode, a mismatch with
+an explicit display gamma of 2.2 or 2.4 offers **Set Limited transfer to ...**.
+This changes the selected profile's transport choice and derived G22 beta flag,
+then uses normal Apply/OK persistence. It does not change calibrated pixels.
+Other display gammas have no corresponding Limited transport choice; a LUT's
+output gamma cannot be deduced from its input gamma, so neither case offers an
+automatic correction. Opening the UI does not rewrite these settings.
+
+Live status separately compares the last successfully rendered frame's target
+transfer with the accepted DXGI declaration. Missing/failed frames report the
+encoding as unavailable. An attached LUT reports its post-LUT gamma as unknown;
+a missing LUT uses the actual fallback frame target. Full output does not show
+the Limited-only diagnostic. Accepted transport does not imply gamma agreement.
+
+Windows Studio G22 is not an exact pure-gamma-2.2 declaration (the BT.709 variant
+includes a linear segment). Matching the numerical settings retains the approved
+beta transport; it does not prove display-chain accuracy. G24 with a rendered
+2.4 target is reported as agreement within VP, with the physical signal still
+unverified. See [Microsoft's DXGI color-space definitions](https://learn.microsoft.com/en-us/windows/win32/api/dxgicommon/ne-dxgicommon-dxgi_color_space_type).
+
+The 40–500-nit white range is a VP policy, not a libplacebo limit. The editor
+already rejects values outside that range without overwriting saved values.
+This follow-up leaves those limits unchanged; expanding them across the schema,
+runtime rule handling and editor remains separate work. Libplacebo's nominal
+luminance sanitizer supports a much wider interval, up to 10,000 nits; see
+[libplacebo 7.360.1 colorspace.c](https://github.com/haasn/libplacebo/blob/v7.360.1/src/colorspace.c).
+
+
+Follow-up verification: x64 Release host, renderer and Config builds passed;
+105 native policy/luminance/configuration tests and all 73 UI tests passed.
+The UI regression covers profile inheritance, both correction directions,
+derived flags, LUT and unsupported-gamma gating, and save/reload isolation.
+Display-chain measurements remain outstanding. This follow-up was not deployed.

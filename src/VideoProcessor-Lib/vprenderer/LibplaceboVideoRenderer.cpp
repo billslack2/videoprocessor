@@ -3634,6 +3634,7 @@ struct LibplaceboVideoRenderer::Impl
     std::string displayLutInputTransfer;
 	bool displayLutParsed = false;
     bool calibrationStatusAvailable = false;
+    LibplaceboOutput::SdrTransfer lastRenderedTargetTransfer = LibplaceboOutput::SdrTransfer::UNKNOWN;
     bool calibrationLutAttached = false;
 	bool displayLutObservedAvailable = false;
 	uint64_t displayLutObservedBytes = 0;
@@ -11661,6 +11662,7 @@ struct LibplaceboVideoRenderer::Impl
         if (!rendered && targetLutApplied)
             RejectDisplayLutAfterRenderFailure();
         calibrationStatusAvailable = rendered;
+        if (rendered) lastRenderedTargetTransfer = ToSdrTransfer(baseTarget.color.transfer);
         calibrationLutAttached = rendered && targetLutApplied;
 		const int64_t swapStartQpc = PerformanceCounterNow();
 		bool submitted = false;
@@ -13913,6 +13915,9 @@ bool LibplaceboVideoRenderer::GetOutputContractStatus(
         << "; carrier " << pl_color_transfer_name(Impl::EncodingTransfer(m_impl->actualOutput.encoding))
         << "; presentation " << (status.presentation == Presentation::FLIP ? "Flip model" :
             status.presentation == Presentation::BITBLT ? "Legacy BitBlt" : "Unknown")
+        << (status.range == Range::LIMITED ? "\n" + LibplaceboOutput::DescribeLimitedTransfer(
+            m_impl->actualOutput.encoding, m_impl->lastRenderedTargetTransfer,
+            status.calibrationStatusAvailable, status.calibrationLutAttached) : "")
         << "\nTarget gamut: " << settings.sdrTargetPrimaries << "; display gamma "
         << LibplaceboOutput::ToString(calibration)
         << (status.calibrationLutAttached ? " (inactive: calibration LUT)" : "")

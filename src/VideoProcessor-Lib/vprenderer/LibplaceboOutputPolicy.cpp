@@ -6,6 +6,29 @@
 
 namespace LibplaceboOutput
 {
+    std::string DescribeLimitedTransfer(DxgiEncoding encoding, SdrTransfer rendered,
+        bool frameAvailable, bool lutAttached)
+    {
+        const bool g22 = encoding == DxgiEncoding::STUDIO_G22_P709 ||
+            encoding == DxgiEncoding::STUDIO_G22_P2020;
+        const bool g24 = encoding == DxgiEncoding::STUDIO_G24_P709 ||
+            encoding == DxgiEncoding::STUDIO_G24_P2020;
+        if (!g22 && !g24) return {};
+        std::string result = std::string("Limited transfer: DXGI ") + (g22 ? "G22" : "G24");
+        if (!frameAvailable)
+            return result + "; rendered encoding unavailable (no confirmed frame).";
+        if (lutAttached)
+            return result + "; post-LUT gamma unknown. LUT input gamma is not output gamma.";
+        result += std::string("; rendered ") + ToString(rendered);
+        if (rendered == SdrTransfer::UNKNOWN || rendered == SdrTransfer::OTHER)
+            return result + "; agreement unknown.";
+        if (g24 && rendered == SdrTransfer::GAMMA24)
+            return result + "; declaration agrees with the renderer target (wire unverified).";
+        if (g22 && rendered == SdrTransfer::GAMMA22)
+            return result + "; beta G22 carrier is not an exact pure-2.2 declaration (wire unverified).";
+        return result + "; GAMMA MISMATCH: declaration differs from the renderer target.";
+    }
+
 	OneShotSignalAcceptance ClassifyOneShotSignal(
 		bool setSucceeded,
 		bool readbackSucceeded,
