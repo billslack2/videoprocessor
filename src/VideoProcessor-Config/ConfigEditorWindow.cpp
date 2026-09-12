@@ -2527,8 +2527,17 @@ QStringList ConfigEditorWindow::validationErrors(QStringList& fields,
     }
     // Validate luminance in memory as well as on Apply. Keep invalid text
     // visible and the saved document intact instead of substituting a default.
-    for (const QString& section : profileSections(QStringLiteral("vprenderer")))
+    const auto renderingProfiles = profileSections(QStringLiteral("vprenderer"));
+    for (const QString& section : renderingProfiles)
     {
+        const auto inheritedLuminance = [&](const QString& key)
+        {
+            QString result = value(section, key).trimmed();
+            if (result.isEmpty() && !renderingProfiles.isEmpty())
+                result = value(renderingProfiles.front(), key).trimmed();
+            if (result.isEmpty()) result = value(QStringLiteral("vprenderer"), key).trimmed();
+            return result;
+        };
         const QString white = value(section, QStringLiteral("sdr_target_nits")).trimmed();
         std::string expected;
         if (!white.isEmpty() && !RendererProfileConfig::ValidateProfileSetting(
@@ -2538,18 +2547,15 @@ QStringList ConfigEditorWindow::validationErrors(QStringList& fields,
                 .arg(section, QString::fromStdString(expected)));
             fields.push_back(controlName(section, QStringLiteral("sdr_target_nits")));
         }
-        const QString black = value(section, QStringLiteral("sdr_black_nits")).trimmed();
+        const QString black = inheritedLuminance(QStringLiteral("sdr_black_nits"));
         if (black.isEmpty() || black.compare(QStringLiteral("auto"), Qt::CaseInsensitive) == 0)
             continue;
-        QString effectiveWhite = white;
-        if (effectiveWhite.isEmpty())
-            effectiveWhite = value(QStringLiteral("vprenderer"), QStringLiteral("sdr_target_nits")).trimmed();
+        QString effectiveWhite = inheritedLuminance(QStringLiteral("sdr_target_nits"));
         if (effectiveWhite.isEmpty()) effectiveWhite = QStringLiteral("203");
         bool whiteOk = false, blackOk = false;
         const double whiteNits = effectiveWhite.toDouble(&whiteOk);
         const double blackNits = black.toDouble(&blackOk);
-        if (!blackOk || !(blackNits >= 0.0 && blackNits < 500.0) ||
-            (whiteOk && blackNits >= whiteNits))
+        if (!blackOk || !whiteOk || !HdrTargetLuminance::ValidBlack(blackNits, whiteNits))
         {
             errors.push_back(QStringLiteral("[%1] sdr_black_nits must be Auto or non-negative and below the HDR target white. The saved value is retained.").arg(section));
             fields.push_back(controlName(section, QStringLiteral("sdr_black_nits")));
@@ -4837,10 +4843,10 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         auto* sdrTargetWhiteLevel = addText(QStringLiteral("Target nits"),
             QStringLiteral("sdr_target_nits"), QStringLiteral("nits"));
         sdrTargetWhiteLevel->setToolTip(QStringLiteral(
-            "HDR-to-SDR tone-mapping destination: 40 through 500 nits. "
+            "HDR-to-SDR tone-mapping destination: above 0.000001 through 10000 nits, and above target black. "
             "Does not change SDR input brightness or processing. "
             "Invalid values are rejected when saving; the saved value is retained."));
-        sdrTargetWhiteLevel->setValidator(new QDoubleValidator(40.0, 500.0, 6, sdrTargetWhiteLevel));
+        sdrTargetWhiteLevel->setValidator(new QDoubleValidator(HdrTargetLuminance::BlackFloor, HdrTargetLuminance::Maximum, -1, sdrTargetWhiteLevel));
         connect(sdrTargetWhiteLevel, &QLineEdit::textChanged, this,
             [this](const QString&) { refreshRendererAutoStatus(); });
         auto* sdrBlackLevel = addText(QStringLiteral("HDR tone-map target black"),
@@ -4848,7 +4854,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         sdrBlackLevel->setToolTip(QStringLiteral(
             "Black level for HDR-to-SDR tone mapping only. 0 assumes effectively perfect black (0.000001 nit internally); positive values are used as entered. SDR input is unaffected."));
         sdrBlackLevel->setPlaceholderText(QStringLiteral("0 or a measured black level"));
-        sdrBlackLevel->setValidator(new QDoubleValidator(0.0, 500.0, 6, sdrBlackLevel));
+        sdrBlackLevel->setValidator(new QDoubleValidator(0.0, HdrTargetLuminance::Maximum, -1, sdrBlackLevel));
         addRendererAutoStatus(QStringLiteral("sdr_black_nits"), sdrBlackLevel);
         auto* toneMapping = addChoice(QStringLiteral("Tone mapping"), QStringLiteral("tone_mapping"), { QStringLiteral("AUTO"), QStringLiteral("spline"), QStringLiteral("bt2390"), QStringLiteral("st2094-40"), QStringLiteral("reinhard") });
         addRendererAutoStatus(QStringLiteral("tone_mapping"), toneMapping);

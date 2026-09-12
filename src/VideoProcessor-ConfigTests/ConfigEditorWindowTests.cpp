@@ -400,47 +400,63 @@ void save(ConfigEditorWindow& window)
 void testHdrTargetLuminanceValidationRetainsSavedValue()
 {
     QTemporaryDir directory;
-    const QString path = copyFixture(directory);
+    const QString path = directory.filePath("VideoProcessor.cfg");
     ConfigEditorWindow window(path, 0, true);
-    auto* edit = requireControl<QLineEdit>(window,
-        QStringLiteral("config.vprenderer.sdr_target_nits"));
-    edit->setText(QStringLiteral("400"));
-    save(window);
-    const QByteArray saved = readBytes(path);
-    auto* apply = requireControl<QPushButton>(window, QStringLiteral("applyConfiguration"));
-    auto* status = requireControl<QLabel>(window, QStringLiteral("configurationStatus"));
-    for (const QString& invalid : { QStringLiteral("501"), QStringLiteral("600"),
-        QStringLiteral("39"), QStringLiteral("nan") })
+    auto* white = requireControl<QLineEdit>(window, "config.vprenderer.sdr_target_nits");
+    auto* black = requireControl<QLineEdit>(window, "config.vprenderer.sdr_black_nits");
+    auto* apply = requireControl<QPushButton>(window, "applyConfiguration");
+    auto* status = requireControl<QLabel>(window, "configurationStatus");
+    black->setText("0");
+    for (const QString& valid : { "0.000002", "0.01", "1", "39", "501", "600", "4000", "10000" })
     {
-        edit->setText(invalid);
-        QCoreApplication::processEvents();
-        require(!apply->isEnabled(), "Invalid HDR destination can be saved");
-        require(status->text().contains(QStringLiteral("40 through 500")),
-            "HDR destination validation must explain the accepted range");
-        require(edit->text() == invalid && readBytes(path) == saved,
-            "Invalid HDR destination silently replaced the entered or saved value");
+        white->setText(valid);
+        require(white->hasAcceptableInput(), "Luminance widget still restricts libplacebo's range");
+        save(window);
+        require(readBytes(path).contains(("sdr_target_nits: " + valid).toUtf8()), "Expanded white did not persist exactly");
     }
-    edit->setText(QStringLiteral("500"));
-    save(window);
-    require(readBytes(path).contains("sdr_target_nits: 500"),
-        "Maximum supported HDR destination was not saved");
-    const QByteArray savedAt500 = readBytes(path);
-    auto* black = requireControl<QLineEdit>(window,
-        QStringLiteral("config.vprenderer.sdr_black_nits"));
-    for (const QString& invalid : { QStringLiteral("-1"), QStringLiteral("500"),
-        QStringLiteral("nan") })
+    const auto saved = readBytes(path);
+    for (const QString& invalid : { "10000.1", "0", "-1", "0.000001", "1e-12", "nan", "inf" })
+    {
+        white->setText(invalid);
+        QCoreApplication::processEvents();
+        require(!apply->isEnabled() && status->text().contains("10000"), "Invalid white not visibly rejected");
+        require(white->text() == invalid && readBytes(path) == saved, "Invalid white changed the saved config");
+    }
+    white->setText("10000");
+    for (const QString& invalid : { "-1", "10000", "10001", "nan", "inf" })
     {
         black->setText(invalid);
         QCoreApplication::processEvents();
-        require(!apply->isEnabled() && status->text().contains(QStringLiteral("sdr_black_nits")),
-            "Invalid HDR destination black was not visibly rejected");
-        require(readBytes(path) == savedAt500, "Invalid black changed the saved configuration");
+        require(!apply->isEnabled() && status->text().contains("sdr_black_nits"), "Invalid black not rejected");
     }
-    black->setText(QStringLiteral("Auto"));
-    edit->setText(QStringLiteral("40"));
+    black->setText("600");
+    require(black->hasAcceptableInput(), "Black still has a 500-nit cap");
     save(window);
-    require(readBytes(path).contains("sdr_target_nits: 40"),
-        "Minimum supported HDR destination was not saved");
+    ConfigEditorWindow reloaded(path, 0, true);
+    require(requireControl<QLineEdit>(reloaded, "config.vprenderer.sdr_target_nits")->text() == "10000" &&
+        requireControl<QLineEdit>(reloaded, "config.vprenderer.sdr_black_nits")->text() == "600", "Expanded luminance failed reload");
+}
+
+void testInheritedHdrTargetLuminanceValidation()
+{
+    QTemporaryDir directory;
+    const QString path = directory.filePath("VideoProcessor.cfg");
+    QFile file(path);
+    require(file.open(QIODevice::WriteOnly), "Cannot create inherited luminance fixture");
+    file.write("[vprenderer.First]\nsdr_target_nits: 1000\nsdr_black_nits: 300\n"
+        "[vprenderer.Second]\nsdr_target_nits: 2000\n");
+    file.close();
+    ConfigEditorWindow window(path, 0, true);
+    requireControl<QListWidget>(window, "config.vprenderer.profiles")->setCurrentRow(1);
+    auto* white = requireControl<QLineEdit>(window, "config.vprenderer.sdr_target_nits");
+    auto* black = requireControl<QLineEdit>(window, "config.vprenderer.sdr_black_nits");
+    auto* apply = requireControl<QPushButton>(window, "applyConfiguration");
+    white->setText("200");
+    require(!apply->isEnabled(), "Inherited black above explicit white escaped validation");
+    white->clear();
+    black->setText("500");
+    require(apply->isEnabled(), "Validation did not use inherited white of 1000");
+    save(window);
 }
 
 void testEveryPageRoundTrips()
@@ -5675,6 +5691,7 @@ int main(int argc, char** argv)
     failures += run("shared profile list controller contract",
         testSharedProfileListControllerContract);
     failures += run("Limited transport gamma notice and correction", testLimitedTransportGammaNoticeAndCorrection);
+    failures += run("Inherited HDR target luminance validation", testInheritedHdrTargetLuminanceValidation);
     failures += run("HDR target luminance validation retains saved value",
         testHdrTargetLuminanceValidationRetainsSavedValue);
     failures += run("every page round trips", testEveryPageRoundTrips);

@@ -30,6 +30,7 @@
 #include <vprenderer/NativeStatsOverlayPlacement.h>
 #include <SceneDetector.h>
 #include <vprenderer/LibplaceboOutputPolicy.h>
+#include <HdrTargetLuminance.h>
 #include <vprenderer/LibplaceboRenderParameters.h>
 #include <video_frame_formatter/CARGBtoP010VideoFrameFormatter.h>
 #include <video_frame_formatter/CDeckLinkRGBToP010VideoFrameFormatter.h>
@@ -1652,8 +1653,7 @@ namespace
 
 	void NormalizeSdrBlackLevel(RendererSettings& settings)
 	{
-		if (std::isfinite(settings.sdrBlackNits) && settings.sdrBlackNits >= 0.0 &&
-			settings.sdrBlackNits < settings.sdrTargetNits)
+		if (HdrTargetLuminance::ValidBlack(settings.sdrBlackNits, settings.sdrTargetNits))
 		{
 			return;
 		}
@@ -1738,7 +1738,9 @@ namespace
 		if (config.TryGetString(rule.section, "sdr_target_nits", raw))
 		{
 			double value = 0.0;
-			if (ParseDouble(raw, value) && value >= 40.0 && value <= 500.0) settings.sdrTargetNits = value;
+			if (HdrTargetLuminance::ParseWhite(ConfigFile::Trim(raw), value)) settings.sdrTargetNits = value;
+            else DebugLog::Log("libplacebo: rule [%s] sdr_target_nits '%s' must be finite, above 0.000001 and at most 10000; retaining %.7g",
+                rule.section.c_str(), raw.c_str(), settings.sdrTargetNits);
 		}
 		// Rules inherit the base black level unless they explicitly override it.
 		// Resetting this unconditionally turned a base sdr_black_nits=0 back into
@@ -1753,8 +1755,10 @@ namespace
 			else
 			{
 				double value = 0.0;
-				if (ParseDouble(raw, value) && value >= 0.0 && value < settings.sdrTargetNits)
-					settings.sdrBlackNits = value;
+				if (ParseDouble(raw, value) && HdrTargetLuminance::ValidBlack(value, settings.sdrTargetNits))
+                    settings.sdrBlackNits = value;
+                else DebugLog::Log("libplacebo: rule [%s] sdr_black_nits '%s' must be finite, non-negative and below target white; retaining %.7g",
+                    rule.section.c_str(), raw.c_str(), settings.sdrBlackNits);
 			}
 		}
 		if (config.TryGetString(rule.section, "switch_refresh_rate", raw) &&
@@ -2108,11 +2112,11 @@ namespace
 		if (TryGetDisplayString(config, "sdr_target_nits", rawValue))
 		{
 			double parsed = 0.0;
-			if (ParseDouble(rawValue, parsed) && parsed >= 40.0 && parsed <= 500.0)
+			if (HdrTargetLuminance::ParseWhite(ConfigFile::Trim(rawValue), parsed))
 				settings.sdrTargetNits = parsed;
 			else
 				DebugLog::Log(
-					"libplacebo: sdr_target_nits must be between 40 and 500; using %.0f",
+					"libplacebo: sdr_target_nits must be finite, above 0.000001 and at most 10000; using %.0f",
 					PL_COLOR_SDR_WHITE);
 		}
 
@@ -2121,8 +2125,7 @@ namespace
 			ConfigFile::NormalizeName(rawValue) != "auto")
 		{
 			double parsed = 0.0;
-			if (ParseDouble(rawValue, parsed) && parsed >= 0.0 &&
-				parsed < settings.sdrTargetNits)
+			if (ParseDouble(rawValue, parsed) && HdrTargetLuminance::ValidBlack(parsed, settings.sdrTargetNits))
 			{
 				settings.sdrBlackNits = parsed;
 			}
