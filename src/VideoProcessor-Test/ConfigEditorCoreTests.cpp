@@ -566,11 +566,39 @@ namespace VideoProcessorTest
 			Assert::IsTrue(QueuePolicyApplyRequiresGraphReset(true));
 		}
 
+        TEST_METHOD(ConversionInputChangesRebuildTheFormatterForEitherBackend)
+        {
+            using namespace ConfigurationApplyPolicy;
+            // Change carries only the key: enabling, disabling, adding and
+            // removing an override all take this same restart path.
+            for (bool directShow : {false, true})
+            {
+                for (const char* section : {"vprenderer.input_processing", "vprenderer.input", "VPRenderer.Input_Processing"})
+                {
+                    Assert::IsFalse(IsRenderingProfileSection(section));
+                    Assert::AreEqual(static_cast<int>(Action::RestartRenderer),
+                        static_cast<int>(ClassifySection(section, directShow)));
+                    Assert::AreEqual(static_cast<int>(Action::RestartRenderer),
+                        static_cast<int>(ClassifyChanges({{section, "video_conversion"},
+                            {"vprenderer.rec709", "sdr_adjust_gamma"}}, directShow)));
+                }
+                for (const char* section : {"general", "command_line", "vprenderer"})
+                    Assert::AreEqual(static_cast<int>(Action::RestartRenderer),
+                        static_cast<int>(ClassifyChange({section, "video_conversion"}, directShow)));
+                for (const char* key : {"chroma_downsampling", "conversion_method", "min_core_count", "max_core_count"})
+                    Assert::AreEqual(static_cast<int>(Action::RestartRenderer),
+                        static_cast<int>(ClassifyChange({"directshow.conversion", key}, directShow)));
+                for (const char* section : {"vprenderer", "vprenderer.rec709", "vprenderer.scaling.normal", "vprenderer.viewport.scope"})
+                    Assert::AreEqual(static_cast<int>(Action::ApplyProfiles),
+                        static_cast<int>(ClassifySection(section, directShow)));
+            }
+        }
+
 		TEST_METHOD(ConfigurationApplyPolicyUsesTheActiveRendererForDirectShowChanges)
 		{
 			using ConfigurationApplyPolicy::Action;
 			const char* directShowSections[] = {
-				"directshow", "directshow.conversion", "directshow.ppm"
+				"directshow", "directshow.ppm"
 			};
 			for (const char* section : directShowSections)
 			{
@@ -589,7 +617,7 @@ namespace VideoProcessorTest
 			Assert::AreEqual(static_cast<int>(Action::ResetQueues),
 				static_cast<int>(ConfigurationApplyPolicy::ClassifySections(
 					{ "directshow", "queue" }, false)));
-			Assert::AreEqual(static_cast<int>(Action::ResetQueues),
+			Assert::AreEqual(static_cast<int>(Action::RestartRenderer),
 				static_cast<int>(ConfigurationApplyPolicy::ClassifySections(
 					{ "directshow.conversion", "profiles.queue.low_latency" }, false)));
 			Assert::AreEqual(static_cast<int>(Action::RestartRenderer),

@@ -111,6 +111,8 @@ namespace ConfigurationApplyPolicy
 	inline bool IsRenderingProfileSection(const std::string& rawSection)
 	{
 		const std::string section = NormalizeSection(rawSection);
+		if (section == "vprenderer.input_processing" || section == "vprenderer.input")
+			return false;
 		if (section == "vprenderer") return true;
 		constexpr const char* prefix = "vprenderer.";
 		if (section.rfind(prefix, 0) != 0) return false;
@@ -178,6 +180,13 @@ namespace ConfigurationApplyPolicy
 			HasPrefix(normalized, "profiles.queue") ||
 			normalized == "queue_recovery")
 			return Action::ResetQueues;
+        // Input conversion is captured by the renderer/formatter constructors.
+        // These sections are not live rendering profiles. The historical
+        // directshow.conversion section is also consumed by VP Renderer's P010
+        // formatter; without ingress state here, conservatively rebuild either backend.
+        if (normalized == "vprenderer.input_processing" ||
+            normalized == "vprenderer.input" || normalized == "directshow.conversion")
+            return Action::RestartRenderer;
 		// Graph-construction settings are irrelevant while Alpha owns the
 		// presentation. Persist them for the next DirectShow/madVR graph rather
 		// than interrupting an unrelated renderer.
@@ -229,6 +238,12 @@ namespace ConfigurationApplyPolicy
 		if (IsOutputExperimentChange(change)) return Action::RestartCapture;
 		const std::string section = NormalizeSection(change.section);
 		const std::string key = NormalizeSection(change.key);
+        // Compatibility input overrides formerly lived in the renderer root.
+        // Keep actual root rendering parameters eligible for live application.
+        if (section == "vprenderer" &&
+            (key == "video_conversion" || key == "container_colorspace" ||
+             key == "hdr_colorspace" || key == "hdr_luminance"))
+            return Action::RestartRenderer;
 		if ((section == "general" || section == "command_line") &&
 			(key == "capture_device" || key == "capture_input"))
 			return Action::RestartCapture;
