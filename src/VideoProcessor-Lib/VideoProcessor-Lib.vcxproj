@@ -167,6 +167,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="WindowsDisplayDiagnostics.h" />
     <ClInclude Include="ACaptureDevice.h" />
     <ClInclude Include="ApplicationInterface.h" />
     <ClInclude Include="ModernOperatorLayout.h" />
@@ -312,6 +313,7 @@
     <ClCompile Include="ShaderConfigValidation.cpp">
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
     </ClCompile>
+    <ClCompile Include="WindowsDisplayDiagnostics.cpp" />
     <ClCompile Include="ACaptureDevice.cpp" />
     <ClCompile Include="ActivePictureDecisionTimeline.cpp" />
     <ClCompile Include="ActivePictureTransitionModel.cpp" />

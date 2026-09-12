@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <dwmapi.h>
 #include <dxgi1_2.h>
+#include <WindowsDisplayDiagnostics.h>
 #include <psapi.h>
 #include <shellapi.h>
 #include <wrl/client.h>
@@ -6231,6 +6232,7 @@ LRESULT CVideoProcessorDlg::OnMessageRendererStateChange(WPARAM wParam, LPARAM l
 
 		m_restartQueuedBecauseEotf = false;
 
+        WindowsDisplayDiagnostics::Log(m_rendererTargetHwnd, "host-ready", m_activeRendererName.GetString(), this);
 		m_rendererStateText.SetWindowText(TEXT("Ready"));
 		if (m_profileRuntime.IsInitialized())
 		{
@@ -9183,6 +9185,11 @@ void CVideoProcessorDlg::RenderStart()
 	DXVA_VideoPrimaries forceVideoPrimaries =
 		(DXVA_VideoPrimaries)m_rendererPrimariesCombo.GetItemData(i);
 
+    DebugLog::Log("DISPLAY_STATE transition renderer=%ls generation=%u directshow_overrides nominal_range=%u transfer=%u matrix=%u primaries=%u; video_conversion=%u",
+        m_activeRendererName.GetString(), rendererGeneration, forceNominalRange, forceVideoTransferFunction,
+        forceVideoTransferMatrix, forceVideoPrimaries, videoConversionOverride);
+    WindowsDisplayDiagnostics::Log(m_rendererTargetHwnd, "host-before-create", m_activeRendererName.GetString(), this);
+
 	// Capture card always provides the clock
 	ITimingClock* timingClock = m_captureDevice->GetTimingClock();
 	if (!timingClock)
@@ -9603,6 +9610,7 @@ void CVideoProcessorDlg::RenderStop()
 		return;
 	}
 
+    WindowsDisplayDiagnostics::Log(m_rendererTargetHwnd, "host-before-stop", m_activeRendererName.GetString(), this);
 	// Cancel any pending EOTF change restart timer - a restart is already happening
 	KillTimer(EOTF_CHANGE_RESTART_TIMER_ID);
 	KillTimer(LLDV_CHANGE_RESTART_TIMER_ID);

@@ -105,3 +105,45 @@ invalid, nonfinite, degenerate and float-rounded black/white pairs are rejected.
 Libplacebo inference preserves the valid HDR targets, and SDR reference handling
 remains unchanged across the expanded range. Existing user configuration was
 not edited and these artifacts were not deployed.
+
+
+## Cold-start versus renderer-switch diagnostics
+
+Automatic `DISPLAY_STATE` log blocks are captured on the host before creating a
+renderer, at renderer-ready, and before stopping it. This includes madVR and VP.
+VP additionally captures before initializing its graphics device and before/after
+DXGI colour-space negotiation. Each block identifies the PID, thread, sequence,
+tick, phase, renderer, instance and target window, and records query duration.
+There is no per-frame display-state polling and no display-setting write.
+
+Readbacks include the target monitor/current mode, active Windows display paths
+and fractional refresh, advanced-colour support/enabled state, reported encoding
+and bit depth, Windows SDR-white level, GDI gamma-ramp fingerprints and samples,
+DXGI output colour space/luminance/primaries, and swapchain exclusive-fullscreen
+state. DXGI gamma readback is attempted only for an exclusive-fullscreen VP
+swapchain. Host snapshots cannot access madVR's private swapchain. Every query
+failure or missing monitor is reported as unavailable; it never means normal,
+identity gamma or HDR off. Advanced colour enabled alone is not proof of HDR.
+Legacy GDI gamma reports may not describe the advanced-colour scanout path.
+
+Keep one SDR test pattern, settings, refresh rate and window mode unchanged:
+cold-start VP, switch to madVR, return to VP, then close VP. Preserve the whole
+session log before restarting (startup rotates logs). Repeat with a VP-only
+renderer restart to distinguish a second-initialization effect from madVR-specific
+state changes. Compare `DISPLAY_STATE` blocks with the existing source/formatter,
+SDR_GAMMA, profile/action and output-contract logs. Output diagnostics can enable
+additional existing pixel-contract details. A changed gamma fingerprint or OS
+output state is evidence to investigate, not proof of the display's wire signal.
+
+These APIs cannot verify HDMI quantization/InfoFrames at the receiver, internal TV
+processing, or the physical image. `CheckColorSpaceSupport` reports capability,
+not current colour-space readback. No guessed current swapchain colour-space
+getter or automatic state reset is introduced. Readback calls may add transition
+latency; block durations make that visible in timing-sensitive investigations.
+
+
+Diagnostic verification: x64 Release host/renderer builds passed, and 107 native
+tests passed, including actual desktop Windows/DXGI readback and unavailable
+window handling. The desktop smoke snapshot took 16 ms on the development PC;
+this is not a latency guarantee for other drivers. No picture-quality correction
+is claimed by these logging changes, and no settings are automatically changed.

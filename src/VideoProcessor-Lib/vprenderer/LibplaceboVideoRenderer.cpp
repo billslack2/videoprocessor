@@ -31,6 +31,7 @@
 #include <SceneDetector.h>
 #include <vprenderer/LibplaceboOutputPolicy.h>
 #include <HdrTargetLuminance.h>
+#include <WindowsDisplayDiagnostics.h>
 #include <vprenderer/LibplaceboRenderParameters.h>
 #include <video_frame_formatter/CARGBtoP010VideoFrameFormatter.h>
 #include <video_frame_formatter/CDeckLinkRGBToP010VideoFrameFormatter.h>
@@ -6112,6 +6113,8 @@ struct LibplaceboVideoRenderer::Impl
 			return;
 		}
 
+        DebugLog::Log("DISPLAY_STATE vp negotiation trigger=%s", trigger);
+        WindowsDisplayDiagnostics::Log(videoHwnd, "vp-before-colorspace", L"VP Renderer", this, nativeSwapchain);
 		DXGI_SWAP_CHAIN_DESC swapchainDesc{};
 		negotiatedSwapchainFormat = DXGI_FORMAT_UNKNOWN;
 		const HRESULT descResult = nativeSwapchain->GetDesc(&swapchainDesc);
@@ -6476,6 +6479,7 @@ struct LibplaceboVideoRenderer::Impl
 			nvidiaBt2020Reporter.Restore();
 			bt2020SignalingFailed = false;
 		}
+        WindowsDisplayDiagnostics::Log(videoHwnd, "vp-after-colorspace", L"VP Renderer", this, nativeSwapchain);
 	}
 
 	bool RecreateSwapchain(
@@ -6830,6 +6834,7 @@ struct LibplaceboVideoRenderer::Impl
 		VideoConversionOverride videoConversionOverride)
 	{
 		this->videoHwnd = videoHwnd;
+        WindowsDisplayDiagnostics::Log(videoHwnd, "vp-before-initialize", L"VP Renderer", this);
 		const RendererSettings settings = LoadRendererSettings(
 			*state, activeDisplayRule, manualRule, manualUnifiedProfiles);
 		activeSettings = settings;

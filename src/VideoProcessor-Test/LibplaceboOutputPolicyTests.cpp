@@ -4,16 +4,55 @@
 #include <vprenderer/LibplaceboOutputPolicy.h>
 #include <vprenderer/LibplaceboCalibrationLutPolicy.h>
 #include <ActiveOutputSweepPolicy.h>
+#include <WindowsDisplayDiagnostics.h>
+#include <DebugLog.h>
+#include <fstream>
 
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 using namespace LibplaceboOutput;
+
+namespace
+{
+    std::string displaySnapshotLog;
+    void __cdecl CollectDisplaySnapshot(const char* message)
+    {
+        displaySnapshotLog += std::string(message) + "\n";
+    }
+    struct DisplaySnapshotSink
+    {
+        DisplaySnapshotSink() { displaySnapshotLog.clear(); DebugLog::SetExternalSink(CollectDisplaySnapshot); }
+        ~DisplaySnapshotSink() { DebugLog::SetExternalSink(nullptr); }
+    };
+}
 
 namespace Tests
 {
 	TEST_CLASS(LibplaceboOutputPolicyTests)
 	{
 	public:
+        TEST_METHOD(WindowsDisplaySnapshotReadsDesktopAndReportsUnavailableTarget)
+        {
+            DisplaySnapshotSink sink;
+            WindowsDisplayDiagnostics::Log(nullptr, "test-invalid", L"Native test", this);
+            Assert::IsTrue(displaySnapshotLog.find("unavailable: invalid target window") != std::string::npos);
+            displaySnapshotLog.clear();
+            WindowsDisplayDiagnostics::Log(GetDesktopWindow(), "test-desktop", L"Native test", this);
+            Assert::IsTrue(displaySnapshotLog.find("read_only=1 wire_state=unverified") != std::string::npos);
+            Assert::IsTrue(displaySnapshotLog.find("snapshot failed") == std::string::npos);
+            // A disconnected/headless session may not expose a monitor. That
+            // must be explicit, never fabricated gamma/HDR success.
+            Assert::IsTrue(displaySnapshotLog.find("end elapsed_ms=") != std::string::npos ||
+                displaySnapshotLog.find("monitor unavailable") != std::string::npos);
+            if (displaySnapshotLog.find("end elapsed_ms=") != std::string::npos)
+            {
+                Assert::IsTrue(displaySnapshotLog.find("topology result=") != std::string::npos);
+                Assert::IsTrue(displaySnapshotLog.find("DXGI") != std::string::npos);
+            }
+            wchar_t output[MAX_PATH]{};
+            if (GetEnvironmentVariableW(L"VP_DISPLAY_SNAPSHOT_TEST_LOG", output, MAX_PATH) > 0)
+                std::ofstream(output, std::ios::binary) << displaySnapshotLog;
+        }
         TEST_METHOD(LimitedDeclarationReportsRenderedGammaAndUnknownLutOutput)
         {
             for (auto g24 : { DxgiEncoding::STUDIO_G24_P709, DxgiEncoding::STUDIO_G24_P2020 })
