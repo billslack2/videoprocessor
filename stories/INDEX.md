@@ -6,9 +6,9 @@ story may have ordered child-task IDs as defined below.
 
 ## Registry state
 
-- Last assigned root story: `VP-0183`
-- Next root story number: `VP-0184`
-- Total indexed items: 202
+- Last assigned root story: `VP-0185`
+- Next root story number: `VP-0186`
+- Total indexed items: 204
 
 ## Story locations
 
@@ -237,6 +237,9 @@ they must not contain requirements that are absent from this file.
 | VP-0182 | Done | Config-only ADVANCED Lanczos chroma downsampling |
 
 | VP-0183 | Review | Restart VP Renderer when conversion input settings change |
+
+| VP-0184 | Backlog | Expose primary libplacebo tone-mapping and peak-detection controls |
+| VP-0185 | Backlog | Expose advanced libplacebo tone-curve, gamut, and metadata controls |
 
 ## Codex story workflow
 
