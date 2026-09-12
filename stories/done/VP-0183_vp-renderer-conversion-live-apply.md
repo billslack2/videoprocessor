@@ -2,7 +2,7 @@
 
 ## Status
 
-Review
+Done
 
 2026-09-12: User authorized fixing confirmed live conversion failure.
 
@@ -69,3 +69,13 @@ Renderer: 0B67C340500A8467CA237FCBFA7CD82C3CC056F8D0CAFDBD0F465C29DC38E290.
 Editor: 442BFF79B76144D29478F867A5CB91B4265CEA4142545167C1C740D294737852.
 Review remains pending user toggle test and merge; previous not-deployed note
 is superseded by this deployment.
+
+## Acceptance and merge
+
+2026-09-12: User tested the deployed fix, reported "looks good", and authorized
+merge. PR #92 merged into v1.3.005-beta at 18:22:40 UTC, merge commit
+455d919cf07065c89b6e34cfee27e1431e25603b. Fetched remote beta and verified
+implementation 3b5b6cfe is included. Release build and all 1,147 native tests
+passed, with focused UI checks and verified deployment recorded above.
+Story is Done; earlier pending notes are superseded. Installed tested binaries
+and active configuration remain unchanged by the merge.

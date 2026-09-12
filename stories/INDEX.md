@@ -236,7 +236,7 @@ they must not contain requirements that are absent from this file.
 
 | VP-0182 | Done | Config-only ADVANCED Lanczos chroma downsampling |
 
-| VP-0183 | Review | Restart VP Renderer when conversion input settings change |
+| VP-0183 | Done | Restart VP Renderer when conversion input settings change |
 
 | VP-0184 | Backlog | Expose primary libplacebo tone-mapping and peak-detection controls |
 | VP-0185 | Backlog | Expose advanced libplacebo tone-curve, gamut, and metadata controls |
