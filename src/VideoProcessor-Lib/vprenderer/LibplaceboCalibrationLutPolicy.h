@@ -13,7 +13,7 @@ namespace LibplaceboCalibrationLut
                 inputTransfer == other.inputTransfer && baseDirectory == other.baseDirectory;
         }
     };
-    // HDR output encoding is owned by Rendering. Old "display"/omitted values
+    // HDR LUT input encoding is owned by the calibration profile. Old "display"/omitted values
     // become the explicit beta default, never a dependency on physical gamma.
     inline std::string ResolveHdrTargetGamma(const std::string& canonical,
         const std::string& legacyRendering)
@@ -24,6 +24,15 @@ namespace LibplaceboCalibrationLut
     inline std::string HdrInputContractKey(const std::string& hdrGamma)
     {
         return "sdr-source/hdr:" + ResolveHdrTargetGamma(hdrGamma, {});
+    }
+
+    inline std::string InputContractKey(const std::string& hdrGamma,
+        const std::string& sdrLutGamma, const std::string& sdrReference)
+    {
+        // Passthrough still has an input domain: the declared SDR reference.
+        const auto sdr = sdrLutGamma.empty() || sdrLutGamma == "passthrough" ?
+            sdrReference : sdrLutGamma;
+        return "sdr:" + sdr + "/hdr:" + ResolveHdrTargetGamma(hdrGamma, {});
     }
 
 	enum class Primaries

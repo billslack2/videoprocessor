@@ -31,6 +31,47 @@ namespace Tests
             Assert::IsTrue(pass.effectiveSource == SdrTransfer::GAMMA22);
         }
 
+        TEST_METHOD(LutReloadContractTracksEffectiveSdrEncoding)
+        {
+            using LibplaceboCalibrationLut::InputContractKey;
+            Assert::IsTrue(InputContractKey("2.2", "passthrough", "2.4") !=
+                InputContractKey("2.2", "passthrough", "2.2"));
+            Assert::IsTrue(InputContractKey("2.2", "2.4", "2.4") ==
+                InputContractKey("2.2", "2.4", "2.2"));
+            Assert::IsTrue(InputContractKey("2.4", "2.4", "2.4") !=
+                InputContractKey("2.2", "2.4", "2.4"));
+        }
+
+        TEST_METHOD(SdrLutInputGammaIsOptInAndIndependentOfHdrAndTransport)
+        {
+            for (auto carrier : { SdrTransfer::SRGB, SdrTransfer::GAMMA22, SdrTransfer::GAMMA24 })
+            for (auto hdr : { GammaRequest::GAMMA22, GammaRequest::GAMMA24 })
+            for (auto mode : { SdrAdjustGamma::ON, SdrAdjustGamma::PRESERVE_CODES })
+            {
+                const auto pass = ResolveCalibrationTransfers(true, true, true, mode,
+                    GammaRequest::GAMMA22, hdr, SdrTransfer::GAMMA24, carrier);
+                Assert::IsTrue(pass.targetTransfer == SdrTransfer::GAMMA24);
+                Assert::IsTrue(pass.sdr.effectiveSource == SdrTransfer::GAMMA24);
+                Assert::IsTrue(pass.sdr.action == SdrGammaAction::SUPPRESS);
+                const auto convert = ResolveCalibrationTransfers(true, true, true, mode,
+                    GammaRequest::GAMMA22, hdr, SdrTransfer::GAMMA24, carrier, GammaRequest::GAMMA22);
+                Assert::IsTrue(convert.targetTransfer == SdrTransfer::GAMMA22);
+                Assert::IsTrue(convert.sdr.effectiveSource == SdrTransfer::GAMMA24);
+                Assert::IsTrue(convert.sdr.actualTarget == SdrTransfer::GAMMA22);
+                Assert::IsTrue(convert.sdr.action == SdrGammaAction::ADJUST);
+                const auto missing = ResolveCalibrationTransfers(true, true, false, mode,
+                    GammaRequest::GAMMA24, hdr, SdrTransfer::GAMMA24, carrier, GammaRequest::GAMMA22);
+                Assert::IsTrue(missing.targetTransfer == SdrTransfer::GAMMA24);
+                const auto hdrResult = ResolveCalibrationTransfers(false, true, true, mode,
+                    GammaRequest::GAMMA22, hdr, SdrTransfer::OTHER, carrier, GammaRequest::GAMMA28);
+                Assert::IsTrue(hdrResult.targetTransfer == ResolveCalibrationTargetTransfer(hdr, carrier));
+                Assert::IsTrue(hdrResult.sdr.action == SdrGammaAction::NOT_APPLICABLE);
+                const auto unsafe = ResolveCalibrationTransfers(true, false, true, mode,
+                    GammaRequest::GAMMA22, hdr, SdrTransfer::GAMMA24, carrier, GammaRequest::GAMMA22);
+                Assert::IsTrue(unsafe.sdr.action == SdrGammaAction::BLOCKED);
+            }
+        }
+
         TEST_METHOD(CalibrationWorkflowKeepsNoLutPolicyAndBlocksUnsafeOutput)
         {
             for (auto mode : { SdrAdjustGamma::ON, SdrAdjustGamma::OFF, SdrAdjustGamma::AUTO, SdrAdjustGamma::PRESERVE_CODES })
@@ -41,7 +82,7 @@ namespace Tests
                     GammaRequest::BT1886,SdrTransfer::BT1886,carrier);
                 const auto expectedTarget = ResolveCalibrationTargetTransfer(display,carrier);
                 const auto expected = ResolveSdrGamma(mode,true,true,display,SdrTransfer::BT1886,
-                    mode == SdrAdjustGamma::PRESERVE_CODES ? expectedTarget : carrier);
+                    expectedTarget);
                 Assert::IsTrue(actual.targetTransfer == expectedTarget);
                 Assert::IsTrue(actual.sdr.effectiveSource == expected.effectiveSource);
                 Assert::IsTrue(actual.sdr.action == expected.action);
@@ -90,9 +131,9 @@ namespace Tests
 					GammaRequest::GAMMA24, SdrTransfer::SRGB)));
 		}
 
-		TEST_METHOD(SdrGammaMissingOrOnPreservesCurrentManagedBehavior)
+		TEST_METHOD(SdrGammaMissingDefaultsToNoAdjustment)
 		{
-			Assert::AreEqual(static_cast<int>(SdrAdjustGamma::ON),
+			Assert::AreEqual(static_cast<int>(SdrAdjustGamma::PRESERVE_CODES),
 				static_cast<int>(ParseSdrAdjustGamma("")));
 			Assert::AreEqual(static_cast<int>(SdrAdjustGamma::AUTO),
 				static_cast<int>(ParseSdrAdjustGamma("auto")));

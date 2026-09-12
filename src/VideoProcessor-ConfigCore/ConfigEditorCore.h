@@ -28,6 +28,7 @@ namespace ConfigEditorCore
         // Invoke after older split-profile migrations. Archives original text
         // and requests an original-byte backup when saved. No disk writes.
         bool MigrateCalibrationProfiles();
+        bool MigrateTransferChoices();
 
 		static std::string StripComment(const std::string& value);
 		bool Find(const std::string& wantedSection,

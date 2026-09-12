@@ -1403,41 +1403,33 @@ void testSdrGammaAdjustmentLabelsAndPersistence()
         require(requireControl<QCheckBox>(window, "config.vprenderer.color.sdr_adjust_gamma")->checkState() == Qt::Unchecked,
             "Pass-through did not reload unchecked");
     }
-    // Previously saved off and AUTO must retain meaning on open/save, even
-    // across inherited profiles, until the user explicitly changes the checkbox.
     for (const QByteArray mode : { QByteArray("off"), QByteArray("AUTO") })
     {
         QFile file(path);
-        require(file.open(QIODevice::WriteOnly | QIODevice::Truncate), "Cannot write compatibility fixture");
+        require(file.open(QIODevice::WriteOnly | QIODevice::Truncate), "Cannot write beta fixture");
         file.write("[general]\nrenderer: VP Renderer\n[vprenderer.Default]\nquality: high\n"
             "[vprenderer.color.First]\nsdr_adjust_gamma: " + mode +
-            "\nsdr_input_transfer: AUTO\ncalibration_lut_input_gamma: bt1886\n"
+            "\nsdr_input_transfer: AUTO\noutput_gamma: bt1886 # preserve calibration comment\n"
+            "hdr_tone_map_target_gamma: bt1886\n"
             "[vprenderer.color.Second]\noutput_gamma: 2.2\n");
         file.close();
         ConfigEditorWindow window(path, 0, true);
         auto* adjustment = requireControl<QCheckBox>(window, "config.vprenderer.color.sdr_adjust_gamma");
-        auto* profiles = requireControl<QListWidget>(window, "config.vprenderer.color.profiles");
-        require(adjustment->checkState() == Qt::PartiallyChecked, "Saved mode incorrectly shown as On or Off");
-        auto* referenceHelp = requireControl<QLabel>(window, "config.vprenderer.color.sdr_input_transfer.help");
-        require(referenceHelp->text().contains("Saved Auto") && referenceHelp->text().contains("1000:1"),
-            "Saved Auto omitted its current BT.1886 reference contrast");
-        profiles->setCurrentRow(1);
-        require(adjustment->checkState() == Qt::PartiallyChecked, "Inherited saved mode lost");
-        require(referenceHelp->text().contains("Saved Auto") && referenceHelp->text().contains("1000:1"),
-            "Inherited Auto omitted its current BT.1886 reference contrast");
+        require(adjustment->checkState() == Qt::Unchecked, "Beta adjustment was not normalized");
+        require(requireControl<QComboBox>(window, "config.vprenderer.color.output_gamma")->currentData() == "2.4",
+            "BT.1886 display gamma was not translated");
+        requireControl<QListWidget>(window, "config.vprenderer.color.profiles")->setCurrentRow(1);
+        require(adjustment->checkState() == Qt::Unchecked, "Inherited adjustment was not normalized");
         save(window);
-        require(readBytes(path).contains("sdr_adjust_gamma: " + mode), "Opening/saving changed saved mode");
-        require(readBytes(path).contains("sdr_input_transfer: AUTO"), "Opening/saving changed SDR assumption");
-        adjustment->click();
-        require(adjustment->checkState() == Qt::Checked && !adjustment->isTristate(), "Explicit click did not select processing");
-        save(window);
-        require(readBytes(path).contains("sdr_adjust_gamma: on"), "Explicit processing did not persist");
-        requireControl<QPushButton>(window, "config.vprenderer.color.sdr_adjust_gamma.inherit")->click();
-        require(adjustment->checkState() == Qt::PartiallyChecked, "Returning to profile default lost saved mode");
-        save(window);
-        require(!readBytes(path).contains("sdr_adjust_gamma: on"), "Returning to inheritance left an explicit override");
-        require(readBytes(path).contains("calibration_lut_input_gamma: bt1886"), "Saved Color LUT input was lost");
+        const auto saved = readBytes(path);
+        require(saved.contains("sdr_adjust_gamma: passthrough") && saved.contains("sdr_input_transfer: 2.4") &&
+            saved.contains("output_gamma: 2.4 # preserve calibration comment") &&
+            saved.contains("hdr_tone_map_target_gamma: 2.4") && saved.contains("# SDR gamma update:"),
+            "Beta normalization or its report did not persist");
+        ConfigEditorWindow reloaded(path, 0, true);
+        require(!requireControl<QPushButton>(reloaded, "applyConfiguration")->isEnabled(), "Migration repeats on reload");
     }
+
 }
 
 void testCalibrationControlsFollowConfirmedRuntimeLut()
@@ -1496,6 +1488,9 @@ void testCalibrationControlsFollowConfirmedRuntimeLut()
         hdr->isVisibleTo(&window) && gamutLabel->text() == "LUT input gamut", "LUT mode retained irrelevant display controls");
     selectData(hdr, "2.2");
     require(source->currentData().toString() == "2.4", "HDR LUT gamma changed the SDR reference");
+    auto* sdrLutGamma = requireControl<QComboBox>(window, "config.vprenderer.color.sdr_lut_input_gamma");
+    require(sdrLutGamma->currentText() == "No gamma conversion",
+        "Omitted SDR LUT gamma has an ambiguous or HDR-specific default label");
     if (!captures.isEmpty())
     {
         QCoreApplication::processEvents();
@@ -1546,6 +1541,40 @@ void testCalibrationControlsFollowConfirmedRuntimeLut()
     requireControl<QPushButton>(window, "config.vprenderer.color.luminance_link")->click();
     require(requireControl<QStackedWidget>(window, "settingsPages")->currentIndex() == 2 &&
         requireControl<QToolButton>(window, "rendererSection.toneMapping")->isChecked(), "Luminance link did not reveal Rendering controls");
+}
+
+void testIndependentSdrLutGamma()
+{
+    QTemporaryDir directory;
+    const QString path = directory.filePath("VideoProcessor.cfg");
+    {
+        ConfigEditorWindow window(path, 0, true);
+        auto combo = [&](const char* key) { return requireControl<QComboBox>(window, QString("config.vprenderer.color.") + key); };
+        require(combo("sdr_response")->currentData() == "passthrough", "Fresh SDR conversion is not opt-in");
+        for (const char* key : { "sdr_response", "sdr_input_transfer", "output_gamma", "hdr_tone_map_target_gamma", "sdr_lut_input_gamma" })
+            require(combo(key)->findData("bt1886") < 0, "BT.1886 remains selectable");
+        auto* lutGamma = combo("sdr_lut_input_gamma");
+        auto* hdrGamma = combo("hdr_tone_map_target_gamma");
+        require(lutGamma->currentData() == "passthrough", "SDR LUT conversion is not opt-in");
+        requireControl<QRadioButton>(window, "config.vprenderer.color.calibration_method.lut")->click();
+        QCoreApplication::processEvents();
+        require(!lutGamma->isHidden(), "LUT mode does not expose SDR LUT input gamma");
+        selectData(combo("sdr_input_transfer"), "2.4");
+        selectData(lutGamma, "2.2");
+        selectData(hdrGamma, "2.6");
+        require(combo("sdr_input_transfer")->currentData() == "2.4" && lutGamma->currentData() == "2.2",
+            "HDR edit changed the SDR contract");
+        selectData(lutGamma, "2.4");
+        require(hdrGamma->currentData() == "2.6", "SDR edit changed HDR gamma");
+        selectData(lutGamma, "2.2");
+        save(window);
+    }
+    const auto saved = readBytes(path);
+    require(saved.contains("sdr_lut_input_gamma: 2.2") && saved.contains("hdr_tone_map_target_gamma: 2.6") &&
+        saved.contains("sdr_input_transfer: 2.4"), "Separate gamma settings did not persist");
+    ConfigEditorWindow reloaded(path, 0, true);
+    require(requireControl<QComboBox>(reloaded, "config.vprenderer.color.sdr_lut_input_gamma")->currentData() == "2.2",
+        "SDR LUT gamma failed to reload");
 }
 
 void testCalibrationProfileOwnsLutAndHdrGamma()
@@ -1638,7 +1667,7 @@ void testHdrTargetGammaLoadsPriorInputAliases()
             "Prior target primaries did not load in Target gamut");
         requireControl<QListWidget>(window, "config.vprenderer.color.profiles")->setCurrentRow(1);
         require(hdr->property("effectiveValue").toString() == expected, "Prior input gamma inheritance was lost");
-        selectData(hdr, "bt1886");
+        selectData(hdr, "2.6");
         save(window);
         const QByteArray saved = readBytes(path);
         ConfigEditorCore::ConfigDocument persisted;
@@ -1648,7 +1677,7 @@ void testHdrTargetGammaLoadsPriorInputAliases()
         const auto selectedSettings = persisted.SectionSettings(selectedSection);
         const auto canonical = std::find_if(selectedSettings.begin(), selectedSettings.end(), [](const auto& setting)
         { return setting.first == "hdr_tone_map_target_gamma"; });
-        require(canonical != selectedSettings.end() && canonical->second == "bt1886",
+        require(canonical != selectedSettings.end() && canonical->second == "2.6",
             (std::string("HDR target gamma did not save canonically in ") + selectedSection +
             "; current=" + persisted.Get(selectedSection.c_str(), "hdr_tone_map_target_gamma") +
             "; selected=" + hdr->currentData().toString().toStdString()).c_str());
@@ -2934,11 +2963,12 @@ void testQueueUnitsAndLutControlsUseConsistentRows()
     auto* gamut = requireControl<QComboBox>(window,
         QStringLiteral("config.vprenderer.color.target_primaries"));
     selectData(gamut, QStringLiteral("REC709"));
-    QCoreApplication::processEvents();
+    for (int settle = 0; settle < 4; ++settle) QCoreApplication::processEvents();
     const int slotX = bt709->mapTo(&window, QPoint()).x();
     const int slotWidth = bt709->width();
     selectData(gamut, QStringLiteral("P3_D65"));
     QCoreApplication::processEvents();
+    for (int settle = 0; settle < 4; ++settle) QCoreApplication::processEvents();
     require(p3->mapTo(&window, QPoint()).x() == slotX && p3->width() == slotWidth,
         "Switching LUT gamut changed the visible dropdown geometry");
 	require(bt709->isEnabled() && p3->isEnabled() && bt2020->isEnabled(),
@@ -3274,12 +3304,11 @@ void testChoiceLabelsAndVpRendererName()
 			QStringLiteral("Auto: Follows accepted transport; see live output"),
 		"Calibration LUT enablement unexpectedly changed Auto gamma");
 	calibrationEnabled->setChecked(false);
-    require(requireControl<QCheckBox>(window, "config.vprenderer.color.sdr_adjust_gamma")->checkState() == Qt::PartiallyChecked,
-        "Saved automatic gamma policy not indicated");
-    require(requireControl<QLabel>(window, "config.vprenderer.color.sdr_adjust_gamma.status")->text().contains("Saved behavior retained"),
-        "Saved automatic gamma policy not explained");
-    require(requireControl<QComboBox>(window, "config.vprenderer.color.sdr_input_transfer")->currentText().contains("BT.1886"),
-        "Saved SDR automatic assumption not explained");
+    require(requireControl<QCheckBox>(window, "config.vprenderer.color.sdr_adjust_gamma")->checkState() == Qt::Unchecked,
+        "Saved automatic adjustment was not translated to passthrough");
+    require(requireControl<QComboBox>(window, "config.vprenderer.color.sdr_input_transfer")->currentData() == "2.4",
+        "Saved SDR automatic reference was not translated to 2.4");
+
 	require(requireControl<QLabel>(window,
 		QStringLiteral("config.vprenderer.display_bit_depth.auto_status"))->text() ==
 			QStringLiteral("Auto: Output format"),
@@ -5421,7 +5450,7 @@ void testCalibratedUiDefaultsAndDerivedTransport()
             "Old Output page link did not open the combined page");
         auto combo = [&](const char* name) { return requireControl<QComboBox>(window, QString::fromLatin1(name)); };
         require(combo("config.vprenderer.color.output_gamma")->currentData() == QStringLiteral("2.2"), "Fresh display gamma is not 2.2");
-        require(combo("config.vprenderer.color.sdr_input_transfer")->currentData() == QStringLiteral("2.2"), "Fresh input gamma is not 2.2");
+        require(combo("config.vprenderer.color.sdr_input_transfer")->currentData() == QStringLiteral("2.4"), "Fresh input gamma is not 2.4");
         require(combo("config.vprenderer.display_bit_depth")->currentData() == QStringLiteral("10"), "Fresh dither depth is not 10");
         require(requireControl<QLineEdit>(window, QStringLiteral("config.vprenderer.sdr_target_nits"))->text() == QStringLiteral("100"), "Fresh target nits is not 100");
         require(requireControl<QLineEdit>(window, QStringLiteral("config.vprenderer.sdr_black_nits"))->text() == QStringLiteral("0"), "Fresh target black is not 0");
@@ -5522,7 +5551,7 @@ output_range: full
     require(range->currentData().toString() == "limited", "First Output was not copied to second Color");
     require(requireControl<QLineEdit>(window,"config.vprenderer.color.shortcut")->text() == "F6",
         "Output shortcut replaced Color shortcut");
-    selectData(requireControl<QComboBox>(window,"config.vprenderer.color.hdr_tone_map_target_gamma"), "bt1886");
+    selectData(requireControl<QComboBox>(window,"config.vprenderer.color.hdr_tone_map_target_gamma"), "2.6");
     requireControl<QCheckBox>(window,"config.vprenderer.color.sdr_adjust_gamma")->setCheckState(Qt::Unchecked);
     save(window);
     const QByteArray saved = readBytes(path);
@@ -5534,7 +5563,7 @@ output_range: full
         "Migration did not preserve an exact original-file backup");
     ConfigEditorWindow reloaded(path, 0, true);
     requireControl<QListWidget>(reloaded,"config.vprenderer.color.profiles")->setCurrentRow(1);
-    require(requireControl<QComboBox>(reloaded,"config.vprenderer.color.hdr_tone_map_target_gamma")->currentData().toString() == "bt1886",
+    require(requireControl<QComboBox>(reloaded,"config.vprenderer.color.hdr_tone_map_target_gamma")->currentData().toString() == "2.6",
         "LUT domain changed on reload");
     require(requireControl<QCheckBox>(reloaded,"config.vprenderer.color.sdr_adjust_gamma")->checkState() == Qt::Unchecked,
         "Explicit pass-through changed on reload");
@@ -5614,6 +5643,7 @@ int main(int argc, char** argv)
     failures += run("calibration layout preserves independent slots", testCalibrationLayoutKeepsIndependentLutSlots);
     failures += run("calibration controls follow confirmed runtime LUT", testCalibrationControlsFollowConfirmedRuntimeLut);
     failures += run("HDR target gamma loads prior input aliases", testHdrTargetGammaLoadsPriorInputAliases);
+    failures += run("independent SDR LUT gamma", testIndependentSdrLutGamma);
     failures += run("calibration profile owns LUT and HDR gamma", testCalibrationProfileOwnsLutAndHdrGamma);
     failures += run("legacy Rendering color settings migrate to Color Config",
         testLegacyRendererColorSettingsMigrateToColorConfigs);

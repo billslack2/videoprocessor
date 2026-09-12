@@ -1155,7 +1155,10 @@ void ConfigEditorWindow::migrateUnifiedColorOutputProfiles()
 
 void ConfigEditorWindow::migrateCalibrationProfiles()
 {
-    if (configurationLoaded_ && document_ && document_->MigrateCalibrationProfiles())
+    if (!configurationLoaded_ || !document_) return;
+    const bool profilesChanged = document_->MigrateCalibrationProfiles();
+    const bool transfersChanged = document_->MigrateTransferChoices();
+    if (profilesChanged || transfersChanged)
     {
         dirty_ = true;
         hasPendingMigrations_ = true;
@@ -1180,7 +1183,8 @@ void ConfigEditorWindow::seedCalibratedProfile(const QString& root, const QStrin
         set("calibration_lut_enabled", "false"); set("hdr_tone_map_target_gamma", "2.2");
         set("calibration_lut_bt709", "none"); set("calibration_lut_p3_d65", "none");
         set("calibration_lut_bt2020", "none");
-        set("sdr_input_transfer", "2.2"); set("sdr_adjust_gamma", "on");
+        set("sdr_input_transfer", "2.4"); set("sdr_adjust_gamma", "passthrough");
+        set("sdr_lut_input_gamma", "passthrough");
         set("report_bt2020_to_display", "false");
         set("output_range", "full"); set("output_transport_gamma", "2.2");
         set("output_presentation", "auto"); set("diagnostic_allow_limited_g22", "false");
@@ -1580,11 +1584,11 @@ void ConfigEditorWindow::refreshActiveProfileIndicators()
     const QString queue = available ? QString::fromLocal8Bit(active.queue) : QString();
     const QString sourceEotf = available ?
         QString::fromLocal8Bit(active.sourceEotf).trimmed() : QString();
-    // The renderer declares captured SDR as BT.1886 before applying the
+    // The renderer assumes pure gamma 2.4 for captured SDR before applying the
     // configured SDR-transfer policy. For HDR inputs, expose the actual EOTF
     // so an SDR-only setting does not imply it is currently active.
     liveSourceTransfer_ = sourceEotf.compare(QStringLiteral("SDR"),
-        Qt::CaseInsensitive) == 0 ? QStringLiteral("BT.1886") : sourceEotf;
+        Qt::CaseInsensitive) == 0 ? QStringLiteral("2.4 (assumed)") : sourceEotf;
     liveCalibrationAvailable_ = available && active.calibrationStatusAvailable != 0;
     liveCalibrationLutAttached_ = liveCalibrationAvailable_ && active.calibrationLutAttached != 0;
     liveCalibrationHdrSource_ = sourceEotf.startsWith(QStringLiteral("PQ"), Qt::CaseInsensitive) ||
@@ -1917,21 +1921,14 @@ void ConfigEditorWindow::refreshCalibrationControls()
         const QSignalBlocker blocker(response);
         response->clear();
         response->addItem(QStringLiteral("No gamma adjustment"), QStringLiteral("passthrough"));
-        for (const QString& gamma : { QStringLiteral("bt1886"), QStringLiteral("srgb"),
+        for (const QString& gamma : { QStringLiteral("srgb"),
             QStringLiteral("1.8"), QStringLiteral("2.0"), QStringLiteral("2.2"),
             QStringLiteral("2.4"), QStringLiteral("2.6"), QStringLiteral("2.8") })
             response->addItem(friendlyChoiceLabel(gamma), gamma);
         const QString mode = conversion->property("effectiveValue").toString().toLower();
         const QString gamma = effectiveChoice(sourceGamma);
         QString selected = mode == QStringLiteral("passthrough") ? mode : gamma;
-        if (mode != QStringLiteral("on") && mode != QStringLiteral("passthrough"))
-        {
-            response->addItem(mode == QStringLiteral("off") ? QStringLiteral("Existing output-transfer behavior") :
-                QStringLiteral("Existing conditional behavior"), QString());
-            selected.clear();
-        }
-        else if (response->findData(selected) < 0)
-            response->addItem(QStringLiteral("Existing reference: %1").arg(gamma), gamma);
+        if (response->findData(selected) < 0) selected = QStringLiteral("2.4");
         const QStringList profiles = profileSections(QStringLiteral("vprenderer.color"));
         if (!profiles.isEmpty() && colorSection != profiles.front())
             response->addItem(QStringLiteral("Use profile default"), QStringLiteral("__inherit"));
@@ -1940,9 +1937,8 @@ void ConfigEditorWindow::refreshCalibrationControls()
         response->setAccessibleName(label);
         if (auto* fieldLabel = findChild<QLabel*>(QStringLiteral("config.vprenderer.color.sdr_response.label")))
             fieldLabel->setText(label);
-        response->setToolTip(QStringLiteral("SDR only. Select the viewing response VP should produce on your calibrated display. No gamma adjustment preserves the transfer without disabling gamut mapping, scaling or range conversion. Existing conditional settings stay unchanged until you choose a new value."));
-        if (selected == QStringLiteral("bt1886"))
-            response->setToolTip(response->toolTip() + QStringLiteral(" BT.1886 uses a fixed SDR reference contrast of 1000:1. Use 2.4 for a pure power curve."));
+        response->setToolTip(QStringLiteral("SDR only. Select the viewing response VP should produce on your calibrated display. No gamma adjustment preserves the transfer without disabling gamut mapping, scaling or range conversion."));
+
     }
     if (sourceGamma)
     {
@@ -1951,17 +1947,9 @@ void ConfigEditorWindow::refreshCalibrationControls()
         sourceGamma->setAccessibleName(label);
         if (auto* fieldLabel = findChild<QLabel*>(QStringLiteral("config.vprenderer.color.sdr_input_transfer.label")))
             fieldLabel->setText(label);
-        QString help = lutConfigured ? QStringLiteral(
-            "Match the SDR reference for which the LUT was created. The LUT determines displayed gamma; "
-            "this reference describes SDR during scaling and gamut processing. "
-            "If no usable LUT is attached, the same value is used as Desired SDR gamma when gamma processing is enabled.") :
-            QStringLiteral("Choose the SDR response you want to see. With gamma processing enabled, VP compensates for calibrated display gamma. "
-                "For example, Desired 2.4 and Display 2.2 produces a 2.4 response. This is a viewing choice, not detected source metadata.");
-        const QString reference = effectiveChoice(sourceGamma);
-        if (reference == QStringLiteral("auto"))
-            help += QStringLiteral(" Saved Auto follows the capture transfer declaration, currently BT.1886 for generic SDR; this does not detect mastering gamma.");
-        if (reference == QStringLiteral("bt1886") || reference == QStringLiteral("auto"))
-            help += QStringLiteral(" BT.1886 uses a fixed SDR reference contrast of 1000:1, not a measured black level. Use 2.4 for a pure power curve.");
+        const QString help = QStringLiteral("Assumed SDR reference response for decoding before linear-light processing. "
+            "Default: pure gamma 2.4; this is not detected mastering metadata. "
+            "SDR LUT input gamma separately chooses the encoding delivered to the LUT. HDR settings do not change this reference.");
         sourceGamma->setToolTip(help);
         if (auto* hint = findChild<QLabel*>(QStringLiteral("config.vprenderer.color.sdr_input_transfer.help")))
             hint->setText(help);
@@ -1970,8 +1958,6 @@ void ConfigEditorWindow::refreshCalibrationControls()
     {
         QString text = lutConfigured ? QStringLiteral("Used if no usable LUT is attached. Editing these settings does not disable the LUT.") :
             QStringLiteral("Enter the response your display is calibrated to.");
-        if (effectiveChoice(displayGamma) == QStringLiteral("bt1886"))
-            text += QStringLiteral(" BT.1886 uses 1000:1 for SDR; HDR uses Rendering's target white and black.");
         status->setText(text);
     }
     if (auto* status = findChild<QLabel*>(QStringLiteral("config.vprenderer.color.lut_attachment_status")))
@@ -1986,13 +1972,11 @@ void ConfigEditorWindow::refreshCalibrationControls()
     }
     if (auto* status = findChild<QLabel*>(QStringLiteral("config.vprenderer.color.hdr_tone_map_target_gamma.status")))
     {
-        QString text = QStringLiteral("HDR only: match the encoding expected by the LUT. SDR uses its separate reference gamma.");
-        if (effectiveChoice(hdrGamma) == QStringLiteral("bt1886"))
-            text += QStringLiteral(" BT.1886 uses Rendering's Target nits and Target black.");
+        QString text = QStringLiteral("HDR only: match the encoding expected by the LUT. SDR uses its separate LUT input gamma.");
         status->setText(text);
         hdrGamma->setToolTip(text + QStringLiteral(" Without a usable LUT, the saved display gamma is used instead."));
         if (auto* layout = qobject_cast<QFormLayout*>(status->property("calibrationForm").value<QObject*>()))
-            layout->setRowVisible(status, lutConfigured && effectiveChoice(hdrGamma) == QStringLiteral("bt1886"));
+            layout->setRowVisible(status, false);
     }
 
 }
@@ -4255,8 +4239,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             [this](int) { refreshCalibrationControls(); });
         auto* outputGamma = addChoice(QStringLiteral("Calibrated display gamma"),
             QStringLiteral("output_gamma"),
-            {  QStringLiteral("bt1886"),
-                QStringLiteral("srgb"), QStringLiteral("1.8"),
+            { QStringLiteral("srgb"), QStringLiteral("1.8"),
                 QStringLiteral("2.0"), QStringLiteral("2.2"),
                 QStringLiteral("2.4"), QStringLiteral("2.6"),
                 QStringLiteral("2.8") });
@@ -4296,7 +4279,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         form->labelForField(sdrResponse)->setObjectName(QStringLiteral("config.vprenderer.color.sdr_response.label"));
         desiredSdrGamma = addChoice(QStringLiteral("Desired SDR gamma"),
             QStringLiteral("sdr_input_transfer"),
-            { QStringLiteral("bt1886"), QStringLiteral("srgb"),
+            { QStringLiteral("srgb"),
                 QStringLiteral("1.8"), QStringLiteral("2.0"), QStringLiteral("2.2"),
                 QStringLiteral("2.4"), QStringLiteral("2.6"), QStringLiteral("2.8") });
         if (auto* label = qobject_cast<QLabel*>(form->labelForField(desiredSdrGamma)))
@@ -4348,16 +4331,26 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         });
 
 		calibrationLutEnabled->setToolTip(QStringLiteral(
-			"A usable LUT handles display calibration. SDR retains its source encoding through the pre-LUT transfer stage; HDR is encoded with HDR tone-map target gamma. "
+			"A usable LUT handles display calibration. SDR can retain its reference encoding or convert to the declared SDR LUT input gamma; HDR uses its separate LUT input gamma. "
             "HDR peak analysis and pixel-shader tone mapping remain active."));
+        auto* sdrLutGamma = addChoice(QStringLiteral("SDR LUT input gamma"),
+            QStringLiteral("sdr_lut_input_gamma"),
+            { QStringLiteral("passthrough"), QStringLiteral("srgb"),
+              QStringLiteral("1.8"), QStringLiteral("2.0"), QStringLiteral("2.2"),
+              QStringLiteral("2.4"), QStringLiteral("2.6"), QStringLiteral("2.8") });
+        sdrLutGamma->setItemText(sdrLutGamma->findData(QStringLiteral("passthrough")), QStringLiteral("No gamma conversion"));
+        sdrLutGamma->setToolTip(QStringLiteral("SDR only, with a usable LUT. Select the input gamma the LUT was built for. "
+            "VP decodes using SDR reference gamma, then encodes into this gamma before the LUT. "
+            "No gamma conversion uses the same reference on both sides. This does not change HDR LUT input gamma. "
+            "A .cube file does not reliably identify its intended input gamma."));
         auto* hdrTargetGamma = addChoice(QStringLiteral("HDR LUT input gamma"),
             QStringLiteral("hdr_tone_map_target_gamma"),
-            { QStringLiteral("bt1886"), QStringLiteral("srgb"),
+            { QStringLiteral("srgb"),
               QStringLiteral("1.8"), QStringLiteral("2.0"), QStringLiteral("2.2"),
               QStringLiteral("2.4"), QStringLiteral("2.6"), QStringLiteral("2.8") });
         hdrTargetGamma->setToolTip(QStringLiteral(
             "The SDR encoding produced by HDR tone mapping before a usable calibration LUT. "
-            "Prepare the LUT for this input gamma. Default: 2.2. SDR uses the SDR reference for LUT setting. "
+            "Prepare the LUT for this input gamma. Default: 2.2. SDR has its own LUT input gamma setting. "
             "Without a usable LUT, calibrated display gamma is used instead."));
         auto* hdrGammaStatus = helpLabel(QString());
         hdrGammaStatus->setObjectName(QStringLiteral("config.vprenderer.color.hdr_tone_map_target_gamma.status"));
@@ -4400,7 +4393,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 		for (QComboBox* selector : externalLutSelectors)
 			selector->setToolTip(QStringLiteral(
 				"The slot follows Target gamut for both SDR and HDR, never source gamut. "
-                "The Cube receives full-domain RGB in the source SDR encoding or HDR tone-map target gamma. "
+                "The Cube receives full-domain RGB in the selected SDR or HDR LUT input gamma. "
                 "Prepare calibration LUTs for that input contract; gamut mapping has already run. "
                 "None disables this slot; inheritance uses the default Color / Output profile's slot."));
 		const auto refreshLutSelectors = [this, state, externalLutSelectors, discoveredLuts]
@@ -4488,7 +4481,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             "A retained last-known-good LUT remains active if a replacement for the same contract is rejected."));
         form->addRow(QString(), lutFolderHelp);
 
-        for (QWidget* control : QList<QWidget*>{ hdrTargetGamma, hdrGammaStatus,
+        for (QWidget* control : QList<QWidget*>{ sdrLutGamma, hdrTargetGamma, hdrGammaStatus,
             lutBt709, lutP3, lutBt2020, openLutFolder, lutFolderHelp, lutAttachmentStatus, fallbackButton, desiredSdrGamma })
         {
             control->setProperty("calibrationForm", QVariant::fromValue(static_cast<QObject*>(calibrationForm)));
@@ -4794,6 +4787,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             "HDR-to-SDR tone-mapping destination: 40 through 500 nits. "
             "Does not change SDR input brightness or processing. "
             "Invalid values are rejected when saving; the saved value is retained."));
+        sdrTargetWhiteLevel->setValidator(new QDoubleValidator(40.0, 500.0, 6, sdrTargetWhiteLevel));
         connect(sdrTargetWhiteLevel, &QLineEdit::textChanged, this,
             [this](const QString&) { refreshRendererAutoStatus(); });
         auto* sdrBlackLevel = addText(QStringLiteral("HDR tone-map target black"),
@@ -5227,7 +5221,9 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             if (sectionPrefix == QStringLiteral("vprenderer.color"))
             {
                 if (key == QStringLiteral("target_primaries")) return QStringLiteral("rec709");
-                if (key == QStringLiteral("sdr_adjust_gamma")) return QStringLiteral("on");
+                if (key == QStringLiteral("sdr_adjust_gamma")) return QStringLiteral("passthrough");
+                if (key == QStringLiteral("sdr_input_transfer")) return QStringLiteral("2.4");
+                if (key == QStringLiteral("sdr_lut_input_gamma")) return QStringLiteral("passthrough");
                 if (key == QStringLiteral("report_bt2020_to_display")) return QStringLiteral("false");
                 if (key == QStringLiteral("hdr_tone_map_target_gamma")) return QStringLiteral("2.2");
                 if (key == QStringLiteral("calibration_lut_enabled")) return QStringLiteral("false");
@@ -5478,12 +5474,12 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                 const bool scalingAutoChoice = sectionPrefix == QStringLiteral("vprenderer.scaling") && autoIndex >= 0;
                 const bool hasUnspecifiedChoice = combo->count() > 0 &&
                     combo->itemData(0).toString().isEmpty();
-                static const QStringList calibratedKeys = { "output_gamma", "output_range", "output_transport_gamma", "sdr_adjust_gamma", "sdr_input_transfer", "display_bit_depth", "hdr_tone_map_target_gamma" };
+                static const QStringList calibratedKeys = { "output_gamma", "output_range", "output_transport_gamma", "sdr_adjust_gamma", "sdr_input_transfer", "display_bit_depth", "hdr_tone_map_target_gamma", "sdr_lut_input_gamma" };
                 const bool retiredRootDefault = defaultProfile && (calibratedKeys.contains(field.key) || calibrationLutSlot);
                 if (hasUnspecifiedChoice)
                     if (auto* model = qobject_cast<QStandardItemModel*>(combo->model()))
                         model->item(0)->setEnabled(!retiredRootDefault && !(defaultProfile && scalingAutoChoice));
-                const bool hideUnspecifiedChoice = (defaultProfile && calibrationLutSlot) || (retiredRootDefault && !raw.isEmpty()) || rootRendererExplicitDefault ||
+                const bool hideUnspecifiedChoice = (defaultProfile && calibrationLutSlot) || (retiredRootDefault && (!raw.isEmpty() || field.key == QStringLiteral("sdr_lut_input_gamma"))) || rootRendererExplicitDefault ||
                     (defaultProfile && (sectionPrefix == QStringLiteral("vprenderer") || scalingAutoChoice) &&
                         autoIndex >= 0);
                 if (auto* view = qobject_cast<QListView*>(combo->view()))
@@ -5493,7 +5489,8 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                     combo->setItemText(combo->findData(QStringLiteral("none")), QStringLiteral("None"));
 				const QString inheritedDisplay = calibrationLutSlot
                     ? (configured.compare(QStringLiteral("none"), Qt::CaseInsensitive) == 0 ? QStringLiteral("None") : QFileInfo(configured).completeBaseName())
-					: friendlyChoiceLabel(configured);
+					: (field.key == QStringLiteral("sdr_lut_input_gamma") && configured == QStringLiteral("passthrough") ?
+                        QStringLiteral("No gamma conversion") : friendlyChoiceLabel(configured));
                 if (hasUnspecifiedChoice)
                 {
 					if (requiresExplicitValue && raw.isEmpty())
@@ -5542,7 +5539,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 				if (index < 0)
                 {
                     const bool legacyAuto = configured.compare(QStringLiteral("auto"), Qt::CaseInsensitive) == 0;
-                    combo->addItem(legacyAuto ? (field.key == QStringLiteral("sdr_input_transfer") ? QStringLiteral("Saved SDR assumption: BT.1886") : QStringLiteral("Saved automatic policy")) :
+                    combo->addItem(legacyAuto ? (field.key == QStringLiteral("sdr_input_transfer") ? QStringLiteral("SDR reference: 2.4") : QStringLiteral("Saved automatic policy")) :
                         calibrationLutSlot ? QStringLiteral("Missing: %1").arg(configured) : friendlyChoiceLabel(configured), configured);
                     if (calibrationLutSlot)
                         combo->setItemData(combo->count() - 1, true, Qt::UserRole + 1);

@@ -770,7 +770,7 @@ namespace
 		case EOTF::PQ: return PL_COLOR_TRC_PQ;
 		case EOTF::HLG: return PL_COLOR_TRC_HLG;
 		case EOTF::HDR: return PL_COLOR_TRC_GAMMA22;
-		case EOTF::SDR: return PL_COLOR_TRC_BT_1886;
+		case EOTF::SDR: return PL_COLOR_TRC_GAMMA24;
 		default: return PL_COLOR_TRC_UNKNOWN;
 		}
 	}
@@ -949,14 +949,14 @@ namespace
         std::string calibrationLutInputGamma = "display";
         std::string calibrationLutInputTransfer; // Accepted Rendering alias for HDR target.
         std::string hdrToneMapTargetGamma;
+        std::string sdrLutInputGamma = "passthrough";
         uint64_t configurationIdentity = 0;
         std::string configurationPath;
 		std::string sdrTargetPrimaries = "rec709";
 		bool reportBt2020ToDisplay = false;
-		std::string sdrInputTransfer = "auto";
-		// Missing keys retain the historical VP behavior: honor the declared SDR
-		// source transfer and color-manage it to the accepted output transfer.
-		std::string sdrAdjustGamma = "on";
+		std::string sdrInputTransfer = "2.4";
+		// SDR gamma conversion is opt-in and independent of HDR tone mapping.
+		std::string sdrAdjustGamma = "passthrough";
 		bool outputDiagnostics = false;
 		bool diagnosticDisableShaderCache = false;
 		// Developer-only probes. These are deliberately named experiments rather
@@ -1049,7 +1049,7 @@ namespace
 			<< settings.outputPresentation << '|' << settings.outputRange << '|'
 			<< settings.outputTransportGamma << '|' << settings.outputGamma << '|'
 			<< settings.sdrTargetPrimaries << '|'
-			<< settings.reportBt2020ToDisplay << '|' << settings.hdrToneMapTargetGamma << '|' << settings.sdrInputTransfer << '|'
+			<< settings.reportBt2020ToDisplay << '|' << settings.hdrToneMapTargetGamma << '|' << settings.sdrLutInputGamma << '|' << settings.sdrInputTransfer << '|'
 			<< settings.sdrAdjustGamma << '|'
 			<< settings.outputDiagnostics << '|' << settings.diagnosticDisableShaderCache << '|'
 			<< settings.diagnosticDisableCompute << '|'
@@ -1830,7 +1830,9 @@ namespace
 		{
 			DebugLog::Log("display rule '%s': invalid report_bt2020_to_display value '%s'; retaining base setting", rule.name.c_str(), raw.c_str());
 		}
-		readChoice("sdr_input_transfer", settings.sdrInputTransfer, { "auto", "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" });
+		readChoice("sdr_lut_input_gamma", settings.sdrLutInputGamma,
+            { "passthrough", "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" });
+        readChoice("sdr_input_transfer", settings.sdrInputTransfer, { "auto", "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" });
 		readChoice("sdr_adjust_gamma", settings.sdrAdjustGamma,
 			{ "auto", "on", "off", "passthrough" });
         readChoice("calibration_lut_input_gamma", settings.calibrationLutInputGamma,
@@ -2194,15 +2196,17 @@ namespace
 			settings.reportBt2020ToDisplay = false;
 		}
 		settings.sdrInputTransfer = ReadChoice(
-			config, "sdr_input_transfer", "auto",
+			config, "sdr_input_transfer", "2.4",
 			{ "auto", "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" });
 		settings.sdrAdjustGamma = ReadChoice(
-			config, "sdr_adjust_gamma", "on",
+			config, "sdr_adjust_gamma", "passthrough",
 			{ "auto", "on", "off", "passthrough" });
         settings.calibrationLutInputGamma = ReadChoice(config, "calibration_lut_input_gamma", "display",
             { "display", "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" });
         settings.calibrationLutInputTransfer = ReadChoice(config, "calibration_lut_input_transfer", "",
             { "display", "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" });
+        settings.sdrLutInputGamma = ReadChoice(config, "sdr_lut_input_gamma", "passthrough",
+            { "passthrough", "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" });
         settings.hdrToneMapTargetGamma = ReadChoice(config, "hdr_tone_map_target_gamma", "",
             { "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" });
 		if (TryGetDisplayString(config, "output_diagnostics", rawValue) &&
@@ -2532,8 +2536,19 @@ namespace
 
         settings.hdrToneMapTargetGamma = LibplaceboCalibrationLut::ResolveHdrTargetGamma(
             settings.hdrToneMapTargetGamma, settings.calibrationLutInputTransfer);
-        DebugLog::Log("calibration workflow: hdr_target_gamma=%s; SDR retains declared source response; profiles=%s",
-            settings.hdrToneMapTargetGamma.c_str(), activeProfiles.c_str());
+        for (auto entry : { std::make_pair("output_gamma", &settings.outputGamma),
+            std::make_pair("sdr_input_transfer", &settings.sdrInputTransfer),
+            std::make_pair("hdr_tone_map_target_gamma", &settings.hdrToneMapTargetGamma),
+            std::make_pair("sdr_lut_input_gamma", &settings.sdrLutInputGamma) })
+        {
+            const auto next = RendererProfileConfig::NormalizeCalibrationChoice(entry.first, *entry.second);
+            if (next == *entry.second) continue;
+            DebugLog::Log("calibration: %s=%s interpreted as %s", entry.first, entry.second->c_str(), next.c_str());
+            *entry.second = next;
+        }
+        settings.sdrAdjustGamma = RendererProfileConfig::NormalizeCalibrationChoice("sdr_adjust_gamma", settings.sdrAdjustGamma);
+        DebugLog::Log("calibration workflow: hdr_target_gamma=%s sdr_lut_input_gamma=%s profiles=%s",
+            settings.hdrToneMapTargetGamma.c_str(), settings.sdrLutInputGamma.c_str(), activeProfiles.c_str());
         if (settings.calibrationLutInputGamma != "display")
             DebugLog::Log("calibration migration: saved Color calibration_lut_input_gamma=%s is accepted but no longer controls LUT/HDR encoding; use Color / Output hdr_tone_map_target_gamma",
                 settings.calibrationLutInputGamma.c_str());
@@ -6672,7 +6687,7 @@ struct LibplaceboVideoRenderer::Impl
 			return;
 		}
 
-        const std::string candidateInput = LibplaceboCalibrationLut::HdrInputContractKey(settings.hdrToneMapTargetGamma);
+        const std::string candidateInput = LibplaceboCalibrationLut::InputContractKey(settings.hdrToneMapTargetGamma, settings.sdrLutInputGamma, settings.sdrInputTransfer);
         const bool sameContract = displayLutParsed && displayLut &&
             LibplaceboCalibrationLut::Contract{ displayLutPath, displayLutTarget,
                 displayLutInputTransfer, displayLutConstrainedBaseDirectory } ==
@@ -7253,6 +7268,7 @@ struct LibplaceboVideoRenderer::Impl
 		currentTransport.sdrInputTransfer = next.sdrInputTransfer;
 		currentTransport.sdrAdjustGamma = next.sdrAdjustGamma;
         currentTransport.hdrToneMapTargetGamma = next.hdrToneMapTargetGamma;
+        currentTransport.sdrLutInputGamma = next.sdrLutInputGamma;
         currentTransport.configurationIdentity = next.configurationIdentity;
         currentTransport.configurationPath = next.configurationPath;
 		currentTransport.outputDiagnostics = next.outputDiagnostics;
@@ -7285,6 +7301,7 @@ struct LibplaceboVideoRenderer::Impl
 				fields.push_back(name);
 		};
 		changed(current.hdrToneMapTargetGamma != next.hdrToneMapTargetGamma, "hdr_tone_map_target_gamma");
+        changed(current.sdrLutInputGamma != next.sdrLutInputGamma, "sdr_lut_input_gamma");
 		changed(current.sdrTargetNits != next.sdrTargetNits, "sdr_target_nits");
 		changed(current.sdrBlackNits != next.sdrBlackNits, "sdr_black_nits");
 		changed(current.refreshRateSwitchMode != next.refreshRateSwitchMode,
@@ -7454,8 +7471,8 @@ struct LibplaceboVideoRenderer::Impl
 		}
 
 		const bool lutChanged =
-            LibplaceboCalibrationLut::HdrInputContractKey(activeSettings.hdrToneMapTargetGamma) !=
-                LibplaceboCalibrationLut::HdrInputContractKey(settings.hdrToneMapTargetGamma) ||
+            LibplaceboCalibrationLut::InputContractKey(activeSettings.hdrToneMapTargetGamma, activeSettings.sdrLutInputGamma, activeSettings.sdrInputTransfer) !=
+                LibplaceboCalibrationLut::InputContractKey(settings.hdrToneMapTargetGamma, settings.sdrLutInputGamma, settings.sdrInputTransfer) ||
 			activeSettings.calibrationLutEnabled !=
 				settings.calibrationLutEnabled ||
 			activeSettings.calibrationLutBt709Path !=
@@ -9604,7 +9621,8 @@ struct LibplaceboVideoRenderer::Impl
             state.eotf == EOTF::SDR, actualOutput.safeToRender, displayLutParsed && displayLut,
             sdrAdjustGamma, LibplaceboOutput::ParseGamma(activeSettings.outputGamma),
             LibplaceboOutput::ParseGamma(activeSettings.hdrToneMapTargetGamma),
-            ToSdrTransfer(declaredSourceTransfer), ToSdrTransfer(acceptedOutputTransfer));
+            ToSdrTransfer(declaredSourceTransfer), ToSdrTransfer(acceptedOutputTransfer),
+            LibplaceboOutput::ParseGamma(activeSettings.sdrLutInputGamma));
         const auto renderTargetTransfer = FromSdrTransfer(calibrationTransfer.targetTransfer);
         lastSdrGammaDecision = calibrationTransfer.sdr;
 		if (lastSdrGammaDecision.action ==
@@ -9808,7 +9826,7 @@ struct LibplaceboVideoRenderer::Impl
 		{
 			lastLuminanceSignature = luminanceSignature.str();
 			DebugLog::Log(
-				"LUMINANCE_CONTRACT input_sdr=%d source_transfer=%s source_luma=%.4f..%.2f source_effective_hdr=%d target_transfer=%s target_luma=%.4f..%.2f target_effective_hdr=%d hdr_destination=%.4f..%.2f format=%s dxgi=%s peak_eligible=%d",
+				"LUMINANCE_CONTRACT input_sdr=%d source_transfer=%s source_luma=%.7g..%.2f source_effective_hdr=%d target_transfer=%s target_luma=%.7g..%.2f target_effective_hdr=%d hdr_destination=%.7g..%.2f format=%s dxgi=%s peak_eligible=%d",
 				state.eotf == EOTF::SDR ? 1 : 0,
 				pl_color_transfer_name(image.color.transfer),
 				image.color.hdr.min_luma, image.color.hdr.max_luma,
@@ -9826,7 +9844,7 @@ struct LibplaceboVideoRenderer::Impl
 		{
 			displayCalibrationContractLogged = true;
 			DebugLog::Log(
-				"display calibration contract: enabled=%d attached=%d display_gamma=%s hdr_target_gamma=%s resolved_target_transfer=%s carrier_transfer=%s target_primaries=%s target_luminance=%.4f..%.1f nits stage=post-DTM-gamma/pre-range",
+				"display calibration contract: enabled=%d attached=%d display_gamma=%s hdr_target_gamma=%s resolved_target_transfer=%s carrier_transfer=%s target_primaries=%s target_luminance=%.7g..%.1f nits stage=post-DTM-gamma/pre-range",
 				activeSettings.calibrationLutEnabled ? 1 : 0,
 				displayLutParsed && displayLut ? 1 : 0,
 				activeSettings.outputGamma.c_str(),
@@ -9840,7 +9858,7 @@ struct LibplaceboVideoRenderer::Impl
 		if (outputDiagnostics && !outputContractLogged)
 		{
 			DebugLog::Log(
-				"libplacebo output diagnostic contract: source_eotf=%d source_system=%s source_levels=%d source_transfer=%s source_luma=%.4f..%.1f returned_system=%s returned_levels=%d returned_transfer=%s returned_bits=%d/%d returned_luma=%.4f..%.1f display_bit_depth=%s final_bits=%d/%d shift=%d final_levels=%d final_transfer=%s final_luma=%.4f..%.1f dxgi=%s presentation=%s",
+				"libplacebo output diagnostic contract: source_eotf=%d source_system=%s source_levels=%d source_transfer=%s source_luma=%.7g..%.1f returned_system=%s returned_levels=%d returned_transfer=%s returned_bits=%d/%d returned_luma=%.4f..%.1f display_bit_depth=%s final_bits=%d/%d shift=%d final_levels=%d final_transfer=%s final_luma=%.4f..%.1f dxgi=%s presentation=%s",
 				static_cast<int>(state.eotf),
 				pl_color_system_name(image.repr.sys),
 				static_cast<int>(image.repr.levels),
@@ -13903,6 +13921,7 @@ bool LibplaceboVideoRenderer::GetOutputContractStatus(
         << "; dither target " << settings.displayBitDepth << " -> " << ditherDepth
         << " bits (surface " << status.swapchainBitDepth << ")"
         << "\nLUT: " << m_impl->displayLutStatus
+        << "; SDR LUT input gamma: " << settings.sdrLutInputGamma
         << "; HDR tone-map target gamma: " << settings.hdrToneMapTargetGamma
         << "; BT.2020 signaling: " << (!m_impl->reportBt2020ToDisplay ? "not requested / not applicable" :
             m_impl->bt2020SignalingFailed ? "failed" : "requested (wire unverified)")

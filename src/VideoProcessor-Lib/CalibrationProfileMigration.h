@@ -21,7 +21,7 @@ namespace CalibrationProfileMigration
     {
         return key == "calibration_lut_enabled" || key == "calibration_lut_bt709" ||
             key == "calibration_lut_p3_d65" || key == "calibration_lut_bt2020" ||
-            key == "hdr_tone_map_target_gamma" || key == "calibration_lut_input_transfer" ||
+            key == "sdr_lut_input_gamma" || key == "hdr_tone_map_target_gamma" || key == "calibration_lut_input_transfer" ||
             key == "calibration_lut_input_gamma";
     }
     inline bool IsArchive(const std::string& section)

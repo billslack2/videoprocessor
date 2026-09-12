@@ -567,6 +567,7 @@ namespace RendererProfileConfig
 				return IsNumberInRange(value, 40.0, 500.0);
 			}
 			if (key == "sdr_black_nits") return IsChoice(value, { "auto" }) || IsNumberInRange(value, 0.0, 500.0, false);
+			if (key == "sdr_lut_input_gamma") return IsChoice(value, { "passthrough", "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" });
 			if (key == "hdr_tone_map_target_gamma") return IsChoice(value, { "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" });
 			if (key == "calibration_lut_input_gamma" || key == "calibration_lut_input_transfer") return IsChoice(value, { "display", "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" });
 			if (key == "output_gamma") return IsChoice(value, { "auto", "bt1886", "srgb", "1.8", "2.0", "2.2", "2.4", "2.6", "2.8" });
@@ -822,7 +823,7 @@ namespace RendererProfileConfig
 			"report_bt2020_to_display", "sdr_adjust_gamma",
 			"sdr_input_transfer", "calibration_lut_input_gamma", "calibration_lut_input_transfer",
             "calibration_lut_enabled", "calibration_lut_bt709", "calibration_lut_p3_d65",
-            "calibration_lut_bt2020", "hdr_tone_map_target_gamma" };
+            "calibration_lut_bt2020", "hdr_tone_map_target_gamma", "sdr_lut_input_gamma" };
 		std::string expected;
 		return (colorKeys.find(key) != colorKeys.end() &&
 			ValidateBaseSetting(key, value)) ||
@@ -935,6 +936,19 @@ namespace RendererProfileConfig
         if (canonicalKey == "hdr_tone_map_target_gamma" && (rendering || color))
             return "calibration_lut_input_transfer";
         return {};
+    }
+
+    inline std::string NormalizeCalibrationChoice(const std::string& key, const std::string& value)
+    {
+        const auto normalized = ConfigFile::NormalizeName(value);
+        if ((key == "sdr_input_transfer" || key == "output_gamma" ||
+            key == "hdr_tone_map_target_gamma" || key == "sdr_lut_input_gamma" ||
+            key == "calibration_lut_input_transfer" || key == "calibration_lut_input_gamma") &&
+            normalized == "bt1886") return "2.4";
+        if (key == "sdr_input_transfer" && normalized == "auto") return "2.4";
+        if (key == "sdr_adjust_gamma" && (normalized == "auto" || normalized == "off"))
+            return "passthrough";
+        return value;
     }
 
     inline std::string CanonicalAliasValue(const std::string& canonicalKey,

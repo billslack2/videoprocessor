@@ -246,7 +246,8 @@ namespace LibplaceboOutput
     CalibrationTransferDecision ResolveCalibrationTransfers(bool inputIsSdr,
         bool outputSafe, bool lutActive, SdrAdjustGamma requested,
         GammaRequest displayGamma, GammaRequest hdrTargetGamma,
-        SdrTransfer declaredSource, SdrTransfer acceptedTransfer);
+        SdrTransfer declaredSource, SdrTransfer acceptedTransfer,
+        GammaRequest sdrLutInputGamma = GammaRequest::AUTO);
 
 	SdrTransfer ResolveCalibrationTargetTransfer(
 		GammaRequest configuredOutputGamma,
