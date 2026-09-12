@@ -1964,8 +1964,8 @@ void ConfigEditorWindow::refreshCalibrationControls()
     {
         const QString fallbackGamma = effectiveChoice(displayGamma);
         QString text = !matchesLive ? QStringLiteral("Live LUT status unavailable for these settings.") :
-            usableLut ? QStringLiteral("Attached — calibration LUT active.") :
-            QStringLiteral("Not attached — using display gamma %1.").arg(fallbackGamma);
+            usableLut ? QStringLiteral("Attached - calibration LUT active.") :
+            QStringLiteral("Not attached - using display gamma %1.").arg(fallbackGamma);
         if (!matchesLive) text += QStringLiteral(" Fallback display gamma: %1.").arg(fallbackGamma);
         status->setText(text);
         status->setToolTip(QStringLiteral("Attachment is confirmed only for the matching applied configuration. A last-known-good LUT can remain attached when a replacement is rejected; attachment does not prove that an edited file is active."));
@@ -4213,7 +4213,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         form->addRow(QStringLiteral("Calibration method"), methodRow);
         connect(methodGroup, &QButtonGroup::idClicked, this,
             [calibrationLutEnabled](int id) { calibrationLutEnabled->setChecked(id == 1); });
-        auto* luminanceLink = new QPushButton(QStringLiteral("Target white / black — Rendering"));
+        auto* luminanceLink = new QPushButton(QStringLiteral("Target white / black - Rendering"));
         luminanceLink->setObjectName(QStringLiteral("config.vprenderer.color.luminance_link"));
         luminanceLink->setMaximumWidth(280);
         luminanceLink->setToolTip(QStringLiteral("Edit the current Rendering profile's HDR target luminance. These values are not yet owned by this Color / Output profile."));
