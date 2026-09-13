@@ -1,4 +1,4 @@
-# VP-0186: Add edge padding to Screen Config picture alignment
+# VP-0186: Add screen-edge padding to Screen Config picture alignment
 
 ## Status
 
@@ -15,9 +15,10 @@ its crop, scale, or aspect.
 
 ## Required behavior
 
-- Add a `vertical_alignment_padding` Screen Config setting, expressed in source
-  pixels and defaulting to `0`. It is an edge inset, not added picture content:
-  the reserved area remains black/empty.
+- Add a `screen_edge_padding` Screen Config setting, expressed in output/screen
+  pixels and defaulting to `0`. It is a screen-edge inset, not content padding:
+  it does not add borders to the video, alter its active area, crop pixels, or
+  change picture scale. The reserved output area remains black/empty.
 - When `vertical_alignment` is `top`, position the fitted picture that many
   pixels below the top screen edge. When it is `bottom`, position the picture
   that many pixels above the bottom screen edge.
@@ -27,17 +28,18 @@ its crop, scale, or aspect.
   there is no unused vertical space, it has no visual effect; it must neither
   crop the picture nor scale it down to manufacture space. Record the requested
   and effective values in diagnostics so that a constrained request is clear.
-- When alignment is `center`, edge padding has no effect. The configuration UI
-  disables the field in this state, while retaining its saved value for use if
-  the operator later selects Top or Bottom.
+- When alignment is `center`, screen-edge padding has no effect. The
+  configuration UI disables the field in this state, while retaining its saved
+  value for use if the operator later selects Top or Bottom.
 - The zero/default path must be presentation-compatible with current Top,
   Center, and Bottom behavior. Center remains the default alignment.
 - Put the field immediately below **Vertical picture alignment** in the
   existing expanded **Screen geometry** section. Reuse the existing config
-  editor's fixed-unit inline form treatment: label **Edge padding**, numeric
-  input, and a `px` unit label; do not redesign the Screen Config page.
-- Help text must explain that the empty space occurs at the selected Top or
-  Bottom edge and that the field is unavailable for Center.
+  editor's fixed-unit inline form treatment: label **Screen edge padding**,
+  numeric input, and a `px` unit label; do not redesign the Screen Config page.
+- Help text must distinguish a screen-edge inset from content padding: the
+  empty space occurs at the selected Top or Bottom screen edge, consumes only
+  otherwise-unused output space, and the field is unavailable for Center.
 - Apply the resolved inset after normal picture fitting and alignment, without
   changing the physical screen rectangle, source crop, scale, aspect,
   automatic crop policy, NLS authority, or subtitle-fit safety behavior.
@@ -63,8 +65,8 @@ its crop, scale, or aspect.
    diagnostics report the requested and effective values—without source crop
    or a scale reduction.
 3. Center keeps the picture centered, ignores the saved value, and presents a
-   disabled Edge padding field in the editor. Changing back to Top or Bottom
-   restores the retained value.
+   disabled Screen edge padding field in the editor. Changing back to Top or
+   Bottom restores the retained value.
 4. Geometry tests cover zero, valid positive values, values near the maximum,
    invalid negative/non-finite/out-of-range input, source/target aspect cases,
    NLS active/inactive, and subtitle-fit precedence.
@@ -78,9 +80,11 @@ its crop, scale, or aspect.
 
 The requested mockup retains the established dark VideoProcessor Config visual
 language and shows the field in its exact proposed Screen geometry placement:
-Center with a disabled `0 px` field, and Top with an enabled `48 px` field and
-empty space above the picture. It is a review aid, not a replacement for the
-existing UI styling or layout.
+Top with an enabled `48 px` value. Its help makes clear that this is screen
+padding using existing vertical slack, never content padding, cropping, or
+rescaling. The Center state uses the same one-page layout with a disabled `0
+px` field. The mockup is a review aid, not a replacement for the existing UI
+styling or layout.
 
 ## Dependencies and next action
 
