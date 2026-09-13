@@ -2,11 +2,36 @@
 
 ## Status
 
-In Progress
+Review
+
+Implemented and deployed for user validation on 2026-09-13. Source commit
+`190f989d479e0c75cec2c2b3f82ec89d4852eaf4` is pushed on
+`codex/vp-0186-screen-edge-padding`, based on
+`v1.3.005-beta` tip `455d919c`.
 
 Implementation started 2026-09-13 on `codex/vp-0186-screen-edge-padding` in
 `E:\\codex\\videoprocessor\\vp-0186-screen-edge-padding`, based on the current
 `origin/v1.3.005-beta` tip `455d919cf07065c89b6e34cfee27e1431e25603b`.
+
+The existing Screen geometry form now presents **Screen edge padding** in `px`
+below vertical alignment. It defaults to `0` and is disabled for Center. The
+setting is `screen_edge_padding`; it moves the fitted outer screen rectangle
+only for Top/Bottom alignment, bounded by existing vertical slack, and reports
+requested/effective values in Alpha final-layout diagnostics. It does not crop
+or rescale video content.
+
+Validation: serial x64 Release build completed successfully; the Release
+`VideoProcessorConfigTests.exe` suite passed. The verified 58-file Release
+package and zip were produced from that build. The matching `VideoProcessor.exe`
+and `vprenderer\\VideoProcessorVPRenderer.dll` pair were deployed to
+`C:\\Videoprocessor\\vp`; their SHA-256 hashes match the package. The previous
+pair is backed up at `C:\\Videoprocessor\\vp\\backups\\screen-edge-padding-20260913-122044`.
+`VideoProcessor.cfg` was not modified.
+
+Remaining review: start VP Renderer, select Top or Bottom alignment, set a
+positive Screen edge padding value, and confirm it moves only within available
+vertical slack with no content crop or rescale. Also confirm Center disables
+the field and restores its retained value after changing back to Top/Bottom.
 
 ## User story
 
