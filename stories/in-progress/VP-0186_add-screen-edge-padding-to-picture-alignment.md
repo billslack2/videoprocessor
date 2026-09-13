@@ -2,9 +2,11 @@
 
 ## Status
 
-Backlog
+In Progress
 
-Created 2026-09-13 at the user's request. Implementation has not started.
+Implementation started 2026-09-13 on `codex/vp-0186-screen-edge-padding` in
+`E:\\codex\\videoprocessor\\vp-0186-screen-edge-padding`, based on the current
+`origin/v1.3.005-beta` tip `455d919cf07065c89b6e34cfee27e1431e25603b`.
 
 ## User story
 
@@ -88,12 +90,11 @@ styling or layout.
 
 ## Dependencies and next action
 
-Before implementation, complete the normal readiness review against the
-current beta integration tip: trace the existing `vertical_alignment` setting
-through schema, config editor, profile resolution, renderer layout, subtitle
-fit, NLS, diagnostics, and public configuration documentation. Confirm the
-appropriate pixel coordinate space and maximum safe inset before finalizing the
-validation rule.
+Trace `vertical_alignment` through schema, config editor, profile resolution,
+renderer layout, subtitle fit, NLS, diagnostics, and public configuration
+documentation. Implement screen-edge placement in output pixels with an
+effective value bounded by the frame's unused vertical output space, then add
+focused geometry/config-editor tests and build x64 Release.
 
 ## Out of scope
 
