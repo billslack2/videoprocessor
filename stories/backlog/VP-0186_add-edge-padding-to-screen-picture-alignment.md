@@ -21,6 +21,12 @@ its crop, scale, or aspect.
 - When `vertical_alignment` is `top`, position the fitted picture that many
   pixels below the top screen edge. When it is `bottom`, position the picture
   that many pixels above the bottom screen edge.
+- This is destination placement within the already-unused vertical output
+  space, not a masked-border/source crop. For a given frame, the effective
+  inset is limited to the unused vertical space produced by the normal fit. If
+  there is no unused vertical space, it has no visual effect; it must neither
+  crop the picture nor scale it down to manufacture space. Record the requested
+  and effective values in diagnostics so that a constrained request is clear.
 - When alignment is `center`, edge padding has no effect. The configuration UI
   disables the field in this state, while retaining its saved value for use if
   the operator later selects Top or Bottom.
@@ -37,10 +43,10 @@ its crop, scale, or aspect.
   automatic crop policy, NLS authority, or subtitle-fit safety behavior.
   Define and test the precedence if subtitle fitting must temporarily move the
   picture to keep subtitle pixels visible.
-- Validate a non-negative finite integral pixel value with a documented upper
-  bound derived from the configured screen/output geometry. Reject invalid
-  values clearly; do not silently reinterpret a negative value as the opposite
-  edge.
+- Validate a non-negative finite integral pixel value and reject invalid input
+  clearly; do not silently reinterpret a negative value as the opposite edge.
+  The runtime effective value may be less than the saved request only because
+  the normal fitted layout has less unused vertical space.
 - Preserve inheritance, profile switching, round-trip configuration edits,
   live-apply/restart behavior, public configuration reference, accessibility
   names, and renderer diagnostics using the established Screen Config
@@ -50,9 +56,12 @@ its crop, scale, or aspect.
 
 1. A missing setting and an explicit `0` produce identical output for all
    three alignment choices.
-2. With Top and a positive value, the fitted picture is inset from the top by
-   that amount and the space above it remains empty; with Bottom, the same is
-   true at the bottom.
+2. With Top and a positive value that fits in the unused vertical space, the
+   fitted picture is inset from the top by that amount and the space above it
+   remains empty; with Bottom, the same is true at the bottom. If the request
+   exceeds available unused space, the effective inset stops at that space and
+   diagnostics report the requested and effective values—without source crop
+   or a scale reduction.
 3. Center keeps the picture centered, ignores the saved value, and presents a
    disabled Edge padding field in the editor. Changing back to Top or Bottom
    restores the retained value.
