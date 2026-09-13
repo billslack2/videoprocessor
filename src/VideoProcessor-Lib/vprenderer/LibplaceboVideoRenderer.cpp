@@ -969,6 +969,7 @@ namespace
 		double configuredScreenAspect = 1.0;
 		bool configuredScreenTarget = false;
 		std::string verticalAlignment = "center";
+		int screenEdgePadding = 0;
 		double anamorphicScale = 1.0;
 		bool automaticSourceCrop = false;
 		bool cropNarrowerContentToFillScreen = false;
@@ -1904,6 +1905,10 @@ namespace
 				alignment == "bottom")
 				settings.verticalAlignment = alignment;
 		}
+		int parsedScreenEdgePadding = 0;
+		if (readViewportString("screen_edge_padding", raw) &&
+			ParseInteger(raw, 0, 100000, parsedScreenEdgePadding))
+			settings.screenEdgePadding = parsedScreenEdgePadding;
 		if (config.TryGetString(rule.section, "anamorphic_scale", raw))
 		{
 			double value = 0.0;
@@ -2284,6 +2289,9 @@ namespace
 		}
 		settings.verticalAlignment = ReadChoice(config,
 			"vertical_alignment", "center", { "top", "center", "bottom" });
+		if (TryGetDisplayString(config, "screen_edge_padding", rawValue) &&
+			!ParseInteger(rawValue, 0, 100000, settings.screenEdgePadding))
+			settings.screenEdgePadding = 0;
 		if (TryGetDisplayString(config, "calibration_lut_enabled", rawValue) &&
 			!TryGetDisplayBool(config, "calibration_lut_enabled",
 				settings.calibrationLutEnabled))
@@ -3744,6 +3752,7 @@ struct LibplaceboVideoRenderer::Impl
 	double configuredScreenAspect = 1.0;
 	bool configuredScreenTarget = false;
 	std::string verticalAlignment = "center";
+	int screenEdgePadding = 0;
 	double anamorphicScale = 1.0;
 	bool automaticSourceCrop = false;
 	bool cropNarrowerContentToFillScreen = false;
@@ -6995,6 +7004,7 @@ struct LibplaceboVideoRenderer::Impl
 		configuredScreenAspect = settings.configuredScreenAspect;
 		configuredScreenTarget = settings.configuredScreenTarget;
 		verticalAlignment = settings.verticalAlignment;
+		screenEdgePadding = settings.screenEdgePadding;
 		anamorphicScale = settings.anamorphicScale;
 		automaticSourceCrop = settings.automaticSourceCrop;
 		cropNarrowerContentToFillScreen =
@@ -7108,6 +7118,7 @@ struct LibplaceboVideoRenderer::Impl
 			configuredScreenAspect != settings.configuredScreenAspect ||
 			configuredScreenTarget != settings.configuredScreenTarget ||
 			verticalAlignment != settings.verticalAlignment ||
+			screenEdgePadding != settings.screenEdgePadding ||
 			anamorphicScale != settings.anamorphicScale ||
 			automaticSourceCrop != settings.automaticSourceCrop ||
 			cropNarrowerContentToFillScreen !=
@@ -7141,6 +7152,7 @@ struct LibplaceboVideoRenderer::Impl
 		configuredScreenAspect = settings.configuredScreenAspect;
 		configuredScreenTarget = settings.configuredScreenTarget;
 		verticalAlignment = settings.verticalAlignment;
+		screenEdgePadding = settings.screenEdgePadding;
 		anamorphicScale = settings.anamorphicScale;
 		automaticSourceCrop = settings.automaticSourceCrop;
 		cropNarrowerContentToFillScreen =
@@ -7174,6 +7186,7 @@ struct LibplaceboVideoRenderer::Impl
 		activeSettings.configuredScreenAspect = settings.configuredScreenAspect;
 		activeSettings.configuredScreenTarget = settings.configuredScreenTarget;
 		activeSettings.verticalAlignment = settings.verticalAlignment;
+		activeSettings.screenEdgePadding = settings.screenEdgePadding;
 		activeSettings.anamorphicScale = settings.anamorphicScale;
 		activeSettings.automaticSourceCrop = settings.automaticSourceCrop;
 		activeSettings.cropNarrowerContentToFillScreen =
@@ -10963,10 +10976,28 @@ struct LibplaceboVideoRenderer::Impl
 			// the resting alignment here as well as to the later linear picture fit:
 			// active NLS returns after this stage, so centering this fit would make
 			// top/bottom a no-op for the complete NLS presentation.
+			const AlphaSourceCrop::PresentationRect screenAvailable = {
+				target.crop.x0, target.crop.y0, target.crop.x1, target.crop.y1 };
 			const AlphaSourceCrop::CenteredFitDecision screenFit =
 				fitTargetToAspect(screenLayoutAspect,
 					ResolveVerticalPictureAlignment(verticalAlignment));
-			const AlphaSourceCrop::PresentationRect finalScreen = screenFit.picture;
+			int effectiveScreenEdgePadding = 0;
+			if (screenFit.valid &&
+				screenFit.unusedAxis == AlphaSourceCrop::UnusedSpaceAxis::VERTICAL &&
+				verticalAlignment != "center" && screenEdgePadding > 0)
+			{
+				const double availableSlack = verticalAlignment == "top"
+					? screenAvailable.bottom - screenFit.picture.bottom
+					: screenFit.picture.top - screenAvailable.top;
+				effectiveScreenEdgePadding = std::max(0, std::min(screenEdgePadding,
+					static_cast<int>(std::floor(availableSlack))));
+				const float shift = static_cast<float>(verticalAlignment == "top"
+					? effectiveScreenEdgePadding : -effectiveScreenEdgePadding);
+				target.crop.y0 += shift;
+				target.crop.y1 += shift;
+			}
+			const AlphaSourceCrop::PresentationRect finalScreen = {
+				target.crop.x0, target.crop.y0, target.crop.x1, target.crop.y1 };
 			auto publishFinalLayout = [&](AlphaSourceCrop::UnusedSpaceAxis axis,
 				const char* mapping)
 			{
@@ -10989,12 +11020,13 @@ struct LibplaceboVideoRenderer::Impl
 					<< std::lround(target.crop.y1 * 10.0f) << '|'
 					<< static_cast<int>(axis) << '|' << mapping << '|'
 					<< verticalAlignment << '|'
+					<< screenEdgePadding << '|' << effectiveScreenEdgePadding << '|'
 					<< cropDecision.verticalTranslationPixels;
 				if (policy.str() == lastFinalLayoutPolicy)
 					return;
 				lastFinalLayoutPolicy = policy.str();
 				DebugLog::Log(
-					"Alpha final layout: sequence=%llu generation=%llu raster=%dx%d trusted=%d,%d-%d,%d envelope=%d,%d-%d,%d presentation=%d,%d-%d,%d screen_aspect=%.5f screen=%.1f,%.1f-%.1f,%.1f picture=%.1f,%.1f-%.1f,%.1f unused_axis=%s mapping=%s vertical_alignment=%s subtitle_shift_source_pixels=%d anamorphic=%.5f crop_reason=\"%s\"",
+					"Alpha final layout: sequence=%llu generation=%llu raster=%dx%d trusted=%d,%d-%d,%d envelope=%d,%d-%d,%d presentation=%d,%d-%d,%d screen_aspect=%.5f screen=%.1f,%.1f-%.1f,%.1f picture=%.1f,%.1f-%.1f,%.1f unused_axis=%s mapping=%s vertical_alignment=%s screen_edge_padding_requested=%d screen_edge_padding_effective=%d subtitle_shift_source_pixels=%d anamorphic=%.5f crop_reason=\"%s\"",
 					static_cast<unsigned long long>(sourceSequence),
 					static_cast<unsigned long long>(frameGeneration),
 					width, height,
@@ -11015,6 +11047,7 @@ struct LibplaceboVideoRenderer::Impl
 					target.crop.x1, target.crop.y1,
 					AlphaSourceCrop::UnusedSpaceAxisName(axis), mapping,
 					verticalAlignment.c_str(),
+					screenEdgePadding, effectiveScreenEdgePadding,
 					cropDecision.verticalTranslationPixels,
 					anamorphicScale,
 					cropDecision.reason.c_str());

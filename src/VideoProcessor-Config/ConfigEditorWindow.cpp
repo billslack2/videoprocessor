@@ -4746,6 +4746,23 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             "Top and Bottom support one-sided masking. Center preserves the "
             "current presentation. Enabled subtitle fitting can still move "
             "the picture upward or downward as required.")));
+		auto* screenEdgePadding = addText(QStringLiteral("Screen edge padding"),
+			QStringLiteral("screen_edge_padding"), QStringLiteral("px"));
+		screenEdgePadding->setValidator(new QIntValidator(0, 100000,
+			screenEdgePadding));
+		screenEdgePadding->setToolTip(QStringLiteral(
+			"Reserves empty output space at the selected top or bottom screen edge. "
+			"It does not add content padding, crop the picture, or change its scale."));
+		form->addRow(QString(), helpLabel(QStringLiteral(
+			"Uses existing vertical slack only; Center disables this setting.")));
+		auto updateScreenEdgePadding = [verticalAlignment, screenEdgePadding]()
+		{
+			screenEdgePadding->setEnabled(
+				verticalAlignment->currentData().toString() != QStringLiteral("center"));
+		};
+		connect(verticalAlignment, qOverload<int>(&QComboBox::currentIndexChanged),
+			this, [updateScreenEdgePadding](int) { updateScreenEdgePadding(); });
+		updateScreenEdgePadding();
         anamorphicEnabled = new QCheckBox(QStringLiteral("Enable anamorphic lens compensation"));
         anamorphicEnabled->setObjectName(controlName(sectionPrefix,
             QStringLiteral("anamorphic_enabled")));
@@ -5062,6 +5079,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             {
                 if (key == QStringLiteral("screen_aspect")) return QStringLiteral("16:9");
                 if (key == QStringLiteral("vertical_alignment")) return QStringLiteral("center");
+				if (key == QStringLiteral("screen_edge_padding")) return QStringLiteral("0");
             }
             if (sectionPrefix == QStringLiteral("vprenderer.zoom"))
             {

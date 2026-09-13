@@ -89,6 +89,7 @@ vprenderer.viewport.<variant>.shortcut	viewport-variant-shortcut	VP Renderer vie
 vprenderer.viewport.<variant>.label	viewport-label	VP Renderer viewport	no
 vprenderer.viewport.<variant>.screen_aspect	viewport-screen-aspect	VP Renderer viewport	no
 vprenderer.viewport.<variant>.vertical_alignment	viewport-vertical-alignment	VP Renderer viewport	no
+vprenderer.viewport.<variant>.screen_edge_padding	viewport-screen-edge-padding	VP Renderer viewport	no
 vprenderer.viewport.<variant>.anamorphic_scale	viewport-anamorphic-scale	VP Renderer viewport	no
 vprenderer.viewport.<variant>.automatic_crop	viewport-automatic-crop	VP Renderer viewport	no
 vprenderer.zoom.<variant>.crop_narrower_content_to_fill_screen	zoom-crop-narrower-content-to-fill-screen	VP Renderer Zoom	no
