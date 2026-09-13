@@ -5407,6 +5407,16 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         if (queuePolicy)
             updateQueuePolicyFromValues();
         state->loading = false;
+		if (sectionPrefix == QStringLiteral("vprenderer.viewport"))
+		{
+			auto* alignment = profileFields->findChild<QComboBox*>(
+				controlName(sectionPrefix, QStringLiteral("vertical_alignment")));
+			auto* padding = profileFields->findChild<QLineEdit*>(
+				controlName(sectionPrefix, QStringLiteral("screen_edge_padding")));
+			if (alignment && padding)
+				padding->setEnabled(alignment->currentData().toString() !=
+					QStringLiteral("center"));
+		}
         refreshLimitedTransportControls();
         refreshCalibrationControls();
         if (sectionPrefix == QStringLiteral("vprenderer") ||
