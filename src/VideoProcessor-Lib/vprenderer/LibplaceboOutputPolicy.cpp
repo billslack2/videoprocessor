@@ -6,6 +6,29 @@
 
 namespace LibplaceboOutput
 {
+    std::string DescribeLimitedTransfer(DxgiEncoding encoding, SdrTransfer rendered,
+        bool frameAvailable, bool lutAttached)
+    {
+        const bool g22 = encoding == DxgiEncoding::STUDIO_G22_P709 ||
+            encoding == DxgiEncoding::STUDIO_G22_P2020;
+        const bool g24 = encoding == DxgiEncoding::STUDIO_G24_P709 ||
+            encoding == DxgiEncoding::STUDIO_G24_P2020;
+        if (!g22 && !g24) return {};
+        std::string result = std::string("Limited transfer: DXGI ") + (g22 ? "G22" : "G24");
+        if (!frameAvailable)
+            return result + "; rendered encoding unavailable (no confirmed frame).";
+        if (lutAttached)
+            return result + "; post-LUT gamma unknown. LUT input gamma is not output gamma.";
+        result += std::string("; rendered ") + ToString(rendered);
+        if (rendered == SdrTransfer::UNKNOWN || rendered == SdrTransfer::OTHER)
+            return result + "; agreement unknown.";
+        if (g24 && rendered == SdrTransfer::GAMMA24)
+            return result + "; declaration agrees with the renderer target (wire unverified).";
+        if (g22 && rendered == SdrTransfer::GAMMA22)
+            return result + "; beta G22 carrier is not an exact pure-2.2 declaration (wire unverified).";
+        return result + "; GAMMA MISMATCH: declaration differs from the renderer target.";
+    }
+
 	OneShotSignalAcceptance ClassifyOneShotSignal(
 		bool setSucceeded,
 		bool readbackSucceeded,
@@ -62,7 +85,7 @@ namespace LibplaceboOutput
 	SdrAdjustGamma ParseSdrAdjustGamma(const std::string& value)
 	{
 		if (value == "auto") return SdrAdjustGamma::AUTO;
-        if (value == "passthrough") return SdrAdjustGamma::PRESERVE_CODES;
+        if (value.empty() || value == "passthrough") return SdrAdjustGamma::PRESERVE_CODES;
 		if (value == "off" || value == "no") return SdrAdjustGamma::OFF;
 		return SdrAdjustGamma::ON;
 	}
@@ -161,21 +184,25 @@ namespace LibplaceboOutput
     CalibrationTransferDecision ResolveCalibrationTransfers(bool inputIsSdr,
         bool outputSafe, bool lutActive, SdrAdjustGamma requested,
         GammaRequest displayGamma, GammaRequest hdrTargetGamma,
-        SdrTransfer declaredSource, SdrTransfer acceptedTransfer)
+        SdrTransfer declaredSource, SdrTransfer acceptedTransfer, GammaRequest sdrLutInputGamma)
     {
         CalibrationTransferDecision result;
-        result.targetTransfer = lutActive && inputIsSdr ? declaredSource :
+        result.targetTransfer = lutActive && inputIsSdr ?
+            ResolveCalibrationTargetTransfer(sdrLutInputGamma, declaredSource) :
             ResolveRenderTargetTransfer(displayGamma, hdrTargetGamma, lutActive, acceptedTransfer);
         result.sdr = ResolveSdrGamma(requested, inputIsSdr, outputSafe,
-            displayGamma, declaredSource, requested == SdrAdjustGamma::PRESERVE_CODES ?
-                result.targetTransfer : acceptedTransfer);
+            displayGamma, declaredSource, result.targetTransfer);
         if (lutActive && inputIsSdr) {
             // Keep the source description truthful for all linear-light work.
-            // Re-encoding to the same response avoids a separate gamma change.
+            // Only an explicit SDR LUT input gamma changes the encoding into the LUT.
+            // Never use that target to reinterpret the incoming SDR signal.
             result.sdr.effectiveSource = declaredSource;
-            result.sdr.actualTarget = declaredSource;
-            result.sdr.action = outputSafe ? SdrGammaAction::SUPPRESS : SdrGammaAction::BLOCKED;
-            result.sdr.reason = outputSafe ? "calibration LUT: SDR source response retained through processing" :
+            result.sdr.actualTarget = result.targetTransfer;
+            const bool convert = result.targetTransfer != declaredSource;
+            result.sdr.action = !outputSafe ? SdrGammaAction::BLOCKED :
+                convert ? SdrGammaAction::ADJUST : SdrGammaAction::SUPPRESS;
+            result.sdr.reason = outputSafe ? (convert ? "SDR converted to the declared LUT input gamma" :
+                "calibration LUT: SDR source response retained through processing") :
                 "the accepted output contract is unsafe";
         }
         return result;

@@ -1,3 +1,6 @@
+> Update: REQ-006 subsequently removed the 40–500-nit limit. The results below
+> describe the earlier implementation; see REQ-006-sdr-transfer-implementation.md.
+
 # VP-0173: SDR input preservation
 
 ## Contract and implementation

@@ -136,6 +136,31 @@ namespace ConfigEditorCore
 		return true;
 	}
 
+    bool ConfigDocument::MigrateTransferChoices()
+    {
+        bool changed = false;
+        for (const auto& section : SectionNames())
+        {
+            const auto name = ConfigFile::NormalizeName(section);
+            if (name.rfind("vprenderer", 0) != 0 && name != "display" && name != "vpvr.display" &&
+                name != "libplacebo" && name.rfind("profiles.display.", 0) != 0) continue;
+            for (const auto& setting : SectionSettings(section))
+            {
+                const auto key = ConfigFile::NormalizeName(setting.first);
+                const auto next = RendererProfileConfig::NormalizeCalibrationChoice(key, setting.second);
+                if (next == setting.second) continue;
+                SetExisting(section.c_str(), key.c_str(), next);
+                changed = true;
+            }
+        }
+        if (changed)
+        {
+            lines.push_back("# SDR gamma update: BT.1886 and SDR Auto references use pure 2.4; Auto/Off adjustment uses passthrough.");
+            requiresMigrationBackup = existedAtLoad;
+        }
+        return changed;
+    }
+
     bool ConfigDocument::MigrateCalibrationProfiles()
     {
         CalibrationProfileMigration::Sections sections;

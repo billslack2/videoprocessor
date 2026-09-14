@@ -4,16 +4,73 @@
 #include <vprenderer/LibplaceboOutputPolicy.h>
 #include <vprenderer/LibplaceboCalibrationLutPolicy.h>
 #include <ActiveOutputSweepPolicy.h>
+#include <WindowsDisplayDiagnostics.h>
+#include <DebugLog.h>
+#include <fstream>
 
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 using namespace LibplaceboOutput;
+
+namespace
+{
+    std::string displaySnapshotLog;
+    void __cdecl CollectDisplaySnapshot(const char* message)
+    {
+        displaySnapshotLog += std::string(message) + "\n";
+    }
+    struct DisplaySnapshotSink
+    {
+        DisplaySnapshotSink() { displaySnapshotLog.clear(); DebugLog::SetExternalSink(CollectDisplaySnapshot); }
+        ~DisplaySnapshotSink() { DebugLog::SetExternalSink(nullptr); }
+    };
+}
 
 namespace Tests
 {
 	TEST_CLASS(LibplaceboOutputPolicyTests)
 	{
 	public:
+        TEST_METHOD(WindowsDisplaySnapshotReadsDesktopAndReportsUnavailableTarget)
+        {
+            DisplaySnapshotSink sink;
+            WindowsDisplayDiagnostics::Log(nullptr, "test-invalid", L"Native test", this);
+            Assert::IsTrue(displaySnapshotLog.find("unavailable: invalid target window") != std::string::npos);
+            displaySnapshotLog.clear();
+            WindowsDisplayDiagnostics::Log(GetDesktopWindow(), "test-desktop", L"Native test", this);
+            Assert::IsTrue(displaySnapshotLog.find("read_only=1 wire_state=unverified") != std::string::npos);
+            Assert::IsTrue(displaySnapshotLog.find("snapshot failed") == std::string::npos);
+            // A disconnected/headless session may not expose a monitor. That
+            // must be explicit, never fabricated gamma/HDR success.
+            Assert::IsTrue(displaySnapshotLog.find("end elapsed_ms=") != std::string::npos ||
+                displaySnapshotLog.find("monitor unavailable") != std::string::npos);
+            if (displaySnapshotLog.find("end elapsed_ms=") != std::string::npos)
+            {
+                Assert::IsTrue(displaySnapshotLog.find("topology result=") != std::string::npos);
+                Assert::IsTrue(displaySnapshotLog.find("DXGI") != std::string::npos);
+            }
+            wchar_t output[MAX_PATH]{};
+            if (GetEnvironmentVariableW(L"VP_DISPLAY_SNAPSHOT_TEST_LOG", output, MAX_PATH) > 0)
+                std::ofstream(output, std::ios::binary) << displaySnapshotLog;
+        }
+        TEST_METHOD(LimitedDeclarationReportsRenderedGammaAndUnknownLutOutput)
+        {
+            for (auto g24 : { DxgiEncoding::STUDIO_G24_P709, DxgiEncoding::STUDIO_G24_P2020 })
+            {
+                Assert::IsTrue(DescribeLimitedTransfer(g24, SdrTransfer::GAMMA22, true, false).find("GAMMA MISMATCH") != std::string::npos);
+                Assert::IsTrue(DescribeLimitedTransfer(g24, SdrTransfer::GAMMA24, true, false).find("declaration agrees") != std::string::npos);
+                Assert::IsTrue(DescribeLimitedTransfer(g24, SdrTransfer::GAMMA24, true, true).find("post-LUT gamma unknown") != std::string::npos);
+                Assert::IsTrue(DescribeLimitedTransfer(g24, SdrTransfer::GAMMA24, false, true).find("no confirmed frame") != std::string::npos);
+                Assert::IsTrue(DescribeLimitedTransfer(g24, SdrTransfer::UNKNOWN, true, false).find("agreement unknown") != std::string::npos);
+            }
+            for (auto g22 : { DxgiEncoding::STUDIO_G22_P709, DxgiEncoding::STUDIO_G22_P2020 })
+            {
+                Assert::IsTrue(DescribeLimitedTransfer(g22, SdrTransfer::GAMMA22, true, false).find("not an exact pure-2.2") != std::string::npos);
+                Assert::IsTrue(DescribeLimitedTransfer(g22, SdrTransfer::GAMMA24, true, false).find("GAMMA MISMATCH") != std::string::npos);
+                Assert::IsTrue(DescribeLimitedTransfer(g22, SdrTransfer::GAMMA22, true, true).find("post-LUT gamma unknown") != std::string::npos);
+            }
+            Assert::IsTrue(DescribeLimitedTransfer(DxgiEncoding::FULL_G22_P709, SdrTransfer::GAMMA24, true, false).empty());
+        }
         TEST_METHOD(HdrLutTargetIsIndependentAndMissingLutUsesDisplay)
         {
             for (auto carrier : { SdrTransfer::SRGB, SdrTransfer::GAMMA22, SdrTransfer::GAMMA24 })
@@ -31,6 +88,47 @@ namespace Tests
             Assert::IsTrue(pass.effectiveSource == SdrTransfer::GAMMA22);
         }
 
+        TEST_METHOD(LutReloadContractTracksEffectiveSdrEncoding)
+        {
+            using LibplaceboCalibrationLut::InputContractKey;
+            Assert::IsTrue(InputContractKey("2.2", "passthrough", "2.4") !=
+                InputContractKey("2.2", "passthrough", "2.2"));
+            Assert::IsTrue(InputContractKey("2.2", "2.4", "2.4") ==
+                InputContractKey("2.2", "2.4", "2.2"));
+            Assert::IsTrue(InputContractKey("2.4", "2.4", "2.4") !=
+                InputContractKey("2.2", "2.4", "2.4"));
+        }
+
+        TEST_METHOD(SdrLutInputGammaIsOptInAndIndependentOfHdrAndTransport)
+        {
+            for (auto carrier : { SdrTransfer::SRGB, SdrTransfer::GAMMA22, SdrTransfer::GAMMA24 })
+            for (auto hdr : { GammaRequest::GAMMA22, GammaRequest::GAMMA24 })
+            for (auto mode : { SdrAdjustGamma::ON, SdrAdjustGamma::PRESERVE_CODES })
+            {
+                const auto pass = ResolveCalibrationTransfers(true, true, true, mode,
+                    GammaRequest::GAMMA22, hdr, SdrTransfer::GAMMA24, carrier);
+                Assert::IsTrue(pass.targetTransfer == SdrTransfer::GAMMA24);
+                Assert::IsTrue(pass.sdr.effectiveSource == SdrTransfer::GAMMA24);
+                Assert::IsTrue(pass.sdr.action == SdrGammaAction::SUPPRESS);
+                const auto convert = ResolveCalibrationTransfers(true, true, true, mode,
+                    GammaRequest::GAMMA22, hdr, SdrTransfer::GAMMA24, carrier, GammaRequest::GAMMA22);
+                Assert::IsTrue(convert.targetTransfer == SdrTransfer::GAMMA22);
+                Assert::IsTrue(convert.sdr.effectiveSource == SdrTransfer::GAMMA24);
+                Assert::IsTrue(convert.sdr.actualTarget == SdrTransfer::GAMMA22);
+                Assert::IsTrue(convert.sdr.action == SdrGammaAction::ADJUST);
+                const auto missing = ResolveCalibrationTransfers(true, true, false, mode,
+                    GammaRequest::GAMMA24, hdr, SdrTransfer::GAMMA24, carrier, GammaRequest::GAMMA22);
+                Assert::IsTrue(missing.targetTransfer == SdrTransfer::GAMMA24);
+                const auto hdrResult = ResolveCalibrationTransfers(false, true, true, mode,
+                    GammaRequest::GAMMA22, hdr, SdrTransfer::OTHER, carrier, GammaRequest::GAMMA28);
+                Assert::IsTrue(hdrResult.targetTransfer == ResolveCalibrationTargetTransfer(hdr, carrier));
+                Assert::IsTrue(hdrResult.sdr.action == SdrGammaAction::NOT_APPLICABLE);
+                const auto unsafe = ResolveCalibrationTransfers(true, false, true, mode,
+                    GammaRequest::GAMMA22, hdr, SdrTransfer::GAMMA24, carrier, GammaRequest::GAMMA22);
+                Assert::IsTrue(unsafe.sdr.action == SdrGammaAction::BLOCKED);
+            }
+        }
+
         TEST_METHOD(CalibrationWorkflowKeepsNoLutPolicyAndBlocksUnsafeOutput)
         {
             for (auto mode : { SdrAdjustGamma::ON, SdrAdjustGamma::OFF, SdrAdjustGamma::AUTO, SdrAdjustGamma::PRESERVE_CODES })
@@ -41,7 +139,7 @@ namespace Tests
                     GammaRequest::BT1886,SdrTransfer::BT1886,carrier);
                 const auto expectedTarget = ResolveCalibrationTargetTransfer(display,carrier);
                 const auto expected = ResolveSdrGamma(mode,true,true,display,SdrTransfer::BT1886,
-                    mode == SdrAdjustGamma::PRESERVE_CODES ? expectedTarget : carrier);
+                    expectedTarget);
                 Assert::IsTrue(actual.targetTransfer == expectedTarget);
                 Assert::IsTrue(actual.sdr.effectiveSource == expected.effectiveSource);
                 Assert::IsTrue(actual.sdr.action == expected.action);
@@ -90,9 +188,9 @@ namespace Tests
 					GammaRequest::GAMMA24, SdrTransfer::SRGB)));
 		}
 
-		TEST_METHOD(SdrGammaMissingOrOnPreservesCurrentManagedBehavior)
+		TEST_METHOD(SdrGammaMissingDefaultsToNoAdjustment)
 		{
-			Assert::AreEqual(static_cast<int>(SdrAdjustGamma::ON),
+			Assert::AreEqual(static_cast<int>(SdrAdjustGamma::PRESERVE_CODES),
 				static_cast<int>(ParseSdrAdjustGamma("")));
 			Assert::AreEqual(static_cast<int>(SdrAdjustGamma::AUTO),
 				static_cast<int>(ParseSdrAdjustGamma("auto")));

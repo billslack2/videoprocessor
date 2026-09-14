@@ -63,6 +63,7 @@ namespace
 	class TemporaryConfigFile
 	{
 	public:
+
 		TemporaryConfigFile()
 		{
 			char directory[MAX_PATH] = {};
@@ -164,11 +165,38 @@ namespace VideoProcessorTest
 	TEST_CLASS(LibplaceboRenderParametersTests)
 	{
 	public:
+        TEST_METHOD(HdrTargetRangeMatchesLibplaceboAndFloatPrecision)
+        {
+            Assert::AreEqual(PL_COLOR_HDR_BLACK, static_cast<float>(HdrTargetLuminance::BlackFloor));
+            for (const char* raw : { "0.000002", "0.01", "1", "39", "501", "600", "1000", "4000", "10000" })
+            {
+                std::string expected;
+                Assert::IsTrue(RendererProfileConfig::ValidateProfileSetting("display", "sdr_target_nits", raw, expected));
+                const float nits = std::stof(raw);
+                pl_color_space target = *NativeData<pl_color_space>("pl_color_space_bt709");
+                target.transfer = PL_COLOR_TRC_GAMMA22;
+                ApplyTargetLuminance(false, nits, 0.0f, target);
+                pl_color_space_infer(&target);
+                Assert::AreEqual(nits, target.hdr.max_luma);
+                Assert::AreEqual(PL_COLOR_HDR_BLACK, target.hdr.min_luma);
+                Assert::IsTrue(target.hdr.max_luma > target.hdr.min_luma);
+            }
+            for (const char* raw : { "0", "-1", "0.000001", "1e-12", "10000.1", "1000/2", "nan", "inf" })
+            {
+                std::string expected;
+                Assert::IsFalse(RendererProfileConfig::ValidateProfileSetting("display", "sdr_target_nits", raw, expected));
+            }
+            Assert::IsTrue(HdrTargetLuminance::ValidBlack(600, 10000));
+            Assert::IsTrue(HdrTargetLuminance::ValidBlack(0, 0.000002));
+            Assert::IsFalse(HdrTargetLuminance::ValidBlack(10000, 10000));
+            Assert::IsFalse(HdrTargetLuminance::ValidBlack(99.9999999, 100));
+            Assert::IsFalse(HdrTargetLuminance::ValidWhite(0.000001000000001));
+        }
 		TEST_METHOD(SdrLuminanceIgnoresHdrDestinationAndClearsStaleMetadata)
 		{
 			for (auto transfer : { PL_COLOR_TRC_SRGB, PL_COLOR_TRC_BT_1886,
 				PL_COLOR_TRC_GAMMA22, PL_COLOR_TRC_GAMMA24 })
-				for (float nits : { 40.0f, 75.0f, 203.0f, 203.01f, 400.0f, 500.0f })
+				for (float nits : { 0.000002f, 1.0f, 39.0f, 75.0f, 203.0f, 203.01f, 500.0f, 1000.0f, 10000.0f })
 				{
 					pl_color_space source = *NativeData<pl_color_space>("pl_color_space_hdr10");
 					source.transfer = transfer;
@@ -189,7 +217,7 @@ namespace VideoProcessorTest
 		TEST_METHOD(HdrLuminanceRetainsSourceMetadataAndConfiguredDestination)
 		{
 			for (auto transfer : { PL_COLOR_TRC_PQ, PL_COLOR_TRC_HLG })
-				for (float nits : { 75.0f, 203.0f, 400.0f, 500.0f })
+				for (float nits : { 1.0f, 39.0f, 203.0f, 500.0f, 1000.0f, 10000.0f })
 				{
 					pl_color_space source = *NativeData<pl_color_space>("pl_color_space_hdr10");
 					source.transfer = transfer;

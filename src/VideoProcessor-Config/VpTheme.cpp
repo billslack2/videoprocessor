@@ -48,6 +48,30 @@ public:
             painter->restore();
             return;
         }
+        if (element == PE_IndicatorRadioButton)
+        {
+            const bool checked = option->state.testFlag(State_On);
+            const bool enabled = option->state.testFlag(State_Enabled);
+            const bool highlighted = enabled && (option->state.testFlag(State_MouseOver) ||
+                option->state.testFlag(State_HasFocus));
+            painter->save();
+            painter->setRenderHint(QPainter::Antialiasing, true);
+            const QRectF circle = option->rect.adjusted(1, 1, -1, -1);
+            const QColor border(!enabled ? QStringLiteral("#30495f") :
+                checked || highlighted ? QStringLiteral("#49b6ff") : QStringLiteral("#4f6780"));
+            painter->setPen(QPen(border, highlighted ? 1.5 : 1.0));
+            painter->setBrush(QColor(checked && enabled ? QStringLiteral("#167fc7") : QStringLiteral("#0c1520")));
+            painter->drawEllipse(circle);
+            if (checked)
+            {
+                painter->setPen(Qt::NoPen);
+                painter->setBrush(QColor(enabled ? QStringLiteral("#f3fbff") : QStringLiteral("#7f94a6")));
+                const qreal radius = circle.width() * 0.20;
+                painter->drawEllipse(circle.center(), radius, radius);
+            }
+            painter->restore();
+            return;
+        }
         if (element == PE_IndicatorCheckBox)
         {
             // The native Fusion indicator is a filled square when checked,
@@ -272,9 +296,9 @@ QString VpTheme::StyleSheet()
             padding: 6px;
             font-weight: 600;
         }
-        QCheckBox { spacing: 8px; color: #dce8f2; }
-        QCheckBox:disabled { color: #7f94a6; }
-        QCheckBox::indicator { width: 15px; height: 15px; }
+        QCheckBox, QRadioButton { spacing: 8px; color: #dce8f2; }
+        QCheckBox:disabled, QRadioButton:disabled { color: #7f94a6; }
+        QCheckBox::indicator, QRadioButton::indicator { width: 15px; height: 15px; }
         QPushButton {
             min-height: 30px;
             padding: 0 13px;
@@ -349,6 +373,6 @@ QString VpTheme::StyleSheet()
         QToolButton[navSection="true"]:focus, QToolButton[headerMenu="true"]:focus {
             border: 1px solid #4daaf1;
         }
-        QCheckBox:focus { color: #ffffff; }
+        QCheckBox:focus, QRadioButton:focus { color: #ffffff; }
     )");
 }
