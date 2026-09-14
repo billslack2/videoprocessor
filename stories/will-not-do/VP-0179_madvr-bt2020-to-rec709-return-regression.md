@@ -2,7 +2,14 @@
 
 ## Status
 
-Review (2026-09-11). Diagnostic build ready in draft PR #91, source b70f8518,
+Will Not Do
+
+Closed by explicit user decision on 2026-09-14. Stop the remaining Rec.709-return
+investigation and do not merge diagnostic commit b70f8518. Previously merged
+recovery changes remain in beta. This disposition does not claim the reported
+hardware regression was fixed. Historical evidence follows.
+
+Prior review (2026-09-11). Diagnostic build ready in draft PR #91, source b70f8518,
 based on current beta a33c5bf3. The reported Rec.709 return failure remains
 unresolved; latest default-enabled recovery ZIP fails while the same August 1
 1.15 beta succeeds. VP-0170 is a later repair attempt, not the original cause.
