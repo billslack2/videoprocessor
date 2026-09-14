@@ -2,12 +2,38 @@
 
 ## Status
 
-In Progress
+Done
 
 User authorized merge, x64 Release build, deployment and ZIP on 2026-09-14.
 Integration worktree: E:\codex\videoprocessor\merge-req006-20260914.
 Beta base: v1.3.005-beta bb51ffcb; REQ006 head: 5c244ebd.
-Local merge: 94f938d3. Build and verification in progress.
+Merge 94f938d33216d0f212797f1ed4c6f83db02d9187 pushed to v1.3.005-beta,
+successfully built, deployed and packaged on 2026-09-14.
+
+## Release evidence
+
+- Complete x64 Release solution build: 0 errors, 45 warnings.
+- Selected native tests: 282/282 passed (libplacebo policy, GPU LUT/ramp and
+  luminance tests, configuration core and picture/crop policy).
+- Complete Config UI suite: 74 passed, 0 failed, exit 0. Physical two-monitor
+  placement unavailable; synthetic negative-origin and target-window coverage ran.
+- Both screen-edge commits 190f989d and ca5786c5 are ancestors of this merge.
+- Canonical package: 59 files. Every deployed file and every ZIP entry was
+  SHA-256 verified against the staged Release package.
+- Deployment: C:\Videoprocessor\vp. Rollback backup:
+  C:\Videoprocessor\vp\backups\vp0187-20260914-175437.
+- Active VideoProcessor.cfg unchanged, SHA-256
+  77E0FAC0F279B6813F5FEF195CA6F042D47822D32B1B99BC8CC451F607A5408D.
+- Host SHA-256: C055A9B61EAC18A02A54BC14C5795E1762F58D05C3A472DB126A047BCCFCDAF2.
+- Renderer SHA-256: 20EE0015C069B823BE5376416DAFAC8A6AE1DC0715AB96DB474A514390CDADEB.
+- Config SHA-256: 92243EEE5B7E4310B3E8754F19CA58DE846739262E5F1CC97796A73D7DCFC788.
+- ZIP: C:\Users\bslac\Documents\ChatGPT\Done\VideoProcessor-v1.3.005-beta-VP0187-94f938d3-x64-Release.zip.
+- ZIP SHA-256: 9E5D521AA7C3327A57CF12873913D42DD5C9B546A4D56C922B778AC6AA63BCC9.
+- Build log and test results: integration worktree build-release.log and
+  artifacts/tests/req006-native.trx, artifacts/tests/req006-ui.log.
+- Deployment backup includes deployment-verification.json with all hashes.
+- VP was already stopped; its hidden cached Config process was stopped for
+  replacement. No new playback session or physical display measurement performed.
 
 ## Scope and decisions
 

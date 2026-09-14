@@ -241,7 +241,7 @@ they must not contain requirements that are absent from this file.
 | VP-0184 | Backlog | Expose primary libplacebo tone-mapping and peak-detection controls |
 | VP-0185 | Backlog | Expose advanced libplacebo tone-curve, gamut, and metadata controls |
 | VP-0186 | Review | Add screen-edge padding to Screen Config picture alignment |
-| VP-0187 | In Progress | REQ006 SDR transfer and calibration integration |
+| VP-0187 | Done | REQ006 SDR transfer and calibration integration |
 
 ## Codex story workflow
 
