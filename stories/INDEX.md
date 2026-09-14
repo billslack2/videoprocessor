@@ -6,9 +6,9 @@ story may have ordered child-task IDs as defined below.
 
 ## Registry state
 
-- Last assigned root story: `VP-0186`
-- Next root story number: `VP-0187`
-- Total indexed items: 205
+- Last assigned root story: `VP-0187`
+- Next root story number: `VP-0188`
+- Total indexed items: 206
 
 ## Story locations
 
@@ -241,6 +241,7 @@ they must not contain requirements that are absent from this file.
 | VP-0184 | Backlog | Expose primary libplacebo tone-mapping and peak-detection controls |
 | VP-0185 | Backlog | Expose advanced libplacebo tone-curve, gamut, and metadata controls |
 | VP-0186 | Review | Add screen-edge padding to Screen Config picture alignment |
+| VP-0187 | In Progress | REQ006 SDR transfer and calibration integration |
 
 ## Codex story workflow
 
