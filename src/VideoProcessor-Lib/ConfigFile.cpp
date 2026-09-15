@@ -9,6 +9,10 @@
 #include <pch.h>
 #include "ConfigurationIdentity.h"
 #include "ConfigFile.h"
+#include <atomic>
+#ifndef VP_CONFIGFILE_STANDALONE
+#include "DebugLog.h"
+#endif
 #include "ColorOutputProfileMigration.h"
 #include "CalibrationProfileMigration.h"
 
@@ -126,6 +130,16 @@ const char* ConfigOverrideOption(const std::string& filename)
 }
 }
 
+
+namespace { std::atomic<uint64_t> configurationLoadCount{0}; }
+
+uint64_t ConfigFile::GetLoadCount() { return configurationLoadCount.load(); }
+
+std::string ConfigFile::GetRendererConfigurationPath()
+{
+	std::lock_guard<std::mutex> guard(g_rendererConfigurationPathMutex);
+	return g_rendererConfigurationPath;
+}
 
 bool ConfigFile::Load(const std::string& filename)
 {
@@ -319,6 +333,14 @@ bool ConfigFile::Load(const std::string& filename)
 	ColorOutputProfileMigration::Apply(m_sections, m_sectionOrder);
     CalibrationProfileMigration::Apply(m_sections, m_sectionOrder);
 	m_loaded = true;
+	const auto serial = ++configurationLoadCount;
+#ifndef VP_CONFIGFILE_STANDALONE
+	DebugLog::Log("Configuration disk read: serial=%llu identity=%llu path=%s",
+		static_cast<unsigned long long>(serial),
+		static_cast<unsigned long long>(m_contentIdentity), m_loadedPath.c_str());
+#else
+	(void)serial;
+#endif
 	return true;
 }
 

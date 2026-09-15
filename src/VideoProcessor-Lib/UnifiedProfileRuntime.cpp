@@ -261,6 +261,7 @@ namespace UnifiedProfileRuntime
 			return false;
 
 		m_model = std::move(model);
+		m_configuration = std::make_shared<const ConfigFile>(config);
 		m_configPath = config.GetLoadedPath();
 		m_statePath = m_model.persistSelection ?
 			RendererProfileConfig::StatePath(config) : std::string();
@@ -306,6 +307,8 @@ namespace UnifiedProfileRuntime
 		const std::shared_ptr<const Snapshot> previous =
 			std::atomic_load(&m_snapshot);
 		RendererProfileConfig::Model previousModel = std::move(m_model);
+		const auto previousConfiguration = m_configuration;
+		m_configuration = std::make_shared<const ConfigFile>(config);
 		const std::string previousConfigPath = m_configPath;
 		const std::string previousStatePath = m_statePath;
 		m_model = std::move(candidateModel);
@@ -340,6 +343,7 @@ namespace UnifiedProfileRuntime
 			candidate, error))
 		{
 			m_model = std::move(previousModel);
+			m_configuration = previousConfiguration;
 			m_configPath = previousConfigPath;
 			m_statePath = previousStatePath;
 			return false;
@@ -349,6 +353,7 @@ namespace UnifiedProfileRuntime
 			candidate, "configuration", result.actions, error))
 		{
 			m_model = std::move(previousModel);
+			m_configuration = previousConfiguration;
 			m_configPath = previousConfigPath;
 			m_statePath = previousStatePath;
 			return false;
@@ -1012,6 +1017,7 @@ namespace UnifiedProfileRuntime
 		}
 
 		std::shared_ptr<Snapshot> next(new Snapshot());
+		next->configuration = m_configuration;
 		next->generation = generation;
 		next->manualSelections = manualSelections;
 		next->effectiveSelections = effective;

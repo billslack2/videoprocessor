@@ -7,6 +7,7 @@
  */
 
 #include <pch.h>
+#include "BackendInputConfig.h"
 #include <ApplicationShutdownPolicy.h>
 #include <BuildIdentityPolicy.h>
 #include <ModernOperatorLayout.h>
@@ -4034,6 +4035,24 @@ bool CVideoProcessorDlg::StageRuntimeSettings(
 	const ConfigFile& config, std::string& error)
 {
 	m_stagedRuntimeSettings = StagedRuntimeSettings();
+	// Removing a previously configured override restores its default. If neither
+	// snapshot specifies it, preserve command-line/session defaults.
+	const auto previousInputSnapshot = m_profileRuntime.GetSnapshot();
+	const auto wasConfigured = [&previousInputSnapshot](bool vpRenderer, const char* key)
+	{
+		std::string ignored;
+		return previousInputSnapshot && previousInputSnapshot->configuration &&
+			BackendInputConfig::TryGet(*previousInputSnapshot->configuration, vpRenderer, key, ignored);
+	};
+	m_stagedRuntimeSettings.hasDirectShowVideoConversion = wasConfigured(false, "video_conversion");
+	m_stagedRuntimeSettings.hasVpRendererVideoConversion = wasConfigured(true, "video_conversion");
+	m_stagedRuntimeSettings.hasDirectShowContainerColorSpace = wasConfigured(false, "container_colorspace");
+	m_stagedRuntimeSettings.hasVpRendererContainerColorSpace = wasConfigured(true, "container_colorspace");
+	m_stagedRuntimeSettings.hasDirectShowHdrColorSpace = wasConfigured(false, "hdr_colorspace");
+	m_stagedRuntimeSettings.hasVpRendererHdrColorSpace = wasConfigured(true, "hdr_colorspace");
+	m_stagedRuntimeSettings.hasDirectShowHdrLuminance = wasConfigured(false, "hdr_luminance");
+	m_stagedRuntimeSettings.hasVpRendererHdrLuminance = wasConfigured(true, "hdr_luminance");
+
 	auto getApplicationValue = [&config](const char* key,
 		std::string& value)
 	{
@@ -4046,22 +4065,10 @@ bool CVideoProcessorDlg::StageRuntimeSettings(
 		return config.TryGetString("directshow", key, value) ||
 			getApplicationValue(key, value);
 	};
-	auto getBackendInputValue = [&config, &getApplicationValue](bool vpRenderer,
+	auto getBackendInputValue = [&config](bool vpRenderer,
 		const char* key, std::string& value)
 	{
-		const char* section = vpRenderer ? "vprenderer.input_processing" : "directshow";
-		if (config.TryGetString(section, key, value)) return true;
-		if (vpRenderer && config.TryGetString("vprenderer.input", key, value))
-			return true;
-		// VP-0123 initially wrote the renderer override into the display-profile
-		// root. Keep that spelling readable while new saves use the independent
-		// input-policy root, which profile rename/remove operations cannot touch.
-		if (vpRenderer && config.TryGetString("vprenderer", key, value))
-			return true;
-		if (getApplicationValue(key, value)) return true;
-		// Before VP-0123, [directshow] was a shared compatibility location.
-		// Retain it only as VP Renderer's final fallback for old unsaved files.
-		return vpRenderer && config.TryGetString("directshow", key, value);
+		return BackendInputConfig::TryGet(config, vpRenderer, key, value);
 	};
 	auto invalid = [&error](const char* key, const std::string& value)
 	{

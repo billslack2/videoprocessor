@@ -52,6 +52,8 @@ public:
 	// plugin ABI. Each module has its own statically linked ConfigFile copy, so
 	// this pins every later renderer load to the core-selected file.
 	static void SetRendererConfigurationPath(const std::string& path);
+	static std::string GetRendererConfigurationPath();
+	static uint64_t GetLoadCount();
 
 private:
 	std::map<std::string, std::map<std::string, std::string>> m_sections;
