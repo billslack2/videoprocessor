@@ -118,15 +118,35 @@ Root: `E:\codex\videoprocessor\assess-config-feedback-20260915`.
 - Packaged `vprenderer\VideoProcessorVPRenderer.dll` matches build SHA256:
   `67BB87F56838D70D0AEE803D8E46A00D4095702E87ADB6A12EED1CACE03EC415`.
 
+### Live Apple TV validation — 2026-09-15
+
+User confirmed the Apple TV signal. The isolated paired Release candidate captured
+3840x2160 SDR/Rec.709 at about 59.941 Hz from 19:31:22 to 19:38:31 EDT.
+Refresh policy emitted no deprecated-General warnings; the VP-specific NONE input
+conversion override remained active despite shared/DirectShow P010 values.
+Q and Ctrl+Q changed/restored display profiles live with the same accepted config
+identity, one existing host read per shortcut, and no renderer swapchain rebuild.
+After controls/editor opening, log lines 560–1098 contained zero configuration reads.
+
+No actual HDR metadata loss/restoration occurred: this proves SDR capture and live
+profile handling, not the HDR-blip regression. Visual continuity was not verified;
+screenshot capture and mouse geometry were unavailable. Editor Apply was not tested
+live (no changes saved); its automated widget tests passed as recorded above.
+
+The copied config needed one beta-compatibility adjustment: comment development-only
+viewport screen_edge_padding=50, rejected at initial startup. Backups preserved.
+External actions disabled and logging enabled only in the isolated copy. Installed
+configuration hash unchanged; installed VP restored after clean candidate shutdown.
+No deployment performed.
+
+Evidence: artifacts/vp0188-evidence/apple-tv-live-report.md,
+apple-tv-live-20260915.log, apple-tv-live-test.cfg, and
+apple-tv-live-verification.json in the source worktree above.
+
 ### Remaining acceptance / next action
 
-The user was asked to confirm an active Apple TV or Blu-ray capture signal; no
-confirmation has arrived. No physical capture session was started and no runtime
-was deployed. Synthetic renderer testing does not establish picture continuity.
-
-Use `docs/VP-0188-validation.md` for the runnable commands, seven-step manual
-checklist, log locations, and verification procedure. Once the signal is confirmed,
-prepare isolated copies of the user's config/state/assets for the candidate and
-run the seven-minute HDR-menu test plus profile, explicit Apply, and Blu-ray
-transition checks. Record source, local timestamps, visible behavior, and retained
-logs; inspect evidence before marking hardware acceptance or moving this story Done.
+Remain in Review. Request actual HDR Apple TV content/menu, verify logged absent/
+present metadata updates with zero source-triggered reads, and obtain visible
+picture-continuity observations. Complete live editor clear/save/reopen/Apply and
+Blu-ray transition checks using docs/VP-0188-validation.md. Retain logs and inspect
+them before marking hardware acceptance or moving this story Done.
