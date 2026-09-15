@@ -1,4 +1,4 @@
-﻿#define NOMINMAX
+#define NOMINMAX
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <shellapi.h>
@@ -1067,8 +1067,6 @@ void ConfigEditorWindow::loadConfiguration()
 		for (const char* inputKey : { "video_conversion", "container_colorspace",
 			"hdr_colorspace", "hdr_luminance" })
 		{
-			const std::string general = document_->Get("general", inputKey);
-			const std::string directShow = document_->Get("directshow", inputKey);
 			const std::string vpRendererInput =
 				document_->Get("vprenderer.input_processing", inputKey);
 			const std::string interimVpRendererInput =
@@ -1095,14 +1093,6 @@ void ConfigEditorWindow::loadConfiguration()
 						legacyVpRenderer);
 				}
 				document_->RemoveKnown("vprenderer", inputKey);
-				migratedLegacyInputPolicy = true;
-			}
-			if (general.empty() && !directShow.empty() &&
-				vpRendererInput.empty() && interimVpRendererInput.empty() &&
-				legacyVpRenderer.empty())
-			{
-				document_->SetKnown("general", inputKey, directShow);
-				document_->RemoveKnown("directshow", inputKey);
 				migratedLegacyInputPolicy = true;
 			}
 		}
@@ -2207,26 +2197,9 @@ QComboBox* ConfigEditorWindow::bindChoiceField(const QString& section, const QSt
         (section.compare(QStringLiteral("directshow"), Qt::CaseInsensitive) == 0 ||
          section.compare(QStringLiteral("vprenderer.input_processing"), Qt::CaseInsensitive) == 0) &&
         isSharedInputSetting(key);
-    if (backendInputSetting)
-    {
-        // A renderer-owned omission is an inherited selector value. DirectShow
-        // keeps [general] as its source; VP Renderer retains the historical
-        // DirectShow location as a final fallback for unsaved legacy files.
+    if (backendInputSetting ||
+        section.compare(QStringLiteral("directshow"), Qt::CaseInsensitive) == 0)
         fallback = value(QStringLiteral("general"), key);
-        if (fallback.isEmpty() && section.compare(QStringLiteral("vprenderer.input_processing"),
-            Qt::CaseInsensitive) == 0)
-            fallback = value(QStringLiteral("directshow"), key);
-    }
-    else if (section.compare(QStringLiteral("directshow"), Qt::CaseInsensitive) == 0)
-        fallback = value(QStringLiteral("general"), key);
-    else if (section.compare(QStringLiteral("vprenderer.input_processing"), Qt::CaseInsensitive) == 0)
-    {
-        fallback = value(QStringLiteral("general"), key);
-        if (fallback.isEmpty()) fallback = value(QStringLiteral("directshow"), key);
-    }
-    else if (section.compare(QStringLiteral("general"), Qt::CaseInsensitive) == 0 &&
-        isSharedInputSetting(key))
-        fallback = value(QStringLiteral("directshow"), key);
     const QString raw = value(section, key);
     const bool inherited = backendInputSetting && raw.isEmpty();
     const QString configured = inherited ? fallback : value(section, key, fallback);
@@ -2881,29 +2854,6 @@ void ConfigEditorWindow::applyRendererVisibilityFilter(bool hideLegacyRenderers)
 bool ConfigEditorWindow::saveChanges()
 {
     if (!configurationLoaded_ || !document_) return false;
-
-    // VP-0123 migration. Before VP Renderer had its own input policy, a
-    // DirectShow-only field acted as a shared setting. If it is the only
-    // spelling for a key, move it to [general] so both renderer pages show
-    // Inherit and preserve the exact former behavior. Mixed files retain their
-    // explicit backend override; a configured [general] value always remains
-    // the shared default.
-    for (const char* inputKey : { "video_conversion", "container_colorspace",
-        "hdr_colorspace", "hdr_luminance" })
-    {
-        const QString general = value(QStringLiteral("general"),
-            QString::fromLatin1(inputKey)).trimmed();
-        const QString directShow = value(QStringLiteral("directshow"),
-            QString::fromLatin1(inputKey)).trimmed();
-        const QString vpRenderer = value(QStringLiteral("vprenderer.input_processing"),
-            QString::fromLatin1(inputKey)).trimmed();
-        if (general.isEmpty() && !directShow.isEmpty() && vpRenderer.isEmpty())
-        {
-            document_->SetKnown("general", inputKey,
-                directShow.toLocal8Bit().constData());
-            document_->RemoveKnown("directshow", inputKey);
-        }
-    }
 
     const DocumentSnapshot currentSnapshot = captureDocumentSnapshot(*document_);
     const std::vector<ConfigurationApplyPolicy::Change> changed = changedDocumentValues(
@@ -3597,8 +3547,8 @@ QWidget* ConfigEditorWindow::createStartupPage()
     inputForm->setContentsMargins(0, 0, 0, 0);
     inputForm->setVerticalSpacing(8);
     inputForm->addRow(QStringLiteral("Video conversion"), bindChoiceField(QStringLiteral("general"),
-        QStringLiteral("video_conversion"), { QStringLiteral("NONE"), QStringLiteral("V210_TO_P010") },
-        { QStringLiteral("Disabled"), QStringLiteral("V210 to P010") }));
+        QStringLiteral("video_conversion"), { QString(), QStringLiteral("NONE"), QStringLiteral("V210_TO_P010") },
+        { QStringLiteral("Not set (default: Disabled)"), QStringLiteral("Disabled"), QStringLiteral("V210 to P010") }));
     inputForm->addRow(QStringLiteral("Container color space"), bindChoiceField(QStringLiteral("general"),
         QStringLiteral("container_colorspace"),
         { QString(), QStringLiteral("BT2020"), QStringLiteral("P3_D65"), QStringLiteral("P3_DCI"),

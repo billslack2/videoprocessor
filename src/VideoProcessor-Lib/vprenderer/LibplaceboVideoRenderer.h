@@ -16,6 +16,8 @@
 #include <vector>
 
 
+class ConfigFile;
+
 // In-process D3D11 renderer. HDR input is color-managed and tone-mapped to
 // an SDR Rec.709 swapchain; this backend deliberately does not emit HDR.
 class LibplaceboVideoRenderer final : public IVideoRenderer
@@ -200,6 +202,9 @@ private:
 	std::atomic_bool m_stopWorkerStarted{false};
 
 	std::unique_ptr<Impl> m_impl;
+	std::shared_ptr<const ConfigFile> m_rendererConfiguration;
+	std::shared_ptr<const ConfigFile> m_applicationConfiguration;
+	std::shared_ptr<const ConfigFile> m_buildConfiguration;
 	VideoStateComPtr m_buildVideoState;
 	std::string m_buildManualRule;
 	std::map<std::string, std::string> m_buildManualUnifiedProfiles;

@@ -1,4 +1,4 @@
-﻿#include <pch.h>
+#include <pch.h>
 
 #include "LibplaceboVideoRenderer.h"
 #include <vprenderer/PresentationResetEpoch.h>
@@ -1346,11 +1346,8 @@ namespace
 		}
 	}
 
-	std::string ResolveDisplayRuleName(const VideoState& state)
+	std::string ResolveDisplayRuleName(const ConfigFile& config, const VideoState& state)
 	{
-		ConfigFile config;
-		if (!config.Load(ConfigFile::RENDERER_FILENAME))
-			return "";
 		return SelectDisplayRule(config, state).name;
 	}
 
@@ -2083,19 +2080,18 @@ namespace
 		}
 	}
 
-	RendererSettings LoadRendererSettings(const VideoState& state, std::string& activeRule,
+	RendererSettings LoadRendererSettings(const ConfigFile& config,
+		const VideoState& state, std::string& activeRule,
 		const std::string& manualRule = "",
 		const std::map<std::string, std::string>& manualUnifiedProfiles = {})
 	{
 		RendererSettings settings;
 		activeRule.clear();
-		ConfigFile config;
-		if (!config.Load(ConfigFile::RENDERER_FILENAME))
-			return settings;
+		if (!config.IsLoaded()) return settings;
         settings.configurationIdentity = config.GetContentIdentity();
         settings.configurationPath = config.GetLoadedPath();
 		DebugLog::Log(
-			"libplacebo configuration loaded from %s",
+			"libplacebo configuration snapshot evaluated: path=%s",
 			config.GetLoadedPath().c_str());
 		for (const std::string& warning : config.GetWarnings())
 			DebugLog::Log(
@@ -6838,14 +6834,14 @@ struct LibplaceboVideoRenderer::Impl
 		}
 	}
 
-	void Initialize(HWND videoHwnd, VideoStateComPtr& state, const std::string& manualRule,
+	void Initialize(const ConfigFile& config, HWND videoHwnd, VideoStateComPtr& state, const std::string& manualRule,
 		const std::map<std::string, std::string>& manualUnifiedProfiles,
 		VideoConversionOverride videoConversionOverride)
 	{
 		this->videoHwnd = videoHwnd;
         WindowsDisplayDiagnostics::Log(videoHwnd, "vp-before-initialize", L"VP Renderer", this);
 		const RendererSettings settings = LoadRendererSettings(
-			*state, activeDisplayRule, manualRule, manualUnifiedProfiles);
+			config, *state, activeDisplayRule, manualRule, manualUnifiedProfiles);
 		activeSettings = settings;
         calibrationStatusAvailable = false;
 		PublishSettingsState(settings);
@@ -12302,18 +12298,20 @@ bool LibplaceboVideoRenderer::OnVideoState(VideoStateComPtr& videoState)
 		std::string nextFingerprint;
 		RendererSettings nextSettings;
 		bool hasUnifiedSettings = false;
-		ConfigFile config;
-		if (config.Load(ConfigFile::RENDERER_FILENAME) && RendererProfileConfig::IsUnified(config))
+		const ConfigFile& config = *m_rendererConfiguration;
+		DebugLog::Log("Renderer source configuration reused: identity=%llu disk_reads=0 hdr=%d",
+			static_cast<unsigned long long>(config.GetContentIdentity()), videoState->hdrData ? 1 : 0);
+		if (RendererProfileConfig::IsUnified(config))
 		{
 			nextSettings = LoadRendererSettings(
-				*videoState, nextRule, "", m_manualUnifiedProfiles);
+				config, *videoState, nextRule, "", m_manualUnifiedProfiles);
 			nextFingerprint = EffectiveSettingsFingerprint(nextSettings, false);
 			hasUnifiedSettings = true;
 		}
 		else
 		{
 			nextRule = m_manualDisplayRule.empty() ?
-				ResolveDisplayRuleName(*videoState) : m_manualDisplayRule;
+				ResolveDisplayRuleName(config, *videoState) : m_manualDisplayRule;
 		}
 		const bool changed = nextFingerprint.empty() ?
 			nextRule != currentDisplayRule :
@@ -12642,6 +12640,13 @@ void LibplaceboVideoRenderer::Build()
 		std::lock_guard<std::mutex> guard(m_stateMutex);
 		if (!m_videoState || !m_videoState->valid || !m_videoState->displayMode)
 			throw std::runtime_error("libplacebo requires a valid video state before Build");
+		if (!m_rendererConfiguration)
+		{
+			auto config = std::make_shared<ConfigFile>();
+			config->Load(ConfigFile::RENDERER_FILENAME);
+			m_rendererConfiguration = config;
+		}
+		m_buildConfiguration = m_rendererConfiguration;
 		state = m_videoState;
 		manualRule = m_manualDisplayRule;
 		manualUnifiedProfiles = m_manualUnifiedProfiles;
@@ -12682,8 +12687,8 @@ void LibplaceboVideoRenderer::Build()
 	std::vector<ConfiguredShaderRule> baselineSelection;
 	std::vector<std::string> baselineSections;
 	std::string baselineReason;
-	ConfigFile shaderConfig;
-	if (shaderConfig.Load(ConfigFile::RENDERER_FILENAME) &&
+	const ConfigFile& shaderConfig = *m_buildConfiguration;
+	if (shaderConfig.IsLoaded() &&
 		MadVRShaderLoader::ResolveConfiguredRuleSelection(shaderConfig,
 			"@shader-key:", ShaderRendererBackend::LIBPLACEBO,
 			baselineSelection, baselineSections, baselineReason))
@@ -12951,13 +12956,29 @@ bool LibplaceboVideoRenderer::ApplyApplicationState(
 	const std::map<std::string, std::string> next =
 		RendererProfileConfig::FormatSelections(snapshot.effectiveSelections);
 	VideoStateComPtr state = m_videoState;
+	auto candidateConfiguration = m_rendererConfiguration;
+	if (!candidateConfiguration || snapshot.configuration != m_applicationConfiguration)
+	{
+		const std::string selectedPath = ConfigFile::GetRendererConfigurationPath();
+		if (snapshot.configuration && (selectedPath.empty() ||
+			_stricmp(selectedPath.c_str(), snapshot.configuration->GetLoadedPath().c_str()) == 0))
+			candidateConfiguration = snapshot.configuration;
+		else
+		{
+			auto loaded = std::make_shared<ConfigFile>();
+			if (!loaded->Load(ConfigFile::RENDERER_FILENAME)) return false;
+			candidateConfiguration = loaded;
+		}
+	}
 	std::string candidateProfiles;
 	const RendererSettings candidateSettings = state ?
-		LoadRendererSettings(*state, candidateProfiles, "", next) :
+		LoadRendererSettings(*candidateConfiguration, *state, candidateProfiles, "", next) :
 		RendererSettings();
 	if (m_impl && !m_implInitialized.load(std::memory_order_acquire))
 	{
 		m_manualUnifiedProfiles = next;
+		m_rendererConfiguration = candidateConfiguration;
+		m_applicationConfiguration = snapshot.configuration;
 		rendererRestartRequired = true;
 		activeState = TEXT("Renderer initialization superseded by profile change");
 		DebugLog::Log(
@@ -13036,7 +13057,6 @@ bool LibplaceboVideoRenderer::ApplyApplicationState(
 			static_cast<unsigned long long>(snapshot.generation),
 			changedFields.c_str());
 	}
-	m_manualUnifiedProfiles = next;
 
 	if (rendererRestartRequired)
 	{
@@ -13085,6 +13105,12 @@ bool LibplaceboVideoRenderer::ApplyApplicationState(
 			candidateSettings.configuredScreenTarget ? 1 : 0,
 			candidateSettings.verticalAlignment.c_str());
 	}
+	m_manualUnifiedProfiles = next;
+	m_rendererConfiguration = candidateConfiguration;
+	m_applicationConfiguration = snapshot.configuration;
+	DebugLog::Log("Renderer configuration snapshot accepted: generation=%llu identity=%llu",
+		static_cast<unsigned long long>(snapshot.generation),
+		static_cast<unsigned long long>(candidateConfiguration->GetContentIdentity()));
 	DebugLog::Log("application profile generation %llu applied (%s)",
 		static_cast<unsigned long long>(snapshot.generation),
 		rendererRestartRequired ? "renderer rebuild required" :
@@ -14391,6 +14417,7 @@ void LibplaceboVideoRenderer::RenderLoop()
 			if (!m_implInitialized.load(std::memory_order_acquire))
 			{
 				m_impl->Initialize(
+					*m_buildConfiguration,
 					m_videoHwnd,
 					m_buildVideoState,
 					m_buildManualRule,
