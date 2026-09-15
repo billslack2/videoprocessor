@@ -6,9 +6,9 @@ story may have ordered child-task IDs as defined below.
 
 ## Registry state
 
-- Last assigned root story: `VP-0187`
-- Next root story number: `VP-0188`
-- Total indexed items: 206
+- Last assigned root story: `VP-0188`
+- Next root story number: `VP-0189`
+- Total indexed items: 207
 
 ## Story locations
 
