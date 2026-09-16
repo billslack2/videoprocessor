@@ -2,10 +2,10 @@
 
 ## Status
 
-Backlog
+In Progress
 
 Created 2026-09-16 at the user's request after source review and standalone
-policy experiments. Implementation has not started. Additional crop diagnostics
+policy experiments. Implementation started from the explicitly requested latest local tip. Additional crop diagnostics
 are a required part of the design and acceptance, not an optional follow-up.
 Original viewing-session and star-field logs are not yet available to this
 review; their absence does not prevent deterministic reproduction of the
@@ -239,3 +239,32 @@ matching host/plugin pair with exact build identity, the diagnostic invocation
 and the log helper. Do not label the source probe as a tester build or claim
 visual/field acceptance before the tester returns evidence. Story remains
 Backlog: this update prepares coordination; implementation has not started.
+
+## Implementation readiness and start (2026-09-16)
+
+The user explicitly requested implementation from the newest local source commit,
+even if unmerged. Verified local source branch codex/vp0188-current-beta at
+3acd02b3c597896beea1eca72fc4a3730cd6d92c (2026-09-15); this includes reviewed
+beta 94f938d3 and unmerged VP-0188. GitHub default/current beta remains
+v1.3.005-beta at 94f938d3. The user-selected local tip overrides the normal
+remote-beta starting-base rule and the tracker's old confirmation wording.
+Source branch: codex/vp-0189-crop-stability.
+Source worktree: E:\codex\videoprocessor\vp-0189-crop-stability.
+
+Readiness: no configuration/crop threshold retuning or new renderer ABI is
+needed. The render-thread final crop policy owns presentation after subtitle
+inspection and before NLS/aspect-limit mapping; source generation, sequence,
+epoch and current evidence are available there. Add bounded recovery there so
+logical geometry publication and stable-bar timing remain unchanged. Use the
+existing quarter-second, distinct-source-sample recovery scale for ambiguous
+re-entry; positive trusted authority bypasses this fallback-only gate. Keep
+outward visibility immediate. Near-black recovery retains current proof and
+saved-contract checks while accepting contained observations and revalidating
+after outward content clears. Diagnostic state is renderer-owned and must not
+perform additional scans; opt-in detail will have a bounded sample budget.
+
+Existing baseline probes and unit-test infrastructure provide deterministic
+regressions; add pixel fixtures and composed wiring checks, then build/test x64
+Release and prepare a tester package. No original log is required for these
+steps. Physical star-field/incident acceptance remains a Review requirement.
+No deployment or tester message is authorized by this start.

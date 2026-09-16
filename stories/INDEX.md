@@ -243,7 +243,7 @@ they must not contain requirements that are absent from this file.
 | VP-0186 | Review | Add screen-edge padding to Screen Config picture alignment |
 | VP-0187 | Done | REQ006 SDR transfer and calibration integration |
 | VP-0188 | Review | Preserve configuration scope and avoid source-event disk reloads |
-| VP-0189 | Backlog | Stabilize automatic crop and diagnose dark-scene transitions |
+| VP-0189 | In Progress | Stabilize automatic crop and diagnose dark-scene transitions |
 
 ## Codex story workflow
 
