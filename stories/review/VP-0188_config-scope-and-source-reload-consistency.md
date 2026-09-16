@@ -180,3 +180,48 @@ Evidence in artifacts/vp0188-evidence: apple-tv-hdr-switches-20260915.log (inclu
 preceding SDR session; select timestamps above), apple-tv-hdr-settled-verification.json.
 Installed VP restored afterward; no deployment or production config edits. Story
 remains Review; the full-resync inefficiency is documented and not yet implemented.
+
+### Restart-read implementation and QA package — 2026-09-15
+
+The previously documented full-restart read gap is now addressed by source commit
+`ddfca7abdd8482e8dde09becafcf3130e6ec3b8f` on the same PR #93 branch/base.
+ConfigFile keeps a bounded per-module parsed-file cache, checking Windows identity,
+size, last-write time and change time before reuse. Replacement/deletion/recreation
+and same-size edits invalidate it. Explicit Apply/reload still forces independent
+fresh stability samples and retains schema/last-known-good validation. File metadata
+probes remain; the measured reduction is configuration content reads/parses.
+
+- Clean x64 Release rebuild: PASS. Incremental LNK1103 debug-info corruption was
+  resolved by clean rebuilding; committed-source Release build also passed.
+- Core: **1,155/1,155 PASS**; editor: **71/71 PASS**. Four new tests exercise reuse,
+  force-fresh, alias/warning preservation and file invalidation, including a
+  same-size edit with restored last-write timestamp. Renderer HDR-cycle test passed.
+- Live DeckLink/Apple TV PQ/BT.2020 HDR capture: **two startup content reads total**
+  (one host including pre-log read, one renderer), versus 23 previously logged.
+- Full renderer restarts via Shift+R at 20:41:55, 20:42:23 and 20:42:51 EDT:
+  **zero further reads across all three**, with resumed presentation telemetry.
+  Verified log interval lines 669 through shutdown at 20:45:39; no deliberate
+  configuration edits in that interval.
+- Explicit host Apply through the editor's existing ConfigurationChanged.v1 IPC:
+  duration 7→6 accepted at 20:40:32; invalid value rejected/accepted state retained
+  at 20:40:52; backed-up value 7 restored at 20:41:14. Two fresh host reads each.
+  This is host Apply validation; widget tests cover the editor controls.
+- No new-build user-driven HDMI format-switch repetition or metadata-only blips
+  were observed in this session; these remain on the QA checklist. Do not equate
+  the automated full renderer restart with a physical HDMI resync or claim visual
+  acceptance without tester observation.
+
+Local evidence: artifacts/vp0188-evidence/restart-cache-report.md, live log/verifier
+JSON, build logs, core TRX/log, editor log, paired hashes, qa-zip-verification.json.
+No deployment/config overwrite. Isolated candidate shut down cleanly; installed
+VP had already been stopped before testing and was left unchanged.
+
+QA archive (usual Documents/ChatGPT/Done folder):
+`VideoProcessor-v1.3.005-beta-VP0188-ddfca7ab-x64-Release.zip`
+29,784,699 bytes; 62 files including QA docs, log verifier and internal hashes.
+SHA256: `0f985f9870a343ab9e47eb2356d3352aeebdc27038fa7f5435e2385eeb13d256`.
+Archive CRC and every staged file hash verified. Active config/state/logs excluded.
+Companion `-QA.md` and `.sha256` files created. Paired host/renderer remain together.
+
+Status remains **Review**, pending QA with this ZIP. User explicitly authorized
+publishing the tested source commit and updating the existing public draft PR/story.
