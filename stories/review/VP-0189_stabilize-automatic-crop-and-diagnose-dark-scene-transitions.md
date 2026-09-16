@@ -359,3 +359,16 @@ observations, not claimed solved by these policy tests. Tester should compare
 the identified Kill Boksoon dark scene and credits, a repeatable multi-AR
 star-field passage, stable bars/full height and subtitles, with times/settings
 and raw logs. No message has been sent to a tester by this task.
+
+## Authorized local deployment (2026-09-16)
+
+At the user's explicit request, deployed commit `911e2b7f` x64 Release to
+`C:\Videoprocessor\vp`. Replaced and SHA-256 verified both `VideoProcessor.exe`
+and `vprenderer\VideoProcessorVPRenderer.dll` against the tested candidate.
+The prior pair was backed up and verified under
+`C:\Videoprocessor\vp\backups\VP-0189-before-911e2b7f-20260916-140445`.
+No configuration edits were made; six configuration/state/manifest files were
+hash-verified unchanged. The application was not running and was left stopped.
+Normal crop diagnostics are included; bounded edge tracing was not enabled.
+Deployment evidence: [local deployment record](../assets/VP-0189/local-deployment.json).
+Story remains Review pending physical playback and visual/performance acceptance.

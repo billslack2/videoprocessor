@@ -1,0 +1,26 @@
+{
+  "commit": "911e2b7fe46b95560008ffc615d89a5baf6fe2e1",
+  "configuration": "Release",
+  "platform": "x64",
+  "deployedUtc": "2026-09-16T18:04:45.1513950Z",
+  "destination": "C:\\Videoprocessor\\vp",
+  "backup": "C:\\Videoprocessor\\vp\\backups\\VP-0189-before-911e2b7f-20260916-140445",
+  "previousHashes": {
+    "vprenderer\\VideoProcessorVPRenderer.dll": "B874BF5869DE3691D000173FC69A3378FCB7800C48A43A46DEF3C2E8F40DD9FE",
+    "VideoProcessor.exe": "07E9857CE9B53C669BDEC9B48E795A4D1DE55C010095E68E461B4C59E559F76B"
+  },
+  "deployedPair": [
+    {
+      "path": "VideoProcessor.exe",
+      "sha256": "409407D44DB2681449109DE0C769AD07EC3684331505F26FFEEAED7E10BB3CC2"
+    },
+    {
+      "path": "vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "24926D81E595631DCCF6ADEC93DDD494A9C8991690B2C63B15AD05BB44172624"
+    }
+  ],
+  "configurationFilesVerified": 6,
+  "configurationEdits": [],
+  "applicationWasRunning": false,
+  "applicationStarted": false
+}
