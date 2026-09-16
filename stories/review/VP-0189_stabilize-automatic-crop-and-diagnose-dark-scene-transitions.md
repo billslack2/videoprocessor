@@ -2,7 +2,7 @@
 
 ## Status
 
-In Progress
+Review
 
 Created 2026-09-16 at the user's request after source review and standalone
 policy experiments. Implementation started from the explicitly requested latest local tip. Additional crop diagnostics
@@ -237,7 +237,7 @@ Before sharing a candidate binary, complete focused/composed regressions, the
 relevant core checks and a successful x64 Release build, then package the
 matching host/plugin pair with exact build identity, the diagnostic invocation
 and the log helper. Do not label the source probe as a tester build or claim
-visual/field acceptance before the tester returns evidence. That coordination update preceded implementation; the current state is In Progress.
+visual/field acceptance before the tester returns evidence. Implementation followed that coordination update; see the current Status.
 
 ## Implementation readiness and start (2026-09-16)
 
@@ -294,3 +294,68 @@ the long release to the tester acceptance matrix.
 
 No source changes had been made when this evidence arrived. Resume implementation
 with the revised ownership contract and the reproducible evidence preserved.
+
+## Implemented candidate and review handoff (2026-09-16)
+
+Implementation is committed and published as
+[`911e2b7f`](https://github.com/billslack2/videoprocessor/commit/911e2b7fe46b95560008ffc615d89a5baf6fe2e1),
+branch `codex/vp-0189-crop-stability`, based exactly on the user-selected local
+`3acd02b3`. No integration merge or deployment was performed.
+
+- Final crop recovery now holds temporary full raster across pixel-safe, trusted,
+  refinement and pending-inspection owner changes until adjacent current safe
+  samples qualify. The recovery interval is 250 ms: seven samples at 23.976/24,
+  sixteen at 59.94/60. It also covers horizontal-conflict and explicit fail-open
+  withdrawals without overriding those owners. Normal acquisition outside an
+  unresolved event remains unchanged; full-raster authority remains immediate.
+- Completed current dense subtitle/Fit or episode proof can resolve the event.
+  NLS uses full raster while recovery is active; fixed aspect remains explicit.
+- Near-black entry recovery accepts contained observations, preserves the exact
+  saved crop and revalidates after previously sticky outward content. It checks
+  source generation/sequence and rejects repeat/out-of-order proof. An epoch
+  change invalidates the saved certificate and returns to current bootstrap.
+- Diagnostics separate current measured bands, proposal containment, owner and
+  proof rejection; source-crop transitions and two-second unresolved summaries
+  include counts and context. Final-layout records correlate actual mapping.
+  `VP_CROP_TRACE_FRAMES=600` opts into at most 600 fresh unresolved per-edge
+  records per renderer instance using existing samples; no additional logging
+  scans or persistent configuration/ABI changes. Unknown detail is explicit.
+- Added the standard-library Python helper, exact-field parsing tests and
+  [operator/tester instructions](../assets/VP-0189/crop-diagnostics.md).
+
+Validation on the exact committed candidate:
+
+- Full solution x64 Release build succeeded (final incremental build: zero
+  warnings/errors). Command: MSBuild.exe VideoProcessor.sln /m
+  /p:Configuration=Release /p:Platform=x64.
+- VSTest x64 native core: **1,172/1,172 passed**, including the log-derived late
+  owner sequence, alternating safety, contained/sticky recovery, repeats/gaps,
+  profile boundaries, existing subtitle/NLS/full-raster tests and moving-star
+  pixel fixtures inside/outside a known crop and sparse full-height startup.
+- Python helper: **5/5 passed**. It independently reproduces 79 source changes
+  and 79 final-layout changes in the original 00:30 interval.
+- One intermediate full run failed the unchanged configuration-cache
+  `SameSizeEditWithRestoredWriteTimeInvalidatesCache` test. All five cache tests
+  then passed in isolation and the final full run above passed. No cache code
+  was changed by VP-0189.
+- Release manifest verified 59 immutable runtime files. Final zip integrity and
+  packaged host/plugin hashes match the build; active configuration is absent
+  (only the example is included). Build identity/hashes are in
+  [candidate BUILD-INFO](../assets/VP-0189/candidate-build-info.json).
+
+Tester bundle (30,846,853 bytes):
+`C:\Users\bslac\Documents\ChatGPT\Done\VP-0189-911e2b7f-x64-Release-tester.zip`
+SHA-256: `baeb0406d32b60f7434ffec8fa6d3908a016c5109313b5d51df8982a98f54c6f`.
+Local build/test evidence:
+`E:\codex\videoprocessor\vp-0189-crop-stability\artifacts\vp0189`
+(`build.log`, `core-911e2b7f.trx`, `package.log`).
+
+Review remains open for physical playback, visual acceptance and live enabled/
+disabled logging overhead/volume. Source inspection confirms logging consumes
+existing evidence and does not feed policy decisions; this is not a measured
+hardware overhead claim. Fixed-grid sampling can still miss isolated stars.
+The credits complaint and the 54-second interval remain unresolved field
+observations, not claimed solved by these policy tests. Tester should compare
+the identified Kill Boksoon dark scene and credits, a repeatable multi-AR
+star-field passage, stable bars/full height and subtitles, with times/settings
+and raw logs. No message has been sent to a tester by this task.

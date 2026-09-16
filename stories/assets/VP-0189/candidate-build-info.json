@@ -1,0 +1,26 @@
+{
+  "repository": "billslack2/videoprocessor",
+  "commit": "911e2b7fe46b95560008ffc615d89a5baf6fe2e1",
+  "branch": "codex/vp-0189-crop-stability",
+  "base": "3acd02b3c597896beea1eca72fc4a3730cd6d92c",
+  "configuration": "Release",
+  "platform": "x64",
+  "packagedUtc": "2026-09-16T17:44:07.3982675Z",
+  "coreTests": {
+    "total": 1172,
+    "passed": 1172,
+    "failed": 0
+  },
+  "runtimePair": [
+    {
+      "path": "VideoProcessor.exe",
+      "sha256": "409407D44DB2681449109DE0C769AD07EC3684331505F26FFEEAED7E10BB3CC2"
+    },
+    {
+      "path": "vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "24926D81E595631DCCF6ADEC93DDD494A9C8991690B2C63B15AD05BB44172624"
+    }
+  ],
+  "deploymentPerformed": false,
+  "visualAcceptance": "pending tester"
+}
