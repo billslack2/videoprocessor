@@ -7,9 +7,9 @@ In Progress
 Created 2026-09-16 at the user's request after source review and standalone
 policy experiments. Implementation started from the explicitly requested latest local tip. Additional crop diagnostics
 are a required part of the design and acceptance, not an optional follow-up.
-Original viewing-session and star-field logs are not yet available to this
-review; their absence does not prevent deterministic reproduction of the
-confirmed policy weaknesses below.
+The original viewing-session log was received and independently reviewed during
+implementation. Star-field logs/video remain unavailable. See the received-log
+review below for verified counts and corrections to the supplied report.
 
 ## User story
 
@@ -25,9 +25,9 @@ the evidence and decision well enough to diagnose it without guessing.
   one nearly minute-long release, rapid zoom-in/out during a dark action scene,
   and additional problems with star fields in multi-AR content.
 - The supplied `2026-09-16_crop-geometry-report.md.txt` reports 79 applied-state
-  changes in 31 seconds and a 54-second release on `94f938d3`. These counts,
-  exact incident causes, and excluded-band pixel contents are not independently
-  verified: the raw log/ledger/video was not supplied. Preserve this distinction.
+  changes in 31 seconds and a 54-second release on `94f938d3`. The raw log subsequently confirms the counts but contradicts the claimed
+  single-latch cause of the 54-second interval. Actual excluded-band pixel
+  contents remain unverified; see the received-log review.
 - GitHub beta `v1.3.005-beta` was verified at
   `94f938d33216d0f212797f1ed4c6f83db02d9187` on 2026-09-16. Crop policy and
   active-picture evidence are byte-identical in VP-0188's `3acd02b3` follow-up.
@@ -237,8 +237,7 @@ Before sharing a candidate binary, complete focused/composed regressions, the
 relevant core checks and a successful x64 Release build, then package the
 matching host/plugin pair with exact build identity, the diagnostic invocation
 and the log helper. Do not label the source probe as a tester build or claim
-visual/field acceptance before the tester returns evidence. Story remains
-Backlog: this update prepares coordination; implementation has not started.
+visual/field acceptance before the tester returns evidence. That coordination update preceded implementation; the current state is In Progress.
 
 ## Implementation readiness and start (2026-09-16)
 
@@ -257,7 +256,9 @@ inspection and before NLS/aspect-limit mapping; source generation, sequence,
 epoch and current evidence are available there. Add bounded recovery there so
 logical geometry publication and stable-bar timing remain unchanged. Use the
 existing quarter-second, distinct-source-sample recovery scale for ambiguous
-re-entry; positive trusted authority bypasses this fallback-only gate. Keep
+re-entry; ordinary acquisition outside an unresolved event is unchanged. Within an
+unresolved event, a trusted owner alone cannot bypass current safety/proof;
+the received log demonstrates why. Keep
 outward visibility immediate. Near-black recovery retains current proof and
 saved-contract checks while accepting contained observations and revalidating
 after outward content clears. Diagnostic state is renderer-owned and must not
@@ -268,3 +269,28 @@ regressions; add pixel fixtures and composed wiring checks, then build/test x64
 Release and prepare a tester package. No original log is required for these
 steps. Physical star-field/incident acceptance remains a Review requirement.
 No deployment or tester message is authorized by this start.
+
+## Received log and revised readiness (2026-09-16)
+
+The original `vp20260915-24.49.log.txt` was received before source edits.
+[Independent log review](../assets/VP-0189/received-log-review.md) confirms 79
+changes at 00:30:08–00:30:39 and seven late changes including initial acquisition
+at 00:39:17–00:39:18. The late burst alternates trusted/refinement owners against
+withdrawal with outside-band content, so the final recovery gate must cover
+those owners too. Three returns in the main burst also use trusted ownership.
+
+The 54-second release is verified, but its first episode ends one source frame
+after entry; full-raster authority and later reacquisition follow. It is not
+valid to attribute the whole interval to the sticky episode or guarantee that
+the planned repair resolves it. Preserve full-raster authority and add tests
+that distinguish it from an unresolved presentation withdrawal.
+
+The tester identifies the main event as dark action near the end of Kill
+Boksoon and reports credits flicker. Before the late burst, logged final layouts
+and crop are constant; retain the credits complaint as unresolved and obtain
+time/symptom correlation. The late burst is visibly changing geometry in the
+log, but the video/content association is not known. Add both intervals and
+the long release to the tester acceptance matrix.
+
+No source changes had been made when this evidence arrived. Resume implementation
+with the revised ownership contract and the reproducible evidence preserved.
