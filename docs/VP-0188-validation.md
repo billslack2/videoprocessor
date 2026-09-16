@@ -88,3 +88,25 @@ or the selected no-read interval contains a disk read. Examine surrounding captu
 profile, renderer lifecycle, and runtime-input-setting lines for causal attribution.
 A nonzero general-policy warning may identify another legacy renderer-only key;
 inspect the saved config rather than assuming every warning is refresh-related.
+
+## Startup and HDMI-resync read reuse
+
+`ConfigFile::Load` reuses up to 16 parsed files per module when Windows file
+identity, size, last-write time, and change time still match. Each request checks
+file metadata; these checks are not configuration-content reads. Replacement,
+deletion, recreation, and same-size writes invalidate reuse. If revision metadata
+is unavailable, the loader reads normally. Host and renderer DLL have separate
+caches, so expect one initial content read in each for a single unchanged config.
+
+Explicit host Apply/reload uses `ReadPolicy::Fresh` for both stability samples.
+Renderer-lifecycle validation uses revision-checked reuse, retaining schema
+validation and last-known-good handling. The cache stores parsed files, not an
+acceptance decision. A cached invalid configuration must still fail validation.
+
+The startup log `Configuration read counters: module=host startup_content_reads=N`
+includes content reads before logging was initialized. Add that initial count to
+subsequent `Configuration disk read:` events when comparing complete sessions.
+After startup, repeat HDR/SDR switches that cause actual HDMI resyncs. Require
+zero further reads while the configuration is unchanged; retain the entire log,
+exact event interval, and the user's picture-recovery observations. Also verify
+an explicit saved edit is picked up and a rejected edit retains accepted state.

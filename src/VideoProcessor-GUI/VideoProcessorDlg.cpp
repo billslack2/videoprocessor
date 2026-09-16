@@ -3835,12 +3835,14 @@ bool CVideoProcessorDlg::StageSavedConfiguration(
 	const char* reason, bool stageAccelerators)
 {
 	ClearStagedConfiguration();
+	const auto readPolicy = strcmp(reason, "renderer-lifecycle") == 0 ?
+		ConfigFile::ReadPolicy::ReuseUnchanged : ConfigFile::ReadPolicy::Fresh;
 	std::unique_ptr<ConfigFile> candidate;
 	ConfigurationSnapshot candidateSnapshot;
 	for (unsigned int attempt = 1; attempt <= 3; ++attempt)
 	{
 		auto first = std::make_unique<ConfigFile>();
-		if (!first->Load())
+		if (!first->Load(ConfigFile::DEFAULT_FILENAME, readPolicy))
 		{
 			DebugLog::Log(
 				"Configuration reload rejected: reason=%s attempt=%u failure=load",
@@ -3850,7 +3852,7 @@ bool CVideoProcessorDlg::StageSavedConfiguration(
 		const ConfigurationSnapshot firstSnapshot =
 			CaptureConfigurationSnapshot(*first);
 		auto second = std::make_unique<ConfigFile>();
-		if (!second->Load() ||
+		if (!second->Load(ConfigFile::DEFAULT_FILENAME, readPolicy) ||
 			CaptureConfigurationSnapshot(*second) != firstSnapshot)
 		{
 			DebugLog::Log(
@@ -3944,10 +3946,10 @@ bool CVideoProcessorDlg::StageSavedConfiguration(
 		for (unsigned int attempt = 1; attempt <= 3; ++attempt)
 		{
 			ConfigFile firstRendererConfig;
-			if (!firstRendererConfig.Load(ConfigFile::RENDERER_FILENAME))
+			if (!firstRendererConfig.Load(ConfigFile::RENDERER_FILENAME, readPolicy))
 				break; // Optional Alpha renderer override is absent.
 			ConfigFile secondRendererConfig;
-			if (secondRendererConfig.Load(ConfigFile::RENDERER_FILENAME) &&
+			if (secondRendererConfig.Load(ConfigFile::RENDERER_FILENAME, readPolicy) &&
 				CaptureConfigurationSnapshot(firstRendererConfig) ==
 					CaptureConfigurationSnapshot(secondRendererConfig))
 			{

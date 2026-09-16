@@ -1327,6 +1327,8 @@ BOOL CVideoProcessorApp::InitInstance()
 			debugLogRetention.count,
 			debugLogRetention.diagnostic,
 			LoadEnhancedLoggingEnabled());
+		DebugLog::Log("Configuration read counters: module=host startup_content_reads=%llu",
+			static_cast<unsigned long long>(ConfigFile::GetLoadCount()));
 		LogStartupPlatformInventory();
 	}
 

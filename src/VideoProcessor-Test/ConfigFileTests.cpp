@@ -38,6 +38,116 @@ using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
 namespace VideoProcessorTest
 {
+	struct CachedConfigTestFile
+	{
+		std::string path;
+		CachedConfigTestFile()
+		{
+			char directory[MAX_PATH]{}, file[MAX_PATH]{};
+			Assert::IsTrue(GetTempPathA(MAX_PATH, directory) != 0);
+			Assert::IsTrue(GetTempFileNameA(directory, "vpc", 0, file) != 0);
+			path = file;
+		}
+		~CachedConfigTestFile() { DeleteFileA(path.c_str()); }
+		void Write(const char* value)
+		{
+			std::ofstream file(path, std::ios::trunc);
+			file << "[general]\nvalue: " << value << "\n";
+		}
+	};
+
+	TEST_CLASS(ConfigurationReadCacheTests)
+	{
+	public:
+		TEST_METHOD(RestartReadersReuseOneReadAndExplicitReloadSamplesIndependently)
+		{
+			CachedConfigTestFile file;
+			file.Write("one");
+			const auto before = ConfigFile::GetLoadCount();
+			for (int restart = 0; restart < 51; ++restart)
+			{
+				ConfigFile reader;
+				Assert::IsTrue(reader.Load(file.path));
+				std::string value;
+				Assert::IsTrue(reader.TryGetString("general", "value", value));
+				Assert::AreEqual(std::string("one"), value);
+			}
+			Assert::IsTrue(ConfigFile::GetLoadCount() == before + 1);
+			ConfigFile first, second;
+			Assert::IsTrue(first.Load(file.path, ConfigFile::ReadPolicy::Fresh));
+			Assert::IsTrue(second.Load(file.path, ConfigFile::ReadPolicy::Fresh));
+			Assert::IsTrue(ConfigFile::GetLoadCount() == before + 3);
+		}
+
+		TEST_METHOD(RendererPathAliasSharesCachedContentAndWarnings)
+		{
+			CachedConfigTestFile file;
+			std::ofstream(file.path) << "[general]\nvalue: one\nvalue: two\n";
+			struct RestorePath
+			{
+				std::string path = ConfigFile::GetRendererConfigurationPath();
+				~RestorePath() { ConfigFile::SetRendererConfigurationPath(path); }
+			} restore;
+			ConfigFile::SetRendererConfigurationPath(file.path);
+			ConfigFile main, renderer;
+			Assert::IsTrue(main.Load(file.path));
+			const auto before = ConfigFile::GetLoadCount();
+			Assert::IsTrue(renderer.Load(ConfigFile::RENDERER_FILENAME));
+			Assert::IsTrue(ConfigFile::GetLoadCount() == before);
+			Assert::IsFalse(main.GetWarnings().empty());
+			Assert::IsTrue(main.GetWarnings() == renderer.GetWarnings());
+			Assert::IsTrue(main.GetContentIdentity() == renderer.GetContentIdentity());
+		}
+
+		TEST_METHOD(SameSizeEditWithRestoredWriteTimeInvalidatesCache)
+		{
+			CachedConfigTestFile file;
+			file.Write("one");
+			ConfigFile original;
+			Assert::IsTrue(original.Load(file.path));
+			WIN32_FILE_ATTRIBUTE_DATA attributes{};
+			Assert::IsTrue(GetFileAttributesExA(file.path.c_str(), GetFileExInfoStandard, &attributes) != 0);
+			file.Write("two");
+			HANDLE handle = CreateFileA(file.path.c_str(), FILE_WRITE_ATTRIBUTES,
+				FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
+				OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+			Assert::IsTrue(handle != INVALID_HANDLE_VALUE);
+			const BOOL restored = SetFileTime(handle, nullptr, nullptr, &attributes.ftLastWriteTime);
+			CloseHandle(handle);
+			Assert::IsTrue(restored != 0);
+			const auto before = ConfigFile::GetLoadCount();
+			ConfigFile changed;
+			Assert::IsTrue(changed.Load(file.path));
+			std::string value;
+			Assert::IsTrue(changed.TryGetString("general", "value", value));
+			Assert::AreEqual(std::string("two"), value);
+			Assert::IsTrue(ConfigFile::GetLoadCount() == before + 1);
+			Assert::IsTrue(original.TryGetString("general", "value", value));
+			Assert::AreEqual(std::string("one"), value);
+		}
+
+		TEST_METHOD(ReplacementDeletionAndRecreationNeverReturnStaleConfig)
+		{
+			CachedConfigTestFile file, replacement;
+			file.Write("one"); replacement.Write("two");
+			ConfigFile config;
+			Assert::IsTrue(config.Load(file.path));
+			Assert::IsTrue(MoveFileExA(replacement.path.c_str(), file.path.c_str(), MOVEFILE_REPLACE_EXISTING) != 0);
+			Assert::IsTrue(config.Load(file.path));
+			std::string value;
+			Assert::IsTrue(config.TryGetString("general", "value", value));
+			Assert::AreEqual(std::string("two"), value);
+			Assert::IsTrue(DeleteFileA(file.path.c_str()) != 0);
+			Assert::IsFalse(config.Load(file.path));
+			Assert::IsFalse(config.IsLoaded());
+			Assert::IsFalse(config.TryGetString("general", "value", value));
+			file.Write("new");
+			Assert::IsTrue(config.Load(file.path));
+			Assert::IsTrue(config.TryGetString("general", "value", value));
+			Assert::AreEqual(std::string("new"), value);
+		}
+	};
+
 	TEST_CLASS(ConfigFileTests)
 	{
 	public:

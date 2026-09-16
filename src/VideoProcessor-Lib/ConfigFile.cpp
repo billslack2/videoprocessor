@@ -29,6 +29,50 @@ namespace
 std::mutex g_rendererConfigurationPathMutex;
 std::string g_rendererConfigurationPath;
 
+struct FileRevision
+{
+	BY_HANDLE_FILE_INFORMATION identity{};
+	FILE_BASIC_INFO basic{};
+	bool operator==(const FileRevision& other) const
+	{
+		return identity.dwVolumeSerialNumber == other.identity.dwVolumeSerialNumber &&
+			identity.nFileIndexHigh == other.identity.nFileIndexHigh &&
+			identity.nFileIndexLow == other.identity.nFileIndexLow &&
+			identity.nFileSizeHigh == other.identity.nFileSizeHigh &&
+			identity.nFileSizeLow == other.identity.nFileSizeLow &&
+			basic.LastWriteTime.QuadPart == other.basic.LastWriteTime.QuadPart &&
+			basic.ChangeTime.QuadPart == other.basic.ChangeTime.QuadPart;
+	}
+};
+
+bool ReadFileRevision(const std::string& path, FileRevision& revision)
+{
+	const HANDLE file = CreateFileA(path.c_str(), FILE_READ_ATTRIBUTES,
+		FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
+		OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+	if (file == INVALID_HANDLE_VALUE) return false;
+	const bool result = GetFileInformationByHandle(file, &revision.identity) &&
+		GetFileInformationByHandleEx(file, FileBasicInfo, &revision.basic,
+			sizeof(revision.basic));
+	CloseHandle(file);
+	return result;
+}
+
+std::string CachePath(const std::string& path)
+{
+	std::vector<char> absolute(32768);
+	const DWORD length = GetFullPathNameA(path.c_str(),
+		static_cast<DWORD>(absolute.size()), absolute.data(), nullptr);
+	if (!length || length >= absolute.size()) return {};
+	// Keep case: case-sensitive Windows directories must not alias distinct files.
+	return std::string(absolute.data(), length);
+}
+
+struct CachedConfiguration { FileRevision revision; ConfigFile config; };
+std::mutex g_configurationCacheMutex;
+std::map<std::string, CachedConfiguration> g_configurationCache;
+
+
 std::string StripComment(const std::string& value)
 {
 	for (size_t i = 0; i < value.size(); ++i)
@@ -141,7 +185,7 @@ std::string ConfigFile::GetRendererConfigurationPath()
 	return g_rendererConfigurationPath;
 }
 
-bool ConfigFile::Load(const std::string& filename)
+bool ConfigFile::Load(const std::string& filename, ReadPolicy policy)
 {
 	m_sections.clear();
 	m_sectionOrder.clear();
@@ -212,8 +256,25 @@ bool ConfigFile::Load(const std::string& filename)
 	const std::vector<std::string> candidates = hasOverride ?
 		std::vector<std::string>{ overridePath } :
 		BuildConfigPathCandidates(selectedFilename);
+	// Serialize cache publication with loads so a slower reader cannot overwrite
+	// a newer revision. Each module keeps at most 16 parsed files.
+	std::unique_lock<std::mutex> cacheGuard(g_configurationCacheMutex);
+	FileRevision before{};
+	bool revisionAvailable = false;
+	std::string cacheKey;
 	for (const auto& candidate : candidates)
 	{
+		cacheKey = CachePath(candidate);
+		revisionAvailable = !cacheKey.empty() && ReadFileRevision(candidate, before);
+		const auto cached = g_configurationCache.find(cacheKey);
+		if (revisionAvailable && policy == ReadPolicy::ReuseUnchanged &&
+			cached != g_configurationCache.end() && cached->second.revision == before)
+		{
+			*this = cached->second.config;
+			m_loadedPath = candidate;
+			return true;
+		}
+		if (cached != g_configurationCache.end()) g_configurationCache.erase(cached);
 		configFile.clear();
 		configFile.open(candidate);
 		if (configFile.is_open())
@@ -330,9 +391,21 @@ bool ConfigFile::Load(const std::string& filename)
 		}
 	}
 
+	if (configFile.bad())
+	{
+		m_warnings.push_back("Cannot read configuration file: " + m_loadedPath);
+		return false;
+	}
 	ColorOutputProfileMigration::Apply(m_sections, m_sectionOrder);
     CalibrationProfileMigration::Apply(m_sections, m_sectionOrder);
 	m_loaded = true;
+	FileRevision after{};
+	if (revisionAvailable && ReadFileRevision(m_loadedPath, after) && before == after)
+	{
+		if (g_configurationCache.size() >= 16) g_configurationCache.clear();
+		g_configurationCache[cacheKey] = CachedConfiguration{after, *this};
+	}
+	cacheGuard.unlock();
 	const auto serial = ++configurationLoadCount;
 #ifndef VP_CONFIGFILE_STANDALONE
 	DebugLog::Log("Configuration disk read: serial=%llu identity=%llu path=%s",
