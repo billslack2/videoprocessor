@@ -790,22 +790,7 @@ std::vector<std::wstring> LoadConfiguredCommandLineArguments(
 	// general application startup choices in the VP-0079 layout.
 	AppendConfigStringOptionInSection(arguments, config, "directshow",
 		{ "frame_offset" }, L"/frame_offset");
-	// These source-processing settings predate the Alpha renderer and were
-	// historically accepted under [directshow]. They now belong to [general]
-	// because both renderer backends consume them. Retain the old location only
-	// as a fallback; a canonical [general] value always wins.
-	for (const std::pair<const char*, const wchar_t*> sharedInputOption : {
-		std::pair<const char*, const wchar_t*>{ "video_conversion", L"/video_conversion" },
-		{ "container_colorspace", L"/container_colorspace" },
-		{ "hdr_colorspace", L"/hdr_colorspace" },
-		{ "hdr_luminance", L"/hdr_luminance" } })
-	{
-		std::string canonicalValue;
-		if (!TryGetFirstConfigString(config, { sharedInputOption.first },
-			canonicalValue))
-			AppendConfigStringOptionInSection(arguments, config, "directshow",
-				{ sharedInputOption.first }, sharedInputOption.second);
-	}
+	// Backend input policies are resolved independently by StageRuntimeSettings.
 	AppendConfigStringOptionInSection(arguments, config, "directshow",
 		{ "renderer_start_stop_time_method" }, L"/renderer_start_stop_time_method");
 	AppendConfigStringOptionInSection(arguments, config, "directshow",
@@ -1342,6 +1327,8 @@ BOOL CVideoProcessorApp::InitInstance()
 			debugLogRetention.count,
 			debugLogRetention.diagnostic,
 			LoadEnhancedLoggingEnabled());
+		DebugLog::Log("Configuration read counters: module=host startup_content_reads=%llu",
+			static_cast<unsigned long long>(ConfigFile::GetLoadCount()));
 		LogStartupPlatformInventory();
 	}
 
