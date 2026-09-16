@@ -225,3 +225,24 @@ Companion `-QA.md` and `.sha256` files created. Paired host/renderer remain toge
 
 Status remains **Review**, pending QA with this ZIP. User explicitly authorized
 publishing the tested source commit and updating the existing public draft PR/story.
+
+### User deployment — 2026-09-15 21:13 EDT
+
+User explicitly requested deployment. Installed tested x64 Release commit ddfca7ab
+at C:\Videoprocessor\vp. Replaced six changed manifest files: host EXE, renderer DLL,
+config editor EXE/discovery DLL, configuration HTML, and release manifest. Verified
+host SHA256 d770e5f6e4c84faee4a152912749de971667d32d7846d3f55bd89471414e7420
+and renderer SHA256 7aecf82ec90830c296b25fbf9eece3a529c51697ab816941a3e9f4fb0374e574
+against the tested Release package. Unchanged dependencies reused.
+
+Backup: C:\Videoprocessor\vp\backups\VP0188-ddfca7ab-20260915-211330.
+Backed up every replaced file plus VideoProcessor.cfg and VideoProcessor.state.
+Only configuration edit: commented the exact line screen_edge_padding: 50 with
+'# VP0188 beta compatibility: ' because the beta baseline rejects that development
+key. All other configuration bytes preserved; existing shaders/state retained.
+
+Launched installed build; API-20 plugin loaded and live HDR capture/rendering at
+approximately 23.976 fps confirmed in logs. Startup host content-read counter=1.
+Complete file/hash/backup audit: artifacts/vp0188-evidence/deployment-ddfca7ab.json.
+Story remains Review for QA; deployment is not a claim of completed metadata-blip
+hardware acceptance.
