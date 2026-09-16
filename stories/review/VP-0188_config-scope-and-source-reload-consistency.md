@@ -2,11 +2,13 @@
 
 ## Status
 
-Review — implementation and automated validation complete 2026-09-15; active-signal hardware acceptance remains pending. Source branch
-`codex/vp-0188-config-scope-reloads`, worktree
-`E:\codex\videoprocessor\assess-config-feedback-20260915`, based on current
-`origin/v1.3.005-beta` at `455d919c`.
-
+Review — corrected build deployed and replacement QA ZIP generated 2026-09-15.
+Public PR #93 head `3acd02b3` on `codex/vp-0188-config-scope-reloads` includes
+GitHub-verified beta `v1.3.005-beta` at `94f938d33216d0f212797f1ed4c6f83db02d9187`.
+Corrected source worktree: `E:\codex\videoprocessor\vp0188-current-beta`.
+Core tests: 1,161/1,161 passed; two editor runs each passed 74/75 with unresolved
+intermittent foreground failures. Physical metadata-blip/HDMI QA and UI focus
+qualification remain pending. The previous `ddfca7ab` ZIP is superseded; use `3acd02b3`.
 ## Problem
 
 1. The configuration editor writes shared `switch_refresh_rate` to [general],
@@ -246,3 +248,54 @@ approximately 23.976 fps confirmed in logs. Startup host content-read counter=1.
 Complete file/hash/backup audit: artifacts/vp0188-evidence/deployment-ddfca7ab.json.
 Story remains Review for QA; deployment is not a claim of completed metadata-blip
 hardware acceptance.
+
+
+### Baseline correction, replacement ZIP and deployment — 2026-09-15
+
+The ddfca7ab ZIP/deployment used stale beta tracking ref 455d919c and omitted
+already merged VP-0186 screen-edge padding and REQ006 changes. This was an agent
+baseline-verification error, not an obsolete user setting. remote.origin.fetch
+listed main and two feature branches but omitted beta, so plain fetch left the
+tracking ref stale. GitHub current beta was verified as 94f938d33216d0f212797f1ed4c6f83db02d9187
+and explicitly fetched. Earlier statements implying the setting was unsupported
+by current beta were wrong. Old ZIP/checksum/checklist renamed SUPERSEDED-DO-NOT-USE.
+
+Restored prior installed files and the exact screen_edge_padding: 50 line first.
+Created clean worktree E:\codex\videoprocessor\vp0188-current-beta from remote tip
+94f938d3 and merged VP-0188 changes (f7bd0a74), then added padding snapshot regression
+coverage and baseline-verification documentation in 3acd02b3. Remote beta ancestry
+verified again immediately before packaging. BUILD-INFO.json in the ZIP records
+both full hashes. No force push is required; corrected head includes previous PR head.
+
+Validation:
+- Clean x64 Release build PASS. Incremental debug-info linker corruption resolved
+  by clean rebuilding, with no deployment of failed-build outputs.
+- Core: 1,161/1,161 PASS, including CurrentBetaScreenEdgePaddingSurvivesAcceptedConfiguration.
+- Editor: two complete 75-case runs, 74 PASS in each. Run 1 failed external
+  foreground/topmost; run 2 passed that but failed stable reveal foreground retention.
+  Each failed case passed in the other full run. Isolated topmost retries failed;
+  a pre-existing remote-beta build passed its comparison run. This is unresolved
+  intermittent UI foreground timing, NOT a clean editor-suite pass. Configuration,
+  calibration, and scope cases passed in both. All logs retained; caveat in QA notes.
+
+Corrected QA ZIP: VideoProcessor-v1.3.005-beta-VP0188-3acd02b3-x64-Release.zip
+in Documents/ChatGPT/Done; 29,820,471 bytes, 64 files. All archive hashes/CRC verified.
+SHA256: 35362d02e33e8a724778b380c58953c8f5c1ce980005d40549058b34509a3ce3.
+Do not use superseded ddfca7ab ZIP. Corrected archive contains padding/REQ006 features,
+QA checklist, log verifier, file checksums and explicit verified baseline provenance.
+
+Corrected build deployed at C:\Videoprocessor\vp and launched. Backup:
+C:\Videoprocessor\vp\backups\VP0188-3acd02b3-20260915-213608.
+Configuration restored byte-for-byte to pre-incorrect-deployment SHA256
+77e0fac0f279b6813f5fef195ca6f042d47822d32b1b99bc8cc451f607a5408d.
+No configuration edit in corrected deployment. Existing state/shaders retained.
+Installed host SHA256: 07e9857ce9b53c669bdec9b48e795a4d1de55c010095e68e461b4c59e559f76b.
+Installed renderer SHA256: b874bf5869de3691d000173fc69a3378fcb7800c48a43a46def3c2e8f40dd9fe.
+Paired hashes match corrected ZIP. Live HDR ~23.976 fps confirmed. Logs show
+screen_edge_padding_requested=50 and effective=0 for center alignment, as intended.
+Startup content reads: one host plus one renderer. Hardware metadata-blip/HDMI QA
+and UI focus qualification remain pending; status stays Review.
+
+Evidence in corrected worktree artifacts/vp0188-evidence: build/test logs, core TRX,
+BUILD-INFO.json, qa-zip-verification.json, deployment-3acd02b3.json,
+corrected-deployment-live.log. User explicitly authorized correction publication. Commit 3acd02b3 pushed to public PR #93; PR description updated with corrected baseline, replacement ZIP and validation caveats.
