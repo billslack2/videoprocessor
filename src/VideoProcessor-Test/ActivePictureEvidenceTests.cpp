@@ -137,6 +137,111 @@ namespace VideoProcessorTest
 	TEST_CLASS(ActivePictureEvidenceTests)
 	{
 	public:
+		TEST_METHOD(SparseFullHeightStarsCannotAcquireAnInsetCropAtStartup)
+		{
+			for (int phase = 0; phase < 24; ++phase)
+			{
+				P010Frame frame(640, 360);
+				frame.Fill(64, 512, 512);
+				for (int point = 0; point < 32; ++point)
+				{
+					const int x = (point * 83 + phase * 9) % 640;
+					const int y = (point * 47 + phase * 5) % 360;
+					frame.FillRectangle(x, y, x + 1, y + 1, 900);
+				}
+				const auto darkness = EvaluateP010ActivePictureGlobalNearBlack(frame.View());
+				Assert::IsTrue(darkness.nearBlack);
+				const auto observed = ConstrainNearBlackCropAcquisition(
+					ExtractP010ActivePictureEvidence(frame.View()), darkness.nearBlack);
+				Assert::IsTrue(observed.classification != ActivePictureClassification::BAR_CROP_TRUSTED);
+				AlphaSourceCrop::Input input;
+				input.automaticCropEnabled = true;
+				input.latestObservationClassification = observed.classification;
+				input.rasterWidth = 640; input.rasterHeight = 360;
+				const auto decision = AlphaSourceCrop::Evaluate(input);
+				Assert::IsFalse(decision.applyCrop);
+				Assert::AreEqual(0, decision.sourceBounds.top);
+				Assert::AreEqual(360, decision.sourceBounds.bottom);
+			}
+		}
+
+		TEST_METHOD(MovingSparseStarsInsideKnownLetterboxNeverChangePresentation)
+		{
+			const auto scope = ScopePresentation(640, 360, 44, 316);
+			for (int phase = 0; phase < 32; ++phase)
+			{
+				P010Frame frame(640, 360);
+				frame.Fill(64, 512, 512);
+				for (int point = 0; point < 24; ++point)
+				{
+					const int x = (point * 79 + phase * 7) % 636;
+					const int y = 48 + (point * 29 + phase * 3) % 260;
+					frame.FillRectangle(x, y, x + 2, y + 2, 900);
+				}
+				const auto evidence = EvaluateP010ActivePicturePresentationRetention(frame.View(), scope);
+				Assert::IsTrue(evidence.currentlyPixelSafe);
+				AlphaSourceCrop::Input input;
+				input.automaticCropEnabled = input.sharedGeometryAvailable = true;
+				input.latestObservationIsProvisional = true;
+				input.frameLocalPresentationRetentionEvaluated = true;
+				input.frameLocalPresentationRetentionSafe = evidence.currentlyPixelSafe;
+				input.geometry = scope;
+				input.classification = ActivePictureClassification::BAR_CROP_TRUSTED;
+				input.geometrySourceGeneration = input.frameSourceGeneration = 1;
+				input.rasterWidth = 640; input.rasterHeight = 360;
+				const auto decision = AlphaSourceCrop::Evaluate(input);
+				Assert::IsTrue(decision.applyCrop);
+				Assert::AreEqual(44, decision.sourceBounds.top);
+				Assert::AreEqual(316, decision.sourceBounds.bottom);
+			}
+		}
+
+		TEST_METHOD(OutsideStarsWithdrawImmediatelyAndLetterboxReturnNeedsFreshProof)
+		{
+			using namespace AlphaSourceCrop;
+			const auto scope = ScopePresentation(640, 360, 44, 316);
+			PresentationRecoveryInput input;
+			input.crop.automaticCropEnabled = input.crop.sharedGeometryAvailable = true;
+			input.crop.latestObservationIsProvisional = true;
+			input.crop.geometry = scope;
+			input.crop.classification = ActivePictureClassification::BAR_CROP_TRUSTED;
+			input.crop.geometrySourceGeneration = input.crop.frameSourceGeneration = 1;
+			input.crop.rasterWidth = 640; input.crop.rasterHeight = 360;
+			input.retentionSourceGeneration = 1;
+			input.framesPerSecond = 24;
+			for (uint64_t sequence = 1; sequence <= 39; ++sequence)
+			{
+				P010Frame frame(640, 360);
+				frame.BlackOutside(0, 44, 640, 316);
+				if (sequence <= 32)
+				{
+					// Move one small bright cluster across line-grid phases. It is
+					// outside the saved crop, so fixture truth requires full raster.
+					const int x = 17 + static_cast<int>(sequence) * 7;
+					frame.FillRectangle(x, 10, x + 10, 20, 900);
+				}
+				const auto evidence = EvaluateP010ActivePicturePresentationRetention(frame.View(), scope);
+				input.crop.frameSourceSequence = input.retentionSourceSequence = sequence;
+				input.crop.frameLocalPresentationRetentionEvaluated = evidence.analysisValid;
+				input.crop.frameLocalPresentationRetentionSafe = evidence.currentlyPixelSafe;
+				input.measurementCurrent = true;
+				input.retentionEvaluated = evidence.analysisValid && evidence.presentationValid;
+				input.retentionBounds = scope;
+				input.excludedBandsPixelSafe = evidence.excludedBandsPixelSafe;
+				input.nearBlackEvaluated = true;
+				input.globalNearBlack = evidence.globalNearBlack;
+				input.observationAvailable = evidence.proposedBoundsAvailable;
+				input.observation = evidence.activePicture.proposedBounds;
+				input.candidate = Evaluate(input.crop);
+				const auto decision = EvaluatePresentationRecovery(input);
+				if (sequence <= 32) Assert::IsFalse(evidence.excludedBandsPixelSafe);
+				Assert::AreEqual(sequence == 39, decision.presentation.applyCrop);
+				Assert::AreEqual(sequence == 39 ? 44 : 0, decision.presentation.sourceBounds.top);
+				Assert::AreEqual(sequence == 39 ? 316 : 360, decision.presentation.sourceBounds.bottom);
+				input.previous = decision.state;
+			}
+		}
+
 		TEST_METHOD(GeneratedFramesCertifyExactInwardProofAndNearBlackVeto)
 		{
 			auto observation = [](

@@ -683,6 +683,7 @@ namespace AlphaSourceCrop
 		bool confirmedNonNearBlackContent = false;
 		uint64_t outwardConfirmationLastSourceSequence = 0;
 		uint32_t outwardConfirmationSamples = 0;
+		uint64_t lastEvaluatedSourceSequence = 0;
 		uint64_t revalidationStartedSourceSequence = 0;
 		uint64_t revalidationLastSourceSequence = 0;
 		uint32_t revalidationSamples = 0;
@@ -745,6 +746,7 @@ namespace AlphaSourceCrop
 		bool bootstrapReleased = false;
 		bool resetTransitionEvidence = false;
 		bool revalidationChanged = false;
+		uint32_t revalidationGates = 0;
 		uint32_t revalidationSamples = 0;
 		uint32_t revalidationSamplesRequired = 0;
 		uint32_t bootstrapSamples = 0;
@@ -880,6 +882,78 @@ namespace AlphaSourceCrop
 		WithdrawalCause withdrawalCause = WithdrawalCause::NONE;
 		std::string reason;
 	};
+
+
+	// A temporary presentation withdrawal is not full-raster aspect authority.
+	// Once armed, every ordinary inward owner must prove the current saved crop
+	// safe on distinct adjacent source frames for 250 ms. This does not delay
+	// initial acquisition or a confirmed subtitle/Fit resolution.
+	enum RecoveryGate : uint32_t
+	{
+		RECOVERY_OK = 0,
+		RECOVERY_MEASUREMENT = 1u << 0,
+		RECOVERY_REPEAT = 1u << 1,
+		RECOVERY_CONTEXT = 1u << 2,
+		RECOVERY_CONTRACT = 1u << 3,
+		RECOVERY_OBSERVATION = 1u << 4,
+		RECOVERY_UNSAFE_BANDS = 1u << 5,
+		RECOVERY_NEAR_BLACK = 1u << 6,
+		RECOVERY_FULL_AUTHORITY = 1u << 7,
+		RECOVERY_SEQUENCE_GAP = 1u << 8,
+		RECOVERY_OWNER = 1u << 9,
+	};
+	std::string RecoveryGateNames(uint32_t gates);
+
+	struct PresentationRecoveryState
+	{
+		bool active = false;
+		ActivePictureBounds trustedCrop;
+		uint64_t sourceGeneration = 0;
+		uint64_t presentationEpoch = 0;
+		uint64_t startedSourceSequence = 0;
+		uint64_t startedTick = 0;
+		uint64_t lastSourceSequence = 0;
+		uint32_t samples = 0;
+	};
+
+	struct PresentationRecoveryInput
+	{
+		PresentationRecoveryState previous;
+		Input crop;
+		Decision candidate;
+		bool cadenceRepeat = false;
+		bool measurementCurrent = false;
+		bool retentionEvaluated = false;
+		bool excludedBandsPixelSafe = false;
+		bool observationAvailable = false;
+		ActivePictureBounds observation;
+		ActivePictureBounds retentionBounds;
+		uint64_t retentionSourceGeneration = 0;
+		uint64_t retentionSourceSequence = 0;
+		bool nearBlackEvaluated = false;
+		bool globalNearBlack = false;
+		// Only a confirmed current dense presentation or a completed episode
+		// proof can resolve ownership; pending refinement/inspection cannot.
+		bool confirmedPresentationResolved = false;
+		uint64_t presentationEpoch = 0;
+		uint64_t currentTick = 0;
+		double framesPerSecond = 60.0;
+	};
+
+	struct PresentationRecoveryDecision
+	{
+		PresentationRecoveryState state;
+		Decision presentation;
+		bool started = false;
+		bool ended = false;
+		bool released = false;
+		bool proofReset = false;
+		uint32_t samples = 0;
+		uint32_t required = 0;
+		uint32_t gates = RECOVERY_OK;
+	};
+	PresentationRecoveryDecision EvaluatePresentationRecovery(
+		const PresentationRecoveryInput& input);
 
 	enum class ScenePresentationAction
 	{

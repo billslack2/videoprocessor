@@ -95,6 +95,14 @@ namespace AlphaSourceCrop
 				left.trustedBarAxes != ActivePictureBounds::BarAxes::NONE;
 		}
 
+		bool ContainedBounds(const ActivePictureBounds& outer, const ActivePictureBounds& inner)
+		{
+			return ValidBounds(inner, outer.rasterWidth, outer.rasterHeight) &&
+				inner.rasterWidth == outer.rasterWidth && inner.rasterHeight == outer.rasterHeight &&
+				inner.left >= outer.left && inner.top >= outer.top &&
+				inner.right <= outer.right && inner.bottom <= outer.bottom;
+		}
+
 		uint32_t NearBlackCropRevalidationSamples(double framesPerSecond)
 		{
 			if (!std::isfinite(framesPerSecond) || framesPerSecond <= 0.0)
@@ -1558,7 +1566,6 @@ namespace AlphaSourceCrop
 		}
 
 		if (decision.state.mode == NearBlackPresentationMode::FULL_RASTER &&
-			!decision.state.entryTrustedCropAvailable &&
 			decision.state.sourceGeneration == input.sourceGeneration &&
 			decision.state.presentationEpoch != input.presentationEpoch)
 		{
@@ -1567,6 +1574,9 @@ namespace AlphaSourceCrop
 			// Preserve the conservative presentation choice (and any confirmed
 			// outward-content latch), then restart only the partial proof on the
 			// current epoch. Fresh current-frame pixels are still required below.
+			decision.state.entryTrustedCropAvailable = false;
+			decision.state.entryTrustedCrop = {};
+			decision.state.lastEvaluatedSourceSequence = 0;
 			decision.state.presentationEpoch = input.presentationEpoch;
 			decision.state.fullRasterStartedSourceSequence = input.sourceSequence;
 			ResetNearBlackCropRevalidation(decision.state);
@@ -1684,12 +1694,15 @@ namespace AlphaSourceCrop
 			}
 		}
 
+		const bool distinctEntrySample = !input.cadenceRepeat && input.sourceSequence != 0 &&
+			input.sourceSequence > decision.state.lastEvaluatedSourceSequence;
 		if (decision.state.mode == NearBlackPresentationMode::FULL_RASTER &&
-			decision.state.entryTrustedCropAvailable && !input.cadenceRepeat &&
-			!decision.state.confirmedNonNearBlackContent &&
-			input.sourceSequence !=
-				decision.state.revalidationLastSourceSequence)
+			decision.state.entryTrustedCropAvailable && !distinctEntrySample)
+			decision.revalidationGates |= RECOVERY_REPEAT;
+		if (decision.state.mode == NearBlackPresentationMode::FULL_RASTER &&
+			decision.state.entryTrustedCropAvailable && distinctEntrySample)
 		{
+			decision.state.lastEvaluatedSourceSequence = input.sourceSequence;
 			const bool exactEntryContract =
 				input.knownTrustedGeometryReacquired &&
 				input.reacquiredTrustedClassification ==
@@ -1705,13 +1718,33 @@ namespace AlphaSourceCrop
 					decision.state.entryTrustedCrop);
 			const bool exactCurrentObservation =
 				input.currentObservationAvailable &&
-				SameBounds(input.currentObservation,
-					decision.state.entryTrustedCrop);
+				ContainedBounds(decision.state.entryTrustedCrop,
+					input.currentObservation);
 			const bool exactCurrentSafety = input.retentionEvaluated &&
 				input.retentionSafe &&
+				input.retentionSourceGeneration == input.sourceGeneration &&
 				input.retentionSourceSequence == input.sourceSequence &&
 				SameBounds(input.retentionBounds,
 					decision.state.entryTrustedCrop);
+			if (!input.measurementCurrent || !input.retentionEvaluated ||
+				input.retentionSourceGeneration != input.sourceGeneration ||
+				input.retentionSourceSequence != input.sourceSequence)
+				decision.revalidationGates |= RECOVERY_MEASUREMENT;
+			if (!exactEntryContract) decision.revalidationGates |= RECOVERY_CONTRACT;
+			if (!exactCurrentObservation) decision.revalidationGates |= RECOVERY_OBSERVATION;
+			if (input.boundedVisibleContentOutsideCrop ||
+				(input.measurementCurrent && input.retentionEvaluated &&
+				 input.retentionSourceGeneration == input.sourceGeneration &&
+				 input.retentionSourceSequence == input.sourceSequence &&
+				 SameBounds(input.retentionBounds, decision.state.entryTrustedCrop) &&
+				 exactCurrentObservation && !input.retentionSafe))
+				decision.revalidationGates |= RECOVERY_UNSAFE_BANDS;
+			if (!input.nearBlackEvaluated || input.globalNearBlack)
+				decision.revalidationGates |= RECOVERY_NEAR_BLACK;
+			if (input.fullRasterAuthorityAvailable)
+				decision.revalidationGates |= RECOVERY_FULL_AUTHORITY;
+			if (input.presentationEpoch != decision.state.presentationEpoch)
+				decision.revalidationGates |= RECOVERY_CONTEXT;
 			const bool qualifies = input.measurementCurrent &&
 				input.nearBlackEvaluated && !input.globalNearBlack &&
 				!input.boundedVisibleContentOutsideCrop &&
@@ -1730,6 +1763,8 @@ namespace AlphaSourceCrop
 				}
 				else
 				{
+					if (decision.state.revalidationSamples != 0)
+						decision.revalidationGates |= RECOVERY_SEQUENCE_GAP;
 					decision.state.revalidationStartedSourceSequence =
 						input.sourceSequence;
 					decision.state.revalidationSamples = 1;
@@ -1758,6 +1793,21 @@ namespace AlphaSourceCrop
 		if (decision.state.mode == NearBlackPresentationMode::FULL_RASTER &&
 			!decision.state.entryTrustedCropAvailable)
 		{
+			if (!input.measurementCurrent || !input.nativeBootstrapRetentionEvaluated ||
+				input.nativeBootstrapSourceSequence != input.sourceSequence)
+				decision.revalidationGates |= RECOVERY_MEASUREMENT;
+			if (!input.nativeBootstrapContractAvailable) decision.revalidationGates |= RECOVERY_CONTRACT;
+			if (input.nativeBootstrapOutwardVisible ||
+				(input.measurementCurrent && input.nativeBootstrapRetentionEvaluated &&
+				 input.nativeBootstrapSourceSequence == input.sourceSequence &&
+				 !input.nativeBootstrapRetentionSafe))
+				decision.revalidationGates |= RECOVERY_UNSAFE_BANDS;
+			if (!input.nearBlackEvaluated || input.globalNearBlack)
+				decision.revalidationGates |= RECOVERY_NEAR_BLACK;
+			if (input.fullRasterAuthorityAvailable) decision.revalidationGates |= RECOVERY_FULL_AUTHORITY;
+			if (input.nativeBootstrapSourceGeneration != input.sourceGeneration ||
+				input.nativeBootstrapPresentationEpoch != decision.state.presentationEpoch)
+				decision.revalidationGates |= RECOVERY_CONTEXT;
 			const bool bootstrapQualifies = input.measurementCurrent &&
 				input.nearBlackEvaluated && !input.globalNearBlack &&
 				!input.fullRasterAuthorityAvailable &&
@@ -1881,6 +1931,130 @@ namespace AlphaSourceCrop
 				: "near-black title episode presentation retained";
 		}
 		return decision;
+	}
+
+	std::string RecoveryGateNames(uint32_t gates)
+	{
+		if (gates == RECOVERY_OK) return "none";
+		std::string names;
+		const auto add = [&](uint32_t bit, const char* name)
+		{
+			if ((gates & bit) == 0) return;
+			if (!names.empty()) names += ',';
+			names += name;
+		};
+		add(RECOVERY_MEASUREMENT, "measurement-stale-or-unavailable");
+		add(RECOVERY_REPEAT, "repeat-or-out-of-order");
+		add(RECOVERY_CONTEXT, "source-raster-epoch");
+		add(RECOVERY_CONTRACT, "trusted-contract");
+		add(RECOVERY_OBSERVATION, "observation-unavailable-or-not-contained");
+		add(RECOVERY_UNSAFE_BANDS, "unsafe-excluded-bands");
+		add(RECOVERY_NEAR_BLACK, "near-black-or-not-evaluated");
+		add(RECOVERY_FULL_AUTHORITY, "full-raster-authority");
+		add(RECOVERY_SEQUENCE_GAP, "source-sequence-gap");
+		add(RECOVERY_OWNER, "presentation-owner-unresolved");
+		return names;
+	}
+
+	PresentationRecoveryDecision EvaluatePresentationRecovery(
+		const PresentationRecoveryInput& input)
+	{
+		PresentationRecoveryDecision result;
+		result.state = input.previous;
+		result.presentation = input.candidate;
+		result.required = NearBlackCropRevalidationSamples(input.framesPerSecond);
+		const auto& crop = input.crop;
+		const bool currentContract = crop.sharedGeometryAvailable &&
+			crop.geometrySourceGeneration == crop.frameSourceGeneration &&
+			crop.classification == ActivePictureClassification::BAR_CROP_TRUSTED &&
+			ValidBounds(crop.geometry, crop.rasterWidth, crop.rasterHeight) &&
+			HasAuthorityForCroppedAxes(crop.geometry, crop.rasterWidth, crop.rasterHeight);
+		const bool contextChanged = result.state.active &&
+			(result.state.sourceGeneration != crop.frameSourceGeneration ||
+			 result.state.presentationEpoch != input.presentationEpoch ||
+			 result.state.trustedCrop.rasterWidth != crop.rasterWidth ||
+			 result.state.trustedCrop.rasterHeight != crop.rasterHeight);
+		if (!crop.automaticCropEnabled || crop.fullRasterPresentationAuthoritative ||
+			contextChanged || input.confirmedPresentationResolved)
+		{
+			result.ended = result.state.active;
+			result.released = result.state.active && input.confirmedPresentationResolved;
+			result.gates = contextChanged ? RECOVERY_CONTEXT :
+				crop.fullRasterPresentationAuthoritative ? RECOVERY_FULL_AUTHORITY : RECOVERY_OK;
+			result.state = {};
+			return result;
+		}
+		// Episode full-raster recovery has its own saved contract. Do not stack
+		// another dwell on it, but preserve a pre-existing general withdrawal.
+		if (!result.state.active && !input.cadenceRepeat && currentContract &&
+			!input.candidate.applyCrop && !crop.nearBlackEpisodeFullRaster &&
+			(input.candidate.withdrawalCause == WithdrawalCause::LATEST_OBSERVATION_UNREAFFIRMED ||
+			 crop.barCropRefinementHorizontalConflict || crop.presentationFailOpen))
+		{
+			result.state.active = true;
+			result.state.trustedCrop = crop.geometry;
+			result.state.sourceGeneration = crop.frameSourceGeneration;
+			result.state.presentationEpoch = input.presentationEpoch;
+			result.state.startedSourceSequence = crop.frameSourceSequence;
+			result.state.startedTick = input.currentTick;
+			result.started = true;
+		}
+		if (!result.state.active) return result;
+
+		if (!currentContract || !SameTrustedCropContract(crop.geometry, result.state.trustedCrop))
+		{
+			// A newly published contract must earn its own current pixel proof.
+			// Never carry partial proof between different crop rectangles.
+			result.gates |= RECOVERY_CONTRACT;
+			if (currentContract) result.state.trustedCrop = crop.geometry;
+		}
+		if (!input.measurementCurrent || !input.retentionEvaluated ||
+			input.retentionSourceGeneration != crop.frameSourceGeneration ||
+			input.retentionSourceSequence != crop.frameSourceSequence ||
+			!SameBounds(input.retentionBounds, result.state.trustedCrop))
+			result.gates |= RECOVERY_MEASUREMENT;
+		if (!input.observationAvailable ||
+			!ContainedBounds(result.state.trustedCrop, input.observation))
+			result.gates |= RECOVERY_OBSERVATION;
+		if (input.measurementCurrent && input.retentionEvaluated &&
+			input.retentionSourceGeneration == crop.frameSourceGeneration &&
+			input.retentionSourceSequence == crop.frameSourceSequence &&
+			!input.excludedBandsPixelSafe)
+			result.gates |= RECOVERY_UNSAFE_BANDS;
+		if (!input.nearBlackEvaluated || input.globalNearBlack)
+			result.gates |= RECOVERY_NEAR_BLACK;
+		if (crop.presentationFailOpen || crop.nearBlackEpisodeFullRaster || !input.candidate.applyCrop)
+			result.gates |= RECOVERY_OWNER;
+
+		const bool repeat = input.cadenceRepeat || crop.frameSourceSequence == 0 ||
+			crop.frameSourceSequence <= result.state.lastSourceSequence;
+		if (repeat)
+			result.gates |= RECOVERY_REPEAT;
+		else
+		{
+			const bool gap = result.state.samples != 0 &&
+				crop.frameSourceSequence != result.state.lastSourceSequence + 1;
+			result.proofReset = result.state.samples != 0 && (result.gates != 0 || gap);
+			if (result.gates == 0)
+				result.state.samples = gap ? 1 : result.state.samples + 1;
+			else result.state.samples = 0;
+			if (gap) result.gates |= RECOVERY_SEQUENCE_GAP;
+			result.state.lastSourceSequence = crop.frameSourceSequence;
+		}
+		result.samples = result.state.samples;
+		if (!repeat && result.state.samples >= result.required && input.candidate.applyCrop)
+		{
+			result.released = true;
+			result.ended = true;
+			result.state = {};
+			return result;
+		}
+		// Keep visible pixels exposed. Trusted/refinement labels alone do not
+		// override an unresolved current outside-band conflict (VP-0189 log).
+		result.presentation = {};
+		result.presentation.sourceBounds = FullRaster(crop.rasterWidth, crop.rasterHeight);
+		result.presentation.reason = "full raster retained pending current crop recovery proof";
+		return result;
 	}
 
 	Decision Evaluate(const Input& input)
