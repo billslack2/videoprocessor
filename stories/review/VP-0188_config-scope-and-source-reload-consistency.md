@@ -150,3 +150,33 @@ present metadata updates with zero source-triggered reads, and obtain visible
 picture-continuity observations. Complete live editor clear/save/reopen/Apply and
 Blu-ray transition checks using docs/VP-0188-validation.md. Retain logs and inspect
 them before marking hardware acceptance or moving this story Done.
+
+### HDR/SDR switching follow-up — 2026-09-15 20:23–20:26 EDT
+
+User confirmed HDR ready and manually switched between HDR and SDR; user reported
+that the picture looked fine. Candidate logged PQ/BT.2020 HDR at approximately
+23.976 fps, SDR/Rec.709, then HDR again. These transitions included invalid capture
+state and full HDMI format resync, not metadata-only updates with continuous signal.
+
+Measured reads: 23 during startup, then 28 across three full resyncs (8, 10, 10),
+51 total in this session. All read the same content identity 1971779340220525956.
+Zero further reads from 20:24:25 through clean shutdown at 20:26:47 (log lines
+2245–2529); zero metadata-only updates throughout the session. Thus picture recovery
+passed user observation, but metadata-only hardware acceptance is still unproven.
+This run was shorter than seven minutes and is not recorded as a completed HDR-menu soak.
+
+Remaining efficiency gap, raised by user: full renderer construction still calls
+StageSavedConfiguration("renderer-lifecycle", true), performing repeated stable-file
+reads and shortcut staging; LibplaceboPluginVideoRenderer separately loads config to
+resolve its path, and other renderer/shader setup paths load again. The existing
+VP-0188 patch only eliminates source-metadata snapshot evaluation reads, not all
+startup/full-resync reads. Do not describe 51 reads as optimized or required.
+A follow-up change should share accepted configuration through unchanged-file
+renderer restarts while retaining explicit Apply/reload, legacy override handling,
+and rejected-file protection. Add end-to-end host restart read-count coverage;
+the existing synthetic renderer test does not cover host restart construction.
+
+Evidence in artifacts/vp0188-evidence: apple-tv-hdr-switches-20260915.log (includes
+preceding SDR session; select timestamps above), apple-tv-hdr-settled-verification.json.
+Installed VP restored afterward; no deployment or production config edits. Story
+remains Review; the full-resync inefficiency is documented and not yet implemented.
