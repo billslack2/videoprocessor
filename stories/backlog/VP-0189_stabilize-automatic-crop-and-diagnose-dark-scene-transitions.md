@@ -218,3 +218,24 @@ stability change with required diagnostics and independently checkable criteria.
   Pre-existing VP-0088 writes `In progress` rather than `In Progress`; its folder
   and index state agree. Record this capitalization discrepancy and leave the
   unrelated story unchanged.
+## Tester coordination (2026-09-16)
+
+The confirmed source/policy reproductions are sufficient to progress into the
+implementation readiness review without the original session log. The next
+source work should establish bounded state/reset contracts, add regression
+fixtures and diagnostics, then implement and validate the narrow corrections.
+Do not wait for field logs to start those steps; use returned logs to correlate
+actual incidents and validate star-field behavior rather than guess thresholds.
+
+A [ready-to-forward tester brief](../assets/VP-0189/tester-brief.md) asks for
+existing complete raw/rotated logs, build/settings, title/playback and wall-clock
+time, subtitle/overlay state, the exact symptom and a repeatable passage. It
+also describes comparison testing once a candidate is available. No message
+has been sent to a tester by this task.
+
+Before sharing a candidate binary, complete focused/composed regressions, the
+relevant core checks and a successful x64 Release build, then package the
+matching host/plugin pair with exact build identity, the diagnostic invocation
+and the log helper. Do not label the source probe as a tester build or claim
+visual/field acceptance before the tester returns evidence. Story remains
+Backlog: this update prepares coordination; implementation has not started.
