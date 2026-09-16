@@ -110,3 +110,14 @@ After startup, repeat HDR/SDR switches that cause actual HDMI resyncs. Require
 zero further reads while the configuration is unchanged; retain the entire log,
 exact event interval, and the user's picture-recovery observations. Also verify
 an explicit saved edit is picked up and a rejected edit retains accepted state.
+
+## Baseline verification before packaging
+
+The corrected integration includes remote beta `94f938d3` (VP-0186 screen-edge
+padding and REQ006 SDR transfer/calibration). The earlier ddfca7ab ZIP was built
+from stale tracking ref 455d919c and is superseded; do not distribute it.
+Query GitHub for the beta tip, explicitly fetch that branch, and compare the hash.
+A plain `git fetch origin` is insufficient when remote.origin.fetch is restricted.
+Require the verified remote tip to be an ancestor of the package commit. Include
+both hashes in the ZIP build information. Keep screen_edge_padding enabled in
+existing user configurations; it is a supported setting on the current beta.

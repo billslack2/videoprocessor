@@ -59,6 +59,30 @@ namespace VideoProcessorTest
 	TEST_CLASS(ConfigurationReadCacheTests)
 	{
 	public:
+        TEST_METHOD(CurrentBetaScreenEdgePaddingSurvivesAcceptedConfiguration)
+        {
+            CachedConfigTestFile file;
+            std::ofstream(file.path) << "[general]\npersist_profile_selection: false\n"
+                "[vprenderer.viewport.scope]\nscreen_aspect: 47:20\n"
+                "vertical_alignment: bottom\nscreen_edge_padding: 50\n";
+            ConfigFile config;
+            Assert::IsTrue(config.Load(file.path));
+            std::string error;
+            Assert::IsTrue(MainConfigSchema::Validate(config, error),
+                std::wstring(error.begin(), error.end()).c_str());
+            UnifiedProfileRuntime::Runtime runtime;
+            Assert::IsTrue(runtime.Initialize(config, {}, error),
+                std::wstring(error.begin(), error.end()).c_str());
+            const auto snapshot = runtime.GetSnapshot();
+            Assert::IsTrue(snapshot != nullptr);
+            Assert::AreEqual(50, snapshot->viewport.screenEdgePadding);
+            Assert::AreEqual(std::string("bottom"), snapshot->viewport.verticalAlignment);
+            std::string padding;
+            Assert::IsTrue(snapshot->configuration->TryGetString(
+                "vprenderer.viewport.scope", "screen_edge_padding", padding));
+            Assert::AreEqual(std::string("50"), padding);
+        }
+
 		TEST_METHOD(RestartReadersReuseOneReadAndExplicitReloadSamplesIndependently)
 		{
 			CachedConfigTestFile file;
