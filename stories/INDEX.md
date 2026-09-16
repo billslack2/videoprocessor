@@ -6,9 +6,9 @@ story may have ordered child-task IDs as defined below.
 
 ## Registry state
 
-- Last assigned root story: `VP-0188`
-- Next root story number: `VP-0189`
-- Total indexed items: 207
+- Last assigned root story: `VP-0189`
+- Next root story number: `VP-0190`
+- Total indexed items: 208
 
 ## Story locations
 
@@ -243,6 +243,7 @@ they must not contain requirements that are absent from this file.
 | VP-0186 | Review | Add screen-edge padding to Screen Config picture alignment |
 | VP-0187 | Done | REQ006 SDR transfer and calibration integration |
 | VP-0188 | Review | Preserve configuration scope and avoid source-event disk reloads |
+| VP-0189 | Backlog | Stabilize automatic crop and diagnose dark-scene transitions |
 
 ## Codex story workflow
 

@@ -1,0 +1,8 @@
+alternating frame-local safety: 23 changes across 24 synthetic frames, no scene cuts
+active ambiguity and scene holds: unsafe sample still releases crop
+one non-near-black outward sample: full raster immediately
+exact safe entry geometry: restored after 7 distinct samples at 23.976 fps
+10 outward samples followed by 1440 exact safe samples: full raster remains latched
+one outward sample then 1440 safe samples with top=44 versus saved top=40: no recovery samples count
+same case returns to exact top=40: recovery succeeds in 7 samples
+controls: stable bars retained; trusted full raster accepted immediately
