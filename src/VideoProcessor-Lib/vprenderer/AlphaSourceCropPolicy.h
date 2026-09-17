@@ -17,6 +17,11 @@ namespace AlphaSourceCrop
 
 	// The envelope has no crop authority. Suppress it only when both its complete
 	// extent and the affirmative observation reaffirm the same pixel-safe crop.
+	// Horizontal sampling equivalence is independent of subtitle pixels in the
+	// vertical bars, but requires the complete horizontal bands to be safe.
+	bool IsPixelSafeHorizontalSamplingEnvelope(const ActivePictureBounds& trusted,
+		const ActivePictureBounds& observed, const ActivePicturePresentationRetentionEvidence& evidence);
+
 	bool IsPixelSafeSamplingEnvelope(const ActivePictureBounds& trusted,
 		const ActivePictureBounds& observed, const ActivePictureBounds& envelope,
 		bool excludedBandsPixelSafe);
@@ -40,7 +45,7 @@ namespace AlphaSourceCrop
 	};
 
 	// Expanding a trusted crop changes the logical aspect only after the same
-	// frame shows broad picture-like occupancy at every newly exposed edge.
+	// frame shows broad picture-like occupancy in each materially exposed strip.
 	// Localized UI/text still expands presentation immediately, but cannot build
 	// aspect authority by appearing on different edges at different times.
 	OutwardPictureConfirmationDecision ConfirmOutwardPictureTransition(

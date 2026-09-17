@@ -110,7 +110,7 @@ bool IsBlackColumn(SampleContext& samples, int x, int threshold)
 }
 
 ActivePictureEdgeEvidence InspectHorizontalEdge(SampleContext& samples, bool top,
-	int barPixels, int boundary, int blackFloor, int blackThreshold)
+	int barPixels, int boundary, int blackFloor, int blackThreshold, int outerOffset = 0)
 {
 	ActivePictureEdgeEvidence evidence;
 	evidence.barPixels = barPixels;
@@ -127,7 +127,7 @@ ActivePictureEdgeEvidence InspectHorizontalEdge(SampleContext& samples, bool top
 	{
 		const int depth = std::min(barPixels - 1,
 			((d * 2 + 1) * barPixels) / (kEdgeDepthSamples * 2));
-		const int y = top ? depth : samples.source.height - 1 - depth;
+		const int y = top ? outerOffset + depth : samples.source.height - 1 - outerOffset - depth;
 		int lineBlack = 0;
 		int previous = -1;
 		for (int i = 0; i < kLineSamples; ++i)
@@ -192,7 +192,7 @@ ActivePictureEdgeEvidence InspectHorizontalEdge(SampleContext& samples, bool top
 }
 
 ActivePictureEdgeEvidence InspectVerticalEdge(SampleContext& samples, bool left,
-	int barPixels, int boundary, int blackFloor, int blackThreshold)
+	int barPixels, int boundary, int blackFloor, int blackThreshold, int outerOffset = 0)
 {
 	ActivePictureEdgeEvidence evidence;
 	evidence.barPixels = barPixels;
@@ -209,7 +209,7 @@ ActivePictureEdgeEvidence InspectVerticalEdge(SampleContext& samples, bool left,
 	{
 		const int depth = std::min(barPixels - 1,
 			((d * 2 + 1) * barPixels) / (kEdgeDepthSamples * 2));
-		const int x = left ? depth : samples.source.width - 1 - depth;
+		const int x = left ? outerOffset + depth : samples.source.width - 1 - outerOffset - depth;
 		int lineBlack = 0;
 		int previous = -1;
 		for (int i = 0; i < kLineSamples; ++i)
@@ -742,6 +742,27 @@ ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRete
 		source.width - trustedPresentation.right,
 		trustedPresentation.right, blackFloor, blackThreshold);
 
+	const auto& candidate = result.activePicture.classification == ActivePictureClassification::PROVISIONAL
+		? result.activePicture.proposedBounds : result.activePicture.trustedBounds;
+	if (result.activePicture.available && IsValidBoundsForSource(candidate, source))
+	{
+		result.expansionStripsAvailable = true;
+		result.expansionBase = trustedPresentation;
+		result.expansionCandidate = candidate;
+		result.expandingTop = InspectHorizontalEdge(samples, true,
+			trustedPresentation.top - candidate.top, trustedPresentation.top,
+			blackFloor, blackThreshold, candidate.top);
+		result.expandingBottom = InspectHorizontalEdge(samples, false,
+			candidate.bottom - trustedPresentation.bottom, trustedPresentation.bottom,
+			blackFloor, blackThreshold, source.height - candidate.bottom);
+		result.expandingLeft = InspectVerticalEdge(samples, true,
+			trustedPresentation.left - candidate.left, trustedPresentation.left,
+			blackFloor, blackThreshold, candidate.left);
+		result.expandingRight = InspectVerticalEdge(samples, false,
+			candidate.right - trustedPresentation.right, trustedPresentation.right,
+			blackFloor, blackThreshold, source.width - candidate.right);
+	}
+
 	const auto topExtent = FindHorizontalVisibleExtent(samples, true,
 		trustedPresentation.top, blackThreshold);
 	const auto bottomExtent = FindHorizontalVisibleExtent(samples, false,
@@ -758,6 +779,7 @@ ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRete
 		leftExtent.available;
 	const bool unsafeRight = !ExcludedBandPixelsAreSafe(result.excludedRight) ||
 		rightExtent.available;
+	result.excludedHorizontalBandsPixelSafe = !unsafeLeft && !unsafeRight;
 	result.excludedBandsPixelSafe =
 		!unsafeLeft && !unsafeTop && !unsafeRight && !unsafeBottom;
 	if (!result.excludedBandsPixelSafe)

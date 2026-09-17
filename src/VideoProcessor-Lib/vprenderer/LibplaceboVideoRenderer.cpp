@@ -8396,6 +8396,14 @@ struct LibplaceboVideoRenderer::Impl
 					observed.bottom = std::max(observed.bottom,
 						retentionEvidence.outwardVisibleBounds.bottom);
 				}
+				// Vertical subtitle occupancy cannot turn horizontal sampling noise
+				// into a full-raster conflict. Each horizontal band is verified here.
+				if (evidence.classification == ActivePictureClassification::BAR_CROP_TRUSTED &&
+					AlphaSourceCrop::IsPixelSafeHorizontalSamplingEnvelope(presentationBeforeObservation, observed, retentionEvidence))
+				{
+					observed.left = presentationBeforeObservation.left;
+					observed.right = presentationBeforeObservation.right;
+				}
 				ActivePictureBounds outward = presentationBeforeObservation;
 				outward.left = std::min(outward.left, observed.left) & ~1;
 				outward.top = std::min(outward.top, observed.top) & ~1;
@@ -8583,11 +8591,12 @@ struct LibplaceboVideoRenderer::Impl
 			{
 				lastCropAdmissionDeferred = admission.observation.transitionDeferred;
 				lastCropAdmissionLogTick = now;
-				DebugLog::Log("Alpha crop admission: sequence=%llu generation=%llu deferred=%d presentation_deferred=%d outward_deferred=%d broad_picture=%d outward_confirm=%u raw=%d,%d-%d,%d logical=%d,%d-%d,%d published=%d history_reacquired=%d",
+				DebugLog::Log("Alpha crop admission: sequence=%llu generation=%llu deferred=%d presentation_deferred=%d outward_deferred=%d broad_picture=%d outward_confirm=%u strip_evidence=%d horizontal_bands_safe=%d raw=%d,%d-%d,%d logical=%d,%d-%d,%d published=%d history_reacquired=%d",
 					static_cast<unsigned long long>(frameNumber), static_cast<unsigned long long>(analysisSource.generation),
 					admission.observation.transitionDeferred ? 1 : 0, admission.deferPresentation ? 1 : 0,
 					admission.deferOutward ? 1 : 0, admission.outward.broadOpposingPicture ? 1 : 0,
-					admission.outward.state.confirmations, latestActivePictureEvidenceBounds.left,
+					admission.outward.state.confirmations, retentionEvidence.expansionStripsAvailable ? 1 : 0,
+					retentionEvidence.excludedHorizontalBandsPixelSafe ? 1 : 0, latestActivePictureEvidenceBounds.left,
 					latestActivePictureEvidenceBounds.top, latestActivePictureEvidenceBounds.right,
 					latestActivePictureEvidenceBounds.bottom, transition.stableBounds.left, transition.stableBounds.top,
 					transition.stableBounds.right, transition.stableBounds.bottom,
@@ -10560,11 +10569,17 @@ struct LibplaceboVideoRenderer::Impl
 				 !confirmedCurrentVerticalFit &&
 				 (latestObservationIsUnavailable ||
 				  latestObservationIsProvisional)));
+			const bool horizontalSamplingReaffirmed = episodeInput.measurementCurrent && episodeInput.retentionEvaluated &&
+				episodeInput.retentionSourceGeneration == frameGeneration && episodeInput.retentionSourceSequence == sourceSequence &&
+				episodeInput.retentionBounds.left == effectiveGeometry.left && episodeInput.retentionBounds.top == effectiveGeometry.top &&
+				episodeInput.retentionBounds.right == effectiveGeometry.right && episodeInput.retentionBounds.bottom == effectiveGeometry.bottom &&
+				latestActivePictureEvidenceClassification == ActivePictureClassification::BAR_CROP_TRUSTED &&
+				AlphaSourceCrop::IsPixelSafeHorizontalSamplingEnvelope(effectiveGeometry, latestActivePictureEvidenceBounds, latestCropRetentionEvidence);
 			const bool barCropRefinementHorizontalConflict =
 				AlphaSourceCrop::HasHorizontalCropRefinementConflict(
 					currentDetectorLeftExpansion, currentDetectorRightExpansion,
 					latestActivePictureEvidenceAvailable, effectiveGeometryAvailable,
-					latestCropSamplingReaffirmed, latestActivePictureEvidenceBounds, effectiveGeometry);
+					latestCropSamplingReaffirmed || horizontalSamplingReaffirmed, latestActivePictureEvidenceBounds, effectiveGeometry);
 			const bool barCropRefinementPending =
 				latestActivePictureEvidenceAvailable &&
 				latestActivePictureEvidenceClassification ==

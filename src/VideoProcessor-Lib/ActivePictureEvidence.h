@@ -82,6 +82,13 @@ struct ActivePicturePresentationRetentionEvidence
 	bool proposedBoundsAvailable = false;
 	bool proposedBoundsContained = false;
 	bool excludedBandsPixelSafe = false;
+	bool excludedHorizontalBandsPixelSafe = false;
+	// Current evidence restricted to newly exposed strips. Whole old bars can
+	// remain mostly black during a real, gradual format expansion.
+	bool expansionStripsAvailable = false;
+	ActivePictureBounds expansionBase;
+	ActivePictureBounds expansionCandidate;
+	ActivePictureEdgeEvidence expandingLeft, expandingTop, expandingRight, expandingBottom;
 	bool currentlyPixelSafe = false;
 	// When excluded pixels are visibly occupied but remain spatially bounded,
 	// this is the smallest measured outward-only presentation envelope. It

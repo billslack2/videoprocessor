@@ -42,6 +42,160 @@ namespace Tests
 	TEST_CLASS(AlphaSourceCropPolicyTests)
 	{
 	public:
+
+
+
+		TEST_METHOD(HorizontalPixelProofComposesWithCurrentSubtitleOwner)
+		{
+			Input crop=TrustedScopeCrop();
+			crop.geometry={192,372,3648,1788,3840,2160,2.44,ActivePictureBounds::BarAxes::BOTH};
+			crop.frameSourceSequence=2200;
+			crop.latestObservationClassification=ActivePictureClassification::BAR_CROP_TRUSTED;
+			crop.barCropRefinementHorizontalConflict=true;
+			crop.outwardPresentationActive=crop.outwardExpansionAvailable=true;
+			crop.outwardExpansionSourceGeneration=crop.currentVisibleSourceGeneration=7;
+			crop.currentVisibleSourceSequence=2200; crop.currentVisibleBase=crop.geometry;
+			crop.currentVisibleBoundsAvailable=true;
+			crop.currentVisibleBounds=crop.geometry;
+			crop.currentVisibleBounds.left=162; crop.currentVisibleBounds.right=3678;
+			// Coarse vertical geometry may include the entire bar; the dense owner
+			// already handles vertical occupancy independently of horizontal proof.
+			crop.currentVisibleBounds.top=0; crop.currentVisibleBounds.bottom=2160;
+			crop.outwardExpansion=crop.geometry; crop.outwardExpansion.left=128; crop.outwardExpansion.right=3712;
+			AssertFullRaster(Evaluate(crop));
+			crop.verticalTranslationBase=crop.geometry; crop.verticalTranslationSourceGeneration=7;
+			crop.verticalTranslationConfirmationPending=true;
+			Assert::IsTrue(Evaluate(crop).applyCrop);
+			crop.verticalTranslationConfirmationPending=false; crop.verticalTranslationActive=true;
+			crop.verticalTranslationPixels=102;
+			const auto d=Evaluate(crop);
+			Assert::IsTrue(d.applyCrop && d.verticallyTranslated && d.horizontalExpansionPixelBounded);
+			Assert::AreEqual(128,d.sourceBounds.left); Assert::AreEqual(3712,d.sourceBounds.right);
+			Assert::AreEqual(474,d.sourceBounds.top); Assert::AreEqual(1890,d.sourceBounds.bottom);
+			for(int failure=0; failure<5; ++failure) {
+				auto bad=crop;
+				switch(failure) {
+				case 0: --bad.currentVisibleSourceSequence; break;
+				case 1: --bad.verticalTranslationSourceGeneration; break;
+				case 2: bad.verticalTranslationBase.top+=4; break;
+				case 3: bad.currentVisibleBounds.right=3730; break;
+				case 4: bad.outwardExpansion.bottom+=40; break;
+				}
+				AssertFullRaster(Evaluate(bad));
+			}
+		}
+
+		TEST_METHOD(SubtitleOccupancyCannotTurnSafeHorizontalJitterIntoFullRaster)
+		{
+			const ActivePictureBounds base{192,372,3648,1788,3840,2160,2.44,ActivePictureBounds::BarAxes::BOTH};
+			auto observed=base; observed.right+=4; observed.top=0; observed.bottom=2160;
+			ActivePicturePresentationRetentionEvidence evidence;
+			evidence.analysisValid=evidence.presentationValid=evidence.excludedHorizontalBandsPixelSafe=true;
+			evidence.excludedBandsPixelSafe=false; // bottom subtitle is real, side bands are empty
+			Assert::IsTrue(IsPixelSafeHorizontalSamplingEnvelope(base,observed,evidence));
+			Assert::IsFalse(HasHorizontalCropRefinementConflict(false,false,true,true,true,observed,base));
+			// A real measured horizontal extent is never excused by equivalence.
+			Assert::IsTrue(HasHorizontalCropRefinementConflict(false,true,true,true,true,observed,base));
+			evidence.excludedHorizontalBandsPixelSafe=false;
+			Assert::IsFalse(IsPixelSafeHorizontalSamplingEnvelope(base,observed,evidence));
+			evidence.excludedHorizontalBandsPixelSafe=true; observed.right+=8;
+			Assert::IsFalse(IsPixelSafeHorizontalSamplingEnvelope(base,observed,evidence));
+			observed=base; observed.left-=8; observed.right+=8;
+			Assert::IsFalse(IsPixelSafeHorizontalSamplingEnvelope(base,observed,evidence));
+			observed=base; evidence.presentationValid=false;
+			Assert::IsFalse(IsPixelSafeHorizontalSamplingEnvelope(base,observed,evidence));
+		}
+
+		TEST_METHOD(ExpansionStripProofRejectsMismatchedBaseCandidateAndSparseContent)
+		{
+			const auto base=TrustedScopeCrop().geometry;
+			auto candidate=base; candidate.top-=36; candidate.bottom+=36;
+			ActivePicturePresentationRetentionEvidence evidence;
+			evidence.analysisValid=evidence.presentationValid=evidence.expansionStripsAvailable=true;
+			evidence.expansionBase=base; evidence.expansionCandidate=candidate;
+			evidence.expandingTop.barPixels=36; evidence.expandingTop.blackFraction=0.1;
+			evidence.expandingTop.continuity=0.1; evidence.expandingTop.lumaP90=300;
+			evidence.expandingBottom=evidence.expandingTop;
+			Assert::IsTrue(ConfirmOutwardPictureTransition({},base,candidate,evidence,7,10).broadOpposingPicture);
+			for(int failure=0; failure<5; ++failure) {
+				auto bad=evidence;
+				switch(failure) {
+				case 0: bad.expansionBase.top+=4; break;
+				case 1: bad.expansionCandidate.bottom+=4; break;
+				case 2: bad.expandingBottom.blackFraction=0.98; break;
+				case 3: bad.expandingTop.lumaP90=80; break;
+				case 4: bad.analysisValid=false; break;
+				}
+				Assert::IsFalse(ConfirmOutwardPictureTransition({},base,candidate,bad,7,10).broadOpposingPicture);
+			}
+		}
+
+		TEST_METHOD(SamplingJitterDoesNotRequireNewAspectAuthority)
+		{
+			const ActivePictureBounds base{192,372,3648,1788,3840,2160,2.44,ActivePictureBounds::BarAxes::BOTH};
+			TransitionAdmissionInput input;
+			input.trustedGeometry = input.presentationBeforeObservation = base;
+			input.trustedGeometryAvailable = input.compatiblePresentation = input.evidence.available = true;
+			input.sourceGeneration = input.trustedGeneration = 7;
+			input.evidence.classification = ActivePictureClassification::BAR_CROP_TRUSTED;
+			input.evidence.trustedBounds = base; input.evidence.trustedBounds.right += 4;
+			input.outwardCandidate = input.evidence.trustedBounds;
+			input.retention.analysisValid = input.retention.presentationValid = true;
+			ActivePictureTransitionModel model;
+			for (uint64_t seq=1; seq<=4; ++seq)
+				model.Observe({base,seq,true,ActivePictureClassification::BAR_CROP_TRUSTED,24});
+			for (uint64_t seq=5; seq<65; ++seq)
+			{
+				input.sourceSequence = seq;
+				const auto d = EvaluateTransitionAdmission(input);
+				Assert::IsFalse(d.observation.transitionDeferred);
+				Assert::IsFalse(model.Observe(d.observation).publish);
+			}
+			// Full-height subtitle contamination is still a material change.
+			input.outwardCandidate.top = 0; input.outwardCandidate.bottom = 2160;
+			Assert::IsTrue(EvaluateTransitionAdmission(input).observation.transitionDeferred);
+		}
+
+		TEST_METHOD(CurrentCertifiedFitCanResolveAnAlreadyArmedRecovery)
+		{
+			Input crop = TrustedScopeCrop();
+			crop.geometry = {192,440,3648,1720,3840,2160,2.7,ActivePictureBounds::BarAxes::BOTH};
+			crop.frameSourceSequence = 2424;
+			crop.latestObservationClassification = ActivePictureClassification::BAR_CROP_TRUSTED;
+			crop.barCropRefinementHorizontalConflict = true;
+			crop.outwardPresentationActive = crop.outwardExpansionAvailable = true;
+			crop.outwardExpansionSourceGeneration = crop.currentVisibleSourceGeneration = 7;
+			crop.currentVisibleSourceSequence = crop.frameSourceSequence;
+			crop.currentVisibleBase = crop.geometry;
+			crop.currentVisibleBoundsAvailable = true;
+			crop.currentVisibleBounds = crop.geometry; crop.currentVisibleBounds.right = 3698;
+			crop.outwardExpansion = crop.currentVisibleBounds; crop.outwardExpansion.right = 3722;
+			PresentationRecoveryInput input;
+			input.crop = crop; input.candidate = Evaluate(crop);
+			input.previous.active = true; input.previous.sourceGeneration = 7;
+			input.previous.trustedCrop = input.retentionBounds = crop.geometry;
+			input.measurementCurrent = input.retentionEvaluated = input.nearBlackEvaluated = true;
+			input.retentionSourceGeneration = 7; input.retentionSourceSequence = crop.frameSourceSequence;
+			input.excludedBandsPixelSafe = false;
+			const auto d = EvaluatePresentationRecovery(input);
+			Assert::IsTrue(d.released && d.ended && d.presentation.applyCrop);
+			Assert::AreEqual(3722, d.presentation.sourceBounds.right);
+			for (int failure=0; failure<7; ++failure)
+			{
+				auto bad = input;
+				switch (failure) {
+				case 0: bad.measurementCurrent=false; break;
+				case 1: --bad.crop.currentVisibleSourceSequence; break;
+				case 2: --bad.retentionSourceGeneration; break;
+				case 3: bad.globalNearBlack=true; break;
+				case 4: bad.crop.currentVisibleBounds.right=3730; break;
+				case 5: bad.retentionBounds.top+=4; break;
+				case 6: bad.cadenceRepeat=true; break;
+				}
+				AssertFullRaster(EvaluatePresentationRecovery(bad).presentation);
+			}
+		}
+
 		TEST_METHOD(QueuedPublicationCannotOverrideCurrentAdmissionVeto)
 		{
 			ActivePictureTransitionModel model;

@@ -137,6 +137,44 @@ namespace VideoProcessorTest
 	TEST_CLASS(ActivePictureEvidenceTests)
 	{
 	public:
+
+
+		TEST_METHOD(SubtitleAndSparseStarsCannotCertifyAnExpandedPictureStrip)
+		{
+			const ActivePictureBounds scope{192,372,3648,1788,3840,2160,2.44,ActivePictureBounds::BarAxes::BOTH};
+			for (bool stars : {false,true}) {
+				P010Frame frame(3840,2160);
+				frame.BlackOutside(scope.left,scope.top,scope.right,scope.bottom);
+				if(stars) {
+					for(int y=24; y<2160; y+=80)
+						frame.FillRectangle(1920,y,1926,y+4,700);
+				} else frame.FillRectangle(1200,1830,2640,1850,700);
+				const auto evidence=EvaluateP010ActivePicturePresentationRetention(frame.View(),scope);
+				Assert::IsTrue(evidence.excludedHorizontalBandsPixelSafe);
+				auto fullHeight=scope; fullHeight.top=0; fullHeight.bottom=2160;
+				Assert::IsFalse(AlphaSourceCrop::ConfirmOutwardPictureTransition({},scope,fullHeight,evidence,7,1).authoritative);
+				Assert::IsFalse(AlphaSourceCrop::ConfirmOutwardPictureTransition({},scope,fullHeight,evidence,7,1).broadOpposingPicture);
+			}
+		}
+
+		TEST_METHOD(GradualPictureExpansionUsesNewStripRatherThanWholeOldBar)
+		{
+			P010Frame frame(3840,2160);
+			frame.BlackOutside(0,208,3840,1952);
+			const ActivePictureBounds oldCrop{40,244,3800,1912,3840,2160,2.25,ActivePictureBounds::BarAxes::BOTH};
+			const auto evidence = EvaluateP010ActivePicturePresentationRetention(frame.View(),oldCrop);
+			Assert::IsTrue(evidence.activePicture.available);
+			Assert::AreEqual(int(ActivePictureClassification::BAR_CROP_TRUSTED),int(evidence.activePicture.classification));
+			AlphaSourceCrop::OutwardPictureConfirmationState state;
+			for (uint64_t seq=323; seq<=325; ++seq) {
+				const auto d = AlphaSourceCrop::ConfirmOutwardPictureTransition(state,oldCrop,
+					evidence.activePicture.trustedBounds,evidence,2,seq);
+				Assert::IsTrue(d.broadOpposingPicture);
+				Assert::AreEqual(seq==325,d.authoritative);
+				state=d.state;
+			}
+		}
+
 		TEST_METHOD(InternalDividerDoesNotBecomeAnOuterCropEdge)
 		{
 			for (bool subtitle : {false, true})

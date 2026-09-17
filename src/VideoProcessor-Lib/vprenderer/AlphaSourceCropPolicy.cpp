@@ -14,6 +14,17 @@ namespace AlphaSourceCrop
 		// change behind a stale trusted crop.
 		constexpr uint64_t VERTICAL_INSPECTION_MAX_SOURCE_SEQUENCES = 3;
 
+		bool SamplingEquivalentAxis(int first, int last, int otherFirst, int otherLast, int tolerance)
+		{
+			return std::abs(first-otherFirst) <= tolerance && std::abs(last-otherLast) <= tolerance &&
+				std::abs((last-first)-(otherLast-otherFirst)) <= tolerance;
+		}
+
+		int SamplingTolerance(const ActivePictureBounds& bounds)
+		{
+			return std::max(2, std::max(bounds.rasterWidth / 480, bounds.rasterHeight / 270));
+		}
+
 		bool BroadPictureLike(const ActivePictureEdgeEvidence& edge)
 		{
 			return edge.barPixels > 0 && edge.blackFraction <= 0.80 &&
@@ -441,17 +452,25 @@ namespace AlphaSourceCrop
 		if (!compatible)
 			return decision;
 
+		const int tolerance = SamplingTolerance(trustedGeometry);
+		const bool expandsVertical = (candidate.top < trustedGeometry.top || candidate.bottom > trustedGeometry.bottom) &&
+			!SamplingEquivalentAxis(trustedGeometry.top, trustedGeometry.bottom, candidate.top, candidate.bottom, tolerance);
+		const bool expandsHorizontal = (candidate.left < trustedGeometry.left || candidate.right > trustedGeometry.right) &&
+			!SamplingEquivalentAxis(trustedGeometry.left, trustedGeometry.right, candidate.left, candidate.right, tolerance);
+		// Sampling jitter may reach the normal transition deadband; this grants
+		// no crop/presentation authority and never suppresses positive pixels.
+		if (!expandsVertical && !expandsHorizontal) return decision;
 		decision.outwardTransition = true;
-		const bool expandsVertical = candidate.top < trustedGeometry.top ||
-			candidate.bottom > trustedGeometry.bottom;
-		const bool expandsHorizontal = candidate.left < trustedGeometry.left ||
-			candidate.right > trustedGeometry.right;
+		const bool stripsMatch = evidence.expansionStripsAvailable &&
+			SameBounds(evidence.expansionBase, trustedGeometry) && SameBounds(evidence.expansionCandidate, candidate);
+		// A supplied but mismatched certificate must not fall back to old strips.
+		if (evidence.expansionStripsAvailable && !stripsMatch) return decision;
 		const bool verticalPicture = !expandsVertical ||
-			((candidate.top >= trustedGeometry.top || BroadPictureLike(evidence.excludedTop)) &&
-			 (candidate.bottom <= trustedGeometry.bottom || BroadPictureLike(evidence.excludedBottom)));
+			((candidate.top >= trustedGeometry.top || BroadPictureLike(stripsMatch ? evidence.expandingTop : evidence.excludedTop)) &&
+			 (candidate.bottom <= trustedGeometry.bottom || BroadPictureLike(stripsMatch ? evidence.expandingBottom : evidence.excludedBottom)));
 		const bool horizontalPicture = !expandsHorizontal ||
-			((candidate.left >= trustedGeometry.left || BroadPictureLike(evidence.excludedLeft)) &&
-			 (candidate.right <= trustedGeometry.right || BroadPictureLike(evidence.excludedRight)));
+			((candidate.left >= trustedGeometry.left || BroadPictureLike(stripsMatch ? evidence.expandingLeft : evidence.excludedLeft)) &&
+			 (candidate.right <= trustedGeometry.right || BroadPictureLike(stripsMatch ? evidence.expandingRight : evidence.excludedRight)));
 		decision.broadOpposingPicture = evidence.analysisValid && evidence.presentationValid &&
 			verticalPicture && horizontalPicture;
 		if (!decision.broadOpposingPicture)
@@ -2019,6 +2038,15 @@ namespace AlphaSourceCrop
 			std::abs((trusted.bottom - trusted.top) - (observed.bottom - observed.top)) <= tolerance;
 	}
 
+	bool IsPixelSafeHorizontalSamplingEnvelope(const ActivePictureBounds& trusted,
+		const ActivePictureBounds& observed, const ActivePicturePresentationRetentionEvidence& evidence)
+	{
+		return evidence.analysisValid && evidence.presentationValid && evidence.excludedHorizontalBandsPixelSafe &&
+			ValidBounds(trusted, trusted.rasterWidth, trusted.rasterHeight) &&
+			ValidBounds(observed, trusted.rasterWidth, trusted.rasterHeight) &&
+			SamplingEquivalentAxis(trusted.left, trusted.right, observed.left, observed.right, SamplingTolerance(trusted));
+	}
+
 	bool IsPixelSafeSamplingEnvelope(const ActivePictureBounds& trusted,
 		const ActivePictureBounds& observed, const ActivePictureBounds& envelope,
 		bool excludedBandsPixelSafe)
@@ -2076,6 +2104,29 @@ namespace AlphaSourceCrop
 			result.started = true;
 		}
 		if (!result.state.active) return result;
+
+		// A current outward FIT already exposes every certified visible pixel.
+		// Requiring the smaller logical crop's bands to be empty would deadlock
+		// this presentation behind precisely the content it safely includes.
+		const auto verifiedCandidate = Evaluate(crop);
+		const bool certifiedFit = currentContract && !input.cadenceRepeat &&
+			input.measurementCurrent && input.retentionEvaluated &&
+			input.retentionSourceGeneration == crop.frameSourceGeneration &&
+			input.retentionSourceSequence == crop.frameSourceSequence &&
+			SameTrustedCropContract(input.retentionBounds, crop.geometry) &&
+			input.nearBlackEvaluated && !input.globalNearBlack &&
+			input.candidate.applyCrop && verifiedCandidate.applyCrop &&
+			verifiedCandidate.horizontalExpansionPixelBounded &&
+			verifiedCandidate.owner == DecisionOwner::OUTWARD_FIT &&
+			SameBounds(verifiedCandidate.sourceBounds, input.candidate.sourceBounds);
+		if (certifiedFit)
+		{
+			result.presentation = verifiedCandidate;
+			result.presentation.reason = "current pixel-certified outward fit resolved crop recovery";
+			result.released = result.ended = true;
+			result.state = {};
+			return result;
+		}
 
 		if (!currentContract || !SameTrustedCropContract(crop.geometry, result.state.trustedCrop))
 		{
@@ -2189,8 +2240,16 @@ namespace AlphaSourceCrop
 				: "shared geometry lacks crop authority";
 			return decision;
 		}
+		// Horizontal visibility and vertical subtitle ownership are independent.
+		// The vertical owner is validated again below; it may translate or briefly
+		// confirm against the same trusted base while current pixels bound width.
+		const bool verticalPresentationOwnsExtent =
+			(input.verticalTranslationActive || input.verticalTranslationConfirmationPending || input.verticalFitConfirmationPending) &&
+			input.verticalTranslationSourceGeneration != 0 &&
+			input.verticalTranslationSourceGeneration == input.frameSourceGeneration &&
+			SameBounds(input.verticalTranslationBase, input.geometry) &&
+			input.outwardExpansion.top == input.geometry.top && input.outwardExpansion.bottom == input.geometry.bottom;
 		const bool horizontalExpansionPixelBounded = input.barCropRefinementHorizontalConflict &&
-			!input.verticalTranslationActive &&
 			input.latestObservationClassification == ActivePictureClassification::BAR_CROP_TRUSTED &&
 			input.currentVisibleBoundsAvailable && input.frameSourceSequence != 0 &&
 			input.currentVisibleSourceGeneration == input.frameSourceGeneration &&
@@ -2201,7 +2260,10 @@ namespace AlphaSourceCrop
 			ValidBounds(input.outwardExpansion, input.rasterWidth, input.rasterHeight) &&
 			CropEdgesAreChromaAligned(input.outwardExpansion, input.rasterWidth, input.rasterHeight) &&
 			ContainedBounds(input.currentVisibleBounds, input.geometry) &&
-			ContainedBounds(input.outwardExpansion, input.currentVisibleBounds) &&
+			(ContainedBounds(input.outwardExpansion, input.currentVisibleBounds) ||
+			 (verticalPresentationOwnsExtent &&
+			  input.outwardExpansion.left <= input.currentVisibleBounds.left &&
+			  input.outwardExpansion.right >= input.currentVisibleBounds.right)) &&
 			(input.currentVisibleBounds.left < input.geometry.left ||
 			 input.currentVisibleBounds.right > input.geometry.right);
 		if (input.barCropRefinementHorizontalConflict && !horizontalExpansionPixelBounded)
