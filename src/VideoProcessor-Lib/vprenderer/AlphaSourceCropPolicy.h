@@ -372,6 +372,17 @@ namespace AlphaSourceCrop
 	};
 	TransitionAdmissionDecision EvaluateTransitionAdmission(const TransitionAdmissionInput& input);
 
+	struct PresentationObservationDecision
+	{
+		ActivePictureBounds bounds;
+		uint8_t resolvedAxes = 0;
+	};
+	// Fresh pixel evidence can replace full-raster placeholders on an
+	// uncertified axis for presentation only. This never grants crop authority.
+	PresentationObservationDecision ResolvePresentationObservation(
+		const ActivePictureBounds& base, const ActivePictureEvidence& evidence,
+		const ActivePicturePresentationRetentionEvidence& retention);
+
 	bool HasHorizontalCropRefinementConflict(bool currentLeftExpansion,
 		bool currentRightExpansion, bool observationAvailable, bool geometryAvailable,
 		bool samplingReaffirmed, const ActivePictureBounds& observation,

@@ -139,6 +139,34 @@ namespace VideoProcessorTest
 	public:
 
 
+		TEST_METHOD(PixelMeasuredMarginsReplaceOnlyUncertifiedPresentationAxes)
+		{
+			P010Frame scope(960,540), partial(960,540), subtitle(960,540), expanded(960,540);
+			scope.BlackOutside(44,88,916,452);
+			partial.BlackOutside(52,92,916,448);
+			subtitle.BlackOutside(44,88,916,452);
+			subtitle.FillRectangle(200,454,500,460,700);
+			const auto base=ExtractP010ActivePictureEvidence(scope.View()).trustedBounds;
+			const auto sideEvidence=ExtractP010ActivePictureEvidence(partial.View());
+			Assert::IsTrue(sideEvidence.trustedBounds.trustedBarAxes==ActivePictureBounds::BarAxes::TOP_BOTTOM);
+			const auto safe=EvaluateP010ActivePicturePresentationRetention(partial.View(),base);
+			Assert::IsTrue(safe.excludedBandsPixelSafe);
+			const auto side=AlphaSourceCrop::ResolvePresentationObservation(base,sideEvidence,safe);
+			Assert::AreEqual(base.left,side.bounds.left); Assert::AreEqual(base.right,side.bounds.right);
+			const auto textEvidence=ExtractP010ActivePictureEvidence(subtitle.View());
+			Assert::IsTrue(textEvidence.trustedBounds.trustedBarAxes==ActivePictureBounds::BarAxes::LEFT_RIGHT);
+			const auto occupied=EvaluateP010ActivePicturePresentationRetention(subtitle.View(),base);
+			Assert::IsTrue(occupied.outwardVisibleBoundsAvailable);
+			const auto text=AlphaSourceCrop::ResolvePresentationObservation(base,textEvidence,occupied);
+			Assert::AreEqual(base.top,text.bounds.top);
+			Assert::IsTrue(text.bounds.bottom>=460 && text.bounds.bottom<540);
+			const auto wideEvidence=ExtractP010ActivePictureEvidence(expanded.View());
+			const auto wide=AlphaSourceCrop::ResolvePresentationObservation(base,wideEvidence,
+				EvaluateP010ActivePicturePresentationRetention(expanded.View(),base));
+			Assert::AreEqual(0,wide.bounds.left); Assert::AreEqual(0,wide.bounds.top);
+			Assert::AreEqual(960,wide.bounds.right); Assert::AreEqual(540,wide.bounds.bottom);
+		}
+
 		TEST_METHOD(AsymmetricBlackMarginsPauseNestedProofThroughRealPixelExtraction)
 		{
 			P010Frame scope(960,540), nested(960,540), partial(960,540);

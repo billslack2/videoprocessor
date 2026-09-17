@@ -290,6 +290,115 @@ namespace Tests
 			}
 		}
 
+		TEST_METHOD(LoggedSafeSideBarsCannotCreateFullRasterRecoveryOrHeldWidth)
+		{
+			const ActivePictureBounds base{176,356,3664,1804,3840,2160,
+				3488.0/1448,ActivePictureBounds::BarAxes::BOTH};
+			PresentationRecoveryState recoveryState;
+			for (uint64_t seq=686;seq<716;++seq)
+			{
+				ActivePictureEvidence evidence;
+				evidence.available=true; evidence.classification=ActivePictureClassification::BAR_CROP_TRUSTED;
+				evidence.proposedBounds={188,364,3652,1796,3840,2160,3464.0/1432,ActivePictureBounds::BarAxes::NONE};
+				evidence.trustedBounds=evidence.proposedBounds;
+				evidence.trustedBounds.trustedBarAxes=ActivePictureBounds::BarAxes::BOTH;
+				if (seq==686)
+				{
+					evidence.trustedBounds.left=0; evidence.trustedBounds.right=3840;
+					evidence.trustedBounds.trustedBarAxes=ActivePictureBounds::BarAxes::TOP_BOTTOM;
+				}
+				ActivePicturePresentationRetentionEvidence retention;
+				retention.analysisValid=retention.presentationValid=retention.expansionStripsAvailable=true;
+				retention.expansionBase=base; retention.activePicture=evidence;
+				retention.excludedBandsPixelSafe=retention.excludedHorizontalBandsPixelSafe=retention.excludedVerticalBandsPixelSafe=true;
+				const auto physical=ResolvePresentationObservation(base,evidence,retention);
+				const auto& observed=physical.bounds;
+				const bool left=observed.left<base.left, right=observed.right>base.right;
+				Assert::IsFalse(left || right);
+				Input crop=TrustedScopeCrop(); crop.geometry=base;
+				crop.frameSourceSequence=seq; crop.latestObservationSupportsCrop=seq!=686;
+				crop.latestObservationClassification=evidence.classification;
+				crop.barCropRefinementPending=seq==686;
+				crop.barCropRefinementHorizontalConflict=HasHorizontalCropRefinementConflict(left,right,true,true,false,observed,base);
+				crop.frameLocalPresentationRetentionEvaluated=true;
+				if (seq==686)
+				{
+					// Reproduce the old wiring: full-width confidence placeholders
+					// requested a horizontal fit without any outside visible pixels.
+					auto old=crop;
+					old.barCropRefinementHorizontalConflict=HasHorizontalCropRefinementConflict(
+						true,true,true,true,false,evidence.trustedBounds,base);
+					AssertFullRaster(Evaluate(old));
+				}
+				const auto candidate=Evaluate(crop);
+				PresentationRecoveryInput recovery;
+				recovery.previous=recoveryState; recovery.crop=crop; recovery.candidate=candidate;
+				recovery.measurementCurrent=recovery.retentionEvaluated=recovery.nearBlackEvaluated=true;
+				recovery.retentionBounds=base; recovery.retentionSourceGeneration=7; recovery.retentionSourceSequence=seq;
+				recovery.excludedBandsPixelSafe=true; recovery.observationAvailable=true;
+				recovery.observation=evidence.proposedBounds; recovery.observedTrustedCrop=evidence.trustedBounds;
+				recovery.observationClassification=evidence.classification;
+				const auto final=EvaluatePresentationRecovery(recovery); recoveryState=final.state;
+				Assert::IsTrue(final.presentation.applyCrop);
+				Assert::IsFalse(final.started || final.state.active || candidate.outwardExpanded);
+				Assert::AreEqual(base.left,final.presentation.sourceBounds.left);
+				Assert::AreEqual(base.right,final.presentation.sourceBounds.right);
+				Assert::AreEqual(base.top,final.presentation.sourceBounds.top);
+				Assert::AreEqual(base.bottom,final.presentation.sourceBounds.bottom);
+			}
+		}
+
+		TEST_METHOD(SubtitleOccupancyDoesNotBecomeFullHeightPictureOrHorizontalFit)
+		{
+			const ActivePictureBounds base{176,356,3664,1804,3840,2160,3488.0/1448,ActivePictureBounds::BarAxes::BOTH};
+			ActivePictureEvidence evidence;
+			evidence.available=true; evidence.classification=ActivePictureClassification::BAR_CROP_TRUSTED;
+			evidence.proposedBounds={188,364,3652,1828,3840,2160,2.36,ActivePictureBounds::BarAxes::NONE};
+			evidence.trustedBounds={188,0,3652,2160,3840,2160,1.60,ActivePictureBounds::BarAxes::LEFT_RIGHT};
+			ActivePicturePresentationRetentionEvidence retention;
+			retention.analysisValid=retention.presentationValid=retention.expansionStripsAvailable=true;
+			retention.expansionBase=base; retention.activePicture=evidence;
+			retention.excludedHorizontalBandsPixelSafe=true;
+			retention.outwardVisibleBoundsAvailable=true;
+			retention.outwardVisibleBounds=base; retention.outwardVisibleBounds.bottom=1860;
+			const auto physical=ResolvePresentationObservation(base,evidence,retention);
+			Assert::AreEqual(base.top,physical.bounds.top);
+			Assert::AreEqual(1860,physical.bounds.bottom);
+			Assert::AreEqual(0,evidence.trustedBounds.top); // Logical evidence is untouched.
+			VerticalBarContentInput text;
+			text.lowerContent=true; text.lowerOccupiedDepth=38; text.lowerPeakSamples=444;
+			text.lowerBarPixels=356; text.sampledColumns=3840; text.lowerRequiredShift=74;
+			const auto subtitle=EvaluateVerticalBarContent(text);
+			Assert::IsTrue(subtitle.lowerOverlayLike && subtitle.action==VerticalBarPresentationAction::TRANSLATE);
+			Input crop=TrustedScopeCrop(); crop.geometry=base;
+			crop.latestObservationSupportsCrop=false; crop.latestObservationClassification=evidence.classification;
+			crop.barCropRefinementPending=true;
+			crop.barCropRefinementHorizontalConflict=HasHorizontalCropRefinementConflict(false,false,true,true,false,physical.bounds,base);
+			crop.verticalTranslationActive=true; crop.verticalTranslationBase=base;
+			crop.verticalTranslationPixels=subtitle.translationPixels; crop.verticalTranslationSourceGeneration=7;
+			const auto d=Evaluate(crop);
+			Assert::IsTrue(d.applyCrop && d.verticallyTranslated);
+			Assert::IsFalse(d.outwardExpanded);
+			Assert::AreEqual(base.right-base.left,d.sourceBounds.right-d.sourceBounds.left);
+			Assert::AreEqual(base.bottom-base.top,d.sourceBounds.bottom-d.sourceBounds.top);
+			Assert::IsTrue(d.sourceBounds.bottom>=1860);
+			for (int failure=0; failure<6; ++failure)
+			{
+				auto bad=retention;
+				switch(failure) {
+				case 0: bad.analysisValid=false; break;
+				case 1: bad.presentationValid=false; break;
+				case 2: bad.expansionBase.top+=4; break;
+				case 3: bad.activePicture.proposedBounds.bottom+=4; break;
+				case 4: bad.outwardVisibleBoundsAvailable=false; break;
+				case 5: bad.outwardVisibleBounds.right=base.right-4; break;
+				}
+				const auto rejected=ResolvePresentationObservation(base,evidence,bad);
+				Assert::AreEqual(0,rejected.bounds.top);
+				Assert::AreEqual(2160,rejected.bounds.bottom);
+			}
+		}
+
 		TEST_METHOD(MovingNestedCropKeepsEarnedProofAcrossPartialAxisConfidence)
 		{
 			// Sequence timing from the 15:56:00-15:56:04 replay. Interpolate the

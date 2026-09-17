@@ -785,6 +785,60 @@ namespace AlphaSourceCrop
 		return decision;
 	}
 
+	PresentationObservationDecision ResolvePresentationObservation(
+		const ActivePictureBounds& base, const ActivePictureEvidence& evidence,
+		const ActivePicturePresentationRetentionEvidence& retention)
+	{
+		PresentationObservationDecision result;
+		result.bounds = !evidence.available ? ActivePictureBounds{} :
+			evidence.classification == ActivePictureClassification::PROVISIONAL ?
+			evidence.proposedBounds : evidence.trustedBounds;
+		const int width = base.rasterWidth, height = base.rasterHeight;
+		if (!evidence.available || evidence.classification != ActivePictureClassification::BAR_CROP_TRUSTED ||
+			!ValidBounds(base, width, height) || !HasAuthorityForCroppedAxes(base, width, height) ||
+			!ValidBounds(evidence.proposedBounds, width, height) ||
+			!ValidBounds(evidence.trustedBounds, width, height) ||
+			!retention.analysisValid || !retention.presentationValid ||
+			!retention.expansionStripsAvailable || !SameBounds(retention.expansionBase, base) ||
+			!retention.activePicture.available ||
+			!SameBounds(retention.activePicture.proposedBounds, evidence.proposedBounds))
+			return result;
+		const auto& proposed = evidence.proposedBounds;
+		const auto& visible = retention.outwardVisibleBounds;
+		const bool visibleBounded = retention.outwardVisibleBoundsAvailable &&
+			ValidBounds(visible, width, height) && visible.left <= base.left &&
+			visible.top <= base.top && visible.right >= base.right && visible.bottom >= base.bottom;
+		const auto axes = static_cast<uint8_t>(evidence.trustedBounds.trustedBarAxes);
+		auto resolveAxis = [&](uint8_t axis, int baseFirst, int baseLast,
+			int proposedFirst, int proposedLast, int visibleFirst, int visibleLast,
+			bool bandsSafe, int& first, int& last) {
+			if ((axes & axis) != 0) return;
+			const int beforeFirst = first, beforeLast = last;
+			if (bandsSafe && proposedFirst >= baseFirst && proposedLast <= baseLast)
+			{
+				// Retain the old edge; a missing confidence bit is not expansion.
+				first = baseFirst; last = baseLast;
+			}
+			else if (visibleBounded)
+			{
+				// Keep every measured visible pixel, including subtitle pixels.
+				// Dense subtitle arbitration decides translation versus picture fit.
+				first = std::min(baseFirst, std::min(proposedFirst, visibleFirst));
+				last = std::max(baseLast, std::max(proposedLast, visibleLast));
+			}
+			if (first != beforeFirst || last != beforeLast) result.resolvedAxes |= axis;
+		};
+		resolveAxis(static_cast<uint8_t>(ActivePictureBounds::BarAxes::LEFT_RIGHT),
+			base.left, base.right, proposed.left, proposed.right, visible.left, visible.right,
+			retention.excludedHorizontalBandsPixelSafe, result.bounds.left, result.bounds.right);
+		resolveAxis(static_cast<uint8_t>(ActivePictureBounds::BarAxes::TOP_BOTTOM),
+			base.top, base.bottom, proposed.top, proposed.bottom, visible.top, visible.bottom,
+			retention.excludedVerticalBandsPixelSafe, result.bounds.top, result.bounds.bottom);
+		result.bounds.aspectRatio = double(result.bounds.right-result.bounds.left) /
+			std::max(1, result.bounds.bottom-result.bounds.top);
+		return result;
+	}
+
 	bool HasHorizontalCropRefinementConflict(bool currentLeftExpansion,
 		bool currentRightExpansion, bool observationAvailable, bool geometryAvailable,
 		bool samplingReaffirmed, const ActivePictureBounds& observation,

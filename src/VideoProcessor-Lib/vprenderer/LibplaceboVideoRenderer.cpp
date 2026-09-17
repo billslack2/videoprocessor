@@ -3847,6 +3847,9 @@ struct LibplaceboVideoRenderer::Impl
 	ActivePictureClassification latestActivePictureEvidenceClassification =
 		ActivePictureClassification::UNAVAILABLE;
 	ActivePictureBounds latestActivePictureEvidenceBounds;
+	ActivePictureBounds latestActivePicturePresentationBounds;
+	uint8_t lastPresentationObservationAxes = 0;
+	uint64_t lastPresentationObservationLogTick = 0;
 	uint64_t latestActivePictureEvidenceFrame = 0;
 	bool latestActivePictureEvidenceWasStartupHypothesis = false;
 	bool presentationOwnedGeometryTransitionDeferred = false;
@@ -8008,6 +8011,8 @@ struct LibplaceboVideoRenderer::Impl
 		latestActivePictureEvidenceClassification =
 			ActivePictureClassification::UNAVAILABLE;
 		latestActivePictureEvidenceBounds = {};
+		latestActivePicturePresentationBounds = {};
+		lastPresentationObservationAxes = 0;
 		latestActivePictureEvidenceFrame = 0;
 		latestActivePictureEvidenceWasStartupHypothesis = false;
 		presentationOwnedGeometryTransitionDeferred = false;
@@ -8528,6 +8533,22 @@ struct LibplaceboVideoRenderer::Impl
 				evidence.classification ==
 					ActivePictureClassification::UNAVAILABLE;
 			latestCropRetentionEvidence = retentionEvidence;
+			const auto presentationObservation = AlphaSourceCrop::ResolvePresentationObservation(
+				presentationBeforeObservation, evidence, retentionEvidence);
+			latestActivePicturePresentationBounds = presentationObservation.bounds;
+			if (presentationObservation.resolvedAxes != lastPresentationObservationAxes ||
+				(presentationObservation.resolvedAxes != 0 && now - lastPresentationObservationLogTick >= 2000))
+			{
+				lastPresentationObservationAxes = presentationObservation.resolvedAxes;
+				lastPresentationObservationLogTick = now;
+				const auto& visible = presentationObservation.bounds;
+				DebugLog::Log("Alpha presentation observation: sequence=%llu generation=%llu resolved_axes=%u authority=%d,%d-%d,%d visible=%d,%d-%d,%d reason=measured-pixels-separate-from-axis-confidence",
+					static_cast<unsigned long long>(frameNumber), static_cast<unsigned long long>(analysisSource.generation),
+					static_cast<unsigned>(presentationObservation.resolvedAxes),
+					latestActivePictureEvidenceBounds.left, latestActivePictureEvidenceBounds.top,
+					latestActivePictureEvidenceBounds.right, latestActivePictureEvidenceBounds.bottom,
+					visible.left, visible.top, visible.right, visible.bottom);
+			}
 			latestActivePicturePresentationRetentionSafe =
 				hadCompatiblePresentation && ambiguousEvidence &&
 				retentionEvidence.currentlyPixelSafe;
@@ -8560,9 +8581,7 @@ struct LibplaceboVideoRenderer::Impl
 			{
 				ActivePictureBounds observed = presentationBeforeObservation;
 				if (evidence.available)
-					observed = evidence.classification ==
-						ActivePictureClassification::PROVISIONAL
-					? evidence.proposedBounds : evidence.trustedBounds;
+					observed = latestActivePicturePresentationBounds;
 				if (retentionEvidence.outwardVisibleBoundsAvailable)
 				{
 					observed.left = std::min(observed.left,
@@ -9183,6 +9202,8 @@ struct LibplaceboVideoRenderer::Impl
 			latestActivePictureEvidenceClassification =
 				ActivePictureClassification::UNAVAILABLE;
 			latestActivePictureEvidenceBounds = {};
+			latestActivePicturePresentationBounds = {};
+			lastPresentationObservationAxes = 0;
 			latestActivePictureEvidenceFrame = sourceSequence;
 			latestCropRetentionEvidence = {};
 			latestCropSamplingReaffirmed = false;
@@ -10593,12 +10614,12 @@ struct LibplaceboVideoRenderer::Impl
 				episodeInput.retentionBounds.left == effectiveGeometry.left && episodeInput.retentionBounds.top == effectiveGeometry.top &&
 				episodeInput.retentionBounds.right == effectiveGeometry.right && episodeInput.retentionBounds.bottom == effectiveGeometry.bottom &&
 				latestActivePictureEvidenceClassification == ActivePictureClassification::BAR_CROP_TRUSTED &&
-				AlphaSourceCrop::IsPixelSafeHorizontalSamplingEnvelope(effectiveGeometry, latestActivePictureEvidenceBounds, latestCropRetentionEvidence);
+				AlphaSourceCrop::IsPixelSafeHorizontalSamplingEnvelope(effectiveGeometry, latestActivePicturePresentationBounds, latestCropRetentionEvidence);
 			const bool barCropRefinementHorizontalConflict =
 				AlphaSourceCrop::HasHorizontalCropRefinementConflict(
 					currentDetectorLeftExpansion, currentDetectorRightExpansion,
 					latestActivePictureEvidenceAvailable, effectiveGeometryAvailable,
-					latestCropSamplingReaffirmed || horizontalSamplingReaffirmed, latestActivePictureEvidenceBounds, effectiveGeometry);
+					latestCropSamplingReaffirmed || horizontalSamplingReaffirmed, latestActivePicturePresentationBounds, effectiveGeometry);
 			const bool barCropRefinementPending =
 				latestActivePictureEvidenceAvailable &&
 				latestActivePictureEvidenceClassification ==
@@ -10659,13 +10680,13 @@ struct LibplaceboVideoRenderer::Impl
 			cropInput.currentVisibleBounds = latestCropRetentionEvidence.outwardVisibleBounds;
 			if (cropInput.currentVisibleBoundsAvailable && latestActivePictureEvidenceAvailable)
 			{
-				// Cover both the pixel extents and current detector geometry. An
-				// envelope that omits either must keep the existing full-raster path.
+				// Cover pixel extents and resolved presentation bounds. Unresolved
+				// axes retain their conservative full-raster fallback.
 				auto& visible = cropInput.currentVisibleBounds;
-				visible.left = std::min(visible.left, latestActivePictureEvidenceBounds.left);
-				visible.top = std::min(visible.top, latestActivePictureEvidenceBounds.top);
-				visible.right = std::max(visible.right, latestActivePictureEvidenceBounds.right);
-				visible.bottom = std::max(visible.bottom, latestActivePictureEvidenceBounds.bottom);
+				visible.left = std::min(visible.left, latestActivePicturePresentationBounds.left);
+				visible.top = std::min(visible.top, latestActivePicturePresentationBounds.top);
+				visible.right = std::max(visible.right, latestActivePicturePresentationBounds.right);
+				visible.bottom = std::max(visible.bottom, latestActivePicturePresentationBounds.bottom);
 			}
 			cropInput.rasterWidth = width;
 			cropInput.rasterHeight = height;
