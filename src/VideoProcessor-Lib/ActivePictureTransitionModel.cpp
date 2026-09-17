@@ -177,6 +177,17 @@ ActivePicturePublicationAdmission ActivePictureTransitionModel::StableRetentionA
 	const int stableHeight = m_stable.bottom - m_stable.top;
 	if (width <= 0 || height <= 0 || stableWidth <= 0 || stableHeight <= 0)
 		return ActivePicturePublicationAdmission::ACCEPTED;
+	// A rectangle separated from all four source edges is an inset composition,
+	// not an unambiguous aspect-format boundary. Once a crop is established,
+	// keep that presentation instead of zooming into picture-in-picture,
+	// split-screen, credits, or an authored windowbox. Fresh source acquisition
+	// remains free to establish its initial geometry.
+	if (bounds.left > 0 && bounds.top > 0 &&
+		bounds.right < bounds.rasterWidth &&
+		bounds.bottom < bounds.rasterHeight)
+	{
+		return ActivePicturePublicationAdmission::CONTAINED_COMPOSITION_RETAINED;
+	}
 	// Derive aspect from pixels: cached aspectRatio can be temporally smoothed.
 	const double relativeAspect = static_cast<double>(width) * stableHeight /
 		(static_cast<double>(height) * stableWidth);
@@ -195,6 +206,7 @@ const char* ActivePicturePublicationAdmissionName(ActivePicturePublicationAdmiss
 	case ActivePicturePublicationAdmission::NON_AUTHORITATIVE: return "non-authoritative";
 	case ActivePicturePublicationAdmission::STABLE_REFERENCE_MISMATCH: return "stable-reference-mismatch";
 	case ActivePicturePublicationAdmission::STABLE_GEOMETRY_RETAINED: return "stable-geometry-deadband";
+	case ActivePicturePublicationAdmission::CONTAINED_COMPOSITION_RETAINED: return "contained-composition";
 	case ActivePicturePublicationAdmission::STABLE_ASPECT_RETAINED: return "stable-aspect-deadband";
 	default: return "unknown";
 	}
@@ -565,9 +577,11 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 		decision.confidence = 1.0;
 		decision.diagnostic = geometryMoved;
 		if (geometryMoved)
-			decision.reason = retention == ActivePicturePublicationAdmission::STABLE_ASPECT_RETAINED
-				? "contained picture retained within established aspect deadband"
-				: "minor trusted geometry change retained within deadband";
+			decision.reason = retention == ActivePicturePublicationAdmission::CONTAINED_COMPOSITION_RETAINED
+				? "all-sided inset retained as inner composition"
+				: retention == ActivePicturePublicationAdmission::STABLE_ASPECT_RETAINED
+					? "contained picture retained within established aspect deadband"
+					: "minor trusted geometry change retained within deadband";
 		return decision;
 	}
 	if (matchesRecentTrusted)

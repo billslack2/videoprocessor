@@ -91,7 +91,7 @@ namespace VideoProcessorTest
 			}
 		}
 
-		TEST_METHOD(MaterialMovingNestedCropKeepsSustainedProof)
+		TEST_METHOD(MaterialMovingAllSidedInsetRetainsEstablishedFraming)
 		{
 			for (double rate : { 23.976, 24.0, 59.94, 60.0 })
 			{
@@ -99,26 +99,22 @@ namespace VideoProcessorTest
 				uint64_t frame = Establish(model, ScopeBounds());
 				const auto first = frame;
 				const auto interval = ActivePictureTransitionModel::AnalysisIntervalFrames(rate);
-				bool published = false;
-				for (; frame - first <= uint64_t(std::ceil(rate * 4.2)); frame += interval)
+				for (; frame - first <= uint64_t(std::ceil(rate * 8.0)); frame += interval)
 				{
 					const int move = 2 * int((frame - first) * 20.0 / rate);
 					auto bounds = ScopeBounds();
-					// Remain beyond the AR deadband throughout this proof fixture.
+					// Remain well beyond the AR deadband. Duration and movement do
+					// not turn a four-sided composition into a format boundary.
 					bounds.left = 160 + move; bounds.right = 3680 - move;
 					bounds.top += move / 2; bounds.bottom -= move / 2;
 					bounds.trustedBarAxes = ActivePictureBounds::BarAxes::BOTH;
 					bounds.aspectRatio = double(bounds.right - bounds.left) / (bounds.bottom - bounds.top);
 					const auto decision = Observe(model, bounds, frame,
 						ActivePictureClassification::BAR_CROP_TRUSTED, rate);
-					if (!decision.publish) continue;
-					Assert::IsTrue(frame - first >= uint64_t(std::ceil(rate * 4.0)));
-					Assert::AreEqual(bounds.left, decision.bounds.left);
-					Assert::AreEqual(bounds.bottom, decision.bounds.bottom);
-					published = true;
-					break;
+					Assert::IsFalse(decision.publish);
+					Assert::AreEqual(ScopeBounds().left, decision.stableBounds.left);
+					Assert::AreEqual(ScopeBounds().top, decision.stableBounds.top);
 				}
-				Assert::IsTrue(published);
 			}
 		}
 
@@ -164,13 +160,10 @@ namespace VideoProcessorTest
 			}
 		}
 
-		TEST_METHOD(ConfirmedWindowboxStillRejectsSmallAlternatingEdgeNoise)
+		TEST_METHOD(InitiallyAcquiredWindowboxRejectsSmallAlternatingEdgeNoise)
 		{
 			ActivePictureTransitionModel model;
-			uint64_t frame = Establish(model, ScopeBounds());
-			for (int n = 0; n < 100; ++n)
-				Observe(model, LoggedWindowboxBounds(), frame++,
-					ActivePictureClassification::BAR_CROP_TRUSTED, 24);
+			uint64_t frame = Establish(model, LoggedWindowboxBounds());
 			for (int n = 0; n < 240; ++n)
 			{
 				auto noisy = LoggedWindowboxBounds();
@@ -362,7 +355,7 @@ namespace VideoProcessorTest
 			}
 		}
 
-		TEST_METHOD(PersistentNestedWindowboxEventuallyCommitsByFourPointTwoSeconds)
+		TEST_METHOD(PersistentAllSidedWindowboxRetainsEstablishedScope)
 		{
 			const double rates[] = {
 				23.976, 24.0, 25.0, 29.97, 30.0, 59.94, 60.0
@@ -372,40 +365,34 @@ namespace VideoProcessorTest
 				ActivePictureTransitionModel model;
 				uint64_t frame = Establish(model, LoggedScopeBounds());
 				const uint64_t firstCandidate = frame;
-				bool published = false;
-				while (!published &&
-					frame - firstCandidate <= static_cast<uint64_t>(
-						std::ceil(rate * 4.2)))
+				while (frame - firstCandidate <= static_cast<uint64_t>(
+					std::ceil(rate * 8.0)))
 				{
 					const auto decision = Observe(model,
 						LoggedWindowboxBounds(), frame++,
 						ActivePictureClassification::BAR_CROP_TRUSTED,
 						rate);
-					published = decision.publish;
+					Assert::IsFalse(decision.publish);
+					Assert::AreEqual(LoggedScopeBounds().left,
+						decision.stableBounds.left);
+					Assert::AreEqual(LoggedScopeBounds().top,
+						decision.stableBounds.top);
 				}
-				Assert::IsTrue(published);
 			}
 		}
 
-		TEST_METHOD(ProvisionalRecentWindowboxRestoresAuthorityAndStillWaits)
+		TEST_METHOD(ProvisionalRecentWindowboxCannotOverrideEstablishedScope)
 		{
 			constexpr double rate = 60.0;
 			ActivePictureTransitionModel model;
 			uint64_t frame = Establish(model, LoggedScopeBounds());
-			bool published = false;
-			while (!published)
+			for (int count = 0; count < 300; ++count, ++frame)
 			{
-				published = Observe(model, LoggedWindowboxBounds(), frame++,
-					ActivePictureClassification::BAR_CROP_TRUSTED,
-					rate).publish;
+				const auto held = Observe(model, LoggedWindowboxBounds(), frame,
+					ActivePictureClassification::BAR_CROP_TRUSTED, rate);
+				Assert::IsFalse(held.publish);
+				Assert::AreEqual(LoggedScopeBounds().left, held.stableBounds.left);
 			}
-
-			Assert::IsFalse(Observe(model, LoggedScopeBounds(), frame++,
-				ActivePictureClassification::BAR_CROP_TRUSTED,
-				rate).publish);
-			Assert::IsTrue(Observe(model, LoggedScopeBounds(), frame++,
-				ActivePictureClassification::BAR_CROP_TRUSTED,
-				rate).publish);
 
 			ActivePictureBounds provisionalWindowbox =
 				LoggedWindowboxBounds();
@@ -421,7 +408,7 @@ namespace VideoProcessorTest
 				Assert::AreEqual(LoggedScopeBounds().right,
 					decision.stableBounds.right);
 				Assert::AreEqual(std::string(
-					"recent nested crop awaiting sustained confirmation"),
+					"provisional geometry lacks affirmative crop authority"),
 					decision.reason);
 			}
 		}
@@ -981,10 +968,10 @@ namespace VideoProcessorTest
 			}
 		}
 
-		TEST_METHOD(SameAspectInsetRetainsFramingButExpansionAndTranslationProceed)
+		TEST_METHOD(AllSidedInsetRetainsFramingButExpansionAndTranslationProceed)
 		{
 			const ActivePictureBounds anchor = {0,280,3840,1880,3840,2160,2.4,ActivePictureBounds::BarAxes::TOP_BOTTOM};
-			const ActivePictureBounds inset = {480,480,3360,1680,3840,2160,2.4,ActivePictureBounds::BarAxes::BOTH};
+			const ActivePictureBounds inset = {188,468,3652,1692,3840,2160,3464.0/1224.0,ActivePictureBounds::BarAxes::BOTH};
 			ActivePictureTransitionModel model;
 			uint64_t frame = Establish(model, anchor);
 			for (int i = 0; i < 360; ++i)
@@ -993,6 +980,15 @@ namespace VideoProcessorTest
 				Assert::IsFalse(held.publish);
 				Assert::AreEqual(anchor.left, held.bounds.left);
 			}
+			ActivePictureTransitionDecision queued;
+			queued.publish = queued.stable = true;
+			queued.bounds = inset; queued.stableBounds = anchor;
+			ActivePicturePublicationAdmission admission;
+			Assert::IsFalse(model.AdoptPublishedDecision(queued,
+				ActivePictureClassification::BAR_CROP_TRUSTED, false, &admission));
+			Assert::AreEqual(static_cast<int>(
+				ActivePicturePublicationAdmission::CONTAINED_COMPOSITION_RETAINED),
+				static_cast<int>(admission));
 			// A fresh source may acquire this inset normally.
 			model.Reset(); frame = Establish(model, inset);
 			Observe(model, anchor, frame++);
@@ -1001,6 +997,41 @@ namespace VideoProcessorTest
 			auto shifted = inset; shifted.left -= 160; shifted.right -= 160;
 			Observe(model, shifted, frame++);
 			Assert::IsTrue(Observe(model, shifted, frame++).publish);
+		}
+
+		TEST_METHOD(FailedReplayAllSidedInsetNeverReplacesTrustedMovieFrame)
+		{
+			const ActivePictureBounds anchor = {0,232,3840,1924,3840,2160,
+				3840.0/1692.0,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+			ActivePictureTransitionModel model;
+			Establish(model, anchor);
+			for (uint64_t sequence = 2174; sequence <= 2270; ++sequence)
+			{
+				const int step = static_cast<int>(sequence - 2174);
+				ActivePictureBounds inset = {
+					192 - 4 * step / 96,
+					440 + 28 * step / 96,
+					3648 + 4 * step / 96,
+					1720 - 28 * step / 96,
+					3840,2160,0.0,ActivePictureBounds::BarAxes::BOTH};
+				inset.aspectRatio = static_cast<double>(inset.right - inset.left) /
+					(inset.bottom - inset.top);
+				const auto held = Observe(model, inset, sequence,
+					ActivePictureClassification::BAR_CROP_TRUSTED, 24.0);
+				Assert::IsFalse(held.publish);
+				Assert::AreEqual(anchor.left, held.stableBounds.left);
+				Assert::AreEqual(anchor.top, held.stableBounds.top);
+				Assert::AreEqual(anchor.bottom, held.stableBounds.bottom);
+			}
+			const ActivePictureBounds recovered = {0,208,3840,1952,3840,2160,
+				3840.0/1744.0,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+			Assert::IsFalse(Observe(model, recovered, 2271,
+				ActivePictureClassification::BAR_CROP_TRUSTED, 24.0).publish);
+			const auto published = Observe(model, recovered, 2272,
+				ActivePictureClassification::BAR_CROP_TRUSTED, 24.0);
+			Assert::IsTrue(published.publish);
+			Assert::AreEqual(recovered.top, published.bounds.top);
+			Assert::AreEqual(recovered.bottom, published.bounds.bottom);
 		}
 
 		TEST_METHOD(AspectDeadbandPreservesMaterialImaxAndFullRasterTransitions)
@@ -1014,6 +1045,42 @@ namespace VideoProcessorTest
 			Assert::IsTrue(Observe(model, full, frame++, ActivePictureClassification::FULL_RASTER_TRUSTED).publish);
 			Observe(model, ScopeBounds(), frame++);
 			Assert::IsTrue(Observe(model, ScopeBounds(), frame++).publish);
+		}
+
+		TEST_METHOD(TwoTwentyAndOneFortyThreeCanTransitionInBothDirections)
+		{
+			const ActivePictureBounds scope = {0,207,3840,1953,3840,2160,
+				3840.0/1746.0,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+			const ActivePictureBounds tall = {376,0,3464,2160,3840,2160,
+				3088.0/2160.0,ActivePictureBounds::BarAxes::LEFT_RIGHT};
+			ActivePictureTransitionModel model;
+			uint64_t frame = Establish(model, scope);
+			Assert::IsFalse(Observe(model, tall, frame++).publish);
+			const auto toTall = Observe(model, tall, frame++);
+			Assert::IsTrue(toTall.publish);
+			Assert::AreEqual(tall.left, toTall.bounds.left);
+			Assert::IsFalse(Observe(model, scope, frame++).publish);
+			const auto toScope = Observe(model, scope, frame++);
+			Assert::IsTrue(toScope.publish);
+			Assert::AreEqual(scope.top, toScope.bounds.top);
+		}
+
+		TEST_METHOD(TwoThirtyFiveAndOneNinetyCanTransitionInBothDirections)
+		{
+			const ActivePictureBounds scope = {0,263,3840,1897,3840,2160,
+				3840.0/1634.0,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+			const ActivePictureBounds imax = {0,69,3840,2091,3840,2160,
+				3840.0/2022.0,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+			ActivePictureTransitionModel model;
+			uint64_t frame = Establish(model, scope);
+			Assert::IsFalse(Observe(model, imax, frame++).publish);
+			const auto toImax = Observe(model, imax, frame++);
+			Assert::IsTrue(toImax.publish);
+			Assert::AreEqual(imax.top, toImax.bounds.top);
+			Assert::IsFalse(Observe(model, scope, frame++).publish);
+			const auto toScope = Observe(model, scope, frame++);
+			Assert::IsTrue(toScope.publish);
+			Assert::AreEqual(scope.top, toScope.bounds.top);
 		}
 
 		TEST_METHOD(MinorTrustedGeometryChangeStaysWithinTwoPercentDeadband)

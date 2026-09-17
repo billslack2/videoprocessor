@@ -167,7 +167,7 @@ namespace VideoProcessorTest
 			Assert::AreEqual(960,wide.bounds.right); Assert::AreEqual(540,wide.bounds.bottom);
 		}
 
-		TEST_METHOD(AsymmetricBlackMarginsPauseNestedProofThroughRealPixelExtraction)
+		TEST_METHOD(AsymmetricBlackMarginsCannotPromoteAllSidedInsetThroughRealPixelExtraction)
 		{
 			P010Frame scope(960,540), nested(960,540), partial(960,540);
 			scope.BlackOutside(0,58,960,482);
@@ -202,10 +202,10 @@ namespace VideoProcessorTest
 						ActivePictureClassification::BAR_CROP_TRUSTED,admission.observation.transitionDeferred));
 				}
 				const auto d=model.Observe(admission.observation);
-				if (paused) Assert::IsTrue(d.evidencePaused && !d.publish);
+				if (paused) Assert::IsFalse(d.publish);
 				if (d.publish && seq>4) { published=seq; break; }
 			}
-			Assert::AreEqual(uint64_t(114),published);
+			Assert::AreEqual(uint64_t(0),published);
 		}
 
 		TEST_METHOD(RetentionHandoffNeverRelabelsOldSafePixelsAsNewCropProof)

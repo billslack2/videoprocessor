@@ -400,7 +400,7 @@ namespace Tests
 			}
 		}
 
-		TEST_METHOD(MovingNestedCropKeepsEarnedProofAcrossPartialAxisConfidence)
+		TEST_METHOD(MovingAllSidedInsetCannotEarnAuthorityAcrossPartialAxisConfidence)
 		{
 			// Sequence timing from the 15:56:00-15:56:04 replay. Interpolate the
 			// unlogged positions; this is an admission/model regression, not pixels.
@@ -461,14 +461,13 @@ namespace Tests
 					if (partial) Assert::IsFalse(decision.publish);
 					if (decision.publish) { published=seq; break; }
 				}
-				// The new anchored AR gate holds the early inset. Sustained proof
-				// starts at819 (817 briefly crosses;818 returns inside3%).
-				if (failure==0) Assert::AreEqual(uint64_t(933),published);
-				else Assert::AreEqual(uint64_t(0),published);
+				// Neither uninterrupted time nor partial-axis evidence makes an
+				// all-sided inner composition authoritative over the movie frame.
+				Assert::AreEqual(uint64_t(0),published);
 			}
 		}
 
-		TEST_METHOD(PartialAxisPauseCannotAccumulateDwellOrSurviveMissingFrames)
+		TEST_METHOD(PartialAxisPauseCannotPromoteAllSidedInset)
 		{
 			for (int interruption=0; interruption<3; ++interruption)
 			{
@@ -499,7 +498,7 @@ namespace Tests
 					const auto d=model.Observe({nested,seq,true,ActivePictureClassification::BAR_CROP_TRUSTED,24});
 					if (d.publish) { published=seq; break; }
 				}
-				Assert::AreEqual(resumed+uint64_t(interruption==0 ? 25 : 96),published);
+				Assert::AreEqual(uint64_t(0),published);
 			}
 		}
 
@@ -584,16 +583,13 @@ namespace Tests
 			const ActivePictureBounds candidate = {192,372,3648,1788,3840,2160,3456.0/1416.0,ActivePictureBounds::BarAxes::BOTH};
 			auto queueBase = anchor; queueBase.top = 0; queueBase.bottom = 2160;
 			queueBase.aspectRatio = 3488.0/2160.0; queueBase.trustedBarAxes = ActivePictureBounds::BarAxes::LEFT_RIGHT;
-			ActivePictureTransitionModel preview;
-			for (uint64_t f = 1; f <= 4; ++f)
-				preview.Observe({queueBase,f,true,ActivePictureClassification::BAR_CROP_TRUSTED,24.0});
 			ActivePictureTransitionDecision publication;
-			for (uint64_t f = 2148; f <= 2244; ++f)
-			{
-				const auto d = preview.Observe({candidate,f,true,ActivePictureClassification::BAR_CROP_TRUSTED,24.0});
-				if (d.publish) publication = d;
-			}
-			Assert::IsTrue(publication.publish);
+			// Reconstruct the stale queue publication recorded by the old build.
+			// Current preview models now veto this all-sided inset before queueing,
+			// while live adoption still independently rejects its stale reference.
+			publication.publish = publication.stable = true;
+			publication.bounds = candidate;
+			publication.stableBounds = queueBase;
 			for (bool lookahead : {false,true})
 			{
 				ActivePictureTransitionModel live;

@@ -712,7 +712,7 @@ namespace VideoProcessorTest
 			Assert::IsTrue(published.late);
 		}
 
-		TEST_METHOD(BothAxesCropCannotUseExactInwardProof)
+		TEST_METHOD(BothAxesCropCannotPublishAsInnerComposition)
 		{
 			ActivePictureBounds stable = ShallowScopeBounds();
 			stable.left = 20;
@@ -742,18 +742,8 @@ namespace VideoProcessorTest
 				candidate, Trusted(700, target), 5, 4, published));
 			RecordLookaheadEvidence(
 				timeline, confirmation, Trusted(701, target));
-			Assert::IsTrue(timeline.SubmitScheduledObservation(
+			Assert::IsFalse(timeline.SubmitScheduledObservation(
 				confirmation, Trusted(701, target), 5, 4, published));
-
-			Assert::AreEqual(
-				static_cast<int>(ActivePictureDecisionAssociation::CONFIRMATION),
-				static_cast<int>(published.association));
-			Assert::AreEqual(confirmation.acceptedSequence,
-				published.effectiveIdentity.acceptedSequence);
-			Assert::AreEqual(
-				static_cast<int>(
-					ActivePictureInwardProofValidation::NOT_APPLICABLE),
-				static_cast<int>(published.inwardProof));
 		}
 
 		TEST_METHOD(OrthogonalInsetCannotUseSingleAxisInwardProof)
