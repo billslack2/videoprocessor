@@ -2,7 +2,7 @@
 
 ## Status
 
-Review
+In Progress
 
 Created 2026-09-16 at the user's request after source review and standalone
 policy experiments. Implementation started from the explicitly requested latest local tip. Additional crop diagnostics
@@ -372,3 +372,31 @@ hash-verified unchanged. The application was not running and was left stopped.
 Normal crop diagnostics are included; bounded edge tracing was not enabled.
 Deployment evidence: [local deployment record](../assets/VP-0189/local-deployment.json).
 Story remains Review pending physical playback and visual/performance acceptance.
+
+## Returned playback failure and follow-up (2026-09-17)
+
+The user supplied `vp - Kopie.log.txt` from the 911e2b7f tester build and
+identified Apple TV **Women in Blue, S02E06, 10:55–11:30**: a reproducible slow
+format change jumps in VP; the tester reports correct following in madVR.
+This is a failed field acceptance case, not a completed visual validation.
+Exact wall-clock correspondence among several repeated log sequences remains
+unconfirmed. Preserve the title/episode as supplied by the user.
+
+Source review finds repeated nested confirmation restarts while authoritative
+windowbox bounds move, coarse stable-geometry deadband steps, horizontal
+outside-band conflicts causing full-raster withdrawal, and two recovery events
+lasting 111,782 / 108,437 ms. During the long events the old bottom=1948
+contract repeatedly disagrees with current trusted bottom=1952; excluded bands
+can be safe while strict containment and an inspection latch block recovery.
+Do not attribute all of either interval solely to the new recovery gate.
+
+User authorized correction and thorough review, with physical playback planned
+for 2026-09-18. Continue the explicitly selected local-tip lineage on
+`codex/vp-0189-crop-stability` (911e2b7f parent 3acd02b3); remote latest beta
+was re-discovered and fetched at v1.3.005-beta / 94f938d3, unchanged.
+Add regressions before policy edits. Prefer conservative outward reconciliation
+of newly affirmed edges over relaxing containment or black/star thresholds.
+Preserve the existing four-second guard against brief nested dark content,
+but stop restarting its proof for continuous authoritative geometry motion.
+Review recovery/inspection composition, reset behavior, and logging accuracy.
+No new deployment or physical acceptance is implied by this work.
