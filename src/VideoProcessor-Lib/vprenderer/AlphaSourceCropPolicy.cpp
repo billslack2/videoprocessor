@@ -436,11 +436,8 @@ namespace AlphaSourceCrop
 				trustedGeometry.rasterHeight) &&
 			ValidBounds(candidate, trustedGeometry.rasterWidth,
 				trustedGeometry.rasterHeight) &&
-			candidate.left <= trustedGeometry.left &&
-			candidate.top <= trustedGeometry.top &&
-			candidate.right >= trustedGeometry.right &&
-			candidate.bottom >= trustedGeometry.bottom &&
-			!SameBounds(candidate, trustedGeometry);
+			(candidate.left < trustedGeometry.left || candidate.top < trustedGeometry.top ||
+			 candidate.right > trustedGeometry.right || candidate.bottom > trustedGeometry.bottom);
 		if (!compatible)
 			return decision;
 
@@ -450,18 +447,20 @@ namespace AlphaSourceCrop
 		const bool expandsHorizontal = candidate.left < trustedGeometry.left ||
 			candidate.right > trustedGeometry.right;
 		const bool verticalPicture = !expandsVertical ||
-			((trustedGeometry.top == 0 || BroadPictureLike(evidence.excludedTop)) &&
-			 (trustedGeometry.bottom == trustedGeometry.rasterHeight ||
-				BroadPictureLike(evidence.excludedBottom)));
+			((candidate.top >= trustedGeometry.top || BroadPictureLike(evidence.excludedTop)) &&
+			 (candidate.bottom <= trustedGeometry.bottom || BroadPictureLike(evidence.excludedBottom)));
 		const bool horizontalPicture = !expandsHorizontal ||
-			((trustedGeometry.left == 0 || BroadPictureLike(evidence.excludedLeft)) &&
-			 (trustedGeometry.right == trustedGeometry.rasterWidth ||
-				BroadPictureLike(evidence.excludedRight)));
-		decision.broadOpposingPicture = verticalPicture && horizontalPicture;
+			((candidate.left >= trustedGeometry.left || BroadPictureLike(evidence.excludedLeft)) &&
+			 (candidate.right <= trustedGeometry.right || BroadPictureLike(evidence.excludedRight)));
+		decision.broadOpposingPicture = evidence.analysisValid && evidence.presentationValid &&
+			verticalPicture && horizontalPicture;
 		if (!decision.broadOpposingPicture)
 			return decision;
 
-		const bool continues = previous.sourceGeneration == sourceGeneration &&
+		const bool sequenceContinuous = sourceSequence == 0 || previous.lastObservedSourceSequence == 0 ||
+			sourceSequence == previous.lastObservedSourceSequence ||
+			sourceSequence == previous.lastObservedSourceSequence + 1;
+		const bool continues = previous.sourceGeneration == sourceGeneration && sequenceContinuous &&
 			previous.confirmations != 0 && SameBounds(previous.candidate, candidate);
 		const bool repeatedSourceSample = continues && sourceSequence != 0 &&
 			previous.lastObservedSourceSequence == sourceSequence;
@@ -727,6 +726,10 @@ namespace AlphaSourceCrop
 				input.outwardCandidate, input.retention, input.sourceGeneration, input.sourceSequence)
 			: OutwardPictureConfirmationDecision{};
 		decision.deferOutward = decision.outward.outwardTransition && !decision.outward.authoritative;
+		// Broad current picture on the expanding edges can supersede an old
+		// subtitle action; a subtitle must not pin a genuinely obsolete aspect.
+		decision.deferPresentation = decision.deferPresentation && !decision.outward.authoritative;
+		decision.observation.transitionDeferred = decision.deferPresentation || decision.deferOutward;
 		if (input.evidence.available)
 		{
 			decision.observation.bounds = input.evidence.classification == ActivePictureClassification::PROVISIONAL

@@ -22,6 +22,7 @@
 #include <ApplicationInterface.h>
 #include <DeckLinkAPI_h.h>
 #include <DeckLinkAPIVersion.h>
+#include "version.h"
 
 #include <d3d11.h>
 #include <dxgi1_6.h>
@@ -1329,6 +1330,8 @@ BOOL CVideoProcessorApp::InitInstance()
 			LoadEnhancedLoggingEnabled());
 		DebugLog::Log("Configuration read counters: module=host startup_content_reads=%llu",
 			static_cast<unsigned long long>(ConfigFile::GetLoadCount()));
+		DebugLog::Log("VP build identity: module=host commit=%ls branch=%ls dirty=%d build=%ls",
+			VERSION_URL, VERSION_BRANCH, VERSION_DIRTY ? 1 : 0, VERSION_DESCRIBE);
 		LogStartupPlatformInventory();
 	}
 

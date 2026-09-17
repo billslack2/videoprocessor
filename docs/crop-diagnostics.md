@@ -170,3 +170,12 @@ full-frame flashing, gradual scale steps, and subtitle motion separately. Also
 exercise normal stable bars, genuine full-height transitions, dark fades and
 multi-AR star fields. The tester report used a 2.133:1 bottom-aligned screen with
 wider-content fill enabled. Visual acceptance and live overhead remain pending.
+
+
+## Subtitle transition admission diagnostics
+
+`VP build identity` records the host and renderer commit URL, branch, dirty flag and build description. Each module uses its own generated identity. The plugin-loaded line supplies the DLL path; deployment records supply the matched binary hashes.
+
+`Alpha crop admission` reports explicit deferral, presentation/outward reasons, broad-picture proof and confirmations, raw/logical bounds, publication and history reacquisition. It logs deferral changes and at most one summary every two seconds while deferred. This distinguishes a raw subtitle-affected proposal from permission to change the logical aspect. No trace environment variable is needed.
+
+The subtitle-onset regression keeps the logical picture stable across remembered full-height proposals at 23.976/24/59.94/60 Hz. Explicit deferral blocks both local history and queued publication; each newly exposed edge requires current picture evidence. Recovery proof, black thresholds and nested-crop timing are unchanged. The recorded failure is prevented before the false logical publication can arm full-raster recovery; physical playback is still the acceptance test.

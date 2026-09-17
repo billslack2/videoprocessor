@@ -1,6 +1,7 @@
 #include <pch.h>
 
 #include <ConfigFile.h>
+#include "version.h"
 #include <DebugLog.h>
 #include <vprenderer/LibplaceboRendererPluginApi.h>
 #include <vprenderer/LibplaceboVideoRenderer.h>
@@ -26,6 +27,8 @@ VideoProcessorLibplaceboCreateRenderer(
 	VideoProcessorLibplaceboLogSink logSink)
 {
 	DebugLog::SetExternalSink(logSink);
+	DebugLog::Log("VP build identity: module=renderer commit=%ls branch=%ls dirty=%d build=%ls",
+		VERSION_URL, VERSION_BRANCH, VERSION_DIRTY ? 1 : 0, VERSION_DESCRIBE);
 	ConfigFile::SetRendererConfigurationPath(
 		rendererConfigPath ? rendererConfigPath : "");
 	if (!callback)

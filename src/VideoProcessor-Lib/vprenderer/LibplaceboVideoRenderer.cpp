@@ -3853,6 +3853,8 @@ struct LibplaceboVideoRenderer::Impl
 	bool presentationOwnedGeometryTransitionDeferred = false;
 	bool latestCropSamplingReaffirmed = false;
 	uint64_t lastSamplingEnvelopeLogTick = 0;
+	uint64_t lastCropAdmissionLogTick = 0;
+	bool lastCropAdmissionDeferred = false;
 	ActivePicturePresentationRetentionEvidence latestCropRetentionEvidence;
 	AlphaSourceCrop::PresentationRecoveryState cropPresentationRecovery;
 	bool cropTraceConfigured = false;
@@ -8563,7 +8565,8 @@ struct LibplaceboVideoRenderer::Impl
 				scheduledValidation ==
 					ActivePictureScheduledDecisionValidation::ACCEPTED &&
 				nlsTransition.AdoptPublishedDecision(
-					scheduledDecision->transition, evidence.classification);
+					scheduledDecision->transition, evidence.classification,
+				admission.observation.transitionDeferred);
 			if (hasScheduledDecision &&
 				scheduledValidation ==
 					ActivePictureScheduledDecisionValidation::ACCEPTED &&
@@ -8575,6 +8578,21 @@ struct LibplaceboVideoRenderer::Impl
 			const ActivePictureTransitionDecision transition =
 				applyScheduledDecision ? scheduledDecision->transition :
 					nlsTransition.Observe(observation);
+			if (admission.observation.transitionDeferred != lastCropAdmissionDeferred ||
+				(admission.observation.transitionDeferred && now - lastCropAdmissionLogTick >= 2000))
+			{
+				lastCropAdmissionDeferred = admission.observation.transitionDeferred;
+				lastCropAdmissionLogTick = now;
+				DebugLog::Log("Alpha crop admission: sequence=%llu generation=%llu deferred=%d presentation_deferred=%d outward_deferred=%d broad_picture=%d outward_confirm=%u raw=%d,%d-%d,%d logical=%d,%d-%d,%d published=%d history_reacquired=%d",
+					static_cast<unsigned long long>(frameNumber), static_cast<unsigned long long>(analysisSource.generation),
+					admission.observation.transitionDeferred ? 1 : 0, admission.deferPresentation ? 1 : 0,
+					admission.deferOutward ? 1 : 0, admission.outward.broadOpposingPicture ? 1 : 0,
+					admission.outward.state.confirmations, latestActivePictureEvidenceBounds.left,
+					latestActivePictureEvidenceBounds.top, latestActivePictureEvidenceBounds.right,
+					latestActivePictureEvidenceBounds.bottom, transition.stableBounds.left, transition.stableBounds.top,
+					transition.stableBounds.right, transition.stableBounds.bottom,
+					transition.publish ? 1 : 0, transition.knownTrustedGeometryReacquired ? 1 : 0);
+			}
 			const bool localStableTrustedContract = !applyScheduledDecision &&
 				transition.stable &&
 				transition.authoritativeClassification ==

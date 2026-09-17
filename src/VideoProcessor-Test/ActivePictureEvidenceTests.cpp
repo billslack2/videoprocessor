@@ -137,6 +137,25 @@ namespace VideoProcessorTest
 	TEST_CLASS(ActivePictureEvidenceTests)
 	{
 	public:
+		TEST_METHOD(InternalDividerDoesNotBecomeAnOuterCropEdge)
+		{
+			for (bool subtitle : {false, true})
+			{
+				P010Frame frame(1920,1080);
+				frame.BlackOutside(96,182,1824,898);
+				frame.FillRectangle(948,182,972,898,64);
+				if (subtitle)
+					for (int x=640; x<1280; x+=24)
+						frame.FillRectangle(x,910,x+12,930,900);
+				const auto evidence = ExtractP010ActivePictureEvidence(frame.View());
+				Assert::IsTrue(evidence.available);
+				const auto bounds = evidence.classification == ActivePictureClassification::PROVISIONAL
+					? evidence.proposedBounds : evidence.trustedBounds;
+				Assert::IsTrue(bounds.left < 200 && bounds.right > 1720,
+					L"An internal divider must not discard either panel");
+			}
+		}
+
 		TEST_METHOD(SparseFullHeightStarsCannotAcquireAnInsetCropAtStartup)
 		{
 			for (int phase = 0; phase < 24; ++phase)

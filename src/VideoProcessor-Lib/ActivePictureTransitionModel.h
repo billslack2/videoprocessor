@@ -88,6 +88,9 @@ struct ActivePictureObservation
 	ActivePictureClassification classification =
 		ActivePictureClassification::UNAVAILABLE;
 	double framesPerSecond = 60.0;
+	// Explicit current-evidence veto, distinct from an uncertain observation.
+	// History may identify this shape but must not publish it while deferred.
+	bool transitionDeferred = false;
 };
 
 
@@ -156,7 +159,8 @@ public:
 	// closed and leave this model unchanged.
 	bool AdoptPublishedDecision(
 		const ActivePictureTransitionDecision& decision,
-		ActivePictureClassification classification);
+		ActivePictureClassification classification,
+		bool transitionDeferred = false);
 
 	static uint64_t AnalysisIntervalFrames(double framesPerSecond);
 

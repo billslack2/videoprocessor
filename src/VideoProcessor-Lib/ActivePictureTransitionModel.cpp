@@ -399,6 +399,13 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 	if (!continuous && m_hasStable && m_matchingCandidates != 0 &&
 		IsNestedOrthogonalCrop(m_stable, m_candidate)) ClearCandidate();
 
+	if (observation.transitionDeferred)
+	{
+		decision.diagnostic = m_matchingCandidates != 0;
+		ClearCandidate();
+		decision.reason = "current presentation evidence defers logical transition";
+		return decision;
+	}
 	if (!observation.available)
 	{
 		if (m_unavailableCandidates < 255)
@@ -702,8 +709,9 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 
 bool ActivePictureTransitionModel::AdoptPublishedDecision(
 	const ActivePictureTransitionDecision& decision,
-	ActivePictureClassification classification)
+	ActivePictureClassification classification, bool transitionDeferred)
 {
+	if (transitionDeferred) return false;
 	ActivePictureObservation observation;
 	observation.available = true;
 	observation.bounds = decision.bounds;

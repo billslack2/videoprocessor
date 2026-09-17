@@ -40,7 +40,7 @@ namespace AlphaSourceCrop
 	};
 
 	// Expanding a trusted crop changes the logical aspect only after the same
-	// frame shows broad picture-like occupancy in every opposing excluded band.
+	// frame shows broad picture-like occupancy at every newly exposed edge.
 	// Localized UI/text still expands presentation immediately, but cannot build
 	// aspect authority by appearing on different edges at different times.
 	OutwardPictureConfirmationDecision ConfirmOutwardPictureTransition(
@@ -337,8 +337,8 @@ namespace AlphaSourceCrop
 		uint64_t evidenceSourceGeneration,
 		uint64_t currentSourceGeneration);
 
-	// Shared renderer/test seam for the existing ordering of logical admission.
-	// This intentionally preserves current behavior; it does not fix deferral.
+	// Current evidence decides whether logical geometry may change before the
+	// renderer considers local history or a queued look-ahead publication.
 	struct TransitionAdmissionInput
 	{
 		ActivePictureEvidence evidence;

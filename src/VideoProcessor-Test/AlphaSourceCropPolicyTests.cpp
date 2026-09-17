@@ -42,6 +42,116 @@ namespace Tests
 	TEST_CLASS(AlphaSourceCropPolicyTests)
 	{
 	public:
+		TEST_METHOD(QueuedPublicationCannotOverrideCurrentAdmissionVeto)
+		{
+			ActivePictureTransitionModel model;
+			ActivePictureTransitionDecision queued;
+			queued.publish = queued.stable = true;
+			queued.bounds = TrustedScopeCrop().geometry;
+			Assert::IsFalse(model.AdoptPublishedDecision(queued, ActivePictureClassification::BAR_CROP_TRUSTED, true));
+			Assert::IsFalse(model.Observe({}).stable);
+			Assert::IsTrue(model.AdoptPublishedDecision(queued, ActivePictureClassification::BAR_CROP_TRUSTED, false));
+		}
+
+		TEST_METHOD(OutwardProofResetsForInvalidEvidenceGapsAndGenerationChanges)
+		{
+			const auto scope = TrustedScopeCrop().geometry;
+			auto larger = scope; larger.top = 100;
+			ActivePicturePresentationRetentionEvidence evidence;
+			evidence.analysisValid = evidence.presentationValid = true;
+			evidence.excludedTop.barPixels = scope.top;
+			evidence.excludedTop.blackFraction = 0.2;
+			evidence.excludedTop.continuity = 0.4;
+			evidence.excludedTop.lumaP90 = 300;
+			auto one = ConfirmOutwardPictureTransition({},scope,larger,evidence,2,10);
+			auto two = ConfirmOutwardPictureTransition(one.state,scope,larger,evidence,2,11);
+			Assert::AreEqual(2u,two.state.confirmations);
+			Assert::AreEqual(1u,ConfirmOutwardPictureTransition(two.state,scope,larger,evidence,2,13).state.confirmations);
+			Assert::AreEqual(1u,ConfirmOutwardPictureTransition(two.state,scope,larger,evidence,3,12).state.confirmations);
+			Assert::AreEqual(1u,ConfirmOutwardPictureTransition(two.state,scope,larger,evidence,2,9).state.confirmations);
+			evidence.analysisValid = false;
+			Assert::IsFalse(ConfirmOutwardPictureTransition(two.state,scope,larger,evidence,2,12).authoritative);
+			evidence.analysisValid = true; evidence.presentationValid = false;
+			Assert::IsFalse(ConfirmOutwardPictureTransition(two.state,scope,larger,evidence,2,12).authoritative);
+		}
+
+		TEST_METHOD(DeferredHistoryCannotPublishOrBankConfirmations)
+		{
+			const auto scope = TrustedScopeCrop().geometry;
+			auto taller = scope; taller.top = 100; taller.bottom = 2060;
+			ActivePictureTransitionModel model;
+			for (uint64_t seq = 1; seq <= 4; ++seq)
+				model.Observe({taller, seq, true, ActivePictureClassification::BAR_CROP_TRUSTED, 24});
+			for (uint64_t seq = 5; seq <= 120; ++seq)
+				model.Observe({scope, seq, true, ActivePictureClassification::BAR_CROP_TRUSTED, 24});
+			for (uint64_t seq = 121; seq <= 150; ++seq)
+			{
+				ActivePictureObservation observation{taller, seq, true, ActivePictureClassification::PROVISIONAL, 24};
+				observation.transitionDeferred = true;
+				const auto d = model.Observe(observation);
+				Assert::IsFalse(d.publish || d.clearTransition || d.knownTrustedGeometryReacquired);
+				Assert::AreEqual(scope.top, d.stableBounds.top);
+			}
+			// Natural uncertainty is still allowed to reacquire remembered geometry,
+			// but needs fresh observations after the explicit veto ends.
+			Assert::IsFalse(model.Observe({taller, 151, true, ActivePictureClassification::PROVISIONAL, 24}).publish);
+			Assert::IsTrue(model.Observe({taller, 152, true, ActivePictureClassification::PROVISIONAL, 24}).publish);
+		}
+
+		TEST_METHOD(MixedEdgeExpansionRequiresPictureEvidenceAndCanSupersedeSubtitle)
+		{
+			TransitionAdmissionInput input;
+			input.trustedGeometry = {188,364,3652,1796,3840,2160,2.419,ActivePictureBounds::BarAxes::BOTH};
+			input.presentationBeforeObservation = input.trustedGeometry;
+			input.evidence.available = input.trustedGeometryAvailable = input.compatiblePresentation = true;
+			input.evidence.classification = ActivePictureClassification::BAR_CROP_TRUSTED;
+			input.evidence.trustedBounds = {192,0,3648,2160,3840,2160,1.6,ActivePictureBounds::BarAxes::LEFT_RIGHT};
+			input.outwardCandidate = input.evidence.trustedBounds;
+			input.trustedGeneration = input.sourceGeneration = input.presentationEvidenceGeneration = 2;
+			input.presentation.action = VerticalBarPresentationAction::TRANSLATE;
+			input.retention.analysisValid = input.retention.presentationValid = true;
+			input.sourceSequence = 100;
+			const auto overlay = EvaluateTransitionAdmission(input);
+			Assert::IsTrue(overlay.outward.outwardTransition);
+			Assert::IsTrue(overlay.observation.transitionDeferred);
+			// Real picture on both newly exposed vertical edges is not locked out
+			// merely because a subtitle action was active on the preceding frame.
+			input.retention.excludedTop.barPixels = 364;
+			input.retention.excludedTop.blackFraction = 0.2;
+			input.retention.excludedTop.continuity = 0.4;
+			input.retention.excludedTop.lumaP90 = 300;
+			input.retention.excludedBottom = input.retention.excludedTop;
+			for (uint64_t seq=101; seq<=103; ++seq)
+			{
+				input.sourceSequence = seq;
+				const auto d = EvaluateTransitionAdmission(input);
+				Assert::AreEqual(seq != 103, d.observation.transitionDeferred);
+				input.previousOutward = d.outward.state;
+			}
+		}
+
+		TEST_METHOD(AsymmetricExpansionChecksOnlyNewlyExposedEdges)
+		{
+			const auto scope = TrustedScopeCrop().geometry;
+			auto candidate = scope; candidate.top = 100; candidate.bottom -= 4;
+			ActivePicturePresentationRetentionEvidence evidence;
+			evidence.analysisValid = evidence.presentationValid = true;
+			evidence.excludedTop.barPixels = scope.top;
+			evidence.excludedTop.blackFraction = 0.2;
+			evidence.excludedTop.continuity = 0.4;
+			evidence.excludedTop.lumaP90 = 300;
+			OutwardPictureConfirmationState state;
+			for (uint64_t seq=1; seq<=3; ++seq)
+			{
+				const auto d = ConfirmOutwardPictureTransition(state, scope, candidate, evidence, 2, seq);
+				Assert::IsTrue(d.outwardTransition && d.broadOpposingPicture);
+				Assert::AreEqual(seq == 3, d.authoritative);
+				state = d.state;
+			}
+			candidate.left = 4; // no new left pixels; still only an upper expansion
+			Assert::IsTrue(ConfirmOutwardPictureTransition({}, scope, candidate, evidence, 2, 4).broadOpposingPicture);
+		}
+
 		TEST_METHOD(RecordedSubtitleOnsetMustNotReacquireFullHeightOrStrandRecovery)
 		{
 			// VP-0189 recording 2026-09-17 09-35-45.mp4, event 11:
@@ -2736,6 +2846,7 @@ namespace Tests
 				0, 0, 3840, 2160, 3840, 2160, 16.0 / 9.0,
 				ActivePictureBounds::BarAxes::NONE };
 			ActivePicturePresentationRetentionEvidence evidence;
+			evidence.analysisValid = evidence.presentationValid = true;
 			evidence.excludedTop.barPixels = 276;
 			evidence.excludedBottom.barPixels = 276;
 
@@ -2801,6 +2912,7 @@ namespace Tests
 				0, 0, 3840, 2160, 3840, 2160, 16.0 / 9.0,
 				ActivePictureBounds::BarAxes::NONE };
 			ActivePicturePresentationRetentionEvidence evidence;
+			evidence.analysisValid = evidence.presentationValid = true;
 			evidence.excludedTop.barPixels = 276;
 			evidence.excludedTop.blackFraction = 0.30;
 			evidence.excludedTop.continuity = 0.40;
