@@ -780,6 +780,7 @@ ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRete
 	const bool unsafeRight = !ExcludedBandPixelsAreSafe(result.excludedRight) ||
 		rightExtent.available;
 	result.excludedHorizontalBandsPixelSafe = !unsafeLeft && !unsafeRight;
+	result.excludedVerticalBandsPixelSafe = !unsafeTop && !unsafeBottom;
 	result.excludedBandsPixelSafe =
 		!unsafeLeft && !unsafeTop && !unsafeRight && !unsafeBottom;
 	if (!result.excludedBandsPixelSafe)
@@ -906,4 +907,21 @@ ActivePictureEvidence ConstrainNearBlackCropAcquisition(
 	evidence.reason =
 		"near-black title episode cannot acquire bar-crop authority";
 	return evidence;
+}
+
+ActivePictureRetentionHandoff ResolveActivePictureRetentionHandoff(
+	const AnalysisLumaSource& source, const ActivePictureBounds& measuredBounds,
+	const ActivePicturePresentationRetentionEvidence& measured,
+	const ActivePictureBounds& presentationBounds)
+{
+	const bool sameBounds = measuredBounds.left == presentationBounds.left &&
+		measuredBounds.top == presentationBounds.top && measuredBounds.right == presentationBounds.right &&
+		measuredBounds.bottom == presentationBounds.bottom && measuredBounds.rasterWidth == presentationBounds.rasterWidth &&
+		measuredBounds.rasterHeight == presentationBounds.rasterHeight;
+	if (source.IsValid() && measured.analysisValid && measured.presentationValid && sameBounds)
+		return {measured, measuredBounds, false};
+	// A transition changes the rectangle, not the evidence already measured.
+	// Inspect the new base against these same source bytes before publishing it
+	// as the presentation certificate. Invalid sources remain non-authoritative.
+	return {EvaluateActivePicturePresentationRetention(source, presentationBounds), presentationBounds, true};
 }

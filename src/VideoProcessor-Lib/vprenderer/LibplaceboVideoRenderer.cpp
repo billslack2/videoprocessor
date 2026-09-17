@@ -3815,8 +3815,7 @@ struct LibplaceboVideoRenderer::Impl
 	AlphaSourceCrop::VerticalTranslationDrift scopeSubtitleDrift;
 	bool scopeSubtitleDriftWasActive = false;
 	bool scopeSubtitleAuthorityGapHeld = false;
-	bool scopeSubtitleRetentionWasUnsafe = false;
-	uint64_t scopeSubtitleRetentionGeneration = 0;
+	AlphaSourceCrop::SubtitleInspectionState scopeSubtitleInspection;
 	bool scopeSubtitleWasActive = false;
 	bool scopeSubtitleWasTopActive = false;
 	std::string lastScopeVerticalOverlayPolicy;
@@ -8076,8 +8075,7 @@ struct LibplaceboVideoRenderer::Impl
 		ClearScopeSubtitleEvidence();
 		ClearScopePresentationEvidence();
 		scopeVerticalInspectionBridge = {};
-		scopeSubtitleRetentionWasUnsafe = false;
-		scopeSubtitleRetentionGeneration = 0;
+		scopeSubtitleInspection = {};
 		nlsDecision = {};
 		renderParams.hooks = nullptr;
 		renderParams.num_hooks = 0;
@@ -8335,37 +8333,6 @@ struct LibplaceboVideoRenderer::Impl
 			fullRasterPresentationAuthoritySourceGeneration =
 				fullRasterPresentationAuthorityAvailable
 					? analysisSource.generation : 0;
-			const bool ambiguousEvidence = !evidence.available ||
-				evidence.classification ==
-					ActivePictureClassification::PROVISIONAL ||
-				evidence.classification ==
-					ActivePictureClassification::UNAVAILABLE;
-			latestCropRetentionEvidence = retentionEvidence;
-			latestActivePicturePresentationRetentionSafe =
-				hadCompatiblePresentation && ambiguousEvidence &&
-				retentionEvidence.currentlyPixelSafe;
-			latestActivePicturePresentationRetentionEvaluated =
-				hadCompatiblePresentation && retentionEvidence.analysisValid &&
-				retentionEvidence.presentationValid;
-			latestActivePicturePresentationRetentionBounds =
-				latestActivePicturePresentationRetentionEvaluated
-					? presentationBeforeObservation : ActivePictureBounds{};
-			latestActivePicturePresentationRetentionSourceGeneration =
-				latestActivePicturePresentationRetentionEvaluated
-					? analysisSource.generation : 0;
-			latestActivePicturePresentationRetentionSourceSequence =
-				latestActivePicturePresentationRetentionEvaluated
-					? frameNumber : 0;
-			latestActivePictureGlobalNearBlackEvaluated =
-				globalNearBlack.evaluated;
-			latestActivePictureGlobalNearBlack = globalNearBlack.nearBlack;
-			latestActivePictureGlobalLumaP90 = globalNearBlack.lumaP90;
-			latestActivePictureOutwardVisibleBoundsAvailable =
-				hadCompatiblePresentation &&
-				retentionEvidence.outwardVisibleBoundsAvailable;
-			latestActivePicturePresentationRetentionReason =
-				hadCompatiblePresentation ? retentionEvidence.reason :
-					"no compatible retained presentation";
 			const uint64_t now = GetTickCount64();
 			auto sameBounds = [](const ActivePictureBounds& left,
 				const ActivePictureBounds& right)
@@ -8375,149 +8342,6 @@ struct LibplaceboVideoRenderer::Impl
 					left.rasterWidth == right.rasterWidth &&
 					left.rasterHeight == right.rasterHeight;
 			};
-			if (automaticSourceCrop && configuredScreenActive &&
-				hadCompatiblePresentation &&
-				(evidence.available ||
-					retentionEvidence.outwardVisibleBoundsAvailable))
-			{
-				ActivePictureBounds observed = presentationBeforeObservation;
-				if (evidence.available)
-					observed = evidence.classification ==
-						ActivePictureClassification::PROVISIONAL
-					? evidence.proposedBounds : evidence.trustedBounds;
-				if (retentionEvidence.outwardVisibleBoundsAvailable)
-				{
-					observed.left = std::min(observed.left,
-						retentionEvidence.outwardVisibleBounds.left);
-					observed.top = std::min(observed.top,
-						retentionEvidence.outwardVisibleBounds.top);
-					observed.right = std::max(observed.right,
-						retentionEvidence.outwardVisibleBounds.right);
-					observed.bottom = std::max(observed.bottom,
-						retentionEvidence.outwardVisibleBounds.bottom);
-				}
-				// Vertical subtitle occupancy cannot turn horizontal sampling noise
-				// into a full-raster conflict. Each horizontal band is verified here.
-				if (evidence.classification == ActivePictureClassification::BAR_CROP_TRUSTED &&
-					AlphaSourceCrop::IsPixelSafeHorizontalSamplingEnvelope(presentationBeforeObservation, observed, retentionEvidence))
-				{
-					observed.left = presentationBeforeObservation.left;
-					observed.right = presentationBeforeObservation.right;
-				}
-				ActivePictureBounds outward = presentationBeforeObservation;
-				outward.left = std::min(outward.left, observed.left) & ~1;
-				outward.top = std::min(outward.top, observed.top) & ~1;
-				outward.right = std::min(analysisSource.width,
-					(std::max(outward.right, observed.right) + 1) & ~1);
-				outward.bottom = std::min(analysisSource.height,
-					(std::max(outward.bottom, observed.bottom) + 1) & ~1);
-				outward.rasterWidth = analysisSource.width;
-				outward.rasterHeight = analysisSource.height;
-				outward.aspectRatio = static_cast<double>(
-					outward.right - outward.left) /
-					std::max(1, outward.bottom - outward.top);
-				outward.trustedBarAxes = ActivePictureBounds::BarAxes::NONE;
-				const bool expands =
-					outward.left < presentationBeforeObservation.left ||
-					outward.top < presentationBeforeObservation.top ||
-					outward.right > presentationBeforeObservation.right ||
-					outward.bottom > presentationBeforeObservation.bottom;
-				// Do this before publishing coarse edge flags. Otherwise a safe
-				// four-pixel observation can reaffirm the crop below while this
-				// second path independently forces full raster (live event 18).
-				const bool samplingEnvelopeReaffirmed = hadCurrentTrustedCropGeometry &&
-					evidence.available && evidence.classification ==
-						ActivePictureClassification::BAR_CROP_TRUSTED &&
-					retentionEvidence.analysisValid && retentionEvidence.presentationValid &&
-					!retentionEvidence.outwardVisibleBoundsAvailable &&
-					AlphaSourceCrop::IsPixelSafeSamplingEnvelope(presentationBeforeObservation,
-						evidence.trustedBounds, outward, retentionEvidence.excludedBandsPixelSafe);
-				if (expands && samplingEnvelopeReaffirmed &&
-					(now - lastSamplingEnvelopeLogTick >= 2000))
-				{
-					lastSamplingEnvelopeLogTick = now;
-					DebugLog::Log("Alpha presentation envelope: sequence=%llu generation=%llu base=%d,%d-%d,%d observed=%d,%d-%d,%d reason=pixel-safe-sampling-reaffirmed",
-						static_cast<unsigned long long>(frameNumber),
-						static_cast<unsigned long long>(analysisSource.generation),
-						presentationBeforeObservation.left, presentationBeforeObservation.top,
-						presentationBeforeObservation.right, presentationBeforeObservation.bottom,
-						outward.left, outward.top, outward.right, outward.bottom);
-				}
-				if (expands && !samplingEnvelopeReaffirmed)
-				{
-					// The accumulated envelope is useful for its same-edge release
-					// hold. Keep the raw observation as well: top and bottom overlays
-					// observed at different moments must not later become one vertical
-					// aspect-fit decision.
-					scopePresentationCurrentBounds = outward;
-					scopePresentationCurrentSourceGeneration =
-						analysisSource.generation;
-					scopePresentationCurrentSourceSequence = frameNumber;
-					const bool sameBase =
-						scopePresentationEvidenceSourceGeneration ==
-							analysisSource.generation &&
-						sameBounds(scopePresentationEvidenceBase,
-							presentationBeforeObservation);
-					const bool envelopeChanged = !sameBase ||
-						outward.left < scopePresentationEvidenceBounds.left ||
-						outward.top < scopePresentationEvidenceBounds.top ||
-						outward.right > scopePresentationEvidenceBounds.right ||
-						outward.bottom > scopePresentationEvidenceBounds.bottom;
-					if (!sameBase)
-					{
-						scopePresentationEvidenceBase =
-							presentationBeforeObservation;
-						scopePresentationEvidenceBounds = outward;
-					}
-					else
-					{
-						// Match mpv cropdetect's reset=0 behavior: while outward
-						// content is present, retain the widest measured envelope.
-						scopePresentationEvidenceBounds.left = std::min(
-							scopePresentationEvidenceBounds.left, outward.left);
-						scopePresentationEvidenceBounds.top = std::min(
-							scopePresentationEvidenceBounds.top, outward.top);
-						scopePresentationEvidenceBounds.right = std::max(
-							scopePresentationEvidenceBounds.right, outward.right);
-						scopePresentationEvidenceBounds.bottom = std::max(
-							scopePresentationEvidenceBounds.bottom, outward.bottom);
-						scopePresentationEvidenceBounds.aspectRatio =
-							static_cast<double>(
-								scopePresentationEvidenceBounds.right -
-								scopePresentationEvidenceBounds.left) /
-							std::max(1,
-								scopePresentationEvidenceBounds.bottom -
-								scopePresentationEvidenceBounds.top);
-					}
-					scopePresentationEvidenceSourceGeneration =
-						analysisSource.generation;
-					scopePresentationEvidenceSourceSequence = frameNumber;
-					scopePresentationEvidenceLastTick = now;
-					if (envelopeChanged)
-					{
-						const ActivePictureBounds& raw =
-							retentionEvidence.outwardVisibleBoundsAvailable
-							? retentionEvidence.outwardVisibleBounds : observed;
-						DebugLog::Log(
-							"Alpha presentation envelope: sequence=%llu generation=%llu base=%d,%d-%d,%d raw=%d,%d-%d,%d stored=%d,%d-%d,%d edges=%c%c%c%c reason=detected",
-							static_cast<unsigned long long>(frameNumber),
-							static_cast<unsigned long long>(analysisSource.generation),
-							presentationBeforeObservation.left,
-							presentationBeforeObservation.top,
-							presentationBeforeObservation.right,
-							presentationBeforeObservation.bottom,
-							raw.left, raw.top, raw.right, raw.bottom,
-							scopePresentationEvidenceBounds.left,
-							scopePresentationEvidenceBounds.top,
-							scopePresentationEvidenceBounds.right,
-							scopePresentationEvidenceBounds.bottom,
-							outward.left < presentationBeforeObservation.left ? 'L' : '-',
-							outward.top < presentationBeforeObservation.top ? 'T' : '-',
-							outward.right > presentationBeforeObservation.right ? 'R' : '-',
-							outward.bottom > presentationBeforeObservation.bottom ? 'B' : '-');
-					}
-				}
-			}
 			sceneVerificationLatestSupportsCrop =
 				sceneVerificationGeometryAvailable && evidence.available &&
 				evidence.classification ==
@@ -8677,6 +8501,198 @@ struct LibplaceboVideoRenderer::Impl
 				// to reaffirm authority, so ambiguity expands to full raster.
 				nlsGeometry = transition.stableBounds;
 				nlsGeometryAvailable = true;
+			}
+			// Admission used the old base. Once geometry is adopted, publish its
+			// current pixel certificate and coarse envelope together for rendering.
+			if (nlsGeometryAvailable && nlsGeometrySourceGeneration == analysisSource.generation &&
+				nlsGeometryClassification == ActivePictureClassification::BAR_CROP_TRUSTED)
+			{
+				const auto handoff = ResolveActivePictureRetentionHandoff(analysisSource,
+					presentationBeforeObservation, retentionEvidence, nlsGeometry);
+				if (handoff.refreshed)
+					DebugLog::Log("Alpha crop handoff: sequence=%llu generation=%llu old_base=%d,%d-%d,%d new_base=%d,%d-%d,%d refreshed=1 valid=%d bands_safe=%d outward_visible=%d",
+						static_cast<unsigned long long>(frameNumber), static_cast<unsigned long long>(analysisSource.generation),
+						presentationBeforeObservation.left, presentationBeforeObservation.top, presentationBeforeObservation.right, presentationBeforeObservation.bottom,
+						handoff.bounds.left, handoff.bounds.top, handoff.bounds.right, handoff.bounds.bottom,
+						handoff.evidence.analysisValid && handoff.evidence.presentationValid ? 1 : 0,
+						handoff.evidence.excludedBandsPixelSafe ? 1 : 0, handoff.evidence.outwardVisibleBoundsAvailable ? 1 : 0);
+				presentationBeforeObservation = handoff.bounds;
+				retentionEvidence = handoff.evidence;
+				hadCompatiblePresentation = true;
+			}
+			const bool ambiguousEvidence = !evidence.available ||
+				evidence.classification ==
+					ActivePictureClassification::PROVISIONAL ||
+				evidence.classification ==
+					ActivePictureClassification::UNAVAILABLE;
+			latestCropRetentionEvidence = retentionEvidence;
+			latestActivePicturePresentationRetentionSafe =
+				hadCompatiblePresentation && ambiguousEvidence &&
+				retentionEvidence.currentlyPixelSafe;
+			latestActivePicturePresentationRetentionEvaluated =
+				hadCompatiblePresentation && retentionEvidence.analysisValid &&
+				retentionEvidence.presentationValid;
+			latestActivePicturePresentationRetentionBounds =
+				latestActivePicturePresentationRetentionEvaluated
+					? presentationBeforeObservation : ActivePictureBounds{};
+			latestActivePicturePresentationRetentionSourceGeneration =
+				latestActivePicturePresentationRetentionEvaluated
+					? analysisSource.generation : 0;
+			latestActivePicturePresentationRetentionSourceSequence =
+				latestActivePicturePresentationRetentionEvaluated
+					? frameNumber : 0;
+			latestActivePictureGlobalNearBlackEvaluated =
+				globalNearBlack.evaluated;
+			latestActivePictureGlobalNearBlack = globalNearBlack.nearBlack;
+			latestActivePictureGlobalLumaP90 = globalNearBlack.lumaP90;
+			latestActivePictureOutwardVisibleBoundsAvailable =
+				hadCompatiblePresentation &&
+				retentionEvidence.outwardVisibleBoundsAvailable;
+			latestActivePicturePresentationRetentionReason =
+				hadCompatiblePresentation ? retentionEvidence.reason :
+					"no compatible retained presentation";
+			if (automaticSourceCrop && configuredScreenActive &&
+				hadCompatiblePresentation &&
+				(evidence.available ||
+					retentionEvidence.outwardVisibleBoundsAvailable))
+			{
+				ActivePictureBounds observed = presentationBeforeObservation;
+				if (evidence.available)
+					observed = evidence.classification ==
+						ActivePictureClassification::PROVISIONAL
+					? evidence.proposedBounds : evidence.trustedBounds;
+				if (retentionEvidence.outwardVisibleBoundsAvailable)
+				{
+					observed.left = std::min(observed.left,
+						retentionEvidence.outwardVisibleBounds.left);
+					observed.top = std::min(observed.top,
+						retentionEvidence.outwardVisibleBounds.top);
+					observed.right = std::max(observed.right,
+						retentionEvidence.outwardVisibleBounds.right);
+					observed.bottom = std::max(observed.bottom,
+						retentionEvidence.outwardVisibleBounds.bottom);
+				}
+				// Vertical subtitle occupancy cannot turn horizontal sampling noise
+				// into a full-raster conflict. Each horizontal band is verified here.
+				if (evidence.classification == ActivePictureClassification::BAR_CROP_TRUSTED &&
+					AlphaSourceCrop::IsPixelSafeHorizontalSamplingEnvelope(presentationBeforeObservation, observed, retentionEvidence))
+				{
+					observed.left = presentationBeforeObservation.left;
+					observed.right = presentationBeforeObservation.right;
+				}
+				ActivePictureBounds outward = presentationBeforeObservation;
+				outward.left = std::min(outward.left, observed.left) & ~1;
+				outward.top = std::min(outward.top, observed.top) & ~1;
+				outward.right = std::min(analysisSource.width,
+					(std::max(outward.right, observed.right) + 1) & ~1);
+				outward.bottom = std::min(analysisSource.height,
+					(std::max(outward.bottom, observed.bottom) + 1) & ~1);
+				outward.rasterWidth = analysisSource.width;
+				outward.rasterHeight = analysisSource.height;
+				outward.aspectRatio = static_cast<double>(
+					outward.right - outward.left) /
+					std::max(1, outward.bottom - outward.top);
+				outward.trustedBarAxes = ActivePictureBounds::BarAxes::NONE;
+				const bool expands =
+					outward.left < presentationBeforeObservation.left ||
+					outward.top < presentationBeforeObservation.top ||
+					outward.right > presentationBeforeObservation.right ||
+					outward.bottom > presentationBeforeObservation.bottom;
+				// Do this before publishing coarse edge flags. Otherwise a safe
+				// four-pixel observation can reaffirm the crop below while this
+				// second path independently forces full raster (live event 18).
+				const bool samplingEnvelopeReaffirmed = hadCurrentTrustedCropGeometry &&
+					evidence.available && evidence.classification ==
+						ActivePictureClassification::BAR_CROP_TRUSTED &&
+					retentionEvidence.analysisValid && retentionEvidence.presentationValid &&
+					!retentionEvidence.outwardVisibleBoundsAvailable &&
+					AlphaSourceCrop::IsPixelSafeSamplingEnvelope(presentationBeforeObservation,
+						evidence.trustedBounds, outward, retentionEvidence.excludedBandsPixelSafe);
+				if (expands && samplingEnvelopeReaffirmed &&
+					(now - lastSamplingEnvelopeLogTick >= 2000))
+				{
+					lastSamplingEnvelopeLogTick = now;
+					DebugLog::Log("Alpha presentation envelope: sequence=%llu generation=%llu base=%d,%d-%d,%d observed=%d,%d-%d,%d reason=pixel-safe-sampling-reaffirmed",
+						static_cast<unsigned long long>(frameNumber),
+						static_cast<unsigned long long>(analysisSource.generation),
+						presentationBeforeObservation.left, presentationBeforeObservation.top,
+						presentationBeforeObservation.right, presentationBeforeObservation.bottom,
+						outward.left, outward.top, outward.right, outward.bottom);
+				}
+				if (expands && !samplingEnvelopeReaffirmed)
+				{
+					// The accumulated envelope is useful for its same-edge release
+					// hold. Keep the raw observation as well: top and bottom overlays
+					// observed at different moments must not later become one vertical
+					// aspect-fit decision.
+					scopePresentationCurrentBounds = outward;
+					scopePresentationCurrentSourceGeneration =
+						analysisSource.generation;
+					scopePresentationCurrentSourceSequence = frameNumber;
+					const bool sameBase =
+						scopePresentationEvidenceSourceGeneration ==
+							analysisSource.generation &&
+						sameBounds(scopePresentationEvidenceBase,
+							presentationBeforeObservation);
+					const bool envelopeChanged = !sameBase ||
+						outward.left < scopePresentationEvidenceBounds.left ||
+						outward.top < scopePresentationEvidenceBounds.top ||
+						outward.right > scopePresentationEvidenceBounds.right ||
+						outward.bottom > scopePresentationEvidenceBounds.bottom;
+					if (!sameBase)
+					{
+						scopePresentationEvidenceBase =
+							presentationBeforeObservation;
+						scopePresentationEvidenceBounds = outward;
+					}
+					else
+					{
+						// Match mpv cropdetect's reset=0 behavior: while outward
+						// content is present, retain the widest measured envelope.
+						scopePresentationEvidenceBounds.left = std::min(
+							scopePresentationEvidenceBounds.left, outward.left);
+						scopePresentationEvidenceBounds.top = std::min(
+							scopePresentationEvidenceBounds.top, outward.top);
+						scopePresentationEvidenceBounds.right = std::max(
+							scopePresentationEvidenceBounds.right, outward.right);
+						scopePresentationEvidenceBounds.bottom = std::max(
+							scopePresentationEvidenceBounds.bottom, outward.bottom);
+						scopePresentationEvidenceBounds.aspectRatio =
+							static_cast<double>(
+								scopePresentationEvidenceBounds.right -
+								scopePresentationEvidenceBounds.left) /
+							std::max(1,
+								scopePresentationEvidenceBounds.bottom -
+								scopePresentationEvidenceBounds.top);
+					}
+					scopePresentationEvidenceSourceGeneration =
+						analysisSource.generation;
+					scopePresentationEvidenceSourceSequence = frameNumber;
+					scopePresentationEvidenceLastTick = now;
+					if (envelopeChanged)
+					{
+						const ActivePictureBounds& raw =
+							retentionEvidence.outwardVisibleBoundsAvailable
+							? retentionEvidence.outwardVisibleBounds : observed;
+						DebugLog::Log(
+							"Alpha presentation envelope: sequence=%llu generation=%llu base=%d,%d-%d,%d raw=%d,%d-%d,%d stored=%d,%d-%d,%d edges=%c%c%c%c reason=detected",
+							static_cast<unsigned long long>(frameNumber),
+							static_cast<unsigned long long>(analysisSource.generation),
+							presentationBeforeObservation.left,
+							presentationBeforeObservation.top,
+							presentationBeforeObservation.right,
+							presentationBeforeObservation.bottom,
+							raw.left, raw.top, raw.right, raw.bottom,
+							scopePresentationEvidenceBounds.left,
+							scopePresentationEvidenceBounds.top,
+							scopePresentationEvidenceBounds.right,
+							scopePresentationEvidenceBounds.bottom,
+							outward.left < presentationBeforeObservation.left ? 'L' : '-',
+							outward.top < presentationBeforeObservation.top ? 'T' : '-',
+							outward.right > presentationBeforeObservation.right ? 'R' : '-',
+							outward.bottom > presentationBeforeObservation.bottom ? 'B' : '-');
+					}
+				}
 			}
 			latestCropSamplingReaffirmed = nlsGeometryAvailable && hadCurrentTrustedCropGeometry &&
 				evidence.available && evidence.classification == ActivePictureClassification::BAR_CROP_TRUSTED &&
@@ -9461,27 +9477,27 @@ struct LibplaceboVideoRenderer::Impl
 			scopeSubtitleEvidenceSourceGeneration == frameGeneration &&
 			scopeVerticalBarPresentation.action ==
 				AlphaSourceCrop::VerticalBarPresentationAction::TRANSLATE;
-		if (scopeSubtitleRetentionGeneration != frameGeneration)
-		{
-			scopeSubtitleRetentionGeneration = frameGeneration;
-			scopeSubtitleRetentionWasUnsafe = false;
-		}
-		const bool retentionUnsafeNow =
-			latestActivePicturePresentationRetentionEvaluated &&
-			!latestActivePicturePresentationRetentionSafe;
-		const bool retentionJustBecameUnsafe =
-			retentionUnsafeNow && !scopeSubtitleRetentionWasUnsafe;
-		if (latestActivePicturePresentationRetentionEvaluated)
-			scopeSubtitleRetentionWasUnsafe = retentionUnsafeNow;
-		const bool forceSubtitleBarAnalysis =
-			AlphaSourceCrop::RequiresImmediateSubtitleBarAnalysis(
-				subtitleBarAuthority != nullptr,
-				retentionJustBecameUnsafe,
-				latestActivePicturePresentationRetentionEvaluated,
-				latestActivePicturePresentationRetentionSafe,
-				subtitleTranslationAlreadyActive) ||
-			(latestActivePictureEvidenceWasStartupHypothesis &&
-			 subtitleBarAuthority != nullptr);
+		AlphaSourceCrop::SubtitleInspectionInput subtitleInspection;
+		subtitleInspection.previous = scopeSubtitleInspection;
+		subtitleInspection.barAuthorityAvailable = subtitleBarAuthority != nullptr;
+		subtitleInspection.measurementCurrent = latestActivePicturePresentationRetentionEvaluated &&
+			latestActivePicturePresentationRetentionSourceGeneration == frameGeneration &&
+			latestActivePicturePresentationRetentionSourceSequence == sourceSequence;
+		subtitleInspection.translationAlreadyActive = subtitleTranslationAlreadyActive;
+		subtitleInspection.sourceGeneration = frameGeneration;
+		subtitleInspection.base = subtitleBarAuthority ? *subtitleBarAuthority : ActivePictureBounds{};
+		subtitleInspection.measuredBase = latestActivePicturePresentationRetentionBounds;
+		subtitleInspection.retention = latestCropRetentionEvidence;
+		const auto subtitleInspectionDecision = AlphaSourceCrop::UpdateSubtitleInspection(subtitleInspection);
+		scopeSubtitleInspection = subtitleInspectionDecision.state;
+		const bool forceSubtitleBarAnalysis = subtitleInspectionDecision.forceAnalysis ||
+			(latestActivePictureEvidenceWasStartupHypothesis && subtitleBarAuthority != nullptr);
+		if (subtitleInspectionDecision.forceAnalysis)
+			DebugLog::Log("Alpha subtitle inspection: sequence=%llu generation=%llu reason=new-vertical-content base=%d,%d-%d,%d horizontal_safe=%d vertical_safe=%d",
+				static_cast<unsigned long long>(sourceSequence), static_cast<unsigned long long>(frameGeneration),
+				subtitleInspection.base.left, subtitleInspection.base.top, subtitleInspection.base.right, subtitleInspection.base.bottom,
+				latestCropRetentionEvidence.excludedHorizontalBandsPixelSafe ? 1 : 0,
+				latestCropRetentionEvidence.excludedVerticalBandsPixelSafe ? 1 : 0);
 		bool subtitleBarAnalysisScheduled = false;
 		bool subtitleBarAnalysisCompleted = false;
 		const float subtitleShiftSourcePixels =

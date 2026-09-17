@@ -1176,6 +1176,26 @@ namespace AlphaSourceCrop
 			!frameLocalRetentionSafe && !translationAlreadyActive;
 	}
 
+	SubtitleInspectionDecision UpdateSubtitleInspection(const SubtitleInspectionInput& input)
+	{
+		SubtitleInspectionDecision result;
+		result.state = input.previous;
+		if (result.state.sourceGeneration != input.sourceGeneration) result.state = {};
+		const bool evaluated = input.sourceGeneration != 0 && input.barAuthorityAvailable &&
+			input.measurementCurrent && input.retention.analysisValid && input.retention.presentationValid &&
+			SameBounds(input.measuredBase, input.base);
+		// Stale or unavailable evidence cannot consume the next onset trigger.
+		if (!evaluated) return result;
+		const bool sameBase = result.state.sourceGeneration == input.sourceGeneration &&
+			SameBounds(result.state.base, input.base);
+		const bool unsafe = !input.retention.excludedVerticalBandsPixelSafe;
+		result.forceAnalysis = RequiresImmediateSubtitleBarAnalysis(input.barAuthorityAvailable,
+			unsafe && (!sameBase || !result.state.verticalUnsafe), true,
+			input.retention.excludedVerticalBandsPixelSafe, input.translationAlreadyActive);
+		result.state = {input.sourceGeneration, input.base, unsafe};
+		return result;
+	}
+
 	PresentationEnvelopeDecision EvaluatePresentationEnvelope(
 		const PresentationEnvelopeInput& input)
 	{
@@ -2118,6 +2138,9 @@ namespace AlphaSourceCrop
 			input.candidate.applyCrop && verifiedCandidate.applyCrop &&
 			verifiedCandidate.horizontalExpansionPixelBounded &&
 			verifiedCandidate.owner == DecisionOwner::OUTWARD_FIT &&
+			// Horizontal proof composed with a pending vertical owner is not a
+			// certificate that every vertical pixel fits inside this rectangle.
+			ContainedBounds(verifiedCandidate.sourceBounds, crop.currentVisibleBounds) &&
 			SameBounds(verifiedCandidate.sourceBounds, input.candidate.sourceBounds);
 		if (certifiedFit)
 		{
@@ -2244,7 +2267,8 @@ namespace AlphaSourceCrop
 		// The vertical owner is validated again below; it may translate or briefly
 		// confirm against the same trusted base while current pixels bound width.
 		const bool verticalPresentationOwnsExtent =
-			(input.verticalTranslationActive || input.verticalTranslationConfirmationPending || input.verticalFitConfirmationPending) &&
+			(input.verticalTranslationActive || input.verticalTranslationConfirmationPending ||
+			 input.verticalFitConfirmationPending || input.verticalTranslationEngageBaseRetentionActive) &&
 			input.verticalTranslationSourceGeneration != 0 &&
 			input.verticalTranslationSourceGeneration == input.frameSourceGeneration &&
 			SameBounds(input.verticalTranslationBase, input.geometry) &&

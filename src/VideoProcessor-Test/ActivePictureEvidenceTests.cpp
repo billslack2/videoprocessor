@@ -139,6 +139,75 @@ namespace VideoProcessorTest
 	public:
 
 
+		TEST_METHOD(RetentionHandoffNeverRelabelsOldSafePixelsAsNewCropProof)
+		{
+			P010Frame frame(1920,1080);
+			frame.BlackOutside(0,100,1920,980);
+			const ActivePictureBounds oldBase{0,100,1920,980,1920,1080,2.18,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+			auto newBase=oldBase; newBase.top=140; newBase.bottom=940;
+			const auto view=frame.View();
+			AnalysisLumaSource source;
+			source.data=view.data; source.dataBytes=view.dataBytes;
+			source.width=view.width; source.height=view.height;
+			source.rowBytes=view.lumaPitchBytes; source.chromaRowBytes=view.chromaPitchBytes;
+			source.format=AnalysisLumaFormat::P010;
+			const auto oldProof=EvaluateActivePicturePresentationRetention(source,oldBase);
+			Assert::IsTrue(oldProof.excludedBandsPixelSafe);
+			const auto reused=ResolveActivePictureRetentionHandoff(source,oldBase,oldProof,oldBase);
+			Assert::IsFalse(reused.refreshed);
+			const auto changed=ResolveActivePictureRetentionHandoff(source,oldBase,oldProof,newBase);
+			Assert::IsTrue(changed.refreshed && changed.evidence.analysisValid);
+			Assert::IsFalse(changed.evidence.excludedBandsPixelSafe);
+			Assert::IsFalse(changed.evidence.excludedVerticalBandsPixelSafe);
+			Assert::IsTrue(changed.evidence.outwardVisibleBoundsAvailable);
+			Assert::IsTrue(changed.evidence.outwardVisibleBounds.top<=oldBase.top);
+			source.data=nullptr;
+			const auto invalid=ResolveActivePictureRetentionHandoff(source,oldBase,oldProof,newBase);
+			Assert::IsFalse(invalid.evidence.analysisValid);
+		}
+
+		TEST_METHOD(PublishedGeometryGetsSameFramePixelEvidenceBeforeCropEvaluation)
+		{
+			using namespace AlphaSourceCrop;
+			P010Frame frame(3840,2160);
+			frame.BlackOutside(192,440,3648,1720);
+			const ActivePictureBounds oldBase{192,372,3648,1788,3840,2160,2.44,ActivePictureBounds::BarAxes::BOTH};
+			const ActivePictureBounds newBase{192,440,3648,1720,3840,2160,2.7,ActivePictureBounds::BarAxes::BOTH};
+			for (bool outside : {false,true})
+			{
+				if(outside) frame.FillRectangle(3648,700,3670,1300,400);
+				const auto view=frame.View();
+				AnalysisLumaSource source;
+				source.data=view.data; source.dataBytes=view.dataBytes;
+				source.width=view.width; source.height=view.height;
+				source.rowBytes=view.lumaPitchBytes; source.chromaRowBytes=view.chromaPitchBytes;
+				source.format=AnalysisLumaFormat::P010;
+				const auto before=EvaluateActivePicturePresentationRetention(source,oldBase);
+				const auto handoff=ResolveActivePictureRetentionHandoff(source,oldBase,before,newBase);
+				Assert::IsTrue(handoff.refreshed);
+				Assert::AreEqual(newBase.top,handoff.bounds.top);
+				Assert::AreEqual(!outside,handoff.evidence.excludedBandsPixelSafe);
+				Input crop;
+				crop.automaticCropEnabled=crop.sharedGeometryAvailable=crop.latestObservationSupportsCrop=true;
+				crop.classification=crop.latestObservationClassification=ActivePictureClassification::BAR_CROP_TRUSTED;
+				crop.geometry=newBase; crop.geometrySourceGeneration=crop.frameSourceGeneration=1;
+				crop.frameSourceSequence=4005; crop.rasterWidth=3840; crop.rasterHeight=2160;
+				if(outside) {
+					crop.barCropRefinementHorizontalConflict=true;
+					crop.currentVisibleBoundsAvailable=handoff.evidence.outwardVisibleBoundsAvailable;
+					crop.currentVisibleBase=handoff.bounds;
+					crop.currentVisibleBounds=handoff.evidence.outwardVisibleBounds;
+					crop.currentVisibleSourceSequence=4005; crop.currentVisibleSourceGeneration=1;
+					crop.outwardExpansion=newBase; crop.outwardExpansion.right=3720;
+					crop.outwardExpansionAvailable=crop.outwardPresentationActive=true; crop.outwardExpansionSourceGeneration=1;
+				}
+				PresentationRecoveryInput ri; ri.crop=crop; ri.candidate=Evaluate(crop);
+				const auto d=EvaluatePresentationRecovery(ri);
+				Assert::IsTrue(d.presentation.applyCrop);
+				Assert::IsFalse(d.started);
+			}
+		}
+
 		TEST_METHOD(SubtitleAndSparseStarsCannotCertifyAnExpandedPictureStrip)
 		{
 			const ActivePictureBounds scope{192,372,3648,1788,3840,2160,2.44,ActivePictureBounds::BarAxes::BOTH};

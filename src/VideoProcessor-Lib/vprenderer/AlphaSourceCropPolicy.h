@@ -517,6 +517,30 @@ namespace AlphaSourceCrop
 		bool frameLocalRetentionEvaluated, bool frameLocalRetentionSafe,
 		bool translationAlreadyActive);
 
+	struct SubtitleInspectionState
+	{
+		uint64_t sourceGeneration = 0;
+		ActivePictureBounds base;
+		bool verticalUnsafe = false;
+	};
+	struct SubtitleInspectionInput
+	{
+		SubtitleInspectionState previous;
+		bool barAuthorityAvailable = false;
+		bool measurementCurrent = false;
+		bool translationAlreadyActive = false;
+		uint64_t sourceGeneration = 0;
+		ActivePictureBounds base;
+		ActivePictureBounds measuredBase;
+		ActivePicturePresentationRetentionEvidence retention;
+	};
+	struct SubtitleInspectionDecision
+	{
+		SubtitleInspectionState state;
+		bool forceAnalysis = false;
+	};
+	SubtitleInspectionDecision UpdateSubtitleInspection(const SubtitleInspectionInput& input);
+
 	struct PresentationEnvelopeInput
 	{
 		bool envelopeAvailable = false;

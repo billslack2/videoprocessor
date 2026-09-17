@@ -45,6 +45,99 @@ namespace Tests
 
 
 
+		TEST_METHOD(SubtitleInspectionRejectsStaleProofAndDoesNotConsumeOnsetWithoutAuthority)
+		{
+			SubtitleInspectionInput input;
+			input.barAuthorityAvailable=input.measurementCurrent=true;
+			input.base=input.measuredBase=TrustedScopeCrop().geometry;
+			input.sourceGeneration=7;
+			input.retention.analysisValid=input.retention.presentationValid=true;
+			input.retention.excludedVerticalBandsPixelSafe=false;
+			Assert::IsTrue(UpdateSubtitleInspection(input).forceAnalysis);
+			for(int failure=0; failure<5; ++failure) {
+				auto bad=input;
+				switch(failure) {
+				case 0: bad.measurementCurrent=false; break;
+				case 1: bad.measuredBase.top+=4; break;
+				case 2: bad.retention.analysisValid=false; break;
+				case 3: bad.barAuthorityAvailable=false; break;
+				case 4: bad.sourceGeneration=0; break;
+				}
+				const auto blocked=UpdateSubtitleInspection(bad);
+				Assert::IsFalse(blocked.forceAnalysis);
+				auto retry=input; retry.previous=blocked.state;
+				Assert::IsTrue(UpdateSubtitleInspection(retry).forceAnalysis);
+			}
+			input.previous=UpdateSubtitleInspection(input).state;
+			Assert::IsFalse(UpdateSubtitleInspection(input).forceAnalysis);
+			input.base.top+=20; input.measuredBase=input.base;
+			Assert::IsTrue(UpdateSubtitleInspection(input).forceAnalysis);
+			input.translationAlreadyActive=true;
+			Assert::IsFalse(UpdateSubtitleInspection(input).forceAnalysis);
+		}
+
+		TEST_METHOD(SubtitleOnsetAfterHorizontalContentNeverArmsRecoveryDuringConfirmationOrEngage)
+		{
+			for (uint64_t onset : {3776ULL,3777ULL,3778ULL})
+			{
+				const ActivePictureBounds base{192,372,3648,1788,3840,2160,2.44,ActivePictureBounds::BarAxes::BOTH};
+				SubtitleInspectionState inspection;
+				VerticalTranslationConfirmationState confirmation;
+				PresentationRecoveryState recovery;
+				bool accepted=false;
+				uint64_t acceptedAt=0;
+				for (uint64_t seq=onset-12; seq<onset+24; ++seq)
+				{
+					const bool subtitle=seq>=onset;
+					SubtitleInspectionInput probe;
+					probe.previous=inspection;
+					probe.barAuthorityAvailable=probe.measurementCurrent=true;
+					probe.sourceGeneration=1; probe.base=probe.measuredBase=base;
+					probe.translationAlreadyActive=accepted;
+					probe.retention.analysisValid=probe.retention.presentationValid=true;
+					probe.retention.activePicture.classification=ActivePictureClassification::BAR_CROP_TRUSTED;
+					probe.retention.excludedBandsPixelSafe=false; // horizontal content precedes subtitle
+					probe.retention.excludedVerticalBandsPixelSafe=!subtitle;
+					const auto inspected=UpdateSubtitleInspection(probe);
+					inspection=inspected.state;
+					if(seq==onset) Assert::IsTrue(inspected.forceAnalysis,L"First subtitle frame needs inspection independently of horizontal occupancy");
+					const bool scan=inspected.forceAnalysis || seq%3==0;
+					if(scan && subtitle) {
+						VerticalTranslationConfirmationInput c;
+						c.previous=confirmation; c.sourceSequence=seq;
+						c.observed.action=VerticalBarPresentationAction::TRANSLATE; c.observed.translationPixels=92;
+						c.targetBufferPixels=10; c.acceptedTranslationActive=accepted; c.acceptedTranslationPixels=102;
+						const auto d=ConfirmVerticalTranslation(c); confirmation=d.state;
+						if(d.newlyAccepted) { accepted=true; acceptedAt=seq; }
+					}
+					Input crop=TrustedScopeCrop(); crop.geometry=base;
+					crop.frameSourceGeneration=crop.geometrySourceGeneration=1; crop.frameSourceSequence=seq;
+					crop.latestObservationClassification=ActivePictureClassification::BAR_CROP_TRUSTED;
+					crop.latestObservationSupportsCrop=!subtitle;
+					crop.barCropRefinementHorizontalConflict=true;
+					crop.currentVisibleBoundsAvailable=true; crop.currentVisibleBase=base;
+					crop.currentVisibleSourceGeneration=crop.outwardExpansionSourceGeneration=1;
+					crop.currentVisibleSourceSequence=seq; crop.currentVisibleBounds=base;
+					crop.currentVisibleBounds.right=3678;
+					if(subtitle) { crop.currentVisibleBounds.top=0; crop.currentVisibleBounds.bottom=2160; }
+					crop.outwardExpansion=base; crop.outwardExpansion.right=3712;
+					crop.outwardExpansionAvailable=crop.outwardPresentationActive=true;
+					crop.verticalTranslationBase=base; crop.verticalTranslationSourceGeneration=1;
+					crop.verticalTranslationConfirmationPending=confirmation.confirmations!=0;
+					crop.verticalTranslationEngageBaseRetentionActive=accepted && seq==acceptedAt;
+					crop.verticalTranslationActive=accepted && seq>acceptedAt;
+					crop.verticalTranslationPixels=crop.verticalTranslationActive ? 102 : 0;
+					PresentationRecoveryInput ri; ri.previous=recovery; ri.crop=crop; ri.candidate=Evaluate(crop);
+					ri.measurementCurrent=ri.retentionEvaluated=ri.nearBlackEvaluated=true;
+					ri.retentionBounds=base; ri.retentionSourceSequence=seq; ri.retentionSourceGeneration=1;
+					const auto d=EvaluatePresentationRecovery(ri); recovery=d.state;
+					Assert::IsTrue(d.presentation.applyCrop,L"Scan/confirmation/zero-shift engage must not drop to full raster");
+					Assert::IsFalse(d.state.active);
+				}
+				Assert::IsTrue(accepted);
+			}
+		}
+
 		TEST_METHOD(HorizontalPixelProofComposesWithCurrentSubtitleOwner)
 		{
 			Input crop=TrustedScopeCrop();
@@ -180,7 +273,7 @@ namespace Tests
 			const auto d = EvaluatePresentationRecovery(input);
 			Assert::IsTrue(d.released && d.ended && d.presentation.applyCrop);
 			Assert::AreEqual(3722, d.presentation.sourceBounds.right);
-			for (int failure=0; failure<7; ++failure)
+			for (int failure=0; failure<8; ++failure)
 			{
 				auto bad = input;
 				switch (failure) {
@@ -191,6 +284,12 @@ namespace Tests
 				case 4: bad.crop.currentVisibleBounds.right=3730; break;
 				case 5: bad.retentionBounds.top+=4; break;
 				case 6: bad.cadenceRepeat=true; break;
+				case 7:
+					bad.crop.verticalTranslationEngageBaseRetentionActive=true;
+					bad.crop.verticalTranslationBase=bad.crop.geometry;
+					bad.crop.verticalTranslationSourceGeneration=7;
+					bad.crop.currentVisibleBounds.bottom=2160;
+					break;
 				}
 				AssertFullRaster(EvaluatePresentationRecovery(bad).presentation);
 			}

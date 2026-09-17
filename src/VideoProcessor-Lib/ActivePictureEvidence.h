@@ -83,6 +83,7 @@ struct ActivePicturePresentationRetentionEvidence
 	bool proposedBoundsContained = false;
 	bool excludedBandsPixelSafe = false;
 	bool excludedHorizontalBandsPixelSafe = false;
+	bool excludedVerticalBandsPixelSafe = false;
 	// Current evidence restricted to newly exposed strips. Whole old bars can
 	// remain mostly black during a real, gradual format expansion.
 	bool expansionStripsAvailable = false;
@@ -146,6 +147,19 @@ ActivePicturePresentationRetentionEvidence
 	EvaluateP010ActivePicturePresentationRetention(
 		const P010PlaneView& view,
 		const ActivePictureBounds& trustedPresentation);
+
+// Resolve a frame-local measurement after the transition model chooses the
+// presentation base. The returned bounds identify the actual inspected crop.
+struct ActivePictureRetentionHandoff
+{
+	ActivePicturePresentationRetentionEvidence evidence;
+	ActivePictureBounds bounds;
+	bool refreshed = false;
+};
+ActivePictureRetentionHandoff ResolveActivePictureRetentionHandoff(
+	const AnalysisLumaSource& source, const ActivePictureBounds& measuredBounds,
+	const ActivePicturePresentationRetentionEvidence& measured,
+	const ActivePictureBounds& presentationBounds);
 
 // Sparse program content on an otherwise near-black frame (for example a
 // scrolling title crawl) can resemble a new pair of encoded bars. Such a
