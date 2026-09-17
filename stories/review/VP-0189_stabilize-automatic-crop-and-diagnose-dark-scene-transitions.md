@@ -506,3 +506,13 @@ The a7dc020a playback recording confirms that the same shot shrinks at subtitle 
 [Reviewed implementation plan](../assets/VP-0189/subtitle-crop-fix-plan.md) covers an integrated failing regression, explicit transition admission across history/look-ahead paths, per-axis outward checks and subtitle onset arbitration, and current-presentation safety proof for bounded recovery. It includes adverse-case review, regression coverage and physical playback acceptance. [Probe results](../assets/VP-0189/subtitle-crop-plan-probe-results.txt) and [probe source](../assets/VP-0189/subtitle-crop-plan-probe.cpp) support the findings. Review was against code, existing tests, video and executable probe, not an external independent review.
 
 No source/runtime changes or deployment were made for this planning request. Status remains Review; playback is not accepted. The proposed visual overlay remains optional and separate from the corrective scope.
+
+## Subtitle regression and correction completed (2026-09-17)
+
+Step one added a sequence regression through shared production admission, subtitle-routing, crop and recovery policies. It reproduced the subtitle-triggered false aspect change. The behavior-preserving extraction passed existing tests; the new desired-behavior regression initially failed as expected.
+
+Following authorization to continue, the correction in source commit e3d4e856 made current transition deferral binding on remembered geometry and queued publication, and checked expansion per edge. The reproduced sequence now passes across the tested frame-rate families. Additional tests cover real expansion, invalid evidence, confirmation continuity and an internal split-screen divider. Full Release validation and diagnostic-helper checks passed.
+
+Local deployment is complete. Runtime identity and binary verification succeeded, and user configuration was preserved. Detailed machine-specific evidence remains local. Recovery safety requirements and existing thresholds/timers remain unchanged because the reproduced failure is prevented before recovery is armed.
+
+Status remains Review pending physical playback of the gradual transition and subtitle scene. The optional graphical diagnostic overlay is not implemented.
