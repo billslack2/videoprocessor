@@ -162,7 +162,9 @@ public:
 	static constexpr double DEFAULT_STABLE_GEOMETRY_DEADBAND_PERCENT = 2.0;
 	static constexpr double MAX_STABLE_GEOMETRY_DEADBAND_PERCENT = 5.0;
 	// Additional inward-only format tolerance, anchored to accepted geometry.
-	static constexpr double STABLE_ASPECT_DEADBAND_PERCENT = 3.0;
+	// Real mixed-aspect expansions remain outward; only a materially narrower
+	// picture can replace an established frame.
+	static constexpr double STABLE_ASPECT_DEADBAND_PERCENT = 10.0;
 
 	void Reset();
 	// Scene edits invalidate in-flight proof, not the last affirmative geometry.

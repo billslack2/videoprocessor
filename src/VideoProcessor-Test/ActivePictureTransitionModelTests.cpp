@@ -945,10 +945,27 @@ namespace VideoProcessorTest
 					Assert::AreEqual(anchor.top, held.bounds.top);
 				}
 			}
-			auto larger = anchor; larger.top += 24; larger.bottom -= 24;
+			auto larger = anchor; larger.top += 80; larger.bottom -= 80;
 			larger.aspectRatio = 3840.0 / (larger.bottom - larger.top);
 			Assert::IsFalse(Observe(model, larger, frame++).publish);
 			Assert::IsTrue(Observe(model, larger, frame++).publish);
+		}
+
+		TEST_METHOD(WomenInBlueThreePercentSameAxisChangeRetainsEstablishedFormat)
+		{
+			const ActivePictureBounds anchor = {0,208,3840,1952,3840,2160,
+				3840.0/1744.0,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+			const ActivePictureBounds observed = {0,232,3840,1924,3840,2160,
+				3840.0/1692.0,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+			ActivePictureTransitionModel model;
+			uint64_t frame = Establish(model, anchor);
+			for (int i = 0; i < 240; ++i)
+			{
+				const auto held = Observe(model, observed, frame++);
+				Assert::IsFalse(held.publish);
+				Assert::AreEqual(anchor.top, held.stableBounds.top);
+				Assert::AreEqual(anchor.bottom, held.stableBounds.bottom);
+			}
 		}
 
 		TEST_METHOD(RecentHistoryCannotBypassEstablishedAspectDeadband)
@@ -1105,15 +1122,15 @@ namespace VideoProcessorTest
 			}
 		}
 
-		TEST_METHOD(TrustedGeometryBeyondDeadbandStillTransitions)
+		TEST_METHOD(TrustedGeometryBeyondTenPercentStillTransitions)
 		{
 			ActivePictureTransitionModel model;
 			uint64_t frame = Establish(model, ScopeBounds());
 			ActivePictureBounds changed = ScopeBounds();
-			// 44px per edge exceeds 2% of 2160 and is therefore allowed
-			// to take the normal two-observation trusted transition path.
-			changed.top += 44;
-			changed.bottom -= 44;
+			// 84px per edge changes aspect by more than 10% and is therefore
+			// allowed to take the normal two-observation transition path.
+			changed.top += 84;
+			changed.bottom -= 84;
 			changed.aspectRatio =
 				static_cast<double>(changed.right - changed.left) /
 				(changed.bottom - changed.top);
@@ -1124,8 +1141,8 @@ namespace VideoProcessorTest
 			const auto committed = Observe(model, changed, frame);
 			Assert::IsTrue(committed.publish);
 			Assert::IsTrue(committed.stable);
-			Assert::AreEqual(308, committed.bounds.top);
-			Assert::AreEqual(1852, committed.bounds.bottom);
+			Assert::AreEqual(348, committed.bounds.top);
+			Assert::AreEqual(1812, committed.bounds.bottom);
 		}
 
 		TEST_METHOD(DeadbandCannotBeRaisedBeyondFivePercent)
