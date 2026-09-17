@@ -2273,16 +2273,24 @@ namespace AlphaSourceCrop
 			input.verticalTranslationSourceGeneration == input.frameSourceGeneration &&
 			SameBounds(input.verticalTranslationBase, input.geometry) &&
 			input.outwardExpansion.top == input.geometry.top && input.outwardExpansion.bottom == input.geometry.bottom;
-		const bool horizontalExpansionPixelBounded = input.barCropRefinementHorizontalConflict &&
-			input.latestObservationClassification == ActivePictureClassification::BAR_CROP_TRUSTED &&
-			input.currentVisibleBoundsAvailable && input.frameSourceSequence != 0 &&
+		// Provisional geometry does not grant a new inward crop. It also must not
+		// veto independently measured outward pixels on the existing trusted base.
+		const bool horizontalObservationEligible = !input.latestObservationIsUnavailable &&
+			(input.latestObservationClassification == ActivePictureClassification::BAR_CROP_TRUSTED ||
+			 (input.latestObservationIsProvisional &&
+			  input.latestObservationClassification == ActivePictureClassification::PROVISIONAL));
+		const bool horizontalPixelsCurrent = input.currentVisibleBoundsAvailable &&
+			ValidBounds(input.currentVisibleBounds, input.rasterWidth, input.rasterHeight) &&
+			input.frameSourceSequence != 0 &&
 			input.currentVisibleSourceGeneration == input.frameSourceGeneration &&
 			input.currentVisibleSourceSequence == input.frameSourceSequence &&
-			SameTrustedCropContract(input.currentVisibleBase, input.geometry) &&
-			input.outwardPresentationActive && input.outwardExpansionAvailable &&
+			SameTrustedCropContract(input.currentVisibleBase, input.geometry);
+		const bool horizontalCandidateCurrent = input.outwardPresentationActive &&
+			input.outwardExpansionAvailable &&
 			input.outwardExpansionSourceGeneration == input.frameSourceGeneration &&
 			ValidBounds(input.outwardExpansion, input.rasterWidth, input.rasterHeight) &&
-			CropEdgesAreChromaAligned(input.outwardExpansion, input.rasterWidth, input.rasterHeight) &&
+			CropEdgesAreChromaAligned(input.outwardExpansion, input.rasterWidth, input.rasterHeight);
+		const bool horizontalPixelsCovered =
 			ContainedBounds(input.currentVisibleBounds, input.geometry) &&
 			(ContainedBounds(input.outwardExpansion, input.currentVisibleBounds) ||
 			 (verticalPresentationOwnsExtent &&
@@ -2290,10 +2298,18 @@ namespace AlphaSourceCrop
 			  input.outwardExpansion.right >= input.currentVisibleBounds.right)) &&
 			(input.currentVisibleBounds.left < input.geometry.left ||
 			 input.currentVisibleBounds.right > input.geometry.right);
+		const bool horizontalExpansionPixelBounded = input.barCropRefinementHorizontalConflict &&
+			horizontalObservationEligible && horizontalPixelsCurrent &&
+			horizontalCandidateCurrent && horizontalPixelsCovered;
 		if (input.barCropRefinementHorizontalConflict && !horizontalExpansionPixelBounded)
 		{
-			decision.reason =
-				"horizontal expansion requires full-raster fail-open";
+			decision.reason = !horizontalObservationEligible
+				? "horizontal fit rejected: observation unavailable or full-raster"
+				: !horizontalPixelsCurrent
+				? "horizontal fit rejected: pixel extent missing, invalid, or stale"
+				: !horizontalCandidateCurrent
+				? "horizontal fit rejected: outward candidate invalid or stale"
+				: "horizontal fit rejected: pixels not covered or vertical owner unresolved";
 			return decision;
 		}
 		const bool ambiguousObservation =

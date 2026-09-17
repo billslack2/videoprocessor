@@ -3858,6 +3858,7 @@ struct LibplaceboVideoRenderer::Impl
 	AlphaSourceCrop::PresentationRecoveryState cropPresentationRecovery;
 	bool cropTraceConfigured = false;
 	unsigned cropTraceRemaining = 0;
+	uint64_t cropEdgeDiagnosticLastTick = 0;
 	bool cropDiagnosticActive = false;
 	bool cropDiagnosticPreviousAvailable = false;
 	bool cropDiagnosticPreviousApplied = false;
@@ -10948,14 +10949,29 @@ struct LibplaceboVideoRenderer::Impl
 					cropDiagnosticChanges, cropDiagnosticFlips, cropDiagnosticResets, cropDecision.reason.c_str());
 				cropDiagnosticLastSummaryTick = cropTick;
 			}
-			if (cropTraceRemaining && (cropUnresolved || barCropRefinementHorizontalConflict) && cropEvidenceFresh)
+			const bool cropEdgeSummaryDue = barCropRefinementHorizontalConflict &&
+				(cropEventStarted || cropEventEnded || cropTick - cropEdgeDiagnosticLastTick >= 2000);
+			if (cropEvidenceFresh && (cropEdgeSummaryDue ||
+				(cropTraceRemaining && (cropUnresolved || barCropRefinementHorizontalConflict))))
 			{
-				--cropTraceRemaining;
+				if (cropTraceRemaining) --cropTraceRemaining;
+				cropEdgeDiagnosticLastTick = cropTick;
 				const auto& evidence = latestCropRetentionEvidence;
 				const auto& l = evidence.excludedLeft;
 				const auto& t = evidence.excludedTop;
 				const auto& r = evidence.excludedRight;
 				const auto& b = evidence.excludedBottom;
+				// Use existing HDMI samples; no extra readback or pixel scan. These
+				// values distinguish raised mattes from a presentation-policy conflict.
+				DebugLog::Log("Alpha crop black levels: schema=1 generation=%llu sequence=%llu units=analysis-luma-10bit edge_fields=floor,black_threshold,p90,dispersion left=%.1f,%.1f,%.1f,%.1f top=%.1f,%.1f,%.1f,%.1f right=%.1f,%.1f,%.1f,%.1f bottom=%.1f,%.1f,%.1f,%.1f observation_class=%d provisional=%d horizontal_safe=%d vertical_safe=%d pixel_bounded=%d candidate_reason=\"%s\"",
+					frameGeneration, sourceSequence,
+					l.lumaFloor, std::min(104.0,l.lumaFloor+24.0), l.lumaP90, l.lumaDispersion,
+					t.lumaFloor, std::min(104.0,t.lumaFloor+24.0), t.lumaP90, t.lumaDispersion,
+					r.lumaFloor, std::min(104.0,r.lumaFloor+24.0), r.lumaP90, r.lumaDispersion,
+					b.lumaFloor, std::min(104.0,b.lumaFloor+24.0), b.lumaP90, b.lumaDispersion,
+					static_cast<int>(cropInput.latestObservationClassification), cropInput.latestObservationIsProvisional ? 1 : 0,
+					evidence.excludedHorizontalBandsPixelSafe ? 1 : 0, evidence.excludedVerticalBandsPixelSafe ? 1 : 0,
+					recoveryInput.candidate.horizontalExpansionPixelBounded ? 1 : 0, recoveryInput.candidate.reason.c_str());
 				DebugLog::Log("Alpha crop edge trace: schema=1 event=%llu generation=%llu sequence=%llu measurement=%llu remaining=%u analysis_valid=%d presentation_valid=%d luma_samples=%zu chroma_samples=%zu edge_fields=bar_pixels,black_fraction,p90,texture,continuity left=%d,%.4f,%.1f,%.1f,%.4f top=%d,%.4f,%.1f,%.1f,%.4f right=%d,%.4f,%.1f,%.1f,%.4f bottom=%d,%.4f,%.1f,%.1f,%.4f outward_available=%d outward=%d,%d-%d,%d spatial_support=unavailable gates=%u proof=%u/%u",
 					cropDiagnosticEvent, frameGeneration, sourceSequence, latestActivePictureEvidenceFrame, cropTraceRemaining,
 					evidence.analysisValid ? 1 : 0, evidence.presentationValid ? 1 : 0, evidence.lumaSamples, evidence.chromaSamples,

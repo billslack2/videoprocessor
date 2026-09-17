@@ -45,6 +45,73 @@ namespace Tests
 
 
 
+
+		TEST_METHOD(ProvisionalSplitScreenExpansionKeepsBoundedCropThroughSubtitleConfirmation)
+		{
+			// Replay 12:28:26: horizontal extent expands while lower HDMI content
+			// makes the raw geometry provisional. Shared geometry remains trusted.
+			for (bool provisional : {true, false})
+			{
+				PresentationRecoveryState recovery;
+				for (uint64_t seq = 3366; seq <= 3590; ++seq)
+				{
+					Input crop = TrustedScopeCrop();
+					crop.geometry = {192,440,3648,1720,3840,2160,2.7,ActivePictureBounds::BarAxes::BOTH};
+					crop.frameSourceSequence = seq;
+					crop.latestObservationSupportsCrop = false;
+					crop.latestObservationIsProvisional = provisional;
+					crop.latestObservationClassification = provisional
+						? ActivePictureClassification::PROVISIONAL : ActivePictureClassification::BAR_CROP_TRUSTED;
+					crop.frameLocalPresentationRetentionEvaluated = true;
+					crop.barCropRefinementHorizontalConflict = true;
+					crop.currentVisibleBoundsAvailable = true;
+					crop.currentVisibleBase = crop.geometry;
+					crop.currentVisibleSourceGeneration = crop.outwardExpansionSourceGeneration = 7;
+					crop.currentVisibleSourceSequence = seq;
+					crop.currentVisibleBounds = crop.geometry;
+					crop.currentVisibleBounds.left = 136; crop.currentVisibleBounds.right = 3678;
+					crop.currentVisibleBounds.bottom = seq < 3379 ? 2160 : 2020;
+					crop.outwardPresentationActive = crop.outwardExpansionAvailable = true;
+					crop.outwardExpansion = crop.geometry;
+					crop.outwardExpansion.left = 102; crop.outwardExpansion.right = 3712;
+					crop.verticalTranslationBase = crop.geometry;
+					crop.verticalTranslationSourceGeneration = 7;
+					crop.verticalTranslationConfirmationPending = seq < 3379;
+					crop.verticalTranslationEngageBaseRetentionActive = seq == 3379;
+					crop.verticalTranslationActive = seq > 3379;
+					crop.verticalTranslationPixels = seq > 3379 ? 346 : 0;
+					PresentationRecoveryInput input;
+					input.previous = recovery; input.crop = crop; input.candidate = Evaluate(crop);
+					input.measurementCurrent = input.retentionEvaluated = input.nearBlackEvaluated = true;
+					input.retentionBounds = crop.geometry;
+					input.retentionSourceGeneration = 7; input.retentionSourceSequence = seq;
+					input.framesPerSecond = 24.0;
+					const auto decision = EvaluatePresentationRecovery(input);
+					recovery = decision.state;
+					Assert::IsTrue(decision.presentation.applyCrop, L"Provisional geometry must not veto current bounded horizontal pixels");
+					Assert::IsTrue(decision.presentation.horizontalExpansionPixelBounded);
+					Assert::IsFalse(recovery.active, L"Do not arm a nine-second full-raster recovery during confirmation/engagement");
+					Assert::AreEqual(102, decision.presentation.sourceBounds.left);
+					Assert::AreEqual(3712, decision.presentation.sourceBounds.right);
+					for (int failure = 0; failure < 8; ++failure)
+					{
+						auto bad = crop;
+						switch (failure) {
+						case 0: --bad.currentVisibleSourceSequence; break;
+						case 1: --bad.currentVisibleSourceGeneration; break;
+						case 2: bad.currentVisibleBase.top += 4; break;
+						case 3: bad.currentVisibleBoundsAvailable = false; break;
+						case 4: bad.currentVisibleBounds.right = 3800; break;
+						case 5: bad.latestObservationClassification = ActivePictureClassification::FULL_RASTER_TRUSTED; break;
+						case 6: bad.latestObservationIsUnavailable = true; break;
+						case 7: --bad.verticalTranslationSourceGeneration; break;
+						}
+						AssertFullRaster(Evaluate(bad));
+					}
+				}
+			}
+		}
+
 		TEST_METHOD(SubtitleInspectionRejectsStaleProofAndDoesNotConsumeOnsetWithoutAuthority)
 		{
 			SubtitleInspectionInput input;
