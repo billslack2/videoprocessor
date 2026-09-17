@@ -134,6 +134,20 @@ struct ActivePictureTransitionDecision
 };
 
 
+enum class ActivePicturePublicationAdmission
+{
+	NOT_EVALUATED,
+	ACCEPTED,
+	DEFERRED,
+	NON_AUTHORITATIVE,
+	STABLE_REFERENCE_MISMATCH,
+	STABLE_GEOMETRY_RETAINED,
+	STABLE_ASPECT_RETAINED
+};
+
+const char* ActivePicturePublicationAdmissionName(
+	ActivePicturePublicationAdmission admission);
+
 // Worker-owned confidence/hysteresis model. Expensive luma inspection remains
 // outside this class; deterministic observations make the transition policy
 // independently testable across content patterns and frame-rate families.
@@ -146,6 +160,8 @@ public:
 	static constexpr double NESTED_CROP_CONFIRMATION_SECONDS = 4.0;
 	static constexpr double DEFAULT_STABLE_GEOMETRY_DEADBAND_PERCENT = 2.0;
 	static constexpr double MAX_STABLE_GEOMETRY_DEADBAND_PERCENT = 5.0;
+	// Additional inward-only format tolerance, anchored to accepted geometry.
+	static constexpr double STABLE_ASPECT_DEADBAND_PERCENT = 3.0;
 
 	void Reset();
 	// Scene edits invalidate in-flight proof, not the last affirmative geometry.
@@ -166,7 +182,8 @@ public:
 	bool AdoptPublishedDecision(
 		const ActivePictureTransitionDecision& decision,
 		ActivePictureClassification classification,
-		bool transitionDeferred = false);
+		bool transitionDeferred = false,
+		ActivePicturePublicationAdmission* admission = nullptr);
 
 	static uint64_t AnalysisIntervalFrames(double framesPerSecond);
 
@@ -187,6 +204,9 @@ private:
 	bool WithinStableGeometryDeadband(
 		const ActivePictureBounds& stable,
 		const ActivePictureBounds& observation) const;
+	ActivePicturePublicationAdmission StableRetentionAdmission(
+		const ActivePictureBounds& bounds,
+		ActivePictureClassification classification) const;
 	static bool HasCropAuthority(
 		const ActivePictureObservation& observation);
 	static bool IsFullRaster(

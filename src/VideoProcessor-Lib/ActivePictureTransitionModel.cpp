@@ -152,6 +152,54 @@ bool ActivePictureTransitionModel::WithinStableGeometryDeadband(
 		std::abs(stableHeight - observationHeight) <= verticalLimit;
 }
 
+ActivePicturePublicationAdmission ActivePictureTransitionModel::StableRetentionAdmission(
+	const ActivePictureBounds& bounds,
+	ActivePictureClassification classification) const
+{
+	if (!m_hasStable) return ActivePicturePublicationAdmission::ACCEPTED;
+	if (WithinStableGeometryDeadband(m_stable, bounds))
+		return ActivePicturePublicationAdmission::STABLE_GEOMETRY_RETAINED;
+
+	// A contained inset cannot hide new picture outside the accepted frame.
+	// Keep the established format through small AR drift or proportional
+	// zoom-out. Outward growth, translations, and full-raster evidence retain
+	// their normal admission and current-pixel visibility paths.
+	if (m_stableClassification != ActivePictureClassification::BAR_CROP_TRUSTED ||
+		classification != ActivePictureClassification::BAR_CROP_TRUSTED ||
+		bounds.rasterWidth != m_stable.rasterWidth ||
+		bounds.rasterHeight != m_stable.rasterHeight ||
+		bounds.left < m_stable.left || bounds.top < m_stable.top ||
+		bounds.right > m_stable.right || bounds.bottom > m_stable.bottom)
+		return ActivePicturePublicationAdmission::ACCEPTED;
+	const int width = bounds.right - bounds.left;
+	const int height = bounds.bottom - bounds.top;
+	const int stableWidth = m_stable.right - m_stable.left;
+	const int stableHeight = m_stable.bottom - m_stable.top;
+	if (width <= 0 || height <= 0 || stableWidth <= 0 || stableHeight <= 0)
+		return ActivePicturePublicationAdmission::ACCEPTED;
+	// Derive aspect from pixels: cached aspectRatio can be temporally smoothed.
+	const double relativeAspect = static_cast<double>(width) * stableHeight /
+		(static_cast<double>(height) * stableWidth);
+	return std::abs(relativeAspect - 1.0) * 100.0 <= STABLE_ASPECT_DEADBAND_PERCENT
+		? ActivePicturePublicationAdmission::STABLE_ASPECT_RETAINED
+		: ActivePicturePublicationAdmission::ACCEPTED;
+}
+
+const char* ActivePicturePublicationAdmissionName(ActivePicturePublicationAdmission admission)
+{
+	switch (admission)
+	{
+	case ActivePicturePublicationAdmission::NOT_EVALUATED: return "not-evaluated";
+	case ActivePicturePublicationAdmission::ACCEPTED: return "accepted";
+	case ActivePicturePublicationAdmission::DEFERRED: return "current-evidence-deferred";
+	case ActivePicturePublicationAdmission::NON_AUTHORITATIVE: return "non-authoritative";
+	case ActivePicturePublicationAdmission::STABLE_REFERENCE_MISMATCH: return "stable-reference-mismatch";
+	case ActivePicturePublicationAdmission::STABLE_GEOMETRY_RETAINED: return "stable-geometry-deadband";
+	case ActivePicturePublicationAdmission::STABLE_ASPECT_RETAINED: return "stable-aspect-deadband";
+	default: return "unknown";
+	}
+}
+
 bool ActivePictureTransitionModel::HasCropAuthority(
 	const ActivePictureObservation& observation)
 {
@@ -499,6 +547,29 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 		(NearbyGeometry(m_candidate, observation.bounds) || resumedPartial);
 	const bool matchesRecentTrusted = !continuingNested && FindRecentTrustedGeometry(
 		observation, recentTrustedBounds, recentTrustedClassification);
+	// History and look-ahead must obey the same retention policy as live
+	// evidence. Test the remembered contract, not its noisy raw recurrence.
+	const auto retention = matchesRecentTrusted
+		? StableRetentionAdmission(recentTrustedBounds, recentTrustedClassification)
+		: (HasCropAuthority(observation)
+			? StableRetentionAdmission(observation.bounds, observation.classification)
+			: ActivePicturePublicationAdmission::ACCEPTED);
+	if (retention != ActivePicturePublicationAdmission::ACCEPTED)
+	{
+		const bool geometryMoved = !SameBounds(m_stable,
+			matchesRecentTrusted ? recentTrustedBounds : observation.bounds);
+		ClearCandidate();
+		decision.state = ActivePictureTransitionState::STABLE;
+		decision.bounds = decision.stableBounds = m_stable;
+		decision.stable = true;
+		decision.confidence = 1.0;
+		decision.diagnostic = geometryMoved;
+		if (geometryMoved)
+			decision.reason = retention == ActivePicturePublicationAdmission::STABLE_ASPECT_RETAINED
+				? "contained picture retained within established aspect deadband"
+				: "minor trusted geometry change retained within deadband";
+		return decision;
+	}
 	if (matchesRecentTrusted)
 	{
 		if (!m_candidateUsesKnownTrustedGeometry ||
@@ -587,23 +658,6 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 		decision.confidence = 0.0;
 		decision.reason =
 			"provisional geometry lacks affirmative crop authority";
-		return decision;
-	}
-
-	if (m_hasStable &&
-		WithinStableGeometryDeadband(m_stable, observation.bounds))
-	{
-		const bool geometryMoved = !SameBounds(m_stable, observation.bounds);
-		ClearCandidate();
-		decision.state = ActivePictureTransitionState::STABLE;
-		decision.bounds = m_stable;
-		decision.stableBounds = m_stable;
-		decision.stable = true;
-		decision.confidence = 1.0;
-		decision.diagnostic = geometryMoved;
-		if (geometryMoved)
-			decision.reason =
-				"minor trusted geometry change retained within deadband";
 		return decision;
 	}
 
@@ -770,16 +824,39 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 
 bool ActivePictureTransitionModel::AdoptPublishedDecision(
 	const ActivePictureTransitionDecision& decision,
-	ActivePictureClassification classification, bool transitionDeferred)
+	ActivePictureClassification classification, bool transitionDeferred,
+	ActivePicturePublicationAdmission* admission)
 {
-	if (transitionDeferred) return false;
+	if (admission) *admission = ActivePicturePublicationAdmission::ACCEPTED;
+	const auto reject = [admission](ActivePicturePublicationAdmission reason) {
+		if (admission) *admission = reason;
+		return false;
+	};
+	if (transitionDeferred) return reject(ActivePicturePublicationAdmission::DEFERRED);
 	ActivePictureObservation observation;
 	observation.available = true;
 	observation.bounds = decision.bounds;
 	observation.classification = classification;
 	if (!decision.publish || !decision.stable ||
 		!HasCropAuthority(observation))
-		return false;
+		return reject(ActivePicturePublicationAdmission::NON_AUTHORITATIVE);
+	// CommitCandidate records the pre-publication stable reference. A queue
+	// model with a different history cannot transfer its confirmation to this
+	// model. Exact axes matter even when the coordinates happen to agree.
+	const auto& base = decision.stableBounds;
+	const bool matchingReference = m_hasStable
+		? (base.left == m_stable.left && base.top == m_stable.top &&
+			base.right == m_stable.right && base.bottom == m_stable.bottom &&
+			base.rasterWidth == m_stable.rasterWidth && base.rasterHeight == m_stable.rasterHeight &&
+			base.trustedBarAxes == m_stable.trustedBarAxes)
+		: (base.left == 0 && base.top == 0 && base.right == 0 && base.bottom == 0 &&
+			base.rasterWidth == 0 && base.rasterHeight == 0 &&
+			base.trustedBarAxes == ActivePictureBounds::BarAxes::NONE);
+	if (!matchingReference)
+		return reject(ActivePicturePublicationAdmission::STABLE_REFERENCE_MISMATCH);
+	const auto retention = StableRetentionAdmission(decision.bounds, classification);
+	if (retention != ActivePicturePublicationAdmission::ACCEPTED)
+		return reject(retention);
 	if (m_hasStable && !SameBounds(m_stable, decision.bounds))
 	{
 		RememberTrustedGeometry(m_stable, m_stableClassification);

@@ -2,6 +2,7 @@
 #include "CppUnitTest.h"
 
 #include <microsoft_directshow/MadVRShaderRuntimeState.h>
+#include <ActivePictureDecisionTimeline.h>
 #include <vprenderer/AlphaSourceCropPolicy.h>
 
 
@@ -411,7 +412,7 @@ namespace Tests
 				for (uint64_t seq=761; seq<=764; ++seq)
 					model.Observe({base,seq,true,ActivePictureClassification::BAR_CROP_TRUSTED,24});
 				uint64_t published = 0;
-				for (uint64_t seq=765; seq<=900; ++seq)
+				for (uint64_t seq=765; seq<=950; ++seq)
 				{
 					TransitionAdmissionInput input;
 					input.trustedGeometry = input.presentationBeforeObservation = base;
@@ -460,7 +461,9 @@ namespace Tests
 					if (partial) Assert::IsFalse(decision.publish);
 					if (decision.publish) { published=seq; break; }
 				}
-				if (failure==0) Assert::AreEqual(uint64_t(879),published);
+				// The new anchored AR gate holds the early inset. Sustained proof
+				// starts at819 (817 briefly crosses;818 returns inside3%).
+				if (failure==0) Assert::AreEqual(uint64_t(933),published);
 				else Assert::AreEqual(uint64_t(0),published);
 			}
 		}
@@ -570,6 +573,108 @@ namespace Tests
 				}
 				AssertFullRaster(EvaluatePresentationRecovery(bad).presentation);
 			}
+		}
+
+
+		TEST_METHOD(LoggedLookaheadConflictKeepsCropFillAndSubtitleScaleStable)
+		{
+			// 0dea replay: live2242/2243 reject this small change, but queue2244
+			// formerly replaced the anchor, crossed2.41, and changed final scale.
+			const ActivePictureBounds anchor = {176,356,3664,1804,3840,2160,3488.0/1448.0,ActivePictureBounds::BarAxes::BOTH};
+			const ActivePictureBounds candidate = {192,372,3648,1788,3840,2160,3456.0/1416.0,ActivePictureBounds::BarAxes::BOTH};
+			auto queueBase = anchor; queueBase.top = 0; queueBase.bottom = 2160;
+			queueBase.aspectRatio = 3488.0/2160.0; queueBase.trustedBarAxes = ActivePictureBounds::BarAxes::LEFT_RIGHT;
+			ActivePictureTransitionModel preview;
+			for (uint64_t f = 1; f <= 4; ++f)
+				preview.Observe({queueBase,f,true,ActivePictureClassification::BAR_CROP_TRUSTED,24.0});
+			ActivePictureTransitionDecision publication;
+			for (uint64_t f = 2148; f <= 2244; ++f)
+			{
+				const auto d = preview.Observe({candidate,f,true,ActivePictureClassification::BAR_CROP_TRUSTED,24.0});
+				if (d.publish) publication = d;
+			}
+			Assert::IsTrue(publication.publish);
+			for (bool lookahead : {false,true})
+			{
+				ActivePictureTransitionModel live;
+				for (uint64_t f = 1; f <= 4; ++f)
+					live.Observe({anchor,f,true,ActivePictureClassification::BAR_CROP_TRUSTED,24.0});
+				PresentationRecoveryState recovery;
+				for (uint64_t seq = 2242; seq <= 2484; ++seq)
+				{
+					if (lookahead && seq == 2244)
+					{
+						ActivePictureFrameDecision scheduled;
+						scheduled.transition = publication;
+						scheduled.observationIdentity = scheduled.effectiveIdentity = {7,seq,seq,seq,1,1,1};
+						Assert::AreEqual(static_cast<int>(ActivePictureScheduledDecisionValidation::ACCEPTED),
+							static_cast<int>(ValidateActivePictureScheduledDecision(scheduled,scheduled.effectiveIdentity,
+								candidate,ActivePictureClassification::BAR_CROP_TRUSTED)));
+						Assert::IsFalse(live.AdoptPublishedDecision(publication,ActivePictureClassification::BAR_CROP_TRUSTED));
+					}
+					const auto geometry = live.Observe({candidate,seq,true,ActivePictureClassification::BAR_CROP_TRUSTED,24.0});
+					Assert::IsFalse(geometry.publish);
+					Input crop = TrustedScopeCrop();
+					crop.geometry = geometry.bounds; crop.frameSourceSequence = seq;
+					// Include onset, sustained burned-in subtitle visibility, and release.
+					crop.verticalTranslationActive = seq >= 2260 && seq < 2400;
+					crop.verticalTranslationPixels = crop.verticalTranslationActive ? 84 : 0;
+					crop.verticalTranslationBase = anchor;
+					crop.verticalTranslationSourceGeneration = 7;
+					PresentationRecoveryInput input;
+					input.previous = recovery; input.crop = crop; input.candidate = Evaluate(crop);
+					input.measurementCurrent = input.retentionEvaluated = input.nearBlackEvaluated = true;
+					input.excludedBandsPixelSafe = !crop.verticalTranslationActive;
+					input.retentionBounds = anchor; input.retentionSourceGeneration = 7;
+					input.retentionSourceSequence = seq; input.framesPerSecond = 24.0;
+					const auto presented = EvaluatePresentationRecovery(input);
+					recovery = presented.state;
+					Assert::IsTrue(presented.presentation.applyCrop);
+					Assert::IsFalse(recovery.active);
+					AspectLimitFillInput fill;
+					fill.sourceBounds = presented.presentation.sourceBounds;
+					fill.trustedContentAuthorityAccepted = true;
+					fill.cropWiderContentToFillScreen = fill.widerLimitConfigured = true;
+					fill.widerAspectLimit = 2.41; fill.screenAspect = 2.35;
+					const auto final = EvaluateAspectLimitFill(fill);
+					Assert::IsTrue(final.applied);
+					Assert::AreEqual(3402,final.sourceBounds.right-final.sourceBounds.left);
+					Assert::AreEqual(1448,final.sourceBounds.bottom-final.sourceBounds.top);
+					Assert::AreEqual(356+crop.verticalTranslationPixels,final.sourceBounds.top);
+				}
+			}
+		}
+
+		TEST_METHOD(RetainedAspectDoesNotSuppressCurrentOutsidePicture)
+		{
+			Input crop = TrustedScopeCrop();
+			crop.geometry = {176,356,3664,1804,3840,2160,3488.0/1448.0,ActivePictureBounds::BarAxes::BOTH};
+			crop.frameSourceSequence = 2273;
+			crop.barCropRefinementHorizontalConflict = true;
+			crop.latestObservationSupportsCrop = false;
+			crop.latestObservationClassification = ActivePictureClassification::BAR_CROP_TRUSTED;
+			crop.outwardPresentationActive = crop.outwardExpansionAvailable = true;
+			crop.outwardExpansionSourceGeneration = 7;
+			crop.outwardExpansion = crop.geometry;
+			crop.outwardExpansion.left = 128; crop.outwardExpansion.right = 3712;
+			crop.currentVisibleBoundsAvailable = true;
+			crop.currentVisibleBounds = crop.outwardExpansion;
+			crop.currentVisibleBase = crop.geometry;
+			crop.currentVisibleSourceGeneration = 7;
+			crop.currentVisibleSourceSequence = crop.frameSourceSequence;
+			crop.frameLocalPresentationRetentionEvaluated = true;
+			const auto visible = Evaluate(crop);
+			Assert::IsTrue(visible.applyCrop);
+			Assert::IsTrue(visible.horizontalExpansionPixelBounded);
+			Assert::IsTrue(visible.sourceBounds.left <= 128 && visible.sourceBounds.right >= 3712);
+			AspectLimitFillInput fill;
+			fill.sourceBounds = visible.sourceBounds;
+			fill.trustedContentAuthorityAccepted = true;
+			fill.cropWiderContentToFillScreen = fill.widerLimitConfigured = true;
+			fill.widerAspectLimit = 2.41; fill.screenAspect = 2.35;
+			const auto final = EvaluateAspectLimitFill(fill);
+			Assert::IsFalse(final.applied);
+			Assert::IsTrue(final.sourceBounds.left <= 128 && final.sourceBounds.right >= 3712);
 		}
 
 		TEST_METHOD(QueuedPublicationCannotOverrideCurrentAdmissionVeto)

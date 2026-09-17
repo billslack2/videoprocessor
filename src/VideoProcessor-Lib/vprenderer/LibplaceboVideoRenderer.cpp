@@ -8399,12 +8399,14 @@ struct LibplaceboVideoRenderer::Impl
 					latestActivePictureEvidenceBounds,
 					latestActivePictureEvidenceClassification))
 				: ActivePictureScheduledDecisionValidation::NON_AUTHORITATIVE;
+			ActivePicturePublicationAdmission publicationAdmission =
+				ActivePicturePublicationAdmission::NOT_EVALUATED;
 			const bool applyScheduledDecision = hasScheduledDecision &&
 				scheduledValidation ==
 					ActivePictureScheduledDecisionValidation::ACCEPTED &&
 				nlsTransition.AdoptPublishedDecision(
 					scheduledDecision->transition, evidence.classification,
-				admission.observation.transitionDeferred);
+				admission.observation.transitionDeferred, &publicationAdmission);
 			if (hasScheduledDecision &&
 				scheduledValidation ==
 					ActivePictureScheduledDecisionValidation::ACCEPTED &&
@@ -8462,7 +8464,7 @@ struct LibplaceboVideoRenderer::Impl
 			if (hasScheduledDecision && !applyScheduledDecision)
 			{
 				DebugLog::Log(
-					"Alpha active-picture look-ahead rejected: generation=%llu observed=%llu effective=%llu frame=%llu classification=%d reason=%s runtime-apply=0",
+					"Alpha active-picture look-ahead rejected: generation=%llu observed=%llu effective=%llu frame=%llu classification=%d reason=%s publication_admission=%s scheduled_base=%d,%d-%d,%d scheduled_axes=%u live_base=%d,%d-%d,%d live_axes=%u candidate=%d,%d-%d,%d runtime-apply=0",
 					static_cast<unsigned long long>(
 						scheduledDecision->effectiveIdentity.transportGeneration),
 					static_cast<unsigned long long>(
@@ -8471,8 +8473,15 @@ struct LibplaceboVideoRenderer::Impl
 						scheduledDecision->effectiveIdentity.acceptedSequence),
 					static_cast<unsigned long long>(frameNumber),
 					static_cast<int>(evidence.classification),
-					ActivePictureScheduledDecisionValidationName(
-						scheduledValidation));
+					ActivePictureScheduledDecisionValidationName(scheduledValidation),
+					ActivePicturePublicationAdmissionName(publicationAdmission),
+					scheduledDecision->transition.stableBounds.left, scheduledDecision->transition.stableBounds.top,
+					scheduledDecision->transition.stableBounds.right, scheduledDecision->transition.stableBounds.bottom,
+					static_cast<unsigned int>(scheduledDecision->transition.stableBounds.trustedBarAxes),
+					nlsGeometry.left, nlsGeometry.top, nlsGeometry.right, nlsGeometry.bottom,
+					static_cast<unsigned int>(nlsGeometry.trustedBarAxes),
+					scheduledDecision->transition.bounds.left, scheduledDecision->transition.bounds.top,
+					scheduledDecision->transition.bounds.right, scheduledDecision->transition.bounds.bottom);
 			}
 			if (transition.clearTransition)
 			{
@@ -10893,7 +10902,7 @@ struct LibplaceboVideoRenderer::Impl
 					if (end != value && *end == '\0' && value[0] >= '0' && value[0] <= '9')
 						cropTraceRemaining = static_cast<unsigned>(std::min(2400ul, requested));
 				}
-				DebugLog::Log("Alpha crop diagnostics: schema=1 recovery_dwell_ms=250 summary_ms=2000 sampling_equivalence=max(2,width/480,height/270) sampling_requires=same-bars-and-current-safe-bands nested_guard_ms=4000 nested_partial=pause-without-dwell global_grid=16x16 near_black_p90_max=96 edge_grid=48x6 extent_grid_max=256x64 extent_support=2x2 black_floor=perimeter-p10-clamped-48-80 black_threshold=min(104,floor+24) retention_black_min=0.95 retention_p90_max=min(104,floor+24) dispersion_max=24 texture_max=8 chroma_neutral_min=0.90 continuity_min=0.99 trace_budget=%u trace_max=2400 trace_scope=candidate-and-presentation evidence=existing-samples capture_missed_semantics=timestamp-gap-estimate", cropTraceRemaining);
+				DebugLog::Log("Alpha crop diagnostics: schema=1 recovery_dwell_ms=250 summary_ms=2000 sampling_equivalence=max(2,width/480,height/270) sampling_requires=same-bars-and-current-safe-bands nested_guard_ms=4000 nested_partial=pause-without-dwell stable_aspect_deadband_percent=3.0 stable_aspect_scope=contained-trusted-picture scheduled_admission=exact-stable-reference-and-live-deadbands global_grid=16x16 near_black_p90_max=96 edge_grid=48x6 extent_grid_max=256x64 extent_support=2x2 black_floor=perimeter-p10-clamped-48-80 black_threshold=min(104,floor+24) retention_black_min=0.95 retention_p90_max=min(104,floor+24) dispersion_max=24 texture_max=8 chroma_neutral_min=0.90 continuity_min=0.99 trace_budget=%u trace_max=2400 trace_scope=candidate-and-presentation evidence=existing-samples capture_missed_semantics=timestamp-gap-estimate", cropTraceRemaining);
 			}
 			const uint64_t cropTick = episodeInput.currentTick;
 			const bool cropApplied = cropDecision.applyCrop || aspectLimitFill.applied;
