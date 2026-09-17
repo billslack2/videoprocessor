@@ -9,6 +9,12 @@
 
 namespace AlphaSourceCrop
 {
+	// Measurement equivalence, not new aspect authority. The caller must supply
+	// a current affirmative bar observation and a current excluded-band scan for
+	// this exact trusted rectangle. Positive outside pixels always veto this.
+	bool IsPixelSafeCropReaffirmation(const ActivePictureBounds& trusted,
+		const ActivePictureBounds& observedTrustedCrop, bool excludedBandsPixelSafe);
+
 	static constexpr uint32_t OUTWARD_PICTURE_CONFIRMATIONS_REQUIRED = 3;
 
 	struct OutwardPictureConfirmationState
@@ -708,9 +714,11 @@ namespace AlphaSourceCrop
 		bool fullRasterAuthorityAvailable = false;
 		bool cadenceRepeat = false;
 		bool currentObservationAvailable = false;
+		ActivePictureClassification currentObservationClassification = ActivePictureClassification::UNAVAILABLE;
 		ActivePictureBounds currentObservation;
 		bool retentionEvaluated = false;
 		bool retentionSafe = false;
+		bool retentionExcludedBandsPixelSafe = false;
 		ActivePictureBounds retentionBounds;
 		uint64_t retentionSourceGeneration = 0;
 		uint64_t retentionSourceSequence = 0;
@@ -804,8 +812,16 @@ namespace AlphaSourceCrop
 		// exposing full raster between old and new bar geometries.
 		bool barCropRefinementPending = false;
 		// A refinement observation which expands left or right can expose live
-		// picture pixels. It must fail open instead of retaining an older crop.
+		// picture pixels. Retaining the old crop is forbidden. A current pixel-
+		// bounded outward expansion can expose them without a full-raster jump.
 		bool barCropRefinementHorizontalConflict = false;
+		// Produced only when every unsafe excluded edge has a bounded current
+		// visible extent. The base and source identity bind the proof to geometry.
+		bool currentVisibleBoundsAvailable = false;
+		ActivePictureBounds currentVisibleBounds;
+		ActivePictureBounds currentVisibleBase;
+		uint64_t currentVisibleSourceGeneration = 0;
+		uint64_t currentVisibleSourceSequence = 0;
 		// A first dense subtitle observation is not yet a stable motion target.
 		// Retain the current trusted base for the bounded three-sample confirmation
 		// instead of flashing to full raster. This may briefly clip the newly seen
@@ -878,6 +894,7 @@ namespace AlphaSourceCrop
 		bool outwardExpanded = false;
 		bool verticallyTranslated = false;
 		int verticalTranslationPixels = 0;
+		bool horizontalExpansionPixelBounded = false;
 		DecisionOwner owner = DecisionOwner::FULL_RASTER;
 		WithdrawalCause withdrawalCause = WithdrawalCause::NONE;
 		std::string reason;
@@ -927,6 +944,8 @@ namespace AlphaSourceCrop
 		bool excludedBandsPixelSafe = false;
 		bool observationAvailable = false;
 		ActivePictureBounds observation;
+		ActivePictureBounds observedTrustedCrop;
+		ActivePictureClassification observationClassification = ActivePictureClassification::UNAVAILABLE;
 		ActivePictureBounds retentionBounds;
 		uint64_t retentionSourceGeneration = 0;
 		uint64_t retentionSourceSequence = 0;
@@ -948,6 +967,7 @@ namespace AlphaSourceCrop
 		bool ended = false;
 		bool released = false;
 		bool proofReset = false;
+		bool samplingReaffirmed = false;
 		uint32_t samples = 0;
 		uint32_t required = 0;
 		uint32_t gates = RECOVERY_OK;

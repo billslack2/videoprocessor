@@ -122,3 +122,51 @@ bright cluster outside the crop. Subpixel/isolated stars can still fall between
 the fixed sampling grids; there is no blanket star-field recognition claim.
 Live renderer overhead, visual quality and physical source playback require the
 tester run; native policy/pixel tests alone cannot certify them.
+
+## Gradual-format follow-up (2026-09-17)
+
+Returned tester case: Apple TV, Women in Blue, S02E06, 10:55–11:30.
+Four repeated crop sequences in `vp - Kopie.log.txt` span 32.16–32.45 seconds,
+consistent with the supplied approximate 35-second passage. Separate recovery
+events last 111.782 and 108.437 seconds; those are not the animation duration.
+
+Sampling-scale differences can reaffirm an unchanged crop only with matching
+bar authority and current safe excluded bands. The equivalence bounds each edge
+and aggregate dimension difference by max(2, width/480, height/270): eight pixels
+at 4K. This does not publish tiny aspect changes, loosen black thresholds, or
+replace the 2% static-geometry deadband. Both general and near-black recovery
+keep source/epoch checks and the existing quarter-second inward proof.
+
+Horizontal conflicts can use an outward Fit only when complete current pixel
+extents belong to the exact trusted base and the resulting envelope contains
+those extents and current detector geometry. Unproved conflicts remain full
+raster. This does not bypass an already active recovery or subtitle translation.
+
+Nearby continuous affirmative nested observations retain their candidate start
+time as coordinates move. The existing four-second guard for a new cropped axis
+remains; ordinary same-axis changes retain their existing confirmation behavior.
+Neither that delay nor the unchanged broad deadband is claimed optimal for
+animated formats before playback. No fine per-frame aspect tracking was added.
+
+Additional schema-1 fields (additive):
+
+- `sampling_reaffirmed`: current bar geometry agrees within sampling tolerance
+  and the retained rectangle's measured bands are safe.
+- `horizontal_bounded`: the candidate accepts a current fully bounded horizontal
+  outward expansion; does not mean a pre-existing recovery was bypassed.
+- `inspection_latched` and quoted `candidate_reason`: identify the owner before
+  recovery arbitration, including why it already requested full raster.
+- `candidate_first`, `candidate_age_frames`, `nested_guard_ms` on active-picture
+  decisions: explain sustained nested proof and its age.
+
+Ordinary changes outside unresolved recovery now use event zero. The helper
+preserves closed-event durations in older logs and includes `fill_rect` in source
+changes. `VP_CROP_TRACE_FRAMES=600` also captures horizontal conflicts whose Fit
+was accepted; it still has one bounded budget and uses existing measurements.
+
+For the 2026-09-18 comparison, replay about 10:45–11:40 twice, note the wall clock
+at 10:55, preserve subtitle/output settings, and retain complete logs. Compare
+full-frame flashing, gradual scale steps, and subtitle motion separately. Also
+exercise normal stable bars, genuine full-height transitions, dark fades and
+multi-AR star fields. The tester report used a 2.133:1 bottom-aligned screen with
+wider-content fill enabled. Visual acceptance and live overhead remain pending.

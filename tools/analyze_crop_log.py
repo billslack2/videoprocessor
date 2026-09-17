@@ -54,6 +54,7 @@ def analyze(lines, start='', end='9999'):
                     counts['applied_changes'] += old[1][0] != state[0]
                     changes.append(dict(line=number, time=timestamp, session=context[0], generation=generation,
                                         sequence=sequence, applied=f['applied'], rect=f.get('rect'),
+                                        fill_applied=f.get('fill_applied'), fill_rect=f.get('fill_rect'),
                                         owner=f.get('owner'), scene=f.get('scene_event'), reason=f.get('reason')))
             previous[kind] = context, state
         elif kind == 'Alpha final layout':
@@ -72,12 +73,20 @@ def analyze(lines, start='', end='9999'):
             diagnostics += 1
             gate_names = f.get('gate_names', 'unavailable')
             gates.update(x for x in gate_names.split(',') if x != 'none')
+            # Older diagnostics reused an ended event id for ordinary changes.
+            # Those records must not overwrite the completed event's duration.
+            phase = f.get('phase')
+            if f.get('event') == '0' or (phase not in ('start', 'end', 'summary') and
+                    f.get('recovery') != '1' and f.get('episode') != 'full-raster'):
+                continue
             key = '/'.join([str(context[0]), generation, f.get('epoch', '?'), f.get('event', '?')])
             event = events.setdefault(key, {'first_record': number, 'first_time': timestamp, 'records': 0})
             event.update(last_record=number, last_time=timestamp, last_phase=f.get('phase'),
                          duration_ms=f.get('duration_ms'), applied_changes=f.get('applied_changes'),
                          evidence_flips=f.get('evidence_flips'), proof_resets=f.get('proof_resets'),
-                         last_gates=gate_names, proof=f.get('proof'), episode_proof=f.get('episode_proof'))
+                         last_gates=gate_names, proof=f.get('proof'), episode_proof=f.get('episode_proof'),
+                         candidate_reason=f.get('candidate_reason'), sampling_reaffirmed=f.get('sampling_reaffirmed'),
+                         inspection_latched=f.get('inspection_latched'), horizontal_bounded=f.get('horizontal_bounded'))
             event['records'] += 1
         elif inside and kind == 'Alpha crop edge trace':
             counts['edge_trace_records'] += 1

@@ -1716,12 +1716,15 @@ namespace AlphaSourceCrop
 					decision.state.presentationEpoch &&
 				SameTrustedCropContract(input.reacquiredTrustedGeometry,
 					decision.state.entryTrustedCrop);
-			const bool exactCurrentObservation =
-				input.currentObservationAvailable &&
-				ContainedBounds(decision.state.entryTrustedCrop,
-					input.currentObservation);
+			const bool samplingReaffirmed = input.currentObservationAvailable &&
+				input.currentObservationClassification == ActivePictureClassification::BAR_CROP_TRUSTED &&
+				IsPixelSafeCropReaffirmation(decision.state.entryTrustedCrop,
+					input.currentObservation, input.retentionExcludedBandsPixelSafe);
+			const bool exactCurrentObservation = input.currentObservationAvailable &&
+				(ContainedBounds(decision.state.entryTrustedCrop, input.currentObservation) || samplingReaffirmed);
+			const bool currentPixelsSafe = input.retentionSafe || samplingReaffirmed;
 			const bool exactCurrentSafety = input.retentionEvaluated &&
-				input.retentionSafe &&
+				currentPixelsSafe &&
 				input.retentionSourceGeneration == input.sourceGeneration &&
 				input.retentionSourceSequence == input.sourceSequence &&
 				SameBounds(input.retentionBounds,
@@ -1737,7 +1740,7 @@ namespace AlphaSourceCrop
 				 input.retentionSourceGeneration == input.sourceGeneration &&
 				 input.retentionSourceSequence == input.sourceSequence &&
 				 SameBounds(input.retentionBounds, decision.state.entryTrustedCrop) &&
-				 exactCurrentObservation && !input.retentionSafe))
+				 exactCurrentObservation && !currentPixelsSafe))
 				decision.revalidationGates |= RECOVERY_UNSAFE_BANDS;
 			if (!input.nearBlackEvaluated || input.globalNearBlack)
 				decision.revalidationGates |= RECOVERY_NEAR_BLACK;
@@ -1956,6 +1959,26 @@ namespace AlphaSourceCrop
 		return names;
 	}
 
+	bool IsPixelSafeCropReaffirmation(const ActivePictureBounds& trusted,
+		const ActivePictureBounds& observed, bool excludedBandsPixelSafe)
+	{
+		const int width = trusted.rasterWidth, height = trusted.rasterHeight;
+		if (!excludedBandsPixelSafe || !ValidBounds(trusted, width, height) ||
+			!ValidBounds(observed, width, height) ||
+			!HasAuthorityForCroppedAxes(trusted, width, height) ||
+			!HasAuthorityForCroppedAxes(observed, width, height) ||
+			trusted.trustedBarAxes != observed.trustedBarAxes) return false;
+		// Same scale as transition-model sampling equivalence, not its much
+		// broader 2% presentation deadband. Limit total size as well as edges.
+		const int tolerance = std::max(2, std::max(width / 480, height / 270));
+		return std::abs(trusted.left - observed.left) <= tolerance &&
+			std::abs(trusted.top - observed.top) <= tolerance &&
+			std::abs(trusted.right - observed.right) <= tolerance &&
+			std::abs(trusted.bottom - observed.bottom) <= tolerance &&
+			std::abs((trusted.right - trusted.left) - (observed.right - observed.left)) <= tolerance &&
+			std::abs((trusted.bottom - trusted.top) - (observed.bottom - observed.top)) <= tolerance;
+	}
+
 	PresentationRecoveryDecision EvaluatePresentationRecovery(
 		const PresentationRecoveryInput& input)
 	{
@@ -2013,8 +2036,18 @@ namespace AlphaSourceCrop
 			input.retentionSourceSequence != crop.frameSourceSequence ||
 			!SameBounds(input.retentionBounds, result.state.trustedCrop))
 			result.gates |= RECOVERY_MEASUREMENT;
+		result.samplingReaffirmed = input.measurementCurrent && input.retentionEvaluated &&
+			input.retentionSourceGeneration == crop.frameSourceGeneration &&
+			input.retentionSourceSequence == crop.frameSourceSequence &&
+			SameBounds(input.retentionBounds, result.state.trustedCrop) &&
+			input.observationAvailable && input.observationClassification ==
+				ActivePictureClassification::BAR_CROP_TRUSTED &&
+			crop.latestObservationClassification == ActivePictureClassification::BAR_CROP_TRUSTED &&
+			ContainedBounds(input.observedTrustedCrop, input.observation) &&
+			IsPixelSafeCropReaffirmation(result.state.trustedCrop,
+				input.observedTrustedCrop, input.excludedBandsPixelSafe);
 		if (!input.observationAvailable ||
-			!ContainedBounds(result.state.trustedCrop, input.observation))
+			(!ContainedBounds(result.state.trustedCrop, input.observation) && !result.samplingReaffirmed))
 			result.gates |= RECOVERY_OBSERVATION;
 		if (input.measurementCurrent && input.retentionEvaluated &&
 			input.retentionSourceGeneration == crop.frameSourceGeneration &&
@@ -2103,7 +2136,22 @@ namespace AlphaSourceCrop
 				: "shared geometry lacks crop authority";
 			return decision;
 		}
-		if (input.barCropRefinementHorizontalConflict)
+		const bool horizontalExpansionPixelBounded = input.barCropRefinementHorizontalConflict &&
+			!input.verticalTranslationActive &&
+			input.latestObservationClassification == ActivePictureClassification::BAR_CROP_TRUSTED &&
+			input.currentVisibleBoundsAvailable && input.frameSourceSequence != 0 &&
+			input.currentVisibleSourceGeneration == input.frameSourceGeneration &&
+			input.currentVisibleSourceSequence == input.frameSourceSequence &&
+			SameTrustedCropContract(input.currentVisibleBase, input.geometry) &&
+			input.outwardPresentationActive && input.outwardExpansionAvailable &&
+			input.outwardExpansionSourceGeneration == input.frameSourceGeneration &&
+			ValidBounds(input.outwardExpansion, input.rasterWidth, input.rasterHeight) &&
+			CropEdgesAreChromaAligned(input.outwardExpansion, input.rasterWidth, input.rasterHeight) &&
+			ContainedBounds(input.currentVisibleBounds, input.geometry) &&
+			ContainedBounds(input.outwardExpansion, input.currentVisibleBounds) &&
+			(input.currentVisibleBounds.left < input.geometry.left ||
+			 input.currentVisibleBounds.right > input.geometry.right);
+		if (input.barCropRefinementHorizontalConflict && !horizontalExpansionPixelBounded)
 		{
 			decision.reason =
 				"horizontal expansion requires full-raster fail-open";
@@ -2310,6 +2358,7 @@ namespace AlphaSourceCrop
 
 		decision.sourceBounds = presentation;
 		decision.applyCrop = true;
+		decision.horizontalExpansionPixelBounded = horizontalExpansionPixelBounded;
 		if (decision.verticallyTranslated)
 		{
 			decision.owner = DecisionOwner::VERTICAL_TRANSLATION;

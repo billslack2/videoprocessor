@@ -186,6 +186,8 @@ private:
 	static bool IsNestedOrthogonalCrop(
 		const ActivePictureBounds& stable,
 		const ActivePictureBounds& candidate);
+	static bool NearbyGeometry(const ActivePictureBounds& left,
+		const ActivePictureBounds& right);
 	void RememberTrustedGeometry(const ActivePictureBounds& bounds,
 		ActivePictureClassification classification);
 	bool FindRecentTrustedGeometry(const ActivePictureObservation& observation,

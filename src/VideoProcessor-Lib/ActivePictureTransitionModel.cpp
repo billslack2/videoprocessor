@@ -229,6 +229,19 @@ bool ActivePictureTransitionModel::IsNestedOrthogonalCrop(
 }
 
 
+bool ActivePictureTransitionModel::NearbyGeometry(
+	const ActivePictureBounds& left, const ActivePictureBounds& right)
+{
+	if (left.rasterWidth != right.rasterWidth || left.rasterHeight != right.rasterHeight ||
+		left.trustedBarAxes != right.trustedBarAxes) return false;
+	// Bound each individual step, not total travel. At 4K this is 32x18 pixels;
+	// a cut or a large reversal must start a new candidate, not inherit a dwell.
+	const int x = std::max(2, left.rasterWidth / 120);
+	const int y = std::max(2, left.rasterHeight / 120);
+	return std::abs(left.left - right.left) <= x && std::abs(left.right - right.right) <= x &&
+		std::abs(left.top - right.top) <= y && std::abs(left.bottom - right.bottom) <= y;
+}
+
 void ActivePictureTransitionModel::RememberTrustedGeometry(
 	const ActivePictureBounds& bounds,
 	ActivePictureClassification classification)
@@ -287,6 +300,7 @@ void ActivePictureTransitionModel::StartCandidate(
 		!SameBounds(m_candidate, observation.bounds) &&
 		m_candidateReversals < 255)
 		++m_candidateReversals;
+	m_candidateUsesKnownTrustedGeometry = false;
 	m_candidate = observation.bounds;
 	m_candidateClassification = observation.classification;
 	m_matchingCandidates = 1;
@@ -372,8 +386,18 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 		}
 		return decision;
 	}
+	const uint64_t previousObservedFrame = m_lastObservedFrame;
+	const bool continuous = observation.frameNumber != 0 && previousObservedFrame != 0 &&
+		observation.frameNumber > previousObservedFrame &&
+		observation.frameNumber - previousObservedFrame <=
+			2 * AnalysisIntervalFrames(observation.framesPerSecond);
 	if (observation.frameNumber != 0)
 		m_lastObservedFrame = observation.frameNumber;
+	const bool currentBars = HasCropAuthority(observation) &&
+		observation.classification == ActivePictureClassification::BAR_CROP_TRUSTED;
+	// A missing analysis interval cannot count as sustained nested evidence.
+	if (!continuous && m_hasStable && m_matchingCandidates != 0 &&
+		IsNestedOrthogonalCrop(m_stable, m_candidate)) ClearCandidate();
 
 	if (!observation.available)
 	{
@@ -401,7 +425,13 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 	ActivePictureBounds recentTrustedBounds;
 	ActivePictureClassification recentTrustedClassification =
 		ActivePictureClassification::UNAVAILABLE;
-	const bool matchesRecentTrusted = FindRecentTrustedGeometry(
+	const bool continuingNested = continuous && currentBars && m_hasStable &&
+		m_matchingCandidates != 0 && !m_candidateUsesKnownTrustedGeometry &&
+		m_candidateClassification == ActivePictureClassification::BAR_CROP_TRUSTED &&
+		IsNestedOrthogonalCrop(m_stable, m_candidate) &&
+		IsNestedOrthogonalCrop(m_stable, observation.bounds) &&
+		NearbyGeometry(m_candidate, observation.bounds);
+	const bool matchesRecentTrusted = !continuingNested && FindRecentTrustedGeometry(
 		observation, recentTrustedBounds, recentTrustedClassification);
 	if (matchesRecentTrusted)
 	{
@@ -601,7 +631,15 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 
 	if (m_contradictoryCandidates < 255)
 		++m_contradictoryCandidates;
-	if (m_matchingCandidates == 0 ||
+	if (continuingNested)
+	{
+		// Coordinates are moving, but the new opposing bars have remained
+		// continuously authoritative. Preserve their first sample and commit
+		// the current rectangle, not the obsolete start of the animation.
+		m_candidate = observation.bounds;
+		if (m_matchingCandidates < 255) ++m_matchingCandidates;
+	}
+	else if (m_matchingCandidates == 0 ||
 		m_candidateClassification != observation.classification ||
 		!SameBounds(m_candidate, observation.bounds))
 	{

@@ -42,6 +42,205 @@ namespace Tests
 	TEST_CLASS(AlphaSourceCropPolicyTests)
 	{
 	public:
+		TEST_METHOD(WomenInBlueCurrentBoundedHorizontalContentUsesFitInsteadOfFullRaster)
+		{
+			Input input = TrustedScopeCrop();
+			input.geometry = { 192, 384, 3648, 1780, 3840, 2160,
+				3456.0 / 1396.0, ActivePictureBounds::BarAxes::BOTH };
+			input.frameSourceSequence = 13857;
+			input.latestObservationClassification = ActivePictureClassification::BAR_CROP_TRUSTED;
+			input.barCropRefinementHorizontalConflict = true;
+			input.outwardPresentationActive = input.outwardExpansionAvailable = true;
+			input.outwardExpansion = input.geometry; input.outwardExpansion.right = 3722;
+			input.outwardExpansionSourceGeneration = 7;
+			// Without a complete current pixel certificate, preserve fail-open.
+			AssertFullRaster(Evaluate(input));
+			input.currentVisibleBoundsAvailable = true;
+			input.currentVisibleBase = input.geometry;
+			input.currentVisibleBounds = input.geometry; input.currentVisibleBounds.right = 3698;
+			input.currentVisibleSourceSequence = 13857; input.currentVisibleSourceGeneration = 7;
+			const auto fit = Evaluate(input);
+			Assert::IsTrue(fit.applyCrop && fit.outwardExpanded && fit.horizontalExpansionPixelBounded);
+			Assert::AreEqual(3722, fit.sourceBounds.right);
+			Assert::AreEqual(384, fit.sourceBounds.top);
+			Assert::AreEqual(int(DecisionOwner::OUTWARD_FIT), int(fit.owner));
+			PresentationRecoveryInput recovery;
+			recovery.crop = input; recovery.candidate = fit;
+			Assert::IsFalse(EvaluatePresentationRecovery(recovery).started);
+			// A previously armed unresolved event still needs its inward proof.
+			recovery.previous.active = true; recovery.previous.sourceGeneration = 7;
+			recovery.previous.trustedCrop = input.geometry;
+			AssertFullRaster(EvaluatePresentationRecovery(recovery).presentation);
+			for (int failure = 0; failure < 11; ++failure)
+			{
+				auto bad = input;
+				switch (failure)
+				{
+				case 0: bad.currentVisibleSourceSequence--; break;
+				case 1: bad.currentVisibleSourceGeneration--; break;
+				case 2: bad.currentVisibleBase.top += 4; break;
+				case 3: bad.currentVisibleBounds.right = 3730; break;
+				case 4: bad.currentVisibleBounds.bottom = 1800; break;
+				case 5: bad.latestObservationClassification = ActivePictureClassification::PROVISIONAL; break;
+				case 6: bad.outwardExpansionSourceGeneration--; break;
+				case 7: bad.outwardExpansion.right = 3721; break;
+				case 8: bad.presentationFailOpen = true; break;
+				case 9: bad.fullRasterPresentationAuthoritative = true; break;
+				case 10: bad.verticalTranslationActive = true; break;
+				}
+				AssertFullRaster(Evaluate(bad));
+			}
+		}
+
+		TEST_METHOD(NearBlackRecoveryUsesTheSameSamplingEquivalenceAndPixelVeto)
+		{
+			for (bool safe : { false, true })
+			{
+				NearBlackPresentationEpisodeInput input;
+				input.previous.mode = NearBlackPresentationMode::FULL_RASTER;
+				input.previous.entryTrustedCropAvailable = true;
+				input.previous.entryTrustedCrop = TrustedScopeCrop().geometry;
+				input.sourceGeneration = input.previous.sourceGeneration = input.retentionSourceGeneration = 7;
+				input.presentationEpoch = input.previous.presentationEpoch = input.reacquiredPresentationEpoch = 2;
+				input.previous.fullRasterStartedSourceSequence = 100;
+				input.reacquiredSourceSequence = 198; input.reacquiredSourceGeneration = 7;
+				input.measurementCurrent = input.nearBlackEvaluated = input.retentionEvaluated = true;
+				input.currentObservationAvailable = input.knownTrustedGeometryReacquired = input.reacquisitionIsCurrentAssociation = true;
+				input.reacquiredTrustedGeometry = input.retentionBounds = input.previous.entryTrustedCrop;
+				input.reacquiredTrustedClassification = input.currentObservationClassification = ActivePictureClassification::BAR_CROP_TRUSTED;
+				ActivePictureEvidence raw;
+				raw.available = true; raw.classification = ActivePictureClassification::BAR_CROP_TRUSTED;
+				raw.trustedBounds = input.previous.entryTrustedCrop; raw.trustedBounds.bottom += 4;
+				const auto constrained = ConstrainNearBlackCropAcquisition(raw, true);
+				Assert::AreEqual(int(ActivePictureClassification::PROVISIONAL), int(constrained.classification));
+				input.currentObservation = constrained.proposedBounds;
+				input.currentObservationClassification = raw.classification;
+				input.retentionExcludedBandsPixelSafe = safe;
+				input.retentionSafe = false; // strict containment is false at the old edge
+				input.framesPerSecond = 24;
+				for (uint64_t seq = 200; seq < 207; ++seq)
+				{
+					input.sourceSequence = input.retentionSourceSequence = seq;
+					const auto d = EvaluateNearBlackPresentationEpisode(input);
+					Assert::AreEqual(safe && seq == 206, d.releasedToTrustedCrop);
+					input.previous = d.state;
+				}
+			}
+		}
+
+		TEST_METHOD(SamplingReaffirmationRequiresSafeBandsAndTheSameBarContract)
+		{
+			const auto trusted = TrustedScopeCrop().geometry;
+			auto observed = trusted;
+			observed.bottom += 4;
+			Assert::IsTrue(IsPixelSafeCropReaffirmation(trusted, observed, true));
+			Assert::IsFalse(IsPixelSafeCropReaffirmation(trusted, observed, false));
+			observed.bottom += 8;
+			Assert::IsFalse(IsPixelSafeCropReaffirmation(trusted, observed, true));
+			observed = trusted; observed.top -= 8; observed.bottom += 8;
+			Assert::IsFalse(IsPixelSafeCropReaffirmation(trusted, observed, true));
+			observed = trusted; observed.trustedBarAxes = ActivePictureBounds::BarAxes::NONE;
+			Assert::IsFalse(IsPixelSafeCropReaffirmation(trusted, observed, true));
+			observed = trusted; observed.rasterWidth = 1920;
+			Assert::IsFalse(IsPixelSafeCropReaffirmation(trusted, observed, true));
+		}
+
+		TEST_METHOD(WomenInBlueSamplingNoiseResolvesInspectionAndRecoveryWithoutNewAspect)
+		{
+			for (double rate : { 23.976, 24.0, 59.94, 60.0 })
+			{
+				PresentationRecoveryInput input;
+				input.crop = TrustedScopeCrop();
+				input.crop.geometry = { 0, 208, 3840, 1948, 3840, 2160,
+					3840.0 / 1740.0, ActivePictureBounds::BarAxes::TOP_BOTTOM };
+				ActivePictureTransitionModel model;
+				for (uint64_t frame = 1; frame <= 4; ++frame)
+					model.Observe({ input.crop.geometry, frame, true,
+						ActivePictureClassification::BAR_CROP_TRUSTED, rate });
+				input.previous.active = true;
+				input.previous.sourceGeneration = input.retentionSourceGeneration = 7;
+				input.previous.trustedCrop = input.retentionBounds = input.crop.geometry;
+				input.previous.lastSourceSequence = 4;
+				input.measurementCurrent = input.retentionEvaluated = input.nearBlackEvaluated = true;
+				input.excludedBandsPixelSafe = input.observationAvailable = true;
+				input.framesPerSecond = rate;
+				input.observation = input.observedTrustedCrop = input.crop.geometry;
+				input.observation.bottom = input.observedTrustedCrop.bottom = 1952;
+				input.observation.trustedBarAxes = ActivePictureBounds::BarAxes::NONE;
+				input.observationClassification = input.crop.latestObservationClassification =
+					ActivePictureClassification::BAR_CROP_TRUSTED;
+				VerticalInspectionBridgeInput bridge;
+				bridge.previous.active = bridge.previous.failOpenLatched = true;
+				bridge.sourceGeneration = bridge.previous.sourceGeneration = 7;
+				bridge.trustedBase = bridge.previous.trustedBase = input.crop.geometry;
+				const unsigned required = rate < 30 ? 7 : 16;
+				for (unsigned n = 1; n <= required; ++n)
+				{
+					input.crop.frameSourceSequence = input.retentionSourceSequence = bridge.sourceSequence = n + 4;
+					const auto transition = model.Observe({ input.observedTrustedCrop, n + 4, true,
+						ActivePictureClassification::BAR_CROP_TRUSTED, rate });
+					Assert::IsFalse(transition.publish);
+					Assert::AreEqual(1948, transition.stableBounds.bottom);
+					input.crop.latestObservationSupportsCrop = IsPixelSafeCropReaffirmation(
+						input.crop.geometry, input.observedTrustedCrop, input.excludedBandsPixelSafe);
+					bridge.cropAuthorityResolved = input.crop.latestObservationSupportsCrop;
+					const auto inspection = UpdateVerticalInspectionBridge(bridge);
+					bridge.previous = inspection.state;
+					input.crop.presentationFailOpen = inspection.state.failOpenLatched;
+					input.candidate = Evaluate(input.crop);
+					const auto d = EvaluatePresentationRecovery(input);
+					Assert::IsTrue(d.samplingReaffirmed);
+					Assert::AreEqual(n, d.samples);
+					Assert::AreEqual(n == required, d.presentation.applyCrop);
+					if (d.presentation.applyCrop)
+					{
+						Assert::AreEqual(1948, d.presentation.sourceBounds.bottom);
+						Assert::AreEqual(input.crop.geometry.aspectRatio, d.presentation.sourceBounds.aspectRatio);
+					}
+					input.previous = d.state;
+				}
+			}
+		}
+
+		TEST_METHOD(SamplingNoiseCannotBypassUnsafeStaleProvisionalOrFailOpenRecovery)
+		{
+			PresentationRecoveryInput good;
+			good.crop = TrustedScopeCrop();
+			good.crop.frameSourceSequence = good.retentionSourceSequence = 50;
+			good.previous.active = true;
+			good.previous.sourceGeneration = good.retentionSourceGeneration = 7;
+			good.previous.trustedCrop = good.retentionBounds = good.crop.geometry;
+			good.previous.lastSourceSequence = 49; good.previous.samples = 6;
+			good.framesPerSecond = 24;
+			good.measurementCurrent = good.retentionEvaluated = good.excludedBandsPixelSafe = true;
+			good.observationAvailable = good.nearBlackEvaluated = true;
+			good.observation = good.observedTrustedCrop = good.crop.geometry;
+			good.observation.bottom += 4; good.observedTrustedCrop.bottom += 4;
+			good.observationClassification = good.crop.latestObservationClassification =
+				ActivePictureClassification::BAR_CROP_TRUSTED;
+			for (int failure = 0; failure < 9; ++failure)
+			{
+				auto input = good;
+				switch (failure)
+				{
+				case 0: input.excludedBandsPixelSafe = false; break;
+				case 1: input.retentionSourceSequence = 49; break;
+				case 2: input.retentionSourceGeneration = 6; break;
+				case 3: input.observationClassification = ActivePictureClassification::PROVISIONAL; break;
+				case 4: input.globalNearBlack = true; break;
+				case 5: input.crop.presentationFailOpen = true; break;
+				case 6: input.observation.bottom += 8; input.observedTrustedCrop.bottom += 8; break;
+				case 7: input.crop.latestObservationClassification = ActivePictureClassification::PROVISIONAL; break;
+				case 8: input.crop.barCropRefinementHorizontalConflict = true; break;
+				}
+				input.candidate = Evaluate(input.crop);
+				const auto d = EvaluatePresentationRecovery(input);
+				AssertFullRaster(d.presentation);
+				Assert::IsFalse(d.released);
+				Assert::AreEqual(0u, d.samples);
+			}
+		}
+
 		TEST_METHOD(ReceivedLateBurstCannotReenterThroughUnsafeTrustedRefinementOrNearBlack)
 		{
 			PresentationRecoveryInput input;

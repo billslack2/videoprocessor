@@ -73,6 +73,104 @@ namespace VideoProcessorTest
 	TEST_CLASS(ActivePictureTransitionModelTests)
 	{
 	public:
+		TEST_METHOD(WomenInBlueFourPixelNoiseDoesNotPublishAnAspectChange)
+		{
+			ActivePictureTransitionModel model;
+			ActivePictureBounds old = { 0, 208, 3840, 1948, 3840, 2160,
+				3840.0 / 1740.0, ActivePictureBounds::BarAxes::TOP_BOTTOM };
+			uint64_t frame = Establish(model, old);
+			auto observed = old;
+			observed.bottom = 1952;
+			observed.aspectRatio = 3840.0 / 1744.0;
+			for (int n = 0; n < 1440; ++n)
+			{
+				const auto d = Observe(model, observed, frame++);
+				Assert::IsFalse(d.publish);
+				Assert::AreEqual(old.bottom, d.stableBounds.bottom);
+				Assert::AreEqual(old.aspectRatio, d.stableBounds.aspectRatio);
+			}
+		}
+
+		TEST_METHOD(WomenInBlueMovingNestedCropKeepsSustainedProof)
+		{
+			for (double rate : { 23.976, 24.0, 59.94, 60.0 })
+			{
+				ActivePictureTransitionModel model;
+				uint64_t frame = Establish(model, ScopeBounds());
+				const auto first = frame;
+				const auto interval = ActivePictureTransitionModel::AnalysisIntervalFrames(rate);
+				bool published = false;
+				for (; frame - first <= uint64_t(std::ceil(rate * 4.2)); frame += interval)
+				{
+					const int move = 2 * int((frame - first) * 20.0 / rate);
+					auto bounds = ScopeBounds();
+					bounds.left = 80 + move; bounds.right = 3760 - move;
+					bounds.top += move / 2; bounds.bottom -= move / 2;
+					bounds.trustedBarAxes = ActivePictureBounds::BarAxes::BOTH;
+					bounds.aspectRatio = double(bounds.right - bounds.left) / (bounds.bottom - bounds.top);
+					const auto decision = Observe(model, bounds, frame,
+						ActivePictureClassification::BAR_CROP_TRUSTED, rate);
+					if (!decision.publish) continue;
+					Assert::IsTrue(frame - first >= uint64_t(std::ceil(rate * 4.0)));
+					Assert::AreEqual(bounds.left, decision.bounds.left);
+					Assert::AreEqual(bounds.bottom, decision.bounds.bottom);
+					published = true;
+					break;
+				}
+				Assert::IsTrue(published);
+			}
+		}
+
+		TEST_METHOD(NestedProofCannotCrossMissingEvidenceOrSceneReset)
+		{
+			for (int interruption = 0; interruption < 3; ++interruption)
+			{
+				ActivePictureTransitionModel model;
+				uint64_t frame = Establish(model, ScopeBounds());
+				for (int n = 0; n < 72; ++n)
+					Assert::IsFalse(Observe(model, LoggedWindowboxBounds(), frame++,
+						ActivePictureClassification::BAR_CROP_TRUSTED, 24).publish);
+				if (interruption == 0) frame += 24;
+				if (interruption == 1) model.ResetCandidateEvidence();
+				if (interruption == 2) model.Observe({ {}, frame++, false });
+				for (int n = 0; n < 72; ++n)
+					Assert::IsFalse(Observe(model, LoggedWindowboxBounds(), frame++,
+						ActivePictureClassification::BAR_CROP_TRUSTED, 24).publish);
+			}
+		}
+
+		TEST_METHOD(ConfirmedWindowboxStillRejectsSmallAlternatingEdgeNoise)
+		{
+			ActivePictureTransitionModel model;
+			uint64_t frame = Establish(model, ScopeBounds());
+			for (int n = 0; n < 100; ++n)
+				Observe(model, LoggedWindowboxBounds(), frame++,
+					ActivePictureClassification::BAR_CROP_TRUSTED, 24);
+			for (int n = 0; n < 240; ++n)
+			{
+				auto noisy = LoggedWindowboxBounds();
+				noisy.top += n % 2 ? 12 : -12;
+				noisy.bottom += n % 2 ? -12 : 12;
+				noisy.aspectRatio = double(noisy.right - noisy.left) / (noisy.bottom - noisy.top);
+				Assert::IsFalse(Observe(model, noisy, frame++,
+					ActivePictureClassification::BAR_CROP_TRUSTED, 24).publish);
+			}
+		}
+
+		TEST_METHOD(NovelCandidateCannotInheritRecentGeometryAuthority)
+		{
+			ActivePictureTransitionModel model;
+			uint64_t frame = Establish(model, ScopeBounds());
+			Observe(model, ImaxBounds(), frame++);
+			Assert::IsTrue(Observe(model, ImaxBounds(), frame++).publish);
+			Assert::IsFalse(Observe(model, ScopeBounds(), frame++,
+				ActivePictureClassification::PROVISIONAL).publish);
+			Assert::IsFalse(Observe(model, FourByThreeBounds(), frame++).publish);
+			const auto d = Observe(model, FourByThreeBounds(), frame++);
+			Assert::IsTrue(d.publish);
+			Assert::IsFalse(d.knownTrustedGeometryReacquired);
+		}
+
 		TEST_METHOD(LookaheadPublicationBecomesTheLiveStableGeometry)
 		{
 			ActivePictureTransitionModel model;

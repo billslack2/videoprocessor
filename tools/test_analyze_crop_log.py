@@ -34,4 +34,20 @@ class CropLogTests(unittest.TestCase):
                         '2026-09-16 00:30:21 | Alpha final layout: sequence=2 generation=1 presentation=0,40-3840,2116 picture=10,0-3830,2160 mapping=linear'])
         self.assertEqual(1,result['counts']['layout_changes'])
 
+    def test_ordinary_changes_do_not_overwrite_closed_recovery(self):
+        base = '2026-09-17 05:40:36 | Alpha crop recovery: generation=2 epoch=0 '
+        result = analyze([base + 'event=4 sequence=4112 phase=end duration_ms=111782 proof=7/7',
+                          base + 'event=4 sequence=4113 phase=change recovery=0 episode=inactive duration_ms=0',
+                          base + 'event=0 sequence=4114 phase=change recovery=0 episode=inactive duration_ms=0'])
+        self.assertEqual(1, len(result['events']))
+        self.assertEqual('111782', result['events']['0/2/0/4']['duration_ms'])
+        self.assertEqual('end', result['events']['0/2/0/4']['last_phase'])
+
+    def test_applied_fill_rectangle_is_reported(self):
+        result = analyze([crop('00:30:19', 1, 'applied=1 rect=a fill_applied=1 fill_rect=b'),
+                          crop('00:30:20', 2, 'applied=1 rect=a fill_applied=1 fill_rect=c')])
+        self.assertEqual(1, result['counts']['source_geometry_changes'])
+        self.assertEqual('c', result['source_changes'][0]['fill_rect'])
+        self.assertEqual(0, result['counts']['applied_changes'])
+
 if __name__=='__main__': unittest.main()
