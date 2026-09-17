@@ -2,7 +2,7 @@
 
 ## Status
 
-In Progress
+Review
 
 Created 2026-09-16 at the user's request after source review and standalone
 policy experiments. Implementation started from the explicitly requested latest local tip. Additional crop diagnostics
@@ -400,3 +400,76 @@ Preserve the existing four-second guard against brief nested dark content,
 but stop restarting its proof for continuous authoritative geometry motion.
 Review recovery/inspection composition, reset behavior, and logging accuracy.
 No new deployment or physical acceptance is implied by this work.
+
+## Follow-up reviewed candidate (2026-09-17)
+
+Published [884029b1](https://github.com/billslack2/videoprocessor/commit/884029b15e87fb2ad3077299f1843f61b5c88a21)
+on `codex/vp-0189-crop-stability`, directly following 911e2b7f on the
+user-selected 3acd02b3 lineage. No integration merge or new deployment.
+
+[Detailed review and comparison plan](../assets/VP-0189/women-in-blue-review.md)
+records source conflicts, upstream primary-source comparisons, and uncertainty.
+[Extracted evidence](../assets/VP-0189/women-in-blue-evidence.json) preserves
+original line numbers; [extraction script](../assets/VP-0189/review_women_log.py)
+reproduces the timing and diagnostic selections from the raw supplied file.
+
+Four repeated sequences last 32.157–32.449 seconds, consistent with the supplied
+S02E06 10:55–11:30 passage. The 05:29 and 05:34 passes reproduce identical
+geometry changes at identical source-frame offsets, with 6,422 / 4,547 ms
+full-raster holds. Separate 111,782 / 108,437 ms recovery events are not the
+duration of the animation. Exact playback-time/log-clock alignment remains for
+the planned 2026-09-18 viewing.
+
+Implemented corrections:
+
+- Safe sampling-scale differences reaffirm the unchanged logical crop across
+  inspection and both recovery paths. Four pixels do not publish a new aspect.
+  Require the same bar axes and current safety for the exact saved rectangle;
+  preserve source/epoch/full-raster gates and quarter-second inward proof.
+- A horizontal conflict can use an outward Fit only with complete current
+  bounded pixel extents, matching source/base, and an envelope that includes
+  those extents and the detector geometry. No stale/partial/translation proof
+  or existing recovery can use this to bypass its visibility/ownership rules.
+- Nearby continuous affirmative nested observations keep their first proof
+  sequence while coordinates move; gaps, missing evidence and scene resets
+  cannot bridge the guard. Starting a novel candidate clears stale remembered-
+  geometry provenance.
+- Added owner reasons, inspection latch, safe sampling equivalence, accepted
+  horizontal proof and nested proof age to diagnostics. Fixed closed-event
+  duration aggregation and expose actual fill rectangles in the helper.
+
+Our existing 2% geometry deadband and four-second newly nested-axis guard are
+unchanged. Four seconds is our design choice, not a standard or an externally
+imposed constraint. A finer tracking experiment was removed because it could
+chase alternating detector noise. Preserve normal stable behavior and assess
+remaining animated scale steps and guard timing during playback.
+
+Validation:
+
+- The moving-nested-confirmation regression failed on the original 911e2b7f
+  policy. The corrected native suite includes steady four-pixel/no-new-aspect,
+  composed inspection/recovery, raw-versus-constrained near-black evidence,
+  unsafe/stale/provisional rejection, bounded horizontal Fit, missing evidence,
+  static edge noise, and candidate provenance cases.
+- A clean x64 Release rebuild passed all 1,181 then-present native tests. The
+  final exact-commit x64 Release build passed **1,182/1,182** native tests.
+  Python helper **7/7** passed. Existing pixel/star, subtitle, NLS, generation,
+  full-height and crop-policy regressions remain included.
+- An intermediate incremental link failed with MSVC LNK1103 corrupt debugging
+  information in ConfigFileTests.obj; the clean rebuild resolved it. The clean
+  build reports existing config-header shadowing warnings, not new crop errors.
+- Release manifest verified 59 immutable files; packaged host/renderer hashes
+  match the exact build and zip CRC verification passed. No active configuration
+  was changed. [Build identity](../assets/VP-0189/women-candidate-build-info.json)
+  and [archive details](../assets/VP-0189/women-candidate-package-info.json).
+
+Tester archive:
+`C:\Users\bslac\Documents\ChatGPT\Done\VP-0189-884029b1-x64-Release-tester.zip`
+(29,836,987 bytes), SHA-256
+`a923b3c3d9fd8dbc9e69f0cad8fb1784a95b6b950911d6a60db7b1cf4cc3071e`.
+Build/test evidence: `E:\codex\videoprocessor\vp-0189-crop-stability\artifacts\women-in-blue`.
+
+Review remains open for physical playback, remaining gradual scale behavior,
+the appropriate nested guard, and live diagnostic overhead. Current deployment
+remains 911e2b7f. No tester message has been sent. The candidate does not claim
+perfectly smooth playback, resolution of every long hold, or star recognition.

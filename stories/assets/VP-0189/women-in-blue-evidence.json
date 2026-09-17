@@ -1,0 +1,1583 @@
+{
+  "file": "vp - Kopie.log.txt",
+  "sha256": "cbf0464de54721d8aa2d39ac9dd1f5603479d2d875e4cf376ccb01e527da0cf2",
+  "supplied_passage": "Women in Blue S02E06 10:55\u201311:30",
+  "windows": [
+    {
+      "start": "05:27:38",
+      "end": "05:28:10",
+      "source_frames": 778,
+      "source_seconds": 32.449083333333334,
+      "records": [
+        {
+          "line": 3936,
+          "time": "2026-09-17 05:27:38",
+          "sequence": "3856",
+          "applied": "1",
+          "rect": "0,232-3840,1928",
+          "fill_rect": "112,232-3728,1928",
+          "owner": "bar-refinement"
+        },
+        {
+          "line": 3949,
+          "time": "2026-09-17 05:27:38",
+          "sequence": "3862",
+          "applied": "1",
+          "rect": "0,232-3840,1928",
+          "fill_rect": "112,232-3728,1928",
+          "owner": "trusted"
+        },
+        {
+          "line": 3987,
+          "time": "2026-09-17 05:27:49",
+          "sequence": "4127",
+          "applied": "1",
+          "rect": "188,364-3652,1796",
+          "fill_rect": "392,364-3446,1796",
+          "owner": "trusted"
+        },
+        {
+          "line": 4050,
+          "time": "2026-09-17 05:27:56",
+          "sequence": "4300",
+          "applied": "1",
+          "rect": "192,388-3648,1772",
+          "fill_rect": "444,388-3396,1772",
+          "owner": "bar-refinement"
+        },
+        {
+          "line": 4055,
+          "time": "2026-09-17 05:27:56",
+          "sequence": "4301",
+          "applied": "0",
+          "rect": "0,0-3840,2160",
+          "fill_rect": "0,0-3840,2160",
+          "owner": "full-raster"
+        },
+        {
+          "line": 4127,
+          "time": "2026-09-17 05:28:00",
+          "sequence": "4390",
+          "applied": "1",
+          "rect": "192,412-3652,1748",
+          "fill_rect": "498,412-3346,1748",
+          "owner": "trusted"
+        },
+        {
+          "line": 4191,
+          "time": "2026-09-17 05:28:03",
+          "sequence": "4458",
+          "applied": "1",
+          "rect": "192,436-3652,1724",
+          "fill_rect": "548,436-3294,1724",
+          "owner": "trusted"
+        },
+        {
+          "line": 4245,
+          "time": "2026-09-17 05:28:06",
+          "sequence": "4525",
+          "applied": "0",
+          "rect": "0,0-3840,2160",
+          "fill_rect": "0,0-3840,2160",
+          "owner": "full-raster"
+        },
+        {
+          "line": 4358,
+          "time": "2026-09-17 05:28:10",
+          "sequence": "4634",
+          "applied": "1",
+          "rect": "0,208-3840,1952",
+          "fill_rect": "60,208-3778,1952",
+          "owner": "trusted"
+        }
+      ]
+    },
+    {
+      "start": "05:29:03",
+      "end": "05:29:35",
+      "source_frames": 771,
+      "source_seconds": 32.157125,
+      "records": [
+        {
+          "line": 4485,
+          "time": "2026-09-17 05:29:03",
+          "sequence": "5897",
+          "applied": "1",
+          "rect": "0,232-3840,1928",
+          "fill_rect": "112,232-3728,1928",
+          "owner": "trusted"
+        },
+        {
+          "line": 4526,
+          "time": "2026-09-17 05:29:13",
+          "sequence": "6134",
+          "applied": "1",
+          "rect": "180,360-3656,1800",
+          "fill_rect": "382,360-3452,1800",
+          "owner": "trusted"
+        },
+        {
+          "line": 4635,
+          "time": "2026-09-17 05:29:21",
+          "sequence": "6319",
+          "applied": "1",
+          "rect": "192,384-3648,1780",
+          "fill_rect": "432,384-3408,1780",
+          "owner": "trusted"
+        },
+        {
+          "line": 4640,
+          "time": "2026-09-17 05:29:21",
+          "sequence": "6320",
+          "applied": "0",
+          "rect": "0,0-3840,2160",
+          "fill_rect": "0,0-3840,2160",
+          "owner": "full-raster"
+        },
+        {
+          "line": 4760,
+          "time": "2026-09-17 05:29:27",
+          "sequence": "6474",
+          "applied": "1",
+          "rect": "192,428-3652,1736",
+          "fill_rect": "528,428-3316,1736",
+          "owner": "trusted"
+        },
+        {
+          "line": 4807,
+          "time": "2026-09-17 05:29:29",
+          "sequence": "6529",
+          "applied": "1",
+          "rect": "192,448-3652,1712",
+          "fill_rect": "574,448-3270,1712",
+          "owner": "trusted"
+        },
+        {
+          "line": 4821,
+          "time": "2026-09-17 05:29:31",
+          "sequence": "6559",
+          "applied": "0",
+          "rect": "0,0-3840,2160",
+          "fill_rect": "0,0-3840,2160",
+          "owner": "full-raster"
+        },
+        {
+          "line": 4946,
+          "time": "2026-09-17 05:29:35",
+          "sequence": "6668",
+          "applied": "1",
+          "rect": "0,208-3840,1952",
+          "fill_rect": "60,208-3778,1952",
+          "owner": "trusted"
+        }
+      ]
+    },
+    {
+      "start": "05:34:17",
+      "end": "05:34:49",
+      "source_frames": 771,
+      "source_seconds": 32.157125,
+      "records": [
+        {
+          "line": 5329,
+          "time": "2026-09-17 05:34:17",
+          "sequence": "13434",
+          "applied": "1",
+          "rect": "0,232-3840,1928",
+          "fill_rect": "112,232-3728,1928",
+          "owner": "trusted"
+        },
+        {
+          "line": 5369,
+          "time": "2026-09-17 05:34:27",
+          "sequence": "13671",
+          "applied": "1",
+          "rect": "180,360-3656,1800",
+          "fill_rect": "382,360-3452,1800",
+          "owner": "trusted"
+        },
+        {
+          "line": 5482,
+          "time": "2026-09-17 05:34:35",
+          "sequence": "13856",
+          "applied": "1",
+          "rect": "192,384-3648,1780",
+          "fill_rect": "432,384-3408,1780",
+          "owner": "trusted"
+        },
+        {
+          "line": 5487,
+          "time": "2026-09-17 05:34:35",
+          "sequence": "13857",
+          "applied": "0",
+          "rect": "0,0-3840,2160",
+          "fill_rect": "0,0-3840,2160",
+          "owner": "full-raster"
+        },
+        {
+          "line": 5606,
+          "time": "2026-09-17 05:34:41",
+          "sequence": "14011",
+          "applied": "1",
+          "rect": "192,428-3652,1736",
+          "fill_rect": "528,428-3316,1736",
+          "owner": "trusted"
+        },
+        {
+          "line": 5654,
+          "time": "2026-09-17 05:34:44",
+          "sequence": "14066",
+          "applied": "1",
+          "rect": "192,448-3652,1712",
+          "fill_rect": "574,448-3270,1712",
+          "owner": "trusted"
+        },
+        {
+          "line": 5668,
+          "time": "2026-09-17 05:34:45",
+          "sequence": "14096",
+          "applied": "0",
+          "rect": "0,0-3840,2160",
+          "fill_rect": "0,0-3840,2160",
+          "owner": "full-raster"
+        },
+        {
+          "line": 5791,
+          "time": "2026-09-17 05:34:49",
+          "sequence": "14205",
+          "applied": "1",
+          "rect": "0,208-3840,1952",
+          "fill_rect": "60,208-3778,1952",
+          "owner": "trusted"
+        }
+      ]
+    },
+    {
+      "start": "05:43:15",
+      "end": "05:43:47",
+      "source_frames": 771,
+      "source_seconds": 32.157125,
+      "records": [
+        {
+          "line": 7872,
+          "time": "2026-09-17 05:43:15",
+          "sequence": "7915",
+          "applied": "1",
+          "rect": "0,232-3840,1928",
+          "fill_rect": "112,232-3728,1928",
+          "owner": "trusted"
+        },
+        {
+          "line": 7913,
+          "time": "2026-09-17 05:43:24",
+          "sequence": "8139",
+          "applied": "1",
+          "rect": "184,364-3652,1796",
+          "fill_rect": "390,364-3444,1796",
+          "owner": "trusted"
+        },
+        {
+          "line": 7981,
+          "time": "2026-09-17 05:43:33",
+          "sequence": "8352",
+          "applied": "1",
+          "rect": "192,388-3648,1772",
+          "fill_rect": "444,388-3396,1772",
+          "owner": "bar-refinement"
+        },
+        {
+          "line": 7986,
+          "time": "2026-09-17 05:43:33",
+          "sequence": "8353",
+          "applied": "0",
+          "rect": "0,0-3840,2160",
+          "fill_rect": "0,0-3840,2160",
+          "owner": "full-raster"
+        },
+        {
+          "line": 8060,
+          "time": "2026-09-17 05:43:37",
+          "sequence": "8442",
+          "applied": "1",
+          "rect": "192,412-3652,1748",
+          "fill_rect": "498,412-3346,1748",
+          "owner": "trusted"
+        },
+        {
+          "line": 8116,
+          "time": "2026-09-17 05:43:40",
+          "sequence": "8510",
+          "applied": "1",
+          "rect": "192,436-3652,1724",
+          "fill_rect": "548,436-3294,1724",
+          "owner": "trusted"
+        },
+        {
+          "line": 8171,
+          "time": "2026-09-17 05:43:43",
+          "sequence": "8577",
+          "applied": "0",
+          "rect": "0,0-3840,2160",
+          "fill_rect": "0,0-3840,2160",
+          "owner": "full-raster"
+        },
+        {
+          "line": 8287,
+          "time": "2026-09-17 05:43:47",
+          "sequence": "8686",
+          "applied": "1",
+          "rect": "0,208-3840,1952",
+          "fill_rect": "60,208-3778,1952",
+          "owner": "trusted"
+        }
+      ]
+    }
+  ],
+  "recovery_ends": [
+    {
+      "line": 416,
+      "time": "2026-09-17 05:17:18",
+      "generation": "1",
+      "event": "1",
+      "sequence": "48",
+      "duration_ms": "922",
+      "proof": "0/14",
+      "candidate_owner": "full-raster",
+      "gates": "0"
+    },
+    {
+      "line": 1037,
+      "time": "2026-09-17 05:18:40",
+      "generation": "2",
+      "event": "2",
+      "sequence": "152",
+      "duration_ms": "1297",
+      "proof": "0/7",
+      "candidate_owner": "full-raster",
+      "gates": "0"
+    },
+    {
+      "line": 1073,
+      "time": "2026-09-17 05:18:47",
+      "generation": "2",
+      "event": "3",
+      "sequence": "319",
+      "duration_ms": "6047",
+      "proof": "7/7",
+      "candidate_owner": "trusted",
+      "gates": "0"
+    },
+    {
+      "line": 1868,
+      "time": "2026-09-17 05:19:44",
+      "generation": "1",
+      "event": "2",
+      "sequence": "27",
+      "duration_ms": "547",
+      "proof": "0/7",
+      "candidate_owner": "full-raster",
+      "gates": "0"
+    },
+    {
+      "line": 2377,
+      "time": "2026-09-17 05:22:05",
+      "generation": "2",
+      "event": "3",
+      "sequence": "3417",
+      "duration_ms": "10375",
+      "proof": "0/7",
+      "candidate_owner": "pixel-safe",
+      "gates": "0"
+    },
+    {
+      "line": 3798,
+      "time": "2026-09-17 05:27:18",
+      "generation": "2",
+      "event": "1",
+      "sequence": "3380",
+      "duration_ms": "4297",
+      "proof": "7/7",
+      "candidate_owner": "fit",
+      "gates": "0"
+    },
+    {
+      "line": 3833,
+      "time": "2026-09-17 05:27:19",
+      "generation": "2",
+      "event": "2",
+      "sequence": "3403",
+      "duration_ms": "375",
+      "proof": "7/7",
+      "candidate_owner": "trusted",
+      "gates": "0"
+    },
+    {
+      "line": 4126,
+      "time": "2026-09-17 05:28:00",
+      "generation": "2",
+      "event": "3",
+      "sequence": "4390",
+      "duration_ms": "3719",
+      "proof": "7/7",
+      "candidate_owner": "trusted",
+      "gates": "0"
+    },
+    {
+      "line": 4357,
+      "time": "2026-09-17 05:28:10",
+      "generation": "2",
+      "event": "4",
+      "sequence": "4634",
+      "duration_ms": "4546",
+      "proof": "7/7",
+      "candidate_owner": "trusted",
+      "gates": "0"
+    },
+    {
+      "line": 4410,
+      "time": "2026-09-17 05:28:24",
+      "generation": "2",
+      "event": "5",
+      "sequence": "4957",
+      "duration_ms": "2219",
+      "proof": "7/7",
+      "candidate_owner": "trusted",
+      "gates": "0"
+    },
+    {
+      "line": 4759,
+      "time": "2026-09-17 05:29:27",
+      "generation": "2",
+      "event": "6",
+      "sequence": "6474",
+      "duration_ms": "6422",
+      "proof": "7/7",
+      "candidate_owner": "trusted",
+      "gates": "0"
+    },
+    {
+      "line": 4945,
+      "time": "2026-09-17 05:29:35",
+      "generation": "2",
+      "event": "7",
+      "sequence": "6668",
+      "duration_ms": "4547",
+      "proof": "7/7",
+      "candidate_owner": "trusted",
+      "gates": "0"
+    },
+    {
+      "line": 5605,
+      "time": "2026-09-17 05:34:41",
+      "generation": "2",
+      "event": "8",
+      "sequence": "14011",
+      "duration_ms": "6422",
+      "proof": "7/7",
+      "candidate_owner": "trusted",
+      "gates": "0"
+    },
+    {
+      "line": 5790,
+      "time": "2026-09-17 05:34:49",
+      "generation": "2",
+      "event": "9",
+      "sequence": "14205",
+      "duration_ms": "4547",
+      "proof": "7/7",
+      "candidate_owner": "trusted",
+      "gates": "0"
+    },
+    {
+      "line": 5924,
+      "time": "2026-09-17 05:35:21",
+      "generation": "2",
+      "event": "10",
+      "sequence": "14963",
+      "duration_ms": "2968",
+      "proof": "7/7",
+      "candidate_owner": "trusted",
+      "gates": "0"
+    },
+    {
+      "line": 7140,
+      "time": "2026-09-17 05:38:20",
+      "generation": "2",
+      "event": "1",
+      "sequence": "845",
+      "duration_ms": "281",
+      "proof": "7/7",
+      "candidate_owner": "trusted",
+      "gates": "0"
+    },
+    {
+      "line": 7179,
+      "time": "2026-09-17 05:38:31",
+      "generation": "2",
+      "event": "2",
+      "sequence": "1101",
+      "duration_ms": "8469",
+      "proof": "7/7",
+      "candidate_owner": "fit",
+      "gates": "0"
+    },
+    {
+      "line": 7224,
+      "time": "2026-09-17 05:38:37",
+      "generation": "2",
+      "event": "3",
+      "sequence": "1242",
+      "duration_ms": "3547",
+      "proof": "7/7",
+      "candidate_owner": "trusted",
+      "gates": "0"
+    },
+    {
+      "line": 7494,
+      "time": "2026-09-17 05:40:36",
+      "generation": "2",
+      "event": "4",
+      "sequence": "4112",
+      "duration_ms": "111782",
+      "proof": "7/7",
+      "candidate_owner": "trusted",
+      "gates": "0"
+    },
+    {
+      "line": 7745,
+      "time": "2026-09-17 05:42:27",
+      "generation": "2",
+      "event": "5",
+      "sequence": "6767",
+      "duration_ms": "108437",
+      "proof": "0/7",
+      "candidate_owner": "translation",
+      "gates": "0"
+    },
+    {
+      "line": 7793,
+      "time": "2026-09-17 05:42:37",
+      "generation": "2",
+      "event": "6",
+      "sequence": "7014",
+      "duration_ms": "7250",
+      "proof": "0/7",
+      "candidate_owner": "fit",
+      "gates": "0"
+    },
+    {
+      "line": 8059,
+      "time": "2026-09-17 05:43:37",
+      "generation": "2",
+      "event": "7",
+      "sequence": "8442",
+      "duration_ms": "3718",
+      "proof": "7/7",
+      "candidate_owner": "trusted",
+      "gates": "0"
+    },
+    {
+      "line": 8286,
+      "time": "2026-09-17 05:43:47",
+      "generation": "2",
+      "event": "8",
+      "sequence": "8686",
+      "duration_ms": "4547",
+      "proof": "7/7",
+      "candidate_owner": "trusted",
+      "gates": "0"
+    }
+  ],
+  "safe_four_pixel_summaries": [
+    {
+      "line": 7296,
+      "time": "2026-09-17 05:38:53",
+      "sequence": "1624",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7298,
+      "time": "2026-09-17 05:38:55",
+      "sequence": "1672",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7306,
+      "time": "2026-09-17 05:38:57",
+      "sequence": "1720",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7307,
+      "time": "2026-09-17 05:38:59",
+      "sequence": "1768",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7313,
+      "time": "2026-09-17 05:39:01",
+      "sequence": "1816",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7314,
+      "time": "2026-09-17 05:39:03",
+      "sequence": "1864",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7315,
+      "time": "2026-09-17 05:39:05",
+      "sequence": "1912",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7323,
+      "time": "2026-09-17 05:39:07",
+      "sequence": "1960",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7324,
+      "time": "2026-09-17 05:39:09",
+      "sequence": "2008",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7330,
+      "time": "2026-09-17 05:39:11",
+      "sequence": "2056",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7331,
+      "time": "2026-09-17 05:39:13",
+      "sequence": "2104",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7332,
+      "time": "2026-09-17 05:39:15",
+      "sequence": "2152",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7340,
+      "time": "2026-09-17 05:39:17",
+      "sequence": "2200",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7341,
+      "time": "2026-09-17 05:39:19",
+      "sequence": "2248",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7347,
+      "time": "2026-09-17 05:39:21",
+      "sequence": "2296",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7349,
+      "time": "2026-09-17 05:39:23",
+      "sequence": "2344",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7350,
+      "time": "2026-09-17 05:39:25",
+      "sequence": "2392",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7358,
+      "time": "2026-09-17 05:39:27",
+      "sequence": "2440",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7359,
+      "time": "2026-09-17 05:39:29",
+      "sequence": "2488",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7365,
+      "time": "2026-09-17 05:39:31",
+      "sequence": "2536",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7366,
+      "time": "2026-09-17 05:39:33",
+      "sequence": "2584",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7367,
+      "time": "2026-09-17 05:39:35",
+      "sequence": "2632",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7375,
+      "time": "2026-09-17 05:39:37",
+      "sequence": "2680",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7376,
+      "time": "2026-09-17 05:39:39",
+      "sequence": "2728",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7382,
+      "time": "2026-09-17 05:39:41",
+      "sequence": "2776",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7383,
+      "time": "2026-09-17 05:39:43",
+      "sequence": "2824",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7384,
+      "time": "2026-09-17 05:39:45",
+      "sequence": "2872",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7392,
+      "time": "2026-09-17 05:39:47",
+      "sequence": "2920",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7393,
+      "time": "2026-09-17 05:39:49",
+      "sequence": "2968",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7399,
+      "time": "2026-09-17 05:39:51",
+      "sequence": "3016",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7401,
+      "time": "2026-09-17 05:39:53",
+      "sequence": "3064",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7402,
+      "time": "2026-09-17 05:39:55",
+      "sequence": "3112",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7410,
+      "time": "2026-09-17 05:39:57",
+      "sequence": "3160",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7411,
+      "time": "2026-09-17 05:39:59",
+      "sequence": "3208",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7417,
+      "time": "2026-09-17 05:40:01",
+      "sequence": "3256",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7418,
+      "time": "2026-09-17 05:40:03",
+      "sequence": "3304",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7419,
+      "time": "2026-09-17 05:40:05",
+      "sequence": "3352",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7427,
+      "time": "2026-09-17 05:40:07",
+      "sequence": "3400",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7428,
+      "time": "2026-09-17 05:40:09",
+      "sequence": "3448",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7434,
+      "time": "2026-09-17 05:40:11",
+      "sequence": "3496",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7435,
+      "time": "2026-09-17 05:40:13",
+      "sequence": "3544",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7436,
+      "time": "2026-09-17 05:40:15",
+      "sequence": "3592",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7444,
+      "time": "2026-09-17 05:40:17",
+      "sequence": "3640",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7445,
+      "time": "2026-09-17 05:40:19",
+      "sequence": "3688",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7451,
+      "time": "2026-09-17 05:40:21",
+      "sequence": "3736",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7453,
+      "time": "2026-09-17 05:40:23",
+      "sequence": "3784",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7454,
+      "time": "2026-09-17 05:40:25",
+      "sequence": "3832",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7462,
+      "time": "2026-09-17 05:40:27",
+      "sequence": "3880",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7463,
+      "time": "2026-09-17 05:40:29",
+      "sequence": "3928",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7469,
+      "time": "2026-09-17 05:40:31",
+      "sequence": "3976",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7473,
+      "time": "2026-09-17 05:40:33",
+      "sequence": "4024",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7523,
+      "time": "2026-09-17 05:40:41",
+      "sequence": "4215",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "bar-refinement",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained"
+    },
+    {
+      "line": 7524,
+      "time": "2026-09-17 05:40:43",
+      "sequence": "4263",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "bar-refinement",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained"
+    },
+    {
+      "line": 7525,
+      "time": "2026-09-17 05:40:45",
+      "sequence": "4311",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "bar-refinement",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained"
+    },
+    {
+      "line": 7533,
+      "time": "2026-09-17 05:40:47",
+      "sequence": "4359",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "bar-refinement",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained"
+    },
+    {
+      "line": 7559,
+      "time": "2026-09-17 05:40:57",
+      "sequence": "4599",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7560,
+      "time": "2026-09-17 05:40:59",
+      "sequence": "4647",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7566,
+      "time": "2026-09-17 05:41:01",
+      "sequence": "4695",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7567,
+      "time": "2026-09-17 05:41:03",
+      "sequence": "4743",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7568,
+      "time": "2026-09-17 05:41:05",
+      "sequence": "4791",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7576,
+      "time": "2026-09-17 05:41:07",
+      "sequence": "4839",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7577,
+      "time": "2026-09-17 05:41:09",
+      "sequence": "4887",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7583,
+      "time": "2026-09-17 05:41:11",
+      "sequence": "4935",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7584,
+      "time": "2026-09-17 05:41:13",
+      "sequence": "4983",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7585,
+      "time": "2026-09-17 05:41:15",
+      "sequence": "5031",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7593,
+      "time": "2026-09-17 05:41:17",
+      "sequence": "5079",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7594,
+      "time": "2026-09-17 05:41:19",
+      "sequence": "5127",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7600,
+      "time": "2026-09-17 05:41:21",
+      "sequence": "5175",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7602,
+      "time": "2026-09-17 05:41:23",
+      "sequence": "5223",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7603,
+      "time": "2026-09-17 05:41:25",
+      "sequence": "5271",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7611,
+      "time": "2026-09-17 05:41:27",
+      "sequence": "5319",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7612,
+      "time": "2026-09-17 05:41:29",
+      "sequence": "5367",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7618,
+      "time": "2026-09-17 05:41:31",
+      "sequence": "5415",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7619,
+      "time": "2026-09-17 05:41:33",
+      "sequence": "5463",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7620,
+      "time": "2026-09-17 05:41:35",
+      "sequence": "5511",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7628,
+      "time": "2026-09-17 05:41:37",
+      "sequence": "5559",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7629,
+      "time": "2026-09-17 05:41:39",
+      "sequence": "5607",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7635,
+      "time": "2026-09-17 05:41:41",
+      "sequence": "5655",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7636,
+      "time": "2026-09-17 05:41:43",
+      "sequence": "5703",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7637,
+      "time": "2026-09-17 05:41:45",
+      "sequence": "5751",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7645,
+      "time": "2026-09-17 05:41:47",
+      "sequence": "5799",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7646,
+      "time": "2026-09-17 05:41:49",
+      "sequence": "5847",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7652,
+      "time": "2026-09-17 05:41:51",
+      "sequence": "5895",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7654,
+      "time": "2026-09-17 05:41:53",
+      "sequence": "5943",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7655,
+      "time": "2026-09-17 05:41:55",
+      "sequence": "5991",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7663,
+      "time": "2026-09-17 05:41:57",
+      "sequence": "6039",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7664,
+      "time": "2026-09-17 05:41:59",
+      "sequence": "6087",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7670,
+      "time": "2026-09-17 05:42:01",
+      "sequence": "6135",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7671,
+      "time": "2026-09-17 05:42:03",
+      "sequence": "6183",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7672,
+      "time": "2026-09-17 05:42:05",
+      "sequence": "6231",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7680,
+      "time": "2026-09-17 05:42:07",
+      "sequence": "6279",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7681,
+      "time": "2026-09-17 05:42:09",
+      "sequence": "6327",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7687,
+      "time": "2026-09-17 05:42:11",
+      "sequence": "6375",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7688,
+      "time": "2026-09-17 05:42:13",
+      "sequence": "6423",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7689,
+      "time": "2026-09-17 05:42:15",
+      "sequence": "6471",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7697,
+      "time": "2026-09-17 05:42:17",
+      "sequence": "6519",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7698,
+      "time": "2026-09-17 05:42:19",
+      "sequence": "6567",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7704,
+      "time": "2026-09-17 05:42:21",
+      "sequence": "6615",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    },
+    {
+      "line": 7706,
+      "time": "2026-09-17 05:42:23",
+      "sequence": "6663",
+      "saved": "0,208-3840,1948",
+      "observed": "0,208-3840,1952",
+      "candidate_owner": "full-raster",
+      "proof": "0/7",
+      "gate_names": "observation-unavailable-or-not-contained,presentation-owner-unresolved"
+    }
+  ]
+}

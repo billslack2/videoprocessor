@@ -1,0 +1,14 @@
+{
+  "commit": "884029b15e87fb2ad3077299f1843f61b5c88a21",
+  "branch": "codex/vp-0189-crop-stability",
+  "parent": "911e2b7fe46b95560008ffc615d89a5baf6fe2e1",
+  "selectedBase": "3acd02b3c597896beea1eca72fc4a3730cd6d92c",
+  "configuration": "x64 Release",
+  "nativeTests": "1182/1182",
+  "pythonTests": "7/7",
+  "hostSha256": "0A22250BC4DD0172933AFBFC5FC0F9B15B678E329A27D312066CC5E5830758A8",
+  "rendererSha256": "D6FF146C82EADF762301FB44DFD7007FC2EEBC6B563EEC26BB8E33C065E7E343",
+  "builtAt": "2026-09-17T00:45:12.7509752-04:00",
+  "deployed": false,
+  "physicalPlaybackAccepted": false
+}
