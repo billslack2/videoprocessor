@@ -1,0 +1,7 @@
+outward guard mixed: transition=0 authoritative=0
+outward guard containing: transition=1 authoritative=0
+before subtitle translation active: defer=0
+after subtitle translation active: defer=1
+seeded stable top=364 bounds.top=364
+provisional recurrence frame=111 publish=0 reacquired=0 top=0 reason=recent trusted geometry candidate
+provisional recurrence frame=112 publish=1 reacquired=1 top=0 reason=recent trusted geometry reacquired

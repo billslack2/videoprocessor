@@ -498,3 +498,11 @@ Commit a7dc020a91c9c5e32502e58db4ac47af5e7fe6fb suppresses only sampling-equival
 Final committed x64 Release build succeeded; 1184/1184 native tests passed. Both binaries were deployed and hashes verified at 08:33:33 EDT. VP was closed gracefully and reopened. Six configuration/state/manifest files were preserved with no deployment edits. Prior pair backup: C:\Videoprocessor\vp\backups\VP-0189-before-a7dc020a-20260917-083332.
 
 [Review and reproduction](../assets/VP-0189/live-sampling-review.md) · [Deployment record](../assets/VP-0189/live-sampling-deployment.json). Logs and screenshot preserved locally under C:\Users\bslac\Documents\ChatGPT\Done\crop-review-20260917-live. Status remains Review pending another physical playback; video is useful if symptoms remain but was not needed to establish this conflict.
+
+## Recorded subtitle failure: reviewed corrective plan (2026-09-17)
+
+The a7dc020a playback recording confirms that the same shot shrinks at subtitle onset after the internal divider is gone. Event 11 at 09:36:20 lasts 11437 ms. A compiled probe of the deployed source reproduces three interacting gaps: mixed edge movement bypasses the outward guard, subtitle deferral is inactive during initial confirmation, and two provisional samples can restore remembered geometry despite intended deferral.
+
+[Reviewed implementation plan](../assets/VP-0189/subtitle-crop-fix-plan.md) covers an integrated failing regression, explicit transition admission across history/look-ahead paths, per-axis outward checks and subtitle onset arbitration, and current-presentation safety proof for bounded recovery. It includes adverse-case review, regression coverage and physical playback acceptance. [Probe results](../assets/VP-0189/subtitle-crop-plan-probe-results.txt) and [probe source](../assets/VP-0189/subtitle-crop-plan-probe.cpp) support the findings. Review was against code, existing tests, video and executable probe, not an external independent review.
+
+No source/runtime changes or deployment were made for this planning request. Status remains Review; playback is not accepted. The proposed visual overlay remains optional and separate from the corrective scope.
