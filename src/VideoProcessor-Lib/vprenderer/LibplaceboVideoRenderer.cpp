@@ -8514,29 +8514,27 @@ struct LibplaceboVideoRenderer::Impl
 					ActivePictureClassification::BAR_CROP_TRUSTED &&
 				ActivePictureBoundsContain(
 					sceneVerificationGeometry, evidence.trustedBounds);
-			ActivePictureObservation observation;
-			observation.frameNumber = frameNumber;
-			observation.available = evidence.available;
-			observation.framesPerSecond = framesPerSecond;
-			const bool deferPresentationOwnedTransition = evidence.available &&
-				nlsGeometryAvailable &&
-				nlsGeometrySourceGeneration == analysisSource.generation &&
-				AlphaSourceCrop::ShouldDeferVerticalGeometryTransition(
-					nlsGeometry, evidence.trustedBounds, evidence.classification,
-					scopeVerticalBarPresentation, scopeSubtitleDrift.IsActive(),
-					scopeSubtitleEvidenceSourceGeneration,
-					analysisSource.generation);
-			const AlphaSourceCrop::OutwardPictureConfirmationDecision
-				outwardConfirmation = hadCompatiblePresentation && evidence.available
-				? AlphaSourceCrop::ConfirmOutwardPictureTransition(
-					outwardPictureConfirmation, presentationBeforeObservation,
-					latestActivePictureEvidenceBounds, retentionEvidence,
-					analysisSource.generation, frameNumber)
-				: AlphaSourceCrop::OutwardPictureConfirmationDecision{};
-			outwardPictureConfirmation = outwardConfirmation.state;
-			const bool deferOutwardLogicalTransition =
-				outwardConfirmation.outwardTransition &&
-				!outwardConfirmation.authoritative;
+			AlphaSourceCrop::TransitionAdmissionInput admissionInput;
+			admissionInput.evidence = evidence;
+			admissionInput.outwardCandidate = latestActivePictureEvidenceBounds;
+			admissionInput.presentationBeforeObservation = presentationBeforeObservation;
+			admissionInput.trustedGeometry = nlsGeometry;
+			admissionInput.trustedGeometryAvailable = nlsGeometryAvailable;
+			admissionInput.compatiblePresentation = hadCompatiblePresentation;
+			admissionInput.trustedGeneration = nlsGeometrySourceGeneration;
+			admissionInput.sourceGeneration = analysisSource.generation;
+			admissionInput.sourceSequence = frameNumber;
+			admissionInput.framesPerSecond = framesPerSecond;
+			admissionInput.presentation = scopeVerticalBarPresentation;
+			admissionInput.translationDriftActive = scopeSubtitleDrift.IsActive();
+			admissionInput.presentationEvidenceGeneration = scopeSubtitleEvidenceSourceGeneration;
+			admissionInput.retention = retentionEvidence;
+			admissionInput.previousOutward = outwardPictureConfirmation;
+			const auto admission = AlphaSourceCrop::EvaluateTransitionAdmission(admissionInput);
+			const auto observation = admission.observation;
+			const bool deferPresentationOwnedTransition = admission.deferPresentation;
+			const bool deferOutwardLogicalTransition = admission.deferOutward;
+			outwardPictureConfirmation = admission.outward.state;
 			if (deferPresentationOwnedTransition !=
 				presentationOwnedGeometryTransitionDeferred)
 			{
@@ -8550,18 +8548,6 @@ struct LibplaceboVideoRenderer::Impl
 					static_cast<unsigned long long>(analysisSource.generation));
 				presentationOwnedGeometryTransitionDeferred =
 					deferPresentationOwnedTransition;
-			}
-			if (evidence.available)
-			{
-				observation.bounds = evidence.classification ==
-					ActivePictureClassification::PROVISIONAL
-					? evidence.proposedBounds
-					: evidence.trustedBounds;
-				observation.classification =
-					(deferPresentationOwnedTransition ||
-						deferOutwardLogicalTransition)
-					? ActivePictureClassification::PROVISIONAL
-					: evidence.classification;
 			}
 			ActivePictureScheduledDecisionValidation scheduledValidation =
 				hasScheduledDecision
@@ -10557,11 +10543,10 @@ struct LibplaceboVideoRenderer::Impl
 				 (latestObservationIsUnavailable ||
 				  latestObservationIsProvisional)));
 			const bool barCropRefinementHorizontalConflict =
-				currentDetectorLeftExpansion || currentDetectorRightExpansion ||
-				(latestActivePictureEvidenceAvailable &&
-				 effectiveGeometryAvailable && !latestCropSamplingReaffirmed &&
-				 (latestActivePictureEvidenceBounds.left < effectiveGeometry.left ||
-				  latestActivePictureEvidenceBounds.right > effectiveGeometry.right));
+				AlphaSourceCrop::HasHorizontalCropRefinementConflict(
+					currentDetectorLeftExpansion, currentDetectorRightExpansion,
+					latestActivePictureEvidenceAvailable, effectiveGeometryAvailable,
+					latestCropSamplingReaffirmed, latestActivePictureEvidenceBounds, effectiveGeometry);
 			const bool barCropRefinementPending =
 				latestActivePictureEvidenceAvailable &&
 				latestActivePictureEvidenceClassification ==

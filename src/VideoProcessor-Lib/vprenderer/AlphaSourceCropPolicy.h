@@ -337,6 +337,41 @@ namespace AlphaSourceCrop
 		uint64_t evidenceSourceGeneration,
 		uint64_t currentSourceGeneration);
 
+	// Shared renderer/test seam for the existing ordering of logical admission.
+	// This intentionally preserves current behavior; it does not fix deferral.
+	struct TransitionAdmissionInput
+	{
+		ActivePictureEvidence evidence;
+		ActivePictureBounds outwardCandidate;
+		ActivePictureBounds presentationBeforeObservation;
+		ActivePictureBounds trustedGeometry;
+		bool trustedGeometryAvailable = false;
+		bool compatiblePresentation = false;
+		uint64_t trustedGeneration = 0;
+		uint64_t sourceGeneration = 0;
+		uint64_t sourceSequence = 0;
+		double framesPerSecond = 60.0;
+		VerticalBarPresentationState presentation;
+		bool translationDriftActive = false;
+		uint64_t presentationEvidenceGeneration = 0;
+		ActivePicturePresentationRetentionEvidence retention;
+		OutwardPictureConfirmationState previousOutward;
+	};
+
+	struct TransitionAdmissionDecision
+	{
+		ActivePictureObservation observation;
+		OutwardPictureConfirmationDecision outward;
+		bool deferPresentation = false;
+		bool deferOutward = false;
+	};
+	TransitionAdmissionDecision EvaluateTransitionAdmission(const TransitionAdmissionInput& input);
+
+	bool HasHorizontalCropRefinementConflict(bool currentLeftExpansion,
+		bool currentRightExpansion, bool observationAvailable, bool geometryAvailable,
+		bool samplingReaffirmed, const ActivePictureBounds& observation,
+		const ActivePictureBounds& geometry);
+
 	struct HeldBarAnalysisInput
 	{
 		bool currentBarAuthority = false;

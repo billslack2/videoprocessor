@@ -710,6 +710,43 @@ namespace AlphaSourceCrop
 			candidateGeometry.bottom > trustedGeometry.bottom;
 	}
 
+	TransitionAdmissionDecision EvaluateTransitionAdmission(const TransitionAdmissionInput& input)
+	{
+		TransitionAdmissionDecision decision;
+		decision.observation.frameNumber = input.sourceSequence;
+		decision.observation.available = input.evidence.available;
+		decision.observation.framesPerSecond = input.framesPerSecond;
+		decision.deferPresentation = input.evidence.available &&
+			input.trustedGeometryAvailable && input.trustedGeneration == input.sourceGeneration &&
+			ShouldDeferVerticalGeometryTransition(input.trustedGeometry,
+				input.evidence.trustedBounds, input.evidence.classification,
+				input.presentation, input.translationDriftActive,
+				input.presentationEvidenceGeneration, input.sourceGeneration);
+		decision.outward = input.compatiblePresentation && input.evidence.available
+			? ConfirmOutwardPictureTransition(input.previousOutward, input.presentationBeforeObservation,
+				input.outwardCandidate, input.retention, input.sourceGeneration, input.sourceSequence)
+			: OutwardPictureConfirmationDecision{};
+		decision.deferOutward = decision.outward.outwardTransition && !decision.outward.authoritative;
+		if (input.evidence.available)
+		{
+			decision.observation.bounds = input.evidence.classification == ActivePictureClassification::PROVISIONAL
+				? input.evidence.proposedBounds : input.evidence.trustedBounds;
+			decision.observation.classification = decision.deferPresentation || decision.deferOutward
+				? ActivePictureClassification::PROVISIONAL : input.evidence.classification;
+		}
+		return decision;
+	}
+
+	bool HasHorizontalCropRefinementConflict(bool currentLeftExpansion,
+		bool currentRightExpansion, bool observationAvailable, bool geometryAvailable,
+		bool samplingReaffirmed, const ActivePictureBounds& observation,
+		const ActivePictureBounds& geometry)
+	{
+		return currentLeftExpansion || currentRightExpansion ||
+			(observationAvailable && geometryAvailable && !samplingReaffirmed &&
+			 (observation.left < geometry.left || observation.right > geometry.right));
+	}
+
 	bool CanAnalyzeHeldVerticalBarGeometry(
 		const HeldBarAnalysisInput& input)
 	{

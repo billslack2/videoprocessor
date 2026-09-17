@@ -42,6 +42,198 @@ namespace Tests
 	TEST_CLASS(AlphaSourceCropPolicyTests)
 	{
 	public:
+		TEST_METHOD(RecordedSubtitleOnsetMustNotReacquireFullHeightOrStrandRecovery)
+		{
+			// VP-0189 recording 2026-09-17 09-35-45.mp4, event 11:
+			// 90015 starts subtitle confirmation; 90016 publishes remembered
+			// pillarbox and withdraws crop. This is a policy-input fixture, not a
+			// raw-pixel replay of the desktop recording. Repeated middle frames
+			// below sustain the logged evidence rather than invent missing scans.
+			std::string failures;
+			for (double rate : {23.976, 24.0, 59.94, 60.0})
+			{
+				const ActivePictureBounds scope{188, 364, 3652, 1796, 3840, 2160,
+					3464.0 / 1432.0, ActivePictureBounds::BarAxes::BOTH};
+				const ActivePictureBounds pillar{188, 0, 3648, 2160, 3840, 2160,
+					3460.0 / 2160.0, ActivePictureBounds::BarAxes::LEFT_RIGHT};
+				auto rawPillar = pillar; rawPillar.left = 192; rawPillar.right = 3652;
+				ActivePictureTransitionModel model;
+				ActivePictureTransitionDecision seeded;
+				for (uint64_t frame = 1; frame <= 4; ++frame)
+					seeded = model.Observe({pillar, frame, true, ActivePictureClassification::BAR_CROP_TRUSTED, rate});
+				const uint64_t seedEnd = 8 + static_cast<uint64_t>(std::ceil(5 * rate));
+				for (uint64_t frame = 5; frame <= seedEnd; ++frame)
+					seeded = model.Observe({scope, frame, true, ActivePictureClassification::BAR_CROP_TRUSTED, rate});
+				Assert::IsTrue(seeded.stable);
+				Assert::AreEqual(scope.top, seeded.stableBounds.top);
+				ActivePictureBounds logical = scope;
+				OutwardPictureConfirmationState outward;
+				VerticalTranslationConfirmationState translationConfirmation;
+				VerticalBarPresentationState subtitlePresentation;
+				PresentationRecoveryState recoveryState;
+				uint64_t firstWrongLogical = 0, firstFullRaster = 0;
+				unsigned fullRasterDuringSubtitle = 0, clippedSubtitles = 0;
+				unsigned confirmedSubtitleFrames = 0, boundedCandidatesHeldFull = 0;
+				bool recoveredAfterRemoval = false;
+				const uint64_t subtitleFrames = static_cast<uint64_t>(std::ceil(11.44 * rate));
+				const uint64_t recoveryFrames = static_cast<uint64_t>(std::ceil(6 * rate));
+				for (uint64_t offset = 0; offset < subtitleFrames + recoveryFrames; ++offset)
+				{
+					const uint64_t seq = 90015 + offset;
+					const bool subtitle = offset < subtitleFrames;
+					const auto before = logical;
+					const auto raw = subtitle ? rawPillar : scope;
+					ActivePictureEvidence evidence;
+					evidence.available = true;
+					evidence.classification = ActivePictureClassification::BAR_CROP_TRUSTED;
+					evidence.trustedBounds = subtitle ? pillar : scope;
+					ActivePicturePresentationRetentionEvidence retention;
+					retention.analysisValid = retention.presentationValid = true;
+					retention.activePicture = evidence;
+					retention.excludedBandsPixelSafe = !subtitle;
+					retention.outwardVisibleBoundsAvailable = subtitle;
+					retention.outwardVisibleBounds = before;
+					retention.outwardVisibleBounds.right = std::max(before.right, 3652);
+					retention.outwardVisibleBounds.bottom = std::max(before.bottom, 1846);
+					// Localized bottom overlay, not broad opposing picture.
+					retention.excludedBottom.barPixels = 364;
+					retention.excludedBottom.blackFraction = 0.97;
+					retention.excludedBottom.continuity = 0.98;
+					retention.excludedBottom.lumaP90 = 64;
+					TransitionAdmissionInput admissionInput;
+					admissionInput.evidence = evidence;
+					admissionInput.outwardCandidate = raw;
+					admissionInput.presentationBeforeObservation = before;
+					admissionInput.trustedGeometry = logical;
+					admissionInput.trustedGeometryAvailable = admissionInput.compatiblePresentation = true;
+					admissionInput.trustedGeneration = admissionInput.sourceGeneration = 2;
+					admissionInput.sourceSequence = seq;
+					admissionInput.framesPerSecond = rate;
+					admissionInput.presentation = subtitlePresentation;
+					admissionInput.presentationEvidenceGeneration = 2;
+					admissionInput.previousOutward = outward;
+					admissionInput.retention = retention;
+					const auto admission = EvaluateTransitionAdmission(admissionInput);
+					outward = admission.outward.state;
+					const auto transition = model.Observe(admission.observation);
+					if (transition.publish && transition.stable) logical = transition.bounds;
+					else if (transition.stable) logical = transition.stableBounds;
+					if (subtitle && logical.top == 0 && !firstWrongLogical) firstWrongLogical = seq;
+
+					// The renderer analyzes vertical bars after logical publication.
+					// Once the model publishes full-height geometry, there are no
+					// vertical bars for that dense scan to confirm against.
+					VerticalTranslationConfirmationInput translationInput;
+					translationInput.previous = translationConfirmation;
+					translationInput.sourceSequence = seq;
+					if (subtitle && logical.top > 0 && logical.bottom < 2160)
+					{
+						translationInput.observed.action = VerticalBarPresentationAction::TRANSLATE;
+						translationInput.observed.translationPixels = 84;
+					}
+					translationInput.acceptedTranslationActive = subtitlePresentation.action == VerticalBarPresentationAction::TRANSLATE;
+					translationInput.acceptedTranslationPixels = subtitlePresentation.translationPixels;
+					const auto translation = ConfirmVerticalTranslation(translationInput);
+					translationConfirmation = translation.state;
+					subtitlePresentation.action = translation.effective.action;
+					subtitlePresentation.translationPixels = translation.effective.translationPixels;
+					if (subtitlePresentation.action == VerticalBarPresentationAction::TRANSLATE) ++confirmedSubtitleFrames;
+
+					VerticalBarPresentationResolutionInput routingInput;
+					routingInput.detailedAction = subtitlePresentation.action;
+					routingInput.translationPixels = subtitlePresentation.translationPixels;
+					routingInput.genericUpperExpansion = subtitle && raw.top < logical.top;
+					routingInput.genericLowerExpansion = subtitle && raw.bottom > logical.bottom;
+					routingInput.genericUpperBound = raw.top;
+					routingInput.genericLowerBound = raw.bottom;
+					routingInput.authoritativeTop = logical.top;
+					routingInput.authoritativeBottom = logical.bottom;
+					routingInput.rasterHeight = 2160;
+					routingInput.denseVerticalArbitrationEnabled = true;
+					const auto routing = ResolveVerticalBarRendererRouting(ResolveVerticalBarPresentation(routingInput));
+					PresentationEnvelopeGeometryInput envelopeInput;
+					envelopeInput.trustedPicture = logical;
+					envelopeInput.observedContent = raw;
+					envelopeInput.observedContentAvailable = subtitle;
+					envelopeInput.expandLeft = raw.left < logical.left;
+					envelopeInput.expandTop = routing.fitActive && raw.top < logical.top;
+					envelopeInput.expandRight = raw.right > logical.right;
+					envelopeInput.expandBottom = routing.fitActive && raw.bottom > logical.bottom;
+					const auto envelope = BuildPresentationEnvelope(envelopeInput);
+					Input crop = TrustedScopeCrop();
+					crop.geometry = logical;
+					crop.geometrySourceGeneration = crop.frameSourceGeneration = 2;
+					crop.frameSourceSequence = seq;
+					crop.latestObservationClassification = evidence.classification;
+					const bool samplingSafe = IsPixelSafeCropReaffirmation(logical, evidence.trustedBounds, retention.excludedBandsPixelSafe);
+					crop.latestObservationSupportsCrop = samplingSafe ||
+						(logical.left <= raw.left && logical.top <= raw.top && logical.right >= raw.right && logical.bottom >= raw.bottom);
+					crop.barCropRefinementPending = !crop.latestObservationSupportsCrop;
+					// Derive conflict from evidence and published geometry; never force
+					// a full-raster decision or an active recovery state in the fixture.
+					crop.barCropRefinementHorizontalConflict = HasHorizontalCropRefinementConflict(
+						subtitle && raw.left < logical.left, subtitle && raw.right > logical.right,
+						true, true, samplingSafe, raw, logical);
+					crop.frameLocalPresentationRetentionEvaluated = true;
+					crop.frameLocalPresentationRetentionSafe = retention.excludedBandsPixelSafe;
+					crop.verticalTranslationConfirmationPending = translation.pending;
+					crop.verticalTranslationActive = routing.translationActive;
+					crop.presentationFailOpen = routing.failOpen;
+					crop.verticalTranslationPixels = subtitlePresentation.translationPixels;
+					crop.verticalTranslationBase = before;
+					crop.verticalTranslationSourceGeneration = 2;
+					crop.outwardPresentationActive = crop.outwardExpansionAvailable = envelope.valid && envelope.expanded;
+					crop.outwardExpansion = envelope.bounds;
+					crop.outwardExpansionSourceGeneration = 2;
+					crop.currentVisibleBoundsAvailable = subtitle;
+					crop.currentVisibleBase = before;
+					crop.currentVisibleBounds = retention.outwardVisibleBounds;
+					crop.currentVisibleBounds.left = std::min(crop.currentVisibleBounds.left, raw.left);
+					crop.currentVisibleBounds.top = std::min(crop.currentVisibleBounds.top, raw.top);
+					crop.currentVisibleBounds.right = std::max(crop.currentVisibleBounds.right, raw.right);
+					crop.currentVisibleBounds.bottom = std::max(crop.currentVisibleBounds.bottom, raw.bottom);
+					crop.currentVisibleSourceGeneration = 2;
+					crop.currentVisibleSourceSequence = seq;
+					const auto candidate = Evaluate(crop);
+					PresentationRecoveryInput recovery;
+					recovery.previous = recoveryState;
+					recovery.crop = crop; recovery.candidate = candidate;
+					recovery.measurementCurrent = recovery.retentionEvaluated = recovery.observationAvailable = recovery.nearBlackEvaluated = true;
+					recovery.retentionBounds = before;
+					recovery.retentionSourceGeneration = 2; recovery.retentionSourceSequence = seq;
+					recovery.observation = raw; recovery.observedTrustedCrop = evidence.trustedBounds;
+					recovery.observationClassification = evidence.classification;
+					recovery.excludedBandsPixelSafe = retention.excludedBandsPixelSafe;
+					recovery.framesPerSecond = rate; recovery.presentationEpoch = 1;
+					recovery.currentTick = 1000 + static_cast<uint64_t>(offset * 1000 / rate);
+					const auto result = EvaluatePresentationRecovery(recovery);
+					recoveryState = result.state;
+					if (!result.presentation.applyCrop && !firstFullRaster) firstFullRaster = seq;
+					if (subtitle && offset >= 8)
+					{
+						if (!result.presentation.applyCrop) ++fullRasterDuringSubtitle;
+						if (candidate.applyCrop && !result.presentation.applyCrop) ++boundedCandidatesHeldFull;
+						if (result.presentation.sourceBounds.bottom < 1846) ++clippedSubtitles;
+					}
+					if (!subtitle && !result.state.active && result.presentation.applyCrop &&
+						result.presentation.sourceBounds.top == scope.top && result.presentation.sourceBounds.bottom == scope.bottom)
+						recoveredAfterRemoval = true;
+				}
+				const std::string trace = "rate=" + std::to_string(rate) +
+					" first_wrong_logical=" + std::to_string(firstWrongLogical) +
+					" first_full_raster=" + std::to_string(firstFullRaster) +
+					" subtitle_full_frames=" + std::to_string(fullRasterDuringSubtitle) +
+					" fit_candidates_held_full=" + std::to_string(boundedCandidatesHeldFull) +
+					" confirmed_subtitle_frames=" + std::to_string(confirmedSubtitleFrames) +
+					" clipped_subtitle_frames=" + std::to_string(clippedSubtitles) +
+					" recovered_after_removal=" + std::to_string(recoveredAfterRemoval) + "\n";
+				Logger::WriteMessage(trace.c_str());
+				if (firstWrongLogical || fullRasterDuringSubtitle || clippedSubtitles || !recoveredAfterRemoval)
+					failures += trace;
+			}
+			Assert::IsTrue(failures.empty(), std::wstring(failures.begin(), failures.end()).c_str());
+		}
+
 		TEST_METHOD(LiveFourPixelCoarseEnvelopeDoesNotWithdrawPixelSafePillarboxCrop)
 		{
 			Input input = TrustedScopeCrop();
