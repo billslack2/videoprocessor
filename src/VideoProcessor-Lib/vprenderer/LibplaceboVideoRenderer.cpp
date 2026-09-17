@@ -10868,9 +10868,9 @@ struct LibplaceboVideoRenderer::Impl
 					char* end = nullptr;
 					const unsigned long requested = strtoul(value, &end, 10);
 					if (end != value && *end == '\0' && value[0] >= '0' && value[0] <= '9')
-						cropTraceRemaining = static_cast<unsigned>(std::min(600ul, requested));
+						cropTraceRemaining = static_cast<unsigned>(std::min(2400ul, requested));
 				}
-				DebugLog::Log("Alpha crop diagnostics: schema=1 recovery_dwell_ms=250 summary_ms=2000 sampling_equivalence=max(2,width/480,height/270) sampling_requires=same-bars-and-current-safe-bands nested_guard_ms=4000 global_grid=16x16 near_black_p90_max=96 edge_grid=48x6 extent_grid_max=256x64 extent_support=2x2 black_floor=perimeter-p10-clamped-48-80 black_threshold=min(104,floor+24) retention_black_min=0.95 retention_p90_max=min(104,floor+24) dispersion_max=24 texture_max=8 chroma_neutral_min=0.90 continuity_min=0.99 trace_budget=%u trace_max=600 evidence=existing-samples capture_missed_semantics=timestamp-gap-estimate", cropTraceRemaining);
+				DebugLog::Log("Alpha crop diagnostics: schema=1 recovery_dwell_ms=250 summary_ms=2000 sampling_equivalence=max(2,width/480,height/270) sampling_requires=same-bars-and-current-safe-bands nested_guard_ms=4000 global_grid=16x16 near_black_p90_max=96 edge_grid=48x6 extent_grid_max=256x64 extent_support=2x2 black_floor=perimeter-p10-clamped-48-80 black_threshold=min(104,floor+24) retention_black_min=0.95 retention_p90_max=min(104,floor+24) dispersion_max=24 texture_max=8 chroma_neutral_min=0.90 continuity_min=0.99 trace_budget=%u trace_max=2400 trace_scope=candidate-and-presentation evidence=existing-samples capture_missed_semantics=timestamp-gap-estimate", cropTraceRemaining);
 			}
 			const uint64_t cropTick = episodeInput.currentTick;
 			const bool cropApplied = cropDecision.applyCrop || aspectLimitFill.applied;
@@ -10949,10 +10949,18 @@ struct LibplaceboVideoRenderer::Impl
 					cropDiagnosticChanges, cropDiagnosticFlips, cropDiagnosticResets, cropDecision.reason.c_str());
 				cropDiagnosticLastSummaryTick = cropTick;
 			}
-			const bool cropEdgeSummaryDue = barCropRefinementHorizontalConflict &&
+			const auto& rawCandidate = latestCropRetentionEvidence.activePicture;
+			const auto& rawBounds = rawCandidate.proposedBounds;
+			// Include candidate edges before a nested crop is adopted. Retention
+			// edges alone describe the old crop and miss the newly introduced matte.
+			const bool cropCandidateDiffers = rawCandidate.available && effectiveGeometryAvailable &&
+				(rawBounds.left != effectiveGeometry.left || rawBounds.top != effectiveGeometry.top ||
+				 rawBounds.right != effectiveGeometry.right || rawBounds.bottom != effectiveGeometry.bottom);
+			const bool cropDiagnosticRelevant = cropUnresolved || barCropRefinementHorizontalConflict || cropCandidateDiffers;
+			const bool cropEdgeSummaryDue = cropDiagnosticRelevant &&
 				(cropEventStarted || cropEventEnded || cropTick - cropEdgeDiagnosticLastTick >= 2000);
 			if (cropEvidenceFresh && (cropEdgeSummaryDue ||
-				(cropTraceRemaining && (cropUnresolved || barCropRefinementHorizontalConflict))))
+				(cropTraceRemaining && cropDiagnosticRelevant)))
 			{
 				if (cropTraceRemaining) --cropTraceRemaining;
 				cropEdgeDiagnosticLastTick = cropTick;
@@ -10961,6 +10969,15 @@ struct LibplaceboVideoRenderer::Impl
 				const auto& t = evidence.excludedTop;
 				const auto& r = evidence.excludedRight;
 				const auto& b = evidence.excludedBottom;
+				DebugLog::Log("Alpha crop candidate levels: schema=1 generation=%llu sequence=%llu available=%d classification=%d candidate=%d,%d-%d,%d retained=%d,%d-%d,%d units=analysis-luma-10bit edge_fields=bar_pixels,floor,p90,dispersion,black_fraction,texture,continuity,trusted left=%d,%.1f,%.1f,%.1f,%.4f,%.1f,%.4f,%d top=%d,%.1f,%.1f,%.1f,%.4f,%.1f,%.4f,%d right=%d,%.1f,%.1f,%.1f,%.4f,%.1f,%.4f,%d bottom=%d,%.1f,%.1f,%.1f,%.4f,%.1f,%.4f,%d",
+					frameGeneration, sourceSequence, rawCandidate.available ? 1 : 0, static_cast<int>(rawCandidate.classification),
+					rawBounds.left, rawBounds.top, rawBounds.right, rawBounds.bottom,
+					effectiveGeometry.left, effectiveGeometry.top, effectiveGeometry.right, effectiveGeometry.bottom,
+					rawCandidate.left.barPixels,rawCandidate.left.lumaFloor,rawCandidate.left.lumaP90,rawCandidate.left.lumaDispersion,rawCandidate.left.blackFraction,rawCandidate.left.texture,rawCandidate.left.continuity,rawCandidate.left.trusted ? 1 : 0,
+					rawCandidate.top.barPixels,rawCandidate.top.lumaFloor,rawCandidate.top.lumaP90,rawCandidate.top.lumaDispersion,rawCandidate.top.blackFraction,rawCandidate.top.texture,rawCandidate.top.continuity,rawCandidate.top.trusted ? 1 : 0,
+					rawCandidate.right.barPixels,rawCandidate.right.lumaFloor,rawCandidate.right.lumaP90,rawCandidate.right.lumaDispersion,rawCandidate.right.blackFraction,rawCandidate.right.texture,rawCandidate.right.continuity,rawCandidate.right.trusted ? 1 : 0,
+					rawCandidate.bottom.barPixels,rawCandidate.bottom.lumaFloor,rawCandidate.bottom.lumaP90,rawCandidate.bottom.lumaDispersion,rawCandidate.bottom.blackFraction,rawCandidate.bottom.texture,rawCandidate.bottom.continuity,rawCandidate.bottom.trusted ? 1 : 0);
+
 				// Use existing HDMI samples; no extra readback or pixel scan. These
 				// values distinguish raised mattes from a presentation-policy conflict.
 				DebugLog::Log("Alpha crop black levels: schema=1 generation=%llu sequence=%llu units=analysis-luma-10bit edge_fields=floor,black_threshold,p90,dispersion left=%.1f,%.1f,%.1f,%.1f top=%.1f,%.1f,%.1f,%.1f right=%.1f,%.1f,%.1f,%.1f bottom=%.1f,%.1f,%.1f,%.1f observation_class=%d provisional=%d horizontal_safe=%d vertical_safe=%d pixel_bounded=%d candidate_reason=\"%s\"",
