@@ -42,6 +42,46 @@ namespace Tests
 	TEST_CLASS(AlphaSourceCropPolicyTests)
 	{
 	public:
+		TEST_METHOD(LiveFourPixelCoarseEnvelopeDoesNotWithdrawPixelSafePillarboxCrop)
+		{
+			Input input = TrustedScopeCrop();
+			input.geometry = {192, 0, 3652, 2160, 3840, 2160,
+				3460.0 / 2160.0, ActivePictureBounds::BarAxes::LEFT_RIGHT};
+			auto observed = input.geometry; observed.left = 188;
+			auto envelope = observed; envelope.trustedBarAxes = ActivePictureBounds::BarAxes::NONE;
+			for (int i = 0; i < 120; ++i)
+			{
+				observed.left = envelope.left = i % 2 ? 188 : 192;
+				const bool reaffirmed = IsPixelSafeSamplingEnvelope(input.geometry, observed, envelope, true);
+				Assert::IsTrue(reaffirmed);
+				input.barCropRefinementHorizontalConflict = envelope.left < input.geometry.left && !reaffirmed;
+				const auto crop = Evaluate(input);
+				Assert::IsTrue(crop.applyCrop);
+				Assert::AreEqual(192, crop.sourceBounds.left);
+				Assert::AreEqual(3652, crop.sourceBounds.right);
+				PresentationRecoveryInput recovery;
+				recovery.crop = input; recovery.candidate = crop;
+				Assert::IsFalse(EvaluatePresentationRecovery(recovery).started);
+			}
+		}
+
+		TEST_METHOD(CoarseSamplingReaffirmationCannotHidePixelsOrMaterialGeometry)
+		{
+			const auto trusted = TrustedScopeCrop().geometry;
+			auto observed = trusted; observed.bottom += 4;
+			auto envelope = observed; envelope.trustedBarAxes = ActivePictureBounds::BarAxes::NONE;
+			Assert::IsTrue(IsPixelSafeSamplingEnvelope(trusted, observed, envelope, true));
+			Assert::IsFalse(IsPixelSafeSamplingEnvelope(trusted, observed, envelope, false));
+			envelope.bottom += 8;
+			Assert::IsFalse(IsPixelSafeSamplingEnvelope(trusted, observed, envelope, true));
+			envelope = observed; envelope.top -= 8; // aggregate size exceeds sampling tolerance
+			Assert::IsFalse(IsPixelSafeSamplingEnvelope(trusted, observed, envelope, true));
+			envelope = observed; observed.trustedBarAxes = ActivePictureBounds::BarAxes::NONE;
+			Assert::IsFalse(IsPixelSafeSamplingEnvelope(trusted, observed, envelope, true));
+			observed = trusted; envelope.rasterWidth = 1920;
+			Assert::IsFalse(IsPixelSafeSamplingEnvelope(trusted, observed, envelope, true));
+		}
+
 		TEST_METHOD(WomenInBlueCurrentBoundedHorizontalContentUsesFitInsteadOfFullRaster)
 		{
 			Input input = TrustedScopeCrop();

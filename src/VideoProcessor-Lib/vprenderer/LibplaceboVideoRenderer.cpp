@@ -3852,6 +3852,7 @@ struct LibplaceboVideoRenderer::Impl
 	bool latestActivePictureEvidenceWasStartupHypothesis = false;
 	bool presentationOwnedGeometryTransitionDeferred = false;
 	bool latestCropSamplingReaffirmed = false;
+	uint64_t lastSamplingEnvelopeLogTick = 0;
 	ActivePicturePresentationRetentionEvidence latestCropRetentionEvidence;
 	AlphaSourceCrop::PresentationRecoveryState cropPresentationRecovery;
 	bool cropTraceConfigured = false;
@@ -8411,7 +8412,28 @@ struct LibplaceboVideoRenderer::Impl
 					outward.top < presentationBeforeObservation.top ||
 					outward.right > presentationBeforeObservation.right ||
 					outward.bottom > presentationBeforeObservation.bottom;
-				if (expands)
+				// Do this before publishing coarse edge flags. Otherwise a safe
+				// four-pixel observation can reaffirm the crop below while this
+				// second path independently forces full raster (live event 18).
+				const bool samplingEnvelopeReaffirmed = hadCurrentTrustedCropGeometry &&
+					evidence.available && evidence.classification ==
+						ActivePictureClassification::BAR_CROP_TRUSTED &&
+					retentionEvidence.analysisValid && retentionEvidence.presentationValid &&
+					!retentionEvidence.outwardVisibleBoundsAvailable &&
+					AlphaSourceCrop::IsPixelSafeSamplingEnvelope(presentationBeforeObservation,
+						evidence.trustedBounds, outward, retentionEvidence.excludedBandsPixelSafe);
+				if (expands && samplingEnvelopeReaffirmed &&
+					(now - lastSamplingEnvelopeLogTick >= 2000))
+				{
+					lastSamplingEnvelopeLogTick = now;
+					DebugLog::Log("Alpha presentation envelope: sequence=%llu generation=%llu base=%d,%d-%d,%d observed=%d,%d-%d,%d reason=pixel-safe-sampling-reaffirmed",
+						static_cast<unsigned long long>(frameNumber),
+						static_cast<unsigned long long>(analysisSource.generation),
+						presentationBeforeObservation.left, presentationBeforeObservation.top,
+						presentationBeforeObservation.right, presentationBeforeObservation.bottom,
+						outward.left, outward.top, outward.right, outward.bottom);
+				}
+				if (expands && !samplingEnvelopeReaffirmed)
 				{
 					// The accumulated envelope is useful for its same-edge release
 					// hold. Keep the raw observation as well: top and bottom overlays

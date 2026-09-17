@@ -15,6 +15,12 @@ namespace AlphaSourceCrop
 	bool IsPixelSafeCropReaffirmation(const ActivePictureBounds& trusted,
 		const ActivePictureBounds& observedTrustedCrop, bool excludedBandsPixelSafe);
 
+	// The envelope has no crop authority. Suppress it only when both its complete
+	// extent and the affirmative observation reaffirm the same pixel-safe crop.
+	bool IsPixelSafeSamplingEnvelope(const ActivePictureBounds& trusted,
+		const ActivePictureBounds& observed, const ActivePictureBounds& envelope,
+		bool excludedBandsPixelSafe);
+
 	static constexpr uint32_t OUTWARD_PICTURE_CONFIRMATIONS_REQUIRED = 3;
 
 	struct OutwardPictureConfirmationState

@@ -1979,6 +1979,19 @@ namespace AlphaSourceCrop
 			std::abs((trusted.bottom - trusted.top) - (observed.bottom - observed.top)) <= tolerance;
 	}
 
+	bool IsPixelSafeSamplingEnvelope(const ActivePictureBounds& trusted,
+		const ActivePictureBounds& observed, const ActivePictureBounds& envelope,
+		bool excludedBandsPixelSafe)
+	{
+		if (!IsPixelSafeCropReaffirmation(trusted, observed, excludedBandsPixelSafe))
+			return false;
+		// Borrow axes for the geometric comparison only; never publish them as
+		// authority for this envelope. Include every edge, including pixel extents.
+		auto comparison = envelope;
+		comparison.trustedBarAxes = trusted.trustedBarAxes;
+		return IsPixelSafeCropReaffirmation(trusted, comparison, excludedBandsPixelSafe);
+	}
+
 	PresentationRecoveryDecision EvaluatePresentationRecovery(
 		const PresentationRecoveryInput& input)
 	{
