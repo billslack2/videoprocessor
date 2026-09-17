@@ -473,3 +473,18 @@ Review remains open for physical playback, remaining gradual scale behavior,
 the appropriate nested guard, and live diagnostic overhead. Current deployment
 remains 911e2b7f. No tester message has been sent. The candidate does not claim
 perfectly smooth playback, resolution of every long hold, or star recognition.
+
+## Authorized follow-up local deployment (2026-09-17)
+
+At the user's explicit request, deployed the tested `884029b1` x64 Release
+host/renderer pair to `C:\Videoprocessor\vp` at 08:09:50 EDT. SHA-256 verified
+both installed binaries against the tested candidate. The previous 911e2b7f
+pair was backed up and verified under
+`C:\Videoprocessor\vp\backups\VP-0189-before-884029b1-20260917-080950`.
+
+No configuration edits: six configuration/state/manifest files were hash-verified
+unchanged. VP was not running and was left stopped, ready for the next launch.
+Normal diagnostics are included; bounded per-frame tracing was not enabled.
+This deployment supersedes the earlier paragraph saying 911e2b7f remains installed.
+Story remains Review pending physical playback. Evidence:
+[follow-up deployment record](../assets/VP-0189/women-local-deployment.json).
