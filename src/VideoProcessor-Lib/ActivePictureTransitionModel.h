@@ -80,6 +80,37 @@ enum class ActivePictureClassification
 };
 
 
+// Measurement metadata is distinct from safe fallback coordinates. Full-extent
+// support is diagnostic only; this rollout gates failed bar proposals, not startup.
+enum class ActivePictureAxisState : uint8_t { UNKNOWN, TRUSTED_BARS, FULL_EXTENT_SUPPORTED };
+enum class ActivePictureAxisReason : uint8_t
+{
+	NOT_EVALUATED, SCAN_INCOMPLETE, BAR_EDGE_REJECTED, BAR_ASYMMETRY,
+	BAR_CONFIRMED, FULL_EXTENT_SUPPORTED, NO_FULL_EXTENT_SUPPORT
+};
+struct ActivePictureAxisEvidence
+{
+	ActivePictureAxisState state = ActivePictureAxisState::UNKNOWN;
+	ActivePictureAxisReason reason = ActivePictureAxisReason::NOT_EVALUATED;
+	bool scanComplete = false;
+	bool barCandidate = false;
+	bool FailedBar() const { return barCandidate && state == ActivePictureAxisState::UNKNOWN; }
+	bool operator==(const ActivePictureAxisEvidence& other) const
+	{
+		return state == other.state && reason == other.reason &&
+			scanComplete == other.scanComplete && barCandidate == other.barCandidate;
+	}
+};
+struct ActivePictureAxisEvidenceSet
+{
+	ActivePictureAxisEvidence horizontal, vertical;
+	bool HasFailedBar() const { return horizontal.FailedBar() || vertical.FailedBar(); }
+	bool operator==(const ActivePictureAxisEvidenceSet& other) const
+	{ return horizontal == other.horizontal && vertical == other.vertical; }
+};
+const char* ActivePictureAxisStateName(ActivePictureAxisState state);
+const char* ActivePictureAxisReasonName(ActivePictureAxisReason reason);
+
 struct ActivePictureObservation
 {
 	ActivePictureBounds bounds;
@@ -91,6 +122,7 @@ struct ActivePictureObservation
 	// Explicit current-evidence veto, distinct from an uncertain observation.
 	// History may identify this shape but must not publish it while deferred.
 	bool transitionDeferred = false;
+	ActivePictureAxisEvidenceSet axisEvidence;
 
 };
 
@@ -138,7 +170,8 @@ enum class ActivePicturePublicationAdmission
 	STABLE_REFERENCE_MISMATCH,
 	STABLE_GEOMETRY_RETAINED,
 	CONTAINED_COMPOSITION_RETAINED,
-	STABLE_ASPECT_RETAINED
+	STABLE_ASPECT_RETAINED,
+	INCOMPLETE_AXIS_RETAINED
 };
 
 const char* ActivePicturePublicationAdmissionName(
@@ -180,7 +213,8 @@ public:
 		const ActivePictureTransitionDecision& decision,
 		ActivePictureClassification classification,
 		bool transitionDeferred = false,
-		ActivePicturePublicationAdmission* admission = nullptr);
+		ActivePicturePublicationAdmission* admission = nullptr,
+		const ActivePictureAxisEvidenceSet* currentAxisEvidence = nullptr);
 
 	static uint64_t AnalysisIntervalFrames(double framesPerSecond);
 
@@ -204,6 +238,8 @@ private:
 	ActivePicturePublicationAdmission StableRetentionAdmission(
 		const ActivePictureBounds& bounds,
 		ActivePictureClassification classification) const;
+	bool RetainsIncompleteInwardFormat(const ActivePictureBounds& candidate,
+		const ActivePictureAxisEvidenceSet& evidence) const;
 	static bool HasCropAuthority(
 		const ActivePictureObservation& observation);
 	static bool IsFullRaster(

@@ -196,10 +196,26 @@ ActivePicturePublicationAdmission ActivePictureTransitionModel::StableRetentionA
 		: ActivePicturePublicationAdmission::ACCEPTED;
 }
 
+bool ActivePictureTransitionModel::RetainsIncompleteInwardFormat(
+	const ActivePictureBounds& candidate, const ActivePictureAxisEvidenceSet& evidence) const
+{
+	// Preserve initial acquisition (including a preceding full-raster/menu frame).
+	// A failed orthogonal bar is not evidence for a new complete program aspect.
+	return m_hasStable && m_stableClassification == ActivePictureClassification::BAR_CROP_TRUSTED &&
+		evidence.HasFailedBar() && candidate.rasterWidth == m_stable.rasterWidth &&
+		candidate.rasterHeight == m_stable.rasterHeight &&
+		candidate.left >= m_stable.left && candidate.top >= m_stable.top &&
+		candidate.right <= m_stable.right && candidate.bottom <= m_stable.bottom &&
+		candidate.left < candidate.right && candidate.top < candidate.bottom &&
+		(candidate.left > m_stable.left || candidate.top > m_stable.top ||
+		 candidate.right < m_stable.right || candidate.bottom < m_stable.bottom);
+}
+
 const char* ActivePicturePublicationAdmissionName(ActivePicturePublicationAdmission admission)
 {
 	switch (admission)
 	{
+	case ActivePicturePublicationAdmission::INCOMPLETE_AXIS_RETAINED: return "incomplete-axis-retained";
 	case ActivePicturePublicationAdmission::NOT_EVALUATED: return "not-evaluated";
 	case ActivePicturePublicationAdmission::ACCEPTED: return "accepted";
 	case ActivePicturePublicationAdmission::DEFERRED: return "current-evidence-deferred";
@@ -453,6 +469,16 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 		ActivePictureClassification::UNAVAILABLE;
 	const bool matchesRecentTrusted = FindRecentTrustedGeometry(
 		observation, recentTrustedBounds, recentTrustedClassification);
+	if (RetainsIncompleteInwardFormat(matchesRecentTrusted ? recentTrustedBounds : observation.bounds,
+		observation.axisEvidence))
+	{
+		// Axis diagnostics already use the bounded edge trace. Only log a model
+		// event here when incomplete evidence actually cancels in-flight proof.
+		decision.diagnostic = m_matchingCandidates != 0;
+		ClearCandidate();
+		decision.reason = "failed bar axis cannot establish a new inward program format";
+		return decision;
+	}
 	// History and look-ahead must obey the same retention policy as live
 	// evidence. Test the remembered contract, not its noisy raw recurrence.
 	const auto retention = matchesRecentTrusted
@@ -681,7 +707,8 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 bool ActivePictureTransitionModel::AdoptPublishedDecision(
 	const ActivePictureTransitionDecision& decision,
 	ActivePictureClassification classification, bool transitionDeferred,
-	ActivePicturePublicationAdmission* admission)
+	ActivePicturePublicationAdmission* admission,
+	const ActivePictureAxisEvidenceSet* currentAxisEvidence)
 {
 	if (admission) *admission = ActivePicturePublicationAdmission::ACCEPTED;
 	const auto reject = [admission](ActivePicturePublicationAdmission reason) {
@@ -710,6 +737,8 @@ bool ActivePictureTransitionModel::AdoptPublishedDecision(
 			base.trustedBarAxes == ActivePictureBounds::BarAxes::NONE);
 	if (!matchingReference)
 		return reject(ActivePicturePublicationAdmission::STABLE_REFERENCE_MISMATCH);
+	if (currentAxisEvidence && RetainsIncompleteInwardFormat(decision.bounds, *currentAxisEvidence))
+		return reject(ActivePicturePublicationAdmission::INCOMPLETE_AXIS_RETAINED);
 	const auto retention = StableRetentionAdmission(decision.bounds, classification);
 	if (retention != ActivePicturePublicationAdmission::ACCEPTED)
 		return reject(retention);

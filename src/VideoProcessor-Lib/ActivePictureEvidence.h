@@ -42,6 +42,7 @@ struct ActivePictureEvidence
 		ActivePictureClassification::UNAVAILABLE;
 	ActivePictureBounds proposedBounds;
 	ActivePictureBounds trustedBounds;
+	ActivePictureAxisEvidenceSet axisEvidence;
 	ActivePictureEdgeEvidence left;
 	ActivePictureEdgeEvidence top;
 	ActivePictureEdgeEvidence right;
@@ -51,6 +52,10 @@ struct ActivePictureEvidence
 	std::string reason;
 };
 
+
+// Shared conversion keeps live and queued observations tied to the same measurement.
+ActivePictureObservation MakeActivePictureObservation(const ActivePictureEvidence& evidence,
+	uint64_t frameNumber, double framesPerSecond);
 
 // Frame-global darkness is presentation-independent. In particular, startup
 // title cards must be classifiable before any trusted crop exists; "false" and

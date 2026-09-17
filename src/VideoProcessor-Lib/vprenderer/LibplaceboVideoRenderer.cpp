@@ -8406,7 +8406,8 @@ struct LibplaceboVideoRenderer::Impl
 					ActivePictureScheduledDecisionValidation::ACCEPTED &&
 				nlsTransition.AdoptPublishedDecision(
 					scheduledDecision->transition, evidence.classification,
-				admission.observation.transitionDeferred, &publicationAdmission);
+				admission.observation.transitionDeferred, &publicationAdmission,
+					&admission.observation.axisEvidence);
 			if (hasScheduledDecision &&
 				scheduledValidation ==
 					ActivePictureScheduledDecisionValidation::ACCEPTED &&
@@ -10901,7 +10902,7 @@ struct LibplaceboVideoRenderer::Impl
 					if (end != value && *end == '\0' && value[0] >= '0' && value[0] <= '9')
 						cropTraceRemaining = static_cast<unsigned>(std::min(2400ul, requested));
 				}
-				DebugLog::Log("Alpha crop diagnostics: schema=1 recovery_dwell_ms=250 summary_ms=2000 sampling_equivalence=max(2,width/480,height/270) sampling_requires=same-bars-and-current-safe-bands partial_composition=defer-publication stable_aspect_deadband_percent=%.1f stable_aspect_scope=contained-trusted-picture all_sided_inset=retain-inner-composition scheduled_admission=exact-stable-reference-and-live-deadbands global_grid=16x16 near_black_p90_max=96 edge_grid=48x6 extent_grid_max=256x64 extent_support=2x2 black_floor=perimeter-p10-clamped-48-80 black_threshold=min(104,floor+24) retention_black_min=0.95 retention_p90_max=min(104,floor+24) dispersion_max=24 texture_max=8 chroma_neutral_min=0.90 continuity_min=0.99 trace_budget=%u trace_max=2400 trace_scope=candidate-and-presentation evidence=existing-samples capture_missed_semantics=timestamp-gap-estimate", ActivePictureTransitionModel::STABLE_ASPECT_DEADBAND_PERCENT, cropTraceRemaining);
+				DebugLog::Log("Alpha crop diagnostics: schema=1 recovery_dwell_ms=250 summary_ms=2000 sampling_equivalence=max(2,width/480,height/270) sampling_requires=same-bars-and-current-safe-bands partial_composition=defer-publication failed_bar_axis=retain-established-inward-format axis_full_extent=diagnostic-only axis_extent_support=both-outer-lines-6-of-12-per-quartile-above-cutoff-plus24 stable_aspect_deadband_percent=%.1f stable_aspect_scope=contained-trusted-picture all_sided_inset=retain-inner-composition scheduled_admission=exact-stable-reference-and-live-deadbands global_grid=16x16 near_black_p90_max=96 edge_grid=48x6 extent_grid_max=256x64 extent_support=2x2 black_floor=perimeter-p10-clamped-48-80 black_threshold=min(104,floor+24) retention_black_min=0.95 retention_p90_max=min(104,floor+24) dispersion_max=24 texture_max=8 chroma_neutral_min=0.90 continuity_min=0.99 trace_budget=%u trace_max=2400 trace_scope=candidate-and-presentation evidence=existing-samples capture_missed_semantics=timestamp-gap-estimate", ActivePictureTransitionModel::STABLE_ASPECT_DEADBAND_PERCENT, cropTraceRemaining);
 			}
 			const uint64_t cropTick = episodeInput.currentTick;
 			const bool cropApplied = cropDecision.applyCrop || aspectLimitFill.applied;
@@ -11000,6 +11001,18 @@ struct LibplaceboVideoRenderer::Impl
 				const auto& t = evidence.excludedTop;
 				const auto& r = evidence.excludedRight;
 				const auto& b = evidence.excludedBottom;
+				DebugLog::Log("Alpha crop axis evidence: schema=1 generation=%llu sequence=%llu horizontal=%s horizontal_reason=%s horizontal_scan_complete=%d horizontal_bar_candidate=%d vertical=%s vertical_reason=%s vertical_scan_complete=%d vertical_bar_candidate=%d proposed=%d,%d-%d,%d trusted=%d,%d-%d,%d accepted=%d,%d-%d,%d applied=%d,%d-%d,%d",
+					frameGeneration, sourceSequence,
+					ActivePictureAxisStateName(rawCandidate.axisEvidence.horizontal.state),
+					ActivePictureAxisReasonName(rawCandidate.axisEvidence.horizontal.reason),
+					rawCandidate.axisEvidence.horizontal.scanComplete ? 1 : 0, rawCandidate.axisEvidence.horizontal.barCandidate ? 1 : 0,
+					ActivePictureAxisStateName(rawCandidate.axisEvidence.vertical.state),
+					ActivePictureAxisReasonName(rawCandidate.axisEvidence.vertical.reason),
+					rawCandidate.axisEvidence.vertical.scanComplete ? 1 : 0, rawCandidate.axisEvidence.vertical.barCandidate ? 1 : 0,
+					rawBounds.left, rawBounds.top, rawBounds.right, rawBounds.bottom,
+					rawCandidate.trustedBounds.left, rawCandidate.trustedBounds.top, rawCandidate.trustedBounds.right, rawCandidate.trustedBounds.bottom,
+					effectiveGeometry.left, effectiveGeometry.top, effectiveGeometry.right, effectiveGeometry.bottom,
+					presentationCropBounds.left, presentationCropBounds.top, presentationCropBounds.right, presentationCropBounds.bottom);
 				DebugLog::Log("Alpha crop candidate levels: schema=1 generation=%llu sequence=%llu available=%d classification=%d candidate=%d,%d-%d,%d retained=%d,%d-%d,%d units=analysis-luma-10bit edge_fields=bar_pixels,floor,p90,dispersion,black_fraction,texture,continuity,trusted left=%d,%.1f,%.1f,%.1f,%.4f,%.1f,%.4f,%d top=%d,%.1f,%.1f,%.1f,%.4f,%.1f,%.4f,%d right=%d,%.1f,%.1f,%.1f,%.4f,%.1f,%.4f,%d bottom=%d,%.1f,%.1f,%.1f,%.4f,%.1f,%.4f,%d",
 					frameGeneration, sourceSequence, rawCandidate.available ? 1 : 0, static_cast<int>(rawCandidate.classification),
 					rawBounds.left, rawBounds.top, rawBounds.right, rawBounds.bottom,
@@ -14582,10 +14595,8 @@ void LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
 			ExtractActivePictureEvidence(source);
 		PreviewEvidence preview;
 		preview.identity = queued.activePictureIdentity;
-		preview.observation.frameNumber = queued.sourceSequence;
-		preview.observation.available = evidence.available;
-		preview.observation.framesPerSecond =
-			state.displayMode->RefreshRateHz();
+		preview.observation = MakeActivePictureObservation(evidence,
+			queued.sourceSequence, state.displayMode->RefreshRateHz());
 		if (evidence.available)
 		{
 			preview.observation.bounds = evidence.classification ==

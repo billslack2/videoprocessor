@@ -139,6 +139,187 @@ namespace VideoProcessorTest
 	public:
 
 
+		TEST_METHOD(FailedOrthogonalBarCannotPublishInventedFormatFromRealPixels)
+		{
+			for (bool vertical : { true, false })
+			{
+				P010Frame initial(960,540), inset(960,540);
+				if (vertical)
+				{
+					initial.BlackOutside(0,58,960,482);
+					inset.BlackOutside(48,88,912,452);
+					inset.FillRectangle(0,88,48,452,64,640,512);
+					inset.FillRectangle(912,88,960,452,64,640,512);
+				}
+				else
+				{
+					initial.BlackOutside(44,0,916,540);
+					inset.BlackOutside(104,48,856,492);
+					inset.FillRectangle(104,0,856,48,64,640,512);
+					inset.FillRectangle(104,492,856,540,64,640,512);
+				}
+				const auto base=ExtractP010ActivePictureEvidence(initial.View()).trustedBounds;
+				const auto observed=ExtractP010ActivePictureEvidence(inset.View());
+				Assert::IsTrue(observed.classification==ActivePictureClassification::BAR_CROP_TRUSTED);
+				Assert::IsTrue(observed.trustedBounds.trustedBarAxes==(vertical ?
+					ActivePictureBounds::BarAxes::TOP_BOTTOM : ActivePictureBounds::BarAxes::LEFT_RIGHT));
+				ActivePictureTransitionModel model;
+				for (uint64_t seq=1;seq<=40;++seq)
+				{
+					const auto source=seq<=4 ? initial.P010Source() : inset.P010Source();
+					AlphaSourceCrop::TransitionAdmissionInput input;
+					input.evidence=ExtractActivePictureEvidence(source);
+					input.retention=EvaluateActivePicturePresentationRetention(source,base);
+					input.trustedGeometry=input.presentationBeforeObservation=base;
+					input.trustedGeometryAvailable=input.compatiblePresentation=true;
+					input.trustedGeneration=input.sourceGeneration=1;
+					input.sourceSequence=seq; input.framesPerSecond=24;
+					input.outwardCandidate=input.evidence.trustedBounds;
+					const auto admission=AlphaSourceCrop::EvaluateTransitionAdmission(input);
+					if (seq>4)
+					{
+						Assert::IsFalse(admission.deferPartialComposition);
+						Assert::IsFalse(admission.deferOutward);
+					}
+					const auto decision=model.Observe(admission.observation);
+					if (seq>4)
+					{
+						Assert::IsFalse(decision.publish,L"Incomplete axes published an invented program aspect");
+						Assert::AreEqual(base.top,decision.stableBounds.top);
+						Assert::AreEqual(base.left,decision.stableBounds.left);
+					}
+				}
+			}
+		}
+
+		TEST_METHOD(AxisMetadataDistinguishesBarsFullExtentUnknownAndUnfinishedScan)
+		{
+			P010Frame full(960,540), scope(960,540), asymmetric(960,540), raised(960,540), stars(960,540), dark(960,540);
+			scope.BlackOutside(0,58,960,482);
+			asymmetric.BlackOutside(48,88,904,452);
+			raised.BlackOutside(48,88,912,452);
+			raised.FillRectangle(0,88,48,452,96);
+			raised.FillRectangle(912,88,960,452,96);
+			stars.Fill(64,512,512);
+			for (int i=0;i<5;++i)
+			{
+				stars.FillRectangle(i*20+10,0,i*20+12,2,700);
+				stars.FillRectangle(i*20+10,538,i*20+12,540,700);
+				stars.FillRectangle(0,(i*2+1)*540/96,2,(i*2+1)*540/96+2,700);
+				stars.FillRectangle(958,(i*2+1)*540/96,960,(i*2+1)*540/96+2,700);
+			}
+			dark.Fill(64,512,512);
+			const auto f=ExtractP010ActivePictureEvidence(full.View());
+			Assert::IsTrue(f.axisEvidence.horizontal.state==ActivePictureAxisState::FULL_EXTENT_SUPPORTED);
+			Assert::IsTrue(f.axisEvidence.vertical.state==ActivePictureAxisState::FULL_EXTENT_SUPPORTED);
+			const auto c=ExtractP010ActivePictureEvidence(scope.View());
+			Assert::IsTrue(c.axisEvidence.vertical.state==ActivePictureAxisState::TRUSTED_BARS);
+			Assert::IsTrue(c.axisEvidence.horizontal.state==ActivePictureAxisState::FULL_EXTENT_SUPPORTED);
+			const auto a=ExtractP010ActivePictureEvidence(asymmetric.View());
+			Assert::IsTrue(a.axisEvidence.horizontal.FailedBar());
+			Assert::IsTrue(a.axisEvidence.horizontal.reason==ActivePictureAxisReason::BAR_ASYMMETRY);
+			const auto r=ExtractP010ActivePictureEvidence(raised.View());
+			Assert::IsTrue(r.axisEvidence.horizontal.state==ActivePictureAxisState::UNKNOWN);
+			Assert::IsFalse(r.axisEvidence.horizontal.barCandidate);
+			const auto st=ExtractP010ActivePictureEvidence(stars.View());
+			Assert::IsTrue(st.axisEvidence.horizontal.state==ActivePictureAxisState::UNKNOWN);
+			Assert::IsTrue(st.axisEvidence.vertical.state==ActivePictureAxisState::UNKNOWN);
+			const auto d=ExtractP010ActivePictureEvidence(dark.View());
+			Assert::IsFalse(d.axisEvidence.horizontal.scanComplete);
+			Assert::IsTrue(d.axisEvidence.horizontal.reason==ActivePictureAxisReason::SCAN_INCOMPLETE);
+			Assert::IsTrue(d.lumaSamples<30000);
+			const auto invalid=ExtractActivePictureEvidence({});
+			Assert::IsTrue(invalid.axisEvidence.horizontal.reason==ActivePictureAxisReason::NOT_EVALUATED);
+		}
+
+		TEST_METHOD(FailedBarEvidenceCannotReenterThroughHistoryQueueOrPreview)
+		{
+			P010Frame scope(960,540), inset(960,540), cleanNarrow(960,540), full(960,540);
+			scope.BlackOutside(0,58,960,482);
+			inset.BlackOutside(48,88,912,452);
+			inset.FillRectangle(0,88,48,452,64,640,512);
+			inset.FillRectangle(912,88,960,452,64,640,512);
+			cleanNarrow.BlackOutside(0,88,960,452);
+			const auto base=ExtractP010ActivePictureEvidence(scope.View());
+			const auto partial=ExtractP010ActivePictureEvidence(inset.View());
+			const auto narrow=ExtractP010ActivePictureEvidence(cleanNarrow.View());
+			Assert::IsTrue(partial.axisEvidence.horizontal.FailedBar());
+			Assert::IsFalse(narrow.axisEvidence.HasFailedBar());
+			ActivePictureTransitionModel live, history, startup;
+			ActivePictureDecisionTimeline timeline;
+			timeline.Reset(1);
+			ActivePictureFrameDecision queued;
+			// Put the narrow format in real history, then expand to the base.
+			for (uint64_t seq=1;seq<=4;++seq)
+				history.Observe(MakeActivePictureObservation(narrow,seq,24));
+			for (uint64_t seq=5;seq<=8;++seq)
+				history.Observe(MakeActivePictureObservation(base,seq,24));
+			for (uint64_t seq=1;seq<=4;++seq)
+			{
+				const auto obs=MakeActivePictureObservation(base,seq,24);
+				live.Observe(obs);
+				const ActivePictureFrameIdentity id{1,seq,seq,seq*1000};
+				timeline.TrackAcceptedFrame(id);
+				timeline.TrackLookaheadEvidence(id,obs,true,false);
+				timeline.SubmitScheduledObservation(id,obs,5,4,queued);
+			}
+			ActivePictureTransitionDecision staleQueue;
+			staleQueue.publish=staleQueue.stable=true;
+			staleQueue.bounds=narrow.trustedBounds;
+			staleQueue.stableBounds=base.trustedBounds;
+			ActivePicturePublicationAdmission why;
+			Assert::IsFalse(live.AdoptPublishedDecision(staleQueue,narrow.classification,false,&why,&partial.axisEvidence));
+			Assert::IsTrue(why==ActivePicturePublicationAdmission::INCOMPLETE_AXIS_RETAINED);
+			for (uint64_t seq=9;seq<=40;++seq)
+			{
+				auto obs=MakeActivePictureObservation(partial,seq,24);
+				// Provisional history lookup must obey the same current failed-axis veto.
+				if (seq%2==0) obs.classification=ActivePictureClassification::PROVISIONAL;
+				Assert::IsFalse(history.Observe(obs).publish);
+				const ActivePictureFrameIdentity id{1,seq,seq,seq*1000};
+				timeline.TrackAcceptedFrame(id);
+				timeline.TrackLookaheadEvidence(id,obs,true,false);
+				Assert::IsFalse(timeline.SubmitScheduledObservation(id,obs,5,4,queued));
+			}
+			// Complete evidence can still accept the identical rectangle.
+			Assert::IsTrue(live.AdoptPublishedDecision(staleQueue,narrow.classification,false,&why,&narrow.axisEvidence));
+			// Safe full-frame startup and first bar acquisition remain unchanged.
+			startup.Observe(MakeActivePictureObservation(ExtractP010ActivePictureEvidence(full.View()),1,24));
+			bool acquired=false;
+			for (uint64_t seq=2;seq<=8;++seq)
+				acquired=startup.Observe(MakeActivePictureObservation(partial,seq,24)).publish || acquired;
+			Assert::IsTrue(acquired);
+			// An outward move is not denied because an unrelated axis failed.
+			auto expansion=MakeActivePictureObservation(base,50,24);
+			expansion.axisEvidence=partial.axisEvidence;
+			live.Observe(expansion); ++expansion.frameNumber;
+			Assert::IsTrue(live.Observe(expansion).publish);
+		}
+
+		TEST_METHOD(PixelMultiAspectRoundTripsRemainEligibleWithAxisMetadata)
+		{
+			for (auto bars : { std::pair<int,int>{208,264}, {264,70}, {208,0} })
+			{
+				P010Frame first(3840,2160), second(3840,2160);
+				first.BlackOutside(0,bars.first,3840,2160-bars.first);
+				if (bars.second==0) second.BlackOutside(376,0,3464,2160);
+				else second.BlackOutside(0,bars.second,3840,2160-bars.second);
+				const auto a=ExtractP010ActivePictureEvidence(first.View());
+				const auto b=ExtractP010ActivePictureEvidence(second.View());
+				Assert::IsFalse(a.axisEvidence.HasFailedBar());
+				Assert::IsFalse(b.axisEvidence.HasFailedBar());
+				ActivePictureTransitionModel model;
+				uint64_t seq=1;
+				for (const auto* evidence : { &a,&b,&a,&b,&a })
+				{
+					bool accepted=false;
+					for (int i=0;i<5;++i)
+						accepted=model.Observe(MakeActivePictureObservation(*evidence,seq++,24)).publish || accepted;
+					Assert::IsTrue(accepted);
+				}
+			}
+		}
+
 		TEST_METHOD(PixelMeasuredMarginsReplaceOnlyUncertifiedPresentationAxes)
 		{
 			P010Frame scope(960,540), partial(960,540), subtitle(960,540), expanded(960,540);

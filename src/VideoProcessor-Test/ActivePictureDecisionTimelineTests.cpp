@@ -556,6 +556,11 @@ namespace VideoProcessorTest
 				return published.inwardProof;
 			};
 
+			ActivePictureObservation incomplete = Trusted(603, ScopeBounds());
+			incomplete.axisEvidence.horizontal.barCandidate = true;
+			incomplete.axisEvidence.horizontal.reason = ActivePictureAxisReason::BAR_EDGE_REJECTED;
+			Assert::IsTrue(runReplay(incomplete,true,false)==ActivePictureInwardProofValidation::EVIDENCE_NOT_TRUSTED);
+
 			ActivePictureObservation provisional =
 				Trusted(603, ScopeBounds());
 			provisional.classification =
@@ -1083,6 +1088,9 @@ namespace VideoProcessorTest
 				identity, trusted, true, false));
 			Assert::IsFalse(timeline.TrackLookaheadEvidence(
 				identity, Trusted(1, ShallowScopeBounds()), true, false));
+			auto changedCertificate=trusted;
+			changedCertificate.axisEvidence.horizontal.barCandidate=true;
+			Assert::IsFalse(timeline.TrackLookaheadEvidence(identity,changedCertificate,true,false));
 		}
 
 		TEST_METHOD(ExactProofDoesNotChangeTransitionDecisionSetOrOrder)

@@ -731,9 +731,8 @@ namespace AlphaSourceCrop
 	TransitionAdmissionDecision EvaluateTransitionAdmission(const TransitionAdmissionInput& input)
 	{
 		TransitionAdmissionDecision decision;
-		decision.observation.frameNumber = input.sourceSequence;
-		decision.observation.available = input.evidence.available;
-		decision.observation.framesPerSecond = input.framesPerSecond;
+		decision.observation = MakeActivePictureObservation(input.evidence,
+			input.sourceSequence, input.framesPerSecond);
 		decision.deferPresentation = input.evidence.available &&
 			input.trustedGeometryAvailable && input.trustedGeneration == input.sourceGeneration &&
 			ShouldDeferVerticalGeometryTransition(input.trustedGeometry,

@@ -83,29 +83,27 @@ struct SampleContext
 	}
 };
 
-bool IsBlackRow(SampleContext& samples, int y, int threshold)
+struct EdgeScan
+{
+	bool complete = false;
+	bool outerContentSupported = false;
+};
+bool ScanBlackLine(SampleContext& samples, bool row, int coordinate, int threshold,
+	bool& contentSupported)
 {
 	int black = 0;
+	int supported[4] = {};
 	for (int i = 0; i < kLineSamples; ++i)
 	{
-		const int x = ((i * 2 + 1) * samples.source.width) /
+		const int position = ((i * 2 + 1) * (row ? samples.source.width : samples.source.height)) /
 			(kLineSamples * 2);
-		if (samples.Luma(x, y) <= threshold)
-			++black;
+		const int luma = row ? samples.Luma(position, coordinate) : samples.Luma(coordinate, position);
+		black += luma <= threshold;
+		supported[i / 12] += luma > threshold + 24;
 	}
-	return black >= 44;
-}
-
-bool IsBlackColumn(SampleContext& samples, int x, int threshold)
-{
-	int black = 0;
-	for (int i = 0; i < kLineSamples; ++i)
-	{
-		const int y = ((i * 2 + 1) * samples.source.height) /
-			(kLineSamples * 2);
-		if (samples.Luma(x, y) <= threshold)
-			++black;
-	}
+	// Diagnostic certificate only: distributed support in both opposing outer
+	// lines, not the few bright pixels sufficient to stop a black-line search.
+	contentSupported = supported[0] >= 6 && supported[1] >= 6 && supported[2] >= 6 && supported[3] >= 6;
 	return black >= 44;
 }
 
@@ -395,6 +393,40 @@ ExcludedBandVisibleExtent FindVerticalVisibleExtent(SampleContext& samples,
 }
 
 
+const char* ActivePictureAxisStateName(ActivePictureAxisState state)
+{
+	switch (state) {
+	case ActivePictureAxisState::TRUSTED_BARS: return "trusted-bars";
+	case ActivePictureAxisState::FULL_EXTENT_SUPPORTED: return "full-extent-supported";
+	default: return "unknown";
+	}
+}
+const char* ActivePictureAxisReasonName(ActivePictureAxisReason reason)
+{
+	switch (reason) {
+	case ActivePictureAxisReason::SCAN_INCOMPLETE: return "scan-incomplete";
+	case ActivePictureAxisReason::BAR_EDGE_REJECTED: return "bar-edge-rejected";
+	case ActivePictureAxisReason::BAR_ASYMMETRY: return "bar-asymmetry";
+	case ActivePictureAxisReason::BAR_CONFIRMED: return "bar-confirmed";
+	case ActivePictureAxisReason::FULL_EXTENT_SUPPORTED: return "distributed-edge-content";
+	case ActivePictureAxisReason::NO_FULL_EXTENT_SUPPORT: return "no-full-extent-support";
+	default: return "not-evaluated";
+	}
+}
+ActivePictureObservation MakeActivePictureObservation(const ActivePictureEvidence& evidence,
+	uint64_t frameNumber, double framesPerSecond)
+{
+	ActivePictureObservation observation;
+	observation.frameNumber = frameNumber;
+	observation.framesPerSecond = framesPerSecond;
+	observation.available = evidence.available;
+	observation.classification = evidence.classification;
+	observation.bounds = evidence.classification == ActivePictureClassification::PROVISIONAL
+		? evidence.proposedBounds : evidence.trustedBounds;
+	observation.axisEvidence = evidence.axisEvidence;
+	return observation;
+}
+
 ActivePictureEvidence ExtractActivePictureEvidence(
 	const AnalysisLumaSource& source)
 {
@@ -428,36 +460,51 @@ ActivePictureEvidence ExtractActivePictureEvidence(
 	// worst-case 4K inspection below 30,000 luma reads even for adversarial
 	// all-black or nested-frame input.
 	int scanLinesRemaining = 480;
-	auto blackRow = [&](int y)
+	EdgeScan topScan, bottomScan, leftScan, rightScan;
+	auto blackLine = [&](bool row, int coordinate, EdgeScan& scan)
 	{
-		if (scanLinesRemaining <= 0)
-			return false;
+		if (scanLinesRemaining <= 0) return false;
 		--scanLinesRemaining;
-		return IsBlackRow(samples, y, blackThreshold);
-	};
-	auto blackColumn = [&](int x)
-	{
-		if (scanLinesRemaining <= 0)
-			return false;
-		--scanLinesRemaining;
-		return IsBlackColumn(samples, x, blackThreshold);
+		bool supported = false;
+		const bool black = ScanBlackLine(samples, row, coordinate, blackThreshold, supported);
+		if (coordinate == 0 || coordinate == (row ? source.height : source.width) - 1)
+			scan.outerContentSupported = supported;
+		if (!black) scan.complete = true;
+		return black;
 	};
 	int top = 0;
 	while (top + yStep < source.height / 2 &&
-		blackRow(top))
+		blackLine(true, top, topScan))
 		top += yStep;
 	int bottom = source.height;
 	while (bottom - yStep > source.height / 2 &&
-		blackRow(bottom - 1))
+		blackLine(true, bottom - 1, bottomScan))
 		bottom -= yStep;
 	int left = 0;
 	while (left + xStep < source.width / 2 &&
-		blackColumn(left))
+		blackLine(false, left, leftScan))
 		left += xStep;
 	int right = source.width;
 	while (right - xStep > source.width / 2 &&
-		blackColumn(right - 1))
+		blackLine(false, right - 1, rightScan))
 		right -= xStep;
+
+	auto measuredAxis = [](const EdgeScan& first, const EdgeScan& last, int before, int after, int step) {
+		ActivePictureAxisEvidence axis;
+		axis.scanComplete = first.complete && last.complete;
+		axis.barCandidate = before > step * 2 || after > step * 2;
+		axis.reason = !axis.scanComplete ? ActivePictureAxisReason::SCAN_INCOMPLETE :
+			axis.barCandidate ? ActivePictureAxisReason::BAR_EDGE_REJECTED : ActivePictureAxisReason::NO_FULL_EXTENT_SUPPORT;
+		if (axis.scanComplete && before == 0 && after == 0 &&
+			first.outerContentSupported && last.outerContentSupported)
+		{
+			axis.state = ActivePictureAxisState::FULL_EXTENT_SUPPORTED;
+			axis.reason = ActivePictureAxisReason::FULL_EXTENT_SUPPORTED;
+		}
+		return axis;
+	};
+	result.axisEvidence.horizontal = measuredAxis(leftScan, rightScan, left, source.width-right, xStep);
+	result.axisEvidence.vertical = measuredAxis(topScan, bottomScan, top, source.height-bottom, yStep);
 
 	const int activeWidth = right - left;
 	const int activeHeight = bottom - top;
@@ -530,6 +577,16 @@ ActivePictureEvidence ExtractActivePictureEvidence(
 			result.trustedBounds.right = right;
 		}
 	}
+	auto finishAxis = [](ActivePictureAxisEvidence& axis, bool trusted,
+		bool bothEdgesTrusted) {
+		if (!axis.scanComplete || !axis.barCandidate) return;
+		if (trusted) {
+			axis.state = ActivePictureAxisState::TRUSTED_BARS;
+			axis.reason = ActivePictureAxisReason::BAR_CONFIRMED;
+		} else if (bothEdgesTrusted) axis.reason = ActivePictureAxisReason::BAR_ASYMMETRY;
+	};
+	finishAxis(result.axisEvidence.vertical, verticalTrusted, result.top.trusted && result.bottom.trusted);
+	finishAxis(result.axisEvidence.horizontal, horizontalTrusted, result.left.trusted && result.right.trusted);
 	const int trustedWidth =
 		result.trustedBounds.right - result.trustedBounds.left;
 	const int trustedHeight =
