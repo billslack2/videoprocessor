@@ -142,7 +142,7 @@ namespace VideoProcessorTest
 			}
 		}
 
-		TEST_METHOD(NestedProofCannotCrossMissingEvidenceOrSceneReset)
+		TEST_METHOD(ContainedInsetStaysHeldAcrossMissingEvidenceAndSceneReset)
 		{
 			for (int interruption = 0; interruption < 3; ++interruption)
 			{
@@ -933,7 +933,7 @@ namespace VideoProcessorTest
 			ActivePictureTransitionModel model;
 			const ActivePictureBounds anchor = {0,280,3840,1880,3840,2160,2.4,ActivePictureBounds::BarAxes::TOP_BOTTOM};
 			uint64_t frame = Establish(model, anchor);
-			for (int inset : {8, 16, 22})
+			for (int inset : {8, 16, 22, 38})
 			{
 				auto probeBounds = anchor; probeBounds.top += inset; probeBounds.bottom -= inset;
 				// Cached aspect can lag measured pixels; it must not drive this rule.
@@ -945,7 +945,7 @@ namespace VideoProcessorTest
 					Assert::AreEqual(anchor.top, held.bounds.top);
 				}
 			}
-			auto larger = anchor; larger.top += 80; larger.bottom -= 80;
+			auto larger = anchor; larger.top += 40; larger.bottom -= 40;
 			larger.aspectRatio = 3840.0 / (larger.bottom - larger.top);
 			Assert::IsFalse(Observe(model, larger, frame++).publish);
 			Assert::IsTrue(Observe(model, larger, frame++).publish);
@@ -1014,6 +1014,29 @@ namespace VideoProcessorTest
 			auto shifted = inset; shifted.left -= 160; shifted.right -= 160;
 			Observe(model, shifted, frame++);
 			Assert::IsTrue(Observe(model, shifted, frame++).publish);
+		}
+
+		TEST_METHOD(RememberedWindowboxCannotBypassCompositionHold)
+		{
+			const auto inset = LoggedWindowboxBounds();
+			const auto anchor = LoggedScopeBounds();
+			ActivePictureTransitionModel model;
+			uint64_t frame = Establish(model, inset);
+			Observe(model, anchor, frame++);
+			Assert::IsTrue(Observe(model, anchor, frame++).publish);
+			for (bool provisional : {false,true})
+			{
+				auto observed = inset;
+				if (provisional) observed.trustedBarAxes = ActivePictureBounds::BarAxes::NONE;
+				for (int n = 0; n < 600; ++n)
+				{
+					const auto held = Observe(model, observed, frame++, provisional
+						? ActivePictureClassification::PROVISIONAL : ActivePictureClassification::BAR_CROP_TRUSTED);
+					Assert::IsFalse(held.publish || held.knownTrustedGeometryReacquired);
+					Assert::AreEqual(anchor.left, held.stableBounds.left);
+					Assert::AreEqual(anchor.right, held.stableBounds.right);
+				}
+			}
 		}
 
 		TEST_METHOD(FailedReplayAllSidedInsetNeverReplacesTrustedMovieFrame)
@@ -1100,6 +1123,30 @@ namespace VideoProcessorTest
 			Assert::AreEqual(scope.top, toScope.bounds.top);
 		}
 
+		TEST_METHOD(TwoTwentyAndTwoThirtyFiveTransitionBothWaysAtFivePercent)
+		{
+			const ActivePictureBounds wide = {0,264,3840,1896,3840,2160,
+				3840.0/1632.0,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+			const ActivePictureBounds normal = {0,208,3840,1952,3840,2160,
+				3840.0/1744.0,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+			for (double rate : {23.976,24.0,25.0,50.0,59.94,60.0})
+			{
+				ActivePictureTransitionModel model;
+				uint64_t frame = Establish(model, normal);
+				const auto interval = ActivePictureTransitionModel::AnalysisIntervalFrames(rate);
+				for (const auto& target : {wide,normal,wide,normal})
+				{
+					Assert::IsFalse(Observe(model,target,frame,ActivePictureClassification::BAR_CROP_TRUSTED,rate).publish);
+					frame += interval;
+					const auto accepted = Observe(model,target,frame,ActivePictureClassification::BAR_CROP_TRUSTED,rate);
+					Assert::IsTrue(accepted.publish);
+					Assert::AreEqual(target.top,accepted.bounds.top);
+					Assert::AreEqual(target.bottom,accepted.bounds.bottom);
+					frame += interval;
+				}
+			}
+		}
+
 		TEST_METHOD(MinorTrustedGeometryChangeStaysWithinTwoPercentDeadband)
 		{
 			ActivePictureTransitionModel model;
@@ -1122,7 +1169,7 @@ namespace VideoProcessorTest
 			}
 		}
 
-		TEST_METHOD(TrustedGeometryBeyondTenPercentStillTransitions)
+		TEST_METHOD(TrustedGeometryBeyondAspectDeadbandStillTransitions)
 		{
 			ActivePictureTransitionModel model;
 			uint64_t frame = Establish(model, ScopeBounds());

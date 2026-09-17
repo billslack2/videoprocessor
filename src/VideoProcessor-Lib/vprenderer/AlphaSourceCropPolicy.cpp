@@ -764,7 +764,7 @@ namespace AlphaSourceCrop
 				edge.lumaDispersion <= 24.0 && edge.texture <= 8.0 &&
 				edge.neutralChromaFraction >= 0.90 && edge.continuity >= 0.99;
 		};
-		decision.observation.partialBarContinuityAvailable = input.evidence.available &&
+		decision.deferPartialComposition = input.evidence.available &&
 			input.evidence.classification == ActivePictureClassification::BAR_CROP_TRUSTED &&
 			(axes == ActivePictureBounds::BarAxes::TOP_BOTTOM ||
 			 axes == ActivePictureBounds::BarAxes::LEFT_RIGHT) &&
@@ -778,10 +778,9 @@ namespace AlphaSourceCrop
 			coherentMargin(input.evidence.left) && coherentMargin(input.evidence.top) &&
 			coherentMargin(input.evidence.right) && coherentMargin(input.evidence.bottom);
 		// A queued decision must obey the same veto as the live model. The
-		// partial branch can preserve proof but cannot admit a publication.
+		// partial composition can retain framing but cannot admit a publication.
 		decision.observation.transitionDeferred = decision.observation.transitionDeferred ||
-			decision.observation.partialBarContinuityAvailable;
-		decision.observation.partialBarBounds = proposed;
+			decision.deferPartialComposition;
 		return decision;
 	}
 

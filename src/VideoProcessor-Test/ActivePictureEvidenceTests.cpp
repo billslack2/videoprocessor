@@ -194,7 +194,7 @@ namespace VideoProcessorTest
 				const auto admission=AlphaSourceCrop::EvaluateTransitionAdmission(input);
 				if (paused)
 				{
-					Assert::IsTrue(admission.observation.partialBarContinuityAvailable && admission.observation.transitionDeferred);
+					Assert::IsTrue(admission.deferPartialComposition && admission.observation.transitionDeferred);
 					ActivePictureTransitionDecision queued;
 					queued.publish=queued.stable=true;
 					queued.bounds=ExtractP010ActivePictureEvidence(nested.View()).trustedBounds;

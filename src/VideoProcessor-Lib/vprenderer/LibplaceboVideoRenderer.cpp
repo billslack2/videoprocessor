@@ -8423,7 +8423,7 @@ struct LibplaceboVideoRenderer::Impl
 			{
 				lastCropAdmissionDeferred = admission.observation.transitionDeferred;
 				lastCropAdmissionLogTick = now;
-				DebugLog::Log("Alpha crop admission: sequence=%llu generation=%llu deferred=%d presentation_deferred=%d outward_deferred=%d broad_picture=%d outward_confirm=%u strip_evidence=%d horizontal_bands_safe=%d raw=%d,%d-%d,%d logical=%d,%d-%d,%d published=%d history_reacquired=%d partial_continuity=%d",
+				DebugLog::Log("Alpha crop admission: sequence=%llu generation=%llu deferred=%d presentation_deferred=%d outward_deferred=%d broad_picture=%d outward_confirm=%u strip_evidence=%d horizontal_bands_safe=%d raw=%d,%d-%d,%d logical=%d,%d-%d,%d published=%d history_reacquired=%d partial_composition_deferred=%d",
 					static_cast<unsigned long long>(frameNumber), static_cast<unsigned long long>(analysisSource.generation),
 					admission.observation.transitionDeferred ? 1 : 0, admission.deferPresentation ? 1 : 0,
 					admission.deferOutward ? 1 : 0, admission.outward.broadOpposingPicture ? 1 : 0,
@@ -8433,7 +8433,7 @@ struct LibplaceboVideoRenderer::Impl
 					latestActivePictureEvidenceBounds.bottom, transition.stableBounds.left, transition.stableBounds.top,
 					transition.stableBounds.right, transition.stableBounds.bottom,
 					transition.publish ? 1 : 0, transition.knownTrustedGeometryReacquired ? 1 : 0,
-					admission.observation.partialBarContinuityAvailable ? 1 : 0);
+					admission.deferPartialComposition ? 1 : 0);
 			}
 			const bool localStableTrustedContract = !applyScheduledDecision &&
 				transition.stable &&
@@ -8792,7 +8792,7 @@ struct LibplaceboVideoRenderer::Impl
 			if (transition.diagnostic)
 			{
 				DebugLog::Log(
-					"Alpha NLS active picture: state=%d frame=%llu rect=%d,%d-%d,%d aspect=%.4f stable=%d clear=%d classification=%d retention_safe=%d near_black_evaluated=%d global_near_black=%d global_luma_p90=%.1f near_black_episode=%s candidate_first=%llu candidate_age_frames=%llu candidate_paused_frames=%llu candidate_paused=%d nested_guard_ms=4000 reason=\"%s; %s; %s\"",
+					"Alpha NLS active picture: state=%d frame=%llu rect=%d,%d-%d,%d aspect=%.4f stable=%d clear=%d classification=%d retention_safe=%d near_black_evaluated=%d global_near_black=%d global_luma_p90=%.1f near_black_episode=%s candidate_first=%llu candidate_age_frames=%llu reason=\"%s; %s; %s\"",
 					static_cast<int>(transition.state),
 					static_cast<unsigned long long>(frameNumber),
 					transition.bounds.left, transition.bounds.top,
@@ -8808,7 +8808,6 @@ struct LibplaceboVideoRenderer::Impl
 					AlphaSourceCrop::NearBlackPresentationModeName(
 						nearBlackPresentationEpisode.mode),
 					transition.firstContradictoryFrame, transition.decisionLatencyFrames,
-					transition.pausedEvidenceFrames, transition.evidencePaused ? 1 : 0,
 					transition.reason.c_str(), evidence.reason.c_str(),
 					latestActivePicturePresentationRetentionReason.c_str());
 			}
@@ -10902,7 +10901,7 @@ struct LibplaceboVideoRenderer::Impl
 					if (end != value && *end == '\0' && value[0] >= '0' && value[0] <= '9')
 						cropTraceRemaining = static_cast<unsigned>(std::min(2400ul, requested));
 				}
-				DebugLog::Log("Alpha crop diagnostics: schema=1 recovery_dwell_ms=250 summary_ms=2000 sampling_equivalence=max(2,width/480,height/270) sampling_requires=same-bars-and-current-safe-bands nested_guard_ms=4000 nested_partial=pause-without-dwell stable_aspect_deadband_percent=10.0 stable_aspect_scope=contained-trusted-picture all_sided_inset=retain-inner-composition scheduled_admission=exact-stable-reference-and-live-deadbands global_grid=16x16 near_black_p90_max=96 edge_grid=48x6 extent_grid_max=256x64 extent_support=2x2 black_floor=perimeter-p10-clamped-48-80 black_threshold=min(104,floor+24) retention_black_min=0.95 retention_p90_max=min(104,floor+24) dispersion_max=24 texture_max=8 chroma_neutral_min=0.90 continuity_min=0.99 trace_budget=%u trace_max=2400 trace_scope=candidate-and-presentation evidence=existing-samples capture_missed_semantics=timestamp-gap-estimate", cropTraceRemaining);
+				DebugLog::Log("Alpha crop diagnostics: schema=1 recovery_dwell_ms=250 summary_ms=2000 sampling_equivalence=max(2,width/480,height/270) sampling_requires=same-bars-and-current-safe-bands partial_composition=defer-publication stable_aspect_deadband_percent=%.1f stable_aspect_scope=contained-trusted-picture all_sided_inset=retain-inner-composition scheduled_admission=exact-stable-reference-and-live-deadbands global_grid=16x16 near_black_p90_max=96 edge_grid=48x6 extent_grid_max=256x64 extent_support=2x2 black_floor=perimeter-p10-clamped-48-80 black_threshold=min(104,floor+24) retention_black_min=0.95 retention_p90_max=min(104,floor+24) dispersion_max=24 texture_max=8 chroma_neutral_min=0.90 continuity_min=0.99 trace_budget=%u trace_max=2400 trace_scope=candidate-and-presentation evidence=existing-samples capture_missed_semantics=timestamp-gap-estimate", ActivePictureTransitionModel::STABLE_ASPECT_DEADBAND_PERCENT, cropTraceRemaining);
 			}
 			const uint64_t cropTick = episodeInput.currentTick;
 			const bool cropApplied = cropDecision.applyCrop || aspectLimitFill.applied;

@@ -369,6 +369,8 @@ namespace AlphaSourceCrop
 		OutwardPictureConfirmationDecision outward;
 		bool deferPresentation = false;
 		bool deferOutward = false;
+		// Uncertain opposing margins cannot authorize a format change.
+		bool deferPartialComposition = false;
 	};
 	TransitionAdmissionDecision EvaluateTransitionAdmission(const TransitionAdmissionInput& input);
 

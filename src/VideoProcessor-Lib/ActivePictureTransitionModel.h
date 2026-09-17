@@ -91,10 +91,7 @@ struct ActivePictureObservation
 	// Explicit current-evidence veto, distinct from an uncertain observation.
 	// History may identify this shape but must not publish it while deferred.
 	bool transitionDeferred = false;
-	// Current coherent margins with only one authoritative axis. These may
-	// pause an existing nested candidate, never establish or publish a crop.
-	bool partialBarContinuityAvailable = false;
-	ActivePictureBounds partialBarBounds;
+
 };
 
 
@@ -128,8 +125,6 @@ struct ActivePictureTransitionDecision
 	double confidence = 0.0;
 	uint64_t firstContradictoryFrame = 0;
 	uint64_t decisionLatencyFrames = 0;
-	uint64_t pausedEvidenceFrames = 0;
-	bool evidencePaused = false;
 	std::string reason;
 };
 
@@ -158,13 +153,12 @@ public:
 	static constexpr uint8_t INITIAL_CONFIRMATIONS = 4;
 	static constexpr uint8_t CLEAR_TRANSITION_CONFIRMATIONS = 2;
 	static constexpr double ANALYSIS_PERIOD_SECONDS = 0.080;
-	static constexpr double NESTED_CROP_CONFIRMATION_SECONDS = 4.0;
 	static constexpr double DEFAULT_STABLE_GEOMETRY_DEADBAND_PERCENT = 2.0;
 	static constexpr double MAX_STABLE_GEOMETRY_DEADBAND_PERCENT = 5.0;
 	// Additional inward-only format tolerance, anchored to accepted geometry.
 	// Real mixed-aspect expansions remain outward; only a materially narrower
 	// picture can replace an established frame.
-	static constexpr double STABLE_ASPECT_DEADBAND_PERCENT = 10.0;
+	static constexpr double STABLE_ASPECT_DEADBAND_PERCENT = 5.0;
 
 	void Reset();
 	// Scene edits invalidate in-flight proof, not the last affirmative geometry.
@@ -216,11 +210,6 @@ private:
 		const ActivePictureBounds& bounds);
 	static bool HasAuthorityForCroppedAxes(
 		const ActivePictureBounds& bounds);
-	static bool IsNestedOrthogonalCrop(
-		const ActivePictureBounds& stable,
-		const ActivePictureBounds& candidate);
-	static bool NearbyGeometry(const ActivePictureBounds& left,
-		const ActivePictureBounds& right);
 	void RememberTrustedGeometry(const ActivePictureBounds& bounds,
 		ActivePictureClassification classification);
 	bool FindRecentTrustedGeometry(const ActivePictureObservation& observation,
@@ -251,9 +240,6 @@ private:
 	uint8_t m_candidateReversals = 0;
 	uint8_t m_unavailableCandidates = 0;
 	uint64_t m_firstContradictoryFrame = 0;
-	uint64_t m_pausedEvidenceFrames = 0;
-	bool m_candidatePaused = false;
-	ActivePictureBounds m_partialContinuityBounds;
 	uint64_t m_lastAnalyzedFrame = 0;
 	// Cadence correction can present one decoded source sequence repeatedly.
 	// Observation confidence is source-frame based, never presentation based.

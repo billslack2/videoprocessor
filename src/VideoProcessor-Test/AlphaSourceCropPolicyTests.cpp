@@ -467,7 +467,7 @@ namespace Tests
 			}
 		}
 
-		TEST_METHOD(PartialAxisPauseCannotPromoteAllSidedInset)
+		TEST_METHOD(DeferredEvidenceCannotPromoteAllSidedInset)
 		{
 			for (int interruption=0; interruption<3; ++interruption)
 			{
@@ -486,8 +486,6 @@ namespace Tests
 				{
 					ActivePictureObservation partial{nested,seq,true,ActivePictureClassification::PROVISIONAL,24};
 					partial.transitionDeferred=true;
-					partial.partialBarContinuityAvailable=true;
-					partial.partialBarBounds=nested;
 					const auto d=model.Observe(partial);
 					Assert::IsFalse(d.publish || d.knownTrustedGeometryReacquired);
 				}
