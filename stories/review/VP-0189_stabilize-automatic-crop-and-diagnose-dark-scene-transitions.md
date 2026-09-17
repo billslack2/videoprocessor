@@ -488,3 +488,13 @@ Normal diagnostics are included; bounded per-frame tracing was not enabled.
 This deployment supersedes the earlier paragraph saying 911e2b7f remains installed.
 Story remains Review pending physical playback. Evidence:
 [follow-up deployment record](../assets/VP-0189/women-local-deployment.json).
+
+## Live playback correction and deployment (2026-09-17)
+
+Playback of 884029b1 still showed crop drops. Event 18 at 08:24:00 demonstrated that a pixel-safe four-pixel observation could reaffirm the crop while a separately published coarse envelope forced full raster for 578 ms. The earlier playback fix was incomplete.
+
+Commit a7dc020a91c9c5e32502e58db4ac47af5e7fe6fb suppresses only sampling-equivalent coarse expansions backed by current valid pixel-safe evidence for the exact trusted crop. Real outward pixels and material format changes keep their existing handling. No thresholds or confirmation times changed. A rate-limited pixel-safe-sampling-reaffirmed diagnostic identifies when the new path is used.
+
+Final committed x64 Release build succeeded; 1184/1184 native tests passed. Both binaries were deployed and hashes verified at 08:33:33 EDT. VP was closed gracefully and reopened. Six configuration/state/manifest files were preserved with no deployment edits. Prior pair backup: C:\Videoprocessor\vp\backups\VP-0189-before-a7dc020a-20260917-083332.
+
+[Review and reproduction](../assets/VP-0189/live-sampling-review.md) · [Deployment record](../assets/VP-0189/live-sampling-deployment.json). Logs and screenshot preserved locally under C:\Users\bslac\Documents\ChatGPT\Done\crop-review-20260917-live. Status remains Review pending another physical playback; video is useful if symptoms remain but was not needed to establish this conflict.

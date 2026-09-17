@@ -1,0 +1,24 @@
+{
+  "commit": "a7dc020a91c9c5e32502e58db4ac47af5e7fe6fb",
+  "configuration": "x64 Release",
+  "tests": "1184/1184",
+  "deployedUtc": "2026-09-17T12:33:33.0404713Z",
+  "backup": "C:\\Videoprocessor\\vp\\backups\\VP-0189-before-a7dc020a-20260917-083332",
+  "files": [
+    {
+      "hash": "6A544745394EC237D6FFEA597415D8FAB4988DF3DDCE3C2735C8DEFF112A5038",
+      "source": "E:\\codex\\videoprocessor\\vp-0189-crop-stability\\x64\\Release\\VideoProcessor-GUI.exe",
+      "path": "VideoProcessor.exe",
+      "previousHash": "0A22250BC4DD0172933AFBFC5FC0F9B15B678E329A27D312066CC5E5830758A8"
+    },
+    {
+      "hash": "C3172D7AEF23FBDCB1030A1B6C9CC70F5DBD705A8FEDF495E5A406A0047A94AB",
+      "source": "E:\\codex\\videoprocessor\\vp-0189-crop-stability\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "path": "vprenderer\\VideoProcessorVPRenderer.dll",
+      "previousHash": "D6FF146C82EADF762301FB44DFD7007FC2EEBC6B563EEC26BB8E33C065E7E343"
+    }
+  ],
+  "configurationsPreserved": 6,
+  "configurationEdits": [],
+  "restarted": true
+}
