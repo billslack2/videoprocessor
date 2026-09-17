@@ -305,6 +305,9 @@ void ActivePictureTransitionModel::StartCandidate(
 	m_candidateClassification = observation.classification;
 	m_matchingCandidates = 1;
 	m_firstContradictoryFrame = observation.frameNumber;
+	m_pausedEvidenceFrames = 0;
+	m_candidatePaused = false;
+	m_partialContinuityBounds = {};
 }
 
 
@@ -317,6 +320,9 @@ void ActivePictureTransitionModel::ClearCandidate()
 	m_contradictoryCandidates = 0;
 	m_candidateReversals = 0;
 	m_firstContradictoryFrame = 0;
+	m_pausedEvidenceFrames = 0;
+	m_candidatePaused = false;
+	m_partialContinuityBounds = {};
 }
 
 
@@ -343,6 +349,7 @@ ActivePictureTransitionModel::CommitCandidate(
 	decision.decisionLatencyFrames =
 		observation.frameNumber >= m_firstContradictoryFrame ?
 		observation.frameNumber - m_firstContradictoryFrame : 0;
+	decision.pausedEvidenceFrames = m_pausedEvidenceFrames;
 	decision.reason = reason;
 	if (m_hasStable && !SameBounds(m_stable, m_candidate))
 	{
@@ -399,9 +406,61 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 	if (!continuous && m_hasStable && m_matchingCandidates != 0 &&
 		IsNestedOrthogonalCrop(m_stable, m_candidate)) ClearCandidate();
 
+	// Preserve only previously earned proof while fresh black margins support
+	// continuity. Partial samples and the interval back to full authority earn
+	// no dwell. A gap, incompatible shape, or uncertainty lasting a complete
+	// confirmation horizon invalidates the saved proof.
+	const double pauseRate = std::isfinite(observation.framesPerSecond) &&
+		observation.framesPerSecond > 0.0 ? observation.framesPerSecond : 60.0;
+	const uint64_t pauseLimit = static_cast<uint64_t>(std::ceil(
+		pauseRate * NESTED_CROP_CONFIRMATION_SECONDS));
+	const bool nestedPending = m_hasStable && m_matchingCandidates != 0 &&
+		!m_candidateUsesKnownTrustedGeometry &&
+		IsNestedOrthogonalCrop(m_stable, m_candidate);
+	const auto& continuityBounds = m_candidatePaused ? m_partialContinuityBounds : m_candidate;
+	const bool partialContinues = continuous && nestedPending && observation.available &&
+		observation.partialBarContinuityAvailable &&
+		WithinStableGeometryDeadband(continuityBounds, observation.partialBarBounds);
+	if (partialContinues && m_pausedEvidenceFrames +
+		observation.frameNumber - previousObservedFrame < pauseLimit)
+	{
+		decision.diagnostic = !m_candidatePaused;
+		m_candidatePaused = true;
+		m_partialContinuityBounds = observation.partialBarBounds;
+		m_pausedEvidenceFrames += observation.frameNumber - previousObservedFrame;
+		decision.state = ActivePictureTransitionState::CANDIDATE_TRANSITION;
+		decision.bounds = m_candidate;
+		decision.matchingCandidates = m_matchingCandidates;
+		decision.firstContradictoryFrame = m_firstContradictoryFrame;
+		decision.decisionLatencyFrames = observation.frameNumber - m_firstContradictoryFrame;
+		decision.pausedEvidenceFrames = m_pausedEvidenceFrames;
+		decision.evidencePaused = true;
+		decision.reason = "nested crop proof paused by partial-axis confidence";
+		return decision;
+	}
+	const bool resumedPartial = m_candidatePaused && continuous && nestedPending &&
+		!observation.transitionDeferred && currentBars &&
+		IsNestedOrthogonalCrop(m_stable, observation.bounds) &&
+		WithinStableGeometryDeadband(m_partialContinuityBounds, observation.bounds) &&
+		m_pausedEvidenceFrames + observation.frameNumber - previousObservedFrame < pauseLimit;
+	if (m_candidatePaused)
+	{
+		if (resumedPartial)
+		{
+			m_pausedEvidenceFrames += observation.frameNumber - previousObservedFrame;
+			m_candidatePaused = false;
+			decision.diagnostic = true;
+		}
+		else
+		{
+			ClearCandidate();
+			decision.diagnostic = true;
+		}
+	}
+
 	if (observation.transitionDeferred)
 	{
-		decision.diagnostic = m_matchingCandidates != 0;
+		decision.diagnostic = decision.diagnostic || m_matchingCandidates != 0;
 		ClearCandidate();
 		decision.reason = "current presentation evidence defers logical transition";
 		return decision;
@@ -437,7 +496,7 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 		m_candidateClassification == ActivePictureClassification::BAR_CROP_TRUSTED &&
 		IsNestedOrthogonalCrop(m_stable, m_candidate) &&
 		IsNestedOrthogonalCrop(m_stable, observation.bounds) &&
-		NearbyGeometry(m_candidate, observation.bounds);
+		(NearbyGeometry(m_candidate, observation.bounds) || resumedPartial);
 	const bool matchesRecentTrusted = !continuingNested && FindRecentTrustedGeometry(
 		observation, recentTrustedBounds, recentTrustedClassification);
 	if (matchesRecentTrusted)
@@ -488,13 +547,13 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 		const uint64_t nestedFrames = static_cast<uint64_t>(std::ceil(
 			framesPerSecond * NESTED_CROP_CONFIRMATION_SECONDS));
 		const bool durationConfirmed = !nestedCrop ||
-			decision.decisionLatencyFrames >= nestedFrames;
+			decision.decisionLatencyFrames >= m_pausedEvidenceFrames + nestedFrames;
 		if (nestedCrop)
 		{
 			decision.reason =
 				"recent nested crop awaiting sustained confirmation";
 			decision.confidence = std::min(1.0,
-				static_cast<double>(decision.decisionLatencyFrames) /
+				static_cast<double>(decision.decisionLatencyFrames - m_pausedEvidenceFrames) /
 				static_cast<double>(nestedFrames));
 		}
 		if (m_matchingCandidates >= CLEAR_TRANSITION_CONFIRMATIONS &&
@@ -689,12 +748,14 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 	const uint64_t nestedFrames = static_cast<uint64_t>(std::ceil(
 		framesPerSecond * NESTED_CROP_CONFIRMATION_SECONDS));
 	const bool durationConfirmed = !nestedCrop ||
-		decision.decisionLatencyFrames >= nestedFrames;
+		decision.decisionLatencyFrames >= m_pausedEvidenceFrames + nestedFrames;
 	if (nestedCrop)
 	{
-		decision.reason = "nested crop awaiting sustained confirmation";
+		decision.pausedEvidenceFrames = m_pausedEvidenceFrames;
+		decision.reason = resumedPartial ? "nested crop proof resumed after partial-axis confidence" :
+			"nested crop awaiting sustained confirmation";
 		decision.confidence = std::min(1.0,
-			static_cast<double>(decision.decisionLatencyFrames) /
+			static_cast<double>(decision.decisionLatencyFrames - m_pausedEvidenceFrames) /
 			static_cast<double>(nestedFrames));
 	}
 

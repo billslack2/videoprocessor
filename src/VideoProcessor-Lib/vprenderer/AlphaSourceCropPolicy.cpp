@@ -756,6 +756,32 @@ namespace AlphaSourceCrop
 			decision.observation.classification = decision.deferPresentation || decision.deferOutward
 				? ActivePictureClassification::PROVISIONAL : input.evidence.classification;
 		}
+		const auto& proposed = input.evidence.proposedBounds;
+		const auto axes = input.evidence.trustedBounds.trustedBarAxes;
+		auto coherentMargin = [](const ActivePictureEdgeEvidence& edge) {
+			return edge.barPixels > 0 && edge.blackFraction >= 0.95 &&
+				edge.lumaP90 <= std::min(104.0, edge.lumaFloor + 24.0) &&
+				edge.lumaDispersion <= 24.0 && edge.texture <= 8.0 &&
+				edge.neutralChromaFraction >= 0.90 && edge.continuity >= 0.99;
+		};
+		decision.observation.partialBarContinuityAvailable = input.evidence.available &&
+			input.evidence.classification == ActivePictureClassification::BAR_CROP_TRUSTED &&
+			(axes == ActivePictureBounds::BarAxes::TOP_BOTTOM ||
+			 axes == ActivePictureBounds::BarAxes::LEFT_RIGHT) &&
+			input.compatiblePresentation && input.trustedGeometryAvailable &&
+			input.sourceGeneration != 0 && input.trustedGeneration == input.sourceGeneration &&
+			input.retention.analysisValid && input.retention.presentationValid &&
+			!input.retention.globalNearBlack && !decision.outward.broadOpposingPicture &&
+			ValidBounds(proposed, input.trustedGeometry.rasterWidth, input.trustedGeometry.rasterHeight) &&
+			proposed.left >= input.trustedGeometry.left && proposed.top >= input.trustedGeometry.top &&
+			proposed.right <= input.trustedGeometry.right && proposed.bottom <= input.trustedGeometry.bottom &&
+			coherentMargin(input.evidence.left) && coherentMargin(input.evidence.top) &&
+			coherentMargin(input.evidence.right) && coherentMargin(input.evidence.bottom);
+		// A queued decision must obey the same veto as the live model. The
+		// partial branch can preserve proof but cannot admit a publication.
+		decision.observation.transitionDeferred = decision.observation.transitionDeferred ||
+			decision.observation.partialBarContinuityAvailable;
+		decision.observation.partialBarBounds = proposed;
 		return decision;
 	}
 

@@ -290,6 +290,107 @@ namespace Tests
 			}
 		}
 
+		TEST_METHOD(MovingNestedCropKeepsEarnedProofAcrossPartialAxisConfidence)
+		{
+			// Sequence timing from the 15:56:00-15:56:04 replay. Interpolate the
+			// unlogged positions; this is an admission/model regression, not pixels.
+			const ActivePictureBounds base{0,232,3840,1928,3840,2160,
+				3840.0/1696,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+			for (int failure = 0; failure < 10; ++failure)
+			{
+				ActivePictureTransitionModel model;
+				for (uint64_t seq=761; seq<=764; ++seq)
+					model.Observe({base,seq,true,ActivePictureClassification::BAR_CROP_TRUSTED,24});
+				uint64_t published = 0;
+				for (uint64_t seq=765; seq<=900; ++seq)
+				{
+					TransitionAdmissionInput input;
+					input.trustedGeometry = input.presentationBeforeObservation = base;
+					input.trustedGeometryAvailable = input.compatiblePresentation = input.evidence.available = true;
+					input.sourceGeneration = input.trustedGeneration = 7;
+					input.sourceSequence = seq; input.framesPerSecond = 24;
+					input.retention.analysisValid = input.retention.presentationValid = true;
+					input.evidence.classification = ActivePictureClassification::BAR_CROP_TRUSTED;
+					const int x = seq < 849 ? 40 + 2*int((seq-765)*60/83) : 172;
+					const int y = seq < 849 ? 244 + 2*int((seq-765)*50/83) : 352;
+					auto candidate = base;
+					candidate.left=x; candidate.right=3840-x;
+					candidate.top=y; candidate.bottom=2160-y;
+					candidate.aspectRatio=double(candidate.right-candidate.left)/(candidate.bottom-candidate.top);
+					candidate.trustedBarAxes=ActivePictureBounds::BarAxes::BOTH;
+					input.evidence.trustedBounds = input.evidence.proposedBounds = candidate;
+					const bool partial = seq>=849 && seq<=865;
+					if (partial)
+					{
+						input.evidence.trustedBounds.top=0; input.evidence.trustedBounds.bottom=2160;
+						input.evidence.trustedBounds.trustedBarAxes=ActivePictureBounds::BarAxes::LEFT_RIGHT;
+						input.evidence.proposedBounds.bottom=1828;
+						ActivePictureEdgeEvidence edge;
+						edge.barPixels=172; edge.lumaFloor=edge.lumaP90=64;
+						edge.blackFraction=edge.continuity=edge.neutralChromaFraction=1;
+						input.evidence.left=input.evidence.right=input.evidence.top=input.evidence.bottom=edge;
+						if (seq==849)
+						{
+							switch (failure)
+							{
+							case 1: input.retention.globalNearBlack=true; break;
+							case 2: input.retention.analysisValid=false; break;
+							case 3: input.trustedGeneration=6; break;
+							case 4: input.evidence.bottom.blackFraction=0.4; break;
+							case 5: input.evidence.left.texture=20; break;
+							case 6: input.evidence.proposedBounds.left=600; break;
+							case 7: model.ResetCandidateEvidence(); break;
+							case 8: input.retention.presentationValid=false; break;
+							case 9: input.evidence.top.neutralChromaFraction=0.5; break;
+							}
+						}
+					}
+					input.outwardCandidate=input.evidence.trustedBounds;
+					const auto admission=EvaluateTransitionAdmission(input);
+					const auto decision=model.Observe(admission.observation);
+					if (partial) Assert::IsFalse(decision.publish);
+					if (decision.publish) { published=seq; break; }
+				}
+				if (failure==0) Assert::AreEqual(uint64_t(879),published);
+				else Assert::AreEqual(uint64_t(0),published);
+			}
+		}
+
+		TEST_METHOD(PartialAxisPauseCannotAccumulateDwellOrSurviveMissingFrames)
+		{
+			for (int interruption=0; interruption<3; ++interruption)
+			{
+				ActivePictureTransitionModel model;
+				auto base=TrustedScopeCrop().geometry;
+				for (uint64_t seq=1;seq<=4;++seq)
+					model.Observe({base,seq,true,ActivePictureClassification::BAR_CROP_TRUSTED,24});
+				auto nested=base; nested.left=192; nested.right=3648;
+				nested.trustedBarAxes=ActivePictureBounds::BarAxes::BOTH;
+				nested.aspectRatio=double(nested.right-nested.left)/(nested.bottom-nested.top);
+				for (uint64_t seq=5;seq<=76;++seq)
+					Assert::IsFalse(model.Observe({nested,seq,true,ActivePictureClassification::BAR_CROP_TRUSTED,24}).publish);
+				uint64_t seq=77;
+				if (interruption==1) seq+=10;
+				for (int n=0;n<(interruption==2 ? 120 : 12);++n,++seq)
+				{
+					ActivePictureObservation partial{nested,seq,true,ActivePictureClassification::PROVISIONAL,24};
+					partial.transitionDeferred=true;
+					partial.partialBarContinuityAvailable=true;
+					partial.partialBarBounds=nested;
+					const auto d=model.Observe(partial);
+					Assert::IsFalse(d.publish || d.knownTrustedGeometryReacquired);
+				}
+				const uint64_t resumed=seq;
+				uint64_t published=0;
+				for (;seq<resumed+100;++seq)
+				{
+					const auto d=model.Observe({nested,seq,true,ActivePictureClassification::BAR_CROP_TRUSTED,24});
+					if (d.publish) { published=seq; break; }
+				}
+				Assert::AreEqual(resumed+uint64_t(interruption==0 ? 25 : 96),published);
+			}
+		}
+
 		TEST_METHOD(SamplingJitterDoesNotRequireNewAspectAuthority)
 		{
 			const ActivePictureBounds base{192,372,3648,1788,3840,2160,2.44,ActivePictureBounds::BarAxes::BOTH};

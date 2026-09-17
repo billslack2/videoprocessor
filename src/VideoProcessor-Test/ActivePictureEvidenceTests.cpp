@@ -139,6 +139,47 @@ namespace VideoProcessorTest
 	public:
 
 
+		TEST_METHOD(AsymmetricBlackMarginsPauseNestedProofThroughRealPixelExtraction)
+		{
+			P010Frame scope(960,540), nested(960,540), partial(960,540);
+			scope.BlackOutside(0,58,960,482);
+			nested.BlackOutside(48,88,912,452);
+			partial.BlackOutside(48,88,912,460);
+			const auto base=ExtractP010ActivePictureEvidence(scope.View()).trustedBounds;
+			const auto partialEvidence=ExtractP010ActivePictureEvidence(partial.View());
+			Assert::IsTrue(partialEvidence.trustedBounds.trustedBarAxes==ActivePictureBounds::BarAxes::LEFT_RIGHT);
+			Assert::IsTrue(partialEvidence.top.trusted && partialEvidence.bottom.trusted);
+			ActivePictureTransitionModel model;
+			uint64_t published=0;
+			for (uint64_t seq=1;seq<=120;++seq)
+			{
+				const bool paused=seq>=77 && seq<=88;
+				const auto source=seq<=4 ? scope.P010Source() : paused ? partial.P010Source() : nested.P010Source();
+				AlphaSourceCrop::TransitionAdmissionInput input;
+				input.evidence=ExtractActivePictureEvidence(source);
+				input.retention=EvaluateActivePicturePresentationRetention(source,base);
+				input.trustedGeometry=input.presentationBeforeObservation=base;
+				input.trustedGeometryAvailable=input.compatiblePresentation=true;
+				input.trustedGeneration=input.sourceGeneration=1;
+				input.sourceSequence=seq; input.framesPerSecond=24;
+				input.outwardCandidate=input.evidence.trustedBounds;
+				const auto admission=AlphaSourceCrop::EvaluateTransitionAdmission(input);
+				if (paused)
+				{
+					Assert::IsTrue(admission.observation.partialBarContinuityAvailable && admission.observation.transitionDeferred);
+					ActivePictureTransitionDecision queued;
+					queued.publish=queued.stable=true;
+					queued.bounds=ExtractP010ActivePictureEvidence(nested.View()).trustedBounds;
+					Assert::IsFalse(model.AdoptPublishedDecision(queued,
+						ActivePictureClassification::BAR_CROP_TRUSTED,admission.observation.transitionDeferred));
+				}
+				const auto d=model.Observe(admission.observation);
+				if (paused) Assert::IsTrue(d.evidencePaused && !d.publish);
+				if (d.publish && seq>4) { published=seq; break; }
+			}
+			Assert::AreEqual(uint64_t(114),published);
+		}
+
 		TEST_METHOD(RetentionHandoffNeverRelabelsOldSafePixelsAsNewCropProof)
 		{
 			P010Frame frame(1920,1080);

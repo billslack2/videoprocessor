@@ -91,6 +91,10 @@ struct ActivePictureObservation
 	// Explicit current-evidence veto, distinct from an uncertain observation.
 	// History may identify this shape but must not publish it while deferred.
 	bool transitionDeferred = false;
+	// Current coherent margins with only one authoritative axis. These may
+	// pause an existing nested candidate, never establish or publish a crop.
+	bool partialBarContinuityAvailable = false;
+	ActivePictureBounds partialBarBounds;
 };
 
 
@@ -124,6 +128,8 @@ struct ActivePictureTransitionDecision
 	double confidence = 0.0;
 	uint64_t firstContradictoryFrame = 0;
 	uint64_t decisionLatencyFrames = 0;
+	uint64_t pausedEvidenceFrames = 0;
+	bool evidencePaused = false;
 	std::string reason;
 };
 
@@ -222,6 +228,9 @@ private:
 	uint8_t m_candidateReversals = 0;
 	uint8_t m_unavailableCandidates = 0;
 	uint64_t m_firstContradictoryFrame = 0;
+	uint64_t m_pausedEvidenceFrames = 0;
+	bool m_candidatePaused = false;
+	ActivePictureBounds m_partialContinuityBounds;
 	uint64_t m_lastAnalyzedFrame = 0;
 	// Cadence correction can present one decoded source sequence repeatedly.
 	// Observation confidence is source-frame based, never presentation based.
