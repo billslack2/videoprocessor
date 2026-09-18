@@ -1110,6 +1110,78 @@ namespace VideoProcessorTest
 			Assert::IsTrue(retention.currentlyPixelSafe);
 		}
 
+		TEST_METHOD(BrightLogoWithoutAcquisitionGeometryKeepsEstablishedCrop)
+		{
+			const auto scope = ScopePresentation(3840, 2160, 208, 1952);
+			P010Frame frame(3840, 2160);
+			frame.Fill(64, 512, 512);
+			// About 14% bright pixels: this must work above the global P90
+			// darkness cutoff, even when acquisition cannot bound the logo.
+			frame.FillRectangle(1440, 480, 2400, 1680, 724);
+			const auto evidence = EvaluateP010ActivePicturePresentationRetention(frame.View(), scope);
+			Assert::IsFalse(evidence.globalNearBlack);
+			Assert::IsFalse(evidence.activePicture.available);
+			Assert::IsFalse(evidence.proposedBoundsAvailable);
+			Assert::IsTrue(evidence.excludedBandsPixelSafe);
+			Assert::IsFalse(evidence.outwardVisibleBoundsAvailable);
+			Assert::IsTrue(evidence.currentlyPixelSafe);
+
+			AlphaSourceCrop::Input input;
+			input.automaticCropEnabled = input.sharedGeometryAvailable = true;
+			input.geometry = scope;
+			input.classification = ActivePictureClassification::BAR_CROP_TRUSTED;
+			input.geometrySourceGeneration = input.frameSourceGeneration = 3;
+			input.rasterWidth = 3840; input.rasterHeight = 2160;
+			input.latestObservationIsUnavailable = true;
+			input.frameLocalPresentationRetentionEvaluated = true;
+			input.frameLocalPresentationRetentionSafe = evidence.currentlyPixelSafe;
+			// Pause/repeat duration and expired scene holds cannot turn missing
+			// boundaries into a new format while fresh margins remain safe.
+			for (uint64_t sequence : {1ULL, 60ULL, 240ULL, 3600ULL})
+			{
+				input.frameSourceSequence = sequence;
+				const auto decision = AlphaSourceCrop::Evaluate(input);
+				Assert::IsTrue(decision.applyCrop);
+				Assert::AreEqual(scope.top, decision.sourceBounds.top);
+				Assert::AreEqual(scope.bottom, decision.sourceBounds.bottom);
+			}
+			input.sharedGeometryAvailable = false;
+			Assert::IsFalse(AlphaSourceCrop::Evaluate(input).applyCrop);
+			input.sharedGeometryAvailable = true;
+			input.frameSourceGeneration = 4;
+			Assert::IsFalse(AlphaSourceCrop::Evaluate(input).applyCrop);
+		}
+
+		TEST_METHOD(UnavailableLogoGeometryCannotHideVisibleMarginContent)
+		{
+			const auto scope = ScopePresentation(3840, 2160, 208, 1952);
+			P010Frame frame(3840, 2160);
+			frame.Fill(64, 512, 512);
+			frame.FillRectangle(1440, 480, 2400, 1680, 724);
+			frame.FillRectangle(1740, 100, 1900, 140, 900);
+			const auto evidence = EvaluateP010ActivePicturePresentationRetention(frame.View(), scope);
+			Assert::IsFalse(evidence.excludedBandsPixelSafe);
+			Assert::IsFalse(evidence.currentlyPixelSafe);
+			Assert::IsTrue(evidence.outwardVisibleBoundsAvailable);
+			Assert::IsTrue(evidence.outwardVisibleBounds.top <= 100);
+		}
+
+		TEST_METHOD(LogoRetentionStillRejectsRealExpansionAndInvalidPixels)
+		{
+			const auto scope = ScopePresentation(3840, 2160, 208, 1952);
+			P010Frame frame(3840, 2160);
+			// A real expansion from roughly 2.20 to 1.90 exposes picture in
+			// both old margins and must withdraw the saved crop immediately.
+			frame.BlackOutside(0, 70, 3840, 2090);
+			const auto expanded = EvaluateP010ActivePicturePresentationRetention(frame.View(), scope);
+			Assert::IsFalse(expanded.currentlyPixelSafe);
+			Assert::IsFalse(expanded.excludedBandsPixelSafe);
+			Assert::IsTrue(expanded.outwardVisibleBoundsAvailable);
+			const auto invalid = EvaluateP010ActivePicturePresentationRetention(frame.View(1), scope);
+			Assert::IsFalse(invalid.analysisValid);
+			Assert::IsFalse(invalid.currentlyPixelSafe);
+		}
+
 		TEST_METHOD(ColoredOrVisibleExcludedBandsRejectRetention)
 		{
 			const ActivePictureBounds presentation =

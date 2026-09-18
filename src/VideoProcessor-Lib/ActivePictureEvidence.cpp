@@ -878,8 +878,14 @@ ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRete
 		IsValidBoundsForSource(result.activePicture.proposedBounds, source);
 	result.proposedBoundsContained = result.proposedBoundsAvailable &&
 		Contains(trustedPresentation, result.activePicture.proposedBounds);
+	// Acquisition may be inconclusive on a logo/title (or exhaust its scan
+	// budget) even though independent checks of every excluded band succeed.
+	// Missing geometry is not evidence of a larger picture. Preserve only the
+	// existing rectangle; an available conflicting proposal still vetoes it.
+	const bool geometryUnavailable = !result.activePicture.available &&
+		result.activePicture.classification == ActivePictureClassification::UNAVAILABLE;
 	result.currentlyPixelSafe = result.excludedBandsPixelSafe &&
-		(result.proposedBoundsContained || result.globalNearBlack);
+		(result.proposedBoundsContained || result.globalNearBlack || geometryUnavailable);
 	result.lumaSamples += samples.lumaSamples;
 	result.chromaSamples += samples.chromaSamples;
 
@@ -891,6 +897,8 @@ ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRete
 		result.reason = "current proposal is contained and excluded bands remain pixel-safe";
 	else if (result.globalNearBlack)
 		result.reason = "valid global near-black frame is pixel-safe without geometry";
+	else if (geometryUnavailable)
+		result.reason = "current excluded bands remain pixel-safe despite unavailable geometry";
 	else
 		result.reason = "non-contained active-picture evidence rejects retention";
 	return result;

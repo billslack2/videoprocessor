@@ -78,6 +78,9 @@ struct ActivePictureGlobalNearBlackEvidence
 // A valid all-black/fade frame is intentionally distinct from an invalid
 // analysis source: it has analysisValid=true, globalNearBlack=true, and can be
 // currentlyPixelSafe even when no active-picture geometry can be proposed.
+// A bright contained logo can also lack credible acquisition geometry. Fresh
+// safe-band evidence may retain the existing rectangle without a global-darkness
+// requirement; this never creates authority for a new crop.
 struct ActivePicturePresentationRetentionEvidence
 {
 	bool analysisValid = false;
