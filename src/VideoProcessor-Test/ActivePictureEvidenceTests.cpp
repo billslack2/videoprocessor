@@ -1110,6 +1110,41 @@ namespace VideoProcessorTest
 			Assert::IsTrue(retention.currentlyPixelSafe);
 		}
 
+		TEST_METHOD(DiagnosticGridPreservesSubtleBlackAndChromaDifferences)
+		{
+			P010Frame frame(320, 180);
+			frame.Fill(72, 514, 508);
+			frame.BlackOutside(0, 22, 320, 158, 64, 512, 512);
+			frame.FillRectangle(120, 60, 200, 100, 900);
+			const auto grid = SampleActivePictureDiagnosticGrid(frame.P010Source());
+			Assert::AreEqual(128, grid.columns);
+			Assert::AreEqual(180, grid.rows);
+			Assert::AreEqual(size_t(128 * 180), grid.samples.size());
+			for (int row = 0; row < grid.rows; ++row)
+				for (int column = 0; column < grid.columns; ++column)
+				{
+					const int x = column * 319 / 127;
+					const bool bar = row < 22 || row >= 158;
+					const bool text = x >= 120 && x < 200 && row >= 60 && row < 100;
+					const auto& pixel = grid.samples[row * grid.columns + column];
+					Assert::AreEqual(bar ? 64 : text ? 900 : 72, int(pixel.luma));
+					Assert::AreEqual(bar || text ? 512 : 514, int(pixel.chromaU));
+					Assert::AreEqual(bar || text ? 512 : 508, int(pixel.chromaV));
+				}
+		}
+
+		TEST_METHOD(DiagnosticGridIsBoundedAndRejectsInvalidSource)
+		{
+			P010Frame frame(3840, 2160);
+			const auto grid = SampleActivePictureDiagnosticGrid(frame.P010Source());
+			Assert::AreEqual(128, grid.columns);
+			Assert::AreEqual(270, grid.rows);
+			Assert::AreEqual(size_t(34560), grid.samples.size());
+			auto invalid = frame.P010Source();
+			invalid.dataBytes = 1;
+			Assert::IsTrue(SampleActivePictureDiagnosticGrid(invalid).samples.empty());
+		}
+
 		TEST_METHOD(BrightLogoWithoutAcquisitionGeometryKeepsEstablishedCrop)
 		{
 			const auto scope = ScopePresentation(3840, 2160, 208, 1952);
@@ -1465,4 +1500,3 @@ namespace VideoProcessorTest
 		}
 	};
 }
-

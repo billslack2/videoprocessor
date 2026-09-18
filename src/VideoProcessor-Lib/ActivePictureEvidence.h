@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "AnalysisLumaSource.h"
 #include "ActivePictureTransitionModel.h"
@@ -184,3 +185,15 @@ ActivePictureEvidence ConstrainNearBlackGeometryChange(
 ActivePictureEvidence ConstrainNearBlackCropAcquisition(
 	const ActivePictureEvidence& evidence,
 	bool nearBlackEpisodeActive);
+
+// Opt-in telemetry only: raw analysis-domain samples, independent of crop
+// acquisition and never consumed by geometry policy. Both raster endpoints are
+// included; coordinates are index * (extent - 1) / (count - 1).
+struct ActivePictureDiagnosticGrid
+{
+	int columns = 0;
+	int rows = 0;
+	std::vector<AnalysisLumaSample> samples;
+};
+ActivePictureDiagnosticGrid SampleActivePictureDiagnosticGrid(
+	const AnalysisLumaSource& source);

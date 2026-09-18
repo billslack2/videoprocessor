@@ -990,3 +990,29 @@ ActivePictureRetentionHandoff ResolveActivePictureRetentionHandoff(
 	// as the presentation certificate. Invalid sources remain non-authoritative.
 	return {EvaluateActivePicturePresentationRetention(source, presentationBounds), presentationBounds, true};
 }
+
+ActivePictureDiagnosticGrid SampleActivePictureDiagnosticGrid(
+	const AnalysisLumaSource& source)
+{
+	ActivePictureDiagnosticGrid result;
+	if (!source.IsValid() || source.width < 2 || source.height < 2)
+		return result;
+	result.columns = std::min(source.width, 128);
+	result.rows = std::min(source.height, 270);
+	result.samples.reserve(static_cast<size_t>(result.columns) * result.rows);
+	for (int row = 0; row < result.rows; ++row)
+	{
+		const int y = static_cast<int>(static_cast<int64_t>(row) *
+			(source.height - 1) / (result.rows - 1));
+		for (int column = 0; column < result.columns; ++column)
+		{
+			const int x = static_cast<int>(static_cast<int64_t>(column) *
+				(source.width - 1) / (result.columns - 1));
+			AnalysisLumaSample sample;
+			if (!source.Sample(x, y, sample))
+				return {};
+			result.samples.push_back(sample);
+		}
+	}
+	return result;
+}

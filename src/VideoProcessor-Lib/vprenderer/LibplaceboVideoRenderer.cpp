@@ -3859,6 +3859,9 @@ struct LibplaceboVideoRenderer::Impl
 	bool lastCropAdmissionDeferred = false;
 	ActivePicturePresentationRetentionEvidence latestCropRetentionEvidence;
 	AlphaSourceCrop::PresentationRecoveryState cropPresentationRecovery;
+	bool blackLevelTraceConfigured = false;
+	unsigned blackLevelTraceRemaining = 0, blackLevelTraceSnapshot = 0;
+	uint64_t blackLevelTraceNextTick = 0;
 	bool cropTraceConfigured = false;
 	unsigned cropTraceRemaining = 0;
 	uint64_t cropEdgeDiagnosticLastTick = 0;
@@ -8097,6 +8100,55 @@ struct LibplaceboVideoRenderer::Impl
 			static_cast<unsigned long long>(resetEpoch));
 	}
 
+	void TraceBlackLevels(const AnalysisLumaSource& source, uint64_t frameNumber)
+	{
+		const uint64_t now = GetTickCount64();
+		if (!blackLevelTraceConfigured)
+		{
+			blackLevelTraceConfigured = true;
+			char value[32] = {};
+			const DWORD length = GetEnvironmentVariableA(
+				"VP_BLACK_LEVEL_TRACE_SNAPSHOTS", value, sizeof(value));
+			if (length > 0 && length < sizeof(value))
+			{
+				char* end = nullptr;
+				const unsigned long count = strtoul(value, &end, 10);
+				if (end != value && *end == '\0' && count > 0 && count <= 12)
+					blackLevelTraceRemaining = static_cast<unsigned>(count);
+			}
+			blackLevelTraceNextTick = now + 5000;
+			if (blackLevelTraceRemaining)
+				DebugLog::Log("Alpha black-level telemetry enabled: snapshots=%u delay_ms=5000 interval_ms=3000 policy_effect=none", blackLevelTraceRemaining);
+		}
+		if (!blackLevelTraceRemaining || now < blackLevelTraceNextTick || !source.IsValid())
+			return;
+		const auto grid = SampleActivePictureDiagnosticGrid(source);
+		if (grid.samples.empty()) return;
+		--blackLevelTraceRemaining;
+		++blackLevelTraceSnapshot;
+		blackLevelTraceNextTick = now + 3000;
+		DebugLog::Log("Alpha black-level grid: schema=1 sample=%u generation=%llu frame=%llu size=%dx%d grid=%dx%d format=%s encoding=%d colorspace=%d units=analysis-10bit coordinates=endpoint-linear channels=Y/U/V remaining=%u",
+			blackLevelTraceSnapshot, static_cast<unsigned long long>(source.generation),
+			static_cast<unsigned long long>(frameNumber), source.width, source.height,
+			grid.columns, grid.rows, AnalysisLumaFormatName(source),
+			static_cast<int>(source.encoding), static_cast<int>(source.colorspace), blackLevelTraceRemaining);
+		for (int row = 0; row < grid.rows; ++row)
+		{
+			std::ostringstream values;
+			for (int column = 0; column < grid.columns; ++column)
+			{
+				const auto& pixel = grid.samples[static_cast<size_t>(row) * grid.columns + column];
+				if (column) values << ',';
+				values << pixel.luma << '/' << pixel.chromaU << '/' << pixel.chromaV;
+			}
+			const int y = static_cast<int>(static_cast<int64_t>(row) * (source.height - 1) / (grid.rows - 1));
+			DebugLog::Log("Alpha black-level row: sample=%u generation=%llu row=%d y=%d data=%s",
+				blackLevelTraceSnapshot, static_cast<unsigned long long>(source.generation), row, y, values.str().c_str());
+		}
+		DebugLog::Log("Alpha black-level grid complete: sample=%u generation=%llu rows=%d samples=%zu remaining=%u",
+			blackLevelTraceSnapshot, static_cast<unsigned long long>(source.generation), grid.rows, grid.samples.size(), blackLevelTraceRemaining);
+	}
+
 	void UpdateNlsForFrame(const AnalysisLumaSource& analysisSource,
 		uint64_t frameNumber,
 		const ActivePictureFrameIdentity& currentIdentity,
@@ -8139,6 +8191,7 @@ struct LibplaceboVideoRenderer::Impl
 				static_cast<unsigned long long>(analysisSource.generation));
 		}
 
+		TraceBlackLevels(analysisSource, frameNumber);
 		const bool needsActivePictureAnalysis =
 			nlsRequested || automaticSourceCrop || scopeSubtitleFit ||
 			hdrPeakAnalysisPictureOnly ||
