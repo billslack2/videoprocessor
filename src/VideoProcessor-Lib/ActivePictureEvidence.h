@@ -197,3 +197,31 @@ struct ActivePictureDiagnosticGrid
 };
 ActivePictureDiagnosticGrid SampleActivePictureDiagnosticGrid(
 	const AnalysisLumaSource& source);
+
+// Experimental shadow evidence for an already known full raster. This
+// supplies no crop bounds or authority. Even a positive candidate can also
+// describe indistinguishable tinted/noisy bars; callers MUST NOT use it for
+// retention, acquisition, or other presentation-policy changes.
+// Small chroma offsets are useful only with distributed detail and matching
+// adjacent interior. They are not a certificate that tinted padding is picture.
+struct FullRasterColorEdgeEvidence
+{
+    double medianY = 0, medianU = 0, medianV = 0;
+    double dispersionY = 0, dispersionU = 0, dispersionV = 0;
+    double interiorMedianY = 0, interiorMedianU = 0, interiorMedianV = 0;
+    double maxBackgroundDeltaY = 0, maxBackgroundDeltaUV = 0;
+    int supportedCells = 0;
+    bool candidateSupported = false;
+};
+struct FullRasterColorEvidence
+{
+    bool evaluated = false;
+    bool candidateSupported = false;
+    bool precisionSupported = false;
+    size_t sampleCount = 0;
+    // Source-coordinate order: left, top, right, bottom.
+    FullRasterColorEdgeEvidence edges[4];
+    std::string reason;
+};
+FullRasterColorEvidence EvaluateFullRasterColorEvidence(
+    const AnalysisLumaSource& source);

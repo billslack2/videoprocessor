@@ -1498,5 +1498,160 @@ namespace VideoProcessorTest
 				ActivePictureClassification::FULL_RASTER_TRUSTED),
 				static_cast<int>(full.classification));
 		}
+        TEST_METHOD(ColorCorroborationRejectsUniformNeutralAndTintedDarkFrames)
+        {
+            P010Frame frame(384, 216);
+            auto source = frame.P010Source();
+            source.encoding = VideoFrameEncoding::V210;
+            for (int tint : { 512, 514, 530 })
+            {
+                frame.Fill(87, 510, tint);
+                const auto evidence = EvaluateFullRasterColorEvidence(source);
+                Assert::IsTrue(evidence.evaluated);
+                Assert::IsFalse(evidence.candidateSupported);
+                Assert::AreEqual(static_cast<size_t>(4608), evidence.sampleCount);
+            }
+        }
+
+        TEST_METHOD(ColorCorroborationRejectsUnknownAndEightBitPrecision)
+        {
+            P010Frame frame(384, 216);
+            for (auto encoding : { VideoFrameEncoding::UNKNOWN, VideoFrameEncoding::UYVY,
+                VideoFrameEncoding::HDYC, VideoFrameEncoding::BGRA_8BIT, VideoFrameEncoding::ARGB_8BIT })
+            {
+                auto source = frame.P010Source();
+                source.encoding = encoding;
+                const auto evidence = EvaluateFullRasterColorEvidence(source);
+                Assert::IsFalse(evidence.evaluated);
+                Assert::IsFalse(evidence.precisionSupported);
+                Assert::IsFalse(evidence.candidateSupported);
+                Assert::AreEqual(static_cast<size_t>(0), evidence.sampleCount);
+            }
+        }
+
+        TEST_METHOD(ColorCorroborationRejectsInvalidSourceAndCentralLogo)
+        {
+            Assert::IsFalse(EvaluateFullRasterColorEvidence({}).evaluated);
+            P010Frame frame(384, 216);
+            frame.Fill(87, 510, 514);
+            frame.FillRectangle(160, 80, 224, 136, 800);
+            auto source = frame.P010Source();
+            source.encoding = VideoFrameEncoding::V210;
+            const auto evidence = EvaluateFullRasterColorEvidence(source);
+            Assert::IsTrue(evidence.evaluated);
+            Assert::IsFalse(evidence.candidateSupported);
+        }
+
+        TEST_METHOD(ColorCorroborationP010AndP210AgreeOnDistributedDetail)
+        {
+            P010Frame p010(384, 216, 16);
+            P010Frame p210(384, 216, 24, true);
+            p010.Fill(87, 510, 514);
+            p210.Fill(87, 510, 514);
+            for (int y = 0; y < 216; ++y)
+                for (int x = 0; x < 384; ++x)
+                {
+                    const int code = 84 + ((x * 13 + y * 7) % 9);
+                    WriteCode(p010.bytes.data() + y * p010.pitch + x * 2, code);
+                    WriteCode(p210.bytes.data() + y * p210.pitch + x * 2, code);
+                }
+            auto source = p010.P010Source();
+            source.encoding = VideoFrameEncoding::V210;
+            const auto a = EvaluateFullRasterColorEvidence(source);
+            const auto b = EvaluateFullRasterColorEvidence(p210.P210Source());
+            Assert::IsTrue(a.evaluated && b.evaluated);
+            Assert::AreEqual(a.candidateSupported, b.candidateSupported);
+            Assert::AreEqual(a.sampleCount, b.sampleCount);
+            for (int edge = 0; edge < 4; ++edge)
+            {
+                Assert::AreEqual(a.edges[edge].medianY, b.edges[edge].medianY);
+                Assert::AreEqual(a.edges[edge].medianU, b.edges[edge].medianU);
+                Assert::AreEqual(a.edges[edge].medianV, b.edges[edge].medianV);
+                Assert::AreEqual(a.edges[edge].dispersionY, b.edges[edge].dispersionY);
+                Assert::AreEqual(a.edges[edge].supportedCells, b.edges[edge].supportedCells);
+            }
+        }
+
+        TEST_METHOD(ColorCorroborationRejectsNoisyTintedBarsWithInteriorBoundary)
+        {
+            P010Frame frame(384, 216);
+            frame.Fill(104, 510, 522);
+            frame.BlackOutside(0, 20, 384, 196, 87, 510, 514);
+            for (int y = 0; y < 216; ++y)
+                for (int x = 0; x < 384; ++x)
+                    if (y < 20 || y >= 196)
+                        WriteCode(frame.bytes.data() + y * frame.pitch + x * 2,
+                            84 + ((x * 13 + y * 7) % 9));
+            auto source = frame.P010Source();
+            source.encoding = VideoFrameEncoding::V210;
+            const auto evidence = EvaluateFullRasterColorEvidence(source);
+            Assert::IsTrue(evidence.evaluated);
+            Assert::IsFalse(evidence.candidateSupported);
+            Assert::IsTrue(evidence.edges[1].maxBackgroundDeltaY > 8.0 ||
+                evidence.edges[1].maxBackgroundDeltaUV > 3.0);
+        }
+
+        TEST_METHOD(ColorCorroborationNativeV210MatchesPlanarSamples)
+        {
+            P010Frame frame(384, 216, 16, true);
+            frame.Fill(87, 510, 514);
+            for (int y = 0; y < 216; ++y)
+                for (int x = 0; x < 384; ++x)
+                    WriteCode(frame.bytes.data() + y * frame.pitch + x * 2,
+                        84 + ((x * 13 + y * 7) % 9));
+            const auto planar = frame.P210Source();
+            const size_t pitch = 384 / 6 * 16;
+            std::vector<uint8_t> bytes(pitch * 216, 0);
+            for (int y = 0; y < 216; ++y)
+                for (int x = 0; x < 384; x += 6)
+                {
+                    AnalysisLumaSample p[6];
+                    for (int i = 0; i < 6; ++i) Assert::IsTrue(planar.Sample(x + i, y, p[i]));
+                    const uint32_t words[] = {
+                        uint32_t(p[0].chromaU) | uint32_t(p[0].luma) << 10 | uint32_t(p[0].chromaV) << 20,
+                        uint32_t(p[1].luma) | uint32_t(p[2].chromaU) << 10 | uint32_t(p[2].luma) << 20,
+                        uint32_t(p[2].chromaV) | uint32_t(p[3].luma) << 10 | uint32_t(p[4].chromaU) << 20,
+                        uint32_t(p[4].luma) | uint32_t(p[4].chromaV) << 10 | uint32_t(p[5].luma) << 20 };
+                    auto target = bytes.data() + y * pitch + x / 6 * 16;
+                    for (int word = 0; word < 4; ++word)
+                        for (int b = 0; b < 4; ++b)
+                            target[word * 4 + b] = static_cast<uint8_t>(words[word] >> (b * 8));
+                }
+            AnalysisLumaSource native{ bytes.data(), bytes.size(), 384, 216, pitch, 0,
+                AnalysisLumaFormat::NativeYuv422, VideoFrameEncoding::V210, ColorSpace::REC_709, 1 };
+            const auto a = EvaluateFullRasterColorEvidence(planar);
+            const auto b = EvaluateFullRasterColorEvidence(native);
+            Assert::IsTrue(a.evaluated && b.evaluated);
+            Assert::AreEqual(a.candidateSupported, b.candidateSupported);
+            for (int edge = 0; edge < 4; ++edge)
+            {
+                Assert::AreEqual(a.edges[edge].medianY, b.edges[edge].medianY);
+                Assert::AreEqual(a.edges[edge].dispersionY, b.edges[edge].dispersionY);
+                Assert::AreEqual(a.edges[edge].maxBackgroundDeltaUV, b.edges[edge].maxBackgroundDeltaUV);
+            }
+        }
+
+        TEST_METHOD(ColorCandidateCannotDistinguishNearIdenticalNoisyBars)
+        {
+            // Deliberately document the counterexample rather than tuning a
+            // threshold to this one recording: near-identical tinted noise in
+            // encoded bars has the same weak features as picture. Shadow only.
+            P010Frame frame(384, 216);
+            frame.Fill(87, 510, 514);
+            for (int y = 0; y < 216; ++y)
+                for (int x = 0; x < 384; ++x)
+                {
+                    const bool encodedBar = y < 20 || y >= 196;
+                    WriteCode(frame.bytes.data() + y * frame.pitch + x * 2,
+                        (encodedBar ? 82 : 84) + ((x * 13 + y * 7) % 9));
+                }
+            auto source = frame.P010Source();
+            source.encoding = VideoFrameEncoding::V210;
+            const auto evidence = EvaluateFullRasterColorEvidence(source);
+            Assert::IsTrue(evidence.evaluated);
+            Assert::IsTrue(evidence.candidateSupported,
+                L"Positive weak candidate is explicitly not geometry authority.");
+        }
+
 	};
 }

@@ -3902,6 +3902,10 @@ struct LibplaceboVideoRenderer::Impl
 	AlphaSourceCrop::NearBlackPresentationEpisodeState
 		nearBlackPresentationEpisode;
 	std::string latestActivePicturePresentationRetentionReason;
+	bool colorPictureEvidenceConfigured = false;
+	unsigned colorPictureEvidenceRemaining = 0;
+	unsigned colorPictureEvidenceSnapshot = 0;
+	uint64_t colorPictureEvidenceNextTick = 0;
 	bool fullRasterPresentationAuthorityAvailable = false;
 	uint64_t fullRasterPresentationAuthoritySourceGeneration = 0;
 	std::string lastSourceCropPolicy;
@@ -8149,6 +8153,63 @@ struct LibplaceboVideoRenderer::Impl
 			blackLevelTraceSnapshot, static_cast<unsigned long long>(source.generation), grid.rows, grid.samples.size(), blackLevelTraceRemaining);
 	}
 
+	void TraceColorPictureEvidence(const AnalysisLumaSource& source,
+		uint64_t frameNumber, uint64_t presentationEpoch)
+	{
+		const uint64_t now = GetTickCount64();
+		if (!colorPictureEvidenceConfigured)
+		{
+			colorPictureEvidenceConfigured = true;
+			char value[32] = {};
+			const DWORD count = GetEnvironmentVariableA(
+				"VP_COLOR_PICTURE_EVIDENCE", value, sizeof(value));
+			if (count > 0 && count < sizeof(value) && std::string(value) == "shadow")
+			{
+				colorPictureEvidenceRemaining = 300;
+				DebugLog::Log("Alpha color-picture telemetry enabled: mode=shadow interval_ms=2000 snapshots_max=300 policy_effect=none authority_effect=none");
+			}
+			else if (count > 0)
+			{
+				DebugLog::Log("Alpha color-picture telemetry disabled: unsupported option; only VP_COLOR_PICTURE_EVIDENCE=shadow is supported; policy_effect=none");
+			}
+		}
+		if (!colorPictureEvidenceRemaining || now < colorPictureEvidenceNextTick ||
+			!source.IsValid())
+			return;
+		colorPictureEvidenceNextTick = now + 2000;
+		--colorPictureEvidenceRemaining;
+		++colorPictureEvidenceSnapshot;
+		const auto evidence = EvaluateFullRasterColorEvidence(source);
+		const bool committedFullRaster = nlsGeometryAvailable &&
+			nlsGeometrySourceGeneration == source.generation &&
+			nlsGeometryClassification == ActivePictureClassification::FULL_RASTER_TRUSTED &&
+			nlsGeometry.left == 0 && nlsGeometry.top == 0 &&
+			nlsGeometry.right == source.width && nlsGeometry.bottom == source.height &&
+			nlsGeometry.rasterWidth == source.width && nlsGeometry.rasterHeight == source.height;
+		DebugLog::Log("Alpha color-picture evidence: schema=1 mode=shadow sample=%u sequence=%llu generation=%llu epoch=%llu format=%s encoding=%d size=%dx%d evaluated=%d precision_supported=%d candidate_supported=%d prior_committed_full=%d samples=%zu remaining=%u policy_effect=none reason=\"%s\"",
+			colorPictureEvidenceSnapshot, static_cast<unsigned long long>(frameNumber),
+			static_cast<unsigned long long>(source.generation),
+			static_cast<unsigned long long>(presentationEpoch), AnalysisLumaFormatName(source),
+			static_cast<int>(source.encoding), source.width, source.height,
+			evidence.evaluated ? 1 : 0, evidence.precisionSupported ? 1 : 0,
+			evidence.candidateSupported ? 1 : 0, committedFullRaster ? 1 : 0,
+			evidence.sampleCount, colorPictureEvidenceRemaining, evidence.reason.c_str());
+		if (evidence.evaluated)
+		{
+			static const char* const names[] = { "left", "top", "right", "bottom" };
+			for (size_t i = 0; i < 4; ++i)
+			{
+				const auto& edge = evidence.edges[i];
+				DebugLog::Log("Alpha color-picture edge: sample=%u edge=%s median_yuv=%.1f/%.1f/%.1f dispersion_yuv=%.1f/%.1f/%.1f interior_yuv=%.1f/%.1f/%.1f max_background_delta_y=%.1f max_background_delta_uv=%.1f supported_cells=%d candidate_supported=%d units=analysis-10bit",
+					colorPictureEvidenceSnapshot, names[i], edge.medianY, edge.medianU, edge.medianV,
+					edge.dispersionY, edge.dispersionU, edge.dispersionV,
+					edge.interiorMedianY, edge.interiorMedianU, edge.interiorMedianV,
+					edge.maxBackgroundDeltaY, edge.maxBackgroundDeltaUV,
+					edge.supportedCells, edge.candidateSupported ? 1 : 0);
+			}
+		}
+	}
+
 	void UpdateNlsForFrame(const AnalysisLumaSource& analysisSource,
 		uint64_t frameNumber,
 		const ActivePictureFrameIdentity& currentIdentity,
@@ -8192,6 +8253,7 @@ struct LibplaceboVideoRenderer::Impl
 		}
 
 		TraceBlackLevels(analysisSource, frameNumber);
+		TraceColorPictureEvidence(analysisSource, frameNumber, currentIdentity.viewportGeneration);
 		const bool needsActivePictureAnalysis =
 			nlsRequested || automaticSourceCrop || scopeSubtitleFit ||
 			hdrPeakAnalysisPictureOnly ||

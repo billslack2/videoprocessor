@@ -87,4 +87,7 @@
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="FullRasterColorEvidenceFormatTests.cpp"><Filter>Source Files</Filter></ClCompile>
+  </ItemGroup>
 </Project>
