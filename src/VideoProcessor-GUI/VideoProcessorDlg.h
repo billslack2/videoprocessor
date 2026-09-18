@@ -458,6 +458,7 @@ protected:
 	WINDOWPLACEMENT m_normalUiWindowPlacement = { sizeof(WINDOWPLACEMENT) };
 	WINDOWPLACEMENT m_windowPlacementBeforeAction = { sizeof(WINDOWPLACEMENT) };
 	bool m_windowPlacementBeforeActionValid = false;
+	bool m_restoringWindowPlacement = false;
 	std::atomic<ULONGLONG> m_windowPlacementActionGuardUntil = 0;
 	CSize m_normalUiMinDialogSize;
 	bool m_noUiLayoutApplied = false;

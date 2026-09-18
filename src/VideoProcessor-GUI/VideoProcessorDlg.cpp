@@ -13679,6 +13679,9 @@ void CVideoProcessorDlg::InitializeModernInterface(bool preserveWindowBounds)
 		FatalError(TEXT("Failed to create the Modern operator interface"));
 	ApplyModernLayout();
 	RefreshModernStatus();
+	// Only completed Modern startup bounds may become the restoration baseline.
+	m_windowPlacementBeforeActionValid =
+		GetWindowPlacement(&m_windowPlacementBeforeAction) != FALSE;
 }
 
 void CVideoProcessorDlg::ApplyModernLayout()
@@ -14012,6 +14015,7 @@ void CVideoProcessorDlg::OnSize(UINT nType, int cx, int cy)
 	// deliver a renderer command.  That activation must not replace the
 	// operator's current windowed placement with the Modern startup bounds.
 	if (m_interfaceMode == ApplicationInterface::Mode::Modern &&
+		m_modernOperatorView.GetSafeHwnd() && !m_restoringWindowPlacement &&
 		nType != SIZE_MINIMIZED)
 	{
 		WINDOWPLACEMENT currentPlacement = { sizeof(WINDOWPLACEMENT) };
@@ -14027,12 +14031,22 @@ void CVideoProcessorDlg::OnSize(UINT nType, int cx, int cy)
 			if (actionGuardActive && m_windowPlacementBeforeActionValid &&
 				placementChanged)
 			{
+				// SetWindowPlacement can synchronously send WM_SIZE. Let that
+				// nested message lay out the children without re-entering this
+				// restoration guard. Also finish this layout using the actual
+				// restored client size; a same-size restoration may send no WM_SIZE.
+				m_restoringWindowPlacement = true;
+				const BOOL restored = SetWindowPlacement(&m_windowPlacementBeforeAction);
+				m_restoringWindowPlacement = false;
+				CRect restoredClient;
+				GetClientRect(&restoredClient);
+				cx = restoredClient.Width();
+				cy = restoredClient.Height();
+				nType = IsZoomed() ? SIZE_MAXIMIZED : SIZE_RESTORED;
 				DebugLog::Log(
-					"Window placement restored after remote action activation: previous_show=%u current_show=%u",
-					m_windowPlacementBeforeAction.showCmd,
-					currentPlacement.showCmd);
-				SetWindowPlacement(&m_windowPlacementBeforeAction);
-				return;
+					"Window placement recovery after remote action: restored=%d client=%dx%d layout=continued",
+					restored ? 1 : 0, cx, cy);
+				GetWindowPlacement(&currentPlacement);
 			}
 			m_windowPlacementBeforeAction = currentPlacement;
 			m_windowPlacementBeforeActionValid = true;
