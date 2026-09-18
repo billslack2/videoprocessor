@@ -456,6 +456,9 @@ protected:
 	};
 	std::vector<ChildVisibility> m_normalUiChildVisibility;
 	WINDOWPLACEMENT m_normalUiWindowPlacement = { sizeof(WINDOWPLACEMENT) };
+	WINDOWPLACEMENT m_windowPlacementBeforeAction = { sizeof(WINDOWPLACEMENT) };
+	bool m_windowPlacementBeforeActionValid = false;
+	std::atomic<ULONGLONG> m_windowPlacementActionGuardUntil = 0;
 	CSize m_normalUiMinDialogSize;
 	bool m_noUiLayoutApplied = false;
 	CSize m_initialClientSize;

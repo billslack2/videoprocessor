@@ -12788,6 +12788,8 @@ void CVideoProcessorDlg::ScheduleUnifiedProfileActionsForRenderer(
 							"event action debounce claimed: action='%s' role=%s generation=%llu result=serialized-profile-launch",
 							invocation.action.name.c_str(), identity.c_str(),
 							static_cast<unsigned long long>(generation));
+						m_windowPlacementActionGuardUntil.store(
+							::GetTickCount64() + 5000, std::memory_order_release);
 						m_profileActionProcessActive.store(true);
 						EventActionLauncher::Launch(invocation.action, configPath, true,
 							reinterpret_cast<uintptr_t>(m_unifiedActionCancelEvent));
@@ -12800,6 +12802,8 @@ void CVideoProcessorDlg::ScheduleUnifiedProfileActionsForRenderer(
 							"generation=%llu result=launching",
 							invocation.action.name.c_str(), identity.c_str(),
 							static_cast<unsigned long long>(generation));
+						m_windowPlacementActionGuardUntil.store(
+							::GetTickCount64() + 5000, std::memory_order_release);
 						EventActionLauncher::Launch(invocation.action, configPath);
 					}
 					else
@@ -14004,6 +14008,37 @@ void CVideoProcessorDlg::RestoreFrameOffsetEditLayout()
 
 void CVideoProcessorDlg::OnSize(UINT nType, int cx, int cy)
 {
+	// Remote profile and screen actions can briefly activate this window to
+	// deliver a renderer command.  That activation must not replace the
+	// operator's current windowed placement with the Modern startup bounds.
+	if (m_interfaceMode == ApplicationInterface::Mode::Modern &&
+		nType != SIZE_MINIMIZED)
+	{
+		WINDOWPLACEMENT currentPlacement = { sizeof(WINDOWPLACEMENT) };
+		if (GetWindowPlacement(&currentPlacement))
+		{
+			const bool actionGuardActive = ::GetTickCount64() <=
+				m_windowPlacementActionGuardUntil.load(std::memory_order_acquire);
+			const bool placementChanged =
+				!m_windowPlacementBeforeActionValid ||
+				currentPlacement.showCmd != m_windowPlacementBeforeAction.showCmd ||
+				!::EqualRect(&currentPlacement.rcNormalPosition,
+					&m_windowPlacementBeforeAction.rcNormalPosition);
+			if (actionGuardActive && m_windowPlacementBeforeActionValid &&
+				placementChanged)
+			{
+				DebugLog::Log(
+					"Window placement restored after remote action activation: previous_show=%u current_show=%u",
+					m_windowPlacementBeforeAction.showCmd,
+					currentPlacement.showCmd);
+				SetWindowPlacement(&m_windowPlacementBeforeAction);
+				return;
+			}
+			m_windowPlacementBeforeAction = currentPlacement;
+			m_windowPlacementBeforeActionValid = true;
+		}
+	}
+
 	if (m_hideUI)
 	{
 		if (m_windowedVideoWindow.GetSafeHwnd())
