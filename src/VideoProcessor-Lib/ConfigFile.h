@@ -20,7 +20,11 @@ public:
 	static constexpr const char* DEFAULT_FILENAME = "VideoProcessor.cfg";
 	static constexpr const char* RENDERER_FILENAME = "VideoProcessorRenderer.cfg";
 
-	bool Load(const std::string& filename = DEFAULT_FILENAME);
+	enum class ReadPolicy { ReuseUnchanged, Fresh };
+	// Reuse only while file identity, size, write time and change time match.
+	// Explicit reload validation uses Fresh to independently sample the file.
+	bool Load(const std::string& filename = DEFAULT_FILENAME,
+		ReadPolicy policy = ReadPolicy::ReuseUnchanged);
 	bool IsLoaded() const { return m_loaded; }
 	const std::string& GetLoadedPath() const { return m_loadedPath; }
     uint64_t GetContentIdentity() const { return m_contentIdentity; }
@@ -52,6 +56,8 @@ public:
 	// plugin ABI. Each module has its own statically linked ConfigFile copy, so
 	// this pins every later renderer load to the core-selected file.
 	static void SetRendererConfigurationPath(const std::string& path);
+	static std::string GetRendererConfigurationPath();
+	static uint64_t GetLoadCount();
 
 private:
 	std::map<std::string, std::map<std::string, std::string>> m_sections;

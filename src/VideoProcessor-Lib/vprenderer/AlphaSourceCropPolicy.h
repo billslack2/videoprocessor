@@ -9,6 +9,23 @@
 
 namespace AlphaSourceCrop
 {
+	// Measurement equivalence, not new aspect authority. The caller must supply
+	// a current affirmative bar observation and a current excluded-band scan for
+	// this exact trusted rectangle. Positive outside pixels always veto this.
+	bool IsPixelSafeCropReaffirmation(const ActivePictureBounds& trusted,
+		const ActivePictureBounds& observedTrustedCrop, bool excludedBandsPixelSafe);
+
+	// The envelope has no crop authority. Suppress it only when both its complete
+	// extent and the affirmative observation reaffirm the same pixel-safe crop.
+	// Horizontal sampling equivalence is independent of subtitle pixels in the
+	// vertical bars, but requires the complete horizontal bands to be safe.
+	bool IsPixelSafeHorizontalSamplingEnvelope(const ActivePictureBounds& trusted,
+		const ActivePictureBounds& observed, const ActivePicturePresentationRetentionEvidence& evidence);
+
+	bool IsPixelSafeSamplingEnvelope(const ActivePictureBounds& trusted,
+		const ActivePictureBounds& observed, const ActivePictureBounds& envelope,
+		bool excludedBandsPixelSafe);
+
 	static constexpr uint32_t OUTWARD_PICTURE_CONFIRMATIONS_REQUIRED = 3;
 
 	struct OutwardPictureConfirmationState
@@ -28,7 +45,7 @@ namespace AlphaSourceCrop
 	};
 
 	// Expanding a trusted crop changes the logical aspect only after the same
-	// frame shows broad picture-like occupancy in every opposing excluded band.
+	// frame shows broad picture-like occupancy in each materially exposed strip.
 	// Localized UI/text still expands presentation immediately, but cannot build
 	// aspect authority by appearing on different edges at different times.
 	OutwardPictureConfirmationDecision ConfirmOutwardPictureTransition(
@@ -325,6 +342,54 @@ namespace AlphaSourceCrop
 		uint64_t evidenceSourceGeneration,
 		uint64_t currentSourceGeneration);
 
+	// Current evidence decides whether logical geometry may change before the
+	// renderer considers local history or a queued look-ahead publication.
+	struct TransitionAdmissionInput
+	{
+		ActivePictureEvidence evidence;
+		ActivePictureBounds outwardCandidate;
+		ActivePictureBounds presentationBeforeObservation;
+		ActivePictureBounds trustedGeometry;
+		bool trustedGeometryAvailable = false;
+		bool compatiblePresentation = false;
+		uint64_t trustedGeneration = 0;
+		uint64_t sourceGeneration = 0;
+		uint64_t sourceSequence = 0;
+		double framesPerSecond = 60.0;
+		VerticalBarPresentationState presentation;
+		bool translationDriftActive = false;
+		uint64_t presentationEvidenceGeneration = 0;
+		ActivePicturePresentationRetentionEvidence retention;
+		OutwardPictureConfirmationState previousOutward;
+	};
+
+	struct TransitionAdmissionDecision
+	{
+		ActivePictureObservation observation;
+		OutwardPictureConfirmationDecision outward;
+		bool deferPresentation = false;
+		bool deferOutward = false;
+		// Uncertain opposing margins cannot authorize a format change.
+		bool deferPartialComposition = false;
+	};
+	TransitionAdmissionDecision EvaluateTransitionAdmission(const TransitionAdmissionInput& input);
+
+	struct PresentationObservationDecision
+	{
+		ActivePictureBounds bounds;
+		uint8_t resolvedAxes = 0;
+	};
+	// Fresh pixel evidence can replace full-raster placeholders on an
+	// uncertified axis for presentation only. This never grants crop authority.
+	PresentationObservationDecision ResolvePresentationObservation(
+		const ActivePictureBounds& base, const ActivePictureEvidence& evidence,
+		const ActivePicturePresentationRetentionEvidence& retention);
+
+	bool HasHorizontalCropRefinementConflict(bool currentLeftExpansion,
+		bool currentRightExpansion, bool observationAvailable, bool geometryAvailable,
+		bool samplingReaffirmed, const ActivePictureBounds& observation,
+		const ActivePictureBounds& geometry);
+
 	struct HeldBarAnalysisInput
 	{
 		bool currentBarAuthority = false;
@@ -464,6 +529,30 @@ namespace AlphaSourceCrop
 		bool retentionJustBecameUnsafe,
 		bool frameLocalRetentionEvaluated, bool frameLocalRetentionSafe,
 		bool translationAlreadyActive);
+
+	struct SubtitleInspectionState
+	{
+		uint64_t sourceGeneration = 0;
+		ActivePictureBounds base;
+		bool verticalUnsafe = false;
+	};
+	struct SubtitleInspectionInput
+	{
+		SubtitleInspectionState previous;
+		bool barAuthorityAvailable = false;
+		bool measurementCurrent = false;
+		bool translationAlreadyActive = false;
+		uint64_t sourceGeneration = 0;
+		ActivePictureBounds base;
+		ActivePictureBounds measuredBase;
+		ActivePicturePresentationRetentionEvidence retention;
+	};
+	struct SubtitleInspectionDecision
+	{
+		SubtitleInspectionState state;
+		bool forceAnalysis = false;
+	};
+	SubtitleInspectionDecision UpdateSubtitleInspection(const SubtitleInspectionInput& input);
 
 	struct PresentationEnvelopeInput
 	{
@@ -683,6 +772,7 @@ namespace AlphaSourceCrop
 		bool confirmedNonNearBlackContent = false;
 		uint64_t outwardConfirmationLastSourceSequence = 0;
 		uint32_t outwardConfirmationSamples = 0;
+		uint64_t lastEvaluatedSourceSequence = 0;
 		uint64_t revalidationStartedSourceSequence = 0;
 		uint64_t revalidationLastSourceSequence = 0;
 		uint32_t revalidationSamples = 0;
@@ -707,9 +797,11 @@ namespace AlphaSourceCrop
 		bool fullRasterAuthorityAvailable = false;
 		bool cadenceRepeat = false;
 		bool currentObservationAvailable = false;
+		ActivePictureClassification currentObservationClassification = ActivePictureClassification::UNAVAILABLE;
 		ActivePictureBounds currentObservation;
 		bool retentionEvaluated = false;
 		bool retentionSafe = false;
+		bool retentionExcludedBandsPixelSafe = false;
 		ActivePictureBounds retentionBounds;
 		uint64_t retentionSourceGeneration = 0;
 		uint64_t retentionSourceSequence = 0;
@@ -745,6 +837,7 @@ namespace AlphaSourceCrop
 		bool bootstrapReleased = false;
 		bool resetTransitionEvidence = false;
 		bool revalidationChanged = false;
+		uint32_t revalidationGates = 0;
 		uint32_t revalidationSamples = 0;
 		uint32_t revalidationSamplesRequired = 0;
 		uint32_t bootstrapSamples = 0;
@@ -802,8 +895,16 @@ namespace AlphaSourceCrop
 		// exposing full raster between old and new bar geometries.
 		bool barCropRefinementPending = false;
 		// A refinement observation which expands left or right can expose live
-		// picture pixels. It must fail open instead of retaining an older crop.
+		// picture pixels. Retaining the old crop is forbidden. A current pixel-
+		// bounded outward expansion can expose them without a full-raster jump.
 		bool barCropRefinementHorizontalConflict = false;
+		// Produced only when every unsafe excluded edge has a bounded current
+		// visible extent. The base and source identity bind the proof to geometry.
+		bool currentVisibleBoundsAvailable = false;
+		ActivePictureBounds currentVisibleBounds;
+		ActivePictureBounds currentVisibleBase;
+		uint64_t currentVisibleSourceGeneration = 0;
+		uint64_t currentVisibleSourceSequence = 0;
 		// A first dense subtitle observation is not yet a stable motion target.
 		// Retain the current trusted base for the bounded three-sample confirmation
 		// instead of flashing to full raster. This may briefly clip the newly seen
@@ -876,10 +977,86 @@ namespace AlphaSourceCrop
 		bool outwardExpanded = false;
 		bool verticallyTranslated = false;
 		int verticalTranslationPixels = 0;
+		bool horizontalExpansionPixelBounded = false;
 		DecisionOwner owner = DecisionOwner::FULL_RASTER;
 		WithdrawalCause withdrawalCause = WithdrawalCause::NONE;
 		std::string reason;
 	};
+
+
+	// A temporary presentation withdrawal is not full-raster aspect authority.
+	// Once armed, every ordinary inward owner must prove the current saved crop
+	// safe on distinct adjacent source frames for 250 ms. This does not delay
+	// initial acquisition or a confirmed subtitle/Fit resolution.
+	enum RecoveryGate : uint32_t
+	{
+		RECOVERY_OK = 0,
+		RECOVERY_MEASUREMENT = 1u << 0,
+		RECOVERY_REPEAT = 1u << 1,
+		RECOVERY_CONTEXT = 1u << 2,
+		RECOVERY_CONTRACT = 1u << 3,
+		RECOVERY_OBSERVATION = 1u << 4,
+		RECOVERY_UNSAFE_BANDS = 1u << 5,
+		RECOVERY_NEAR_BLACK = 1u << 6,
+		RECOVERY_FULL_AUTHORITY = 1u << 7,
+		RECOVERY_SEQUENCE_GAP = 1u << 8,
+		RECOVERY_OWNER = 1u << 9,
+	};
+	std::string RecoveryGateNames(uint32_t gates);
+
+	struct PresentationRecoveryState
+	{
+		bool active = false;
+		ActivePictureBounds trustedCrop;
+		uint64_t sourceGeneration = 0;
+		uint64_t presentationEpoch = 0;
+		uint64_t startedSourceSequence = 0;
+		uint64_t startedTick = 0;
+		uint64_t lastSourceSequence = 0;
+		uint32_t samples = 0;
+	};
+
+	struct PresentationRecoveryInput
+	{
+		PresentationRecoveryState previous;
+		Input crop;
+		Decision candidate;
+		bool cadenceRepeat = false;
+		bool measurementCurrent = false;
+		bool retentionEvaluated = false;
+		bool excludedBandsPixelSafe = false;
+		bool observationAvailable = false;
+		ActivePictureBounds observation;
+		ActivePictureBounds observedTrustedCrop;
+		ActivePictureClassification observationClassification = ActivePictureClassification::UNAVAILABLE;
+		ActivePictureBounds retentionBounds;
+		uint64_t retentionSourceGeneration = 0;
+		uint64_t retentionSourceSequence = 0;
+		bool nearBlackEvaluated = false;
+		bool globalNearBlack = false;
+		// Only a confirmed current dense presentation or a completed episode
+		// proof can resolve ownership; pending refinement/inspection cannot.
+		bool confirmedPresentationResolved = false;
+		uint64_t presentationEpoch = 0;
+		uint64_t currentTick = 0;
+		double framesPerSecond = 60.0;
+	};
+
+	struct PresentationRecoveryDecision
+	{
+		PresentationRecoveryState state;
+		Decision presentation;
+		bool started = false;
+		bool ended = false;
+		bool released = false;
+		bool proofReset = false;
+		bool samplingReaffirmed = false;
+		uint32_t samples = 0;
+		uint32_t required = 0;
+		uint32_t gates = RECOVERY_OK;
+	};
+	PresentationRecoveryDecision EvaluatePresentationRecovery(
+		const PresentationRecoveryInput& input);
 
 	enum class ScenePresentationAction
 	{

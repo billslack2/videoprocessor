@@ -18,6 +18,8 @@ namespace UnifiedProfileRuntime
 	struct Snapshot
 	{
 		uint64_t generation = 0;
+		// Parsed once per accepted configuration, shared across source/profile updates.
+		std::shared_ptr<const ConfigFile> configuration;
 		// Manual selections are durable user choices. Effective selections also
 		// include configured defaults and automatic source-driven choices.
 		RendererProfileConfig::Selections manualSelections;
@@ -141,6 +143,7 @@ namespace UnifiedProfileRuntime
 
 		mutable std::mutex m_mutex;
 		RendererProfileConfig::Model m_model;
+		std::shared_ptr<const ConfigFile> m_configuration;
 		std::string m_statePath;
 		std::string m_configPath;
 		bool m_initialized = false;

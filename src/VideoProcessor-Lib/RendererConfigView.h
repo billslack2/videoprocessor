@@ -90,6 +90,7 @@ public:
 			  "diagnostic_allow_full_g22",
 			  "diagnostic_vp_owned_dxgi_presenter" })
 		{
+			if (std::string(key) == "switch_refresh_rate") continue;
 			if (!HasKey(GENERAL_SECTION, key))
 				continue;
 			for (const char* legacy :
@@ -117,7 +118,7 @@ public:
 
 		bool usesLegacyGeneral = false;
 		for (const char* key :
-			{ "switch_refresh_rate", "output_diagnostics",
+			{ "output_diagnostics",
 			  "diagnostic_disable_shader_cache", "diagnostic_disable_compute",
 			  "diagnostic_force_8bit_sdr_swapchain",
 			  "diagnostic_allow_limited_g22",
@@ -217,6 +218,8 @@ private:
 
 	const char* PolicySectionForKey(const std::string& key) const
 	{
+		if (key == "switch_refresh_rate" && HasKey("general", key))
+			return "general";
 		if (HasKey(VPRENDERER_SECTION, key))
 			return VPRENDERER_SECTION;
 		if (HasKey(GENERAL_SECTION, key))

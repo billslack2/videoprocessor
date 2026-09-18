@@ -1,4 +1,5 @@
 #include "pch.h"
+#include "BackendInputConfig.h"
 
 #include <ApplicationInterface.h>
 #include <ApplicationShutdownPolicy.h>
@@ -37,6 +38,140 @@ using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
 namespace VideoProcessorTest
 {
+	struct CachedConfigTestFile
+	{
+		std::string path;
+		CachedConfigTestFile()
+		{
+			char directory[MAX_PATH]{}, file[MAX_PATH]{};
+			Assert::IsTrue(GetTempPathA(MAX_PATH, directory) != 0);
+			Assert::IsTrue(GetTempFileNameA(directory, "vpc", 0, file) != 0);
+			path = file;
+		}
+		~CachedConfigTestFile() { DeleteFileA(path.c_str()); }
+		void Write(const char* value)
+		{
+			std::ofstream file(path, std::ios::trunc);
+			file << "[general]\nvalue: " << value << "\n";
+		}
+	};
+
+	TEST_CLASS(ConfigurationReadCacheTests)
+	{
+	public:
+        TEST_METHOD(CurrentBetaScreenEdgePaddingSurvivesAcceptedConfiguration)
+        {
+            CachedConfigTestFile file;
+            std::ofstream(file.path) << "[general]\npersist_profile_selection: false\n"
+                "[vprenderer.viewport.scope]\nscreen_aspect: 47:20\n"
+                "vertical_alignment: bottom\nscreen_edge_padding: 50\n";
+            ConfigFile config;
+            Assert::IsTrue(config.Load(file.path));
+            std::string error;
+            Assert::IsTrue(MainConfigSchema::Validate(config, error),
+                std::wstring(error.begin(), error.end()).c_str());
+            UnifiedProfileRuntime::Runtime runtime;
+            Assert::IsTrue(runtime.Initialize(config, {}, error),
+                std::wstring(error.begin(), error.end()).c_str());
+            const auto snapshot = runtime.GetSnapshot();
+            Assert::IsTrue(snapshot != nullptr);
+            Assert::AreEqual(50, snapshot->viewport.screenEdgePadding);
+            Assert::AreEqual(std::string("bottom"), snapshot->viewport.verticalAlignment);
+            std::string padding;
+            Assert::IsTrue(snapshot->configuration->TryGetString(
+                "vprenderer.viewport.scope", "screen_edge_padding", padding));
+            Assert::AreEqual(std::string("50"), padding);
+        }
+
+		TEST_METHOD(RestartReadersReuseOneReadAndExplicitReloadSamplesIndependently)
+		{
+			CachedConfigTestFile file;
+			file.Write("one");
+			const auto before = ConfigFile::GetLoadCount();
+			for (int restart = 0; restart < 51; ++restart)
+			{
+				ConfigFile reader;
+				Assert::IsTrue(reader.Load(file.path));
+				std::string value;
+				Assert::IsTrue(reader.TryGetString("general", "value", value));
+				Assert::AreEqual(std::string("one"), value);
+			}
+			Assert::IsTrue(ConfigFile::GetLoadCount() == before + 1);
+			ConfigFile first, second;
+			Assert::IsTrue(first.Load(file.path, ConfigFile::ReadPolicy::Fresh));
+			Assert::IsTrue(second.Load(file.path, ConfigFile::ReadPolicy::Fresh));
+			Assert::IsTrue(ConfigFile::GetLoadCount() == before + 3);
+		}
+
+		TEST_METHOD(RendererPathAliasSharesCachedContentAndWarnings)
+		{
+			CachedConfigTestFile file;
+			std::ofstream(file.path) << "[general]\nvalue: one\nvalue: two\n";
+			struct RestorePath
+			{
+				std::string path = ConfigFile::GetRendererConfigurationPath();
+				~RestorePath() { ConfigFile::SetRendererConfigurationPath(path); }
+			} restore;
+			ConfigFile::SetRendererConfigurationPath(file.path);
+			ConfigFile main, renderer;
+			Assert::IsTrue(main.Load(file.path));
+			const auto before = ConfigFile::GetLoadCount();
+			Assert::IsTrue(renderer.Load(ConfigFile::RENDERER_FILENAME));
+			Assert::IsTrue(ConfigFile::GetLoadCount() == before);
+			Assert::IsFalse(main.GetWarnings().empty());
+			Assert::IsTrue(main.GetWarnings() == renderer.GetWarnings());
+			Assert::IsTrue(main.GetContentIdentity() == renderer.GetContentIdentity());
+		}
+
+		TEST_METHOD(SameSizeEditWithRestoredWriteTimeInvalidatesCache)
+		{
+			CachedConfigTestFile file;
+			file.Write("one");
+			ConfigFile original;
+			Assert::IsTrue(original.Load(file.path));
+			WIN32_FILE_ATTRIBUTE_DATA attributes{};
+			Assert::IsTrue(GetFileAttributesExA(file.path.c_str(), GetFileExInfoStandard, &attributes) != 0);
+			file.Write("two");
+			HANDLE handle = CreateFileA(file.path.c_str(), FILE_WRITE_ATTRIBUTES,
+				FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
+				OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+			Assert::IsTrue(handle != INVALID_HANDLE_VALUE);
+			const BOOL restored = SetFileTime(handle, nullptr, nullptr, &attributes.ftLastWriteTime);
+			CloseHandle(handle);
+			Assert::IsTrue(restored != 0);
+			const auto before = ConfigFile::GetLoadCount();
+			ConfigFile changed;
+			Assert::IsTrue(changed.Load(file.path));
+			std::string value;
+			Assert::IsTrue(changed.TryGetString("general", "value", value));
+			Assert::AreEqual(std::string("two"), value);
+			Assert::IsTrue(ConfigFile::GetLoadCount() == before + 1);
+			Assert::IsTrue(original.TryGetString("general", "value", value));
+			Assert::AreEqual(std::string("one"), value);
+		}
+
+		TEST_METHOD(ReplacementDeletionAndRecreationNeverReturnStaleConfig)
+		{
+			CachedConfigTestFile file, replacement;
+			file.Write("one"); replacement.Write("two");
+			ConfigFile config;
+			Assert::IsTrue(config.Load(file.path));
+			Assert::IsTrue(MoveFileExA(replacement.path.c_str(), file.path.c_str(), MOVEFILE_REPLACE_EXISTING) != 0);
+			Assert::IsTrue(config.Load(file.path));
+			std::string value;
+			Assert::IsTrue(config.TryGetString("general", "value", value));
+			Assert::AreEqual(std::string("two"), value);
+			Assert::IsTrue(DeleteFileA(file.path.c_str()) != 0);
+			Assert::IsFalse(config.Load(file.path));
+			Assert::IsFalse(config.IsLoaded());
+			Assert::IsFalse(config.TryGetString("general", "value", value));
+			file.Write("new");
+			Assert::IsTrue(config.Load(file.path));
+			Assert::IsTrue(config.TryGetString("general", "value", value));
+			Assert::AreEqual(std::string("new"), value);
+		}
+	};
+
 	TEST_CLASS(ConfigFileTests)
 	{
 	public:
@@ -136,6 +271,99 @@ namespace VideoProcessorTest
             Assert::IsFalse(RendererProfileConfig::ValidateOwnedSections(config, error));
             DeleteFileA(path.c_str());
         }
+
+		TEST_METHOD(BackendInputSettingsRemainScoped)
+		{
+			char dir[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(MAX_PATH, dir) > 0);
+			const std::string path = std::string(dir) + "vp0188-input.cfg";
+			for (const char* key : { "video_conversion", "container_colorspace", "hdr_colorspace", "hdr_luminance" })
+			{
+				std::ofstream(path) << "[directshow]\n" << key << ": direct\n";
+				ConfigFile config;
+				Assert::IsTrue(config.Load(path));
+				std::string value;
+				Assert::IsTrue(BackendInputConfig::TryGet(config, false, key, value));
+				Assert::AreEqual("direct", value.c_str());
+				Assert::IsFalse(BackendInputConfig::TryGet(config, true, key, value));
+				std::ofstream(path, std::ios::app) << "[general]\n" << key << ": shared\n";
+				Assert::IsTrue(config.Load(path));
+				Assert::IsTrue(BackendInputConfig::TryGet(config, true, key, value));
+				Assert::AreEqual("shared", value.c_str());
+				Assert::IsTrue(BackendInputConfig::TryGet(config, false, key, value));
+				Assert::AreEqual("direct", value.c_str());
+				std::ofstream(path, std::ios::app) << "[vprenderer.input_processing]\n" << key << ": vp\n";
+				Assert::IsTrue(config.Load(path));
+				Assert::IsTrue(BackendInputConfig::TryGet(config, true, key, value));
+				Assert::AreEqual("vp", value.c_str());
+			}
+			DeleteFileA(path.c_str());
+		}
+
+		TEST_METHOD(SharedRefreshPolicyDoesNotWarnAsLegacyRendererPolicy)
+		{
+			char dir[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(MAX_PATH, dir) > 0);
+			const std::string path = std::string(dir) + "vp0188-refresh.cfg";
+			std::ofstream(path) << "[general]\nswitch_refresh_rate: fullscreen_only\n";
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			std::string error, value;
+			std::vector<std::string> warnings;
+			Assert::IsTrue(RendererConfigView(config).Validate(error, warnings));
+			Assert::IsTrue(warnings.empty());
+			Assert::IsTrue(RendererConfigView(config).TryGetPolicyString("switch_refresh_rate", value));
+			Assert::AreEqual("fullscreen_only", value.c_str());
+			std::ofstream(path, std::ios::app) << "output_diagnostics: true\n";
+			Assert::IsTrue(config.Load(path));
+			Assert::IsTrue(RendererConfigView(config).Validate(error, warnings));
+			Assert::IsFalse(warnings.empty());
+			DeleteFileA(path.c_str());
+		}
+
+		TEST_METHOD(ProfileSnapshotsReuseAcceptedConfigurationUntilExplicitReload)
+		{
+			char dir[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(MAX_PATH, dir) > 0);
+			const std::string path = std::string(dir) + "vp0188-snapshot.cfg";
+			const std::string original = "[general]\npersist_profile_selection: false\n"
+				"[vprenderer]\nquality: high\n";
+			std::ofstream(path) << original;
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			UnifiedProfileRuntime::Runtime runtime;
+			std::string error;
+			Assert::IsTrue(runtime.Initialize(config, {}, error));
+			const auto accepted = runtime.GetSnapshot()->configuration;
+			Assert::IsTrue(accepted != nullptr);
+			const auto reads = ConfigFile::GetLoadCount();
+			// Remove the file entirely: source/profile evaluation must not need it.
+			DeleteFileA(path.c_str());
+			for (int n = 0; n < 20; ++n)
+			{
+				UnifiedProfileRuntime::RefreshResult result;
+				Assert::IsTrue(runtime.Refresh({}, result, error));
+				Assert::IsTrue(result.snapshot->configuration == accepted);
+				UnifiedProfileRuntime::SelectionResult selection;
+				Assert::IsTrue(runtime.SelectKey("F4", {}, selection, error));
+				Assert::IsTrue(selection.snapshot->configuration == accepted);
+			}
+			Assert::AreEqual(reads, ConfigFile::GetLoadCount());
+			std::ofstream(path) << "[general]\npersist_profile_selection: false\n[vprenderer]\nquality: balanced\n";
+			Assert::IsTrue(config.Load(path));
+			UnifiedProfileRuntime::RefreshResult reload;
+			Assert::IsTrue(runtime.Reload(config, {}, reload, error));
+			Assert::IsTrue(reload.snapshot->configuration != accepted);
+			std::string quality;
+			Assert::IsTrue(reload.snapshot->configuration->TryGetString("vprenderer", "quality", quality));
+			Assert::AreEqual("balanced", quality.c_str());
+			const auto updated = reload.snapshot->configuration;
+			std::ofstream(path) << "[vprenderer]\nquality: invalid-quality\n";
+			Assert::IsTrue(config.Load(path));
+			Assert::IsFalse(runtime.Reload(config, {}, reload, error));
+			Assert::IsTrue(runtime.GetSnapshot()->configuration == updated);
+			DeleteFileA(path.c_str());
+		}
 
 		TEST_METHOD(VideoConversionOverrideAcceptsConfiguredDisabledValues)
 		{
@@ -2792,9 +3020,9 @@ namespace VideoProcessorTest
 				true, selections, selections, true));
 		}
 
-		TEST_METHOD(LibplaceboPluginApiVersionCoversShaderProfilesAndRenderLoad)
+		TEST_METHOD(LibplaceboPluginApiVersionCoversConfigurationSnapshots)
 		{
-			Assert::AreEqual(static_cast<uint32_t>(19),
+			Assert::AreEqual(static_cast<uint32_t>(20),
 				VP_LIBPLACEBO_PLUGIN_API_VERSION);
 		}
 
@@ -4796,9 +5024,9 @@ namespace VideoProcessorTest
 				std::ofstream file(path, std::ios::out | std::ios::trunc);
 				file << "[general]\n"
 					"persist_profile_selection: true\n"
-					"switch_refresh_rate: true\n"
+					"output_diagnostics: true\n"
 					"[vpvr.general]\n"
-					"switch_refresh_rate: true\n";
+					"output_diagnostics: true\n";
 			}
 
 			ConfigFile config;
@@ -4808,7 +5036,7 @@ namespace VideoProcessorTest
 			Assert::IsFalse(
 				RendererConfigView(config).Validate(error, warnings));
 			Assert::IsTrue(
-				error.find("switch_refresh_rate") != std::string::npos);
+				error.find("output_diagnostics") != std::string::npos);
 			DeleteFileA(path.c_str());
 		}
 
@@ -4837,7 +5065,7 @@ namespace VideoProcessorTest
 			std::string error;
 			std::vector<std::string> warnings;
 			Assert::IsTrue(view.Validate(error, warnings));
-			Assert::AreEqual(static_cast<size_t>(3), warnings.size());
+			Assert::AreEqual(static_cast<size_t>(2), warnings.size());
 			std::string value;
 			bool policy = false;
 			Assert::IsTrue(view.TryGetDisplayString("quality", value));

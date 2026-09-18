@@ -1,4 +1,4 @@
-﻿#include <pch.h>
+#include <pch.h>
 
 #include "LibplaceboVideoRenderer.h"
 #include <vprenderer/PresentationResetEpoch.h>
@@ -1346,11 +1346,8 @@ namespace
 		}
 	}
 
-	std::string ResolveDisplayRuleName(const VideoState& state)
+	std::string ResolveDisplayRuleName(const ConfigFile& config, const VideoState& state)
 	{
-		ConfigFile config;
-		if (!config.Load(ConfigFile::RENDERER_FILENAME))
-			return "";
 		return SelectDisplayRule(config, state).name;
 	}
 
@@ -2083,19 +2080,18 @@ namespace
 		}
 	}
 
-	RendererSettings LoadRendererSettings(const VideoState& state, std::string& activeRule,
+	RendererSettings LoadRendererSettings(const ConfigFile& config,
+		const VideoState& state, std::string& activeRule,
 		const std::string& manualRule = "",
 		const std::map<std::string, std::string>& manualUnifiedProfiles = {})
 	{
 		RendererSettings settings;
 		activeRule.clear();
-		ConfigFile config;
-		if (!config.Load(ConfigFile::RENDERER_FILENAME))
-			return settings;
+		if (!config.IsLoaded()) return settings;
         settings.configurationIdentity = config.GetContentIdentity();
         settings.configurationPath = config.GetLoadedPath();
 		DebugLog::Log(
-			"libplacebo configuration loaded from %s",
+			"libplacebo configuration snapshot evaluated: path=%s",
 			config.GetLoadedPath().c_str());
 		for (const std::string& warning : config.GetWarnings())
 			DebugLog::Log(
@@ -3819,8 +3815,7 @@ struct LibplaceboVideoRenderer::Impl
 	AlphaSourceCrop::VerticalTranslationDrift scopeSubtitleDrift;
 	bool scopeSubtitleDriftWasActive = false;
 	bool scopeSubtitleAuthorityGapHeld = false;
-	bool scopeSubtitleRetentionWasUnsafe = false;
-	uint64_t scopeSubtitleRetentionGeneration = 0;
+	AlphaSourceCrop::SubtitleInspectionState scopeSubtitleInspection;
 	bool scopeSubtitleWasActive = false;
 	bool scopeSubtitleWasTopActive = false;
 	std::string lastScopeVerticalOverlayPolicy;
@@ -3852,9 +3847,30 @@ struct LibplaceboVideoRenderer::Impl
 	ActivePictureClassification latestActivePictureEvidenceClassification =
 		ActivePictureClassification::UNAVAILABLE;
 	ActivePictureBounds latestActivePictureEvidenceBounds;
+	ActivePictureBounds latestActivePicturePresentationBounds;
+	uint8_t lastPresentationObservationAxes = 0;
+	uint64_t lastPresentationObservationLogTick = 0;
 	uint64_t latestActivePictureEvidenceFrame = 0;
 	bool latestActivePictureEvidenceWasStartupHypothesis = false;
 	bool presentationOwnedGeometryTransitionDeferred = false;
+	bool latestCropSamplingReaffirmed = false;
+	uint64_t lastSamplingEnvelopeLogTick = 0;
+	uint64_t lastCropAdmissionLogTick = 0;
+	bool lastCropAdmissionDeferred = false;
+	ActivePicturePresentationRetentionEvidence latestCropRetentionEvidence;
+	AlphaSourceCrop::PresentationRecoveryState cropPresentationRecovery;
+	bool cropTraceConfigured = false;
+	unsigned cropTraceRemaining = 0;
+	uint64_t cropEdgeDiagnosticLastTick = 0;
+	bool cropDiagnosticActive = false;
+	bool cropDiagnosticPreviousAvailable = false;
+	bool cropDiagnosticPreviousApplied = false;
+	bool cropDiagnosticLastSafe = false;
+	ActivePictureBounds cropDiagnosticPreviousBounds;
+	AlphaSourceCrop::DecisionOwner cropDiagnosticPreviousOwner = AlphaSourceCrop::DecisionOwner::FULL_RASTER;
+	uint64_t cropDiagnosticEvent = 0, cropDiagnosticStartedTick = 0, cropDiagnosticStartedSequence = 0;
+	uint64_t cropDiagnosticLastEvidenceSequence = 0, cropDiagnosticLastSummaryTick = 0;
+	unsigned cropDiagnosticChanges = 0, cropDiagnosticFlips = 0, cropDiagnosticResets = 0;
 	bool latestActivePicturePresentationRetentionSafe = false;
 	bool latestActivePicturePresentationRetentionEvaluated = false;
 	ActivePictureBounds latestActivePicturePresentationRetentionBounds;
@@ -6838,14 +6854,14 @@ struct LibplaceboVideoRenderer::Impl
 		}
 	}
 
-	void Initialize(HWND videoHwnd, VideoStateComPtr& state, const std::string& manualRule,
+	void Initialize(const ConfigFile& config, HWND videoHwnd, VideoStateComPtr& state, const std::string& manualRule,
 		const std::map<std::string, std::string>& manualUnifiedProfiles,
 		VideoConversionOverride videoConversionOverride)
 	{
 		this->videoHwnd = videoHwnd;
         WindowsDisplayDiagnostics::Log(videoHwnd, "vp-before-initialize", L"VP Renderer", this);
 		const RendererSettings settings = LoadRendererSettings(
-			*state, activeDisplayRule, manualRule, manualUnifiedProfiles);
+			config, *state, activeDisplayRule, manualRule, manualUnifiedProfiles);
 		activeSettings = settings;
         calibrationStatusAvailable = false;
 		PublishSettingsState(settings);
@@ -7995,9 +8011,17 @@ struct LibplaceboVideoRenderer::Impl
 		latestActivePictureEvidenceClassification =
 			ActivePictureClassification::UNAVAILABLE;
 		latestActivePictureEvidenceBounds = {};
+		latestActivePicturePresentationBounds = {};
+		lastPresentationObservationAxes = 0;
 		latestActivePictureEvidenceFrame = 0;
 		latestActivePictureEvidenceWasStartupHypothesis = false;
 		presentationOwnedGeometryTransitionDeferred = false;
+		latestCropRetentionEvidence = {};
+		latestCropSamplingReaffirmed = false;
+		cropPresentationRecovery = {};
+		cropDiagnosticActive = false;
+		cropDiagnosticPreviousAvailable = false;
+		cropDiagnosticLastEvidenceSequence = 0;
 		latestActivePicturePresentationRetentionSafe = false;
 		latestActivePicturePresentationRetentionEvaluated = false;
 		latestActivePicturePresentationRetentionBounds = {};
@@ -8057,8 +8081,7 @@ struct LibplaceboVideoRenderer::Impl
 		ClearScopeSubtitleEvidence();
 		ClearScopePresentationEvidence();
 		scopeVerticalInspectionBridge = {};
-		scopeSubtitleRetentionWasUnsafe = false;
-		scopeSubtitleRetentionGeneration = 0;
+		scopeSubtitleInspection = {};
 		nlsDecision = {};
 		renderParams.hooks = nullptr;
 		renderParams.num_hooks = 0;
@@ -8140,7 +8163,7 @@ struct LibplaceboVideoRenderer::Impl
 		// Inspect every rendered frame while any crop presentation is active.
 		// This catches a direct bars-to-live-raster cut on a non-scheduled frame;
 		// sparse acquisition cadence is still used when no pixels are excluded.
-		const bool forceRetentionSafetyAnalysis =
+		const bool forceRetentionSafetyAnalysis = cropPresentationRecovery.active ||
 			AlphaSourceCrop::RequiresPerFramePresentationInspection(
 				trustedCropIsCurrentGeneration,
 				sceneSnapshotIsCurrentGeneration,
@@ -8288,6 +8311,7 @@ struct LibplaceboVideoRenderer::Impl
 			evidence = ConstrainNearBlackCropAcquisition(
 				evidence, nearBlackAcquisitionBlocked);
 			latestActivePictureObservationSupportsCrop = false;
+			latestCropSamplingReaffirmed = false;
 			latestActivePictureEvidenceAvailable = evidence.available;
 			latestActivePictureEvidenceClassification = evidence.available
 				? evidence.classification
@@ -8315,11 +8339,226 @@ struct LibplaceboVideoRenderer::Impl
 			fullRasterPresentationAuthoritySourceGeneration =
 				fullRasterPresentationAuthorityAvailable
 					? analysisSource.generation : 0;
+			const uint64_t now = GetTickCount64();
+			auto sameBounds = [](const ActivePictureBounds& left,
+				const ActivePictureBounds& right)
+			{
+				return left.left == right.left && left.top == right.top &&
+					left.right == right.right && left.bottom == right.bottom &&
+					left.rasterWidth == right.rasterWidth &&
+					left.rasterHeight == right.rasterHeight;
+			};
+			sceneVerificationLatestSupportsCrop =
+				sceneVerificationGeometryAvailable && evidence.available &&
+				evidence.classification ==
+					ActivePictureClassification::BAR_CROP_TRUSTED &&
+				ActivePictureBoundsContain(
+					sceneVerificationGeometry, evidence.trustedBounds);
+			AlphaSourceCrop::TransitionAdmissionInput admissionInput;
+			admissionInput.evidence = evidence;
+			admissionInput.outwardCandidate = latestActivePictureEvidenceBounds;
+			admissionInput.presentationBeforeObservation = presentationBeforeObservation;
+			admissionInput.trustedGeometry = nlsGeometry;
+			admissionInput.trustedGeometryAvailable = nlsGeometryAvailable;
+			admissionInput.compatiblePresentation = hadCompatiblePresentation;
+			admissionInput.trustedGeneration = nlsGeometrySourceGeneration;
+			admissionInput.sourceGeneration = analysisSource.generation;
+			admissionInput.sourceSequence = frameNumber;
+			admissionInput.framesPerSecond = framesPerSecond;
+			admissionInput.presentation = scopeVerticalBarPresentation;
+			admissionInput.translationDriftActive = scopeSubtitleDrift.IsActive();
+			admissionInput.presentationEvidenceGeneration = scopeSubtitleEvidenceSourceGeneration;
+			admissionInput.retention = retentionEvidence;
+			admissionInput.previousOutward = outwardPictureConfirmation;
+			const auto admission = AlphaSourceCrop::EvaluateTransitionAdmission(admissionInput);
+			const auto observation = admission.observation;
+			const bool deferPresentationOwnedTransition = admission.deferPresentation;
+			const bool deferOutwardLogicalTransition = admission.deferOutward;
+			outwardPictureConfirmation = admission.outward.state;
+			if (deferPresentationOwnedTransition !=
+				presentationOwnedGeometryTransitionDeferred)
+			{
+				DebugLog::Log(
+					"Alpha active-picture transition: presentation-owned vertical expansion %s; stable=%d,%d-%d,%d candidate=%d,%d-%d,%d generation=%llu",
+					deferPresentationOwnedTransition ? "deferred" : "released",
+					nlsGeometry.left, nlsGeometry.top,
+					nlsGeometry.right, nlsGeometry.bottom,
+					evidence.trustedBounds.left, evidence.trustedBounds.top,
+					evidence.trustedBounds.right, evidence.trustedBounds.bottom,
+					static_cast<unsigned long long>(analysisSource.generation));
+				presentationOwnedGeometryTransitionDeferred =
+					deferPresentationOwnedTransition;
+			}
+			ActivePictureScheduledDecisionValidation scheduledValidation =
+				hasScheduledDecision
+				? ((deferPresentationOwnedTransition ||
+					deferOutwardLogicalTransition)
+					? ActivePictureScheduledDecisionValidation::NON_AUTHORITATIVE
+					: ValidateActivePictureScheduledDecision(
+					*scheduledDecision, currentIdentity,
+					latestActivePictureEvidenceBounds,
+					latestActivePictureEvidenceClassification))
+				: ActivePictureScheduledDecisionValidation::NON_AUTHORITATIVE;
+			ActivePicturePublicationAdmission publicationAdmission =
+				ActivePicturePublicationAdmission::NOT_EVALUATED;
+			const bool applyScheduledDecision = hasScheduledDecision &&
+				scheduledValidation ==
+					ActivePictureScheduledDecisionValidation::ACCEPTED &&
+				nlsTransition.AdoptPublishedDecision(
+					scheduledDecision->transition, evidence.classification,
+				admission.observation.transitionDeferred, &publicationAdmission,
+					&admission.observation.axisEvidence);
+			if (hasScheduledDecision &&
+				scheduledValidation ==
+					ActivePictureScheduledDecisionValidation::ACCEPTED &&
+				!applyScheduledDecision)
+			{
+				scheduledValidation = ActivePictureScheduledDecisionValidation::
+					NON_AUTHORITATIVE;
+			}
+			const ActivePictureTransitionDecision transition =
+				applyScheduledDecision ? scheduledDecision->transition :
+					nlsTransition.Observe(observation);
+			if (admission.observation.transitionDeferred != lastCropAdmissionDeferred ||
+				(admission.observation.transitionDeferred && now - lastCropAdmissionLogTick >= 2000))
+			{
+				lastCropAdmissionDeferred = admission.observation.transitionDeferred;
+				lastCropAdmissionLogTick = now;
+				DebugLog::Log("Alpha crop admission: sequence=%llu generation=%llu deferred=%d presentation_deferred=%d outward_deferred=%d broad_picture=%d outward_confirm=%u strip_evidence=%d horizontal_bands_safe=%d raw=%d,%d-%d,%d logical=%d,%d-%d,%d published=%d history_reacquired=%d partial_composition_deferred=%d",
+					static_cast<unsigned long long>(frameNumber), static_cast<unsigned long long>(analysisSource.generation),
+					admission.observation.transitionDeferred ? 1 : 0, admission.deferPresentation ? 1 : 0,
+					admission.deferOutward ? 1 : 0, admission.outward.broadOpposingPicture ? 1 : 0,
+					admission.outward.state.confirmations, retentionEvidence.expansionStripsAvailable ? 1 : 0,
+					retentionEvidence.excludedHorizontalBandsPixelSafe ? 1 : 0, latestActivePictureEvidenceBounds.left,
+					latestActivePictureEvidenceBounds.top, latestActivePictureEvidenceBounds.right,
+					latestActivePictureEvidenceBounds.bottom, transition.stableBounds.left, transition.stableBounds.top,
+					transition.stableBounds.right, transition.stableBounds.bottom,
+					transition.publish ? 1 : 0, transition.knownTrustedGeometryReacquired ? 1 : 0,
+					admission.deferPartialComposition ? 1 : 0);
+			}
+			const bool localStableTrustedContract = !applyScheduledDecision &&
+				transition.stable &&
+				transition.authoritativeClassification ==
+					ActivePictureClassification::BAR_CROP_TRUSTED;
+			latestKnownTrustedReacquisitionAvailable =
+				localStableTrustedContract;
+			latestKnownTrustedReacquisitionBounds =
+				localStableTrustedContract
+					? transition.stableBounds : ActivePictureBounds{};
+			latestKnownTrustedReacquisitionClassification =
+				localStableTrustedContract
+					? transition.authoritativeClassification
+					: ActivePictureClassification::UNAVAILABLE;
+			latestKnownTrustedReacquisitionSourceGeneration =
+				localStableTrustedContract ? analysisSource.generation : 0;
+			latestKnownTrustedReacquisitionSourceSequence =
+				localStableTrustedContract ? frameNumber : 0;
+			latestKnownTrustedReacquisitionPresentationEpoch =
+				localStableTrustedContract
+					? currentIdentity.viewportGeneration : 0;
+			latestKnownTrustedReacquisitionCurrentAssociation =
+				localStableTrustedContract;
+			const bool suppressEpisodeBarGeometryMutation =
+				AlphaSourceCrop::ShouldSuppressNearBlackBarGeometryMutation(
+					nearBlackAcquisitionBlocked, transition.stable,
+					transition.authoritativeClassification);
+			if (hasScheduledDecision && !applyScheduledDecision)
+			{
+				DebugLog::Log(
+					"Alpha active-picture look-ahead rejected: generation=%llu observed=%llu effective=%llu frame=%llu classification=%d reason=%s publication_admission=%s scheduled_base=%d,%d-%d,%d scheduled_axes=%u live_base=%d,%d-%d,%d live_axes=%u candidate=%d,%d-%d,%d runtime-apply=0",
+					static_cast<unsigned long long>(
+						scheduledDecision->effectiveIdentity.transportGeneration),
+					static_cast<unsigned long long>(
+						scheduledDecision->observationIdentity.acceptedSequence),
+					static_cast<unsigned long long>(
+						scheduledDecision->effectiveIdentity.acceptedSequence),
+					static_cast<unsigned long long>(frameNumber),
+					static_cast<int>(evidence.classification),
+					ActivePictureScheduledDecisionValidationName(scheduledValidation),
+					ActivePicturePublicationAdmissionName(publicationAdmission),
+					scheduledDecision->transition.stableBounds.left, scheduledDecision->transition.stableBounds.top,
+					scheduledDecision->transition.stableBounds.right, scheduledDecision->transition.stableBounds.bottom,
+					static_cast<unsigned int>(scheduledDecision->transition.stableBounds.trustedBarAxes),
+					nlsGeometry.left, nlsGeometry.top, nlsGeometry.right, nlsGeometry.bottom,
+					static_cast<unsigned int>(nlsGeometry.trustedBarAxes),
+					scheduledDecision->transition.bounds.left, scheduledDecision->transition.bounds.top,
+					scheduledDecision->transition.bounds.right, scheduledDecision->transition.bounds.bottom);
+			}
+			if (transition.clearTransition)
+			{
+				nlsGeometryAvailable = false;
+				nlsTransitionWithdrawn = true;
+				nlsGeometry = {};
+				nlsGeometryClassification =
+					ActivePictureClassification::UNAVAILABLE;
+				latestActivePictureObservationSupportsCrop = false;
+				nlsGeometrySourceGeneration = 0;
+			}
+			else if (transition.publish && transition.stable &&
+				!suppressEpisodeBarGeometryMutation)
+			{
+				nlsGeometry = transition.bounds;
+				nlsGeometryAvailable = true;
+				nlsTransitionWithdrawn = false;
+				nlsGeometryClassification =
+					transition.authoritativeClassification !=
+						ActivePictureClassification::UNAVAILABLE
+					? transition.authoritativeClassification
+					: evidence.classification;
+				nlsGeometrySourceGeneration = analysisSource.generation;
+				nlsGeometrySourceFormatKey =
+					currentIdentity.sourceFormatGeneration;
+				++nlsGeometryGeneration;
+			}
+			else if (transition.stable && !nlsTransitionWithdrawn &&
+				!suppressEpisodeBarGeometryMutation)
+			{
+				// Retain the published geometry as temporal context for NLS. The
+				// source-crop policy independently requires the latest observation
+				// to reaffirm authority, so ambiguity expands to full raster.
+				nlsGeometry = transition.stableBounds;
+				nlsGeometryAvailable = true;
+			}
+			// Admission used the old base. Once geometry is adopted, publish its
+			// current pixel certificate and coarse envelope together for rendering.
+			if (nlsGeometryAvailable && nlsGeometrySourceGeneration == analysisSource.generation &&
+				nlsGeometryClassification == ActivePictureClassification::BAR_CROP_TRUSTED)
+			{
+				const auto handoff = ResolveActivePictureRetentionHandoff(analysisSource,
+					presentationBeforeObservation, retentionEvidence, nlsGeometry);
+				if (handoff.refreshed)
+					DebugLog::Log("Alpha crop handoff: sequence=%llu generation=%llu old_base=%d,%d-%d,%d new_base=%d,%d-%d,%d refreshed=1 valid=%d bands_safe=%d outward_visible=%d",
+						static_cast<unsigned long long>(frameNumber), static_cast<unsigned long long>(analysisSource.generation),
+						presentationBeforeObservation.left, presentationBeforeObservation.top, presentationBeforeObservation.right, presentationBeforeObservation.bottom,
+						handoff.bounds.left, handoff.bounds.top, handoff.bounds.right, handoff.bounds.bottom,
+						handoff.evidence.analysisValid && handoff.evidence.presentationValid ? 1 : 0,
+						handoff.evidence.excludedBandsPixelSafe ? 1 : 0, handoff.evidence.outwardVisibleBoundsAvailable ? 1 : 0);
+				presentationBeforeObservation = handoff.bounds;
+				retentionEvidence = handoff.evidence;
+				hadCompatiblePresentation = true;
+			}
 			const bool ambiguousEvidence = !evidence.available ||
 				evidence.classification ==
 					ActivePictureClassification::PROVISIONAL ||
 				evidence.classification ==
 					ActivePictureClassification::UNAVAILABLE;
+			latestCropRetentionEvidence = retentionEvidence;
+			const auto presentationObservation = AlphaSourceCrop::ResolvePresentationObservation(
+				presentationBeforeObservation, evidence, retentionEvidence);
+			latestActivePicturePresentationBounds = presentationObservation.bounds;
+			if (presentationObservation.resolvedAxes != lastPresentationObservationAxes ||
+				(presentationObservation.resolvedAxes != 0 && now - lastPresentationObservationLogTick >= 2000))
+			{
+				lastPresentationObservationAxes = presentationObservation.resolvedAxes;
+				lastPresentationObservationLogTick = now;
+				const auto& visible = presentationObservation.bounds;
+				DebugLog::Log("Alpha presentation observation: sequence=%llu generation=%llu resolved_axes=%u authority=%d,%d-%d,%d visible=%d,%d-%d,%d reason=measured-pixels-separate-from-axis-confidence",
+					static_cast<unsigned long long>(frameNumber), static_cast<unsigned long long>(analysisSource.generation),
+					static_cast<unsigned>(presentationObservation.resolvedAxes),
+					latestActivePictureEvidenceBounds.left, latestActivePictureEvidenceBounds.top,
+					latestActivePictureEvidenceBounds.right, latestActivePictureEvidenceBounds.bottom,
+					visible.left, visible.top, visible.right, visible.bottom);
+			}
 			latestActivePicturePresentationRetentionSafe =
 				hadCompatiblePresentation && ambiguousEvidence &&
 				retentionEvidence.currentlyPixelSafe;
@@ -8345,15 +8584,6 @@ struct LibplaceboVideoRenderer::Impl
 			latestActivePicturePresentationRetentionReason =
 				hadCompatiblePresentation ? retentionEvidence.reason :
 					"no compatible retained presentation";
-			const uint64_t now = GetTickCount64();
-			auto sameBounds = [](const ActivePictureBounds& left,
-				const ActivePictureBounds& right)
-			{
-				return left.left == right.left && left.top == right.top &&
-					left.right == right.right && left.bottom == right.bottom &&
-					left.rasterWidth == right.rasterWidth &&
-					left.rasterHeight == right.rasterHeight;
-			};
 			if (automaticSourceCrop && configuredScreenActive &&
 				hadCompatiblePresentation &&
 				(evidence.available ||
@@ -8361,9 +8591,7 @@ struct LibplaceboVideoRenderer::Impl
 			{
 				ActivePictureBounds observed = presentationBeforeObservation;
 				if (evidence.available)
-					observed = evidence.classification ==
-						ActivePictureClassification::PROVISIONAL
-					? evidence.proposedBounds : evidence.trustedBounds;
+					observed = latestActivePicturePresentationBounds;
 				if (retentionEvidence.outwardVisibleBoundsAvailable)
 				{
 					observed.left = std::min(observed.left,
@@ -8374,6 +8602,14 @@ struct LibplaceboVideoRenderer::Impl
 						retentionEvidence.outwardVisibleBounds.right);
 					observed.bottom = std::max(observed.bottom,
 						retentionEvidence.outwardVisibleBounds.bottom);
+				}
+				// Vertical subtitle occupancy cannot turn horizontal sampling noise
+				// into a full-raster conflict. Each horizontal band is verified here.
+				if (evidence.classification == ActivePictureClassification::BAR_CROP_TRUSTED &&
+					AlphaSourceCrop::IsPixelSafeHorizontalSamplingEnvelope(presentationBeforeObservation, observed, retentionEvidence))
+				{
+					observed.left = presentationBeforeObservation.left;
+					observed.right = presentationBeforeObservation.right;
 				}
 				ActivePictureBounds outward = presentationBeforeObservation;
 				outward.left = std::min(outward.left, observed.left) & ~1;
@@ -8393,7 +8629,28 @@ struct LibplaceboVideoRenderer::Impl
 					outward.top < presentationBeforeObservation.top ||
 					outward.right > presentationBeforeObservation.right ||
 					outward.bottom > presentationBeforeObservation.bottom;
-				if (expands)
+				// Do this before publishing coarse edge flags. Otherwise a safe
+				// four-pixel observation can reaffirm the crop below while this
+				// second path independently forces full raster (live event 18).
+				const bool samplingEnvelopeReaffirmed = hadCurrentTrustedCropGeometry &&
+					evidence.available && evidence.classification ==
+						ActivePictureClassification::BAR_CROP_TRUSTED &&
+					retentionEvidence.analysisValid && retentionEvidence.presentationValid &&
+					!retentionEvidence.outwardVisibleBoundsAvailable &&
+					AlphaSourceCrop::IsPixelSafeSamplingEnvelope(presentationBeforeObservation,
+						evidence.trustedBounds, outward, retentionEvidence.excludedBandsPixelSafe);
+				if (expands && samplingEnvelopeReaffirmed &&
+					(now - lastSamplingEnvelopeLogTick >= 2000))
+				{
+					lastSamplingEnvelopeLogTick = now;
+					DebugLog::Log("Alpha presentation envelope: sequence=%llu generation=%llu base=%d,%d-%d,%d observed=%d,%d-%d,%d reason=pixel-safe-sampling-reaffirmed",
+						static_cast<unsigned long long>(frameNumber),
+						static_cast<unsigned long long>(analysisSource.generation),
+						presentationBeforeObservation.left, presentationBeforeObservation.top,
+						presentationBeforeObservation.right, presentationBeforeObservation.bottom,
+						outward.left, outward.top, outward.right, outward.bottom);
+				}
+				if (expands && !samplingEnvelopeReaffirmed)
 				{
 					// The accumulated envelope is useful for its same-edge release
 					// hold. Keep the raw observation as well: top and bottom overlays
@@ -8468,163 +8725,15 @@ struct LibplaceboVideoRenderer::Impl
 					}
 				}
 			}
-			sceneVerificationLatestSupportsCrop =
-				sceneVerificationGeometryAvailable && evidence.available &&
-				evidence.classification ==
-					ActivePictureClassification::BAR_CROP_TRUSTED &&
-				ActivePictureBoundsContain(
-					sceneVerificationGeometry, evidence.trustedBounds);
-			ActivePictureObservation observation;
-			observation.frameNumber = frameNumber;
-			observation.available = evidence.available;
-			observation.framesPerSecond = framesPerSecond;
-			const bool deferPresentationOwnedTransition = evidence.available &&
-				nlsGeometryAvailable &&
-				nlsGeometrySourceGeneration == analysisSource.generation &&
-				AlphaSourceCrop::ShouldDeferVerticalGeometryTransition(
-					nlsGeometry, evidence.trustedBounds, evidence.classification,
-					scopeVerticalBarPresentation, scopeSubtitleDrift.IsActive(),
-					scopeSubtitleEvidenceSourceGeneration,
-					analysisSource.generation);
-			const AlphaSourceCrop::OutwardPictureConfirmationDecision
-				outwardConfirmation = hadCompatiblePresentation && evidence.available
-				? AlphaSourceCrop::ConfirmOutwardPictureTransition(
-					outwardPictureConfirmation, presentationBeforeObservation,
-					latestActivePictureEvidenceBounds, retentionEvidence,
-					analysisSource.generation, frameNumber)
-				: AlphaSourceCrop::OutwardPictureConfirmationDecision{};
-			outwardPictureConfirmation = outwardConfirmation.state;
-			const bool deferOutwardLogicalTransition =
-				outwardConfirmation.outwardTransition &&
-				!outwardConfirmation.authoritative;
-			if (deferPresentationOwnedTransition !=
-				presentationOwnedGeometryTransitionDeferred)
-			{
-				DebugLog::Log(
-					"Alpha active-picture transition: presentation-owned vertical expansion %s; stable=%d,%d-%d,%d candidate=%d,%d-%d,%d generation=%llu",
-					deferPresentationOwnedTransition ? "deferred" : "released",
-					nlsGeometry.left, nlsGeometry.top,
-					nlsGeometry.right, nlsGeometry.bottom,
-					evidence.trustedBounds.left, evidence.trustedBounds.top,
-					evidence.trustedBounds.right, evidence.trustedBounds.bottom,
-					static_cast<unsigned long long>(analysisSource.generation));
-				presentationOwnedGeometryTransitionDeferred =
-					deferPresentationOwnedTransition;
-			}
-			if (evidence.available)
-			{
-				observation.bounds = evidence.classification ==
-					ActivePictureClassification::PROVISIONAL
-					? evidence.proposedBounds
-					: evidence.trustedBounds;
-				observation.classification =
-					(deferPresentationOwnedTransition ||
-						deferOutwardLogicalTransition)
-					? ActivePictureClassification::PROVISIONAL
-					: evidence.classification;
-			}
-			ActivePictureScheduledDecisionValidation scheduledValidation =
-				hasScheduledDecision
-				? ((deferPresentationOwnedTransition ||
-					deferOutwardLogicalTransition)
-					? ActivePictureScheduledDecisionValidation::NON_AUTHORITATIVE
-					: ValidateActivePictureScheduledDecision(
-					*scheduledDecision, currentIdentity,
-					latestActivePictureEvidenceBounds,
-					latestActivePictureEvidenceClassification))
-				: ActivePictureScheduledDecisionValidation::NON_AUTHORITATIVE;
-			const bool applyScheduledDecision = hasScheduledDecision &&
-				scheduledValidation ==
-					ActivePictureScheduledDecisionValidation::ACCEPTED &&
-				nlsTransition.AdoptPublishedDecision(
-					scheduledDecision->transition, evidence.classification);
-			if (hasScheduledDecision &&
-				scheduledValidation ==
-					ActivePictureScheduledDecisionValidation::ACCEPTED &&
-				!applyScheduledDecision)
-			{
-				scheduledValidation = ActivePictureScheduledDecisionValidation::
-					NON_AUTHORITATIVE;
-			}
-			const ActivePictureTransitionDecision transition =
-				applyScheduledDecision ? scheduledDecision->transition :
-					nlsTransition.Observe(observation);
-			const bool localStableTrustedContract = !applyScheduledDecision &&
-				transition.stable &&
-				transition.authoritativeClassification ==
-					ActivePictureClassification::BAR_CROP_TRUSTED;
-			latestKnownTrustedReacquisitionAvailable =
-				localStableTrustedContract;
-			latestKnownTrustedReacquisitionBounds =
-				localStableTrustedContract
-					? transition.stableBounds : ActivePictureBounds{};
-			latestKnownTrustedReacquisitionClassification =
-				localStableTrustedContract
-					? transition.authoritativeClassification
-					: ActivePictureClassification::UNAVAILABLE;
-			latestKnownTrustedReacquisitionSourceGeneration =
-				localStableTrustedContract ? analysisSource.generation : 0;
-			latestKnownTrustedReacquisitionSourceSequence =
-				localStableTrustedContract ? frameNumber : 0;
-			latestKnownTrustedReacquisitionPresentationEpoch =
-				localStableTrustedContract
-					? currentIdentity.viewportGeneration : 0;
-			latestKnownTrustedReacquisitionCurrentAssociation =
-				localStableTrustedContract;
-			const bool suppressEpisodeBarGeometryMutation =
-				AlphaSourceCrop::ShouldSuppressNearBlackBarGeometryMutation(
-					nearBlackAcquisitionBlocked, transition.stable,
-					transition.authoritativeClassification);
-			if (hasScheduledDecision && !applyScheduledDecision)
-			{
-				DebugLog::Log(
-					"Alpha active-picture look-ahead rejected: generation=%llu observed=%llu effective=%llu frame=%llu classification=%d reason=%s runtime-apply=0",
-					static_cast<unsigned long long>(
-						scheduledDecision->effectiveIdentity.transportGeneration),
-					static_cast<unsigned long long>(
-						scheduledDecision->observationIdentity.acceptedSequence),
-					static_cast<unsigned long long>(
-						scheduledDecision->effectiveIdentity.acceptedSequence),
-					static_cast<unsigned long long>(frameNumber),
-					static_cast<int>(evidence.classification),
-					ActivePictureScheduledDecisionValidationName(
-						scheduledValidation));
-			}
-			if (transition.clearTransition)
-			{
-				nlsGeometryAvailable = false;
-				nlsTransitionWithdrawn = true;
-				nlsGeometry = {};
-				nlsGeometryClassification =
-					ActivePictureClassification::UNAVAILABLE;
-				latestActivePictureObservationSupportsCrop = false;
-				nlsGeometrySourceGeneration = 0;
-			}
-			else if (transition.publish && transition.stable &&
-				!suppressEpisodeBarGeometryMutation)
-			{
-				nlsGeometry = transition.bounds;
-				nlsGeometryAvailable = true;
-				nlsTransitionWithdrawn = false;
-				nlsGeometryClassification =
-					transition.authoritativeClassification !=
-						ActivePictureClassification::UNAVAILABLE
-					? transition.authoritativeClassification
-					: evidence.classification;
-				nlsGeometrySourceGeneration = analysisSource.generation;
-				nlsGeometrySourceFormatKey =
-					currentIdentity.sourceFormatGeneration;
-				++nlsGeometryGeneration;
-			}
-			else if (transition.stable && !nlsTransitionWithdrawn &&
-				!suppressEpisodeBarGeometryMutation)
-			{
-				// Retain the published geometry as temporal context for NLS. The
-				// source-crop policy independently requires the latest observation
-				// to reaffirm authority, so ambiguity expands to full raster.
-				nlsGeometry = transition.stableBounds;
-				nlsGeometryAvailable = true;
-			}
+			latestCropSamplingReaffirmed = nlsGeometryAvailable && hadCurrentTrustedCropGeometry &&
+				evidence.available && evidence.classification == ActivePictureClassification::BAR_CROP_TRUSTED &&
+				retentionEvidence.analysisValid && retentionEvidence.presentationValid &&
+				nlsGeometry.left == presentationBeforeObservation.left &&
+				nlsGeometry.top == presentationBeforeObservation.top &&
+				nlsGeometry.right == presentationBeforeObservation.right &&
+				nlsGeometry.bottom == presentationBeforeObservation.bottom &&
+				AlphaSourceCrop::IsPixelSafeCropReaffirmation(nlsGeometry,
+					evidence.trustedBounds, retentionEvidence.excludedBandsPixelSafe);
 			if (nlsGeometryAvailable && evidence.available &&
 				evidence.classification ==
 					ActivePictureClassification::BAR_CROP_TRUSTED &&
@@ -8632,12 +8741,14 @@ struct LibplaceboVideoRenderer::Impl
 					ActivePictureBounds::BarAxes::NONE &&
 				nlsGeometry.rasterWidth == evidence.trustedBounds.rasterWidth &&
 				nlsGeometry.rasterHeight == evidence.trustedBounds.rasterHeight &&
-				// The retained crop may include extra bar pixels, but it must not
-				// exclude any area the latest trusted observation calls picture.
-				nlsGeometry.left <= evidence.trustedBounds.left &&
-				nlsGeometry.top <= evidence.trustedBounds.top &&
-				nlsGeometry.right >= evidence.trustedBounds.right &&
-				nlsGeometry.bottom >= evidence.trustedBounds.bottom)
+				// Exact containment remains sufficient. Sampling-scale differences
+				// can also reaffirm the same contract when its current bands are safe;
+				// they must not create a new aspect or strand inspection/recovery.
+				(latestCropSamplingReaffirmed ||
+				 (nlsGeometry.left <= evidence.trustedBounds.left &&
+				  nlsGeometry.top <= evidence.trustedBounds.top &&
+				  nlsGeometry.right >= evidence.trustedBounds.right &&
+				  nlsGeometry.bottom >= evidence.trustedBounds.bottom)))
 			{
 				latestActivePictureObservationSupportsCrop = true;
 				nlsGeometryClassification =
@@ -8682,7 +8793,7 @@ struct LibplaceboVideoRenderer::Impl
 			if (transition.diagnostic)
 			{
 				DebugLog::Log(
-					"Alpha NLS active picture: state=%d frame=%llu rect=%d,%d-%d,%d aspect=%.4f stable=%d clear=%d classification=%d retention_safe=%d near_black_evaluated=%d global_near_black=%d global_luma_p90=%.1f near_black_episode=%s reason=\"%s; %s; %s\"",
+					"Alpha NLS active picture: state=%d frame=%llu rect=%d,%d-%d,%d aspect=%.4f stable=%d clear=%d classification=%d retention_safe=%d near_black_evaluated=%d global_near_black=%d global_luma_p90=%.1f near_black_episode=%s candidate_first=%llu candidate_age_frames=%llu reason=\"%s; %s; %s\"",
 					static_cast<int>(transition.state),
 					static_cast<unsigned long long>(frameNumber),
 					transition.bounds.left, transition.bounds.top,
@@ -8697,6 +8808,7 @@ struct LibplaceboVideoRenderer::Impl
 					latestActivePictureGlobalLumaP90,
 					AlphaSourceCrop::NearBlackPresentationModeName(
 						nearBlackPresentationEpisode.mode),
+					transition.firstContradictoryFrame, transition.decisionLatencyFrames,
 					transition.reason.c_str(), evidence.reason.c_str(),
 					latestActivePicturePresentationRetentionReason.c_str());
 			}
@@ -9099,7 +9211,11 @@ struct LibplaceboVideoRenderer::Impl
 			latestActivePictureEvidenceClassification =
 				ActivePictureClassification::UNAVAILABLE;
 			latestActivePictureEvidenceBounds = {};
+			latestActivePicturePresentationBounds = {};
+			lastPresentationObservationAxes = 0;
 			latestActivePictureEvidenceFrame = sourceSequence;
+			latestCropRetentionEvidence = {};
+			latestCropSamplingReaffirmed = false;
 			latestActivePicturePresentationRetentionEvaluated = true;
 			latestActivePicturePresentationRetentionSafe = false;
 			latestActivePictureGlobalNearBlackEvaluated = false;
@@ -9394,27 +9510,27 @@ struct LibplaceboVideoRenderer::Impl
 			scopeSubtitleEvidenceSourceGeneration == frameGeneration &&
 			scopeVerticalBarPresentation.action ==
 				AlphaSourceCrop::VerticalBarPresentationAction::TRANSLATE;
-		if (scopeSubtitleRetentionGeneration != frameGeneration)
-		{
-			scopeSubtitleRetentionGeneration = frameGeneration;
-			scopeSubtitleRetentionWasUnsafe = false;
-		}
-		const bool retentionUnsafeNow =
-			latestActivePicturePresentationRetentionEvaluated &&
-			!latestActivePicturePresentationRetentionSafe;
-		const bool retentionJustBecameUnsafe =
-			retentionUnsafeNow && !scopeSubtitleRetentionWasUnsafe;
-		if (latestActivePicturePresentationRetentionEvaluated)
-			scopeSubtitleRetentionWasUnsafe = retentionUnsafeNow;
-		const bool forceSubtitleBarAnalysis =
-			AlphaSourceCrop::RequiresImmediateSubtitleBarAnalysis(
-				subtitleBarAuthority != nullptr,
-				retentionJustBecameUnsafe,
-				latestActivePicturePresentationRetentionEvaluated,
-				latestActivePicturePresentationRetentionSafe,
-				subtitleTranslationAlreadyActive) ||
-			(latestActivePictureEvidenceWasStartupHypothesis &&
-			 subtitleBarAuthority != nullptr);
+		AlphaSourceCrop::SubtitleInspectionInput subtitleInspection;
+		subtitleInspection.previous = scopeSubtitleInspection;
+		subtitleInspection.barAuthorityAvailable = subtitleBarAuthority != nullptr;
+		subtitleInspection.measurementCurrent = latestActivePicturePresentationRetentionEvaluated &&
+			latestActivePicturePresentationRetentionSourceGeneration == frameGeneration &&
+			latestActivePicturePresentationRetentionSourceSequence == sourceSequence;
+		subtitleInspection.translationAlreadyActive = subtitleTranslationAlreadyActive;
+		subtitleInspection.sourceGeneration = frameGeneration;
+		subtitleInspection.base = subtitleBarAuthority ? *subtitleBarAuthority : ActivePictureBounds{};
+		subtitleInspection.measuredBase = latestActivePicturePresentationRetentionBounds;
+		subtitleInspection.retention = latestCropRetentionEvidence;
+		const auto subtitleInspectionDecision = AlphaSourceCrop::UpdateSubtitleInspection(subtitleInspection);
+		scopeSubtitleInspection = subtitleInspectionDecision.state;
+		const bool forceSubtitleBarAnalysis = subtitleInspectionDecision.forceAnalysis ||
+			(latestActivePictureEvidenceWasStartupHypothesis && subtitleBarAuthority != nullptr);
+		if (subtitleInspectionDecision.forceAnalysis)
+			DebugLog::Log("Alpha subtitle inspection: sequence=%llu generation=%llu reason=new-vertical-content base=%d,%d-%d,%d horizontal_safe=%d vertical_safe=%d",
+				static_cast<unsigned long long>(sourceSequence), static_cast<unsigned long long>(frameGeneration),
+				subtitleInspection.base.left, subtitleInspection.base.top, subtitleInspection.base.right, subtitleInspection.base.bottom,
+				latestCropRetentionEvidence.excludedHorizontalBandsPixelSafe ? 1 : 0,
+				latestCropRetentionEvidence.excludedVerticalBandsPixelSafe ? 1 : 0);
 		bool subtitleBarAnalysisScheduled = false;
 		bool subtitleBarAnalysisCompleted = false;
 		const float subtitleShiftSourcePixels =
@@ -10329,7 +10445,12 @@ struct LibplaceboVideoRenderer::Impl
 					frameGeneration;
 			episodeInput.retentionSafe =
 				episodeInput.retentionEvaluated &&
-				latestActivePicturePresentationRetentionSafe;
+				latestCropRetentionEvidence.currentlyPixelSafe;
+			episodeInput.retentionExcludedBandsPixelSafe = latestCropRetentionEvidence.excludedBandsPixelSafe;
+			// Episode suppression deliberately relabels raw bars as provisional to
+			// prevent acquisition. Recovery of the unchanged entry contract needs
+			// the raw classification, with all current-pixel/provenance gates intact.
+			episodeInput.currentObservationClassification = latestCropRetentionEvidence.activePicture.classification;
 			episodeInput.retentionBounds = episodeInput.retentionEvaluated
 				? latestActivePicturePresentationRetentionBounds
 				: ActivePictureBounds{};
@@ -10497,12 +10618,17 @@ struct LibplaceboVideoRenderer::Impl
 				 !confirmedCurrentVerticalFit &&
 				 (latestObservationIsUnavailable ||
 				  latestObservationIsProvisional)));
+			const bool horizontalSamplingReaffirmed = episodeInput.measurementCurrent && episodeInput.retentionEvaluated &&
+				episodeInput.retentionSourceGeneration == frameGeneration && episodeInput.retentionSourceSequence == sourceSequence &&
+				episodeInput.retentionBounds.left == effectiveGeometry.left && episodeInput.retentionBounds.top == effectiveGeometry.top &&
+				episodeInput.retentionBounds.right == effectiveGeometry.right && episodeInput.retentionBounds.bottom == effectiveGeometry.bottom &&
+				latestActivePictureEvidenceClassification == ActivePictureClassification::BAR_CROP_TRUSTED &&
+				AlphaSourceCrop::IsPixelSafeHorizontalSamplingEnvelope(effectiveGeometry, latestActivePicturePresentationBounds, latestCropRetentionEvidence);
 			const bool barCropRefinementHorizontalConflict =
-				currentDetectorLeftExpansion || currentDetectorRightExpansion ||
-				(latestActivePictureEvidenceAvailable &&
-				 effectiveGeometryAvailable &&
-				 (latestActivePictureEvidenceBounds.left < effectiveGeometry.left ||
-				  latestActivePictureEvidenceBounds.right > effectiveGeometry.right));
+				AlphaSourceCrop::HasHorizontalCropRefinementConflict(
+					currentDetectorLeftExpansion, currentDetectorRightExpansion,
+					latestActivePictureEvidenceAvailable, effectiveGeometryAvailable,
+					latestCropSamplingReaffirmed || horizontalSamplingReaffirmed, latestActivePicturePresentationBounds, effectiveGeometry);
 			const bool barCropRefinementPending =
 				latestActivePictureEvidenceAvailable &&
 				latestActivePictureEvidenceClassification ==
@@ -10555,6 +10681,22 @@ struct LibplaceboVideoRenderer::Impl
 					: scopePresentationEvidenceSourceGeneration;
 			cropInput.frameSourceGeneration = frameGeneration;
 			cropInput.frameSourceSequence = sourceSequence;
+			cropInput.currentVisibleBoundsAvailable = episodeInput.measurementCurrent &&
+				episodeInput.retentionEvaluated && latestCropRetentionEvidence.outwardVisibleBoundsAvailable;
+			cropInput.currentVisibleBase = episodeInput.retentionBounds;
+			cropInput.currentVisibleSourceGeneration = episodeInput.retentionSourceGeneration;
+			cropInput.currentVisibleSourceSequence = episodeInput.retentionSourceSequence;
+			cropInput.currentVisibleBounds = latestCropRetentionEvidence.outwardVisibleBounds;
+			if (cropInput.currentVisibleBoundsAvailable && latestActivePictureEvidenceAvailable)
+			{
+				// Cover pixel extents and resolved presentation bounds. Unresolved
+				// axes retain their conservative full-raster fallback.
+				auto& visible = cropInput.currentVisibleBounds;
+				visible.left = std::min(visible.left, latestActivePicturePresentationBounds.left);
+				visible.top = std::min(visible.top, latestActivePicturePresentationBounds.top);
+				visible.right = std::max(visible.right, latestActivePicturePresentationBounds.right);
+				visible.bottom = std::max(visible.bottom, latestActivePicturePresentationBounds.bottom);
+			}
 			cropInput.rasterWidth = width;
 			cropInput.rasterHeight = height;
 			AlphaSourceCrop::Decision cropDecision =
@@ -10607,11 +10749,41 @@ struct LibplaceboVideoRenderer::Impl
 					scopeVerticalInspectionBridge.retainedSourceSequence;
 				cropDecision = AlphaSourceCrop::Evaluate(cropInput);
 			}
+			AlphaSourceCrop::PresentationRecoveryInput recoveryInput;
+			recoveryInput.previous = cropPresentationRecovery;
+			recoveryInput.crop = cropInput;
+			recoveryInput.candidate = cropDecision;
+			recoveryInput.cadenceRepeat = cadenceRepeat;
+			recoveryInput.measurementCurrent = episodeInput.measurementCurrent;
+			recoveryInput.retentionEvaluated = episodeInput.retentionEvaluated;
+			recoveryInput.excludedBandsPixelSafe = latestCropRetentionEvidence.excludedBandsPixelSafe;
+			recoveryInput.observationAvailable = latestCropRetentionEvidence.proposedBoundsAvailable;
+			recoveryInput.observation = latestCropRetentionEvidence.activePicture.proposedBounds;
+			recoveryInput.observedTrustedCrop = latestCropRetentionEvidence.activePicture.trustedBounds;
+			recoveryInput.observationClassification = latestCropRetentionEvidence.activePicture.classification;
+			recoveryInput.retentionBounds = episodeInput.retentionBounds;
+			recoveryInput.retentionSourceGeneration = episodeInput.retentionSourceGeneration;
+			recoveryInput.retentionSourceSequence = episodeInput.retentionSourceSequence;
+			recoveryInput.nearBlackEvaluated = episodeInput.nearBlackEvaluated;
+			recoveryInput.globalNearBlack = episodeInput.globalNearBlack;
+			recoveryInput.confirmedPresentationResolved = episodeDecision.releasedToTrustedCrop ||
+				(episodeInput.measurementCurrent && cropDecision.applyCrop &&
+				 ((cropDecision.owner == AlphaSourceCrop::DecisionOwner::OUTWARD_FIT &&
+				   confirmedCurrentVerticalFit) ||
+				  (cropDecision.owner == AlphaSourceCrop::DecisionOwner::VERTICAL_TRANSLATION &&
+				   subtitleBarAnalysisCompleted && verticalTranslationActive)));
+			recoveryInput.presentationEpoch = viewportRequestSerial;
+			recoveryInput.currentTick = episodeInput.currentTick;
+			recoveryInput.framesPerSecond = episodeInput.framesPerSecond;
+			const auto recoveryDecision = AlphaSourceCrop::EvaluatePresentationRecovery(recoveryInput);
+			cropPresentationRecovery = recoveryDecision.state;
+			cropDecision = recoveryDecision.presentation;
+
 			const double panelTargetAspect = pl_rect2df_aspect(&target.crop);
 			const double finalTargetAspect = ResolveNlsTargetAspect(
 				configuredScreenActive, configuredScreenAspect, panelTargetAspect);
 			const bool nlsPresentationFailOpen = nlsRequested &&
-				(cropInput.presentationFailOpen || nearBlackEpisodeFullRaster);
+				(cropInput.presentationFailOpen || nearBlackEpisodeFullRaster || cropPresentationRecovery.active);
 			const bool nlsActivePictureAvailable = nlsRequested &&
 				!nlsPresentationFailOpen && effectiveGeometryAvailable &&
 				effectiveGeometrySourceGeneration == frameGeneration;
@@ -10717,44 +10889,181 @@ struct LibplaceboVideoRenderer::Impl
 			const ActivePictureBounds& presentationCropBounds =
 				aspectLimitFill.applied ? aspectLimitFill.sourceBounds :
 				cropDecision.sourceBounds;
+			// Diagnostics reuse the evidence already sampled above; no pixel scans.
+			if (!cropTraceConfigured)
+			{
+				cropTraceConfigured = true;
+				char value[32] = {};
+				const DWORD count = GetEnvironmentVariableA("VP_CROP_TRACE_FRAMES", value, sizeof(value));
+				if (count > 0 && count < sizeof(value))
+				{
+					char* end = nullptr;
+					const unsigned long requested = strtoul(value, &end, 10);
+					if (end != value && *end == '\0' && value[0] >= '0' && value[0] <= '9')
+						cropTraceRemaining = static_cast<unsigned>(std::min(2400ul, requested));
+				}
+				DebugLog::Log("Alpha crop diagnostics: schema=1 recovery_dwell_ms=250 summary_ms=2000 sampling_equivalence=max(2,width/480,height/270) sampling_requires=same-bars-and-current-safe-bands partial_composition=defer-publication failed_bar_axis=retain-established-inward-format axis_full_extent=diagnostic-only axis_extent_support=both-outer-lines-6-of-12-per-quartile-above-cutoff-plus24 stable_aspect_deadband_percent=%.1f stable_aspect_scope=contained-trusted-picture all_sided_inset=retain-inner-composition scheduled_admission=exact-stable-reference-and-live-deadbands global_grid=16x16 near_black_p90_max=96 edge_grid=48x6 extent_grid_max=256x64 extent_support=2x2 black_floor=perimeter-p10-clamped-48-80 black_threshold=min(104,floor+24) retention_black_min=0.95 retention_p90_max=min(104,floor+24) dispersion_max=24 texture_max=8 chroma_neutral_min=0.90 continuity_min=0.99 trace_budget=%u trace_max=2400 trace_scope=candidate-and-presentation evidence=existing-samples capture_missed_semantics=timestamp-gap-estimate", ActivePictureTransitionModel::STABLE_ASPECT_DEADBAND_PERCENT, cropTraceRemaining);
+			}
+			const uint64_t cropTick = episodeInput.currentTick;
+			const bool cropApplied = cropDecision.applyCrop || aspectLimitFill.applied;
+			const bool actualCropChanged = !cropDiagnosticPreviousAvailable ||
+				cropApplied != cropDiagnosticPreviousApplied ||
+				presentationCropBounds.left != cropDiagnosticPreviousBounds.left ||
+				presentationCropBounds.top != cropDiagnosticPreviousBounds.top ||
+				presentationCropBounds.right != cropDiagnosticPreviousBounds.right ||
+				presentationCropBounds.bottom != cropDiagnosticPreviousBounds.bottom;
+			const bool cropOwnerChanged = !cropDiagnosticPreviousAvailable ||
+				cropDiagnosticPreviousOwner != cropDecision.owner;
+			const bool cropUnresolved = cropPresentationRecovery.active || nearBlackEpisodeFullRaster;
+			const bool cropEventStarted = cropUnresolved && !cropDiagnosticActive;
+			const bool cropEventEnded = !cropUnresolved && cropDiagnosticActive;
+			if (cropEventStarted)
+			{
+				++cropDiagnosticEvent;
+				cropDiagnosticStartedTick = cropTick;
+				cropDiagnosticStartedSequence = sourceSequence;
+				cropDiagnosticChanges = cropDiagnosticFlips = cropDiagnosticResets = 0;
+			}
+			const bool cropEvidenceFresh = episodeInput.measurementCurrent && !cadenceRepeat &&
+				sourceSequence != cropDiagnosticLastEvidenceSequence;
+			if (cropUnresolved || cropEventEnded)
+			{
+				if (actualCropChanged && cropDiagnosticPreviousAvailable) ++cropDiagnosticChanges;
+				if (cropEvidenceFresh && cropDiagnosticActive &&
+					latestCropRetentionEvidence.excludedBandsPixelSafe != cropDiagnosticLastSafe)
+					++cropDiagnosticFlips;
+				if (recoveryDecision.proofReset ||
+					(episodeInput.previous.revalidationSamples != 0 &&
+					 episodeDecision.state.revalidationSamples == 0 && !episodeDecision.releasedToTrustedCrop) ||
+					(episodeDecision.revalidationGates & AlphaSourceCrop::RECOVERY_SEQUENCE_GAP) != 0)
+					++cropDiagnosticResets;
+			}
+			const bool cropSummaryDue = cropUnresolved && cropTick - cropDiagnosticLastSummaryTick >= 2000;
+			if (actualCropChanged || cropOwnerChanged || cropEventStarted || cropEventEnded ||
+				cropSummaryDue || recoveryDecision.ended || episodeDecision.started ||
+				episodeDecision.changedToFullRaster || episodeDecision.ended)
+			{
+				const uint32_t gates = cropPresentationRecovery.active || recoveryDecision.ended
+					? recoveryDecision.gates : episodeDecision.revalidationGates;
+				const std::string gateNames = AlphaSourceCrop::RecoveryGateNames(gates);
+				const auto& saved = cropPresentationRecovery.active ? cropPresentationRecovery.trustedCrop :
+					recoveryDecision.ended ? recoveryInput.previous.trustedCrop : episodeInput.previous.entryTrustedCrop;
+				DebugLog::Log(
+					"Alpha crop recovery: schema=1 stage=source-crop event=%llu generation=%llu sequence=%llu measurement=%llu epoch=%llu scene=%llu cadence_repeat=%d phase=%s recovery=%d episode=%s actual_change=%d previous_available=%d prev_applied=%d applied=%d prev_rect=%d,%d-%d,%d rect=%d,%d-%d,%d prev_owner=%s owner=%s candidate_owner=%s candidate_reason=\"%s\" saved=%d,%d-%d,%d trusted=%d,%d-%d,%d observed=%d,%d-%d,%d classification=%d observed_class=%d analysis_valid=%d retention_eval=%d bands_safe=%d proposal_available=%d proposal_contained=%d sampling_reaffirmed=%d horizontal_bounded=%d inspection_latched=%d outward_visible=%d full_authority=%d near_black=%d p90=%.1f proof=%u/%u dwell_ms=250 episode_proof=%u/%u sticky=%d gates=%u gate_names=%s first_sequence=%llu duration_ms=%llu applied_changes=%u evidence_flips=%u proof_resets=%u reason=\"%s\"",
+					(cropUnresolved || cropEventEnded) ? cropDiagnosticEvent : 0, frameGeneration, sourceSequence, latestActivePictureEvidenceFrame,
+					viewportRequestSerial, sceneResult.eventId, cadenceRepeat ? 1 : 0,
+					cropEventStarted ? "start" : cropEventEnded ? "end" : cropSummaryDue ? "summary" : "change",
+					cropPresentationRecovery.active ? 1 : 0,
+					AlphaSourceCrop::NearBlackPresentationModeName(nearBlackPresentationEpisode.mode),
+					actualCropChanged && cropDiagnosticPreviousAvailable ? 1 : 0, cropDiagnosticPreviousAvailable ? 1 : 0,
+					cropDiagnosticPreviousApplied ? 1 : 0, cropApplied ? 1 : 0,
+					cropDiagnosticPreviousBounds.left, cropDiagnosticPreviousBounds.top,
+					cropDiagnosticPreviousBounds.right, cropDiagnosticPreviousBounds.bottom,
+					presentationCropBounds.left, presentationCropBounds.top, presentationCropBounds.right, presentationCropBounds.bottom,
+					AlphaSourceCrop::DecisionOwnerName(cropDiagnosticPreviousOwner), AlphaSourceCrop::DecisionOwnerName(cropDecision.owner),
+					AlphaSourceCrop::DecisionOwnerName(recoveryInput.candidate.owner), recoveryInput.candidate.reason.c_str(),
+					saved.left, saved.top, saved.right, saved.bottom,
+					effectiveGeometry.left, effectiveGeometry.top, effectiveGeometry.right, effectiveGeometry.bottom,
+					latestActivePictureEvidenceBounds.left, latestActivePictureEvidenceBounds.top,
+					latestActivePictureEvidenceBounds.right, latestActivePictureEvidenceBounds.bottom,
+					static_cast<int>(effectiveClassification), static_cast<int>(latestActivePictureEvidenceClassification),
+					latestCropRetentionEvidence.analysisValid ? 1 : 0, episodeInput.retentionEvaluated ? 1 : 0,
+					latestCropRetentionEvidence.excludedBandsPixelSafe ? 1 : 0,
+					latestCropRetentionEvidence.proposedBoundsAvailable ? 1 : 0, latestCropRetentionEvidence.proposedBoundsContained ? 1 : 0,
+					latestCropSamplingReaffirmed ? 1 : 0,
+					recoveryInput.candidate.horizontalExpansionPixelBounded ? 1 : 0, scopeVerticalInspectionBridge.failOpenLatched ? 1 : 0,
+					latestActivePictureOutwardVisibleBoundsAvailable ? 1 : 0, episodeInput.fullRasterAuthorityAvailable ? 1 : 0,
+					episodeInput.globalNearBlack ? 1 : 0, latestActivePictureGlobalLumaP90,
+					recoveryDecision.samples, recoveryDecision.required, episodeDecision.revalidationSamples,
+					episodeDecision.revalidationSamplesRequired, nearBlackPresentationEpisode.confirmedNonNearBlackContent ? 1 : 0,
+					gates, gateNames.c_str(), (cropUnresolved || cropEventEnded) ? cropDiagnosticStartedSequence : 0,
+					(cropUnresolved || cropEventEnded) ? cropTick - cropDiagnosticStartedTick : 0,
+					cropDiagnosticChanges, cropDiagnosticFlips, cropDiagnosticResets, cropDecision.reason.c_str());
+				cropDiagnosticLastSummaryTick = cropTick;
+			}
+			const auto& rawCandidate = latestCropRetentionEvidence.activePicture;
+			const auto& rawBounds = rawCandidate.proposedBounds;
+			// Include candidate edges before a nested crop is adopted. Retention
+			// edges alone describe the old crop and miss the newly introduced matte.
+			const bool cropCandidateDiffers = rawCandidate.available && effectiveGeometryAvailable &&
+				(rawBounds.left != effectiveGeometry.left || rawBounds.top != effectiveGeometry.top ||
+				 rawBounds.right != effectiveGeometry.right || rawBounds.bottom != effectiveGeometry.bottom);
+			const bool cropDiagnosticRelevant = cropUnresolved || barCropRefinementHorizontalConflict || cropCandidateDiffers;
+			const bool cropEdgeSummaryDue = cropDiagnosticRelevant &&
+				(cropEventStarted || cropEventEnded || cropTick - cropEdgeDiagnosticLastTick >= 2000);
+			if (cropEvidenceFresh && (cropEdgeSummaryDue ||
+				(cropTraceRemaining && cropDiagnosticRelevant)))
+			{
+				if (cropTraceRemaining) --cropTraceRemaining;
+				cropEdgeDiagnosticLastTick = cropTick;
+				const auto& evidence = latestCropRetentionEvidence;
+				const auto& l = evidence.excludedLeft;
+				const auto& t = evidence.excludedTop;
+				const auto& r = evidence.excludedRight;
+				const auto& b = evidence.excludedBottom;
+				DebugLog::Log("Alpha crop axis evidence: schema=1 generation=%llu sequence=%llu horizontal=%s horizontal_reason=%s horizontal_scan_complete=%d horizontal_bar_candidate=%d vertical=%s vertical_reason=%s vertical_scan_complete=%d vertical_bar_candidate=%d proposed=%d,%d-%d,%d trusted=%d,%d-%d,%d accepted=%d,%d-%d,%d applied=%d,%d-%d,%d",
+					frameGeneration, sourceSequence,
+					ActivePictureAxisStateName(rawCandidate.axisEvidence.horizontal.state),
+					ActivePictureAxisReasonName(rawCandidate.axisEvidence.horizontal.reason),
+					rawCandidate.axisEvidence.horizontal.scanComplete ? 1 : 0, rawCandidate.axisEvidence.horizontal.barCandidate ? 1 : 0,
+					ActivePictureAxisStateName(rawCandidate.axisEvidence.vertical.state),
+					ActivePictureAxisReasonName(rawCandidate.axisEvidence.vertical.reason),
+					rawCandidate.axisEvidence.vertical.scanComplete ? 1 : 0, rawCandidate.axisEvidence.vertical.barCandidate ? 1 : 0,
+					rawBounds.left, rawBounds.top, rawBounds.right, rawBounds.bottom,
+					rawCandidate.trustedBounds.left, rawCandidate.trustedBounds.top, rawCandidate.trustedBounds.right, rawCandidate.trustedBounds.bottom,
+					effectiveGeometry.left, effectiveGeometry.top, effectiveGeometry.right, effectiveGeometry.bottom,
+					presentationCropBounds.left, presentationCropBounds.top, presentationCropBounds.right, presentationCropBounds.bottom);
+				DebugLog::Log("Alpha crop candidate levels: schema=1 generation=%llu sequence=%llu available=%d classification=%d candidate=%d,%d-%d,%d retained=%d,%d-%d,%d units=analysis-luma-10bit edge_fields=bar_pixels,floor,p90,dispersion,black_fraction,texture,continuity,trusted left=%d,%.1f,%.1f,%.1f,%.4f,%.1f,%.4f,%d top=%d,%.1f,%.1f,%.1f,%.4f,%.1f,%.4f,%d right=%d,%.1f,%.1f,%.1f,%.4f,%.1f,%.4f,%d bottom=%d,%.1f,%.1f,%.1f,%.4f,%.1f,%.4f,%d",
+					frameGeneration, sourceSequence, rawCandidate.available ? 1 : 0, static_cast<int>(rawCandidate.classification),
+					rawBounds.left, rawBounds.top, rawBounds.right, rawBounds.bottom,
+					effectiveGeometry.left, effectiveGeometry.top, effectiveGeometry.right, effectiveGeometry.bottom,
+					rawCandidate.left.barPixels,rawCandidate.left.lumaFloor,rawCandidate.left.lumaP90,rawCandidate.left.lumaDispersion,rawCandidate.left.blackFraction,rawCandidate.left.texture,rawCandidate.left.continuity,rawCandidate.left.trusted ? 1 : 0,
+					rawCandidate.top.barPixels,rawCandidate.top.lumaFloor,rawCandidate.top.lumaP90,rawCandidate.top.lumaDispersion,rawCandidate.top.blackFraction,rawCandidate.top.texture,rawCandidate.top.continuity,rawCandidate.top.trusted ? 1 : 0,
+					rawCandidate.right.barPixels,rawCandidate.right.lumaFloor,rawCandidate.right.lumaP90,rawCandidate.right.lumaDispersion,rawCandidate.right.blackFraction,rawCandidate.right.texture,rawCandidate.right.continuity,rawCandidate.right.trusted ? 1 : 0,
+					rawCandidate.bottom.barPixels,rawCandidate.bottom.lumaFloor,rawCandidate.bottom.lumaP90,rawCandidate.bottom.lumaDispersion,rawCandidate.bottom.blackFraction,rawCandidate.bottom.texture,rawCandidate.bottom.continuity,rawCandidate.bottom.trusted ? 1 : 0);
+
+				// Use existing HDMI samples; no extra readback or pixel scan. These
+				// values distinguish raised mattes from a presentation-policy conflict.
+				DebugLog::Log("Alpha crop black levels: schema=1 generation=%llu sequence=%llu units=analysis-luma-10bit edge_fields=floor,black_threshold,p90,dispersion left=%.1f,%.1f,%.1f,%.1f top=%.1f,%.1f,%.1f,%.1f right=%.1f,%.1f,%.1f,%.1f bottom=%.1f,%.1f,%.1f,%.1f observation_class=%d provisional=%d horizontal_safe=%d vertical_safe=%d pixel_bounded=%d candidate_reason=\"%s\"",
+					frameGeneration, sourceSequence,
+					l.lumaFloor, std::min(104.0,l.lumaFloor+24.0), l.lumaP90, l.lumaDispersion,
+					t.lumaFloor, std::min(104.0,t.lumaFloor+24.0), t.lumaP90, t.lumaDispersion,
+					r.lumaFloor, std::min(104.0,r.lumaFloor+24.0), r.lumaP90, r.lumaDispersion,
+					b.lumaFloor, std::min(104.0,b.lumaFloor+24.0), b.lumaP90, b.lumaDispersion,
+					static_cast<int>(cropInput.latestObservationClassification), cropInput.latestObservationIsProvisional ? 1 : 0,
+					evidence.excludedHorizontalBandsPixelSafe ? 1 : 0, evidence.excludedVerticalBandsPixelSafe ? 1 : 0,
+					recoveryInput.candidate.horizontalExpansionPixelBounded ? 1 : 0, recoveryInput.candidate.reason.c_str());
+				DebugLog::Log("Alpha crop edge trace: schema=1 event=%llu generation=%llu sequence=%llu measurement=%llu remaining=%u analysis_valid=%d presentation_valid=%d luma_samples=%zu chroma_samples=%zu edge_fields=bar_pixels,black_fraction,p90,texture,continuity left=%d,%.4f,%.1f,%.1f,%.4f top=%d,%.4f,%.1f,%.1f,%.4f right=%d,%.4f,%.1f,%.1f,%.4f bottom=%d,%.4f,%.1f,%.1f,%.4f outward_available=%d outward=%d,%d-%d,%d spatial_support=unavailable gates=%u proof=%u/%u",
+					cropDiagnosticEvent, frameGeneration, sourceSequence, latestActivePictureEvidenceFrame, cropTraceRemaining,
+					evidence.analysisValid ? 1 : 0, evidence.presentationValid ? 1 : 0, evidence.lumaSamples, evidence.chromaSamples,
+					l.barPixels,l.blackFraction,l.lumaP90,l.texture,l.continuity,
+					t.barPixels,t.blackFraction,t.lumaP90,t.texture,t.continuity,
+					r.barPixels,r.blackFraction,r.lumaP90,r.texture,r.continuity,
+					b.barPixels,b.blackFraction,b.lumaP90,b.texture,b.continuity,
+					evidence.outwardVisibleBoundsAvailable ? 1 : 0, evidence.outwardVisibleBounds.left,
+					evidence.outwardVisibleBounds.top, evidence.outwardVisibleBounds.right, evidence.outwardVisibleBounds.bottom,
+					recoveryDecision.gates, recoveryDecision.samples, recoveryDecision.required);
+			}
+			if (cropEvidenceFresh)
+			{
+				cropDiagnosticLastEvidenceSequence = sourceSequence;
+				cropDiagnosticLastSafe = latestCropRetentionEvidence.excludedBandsPixelSafe;
+			}
+			cropDiagnosticActive = cropUnresolved;
+			cropDiagnosticPreviousAvailable = true;
+			cropDiagnosticPreviousApplied = cropApplied;
+			cropDiagnosticPreviousBounds = presentationCropBounds;
+			cropDiagnosticPreviousOwner = cropDecision.owner;
+
 			std::ostringstream cropPolicy;
 			cropPolicy << automaticSourceCrop << '|'
 				<< cropDecision.applyCrop << '|'
 				<< cropDecision.outwardExpanded << '|'
 				<< cropDecision.verticallyTranslated << '|'
 				<< cropDecision.verticalTranslationPixels << '|'
-				<< effectiveLatestSupportsCrop << '|'
-				<< sceneVerificationHoldActive << '|'
-				<< ambiguityHoldActive << '|'
-				<< latestObservationIsProvisional << '|'
-				<< latestActivePicturePresentationRetentionEvaluated << '|'
-				<< latestActivePicturePresentationRetentionSafe << '|'
-				<< latestActivePictureGlobalNearBlackEvaluated << '|'
-				<< latestActivePictureGlobalNearBlack << '|'
-				<< static_cast<int>(nearBlackPresentationEpisode.mode) << '|'
-				<< nearBlackPresentationEpisode.startedSourceSequence << '|'
-				<< detectorEnvelopeActive << '|'
-				<< barCropRefinementPending << '|'
-				<< barCropRefinementHorizontalConflict << '|'
-				<< verticalInspectionCandidate << '|'
-				<< verticalInspectionFallbackRequested << '|'
-				<< confirmedCurrentVerticalFit << '|'
-				<< verticalInspectionPending << '|'
-				<< inspectionDecision.expired << '|'
-				<< scopeVerticalInspectionBridge.retentionConsumed << '|'
-				<< scopeVerticalInspectionBridge.denseAnalysisCompleted << '|'
-				<< verticalTranslationConfirmationPending << '|'
-				<< verticalFitConfirmationPending << '|'
-				<< storedVerticalBaseMatchesEffectiveGeometry << '|'
-				<< forceSubtitleBarAnalysis << '|'
-				<< currentBarAuthority << sceneBarAuthority
-				<< heldBarAnalysisAuthority << '|'
-				<< sceneResult.safeBoundary << '|' << sceneResult.eventId << '|'
-				<< engageDriftBaseRetention << '|'
-				<< releaseDriftBaseRetention << '|'
-				<< static_cast<int>(verticalResolution.action) << '|'
-				<< leftBarContentActive << detailedVerticalFitEvidence
-				<< rightBarContentActive << verticalTranslationActive << '|'
+				<< static_cast<int>(cropDecision.owner) << '|'
+				<< cropPresentationRecovery.active << '|'
+				<< viewportRequestSerial << '|'
 				<< cropNarrowerContentToFillScreen << '|'
 				<< cropNarrowerContentAspectLimitConfigured << '|'
 				<< cropNarrowerContentAspectLimit << '|'
@@ -11053,9 +11362,11 @@ struct LibplaceboVideoRenderer::Impl
 					return;
 				lastFinalLayoutPolicy = policy.str();
 				DebugLog::Log(
-					"Alpha final layout: sequence=%llu generation=%llu raster=%dx%d trusted=%d,%d-%d,%d envelope=%d,%d-%d,%d presentation=%d,%d-%d,%d screen_aspect=%.5f screen=%.1f,%.1f-%.1f,%.1f picture=%.1f,%.1f-%.1f,%.1f unused_axis=%s mapping=%s vertical_alignment=%s screen_edge_padding_requested=%d screen_edge_padding_effective=%d subtitle_shift_source_pixels=%d anamorphic=%.5f crop_reason=\"%s\"",
+					"Alpha final layout: sequence=%llu generation=%llu crop_event=%llu epoch=%llu measurement=%llu cadence_repeat=%d raster=%dx%d trusted=%d,%d-%d,%d envelope=%d,%d-%d,%d presentation=%d,%d-%d,%d screen_aspect=%.5f screen=%.1f,%.1f-%.1f,%.1f picture=%.1f,%.1f-%.1f,%.1f unused_axis=%s mapping=%s vertical_alignment=%s screen_edge_padding_requested=%d screen_edge_padding_effective=%d subtitle_shift_source_pixels=%d anamorphic=%.5f crop_reason=\"%s\"",
 					static_cast<unsigned long long>(sourceSequence),
 					static_cast<unsigned long long>(frameGeneration),
+					cropDiagnosticEvent, viewportRequestSerial, latestActivePictureEvidenceFrame,
+					cadenceRepeat ? 1 : 0,
 					width, height,
 					effectiveGeometry.left, effectiveGeometry.top,
 					effectiveGeometry.right, effectiveGeometry.bottom,
@@ -12302,18 +12613,20 @@ bool LibplaceboVideoRenderer::OnVideoState(VideoStateComPtr& videoState)
 		std::string nextFingerprint;
 		RendererSettings nextSettings;
 		bool hasUnifiedSettings = false;
-		ConfigFile config;
-		if (config.Load(ConfigFile::RENDERER_FILENAME) && RendererProfileConfig::IsUnified(config))
+		const ConfigFile& config = *m_rendererConfiguration;
+		DebugLog::Log("Renderer source configuration reused: identity=%llu disk_reads=0 hdr=%d",
+			static_cast<unsigned long long>(config.GetContentIdentity()), videoState->hdrData ? 1 : 0);
+		if (RendererProfileConfig::IsUnified(config))
 		{
 			nextSettings = LoadRendererSettings(
-				*videoState, nextRule, "", m_manualUnifiedProfiles);
+				config, *videoState, nextRule, "", m_manualUnifiedProfiles);
 			nextFingerprint = EffectiveSettingsFingerprint(nextSettings, false);
 			hasUnifiedSettings = true;
 		}
 		else
 		{
 			nextRule = m_manualDisplayRule.empty() ?
-				ResolveDisplayRuleName(*videoState) : m_manualDisplayRule;
+				ResolveDisplayRuleName(config, *videoState) : m_manualDisplayRule;
 		}
 		const bool changed = nextFingerprint.empty() ?
 			nextRule != currentDisplayRule :
@@ -12642,6 +12955,13 @@ void LibplaceboVideoRenderer::Build()
 		std::lock_guard<std::mutex> guard(m_stateMutex);
 		if (!m_videoState || !m_videoState->valid || !m_videoState->displayMode)
 			throw std::runtime_error("libplacebo requires a valid video state before Build");
+		if (!m_rendererConfiguration)
+		{
+			auto config = std::make_shared<ConfigFile>();
+			config->Load(ConfigFile::RENDERER_FILENAME);
+			m_rendererConfiguration = config;
+		}
+		m_buildConfiguration = m_rendererConfiguration;
 		state = m_videoState;
 		manualRule = m_manualDisplayRule;
 		manualUnifiedProfiles = m_manualUnifiedProfiles;
@@ -12682,8 +13002,8 @@ void LibplaceboVideoRenderer::Build()
 	std::vector<ConfiguredShaderRule> baselineSelection;
 	std::vector<std::string> baselineSections;
 	std::string baselineReason;
-	ConfigFile shaderConfig;
-	if (shaderConfig.Load(ConfigFile::RENDERER_FILENAME) &&
+	const ConfigFile& shaderConfig = *m_buildConfiguration;
+	if (shaderConfig.IsLoaded() &&
 		MadVRShaderLoader::ResolveConfiguredRuleSelection(shaderConfig,
 			"@shader-key:", ShaderRendererBackend::LIBPLACEBO,
 			baselineSelection, baselineSections, baselineReason))
@@ -12951,13 +13271,29 @@ bool LibplaceboVideoRenderer::ApplyApplicationState(
 	const std::map<std::string, std::string> next =
 		RendererProfileConfig::FormatSelections(snapshot.effectiveSelections);
 	VideoStateComPtr state = m_videoState;
+	auto candidateConfiguration = m_rendererConfiguration;
+	if (!candidateConfiguration || snapshot.configuration != m_applicationConfiguration)
+	{
+		const std::string selectedPath = ConfigFile::GetRendererConfigurationPath();
+		if (snapshot.configuration && (selectedPath.empty() ||
+			_stricmp(selectedPath.c_str(), snapshot.configuration->GetLoadedPath().c_str()) == 0))
+			candidateConfiguration = snapshot.configuration;
+		else
+		{
+			auto loaded = std::make_shared<ConfigFile>();
+			if (!loaded->Load(ConfigFile::RENDERER_FILENAME)) return false;
+			candidateConfiguration = loaded;
+		}
+	}
 	std::string candidateProfiles;
 	const RendererSettings candidateSettings = state ?
-		LoadRendererSettings(*state, candidateProfiles, "", next) :
+		LoadRendererSettings(*candidateConfiguration, *state, candidateProfiles, "", next) :
 		RendererSettings();
 	if (m_impl && !m_implInitialized.load(std::memory_order_acquire))
 	{
 		m_manualUnifiedProfiles = next;
+		m_rendererConfiguration = candidateConfiguration;
+		m_applicationConfiguration = snapshot.configuration;
 		rendererRestartRequired = true;
 		activeState = TEXT("Renderer initialization superseded by profile change");
 		DebugLog::Log(
@@ -13036,7 +13372,6 @@ bool LibplaceboVideoRenderer::ApplyApplicationState(
 			static_cast<unsigned long long>(snapshot.generation),
 			changedFields.c_str());
 	}
-	m_manualUnifiedProfiles = next;
 
 	if (rendererRestartRequired)
 	{
@@ -13085,6 +13420,12 @@ bool LibplaceboVideoRenderer::ApplyApplicationState(
 			candidateSettings.configuredScreenTarget ? 1 : 0,
 			candidateSettings.verticalAlignment.c_str());
 	}
+	m_manualUnifiedProfiles = next;
+	m_rendererConfiguration = candidateConfiguration;
+	m_applicationConfiguration = snapshot.configuration;
+	DebugLog::Log("Renderer configuration snapshot accepted: generation=%llu identity=%llu",
+		static_cast<unsigned long long>(snapshot.generation),
+		static_cast<unsigned long long>(candidateConfiguration->GetContentIdentity()));
 	DebugLog::Log("application profile generation %llu applied (%s)",
 		static_cast<unsigned long long>(snapshot.generation),
 		rendererRestartRequired ? "renderer rebuild required" :
@@ -14254,10 +14595,8 @@ void LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
 			ExtractActivePictureEvidence(source);
 		PreviewEvidence preview;
 		preview.identity = queued.activePictureIdentity;
-		preview.observation.frameNumber = queued.sourceSequence;
-		preview.observation.available = evidence.available;
-		preview.observation.framesPerSecond =
-			state.displayMode->RefreshRateHz();
+		preview.observation = MakeActivePictureObservation(evidence,
+			queued.sourceSequence, state.displayMode->RefreshRateHz());
 		if (evidence.available)
 		{
 			preview.observation.bounds = evidence.classification ==
@@ -14391,6 +14730,7 @@ void LibplaceboVideoRenderer::RenderLoop()
 			if (!m_implInitialized.load(std::memory_order_acquire))
 			{
 				m_impl->Initialize(
+					*m_buildConfiguration,
 					m_videoHwnd,
 					m_buildVideoState,
 					m_buildManualRule,

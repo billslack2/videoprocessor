@@ -1,4 +1,4 @@
-﻿#define NOMINMAX
+#define NOMINMAX
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
@@ -10,6 +10,7 @@
 #include <ConfigurationLiveApply.h>
 #include <ConfigurationIdentity.h>
 #include <RendererProfileConfig.h>
+#include <RendererConfigView.h>
 
 #include <QApplication>
 #include <QAccessible>
@@ -1326,6 +1327,10 @@ void testInheritedRendererInputSelectorsUseEffectiveLabels()
 {
     QTemporaryDir directory;
     ConfigEditorWindow window(copyFixture(directory), 0, true);
+    selectData(requireControl<QComboBox>(window, "config.general.video_conversion"), "V210_TO_P010");
+    selectData(requireControl<QComboBox>(window, "config.general.hdr_colorspace"), "FOLLOW_INPUT_LLDV");
+    selectData(requireControl<QComboBox>(window, "config.directshow.video_conversion"), QString());
+    selectData(requireControl<QComboBox>(window, "config.directshow.hdr_colorspace"), QString());
     const auto verifyInherited = [&window](const QString& objectName,
         const QString& expectedText)
     {
@@ -1356,6 +1361,8 @@ void testInheritedRendererInputSelectorsRefreshWithGeneral()
 {
     QTemporaryDir directory;
     ConfigEditorWindow window(copyFixture(directory), 0, true);
+    selectData(requireControl<QComboBox>(window, "config.directshow.container_colorspace"), QString());
+    selectData(requireControl<QComboBox>(window, "config.directshow.hdr_luminance"), QString());
     QComboBox* generalContainer = requireControl<QComboBox>(window,
         QStringLiteral("config.general.container_colorspace"));
     selectData(generalContainer, QString());
@@ -3669,6 +3676,28 @@ void testLegacyRendererVisibilityFiltersExistingUiImmediately()
         "The immediately applied UI preference cannot be persisted");
 }
 
+void testDirectShowOnlyInputPersistsAndGeneralCanBeCleared()
+{
+    QTemporaryDir directory;
+    const QString path = copyFixture(directory);
+    {
+        ConfigEditorWindow window(path, 0, true);
+        auto* general = requireControl<QComboBox>(window, QStringLiteral("config.general.video_conversion"));
+        require(general->currentData().toString().isEmpty(), "DirectShow was promoted on load");
+        selectData(requireControl<QComboBox>(window, QStringLiteral("config.directshow.video_conversion")), QStringLiteral("NONE"));
+        selectData(general, QStringLiteral("V210_TO_P010"));
+        requireControl<QPushButton>(window, QStringLiteral("applyConfiguration"))->click();
+        QCoreApplication::processEvents();
+        selectData(general, QString());
+        requireControl<QPushButton>(window, QStringLiteral("applyConfiguration"))->click();
+        QCoreApplication::processEvents();
+    }
+    ConfigEditorWindow reopened(path, 0, true);
+    require(requireControl<QComboBox>(reopened, QStringLiteral("config.general.video_conversion"))->currentData().toString().isEmpty(), "General could not be cleared");
+    require(requireControl<QComboBox>(reopened, QStringLiteral("config.directshow.video_conversion"))->currentData().toString() == QStringLiteral("NONE"), "DirectShow value moved on save/reopen");
+    require(requireControl<QComboBox>(reopened, QStringLiteral("config.vprenderer.input_processing.video_conversion"))->currentData().toString().isEmpty(), "VP Renderer acquired a DirectShow override");
+}
+
 void testGeneralInputApplyPreservesBackendOverrides()
 {
     QTemporaryDir directory;
@@ -3827,6 +3856,12 @@ void testMissingConfigurationCanBeCreatedFromEditor()
         Qt::CaseInsensitive), "First save did not report configuration creation");
     require(!apply->isEnabled(),
         "First save left the newly created configuration dirty");
+    ConfigFile parsed;
+    require(parsed.Load(path.toStdString()), "Generated config could not be reloaded");
+    std::string error;
+    std::vector<std::string> warnings;
+    require(RendererConfigView(parsed).Validate(error, warnings), "Generated renderer config is invalid");
+    require(warnings.empty(), "Generated configuration warns about its own policy location");
 }
 
 void testApplyOkCancelContract()
@@ -5757,6 +5792,7 @@ int main(int argc, char** argv)
 		testLegacyRendererVisibilityFiltersExistingUiImmediately);
 	failures += run("General input Apply preserves backend overrides",
 		testGeneralInputApplyPreservesBackendOverrides);
+    failures += run("DirectShow-only input persists and General can be cleared", testDirectShowOnlyInputPersistsAndGeneralCanBeCleared);
     failures += run("new action starts unconfigured", testNewActionStartsUnconfigured);
     failures += run("empty actions show an empty state", testEmptyActionsShowEmptyState);
     failures += run("missing configuration can be created from editor",

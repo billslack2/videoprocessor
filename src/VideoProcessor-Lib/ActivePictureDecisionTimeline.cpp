@@ -46,6 +46,8 @@ bool SameLookaheadObservation(
 	return left.frameNumber == right.frameNumber &&
 		left.available == right.available &&
 		left.classification == right.classification &&
+		left.axisEvidence == right.axisEvidence &&
+		left.transitionDeferred == right.transitionDeferred &&
 		SameTrustedBounds(left.bounds, right.bounds);
 }
 
@@ -540,7 +542,8 @@ ActivePictureDecisionTimeline::ValidateExactInwardProof(
 		if (!evidence.observation.available ||
 			evidence.observation.classification !=
 				ActivePictureClassification::BAR_CROP_TRUSTED ||
-			!evidence.nearBlackEvaluated)
+			!evidence.nearBlackEvaluated || evidence.observation.transitionDeferred ||
+			evidence.observation.axisEvidence.HasFailedBar())
 		{
 			return ActivePictureInwardProofValidation::EVIDENCE_NOT_TRUSTED;
 		}

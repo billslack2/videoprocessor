@@ -152,6 +152,82 @@ bool ActivePictureTransitionModel::WithinStableGeometryDeadband(
 		std::abs(stableHeight - observationHeight) <= verticalLimit;
 }
 
+ActivePicturePublicationAdmission ActivePictureTransitionModel::StableRetentionAdmission(
+	const ActivePictureBounds& bounds,
+	ActivePictureClassification classification) const
+{
+	if (!m_hasStable) return ActivePicturePublicationAdmission::ACCEPTED;
+	if (WithinStableGeometryDeadband(m_stable, bounds))
+		return ActivePicturePublicationAdmission::STABLE_GEOMETRY_RETAINED;
+
+	// A contained inset cannot hide new picture outside the accepted frame.
+	// Keep the established format through small AR drift or proportional
+	// zoom-out. Outward growth, translations, and full-raster evidence retain
+	// their normal admission and current-pixel visibility paths.
+	if (m_stableClassification != ActivePictureClassification::BAR_CROP_TRUSTED ||
+		classification != ActivePictureClassification::BAR_CROP_TRUSTED ||
+		bounds.rasterWidth != m_stable.rasterWidth ||
+		bounds.rasterHeight != m_stable.rasterHeight ||
+		bounds.left < m_stable.left || bounds.top < m_stable.top ||
+		bounds.right > m_stable.right || bounds.bottom > m_stable.bottom)
+		return ActivePicturePublicationAdmission::ACCEPTED;
+	const int width = bounds.right - bounds.left;
+	const int height = bounds.bottom - bounds.top;
+	const int stableWidth = m_stable.right - m_stable.left;
+	const int stableHeight = m_stable.bottom - m_stable.top;
+	if (width <= 0 || height <= 0 || stableWidth <= 0 || stableHeight <= 0)
+		return ActivePicturePublicationAdmission::ACCEPTED;
+	// A rectangle separated from all four source edges is an inset composition,
+	// not an unambiguous aspect-format boundary. Once a crop is established,
+	// keep that presentation instead of zooming into picture-in-picture,
+	// split-screen, credits, or an authored windowbox. Fresh source acquisition
+	// remains free to establish its initial geometry.
+	if (bounds.left > 0 && bounds.top > 0 &&
+		bounds.right < bounds.rasterWidth &&
+		bounds.bottom < bounds.rasterHeight)
+	{
+		return ActivePicturePublicationAdmission::CONTAINED_COMPOSITION_RETAINED;
+	}
+	// Derive aspect from pixels: cached aspectRatio can be temporally smoothed.
+	const double relativeAspect = static_cast<double>(width) * stableHeight /
+		(static_cast<double>(height) * stableWidth);
+	return std::abs(relativeAspect - 1.0) * 100.0 <= STABLE_ASPECT_DEADBAND_PERCENT
+		? ActivePicturePublicationAdmission::STABLE_ASPECT_RETAINED
+		: ActivePicturePublicationAdmission::ACCEPTED;
+}
+
+bool ActivePictureTransitionModel::RetainsIncompleteInwardFormat(
+	const ActivePictureBounds& candidate, const ActivePictureAxisEvidenceSet& evidence) const
+{
+	// Preserve initial acquisition (including a preceding full-raster/menu frame).
+	// A failed orthogonal bar is not evidence for a new complete program aspect.
+	return m_hasStable && m_stableClassification == ActivePictureClassification::BAR_CROP_TRUSTED &&
+		evidence.HasFailedBar() && candidate.rasterWidth == m_stable.rasterWidth &&
+		candidate.rasterHeight == m_stable.rasterHeight &&
+		candidate.left >= m_stable.left && candidate.top >= m_stable.top &&
+		candidate.right <= m_stable.right && candidate.bottom <= m_stable.bottom &&
+		candidate.left < candidate.right && candidate.top < candidate.bottom &&
+		(candidate.left > m_stable.left || candidate.top > m_stable.top ||
+		 candidate.right < m_stable.right || candidate.bottom < m_stable.bottom);
+}
+
+const char* ActivePicturePublicationAdmissionName(ActivePicturePublicationAdmission admission)
+{
+	switch (admission)
+	{
+	case ActivePicturePublicationAdmission::INCOMPLETE_AXIS_RETAINED: return "incomplete-axis-retained";
+	case ActivePicturePublicationAdmission::NOT_EVALUATED: return "not-evaluated";
+	case ActivePicturePublicationAdmission::ACCEPTED: return "accepted";
+	case ActivePicturePublicationAdmission::DEFERRED: return "current-evidence-deferred";
+	case ActivePicturePublicationAdmission::NON_AUTHORITATIVE: return "non-authoritative";
+	case ActivePicturePublicationAdmission::STABLE_REFERENCE_MISMATCH: return "stable-reference-mismatch";
+	case ActivePicturePublicationAdmission::STABLE_GEOMETRY_RETAINED: return "stable-geometry-deadband";
+	case ActivePicturePublicationAdmission::CONTAINED_COMPOSITION_RETAINED: return "contained-composition";
+	case ActivePicturePublicationAdmission::STABLE_ASPECT_RETAINED: return "stable-aspect-deadband";
+	default: return "unknown";
+	}
+}
+
 bool ActivePictureTransitionModel::HasCropAuthority(
 	const ActivePictureObservation& observation)
 {
@@ -208,24 +284,6 @@ bool ActivePictureTransitionModel::HasAuthorityForCroppedAxes(
 			ActivePictureBounds::BarAxes::LEFT_RIGHT)) == 0)
 		return false;
 	return true;
-}
-
-
-bool ActivePictureTransitionModel::IsNestedOrthogonalCrop(
-	const ActivePictureBounds& stable,
-	const ActivePictureBounds& candidate)
-{
-	if (stable.rasterWidth != candidate.rasterWidth ||
-		stable.rasterHeight != candidate.rasterHeight)
-		return false;
-	if (candidate.left < stable.left || candidate.top < stable.top ||
-		candidate.right > stable.right || candidate.bottom > stable.bottom)
-		return false;
-	const uint8_t stableAxes = static_cast<uint8_t>(stable.trustedBarAxes);
-	const uint8_t candidateAxes = static_cast<uint8_t>(candidate.trustedBarAxes);
-	return stableAxes != 0 &&
-		(candidateAxes & stableAxes) == stableAxes &&
-		(candidateAxes & ~stableAxes) != 0;
 }
 
 
@@ -287,6 +345,7 @@ void ActivePictureTransitionModel::StartCandidate(
 		!SameBounds(m_candidate, observation.bounds) &&
 		m_candidateReversals < 255)
 		++m_candidateReversals;
+	m_candidateUsesKnownTrustedGeometry = false;
 	m_candidate = observation.bounds;
 	m_candidateClassification = observation.classification;
 	m_matchingCandidates = 1;
@@ -375,6 +434,13 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 	if (observation.frameNumber != 0)
 		m_lastObservedFrame = observation.frameNumber;
 
+	if (observation.transitionDeferred)
+	{
+		decision.diagnostic = decision.diagnostic || m_matchingCandidates != 0;
+		ClearCandidate();
+		decision.reason = "current presentation evidence defers logical transition";
+		return decision;
+	}
 	if (!observation.available)
 	{
 		if (m_unavailableCandidates < 255)
@@ -403,6 +469,41 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 		ActivePictureClassification::UNAVAILABLE;
 	const bool matchesRecentTrusted = FindRecentTrustedGeometry(
 		observation, recentTrustedBounds, recentTrustedClassification);
+	if (RetainsIncompleteInwardFormat(matchesRecentTrusted ? recentTrustedBounds : observation.bounds,
+		observation.axisEvidence))
+	{
+		// Axis diagnostics already use the bounded edge trace. Only log a model
+		// event here when incomplete evidence actually cancels in-flight proof.
+		decision.diagnostic = m_matchingCandidates != 0;
+		ClearCandidate();
+		decision.reason = "failed bar axis cannot establish a new inward program format";
+		return decision;
+	}
+	// History and look-ahead must obey the same retention policy as live
+	// evidence. Test the remembered contract, not its noisy raw recurrence.
+	const auto retention = matchesRecentTrusted
+		? StableRetentionAdmission(recentTrustedBounds, recentTrustedClassification)
+		: (HasCropAuthority(observation)
+			? StableRetentionAdmission(observation.bounds, observation.classification)
+			: ActivePicturePublicationAdmission::ACCEPTED);
+	if (retention != ActivePicturePublicationAdmission::ACCEPTED)
+	{
+		const bool geometryMoved = !SameBounds(m_stable,
+			matchesRecentTrusted ? recentTrustedBounds : observation.bounds);
+		ClearCandidate();
+		decision.state = ActivePictureTransitionState::STABLE;
+		decision.bounds = decision.stableBounds = m_stable;
+		decision.stable = true;
+		decision.confidence = 1.0;
+		decision.diagnostic = geometryMoved;
+		if (geometryMoved)
+			decision.reason = retention == ActivePicturePublicationAdmission::CONTAINED_COMPOSITION_RETAINED
+				? "all-sided inset retained as inner composition"
+				: retention == ActivePicturePublicationAdmission::STABLE_ASPECT_RETAINED
+					? "contained picture retained within established aspect deadband"
+					: "minor trusted geometry change retained within deadband";
+		return decision;
+	}
 	if (matchesRecentTrusted)
 	{
 		if (!m_candidateUsesKnownTrustedGeometry ||
@@ -442,30 +543,8 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 		decision.decisionLatencyFrames =
 			observation.frameNumber >= m_firstContradictoryFrame ?
 			observation.frameNumber - m_firstContradictoryFrame : 0;
-		const bool nestedCrop =
-			IsNestedOrthogonalCrop(m_stable, m_candidate);
-		const double framesPerSecond =
-			std::isfinite(observation.framesPerSecond) &&
-			observation.framesPerSecond > 0.0 ?
-			observation.framesPerSecond : 60.0;
-		const uint64_t nestedFrames = static_cast<uint64_t>(std::ceil(
-			framesPerSecond * NESTED_CROP_CONFIRMATION_SECONDS));
-		const bool durationConfirmed = !nestedCrop ||
-			decision.decisionLatencyFrames >= nestedFrames;
-		if (nestedCrop)
-		{
-			decision.reason =
-				"recent nested crop awaiting sustained confirmation";
-			decision.confidence = std::min(1.0,
-				static_cast<double>(decision.decisionLatencyFrames) /
-				static_cast<double>(nestedFrames));
-		}
-		if (m_matchingCandidates >= CLEAR_TRANSITION_CONFIRMATIONS &&
-			durationConfirmed)
-			return CommitCandidate(
-				observation, nestedCrop ?
-				"recent nested crop sustained" :
-				"recent trusted geometry reacquired");
+		if (m_matchingCandidates >= CLEAR_TRANSITION_CONFIRMATIONS)
+			return CommitCandidate(observation, "recent trusted geometry reacquired");
 		return decision;
 	}
 
@@ -491,23 +570,6 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 		decision.confidence = 0.0;
 		decision.reason =
 			"provisional geometry lacks affirmative crop authority";
-		return decision;
-	}
-
-	if (m_hasStable &&
-		WithinStableGeometryDeadband(m_stable, observation.bounds))
-	{
-		const bool geometryMoved = !SameBounds(m_stable, observation.bounds);
-		ClearCandidate();
-		decision.state = ActivePictureTransitionState::STABLE;
-		decision.bounds = m_stable;
-		decision.stableBounds = m_stable;
-		decision.stable = true;
-		decision.confidence = 1.0;
-		decision.diagnostic = geometryMoved;
-		if (geometryMoved)
-			decision.reason =
-				"minor trusted geometry change retained within deadband";
 		return decision;
 	}
 
@@ -618,8 +680,6 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 			observation.bounds.aspectRatio * 0.25;
 	}
 
-	const bool nestedCrop =
-		IsNestedOrthogonalCrop(m_stable, m_candidate);
 	const uint8_t required = CLEAR_TRANSITION_CONFIRMATIONS;
 	decision.state = ActivePictureTransitionState::CANDIDATE_TRANSITION;
 	decision.bounds = m_candidate;
@@ -637,26 +697,8 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 	decision.decisionLatencyFrames =
 		observation.frameNumber >= m_firstContradictoryFrame ?
 		observation.frameNumber - m_firstContradictoryFrame : 0;
-	const double framesPerSecond =
-		std::isfinite(observation.framesPerSecond) &&
-		observation.framesPerSecond > 0.0 ?
-		observation.framesPerSecond : 60.0;
-	const uint64_t nestedFrames = static_cast<uint64_t>(std::ceil(
-		framesPerSecond * NESTED_CROP_CONFIRMATION_SECONDS));
-	const bool durationConfirmed = !nestedCrop ||
-		decision.decisionLatencyFrames >= nestedFrames;
-	if (nestedCrop)
-	{
-		decision.reason = "nested crop awaiting sustained confirmation";
-		decision.confidence = std::min(1.0,
-			static_cast<double>(decision.decisionLatencyFrames) /
-			static_cast<double>(nestedFrames));
-	}
-
-	if (m_matchingCandidates >= required && durationConfirmed)
-		return CommitCandidate(observation,
-			nestedCrop ? "nested crop sustained" :
-			"trusted transition confirmed");
+	if (m_matchingCandidates >= required)
+		return CommitCandidate(observation, "trusted transition confirmed");
 
 	return decision;
 }
@@ -664,15 +706,42 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 
 bool ActivePictureTransitionModel::AdoptPublishedDecision(
 	const ActivePictureTransitionDecision& decision,
-	ActivePictureClassification classification)
+	ActivePictureClassification classification, bool transitionDeferred,
+	ActivePicturePublicationAdmission* admission,
+	const ActivePictureAxisEvidenceSet* currentAxisEvidence)
 {
+	if (admission) *admission = ActivePicturePublicationAdmission::ACCEPTED;
+	const auto reject = [admission](ActivePicturePublicationAdmission reason) {
+		if (admission) *admission = reason;
+		return false;
+	};
+	if (transitionDeferred) return reject(ActivePicturePublicationAdmission::DEFERRED);
 	ActivePictureObservation observation;
 	observation.available = true;
 	observation.bounds = decision.bounds;
 	observation.classification = classification;
 	if (!decision.publish || !decision.stable ||
 		!HasCropAuthority(observation))
-		return false;
+		return reject(ActivePicturePublicationAdmission::NON_AUTHORITATIVE);
+	// CommitCandidate records the pre-publication stable reference. A queue
+	// model with a different history cannot transfer its confirmation to this
+	// model. Exact axes matter even when the coordinates happen to agree.
+	const auto& base = decision.stableBounds;
+	const bool matchingReference = m_hasStable
+		? (base.left == m_stable.left && base.top == m_stable.top &&
+			base.right == m_stable.right && base.bottom == m_stable.bottom &&
+			base.rasterWidth == m_stable.rasterWidth && base.rasterHeight == m_stable.rasterHeight &&
+			base.trustedBarAxes == m_stable.trustedBarAxes)
+		: (base.left == 0 && base.top == 0 && base.right == 0 && base.bottom == 0 &&
+			base.rasterWidth == 0 && base.rasterHeight == 0 &&
+			base.trustedBarAxes == ActivePictureBounds::BarAxes::NONE);
+	if (!matchingReference)
+		return reject(ActivePicturePublicationAdmission::STABLE_REFERENCE_MISMATCH);
+	if (currentAxisEvidence && RetainsIncompleteInwardFormat(decision.bounds, *currentAxisEvidence))
+		return reject(ActivePicturePublicationAdmission::INCOMPLETE_AXIS_RETAINED);
+	const auto retention = StableRetentionAdmission(decision.bounds, classification);
+	if (retention != ActivePicturePublicationAdmission::ACCEPTED)
+		return reject(retention);
 	if (m_hasStable && !SameBounds(m_stable, decision.bounds))
 	{
 		RememberTrustedGeometry(m_stable, m_stableClassification);

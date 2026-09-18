@@ -137,6 +137,487 @@ namespace VideoProcessorTest
 	TEST_CLASS(ActivePictureEvidenceTests)
 	{
 	public:
+
+
+		TEST_METHOD(FailedOrthogonalBarCannotPublishInventedFormatFromRealPixels)
+		{
+			for (bool vertical : { true, false })
+			{
+				P010Frame initial(960,540), inset(960,540);
+				if (vertical)
+				{
+					initial.BlackOutside(0,58,960,482);
+					inset.BlackOutside(48,88,912,452);
+					inset.FillRectangle(0,88,48,452,64,640,512);
+					inset.FillRectangle(912,88,960,452,64,640,512);
+				}
+				else
+				{
+					initial.BlackOutside(44,0,916,540);
+					inset.BlackOutside(104,48,856,492);
+					inset.FillRectangle(104,0,856,48,64,640,512);
+					inset.FillRectangle(104,492,856,540,64,640,512);
+				}
+				const auto base=ExtractP010ActivePictureEvidence(initial.View()).trustedBounds;
+				const auto observed=ExtractP010ActivePictureEvidence(inset.View());
+				Assert::IsTrue(observed.classification==ActivePictureClassification::BAR_CROP_TRUSTED);
+				Assert::IsTrue(observed.trustedBounds.trustedBarAxes==(vertical ?
+					ActivePictureBounds::BarAxes::TOP_BOTTOM : ActivePictureBounds::BarAxes::LEFT_RIGHT));
+				ActivePictureTransitionModel model;
+				for (uint64_t seq=1;seq<=40;++seq)
+				{
+					const auto source=seq<=4 ? initial.P010Source() : inset.P010Source();
+					AlphaSourceCrop::TransitionAdmissionInput input;
+					input.evidence=ExtractActivePictureEvidence(source);
+					input.retention=EvaluateActivePicturePresentationRetention(source,base);
+					input.trustedGeometry=input.presentationBeforeObservation=base;
+					input.trustedGeometryAvailable=input.compatiblePresentation=true;
+					input.trustedGeneration=input.sourceGeneration=1;
+					input.sourceSequence=seq; input.framesPerSecond=24;
+					input.outwardCandidate=input.evidence.trustedBounds;
+					const auto admission=AlphaSourceCrop::EvaluateTransitionAdmission(input);
+					if (seq>4)
+					{
+						Assert::IsFalse(admission.deferPartialComposition);
+						Assert::IsFalse(admission.deferOutward);
+					}
+					const auto decision=model.Observe(admission.observation);
+					if (seq>4)
+					{
+						Assert::IsFalse(decision.publish,L"Incomplete axes published an invented program aspect");
+						Assert::AreEqual(base.top,decision.stableBounds.top);
+						Assert::AreEqual(base.left,decision.stableBounds.left);
+					}
+				}
+			}
+		}
+
+		TEST_METHOD(AxisMetadataDistinguishesBarsFullExtentUnknownAndUnfinishedScan)
+		{
+			P010Frame full(960,540), scope(960,540), asymmetric(960,540), raised(960,540), stars(960,540), dark(960,540);
+			scope.BlackOutside(0,58,960,482);
+			asymmetric.BlackOutside(48,88,904,452);
+			raised.BlackOutside(48,88,912,452);
+			raised.FillRectangle(0,88,48,452,96);
+			raised.FillRectangle(912,88,960,452,96);
+			stars.Fill(64,512,512);
+			for (int i=0;i<5;++i)
+			{
+				stars.FillRectangle(i*20+10,0,i*20+12,2,700);
+				stars.FillRectangle(i*20+10,538,i*20+12,540,700);
+				stars.FillRectangle(0,(i*2+1)*540/96,2,(i*2+1)*540/96+2,700);
+				stars.FillRectangle(958,(i*2+1)*540/96,960,(i*2+1)*540/96+2,700);
+			}
+			dark.Fill(64,512,512);
+			const auto f=ExtractP010ActivePictureEvidence(full.View());
+			Assert::IsTrue(f.axisEvidence.horizontal.state==ActivePictureAxisState::FULL_EXTENT_SUPPORTED);
+			Assert::IsTrue(f.axisEvidence.vertical.state==ActivePictureAxisState::FULL_EXTENT_SUPPORTED);
+			const auto c=ExtractP010ActivePictureEvidence(scope.View());
+			Assert::IsTrue(c.axisEvidence.vertical.state==ActivePictureAxisState::TRUSTED_BARS);
+			Assert::IsTrue(c.axisEvidence.horizontal.state==ActivePictureAxisState::FULL_EXTENT_SUPPORTED);
+			const auto a=ExtractP010ActivePictureEvidence(asymmetric.View());
+			Assert::IsTrue(a.axisEvidence.horizontal.FailedBar());
+			Assert::IsTrue(a.axisEvidence.horizontal.reason==ActivePictureAxisReason::BAR_ASYMMETRY);
+			const auto r=ExtractP010ActivePictureEvidence(raised.View());
+			Assert::IsTrue(r.axisEvidence.horizontal.state==ActivePictureAxisState::UNKNOWN);
+			Assert::IsFalse(r.axisEvidence.horizontal.barCandidate);
+			const auto st=ExtractP010ActivePictureEvidence(stars.View());
+			Assert::IsTrue(st.axisEvidence.horizontal.state==ActivePictureAxisState::UNKNOWN);
+			Assert::IsTrue(st.axisEvidence.vertical.state==ActivePictureAxisState::UNKNOWN);
+			const auto d=ExtractP010ActivePictureEvidence(dark.View());
+			Assert::IsFalse(d.axisEvidence.horizontal.scanComplete);
+			Assert::IsTrue(d.axisEvidence.horizontal.reason==ActivePictureAxisReason::SCAN_INCOMPLETE);
+			Assert::IsTrue(d.lumaSamples<30000);
+			const auto invalid=ExtractActivePictureEvidence({});
+			Assert::IsTrue(invalid.axisEvidence.horizontal.reason==ActivePictureAxisReason::NOT_EVALUATED);
+		}
+
+		TEST_METHOD(FailedBarEvidenceCannotReenterThroughHistoryQueueOrPreview)
+		{
+			P010Frame scope(960,540), inset(960,540), cleanNarrow(960,540), full(960,540);
+			scope.BlackOutside(0,58,960,482);
+			inset.BlackOutside(48,88,912,452);
+			inset.FillRectangle(0,88,48,452,64,640,512);
+			inset.FillRectangle(912,88,960,452,64,640,512);
+			cleanNarrow.BlackOutside(0,88,960,452);
+			const auto base=ExtractP010ActivePictureEvidence(scope.View());
+			const auto partial=ExtractP010ActivePictureEvidence(inset.View());
+			const auto narrow=ExtractP010ActivePictureEvidence(cleanNarrow.View());
+			Assert::IsTrue(partial.axisEvidence.horizontal.FailedBar());
+			Assert::IsFalse(narrow.axisEvidence.HasFailedBar());
+			ActivePictureTransitionModel live, history, startup;
+			ActivePictureDecisionTimeline timeline;
+			timeline.Reset(1);
+			ActivePictureFrameDecision queued;
+			// Put the narrow format in real history, then expand to the base.
+			for (uint64_t seq=1;seq<=4;++seq)
+				history.Observe(MakeActivePictureObservation(narrow,seq,24));
+			for (uint64_t seq=5;seq<=8;++seq)
+				history.Observe(MakeActivePictureObservation(base,seq,24));
+			for (uint64_t seq=1;seq<=4;++seq)
+			{
+				const auto obs=MakeActivePictureObservation(base,seq,24);
+				live.Observe(obs);
+				const ActivePictureFrameIdentity id{1,seq,seq,seq*1000};
+				timeline.TrackAcceptedFrame(id);
+				timeline.TrackLookaheadEvidence(id,obs,true,false);
+				timeline.SubmitScheduledObservation(id,obs,5,4,queued);
+			}
+			ActivePictureTransitionDecision staleQueue;
+			staleQueue.publish=staleQueue.stable=true;
+			staleQueue.bounds=narrow.trustedBounds;
+			staleQueue.stableBounds=base.trustedBounds;
+			ActivePicturePublicationAdmission why;
+			Assert::IsFalse(live.AdoptPublishedDecision(staleQueue,narrow.classification,false,&why,&partial.axisEvidence));
+			Assert::IsTrue(why==ActivePicturePublicationAdmission::INCOMPLETE_AXIS_RETAINED);
+			for (uint64_t seq=9;seq<=40;++seq)
+			{
+				auto obs=MakeActivePictureObservation(partial,seq,24);
+				// Provisional history lookup must obey the same current failed-axis veto.
+				if (seq%2==0) obs.classification=ActivePictureClassification::PROVISIONAL;
+				Assert::IsFalse(history.Observe(obs).publish);
+				const ActivePictureFrameIdentity id{1,seq,seq,seq*1000};
+				timeline.TrackAcceptedFrame(id);
+				timeline.TrackLookaheadEvidence(id,obs,true,false);
+				Assert::IsFalse(timeline.SubmitScheduledObservation(id,obs,5,4,queued));
+			}
+			// Complete evidence can still accept the identical rectangle.
+			Assert::IsTrue(live.AdoptPublishedDecision(staleQueue,narrow.classification,false,&why,&narrow.axisEvidence));
+			// Safe full-frame startup and first bar acquisition remain unchanged.
+			startup.Observe(MakeActivePictureObservation(ExtractP010ActivePictureEvidence(full.View()),1,24));
+			bool acquired=false;
+			for (uint64_t seq=2;seq<=8;++seq)
+				acquired=startup.Observe(MakeActivePictureObservation(partial,seq,24)).publish || acquired;
+			Assert::IsTrue(acquired);
+			// An outward move is not denied because an unrelated axis failed.
+			auto expansion=MakeActivePictureObservation(base,50,24);
+			expansion.axisEvidence=partial.axisEvidence;
+			live.Observe(expansion); ++expansion.frameNumber;
+			Assert::IsTrue(live.Observe(expansion).publish);
+		}
+
+		TEST_METHOD(PixelMultiAspectRoundTripsRemainEligibleWithAxisMetadata)
+		{
+			for (auto bars : { std::pair<int,int>{208,264}, {264,70}, {208,0} })
+			{
+				P010Frame first(3840,2160), second(3840,2160);
+				first.BlackOutside(0,bars.first,3840,2160-bars.first);
+				if (bars.second==0) second.BlackOutside(376,0,3464,2160);
+				else second.BlackOutside(0,bars.second,3840,2160-bars.second);
+				const auto a=ExtractP010ActivePictureEvidence(first.View());
+				const auto b=ExtractP010ActivePictureEvidence(second.View());
+				Assert::IsFalse(a.axisEvidence.HasFailedBar());
+				Assert::IsFalse(b.axisEvidence.HasFailedBar());
+				ActivePictureTransitionModel model;
+				uint64_t seq=1;
+				for (const auto* evidence : { &a,&b,&a,&b,&a })
+				{
+					bool accepted=false;
+					for (int i=0;i<5;++i)
+						accepted=model.Observe(MakeActivePictureObservation(*evidence,seq++,24)).publish || accepted;
+					Assert::IsTrue(accepted);
+				}
+			}
+		}
+
+		TEST_METHOD(PixelMeasuredMarginsReplaceOnlyUncertifiedPresentationAxes)
+		{
+			P010Frame scope(960,540), partial(960,540), subtitle(960,540), expanded(960,540);
+			scope.BlackOutside(44,88,916,452);
+			partial.BlackOutside(52,92,916,448);
+			subtitle.BlackOutside(44,88,916,452);
+			subtitle.FillRectangle(200,454,500,460,700);
+			const auto base=ExtractP010ActivePictureEvidence(scope.View()).trustedBounds;
+			const auto sideEvidence=ExtractP010ActivePictureEvidence(partial.View());
+			Assert::IsTrue(sideEvidence.trustedBounds.trustedBarAxes==ActivePictureBounds::BarAxes::TOP_BOTTOM);
+			const auto safe=EvaluateP010ActivePicturePresentationRetention(partial.View(),base);
+			Assert::IsTrue(safe.excludedBandsPixelSafe);
+			const auto side=AlphaSourceCrop::ResolvePresentationObservation(base,sideEvidence,safe);
+			Assert::AreEqual(base.left,side.bounds.left); Assert::AreEqual(base.right,side.bounds.right);
+			const auto textEvidence=ExtractP010ActivePictureEvidence(subtitle.View());
+			Assert::IsTrue(textEvidence.trustedBounds.trustedBarAxes==ActivePictureBounds::BarAxes::LEFT_RIGHT);
+			const auto occupied=EvaluateP010ActivePicturePresentationRetention(subtitle.View(),base);
+			Assert::IsTrue(occupied.outwardVisibleBoundsAvailable);
+			const auto text=AlphaSourceCrop::ResolvePresentationObservation(base,textEvidence,occupied);
+			Assert::AreEqual(base.top,text.bounds.top);
+			Assert::IsTrue(text.bounds.bottom>=460 && text.bounds.bottom<540);
+			const auto wideEvidence=ExtractP010ActivePictureEvidence(expanded.View());
+			const auto wide=AlphaSourceCrop::ResolvePresentationObservation(base,wideEvidence,
+				EvaluateP010ActivePicturePresentationRetention(expanded.View(),base));
+			Assert::AreEqual(0,wide.bounds.left); Assert::AreEqual(0,wide.bounds.top);
+			Assert::AreEqual(960,wide.bounds.right); Assert::AreEqual(540,wide.bounds.bottom);
+		}
+
+		TEST_METHOD(AsymmetricBlackMarginsCannotPromoteAllSidedInsetThroughRealPixelExtraction)
+		{
+			P010Frame scope(960,540), nested(960,540), partial(960,540);
+			scope.BlackOutside(0,58,960,482);
+			nested.BlackOutside(48,88,912,452);
+			partial.BlackOutside(48,88,912,460);
+			const auto base=ExtractP010ActivePictureEvidence(scope.View()).trustedBounds;
+			const auto partialEvidence=ExtractP010ActivePictureEvidence(partial.View());
+			Assert::IsTrue(partialEvidence.trustedBounds.trustedBarAxes==ActivePictureBounds::BarAxes::LEFT_RIGHT);
+			Assert::IsTrue(partialEvidence.top.trusted && partialEvidence.bottom.trusted);
+			ActivePictureTransitionModel model;
+			uint64_t published=0;
+			for (uint64_t seq=1;seq<=120;++seq)
+			{
+				const bool paused=seq>=77 && seq<=88;
+				const auto source=seq<=4 ? scope.P010Source() : paused ? partial.P010Source() : nested.P010Source();
+				AlphaSourceCrop::TransitionAdmissionInput input;
+				input.evidence=ExtractActivePictureEvidence(source);
+				input.retention=EvaluateActivePicturePresentationRetention(source,base);
+				input.trustedGeometry=input.presentationBeforeObservation=base;
+				input.trustedGeometryAvailable=input.compatiblePresentation=true;
+				input.trustedGeneration=input.sourceGeneration=1;
+				input.sourceSequence=seq; input.framesPerSecond=24;
+				input.outwardCandidate=input.evidence.trustedBounds;
+				const auto admission=AlphaSourceCrop::EvaluateTransitionAdmission(input);
+				if (paused)
+				{
+					Assert::IsTrue(admission.deferPartialComposition && admission.observation.transitionDeferred);
+					ActivePictureTransitionDecision queued;
+					queued.publish=queued.stable=true;
+					queued.bounds=ExtractP010ActivePictureEvidence(nested.View()).trustedBounds;
+					Assert::IsFalse(model.AdoptPublishedDecision(queued,
+						ActivePictureClassification::BAR_CROP_TRUSTED,admission.observation.transitionDeferred));
+				}
+				const auto d=model.Observe(admission.observation);
+				if (paused) Assert::IsFalse(d.publish);
+				if (d.publish && seq>4) { published=seq; break; }
+			}
+			Assert::AreEqual(uint64_t(0),published);
+		}
+
+		TEST_METHOD(RetentionHandoffNeverRelabelsOldSafePixelsAsNewCropProof)
+		{
+			P010Frame frame(1920,1080);
+			frame.BlackOutside(0,100,1920,980);
+			const ActivePictureBounds oldBase{0,100,1920,980,1920,1080,2.18,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+			auto newBase=oldBase; newBase.top=140; newBase.bottom=940;
+			const auto view=frame.View();
+			AnalysisLumaSource source;
+			source.data=view.data; source.dataBytes=view.dataBytes;
+			source.width=view.width; source.height=view.height;
+			source.rowBytes=view.lumaPitchBytes; source.chromaRowBytes=view.chromaPitchBytes;
+			source.format=AnalysisLumaFormat::P010;
+			const auto oldProof=EvaluateActivePicturePresentationRetention(source,oldBase);
+			Assert::IsTrue(oldProof.excludedBandsPixelSafe);
+			const auto reused=ResolveActivePictureRetentionHandoff(source,oldBase,oldProof,oldBase);
+			Assert::IsFalse(reused.refreshed);
+			const auto changed=ResolveActivePictureRetentionHandoff(source,oldBase,oldProof,newBase);
+			Assert::IsTrue(changed.refreshed && changed.evidence.analysisValid);
+			Assert::IsFalse(changed.evidence.excludedBandsPixelSafe);
+			Assert::IsFalse(changed.evidence.excludedVerticalBandsPixelSafe);
+			Assert::IsTrue(changed.evidence.outwardVisibleBoundsAvailable);
+			Assert::IsTrue(changed.evidence.outwardVisibleBounds.top<=oldBase.top);
+			source.data=nullptr;
+			const auto invalid=ResolveActivePictureRetentionHandoff(source,oldBase,oldProof,newBase);
+			Assert::IsFalse(invalid.evidence.analysisValid);
+		}
+
+		TEST_METHOD(PublishedGeometryGetsSameFramePixelEvidenceBeforeCropEvaluation)
+		{
+			using namespace AlphaSourceCrop;
+			P010Frame frame(3840,2160);
+			frame.BlackOutside(192,440,3648,1720);
+			const ActivePictureBounds oldBase{192,372,3648,1788,3840,2160,2.44,ActivePictureBounds::BarAxes::BOTH};
+			const ActivePictureBounds newBase{192,440,3648,1720,3840,2160,2.7,ActivePictureBounds::BarAxes::BOTH};
+			for (bool outside : {false,true})
+			{
+				if(outside) frame.FillRectangle(3648,700,3670,1300,400);
+				const auto view=frame.View();
+				AnalysisLumaSource source;
+				source.data=view.data; source.dataBytes=view.dataBytes;
+				source.width=view.width; source.height=view.height;
+				source.rowBytes=view.lumaPitchBytes; source.chromaRowBytes=view.chromaPitchBytes;
+				source.format=AnalysisLumaFormat::P010;
+				const auto before=EvaluateActivePicturePresentationRetention(source,oldBase);
+				const auto handoff=ResolveActivePictureRetentionHandoff(source,oldBase,before,newBase);
+				Assert::IsTrue(handoff.refreshed);
+				Assert::AreEqual(newBase.top,handoff.bounds.top);
+				Assert::AreEqual(!outside,handoff.evidence.excludedBandsPixelSafe);
+				Input crop;
+				crop.automaticCropEnabled=crop.sharedGeometryAvailable=crop.latestObservationSupportsCrop=true;
+				crop.classification=crop.latestObservationClassification=ActivePictureClassification::BAR_CROP_TRUSTED;
+				crop.geometry=newBase; crop.geometrySourceGeneration=crop.frameSourceGeneration=1;
+				crop.frameSourceSequence=4005; crop.rasterWidth=3840; crop.rasterHeight=2160;
+				if(outside) {
+					crop.barCropRefinementHorizontalConflict=true;
+					crop.currentVisibleBoundsAvailable=handoff.evidence.outwardVisibleBoundsAvailable;
+					crop.currentVisibleBase=handoff.bounds;
+					crop.currentVisibleBounds=handoff.evidence.outwardVisibleBounds;
+					crop.currentVisibleSourceSequence=4005; crop.currentVisibleSourceGeneration=1;
+					crop.outwardExpansion=newBase; crop.outwardExpansion.right=3720;
+					crop.outwardExpansionAvailable=crop.outwardPresentationActive=true; crop.outwardExpansionSourceGeneration=1;
+				}
+				PresentationRecoveryInput ri; ri.crop=crop; ri.candidate=Evaluate(crop);
+				const auto d=EvaluatePresentationRecovery(ri);
+				Assert::IsTrue(d.presentation.applyCrop);
+				Assert::IsFalse(d.started);
+			}
+		}
+
+		TEST_METHOD(SubtitleAndSparseStarsCannotCertifyAnExpandedPictureStrip)
+		{
+			const ActivePictureBounds scope{192,372,3648,1788,3840,2160,2.44,ActivePictureBounds::BarAxes::BOTH};
+			for (bool stars : {false,true}) {
+				P010Frame frame(3840,2160);
+				frame.BlackOutside(scope.left,scope.top,scope.right,scope.bottom);
+				if(stars) {
+					for(int y=24; y<2160; y+=80)
+						frame.FillRectangle(1920,y,1926,y+4,700);
+				} else frame.FillRectangle(1200,1830,2640,1850,700);
+				const auto evidence=EvaluateP010ActivePicturePresentationRetention(frame.View(),scope);
+				Assert::IsTrue(evidence.excludedHorizontalBandsPixelSafe);
+				auto fullHeight=scope; fullHeight.top=0; fullHeight.bottom=2160;
+				Assert::IsFalse(AlphaSourceCrop::ConfirmOutwardPictureTransition({},scope,fullHeight,evidence,7,1).authoritative);
+				Assert::IsFalse(AlphaSourceCrop::ConfirmOutwardPictureTransition({},scope,fullHeight,evidence,7,1).broadOpposingPicture);
+			}
+		}
+
+		TEST_METHOD(GradualPictureExpansionUsesNewStripRatherThanWholeOldBar)
+		{
+			P010Frame frame(3840,2160);
+			frame.BlackOutside(0,208,3840,1952);
+			const ActivePictureBounds oldCrop{40,244,3800,1912,3840,2160,2.25,ActivePictureBounds::BarAxes::BOTH};
+			const auto evidence = EvaluateP010ActivePicturePresentationRetention(frame.View(),oldCrop);
+			Assert::IsTrue(evidence.activePicture.available);
+			Assert::AreEqual(int(ActivePictureClassification::BAR_CROP_TRUSTED),int(evidence.activePicture.classification));
+			AlphaSourceCrop::OutwardPictureConfirmationState state;
+			for (uint64_t seq=323; seq<=325; ++seq) {
+				const auto d = AlphaSourceCrop::ConfirmOutwardPictureTransition(state,oldCrop,
+					evidence.activePicture.trustedBounds,evidence,2,seq);
+				Assert::IsTrue(d.broadOpposingPicture);
+				Assert::AreEqual(seq==325,d.authoritative);
+				state=d.state;
+			}
+		}
+
+		TEST_METHOD(InternalDividerDoesNotBecomeAnOuterCropEdge)
+		{
+			for (bool subtitle : {false, true})
+			{
+				P010Frame frame(1920,1080);
+				frame.BlackOutside(96,182,1824,898);
+				frame.FillRectangle(948,182,972,898,64);
+				if (subtitle)
+					for (int x=640; x<1280; x+=24)
+						frame.FillRectangle(x,910,x+12,930,900);
+				const auto evidence = ExtractP010ActivePictureEvidence(frame.View());
+				Assert::IsTrue(evidence.available);
+				const auto bounds = evidence.classification == ActivePictureClassification::PROVISIONAL
+					? evidence.proposedBounds : evidence.trustedBounds;
+				Assert::IsTrue(bounds.left < 200 && bounds.right > 1720,
+					L"An internal divider must not discard either panel");
+			}
+		}
+
+		TEST_METHOD(SparseFullHeightStarsCannotAcquireAnInsetCropAtStartup)
+		{
+			for (int phase = 0; phase < 24; ++phase)
+			{
+				P010Frame frame(640, 360);
+				frame.Fill(64, 512, 512);
+				for (int point = 0; point < 32; ++point)
+				{
+					const int x = (point * 83 + phase * 9) % 640;
+					const int y = (point * 47 + phase * 5) % 360;
+					frame.FillRectangle(x, y, x + 1, y + 1, 900);
+				}
+				const auto darkness = EvaluateP010ActivePictureGlobalNearBlack(frame.View());
+				Assert::IsTrue(darkness.nearBlack);
+				const auto observed = ConstrainNearBlackCropAcquisition(
+					ExtractP010ActivePictureEvidence(frame.View()), darkness.nearBlack);
+				Assert::IsTrue(observed.classification != ActivePictureClassification::BAR_CROP_TRUSTED);
+				AlphaSourceCrop::Input input;
+				input.automaticCropEnabled = true;
+				input.latestObservationClassification = observed.classification;
+				input.rasterWidth = 640; input.rasterHeight = 360;
+				const auto decision = AlphaSourceCrop::Evaluate(input);
+				Assert::IsFalse(decision.applyCrop);
+				Assert::AreEqual(0, decision.sourceBounds.top);
+				Assert::AreEqual(360, decision.sourceBounds.bottom);
+			}
+		}
+
+		TEST_METHOD(MovingSparseStarsInsideKnownLetterboxNeverChangePresentation)
+		{
+			const auto scope = ScopePresentation(640, 360, 44, 316);
+			for (int phase = 0; phase < 32; ++phase)
+			{
+				P010Frame frame(640, 360);
+				frame.Fill(64, 512, 512);
+				for (int point = 0; point < 24; ++point)
+				{
+					const int x = (point * 79 + phase * 7) % 636;
+					const int y = 48 + (point * 29 + phase * 3) % 260;
+					frame.FillRectangle(x, y, x + 2, y + 2, 900);
+				}
+				const auto evidence = EvaluateP010ActivePicturePresentationRetention(frame.View(), scope);
+				Assert::IsTrue(evidence.currentlyPixelSafe);
+				AlphaSourceCrop::Input input;
+				input.automaticCropEnabled = input.sharedGeometryAvailable = true;
+				input.latestObservationIsProvisional = true;
+				input.frameLocalPresentationRetentionEvaluated = true;
+				input.frameLocalPresentationRetentionSafe = evidence.currentlyPixelSafe;
+				input.geometry = scope;
+				input.classification = ActivePictureClassification::BAR_CROP_TRUSTED;
+				input.geometrySourceGeneration = input.frameSourceGeneration = 1;
+				input.rasterWidth = 640; input.rasterHeight = 360;
+				const auto decision = AlphaSourceCrop::Evaluate(input);
+				Assert::IsTrue(decision.applyCrop);
+				Assert::AreEqual(44, decision.sourceBounds.top);
+				Assert::AreEqual(316, decision.sourceBounds.bottom);
+			}
+		}
+
+		TEST_METHOD(OutsideStarsWithdrawImmediatelyAndLetterboxReturnNeedsFreshProof)
+		{
+			using namespace AlphaSourceCrop;
+			const auto scope = ScopePresentation(640, 360, 44, 316);
+			PresentationRecoveryInput input;
+			input.crop.automaticCropEnabled = input.crop.sharedGeometryAvailable = true;
+			input.crop.latestObservationIsProvisional = true;
+			input.crop.geometry = scope;
+			input.crop.classification = ActivePictureClassification::BAR_CROP_TRUSTED;
+			input.crop.geometrySourceGeneration = input.crop.frameSourceGeneration = 1;
+			input.crop.rasterWidth = 640; input.crop.rasterHeight = 360;
+			input.retentionSourceGeneration = 1;
+			input.framesPerSecond = 24;
+			for (uint64_t sequence = 1; sequence <= 39; ++sequence)
+			{
+				P010Frame frame(640, 360);
+				frame.BlackOutside(0, 44, 640, 316);
+				if (sequence <= 32)
+				{
+					// Move one small bright cluster across line-grid phases. It is
+					// outside the saved crop, so fixture truth requires full raster.
+					const int x = 17 + static_cast<int>(sequence) * 7;
+					frame.FillRectangle(x, 10, x + 10, 20, 900);
+				}
+				const auto evidence = EvaluateP010ActivePicturePresentationRetention(frame.View(), scope);
+				input.crop.frameSourceSequence = input.retentionSourceSequence = sequence;
+				input.crop.frameLocalPresentationRetentionEvaluated = evidence.analysisValid;
+				input.crop.frameLocalPresentationRetentionSafe = evidence.currentlyPixelSafe;
+				input.measurementCurrent = true;
+				input.retentionEvaluated = evidence.analysisValid && evidence.presentationValid;
+				input.retentionBounds = scope;
+				input.excludedBandsPixelSafe = evidence.excludedBandsPixelSafe;
+				input.nearBlackEvaluated = true;
+				input.globalNearBlack = evidence.globalNearBlack;
+				input.observationAvailable = evidence.proposedBoundsAvailable;
+				input.observation = evidence.activePicture.proposedBounds;
+				input.candidate = Evaluate(input.crop);
+				const auto decision = EvaluatePresentationRecovery(input);
+				if (sequence <= 32) Assert::IsFalse(evidence.excludedBandsPixelSafe);
+				Assert::AreEqual(sequence == 39, decision.presentation.applyCrop);
+				Assert::AreEqual(sequence == 39 ? 44 : 0, decision.presentation.sourceBounds.top);
+				Assert::AreEqual(sequence == 39 ? 316 : 360, decision.presentation.sourceBounds.bottom);
+				input.previous = decision.state;
+			}
+		}
+
 		TEST_METHOD(GeneratedFramesCertifyExactInwardProofAndNearBlackVeto)
 		{
 			auto observation = [](

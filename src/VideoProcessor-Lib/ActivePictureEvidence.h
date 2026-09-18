@@ -42,6 +42,7 @@ struct ActivePictureEvidence
 		ActivePictureClassification::UNAVAILABLE;
 	ActivePictureBounds proposedBounds;
 	ActivePictureBounds trustedBounds;
+	ActivePictureAxisEvidenceSet axisEvidence;
 	ActivePictureEdgeEvidence left;
 	ActivePictureEdgeEvidence top;
 	ActivePictureEdgeEvidence right;
@@ -51,6 +52,10 @@ struct ActivePictureEvidence
 	std::string reason;
 };
 
+
+// Shared conversion keeps live and queued observations tied to the same measurement.
+ActivePictureObservation MakeActivePictureObservation(const ActivePictureEvidence& evidence,
+	uint64_t frameNumber, double framesPerSecond);
 
 // Frame-global darkness is presentation-independent. In particular, startup
 // title cards must be classifiable before any trusted crop exists; "false" and
@@ -82,6 +87,14 @@ struct ActivePicturePresentationRetentionEvidence
 	bool proposedBoundsAvailable = false;
 	bool proposedBoundsContained = false;
 	bool excludedBandsPixelSafe = false;
+	bool excludedHorizontalBandsPixelSafe = false;
+	bool excludedVerticalBandsPixelSafe = false;
+	// Current evidence restricted to newly exposed strips. Whole old bars can
+	// remain mostly black during a real, gradual format expansion.
+	bool expansionStripsAvailable = false;
+	ActivePictureBounds expansionBase;
+	ActivePictureBounds expansionCandidate;
+	ActivePictureEdgeEvidence expandingLeft, expandingTop, expandingRight, expandingBottom;
 	bool currentlyPixelSafe = false;
 	// When excluded pixels are visibly occupied but remain spatially bounded,
 	// this is the smallest measured outward-only presentation envelope. It
@@ -139,6 +152,19 @@ ActivePicturePresentationRetentionEvidence
 	EvaluateP010ActivePicturePresentationRetention(
 		const P010PlaneView& view,
 		const ActivePictureBounds& trustedPresentation);
+
+// Resolve a frame-local measurement after the transition model chooses the
+// presentation base. The returned bounds identify the actual inspected crop.
+struct ActivePictureRetentionHandoff
+{
+	ActivePicturePresentationRetentionEvidence evidence;
+	ActivePictureBounds bounds;
+	bool refreshed = false;
+};
+ActivePictureRetentionHandoff ResolveActivePictureRetentionHandoff(
+	const AnalysisLumaSource& source, const ActivePictureBounds& measuredBounds,
+	const ActivePicturePresentationRetentionEvidence& measured,
+	const ActivePictureBounds& presentationBounds);
 
 // Sparse program content on an otherwise near-black frame (for example a
 // scrolling title crawl) can resemble a new pair of encoded bars. Such a
