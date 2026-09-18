@@ -9381,13 +9381,42 @@ struct LibplaceboVideoRenderer::Impl
 			fullRasterPresentationAuthoritySourceGeneration = 0;
 			activePictureAmbiguityHold.Reset();
 		}
+		// A near-black entry is also a scene notification, but darkness alone
+		// does not disprove an established full-frame picture. Evaluate this once
+		// before scene handling can erase that history, then use the same decision
+		// for scene geometry, retention, and episode handling.
+		AlphaSourceCrop::KnownFullRasterDarknessBoundaryInput darknessBoundaryInput;
+		auto& darknessRetention = darknessBoundaryInput.retention;
+		darknessRetention.previous = knownFullRasterRetention;
+		darknessRetention.analysisValid = analysisSource.IsValid();
+		darknessRetention.measurementCurrent = latestRawPictureEvidenceSequence == sourceSequence;
+		darknessRetention.cadenceRepeat = cadenceRepeat;
+		darknessRetention.rawClassification = latestRawPictureEvidence.classification;
+		darknessRetention.frameWidth = width;
+		darknessRetention.frameHeight = height;
+		darknessRetention.sourceGeneration = frameGeneration;
+		darknessRetention.sourceSequence = sourceSequence;
+		darknessRetention.presentationEpoch = viewportRequestSerial;
+		darknessRetention.committedFullAvailable = nlsGeometryAvailable &&
+			nlsGeometryClassification == ActivePictureClassification::FULL_RASTER_TRUSTED;
+		darknessRetention.committedBounds = nlsGeometry;
+		darknessRetention.committedSourceGeneration = nlsGeometrySourceGeneration;
+		darknessRetention.committedSourceSequence = latestFullRasterCommitSequence;
+		darknessRetention.committedPresentationEpoch = latestFullRasterCommitEpoch;
+		darknessBoundaryInput.safeBoundary = sceneResult.safeBoundary;
+		darknessBoundaryInput.differenceEvaluated = sceneResult.differenceEvaluated;
+		darknessBoundaryInput.nearBlackEntry = sceneResult.nearBlackEntry;
+		darknessBoundaryInput.hardCutCandidate = sceneResult.hardCutCandidate;
+		darknessBoundaryInput.hardCutConfirmed = sceneResult.hardCutConfirmed;
+		const bool retainFullRasterAtDarknessBoundary =
+			AlphaSourceCrop::CanRetainKnownFullRasterAtDarknessBoundary(darknessBoundaryInput);
 		if (!cadenceRepeat && sceneResult.safeBoundary)
 		{
 			// Capture only the already-published crop for bounded presentation,
 			// then reset temporal proof. Confirmations for new geometry must never
 			// accumulate across an edit. The current cut frame is force-analyzed
-			// above. Trusted full-raster evidence must withdraw; a bounded
-			// unavailable fade may preserve only an existing trusted scope snapshot.
+			// above. A darkness-only notification may preserve confirmed full raster;
+			// actual cut evidence still uses the usual current-pixel verification.
 			const bool latestEvidenceIsCurrent =
 				latestActivePictureEvidenceFrame == sourceSequence;
 			const bool latestEvidenceMayVerify =
@@ -9404,6 +9433,7 @@ struct LibplaceboVideoRenderer::Impl
 				nlsGeometrySourceGeneration == frameGeneration &&
 				latestEvidenceIsCurrent && latestEvidenceMayVerify;
 			AlphaSourceCrop::SceneInput sceneInput;
+			sceneInput.knownFullRasterDarknessRetention = retainFullRasterAtDarknessBoundary;
 			sceneInput.geometryAvailable = nlsGeometryAvailable;
 			sceneInput.geometryIsCurrentGeneration =
 				nlsGeometrySourceGeneration == frameGeneration;
@@ -9510,6 +9540,15 @@ struct LibplaceboVideoRenderer::Impl
 				lastFinalPresentationPolicy.clear();
 				lastFinalLayoutPolicy.clear();
 			}
+			DebugLog::Log("Alpha scene evidence: event=%llu sequence=%llu generation=%llu epoch=%llu near_black_entry=%d hard_cut_candidate=%d hard_cut_confirmed=%d difference_evaluated=%d luma_difference=%u changed_samples=%u sample_count=%u histogram_distance=%u source_valid=%d raw_class=%d raw_current=%d prior_full=%d full_retained_on_darkness=%d",
+				static_cast<unsigned long long>(sceneResult.eventId), static_cast<unsigned long long>(sourceSequence),
+				static_cast<unsigned long long>(frameGeneration), static_cast<unsigned long long>(viewportRequestSerial),
+				sceneResult.nearBlackEntry ? 1 : 0, sceneResult.hardCutCandidate ? 1 : 0, sceneResult.hardCutConfirmed ? 1 : 0,
+				sceneResult.differenceEvaluated ? 1 : 0, sceneResult.immediateAverageLumaDifference,
+				sceneResult.changedSampleCount, sceneResult.sampleCount, sceneResult.histogramDistance,
+				analysisSource.IsValid() ? 1 : 0, static_cast<int>(latestRawPictureEvidence.classification),
+				darknessRetention.measurementCurrent ? 1 : 0, darknessRetention.previous.available ? 1 : 0,
+				retainFullRasterAtDarknessBoundary ? 1 : 0);
 			sceneDetectedCount.fetch_add(1, std::memory_order_relaxed);
 			DebugLog::Log("libplacebo scene boundary: event=%llu sequence=%llu generation=%llu frames_back=%u luma=%u evidence=%d crop_verification_ms=%u nls_retained=%d reason=\"%s\"",
 				static_cast<unsigned long long>(sceneResult.eventId),
@@ -10179,7 +10218,7 @@ struct LibplaceboVideoRenderer::Impl
 		const double nominalSourceRateHz = state.displayMode->RefreshRateHz();
 		auto configureViewport =
 			[this, &image, width, height, frameGeneration, sourceSequence,
-			 viewportRequestSerial, captureRateHz, nominalSourceRateHz, sceneDetectionEnabled,
+			 viewportRequestSerial, captureRateHz, nominalSourceRateHz, sceneDetectionEnabled, retainFullRasterAtDarknessBoundary,
 			 analysisValid = analysisSource.IsValid(),
 			 sceneHold, sceneResult, cadenceRepeat, subtitleShiftSourcePixels,
 			 subtitleBarAnalysisScheduled, subtitleBarAnalysisCompleted,
@@ -10576,7 +10615,7 @@ struct LibplaceboVideoRenderer::Impl
 				(sceneDetectionEnabled || automaticSourceCrop) && committedFullStillAvailable;
 			fullRetentionInput.measurementCurrent = latestRawPictureEvidenceSequence == sourceSequence;
 			fullRetentionInput.cadenceRepeat = cadenceRepeat;
-			fullRetentionInput.sceneBoundary = !cadenceRepeat && sceneResult.safeBoundary;
+			fullRetentionInput.sceneBoundary = !cadenceRepeat && sceneResult.safeBoundary && !retainFullRasterAtDarknessBoundary;
 			fullRetentionInput.rawClassification = latestRawPictureEvidence.classification;
 			fullRetentionInput.rawBounds = latestRawPictureEvidence.trustedBounds;
 			fullRetentionInput.frameWidth = width;
@@ -10591,13 +10630,13 @@ struct LibplaceboVideoRenderer::Impl
 			fullRetentionInput.committedPresentationEpoch = latestFullRasterCommitEpoch;
 			knownFullRasterRetention = AlphaSourceCrop::UpdateKnownFullRasterRetention(fullRetentionInput);
 			if (knownFullRasterRetention.available != fullRetentionInput.previous.available)
-				DebugLog::Log("Alpha known full raster retention: available=%d sequence=%llu generation=%llu epoch=%llu commit_sequence=%llu raw_class=%d measurement_current=%d scene=%d analysis_valid=%d committed_full=%d",
+				DebugLog::Log("Alpha known full raster retention: available=%d sequence=%llu generation=%llu epoch=%llu commit_sequence=%llu raw_class=%d measurement_current=%d scene=%d source_valid=%d retention_eligible=%d committed_full=%d",
 					knownFullRasterRetention.available ? 1 : 0,
 					static_cast<unsigned long long>(sourceSequence), static_cast<unsigned long long>(frameGeneration),
 					static_cast<unsigned long long>(viewportRequestSerial),
 					static_cast<unsigned long long>(latestFullRasterCommitSequence),
 					static_cast<int>(latestRawPictureEvidence.classification), fullRetentionInput.measurementCurrent ? 1 : 0,
-					fullRetentionInput.sceneBoundary ? 1 : 0, fullRetentionInput.analysisValid ? 1 : 0, committedFullStillAvailable ? 1 : 0);
+					fullRetentionInput.sceneBoundary ? 1 : 0, analysisValid ? 1 : 0, fullRetentionInput.analysisValid ? 1 : 0, committedFullStillAvailable ? 1 : 0);
 			AlphaSourceCrop::NearBlackPresentationEpisodeInput episodeInput;
 			episodeInput.knownFullRasterRetained = knownFullRasterRetention.available;
 			episodeInput.previous = nearBlackPresentationEpisode;
@@ -10608,7 +10647,7 @@ struct LibplaceboVideoRenderer::Impl
 			episodeInput.globalNearBlack =
 				latestActivePictureGlobalNearBlack;
 			episodeInput.sceneBoundary =
-				!cadenceRepeat && sceneResult.safeBoundary;
+				!cadenceRepeat && sceneResult.safeBoundary && !retainFullRasterAtDarknessBoundary;
 			episodeInput.trustedCropAvailable =
 				effectiveGeometryAvailable &&
 				effectiveClassification ==

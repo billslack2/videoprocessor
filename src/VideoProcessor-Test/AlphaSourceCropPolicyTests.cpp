@@ -3,6 +3,8 @@
 
 #include <microsoft_directshow/MadVRShaderRuntimeState.h>
 #include <ActivePictureDecisionTimeline.h>
+#include <SceneDetector.h>
+#include <vector>
 #include <vprenderer/AlphaSourceCropPolicy.h>
 
 
@@ -62,6 +64,223 @@ namespace Tests
 
 
 
+
+		TEST_METHOD(DarknessBoundaryGradualFadePreservesFullRasterThroughRealPolicyChain)
+		{
+			SceneDetector detector;
+			auto retention = CommittedFullRasterRetention(100);
+			retention.previous = UpdateKnownFullRasterRetention(retention);
+			NearBlackPresentationEpisodeState episode;
+			const int levels[] = {160, 144, 128, 112, 96};
+			bool sawDarknessBoundary = false;
+			for (size_t index = 0; index < _countof(levels); ++index)
+			{
+				const uint64_t sequence = 101 + index;
+				std::vector<uint16_t> pixels(64 * 36, static_cast<uint16_t>(levels[index] << 6));
+				const auto scene = detector.Analyze({pixels.data(), 64, 36, 128, sequence,
+					static_cast<int64_t>(sequence * 417083), 7, 417083, true});
+				retention.sourceSequence = sequence;
+				retention.rawClassification = ActivePictureClassification::UNAVAILABLE;
+				KnownFullRasterDarknessBoundaryInput boundary;
+				boundary.retention = retention;
+				boundary.safeBoundary = scene.safeBoundary;
+				boundary.nearBlackEntry = scene.nearBlackEntry;
+				boundary.differenceEvaluated = scene.differenceEvaluated;
+				boundary.hardCutCandidate = scene.hardCutCandidate;
+				boundary.hardCutConfirmed = scene.hardCutConfirmed;
+				const bool keep = CanRetainKnownFullRasterAtDarknessBoundary(boundary);
+				if (scene.safeBoundary)
+				{
+					sawDarknessBoundary = true;
+					Assert::IsTrue(scene.nearBlackEntry);
+					Assert::IsFalse(scene.hardCutCandidate || scene.hardCutConfirmed);
+					Assert::IsTrue(keep);
+					SceneInput policy;
+					policy.geometryAvailable = policy.geometryIsCurrentGeneration = policy.latestEvidenceIsCurrent = true;
+					policy.geometryClassification = ActivePictureClassification::FULL_RASTER_TRUSTED;
+					policy.latestClassification = ActivePictureClassification::UNAVAILABLE;
+					Assert::AreEqual(static_cast<int>(ScenePresentationAction::WITHDRAW),
+						static_cast<int>(EvaluateSceneBoundary(policy).action));
+					policy.knownFullRasterDarknessRetention = keep;
+					Assert::AreEqual(static_cast<int>(ScenePresentationAction::KEEP_CURRENT),
+						static_cast<int>(EvaluateSceneBoundary(policy).action));
+				}
+				retention.sceneBoundary = scene.safeBoundary && !keep;
+				retention.previous = UpdateKnownFullRasterRetention(retention);
+				NearBlackPresentationEpisodeInput input;
+				input.previous = episode;
+				input.sourceGeneration = 7;
+				input.sourceSequence = sequence;
+				input.presentationEpoch = 3;
+				input.measurementCurrent = input.nearBlackEvaluated = true;
+				input.globalNearBlack = levels[index] <= 96;
+				input.sceneBoundary = scene.safeBoundary && !keep;
+				input.fullRasterAuthorityAvailable = true;
+				input.knownFullRasterRetained = retention.previous.available;
+				const auto result = EvaluateNearBlackPresentationEpisode(input);
+				episode = result.state;
+				Assert::IsTrue(retention.previous.available);
+				Assert::AreEqual(static_cast<int>(NearBlackPresentationMode::INACTIVE), static_cast<int>(episode.mode));
+			}
+			Assert::IsTrue(sawDarknessBoundary);
+		}
+
+		TEST_METHOD(DarknessBoundaryAbruptDarkCutStillWithdrawsThroughRealPolicyChain)
+		{
+			for (bool rawBars : {false, true})
+			{
+				SceneDetector detector;
+				auto retention = CommittedFullRasterRetention(100);
+				retention.previous = UpdateKnownFullRasterRetention(retention);
+				std::vector<uint16_t> bright(64 * 36, static_cast<uint16_t>(512 << 6));
+				std::vector<uint16_t> dark(64 * 36, static_cast<uint16_t>(80 << 6));
+				detector.Analyze({bright.data(),64,36,128,100,41708300,7,417083,true});
+				const auto scene = detector.Analyze({dark.data(),64,36,128,101,42125383,7,417083,true});
+				Assert::IsTrue(scene.safeBoundary && scene.nearBlackEntry && scene.hardCutCandidate);
+				retention.sourceSequence = 101;
+				retention.rawClassification = rawBars ? ActivePictureClassification::BAR_CROP_TRUSTED :
+					ActivePictureClassification::UNAVAILABLE;
+				KnownFullRasterDarknessBoundaryInput boundary;
+				boundary.retention = retention;
+				boundary.safeBoundary = scene.safeBoundary;
+				boundary.nearBlackEntry = scene.nearBlackEntry;
+				boundary.differenceEvaluated = scene.differenceEvaluated;
+				boundary.hardCutCandidate = scene.hardCutCandidate;
+				boundary.hardCutConfirmed = scene.hardCutConfirmed;
+				const bool keep = CanRetainKnownFullRasterAtDarknessBoundary(boundary);
+				Assert::IsFalse(keep);
+				SceneInput policy;
+				policy.geometryAvailable = policy.geometryIsCurrentGeneration = policy.latestEvidenceIsCurrent = true;
+				policy.geometryClassification = ActivePictureClassification::FULL_RASTER_TRUSTED;
+				policy.latestClassification = retention.rawClassification;
+				policy.knownFullRasterDarknessRetention = keep;
+				const auto sceneDecision = EvaluateSceneBoundary(policy);
+				Assert::AreEqual(static_cast<int>(ScenePresentationAction::WITHDRAW), static_cast<int>(sceneDecision.action));
+				retention.committedFullAvailable = false;
+				retention.sceneBoundary = scene.safeBoundary && !keep;
+				retention.previous = UpdateKnownFullRasterRetention(retention);
+				Assert::IsFalse(retention.previous.available);
+				NearBlackPresentationEpisodeInput input;
+				input.sourceGeneration = 7;
+				input.sourceSequence = 101;
+				input.presentationEpoch = 3;
+				input.measurementCurrent = input.nearBlackEvaluated = input.globalNearBlack = true;
+				input.sceneBoundary = scene.safeBoundary && !keep;
+				input.knownFullRasterRetained = retention.previous.available;
+				input.fullRasterAuthorityAvailable = false;
+				Assert::AreEqual(static_cast<int>(NearBlackPresentationMode::FULL_RASTER),
+					static_cast<int>(EvaluateNearBlackPresentationEpisode(input).state.mode));
+			}
+		}
+
+		TEST_METHOD(DarknessBoundarySimultaneousConfirmedCutIsNotExempt)
+		{
+			SceneDetector detector;
+			SceneDetectorResult scene;
+			uint64_t sequence = 99;
+			for (int level : {256, 100, 90})
+			{
+				std::vector<uint16_t> pixels(64 * 36, static_cast<uint16_t>(level << 6));
+				++sequence;
+				scene = detector.Analyze({pixels.data(),64,36,128,sequence,
+					static_cast<int64_t>(sequence * 417083),7,417083,true});
+			}
+			Assert::IsTrue(scene.safeBoundary && scene.nearBlackEntry && scene.hardCutConfirmed);
+			auto retention = CommittedFullRasterRetention(100);
+			retention.previous = UpdateKnownFullRasterRetention(retention);
+			retention.sourceSequence = sequence;
+			retention.rawClassification = ActivePictureClassification::UNAVAILABLE;
+			KnownFullRasterDarknessBoundaryInput boundary;
+			boundary.retention = retention;
+			boundary.safeBoundary = scene.safeBoundary;
+			boundary.nearBlackEntry = scene.nearBlackEntry;
+				boundary.differenceEvaluated = scene.differenceEvaluated;
+			boundary.hardCutCandidate = scene.hardCutCandidate;
+			boundary.hardCutConfirmed = scene.hardCutConfirmed;
+			Assert::IsFalse(CanRetainKnownFullRasterAtDarknessBoundary(boundary));
+		}
+
+		TEST_METHOD(DarknessBoundaryRequiresPriorCurrentExactFullAuthority)
+		{
+			KnownFullRasterDarknessBoundaryInput valid;
+			valid.retention = CommittedFullRasterRetention(100);
+			valid.retention.previous = UpdateKnownFullRasterRetention(valid.retention);
+			valid.retention.sourceSequence = 101;
+			valid.retention.rawClassification = ActivePictureClassification::UNAVAILABLE;
+			valid.safeBoundary = valid.nearBlackEntry = valid.differenceEvaluated = true;
+			Assert::IsTrue(CanRetainKnownFullRasterAtDarknessBoundary(valid));
+			for (int invalid = 0; invalid < 20; ++invalid)
+			{
+				auto input = valid;
+				switch (invalid)
+				{
+				case 0: input.retention.previous = {}; break; // Unknown startup.
+				case 1: ++input.retention.sourceGeneration; break;
+				case 2: ++input.retention.presentationEpoch; break;
+				case 3: ++input.retention.frameWidth; break;
+				case 4: input.retention.analysisValid = false; break;
+				case 5: input.retention.measurementCurrent = false; break;
+				case 6: input.retention.cadenceRepeat = true; break;
+				case 7: input.retention.rawClassification = ActivePictureClassification::BAR_CROP_TRUSTED; break;
+				case 8: input.retention.committedFullAvailable = false; break;
+				case 9: input.retention.committedBounds.top = 10; break;
+				case 10: input.retention.committedBounds.trustedBarAxes = ActivePictureBounds::BarAxes::TOP_BOTTOM; break;
+				case 11: ++input.retention.committedSourceGeneration; break;
+				case 12: ++input.retention.committedPresentationEpoch; break;
+				case 13: input.retention.sourceSequence = 100; break;
+				case 14: input.retention.committedSourceSequence = 99; break;
+				case 15: input.safeBoundary = false; break;
+				case 16: input.nearBlackEntry = false; break;
+				case 17: input.hardCutCandidate = true; break;
+				case 18: input.hardCutConfirmed = true; break;
+				case 19: input.differenceEvaluated = false; break;
+				}
+				Assert::IsFalse(CanRetainKnownFullRasterAtDarknessBoundary(input));
+			}
+		}
+
+
+		TEST_METHOD(DarknessBoundaryDetectorResetCannotPreserveAnOldLease)
+		{
+			SceneDetector detector;
+			auto retention = CommittedFullRasterRetention(100);
+			retention.previous = UpdateKnownFullRasterRetention(retention);
+			std::vector<uint16_t> bright(64 * 36, static_cast<uint16_t>(160 << 6));
+			detector.Analyze({bright.data(),64,36,128,100,41708300,7,417083,true});
+			detector.Reset(7); // Scene history can reset without capture generation changing.
+			std::vector<uint16_t> dark(64 * 36, static_cast<uint16_t>(90 << 6));
+			const auto scene = detector.Analyze({dark.data(),64,36,128,101,42125383,7,417083,true});
+			Assert::IsTrue(scene.safeBoundary && scene.nearBlackEntry);
+			Assert::IsFalse(scene.differenceEvaluated);
+			retention.sourceSequence = 101;
+			retention.rawClassification = ActivePictureClassification::UNAVAILABLE;
+			KnownFullRasterDarknessBoundaryInput boundary;
+			boundary.retention = retention;
+			boundary.safeBoundary = scene.safeBoundary;
+			boundary.nearBlackEntry = scene.nearBlackEntry;
+			boundary.differenceEvaluated = scene.differenceEvaluated;
+			boundary.hardCutCandidate = scene.hardCutCandidate;
+			boundary.hardCutConfirmed = scene.hardCutConfirmed;
+			Assert::IsFalse(CanRetainKnownFullRasterAtDarknessBoundary(boundary));
+		}
+
+		TEST_METHOD(DarknessBoundarySceneRoutingCannotKeepCroppedOrStaleGeometry)
+		{
+			SceneInput input;
+			input.knownFullRasterDarknessRetention = true;
+			input.geometryAvailable = input.geometryIsCurrentGeneration = input.latestEvidenceIsCurrent = true;
+			input.geometryClassification = ActivePictureClassification::FULL_RASTER_TRUSTED;
+			input.latestClassification = ActivePictureClassification::UNAVAILABLE;
+			Assert::AreEqual(static_cast<int>(ScenePresentationAction::KEEP_CURRENT),
+				static_cast<int>(EvaluateSceneBoundary(input).action));
+			input.geometryIsCurrentGeneration = false;
+			Assert::AreEqual(static_cast<int>(ScenePresentationAction::WITHDRAW),
+				static_cast<int>(EvaluateSceneBoundary(input).action));
+			input.geometryIsCurrentGeneration = true;
+			input.latestClassification = ActivePictureClassification::BAR_CROP_TRUSTED;
+			Assert::AreEqual(static_cast<int>(ScenePresentationAction::WITHDRAW),
+				static_cast<int>(EvaluateSceneBoundary(input).action));
+		}
 
 		TEST_METHOD(KnownFullRasterRequiresActualCurrentFullCommit)
 		{

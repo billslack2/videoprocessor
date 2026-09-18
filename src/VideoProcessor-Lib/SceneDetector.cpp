@@ -106,6 +106,7 @@ SceneDetectorResult SceneDetector::Analyze(const SceneDetectorInput& input)
 	}
 
 	const size_t sampleCount = current.luma.size();
+	result.sampleCount = static_cast<uint32_t>(sampleCount);
 	current.averageLuma = static_cast<uint32_t>(totalLuma / sampleCount);
 	current.valid = true;
 	result.averageLuma = static_cast<uint16_t>(std::min<uint32_t>(1023, current.averageLuma));
@@ -116,6 +117,11 @@ SceneDetectorResult SceneDetector::Analyze(const SceneDetectorInput& input)
 	if (m_previous.valid)
 	{
 		const Difference immediate = Compare(current, m_previous, 32);
+		result.differenceEvaluated = true;
+		result.immediateAverageLumaDifference = immediate.averageLumaDifference;
+		result.changedSampleCount = immediate.changedSampleCount;
+		result.histogramDistance = immediate.histogramDistance;
+		result.hardCutCandidate = m_pendingHardCutValid;
 		if (m_pendingHardCutValid)
 		{
 			const Difference settling = Compare(current, m_pendingHardCut, 24);
@@ -129,6 +135,7 @@ SceneDetectorResult SceneDetector::Analyze(const SceneDetectorInput& input)
 			if (settled)
 			{
 				sceneEvent = true;
+				result.hardCutConfirmed = true;
 				result.eventFramesBack = static_cast<uint8_t>(m_pendingHardCutFrames + 1);
 				m_pendingHardCutValid = false;
 				m_pendingHardCutFrames = 0;
@@ -145,6 +152,7 @@ SceneDetectorResult SceneDetector::Analyze(const SceneDetectorInput& input)
 			immediate.changedSampleCount >= sampleCount * 45 / 100;
 		const bool hardSceneCut = broadSpatialChange &&
 			(immediate.histogramDistance >= 55 || immediate.averageLumaDifference >= 64);
+		result.hardCutCandidate = result.hardCutCandidate || hardSceneCut;
 		if (hardSceneCut && !sceneEvent && !m_pendingHardCutValid)
 		{
 			m_pendingHardCut = current;
@@ -155,7 +163,8 @@ SceneDetectorResult SceneDetector::Analyze(const SceneDetectorInput& input)
 		}
 	}
 
-	if (nearBlack && !m_previousNearBlack)
+	result.nearBlackEntry = nearBlack && !m_previousNearBlack;
+	if (result.nearBlackEntry)
 	{
 		sceneEvent = true;
 		m_pendingHardCutValid = false;

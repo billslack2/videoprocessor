@@ -20,6 +20,129 @@ namespace Tests
 				static_cast<int64_t>(sequence * 417083), generation, 417083, true };
 		}
 
+		static SceneDetectorResult Level(SceneDetector& detector, uint16_t luma,
+			uint64_t sequence, uint64_t generation = 1)
+		{
+			const std::vector<uint16_t> pixels(64 * 36, static_cast<uint16_t>(luma << 6));
+			return detector.Analyze(Input(pixels, sequence, generation));
+		}
+
+		TEST_METHOD(GradualNearBlackEntryReportsOnlyDarknessCause)
+		{
+			SceneDetector detector;
+			Level(detector, 120, 1);
+			Assert::IsFalse(Level(detector, 108, 2).safeBoundary);
+			Assert::IsFalse(Level(detector, 100, 3).safeBoundary);
+			const auto result = Level(detector, 96, 4);
+			Assert::IsTrue(result.safeBoundary);
+			Assert::IsTrue(result.nearBlackEntry);
+			Assert::IsFalse(result.hardCutCandidate);
+			Assert::IsFalse(result.hardCutConfirmed);
+			Assert::IsTrue(result.differenceEvaluated);
+			Assert::AreEqual(uint32_t{4}, result.immediateAverageLumaDifference);
+			Assert::AreEqual(uint32_t{0}, result.changedSampleCount);
+			Assert::AreEqual(uint32_t{576}, result.sampleCount);
+			Assert::AreEqual(uint32_t{0}, result.histogramDistance);
+			Assert::AreEqual(uint8_t{0}, result.eventFramesBack);
+		}
+
+		TEST_METHOD(AbruptDarkEntryPreservesImmediateHardCutCauseBeforeClear)
+		{
+			SceneDetector detector;
+			Level(detector, 512, 1);
+			const auto result = Level(detector, 80, 2);
+			Assert::IsTrue(result.safeBoundary);
+			Assert::IsTrue(result.nearBlackEntry);
+			Assert::IsTrue(result.hardCutCandidate);
+			Assert::IsFalse(result.hardCutConfirmed);
+			Assert::AreEqual(uint32_t{432}, result.immediateAverageLumaDifference);
+			Assert::AreEqual(uint32_t{576}, result.changedSampleCount);
+			Assert::AreEqual(uint32_t{1000}, result.histogramDistance);
+			const auto continued = Level(detector, 80, 3);
+			Assert::IsFalse(continued.safeBoundary);
+			Assert::IsFalse(continued.nearBlackEntry);
+			Assert::IsFalse(continued.hardCutCandidate);
+			Assert::IsFalse(continued.hardCutConfirmed);
+		}
+
+		TEST_METHOD(NearBlackEntryAndSettledHardCutRetainBothCauses)
+		{
+			SceneDetector detector;
+			Level(detector, 512, 1);
+			const auto candidate = Level(detector, 100, 2);
+			Assert::IsTrue(candidate.hardCutCandidate);
+			Assert::IsFalse(candidate.nearBlackEntry);
+			Assert::IsFalse(candidate.safeBoundary);
+			const auto result = Level(detector, 94, 3);
+			Assert::IsTrue(result.safeBoundary);
+			Assert::IsTrue(result.nearBlackEntry);
+			Assert::IsTrue(result.hardCutCandidate);
+			Assert::IsTrue(result.hardCutConfirmed);
+			Assert::AreEqual(uint32_t{6}, result.immediateAverageLumaDifference);
+			Assert::AreEqual(uint8_t{1}, result.eventFramesBack);
+		}
+
+		TEST_METHOD(PendingCutIsReportedWhenDarkEntryHasNoImmediateCutOrConfirmation)
+		{
+			SceneDetector detector;
+			Level(detector, 512, 1);
+			const auto candidate = Level(detector, 122, 2);
+			Assert::IsTrue(candidate.hardCutCandidate);
+			const auto result = Level(detector, 92, 3);
+			Assert::IsTrue(result.safeBoundary);
+			Assert::IsTrue(result.nearBlackEntry);
+			Assert::IsTrue(result.hardCutCandidate);
+			Assert::IsFalse(result.hardCutConfirmed);
+			Assert::AreEqual(uint32_t{30}, result.immediateAverageLumaDifference);
+			Assert::AreEqual(uint32_t{0}, result.changedSampleCount);
+			Assert::AreEqual(uint32_t{0}, result.histogramDistance);
+		}
+
+		TEST_METHOD(PendingCutExpiringAtDarkEntryStillReportsItsCause)
+		{
+			SceneDetector detector;
+			Level(detector, 512, 1);
+			Level(detector, 200, 2);
+			Level(detector, 170, 3);
+			Level(detector, 145, 4);
+			Level(detector, 120, 5);
+			const auto result = Level(detector, 94, 6);
+			Assert::IsTrue(result.safeBoundary);
+			Assert::IsTrue(result.nearBlackEntry);
+			Assert::IsTrue(result.hardCutCandidate);
+			Assert::IsFalse(result.hardCutConfirmed);
+			Assert::AreEqual(uint32_t{26}, result.immediateAverageLumaDifference);
+		}
+
+		TEST_METHOD(CooldownSuppressesBoundaryButKeepsCauseTelemetry)
+		{
+			SceneDetector detector;
+			Level(detector, 100, 1);
+			const auto first = Level(detector, 94, 2);
+			Assert::IsTrue(first.safeBoundary);
+			Level(detector, 100, 3);
+			const auto suppressed = Level(detector, 94, 4);
+			Assert::IsFalse(suppressed.safeBoundary);
+			Assert::IsTrue(suppressed.nearBlackEntry);
+			Assert::IsFalse(suppressed.hardCutCandidate);
+			Assert::IsFalse(suppressed.hardCutConfirmed);
+			Assert::AreEqual(uint64_t{0}, suppressed.eventId);
+		}
+
+		TEST_METHOD(NewGenerationCannotInheritPendingCutCause)
+		{
+			SceneDetector detector;
+			Level(detector, 512, 1);
+			Assert::IsTrue(Level(detector, 122, 2).hardCutCandidate);
+			const auto result = Level(detector, 92, 3, 2);
+			Assert::IsTrue(result.safeBoundary);
+			Assert::IsTrue(result.nearBlackEntry);
+			Assert::IsFalse(result.hardCutCandidate);
+			Assert::IsFalse(result.hardCutConfirmed);
+			Assert::IsFalse(result.differenceEvaluated);
+			Assert::AreEqual(static_cast<int>(SceneDetectorStatus::Warming), static_cast<int>(result.status));
+		}
+
 		TEST_METHOD(ReportsWarmingThenActiveForIdenticalP010Frames)
 		{
 			SceneDetector detector;
@@ -105,6 +228,14 @@ namespace Tests
 					static_cast<unsigned int>(paddedResult.averageLuma));
 				Assert::AreEqual(tightResult.sourceSequence, paddedResult.sourceSequence);
 				Assert::AreEqual(tightResult.generation, paddedResult.generation);
+				Assert::AreEqual(tightResult.nearBlackEntry, paddedResult.nearBlackEntry);
+				Assert::AreEqual(tightResult.hardCutCandidate, paddedResult.hardCutCandidate);
+				Assert::AreEqual(tightResult.hardCutConfirmed, paddedResult.hardCutConfirmed);
+				Assert::AreEqual(tightResult.differenceEvaluated, paddedResult.differenceEvaluated);
+				Assert::AreEqual(tightResult.immediateAverageLumaDifference, paddedResult.immediateAverageLumaDifference);
+				Assert::AreEqual(tightResult.changedSampleCount, paddedResult.changedSampleCount);
+				Assert::AreEqual(tightResult.sampleCount, paddedResult.sampleCount);
+				Assert::AreEqual(tightResult.histogramDistance, paddedResult.histogramDistance);
 			}
 		}
 

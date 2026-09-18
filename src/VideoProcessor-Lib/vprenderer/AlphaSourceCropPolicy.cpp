@@ -1296,6 +1296,35 @@ namespace AlphaSourceCrop
 		return state;
 	}
 
+
+	bool CanRetainKnownFullRasterAtDarknessBoundary(
+		const KnownFullRasterDarknessBoundaryInput& input)
+	{
+		const auto& current = input.retention;
+		const auto& previous = current.previous;
+		if (!input.safeBoundary || !input.nearBlackEntry || !input.differenceEvaluated || input.hardCutCandidate ||
+			input.hardCutConfirmed || !previous.available || !current.analysisValid ||
+			!current.measurementCurrent || current.cadenceRepeat ||
+			current.sourceGeneration == 0 || current.sourceSequence == 0 ||
+			current.frameWidth <= 0 || current.frameHeight <= 0 ||
+			current.sourceSequence <= previous.lastEvaluatedSequence ||
+			previous.sourceGeneration != current.sourceGeneration ||
+			previous.presentationEpoch != current.presentationEpoch ||
+			previous.rasterWidth != current.frameWidth || previous.rasterHeight != current.frameHeight ||
+			current.rawClassification == ActivePictureClassification::BAR_CROP_TRUSTED)
+			return false;
+		const auto& bounds = current.committedBounds;
+		return current.committedFullAvailable && previous.lastCommittedSequence != 0 &&
+			current.committedSourceSequence == previous.lastCommittedSequence &&
+			current.committedSourceSequence <= previous.lastEvaluatedSequence &&
+			current.committedSourceGeneration == current.sourceGeneration &&
+			current.committedPresentationEpoch == current.presentationEpoch &&
+			bounds.left == 0 && bounds.top == 0 && bounds.right == current.frameWidth &&
+			bounds.bottom == current.frameHeight && bounds.rasterWidth == current.frameWidth &&
+			bounds.rasterHeight == current.frameHeight &&
+			bounds.trustedBarAxes == ActivePictureBounds::BarAxes::NONE;
+	}
+
 	bool UpdateFullRasterPresentationAuthority(bool previouslyAuthoritative,
 		ActivePictureClassification currentClassification,
 		bool currentBoundsAreFullRaster)
@@ -2770,6 +2799,15 @@ namespace AlphaSourceCrop
 		{
 			decision.reason =
 				"scene evidence or presentation geometry is not current";
+			return decision;
+		}
+
+		if (input.knownFullRasterDarknessRetention &&
+			input.geometryClassification == ActivePictureClassification::FULL_RASTER_TRUSTED &&
+			input.latestClassification != ActivePictureClassification::BAR_CROP_TRUSTED)
+		{
+			decision.action = ScenePresentationAction::KEEP_CURRENT;
+			decision.reason = "darkness-only boundary retains previously committed full raster";
 			return decision;
 		}
 		if (input.latestClassification ==

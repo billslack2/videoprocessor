@@ -546,6 +546,22 @@ namespace AlphaSourceCrop
 	KnownFullRasterRetentionState UpdateKnownFullRasterRetention(
 		const KnownFullRasterRetentionInput& input);
 
+	// A generic safeBoundary also marks entry into darkness. Only this narrow
+	// predicate permits retaining an existing full raster at that event; an
+	// independent immediate/pending/confirmed cut always uses normal policy.
+	struct KnownFullRasterDarknessBoundaryInput
+	{
+		KnownFullRasterRetentionInput retention;
+		bool safeBoundary = false;
+		bool nearBlackEntry = false;
+		bool differenceEvaluated = false;
+		bool hardCutCandidate = false;
+		bool hardCutConfirmed = false;
+	};
+	bool CanRetainKnownFullRasterAtDarknessBoundary(
+		const KnownFullRasterDarknessBoundaryInput& input);
+
+
 	// Full raster is always outward-safe. Keep that presentation authority
 	// between sparse analysis samples, but withdraw it as soon as trusted bar
 	// evidence appears. Ambiguity cannot turn it into crop authority.
@@ -1125,6 +1141,8 @@ namespace AlphaSourceCrop
 			ActivePictureClassification::UNAVAILABLE;
 		ActivePictureClassification latestClassification =
 			ActivePictureClassification::UNAVAILABLE;
+		// Set only by CanRetainKnownFullRasterAtDarknessBoundary.
+		bool knownFullRasterDarknessRetention = false;
 	};
 
 	struct SceneDecision
