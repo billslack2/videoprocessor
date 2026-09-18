@@ -3921,6 +3921,11 @@ struct LibplaceboVideoRenderer::Impl
 	uint64_t colorPictureEvidenceNextTick = 0;
 	bool fullRasterPresentationAuthorityAvailable = false;
 	uint64_t fullRasterPresentationAuthoritySourceGeneration = 0;
+	AlphaSourceCrop::KnownFullRasterRetentionState knownFullRasterRetention;
+	ActivePictureEvidence latestRawPictureEvidence;
+	uint64_t latestRawPictureEvidenceSequence = 0;
+	uint64_t latestFullRasterCommitSequence = 0;
+	uint64_t latestFullRasterCommitEpoch = 0;
 	std::string lastSourceCropPolicy;
 	std::string lastFinalPresentationPolicy;
 	std::string lastFinalLayoutPolicy;
@@ -8070,6 +8075,11 @@ struct LibplaceboVideoRenderer::Impl
 		latestActivePicturePresentationRetentionReason.clear();
 		fullRasterPresentationAuthorityAvailable = false;
 		fullRasterPresentationAuthoritySourceGeneration = 0;
+		knownFullRasterRetention = {};
+		latestRawPictureEvidence = {};
+		latestRawPictureEvidenceSequence = 0;
+		latestFullRasterCommitSequence = 0;
+		latestFullRasterCommitEpoch = 0;
 	}
 
 	void RequestPresentationStateReset()
@@ -8333,6 +8343,7 @@ struct LibplaceboVideoRenderer::Impl
 				retentionEvidence =
 					EvaluateActivePicturePresentationRetention(
 						analysisSource, presentationBeforeObservation);
+				latestRawPictureEvidence = retentionEvidence.activePicture;
 				evidence = ConstrainNearBlackGeometryChange(
 					retentionEvidence, presentationBeforeObservation);
 				if (needsNativeBootstrapEvidence)
@@ -8349,6 +8360,7 @@ struct LibplaceboVideoRenderer::Impl
 			else
 			{
 				evidence = ExtractActivePictureEvidence(analysisSource);
+				latestRawPictureEvidence = evidence;
 				nativeBootstrapEvidence = evidence;
 			}
 			latestNativeBootstrapContractAvailable =
@@ -8432,6 +8444,12 @@ struct LibplaceboVideoRenderer::Impl
 					latestActivePictureEvidenceWasStartupHypothesis = true;
 				}
 			}
+			// Preserve raw bar contradictions before either darkness constraint can
+			// downgrade them. Hypothesis bars may revoke, never establish full raster.
+			if (evidence.classification == ActivePictureClassification::BAR_CROP_TRUSTED ||
+				nativeBootstrapEvidence.classification == ActivePictureClassification::BAR_CROP_TRUSTED)
+				latestRawPictureEvidence.classification = ActivePictureClassification::BAR_CROP_TRUSTED;
+			latestRawPictureEvidenceSequence = frameNumber;
 			const bool nearBlackAcquisitionBlocked =
 				(globalNearBlack.evaluated && globalNearBlack.nearBlack) ||
 				nearBlackPresentationEpisode.mode !=
@@ -8637,6 +8655,13 @@ struct LibplaceboVideoRenderer::Impl
 				nlsGeometrySourceFormatKey =
 					currentIdentity.sourceFormatGeneration;
 				++nlsGeometryGeneration;
+				// Only a new temporal publication is a commitment; the stable-history
+				// fallback below must never re-arm authority after contradictory bars.
+				if (nlsGeometryClassification == ActivePictureClassification::FULL_RASTER_TRUSTED)
+				{
+					latestFullRasterCommitSequence = frameNumber;
+					latestFullRasterCommitEpoch = currentIdentity.viewportGeneration;
+				}
 			}
 			else if (transition.stable && !nlsTransitionWithdrawn &&
 				!suppressEpisodeBarGeometryMutation)
@@ -10154,7 +10179,8 @@ struct LibplaceboVideoRenderer::Impl
 		const double nominalSourceRateHz = state.displayMode->RefreshRateHz();
 		auto configureViewport =
 			[this, &image, width, height, frameGeneration, sourceSequence,
-			 viewportRequestSerial, captureRateHz, nominalSourceRateHz,
+			 viewportRequestSerial, captureRateHz, nominalSourceRateHz, sceneDetectionEnabled,
+			 analysisValid = analysisSource.IsValid(),
 			 sceneHold, sceneResult, cadenceRepeat, subtitleShiftSourcePixels,
 			 subtitleBarAnalysisScheduled, subtitleBarAnalysisCompleted,
 			 forceSubtitleBarAnalysis,
@@ -10537,7 +10563,43 @@ struct LibplaceboVideoRenderer::Impl
 			const bool confirmedCurrentVerticalFit =
 				AlphaSourceCrop::CanResolveVerticalInspectionWithConfirmedFit(
 					verticalFitResolutionInput);
+			// Update once per presented source frame, after scene handling has had
+			// its final say. This retains committed geometry, not a color hypothesis.
+			const bool committedFullStillAvailable = nlsGeometryAvailable &&
+				nlsGeometryClassification == ActivePictureClassification::FULL_RASTER_TRUSTED &&
+				nlsGeometrySourceGeneration == frameGeneration &&
+				nlsGeometry.left == 0 && nlsGeometry.top == 0 &&
+				nlsGeometry.right == width && nlsGeometry.bottom == height;
+			AlphaSourceCrop::KnownFullRasterRetentionInput fullRetentionInput;
+			fullRetentionInput.previous = knownFullRasterRetention;
+			fullRetentionInput.analysisValid = analysisValid &&
+				(sceneDetectionEnabled || automaticSourceCrop) && committedFullStillAvailable;
+			fullRetentionInput.measurementCurrent = latestRawPictureEvidenceSequence == sourceSequence;
+			fullRetentionInput.cadenceRepeat = cadenceRepeat;
+			fullRetentionInput.sceneBoundary = !cadenceRepeat && sceneResult.safeBoundary;
+			fullRetentionInput.rawClassification = latestRawPictureEvidence.classification;
+			fullRetentionInput.rawBounds = latestRawPictureEvidence.trustedBounds;
+			fullRetentionInput.frameWidth = width;
+			fullRetentionInput.frameHeight = height;
+			fullRetentionInput.sourceGeneration = frameGeneration;
+			fullRetentionInput.sourceSequence = sourceSequence;
+			fullRetentionInput.presentationEpoch = viewportRequestSerial;
+			fullRetentionInput.committedFullAvailable = committedFullStillAvailable;
+			fullRetentionInput.committedBounds = nlsGeometry;
+			fullRetentionInput.committedSourceGeneration = nlsGeometrySourceGeneration;
+			fullRetentionInput.committedSourceSequence = latestFullRasterCommitSequence;
+			fullRetentionInput.committedPresentationEpoch = latestFullRasterCommitEpoch;
+			knownFullRasterRetention = AlphaSourceCrop::UpdateKnownFullRasterRetention(fullRetentionInput);
+			if (knownFullRasterRetention.available != fullRetentionInput.previous.available)
+				DebugLog::Log("Alpha known full raster retention: available=%d sequence=%llu generation=%llu epoch=%llu commit_sequence=%llu raw_class=%d measurement_current=%d scene=%d analysis_valid=%d committed_full=%d",
+					knownFullRasterRetention.available ? 1 : 0,
+					static_cast<unsigned long long>(sourceSequence), static_cast<unsigned long long>(frameGeneration),
+					static_cast<unsigned long long>(viewportRequestSerial),
+					static_cast<unsigned long long>(latestFullRasterCommitSequence),
+					static_cast<int>(latestRawPictureEvidence.classification), fullRetentionInput.measurementCurrent ? 1 : 0,
+					fullRetentionInput.sceneBoundary ? 1 : 0, fullRetentionInput.analysisValid ? 1 : 0, committedFullStillAvailable ? 1 : 0);
 			AlphaSourceCrop::NearBlackPresentationEpisodeInput episodeInput;
+			episodeInput.knownFullRasterRetained = knownFullRasterRetention.available;
 			episodeInput.previous = nearBlackPresentationEpisode;
 			episodeInput.measurementCurrent =
 				latestActivePictureEvidenceFrame == sourceSequence;

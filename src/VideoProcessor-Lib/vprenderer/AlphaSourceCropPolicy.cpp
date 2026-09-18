@@ -1222,6 +1222,80 @@ namespace AlphaSourceCrop
 		return routing;
 	}
 
+	KnownFullRasterRetentionState UpdateKnownFullRasterRetention(
+		const KnownFullRasterRetentionInput& input)
+	{
+		KnownFullRasterRetentionState state = input.previous;
+		const bool sameContext = state.sourceGeneration == input.sourceGeneration &&
+			state.presentationEpoch == input.presentationEpoch &&
+			state.rasterWidth == input.frameWidth && state.rasterHeight == input.frameHeight;
+		if (!sameContext)
+		{
+			state = {};
+			state.sourceGeneration = input.sourceGeneration;
+			state.presentationEpoch = input.presentationEpoch;
+			state.rasterWidth = input.frameWidth;
+			state.rasterHeight = input.frameHeight;
+		}
+		if (!input.analysisValid || input.sourceGeneration == 0 ||
+			input.sourceSequence == 0 || input.frameWidth <= 0 || input.frameHeight <= 0)
+		{
+			state.available = false;
+			state.lastEvaluatedSequence = std::max(state.lastEvaluatedSequence, input.sourceSequence);
+			return state;
+		}
+		const auto exactFullRaster = [&](const ActivePictureBounds& bounds)
+		{
+			return bounds.left == 0 && bounds.top == 0 &&
+				bounds.right == input.frameWidth && bounds.bottom == input.frameHeight &&
+				bounds.rasterWidth == input.frameWidth && bounds.rasterHeight == input.frameHeight &&
+				bounds.trustedBarAxes == ActivePictureBounds::BarAxes::NONE;
+		};
+		// Inspect the RAW result: darkness suppression later changes trusted
+		// bars into provisional observations. That must not hide contradiction.
+		// Contradiction may revoke even on a duplicate; duplicates never re-arm.
+		if (input.measurementCurrent && input.rawClassification ==
+			ActivePictureClassification::BAR_CROP_TRUSTED)
+		{
+			state.available = false;
+			state.lastEvaluatedSequence = std::max(state.lastEvaluatedSequence, input.sourceSequence);
+			return state;
+		}
+		const bool currentFullEvidence = input.measurementCurrent &&
+			input.rawClassification == ActivePictureClassification::FULL_RASTER_TRUSTED &&
+			exactFullRaster(input.rawBounds);
+		if (input.sceneBoundary && !(state.available && currentFullEvidence))
+			state.available = false;
+		if (input.sourceSequence < state.lastEvaluatedSequence)
+		{
+			state.available = false;
+			return state;
+		}
+		if (input.sourceSequence == state.lastEvaluatedSequence)
+			return state;
+		if (input.cadenceRepeat)
+		{
+			// Repeats may reuse an existing same-sequence decision only. A new
+			// sequence marked as repeated does not provide a fresh commit event.
+			state.available = false;
+			state.lastEvaluatedSequence = input.sourceSequence;
+			return state;
+		}
+		state.lastEvaluatedSequence = input.sourceSequence;
+		const bool freshCommittedFull = currentFullEvidence &&
+			input.committedFullAvailable && input.committedSourceGeneration == input.sourceGeneration &&
+			input.committedPresentationEpoch == input.presentationEpoch &&
+			input.committedSourceSequence == input.sourceSequence &&
+			input.committedSourceSequence > state.lastCommittedSequence &&
+			exactFullRaster(input.committedBounds);
+		if (freshCommittedFull)
+		{
+			state.available = true;
+			state.lastCommittedSequence = input.committedSourceSequence;
+		}
+		return state;
+	}
+
 	bool UpdateFullRasterPresentationAuthority(bool previouslyAuthoritative,
 		ActivePictureClassification currentClassification,
 		bool currentBoundsAreFullRaster)
@@ -1751,6 +1825,19 @@ namespace AlphaSourceCrop
 			decision.state = {};
 			decision.ended = true;
 			decision.reason = "scene boundary ended near-black title episode";
+		}
+
+		// A known full-frame picture has no excluded bands to become unsafe.
+		// Preserve that committed picture through darkness; do not conflate it
+		// with startup's unclassified full-raster fallback. The retention lease
+		// is revoked independently for resets, cuts, and fresh trusted bars.
+		if (input.knownFullRasterRetained && input.fullRasterAuthorityAvailable &&
+			!input.trustedCropAvailable)
+		{
+			decision.ended = decision.ended || decision.state.mode != NearBlackPresentationMode::INACTIVE;
+			decision.state = {};
+			decision.reason = "retained committed full-raster picture through near-black ambiguity";
+			return decision;
 		}
 
 		if (input.fullRasterAuthorityAvailable &&

@@ -510,6 +510,42 @@ namespace AlphaSourceCrop
 	VerticalBarRendererRouting ResolveVerticalBarRendererRouting(
 		const VerticalBarPresentationResolution& resolution);
 
+	// Retain an already committed full raster through missing dark-frame geometry.
+	// This never establishes startup geometry. A revoked lease needs a new commit
+	// on a later source frame; a cached old full-raster rectangle cannot re-arm it.
+	struct KnownFullRasterRetentionState
+	{
+		bool available = false;
+		int rasterWidth = 0;
+		int rasterHeight = 0;
+		uint64_t sourceGeneration = 0;
+		uint64_t presentationEpoch = 0;
+		uint64_t lastEvaluatedSequence = 0;
+		uint64_t lastCommittedSequence = 0;
+	};
+	struct KnownFullRasterRetentionInput
+	{
+		KnownFullRasterRetentionState previous;
+		bool analysisValid = false;
+		bool measurementCurrent = false;
+		bool cadenceRepeat = false;
+		bool sceneBoundary = false;
+		ActivePictureClassification rawClassification = ActivePictureClassification::UNAVAILABLE;
+		ActivePictureBounds rawBounds;
+		int frameWidth = 0;
+		int frameHeight = 0;
+		uint64_t sourceGeneration = 0;
+		uint64_t sourceSequence = 0;
+		uint64_t presentationEpoch = 0;
+		bool committedFullAvailable = false;
+		ActivePictureBounds committedBounds;
+		uint64_t committedSourceGeneration = 0;
+		uint64_t committedSourceSequence = 0;
+		uint64_t committedPresentationEpoch = 0;
+	};
+	KnownFullRasterRetentionState UpdateKnownFullRasterRetention(
+		const KnownFullRasterRetentionInput& input);
+
 	// Full raster is always outward-safe. Keep that presentation authority
 	// between sparse analysis samples, but withdraw it as soon as trusted bar
 	// evidence appears. Ambiguity cannot turn it into crop authority.
@@ -795,6 +831,9 @@ namespace AlphaSourceCrop
 		ActivePictureBounds trustedCrop;
 		bool boundedVisibleContentOutsideCrop = false;
 		bool fullRasterAuthorityAvailable = false;
+		// Current context checked by UpdateKnownFullRasterRetention; never inferred
+		// from the raw full-raster presentation flag alone.
+		bool knownFullRasterRetained = false;
 		bool cadenceRepeat = false;
 		bool currentObservationAvailable = false;
 		ActivePictureClassification currentObservationClassification = ActivePictureClassification::UNAVAILABLE;
