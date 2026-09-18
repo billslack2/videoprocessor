@@ -1117,7 +1117,7 @@ namespace VideoProcessorTest
 			frame.Fill(64, 512, 512);
 			// About 14% bright pixels: this must work above the global P90
 			// darkness cutoff, even when acquisition cannot bound the logo.
-			frame.FillRectangle(1440, 480, 2400, 1680, 724);
+			frame.FillRectangle(720, 840, 3120, 1320, 724);
 			const auto evidence = EvaluateP010ActivePicturePresentationRetention(frame.View(), scope);
 			Assert::IsFalse(evidence.globalNearBlack);
 			Assert::IsFalse(evidence.activePicture.available);
@@ -1157,7 +1157,7 @@ namespace VideoProcessorTest
 			const auto scope = ScopePresentation(3840, 2160, 208, 1952);
 			P010Frame frame(3840, 2160);
 			frame.Fill(64, 512, 512);
-			frame.FillRectangle(1440, 480, 2400, 1680, 724);
+			frame.FillRectangle(720, 840, 3120, 1320, 724);
 			frame.FillRectangle(1740, 100, 1900, 140, 900);
 			const auto evidence = EvaluateP010ActivePicturePresentationRetention(frame.View(), scope);
 			Assert::IsFalse(evidence.excludedBandsPixelSafe);
@@ -1465,3 +1465,4 @@ namespace VideoProcessorTest
 		}
 	};
 }
+
