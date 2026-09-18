@@ -2957,6 +2957,8 @@ namespace
 		DISPLAYCONFIG_RATIONAL refreshRate{};
 		DisplayRefreshModeSelectionPath selectionPath =
 			DisplayRefreshModeSelectionPath::None;
+		double requestedRateHz = 0.0;
+		bool doubledRate = false;
 	};
 
 	bool QueryDxgiSupportedRefreshRates(const std::wstring& displayDeviceName,
@@ -3050,28 +3052,19 @@ namespace
 	}
 
 	std::vector<RankedDisplayRefreshRate> RankDisplayRefreshRates(
-		const DISPLAYCONFIG_RATIONAL& requested,
+		const DISPLAYCONFIG_RATIONAL& input, bool interlaced,
 		const std::vector<DISPLAYCONFIG_RATIONAL>& supportedRates)
 	{
-		std::vector<DisplayRefreshRational> remaining;
-		remaining.reserve(supportedRates.size());
-		for (const DISPLAYCONFIG_RATIONAL& rate : supportedRates)
-			remaining.push_back({ rate.Numerator, rate.Denominator });
-
+		std::vector<DisplayRefreshRational> candidates;
+		candidates.reserve(supportedRates.size());
+		for (const auto& rate : supportedRates)
+			candidates.push_back({ rate.Numerator, rate.Denominator });
 		std::vector<RankedDisplayRefreshRate> ranked;
-		while (!remaining.empty())
+		for (const auto& selection : RankDisplayRefreshModesForInput(
+			{ input.Numerator, input.Denominator }, interlaced, candidates))
 		{
-			const DisplayRefreshModeSelection selection = SelectDisplayRefreshMode(
-				{ requested.Numerator, requested.Denominator }, remaining);
-			if (selection.path == DisplayRefreshModeSelectionPath::None)
-				break;
-			ranked.push_back({ { selection.selected.numerator,
-				selection.selected.denominator }, selection.path });
-			remaining.erase(std::remove_if(remaining.begin(), remaining.end(),
-				[&selection](const DisplayRefreshRational& candidate)
-				{
-					return DisplayRefreshRatesExactlyEqual(candidate, selection.selected);
-				}), remaining.end());
+			ranked.push_back({ { selection.selected.numerator, selection.selected.denominator },
+				selection.path, selection.requestedRateHz, selection.doubledRate });
 		}
 		return ranked;
 	}
@@ -3171,11 +3164,16 @@ namespace
 			targetRefreshRate.Denominator = state.displayMode->FrameDuration();
 
 			const double contentRate = state.displayMode->RefreshRateHz();
-			const bool useDoubleRate =
-				state.displayMode->IsInterlaced() ||
-				(contentRate > 24.1 && contentRate < 31.0);
-			if (useDoubleRate)
+			const DISPLAYCONFIG_RATIONAL inputRefreshRate = targetRefreshRate;
+			const bool interlaced = state.displayMode->IsInterlaced();
+			if (interlaced)
+			{
+				if (targetRefreshRate.Numerator > UINT32_MAX / 2) return;
 				targetRefreshRate.Numerator *= 2;
+			}
+			DebugLog::Log("libplacebo refresh-rate policy: input=%.6f Hz interlaced=%d policy=%s preferred=%.6f Hz",
+				contentRate, interlaced ? 1 : 0,
+				interlaced ? "field-rate" : "native-first", RefreshRateHz(targetRefreshRate));
 			if (RefreshRatesEqual(m_originalRefreshRate, targetRefreshRate))
 			{
 				DebugLog::Log(
@@ -3199,7 +3197,7 @@ namespace
 				return;
 			}
 			const std::vector<RankedDisplayRefreshRate> rankedRates =
-				RankDisplayRefreshRates(targetRefreshRate, supportedRates);
+				RankDisplayRefreshRates(inputRefreshRate, interlaced, supportedRates);
 			if (rankedRates.empty())
 			{
 				DebugLog::Log(
@@ -3213,12 +3211,27 @@ namespace
 			{
 				const RankedDisplayRefreshRate& candidate = rankedRates[attempt];
 				DebugLog::Log(
-					"libplacebo refresh-rate candidate: input=%.6f Hz requested=%.6f Hz candidate=%.6f Hz path=%s attempt=%zu/%zu available=%zu",
-					contentRate, RefreshRateHz(targetRefreshRate),
+					"libplacebo refresh-rate candidate: input=%.6f Hz requested=%.6f Hz candidate=%.6f Hz path=%s attempt=%zu/%zu available=%zu policy=%s",
+					contentRate, candidate.requestedRateHz,
 					RefreshRateHz(candidate.refreshRate),
 					candidate.selectionPath == DisplayRefreshModeSelectionPath::ExactOrClose ?
 						"exact-or-close" : "closest-in-range",
-					attempt + 1, rankedRates.size(), supportedRates.size());
+					attempt + 1, rankedRates.size(), supportedRates.size(),
+					interlaced ? "field-rate" : candidate.doubledRate ? "doubled-fallback" : "native");
+
+				// A doubled fallback may already be active after native candidates
+				// were unavailable/rejected. Confirm it without another mode set.
+				DISPLAYCONFIG_RATIONAL currentRefreshRate{};
+				if (GetCurrentRefreshRate(currentRefreshRate) &&
+					RefreshRatesEqual(currentRefreshRate, candidate.refreshRate))
+				{
+					DebugLog::Log("libplacebo refresh-rate candidate already active: actual=%.6f Hz attempt=%zu/%zu",
+						RefreshRateHz(currentRefreshRate), attempt + 1, rankedRates.size());
+					RunRefreshRateCommand(settings, RefreshRateHz(currentRefreshRate));
+					PublishEvent("refresh.confirmed", RefreshRateHz(currentRefreshRate),
+						RefreshRateHz(candidate.refreshRate), RefreshRateHz(m_originalRefreshRate));
+					return;
+				}
 
 				std::vector<DISPLAYCONFIG_PATH_INFO> candidatePaths;
 				std::vector<DISPLAYCONFIG_MODE_INFO> candidateModes;

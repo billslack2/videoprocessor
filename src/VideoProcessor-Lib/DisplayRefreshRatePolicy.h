@@ -86,6 +86,7 @@ struct DisplayRefreshModeSelection
 	double requestedRateHz = 0.0;
 	double selectedRateHz = 0.0;
 	double differenceHz = 0.0;
+	bool doubledRate = false;
 };
 
 enum class RefreshRateSwitchMode
@@ -103,6 +104,14 @@ double DisplayRefreshRateHz(const DisplayRefreshRational& rate);
 // window; this must not turn a 24 Hz source into an unrelated 50/60 Hz mode.
 DisplayRefreshModeSelection SelectDisplayRefreshMode(
 	const DisplayRefreshRational& requested,
+	const std::vector<DisplayRefreshRational>& candidates);
+
+// Rank native-rate candidates before doubled-rate fallbacks for progressive
+// 25/29.97/30 input (the existing >24.1 and <31 Hz family). Interlaced input
+// keeps field-rate output only. Each group retains the normal rational/tolerance
+// ranking; returning the complete list lets switch failures try the next mode.
+std::vector<DisplayRefreshModeSelection> RankDisplayRefreshModesForInput(
+	const DisplayRefreshRational& input, bool interlaced,
 	const std::vector<DisplayRefreshRational>& candidates);
 
 bool DisplayRefreshRatesExactlyEqual(
