@@ -4,6 +4,13 @@
 
 Review
 
+Merged into `v1.3.005-beta` through [PR #94](https://github.com/billslack2/videoprocessor/pull/94)
+on 2026-09-17 EDT (2026-09-18 UTC), merge commit `cb1808578f7d34b675a82a9802c8c0b6e39a315f`.
+**Keep this story in Review per the user's explicit instruction after merge.**
+The user reports everything watched on deployed `525e5802` looked good.
+The merged source tree exactly matches that tested build. See the final
+integration section below; it supersedes earlier interim deployment and timer notes.
+
 Created 2026-09-16 at the user's request after source review and standalone
 policy experiments. Implementation started from the explicitly requested latest local tip. Additional crop diagnostics
 are a required part of the design and acceptance, not an optional follow-up.
@@ -516,3 +523,53 @@ Following authorization to continue, the correction in source commit e3d4e856 ma
 Local deployment is complete. Runtime identity and binary verification succeeded, and user configuration was preserved. Detailed machine-specific evidence remains local. Recovery safety requirements and existing thresholds/timers remain unchanged because the reproduced failure is prevented before recovery is armed.
 
 Status remains Review pending physical playback of the gradual transition and subtitle scene. The optional graphical diagnostic overlay is not implemented.
+
+
+## Final tested integration; Review retained (2026-09-17 EDT)
+
+The user authorized pushing and packaging the successfully tested build, then
+explicitly requested merging while retaining Review. Source PR
+[#94](https://github.com/billslack2/videoprocessor/pull/94) is merged into
+`v1.3.005-beta` at `cb1808578f7d34b675a82a9802c8c0b6e39a315f`.
+Its tree `26e83b42eb4560dec5cc1c3055a586986826cc0b` is identical to tested head
+`525e58022dc51f6d75591a3c4838447cdd683991`. This includes the deliberately
+selected VP-0188 local baseline `3acd02b3`; prerequisite PR #93 is also merged.
+
+Final policy supersedes the earlier experimental four-second nested guard:
+
+- Established crops retain all-sided inner compositions and use a **5%**
+  inward aspect tolerance anchored to the accepted rectangle. The obsolete
+  nested timer and pause/resume machinery were removed.
+- Live, history and queued decisions obey the same current-evidence and
+  accepted-reference rules. Small sampling changes and temporary subtitle
+  presentation adjustments do not independently redefine program geometry.
+- A real-pixel regression reproduced an invented format when one bar axis
+  failed validation. Explicit axis metadata and a narrow inward-publication
+  gate now retain the complete established crop in that case. Startup,
+  measured outward visibility and genuine multi-AR changes retain their paths.
+- Bounded diagnostics distinguish proposed/trusted/accepted/post-fill bounds,
+  failed axes and incomplete scans. Full-extent support is diagnostic-only;
+  no general full-extent classifier or artistic-intent recognition is claimed.
+
+Validation: exact-commit clean x64 Release build, **1,229/1,229 native tests**,
+**7/7 Python crop-log analyzer tests**, and independent architecture/mpv-script
+reviews without remaining blockers. New coverage includes pixel failures in
+both orientations, history/current-frame queued adoption, intermediate inward
+proof, startup, outward visibility and repeated 2.20/2.35, 2.35/1.90 and 2.20/1.43
+changes. User playback acceptance: "everything I watched look good."
+
+The deployed host/renderer remain the verified `525e5802` pair; both report
+`dirty=0`. Six configuration/state files were preserved with no edits.
+Backup: `C:\Videoprocessor\vp\backups\VP-0189-before-525e5802-20260917-194007`.
+The merge does not require replacing these byte-identical-source tested binaries.
+
+Share ZIP: `VideoProcessor-v1.3.005-beta-VP0189-525e5802-x64.zip`, 30,850,623 bytes.
+All 59 release-manifest files were hash-verified, including the runtime pair.
+SHA-256: `c501194bb2a140a515569f0fe07104e0b65e9e5d4ee3c87141d97b397c39f666`.
+Local sharing folder: `C:\Users\bslac\Documents\ChatGPT\Done\VP-0189-525e5802`.
+
+Review remains open by user request for continued field coverage. No claim is
+made that every earlier dark/credits/star-field report has been individually
+reproduced and accepted. Stronger full-extent calibration and the optional
+graphical overlay remain outside this completed correction. The separate
+bottom-positioning/zoom-to-fill report was not added to this development.
