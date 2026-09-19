@@ -672,3 +672,53 @@ content during a still-dark episode retains its visibility safeguards.
 **Keep VP-0189 in Review.** Proceed with regular viewing validation, including
 dark-to-bright transitions, subtitles/menus, and real aspect changes. Preserve
 the log and approximate clock time if a shrink recurs. VP-0190 remains separate.
+
+## September 19 sampling-step regression and shared retention follow-up
+
+Status remains **Review**. Source worktree:
+E:\codex\videoprocessor\pixel-safe-crop-reaffirmation,
+branch codex/pixel-safe-crop-reaffirmation, based on the verified current beta
+73c850041d284e3e37c959a8956d896b79106aa1.
+
+Andrew's vp73c85004.log.txt contains 21 matching releases: retained scope
+0,276-3840,1884 versus provisional 0,276-3840,1888, with safe broad bar samples.
+Recoveries last 281-297 ms. The local session reproduces the same signature.
+This build already includes PR #97; PR #98 only changed packaging. The logs
+show no raster or anamorphic-scale change. Four rows are one acquisition step
+at 4K, not proof of a pixel-aspect-ratio change.
+
+Initial candidate 318cec4a deployed cleanly but did not resolve replay:
+at 19:45:17 and 19:45:29 the focused strip check reported a conflict despite
+safe broad bar statistics. The initial strict-pixel correction was therefore
+insufficient.
+
+Current candidate d6ad6dc18e020086140ed15a4943c52a7ede92d6 separates black-pixel
+evidence from permitted presentation tolerance. Established scope may retain
+its exact rectangle across a one-step provisional vertical discrepancy when
+width and broad excluded bands remain valid, even if that narrow strip has
+bright or colored pixels. This intentionally allows up to four source rows
+of edge tolerance at 4K. It does not advance the reference rectangle, grant
+new aspect authority, or accept larger/other-axis conflicts. The same
+interpretation resolves vertical inspection and qualifies current samples
+toward ordinary recovery's existing dwell. Pixel conflicts remain visible
+in diagnostics, with peak luma/chroma measurements.
+
+Red tests reproduced initial crop withdrawal, inspection latching, active
+recovery rejecting current retention, and bright-border withdrawal. The final
+clean x64 Release build succeeded. Final full run: **1302/1302 passed**.
+The preceding full run had one ConfigurationReadCacheTests failure,
+SameSizeEditWithRestoredWriteTimeInvalidatesCache (expected two, got one).
+Its full class and the complete unchanged-binary rerun passed. No cache code
+or assertions were changed; cause remains unestablished and initial TRX is
+preserved. Incremental linker debug-info corruption required clean rebuilds.
+
+Paired host/renderer deployed with matching SHA-256 hashes. No configuration
+edits. Backup:
+C:\Videoprocessor\vp\backups\before-shared-edge-d6ad6dc1-20260919-195855
+
+Build, red/green test and deployment evidence:
+C:\Users\bslac\Documents\ChatGPT\Done\scope-sampling-d6ad6dc1-20260919
+
+This source candidate is locally committed, not yet pushed or merged.
+Replay/regular-viewing validation remains required; retain VP-0189 in Review.
+
