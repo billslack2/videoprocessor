@@ -11206,7 +11206,7 @@ struct LibplaceboVideoRenderer::Impl
 				const auto& saved = cropPresentationRecovery.active ? cropPresentationRecovery.trustedCrop :
 					recoveryDecision.ended ? recoveryInput.previous.trustedCrop : episodeInput.previous.entryTrustedCrop;
 				DebugLog::Log(
-					"Alpha crop recovery: schema=1 stage=source-crop event=%llu generation=%llu sequence=%llu measurement=%llu epoch=%llu scene=%llu cadence_repeat=%d phase=%s recovery=%d episode=%s actual_change=%d previous_available=%d prev_applied=%d applied=%d prev_rect=%d,%d-%d,%d rect=%d,%d-%d,%d prev_owner=%s owner=%s candidate_owner=%s candidate_reason=\"%s\" saved=%d,%d-%d,%d trusted=%d,%d-%d,%d observed=%d,%d-%d,%d classification=%d observed_class=%d analysis_valid=%d retention_eval=%d bands_safe=%d proposal_available=%d proposal_contained=%d sampling_reaffirmed=%d horizontal_bounded=%d inspection_latched=%d outward_visible=%d full_authority=%d near_black=%d p90=%.1f proof=%u/%u dwell_ms=250 episode_proof=%u/%u sticky=%d gates=%u gate_names=%s first_sequence=%llu duration_ms=%llu applied_changes=%u evidence_flips=%u proof_resets=%u reason=\"%s\"",
+					"Alpha crop recovery: schema=1 stage=source-crop event=%llu generation=%llu sequence=%llu measurement=%llu epoch=%llu scene=%llu cadence_repeat=%d phase=%s recovery=%d episode=%s actual_change=%d previous_available=%d prev_applied=%d applied=%d prev_rect=%d,%d-%d,%d rect=%d,%d-%d,%d prev_owner=%s owner=%s candidate_owner=%s candidate_reason=\"%s\" saved=%d,%d-%d,%d trusted=%d,%d-%d,%d observed=%d,%d-%d,%d classification=%d observed_class=%d analysis_valid=%d retention_eval=%d bands_safe=%d proposal_available=%d proposal_contained=%d sampling_retained=%d sampling_strip_conflict=%d sampling_reaffirmed=%d horizontal_bounded=%d inspection_latched=%d outward_visible=%d full_authority=%d near_black=%d p90=%.1f proof=%u/%u dwell_ms=250 episode_proof=%u/%u sticky=%d gates=%u gate_names=%s first_sequence=%llu duration_ms=%llu applied_changes=%u evidence_flips=%u proof_resets=%u reason=\"%s\"",
 					(cropUnresolved || cropEventEnded) ? cropDiagnosticEvent : 0, frameGeneration, sourceSequence, latestActivePictureEvidenceFrame,
 					viewportRequestSerial, sceneResult.eventId, cadenceRepeat ? 1 : 0,
 					cropEventStarted ? "start" : cropEventEnded ? "end" : cropSummaryDue ? "summary" : "change",
@@ -11227,6 +11227,7 @@ struct LibplaceboVideoRenderer::Impl
 					latestCropRetentionEvidence.analysisValid ? 1 : 0, episodeInput.retentionEvaluated ? 1 : 0,
 					latestCropRetentionEvidence.excludedBandsPixelSafe ? 1 : 0,
 					latestCropRetentionEvidence.proposedBoundsAvailable ? 1 : 0, latestCropRetentionEvidence.proposedBoundsContained ? 1 : 0,
+					latestCropRetentionEvidence.samplingReaffirmed ? 1 : 0, latestCropRetentionEvidence.samplingStripConflict ? 1 : 0,
 					latestCropSamplingReaffirmed ? 1 : 0,
 					recoveryInput.candidate.horizontalExpansionPixelBounded ? 1 : 0, scopeVerticalInspectionBridge.failOpenLatched ? 1 : 0,
 					latestActivePictureOutwardVisibleBoundsAvailable ? 1 : 0, episodeInput.fullRasterAuthorityAvailable ? 1 : 0,
@@ -11341,6 +11342,8 @@ struct LibplaceboVideoRenderer::Impl
 				<< cropDecision.sourceBounds.bottom << '|'
 				<< static_cast<int>(effectiveClassification) << '|'
 				<< effectiveGeometrySourceGeneration << '|'
+				<< latestCropRetentionEvidence.samplingReaffirmed << '|'
+				<< latestCropRetentionEvidence.samplingStripConflict << '|'
 				<< cropDecision.reason;
 			if (cropPolicy.str() != lastSourceCropPolicy)
 			{
@@ -11364,7 +11367,7 @@ struct LibplaceboVideoRenderer::Impl
 			const char* presentationOwnerLabel =
 				AlphaSourceCrop::DecisionOwnerName(cropDecision.owner);
 				DebugLog::Log(
-					"Alpha source crop: sequence=%llu enabled=%d applied=%d expanded=%d translated=%d vertical_action=%s shift_request=%d shift_applied=%d latest_trusted=%d scene_hold=%d ambiguity_hold=%d retention_safe=%d latest_evidence=%d detector_envelope=%d bar_wait=%d inspection_wait=%d translation_wait=%d fit_wait=%d engage_base=%d release_settle=%d envelope_state=%s selected_edges=%c%c%c%c fit_evidence_rect=%d,%d-%d,%d rect=%d,%d-%d,%d fill_rect=%d,%d-%d,%d content_aspect=%.5f screen_aspect=%.5f narrower_fill=%d narrower_limit=%s%.5f wider_fill=%d wider_limit=%s%.5f fill_applied=%d classification=%d geometry_generation=%llu frame_generation=%llu owner=%s cut=%d scene_event=%llu retention_eval=%d near_black_eval=%d near_black=%d near_black_p90=%.1f near_black_episode=%s near_black_start=%llu refinement_horizontal=%d inspection_candidate=%d inspection_request=%d inspection_fit_resolved=%d inspection_consumed=%d inspection_dense=%d inspection_phase=%s inspection_first=%llu inspection_retained=%llu coarse_edges=%c%c%c%c coarse_current=%d observation_rect=%d,%d-%d,%d coarse_rect=%d,%d-%d,%d dense_base=%d dense_generation=%llu dense_scan=%s dense_evaluated=%d authority=%s translation_confirm=%u/%u fit_confirm=%u/%u reason=\"%s; %s; %s; %s\"",
+					"Alpha source crop: sequence=%llu enabled=%d applied=%d expanded=%d translated=%d vertical_action=%s shift_request=%d shift_applied=%d latest_trusted=%d scene_hold=%d ambiguity_hold=%d retention_safe=%d latest_evidence=%d detector_envelope=%d bar_wait=%d inspection_wait=%d translation_wait=%d fit_wait=%d engage_base=%d release_settle=%d envelope_state=%s selected_edges=%c%c%c%c fit_evidence_rect=%d,%d-%d,%d rect=%d,%d-%d,%d fill_rect=%d,%d-%d,%d content_aspect=%.5f screen_aspect=%.5f narrower_fill=%d narrower_limit=%s%.5f wider_fill=%d wider_limit=%s%.5f fill_applied=%d classification=%d geometry_generation=%llu frame_generation=%llu owner=%s cut=%d scene_event=%llu retention_eval=%d sampling_retained=%d sampling_strip_conflict=%d near_black_eval=%d near_black=%d near_black_p90=%.1f near_black_episode=%s near_black_start=%llu refinement_horizontal=%d inspection_candidate=%d inspection_request=%d inspection_fit_resolved=%d inspection_consumed=%d inspection_dense=%d inspection_phase=%s inspection_first=%llu inspection_retained=%llu coarse_edges=%c%c%c%c coarse_current=%d observation_rect=%d,%d-%d,%d coarse_rect=%d,%d-%d,%d dense_base=%d dense_generation=%llu dense_scan=%s dense_evaluated=%d authority=%s translation_confirm=%u/%u fit_confirm=%u/%u reason=\"%s; %s; %s; %s\"",
 					static_cast<unsigned long long>(sourceSequence),
 					automaticSourceCrop ? 1 : 0,
 					cropDecision.applyCrop ? 1 : 0,
@@ -11425,6 +11428,8 @@ struct LibplaceboVideoRenderer::Impl
 					sceneResult.safeBoundary ? 1 : 0,
 					static_cast<unsigned long long>(sceneResult.eventId),
 					latestActivePicturePresentationRetentionEvaluated ? 1 : 0,
+					latestCropRetentionEvidence.samplingReaffirmed ? 1 : 0,
+					latestCropRetentionEvidence.samplingStripConflict ? 1 : 0,
 					latestActivePictureGlobalNearBlackEvaluated ? 1 : 0,
 					latestActivePictureGlobalNearBlack ? 1 : 0,
 					latestActivePictureGlobalLumaP90,

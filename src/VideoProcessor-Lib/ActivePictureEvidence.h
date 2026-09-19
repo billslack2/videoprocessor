@@ -90,6 +90,9 @@ struct ActivePicturePresentationRetentionEvidence
 	bool globalNearBlack = false;
 	bool proposedBoundsAvailable = false;
 	bool proposedBoundsContained = false;
+	// Retention-only proof for one provisional vertical scan step; no new authority.
+	bool samplingReaffirmed = false;
+	bool samplingStripConflict = false;
 	bool excludedBandsPixelSafe = false;
 	bool excludedHorizontalBandsPixelSafe = false;
 	bool excludedVerticalBandsPixelSafe = false;
