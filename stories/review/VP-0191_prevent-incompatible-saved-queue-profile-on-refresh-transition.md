@@ -24,8 +24,9 @@ Validation completed:
   regression passed with the existing
   `AutomaticQueueRuleOverridesPersistedQueueSelection` regression (2/2).
 - Full x64 Release solution build passed.
+- Deployed the matched x64 Release host/renderer pair on 2026-09-19. Backups: `C:\Videoprocessor\vp\VideoProcessor.exe.before-VP-0191-20260919-103056.bak` and `C:\Videoprocessor\vp\vprenderer\VideoProcessorVPRenderer.dll.before-VP-0191-20260919-103056.bak`; no configuration or state file changed.
 
-Remaining review/acceptance: deploy no binaries yet; confirm on live HDMI that
+Remaining review/acceptance: confirm on live HDMI that
 a 60-to-24 Hz transition logs one invalid-source defer, shows no `Madvr Queue`
 profile OSD, retains the prior compatible queue during resync, and then reports
 only `vp_24` after valid 23.976 input returns.
