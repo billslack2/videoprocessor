@@ -824,6 +824,9 @@ protected:
 	std::unique_ptr<RendererResetCoordinator> m_rendererResetCoordinator;
 	RendererBindingToken m_rendererResetBindingToken = 0;
 	UnifiedProfileRuntime::Runtime m_profileRuntime;
+	// One invalid capture transition can generate several callbacks. Keep the
+	// source-profile defer diagnostic to one line until valid source facts return.
+	bool m_profileSourceContextDeferred = false;
 	HANDLE m_unifiedActionCancelEvent = nullptr;
 	EventActionLauncher::PendingActionCoalescer m_unifiedActionCoalescer;
 	std::mutex m_profileActionLaunchMutex;

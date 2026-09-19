@@ -57,6 +57,9 @@ namespace UnifiedProfileRuntime
 	struct RefreshResult
 	{
 		bool changed = false;
+		// Source-driven rules were deliberately left on the committed snapshot
+		// because capture has no valid source context yet.
+		bool deferred = false;
 		std::shared_ptr<const Snapshot> snapshot;
 		std::vector<ActionInvocation> actions;
 	};
@@ -92,6 +95,9 @@ namespace UnifiedProfileRuntime
 		// choices are fallbacks; a live shortcut remains a session override.
 		bool Refresh(const DisplayRuleExpression::ValueLookup& sourceValues,
 			RefreshResult& result, std::string& error);
+		bool Refresh(const DisplayRuleExpression::ValueLookup& sourceValues,
+			bool sourceContextAvailable, RefreshResult& result,
+			std::string& error);
 
 		// Releases every live shortcut override and immediately resolves the
 		// configured rules again. Durable manual selections remain available as
@@ -99,6 +105,9 @@ namespace UnifiedProfileRuntime
 		bool ReapplyRules(const DisplayRuleExpression::ValueLookup& sourceValues,
 			RefreshResult& result, std::vector<std::string>& clearedGroups,
 			std::string& error);
+		bool ReapplyRules(const DisplayRuleExpression::ValueLookup& sourceValues,
+			bool sourceContextAvailable, RefreshResult& result,
+			std::vector<std::string>& clearedGroups, std::string& error);
 
 		// Emits an event against the current committed snapshot. This is used for
 		// renderer-ready, which has no profile transition of its own.
