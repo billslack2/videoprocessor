@@ -72,11 +72,13 @@ Invoke-VpInstallAction | Out-Null
 Assert ((Hash 'VideoProcessor.exe') -eq $oldHost) 'retry recovers interrupted transaction'
 foreach($name in $sentinels.Keys){Assert ((Hash $name) -eq $sentinels[$name]) "operator data unchanged: $name"}
 Put 'config/private.dll' 'unknown'
-Throws {Invoke-VpInstallAction} 'Unowned private DLL conflict: config\\private.dll' 'unknown DLL named and preserved'
+Invoke-VpInstallAction | Out-Null
+Assert $true 'unknown DLL does not block repair preflight'
 Assert ((Get-Content (Join-Path $InstallRoot 'config/private.dll') -Raw) -eq 'unknown') 'unknown DLL not deleted'
 Remove-Item -LiteralPath (Join-Path $InstallRoot 'config/private.dll')
 Put 'config/retired.dll' 'modified'
-Throws {Invoke-VpInstallAction} 'Previously managed file has been modified' 'modified obsolete file protected'
+Invoke-VpInstallAction | Out-Null
+Assert ((Get-Content (Join-Path $InstallRoot 'config/retired.dll') -Raw) -eq 'modified') 'preflight leaves modified obsolete file intact'
 Put 'config/retired.dll' 'retired-A'
 foreach($path in @('../escape.dll','C:\escape.dll','config/a:stream','config/../escape.dll')){
     Throws {Get-VpSafePath $InstallRoot $path} 'Unsafe|escapes' "unsafe path rejected: $path"
@@ -140,4 +142,15 @@ Assert (Test-Path -LiteralPath $savedHost) 'modified recovery backup not deleted
 Invoke-VpInstallAction | Out-Null
 Assert (-not (Test-Path -LiteralPath (Join-Path $InstallRoot '.vp-installer-backups'))) 'verified backup cleanup resumes when unknown data removed'
 foreach($name in $sentinels.Keys){Assert ((Hash $name) -eq $sentinels[$name]) "cleanup preserves operator data: $name"}
+# Repair a destroyed manifest and an unowned DLL without losing either's bytes.
+Put 'INSTALL-MANIFEST.json' 'corrupted ownership JSON'
+Put 'config/unknown-old.dll' 'old private dependency'
+$script:Action='Prepare';$script:BackupDirectory=Invoke-VpInstallAction
+Assert (-not (Test-Path -LiteralPath (Join-Path $InstallRoot 'config/unknown-old.dll'))) 'conflicting unknown DLL moved out of loader paths during repair'
+$recovered=@(Get-ChildItem -LiteralPath (Join-Path $InstallRoot 'recovered-files') -Recurse -Filter 'unknown-old.dll' -File)
+Assert ($recovered.Count -eq 1 -and [IO.File]::ReadAllText($recovered[0].FullName) -eq 'old private dependency') 'unknown DLL preserved byte-for-byte in local recovery folder'
+$script:Action='Commit';Invoke-VpInstallAction | Out-Null
+$script:Action='Finalize';Invoke-VpInstallAction | Out-Null
+Assert ((Read-VpInstallManifest (Join-Path $InstallRoot 'INSTALL-MANIFEST.json')).build -eq 'B') 'corrupt manifest repaired'
+foreach($name in $sentinels.Keys){Assert ((Hash $name) -eq $sentinels[$name]) "manifest repair preserves $name"}
 Write-Host "$checks preservation/recovery checks passed. Fixtures: $testRoot"

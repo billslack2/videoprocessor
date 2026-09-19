@@ -21,12 +21,18 @@ renderer cache under vprenderer. Setup tests write access without elevation and
 does not grant broad permissions. Protected destinations need to be moved to a
 user-writable location. No application storage or behavior changes are included.
 
-The bundled, Microsoft-signed x64 VC++ runtime installs offline when system files
-do not meet the build's generated minimum. Only that prerequisite asks for
-elevation. Sufficient runtimes are left alone. Installer users do not run
-SETUP-RUNTIME.cmd; ZIP users still do. Denial/failure stops before application
-replacement; a prerequisite reboot stops setup and requires rerunning it after
-restart. Setup never automatically restarts Windows or launches the player.
+Setup is self-contained and works offline. Microsoft-signed x64 Visual C++
+runtime DLLs are installed beside VP and in config/vprenderer as required by
+their dependencies. Setup never executes a system-wide redistributable, asks
+for runtime elevation or creates a desktop icon. Windows 10/11 supplies the
+Windows/UCRT components. Start menu shortcuts and one per-user uninstall/location
+registration are the only integration outside the chosen application folder.
+
+Deleting the application folder removes its application and private runtimes,
+including any user data in that folder. The Windows uninstall entry and Start
+menu shortcuts remain until uninstall or repair. Rerunning setup repairs them
+and recreates a deleted folder at its remembered location. It cannot recover
+user data that was manually deleted.
 
 Core version and Git commit identify the selected build. Setup accepts the same
 build again, a different commit at the same version, and older builds. Older
@@ -43,8 +49,8 @@ is needed, so setup does not edit or back up configuration.
 
 The installed application contains its runtime dependencies, default shaders,
 the configuration HTML/NLS PDF user guides, and required licenses/provenance.
-The redistributable and setup scripts run only from setup's private temporary
-directory, which Inno removes on exit. The application folder receives no
+The repair helper runs only from setup's private temporary directory, which
+Inno removes on exit. No redistributable installer is embedded or executed. The application folder receives no
 prerequisites or setup directory, ZIP setup instructions, development/story
 notes, release-layout docs, portable release inventory, or duplicate cfg.example.
 
@@ -56,10 +62,14 @@ runtime metadata. Unrecognized ZIP extras are preserved. Cleanup never uses a
 wildcard to delete docs, backups, configuration, or state.
 
 Before replacement, setup verifies a temporary application-file backup under
-.vp-installer-backups. Obsolete binaries require an earlier inventory and matching
-hash; a modified obsolete binary blocks setup. Without a release/install inventory,
-unknown DLLs are reported by path, never guessed or deleted. Move a reported
-private DLL to a separate backup folder only after reviewing it.
+.vp-installer-backups. Missing, old or corrupted managed binaries and runtime
+DLLs are replaced from the selected package. A missing or damaged install
+manifest is rebuilt without changing existing configuration/state.
+Unknown DLLs in application load paths and modified obsolete binaries are
+preserved under recovered-files/<transaction>/<original-path> before removal
+from their old load paths. Review these files if you used custom binary plugins.
+This recovery folder is retained by uninstall; routine successful updates
+do not leave application backup directories behind.
 
 A pending transaction is restored when setup is retried after interruption.
 Normal failure also attempts restoration. Do not launch VP after interruption
@@ -76,9 +86,21 @@ To roll back a completed installation, run the chosen older installer; permanent
 copies of every previous build are not kept. Never restore operator
 configuration/state from an application-file backup.
 
+Use **Uninstall VideoProcessor** in the application folder or Start menu, or
+Windows Settings > Apps. The shortcut points to the registered uninstaller.
+Inno's paired uninsNNN.exe/uninsNNN.dat files retain their internal names so
+upgrades and rollbacks can reuse the uninstall history. They are marked hidden
+(including an optional language .msg file); do not rename or remove them.
+The DAT is required uninstall bookkeeping, not user configuration.
+
+If Config is running, uninstall explains how to save changes and choose **Exit**
+from its tray icon near the clock. Closing Config's window only hides it.
+Choose **Retry** after exiting, or **Cancel** to leave the installation intact.
+The message names VP, Config, or both, depending on what is running. Suppressed
+silent prompts cancel safely. No process is force-terminated.
+
 Uninstall removes tracked application files, shortcuts and its one registration.
-It retains operator data and the small install manifest. It never uninstalls the
-shared runtime. Reinstall into the preserved folder to retain settings.
+It retains operator data and the small install manifest. Private runtime DLLs are removed with the application; no system runtime is changed. Reinstall into the preserved folder to retain settings.
 
 ## Repeatable release build
 
@@ -96,12 +118,18 @@ For a release, use a clean checkout of the selected source commit:
 .\tools\test_installer_support.ps1
 .\tools\test_installer_identity.ps1
 .\tools\test_runtime_packaging.ps1 -VcRedistPath 'C:\path\vc_redist.x64.exe'
-.\artifacts\release\VideoProcessor\SETUP-RUNTIME.cmd -CheckOnly
 ~~~
 
 The command completes a full x64 Release solution rebuild, records the exact
 commit, source fingerprint and four VP binary hashes, invokes the runtime-aware
-manifest packager, then compiles setup. -SkipBuild requires the same successful
+manifest packager, resolves private runtime dependencies with dumpbin, then
+compiles setup. Licensed Visual Studio Release CRT/MFC redistributable folders
+are discovered automatically; -RuntimeDirectories may specify them explicitly.
+Runtime copies are checked for x64 architecture, valid Microsoft signatures,
+hashes and the recorded toolset/policy minimums. MFC uses its consumers' MFC
+toolset floor; CRT must satisfy the newest shipped dependency's floor.
+-VcRedistPath is currently a build-only input required by the legacy staging
+validator. Its EXE and central-runtime helper are excluded from distribution. -SkipBuild requires the same successful
 build receipt, exact source contents/dirty status and binary hashes. Source changes
 during build or packaging reject the result. Never fabricate a receipt.
 
@@ -117,8 +145,10 @@ Clean builds of the same version deliberately share a download filename; archive
 them in separate build directories when retaining multiple test builds.
 
 Outputs under artifacts\installers include SHA-256 sidecars for the exact
-executable bytes. Optional ZIPs use the original portable layout and keep their
-version/build-labelled filenames. Publish clean, qualified builds.
+executable bytes. Optional ZIPs contain the same self-contained application and
+private runtime DLLs, with VideoProcessor.cfg.example instead of an active
+configuration file, and keep their version/build-labelled filenames. No runtime
+setup is needed. Copy/rename the example only when creating a new configuration. Publish clean, qualified builds.
 
 The installer is currently **unsigned**. A checksum verifies integrity, not
 publisher identity; Windows may show unknown-publisher/SmartScreen prompts.
@@ -142,19 +172,20 @@ not publish or deploy.
 ## Qualification matrix
 
 Run real installers on disposable Windows without Visual Studio.
-Developer-machine or helper-fixture success does not qualify prerequisites.
+Developer-machine or helper-fixture success does not qualify clean-machine runtime loading.
 
 | Case | Required evidence |
 | --- | --- |
-| Missing runtime / old 14.29 / sufficient runtime | Offline install or skip; Config edit, Apply, OK, reopen |
+| Missing / old / sufficient global runtime | Offline setup without elevation or system changes; local module paths; Config edit, Apply, OK, reopen |
 | Fresh custom path | Non-elevated launch, config save and log writes |
 | A -> B (same core version) -> B -> A | Selected hashes, matching host/renderer, one entry, automatic path reuse |
-| ZIP adoption / previous full installer | Comments, state and custom assets byte-identical; obsolete owned DLL and setup-only files retired; edited docs retained |\n| Clean installed payload | No prerequisite/setup tools, duplicate example or developer notes; guides/licenses retained; verified recovery backups pruned after success |
-| Unknown DLL / modified obsolete file | Named conflict, no destructive replacement |
+| ZIP adoption / previous full installer | Comments, state and custom assets byte-identical; obsolete owned DLL and setup-only files retired; edited docs retained |
+| Clean installed payload | No prerequisite/setup tools, duplicate example or developer notes; guides/licenses retained; verified recovery backups pruned after success |
+| Unknown DLL / modified obsolete file | Byte-identical copy in recovered-files; obsolete load path cleared |
 | VP / Config tray / unsaved editor | Save/close/retry; cancellation retains old files |
-| UAC denial / prerequisite error / restart | No successful update or launch before runtime ready |
+| Deleted folder / missing or corrupt manifest / stale runtime DLL | Remembered path repaired; existing operator data unchanged |
 | Interruption / disk or hash failure | Backup recovered; complete old or selected payload |
-| Uninstall / reinstall | Data and shared runtime retained; usable config |
+| Uninstall / reinstall | Operator data retained; private runtime removed/reinstalled; usable config |
 
 For automated lifecycle checks on an account without an existing VP installer
 registration (the test creates and removes a disposable registered installation):
@@ -171,4 +202,4 @@ distribute anything named DO-NOT-DISTRIBUTE. Tests refuse an existing registered
 installation and keep their evidence under artifacts.
 
 Record OS builds, privilege level, runtime versions, installer hashes and logs.
-Missing clean-machine or interactive coverage remains an acceptance gap.\n
+Missing clean-machine or interactive coverage remains an acceptance gap.

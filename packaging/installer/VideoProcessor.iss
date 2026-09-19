@@ -41,9 +41,12 @@ SetupMutex=VideoProcessor-42D852F1-70E9-43ED-8739-D61752106D59-Setup
 UninstallDisplayName=VideoProcessor
 CreateUninstallRegKey=PayloadReady
 
+[Messages]
+UninstallAppTitle=Uninstall VideoProcessor
+UninstallAppFullTitle=Uninstall VideoProcessor
+
 [Files]
 ; Helpers run from setup's private temporary directory, never from the target.
-Source: "{#PayloadRoot}\prerequisites\*"; Flags: dontcopy
 Source: "{#PayloadRoot}\setup\install-support.ps1"; Flags: dontcopy
 Source: "{#PayloadRoot}\INSTALL-MANIFEST.json"; Flags: dontcopy
 #include PayloadInclude
@@ -54,13 +57,13 @@ Source: "{#PayloadRoot}\INSTALL-MANIFEST.json"; DestDir: "{tmp}"; DestName: "ver
 Name: "{app}\logs"; Flags: uninsneveruninstall
 Name: "{app}\luts"; Flags: uninsneveruninstall
 
-[Tasks]
-Name: desktopicon; Description: "Create a desktop shortcut"; Flags: unchecked
-
 [Icons]
 Name: "{userprograms}\VideoProcessor\VideoProcessor"; Filename: "{app}\VideoProcessor.exe"; WorkingDir: "{app}"; Check: PayloadReady
 Name: "{userprograms}\VideoProcessor\VideoProcessor Config"; Filename: "{app}\config\VideoProcessorConfig.exe"; Parameters: "--config ""{app}\VideoProcessor.cfg"""; WorkingDir: "{app}"; Check: PayloadReady
-Name: "{userdesktop}\VideoProcessor"; Filename: "{app}\VideoProcessor.exe"; WorkingDir: "{app}"; Tasks: desktopicon; Check: PayloadReady
+
+; Keep the engine's paired EXE/DAT names for native upgrade history.
+Name: "{app}\Uninstall VideoProcessor"; Filename: "{uninstallexe}"; WorkingDir: "{app}"; IconFilename: "{app}\VideoProcessor.exe"; Check: PayloadReady
+Name: "{userprograms}\VideoProcessor\Uninstall VideoProcessor"; Filename: "{uninstallexe}"; WorkingDir: "{app}"; IconFilename: "{app}\VideoProcessor.exe"; Check: PayloadReady
 
 [Run]
 Filename: "{app}\config\VideoProcessorConfig.exe"; Parameters: "--config ""{app}\VideoProcessor.cfg"""; WorkingDir: "{app}"; Description: "Open VideoProcessor Config"; Flags: postinstall nowait skipifsilent unchecked; Check: CanLaunch
@@ -69,6 +72,29 @@ Filename: "{app}\config\VideoProcessorConfig.exe"; Parameters: "--config ""{app}
 var
   BackupPath, HelperMessage: String;
   Prepared, Verified, Committed: Boolean;
+
+function GetFileAttributesW(FileName: String): LongWord;
+  external 'GetFileAttributesW@kernel32.dll stdcall';
+function SetFileAttributesW(FileName: String; Attributes: LongWord): Boolean;
+  external 'SetFileAttributesW@kernel32.dll stdcall';
+
+procedure HideUninstallSupport;
+var
+  FileName: String;
+  Attributes: LongWord;
+  Index: Integer;
+begin
+  for Index := 0 to 2 do begin
+    FileName := ExpandConstant('{uninstallexe}');
+    if Index = 1 then FileName := ChangeFileExt(FileName, '.dat');
+    if Index = 2 then FileName := ChangeFileExt(FileName, '.msg');
+    if FileExists(FileName) then begin
+      Attributes := GetFileAttributesW(FileName);
+      if (Attributes = $FFFFFFFF) or not SetFileAttributesW(FileName, Attributes or 2) then
+        Log('Could not hide internal uninstall support file: ' + FileName);
+    end;
+  end;
+end;
 
 function RunHelper(Action: String): Boolean;
 var
@@ -122,35 +148,12 @@ begin
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
-var
-  ExitCode: Integer;
 begin
   Result := '';
   ExtractTemporaryFile('install-support.ps1');
   ExtractTemporaryFile('INSTALL-MANIFEST.json');
-  ExtractTemporaryFile('setup-runtime.ps1');
-  ExtractTemporaryFile('runtime-common.ps1');
-  ExtractTemporaryFile('runtime-requirement.json');
-  ExtractTemporaryFile('vc_redist.x64.exe');
   if not RunHelper('Check') then begin
     Result := HelperMessage + #13#10 + 'Correct the issue and click Retry, or cancel setup.';
-    Exit;
-  end;
-  if not Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
-    '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' +
-    ExpandConstant('{tmp}\setup-runtime.ps1') + '"', '', SW_HIDE,
-    ewWaitUntilTerminated, ExitCode) then begin
-    Result := 'Could not check the Microsoft runtime. No application files were replaced.';
-    Exit;
-  end;
-  if (ExitCode = 3010) or (ExitCode = 1641) then begin
-    NeedsRestart := True;
-    Result := 'The Microsoft runtime requires a Windows restart. Restart, then run this installer again. VideoProcessor has not been updated.';
-    Exit;
-  end;
-  if ExitCode <> 0 then begin
-    Result := 'Microsoft runtime setup was cancelled, denied elevation, or failed (code ' +
-      IntToStr(ExitCode) + '). No application files were replaced. Check the Microsoft installer log in %TEMP%, then retry.';
     Exit;
   end;
   if not RunHelper('Prepare') then begin
@@ -185,6 +188,7 @@ begin
       RaiseException(HelperMessage + ' Setup will restore the previous application files.');
     Committed := True;
     Verified := True;
+    HideUninstallSupport;
   end;
 end;
 
@@ -211,20 +215,42 @@ end;
 
 function InitializeUninstall: Boolean;
 var
-  Locator, WMI, Processes: Variant;
+  Locator, WMI, PlayerProcesses, ConfigProcesses: Variant;
+  Notice, Running: String;
 begin
   Result := False;
   try
     Locator := CreateOleObject('WbemScripting.SWbemLocator');
     WMI := Locator.ConnectServer('', 'root\CIMV2');
-    Processes := WMI.ExecQuery(
-      'SELECT ProcessId FROM Win32_Process WHERE Name="VideoProcessor.exe" OR Name="VideoProcessor-GUI.exe" OR Name="VideoProcessorConfig.exe"');
-    if Processes.Count > 0 then begin
-      MsgBox('Save your work and close VP and Config, including the tray icon, before uninstalling. Your settings and state will be retained.', mbError, MB_OK);
-      Exit;
+    while True do begin
+      PlayerProcesses := WMI.ExecQuery(
+        'SELECT ProcessId FROM Win32_Process WHERE Name="VideoProcessor.exe" OR Name="VideoProcessor-GUI.exe"');
+      ConfigProcesses := WMI.ExecQuery(
+        'SELECT ProcessId FROM Win32_Process WHERE Name="VideoProcessorConfig.exe"');
+      if (PlayerProcesses.Count = 0) and (ConfigProcesses.Count = 0) then begin
+        Result := True;
+        Exit;
+      end;
+      Running := '';
+      if PlayerProcesses.Count > 0 then Running := 'VideoProcessor';
+      if ConfigProcesses.Count > 0 then begin
+        if Running <> '' then Running := Running + ' and ';
+        Running := Running + 'VideoProcessor Config';
+      end;
+      Notice := 'Uninstall has not started because ' + Running + ' is still running.' + #13#10#13#10;
+      if ConfigProcesses.Count > 0 then
+        Notice := Notice +
+          'Save any changes in Config. Then right-click the "VideoProcessor Configuration" icon near the Windows clock and select Exit. Check the hidden-icons arrow if needed.' +
+          #13#10#13#10 + 'Closing the Config window only hides it in the tray; it does not exit the application.' + #13#10#13#10;
+      if PlayerProcesses.Count > 0 then
+        Notice := Notice + 'Close the VideoProcessor player window.' + #13#10#13#10;
+      Notice := Notice + 'Click Retry after exiting the running apps, or Cancel to leave VideoProcessor installed.' +
+        #13#10#13#10 + 'Your configuration and state files will be kept after uninstall.';
+      Log(Notice);
+      if SuppressibleMsgBox(Notice, mbInformation, MB_RETRYCANCEL, IDCANCEL) <> IDRETRY then Exit;
     end;
-    Result := True;
   except
-    MsgBox('Unable to check running applications. Close VP and Config and retry uninstall.', mbError, MB_OK);
+    SuppressibleMsgBox('Uninstall could not check whether VP or Config is running. Nothing has been removed. Close VP and choose Exit from the Config tray icon, then run Uninstall VideoProcessor again.',
+      mbError, MB_OK, IDOK);
   end;
 end;

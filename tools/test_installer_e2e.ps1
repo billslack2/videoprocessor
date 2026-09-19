@@ -30,6 +30,24 @@ if ($PreviousInstallerPath -or $PreviousManifestPath) {
 function Assert([bool]$Condition,[string]$Message){
  if(-not $Condition){throw $Message};$script:checks++;Write-Host "PASS $Message"
 }
+function Get-Uninstaller {
+ ((Get-ItemProperty -LiteralPath $registry).UninstallString).Trim('"')
+}
+$desktopPaths=@([Environment]::GetFolderPath('DesktopDirectory'),[Environment]::GetFolderPath('CommonDesktopDirectory')) | Select-Object -Unique
+$desktopBefore=@{}
+foreach($desktop in $desktopPaths){
+ foreach($file in Get-ChildItem -LiteralPath $desktop -File -ErrorAction SilentlyContinue){
+  $desktopBefore[$file.FullName]=(Get-FileHash -LiteralPath $file.FullName).Hash
+ }
+}
+function AssertDesktop {
+ foreach($desktop in $desktopPaths){
+  foreach($file in Get-ChildItem -LiteralPath $desktop -File -ErrorAction SilentlyContinue){
+   if(-not $desktopBefore.ContainsKey($file.FullName) -or $desktopBefore[$file.FullName] -ne (Get-FileHash -LiteralPath $file.FullName).Hash){throw "Desktop changed: $($file.FullName)"}
+  }
+ }
+ Assert $true 'installer creates no desktop files'
+}
 function RunSetup([string]$Label,[bool]$SelectDirectory){
  $args=@('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-',('/LOG="'+(Join-Path $testRoot ($Label+'.log'))+'"'))
  if($SelectDirectory){$args+=('/DIR="'+$target+'"')}
@@ -56,6 +74,16 @@ function RunSetup([string]$Label,[bool]$SelectDirectory){
    Assert (Test-Path -LiteralPath (Join-Path $target $file)) "actual installer $Label retains user guide/license $file"
   }
  }
+ if($manifest.PSObject.Properties['uninstallEntryPoint']){
+  $shortcut=Join-Path $target $manifest.uninstallEntryPoint
+  Assert (Test-Path -LiteralPath $shortcut) "actual installer $Label provides Uninstall VideoProcessor shortcut"
+  $link=(New-Object -ComObject WScript.Shell).CreateShortcut($shortcut)
+  Assert ($link.TargetPath -ieq (Get-Uninstaller)) "actual installer $Label shortcut targets registered uninstaller"
+  foreach($support in @((Get-Uninstaller),[IO.Path]::ChangeExtension((Get-Uninstaller),'.dat'))){
+   Assert ([bool]((Get-Item -LiteralPath $support -Force).Attributes -band [IO.FileAttributes]::Hidden)) "actual installer $Label hides internal $support"
+  }
+ }
+ AssertDesktop
  $keys=@(Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall' |
     Where-Object PSChildName -like '*42D852F1-70E9-43ED-8739-D61752106D59*')
  Assert ($keys.Count -eq 1) "actual installer $Label has one uninstall entry"
@@ -98,10 +126,52 @@ if ($PreviousInstallerPath) {
   Assert ((Get-FileHash -LiteralPath (Join-Path $target $relative)).Hash -eq $before[$relative]) "same-core upgrade preserves $relative"
  }
 }
+$current=Get-Content -LiteralPath $script:ExpectedManifest -Raw | ConvertFrom-Json
+if($current.PSObject.Properties['uninstallEntryPoint']){
+ $configProcess=Start-Process -FilePath (Join-Path $target 'config\VideoProcessorConfig.exe') -ArgumentList @('--background','--config',('"'+(Join-Path $target 'VideoProcessor.cfg')+'"')) -WindowStyle Hidden -PassThru
+ try {
+  Start-Sleep -Seconds 2
+  Assert (-not $configProcess.HasExited) 'Config runs for the uninstall refusal test'
+  if($current.PSObject.Properties['runtimeMode'] -and $current.runtimeMode -eq 'app-local'){
+   $modules=@((Get-Process -Id $configProcess.Id).Modules | Where-Object ModuleName -match '^(msvcp140.*|vcruntime140.*|concrt140|mfc140u)\.dll$')
+   Assert ($modules.Count -ge 3) 'Config loads its private VC runtime dependencies'
+   foreach($module in $modules){
+    Assert ($module.FileName.StartsWith((Join-Path $target 'config')+'\',[StringComparison]::OrdinalIgnoreCase)) "Config loads $($module.ModuleName) from its own folder"
+   }
+  }
+  $uninstallLog=Join-Path $testRoot 'uninstall-running-config.log'
+  $blocked=Start-Process -FilePath (Get-Uninstaller) -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/LOG="'+$uninstallLog+'"')) -WindowStyle Hidden -Wait -PassThru
+  Assert ($blocked.ExitCode -ne 0) 'uninstall cancels safely while Config is in the tray'
+  Assert (Test-Path -LiteralPath $registry) 'cancelled uninstall retains registration'
+  $message=Get-Content -LiteralPath $uninstallLog -Raw
+  Assert ($message -match 'VideoProcessor Config' -and $message -match 'only hides it' -and $message -match 'select Exit' -and $message -match 'Click Retry' -and $message -match 'Cancel') 'uninstall names Config and explains tray Exit, Retry and Cancel'
+  foreach($relative in $before.Keys){
+   Assert ((Get-FileHash -LiteralPath (Join-Path $target $relative)).Hash -eq $before[$relative]) "cancelled uninstall preserves $relative"
+  }
+ } finally {
+  if(-not $configProcess.HasExited){Stop-Process -Id $configProcess.Id;$configProcess.WaitForExit()}
+ }
+}
 # Corrupt owned files to prove equal-version reinstall replaces actual bytes.
 [IO.File]::WriteAllText((Join-Path $target 'VideoProcessor.exe'),'stale managed payload')
 [IO.File]::WriteAllText((Join-Path $target 'vprenderer\VideoProcessorVPRenderer.dll'),'stale renderer')
+if($current.PSObject.Properties['runtimeMode'] -and $current.runtimeMode -eq 'app-local'){
+ [IO.File]::WriteAllText((Join-Path $target 'config\msvcp140.dll'),'corrupt CRT')
+ Remove-Item -LiteralPath (Join-Path $target 'vcruntime140.dll') -Force
+ [IO.File]::WriteAllText((Join-Path $target 'INSTALL-MANIFEST.json'),'broken manifest')
+ [IO.File]::WriteAllText((Join-Path $target 'config\obsolete-private.dll'),'unrecognized old binary')
+}
 RunSetup 'reinstall-remembered-path' $false
+if($current.PSObject.Properties['runtimeMode'] -and $current.runtimeMode -eq 'app-local'){
+ $saved=@(Get-ChildItem -LiteralPath (Join-Path $target 'recovered-files') -Recurse -File | Where-Object Name -eq 'obsolete-private.dll')
+ Assert ($saved.Count -eq 1 -and [IO.File]::ReadAllText($saved[0].FullName) -eq 'unrecognized old binary') 'repair preserves unknown DLL outside active load path'
+ Assert (-not (Test-Path -LiteralPath (Join-Path $target 'config\obsolete-private.dll'))) 'repair removes obsolete DLL from load path'
+ Remove-Item -LiteralPath (Join-Path $target 'INSTALL-MANIFEST.json') -Force
+ RunSetup 'missing-manifest' $false
+ # Exercise a damaged native uninstall log; Inno may choose a new numbered pair.
+ [IO.File]::WriteAllText([IO.Path]::ChangeExtension((Get-Uninstaller),'.dat'),'damaged uninstall history')
+ RunSetup 'damaged-uninstall-data' $false
+}
 foreach($relative in $before.Keys){
  Assert ((Get-FileHash -LiteralPath (Join-Path $target $relative)).Hash -eq $before[$relative]) "actual reinstall preserves $relative"
 }
@@ -114,12 +184,14 @@ if ($PreviousInstallerPath) {
  }
  $script:ActiveInstaller=$InstallerPath
  $script:ExpectedManifest=Join-Path $PayloadRoot 'INSTALL-MANIFEST.json'
+ RunSetup 'upgrade-after-rollback' $false
 }
-$uninstaller=Join-Path $target 'unins000.exe'
+$uninstaller=Get-Uninstaller
 $process=Start-Process -FilePath $uninstaller -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/LOG="'+(Join-Path $testRoot 'uninstall.log')+'"')) -WindowStyle Hidden -Wait -PassThru
 Assert ($process.ExitCode -eq 0) 'actual uninstall exit zero'
 Assert (-not (Test-Path $registry)) 'actual uninstall removes registration'
 Assert (-not (Test-Path -LiteralPath (Join-Path $target 'VideoProcessor.exe'))) 'actual uninstall removes managed host'
+Assert (-not (Test-Path -LiteralPath (Join-Path $target 'Uninstall VideoProcessor.lnk'))) 'actual uninstall removes its friendly shortcut'
 foreach($relative in $before.Keys){
  Assert ((Get-FileHash -LiteralPath (Join-Path $target $relative)).Hash -eq $before[$relative]) "actual uninstall preserves $relative"
 }
@@ -127,6 +199,17 @@ RunSetup 'reinstall-preserved-directory' $true
 foreach($relative in $before.Keys){
  Assert ((Get-FileHash -LiteralPath (Join-Path $target $relative)).Hash -eq $before[$relative]) "reinstall after uninstall preserves $relative"
 }
+# Only delete this disposable test folder. Retain all test operator data outside it.
+$safeTarget=[IO.Path]::GetFullPath($target)
+$safeTestRoot=[IO.Path]::GetFullPath($testRoot)
+if(-not $safeTestRoot.StartsWith([IO.Path]::GetFullPath((Join-Path $root 'artifacts'))+'\',[StringComparison]::OrdinalIgnoreCase) -or
+   -not $safeTarget.StartsWith($safeTestRoot+'\',[StringComparison]::OrdinalIgnoreCase)){throw 'Unsafe deletion fixture'}
+Copy-Item -LiteralPath $target -Destination (Join-Path $testRoot 'before-manual-deletion') -Recurse
+Remove-Item -LiteralPath $safeTarget -Recurse -Force
+Assert (Test-Path -LiteralPath $registry) 'manual folder deletion leaves remembered registration'
+RunSetup 'repair-manually-deleted-folder' $false
+Assert (Test-Path -LiteralPath (Join-Path $target 'VideoProcessor.cfg')) 'repair seeds configuration when no file survives'
+$uninstaller=Get-Uninstaller
 $process=Start-Process -FilePath $uninstaller -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -WindowStyle Hidden -Wait -PassThru
 Assert ($process.ExitCode -eq 0 -and -not (Test-Path $registry)) 'test installation registration cleaned up'
 Write-Host "$checks actual-installer checks passed. Logs and retained data: $testRoot"

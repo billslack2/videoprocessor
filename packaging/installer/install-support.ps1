@@ -79,20 +79,29 @@ function Get-VpPlan($Manifest) {
         foreach ($entry in $Manifest.cleanupFiles) { $cleanup[$entry.path.Replace('/', '\')] = $entry.sha256 }
     }
     $previous = @{}
+    $recovered = @{}
     $installed = Get-VpSafePath $InstallRoot 'INSTALL-MANIFEST.json'
+    $oldManifest = $null
     if (Test-Path -LiteralPath $installed) {
-        foreach ($entry in (Read-VpInstallManifest $installed).files) {
+        try { $oldManifest = Read-VpInstallManifest $installed }
+        catch { Write-Verbose 'Damaged install inventory will be backed up and replaced; operator files are not inferred from it.' }
+    }
+    if ($oldManifest) {
+        foreach ($entry in $oldManifest.files) {
             $relative = $entry.path.Replace('/', '\')
             if ($entry.policy -eq 'managed' -or $cleanup.ContainsKey($relative)) { $previous[$relative] = $entry.sha256 }
         }
     } else {
         # ZIP adoption: an explicit release inventory establishes ownership, never a DLL glob.
         $legacy = Get-VpSafePath $InstallRoot 'RELEASE-MANIFEST.json'
+        $inventory = $null
         if (Test-Path -LiteralPath $legacy) {
-            $inventory = Get-Content -LiteralPath $legacy -Raw | ConvertFrom-Json
-            if ($inventory.schemaVersion -ne 1 -or $inventory.layoutVersion -ne 'VP-0107') {
-                throw 'Unrecognized ZIP release inventory. Resolve its ownership before retrying.'
-            }
+            try {
+                $inventory = Get-Content -LiteralPath $legacy -Raw | ConvertFrom-Json
+                if ($inventory.schemaVersion -ne 1 -or $inventory.layoutVersion -ne 'VP-0107') { $inventory = $null }
+            } catch { $inventory = $null }
+        }
+        if ($inventory) {
             # This generated inventory itself is retired after adoption. Textual
             # ZIP extras have no historical hashes: delete only known package bytes.
             if ($cleanup.ContainsKey('RELEASE-MANIFEST.json')) {
@@ -145,9 +154,9 @@ function Get-VpPlan($Manifest) {
         if ((Test-Path -LiteralPath $file -PathType Leaf) -and
             (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash -ne $previous[$relative]) {
             # A modified setup-only document/example belongs to the operator now.
-            # A modified obsolete binary still blocks, because it can shadow DLLs.
+            # Preserve modified obsolete binaries outside DLL search paths.
             if ($cleanup.ContainsKey($relative) -and $relative -notmatch '\.(dll|exe)$') { continue }
-            throw "Previously managed file has been modified: $relative. Preserve it outside this folder before retrying."
+            $recovered[$relative] = (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash
         }
         $relative
     })
@@ -162,11 +171,12 @@ function Get-VpPlan($Manifest) {
             $relative = $dll.FullName.Substring($InstallRoot.TrimEnd('\').Length + 1)
             $null = Get-VpSafePath $InstallRoot $relative
             if (-not $current.ContainsKey($relative) -and -not $previous.ContainsKey($relative)) {
-                throw "Unowned private DLL conflict: $relative. Back it up outside this installation, then retry. No files were replaced."
+                $recovered[$relative] = (Get-FileHash -LiteralPath $dll.FullName -Algorithm SHA256).Hash
+                $obsolete += $relative
             }
         }
     }
-    return [pscustomobject]@{ current=$current; obsolete=$obsolete }
+    return [pscustomobject]@{ current=$current; obsolete=$obsolete; recovered=$recovered }
 }
 function Write-VpJsonAtomic($Value, [string]$File) {
     $temporary = $File + '.' + [guid]::NewGuid().ToString('N') + '.tmp'
@@ -315,6 +325,15 @@ function Invoke-VpInstallAction {
         $journal = [ordered]@{ schemaVersion=1; installRoot=$InstallRoot; status='pending'; build=$manifest.build; files=$entries }
         Write-VpJsonAtomic $journal (Join-Path $backup 'transaction.json')
         try {
+            foreach ($relative in $plan.recovered.Keys) {
+                # Quarantine conflicting binaries inside this installation, away
+                # from DLL search paths. Never discard an unowned/edited file.
+                $savedRelative = 'recovered-files/' + (Split-Path -Leaf $backup) + '/' + $relative
+                $saved = Get-VpSafePath $InstallRoot $savedRelative
+                $null = New-Item -ItemType Directory -Path (Split-Path -Parent $saved) -Force
+                Copy-Item -LiteralPath (Get-VpSafePath $InstallRoot $relative) -Destination $saved
+                if ((Get-FileHash -LiteralPath $saved -Algorithm SHA256).Hash -ne $plan.recovered[$relative]) { throw "Recovery copy failed: $relative" }
+            }
             foreach ($relative in $plan.obsolete) {
                 $file = Get-VpSafePath $InstallRoot $relative
                 if (Test-Path -LiteralPath $file -PathType Leaf) { Remove-Item -LiteralPath $file -Force }
