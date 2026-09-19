@@ -2,25 +2,25 @@
 
 ## Status
 
-In Progress
+Review
 
-Self-contained runtime/repair and uninstall UX follow-up is in progress. The user superseded the central-runtime requirement: bundle private CRT/MFC DLLs, never install a shared runtime, never create a desktop icon, and repair deleted/corrupted/old installations at their remembered path while preserving surviving operator data. Earlier evidence below is historical.
+Self-contained runtime, repair, cleanup, branding and uninstall UX are ready for
+review in [draft PR #99](https://github.com/billslack2/videoprocessor/pull/99).
+Source commit: 4ed2980a8368a96ae3ef931e6a2f5fbecb0895ff, pushed on
+codex/vp-0192-windows-installer. Integration base/default verified as
+v1.3.005-beta at 73c850041d284e3e37c959a8956d896b79106aa1.
+Worktree: E:\codex\videoprocessor\vp-0192-windows-installer.
 
-Implementation and requested cleanup/branding follow-ups are ready for review in
-[draft PR #99](https://github.com/billslack2/videoprocessor/pull/99), source commit
-b6a351c83ce499c0acf12df4eaf38f928f7b6c32 on codex/vp-0192-windows-installer.
-Integration base/default was verified as v1.3.005-beta at
-73c850041d284e3e37c959a8956d896b79106aa1.
-Source worktree: E:\codex\videoprocessor\vp-0192-windows-installer.
+The user's revised requirement supersedes central-runtime installation:
+private CRT/MFC DLLs, no system-wide runtime setup, no desktop icon, and repair
+of deleted/corrupt/old installs while preserving surviving config/state.
+The final production installer updated the authorized C:\vptest installation
+at its remembered path; all managed hashes and nine preserved files verified.
+C:\Videoprocessor\vp was not modified.
 
-Selectable/remembered location, ZIP adoption, config/state preservation, lean
-installed payload, temporary recovery cleanup, VP icon and versioned clean/dirty
-installer names are implemented. With explicit approval, the production installer
-updated C:\vptest and its configuration was verified unchanged.
-The active C:\Videoprocessor\vp installation was not modified.
-
-Clean-Windows and interactive acceptance cases below remain open. The story is
-not complete, the PR remains draft, and no public release has been published.
+Clean-Windows and interactive qualification remain open. This is ready for
+review, not complete or publicly released. Earlier prototype evidence below
+is historical; the final self-contained evidence is at the end.
 
 ## User story
 
@@ -164,7 +164,7 @@ commit/PR, and documented release generation; scripting alone is insufficient.
 - [Inno Setup upgrade guidance](https://jrsoftware.org/isfaq.php)
 - [GitHub Releases](https://docs.github.com/en/repositories/releasing-projects-on-github/about-releases)
 
-## Implementation decisions and evidence (2026-09-19)
+## Initial central-runtime prototype evidence (superseded, 2026-09-19)
 
 - Compiler: verified official Inno Setup 6.7.3. License, redistribution obligations
   and the unsigned-distribution limitation are documented in
@@ -247,7 +247,7 @@ duplicate IDs or orphan index rows. Historical noncanonical Status formatting
 elsewhere (including VP-0176 lacking the standard heading) was left unchanged.
 Only VP-0192 and its index row changed state in this work.
 
-## Cleanup and installer identity follow-up (2026-09-19)
+## Earlier cleanup and installer identity evidence (2026-09-19)
 
 Implemented in source commit b6a351c83ce499c0acf12df4eaf38f928f7b6c32,
 including cleanup commit 42ab23d3dbcf8ae20fb429558bf3794cd1f1cb59 and branding
@@ -322,3 +322,75 @@ Artifact root: E:\codex\videoprocessor\vp-0192-windows-installer\artifacts
 The earlier remaining acceptance/unsigned-release limitations still apply.
 These changes are ready for review, not a public release. No GitHub Release
 was published. Historical tracker Status-format anomalies were left unchanged.
+
+
+## Final self-contained runtime, repair and uninstall follow-up (2026-09-19)
+
+- Source commits 0ba2d0fa and 4ed2980a; final clean source/build:
+  4ed2980a8368a96ae3ef931e6a2f5fbecb0895ff.
+- Seventy installed payload files include fourteen private Microsoft runtime
+  DLL copies in host/config/renderer folders. CRT version 14.51.36247.0 meets
+  minimum 14.44.35211.0; MFC 14.29.30139.0 meets its consumers' v142 toolset
+  floor 14.29.30133. Architecture, Microsoft signatures, dependency closure
+  and copy hashes are checked from licensed Visual Studio Release redist files.
+- Setup and its optional portable ZIP contain no central-runtime installer.
+  The older packager's signed EXE input is build-time validation only.
+  No desktop task/icon exists. Start menu shortcuts and the per-user uninstall/
+  remembered-location registration remain outside the chosen folder.
+- Missing/corrupted managed DLLs and manifests are repaired. Unknown private
+  DLLs and changed obsolete binaries are copied to recovered-files before
+  clearing their original load paths. Manual deletion leaves registration;
+  rerunning setup recreates the remembered directory. Deleted operator files
+  cannot be recovered automatically; surviving configuration/state are preserved.
+- Uninstall VideoProcessor.lnk is the friendly root/Start menu entry. The
+  required Inno numbered EXE/DAT names remain internal and hidden, preserving
+  native upgrade history. DAT is required bookkeeping and must not be renamed.
+  Running-app messages identify VP/Config and explain Config tray Exit and
+  Retry/Cancel. Silent refusal preserves registration/data.
+- Clean x64 Release rebuild succeeded: 0 errors, 47 preexisting warnings.
+  Inno Setup 6.7.3 compilation and self-contained portable ZIP generation passed.
+- 49 helper preservation/recovery checks, 11 build-identity checks and three
+  runtime rejection checks (missing source, old CRT, System32 source) passed.
+- 278 real-installer checks passed with isolated QA registration/shortcuts:
+  A/B/reinstall/rollback, remembered custom path, exact managed hashes, single
+  registration, Config refusal, corrupted/missing runtime files and manifests,
+  damaged uninstall DAT, unknown-DLL recovery, no desktop changes, uninstall/
+  reinstall, and full manual folder deletion followed by repair.
+  Config loaded all six observed VC++/MFC modules from its own config directory.
+  Running-Config uninstall logged explicit tray Exit/Retry/Cancel instructions.
+- The final rebuilt payload passed four real ZIP-adoption scenarios: legacy and
+  app-local layouts, each with pristine extras and edited/user-added extras.
+  Config/state/profile/assets/log hashes survived; obsolete DLLs were retired.
+  A real injected payload-hash failure returned nonzero, restored the prior
+  application, retained config/state, and created no QA registration.
+- Final production installer upgraded C:\vptest from b6a351c83ce4 to 4ed2980a8368
+  without /DIR. Every managed hash matched, and config, seven shaders and a log
+  were byte-identical (nine files). No state file existed in C:\vptest; state
+  preservation was exercised in lifecycle and ZIP fixtures. System-runtime
+  registration remained unchanged. Unnecessary prerequisite/setup/backup folders
+  were absent. Friendly shortcut and hidden native support files verified.
+- All five exact VP icon images matched in setup and installed uninstaller.
+  Source branch is pushed/clean. PR #99 remains draft. No release was published.
+
+### Final artifacts
+
+Root: E:\codex\videoprocessor\vp-0192-windows-installer\artifacts
+
+- installers/VideoProcessorSetup-1.3.005-beta.exe
+- SHA-256: 30D7D8D74CFD7F014601141C2A1B9EC2D00218CBE7314B8DF0D1F696DD22CBEE
+- installers/VideoProcessor-1.3.005-beta-4ed2980a8368-x64-Portable.zip
+- Matching checksum sidecars; installer-build.json records clean Release/x64.
+- selfcontained-final-build.log, selfcontained-support.log,
+  selfcontained-identity.log, selfcontained-runtime-negative.log
+- selfcontained-e2e.log; installer-e2e-8253e85d824a41d69693bd58f20af301/
+- selfcontained-legacy-zip.log, selfcontained-local-zip.log,
+  selfcontained-final-failure.log, selfcontained-icon.log
+- registered-selfcontained-before.json, registered-selfcontained-setup.log,
+  registered-selfcontained-result.log, registered-selfcontained-ux.log
+
+Still needed before full acceptance: supported clean Windows without Visual
+Studio and with missing/old global runtimes; Config edit/Apply/OK/reopen and
+unsaved-editor interaction; player/capture startup; forced interruption of a
+real installer; public download/publisher-signing qualification. The artifact
+is unsigned. Central-runtime elevation/reboot cases are superseded by the
+user's explicit app-local requirement.

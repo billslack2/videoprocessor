@@ -247,7 +247,7 @@ they must not contain requirements that are absent from this file.
 | VP-0190 | Backlog | Preserve active-picture authority through NLS-only profile changes |
 | VP-0191 | Done | Prevent incompatible saved queue profiles during refresh transitions |
 
-| VP-0192 | In Progress | Windows installer with runtime setup and unrestricted build upgrades |
+| VP-0192 | Review | Windows installer with runtime setup and unrestricted build upgrades |
 
 ## Codex story workflow
 
