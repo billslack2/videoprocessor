@@ -2,13 +2,15 @@
 
 ## Status
 
-Review
+Done
 
 Implemented and pushed on 2026-09-19 after the developer confirmed
 `v1.3.005-beta` as the integration base. Source commit:
 `765eb5b3043b91760927a234e4640a3ed9c1f3d5` on
 `codex/vp-0191-queue-profile-compat`, based on remote beta tip
 `8414b11633d3ab8cc06fa3964c273c81b76f05bc`.
+
+Merged through [PR #96](https://github.com/billslack2/videoprocessor/pull/96) as `088b42cf103453b26f93fd203f8232a4cccc4837` into `v1.3.005-beta`. The deployed x64 Release runtime pair was live-validated and accepted.
 
 The repair adds an explicit invalid-source-context defer to the shared unified
 profile runtime. Source-driven refresh and rule reapply retain the committed
@@ -26,10 +28,7 @@ Validation completed:
 - Full x64 Release solution build passed.
 - Deployed the matched x64 Release host/renderer pair on 2026-09-19. Backups: `C:\Videoprocessor\vp\VideoProcessor.exe.before-VP-0191-20260919-103056.bak` and `C:\Videoprocessor\vp\vprenderer\VideoProcessorVPRenderer.dll.before-VP-0191-20260919-103056.bak`; no configuration or state file changed.
 
-Remaining review/acceptance: confirm on live HDMI that
-a 60-to-24 Hz transition logs one invalid-source defer, shows no `Madvr Queue`
-profile OSD, retains the prior compatible queue during resync, and then reports
-only `vp_24` after valid 23.976 input returns.
+Acceptance completed: live HDMI refresh-transition validation was accepted. A 60-to-23.976 Hz change produced no `Madvr Queue` profile OSD and resolved to `vp_24` after valid input returned.
 
 ## Readiness review
 
@@ -123,5 +122,4 @@ existing saved/manual queue selection path.
 
 ## Next action
 
-Review the source change and perform the recorded live HDMI refresh-transition
-validation. If accepted, merge it to the current beta branch before deployment.
+Completed: merged to the current beta branch, deployed the matched Release runtime pair, and accepted the live HDMI refresh-transition validation.

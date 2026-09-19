@@ -245,7 +245,7 @@ they must not contain requirements that are absent from this file.
 | VP-0188 | Review | Preserve configuration scope and avoid source-event disk reloads |
 | VP-0189 | Review | Stabilize automatic crop and diagnose dark-scene transitions ([merged #94](https://github.com/billslack2/videoprocessor/pull/94), [follow-up #95](https://github.com/billslack2/videoprocessor/pull/95); Review retained) |
 | VP-0190 | Backlog | Preserve active-picture authority through NLS-only profile changes |
-| VP-0191 | Review | Prevent incompatible saved queue profiles during refresh transitions |
+| VP-0191 | Done | Prevent incompatible saved queue profiles during refresh transitions |
 
 ## Codex story workflow
 
