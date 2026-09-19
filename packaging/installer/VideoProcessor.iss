@@ -1,4 +1,7 @@
-﻿; Identity and payload include are supplied by tools/build_installer.ps1.
+﻿#if Ver != EncodeVer(6, 7, 3)
+  #error Use the qualified Inno Setup 6.7.3 compiler.
+#endif
+; Identity and payload include are supplied by tools/build_installer.ps1.
 #ifndef PayloadRoot
   #error Build this installer with tools/build_installer.ps1.
 #endif

@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [Parameter(Mandatory=$true)][ValidatePattern('^\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?$')][string]$CoreVersion,
     [Parameter(Mandatory=$true)][string]$VcRedistPath,
@@ -15,8 +15,6 @@ try {
     if (@(& git status --porcelain --untracked-files=normal).Count) { throw 'Commit source changes before packaging an identifiable release.' }
     $shortCommit = $commit.Substring(0,12)
     $IsccPath = (Resolve-Path -LiteralPath $IsccPath).Path
-    $compiler = [Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path (Split-Path -Parent $IsccPath) 'ISCmplr.dll'))
-    if ($compiler.FileVersion -notmatch '^6\.7\.3(?:\.|$)') { throw 'Use the qualified Inno Setup 6.7.3 compiler.' }
     $artifactRoot = Join-Path $root 'artifacts'
     $null = New-Item -ItemType Directory -Path $artifactRoot -Force
     $receiptPath = Join-Path $artifactRoot 'installer-build.json'
