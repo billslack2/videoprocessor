@@ -4,7 +4,7 @@
 
 In Progress
 
-Uninstall UX follow-up: add a clearly named uninstall entry point, hide required engine support files, and explain background Config with Retry/Cancel. Existing reviewed implementation follows.
+Self-contained runtime/repair and uninstall UX follow-up is in progress. The user superseded the central-runtime requirement: bundle private CRT/MFC DLLs, never install a shared runtime, never create a desktop icon, and repair deleted/corrupted/old installations at their remembered path while preserving surviving operator data. Earlier evidence below is historical.
 
 Implementation and requested cleanup/branding follow-ups are ready for review in
 [draft PR #99](https://github.com/billslack2/videoprocessor/pull/99), source commit
@@ -36,9 +36,9 @@ The runtime packaging fix is merged in
 [PR #98](https://github.com/billslack2/videoprocessor/pull/98)
 (merge 73c850041d284e3e37c959a8956d896b79106aa1). The ZIP now includes a
 validated redistributable, runtime requirement metadata, and a setup helper.
-This story builds on that packaging contract and removes the separate helper
-step for installer users. The earlier work did not validate real prerequisite
-installation on a clean machine; this story must do so.
+This story reuses its toolset/signature/hash checks, but the user now requires
+app-local DLL deployment instead of a system-wide prerequisite. Qualification
+must establish local runtime loading on a clean machine.
 
 At implementation start, discover the current remote beta integration branch
 in billslack2/videoprocessor and use its current tip in a clean source worktree
@@ -54,10 +54,10 @@ Do not treat the historical merge above as the implementation baseline.
   documentation, and installer tests. No player, Config GUI, or renderer
   application-code changes are planned. Record any discovered need to expand
   that boundary before changing application behavior.
-- Bundle and invoke the official Microsoft x64 VC++ redistributable only when
-  required. Reuse the existing toolset-derived minimum, signature/hash checks,
-  and runtime readiness verification. Do not ask users to run SETUP-RUNTIME.cmd
-  before using the installer. Offline prerequisite installation must work.
+- Bundle Microsoft-signed x64 Release CRT/MFC DLLs beside each consumer, using
+  official Visual Studio redistributable files and toolset-derived floors.
+  Never run a system-wide runtime installer. Setup and its portable export
+  must work offline without a separate runtime setup step.
 - Use one stable installation identity across normal and test builds. Discover
   the previous installation directory; support an explicitly selected existing
   ZIP installation, including the current C:\Videoprocessor\vp layout.
@@ -80,11 +80,12 @@ Do not treat the historical merge above as the implementation baseline.
   elevated. Do not assume Program Files is suitable without validation.
 - Detect VP and Config GUI/tray processes before replacing files. Provide a
   clear close/retry/cancel flow; do not silently discard unsaved editor work.
-  Handle elevation denial, prerequisite failure, restart requirements, and
-  interrupted installation with clear outcomes and recovery instructions.
+  Handle interrupted/failed application installation with clear outcomes and
+  recovery instructions. Private runtime deployment needs no elevation or reboot.
   Do not report success or launch VP before its dependencies/files are ready.
-- Provide appropriate launch shortcuts and one uninstall entry. Uninstall must
-  preserve operator data and must not uninstall the shared Microsoft runtime.
+- Provide Start menu shortcuts, a friendly local uninstall shortcut and one
+  uninstall entry. Never create a desktop shortcut. Uninstall preserves operator
+  data and removes private runtime DLLs without touching system runtimes.
   Define and test a recoverable application-file backup/restore procedure.
 - Generate the installer through the repeatable release packaging process,
   alongside the optional portable ZIP. Document prerequisites, tool versions,
@@ -109,11 +110,10 @@ Do not treat the historical merge above as the implementation baseline.
 
 ## Acceptance criteria
 
-1. On a clean supported x64 Windows test environment with no adequate VC++
-   runtime, the single installer installs the bundled prerequisite and VP;
-   Config GUI Apply and OK persist settings without the reported mutex crash.
-   Repeat with an old 14.29 runtime and with an already sufficient runtime.
-   The sufficient-runtime case performs no unnecessary runtime installation.
+1. On clean supported x64 Windows with missing, old 14.29 and sufficient global
+   VC++ runtimes, install offline without elevation or system runtime changes.
+   Verify VP/Config use private runtime DLLs, and Config Apply/OK/reopen persist
+   settings without the reported mutex crash.
 2. Fresh installation launches VP and Config GUI successfully, and normal
    configuration saves/log writes work without application elevation.
 3. Install build A, then distinct build B with the same core version; reinstall
@@ -124,22 +124,23 @@ Do not treat the historical merge above as the implementation baseline.
    user configuration/comments, custom assets, and an obsolete managed DLL.
    Preserve operator files, safely remove the obsolete owned file, and leave
    no stale DLL capable of recreating the runtime mismatch. Do not silently
-   delete unknown private DLLs; resolve or clearly report conflicts.
+   delete unknown private DLLs; preserve them in a recovery folder outside load paths.
 5. Exercise running VP, a background Config GUI, and unsaved editor changes.
    Cancellation leaves the previous installation usable; consented shutdown
    permits replacement without losing configuration.
-6. Exercise denied elevation, prerequisite failure/cancellation, installer
-   interruption, and reboot-required outcomes. Verify truthful status and a
-   documented recovery path without leaving an apparently successful mixed
-   installation. Validate the actual installer, not only mocked helper calls.
+6. Repair missing/corrupt app/runtime files and install metadata, including a
+   manually deleted folder with retained registration. Reuse its path and
+   preserve surviving config/state. Exercise installer interruption/hash failure
+   with truthful status and recovery. Validate actual installers, not only mocks.
 7. Uninstall removes owned application files, shortcuts, and registration,
-   while preserving user data and the shared VC++ runtime. Reinstallation into
+   including private VC runtime DLLs, while preserving user data. Reinstallation into
    the preserved directory retains usable settings.
 8. From a clean checkout of the selected integration commit, the documented
    Release packaging command generates a version/build-labelled installer
    and checksum suitable for GitHub upload. Verify installed payload hashes
    against that build and record exact test environments and results.
-9. A user can download the next installer from GitHub and run it to replace
+9. No install, upgrade or repair creates a desktop shortcut.
+10. A user can download the next installer from GitHub and run it to replace
    the previous build without any application-side updater or paid service.
 
 ## Implementation readiness and validation record
@@ -234,8 +235,8 @@ E:\codex\videoprocessor\vp-0192-windows-installer\artifacts
 ### Remaining acceptance and release decision
 
 Keep the PR in draft until review/qualification is resolved. Still required:
-clean supported Windows without Visual Studio, missing-runtime and old-14.29
-offline installations, actual denied elevation/prerequisite failure/reboot cases,
+clean supported Windows without Visual Studio, app-local loading with missing
+and old global runtimes,
 Config edit/Apply/OK/reopen persistence, unsaved-editor interaction, and forced
 interruption of a real installer (helper-journal interruption has passed).
 Player/capture hardware startup and public GitHub download qualification have not
