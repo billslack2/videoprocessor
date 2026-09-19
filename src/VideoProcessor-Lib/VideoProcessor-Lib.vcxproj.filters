@@ -153,6 +153,9 @@
     <ClInclude Include="ApplicationInterface.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="WindowResizeLayout.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="ModernOperatorLayout.h">
       <Filter>Header Files</Filter>
     </ClInclude>

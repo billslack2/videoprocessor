@@ -1237,10 +1237,15 @@ namespace AlphaSourceCrop
 			state.rasterWidth = input.frameWidth;
 			state.rasterHeight = input.frameHeight;
 		}
+		auto withdraw = [&state]()
+		{
+			state.available = false;
+			state.reaffirmationSamples = 0;
+		};
 		if (!input.analysisValid || input.sourceGeneration == 0 ||
 			input.sourceSequence == 0 || input.frameWidth <= 0 || input.frameHeight <= 0)
 		{
-			state.available = false;
+			withdraw();
 			state.lastEvaluatedSequence = std::max(state.lastEvaluatedSequence, input.sourceSequence);
 			return state;
 		}
@@ -1251,51 +1256,100 @@ namespace AlphaSourceCrop
 				bounds.rasterWidth == input.frameWidth && bounds.rasterHeight == input.frameHeight &&
 				bounds.trustedBarAxes == ActivePictureBounds::BarAxes::NONE;
 		};
-		// Inspect the RAW result: darkness suppression later changes trusted
-		// bars into provisional observations. That must not hide contradiction.
-		// Contradiction may revoke even on a duplicate; duplicates never re-arm.
+		// Raw contradictions may withdraw even on a duplicate. Suppression of
+		// dark crop acquisition must not disguise genuine opposing-bar evidence.
 		if (input.measurementCurrent && input.rawClassification ==
 			ActivePictureClassification::BAR_CROP_TRUSTED)
 		{
-			state.available = false;
+			withdraw();
 			state.lastEvaluatedSequence = std::max(state.lastEvaluatedSequence, input.sourceSequence);
 			return state;
 		}
 		const bool currentFullEvidence = input.measurementCurrent &&
 			input.rawClassification == ActivePictureClassification::FULL_RASTER_TRUSTED &&
 			exactFullRaster(input.rawBounds);
-		if (input.sceneBoundary && !(state.available && currentFullEvidence))
-			state.available = false;
+		const bool committedContextMatches = input.committedFullAvailable &&
+			input.committedSourceGeneration == input.sourceGeneration &&
+			input.committedPresentationEpoch == input.presentationEpoch &&
+			input.committedSourceSequence != 0 &&
+			input.committedSourceSequence <= input.sourceSequence &&
+			exactFullRaster(input.committedBounds);
+		const bool freshCommittedFull = currentFullEvidence && committedContextMatches &&
+			input.committedSourceSequence == input.sourceSequence &&
+			input.committedSourceSequence > state.lastCommittedSequence;
+		// A cut remains evidence when notification cooldown suppresses the scene
+		// event. Never let that debounce preserve a full-frame lease into an
+		// unclassified dark scene, or accumulate recovery proof while it persists.
+		if (input.independentCutEvidence)
+		{
+			withdraw();
+			// A genuine new full-frame publication is still recorded, but it must
+			// be freshly reaffirmed after the pending cut evidence has cleared.
+			if (!input.cadenceRepeat && input.sourceSequence > state.lastEvaluatedSequence && freshCommittedFull)
+				state.lastCommittedSequence = input.committedSourceSequence;
+			state.lastEvaluatedSequence = std::max(state.lastEvaluatedSequence, input.sourceSequence);
+			return state;
+		}
+		if (input.sceneBoundary)
+		{
+			state.reaffirmationSamples = 0;
+			if (!(state.available && currentFullEvidence))
+				state.available = false;
+		}
 		if (input.sourceSequence < state.lastEvaluatedSequence)
 		{
-			state.available = false;
+			withdraw();
 			return state;
 		}
 		if (input.sourceSequence == state.lastEvaluatedSequence)
-			return state;
+			return state; // Neither repeats nor cached measurements build proof.
 		if (input.cadenceRepeat)
 		{
-			// Repeats may reuse an existing same-sequence decision only. A new
-			// sequence marked as repeated does not provide a fresh commit event.
-			state.available = false;
+			withdraw();
 			state.lastEvaluatedSequence = input.sourceSequence;
 			return state;
 		}
 		state.lastEvaluatedSequence = input.sourceSequence;
-		const bool freshCommittedFull = currentFullEvidence &&
-			input.committedFullAvailable && input.committedSourceGeneration == input.sourceGeneration &&
-			input.committedPresentationEpoch == input.presentationEpoch &&
-			input.committedSourceSequence == input.sourceSequence &&
-			input.committedSourceSequence > state.lastCommittedSequence &&
-			exactFullRaster(input.committedBounds);
 		if (freshCommittedFull)
 		{
 			state.available = true;
 			state.lastCommittedSequence = input.committedSourceSequence;
+			state.reaffirmationSamples = 0;
+		}
+		else if (!state.available)
+		{
+			// Stable matching geometry deliberately does not publish again. Two
+			// fresh, non-dark affirmative observations can instead revalidate its
+			// real prior commitment, using the normal transition confirmation count.
+			const bool reaffirmed = !input.sceneBoundary && currentFullEvidence &&
+				input.nearBlackEvaluated && !input.globalNearBlack && committedContextMatches &&
+				state.lastCommittedSequence != 0 &&
+				input.committedSourceSequence == state.lastCommittedSequence;
+			if (reaffirmed)
+			{
+				if (state.reaffirmationSamples < ActivePictureTransitionModel::CLEAR_TRANSITION_CONFIRMATIONS)
+					++state.reaffirmationSamples;
+				state.available = state.reaffirmationSamples >=
+					ActivePictureTransitionModel::CLEAR_TRANSITION_CONFIRMATIONS;
+			}
+			else if (input.measurementCurrent || !committedContextMatches)
+				state.reaffirmationSamples = 0;
 		}
 		return state;
 	}
 
+
+	KnownFullRasterRetentionState UpdateKnownFullRasterRetentionForScene(
+		KnownFullRasterRetentionInput& input, const SceneDetectorResult& scene,
+		bool retainFullRasterAtDarknessBoundary)
+	{
+		input.sceneBoundary = !input.cadenceRepeat && scene.safeBoundary &&
+			!retainFullRasterAtDarknessBoundary;
+		input.independentCutEvidence = !input.cadenceRepeat &&
+			scene.sourceSequence == input.sourceSequence &&
+			(scene.hardCutCandidate || scene.hardCutConfirmed);
+		return UpdateKnownFullRasterRetention(input);
+	}
 
 	bool CanRetainKnownFullRasterAtDarknessBoundary(
 		const KnownFullRasterDarknessBoundaryInput& input)

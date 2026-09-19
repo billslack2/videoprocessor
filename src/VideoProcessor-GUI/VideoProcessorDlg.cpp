@@ -11,6 +11,7 @@
 #include <ApplicationShutdownPolicy.h>
 #include <BuildIdentityPolicy.h>
 #include <ModernOperatorLayout.h>
+#include <WindowResizeLayout.h>
 #include <ModernOperatorStatusPolicy.h>
 
 #include <atlstr.h>
@@ -12788,8 +12789,6 @@ void CVideoProcessorDlg::ScheduleUnifiedProfileActionsForRenderer(
 							"event action debounce claimed: action='%s' role=%s generation=%llu result=serialized-profile-launch",
 							invocation.action.name.c_str(), identity.c_str(),
 							static_cast<unsigned long long>(generation));
-						m_windowPlacementActionGuardUntil.store(
-							::GetTickCount64() + 5000, std::memory_order_release);
 						m_profileActionProcessActive.store(true);
 						EventActionLauncher::Launch(invocation.action, configPath, true,
 							reinterpret_cast<uintptr_t>(m_unifiedActionCancelEvent));
@@ -12802,8 +12801,6 @@ void CVideoProcessorDlg::ScheduleUnifiedProfileActionsForRenderer(
 							"generation=%llu result=launching",
 							invocation.action.name.c_str(), identity.c_str(),
 							static_cast<unsigned long long>(generation));
-						m_windowPlacementActionGuardUntil.store(
-							::GetTickCount64() + 5000, std::memory_order_release);
 						EventActionLauncher::Launch(invocation.action, configPath);
 					}
 					else
@@ -13679,9 +13676,6 @@ void CVideoProcessorDlg::InitializeModernInterface(bool preserveWindowBounds)
 		FatalError(TEXT("Failed to create the Modern operator interface"));
 	ApplyModernLayout();
 	RefreshModernStatus();
-	// Only completed Modern startup bounds may become the restoration baseline.
-	m_windowPlacementBeforeActionValid =
-		GetWindowPlacement(&m_windowPlacementBeforeAction) != FALSE;
 }
 
 void CVideoProcessorDlg::ApplyModernLayout()
@@ -14011,74 +14005,36 @@ void CVideoProcessorDlg::RestoreFrameOffsetEditLayout()
 
 void CVideoProcessorDlg::OnSize(UINT nType, int cx, int cy)
 {
-	// Remote profile and screen actions can briefly activate this window to
-	// deliver a renderer command.  That activation must not replace the
-	// operator's current windowed placement with the Modern startup bounds.
-	if (m_interfaceMode == ApplicationInterface::Mode::Modern &&
-		m_modernOperatorView.GetSafeHwnd() && !m_restoringWindowPlacement &&
-		nType != SIZE_MINIMIZED)
-	{
-		WINDOWPLACEMENT currentPlacement = { sizeof(WINDOWPLACEMENT) };
-		if (GetWindowPlacement(&currentPlacement))
+	WindowResizeLayout::HandleSize(cx, cy, [this](int cx, int cy)
 		{
-			const bool actionGuardActive = ::GetTickCount64() <=
-				m_windowPlacementActionGuardUntil.load(std::memory_order_acquire);
-			const bool placementChanged =
-				!m_windowPlacementBeforeActionValid ||
-				currentPlacement.showCmd != m_windowPlacementBeforeAction.showCmd ||
-				!::EqualRect(&currentPlacement.rcNormalPosition,
-					&m_windowPlacementBeforeAction.rcNormalPosition);
-			if (actionGuardActive && m_windowPlacementBeforeActionValid &&
-				placementChanged)
+			if (m_hideUI)
 			{
-				// SetWindowPlacement can synchronously send WM_SIZE. Let that
-				// nested message lay out the children without re-entering this
-				// restoration guard. Also finish this layout using the actual
-				// restored client size; a same-size restoration may send no WM_SIZE.
-				m_restoringWindowPlacement = true;
-				const BOOL restored = SetWindowPlacement(&m_windowPlacementBeforeAction);
-				m_restoringWindowPlacement = false;
-				CRect restoredClient;
-				GetClientRect(&restoredClient);
-				cx = restoredClient.Width();
-				cy = restoredClient.Height();
-				nType = IsZoomed() ? SIZE_MAXIMIZED : SIZE_RESTORED;
-				DebugLog::Log(
-					"Window placement recovery after remote action: restored=%d client=%dx%d layout=continued",
-					restored ? 1 : 0, cx, cy);
-				GetWindowPlacement(&currentPlacement);
+				if (m_windowedVideoWindow.GetSafeHwnd())
+					m_windowedVideoWindow.MoveWindow(0, 0, cx, cy, TRUE);
 			}
-			m_windowPlacementBeforeAction = currentPlacement;
-			m_windowPlacementBeforeActionValid = true;
-		}
-	}
-
-	if (m_hideUI)
-	{
-		if (m_windowedVideoWindow.GetSafeHwnd())
-			m_windowedVideoWindow.MoveWindow(0, 0, cx, cy, TRUE);
-	}
-	else if (m_interfaceMode == ApplicationInterface::Mode::Modern &&
-		m_modernOperatorView.GetSafeHwnd())
-	{
-		ApplyModernLayout();
-	}
-	else if (m_windowedVideoWindow.GetSafeHwnd() &&
-		m_initialClientSize.cx > 0 && m_initialClientSize.cy > 0)
-	{
-		CRect videoRect = m_initialVideoWindowRect;
-		videoRect.right += std::max<LONG>(
-			0, static_cast<LONG>(cx) - m_initialClientSize.cx);
-		videoRect.bottom += std::max<LONG>(
-			0, static_cast<LONG>(cy) - m_initialClientSize.cy);
-		m_windowedVideoWindow.MoveWindow(&videoRect, TRUE);
-	}
-
-	if (m_videoRenderer &&
-		!RendererResetOperationInProgress())
-		m_videoRenderer->OnSize();
-	m_rendererTransitionWindow.KeepOnTop();
-	m_shaderLoadingWindow.UpdatePosition();
+			else if (m_interfaceMode == ApplicationInterface::Mode::Modern &&
+				m_modernOperatorView.GetSafeHwnd())
+			{
+				ApplyModernLayout();
+			}
+			else if (m_windowedVideoWindow.GetSafeHwnd() &&
+				m_initialClientSize.cx > 0 && m_initialClientSize.cy > 0)
+			{
+				CRect videoRect = m_initialVideoWindowRect;
+				videoRect.right += std::max<LONG>(
+					0, static_cast<LONG>(cx) - m_initialClientSize.cx);
+				videoRect.bottom += std::max<LONG>(
+					0, static_cast<LONG>(cy) - m_initialClientSize.cy);
+				m_windowedVideoWindow.MoveWindow(&videoRect, TRUE);
+			}
+		}, [this]()
+		{
+			if (m_videoRenderer &&
+				!RendererResetOperationInProgress())
+				m_videoRenderer->OnSize();
+			m_rendererTransitionWindow.KeepOnTop();
+			m_shaderLoadingWindow.UpdatePosition();
+		});
 
 	// Some windowed DirectShow renderers finish processing WM_SIZE after this
 	// handler returns.  Restore the fixed UI now and once more after that work

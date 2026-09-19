@@ -153,6 +153,28 @@ namespace
 		return result;
 	}
 
+	std::string CreateRendererDiagnosticInstanceId()
+	{
+		GUID guid{};
+		wchar_t text[40]{};
+		if (SUCCEEDED(CoCreateGuid(&guid)) && StringFromGUID2(guid, text, _countof(text)) > 0)
+		{
+			const auto id = WideToUtf8(text);
+			if (!id.empty()) return id;
+		}
+		// Diagnostics must not prevent rendering if GUID creation fails. Include
+		// wall time, process, high-resolution tick and a per-module sequence so
+		// restarts, module reloads and rapid instance creation remain distinguishable.
+		static std::atomic<uint64_t> fallbackSequence{0};
+		FILETIME now{};
+		GetSystemTimeAsFileTime(&now);
+		std::ostringstream id;
+		id << "fallback-" << GetCurrentProcessId() << '-' << now.dwHighDateTime << '-'
+			<< now.dwLowDateTime << '-' << PerformanceCounterNow() << '-'
+			<< fallbackSequence.fetch_add(1, std::memory_order_relaxed);
+		return id.str();
+	}
+
 	std::wstring CaptureTimestampStem(uint64_t sourceSequence)
 	{
 		SYSTEMTIME time{};
@@ -3872,6 +3894,7 @@ struct LibplaceboVideoRenderer::Impl
 	bool lastCropAdmissionDeferred = false;
 	ActivePicturePresentationRetentionEvidence latestCropRetentionEvidence;
 	AlphaSourceCrop::PresentationRecoveryState cropPresentationRecovery;
+	const std::string diagnosticInstanceId = CreateRendererDiagnosticInstanceId();
 	bool blackLevelTraceConfigured = false;
 	unsigned blackLevelTraceRemaining = 0, blackLevelTraceSnapshot = 0;
 	uint64_t blackLevelTraceNextTick = 0;
@@ -8145,7 +8168,7 @@ struct LibplaceboVideoRenderer::Impl
 			}
 			blackLevelTraceNextTick = now + 5000;
 			if (blackLevelTraceRemaining)
-				DebugLog::Log("Alpha black-level telemetry enabled: snapshots=%u delay_ms=5000 interval_ms=3000 policy_effect=none", blackLevelTraceRemaining);
+				DebugLog::Log("Alpha black-level telemetry enabled: instance=%s snapshots=%u delay_ms=5000 interval_ms=3000 policy_effect=none", diagnosticInstanceId.c_str(), blackLevelTraceRemaining);
 		}
 		if (!blackLevelTraceRemaining || now < blackLevelTraceNextTick || !source.IsValid())
 			return;
@@ -8154,8 +8177,8 @@ struct LibplaceboVideoRenderer::Impl
 		--blackLevelTraceRemaining;
 		++blackLevelTraceSnapshot;
 		blackLevelTraceNextTick = now + 3000;
-		DebugLog::Log("Alpha black-level grid: schema=1 sample=%u generation=%llu frame=%llu size=%dx%d grid=%dx%d format=%s encoding=%d colorspace=%d units=analysis-10bit coordinates=endpoint-linear channels=Y/U/V remaining=%u",
-			blackLevelTraceSnapshot, static_cast<unsigned long long>(source.generation),
+		DebugLog::Log("Alpha black-level grid: schema=1 instance=%s sample=%u generation=%llu frame=%llu size=%dx%d grid=%dx%d format=%s encoding=%d colorspace=%d units=analysis-10bit coordinates=endpoint-linear channels=Y/U/V remaining=%u",
+			diagnosticInstanceId.c_str(), blackLevelTraceSnapshot, static_cast<unsigned long long>(source.generation),
 			static_cast<unsigned long long>(frameNumber), source.width, source.height,
 			grid.columns, grid.rows, AnalysisLumaFormatName(source),
 			static_cast<int>(source.encoding), static_cast<int>(source.colorspace), blackLevelTraceRemaining);
@@ -8169,11 +8192,11 @@ struct LibplaceboVideoRenderer::Impl
 				values << pixel.luma << '/' << pixel.chromaU << '/' << pixel.chromaV;
 			}
 			const int y = static_cast<int>(static_cast<int64_t>(row) * (source.height - 1) / (grid.rows - 1));
-			DebugLog::Log("Alpha black-level row: sample=%u generation=%llu row=%d y=%d data=%s",
-				blackLevelTraceSnapshot, static_cast<unsigned long long>(source.generation), row, y, values.str().c_str());
+			DebugLog::Log("Alpha black-level row: instance=%s sample=%u generation=%llu row=%d y=%d data=%s",
+				diagnosticInstanceId.c_str(), blackLevelTraceSnapshot, static_cast<unsigned long long>(source.generation), row, y, values.str().c_str());
 		}
-		DebugLog::Log("Alpha black-level grid complete: sample=%u generation=%llu rows=%d samples=%zu remaining=%u",
-			blackLevelTraceSnapshot, static_cast<unsigned long long>(source.generation), grid.rows, grid.samples.size(), blackLevelTraceRemaining);
+		DebugLog::Log("Alpha black-level grid complete: instance=%s sample=%u generation=%llu rows=%d samples=%zu remaining=%u",
+			diagnosticInstanceId.c_str(), blackLevelTraceSnapshot, static_cast<unsigned long long>(source.generation), grid.rows, grid.samples.size(), blackLevelTraceRemaining);
 	}
 
 	void TraceColorPictureEvidence(const AnalysisLumaSource& source,
@@ -8189,11 +8212,11 @@ struct LibplaceboVideoRenderer::Impl
 			if (count > 0 && count < sizeof(value) && std::string(value) == "shadow")
 			{
 				colorPictureEvidenceRemaining = 300;
-				DebugLog::Log("Alpha color-picture telemetry enabled: mode=shadow interval_ms=2000 snapshots_max=300 policy_effect=none authority_effect=none");
+				DebugLog::Log("Alpha color-picture telemetry enabled: instance=%s mode=shadow interval_ms=2000 snapshots_max=300 policy_effect=none authority_effect=none", diagnosticInstanceId.c_str());
 			}
 			else if (count > 0)
 			{
-				DebugLog::Log("Alpha color-picture telemetry disabled: unsupported option; only VP_COLOR_PICTURE_EVIDENCE=shadow is supported; policy_effect=none");
+				DebugLog::Log("Alpha color-picture telemetry disabled: instance=%s unsupported option; only VP_COLOR_PICTURE_EVIDENCE=shadow is supported; policy_effect=none", diagnosticInstanceId.c_str());
 			}
 		}
 		if (!colorPictureEvidenceRemaining || now < colorPictureEvidenceNextTick ||
@@ -8209,8 +8232,8 @@ struct LibplaceboVideoRenderer::Impl
 			nlsGeometry.left == 0 && nlsGeometry.top == 0 &&
 			nlsGeometry.right == source.width && nlsGeometry.bottom == source.height &&
 			nlsGeometry.rasterWidth == source.width && nlsGeometry.rasterHeight == source.height;
-		DebugLog::Log("Alpha color-picture evidence: schema=1 mode=shadow sample=%u sequence=%llu generation=%llu epoch=%llu format=%s encoding=%d size=%dx%d evaluated=%d precision_supported=%d candidate_supported=%d prior_committed_full=%d samples=%zu remaining=%u policy_effect=none reason=\"%s\"",
-			colorPictureEvidenceSnapshot, static_cast<unsigned long long>(frameNumber),
+		DebugLog::Log("Alpha color-picture evidence: schema=1 instance=%s mode=shadow sample=%u sequence=%llu generation=%llu epoch=%llu format=%s encoding=%d size=%dx%d evaluated=%d precision_supported=%d candidate_supported=%d prior_committed_full=%d samples=%zu remaining=%u policy_effect=none reason=\"%s\"",
+			diagnosticInstanceId.c_str(), colorPictureEvidenceSnapshot, static_cast<unsigned long long>(frameNumber),
 			static_cast<unsigned long long>(source.generation),
 			static_cast<unsigned long long>(presentationEpoch), AnalysisLumaFormatName(source),
 			static_cast<int>(source.encoding), source.width, source.height,
@@ -8223,7 +8246,8 @@ struct LibplaceboVideoRenderer::Impl
 			for (size_t i = 0; i < 4; ++i)
 			{
 				const auto& edge = evidence.edges[i];
-				DebugLog::Log("Alpha color-picture edge: sample=%u edge=%s median_yuv=%.1f/%.1f/%.1f dispersion_yuv=%.1f/%.1f/%.1f interior_yuv=%.1f/%.1f/%.1f max_background_delta_y=%.1f max_background_delta_uv=%.1f supported_cells=%d candidate_supported=%d units=analysis-10bit",
+				DebugLog::Log("Alpha color-picture edge: instance=%s generation=%llu sample=%u edge=%s median_yuv=%.1f/%.1f/%.1f dispersion_yuv=%.1f/%.1f/%.1f interior_yuv=%.1f/%.1f/%.1f max_background_delta_y=%.1f max_background_delta_uv=%.1f supported_cells=%d candidate_supported=%d units=analysis-10bit",
+					diagnosticInstanceId.c_str(), static_cast<unsigned long long>(source.generation),
 					colorPictureEvidenceSnapshot, names[i], edge.medianY, edge.medianU, edge.medianV,
 					edge.dispersionY, edge.dispersionU, edge.dispersionV,
 					edge.interiorMedianY, edge.interiorMedianU, edge.interiorMedianV,
@@ -10615,7 +10639,8 @@ struct LibplaceboVideoRenderer::Impl
 				(sceneDetectionEnabled || automaticSourceCrop) && committedFullStillAvailable;
 			fullRetentionInput.measurementCurrent = latestRawPictureEvidenceSequence == sourceSequence;
 			fullRetentionInput.cadenceRepeat = cadenceRepeat;
-			fullRetentionInput.sceneBoundary = !cadenceRepeat && sceneResult.safeBoundary && !retainFullRasterAtDarknessBoundary;
+			fullRetentionInput.nearBlackEvaluated = latestActivePictureGlobalNearBlackEvaluated;
+			fullRetentionInput.globalNearBlack = latestActivePictureGlobalNearBlack;
 			fullRetentionInput.rawClassification = latestRawPictureEvidence.classification;
 			fullRetentionInput.rawBounds = latestRawPictureEvidence.trustedBounds;
 			fullRetentionInput.frameWidth = width;
@@ -10628,15 +10653,18 @@ struct LibplaceboVideoRenderer::Impl
 			fullRetentionInput.committedSourceGeneration = nlsGeometrySourceGeneration;
 			fullRetentionInput.committedSourceSequence = latestFullRasterCommitSequence;
 			fullRetentionInput.committedPresentationEpoch = latestFullRasterCommitEpoch;
-			knownFullRasterRetention = AlphaSourceCrop::UpdateKnownFullRasterRetention(fullRetentionInput);
+			knownFullRasterRetention = AlphaSourceCrop::UpdateKnownFullRasterRetentionForScene(
+				fullRetentionInput, sceneResult, retainFullRasterAtDarknessBoundary);
 			if (knownFullRasterRetention.available != fullRetentionInput.previous.available)
-				DebugLog::Log("Alpha known full raster retention: available=%d sequence=%llu generation=%llu epoch=%llu commit_sequence=%llu raw_class=%d measurement_current=%d scene=%d source_valid=%d retention_eligible=%d committed_full=%d",
+				DebugLog::Log("Alpha known full raster retention: available=%d sequence=%llu generation=%llu epoch=%llu commit_sequence=%llu raw_class=%d measurement_current=%d scene=%d source_valid=%d retention_eligible=%d committed_full=%d cut_evidence=%d reaffirmations=%u",
 					knownFullRasterRetention.available ? 1 : 0,
 					static_cast<unsigned long long>(sourceSequence), static_cast<unsigned long long>(frameGeneration),
 					static_cast<unsigned long long>(viewportRequestSerial),
 					static_cast<unsigned long long>(latestFullRasterCommitSequence),
 					static_cast<int>(latestRawPictureEvidence.classification), fullRetentionInput.measurementCurrent ? 1 : 0,
-					fullRetentionInput.sceneBoundary ? 1 : 0, analysisValid ? 1 : 0, fullRetentionInput.analysisValid ? 1 : 0, committedFullStillAvailable ? 1 : 0);
+					fullRetentionInput.sceneBoundary ? 1 : 0, analysisValid ? 1 : 0, fullRetentionInput.analysisValid ? 1 : 0, committedFullStillAvailable ? 1 : 0,
+					fullRetentionInput.independentCutEvidence ? 1 : 0,
+					static_cast<unsigned>(knownFullRasterRetention.reaffirmationSamples));
 			AlphaSourceCrop::NearBlackPresentationEpisodeInput episodeInput;
 			episodeInput.knownFullRasterRetained = knownFullRasterRetention.available;
 			episodeInput.previous = nearBlackPresentationEpisode;

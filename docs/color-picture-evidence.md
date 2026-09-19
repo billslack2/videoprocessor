@@ -8,7 +8,10 @@ Launch VideoProcessor with the process environment variable `VP_COLOR_PICTURE_EV
 
 The renderer samples at most once every two seconds, for at most 300 snapshots per renderer instance. Recreating the renderer starts a new budget. Each snapshot takes at most 4,608 source-coordinate samples and writes one summary plus four edge records. No full-frame conversion or additional GPU readback is introduced. Sampling also works when ordinary crop analysis is waiting.
 
-`Alpha color-picture evidence` reports source generation, sequence, presentation epoch, input format/encoding, precision support, whether the weak full-frame hypothesis matches, and whether previously committed full-raster geometry exists. Every record identifies `mode=shadow` and `policy_effect=none`. Edge records compare robust Y/U/V medians and spreads across four sectors of shallow outer strips and paired interior strips.
+`Alpha color-picture evidence` reports source generation, sequence, presentation epoch, input format/encoding, precision support, whether the weak full-frame hypothesis matches, and whether previously committed full-raster geometry exists. The summary identifies `mode=shadow` and `policy_effect=none`. Edge records compare robust Y/U/V medians and spreads across four sectors of shallow outer strips and paired interior strips.
+
+
+Every black-level and color-picture diagnostic record includes an opaque `instance` identifier created once per renderer instance. It remains stable across source-generation changes and changes when the renderer is recreated, including after process restart or module reload. Summary, row, completion and edge records carry the same identifier; color edge records also carry `generation`. Keep the diagnostic families separate and group samples by `(family, instance, generation, sample)`, never by `(generation, sample)` alone. Instance fields are additive to schema 1. Older logs without an instance field require explicit session segmentation; do not silently overwrite repeated legacy keys.
 
 ## Interpretation and limitation
 

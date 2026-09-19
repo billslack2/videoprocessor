@@ -881,7 +881,9 @@ ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRete
 	// Acquisition may be inconclusive on a logo/title (or exhaust its scan
 	// budget) even though independent checks of every excluded band succeed.
 	// Missing geometry is not evidence of a larger picture. Preserve only the
-	// existing rectangle; an available conflicting proposal still vetoes it.
+	// existing rectangle. Outside the established global-near-black exception,
+	// an available conflicting proposal vetoes retention. Every path still
+	// requires independently pixel-safe excluded bands.
 	const bool geometryUnavailable = !result.activePicture.available &&
 		result.activePicture.classification == ActivePictureClassification::UNAVAILABLE;
 	result.currentlyPixelSafe = result.excludedBandsPixelSafe &&

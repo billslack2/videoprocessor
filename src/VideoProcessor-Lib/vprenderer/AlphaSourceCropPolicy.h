@@ -5,6 +5,7 @@
 
 #include "ActivePictureTransitionModel.h"
 #include "ActivePictureEvidence.h"
+#include "SceneDetector.h"
 
 
 namespace AlphaSourceCrop
@@ -511,8 +512,9 @@ namespace AlphaSourceCrop
 		const VerticalBarPresentationResolution& resolution);
 
 	// Retain an already committed full raster through missing dark-frame geometry.
-	// This never establishes startup geometry. A revoked lease needs a new commit
-	// on a later source frame; a cached old full-raster rectangle cannot re-arm it.
+	// This never establishes startup geometry. After revocation, a new commit or
+	// fresh affirmative measurements must revalidate the same committed context;
+	// a cached old full-raster rectangle alone cannot re-arm it.
 	struct KnownFullRasterRetentionState
 	{
 		bool available = false;
@@ -522,6 +524,7 @@ namespace AlphaSourceCrop
 		uint64_t presentationEpoch = 0;
 		uint64_t lastEvaluatedSequence = 0;
 		uint64_t lastCommittedSequence = 0;
+		uint8_t reaffirmationSamples = 0;
 	};
 	struct KnownFullRasterRetentionInput
 	{
@@ -530,6 +533,10 @@ namespace AlphaSourceCrop
 		bool measurementCurrent = false;
 		bool cadenceRepeat = false;
 		bool sceneBoundary = false;
+		// Unlike safeBoundary, this is not suppressed by scene-notification cooldown.
+		bool independentCutEvidence = false;
+		bool nearBlackEvaluated = false;
+		bool globalNearBlack = false;
 		ActivePictureClassification rawClassification = ActivePictureClassification::UNAVAILABLE;
 		ActivePictureBounds rawBounds;
 		int frameWidth = 0;
@@ -545,6 +552,11 @@ namespace AlphaSourceCrop
 	};
 	KnownFullRasterRetentionState UpdateKnownFullRasterRetention(
 		const KnownFullRasterRetentionInput& input);
+
+	// Shared renderer/test scene routing; updates the scene fields in input.
+	KnownFullRasterRetentionState UpdateKnownFullRasterRetentionForScene(
+		KnownFullRasterRetentionInput& input, const SceneDetectorResult& scene,
+		bool retainFullRasterAtDarknessBoundary);
 
 	// A generic safeBoundary also marks entry into darkness. Only this narrow
 	// predicate permits retaining an existing full raster at that event; an
