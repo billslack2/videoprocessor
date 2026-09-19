@@ -3567,6 +3567,89 @@ namespace VideoProcessorTest
 			DeleteFileA(path.c_str());
 		}
 
+		TEST_METHOD(InvalidSourceContextRetainsCompatibleQueueInsteadOfPersistedMadVRFallback)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(ARRAYSIZE(temporaryDirectory),
+				temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) +
+				"VideoProcessor-invalid-source-retains-queue.cfg";
+			const std::string statePath = path.substr(0,
+				path.find_last_of('.')) + ".state";
+			DeleteFileA(path.c_str());
+			DeleteFileA(statePath.c_str());
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[queue.base]\nqueue_size: 16\n"
+					"[queue.madvr_queue]\nwhen: ${renderer}==\"DirectShow - madVR\"\nqueue_size: 3\n"
+					"[queue.vp_60]\nwhen: ${renderer}==\"VP Renderer\" && ${source_rate}>30\nqueue_size: 32\n"
+					"[queue.vp_24]\nwhen: ${renderer}==\"VP Renderer\" && ${source_rate}<=30\nqueue_size: 8\n";
+			}
+			{
+				std::ofstream file(statePath, std::ios::out | std::ios::trunc);
+				file << "# Managed by VideoProcessor.\nprofile.queue: madvr_queue\n";
+			}
+
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			auto source = [](const char* renderer, const char* sourceRate)
+			{
+				return [renderer, sourceRate](const std::string& variable,
+					std::string& value)
+				{
+					if (variable == "renderer")
+					{
+						value = renderer;
+						return true;
+					}
+					if (variable == "source_rate" && sourceRate)
+					{
+						value = sourceRate;
+						return true;
+					}
+					return false;
+				};
+			};
+
+			UnifiedProfileRuntime::Runtime runtime;
+			std::string error;
+			Assert::IsTrue(runtime.Initialize(config, source("VP Renderer", "59"), error),
+				std::wstring(error.begin(), error.end()).c_str());
+			const auto steady = runtime.GetSnapshot();
+			Assert::IsTrue(steady != nullptr);
+			Assert::AreEqual("madvr_queue", RendererProfileConfig::FormatSelection(
+				steady->manualSelections.at("queue")).c_str());
+			Assert::AreEqual("vp_60", RendererProfileConfig::FormatSelection(
+				steady->effectiveSelections.at("queue")).c_str());
+
+			UnifiedProfileRuntime::RefreshResult invalid;
+			Assert::IsTrue(runtime.Refresh(source("VP Renderer", nullptr), false,
+				invalid, error), std::wstring(error.begin(), error.end()).c_str());
+			Assert::IsTrue(invalid.deferred);
+			Assert::IsFalse(invalid.changed);
+			Assert::IsTrue(invalid.actions.empty());
+			Assert::IsTrue(invalid.snapshot == steady);
+			Assert::AreEqual("vp_60", RendererProfileConfig::FormatSelection(
+				invalid.snapshot->effectiveSelections.at("queue")).c_str());
+
+			UnifiedProfileRuntime::RefreshResult recovered;
+			Assert::IsTrue(runtime.Refresh(source("VP Renderer", "24"), recovered,
+				error), std::wstring(error.begin(), error.end()).c_str());
+			Assert::IsFalse(recovered.deferred);
+			Assert::IsTrue(recovered.changed);
+			Assert::AreEqual("vp_24", RendererProfileConfig::FormatSelection(
+				recovered.snapshot->effectiveSelections.at("queue")).c_str());
+
+			std::ifstream persistedState(statePath);
+			const std::string persistedText((std::istreambuf_iterator<char>(persistedState)),
+				std::istreambuf_iterator<char>());
+			Assert::IsTrue(persistedText.find("profile.queue: madvr_queue") !=
+				std::string::npos);
+			DeleteFileA(statePath.c_str());
+			DeleteFileA(path.c_str());
+		}
+
+
 		TEST_METHOD(AutomaticQueueRuleOverridesPersistedQueueSelection)
 		{
 			char temporaryDirectory[MAX_PATH] = {};

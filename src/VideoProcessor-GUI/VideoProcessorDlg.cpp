@@ -11610,9 +11610,10 @@ bool CVideoProcessorDlg::BuildPushVideoState()
 
 	UnifiedProfileRuntime::RefreshResult profileRefresh;
 	std::string profileError;
+	const bool profileSourceContextAvailable = videoState && videoState->valid;
 	if (m_profileRuntime.IsInitialized() &&
 		!m_profileRuntime.Refresh(GetUnifiedProfileSourceLookup(),
-			profileRefresh, profileError))
+			profileSourceContextAvailable, profileRefresh, profileError))
 	{
 		DebugLog::Log("Unified profile refresh failed: %s",
 			profileError.c_str());
@@ -11622,6 +11623,22 @@ bool CVideoProcessorDlg::BuildPushVideoState()
 		// Status is published independently of the renderer backend. Display and
 		// viewport profiles apply to both alpha and non-alpha renderers.
 		PublishActiveProfileStatus();
+		if (profileRefresh.deferred)
+		{
+			if (!m_profileSourceContextDeferred)
+			{
+				const auto snapshot = m_profileRuntime.GetSnapshot();
+				DebugLog::Log(
+					"Unified profile source refresh deferred: capture state is invalid; retained queue=%s generation=%llu",
+					snapshot && !snapshot->queue.profile.empty() ?
+						snapshot->queue.profile.c_str() : "(none)",
+					static_cast<unsigned long long>(
+						snapshot ? snapshot->generation : 0));
+				m_profileSourceContextDeferred = true;
+			}
+		}
+		else
+			m_profileSourceContextDeferred = false;
 		if (profileRefresh.changed &&
 			m_rendererState != RendererState::RENDERSTATE_STOPPING)
 		{
@@ -11809,12 +11826,26 @@ void CVideoProcessorDlg::RefreshUnifiedProfilesForRuleContext(
 	const auto previousSnapshot = m_profileRuntime.GetSnapshot();
 	UnifiedProfileRuntime::RefreshResult result;
 	std::string error;
-	if (!m_profileRuntime.Refresh(GetUnifiedProfileSourceLookup(), result, error))
+	const bool sourceContextAvailable = m_builtVideoState && m_builtVideoState->valid;
+	if (!m_profileRuntime.Refresh(GetUnifiedProfileSourceLookup(),
+		sourceContextAvailable, result, error))
 	{
 		DebugLog::Log("Unified profile rule-context refresh failed: reason=%s detail=%s",
 			reason ? reason : "unknown", error.c_str());
 		return;
 	}
+	if (result.deferred)
+	{
+		if (!m_profileSourceContextDeferred)
+		{
+			DebugLog::Log(
+				"Unified profile rule-context refresh deferred: reason=%s capture state is invalid",
+				reason ? reason : "unknown");
+			m_profileSourceContextDeferred = true;
+		}
+		return;
+	}
+	m_profileSourceContextDeferred = false;
 	if (!result.changed)
 		return;
 
@@ -12598,12 +12629,20 @@ void CVideoProcessorDlg::OnCommandReapplyRules()
 	UnifiedProfileRuntime::RefreshResult result;
 	std::vector<std::string> clearedGroups;
 	std::string error;
-	if (!m_profileRuntime.ReapplyRules(GetUnifiedProfileSourceLookup(), result,
-		clearedGroups, error))
+	const bool sourceContextAvailable = m_builtVideoState && m_builtVideoState->valid;
+	if (!m_profileRuntime.ReapplyRules(GetUnifiedProfileSourceLookup(),
+		sourceContextAvailable, result, clearedGroups, error))
 	{
 		DebugLog::Log("Re-apply rules failed: %s", error.c_str());
 		return;
 	}
+	if (result.deferred)
+	{
+		DebugLog::Log(
+			"Re-apply rules deferred: capture state is invalid; retained committed profiles");
+		return;
+	}
+	m_profileSourceContextDeferred = false;
 
 	std::ostringstream cleared;
 	for (size_t index = 0; index < clearedGroups.size(); ++index)

@@ -514,6 +514,14 @@ namespace UnifiedProfileRuntime
 		const DisplayRuleExpression::ValueLookup& sourceValues,
 		RefreshResult& result, std::string& error)
 	{
+		return Refresh(sourceValues, true, result, error);
+	}
+
+
+	bool Runtime::Refresh(
+		const DisplayRuleExpression::ValueLookup& sourceValues,
+		bool sourceContextAvailable, RefreshResult& result, std::string& error)
+	{
 		std::lock_guard<std::mutex> guard(m_mutex);
 		result = {};
 		error.clear();
@@ -524,6 +532,15 @@ namespace UnifiedProfileRuntime
 		}
 		const std::shared_ptr<const Snapshot> current =
 			std::atomic_load(&m_snapshot);
+		if (!sourceContextAvailable)
+		{
+			// An invalid capture state does not describe a new source. In
+			// particular, it must not make rate rules disappear and expose an
+			// otherwise incompatible persisted fallback selection.
+			result.deferred = true;
+			result.snapshot = current;
+			return true;
+		}
 		std::shared_ptr<const Snapshot> candidate;
 		if (!BuildSnapshot(current->manualSelections,
 			m_sessionOverrideGroups, sourceValues,
@@ -550,6 +567,15 @@ namespace UnifiedProfileRuntime
 		RefreshResult& result, std::vector<std::string>& clearedGroups,
 		std::string& error)
 	{
+		return ReapplyRules(sourceValues, true, result, clearedGroups, error);
+	}
+
+
+	bool Runtime::ReapplyRules(
+		const DisplayRuleExpression::ValueLookup& sourceValues,
+		bool sourceContextAvailable, RefreshResult& result,
+		std::vector<std::string>& clearedGroups, std::string& error)
+	{
 		std::lock_guard<std::mutex> guard(m_mutex);
 		result = {};
 		clearedGroups.clear();
@@ -562,6 +588,14 @@ namespace UnifiedProfileRuntime
 
 		const std::shared_ptr<const Snapshot> current =
 			std::atomic_load(&m_snapshot);
+		if (!sourceContextAvailable)
+		{
+			// Do not discard a live shortcut or resolve durable fallbacks while
+			// the source context is invalid. A later valid refresh is authoritative.
+			result.deferred = true;
+			result.snapshot = current;
+			return true;
+		}
 		std::shared_ptr<const Snapshot> candidate;
 		if (!BuildSnapshot(current->manualSelections, {}, sourceValues,
 			m_generation + 1, candidate, error))
