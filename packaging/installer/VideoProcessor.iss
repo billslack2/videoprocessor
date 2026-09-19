@@ -1,4 +1,4 @@
-﻿#if Ver != EncodeVer(6, 7, 3)
+#if Ver != EncodeVer(6, 7, 3)
   #error Use the qualified Inno Setup 6.7.3 compiler.
 #endif
 ; Identity and payload include are supplied by tools/build_installer.ps1.
@@ -23,7 +23,13 @@ ArchitecturesAllowed=x64os
 ArchitecturesInstallIn64BitMode=x64os
 MinVersion=10.0
 OutputDir={#OutputRoot}
-OutputBaseFilename=VideoProcessor-{#CoreVersion}-{#BuildCommit}-x64-Setup
+OutputBaseFilename={#InstallerBaseName}
+SetupIconFile={#SetupIcon}
+VersionInfoVersion={#FileVersion}
+VersionInfoTextVersion={#CoreVersion} ({#BuildCommit})
+VersionInfoProductVersion={#FileVersion}
+VersionInfoProductTextVersion={#CoreVersion} ({#BuildCommit})
+VersionInfoDescription=VideoProcessor Setup
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern

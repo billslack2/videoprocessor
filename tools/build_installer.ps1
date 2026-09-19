@@ -8,12 +8,16 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $root = Split-Path -Parent $PSScriptRoot
+. (Join-Path $PSScriptRoot 'installer_build_identity.ps1')
 Push-Location $root
 try {
-    $commit = (& git rev-parse HEAD).Trim()
-    if ($LASTEXITCODE -ne 0 -or $commit -notmatch '^[a-f0-9]{40}$') { throw 'A Git source checkout is required.' }
-    if (@(& git status --porcelain --untracked-files=normal).Count) { throw 'Commit source changes before packaging an identifiable release.' }
-    $shortCommit = $commit.Substring(0,12)
+    $identity = Get-VpSourceIdentity $root
+    $commit = $identity.commit
+    $buildLabel = $identity.label
+    $installerBaseName = Get-VpInstallerBaseName $CoreVersion $identity
+    $numbers = ($CoreVersion -split '-', 2)[0].Split('.')
+    if (@($numbers | Where-Object { [int]$_ -gt 65535 }).Count) { throw 'Version components must fit Windows version metadata (0-65535).' }
+    $fileVersion = (($numbers | ForEach-Object { [int]$_ }) -join '.') + '.0'
     $IsccPath = (Resolve-Path -LiteralPath $IsccPath).Path
     $artifactRoot = Join-Path $root 'artifacts'
     $null = New-Item -ItemType Directory -Path $artifactRoot -Force
@@ -30,19 +34,21 @@ try {
             $file = Join-Path $root "x64\Release\$relative"
             [ordered]@{ path=$relative; sha256=(Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash }
         })
-        [ordered]@{ commit=$commit; configuration='Release'; architecture='x64'; binaries=$binaries } |
+        [ordered]@{ commit=$commit; sourceFingerprint=$identity.fingerprint; dirty=$identity.dirty; configuration='Release'; architecture='x64'; binaries=$binaries } |
             ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $receiptPath -Encoding UTF8
     }
     $receipt = Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json
-    if ($receipt.commit -ne $commit -or $receipt.configuration -ne 'Release' -or $receipt.architecture -ne 'x64' -or $receipt.binaries.Count -ne 4) {
-        throw 'No successful x64 Release solution build for this commit. Rerun without -SkipBuild.'
+    if (-not $receipt.PSObject.Properties['sourceFingerprint'] -or $receipt.sourceFingerprint -ne $identity.fingerprint -or
+        $receipt.dirty -ne $identity.dirty -or $receipt.commit -ne $commit -or $receipt.configuration -ne 'Release' -or $receipt.architecture -ne 'x64' -or $receipt.binaries.Count -ne 4) {
+        throw 'No successful x64 Release solution build for these exact sources. Rerun without -SkipBuild.'
     }
     foreach ($binary in $receipt.binaries) {
         if ((Get-FileHash -LiteralPath (Join-Path $root "x64\Release\$($binary.path)") -Algorithm SHA256).Hash -ne $binary.sha256) {
             throw "Build output changed since successful rebuild: $($binary.path)"
         }
     }
-    if ((& git rev-parse HEAD).Trim() -ne $commit -or @(& git status --porcelain --untracked-files=normal).Count) {
+    $afterBuild = Get-VpSourceIdentity $root
+    if ($afterBuild.build -ne $identity.build -or $afterBuild.fingerprint -ne $identity.fingerprint) {
         throw 'Sources changed during the build.'
     }
     & (Join-Path $PSScriptRoot 'package_release.ps1') -VcRedistPath $VcRedistPath
@@ -72,7 +78,7 @@ try {
     })
     [ordered]@{
         schemaVersion=1; applicationId='VideoProcessor-42D852F1-70E9-43ED-8739-D61752106D59'
-        coreVersion=$CoreVersion; build=$commit; compiler='Inno Setup 6.7.3'; files=$files; cleanupFiles=$cleanupFiles
+        coreVersion=$CoreVersion; build=$identity.build; sourceCommit=$commit; sourceFingerprint=$identity.fingerprint; dirty=$identity.dirty; compiler='Inno Setup 6.7.3'; files=$files; cleanupFiles=$cleanupFiles
     } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $payload 'INSTALL-MANIFEST.json') -Encoding UTF8
     $include = Join-Path $artifactRoot 'installer-payload.iss'
     $lines = @(foreach ($entry in $files) {
@@ -84,18 +90,29 @@ try {
     })
     $lines | Set-Content -LiteralPath $include -Encoding UTF8
     $output = Join-Path $artifactRoot 'installers'
-    & $IsccPath "/DPayloadRoot=$payload" "/DPayloadInclude=$include" "/DOutputRoot=$output" "/DCoreVersion=$CoreVersion" "/DBuildCommit=$shortCommit" (Join-Path $root 'packaging\installer\VideoProcessor.iss')
+    & $IsccPath "/DPayloadRoot=$payload" "/DPayloadInclude=$include" "/DOutputRoot=$output" "/DCoreVersion=$CoreVersion" "/DBuildCommit=$buildLabel" "/DInstallerBaseName=$installerBaseName" "/DFileVersion=$fileVersion" "/DSetupIcon=$root\images\VideoProcessor.ico" (Join-Path $root 'packaging\installer\VideoProcessor.iss')
     if ($LASTEXITCODE -ne 0) { throw 'Inno Setup compilation failed.' }
-    $installer = Join-Path $output "VideoProcessor-$CoreVersion-$shortCommit-x64-Setup.exe"
+    $installer = Join-Path $output "$installerBaseName.exe"
     "$((Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash)  $([IO.Path]::GetFileName($installer))" |
         Set-Content -LiteralPath ($installer + '.sha256') -Encoding ASCII
+    $distributionFiles = @($installer, ($installer + '.sha256'))
     if ($PortableZip) {
         & (Join-Path $PSScriptRoot 'package_release.ps1') -VcRedistPath $VcRedistPath -StageRoot (Join-Path $artifactRoot 'portable\VideoProcessor')
-        $zip = Join-Path $output "VideoProcessor-$CoreVersion-$shortCommit-x64-Portable.zip"
+        $zip = Join-Path $output "VideoProcessor-$CoreVersion-$buildLabel-x64-Portable.zip"
         Compress-Archive -Path (Join-Path $artifactRoot 'portable\VideoProcessor\*') -DestinationPath $zip -Force
         "$((Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash)  $([IO.Path]::GetFileName($zip))" |
             Set-Content -LiteralPath ($zip + '.sha256') -Encoding ASCII
+        $distributionFiles += @($zip, ($zip + '.sha256'))
+    }
+    $after = Get-VpSourceIdentity $root
+    if ($after.build -ne $identity.build -or $after.fingerprint -ne $identity.fingerprint) {
+        # Keep an interrupted package out of the distributable output directory.
+        foreach ($file in $distributionFiles) {
+            Move-Item -LiteralPath $file -Destination ($file + '.invalid-' + [guid]::NewGuid().ToString('N'))
+        }
+        throw 'Sources changed during packaging; the installer is invalid and must not be distributed.'
     }
     Write-Host "Installer: $installer"
+    Write-Host "Source: $($identity.build)"
     Write-Host 'Unsigned distribution: qualify and publisher-sign before public release. See docs/VP-0192_INSTALLER.md.'
 } finally { Pop-Location }

@@ -89,21 +89,36 @@ Inno Setup **6.7.3**. Obtain the compiler from the official
 (Pyrsys B.V.) and official checksum. The compiler installer SHA-256 used here is
 9c73c3bae7ed48d44112a0f48e66742c00090bdb5bef71d9d3c056c66e97b732.
 
-From a clean checkout of the selected source commit:
+For a release, use a clean checkout of the selected source commit:
 
 ~~~powershell
 .\tools\build_installer.ps1 -CoreVersion '1.3.005-beta' -VcRedistPath 'C:\path\vc_redist.x64.exe' -IsccPath 'C:\path\ISCC.exe' -PortableZip
 .\tools\test_installer_support.ps1
+.\tools\test_installer_identity.ps1
 .\tools\test_runtime_packaging.ps1 -VcRedistPath 'C:\path\vc_redist.x64.exe'
 .\artifacts\release\VideoProcessor\SETUP-RUNTIME.cmd -CheckOnly
 ~~~
 
 The command completes a full x64 Release solution rebuild, records the exact
-commit and four VP binary hashes, invokes the runtime-aware manifest packager,
-then compiles setup. -SkipBuild requires the same successful build receipt,
-unchanged commit and hashes. Never fabricate a receipt.
-Outputs under artifacts\installers include version/commit-labelled executables
-and SHA-256 sidecars. Optional ZIPs use the original portable layout.
+commit, source fingerprint and four VP binary hashes, invokes the runtime-aware
+manifest packager, then compiles setup. -SkipBuild requires the same successful
+build receipt, exact source contents/dirty status and binary hashes. Source changes
+during build or packaging reject the result. Never fabricate a receipt.
+
+Setup and uninstall use images/VideoProcessor.ico, the player's existing icon.
+Clean installer filenames are VideoProcessorSetup-<version>.exe, for example
+VideoProcessorSetup-1.3.005-beta.exe. Dirty worktrees are supported for test builds:
+VideoProcessorSetup-<version>-<commit-sha12>-dirty-<source-sha256-prefix12>.exe.
+The fingerprint includes tracked source contents/deletions and untracked files;
+ignored build outputs do not affect it. A commit SHA alone cannot identify
+uncommitted changes. Full identity is recorded in INSTALL-MANIFEST.json and the
+build receipt; setup and Windows file properties show the version and build label.
+Clean builds of the same version deliberately share a download filename; archive
+them in separate build directories when retaining multiple test builds.
+
+Outputs under artifacts\installers include SHA-256 sidecars for the exact
+executable bytes. Optional ZIPs use the original portable layout and keep their
+version/build-labelled filenames. Publish clean, qualified builds.
 
 The installer is currently **unsigned**. A checksum verifies integrity, not
 publisher identity; Windows may show unknown-publisher/SmartScreen prompts.
@@ -146,6 +161,7 @@ registration (the test creates and removes a disposable registered installation)
 
 ~~~powershell
 .\tools\test_installer_e2e.ps1 -InstallerPath '<build-B-Setup.exe>' -PayloadRoot '.\artifacts\release\VideoProcessor' -PreviousInstallerPath '<build-A-Setup.exe>' -PreviousManifestPath '<saved-build-A-INSTALL-MANIFEST.json>'
+.\tools\test_installer_zip_adoption.ps1 -InstallerPath '<build-B-Setup.exe>' -PortableRoot '<previous-portable-tree>' -PayloadRoot '.\artifacts\release\VideoProcessor'
 .\tools\test_installer_failure.ps1 -PayloadRoot '.\artifacts\release\VideoProcessor' -IsccPath '<ISCC.exe>'
 ~~~
 

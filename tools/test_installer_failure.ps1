@@ -18,10 +18,10 @@ $bad | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $qa 'INSTAL
 $iss=Get-Content (Join-Path $root 'packaging\installer\VideoProcessor.iss') -Raw
 $iss=$iss.Replace('Source: "{#PayloadRoot}\INSTALL-MANIFEST.json"; Flags: dontcopy',
     'Source: "'+(Join-Path $qa 'INSTALL-MANIFEST.json')+'"; Flags: dontcopy')
-$iss=$iss.Replace('OutputBaseFilename=VideoProcessor-{#CoreVersion}-{#BuildCommit}-x64-Setup',
+$iss=$iss.Replace('OutputBaseFilename={#InstallerBaseName}',
     'OutputBaseFilename=DO-NOT-DISTRIBUTE-corrupt-manifest-test')
 $iss | Set-Content -LiteralPath (Join-Path $qa 'corrupt.iss') -Encoding UTF8
-& $IsccPath "/DPayloadRoot=$payload" "/DPayloadInclude=$root\artifacts\installer-payload.iss" "/DOutputRoot=$qa" "/DCoreVersion=$($bad.coreVersion)" "/DBuildCommit=$($bad.build.Substring(0,12))" (Join-Path $qa 'corrupt.iss') *> (Join-Path $qa 'compile.log')
+& $IsccPath "/DPayloadRoot=$payload" "/DPayloadInclude=$root\artifacts\installer-payload.iss" "/DOutputRoot=$qa" "/DCoreVersion=$($bad.coreVersion)" "/DBuildCommit=$($bad.build.Substring(0,12))" "/DInstallerBaseName=DO-NOT-DISTRIBUTE-corrupt-manifest-test" "/DFileVersion=$((($bad.coreVersion -split '-',2)[0]))" "/DSetupIcon=$root\images\VideoProcessor.ico" (Join-Path $qa 'corrupt.iss') *> (Join-Path $qa 'compile.log')
 if($LASTEXITCODE -ne 0){throw "Failure-test compilation failed: $qa\compile.log"}
 $target=Join-Path $qa 'failure-target'
 $null=New-Item -ItemType Directory -Path $target -Force
