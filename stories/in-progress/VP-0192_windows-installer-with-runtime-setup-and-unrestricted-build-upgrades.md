@@ -2,9 +2,9 @@
 
 ## Status
 
-Review
+In Progress
 
-Implemented 2026-09-19 in [draft PR #99](https://github.com/billslack2/videoprocessor/pull/99),
+Cleanup follow-up in progress 2026-09-19: remove setup-only payload, prune completed recovery backups, and safely retire old package clutter while preserving operator files. Initial implementation 2026-09-19 in [draft PR #99](https://github.com/billslack2/videoprocessor/pull/99),
 source commit 4391c7cbbbf4105faaf95c051235c2b6a62d3835 on
 codex/vp-0192-windows-installer. The verified integration base/default remains
 v1.3.005-beta at 73c850041d284e3e37c959a8956d896b79106aa1.
