@@ -2,14 +2,33 @@
 
 ## Status
 
-In Progress
+Review
 
-Implementation began 2026-09-19 after the developer confirmed the discovered
-remote default branch `v1.3.005-beta` as the integration base. The latest remote
-tip was fetched as `8414b11633d3ab8cc06fa3964c273c81b76f05bc` (merge PR #95).
+Implemented and pushed on 2026-09-19 after the developer confirmed
+`v1.3.005-beta` as the integration base. Source commit:
+`765eb5b3043b91760927a234e4640a3ed9c1f3d5` on
+`codex/vp-0191-queue-profile-compat`, based on remote beta tip
+`8414b11633d3ab8cc06fa3964c273c81b76f05bc`.
 
-Branch: `codex/vp-0191-queue-profile-compat`  
-Clean worktree: `E:\\codex\\videoprocessor\\vp-0191-queue-profile-compat`
+The repair adds an explicit invalid-source-context defer to the shared unified
+profile runtime. Source-driven refresh and rule reapply retain the committed
+snapshot rather than falling back to saved manual state. GUI application logs
+the defer once per invalid transition and does not emit an OSD, event action,
+queue-policy change, or reset. On the next valid source state, normal rules
+resolve the appropriate VP queue exactly as before.
+
+Validation completed:
+
+- x64 Release `VideoProcessor-Test` build passed.
+- New `InvalidSourceContextRetainsCompatibleQueueInsteadOfPersistedMadVRFallback`
+  regression passed with the existing
+  `AutomaticQueueRuleOverridesPersistedQueueSelection` regression (2/2).
+- Full x64 Release solution build passed.
+
+Remaining review/acceptance: deploy no binaries yet; confirm on live HDMI that
+a 60-to-24 Hz transition logs one invalid-source defer, shows no `Madvr Queue`
+profile OSD, retains the prior compatible queue during resync, and then reports
+only `vp_24` after valid 23.976 input returns.
 
 ## Readiness review
 
@@ -103,5 +122,5 @@ existing saved/manual queue selection path.
 
 ## Next action
 
-Trace current profile-resolution ownership, add the failing lifecycle regression,
-then implement and verify the smallest ownership-bound compatibility gate.
+Review the source change and perform the recorded live HDMI refresh-transition
+validation. If accepted, merge it to the current beta branch before deployment.
