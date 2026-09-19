@@ -589,7 +589,7 @@ namespace AlphaSourceCrop
 		VerticalInspectionBridgeDecision decision;
 		if (input.sourceGeneration == 0 || input.sourceSequence == 0 ||
 			input.cropAuthorityResolved || input.fullRasterAuthorityResolved ||
-			input.confirmedVerticalFitResolved ||
+			input.confirmedVerticalFitResolved || input.samplingRetentionResolved ||
 			input.verticalPresentationOwnerAvailable)
 		{
 			return decision;
@@ -2423,16 +2423,24 @@ namespace AlphaSourceCrop
 			input.retentionSourceSequence != crop.frameSourceSequence ||
 			!SameBounds(input.retentionBounds, result.state.trustedCrop))
 			result.gates |= RECOVERY_MEASUREMENT;
-		result.samplingReaffirmed = input.measurementCurrent && input.retentionEvaluated &&
+		const bool currentRetentionMeasurement = input.measurementCurrent && input.retentionEvaluated &&
 			input.retentionSourceGeneration == crop.frameSourceGeneration &&
 			input.retentionSourceSequence == crop.frameSourceSequence &&
-			SameBounds(input.retentionBounds, result.state.trustedCrop) &&
-			input.observationAvailable && input.observationClassification ==
+			SameTrustedCropContract(input.retentionBounds, result.state.trustedCrop);
+		const bool trustedSampling = input.observationClassification ==
 				ActivePictureClassification::BAR_CROP_TRUSTED &&
 			crop.latestObservationClassification == ActivePictureClassification::BAR_CROP_TRUSTED &&
 			ContainedBounds(input.observedTrustedCrop, input.observation) &&
 			IsPixelSafeCropReaffirmation(result.state.trustedCrop,
 				input.observedTrustedCrop, input.excludedBandsPixelSafe);
+		const bool provisionalSampling =
+			crop.latestObservationClassification == input.observationClassification &&
+			crop.frameLocalPresentationRetentionEvaluated && input.excludedBandsPixelSafe &&
+			CanRetainProvisionalSamplingCrop(result.state.trustedCrop,
+				input.observation, input.observationClassification,
+				crop.frameLocalPresentationRetentionSafe);
+		result.samplingReaffirmed = currentRetentionMeasurement && input.observationAvailable &&
+			(trustedSampling || provisionalSampling);
 		if (!input.observationAvailable ||
 			(!ContainedBounds(result.state.trustedCrop, input.observation) && !result.samplingReaffirmed))
 			result.gates |= RECOVERY_OBSERVATION;
