@@ -10,6 +10,11 @@ private DLLs, and unexpected files.
 
 ```text
   VideoProcessor\
+  START-HERE.txt
+  SETUP-RUNTIME.cmd
+  prerequisites\
+    vc_redist.x64.exe
+    setup-runtime.ps1, runtime-common.ps1, runtime-requirement.json
   VideoProcessor.exe
   VideoProcessor.cfg.example
   RELEASE-LAYOUT.md
@@ -45,9 +50,43 @@ installation-relative `config\VideoProcessorConfig.exe` path and passes the
 active root configuration explicitly. A direct Config launch also checks its
 parent installation for `VideoProcessor.cfg`.
 
-Microsoft C/C++ and MFC runtimes are provided by the VC v143 Redistributable;
-Windows/API-set libraries come from the operating system and are never copied
-from a development machine.
+## Microsoft runtime setup
+
+Run **SETUP-RUNTIME.cmd** after extracting or updating the ZIP and before launching
+VP or Config. It checks the native x64 system runtime files against the generated
+`prerequisites/runtime-requirement.json`. A sufficient runtime is left alone;
+otherwise setup verifies and runs the bundled official Microsoft x64 installer
+with `/install /passive /norestart`. Windows requests administrator approval.
+Exit 3010 means restart Windows and rerun setup before starting VP. Installation
+and restart are never required merely to inspect with `SETUP-RUNTIME.cmd -CheckOnly`.
+
+The current dependency policy floor is **14.44.35211.0**, covering the Qt editor's
+14.44 toolset and the constexpr-mutex behavior exposed by configuration caching.
+A DLL with the same name from 14.29 is insufficient. The main application using
+v142 does not lower the editor's runtime requirement.
+
+`Directory.Build.targets` records the selected `VCToolsVersion` and SHA-256 beside
+each x64 Release binary. Packaging verifies all four shipped VP binary records,
+then raises the policy minimum to cover any newer build toolset or PE linker
+family found across **all** shipped native binaries, including Qt. The included
+Microsoft-signed installer must meet that calculated minimum. Its version and
+SHA-256 are recorded in the generated requirement JSON. Update the policy floor
+when third-party headers/binaries require a newer runtime patch: a PE header
+cannot tell us the full compiler/header version used for a prebuilt dependency.
+
+Setup reports old app-local Microsoft runtime DLLs that could shadow the system
+runtime, and asks the user to extract into a clean folder. It does not remove DLLs,
+modify VP settings, start VP, or downgrade a sufficient runtime. For managed
+machines where scripts are blocked, an administrator can run the included
+`prerequisites/vc_redist.x64.exe` and then recheck. The setup command uses the
+Windows PowerShell included with Windows; PowerShell 7 is not required.
+
+The official installer is packaged as a prerequisite; loose Microsoft runtime
+DLLs and Windows/API-set libraries are never copied from a development machine.
+Microsoft documents [central runtime deployment and installer options](https://learn.microsoft.com/cpp/windows/redistributing-visual-cpp-files)
+and provides the [current official x64 redistributable](https://aka.ms/vc14/vc_redist.x64.exe).
+Use the installer supplied by a licensed Visual Studio installation or downloaded
+from Microsoft's official location.
 
 ## Optional renderer contract
 
@@ -79,13 +118,33 @@ release cannot overwrite an active `VideoProcessor.cfg` implicitly.
 ## Commands
 
 ```powershell
-# Validate sources and print the exact plan without writing anything.
-.\tools\package_release.ps1 -DryRun
+# First complete an x64 Release solution build, which emits *.runtime.json records.
+# Set this to the official installer from your Visual Studio Redist directory
+# or Microsoft's official download. Never take it from an arbitrary DLL site.
+$vcInstaller = 'C:\path\to\vc_redist.x64.exe'
 
-# Recreate and verify artifacts\release\VideoProcessor.
-.\tools\package_release.ps1
+# Validate all inputs, signatures, versions, and build records without writing.
+.\tools\package_release.ps1 -VcRedistPath $vcInstaller -DryRun
+
+# Exercise regression checks, then recreate the complete verified release tree.
+.\tools\test_runtime_packaging.ps1 -VcRedistPath $vcInstaller
+.\tools\package_release.ps1 -VcRedistPath $vcInstaller
+.\artifacts\release\VideoProcessor\SETUP-RUNTIME.cmd -CheckOnly
+
+# ZIP the entire generated tree, including START-HERE and prerequisites.
+Compress-Archive -Path .\artifacts\release\VideoProcessor\* -DestinationPath .\artifacts\VideoProcessor-x64-Release.zip
 ```
 
 `x64\Release` is a build output, not a distributable directory: unit-test
 projects intentionally place test binaries and libplacebo test dependencies
 there. Only the manifest-generated staging tree is a release.
+
+## Release qualification
+
+Run the packaged setup on clean Windows without Visual Studio, once with a missing
+or older runtime and once with a sufficient runtime. Verify installation (including
+UAC denial/failure and a requested restart), and confirm the sufficient case skips
+installation. Open packaged Config with a disposable configuration, change a value,
+Apply, OK, reopen, and verify persistence while VP is closed. Check that setup leaves
+existing configuration/state files unchanged. Record actual results and distinguish
+automated prerequisite checks from a real clean-machine installer run.

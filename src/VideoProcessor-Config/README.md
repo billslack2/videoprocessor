@@ -35,3 +35,11 @@ Supported integration arguments are `--config <path>`, `--owner <HWND>`, and
 stable main window as its native transient owner; Config does not use global
 always-on-top placement.
 The `--page` and `--screenshot` arguments support automated visual review.
+
+## Distribution prerequisite
+
+Config uses the v143 DLL runtime. Its save validation takes a `std::mutex`, so a
+14.44 build can crash on Apply/OK with an older 14.29 MSVCP140 even though the v142
+VP host works. Distribute through `tools/package_release.ps1`; its runtime setup
+and official installer are required parts of the ZIP. Users must run
+`SETUP-RUNTIME.cmd` before Config. See [release packaging](../../docs/VP-0107_RELEASE_LAYOUT.md).

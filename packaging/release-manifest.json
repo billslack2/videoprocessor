@@ -2,6 +2,26 @@
   "schemaVersion": 1,
   "layoutVersion": "VP-0107",
   "canonicalPluginDirectory": "vprenderer",
+  "vcRuntime": {
+    "minimumVersion": "14.44.35211.0",
+    "runtimeFiles": [
+      "msvcp140.dll",
+      "msvcp140_1.dll",
+      "msvcp140_2.dll",
+      "msvcp140_atomic_wait.dll",
+      "msvcp140_codecvt_ids.dll",
+      "vcruntime140.dll",
+      "vcruntime140_1.dll",
+      "mfc140u.dll"
+    ],
+    "buildArtifacts": [
+      "VideoProcessor.exe",
+      "config/VideoProcessorConfig.exe",
+      "config/VideoProcessorConfigDiscovery.dll",
+      "vprenderer/VideoProcessorVPRenderer.dll"
+    ]
+  },
+  "generatedFiles": ["prerequisites/runtime-requirement.json"],
   "directories": [
     {
       "path": "logs",
@@ -33,10 +53,10 @@
   "externalRuntimeRequirements": [
     {
       "owner": "Microsoft Visual C++ runtime",
-      "sourceVersion": "VC v143 Redistributable",
+      "sourceVersion": "Generated prerequisites/runtime-requirement.json (at least 14.44.35211.0)",
       "consumer": "VideoProcessor.exe, VideoProcessorConfig.exe, VideoProcessorConfigDiscovery.dll, and VideoProcessorVPRenderer.dll",
       "loadMechanism": "Normal PE imports resolved by Windows",
-      "reason": "MSVCP140, VCRUNTIME140/140_1, and MFC140U are installed system runtimes and are not copied from a developer machine."
+      "reason": "Run SETUP-RUNTIME.cmd before VP/Config. It checks the generated minimum and installs the included official x64 Redistributable when needed; loose system DLLs are not shipped."
     },
     {
       "owner": "Windows",
@@ -47,6 +67,11 @@
     }
   ],
   "files": [
+    {"sourceRoot": "repository", "source": "packaging/SETUP-RUNTIME.cmd", "destination": "SETUP-RUNTIME.cmd", "owner": "VideoProcessor prerequisites", "sourceVersion": "Current release; installer version recorded at staging", "consumer": "Operator setup", "loadMechanism": "SETUP-RUNTIME.cmd", "reason": "Check and install the required Microsoft x64 runtime before launching VP or Config."},
+    {"sourceRoot": "repository", "source": "packaging/START-HERE.txt", "destination": "START-HERE.txt", "owner": "VideoProcessor prerequisites", "sourceVersion": "Current release; installer version recorded at staging", "consumer": "Operator setup", "loadMechanism": "SETUP-RUNTIME.cmd", "reason": "Check and install the required Microsoft x64 runtime before launching VP or Config."},
+    {"sourceRoot": "repository", "source": "packaging/prerequisites/setup-runtime.ps1", "destination": "prerequisites/setup-runtime.ps1", "owner": "VideoProcessor prerequisites", "sourceVersion": "Current release; installer version recorded at staging", "consumer": "Operator setup", "loadMechanism": "SETUP-RUNTIME.cmd", "reason": "Check and install the required Microsoft x64 runtime before launching VP or Config."},
+    {"sourceRoot": "repository", "source": "packaging/prerequisites/runtime-common.ps1", "destination": "prerequisites/runtime-common.ps1", "owner": "VideoProcessor prerequisites", "sourceVersion": "Current release; installer version recorded at staging", "consumer": "Operator setup", "loadMechanism": "SETUP-RUNTIME.cmd", "reason": "Check and install the required Microsoft x64 runtime before launching VP or Config."},
+    {"sourceRoot": "vcRedist", "source": "vc_redist.x64.exe", "destination": "prerequisites/vc_redist.x64.exe", "owner": "Microsoft", "sourceVersion": "Current release; installer version recorded at staging", "consumer": "Operator setup", "loadMechanism": "SETUP-RUNTIME.cmd", "reason": "Check and install the required Microsoft x64 runtime before launching VP or Config."},
     { "sourceRoot": "build", "source": "VideoProcessor-GUI.exe", "destination": "VideoProcessor.exe", "owner": "VideoProcessor", "sourceVersion": "Current x64 Release commit", "consumer": "Operator", "loadMechanism": "Process image", "reason": "Main application executable." },
     { "sourceRoot": "build", "source": "VideoProcessorConfig.exe", "destination": "config/VideoProcessorConfig.exe", "owner": "VideoProcessor Config", "sourceVersion": "Qt 6.8.3 / current x64 Release commit", "consumer": "Operator and VideoProcessor.exe", "loadMechanism": "Process image launched by absolute installation-relative path", "reason": "Standalone and owner-associated configuration editor, isolated with its private Qt runtime." },
     { "sourceRoot": "build", "source": "VideoProcessorConfigDiscovery.dll", "destination": "config/VideoProcessorConfigDiscovery.dll", "owner": "VideoProcessor Config", "sourceVersion": "Current x64 Release commit", "consumer": "VideoProcessorConfig.exe", "loadMechanism": "QLibrary absolute application-directory path", "reason": "Discovers capture devices, connections, monitors, and renderers." },

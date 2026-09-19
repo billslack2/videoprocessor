@@ -2,6 +2,7 @@
 param(
     [string]$BuildRoot,
     [string]$StageRoot,
+    [string]$VcRedistPath = $env:VP_VC_REDIST_X64,
     [switch]$DryRun
 )
 
@@ -27,6 +28,13 @@ if ($StageRoot -eq $artifactRoot -or $StageRoot -eq $repositoryRoot -or
     throw "Refusing unsafe staging path: $StageRoot"
 }
 
+if (-not $VcRedistPath -or -not (Test-Path -LiteralPath $VcRedistPath -PathType Leaf)) {
+    throw 'Pass -VcRedistPath with the official vc_redist.x64.exe (or set VP_VC_REDIST_X64). See docs/VP-0107_RELEASE_LAYOUT.md.'
+}
+$VcRedistPath = [IO.Path]::GetFullPath($VcRedistPath)
+. (Join-Path $repositoryRoot 'packaging\prerequisites\runtime-common.ps1')
+. (Join-Path $PSScriptRoot 'runtime_packaging.ps1')
+
 $manifestPath = Join-Path $repositoryRoot 'packaging\release-manifest.json'
 $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
 if ($manifest.schemaVersion -ne 1 -or -not $manifest.files) {
@@ -38,6 +46,7 @@ $sourceRoots = @{
     repository = $repositoryRoot
     libplacebo = Join-Path $repositoryRoot '3rdparty\libplacebo'
     nvapi = Join-Path $repositoryRoot '3rdparty\nvapi'
+    vcRedist = Split-Path -Parent $VcRedistPath
 }
 $expected = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
 $expectedDirectories = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
@@ -53,7 +62,9 @@ $copyPlan = foreach ($entry in $manifest.files) {
     if (-not $sourceRoots.ContainsKey([string]$entry.sourceRoot)) {
         throw "Unknown source root '$($entry.sourceRoot)' for $($entry.destination)"
     }
-    $source = [IO.Path]::GetFullPath((Join-Path $sourceRoots[[string]$entry.sourceRoot] ([string]$entry.source)))
+    $source = if ($entry.sourceRoot -eq 'vcRedist') { $VcRedistPath } else {
+        [IO.Path]::GetFullPath((Join-Path $sourceRoots[[string]$entry.sourceRoot] ([string]$entry.source)))
+    }
     if (-not (Test-Path -LiteralPath $source -PathType Leaf)) {
         throw "Required release source is missing: $source"
     }
@@ -74,6 +85,23 @@ $copyPlan = foreach ($entry in $manifest.files) {
         RelativeDestination = $relativeDestination
     }
 }
+
+$runtimeRequirement = Get-VpPackageRuntimeRequirement -CopyPlan $copyPlan `
+    -Policy $manifest.vcRuntime -InstallerPath $VcRedistPath
+$runtimeMetadataPath = 'prerequisites\runtime-requirement.json'
+if (@($manifest.generatedFiles).Count -ne 1 -or
+    $manifest.generatedFiles[0] -ne $runtimeMetadataPath.Replace('\', '/') -or
+    -not $expected.Add($runtimeMetadataPath)) {
+    throw 'The manifest must declare exactly the generated runtime requirement file.'
+}
+foreach ($required in @('START-HERE.txt', 'SETUP-RUNTIME.cmd',
+    'prerequisites\setup-runtime.ps1', 'prerequisites\runtime-common.ps1',
+    'prerequisites\vc_redist.x64.exe')) {
+    if (-not $expected.Contains($required)) { throw "Missing required setup file: $required" }
+}
+if (@($expected | Where-Object {
+    [IO.Path]::GetFileName($_) -match '^(msvcp140.*|vcruntime140.*|mfc140.*|concrt140)\.dll$'
+}).Count) { throw 'Ship the official runtime installer, not loose Microsoft runtime DLLs.' }
 
 $privateDlls = @(
     'libdovi.dll', 'libgcc_s_seh-1.dll', 'liblcms2-2.dll',
@@ -128,7 +156,8 @@ if ($shaderDestinations.Count -ne 7 -or
     throw 'The release must contain exactly one seven-file shader tree at the application root.'
 }
 
-Write-Host "VP release manifest: $($manifest.files.Count) immutable files"
+Write-Host "Microsoft x64 runtime minimum: $($runtimeRequirement.minimumVersion); installer: $($runtimeRequirement.installerVersion)"
+Write-Host "VP release manifest: $($expected.Count) immutable/generated files"
 Write-Host "Build root: $BuildRoot"
 Write-Host "Stage root: $StageRoot"
 if ($DryRun) {
@@ -138,18 +167,19 @@ if ($DryRun) {
     $copyPlan | ForEach-Object {
         Write-Host "DRY RUN $($_.RelativeDestination) <- $($_.Source)"
     }
+    Write-Host "DRY RUN GENERATED $runtimeMetadataPath"
     Write-Host 'DRY RUN complete: no files were written and no deployment/configuration path was accessed.'
     return
 }
 
+if ($BuildRoot.StartsWith($StageRoot.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) {
+    throw 'StageRoot must not contain the build inputs.'
+}
+if (-not $PSCmdlet.ShouldProcess($StageRoot, 'Replace generated release staging tree')) { return }
 if (Test-Path -LiteralPath $StageRoot) {
-    if ($PSCmdlet.ShouldProcess($StageRoot, 'Remove previous generated release staging tree')) {
-        Remove-Item -LiteralPath $StageRoot -Recurse -Force
-    }
+    Remove-Item -LiteralPath $StageRoot -Recurse -Force
 }
-if ($PSCmdlet.ShouldProcess($StageRoot, 'Create clean release staging tree')) {
-    New-Item -ItemType Directory -Path $StageRoot | Out-Null
-}
+New-Item -ItemType Directory -Path $StageRoot | Out-Null
 foreach ($relativeDirectory in $expectedDirectories) {
     New-Item -ItemType Directory -Path (Join-Path $StageRoot $relativeDirectory) -Force | Out-Null
 }
@@ -160,6 +190,9 @@ foreach ($item in $copyPlan) {
     }
     Copy-Item -LiteralPath $item.Source -Destination $item.Destination
 }
+
+$runtimeRequirement | ConvertTo-Json -Depth 8 | Set-Content `
+    -LiteralPath (Join-Path $StageRoot $runtimeMetadataPath) -Encoding UTF8
 
 $actual = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
 Get-ChildItem -LiteralPath $StageRoot -Recurse -File | ForEach-Object {

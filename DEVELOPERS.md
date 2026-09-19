@@ -19,3 +19,13 @@ Get the source from https://github.com/defl/videoprocessor
     * Open regedit
     * Computer\HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\DirectShow\Debug\VideoProcessor.exe\ should have a bunch of entries like TRACE and LogToFile
     * Set log types to 5 or up
+
+## Release packaging
+
+After a successful x64 Release solution build, use `tools/package_release.ps1`
+with the official Microsoft x64 runtime installer supplied through `-VcRedistPath`
+or `VP_VC_REDIST_X64`. The build emits hashed toolset records used to derive the
+runtime prerequisite; retain them with build outputs. Follow
+[the release layout and prerequisite instructions](docs/VP-0107_RELEASE_LAYOUT.md).
+Every ZIP must include the setup command, first-run instructions, installer, and
+generated runtime requirement. Directly zipping build outputs is unsupported.
