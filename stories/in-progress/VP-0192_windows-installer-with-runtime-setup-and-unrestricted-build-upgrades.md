@@ -2,12 +2,17 @@
 
 ## Status
 
-Backlog
+In Progress
 
-Created 2026-09-19 at the user's request. Story creation only; installer
-implementation has not started. The user wants manually downloaded installers
-that update an existing installation, including test builds sharing a core
-version. No paid update server or in-application updater is required.
+Implementation started 2026-09-19. Remote beta/default branch verified as
+`v1.3.005-beta`, tip `73c850041d284e3e37c959a8956d896b79106aa1`.
+Source branch `codex/vp-0192-windows-installer`, clean worktree
+`E:\codex\videoprocessor\vp-0192-windows-installer`.
+
+The user explicitly requires selectable installation location, discovery and
+reuse of the current location on subsequent updates, and preservation of all
+existing state and configuration. Implementation and installer validation are
+in progress; no deployment to the active VP installation is requested.
 
 ## User story
 
