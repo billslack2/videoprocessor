@@ -33,6 +33,7 @@ RestartApplications=no
 UninstallDisplayIcon={app}\VideoProcessor.exe
 SetupMutex=VideoProcessor-42D852F1-70E9-43ED-8739-D61752106D59-Setup
 UninstallDisplayName=VideoProcessor
+CreateUninstallRegKey=PayloadReady
 
 [Files]
 ; Helpers run from setup's private temporary directory, never from the target.
@@ -40,6 +41,8 @@ Source: "{#PayloadRoot}\prerequisites\*"; Flags: dontcopy
 Source: "{#PayloadRoot}\setup\install-support.ps1"; Flags: dontcopy
 Source: "{#PayloadRoot}\INSTALL-MANIFEST.json"; Flags: dontcopy
 #include PayloadInclude
+; Verify before shortcuts and registration. Script exceptions do not roll back Inno.
+Source: "{#PayloadRoot}\INSTALL-MANIFEST.json"; DestDir: "{tmp}"; DestName: "verification-marker.json"; Flags: ignoreversion deleteafterinstall; AfterInstall: VerifyPayload
 
 [Dirs]
 Name: "{app}\logs"; Flags: uninsneveruninstall
@@ -49,9 +52,9 @@ Name: "{app}\luts"; Flags: uninsneveruninstall
 Name: desktopicon; Description: "Create a desktop shortcut"; Flags: unchecked
 
 [Icons]
-Name: "{userprograms}\VideoProcessor\VideoProcessor"; Filename: "{app}\VideoProcessor.exe"; WorkingDir: "{app}"
-Name: "{userprograms}\VideoProcessor\VideoProcessor Config"; Filename: "{app}\config\VideoProcessorConfig.exe"; Parameters: "--config ""{app}\VideoProcessor.cfg"""; WorkingDir: "{app}"
-Name: "{userdesktop}\VideoProcessor"; Filename: "{app}\VideoProcessor.exe"; WorkingDir: "{app}"; Tasks: desktopicon
+Name: "{userprograms}\VideoProcessor\VideoProcessor"; Filename: "{app}\VideoProcessor.exe"; WorkingDir: "{app}"; Check: PayloadReady
+Name: "{userprograms}\VideoProcessor\VideoProcessor Config"; Filename: "{app}\config\VideoProcessorConfig.exe"; Parameters: "--config ""{app}\VideoProcessor.cfg"""; WorkingDir: "{app}"; Check: PayloadReady
+Name: "{userdesktop}\VideoProcessor"; Filename: "{app}\VideoProcessor.exe"; WorkingDir: "{app}"; Tasks: desktopicon; Check: PayloadReady
 
 [Run]
 Filename: "{app}\config\VideoProcessorConfig.exe"; Parameters: "--config ""{app}\VideoProcessor.cfg"""; WorkingDir: "{app}"; Description: "Open VideoProcessor Config"; Flags: postinstall nowait skipifsilent unchecked; Check: CanLaunch
@@ -82,9 +85,14 @@ begin
   Log(Action + ': ' + HelperMessage);
 end;
 
-function CanLaunch: Boolean;
+function PayloadReady: Boolean;
 begin
   Result := Verified;
+end;
+
+function CanLaunch: Boolean;
+begin
+  Result := Verified and Committed;
 end;
 
 function NextButtonClick(CurPageID: Integer): Boolean;
@@ -147,11 +155,26 @@ begin
   Prepared := True;
 end;
 
+procedure VerifyPayload;
+begin
+  Verified := RunHelper('Verify');
+  if not Verified then
+    SuppressibleMsgBox(HelperMessage + ' Setup will restore the previous application files.',
+      mbError, MB_OK, IDOK);
+end;
+
+procedure CurPageChanged(CurPageID: Integer);
+begin
+  if (CurPageID = wpFinished) and not Committed then begin
+    WizardForm.FinishedHeadingLabel.Caption := 'VideoProcessor setup did not complete';
+    WizardForm.FinishedLabel.Caption := 'Do not launch VP. Setup will restore application files when closed. Correct the reported error and rerun setup. Settings and state are preserved.';
+  end;
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssPostInstall then begin
-    if not RunHelper('Verify') then
-      RaiseException(HelperMessage + ' Setup will restore the previous application files.');
+    if not Verified then Exit;
     if not RunHelper('Commit') then
       RaiseException(HelperMessage + ' Setup will restore the previous application files.');
     Committed := True;

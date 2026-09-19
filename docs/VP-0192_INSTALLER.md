@@ -130,5 +130,18 @@ Developer-machine or helper-fixture success does not qualify prerequisites.
 | Interruption / disk or hash failure | Backup recovered; complete old or selected payload |
 | Uninstall / reinstall | Data and shared runtime retained; usable config |
 
+For automated lifecycle checks on an account without an existing VP installer
+registration (the test creates and removes a disposable registered installation):
+
+~~~powershell
+.\tools\test_installer_e2e.ps1 -InstallerPath '<build-B-Setup.exe>' -PayloadRoot '.\artifacts\release\VideoProcessor' -PreviousInstallerPath '<build-A-Setup.exe>' -PreviousManifestPath '<saved-build-A-INSTALL-MANIFEST.json>'
+.\tools\test_installer_failure.ps1 -PayloadRoot '.\artifacts\release\VideoProcessor' -IsccPath '<ISCC.exe>'
+~~~
+
+The optional previous-build inputs exercise A -> B -> B -> A at one core version.
+The failure test builds an intentionally invalid QA-only executable. Never
+distribute anything named DO-NOT-DISTRIBUTE. Tests refuse an existing registered
+installation and keep their evidence under artifacts.
+
 Record OS builds, privilege level, runtime versions, installer hashes and logs.
 Missing clean-machine or interactive coverage remains an acceptance gap.
