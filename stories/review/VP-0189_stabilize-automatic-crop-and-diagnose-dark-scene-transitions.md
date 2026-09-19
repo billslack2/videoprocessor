@@ -631,3 +631,44 @@ of color-based aspect detection or universal scene correctness is made.
 [VP-0190](../backlog/VP-0190_preserve-active-picture-authority-through-NLS-only-profile-changes.md)
 remains a separate Backlog story for NLS-only profile changes invalidating picture
 authority. It is not fixed or closed by this merge.
+
+## September 19 trailer follow-up; Review retained
+
+[PR #97](https://github.com/billslack2/videoprocessor/pull/97) merged the retained
+near-black episode lifecycle correction into v1.3.005-beta at
+ad50ebd866fc66b2743351a0f493a470a3ff4ab1. The merge tree matches clean tested/deployed
+04e09cb4bce41edb20ccbf3a9b6fba179250c14f, including the previously merged VP-0191 profile fix.
+
+RETAIN_CROP now ends when the existing exact-entry, current-context,
+consecutive-frame pixel-safety proof establishes that bright scope has returned.
+Normal bar/subtitle handling resumes without changing the displayed rectangle.
+No threshold relaxation, new timer, or new aspect authority was introduced.
+
+The lifecycle regression failed before the production fix and passed afterward.
+Additional tests cover rejected stale/invalid proof, provisional-observation and
+recovery handoff without a framing flash, duplicates, missing frames, and
+interrupted proof. Two independent reviews found no blocking defect.
+The clean integrated x64 Release solution passed 1293/1293 tests.
+An incremental link initially reported corrupt debug information; a clean rebuild
+resolved it before deployment.
+Two integrated full runs failed the existing
+ProfileChangeDisplayDurationIsBoundedAndLive test's error-message assertion.
+It passed alone, with its complete test class, and in a diagnostic full run.
+A one-line diagnostic improvement now prints the actual error on failure;
+assertions and production profile/schema code are unchanged. The cause was not
+established. The initial failures remain recorded in the retained TRX evidence.
+
+The paired host and renderer were backed up and their deployed SHA-256 hashes
+verified against the same clean build. No configuration edits were made.
+Backup: C:\Videoprocessor\vp\backups\before-reviewed-04e09cb4-20260919-112128
+Deployment and test evidence:
+C:\Users\bslac\Documents\ChatGPT\Done\scope-trailer-20260919-1048
+
+The trailer log proves temporary full-raster presentation while accepted scope
+geometry stayed unchanged, but does not identify the unrecorded pixels. This
+correction does not claim to prevent every observed release; genuine outward
+content during a still-dark episode retains its visibility safeguards.
+
+**Keep VP-0189 in Review.** Proceed with regular viewing validation, including
+dark-to-bright transitions, subtitles/menus, and real aspect changes. Preserve
+the log and approximate clock time if a shrink recurs. VP-0190 remains separate.
