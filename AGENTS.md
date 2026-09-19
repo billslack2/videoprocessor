@@ -64,12 +64,14 @@
 - Review `packaging/release-manifest.json`'s `vcRuntime.minimumVersion` whenever
   compiler headers, Qt, or other binary dependencies change. PE linker versions
   only identify a family; the policy floor must cover dependency patch versions.
-- Every release must contain `START-HERE.txt`, `SETUP-RUNTIME.cmd`, and the complete
+- Every portable ZIP must contain `START-HERE.txt`, `SETUP-RUNTIME.cmd`, and the complete
   `prerequisites/` directory, including the generated requirement JSON and official
   installer. Do not substitute loose Microsoft DLLs from System32 or the build tree.
-- Installation instructions must tell users to run `SETUP-RUNTIME.cmd` before VP
+- Portable ZIP instructions must tell users to run `SETUP-RUNTIME.cmd` before VP
   or Config after extracting/updating. A runtime with the right DLL name but an
   older version is insufficient; Config Apply/OK can crash in its mutex code.
+- Setup executables embed and run prerequisite tools from their private temporary
+  directory; do not install ZIP setup tools or development docs into the app folder.
 - Run `tools/test_runtime_packaging.ps1` and the packaged setup's `-CheckOnly` mode.
   Release qualification also requires a clean Windows environment without Visual
   Studio: exercise missing/old and sufficient runtime cases, then edit, Apply,

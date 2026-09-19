@@ -2,6 +2,9 @@
 Set-StrictMode -Version Latest
 $root = Split-Path -Parent $PSScriptRoot
 . (Join-Path $root 'packaging\installer\install-support.ps1')
+# Filesystem fixtures do not launch application binaries. Actual process refusal
+# is exercised by test_installer_e2e.ps1 against the real Config executable.
+function Assert-VpClosed {}
 $testRoot = Join-Path $root ('artifacts\installer-support-tests-' + [guid]::NewGuid().ToString('N'))
 $script:InstallRoot = Join-Path $testRoot 'custom install'
 $null = New-Item -ItemType Directory -Path $InstallRoot -Force
@@ -89,4 +92,52 @@ $script:Action='Prepare'
 $script:BackupDirectory=Invoke-VpInstallAction
 Assert (-not (Test-Path -LiteralPath (Join-Path $InstallRoot 'config/retired.dll'))) 'ZIP manifest establishes obsolete binary ownership'
 $script:Action='Restore'; Invoke-VpInstallAction | Out-Null
+# Upgrade from the old installer: seed examples are removable only at the
+# recorded original hash, and modified setup documents become user-owned.
+$extras=@('prerequisites/setup-runtime.ps1','setup/install-support.ps1','setup/RECOVERY.md',
+          'docs/VP-0174-config-ui.md','VideoProcessor.cfg.example')
+foreach($name in $extras){Put $name 'original package extra'}
+$legacyEntries=@((Entry 'VideoProcessor.exe'),(Entry 'vprenderer/VideoProcessorVPRenderer.dll'),(Entry 'config/retired.dll'))
+$legacyEntries+=@(foreach($name in $extras){Entry $name $(if($name -eq 'VideoProcessor.cfg.example'){'seed'}else{'managed'})})
+SaveManifest $legacyEntries (Join-Path $InstallRoot 'INSTALL-MANIFEST.json') 'old-full-installer'
+$next=Get-Content $PayloadManifest -Raw | ConvertFrom-Json
+$cleanup=@(foreach($name in $extras){@{path=$name;sha256=(Hash $name)}})
+$next | Add-Member -NotePropertyName cleanupFiles -NotePropertyValue $cleanup
+$next | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $PayloadManifest -Encoding UTF8
+Put 'docs/VP-0174-config-ui.md' 'operator notes in an edited developer doc'
+Put 'prerequisites/private.bak' 'operator backup, never an installer artifact'
+$script:Action='Prepare'; $script:BackupDirectory=Invoke-VpInstallAction
+foreach($name in $extras | Where-Object {$_ -ne 'docs/VP-0174-config-ui.md'}){
+    Assert (-not (Test-Path -LiteralPath (Join-Path $InstallRoot $name))) "old package extra retired: $name"
+}
+Assert ((Get-Content (Join-Path $InstallRoot 'docs/VP-0174-config-ui.md') -Raw) -like 'operator notes*') 'edited developer documentation preserved'
+Assert (Test-Path -LiteralPath (Join-Path $InstallRoot 'prerequisites/private.bak')) 'user backup in prerequisite folder preserved'
+$script:Action='Finalize'
+Throws {Invoke-VpInstallAction} 'not committed' 'pending transaction cannot be pruned'
+Put 'VideoProcessor.exe' 'build-B'
+Put 'vprenderer/VideoProcessorVPRenderer.dll' 'renderer-B'
+$script:Action='Commit'; Invoke-VpInstallAction | Out-Null
+Assert (Test-Path -LiteralPath $BackupDirectory) 'rollback remains available until setup finishes'
+$script:Action='Finalize'; Invoke-VpInstallAction | Out-Null
+Assert (-not (Test-Path -LiteralPath (Join-Path $InstallRoot '.vp-installer-backups'))) 'successful setup prunes current and historical verified backups'
+Assert (-not (Test-Path -LiteralPath (Join-Path $InstallRoot 'setup'))) 'empty setup directory removed'
+Assert (Test-Path -LiteralPath (Join-Path $InstallRoot 'prerequisites/private.bak')) 'nonempty prerequisite directory retained for user backup'
+Remove-Item -LiteralPath (Join-Path $InstallRoot 'prerequisites/private.bak')
+$script:Action='Prepare'; $script:BackupDirectory=Invoke-VpInstallAction
+$script:Action='Commit'; Invoke-VpInstallAction | Out-Null
+$unknown=Join-Path $BackupDirectory 'my-backup.bak'
+[IO.File]::WriteAllText($unknown,'keep this user file')
+$script:Action='Finalize'; Invoke-VpInstallAction | Out-Null
+Assert (Test-Path -LiteralPath $unknown) 'unrecognized files inside recovery folder preserved'
+Assert (Test-Path -LiteralPath (Join-Path $BackupDirectory 'transaction.json')) 'unknown backup retains its recovery journal'
+Assert (-not (Test-Path -LiteralPath (Join-Path $InstallRoot 'prerequisites'))) 'empty prerequisite directory removed'
+Remove-Item -LiteralPath $unknown
+$savedHost=Join-Path $BackupDirectory 'files/VideoProcessor.exe'
+[IO.File]::WriteAllText($savedHost,'modified backup')
+Invoke-VpInstallAction | Out-Null
+Assert (Test-Path -LiteralPath $savedHost) 'modified recovery backup not deleted'
+[IO.File]::WriteAllText($savedHost,'build-B')
+Invoke-VpInstallAction | Out-Null
+Assert (-not (Test-Path -LiteralPath (Join-Path $InstallRoot '.vp-installer-backups'))) 'verified backup cleanup resumes when unknown data removed'
+foreach($name in $sentinels.Keys){Assert ((Hash $name) -eq $sentinels[$name]) "cleanup preserves operator data: $name"}
 Write-Host "$checks preservation/recovery checks passed. Fixtures: $testRoot"

@@ -52,14 +52,27 @@ try {
     Copy-Item -LiteralPath (Join-Path $root 'docs\VP-0192_INSTALLER.md') -Destination (Join-Path $payload 'setup\RECOVERY.md')
     # This is only the distributable default; Inno seeds it only when absent.
     Copy-Item -LiteralPath (Join-Path $payload 'VideoProcessor.cfg.example') -Destination (Join-Path $payload 'VideoProcessor.cfg')
+    # The portable release remains the validated build input. Only application files
+    # enter Inno's installed payload; setup tools are embedded with dontcopy below.
+    $setupOnly = @(
+        'START-HERE.txt', 'SETUP-RUNTIME.cmd', 'RELEASE-MANIFEST.json', 'RELEASE-LAYOUT.md',
+        'VideoProcessor.cfg.example', 'docs/REQ-006-sdr-transfer-implementation.md',
+        'docs/VP-0174-config-ui.md'
+    )
+    $cleanupFiles = @()
     $files = @(Get-ChildItem -LiteralPath $payload -Recurse -File | Sort-Object FullName | ForEach-Object {
         $relative = $_.FullName.Substring($payload.Length + 1)
-        $policy = if ($relative -match '^shaders\\|^VideoProcessor\.cfg(?:\.example)?$') { 'seed' } else { 'managed' }
+        $portablePath = $relative.Replace('\','/')
+        if ($portablePath -in $setupOnly -or $portablePath -match '^(prerequisites|setup)/') {
+            $cleanupFiles += [ordered]@{ path=$portablePath; sha256=(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash }
+            return
+        }
+        $policy = if ($relative -match '^shaders\\|^VideoProcessor\.cfg$') { 'seed' } else { 'managed' }
         [ordered]@{ path=$relative.Replace('\','/'); policy=$policy; sha256=(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash }
     })
     [ordered]@{
         schemaVersion=1; applicationId='VideoProcessor-42D852F1-70E9-43ED-8739-D61752106D59'
-        coreVersion=$CoreVersion; build=$commit; compiler='Inno Setup 6.7.3'; files=$files
+        coreVersion=$CoreVersion; build=$commit; compiler='Inno Setup 6.7.3'; files=$files; cleanupFiles=$cleanupFiles
     } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $payload 'INSTALL-MANIFEST.json') -Encoding UTF8
     $include = Join-Path $artifactRoot 'installer-payload.iss'
     $lines = @(foreach ($entry in $files) {
@@ -67,7 +80,6 @@ try {
         $directory = Split-Path -Parent $relative
         $dest = if ($directory) { "{app}\$directory" } else { '{app}' }
         $flags = if ($entry.policy -eq 'seed') { 'onlyifdoesntexist uninsneveruninstall' } else { 'ignoreversion' }
-        if ($relative -like 'setup\*') { $flags += ' uninsneveruninstall' }
         'Source: "' + (Join-Path $payload $relative) + '"; DestDir: "' + $dest + '"; Flags: ' + $flags
     })
     $lines | Set-Content -LiteralPath $include -Encoding UTF8

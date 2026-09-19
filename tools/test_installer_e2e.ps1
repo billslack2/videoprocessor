@@ -45,6 +45,17 @@ function RunSetup([string]$Label,[bool]$SelectDirectory){
   }
  }
  Assert $true "actual installer $Label managed hashes match, including host/renderer"
+ if($manifest.PSObject.Properties['cleanupFiles']){
+  foreach($entry in $manifest.cleanupFiles){
+   Assert (-not (Test-Path -LiteralPath (Join-Path $target $entry.path))) "actual installer $Label excludes setup-only file $($entry.path)"
+  }
+  foreach($directory in @('prerequisites','setup','.vp-installer-backups')){
+   Assert (-not (Test-Path -LiteralPath (Join-Path $target $directory))) "actual installer $Label leaves no $directory directory"
+  }
+  foreach($file in @('docs/CONFIGURATION.html','docs/VideoProcessor_NLS_Configuration_Guide.pdf','LICENSE.txt','vprenderer/third_party_licenses/libplacebo-LICENSE.txt')){
+   Assert (Test-Path -LiteralPath (Join-Path $target $file)) "actual installer $Label retains user guide/license $file"
+  }
+ }
  $keys=@(Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall' |
     Where-Object PSChildName -like '*42D852F1-70E9-43ED-8739-D61752106D59*')
  Assert ($keys.Count -eq 1) "actual installer $Label has one uninstall entry"

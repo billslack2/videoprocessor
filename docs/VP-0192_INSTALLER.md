@@ -34,40 +34,51 @@ applications may not understand newer settings; setup never rewrites them.
 
 ## File ownership and recovery
 
-INSTALL-MANIFEST.json records payload hashes and managed-versus-seed ownership.
-Application binaries and documentation are replaced even when version resources
-are equal or older. Existing VideoProcessor.cfg, its example, shaders, state,
-profiles, custom LUTs, logs, caches and other unowned data are retained.
-Missing defaults/shaders are seeded and retained by uninstall. No configuration
-migration is needed, so setup does not edit or back up a configuration file.
+INSTALL-MANIFEST.json is the small ownership record needed for safe future updates.
+Application binaries and user guides are replaced even when version resources
+are equal or older. Existing VideoProcessor.cfg, state, profiles, custom
+shaders/LUTs, logs, caches and other unowned data are retained. Missing default
+config/shaders are seeded and retained by uninstall. No configuration migration
+is needed, so setup does not edit or back up configuration.
 
-Before replacement, setup verifies a timestamped application-file backup under
-.vp-installer-backups. Retiring a file requires an older install manifest and a
-matching old hash; a modified obsolete file blocks setup. For ZIP adoption,
-the VP-0107 RELEASE-MANIFEST identifies old owned binaries. Without that inventory,
+The installed application contains its runtime dependencies, default shaders,
+the configuration HTML/NLS PDF user guides, and required licenses/provenance.
+The redistributable and setup scripts run only from setup's private temporary
+directory, which Inno removes on exit. The application folder receives no
+prerequisites or setup directory, ZIP setup instructions, development/story
+notes, release-layout docs, portable release inventory, or duplicate cfg.example.
+
+Updates retire these extras from earlier installers only when the previous
+manifest's hash still matches. Edited docs/examples and user-added files are
+preserved; folders containing them remain. ZIP adoption uses its release inventory
+for old binaries, known package hashes for textual extras, and verified generated
+runtime metadata. Unrecognized ZIP extras are preserved. Cleanup never uses a
+wildcard to delete docs, backups, configuration, or state.
+
+Before replacement, setup verifies a temporary application-file backup under
+.vp-installer-backups. Obsolete binaries require an earlier inventory and matching
+hash; a modified obsolete binary blocks setup. Without a release/install inventory,
 unknown DLLs are reported by path, never guessed or deleted. Move a reported
 private DLL to a separate backup folder only after reviewing it.
 
 A pending transaction is restored when setup is retried after interruption.
 Normal failure also attempts restoration. Do not launch VP after interruption
-until setup completes. Recovery affects application files only. Backups remain
-after upgrade/uninstall; remove them manually once satisfied with the build.
-Allow space for the package and one copy of the old application per attempt.
+until setup completes. Recovery affects application files only. Recovery backups
+remain after failed/interrupted setup so the next installer can recover them.
+After successful setup, verified complete/restored backups from this and earlier
+attempts are removed, followed by empty setup-only directories. Unknown, modified,
+or incomplete recovery contents are retained. Allow space for the package and
+one temporary copy of the old application.
 
-To restore an application backup manually with VP/Config closed:
-
-~~~powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File 'D:\VP\setup\install-support.ps1' -Action Restore -InstallRoot 'D:\VP' -BackupDirectory 'D:\VP\.vp-installer-backups\<timestamp-id>'
-~~~
-
-Rerun the corresponding older installer to reconcile registration and shortcuts.
-If the helper is damaged, rerun an intact installer, which extracts its own helper.
-Never restore configuration/state from an application-file backup.
+To recover, close VP/Config and rerun an intact installer. It extracts its own
+helper and restores pending application-file transactions before updating.
+To roll back a completed installation, run the chosen older installer; permanent
+copies of every previous build are not kept. Never restore operator
+configuration/state from an application-file backup.
 
 Uninstall removes tracked application files, shortcuts and its one registration.
-It retains operator data, the install manifest, recovery helper/docs and backup
-history. It never uninstalls the shared runtime. Reinstall into the preserved
-folder to retain settings.
+It retains operator data and the small install manifest. It never uninstalls the
+shared runtime. Reinstall into the preserved folder to retain settings.
 
 ## Repeatable release build
 
@@ -123,7 +134,7 @@ Developer-machine or helper-fixture success does not qualify prerequisites.
 | Missing runtime / old 14.29 / sufficient runtime | Offline install or skip; Config edit, Apply, OK, reopen |
 | Fresh custom path | Non-elevated launch, config save and log writes |
 | A -> B (same core version) -> B -> A | Selected hashes, matching host/renderer, one entry, automatic path reuse |
-| ZIP adoption | Comments, state and custom assets byte-identical; owned obsolete DLL retired |
+| ZIP adoption / previous full installer | Comments, state and custom assets byte-identical; obsolete owned DLL and setup-only files retired; edited docs retained |\n| Clean installed payload | No prerequisite/setup tools, duplicate example or developer notes; guides/licenses retained; verified recovery backups pruned after success |
 | Unknown DLL / modified obsolete file | Named conflict, no destructive replacement |
 | VP / Config tray / unsaved editor | Save/close/retry; cancellation retains old files |
 | UAC denial / prerequisite error / restart | No successful update or launch before runtime ready |
@@ -144,4 +155,4 @@ distribute anything named DO-NOT-DISTRIBUTE. Tests refuse an existing registered
 installation and keep their evidence under artifacts.
 
 Record OS builds, privilege level, runtime versions, installer hashes and logs.
-Missing clean-machine or interactive coverage remains an acceptance gap.
+Missing clean-machine or interactive coverage remains an acceptance gap.\n

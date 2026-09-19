@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateSet('Check','Prepare','Verify','Commit','Restore')][string]$Action,
+    [ValidateSet('Check','Prepare','Verify','Commit','Restore','Finalize')][string]$Action,
     [string]$InstallRoot, [string]$PayloadManifest, [string]$ResultPath,
     [string]$BackupDirectory
 )
@@ -45,6 +45,15 @@ function Read-VpInstallManifest([string]$File) {
         }
         $seen[$relative] = $true
     }
+    if ($manifest.PSObject.Properties['cleanupFiles']) {
+        foreach ($entry in $manifest.cleanupFiles) {
+            $relative = ([string]$entry.path).Replace('/', '\')
+            $null = Get-VpSafePath $InstallRoot $relative
+            if ($seen.ContainsKey($relative) -or $entry.sha256 -notmatch '^[0-9a-fA-F]{64}$' -or
+                (Test-VpOperatorFile $relative)) { throw "Invalid cleanup entry: $relative" }
+            $seen[$relative] = $true
+        }
+    }
     return $manifest
 }
 function Assert-VpClosed {
@@ -65,11 +74,16 @@ function Assert-VpWritable([string]$Directory) {
 function Get-VpPlan($Manifest) {
     $current = @{}
     foreach ($entry in $Manifest.files) { if ($entry.policy -eq 'managed') { $current[$entry.path.Replace('/', '\')] = $entry.sha256 } }
+    $cleanup = @{}
+    if ($Manifest.PSObject.Properties['cleanupFiles']) {
+        foreach ($entry in $Manifest.cleanupFiles) { $cleanup[$entry.path.Replace('/', '\')] = $entry.sha256 }
+    }
     $previous = @{}
     $installed = Get-VpSafePath $InstallRoot 'INSTALL-MANIFEST.json'
     if (Test-Path -LiteralPath $installed) {
         foreach ($entry in (Read-VpInstallManifest $installed).files) {
-            if ($entry.policy -eq 'managed') { $previous[$entry.path.Replace('/', '\')] = $entry.sha256 }
+            $relative = $entry.path.Replace('/', '\')
+            if ($entry.policy -eq 'managed' -or $cleanup.ContainsKey($relative)) { $previous[$relative] = $entry.sha256 }
         }
     } else {
         # ZIP adoption: an explicit release inventory establishes ownership, never a DLL glob.
@@ -78,6 +92,41 @@ function Get-VpPlan($Manifest) {
             $inventory = Get-Content -LiteralPath $legacy -Raw | ConvertFrom-Json
             if ($inventory.schemaVersion -ne 1 -or $inventory.layoutVersion -ne 'VP-0107') {
                 throw 'Unrecognized ZIP release inventory. Resolve its ownership before retrying.'
+            }
+            # This generated inventory itself is retired after adoption. Textual
+            # ZIP extras have no historical hashes: delete only known package bytes.
+            if ($cleanup.ContainsKey('RELEASE-MANIFEST.json')) {
+                $previous['RELEASE-MANIFEST.json'] = (Get-FileHash -LiteralPath $legacy -Algorithm SHA256).Hash
+            }
+            foreach ($relative in $cleanup.Keys) {
+                $file = Get-VpSafePath $InstallRoot $relative
+                if ((Test-Path -LiteralPath $file -PathType Leaf) -and
+                    (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash -eq $cleanup[$relative]) {
+                    $previous[$relative] = $cleanup[$relative]
+                }
+            }
+            # Generated runtime metadata changes with every binary build. Recognize
+            # its exact schema and verify its old payload/installer hashes before
+            # treating it as an owned ZIP artifact rather than an arbitrary JSON.
+            $runtimeRelative = 'prerequisites\runtime-requirement.json'
+            $runtimeFile = Get-VpSafePath $InstallRoot $runtimeRelative
+            if ($cleanup.ContainsKey($runtimeRelative) -and $inventory.PSObject.Properties['generatedFiles'] -and
+                'prerequisites/runtime-requirement.json' -in $inventory.generatedFiles -and
+                (Test-Path -LiteralPath $runtimeFile -PathType Leaf)) {
+                try {
+                    $runtime = Get-Content -LiteralPath $runtimeFile -Raw | ConvertFrom-Json
+                    $properties = @('schemaVersion','architecture','minimumVersion','installerVersion','installerSha256','runtimeFiles','buildArtifacts')
+                    $recognized = $runtime.schemaVersion -eq 1 -and $runtime.architecture -eq 'x64' -and
+                        $runtime.buildArtifacts.Count -eq 4 -and
+                        @($runtime.PSObject.Properties.Name | Where-Object { $_ -notin $properties }).Count -eq 0
+                    $redist = Get-VpSafePath $InstallRoot 'prerequisites\vc_redist.x64.exe'
+                    $recognized = $recognized -and (Get-FileHash -LiteralPath $redist -Algorithm SHA256).Hash -eq $runtime.installerSha256
+                    foreach ($binary in $runtime.buildArtifacts) {
+                        $file = Get-VpSafePath $InstallRoot $binary.file
+                        if ((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash -ne $binary.sha256) { $recognized = $false }
+                    }
+                    if ($recognized) { $previous[$runtimeRelative] = (Get-FileHash -LiteralPath $runtimeFile -Algorithm SHA256).Hash }
+                } catch { Write-Verbose "Preserving unrecognized ZIP runtime metadata: $($_.Exception.Message)" }
             }
             foreach ($entry in $inventory.files) {
                 $relative = ([string]$entry.destination).Replace('/', '\')
@@ -90,14 +139,18 @@ function Get-VpPlan($Manifest) {
             }
         }
     }
-    $obsolete = @($previous.Keys | Where-Object { -not $current.ContainsKey($_) })
-    foreach ($relative in $obsolete) {
+    $obsolete = @(foreach ($relative in $previous.Keys) {
+        if ($current.ContainsKey($relative)) { continue }
         $file = Get-VpSafePath $InstallRoot $relative
         if ((Test-Path -LiteralPath $file -PathType Leaf) -and
             (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash -ne $previous[$relative]) {
+            # A modified setup-only document/example belongs to the operator now.
+            # A modified obsolete binary still blocks, because it can shadow DLLs.
+            if ($cleanup.ContainsKey($relative) -and $relative -notmatch '\.(dll|exe)$') { continue }
             throw "Previously managed file has been modified: $relative. Preserve it outside this folder before retrying."
         }
-    }
+        $relative
+    })
     # Unknown private DLLs can shadow the selected build or the system runtime.
     foreach ($relativeDirectory in @('', 'config', 'vprenderer')) {
         $directory = if ($relativeDirectory) { Get-VpSafePath $InstallRoot $relativeDirectory } else { $InstallRoot }
@@ -145,6 +198,48 @@ function Restore-VpBackup([string]$Directory) {
     $journal.status = 'restored'
     Write-VpJsonAtomic $journal $journalPath
 }
+function Remove-VpEmptyDirectories([string]$Directory) {
+    # No recursive delete or traversal through links. Remove only empty parents.
+    if (-not (Test-Path -LiteralPath $Directory -PathType Container)) { return }
+    $children = @(Get-ChildItem -LiteralPath $Directory -Force)
+    foreach ($child in $children) {
+        if ($child.PSIsContainer -and -not ($child.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+            Remove-VpEmptyDirectories $child.FullName
+        }
+    }
+    if (@(Get-ChildItem -LiteralPath $Directory -Force).Count -eq 0) { [IO.Directory]::Delete($Directory) }
+}
+function Remove-VpCompletedBackup([string]$Directory) {
+    $journalPath = Get-VpSafePath $Directory 'transaction.json'
+    if (-not (Test-Path -LiteralPath $journalPath -PathType Leaf)) { return }
+    $journal = Get-Content -LiteralPath $journalPath -Raw | ConvertFrom-Json
+    if ($journal.schemaVersion -ne 1 -or $journal.installRoot -ine $InstallRoot -or
+        $journal.status -notin @('complete','restored')) { return }
+    $owned = @{ $journalPath = $true }
+    foreach ($entry in $journal.files) {
+        if (Test-VpOperatorFile $entry.path) { throw 'Refusing to prune a backup claiming operator data.' }
+        $saved = Get-VpSafePath (Join-Path $Directory 'files') $entry.path
+        if ($entry.existed) {
+            if (-not (Test-Path -LiteralPath $saved -PathType Leaf) -or
+                (Get-FileHash -LiteralPath $saved -Algorithm SHA256).Hash -ne $entry.sha256) { return }
+            $owned[$saved] = $true
+        }
+    }
+    # Check the entire transaction first. Unknown files or links retain the whole
+    # backup, not just the unknown file, so manual recovery stays understandable.
+    $pending = [Collections.Generic.Queue[string]]::new()
+    $pending.Enqueue($Directory)
+    while ($pending.Count) {
+        foreach ($child in Get-ChildItem -LiteralPath $pending.Dequeue() -Force) {
+            if ($child.Attributes -band [IO.FileAttributes]::ReparsePoint) { return }
+            if ($child.PSIsContainer) { $pending.Enqueue($child.FullName) }
+            elseif (-not $owned.ContainsKey($child.FullName)) { return }
+        }
+    }
+    foreach ($file in $owned.Keys) { if ($file -ne $journalPath) { Remove-Item -LiteralPath $file -Force } }
+    Remove-Item -LiteralPath $journalPath -Force
+    Remove-VpEmptyDirectories $Directory
+}
 function Invoke-VpInstallAction {
     $script:InstallRoot = [IO.Path]::GetFullPath($InstallRoot).TrimEnd('\')
     if ($InstallRoot -eq [IO.Path]::GetPathRoot($InstallRoot).TrimEnd('\')) { throw 'Select a dedicated VideoProcessor folder, not a drive root.' }
@@ -156,6 +251,21 @@ function Invoke-VpInstallAction {
         if (-not $backup.StartsWith($history + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Backup must be inside this installation history.' }
         Restore-VpBackup $backup
         return 'Previous application files restored. Settings/state preserved. Rerun the matching installer to repair shortcuts and registration.'
+    }
+    if ($Action -eq 'Finalize') {
+        $backup = [IO.Path]::GetFullPath($BackupDirectory)
+        if (-not $backup.StartsWith($history + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Invalid transaction directory.' }
+        $journal = Get-Content -LiteralPath (Get-VpSafePath $backup 'transaction.json') -Raw | ConvertFrom-Json
+        if ($journal.installRoot -ine $InstallRoot -or $journal.status -ne 'complete') { throw 'Setup has not committed this transaction.' }
+        foreach ($directory in Get-ChildItem -LiteralPath $history -Directory) {
+            $safeDirectory = Get-VpSafePath $history $directory.Name
+            Remove-VpCompletedBackup $safeDirectory
+        }
+        Remove-VpEmptyDirectories $history
+        foreach ($relative in @('prerequisites','setup')) {
+            Remove-VpEmptyDirectories (Get-VpSafePath $InstallRoot $relative)
+        }
+        return 'Completed recovery backups and empty setup-only directories cleaned; unrecognized or modified files retained.'
     }
     $manifest = Read-VpInstallManifest $PayloadManifest
     if ($Action -in @('Check','Prepare')) {

@@ -190,6 +190,11 @@ end;
 
 procedure DeinitializeSetup;
 begin
+  if Committed then begin
+    { Cleanup failure must not roll back a verified, registered installation. }
+    if not RunHelper('Finalize') then
+      Log('Recovery files retained for later cleanup: ' + HelperMessage);
+  end;
   if Prepared and not Committed then begin
     if not RunHelper('Restore') then
       MsgBox('Automatic recovery could not finish: ' + HelperMessage + #13#10 +
