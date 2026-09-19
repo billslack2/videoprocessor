@@ -1,0 +1,31 @@
+VideoProcessor - before first use or after updating
+
+1. Extract the complete ZIP into a folder. Do not run VP inside the ZIP.
+2. Run SETUP-RUNTIME.cmd before opening VP or its Config editor.
+   It checks the required Microsoft Visual C++ x64 runtime and installs the
+   included official Microsoft package only when needed. Approve the Windows
+   administrator prompt. If asked to restart Windows, restart and run setup again.
+   Setup works without downloading an installer and leaves VP settings alone.
+3. Open VideoProcessor.exe, or config\VideoProcessorConfig.exe to edit settings.
+
+For an existing installation, preserve VideoProcessor.cfg and VideoProcessor.state.
+The supplied VideoProcessor.cfg.example is a reference, not a replacement for your
+settings. Keep VideoProcessor.exe and vprenderer\VideoProcessorVPRenderer.dll
+from the same release together.
+
+If Config crashes when you click Apply or OK, run SETUP-RUNTIME.cmd. The presence
+of an older Visual C++ runtime is not sufficient. If setup reports old Microsoft
+DLLs inside your VP folder, extract the release into a clean folder and copy your
+configuration and other personal files there; setup will not delete those DLLs.
+
+If script execution is blocked by your organization's policy, ask your administrator
+to install prerequisites\vc_redist.x64.exe, then rerun the runtime check. Do not
+change a machine-wide script policy to run this setup.
+
+To check without installing: SETUP-RUNTIME.cmd -CheckOnly
+A zero exit code means ready; 2 means the system runtime needs installation;
+1 means setup could not complete; 3010 means installation requires a restart.
+
+The exact required version is in prerequisites\runtime-requirement.json.
+Official Microsoft information:
+https://learn.microsoft.com/cpp/windows/latest-supported-vc-redist

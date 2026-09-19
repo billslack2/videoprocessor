@@ -74,6 +74,7 @@
     </Manifest>
     <PostBuildEvent>
       <Command>copy /Y "$(ProjectDir)..\VideoProcessor-ConfigDiscovery\x64\$(Configuration)\VideoProcessorConfigDiscovery.dll" "$(OutDir)"
+copy /Y "$(ProjectDir)..\VideoProcessor-ConfigDiscovery\x64\$(Configuration)\VideoProcessorConfigDiscovery.dll.runtime.json" "$(OutDir)"
 "$(QtRoot)\bin\windeployqt.exe" --release --no-translations --no-system-d3d-compiler "$(TargetPath)"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>

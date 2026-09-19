@@ -1,0 +1,7 @@
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <!-- Preserve the actual toolset and binary identity for release prerequisite checks. -->
+  <Target Name="RecordVpRuntimeRequirement" AfterTargets="Build"
+          Condition="'$(Configuration)' == 'Release' and '$(Platform)' == 'x64' and ('$(ConfigurationType)' == 'Application' or '$(ConfigurationType)' == 'DynamicLibrary')">
+    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildThisFileDirectory)tools\record_runtime_requirement.ps1&quot; -BinaryPath &quot;$(TargetPath)&quot; -ToolsetVersion &quot;$(VCToolsVersion)&quot;" />
+  </Target>
+</Project>
