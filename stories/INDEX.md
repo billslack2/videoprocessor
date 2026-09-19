@@ -6,9 +6,9 @@ story may have ordered child-task IDs as defined below.
 
 ## Registry state
 
-- Last assigned root story: `VP-0190`
-- Next root story number: `VP-0191`
-- Total indexed items: 209
+- Last assigned root story: `VP-0191`
+- Next root story number: `VP-0192`
+- Total indexed items: 210
 
 ## Story locations
 
@@ -245,6 +245,7 @@ they must not contain requirements that are absent from this file.
 | VP-0188 | Review | Preserve configuration scope and avoid source-event disk reloads |
 | VP-0189 | Review | Stabilize automatic crop and diagnose dark-scene transitions ([merged #94](https://github.com/billslack2/videoprocessor/pull/94), [follow-up #95](https://github.com/billslack2/videoprocessor/pull/95); Review retained) |
 | VP-0190 | Backlog | Preserve active-picture authority through NLS-only profile changes |
+| VP-0191 | Backlog | Prevent incompatible saved queue profiles during refresh transitions |
 
 ## Codex story workflow
 
