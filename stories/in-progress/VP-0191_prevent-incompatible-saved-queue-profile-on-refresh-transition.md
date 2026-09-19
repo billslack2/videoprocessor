@@ -2,12 +2,25 @@
 
 ## Status
 
-Backlog
+In Progress
 
-Created 2026-09-19 from deployed playback logs. Implementation has not yet
-started. The observed transition is deterministic enough to define the required
-behavior, but current remote integration code must be reviewed before the
-implementation branch is selected.
+Implementation began 2026-09-19 after the developer confirmed the discovered
+remote default branch `v1.3.005-beta` as the integration base. The latest remote
+tip was fetched as `8414b11633d3ab8cc06fa3964c273c81b76f05bc` (merge PR #95).
+
+Branch: `codex/vp-0191-queue-profile-compat`  
+Clean worktree: `E:\\codex\\videoprocessor\\vp-0191-queue-profile-compat`
+
+## Readiness review
+
+The deployed trace establishes the bounded failure: a source-invalid transition
+publishes a saved queue selection before the successor renderer/source context
+can resolve a compatible queue rule. The queue resolver, persisted selection
+ownership, profile-event/OSD publication, and queue policy application must be
+traced together before code changes. The implementation boundary is complete
+when one production-connected regression proves rejected/deferred incompatible
+state cannot reach policy, actions, OSD, or persistence while compatible
+selection and confirmed madVR handoff behavior remain intact.
 
 ## User story
 
@@ -90,6 +103,5 @@ existing saved/manual queue selection path.
 
 ## Next action
 
-Perform the required remote integration-base discovery and confirmation, then
-record a readiness review and implement the smallest ownership-bound profile
-resolution fix with a failing regression first.
+Trace current profile-resolution ownership, add the failing lifecycle regression,
+then implement and verify the smallest ownership-bound compatibility gate.
