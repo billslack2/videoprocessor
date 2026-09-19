@@ -169,7 +169,9 @@ if($current.PSObject.Properties['runtimeMode'] -and $current.runtimeMode -eq 'ap
  Remove-Item -LiteralPath (Join-Path $target 'INSTALL-MANIFEST.json') -Force
  RunSetup 'missing-manifest' $false
  # Exercise a damaged native uninstall log; Inno may choose a new numbered pair.
- [IO.File]::WriteAllText([IO.Path]::ChangeExtension((Get-Uninstaller),'.dat'),'damaged uninstall history')
+ $damagedDat=[IO.File]::Open([IO.Path]::ChangeExtension((Get-Uninstaller),'.dat'),'Open','Write','None')
+ try { $damagedDat.SetLength(0); $bytes=[Text.Encoding]::UTF8.GetBytes('damaged uninstall history'); $damagedDat.Write($bytes,0,$bytes.Length) }
+ finally { $damagedDat.Dispose() }
  RunSetup 'damaged-uninstall-data' $false
 }
 foreach($relative in $before.Keys){

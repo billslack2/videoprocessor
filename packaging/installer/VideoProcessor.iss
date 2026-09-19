@@ -240,12 +240,10 @@ begin
       Notice := 'Uninstall has not started because ' + Running + ' is still running.' + #13#10#13#10;
       if ConfigProcesses.Count > 0 then
         Notice := Notice +
-          'Save any changes in Config. Then right-click the "VideoProcessor Configuration" icon near the Windows clock and select Exit. Check the hidden-icons arrow if needed.' +
-          #13#10#13#10 + 'Closing the Config window only hides it in the tray; it does not exit the application.' + #13#10#13#10;
+          'Save any changes in Config. Then right-click the "VideoProcessor Configuration" icon near the Windows clock and select Exit. Check the hidden-icons arrow if needed.' + #13#10#13#10 + 'Closing the Config window only hides it in the tray; it does not exit the application.' + #13#10#13#10;
       if PlayerProcesses.Count > 0 then
         Notice := Notice + 'Close the VideoProcessor player window.' + #13#10#13#10;
-      Notice := Notice + 'Click Retry after exiting the running apps, or Cancel to leave VideoProcessor installed.' +
-        #13#10#13#10 + 'Your configuration and state files will be kept after uninstall.';
+      Notice := Notice + 'Click Retry after exiting the running apps, or Cancel to leave VideoProcessor installed.' + #13#10#13#10 + 'Your configuration and state files will be kept after uninstall.';
       Log(Notice);
       if SuppressibleMsgBox(Notice, mbInformation, MB_RETRYCANCEL, IDCANCEL) <> IDRETRY then Exit;
     end;
