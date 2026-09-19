@@ -1,4 +1,4 @@
-﻿[CmdletBinding()]
+[CmdletBinding()]
 param(
     [ValidateSet('Check','Prepare','Verify','Commit','Restore')][string]$Action,
     [string]$InstallRoot, [string]$PayloadManifest, [string]$ResultPath,
@@ -115,6 +115,12 @@ function Get-VpPlan($Manifest) {
     }
     return [pscustomobject]@{ current=$current; obsolete=$obsolete }
 }
+function Write-VpJsonAtomic($Value, [string]$File) {
+    $temporary = $File + '.' + [guid]::NewGuid().ToString('N') + '.tmp'
+    [IO.File]::WriteAllText($temporary, ($Value | ConvertTo-Json -Depth 8), [Text.UTF8Encoding]::new($true))
+    if (Test-Path -LiteralPath $File) { [IO.File]::Replace($temporary, $File, [NullString]::Value) }
+    else { [IO.File]::Move($temporary, $File) }
+}
 function Restore-VpBackup([string]$Directory) {
     Assert-VpClosed
     $journalPath = Get-VpSafePath $Directory 'transaction.json'
@@ -137,7 +143,7 @@ function Restore-VpBackup([string]$Directory) {
         } elseif (Test-Path -LiteralPath $destination -PathType Leaf) { Remove-Item -LiteralPath $destination -Force }
     }
     $journal.status = 'restored'
-    $journal | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $journalPath -Encoding UTF8
+    Write-VpJsonAtomic $journal $journalPath
 }
 function Invoke-VpInstallAction {
     $script:InstallRoot = [IO.Path]::GetFullPath($InstallRoot).TrimEnd('\')
@@ -196,11 +202,16 @@ function Invoke-VpInstallAction {
             [ordered]@{ path=$relative; existed=$existed; sha256=$hash }
         })
         # Publish the journal only after the entire backup is verified, then mutate.
-        [ordered]@{ schemaVersion=1; installRoot=$InstallRoot; status='pending'; build=$manifest.build; files=$entries } |
-            ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $backup 'transaction.json') -Encoding UTF8
-        foreach ($relative in $plan.obsolete) {
-            $file = Get-VpSafePath $InstallRoot $relative
-            if (Test-Path -LiteralPath $file -PathType Leaf) { Remove-Item -LiteralPath $file -Force }
+        $journal = [ordered]@{ schemaVersion=1; installRoot=$InstallRoot; status='pending'; build=$manifest.build; files=$entries }
+        Write-VpJsonAtomic $journal (Join-Path $backup 'transaction.json')
+        try {
+            foreach ($relative in $plan.obsolete) {
+                $file = Get-VpSafePath $InstallRoot $relative
+                if (Test-Path -LiteralPath $file -PathType Leaf) { Remove-Item -LiteralPath $file -Force }
+            }
+        } catch {
+            Restore-VpBackup $backup
+            throw
         }
         return $backup
     }
@@ -219,7 +230,7 @@ function Invoke-VpInstallAction {
             $journal = Get-Content -LiteralPath $journalPath -Raw | ConvertFrom-Json
             Copy-Item -LiteralPath $PayloadManifest -Destination (Get-VpSafePath $InstallRoot 'INSTALL-MANIFEST.json') -Force
             $journal.status = 'complete'
-            $journal | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $journalPath -Encoding UTF8
+            Write-VpJsonAtomic $journal $journalPath
         }
         return "Verified installed build $($manifest.build)."
     }

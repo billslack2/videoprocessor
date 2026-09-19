@@ -19,8 +19,8 @@ DisableDirPage=no
 DefaultGroupName=VideoProcessor
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
-ArchitecturesAllowed=x64
-ArchitecturesInstallIn64BitMode=x64
+ArchitecturesAllowed=x64os
+ArchitecturesInstallIn64BitMode=x64os
 MinVersion=10.0
 OutputDir={#OutputRoot}
 OutputBaseFilename=VideoProcessor-{#CoreVersion}-{#BuildCommit}-x64-Setup
@@ -78,7 +78,7 @@ begin
   Result := Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
     Args, '', SW_HIDE, ewWaitUntilTerminated, ExitCode) and (ExitCode = 0);
   HelperMessage := 'Setup could not run its verification helper. Check Windows script policy and the setup log.';
-  if LoadStringFromFile(ResultFile, Output) then HelperMessage := UTF8ToString(Output);
+  if LoadStringFromFile(ResultFile, Output) then HelperMessage := Utf8Decode(Output);
   Log(Action + ': ' + HelperMessage);
 end;
 
