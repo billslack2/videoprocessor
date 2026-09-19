@@ -916,7 +916,8 @@ namespace AlphaSourceCrop
 	// A sparse near-black episode chooses one safe presentation on entry. It can
 	// move from retained crop to full raster immediately for visibility. A
 	// full-raster episode may restore only its exact entry crop after a bounded,
-	// current-frame pixel-safe revalidation dwell; it never grants authority to
+	// current-frame pixel-safe revalidation dwell. The same proof ends retained
+	// crop episodes once bright scope returns. Neither path grants authority to
 	// startup or unrelated recent geometry.
 	NearBlackPresentationEpisodeDecision EvaluateNearBlackPresentationEpisode(
 		const NearBlackPresentationEpisodeInput& input);
