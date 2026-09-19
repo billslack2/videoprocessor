@@ -267,6 +267,81 @@ namespace Tests
 			Assert::AreEqual(6001u, selection.selected.numerator);
 		}
 
+		TEST_METHOD(Progressive25And30PreferNativeBeforeDoubledFallback)
+		{
+			for (uint32_t rate : {25U,30U})
+			{
+				const auto modes=RankDisplayRefreshModesForInput({rate,1},false,{{rate*2,1},{rate,1}});
+				Assert::AreEqual(size_t(2),modes.size());
+				Assert::AreEqual(rate,modes[0].selected.numerator);
+				Assert::IsFalse(modes[0].doubledRate);
+				Assert::AreEqual(rate*2,modes[1].selected.numerator);
+				Assert::IsTrue(modes[1].doubledRate);
+			}
+		}
+
+		TEST_METHOD(LowRefreshProjectorCanSelectOnlyNativeMode)
+		{
+			for (uint32_t rate : {25U,30U})
+			{
+				const auto modes=RankDisplayRefreshModesForInput({rate,1},false,{{24,1},{rate,1}});
+				Assert::AreEqual(size_t(1),modes.size());
+				Assert::AreEqual(rate,modes[0].selected.numerator);
+			}
+		}
+
+		TEST_METHOD(UnavailableNativeModeStillUsesDoubledMode)
+		{
+			for (uint32_t rate : {25U,30U})
+			{
+				const auto modes=RankDisplayRefreshModesForInput({rate,1},false,{{rate*2,1}});
+				Assert::AreEqual(size_t(1),modes.size());
+				Assert::AreEqual(rate*2,modes[0].selected.numerator);
+				Assert::IsTrue(modes[0].doubledRate);
+			}
+		}
+
+		TEST_METHOD(FractionalNativeAndFallbackPreserveExactRationals)
+		{
+			const auto modes=RankDisplayRefreshModesForInput({30000,1001},false,
+				{{60,1},{60000,1001},{30,1},{30000,1001},{60000,2002}});
+			Assert::AreEqual(size_t(4),modes.size());
+			Assert::IsTrue(DisplayRefreshRatesExactlyEqual({30000,1001},modes[0].selected));
+			Assert::IsFalse(modes[0].doubledRate);
+			Assert::IsFalse(modes[1].doubledRate);
+			Assert::IsTrue(DisplayRefreshRatesExactlyEqual({60000,1001},modes[2].selected));
+			Assert::IsTrue(modes[2].doubledRate);
+			Assert::IsTrue(modes[3].doubledRate);
+		}
+
+		TEST_METHOD(InterlacedKeepsFieldRateWithoutHalfRateFallback)
+		{
+			for (const DisplayRefreshRational input : {DisplayRefreshRational{25,1},{30000,1001},{30,1}})
+			{
+				const DisplayRefreshRational doubled{input.numerator*2,input.denominator};
+				const auto modes=RankDisplayRefreshModesForInput(input,true,{input,doubled});
+				Assert::AreEqual(size_t(1),modes.size());
+				Assert::IsTrue(DisplayRefreshRatesExactlyEqual(doubled,modes[0].selected));
+				Assert::IsTrue(modes[0].doubledRate);
+				Assert::IsTrue(RankDisplayRefreshModesForInput(input,true,{input}).empty());
+			}
+		}
+
+		TEST_METHOD(OtherProgressiveRatesAndUnsupportedFamiliesRemainUnchanged)
+		{
+			for (const DisplayRefreshRational input : {DisplayRefreshRational{24000,1001},{24,1},{50,1},{60000,1001},{60,1}})
+			{
+				const auto modes=RankDisplayRefreshModesForInput(input,false,{input,{input.numerator*2,input.denominator}});
+				Assert::AreEqual(size_t(1),modes.size());
+				Assert::IsFalse(modes[0].doubledRate);
+			}
+			Assert::IsTrue(RankDisplayRefreshModesForInput({25,1},false,{{24,1},{60,1}}).empty());
+			Assert::IsTrue(RankDisplayRefreshModesForInput({30,1},false,{}).empty());
+			Assert::IsTrue(RankDisplayRefreshModesForInput({0,1},false,{{60,1}}).empty());
+			Assert::IsTrue(RankDisplayRefreshModesForInput({30,0},false,{{60,1}}).empty());
+			Assert::IsTrue(RankDisplayRefreshModesForInput({UINT32_MAX,1},true,{{60,1}}).empty());
+		}
+
 		TEST_METHOD(RestoreEquivalenceAllowsTightDriverRoundingOnly)
 		{
 			Assert::IsTrue(DisplayRefreshRatesEquivalentForRestore(

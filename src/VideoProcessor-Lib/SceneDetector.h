@@ -41,6 +41,19 @@ struct SceneDetectorResult
 	uint16_t averageLuma = 0;
 	uint64_t sourceSequence = 0;
 	uint64_t generation = 0;
+	// Reasons describe this analysis even if event cooldown suppresses a
+	// boundary. A near-black entry is not proof of a fade: low-contrast cuts
+	// can remain below the existing hard-cut thresholds.
+	bool nearBlackEntry = false;
+	// Includes pending evidence present BEFORE settling/expiry/darkness clears
+	// it, as well as a new immediate candidate on this frame.
+	bool hardCutCandidate = false;
+	bool hardCutConfirmed = false;
+	bool differenceEvaluated = false;
+	uint32_t immediateAverageLumaDifference = 0;
+	uint32_t changedSampleCount = 0;
+	uint32_t sampleCount = 0;
+	uint32_t histogramDistance = 0;
 };
 
 class SceneDetector

@@ -5,6 +5,7 @@
 
 #include "ActivePictureTransitionModel.h"
 #include "ActivePictureEvidence.h"
+#include "SceneDetector.h"
 
 
 namespace AlphaSourceCrop
@@ -510,6 +511,69 @@ namespace AlphaSourceCrop
 	VerticalBarRendererRouting ResolveVerticalBarRendererRouting(
 		const VerticalBarPresentationResolution& resolution);
 
+	// Retain an already committed full raster through missing dark-frame geometry.
+	// This never establishes startup geometry. After revocation, a new commit or
+	// fresh affirmative measurements must revalidate the same committed context;
+	// a cached old full-raster rectangle alone cannot re-arm it.
+	struct KnownFullRasterRetentionState
+	{
+		bool available = false;
+		int rasterWidth = 0;
+		int rasterHeight = 0;
+		uint64_t sourceGeneration = 0;
+		uint64_t presentationEpoch = 0;
+		uint64_t lastEvaluatedSequence = 0;
+		uint64_t lastCommittedSequence = 0;
+		uint8_t reaffirmationSamples = 0;
+	};
+	struct KnownFullRasterRetentionInput
+	{
+		KnownFullRasterRetentionState previous;
+		bool analysisValid = false;
+		bool measurementCurrent = false;
+		bool cadenceRepeat = false;
+		bool sceneBoundary = false;
+		// Unlike safeBoundary, this is not suppressed by scene-notification cooldown.
+		bool independentCutEvidence = false;
+		bool nearBlackEvaluated = false;
+		bool globalNearBlack = false;
+		ActivePictureClassification rawClassification = ActivePictureClassification::UNAVAILABLE;
+		ActivePictureBounds rawBounds;
+		int frameWidth = 0;
+		int frameHeight = 0;
+		uint64_t sourceGeneration = 0;
+		uint64_t sourceSequence = 0;
+		uint64_t presentationEpoch = 0;
+		bool committedFullAvailable = false;
+		ActivePictureBounds committedBounds;
+		uint64_t committedSourceGeneration = 0;
+		uint64_t committedSourceSequence = 0;
+		uint64_t committedPresentationEpoch = 0;
+	};
+	KnownFullRasterRetentionState UpdateKnownFullRasterRetention(
+		const KnownFullRasterRetentionInput& input);
+
+	// Shared renderer/test scene routing; updates the scene fields in input.
+	KnownFullRasterRetentionState UpdateKnownFullRasterRetentionForScene(
+		KnownFullRasterRetentionInput& input, const SceneDetectorResult& scene,
+		bool retainFullRasterAtDarknessBoundary);
+
+	// A generic safeBoundary also marks entry into darkness. Only this narrow
+	// predicate permits retaining an existing full raster at that event; an
+	// independent immediate/pending/confirmed cut always uses normal policy.
+	struct KnownFullRasterDarknessBoundaryInput
+	{
+		KnownFullRasterRetentionInput retention;
+		bool safeBoundary = false;
+		bool nearBlackEntry = false;
+		bool differenceEvaluated = false;
+		bool hardCutCandidate = false;
+		bool hardCutConfirmed = false;
+	};
+	bool CanRetainKnownFullRasterAtDarknessBoundary(
+		const KnownFullRasterDarknessBoundaryInput& input);
+
+
 	// Full raster is always outward-safe. Keep that presentation authority
 	// between sparse analysis samples, but withdraw it as soon as trusted bar
 	// evidence appears. Ambiguity cannot turn it into crop authority.
@@ -795,6 +859,9 @@ namespace AlphaSourceCrop
 		ActivePictureBounds trustedCrop;
 		bool boundedVisibleContentOutsideCrop = false;
 		bool fullRasterAuthorityAvailable = false;
+		// Current context checked by UpdateKnownFullRasterRetention; never inferred
+		// from the raw full-raster presentation flag alone.
+		bool knownFullRasterRetained = false;
 		bool cadenceRepeat = false;
 		bool currentObservationAvailable = false;
 		ActivePictureClassification currentObservationClassification = ActivePictureClassification::UNAVAILABLE;
@@ -1086,6 +1153,8 @@ namespace AlphaSourceCrop
 			ActivePictureClassification::UNAVAILABLE;
 		ActivePictureClassification latestClassification =
 			ActivePictureClassification::UNAVAILABLE;
+		// Set only by CanRetainKnownFullRasterAtDarknessBoundary.
+		bool knownFullRasterDarknessRetention = false;
 	};
 
 	struct SceneDecision

@@ -1222,6 +1222,163 @@ namespace AlphaSourceCrop
 		return routing;
 	}
 
+	KnownFullRasterRetentionState UpdateKnownFullRasterRetention(
+		const KnownFullRasterRetentionInput& input)
+	{
+		KnownFullRasterRetentionState state = input.previous;
+		const bool sameContext = state.sourceGeneration == input.sourceGeneration &&
+			state.presentationEpoch == input.presentationEpoch &&
+			state.rasterWidth == input.frameWidth && state.rasterHeight == input.frameHeight;
+		if (!sameContext)
+		{
+			state = {};
+			state.sourceGeneration = input.sourceGeneration;
+			state.presentationEpoch = input.presentationEpoch;
+			state.rasterWidth = input.frameWidth;
+			state.rasterHeight = input.frameHeight;
+		}
+		auto withdraw = [&state]()
+		{
+			state.available = false;
+			state.reaffirmationSamples = 0;
+		};
+		if (!input.analysisValid || input.sourceGeneration == 0 ||
+			input.sourceSequence == 0 || input.frameWidth <= 0 || input.frameHeight <= 0)
+		{
+			withdraw();
+			state.lastEvaluatedSequence = std::max(state.lastEvaluatedSequence, input.sourceSequence);
+			return state;
+		}
+		const auto exactFullRaster = [&](const ActivePictureBounds& bounds)
+		{
+			return bounds.left == 0 && bounds.top == 0 &&
+				bounds.right == input.frameWidth && bounds.bottom == input.frameHeight &&
+				bounds.rasterWidth == input.frameWidth && bounds.rasterHeight == input.frameHeight &&
+				bounds.trustedBarAxes == ActivePictureBounds::BarAxes::NONE;
+		};
+		// Raw contradictions may withdraw even on a duplicate. Suppression of
+		// dark crop acquisition must not disguise genuine opposing-bar evidence.
+		if (input.measurementCurrent && input.rawClassification ==
+			ActivePictureClassification::BAR_CROP_TRUSTED)
+		{
+			withdraw();
+			state.lastEvaluatedSequence = std::max(state.lastEvaluatedSequence, input.sourceSequence);
+			return state;
+		}
+		const bool currentFullEvidence = input.measurementCurrent &&
+			input.rawClassification == ActivePictureClassification::FULL_RASTER_TRUSTED &&
+			exactFullRaster(input.rawBounds);
+		const bool committedContextMatches = input.committedFullAvailable &&
+			input.committedSourceGeneration == input.sourceGeneration &&
+			input.committedPresentationEpoch == input.presentationEpoch &&
+			input.committedSourceSequence != 0 &&
+			input.committedSourceSequence <= input.sourceSequence &&
+			exactFullRaster(input.committedBounds);
+		const bool freshCommittedFull = currentFullEvidence && committedContextMatches &&
+			input.committedSourceSequence == input.sourceSequence &&
+			input.committedSourceSequence > state.lastCommittedSequence;
+		// A cut remains evidence when notification cooldown suppresses the scene
+		// event. Never let that debounce preserve a full-frame lease into an
+		// unclassified dark scene, or accumulate recovery proof while it persists.
+		if (input.independentCutEvidence)
+		{
+			withdraw();
+			// A genuine new full-frame publication is still recorded, but it must
+			// be freshly reaffirmed after the pending cut evidence has cleared.
+			if (!input.cadenceRepeat && input.sourceSequence > state.lastEvaluatedSequence && freshCommittedFull)
+				state.lastCommittedSequence = input.committedSourceSequence;
+			state.lastEvaluatedSequence = std::max(state.lastEvaluatedSequence, input.sourceSequence);
+			return state;
+		}
+		if (input.sceneBoundary)
+		{
+			state.reaffirmationSamples = 0;
+			if (!(state.available && currentFullEvidence))
+				state.available = false;
+		}
+		if (input.sourceSequence < state.lastEvaluatedSequence)
+		{
+			withdraw();
+			return state;
+		}
+		if (input.sourceSequence == state.lastEvaluatedSequence)
+			return state; // Neither repeats nor cached measurements build proof.
+		if (input.cadenceRepeat)
+		{
+			withdraw();
+			state.lastEvaluatedSequence = input.sourceSequence;
+			return state;
+		}
+		state.lastEvaluatedSequence = input.sourceSequence;
+		if (freshCommittedFull)
+		{
+			state.available = true;
+			state.lastCommittedSequence = input.committedSourceSequence;
+			state.reaffirmationSamples = 0;
+		}
+		else if (!state.available)
+		{
+			// Stable matching geometry deliberately does not publish again. Two
+			// fresh, non-dark affirmative observations can instead revalidate its
+			// real prior commitment, using the normal transition confirmation count.
+			const bool reaffirmed = !input.sceneBoundary && currentFullEvidence &&
+				input.nearBlackEvaluated && !input.globalNearBlack && committedContextMatches &&
+				state.lastCommittedSequence != 0 &&
+				input.committedSourceSequence == state.lastCommittedSequence;
+			if (reaffirmed)
+			{
+				if (state.reaffirmationSamples < ActivePictureTransitionModel::CLEAR_TRANSITION_CONFIRMATIONS)
+					++state.reaffirmationSamples;
+				state.available = state.reaffirmationSamples >=
+					ActivePictureTransitionModel::CLEAR_TRANSITION_CONFIRMATIONS;
+			}
+			else if (input.measurementCurrent || !committedContextMatches)
+				state.reaffirmationSamples = 0;
+		}
+		return state;
+	}
+
+
+	KnownFullRasterRetentionState UpdateKnownFullRasterRetentionForScene(
+		KnownFullRasterRetentionInput& input, const SceneDetectorResult& scene,
+		bool retainFullRasterAtDarknessBoundary)
+	{
+		input.sceneBoundary = !input.cadenceRepeat && scene.safeBoundary &&
+			!retainFullRasterAtDarknessBoundary;
+		input.independentCutEvidence = !input.cadenceRepeat &&
+			scene.sourceSequence == input.sourceSequence &&
+			(scene.hardCutCandidate || scene.hardCutConfirmed);
+		return UpdateKnownFullRasterRetention(input);
+	}
+
+	bool CanRetainKnownFullRasterAtDarknessBoundary(
+		const KnownFullRasterDarknessBoundaryInput& input)
+	{
+		const auto& current = input.retention;
+		const auto& previous = current.previous;
+		if (!input.safeBoundary || !input.nearBlackEntry || !input.differenceEvaluated || input.hardCutCandidate ||
+			input.hardCutConfirmed || !previous.available || !current.analysisValid ||
+			!current.measurementCurrent || current.cadenceRepeat ||
+			current.sourceGeneration == 0 || current.sourceSequence == 0 ||
+			current.frameWidth <= 0 || current.frameHeight <= 0 ||
+			current.sourceSequence <= previous.lastEvaluatedSequence ||
+			previous.sourceGeneration != current.sourceGeneration ||
+			previous.presentationEpoch != current.presentationEpoch ||
+			previous.rasterWidth != current.frameWidth || previous.rasterHeight != current.frameHeight ||
+			current.rawClassification == ActivePictureClassification::BAR_CROP_TRUSTED)
+			return false;
+		const auto& bounds = current.committedBounds;
+		return current.committedFullAvailable && previous.lastCommittedSequence != 0 &&
+			current.committedSourceSequence == previous.lastCommittedSequence &&
+			current.committedSourceSequence <= previous.lastEvaluatedSequence &&
+			current.committedSourceGeneration == current.sourceGeneration &&
+			current.committedPresentationEpoch == current.presentationEpoch &&
+			bounds.left == 0 && bounds.top == 0 && bounds.right == current.frameWidth &&
+			bounds.bottom == current.frameHeight && bounds.rasterWidth == current.frameWidth &&
+			bounds.rasterHeight == current.frameHeight &&
+			bounds.trustedBarAxes == ActivePictureBounds::BarAxes::NONE;
+	}
+
 	bool UpdateFullRasterPresentationAuthority(bool previouslyAuthoritative,
 		ActivePictureClassification currentClassification,
 		bool currentBoundsAreFullRaster)
@@ -1751,6 +1908,19 @@ namespace AlphaSourceCrop
 			decision.state = {};
 			decision.ended = true;
 			decision.reason = "scene boundary ended near-black title episode";
+		}
+
+		// A known full-frame picture has no excluded bands to become unsafe.
+		// Preserve that committed picture through darkness; do not conflate it
+		// with startup's unclassified full-raster fallback. The retention lease
+		// is revoked independently for resets, cuts, and fresh trusted bars.
+		if (input.knownFullRasterRetained && input.fullRasterAuthorityAvailable &&
+			!input.trustedCropAvailable)
+		{
+			decision.ended = decision.ended || decision.state.mode != NearBlackPresentationMode::INACTIVE;
+			decision.state = {};
+			decision.reason = "retained committed full-raster picture through near-black ambiguity";
+			return decision;
 		}
 
 		if (input.fullRasterAuthorityAvailable &&
@@ -2683,6 +2853,15 @@ namespace AlphaSourceCrop
 		{
 			decision.reason =
 				"scene evidence or presentation geometry is not current";
+			return decision;
+		}
+
+		if (input.knownFullRasterDarknessRetention &&
+			input.geometryClassification == ActivePictureClassification::FULL_RASTER_TRUSTED &&
+			input.latestClassification != ActivePictureClassification::BAR_CROP_TRUSTED)
+		{
+			decision.action = ScenePresentationAction::KEEP_CURRENT;
+			decision.reason = "darkness-only boundary retains previously committed full raster";
 			return decision;
 		}
 		if (input.latestClassification ==

@@ -153,6 +153,28 @@ namespace
 		return result;
 	}
 
+	std::string CreateRendererDiagnosticInstanceId()
+	{
+		GUID guid{};
+		wchar_t text[40]{};
+		if (SUCCEEDED(CoCreateGuid(&guid)) && StringFromGUID2(guid, text, _countof(text)) > 0)
+		{
+			const auto id = WideToUtf8(text);
+			if (!id.empty()) return id;
+		}
+		// Diagnostics must not prevent rendering if GUID creation fails. Include
+		// wall time, process, high-resolution tick and a per-module sequence so
+		// restarts, module reloads and rapid instance creation remain distinguishable.
+		static std::atomic<uint64_t> fallbackSequence{0};
+		FILETIME now{};
+		GetSystemTimeAsFileTime(&now);
+		std::ostringstream id;
+		id << "fallback-" << GetCurrentProcessId() << '-' << now.dwHighDateTime << '-'
+			<< now.dwLowDateTime << '-' << PerformanceCounterNow() << '-'
+			<< fallbackSequence.fetch_add(1, std::memory_order_relaxed);
+		return id.str();
+	}
+
 	std::wstring CaptureTimestampStem(uint64_t sourceSequence)
 	{
 		SYSTEMTIME time{};
@@ -2957,6 +2979,8 @@ namespace
 		DISPLAYCONFIG_RATIONAL refreshRate{};
 		DisplayRefreshModeSelectionPath selectionPath =
 			DisplayRefreshModeSelectionPath::None;
+		double requestedRateHz = 0.0;
+		bool doubledRate = false;
 	};
 
 	bool QueryDxgiSupportedRefreshRates(const std::wstring& displayDeviceName,
@@ -3050,28 +3074,19 @@ namespace
 	}
 
 	std::vector<RankedDisplayRefreshRate> RankDisplayRefreshRates(
-		const DISPLAYCONFIG_RATIONAL& requested,
+		const DISPLAYCONFIG_RATIONAL& input, bool interlaced,
 		const std::vector<DISPLAYCONFIG_RATIONAL>& supportedRates)
 	{
-		std::vector<DisplayRefreshRational> remaining;
-		remaining.reserve(supportedRates.size());
-		for (const DISPLAYCONFIG_RATIONAL& rate : supportedRates)
-			remaining.push_back({ rate.Numerator, rate.Denominator });
-
+		std::vector<DisplayRefreshRational> candidates;
+		candidates.reserve(supportedRates.size());
+		for (const auto& rate : supportedRates)
+			candidates.push_back({ rate.Numerator, rate.Denominator });
 		std::vector<RankedDisplayRefreshRate> ranked;
-		while (!remaining.empty())
+		for (const auto& selection : RankDisplayRefreshModesForInput(
+			{ input.Numerator, input.Denominator }, interlaced, candidates))
 		{
-			const DisplayRefreshModeSelection selection = SelectDisplayRefreshMode(
-				{ requested.Numerator, requested.Denominator }, remaining);
-			if (selection.path == DisplayRefreshModeSelectionPath::None)
-				break;
-			ranked.push_back({ { selection.selected.numerator,
-				selection.selected.denominator }, selection.path });
-			remaining.erase(std::remove_if(remaining.begin(), remaining.end(),
-				[&selection](const DisplayRefreshRational& candidate)
-				{
-					return DisplayRefreshRatesExactlyEqual(candidate, selection.selected);
-				}), remaining.end());
+			ranked.push_back({ { selection.selected.numerator, selection.selected.denominator },
+				selection.path, selection.requestedRateHz, selection.doubledRate });
 		}
 		return ranked;
 	}
@@ -3171,11 +3186,16 @@ namespace
 			targetRefreshRate.Denominator = state.displayMode->FrameDuration();
 
 			const double contentRate = state.displayMode->RefreshRateHz();
-			const bool useDoubleRate =
-				state.displayMode->IsInterlaced() ||
-				(contentRate > 24.1 && contentRate < 31.0);
-			if (useDoubleRate)
+			const DISPLAYCONFIG_RATIONAL inputRefreshRate = targetRefreshRate;
+			const bool interlaced = state.displayMode->IsInterlaced();
+			if (interlaced)
+			{
+				if (targetRefreshRate.Numerator > UINT32_MAX / 2) return;
 				targetRefreshRate.Numerator *= 2;
+			}
+			DebugLog::Log("libplacebo refresh-rate policy: input=%.6f Hz interlaced=%d policy=%s preferred=%.6f Hz",
+				contentRate, interlaced ? 1 : 0,
+				interlaced ? "field-rate" : "native-first", RefreshRateHz(targetRefreshRate));
 			if (RefreshRatesEqual(m_originalRefreshRate, targetRefreshRate))
 			{
 				DebugLog::Log(
@@ -3199,7 +3219,7 @@ namespace
 				return;
 			}
 			const std::vector<RankedDisplayRefreshRate> rankedRates =
-				RankDisplayRefreshRates(targetRefreshRate, supportedRates);
+				RankDisplayRefreshRates(inputRefreshRate, interlaced, supportedRates);
 			if (rankedRates.empty())
 			{
 				DebugLog::Log(
@@ -3213,12 +3233,27 @@ namespace
 			{
 				const RankedDisplayRefreshRate& candidate = rankedRates[attempt];
 				DebugLog::Log(
-					"libplacebo refresh-rate candidate: input=%.6f Hz requested=%.6f Hz candidate=%.6f Hz path=%s attempt=%zu/%zu available=%zu",
-					contentRate, RefreshRateHz(targetRefreshRate),
+					"libplacebo refresh-rate candidate: input=%.6f Hz requested=%.6f Hz candidate=%.6f Hz path=%s attempt=%zu/%zu available=%zu policy=%s",
+					contentRate, candidate.requestedRateHz,
 					RefreshRateHz(candidate.refreshRate),
 					candidate.selectionPath == DisplayRefreshModeSelectionPath::ExactOrClose ?
 						"exact-or-close" : "closest-in-range",
-					attempt + 1, rankedRates.size(), supportedRates.size());
+					attempt + 1, rankedRates.size(), supportedRates.size(),
+					interlaced ? "field-rate" : candidate.doubledRate ? "doubled-fallback" : "native");
+
+				// A doubled fallback may already be active after native candidates
+				// were unavailable/rejected. Confirm it without another mode set.
+				DISPLAYCONFIG_RATIONAL currentRefreshRate{};
+				if (GetCurrentRefreshRate(currentRefreshRate) &&
+					RefreshRatesEqual(currentRefreshRate, candidate.refreshRate))
+				{
+					DebugLog::Log("libplacebo refresh-rate candidate already active: actual=%.6f Hz attempt=%zu/%zu",
+						RefreshRateHz(currentRefreshRate), attempt + 1, rankedRates.size());
+					RunRefreshRateCommand(settings, RefreshRateHz(currentRefreshRate));
+					PublishEvent("refresh.confirmed", RefreshRateHz(currentRefreshRate),
+						RefreshRateHz(candidate.refreshRate), RefreshRateHz(m_originalRefreshRate));
+					return;
+				}
 
 				std::vector<DISPLAYCONFIG_PATH_INFO> candidatePaths;
 				std::vector<DISPLAYCONFIG_MODE_INFO> candidateModes;
@@ -3859,6 +3894,10 @@ struct LibplaceboVideoRenderer::Impl
 	bool lastCropAdmissionDeferred = false;
 	ActivePicturePresentationRetentionEvidence latestCropRetentionEvidence;
 	AlphaSourceCrop::PresentationRecoveryState cropPresentationRecovery;
+	const std::string diagnosticInstanceId = CreateRendererDiagnosticInstanceId();
+	bool blackLevelTraceConfigured = false;
+	unsigned blackLevelTraceRemaining = 0, blackLevelTraceSnapshot = 0;
+	uint64_t blackLevelTraceNextTick = 0;
 	bool cropTraceConfigured = false;
 	unsigned cropTraceRemaining = 0;
 	uint64_t cropEdgeDiagnosticLastTick = 0;
@@ -3899,8 +3938,17 @@ struct LibplaceboVideoRenderer::Impl
 	AlphaSourceCrop::NearBlackPresentationEpisodeState
 		nearBlackPresentationEpisode;
 	std::string latestActivePicturePresentationRetentionReason;
+	bool colorPictureEvidenceConfigured = false;
+	unsigned colorPictureEvidenceRemaining = 0;
+	unsigned colorPictureEvidenceSnapshot = 0;
+	uint64_t colorPictureEvidenceNextTick = 0;
 	bool fullRasterPresentationAuthorityAvailable = false;
 	uint64_t fullRasterPresentationAuthoritySourceGeneration = 0;
+	AlphaSourceCrop::KnownFullRasterRetentionState knownFullRasterRetention;
+	ActivePictureEvidence latestRawPictureEvidence;
+	uint64_t latestRawPictureEvidenceSequence = 0;
+	uint64_t latestFullRasterCommitSequence = 0;
+	uint64_t latestFullRasterCommitEpoch = 0;
 	std::string lastSourceCropPolicy;
 	std::string lastFinalPresentationPolicy;
 	std::string lastFinalLayoutPolicy;
@@ -8050,6 +8098,11 @@ struct LibplaceboVideoRenderer::Impl
 		latestActivePicturePresentationRetentionReason.clear();
 		fullRasterPresentationAuthorityAvailable = false;
 		fullRasterPresentationAuthoritySourceGeneration = 0;
+		knownFullRasterRetention = {};
+		latestRawPictureEvidence = {};
+		latestRawPictureEvidenceSequence = 0;
+		latestFullRasterCommitSequence = 0;
+		latestFullRasterCommitEpoch = 0;
 	}
 
 	void RequestPresentationStateReset()
@@ -8097,6 +8150,113 @@ struct LibplaceboVideoRenderer::Impl
 			static_cast<unsigned long long>(resetEpoch));
 	}
 
+	void TraceBlackLevels(const AnalysisLumaSource& source, uint64_t frameNumber)
+	{
+		const uint64_t now = GetTickCount64();
+		if (!blackLevelTraceConfigured)
+		{
+			blackLevelTraceConfigured = true;
+			char value[32] = {};
+			const DWORD length = GetEnvironmentVariableA(
+				"VP_BLACK_LEVEL_TRACE_SNAPSHOTS", value, sizeof(value));
+			if (length > 0 && length < sizeof(value))
+			{
+				char* end = nullptr;
+				const unsigned long count = strtoul(value, &end, 10);
+				if (end != value && *end == '\0' && count > 0 && count <= 12)
+					blackLevelTraceRemaining = static_cast<unsigned>(count);
+			}
+			blackLevelTraceNextTick = now + 5000;
+			if (blackLevelTraceRemaining)
+				DebugLog::Log("Alpha black-level telemetry enabled: instance=%s snapshots=%u delay_ms=5000 interval_ms=3000 policy_effect=none", diagnosticInstanceId.c_str(), blackLevelTraceRemaining);
+		}
+		if (!blackLevelTraceRemaining || now < blackLevelTraceNextTick || !source.IsValid())
+			return;
+		const auto grid = SampleActivePictureDiagnosticGrid(source);
+		if (grid.samples.empty()) return;
+		--blackLevelTraceRemaining;
+		++blackLevelTraceSnapshot;
+		blackLevelTraceNextTick = now + 3000;
+		DebugLog::Log("Alpha black-level grid: schema=1 instance=%s sample=%u generation=%llu frame=%llu size=%dx%d grid=%dx%d format=%s encoding=%d colorspace=%d units=analysis-10bit coordinates=endpoint-linear channels=Y/U/V remaining=%u",
+			diagnosticInstanceId.c_str(), blackLevelTraceSnapshot, static_cast<unsigned long long>(source.generation),
+			static_cast<unsigned long long>(frameNumber), source.width, source.height,
+			grid.columns, grid.rows, AnalysisLumaFormatName(source),
+			static_cast<int>(source.encoding), static_cast<int>(source.colorspace), blackLevelTraceRemaining);
+		for (int row = 0; row < grid.rows; ++row)
+		{
+			std::ostringstream values;
+			for (int column = 0; column < grid.columns; ++column)
+			{
+				const auto& pixel = grid.samples[static_cast<size_t>(row) * grid.columns + column];
+				if (column) values << ',';
+				values << pixel.luma << '/' << pixel.chromaU << '/' << pixel.chromaV;
+			}
+			const int y = static_cast<int>(static_cast<int64_t>(row) * (source.height - 1) / (grid.rows - 1));
+			DebugLog::Log("Alpha black-level row: instance=%s sample=%u generation=%llu row=%d y=%d data=%s",
+				diagnosticInstanceId.c_str(), blackLevelTraceSnapshot, static_cast<unsigned long long>(source.generation), row, y, values.str().c_str());
+		}
+		DebugLog::Log("Alpha black-level grid complete: instance=%s sample=%u generation=%llu rows=%d samples=%zu remaining=%u",
+			diagnosticInstanceId.c_str(), blackLevelTraceSnapshot, static_cast<unsigned long long>(source.generation), grid.rows, grid.samples.size(), blackLevelTraceRemaining);
+	}
+
+	void TraceColorPictureEvidence(const AnalysisLumaSource& source,
+		uint64_t frameNumber, uint64_t presentationEpoch)
+	{
+		const uint64_t now = GetTickCount64();
+		if (!colorPictureEvidenceConfigured)
+		{
+			colorPictureEvidenceConfigured = true;
+			char value[32] = {};
+			const DWORD count = GetEnvironmentVariableA(
+				"VP_COLOR_PICTURE_EVIDENCE", value, sizeof(value));
+			if (count > 0 && count < sizeof(value) && std::string(value) == "shadow")
+			{
+				colorPictureEvidenceRemaining = 300;
+				DebugLog::Log("Alpha color-picture telemetry enabled: instance=%s mode=shadow interval_ms=2000 snapshots_max=300 policy_effect=none authority_effect=none", diagnosticInstanceId.c_str());
+			}
+			else if (count > 0)
+			{
+				DebugLog::Log("Alpha color-picture telemetry disabled: instance=%s unsupported option; only VP_COLOR_PICTURE_EVIDENCE=shadow is supported; policy_effect=none", diagnosticInstanceId.c_str());
+			}
+		}
+		if (!colorPictureEvidenceRemaining || now < colorPictureEvidenceNextTick ||
+			!source.IsValid())
+			return;
+		colorPictureEvidenceNextTick = now + 2000;
+		--colorPictureEvidenceRemaining;
+		++colorPictureEvidenceSnapshot;
+		const auto evidence = EvaluateFullRasterColorEvidence(source);
+		const bool committedFullRaster = nlsGeometryAvailable &&
+			nlsGeometrySourceGeneration == source.generation &&
+			nlsGeometryClassification == ActivePictureClassification::FULL_RASTER_TRUSTED &&
+			nlsGeometry.left == 0 && nlsGeometry.top == 0 &&
+			nlsGeometry.right == source.width && nlsGeometry.bottom == source.height &&
+			nlsGeometry.rasterWidth == source.width && nlsGeometry.rasterHeight == source.height;
+		DebugLog::Log("Alpha color-picture evidence: schema=1 instance=%s mode=shadow sample=%u sequence=%llu generation=%llu epoch=%llu format=%s encoding=%d size=%dx%d evaluated=%d precision_supported=%d candidate_supported=%d prior_committed_full=%d samples=%zu remaining=%u policy_effect=none reason=\"%s\"",
+			diagnosticInstanceId.c_str(), colorPictureEvidenceSnapshot, static_cast<unsigned long long>(frameNumber),
+			static_cast<unsigned long long>(source.generation),
+			static_cast<unsigned long long>(presentationEpoch), AnalysisLumaFormatName(source),
+			static_cast<int>(source.encoding), source.width, source.height,
+			evidence.evaluated ? 1 : 0, evidence.precisionSupported ? 1 : 0,
+			evidence.candidateSupported ? 1 : 0, committedFullRaster ? 1 : 0,
+			evidence.sampleCount, colorPictureEvidenceRemaining, evidence.reason.c_str());
+		if (evidence.evaluated)
+		{
+			static const char* const names[] = { "left", "top", "right", "bottom" };
+			for (size_t i = 0; i < 4; ++i)
+			{
+				const auto& edge = evidence.edges[i];
+				DebugLog::Log("Alpha color-picture edge: instance=%s generation=%llu sample=%u edge=%s median_yuv=%.1f/%.1f/%.1f dispersion_yuv=%.1f/%.1f/%.1f interior_yuv=%.1f/%.1f/%.1f max_background_delta_y=%.1f max_background_delta_uv=%.1f supported_cells=%d candidate_supported=%d units=analysis-10bit",
+					diagnosticInstanceId.c_str(), static_cast<unsigned long long>(source.generation),
+					colorPictureEvidenceSnapshot, names[i], edge.medianY, edge.medianU, edge.medianV,
+					edge.dispersionY, edge.dispersionU, edge.dispersionV,
+					edge.interiorMedianY, edge.interiorMedianU, edge.interiorMedianV,
+					edge.maxBackgroundDeltaY, edge.maxBackgroundDeltaUV,
+					edge.supportedCells, edge.candidateSupported ? 1 : 0);
+			}
+		}
+	}
+
 	void UpdateNlsForFrame(const AnalysisLumaSource& analysisSource,
 		uint64_t frameNumber,
 		const ActivePictureFrameIdentity& currentIdentity,
@@ -8139,6 +8299,8 @@ struct LibplaceboVideoRenderer::Impl
 				static_cast<unsigned long long>(analysisSource.generation));
 		}
 
+		TraceBlackLevels(analysisSource, frameNumber);
+		TraceColorPictureEvidence(analysisSource, frameNumber, currentIdentity.viewportGeneration);
 		const bool needsActivePictureAnalysis =
 			nlsRequested || automaticSourceCrop || scopeSubtitleFit ||
 			hdrPeakAnalysisPictureOnly ||
@@ -8205,6 +8367,7 @@ struct LibplaceboVideoRenderer::Impl
 				retentionEvidence =
 					EvaluateActivePicturePresentationRetention(
 						analysisSource, presentationBeforeObservation);
+				latestRawPictureEvidence = retentionEvidence.activePicture;
 				evidence = ConstrainNearBlackGeometryChange(
 					retentionEvidence, presentationBeforeObservation);
 				if (needsNativeBootstrapEvidence)
@@ -8221,6 +8384,7 @@ struct LibplaceboVideoRenderer::Impl
 			else
 			{
 				evidence = ExtractActivePictureEvidence(analysisSource);
+				latestRawPictureEvidence = evidence;
 				nativeBootstrapEvidence = evidence;
 			}
 			latestNativeBootstrapContractAvailable =
@@ -8304,6 +8468,12 @@ struct LibplaceboVideoRenderer::Impl
 					latestActivePictureEvidenceWasStartupHypothesis = true;
 				}
 			}
+			// Preserve raw bar contradictions before either darkness constraint can
+			// downgrade them. Hypothesis bars may revoke, never establish full raster.
+			if (evidence.classification == ActivePictureClassification::BAR_CROP_TRUSTED ||
+				nativeBootstrapEvidence.classification == ActivePictureClassification::BAR_CROP_TRUSTED)
+				latestRawPictureEvidence.classification = ActivePictureClassification::BAR_CROP_TRUSTED;
+			latestRawPictureEvidenceSequence = frameNumber;
 			const bool nearBlackAcquisitionBlocked =
 				(globalNearBlack.evaluated && globalNearBlack.nearBlack) ||
 				nearBlackPresentationEpisode.mode !=
@@ -8509,6 +8679,13 @@ struct LibplaceboVideoRenderer::Impl
 				nlsGeometrySourceFormatKey =
 					currentIdentity.sourceFormatGeneration;
 				++nlsGeometryGeneration;
+				// Only a new temporal publication is a commitment; the stable-history
+				// fallback below must never re-arm authority after contradictory bars.
+				if (nlsGeometryClassification == ActivePictureClassification::FULL_RASTER_TRUSTED)
+				{
+					latestFullRasterCommitSequence = frameNumber;
+					latestFullRasterCommitEpoch = currentIdentity.viewportGeneration;
+				}
 			}
 			else if (transition.stable && !nlsTransitionWithdrawn &&
 				!suppressEpisodeBarGeometryMutation)
@@ -9228,13 +9405,42 @@ struct LibplaceboVideoRenderer::Impl
 			fullRasterPresentationAuthoritySourceGeneration = 0;
 			activePictureAmbiguityHold.Reset();
 		}
+		// A near-black entry is also a scene notification, but darkness alone
+		// does not disprove an established full-frame picture. Evaluate this once
+		// before scene handling can erase that history, then use the same decision
+		// for scene geometry, retention, and episode handling.
+		AlphaSourceCrop::KnownFullRasterDarknessBoundaryInput darknessBoundaryInput;
+		auto& darknessRetention = darknessBoundaryInput.retention;
+		darknessRetention.previous = knownFullRasterRetention;
+		darknessRetention.analysisValid = analysisSource.IsValid();
+		darknessRetention.measurementCurrent = latestRawPictureEvidenceSequence == sourceSequence;
+		darknessRetention.cadenceRepeat = cadenceRepeat;
+		darknessRetention.rawClassification = latestRawPictureEvidence.classification;
+		darknessRetention.frameWidth = width;
+		darknessRetention.frameHeight = height;
+		darknessRetention.sourceGeneration = frameGeneration;
+		darknessRetention.sourceSequence = sourceSequence;
+		darknessRetention.presentationEpoch = viewportRequestSerial;
+		darknessRetention.committedFullAvailable = nlsGeometryAvailable &&
+			nlsGeometryClassification == ActivePictureClassification::FULL_RASTER_TRUSTED;
+		darknessRetention.committedBounds = nlsGeometry;
+		darknessRetention.committedSourceGeneration = nlsGeometrySourceGeneration;
+		darknessRetention.committedSourceSequence = latestFullRasterCommitSequence;
+		darknessRetention.committedPresentationEpoch = latestFullRasterCommitEpoch;
+		darknessBoundaryInput.safeBoundary = sceneResult.safeBoundary;
+		darknessBoundaryInput.differenceEvaluated = sceneResult.differenceEvaluated;
+		darknessBoundaryInput.nearBlackEntry = sceneResult.nearBlackEntry;
+		darknessBoundaryInput.hardCutCandidate = sceneResult.hardCutCandidate;
+		darknessBoundaryInput.hardCutConfirmed = sceneResult.hardCutConfirmed;
+		const bool retainFullRasterAtDarknessBoundary =
+			AlphaSourceCrop::CanRetainKnownFullRasterAtDarknessBoundary(darknessBoundaryInput);
 		if (!cadenceRepeat && sceneResult.safeBoundary)
 		{
 			// Capture only the already-published crop for bounded presentation,
 			// then reset temporal proof. Confirmations for new geometry must never
 			// accumulate across an edit. The current cut frame is force-analyzed
-			// above. Trusted full-raster evidence must withdraw; a bounded
-			// unavailable fade may preserve only an existing trusted scope snapshot.
+			// above. A darkness-only notification may preserve confirmed full raster;
+			// actual cut evidence still uses the usual current-pixel verification.
 			const bool latestEvidenceIsCurrent =
 				latestActivePictureEvidenceFrame == sourceSequence;
 			const bool latestEvidenceMayVerify =
@@ -9251,6 +9457,7 @@ struct LibplaceboVideoRenderer::Impl
 				nlsGeometrySourceGeneration == frameGeneration &&
 				latestEvidenceIsCurrent && latestEvidenceMayVerify;
 			AlphaSourceCrop::SceneInput sceneInput;
+			sceneInput.knownFullRasterDarknessRetention = retainFullRasterAtDarknessBoundary;
 			sceneInput.geometryAvailable = nlsGeometryAvailable;
 			sceneInput.geometryIsCurrentGeneration =
 				nlsGeometrySourceGeneration == frameGeneration;
@@ -9357,6 +9564,15 @@ struct LibplaceboVideoRenderer::Impl
 				lastFinalPresentationPolicy.clear();
 				lastFinalLayoutPolicy.clear();
 			}
+			DebugLog::Log("Alpha scene evidence: event=%llu sequence=%llu generation=%llu epoch=%llu near_black_entry=%d hard_cut_candidate=%d hard_cut_confirmed=%d difference_evaluated=%d luma_difference=%u changed_samples=%u sample_count=%u histogram_distance=%u source_valid=%d raw_class=%d raw_current=%d prior_full=%d full_retained_on_darkness=%d",
+				static_cast<unsigned long long>(sceneResult.eventId), static_cast<unsigned long long>(sourceSequence),
+				static_cast<unsigned long long>(frameGeneration), static_cast<unsigned long long>(viewportRequestSerial),
+				sceneResult.nearBlackEntry ? 1 : 0, sceneResult.hardCutCandidate ? 1 : 0, sceneResult.hardCutConfirmed ? 1 : 0,
+				sceneResult.differenceEvaluated ? 1 : 0, sceneResult.immediateAverageLumaDifference,
+				sceneResult.changedSampleCount, sceneResult.sampleCount, sceneResult.histogramDistance,
+				analysisSource.IsValid() ? 1 : 0, static_cast<int>(latestRawPictureEvidence.classification),
+				darknessRetention.measurementCurrent ? 1 : 0, darknessRetention.previous.available ? 1 : 0,
+				retainFullRasterAtDarknessBoundary ? 1 : 0);
 			sceneDetectedCount.fetch_add(1, std::memory_order_relaxed);
 			DebugLog::Log("libplacebo scene boundary: event=%llu sequence=%llu generation=%llu frames_back=%u luma=%u evidence=%d crop_verification_ms=%u nls_retained=%d reason=\"%s\"",
 				static_cast<unsigned long long>(sceneResult.eventId),
@@ -10026,7 +10242,8 @@ struct LibplaceboVideoRenderer::Impl
 		const double nominalSourceRateHz = state.displayMode->RefreshRateHz();
 		auto configureViewport =
 			[this, &image, width, height, frameGeneration, sourceSequence,
-			 viewportRequestSerial, captureRateHz, nominalSourceRateHz,
+			 viewportRequestSerial, captureRateHz, nominalSourceRateHz, sceneDetectionEnabled, retainFullRasterAtDarknessBoundary,
+			 analysisValid = analysisSource.IsValid(),
 			 sceneHold, sceneResult, cadenceRepeat, subtitleShiftSourcePixels,
 			 subtitleBarAnalysisScheduled, subtitleBarAnalysisCompleted,
 			 forceSubtitleBarAnalysis,
@@ -10409,7 +10626,47 @@ struct LibplaceboVideoRenderer::Impl
 			const bool confirmedCurrentVerticalFit =
 				AlphaSourceCrop::CanResolveVerticalInspectionWithConfirmedFit(
 					verticalFitResolutionInput);
+			// Update once per presented source frame, after scene handling has had
+			// its final say. This retains committed geometry, not a color hypothesis.
+			const bool committedFullStillAvailable = nlsGeometryAvailable &&
+				nlsGeometryClassification == ActivePictureClassification::FULL_RASTER_TRUSTED &&
+				nlsGeometrySourceGeneration == frameGeneration &&
+				nlsGeometry.left == 0 && nlsGeometry.top == 0 &&
+				nlsGeometry.right == width && nlsGeometry.bottom == height;
+			AlphaSourceCrop::KnownFullRasterRetentionInput fullRetentionInput;
+			fullRetentionInput.previous = knownFullRasterRetention;
+			fullRetentionInput.analysisValid = analysisValid &&
+				(sceneDetectionEnabled || automaticSourceCrop) && committedFullStillAvailable;
+			fullRetentionInput.measurementCurrent = latestRawPictureEvidenceSequence == sourceSequence;
+			fullRetentionInput.cadenceRepeat = cadenceRepeat;
+			fullRetentionInput.nearBlackEvaluated = latestActivePictureGlobalNearBlackEvaluated;
+			fullRetentionInput.globalNearBlack = latestActivePictureGlobalNearBlack;
+			fullRetentionInput.rawClassification = latestRawPictureEvidence.classification;
+			fullRetentionInput.rawBounds = latestRawPictureEvidence.trustedBounds;
+			fullRetentionInput.frameWidth = width;
+			fullRetentionInput.frameHeight = height;
+			fullRetentionInput.sourceGeneration = frameGeneration;
+			fullRetentionInput.sourceSequence = sourceSequence;
+			fullRetentionInput.presentationEpoch = viewportRequestSerial;
+			fullRetentionInput.committedFullAvailable = committedFullStillAvailable;
+			fullRetentionInput.committedBounds = nlsGeometry;
+			fullRetentionInput.committedSourceGeneration = nlsGeometrySourceGeneration;
+			fullRetentionInput.committedSourceSequence = latestFullRasterCommitSequence;
+			fullRetentionInput.committedPresentationEpoch = latestFullRasterCommitEpoch;
+			knownFullRasterRetention = AlphaSourceCrop::UpdateKnownFullRasterRetentionForScene(
+				fullRetentionInput, sceneResult, retainFullRasterAtDarknessBoundary);
+			if (knownFullRasterRetention.available != fullRetentionInput.previous.available)
+				DebugLog::Log("Alpha known full raster retention: available=%d sequence=%llu generation=%llu epoch=%llu commit_sequence=%llu raw_class=%d measurement_current=%d scene=%d source_valid=%d retention_eligible=%d committed_full=%d cut_evidence=%d reaffirmations=%u",
+					knownFullRasterRetention.available ? 1 : 0,
+					static_cast<unsigned long long>(sourceSequence), static_cast<unsigned long long>(frameGeneration),
+					static_cast<unsigned long long>(viewportRequestSerial),
+					static_cast<unsigned long long>(latestFullRasterCommitSequence),
+					static_cast<int>(latestRawPictureEvidence.classification), fullRetentionInput.measurementCurrent ? 1 : 0,
+					fullRetentionInput.sceneBoundary ? 1 : 0, analysisValid ? 1 : 0, fullRetentionInput.analysisValid ? 1 : 0, committedFullStillAvailable ? 1 : 0,
+					fullRetentionInput.independentCutEvidence ? 1 : 0,
+					static_cast<unsigned>(knownFullRasterRetention.reaffirmationSamples));
 			AlphaSourceCrop::NearBlackPresentationEpisodeInput episodeInput;
+			episodeInput.knownFullRasterRetained = knownFullRasterRetention.available;
 			episodeInput.previous = nearBlackPresentationEpisode;
 			episodeInput.measurementCurrent =
 				latestActivePictureEvidenceFrame == sourceSequence;
@@ -10418,7 +10675,7 @@ struct LibplaceboVideoRenderer::Impl
 			episodeInput.globalNearBlack =
 				latestActivePictureGlobalNearBlack;
 			episodeInput.sceneBoundary =
-				!cadenceRepeat && sceneResult.safeBoundary;
+				!cadenceRepeat && sceneResult.safeBoundary && !retainFullRasterAtDarknessBoundary;
 			episodeInput.trustedCropAvailable =
 				effectiveGeometryAvailable &&
 				effectiveClassification ==

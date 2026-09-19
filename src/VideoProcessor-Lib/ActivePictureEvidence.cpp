@@ -878,8 +878,16 @@ ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRete
 		IsValidBoundsForSource(result.activePicture.proposedBounds, source);
 	result.proposedBoundsContained = result.proposedBoundsAvailable &&
 		Contains(trustedPresentation, result.activePicture.proposedBounds);
+	// Acquisition may be inconclusive on a logo/title (or exhaust its scan
+	// budget) even though independent checks of every excluded band succeed.
+	// Missing geometry is not evidence of a larger picture. Preserve only the
+	// existing rectangle. Outside the established global-near-black exception,
+	// an available conflicting proposal vetoes retention. Every path still
+	// requires independently pixel-safe excluded bands.
+	const bool geometryUnavailable = !result.activePicture.available &&
+		result.activePicture.classification == ActivePictureClassification::UNAVAILABLE;
 	result.currentlyPixelSafe = result.excludedBandsPixelSafe &&
-		(result.proposedBoundsContained || result.globalNearBlack);
+		(result.proposedBoundsContained || result.globalNearBlack || geometryUnavailable);
 	result.lumaSamples += samples.lumaSamples;
 	result.chromaSamples += samples.chromaSamples;
 
@@ -891,6 +899,8 @@ ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRete
 		result.reason = "current proposal is contained and excluded bands remain pixel-safe";
 	else if (result.globalNearBlack)
 		result.reason = "valid global near-black frame is pixel-safe without geometry";
+	else if (geometryUnavailable)
+		result.reason = "current excluded bands remain pixel-safe despite unavailable geometry";
 	else
 		result.reason = "non-contained active-picture evidence rejects retention";
 	return result;
@@ -981,4 +991,148 @@ ActivePictureRetentionHandoff ResolveActivePictureRetentionHandoff(
 	// Inspect the new base against these same source bytes before publishing it
 	// as the presentation certificate. Invalid sources remain non-authoritative.
 	return {EvaluateActivePicturePresentationRetention(source, presentationBounds), presentationBounds, true};
+}
+
+ActivePictureDiagnosticGrid SampleActivePictureDiagnosticGrid(
+	const AnalysisLumaSource& source)
+{
+	ActivePictureDiagnosticGrid result;
+	if (!source.IsValid() || source.width < 2 || source.height < 2)
+		return result;
+	result.columns = std::min(source.width, 128);
+	result.rows = std::min(source.height, 270);
+	result.samples.reserve(static_cast<size_t>(result.columns) * result.rows);
+	for (int row = 0; row < result.rows; ++row)
+	{
+		const int y = static_cast<int>(static_cast<int64_t>(row) *
+			(source.height - 1) / (result.rows - 1));
+		for (int column = 0; column < result.columns; ++column)
+		{
+			const int x = static_cast<int>(static_cast<int64_t>(column) *
+				(source.width - 1) / (result.columns - 1));
+			AnalysisLumaSample sample;
+			if (!source.Sample(x, y, sample))
+				return {};
+			result.samples.push_back(sample);
+		}
+	}
+	return result;
+}
+
+
+FullRasterColorEvidence EvaluateFullRasterColorEvidence(
+    const AnalysisLumaSource& source)
+{
+    FullRasterColorEvidence result;
+    if (!source.IsValid() || source.width < 128 || source.height < 128)
+    {
+        result.reason = "invalid or undersized color corroboration source";
+        return result;
+    }
+    // An 8-bit input expanded into a 10-bit plane has not acquired precision.
+    // Unknown provenance also abstains: a plane format alone proves nothing
+    // about the precision of the original capture.
+    switch (source.encoding)
+    {
+    case VideoFrameEncoding::V210:
+    case VideoFrameEncoding::R210:
+    case VideoFrameEncoding::R10b:
+    case VideoFrameEncoding::R10l:
+    case VideoFrameEncoding::R12B:
+    case VideoFrameEncoding::R12L:
+        result.precisionSupported = true;
+        break;
+    default:
+        result.reason = "source precision insufficient or unknown for subtle color evidence";
+        return result;
+    }
+    constexpr int depths = 6;
+    constexpr int positions = 96;
+    constexpr int cells = 4;
+    bool allEdges = true;
+    for (int edge = 0; edge < 4; ++edge)
+    {
+        const bool vertical = edge == 0 || edge == 2;
+        const bool reverse = edge >= 2;
+        const int across = vertical ? source.height : source.width;
+        const int extent = vertical ? source.width : source.height;
+        std::vector<int> outer[3], inner[3];
+        std::vector<int> outerCell[cells][3], innerCell[cells][3];
+        for (int channel = 0; channel < 3; ++channel)
+        {
+            outer[channel].reserve(depths * positions);
+            inner[channel].reserve(depths * positions);
+            for (int cell = 0; cell < cells; ++cell)
+            {
+                outerCell[cell][channel].reserve(depths * positions / cells);
+                innerCell[cell][channel].reserve(depths * positions / cells);
+            }
+        }
+        for (int d = 0; d < depths; ++d)
+        {
+            // Include the actual outermost line and a shallow band. Paired
+            // interior samples are well beyond typical thin scope bars.
+            const int depth = d * std::max(1, extent / 32) / (depths - 1);
+            for (int i = 0; i < positions; ++i)
+            {
+                const int position = (2 * i + 1) * across / (2 * positions);
+                for (int inside = 0; inside < 2; ++inside)
+                {
+                    const int fromEdge = depth + (inside ? extent / 8 : 0);
+                    const int coordinate = reverse ? extent - 1 - fromEdge : fromEdge;
+                    AnalysisLumaSample pixel;
+                    if (!source.Sample(vertical ? coordinate : position,
+                        vertical ? position : coordinate, pixel))
+                    {
+                        result.reason = "color corroboration sample unavailable";
+                        return result;
+                    }
+                    ++result.sampleCount;
+                    const int values[] = { pixel.luma, pixel.chromaU, pixel.chromaV };
+                    for (int channel = 0; channel < 3; ++channel)
+                    {
+                        (inside ? inner[channel] : outer[channel]).push_back(values[channel]);
+                        (inside ? innerCell[i / 24][channel] : outerCell[i / 24][channel]).push_back(values[channel]);
+                    }
+                }
+            }
+        }
+        auto& evidence = result.edges[edge];
+        evidence.medianY = Percentile(outer[0], 0.5);
+        evidence.medianU = Percentile(outer[1], 0.5);
+        evidence.medianV = Percentile(outer[2], 0.5);
+        evidence.dispersionY = Percentile(outer[0], 0.90) - Percentile(outer[0], 0.10);
+        evidence.dispersionU = Percentile(outer[1], 0.90) - Percentile(outer[1], 0.10);
+        evidence.dispersionV = Percentile(outer[2], 0.90) - Percentile(outer[2], 0.10);
+        evidence.interiorMedianY = Percentile(inner[0], 0.5);
+        evidence.interiorMedianU = Percentile(inner[1], 0.5);
+        evidence.interiorMedianV = Percentile(inner[2], 0.5);
+        for (int cell = 0; cell < cells; ++cell)
+        {
+            const double spread = Percentile(outerCell[cell][0], 0.90) -
+                Percentile(outerCell[cell][0], 0.10);
+            evidence.supportedCells += spread >= 3.0;
+            for (int channel = 0; channel < 3; ++channel)
+            {
+                const double delta = std::abs(Percentile(outerCell[cell][channel], 0.5) -
+                    Percentile(innerCell[cell][channel], 0.5));
+                auto& maximum = channel == 0 ? evidence.maxBackgroundDeltaY : evidence.maxBackgroundDeltaUV;
+                maximum = std::max(maximum, delta);
+            }
+        }
+        const bool tinted = std::max(std::abs(evidence.medianU - 512.0),
+            std::abs(evidence.medianV - 512.0)) >= 2.0;
+        // This weak pattern is deliberately diagnostic only. Tinted noise
+        // with no distinguishable boundary remains ambiguous; a positive
+        // candidate MUST NOT authorize either retention or acquisition.
+        evidence.candidateSupported = tinted && evidence.dispersionY >= 4.0 &&
+            evidence.supportedCells >= 3 && evidence.maxBackgroundDeltaY <= 8.0 &&
+            evidence.maxBackgroundDeltaUV <= 3.0;
+        allEdges = allEdges && evidence.candidateSupported;
+    }
+    result.evaluated = true;
+    result.candidateSupported = allEdges;
+    result.reason = allEdges ? "weak full-raster color pattern; indistinguishable noisy bars remain possible" :
+        "insufficient color detail or continuity for diagnostic full-raster pattern";
+    return result;
 }

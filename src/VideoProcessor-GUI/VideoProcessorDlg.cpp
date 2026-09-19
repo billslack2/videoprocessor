@@ -11,6 +11,7 @@
 #include <ApplicationShutdownPolicy.h>
 #include <BuildIdentityPolicy.h>
 #include <ModernOperatorLayout.h>
+#include <WindowResizeLayout.h>
 #include <ModernOperatorStatusPolicy.h>
 
 #include <atlstr.h>
@@ -14004,32 +14005,36 @@ void CVideoProcessorDlg::RestoreFrameOffsetEditLayout()
 
 void CVideoProcessorDlg::OnSize(UINT nType, int cx, int cy)
 {
-	if (m_hideUI)
-	{
-		if (m_windowedVideoWindow.GetSafeHwnd())
-			m_windowedVideoWindow.MoveWindow(0, 0, cx, cy, TRUE);
-	}
-	else if (m_interfaceMode == ApplicationInterface::Mode::Modern &&
-		m_modernOperatorView.GetSafeHwnd())
-	{
-		ApplyModernLayout();
-	}
-	else if (m_windowedVideoWindow.GetSafeHwnd() &&
-		m_initialClientSize.cx > 0 && m_initialClientSize.cy > 0)
-	{
-		CRect videoRect = m_initialVideoWindowRect;
-		videoRect.right += std::max<LONG>(
-			0, static_cast<LONG>(cx) - m_initialClientSize.cx);
-		videoRect.bottom += std::max<LONG>(
-			0, static_cast<LONG>(cy) - m_initialClientSize.cy);
-		m_windowedVideoWindow.MoveWindow(&videoRect, TRUE);
-	}
-
-	if (m_videoRenderer &&
-		!RendererResetOperationInProgress())
-		m_videoRenderer->OnSize();
-	m_rendererTransitionWindow.KeepOnTop();
-	m_shaderLoadingWindow.UpdatePosition();
+	WindowResizeLayout::HandleSize(cx, cy, [this](int cx, int cy)
+		{
+			if (m_hideUI)
+			{
+				if (m_windowedVideoWindow.GetSafeHwnd())
+					m_windowedVideoWindow.MoveWindow(0, 0, cx, cy, TRUE);
+			}
+			else if (m_interfaceMode == ApplicationInterface::Mode::Modern &&
+				m_modernOperatorView.GetSafeHwnd())
+			{
+				ApplyModernLayout();
+			}
+			else if (m_windowedVideoWindow.GetSafeHwnd() &&
+				m_initialClientSize.cx > 0 && m_initialClientSize.cy > 0)
+			{
+				CRect videoRect = m_initialVideoWindowRect;
+				videoRect.right += std::max<LONG>(
+					0, static_cast<LONG>(cx) - m_initialClientSize.cx);
+				videoRect.bottom += std::max<LONG>(
+					0, static_cast<LONG>(cy) - m_initialClientSize.cy);
+				m_windowedVideoWindow.MoveWindow(&videoRect, TRUE);
+			}
+		}, [this]()
+		{
+			if (m_videoRenderer &&
+				!RendererResetOperationInProgress())
+				m_videoRenderer->OnSize();
+			m_rendererTransitionWindow.KeepOnTop();
+			m_shaderLoadingWindow.UpdatePosition();
+		});
 
 	// Some windowed DirectShow renderers finish processing WM_SIZE after this
 	// handler returns.  Restore the fixed UI now and once more after that work

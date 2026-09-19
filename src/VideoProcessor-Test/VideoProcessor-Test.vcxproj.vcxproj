@@ -201,6 +201,7 @@
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="SceneDetectorTests.cpp" />
+    <ClCompile Include="WindowResizeLayoutTests.cpp" />
     <ClCompile Include="AlphaPresentationTelemetryTests.cpp" />
     <ClCompile Include="AlphaRenderLoadMeterTests.cpp" />
     <ClCompile Include="AlphaCadenceCorrectionPolicyTests.cpp" />
@@ -223,6 +224,7 @@
     <ClCompile Include="ActivePictureTransitionModelTests.cpp" />
 	<ClCompile Include="ActivePictureAnalyzerTests.cpp" />
     <ClCompile Include="ActivePictureEvidenceTests.cpp" />
+    <ClCompile Include="FullRasterColorEvidenceFormatTests.cpp" />
 	<ClCompile Include="InvalidCaptureStateGraceTests.cpp" />
 	<ClCompile Include="EotfTransitionStabilizerTests.cpp" />
     <ClCompile Include="NativeRgbAnalysisTests.cpp" />

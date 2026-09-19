@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace
 {
@@ -136,6 +137,36 @@ DisplayRefreshModeSelection SelectDisplayRefreshMode(
 	return result;
 }
 
+
+std::vector<DisplayRefreshModeSelection> RankDisplayRefreshModesForInput(
+	const DisplayRefreshRational& input, bool interlaced,
+	const std::vector<DisplayRefreshRational>& candidates)
+{
+	std::vector<DisplayRefreshModeSelection> ranked;
+	if (input.numerator == 0 || input.denominator == 0) return ranked;
+	std::vector<DisplayRefreshRational> remaining = candidates;
+	auto appendGroup = [&](DisplayRefreshRational requested, bool doubled) {
+		while (!remaining.empty())
+		{
+			auto selected = SelectDisplayRefreshMode(requested, remaining);
+			if (selected.path == DisplayRefreshModeSelectionPath::None) break;
+			selected.doubledRate = doubled;
+			ranked.push_back(selected);
+			remaining.erase(std::remove_if(remaining.begin(), remaining.end(),
+				[&](const DisplayRefreshRational& candidate) {
+					return DisplayRefreshRatesExactlyEqual(candidate, selected.selected);
+				}), remaining.end());
+		}
+	};
+	if (!interlaced) appendGroup(input, false);
+	const double inputHz = DisplayRefreshRateHz(input);
+	if ((interlaced || (inputHz > 24.1 && inputHz < 31.0)) &&
+		input.numerator <= (std::numeric_limits<uint32_t>::max)() / 2)
+	{
+		appendGroup({ input.numerator * 2, input.denominator }, true);
+	}
+	return ranked;
+}
 
 bool DisplayRefreshRatesExactlyEqual(
 	const DisplayRefreshRational& first,
