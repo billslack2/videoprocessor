@@ -2,19 +2,23 @@
 
 ## Status
 
-In Progress
+Review
 
-Cleanup follow-up in progress 2026-09-19: remove setup-only payload, prune completed recovery backups, and safely retire old package clutter while preserving operator files. Initial implementation 2026-09-19 in [draft PR #99](https://github.com/billslack2/videoprocessor/pull/99),
-source commit 4391c7cbbbf4105faaf95c051235c2b6a62d3835 on
-codex/vp-0192-windows-installer. The verified integration base/default remains
-v1.3.005-beta at 73c850041d284e3e37c959a8956d896b79106aa1.
+Implementation and requested cleanup/branding follow-ups are ready for review in
+[draft PR #99](https://github.com/billslack2/videoprocessor/pull/99), source commit
+b6a351c83ce499c0acf12df4eaf38f928f7b6c32 on codex/vp-0192-windows-installer.
+Integration base/default was verified as v1.3.005-beta at
+73c850041d284e3e37c959a8956d896b79106aa1.
 Source worktree: E:\codex\videoprocessor\vp-0192-windows-installer.
 
-The requested selectable installation location, later location reuse, existing
-ZIP adoption, and preservation of configuration/state are implemented and tested.
-The active C:\Videoprocessor\vp installation was not deployed or modified.
-Review is pending the clean-Windows and interactive acceptance cases listed below;
-this story is not complete and no public release has been published.
+Selectable/remembered location, ZIP adoption, config/state preservation, lean
+installed payload, temporary recovery cleanup, VP icon and versioned clean/dirty
+installer names are implemented. With explicit approval, the production installer
+updated C:\vptest and its configuration was verified unchanged.
+The active C:\Videoprocessor\vp installation was not modified.
+
+Clean-Windows and interactive acceptance cases below remain open. The story is
+not complete, the PR remains draft, and no public release has been published.
 
 ## User story
 
@@ -239,3 +243,79 @@ Tracker audit: 211 indexed items match one canonical state folder each, with no
 duplicate IDs or orphan index rows. Historical noncanonical Status formatting
 elsewhere (including VP-0176 lacking the standard heading) was left unchanged.
 Only VP-0192 and its index row changed state in this work.
+
+## Cleanup and installer identity follow-up (2026-09-19)
+
+Implemented in source commit b6a351c83ce499c0acf12df4eaf38f928f7b6c32,
+including cleanup commit 42ab23d3dbcf8ae20fb429558bf3794cd1f1cb59 and branding
+commit 7a7aa553e4c387da3c9a95a080cb92cda5c3b2c5. Draft PR #99 remains based
+on v1.3.005-beta. Source branch is pushed and clean.
+
+- Installed application payload is reduced to 56 files plus its small ownership
+  manifest/uninstaller. Thirteen setup/ZIP-only files are excluded: prerequisite
+  tools, recovery scripts/docs, development notes, release layout/inventory, and
+  duplicate config example. Prerequisites are embedded/extracted temporarily;
+  user guides, required licenses and runtime dependencies remain installed.
+- Older installers/ZIPs have recognized extras retired safely. Edited docs,
+  user backups and unknown files are preserved. Completed/restored recovery
+  backups are hash-verified and pruned only after successful setup. Pending,
+  incomplete, altered or unrecognized recovery contents remain protected.
+- User selected versioned filenames: VideoProcessorSetup-<version>.exe for clean
+  builds. Dirty builds add <commit-sha12>-dirty-<source-fingerprint12>.
+  The fingerprint covers tracked contents/deletions and untracked source files;
+  ignored build outputs do not affect it. Build receipts check the exact source
+  snapshot and dirty state as well as all four Release binary hashes.
+- Setup and uninstall use the exact existing images/VideoProcessor.ico asset.
+  Windows File Version shows the core version; Product Version and setup display
+  the complete selected version/build label.
+- Final x64 Release solution build passed: 0 errors, 47 existing warnings.
+  Clean and dirty installer compilation passed with Inno Setup 6.7.3.
+- 41 preservation/recovery checks, 23 prerequisite regressions and 11 source
+  identity checks passed. A real stale dirty-source build receipt was rejected.
+- 122 actual-installer lifecycle checks passed for old full-layout build
+  4391c7cbbbf4 -> cleaned build 42ab23d3dbcf -> same build -> older build.
+  These include exact managed hashes, one registration, automatic custom-path
+  reuse, Config process refusal, unchanged config/state/assets, absence of the
+  13 excluded files and temporary folders, and uninstall/reinstall.
+- Two real older-ZIP cleanup cases passed: pristine extras removed; edited
+  development notes and user-added prerequisite/setup files preserved.
+  Existing config/state/profile/shader/LUT/log files remained byte-identical.
+- Lifecycle, ZIP and failure harnesses used a separate QA registration and
+  shortcut identity because the user had installed the previous build in
+  C:\vptest. Payloads and helper behavior were unchanged; QA registrations
+  were removed at test completion.
+- User explicitly approved updating C:\vptest. The actual production installer
+  first updated 4391c7cbbbf4 -> 42ab23d3dbcf, then the final production installer
+  updated it to b6a351c83ce4 without /DIR. Both reused the registered path,
+  matched all managed hashes, and retained its config plus seven shaders
+  byte-for-byte. No state file existed there; state preservation was tested in
+  the lifecycle/ZIP fixtures. Prerequisites, setup and installer backup folders
+  were removed. C:\Videoprocessor\vp was not modified.
+- Exact icon-resource checks passed for all five VP icon images in the final
+  setup executable and C:\vptest\unins000.exe. File/Product Version metadata
+  matched the selected version/commit. Final corrupted-manifest setup failed
+  truthfully, restored old application files, preserved config/state and created
+  no QA registration.
+
+### Current artifacts and evidence
+
+Artifact root: E:\codex\videoprocessor\vp-0192-windows-installer\artifacts
+
+- installers/VideoProcessorSetup-1.3.005-beta.exe
+- SHA-256: 2AB1B1F0C1D53E514D72D79292D75FFC500050A21903F76CEA8F5CFF58792A64
+- Matching .sha256 sidecar and portable ZIP for source b6a351c83ce4.
+- Dirty-build naming evidence:
+  installers/VideoProcessorSetup-1.3.005-beta-42ab23d3dbcf-dirty-ec921b919cb7.exe
+  (precommit source snapshot recorded in installer-dirty-manifest.json and
+  installer-dirty-build-receipt.json; test artifact, not a release).
+- installer-final-build.log, installer-final-icon.log, installer-final-failure.log
+- installer-cleanup-support.log, installer-cleanup-runtime.log,
+  installer-cleanup-checkonly.log, installer-cleanup-e2e.log, installer-cleanup-zip.log
+- installer-identity-tests.log, installer-stale-source.log, installer-dirty-build.log
+- registered-cleanup-before.json, registered-cleanup-setup.log,
+  registered-cleanup-result.log; registered-final-before.json,
+  registered-final-setup.log, registered-final-result.log
+
+The earlier remaining acceptance/unsigned-release limitations still apply.
+These changes are ready for review, not a public release. No GitHub Release
+was published. Historical tracker Status-format anomalies were left unchanged.
