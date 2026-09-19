@@ -11,6 +11,12 @@ The user reports everything watched on deployed `525e5802` looked good.
 The merged source tree exactly matches that tested build. See the final
 integration section below; it supersedes earlier interim deployment and timer notes.
 
+Follow-up [PR #95](https://github.com/billslack2/videoprocessor/pull/95) merged
+on 2026-09-19 into `v1.3.005-beta` at `8414b11633d3ab8cc06fa3964c273c81b76f05bc`.
+Its source tree is identical to tested/deployed `6dc92012`. Status remains
+**Review**, explicitly requested again after this merge; see the September 19
+follow-up section for current validation and remaining field coverage.
+
 Created 2026-09-16 at the user's request after source review and standalone
 policy experiments. Implementation started from the explicitly requested latest local tip. Additional crop diagnostics
 are a required part of the design and acceptance, not an optional follow-up.
@@ -573,3 +579,55 @@ made that every earlier dark/credits/star-field report has been individually
 reproduced and accepted. Stronger full-extent calibration and the optional
 graphical overlay remain outside this completed correction. The separate
 bottom-positioning/zoom-to-fill report was not added to this development.
+
+## September 19 follow-up merge; Review retained
+
+[PR #95](https://github.com/billslack2/videoprocessor/pull/95) merged ten reviewed
+follow-up commits into `v1.3.005-beta` at `8414b11633d3ab8cc06fa3964c273c81b76f05bc`.
+Merge tree `1a3af473d75fa5cb4eb528f034169fd5c9039297` exactly matches clean tested
+head `6dc92012006ba33a1c43a68049c2920b91dbe538`.
+
+- Retain established crop during unavailable acquisition only while excluded
+  bands remain pixel-safe. The retention comment documents the intentional
+  near-black exception.
+- Distinguish entering darkness from independent cut evidence. A cut revokes
+  full-frame authority even during scene-notification cooldown; two fresh,
+  non-dark exact-full measurements can reaffirm existing full-frame authority.
+  Stale/repeated frames, changed contexts and contradictory evidence cannot.
+- Add opt-in source black-level/chroma and color-picture diagnostics. Per-renderer
+  instance IDs disambiguate restarted sample counters. Color evidence stays
+  shadow-only: noisy/tinted bars remain an unresolved classification ambiguity.
+- Prefer native progressive 25/30 Hz before doubled fallback; retain the
+  interlaced refresh-selection path.
+- Remove the action-triggered window-placement guard and preserve layout-before-
+  renderer-notification ordering. Window size/position remain user-owned.
+
+Validation: clean x64 Release build, **1,288/1,288 native tests passed** at the
+exact deployed commit. Regression tests failed before fixes and passed afterward
+for cooldown cut revocation, fresh full-frame reaffirmation and native window
+placement. A fresh independent final review found no new actionable blocker.
+The new tests do not substitute for every real MFC, shell or external-action path.
+
+The paired host/renderer were backed up, deployed and hash-verified. Both logged
+clean `6dc92012` identities and active frame processing. Configuration files were
+preserved. Binary backup: `C:\Videoprocessor\vp\backups\before-reviewed-6dc92012-20260919-094120`.
+Build/TRX, review and deployment artifacts are locally retained under
+`C:\Users\bslac\Documents\ChatGPT\Done\imax-starfield-investigation-20260918`.
+No additional deployment is needed solely for the tree-identical merge.
+
+Subsequent user testing exposed a separate external-script unmaximize action:
+`C:\Videoprocessor\utils\madvr_sendkeypress.ps1` used NirCmd `win activate`, which
+a hidden native-window reproduction proved restores maximized windows. Its local
+replacement restores only minimized windows, requests foreground focus, and keeps
+the existing foreground check before shortcut delivery. Four installed-helper
+window-state tests passed. The original script is backed up at
+`C:\Videoprocessor\vp\backups\hdr-activation-20260919-095335`.
+This installation-specific script is outside the repository and outside PR #95;
+real shortcut delivery after the change still needs playback validation.
+
+**Keep VP-0189 in Review.** Continue field testing dark logos/credits/star fields,
+multi-AR transitions and full application/window interactions. No general claim
+of color-based aspect detection or universal scene correctness is made.
+[VP-0190](../backlog/VP-0190_preserve-active-picture-authority-through-NLS-only-profile-changes.md)
+remains a separate Backlog story for NLS-only profile changes invalidating picture
+authority. It is not fixed or closed by this merge.
