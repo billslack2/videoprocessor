@@ -3053,7 +3053,7 @@ namespace VideoProcessorTest
 			Assert::IsTrue(config.Load(path));
 			Assert::IsFalse(MainConfigSchema::Validate(config, error));
 			Assert::IsTrue(error.find("profile_change_display_seconds") !=
-				std::string::npos);
+				std::string::npos, std::wstring(error.begin(), error.end()).c_str());
 			DeleteFileA(path.c_str());
 		}
 
