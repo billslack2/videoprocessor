@@ -2,7 +2,9 @@
 
 ## Status
 
-Review
+In Progress
+
+Uninstall UX follow-up: add a clearly named uninstall entry point, hide required engine support files, and explain background Config with Retry/Cancel. Existing reviewed implementation follows.
 
 Implementation and requested cleanup/branding follow-ups are ready for review in
 [draft PR #99](https://github.com/billslack2/videoprocessor/pull/99), source commit
