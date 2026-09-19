@@ -2021,12 +2021,18 @@ namespace AlphaSourceCrop
 			}
 		}
 
+		// A retained-crop episode must also end after fresh bright frames prove
+		// its exact entry crop safe. Otherwise a long-finished fade keeps owning
+		// presentation and a later bounded menu/subtitle intrusion takes the title
+		// path straight to full raster instead of normal presentation arbitration.
+		// Use the same current-context/pixel proof as full-raster recovery; no
+		// timeout alone, weaker black threshold, or new crop authority is added.
 		const bool distinctEntrySample = !input.cadenceRepeat && input.sourceSequence != 0 &&
 			input.sourceSequence > decision.state.lastEvaluatedSourceSequence;
-		if (decision.state.mode == NearBlackPresentationMode::FULL_RASTER &&
+		if (decision.state.mode != NearBlackPresentationMode::INACTIVE &&
 			decision.state.entryTrustedCropAvailable && !distinctEntrySample)
 			decision.revalidationGates |= RECOVERY_REPEAT;
-		if (decision.state.mode == NearBlackPresentationMode::FULL_RASTER &&
+		if (decision.state.mode != NearBlackPresentationMode::INACTIVE &&
 			decision.state.entryTrustedCropAvailable && distinctEntrySample)
 		{
 			decision.state.lastEvaluatedSourceSequence = input.sourceSequence;
@@ -2037,7 +2043,9 @@ namespace AlphaSourceCrop
 				input.reacquisitionIsCurrentAssociation &&
 				input.reacquiredSourceGeneration == input.sourceGeneration &&
 				input.reacquiredSourceSequence >=
-					decision.state.fullRasterStartedSourceSequence &&
+					(decision.state.mode == NearBlackPresentationMode::FULL_RASTER
+						? decision.state.fullRasterStartedSourceSequence
+						: decision.state.startedSourceSequence) &&
 				input.reacquiredSourceSequence <= input.sourceSequence &&
 				input.reacquiredPresentationEpoch ==
 					decision.state.presentationEpoch &&
@@ -2112,11 +2120,15 @@ namespace AlphaSourceCrop
 			{
 				decision.revalidationSamples =
 					decision.state.revalidationSamples;
+				const bool wasRetainingCrop = decision.state.mode ==
+					NearBlackPresentationMode::RETAIN_CROP;
 				decision.state = {};
 				decision.releasedToTrustedCrop = true;
 				decision.ended = true;
 				decision.reason =
-					"exact entry crop revalidated after pixel-safe dwell";
+					wasRetainingCrop
+					? "non-near-black scope revalidated; normal presentation resumed"
+					: "exact entry crop revalidated after pixel-safe dwell";
 			}
 		}
 

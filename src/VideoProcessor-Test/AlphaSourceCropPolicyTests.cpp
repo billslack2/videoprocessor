@@ -170,6 +170,32 @@ namespace Tests
 			Assert::AreEqual(3840, decision.sourceBounds.right);
 			Assert::AreEqual(2160, decision.sourceBounds.bottom);
 		}
+
+		NearBlackPresentationEpisodeInput ReaffirmedRetainedScope()
+		{
+			NearBlackPresentationEpisodeInput input;
+			input.trustedCrop = { 0, 280, 3840, 1880, 3840, 2160, 2.4,
+				ActivePictureBounds::BarAxes::TOP_BOTTOM };
+			input.measurementCurrent = input.nearBlackEvaluated = true;
+			input.globalNearBlack = input.trustedCropAvailable = true;
+			input.sourceGeneration = 1;
+			input.presentationEpoch = 10;
+			input.sourceSequence = 1962;
+			input.framesPerSecond = 23.976;
+			input.previous = EvaluateNearBlackPresentationEpisode(input).state;
+			input.globalNearBlack = false;
+			input.currentObservationAvailable = input.retentionEvaluated = true;
+			input.currentObservationClassification = ActivePictureClassification::BAR_CROP_TRUSTED;
+			input.currentObservation = input.retentionBounds = input.trustedCrop;
+			input.retentionSafe = input.retentionExcludedBandsPixelSafe = true;
+			input.retentionSourceGeneration = input.sourceGeneration;
+			input.knownTrustedGeometryReacquired = input.reacquisitionIsCurrentAssociation = true;
+			input.reacquiredTrustedGeometry = input.trustedCrop;
+			input.reacquiredTrustedClassification = ActivePictureClassification::BAR_CROP_TRUSTED;
+			input.reacquiredSourceGeneration = input.sourceGeneration;
+			input.reacquiredPresentationEpoch = input.presentationEpoch;
+			return input;
+		}
 	}
 
 	TEST_CLASS(AlphaSourceCropPolicyTests)
@@ -7112,6 +7138,150 @@ namespace Tests
 			Assert::AreEqual(static_cast<int>(
 				NearBlackPresentationMode::INACTIVE),
 				static_cast<int>(decision.state.mode));
+		}
+
+		TEST_METHOD(RetainedNearBlackEpisodeYieldsAfterFreshSafeScopeReturns)
+		{
+			auto input = ReaffirmedRetainedScope();
+			NearBlackPresentationEpisodeDecision decision;
+			for (uint64_t sequence = 1963; sequence <= 1969; ++sequence)
+			{
+				input.sourceSequence = input.retentionSourceSequence = input.reacquiredSourceSequence = sequence;
+				decision = EvaluateNearBlackPresentationEpisode(input);
+				Assert::IsFalse(decision.changedToFullRaster);
+				if (sequence < 1969)
+					Assert::AreEqual(int(NearBlackPresentationMode::RETAIN_CROP), int(decision.state.mode));
+				input.previous = decision.state;
+			}
+			Assert::IsTrue(decision.ended, L"Bright, independently safe scope must end the stale title episode");
+			Assert::AreEqual(int(NearBlackPresentationMode::INACTIVE), int(decision.state.mode));
+			// Subsequent bounded content must pass through ordinary presentation
+			// arbitration rather than the old title episode's full-raster latch.
+			input.sourceSequence = input.retentionSourceSequence = input.reacquiredSourceSequence = 2014;
+			input.boundedVisibleContentOutsideCrop = true;
+			input.retentionSafe = input.retentionExcludedBandsPixelSafe = false;
+			input.currentObservation.top = 168;
+			decision = EvaluateNearBlackPresentationEpisode(input);
+			Assert::AreEqual(int(NearBlackPresentationMode::INACTIVE), int(decision.state.mode));
+			Assert::IsFalse(decision.changedToFullRaster);
+		}
+
+		TEST_METHOD(RetainedNearBlackEpisodeRequiresFreshCurrentSafeScope)
+		{
+			for (int invalid = 0; invalid < 7; ++invalid)
+			{
+				auto input = ReaffirmedRetainedScope();
+				for (uint64_t sequence = 1963; sequence <= 1980; ++sequence)
+				{
+					input.sourceSequence = input.retentionSourceSequence = input.reacquiredSourceSequence = sequence;
+					if (invalid == 0) input.cadenceRepeat = true;
+					if (invalid == 1) input.retentionSourceSequence = sequence - 1;
+					if (invalid == 2) input.retentionSafe = input.retentionExcludedBandsPixelSafe = false;
+					if (invalid == 3) input.globalNearBlack = true;
+					if (invalid == 4) input.currentObservationAvailable = false;
+					if (invalid == 5) input.reacquiredPresentationEpoch = 9;
+					if (invalid == 6) input.reacquisitionIsCurrentAssociation = false;
+					const auto decision = EvaluateNearBlackPresentationEpisode(input);
+					Assert::AreEqual(int(NearBlackPresentationMode::RETAIN_CROP), int(decision.state.mode));
+					Assert::IsFalse(decision.ended);
+					input.previous = decision.state;
+				}
+			}
+		}
+		TEST_METHOD(RetainedEpisodeHandoffPreservesCropThroughProvisionalFrameAndRecovery)
+		{
+			auto input = ReaffirmedRetainedScope();
+			NearBlackPresentationEpisodeDecision episode;
+			for (uint64_t sequence = 1963; sequence <= 1969; ++sequence)
+			{
+				input.sourceSequence = input.retentionSourceSequence = input.reacquiredSourceSequence = sequence;
+				episode = EvaluateNearBlackPresentationEpisode(input);
+				input.previous = episode.state;
+			}
+			Assert::IsTrue(episode.releasedToTrustedCrop);
+			Input crop = TrustedScopeCrop();
+			crop.geometry = input.trustedCrop;
+			crop.geometrySourceGeneration = crop.frameSourceGeneration = input.sourceGeneration;
+			crop.frameSourceSequence = input.sourceSequence;
+			// Analysis precedes episode retirement in the renderer: this frame's
+			// observation is still provisional, despite independent pixel proof.
+			crop.latestObservationSupportsCrop = false;
+			crop.latestObservationIsProvisional = true;
+			crop.latestObservationClassification = ActivePictureClassification::PROVISIONAL;
+			crop.frameLocalPresentationRetentionEvaluated = input.retentionEvaluated;
+			crop.frameLocalPresentationRetentionSafe = input.retentionSafe;
+			crop.nearBlackEpisodeRetainCrop = episode.state.mode == NearBlackPresentationMode::RETAIN_CROP;
+			crop.nearBlackEpisodeFullRaster = episode.state.mode == NearBlackPresentationMode::FULL_RASTER;
+			const auto candidate = Evaluate(crop);
+			Assert::AreEqual(int(DecisionOwner::PIXEL_SAFE_RETENTION), int(candidate.owner));
+			for (bool recoveryActive : { false, true })
+			{
+				PresentationRecoveryInput recovery;
+				recovery.crop = crop;
+				recovery.candidate = candidate;
+				recovery.presentationEpoch = input.presentationEpoch;
+				recovery.previous.active = recoveryActive;
+				recovery.previous.sourceGeneration = input.sourceGeneration;
+				recovery.previous.presentationEpoch = input.presentationEpoch;
+				recovery.previous.trustedCrop = input.trustedCrop;
+				recovery.confirmedPresentationResolved = episode.releasedToTrustedCrop;
+				const auto handedOff = EvaluatePresentationRecovery(recovery);
+				Assert::IsFalse(handedOff.state.active, L"Completed episode proof must not start another recovery dwell");
+				Assert::IsTrue(handedOff.presentation.applyCrop);
+				Assert::AreEqual(0, handedOff.presentation.sourceBounds.left);
+				Assert::AreEqual(280, handedOff.presentation.sourceBounds.top);
+				Assert::AreEqual(3840, handedOff.presentation.sourceBounds.right);
+				Assert::AreEqual(1880, handedOff.presentation.sourceBounds.bottom);
+			}
+			// On the next bright frame normal crop authority resumes, with the
+			// same rectangle and no intervening full-raster presentation.
+			++crop.frameSourceSequence;
+			crop.latestObservationSupportsCrop = true;
+			crop.latestObservationIsProvisional = false;
+			crop.latestObservationClassification = ActivePictureClassification::BAR_CROP_TRUSTED;
+			const auto next = Evaluate(crop);
+			Assert::IsTrue(next.applyCrop);
+			Assert::AreEqual(int(DecisionOwner::TRUSTED_CROP), int(next.owner));
+			Assert::AreEqual(candidate.sourceBounds.left, next.sourceBounds.left);
+			Assert::AreEqual(candidate.sourceBounds.top, next.sourceBounds.top);
+			Assert::AreEqual(candidate.sourceBounds.right, next.sourceBounds.right);
+			Assert::AreEqual(candidate.sourceBounds.bottom, next.sourceBounds.bottom);
+		}
+
+		TEST_METHOD(RetainedEpisodePartialProofRejectsDuplicatesAndRestartsAfterInterruption)
+		{
+			for (bool sequenceGap : { false, true })
+			{
+				auto input = ReaffirmedRetainedScope();
+				for (uint64_t sequence = 1963; sequence <= 1965; ++sequence)
+				{
+					input.sourceSequence = input.retentionSourceSequence = input.reacquiredSourceSequence = sequence;
+					input.previous = EvaluateNearBlackPresentationEpisode(input).state;
+				}
+				Assert::AreEqual(3u, input.previous.revalidationSamples);
+				const auto duplicate = EvaluateNearBlackPresentationEpisode(input);
+				Assert::AreEqual(3u, duplicate.state.revalidationSamples);
+				Assert::IsFalse(duplicate.ended);
+				input.previous = duplicate.state;
+				if (!sequenceGap)
+				{
+					input.sourceSequence = input.retentionSourceSequence = input.reacquiredSourceSequence = 1966;
+					input.currentObservationAvailable = false;
+					input.previous = EvaluateNearBlackPresentationEpisode(input).state;
+					Assert::AreEqual(0u, input.previous.revalidationSamples);
+					input.currentObservationAvailable = true;
+				}
+				// A missed frame or invalid observation both require fresh proof.
+				for (uint64_t sequence = 1967; sequence <= 1973; ++sequence)
+				{
+					input.sourceSequence = input.retentionSourceSequence = input.reacquiredSourceSequence = sequence;
+					const auto decision = EvaluateNearBlackPresentationEpisode(input);
+					Assert::AreEqual(sequence == 1973, decision.ended);
+					if (sequence < 1973)
+						Assert::AreEqual(static_cast<unsigned int>(sequence - 1966), decision.state.revalidationSamples);
+					input.previous = decision.state;
+				}
+			}
 		}
 
 		TEST_METHOD(NearBlackEpisodePresentationOverridesTransientCropArbitration)
