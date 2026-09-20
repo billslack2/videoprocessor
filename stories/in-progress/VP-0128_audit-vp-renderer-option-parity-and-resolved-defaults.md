@@ -3,7 +3,8 @@
 ## Status
 
 In Progress (2026-09-20). The comprehensive audit is complete; corrective
-implementation and acceptance remain open. Current beta baseline was queried
+work remains open; the requested F7 zero-black correction is implemented for
+review in PR #105 (details below). Current beta baseline was queried
 from GitHub: `v1.3.005-beta` / `b3c0b3a6a8fdf4f5bb1c9ce0dc3340a3d5e395d7`.
 Audit and reproducible probes are committed and pushed as `787a3e5ffd863f48a7ee70cdcdb5b6109b989302`
 on `codex/vp-0128-config-audit-20260920`, in worktree
@@ -33,7 +34,8 @@ and 435 relevant native tests passed. Additional characterization probes
 reproduced the gaps missed by those suites. The bundled libplacebo 7.360.1/API
 360 preset matrix was read through production mapping code from the hashed DLL.
 Physical HDMI/capture behavior and a second physical monitor were not qualified.
-No production behavior changes, deployment, merge or active-config edits.
+The audit pass made no production behavior changes, deployment, merge or
+active-config edits. The subsequent F7 source correction is recorded below.
 
 Next increments, in order: shared effective-value/Boolean UI resolution;
 strict unknown-token preservation; explicit source-section identity and
@@ -53,7 +55,8 @@ help with that policy while preserving explicit numbers and the built-in
 renderer's separate neutral timestamp handling. This is a correction to the
 audit's framing, not evidence that the current Auto resolver already returns 90.
 
-For Auto black, retain an Auto/explicit discriminator until inherited target
+Historical proposal, superseded by the user-approved zero default below:
+for Auto black, retain an Auto/explicit discriminator until inherited target
 white is final: white 100 -> 200 must change Auto black 0.100 -> 0.200, while
 explicit zero/measured black stays unchanged. For Base, carry actual section
 identity across renderer, GUI selection and active status; support unambiguous
@@ -65,6 +68,35 @@ Boolean/effective-value UI handling and strict invalid-token preservation are
 small localized fixes; Auto black/default resolution and profile identity need
 coordinated tests. Prefer deriving diagnostic preset labels from actual flags.
 No implementation or deployment occurred in this clarification pass.
+## Zero-black correction implemented for review — 2026-09-20
+
+The user clarified that default black should be zero, which VP internally maps
+to almost zero. Latest beta was rechecked and remained `v1.3.005-beta` at
+`b3c0b3a6a8fdf4f5bb1c9ce0dc3340a3d5e395d7`. Fresh profiles already used zero;
+omission and legacy AUTO still used white/1000. This correction makes both use
+zero, resolving F7 by the revised policy rather than retaining the ratio.
+
+[Draft PR #105](https://github.com/billslack2/videoprocessor/pull/105), source
+commit `a85dda6fd4621f079c6533ae7583f169a1497f14`, branch
+`codex/vp-0128-zero-black-default`, worktree
+`E:\codex\videoprocessor\vp-0128-zero-black-default`.
+[Implementation and validation](https://github.com/billslack2/videoprocessor/blob/a85dda6fd4621f079c6533ae7583f169a1497f14/docs/VP-0128-zero-black-default.md).
+
+Runtime initialization, omission/Auto parsing, inherited profiles, invalid-pair
+fallback, editor fallback/status/help and reference examples now agree.
+Zero maps to 0.000001 nit at the native boundary. Valid measured numeric black
+levels continue to inherit; SDR reference luminance is unchanged. Existing
+explicit AUTO configurations intentionally adopt the new zero policy without
+rewriting their files.
+
+Validation: x64 Release build passed (0 errors, 47 warnings); all 76 editor tests
+passed. Native Config/Profile/Libplacebo filter: 356/357 passed initially,
+including both new black regressions. The existing immediate-reload test
+`ProfileChangeDisplayDurationIsBoundedAndLive` failed once and passed on an
+isolated rerun without code changes. No merge, deployment or active-config edit;
+physical output was not qualified. Other audit findings and overall acceptance
+remain open; tracker stays In Progress.
+
 ## User story
 
 As a VP Renderer user, I need every configuration choice and inherited default
