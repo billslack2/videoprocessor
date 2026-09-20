@@ -943,7 +943,7 @@ namespace
 	struct RendererSettings
 	{
 		double sdrTargetNits = PL_COLOR_SDR_WHITE;
-		double sdrBlackNits = PL_COLOR_SDR_WHITE / PL_COLOR_SDR_CONTRAST;
+		double sdrBlackNits = HdrTargetLuminance::DefaultBlack;
 		// File-only rollout policy. Rebuild remains the compatibility default;
 		// live preserves the renderer for safe changes, while never retains the
 		// current program instead of requesting a new variant.
@@ -1678,9 +1678,9 @@ namespace
 		{
 			return;
 		}
-		settings.sdrBlackNits = settings.sdrTargetNits / PL_COLOR_SDR_CONTRAST;
+		settings.sdrBlackNits = HdrTargetLuminance::DefaultBlack;
 		DebugLog::Log(
-			"libplacebo: resolved sdr_black_nits conflicts with sdr_target_nits; using Auto (%.3f)",
+			"libplacebo: resolved sdr_black_nits conflicts with sdr_target_nits; using default black (%.3f)",
 			settings.sdrBlackNits);
 	}
 
@@ -1768,19 +1768,10 @@ namespace
 		// AUTO whenever the ordinary SDR rule was selected.
 		if (config.TryGetString(rule.section, "sdr_black_nits", raw))
 		{
-			if (ConfigFile::NormalizeName(raw) == "auto")
-			{
-				settings.sdrBlackNits =
-					settings.sdrTargetNits / PL_COLOR_SDR_CONTRAST;
-			}
-			else
-			{
-				double value = 0.0;
-				if (ParseDouble(raw, value) && HdrTargetLuminance::ValidBlack(value, settings.sdrTargetNits))
-                    settings.sdrBlackNits = value;
-                else DebugLog::Log("libplacebo: rule [%s] sdr_black_nits '%s' must be finite, non-negative and below target white; retaining %.7g",
+            if (!HdrTargetLuminance::ParseBlack(ConfigFile::NormalizeName(raw),
+                settings.sdrTargetNits, settings.sdrBlackNits))
+                DebugLog::Log("libplacebo: rule [%s] sdr_black_nits '%s' must be finite, non-negative and below target white; retaining %.7g",
                     rule.section.c_str(), raw.c_str(), settings.sdrBlackNits);
-			}
 		}
 		if (config.TryGetString(rule.section, "switch_refresh_rate", raw) &&
 			ParseRefreshRateSwitchMode(raw, settings.refreshRateSwitchMode))
@@ -2144,22 +2135,13 @@ namespace
 					PL_COLOR_SDR_WHITE);
 		}
 
-		settings.sdrBlackNits = settings.sdrTargetNits / PL_COLOR_SDR_CONTRAST;
-		if (TryGetDisplayString(config, "sdr_black_nits", rawValue) &&
-			ConfigFile::NormalizeName(rawValue) != "auto")
-		{
-			double parsed = 0.0;
-			if (ParseDouble(rawValue, parsed) && HdrTargetLuminance::ValidBlack(parsed, settings.sdrTargetNits))
-			{
-				settings.sdrBlackNits = parsed;
-			}
-			else
-			{
-				DebugLog::Log(
-					"libplacebo: sdr_black_nits must be non-negative and below sdr_target_nits; using AUTO (%.3f)",
-					settings.sdrBlackNits);
-			}
-		}
+		settings.sdrBlackNits = HdrTargetLuminance::DefaultBlack;
+        if (TryGetDisplayString(config, "sdr_black_nits", rawValue) &&
+            !HdrTargetLuminance::ParseBlack(ConfigFile::NormalizeName(rawValue),
+                settings.sdrTargetNits, settings.sdrBlackNits))
+            DebugLog::Log(
+                "libplacebo: sdr_black_nits must be non-negative and below sdr_target_nits; using default black (%.3f)",
+                settings.sdrBlackNits);
 
 		if (TryGetDisplayString(config, "switch_refresh_rate", rawValue) &&
 			!ParseRefreshRateSwitchMode(rawValue, settings.refreshRateSwitchMode))
@@ -3747,7 +3729,7 @@ struct LibplaceboVideoRenderer::Impl
 	struct pl_deband_params debandParams{};
 	struct pl_dither_params ditherParams{};
 	double sdrTargetNits = PL_COLOR_SDR_WHITE;
-	double sdrBlackNits = PL_COLOR_SDR_WHITE / PL_COLOR_SDR_CONTRAST;
+	double sdrBlackNits = HdrTargetLuminance::DefaultBlack;
 	struct pl_color_space configuredOutputColor{};
 	std::string lastLuminanceSignature;
 	LibplaceboOutput::Plan requestedOutputPlan;
