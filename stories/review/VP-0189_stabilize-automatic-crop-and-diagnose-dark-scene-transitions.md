@@ -958,3 +958,52 @@ C:\Videoprocessor\vp\backups\lookahead-proof-e0d226ad-20260919-234635.
 Build/test logs, deployment script and receipt, startup log and hashes:
 C:\Users\bslac\Documents\ChatGPT\Done\crop-lookahead-proof-20260919.
 No source push, merge or packaging. Ready for live transition replay validation.
+
+## September 20: live-validated crop stack merged through PR #103
+
+**Keep Review.** The user replayed the gradual scope-to-16:9 scene several times,
+then tested a broad range of content, reported that it looks good, and explicitly
+authorized check-in and merge.
+
+[PR #103](https://github.com/billslack2/videoprocessor/pull/103) merged into
+`v1.3.005-beta` at `a6914dc6e09ce95b4c9373f17ea9a5a74e0612ec`.
+The merged tree is byte-for-byte Git-tree identical to tested/deployed feature
+commit `2bab85e38303ca3360fc3017c1b10ed5b740f187`; ancestry and tree equality were
+verified after fetching the remote beta. The prior beta was `525767f6` and had
+not advanced before merge. GitHub reported the PR mergeable with no pending or
+failed checks; no Actions runs/checks were listed for the feature head. No check
+was bypassed.
+
+The integrated stack includes crop presentation admission (`654ccade`), stable
+picture handoff (`40ad343e`), buffered outward proof (`e0d226ad`), Alien dark-entry
+recovery (`75651be5`), and gradual-motion handling (`2bab85e3`).
+
+Validation: clean committed x64 Release build, **1374/1374 native tests passed**,
+zero failures/skips, two independent reviewers with no remaining blockers.
+Movement was injected into existing hard-change, jitter, subtitle, general
+recovery and Alien fixtures as well as new real-P010 ramp tests. These tests
+caught and drove corrections for premature old-crop return and repeated motion
+reactivation during local settlement. Tested hard-change frame timing remains
+unchanged.
+
+Deployment at 08:35 EDT replaced and verified the matching host/renderer pair:
+- Host SHA-256: `BDCF6B3A9942F8126F7CC5B3E300B7EFFB2D9AA469818AC55FEE5E667062A551`.
+- Renderer SHA-256: `8217D9E2B0E0574E32D23A727574AA5D155AF5BDF00A27CE45D709A23588F188`.
+- Backup/receipt: `C:\Videoprocessor\vp\backups\moving-picture-2bab85e3-20260920-083541\deployment.json`.
+- Test results: `E:\codex\videoprocessor\moving-picture-transition\TestResults\moving-picture-deployment-full.trx`.
+
+Both live module identities subsequently reported clean `2bab85e3`. In the
+11:00:14-11:00:19 replay, the full-source presentation stayed unchanged during
+the entire recognized expansion: zero intermediate resize steps, compared with
+ten previously. Final full-raster authority caused no extra resize; subsequent
+scope reacquisition and a hard full-raster change completed normally. Queue depth
+was healthy. Live evidence: `C:\Users\bslac\Documents\ChatGPT\Done\VP-moving-bars-live-20260920\review.md`
+and the preserved session/evidence logs in that directory.
+
+One residual observation remains: an earlier return to scope briefly reused a
+safe intermediate crop for one source frame (~42 ms) before correcting. Physical
+DXGI frame statistics were unavailable, so the logs do not certify every display
+presentation. The user nevertheless reports good behavior across broad content.
+
+No configuration changes, additional deployment, installer, or ZIP accompanied
+this merge. The currently installed runtime remains the tested `2bab85e3` pair.
