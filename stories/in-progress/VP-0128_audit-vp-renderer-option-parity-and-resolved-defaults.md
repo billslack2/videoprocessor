@@ -2,7 +2,14 @@
 
 ## Status
 
-Review (2026-08-30). The dithering parity increment is implemented in
+In Progress (2026-09-20). Reopened for the complete configuration, Auto/default,
+and startup-state audit requested by Bill. Source baseline: GitHub current beta
+`v1.3.005-beta` at `b3c0b3a6a8fdf4f5bb1c9ce0dc3340a3d5e395d7`;
+branch `codex/vp-0128-config-audit-20260920`, clean worktree
+`E:\codex\videoprocessor\vp-0128-config-audit-20260920`.
+This pass records evidence and recommendations before behavior changes.
+
+Prior increment (2026-08-30). The dithering parity increment is implemented in
 `billslack2/videoprocessor` commit `d6e7fab2` on `v1.3.004-beta`: the editor,
 profile validation, runtime mapping, and diagnostics now expose Auto, the four
 ordinary libplacebo dithering methods, all ten error-diffusion kernels, and
