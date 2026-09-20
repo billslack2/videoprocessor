@@ -831,9 +831,8 @@ protected:
 	EventActionLauncher::PendingActionCoalescer m_unifiedActionCoalescer;
 	std::mutex m_profileActionLaunchMutex;
 	std::atomic<uint64_t> m_profileActionDebounceGeneration = 0;
-	// Profile actions are serialized. This flag lets us ignore profile changes
-	// caused by a running action's own keyboard injection, while still allowing
-	// an explicit cycle request to replace the pending final selection.
+	// Profile actions are serialized. Only Rendering-profile feedback is filtered
+	// while a script runs; independent screen/color/queue intent stays eligible.
 	std::atomic<bool> m_profileActionProcessActive = false;
 	std::vector<std::thread> m_unifiedActionWorkers;
 	std::map<WORD, CString> m_unifiedProfileShortcutKeys;

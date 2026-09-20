@@ -13,6 +13,29 @@
 // the small, shared Windows process launch safely from the owning subsystem.
 namespace EventActionLauncher
 {
+	// Preserve rendering-profile feedback protection without dropping unrelated
+	// screen/color/queue intent while an action process is active.
+	inline bool IsProfileActionFeedback(bool processActive,
+		const std::string& event, const std::string& reason)
+	{
+		return processActive && reason == "manual" &&
+			event == "profile.display.changed";
+	}
+
+	// Classify the original selection, not its emitted actions. Rendering-only
+	// feedback may also emit generic profile.changed/state.committed events.
+	inline bool IsRenderingSelectionFeedback(bool processActive,
+		const std::vector<RendererProfileConfig::KeySelection>& selections,
+		bool cycleSelection)
+	{
+		if (selections.empty()) return false;
+		for (const auto& selection : selections)
+			if (!IsProfileActionFeedback(processActive,
+				"profile." + selection.group + ".changed", cycleSelection ? "cycle" : "manual"))
+				return false;
+		return true;
+	}
+
 	// Tracks the newest delayed invocation for each coalescing identity. By
 	// default that identity is the unique action name; an explicit role lets
 	// related actions (for example Rec.709 and BT.2020 state writers) share the
@@ -20,10 +43,12 @@ namespace EventActionLauncher
 	class PendingActionCoalescer
 	{
 	public:
-		uint64_t Schedule(const std::string& identity)
+		uint64_t Schedule(const std::string& identity, bool* superseded = nullptr)
 		{
 			std::lock_guard<std::mutex> lock(m_mutex);
-			return ++m_generations[identity];
+			if (superseded)
+				*superseded = m_generations.find(identity) != m_generations.end();
+			return m_generations[identity] = ++m_nextGeneration;
 		}
 
 		bool Claim(const std::string& identity, uint64_t generation)
@@ -44,6 +69,8 @@ namespace EventActionLauncher
 
 	private:
 		std::mutex m_mutex;
+		// Never reuse a token after Claim or CancelAll: old workers may still wake.
+		uint64_t m_nextGeneration = 0;
 		std::map<std::string, uint64_t> m_generations;
 	};
 
