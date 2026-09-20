@@ -942,3 +942,19 @@ C:\Users\bslac\Documents\ChatGPT\Done\crop-lookahead-proof-20260919.
 Source is committed locally, not pushed, merged, deployed or packaged. Validation
 preceded the commit; deployment requires rebuilding the clean committed identity.
 Running installation remains 40ad343e, and configuration is unchanged.
+
+## September 19 deployment of buffered proof e0d226ad
+
+**Keep Review.** User requested local deployment. Rebuilt clean committed source
+e0d226ad1e6e0a4ee3d27fe19d23acbb2a4a95f5 in x64 Release; all 1350 tests passed.
+Deployed the paired host and renderer at 23:46:35 and launched VP, PID 31504.
+The live log confirms both host and renderer identities at e0d226ad with dirty=0;
+loaded renderer path and both deployed hashes match the qualified build.
+Capture and presentation telemetry are active. No configuration edits; the
+configuration hash remained unchanged after launch.
+
+Rollback pair:
+C:\Videoprocessor\vp\backups\lookahead-proof-e0d226ad-20260919-234635.
+Build/test logs, deployment script and receipt, startup log and hashes:
+C:\Users\bslac\Documents\ChatGPT\Done\crop-lookahead-proof-20260919.
+No source push, merge or packaging. Ready for live transition replay validation.
