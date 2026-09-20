@@ -242,6 +242,7 @@
     <ClInclude Include="ConfigurationLiveApply.h" />
     <ClInclude Include="ShaderConfigValidation.h" />
     <ClInclude Include="vprenderer\\AlphaSourceCropPolicy.h" />
+    <ClInclude Include="vprenderer\\BufferedPictureExpansion.h" />
     <ClInclude Include="vprenderer\\LibplaceboOutputPolicy.h" />
 	<ClInclude Include="vprenderer\\LibplaceboCalibrationLutPolicy.h" />
     <ClInclude Include="vprenderer\\LibplaceboRenderParameters.h" />
@@ -358,6 +359,9 @@
       <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="vprenderer\\AlphaPresentationTelemetry.cpp">
+      <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="vprenderer\\BufferedPictureExpansion.cpp">
       <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="vprenderer\\AlphaSourceCropPolicy.cpp">

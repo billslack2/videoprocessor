@@ -63,6 +63,9 @@
     <ClInclude Include="vprenderer\\LibplaceboPluginVideoRenderer.h">
       <Filter>Header Files\libplacebo</Filter>
     </ClInclude>
+      <ClInclude Include="vprenderer\\BufferedPictureExpansion.h">
+        <Filter>Header Files\libplacebo</Filter>
+      </ClInclude>
       <ClInclude Include="vprenderer\\AlphaSourceCropPolicy.h">
         <Filter>Header Files\libplacebo</Filter>
       </ClInclude>
@@ -413,7 +416,10 @@
     <ClCompile Include="vprenderer\\LibplaceboPluginVideoRenderer.cpp">
       <Filter>Source Files\libplacebo</Filter>
     </ClCompile>
-    <ClCompile Include="vprenderer\\AlphaSourceCropPolicy.cpp">
+    <ClCompile Include="vprenderer\\BufferedPictureExpansion.cpp">
+        <Filter>Source Files\libplacebo</Filter>
+      </ClCompile>
+      <ClCompile Include="vprenderer\\AlphaSourceCropPolicy.cpp">
       <Filter>Source Files\libplacebo</Filter>
     </ClCompile>
     <ClCompile Include="vprenderer\\LibplaceboOutputPolicy.cpp">

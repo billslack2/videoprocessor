@@ -1417,6 +1417,104 @@ namespace VideoProcessorTest
 			Assert::IsFalse(retention.globalNearBlack);
 		}
 
+		TEST_METHOD(NearBlackOutwardEntryRecoversOnlyPixelSafeEstablishedPicture)
+		{
+			using namespace AlphaSourceCrop;
+			for (int content = 0; content < 5; ++content)
+			{
+				const auto scope = ScopePresentation(960, 540, 70, 470);
+				P010Frame frame(960, 540);
+				frame.Fill(136, 512, 512);
+				frame.BlackOutside(0, 70, 960, 470, 64);
+				ActivePictureTransitionModel model;
+				ActivePictureTransitionDecision transition;
+				const auto clean = ExtractActivePictureEvidence(frame.P010Source());
+				for (uint64_t seq = 1; seq <= 20; ++seq)
+					transition = model.Observe(MakeActivePictureObservation(clean, seq, 24.0));
+				Assert::IsTrue(transition.stable);
+				Assert::AreEqual(int(ActivePictureClassification::BAR_CROP_TRUSTED),
+					int(transition.authoritativeClassification));
+				Assert::AreEqual(70, transition.stableBounds.top);
+				Assert::AreEqual(470, transition.stableBounds.bottom);
+
+				// Darkness and an outside-band title arrive on the same frame.
+				frame.Fill(64, 512, 512);
+				frame.FillRectangle(300, 482, 660, 500, 200);
+				const auto entry = EvaluateActivePicturePresentationRetention(frame.P010Source(), scope);
+				Assert::IsTrue(entry.globalNearBlack && entry.outwardVisibleBoundsAvailable);
+				NearBlackPresentationEpisodeInput input;
+				input.measurementCurrent = input.nearBlackEvaluated = true;
+				input.trustedCropAvailable = true;
+				input.trustedCrop = scope;
+				input.globalNearBlack = entry.globalNearBlack;
+				input.boundedVisibleContentOutsideCrop = entry.outwardVisibleBoundsAvailable;
+				input.sourceGeneration = input.presentationEpoch = 1;
+				input.sourceSequence = 100;
+				input.framesPerSecond = 24;
+				input.previous = EvaluateNearBlackPresentationEpisode(input).state;
+				Assert::AreEqual(int(NearBlackPresentationMode::FULL_RASTER), int(input.previous.mode));
+
+				// Asymmetric illumination inside the scope frame must stay provisional.
+				frame.Fill(64, 512, 512);
+				frame.FillRectangle(0, 104, 668, 470, 136);
+				if (content == 1) frame.FillRectangle(300, 482, 660, 500, 200);
+				if (content == 2) frame.FillRectangle(300, 482, 660, 500, 64, 700, 512);
+				if (content == 3) frame.Fill(136, 512, 512);
+				if (content == 4) frame.Fill(64, 512, 512);
+				const auto retained = EvaluateActivePicturePresentationRetention(frame.P010Source(), scope);
+				if (content == 0)
+				{
+					Assert::AreEqual(int(ActivePictureClassification::PROVISIONAL),
+						int(retained.activePicture.classification));
+					Assert::IsTrue(retained.CanRetainPresentation());
+					Assert::IsFalse(retained.globalNearBlack);
+				}
+				for (uint64_t seq = 101; seq <= 107; ++seq)
+				{
+					const auto observation = ConstrainNearBlackCropAcquisition(retained.activePicture, true);
+					transition = model.Observe(MakeActivePictureObservation(observation, seq, 24.0));
+					input.sourceSequence = input.retentionSourceSequence = input.reacquiredSourceSequence = seq;
+					input.globalNearBlack = retained.globalNearBlack;
+					input.boundedVisibleContentOutsideCrop = retained.outwardVisibleBoundsAvailable;
+					input.currentObservationAvailable = retained.activePicture.available;
+					input.currentObservation = retained.activePicture.proposedBounds;
+					input.currentObservationClassification = retained.activePicture.classification;
+					input.retentionEvaluated = retained.analysisValid && retained.presentationValid;
+					input.retentionSafe = retained.CanRetainPresentation();
+					input.retentionExcludedBandsPixelSafe = retained.excludedBandsPixelSafe;
+					input.retentionBounds = scope;
+					input.retentionSourceGeneration = 1;
+					input.knownTrustedGeometryReacquired = transition.stable;
+					input.reacquisitionIsCurrentAssociation = true;
+					input.reacquiredTrustedGeometry = transition.stableBounds;
+					input.reacquiredTrustedClassification = transition.authoritativeClassification;
+					input.reacquiredSourceGeneration = input.reacquiredPresentationEpoch = 1;
+					const auto decision = EvaluateNearBlackPresentationEpisode(input);
+					Assert::AreEqual(content == 0 && seq == 107, decision.releasedToTrustedCrop);
+					Input crop;
+					crop.automaticCropEnabled = crop.sharedGeometryAvailable = true;
+					crop.geometry = scope;
+					crop.classification = ActivePictureClassification::BAR_CROP_TRUSTED;
+					crop.frameSourceGeneration = crop.geometrySourceGeneration = 1;
+					crop.rasterWidth = 960; crop.rasterHeight = 540;
+					crop.latestObservationIsProvisional = true;
+					crop.frameLocalPresentationRetentionEvaluated = input.retentionEvaluated;
+					crop.frameLocalPresentationRetentionSafe = input.retentionSafe;
+					crop.nearBlackEpisodeFullRaster = decision.state.mode == NearBlackPresentationMode::FULL_RASTER;
+					const auto presentation = Evaluate(crop);
+					Assert::AreEqual(content == 0 && seq == 107, presentation.applyCrop);
+					if (presentation.applyCrop)
+					{
+						Assert::AreEqual(0, presentation.sourceBounds.left);
+						Assert::AreEqual(70, presentation.sourceBounds.top);
+						Assert::AreEqual(960, presentation.sourceBounds.right);
+						Assert::AreEqual(470, presentation.sourceBounds.bottom);
+					}
+					input.previous = decision.state;
+				}
+			}
+		}
+
 		TEST_METHOD(ContainedDarkProvisionalFrameRetainsWithoutInnerContrast)
 		{
 			P010Frame frame(320, 180);

@@ -370,9 +370,24 @@ ActivePictureTransitionModel::CommitCandidate(
 	const ActivePictureObservation& observation,
 	const char* reason)
 {
+	// Confirm against the anchored candidate, then publish the current trusted
+	// sample. The first sample's tiny measurement error is not authority to
+	// exclude pixels verified on this commit frame. Provisional/history-only
+	// recurrence keeps its canonical remembered contract.
+	ActivePictureBounds committedBounds = m_candidate;
+	if (HasCropAuthority(observation) &&
+		observation.classification == m_candidateClassification &&
+		observation.bounds.trustedBarAxes == m_candidate.trustedBarAxes &&
+		SameBounds(m_candidate, observation.bounds) &&
+		StableRetentionAdmission(observation.bounds, observation.classification) ==
+			ActivePicturePublicationAdmission::ACCEPTED &&
+		!RetainsIncompleteInwardFormat(observation.bounds, observation.axisEvidence))
+	{
+		committedBounds = observation.bounds;
+	}
 	ActivePictureTransitionDecision decision;
 	decision.state = ActivePictureTransitionState::STABLE;
-	decision.bounds = m_candidate;
+	decision.bounds = committedBounds;
 	decision.stableBounds = m_stable;
 	decision.publish = true;
 	decision.stable = true;
@@ -389,11 +404,11 @@ ActivePictureTransitionModel::CommitCandidate(
 		observation.frameNumber >= m_firstContradictoryFrame ?
 		observation.frameNumber - m_firstContradictoryFrame : 0;
 	decision.reason = reason;
-	if (m_hasStable && !SameBounds(m_stable, m_candidate))
+	if (m_hasStable && !SameBounds(m_stable, committedBounds))
 	{
 		RememberTrustedGeometry(m_stable, m_stableClassification);
 	}
-	m_stable = m_candidate;
+	m_stable = committedBounds;
 	m_stableClassification = m_candidateClassification;
 	m_hasStable = true;
 	m_unavailableCandidates = 0;
@@ -704,11 +719,23 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 }
 
 
+bool ActivePictureTransitionModel::WouldAdmitGeometryChange(
+	const ActivePictureObservation& observation) const
+{
+	return m_hasStable && HasCropAuthority(observation) &&
+		!SameBounds(m_stable, observation.bounds) &&
+		StableRetentionAdmission(observation.bounds, observation.classification) ==
+			ActivePicturePublicationAdmission::ACCEPTED &&
+		!RetainsIncompleteInwardFormat(observation.bounds, observation.axisEvidence);
+}
+
+
 bool ActivePictureTransitionModel::AdoptPublishedDecision(
 	const ActivePictureTransitionDecision& decision,
 	ActivePictureClassification classification, bool transitionDeferred,
 	ActivePicturePublicationAdmission* admission,
-	const ActivePictureAxisEvidenceSet* currentAxisEvidence)
+	const ActivePictureAxisEvidenceSet* currentAxisEvidence,
+	bool currentOutwardPictureConfirmed)
 {
 	if (admission) *admission = ActivePicturePublicationAdmission::ACCEPTED;
 	const auto reject = [admission](ActivePicturePublicationAdmission reason) {
@@ -725,7 +752,8 @@ bool ActivePictureTransitionModel::AdoptPublishedDecision(
 		return reject(ActivePicturePublicationAdmission::NON_AUTHORITATIVE);
 	// CommitCandidate records the pre-publication stable reference. A queue
 	// model with a different history cannot transfer its confirmation to this
-	// model. Exact axes matter even when the coordinates happen to agree.
+	// model. A separately proved outward expansion may tolerate one scan step
+	// in the old reference only; exact axes and current target checks remain.
 	const auto& base = decision.stableBounds;
 	const bool matchingReference = m_hasStable
 		? (base.left == m_stable.left && base.top == m_stable.top &&
@@ -735,7 +763,47 @@ bool ActivePictureTransitionModel::AdoptPublishedDecision(
 		: (base.left == 0 && base.top == 0 && base.right == 0 && base.bottom == 0 &&
 			base.rasterWidth == 0 && base.rasterHeight == 0 &&
 			base.trustedBarAxes == ActivePictureBounds::BarAxes::NONE);
-	if (!matchingReference)
+	bool equivalentOutwardReference = false;
+	if (!matchingReference && currentOutwardPictureConfirmed && m_hasStable &&
+		classification == ActivePictureClassification::BAR_CROP_TRUSTED &&
+		m_stableClassification == ActivePictureClassification::BAR_CROP_TRUSTED)
+	{
+		ActivePictureObservation reference;
+		reference.available = true;
+		reference.classification = ActivePictureClassification::BAR_CROP_TRUSTED;
+		reference.bounds = base;
+		const auto contains = [](const ActivePictureBounds& outer,
+			const ActivePictureBounds& inner) {
+			return outer.left <= inner.left && outer.top <= inner.top &&
+				outer.right >= inner.right && outer.bottom >= inner.bottom;
+		};
+		const auto expands = [](const ActivePictureBounds& outer,
+			const ActivePictureBounds& inner) {
+			return outer.left < inner.left || outer.top < inner.top ||
+				outer.right > inner.right || outer.bottom > inner.bottom;
+		};
+		// Match the source detector's actual scan step, not SameBounds' wider
+		// temporal matching tolerance. Also bound total size difference so two
+		// opposing edge errors cannot double this allowance.
+		const int xStep = std::max(2, m_stable.rasterWidth / 960);
+		const int yStep = std::max(2, m_stable.rasterHeight / 540);
+		equivalentOutwardReference = HasCropAuthority(reference) &&
+			base.rasterWidth == m_stable.rasterWidth &&
+			base.rasterHeight == m_stable.rasterHeight &&
+			decision.bounds.rasterWidth == m_stable.rasterWidth &&
+			decision.bounds.rasterHeight == m_stable.rasterHeight &&
+			base.trustedBarAxes == m_stable.trustedBarAxes &&
+			decision.bounds.trustedBarAxes == m_stable.trustedBarAxes &&
+			std::abs(base.left - m_stable.left) <= xStep &&
+			std::abs(base.right - m_stable.right) <= xStep &&
+			std::abs(base.top - m_stable.top) <= yStep &&
+			std::abs(base.bottom - m_stable.bottom) <= yStep &&
+			std::abs((base.right - base.left) - (m_stable.right - m_stable.left)) <= xStep &&
+			std::abs((base.bottom - base.top) - (m_stable.bottom - m_stable.top)) <= yStep &&
+			contains(decision.bounds, base) && contains(decision.bounds, m_stable) &&
+			expands(decision.bounds, base) && expands(decision.bounds, m_stable);
+	}
+	if (!matchingReference && !equivalentOutwardReference)
 		return reject(ActivePicturePublicationAdmission::STABLE_REFERENCE_MISMATCH);
 	if (currentAxisEvidence && RetainsIncompleteInwardFormat(decision.bounds, *currentAxisEvidence))
 		return reject(ActivePicturePublicationAdmission::INCOMPLETE_AXIS_RETAINED);

@@ -32,7 +32,14 @@ namespace AlphaSourceCrop
 	struct OutwardPictureConfirmationState
 	{
 		ActivePictureBounds candidate;
+		ActivePictureBounds base;
+		// Confirmation is anchored here; accepted sampling jitter never walks it.
+		ActivePictureBounds referenceCandidate;
+		// Continuous broad-picture episode age survives candidate proof restarts.
+		uint64_t firstPictureSourceSequence = 0;
 		uint32_t confirmations = 0;
+		// Preserve subtitle ownership across this proof, even if dense FIT later replaces it.
+		bool verticalPresentationSeen = false;
 		uint64_t sourceGeneration = 0;
 		uint64_t lastObservedSourceSequence = 0;
 	};
@@ -377,6 +384,28 @@ namespace AlphaSourceCrop
 		bool deferPartialComposition = false;
 	};
 	TransitionAdmissionDecision EvaluateTransitionAdmission(const TransitionAdmissionInput& input);
+
+	// Frame-local arbitration only: wait for the existing model to publish a
+	// broad vertical picture transition instead of briefly applying subtitle FIT.
+	// The last outward-proof sample is the first model sample; the final
+	// model sample publishes instead of retaining. No extra hold is added.
+	static constexpr uint64_t PICTURE_HANDOFF_PENDING_FRAMES =
+		OUTWARD_PICTURE_CONFIRMATIONS_REQUIRED +
+		ActivePictureTransitionModel::CLEAR_TRANSITION_CONFIRMATIONS - 2;
+
+	struct PictureTransitionHandoff
+	{
+		bool active = false;
+		ActivePictureBounds trustedBase;
+		uint64_t sourceGeneration = 0;
+		uint64_t sourceSequence = 0;
+		uint64_t presentationEpoch = 0;
+	};
+
+	PictureTransitionHandoff MakePictureTransitionHandoff(
+		const TransitionAdmissionInput& input, const TransitionAdmissionDecision& admission,
+		const ActivePictureTransitionDecision& transition, bool eligibleGeometryChange,
+		uint64_t presentationEpoch);
 
 	struct PresentationObservationDecision
 	{
@@ -833,6 +862,8 @@ namespace AlphaSourceCrop
 		uint64_t sourceGeneration = 0;
 		uint64_t startedSourceSequence = 0;
 		uint64_t presentationEpoch = 0;
+		// Keep native acquisition available for episodes that began at full raster.
+		bool startedAtFullRaster = false;
 		bool entryTrustedCropAvailable = false;
 		ActivePictureBounds entryTrustedCrop;
 		uint64_t fullRasterStartedSourceSequence = 0;
@@ -930,6 +961,11 @@ namespace AlphaSourceCrop
 
 	struct Input
 	{
+		PictureTransitionHandoff pictureTransitionHandoff;
+		uint64_t framePresentationEpoch = 0;
+        // Presentation-only withdrawal during proved continuous edge motion.
+        // Does not create full-raster authority or arm general recovery.
+        bool movingPictureTransition = false;
 		bool automaticCropEnabled = false;
 		bool nearBlackEpisodeRetainCrop = false;
 		bool nearBlackEpisodeFullRaster = false;
@@ -1015,6 +1051,8 @@ namespace AlphaSourceCrop
 		int rasterHeight = 0;
 	};
 
+	bool HasCurrentPictureTransitionHandoff(const Input& input);
+
 	enum class DecisionOwner
 	{
 		FULL_RASTER,
@@ -1023,6 +1061,7 @@ namespace AlphaSourceCrop
 		SCENE_HOLD,
 		AMBIGUITY_HOLD,
 		BAR_REFINEMENT,
+		PICTURE_CONFIRMATION,
 		VERTICAL_INSPECTION,
 		TRANSLATION_CONFIRMATION,
 		FIT_CONFIRMATION,
@@ -1053,6 +1092,31 @@ namespace AlphaSourceCrop
 		WithdrawalCause withdrawalCause = WithdrawalCause::NONE;
 		std::string reason;
 	};
+
+
+	// Tracks the logical contract of an actually applied crop, independently of
+	// temporary full-raster withdrawals and of diagnostic logging.
+	struct CropPresentationAdmissionState
+	{
+		bool available = false;
+		ActivePictureBounds trustedCrop;
+		uint64_t sourceGeneration = 0;
+		uint64_t presentationEpoch = 0;
+	};
+
+	struct CropPresentationAdmissionDecision
+	{
+		CropPresentationAdmissionState state;
+		Decision presentation;
+		bool blocked = false;
+	};
+
+	// Candidate must be the result of Evaluate followed by presentation recovery.
+	// Run before fill/NLS so neither can use geometry rejected by this admission.
+	CropPresentationAdmissionDecision AdmitCropPresentation(
+		const CropPresentationAdmissionState& previous,
+		const Input& input, const Decision& candidate,
+		uint64_t presentationEpoch);
 
 
 	// A temporary presentation withdrawal is not full-raster aspect authority.

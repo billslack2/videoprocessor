@@ -4,6 +4,7 @@
 #include <ITimingClock.h>
 #include <VideoConversionOverride.h>
 #include <ActivePictureDecisionTimeline.h>
+#include <vprenderer/BufferedPictureExpansion.h>
 
 #include <atomic>
 #include <condition_variable>
@@ -135,6 +136,10 @@ private:
 		bool activePicturePreviewAnalyzed = false;
 		bool activePicturePreviewDecisionAvailable = false;
 		ActivePictureFrameDecision activePicturePreviewDecision;
+		ActivePictureEvidence activePicturePreviewEvidence;
+		bool activePicturePreviewNearBlackEvaluated = false;
+		bool activePicturePreviewNearBlack = false;
+		AlphaSourceCrop::BufferedPictureExpansionProof bufferedPictureExpansion;
 		int64_t enqueueQpc = 0;
 		bool cadenceRepeat = false;
 		uint64_t cadenceActionId = 0;

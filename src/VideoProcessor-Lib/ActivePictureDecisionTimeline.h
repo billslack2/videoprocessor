@@ -154,6 +154,11 @@ public:
 		ActivePictureFrameDecision& published,
 		const ActivePicturePresentationIntent& presentation = {});
 
+	// Before stamping a buffered certificate, every contributing identity must
+	// still be pending in the same current source-continuity generation.
+	bool CanProveBufferedFrames(const ActivePictureFrameIdentity* identities,
+		size_t count) const;
+	uint64_t ContinuityGeneration() const { return m_continuityGeneration; }
 	uint64_t TransportGeneration() const { return m_transportGeneration; }
 	uint64_t LastConsumedSequence() const { return m_lastConsumedSequence; }
 
