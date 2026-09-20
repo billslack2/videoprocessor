@@ -4,23 +4,23 @@
 
 Review
 
-Self-contained runtime, repair, cleanup, branding and uninstall UX are ready for
-review in [draft PR #99](https://github.com/billslack2/videoprocessor/pull/99).
-Source commit: 4ed2980a8368a96ae3ef931e6a2f5fbecb0895ff, pushed on
-codex/vp-0192-windows-installer. Integration base/default verified as
-v1.3.005-beta at 73c850041d284e3e37c959a8956d896b79106aa1.
-Worktree: E:\codex\videoprocessor\vp-0192-windows-installer.
+Merged by explicit user request on 2026-09-20 in
+[PR #99](https://github.com/billslack2/videoprocessor/pull/99), into
+v1.3.005-beta at b3c0b3a6a8fdf4f5bb1c9ce0dc3340a3d5e395d7.
+The merged tree exactly matches tested integration commit
+26ecc2f7e646132f3454cc9aec6ed2e829e55235, based on beta
+950e0a321bf44d903125922e4479650d9269b49e and installer head
+8fd165da519851cc265e8bea7bac35c9554c956b.
 
-The user's revised requirement supersedes central-runtime installation:
-private CRT/MFC DLLs, no system-wide runtime setup, no desktop icon, and repair
-of deleted/corrupt/old installs while preserving surviving config/state.
-The final production installer updated the authorized C:\vptest installation
-at its remembered path; all managed hashes and nine preserved files verified.
-C:\Videoprocessor\vp was not modified.
+Fresh x64 Release build, installer compilation, 1,381 application tests,
+49 recovery checks, 12 installer identity checks and 23 runtime regressions
+passed. Clean setup names now include version and source SHA (follow-up 8fd165da).
+The app-local runtime, no-desktop, repair and data-preservation contract remains.
 
-Clean-Windows and interactive qualification remain open. This is ready for
-review, not complete or publicly released. Earlier prototype evidence below
-is historical; the final self-contained evidence is at the end.
+Keep this story in Review for clean-Windows and interactive qualification.
+Merge approval does not establish those remaining results. No installation or
+public release was performed for this merge request. Earlier artifact and
+draft-status evidence below is historical; merge evidence is at the end.
 
 ## User story
 
@@ -394,3 +394,40 @@ unsaved-editor interaction; player/capture startup; forced interruption of a
 real installer; public download/publisher-signing qualification. The artifact
 is unsigned. Central-runtime elevation/reboot cases are superseded by the
 user's explicit app-local requirement.
+
+
+## Authorized beta merge (2026-09-20)
+
+- User request: "merge this". PR #99 was marked ready and merged through the
+  pinned vp-release merge workflow. Default/latest beta agreed; there were no
+  pending or failed GitHub checks. No bypass was used.
+- Base: 950e0a321bf44d903125922e4479650d9269b49e.
+  Feature before integration: 8fd165da519851cc265e8bea7bac35c9554c956b.
+  Tested PR head: 26ecc2f7e646132f3454cc9aec6ed2e829e55235.
+  Merge: b3c0b3a6a8fdf4f5bb1c9ce0dc3340a3d5e395d7.
+- Integration worktree: E:\codex\videoprocessor\vp-0192-merge-20260920,
+  created from the freshly fetched current beta. Application sources match
+  beta exactly; installer behavior scripts match the previously tested feature.
+  Final merged tree matches the tested integration tree exactly.
+- Build-vp workflow completed clean Release/x64 build and Inno 6.7.3 compile:
+  zero errors, 43 existing warnings. All 1,381 application tests passed, plus
+  49 recovery, 12 identity and 23 runtime regression checks.
+- App-local runtime/manifest/signature/version/hash validation passed.
+  The legacy central-runtime CheckOnly diagnostic returned 1 because it applies
+  the newer CRT floor to v142 MFC; this diagnostic is excluded from the current
+  app-local distribution and is not its runtime readiness validator. Per-consumer
+  MFC and CRT floors pass the app-local validator.
+- Existing Config at C:\Videoprocessor\vp was running and left untouched.
+  The recorded 278 real-installer lifecycle checks remain evidence for unchanged
+  behavior; lifecycle operations were not repeated during this merge request.
+- Validation output:
+  E:\codex\videoprocessor\vp-0192-merge-validation-26ecc2f7
+  Installer: VideoProcessorSetup-1.3.005-beta-26ecc2f7e646.exe
+  SHA-256: 9F254B59B9B20B10120FC80AC3ADC47FBECFAC22EEB469AE5EF172CDDF357BFC
+  validation/release-receipt.json records inputs, source fingerprint, tools,
+  tests and hashes; installer-build.json and INSTALL-MANIFEST.json are included.
+  This is premerge integration validation, not a build stamped with the later
+  GitHub merge commit. It is unsigned and was not published or deployed.
+- Remaining qualification is unchanged: clean Windows without Visual Studio,
+  absent/old global runtime scenarios, interactive Config persistence/unsaved
+  work, player/hardware launch and real forced interruption.
