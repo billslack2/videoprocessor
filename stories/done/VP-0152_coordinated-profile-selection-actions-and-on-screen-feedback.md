@@ -153,3 +153,14 @@ Source design: docs/PROFILE_ACTION_LATEST_SELECTION.md.
 This follow-up records a local trial; the original story's historical Done status
 is unchanged. User validation: F3, then F2 about 1-2 seconds later; allow scripts
 to settle and verify Scope plus Rec709 Scope Med and screen/235.state agree.
+
+### September 20 beta merge
+
+User authorized merge. PR #104 merged into v1.3.005-beta as
+950e0a321bf44d903125922e4479650d9269b49e:
+https://github.com/billslack2/videoprocessor/pull/104.
+The pinned feature was 3d55d6f9d559b38d9f6cfc11a8751c81eba42583 against
+unchanged beta a6914dc6e09ce95b4c9373f17ea9a5a74e0612ec; the release merge
+helper verified identities and applicable checks. Clean Release evidence remains
+1381/1381 passing tests. Existing local deployment is the tested feature commit;
+no new deployment or release packaging was requested or performed for this merge.
