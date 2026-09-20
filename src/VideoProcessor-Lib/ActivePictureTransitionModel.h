@@ -206,6 +206,10 @@ public:
 	bool ShouldAnalyze(uint64_t frameNumber, double framesPerSecond);
 	ActivePictureTransitionDecision Observe(
 		const ActivePictureObservation& observation);
+	// Read-only eligibility query for presentation ownership. This deliberately
+	// ignores transitionDeferred and advances no temporal proof: callers still
+	// need ordinary confirmation/admission before publishing any geometry.
+	bool WouldAdmitGeometryChange(const ActivePictureObservation& observation) const;
 	// Synchronize the live model with a stable decision produced by the bounded
 	// queue lookahead model. Invalid or non-authoritative publications fail
 	// closed and leave this model unchanged.
@@ -214,7 +218,10 @@ public:
 		ActivePictureClassification classification,
 		bool transitionDeferred = false,
 		ActivePicturePublicationAdmission* admission = nullptr,
-		const ActivePictureAxisEvidenceSet* currentAxisEvidence = nullptr);
+		const ActivePictureAxisEvidenceSet* currentAxisEvidence = nullptr,
+		// Opt in only after independent current-frame outward-picture proof.
+		// This relaxes the old reference by one detector step, never the target.
+		bool currentOutwardPictureConfirmed = false);
 
 	static uint64_t AnalysisIntervalFrames(double framesPerSecond);
 

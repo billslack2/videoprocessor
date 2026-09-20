@@ -32,7 +32,14 @@ namespace AlphaSourceCrop
 	struct OutwardPictureConfirmationState
 	{
 		ActivePictureBounds candidate;
+		ActivePictureBounds base;
+		// Confirmation is anchored here; accepted sampling jitter never walks it.
+		ActivePictureBounds referenceCandidate;
+		// Continuous broad-picture episode age survives candidate proof restarts.
+		uint64_t firstPictureSourceSequence = 0;
 		uint32_t confirmations = 0;
+		// Preserve subtitle ownership across this proof, even if dense FIT later replaces it.
+		bool verticalPresentationSeen = false;
 		uint64_t sourceGeneration = 0;
 		uint64_t lastObservedSourceSequence = 0;
 	};
@@ -377,6 +384,28 @@ namespace AlphaSourceCrop
 		bool deferPartialComposition = false;
 	};
 	TransitionAdmissionDecision EvaluateTransitionAdmission(const TransitionAdmissionInput& input);
+
+	// Frame-local arbitration only: wait for the existing model to publish a
+	// broad vertical picture transition instead of briefly applying subtitle FIT.
+	// The last outward-proof sample is the first model sample; the final
+	// model sample publishes instead of retaining. No extra hold is added.
+	static constexpr uint64_t PICTURE_HANDOFF_PENDING_FRAMES =
+		OUTWARD_PICTURE_CONFIRMATIONS_REQUIRED +
+		ActivePictureTransitionModel::CLEAR_TRANSITION_CONFIRMATIONS - 2;
+
+	struct PictureTransitionHandoff
+	{
+		bool active = false;
+		ActivePictureBounds trustedBase;
+		uint64_t sourceGeneration = 0;
+		uint64_t sourceSequence = 0;
+		uint64_t presentationEpoch = 0;
+	};
+
+	PictureTransitionHandoff MakePictureTransitionHandoff(
+		const TransitionAdmissionInput& input, const TransitionAdmissionDecision& admission,
+		const ActivePictureTransitionDecision& transition, bool eligibleGeometryChange,
+		uint64_t presentationEpoch);
 
 	struct PresentationObservationDecision
 	{
@@ -930,6 +959,8 @@ namespace AlphaSourceCrop
 
 	struct Input
 	{
+		PictureTransitionHandoff pictureTransitionHandoff;
+		uint64_t framePresentationEpoch = 0;
 		bool automaticCropEnabled = false;
 		bool nearBlackEpisodeRetainCrop = false;
 		bool nearBlackEpisodeFullRaster = false;
@@ -1015,6 +1046,8 @@ namespace AlphaSourceCrop
 		int rasterHeight = 0;
 	};
 
+	bool HasCurrentPictureTransitionHandoff(const Input& input);
+
 	enum class DecisionOwner
 	{
 		FULL_RASTER,
@@ -1023,6 +1056,7 @@ namespace AlphaSourceCrop
 		SCENE_HOLD,
 		AMBIGUITY_HOLD,
 		BAR_REFINEMENT,
+		PICTURE_CONFIRMATION,
 		VERTICAL_INSPECTION,
 		TRANSLATION_CONFIRMATION,
 		FIT_CONFIRMATION,

@@ -247,6 +247,106 @@ namespace VideoProcessorTest
 			Assert::IsTrue(model.ShouldAnalyze(105, 60.0));
 		}
 
+		TEST_METHOD(ConfirmedGeometryPublishesCurrentTrustedCoordinatesOnlyAtCommit)
+		{
+			ActivePictureTransitionModel model;
+			uint64_t frame=Establish(model,LoggedScopeBounds());
+			auto first=ImaxBounds(); first.top=72; first.bottom=2088;
+			first.aspectRatio=3840.0/(first.bottom-first.top);
+			auto current=first; current.top=68; current.bottom=2092;
+			current.aspectRatio=3840.0/(current.bottom-current.top);
+			const auto pending=Observe(model,first,frame++);
+			Assert::IsFalse(pending.publish);
+			Assert::AreEqual(first.top,pending.bounds.top);
+			const auto committed=Observe(model,current,frame++);
+			Assert::IsTrue(committed.publish);
+			Assert::AreEqual(current.top,committed.bounds.top);
+			Assert::AreEqual(current.bottom,committed.bounds.bottom);
+			Assert::AreEqual(current.aspectRatio,committed.bounds.aspectRatio);
+			const auto held=Observe(model,first,frame);
+			Assert::IsFalse(held.publish);
+			Assert::AreEqual(current.top,held.stableBounds.top);
+		}
+
+		TEST_METHOD(InitialGeometryConfirmationPublishesCurrentPixelCertificate)
+		{
+			ActivePictureTransitionModel model;
+			auto first=ImaxBounds(); first.top=72; first.bottom=2088;
+			first.aspectRatio=3840.0/(first.bottom-first.top);
+			for (uint64_t frame=1;frame<=4;++frame)
+			{
+				auto current=first;
+				if (frame%2==0) {current.top=68;current.bottom=2092;}
+				current.aspectRatio=3840.0/(current.bottom-current.top);
+				const auto d=Observe(model,current,frame);
+				Assert::AreEqual(frame==4,d.publish);
+				Assert::AreEqual(frame==4 ? current.top : first.top,d.bounds.top);
+				if (frame==4) Assert::AreEqual(current.bottom,d.bounds.bottom);
+			}
+		}
+
+		TEST_METHOD(CurrentCommitCoordinatesDoNotWalkUnconfirmedCandidateAnchor)
+		{
+			ActivePictureTransitionModel model;
+			auto current=ImaxBounds(); current.top=68; current.bottom=2092;
+			for (uint64_t frame=1;frame<=4;++frame)
+			{
+				current.top=68+static_cast<int>(frame-1)*4;
+				current.aspectRatio=3840.0/(current.bottom-current.top);
+				const auto d=Observe(model,current,frame);
+				Assert::IsFalse(d.publish);
+				if (frame<4) Assert::AreEqual(68,d.bounds.top);
+				else Assert::AreEqual(1u,static_cast<unsigned>(d.matchingCandidates));
+			}
+			Assert::IsFalse(Observe(model,current,5).publish);
+			Assert::IsFalse(Observe(model,current,6).publish);
+			Assert::IsTrue(Observe(model,current,7).publish);
+		}
+
+		TEST_METHOD(RecentTrustedCommitUsesCurrentAuthorityButPreservesProvisionalCanonicalBounds)
+		{
+			for (bool provisional : {false,true})
+			{
+				ActivePictureTransitionModel model;
+				uint64_t frame=Establish(model,ImaxBounds());
+				Observe(model,ScopeBounds(),frame++);
+				Assert::IsTrue(Observe(model,ScopeBounds(),frame++).publish);
+				auto current=ImaxBounds(); current.top+=4;current.bottom-=4;
+				current.aspectRatio=3840.0/(current.bottom-current.top);
+				if (provisional) current.trustedBarAxes=ActivePictureBounds::BarAxes::NONE;
+				const auto classification=provisional ? ActivePictureClassification::PROVISIONAL :
+					ActivePictureClassification::BAR_CROP_TRUSTED;
+				Assert::IsFalse(Observe(model,current,frame++,classification).publish);
+				const auto committed=Observe(model,current,frame,classification);
+				Assert::IsTrue(committed.publish);
+				Assert::IsTrue(committed.knownTrustedGeometryReacquired);
+				Assert::AreEqual(provisional ? ImaxBounds().top : current.top,committed.bounds.top);
+				Assert::AreEqual(provisional ? ImaxBounds().bottom : current.bottom,committed.bounds.bottom);
+				Assert::AreEqual(static_cast<int>(ActivePictureBounds::BarAxes::TOP_BOTTOM),
+					static_cast<int>(committed.bounds.trustedBarAxes));
+			}
+		}
+
+		TEST_METHOD(CurrentHistoryCoordinateSubstitutionPreservesLiveDeadbandVeto)
+		{
+			const ActivePictureBounds base{0,280,3840,1880,3840,2160,2.4,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+			auto remembered=base;remembered.top+=44;remembered.bottom-=44;
+			remembered.aspectRatio=3840.0/(remembered.bottom-remembered.top);
+			ActivePictureTransitionModel model;
+			uint64_t frame=Establish(model,remembered);
+			Observe(model,base,frame++);
+			Assert::IsTrue(Observe(model,base,frame++).publish);
+			auto raw=base;raw.top+=38;raw.bottom-=38;
+			raw.aspectRatio=3840.0/(raw.bottom-raw.top);
+			// Existing remembered-contract reacquisition remains canonical when
+			// replacing it with raw coordinates would cross the live 5% deadband.
+			Assert::IsFalse(Observe(model,raw,frame++).publish);
+			const auto committed=Observe(model,raw,frame);
+			Assert::IsTrue(committed.publish);
+			Assert::AreEqual(remembered.top,committed.bounds.top);
+			Assert::AreEqual(remembered.bottom,committed.bounds.bottom);
+		}
+
 		TEST_METHOD(InitialGeometryRequiresFourConsistentObservations)
 		{
 			ActivePictureTransitionModel model;
@@ -864,6 +964,175 @@ namespace VideoProcessorTest
 			}
 		}
 
+
+		TEST_METHOD(LoggedOutwardPublicationAcceptsOneScanStepReferenceDifference)
+		{
+			// 22:08:15: queue retained top 280, live retained 276; both
+			// independently observed the real 68..2092 picture expansion.
+			for (int scale : {1, 2})
+			{
+				ActivePictureTransitionModel live, preview;
+				auto base = LoggedScopeBounds();
+				base.left /= scale; base.top /= scale;
+				base.right /= scale; base.bottom /= scale;
+				base.rasterWidth /= scale; base.rasterHeight /= scale;
+				auto queuedBase = base;
+				queuedBase.top += 4 / scale;
+				queuedBase.aspectRatio = static_cast<double>(queuedBase.right) /
+					(queuedBase.bottom - queuedBase.top);
+				auto target = base;
+				target.top = 68 / scale; target.bottom = 2092 / scale;
+				target.aspectRatio = static_cast<double>(target.right) /
+					(target.bottom - target.top);
+				Establish(live, base);
+				uint64_t frame = Establish(preview, queuedBase);
+				Observe(preview, target, frame++);
+				const auto queued = Observe(preview, target, frame++);
+				Assert::IsTrue(queued.publish);
+				ActivePicturePublicationAdmission admission;
+				Assert::IsFalse(live.AdoptPublishedDecision(queued,
+					ActivePictureClassification::BAR_CROP_TRUSTED, false, &admission));
+				Assert::IsFalse(live.AdoptPublishedDecision(queued,
+					ActivePictureClassification::BAR_CROP_TRUSTED, false, &admission, nullptr, false));
+				Assert::IsTrue(live.AdoptPublishedDecision(queued,
+					ActivePictureClassification::BAR_CROP_TRUSTED, false, &admission, nullptr, true));
+				Assert::AreEqual(static_cast<int>(ActivePicturePublicationAdmission::ACCEPTED),
+					static_cast<int>(admission));
+				const auto settled = Observe(live, target, frame);
+				Assert::IsFalse(settled.publish);
+				Assert::AreEqual(target.top, settled.stableBounds.top);
+				Assert::AreEqual(target.bottom, settled.stableBounds.bottom);
+			}
+		}
+
+		TEST_METHOD(OutwardReferenceToleranceCannotHideDifferentHistoryOrInwardCrop)
+		{
+			for (int variant = 0; variant < 9; ++variant)
+			{
+				ActivePictureTransitionModel live;
+				const auto base = LoggedScopeBounds();
+				const uint64_t frame = Establish(live, base);
+				ActivePictureTransitionDecision queued;
+				queued.publish = queued.stable = true;
+				queued.stableBounds = base;
+				queued.stableBounds.top += 4;
+				queued.bounds = base;
+				queued.bounds.top = 68; queued.bounds.bottom = 2092;
+				queued.bounds.aspectRatio = 3840.0 / 2024.0;
+				switch (variant)
+				{
+				case 0: queued.stableBounds.top += 2; break; // larger than one scan step
+				case 1: queued.stableBounds.bottom -= 4; break; // two edges double the height error
+				case 2: queued.stableBounds.trustedBarAxes = ActivePictureBounds::BarAxes::BOTH; break;
+				case 3: queued.stableBounds.rasterHeight += 2; break;
+				case 4: queued.bounds.top = 500; queued.bounds.bottom = 1660; break; // inward
+				case 5: queued.bounds.top = 278; break; // contains queue, clips live base
+				case 6: queued.bounds.left = 2; break; // mixed outward and inward
+				case 7: queued.bounds.trustedBarAxes = ActivePictureBounds::BarAxes::BOTH; break;
+				case 8: queued.stableBounds.top = -2; break; // invalid reference
+				}
+				Assert::IsFalse(live.AdoptPublishedDecision(queued,
+					ActivePictureClassification::BAR_CROP_TRUSTED, false, nullptr, nullptr, true));
+				Assert::AreEqual(base.top, Observe(live, base, frame).stableBounds.top);
+			}
+		}
+
+		TEST_METHOD(OutwardReferenceEquivalencePreservesAdmissionVetoes)
+		{
+			for (int variant = 0; variant < 4; ++variant)
+			{
+				ActivePictureTransitionModel live;
+				const auto base = LoggedScopeBounds();
+				const uint64_t frame = Establish(live, base);
+				ActivePictureTransitionDecision queued;
+				queued.publish = queued.stable = true;
+				queued.stableBounds = base; queued.stableBounds.top += 4;
+				queued.bounds = base;
+				queued.bounds.top = 68; queued.bounds.bottom = 2092;
+				if (variant == 1) queued.publish = false;
+				if (variant == 2) queued.stable = false;
+				Assert::IsFalse(live.AdoptPublishedDecision(queued,
+					variant == 3 ? ActivePictureClassification::PROVISIONAL :
+						ActivePictureClassification::BAR_CROP_TRUSTED, variant == 0, nullptr, nullptr, true));
+				Assert::AreEqual(base.top, Observe(live, base, frame).stableBounds.top);
+			}
+		}
+
+		TEST_METHOD(OutwardReferenceEquivalenceStillHonorsLiveGeometryDeadband)
+		{
+			ActivePictureTransitionModel live;
+			const auto base = LoggedScopeBounds();
+			Establish(live, base);
+			ActivePictureTransitionDecision queued;
+			queued.publish = queued.stable = true;
+			queued.stableBounds = base; queued.stableBounds.top += 4;
+			queued.bounds = base;
+			queued.bounds.top -= 16; queued.bounds.bottom += 16;
+			ActivePicturePublicationAdmission admission;
+			Assert::IsFalse(live.AdoptPublishedDecision(queued,
+				ActivePictureClassification::BAR_CROP_TRUSTED, false, &admission, nullptr, true));
+			Assert::AreEqual(static_cast<int>(ActivePicturePublicationAdmission::STABLE_GEOMETRY_RETAINED),
+				static_cast<int>(admission));
+		}
+
+		TEST_METHOD(GeometryTransitionInquiryPreservesDeadbandsAndAuthority)
+		{
+			ActivePictureTransitionModel live;
+			const ActivePictureBounds base = {0,280,3840,1880,3840,2160,2.4,
+				ActivePictureBounds::BarAxes::TOP_BOTTOM};
+			ActivePictureObservation observed;
+			observed.available = true;
+			observed.classification = ActivePictureClassification::BAR_CROP_TRUSTED;
+			observed.bounds = base;
+			Assert::IsFalse(live.WouldAdmitGeometryChange(observed));
+			Establish(live, base);
+			for (int inset : {0,4,16,38})
+			{
+				observed.bounds = base;
+				observed.bounds.top += inset; observed.bounds.bottom -= inset;
+				observed.bounds.aspectRatio = 3840.0 /
+					(observed.bounds.bottom - observed.bounds.top);
+				Assert::IsFalse(live.WouldAdmitGeometryChange(observed));
+			}
+			observed.bounds = ImaxBounds();
+			Assert::IsTrue(live.WouldAdmitGeometryChange(observed));
+			observed.available = false;
+			Assert::IsFalse(live.WouldAdmitGeometryChange(observed));
+			observed.available = true;
+			observed.classification = ActivePictureClassification::PROVISIONAL;
+			Assert::IsFalse(live.WouldAdmitGeometryChange(observed));
+			observed.classification = ActivePictureClassification::BAR_CROP_TRUSTED;
+			observed.bounds.trustedBarAxes = ActivePictureBounds::BarAxes::NONE;
+			Assert::IsFalse(live.WouldAdmitGeometryChange(observed));
+			observed.bounds = base;
+			observed.bounds.top += 100; observed.bounds.bottom -= 100;
+			observed.bounds.aspectRatio = 3840.0 / 1400.0;
+			Assert::IsTrue(live.WouldAdmitGeometryChange(observed));
+			observed.axisEvidence.horizontal.barCandidate = true;
+			Assert::IsFalse(live.WouldAdmitGeometryChange(observed));
+		}
+
+		TEST_METHOD(GeometryTransitionInquiryDoesNotAdvanceProofInEitherDirection)
+		{
+			for (bool outward : {true,false})
+			{
+				ActivePictureTransitionModel live;
+				uint64_t frame = Establish(live, outward ? ScopeBounds() : ImaxBounds());
+				ActivePictureObservation observed;
+				observed.available = true;
+				observed.classification = ActivePictureClassification::BAR_CROP_TRUSTED;
+				observed.bounds = outward ? ImaxBounds() : ScopeBounds();
+				observed.frameNumber = frame++;
+				observed.transitionDeferred = true;
+				for (int query = 0; query < 100; ++query)
+					Assert::IsTrue(live.WouldAdmitGeometryChange(observed));
+				observed.transitionDeferred = false;
+				Assert::IsFalse(live.Observe(observed).publish);
+				observed.frameNumber = frame;
+				Assert::IsTrue(live.Observe(observed).publish);
+				Assert::IsFalse(live.WouldAdmitGeometryChange(observed));
+			}
+		}
 
 		TEST_METHOD(QueuedPublicationRequiresTheExactLiveStableReference)
 		{

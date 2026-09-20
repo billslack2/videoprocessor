@@ -3847,6 +3847,7 @@ struct LibplaceboVideoRenderer::Impl
 		scopeVerticalInspectionBridge;
 	AlphaSourceCrop::OutwardPictureConfirmationState
 		outwardPictureConfirmation;
+	AlphaSourceCrop::PictureTransitionHandoff pictureTransitionHandoff;
 	AlphaSourceCrop::VerticalTranslationDrift scopeSubtitleDrift;
 	bool scopeSubtitleDriftWasActive = false;
 	bool scopeSubtitleAuthorityGapHeld = false;
@@ -8122,6 +8123,7 @@ struct LibplaceboVideoRenderer::Impl
 		// cache, colour-map configuration, and output negotiation.
 		nlsTransition.Reset();
 		outwardPictureConfirmation = {};
+		pictureTransitionHandoff = {};
 		nlsGeometryAvailable = false;
 		nlsTransitionWithdrawn = true;
 		nlsGeometry = {};
@@ -8276,6 +8278,7 @@ struct LibplaceboVideoRenderer::Impl
 		{
 			nlsTransition.Reset();
 			outwardPictureConfirmation = {};
+			pictureTransitionHandoff = {};
 			nlsGeometryAvailable = false;
 			nlsTransitionWithdrawn = false;
 			nlsGeometry = {};
@@ -8544,6 +8547,8 @@ struct LibplaceboVideoRenderer::Impl
 			admissionInput.presentationEvidenceGeneration = scopeSubtitleEvidenceSourceGeneration;
 			admissionInput.retention = retentionEvidence;
 			admissionInput.previousOutward = outwardPictureConfirmation;
+			const bool eligiblePictureChange = nlsTransition.WouldAdmitGeometryChange(
+				MakeActivePictureObservation(evidence, frameNumber, framesPerSecond));
 			const auto admission = AlphaSourceCrop::EvaluateTransitionAdmission(admissionInput);
 			const auto observation = admission.observation;
 			const bool deferPresentationOwnedTransition = admission.deferPresentation;
@@ -8581,7 +8586,8 @@ struct LibplaceboVideoRenderer::Impl
 				nlsTransition.AdoptPublishedDecision(
 					scheduledDecision->transition, evidence.classification,
 				admission.observation.transitionDeferred, &publicationAdmission,
-					&admission.observation.axisEvidence);
+					&admission.observation.axisEvidence, admission.outward.authoritative &&
+					retentionEvidence.expansionStripsAvailable && !retentionEvidence.globalNearBlack);
 			if (hasScheduledDecision &&
 				scheduledValidation ==
 					ActivePictureScheduledDecisionValidation::ACCEPTED &&
@@ -8593,6 +8599,18 @@ struct LibplaceboVideoRenderer::Impl
 			const ActivePictureTransitionDecision transition =
 				applyScheduledDecision ? scheduledDecision->transition :
 					nlsTransition.Observe(observation);
+			const bool previousPictureHandoff = pictureTransitionHandoff.active;
+			pictureTransitionHandoff = AlphaSourceCrop::MakePictureTransitionHandoff(
+				admissionInput, admission, transition, eligiblePictureChange,
+				currentIdentity.viewportGeneration);
+			if (previousPictureHandoff != pictureTransitionHandoff.active)
+				DebugLog::Log("Alpha picture handoff: instance=%s generation=%llu sequence=%llu epoch=%llu active=%d eligible=%d proof=%u first_sequence=%llu pending_budget=%llu prior_vertical=%d published=%d reason=\"%s\"",
+					diagnosticInstanceId.c_str(), analysisSource.generation, frameNumber,
+					currentIdentity.viewportGeneration, pictureTransitionHandoff.active ? 1 : 0,
+					eligiblePictureChange ? 1 : 0, admission.outward.state.confirmations,
+					admission.outward.state.firstPictureSourceSequence, AlphaSourceCrop::PICTURE_HANDOFF_PENDING_FRAMES,
+					admission.outward.state.verticalPresentationSeen ? 1 : 0,
+					transition.publish ? 1 : 0, transition.reason.c_str());
 			if (admission.observation.transitionDeferred != lastCropAdmissionDeferred ||
 				(admission.observation.transitionDeferred && now - lastCropAdmissionLogTick >= 2000))
 			{
@@ -9103,6 +9121,7 @@ struct LibplaceboVideoRenderer::Impl
 					hdrPeakAnalysisMotionCompensation);
 			nlsTransition.Reset();
 			outwardPictureConfirmation = {};
+			pictureTransitionHandoff = {};
 			latestActivePictureObservationSupportsCrop = false;
 			nlsTransitionWithdrawn = false;
 			if (!retention.retainSourceGeometry)
@@ -9243,6 +9262,7 @@ struct LibplaceboVideoRenderer::Impl
 			renderParams.num_hooks = 0;
 			nlsTransition.Reset();
 			outwardPictureConfirmation = {};
+			pictureTransitionHandoff = {};
 			nlsGeometryAvailable = false;
 			nlsTransitionWithdrawn = true;
 			nlsGeometry = {};
@@ -9356,6 +9376,7 @@ struct LibplaceboVideoRenderer::Impl
 			// The stable geometry remains the last affirmative logical reference.
 			nlsTransition.ResetCandidateEvidence();
 			outwardPictureConfirmation = {};
+			pictureTransitionHandoff = {};
 			scopeSubtitleTranslationConfirmation = {};
 			scopeSubtitleFitConfirmation = {};
 		}
@@ -10981,6 +11002,10 @@ struct LibplaceboVideoRenderer::Impl
 			}
 			cropInput.rasterWidth = width;
 			cropInput.rasterHeight = height;
+			cropInput.pictureTransitionHandoff = pictureTransitionHandoff;
+			cropInput.framePresentationEpoch = viewportRequestSerial;
+			const bool pictureConfirmationPending =
+				AlphaSourceCrop::HasCurrentPictureTransitionHandoff(cropInput);
 			AlphaSourceCrop::Decision cropDecision =
 				AlphaSourceCrop::Evaluate(cropInput);
 			const bool verticalInspectionFallbackRequested =
@@ -10996,6 +11021,7 @@ struct LibplaceboVideoRenderer::Impl
 			inspectionInput.denseAnalysisCompleted =
 				subtitleBarAnalysisCompleted;
 			inspectionInput.verticalPresentationOwnerAvailable =
+				pictureConfirmationPending ||
 				verticalTranslationConfirmationPending ||
 				verticalFitConfirmationPending || verticalTranslationActive ||
 				verticalFitActive;
@@ -11202,7 +11228,7 @@ struct LibplaceboVideoRenderer::Impl
 					if (end != value && *end == '\0' && value[0] >= '0' && value[0] <= '9')
 						cropTraceRemaining = static_cast<unsigned>(std::min(2400ul, requested));
 				}
-				DebugLog::Log("Alpha crop diagnostics: schema=1 recovery_dwell_ms=250 summary_ms=2000 sampling_equivalence=max(2,width/480,height/270) sampling_requires=same-bars-and-current-safe-bands partial_composition=defer-publication failed_bar_axis=retain-established-inward-format axis_full_extent=diagnostic-only axis_extent_support=both-outer-lines-6-of-12-per-quartile-above-cutoff-plus24 stable_aspect_deadband_percent=%.1f stable_aspect_scope=contained-trusted-picture all_sided_inset=retain-inner-composition scheduled_admission=exact-stable-reference-and-live-deadbands global_grid=16x16 near_black_p90_max=96 edge_grid=48x6 extent_grid_max=256x64 extent_support=2x2 black_floor=perimeter-p10-clamped-48-80 black_threshold=min(104,floor+24) retention_black_min=0.95 retention_p90_max=min(104,floor+24) dispersion_max=24 texture_max=8 chroma_neutral_min=0.90 continuity_min=0.99 trace_budget=%u trace_max=2400 trace_scope=candidate-and-presentation evidence=existing-samples capture_missed_semantics=timestamp-gap-estimate", ActivePictureTransitionModel::STABLE_ASPECT_DEADBAND_PERCENT, cropTraceRemaining);
+				DebugLog::Log("Alpha crop diagnostics: schema=1 recovery_dwell_ms=250 summary_ms=2000 sampling_equivalence=max(2,width/480,height/270) sampling_requires=same-bars-and-current-safe-bands partial_composition=defer-publication failed_bar_axis=retain-established-inward-format axis_full_extent=diagnostic-only axis_extent_support=both-outer-lines-6-of-12-per-quartile-above-cutoff-plus24 stable_aspect_deadband_percent=%.1f stable_aspect_scope=contained-trusted-picture all_sided_inset=retain-inner-composition scheduled_admission=exact-or-current-proven-outward-scan-step-reference-and-live-deadbands picture_handoff=broad-vertical-confirmation-bounded-by-existing-proof-budget outward_proof_sampling=anchored-max(2,width/960,height/540) global_grid=16x16 near_black_p90_max=96 edge_grid=48x6 extent_grid_max=256x64 extent_support=2x2 black_floor=perimeter-p10-clamped-48-80 black_threshold=min(104,floor+24) retention_black_min=0.95 retention_p90_max=min(104,floor+24) dispersion_max=24 texture_max=8 chroma_neutral_min=0.90 continuity_min=0.99 trace_budget=%u trace_max=2400 trace_scope=candidate-and-presentation evidence=existing-samples capture_missed_semantics=timestamp-gap-estimate", ActivePictureTransitionModel::STABLE_ASPECT_DEADBAND_PERCENT, cropTraceRemaining);
 			}
 			const uint64_t cropTick = episodeInput.currentTick;
 			const bool cropApplied = cropDecision.applyCrop || aspectLimitFill.applied;

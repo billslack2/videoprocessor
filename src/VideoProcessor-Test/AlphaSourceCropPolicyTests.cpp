@@ -1433,6 +1433,234 @@ namespace Tests
 			Assert::IsTrue(final.sourceBounds.left <= 128 && final.sourceBounds.right >= 3712);
 		}
 
+
+		// Composes the production admission, model, dense FIT, envelope,
+		// inspection, recovery and final presentation admission paths. Source
+		// coordinates/evidence are the 22:08:15 log, not a decoded pixel replay.
+		static void ReplayBroadPictureTransition(bool lookahead, int densePeriod, int edgeNoise=0, bool bothEdges=false, bool staleQueuedTarget=false)
+		{
+			const ActivePictureBounds scope{0,276,3840,1884,3840,2160,3840.0/1608,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+			const ActivePictureBounds taller{0,68,3840,2092,3840,2160,3840.0/2024,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+			// Stable source pixels; only detector measurements jitter. Recheck
+			// the newly committed rectangle against these same P010 bytes,
+			// exactly as the renderer does after a model publication.
+			std::vector<uint16_t> pixels(3840*2160*3/2,uint16_t(512<<6));
+			for (int y=0;y<2160;++y)
+				if (y<taller.top || y>=taller.bottom)
+					std::fill(pixels.begin()+size_t(y)*3840,pixels.begin()+size_t(y+1)*3840,uint16_t(64<<6));
+			AnalysisLumaSource source;
+			source.data=reinterpret_cast<const uint8_t*>(pixels.data()); source.dataBytes=pixels.size()*sizeof(uint16_t);
+			source.width=3840; source.height=2160; source.rowBytes=source.chromaRowBytes=3840*sizeof(uint16_t);
+			source.format=AnalysisLumaFormat::P010;
+			ActivePictureTransitionModel model;
+			for (uint64_t seq=1;seq<=4;++seq)
+				model.Observe({scope,seq,true,ActivePictureClassification::BAR_CROP_TRUSTED,24});
+			Input crop=TrustedScopeCrop(); crop.geometry=scope;
+			crop.frameSourceSequence=3728;
+			CropPresentationAdmissionState admitted=AdmitCropPresentation({},crop,Evaluate(crop),9).state;
+			PresentationRecoveryState recovery;
+			VerticalInspectionBridgeState inspection;
+			OutwardPictureConfirmationState outward;
+			VerticalFitConfirmationState dense;
+			VerticalBarContentDecision accepted;
+			ActivePictureBounds geometry=scope, last=scope;
+			for (uint64_t cycle : {0ULL,20ULL})
+			{
+			int changes=0;
+			for (uint64_t seq=3729+cycle;seq<=3735+cycle;++seq)
+			{
+				auto observed=taller;
+				if ((seq&1)!=0) { observed.top+=edgeNoise; if (bothEdges) observed.bottom-=edgeNoise; }
+				observed.aspectRatio=double(observed.right-observed.left)/(observed.bottom-observed.top);
+				const auto measuredBase=geometry;
+				TransitionAdmissionInput input;
+				input.trustedGeometry=input.presentationBeforeObservation=geometry;
+				input.trustedGeometryAvailable=input.compatiblePresentation=input.evidence.available=true;
+				input.trustedGeneration=input.sourceGeneration=7; input.sourceSequence=seq;
+				input.framesPerSecond=24;
+				input.evidence.classification=ActivePictureClassification::BAR_CROP_TRUSTED;
+				input.evidence.trustedBounds=input.evidence.proposedBounds=input.outwardCandidate=observed;
+				input.retention=EvaluateActivePicturePresentationRetention(source,geometry);
+				input.retention.expansionStripsAvailable=true;
+				input.retention.expansionBase=geometry; input.retention.expansionCandidate=observed;
+				auto& edge=input.retention.expandingTop;
+				edge.barPixels=206; edge.blackFraction=.2; edge.continuity=.4; edge.lumaP90=300;
+				input.retention.expandingBottom=edge;
+				input.previousOutward=outward;
+				const bool eligible=model.WouldAdmitGeometryChange(MakeActivePictureObservation(input.evidence,seq,24));
+				const auto admission=EvaluateTransitionAdmission(input);
+				outward=admission.outward.state;
+				ActivePictureTransitionDecision transition;
+				bool adopted=false;
+				if (lookahead && seq==3731+cycle)
+				{
+					ActivePictureFrameDecision scheduled;
+					scheduled.transition.publish=scheduled.transition.stable=true;
+					scheduled.transition.bounds=observed; scheduled.transition.stableBounds=scope;
+					if (staleQueuedTarget) scheduled.transition.bounds.top+=4;
+					scheduled.transition.stableBounds.top+=4; // logged queue/live scan-step disagreement
+					scheduled.effectiveIdentity.acceptedSequence=scheduled.observationIdentity.acceptedSequence=seq;
+					scheduled.effectiveIdentity.transportGeneration=scheduled.observationIdentity.transportGeneration=7;
+					const auto validation=ValidateActivePictureScheduledDecision(scheduled,scheduled.effectiveIdentity,observed,input.evidence.classification);
+					adopted=validation==ActivePictureScheduledDecisionValidation::ACCEPTED &&
+						model.AdoptPublishedDecision(scheduled.transition,input.evidence.classification,admission.observation.transitionDeferred,
+							nullptr,&admission.observation.axisEvidence,admission.outward.authoritative);
+					if (adopted) transition=scheduled.transition;
+				}
+				if (!adopted) transition=model.Observe(admission.observation);
+				const auto handoff=MakePictureTransitionHandoff(input,admission,transition,eligible,9);
+				if (transition.publish) { geometry=transition.bounds; dense={}; accepted={}; }
+				const auto currentPixels=ResolveActivePictureRetentionHandoff(source,measuredBase,input.retention,geometry);
+				const bool sameBase=geometry.top==scope.top;
+				const bool denseCurrent=sameBase && ((seq-3729-cycle)%densePeriod==0);
+				if (denseCurrent)
+				{
+					VerticalBarContentInput bar;
+					bar.upperContent=bar.lowerContent=true;
+					bar.upperOccupiedDepth=bar.lowerOccupiedDepth=206;
+					bar.upperPeakSamples=1800; bar.lowerPeakSamples=1653;
+					bar.upperBarPixels=bar.lowerBarPixels=276; bar.sampledColumns=1800;
+					bar.upperRequiredShift=bar.lowerRequiredShift=208;
+					const auto fit=ConfirmVerticalFit(dense,EvaluateVerticalBarContent(bar),seq);
+					dense=fit.state; accepted=fit.effective;
+				}
+				VerticalBarPresentationResolutionInput resolution;
+				resolution.detailedAction=accepted.action;
+				resolution.denseVerticalArbitrationEnabled=true;
+				resolution.genericUpperExpansion=resolution.genericLowerExpansion=sameBase;
+				resolution.genericVerticalFitConfirmed=sameBase;
+				resolution.genericVerticalFitAuthoritative=!sameBase;
+				resolution.genericUpperBound=54; resolution.genericLowerBound=2106;
+				resolution.authoritativeTop=geometry.top; resolution.authoritativeBottom=geometry.bottom;
+				resolution.rasterHeight=2160;
+				const auto routing=ResolveVerticalBarRendererRouting(ResolveVerticalBarPresentation(resolution));
+				crop=TrustedScopeCrop(); crop.geometry=geometry; crop.frameSourceSequence=seq;
+				crop.latestObservationClassification=ActivePictureClassification::BAR_CROP_TRUSTED;
+				const bool containsObserved=geometry.left<=observed.left && geometry.top<=observed.top &&
+					geometry.right>=observed.right && geometry.bottom>=observed.bottom;
+				const bool sameMeasuredBase=geometry.top==currentPixels.bounds.top && geometry.bottom==currentPixels.bounds.bottom;
+				crop.latestObservationSupportsCrop=containsObserved || (sameMeasuredBase &&
+					IsPixelSafeCropReaffirmation(geometry,observed,currentPixels.evidence.excludedBandsPixelSafe));
+				crop.barCropRefinementPending=!crop.latestObservationSupportsCrop;
+				crop.frameLocalPresentationRetentionEvaluated=true; crop.frameLocalPresentationRetentionSafe=currentPixels.evidence.excludedBandsPixelSafe;
+				crop.verticalTranslationBase=geometry; crop.verticalTranslationSourceGeneration=7;
+				crop.verticalFitConfirmationPending=dense.confirmations>0 && dense.confirmations<2;
+				crop.outwardPresentationActive=routing.fitActive;
+				if (routing.fitActive)
+				{
+					PresentationEnvelopeGeometryInput envelope;
+					envelope.trustedPicture=geometry; envelope.observedContent=observed;
+					envelope.observedContentAvailable=envelope.expandTop=envelope.expandBottom=true;
+					envelope.verticalPadding=48;
+					const auto expansion=BuildPresentationEnvelope(envelope);
+					crop.outwardExpansion=expansion.bounds; crop.outwardExpansionAvailable=expansion.expanded;
+					crop.outwardExpansionSourceGeneration=7;
+				}
+				crop.pictureTransitionHandoff=handoff; crop.framePresentationEpoch=9;
+				auto candidate=Evaluate(crop);
+				VerticalInspectionBridgeInput bridge;
+				bridge.previous=inspection; bridge.candidate=sameBase;
+				bridge.retentionRequested=sameBase && !candidate.applyCrop && candidate.withdrawalCause==WithdrawalCause::LATEST_OBSERVATION_UNREAFFIRMED;
+				bridge.denseAnalysisCompleted=denseCurrent;
+				VerticalInspectionFitResolutionInput fitResolution;
+				fitResolution.confirmedDenseFit=routing.fitActive; fitResolution.denseAnalysisCurrent=denseCurrent;
+				fitResolution.outwardExpansionAvailable=crop.outwardExpansionAvailable;
+				fitResolution.trustedBase=geometry; fitResolution.outwardExpansion=crop.outwardExpansion;
+				fitResolution.outwardExpansionSourceGeneration=fitResolution.frameSourceGeneration=7;
+				bridge.confirmedVerticalFitResolved=CanResolveVerticalInspectionWithConfirmedFit(fitResolution);
+				bridge.verticalPresentationOwnerAvailable=HasCurrentPictureTransitionHandoff(crop) || crop.verticalFitConfirmationPending || routing.fitActive;
+				bridge.cropAuthorityResolved=crop.latestObservationSupportsCrop;
+				bridge.sourceGeneration=7; bridge.sourceSequence=seq; bridge.presentationEpoch=9;
+				bridge.trustedBase=geometry;
+				const auto inspected=UpdateVerticalInspectionBridge(bridge); inspection=inspected.state;
+				if (inspected.retain) { crop.verticalInspectionPending=true; crop.verticalInspectionSourceGeneration=7;
+					crop.verticalInspectionSourceSequence=seq; candidate=Evaluate(crop); }
+				if (inspection.failOpenLatched) { crop.presentationFailOpen=true; candidate=Evaluate(crop); }
+				PresentationRecoveryInput recover;
+				recover.previous=recovery; recover.crop=crop; recover.candidate=candidate;
+				recover.measurementCurrent=recover.retentionEvaluated=recover.nearBlackEvaluated=true;
+				recover.retentionBounds=currentPixels.bounds; recover.retentionSourceGeneration=7; recover.retentionSourceSequence=seq;
+				recover.observationAvailable=currentPixels.evidence.proposedBoundsAvailable;
+				recover.observation=currentPixels.evidence.activePicture.proposedBounds;
+				recover.observedTrustedCrop=currentPixels.evidence.activePicture.trustedBounds;
+				recover.observationClassification=currentPixels.evidence.activePicture.classification;
+				recover.excludedBandsPixelSafe=currentPixels.evidence.excludedBandsPixelSafe; recover.presentationEpoch=9;
+				recover.currentTick=seq*42; recover.framesPerSecond=24;
+				auto recovered=EvaluatePresentationRecovery(recover); recovery=recovered.state;
+				const auto visible=AdmitCropPresentation(admitted,crop,recovered.presentation,9);
+				admitted=visible.state;
+				const auto diagnostic=L"sequence="+std::to_wstring(seq)+L" noise="+std::to_wstring(edgeNoise)+
+					L" lookahead="+std::to_wstring(lookahead)+L" published="+std::to_wstring(transition.publish)+
+					L" logical_top="+std::to_wstring(geometry.top)+L" observed_top="+std::to_wstring(observed.top)+
+					L" shown_top="+std::to_wstring(visible.presentation.sourceBounds.top)+
+					L" pixel_safe="+std::to_wstring(currentPixels.evidence.excludedBandsPixelSafe);
+				Assert::IsTrue(visible.presentation.applyCrop,diagnostic.c_str());
+				const auto& shown=visible.presentation.sourceBounds;
+				if (shown.top!=last.top || shown.bottom!=last.bottom) ++changes;
+				last=shown;
+				// No padded 1.811 presentation between 2.388 and 1.897.
+				Assert::IsTrue((shown.top==scope.top && shown.bottom==scope.bottom) ||
+					(shown.top==geometry.top && shown.bottom==geometry.bottom),diagnostic.c_str());
+				Assert::AreEqual(transition.publish || !sameBase ? geometry.top : scope.top,shown.top,diagnostic.c_str());
+			}
+			Assert::AreEqual(1,changes);
+			Assert::IsTrue(std::abs(last.top-taller.top)<=4);
+			// The return to scope still uses normal inward confirmation.
+			// This handoff grants no inward look-ahead/reference tolerance.
+			int inwardChanges=0;
+			for (uint64_t seq=3736+cycle;seq<=3739+cycle;++seq)
+			{
+				TransitionAdmissionInput input;
+				input.trustedGeometry=input.presentationBeforeObservation=geometry;
+				input.trustedGeometryAvailable=input.compatiblePresentation=input.evidence.available=true;
+				input.trustedGeneration=input.sourceGeneration=7; input.sourceSequence=seq;
+				input.framesPerSecond=24;
+				input.evidence.classification=ActivePictureClassification::BAR_CROP_TRUSTED;
+				input.evidence.trustedBounds=input.evidence.proposedBounds=input.outwardCandidate=scope;
+				input.retention.analysisValid=input.retention.presentationValid=true;
+				input.retention.excludedBandsPixelSafe=true;
+				const bool eligible=model.WouldAdmitGeometryChange(MakeActivePictureObservation(input.evidence,seq,24));
+				const auto admission=EvaluateTransitionAdmission(input);
+				const auto transition=model.Observe(admission.observation);
+				Assert::IsFalse(MakePictureTransitionHandoff(input,admission,transition,eligible,9).active);
+				if (transition.publish) geometry=transition.bounds;
+				crop=TrustedScopeCrop(); crop.geometry=geometry; crop.frameSourceSequence=seq;
+				crop.latestObservationClassification=ActivePictureClassification::BAR_CROP_TRUSTED;
+				const auto visible=AdmitCropPresentation(admitted,crop,Evaluate(crop),9);
+				admitted=visible.state;
+				Assert::IsTrue(visible.presentation.applyCrop);
+				if (visible.presentation.sourceBounds.top!=last.top) ++inwardChanges;
+				last=visible.presentation.sourceBounds;
+			}
+			Assert::AreEqual(1,inwardChanges);
+			Assert::AreEqual(scope.top,last.top);
+			}
+		}
+
+		TEST_METHOD(LoggedPictureTransitionWithoutLookaheadHasOnePresentationChange)
+		{
+			for (int period : {2,1,3}) ReplayBroadPictureTransition(false,period);
+		}
+
+		TEST_METHOD(LoggedPictureTransitionWithLookaheadHasOnePresentationChange)
+		{
+			for (int period : {2,1,3}) ReplayBroadPictureTransition(true,period);
+		}
+
+		TEST_METHOD(SamplingNoiseAcrossWholeTransitionNeverWithdrawsOrResizesAgain)
+		{
+			for (bool lookahead : {false,true})
+				for (int noise : {-4,4})
+					for (bool bothEdges : {false,true})
+						ReplayBroadPictureTransition(lookahead,2,noise,bothEdges);
+		}
+
+		TEST_METHOD(StaleQueuedTargetFallsBackWithoutPresentationBounce)
+		{
+			for (int noise : {-4,4})
+				ReplayBroadPictureTransition(true,2,noise,true,true);
+		}
+
 		TEST_METHOD(QueuedPublicationCannotOverrideCurrentAdmissionVeto)
 		{
 			ActivePictureTransitionModel model;

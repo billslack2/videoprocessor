@@ -106,6 +106,23 @@ namespace AlphaSourceCrop
 				left.trustedBarAxes != ActivePictureBounds::BarAxes::NONE;
 		}
 
+		bool SamePictureWithinDetectorStep(const ActivePictureBounds& left,
+			const ActivePictureBounds& right)
+		{
+			const int width = left.rasterWidth, height = left.rasterHeight;
+			if (!ValidBounds(left, width, height) || !ValidBounds(right, width, height) ||
+				left.trustedBarAxes == ActivePictureBounds::BarAxes::NONE ||
+				left.trustedBarAxes != right.trustedBarAxes)
+				return false;
+			const int xStep = std::max(2, width / 960);
+			const int yStep = std::max(2, height / 540);
+			return std::abs(left.left - right.left) <= xStep &&
+				std::abs(left.right - right.right) <= xStep &&
+				std::abs(left.top - right.top) <= yStep &&
+				std::abs(left.bottom - right.bottom) <= yStep;
+		}
+
+
 		bool ContainedBounds(const ActivePictureBounds& outer, const ActivePictureBounds& inner)
 		{
 			return ValidBounds(inner, outer.rasterWidth, outer.rasterHeight) &&
@@ -182,6 +199,8 @@ namespace AlphaSourceCrop
 			return "scene-hold";
 		case DecisionOwner::AMBIGUITY_HOLD:
 			return "ambiguity-hold";
+		case DecisionOwner::PICTURE_CONFIRMATION:
+			return "picture-confirm";
 		case DecisionOwner::BAR_REFINEMENT:
 			return "bar-refinement";
 		case DecisionOwner::VERTICAL_INSPECTION:
@@ -479,11 +498,33 @@ namespace AlphaSourceCrop
 		const bool sequenceContinuous = sourceSequence == 0 || previous.lastObservedSourceSequence == 0 ||
 			sourceSequence == previous.lastObservedSourceSequence ||
 			sourceSequence == previous.lastObservedSourceSequence + 1;
-		const bool continues = previous.sourceGeneration == sourceGeneration && sequenceContinuous &&
-			previous.confirmations != 0 && SameBounds(previous.candidate, candidate);
+		const bool sameEpisode = previous.sourceGeneration == sourceGeneration && sequenceContinuous &&
+			previous.confirmations != 0 && SameBounds(previous.base, trustedGeometry) &&
+			previous.base.trustedBarAxes == trustedGeometry.trustedBarAxes;
+		const auto& reference = previous.referenceCandidate;
+		const bool exactCandidate = SameBounds(reference, candidate) &&
+			reference.trustedBarAxes == candidate.trustedBarAxes;
+		// Only fresh exact strip evidence can bridge detector-step jitter in a
+		// trusted outward picture candidate. Each edge may move one scan step,
+		// but every comparison stays anchored to the first candidate in this
+		// confirmation run. The current candidate/certificate remain exact.
+		const bool samplingEquivalentCandidate = stripsMatch && !evidence.globalNearBlack &&
+			SameTrustedCropContract(evidence.expansionBase, trustedGeometry) &&
+			SameTrustedCropContract(evidence.expansionCandidate, candidate) &&
+			ValidBounds(reference, trustedGeometry.rasterWidth, trustedGeometry.rasterHeight) &&
+			HasAuthorityForCroppedAxes(reference, trustedGeometry.rasterWidth, trustedGeometry.rasterHeight) &&
+			HasAuthorityForCroppedAxes(candidate, trustedGeometry.rasterWidth, trustedGeometry.rasterHeight) &&
+			reference.trustedBarAxes == candidate.trustedBarAxes &&
+			ContainedBounds(reference, trustedGeometry) && ContainedBounds(candidate, trustedGeometry) &&
+			SamePictureWithinDetectorStep(reference, candidate);
+		const bool continues = sameEpisode && (exactCandidate || samplingEquivalentCandidate);
 		const bool repeatedSourceSample = continues && sourceSequence != 0 &&
 			previous.lastObservedSourceSequence == sourceSequence;
 		decision.state.candidate = candidate;
+		decision.state.base = trustedGeometry;
+		decision.state.referenceCandidate = continues ? reference : candidate;
+		decision.state.firstPictureSourceSequence = sameEpisode
+			? previous.firstPictureSourceSequence : sourceSequence;
 		decision.state.sourceGeneration = sourceGeneration;
 		decision.state.lastObservedSourceSequence = sourceSequence;
 		decision.state.confirmations = repeatedSourceSample
@@ -743,6 +784,16 @@ namespace AlphaSourceCrop
 			? ConfirmOutwardPictureTransition(input.previousOutward, input.presentationBeforeObservation,
 				input.outwardCandidate, input.retention, input.sourceGeneration, input.sourceSequence)
 			: OutwardPictureConfirmationDecision{};
+		const bool continuingEpisode = decision.outward.state.confirmations != 0 &&
+			input.previousOutward.confirmations != 0 &&
+			input.previousOutward.sourceGeneration == input.sourceGeneration &&
+			SameTrustedCropContract(input.previousOutward.base, input.presentationBeforeObservation) &&
+			decision.outward.state.firstPictureSourceSequence == input.previousOutward.firstPictureSourceSequence;
+		decision.outward.state.verticalPresentationSeen =
+			input.presentation.action == VerticalBarPresentationAction::TRANSLATE ||
+			input.translationDriftActive ||
+			(!continuingEpisode && input.presentation.action == VerticalBarPresentationAction::FIT) ||
+			(continuingEpisode && input.previousOutward.verticalPresentationSeen);
 		decision.deferOutward = decision.outward.outwardTransition && !decision.outward.authoritative;
 		// Broad current picture on the expanding edges can supersede an old
 		// subtitle action; a subtitle must not pin a genuinely obsolete aspect.
@@ -781,6 +832,83 @@ namespace AlphaSourceCrop
 		decision.observation.transitionDeferred = decision.observation.transitionDeferred ||
 			decision.deferPartialComposition;
 		return decision;
+	}
+
+	PictureTransitionHandoff MakePictureTransitionHandoff(
+		const TransitionAdmissionInput& input, const TransitionAdmissionDecision& admission,
+		const ActivePictureTransitionDecision& transition, bool eligibleGeometryChange,
+		uint64_t presentationEpoch)
+	{
+		PictureTransitionHandoff result;
+		// A pending history recurrence can name its canonical trusted rectangle
+		// one scan step from the current target. Retaining the OLD presentation
+		// during that confirmation is safe; publication still checks current pixels.
+		const auto& base = input.trustedGeometry;
+		const auto& target = input.evidence.trustedBounds;
+		const auto& proof = admission.outward;
+		const auto& pixels = input.retention;
+		if (!eligibleGeometryChange || transition.publish || !transition.stable ||
+			!input.evidence.available || !input.trustedGeometryAvailable || !input.compatiblePresentation ||
+			input.evidence.classification != ActivePictureClassification::BAR_CROP_TRUSTED ||
+			input.sourceGeneration == 0 || input.sourceSequence == 0 ||
+			input.trustedGeneration != input.sourceGeneration ||
+			!SameTrustedCropContract(input.presentationBeforeObservation, base) ||
+			!SameTrustedCropContract(transition.stableBounds, base) ||
+			!ValidBounds(base, base.rasterWidth, base.rasterHeight) ||
+			!ValidBounds(target, base.rasterWidth, base.rasterHeight) ||
+			!CropEdgesAreChromaAligned(base, base.rasterWidth, base.rasterHeight) ||
+			!CropEdgesAreChromaAligned(target, base.rasterWidth, base.rasterHeight) ||
+			base.trustedBarAxes != ActivePictureBounds::BarAxes::TOP_BOTTOM ||
+			target.trustedBarAxes != ActivePictureBounds::BarAxes::TOP_BOTTOM ||
+			base.left != 0 || base.right != base.rasterWidth ||
+			target.left != base.left || target.right != base.right ||
+			target.top >= base.top || target.bottom <= base.bottom ||
+			!SameTrustedCropContract(input.outwardCandidate, target) ||
+			!pixels.analysisValid || !pixels.presentationValid || pixels.globalNearBlack ||
+			!pixels.expansionStripsAvailable ||
+			!SameTrustedCropContract(pixels.expansionBase, base) ||
+			!SameTrustedCropContract(pixels.expansionCandidate, target) ||
+			!proof.outwardTransition || !proof.broadOpposingPicture ||
+			proof.state.confirmations == 0 || proof.state.verticalPresentationSeen ||
+			proof.state.firstPictureSourceSequence == 0 ||
+			input.sourceSequence < proof.state.firstPictureSourceSequence ||
+			input.sourceSequence - proof.state.firstPictureSourceSequence >= PICTURE_HANDOFF_PENDING_FRAMES ||
+			proof.state.sourceGeneration != input.sourceGeneration ||
+			proof.state.lastObservedSourceSequence != input.sourceSequence ||
+			!SameTrustedCropContract(proof.state.candidate, target) ||
+			admission.deferPartialComposition ||
+			(proof.authoritative &&
+			 (transition.state != ActivePictureTransitionState::CANDIDATE_TRANSITION ||
+			  !HasAuthorityForCroppedAxes(transition.bounds, base.rasterWidth, base.rasterHeight) ||
+			  !ContainedBounds(transition.bounds, base) ||
+			  !SamePictureWithinDetectorStep(transition.bounds, target))))
+			return result;
+		result.active = true;
+		result.trustedBase = base;
+		result.sourceGeneration = input.sourceGeneration;
+		result.sourceSequence = input.sourceSequence;
+		result.presentationEpoch = presentationEpoch;
+		return result;
+	}
+
+	bool HasCurrentPictureTransitionHandoff(const Input& input)
+	{
+		const auto& handoff = input.pictureTransitionHandoff;
+		return handoff.active && input.automaticCropEnabled && input.sharedGeometryAvailable &&
+			!input.presentationFailOpen && !input.nearBlackEpisodeFullRaster &&
+			!input.nearBlackEpisodeRetainCrop && !input.fullRasterPresentationAuthoritative &&
+			!input.barCropRefinementHorizontalConflict &&
+			input.classification == ActivePictureClassification::BAR_CROP_TRUSTED &&
+			input.latestObservationClassification == ActivePictureClassification::BAR_CROP_TRUSTED &&
+			!input.latestObservationIsProvisional && !input.latestObservationIsUnavailable &&
+			handoff.sourceGeneration != 0 && handoff.sourceGeneration == input.frameSourceGeneration &&
+			input.geometrySourceGeneration == input.frameSourceGeneration &&
+			handoff.sourceSequence != 0 && handoff.sourceSequence == input.frameSourceSequence &&
+			handoff.presentationEpoch == input.framePresentationEpoch &&
+			SameTrustedCropContract(handoff.trustedBase, input.geometry) &&
+			ValidBounds(input.geometry, input.rasterWidth, input.rasterHeight) &&
+			HasAuthorityForCroppedAxes(input.geometry, input.rasterWidth, input.rasterHeight) &&
+			CropEdgesAreChromaAligned(input.geometry, input.rasterWidth, input.rasterHeight);
 	}
 
 	PresentationObservationDecision ResolvePresentationObservation(
@@ -2569,6 +2697,16 @@ namespace AlphaSourceCrop
 				ActivePictureClassification::FULL_RASTER_TRUSTED
 				? "shared authority is full raster"
 				: "shared geometry lacks crop authority";
+			return decision;
+		}
+		if (HasCurrentPictureTransitionHandoff(input))
+		{
+			// Preserve the old admitted contract; do not acquire the candidate,
+			// apply subtitle padding, or bypass recovery/final admission.
+			decision.sourceBounds = input.geometry;
+			decision.applyCrop = true;
+			decision.owner = DecisionOwner::PICTURE_CONFIRMATION;
+			decision.reason = "broad picture transition awaiting model publication";
 			return decision;
 		}
 		// Horizontal visibility and vertical subtitle ownership are independent.
