@@ -881,3 +881,19 @@ Candidate is locally committed, not pushed, merged, deployed or packaged.
 Validation preceded the commit and source snapshots match; deployment must
 rebuild its clean committed identity. Live replay remains pending. Running
 installation and configuration were left unchanged.
+
+## September 19 deployment of transition correction 40ad343e
+
+**Keep Review.** User requested deployment. Rebuilt clean committed source
+40ad343edb7423705107fb369c6d5a14cd9120ff in x64 Release; all 1336 tests passed.
+At 23:09:41, deployed the matching host/renderer pair to C:\Videoprocessor\vp
+and launched VP (PID 36548). Startup identities for both modules report this
+commit with dirty=0; both deployed hashes match the qualified build. The new
+picture-handoff diagnostics are active. No configuration edits occurred;
+VideoProcessor.cfg hash remained unchanged before and after launch.
+
+Rollback pair:
+C:\Videoprocessor\vp\backups\transition-handoff-40ad343e-20260919-230940.
+Build/test logs, deployment receipt, startup log and SHA-256 records:
+C:\Users\bslac\Documents\ChatGPT\Done\crop-transition-handoff-20260919.
+No new ZIP, installer, source push or beta merge. Replay validation is now ready.
