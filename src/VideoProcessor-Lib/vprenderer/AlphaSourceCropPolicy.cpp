@@ -2512,6 +2512,7 @@ namespace AlphaSourceCrop
 		// another dwell on it, but preserve a pre-existing general withdrawal.
 		if (!result.state.active && !input.cadenceRepeat && currentContract &&
 			!input.candidate.applyCrop && !crop.nearBlackEpisodeFullRaster &&
+            !crop.movingPictureTransition &&
 			(input.candidate.withdrawalCause == WithdrawalCause::LATEST_OBSERVATION_UNREAFFIRMED ||
 			 crop.barCropRefinementHorizontalConflict || crop.presentationFailOpen))
 		{
@@ -2679,6 +2680,11 @@ namespace AlphaSourceCrop
 			decision.reason = "automatic crop is off; preserving full raster";
 			return decision;
 		}
+        if (input.movingPictureTransition)
+        {
+            decision.reason = "moving picture edges awaiting settled geometry";
+            return decision;
+        }
 		if (input.nearBlackEpisodeFullRaster)
 		{
 			decision.reason =

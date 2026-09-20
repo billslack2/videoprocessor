@@ -6,6 +6,7 @@
 #include <SceneDetector.h>
 #include <vector>
 #include <vprenderer/AlphaSourceCropPolicy.h>
+#include <vprenderer/BufferedPictureExpansion.h>
 
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
@@ -32,6 +33,25 @@ namespace Tests
 			return input;
 		}
 
+		TransitionAdmissionInput MovingRecoveryObservation(const ActivePictureBounds& base,
+			uint64_t generation,uint64_t sequence,unsigned index,double hz)
+		{
+			TransitionAdmissionInput input;
+			input.trustedGeometry=input.presentationBeforeObservation=base;
+			input.trustedGeometryAvailable=input.compatiblePresentation=input.evidence.available=true;
+			input.trustedGeneration=input.sourceGeneration=input.presentationEvidenceGeneration=generation;
+			input.sourceSequence=sequence; input.framesPerSecond=hz;
+			auto target=base; target.top-=8+int(index)*4; target.bottom+=8+int(index)*4;
+			target.aspectRatio=double(target.right-target.left)/(target.bottom-target.top);
+			input.evidence.classification=ActivePictureClassification::BAR_CROP_TRUSTED;
+			input.evidence.trustedBounds=input.evidence.proposedBounds=input.outwardCandidate=target;
+			input.retention.analysisValid=input.retention.presentationValid=input.retention.expansionStripsAvailable=true;
+			input.retention.expansionBase=base; input.retention.expansionCandidate=target;
+			auto& edge=input.retention.expandingTop;
+			edge.barPixels=8+int(index)*4; edge.blackFraction=.2; edge.continuity=.4; edge.lumaP90=300;
+			input.retention.expandingBottom=edge;
+			return input;
+		}
 		KnownFullRasterRetentionInput CommittedFullRasterRetention(uint64_t sequence = 100)
 		{
 			KnownFullRasterRetentionInput input;
@@ -2331,12 +2351,13 @@ namespace Tests
 
 		TEST_METHOD(RecoveryRequiresAdjacentQuarterSecondProofAtSourceFrameRate)
 		{
-			for (double hz : { 23.976, 24.0, 59.94, 60.0 })
+			for (bool injectMovement : {false,true})
+            for (double hz : { 23.976, 24.0, 59.94, 60.0 })
 			{
 				PresentationRecoveryInput input;
 				input.crop = TrustedScopeCrop();
 				auto admission = AdmitCropPresentation({}, input.crop, Evaluate(input.crop), 0).state;
-				input.crop.frameSourceSequence = 100;
+				input.crop.frameSourceSequence = injectMovement ? 90 : 100;
 				input.crop.latestObservationSupportsCrop = false;
 				input.crop.latestObservationIsProvisional = true;
 				input.candidate = Evaluate(input.crop);
@@ -2344,6 +2365,32 @@ namespace Tests
 				auto d = EvaluatePresentationRecovery(input);
 				Assert::IsTrue(d.started);
 				input.previous = d.state;
+				if (injectMovement)
+				{
+					MovingPictureTransitionState moving;
+					for (unsigned index=0;index<10;++index)
+					{
+						const uint64_t seq=91+index;
+						auto observation=MovingRecoveryObservation(input.crop.geometry,7,seq,index,hz);
+						moving=ObserveMovingPictureTransition(moving,{7,seq,seq,seq*417083,11,0,17},observation);
+						input.crop.frameSourceSequence=seq;
+						input.crop.movingPictureTransition=HasCurrentMovingPictureTransition(moving,7,input.crop.frameSourceSequence);
+						input.candidate=Evaluate(input.crop);
+						d=EvaluatePresentationRecovery(input); input.previous=d.state;
+						Assert::IsTrue(d.state.active,L"Moving presentation cannot erase an existing recovery obligation.");
+						Assert::IsFalse(d.presentation.applyCrop);
+						Assert::AreEqual(0u,d.samples,L"Moving pixels cannot count as safe-band recovery samples.");
+						Assert::IsFalse(input.crop.fullRasterPresentationAuthoritative);
+					}
+					Assert::IsTrue(moving.active);
+					auto stopped=MovingRecoveryObservation(input.crop.geometry,7,101,0,hz);
+					stopped.evidence.trustedBounds=stopped.outwardCandidate=input.crop.geometry;
+                    stopped.retention.excludedBandsPixelSafe=true;
+					moving=ObserveMovingPictureTransition(moving,{7,101,101,101*417083,11,0,17},stopped);
+                    CompleteMovingPictureTransition(moving,stopped,{});
+					Assert::IsFalse(moving.active);
+					input.crop.movingPictureTransition=HasCurrentMovingPictureTransition(moving,7,input.crop.frameSourceSequence);
+				}
 				input.crop.frameLocalPresentationRetentionSafe = true;
 				input.crop.frameLocalPresentationRetentionEvaluated = true;
 				input.measurementCurrent = input.retentionEvaluated = true;
@@ -6979,7 +7026,25 @@ namespace Tests
 
 		TEST_METHOD(NearBlackSimultaneousOutwardEntryRecoversLoggedAlienCrop)
 		{
+			for (bool injectMovement : {false,true})
+			{
 			auto input = ReaffirmedRetainedScope(true);
+			if (injectMovement)
+			{
+				MovingPictureTransitionState moving;
+				for (unsigned index=0;index<10;++index)
+				{
+					const uint64_t seq=1952+index;
+					const auto observation=MovingRecoveryObservation(input.trustedCrop,1,seq,index,input.framesPerSecond);
+					moving=ObserveMovingPictureTransition(moving,{1,seq,seq,seq*417083,11,10,17},observation);
+				}
+				Assert::IsTrue(moving.active);
+				auto dark=MovingRecoveryObservation(input.trustedCrop,1,1962,10,input.framesPerSecond);
+				dark.retention.globalNearBlack=true;
+				moving=ObserveMovingPictureTransition(moving,{1,1962,1962,1962*417083,11,10,17},dark);
+				Assert::IsFalse(moving.active,L"Near-black episode must replace movement without retaining its quiet dwell.");
+				Assert::IsFalse(input.fullRasterAuthorityAvailable,L"Temporary full presentation must not fabricate full-raster authority.");
+			}
 			Assert::AreEqual(int(NearBlackPresentationMode::FULL_RASTER), int(input.previous.mode));
 			// The paused Alien observation is ambiguous inside the known 2.40 crop.
 			// It cannot acquire a crop; current excluded-band safety may revalidate one.
@@ -6995,6 +7060,7 @@ namespace Tests
 				if (seq < 1969)
 					Assert::AreEqual(int(NearBlackPresentationMode::FULL_RASTER), int(decision.state.mode));
 				input.previous = decision.state;
+			}
 			}
 		}
 

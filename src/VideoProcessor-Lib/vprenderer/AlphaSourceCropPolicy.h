@@ -963,6 +963,9 @@ namespace AlphaSourceCrop
 	{
 		PictureTransitionHandoff pictureTransitionHandoff;
 		uint64_t framePresentationEpoch = 0;
+        // Presentation-only withdrawal during proved continuous edge motion.
+        // Does not create full-raster authority or arm general recovery.
+        bool movingPictureTransition = false;
 		bool automaticCropEnabled = false;
 		bool nearBlackEpisodeRetainCrop = false;
 		bool nearBlackEpisodeFullRaster = false;

@@ -3,6 +3,7 @@
 #include "BufferedPictureExpansion.h"
 
 #include <algorithm>
+#include <cmath>
 
 namespace AlphaSourceCrop
 {
@@ -14,6 +15,14 @@ namespace AlphaSourceCrop
                 a.right == b.right && a.bottom == b.bottom &&
                 a.rasterWidth == b.rasterWidth && a.rasterHeight == b.rasterHeight &&
                 a.trustedBarAxes == b.trustedBarAxes;
+        }
+
+        bool ContainsBounds(const ActivePictureBounds& outer, const ActivePictureBounds& inner)
+        {
+            return inner.rasterWidth == outer.rasterWidth && inner.rasterHeight == outer.rasterHeight &&
+                inner.left >= outer.left && inner.top >= outer.top &&
+                inner.right <= outer.right && inner.bottom <= outer.bottom &&
+                inner.right > inner.left && inner.bottom > inner.top;
         }
 
         bool ValidVerticalBarPicture(const ActivePictureBounds& bounds)
@@ -61,6 +70,167 @@ namespace AlphaSourceCrop
             return ConfirmOutwardPictureTransition({}, base, observation.bounds,
                 retention, generation, sequence).broadOpposingPicture;
         }
+    }
+
+    MovingPictureTransitionState ObserveMovingPictureTransition(
+        const MovingPictureTransitionState& previous,
+        const ActivePictureFrameIdentity& identity,
+        const TransitionAdmissionInput& current)
+    {
+        const auto& candidate = current.evidence.trustedBounds;
+        const bool context = SameContext(previous.identity, identity) &&
+            SameBounds(previous.base, current.trustedGeometry);
+        // An old/relabelled capture cannot rewind the episode or contribute
+        // quiet proof. Context changes are handled separately below.
+        if (context && previous.identity.acceptedSequence != 0 && identity.acceptedSequence != 0 &&
+            identity.acceptedSequence <= previous.identity.acceptedSequence)
+            return previous;
+        if (!current.compatiblePresentation || !current.trustedGeometryAvailable ||
+            current.sourceGeneration == 0 || current.trustedGeneration != current.sourceGeneration ||
+            current.sourceGeneration != identity.transportGeneration ||
+            current.sourceSequence == 0 || current.sourceSequence != identity.acceptedSequence ||
+            !SameBounds(current.presentationBeforeObservation, current.trustedGeometry) ||
+            current.retention.globalNearBlack ||
+            current.presentation.action != VerticalBarPresentationAction::NONE ||
+            current.translationDriftActive || current.previousOutward.verticalPresentationSeen ||
+            current.evidence.classification == ActivePictureClassification::FULL_RASTER_TRUSTED)
+            return {};
+        const bool adjacent = context && previous.identity.acceptedSequence != UINT64_MAX &&
+            identity.acceptedSequence == previous.identity.acceptedSequence + 1 &&
+            ((identity.sourceFrameNumber == 0 && previous.identity.sourceFrameNumber == 0) ||
+             (previous.identity.sourceFrameNumber != UINT64_MAX &&
+              identity.sourceFrameNumber == previous.identity.sourceFrameNumber + 1)) &&
+            ((identity.captureTimestamp == 0 && previous.identity.captureTimestamp == 0) ||
+             identity.captureTimestamp > previous.identity.captureTimestamp);
+        // A gap invalidates proof, but must not re-enable intermediate crops
+        // in an already established motion episode of the same context.
+        auto state = context && (adjacent || previous.active || previous.awaitingPublication)
+            ? previous : MovingPictureTransitionState{};
+        if (!adjacent) { state.directionalChanges = 0; state.quietSamples = 0; }
+        state.base = current.trustedGeometry;
+        state.identity = identity;
+        const auto observation = MakeActivePictureObservation(current.evidence,
+            current.sourceSequence, current.framesPerSecond);
+        const bool certified = SameBounds(candidate, current.outwardCandidate) &&
+            CurrentBroadEvidence(state.base, observation, current.retention,
+                current.sourceGeneration, current.sourceSequence);
+        // A trusted different crop (including a cut back to the old scope)
+        // leaves this outward episode immediately, even without expansion strips.
+        if (current.evidence.available &&
+            current.evidence.classification == ActivePictureClassification::BAR_CROP_TRUSTED &&
+            (!BothEdgesExpand(state.base, candidate) ||
+             (adjacent && previous.last.rasterHeight != 0 &&
+              (std::abs(previous.last.top - candidate.top) > (std::max)(4, candidate.rasterHeight / 100) ||
+               std::abs(previous.last.bottom - candidate.bottom) > (std::max)(4, candidate.rasterHeight / 100)))))
+        {
+            const bool keepFull = state.active || state.awaitingPublication;
+            state = {};
+            state.awaitingPublication = keepFull;
+            state.base = current.trustedGeometry;
+            state.identity = identity;
+            if (!certified) return state;
+            state.anchor = state.last = state.quietAnchor = candidate;
+            return state;
+        }
+        if (!certified)
+        {
+            // A ramp near the raster edge may lose bar authority. It cannot
+            // regain the old crop or count darkness/ambiguity as settled bars.
+            // Fresh full authority and unrelated owners were handled above.
+            state.quietSamples = 0;
+            state.directionalChanges = 0;
+            return state.active || state.awaitingPublication ? state : MovingPictureTransitionState{};
+        }
+        if (!adjacent || previous.last.rasterHeight == 0)
+        {
+            state.anchor = state.last = state.quietAnchor = candidate;
+            return state;
+        }
+        const int topStep = previous.last.top - candidate.top;
+        const int bottomStep = candidate.bottom - previous.last.bottom;
+        const int scanStep = (std::max)(2, candidate.rasterHeight / 540);
+        state.last = candidate;
+        if (!state.active)
+        {
+            if (topStep < 0 || bottomStep < 0)
+            {
+                state.anchor = candidate;
+                state.directionalChanges = 0;
+            }
+            else if (topStep > 0 || bottomStep > 0)
+                ++state.directionalChanges;
+            if (state.directionalChanges >= 3 &&
+                state.anchor.top - candidate.top > 2 * scanStep &&
+                candidate.bottom - state.anchor.bottom > 2 * scanStep)
+            {
+                state.active = true;
+                state.awaitingPublication = false;
+                state.quietAnchor = candidate;
+                state.quietSamples = 1;
+            }
+            return state;
+        }
+        // Anchor the quiet band; repeated sub-step movement cannot walk it.
+        if (std::abs(candidate.top - state.quietAnchor.top) > scanStep ||
+            std::abs(candidate.bottom - state.quietAnchor.bottom) > scanStep)
+        {
+            state.quietAnchor = candidate;
+            state.quietSamples = 1;
+        }
+        else
+            ++state.quietSamples;
+        const double fps = std::isfinite(current.framesPerSecond) && current.framesPerSecond > 0
+            ? current.framesPerSecond : 60.0;
+        const auto required = static_cast<uint32_t>((std::max)(2.0, std::ceil(fps * 0.250) + 1));
+        if (state.quietSamples >= required)
+        {
+            state.active = false;
+            state.awaitingPublication = true;
+            state.quietSamples = 0;
+            // A stationary endpoint must not reuse the finished ramp's motion
+            // count on the next frame while local publication is confirming.
+            state.directionalChanges = 0;
+            state.anchor = candidate;
+        }
+        return state;
+    }
+
+    void CompleteMovingPictureTransition(MovingPictureTransitionState& state,
+        const TransitionAdmissionInput& current,
+        const ActivePictureTransitionDecision& transition)
+    {
+        if (!state.awaitingPublication || state.active ||
+            !HasCurrentMovingPictureTransition(state, current.sourceGeneration, current.sourceSequence))
+            return;
+        // Publication has already passed normal live/queued admission. The
+        // model may also deliberately retain a pixel-safe crop within its
+        // deadband; do not wait forever for a publication it need not produce.
+        const bool retainedCrop = current.evidence.available &&
+            current.evidence.classification == ActivePictureClassification::BAR_CROP_TRUSTED &&
+            current.retention.analysisValid && current.retention.presentationValid &&
+            !current.retention.globalNearBlack && current.retention.excludedBandsPixelSafe &&
+            SameBounds(state.base, current.trustedGeometry) &&
+            (ContainsBounds(current.trustedGeometry, current.evidence.trustedBounds) ||
+             IsPixelSafeCropReaffirmation(current.trustedGeometry, current.evidence.trustedBounds, true));
+        if ((transition.publish && transition.stable && !transition.clearTransition) || retainedCrop)
+            state = {};
+    }
+
+    bool HasCurrentMovingPictureTransition(const MovingPictureTransitionState& state,
+        uint64_t sourceGeneration, uint64_t sourceSequence)
+    {
+        return (state.active || state.awaitingPublication) && sourceGeneration != 0 && sourceSequence != 0 &&
+            state.identity.transportGeneration == sourceGeneration &&
+            state.identity.acceptedSequence == sourceSequence;
+    }
+
+    void ConstrainMovingPictureTransition(const MovingPictureTransitionState& state,
+        TransitionAdmissionDecision& admission)
+    {
+        if (!state.active) return;
+        admission.deferOutward = true;
+        admission.observation.transitionDeferred = true;
+        admission.observation.classification = ActivePictureClassification::PROVISIONAL;
     }
 
     BufferedPictureExpansionProof BuildBufferedPictureExpansion(

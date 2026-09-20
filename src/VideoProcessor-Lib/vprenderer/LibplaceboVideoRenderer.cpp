@@ -3845,6 +3845,7 @@ struct LibplaceboVideoRenderer::Impl
 		scopeSubtitleFitConfirmation;
 	AlphaSourceCrop::VerticalInspectionBridgeState
 		scopeVerticalInspectionBridge;
+	AlphaSourceCrop::MovingPictureTransitionState movingPictureTransition;
 	AlphaSourceCrop::OutwardPictureConfirmationState
 		outwardPictureConfirmation;
 	AlphaSourceCrop::PictureTransitionHandoff pictureTransitionHandoff;
@@ -5309,6 +5310,15 @@ struct LibplaceboVideoRenderer::Impl
 			ClearScopeSubtitleEvidence();
 			return 0.0f;
 		}
+        if (AlphaSourceCrop::HasCurrentMovingPictureTransition(
+            movingPictureTransition, source->generation, sourceSequence))
+        {
+            // Full source is already visible. Scanning the obsolete scope bars
+            // would turn newly revealed picture into a competing dense FIT and
+            // cancel motion on the next frame. Resume inspection on normal exit.
+            ClearScopeSubtitleEvidence();
+            return 0.0f;
+        }
 		const bool retainAcrossAuthorityGap =
 			AlphaSourceCrop::CanRetainVerticalBarPresentationAcrossAuthorityGap(
 				scopeVerticalBarPresentation,
@@ -8123,6 +8133,7 @@ struct LibplaceboVideoRenderer::Impl
 		// cache, colour-map configuration, and output negotiation.
 		nlsTransition.Reset();
 		outwardPictureConfirmation = {};
+		movingPictureTransition = {};
 		pictureTransitionHandoff = {};
 		nlsGeometryAvailable = false;
 		nlsTransitionWithdrawn = true;
@@ -8279,6 +8290,7 @@ struct LibplaceboVideoRenderer::Impl
 		{
 			nlsTransition.Reset();
 			outwardPictureConfirmation = {};
+			movingPictureTransition = {};
 			pictureTransitionHandoff = {};
 			nlsGeometryAvailable = false;
 			nlsTransitionWithdrawn = false;
@@ -8343,7 +8355,7 @@ struct LibplaceboVideoRenderer::Impl
 			nearBlackPresentationEpisode.mode ==
 				AlphaSourceCrop::NearBlackPresentationMode::FULL_RASTER &&
 			!nearBlackPresentationEpisode.entryTrustedCropAvailable;
-		if (scheduledAnalysis || forceAnalysis || hasScheduledDecision ||
+		if (scheduledAnalysis || forceAnalysis || hasScheduledDecision || movingPictureTransition.active || movingPictureTransition.awaitingPublication ||
 			forceRetentionSafetyAnalysis || forceStartupBootstrapAnalysis)
 		{
 			const bool hadCurrentTrustedCropGeometry =
@@ -8552,7 +8564,18 @@ struct LibplaceboVideoRenderer::Impl
 			const bool eligiblePictureChange = nlsTransition.WouldAdmitGeometryChange(
 				MakeActivePictureObservation(evidence, frameNumber, framesPerSecond));
 			auto admission = AlphaSourceCrop::EvaluateTransitionAdmission(admissionInput);
-			const bool bufferedExpansionReady = bufferedExpansion &&
+            const bool wasMovingPicture = movingPictureTransition.active;
+            movingPictureTransition = nearBlackAcquisitionBlocked ? AlphaSourceCrop::MovingPictureTransitionState{} :
+                AlphaSourceCrop::ObserveMovingPictureTransition(
+                movingPictureTransition, currentIdentity, admissionInput);
+            AlphaSourceCrop::ConstrainMovingPictureTransition(movingPictureTransition, admission);
+            if (wasMovingPicture != movingPictureTransition.active)
+                DebugLog::Log("Alpha moving picture: generation=%llu sequence=%llu epoch=%llu active=%d observed=%d,%d-%d,%d presentation_only=1",
+                    analysisSource.generation, frameNumber, currentIdentity.viewportGeneration,
+                    movingPictureTransition.active ? 1 : 0, latestActivePictureEvidenceBounds.left,
+                    latestActivePictureEvidenceBounds.top, latestActivePictureEvidenceBounds.right,
+                    latestActivePictureEvidenceBounds.bottom);
+			const bool bufferedExpansionReady = !movingPictureTransition.active && bufferedExpansion &&
 				AlphaSourceCrop::ValidateBufferedPictureExpansion(*bufferedExpansion,
 					currentIdentity, admissionInput, eligiblePictureChange);
 			if (bufferedExpansionReady)
@@ -8621,6 +8644,8 @@ struct LibplaceboVideoRenderer::Impl
 			const ActivePictureTransitionDecision transition =
 				applyScheduledDecision ? scheduledDecision->transition :
 					nlsTransition.Observe(observation);
+            AlphaSourceCrop::CompleteMovingPictureTransition(movingPictureTransition,
+                admissionInput, transition);
 			const bool previousPictureHandoff = pictureTransitionHandoff.active;
 			pictureTransitionHandoff = AlphaSourceCrop::MakePictureTransitionHandoff(
 				admissionInput, admission, transition, eligiblePictureChange,
@@ -9144,6 +9169,7 @@ struct LibplaceboVideoRenderer::Impl
 					hdrPeakAnalysisMotionCompensation);
 			nlsTransition.Reset();
 			outwardPictureConfirmation = {};
+			movingPictureTransition = {};
 			pictureTransitionHandoff = {};
 			latestActivePictureObservationSupportsCrop = false;
 			nlsTransitionWithdrawn = false;
@@ -9285,6 +9311,7 @@ struct LibplaceboVideoRenderer::Impl
 			renderParams.num_hooks = 0;
 			nlsTransition.Reset();
 			outwardPictureConfirmation = {};
+			movingPictureTransition = {};
 			pictureTransitionHandoff = {};
 			nlsGeometryAvailable = false;
 			nlsTransitionWithdrawn = true;
@@ -9399,6 +9426,7 @@ struct LibplaceboVideoRenderer::Impl
 			// The stable geometry remains the last affirmative logical reference.
 			nlsTransition.ResetCandidateEvidence();
 			outwardPictureConfirmation = {};
+			movingPictureTransition = {};
 			pictureTransitionHandoff = {};
 			scopeSubtitleTranslationConfirmation = {};
 			scopeSubtitleFitConfirmation = {};
@@ -11026,6 +11054,9 @@ struct LibplaceboVideoRenderer::Impl
 			cropInput.rasterWidth = width;
 			cropInput.rasterHeight = height;
 			cropInput.pictureTransitionHandoff = pictureTransitionHandoff;
+            cropInput.movingPictureTransition = AlphaSourceCrop::HasCurrentMovingPictureTransition(
+                movingPictureTransition, frameGeneration, sourceSequence) &&
+                movingPictureTransition.identity.viewportGeneration == viewportRequestSerial;
 			cropInput.framePresentationEpoch = viewportRequestSerial;
 			const bool pictureConfirmationPending =
 				AlphaSourceCrop::HasCurrentPictureTransitionHandoff(cropInput);
@@ -11131,7 +11162,7 @@ struct LibplaceboVideoRenderer::Impl
 			const double finalTargetAspect = ResolveNlsTargetAspect(
 				configuredScreenActive, configuredScreenAspect, panelTargetAspect);
 			const bool nlsPresentationFailOpen = nlsRequested &&
-				(cropInput.presentationFailOpen || nearBlackEpisodeFullRaster ||
+				(cropInput.presentationFailOpen || cropInput.movingPictureTransition || nearBlackEpisodeFullRaster ||
 				 cropPresentationRecovery.active || admissionDecision.blocked);
 			const bool nlsActivePictureAvailable = nlsRequested &&
 				!nlsPresentationFailOpen && effectiveGeometryAvailable &&

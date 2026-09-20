@@ -89,10 +89,294 @@ namespace Tests
 				live.Observe(BufferedObservation(sequence,BufferedScope()));
 			}
 		}
+		// Reuse the existing pixel/queue fixture through the same final recovery,
+		// admission and screen-fill stages that can otherwise hide a crop step.
+		struct BufferedMotionSequence
+		{
+			ActivePictureDecisionTimeline timeline;
+			ActivePictureTransitionModel model;
+			ActivePictureBounds geometry=BufferedScope();
+			MovingPictureTransitionState moving;
+			OutwardPictureConfirmationState outward;
+			CropPresentationAdmissionState admitted;
+			PresentationRecoveryState recovery;
+			VerticalFitConfirmationState fit;
+			VerticalBarPresentationState densePresentation;
+			unsigned wouldBeDenseFits=0;
+            bool enableMotion=true;
+			Decision presented;
+			ActivePictureBounds finalBounds;
+			bool published=false;
+			uint64_t sequence=100;
+
+			BufferedMotionSequence() { EstablishBufferedScope(timeline,model); }
+			void Step(const BufferedPixelSample& frame,
+				const BufferedPixelSample* future1=nullptr,const BufferedPixelSample* future2=nullptr)
+			{
+				auto current=BufferedLiveInput(frame);
+				current.sourceSequence=sequence;
+				current.trustedGeometry=current.presentationBeforeObservation=geometry;
+				current.retention=EvaluateActivePicturePresentationRetention(frame.Source(),geometry);
+				current.previousOutward=outward;
+				current.presentation=densePresentation;
+				const auto identity=BufferedIdentity(sequence);
+				if (enableMotion) moving=ObserveMovingPictureTransition(moving,identity,current);
+				auto admission=EvaluateTransitionAdmission(current);
+				ConstrainMovingPictureTransition(moving,admission);
+				outward=admission.outward.state;
+				const bool eligible=model.WouldAdmitGeometryChange(MakeActivePictureObservation(current.evidence,sequence,24));
+				auto transition=model.Observe(admission.observation);
+				if (!moving.active && future1 && future2)
+				{
+					const BufferedPixelSample* pixels[3]={&frame,future1,future2};
+					std::array<BufferedPictureExpansionSample,3> samples;
+					for (size_t index=0;index<3;++index)
+					{
+						samples[index].identity=BufferedIdentity(sequence+index);
+						samples[index].observation=MakeActivePictureObservation(pixels[index]->evidence,sequence+index,24);
+						samples[index].retention=EvaluateActivePicturePresentationRetention(pixels[index]->Source(),geometry);
+						samples[index].nearBlackEvaluated=true;
+					}
+					const auto proof=BuildBufferedPictureExpansion(samples.data(),3,geometry,2,2,19,23);
+					if (ValidateBufferedPictureExpansion(proof,identity,current,eligible) &&
+						model.AdoptPublishedDecision(proof.decision.transition,current.evidence.classification,
+							false,nullptr,&admission.observation.axisEvidence,true)) transition=proof.decision.transition;
+				}
+				CompleteMovingPictureTransition(moving,current,transition);
+				published=transition.publish;
+				const auto measuredBase=geometry;
+				if (published) geometry=transition.bounds;
+				const auto retained=ResolveActivePictureRetentionHandoff(frame.Source(),measuredBase,current.retention,geometry);
+				Input crop;
+				crop.automaticCropEnabled=crop.sharedGeometryAvailable=true;
+				crop.classification=ActivePictureClassification::BAR_CROP_TRUSTED;
+				crop.latestObservationClassification=current.evidence.classification;
+				crop.geometry=geometry; crop.rasterWidth=3840; crop.rasterHeight=2160;
+				crop.geometrySourceGeneration=crop.frameSourceGeneration=7;
+				crop.frameSourceSequence=sequence; crop.framePresentationEpoch=13;
+				crop.movingPictureTransition=HasCurrentMovingPictureTransition(moving,7,sequence);
+				crop.latestObservationSupportsCrop=IsPixelSafeCropReaffirmation(geometry,
+					current.evidence.trustedBounds,retained.evidence.excludedBandsPixelSafe);
+				crop.barCropRefinementPending=!crop.latestObservationSupportsCrop;
+				crop.frameLocalPresentationRetentionEvaluated=true;
+				crop.frameLocalPresentationRetentionSafe=retained.evidence.CanRetainPresentation();
+				crop.pictureTransitionHandoff=MakePictureTransitionHandoff(current,admission,transition,eligible,13);
+				PresentationRecoveryInput recover;
+				recover.previous=recovery; recover.crop=crop; recover.candidate=Evaluate(crop);
+				recover.measurementCurrent=recover.retentionEvaluated=recover.nearBlackEvaluated=true;
+				recover.retentionBounds=retained.bounds; recover.retentionSourceGeneration=7;
+				recover.retentionSourceSequence=sequence;
+				recover.observationAvailable=retained.evidence.proposedBoundsAvailable;
+				recover.observation=retained.evidence.activePicture.proposedBounds;
+				recover.observedTrustedCrop=retained.evidence.activePicture.trustedBounds;
+				recover.observationClassification=retained.evidence.activePicture.classification;
+				recover.excludedBandsPixelSafe=retained.evidence.excludedBandsPixelSafe;
+				recover.presentationEpoch=13; recover.currentTick=sequence*42; recover.framesPerSecond=24;
+				const auto recovered=EvaluatePresentationRecovery(recover); recovery=recovered.state;
+				const auto visible=AdmitCropPresentation(admitted,crop,recovered.presentation,13);
+				admitted=visible.state; presented=visible.presentation;
+				AspectLimitFillInput fill;
+				fill.sourceBounds=presented.sourceBounds;
+				fill.trustedContentAuthorityAccepted=presented.applyCrop;
+				fill.cropWiderContentToFillScreen=fill.widerLimitConfigured=true;
+				fill.widerAspectLimit=2.41; fill.screenAspect=2.35;
+				finalBounds=EvaluateAspectLimitFill(fill).sourceBounds;
+				// Dense subtitle analysis scans the retained scope, so the newly
+				// revealed real pixels would eventually confirm a competing FIT.
+				VerticalBarContentInput bars;
+				bars.upperOccupiedDepth=(std::max)(0,geometry.top-frame.evidence.trustedBounds.top);
+				bars.lowerOccupiedDepth=(std::max)(0,frame.evidence.trustedBounds.bottom-geometry.bottom);
+				bars.upperContent=bars.upperOccupiedDepth>0; bars.lowerContent=bars.lowerOccupiedDepth>0;
+				bars.upperBarPixels=geometry.top; bars.lowerBarPixels=2160-geometry.bottom;
+				bars.upperPeakSamples=bars.lowerPeakSamples=bars.sampledColumns=1920;
+				const auto detected=EvaluateVerticalBarContent(bars);
+				if (detected.action==VerticalBarPresentationAction::FIT) ++wouldBeDenseFits;
+				if (HasCurrentMovingPictureTransition(moving,7,sequence))
+				{
+					fit={}; densePresentation={};
+				}
+				else
+				{
+					const auto confirmed=ConfirmVerticalFit(fit,detected,sequence); fit=confirmed.state;
+					VerticalBarPresentationUpdateInput update;
+					update.previous=densePresentation; update.current=confirmed.effective;
+					update.upperContent=bars.upperContent; update.lowerContent=bars.lowerContent;
+					update.upperContentTop=frame.evidence.trustedBounds.top;
+					update.lowerContentBottom=frame.evidence.trustedBounds.bottom;
+					update.currentTick=sequence*42; update.currentSourceSequence=sequence;
+					update.translationEnabled=true;
+					densePresentation=UpdateVerticalBarPresentation(update);
+				}
+				++sequence;
+			}
+		};
 	}
 	TEST_CLASS(LookaheadOutwardProofTests)
 	{
 	public:
+		TEST_METHOD(MotionReturnInsideDeadbandReusesOnlyPixelSafePriorCrop)
+		{
+			BufferedMotionSequence replay;
+			for (int top=268;top>=120;top-=4)
+			{
+				BufferedPixelSample moving(top,2160-top); replay.Step(moving);
+			}
+			Assert::IsTrue(replay.moving.active);
+			// The new bars are four pixels farther inward on both edges. The
+			// original crop excludes only black and needs no new publication.
+			BufferedPixelSample nearBase(280,1880);
+			for (unsigned offset=0;offset<8;++offset)
+			{
+				replay.Step(nearBase);
+				Assert::IsFalse(replay.moving.active);
+				Assert::IsFalse(replay.moving.awaitingPublication);
+				Assert::IsFalse(replay.published,L"Safe return within the existing deadband must not require new geometry authority.");
+				Assert::IsTrue(replay.presented.applyCrop);
+				Assert::AreEqual(276,replay.finalBounds.top);
+				Assert::AreEqual(1884,replay.finalBounds.bottom);
+			}
+		}
+		TEST_METHOD(LocalMotionSettlementAndHardCutKeepFullUntilActualPublication)
+		{
+			for (bool hardCut : {false,true})
+			{
+				BufferedMotionSequence replay;
+				for (int top=268;top>=120;top-=4)
+				{
+					BufferedPixelSample moving(top,2160-top); replay.Step(moving);
+				}
+				Assert::IsTrue(replay.moving.active);
+				const int targetTop=hardCut ? 68 : 120;
+				BufferedPixelSample target(targetTop,2160-targetTop);
+				unsigned publications=0;
+				bool acquired=false,quietExitSeen=false;
+				for (unsigned offset=0;offset<24;++offset)
+				{
+					replay.Step(target);
+                    if (quietExitSeen) Assert::IsFalse(replay.moving.active,
+                        L"Identical settled pixels cannot restart movement while local publication is pending.");
+                    if (replay.moving.awaitingPublication) quietExitSeen=true;
+					if (replay.published)
+					{
+						++publications; acquired=true;
+						if (hardCut) Assert::AreEqual(3u,offset,L"Local hard-cut publication timing must remain unchanged.");
+					}
+					if (!acquired)
+					{
+						Assert::IsFalse(replay.presented.applyCrop,L"Motion cannot flash back to the old scope while final acquisition is pending.");
+						Assert::AreEqual(0,replay.finalBounds.top);
+						Assert::AreEqual(2160,replay.finalBounds.bottom);
+					}
+					else
+					{
+						Assert::IsTrue(replay.presented.applyCrop);
+						Assert::AreEqual(targetTop,replay.finalBounds.top);
+						Assert::AreEqual(2160-targetTop,replay.finalBounds.bottom);
+					}
+				}
+				Assert::AreEqual(1u,publications,hardCut ? L"hard cut" : L"quiet settlement");
+			}
+		}
+		TEST_METHOD(DisabledMotionControlReproducesIntermediateCropSteps)
+		{
+			BufferedMotionSequence baseline; baseline.enableMotion=false;
+			unsigned publications=0,visibleSizeChanges=0;
+			int previousHeight=0;
+			for (int top=268;top>=120;top-=2)
+			{
+				BufferedPixelSample current(top,2160-top),next(top-2,2162-top),later(top-4,2164-top);
+				baseline.Step(current,&next,&later);
+				if (baseline.published) ++publications;
+				const int height=baseline.finalBounds.bottom-baseline.finalBounds.top;
+				if (previousHeight!=0 && previousHeight!=height) ++visibleSizeChanges;
+				previousHeight=height;
+			}
+			Assert::IsTrue(publications>=3,L"Disabled-motion control must reproduce repeated intermediate crop publications.");
+			Assert::IsTrue(visibleSizeChanges>=3,L"The reproduction must reach final presentation, not only detector flags.");
+		}
+		TEST_METHOD(ActualMovingPixelsDoNotProduceBufferedPresentationStaircase)
+		{
+			for (int step : {2,4})
+			{
+				BufferedMotionSequence replay;
+				bool entered=false;
+				unsigned movingFrames=0;
+				// Stops at an intermediate aspect: full-frame is a temporary
+				// presentation choice, never a guessed 16:9 detection result.
+				for (int top=268;top>=120;top-=step)
+				{
+					BufferedPixelSample current(top,2160-top);
+					BufferedPixelSample next(top-step,2160-top+step);
+					BufferedPixelSample later(top-2*step,2160-top+2*step);
+					replay.Step(current,&next,&later);
+					entered=entered || replay.moving.active;
+					if (entered)
+					{
+						++movingFrames;
+						Assert::IsTrue(replay.moving.active);
+						Assert::IsFalse(replay.published,L"Moving bars cannot publish intermediate formats.");
+						Assert::IsFalse(replay.presented.applyCrop);
+						Assert::AreEqual(0,replay.finalBounds.top);
+						Assert::AreEqual(2160,replay.finalBounds.bottom);
+						Assert::AreEqual(0,replay.finalBounds.left);
+						Assert::AreEqual(3840,replay.finalBounds.right);
+					}
+				}
+				Assert::IsTrue(entered && movingFrames>10,L"Actual slow picture growth must be recognized.");
+                Assert::IsTrue(replay.wouldBeDenseFits>1,L"The ramp must exercise real dense FIT feedback.");
+                Assert::IsTrue(replay.densePresentation.action==VerticalBarPresentationAction::NONE);
+				BufferedPixelSample settled(120,2040);
+				unsigned finalAcquisitions=0;
+				bool finalCrop=false;
+				for (int frame=0;frame<24;++frame)
+				{
+					replay.Step(settled,&settled,&settled);
+					if (replay.published) ++finalAcquisitions;
+					if (replay.presented.applyCrop)
+					{
+						finalCrop=true;
+						Assert::AreEqual(120,replay.finalBounds.top);
+						Assert::AreEqual(2040,replay.finalBounds.bottom);
+					}
+					else Assert::IsFalse(finalCrop,L"Settled picture must not alternate crop and full-frame.");
+				}
+				Assert::IsFalse(replay.moving.active);
+				Assert::IsTrue(finalCrop,L"An intermediate final aspect must reacquire within one second.");
+				Assert::AreEqual(1u,finalAcquisitions);
+				// Inject a normal hard expansion after this movement episode.
+				BufferedPixelSample hard(68,2092);
+				replay.Step(hard,&hard,&hard);
+				Assert::IsFalse(replay.moving.active);
+				Assert::IsTrue(replay.published,L"Previous motion must not delay buffered hard changes.");
+				Assert::IsTrue(replay.presented.applyCrop);
+				Assert::AreEqual(68,replay.finalBounds.top);
+				Assert::AreEqual(2092,replay.finalBounds.bottom);
+			}
+		}
+
+		TEST_METHOD(BufferedHardChangeKeepsFirstFrameTimingBeforeAndDuringMovement)
+		{
+			for (bool injectMovement : {false,true})
+			{
+				BufferedMotionSequence replay;
+				if (injectMovement)
+				{
+					for (int top=268;top>=232;top-=4)
+					{
+						BufferedPixelSample frame(top,2160-top);
+						replay.Step(frame);
+					}
+					Assert::IsTrue(replay.moving.active);
+				}
+				BufferedPixelSample hard(68,2092);
+				replay.Step(hard,&hard,&hard);
+				Assert::IsFalse(replay.moving.active);
+				Assert::IsTrue(replay.published);
+				Assert::IsTrue(replay.presented.applyCrop);
+				Assert::AreEqual(68,replay.finalBounds.top);
+				Assert::AreEqual(2092,replay.finalBounds.bottom);
+			}
+		}
 		TEST_METHOD(PhysicalBufferedSamplesProvideThreeDistinctBroadExpansionObservations)
 		{
 			std::array<BufferedPixelSample,3> frames;
@@ -391,7 +675,8 @@ namespace Tests
 		{
 			// Keep actual pixels fixed at72. Detector coordinates alone alternate
 			// between68 and72, so every disputed row remains genuine black.
-			for (bool noisyFirst : {false,true})
+			for (bool injectMovement : {false,true})
+            for (bool noisyFirst : {false,true})
 			{
 				const std::array<BufferedPixelSample,3> frames={BufferedPixelSample(72,2088),
 					BufferedPixelSample(72,2088),BufferedPixelSample(72,2088)};
@@ -410,6 +695,20 @@ namespace Tests
 				ActivePictureDecisionTimeline timeline;
 				ActivePictureTransitionModel live;
 				EstablishBufferedScope(timeline,live);
+				MovingPictureTransitionState moving;
+				if (injectMovement)
+				{
+					BufferedMotionSequence prefix; prefix.sequence=40;
+					for (int top=268;top>=232;top-=4)
+					{
+						BufferedPixelSample movingPixels(top,2160-top); prefix.Step(movingPixels);
+					}
+					Assert::IsTrue(prefix.moving.active);
+					BufferedPixelSample scope(276,1884);
+					for (int repeat=0;repeat<4;++repeat) prefix.Step(scope);
+					Assert::IsFalse(prefix.moving.active);
+					live=prefix.model; moving=prefix.moving;
+				}
 				ActivePictureBounds geometry=BufferedScope();
 				CropPresentationAdmissionState admitted;
 				PresentationRecoveryState recovery;
@@ -428,7 +727,10 @@ namespace Tests
 					current.retention=EvaluateActivePicturePresentationRetention(frames[0].Source(),geometry);
 					current.retention.expansionCandidate=observed; // Synthetic detector-step error only.
 					current.previousOutward=outward;
-					const auto admission=EvaluateTransitionAdmission(current);
+					moving=ObserveMovingPictureTransition(moving,BufferedIdentity(sequence),current);
+                    Assert::IsFalse(moving.active,L"Prior authored movement must not reclassify clean-bar jitter.");
+                    auto admission=EvaluateTransitionAdmission(current);
+                    ConstrainMovingPictureTransition(moving,admission);
 					outward=admission.outward.state;
 					if (sequence==100)
 					{
