@@ -836,3 +836,48 @@ and interactive Config qualification remain untested for this exact payload.
 Production installer registration at C:\vptest was preserved; this deployment
 used the requested active runtime path directly. No GitHub Release was published.
 Replay testing of the scrolling-text transition remains the next validation.
+
+## September 19 picture transition and small-measurement correction
+
+**Keep Review.** The user reported stutters on deployed 29ea0339 and requested
+QA/colleague review, with special attention to recurring small measurement changes.
+The preserved 22:08:15 log shows established scope 0,276-3840,1884 briefly taking
+dense subtitle FIT geometry 0,20-3840,2140 before the picture model publishes
+0,68-3840,2092. A queued old-reference mismatch (280 versus 276) delayed the
+publication; FIT briefly won presentation during confirmation.
+
+Local candidate 40ad343edb7423705107fb369c6d5a14cd9120ff:
+codex/crop-transition-handoff, E:\codex\videoprocessor\crop-transition-handoff.
+Started from freshly discovered/fetched beta 525767f6 and carried application
+correction 654ccade, matching the prior deployed application's sources.
+
+Fresh broad picture evidence now reserves the old presentation for the existing
+bounded picture-confirmation sequence. One detector step (4 pixels at 4K,
+2 at 1080p) is tolerated at the relevant proof, old-reference, and remembered
+pending-geometry boundaries. Proof stays anchored; tolerance cannot walk or
+renew the hold indefinitely. Publication uses the current trusted coordinates
+after normal authority checks, avoiding a stale four-pixel candidate that fails
+same-frame pixel reinspection. Established geometry remains stable afterward.
+
+Exact current queued-target validation, current strip certificates, admission,
+recovery, near-black guards and real format-change evidence remain required.
+Existing FIT/translation at transition start retains its path. No enlarged AR
+deadband, brightness threshold, additional pixel read or four-second timer.
+
+RED evidence includes the original handoff, preexisting-FIT and indefinite-jitter
+review findings, actual pixel-backed current-versus-candidate commitment failure,
+and a further remembered-history failure exposed by repeating the round trip.
+After fixes, clean x64 Release solution rebuild and **1336/1336 tests passed**
+(29 added). Both independent reviewers found no remaining blocking issue.
+Tests cover one/both-edge jitter in both orders, lookahead/live paths, stale
+queued targets, multiple dense-analysis cadences, repeated round trips, excessive
+drift and authority/context vetoes. Outward replay remeasures actual P010 source
+bytes; inward legs use policy evidence, not decoded content replay.
+
+Evidence and commit/build/test receipt:
+C:\Users\bslac\Documents\ChatGPT\Done\crop-transition-handoff-20260919.
+Design: docs/VP-0189_PICTURE_TRANSITION_HANDOFF.md in the source checkout.
+Candidate is locally committed, not pushed, merged, deployed or packaged.
+Validation preceded the commit and source snapshots match; deployment must
+rebuild its clean committed identity. Live replay remains pending. Running
+installation and configuration were left unchanged.
