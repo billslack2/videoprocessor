@@ -77,7 +77,7 @@ try {
   $payloadFile = Join-Path $Checkout ('artifacts\release\VideoProcessor\' + $entry.path)
   if ((Get-FileHash -LiteralPath $payloadFile -Algorithm SHA256).Hash -ne $entry.sha256) { throw "Payload hash mismatch: $($entry.path)" }
  }
- $names = @("VideoProcessorSetup-$CoreVersion.exe")
+ $names = @((Get-VpInstallerBaseName $CoreVersion $identity) + '.exe')
  if ($PortableZip) { $names += "VideoProcessor-$CoreVersion-$($ExpectedCommit.Substring(0,12))-x64-Portable.zip" }
  $artifacts = @(foreach ($name in $names) {
   $file = Join-Path $Checkout "artifacts\installers\$name"
