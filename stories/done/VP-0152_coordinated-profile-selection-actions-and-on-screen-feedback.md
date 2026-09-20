@@ -116,3 +116,40 @@ after the first matching state, and retain the lamp-change settling delay.
 Those local scripts prove the action contract but are not portable
 VideoProcessor repository functionality and are therefore not part of the
 merged source change.
+
+## September 20 local action-convergence correction
+
+The live 11:18:03-11:18:09 sequence showed F2 Scope accepted while a 16:9
+script ran, but the August 30 broad feedback guard discarded its actions.
+set_hdr consequently read screen/169.state and chose Rec709 169 Med instead
+of Scope Med (113 versus 117 nits in the user's configuration).
+
+Candidate 3d55d6f9d559b38d9f6cfc11a8751c81eba42583 on
+codex/profile-action-latest starts from freshly fetched current beta a6914dc6,
+including the latest crop fixes. Rendering-only manual shortcut feedback is now
+classified at the originating selection, preserving generic callback protection.
+Independent screen/color/zoom/queue and mixed selections retain their delayed
+serialized actions; latest pending batches win. Debounce tokens no longer reset
+after a claim or cancellation, preventing old sleeping workers claiming new work.
+The retained compatibility policy still suppresses action callbacks for a manual
+Rendering-only shortcut during a running script; it does not identify key origin.
+
+RED: screen eligibility plus two stale-token cases failed; feedback control passed.
+Final clean committed x64 Release build: 1381/1381 tests passed, including seven
+new regressions and a real profile-runtime three-cycle fixture with generic
+state.committed callbacks. Source remains local, not pushed or merged.
+
+Deployed the paired host/renderer at 11:57:58, PID 16856. Both clean startup
+identities and deployed hashes match. Configuration and external scripts were
+unchanged. A live shortcut check was interrupted by application shutdown at
+11:58:20; do not claim live convergence verified. VP was left closed for user testing.
+State was backed up before the shortcut check, which selected Scope during shutdown.
+
+Rollback binaries and pre-test profile/marker state:
+C:\Videoprocessor\vp\backups\profile-actions-3d55d6f9-20260920-115758.
+Evidence, deployment receipt and tests:
+C:\Users\bslac\Documents\ChatGPT\Done\profile-action-latest-20260920.
+Source design: docs/PROFILE_ACTION_LATEST_SELECTION.md.
+This follow-up records a local trial; the original story's historical Done status
+is unchanged. User validation: F3, then F2 about 1-2 seconds later; allow scripts
+to settle and verify Scope plus Rec709 Scope Med and screen/235.state agree.
