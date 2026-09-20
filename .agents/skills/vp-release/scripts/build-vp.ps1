@@ -10,7 +10,8 @@ param(
  [Parameter(Mandatory)][string]$VcRedistPath,
  [Parameter(Mandatory)][string]$IsccPath,
  [Parameter(Mandatory)][string]$OutputDirectory,
- [switch]$PortableZip
+ [switch]$PortableZip,
+ [switch]$ReuseVerifiedBuild
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
@@ -45,10 +46,10 @@ $env:VP_QT_ROOT = $QtRoot
 & $devshell -Arch amd64 -HostArch amd64 -SkipAutomaticLocation | Out-Host
 $evidence = Join-Path $Checkout ('artifacts\release-verification-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $evidence -Force | Out-Null
-$invocation = [ordered]@{ checkout=$Checkout; sourceCommit=$ExpectedCommit; betaCommit=$BetaCommit; installerToolingCommit=$InstallerToolingCommit; coreVersion=$CoreVersion; vsInstallPath=$VsInstallPath; qtRoot=$QtRoot; vcRedistPath=$VcRedistPath; isccPath=$IsccPath; portableZip=[bool]$PortableZip; outputDirectory=$outputFull }
+$invocation = [ordered]@{ checkout=$Checkout; sourceCommit=$ExpectedCommit; betaCommit=$BetaCommit; installerToolingCommit=$InstallerToolingCommit; coreVersion=$CoreVersion; vsInstallPath=$VsInstallPath; qtRoot=$QtRoot; vcRedistPath=$VcRedistPath; isccPath=$IsccPath; portableZip=[bool]$PortableZip; reuseVerifiedBuild=[bool]$ReuseVerifiedBuild; workflowSha256=(Get-FileHash -LiteralPath $PSCommandPath).Hash; outputDirectory=$outputFull }
 $invocation | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $evidence 'inputs.json') -Encoding UTF8
 try {
- & (Join-Path $Checkout 'tools\build_installer.ps1') -CoreVersion $CoreVersion -VcRedistPath $VcRedistPath -IsccPath $IsccPath -MSBuildPath $msbuild -PortableZip:$PortableZip *> (Join-Path $evidence 'build-and-package.log')
+ & (Join-Path $Checkout 'tools\build_installer.ps1') -CoreVersion $CoreVersion -VcRedistPath $VcRedistPath -IsccPath $IsccPath -MSBuildPath $msbuild -PortableZip:$PortableZip -SkipBuild:$ReuseVerifiedBuild *> (Join-Path $evidence 'build-and-package.log')
  if (-not (Select-String -LiteralPath (Join-Path $evidence 'build-and-package.log') -Pattern 'Compiler engine version: Inno Setup 6\.7\.3$' -Quiet)) { throw 'Unexpected Inno compiler version.' }
  $testArgs = @((Join-Path $Checkout 'x64\Release\VideoProcessor-Test.dll'),'/Platform:x64',"/ResultsDirectory:$evidence",'/Logger:trx;LogFileName=release.trx')
  # VSTest writes diagnostics to stderr on failing tests; preserve output, then check exit status.
