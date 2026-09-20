@@ -422,6 +422,27 @@ bool ActivePictureDecisionTimeline::IsDecisionCurrent(
 }
 
 
+bool ActivePictureDecisionTimeline::CanProveBufferedFrames(
+	const ActivePictureFrameIdentity* identities, size_t count) const
+{
+	if (!identities || count == 0 || count > MAX_LOOKAHEAD_FRAMES + size_t{ 1 } ||
+		identities[0].transportGeneration != m_transportGeneration ||
+		identities[0].acceptedSequence > UINT64_MAX - (count - 1))
+		return false;
+	for (size_t i = 0; i < count; ++i)
+	{
+		const auto& identity = identities[i];
+		AcceptedIdentity accepted;
+		if (identity.acceptedSequence <= m_lastConsumedSequence ||
+			identity.acceptedSequence != identities[0].acceptedSequence + i ||
+			!SameDecisionContext(identity, identities[0]) ||
+			!FindAcceptedIdentity(identity, accepted) ||
+			accepted.continuityGeneration != m_continuityGeneration)
+			return false;
+	}
+	return true;
+}
+
 void ActivePictureDecisionTimeline::RetainIdentity(
 	const ActivePictureFrameIdentity& identity,
 	uint64_t detectorFrameNumber)

@@ -1250,6 +1250,83 @@ namespace VideoProcessorTest
 			Assert::AreEqual<uint8_t>(1, published.effectiveLookahead);
 		}
 
+		TEST_METHOD(BufferedProofCannotStampOverRecordedSourceDiscontinuity)
+		{
+			ActivePictureDecisionTimeline timeline;
+			timeline.Reset(7);
+			ActivePictureFrameIdentity identities[] = {
+				Identity(7, 100, 1000), Identity(7, 101, 1001), Identity(7, 102, 1002)
+			};
+			Assert::IsTrue(timeline.TrackAcceptedFrame(identities[0]));
+			// A capture discontinuity may retain format, viewport and contiguous
+			// accepted sequence numbers. Checking only those fields loses it.
+			timeline.BreakContinuity(1001);
+			Assert::IsTrue(timeline.TrackAcceptedFrame(identities[1]));
+			Assert::IsTrue(timeline.TrackAcceptedFrame(identities[2]));
+			ActivePictureFrameDecision incorrectlyRestamped;
+			incorrectlyRestamped.effectiveIdentity = identities[0];
+			incorrectlyRestamped.observationIdentity = identities[2];
+			incorrectlyRestamped.continuityGeneration = timeline.ContinuityGeneration();
+			incorrectlyRestamped.lookaheadPolicyGeneration = timeline.LookaheadPolicyGeneration();
+			Assert::IsTrue(timeline.IsDecisionCurrent(incorrectlyRestamped),
+				L"A new generation stamp alone does not validate contributing identities");
+			Assert::IsFalse(timeline.CanProveBufferedFrames(identities, 3));
+			const auto next = Identity(7, 103, 1003);
+			Assert::IsTrue(timeline.TrackAcceptedFrame(next));
+			ActivePictureFrameIdentity afterBoundary[] = { identities[1], identities[2], next };
+			Assert::IsTrue(timeline.CanProveBufferedFrames(afterBoundary, 3));
+		}
+
+		TEST_METHOD(BufferedProofRequiresExactPendingContiguousIdentities)
+		{
+			ActivePictureDecisionTimeline timeline;
+			timeline.Reset(7);
+			ActivePictureFrameIdentity identities[] = {
+				Identity(7, 100, 1000), Identity(7, 101, 1001), Identity(7, 102, 1002)
+			};
+			for (const auto& identity : identities)
+				Assert::IsTrue(timeline.TrackAcceptedFrame(identity));
+			Assert::IsTrue(timeline.CanProveBufferedFrames(identities, 3));
+			Assert::IsFalse(timeline.CanProveBufferedFrames(nullptr, 3));
+			Assert::IsFalse(timeline.CanProveBufferedFrames(identities, 0));
+			for (int mutation = 0; mutation < 8; ++mutation)
+			{
+				ActivePictureFrameIdentity changed[] = { identities[0], identities[1], identities[2] };
+				switch (mutation)
+				{
+				case 0: ++changed[1].captureTimestamp; break;
+				case 1: ++changed[1].sourceFrameNumber; break;
+				case 2: ++changed[1].sourceFormatGeneration; break;
+				case 3: ++changed[1].viewportGeneration; break;
+				case 4: ++changed[1].rendererGeneration; break;
+				case 5: ++changed[1].transportGeneration; break;
+				case 6: changed[1] = changed[0]; break;
+				case 7: changed[1] = changed[2]; break;
+				}
+				Assert::IsFalse(timeline.CanProveBufferedFrames(changed, 3));
+			}
+			timeline.MarkConsumed(identities[0]);
+			Assert::IsFalse(timeline.CanProveBufferedFrames(identities, 3));
+		}
+
+		TEST_METHOD(BufferedProofInvalidatedByDiscardOrLaterContinuityReset)
+		{
+			for (int mutation = 0; mutation < 3; ++mutation)
+			{
+				ActivePictureDecisionTimeline timeline;
+				timeline.Reset(7);
+				ActivePictureFrameIdentity identities[] = {
+					Identity(7, 100, 1000), Identity(7, 101, 1001), Identity(7, 102, 1002)
+				};
+				for (const auto& identity : identities)
+					Assert::IsTrue(timeline.TrackAcceptedFrame(identity));
+				Assert::IsTrue(timeline.CanProveBufferedFrames(identities, 3));
+				if (mutation == 0) timeline.MarkDiscarded(identities[1], 1001);
+				if (mutation == 1) timeline.BreakContinuity(1003);
+				if (mutation == 2) timeline.Reset(8);
+				Assert::IsFalse(timeline.CanProveBufferedFrames(identities, 3));
+			}
+		}
 		TEST_METHOD(AcceptedSequenceGapBreaksSpeculativeBackdating)
 		{
 			ActivePictureDecisionTimeline timeline;

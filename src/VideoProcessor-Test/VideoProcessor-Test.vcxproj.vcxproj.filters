@@ -22,6 +22,9 @@
     <ClCompile Include="ActivePictureTransitionModelTests.cpp">
       <Filter>Resource Files</Filter>
     </ClCompile>
+    <ClCompile Include="LookaheadOutwardProofTests.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="PictureTransitionHandoffTests.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
