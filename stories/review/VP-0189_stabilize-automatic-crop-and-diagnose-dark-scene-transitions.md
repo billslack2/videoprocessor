@@ -760,3 +760,13 @@ No deployment or public GitHub Release occurred. Setup is unsigned.
 
 Artifacts, SHA-256 sidecars, receipts and qualification notes:
 C:\Users\bslac\Documents\ChatGPT\Done\VP-scope-fix-20260919
+
+Filename follow-up: setup is now named
+VideoProcessorSetup-1.3.005-beta-ce11fa05bc11.exe.
+The SHA-256 is unchanged; checksum sidecar and release receipt now reference
+the corrected name. Clean installer names always include the 12-character
+source commit; dirty names additionally retain the source fingerprint.
+The generator correction is pushed to draft installer PR #99 (8fd165da),
+and the corresponding workflow correction is merged through PR #102.
+The new naming assertion failed before the fix; all 12 identity checks passed
+after it. No application rebuild or deployment was needed for this rename.
