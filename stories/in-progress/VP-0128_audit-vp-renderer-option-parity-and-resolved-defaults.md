@@ -2,32 +2,46 @@
 
 ## Status
 
-In Progress (2026-09-20). Reopened for the complete configuration, Auto/default,
-and startup-state audit requested by Bill. Source baseline: GitHub current beta
-`v1.3.005-beta` at `b3c0b3a6a8fdf4f5bb1c9ce0dc3340a3d5e395d7`;
-branch `codex/vp-0128-config-audit-20260920`, clean worktree
+In Progress (2026-09-20). The comprehensive audit is complete; corrective
+implementation and acceptance remain open. Current beta baseline was queried
+from GitHub: `v1.3.005-beta` / `b3c0b3a6a8fdf4f5bb1c9ce0dc3340a3d5e395d7`.
+Audit and reproducible probes are committed and pushed as `7148c270fe64c1e15ee2590d0d0da5a0af009af4`
+on `codex/vp-0128-config-audit-20260920`, in worktree
 `E:\codex\videoprocessor\vp-0128-config-audit-20260920`.
-This pass records evidence and recommendations before behavior changes.
 
-Prior increment (2026-08-30). The dithering parity increment is implemented in
-`billslack2/videoprocessor` commit `d6e7fab2` on `v1.3.004-beta`: the editor,
-profile validation, runtime mapping, and diagnostics now expose Auto, the four
-ordinary libplacebo dithering methods, all ten error-diffusion kernels, and
-Off. Legacy `on` continues to resolve to Blue noise. Error diffusion is
-intentionally disabled while a display 3D LUT is active; this is a compatible
-render-path constraint, not a LUT requirement for dithering. The targeted
-native mapping test and x64 Release renderer build passed; the deployed
-configuration editor is ready for reviewer validation.
+[Full audit, field/default matrices and evidence](https://github.com/billslack2/videoprocessor/blob/7148c270fe64c1e15ee2590d0d0da5a0af009af4/docs/VP-0128-configuration-audit.md).
 
-The remaining audit scope covers the complete VP Renderer configuration surface
-before changing behavior. The immediate confirmed inconsistency is that
-`quality: high` plus `downscaler: AUTO` resolves to libplacebo's Hermite
-downscaler, while VP's configuration UI and parser expose only `AUTO`, EWA
-Lanczos, Bicubic, and Bilinear. Hermite cannot be named or selected explicitly.
-The Balanced preset similarly inherits plain Lanczos upscaling even though the
-explicit upscaler choices expose EWA Lanczos variants rather than plain
-Lanczos. This story is an audit first; it must not turn every libplacebo field
-into a user-facing control without a deliberate product decision.
+Executed probes confirm valid Boolean aliases displayed unchecked, inherited
+Fast/Balanced quality described as High, inherited Limited transport described
+as unused, and arbitrary unknown downscalers silently removed on Save. Source
+traces identify additional corrections: omitted DirectShow frame offset remains
+fixed 90 ms despite Auto UI/docs; named Base profiles collide with the synthetic
+root; Auto black is resolved before final inherited white; diagnostic preset
+tokens are editor metadata rather than runtime presets. Documentation and
+summary logging also need alignment. The report separates executable evidence
+from source-traced findings and lists smaller follow-up cases.
+
+The original missing Hermite/Lanczos choices have since been implemented, and
+Dithering Off clears both native paths. The historical LUT/error-diffusion
+exclusion no longer applies: target-frame calibration LUTs run before final
+dithering. Earlier descriptions below are historical examples, superseded by
+the pinned audit where they disagree.
+
+Validation: x64 Release solution build passed (0 errors); all 75 editor tests
+and 435 relevant native tests passed. Additional characterization probes
+reproduced the gaps missed by those suites. The bundled libplacebo 7.360.1/API
+360 preset matrix was read through production mapping code from the hashed DLL.
+Physical HDMI/capture behavior and a second physical monitor were not qualified.
+No production behavior changes, deployment, merge or active-config edits.
+
+Next increments, in order: shared effective-value/Boolean UI resolution;
+strict unknown-token preservation; explicit source-section identity and
+resolve-after-inheritance defaults; shared startup defaults; then truthful
+preset/help/log/reference generation. Keep Auto for real quality, timing,
+conversion and presentation policies; do not present display calibration as
+automatically detected. Existing compatibility defaults must not be silently
+retuned. Acceptance criteria 2/4/7/8/9 remain open pending corrections and
+focused regressions.
 
 ## User story
 
@@ -36,7 +50,7 @@ to use truthful, consistent names across the UI, saved configuration, renderer,
 logs, and documentation, so I can understand whether I am retaining a quality
 preset or explicitly selecting a different algorithm.
 
-## Confirmed problem
+## Original confirmed problem (historical)
 
 VP currently presents three different concepts without making their
 relationship clear:
