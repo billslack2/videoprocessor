@@ -722,3 +722,41 @@ C:\Users\bslac\Documents\ChatGPT\Done\scope-sampling-d6ad6dc1-20260919
 This source candidate is locally committed, not yet pushed or merged.
 Replay/regular-viewing validation remains required; retain VP-0189 in Review.
 
+
+## September 19 merge and installer release follow-up
+
+**Keep Review.** The previously local candidate is now pushed and merged:
+https://github.com/billslack2/videoprocessor/pull/100
+Beta merge 642a1146f2d7d963a47d7f4f4b9791ecf94aa8f2.
+
+Live d6ad6dc1 replay from 20:05:49 through 20:09:19 logged 62 small-edge
+tolerance decisions with zero crop releases or applied rectangle changes.
+The user believed the earlier larger intrusions were playback controls.
+
+Reusable merge/release skill and scripts are checked in and merged:
+https://github.com/billslack2/videoprocessor/pull/101
+Merge 28dd9749db7672782d218d64b626fd9cbd33bc80.
+Personal skill: C:\Users\bslac\.codex\skills\vp-release.
+It pins source/base identity, refuses changed inputs and existing output folders,
+and gates export on validation. Explicit receipt-verified resume repeats tests;
+failures are preserved, not automatically retried. Byte-identical PE/installer
+rebuilds are not claimed.
+
+Installer/ZIP source ce11fa05bc119734a8d6a7a3ac18bf47a27e79a1 is pushed on
+codex/crop-release-20260919. Application sources match crop-fix beta 642a1146;
+installer tooling is pinned to draft PR #99 commit
+4ed2980a8368a96ae3ef931e6a2f5fbecb0895ff. PR #99 remains unmerged.
+Clean x64 Release build completed. Final gated run passed 1302/1302 plus
+49 preservation/recovery, 11 identity and 23 runtime checks. All 70 ZIP payload
+files were independently verified against the manifest.
+
+The initial full run again hit the unchanged configuration-cache test; isolated
+class runs on current/baseline and two subsequent full current runs passed.
+No cache fix is claimed. Initial failure and subsequent results are preserved.
+Real installer QA safely refused the active user Config tray process; production
+registry values remained unchanged and no QA registration was created. Lifecycle
+and clean-machine interactive coverage for this exact payload remain incomplete.
+No deployment or public GitHub Release occurred. Setup is unsigned.
+
+Artifacts, SHA-256 sidecars, receipts and qualification notes:
+C:\Users\bslac\Documents\ChatGPT\Done\VP-scope-fix-20260919
