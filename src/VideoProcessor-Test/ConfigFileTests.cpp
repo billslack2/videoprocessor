@@ -2850,6 +2850,141 @@ namespace VideoProcessorTest
 			Assert::IsTrue(coalescer.Claim(colorIdentity, newColor));
 		}
 
+
+        TEST_METHOD(ScreenIntentSurvivesRunningProfileScript)
+        {
+            for (const auto event : { "profile.viewport.changed", "profile.zoom.changed",
+                "profile.color.changed", "profile.queue.changed", "profile.nls.changed" })
+                Assert::IsFalse(EventActionLauncher::IsProfileActionFeedback(true, event, "manual"));
+        }
+
+        TEST_METHOD(RenderingFeedbackRemainsSuppressedDuringScriptOnly)
+        {
+            Assert::IsTrue(EventActionLauncher::IsProfileActionFeedback(true,
+                "profile.display.changed", "manual"));
+            Assert::IsFalse(EventActionLauncher::IsProfileActionFeedback(false,
+                "profile.display.changed", "manual"));
+            Assert::IsFalse(EventActionLauncher::IsProfileActionFeedback(true,
+                "profile.display.changed", "cycle"));
+            Assert::IsFalse(EventActionLauncher::IsProfileActionFeedback(true,
+                "renderer.ready", "renderer_ready"));
+        }
+
+        TEST_METHOD(DelayedActionCannotClaimReusedGenerationAfterCompletion)
+        {
+            EventActionLauncher::PendingActionCoalescer queue;
+            const auto stale = queue.Schedule("screen-state");
+            const auto settled = queue.Schedule("screen-state");
+            Assert::IsTrue(queue.Claim("screen-state", settled));
+            const auto latest = queue.Schedule("screen-state");
+            Assert::IsFalse(queue.Claim("screen-state", stale));
+            Assert::IsTrue(queue.Claim("screen-state", latest));
+        }
+
+        TEST_METHOD(CanceledActionCannotClaimNewSelectionAfterReload)
+        {
+            EventActionLauncher::PendingActionCoalescer queue;
+            const auto canceled = queue.Schedule("renderer-nits");
+            queue.CancelAll();
+            const auto current = queue.Schedule("renderer-nits");
+            Assert::IsFalse(queue.Claim("renderer-nits", canceled));
+            Assert::IsTrue(queue.Claim("renderer-nits", current));
+        }
+
+
+        TEST_METHOD(ScopeActionSurvivesOldRenderingFeedbackAndRepeatedSelections)
+        {
+            char directory[MAX_PATH] = {};
+            Assert::IsTrue(GetTempPathA(ARRAYSIZE(directory), directory) > 0);
+            const std::string path = std::string(directory) + "VP-action-latest-regression.cfg";
+            {
+                std::ofstream file(path);
+                file << "[vprenderer.rec709_169]\nshortcut: Q\nsdr_target_nits: 113\n"
+                    "[vprenderer.rec709_scope]\nshortcut: Ctrl+Q\nsdr_target_nits: 117\n"
+                    "[vprenderer.viewport.wide]\nlabel: 16x9\nshortcut: F3\nscreen_aspect: 16:9\n"
+                    "[vprenderer.viewport.scope]\nlabel: Scope\nshortcut: F2\nscreen_aspect: 2.35:1\n"
+                    "[actions.screen_wide]\non: profile.viewport.changed\n"
+                    "when: ${screen_config} == \"16x9\"\ncoalesce_role: screen-state\n"
+                    "run: C:\\Windows\\System32\\cmd.exe /c exit 0\n"
+                    "[actions.screen_scope]\non: profile.viewport.changed\n"
+                    "when: ${screen_config} == \"Scope\"\ncoalesce_role: screen-state\n"
+                    "run: C:\\Windows\\System32\\cmd.exe /c exit 0\n"
+                    "[actions.rendering_feedback]\non: profile.display.changed\n"
+                    "run: C:\\Windows\\System32\\cmd.exe /c exit 0\n"
+                    "[actions.generic_feedback]\non: state.committed\n"
+                    "run: C:\\Windows\\System32\\cmd.exe /c exit 0\n";
+            }
+            ConfigFile config;
+            Assert::IsTrue(config.Load(path));
+            UnifiedProfileRuntime::Runtime runtime;
+            std::string error;
+            const auto source = [](const std::string&, std::string&) { return false; };
+            Assert::IsTrue(runtime.Initialize(config, source, error),
+                std::wstring(error.begin(), error.end()).c_str());
+            UnifiedProfileRuntime::SelectionResult selected;
+            Assert::IsTrue(runtime.SelectKey("Ctrl+Q", source, selected, error));
+            EventActionLauncher::PendingActionCoalescer queue;
+            for (int cycle = 0; cycle < 3; ++cycle)
+            {
+                Assert::IsTrue(runtime.SelectKey("F3", source, selected, error));
+                const auto old = queue.Schedule("screen-state");
+                Assert::IsTrue(queue.Claim("screen-state", old)); // 16:9 script running
+                Assert::IsTrue(runtime.SelectKey("F2", source, selected, error));
+                Assert::AreEqual("scope", selected.snapshot->viewport.profile.c_str());
+                const auto scope = std::find_if(selected.actions.begin(), selected.actions.end(),
+                    [](const auto& a) { return a.action.name == "screen_scope"; });
+                Assert::IsTrue(scope != selected.actions.end());
+                Assert::IsFalse(EventActionLauncher::IsProfileActionFeedback(true, scope->event, scope->reason));
+                const auto latest = queue.Schedule("screen-state");
+                Assert::IsTrue(runtime.SelectKey("Q", source, selected, error)); // old script's key
+                Assert::IsFalse(selected.actions.empty());
+                Assert::IsTrue(EventActionLauncher::IsRenderingSelectionFeedback(true, selected.selections, false));
+                Assert::IsTrue(std::any_of(selected.actions.begin(), selected.actions.end(),
+                    [](const auto& a) { return a.event == "state.committed"; }));
+                Assert::IsTrue(queue.Claim("screen-state", latest)); // queued Scope still runs
+                Assert::IsTrue(runtime.SelectKey("Ctrl+Q", source, selected, error));
+                Assert::AreEqual("scope", selected.snapshot->viewport.profile.c_str());
+                Assert::IsTrue(runtime.SelectKey("Ctrl+Q", source, selected, error));
+                Assert::IsFalse(selected.changed);
+                Assert::IsTrue(selected.actions.empty()); // idempotent script does not loop
+            }
+            DeleteFileA(path.c_str());
+        }
+
+        TEST_METHOD(CoalescerReportsOnlyActualPendingReplacement)
+        {
+            EventActionLauncher::PendingActionCoalescer queue;
+            bool replaced = true;
+            const auto first = queue.Schedule("screen", &replaced);
+            Assert::IsFalse(replaced);
+            const auto next = queue.Schedule("screen", &replaced);
+            Assert::IsTrue(replaced);
+            Assert::IsFalse(queue.Claim("screen", first));
+            Assert::IsTrue(queue.Claim("screen", next));
+            const auto fresh = queue.Schedule("screen", &replaced);
+            Assert::IsFalse(replaced);
+            const auto color = queue.Schedule("color", &replaced);
+            Assert::IsFalse(replaced);
+            Assert::IsTrue(queue.Claim("color", color));
+            Assert::IsTrue(queue.Claim("screen", fresh));
+        }
+
+        TEST_METHOD(RenderingFeedbackClassificationKeepsMixedAndCycleSelections)
+        {
+            std::vector<RendererProfileConfig::KeySelection> selection(1);
+            selection[0].group = "display";
+            Assert::IsTrue(EventActionLauncher::IsRenderingSelectionFeedback(true, selection, false));
+            Assert::IsFalse(EventActionLauncher::IsRenderingSelectionFeedback(false, selection, false));
+            Assert::IsFalse(EventActionLauncher::IsRenderingSelectionFeedback(true, selection, true));
+            selection.emplace_back();
+            selection.back().group = "viewport";
+            Assert::IsFalse(EventActionLauncher::IsRenderingSelectionFeedback(true, selection, false));
+            selection.erase(selection.begin());
+            Assert::IsFalse(EventActionLauncher::IsRenderingSelectionFeedback(true, selection, false));
+            selection.clear();
+            Assert::IsFalse(EventActionLauncher::IsRenderingSelectionFeedback(true, selection, false));
+        }
+
 		TEST_METHOD(ProfileActionCircuitBreakerBoundsRecursiveLaunches)
 		{
 			using Decision = EventActionLauncher::ProfileActionCircuitBreaker::Decision;

@@ -7413,6 +7413,7 @@ void CVideoProcessorDlg::OnCommandDisplayRule(UINT commandId)
 				error.c_str());
 			return;
 		}
+		const bool cycleSelection = !result.selections.empty();
 		// Existing per-profile shortcuts keep their current behavior. A chord
 		// becomes a normal selector only when it did not match any cycle group.
 		if (result.selections.empty() && !m_profileRuntime.SelectKey(
@@ -7447,7 +7448,11 @@ void CVideoProcessorDlg::OnCommandDisplayRule(UINT commandId)
 		{
 			ApplyUnifiedProfileSnapshot(result.snapshot, true,
 				queueProfileReset);
-			ScheduleUnifiedProfileActions(result.actions);
+			if (EventActionLauncher::IsRenderingSelectionFeedback(
+				m_profileActionProcessActive.load(), result.selections, cycleSelection))
+				DebugLog::Log("event action rendering feedback ignored: selection=display actions=%zu", result.actions.size());
+			else
+				ScheduleUnifiedProfileActions(result.actions);
 		}
 		if (queueProfileReset)
 			QueueUnifiedQueueProfileReset(result.snapshot,
@@ -12705,6 +12710,7 @@ void CVideoProcessorDlg::ScheduleUnifiedProfileActionsForRenderer(
 {
 	if (!m_unifiedActionCancelEvent || actions.empty())
 		return;
+	const bool processActive = m_profileActionProcessActive.load();
 	const std::string configPath = m_profileRuntime.ConfigPath();
 	const bool hasProfileTransition = std::any_of(actions.begin(), actions.end(),
 		[](const UnifiedProfileRuntime::ActionInvocation& invocation)
@@ -12712,33 +12718,11 @@ void CVideoProcessorDlg::ScheduleUnifiedProfileActionsForRenderer(
 			return invocation.event.rfind("profile.", 0) == 0 &&
 				invocation.event.size() > strlen("profile..changed") &&
 				invocation.event.compare(invocation.event.size() - strlen(".changed"),
-				strlen(".changed"), ".changed") == 0;
+					strlen(".changed"), ".changed") == 0;
 		});
-	// Scripts such as set_hdr.bat can inject a regular profile shortcut while
-	// they are still running. That change is an effect of the action already
-	// being processed, not a new user request; scheduling it would recreate the
-	// action loop. A cycle request remains eligible so rapid cycling can replace
-	// the queued selection even while the previous script is active.
-	const bool actionFeedback = hasProfileTransition &&
-		m_profileActionProcessActive.load() &&
-		std::any_of(actions.begin(), actions.end(),
-			[](const UnifiedProfileRuntime::ActionInvocation& invocation)
-			{
-				return invocation.event.rfind("profile.", 0) == 0 &&
-					invocation.reason == "manual";
-			});
-	if (actionFeedback)
-	{
-		for (const UnifiedProfileRuntime::ActionInvocation& invocation : actions)
-		{
-			DebugLog::Log(
-				"event action feedback ignored while profile action is running: "
-				"action='%s' event=%s reason=%s",
-				invocation.action.name.c_str(), invocation.event.c_str(),
-				invocation.reason.c_str());
-		}
-		return;
-	}
+	if (processActive && hasProfileTransition)
+		DebugLog::Log("event action profile intent retained while script runs: count=%zu latest-batch-wins=1", actions.size());
+
 	// A profile selection is a transaction. Rapid cycling must replace the
 	// entire pending profile-action batch, not merely actions with the same
 	// coalesce role, so only the final settled profile state is allowed to run.
@@ -12780,8 +12764,9 @@ void CVideoProcessorDlg::ScheduleUnifiedProfileActionsForRenderer(
 			invocation.event.size() > strlen("profile..changed") &&
 			invocation.event.compare(invocation.event.size() - strlen(".changed"),
 				strlen(".changed"), ".changed") == 0;
-		const uint64_t generation = m_unifiedActionCoalescer.Schedule(identity);
-		if (generation > 1)
+		bool superseded = false;
+		const uint64_t generation = m_unifiedActionCoalescer.Schedule(identity, &superseded);
+		if (superseded)
 		{
 			DebugLog::Log(
 				"event action debounce superseded: action='%s' role=%s "
