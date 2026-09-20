@@ -770,3 +770,36 @@ The generator correction is pushed to draft installer PR #99 (8fd165da),
 and the corresponding workflow correction is merged through PR #102.
 The new naming assertion failed before the fix; all 12 identity checks passed
 after it. No application rebuild or deployment was needed for this rename.
+
+## September 19 Eternals scrolling-text crop admission correction
+
+**Keep Review.** A further incident on deployed d6ad6dc1 at 21:24:59-21:25:00
+changed full raster to 0,476-3840,1688 (3.168:1) for ten 24-fps source frames.
+The owner said bar-refinement retention, but that crop had not been presented;
+current outside bands were unsafe and subtitle confirmation was also pending.
+The user did not reproduce it after rewinding. This identifies the logged
+presentation excursion, not a proven subtitle classification of the text.
+
+Local candidate 654ccade078ec44e3945079bd5b273e98d9c1a3c on
+codex/crop-retention-admission, based on freshly fetched beta 525767f6:
+E:\codex\videoprocessor\crop-retention-admission.
+
+A final admission check now requires current picture acquisition authority or
+an identical previously admitted crop. Retention/subtitle handlers may preserve
+an established picture, but cannot introduce unpresented geometry. It preserves
+history through temporary withdrawals and clears it across authoritative full
+raster, source/raster/epoch changes or automatic-crop disable. Fill/NLS cannot
+reintroduce a blocked candidate. No timer or pixel threshold was changed.
+
+Four regression tests failed with unchanged behavior; the aspect-change control
+passed. After correction, clean x64 Release build and all 1307 tests passed.
+Coverage includes twelve presentation owners, real aspect changes in both
+directions, four-pixel sampling and provisional recovery. Earlier failed fixture
+assertions and the LNK1103 incremental build failure are preserved alongside the
+successful clean rebuild; no test failure was discarded or silently retried.
+
+Evidence: C:\Users\bslac\Documents\ChatGPT\Done\crop-admission-654ccade-20260919.
+Details: docs/VP-0189_CROP_PRESENTATION_ADMISSION.md in the candidate checkout.
+The candidate is locally committed, not pushed/merged/deployed. Build validation
+preceded the local commit; a deployment should rebuild its clean identity.
+The running installation was left unchanged. Replay validation remains pending.
