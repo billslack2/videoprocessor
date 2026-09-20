@@ -5,18 +5,19 @@
 In Progress (2026-09-20). The comprehensive audit is complete; corrective
 implementation and acceptance remain open. Current beta baseline was queried
 from GitHub: `v1.3.005-beta` / `b3c0b3a6a8fdf4f5bb1c9ce0dc3340a3d5e395d7`.
-Audit and reproducible probes are committed and pushed as `7148c270fe64c1e15ee2590d0d0da5a0af009af4`
+Audit and reproducible probes are committed and pushed as `787a3e5ffd863f48a7ee70cdcdb5b6109b989302`
 on `codex/vp-0128-config-audit-20260920`, in worktree
 `E:\codex\videoprocessor\vp-0128-config-audit-20260920`.
 
-[Full audit, field/default matrices and evidence](https://github.com/billslack2/videoprocessor/blob/7148c270fe64c1e15ee2590d0d0da5a0af009af4/docs/VP-0128-configuration-audit.md).
+[Full audit, field/default matrices and evidence](https://github.com/billslack2/videoprocessor/blob/787a3e5ffd863f48a7ee70cdcdb5b6109b989302/docs/VP-0128-configuration-audit.md).
 
 Executed probes confirm valid Boolean aliases displayed unchecked, inherited
 Fast/Balanced quality described as High, inherited Limited transport described
 as unused, and arbitrary unknown downscalers silently removed on Save. Source
-traces identify additional corrections: omitted DirectShow frame offset remains
-fixed 90 ms despite Auto UI/docs; named Base profiles collide with the synthetic
-root; Auto black is resolved before final inherited white; diagnostic preset
+traces identify additional corrections: DirectShow Auto still calculates from
+queue/rate despite the user's clarified intended 90-ms policy; named Base
+profiles collide with the synthetic root; Auto black is resolved before final
+inherited white; diagnostic preset
 tokens are editor metadata rather than runtime presets. Documentation and
 summary logging also need alignment. The report separates executable evidence
 from source-traced findings and lists smaller follow-up cases.
@@ -43,6 +44,27 @@ automatically detected. Existing compatibility defaults must not be silently
 retuned. Acceptance criteria 2/4/7/8/9 remain open pending corrections and
 focused regressions.
 
+## Follow-up clarification — 2026-09-20
+
+Rechecked GitHub: latest/default beta and its commit remain unchanged. The user
+confirmed that DirectShow Auto should mean 90 ms. The omitted fixed 90-ms value
+is a sensible intended default; align explicit Auto, startup, live apply and
+help with that policy while preserving explicit numbers and the built-in
+renderer's separate neutral timestamp handling. This is a correction to the
+audit's framing, not evidence that the current Auto resolver already returns 90.
+
+For Auto black, retain an Auto/explicit discriminator until inherited target
+white is final: white 100 -> 200 must change Auto black 0.100 -> 0.200, while
+explicit zero/measured black stays unchanged. For Base, carry actual section
+identity across renderer, GUI selection and active status; support unambiguous
+existing names and explicitly reject root-plus-named-Base identity collisions
+in parser/editor. Do not silently ignore or rename existing profiles.
+
+The audit now contains a concrete per-finding correction/regression table.
+Boolean/effective-value UI handling and strict invalid-token preservation are
+small localized fixes; Auto black/default resolution and profile identity need
+coordinated tests. Prefer deriving diagnostic preset labels from actual flags.
+No implementation or deployment occurred in this clarification pass.
 ## User story
 
 As a VP Renderer user, I need every configuration choice and inherited default
