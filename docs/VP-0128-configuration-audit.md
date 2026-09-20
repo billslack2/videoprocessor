@@ -39,11 +39,13 @@ C3; probe. `ConfigEditorWindow.cpp:5366` removes every downscaler outside its su
 
 Fix: whitelist those two migrations; preserve and visibly reject arbitrary unknown values (acceptance criterion 8). Related source finding: Zoom cleanup also removes malformed `fixed_crop_aspect`, although that field is strict in the parser; only the narrower/wider optional limits have a deliberately forgiving contract.
 
-### F5 — P1: omitted DirectShow frame offset is 90 ms, not Auto
+### F5 — P1: DirectShow Auto does not implement the intended 90-ms policy
 
 C3/C5; source trace. `VideoProcessorDlg.h:676–678` initializes Auto false and offset 90. `VideoProcessorDlg.cpp:13278–13285` installs those values. `VideoProcessorApp.cpp:1506` enables Auto only for an explicit Auto argument; config argument generation does not synthesize it when absent. Config (`:6033–6035`) and the reference describe omission as Auto. The sample explicitly writes Auto and masks the inconsistency.
 
-Fix: deliberately choose and share the omitted default across startup, live apply, Config and documentation. Test missing file, omitted key, Auto, 0 and 90. No capture session was restarted to measure this effect.
+User clarification (2026-09-20): DirectShow Auto is intended to mean 90 ms. The fixed 90-ms omitted value is therefore a sensible intended default, not itself the defect. Rechecking CalculateAutoFrameOffset (VideoProcessorDlg.cpp:8460) shows that explicit Auto still derives an offset from queue size and source frame rate; the built-in renderer separately returns zero because it does not schedule presentation from capture timestamps. The beta has not implemented the clarified DirectShow policy consistently.
+
+Fix: share one 90-ms DirectShow default between omitted/Auto startup, live apply and Config, and describe Auto as the default 90-ms policy. Preserve explicit numeric overrides, including zero. Keep the built-in renderer's separate neutral timestamp behavior. Test missing file, omitted key, Auto, 0, 90, another fixed number, renderer changes and capture-state changes. No capture session was restarted to measure this effect.
 
 ### F6 — P1: named Base profiles collide with the synthetic root
 
@@ -91,7 +93,8 @@ Fix: regenerate owner/value inventory and effective help; separate requested, in
 | Black Auto | At most a legacy policy named **Assume 1000:1 contrast**, with F7 fixed. Not measured black. |
 | DeckLink packing | Keep Auto for compatibility preference and capability fallback. |
 | Conversion method | Keep Auto: actual CPU-feature/frame-size selection. |
-| DirectShow frame offset, PPM, metadata overrides | Keep genuine timing/metadata automatic policies; fix omitted-offset mismatch. |
+| DirectShow frame offset | User-approved Auto/default policy is 90 ms; implement consistently and label the resolved value. Current explicit Auto still calculates from queue/rate (F5). |
+| PPM, metadata overrides | Keep genuine clock/metadata automatic policies with resolved-value descriptions. |
 | LUT files/enabled, diagnostics, queue sizes, crop limits, actions | No generic third Auto state; explicit enablement, absence and inheritance already have distinct meanings. |
 
 ## Binary-verified preset matrix
@@ -239,3 +242,43 @@ Document three starting points: fresh Config-created file, distributed sample, e
 Correction order: shared effective-value/Boolean UI resolution; strict unknown-token preservation; source-section identity and resolve-after-inheritance defaults; shared startup default contracts; then preset/log/reference cleanup. Add tests at those boundaries; existing passing suites miss these counterexamples.
 
 **Audit complete; story remains In Progress for corrections.** Acceptance items 2/4/7/8/9 are not comprehensively satisfied. Matrix coverage does not approve exposing every libplacebo capability.
+## Clarification and bounded correction plan — 2026-09-20
+
+GitHub was rechecked after the user follow-up: default/latest integration beta
+remains `v1.3.005-beta` at `b3c0b3a6a8fdf4f5bb1c9ce0dc3340a3d5e395d7`.
+This update clarifies the audit and the implementation path; it does not claim
+that production fixes have been made.
+
+Auto black is a policy, not a stored measurement: white 100 / black Auto means
+0.100 nit; a child with white 200 and inherited Auto must resolve to 0.200 nit.
+The current code can carry 0.100 forward because it loses the Auto discriminator
+and only repairs numerically invalid pairs. Resolve after profile inheritance;
+retain explicit black zero and other valid measured values unchanged.
+
+`Base` is currently accepted as a user profile name, despite also serving as an
+internal root sentinel. It is not consistently enforced as a reserved keyword.
+The collision also reaches `ActiveProfileStatus.h:52` and the GUI's profile
+section lookup (`VideoProcessorDlg.cpp:12127`), so a renderer-only patch is
+insufficient. Preferred bounded handling: carry actual source-section identity
+through selection, renderer dispatch and status; support an existing named Base
+when unambiguous, and reject literal-root-plus-named-Base identity collisions
+with an actionable validation error in both parser and editor. Never silently
+ignore or rename a user's profile. A blanket reservation would also need an
+explicit compatibility path for existing configurations.
+
+| Finding | Concrete fix path | Focused regression boundary |
+| --- | --- | --- |
+| F1 Boolean aliases | Reuse the existing Boolean helper for profile fields. | true/on/yes/1 and false/off/no/0, inherited values, dependent-control gating, untouched-save preservation. |
+| F2/F3 inherited Auto descriptions | Use effective inherited quality/range before formatting status. | Fast/Balanced/High and inherited Full/Limited, initial load and selection changes. |
+| F4 invalid values disappear | Limit downscaler migration to the two known retired tokens; retain unknown tokens and strict fixed-crop errors. | Invalid load stays visible and cannot be silently saved away; supported legacy migrations still work. |
+| F5 90-ms default | Share the clarified DirectShow default and align omitted/Auto behavior and help. | Startup/live apply/capture changes; explicit zero and numeric overrides; built-in renderer remains independent. |
+| F6 Base identity | Resolve actual source sections and reject genuine identity collisions consistently. | Named Base alone, Base as a child, literal root, root plus Base, case variants, persisted/manual selection and status. |
+| F7 Auto black | Carry Auto versus explicit through inheritance, then calculate using final white. | Named baseline, white-only child, explicit Auto override, inherited zero/measured black, profile switching. |
+| F8 diagnostic preset label | Prefer deriving the UI label from effective diagnostic flags; document preset selection as an editor convenience. | Handwritten token with omitted/contradicting flags, inherited flags, selecting and saving a preset. No implicit activation of experiments. |
+| F9 docs/logs/inventory | Update ownership, accepted values, resolved preset reporting and inactive frame-mixer wording. | Compare the reference/inventory against actual controls and the verified native preset matrix. |
+
+F1–F4 are small localized corrections. F5/F7 are bounded default-resolution
+changes. F6 needs coordinated identity handling across the consumers listed
+above. F8/F9 are representation/documentation work unless runtime preset
+semantics are deliberately changed. None requires retuning calibration values,
+changing presentation architecture or upgrading libplacebo.
