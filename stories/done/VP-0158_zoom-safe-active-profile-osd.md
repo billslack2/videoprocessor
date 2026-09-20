@@ -2,6 +2,10 @@
 
 ## Status
 
+Done (2026-09-20). Accepted and closed by explicit user decision. Historical implementation, validation, and any previously recorded limitations are retained below; this status change does not claim new testing.
+
+## Historical status and evidence
+
 Review (2026-08-28). Implemented as one contextual OSD workstream on the
 `v1.3.001-beta` integration line and merged by fast-forward into
 `v1.3.001-beta` at source commit `3d23a55b`.

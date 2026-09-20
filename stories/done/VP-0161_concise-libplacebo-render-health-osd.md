@@ -2,6 +2,10 @@
 
 ## Status
 
+Done (2026-09-20). Accepted and closed by explicit user decision. Historical implementation, validation, and any previously recorded limitations are retained below; this status change does not claim new testing.
+
+## Historical status and evidence
+
 Review (2026-08-28). Implemented on branch
 `codex/vp-0161-render-health` from confirmed GitHub default
 `v1.3.003-beta` at `0cf07a95`; source commit `342327c7` is published to

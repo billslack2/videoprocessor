@@ -2,6 +2,10 @@
 
 ## Status
 
+Done (2026-09-20). Accepted and closed by explicit user decision. Historical implementation, validation, and any previously recorded limitations are retained below; this status change does not claim new testing.
+
+## Historical status and evidence
+
 Review (2026-08-27). Implemented from the explicitly confirmed
 `v1.3.001-beta` base on `codex/vp-0156-profile-switch-geometry` at source
 commit `a031190e`; draft [PR #71](https://github.com/billslack2/videoprocessor/pull/71)

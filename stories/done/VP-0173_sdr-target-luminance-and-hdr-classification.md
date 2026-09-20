@@ -2,6 +2,10 @@
 
 ## Status
 
+Done (2026-09-20). Accepted and closed by explicit user decision. Historical implementation, validation, and any previously recorded limitations are retained below; this status change does not claim new testing.
+
+## Historical status and evidence
+
 Review (2026-09-08). PR https://github.com/billslack2/videoprocessor/pull/81
 merged into `v1.3.005-beta` at the user's request. Merge commit:
 `38e7508f4d2dc66325a3846cbfb8c75d588c1dc8` (2026-09-08 13:39 UTC).

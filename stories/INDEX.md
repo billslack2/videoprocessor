@@ -153,7 +153,7 @@ they must not contain requirements that are absent from this file.
 | VP-0118 | Done | Make Alt+Enter enter fullscreen from an inactive startup request |
 | VP-0119 | Done | Apply anamorphic lens scale in the correct direction |
 | VP-0120 | Backlog | Retire owner-bound configuration tray processes |
-| VP-0121 | Review | Make configuration help UI-first with current screenshots |
+| VP-0121 | Done | Make configuration help UI-first with current screenshots |
 | VP-0122 | Done | Retain scope geometry through subtitle and volume overlays |
 | VP-0123 | Done | Split video conversion policy by renderer |
 | VP-0124 | In Progress | Safely accelerate outward active-picture transitions with bounded lookahead |
@@ -178,40 +178,40 @@ they must not contain requirements that are absent from this file.
 | VP-0143 | Done | Restart renderer after queue-profile changes |
 | VP-0144 | Done | Stop creating configuration backups |
 | VP-0145 | In Progress | Renderer post-stall reset eligibility |
-| VP-0145-1 | Review | Post-stall reset telemetry and diagnostics |
+| VP-0145-1 | Done | Post-stall reset telemetry and diagnostics |
 | VP-0146 | Done | Re-apply profile rules shortcut and safe queue-profile handoff |
 | VP-0147 | In Progress | Subtitle-safe libplacebo tone-mapping analysis region |
 | VP-0148 | Backlog | Enforce DirectShow queue launch contracts and trustworthy handoff evidence |
 | VP-0148-1 | In Progress | Retain DirectShow queue construction contract across handoffs |
 | VP-0148-2 | Backlog | Publish coherent DirectShow queue and delivery telemetry |
-| VP-0149 | Review | Bound application shutdown after display-restore failure |
+| VP-0149 | Done | Bound application shutdown after display-restore failure |
 | VP-0150 | Done | Accept UI-style profile labels in action conditions |
 | VP-0151 | Backlog | Reliable explicit BT.2020 exit signaling |
 | VP-0152 | Done | Coordinated profile selection, actions, and on-screen feedback |
 | VP-0153 | Done | Reset queues after every display transition |
 | VP-0154 | Done | Automatic black-bar crop and aspect-limit fill |
 | VP-0155 | Done | Honor vertical picture alignment for configured screen viewports |
-| VP-0156 | Review | Eliminate transient four-sided bars during live Screen and Zoom profile changes |
-| VP-0157 | Review | Expose direct GPU sampling for VP Renderer downscaling |
-| VP-0158 | Review | Zoom-safe active-profile OSD and meaningful status filtering |
+| VP-0156 | Done | Eliminate transient four-sided bars during live Screen and Zoom profile changes |
+| VP-0157 | Done | Expose direct GPU sampling for VP Renderer downscaling |
+| VP-0158 | Done | Zoom-safe active-profile OSD and meaningful status filtering |
 | VP-0159 | Done | Consolidate profile-like configuration lists on one shared UI component |
-| VP-0160 | Review | Reapply profile rules after every renderer swap |
-| VP-0161 | Review | Concise libplacebo-style renderer health OSD |
-| VP-0162 | Review | Match profile-status OSD top padding to its horizontal padding |
+| VP-0160 | Done | Reapply profile rules after every renderer swap |
+| VP-0161 | Done | Concise libplacebo-style renderer health OSD |
+| VP-0162 | Done | Match profile-status OSD top padding to its horizontal padding |
 | VP-0163 | Done | Prevent full-raster flashes during one-edge overlay confirmation |
 | VP-0164 | Done | Backdate fully proven inward lookahead transitions |
 | VP-0165 | Backlog | Evaluate safe active-picture lookahead refinements |
 | VP-0166 | Done | Correct integrated target-frame 3D LUT application |
-| VP-0167 | Review | Restore madVR-style two-pass VP Renderer refresh-mode selection |
+| VP-0167 | Done | Restore madVR-style two-pass VP Renderer refresh-mode selection |
 | VP-0168 | Backlog | Native LAN configuration editor discovery and apply parity |
 | VP-0169 | Done | Persist GUI edits into missing configuration sections |
 | VP-0170 | In Progress | Stabilize DirectShow/madVR EOTF transitions |
 | VP-0171 | Backlog | Opt-in ICC/ICM display-calibration profiles for VP Renderer |
 | VP-0172 | Backlog | Source-driven output display-mode selection |
-| VP-0173 | Review | Decouple SDR target luminance from HDR classification |
-| VP-0174 | Review | Calibrated display settings contract and Color/Output UI |
+| VP-0173 | Done | Decouple SDR target luminance from HDR classification |
+| VP-0174 | Done | Calibrated display settings contract and Color/Output UI |
 | VP-0176 | Done | Standard LLDV profiles |
-| VP-0175 | Review | Harden capture callbacks and allocator exhaustion during HDMI resync |
+| VP-0175 | Done | Harden capture callbacks and allocator exhaustion during HDMI resync |
 | VP-0066-1 | Done | Characterize the live output pipeline with replayable golden traces |
 | VP-0066-2 | Done | Extract a graph-independent video timing controller |
 | VP-0066-3 | Done | Extract epoch-aware frame transport and processing components |
@@ -228,11 +228,11 @@ they must not contain requirements that are absent from this file.
 | VP-0028 | Done | Renderer configuration profile, hotkey, and event-action unification |
 | VP-0029 | Will Not Do | Alpha two-pass display LUT and final-dither pipeline spike |
 | VP-0177 | Review | P010 legacy chroma and single-helper default |
-| VP-0178 | Review | Assess P010 CPU waits versus GPU readback |
+| VP-0178 | Will Not Do | Assess P010 CPU waits versus GPU readback |
 | VP-0179 | Will Not Do | madVR BT.2020-to-Rec.709 return regression |
-| VP-0180 | Review | Remove standalone stats OSD window |
+| VP-0180 | Done | Remove standalone stats OSD window |
 
-| VP-0181 | Review | Reduce P010 CPU use with blocking waits and configurable chroma |
+| VP-0181 | Done | Reduce P010 CPU use with blocking waits and configurable chroma |
 
 | VP-0182 | Done | Config-only ADVANCED Lanczos chroma downsampling |
 
@@ -240,14 +240,14 @@ they must not contain requirements that are absent from this file.
 
 | VP-0184 | Backlog | Expose primary libplacebo tone-mapping and peak-detection controls |
 | VP-0185 | Backlog | Expose advanced libplacebo tone-curve, gamut, and metadata controls |
-| VP-0186 | Review | Add screen-edge padding to Screen Config picture alignment |
+| VP-0186 | Done | Add screen-edge padding to Screen Config picture alignment |
 | VP-0187 | Done | REQ006 SDR transfer and calibration integration |
-| VP-0188 | Review | Preserve configuration scope and avoid source-event disk reloads |
-| VP-0189 | Review | Stabilize automatic crop and diagnose dark-scene transitions ([merged #94](https://github.com/billslack2/videoprocessor/pull/94), [follow-up #95](https://github.com/billslack2/videoprocessor/pull/95), [trailer fix #97](https://github.com/billslack2/videoprocessor/pull/97), [live-validated crop stack #103](https://github.com/billslack2/videoprocessor/pull/103); Review retained) |
+| VP-0188 | Done | Preserve configuration scope and avoid source-event disk reloads |
+| VP-0189 | Done | Stabilize automatic crop and diagnose dark-scene transitions ([merged #94](https://github.com/billslack2/videoprocessor/pull/94), [follow-up #95](https://github.com/billslack2/videoprocessor/pull/95), [trailer fix #97](https://github.com/billslack2/videoprocessor/pull/97), [live-validated crop stack #103](https://github.com/billslack2/videoprocessor/pull/103); accepted Done 2026-09-20) |
 | VP-0190 | Backlog | Preserve active-picture authority through NLS-only profile changes |
 | VP-0191 | Done | Prevent incompatible saved queue profiles during refresh transitions |
 
-| VP-0192 | Review | Windows installer with runtime setup and unrestricted build upgrades |
+| VP-0192 | Done | Windows installer with runtime setup and unrestricted build upgrades |
 
 ## Codex story workflow
 

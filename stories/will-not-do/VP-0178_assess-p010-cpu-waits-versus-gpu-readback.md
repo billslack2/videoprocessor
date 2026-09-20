@@ -2,6 +2,10 @@
 
 ## Status
 
+Will Not Do (2026-09-20). Closed by explicit user decision. The implemented CPU-wait improvements are retained and accepted under VP-0181; no further GPU-readback assessment is requested.
+
+## Historical status and evidence
+
 Review (2026-09-10). Blocking work/completion waits implemented and deployed
 for both AVERAGE and LEGACY as commit 6ca021b9. All 1,134 native tests passed;
 measured converter CPU reduction and unchanged pixel output documented below.

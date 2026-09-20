@@ -2,6 +2,10 @@
 
 ## Status
 
+Done (2026-09-20). Accepted and closed by explicit user decision. Historical implementation, validation, and any previously recorded limitations are retained below; this status change does not claim new testing.
+
+## Historical status and evidence
+
 Review. Tracker audit repair (2026-09-07): status and index now agree with
 the recorded move to `review/` in tracker commit `64f831c`. Implementation,
 build, deployment, and live-diagnostic evidence is retained below. Final review

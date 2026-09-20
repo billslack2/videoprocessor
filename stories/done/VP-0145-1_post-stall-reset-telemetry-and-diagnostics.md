@@ -2,6 +2,10 @@
 
 ## Status
 
+Done (2026-09-20). Accepted and closed by explicit user decision. Historical implementation, validation, and any previously recorded limitations are retained below; this status change does not claim new testing.
+
+## Historical status and evidence
+
 Review (2026-08-23). Parent:
 [VP-0145](../in-progress/VP-0145_renderer-post-stall-reset-eligibility.md).
 Implemented at `a737ecd` on `codex/vp-0145-reset-advisory`, merged into

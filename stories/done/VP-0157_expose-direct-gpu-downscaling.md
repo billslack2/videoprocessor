@@ -2,6 +2,10 @@
 
 ## Status
 
+Done (2026-09-20). Accepted and closed by explicit user decision. Historical implementation, validation, and any previously recorded limitations are retained below; this status change does not claim new testing.
+
+## Historical status and evidence
+
 Review (2026-08-27). Implemented from the developer-confirmed current default
 integration branch `v1.3.001-beta` tip `bdcb60cf` on
 `codex/vp-0157-gpu-downscaler` at source commit `b66c8632`. Draft

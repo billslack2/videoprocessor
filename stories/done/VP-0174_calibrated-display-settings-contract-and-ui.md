@@ -2,6 +2,10 @@
 
 ## Status
 
+Done (2026-09-20). Accepted and closed by explicit user decision. Historical implementation, validation, and any previously recorded limitations are retained below; this status change does not claim new testing.
+
+## Historical status and evidence
+
 Review (2026-09-09). Complete Color / Output calibration profiles implemented,
 independently reviewed and deployed for beta testing. Current source commit
 `40d339d8` on PR #82, based on beta `v1.3.005-beta` at `89d55ca5`.

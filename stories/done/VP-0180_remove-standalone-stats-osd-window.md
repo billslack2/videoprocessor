@@ -2,6 +2,10 @@
 
 ## Status
 
+Done (2026-09-20). Accepted and closed by explicit user decision. Historical implementation, validation, and any previously recorded limitations are retained below; this status change does not claim new testing.
+
+## Historical status and evidence
+
 Review (2026-09-10). Created in Backlog, then promoted to Review at the
 user's request. Implementation and x64 Release build are complete. Merged into `v1.3.005-beta` via PR #86; deployment/live playback validation
 remain pending. Retain Review until that validation is accepted.

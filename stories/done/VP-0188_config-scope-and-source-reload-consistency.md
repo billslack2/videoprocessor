@@ -2,6 +2,10 @@
 
 ## Status
 
+Done (2026-09-20). Accepted and closed by explicit user decision. Historical implementation, validation, and any previously recorded limitations are retained below; this status change does not claim new testing.
+
+## Historical status and evidence
+
 Review — corrected build deployed and replacement QA ZIP generated 2026-09-15.
 Public PR #93 head `3acd02b3` on `codex/vp-0188-config-scope-reloads` includes
 GitHub-verified beta `v1.3.005-beta` at `94f938d33216d0f212797f1ed4c6f83db02d9187`.
@@ -9,6 +13,7 @@ Corrected source worktree: `E:\codex\videoprocessor\vp0188-current-beta`.
 Core tests: 1,161/1,161 passed; two editor runs each passed 74/75 with unresolved
 intermittent foreground failures. Physical metadata-blip/HDMI QA and UI focus
 qualification remain pending. The previous `ddfca7ab` ZIP is superseded; use `3acd02b3`.
+
 ## Problem
 
 1. The configuration editor writes shared `switch_refresh_rate` to [general],

@@ -2,6 +2,10 @@
 
 ## Status
 
+Done (2026-09-20). Accepted and closed by explicit user decision. Historical implementation, validation, and any previously recorded limitations are retained below; this status change does not claim new testing.
+
+## Historical status and evidence
+
 Review (2026-08-28). The tracker was synchronized with `origin/main` before assignment. Implementation retained the deployed local integration, whose history begins at remote beta `v1.3.003-beta` (`0cf07a95`), preserving VP-0147 and VP-0161 functionality.
 
 Source commit `9c09304` adds a visible-picture-scaled top inset matching the additional left inset. The focused x64 Release placement suite passed 11/11, and the complete x64 Release solution build completed with `VERSION_DIRTY=false`.

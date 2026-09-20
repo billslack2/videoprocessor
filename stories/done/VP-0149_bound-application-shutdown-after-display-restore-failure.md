@@ -2,6 +2,10 @@
 
 ## Status
 
+Done (2026-09-20). Accepted and closed by explicit user decision. Historical implementation, validation, and any previously recorded limitations are retained below; this status change does not claim new testing.
+
+## Historical status and evidence
+
 Review — implemented, independently reviewed, built, tested, pushed, and deployed
 on 2026-08-26. Physical projector disappearance/renumbering and Alt+F4 remain the
 user acceptance checks before Done.

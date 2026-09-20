@@ -2,6 +2,10 @@
 
 ## Status
 
+Done (2026-09-20). Accepted and closed by explicit user decision. Historical implementation, validation, and any previously recorded limitations are retained below; this status change does not claim new testing.
+
+## Historical status and evidence
+
 Review (2026-08-28). Implemented on
 `codex/vp-0160-post-swap-rule-reapply` from confirmed base
 `v1.3.003-beta` at `a737ecd3`. Source commit `3524e2c0` merged through PR #73

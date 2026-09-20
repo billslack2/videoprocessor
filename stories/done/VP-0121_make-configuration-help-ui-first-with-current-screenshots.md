@@ -2,6 +2,10 @@
 
 ## Status
 
+Done (2026-09-20). Accepted and closed by explicit user decision. Historical implementation, validation, and any previously recorded limitations are retained below; this status change does not claim new testing.
+
+## Historical status and evidence
+
 Review (2026-08-18). The UI-first guide is implemented from canonical Markdown
 and publishes matching offline HTML and PDF editions. A separate senior writer,
 UI evidence specialist, and independent senior documentation reviewer produced
