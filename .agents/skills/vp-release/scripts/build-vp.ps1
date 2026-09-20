@@ -39,8 +39,7 @@ $devshell = Join-Path $VsInstallPath 'Common7\Tools\Launch-VsDevShell.ps1'
 foreach ($path in @($msbuild,$vstest,$devshell,$VcRedistPath,$IsccPath,(Join-Path $QtRoot 'bin\qmake.exe'))) {
  if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Missing tool: $path" }
 }
-$compilerBanner = (& $IsccPath '/?') -join "`n"
-if ($compilerBanner -notmatch '6\.7\.3') { throw 'This installer workflow is qualified with Inno Setup 6.7.3.' }
+# The compiler engine version is verified from its compilation log below.
 $previousQt = $env:VP_QT_ROOT
 $env:VP_QT_ROOT = $QtRoot
 & $devshell -Arch amd64 -HostArch amd64 -SkipAutomaticLocation | Out-Host
@@ -50,6 +49,7 @@ $invocation = [ordered]@{ checkout=$Checkout; sourceCommit=$ExpectedCommit; beta
 $invocation | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $evidence 'inputs.json') -Encoding UTF8
 try {
  & (Join-Path $Checkout 'tools\build_installer.ps1') -CoreVersion $CoreVersion -VcRedistPath $VcRedistPath -IsccPath $IsccPath -MSBuildPath $msbuild -PortableZip:$PortableZip *> (Join-Path $evidence 'build-and-package.log')
+ if (-not (Select-String -LiteralPath (Join-Path $evidence 'build-and-package.log') -Pattern 'Compiler engine version: Inno Setup 6\.7\.3$' -Quiet)) { throw 'Unexpected Inno compiler version.' }
  $testArgs = @((Join-Path $Checkout 'x64\Release\VideoProcessor-Test.dll'),'/Platform:x64',"/ResultsDirectory:$evidence",'/Logger:trx;LogFileName=release.trx')
  # VSTest writes diagnostics to stderr on failing tests; preserve output, then check exit status.
  $ErrorActionPreference = 'Continue'
@@ -64,7 +64,8 @@ try {
   & (Join-Path $Checkout "tools\$name.ps1") *> (Join-Path $evidence "$name.log")
  }
  & (Join-Path $Checkout 'tools\test_runtime_packaging.ps1') -VcRedistPath $VcRedistPath *> (Join-Path $evidence 'runtime-packaging.log')
- & (Join-Path $Checkout 'artifacts\release\VideoProcessor\prerequisites\setup-runtime.ps1') -CheckOnly *> (Join-Path $evidence 'runtime-check.log')
+ & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Checkout 'artifacts\release\VideoProcessor\prerequisites\setup-runtime.ps1') -CheckOnly *> (Join-Path $evidence 'runtime-check.log')
+ $legacyRuntimeCheckExit = $LASTEXITCODE # Diagnostic only: distribution uses verified app-local runtimes.
  . (Join-Path $Checkout 'tools\installer_build_identity.ps1')
  $identity = Get-VpSourceIdentity $Checkout
  if ($identity.dirty -or $identity.commit -ne $ExpectedCommit) { throw 'Sources changed during qualification.' }
@@ -87,7 +88,7 @@ try {
  $tools = @(foreach ($path in @($msbuild,$vstest,$IsccPath,$VcRedistPath,(Join-Path $QtRoot 'bin\Qt6Core.dll'))) {
   [ordered]@{ path=$path; version=(Get-Item -LiteralPath $path).VersionInfo.FileVersion; sha256=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash }
  })
- $receipt = [ordered]@{ schema=1; inputs=$invocation; sourceFingerprint=$identity.fingerprint; testsPassed=[int]$counts.passed; tools=$tools; artifacts=$artifacts; signed=$false; qualification='Full unit suite and packaging helper tests passed. Real installer lifecycle and clean Windows/interactive qualification must be reported separately.'; reproducibility='Pinned source and recorded tools/dependencies; byte-identical PE/installer rebuilds are not asserted.' }
+ $receipt = [ordered]@{ schema=1; inputs=$invocation; sourceFingerprint=$identity.fingerprint; testsPassed=[int]$counts.passed; legacyRuntimeCheckExit=$legacyRuntimeCheckExit; tools=$tools; artifacts=$artifacts; signed=$false; qualification='Full unit suite and packaging helper tests passed. Real installer lifecycle and clean Windows/interactive qualification must be reported separately.'; reproducibility='Pinned source and recorded tools/dependencies; byte-identical PE/installer rebuilds are not asserted.' }
  $receipt | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $evidence 'release-receipt.json') -Encoding UTF8
  New-Item -ItemType Directory -Path $outputFull | Out-Null
  foreach ($name in $names) {
