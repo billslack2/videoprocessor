@@ -803,3 +803,36 @@ Details: docs/VP-0189_CROP_PRESENTATION_ADMISSION.md in the candidate checkout.
 The candidate is locally committed, not pushed/merged/deployed. Build validation
 preceded the local commit; a deployment should rebuild its clean identity.
 The running installation was left unchanged. Replay validation remains pending.
+
+## September 19 crop-admission deployment and distributable build
+
+**Keep Review.** User authorized deployment and a ZIP/installer for the tested
+candidate. Release branch codex/crop-admission-release-20260919 is pushed at
+29ea0339b8029879258b8fde4334928c6d8e01b5. It combines application candidate
+654ccade078ec44e3945079bd5b273e98d9c1a3c with installer tooling pinned to
+8fd165da519851cc265e8bea7bac35c9554c956b (draft PR #99). Application sources
+match 654ccade exactly. Neither was merged into beta by this task; remote beta
+at build remained 525767f6. The release wrapper's BetaCommit baseline parameter
+pinned the requested application candidate, explicitly recorded in provenance.
+
+Clean x64 Release rebuild and 1307/1307 tests passed, with 49 installer support,
+12 identity and 23 runtime-packaging checks. All 70 ZIP payload hashes and exact
+archive membership were independently verified. Artifacts and receipts:
+C:\Users\bslac\Documents\ChatGPT\Done\VP-crop-admission-29ea0339-20260919.
+
+- VideoProcessorSetup-1.3.005-beta-29ea0339b802.exe
+  SHA256 665D2F3228E978780476FCFC06C349F20D4E191B0AF5F818026B84CC2EA78402
+- VideoProcessor-1.3.005-beta-29ea0339b802-x64-Portable.zip
+  SHA256 4FED16C9BB0F7EACF8040A94B314791B05F016FA1592AF76725E7F3AE0EAED99
+
+At 21:54:10, deployed the paired host/renderer to C:\Videoprocessor\vp and
+launched VP (PID 24136). Both clean build identities appear in the live startup
+log, and deployed hashes match the payload. No configuration edits occurred.
+Backup: C:\Videoprocessor\vp\backups\crop-admission-29ea0339-20260919-215409.
+Deployment details, running-build log, scripts and hashes accompany the release.
+
+Setup is unsigned. Real installer lifecycle, clean Windows without Visual Studio,
+and interactive Config qualification remain untested for this exact payload.
+Production installer registration at C:\vptest was preserved; this deployment
+used the requested active runtime path directly. No GitHub Release was published.
+Replay testing of the scrolling-text transition remains the next validation.
