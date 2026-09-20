@@ -247,6 +247,9 @@ namespace AlphaSourceCrop
 		// closes the unresolved episode.
 		// A mere coarse-candidate dropout does not, because sparse dark pixels
 		// must not rearm alternating scope/full/scope decisions.
+		// Current sampling-retention proof closes only this presentation
+		// inspection; it does not establish fresh crop authority.
+		bool samplingRetentionResolved = false;
 		bool cropAuthorityResolved = false;
 		bool fullRasterAuthorityResolved = false;
 		bool confirmedVerticalFitResolved = false;
@@ -944,8 +947,8 @@ namespace AlphaSourceCrop
 		// A trusted full-raster observation must always withdraw it.
 		ActivePictureClassification latestObservationClassification =
 			ActivePictureClassification::UNAVAILABLE;
-		// Positive, frame-local proof that retaining the prior presentation
-		// excludes no currently visible pixels. This preserves presentation only;
+		// Current frame-local permission to retain the prior presentation: safe
+		// excluded bands or explicit one-step edge tolerance. Presentation only;
 		// it never grants or renews crop authority.
 		bool frameLocalPresentationRetentionEvaluated = false;
 		bool frameLocalPresentationRetentionSafe = false;

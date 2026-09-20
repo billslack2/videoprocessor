@@ -179,3 +179,102 @@ wider-content fill enabled. Visual acceptance and live overhead remain pending.
 `Alpha crop admission` reports explicit deferral, presentation/outward reasons, broad-picture proof and confirmations, raw/logical bounds, publication and history reacquisition. It logs deferral changes and at most one summary every two seconds while deferred. This distinguishes a raw subtitle-affected proposal from permission to change the logical aspect. No trace environment variable is needed.
 
 The subtitle-onset regression keeps the logical picture stable across remembered full-height proposals at 23.976/24/59.94/60 Hz. Explicit deferral blocks both local history and queued publication; each newly exposed edge requires current picture evidence. Recovery proof, black thresholds and nested-crop timing are unchanged. The recorded failure is prevented before the false logical publication can arm full-raster recovery; physical playback is still the acceptance test.
+
+## Provisional scan-step retention (2026-09-19)
+
+Both Andrew's vp73c85004.log.txt and the local session identify the same
+remaining failure on clean host/renderer build 73c85004. This build contains
+the crop updates through PR #97; the intervening PR #98 concerns packaging.
+
+Andrew's log contains 21 recoveries with retained bounds
+0,276-3840,1884, provisional bounds 0,276-3840,1888, safe sampled
+excluded bands, and no outward-visible evidence. Their durations are
+281-297 ms. The local log also shows this signature, including at 19:13:13,
+19:13:29, 19:24:30 and 19:24:54. Locally the vertical-inspection fallback
+also latches before recovery. The full-raster proof interval is the visible
+flash; the initial unnecessary withdrawal is the defect.
+
+The captured raster remains 3840x2160 with anamorphic scale 1.00000.
+The four-row difference is one acquisition step, changing inferred picture
+aspect from 2.38806 to 2.38213 (about 0.25%). These logs do not establish a
+pixel-aspect-ratio change or identify the exact source pixels causing the scan
+to stop early. Whole-bar sample statistics alone cannot prove every disputed
+row is safe.
+
+A provisional vertical proposal can now retain an existing opposing-bar crop
+when width is unchanged, each vertical edge and the aggregate height difference
+stay within one acquisition step, and the current excluded bands remain safe.
+The disputed outward rows receive an additional 256-position check per row,
+using the existing credible-luma cutoff and chroma tolerance. Bright or colored
+samples veto retention. This adds at most 1,024 source samples at 4K and uses
+the format-independent analysis source interface.
+
+This is permission to retain the existing rectangle only. Raw classification
+stays provisional; no new crop authority is granted. Larger conflicts, absent
+trusted bar axes, genuine visible expansion, recovery timing and detection
+thresholds retain their existing behavior.
+
+Additive fields in recovery and source-crop logs:
+
+- sampling_retained: this provisional one-step rule proved retention safe.
+- sampling_strip_conflict: the focused disputed-row check rejected retention.
+- Existing sampling_reaffirmed continues to describe trusted-geometry
+  equivalence; it has not been repurposed.
+
+Source-crop logging includes changes to these fields even if the final rectangle
+stays steady. No extra logging option or configuration change is required.
+
+Regression validation first reproduced rejection of the pixel-safe crop and
+the joined inspection/recovery fallback on the unmodified beta. The correction
+passes those fixtures, preserves the provisional observation, and rejects
+bright/colored narrow strips and larger expansions. Additional cases cover
+resolution scaling, lack of trusted axes, and combined two-step expansion.
+Fixtures reproduce the logged decision signature, not captured source pixels.
+Replay of the episode on the candidate build remains necessary for visual
+acceptance and live performance validation.
+
+Validation: x64 Release solution build succeeded; all 1,298 native tests passed.
+The two original reproductions failed before the correction and passed after it.
+Test artifacts: %TEMP%\vp-pixel-safe-20260919\scan-step-red.trx and
+scan-step-full.trx. The candidate has not yet been deployed for replay.
+
+## Shared presentation tolerance follow-up (2026-09-19)
+
+The initial 318cec4a candidate above was deployed with matching clean host and
+renderer identities at 19:37. Live replay still produced the same 1884-to-1888
+withdrawals at 19:45:17 and 19:45:29. Both records had safe broad bar samples but
+sampling_strip_conflict=1. Thus rejecting any bright/colored disputed-row sample
+was too conservative; the initial candidate did not resolve this playback case.
+
+The revised rule separates two facts: whether the sampled excluded pixels look
+black, and whether the boundary discrepancy warrants a presentation change.
+CanRetainPresentation accepts either strict pixel safety or the bounded
+provisional sampling equivalence. The latter requires an already trusted
+opposing-bar crop, unchanged width, safe broad excluded bands, and at most one
+acquisition step in each vertical edge and total height. At 4K this intentionally
+tolerates up to four source rows of edge content without changing framing.
+It does not relabel those pixels as black. Larger/other-axis discrepancies and
+measured outside-band content retain their existing behavior. The reference
+rectangle is never advanced by this rule, preventing cumulative drift.
+
+The same provisional-equivalence interpretation now feeds ordinary retention,
+vertical inspection resolution, and ordinary recovery proof. Once recovery is
+active, fresh matching samples may count toward its existing dwell even though
+the raw geometry remains provisional. Source generation/sequence, exact retained
+base, raster, classification, visibility, ownership and near-black gates remain.
+No new trusted aspect is published and no confirmation timer was enlarged.
+
+A new recovery regression failed before this consolidation: current retainable
+geometry produced zero qualifying frames. A bright one-row fixture also failed
+before the edge-tolerance change, reproducing the new live diagnostic signature.
+Negative cases cover stale and mismatched evidence, unsafe bands, changed width,
+larger expansion, cadence repeats, unrelated presentation ownership and epoch
+reset. Existing pixel-conflict assertions are retained separately from the
+intentional presentation tolerance.
+
+Additional log fields: sampling_equivalent, sampling_strip_peak_y, and
+sampling_strip_peak_uv_delta (10-bit source code units, chroma distance from 512).
+sampling_strip_conflict remains an honest pixel diagnostic and is not by itself
+a veto of a one-step border. sampling_retained still identifies strict strip
+proof. retention_safe describes permission to retain presentation, including
+this bounded tolerance.

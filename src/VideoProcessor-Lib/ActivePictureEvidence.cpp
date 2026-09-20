@@ -293,6 +293,53 @@ struct ExcludedBandVisibleExtent
 	int coordinate = 0;
 };
 
+// A provisional vertical edge may stop one coarse scan step early. This can
+// retain only an existing opposing-bar crop; it cannot establish new geometry,
+// change width, or excuse a material format change.
+bool IsVerticalSamplingProposal(const ActivePictureBounds& base,
+	const ActivePictureBounds& proposed)
+{
+	const auto axes=static_cast<unsigned>(base.trustedBarAxes);
+	if ((axes & static_cast<unsigned>(ActivePictureBounds::BarAxes::TOP_BOTTOM)) == 0 ||
+		base.top <= 0 || base.bottom >= base.rasterHeight ||
+		proposed.left != base.left || proposed.right != base.right)
+		return false;
+	const int step=std::max(2,base.rasterHeight / 540); // Same vertical grid as acquisition.
+	return std::abs(proposed.top-base.top) <= step &&
+		std::abs(proposed.bottom-base.bottom) <= step &&
+		std::abs((proposed.bottom-proposed.top)-(base.bottom-base.top)) <= step;
+}
+
+bool SamplingExpansionPixelsAreSafe(SampleContext& samples,
+	const ActivePictureBounds& base, const ActivePictureBounds& proposed,
+	int blackThreshold, int& peakY, int& peakChromaDelta)
+{
+	// Whole-bar sampling can miss a thin bright or colored strip. Inspect each
+	// disputed row at the existing visible-extent horizontal density, using the
+	// same credible-luma cutoff and retained-bar chroma tolerance. At 4K this
+	// costs at most 1,024 samples (the aggregate height delta is one scan step).
+	auto safeRow=[&](int y) {
+		bool rowSafe = true;
+		for (int i=0;i<kVisibleExtentLineSamples;++i)
+		{
+			const int x=((i*2+1)*samples.source.width)/(kVisibleExtentLineSamples*2);
+			AnalysisLumaSample pixel;
+			if (!samples.source.Sample(x,y,pixel)) return false;
+			++samples.lumaSamples; ++samples.chromaSamples;
+			const int chromaDelta = std::max(std::abs(int(pixel.chromaU)-512),
+				std::abs(int(pixel.chromaV)-512));
+			peakY = std::max(peakY,int(pixel.luma));
+			peakChromaDelta = std::max(peakChromaDelta,chromaDelta);
+			if (pixel.luma > blackThreshold+8 || chromaDelta > 32) rowSafe = false;
+		}
+		return rowSafe;
+	};
+	bool safe = true;
+	for (int y=proposed.top;y<base.top;++y) safe = safeRow(y) && safe;
+	for (int y=base.bottom;y<proposed.bottom;++y) safe = safeRow(y) && safe;
+	return safe;
+}
+
 bool IsCrediblyVisible(SampleContext& samples, int x, int y,
 	int blackThreshold)
 {
@@ -392,6 +439,23 @@ ExcludedBandVisibleExtent FindVerticalVisibleExtent(SampleContext& samples,
 }
 }
 
+
+bool CanRetainProvisionalSamplingCrop(const ActivePictureBounds& trusted,
+	const ActivePictureBounds& observed, ActivePictureClassification classification,
+	bool currentPresentationRetainable)
+{
+	// This consumes current retention eligibility, including explicit edge tolerance.
+	// It never promotes provisional geometry to new format authority. Callers
+	// must also bind that proof to the exact retained base and source sample.
+	AnalysisLumaSource raster;
+	raster.width = trusted.rasterWidth;
+	raster.height = trusted.rasterHeight;
+	return currentPresentationRetainable &&
+		classification == ActivePictureClassification::PROVISIONAL &&
+		IsValidBoundsForSource(trusted,raster) &&
+		IsValidBoundsForSource(observed,raster) &&
+		IsVerticalSamplingProposal(trusted,observed);
+}
 
 const char* ActivePictureAxisStateName(ActivePictureAxisState state)
 {
@@ -878,16 +942,29 @@ ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRete
 		IsValidBoundsForSource(result.activePicture.proposedBounds, source);
 	result.proposedBoundsContained = result.proposedBoundsAvailable &&
 		Contains(trustedPresentation, result.activePicture.proposedBounds);
-	// Acquisition may be inconclusive on a logo/title (or exhaust its scan
-	// budget) even though independent checks of every excluded band succeed.
-	// Missing geometry is not evidence of a larger picture. Preserve only the
-	// existing rectangle. Outside the established global-near-black exception,
-	// an available conflicting proposal vetoes retention. Every path still
-	// requires independently pixel-safe excluded bands.
+	// Provisional one-step vertical jitter is presentation evidence, not new
+	// aspect authority. Broad current bands must remain safe. Disputed-row
+	// pixels are reported separately: edge tolerance is not proof of blackness.
+	if (result.excludedBandsPixelSafe && !result.proposedBoundsContained &&
+		result.proposedBoundsAvailable && !result.globalNearBlack &&
+		result.activePicture.classification == ActivePictureClassification::PROVISIONAL &&
+		IsVerticalSamplingProposal(trustedPresentation,result.activePicture.proposedBounds))
+	{
+		result.samplingEquivalent = true;
+		result.samplingReaffirmed=SamplingExpansionPixelsAreSafe(samples,
+			trustedPresentation,result.activePicture.proposedBounds,blackThreshold,
+			result.samplingStripPeakY,result.samplingStripPeakChromaDelta);
+		result.samplingStripConflict=!result.samplingReaffirmed;
+	}
+	// Acquisition may also be unavailable on a logo/title or exhaust its scan
+	// budget. Retain only the existing rectangle when current bands are safe.
+	// Other available conflicting proposals still veto retention, except for
+	// the established global-near-black rule.
 	const bool geometryUnavailable = !result.activePicture.available &&
 		result.activePicture.classification == ActivePictureClassification::UNAVAILABLE;
 	result.currentlyPixelSafe = result.excludedBandsPixelSafe &&
-		(result.proposedBoundsContained || result.globalNearBlack || geometryUnavailable);
+		(result.proposedBoundsContained || result.samplingReaffirmed ||
+		 result.globalNearBlack || geometryUnavailable);
 	result.lumaSamples += samples.lumaSamples;
 	result.chromaSamples += samples.chromaSamples;
 
@@ -897,6 +974,10 @@ ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRete
 		result.reason = "visible, textured, or colored excluded-band pixels reject retention";
 	else if (result.proposedBoundsContained)
 		result.reason = "current proposal is contained and excluded bands remain pixel-safe";
+	else if (result.samplingReaffirmed)
+		result.reason = "one-scan-step provisional edge retained after current strip pixel proof";
+	else if (result.samplingStripConflict)
+		result.reason = "one-scan-step border content tolerated within established framing";
 	else if (result.globalNearBlack)
 		result.reason = "valid global near-black frame is pixel-safe without geometry";
 	else if (geometryUnavailable)

@@ -9,6 +9,12 @@
 #include "ActivePictureTransitionModel.h"
 
 
+// Shared presentation-only interpretation of the current provisional retention
+// proof. Source identity and exact measurement-base checks remain mandatory.
+bool CanRetainProvisionalSamplingCrop(const ActivePictureBounds& trusted,
+	const ActivePictureBounds& observed, ActivePictureClassification classification,
+	bool currentPresentationRetainable);
+
 struct P010PlaneView
 {
 	const uint8_t* data = nullptr;
@@ -74,7 +80,8 @@ struct ActivePictureGlobalNearBlackEvidence
 // rectangle. This does not grant crop authority and does not apply temporal
 // policy. It only answers whether this frame is valid to inspect, whether the
 // detector's current proposal remains inside the trusted presentation, and
-// whether every pixel band that presentation would exclude still looks safe.
+// whether excluded bands look safe. CanRetainPresentation additionally allows
+// the explicitly bounded sampling-edge tolerance; it does not call edge pixels black.
 //
 // A valid all-black/fade frame is intentionally distinct from an invalid
 // analysis source: it has analysisValid=true, globalNearBlack=true, and can be
@@ -90,6 +97,16 @@ struct ActivePicturePresentationRetentionEvidence
 	bool globalNearBlack = false;
 	bool proposedBoundsAvailable = false;
 	bool proposedBoundsContained = false;
+	// Retention-only proof for one provisional vertical scan step; no new authority.
+	bool samplingReaffirmed = false;
+	// Geometry tolerance is distinct from pixel blackness. A one-step
+	// provisional border can remain in the same established presentation even
+	// when that narrow strip contains real edge pixels. This cannot move the
+	// reference rectangle or establish new crop authority.
+	bool samplingEquivalent = false;
+	int samplingStripPeakY = 0;
+	int samplingStripPeakChromaDelta = 0;
+	bool samplingStripConflict = false;
 	bool excludedBandsPixelSafe = false;
 	bool excludedHorizontalBandsPixelSafe = false;
 	bool excludedVerticalBandsPixelSafe = false;
@@ -100,6 +117,11 @@ struct ActivePicturePresentationRetentionEvidence
 	ActivePictureBounds expansionCandidate;
 	ActivePictureEdgeEvidence expandingLeft, expandingTop, expandingRight, expandingBottom;
 	bool currentlyPixelSafe = false;
+	bool CanRetainPresentation() const
+	{
+		return analysisValid && presentationValid &&
+			(currentlyPixelSafe || samplingEquivalent);
+	}
 	// When excluded pixels are visibly occupied but remain spatially bounded,
 	// this is the smallest measured outward-only presentation envelope. It
 	// never grants inward crop authority; callers may only merge it with an
