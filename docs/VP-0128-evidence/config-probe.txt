@@ -1,0 +1,116 @@
+QUALITY fast BASE
+config.vprenderer.quality display=Fast data=fast effective=fast
+config.vprenderer.peak_detection.auto_status display=Auto: Off data= effective=
+config.vprenderer.contrast_recovery.auto_status display=Auto: 0.00 data= effective=
+config.vprenderer.scaling.upscaler.auto_status display=Auto: Built-in sampling data= effective=
+config.vprenderer.scaling.downscaler.auto_status display=Auto: Built-in sampling data= effective=
+config.vprenderer.scaling.sigmoid.auto_status display=Auto: Off data= effective=
+QUALITY fast INHERITED CHILD
+config.vprenderer.quality display=Inherited: Fast data= effective=fast
+config.vprenderer.peak_detection.auto_status display=Auto: High quality data= effective=
+config.vprenderer.contrast_recovery.auto_status display=Auto: 0.30 data= effective=
+config.vprenderer.scaling.upscaler.auto_status display=Auto: EWA Lanczos sharp data= effective=
+config.vprenderer.scaling.downscaler.auto_status display=Auto: Hermite data= effective=
+config.vprenderer.scaling.sigmoid.auto_status display=Auto: On data= effective=
+config.vprenderer.color.output_range display=Inherited: Limited data= effective=limited
+config.vprenderer.color.output_transport_gamma.auto_status display=Auto: Not used data= effective=
+QUALITY balanced BASE
+config.vprenderer.quality display=Balanced data=balanced effective=balanced
+config.vprenderer.peak_detection.auto_status display=Auto: Standard data= effective=
+config.vprenderer.contrast_recovery.auto_status display=Auto: 0.00 data= effective=
+config.vprenderer.scaling.upscaler.auto_status display=Auto: Lanczos data= effective=
+config.vprenderer.scaling.downscaler.auto_status display=Auto: Hermite data= effective=
+config.vprenderer.scaling.sigmoid.auto_status display=Auto: On data= effective=
+QUALITY balanced INHERITED CHILD
+config.vprenderer.quality display=Inherited: Balanced data= effective=balanced
+config.vprenderer.peak_detection.auto_status display=Auto: High quality data= effective=
+config.vprenderer.contrast_recovery.auto_status display=Auto: 0.30 data= effective=
+config.vprenderer.scaling.upscaler.auto_status display=Auto: EWA Lanczos sharp data= effective=
+config.vprenderer.scaling.downscaler.auto_status display=Auto: Hermite data= effective=
+config.vprenderer.scaling.sigmoid.auto_status display=Auto: On data= effective=
+config.vprenderer.color.output_range display=Inherited: Limited data= effective=limited
+config.vprenderer.color.output_transport_gamma.auto_status display=Auto: Not used data= effective=
+QUALITY high BASE
+config.vprenderer.quality display=High data=high effective=high
+config.vprenderer.peak_detection.auto_status display=Auto: High quality data= effective=
+config.vprenderer.contrast_recovery.auto_status display=Auto: 0.30 data= effective=
+config.vprenderer.scaling.upscaler.auto_status display=Auto: EWA Lanczos sharp data= effective=
+config.vprenderer.scaling.downscaler.auto_status display=Auto: Hermite data= effective=
+config.vprenderer.scaling.sigmoid.auto_status display=Auto: On data= effective=
+QUALITY high INHERITED CHILD
+config.vprenderer.quality display=Inherited: High data= effective=high
+config.vprenderer.peak_detection.auto_status display=Auto: High quality data= effective=
+config.vprenderer.contrast_recovery.auto_status display=Auto: 0.30 data= effective=
+config.vprenderer.scaling.upscaler.auto_status display=Auto: EWA Lanczos sharp data= effective=
+config.vprenderer.scaling.downscaler.auto_status display=Auto: Hermite data= effective=
+config.vprenderer.scaling.sigmoid.auto_status display=Auto: On data= effective=
+config.vprenderer.color.output_range display=Inherited: Limited data= effective=limited
+config.vprenderer.color.output_transport_gamma.auto_status display=Auto: Not used data= effective=
+BOOLEAN true parser=0 error=[vprenderer.zoom.default] must be exactly one named variant
+config.vprenderer.color.output_diagnostics display=checked data= effective=true
+config.vprenderer.color.report_bt2020_to_display display=checked data= effective=true
+config.vprenderer.zoom.automatic_crop display=checked data= effective=true
+config.vprenderer.zoom.subtitle_fit display=checked data= effective=true
+BOOLEAN on parser=0 error=[vprenderer.zoom.default] must be exactly one named variant
+config.vprenderer.color.output_diagnostics display=unchecked data= effective=on
+config.vprenderer.color.report_bt2020_to_display display=unchecked data= effective=on
+config.vprenderer.zoom.automatic_crop display=unchecked data= effective=on
+config.vprenderer.zoom.subtitle_fit display=unchecked data= effective=on
+BOOLEAN yes parser=0 error=[vprenderer.zoom.default] must be exactly one named variant
+config.vprenderer.color.output_diagnostics display=unchecked data= effective=yes
+config.vprenderer.color.report_bt2020_to_display display=unchecked data= effective=yes
+config.vprenderer.zoom.automatic_crop display=unchecked data= effective=yes
+config.vprenderer.zoom.subtitle_fit display=unchecked data= effective=yes
+BOOLEAN 1 parser=0 error=[vprenderer.zoom.default] must be exactly one named variant
+config.vprenderer.color.output_diagnostics display=unchecked data= effective=1
+config.vprenderer.color.report_bt2020_to_display display=unchecked data= effective=1
+config.vprenderer.zoom.automatic_crop display=unchecked data= effective=1
+config.vprenderer.zoom.subtitle_fit display=unchecked data= effective=1
+BOOLEAN false parser=0 error=[vprenderer.zoom.default] must be exactly one named variant
+config.vprenderer.color.output_diagnostics display=unchecked data= effective=false
+config.vprenderer.color.report_bt2020_to_display display=unchecked data= effective=false
+config.vprenderer.zoom.automatic_crop display=unchecked data= effective=false
+config.vprenderer.zoom.subtitle_fit display=unchecked data= effective=false
+INITIAL missing
+config.vprenderer.sdr_target_nits display=100 data=acceptable effective=100
+config.vprenderer.sdr_black_nits display=0 data=acceptable effective=0
+config.vprenderer.display_bit_depth display=10-bit data=10 effective=10
+config.vprenderer.color.output_gamma display=2.2 data=2.2 effective=2.2
+config.vprenderer.scaling.upscaler display=Inherited / not set data= effective=
+configurationStatus display=Unsaved changes. OK or Apply will validate again before saving. data= effective=
+INITIAL empty
+config.vprenderer.sdr_target_nits display= data=INVALID effective=
+config.vprenderer.sdr_black_nits display= data=INVALID effective=
+config.vprenderer.display_bit_depth display=Inherited / not set data= effective=
+config.vprenderer.color.output_gamma display=Inherited / not set data= effective=
+config.vprenderer.scaling.upscaler display=Inherited / not set data= effective=
+configurationStatus display=Unsaved changes. OK or Apply will validate again before saving. data= effective=
+INITIAL minimal
+config.vprenderer.sdr_target_nits display= data=INVALID effective=
+config.vprenderer.sdr_black_nits display= data=INVALID effective=
+config.vprenderer.display_bit_depth display=Inherited / not set data= effective=
+config.vprenderer.color.output_gamma display=Inherited / not set data= effective=
+config.vprenderer.scaling.upscaler display=Inherited / not set data= effective=
+configurationStatus display=Unsaved changes. OK or Apply will validate again before saving. data= effective=
+INITIAL sample
+config.vprenderer.sdr_target_nits display=100 data=acceptable effective=100
+config.vprenderer.sdr_black_nits display=0 data=acceptable effective=0
+config.vprenderer.display_bit_depth display=10-bit data=10 effective=10
+config.vprenderer.color.output_gamma display=2.2 data=2.2 effective=2.2
+config.vprenderer.scaling.upscaler display=Inherited / not set data= effective=
+configurationStatus display=Unsaved changes. OK or Apply will validate again before saving. data= effective=
+DOWNSCALER ewa_lanczos parser=1 error=
+config.vprenderer.scaling.downscaler display=Auto data=AUTO effective=
+configurationStatus display=Unsaved changes. OK or Apply will validate again before saving. data= effective=
+save_enabled=1
+saved_still_contains_value=0
+DOWNSCALER none parser=1 error=
+config.vprenderer.scaling.downscaler display=Auto data=AUTO effective=
+configurationStatus display=Unsaved changes. OK or Apply will validate again before saving. data= effective=
+save_enabled=1
+saved_still_contains_value=0
+DOWNSCALER typo_filter parser=0 error=[vprenderer.scaling] key 'downscaler' is not a valid scaling setting
+config.vprenderer.scaling.downscaler display=Auto data=AUTO effective=
+configurationStatus display=Unsaved changes. OK or Apply will validate again before saving. data= effective=
+save_enabled=1
+saved_still_contains_value=0

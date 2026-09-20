@@ -1,0 +1,6 @@
+fast up=built-in down=built-in tone=spline gamut=perceptual contrast=0 peak=off percentile=0 deband=off sigmoid=off dither=-1 error_diffusion=none frame_mixer=none
+serialized fast
+balanced up=lanczos down=hermite tone=spline gamut=perceptual contrast=0 peak=on percentile=100 deband=off sigmoid=on dither=0 error_diffusion=none frame_mixer=oversample
+serialized balanced upscaler=lanczos,downscaler=hermite,frame_mixer=oversample,sigmoid=yes,peak_detect=yes,dither=yes
+high up=ewa_lanczossharp down=hermite tone=spline gamut=perceptual contrast=0.3 peak=on percentile=99.995 deband=on sigmoid=on dither=0 error_diffusion=none frame_mixer=oversample
+serialized high upscaler=ewa_lanczossharp,downscaler=hermite,frame_mixer=oversample,deband=yes,sigmoid=yes,peak_detect=yes,peak_percentile=99.99500274658203,contrast_recovery=0.30000001192092896,dither=yes

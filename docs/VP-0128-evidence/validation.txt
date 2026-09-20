@@ -1,0 +1,14 @@
+Baseline b3c0b3a6a8fdf4f5bb1c9ce0dc3340a3d5e395d7, 2026-09-20
+MSBuild 18 Professional; project-defined v142 and v143; Qt 6.8.3 msvc2022_64.
+Release|x64 solution build: exit 0, 26 warnings, 0 errors.
+VideoProcessorConfigTests.exe: QT_QPA_PLATFORM=offscreen; exit 0; 75 PASS, 0 FAIL.
+Physical second-monitor case skipped; synthetic negative-origin clamp/live HWND coverage ran.
+Native VSTest: exit 0; total 435; passed 435.
+Filter: FullyQualifiedName~Config|FullyQualifiedName~Profile|FullyQualifiedName~Libplacebo|FullyQualifiedName~QueuePolicy|FullyQualifiedName~QueueConstruction|FullyQualifiedName~Startup|FullyQualifiedName~Lldv|FullyQualifiedName~Shader
+Additional ConfigProbe includes the existing editor test harness but does not run its main suite.
+It uses disposable configs and performs a post-construction active-status refresh.
+Ordinary named defaults avoid conflating its inheritance checks with the separately source-traced Base-identity defect.
+NativeProbe calls the production LibplaceboRenderParameters::Build and serializes native options.
+The observations intentionally record existing defects; a zero probe exit is not a no-defects assertion.
+To reproduce: build the ordinary Release solution, then run reproduce.ps1 from this directory.
+No production source changes or deployment.
