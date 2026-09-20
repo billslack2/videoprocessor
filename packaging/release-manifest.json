@@ -67,6 +67,7 @@
     }
   ],
   "files": [
+    {"sourceRoot":"repository","source":"LICENSE.txt","destination":"LICENSE.txt","owner":"VideoProcessor","sourceVersion":"Current source commit","consumer":"Operator","loadMechanism":"License","reason":"Retain application license and distribution restrictions."},
     {"sourceRoot": "repository", "source": "packaging/SETUP-RUNTIME.cmd", "destination": "SETUP-RUNTIME.cmd", "owner": "VideoProcessor prerequisites", "sourceVersion": "Current release; installer version recorded at staging", "consumer": "Operator setup", "loadMechanism": "SETUP-RUNTIME.cmd", "reason": "Check and install the required Microsoft x64 runtime before launching VP or Config."},
     {"sourceRoot": "repository", "source": "packaging/START-HERE.txt", "destination": "START-HERE.txt", "owner": "VideoProcessor prerequisites", "sourceVersion": "Current release; installer version recorded at staging", "consumer": "Operator setup", "loadMechanism": "SETUP-RUNTIME.cmd", "reason": "Check and install the required Microsoft x64 runtime before launching VP or Config."},
     {"sourceRoot": "repository", "source": "packaging/prerequisites/setup-runtime.ps1", "destination": "prerequisites/setup-runtime.ps1", "owner": "VideoProcessor prerequisites", "sourceVersion": "Current release; installer version recorded at staging", "consumer": "Operator setup", "loadMechanism": "SETUP-RUNTIME.cmd", "reason": "Check and install the required Microsoft x64 runtime before launching VP or Config."},
