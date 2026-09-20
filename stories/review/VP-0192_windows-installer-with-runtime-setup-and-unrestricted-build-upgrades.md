@@ -431,3 +431,34 @@ user's explicit app-local requirement.
 - Remaining qualification is unchanged: clean Windows without Visual Studio,
   absent/old global runtime scenarios, interactive Config persistence/unsaved
   work, player/hardware launch and real forced interruption.
+
+## Latest-beta release build (2026-09-20)
+
+- User requested checking recent merges, then pulling latest beta, deploying,
+  and building both installer and portable ZIP. GitHub showed no open PRs;
+  recent implementation PRs #93 through #104 are merged. Investigation-only
+  zoom/default-screen-aspect work remains an unresolved finding, not a merged fix.
+- Fresh clean worktree: E:\codex\videoprocessor\release-beta-20260920-b3c0b3a6.
+  Exact latest-beta source: b3c0b3a6a8fdf4f5bb1c9ce0dc3340a3d5e395d7.
+  No source edits or separate installer-tooling overlay.
+- Full Release/x64 rebuild succeeded: zero errors, 43 existing warnings.
+  All 1,381 unit tests passed; 49 preservation/recovery, 12 identity and
+  23 runtime regression checks passed. All 70 portable ZIP manifest files
+  were independently hash-verified directly from the archive.
+- Output directory: E:\codex\releases\VideoProcessor-1.3.005-beta-b3c0b3a6a8fd-20260920
+  - [Installer](E:/codex/releases/VideoProcessor-1.3.005-beta-b3c0b3a6a8fd-20260920/VideoProcessorSetup-1.3.005-beta-b3c0b3a6a8fd.exe)
+  - [Portable ZIP](E:/codex/releases/VideoProcessor-1.3.005-beta-b3c0b3a6a8fd-20260920/VideoProcessor-1.3.005-beta-b3c0b3a6a8fd-x64-Portable.zip)
+  - Each artifact has an adjacent .sha256 sidecar.
+  - [Release receipt](E:/codex/releases/VideoProcessor-1.3.005-beta-b3c0b3a6a8fd-20260920/validation/release-receipt.json)
+- Installer SHA-256: A068DED56FC550B5C2C5983B18BDD5390EC9B89E07956E00E82FDC86AA795018
+- ZIP SHA-256: 91B751F6F39064FCE5250C84B40AF950C0C84D6F5FB233890F4B5DD4077BBF09
+- Both distributions are unsigned. The legacy central-runtime diagnostic
+  returned 1 for the already-documented MFC/CRT floor mismatch; the actual
+  app-local dependency, signature, version and hash validation passed.
+- Deployment and new real-installer lifecycle execution are pending because
+  Config PID 4168 is running from C:\Videoprocessor\vp\config. The user was
+  asked to save and Exit Config; no active application or user data was changed.
+  Isolated QA installers compiled successfully with separate registration and
+  Start-menu identity; no QA installation was run while Config was active.
+  Previous 278 lifecycle checks and remaining clean-Windows/interactive
+  qualification limitations remain as recorded above. VP-0189 stays in Review.
