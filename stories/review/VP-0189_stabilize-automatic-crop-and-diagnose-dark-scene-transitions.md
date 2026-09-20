@@ -897,3 +897,48 @@ C:\Videoprocessor\vp\backups\transition-handoff-40ad343e-20260919-230940.
 Build/test logs, deployment receipt, startup log and SHA-256 records:
 C:\Users\bslac\Documents\ChatGPT\Done\crop-transition-handoff-20260919.
 No new ZIP, installer, source push or beta merge. Replay validation is now ready.
+
+## September 19 buffered expansion confirmation
+
+**Keep Review.** The user requested that the existing lookahead supply the
+three-frame picture confirmation, followed by independent review. The preserved
+40ad343e log contains seven scope-to-taller transitions: six waited three source
+intervals (125 ms at 24 fps), one waited two (83 ms). Existing preview evidence
+was collected after dequeue and rejected by the separate live proof gate.
+
+Local candidate e0d226ad1e6e0a4ee3d27fe19d23acbb2a4a95f5:
+codex/crop-lookahead-proof, E:\codex\videoprocessor\crop-lookahead-proof.
+Started from freshly fetched beta 525767f6, carrying the tested 40ad343e changes.
+
+Preview now inspects current plus two already buffered source frames before
+consuming current. A narrow full-width, both-edge vertical expansion can publish
+on its first changed frame when all three samples provide broad, non-near-black
+picture evidence. There is no extra queue wait or depth increase. The proof uses
+first-frame coordinates and does not advance live state to future counters.
+
+Exact current pixels, model admission, subtitle ownership, anchored four-pixel
+noise tolerance, final admission and recovery remain active. Continuity, capture
+counter gaps, source/viewport/policy context and still-queued identities are
+checked. Insufficient or ambiguous evidence retains the normal fallback.
+Additional inspection timing and current-proof validation are logged.
+
+RED: the original live gate rejected first-frame publication despite three real
+P010 pixel-backed observations. GREEN: clean x64 Release solution rebuild and
+**1350/1350 tests passed**. Fourteen added tests cover proof, continuity, stale
+state, subtitle conflicts, repeated transitions and subsequent clean-bar jitter.
+All twelve changed/new source files match the pre-build snapshot. Two independent
+final reviews found no concrete blocker. Review identified and closed a timeline
+continuity-stamping loophole. A compile namespace typo in the final preflight was
+corrected and the full clean build rerun; failed-build evidence is preserved.
+
+Actual picture growth is tested separately from detector jitter. That pixel
+control does not establish a visible bounce or justify a stricter future-pixel
+guard. Live HDMI cadence, resize/profile changes, perceptual smoothness and
+inspection cost still need playback validation.
+
+Design: docs/VP-0189_BUFFERED_EXPANSION_PROOF.md in the source checkout.
+Build/test/source snapshots and receipt:
+C:\Users\bslac\Documents\ChatGPT\Done\crop-lookahead-proof-20260919.
+Source is committed locally, not pushed, merged, deployed or packaged. Validation
+preceded the commit; deployment requires rebuilding the clean committed identity.
+Running installation remains 40ad343e, and configuration is unchanged.
