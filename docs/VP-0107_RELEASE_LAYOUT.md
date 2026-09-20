@@ -148,3 +148,10 @@ installation. Open packaged Config with a disposable configuration, change a val
 Apply, OK, reopen, and verify persistence while VP is closed. Check that setup leaves
 existing configuration/state files unchanged. Record actual results and distinguish
 automated prerequisite checks from a real clean-machine installer run.
+
+## Windows installer
+
+For a single setup executable with automatic runtime setup, selectable and remembered
+installation location, preserved operator data and unrestricted build replacement,
+see [VP-0192 installer instructions](VP-0192_INSTALLER.md). The portable ZIP
+continues to require SETUP-RUNTIME.cmd as described above.
