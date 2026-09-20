@@ -3894,6 +3894,8 @@ struct LibplaceboVideoRenderer::Impl
 	bool lastCropAdmissionDeferred = false;
 	ActivePicturePresentationRetentionEvidence latestCropRetentionEvidence;
 	AlphaSourceCrop::PresentationRecoveryState cropPresentationRecovery;
+	AlphaSourceCrop::CropPresentationAdmissionState cropPresentationAdmission;
+	bool cropAdmissionPreviouslyBlocked = false;
 	const std::string diagnosticInstanceId = CreateRendererDiagnosticInstanceId();
 	bool blackLevelTraceConfigured = false;
 	unsigned blackLevelTraceRemaining = 0, blackLevelTraceSnapshot = 0;
@@ -8067,6 +8069,8 @@ struct LibplaceboVideoRenderer::Impl
 		latestCropRetentionEvidence = {};
 		latestCropSamplingReaffirmed = false;
 		cropPresentationRecovery = {};
+		cropPresentationAdmission = {};
+		cropAdmissionPreviouslyBlocked = false;
 		cropDiagnosticActive = false;
 		cropDiagnosticPreviousAvailable = false;
 		cropDiagnosticLastEvidenceSequence = 0;
@@ -11057,12 +11061,29 @@ struct LibplaceboVideoRenderer::Impl
 			const auto recoveryDecision = AlphaSourceCrop::EvaluatePresentationRecovery(recoveryInput);
 			cropPresentationRecovery = recoveryDecision.state;
 			cropDecision = recoveryDecision.presentation;
+			const auto admissionDecision = AlphaSourceCrop::AdmitCropPresentation(
+				cropPresentationAdmission, cropInput, cropDecision, viewportRequestSerial);
+			if (admissionDecision.blocked != cropAdmissionPreviouslyBlocked)
+			{
+				DebugLog::Log("Alpha crop admission: instance=%s generation=%llu sequence=%llu epoch=%llu blocked=%d reference=%d prior=%d,%d-%d,%d candidate=%d,%d-%d,%d candidate_owner=%s picture_supported=%d reason=\"%s\"",
+					diagnosticInstanceId.c_str(), frameGeneration, sourceSequence, viewportRequestSerial,
+					admissionDecision.blocked ? 1 : 0, admissionDecision.state.available ? 1 : 0,
+					cropPresentationAdmission.trustedCrop.left, cropPresentationAdmission.trustedCrop.top,
+					cropPresentationAdmission.trustedCrop.right, cropPresentationAdmission.trustedCrop.bottom,
+					cropInput.geometry.left, cropInput.geometry.top, cropInput.geometry.right, cropInput.geometry.bottom,
+					AlphaSourceCrop::DecisionOwnerName(cropDecision.owner),
+					cropInput.latestObservationSupportsCrop ? 1 : 0, admissionDecision.presentation.reason.c_str());
+			}
+			cropAdmissionPreviouslyBlocked = admissionDecision.blocked;
+			cropPresentationAdmission = admissionDecision.state;
+			cropDecision = admissionDecision.presentation;
 
 			const double panelTargetAspect = pl_rect2df_aspect(&target.crop);
 			const double finalTargetAspect = ResolveNlsTargetAspect(
 				configuredScreenActive, configuredScreenAspect, panelTargetAspect);
 			const bool nlsPresentationFailOpen = nlsRequested &&
-				(cropInput.presentationFailOpen || nearBlackEpisodeFullRaster || cropPresentationRecovery.active);
+				(cropInput.presentationFailOpen || nearBlackEpisodeFullRaster ||
+				 cropPresentationRecovery.active || admissionDecision.blocked);
 			const bool nlsActivePictureAvailable = nlsRequested &&
 				!nlsPresentationFailOpen && effectiveGeometryAvailable &&
 				effectiveGeometrySourceGeneration == frameGeneration;
@@ -11193,7 +11214,8 @@ struct LibplaceboVideoRenderer::Impl
 				presentationCropBounds.bottom != cropDiagnosticPreviousBounds.bottom;
 			const bool cropOwnerChanged = !cropDiagnosticPreviousAvailable ||
 				cropDiagnosticPreviousOwner != cropDecision.owner;
-			const bool cropUnresolved = cropPresentationRecovery.active || nearBlackEpisodeFullRaster;
+			const bool cropUnresolved = cropPresentationRecovery.active ||
+				nearBlackEpisodeFullRaster || admissionDecision.blocked;
 			const bool cropEventStarted = cropUnresolved && !cropDiagnosticActive;
 			const bool cropEventEnded = !cropUnresolved && cropDiagnosticActive;
 			if (cropEventStarted)

@@ -1055,6 +1055,31 @@ namespace AlphaSourceCrop
 	};
 
 
+	// Tracks the logical contract of an actually applied crop, independently of
+	// temporary full-raster withdrawals and of diagnostic logging.
+	struct CropPresentationAdmissionState
+	{
+		bool available = false;
+		ActivePictureBounds trustedCrop;
+		uint64_t sourceGeneration = 0;
+		uint64_t presentationEpoch = 0;
+	};
+
+	struct CropPresentationAdmissionDecision
+	{
+		CropPresentationAdmissionState state;
+		Decision presentation;
+		bool blocked = false;
+	};
+
+	// Candidate must be the result of Evaluate followed by presentation recovery.
+	// Run before fill/NLS so neither can use geometry rejected by this admission.
+	CropPresentationAdmissionDecision AdmitCropPresentation(
+		const CropPresentationAdmissionState& previous,
+		const Input& input, const Decision& candidate,
+		uint64_t presentationEpoch);
+
+
 	// A temporary presentation withdrawal is not full-raster aspect authority.
 	// Once armed, every ordinary inward owner must prove the current saved crop
 	// safe on distinct adjacent source frames for 250 ms. This does not delay

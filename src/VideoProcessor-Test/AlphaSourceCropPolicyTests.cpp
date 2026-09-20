@@ -162,13 +162,13 @@ namespace Tests
 			}
 		};
 
-		void AssertFullRaster(const Decision& decision)
+		void AssertFullRaster(const Decision& decision, int width = 3840, int height = 2160)
 		{
 			Assert::IsFalse(decision.applyCrop);
 			Assert::AreEqual(0, decision.sourceBounds.left);
 			Assert::AreEqual(0, decision.sourceBounds.top);
-			Assert::AreEqual(3840, decision.sourceBounds.right);
-			Assert::AreEqual(2160, decision.sourceBounds.bottom);
+			Assert::AreEqual(width, decision.sourceBounds.right);
+			Assert::AreEqual(height, decision.sourceBounds.bottom);
 		}
 
 		NearBlackPresentationEpisodeInput ReaffirmedRetainedScope()
@@ -1886,6 +1886,7 @@ namespace Tests
 				input.crop = TrustedScopeCrop();
 				input.crop.geometry = { 0, 208, 3840, 1948, 3840, 2160,
 					3840.0 / 1740.0, ActivePictureBounds::BarAxes::TOP_BOTTOM };
+				auto admission = AdmitCropPresentation({}, input.crop, Evaluate(input.crop), 0).state;
 				ActivePictureTransitionModel model;
 				for (uint64_t frame = 1; frame <= 4; ++frame)
 					model.Observe({ input.crop.geometry, frame, true,
@@ -1925,6 +1926,10 @@ namespace Tests
 					Assert::IsTrue(d.samplingReaffirmed);
 					Assert::AreEqual(n, d.samples);
 					Assert::AreEqual(n == required, d.presentation.applyCrop);
+					const auto presented = AdmitCropPresentation(admission, input.crop, d.presentation, 0);
+					Assert::AreEqual(d.presentation.applyCrop, presented.presentation.applyCrop);
+					Assert::IsFalse(presented.blocked);
+					admission = presented.state;
 					if (d.presentation.applyCrop)
 					{
 						Assert::AreEqual(1948, d.presentation.sourceBounds.bottom);
@@ -2100,6 +2105,7 @@ namespace Tests
 			{
 				PresentationRecoveryInput input;
 				input.crop = TrustedScopeCrop();
+				auto admission = AdmitCropPresentation({}, input.crop, Evaluate(input.crop), 0).state;
 				input.crop.frameSourceSequence = 100;
 				input.crop.latestObservationSupportsCrop = false;
 				input.crop.latestObservationIsProvisional = true;
@@ -2125,6 +2131,10 @@ namespace Tests
 					Assert::AreEqual(required, d.required);
 					Assert::AreEqual(sample, d.samples);
 					Assert::AreEqual(sample == required, d.presentation.applyCrop);
+					const auto presented = AdmitCropPresentation(admission, input.crop, d.presentation, 0);
+					Assert::AreEqual(d.presentation.applyCrop, presented.presentation.applyCrop);
+					Assert::IsFalse(presented.blocked);
+					admission = presented.state;
 					input.previous = d.state;
 				}
 				Assert::IsTrue(d.released);
@@ -3564,6 +3574,148 @@ namespace Tests
 			Input fullRaster = input;
 			fullRaster.fullRasterPresentationAuthoritative = true;
 			AssertFullRaster(Evaluate(fullRaster));
+		}
+
+		TEST_METHOD(ScrollingTextRetentionCannotIntroduceUnpresentedCrop)
+		{
+			Input crop = TrustedScopeCrop();
+			crop.geometry = { 0, 476, 3840, 1688, 3840, 2160,
+				3840.0 / 1212.0, ActivePictureBounds::BarAxes::TOP_BOTTOM };
+			crop.latestObservationSupportsCrop = false;
+			crop.latestObservationClassification = ActivePictureClassification::BAR_CROP_TRUSTED;
+			crop.frameLocalPresentationRetentionEvaluated = true;
+			crop.frameLocalPresentationRetentionSafe = false;
+			crop.barCropRefinementPending = true;
+			crop.verticalTranslationConfirmationPending = true;
+			crop.verticalTranslationBase = crop.geometry;
+			crop.verticalTranslationSourceGeneration = 7;
+			CropPresentationAdmissionState admission;
+			for (uint64_t sequence = 984; sequence < 994; ++sequence)
+			{
+				crop.frameSourceSequence = sequence;
+				// Both owners admitted the unpresented 3.17:1 text envelope.
+				const auto candidate = Evaluate(crop);
+				Assert::IsTrue(candidate.applyCrop);
+				const auto actual = AdmitCropPresentation(admission, crop, candidate, 0);
+				AssertFullRaster(actual.presentation);
+				Assert::IsTrue(actual.blocked);
+				admission = actual.state;
+				Assert::IsFalse(admission.available);
+			}
+			// The following title episode remains full raster. Fresh picture proof
+			// can then acquire ordinary scope without a new timer or restart.
+			crop.nearBlackEpisodeFullRaster = true;
+			AssertFullRaster(AdmitCropPresentation(admission, crop, Evaluate(crop), 0).presentation);
+			crop = TrustedScopeCrop();
+			const auto scope = AdmitCropPresentation(admission, crop, Evaluate(crop), 0);
+			Assert::IsTrue(scope.presentation.applyCrop);
+			Assert::IsTrue(scope.state.available);
+			Assert::AreEqual(274, scope.presentation.sourceBounds.top);
+		}
+
+		TEST_METHOD(PendingPresentationOwnersCannotBootstrapAnUnseenCrop)
+		{
+			for (int owner = 0; owner < 12; ++owner)
+			{
+				Input crop = TrustedScopeCrop();
+				crop.latestObservationSupportsCrop = false;
+				crop.latestObservationIsProvisional = true;
+				crop.latestObservationClassification = ActivePictureClassification::PROVISIONAL;
+				crop.frameSourceSequence = 100;
+				crop.verticalTranslationBase = crop.geometry;
+				crop.verticalTranslationSourceGeneration = 7;
+				if (owner == 0) { crop.latestObservationIsProvisional = false;
+					crop.latestObservationClassification = ActivePictureClassification::BAR_CROP_TRUSTED;
+					crop.barCropRefinementPending = true; }
+				if (owner == 1) crop.verticalTranslationConfirmationPending = true;
+				if (owner == 2) crop.verticalFitConfirmationPending = true;
+				if (owner == 3) { crop.verticalInspectionPending = true;
+					crop.verticalInspectionSourceGeneration = 7; crop.verticalInspectionSourceSequence = 100; }
+				if (owner == 4) { crop.frameLocalPresentationRetentionEvaluated = true;
+					crop.frameLocalPresentationRetentionSafe = true; }
+				if (owner == 5) crop.nearBlackEpisodeRetainCrop = true;
+				if (owner == 6) crop.sceneVerificationHoldActive = true;
+				if (owner == 7) crop.ambiguityHoldActive = true;
+				if (owner == 8) { crop.outwardPresentationActive = crop.outwardExpansionAvailable = true;
+					crop.outwardExpansion = crop.geometry; crop.outwardExpansion.bottom += 20;
+					crop.outwardExpansionSourceGeneration = 7; }
+				if (owner == 9) { crop.verticalTranslationActive = true; crop.verticalTranslationPixels = 20; }
+				if (owner == 10) crop.verticalTranslationBaseRetentionActive = true;
+				if (owner == 11) crop.verticalTranslationEngageBaseRetentionActive = true;
+				const auto candidate = Evaluate(crop);
+				Assert::IsTrue(candidate.applyCrop);
+				AssertFullRaster(AdmitCropPresentation({}, crop, candidate, 3).presentation);
+				// The identical pending owner may retain a picture already acquired.
+				Input acquisition = crop;
+				acquisition.latestObservationSupportsCrop = true;
+				const auto prior = AdmitCropPresentation({}, acquisition, Evaluate(acquisition), 3).state;
+				Assert::IsTrue(AdmitCropPresentation(prior, crop, candidate, 3).presentation.applyCrop);
+			}
+		}
+
+		TEST_METHOD(PresentationAdmissionPreservesRealAspectChangesAndExistingRetention)
+		{
+			CropPresentationAdmissionState state;
+			// One unchanged raster, with real inward and outward format changes:
+			// approximately 2.20 -> 1.43 -> 2.20 -> 2.35 -> 1.90 -> 2.35.
+			for (int top : { 478, 8, 478, 532, 340, 532 })
+			{
+				Input crop = TrustedScopeCrop();
+				crop.rasterHeight = 2700;
+				crop.geometry = { 0, top, 3840, 2700-top, 3840, 2700,
+					3840.0 / (2700-2*top), ActivePictureBounds::BarAxes::TOP_BOTTOM };
+				const auto acquired = AdmitCropPresentation(state, crop, Evaluate(crop), 3);
+				Assert::IsTrue(acquired.presentation.applyCrop);
+				Assert::IsFalse(acquired.blocked);
+				state = acquired.state;
+				crop.latestObservationSupportsCrop = false;
+				crop.latestObservationClassification = ActivePictureClassification::BAR_CROP_TRUSTED;
+				crop.barCropRefinementPending = true;
+				const auto retained = AdmitCropPresentation(state, crop, Evaluate(crop), 3);
+				Assert::IsTrue(retained.presentation.applyCrop);
+				Assert::AreEqual(crop.geometry.top, retained.presentation.sourceBounds.top);
+			}
+		}
+
+		TEST_METHOD(PresentationRetentionRejectsDifferentContractOrContext)
+		{
+			Input original = TrustedScopeCrop();
+			const auto prior = AdmitCropPresentation({}, original, Evaluate(original), 3).state;
+			for (int variant = 0; variant < 5; ++variant)
+			{
+				auto crop = original;
+				crop.latestObservationSupportsCrop = false;
+				crop.latestObservationClassification = ActivePictureClassification::BAR_CROP_TRUSTED;
+				crop.barCropRefinementPending = true;
+				uint64_t epoch = 3;
+				if (variant == 0) { crop.geometry.top = 476; crop.geometry.bottom = 1688; }
+				if (variant == 1) crop.frameSourceGeneration = crop.geometrySourceGeneration = 8;
+				if (variant == 2) epoch = 4;
+				if (variant == 3) { crop.rasterWidth = crop.geometry.rasterWidth = crop.geometry.right = 1920; }
+				if (variant == 4) crop.geometry.trustedBarAxes = ActivePictureBounds::BarAxes::NONE;
+				AssertFullRaster(AdmitCropPresentation(prior, crop, Evaluate(crop), epoch).presentation,
+					crop.rasterWidth, crop.rasterHeight);
+			}
+		}
+
+		TEST_METHOD(TemporaryWithdrawalPreservesReferenceButFullRasterAuthorityClearsIt)
+		{
+			Input crop = TrustedScopeCrop();
+			auto state = AdmitCropPresentation({}, crop, Evaluate(crop), 3).state;
+			crop.presentationFailOpen = true;
+			auto withdrawal = AdmitCropPresentation(state, crop, Evaluate(crop), 3);
+			AssertFullRaster(withdrawal.presentation);
+			Assert::IsTrue(withdrawal.state.available);
+			crop.presentationFailOpen = false;
+			crop.latestObservationSupportsCrop = false;
+			crop.latestObservationIsProvisional = true;
+			crop.frameLocalPresentationRetentionSafe = true;
+			Assert::IsTrue(AdmitCropPresentation(withdrawal.state, crop, Evaluate(crop), 3).presentation.applyCrop);
+			crop.fullRasterPresentationAuthoritative = true;
+			const auto full = AdmitCropPresentation(state, crop, Evaluate(crop), 3);
+			Assert::IsFalse(full.state.available);
+			crop.fullRasterPresentationAuthoritative = false;
+			AssertFullRaster(AdmitCropPresentation(full.state, crop, Evaluate(crop), 3).presentation);
 		}
 
 		TEST_METHOD(BarCropRefinementRetainsTrustedCropUntilTransitionPublishes)

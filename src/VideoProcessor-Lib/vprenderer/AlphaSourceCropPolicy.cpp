@@ -2485,6 +2485,46 @@ namespace AlphaSourceCrop
 		return result;
 	}
 
+
+	CropPresentationAdmissionDecision AdmitCropPresentation(
+		const CropPresentationAdmissionState& previous,
+		const Input& input, const Decision& candidate,
+		uint64_t presentationEpoch)
+	{
+		CropPresentationAdmissionDecision result;
+		result.state = previous;
+		result.presentation = candidate;
+		if (!input.automaticCropEnabled || input.fullRasterPresentationAuthoritative ||
+			(result.state.available &&
+			 (result.state.sourceGeneration != input.frameSourceGeneration ||
+			  result.state.presentationEpoch != presentationEpoch ||
+			  result.state.trustedCrop.rasterWidth != input.rasterWidth ||
+			  result.state.trustedCrop.rasterHeight != input.rasterHeight)))
+			result.state = {};
+		if (!candidate.applyCrop) return result;
+
+		// Evaluate (and then recovery) already validated this candidate. A
+		// retention owner is permission to reuse an admitted picture contract,
+		// not permission to acquire one. In particular, subtitle confirmation
+		// must wait for picture authority instead of manufacturing it.
+		const bool previouslyPresented = result.state.available &&
+			SameTrustedCropContract(result.state.trustedCrop, input.geometry);
+		if (!input.latestObservationSupportsCrop && !previouslyPresented)
+		{
+			result.blocked = true;
+			result.presentation = {};
+			result.presentation.sourceBounds = FullRaster(input.rasterWidth, input.rasterHeight);
+			result.presentation.reason =
+				"unpresented crop requires current picture acquisition authority";
+			return result;
+		}
+		result.state.available = true;
+		result.state.trustedCrop = input.geometry;
+		result.state.sourceGeneration = input.frameSourceGeneration;
+		result.state.presentationEpoch = presentationEpoch;
+		return result;
+	}
+
 	Decision Evaluate(const Input& input)
 	{
 		Decision decision;
