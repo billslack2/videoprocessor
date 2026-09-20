@@ -134,14 +134,14 @@ build receipt, exact source contents/dirty status and binary hashes. Source chan
 during build or packaging reject the result. Never fabricate a receipt.
 
 Setup and uninstall use images/VideoProcessor.ico, the player's existing icon.
-Clean installer filenames are VideoProcessorSetup-<version>.exe, for example
-VideoProcessorSetup-1.3.005-beta.exe. Dirty worktrees are supported for test builds:
+Clean installer filenames are VideoProcessorSetup-<version>-<commit-sha12>.exe, for example
+VideoProcessorSetup-1.3.005-beta-<commit-sha12>.exe. Dirty worktrees are supported for test builds:
 VideoProcessorSetup-<version>-<commit-sha12>-dirty-<source-sha256-prefix12>.exe.
 The fingerprint includes tracked source contents/deletions and untracked files;
 ignored build outputs do not affect it. A commit SHA alone cannot identify
 uncommitted changes. Full identity is recorded in INSTALL-MANIFEST.json and the
 build receipt; setup and Windows file properties show the version and build label.
-Clean builds of the same version deliberately share a download filename; archive
+Clean builds of the same version use distinct commit-bearing filenames; archive
 them in separate build directories when retaining multiple test builds.
 
 Outputs under artifacts\installers include SHA-256 sidecars for the exact

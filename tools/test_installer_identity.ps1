@@ -21,7 +21,7 @@ Invoke-FixtureGit @('add','.')
 Invoke-FixtureGit @('commit','--quiet','-m','fixture')
 $clean=Get-VpSourceIdentity $fixture
 Assert (-not $clean.dirty -and $clean.build -eq $clean.commit) 'clean build uses its exact commit'
-Assert ((Get-VpInstallerBaseName '1.3.005-beta' $clean) -eq 'VideoProcessorSetup-1.3.005-beta') 'clean installer has the requested base name and version'
+Assert ((Get-VpInstallerBaseName '1.3.005-beta' $clean) -eq ('VideoProcessorSetup-1.3.005-beta-'+$clean.commit.Substring(0,12))) 'clean installer includes version and commit SHA'
 [IO.File]::WriteAllText((Join-Path $fixture 'tracked.txt'),'edited')
 $dirty=Get-VpSourceIdentity $fixture
 Assert ($dirty.dirty -and $dirty.fingerprint -ne $clean.fingerprint) 'tracked edits produce a distinct source fingerprint'
@@ -35,6 +35,7 @@ Assert ($staged.dirty -and $staged.fingerprint -eq $changed.fingerprint) 'staged
 Invoke-FixtureGit @('commit','--quiet','-m','edited')
 $committed=Get-VpSourceIdentity $fixture
 Assert (-not $committed.dirty -and $committed.build -ne $staged.build) 'committing returns to clean naming with a new commit'
+Assert ((Get-VpInstallerBaseName '1.3.005-beta' $committed) -ne (Get-VpInstallerBaseName '1.3.005-beta' $clean)) 'same-version clean commits have distinct installer filenames'
 $extra=Join-Path $fixture 'untracked space.txt'
 [IO.File]::WriteAllText($extra,'new source')
 $untracked=Get-VpSourceIdentity $fixture

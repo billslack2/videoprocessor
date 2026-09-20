@@ -29,8 +29,7 @@ function Get-VpSourceIdentity([string]$Root) {
     return [pscustomobject]@{ commit=$commit; dirty=$dirty; fingerprint=$fingerprint; label=$label; build=$build }
 }
 function Get-VpInstallerBaseName([string]$CoreVersion, $Identity) {
-    $name = 'VideoProcessorSetup-' + $CoreVersion
-    if ($Identity.dirty) { $name += '-' + $Identity.label }
+    $name = 'VideoProcessorSetup-' + $CoreVersion + '-' + $Identity.label
     return $name
 }
 
