@@ -2072,8 +2072,13 @@ namespace AlphaSourceCrop
 			decision.state.sourceGeneration = input.sourceGeneration;
 			decision.state.startedSourceSequence = input.sourceSequence;
 			decision.state.presentationEpoch = input.presentationEpoch;
-			decision.state.entryTrustedCropAvailable =
-				decision.state.mode == NearBlackPresentationMode::RETAIN_CROP;
+			decision.state.startedAtFullRaster =
+				decision.state.mode == NearBlackPresentationMode::FULL_RASTER;
+			// Outward pixels select a safe presentation, not the lifetime of the
+			// existing picture contract. Save it even when those pixels coincide
+			// with episode entry, so the unchanged recovery proof can revalidate
+			// this exact crop after the excluded bands become safe again.
+			decision.state.entryTrustedCropAvailable = input.trustedCropAvailable;
 			if (decision.state.entryTrustedCropAvailable)
 				decision.state.entryTrustedCrop = input.trustedCrop;
 			if (decision.state.mode == NearBlackPresentationMode::FULL_RASTER)
@@ -2260,24 +2265,31 @@ namespace AlphaSourceCrop
 			}
 		}
 
+		// Preserve the pre-existing native bootstrap route for full-raster entry.
+		// A partial exact-entry proof must not stall independent native acquisition.
 		if (decision.state.mode == NearBlackPresentationMode::FULL_RASTER &&
-			!decision.state.entryTrustedCropAvailable)
+			(!decision.state.entryTrustedCropAvailable ||
+			 decision.state.startedAtFullRaster))
 		{
+			uint32_t bootstrapGates = RECOVERY_OK;
 			if (!input.measurementCurrent || !input.nativeBootstrapRetentionEvaluated ||
 				input.nativeBootstrapSourceSequence != input.sourceSequence)
-				decision.revalidationGates |= RECOVERY_MEASUREMENT;
-			if (!input.nativeBootstrapContractAvailable) decision.revalidationGates |= RECOVERY_CONTRACT;
+				bootstrapGates |= RECOVERY_MEASUREMENT;
+			if (!input.nativeBootstrapContractAvailable) bootstrapGates |= RECOVERY_CONTRACT;
 			if (input.nativeBootstrapOutwardVisible ||
 				(input.measurementCurrent && input.nativeBootstrapRetentionEvaluated &&
 				 input.nativeBootstrapSourceSequence == input.sourceSequence &&
 				 !input.nativeBootstrapRetentionSafe))
-				decision.revalidationGates |= RECOVERY_UNSAFE_BANDS;
+				bootstrapGates |= RECOVERY_UNSAFE_BANDS;
 			if (!input.nearBlackEvaluated || input.globalNearBlack)
-				decision.revalidationGates |= RECOVERY_NEAR_BLACK;
-			if (input.fullRasterAuthorityAvailable) decision.revalidationGates |= RECOVERY_FULL_AUTHORITY;
+				bootstrapGates |= RECOVERY_NEAR_BLACK;
+			if (input.fullRasterAuthorityAvailable) bootstrapGates |= RECOVERY_FULL_AUTHORITY;
 			if (input.nativeBootstrapSourceGeneration != input.sourceGeneration ||
 				input.nativeBootstrapPresentationEpoch != decision.state.presentationEpoch)
-				decision.revalidationGates |= RECOVERY_CONTEXT;
+				bootstrapGates |= RECOVERY_CONTEXT;
+			// Saved-entry diagnostics describe that independent recovery path.
+			if (!decision.state.entryTrustedCropAvailable)
+				decision.revalidationGates |= bootstrapGates;
 			const bool bootstrapQualifies = input.measurementCurrent &&
 				input.nearBlackEvaluated && !input.globalNearBlack &&
 				!input.fullRasterAuthorityAvailable &&

@@ -171,7 +171,7 @@ namespace Tests
 			Assert::AreEqual(height, decision.sourceBounds.bottom);
 		}
 
-		NearBlackPresentationEpisodeInput ReaffirmedRetainedScope()
+		NearBlackPresentationEpisodeInput ReaffirmedRetainedScope(bool outwardAtEntry = false)
 		{
 			NearBlackPresentationEpisodeInput input;
 			input.trustedCrop = { 0, 280, 3840, 1880, 3840, 2160, 2.4,
@@ -182,7 +182,9 @@ namespace Tests
 			input.presentationEpoch = 10;
 			input.sourceSequence = 1962;
 			input.framesPerSecond = 23.976;
+			input.boundedVisibleContentOutsideCrop = outwardAtEntry;
 			input.previous = EvaluateNearBlackPresentationEpisode(input).state;
+			input.boundedVisibleContentOutsideCrop = false;
 			input.globalNearBlack = false;
 			input.currentObservationAvailable = input.retentionEvaluated = true;
 			input.currentObservationClassification = ActivePictureClassification::BAR_CROP_TRUSTED;
@@ -6975,6 +6977,105 @@ namespace Tests
 				static_cast<int>(decision.state.mode));
 		}
 
+		TEST_METHOD(NearBlackSimultaneousOutwardEntryRecoversLoggedAlienCrop)
+		{
+			auto input = ReaffirmedRetainedScope(true);
+			Assert::AreEqual(int(NearBlackPresentationMode::FULL_RASTER), int(input.previous.mode));
+			// The paused Alien observation is ambiguous inside the known 2.40 crop.
+			// It cannot acquire a crop; current excluded-band safety may revalidate one.
+			input.currentObservation = { 0, 416, 2668, 1880, 3840, 2160,
+				2668.0 / 1464.0, ActivePictureBounds::BarAxes::NONE };
+			input.currentObservationClassification = ActivePictureClassification::PROVISIONAL;
+			for (uint64_t seq = 1963; seq <= 1969; ++seq)
+			{
+				input.sourceSequence = input.retentionSourceSequence = input.reacquiredSourceSequence = seq;
+				const auto decision = EvaluateNearBlackPresentationEpisode(input);
+				Assert::AreEqual(seq == 1969, decision.releasedToTrustedCrop);
+				Assert::IsFalse(decision.bootstrapReleased);
+				if (seq < 1969)
+					Assert::AreEqual(int(NearBlackPresentationMode::FULL_RASTER), int(decision.state.mode));
+				input.previous = decision.state;
+			}
+		}
+
+		TEST_METHOD(NearBlackSimultaneousOutwardEntryRecoveryKeepsEvidenceVetoes)
+		{
+			for (int failure = 0; failure < 17; ++failure)
+			{
+				auto input = ReaffirmedRetainedScope(true);
+				input.currentObservationClassification = ActivePictureClassification::PROVISIONAL;
+				for (uint64_t seq = 1963; seq <= 1982; ++seq)
+				{
+					input.sourceSequence = input.retentionSourceSequence = input.reacquiredSourceSequence = seq;
+					auto invalid = input;
+					switch (failure)
+					{
+					case 0: invalid.measurementCurrent = false; break;
+					case 1: invalid.retentionEvaluated = false; break;
+					case 2: invalid.retentionSafe = invalid.retentionExcludedBandsPixelSafe = false; break;
+					case 3: invalid.retentionSourceSequence--; break;
+					case 4: invalid.retentionSourceGeneration++; break;
+					case 5: invalid.retentionBounds.top += 2; break;
+					case 6: invalid.currentObservationAvailable = false; break;
+					case 7: invalid.currentObservation.bottom += 20; break;
+					case 8: invalid.knownTrustedGeometryReacquired = false; break;
+					case 9: invalid.reacquisitionIsCurrentAssociation = false; break;
+					case 10: invalid.reacquiredSourceSequence = 1961; break;
+					case 11: invalid.reacquiredSourceGeneration++; break;
+					case 12: invalid.reacquiredPresentationEpoch++; break;
+					case 13: invalid.reacquiredTrustedGeometry.top += 20; break;
+					case 14: invalid.boundedVisibleContentOutsideCrop = true; break;
+					case 15: invalid.globalNearBlack = true; break;
+					case 16: invalid.cadenceRepeat = true; break;
+					}
+					const auto decision = EvaluateNearBlackPresentationEpisode(invalid);
+					Assert::IsFalse(decision.releasedToTrustedCrop);
+					Assert::AreEqual(int(NearBlackPresentationMode::FULL_RASTER), int(decision.state.mode));
+					Assert::AreEqual(0u, decision.state.revalidationSamples);
+					input.previous = decision.state;
+				}
+			}
+		}
+
+		TEST_METHOD(NearBlackSimultaneousOutwardEntryDoesNotCarryRecoveryAcrossContext)
+		{
+			for (int boundary = 0; boundary < 4; ++boundary)
+			{
+				auto input = ReaffirmedRetainedScope(true);
+				input.sourceSequence = input.retentionSourceSequence = input.reacquiredSourceSequence = 1963;
+				if (boundary == 0) input.sceneBoundary = true;
+				if (boundary == 1) input.sourceGeneration++;
+				if (boundary == 2) input.presentationEpoch++;
+				if (boundary == 3) input.fullRasterAuthorityAvailable = true;
+				const auto decision = EvaluateNearBlackPresentationEpisode(input);
+				Assert::IsFalse(decision.releasedToTrustedCrop);
+				Assert::IsFalse(decision.state.entryTrustedCropAvailable);
+				Assert::AreEqual(0u, decision.state.revalidationSamples);
+			}
+		}
+
+		TEST_METHOD(NearBlackNativeBootstrapIsNotDelayedByPartialEntryRecovery)
+		{
+			auto input = ReaffirmedRetainedScope(true);
+			input.nativeBootstrapContractAvailable = true;
+			input.nativeBootstrapContract = input.trustedCrop;
+			input.nativeBootstrapRetentionEvaluated = input.nativeBootstrapRetentionSafe = true;
+			input.nativeBootstrapSourceGeneration = input.sourceGeneration;
+			input.nativeBootstrapPresentationEpoch = input.presentationEpoch;
+			for (uint64_t seq = 1963; seq <= 1972; ++seq)
+			{
+				input.sourceSequence = input.retentionSourceSequence =
+					input.reacquiredSourceSequence = input.nativeBootstrapSourceSequence = seq;
+				// The old-crop association is intermittent, but native acquisition
+				// has ten uninterrupted independent safe measurements.
+				input.reacquisitionIsCurrentAssociation = seq % 2 == 0;
+				const auto decision = EvaluateNearBlackPresentationEpisode(input);
+				Assert::IsFalse(decision.releasedToTrustedCrop);
+				Assert::AreEqual(seq == 1972, decision.bootstrapReleased);
+				input.previous = decision.state;
+			}
+		}
+
 		TEST_METHOD(NearBlackOutwardOverlayCanBootstrapBackToSafeNativeCrop)
 		{
 			const ActivePictureBounds scope = TrustedScopeCrop().geometry;
@@ -6993,7 +7094,8 @@ namespace Tests
 			Assert::AreEqual(static_cast<int>(
 				NearBlackPresentationMode::FULL_RASTER),
 				static_cast<int>(decision.state.mode));
-			Assert::IsFalse(decision.state.entryTrustedCropAvailable);
+			Assert::IsTrue(decision.state.entryTrustedCropAvailable);
+			Assert::IsTrue(decision.state.startedAtFullRaster);
 
 			input.globalNearBlack = false;
 			input.boundedVisibleContentOutsideCrop = false;

@@ -862,6 +862,8 @@ namespace AlphaSourceCrop
 		uint64_t sourceGeneration = 0;
 		uint64_t startedSourceSequence = 0;
 		uint64_t presentationEpoch = 0;
+		// Keep native acquisition available for episodes that began at full raster.
+		bool startedAtFullRaster = false;
 		bool entryTrustedCropAvailable = false;
 		ActivePictureBounds entryTrustedCrop;
 		uint64_t fullRasterStartedSourceSequence = 0;
