@@ -2,11 +2,18 @@
 
 ## Status
 
-Review (2026-09-20). The user-authorized Step 1 green-box trial is built,
-tested and deployed for live 16:9 playback. Live acceptance is pending; the
-remaining glyph extraction/removal/relocation work stays blocked.
+Blocked (2026-09-20), at the user's request. Pause further subtitle work and
+revisit later after the user shares a video of the live behavior. The Step 1
+trial is not accepted as reliable; preserve the implementation and existing
+validation evidence for diagnosis. VP-0070-1 and remaining children are blocked.
 
-Source: `codex/vp-0070-bbox-test` at
+Saved and pushed on the explicitly requested `subtitle-moving` branch in
+`billslack2/videoprocessor`, at `036db46e213835b861f181fab1a951b7afc94fe6`.
+No further implementation, merge, deployment or configuration change accompanies
+this pause. Resume by reviewing the user's video for onset delay, incomplete
+bounds, false positives and instability before choosing a correction.
+
+Source: `subtitle-moving` (also preserved on `codex/vp-0070-bbox-test`) at
 `036db46e213835b861f181fab1a951b7afc94fe6`, based on GitHub beta
 `v1.3.005-beta` at `b3c0b3a6a8fdf4f5bb1c9ce0dc3340a3d5e395d7`.
 Worktree: `E:\codex\videoprocessor\vp-0070-bbox-test`.
@@ -199,17 +206,17 @@ never controls visual geometry.
    — replace the failed detector with a renderer-neutral multi-panel CueSet,
    strict top/bottom boundary-or-bar policy, benchmarked backing/glyph
    proposals, and optional PP-OCR text-proposal evidence.
-2. [VP-0070-2](../blocked/VP-0070-2_always-on-panel-diagnostic-overlay.md) —
+2. [VP-0070-2](VP-0070-2_always-on-panel-diagnostic-overlay.md) —
    implement temporal cue IDs, tolerant current-frame validation, immutable
    per-line geometry, and stable-only diagnostics in Alpha and
    DirectShow/madVR.
-3. [VP-0070-3](../blocked/VP-0070-3_same-frame-panel-restoration-and-glyph-relocation.md)
+3. [VP-0070-3](VP-0070-3_same-frame-panel-restoration-and-glyph-relocation.md)
    — restore only the source glyph area and composite captured glyphs into a
    stable destination panel, including the measured first-frame policy.
-4. [VP-0070-4](../blocked/VP-0070-4_panel-subtitle-live-validation-and-performance.md)
+4. [VP-0070-4](VP-0070-4_panel-subtitle-live-validation-and-performance.md)
    — validate real Apple TV captures, stability, failure behavior, and the
    VP-0066 low-latency evidence.
-5. [VP-0070-5](../blocked/VP-0070-5_extract-subtitle-analysis-and-relocation.md) —
+5. [VP-0070-5](VP-0070-5_extract-subtitle-analysis-and-relocation.md) —
    extract subtitle acquisition, analysis, tracking, restoration, and
    relocation from the live pin behind the accepted CueSet contract.
 

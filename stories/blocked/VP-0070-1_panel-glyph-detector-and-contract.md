@@ -2,11 +2,18 @@
 
 ## Status
 
-Review (2026-09-20). The user-authorized Step 1 green-box trial is built,
-tested and deployed for live 16:9 playback. Live acceptance is pending; the
-remaining glyph extraction/removal/relocation work stays blocked.
+Blocked (2026-09-20), at the user's request. Pause further subtitle work and
+revisit later after the user shares a video of the live behavior. The Step 1
+trial is not accepted as reliable; preserve the implementation and existing
+validation evidence for diagnosis. VP-0070-1 and remaining children are blocked.
 
-Source: `codex/vp-0070-bbox-test` at
+Saved and pushed on the explicitly requested `subtitle-moving` branch in
+`billslack2/videoprocessor`, at `036db46e213835b861f181fab1a951b7afc94fe6`.
+No further implementation, merge, deployment or configuration change accompanies
+this pause. Resume by reviewing the user's video for onset delay, incomplete
+bounds, false positives and instability before choosing a correction.
+
+Source: `subtitle-moving` (also preserved on `codex/vp-0070-bbox-test`) at
 `036db46e213835b861f181fab1a951b7afc94fe6`, based on GitHub beta
 `v1.3.005-beta` at `b3c0b3a6a8fdf4f5bb1c9ce0dc3340a3d5e395d7`.
 Worktree: `E:\codex\videoprocessor\vp-0070-bbox-test`.
