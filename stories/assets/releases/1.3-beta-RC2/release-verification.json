@@ -1,0 +1,84 @@
+{
+  "release": "1.3 RC2",
+  "tag": "1.3-beta-RC2",
+  "packageVersion": "1.3.005-rc2",
+  "sourceCommit": "38477f13560a3c4f0085c8840127ae064d0a5b86",
+  "sourceFingerprint": "dad23d681bfcd5164d1b43c12b8d689f5480de640dffeb0c4654098455f54460",
+  "configuration": "x64 Release",
+  "signed": false,
+  "artifacts": [
+    {
+      "name": "VideoProcessorSetup-1.3.005-rc2-38477f13560a.exe",
+      "sha256": "BAB37D64A8DBE1BC82B320C110323AF465CCDCE99B9DB7F29FEF1B2FE77AEAD0",
+      "length": 28461532
+    },
+    {
+      "name": "VideoProcessor-1.3.005-rc2-38477f13560a-x64-Portable.zip",
+      "sha256": "6A9F14955D656D3CF8E2674EC8856ADBF06576BAEEDAA3819F3CEE13918485A4",
+      "length": 40250152
+    }
+  ],
+  "tests": {
+    "nativePassed": 1386,
+    "editorPassedOnIdenticalSourceTree": 80,
+    "installerSupportPassed": 49,
+    "installerIdentityPassed": 12,
+    "runtimePackagingPassed": 23,
+    "actualInstallerLifecyclePassed": 326,
+    "legacyZipAdoptionCasesPassed": 2,
+    "corruptPackageRecoveryPassed": true
+  },
+  "lifecycleEnvironment": {
+    "windows": "Windows 10 x64, build 19045",
+    "elevatedInstaller": false,
+    "isolation": "QA-only registration GUID, Start menu/default folder, and process checks scoped to QA paths. Application payload hashes matched the public release. User installation untouched.",
+    "coverage": [
+      "fresh custom-folder install",
+      "same-version different-build upgrade, reinstall, rollback",
+      "packaged Config launch and app-local Microsoft runtime loading",
+      "refusal with running Config",
+      "missing/corrupt manifest and runtime repair",
+      "unknown DLL preservation",
+      "uninstall/reinstall and manually deleted folder repair",
+      "legacy ZIP adoption with original and edited extras",
+      "corrupt payload rollback preserving config/state"
+    ]
+  },
+  "limitations": [
+    "Unsigned application and installer",
+    "Clean Windows without Visual Studio and missing/old global-runtime combinations not newly qualified",
+    "Physical HDMI/capture and second-monitor behavior not newly qualified",
+    "Byte-identical rebuilds are not asserted"
+  ],
+  "testHarnessNotes": [
+    "Inherited PowerShell 7 module paths caused an initial QA helper lookup failure; lifecycle tests passed with standard Windows PowerShell module paths.",
+    "Legacy ZIP fixture initially contained modern installation metadata and a modified QA helper; corrected to the original legacy ZIP layout/bytes. Failed-run logs retained."
+  ],
+  "tools": [
+    {
+      "file": "MSBuild.exe",
+      "version": "18.7.8.30822",
+      "sha256": "CFDB6C62EFC59D2EB216ACF753108C63C733A814BEF4E3AEBB2C63AC16B7B1B1"
+    },
+    {
+      "file": "vstest.console.exe",
+      "version": "18.0.11814.123",
+      "sha256": "A0C6D8CAE2646462A609FC64633B9AF2E7A500218E31A5E5DEE365601268360B"
+    },
+    {
+      "file": "ISCC.exe",
+      "version": "0.0.0.0",
+      "sha256": "0A8757031B33777E4C9CBFFEE40F11A5062B36D25CBE144C1DB73B6102B80AD7"
+    },
+    {
+      "file": "vc_redist.x64.exe",
+      "version": "14.51.36247.0",
+      "sha256": "843068991DAAA1F73AD9F6239BCE4D0F6A07A51F18C37EA2A867E9BECA71295C"
+    },
+    {
+      "file": "Qt6Core.dll",
+      "version": "6.8.3.0",
+      "sha256": "0CC62E841959FB8F6D366EA116C6F6BBC273E30F0EF90D8AA2E4ADEB81FD63F8"
+    }
+  ]
+}
