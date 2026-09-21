@@ -696,7 +696,7 @@ namespace RendererProfileConfig
 			return IsChoice(value, { "follow_input", "follow_input_lldv", "hdr_luminance_user", "user" });
 		if (key == "profile_update_mode")
 			return IsChoice(value, { "rebuild", "live", "never" });
-		if (key == "live_profile_updates" ||
+		if (key == "subtitle_bbox_test" || key == "live_profile_updates" ||
 			key == "switch_refresh_rate" || key == "output_diagnostics" ||
 			key == "diagnostic_disable_shader_cache" ||
 			key == "diagnostic_disable_compute" ||
@@ -711,7 +711,7 @@ namespace RendererProfileConfig
 	inline bool ValidateCanonicalDisplaySetting(
 		const std::string& key, const std::string& value)
 	{
-		if (key == "subtitle_bbox_test") return IsBoolean(value);
+		if (key == "subtitle_bbox_test") return ValidateBaseSetting(key, value);
 		if (key == "video_conversion" || key == "container_colorspace" ||
 			key == "hdr_colorspace" || key == "hdr_luminance")
 			return ValidateBaseSetting(key, value);
