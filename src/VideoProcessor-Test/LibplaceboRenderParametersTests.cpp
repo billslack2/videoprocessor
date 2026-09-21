@@ -165,6 +165,53 @@ namespace VideoProcessorTest
 	TEST_CLASS(LibplaceboRenderParametersTests)
 	{
 	public:
+        TEST_METHOD(DefaultAndLegacyAutoBlackSurviveWhiteInheritanceAtNativeBoundary)
+        {
+            for (const char* blackLine : { "", "sdr_black_nits: AUTO\n",
+                "sdr_black_nits: 0\n", "sdr_black_nits: 0.025\n" })
+            {
+                TemporaryConfigFile file;
+                const std::string contents = std::string("[vprenderer.First]\nsdr_target_nits: 100\n") +
+                    blackLine + "[vprenderer.Child]\nsdr_target_nits: 200\n";
+                file.Write(contents.c_str());
+                ConfigFile config;
+                Assert::IsTrue(config.Load(file.Path()));
+                RendererProfileConfig::Model model;
+                std::string error;
+                Assert::IsTrue(RendererProfileConfig::Read(config, model, error), Wide(error).c_str());
+                for (const char* profileName : { "display.first", "display.child" })
+                {
+                    const auto& profile = model.profiles.at(profileName);
+                    const double white = std::stod(RequiredProfileSetting(profile, "sdr_target_nits"));
+                    double black = HdrTargetLuminance::DefaultBlack;
+                    const auto value = profile.settings.find("sdr_black_nits");
+                    if (value != profile.settings.end())
+                        Assert::IsTrue(HdrTargetLuminance::ParseBlack(
+                            ConfigFile::NormalizeName(value->second), white, black));
+                    const bool measured = std::string(blackLine).find("0.025") != std::string::npos;
+                    Assert::AreEqual(measured ? 0.025 : 0.0, black);
+                    pl_color_space target = *NativeData<pl_color_space>("pl_color_space_bt709");
+                    target.transfer = PL_COLOR_TRC_GAMMA22;
+                    ApplyTargetLuminance(false, static_cast<float>(white), static_cast<float>(black), target);
+                    pl_color_space_infer(&target);
+                    Assert::AreEqual(measured ? 0.025f : PL_COLOR_HDR_BLACK, target.hdr.min_luma);
+                }
+            }
+        }
+
+        TEST_METHOD(BlackOverrideResetsOnlyExplicitAutoAndRetainsInvalidInput)
+        {
+            double black = 0.025;
+            Assert::IsTrue(HdrTargetLuminance::ParseBlack("auto", 100.0, black));
+            Assert::AreEqual(0.0, black);
+            Assert::IsTrue(HdrTargetLuminance::ParseBlack("0.025", 200.0, black));
+            for (const char* invalid : { "-1", "200", "nan", "inf", "0.1junk", "" })
+            {
+                Assert::IsFalse(HdrTargetLuminance::ParseBlack(invalid, 200.0, black));
+                Assert::AreEqual(0.025, black);
+            }
+        }
+
         TEST_METHOD(HdrTargetRangeMatchesLibplaceboAndFloatPrecision)
         {
             Assert::AreEqual(PL_COLOR_HDR_BLACK, static_cast<float>(HdrTargetLuminance::BlackFloor));
@@ -280,6 +327,24 @@ namespace VideoProcessorTest
 					L"The selected quality preset must retain its error-diffusion setting.");
 			}
 		}
+
+        TEST_METHOD(ResolvedDiagnosticsNamePresetAndExplicitAlgorithms)
+        {
+            for (const char* quality : { "fast", "balanced", "high" })
+            {
+                Settings settings; settings.quality = quality;
+                Projection projection; BuildOrFail(settings, false, projection);
+                const bool fast = settings.quality == "fast";
+                Assert::AreEqual(fast ? "off" : settings.quality == "high" ? "high_quality" : "standard",
+                    ResolvedPeakDetection(projection.renderParams));
+                Assert::AreEqual(fast ? "off" : "blue_noise", ResolvedDithering(projection.renderParams).c_str());
+                settings.dithering = "error_diffusion_sierra3";
+                BuildOrFail(settings, false, projection);
+                Assert::IsTrue(ResolvedDithering(projection.renderParams).find("sierra-3") != std::string::npos);
+                settings.dithering = "off"; BuildOrFail(settings, false, projection);
+                Assert::AreEqual("off", ResolvedDithering(projection.renderParams).c_str());
+            }
+        }
 
 		TEST_METHOD(AutoScalersFollowTheNativeQualityPreset)
 		{

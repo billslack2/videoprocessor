@@ -438,6 +438,46 @@ void testHdrTargetLuminanceValidationRetainsSavedValue()
         requireControl<QLineEdit>(reloaded, "config.vprenderer.sdr_black_nits")->text() == "600", "Expanded luminance failed reload");
 }
 
+void testBlackDefaultAndLegacyAutoInheritance()
+{
+    for (const QByteArray blackLine : { QByteArray(), QByteArray("sdr_black_nits: AUTO\n"),
+        QByteArray("sdr_black_nits: 0.025\n") })
+    {
+        QTemporaryDir directory;
+        const QString path = directory.filePath("VideoProcessor.cfg");
+        QFile file(path);
+        require(file.open(QIODevice::WriteOnly), "Cannot create black default fixture");
+        file.write("[vprenderer.First]\nsdr_target_nits: 100\n" + blackLine +
+            "[vprenderer.Second]\nsdr_target_nits: 200\n");
+        file.close();
+        ConfigEditorWindow window(path, 0, true);
+        window.setActiveProfileStatusForTesting({}, {}, {}, {}, {});
+        auto* profiles = requireControl<QListWidget>(window, "config.vprenderer.profiles");
+        auto* black = requireControl<QLineEdit>(window, "config.vprenderer.sdr_black_nits");
+        auto* status = requireControl<QLabel>(window, "config.vprenderer.sdr_black_nits.auto_status");
+        for (int row : { 0, 1, 0 })
+        {
+            profiles->setCurrentRow(row);
+            QCoreApplication::processEvents();
+            const QString expected = blackLine.isEmpty() ? "0" :
+                blackLine.contains("AUTO") ? "AUTO" : "0.025";
+            require(black->text().compare(expected, Qt::CaseInsensitive) == 0,
+                "Default/inherited black differs from effective value");
+            if (blackLine.contains("AUTO"))
+                require(status->text() == "Auto: 0 nits (0.000001 nit internally)",
+                    "Legacy Auto black still depends on inherited white");
+        }
+        auto* white = requireControl<QLineEdit>(window, "config.vprenderer.sdr_target_nits");
+        white->setText("150");
+        save(window);
+        ConfigEditorWindow reloaded(path, 0, true);
+        requireControl<QListWidget>(reloaded, "config.vprenderer.profiles")->setCurrentRow(1);
+        require(requireControl<QLineEdit>(reloaded, "config.vprenderer.sdr_black_nits")->text()
+            .compare(black->text(), Qt::CaseInsensitive) == 0,
+            "Black default/inherited value changed on save and reload");
+    }
+}
+
 void testInheritedHdrTargetLuminanceValidation()
 {
     QTemporaryDir directory;
@@ -458,6 +498,97 @@ void testInheritedHdrTargetLuminanceValidation()
     black->setText("500");
     require(apply->isEnabled(), "Validation did not use inherited white of 1000");
     save(window);
+}
+
+void testAuditedBooleanAliasesAndInheritedAutoStatus()
+{
+    for (const QByteArray alias : { "true", "yes", "on", "1", "false", "no", "off", "0" })
+    {
+        QTemporaryDir dir; const QString path = dir.filePath("VideoProcessor.cfg");
+        QFile file(path); require(file.open(QIODevice::WriteOnly), "fixture");
+        file.write("[vprenderer.First]\nquality: fast\n[vprenderer.Child]\ntone_mapping: reinhard\n"
+            "[vprenderer.color.First]\noutput_range: limited\noutput_transport_gamma: auto\noutput_diagnostics: " + alias +
+            "\nreport_bt2020_to_display: " + alias + "\n[vprenderer.color.Child]\noutput_gamma: 2.2\n"
+            "[vprenderer.zoom.First]\nsubtitle_fit: " + alias + "\n"); file.close();
+        ConfigEditorWindow window(path, 0, true);
+        window.setActiveProfileStatusForTesting({}, {}, {}, {}, {});
+        requireControl<QListWidget>(window,"config.vprenderer.profiles")->setCurrentRow(1);
+        requireControl<QListWidget>(window,"config.vprenderer.color.profiles")->setCurrentRow(1);
+        const bool expected = alias == "true" || alias == "yes" || alias == "on" || alias == "1";
+        for (const char* key : { "output_diagnostics", "report_bt2020_to_display" })
+            require(requireControl<QCheckBox>(window,"config.vprenderer.color."+QString::fromLatin1(key))->isChecked() == expected,"Boolean alias differs from runtime");
+        require(requireControl<QLabel>(window,"config.vprenderer.peak_detection.auto_status")->text() == "Auto: Off", "Inherited Fast shown as High");
+        require(requireControl<QLabel>(window,"config.vprenderer.color.output_transport_gamma.auto_status")->text() == "Auto: 2.4", "Inherited Limited shown unused");
+        requireControl<QListWidget>(window,"config.vprenderer.profiles")->setCurrentRow(0);
+        selectData(requireControl<QComboBox>(window,"config.vprenderer.quality"),"balanced");
+        requireControl<QListWidget>(window,"config.vprenderer.profiles")->setCurrentRow(1);
+        require(requireControl<QLabel>(window,"config.vprenderer.peak_detection.auto_status")->text() == "Auto: Standard", "Inherited Balanced shown as High");
+        save(window);
+        require(readBytes(path).contains("output_diagnostics: " + alias), "Untouched Boolean alias rewritten");
+    }
+}
+
+void testInvalidAuditedValuesRemainActionable()
+{
+    for (const QByteArray extra : {
+        QByteArray("[vprenderer.scaling.First]\ndownscaler: typo_filter\n"),
+        QByteArray("[vprenderer.zoom.First]\nfixed_crop_aspect: typo_aspect\n"),
+        QByteArray("[vprenderer]\nquality: high\n[vprenderer.Base]\nquality: fast\n") })
+    {
+        QTemporaryDir dir; const QString path=dir.filePath("VideoProcessor.cfg");
+        QFile file(path); require(file.open(QIODevice::WriteOnly),"fixture");
+        file.write(extra); file.close();
+        ConfigEditorWindow window(path,0,true);
+        requireControl<QLineEdit>(window,"config.vprenderer.sdr_target_nits")->setText("210");
+        require(readBytes(path)==extra,"Opening invalid input changed the file");
+        requireControl<QPushButton>(window,"applyConfiguration")->click();
+        require(readBytes(path)==extra,(QByteArray("Apply silently saved invalid input: ")+extra+" saved: "+readBytes(path)).constData());
+        const QString status = requireControl<QLabel>(window,"configurationStatus")->text();
+        require(status.contains(extra.contains("typo_filter") ? "downscaler" :
+            extra.contains("typo_aspect") ? "fixed_crop_aspect" : "conflicts"),
+            ("Validation error was not actionable: " + status).toStdString().c_str());
+        if (extra.contains("typo_filter"))
+            require(requireControl<QComboBox>(window,"config.vprenderer.scaling.downscaler")->currentData()=="typo_filter","Unknown downscaler was erased");
+        if (extra.contains("typo_aspect"))
+            require(requireControl<QLineEdit>(window,"config.vprenderer.zoom.fixed_crop_aspect")->text()=="typo_aspect","Invalid fixed crop erased");
+    }
+}
+
+void testDiagnosticPresetDescribesFlagsAndRetentionUsesDefault()
+{
+    QTemporaryDir dir; const QString path=dir.filePath("VideoProcessor.cfg");
+    QFile file(path); require(file.open(QIODevice::WriteOnly),"fixture");
+    file.write("[vprenderer.First]\nquality: high\n[vprenderer.color.First]\noutput_path_profile: proposed\n"
+        "[vprenderer.color.Child]\noutput_diagnostics: yes\n[logging]\ndebug_log_retention: 500\n"); file.close();
+    ConfigEditorWindow window(path,0,true);
+    auto* preset=requireControl<QComboBox>(window,"config.vprenderer.color.output_path_profile");
+    require(preset->currentData()=="legacy","Handwritten preset falsely reports enabled diagnostics");
+    require(!requireControl<QCheckBox>(window,"config.vprenderer.color.output_diagnostics")->isChecked(),"Loading preset enabled diagnostics");
+    requireControl<QListWidget>(window,"config.vprenderer.color.profiles")->setCurrentRow(1);
+    require(preset->currentData()=="proposed","Preset ignores effective diagnostic flags");
+    require(requireControl<QSpinBox>(window,"config.logging.debug_log_retention")->value()==10,"Invalid retention does not show runtime default");
+    requireControl<QCheckBox>(window,"config.vprenderer.color.diagnostic_disable_compute")->setChecked(true);
+    require(preset->currentData()=="custom","Edited flag did not derive Custom");
+    requireControl<QCheckBox>(window,"config.vprenderer.color.diagnostic_disable_compute")->setChecked(false);
+    require(preset->currentData()=="proposed","Returning to preset flags did not derive preset");
+}
+
+void testOmittedAndAutoFrameOffsetDisplayNinety()
+{
+    for (const QByteArray line : { QByteArray(), QByteArray("frame_offset: AUTO\n"), QByteArray("frame_offset: 0\n") })
+    {
+        QTemporaryDir dir; const QString path=dir.filePath("VideoProcessor.cfg");
+        QFile file(path); require(file.open(QIODevice::WriteOnly),"fixture");
+        file.write("[directshow]\n"+line+"[vprenderer.First]\nquality: high\n"
+            "[vprenderer.viewport.First]\nautomatic_crop: false\n"); file.close();
+        ConfigEditorWindow window(path,0,true);
+        auto* aspect = requireControl<QLineEdit>(window,"config.vprenderer.viewport.screen_aspect");
+        require(aspect->text().isEmpty() && aspect->placeholderText().contains("output display"),
+            "Omitted screen aspect fabricates a 16:9 setting");
+        const bool automatic=!line.contains(": 0");
+        require(requireControl<QCheckBox>(window,"config.directshow.frame_offset.auto")->isChecked()==automatic,"Wrong timing mode");
+        require(requireControl<QSpinBox>(window,"config.directshow.frame_offset.value")->value()==(automatic?90:0),"Wrong timing default");
+    }
 }
 
 void testEveryPageRoundTrips()
@@ -3345,8 +3476,8 @@ void testChoiceLabelsAndVpRendererName()
     targetWhiteLevel->setText(QStringLiteral("79"));
     targetBlackLevel->setText(QStringLiteral("Auto"));
     QCoreApplication::processEvents();
-    require(targetBlackStatus->text() == QStringLiteral("Auto: 0.079 nits"),
-        "Auto target black level does not show its calculated libplacebo value");
+    require(targetBlackStatus->text() == QStringLiteral("Auto: 0 nits (0.000001 nit internally)"),
+        "Legacy Auto target black does not show the zero default and internal floor");
     QComboBox* upscaler = requireControl<QComboBox>(window,
         QStringLiteral("config.vprenderer.scaling.upscaler"));
     QLabel* upscalerStatus = requireControl<QLabel>(window,
@@ -5720,12 +5851,17 @@ int main(int argc, char** argv)
     QApplication::setStyle(VpTheme::CreateStyle());
     application.setStyleSheet(VpTheme::StyleSheet());
     int failures = 0;
+    failures += run("audited Boolean aliases and inherited Auto status", testAuditedBooleanAliasesAndInheritedAutoStatus);
+    failures += run("invalid audited values remain actionable", testInvalidAuditedValuesRemainActionable);
+    failures += run("diagnostic preset describes flags and retention default", testDiagnosticPresetDescribesFlagsAndRetentionUsesDefault);
+    failures += run("omitted and Auto frame offset display ninety", testOmittedAndAutoFrameOffsetDisplayNinety);
     failures += run("unified Color Output migration and transfer round trip", testUnifiedColorOutputMigrationAndTransferRoundTrip);
     failures += run("calibrated UI defaults and derived transport", testCalibratedUiDefaultsAndDerivedTransport);
     failures += run("calibrated legacy and inherited output preserved", testCalibratedLegacyAndInheritedOutputPreserved);
     failures += run("shared profile list controller contract",
         testSharedProfileListControllerContract);
     failures += run("Limited transport gamma notice and correction", testLimitedTransportGammaNoticeAndCorrection);
+    failures += run("black default and legacy Auto inheritance", testBlackDefaultAndLegacyAutoInheritance);
     failures += run("Inherited HDR target luminance validation", testInheritedHdrTargetLuminanceValidation);
     failures += run("HDR target luminance validation retains saved value",
         testHdrTargetLuminanceValidationRetainsSavedValue);

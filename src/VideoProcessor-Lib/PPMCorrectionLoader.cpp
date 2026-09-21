@@ -21,11 +21,20 @@ PPMCorrectionLoader::PPMCorrectionLoader()
 
 bool PPMCorrectionLoader::LoadCorrectionFile()
 {
-    // Clear any existing corrections
-    Clear();
+    ConfigFile config;
+    config.Load();
+    return LoadCorrections(config);
+}
 
-    ConfigFile unifiedConfig;
-    if (unifiedConfig.Load())
+bool PPMCorrectionLoader::IsAutomatic(double refreshRate) const
+{
+    return m_automaticRates.count(FindBestMatch(refreshRate)) != 0;
+}
+
+bool PPMCorrectionLoader::LoadCorrections(const ConfigFile& unifiedConfig)
+{
+    Clear();
+    if (unifiedConfig.IsLoaded())
     {
         if (!unifiedConfig.GetWarnings().empty())
         {
@@ -48,10 +57,12 @@ bool PPMCorrectionLoader::LoadCorrectionFile()
 			}
 			if (ConfigFile::NormalizeName(rawPpm) == "auto")
 			{
-				// Preserve the established sentinel consumed by the timing path.
-				// A unified value applies the same automatic policy at every cadence.
-				for (int rate = 1; rate <= 1000; ++rate)
-					m_corrections[rate] = 999999;
+				// Keep automatic mode separate from all valid numeric corrections.
+                for (int rate = 1; rate <= 1000; ++rate)
+                {
+                    m_corrections[rate] = 0;
+                    m_automaticRates.insert(rate);
+                }
 				DbgLog((LOG_TRACE, 1, TEXT("PPMCorrectionLoader: Loaded [directshow.ppm] ppm=AUTO for all source rates")));
 				return true;
 			}
@@ -159,8 +170,9 @@ bool PPMCorrectionLoader::ParseConfigLine(const std::string& line)
             // Check for AUTO keyword
             if (ConfigFile::NormalizeName(ppmStr) == "auto")
             {
-                // Store 999999 as sentinel value for AUTO mode
-                m_corrections[refreshRate] = 999999;
+                // Auto has its own mode; 999999 remains a valid fixed correction.
+                m_corrections[refreshRate] = 0;
+                m_automaticRates.insert(refreshRate);
                 parsedAny = true;
                 DbgLog((LOG_TRACE, 2, TEXT("PPMCorrectionLoader: Parsed %d Hz = AUTO (auto-calibration)"), refreshRate));
                 continue;
@@ -176,6 +188,7 @@ bool PPMCorrectionLoader::ParseConfigLine(const std::string& line)
 
             // Store the correction
             m_corrections[refreshRate] = ppmValue;
+            m_automaticRates.erase(refreshRate);
             parsedAny = true;
 
             DbgLog((LOG_TRACE, 2, TEXT("PPMCorrectionLoader: Parsed %d Hz = %d PPM"), refreshRate, ppmValue));

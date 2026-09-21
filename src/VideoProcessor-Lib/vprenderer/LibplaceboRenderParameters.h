@@ -85,6 +85,9 @@ namespace LibplaceboRenderParameters
 	// peak detection, dither, or error diffusion.
 	// Returns false only when the expected libplacebo runtime data cannot be
 	// obtained. The caller receives a human-readable error in `error`.
+    const char* ResolvedPeakDetection(const pl_render_params& parameters);
+    std::string ResolvedDithering(const pl_render_params& parameters);
+
 	bool Build(const Settings& settings, bool hasDisplayLut,
 		Projection& projection, std::string& error);
 

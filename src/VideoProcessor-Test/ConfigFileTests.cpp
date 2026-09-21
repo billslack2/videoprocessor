@@ -7,6 +7,8 @@
 #include <ModernOperatorLayout.h>
 #include <ModernOperatorStatusPolicy.h>
 #include <ConfigFile.h>
+#include <ActiveProfileStatus.h>
+#include <PPMCorrectionLoader.h>
 #include <ColorOutputProfileMigration.h>
 #include <ConfigurationLiveApply.h>
 #include <ConfigurationApplyPolicy.h>
@@ -947,17 +949,66 @@ namespace VideoProcessorTest
 				ShouldConsumeRestartForFreshRenderer(false, false));
 		}
 
-		TEST_METHOD(AutoFrameOffsetWaitsForUsableCaptureMode)
-		{
-			Assert::IsFalse(ConfigurationLiveApply::
-				HasUsableCaptureModeForAutoOffset(false, false, false));
-			Assert::IsFalse(ConfigurationLiveApply::
-				HasUsableCaptureModeForAutoOffset(true, false, true));
-			Assert::IsFalse(ConfigurationLiveApply::
-				HasUsableCaptureModeForAutoOffset(true, true, false));
-			Assert::IsTrue(ConfigurationLiveApply::
-				HasUsableCaptureModeForAutoOffset(true, true, true));
-		}
+        TEST_METHOD(FrameOffsetAutoAndOmissionUseStableDefault)
+        {
+            for (const char* raw : { "", "auto", "0", "90", "135" })
+            {
+                bool automatic = false;
+                int ms = -1;
+                Assert::IsTrue(ConfigurationLiveApply::ParseFrameOffset(raw, automatic, ms));
+                const bool isAuto = std::string(raw).empty() || std::string(raw) == "auto";
+                Assert::AreEqual(isAuto, automatic);
+                Assert::AreEqual(isAuto ? 90 : std::stoi(raw), ms);
+            }
+            Assert::AreEqual(90, ConfigurationLiveApply::AutomaticFrameOffsetMs(false));
+            Assert::AreEqual(0, ConfigurationLiveApply::AutomaticFrameOffsetMs(true));
+            for (const char* raw : { "-1", "90oops", "2147483648" })
+            {
+                bool automatic = true; int ms = 90;
+                Assert::IsFalse(ConfigurationLiveApply::ParseFrameOffset(raw, automatic, ms));
+                Assert::IsTrue(automatic); Assert::AreEqual(90, ms);
+            }
+        }
+
+        TEST_METHOD(NamedBaseIdentityAndRootCollision)
+        {
+            for (const char* root : { "vprenderer", "vprenderer.color" })
+            {
+                CachedConfigTestFile file;
+                const std::string setting = std::string(root) == "vprenderer" ? "quality: fast\n" : "output_range: limited\n";
+                std::ofstream(file.path) << "[" << root << ".BaSe]\n" << setting
+                    << "[" << root << ".Child]\n" << setting;
+                ConfigFile config; Assert::IsTrue(config.Load(file.path));
+                RendererProfileConfig::Model model; std::string error;
+                Assert::IsTrue(RendererProfileConfig::Read(config, model, error), std::wstring(error.begin(),error.end()).c_str());
+                Assert::AreEqual((std::string(root)+".base").c_str(),
+                    ActiveProfileStatus::SectionFor(root, "base", &config).c_str());
+                Assert::AreEqual((std::string(root)+".base").c_str(),
+                    ProfileSectionIdentity::Resolve(config,root,"BASE").c_str());
+                std::ofstream(file.path) << "[" << root << "]\n" << setting << "[" << root << ".Base]\n" << setting;
+                Assert::IsTrue(config.Load(file.path, ConfigFile::ReadPolicy::Fresh));
+                Assert::IsFalse(RendererProfileConfig::Read(config, model, error));
+                Assert::IsTrue(error.find("rename") != std::string::npos);
+            }
+        }
+
+        TEST_METHOD(PpmNumericSentinelDoesNotEnableAutomaticMode)
+        {
+            for (const char* raw : { "auto", "999999", "0", "-12" })
+            {
+                CachedConfigTestFile file;
+                std::ofstream(file.path) << "[directshow.ppm]\nppm: " << raw << "\n";
+                ConfigFile config; Assert::IsTrue(config.Load(file.path));
+                PPMCorrectionLoader loader; Assert::IsTrue(loader.LoadCorrections(config));
+                for (double rate : { 23.976, 50.0, 59.94 })
+                {
+                    const bool automatic = std::string(raw) == "auto";
+                    Assert::AreEqual(automatic, loader.IsAutomatic(rate));
+                    Assert::AreEqual(automatic ? 0 : std::stoi(raw), loader.GetPPMCorrection(rate));
+                }
+                loader.Clear(); Assert::IsFalse(loader.IsAutomatic(60));
+            }
+        }
 
 		TEST_METHOD(OmittedHardwareSelectionsUseFirstDiscoveredValues)
 		{

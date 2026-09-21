@@ -1,4 +1,5 @@
 #pragma once
+#include "ProfileSectionIdentity.h"
 
 #include "ConfigFile.h"
 #include "ColorOutputProfileMigration.h"
@@ -1151,6 +1152,7 @@ namespace RendererProfileConfig
 		for (const GroupSpec& spec : specs)
 		{
 			const std::string section(spec.section);
+            if (!ProfileSectionIdentity::Validate(config, section, error)) return false;
 			const auto* rootValues = config.GetSectionValues(section);
 			const std::string prefix = section + ".";
 			std::vector<std::string> variants;
@@ -1423,6 +1425,7 @@ namespace RendererProfileConfig
 		for (const ShaderGroupSpec& spec : shaderSpecs)
 		{
 			const std::string rootSection(spec.section);
+            if (!ProfileSectionIdentity::Validate(config, rootSection, error)) return false;
 			const std::string prefix = rootSection + ".";
 			const auto* rootValues = config.GetSectionValues(rootSection);
 			std::vector<std::string> variants;

@@ -1,4 +1,4 @@
-# Public VP-0079 VideoProcessor configuration inventory.
+# Public configuration inventory: canonical controls and retained aliases.
 # field-token<TAB>help-anchor<TAB>owner<TAB>AUTO-explanation-required
 general.capture_device	general-capture-device	VP startup	no
 general.capture_input	general-capture-input	Capture connection routing	no
@@ -46,34 +46,34 @@ shortcuts.show_profiles	shortcut-show-profiles	VP profile overlay	no
 vprenderer.when	vprenderer-when	VP Renderer	no
 vprenderer.shortcut	vprenderer-shortcut	VP Renderer	no
 vprenderer.quality	vprenderer-quality	VP Renderer	no
-vprenderer.calibration_lut_enabled	vprenderer-calibration-lut	Color / Output calibration	no
-vprenderer.calibration_lut_bt709	vprenderer-calibration-lut	Color / Output calibration	no
-vprenderer.calibration_lut_p3_d65	vprenderer-calibration-lut	Color / Output calibration	no
-vprenderer.calibration_lut_bt2020	vprenderer-calibration-lut	Color / Output calibration	no
-vprenderer.tone_mapping	vprenderer-tone-mapping	VP Renderer	no
-vprenderer.gamut_mapping	vprenderer-gamut-mapping	VP Renderer	no
-vprenderer.peak_detection	vprenderer-peak-detection	VP Renderer	no
-vprenderer.contrast_recovery	vprenderer-contrast-recovery	VP Renderer	no
-vprenderer.upscaler	vprenderer-upscaler	VP Renderer	no
-vprenderer.downscaler	vprenderer-downscaler	VP Renderer	no
-vprenderer.deband	vprenderer-deband	VP Renderer	no
-vprenderer.dithering	vprenderer-dithering	VP Renderer	no
-vprenderer.display_bit_depth	vprenderer-display-bit-depth	VP Renderer	no
+vprenderer.calibration_lut_enabled	vprenderer-calibration-lut	Color / Output (legacy spelling)	no
+vprenderer.calibration_lut_bt709	vprenderer-calibration-lut	Color / Output (legacy spelling)	no
+vprenderer.calibration_lut_p3_d65	vprenderer-calibration-lut	Color / Output (legacy spelling)	no
+vprenderer.calibration_lut_bt2020	vprenderer-calibration-lut	Color / Output (legacy spelling)	no
+vprenderer.tone_mapping	vprenderer-tone-mapping	VP Renderer	yes
+vprenderer.gamut_mapping	vprenderer-gamut-mapping	VP Renderer	yes
+vprenderer.peak_detection	vprenderer-peak-detection	VP Renderer	yes
+vprenderer.contrast_recovery	vprenderer-contrast-recovery	VP Renderer	yes
+vprenderer.upscaler	vprenderer-upscaler	Scaling (legacy spelling)	yes
+vprenderer.downscaler	vprenderer-downscaler	Scaling (legacy spelling)	yes
+vprenderer.deband	vprenderer-deband	VP Renderer	yes
+vprenderer.dithering	vprenderer-dithering	VP Renderer	yes
+vprenderer.display_bit_depth	vprenderer-display-bit-depth	VP Renderer	yes
 vprenderer.sdr_target_nits	vprenderer-sdr-target-nits	VP Renderer	no
-vprenderer.sdr_black_nits	vprenderer-sdr-black-nits	VP Renderer	no
-vprenderer.output_presentation	vprenderer-output-presentation	VP Renderer	no
-vprenderer.output_range	vprenderer-output-range	VP Renderer	no
-vprenderer.output_gamma	vprenderer-output-gamma	VP Renderer	no
-vprenderer.output_path_profile	vprenderer-diagnostic-output-experiments	VP Renderer diagnostics	no
-vprenderer.diagnostic_disable_compute	vprenderer-diagnostic-output-experiments	VP Renderer diagnostics	no
-vprenderer.diagnostic_force_8bit_sdr_swapchain	vprenderer-diagnostic-output-experiments	VP Renderer diagnostics	no
-vprenderer.diagnostic_allow_limited_g22	vprenderer-diagnostic-output-experiments	VP Renderer diagnostics	no
-vprenderer.diagnostic_vp_owned_dxgi_presenter	vprenderer-diagnostic-output-experiments	VP Renderer diagnostics	no
-vprenderer.sdr_input_transfer	vprenderer-sdr-input-transfer	VP Renderer	no
-vprenderer.sdr_adjust_gamma	vprenderer-sdr-adjust-gamma	VP Renderer	no
-vprenderer.target_primaries	vprenderer-target-primaries	VP Renderer	no
-vprenderer.sdr_target_primaries	vprenderer-sdr-target-primaries	VP Renderer	no
-vprenderer.report_bt2020_to_display	vprenderer-report-bt2020	VP Renderer	no
+vprenderer.sdr_black_nits	vprenderer-sdr-black-nits	VP Renderer	yes
+vprenderer.output_presentation	vprenderer-output-presentation	Color / Output (legacy spelling)	yes
+vprenderer.output_range	vprenderer-output-range	Color / Output (legacy spelling)	yes
+vprenderer.output_gamma	vprenderer-output-gamma	Color / Output (legacy spelling)	yes
+vprenderer.output_path_profile	vprenderer-diagnostic-output-experiments	Color / Output (legacy spelling)	no
+vprenderer.diagnostic_disable_compute	vprenderer-diagnostic-output-experiments	Color / Output (legacy spelling)	no
+vprenderer.diagnostic_force_8bit_sdr_swapchain	vprenderer-diagnostic-output-experiments	Color / Output (legacy spelling)	no
+vprenderer.diagnostic_allow_limited_g22	vprenderer-diagnostic-output-experiments	Color / Output (legacy spelling)	no
+vprenderer.diagnostic_vp_owned_dxgi_presenter	vprenderer-diagnostic-output-experiments	Color / Output (legacy spelling)	no
+vprenderer.sdr_input_transfer	vprenderer-sdr-input-transfer	Color / Output (legacy spelling)	yes
+vprenderer.sdr_adjust_gamma	vprenderer-sdr-adjust-gamma	Color / Output (legacy spelling)	yes
+vprenderer.target_primaries	vprenderer-target-primaries	Color / Output (legacy spelling)	no
+vprenderer.sdr_target_primaries	vprenderer-sdr-target-primaries	Color / Output (legacy spelling)	no
+vprenderer.report_bt2020_to_display	vprenderer-report-bt2020	Color / Output (legacy spelling)	no
 general.switch_refresh_rate	general-switch-refresh-rate	General	no
 general.profile_change_display_seconds	general-profile-change-display	General display	no
 vprenderer.<variant>.when	vprenderer-variant-when	VP Renderer	no
@@ -82,31 +82,37 @@ lldv.max_cll	lldv-max-cll	LLDV metadata	no
 lldv.max_fall	lldv-max-fall	LLDV metadata	no
 lldv.mastering_min_luminance	lldv-mastering-min-luminance	LLDV metadata	no
 lldv.mastering_max_luminance	lldv-mastering-max-luminance	LLDV metadata	no
-vprenderer.viewport.when	viewport-when	VP Renderer viewport	no
-vprenderer.viewport.shortcut	viewport-shortcut	VP Renderer viewport	no
-vprenderer.viewport.<variant>.when	viewport-variant-when	VP Renderer viewport	no
-vprenderer.viewport.<variant>.shortcut	viewport-variant-shortcut	VP Renderer viewport	no
-vprenderer.viewport.<variant>.label	viewport-label	VP Renderer viewport	no
-vprenderer.viewport.<variant>.screen_aspect	viewport-screen-aspect	VP Renderer viewport	no
-vprenderer.viewport.<variant>.vertical_alignment	viewport-vertical-alignment	VP Renderer viewport	no
-vprenderer.viewport.<variant>.screen_edge_padding	viewport-screen-edge-padding	VP Renderer viewport	no
-vprenderer.viewport.<variant>.anamorphic_scale	viewport-anamorphic-scale	VP Renderer viewport	no
-vprenderer.viewport.<variant>.automatic_crop	viewport-automatic-crop	VP Renderer viewport	no
-vprenderer.zoom.<variant>.crop_narrower_content_to_fill_screen	zoom-crop-narrower-content-to-fill-screen	VP Renderer Zoom	no
-vprenderer.zoom.<variant>.crop_narrower_content_aspect_limit	zoom-crop-narrower-content-aspect-limit	VP Renderer Zoom	no
-vprenderer.zoom.<variant>.crop_wider_content_to_fill_screen	zoom-crop-wider-content-to-fill-screen	VP Renderer Zoom	no
-vprenderer.zoom.<variant>.crop_wider_content_aspect_limit	zoom-crop-wider-content-aspect-limit	VP Renderer Zoom	no
-vprenderer.zoom.<variant>.fixed_crop_aspect	zoom-fixed-crop-aspect	VP Renderer Zoom	no
-vprenderer.viewport.<variant>.subtitle_fit	viewport-subtitle-fit	VP Renderer viewport	no
-vprenderer.viewport.<variant>.subtitle_hold_seconds	viewport-subtitle-hold-seconds	VP Renderer viewport	no
-vprenderer.viewport.<variant>.subtitle_engage_drift_ms	viewport-subtitle-engage-drift-ms	VP Renderer viewport	no
-vprenderer.viewport.<variant>.subtitle_release_drift_ms	viewport-subtitle-release-drift-ms	VP Renderer viewport	no
-vprenderer.viewport.<variant>.subtitle_padding_pixels	viewport-subtitle-padding-pixels	VP Renderer viewport	no
-vprenderer.viewport.<variant>.subtitle_target_buffer_pixels	viewport-subtitle-target-buffer-pixels	VP Renderer viewport	no
-vprenderer.zoom.<variant>.hdr_peak_analysis_picture_only	zoom-hdr-peak-analysis-picture-only	VP Renderer Zoom	no
-vprenderer.zoom.<variant>.hdr_peak_analysis_motion_compensation	zoom-hdr-peak-analysis-motion-compensation	VP Renderer Zoom	no
-vprenderer.zoom.<variant>.hdr_peak_analysis_height_percent	zoom-hdr-peak-analysis-height-percent	VP Renderer Zoom	no
-vprenderer.zoom.<variant>.hdr_peak_analysis_position	zoom-hdr-peak-analysis-position	VP Renderer Zoom	no
+vprenderer.viewport.when	viewport-when	Screen	no
+vprenderer.viewport.shortcut	viewport-shortcut	Screen	no
+vprenderer.viewport.<variant>.when	viewport-variant-when	Screen	no
+vprenderer.viewport.<variant>.shortcut	viewport-variant-shortcut	Screen	no
+vprenderer.viewport.<variant>.label	viewport-label	Screen	no
+vprenderer.viewport.<variant>.screen_aspect	viewport-screen-aspect	Screen	no
+vprenderer.viewport.<variant>.vertical_alignment	viewport-vertical-alignment	Screen	no
+vprenderer.viewport.<variant>.screen_edge_padding	viewport-screen-edge-padding	Screen	no
+vprenderer.viewport.<variant>.anamorphic_scale	viewport-anamorphic-scale	Screen	no
+vprenderer.viewport.<variant>.automatic_crop	viewport-automatic-crop	Screen	no
+vprenderer.zoom.<variant>.crop_narrower_content_to_fill_screen	zoom-crop-narrower-content-to-fill-screen	Zoom	no
+vprenderer.zoom.<variant>.crop_narrower_content_aspect_limit	zoom-crop-narrower-content-aspect-limit	Zoom	no
+vprenderer.zoom.<variant>.crop_wider_content_to_fill_screen	zoom-crop-wider-content-to-fill-screen	Zoom	no
+vprenderer.zoom.<variant>.crop_wider_content_aspect_limit	zoom-crop-wider-content-aspect-limit	Zoom	no
+vprenderer.zoom.<variant>.fixed_crop_aspect	zoom-fixed-crop-aspect	Zoom	no
+vprenderer.viewport.<variant>.subtitle_fit	viewport-subtitle-fit	Zoom (legacy spelling)	no
+vprenderer.zoom.<variant>.subtitle_fit	viewport-subtitle-fit	Zoom	no
+vprenderer.viewport.<variant>.subtitle_hold_seconds	viewport-subtitle-hold-seconds	Zoom (legacy spelling)	no
+vprenderer.zoom.<variant>.subtitle_hold_seconds	viewport-subtitle-hold-seconds	Zoom	no
+vprenderer.viewport.<variant>.subtitle_engage_drift_ms	viewport-subtitle-engage-drift-ms	Zoom (legacy spelling)	no
+vprenderer.zoom.<variant>.subtitle_engage_drift_ms	viewport-subtitle-engage-drift-ms	Zoom	no
+vprenderer.viewport.<variant>.subtitle_release_drift_ms	viewport-subtitle-release-drift-ms	Zoom (legacy spelling)	no
+vprenderer.zoom.<variant>.subtitle_release_drift_ms	viewport-subtitle-release-drift-ms	Zoom	no
+vprenderer.viewport.<variant>.subtitle_padding_pixels	viewport-subtitle-padding-pixels	Zoom (legacy spelling)	no
+vprenderer.zoom.<variant>.subtitle_padding_pixels	viewport-subtitle-padding-pixels	Zoom	no
+vprenderer.viewport.<variant>.subtitle_target_buffer_pixels	viewport-subtitle-target-buffer-pixels	Zoom (legacy spelling)	no
+vprenderer.zoom.<variant>.subtitle_target_buffer_pixels	viewport-subtitle-target-buffer-pixels	Zoom	no
+vprenderer.zoom.<variant>.hdr_peak_analysis_picture_only	zoom-hdr-peak-analysis-picture-only	Zoom	no
+vprenderer.zoom.<variant>.hdr_peak_analysis_motion_compensation	zoom-hdr-peak-analysis-motion-compensation	Zoom	no
+vprenderer.zoom.<variant>.hdr_peak_analysis_height_percent	zoom-hdr-peak-analysis-height-percent	Zoom	no
+vprenderer.zoom.<variant>.hdr_peak_analysis_position	zoom-hdr-peak-analysis-position	Zoom	no
 shader.<group>.type	shader-group-type	Shader selection	no
 shader.<group>.when	shader-group-when	Shader selection	no
 shader.<group>.shortcut	shader-group-shortcut	Shader selection	no
@@ -140,5 +146,32 @@ actions.<name>.on	action-on	Event action	no
 actions.<name>.when	action-when	Event action	no
 actions.<name>.run	action-run	Event action	no
 vprenderer.calibration_lut_input_gamma	vprenderer-calibration-lut-input-gamma	Color / Output calibration	no
-vprenderer.hdr_tone_map_target_gamma	vprenderer-hdr-tone-map-target-gamma	Color / Output calibration	no
+vprenderer.hdr_tone_map_target_gamma	vprenderer-hdr-tone-map-target-gamma	Color / Output (legacy spelling)	no
 vprenderer.calibration_lut_input_transfer	vprenderer-calibration-lut-input-transfer	Color / Output calibration	no
+vprenderer.color.calibration_lut_enabled	vprenderer-calibration-lut	Color / Output	no
+vprenderer.color.calibration_lut_bt709	vprenderer-calibration-lut	Color / Output	no
+vprenderer.color.calibration_lut_p3_d65	vprenderer-calibration-lut	Color / Output	no
+vprenderer.color.calibration_lut_bt2020	vprenderer-calibration-lut	Color / Output	no
+vprenderer.color.output_presentation	vprenderer-output-presentation	Color / Output	yes
+vprenderer.color.output_range	vprenderer-output-range	Color / Output	yes
+vprenderer.color.output_gamma	vprenderer-output-gamma	Color / Output	yes
+vprenderer.color.output_path_profile	vprenderer-diagnostic-output-experiments	Color / Output	no
+vprenderer.color.diagnostic_disable_compute	vprenderer-diagnostic-output-experiments	Color / Output	no
+vprenderer.color.diagnostic_force_8bit_sdr_swapchain	vprenderer-diagnostic-output-experiments	Color / Output	no
+vprenderer.color.diagnostic_allow_limited_g22	vprenderer-diagnostic-output-experiments	Color / Output	no
+vprenderer.color.diagnostic_vp_owned_dxgi_presenter	vprenderer-diagnostic-output-experiments	Color / Output	no
+vprenderer.color.sdr_input_transfer	vprenderer-sdr-input-transfer	Color / Output	yes
+vprenderer.color.sdr_adjust_gamma	vprenderer-sdr-adjust-gamma	Color / Output	yes
+vprenderer.color.target_primaries	vprenderer-target-primaries	Color / Output	no
+vprenderer.color.sdr_target_primaries	vprenderer-sdr-target-primaries	Color / Output	no
+vprenderer.color.report_bt2020_to_display	vprenderer-report-bt2020	Color / Output	no
+vprenderer.color.hdr_tone_map_target_gamma	vprenderer-hdr-tone-map-target-gamma	Color / Output	no
+vprenderer.scaling.upscaler	vprenderer-upscaler	Scaling	yes
+vprenderer.scaling.downscaler	vprenderer-downscaler	Scaling	yes
+vprenderer.deband_strength	vprenderer-deband-strength	Rendering	yes
+vprenderer.scaling.sigmoid	vprenderer-sigmoid	Scaling	yes
+vprenderer.color.sdr_lut_input_gamma	vprenderer-sdr-lut-input-gamma	Color / Output	no
+vprenderer.color.output_transport_gamma	vprenderer-output-transport-gamma	Color / Output	yes
+vprenderer.color.output_diagnostics	vprenderer-diagnostic-output-experiments	Color / Output diagnostics	no
+vprenderer.color.diagnostic_disable_shader_cache	vprenderer-diagnostic-output-experiments	Color / Output diagnostics	no
+vprenderer.color.diagnostic_allow_full_g22	vprenderer-diagnostic-output-experiments	Color / Output diagnostics	no
