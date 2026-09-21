@@ -177,6 +177,7 @@
     </ClCompile>
     <ClCompile Include="VideoFrameFormatterTests.cpp" />
     <ClCompile Include="MovingPictureTransitionTests.cpp" />
+    <ClCompile Include="SubtitleBoxDetectorTests.cpp" />
     <ClCompile Include="LookaheadOutwardProofTests.cpp">
       <ExcludedFromBuild Condition="'$(Platform)'=='Win32'">true</ExcludedFromBuild>
     </ClCompile>
