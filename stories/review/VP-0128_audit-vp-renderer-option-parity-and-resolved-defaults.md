@@ -30,11 +30,31 @@ covers synthetic monitor placement; a second physical monitor and HDMI/capture
 behavior remain unqualified. Local logs are under
 `artifacts/vp0128-corrections/` in the source worktree.
 
-Ready for code/build review and a subsequent merge/release decision. No beta
-merge, deployment or active-configuration edits occurred. Acceptance criteria
+Ready for code/build review and a subsequent beta merge decision. The user
+authorized deployment, now completed as recorded below. Acceptance criteria
 have automated/source evidence recorded in the linked report; final acceptance
 and physical output qualification remain pending. The historical findings and
 intermediate results below are superseded by this combined correction status.
+
+## Authorized deployment — 2026-09-20 22:04 EDT
+
+Deployed the tested VP-0128 source `90fd0ed8b1943710348bbe01cdf69c28d1f857da`
+to `C:\Videoprocessor\vp` using its successful x64 Release build. Replaced and
+SHA-256 verified the host, paired renderer DLL, Config executable, discovery DLL,
+and configuration reference against build/source files. Runtime records confirm
+Release/x64 identity; installed Qt Core/Gui/Widgets match the build dependencies.
+The background Config process restarted successfully. Playback was not launched.
+
+At the user's explicit instruction this overwrites the installed VP-0070 trial;
+no combined-trial deployment was used. Removed `subtitle_bbox_test: true`, its
+VP-0070 diagnostic comment and the now-empty final `[vprenderer]` trial section.
+All remaining config bytes were preserved. Original config and every replaced
+file are backed up under
+`C:\Videoprocessor\vp\backup-before-vp0128-20260920-220425`.
+[Deployment receipt and file hashes](../assets/VP-0128/deployment-90fd0ed8/deployment-receipt.json).
+
+PR #106 remains unmerged. Story stays Review pending acceptance/live playback;
+this deployment does not claim physical capture/HDMI qualification.
 
 ## Pinned audit history — 2026-09-20
 

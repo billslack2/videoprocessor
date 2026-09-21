@@ -7,6 +7,13 @@ revisit later after the user shares a video of the live behavior. The Step 1
 trial is not accepted as reliable; preserve the implementation and existing
 validation evidence for diagnosis. VP-0070-1 and remaining children are blocked.
 
+Deployment update (2026-09-20 22:04 EDT): at the user's explicit request,
+VP-0128 replaced the installed trial and removed `subtitle_bbox_test: true` and
+its diagnostic comment from the active config. The trial binaries/config are
+backed up under `C:\Videoprocessor\vp\backup-before-vp0128-20260920-220425`.
+[Replacement deployment receipt](../assets/VP-0128/deployment-90fd0ed8/deployment-receipt.json).
+Subtitle work remains paused/Blocked; its source and prior evidence are preserved.
+
 Saved and pushed on the explicitly requested `subtitle-moving` branch in
 `billslack2/videoprocessor`, at `036db46e213835b861f181fab1a951b7afc94fe6`.
 No further implementation, merge, deployment or configuration change accompanies

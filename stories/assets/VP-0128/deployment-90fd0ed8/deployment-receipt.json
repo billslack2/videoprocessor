@@ -1,0 +1,52 @@
+{
+  "timestamp": "2026-09-20T22:04:26.2498585-04:00",
+  "playback_started": false,
+  "config_sha256_after": "5EBF96761F18DA585D156263FD96D59EF8B533C5DEF003DBE01C132181533A32",
+  "config_changes": "Removed subtitle_bbox_test: true, its VP-0070 comment and the now-empty trailing trial section; all other bytes preserved.",
+  "files": [
+    {
+      "sha256": "0B19276DCBA808997481BABE180FA3983E928E782330CE8594F7EDEDD09E4158",
+      "old_sha256": "3C9C1768FB3B5CF1AD69F65F790DA013C1659B315E7893922C0B25573DCA0E04",
+      "source": "E:\\codex\\videoprocessor\\vp-0128-config-corrections\\x64\\Release\\VideoProcessor-GUI.exe",
+      "target": "C:\\Videoprocessor\\vp\\VideoProcessor.exe",
+      "backup": "C:\\Videoprocessor\\vp\\backup-before-vp0128-20260920-220425\\VideoProcessor.exe"
+    },
+    {
+      "sha256": "C953ECC5F376FAB8242E7B23AEC8F3C428986BA82AB868516FEFFD4A55C1818E",
+      "old_sha256": "F9C58DD8B544D438E14964CB4002FFC93D30DECB9611F86DB7385BB1FA4E86CF",
+      "source": "E:\\codex\\videoprocessor\\vp-0128-config-corrections\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "target": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "backup": "C:\\Videoprocessor\\vp\\backup-before-vp0128-20260920-220425\\vprenderer\\VideoProcessorVPRenderer.dll"
+    },
+    {
+      "sha256": "19813AB5DF966C8705CBCA30FCCCF5E81858322472931AF16AE19DF763B0EA3C",
+      "old_sha256": "BE493E427DCEC36D69B04917F23636898616D6C2919D02FDECFE7E99EE8814FB",
+      "source": "E:\\codex\\videoprocessor\\vp-0128-config-corrections\\x64\\Release\\VideoProcessorConfig.exe",
+      "target": "C:\\Videoprocessor\\vp\\config\\VideoProcessorConfig.exe",
+      "backup": "C:\\Videoprocessor\\vp\\backup-before-vp0128-20260920-220425\\config\\VideoProcessorConfig.exe"
+    },
+    {
+      "sha256": "4FC01FD49D58F908F7816F7016D67AA4BC5FA948524ADDB4367D3C174D4B1713",
+      "old_sha256": "D026AC8E25396E93D364157AC95A85BB8489E58A6E43981C11450B7EEF16076E",
+      "source": "E:\\codex\\videoprocessor\\vp-0128-config-corrections\\x64\\Release\\VideoProcessorConfigDiscovery.dll",
+      "target": "C:\\Videoprocessor\\vp\\config\\VideoProcessorConfigDiscovery.dll",
+      "backup": "C:\\Videoprocessor\\vp\\backup-before-vp0128-20260920-220425\\config\\VideoProcessorConfigDiscovery.dll"
+    },
+    {
+      "sha256": "3DF71EE74F2BB29CC00CA9E517D30E9F629D5949E2B43C0DA7872748DA30B5FF",
+      "old_sha256": "52448E1007B31302410DC4531711EA358C36E240FF1C37846015F7A24503299F",
+      "source": "E:\\codex\\videoprocessor\\vp-0128-config-corrections\\CONFIGURATION.html",
+      "target": "C:\\Videoprocessor\\vp\\CONFIGURATION.html",
+      "backup": "C:\\Videoprocessor\\vp\\backup-before-vp0128-20260920-220425\\CONFIGURATION.html"
+    }
+  ],
+  "source_commit": "90fd0ed8b1943710348bbe01cdf69c28d1f857da",
+  "configuration": "x64 Release",
+  "config_sha256_before": "8255CB563898CFFB518ACEBEAF746F95042282CDD9FA4C7C4E621D4CE518EC49",
+  "tests": {
+    "editor": 80,
+    "native": 440,
+    "build_errors": 0
+  },
+  "config_backup": "C:\\Videoprocessor\\vp\\backup-before-vp0128-20260920-220425\\VideoProcessor.cfg"
+}
