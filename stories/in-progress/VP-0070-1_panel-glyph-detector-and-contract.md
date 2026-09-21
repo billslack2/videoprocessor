@@ -2,6 +2,25 @@
 
 ## Status
 
+In Progress (2026-09-21). User authorized a fresh Step 1 detection-only trial:
+one bright green bounding box around the complete bar-anchored subtitle, shown
+in full-raster 16:9 with existing subtitle treatment disabled. Prior rejected
+implementations remain historical references and are not being redeployed.
+
+Branch: `codex/vp-0070-bbox-test`, based on current GitHub beta
+`v1.3.005-beta` at `b3c0b3a6a8fdf4f5bb1c9ce0dc3340a3d5e395d7`.
+Worktree: `E:\codex\videoprocessor\vp-0070-bbox-test`.
+
+Priority: first-frame acquisition when bar authority is available, complete
+multi-line bounds, and consistent cue geometry. Detection runs on unmodified
+source pixels; the outline is a display overlay. No OCR, glyph extraction,
+source erasure, relocation, or model dependency is part of this trial. Bounds
+must include related picture-side lines once a bar line establishes eligibility.
+Report acquisition/expansion latency and real-video limitations honestly; unit
+fixtures do not establish live-video acceptance. Steps 2-4 remain unimplemented.
+
+## Previous blocked evidence
+
 Blocked 2026-08-08. The implementation in `a3ecbd5`/`c6e251b`/`ccbc240` on
 `codex/vp-0070-1-panel-detection` failed live validation and is rejected as the
 production basis. It must not be redeployed. Its single widest-dark-run panel,
