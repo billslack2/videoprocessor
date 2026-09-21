@@ -60,7 +60,7 @@ vprenderer.deband	vprenderer-deband	VP Renderer	yes
 vprenderer.dithering	vprenderer-dithering	VP Renderer	yes
 vprenderer.display_bit_depth	vprenderer-display-bit-depth	VP Renderer	yes
 vprenderer.sdr_target_nits	vprenderer-sdr-target-nits	VP Renderer	no
-vprenderer.sdr_black_nits	vprenderer-sdr-black-nits	VP Renderer	yes
+vprenderer.sdr_black_nits	vprenderer-sdr-black-nits	VP Renderer	no
 vprenderer.output_presentation	vprenderer-output-presentation	Color / Output (legacy spelling)	yes
 vprenderer.output_range	vprenderer-output-range	Color / Output (legacy spelling)	yes
 vprenderer.output_gamma	vprenderer-output-gamma	Color / Output (legacy spelling)	yes

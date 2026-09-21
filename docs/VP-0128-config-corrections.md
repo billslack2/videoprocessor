@@ -68,5 +68,6 @@ synthetic placement coverage remains in the suite.
 - Logs are local under `artifacts/vp0128-corrections/`: `build-final.log`,
   `editor-complete.log`, `native-verified.log`, `reference-complete.log` and TRX files.
 
-The black default remains tracked independently in PR #105. Source compatibility
-between the two correction branches is checked before publishing this PR.
+The black default remains tracked independently in PR #105. The black field's Auto inventory marker also stays with that PR to keep its documentation
+change together. The combined source merge was checked for conflicts before
+publishing; a combined binary build remains an integration-time check.
