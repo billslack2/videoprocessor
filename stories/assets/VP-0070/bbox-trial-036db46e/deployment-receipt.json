@@ -1,0 +1,45 @@
+{
+  "timestamp": "2026-09-20T21:46:02.714365-04:00",
+  "source_commit": "036db46e213835b861f181fab1a951b7afc94fe6",
+  "configuration": "x64 Release",
+  "tests": {
+    "total": "1394",
+    "executed": "1394",
+    "passed": "1394",
+    "failed": "0",
+    "error": "0",
+    "timeout": "0",
+    "aborted": "0",
+    "inconclusive": "0",
+    "passedButRunAborted": "0",
+    "notRunnable": "0",
+    "notExecuted": "0",
+    "disconnected": "0",
+    "warning": "0",
+    "completed": "0",
+    "inProgress": "0",
+    "pending": "0"
+  },
+  "files": [
+    {
+      "source": "E:\\codex\\videoprocessor\\vp-0070-bbox-test\\x64\\Release\\VideoProcessor-GUI.exe",
+      "target": "C:\\Videoprocessor\\vp\\VideoProcessor.exe",
+      "backup": "C:\\Videoprocessor\\vp\\backup-before-vp0070-configfix-20260920-214602\\VideoProcessor.exe",
+      "old_sha256": "58621c2ab50b47606ae967a9a0cb3a95346448413d380ef94569635122ab226c",
+      "sha256": "3c9c1768fb3b5cf1ad69f65f790da013c1659b315e7893922c0b25573dca0e04"
+    },
+    {
+      "source": "E:\\codex\\videoprocessor\\vp-0070-bbox-test\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "target": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "backup": "C:\\Videoprocessor\\vp\\backup-before-vp0070-configfix-20260920-214602\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "old_sha256": "81f7ed7816a96e28d232ee2793d1b7f5d3a4e0aa860e3170fab664d0375ba66c",
+      "sha256": "f9c58dd8b544d438e14964cb4002ffc93d30decb9611f86db7385bb1fa4e86cf"
+    }
+  ],
+  "config_sha256": "8255cb563898cffb518acebeaf746f95042282cdd9fa4c7c4e621d4ce518ec49",
+  "config_changes": "None; subtitle_bbox_test remains enabled.",
+  "actual_config_validation": "Passed RendererProfileConfig::Read and diagnostic flag readback.",
+  "build_log": "E:\\codex\\videoprocessor\\vp-0070-bbox-test\\subtitle-bbox-configfix-final-build.log",
+  "test_trx": "E:\\codex\\videoprocessor\\vp-0070-bbox-test\\TestResults\\subtitle-bbox-configfix-final-full.trx",
+  "live_acceptance": "Pending user playback; did not launch VP."
+}

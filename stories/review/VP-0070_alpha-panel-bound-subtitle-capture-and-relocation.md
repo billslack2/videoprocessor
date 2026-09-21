@@ -7,7 +7,7 @@ tested and deployed for live 16:9 playback. Live acceptance is pending; the
 remaining glyph extraction/removal/relocation work stays blocked.
 
 Source: `codex/vp-0070-bbox-test` at
-`d2b1408abb09a1ddfcebe32e5fb2e223ed2f1bb0`, based on GitHub beta
+`036db46e213835b861f181fab1a951b7afc94fe6`, based on GitHub beta
 `v1.3.005-beta` at `b3c0b3a6a8fdf4f5bb1c9ce0dc3340a3d5e395d7`.
 Worktree: `E:\codex\videoprocessor\vp-0070-bbox-test`.
 
@@ -21,7 +21,7 @@ is inspected; the first qualified box is shown immediately once trusted bar
 geometry exists. Matching cues retain geometry; at most two missing observations
 hold the diagnostic outline, explicitly logged as held rather than detected.
 
-Validation at the pinned commit:
+Original detector validation at d2b1408a (startup fix below):
 
 - Clean x64 Release rebuild succeeded; all 1,393 unit tests passed.
 - Each 342-frame 1080p/4K replay covered six real movie backgrounds with synthetic
@@ -56,6 +56,29 @@ drift throughout each cue. `SUBTITLE BBOX` evidence is in
 is claimed. Historical requirements below are retained for context and require
 reconciliation before later steps; they do not mandate OCR or opaque panels for
 this authorized detection-only trial.
+
+## Startup correction and redeployment (2026-09-20)
+
+The user reported a fatal startup error for `subtitle_bbox_test`. Deployed host
+and renderer hashes still matched d2b1408a: the binaries had not been overwritten.
+The trial omitted both canonical and target-model startup schema validation for
+the new boolean setting. Corrected in `036db46e213835b861f181fab1a951b7afc94fe6`
+on the same feature branch; beta remains b3c0b3a6.
+
+The expanded startup-reader regression initially reproduced both validation
+failures. The corrected clean x64 Release build passed all 1,394 tests, including
+true/false acceptance and invalid-value rejection. A temporary read-only probe
+also passed the actual deployed configuration through RendererProfileConfig::Read
+and confirmed the enabled diagnostic flag. Detector code is unchanged.
+
+Redeployed the matching host/renderer Release pair, backed up both originals,
+and verified destination hashes. Configuration is unchanged. VP was stopped;
+playback/startup in the GUI still awaits the user's live trial. The earlier
+statement that d2b1408a was ready for live playback was incorrect because startup
+had not been validated through this schema path.
+
+[Corrected deployment receipt](../assets/VP-0070/bbox-trial-036db46e/deployment-receipt.json).
+Backup: `C:\Videoprocessor\vp\backup-before-vp0070-configfix-20260920-214602`.
 
 ## Previous blocked evidence
 
