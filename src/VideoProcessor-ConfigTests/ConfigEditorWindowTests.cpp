@@ -438,6 +438,46 @@ void testHdrTargetLuminanceValidationRetainsSavedValue()
         requireControl<QLineEdit>(reloaded, "config.vprenderer.sdr_black_nits")->text() == "600", "Expanded luminance failed reload");
 }
 
+void testBlackDefaultAndLegacyAutoInheritance()
+{
+    for (const QByteArray blackLine : { QByteArray(), QByteArray("sdr_black_nits: AUTO\n"),
+        QByteArray("sdr_black_nits: 0.025\n") })
+    {
+        QTemporaryDir directory;
+        const QString path = directory.filePath("VideoProcessor.cfg");
+        QFile file(path);
+        require(file.open(QIODevice::WriteOnly), "Cannot create black default fixture");
+        file.write("[vprenderer.First]\nsdr_target_nits: 100\n" + blackLine +
+            "[vprenderer.Second]\nsdr_target_nits: 200\n");
+        file.close();
+        ConfigEditorWindow window(path, 0, true);
+        window.setActiveProfileStatusForTesting({}, {}, {}, {}, {});
+        auto* profiles = requireControl<QListWidget>(window, "config.vprenderer.profiles");
+        auto* black = requireControl<QLineEdit>(window, "config.vprenderer.sdr_black_nits");
+        auto* status = requireControl<QLabel>(window, "config.vprenderer.sdr_black_nits.auto_status");
+        for (int row : { 0, 1, 0 })
+        {
+            profiles->setCurrentRow(row);
+            QCoreApplication::processEvents();
+            const QString expected = blackLine.isEmpty() ? "0" :
+                blackLine.contains("AUTO") ? "AUTO" : "0.025";
+            require(black->text().compare(expected, Qt::CaseInsensitive) == 0,
+                "Default/inherited black differs from effective value");
+            if (blackLine.contains("AUTO"))
+                require(status->text() == "Auto: 0 nits (0.000001 nit internally)",
+                    "Legacy Auto black still depends on inherited white");
+        }
+        auto* white = requireControl<QLineEdit>(window, "config.vprenderer.sdr_target_nits");
+        white->setText("150");
+        save(window);
+        ConfigEditorWindow reloaded(path, 0, true);
+        requireControl<QListWidget>(reloaded, "config.vprenderer.profiles")->setCurrentRow(1);
+        require(requireControl<QLineEdit>(reloaded, "config.vprenderer.sdr_black_nits")->text()
+            .compare(black->text(), Qt::CaseInsensitive) == 0,
+            "Black default/inherited value changed on save and reload");
+    }
+}
+
 void testInheritedHdrTargetLuminanceValidation()
 {
     QTemporaryDir directory;
@@ -3436,8 +3476,8 @@ void testChoiceLabelsAndVpRendererName()
     targetWhiteLevel->setText(QStringLiteral("79"));
     targetBlackLevel->setText(QStringLiteral("Auto"));
     QCoreApplication::processEvents();
-    require(targetBlackStatus->text() == QStringLiteral("Auto: 0.079 nits"),
-        "Auto target black level does not show its calculated libplacebo value");
+    require(targetBlackStatus->text() == QStringLiteral("Auto: 0 nits (0.000001 nit internally)"),
+        "Legacy Auto target black does not show the zero default and internal floor");
     QComboBox* upscaler = requireControl<QComboBox>(window,
         QStringLiteral("config.vprenderer.scaling.upscaler"));
     QLabel* upscalerStatus = requireControl<QLabel>(window,
@@ -5821,6 +5861,7 @@ int main(int argc, char** argv)
     failures += run("shared profile list controller contract",
         testSharedProfileListControllerContract);
     failures += run("Limited transport gamma notice and correction", testLimitedTransportGammaNoticeAndCorrection);
+    failures += run("black default and legacy Auto inheritance", testBlackDefaultAndLegacyAutoInheritance);
     failures += run("Inherited HDR target luminance validation", testInheritedHdrTargetLuminanceValidation);
     failures += run("HDR target luminance validation retains saved value",
         testHdrTargetLuminanceValidationRetainsSavedValue);

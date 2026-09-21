@@ -3,8 +3,8 @@
 Baseline: GitHub default/current beta `v1.3.005-beta`,
 `b3c0b3a6a8fdf4f5bb1c9ce0dc3340a3d5e395d7`, queried and fetched 2026-09-20.
 Source branch: `codex/vp-0128-config-corrections`.
-The separate zero-black correction remains in PR #105; this change does not
-revert or duplicate it.
+This branch includes the zero-black correction from PR #105, so the full audit
+correction can be reviewed and integrated together.
 
 ## Findings addressed
 
@@ -68,5 +68,6 @@ synthetic placement coverage remains in the suite.
 - Logs are local under `artifacts/vp0128-corrections/`: `build-final.log`,
   `editor-complete.log`, `native-verified.log`, `reference-complete.log` and TRX files.
 
-The black default remains tracked independently in PR #105. Source compatibility
-between the two correction branches is checked before publishing this PR.
+PR #105 is included in this branch. One documentation conflict was resolved by
+keeping the zero-black contract together with the corrected gamma/range guidance.
+The combined source is rebuilt and tested before publishing.

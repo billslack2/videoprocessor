@@ -2064,15 +2064,7 @@ void ConfigEditorWindow::refreshRendererAutoStatus()
         QString text;
         if (binding.key == QStringLiteral("sdr_black_nits"))
         {
-            const auto* targetWhite = findChild<QLineEdit*>(
-                controlName(binding.sectionPrefix, QStringLiteral("sdr_target_nits")));
-            bool valid = false;
-            const double whiteNits = targetWhite ?
-                targetWhite->text().trimmed().toDouble(&valid) : 0.0;
-            // libplacebo's documented SDR contrast constant is 1000:1.
-            text = valid && whiteNits > 0.0 ? QString::number(
-                whiteNits / 1000.0, 'f', 3) + QStringLiteral(" nits") :
-                QStringLiteral("0.203 nits");
+            text = QStringLiteral("0 nits (0.000001 nit internally)");
         }
 		else if (binding.key == QStringLiteral("output_gamma"))
 		{
@@ -4817,7 +4809,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         auto* sdrBlackLevel = addText(QStringLiteral("HDR tone-map target black"),
             QStringLiteral("sdr_black_nits"), QStringLiteral("nits"));
         sdrBlackLevel->setToolTip(QStringLiteral(
-            "Black level for HDR-to-SDR tone mapping only. 0 assumes effectively perfect black (0.000001 nit internally); positive values are used as entered. SDR input is unaffected."));
+            "Black level for HDR-to-SDR tone mapping only. Omitted values and legacy Auto default to 0 (0.000001 nit internally); positive values are used as entered. SDR input is unaffected."));
         sdrBlackLevel->setPlaceholderText(QStringLiteral("0 or a measured black level"));
         sdrBlackLevel->setValidator(new QDoubleValidator(0.0, HdrTargetLuminance::Maximum, -1, sdrBlackLevel));
         addRendererAutoStatus(QStringLiteral("sdr_black_nits"), sdrBlackLevel);
@@ -5320,8 +5312,8 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                 if (key == QStringLiteral("output_path_profile")) return QStringLiteral("legacy");
                 if (key == QStringLiteral("target_primaries")) return QStringLiteral("REC709");
                 if (key == QStringLiteral("sdr_target_nits")) return QStringLiteral("203");
-				if (key == QStringLiteral("sdr_black_nits") ||
-					key == QStringLiteral("contrast_recovery")) return QStringLiteral("Auto");
+                if (key == QStringLiteral("sdr_black_nits")) return QString::number(HdrTargetLuminance::DefaultBlack);
+                if (key == QStringLiteral("contrast_recovery")) return QStringLiteral("Auto");
 				if (key == QStringLiteral("deband_strength")) return QStringLiteral("AUTO");
 				if (key == QStringLiteral("report_bt2020_to_display") ||
                     key == QStringLiteral("output_diagnostics") ||
