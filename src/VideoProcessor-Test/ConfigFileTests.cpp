@@ -4124,7 +4124,7 @@ namespace VideoProcessorTest
 				{ "vprenderer.color.bt2020", "F6" },
 				{ "vprenderer.viewport.viewport_16x9", "F3" },
 				{ "vprenderer.viewport.scope", "F2" },
-				{ "shader.nls", "N" },
+				{ "shader.nls.off", "N" },
 				{ "shader.nls.standard", "Shift+N" },
 				{ "shader.nls.protected", "Shift+P" }
 			};
