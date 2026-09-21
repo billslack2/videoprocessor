@@ -1046,3 +1046,33 @@ installation are pending exit of the user's main and vptest2 Config processes.
 No configuration has been overwritten and no running Config process was forced
 closed. Setup is unsigned. Clean Windows without Visual Studio and interactive
 Config Apply/OK/reopen qualification have not been performed for this build.
+
+### Follow-up completion: RC2 refresh and local deployment
+
+The earlier pending checkpoint is resolved. All 326 real-installer lifecycle
+checks, two legacy ZIP-adoption cases and deliberate corrupt-package recovery
+passed under an isolated QA identity with process checks scoped to disposable
+QA folders. Application payload hashes match the public packages. Standard
+Windows PowerShell module paths resolved an initial QA-environment failure;
+ZIP cleanup was tested with a matching freshly staged legacy fixture after an
+older fixture correctly preserved its differently hashed example configuration.
+Failed-run evidence remains in the local validation directory.
+
+At the user's explicit request, the existing [RC2 release](https://github.com/billslack2/videoprocessor/releases/tag/1.3-beta-RC2)
+now offers the `6785d0b1092b` Setup and portable ZIP, both SHA-256 sidecars,
+`SHA256SUMS.txt`, and updated `release-verification.json`. GitHub asset digests
+match local hashes for all six assets. Superseded downloads/sidecars were backed
+up and removed. Release notes briefly explain NLS root-profile resolution,
+small asymmetric side-inclusion retention and bounded outward/menu fitting.
+The existing tag was not moved; notes identify the refreshed source commit and
+actual `1.3.005-beta` package version explicitly.
+
+The clean merged-beta payload was deployed to `C:\Videoprocessor\vp` at
+17:33 EDT on 2026-09-21: 62 managed files verified, 19 operator-data files
+unchanged, no configuration edits. Backup:
+`C:\Videoprocessor\vp\deployment-backups\beta-6785d0b1092b-20260921-173310`.
+Host and renderer startup logs both confirm clean commit
+`6785d0b1092b445a8b05136c2bce1249a09e7d4f`. The release output directory holds
+`deployment-receipt.json`, the original RC2 asset/notes backup, final remote
+asset metadata, SHA files, and local validation evidence. Unsigned and clean-VM /
+interactive configuration qualification limitations above still apply.
