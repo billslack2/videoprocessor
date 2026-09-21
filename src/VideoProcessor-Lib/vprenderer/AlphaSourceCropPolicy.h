@@ -1142,6 +1142,9 @@ namespace AlphaSourceCrop
 	struct PresentationRecoveryState
 	{
 		bool active = false;
+		// Outward-only while recovery is pending; inward return uses existing proof.
+		bool fallbackBoundsAvailable = false;
+		ActivePictureBounds fallbackBounds;
 		ActivePictureBounds trustedCrop;
 		uint64_t sourceGeneration = 0;
 		uint64_t presentationEpoch = 0;
@@ -1186,6 +1189,7 @@ namespace AlphaSourceCrop
 		bool released = false;
 		bool proofReset = false;
 		bool samplingReaffirmed = false;
+		bool boundedPresentation = false;
 		uint32_t samples = 0;
 		uint32_t required = 0;
 		uint32_t gates = RECOVERY_OK;
