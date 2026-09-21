@@ -2,22 +2,60 @@
 
 ## Status
 
-In Progress (2026-09-21). User authorized a fresh Step 1 detection-only trial:
-one bright green bounding box around the complete bar-anchored subtitle, shown
-in full-raster 16:9 with existing subtitle treatment disabled. Prior rejected
-implementations remain historical references and are not being redeployed.
+Review (2026-09-20). The user-authorized Step 1 green-box trial is built,
+tested and deployed for live 16:9 playback. Live acceptance is pending; the
+remaining glyph extraction/removal/relocation work stays blocked.
 
-Branch: `codex/vp-0070-bbox-test`, based on current GitHub beta
+Source: `codex/vp-0070-bbox-test` at
+`d2b1408abb09a1ddfcebe32e5fb2e223ed2f1bb0`, based on GitHub beta
 `v1.3.005-beta` at `b3c0b3a6a8fdf4f5bb1c9ce0dc3340a3d5e395d7`.
 Worktree: `E:\codex\videoprocessor\vp-0070-bbox-test`.
 
-Priority: first-frame acquisition when bar authority is available, complete
-multi-line bounds, and consistent cue geometry. Detection runs on unmodified
-source pixels; the outline is a display overlay. No OCR, glyph extraction,
-source erasure, relocation, or model dependency is part of this trial. Bounds
-must include related picture-side lines once a bar line establishes eligibility.
-Report acquisition/expansion latency and real-video limitations honestly; unit
-fixtures do not establish live-video acceptance. Steps 2-4 remain unimplemented.
+The current trial supersedes the historical panel/OCR design below for Step 1:
+a renderer-neutral classical detector finds a bar-anchored cue and related
+picture-side lines; the renderer draws one bright green 3-output-pixel outline.
+No OCR, learned model, glyph extraction, source erasure or relocation is used.
+The opt-in diagnostic forces full-raster presentation without crop, NLS warp or
+subtitle translation. Source pixels remain unmodified. Every new source frame
+is inspected; the first qualified box is shown immediately once trusted bar
+geometry exists. Matching cues retain geometry; at most two missing observations
+hold the diagnostic outline, explicitly logged as held rather than detected.
+
+Validation at the pinned commit:
+
+- Clean x64 Release rebuild succeeded; all 1,393 unit tests passed.
+- Each 342-frame 1080p/4K replay covered six real movie backgrounds with synthetic
+  known glyphs: 36/36 isolated positive cue onsets had complete bounds immediately;
+  all 126 positive frames had complete bounds. All 54 labeled blank/picture-only/
+  menu negative frames had no fresh detection. Gap frames are excluded from that
+  negative metric because the outline intentionally has a two-frame hold.
+- The same two-line cue across 18 changing-background frames retained one box.
+- Detector-only CPU P50/P95/P99: 1080p 1.606/2.919/3.285 ms;
+  4K 1.197/2.508/2.948 ms (max 5.958 ms). These are offline measurements,
+  not live frame-budget or presentation validation.
+- A top-boundary case includes extra picture detail (box/glyph-envelope area
+  ratio 1.534). Synthetic coverage does not establish real-caption precision,
+  compressed/HDR accuracy, startup bar acquisition latency or live stability.
+
+Deployment: backed up the host, renderer and configuration, installed the matching
+Release pair, and verified both destination SHA-256 values against their build
+artifacts. Appended only `[vprenderer] subtitle_bbox_test: true`; saved 16:9
+viewport/zoom and other user configuration remain unchanged. VP was stopped and
+was not launched. Restart is required to enable/disable the diagnostic.
+
+[Deployment receipt](../assets/VP-0070/bbox-trial-d2b1408a/deployment-receipt.json),
+[1080p replay](../assets/VP-0070/bbox-trial-d2b1408a/1080p-results.json),
+[4K replay](../assets/VP-0070/bbox-trial-d2b1408a/4k-results.json).
+Backup: `C:\Videoprocessor\vp\backup-before-vp0070-bbox-20260920-204651`.
+
+Live review: start VP in 16:9 (F3), play real subtitles and assess the first
+complete box, late expansions, missed lines/words, false positives and coordinate
+drift throughout each cue. `SUBTITLE BBOX` evidence is in
+`C:\Videoprocessor\vp\logs\vp_debug.log`. Disable the trial by setting
+`subtitle_bbox_test: false` and restarting. No production or root-story completion
+is claimed. Historical requirements below are retained for context and require
+reconciliation before later steps; they do not mandate OCR or opaque panels for
+this authorized detection-only trial.
 
 ## Previous blocked evidence
 

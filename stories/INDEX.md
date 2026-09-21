@@ -96,8 +96,8 @@ they must not contain requirements that are absent from this file.
 | VP-0069 | Done | Achieve and verify a 50 ms low-latency Alpha renderer path |
 | VP-0069-1 | Done | Native-format Alpha ingress and conditional P010 analysis |
 | VP-0069-2 | Will Not Do | Alpha end-to-end latency reduction investigation (superseded by VP-0074) |
-| VP-0070 | In Progress | CIH bar/boundary subtitle capture and relocation |
-| VP-0070-1 | In Progress | Bar/boundary CueSet architecture and detector benchmark |
+| VP-0070 | Review | CIH bar/boundary subtitle capture and relocation |
+| VP-0070-1 | Review | Bar/boundary CueSet architecture and detector benchmark |
 | VP-0070-2 | Blocked | Stable boundary-crossing diagnostic overlay |
 | VP-0070-3 | Blocked | Same-frame panel restoration and glyph relocation |
 | VP-0070-4 | Blocked | Panel subtitle live validation and performance |

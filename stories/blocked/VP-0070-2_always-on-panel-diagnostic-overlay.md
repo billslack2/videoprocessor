@@ -29,7 +29,7 @@ deployment remain paused.
 
 ## Parent
 
-[VP-0070](VP-0070_alpha-panel-bound-subtitle-capture-and-relocation.md)
+[VP-0070](../review/VP-0070_alpha-panel-bound-subtitle-capture-and-relocation.md)
 
 ## Scope
 

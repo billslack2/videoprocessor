@@ -11,7 +11,7 @@ must not reopen or alter the accepted VP-0066 live timing pipeline.
 
 ## Parent and dependencies
 
-Parent: [VP-0070](VP-0070_alpha-panel-bound-subtitle-capture-and-relocation.md).
+Parent: [VP-0070](../review/VP-0070_alpha-panel-bound-subtitle-capture-and-relocation.md).
 
 Dependencies: accepted VP-0070-1 through VP-0070-4 CueSet, rendering, and live
 validation contracts, plus the stable VP-0066 epoch, processing, and lifecycle
