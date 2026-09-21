@@ -711,6 +711,7 @@ namespace RendererProfileConfig
 	inline bool ValidateCanonicalDisplaySetting(
 		const std::string& key, const std::string& value)
 	{
+		if (key == "subtitle_bbox_test") return IsBoolean(value);
 		if (key == "video_conversion" || key == "container_colorspace" ||
 			key == "hdr_colorspace" || key == "hdr_luminance")
 			return ValidateBaseSetting(key, value);
