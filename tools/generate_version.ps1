@@ -38,7 +38,12 @@ $VerDescribePost = "`");`n"
 $VerBy       = (git log -n 1 --format=format:"static const TCHAR* VERSION_AUTHOR=TEXT(`\`"%an `<%ae`>`\`");%n") | Out-String
 $VerUrl      = (git log -n 1 --format=format:"static const TCHAR* VERSION_URL=TEXT(`\`"$VerPrefix%H`\`");%n") | Out-String
 $VerDate     = (git log -n 1 --format=format:"static const TCHAR* VERSION_DATE=TEXT(`\`"%ai`\`");%n") | Out-String
-$VerDescribe = Invoke-GitText -GitArguments @("describe", "--tags")
+# A nearest-ancestor tag describes Git history, not the release being built.
+# Only use a tag that names this exact commit; missing tags must not turn a
+# newer release into an apparent RC1-N-gSHA build. The beta override below
+# still labels builds that belong to the locally known integration line.
+$ExactTags = Invoke-GitText -GitArguments @("for-each-ref", "--points-at", "HEAD", "--sort=-version:refname", "--format=%(refname:short)", "refs/tags")
+$VerDescribe = ($ExactTags -split '\r?\n' | Select-Object -First 1)
 $VerCommitShort = Invoke-GitText -GitArguments @("rev-parse", "--short=7", "HEAD")
 $VerBranch = Invoke-GitText -GitArguments @("symbolic-ref", "--quiet", "--short", "HEAD")
 $DefaultRemoteRef = Invoke-GitText -GitArguments @("symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD")
@@ -117,11 +122,16 @@ if ([String]::IsNullOrWhiteSpace($VerCommitShort)) {
     $VerCommitShort = $VerCommitShort.Substring(0, 7)
   }
 }
-if ([String]::IsNullOrWhiteSpace($VerCommitShort) -and
-    $VerDescribe -match '(?i)-g([0-9a-f]{7,40})(?:-dirty)?$') {
-  $VerCommitShort = $Matches[1].Substring(0, 7)
-}
 
+# A shallow checkout, missing release tag, or moved remote default branch
+# still has an exact source identity. Do not infer an RC from an older tag.
+if ([String]::IsNullOrWhiteSpace($VerDescribe)) {
+  $VerDescribe = if ([String]::IsNullOrWhiteSpace($VerCommitShort)) {
+    "unknown-source"
+  } else {
+    "git-$VerCommitShort"
+  }
+}
 $VerBranchLine = "static const TCHAR* VERSION_BRANCH=TEXT(`"$(ConvertTo-CppString $VerBranch)`");`n"
 $VerCommitLine = "static const TCHAR* VERSION_COMMIT_SHORT=TEXT(`"$(ConvertTo-CppString $VerCommitShort)`");`n"
 

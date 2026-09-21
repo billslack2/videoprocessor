@@ -11196,11 +11196,11 @@ struct LibplaceboVideoRenderer::Impl
 				aspectLimitFill = AlphaSourceCrop::EvaluateFixedAspectCrop(
 					fixedCropInput);
 			}
-			else if (nlsPresentationFailOpen)
+			else if (nlsPresentationFailOpen || recoveryDecision.boundedPresentation)
 			{
 				aspectLimitFill.sourceBounds = cropDecision.sourceBounds;
 				aspectLimitFill.reason =
-					"presentation fail-open requires the complete raster";
+					"recovery preserves the complete visible envelope; aspect-limit fill withheld";
 			}
 			else if (nlsOwnsPresentationGeometry)
 			{
@@ -11262,7 +11262,7 @@ struct LibplaceboVideoRenderer::Impl
 					if (end != value && *end == '\0' && value[0] >= '0' && value[0] <= '9')
 						cropTraceRemaining = static_cast<unsigned>(std::min(2400ul, requested));
 				}
-				DebugLog::Log("Alpha crop diagnostics: schema=1 recovery_dwell_ms=250 summary_ms=2000 sampling_equivalence=max(2,width/480,height/270) sampling_requires=same-bars-and-current-safe-bands partial_composition=defer-publication failed_bar_axis=retain-established-inward-format axis_full_extent=diagnostic-only axis_extent_support=both-outer-lines-6-of-12-per-quartile-above-cutoff-plus24 stable_aspect_deadband_percent=%.1f stable_aspect_scope=contained-trusted-picture all_sided_inset=retain-inner-composition scheduled_admission=exact-or-current-proven-outward-scan-step-reference-and-live-deadbands picture_handoff=broad-vertical-confirmation-bounded-by-existing-proof-budget outward_proof_sampling=anchored-max(2,width/960,height/540) global_grid=16x16 near_black_p90_max=96 edge_grid=48x6 extent_grid_max=256x64 extent_support=2x2 black_floor=perimeter-p10-clamped-48-80 black_threshold=min(104,floor+24) retention_black_min=0.95 retention_p90_max=min(104,floor+24) dispersion_max=24 texture_max=8 chroma_neutral_min=0.90 continuity_min=0.99 trace_budget=%u trace_max=2400 trace_scope=candidate-and-presentation evidence=existing-samples capture_missed_semantics=timestamp-gap-estimate", ActivePictureTransitionModel::STABLE_ASPECT_DEADBAND_PERCENT, cropTraceRemaining);
+				DebugLog::Log("Alpha crop diagnostics: schema=1 recovery_dwell_ms=250 summary_ms=2000 sampling_equivalence=max(2,width/480,height/270) sampling_requires=same-bars-and-current-safe-bands provisional_sampling=per-vertical-edge-scan-step-contained-sides-and-current-strip-check partial_composition=defer-publication failed_bar_axis=retain-established-inward-format axis_full_extent=diagnostic-only axis_extent_support=both-outer-lines-6-of-12-per-quartile-above-cutoff-plus24 stable_aspect_deadband_percent=%.1f stable_aspect_scope=contained-trusted-picture all_sided_inset=retain-inner-composition scheduled_admission=exact-or-current-proven-outward-scan-step-reference-and-live-deadbands picture_handoff=broad-vertical-confirmation-bounded-by-existing-proof-budget outward_proof_sampling=anchored-max(2,width/960,height/540) global_grid=16x16 near_black_p90_max=96 edge_grid=48x6 extent_grid_max=256x64 extent_support=2x2 black_floor=perimeter-p10-clamped-48-80 black_threshold=min(104,floor+24) retention_black_min=0.95 retention_p90_max=min(104,floor+24) dispersion_max=24 texture_max=8 chroma_neutral_min=0.90 continuity_min=0.99 trace_budget=%u trace_max=2400 trace_scope=candidate-and-presentation evidence=existing-samples capture_missed_semantics=timestamp-gap-estimate", ActivePictureTransitionModel::STABLE_ASPECT_DEADBAND_PERCENT, cropTraceRemaining);
 			}
 			const uint64_t cropTick = episodeInput.currentTick;
 			const bool cropApplied = cropDecision.applyCrop || aspectLimitFill.applied;
@@ -11310,7 +11310,7 @@ struct LibplaceboVideoRenderer::Impl
 				const auto& saved = cropPresentationRecovery.active ? cropPresentationRecovery.trustedCrop :
 					recoveryDecision.ended ? recoveryInput.previous.trustedCrop : episodeInput.previous.entryTrustedCrop;
 				DebugLog::Log(
-					"Alpha crop recovery: schema=1 stage=source-crop event=%llu generation=%llu sequence=%llu measurement=%llu epoch=%llu scene=%llu cadence_repeat=%d phase=%s recovery=%d episode=%s actual_change=%d previous_available=%d prev_applied=%d applied=%d prev_rect=%d,%d-%d,%d rect=%d,%d-%d,%d prev_owner=%s owner=%s candidate_owner=%s candidate_reason=\"%s\" saved=%d,%d-%d,%d trusted=%d,%d-%d,%d observed=%d,%d-%d,%d classification=%d observed_class=%d analysis_valid=%d retention_eval=%d bands_safe=%d proposal_available=%d proposal_contained=%d sampling_retained=%d sampling_strip_conflict=%d sampling_equivalent=%d sampling_strip_peak_y=%d sampling_strip_peak_uv_delta=%d sampling_reaffirmed=%d horizontal_bounded=%d inspection_latched=%d outward_visible=%d full_authority=%d near_black=%d p90=%.1f proof=%u/%u dwell_ms=250 episode_proof=%u/%u sticky=%d gates=%u gate_names=%s first_sequence=%llu duration_ms=%llu applied_changes=%u evidence_flips=%u proof_resets=%u reason=\"%s\"",
+					"Alpha crop recovery: schema=1 stage=source-crop event=%llu generation=%llu sequence=%llu measurement=%llu epoch=%llu scene=%llu cadence_repeat=%d phase=%s recovery=%d episode=%s actual_change=%d previous_available=%d prev_applied=%d applied=%d prev_rect=%d,%d-%d,%d rect=%d,%d-%d,%d prev_owner=%s owner=%s candidate_owner=%s candidate_reason=\"%s\" saved=%d,%d-%d,%d trusted=%d,%d-%d,%d observed=%d,%d-%d,%d classification=%d observed_class=%d analysis_valid=%d retention_eval=%d bands_safe=%d proposal_available=%d proposal_contained=%d sampling_retained=%d sampling_strip_conflict=%d sampling_equivalent=%d sampling_strip_peak_y=%d sampling_strip_peak_uv_delta=%d sampling_reaffirmed=%d horizontal_bounded=%d bounded_recovery=%d inspection_latched=%d outward_visible=%d full_authority=%d near_black=%d p90=%.1f proof=%u/%u dwell_ms=250 episode_proof=%u/%u sticky=%d gates=%u gate_names=%s first_sequence=%llu duration_ms=%llu applied_changes=%u evidence_flips=%u proof_resets=%u reason=\"%s\"",
 					(cropUnresolved || cropEventEnded) ? cropDiagnosticEvent : 0, frameGeneration, sourceSequence, latestActivePictureEvidenceFrame,
 					viewportRequestSerial, sceneResult.eventId, cadenceRepeat ? 1 : 0,
 					cropEventStarted ? "start" : cropEventEnded ? "end" : cropSummaryDue ? "summary" : "change",
@@ -11335,7 +11335,7 @@ struct LibplaceboVideoRenderer::Impl
 					latestCropRetentionEvidence.samplingEquivalent ? 1 : 0,
 					latestCropRetentionEvidence.samplingStripPeakY, latestCropRetentionEvidence.samplingStripPeakChromaDelta,
 					latestCropSamplingReaffirmed ? 1 : 0,
-					recoveryInput.candidate.horizontalExpansionPixelBounded ? 1 : 0, scopeVerticalInspectionBridge.failOpenLatched ? 1 : 0,
+					recoveryInput.candidate.horizontalExpansionPixelBounded ? 1 : 0, recoveryDecision.boundedPresentation ? 1 : 0, scopeVerticalInspectionBridge.failOpenLatched ? 1 : 0,
 					latestActivePictureOutwardVisibleBoundsAvailable ? 1 : 0, episodeInput.fullRasterAuthorityAvailable ? 1 : 0,
 					episodeInput.globalNearBlack ? 1 : 0, latestActivePictureGlobalLumaP90,
 					recoveryDecision.samples, recoveryDecision.required, episodeDecision.revalidationSamples,

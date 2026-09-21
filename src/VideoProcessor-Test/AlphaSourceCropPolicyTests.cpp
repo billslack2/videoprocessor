@@ -33,6 +33,37 @@ namespace Tests
 			return input;
 		}
 
+		PresentationRecoveryInput AgencyBoundedRecovery(uint64_t sequence = 4013)
+		{
+			PresentationRecoveryInput input;
+			input.crop = TrustedScopeCrop();
+			auto& c = input.crop;
+			c.geometry.top = 276;
+			c.geometry.aspectRatio = 3840.0 / 1608.0;
+			c.frameSourceSequence = sequence;
+			c.latestObservationSupportsCrop = false;
+			c.latestObservationIsProvisional = true;
+			c.latestObservationClassification = ActivePictureClassification::PROVISIONAL;
+			c.presentationFailOpen = true; // Expired inspection, no dense owner.
+			c.currentVisibleBoundsAvailable = true;
+			c.currentVisibleBase = c.geometry;
+			c.currentVisibleSourceGeneration = 7;
+			c.currentVisibleSourceSequence = sequence;
+			c.currentVisibleBounds = c.geometry;
+			c.currentVisibleBounds.bottom = 2160;
+			c.currentVisibleBounds.trustedBarAxes = ActivePictureBounds::BarAxes::NONE;
+			input.measurementCurrent = input.retentionEvaluated = input.nearBlackEvaluated = true;
+			input.retentionBounds = c.geometry;
+			input.retentionSourceGeneration = 7;
+			input.retentionSourceSequence = sequence;
+			input.observationAvailable = true;
+			input.observationClassification = ActivePictureClassification::PROVISIONAL;
+			input.observation = c.currentVisibleBounds;
+			input.framesPerSecond = 24;
+			input.presentationEpoch = 9;
+			input.candidate = Evaluate(c);
+			return input;
+		}
 		TransitionAdmissionInput MovingRecoveryObservation(const ActivePictureBounds& base,
 			uint64_t generation,uint64_t sequence,unsigned index,double hz)
 		{
@@ -1310,6 +1341,186 @@ namespace Tests
 			Assert::IsTrue(EvaluateTransitionAdmission(input).observation.transitionDeferred);
 		}
 
+		TEST_METHOD(BoundedRecoveryAgencyPreservesBlackTopThroughExpiredInspection)
+		{
+			auto input = AgencyBoundedRecovery();
+			AssertFullRaster(input.candidate); // Reproduce the unresolved-owner route.
+			auto admittedCrop = input.crop; admittedCrop.latestObservationSupportsCrop = true;
+			admittedCrop.presentationFailOpen = false;
+			auto admitted = AdmitCropPresentation({}, admittedCrop, Evaluate(admittedCrop), 9).state;
+			for (uint64_t seq = 4013; seq < 4302; ++seq)
+			{
+				input.crop.frameSourceSequence = input.crop.currentVisibleSourceSequence = input.retentionSourceSequence = seq;
+				const auto result = EvaluatePresentationRecovery(input);
+				Assert::IsTrue(result.state.active);
+				const auto final = AdmitCropPresentation(admitted, input.crop, result.presentation, 9);
+				Assert::IsFalse(final.blocked);
+				Assert::IsTrue(final.presentation.applyCrop);
+				Assert::AreEqual(276, final.presentation.sourceBounds.top);
+				Assert::AreEqual(2160, final.presentation.sourceBounds.bottom);
+				Assert::AreEqual(3840.0 / 1884.0, final.presentation.sourceBounds.aspectRatio, .000001);
+				Assert::AreEqual(1884, result.state.trustedCrop.bottom); // Movie geometry unchanged.
+				input.previous = result.state;
+			}
+		}
+
+		TEST_METHOD(BoundedRecoveryDoesNotPumpWithSmallChangesAndStillExposesMoreContent)
+		{
+			auto input = AgencyBoundedRecovery();
+			input.crop.currentVisibleBounds.bottom = input.observation.bottom = 2040;
+			for (int i = 0; i < 20; ++i)
+			{
+				input.crop.frameSourceSequence = input.crop.currentVisibleSourceSequence = input.retentionSourceSequence = 4013 + i;
+				input.crop.currentVisibleBounds.bottom = input.observation.bottom = i % 2 ? 2036 : 2040;
+				const auto result = EvaluatePresentationRecovery(input);
+				Assert::IsTrue(result.presentation.applyCrop);
+				Assert::AreEqual(2040, result.presentation.sourceBounds.bottom);
+				input.previous = result.state;
+			}
+			++input.crop.frameSourceSequence; ++input.crop.currentVisibleSourceSequence; ++input.retentionSourceSequence;
+			input.crop.currentVisibleBounds.top = input.observation.top = 0;
+			input.crop.currentVisibleBounds.bottom = input.observation.bottom = 2160;
+			AssertFullRaster(EvaluatePresentationRecovery(input).presentation);
+		}
+
+		TEST_METHOD(BoundedRecoveryRejectsMissingStaleConflictingOrUnacquiredEvidence)
+		{
+			for (int failure = 0; failure < 20; ++failure)
+			{
+				auto input = AgencyBoundedRecovery();
+				switch (failure) {
+				case 0: input.crop.currentVisibleBoundsAvailable = false; break;
+				case 1: --input.crop.currentVisibleSourceSequence; break;
+				case 2: --input.crop.currentVisibleSourceGeneration; break;
+				case 3: input.measurementCurrent = false; break;
+				case 4: input.retentionEvaluated = false; break;
+				case 5: input.crop.currentVisibleBase.top += 4; break;
+				case 6: input.retentionBounds.top += 4; break;
+				case 7: input.globalNearBlack = true; break;
+				case 8: input.nearBlackEvaluated = false; break;
+				case 9: input.observation.top = 0; break;
+				case 10: input.crop.currentVisibleBounds.top = 280; break;
+				case 11: input.crop.currentVisibleBounds.bottom = 2162; break;
+				case 12: input.crop.fullRasterPresentationAuthoritative = true; break;
+				case 13: input.crop.latestObservationIsUnavailable = true; break;
+				case 14: input.observationAvailable = false; break;
+				case 15:
+					input.crop.frameSourceGeneration = input.crop.geometrySourceGeneration =
+						input.crop.currentVisibleSourceGeneration = input.retentionSourceGeneration = 0; break;
+				case 16: input.crop.nearBlackEpisodeFullRaster = true; break;
+				case 17: input.crop.movingPictureTransition = true; break;
+				case 18: --input.retentionSourceGeneration; break;
+				case 19: --input.retentionSourceSequence; break;
+				}
+				AssertFullRaster(EvaluatePresentationRecovery(input).presentation);
+			}
+			auto input = AgencyBoundedRecovery();
+			const auto result = EvaluatePresentationRecovery(input);
+			Assert::IsTrue(AdmitCropPresentation({}, input.crop, result.presentation, 9).blocked);
+		}
+		TEST_METHOD(BoundedRecoveryRealPixelsAgreeForNativeV210AndP010)
+		{
+			const int width = 384, height = 216;
+			std::vector<uint16_t> planar(width * height * 3 / 2, uint16_t(512 << 6));
+			std::vector<uint32_t> native(width / 6 * 4 * height);
+			for (int y = 0; y < height; ++y)
+			{
+				const uint32_t level = y < 28 ? 64 : 281;
+				for (int x = 0; x < width; ++x) planar[y * width + x] = uint16_t(level << 6);
+				for (int x = 0; x < width; x += 6)
+				{
+					auto words = native.data() + y * width / 6 * 4 + x / 6 * 4;
+					words[0] = 512 | (level << 10) | (512 << 20);
+					words[1] = level | (512 << 10) | (level << 20);
+					words[2] = 512 | (level << 10) | (512 << 20);
+					words[3] = level | (512 << 10) | (level << 20);
+				}
+			}
+			for (bool packed : {false, true})
+			{
+				AnalysisLumaSource source{reinterpret_cast<const uint8_t*>(planar.data()),
+					planar.size() * sizeof(uint16_t), width, height, width * 2, width * 2,
+					AnalysisLumaFormat::P010, VideoFrameEncoding::V210, ColorSpace::REC_709, 7};
+				if (packed) {
+					source.data = reinterpret_cast<const uint8_t*>(native.data());
+					source.dataBytes = native.size() * sizeof(uint32_t);
+					source.rowBytes = width / 6 * 16; source.chromaRowBytes = 0;
+					source.format = AnalysisLumaFormat::NativeYuv422;
+				}
+				auto input = AgencyBoundedRecovery();
+				auto& crop = input.crop;
+				crop.rasterWidth = width; crop.rasterHeight = height;
+				crop.geometry = {0,28,width,188,width,height,384.0/160.0,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+				const auto pixels = EvaluateActivePicturePresentationRetention(source, crop.geometry);
+				Assert::IsTrue(pixels.analysisValid && pixels.presentationValid && pixels.outwardVisibleBoundsAvailable);
+				Assert::IsFalse(pixels.excludedBandsPixelSafe);
+				Assert::AreEqual(64.0, pixels.excludedTop.lumaP90, .001);
+				input.retentionBounds = crop.currentVisibleBase = crop.geometry;
+				crop.currentVisibleBounds = pixels.outwardVisibleBounds;
+				input.observation = pixels.activePicture.proposedBounds;
+				input.observationClassification = crop.latestObservationClassification = pixels.activePicture.classification;
+				// Include the renderer's coarse observation, as production does.
+				const auto coarse = ResolvePresentationObservation(crop.geometry, pixels.activePicture, pixels);
+				crop.currentVisibleBounds.top = std::min(crop.currentVisibleBounds.top, coarse.bounds.top);
+				crop.currentVisibleBounds.bottom = std::max(crop.currentVisibleBounds.bottom, coarse.bounds.bottom);
+				input.candidate = Evaluate(crop);
+				const auto result = EvaluatePresentationRecovery(input);
+				Assert::IsTrue(result.boundedPresentation);
+				Assert::AreEqual(28, result.presentation.sourceBounds.top);
+				Assert::AreEqual(height, result.presentation.sourceBounds.bottom);
+			}
+		}
+
+		TEST_METHOD(BoundedRecoveryReturnsInwardOnlyAfterExistingProofAndClearsOnContextChange)
+		{
+			auto input = AgencyBoundedRecovery();
+			input.previous = EvaluatePresentationRecovery(input).state;
+			for (unsigned i = 1; i <= EvaluatePresentationRecovery(AgencyBoundedRecovery()).required; ++i)
+			{
+				++input.crop.frameSourceSequence;
+				input.retentionSourceSequence = input.crop.frameSourceSequence;
+				input.crop.currentVisibleBoundsAvailable = false;
+				input.excludedBandsPixelSafe = true;
+				input.crop.presentationFailOpen = input.crop.latestObservationIsProvisional = false;
+				input.crop.latestObservationSupportsCrop = true;
+				input.crop.latestObservationClassification = input.observationClassification = ActivePictureClassification::BAR_CROP_TRUSTED;
+				input.observation = input.observedTrustedCrop = input.crop.geometry;
+				input.candidate = Evaluate(input.crop);
+				const auto result = EvaluatePresentationRecovery(input);
+				Assert::AreEqual(i < result.required ? 2160 : 1884, result.presentation.sourceBounds.bottom);
+				Assert::AreEqual(i == result.required, result.released);
+				input.previous = result.state;
+			}
+			auto stale = AgencyBoundedRecovery();
+			stale.previous = EvaluatePresentationRecovery(stale).state;
+			++stale.presentationEpoch;
+			const auto reset = EvaluatePresentationRecovery(stale);
+			Assert::IsFalse(reset.state.active || reset.state.fallbackBoundsAvailable);
+			AssertFullRaster(reset.presentation);
+		}
+
+		TEST_METHOD(BoundedRecoveryHandlesEitherAxisAndRoundsOnlyOutward)
+		{
+			for (int edge = 0; edge < 4; ++edge)
+			{
+				auto input = AgencyBoundedRecovery();
+				input.crop.geometry = {200,276,3640,1884,3840,2160,3440.0/1608.0,ActivePictureBounds::BarAxes::BOTH};
+				input.retentionBounds = input.crop.currentVisibleBase = input.crop.geometry;
+				auto visible = input.crop.geometry;
+				if (edge == 0) visible.left = 101;
+				if (edge == 1) visible.top = 101;
+				if (edge == 2) visible.right = 3739;
+				if (edge == 3) visible.bottom = 2039;
+				input.crop.currentVisibleBounds = input.observation = visible;
+				input.candidate = Evaluate(input.crop);
+				const auto result = EvaluatePresentationRecovery(input);
+				Assert::IsTrue(result.boundedPresentation);
+				Assert::AreEqual(edge == 0 ? 100 : 200, result.presentation.sourceBounds.left);
+				Assert::AreEqual(edge == 1 ? 100 : 276, result.presentation.sourceBounds.top);
+				Assert::AreEqual(edge == 2 ? 3740 : 3640, result.presentation.sourceBounds.right);
+				Assert::AreEqual(edge == 3 ? 2040 : 1884, result.presentation.sourceBounds.bottom);
+			}
+		}
 		TEST_METHOD(CurrentCertifiedFitCanResolveAnAlreadyArmedRecovery)
 		{
 			Input crop = TrustedScopeCrop();

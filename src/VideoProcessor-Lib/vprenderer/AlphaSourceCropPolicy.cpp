@@ -2557,6 +2557,7 @@ namespace AlphaSourceCrop
 			// A newly published contract must earn its own current pixel proof.
 			// Never carry partial proof between different crop rectangles.
 			result.gates |= RECOVERY_CONTRACT;
+			result.state.fallbackBoundsAvailable = false;
 			if (currentContract) result.state.trustedCrop = crop.geometry;
 		}
 		if (!input.measurementCurrent || !input.retentionEvaluated ||
@@ -2618,11 +2619,70 @@ namespace AlphaSourceCrop
 			result.state = {};
 			return result;
 		}
-		// Keep visible pixels exposed. Trusted/refinement labels alone do not
-		// override an unresolved current outside-band conflict (VP-0189 log).
+		// Recovery concerns the smaller logical crop, not necessarily every edge
+		// of the raster. Current pixel extents can expose an unresolved expansion
+		// without throwing away independently safe boundaries. This is geometry
+		// evidence only: no subtitle/menu classification or new aspect authority.
+		const bool currentBoundsProof = currentContract && currentRetentionMeasurement &&
+			crop.frameSourceGeneration != 0 && crop.frameSourceSequence != 0 && !crop.movingPictureTransition &&
+			!crop.nearBlackEpisodeFullRaster &&
+			input.nearBlackEvaluated && !input.globalNearBlack &&
+			input.observationAvailable && !crop.latestObservationIsUnavailable &&
+			(input.observationClassification == ActivePictureClassification::PROVISIONAL ||
+			 input.observationClassification == ActivePictureClassification::BAR_CROP_TRUSTED) &&
+			crop.latestObservationClassification == input.observationClassification &&
+			ValidBounds(input.observation, crop.rasterWidth, crop.rasterHeight) &&
+			CropEdgesAreChromaAligned(crop.geometry, crop.rasterWidth, crop.rasterHeight);
+		auto fallback = FullRaster(crop.rasterWidth, crop.rasterHeight);
+		if (currentBoundsProof && crop.currentVisibleBoundsAvailable &&
+			crop.currentVisibleSourceGeneration == crop.frameSourceGeneration &&
+			crop.currentVisibleSourceSequence == crop.frameSourceSequence &&
+			SameTrustedCropContract(crop.currentVisibleBase, crop.geometry) &&
+			ValidBounds(crop.currentVisibleBounds, crop.rasterWidth, crop.rasterHeight) &&
+			ContainedBounds(crop.currentVisibleBounds, crop.geometry) &&
+			ContainedBounds(crop.currentVisibleBounds, input.observation))
+		{
+			fallback = crop.currentVisibleBounds;
+			// Round outward for chroma, never cut off an odd measured edge.
+			fallback.left &= ~1;
+			fallback.top &= ~1;
+			fallback.right = std::min(crop.rasterWidth, (fallback.right + 1) & ~1);
+			fallback.bottom = std::min(crop.rasterHeight, (fallback.bottom + 1) & ~1);
+		}
+		else if (currentBoundsProof && input.excludedBandsPixelSafe &&
+			result.state.fallbackBoundsAvailable &&
+			ContainedBounds(result.state.fallbackBounds, input.observation))
+		{
+			// Bars are clear again. Keep the outward envelope until the existing
+			// adjacent-source recovery proof permits the inward return.
+			fallback = result.state.fallbackBounds;
+		}
+		if (result.state.fallbackBoundsAvailable)
+		{
+			// Never pump inward/outward with small extent changes during one
+			// unresolved episode. Larger real content is exposed immediately.
+			const auto& held = result.state.fallbackBounds;
+			fallback.left = std::min(fallback.left, held.left);
+			fallback.top = std::min(fallback.top, held.top);
+			fallback.right = std::max(fallback.right, held.right);
+			fallback.bottom = std::max(fallback.bottom, held.bottom);
+		}
+		fallback.trustedBarAxes = ActivePictureBounds::BarAxes::NONE;
+		fallback.aspectRatio = double(fallback.right - fallback.left) /
+			std::max(1, fallback.bottom - fallback.top);
+		result.state.fallbackBoundsAvailable = true;
+		result.state.fallbackBounds = fallback;
 		result.presentation = {};
-		result.presentation.sourceBounds = FullRaster(crop.rasterWidth, crop.rasterHeight);
-		result.presentation.reason = "full raster retained pending current crop recovery proof";
+		result.presentation.sourceBounds = fallback;
+		result.boundedPresentation = fallback.left > 0 || fallback.top > 0 ||
+			fallback.right < crop.rasterWidth || fallback.bottom < crop.rasterHeight;
+		result.presentation.applyCrop = result.boundedPresentation;
+		result.presentation.outwardExpanded = result.boundedPresentation;
+		result.presentation.owner = result.boundedPresentation
+			? DecisionOwner::OUTWARD_FIT : DecisionOwner::FULL_RASTER;
+		result.presentation.reason = result.boundedPresentation
+			? "current pixel-bounded expansion retained pending inward crop recovery proof"
+			: "full raster retained pending current crop recovery proof";
 		return result;
 	}
 
