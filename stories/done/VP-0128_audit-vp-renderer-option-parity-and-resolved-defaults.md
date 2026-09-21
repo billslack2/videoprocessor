@@ -295,3 +295,10 @@ algorithm name to another.
   architecture or attempt to repair the independent stale-frame finding.
 - Pin conclusions to the bundled libplacebo version. A library upgrade requires
   regenerating and reviewing the preset-resolution matrix.
+
+## RC2 distribution — 2026-09-20
+
+The merged fixes are included in published [1.3 RC2](https://github.com/billslack2/videoprocessor/releases/tag/1.3-beta-RC2),
+tagged at `38477f13560a3c4f0085c8840127ae064d0a5b86`. Fresh installer and portable
+ZIP builds passed release qualification; [evidence and hashes](../assets/releases/1.3-beta-RC2/release-verification.json).
+This packaging/publication did not change the active deployment or resume subtitle work.

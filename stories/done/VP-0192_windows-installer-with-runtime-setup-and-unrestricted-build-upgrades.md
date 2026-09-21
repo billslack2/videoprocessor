@@ -466,3 +466,37 @@ user's explicit app-local requirement.
   Start-menu identity; no QA installation was run while Config was active.
   Previous 278 lifecycle checks and remaining clean-Windows/interactive
   qualification limitations remain as recorded above. VP-0189 stays in Review.
+
+## 1.3 RC2 public release — 2026-09-20
+
+At the user's request, published [1.3 RC2](https://github.com/billslack2/videoprocessor/releases/tag/1.3-beta-RC2)
+as a prerelease, tagged `1.3-beta-RC2` at merged beta commit
+`38477f13560a3c4f0085c8840127ae064d0a5b86`. Source checkout:
+`E:\codex\videoprocessor\release-1.3-rc2`, clean/pushed branch
+`codex/release-1.3-rc2`. Package version `1.3.005-rc2`.
+
+Published installer and self-contained portable ZIP, individual SHA-256 sidecars,
+combined checksums and public qualification summary. All six uploaded asset
+sizes and GitHub SHA-256 digests match local files. Both packages were newly
+built from the pinned merge commit; no binaries were relabelled or deployed.
+Local exports: `E:\codex\releases\VideoProcessor-1.3-RC2-38477f13560a-20260920`.
+
+Validation: clean x64 Release build; 1,386 native tests; 49 preservation/recovery,
+12 identity and 23 runtime checks; 326 actual installer lifecycle checks;
+two legacy ZIP adoption cases and deliberate corrupt-package recovery passed.
+Lifecycle testing used separate QA registry/shortcut identities and scoped process
+checks with unchanged application payload hashes. Current user installation was
+untouched. The same application source tree previously passed 80 editor tests.
+
+Initial QA harness failures were investigated: inherited PowerShell 7 module paths
+caused a Windows PowerShell helper lookup failure; the legacy ZIP fixture also
+accidentally included modern metadata and a modified QA helper. Corrected harness
+runs passed; earlier logs are preserved with final evidence. No public package
+changes were required. The installer is unsigned. Clean Windows without Visual
+Studio, absent/old global-runtime scenarios and physical HDMI/capture were not
+newly qualified; release notes disclose these limits. VP-0189 is unchanged.
+
+[Qualification summary](../assets/releases/1.3-beta-RC2/release-verification.json) ·
+[Build receipt](../assets/releases/1.3-beta-RC2/build-release-receipt.json) ·
+[Checksums](../assets/releases/1.3-beta-RC2/SHA256SUMS.txt) ·
+[Release notes](../assets/releases/1.3-beta-RC2/release-notes.md).
