@@ -293,21 +293,21 @@ struct ExcludedBandVisibleExtent
 	int coordinate = 0;
 };
 
-// A provisional vertical edge may stop one coarse scan step early. This can
+// Each provisional vertical edge may stop one coarse scan step early. This can
 // retain only an existing opposing-bar crop; it cannot establish new geometry,
-// change width, or excuse a material format change.
+// change width, or excuse a material format change. Contained side proposals
+// describe pixels already inside the retained crop, not an outward conflict.
 bool IsVerticalSamplingProposal(const ActivePictureBounds& base,
 	const ActivePictureBounds& proposed)
 {
 	const auto axes=static_cast<unsigned>(base.trustedBarAxes);
 	if ((axes & static_cast<unsigned>(ActivePictureBounds::BarAxes::TOP_BOTTOM)) == 0 ||
 		base.top <= 0 || base.bottom >= base.rasterHeight ||
-		proposed.left != base.left || proposed.right != base.right)
+		proposed.left < base.left || proposed.right > base.right)
 		return false;
 	const int step=std::max(2,base.rasterHeight / 540); // Same vertical grid as acquisition.
 	return std::abs(proposed.top-base.top) <= step &&
-		std::abs(proposed.bottom-base.bottom) <= step &&
-		std::abs((proposed.bottom-proposed.top)-(base.bottom-base.top)) <= step;
+		std::abs(proposed.bottom-base.bottom) <= step;
 }
 
 bool SamplingExpansionPixelsAreSafe(SampleContext& samples,
@@ -317,7 +317,7 @@ bool SamplingExpansionPixelsAreSafe(SampleContext& samples,
 	// Whole-bar sampling can miss a thin bright or colored strip. Inspect each
 	// disputed row at the existing visible-extent horizontal density, using the
 	// same credible-luma cutoff and retained-bar chroma tolerance. At 4K this
-	// costs at most 1,024 samples (the aggregate height delta is one scan step).
+	// costs at most 2,048 samples (one scan step at each vertical edge).
 	auto safeRow=[&](int y) {
 		bool rowSafe = true;
 		for (int i=0;i<kVisibleExtentLineSamples;++i)

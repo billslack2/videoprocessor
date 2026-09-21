@@ -1072,6 +1072,93 @@ namespace VideoProcessorTest
 				static_cast<int>(evidence.classification));
 		}
 
+		TEST_METHOD(AgencyTreeSamplingKeepsScopeThroughInspectionAndRecovery)
+		{
+			using namespace AlphaSourceCrop;
+			const auto scope = ScopePresentation(3840,2160,276,1884);
+			for (bool p210 : {false,true})
+			for (int variant = 0; variant < 3; ++variant)
+			{
+				P010Frame frame(3840,2160,0,p210);
+				const int left = variant < 2 ? 8 : 0;
+				const int right = variant == 0 ? 3832 : variant == 1 ? 3836 : 3840;
+				frame.BlackOutside(left,276,right,1884);
+				frame.FillRectangle(0,1887,3840,1888,96);
+				if (variant == 2) frame.FillRectangle(0,272,3840,273,96);
+				const auto source = p210 ? frame.P210Source() : frame.P010Source();
+				const auto r = EvaluateActivePicturePresentationRetention(source,scope);
+				Assert::AreEqual(left,r.activePicture.proposedBounds.left);
+				Assert::AreEqual(right,r.activePicture.proposedBounds.right);
+				Assert::AreEqual(variant == 2 ? 272 : 276,r.activePicture.proposedBounds.top);
+				Assert::AreEqual(1888,r.activePicture.proposedBounds.bottom);
+				Assert::AreEqual(int(ActivePictureClassification::PROVISIONAL),int(r.activePicture.classification));
+				Assert::IsTrue(r.excludedBandsPixelSafe);
+				Assert::IsTrue(r.samplingReaffirmed && r.CanRetainPresentation(),
+					L"Contained side measurements and one step per vertical edge must retain current safe framing");
+				Input crop;
+				crop.automaticCropEnabled = crop.sharedGeometryAvailable = true;
+				crop.geometry = scope;
+				crop.classification = ActivePictureClassification::BAR_CROP_TRUSTED;
+				crop.geometrySourceGeneration = crop.frameSourceGeneration = 1;
+				crop.rasterWidth = 3840; crop.rasterHeight = 2160;
+				crop.latestObservationClassification = r.activePicture.classification;
+				crop.latestObservationIsProvisional = true;
+				crop.frameLocalPresentationRetentionEvaluated = true;
+				crop.frameLocalPresentationRetentionSafe = r.CanRetainPresentation();
+				VerticalInspectionBridgeState previousInspection;
+				previousInspection.active = previousInspection.failOpenLatched = true;
+				previousInspection.sourceGeneration = 1; previousInspection.presentationEpoch = 4;
+				previousInspection.trustedBase = scope; previousInspection.firstCandidateSourceSequence = 90;
+				for (uint64_t seq = 100; seq < 120; ++seq)
+				{
+					crop.frameSourceSequence = seq;
+					VerticalInspectionBridgeInput inspect;
+					inspect.previous = previousInspection; inspect.candidate = true;
+					inspect.denseAnalysisCompleted = true;
+					inspect.sourceGeneration = 1; inspect.presentationEpoch = 4;
+					inspect.sourceSequence = seq; inspect.trustedBase = scope;
+					inspect.samplingRetentionResolved = CanRetainProvisionalSamplingCrop(scope,
+						r.activePicture.proposedBounds,r.activePicture.classification,r.CanRetainPresentation());
+					const auto bridge = UpdateVerticalInspectionBridge(inspect);
+					crop.presentationFailOpen = bridge.state.failOpenLatched;
+					PresentationRecoveryInput recover;
+					recover.crop = crop; recover.candidate = Evaluate(crop);
+					recover.presentationEpoch = 4;
+					const auto result = EvaluatePresentationRecovery(recover);
+					Assert::IsFalse(bridge.state.failOpenLatched || result.started || result.state.active);
+					Assert::IsTrue(result.presentation.applyCrop);
+					Assert::AreEqual(0,result.presentation.sourceBounds.left);
+					Assert::AreEqual(3840,result.presentation.sourceBounds.right);
+					Assert::AreEqual(276,result.presentation.sourceBounds.top);
+					Assert::AreEqual(1884,result.presentation.sourceBounds.bottom);
+					previousInspection = bridge.state;
+				}
+			}
+		}
+		TEST_METHOD(AgencyTreeSamplingStillRejectsOutwardSidesAndLargerVerticalChanges)
+		{
+			const auto scope = ScopePresentation(3840,2160,276,1884);
+			for (int variant = 0; variant < 3; ++variant)
+			{
+				P010Frame frame(3840,2160);
+				frame.BlackOutside(8,276,3832,1884);
+				if (variant == 0) frame.FillRectangle(0,1895,3840,1896,96);
+				if (variant == 1) frame.FillRectangle(0,1884,3840,2160,300);
+				if (variant == 2) frame.FillRectangle(0,248,3840,276,96,640,512);
+				const auto r = EvaluateActivePicturePresentationRetention(frame.P010Source(),scope);
+				Assert::IsFalse(r.samplingEquivalent || r.CanRetainPresentation(),
+					L"Contained side detail must not excuse larger or colored outward content");
+			}
+			auto windowbox = scope; windowbox.left = 200; windowbox.right = 3640;
+			windowbox.trustedBarAxes = ActivePictureBounds::BarAxes::BOTH;
+			auto observed = windowbox; observed.bottom += 4;
+			observed.left -= 4;
+			Assert::IsFalse(CanRetainProvisionalSamplingCrop(windowbox,observed,
+				ActivePictureClassification::PROVISIONAL,true));
+			observed.left = windowbox.left; observed.right += 4;
+			Assert::IsFalse(CanRetainProvisionalSamplingCrop(windowbox,observed,
+				ActivePictureClassification::PROVISIONAL,true));
+		}
 		TEST_METHOD(ProvisionalOneScanStepRetainsPixelSafeScope)
 		{
 			for (bool p210 : { false, true })
@@ -1242,7 +1329,7 @@ namespace VideoProcessorTest
 			}
 		}
 
-		TEST_METHOD(ProvisionalScanStepRejectsCombinedTwoStepExpansion)
+		TEST_METHOD(AgencyTreeSamplingRetainsOneStepAtEachVerticalEdge)
 		{
 			P010Frame frame(3840,2160);
 			frame.BlackOutside(0,276,3840,1884);
@@ -1253,7 +1340,7 @@ namespace VideoProcessorTest
 			Assert::AreEqual(272,r.activePicture.proposedBounds.top);
 			Assert::AreEqual(1888,r.activePicture.proposedBounds.bottom);
 			Assert::IsTrue(r.excludedBandsPixelSafe);
-			Assert::IsFalse(r.samplingReaffirmed || r.CanRetainPresentation());
+			Assert::IsTrue(r.samplingReaffirmed && r.CanRetainPresentation());
 		}
 
 
@@ -1358,7 +1445,7 @@ namespace VideoProcessorTest
 				case 9: bad.globalNearBlack=true; break;
 				case 10: bad.cadenceRepeat=true; break;
 				case 11: bad.observation.bottom+=8; break;
-				case 12: bad.observation.left+=4; break;
+				case 12: bad.observation.left-=4; break; // Outward, not harmless contained detail.
 				case 13: bad.crop.presentationFailOpen=true; break;
 				case 14: bad.observationClassification=ActivePictureClassification::FULL_RASTER_TRUSTED; break;
 				case 15: bad.presentationEpoch=5; break;
