@@ -1011,3 +1011,38 @@ presentation. The user nevertheless reports good behavior across broad content.
 
 No configuration changes, additional deployment, installer, or ZIP accompanied
 this merge. The currently installed runtime remains the tested `2bab85e3` pair.
+
+## 2026-09-21: sampling retention and bounded presentation follow-up
+
+Merged [PR #109](https://github.com/billslack2/videoprocessor/pull/109) into
+`v1.3.005-beta` at `6785d0b1092b445a8b05136c2bce1249a09e7d4f` after the
+user reported the asymmetric-side crop loss appeared fixed and approved merge.
+The recorded Done status from the explicit 2026-09-20 closure is preserved.
+
+The correction keeps established scope framing through contained horizontal
+measurements plus one scan step at each vertical edge, subject to existing
+pixel/context checks. Actual outward content can use its measured envelope
+instead of full-raster fallback. Exact build labels avoid ancestor RC tags.
+The user clarified that Paramount menu fitting on a regular 16:9 desktop can
+legitimately show black on all four sides of the configured CIH screen area.
+The reported three-frame change is not established as an unwanted bounce:
+seeking/menu interaction could explain it. No speculative handoff change was made.
+
+Both sampling regression tests failed before the fix. The tested feature commit
+`efadc3d0caeff492799960ea61e0fd6bcc612dbc` passed 1,395 native tests and was
+locally deployed with both module identities verified. A fresh detached checkout
+of the actual merged beta also passed all 1,395 tests, installer support/identity
+and runtime packaging checks. All 70 ZIP payload entries match the manifest.
+
+Clean merged-beta build and artifacts:
+- Checkout: `E:\codex\videoprocessor\release-crop-6785d0b1`.
+- [Portable ZIP](C:/Users/bslac/Documents/ChatGPT/Done/VP-beta-6785d0b1092b/VideoProcessor-1.3.005-beta-6785d0b1092b-x64-Portable.zip).
+- [Setup EXE](C:/Users/bslac/Documents/ChatGPT/Done/VP-beta-6785d0b1092b/VideoProcessorSetup-1.3.005-beta-6785d0b1092b.exe).
+- SHA-256 sidecars accompany both artifacts; exact tools, source and checks are
+  recorded in `validation/release-receipt.json` under that output directory.
+
+At this checkpoint, actual-installer lifecycle tests and merged-beta local
+installation are pending exit of the user's main and vptest2 Config processes.
+No configuration has been overwritten and no running Config process was forced
+closed. Setup is unsigned. Clean Windows without Visual Studio and interactive
+Config Apply/OK/reopen qualification have not been performed for this build.

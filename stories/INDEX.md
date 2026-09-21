@@ -243,7 +243,7 @@ they must not contain requirements that are absent from this file.
 | VP-0186 | Done | Add screen-edge padding to Screen Config picture alignment |
 | VP-0187 | Done | REQ006 SDR transfer and calibration integration |
 | VP-0188 | Done | Preserve configuration scope and avoid source-event disk reloads |
-| VP-0189 | Done | Stabilize automatic crop and diagnose dark-scene transitions ([merged #94](https://github.com/billslack2/videoprocessor/pull/94), [follow-up #95](https://github.com/billslack2/videoprocessor/pull/95), [trailer fix #97](https://github.com/billslack2/videoprocessor/pull/97), [live-validated crop stack #103](https://github.com/billslack2/videoprocessor/pull/103); accepted Done 2026-09-20) |
+| VP-0189 | Done | Stabilize automatic crop and diagnose dark-scene transitions ([merged #94](https://github.com/billslack2/videoprocessor/pull/94), [follow-up #95](https://github.com/billslack2/videoprocessor/pull/95), [trailer fix #97](https://github.com/billslack2/videoprocessor/pull/97), [live-validated crop stack #103](https://github.com/billslack2/videoprocessor/pull/103), [sampling/menu follow-up #109](https://github.com/billslack2/videoprocessor/pull/109); accepted Done 2026-09-20) |
 | VP-0190 | Backlog | Preserve active-picture authority through NLS-only profile changes |
 | VP-0191 | Done | Prevent incompatible saved queue profiles during refresh transitions |
 
