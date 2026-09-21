@@ -2,6 +2,24 @@
 
 ## Status
 
+Done (2026-09-20). The user authorized deployment and final check-in.
+[PR #106](https://github.com/billslack2/videoprocessor/pull/106) merged into
+`v1.3.005-beta` as `38477f13560a3c4f0085c8840127ae064d0a5b86`.
+The merged tree is identical to tested/deployed source
+`90fd0ed8b1943710348bbe01cdf69c28d1f857da` (`git diff --exit-code` passed).
+Included zero-black PR #105 is also recorded as merged by GitHub.
+
+Validation: clean x64 Release build, 80 editor tests, and 440 relevant native
+tests passed. Deployed host/renderer/editor/discovery hashes were verified;
+the subtitle diagnostic setting was removed as requested, with the original
+config and all replaced files backed up. The deployment receipt is linked below.
+Physical HDMI/capture and second-monitor qualification were not performed;
+this completion records the configuration audit/fixes and authorized check-in,
+not a claim of new physical-output qualification. No unrelated subtitle work
+was merged or resumed.
+
+## Implementation and deployment history
+
 Review (2026-09-20). The confirmed audit corrections are implemented and tested
 in [draft PR #106](https://github.com/billslack2/videoprocessor/pull/106), including
 the zero-black work previously reviewed separately in PR #105. Current source
