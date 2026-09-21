@@ -274,11 +274,32 @@ namespace ConfigurationLiveApply
 	// stopped. A no-signal device can legitimately have no video state (or no
 	// display mode), so automatic timing must not dereference either while the
 	// new selection is being applied.
-	inline bool HasUsableCaptureModeForAutoOffset(
-		bool hasVideoState, bool videoStateValid, bool hasDisplayMode)
-	{
-		return hasVideoState && videoStateValid && hasDisplayMode;
-	}
+    constexpr int DefaultDirectShowFrameOffsetMs = 90;
+
+    inline int AutomaticFrameOffsetMs(bool builtInRenderer)
+    {
+        return builtInRenderer ? 0 : DefaultDirectShowFrameOffsetMs;
+    }
+
+    inline bool ParseFrameOffset(const std::string& normalized, bool& automatic, int& milliseconds)
+    {
+        if (normalized.empty() || normalized == "auto")
+        {
+            automatic = true;
+            milliseconds = DefaultDirectShowFrameOffsetMs;
+            return true;
+        }
+        try
+        {
+            size_t consumed = 0;
+            const int parsed = std::stoi(normalized, &consumed);
+            if (consumed != normalized.size() || parsed < 0) return false;
+            automatic = false;
+            milliseconds = parsed;
+            return true;
+        }
+        catch (const std::exception&) { return false; }
+    }
 
 	inline bool ShouldSelectFirstDiscoveredValue(
 		bool hasConfiguredValue, int currentSelection, int availableCount)

@@ -1,4 +1,5 @@
 #pragma once
+#include "ProfileSectionIdentity.h"
 
 #include <windows.h>
 
@@ -46,8 +47,9 @@ namespace ActiveProfileStatus
         strncpy_s(destination, count, value.c_str(), _TRUNCATE);
     }
 
-    inline std::string SectionFor(const char* root, const std::string& profile)
+    inline std::string SectionFor(const char* root, const std::string& profile, const ConfigFile* configuration = nullptr)
     {
+        if (configuration) return ProfileSectionIdentity::Resolve(*configuration, root, profile);
         if (profile.empty()) return {};
         return profile == "base" ? root : std::string(root) + "." + profile;
     }
@@ -70,7 +72,7 @@ namespace ActiveProfileStatus
         bool calibrationStatusAvailable = false,
         bool calibrationLutAttached = false,
         uint64_t calibrationConfigIdentity = 0,
-        const std::string& calibrationConfigPath = {})
+        const std::string& calibrationConfigPath = {}, const ConfigFile* configuration = nullptr)
     {
         static HANDLE mapping = nullptr;
         static Snapshot* shared = nullptr;
@@ -98,19 +100,19 @@ namespace ActiveProfileStatus
         // selection overrides it. Publish that resolved default explicitly so
         // the editor can mark it active just like an explicitly selected one.
         Copy(next.queue, sizeof(next.queue), queue == selections.end() ?
-            std::string("queue") : SectionFor("queue", queue->second));
+            std::string("queue") : SectionFor("queue", queue->second, configuration));
         Copy(next.renderer, sizeof(next.renderer), renderer == selections.end() ?
-            std::string() : SectionFor("vprenderer", renderer->second));
+            std::string() : SectionFor("vprenderer", renderer->second, configuration));
         Copy(next.color, sizeof(next.color), color == selections.end() ?
-            std::string() : SectionFor("vprenderer.color", color->second));
+            std::string() : SectionFor("vprenderer.color", color->second, configuration));
         Copy(next.scaling, sizeof(next.scaling), scaling == selections.end() ?
-            std::string() : SectionFor("vprenderer.scaling", scaling->second));
+            std::string() : SectionFor("vprenderer.scaling", scaling->second, configuration));
         Copy(next.output, sizeof(next.output), output == selections.end() ?
-            std::string() : SectionFor("vprenderer.output", output->second));
+            std::string() : SectionFor("vprenderer.output", output->second, configuration));
         Copy(next.viewport, sizeof(next.viewport), viewport == selections.end() ?
-            std::string() : SectionFor("vprenderer.viewport", viewport->second));
+            std::string() : SectionFor("vprenderer.viewport", viewport->second, configuration));
         Copy(next.zoom, sizeof(next.zoom), zoom == selections.end() ?
-            std::string() : SectionFor("vprenderer.zoom", zoom->second));
+            std::string() : SectionFor("vprenderer.zoom", zoom->second, configuration));
         next.rendererGeneration = rendererGeneration;
         next.shaderAvailable = shaderAvailable ? 1u : 0u;
         next.shaderGeneration = shaderAvailable ? rendererGeneration : 0;

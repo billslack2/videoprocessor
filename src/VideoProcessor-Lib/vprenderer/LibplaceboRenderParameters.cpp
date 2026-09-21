@@ -103,6 +103,27 @@ namespace
 
 namespace LibplaceboRenderParameters
 {
+    const char* ResolvedPeakDetection(const pl_render_params& parameters)
+    {
+        if (!parameters.peak_detect_params) return "off";
+        return parameters.peak_detect_params->percentile < 100.0f ? "high_quality" : "standard";
+    }
+
+    std::string ResolvedDithering(const pl_render_params& parameters)
+    {
+        if (parameters.error_diffusion)
+            return std::string("error_diffusion:") + parameters.error_diffusion->name;
+        if (!parameters.dither_params) return "off";
+        switch (parameters.dither_params->method)
+        {
+        case PL_DITHER_BLUE_NOISE: return "blue_noise";
+        case PL_DITHER_ORDERED_LUT: return "ordered_lut";
+        case PL_DITHER_ORDERED_FIXED: return "ordered_fixed";
+        case PL_DITHER_WHITE_NOISE: return "white_noise";
+        default: return "unknown";
+        }
+    }
+
 	void ApplySourceLuminance(bool inputIsSdr, pl_color_space& source)
 	{
 		if (inputIsSdr)

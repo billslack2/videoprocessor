@@ -281,6 +281,24 @@ namespace VideoProcessorTest
 			}
 		}
 
+        TEST_METHOD(ResolvedDiagnosticsNamePresetAndExplicitAlgorithms)
+        {
+            for (const char* quality : { "fast", "balanced", "high" })
+            {
+                Settings settings; settings.quality = quality;
+                Projection projection; BuildOrFail(settings, false, projection);
+                const bool fast = settings.quality == "fast";
+                Assert::AreEqual(fast ? "off" : settings.quality == "high" ? "high_quality" : "standard",
+                    ResolvedPeakDetection(projection.renderParams));
+                Assert::AreEqual(fast ? "off" : "blue_noise", ResolvedDithering(projection.renderParams).c_str());
+                settings.dithering = "error_diffusion_sierra3";
+                BuildOrFail(settings, false, projection);
+                Assert::IsTrue(ResolvedDithering(projection.renderParams).find("sierra-3") != std::string::npos);
+                settings.dithering = "off"; BuildOrFail(settings, false, projection);
+                Assert::AreEqual("off", ResolvedDithering(projection.renderParams).c_str());
+            }
+        }
+
 		TEST_METHOD(AutoScalersFollowTheNativeQualityPreset)
 		{
 			const struct

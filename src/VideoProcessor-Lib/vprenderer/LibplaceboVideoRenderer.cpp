@@ -1318,15 +1318,14 @@ namespace
                         const DisplayRule colorBaseline = { "color/base", root, 0, 0 };
                         ApplyDisplayRuleOverrides(config, colorBaseline, settings);
                     }
-					if (!config.HasSection(root) &&
-						group.defaultSelection != "base")
+					if (!config.HasSection(root))
 					{
 						const DisplayRule baselineRule = {
 							group.name + "/" + group.defaultSelection,
-							root + "." + group.defaultSelection, 0, 0 };
+							ProfileSectionIdentity::Resolve(config, root, group.defaultSelection), 0, 0 };
 						ApplyDisplayRuleOverrides(config, baselineRule, settings);
 					}
-					section = profileName == "base" ? root : root + "." + profileName;
+					section = ProfileSectionIdentity::Resolve(config, root, profileName);
 				}
 				const DisplayRule rule = { group.name + "/" + profileName,
 					section, profile->second.priority, 0 };
@@ -4967,7 +4966,7 @@ struct LibplaceboVideoRenderer::Impl
 		const std::string downscaler = optionText("downscaler");
 		const std::string resolved = serialized ? serialized : "<unavailable>";
 		DebugLog::Log(
-			"libplacebo resolved render options (%s): upscaler=%s downscaler=%s all=%s",
+			"libplacebo resolved render options (%s): upscaler=%s downscaler=%s frame_mixing_active=0 (single-image rendering; preset frame_mixer is unused) all=%s",
 			lifecycle, upscaler.c_str(), downscaler.c_str(), resolved.c_str());
 		pl_options_free(&options);
 	}
@@ -5030,7 +5029,7 @@ struct LibplaceboVideoRenderer::Impl
 			colorMapParams.tone_mapping_function
 				? colorMapParams.tone_mapping_function->name : "none",
 			colorMapParams.gamut_mapping ? colorMapParams.gamut_mapping->name : "none",
-			renderParams.peak_detect_params ? "on" : "off",
+			LibplaceboRenderParameters::ResolvedPeakDetection(renderParams),
 			settings.hdrPeakAnalysisPictureOnly ? 1 : 0,
 			settings.hdrPeakAnalysisMotionCompensation ? 1 : 0,
 			settings.hdrPeakAnalysisHeightPercent,
@@ -5045,8 +5044,7 @@ struct LibplaceboVideoRenderer::Impl
 			settings.debandStrength == "auto" ?
 				(renderParams.deband_params ? "auto/on" : "auto/off") :
 				settings.debandStrength.c_str(),
-			renderParams.error_diffusion ? "auto/error-diffusion" :
-				(renderParams.dither_params ? settings.dithering.c_str() : "off"),
+            LibplaceboRenderParameters::ResolvedDithering(renderParams).c_str(),
 			renderParams.dynamic_constants ? 1 : 0,
 			settings.displayBitDepth.c_str(),
 			settings.outputPresentation.c_str(),

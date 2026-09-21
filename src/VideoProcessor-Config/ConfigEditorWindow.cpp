@@ -452,6 +452,23 @@ QString canonicalShortcutText(const QString& text)
         QString::fromStdString(canonical) : trimmed;
 }
 
+QString effectiveChoiceValue(const QComboBox* combo)
+{
+    if (!combo) return {};
+    const QString selected = combo->currentData().toString();
+    return (selected.isEmpty() ? combo->property("effectiveValue").toString() : selected).trimmed().toLower();
+}
+
+QString diagnosticPresetForControls(const QObject* parent)
+{
+    for (const char* key : { "diagnostic_disable_compute", "diagnostic_force_8bit_sdr_swapchain",
+        "diagnostic_vp_owned_dxgi_presenter", "diagnostic_disable_shader_cache" })
+        if (const auto* flag = parent->findChild<QCheckBox*>("config.vprenderer.color." + QString::fromLatin1(key)))
+            if (flag->isChecked()) return QStringLiteral("custom");
+    const auto* diagnostics = parent->findChild<QCheckBox*>("config.vprenderer.color.output_diagnostics");
+    return diagnostics && diagnostics->isChecked() ? QStringLiteral("proposed") : QStringLiteral("legacy");
+}
+
 bool configuredBooleanValue(const QString& value, bool defaultValue)
 {
     const QString normalized = value.trimmed().toLower();
@@ -2013,9 +2030,7 @@ void ConfigEditorWindow::refreshRendererAutoStatus()
 {
     const auto qualityControl = findChild<QComboBox*>(
         QStringLiteral("config.vprenderer.quality"));
-    const QString quality = qualityControl ?
-        qualityControl->currentData().toString().trimmed().toLower() :
-        QStringLiteral("high");
+    const QString quality = effectiveChoiceValue(qualityControl);
     const auto qualityValue = [&quality](const QString& high,
         const QString& balanced, const QString& fast)
     {
@@ -2127,8 +2142,7 @@ void ConfigEditorWindow::refreshRendererAutoStatus()
         {
             const auto* range = findChild<QComboBox*>(
                 QStringLiteral("config.vprenderer.color.output_range"));
-            text = range && range->currentData().toString().compare(
-                QStringLiteral("limited"), Qt::CaseInsensitive) == 0 ?
+            text = effectiveChoiceValue(range) == QStringLiteral("limited") ?
                 QStringLiteral("2.4") : QStringLiteral("Not used");
         }
         if (text.isEmpty())
@@ -3628,7 +3642,10 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
           !value(sectionPrefix, QStringLiteral("container_colorspace")).isEmpty() ||
           !value(sectionPrefix, QStringLiteral("hdr_colorspace")).isEmpty() ||
           !value(sectionPrefix, QStringLiteral("hdr_luminance")).isEmpty() );
+    // Do not hide an ambiguous Base identity by silently renaming its root.
+    // Retain both sections so shared validation can request an explicit rename.
     if (configurationLoaded_ && document_ && !rendererOwnsInputPolicy &&
+        !profileSections(sectionPrefix).contains(sectionPrefix + QStringLiteral(".base"), Qt::CaseInsensitive) &&
         profileSections(sectionPrefix).contains(sectionPrefix, Qt::CaseInsensitive))
     {
         const QStringList before = profileSections(sectionPrefix);
@@ -3730,6 +3747,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
     };
     auto state = std::make_shared<State>();
     auto fields = std::make_shared<std::vector<Field>>();
+    std::function<void()> updateOutputCompatibility = [] {};
 
     auto* splitter = new ResponsiveSplitter;
 
@@ -4620,25 +4638,23 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             QStringLiteral("output_diagnostics"));
         addBoolean(QStringLiteral("Disable shader cache"),
             QStringLiteral("diagnostic_disable_shader_cache"));
-        const auto updateOutputCompatibility = [this, outputPresentation,
+        updateOutputCompatibility = [profileFields, outputPresentation,
             outputRange, outputTransportGamma, outputCompatibility]()
         {
-            const auto* vpOwned = findChild<QCheckBox*>(
+            const auto* vpOwned = profileFields->findChild<QCheckBox*>(
                 QStringLiteral("config.vprenderer.color.diagnostic_vp_owned_dxgi_presenter"));
             QStringList notices;
-            if (outputPresentation->currentData().toString().compare(
-                QStringLiteral("composed"), Qt::CaseInsensitive) == 0 &&
+            if (effectiveChoiceValue(outputPresentation) == QStringLiteral("composed") &&
                 vpOwned && vpOwned->isChecked())
             {
                 notices << QStringLiteral(
 				"Notice: VP-owned DXGI is Direct-only; Composed uses libplacebo's presenter.");
 			}
-			const QString gamma = outputTransportGamma->currentData().toString();
-			const bool limited = outputRange->currentData().toString().compare(
-				QStringLiteral("limited"), Qt::CaseInsensitive) == 0;
+			const QString gamma = effectiveChoiceValue(outputTransportGamma);
+			const bool limited = effectiveChoiceValue(outputRange) == QStringLiteral("limited");
 			if (limited)
 			{
-				const auto* limitedG22 = findChild<QCheckBox*>(
+				const auto* limitedG22 = profileFields->findChild<QCheckBox*>(
 					QStringLiteral("config.vprenderer.color.diagnostic_allow_limited_g22"));
 				if (gamma == QStringLiteral("2.2") &&
 					(!limitedG22 || !limitedG22->isChecked()))
@@ -4646,7 +4662,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 					notices << QStringLiteral(
 						"Limited 2.2 requires the beta transport flag. Selecting Limited + 2.2 enables it automatically.");
 				}
-				else if (gamma != QStringLiteral("AUTO") &&
+				else if (gamma != QStringLiteral("auto") &&
 					gamma != QStringLiteral("2.4") && gamma != QStringLiteral("2.2"))
 				{
 					notices << QStringLiteral(
@@ -4735,12 +4751,11 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         { applyOutputPathProfile(outputPathProfile->currentData().toString()); });
         const auto markOutputPathCustom = [this, state, outputPathProfile]
         {
-            if (state->loading || state->section.isEmpty() || !document_ ||
-                outputPathProfile->currentData().toString() == QStringLiteral("custom")) return;
+            if (state->loading || state->section.isEmpty() || !document_) return;
+            const QString preset = diagnosticPresetForControls(this);
             const QSignalBlocker blocker(outputPathProfile);
-            outputPathProfile->setCurrentIndex(outputPathProfile->findData(
-                QStringLiteral("custom")));
-            document_->SetKnown(state->section.toStdString(), "output_path_profile", "custom");
+            outputPathProfile->setCurrentIndex(outputPathProfile->findData(preset));
+            document_->SetKnown(state->section.toStdString(), "output_path_profile", preset.toStdString());
             markDirty();
         };
         for (const Field& field : *fields)
@@ -4916,10 +4931,10 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         auto* screenAspect = addText(
             QStringLiteral("Screen aspect ratio"),
             QStringLiteral("screen_aspect"));
-        screenAspect->setPlaceholderText(QStringLiteral("16:9, 32:15, or 2100x1000"));
+        screenAspect->setPlaceholderText(QStringLiteral("Use output display aspect"));
         screenAspect->setToolTip(QStringLiteral(
             "The physical screen shape. Enter a ratio, decimal aspect, or "
-            "screen dimensions. This same value controls destination layout, "
+            "screen dimensions. If omitted and not inherited, use the output display aspect. This same value controls destination layout, "
             "black-bar cropping, subtitle fitting, and NLS's target aspect."));
         form->addRow(QString(), helpLabel(QStringLiteral(
             "Enter the physical screen shape as a ratio (for example 2.1:1), "
@@ -5203,7 +5218,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 		profileFields, sectionPrefix, anamorphicEnabled, anamorphicValue,
 		hdrAnalysisMode, pictureOnlyHdrAnalysis,
 		motionCompensatedHdrAnalysis, hdrAnalysisHeight, hdrAnalysisPosition,
-        deprecatedViewportAlias, queuePolicy, updateQueuePolicyFromValues](QListWidgetItem* current)
+        deprecatedViewportAlias, queuePolicy, updateQueuePolicyFromValues, updateOutputCompatibility](QListWidgetItem* current)
     {
         state->loading = true;
         state->section = current ? current->data(Qt::UserRole).toString() : QString();
@@ -5271,7 +5286,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             }
             if (sectionPrefix == QStringLiteral("vprenderer.viewport"))
             {
-                if (key == QStringLiteral("screen_aspect")) return QStringLiteral("16:9");
+                if (key == QStringLiteral("screen_aspect")) return QString();
                 if (key == QStringLiteral("vertical_alignment")) return QStringLiteral("center");
 				if (key == QStringLiteral("screen_edge_padding")) return QStringLiteral("0");
             }
@@ -5369,29 +5384,19 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 			if (scalingDownscaler && !raw.isEmpty())
 			{
 				const QString normalized = raw.trimmed().toLower();
-				static const QStringList supported = {
-					QStringLiteral("auto"), QStringLiteral("box"),
-					QStringLiteral("hermite"), QStringLiteral("bilinear"),
-					QStringLiteral("bicubic"), QStringLiteral("gaussian"),
-					QStringLiteral("catmull_rom"), QStringLiteral("mitchell"),
-					QStringLiteral("lanczos"), QStringLiteral("gpu")
-				};
-				if (!supported.contains(normalized))
+                if (normalized == QStringLiteral("none") || normalized == QStringLiteral("ewa_lanczos"))
 				{
-					// Removed legacy values must not reappear as synthetic combo-box
-					// entries. Treat them as omitted/Auto and persist their removal
-					// the next time the user saves this configuration.
-					document_->RemoveKnown(section.toStdString(),
-						field.key.toStdString().c_str());
-					raw.clear();
+                    // These retired spellings resolve to the quality preset.
+                    // Keep Auto explicit instead of inheriting a parent's named filter.
+                    document_->SetKnown(section.toStdString(), field.key.toStdString().c_str(), "AUTO");
+                    raw = QStringLiteral("AUTO");
 					markDirty();
 				}
 			}
 			const bool viewportAspectLimit =
 				sectionPrefix == QStringLiteral("vprenderer.zoom") &&
 				(field.key == QStringLiteral("crop_narrower_content_aspect_limit") ||
-				 field.key == QStringLiteral("crop_wider_content_aspect_limit") ||
-				 field.key == QStringLiteral("fixed_crop_aspect"));
+				 field.key == QStringLiteral("crop_wider_content_aspect_limit"));
 			if (viewportAspectLimit && !raw.isEmpty())
 			{
 				AspectRatio ignored;
@@ -5481,8 +5486,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             else if (field.kind == Field::Boolean)
             {
                 auto* check = qobject_cast<QCheckBox*>(field.widget);
-                check->setChecked(configured.compare(
-                    QStringLiteral("true"), Qt::CaseInsensitive) == 0);
+                check->setChecked(configuredBooleanValue(configured, false));
             }
             else
             {
@@ -5601,6 +5605,18 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 		}
         if (queuePolicy)
             updateQueuePolicyFromValues();
+        updateOutputCompatibility();
+        if (sectionPrefix == QStringLiteral("vprenderer.color"))
+            if (auto* preset = profileFields->findChild<QComboBox*>("config.vprenderer.color.output_path_profile"))
+            {
+                const QString rawPreset = preset->currentData().toString();
+                if (rawPreset.isEmpty() || rawPreset == "legacy" || rawPreset == "proposed" || rawPreset == "custom")
+                {
+                    const QSignalBlocker blocker(preset);
+                    preset->setCurrentIndex(preset->findData(diagnosticPresetForControls(profileFields)));
+                    preset->setToolTip("Derived from the effective diagnostic flags. Selecting a preset writes those flags; a saved preset name alone does not enable them.");
+                }
+            }
         state->loading = false;
 		if (sectionPrefix == QStringLiteral("vprenderer.viewport"))
 		{
@@ -6037,7 +6053,7 @@ QWidget* ConfigEditorWindow::createDirectShowPage()
     auto* frameOffsetLayout = new QHBoxLayout(frameOffsetRow);
     frameOffsetLayout->setContentsMargins(0, 0, 0, 0);
     frameOffsetLayout->setSpacing(12);
-    auto* frameOffsetAuto = new QCheckBox(QStringLiteral("Auto"));
+    auto* frameOffsetAuto = new QCheckBox(QStringLiteral("Auto (90 ms)"));
     frameOffsetAuto->setObjectName(QStringLiteral("config.directshow.frame_offset.auto"));
     frameOffsetAuto->setChecked(automaticFrameOffset);
     auto* frameOffsetValue = new QSpinBox;
@@ -6046,7 +6062,7 @@ QWidget* ConfigEditorWindow::createDirectShowPage()
     frameOffsetValue->setRange(0, INT_MAX);
     frameOffsetValue->setButtonSymbols(QAbstractSpinBox::NoButtons);
     frameOffsetValue->setMaximumWidth(180);
-    frameOffsetValue->setValue(automaticFrameOffset ? 0 : configuredFrameOffset.toInt());
+    frameOffsetValue->setValue(automaticFrameOffset ? ConfigurationLiveApply::DefaultDirectShowFrameOffsetMs : configuredFrameOffset.toInt());
     frameOffsetValue->setEnabled(!automaticFrameOffset);
     frameOffsetValue->setFixedWidth(180);
     frameOffsetLayout->addWidget(frameOffsetValue);
@@ -6057,6 +6073,11 @@ QWidget* ConfigEditorWindow::createDirectShowPage()
     {
         if (!document_) return;
         frameOffsetValue->setEnabled(!automatic);
+        if (automatic)
+        {
+            const QSignalBlocker blocker(frameOffsetValue);
+            frameOffsetValue->setValue(ConfigurationLiveApply::DefaultDirectShowFrameOffsetMs);
+        }
         document_->RemoveKnown("general", "frame_offset");
         document_->SetKnown("directshow", "frame_offset",
             automatic ? "AUTO" : std::to_string(frameOffsetValue->value()));
@@ -7362,8 +7383,10 @@ QWidget* ConfigEditorWindow::createLogsPage()
     retention->setMaximumWidth(108);
     retention->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     retention->setAlignment(Qt::AlignRight);
-    retention->setValue(value(QStringLiteral("logging"),
-        QStringLiteral("debug_log_retention"), QStringLiteral("10")).toInt());
+    bool validRetention = false;
+    const int configuredRetention = value(QStringLiteral("logging"),
+        QStringLiteral("debug_log_retention"), QStringLiteral("10")).toInt(&validRetention);
+    retention->setValue(validRetention && configuredRetention >= 1 && configuredRetention <= 100 ? configuredRetention : 10);
     retention->setToolTip(QStringLiteral(
         "Keep 1 to 100 total files, including the active VP log. Default: 10."));
     connect(retention, qOverload<int>(&QSpinBox::valueChanged), this,

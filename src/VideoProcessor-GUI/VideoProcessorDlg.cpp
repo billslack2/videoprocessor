@@ -4128,27 +4128,11 @@ bool CVideoProcessorDlg::StageRuntimeSettings(
 		if (!discovered)
 			return invalid("renderer (not discovered)", value);
 	}
-	if (getDirectShowValue("frame_offset", value))
-	{
-		m_stagedRuntimeSettings.hasFrameOffset = true;
-		const std::string normalized = ConfigFile::NormalizeName(value);
-		m_stagedRuntimeSettings.frameOffsetAuto = normalized == "auto";
-		if (!m_stagedRuntimeSettings.frameOffsetAuto)
-		{
-			try
-			{
-				size_t parsed = 0;
-				const int offset = std::stoi(value, &parsed);
-				if (parsed != value.size() || offset < 0)
-					return invalid("frame_offset", value);
-				m_stagedRuntimeSettings.frameOffsetMs = offset;
-			}
-			catch (const std::exception&)
-			{
-				return invalid("frame_offset", value);
-			}
-		}
-	}
+    if (!getDirectShowValue("frame_offset", value)) value.clear();
+    m_stagedRuntimeSettings.hasFrameOffset = true;
+    if (!ConfigurationLiveApply::ParseFrameOffset(ConfigFile::NormalizeName(value),
+        m_stagedRuntimeSettings.frameOffsetAuto, m_stagedRuntimeSettings.frameOffsetMs))
+        return invalid("frame_offset", value);
 	auto stageVideoConversion = [&invalid](const std::string& raw,
 		VideoConversionOverride& destination) -> bool
 	{
@@ -4465,7 +4449,8 @@ void CVideoProcessorDlg::PublishStagedRuntimeSettings()
 			m_stagedRuntimeSettings.frameOffsetAuto ? BST_CHECKED : BST_UNCHECKED);
 		const int offset = m_stagedRuntimeSettings.frameOffsetAuto ?
 			CalculateAutoFrameOffset() : m_stagedRuntimeSettings.frameOffsetMs;
-		m_directShowFrameOffsetMs = offset;
+        // Keep the DirectShow setting even while Auto is neutral for Alpha.
+        m_directShowFrameOffsetMs = m_stagedRuntimeSettings.frameOffsetMs;
 		SetTimingClockFrameOffsetMs(offset);
 		if (m_captureDevice)
 			m_captureDevice->SetFrameOffsetMs(IsAlphaRendererSelected() ? 0 : offset);
@@ -5026,12 +5011,16 @@ void CVideoProcessorDlg::DefaultRendererName(const CString& rendererName)
 
 void CVideoProcessorDlg::StartFrameOffsetAuto()
 {
-	m_frameOffsetAutoStart = true;
+    m_frameOffsetAutoStart = true;
+    // A later command-line Auto override must replace an earlier fixed value.
+    m_directShowFrameOffsetMs = ConfigurationLiveApply::DefaultDirectShowFrameOffsetMs;
+    m_defaultFrameOffset = std::to_wstring(m_directShowFrameOffsetMs).c_str();
 }
 
 
 void CVideoProcessorDlg::StartFrameOffset(const CString& frameOffset)
 {
+    m_frameOffsetAutoStart = false;
 	m_defaultFrameOffset = frameOffset;
 	m_directShowFrameOffsetMs = _ttoi(frameOffset);
 }
@@ -5209,7 +5198,17 @@ void CVideoProcessorDlg::OnBnClickedTimingClockFrameOffsetAutoCheck()
 {
 	const bool checked = m_timingClockFrameOffsetAutoCheck.GetCheck();
 
-	m_timingClockFrameOffsetEdit.EnableWindow(!checked);
+    m_timingClockFrameOffsetEdit.EnableWindow(!checked);
+    if (checked)
+    {
+        const int offset = CalculateAutoFrameOffset();
+        if (GetTimingClockFrameOffsetMs() != offset)
+        {
+            SetTimingClockFrameOffsetMs(offset);
+            UpdateTimingClockFrameOffset();
+        }
+        m_directShowFrameOffsetMs = ConfigurationLiveApply::DefaultDirectShowFrameOffsetMs;
+    }
 }
 
 
@@ -8458,125 +8457,9 @@ void CVideoProcessorDlg::UpdateState()
 //
 
 int CVideoProcessorDlg::CalculateAutoFrameOffset() {
-	// Alpha presents from its own FIFO and does not schedule delivery from the
-	// capture timestamp.  A positive capture timestamp offset therefore adds no
-	// presentation benefit there; keep automatic mode neutral.
-	if (IsAlphaRendererSelected())
-		return 0;
-
-	const bool hasVideoState = m_captureDeviceVideoState != nullptr;
-	const bool videoStateValid = hasVideoState &&
-		m_captureDeviceVideoState->valid;
-	const bool hasDisplayMode = hasVideoState &&
-		m_captureDeviceVideoState->displayMode != nullptr;
-	if (!ConfigurationLiveApply::HasUsableCaptureModeForAutoOffset(
-			hasVideoState, videoStateValid, hasDisplayMode))
-	{
-		const int retainedOffset = GetTimingClockFrameOffsetMs();
-		DebugLog::Log(
-			"Auto frame offset deferred: capture video mode unavailable state=%d valid=%d display_mode=%d retained_ms=%d",
-			hasVideoState ? 1 : 0, videoStateValid ? 1 : 0,
-			hasDisplayMode ? 1 : 0, retainedOffset);
-		return retainedOffset;
-	}
-
-	size_t m_frameQueueMaxSize = GetRendererVideoFrameQueueSizeMax();
-
-
-	size_t nominalTarget = (m_frameQueueMaxSize / 8);
-	double fps = m_captureDeviceVideoState->displayMode->RefreshRateHz();
-	size_t frames = fps > 30.0 ? nominalTarget + 1 : nominalTarget / 2;
-	DEBUGLOG("Frames calculated: %zu (fps=%.2f, nominalTarget=%zu)", frames, fps, nominalTarget);
-	//return frames;
-	//---
-
-	if (fps <= 0.0)
-		return 0;
-
-	const double frameTime = 1000.0 / fps;
-	const double roundedOffset = ceil((static_cast<double>(frames) * frameTime) / 5.0) * 5.0;
-	const int offset = roundedOffset >= static_cast<double>(INT_MAX)
-		? INT_MAX
-		: static_cast<int>(roundedOffset);
-
-
-	DEBUGLOG("Auto frame offset calc: queueMax=%zu, nominalTarget=%zu, refresh=%.1f, frames=%zu, frameTime=%.2f, offset=%d",
-		m_frameQueueMaxSize, nominalTarget, fps, frames, frameTime, offset);
-
-	return offset;
-
-/*	// Return default if no capture device/video state
-	if (!m_captureDevice || !m_captureDeviceVideoState || !m_captureDeviceVideoState->valid)
-		return 50;  // Safe default
-
-	// Base hardware latency
-	const double hwLatency = m_captureDevice->HardwareLatencyMs();
-	int offset = static_cast<int>(hwLatency + 0.5);  // Round up
-	offset = std::max(offset, 1);  // Minimum 1ms
-
-	// Refresh rate consideration
-	const double refreshRate = m_captureDeviceVideoState->displayMode->RefreshRateHz();
-
-	// Queue configuration impact
-	const bool isAsync = GetRendererVideoFrameUseQueue();
-	const size_t queueMaxSize = GetRendererVideoFrameQueueSizeMax();
-
-	int queueBuffer = 0;
-	if (isAsync && queueMaxSize > 0)
-	{
-		// Async: Queue provides buffering, less offset needed
-		queueBuffer = 8 + static_cast<int>(queueMaxSize * 0.3);  // ~8-18ms range
-	}
-	else
-	{
-		// Sync: No queue buffering, need more safety margin
-		queueBuffer = 20;
-	}
-	offset += queueBuffer;
-
-	// Timing method consideration
-	int methodIndex = m_rendererDirectShowStartStopTimeMethodCombo.GetCurSel();
-	int safetyMargin = 5;  // Default
-
-	if (methodIndex >= 0)
-	{
-		DirectShowStartStopTimeMethod method =
-			static_cast<DirectShowStartStopTimeMethod>(
-				m_rendererDirectShowStartStopTimeMethodCombo.GetItemData(methodIndex));
-
-		switch (method)
-		{
-		case DirectShowStartStopTimeMethod::DS_SSTM_RATIONAL_RATIONAL:
-		case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_RATIONAL:
-			safetyMargin = 3;  // Precise timing needs less margin
-			break;
-		case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART:
-		case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_SMART2:
-			safetyMargin = 5;  // Moderate
-			break;
-		case DirectShowStartStopTimeMethod::DS_SSTM_CLOCK_THEO:
-		case DirectShowStartStopTimeMethod::DS_SSTM_THEO_THEO:
-			safetyMargin = 7;  // Conservative timing needs more margin
-			break;
-		}
-	}
-	offset += safetyMargin;
-
-	// Refresh rate scaling
-	if (refreshRate >= 100.0)
-		offset = static_cast<int>(offset * 0.9);  // High refresh: tighter timing
-	else if (refreshRate <= 30.0)
-		offset = static_cast<int>(offset * 1.1);  // Low refresh: more conservative
-
-	// Clamp to reasonable range
-	offset = std::max(offset, 15);   // Minimum for reliable operation
-	offset = std::min(offset, 100);  // Maximum to avoid excessive latency
-
-	DbgLog((LOG_TRACE, 1, TEXT("Auto frame offset: %dms (async=%d, queue=%zu, fps=%.1f)"),
-		offset, isAsync, queueMaxSize, refreshRate));
-
-	return offset;
-	*/
+    // DirectShow Auto is the shared 90-ms default, independent of capture mode.
+    // The built-in renderer presents from its own FIFO, without timestamp delay.
+    return ConfigurationLiveApply::AutomaticFrameOffsetMs(IsAlphaRendererSelected());
 }
 
 void CVideoProcessorDlg::OnSelectCaptureDevice(UINT nID)
@@ -11107,7 +10990,8 @@ void CVideoProcessorDlg::UpdateTimingClockFrameOffsetAvailability()
 		// Alpha's FIFO is not timestamp-scheduled. Preserve the DirectShow value
 		// for a later backend switch, but force the capture clock to its neutral
 		// offset while Alpha owns the renderer.
-		m_directShowFrameOffsetMs = GetTimingClockFrameOffsetMs();
+        m_directShowFrameOffsetMs = m_timingClockFrameOffsetAutoCheck.GetCheck() ?
+            ConfigurationLiveApply::DefaultDirectShowFrameOffsetMs : GetTimingClockFrameOffsetMs();
 		SetTimingClockFrameOffsetMs(0);
 		m_alphaFrameOffsetDisabled = true;
 		DebugLog::Log("Alpha frame offset disabled; preserved DirectShow value=%d ms",
@@ -11115,7 +10999,9 @@ void CVideoProcessorDlg::UpdateTimingClockFrameOffsetAvailability()
 	}
 	else if (!alphaSelected && m_alphaFrameOffsetDisabled)
 	{
-		SetTimingClockFrameOffsetMs(m_directShowFrameOffsetMs);
+        if (m_timingClockFrameOffsetAutoCheck.GetCheck())
+            m_directShowFrameOffsetMs = ConfigurationLiveApply::DefaultDirectShowFrameOffsetMs;
+        SetTimingClockFrameOffsetMs(m_directShowFrameOffsetMs);
 		m_alphaFrameOffsetDisabled = false;
 		DebugLog::Log("DirectShow frame offset restored: %d ms",
 			m_directShowFrameOffsetMs);
@@ -11893,7 +11779,7 @@ void CVideoProcessorDlg::PublishActiveProfileStatus()
         outputAvailable && outputStatus.calibrationStatusAvailable,
         outputAvailable && outputStatus.calibrationLutAttached,
         outputAvailable ? outputStatus.calibrationConfigIdentity : 0,
-        outputAvailable ? outputStatus.calibrationConfigPath : std::string());
+        outputAvailable ? outputStatus.calibrationConfigPath : std::string(), snapshot->configuration.get());
 }
 
 std::map<std::string, std::string>
@@ -12123,8 +12009,7 @@ void CVideoProcessorDlg::ApplyUnifiedProfileSnapshot(
 			const auto selected = snapshot->effectiveSelections.find(group);
 			if (selected == snapshot->effectiveSelections.end()) return;
 			for (const std::string& name : selected->second)
-				shaderProfiles.push_back(std::string(sectionName) +
-					(name == "base" ? "" : "." + name));
+				shaderProfiles.push_back(ActiveProfileStatus::SectionFor(sectionName, name, snapshot->configuration.get()));
 		};
 		appendShaderProfiles("nls", "nls");
 		appendShaderProfiles("standard_shaders", "standard");

@@ -9,6 +9,8 @@
 #pragma once
 
 #include <map>
+#include <set>
+class ConfigFile;
 #include <string>
 
 /**
@@ -36,6 +38,8 @@ public:
      * @return true if file was loaded successfully, false if file doesn't exist or has errors
      */
     bool LoadCorrectionFile();
+    bool LoadCorrections(const ConfigFile& config);
+    bool IsAutomatic(double refreshRate) const;
 
     /**
      * Get PPM correction for a specific refresh rate
@@ -59,7 +63,7 @@ public:
     /**
      * Clear all loaded corrections
      */
-    void Clear() { m_corrections.clear(); }
+    void Clear() { m_corrections.clear(); m_automaticRates.clear(); }
 
 private:
     /**
@@ -78,6 +82,7 @@ private:
 
     // Map of refresh rate (as integer) to PPM correction value
     std::map<int, int> m_corrections;
+    std::set<int> m_automaticRates;
     
     // Tolerance for matching refresh rates (e.g., 59.94 matches 60)
     static constexpr double REFRESH_RATE_TOLERANCE = 0.5;

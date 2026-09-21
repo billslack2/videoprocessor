@@ -1342,8 +1342,8 @@ void ALiveSourceVideoOutputPin::LoadPPMCorrections(double refreshRate)
 		// Get PPM correction for this refresh rate
 		int ppmCorrection = m_ppmCorrectionLoader.GetPPMCorrection(refreshRate);
 		
-		// Check if AUTO mode is specified (ppm value = 999999 as sentinel)
-		if (ppmCorrection == 999999)
+		// Automatic calibration is a mode, not a magic numeric correction.
+		if (m_ppmCorrectionLoader.IsAutomatic(refreshRate))
 		{
 			// AUTO mode - use auto-calibration
 			m_useAutoCalibration = true;
