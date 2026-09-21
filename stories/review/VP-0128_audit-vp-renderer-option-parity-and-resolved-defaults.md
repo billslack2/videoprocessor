@@ -2,6 +2,42 @@
 
 ## Status
 
+Review (2026-09-20). The confirmed audit corrections are implemented and tested
+in [draft PR #106](https://github.com/billslack2/videoprocessor/pull/106), including
+the zero-black work previously reviewed separately in PR #105. Current source
+head: `90fd0ed8b1943710348bbe01cdf69c28d1f857da`; branch
+`codex/vp-0128-config-corrections`; worktree
+`E:\codex\videoprocessor\vp-0128-config-corrections`.
+
+Latest GitHub default/beta was rechecked before publication and remains
+`v1.3.005-beta` at `b3c0b3a6a8fdf4f5bb1c9ce0dc3340a3d5e395d7`.
+[Correction scope and validation](https://github.com/billslack2/videoprocessor/blob/90fd0ed8b1943710348bbe01cdf69c28d1f857da/docs/VP-0128-config-corrections.md).
+
+All confirmed F1-F9 findings are addressed: inherited Boolean/effective-value
+initialization, strict invalid-token preservation, DirectShow Auto/omission at
+90 ms, unambiguous Base section identity and explicit collision rejection,
+zero default black with a 0.000001-nit native floor, flag-derived diagnostic
+preset labels, and aligned reference inventories/resolved logs. Additional
+cases fix logging-retention fallback, PPM Auto's numeric sentinel collision,
+and omitted screen-aspect presentation. Existing explicit calibration values
+are preserved; legacy black AUTO intentionally adopts the approved zero policy.
+
+Combined validation: clean x64 Release solution rebuild passed (0 errors,
+48 warnings); all 80 editor tests and 440 relevant native tests passed, including
+reference/inventory/example checks. An incremental LNK1103 corrupt debug-info
+failure cleared with a clean rebuild without source changes. The editor suite
+covers synthetic monitor placement; a second physical monitor and HDMI/capture
+behavior remain unqualified. Local logs are under
+`artifacts/vp0128-corrections/` in the source worktree.
+
+Ready for code/build review and a subsequent merge/release decision. No beta
+merge, deployment or active-configuration edits occurred. Acceptance criteria
+have automated/source evidence recorded in the linked report; final acceptance
+and physical output qualification remain pending. The historical findings and
+intermediate results below are superseded by this combined correction status.
+
+## Pinned audit history — 2026-09-20
+
 In Progress (2026-09-20). The comprehensive audit is complete; corrective
 work remains open; the requested F7 zero-black correction is implemented for
 review in PR #105 (details below). Current beta baseline was queried
