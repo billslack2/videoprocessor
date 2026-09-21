@@ -4470,6 +4470,59 @@ namespace VideoProcessorTest
 			DeleteFileA(path.c_str());
 		}
 
+		TEST_METHOD(Vp0159ShaderProfilesResolveRootBaseSelection)
+		{
+			char temporaryDirectory[MAX_PATH] = {};
+			Assert::IsTrue(GetTempPathA(
+				ARRAYSIZE(temporaryDirectory), temporaryDirectory) > 0);
+			const std::string path = std::string(temporaryDirectory) +
+				"VideoProcessor-vp0159-root-base-selection.cfg";
+			{
+				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				file << "[shader.nls]\n"
+					"[shader.nls.standard]\n"
+					"shader_type: nls\n"
+					"glsl_file: NLS.glsl\n"
+					"[shader.nls.plus]\n"
+					"shader_type: nls\n"
+					"glsl_file: NLSPlus.glsl\n"
+					"[shader.standard]\n"
+					"type: multi\n";
+			}
+
+			ConfigFile config;
+			Assert::IsTrue(config.Load(path));
+			std::string error;
+			Assert::IsTrue(ShaderConfigValidation::Validate(config, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			std::vector<ConfiguredShaderRule> selection;
+			std::vector<std::string> activeSections;
+			Assert::IsTrue(MadVRShaderLoader::ResolveConfiguredRuleSelection(
+				config, "@shader-profiles:nls.plus|standard.base",
+				ShaderRendererBackend::LIBPLACEBO, selection, activeSections,
+				error), std::wstring(error.begin(), error.end()).c_str());
+			Assert::AreEqual(static_cast<size_t>(1), selection.size());
+			Assert::IsTrue(selection.front().nls);
+			Assert::AreEqual("NLSPlus.glsl", selection.front().filename.c_str());
+			Assert::AreEqual(static_cast<size_t>(2), activeSections.size());
+			Assert::AreEqual("shader.nls.plus", activeSections[0].c_str());
+			Assert::AreEqual("shader.standard", activeSections[1].c_str());
+			selection.clear();
+			activeSections.clear();
+			error.clear();
+			Assert::IsTrue(MadVRShaderLoader::ResolveConfiguredRuleSelection(
+				config, "@shader-profiles:nls.standard|standard.base",
+				ShaderRendererBackend::LIBPLACEBO, selection, activeSections,
+				error), std::wstring(error.begin(), error.end()).c_str());
+			Assert::AreEqual(static_cast<size_t>(1), selection.size());
+			Assert::IsTrue(selection.front().nls);
+			Assert::AreEqual("NLS.glsl", selection.front().filename.c_str());
+			Assert::AreEqual(static_cast<size_t>(2), activeSections.size());
+			Assert::AreEqual("shader.nls.standard", activeSections[0].c_str());
+			Assert::AreEqual("shader.standard", activeSections[1].c_str());
+			DeleteFileA(path.c_str());
+		}
+
 		TEST_METHOD(Vp0159ReorderedNlsFallbackSelectsFirstProfile)
 		{
 			char temporaryDirectory[MAX_PATH] = {};

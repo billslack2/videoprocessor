@@ -1566,7 +1566,12 @@ bool LoadTargetProfileSelectionForBackend(const ConfigFile& config,
 		selectedProfiles))
 	{
 		if (!seen.insert(name).second) continue;
-		const std::string section = "shader." + name;
+		const size_t separator = name.find('.');
+		const std::string section = separator == std::string::npos ?
+			"shader." + name :
+			ProfileSectionIdentity::Resolve(config,
+				"shader." + name.substr(0, separator),
+				name.substr(separator + 1));
 		const auto* settings = config.GetSectionValues(section);
 		if (!settings)
 		{
