@@ -28,6 +28,7 @@
 #include <vprenderer/AlphaSourceCropPolicy.h>
 #include <vprenderer/HdrPeakAnalysisCrop.h>
 #include <vprenderer/NativeStatsOverlayPlacement.h>
+#include <SubtitleBoxDetector.h>
 #include <SceneDetector.h>
 #include <vprenderer/LibplaceboOutputPolicy.h>
 #include <HdrTargetLuminance.h>
@@ -983,6 +984,7 @@ namespace
 		std::string sdrAdjustGamma = "passthrough";
 		bool outputDiagnostics = false;
 		bool diagnosticDisableShaderCache = false;
+		bool subtitleBoxTest = false;
 		// Developer-only probes. These are deliberately named experiments rather
 		// than a generic D3D11/DXGI flag escape hatch.
 		bool diagnosticDisableCompute = false;
@@ -1077,6 +1079,7 @@ namespace
 			<< settings.reportBt2020ToDisplay << '|' << settings.hdrToneMapTargetGamma << '|' << settings.sdrLutInputGamma << '|' << settings.sdrInputTransfer << '|'
 			<< settings.sdrAdjustGamma << '|'
 			<< settings.outputDiagnostics << '|' << settings.diagnosticDisableShaderCache << '|'
+			<< settings.subtitleBoxTest << '|'
 			<< settings.diagnosticDisableCompute << '|'
 			<< settings.diagnosticForce8BitSdrSwapchain << '|'
 			<< settings.diagnosticAllowLimitedG22 << '|'
@@ -2100,6 +2103,7 @@ namespace
 		RendererSettings settings;
 		activeRule.clear();
 		if (!config.IsLoaded()) return settings;
+		TryGetDisplayBool(config, "subtitle_bbox_test", settings.subtitleBoxTest);
         settings.configurationIdentity = config.GetContentIdentity();
         settings.configurationPath = config.GetLoadedPath();
 		DebugLog::Log(
@@ -3620,6 +3624,12 @@ struct LibplaceboVideoRenderer::Impl
 	double sourceUploadCpuIntervalTotalMs = 0.0;
 	double sourceUploadCpuIntervalPeakMs = 0.0;
 	uint64_t sourceUploadCpuIntervalSamples = 0;
+	pl_tex subtitleBoxTexture = nullptr;
+	SubtitleBoxDetector subtitleBoxDetector;
+	SubtitleBoxResult subtitleBoxResult;
+	uint64_t subtitleBoxLoggedCue = 0;
+	uint64_t subtitleBoxDetectedFrames = 0, subtitleBoxHeldFrames = 0;
+	double subtitleBoxPeakMs = 0;
 	pl_tex statsOverlayTexture = nullptr;
 	pl_tex sweepOverlayTexture = nullptr;
 	pl_tex profileOverlayTexture = nullptr;
@@ -4312,6 +4322,7 @@ struct LibplaceboVideoRenderer::Impl
 			pl_lut_free(&displayLut);
 			if (d3d11)
 			{
+				pl_tex_destroy(d3d11->gpu, &subtitleBoxTexture);
 				pl_tex_destroy(d3d11->gpu, &statsOverlayTexture);
 				pl_tex_destroy(d3d11->gpu, &sweepOverlayTexture);
 				pl_tex_destroy(d3d11->gpu, &profileOverlayTexture);
@@ -6908,6 +6919,8 @@ struct LibplaceboVideoRenderer::Impl
 		PublishSettingsState(settings);
 		outputDiagnostics = settings.outputDiagnostics;
 		shaderCacheEnabled = !settings.diagnosticDisableShaderCache;
+        if (settings.subtitleBoxTest)
+            DebugLog::Log("SUBTITLE BBOX: enabled full_raster=1 no_warp=1 no_translation=1 outline_rgb=0,255,0 stroke_output_px=3 acquisition=every_source_frame");
 
 		struct pl_log_params logParams{};
 		logParams.log_cb = LibplaceboLog;
@@ -7424,6 +7437,7 @@ struct LibplaceboVideoRenderer::Impl
 		changed(current.outputTransportGamma != next.outputTransportGamma,
 			"output_transport_gamma");
 		changed(current.outputGamma != next.outputGamma, "output_gamma");
+		changed(current.subtitleBoxTest != next.subtitleBoxTest, "subtitle_bbox_test");
 		changed(current.diagnosticDisableShaderCache !=
 			next.diagnosticDisableShaderCache, "shader_cache_policy");
 		changed(current.diagnosticDisableCompute != next.diagnosticDisableCompute ||
@@ -8302,7 +8316,7 @@ struct LibplaceboVideoRenderer::Impl
 		TraceBlackLevels(analysisSource, frameNumber);
 		TraceColorPictureEvidence(analysisSource, frameNumber, currentIdentity.viewportGeneration);
 		const bool needsActivePictureAnalysis =
-			nlsRequested || automaticSourceCrop || scopeSubtitleFit ||
+			activeSettings.subtitleBoxTest || nlsRequested || automaticSourceCrop || scopeSubtitleFit ||
 			hdrPeakAnalysisPictureOnly ||
 			hdrPeakAnalysisMotionCompensation;
 		if (!needsActivePictureAnalysis)
@@ -10314,6 +10328,21 @@ struct LibplaceboVideoRenderer::Impl
 				HdrPeakAnalysisCrop::TrustedPicture* hdrTrustedPicture = nullptr)
 		{
 			source = image;
+            if (activeSettings.subtitleBoxTest)
+            {
+                source.crop = {0.0f,0.0f,static_cast<float>(width),static_cast<float>(height)};
+                renderParams.hooks=nullptr; renderParams.num_hooks=0;
+                const AlphaSourceCrop::PresentationRect available = {
+                    target.crop.x0,target.crop.y0,target.crop.x1,target.crop.y1};
+                const auto fit=AlphaSourceCrop::FitAspect(static_cast<double>(width)/height,
+                    available,AlphaSourceCrop::VerticalPictureAlignment::CENTER);
+                if(fit.valid) target.crop={static_cast<float>(fit.picture.left),static_cast<float>(fit.picture.top),
+                    static_cast<float>(fit.picture.right),static_cast<float>(fit.picture.bottom)};
+                if(trustedActivePicture) *trustedActivePicture=false;
+                if(hdrTrustedPicture) *hdrTrustedPicture={};
+                return;
+            }
+
 			if (trustedActivePicture)
 				*trustedActivePicture = false;
 			if (hdrTrustedPicture)
@@ -11969,6 +11998,34 @@ struct LibplaceboVideoRenderer::Impl
 			subtitleShiftSourcePixels,
 			&trustedActivePicture,
 			&hdrTrustedPicture);
+
+        if (activeSettings.subtitleBoxTest)
+        {
+            const auto boxStart = SteadyClock::now();
+            const bool barAuthority = nlsGeometryAvailable &&
+                nlsGeometrySourceGeneration == frameGeneration &&
+                nlsGeometryClassification == ActivePictureClassification::BAR_CROP_TRUSTED &&
+                nlsGeometry.rasterWidth == width && nlsGeometry.rasterHeight == height;
+            if (barAuthority)
+                subtitleBoxResult = subtitleBoxDetector.Analyze(analysisSource,
+                    nlsGeometry.top, nlsGeometry.bottom, sourceSequence, viewportRequestSerial);
+            else { subtitleBoxDetector.Reset(); subtitleBoxResult = {}; }
+            const double cost = std::chrono::duration<double, std::milli>(SteadyClock::now()-boxStart).count();
+            subtitleBoxPeakMs = std::max(subtitleBoxPeakMs,cost);
+            subtitleBoxDetectedFrames += !cadenceRepeat && subtitleBoxResult.detected;
+            subtitleBoxHeldFrames += !cadenceRepeat && subtitleBoxResult.held;
+            if (subtitleBoxResult.cue != subtitleBoxLoggedCue || subtitleBoxResult.revised || sourceSequence % 120 == 0)
+            {
+                const auto& r=subtitleBoxResult.bounds;
+                DebugLog::Log("SUBTITLE BBOX: frame=%llu cue=%llu observed=%d held=%d revised=%d observations=%u lines=%d box=%d,%d-%d,%d bar_authority=%d picture=%d-%d cost_ms=%.3f peak_ms=%.3f detected_frames=%llu held_frames=%llu work_limit=%d",
+                    sourceSequence,subtitleBoxResult.cue,subtitleBoxResult.detected?1:0,
+                    subtitleBoxResult.held?1:0,subtitleBoxResult.revised?1:0,subtitleBoxResult.observations,
+                    subtitleBoxResult.lineCount,r.left,r.top,r.right,r.bottom,barAuthority?1:0,
+                    nlsGeometry.top,nlsGeometry.bottom,cost,subtitleBoxPeakMs,
+                    subtitleBoxDetectedFrames,subtitleBoxHeldFrames,subtitleBoxResult.workLimit?1:0);
+                subtitleBoxLoggedCue=subtitleBoxResult.cue;
+            }
+        }
 		const HdrPeakAnalysisCrop::Decision hdrPeakAnalysisDecision =
 			ApplyHdrPeakAnalysisCrop(frameGeneration, sourceSequence,
 				hdrTrustedPicture, renderImage.crop,
@@ -12117,7 +12174,8 @@ struct LibplaceboVideoRenderer::Impl
 			}
 			appliedProfileOverlaySerial = profileSerial;
 		}
-		struct pl_overlay overlays[3]{};
+		struct pl_overlay overlays[4]{};
+		struct pl_overlay_part subtitleBoxParts[4]{};
 		struct pl_overlay_part overlayParts[3]{};
 		int overlayCount = 0;
 		if (statsOverlayTexture)
@@ -12340,6 +12398,42 @@ struct LibplaceboVideoRenderer::Impl
 			overlay.num_parts = 1;
 			++overlayCount;
 		}
+
+        if (activeSettings.subtitleBoxTest && subtitleBoxResult.bounds.Valid())
+        {
+            if (!subtitleBoxTexture)
+            {
+                const uint8_t green[4]={0,255,0,255};
+                struct pl_plane_data plane{};
+                plane.type=PL_FMT_UNORM; plane.width=plane.height=1;
+                plane.pixel_stride=plane.row_stride=4; plane.pixels=green;
+                uint64_t masks[4]={0x000000FF,0x0000FF00,0x00FF0000,0xFF000000};
+                pl_plane_data_from_mask(&plane,masks);
+                if (!pl_upload_plane(d3d11->gpu,nullptr,&subtitleBoxTexture,&plane))
+                    DebugLog::Log("SUBTITLE BBOX: green overlay upload failed");
+            }
+            if (subtitleBoxTexture)
+            {
+                const auto& r=subtitleBoxResult.bounds;
+                const float sx=(target.crop.x1-target.crop.x0)/width;
+                const float sy=(target.crop.y1-target.crop.y0)/height;
+                const float l=target.crop.x0+r.left*sx, right=target.crop.x0+r.right*sx;
+                const float top=target.crop.y0+r.top*sy, bottom=target.crop.y0+r.bottom*sy;
+                const float stroke=3.0f;
+                const pl_rect2df edges[4]={
+                    {l,top,right,std::min(bottom,top+stroke)},
+                    {l,std::max(top,bottom-stroke),right,bottom},
+                    {l,top,std::min(right,l+stroke),bottom},
+                    {std::max(l,right-stroke),top,right,bottom}};
+                for(int i=0;i<4;++i) { subtitleBoxParts[i].src={0,0,1,1}; subtitleBoxParts[i].dst=edges[i]; }
+                auto& overlay=overlays[overlayCount++];
+                overlay.tex=subtitleBoxTexture; overlay.mode=PL_OVERLAY_NORMAL;
+                overlay.coords=PL_OVERLAY_COORDS_DST_FRAME;
+                overlay.repr=pl_color_repr_rgb; overlay.repr.levels=PL_COLOR_LEVELS_FULL;
+                overlay.repr.alpha=PL_ALPHA_INDEPENDENT; overlay.color=pl_color_space_srgb;
+                overlay.parts=subtitleBoxParts; overlay.num_parts=4;
+            }
+        }
 		if (overlayCount > 0)
 		{
 			target.overlays = overlays;
