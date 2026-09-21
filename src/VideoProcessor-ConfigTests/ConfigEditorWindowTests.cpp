@@ -864,6 +864,8 @@ void testEveryPageRoundTrips()
     QListWidget* shaders = requireControl<QListWidget>(window,
         QStringLiteral("config.shader.nls.modes"));
     require(shaders->count() > 1, "NLS fixture did not load");
+    require(shaders->item(0)->text() == QStringLiteral("Off"),
+        "An unconfigured root NLS profile was not displayed as Off");
     require(!shaders->item(0)->text().contains(QStringLiteral("(Default)")),
         "NLS still displays a hard-coded Default role beside the profile name");
     shaders->setCurrentRow(0);
@@ -989,6 +991,8 @@ void testEveryPageRoundTrips()
         QStringLiteral("config.shader.standard.items"));
     require(standardShaders->count() == 2,
         "Standard shader fixture did not load");
+    require(standardShaders->item(0)->text() == QStringLiteral("Off"),
+        "An unconfigured root Standard profile was not displayed as Off");
     require(standardShaders->dragDropMode() == QAbstractItemView::InternalMove,
         "Standard profiles do not support drag reordering");
     require(!standardShaders->item(0)->text().contains(
