@@ -6463,13 +6463,10 @@ QWidget* ConfigEditorWindow::createNlsShadersPage()
     listPolicy.displayName = [this, root](const QString& section)
     {
         const QString configured = value(section, QStringLiteral("label"));
-        if (!configured.isEmpty()) return configured;
-        const bool unconfigured =
-            value(section, QStringLiteral("hlsl_file")).trimmed().isEmpty() &&
-            value(section, QStringLiteral("glsl_file")).trimmed().isEmpty();
-        if (unconfigured) return QStringLiteral("Off");
-        return section.compare(root, Qt::CaseInsensitive) == 0 ?
-            QStringLiteral("Unnamed profile") : ::displayName(section, root);
+        return configured.isEmpty() ?
+            (section.compare(root, Qt::CaseInsensitive) == 0 ?
+                QStringLiteral("Unnamed profile") : ::displayName(section, root)) :
+            configured;
     };
     listPolicy.addProfile = [this, root]() -> QString
     {
@@ -6868,13 +6865,10 @@ QWidget* ConfigEditorWindow::createStandardShadersPage()
     listPolicy.displayName = [this, root](const QString& section)
     {
         const QString configured = value(section, QStringLiteral("label"));
-        if (!configured.isEmpty()) return configured;
-        const bool unconfigured =
-            value(section, QStringLiteral("hlsl_file")).trimmed().isEmpty() &&
-            value(section, QStringLiteral("glsl_file")).trimmed().isEmpty();
-        if (unconfigured) return QStringLiteral("Off");
-        return section.compare(root, Qt::CaseInsensitive) == 0 ?
-            QStringLiteral("Unnamed profile") : ::displayName(section, root);
+        return configured.isEmpty() ?
+            (section.compare(root, Qt::CaseInsensitive) == 0 ?
+                QStringLiteral("Unnamed profile") : ::displayName(section, root)) :
+            configured;
     };
     listPolicy.addProfile = [this, root]() -> QString
     {
