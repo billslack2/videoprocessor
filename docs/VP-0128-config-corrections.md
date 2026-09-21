@@ -1,4 +1,4 @@
-# VP-0128: remaining confirmed configuration corrections
+# VP-0128: confirmed configuration corrections
 
 Baseline: GitHub default/current beta `v1.3.005-beta`,
 `b3c0b3a6a8fdf4f5bb1c9ce0dc3340a3d5e395d7`, queried and fetched 2026-09-20.
@@ -28,6 +28,9 @@ correction can be reviewed and integrated together.
   selection use it. Root-plus-Base collisions are rejected in the parser/editor.
   The editor does not hide such collisions by automatically renaming the root.
   Unambiguous existing Base names and persisted names remain unchanged.
+- F7: omitted and legacy Auto HDR target black now select zero, mapped to
+  0.000001 nit at the native boundary. Existing numeric measured black values
+  and inheritance remain supported. The editor presents the numeric default.
 - F8: diagnostic preset presentation is derived from effective flags on load and
   edit. A saved preset name alone never enables experiments. Selecting a preset
   still writes its five diagnostic flags; ordinary output/calibration is separate.
@@ -48,26 +51,28 @@ values are retained. Legacy file-only overlapping processing keys remain accepte
 new controls use their canonical owners. Scaling previews describe the Rendering
 profile currently displayed in the editor, not a different active session profile.
 
-No merge, deployment, active-config replacement or physical capture/HDMI
+No beta merge, deployment, active-config replacement or physical capture/HDMI
 qualification occurred. The local `C:\logs\vp.log` was unavailable. Physical
 second-monitor editor placement is skipped on the single-monitor test host;
 synthetic placement coverage remains in the suite.
 
 ## Validation
 
-- x64 Release solution build passed with zero errors. Initial clean build had
-  47 warnings; subsequent incremental build logs are retained alongside it.
-- Full editor suite: 79 passed, exit 0, including all four new regression groups.
-- Relevant native suite: 438 passed, exit 0. Covers configuration, profiles,
-  libplacebo projection, queue/startup, LLDV and shaders, including new policy,
-  identity, PPM and resolved-diagnostics regressions.
-- Reference/inventory/example validation passed again after the final HTML edits.
+- Combined clean x64 Release solution rebuild passed: zero errors, 48 warnings.
+  The preceding incremental link hit LNK1103 corrupt debug information; the clean
+  rebuild regenerated the cached objects and resolved it without source changes.
+- Full combined editor suite: 80 passed, exit 0.
+- Combined relevant native suite: 440 passed, exit 0. Covers configuration,
+  profiles, libplacebo projection, queue/startup, LLDV and shaders, including
+  policy, identity, PPM, zero-black and resolved-diagnostics regressions.
+- Reference/inventory/example validation is included in the passing native suite.
 - `git diff --check` passed. Initial regression failures exposed and led to fixes
   for pre-attachment widget lookup and implicit root renaming; the native kernel
   assertion was corrected to the bundled library's actual `sierra-3` name.
-- Logs are local under `artifacts/vp0128-corrections/`: `build-final.log`,
-  `editor-complete.log`, `native-verified.log`, `reference-complete.log` and TRX files.
+- Logs are local under `artifacts/vp0128-corrections/`:
+  `build-combined-clean.log`, `editor-combined.log`, `native-combined.log`, and
+  `config-corrections-combined.trx`. Earlier individual-branch logs are retained.
 
 PR #105 is included in this branch. One documentation conflict was resolved by
 keeping the zero-black contract together with the corrected gamma/range guidance.
-The combined source is rebuilt and tested before publishing.
+The combined source passed the build and tests above before publication.
