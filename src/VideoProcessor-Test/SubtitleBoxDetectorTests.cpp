@@ -3,6 +3,7 @@
 #include <SubtitleBoxDetector.h>
 #include <vector>
 #include <RendererConfigView.h>
+#include <RendererProfileConfig.h>
 #include <fstream>
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 namespace Tests {
@@ -36,9 +37,23 @@ public:
         Assert::IsTrue(GetTempFileNameA(directory,"vpb",0,path)!=0);
         { std::ofstream file(path);file<<"[vprenderer]\nsubtitle_bbox_test: true\n"; }
         ConfigFile config;const bool loaded=config.Load(path);DeleteFileA(path);
+        RendererProfileConfig::Model model; std::string error;
+        Assert::IsTrue(RendererProfileConfig::Read(config,model,error));
         Assert::IsTrue(loaded);bool enabled=false;
         Assert::IsTrue(RendererConfigView(config).TryGetDisplayBool("subtitle_bbox_test",enabled));
         Assert::IsTrue(enabled);
+    }
+    TEST_METHOD(DiagnosticFlagStartupValidationAcceptsFalseAndRejectsInvalid) {
+        for (const char* value : {"false", "not-a-bool"}) {
+            char directory[MAX_PATH]{},path[MAX_PATH]{};
+            Assert::IsTrue(GetTempPathA(MAX_PATH,directory)!=0);
+            Assert::IsTrue(GetTempFileNameA(directory,"vpb",0,path)!=0);
+            { std::ofstream file(path);file<<"[vprenderer]\nsubtitle_bbox_test: "<<value<<"\n"; }
+            ConfigFile config;const bool loaded=config.Load(path);DeleteFileA(path);
+            Assert::IsTrue(loaded);
+            RendererProfileConfig::Model model;std::string error;
+            Assert::AreEqual(std::string(value)=="false",RendererProfileConfig::Read(config,model,error));
+        }
     }
     TEST_METHOD(NativeRgbAndP210HaveEquivalentBoxes) {
         auto f=Frame();Text(f,200,310,20);SubtitleBoxDetector p010;
