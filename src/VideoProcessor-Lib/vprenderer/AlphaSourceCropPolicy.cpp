@@ -469,7 +469,10 @@ namespace AlphaSourceCrop
 			(candidate.left < trustedGeometry.left || candidate.top < trustedGeometry.top ||
 			 candidate.right > trustedGeometry.right || candidate.bottom > trustedGeometry.bottom);
 		if (!compatible)
-			return decision;
+        {
+            decision.diagnosticReason = "no-compatible-expansion";
+            return decision;
+        }
 
 		const int tolerance = SamplingTolerance(trustedGeometry);
 		const bool expandsVertical = (candidate.top < trustedGeometry.top || candidate.bottom > trustedGeometry.bottom) &&
@@ -478,12 +481,20 @@ namespace AlphaSourceCrop
 			!SamplingEquivalentAxis(trustedGeometry.left, trustedGeometry.right, candidate.left, candidate.right, tolerance);
 		// Sampling jitter may reach the normal transition deadband; this grants
 		// no crop/presentation authority and never suppresses positive pixels.
-		if (!expandsVertical && !expandsHorizontal) return decision;
+		if (!expandsVertical && !expandsHorizontal)
+        {
+            decision.diagnosticReason = "measurement-step-only";
+            return decision;
+        }
 		decision.outwardTransition = true;
 		const bool stripsMatch = evidence.expansionStripsAvailable &&
 			SameBounds(evidence.expansionBase, trustedGeometry) && SameBounds(evidence.expansionCandidate, candidate);
 		// A supplied but mismatched certificate must not fall back to old strips.
-		if (evidence.expansionStripsAvailable && !stripsMatch) return decision;
+		if (evidence.expansionStripsAvailable && !stripsMatch)
+        {
+            decision.diagnosticReason = "strip-certificate-mismatch";
+            return decision;
+        }
 		const bool verticalPicture = !expandsVertical ||
 			((candidate.top >= trustedGeometry.top || BroadPictureLike(stripsMatch ? evidence.expandingTop : evidence.excludedTop)) &&
 			 (candidate.bottom <= trustedGeometry.bottom || BroadPictureLike(stripsMatch ? evidence.expandingBottom : evidence.excludedBottom)));
@@ -493,7 +504,12 @@ namespace AlphaSourceCrop
 		decision.broadOpposingPicture = evidence.analysisValid && evidence.presentationValid &&
 			verticalPicture && horizontalPicture;
 		if (!decision.broadOpposingPicture)
-			return decision;
+        {
+            decision.diagnosticReason = !evidence.analysisValid || !evidence.presentationValid
+                ? "measurement-invalid" : (!verticalPicture && !horizontalPicture
+                    ? "both-axes-not-broad" : (!verticalPicture ? "vertical-not-broad" : "horizontal-not-broad"));
+            return decision;
+        }
 
 		const bool sequenceContinuous = sourceSequence == 0 || previous.lastObservedSourceSequence == 0 ||
 			sourceSequence == previous.lastObservedSourceSequence ||
@@ -533,6 +549,9 @@ namespace AlphaSourceCrop
 				previous.confirmations + 1) : 1);
 		decision.authoritative = decision.state.confirmations >=
 			OUTWARD_PICTURE_CONFIRMATIONS_REQUIRED;
+        decision.diagnosticReason = decision.authoritative ? "confirmed" :
+            (repeatedSourceSample ? "repeated-source" :
+             (previous.confirmations != 0 && !continues ? "proof-restarted" : "proof-pending"));
 		return decision;
 	}
 

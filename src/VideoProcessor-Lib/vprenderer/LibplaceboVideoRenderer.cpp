@@ -3875,6 +3875,7 @@ struct LibplaceboVideoRenderer::Impl
 	uint64_t lastSamplingEnvelopeLogTick = 0;
 	uint64_t lastCropAdmissionLogTick = 0;
 	bool lastCropAdmissionDeferred = false;
+    CropDiagnosticThrottle pictureDecisionDiagnostics;
 	ActivePicturePresentationRetentionEvidence latestCropRetentionEvidence;
 	AlphaSourceCrop::PresentationRecoveryState cropPresentationRecovery;
 	AlphaSourceCrop::CropPresentationAdmissionState cropPresentationAdmission;
@@ -8469,7 +8470,10 @@ struct LibplaceboVideoRenderer::Impl
 					latestActivePictureEvidenceWasStartupHypothesis = true;
 				}
 			}
-			// Preserve raw bar contradictions before either darkness constraint can
+			const auto diagnosticMeasuredClass = latestRawPictureEvidence.classification;
+            const auto diagnosticMeasuredBounds = diagnosticMeasuredClass == ActivePictureClassification::PROVISIONAL
+                ? latestRawPictureEvidence.proposedBounds : latestRawPictureEvidence.trustedBounds;
+            // Preserve raw bar contradictions before either darkness constraint can
 			// downgrade them. Hypothesis bars may revoke, never establish full raster.
 			if (evidence.classification == ActivePictureClassification::BAR_CROP_TRUSTED ||
 				nativeBootstrapEvidence.classification == ActivePictureClassification::BAR_CROP_TRUSTED)
@@ -8672,6 +8676,79 @@ struct LibplaceboVideoRenderer::Impl
 					transition.publish ? 1 : 0, transition.knownTrustedGeometryReacquired ? 1 : 0,
 					admission.deferPartialComposition ? 1 : 0);
 			}
+            // Normal-log diagnostics only: reuse the evidence above. Never resample,
+            // advance a proof, or change a decision to explain an observation.
+            const bool diagnosticPending = admission.observation.transitionDeferred ||
+                nearBlackAcquisitionBlocked || movingPictureTransition.active ||
+                scopeSubtitleDrift.IsActive() || (!evidence.available && nlsGeometryAvailable) ||
+                (retentionEvidence.outwardVisibleBoundsAvailable &&
+                 evidence.classification != ActivePictureClassification::BAR_CROP_TRUSTED);
+            const uint64_t diagnosticKey = static_cast<uint64_t>(evidence.classification) |
+                (uint64_t(nearBlackAcquisitionBlocked) << 4) |
+                (uint64_t(admission.deferPresentation) << 5) |
+                (uint64_t(admission.deferOutward) << 6) |
+                (uint64_t(admission.deferPartialComposition) << 7) |
+                (uint64_t(bufferedExpansionReady) << 8) |
+                (uint64_t(scopeVerticalBarPresentation.action) << 9) |
+                (uint64_t(admission.outward.broadOpposingPicture) << 12) |
+                (uint64_t(evidence.axisEvidence.horizontal.reason) << 16) |
+                (uint64_t(evidence.axisEvidence.vertical.reason) << 20);
+            if (pictureDecisionDiagnostics.Observe(now, analysisSource.generation,
+                currentIdentity.viewportGeneration, frameNumber, diagnosticPending,
+                diagnosticKey, transition.publish || (scheduledDecision && !applyScheduledDecision)))
+            {
+                const char* stage = applyScheduledDecision ? "queued-applied" :
+                    (nearBlackAcquisitionBlocked ? "near-black-acquisition" :
+                    (!evidence.available ? "measurement-unavailable" :
+                    (evidence.classification == ActivePictureClassification::PROVISIONAL ? "candidate-untrusted" :
+                    (admission.deferPartialComposition ? "partial-composition" :
+                    (admission.deferOutward ? "outward-proof" :
+                    (admission.deferPresentation ? "presentation-owner" :
+                    (scheduledDecision ? "scheduled-admission" :
+                    (transition.publish ? "live-published" : "live-model"))))))));
+                DebugLog::Log("Alpha picture decision: schema=1 instance=%s generation=%llu sequence=%llu epoch=%llu pending=%d stage=%s coalesced=%llu measured_class=%d measured_rect=%d,%d-%d,%d class=%d candidate=%d,%d-%d,%d base=%d,%d-%d,%d axis_h=%s axis_v=%s eligible=%d outward=%s broad=%d proof=%u/%u prior_proof=%u prior_sequence=%llu first_sequence=%llu deferred=%d/%d/%d buffered_present=%d buffered_valid=%d buffered_ready=%d scheduled=%d scheduled_validation=%s publication_admission=%s published=%d near_black=%d/%d acquisition_blocked=%d p90=%.1f subtitle_action=%d requested_shift=%.1f drift=%d hold_ms=%llu engage_ms=%llu release_ms=%llu subtitle_measurement=%llu subtitle_generation=%llu model_reason=\"%s\" evidence_reason=\"%s\"",
+                    diagnosticInstanceId.c_str(), analysisSource.generation, frameNumber,
+                    currentIdentity.viewportGeneration, diagnosticPending ? 1 : 0, stage,
+                    pictureDecisionDiagnostics.emittedSuppressed,
+                    static_cast<int>(diagnosticMeasuredClass), diagnosticMeasuredBounds.left, diagnosticMeasuredBounds.top,
+                    diagnosticMeasuredBounds.right, diagnosticMeasuredBounds.bottom, static_cast<int>(evidence.classification),
+                    latestActivePictureEvidenceBounds.left, latestActivePictureEvidenceBounds.top,
+                    latestActivePictureEvidenceBounds.right, latestActivePictureEvidenceBounds.bottom,
+                    presentationBeforeObservation.left, presentationBeforeObservation.top,
+                    presentationBeforeObservation.right, presentationBeforeObservation.bottom,
+                    ActivePictureAxisReasonName(evidence.axisEvidence.horizontal.reason),
+                    ActivePictureAxisReasonName(evidence.axisEvidence.vertical.reason), eligiblePictureChange ? 1 : 0,
+                    admission.outward.diagnosticReason, admission.outward.broadOpposingPicture ? 1 : 0,
+                    admission.outward.state.confirmations, AlphaSourceCrop::OUTWARD_PICTURE_CONFIRMATIONS_REQUIRED,
+                    admissionInput.previousOutward.confirmations, admissionInput.previousOutward.lastObservedSourceSequence,
+                    admission.outward.state.firstPictureSourceSequence,
+                    admission.deferPresentation ? 1 : 0, admission.deferOutward ? 1 : 0, admission.deferPartialComposition ? 1 : 0,
+                    bufferedExpansion ? 1 : 0, bufferedExpansion && bufferedExpansion->valid ? 1 : 0,
+                    bufferedExpansionReady ? 1 : 0, scheduledDecision ? 1 : 0,
+                    ActivePictureScheduledDecisionValidationName(scheduledValidation),
+                    ActivePicturePublicationAdmissionName(publicationAdmission), transition.publish ? 1 : 0,
+                    globalNearBlack.evaluated ? 1 : 0, globalNearBlack.nearBlack ? 1 : 0,
+                    nearBlackAcquisitionBlocked ? 1 : 0, globalNearBlack.lumaP90,
+                    static_cast<int>(scopeVerticalBarPresentation.action), scopeVerticalBarPresentation.translationPixels,
+                    scopeSubtitleDrift.IsActive() ? 1 : 0, scopeSubtitleHoldMs, scopeSubtitleEngageDriftMs,
+                    scopeSubtitleReleaseDriftMs, scopeSubtitleAnalysisFrame, scopeSubtitleEvidenceSourceGeneration,
+                    transition.reason.c_str(), evidence.reason.c_str());
+                const auto& r = retentionEvidence;
+                const auto& l = r.expansionStripsAvailable ? r.expandingLeft : r.excludedLeft;
+                const auto& t = r.expansionStripsAvailable ? r.expandingTop : r.excludedTop;
+                const auto& rr = r.expansionStripsAvailable ? r.expandingRight : r.excludedRight;
+                const auto& b = r.expansionStripsAvailable ? r.expandingBottom : r.excludedBottom;
+                DebugLog::Log("Alpha picture decision edges: schema=1 instance=%s generation=%llu sequence=%llu epoch=%llu valid=%d/%d region=%s strip_base=%d,%d-%d,%d strip_candidate=%d,%d-%d,%d fields=pixels,black_fraction,p90,texture,continuity,neutral_chroma left=%d,%.4f,%.1f,%.1f,%.4f,%.4f top=%d,%.4f,%.1f,%.1f,%.4f,%.4f right=%d,%.4f,%.1f,%.1f,%.4f,%.4f bottom=%d,%.4f,%.1f,%.1f,%.4f,%.4f",
+                    diagnosticInstanceId.c_str(), analysisSource.generation, frameNumber, currentIdentity.viewportGeneration,
+                    r.analysisValid ? 1 : 0, r.presentationValid ? 1 : 0,
+                    r.expansionStripsAvailable ? "expansion-strips" : "excluded-bands",
+                    r.expansionBase.left,r.expansionBase.top,r.expansionBase.right,r.expansionBase.bottom,
+                    r.expansionCandidate.left,r.expansionCandidate.top,r.expansionCandidate.right,r.expansionCandidate.bottom,
+                    l.barPixels,l.blackFraction,l.lumaP90,l.texture,l.continuity,l.neutralChromaFraction,
+                    t.barPixels,t.blackFraction,t.lumaP90,t.texture,t.continuity,t.neutralChromaFraction,
+                    rr.barPixels,rr.blackFraction,rr.lumaP90,rr.texture,rr.continuity,rr.neutralChromaFraction,
+                    b.barPixels,b.blackFraction,b.lumaP90,b.texture,b.continuity,b.neutralChromaFraction);
+            }
 			const bool localStableTrustedContract = !applyScheduledDecision &&
 				transition.stable &&
 				transition.authoritativeClassification ==
@@ -14964,6 +15041,8 @@ void LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
     ActivePictureBounds proofBase;
     ActivePictureTransitionModel liveProofModel;
     bool inwardProofEligible = false;
+    bool diagnosticTrustedBase = false, diagnosticOwnerEligible = false;
+    uint64_t diagnosticOwner = 0;
 	{
 		std::lock_guard<std::mutex> renderGuard(m_impl->renderMutex);
         const bool unowned =
@@ -14980,6 +15059,10 @@ void LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
             m_impl->scopeSubtitlePictureBottom == m_impl->nlsGeometry.bottom &&
             !m_impl->movingPictureTransition.active && !m_impl->movingPictureTransition.awaitingPublication &&
             m_impl->nearBlackPresentationEpisode.mode == AlphaSourceCrop::NearBlackPresentationMode::INACTIVE;
+        diagnosticTrustedBase = m_impl->nlsGeometryAvailable &&
+            m_impl->nlsGeometryClassification == ActivePictureClassification::BAR_CROP_TRUSTED;
+        diagnosticOwnerEligible = unowned || translatedBase;
+        diagnosticOwner = static_cast<uint64_t>(m_impl->scopeVerticalBarPresentation.action);
         if (m_impl->nlsGeometryAvailable && m_impl->nlsGeometryClassification ==
             ActivePictureClassification::BAR_CROP_TRUSTED && (unowned || translatedBase))
         {
@@ -15122,10 +15205,20 @@ void LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
 				static_cast<unsigned long long>(queuedFutureFrames),
 				static_cast<unsigned>((std::min)(configured, availableLookahead)));
 		}
+        const char* diagnosticQueueStage = !diagnosticTrustedBase ? "no-trusted-base" :
+            (!diagnosticOwnerEligible ? "owner-ineligible" :
+            (configured < 2 ? "configured-depth-below-proof" :
+            (queuedFutureFrames < 2 ? "insufficient-available-frames" :
+            (previewFrames.size() < 3 ? "insufficient-selected-frames" :
+            (observations.empty() ? "measurement-unavailable" :
+            (observations.front().observation.classification != ActivePictureClassification::BAR_CROP_TRUSTED
+                ? "candidate-untrusted" : (!inspectExpansion ? "no-two-edge-expansion" : "incomplete-samples")))))));
+        bool diagnosticBuilt = false, diagnosticProofValid = false;
 		if (proofSamples.size() == 3 && !m_frameQueue.empty() &&
 			SameActivePictureFrameIdentity(m_frameQueue.front().activePictureIdentity,
 				proofSamples.front().identity))
 		{
+            diagnosticQueueStage = "queue-membership-or-continuity";
 			bool allQueued = true;
 			for (const auto& sample : proofSamples)
 				allQueued = allQueued && std::any_of(m_frameQueue.begin(), m_frameQueue.end(),
@@ -15141,12 +15234,60 @@ void LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
 					AlphaSourceCrop::BuildBufferedPictureExpansion(proofSamples.data(),
 						proofSamples.size(), proofBase, configured, availableLookahead,
 						m_activePictureTimeline.ContinuityGeneration(), lookaheadPolicyGeneration);
-				DebugLog::Log("Alpha buffered picture inspection: generation=%llu sequence=%llu through=%llu samples=3 proof=%d inspection_ms=%.3f",
-					proofIdentities[0].transportGeneration, proofIdentities[0].acceptedSequence,
-					proofIdentities[2].acceptedSequence,
-					m_frameQueue.front().bufferedPictureExpansion.valid ? 1 : 0, proofInspectionMs);
+                diagnosticBuilt = true;
+                diagnosticProofValid = m_frameQueue.front().bufferedPictureExpansion.valid;
+                diagnosticQueueStage = diagnosticProofValid ? "proof-ready" : "proof-rejected";
 			}
 		}
+
+        if (!previewFrames.empty())
+        {
+            PreviewEvidence unavailablePreview;
+            unavailablePreview.identity = previewFrames.front().activePictureIdentity;
+            const auto& first = observations.empty() ? unavailablePreview : observations.front();
+            const bool pending = observations.empty() || inspectExpansion ||
+                first.observation.classification == ActivePictureClassification::PROVISIONAL ||
+                !diagnosticOwnerEligible;
+            const uint64_t key = static_cast<uint64_t>(first.observation.classification) |
+                (uint64_t(diagnosticOwnerEligible) << 4) | (diagnosticOwner << 5) |
+                (uint64_t(inspectExpansion) << 8) | (uint64_t(diagnosticBuilt) << 9) |
+                (uint64_t(diagnosticProofValid) << 10) | (uint64_t(previewFrames.size() < 3) << 11);
+            if (m_picturePreviewDiagnostics.Observe(GetTickCount64(), first.identity.transportGeneration,
+                first.identity.viewportGeneration, first.identity.acceptedSequence, pending, key))
+            {
+                const auto& bounds = first.observation.bounds;
+                DebugLog::Log("Alpha picture preview status: schema=1 instance=%s generation=%llu sequence=%llu epoch=%llu format_generation=%llu policy_generation=%llu stage=%s coalesced=%llu configured=%u available_future=%llu effective_future=%u selected_frames=%llu analyzed_frames=%llu proof_samples=%llu built=%d valid=%d owner=%llu owner_eligible=%d base=%d,%d-%d,%d candidate_class=%d candidate=%d,%d-%d,%d axis_h=%s axis_v=%s inspection_ms=%.3f",
+                    m_impl->diagnosticInstanceId.c_str(), first.identity.transportGeneration,
+                    first.identity.acceptedSequence, first.identity.viewportGeneration,
+                    first.identity.sourceFormatGeneration, lookaheadPolicyGeneration, diagnosticQueueStage,
+                    m_picturePreviewDiagnostics.emittedSuppressed, static_cast<unsigned>(configured),
+                    static_cast<unsigned long long>(queuedFutureFrames), static_cast<unsigned>((std::min)(configured,availableLookahead)),
+                    static_cast<unsigned long long>(previewFrames.size()), static_cast<unsigned long long>(observations.size()),
+                    static_cast<unsigned long long>(proofSamples.size()), diagnosticBuilt ? 1 : 0, diagnosticProofValid ? 1 : 0,
+                    diagnosticOwner, diagnosticOwnerEligible ? 1 : 0,
+                    proofBase.left,proofBase.top,proofBase.right,proofBase.bottom,
+                    static_cast<int>(first.observation.classification), bounds.left,bounds.top,bounds.right,bounds.bottom,
+                    ActivePictureAxisReasonName(first.observation.axisEvidence.horizontal.reason),
+                    ActivePictureAxisReasonName(first.observation.axisEvidence.vertical.reason),proofInspectionMs);
+                if (inspectExpansion && !diagnosticProofValid)
+                    for (const auto& sample : proofSamples)
+                    {
+                        const auto& r = sample.retention;
+                        DebugLog::Log("Alpha picture preview sample: schema=1 instance=%s generation=%llu sequence=%llu epoch=%llu window_first=%llu source_frame=%llu capture_timestamp=%llu available=%d class=%d deferred=%d axes_failed=%d near_black=%d/%d retention=%d/%d strips=%d candidate=%d,%d-%d,%d fields=pixels,black_fraction,p90,texture,continuity top=%d,%.4f,%.1f,%.1f,%.4f bottom=%d,%.4f,%.1f,%.1f,%.4f",
+                            m_impl->diagnosticInstanceId.c_str(), sample.identity.transportGeneration,
+                            sample.identity.acceptedSequence,sample.identity.viewportGeneration,first.identity.acceptedSequence,
+                            sample.identity.sourceFrameNumber,sample.identity.captureTimestamp,
+                            sample.observation.available ? 1 : 0, static_cast<int>(sample.observation.classification),
+                            sample.observation.transitionDeferred ? 1 : 0, sample.observation.axisEvidence.HasFailedBar() ? 1 : 0,
+                            sample.nearBlackEvaluated ? 1 : 0,r.globalNearBlack ? 1 : 0,
+                            r.analysisValid ? 1 : 0,r.presentationValid ? 1 : 0,r.expansionStripsAvailable ? 1 : 0,
+                            sample.observation.bounds.left,sample.observation.bounds.top,
+                            sample.observation.bounds.right,sample.observation.bounds.bottom,
+                            r.expandingTop.barPixels,r.expandingTop.blackFraction,r.expandingTop.lumaP90,r.expandingTop.texture,r.expandingTop.continuity,
+                            r.expandingBottom.barPixels,r.expandingBottom.blackFraction,r.expandingBottom.lumaP90,r.expandingBottom.texture,r.expandingBottom.continuity);
+                    }
+            }
+        }
 
 		for (const PreviewEvidence& preview : observations)
 		{

@@ -50,6 +50,8 @@ namespace AlphaSourceCrop
 		bool outwardTransition = false;
 		bool broadOpposingPicture = false;
 		bool authoritative = false;
+        // Explanation only; never consumed by crop policy.
+        const char* diagnosticReason = "not-evaluated";
 	};
 
 	// Expanding a trusted crop changes the logical aspect only after the same

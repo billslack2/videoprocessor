@@ -4,6 +4,7 @@
 #include <ITimingClock.h>
 #include <VideoConversionOverride.h>
 #include <ActivePictureDecisionTimeline.h>
+#include <CropDiagnosticThrottle.h>
 #include <vprenderer/BufferedPictureExpansion.h>
 
 #include <atomic>
@@ -223,6 +224,7 @@ private:
 	std::atomic<size_t> m_activePictureLookaheadFrames{0};
 	uint64_t m_activePictureLookaheadLoggedGeneration = 0;
 	size_t m_activePictureLookaheadLoggedAvailable = 0xff;
+    CropDiagnosticThrottle m_picturePreviewDiagnostics;
 	std::atomic<uint64_t> m_missingFrameStateDrops{0};
 	std::atomic<uint64_t> m_renderFailureDrops{0};
 	std::atomic_bool m_sceneDetectionEnabled{false};

@@ -4,6 +4,7 @@
 #include <microsoft_directshow/MadVRShaderRuntimeState.h>
 #include <ActivePictureDecisionTimeline.h>
 #include <SceneDetector.h>
+#include <CropDiagnosticThrottle.h>
 #include <vector>
 #include <vprenderer/AlphaSourceCropPolicy.h>
 #include <vprenderer/BufferedPictureExpansion.h>
@@ -2109,6 +2110,141 @@ namespace Tests
 			Assert::IsTrue(model.AdoptPublishedDecision(queued, ActivePictureClassification::BAR_CROP_TRUSTED, false));
 		}
 
+        TEST_METHOD(CropDiagnosticsStayQuietWhenInactiveAndHeartbeatUnresolvedState)
+        {
+            CropDiagnosticThrottle throttle;
+            for (uint64_t now=0;now<=10000;now+=100)
+                Assert::IsFalse(throttle.Observe(now,7,9,now+1,false,now));
+            Assert::IsFalse(throttle.logged);
+            Assert::IsTrue(throttle.Observe(10100,7,9,10102,true,44));
+            Assert::AreEqual(uint64_t{0},throttle.emittedSuppressed);
+            Assert::IsFalse(throttle.Observe(12099,7,9,10103,true,44));
+            Assert::IsTrue(throttle.Observe(12100,7,9,10104,true,44));
+            Assert::AreEqual(uint64_t{0},throttle.emittedSuppressed);
+            Assert::IsFalse(throttle.Observe(14099,7,9,10105,true,44));
+            Assert::IsTrue(throttle.Observe(14100,7,9,10106,true,44));
+        }
+
+        TEST_METHOD(CropDiagnosticsCapOscillatingStartEndAndCoalesceSuppressedEvents)
+        {
+            CropDiagnosticThrottle throttle;
+            Assert::IsTrue(throttle.Observe(1000,7,9,100,true,1));
+            Assert::IsFalse(throttle.Observe(1100,7,9,101,false,0));
+            Assert::IsFalse(throttle.Observe(1200,7,9,102,true,1));
+            Assert::IsFalse(throttle.Observe(1300,7,9,103,true,2));
+            Assert::IsFalse(throttle.Observe(1499,7,9,104,false,0));
+            Assert::IsTrue(throttle.Observe(1500,7,9,105,false,0));
+            Assert::AreEqual(uint64_t{4},throttle.emittedSuppressed);
+            Assert::AreEqual(uint64_t{0},throttle.suppressed);
+            // The coalesced end is final: idle state does not get heartbeats.
+            Assert::IsFalse(throttle.Observe(3500,7,9,106,false,0));
+            Assert::IsFalse(throttle.Observe(9500,7,9,107,false,0));
+        }
+
+        TEST_METHOD(CropDiagnosticPendingEndFlushesAtCapWithoutAnotherStateChange)
+        {
+            CropDiagnosticThrottle throttle;
+            Assert::IsTrue(throttle.Observe(1000,7,9,1,true,11));
+            Assert::IsFalse(throttle.Observe(1001,7,9,2,false,11));
+            Assert::IsTrue(throttle.pending);
+            Assert::IsFalse(throttle.Observe(1499,7,9,3,false,11));
+            Assert::IsTrue(throttle.Observe(1500,7,9,4,false,11));
+            Assert::AreEqual(uint64_t{1},throttle.emittedSuppressed);
+            Assert::IsFalse(throttle.pending);
+            Assert::IsFalse(throttle.wasActive);
+        }
+
+        TEST_METHOD(CropDiagnosticSameSourceFrameCannotSpamEventBundles)
+        {
+            CropDiagnosticThrottle throttle;
+            uint64_t emitted=0,lastEmission=0;
+            for (uint64_t now=1000;now<=3000;++now)
+            {
+                const bool emit=throttle.Observe(now,7,9,100,true,1,true);
+                if (emit)
+                {
+                    if (emitted!=0)
+                    {
+                        Assert::IsTrue(now-lastEmission>=500);
+                        Assert::AreEqual(uint64_t{499},throttle.emittedSuppressed);
+                    }
+                    lastEmission=now;
+                    ++emitted;
+                }
+            }
+            Assert::AreEqual(uint64_t{5},emitted);
+            Assert::AreEqual(uint64_t{100},throttle.lastSequence);
+        }
+
+        TEST_METHOD(CropDiagnosticContextAndClockRollbackDiscardPreviousThrottleState)
+        {
+            for (int context=0;context<4;++context)
+            {
+                CropDiagnosticThrottle throttle;
+                Assert::IsTrue(throttle.Observe(1000,7,9,100,true,1));
+                Assert::IsFalse(throttle.Observe(1100,7,9,101,true,2));
+                Assert::AreEqual(uint64_t{1},throttle.suppressed);
+                uint64_t now=1101,generation=7,epoch=9,sequence=102;
+                if (context==0) ++generation;
+                if (context==1) ++epoch;
+                if (context==2) sequence=99;
+                if (context==3) now=999;
+                Assert::IsTrue(throttle.Observe(now,generation,epoch,sequence,true,3));
+                Assert::AreEqual(uint64_t{0},throttle.emittedSuppressed);
+                Assert::AreEqual(uint64_t{0},throttle.suppressed);
+                Assert::AreEqual(generation,throttle.generation);
+                Assert::AreEqual(epoch,throttle.epoch);
+                Assert::AreEqual(sequence,throttle.lastSequence);
+                Assert::IsFalse(throttle.Observe(now+499,generation,epoch,sequence,true,3));
+            }
+            CropDiagnosticThrottle throttle;
+            Assert::IsTrue(throttle.Observe(1000,7,9,100,true,1));
+            Assert::IsFalse(throttle.Observe(1100,7,9,101,false,0));
+            Assert::IsFalse(throttle.Observe(1101,8,9,1,false,0));
+            Assert::IsFalse(throttle.pending);
+            Assert::IsFalse(throttle.logged);
+        }
+
+        TEST_METHOD(OutwardDiagnosticReasonsDescribeEvidenceGatesWithoutAddingAuthority)
+        {
+            Assert::AreEqual("not-evaluated",OutwardPictureConfirmationDecision{}.diagnosticReason);
+            const ActivePictureBounds base={200,276,3640,1884,3840,2160,3440.0/1608.0,ActivePictureBounds::BarAxes::BOTH};
+            const ActivePictureBounds target={0,68,3840,2092,3840,2160,3840.0/2024.0,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+            for (int gate=0;gate<7;++gate)
+            {
+                auto candidate=target;
+                ActivePicturePresentationRetentionEvidence evidence;
+                evidence.analysisValid=evidence.presentationValid=evidence.expansionStripsAvailable=true;
+                evidence.expansionBase=base; evidence.expansionCandidate=candidate;
+                evidence.expandingTop.barPixels=208;
+                evidence.expandingTop.blackFraction=.3;
+                evidence.expandingTop.continuity=.4;
+                evidence.expandingTop.lumaP90=300;
+                evidence.expandingBottom=evidence.expandingLeft=evidence.expandingRight=evidence.expandingTop;
+                const char* reason=nullptr;
+                switch (gate)
+                {
+                case 0: candidate=base; reason="no-compatible-expansion"; break;
+                case 1:
+                    candidate=base; candidate.top-=2; candidate.bottom+=2;
+                    reason="measurement-step-only"; break;
+                case 2: evidence.expansionBase.top+=4; reason="strip-certificate-mismatch"; break;
+                case 3: evidence.analysisValid=false; reason="measurement-invalid"; break;
+                case 4: evidence.expandingTop.blackFraction=.99; reason="vertical-not-broad"; break;
+                case 5: evidence.expandingLeft.blackFraction=.99; reason="horizontal-not-broad"; break;
+                case 6:
+                    evidence.expandingTop.blackFraction=evidence.expandingLeft.blackFraction=.99;
+                    reason="both-axes-not-broad"; break;
+                }
+                const auto decision=ConfirmOutwardPictureTransition({},base,candidate,evidence,7,100);
+                Assert::AreEqual(reason,decision.diagnosticReason);
+                Assert::IsFalse(decision.authoritative);
+                Assert::IsFalse(decision.broadOpposingPicture);
+                Assert::AreEqual(0u,decision.state.confirmations);
+                Assert::AreEqual(gate>=2,decision.outwardTransition);
+            }
+        }
+
 		TEST_METHOD(OutwardProofResetsForInvalidEvidenceGapsAndGenerationChanges)
 		{
 			const auto scope = TrustedScopeCrop().geometry;
@@ -2122,6 +2258,11 @@ namespace Tests
 			auto one = ConfirmOutwardPictureTransition({},scope,larger,evidence,2,10);
 			auto two = ConfirmOutwardPictureTransition(one.state,scope,larger,evidence,2,11);
 			Assert::AreEqual(2u,two.state.confirmations);
+            Assert::AreEqual("proof-pending",one.diagnosticReason);
+            Assert::AreEqual("proof-pending",two.diagnosticReason);
+            Assert::AreEqual("proof-restarted",ConfirmOutwardPictureTransition(two.state,scope,larger,evidence,2,13).diagnosticReason);
+            Assert::AreEqual("proof-restarted",ConfirmOutwardPictureTransition(two.state,scope,larger,evidence,3,12).diagnosticReason);
+            Assert::AreEqual("proof-restarted",ConfirmOutwardPictureTransition(two.state,scope,larger,evidence,2,9).diagnosticReason);
 			Assert::AreEqual(1u,ConfirmOutwardPictureTransition(two.state,scope,larger,evidence,2,13).state.confirmations);
 			Assert::AreEqual(1u,ConfirmOutwardPictureTransition(two.state,scope,larger,evidence,3,12).state.confirmations);
 			Assert::AreEqual(1u,ConfirmOutwardPictureTransition(two.state,scope,larger,evidence,2,9).state.confirmations);
@@ -5158,25 +5299,30 @@ namespace Tests
 			auto decision = ConfirmOutwardPictureTransition(
 				state, scope, full, evidence, 7, 100);
 			Assert::AreEqual(1U, decision.state.confirmations);
+            Assert::AreEqual("proof-pending",decision.diagnosticReason);
 
 			decision = ConfirmOutwardPictureTransition(
 				decision.state, scope, full, evidence, 7, 100);
 			Assert::AreEqual(1U, decision.state.confirmations);
+            Assert::AreEqual("repeated-source",decision.diagnosticReason);
 			Assert::IsFalse(decision.authoritative);
 
 			decision = ConfirmOutwardPictureTransition(
 				decision.state, scope, full, evidence, 7, 101);
 			Assert::AreEqual(2U, decision.state.confirmations);
+            Assert::AreEqual("proof-pending",decision.diagnosticReason);
 			Assert::IsFalse(decision.authoritative);
 
 			decision = ConfirmOutwardPictureTransition(
 				decision.state, scope, full, evidence, 7, 101);
 			Assert::AreEqual(2U, decision.state.confirmations);
+            Assert::AreEqual("repeated-source",decision.diagnosticReason);
 			Assert::IsFalse(decision.authoritative);
 
 			decision = ConfirmOutwardPictureTransition(
 				decision.state, scope, full, evidence, 7, 102);
 			Assert::AreEqual(3U, decision.state.confirmations);
+            Assert::AreEqual("confirmed",decision.diagnosticReason);
 			Assert::IsTrue(decision.authoritative);
 		}
 
