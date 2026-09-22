@@ -311,6 +311,8 @@ namespace AlphaSourceCrop
 		// The previous action owns classification of this scheduled sample even
 		// when holdMs is zero. An analyzed NONE still releases immediately.
 		bool previousOwnsCurrentAnalysis = false;
+		// Set only after eligible retiring-owner inspection completed on this frame.
+		bool retiringTranslationFitInspection = false;
 	};
 
 	bool IsVerticalBarPresentationActive(
@@ -454,6 +456,10 @@ namespace AlphaSourceCrop
 	// normally.
 	bool CanAnalyzeHeldVerticalBarGeometry(
 		const HeldBarAnalysisInput& input);
+
+	// Eligibility grants a fresh dense scan, never crop or presentation authority.
+	bool CanInspectRetiringTranslationFit(const HeldBarAnalysisInput& input,
+		const VerticalFitConfirmationState& fit, bool inspectionBlocked);
 
 	// Store exactly one held vertical action. FIT retains the widest measured
 	// extents; TRANSLATE retains the farthest same-direction displacement.

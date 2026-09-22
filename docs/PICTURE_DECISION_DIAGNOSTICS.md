@@ -75,3 +75,15 @@ Independent review checked policy isolation, synchronization, formatting and
 label semantics. The initial incremental test link hit existing MSVC LNK1103
 corrupt debug information; a clean test rebuild and full build succeeded.
 Actual playback log volume/interpretation remains to be verified after deployment.
+
+## Retiring subtitle handoff event
+
+`Alpha subtitle fit handoff` is emitted at normal logging when an expired
+translation qualifies for a fresh two-edge FIT inspection. It records renderer
+instance, source generation/sequence, viewport epoch, prior shift and FIT sample,
+current envelope, resulting dense extents, scan completion and adoption outcome.
+`drift_reset=1` means the old translation animation was cleared after FIT adopted;
+`logical_authority_changed=0` describes this presentation-only operation.
+Use subsequent source-crop/final-layout events to establish actual visible bounds.
+There is no per-frame steady-state record; this is an ownership-handoff event.
+See [the correction and validation](RETIRING_SUBTITLE_FIT_HANDOFF.md).

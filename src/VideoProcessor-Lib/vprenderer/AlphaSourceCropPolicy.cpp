@@ -1054,14 +1054,53 @@ namespace AlphaSourceCrop
 		return false;
 	}
 
+	static bool HasExpiredTranslationHold(const VerticalBarPresentationState& state,
+		uint64_t currentTick, uint64_t holdMs, uint64_t currentSequence)
+	{
+		return state.action == VerticalBarPresentationAction::TRANSLATE &&
+			holdMs != 0 && state.lastDetectionTick != 0 &&
+			currentTick >= state.lastDetectionTick &&
+			currentTick - state.lastDetectionTick > holdMs &&
+			state.sourceSequence != 0 && currentSequence > state.sourceSequence;
+	}
+
+	bool CanInspectRetiringTranslationFit(const HeldBarAnalysisInput& input,
+		const VerticalFitConfirmationState& fit, bool inspectionBlocked)
+	{
+		if (inspectionBlocked ||
+			!HasExpiredTranslationHold(input.presentation, input.currentTick,
+				input.holdMs, input.currentSourceSequence) ||
+			fit.confirmations < VERTICAL_FIT_CONFIRMATIONS_REQUIRED ||
+			fit.lastObservedSourceSequence == 0 ||
+			input.currentSourceSequence <= fit.lastObservedSourceSequence ||
+			input.currentSourceSequence - fit.lastObservedSourceSequence > 3 ||
+			input.trustedGeometry.left != 0 ||
+			input.trustedGeometry.right != input.trustedGeometry.rasterWidth ||
+			input.trustedGeometry.top <= 0 ||
+			input.trustedGeometry.bottom >= input.trustedGeometry.rasterHeight)
+			return false;
+
+		// Reuse the same source/base and two-edge envelope checks as pending FIT.
+		// Recent confirmed FIT grants one fresh inspection, not stale fit authority.
+		// Three source frames are the existing dense-analysis sampling interval.
+		auto inspection = input;
+		inspection.fitConfirmationPending = true;
+		return CanAnalyzeHeldVerticalBarGeometry(inspection);
+	}
+
 	VerticalBarPresentationState UpdateVerticalBarPresentation(
 		const VerticalBarPresentationUpdateInput& input)
 	{
 		const bool previousActiveByHold = IsVerticalBarPresentationActive(
 			input.previous, input.currentTick, input.holdMs,
 			input.currentSourceSequence);
+		const bool retiringTranslationFit = input.retiringTranslationFitInspection &&
+			input.current.action == VerticalBarPresentationAction::FIT &&
+			input.upperContent && input.lowerContent &&
+			HasExpiredTranslationHold(input.previous, input.currentTick,
+				input.holdMs, input.currentSourceSequence);
 		const bool previousOwnsSample = previousActiveByHold ||
-			input.previousOwnsCurrentAnalysis;
+			(input.previousOwnsCurrentAnalysis && !retiringTranslationFit);
 		VerticalBarPresentationState state = previousOwnsSample
 			? input.previous : VerticalBarPresentationState{};
 		VerticalBarContentDecision current = input.current;

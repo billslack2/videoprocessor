@@ -85,6 +85,38 @@ namespace Tests
             return input;
         }
 
+        HeldBarAnalysisInput ExpiredTranslationWithTwoEdgeEnvelope()
+        {
+            HeldBarAnalysisInput input;
+            input.trustedBarGeometryAvailable=input.storedBaseMatchesTrustedGeometry=input.currentEnvelopeAvailable=true;
+            input.latestClassification=ActivePictureClassification::PROVISIONAL;
+            input.trustedGeometry={0,276,3840,1884,3840,2160,3840.0/1608.0,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+            input.currentEnvelope=input.trustedGeometry;
+            input.currentEnvelope.top=54; input.currentEnvelope.bottom=2106;
+            input.currentEnvelope.aspectRatio=3840.0/(2106-54);
+            input.presentation.action=VerticalBarPresentationAction::TRANSLATE;
+            input.presentation.translationPixels=178;
+            input.presentation.lastDetectionTick=1000; input.presentation.sourceSequence=50;
+            input.evidenceSourceGeneration=input.currentSourceGeneration=7;
+            input.currentTick=3001; input.holdMs=2000; input.currentSourceSequence=100;
+            return input;
+        }
+
+        VerticalBarPresentationUpdateInput FreshFitAtTranslationExpiry()
+        {
+            const auto held=ExpiredTranslationWithTwoEdgeEnvelope();
+            VerticalBarPresentationUpdateInput update;
+            update.previous=held.presentation;
+            update.current.action=VerticalBarPresentationAction::FIT;
+            update.upperContent=update.lowerContent=true;
+            update.upperContentTop=54; update.lowerContentBottom=2106;
+            update.currentTick=held.currentTick; update.holdMs=held.holdMs;
+            update.currentSourceSequence=held.currentSourceSequence;
+            update.translationEnabled=update.previousOwnsCurrentAnalysis=true;
+            update.retiringTranslationFitInspection=true;
+            return update;
+        }
+
 		TransitionAdmissionInput MovingRecoveryObservation(const ActivePictureBounds& base,
 			uint64_t generation,uint64_t sequence,unsigned index,double hz)
 		{
@@ -5010,6 +5042,179 @@ namespace Tests
 				static_cast<int>(action.action));
 			Assert::AreEqual(198.0f, action.translationPixels, 0.001f);
 		}
+
+        TEST_METHOD(ExpiredTranslationWithRecentConfirmedFitCanRequestFreshDenseInspection)
+        {
+            VerticalBarContentDecision fitDecision;
+            fitDecision.action=VerticalBarPresentationAction::FIT;
+            const auto first=ConfirmVerticalFit({},fitDecision,98);
+            const auto confirmed=ConfirmVerticalFit(first.state,fitDecision,99);
+            Assert::IsTrue(first.pending);
+            Assert::IsTrue(confirmed.newlyAccepted);
+            for (uint64_t age=1;age<=3;++age)
+            {
+                auto input=ExpiredTranslationWithTwoEdgeEnvelope();
+                input.currentSourceSequence=99+age;
+                Assert::IsFalse(CanAnalyzeHeldVerticalBarGeometry(input),
+                    L"The old subtitle hold has expired; ordinary held analysis no longer inspects it.");
+                Assert::IsTrue(CanInspectRetiringTranslationFit(input,confirmed.state,false),
+                    L"Recent confirmed FIT and a current two-edge envelope must permit a fresh dense scan at translation expiry.");
+                Assert::IsTrue(input.latestClassification==ActivePictureClassification::PROVISIONAL);
+                Assert::IsFalse(input.currentBarAuthority,L"Inspection eligibility must not manufacture crop authority.");
+            }
+        }
+
+        TEST_METHOD(RetiringTranslationInspectionRejectsActiveStaleOrIncompatibleHistory)
+        {
+            for (int fault=0;fault<32;++fault)
+            {
+                auto input=ExpiredTranslationWithTwoEdgeEnvelope();
+                VerticalFitConfirmationState fit{2,99};
+                bool blocked=false;
+                switch (fault)
+                {
+                case 0: input.currentTick=2999; break;
+                case 1: input.currentTick=3000; break; // Existing hold includes the exact endpoint.
+                case 2: input.holdMs=0; break;
+                case 3: input.currentTick=999; break;
+                case 4: input.presentation.lastDetectionTick=0; break;
+                case 5: input.presentation.sourceSequence=0; break;
+                case 6: input.presentation.sourceSequence=input.currentSourceSequence; break;
+                case 7: input.presentation.sourceSequence=input.currentSourceSequence+1; break;
+                case 8: input.currentSourceSequence=0; break;
+                case 9: fit.confirmations=1; break;
+                case 10: fit.lastObservedSourceSequence=0; break;
+                case 11: fit.lastObservedSourceSequence=100; break;
+                case 12: fit.lastObservedSourceSequence=101; break;
+                case 13: fit.lastObservedSourceSequence=96; break;
+                case 14: input.trustedBarGeometryAvailable=false; break;
+                case 15: input.storedBaseMatchesTrustedGeometry=false; break;
+                case 16: input.currentEnvelopeAvailable=false; break;
+                case 17: input.currentBarAuthority=true; break;
+                case 18: input.evidenceSourceGeneration=0; break;
+                case 19: ++input.currentSourceGeneration; break;
+                case 20: input.latestClassification=ActivePictureClassification::BAR_CROP_TRUSTED; break;
+                case 21: input.latestClassification=ActivePictureClassification::UNAVAILABLE; break;
+                case 22: input.currentEnvelope.top=input.trustedGeometry.top; break;
+                case 23: input.currentEnvelope.bottom=input.trustedGeometry.bottom; break;
+                case 24: input.currentEnvelope.left=4; break;
+                case 25: input.presentation.action=VerticalBarPresentationAction::FIT; break;
+                case 26: blocked=true; break;
+                case 27: input.trustedGeometry.left=4; input.currentEnvelope.left=4; break;
+                case 28: input.trustedGeometry.right=3836; input.currentEnvelope.right=3836; break;
+                case 29: input.trustedGeometry.top=0; input.currentEnvelope.top=0; break;
+                case 30: input.trustedGeometry.bottom=2160; input.currentEnvelope.bottom=2160; break;
+                case 31: input.currentEnvelope.right=3836; break;
+                }
+                const auto message=L"retiring inspection fault="+std::to_wstring(fault);
+                Assert::IsFalse(CanInspectRetiringTranslationFit(input,fit,blocked),message.c_str());
+            }
+        }
+
+        TEST_METHOD(FreshConfirmedFitRetiresExpiredTranslationAndReachesBoundedPresentation)
+        {
+            auto update=FreshFitAtTranslationExpiry();
+            VerticalBarContentDecision dense; dense.action=VerticalBarPresentationAction::FIT;
+            const auto previousFit=ConfirmVerticalFit(ConfirmVerticalFit({},dense,98).state,dense,99);
+            const auto fresh=ConfirmVerticalFit(previousFit.state,dense,update.currentSourceSequence);
+            Assert::IsFalse(fresh.pending);
+            Assert::AreEqual(update.currentSourceSequence,fresh.state.lastObservedSourceSequence);
+            update.current=fresh.effective;
+            const auto state=UpdateVerticalBarPresentation(update);
+            Assert::IsTrue(state.action==VerticalBarPresentationAction::FIT,
+                L"A fresh confirmed two-edge FIT may retire the expired translation despite previousOwnsCurrentAnalysis.");
+            Assert::AreEqual(0.0f,state.translationPixels);
+            Assert::AreEqual(54,state.detectedTop); Assert::AreEqual(2106,state.detectedBottom);
+            Assert::AreEqual(update.currentTick,state.lastDetectionTick);
+            Assert::AreEqual(update.currentSourceSequence,state.sourceSequence);
+
+            VerticalBarPresentationResolutionInput resolution;
+            resolution.detailedAction=state.action; resolution.translationPixels=state.translationPixels;
+            resolution.genericUpperExpansion=resolution.genericLowerExpansion=true;
+            resolution.genericUpperBound=state.detectedTop; resolution.genericLowerBound=state.detectedBottom;
+            resolution.authoritativeTop=276; resolution.authoritativeBottom=1884; resolution.rasterHeight=2160;
+            const auto routing=ResolveVerticalBarRendererRouting(ResolveVerticalBarPresentation(resolution));
+            Assert::IsTrue(routing.fitActive); Assert::IsFalse(routing.translationActive);
+            Assert::AreEqual(0,routing.translationPixels);
+            auto crop=TrustedScopeCrop();
+            crop.geometry=ExpiredTranslationWithTwoEdgeEnvelope().trustedGeometry;
+            crop.frameSourceSequence=100;
+            const auto admitted=AdmitCropPresentation({},crop,Evaluate(crop),9).state;
+            crop.outwardPresentationActive=routing.fitActive;
+            crop.outwardExpansionAvailable=true;
+            crop.outwardExpansion=ExpiredTranslationWithTwoEdgeEnvelope().currentEnvelope;
+            crop.outwardExpansionSourceGeneration=7;
+            // Reproduce the real provisional authority gap, not a trusted new AR.
+            crop.latestObservationSupportsCrop=false;
+            crop.latestObservationIsProvisional=true;
+            crop.latestObservationClassification=ActivePictureClassification::PROVISIONAL;
+            crop.frameLocalPresentationRetentionEvaluated=true;
+            crop.frameLocalPresentationRetentionSafe=false;
+            VerticalInspectionFitResolutionInput fitResolution;
+            fitResolution.confirmedDenseFit=state.action==VerticalBarPresentationAction::FIT;
+            fitResolution.denseAnalysisCurrent=fresh.state.lastObservedSourceSequence==crop.frameSourceSequence;
+            fitResolution.outwardExpansionAvailable=true;
+            fitResolution.trustedBase=crop.geometry;
+            fitResolution.outwardExpansion=crop.outwardExpansion;
+            fitResolution.outwardExpansionSourceGeneration=fitResolution.frameSourceGeneration=7;
+            VerticalInspectionBridgeInput bridge;
+            bridge.candidate=bridge.retentionRequested=true;
+            bridge.denseAnalysisCompleted=true;
+            bridge.verticalPresentationOwnerAvailable=true;
+            bridge.confirmedVerticalFitResolved=CanResolveVerticalInspectionWithConfirmedFit(fitResolution);
+            bridge.sourceGeneration=7; bridge.presentationEpoch=9;
+            bridge.trustedBase=crop.geometry; bridge.sourceSequence=crop.frameSourceSequence;
+            Assert::IsTrue(bridge.confirmedVerticalFitResolved);
+            const auto inspected=UpdateVerticalInspectionBridge(bridge);
+            Assert::IsFalse(inspected.retain);
+            Assert::IsFalse(inspected.state.failOpenLatched);
+            const auto final=AdmitCropPresentation(admitted,crop,Evaluate(crop),9);
+            Assert::IsFalse(final.blocked);
+            Assert::IsTrue(final.presentation.applyCrop && final.presentation.outwardExpanded);
+            Assert::IsFalse(final.presentation.verticallyTranslated);
+            Assert::AreEqual(0,final.presentation.sourceBounds.left); Assert::AreEqual(3840,final.presentation.sourceBounds.right);
+            Assert::AreEqual(54,final.presentation.sourceBounds.top); Assert::AreEqual(2106,final.presentation.sourceBounds.bottom);
+            Assert::AreEqual(276,final.state.trustedCrop.top);
+            Assert::AreEqual(1884,final.state.trustedCrop.bottom);
+        }
+
+        TEST_METHOD(RetiringTranslationFlagCannotOverrideUnexpiredOrUnprovenFit)
+        {
+            for (int fault=0;fault<10;++fault)
+            {
+                auto update=FreshFitAtTranslationExpiry();
+                switch (fault)
+                {
+                case 0: update.retiringTranslationFitInspection=false; break;
+                case 1: update.currentTick=3000; break;
+                case 2: update.holdMs=0; break;
+                case 3: update.currentTick=999; break;
+                case 4: update.previous.lastDetectionTick=0; break;
+                case 5: update.currentSourceSequence=update.previous.sourceSequence; break;
+                case 6: update.currentSourceSequence=update.previous.sourceSequence-1; break;
+                case 7: update.currentSourceSequence=0; break;
+                case 8: update.upperContent=false; break;
+                case 9: update.lowerContent=false; break;
+                }
+                const auto state=UpdateVerticalBarPresentation(update);
+                const auto message=L"retiring update fault="+std::to_wstring(fault);
+                Assert::IsTrue(state.action==VerticalBarPresentationAction::TRANSLATE,message.c_str());
+                Assert::AreEqual(178.0f,state.translationPixels,message.c_str());
+                Assert::AreEqual(uint64_t{50},state.sourceSequence,message.c_str());
+            }
+            for (bool oneEdge : {false,true})
+            {
+                auto update=FreshFitAtTranslationExpiry();
+                update.current.action=oneEdge ? VerticalBarPresentationAction::TRANSLATE : VerticalBarPresentationAction::NONE;
+                update.current.translationPixels=oneEdge ? 184.0f : 0.0f;
+                update.upperContent=false;
+                const auto state=UpdateVerticalBarPresentation(update);
+                Assert::IsFalse(state.action==VerticalBarPresentationAction::FIT,
+                    L"Fresh negative or one-edge subtitle evidence cannot be promoted into FIT by an inspection request.");
+                if (oneEdge) Assert::AreEqual(184.0f,state.translationPixels);
+                else Assert::IsTrue(state.action==VerticalBarPresentationAction::NONE);
+            }
+        }
 
 		TEST_METHOD(PersistentSubtitleMayBeRescannedOnHeldTrustedBarGeometry)
 		{

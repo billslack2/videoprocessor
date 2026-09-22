@@ -5264,7 +5264,8 @@ struct LibplaceboVideoRenderer::Impl
 		bool forceAnalysis = false,
 		bool heldBarAnalysisAuthority = false,
 		bool* analysisScheduled = nullptr,
-		bool* analysisCompleted = nullptr)
+		bool* analysisCompleted = nullptr,
+		bool retiringTranslationFitInspection = false)
 	{
 		if (analysisScheduled)
 			*analysisScheduled = false;
@@ -5671,8 +5672,22 @@ struct LibplaceboVideoRenderer::Impl
 				updateInput.translationEnabled = scopeSubtitleFit;
 				updateInput.previousOwnsCurrentAnalysis =
 					previousOwnsCurrentAnalysis;
+				updateInput.retiringTranslationFitInspection =
+					retiringTranslationFitInspection &&
+					fitConfirmation.state.confirmations >=
+						AlphaSourceCrop::VERTICAL_FIT_CONFIRMATIONS_REQUIRED &&
+					fitConfirmation.state.lastObservedSourceSequence == sourceSequence;
 				scopeVerticalBarPresentation =
 					AlphaSourceCrop::UpdateVerticalBarPresentation(updateInput);
+				if (updateInput.retiringTranslationFitInspection &&
+					updateInput.previous.action == AlphaSourceCrop::VerticalBarPresentationAction::TRANSLATE &&
+					scopeVerticalBarPresentation.action == AlphaSourceCrop::VerticalBarPresentationAction::FIT)
+				{
+					// Retire only the old animation. Clearing subtitle evidence here
+					// would discard the fresh FIT and reintroduce the inspection snap.
+					scopeSubtitleDrift.Reset();
+					scopeSubtitleDriftWasActive = false;
+				}
 				const auto action = verticalDecision.action ==
 					AlphaSourceCrop::VerticalBarPresentationAction::TRANSLATE &&
 					!scopeSubtitleFit
@@ -9873,12 +9888,19 @@ struct LibplaceboVideoRenderer::Impl
 		heldAnalysisInput.currentTick = subtitleNow;
 		heldAnalysisInput.holdMs = scopeSubtitleHoldMs;
 		heldAnalysisInput.currentSourceSequence = sourceSequence;
+		const bool retiringTranslationFitInspection =
+			AlphaSourceCrop::CanInspectRetiringTranslationFit(heldAnalysisInput,
+				scopeSubtitleFitConfirmation,
+				latestActivePictureGlobalNearBlack ||
+				nearBlackPresentationEpisode.mode != AlphaSourceCrop::NearBlackPresentationMode::INACTIVE ||
+				AlphaSourceCrop::HasCurrentMovingPictureTransition(
+					movingPictureTransition, frameGeneration, sourceSequence));
 		const bool heldBarAnalysisAuthority =
 			!latestActivePictureGlobalNearBlack &&
 			nearBlackPresentationEpisode.mode ==
 				AlphaSourceCrop::NearBlackPresentationMode::INACTIVE &&
-			AlphaSourceCrop::CanAnalyzeHeldVerticalBarGeometry(
-				heldAnalysisInput);
+			(retiringTranslationFitInspection ||
+			 AlphaSourceCrop::CanAnalyzeHeldVerticalBarGeometry(heldAnalysisInput));
 		const ActivePictureBounds* subtitleBarAuthority =
 			currentBarAuthority ? &nlsGeometry :
 			(sceneBarAuthority ? &sceneVerificationGeometry :
@@ -9905,7 +9927,8 @@ struct LibplaceboVideoRenderer::Impl
 		subtitleInspection.retention = latestCropRetentionEvidence;
 		const auto subtitleInspectionDecision = AlphaSourceCrop::UpdateSubtitleInspection(subtitleInspection);
 		scopeSubtitleInspection = subtitleInspectionDecision.state;
-		const bool forceSubtitleBarAnalysis = subtitleInspectionDecision.forceAnalysis ||
+		const bool forceSubtitleBarAnalysis = retiringTranslationFitInspection ||
+			subtitleInspectionDecision.forceAnalysis ||
 			(latestActivePictureEvidenceWasStartupHypothesis && subtitleBarAuthority != nullptr);
 		if (subtitleInspectionDecision.forceAnalysis)
 			DebugLog::Log("Alpha subtitle inspection: sequence=%llu generation=%llu reason=new-vertical-content base=%d,%d-%d,%d horizontal_safe=%d vertical_safe=%d",
@@ -9915,12 +9938,32 @@ struct LibplaceboVideoRenderer::Impl
 				latestCropRetentionEvidence.excludedVerticalBandsPixelSafe ? 1 : 0);
 		bool subtitleBarAnalysisScheduled = false;
 		bool subtitleBarAnalysisCompleted = false;
+		const auto subtitlePresentationBeforeAnalysis = scopeVerticalBarPresentation;
+		const auto fitBeforeAnalysis = scopeSubtitleFitConfirmation;
 		const float subtitleShiftSourcePixels =
 			UpdateScopeSubtitleShift(&analysisSource,
 				width, height, configuredScreenActive, subtitleBarAuthority,
 				sourceSequence, forceSubtitleBarAnalysis,
 				heldBarAnalysisAuthority, &subtitleBarAnalysisScheduled,
-				&subtitleBarAnalysisCompleted);
+				&subtitleBarAnalysisCompleted, retiringTranslationFitInspection);
+		if (retiringTranslationFitInspection)
+		{
+			const bool adopted = subtitleBarAnalysisCompleted &&
+				scopeVerticalBarPresentation.action == AlphaSourceCrop::VerticalBarPresentationAction::FIT &&
+				scopeVerticalBarPresentation.sourceSequence == sourceSequence;
+			DebugLog::Log("Alpha subtitle fit handoff: schema=1 instance=%s generation=%llu sequence=%llu epoch=%llu result=%s scan_completed=%d previous_shift=%.1f prior_fit_sequence=%llu fit_confirm=%u current_action=%d drift_reset=%d base=%d,%d-%d,%d current_envelope=%d,%d-%d,%d dense_extent=%d..%d logical_authority_changed=0",
+				diagnosticInstanceId.c_str(), static_cast<unsigned long long>(frameGeneration),
+				static_cast<unsigned long long>(sourceSequence), static_cast<unsigned long long>(viewportRequestSerial),
+				adopted ? "adopted" : "not-adopted", subtitleBarAnalysisCompleted ? 1 : 0,
+				subtitlePresentationBeforeAnalysis.translationPixels,
+				static_cast<unsigned long long>(fitBeforeAnalysis.lastObservedSourceSequence),
+				scopeSubtitleFitConfirmation.confirmations, static_cast<int>(scopeVerticalBarPresentation.action), adopted ? 1 : 0,
+				heldAnalysisInput.trustedGeometry.left, heldAnalysisInput.trustedGeometry.top,
+				heldAnalysisInput.trustedGeometry.right, heldAnalysisInput.trustedGeometry.bottom,
+				heldAnalysisInput.currentEnvelope.left, heldAnalysisInput.currentEnvelope.top,
+				heldAnalysisInput.currentEnvelope.right, heldAnalysisInput.currentEnvelope.bottom,
+				scopeVerticalBarPresentation.detectedTop, scopeVerticalBarPresentation.detectedBottom);
+		}
 		float hdrPeakAnalysisMotionProtectionPixels = 0.0f;
 		if (hdrPeakAnalysisMotionCompensation &&
 			!hdrPeakAnalysisPictureOnly && subtitleBarAuthority)
