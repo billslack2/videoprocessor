@@ -4,6 +4,8 @@
 #include <ActivePictureEvidence.h>
 #include <vprenderer/AlphaSourceCropPolicy.h>
 #include <vprenderer/BufferedPictureExpansion.h>
+#include <vprenderer/AlphaQueuePolicy.h>
+#include <deque>
 #include <array>
 #include <vector>
 
@@ -111,7 +113,9 @@ namespace Tests
 
 			BufferedMotionSequence() { EstablishBufferedScope(timeline,model); }
 			void Step(const BufferedPixelSample& frame,
-				const BufferedPixelSample* future1=nullptr,const BufferedPixelSample* future2=nullptr)
+				const BufferedPixelSample* future1=nullptr,const BufferedPixelSample* future2=nullptr,
+                uint8_t configuredLookahead=2,uint8_t availableLookahead=2,
+                const ActivePictureFrameDecision* inwardProof=nullptr)
 			{
 				auto current=BufferedLiveInput(frame);
 				current.sourceSequence=sequence;
@@ -125,7 +129,17 @@ namespace Tests
 				ConstrainMovingPictureTransition(moving,admission);
 				outward=admission.outward.state;
 				const bool eligible=model.WouldAdmitGeometryChange(MakeActivePictureObservation(current.evidence,sequence,24));
-				auto transition=model.Observe(admission.observation);
+                ActivePictureTransitionDecision transition;
+                const bool inwardAccepted=inwardProof && !moving.active && !moving.awaitingPublication &&
+                    current.presentation.action==VerticalBarPresentationAction::NONE &&
+                    !current.translationDriftActive && !current.previousOutward.verticalPresentationSeen &&
+                    !admission.deferOutward && !admission.deferPresentation &&
+                    ValidateActivePictureScheduledDecision(*inwardProof,identity,current.evidence.trustedBounds,
+                        current.evidence.classification)==ActivePictureScheduledDecisionValidation::ACCEPTED &&
+                    model.AdoptPublishedDecision(inwardProof->transition,current.evidence.classification,
+                        admission.observation.transitionDeferred,nullptr,&admission.observation.axisEvidence);
+                if (inwardAccepted) transition=inwardProof->transition;
+                else transition=model.Observe(admission.observation);
 				if (!moving.active && future1 && future2)
 				{
 					const BufferedPixelSample* pixels[3]={&frame,future1,future2};
@@ -137,7 +151,7 @@ namespace Tests
 						samples[index].retention=EvaluateActivePicturePresentationRetention(pixels[index]->Source(),geometry);
 						samples[index].nearBlackEvaluated=true;
 					}
-					const auto proof=BuildBufferedPictureExpansion(samples.data(),3,geometry,2,2,19,23);
+					const auto proof=BuildBufferedPictureExpansion(samples.data(),3,geometry,configuredLookahead,availableLookahead,19,23);
 					if (ValidateBufferedPictureExpansion(proof,identity,current,eligible) &&
 						model.AdoptPublishedDecision(proof.decision.transition,current.evidence.classification,
 							false,nullptr,&admission.observation.axisEvidence,true)) transition=proof.decision.transition;
@@ -214,6 +228,32 @@ namespace Tests
 	TEST_CLASS(LookaheadOutwardProofTests)
 	{
 	public:
+        TEST_METHOD(BufferedInwardUsesAvailableAdjacentProofAtLiveCropCadence)
+        {
+            for (double fps : {24.0, 60.0})
+            {
+                ActivePictureTransitionModel live;
+                for (uint64_t sequence=1; sequence<=4; ++sequence)
+                    live.Observe(BufferedObservation(sequence,BufferedTaller()));
+                std::array<BufferedPictureExpansionSample,2> samples;
+                for (size_t i=0; i<samples.size(); ++i)
+                {
+                    samples[i].identity=BufferedIdentity(100+i);
+                    samples[i].observation=BufferedObservation(100+i,BufferedScope());
+                    samples[i].observation.framesPerSecond=fps;
+                    samples[i].nearBlackEvaluated=true;
+                }
+                const auto proof=BuildBufferedInwardDecision(samples.data(),samples.size(),live,
+                    BufferedTaller(),1,1,19,23);
+                Assert::IsTrue(proof.transition.publish,
+                    L"Two queued exact inward samples must confirm at established live-crop cadence.");
+                Assert::AreEqual(uint64_t{100},proof.effectiveIdentity.acceptedSequence);
+                Assert::AreEqual(uint64_t{101},proof.observationIdentity.acceptedSequence);
+                Assert::AreEqual(uint8_t{2},proof.proofFrameCount);
+                Assert::IsTrue(live.AdoptPublishedDecision(proof.transition,
+                    ActivePictureClassification::BAR_CROP_TRUSTED));
+            }
+        }
 		TEST_METHOD(MotionReturnInsideDeadbandReusesOnlyPixelSafePriorCrop)
 		{
 			BufferedMotionSequence replay;
@@ -377,6 +417,132 @@ namespace Tests
 				Assert::AreEqual(2092,replay.finalBounds.bottom);
 			}
 		}
+        TEST_METHOD(SelectedPhysicalInwardProofReachesFirstFrameFinalCropAndRemainsStable)
+        {
+            struct Frame { bool cadenceRepeat; const BufferedPixelSample* pixels; };
+            const BufferedPixelSample scope(276,1884);
+            for (size_t depth : {size_t{0},size_t{1},size_t{2},size_t{3},size_t{5},size_t{8}})
+            {
+                BufferedMotionSequence replay;
+                replay.model.Reset();
+                for (uint64_t sequence=1;sequence<=4;++sequence)
+                    replay.model.Observe(BufferedObservation(sequence,BufferedTaller()));
+                replay.geometry=BufferedTaller();
+                unsigned publications=0;
+                unsigned firstPublication=99;
+                for (unsigned offset=0;offset<5;++offset)
+                {
+                    std::deque<Frame> queue(9,Frame{false,&scope});
+                    const auto window=AlphaQueuePolicy::SelectActivePicturePreview(queue,depth,8);
+                    std::vector<BufferedPictureExpansionSample> samples;
+                    for (size_t selected=0;selected<window.indices.size();++selected)
+                    {
+                        const auto& pixels=*queue[window.indices[selected]].pixels;
+                        BufferedPictureExpansionSample sample;
+                        sample.identity=BufferedIdentity(replay.sequence+selected);
+                        sample.observation=MakeActivePictureObservation(pixels.evidence,replay.sequence+selected,24);
+                        const auto nearBlack=EvaluateActivePictureGlobalNearBlack(pixels.Source());
+                        sample.nearBlackEvaluated=nearBlack.evaluated;
+                        sample.retention.globalNearBlack=nearBlack.nearBlack;
+                        samples.push_back(sample);
+                    }
+                    const auto proof=BuildBufferedInwardDecision(samples.data(),samples.size(),replay.model,
+                        replay.geometry,static_cast<uint8_t>(depth),static_cast<uint8_t>(window.availableFutureFrames),19,23);
+                    replay.Step(scope,nullptr,nullptr,static_cast<uint8_t>(depth),
+                        static_cast<uint8_t>(window.availableFutureFrames),proof.transition.publish ? &proof : nullptr);
+                    if (replay.published && publications++==0) firstPublication=offset;
+                    if (publications!=0)
+                    {
+                        Assert::IsTrue(replay.presented.applyCrop);
+                        Assert::AreEqual(276,replay.finalBounds.top);
+                        Assert::AreEqual(1884,replay.finalBounds.bottom);
+                        Assert::IsFalse(replay.recovery.active);
+                    }
+                }
+                Assert::AreEqual(1u,publications);
+                Assert::AreEqual(depth>0 ? 0u : 1u,firstPublication);
+            }
+        }
+
+        TEST_METHOD(SelectedQueueDepthControlsFirstDisplayedExpansionWithoutChangingFinalCrop)
+        {
+            struct Frame { bool cadenceRepeat; const BufferedPixelSample* pixels; };
+            const BufferedPixelSample target;
+            for (size_t depth : {size_t{0},size_t{1},size_t{2},size_t{3},size_t{5},size_t{8}})
+            for (size_t actualFuture : {size_t{0},size_t{1},size_t{2},size_t{8}})
+            {
+                BufferedMotionSequence replay;
+                unsigned publications=0;
+                unsigned firstPublication=99;
+                for (unsigned offset=0;offset<8;++offset)
+                {
+                    std::deque<Frame> queue={{false,&target}};
+                    for (size_t future=0;future<actualFuture;++future)
+                    {
+                        queue.push_back({true,&target}); // repeated display adds no source evidence
+                        queue.push_back({false,&target});
+                    }
+                    const auto window=AlphaQueuePolicy::SelectActivePicturePreview(queue,depth,8);
+                    Assert::AreEqual(actualFuture,window.availableFutureFrames);
+                    const auto* future1=window.indices.size()>1 ? queue[window.indices[1]].pixels : nullptr;
+                    const auto* future2=window.indices.size()>2 ? queue[window.indices[2]].pixels : nullptr;
+                    replay.Step(target,future1,future2,static_cast<uint8_t>(depth),
+                        static_cast<uint8_t>(window.availableFutureFrames));
+                    if (replay.published)
+                    {
+                        if (publications++==0) firstPublication=offset;
+                    }
+                    if (publications!=0)
+                    {
+                        Assert::IsTrue(replay.presented.applyCrop);
+                        Assert::AreEqual(68,replay.finalBounds.top);
+                        Assert::AreEqual(2092,replay.finalBounds.bottom);
+                    }
+                }
+                const auto diagnostic=L"depth="+std::to_wstring(depth)+L" available="+std::to_wstring(actualFuture);
+                Assert::AreEqual(1u,publications,diagnostic.c_str());
+                Assert::AreEqual(depth>=2 && actualFuture>=2 ? 0u : 3u,firstPublication,diagnostic.c_str());
+            }
+        }
+
+        TEST_METHOD(DeepSelectedQueueCannotPresentExpansionBeforeItsSourceFrameOrReorderReturn)
+        {
+            struct Frame { bool cadenceRepeat; const BufferedPixelSample* pixels; };
+            const BufferedPixelSample scope(276,1884),taller;
+            const std::vector<const BufferedPixelSample*> source={
+                &scope,&scope,&taller,&taller,&taller,&taller,
+                &scope,&scope,&scope,&scope,&scope,&scope};
+            for (size_t depth : {size_t{0},size_t{1},size_t{2},size_t{3},size_t{5},size_t{8}})
+            {
+                BufferedMotionSequence replay;
+                std::vector<int> publishedTop;
+                for (size_t index=0;index<source.size();++index)
+                {
+                    std::deque<Frame> queue;
+                    for (size_t pending=index;pending<source.size();++pending)
+                        queue.push_back({false,source[pending]});
+                    const auto window=AlphaQueuePolicy::SelectActivePicturePreview(queue,depth,8);
+                    const auto* future1=window.indices.size()>1 ? queue[window.indices[1]].pixels : nullptr;
+                    const auto* future2=window.indices.size()>2 ? queue[window.indices[2]].pixels : nullptr;
+                    replay.Step(*source[index],future1,future2,static_cast<uint8_t>(depth),
+                        static_cast<uint8_t>(window.availableFutureFrames));
+                    if (replay.published) publishedTop.push_back(replay.geometry.top);
+                    if (index<2)
+                    {
+                        Assert::IsTrue(replay.presented.applyCrop);
+                        Assert::AreEqual(276,replay.finalBounds.top,
+                            L"A later buffered expansion cannot affect preceding scope source frames.");
+                    }
+                }
+                Assert::AreEqual<size_t>(2,publishedTop.size());
+                Assert::AreEqual(68,publishedTop[0]);
+                Assert::AreEqual(276,publishedTop[1]);
+                Assert::IsTrue(replay.presented.applyCrop);
+                Assert::AreEqual(276,replay.finalBounds.top);
+                Assert::AreEqual(1884,replay.finalBounds.bottom);
+            }
+        }
+
 		TEST_METHOD(PhysicalBufferedSamplesProvideThreeDistinctBroadExpansionObservations)
 		{
 			std::array<BufferedPixelSample,3> frames;

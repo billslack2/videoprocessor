@@ -8605,7 +8605,12 @@ struct LibplaceboVideoRenderer::Impl
 				: ActivePictureScheduledDecisionValidation::NON_AUTHORITATIVE;
 			ActivePicturePublicationAdmission publicationAdmission =
 				ActivePicturePublicationAdmission::NOT_EVALUATED;
-			const bool applyScheduledDecision = scheduledDecision &&
+            const bool inwardPresentationCompatible = !scheduledDecision ||
+                scheduledDecision->association != ActivePictureDecisionAssociation::EXACT_INWARD ||
+                (scopeVerticalBarPresentation.action == AlphaSourceCrop::VerticalBarPresentationAction::NONE &&
+                 !scopeSubtitleDrift.IsActive() && !outwardPictureConfirmation.verticalPresentationSeen &&
+                 !movingPictureTransition.active && !movingPictureTransition.awaitingPublication);
+            const bool applyScheduledDecision = scheduledDecision && inwardPresentationCompatible &&
 				scheduledValidation ==
 					ActivePictureScheduledDecisionValidation::ACCEPTED &&
 				nlsTransition.AdoptPublishedDecision(
@@ -14923,10 +14928,14 @@ bool LibplaceboVideoRenderer::GetFrameRateAndPPM(
 
 void LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
 	std::vector<QueuedFrame>& previewFrames,
-	uint8_t availableLookahead,
+	size_t queuedFutureFrames,
 	uint64_t lookaheadPolicyGeneration)
 {
-	ActivePictureBounds proofBase;
+    const uint8_t availableLookahead = static_cast<uint8_t>((std::min)(
+        queuedFutureFrames, size_t{UINT8_MAX}));
+    ActivePictureBounds proofBase;
+    ActivePictureTransitionModel liveProofModel;
+    bool inwardProofEligible = false;
 	{
 		std::lock_guard<std::mutex> renderGuard(m_impl->renderMutex);
 		if (m_impl->nlsGeometryAvailable && m_impl->nlsGeometryClassification ==
@@ -14934,9 +14943,15 @@ void LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
 			m_impl->scopeVerticalBarPresentation.action == AlphaSourceCrop::VerticalBarPresentationAction::NONE &&
 			!m_impl->scopeSubtitleDrift.IsActive() &&
 			!m_impl->outwardPictureConfirmation.verticalPresentationSeen)
-			proofBase = m_impl->nlsGeometry;
-	}
-	std::vector<AlphaSourceCrop::BufferedPictureExpansionSample> proofSamples;
+        {
+            proofBase = m_impl->nlsGeometry;
+            liveProofModel = m_impl->nlsTransition;
+            inwardProofEligible = !m_impl->movingPictureTransition.active &&
+                !m_impl->movingPictureTransition.awaitingPublication;
+        }
+    }
+    std::vector<AlphaSourceCrop::BufferedPictureExpansionSample> proofSamples;
+    std::vector<AlphaSourceCrop::BufferedPictureExpansionSample> inwardSamples;
 	double proofInspectionMs = 0.0;
 	bool inspectExpansion = false;
 	struct PreviewEvidence
@@ -15026,7 +15041,16 @@ void LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
 				SteadyClock::now() - proofInspectionStart).count();
 			proofSamples.push_back(sample);
 		}
-		observations.push_back(preview);
+        if (inwardProofEligible)
+        {
+            AlphaSourceCrop::BufferedPictureExpansionSample sample;
+            sample.identity = preview.identity;
+            sample.observation = preview.observation;
+            sample.nearBlackEvaluated = preview.nearBlackEvaluated;
+            sample.retention.globalNearBlack = preview.nearBlack;
+            inwardSamples.push_back(sample);
+        }
+        observations.push_back(preview);
 	}
 
 	const uint8_t configured = static_cast<uint8_t>((std::min)(
@@ -15046,15 +15070,15 @@ void LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
 			return;
 		}
 		if (m_activePictureLookaheadLoggedGeneration != m_queueGeneration ||
-			m_activePictureLookaheadLoggedAvailable != availableLookahead)
+			m_activePictureLookaheadLoggedAvailable != queuedFutureFrames)
 		{
 			m_activePictureLookaheadLoggedGeneration = m_queueGeneration;
-			m_activePictureLookaheadLoggedAvailable = availableLookahead;
+			m_activePictureLookaheadLoggedAvailable = queuedFutureFrames;
 			DebugLog::Log(
-				"Alpha active-picture look-ahead preview: generation=%llu configured=%u available=%u effective=%u runtime-apply=pending",
+				"Alpha active-picture look-ahead preview: generation=%llu configured=%u available=%llu effective=%u runtime-apply=pending",
 				static_cast<unsigned long long>(m_queueGeneration),
 				static_cast<unsigned>(configured),
-				static_cast<unsigned>(availableLookahead),
+				static_cast<unsigned long long>(queuedFutureFrames),
 				static_cast<unsigned>((std::min)(configured, availableLookahead)));
 		}
 		if (proofSamples.size() == 3 && !m_frameQueue.empty() &&
@@ -15157,6 +15181,41 @@ void LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
 				decision.transition.bounds.right,
 				decision.transition.bounds.bottom);
 		}
+        // Fresh proof against the live stable reference avoids transferring
+        // confirmations from an independently drifting preview history.
+        const auto inward = AlphaSourceCrop::BuildBufferedInwardDecision(
+            inwardSamples.data(), inwardSamples.size(), liveProofModel, proofBase,
+            configured, availableLookahead, m_activePictureTimeline.ContinuityGeneration(),
+            lookaheadPolicyGeneration);
+        if (inward.transition.publish && !m_frameQueue.empty() &&
+            SameActivePictureFrameIdentity(m_frameQueue.front().activePictureIdentity,
+                inward.effectiveIdentity))
+        {
+            std::vector<ActivePictureFrameIdentity> identities;
+            for (size_t i = 0; i < inward.proofFrameCount; ++i)
+                identities.push_back(inwardSamples[i].identity);
+            const bool allQueued = std::all_of(identities.begin(), identities.end(),
+                [this](const ActivePictureFrameIdentity& identity) {
+                    return std::any_of(m_frameQueue.begin(), m_frameQueue.end(),
+                        [&identity](const QueuedFrame& item) {
+                            return !item.cadenceRepeat &&
+                                SameActivePictureFrameIdentity(item.activePictureIdentity, identity);
+                        });
+                });
+            if (allQueued && m_activePictureTimeline.CanProveBufferedFrames(
+                identities.data(), identities.size()))
+            {
+                m_frameQueue.front().activePicturePreviewDecision = inward;
+                m_frameQueue.front().activePicturePreviewDecisionAvailable = true;
+                DebugLog::Log("Alpha buffered inward proof: generation=%llu sequence=%llu through=%llu samples=%u configured=%u available=%u effective=%u runtime-apply=pending",
+                    inward.effectiveIdentity.transportGeneration,
+                    inward.effectiveIdentity.acceptedSequence,
+                    inward.observationIdentity.acceptedSequence,
+                    static_cast<unsigned>(inward.proofFrameCount),
+                    static_cast<unsigned>(configured), static_cast<unsigned>(availableLookahead),
+                    static_cast<unsigned>(inward.effectiveLookahead));
+            }
+        }
 	}
 
 }
@@ -15237,7 +15296,7 @@ void LibplaceboVideoRenderer::RenderLoop()
 		size_t desiredQueueDepth = 1;
 		double oldestQueuedAgeMs = 0.0;
 		std::vector<QueuedFrame> activePicturePreviewFrames;
-		uint8_t activePictureAvailableLookahead = 0;
+		size_t activePictureAvailableLookahead = 0;
 		uint64_t activePictureLookaheadPolicyGeneration = 0;
 		bool cadenceRepeat = false;
 		uint64_t cadenceActionId = 0;
@@ -15265,26 +15324,17 @@ void LibplaceboVideoRenderer::RenderLoop()
 			std::unique_lock<std::mutex> previewLock(m_queueMutex);
 			m_queueChanged.wait(previewLock, [this]() { return m_stopRequested || CanDequeueLocked(); });
 			if (m_stopRequested) break;
-			const size_t requestedLookahead = (std::min)(
-				m_activePictureLookaheadFrames.load(std::memory_order_acquire),
-				size_t{ ActivePictureDecisionTimeline::MAX_LOOKAHEAD_FRAMES });
-			activePictureLookaheadPolicyGeneration =
-				m_activePictureTimeline.LookaheadPolicyGeneration();
-			if (requestedLookahead > 0 && !m_frameQueue.front().cadenceRepeat)
-			{
-				size_t sourceLead = 0;
-				for (const QueuedFrame& queued : m_frameQueue)
-				{
-					if (queued.cadenceRepeat)
-						continue;
-					if (sourceLead > requestedLookahead)
-						break;
-					++sourceLead;
-					activePicturePreviewFrames.push_back(queued);
-					activePicturePreviewFrames.back().frame.SourceBufferAddRef();
-				}
-				activePictureAvailableLookahead = static_cast<uint8_t>(sourceLead > 0 ? sourceLead - 1 : 0);
-			}
+            const auto window = AlphaQueuePolicy::SelectActivePicturePreview(
+                m_frameQueue, m_activePictureLookaheadFrames.load(std::memory_order_acquire),
+                ActivePictureDecisionTimeline::MAX_LOOKAHEAD_FRAMES);
+            activePictureLookaheadPolicyGeneration =
+                m_activePictureTimeline.LookaheadPolicyGeneration();
+            activePictureAvailableLookahead = window.availableFutureFrames;
+            for (const size_t index : window.indices)
+            {
+                activePicturePreviewFrames.push_back(m_frameQueue[index]);
+                activePicturePreviewFrames.back().frame.SourceBufferAddRef();
+            }
 		}
 
 		if (!activePicturePreviewFrames.empty() &&

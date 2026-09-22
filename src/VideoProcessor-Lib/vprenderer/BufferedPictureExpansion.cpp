@@ -312,6 +312,75 @@ namespace AlphaSourceCrop
         return proof;
     }
 
+    ActivePictureFrameDecision BuildBufferedInwardDecision(
+        const BufferedPictureExpansionSample* samples, size_t count,
+        ActivePictureTransitionModel liveModel, const ActivePictureBounds& base,
+        uint8_t configuredLookahead, uint8_t availableLookahead,
+        uint64_t continuityGeneration, uint64_t policyGeneration)
+    {
+        ActivePictureFrameDecision result;
+        const uint8_t budget = (std::min)((std::min)(configuredLookahead,
+            ActivePictureDecisionTimeline::MAX_LOOKAHEAD_FRAMES), availableLookahead);
+        if (!samples || count < 2 || budget == 0 ||
+            continuityGeneration == 0 || policyGeneration == 0) return result;
+        const auto& first = samples[0];
+        ActivePictureTransitionDecision geometry;
+        geometry.stableBounds = base;
+        geometry.bounds = first.observation.bounds;
+        if (!IsExactInwardActivePictureAssociationGeometry(geometry,
+                first.observation.classification) ||
+            first.identity.transportGeneration == 0 ||
+            first.identity.sourceFormatGeneration == 0 || first.identity.acceptedSequence == 0 ||
+            first.identity.acceptedSequence > UINT64_MAX - budget) return result;
+        // A cut may invalidate pre-window candidates before the live consumer.
+        // Retain established geometry/deadbands, but prove this window afresh.
+        liveModel.ResetCandidateEvidence();
+        count = (std::min)(count, size_t(budget) + 1);
+        for (size_t i = 0; i < count; ++i)
+        {
+            const auto& sample = samples[i];
+            if (!SameContext(first.identity, sample.identity) ||
+                sample.identity.acceptedSequence != first.identity.acceptedSequence + i ||
+                sample.observation.frameNumber != sample.identity.acceptedSequence ||
+                !sample.observation.available || sample.observation.transitionDeferred ||
+                sample.observation.classification != ActivePictureClassification::BAR_CROP_TRUSTED ||
+                sample.observation.axisEvidence.HasFailedBar() ||
+                !SameBounds(first.observation.bounds, sample.observation.bounds) ||
+                !sample.nearBlackEvaluated || sample.retention.globalNearBlack)
+                return {};
+            if (i != 0 &&
+                ((sample.identity.sourceFrameNumber != 0 || samples[i-1].identity.sourceFrameNumber != 0) &&
+                 (samples[i-1].identity.sourceFrameNumber == UINT64_MAX ||
+                  sample.identity.sourceFrameNumber != samples[i-1].identity.sourceFrameNumber + 1))) return {};
+            if (i != 0 &&
+                ((sample.identity.captureTimestamp != 0 || samples[i-1].identity.captureTimestamp != 0) &&
+                 sample.identity.captureTimestamp <= samples[i-1].identity.captureTimestamp)) return {};
+            // Established live crops are inspected on every source frame.
+            // Match that cadence using already-buffered evidence, not the
+            // sparse acquisition cadence used when no crop is established.
+            const auto transition = liveModel.Observe(sample.observation);
+            if (!transition.publish) continue;
+            if (i == 0 || !SameBounds(transition.stableBounds, base) ||
+                !SameBounds(transition.bounds, first.observation.bounds) ||
+                !IsExactInwardActivePictureAssociationGeometry(transition,
+                    sample.observation.classification)) return {};
+            result.transition = transition;
+            result.effectiveIdentity = first.identity;
+            result.observationIdentity = sample.identity;
+            result.configuredLookahead = (std::min)(configuredLookahead,
+                ActivePictureDecisionTimeline::MAX_LOOKAHEAD_FRAMES);
+            result.availableLookahead = availableLookahead;
+            result.effectiveLookahead = budget;
+            result.proofFrameCount = static_cast<uint8_t>(i + 1);
+            result.continuityGeneration = continuityGeneration;
+            result.lookaheadPolicyGeneration = policyGeneration;
+            result.association = ActivePictureDecisionAssociation::EXACT_INWARD;
+            result.inwardProof = ActivePictureInwardProofValidation::ACCEPTED;
+            return result;
+        }
+        return result;
+    }
+
     bool ValidateBufferedPictureExpansion(
         const BufferedPictureExpansionProof& proof,
         const ActivePictureFrameIdentity& currentIdentity,

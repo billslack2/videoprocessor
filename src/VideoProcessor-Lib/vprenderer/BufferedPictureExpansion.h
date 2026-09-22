@@ -58,6 +58,15 @@ namespace AlphaSourceCrop
         uint8_t availableLookahead, uint64_t continuityGeneration,
         uint64_t policyGeneration);
 
+    // Self-contained inward proof from the current live model. Pending live
+    // candidates are discarded; every contributing frame must have identical
+    // trusted, non-near-black bounds. Does not mutate live temporal state.
+    ActivePictureFrameDecision BuildBufferedInwardDecision(
+        const BufferedPictureExpansionSample* samples, size_t count,
+        ActivePictureTransitionModel liveModel, const ActivePictureBounds& base,
+        uint8_t configuredLookahead, uint8_t availableLookahead,
+        uint64_t continuityGeneration, uint64_t policyGeneration);
+
     // The caller must additionally check the decision against the current
     // timeline continuity/policy generation before calling this consumer.
     // Adoption still goes through ActivePictureTransitionModel's vetoes.

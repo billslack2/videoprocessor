@@ -154,7 +154,7 @@ private:
 	void StopInternal(const std::function<void()>& drainAfterGraphStop);
 	void AnalyzeActivePictureLookahead(
 		std::vector<QueuedFrame>& previewFrames,
-		uint8_t availableLookahead,
+		size_t queuedFutureFrames,
 		uint64_t lookaheadPolicyGeneration);
 	void ClearQueue(const char* reason = "queue clear");
 	void BeginQueueGeneration(const char* reason, bool clearStopRequest = false);
@@ -222,7 +222,7 @@ private:
 	std::atomic<uint64_t> m_droppedFrames{0};
 	std::atomic<size_t> m_activePictureLookaheadFrames{0};
 	uint64_t m_activePictureLookaheadLoggedGeneration = 0;
-	uint8_t m_activePictureLookaheadLoggedAvailable = 0xff;
+	size_t m_activePictureLookaheadLoggedAvailable = 0xff;
 	std::atomic<uint64_t> m_missingFrameStateDrops{0};
 	std::atomic<uint64_t> m_renderFailureDrops{0};
 	std::atomic_bool m_sceneDetectionEnabled{false};
