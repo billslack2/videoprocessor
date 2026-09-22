@@ -713,6 +713,32 @@ namespace AlphaSourceCrop
 	PresentationEnvelopeGeometryDecision BuildPresentationEnvelope(
 		const PresentationEnvelopeGeometryInput& input);
 
+	struct PresentationEnvelopeContent
+	{
+		ActivePictureBounds bounds;
+		bool expandLeft = false;
+		bool expandTop = false;
+		bool expandRight = false;
+		bool expandBottom = false;
+	};
+
+	struct PresentationEnvelopeCompositionInput
+	{
+		ActivePictureBounds trustedPicture;
+		PresentationEnvelopeContent detectorContent;
+		PresentationEnvelopeContent denseContent;
+		int horizontalPadding = 0;
+		int verticalPadding = 0;
+	};
+
+	// The renderer supplies already-routed edges and source/base-validated
+	// evidence. Pad raw dense edges once, then union with the detector's selected
+	// bounds without extra padding. Flags define active components: invalid active
+	// bounds fail; unselected components do not participate. No crop authority or
+	// temporal state is created here.
+	PresentationEnvelopeGeometryDecision BuildComposedPresentationEnvelope(
+		const PresentationEnvelopeCompositionInput& input);
+
 	struct PresentationRect
 	{
 		double left = 0.0;

@@ -1738,6 +1738,53 @@ namespace AlphaSourceCrop
 		return decision;
 	}
 
+	PresentationEnvelopeGeometryDecision BuildComposedPresentationEnvelope(
+		const PresentationEnvelopeCompositionInput& input)
+	{
+		auto complete = [&](const PresentationEnvelopeContent& content,
+			int horizontalPadding, int verticalPadding)
+		{
+			PresentationEnvelopeGeometryInput geometry;
+			geometry.trustedPicture = input.trustedPicture;
+			geometry.observedContent = content.bounds;
+			geometry.observedContentAvailable = content.expandLeft ||
+				content.expandTop || content.expandRight || content.expandBottom;
+			geometry.expandLeft = content.expandLeft;
+			geometry.expandTop = content.expandTop;
+			geometry.expandRight = content.expandRight;
+			geometry.expandBottom = content.expandBottom;
+			geometry.horizontalPadding = horizontalPadding;
+			geometry.verticalPadding = verticalPadding;
+			return BuildPresentationEnvelope(geometry);
+		};
+
+		// Detector bounds already include whatever safety extent their producer
+		// supplied. Only raw dense measurements receive subtitle clearance here.
+		// Complete selected edges separately so an unrelated detector edge cannot
+		// acquire that clearance, or override vertical translation routing.
+		const auto detector = complete(input.detectorContent, 0, 0);
+		if (!detector.valid)
+			return detector;
+		const auto dense = complete(input.denseContent,
+			input.horizontalPadding, input.verticalPadding);
+		if (!dense.valid)
+			return dense;
+
+		PresentationEnvelopeGeometryInput combined;
+		combined.trustedPicture = input.trustedPicture;
+		combined.observedContent = detector.bounds;
+		combined.observedContent.left = std::min(detector.bounds.left, dense.bounds.left);
+		combined.observedContent.top = std::min(detector.bounds.top, dense.bounds.top);
+		combined.observedContent.right = std::max(detector.bounds.right, dense.bounds.right);
+		combined.observedContent.bottom = std::max(detector.bounds.bottom, dense.bounds.bottom);
+		combined.observedContentAvailable = detector.expanded || dense.expanded;
+		combined.expandLeft = combined.expandTop = true;
+		combined.expandRight = combined.expandBottom = true;
+		// The completed envelopes contain their own clearance. Union without a
+		// second padding pass; this changes presentation, never aspect authority.
+		return BuildPresentationEnvelope(combined);
+	}
+
 	CenteredFitDecision FitAspect(double contentAspect,
 		const PresentationRect& screen,
 		VerticalPictureAlignment verticalAlignment)

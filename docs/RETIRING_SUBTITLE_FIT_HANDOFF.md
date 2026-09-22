@@ -64,3 +64,11 @@ reported transition is still needed to confirm visual improvement. The log
 snapshot does not contain every source pixel and cannot prove the precise live
 handoff frame in advance. This targets the extra intermediate recentering;
 weak-evidence delays before actual aspect acceptance retain their existing rules.
+
+## Follow-up replay
+
+The subsequent deployed replay confirmed that the handoff succeeds, but exposed
+extra padding in the renderer's actual detector/dense envelope assembly. The
+policy-level tests above used an already constructed envelope. See
+[PRESENTATION_ENVELOPE_COMPOSITION.md](PRESENTATION_ENVELOPE_COMPOSITION.md) for
+the renderer-connected reproduction, correction, and remaining timing limits.

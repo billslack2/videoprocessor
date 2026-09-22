@@ -10729,85 +10729,54 @@ struct LibplaceboVideoRenderer::Impl
 			ActivePictureBounds outwardExpansion = effectiveGeometry;
 			bool outwardExpansionAvailable = false;
 			bool outwardExpansionInvalid = false;
+			AlphaSourceCrop::PresentationEnvelopeCompositionInput expansionInput;
 			if (barContentFitActive && effectiveGeometryAvailable &&
 				((denseFitEvidenceActive &&
 				  scopeSubtitleEvidenceSourceGeneration == frameGeneration) ||
 				 detectorFitActive))
 			{
-				AlphaSourceCrop::PresentationEnvelopeGeometryInput expansionInput;
 				expansionInput.trustedPicture = effectiveGeometry;
-				expansionInput.observedContent = effectiveGeometry;
-				expansionInput.observedContentAvailable = true;
-				if (detectorFitActive)
-				{
-					if (detectorLeftExpansion)
-					{
-						expansionInput.expandLeft = true;
-						expansionInput.observedContent.left = std::min(
-							expansionInput.observedContent.left,
-							scopePresentationEvidenceBounds.left);
-					}
-					if (selectedDetectorTopExpansion)
-					{
-						expansionInput.expandTop = true;
-						expansionInput.observedContent.top = std::min(
-							expansionInput.observedContent.top,
-							scopePresentationEvidenceBounds.top);
-					}
-					if (detectorRightExpansion)
-					{
-						expansionInput.expandRight = true;
-						expansionInput.observedContent.right = std::max(
-							expansionInput.observedContent.right,
-							scopePresentationEvidenceBounds.right);
-					}
-					if (selectedDetectorBottomExpansion)
-					{
-						expansionInput.expandBottom = true;
-						expansionInput.observedContent.bottom = std::max(
-							expansionInput.observedContent.bottom,
-							scopePresentationEvidenceBounds.bottom);
-					}
-				}
-				const int verticalMargin = std::max(8, height / 90) +
-					scopeSubtitlePaddingPixels;
-				const int horizontalMargin = std::max(8, width / 160) +
-					scopeSubtitlePaddingPixels;
+				auto& detector = expansionInput.detectorContent;
+				detector.bounds = scopePresentationEvidenceBounds;
+				detector.expandLeft = detectorLeftExpansion;
+				detector.expandTop = selectedDetectorTopExpansion;
+				detector.expandRight = detectorRightExpansion;
+				detector.expandBottom = selectedDetectorBottomExpansion;
+				auto& dense = expansionInput.denseContent;
+				dense.bounds = effectiveGeometry;
 				if (leftBarContentActive && scopeSubtitleDetectedLeft > 0)
 				{
-					expansionInput.expandLeft = true;
-					expansionInput.observedContent.left = std::min(
-						expansionInput.observedContent.left,
-						scopeSubtitleDetectedLeft);
+					dense.expandLeft = true;
+					dense.bounds.left = std::min(
+						dense.bounds.left, scopeSubtitleDetectedLeft);
 				}
 				if (detailedVerticalFitEvidence &&
 					scopeVerticalBarPresentation.detectedTop > 0)
 				{
-					expansionInput.expandTop = true;
-					expansionInput.observedContent.top = std::min(
-						expansionInput.observedContent.top,
+					dense.expandTop = true;
+					dense.bounds.top = std::min(dense.bounds.top,
 						scopeVerticalBarPresentation.detectedTop);
 				}
 				if (detailedVerticalFitEvidence &&
 					scopeVerticalBarPresentation.detectedBottom > 0)
 				{
-					expansionInput.expandBottom = true;
-					expansionInput.observedContent.bottom = std::max(
-						expansionInput.observedContent.bottom,
+					dense.expandBottom = true;
+					dense.bounds.bottom = std::max(dense.bounds.bottom,
 						scopeVerticalBarPresentation.detectedBottom);
 				}
 				if (rightBarContentActive && scopeSubtitleDetectedRight > 0)
 				{
-					expansionInput.expandRight = true;
-					expansionInput.observedContent.right = std::max(
-						expansionInput.observedContent.right,
-						scopeSubtitleDetectedRight);
+					dense.expandRight = true;
+					dense.bounds.right = std::max(
+						dense.bounds.right, scopeSubtitleDetectedRight);
 				}
-				expansionInput.horizontalPadding = horizontalMargin;
-				expansionInput.verticalPadding = verticalMargin;
+				expansionInput.horizontalPadding = std::max(8, width / 160) +
+					scopeSubtitlePaddingPixels;
+				expansionInput.verticalPadding = std::max(8, height / 90) +
+					scopeSubtitlePaddingPixels;
 				const AlphaSourceCrop::PresentationEnvelopeGeometryDecision
-					expansion =
-					AlphaSourceCrop::BuildPresentationEnvelope(expansionInput);
+					expansion = AlphaSourceCrop::BuildComposedPresentationEnvelope(
+						expansionInput);
 				outwardExpansionInvalid = !expansion.valid;
 				if (expansion.valid)
 				{
@@ -11742,6 +11711,29 @@ struct LibplaceboVideoRenderer::Impl
 					envelopeDecision.reason,
 					latestActivePicturePresentationRetentionReason.c_str(),
 					aspectLimitFill.reason.c_str());
+				if (outwardExpansionAvailable || outwardExpansionInvalid)
+				{
+					const auto& detector = expansionInput.detectorContent;
+					const auto& dense = expansionInput.denseContent;
+					DebugLog::Log(
+						"Alpha envelope composition: schema=1 instance=%s generation=%llu sequence=%llu epoch=%llu rule=pad-dense-then-union detector_edges=%c%c%c%c detector_rect=%d,%d-%d,%d dense_edges=%c%c%c%c dense_rect=%d,%d-%d,%d dense_padding_xy=%d,%d result=%d,%d-%d,%d invalid=%d",
+						diagnosticInstanceId.c_str(),
+						static_cast<unsigned long long>(frameGeneration),
+						static_cast<unsigned long long>(sourceSequence),
+						static_cast<unsigned long long>(viewportRequestSerial),
+						detector.expandLeft ? 'L' : '-', detector.expandTop ? 'T' : '-',
+						detector.expandRight ? 'R' : '-', detector.expandBottom ? 'B' : '-',
+						detector.bounds.left, detector.bounds.top,
+						detector.bounds.right, detector.bounds.bottom,
+						dense.expandLeft ? 'L' : '-', dense.expandTop ? 'T' : '-',
+						dense.expandRight ? 'R' : '-', dense.expandBottom ? 'B' : '-',
+						dense.bounds.left, dense.bounds.top,
+						dense.bounds.right, dense.bounds.bottom,
+						expansionInput.horizontalPadding, expansionInput.verticalPadding,
+						outwardExpansion.left, outwardExpansion.top,
+						outwardExpansion.right, outwardExpansion.bottom,
+						outwardExpansionInvalid ? 1 : 0);
+				}
 			}
 			if (cropDecision.applyCrop || aspectLimitFill.applied)
 			{
