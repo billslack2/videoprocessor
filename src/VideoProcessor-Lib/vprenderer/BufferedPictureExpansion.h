@@ -75,4 +75,17 @@ namespace AlphaSourceCrop
         const ActivePictureFrameIdentity& currentIdentity,
         const TransitionAdmissionInput& current,
         bool modelWouldAdmit);
+    // Explicit handoff for an old subtitle translation; ordinary proof consumers
+    // continue to reject all presentation owners.
+    bool ValidateBufferedTranslatedPictureExpansion(
+        const BufferedPictureExpansionProof& proof,
+        const ActivePictureFrameIdentity& currentIdentity,
+        const TransitionAdmissionInput& current, bool modelWouldAdmit,
+        const ActivePictureBounds& subtitleBase);
+
+    // Never retire an owner merely because a preview passed validation.
+    void RetireVerticalPresentationForBufferedExpansion(bool adopted,
+        VerticalBarPresentationState& presentation, VerticalTranslationDrift& drift,
+        OutwardPictureConfirmationState& outward);
+
 }

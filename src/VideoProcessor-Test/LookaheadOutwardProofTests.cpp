@@ -104,6 +104,8 @@ namespace Tests
 			PresentationRecoveryState recovery;
 			VerticalFitConfirmationState fit;
 			VerticalBarPresentationState densePresentation;
+            VerticalTranslationDrift translationDrift;
+            ActivePictureBounds subtitleBase=BufferedScope();
 			unsigned wouldBeDenseFits=0;
             bool enableMotion=true;
 			Decision presented;
@@ -123,7 +125,9 @@ namespace Tests
 				current.retention=EvaluateActivePicturePresentationRetention(frame.Source(),geometry);
 				current.previousOutward=outward;
 				current.presentation=densePresentation;
+                current.translationDriftActive=translationDrift.IsActive();
 				const auto identity=BufferedIdentity(sequence);
+                const bool previousMoving=moving.active || moving.awaitingPublication;
 				if (enableMotion) moving=ObserveMovingPictureTransition(moving,identity,current);
 				auto admission=EvaluateTransitionAdmission(current);
 				ConstrainMovingPictureTransition(moving,admission);
@@ -152,9 +156,15 @@ namespace Tests
 						samples[index].nearBlackEvaluated=true;
 					}
 					const auto proof=BuildBufferedPictureExpansion(samples.data(),3,geometry,configuredLookahead,availableLookahead,19,23);
-					if (ValidateBufferedPictureExpansion(proof,identity,current,eligible) &&
-						model.AdoptPublishedDecision(proof.decision.transition,current.evidence.classification,
-							false,nullptr,&admission.observation.axisEvidence,true)) transition=proof.decision.transition;
+                    const bool ordinary=ValidateBufferedPictureExpansion(proof,identity,current,eligible);
+                    const bool translated=!previousMoving &&
+                        ValidateBufferedTranslatedPictureExpansion(proof,identity,current,eligible,subtitleBase);
+                    const bool adopted=(ordinary || translated) &&
+                        model.AdoptPublishedDecision(proof.decision.transition,current.evidence.classification,
+                            false,nullptr,&admission.observation.axisEvidence,true);
+                    if (adopted) transition=proof.decision.transition;
+                    RetireVerticalPresentationForBufferedExpansion(adopted && translated,
+                        densePresentation,translationDrift,outward);
 				}
 				CompleteMovingPictureTransition(moving,current,transition);
 				published=transition.publish;
@@ -175,6 +185,10 @@ namespace Tests
 				crop.frameLocalPresentationRetentionEvaluated=true;
 				crop.frameLocalPresentationRetentionSafe=retained.evidence.CanRetainPresentation();
 				crop.pictureTransitionHandoff=MakePictureTransitionHandoff(current,admission,transition,eligible,13);
+                crop.verticalTranslationActive=densePresentation.action==VerticalBarPresentationAction::TRANSLATE;
+                crop.verticalTranslationPixels=crop.verticalTranslationActive ? static_cast<int>(densePresentation.translationPixels) : 0;
+                crop.verticalTranslationBase=subtitleBase;
+                crop.verticalTranslationSourceGeneration=7;
 				PresentationRecoveryInput recover;
 				recover.previous=recovery; recover.crop=crop; recover.candidate=Evaluate(crop);
 				recover.measurementCurrent=recover.retentionEvaluated=recover.nearBlackEvaluated=true;
@@ -228,6 +242,182 @@ namespace Tests
 	TEST_CLASS(LookaheadOutwardProofTests)
 	{
 	public:
+        TEST_METHOD(BufferedBroadExpansionRetiresTranslationOnFirstFrameAndKeepsFinalCrop)
+        {
+            const BufferedPixelSample taller;
+            for (bool driftActive : {false,true})
+            {
+                BufferedMotionSequence replay;
+                auto base=BufferedScope(); base.top=272; base.aspectRatio=3840.0/(1884-272);
+                replay.geometry=replay.subtitleBase=base;
+                replay.model.Reset();
+                for (uint64_t sequence=1;sequence<=4;++sequence)
+                    replay.model.Observe(BufferedObservation(sequence,base));
+                replay.densePresentation.action=VerticalBarPresentationAction::TRANSLATE;
+                replay.densePresentation.translationPixels=178;
+                replay.densePresentation.sourceSequence=99;
+                replay.outward.verticalPresentationSeen=true;
+                replay.outward.sourceGeneration=7;
+                replay.translationDrift.Resolve(178,4000,0);
+                if (driftActive) replay.translationDrift.Resolve(0,4100,500);
+
+                Input before;
+                before.automaticCropEnabled=before.sharedGeometryAvailable=before.latestObservationSupportsCrop=true;
+                before.classification=before.latestObservationClassification=ActivePictureClassification::BAR_CROP_TRUSTED;
+                before.geometry=before.verticalTranslationBase=base;
+                before.geometrySourceGeneration=before.frameSourceGeneration=before.verticalTranslationSourceGeneration=7;
+                before.frameSourceSequence=99; before.framePresentationEpoch=13;
+                before.rasterWidth=3840; before.rasterHeight=2160;
+                before.verticalTranslationActive=true; before.verticalTranslationPixels=178;
+                const auto translated=Evaluate(before);
+                Assert::IsTrue(translated.applyCrop && translated.verticallyTranslated);
+                AspectLimitFillInput initialFill;
+                initialFill.sourceBounds=translated.sourceBounds; initialFill.trustedContentAuthorityAccepted=true;
+                initialFill.cropWiderContentToFillScreen=initialFill.widerLimitConfigured=true;
+                initialFill.widerAspectLimit=2.41; initialFill.screenAspect=2.35;
+                const auto initial=EvaluateAspectLimitFill(initialFill).sourceBounds;
+                Assert::AreEqual(26,initial.left); Assert::AreEqual(3814,initial.right);
+                Assert::AreEqual(450,initial.top); Assert::AreEqual(2062,initial.bottom);
+
+                replay.Step(taller,&taller,&taller);
+                Assert::IsTrue(replay.published,L"Three buffered broad picture samples must take over the prior translated scope on the first source frame.");
+                for (unsigned following=0;following<6;++following)
+                {
+                    Assert::IsTrue(replay.presented.applyCrop);
+                    Assert::IsFalse(replay.presented.verticallyTranslated);
+                    Assert::AreEqual(0,replay.presented.verticalTranslationPixels);
+                    Assert::AreEqual(0,replay.finalBounds.left); Assert::AreEqual(3840,replay.finalBounds.right);
+                    Assert::AreEqual(68,replay.finalBounds.top); Assert::AreEqual(2092,replay.finalBounds.bottom);
+                    Assert::IsFalse(replay.recovery.active);
+                    Assert::IsFalse(replay.translationDrift.IsActive());
+                    Assert::IsFalse(replay.outward.verticalPresentationSeen);
+                    Assert::IsTrue(replay.densePresentation.action==VerticalBarPresentationAction::NONE);
+                    replay.Step(taller,&taller,&taller);
+                    Assert::IsFalse(replay.published,L"Retired subtitle ownership cannot restart the old framing after accepted expansion.");
+                }
+            }
+        }
+
+        TEST_METHOD(TranslatedBufferedExpansionKeepsGenerationBaseOwnerAndCurrentPixelVetoes)
+        {
+            const std::array<BufferedPixelSample,3> frames;
+            const auto samples=BufferedSamples(frames);
+            const auto proof=BuildBufferedPictureExpansion(samples.data(),samples.size(),BufferedScope(),2,2,19,23);
+            Assert::IsTrue(proof.valid);
+            for (int fault=0;fault<14;++fault)
+            {
+                auto current=BufferedLiveInput(frames[0]);
+                current.presentation.action=VerticalBarPresentationAction::TRANSLATE;
+                current.presentation.translationPixels=178;
+                current.previousOutward.verticalPresentationSeen=true;
+                auto identity=BufferedIdentity(100);
+                auto subtitleBase=BufferedScope();
+                bool eligible=true;
+                switch (fault)
+                {
+                case 0: current.presentation.action=VerticalBarPresentationAction::NONE; break;
+                case 1: current.presentation.action=VerticalBarPresentationAction::FIT; break;
+                case 2: current.presentationEvidenceGeneration=0; break;
+                case 3: ++current.presentationEvidenceGeneration; break;
+                case 4: subtitleBase.top+=4; break;
+                case 5: ++current.sourceGeneration; break;
+                case 6: ++identity.sourceFrameNumber; break;
+                case 7: current.retention.globalNearBlack=true; break;
+                case 8: current.retention.expansionStripsAvailable=false; break;
+                case 9: current.evidence.classification=ActivePictureClassification::PROVISIONAL; break;
+                case 10: current.evidence.trustedBounds.top+=4; break;
+                case 11: current.presentationBeforeObservation.top+=4; break;
+                case 12: eligible=false; break;
+                case 13: current.sourceSequence+=1; break;
+                }
+                const auto diagnostic=L"fault="+std::to_wstring(fault);
+                Assert::IsFalse(ValidateBufferedTranslatedPictureExpansion(proof,identity,current,eligible,subtitleBase),diagnostic.c_str());
+            }
+        }
+
+        TEST_METHOD(SparseSubtitleAndBottomMenuPixelsCannotTakeTranslatedScopeOwnership)
+        {
+            for (bool menu : {false,true})
+            {
+                std::array<BufferedPixelSample,3> frames={BufferedPixelSample(276,1884),BufferedPixelSample(276,1884),BufferedPixelSample(276,1884)};
+                for (auto& frame : frames)
+                {
+                    const int left=menu ? 0 : 1400, right=menu ? 3840 : 2400;
+                    const int top=menu ? 1884 : 1960, bottom=menu ? 2092 : 2000;
+                    for (int y=top;y<bottom;++y)
+                        std::fill(frame.pixels.begin()+size_t(y)*3840+left,
+                            frame.pixels.begin()+size_t(y)*3840+right,uint16_t(512<<6));
+                    frame.evidence=ExtractActivePictureEvidence(frame.Source());
+                    frame.retention=EvaluateActivePicturePresentationRetention(frame.Source(),BufferedScope());
+                }
+                const auto samples=BufferedSamples(frames);
+                const auto proof=BuildBufferedPictureExpansion(samples.data(),samples.size(),BufferedScope(),2,2,19,23);
+                Assert::IsFalse(proof.valid,L"One-sided subtitle/menu pixels are not a broad opposing picture expansion.");
+                auto current=BufferedLiveInput(frames[0]);
+                current.presentation.action=VerticalBarPresentationAction::TRANSLATE;
+                current.presentation.translationPixels=178;
+                current.previousOutward.verticalPresentationSeen=true;
+                Assert::IsFalse(ValidateBufferedTranslatedPictureExpansion(proof,BufferedIdentity(100),current,true,BufferedScope()));
+            }
+        }
+
+        TEST_METHOD(PreviousMovingEpisodeCannotTakeOverTranslationAfterCurrentObservationClearsMotion)
+        {
+            const BufferedPixelSample taller;
+            for (bool awaitingPublication : {false,true})
+            {
+                BufferedMotionSequence replay;
+                replay.densePresentation.action=VerticalBarPresentationAction::TRANSLATE;
+                replay.densePresentation.translationPixels=178;
+                replay.densePresentation.sourceSequence=99;
+                replay.outward.verticalPresentationSeen=true;
+                replay.outward.sourceGeneration=7;
+                replay.moving.active=!awaitingPublication;
+                replay.moving.awaitingPublication=awaitingPublication;
+                replay.moving.identity=BufferedIdentity(99);
+                replay.moving.base=BufferedScope();
+                replay.Step(taller,&taller,&taller);
+                Assert::IsFalse(replay.published,
+                    L"Previous active/awaiting movement must veto subtitle takeover before current translation clears the motion tracker.");
+                Assert::AreEqual(276,replay.geometry.top);
+                Assert::AreEqual(1884,replay.geometry.bottom);
+            }
+        }
+
+        TEST_METHOD(TranslationRetirementRequiresSuccessfulAdoptionAndClearsReleaseDrift)
+        {
+            for (bool adopted : {false,true})
+            {
+                VerticalBarPresentationState presentation;
+                presentation.action=VerticalBarPresentationAction::TRANSLATE;
+                presentation.translationPixels=178; presentation.sourceSequence=99;
+                VerticalTranslationDrift drift;
+                drift.Resolve(178,4000,0); drift.Resolve(0,4100,500);
+                Assert::IsTrue(drift.IsActive());
+                OutwardPictureConfirmationState outward;
+                outward.verticalPresentationSeen=true; outward.confirmations=2; outward.sourceGeneration=7;
+                RetireVerticalPresentationForBufferedExpansion(adopted,presentation,drift,outward);
+                if (!adopted)
+                {
+                    Assert::IsTrue(presentation.action==VerticalBarPresentationAction::TRANSLATE);
+                    Assert::AreEqual(178.0f,presentation.translationPixels);
+                    Assert::IsTrue(drift.IsActive());
+                    Assert::IsTrue(outward.verticalPresentationSeen);
+                    Assert::AreEqual(2u,outward.confirmations);
+                }
+                else
+                {
+                    Assert::IsTrue(presentation.action==VerticalBarPresentationAction::NONE);
+                    Assert::AreEqual(0.0f,presentation.translationPixels);
+                    Assert::IsFalse(drift.IsActive());
+                    Assert::AreEqual(0.0f,drift.Resolve(0,4200,500));
+                    Assert::IsFalse(drift.ConsumeFinalBaseFrame());
+                    Assert::IsFalse(outward.verticalPresentationSeen);
+                    Assert::AreEqual(0u,outward.confirmations);
+                }
+            }
+        }
+
         TEST_METHOD(BufferedInwardUsesAvailableAdjacentProofAtLiveCropCadence)
         {
             for (double fps : {24.0, 60.0})

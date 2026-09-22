@@ -8545,6 +8545,7 @@ struct LibplaceboVideoRenderer::Impl
 				MakeActivePictureObservation(evidence, frameNumber, framesPerSecond));
 			auto admission = AlphaSourceCrop::EvaluateTransitionAdmission(admissionInput);
             const bool wasMovingPicture = movingPictureTransition.active;
+            const bool wasAwaitingPicturePublication = movingPictureTransition.awaitingPublication;
             movingPictureTransition = nearBlackAcquisitionBlocked ? AlphaSourceCrop::MovingPictureTransitionState{} :
                 AlphaSourceCrop::ObserveMovingPictureTransition(
                 movingPictureTransition, currentIdentity, admissionInput);
@@ -8555,9 +8556,20 @@ struct LibplaceboVideoRenderer::Impl
                     movingPictureTransition.active ? 1 : 0, latestActivePictureEvidenceBounds.left,
                     latestActivePictureEvidenceBounds.top, latestActivePictureEvidenceBounds.right,
                     latestActivePictureEvidenceBounds.bottom);
-			const bool bufferedExpansionReady = !movingPictureTransition.active && bufferedExpansion &&
-				AlphaSourceCrop::ValidateBufferedPictureExpansion(*bufferedExpansion,
-					currentIdentity, admissionInput, eligiblePictureChange);
+            auto subtitleBase = nlsGeometry;
+            subtitleBase.left = scopeSubtitlePictureLeft;
+            subtitleBase.top = scopeSubtitlePictureTop;
+            subtitleBase.right = scopeSubtitlePictureRight;
+            subtitleBase.bottom = scopeSubtitlePictureBottom;
+            const bool bufferedTranslationHandoff = bufferedExpansion &&
+                !nearBlackAcquisitionBlocked && !wasMovingPicture && !wasAwaitingPicturePublication &&
+                !movingPictureTransition.active && !movingPictureTransition.awaitingPublication &&
+                AlphaSourceCrop::ValidateBufferedTranslatedPictureExpansion(*bufferedExpansion,
+                    currentIdentity, admissionInput, eligiblePictureChange, subtitleBase);
+            const bool bufferedExpansionReady = bufferedTranslationHandoff ||
+                (!movingPictureTransition.active && bufferedExpansion &&
+                 AlphaSourceCrop::ValidateBufferedPictureExpansion(*bufferedExpansion,
+                    currentIdentity, admissionInput, eligiblePictureChange));
 			if (bufferedExpansionReady)
 			{
 				// All three source frames were proved before dequeue. Reuse that
@@ -8732,7 +8744,23 @@ struct LibplaceboVideoRenderer::Impl
 				nlsGeometrySourceGeneration = analysisSource.generation;
 				nlsGeometrySourceFormatKey =
 					currentIdentity.sourceFormatGeneration;
-				++nlsGeometryGeneration;
+                ++nlsGeometryGeneration;
+                if (applyScheduledDecision && bufferedTranslationHandoff)
+                {
+                    // Retire the old owner only after the actual geometry publication.
+                    // Rejected preview/adoption must leave subtitle presentation intact.
+                    const float oldShift = scopeVerticalBarPresentation.translationPixels;
+                    AlphaSourceCrop::RetireVerticalPresentationForBufferedExpansion(true,
+                        scopeVerticalBarPresentation, scopeSubtitleDrift, outwardPictureConfirmation);
+                    ClearScopeSubtitleEvidence();
+                    ClearScopePresentationEvidence();
+                    scopeSubtitleInspection = {};
+                    scopeVerticalInspectionBridge = {};
+                    DebugLog::Log("Alpha buffered translation handoff: instance=%s generation=%llu sequence=%llu through=%llu old_shift=%.1f new_base=%d,%d-%d,%d owner_retired=1",
+                        diagnosticInstanceId.c_str(), analysisSource.generation, frameNumber,
+                        bufferedExpansion->decision.observationIdentity.acceptedSequence, oldShift,
+                        nlsGeometry.left, nlsGeometry.top, nlsGeometry.right, nlsGeometry.bottom);
+                }
 				// Only a new temporal publication is a commitment; the stable-history
 				// fallback below must never re-arm authority after contradictory bars.
 				if (nlsGeometryClassification == ActivePictureClassification::FULL_RASTER_TRUSTED)
@@ -14938,15 +14966,28 @@ void LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
     bool inwardProofEligible = false;
 	{
 		std::lock_guard<std::mutex> renderGuard(m_impl->renderMutex);
-		if (m_impl->nlsGeometryAvailable && m_impl->nlsGeometryClassification ==
-			ActivePictureClassification::BAR_CROP_TRUSTED &&
-			m_impl->scopeVerticalBarPresentation.action == AlphaSourceCrop::VerticalBarPresentationAction::NONE &&
-			!m_impl->scopeSubtitleDrift.IsActive() &&
-			!m_impl->outwardPictureConfirmation.verticalPresentationSeen)
+        const bool unowned =
+            m_impl->scopeVerticalBarPresentation.action == AlphaSourceCrop::VerticalBarPresentationAction::NONE &&
+            !m_impl->scopeSubtitleDrift.IsActive() &&
+            !m_impl->outwardPictureConfirmation.verticalPresentationSeen;
+        const bool translatedBase =
+            m_impl->scopeVerticalBarPresentation.action == AlphaSourceCrop::VerticalBarPresentationAction::TRANSLATE &&
+            m_impl->scopeSubtitleEvidenceSourceGeneration != 0 &&
+            m_impl->scopeSubtitleEvidenceSourceGeneration == m_impl->nlsGeometrySourceGeneration &&
+            m_impl->scopeSubtitlePictureLeft == m_impl->nlsGeometry.left &&
+            m_impl->scopeSubtitlePictureTop == m_impl->nlsGeometry.top &&
+            m_impl->scopeSubtitlePictureRight == m_impl->nlsGeometry.right &&
+            m_impl->scopeSubtitlePictureBottom == m_impl->nlsGeometry.bottom &&
+            !m_impl->movingPictureTransition.active && !m_impl->movingPictureTransition.awaitingPublication &&
+            m_impl->nearBlackPresentationEpisode.mode == AlphaSourceCrop::NearBlackPresentationMode::INACTIVE;
+        if (m_impl->nlsGeometryAvailable && m_impl->nlsGeometryClassification ==
+            ActivePictureClassification::BAR_CROP_TRUSTED && (unowned || translatedBase))
         {
             proofBase = m_impl->nlsGeometry;
             liveProofModel = m_impl->nlsTransition;
-            inwardProofEligible = !m_impl->movingPictureTransition.active &&
+            // Translation is eligible only for the independent broad OUTWARD
+            // certificate; do not relax the inward proof's owner veto.
+            inwardProofEligible = unowned && !m_impl->movingPictureTransition.active &&
                 !m_impl->movingPictureTransition.awaitingPublication;
         }
     }

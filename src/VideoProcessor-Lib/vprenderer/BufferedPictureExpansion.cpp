@@ -422,4 +422,35 @@ namespace AlphaSourceCrop
         // satisfied by this independent complete proof.
         return !EvaluateTransitionAdmission(current).deferPartialComposition;
     }
+    bool ValidateBufferedTranslatedPictureExpansion(
+        const BufferedPictureExpansionProof& proof,
+        const ActivePictureFrameIdentity& currentIdentity,
+        const TransitionAdmissionInput& current, bool modelWouldAdmit,
+        const ActivePictureBounds& subtitleBase)
+    {
+        if (current.presentation.action != VerticalBarPresentationAction::TRANSLATE ||
+            current.sourceGeneration == 0 ||
+            current.presentationEvidenceGeneration != current.sourceGeneration ||
+            !SameBounds(subtitleBase, current.trustedGeometry))
+            return false;
+        // The complete broad-picture certificate replaces only the old owner
+        // veto. All pixel, identity, composition and model gates remain intact.
+        auto unowned = current;
+        unowned.presentation.action = VerticalBarPresentationAction::NONE;
+        unowned.translationDriftActive = false;
+        unowned.previousOutward.verticalPresentationSeen = false;
+        return ValidateBufferedPictureExpansion(proof, currentIdentity, unowned,
+            modelWouldAdmit);
+    }
+
+    void RetireVerticalPresentationForBufferedExpansion(bool adopted,
+        VerticalBarPresentationState& presentation, VerticalTranslationDrift& drift,
+        OutwardPictureConfirmationState& outward)
+    {
+        if (!adopted) return;
+        presentation = {};
+        drift.Reset();
+        outward = {};
+    }
+
 }

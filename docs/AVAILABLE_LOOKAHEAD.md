@@ -69,3 +69,44 @@ One incremental test link hit MSVC LNK1103 (corrupt debugging information).
 A clean rebuild of the test project resolved it; the completed full-suite
 result above is from that rebuilt test binary. This was a build artifact
 failure, not a test or production-code failure.
+
+
+## Follow-up: translated scope to larger picture (2026-09-22)
+
+Local playback of `c91e9d5` identified a separate owner handoff delay: source
+frame 8292 first measured `0,68-3840,2092`, while final presentation retained
+`26,450-3814,2062` (scope plus 178-pixel subtitle translation) until frame 8296.
+That is four source frames, about 167 ms at 23.976 fps. Increasing the preview
+ceiling alone cannot bypass an owner veto.
+
+The follow-up permits the existing three-frame broad opposing expansion proof
+to replace a same-generation TRANSLATE owner tied to the exact old logical
+picture. Ordinary proof validation is unchanged. The explicit handoff preserves
+all current pixel, identity, composition and live-model vetoes. FIT ownership,
+near-black episodes and prior/current moving-format states remain excluded.
+Only successful geometry publication retires the old translation and its
+base-specific inspection history, before the same frame's subtitle analysis
+and final layout. A rejected publication retains the old owner.
+
+A configured lookahead of 5 remains a ceiling, not an instruction to wait.
+With five total queued source frames, only four future frames are available;
+the current frame is not counted as future evidence. Queue depth, lead,
+pre-roll and target are unchanged. The separate 2.3-second near-black fallback
+is outside this follow-up.
+
+
+Follow-up validation: `translation-red.trx` records two expected failures with
+false/no-op handoff stubs representing the old owner veto and missing retirement;
+the two owner/pixel negative tests passed. The reported prior final rectangle was
+asserted before the first-frame takeover failure. After implementation, all 1,415
+native tests passed in `translation-full-native.trx`, including five new tests.
+`translation-final-build.log` records successful x64 Release solution completion.
+MSVC incremental test linking again reported LNK1103; a clean test-project rebuild
+resolved it (`translation-green-test-rebuild.log`).
+
+Two independent production reviews and independent test authoring found no
+blocking issue. The pixel replay exercises real extraction, crop admission,
+recovery and final fill, but not the entire renderer/subtitle scan; actual HDMI
+playback remains the integration check. This follow-up has not been deployed.
+The requested VP_24 configuration change from 3 to 5 remains pending because the
+user's Config editor is still open; no deployed configuration was overwritten.
