@@ -29,6 +29,9 @@
     <ClCompile Include="PictureTransitionHandoffTests.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="FitLookaheadDiagnosticTests.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="PresentationEnvelopeCompositionTests.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>

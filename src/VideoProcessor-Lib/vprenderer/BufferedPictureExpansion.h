@@ -52,11 +52,40 @@ namespace AlphaSourceCrop
         ActivePictureFrameDecision decision;
     };
 
-    BufferedPictureExpansionProof BuildBufferedPictureExpansion(
+    // Diagnostic data deliberately contains no publishable frame decision.
+    struct BufferedPictureExpansionDiagnostic
+    {
+        bool passes = false;
+        const char* reason = "not-evaluated";
+        int failedSample = -1;
+    };
+
+    struct BufferedExpansionShadowTrace
+    {
+        bool active = false;
+        ActivePictureFrameIdentity identity;
+        ActivePictureBounds base;
+        uint64_t policyGeneration = 0, continuityGeneration = 0;
+        uint64_t firstSequence = 0, firstPassSequence = 0, windows = 0, passes = 0;
+    };
+
+    // Diagnostic-only bookkeeping; repeated presentations never count twice.
+    // Returns true once, at the first passing window in this context.
+    bool ObserveBufferedExpansionShadow(BufferedExpansionShadowTrace& trace,
+        const ActivePictureFrameIdentity& identity, const ActivePictureBounds& base,
+        bool passes, uint64_t policyGeneration = 0, uint64_t continuityGeneration = 0);
+
+    BufferedPictureExpansionDiagnostic InspectBufferedPictureExpansion(
         const BufferedPictureExpansionSample* samples, size_t count,
         const ActivePictureBounds& base, uint8_t configuredLookahead,
         uint8_t availableLookahead, uint64_t continuityGeneration,
         uint64_t policyGeneration);
+
+    BufferedPictureExpansionProof BuildBufferedPictureExpansion(
+        const BufferedPictureExpansionSample* samples, size_t count,
+        const ActivePictureBounds& base, uint8_t configuredLookahead,
+        uint8_t availableLookahead, uint64_t continuityGeneration,
+        uint64_t policyGeneration, BufferedPictureExpansionDiagnostic* diagnostic = nullptr);
 
     // Self-contained inward proof from the current live model. Pending live
     // candidates are discarded; every contributing frame must have identical

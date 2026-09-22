@@ -225,6 +225,7 @@ private:
 	uint64_t m_activePictureLookaheadLoggedGeneration = 0;
 	size_t m_activePictureLookaheadLoggedAvailable = 0xff;
     CropDiagnosticThrottle m_picturePreviewDiagnostics;
+    AlphaSourceCrop::BufferedExpansionShadowTrace m_fitLookaheadShadow;
 	std::atomic<uint64_t> m_missingFrameStateDrops{0};
 	std::atomic<uint64_t> m_renderFailureDrops{0};
 	std::atomic_bool m_sceneDetectionEnabled{false};

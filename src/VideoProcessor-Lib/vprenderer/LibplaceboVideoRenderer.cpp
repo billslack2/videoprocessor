@@ -15076,6 +15076,7 @@ void LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
     ActivePictureBounds proofBase;
     ActivePictureTransitionModel liveProofModel;
     bool inwardProofEligible = false;
+    bool shadowFit = false;
     bool diagnosticTrustedBase = false, diagnosticOwnerEligible = false;
     uint64_t diagnosticOwner = 0;
 	{
@@ -15094,12 +15095,26 @@ void LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
             m_impl->scopeSubtitlePictureBottom == m_impl->nlsGeometry.bottom &&
             !m_impl->movingPictureTransition.active && !m_impl->movingPictureTransition.awaitingPublication &&
             m_impl->nearBlackPresentationEpisode.mode == AlphaSourceCrop::NearBlackPresentationMode::INACTIVE;
+        // Observe the blocked FIT path without making it a publication owner.
+        shadowFit =
+            m_impl->scopeVerticalBarPresentation.action == AlphaSourceCrop::VerticalBarPresentationAction::FIT &&
+            m_impl->scopeSubtitleFitConfirmation.confirmations >= AlphaSourceCrop::VERTICAL_FIT_CONFIRMATIONS_REQUIRED &&
+            m_impl->scopeSubtitleEvidenceSourceGeneration != 0 &&
+            m_impl->scopeSubtitleEvidenceSourceGeneration == m_impl->nlsGeometrySourceGeneration &&
+            m_impl->scopeSubtitlePictureLeft == m_impl->nlsGeometry.left &&
+            m_impl->scopeSubtitlePictureTop == m_impl->nlsGeometry.top &&
+            m_impl->scopeSubtitlePictureRight == m_impl->nlsGeometry.right &&
+            m_impl->scopeSubtitlePictureBottom == m_impl->nlsGeometry.bottom &&
+            !m_impl->scopeSubtitleDrift.IsActive() &&
+            !m_impl->movingPictureTransition.active && !m_impl->movingPictureTransition.awaitingPublication &&
+            m_impl->nearBlackPresentationEpisode.mode == AlphaSourceCrop::NearBlackPresentationMode::INACTIVE;
         diagnosticTrustedBase = m_impl->nlsGeometryAvailable &&
             m_impl->nlsGeometryClassification == ActivePictureClassification::BAR_CROP_TRUSTED;
+        shadowFit = shadowFit && diagnosticTrustedBase;
         diagnosticOwnerEligible = unowned || translatedBase;
         diagnosticOwner = static_cast<uint64_t>(m_impl->scopeVerticalBarPresentation.action);
         if (m_impl->nlsGeometryAvailable && m_impl->nlsGeometryClassification ==
-            ActivePictureClassification::BAR_CROP_TRUSTED && (unowned || translatedBase))
+            ActivePictureClassification::BAR_CROP_TRUSTED && (unowned || translatedBase || shadowFit))
         {
             proofBase = m_impl->nlsGeometry;
             liveProofModel = m_impl->nlsTransition;
@@ -15249,6 +15264,16 @@ void LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
             (observations.front().observation.classification != ActivePictureClassification::BAR_CROP_TRUSTED
                 ? "candidate-untrusted" : (!inspectExpansion ? "no-two-edge-expansion" : "incomplete-samples")))))));
         bool diagnosticBuilt = false, diagnosticProofValid = false;
+        bool shadowBuilt = false;
+        AlphaSourceCrop::BufferedPictureExpansionDiagnostic shadowDiagnostic;
+        if (shadowFit)
+            shadowDiagnostic.reason = configured < 2 ? "configured-depth-below-proof" :
+                (queuedFutureFrames < 2 ? "insufficient-available-frames" :
+                (previewFrames.size() < 3 ? "insufficient-selected-frames" :
+                (observations.empty() ? "measurement-unavailable" :
+                (observations.front().observation.classification != ActivePictureClassification::BAR_CROP_TRUSTED
+                    ? "candidate-untrusted" : (!inspectExpansion ? "no-two-edge-expansion" : "queue-membership-or-continuity")))));
+
 		if (proofSamples.size() == 3 && !m_frameQueue.empty() &&
 			SameActivePictureFrameIdentity(m_frameQueue.front().activePictureIdentity,
 				proofSamples.front().identity))
@@ -15265,33 +15290,71 @@ void LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
 				proofSamples[0].identity, proofSamples[1].identity, proofSamples[2].identity };
 			if (allQueued && m_activePictureTimeline.CanProveBufferedFrames(proofIdentities, 3))
 			{
-				m_frameQueue.front().bufferedPictureExpansion =
-					AlphaSourceCrop::BuildBufferedPictureExpansion(proofSamples.data(),
-						proofSamples.size(), proofBase, configured, availableLookahead,
-						m_activePictureTimeline.ContinuityGeneration(), lookaheadPolicyGeneration);
-                diagnosticBuilt = true;
-                diagnosticProofValid = m_frameQueue.front().bufferedPictureExpansion.valid;
-                diagnosticQueueStage = diagnosticProofValid ? "proof-ready" : "proof-rejected";
+                if (shadowFit)
+                {
+                    shadowDiagnostic = AlphaSourceCrop::InspectBufferedPictureExpansion(
+                        proofSamples.data(), proofSamples.size(), proofBase, configured,
+                        availableLookahead, m_activePictureTimeline.ContinuityGeneration(), lookaheadPolicyGeneration);
+                    shadowBuilt = true;
+                    diagnosticQueueStage = shadowDiagnostic.passes ? "shadow-fit-proof-ready" : "shadow-fit-proof-rejected";
+                }
+                else
+                {
+                    m_frameQueue.front().bufferedPictureExpansion =
+                        AlphaSourceCrop::BuildBufferedPictureExpansion(proofSamples.data(),
+                            proofSamples.size(), proofBase, configured, availableLookahead,
+                            m_activePictureTimeline.ContinuityGeneration(), lookaheadPolicyGeneration);
+                    diagnosticBuilt = true;
+                    diagnosticProofValid = m_frameQueue.front().bufferedPictureExpansion.valid;
+                    diagnosticQueueStage = diagnosticProofValid ? "proof-ready" : "proof-rejected";
+                }
 			}
 		}
 
+        if (!shadowFit && m_fitLookaheadShadow.active)
+        {
+            const auto& trace = m_fitLookaheadShadow;
+            DebugLog::Log("Alpha FIT lookahead shadow end: schema=1 instance=%s generation=%llu epoch=%llu first=%llu last=%llu first_pass=%llu windows=%llu passes=%llu runtime_apply=never",
+                m_impl->diagnosticInstanceId.c_str(), trace.identity.transportGeneration,
+                trace.identity.viewportGeneration, trace.firstSequence, trace.identity.acceptedSequence,
+                trace.firstPassSequence, trace.windows, trace.passes);
+            m_fitLookaheadShadow = {};
+        }
         if (!previewFrames.empty())
         {
             PreviewEvidence unavailablePreview;
             unavailablePreview.identity = previewFrames.front().activePictureIdentity;
             const auto& first = observations.empty() ? unavailablePreview : observations.front();
+            if (shadowFit && AlphaSourceCrop::ObserveBufferedExpansionShadow(
+                    m_fitLookaheadShadow, first.identity, proofBase, shadowDiagnostic.passes, lookaheadPolicyGeneration,
+                    m_activePictureTimeline.ContinuityGeneration()))
+            {
+                // Preserve an exact first-pass event even if the ordinary
+                // diagnostic bundle is being coalesced. One event per context.
+                DebugLog::Log("Alpha FIT lookahead shadow first pass: schema=1 instance=%s generation=%llu sequence=%llu epoch=%llu policy_generation=%llu first=%llu through=%llu windows=%llu continuity_generation=%llu base=%d,%d-%d,%d candidate=%d,%d-%d,%d confirming_candidate=%d,%d-%d,%d runtime_apply=never certificate_only=1",
+                    m_impl->diagnosticInstanceId.c_str(), first.identity.transportGeneration,
+                    first.identity.acceptedSequence, first.identity.viewportGeneration, lookaheadPolicyGeneration,
+                    m_fitLookaheadShadow.firstSequence, proofSamples.back().identity.acceptedSequence,
+                    m_fitLookaheadShadow.windows, m_activePictureTimeline.ContinuityGeneration(),
+                    proofBase.left, proofBase.top, proofBase.right, proofBase.bottom,
+                    proofSamples.front().observation.bounds.left, proofSamples.front().observation.bounds.top,
+                    proofSamples.front().observation.bounds.right, proofSamples.front().observation.bounds.bottom,
+                    proofSamples.back().observation.bounds.left, proofSamples.back().observation.bounds.top,
+                    proofSamples.back().observation.bounds.right, proofSamples.back().observation.bounds.bottom);
+            }
             const bool pending = observations.empty() || inspectExpansion ||
                 first.observation.classification == ActivePictureClassification::PROVISIONAL ||
                 !diagnosticOwnerEligible;
             const uint64_t key = static_cast<uint64_t>(first.observation.classification) |
                 (uint64_t(diagnosticOwnerEligible) << 4) | (diagnosticOwner << 5) |
                 (uint64_t(inspectExpansion) << 8) | (uint64_t(diagnosticBuilt) << 9) |
-                (uint64_t(diagnosticProofValid) << 10) | (uint64_t(previewFrames.size() < 3) << 11);
+                (uint64_t(diagnosticProofValid) << 10) | (uint64_t(previewFrames.size() < 3) << 11) |
+                (uint64_t(shadowFit) << 12) | (uint64_t(shadowBuilt) << 13) | (uint64_t(shadowDiagnostic.passes) << 14);
             if (m_picturePreviewDiagnostics.Observe(GetTickCount64(), first.identity.transportGeneration,
                 first.identity.viewportGeneration, first.identity.acceptedSequence, pending, key))
             {
                 const auto& bounds = first.observation.bounds;
-                DebugLog::Log("Alpha picture preview status: schema=1 instance=%s generation=%llu sequence=%llu epoch=%llu format_generation=%llu policy_generation=%llu stage=%s coalesced=%llu configured=%u available_future=%llu effective_future=%u selected_frames=%llu analyzed_frames=%llu proof_samples=%llu built=%d valid=%d owner=%llu owner_eligible=%d base=%d,%d-%d,%d candidate_class=%d candidate=%d,%d-%d,%d axis_h=%s axis_v=%s inspection_ms=%.3f",
+                DebugLog::Log("Alpha picture preview status: schema=1 instance=%s generation=%llu sequence=%llu epoch=%llu format_generation=%llu policy_generation=%llu stage=%s coalesced=%llu configured=%u available_future=%llu effective_future=%u selected_frames=%llu analyzed_frames=%llu proof_samples=%llu built=%d valid=%d owner=%llu owner_eligible=%d base=%d,%d-%d,%d candidate_class=%d candidate=%d,%d-%d,%d axis_h=%s axis_v=%s inspection_ms=%.3f shadow_fit=%d shadow_built=%d shadow_pass=%d shadow_reason=%s shadow_failed_sample=%d shadow_first_pass=%llu shadow_windows=%llu shadow_passes=%llu",
                     m_impl->diagnosticInstanceId.c_str(), first.identity.transportGeneration,
                     first.identity.acceptedSequence, first.identity.viewportGeneration,
                     first.identity.sourceFormatGeneration, lookaheadPolicyGeneration, diagnosticQueueStage,
@@ -15303,7 +15366,10 @@ void LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
                     proofBase.left,proofBase.top,proofBase.right,proofBase.bottom,
                     static_cast<int>(first.observation.classification), bounds.left,bounds.top,bounds.right,bounds.bottom,
                     ActivePictureAxisReasonName(first.observation.axisEvidence.horizontal.reason),
-                    ActivePictureAxisReasonName(first.observation.axisEvidence.vertical.reason),proofInspectionMs);
+                    ActivePictureAxisReasonName(first.observation.axisEvidence.vertical.reason),proofInspectionMs,
+                    shadowFit ? 1 : 0, shadowBuilt ? 1 : 0, shadowDiagnostic.passes ? 1 : 0,
+                    shadowDiagnostic.reason, shadowDiagnostic.failedSample, m_fitLookaheadShadow.firstPassSequence,
+                    m_fitLookaheadShadow.windows, m_fitLookaheadShadow.passes);
                 if (inspectExpansion && !diagnosticProofValid)
                     for (const auto& sample : proofSamples)
                     {
