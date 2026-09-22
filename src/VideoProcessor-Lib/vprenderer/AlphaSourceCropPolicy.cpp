@@ -2552,12 +2552,41 @@ namespace AlphaSourceCrop
 			return result;
 		}
 
+        bool fallbackRevalidatedForContract = false;
 		if (!currentContract || !SameTrustedCropContract(crop.geometry, result.state.trustedCrop))
 		{
-			// A newly published contract must earn its own current pixel proof.
-			// Never carry partial proof between different crop rectangles.
+            // Reset logical crop proof, but keep a wider presentation when THIS
+            // frame proves every pixel outside the new, contained crop is safe.
+            // A contract change alone must not enlarge a safe envelope to raster.
+            const auto& held = result.state.fallbackBounds;
+            fallbackRevalidatedForContract = currentContract &&
+                result.state.fallbackBoundsAvailable &&
+                crop.frameSourceGeneration != 0 && !input.cadenceRepeat &&
+                crop.frameSourceSequence != 0 && crop.frameSourceSequence > result.state.lastSourceSequence &&
+                !crop.movingPictureTransition && !crop.nearBlackEpisodeFullRaster &&
+                input.measurementCurrent && input.retentionEvaluated &&
+                input.retentionSourceGeneration == crop.frameSourceGeneration &&
+                input.retentionSourceSequence == crop.frameSourceSequence &&
+                SameTrustedCropContract(input.retentionBounds, crop.geometry) &&
+                input.excludedBandsPixelSafe && input.nearBlackEvaluated && !input.globalNearBlack &&
+                input.observationAvailable && !crop.latestObservationIsUnavailable && !crop.latestObservationIsProvisional &&
+                input.observationClassification == ActivePictureClassification::BAR_CROP_TRUSTED &&
+                crop.latestObservationClassification == ActivePictureClassification::BAR_CROP_TRUSTED &&
+                SameTrustedCropContract(input.observedTrustedCrop, crop.geometry) &&
+                ValidBounds(input.observation, crop.rasterWidth, crop.rasterHeight) &&
+                ContainedBounds(crop.geometry, input.observation) &&
+                input.candidate.applyCrop && verifiedCandidate.applyCrop &&
+                SameBounds(verifiedCandidate.sourceBounds, input.candidate.sourceBounds) &&
+                ValidBounds(held, crop.rasterWidth, crop.rasterHeight) &&
+                CropEdgesAreChromaAligned(held, crop.rasterWidth, crop.rasterHeight) &&
+                CropEdgesAreChromaAligned(crop.geometry, crop.rasterWidth, crop.rasterHeight) &&
+                ContainedBounds(held, crop.geometry) && ContainedBounds(held, input.observation);
 			result.gates |= RECOVERY_CONTRACT;
-			result.state.fallbackBoundsAvailable = false;
+            // Even repeats/older observations must not carry votes to a new
+            // contract; the normal per-frame counting branch skips repeats.
+            result.proofReset = result.state.samples != 0;
+            result.state.samples = 0;
+			result.state.fallbackBoundsAvailable = fallbackRevalidatedForContract;
 			if (currentContract) result.state.trustedCrop = crop.geometry;
 		}
 		if (!input.measurementCurrent || !input.retentionEvaluated ||
@@ -2604,7 +2633,7 @@ namespace AlphaSourceCrop
 		{
 			const bool gap = result.state.samples != 0 &&
 				crop.frameSourceSequence != result.state.lastSourceSequence + 1;
-			result.proofReset = result.state.samples != 0 && (result.gates != 0 || gap);
+			result.proofReset = result.proofReset || (result.state.samples != 0 && (result.gates != 0 || gap));
 			if (result.gates == 0)
 				result.state.samples = gap ? 1 : result.state.samples + 1;
 			else result.state.samples = 0;
@@ -2681,7 +2710,9 @@ namespace AlphaSourceCrop
 		result.presentation.owner = result.boundedPresentation
 			? DecisionOwner::OUTWARD_FIT : DecisionOwner::FULL_RASTER;
 		result.presentation.reason = result.boundedPresentation
-			? "current pixel-bounded expansion retained pending inward crop recovery proof"
+			? (fallbackRevalidatedForContract
+                ? "current pixel-safe envelope retained across trusted crop change"
+                : "current pixel-bounded expansion retained pending inward crop recovery proof")
 			: "full raster retained pending current crop recovery proof";
 		return result;
 	}

@@ -64,6 +64,26 @@ namespace Tests
 			input.candidate = Evaluate(c);
 			return input;
 		}
+        PresentationRecoveryInput ChangedContractBoundedRecovery()
+        {
+            auto input=AgencyBoundedRecovery(6534);
+            input.crop.currentVisibleBounds.top=input.observation.top=54;
+            input.crop.currentVisibleBounds.bottom=input.observation.bottom=2106;
+            input.previous=EvaluatePresentationRecovery(input).state;
+            input.previous.samples=3;
+            auto& c=input.crop;
+            c.geometry={0,68,3840,2092,3840,2160,3840.0/2024.0,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+            c.frameSourceSequence=input.retentionSourceSequence=6542;
+            c.currentVisibleBoundsAvailable=false;
+            c.presentationFailOpen=c.latestObservationIsProvisional=false;
+            c.latestObservationSupportsCrop=true;
+            c.latestObservationClassification=input.observationClassification=ActivePictureClassification::BAR_CROP_TRUSTED;
+            input.retentionBounds=input.observation=input.observedTrustedCrop=c.geometry;
+            input.excludedBandsPixelSafe=true;
+            input.candidate=Evaluate(c);
+            return input;
+        }
+
 		TransitionAdmissionInput MovingRecoveryObservation(const ActivePictureBounds& base,
 			uint64_t generation,uint64_t sequence,unsigned index,double hz)
 		{
@@ -1363,6 +1383,190 @@ namespace Tests
 				input.previous = result.state;
 			}
 		}
+
+        TEST_METHOD(BoundedRecoveryKeepsSafeEnvelopeWhenAcceptedCropChanges)
+        {
+            for (uint64_t first : {uint64_t{6534}, uint64_t{6789}})
+            {
+                auto input = AgencyBoundedRecovery(first);
+                input.crop.currentVisibleBounds.top = input.observation.top = 54;
+                input.crop.currentVisibleBounds.bottom = input.observation.bottom = 2106;
+                auto initial = EvaluatePresentationRecovery(input);
+                Assert::IsTrue(initial.boundedPresentation);
+                Assert::AreEqual(54, initial.presentation.sourceBounds.top);
+                Assert::AreEqual(2106, initial.presentation.sourceBounds.bottom);
+                auto oldCrop = input.crop;
+                oldCrop.presentationFailOpen = false;
+                oldCrop.latestObservationSupportsCrop = true;
+                auto admitted = AdmitCropPresentation({}, oldCrop, initial.presentation, 9).state;
+                input.previous = initial.state;
+                input.previous.samples = 3; // Old-contract votes must not be reused.
+                auto& c = input.crop;
+                c.geometry = {0,68,3840,2092,3840,2160,3840.0/2024.0,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+                c.frameSourceSequence = input.retentionSourceSequence = first == 6534 ? 6542 : 6796;
+                c.currentVisibleBoundsAvailable = false; // No content outside the NEW crop.
+                c.presentationFailOpen = c.latestObservationIsProvisional = false;
+                c.latestObservationSupportsCrop = true;
+                c.latestObservationClassification = input.observationClassification = ActivePictureClassification::BAR_CROP_TRUSTED;
+                input.retentionBounds = input.observation = input.observedTrustedCrop = c.geometry;
+                input.excludedBandsPixelSafe = true;
+                input.candidate = Evaluate(c);
+                Assert::IsTrue(input.candidate.applyCrop);
+                auto recovered = EvaluatePresentationRecovery(input);
+                Assert::IsTrue(recovered.boundedPresentation, L"Accepting a pixel-safe new crop must not throw away its safe wider fallback and expose full raster.");
+                Assert::AreEqual(54, recovered.presentation.sourceBounds.top);
+                Assert::AreEqual(2106, recovered.presentation.sourceBounds.bottom);
+                Assert::IsTrue((recovered.gates & RECOVERY_CONTRACT) != 0);
+                Assert::AreEqual(0u, recovered.samples);
+                Assert::IsTrue(recovered.proofReset,L"Discarding old-contract votes must report the proof reset.");
+                Assert::IsFalse(recovered.released);
+                for (unsigned frame=0; frame<=recovered.required; ++frame)
+                {
+                    const auto final = AdmitCropPresentation(admitted, c, recovered.presentation, 9);
+                    Assert::IsFalse(final.blocked);
+                    Assert::IsTrue(final.presentation.applyCrop);
+                    Assert::AreEqual(frame < recovered.required ? 54 : 68, final.presentation.sourceBounds.top);
+                    Assert::AreEqual(frame < recovered.required ? 2106 : 2092, final.presentation.sourceBounds.bottom);
+                    admitted = final.state;
+                    input.previous = recovered.state;
+                    ++c.frameSourceSequence; input.retentionSourceSequence = c.frameSourceSequence;
+                    // A subtitle inside the larger picture no longer blocks final admission.
+                    if (frame+1 == recovered.required)
+                    {
+                        c.latestObservationSupportsCrop = false;
+                        c.latestObservationIsProvisional = true;
+                        c.latestObservationClassification = input.observationClassification = ActivePictureClassification::PROVISIONAL;
+                        c.frameLocalPresentationRetentionEvaluated = c.frameLocalPresentationRetentionSafe = true;
+                        input.observation.top=276; input.observation.bottom=2016;
+                    }
+                    input.candidate = Evaluate(c);
+                    recovered = EvaluatePresentationRecovery(input);
+                }
+            }
+        }
+
+        TEST_METHOD(BoundedContractChangeRejectsStaleUnsafeOrUntrustedPreservationEvidence)
+        {
+            for (int fault=0;fault<28;++fault)
+            {
+                auto input=ChangedContractBoundedRecovery();
+                auto& c=input.crop;
+                switch (fault)
+                {
+                case 0: input.measurementCurrent=false; break;
+                case 1: input.retentionEvaluated=false; break;
+                case 2: --input.retentionSourceSequence; break;
+                case 3: --input.retentionSourceGeneration; break;
+                case 4: input.retentionBounds.top+=4; break;
+                case 5: input.excludedBandsPixelSafe=false; break;
+                case 6: input.observationAvailable=false; break;
+                case 7: input.observationClassification=c.latestObservationClassification=ActivePictureClassification::PROVISIONAL; break;
+                case 8: c.latestObservationClassification=ActivePictureClassification::PROVISIONAL; break;
+                case 9: input.observation.top=0; break;
+                case 10: input.previous.fallbackBoundsAvailable=false; break;
+                case 11: input.previous.fallbackBounds.top=55; break;
+                case 12: input.previous.fallbackBounds.right=3842; break;
+                case 13: input.previous.fallbackBounds.rasterWidth=3838; break;
+                case 14: input.previous.fallbackBounds.top=100; break;
+                case 15:
+                    c.geometry.top=40; c.geometry.aspectRatio=3840.0/(2092-40);
+                    input.retentionBounds=input.observation=input.observedTrustedCrop=c.geometry; break;
+                case 16: input.globalNearBlack=true; break;
+                case 17: input.nearBlackEvaluated=false; break;
+                case 18: c.movingPictureTransition=true; break;
+                case 19: c.nearBlackEpisodeFullRaster=true; break;
+                case 20: c.classification=ActivePictureClassification::UNAVAILABLE; break;
+                case 21: ++c.geometrySourceGeneration; break;
+                case 22: input.observedTrustedCrop.top+=4; break;
+                case 23: input.observedTrustedCrop.trustedBarAxes=ActivePictureBounds::BarAxes::NONE; break;
+                case 24: c.latestObservationIsUnavailable=true; break;
+                case 25: input.retentionBounds.trustedBarAxes=ActivePictureBounds::BarAxes::NONE; break;
+                case 26:
+                    c.geometry.top=69; c.geometry.aspectRatio=3840.0/(2092-69);
+                    input.retentionBounds=input.observation=input.observedTrustedCrop=c.geometry; break;
+                case 27:
+                    c.geometrySourceGeneration=c.frameSourceGeneration=input.retentionSourceGeneration=input.previous.sourceGeneration=0; break;
+                }
+                input.candidate=Evaluate(c);
+                const auto result=EvaluatePresentationRecovery(input);
+                const auto diagnostic=L"fault="+std::to_wstring(fault);
+                Assert::IsFalse(result.boundedPresentation,diagnostic.c_str());
+                Assert::IsFalse(result.released,diagnostic.c_str());
+                AssertFullRaster(result.presentation);
+            }
+        }
+
+        TEST_METHOD(BoundedContractChangeCannotInheritPartialProofOnRepeatedOrOlderSource)
+        {
+            for (int fault=0;fault<4;++fault)
+            {
+                auto input=ChangedContractBoundedRecovery();
+                if (fault==0) input.cadenceRepeat=true;
+                if (fault==1) input.crop.frameSourceSequence=input.previous.lastSourceSequence;
+                if (fault==2) input.crop.frameSourceSequence=input.previous.lastSourceSequence-1;
+                if (fault==3) input.crop.frameSourceSequence=0;
+                input.retentionSourceSequence=input.crop.frameSourceSequence;
+                input.candidate=Evaluate(input.crop);
+                const auto result=EvaluatePresentationRecovery(input);
+                Assert::IsTrue((result.gates & RECOVERY_CONTRACT)!=0);
+                Assert::IsTrue((result.gates & RECOVERY_REPEAT)!=0);
+                Assert::IsFalse(result.boundedPresentation);
+                Assert::IsFalse(result.released);
+                AssertFullRaster(result.presentation);
+                Assert::AreEqual(0u,result.samples,
+                    L"A changed crop cannot inherit old-contract proof votes even when its first observation is repeated or stale.");
+                Assert::IsTrue(result.proofReset,L"Discarded partial proof must remain visible even on repeated/out-of-order frames.");
+            }
+        }
+
+        TEST_METHOD(BoundedContractChangeDiscardsOldEnvelopeAcrossContextOrFullRasterAuthority)
+        {
+            for (int change=0;change<4;++change)
+            {
+                auto input=ChangedContractBoundedRecovery();
+                if (change==0) ++input.presentationEpoch;
+                if (change==1)
+                {
+                    ++input.crop.frameSourceGeneration;
+                    input.crop.geometrySourceGeneration=input.retentionSourceGeneration=input.crop.frameSourceGeneration;
+                }
+                if (change==2)
+                {
+                    input.crop.rasterWidth=4096;
+                    input.crop.geometry.rasterWidth=4096;
+                    input.retentionBounds=input.observation=input.observedTrustedCrop=input.crop.geometry;
+                }
+                if (change==3) input.crop.fullRasterPresentationAuthoritative=true;
+                input.candidate=Evaluate(input.crop);
+                const auto result=EvaluatePresentationRecovery(input);
+                Assert::IsTrue(result.ended);
+                Assert::IsFalse(result.state.active);
+                Assert::IsFalse(result.state.fallbackBoundsAvailable);
+                Assert::IsFalse(result.boundedPresentation);
+                Assert::AreEqual(input.candidate.sourceBounds.top,result.presentation.sourceBounds.top);
+                if (change==3) AssertFullRaster(result.presentation);
+                else Assert::IsTrue((result.gates & RECOVERY_CONTEXT)!=0);
+            }
+        }
+
+        TEST_METHOD(BoundedContractPreservationDoesNotBypassFinalNewCropAdmission)
+        {
+            auto input=ChangedContractBoundedRecovery();
+            auto old=TrustedScopeCrop();
+            old.geometry=input.previous.trustedCrop;
+            old.frameSourceSequence=6534;
+            auto admitted=AdmitCropPresentation({},old,Evaluate(old),9).state;
+            Assert::IsTrue(admitted.available);
+            const auto preserved=EvaluatePresentationRecovery(input);
+            Assert::IsTrue(preserved.boundedPresentation);
+            // Presenting the safe old envelope still cannot acquire a different
+            // crop contract when current picture acquisition is withdrawn.
+            input.crop.latestObservationSupportsCrop=false;
+            const auto final=AdmitCropPresentation(admitted,input.crop,preserved.presentation,9);
+            Assert::IsTrue(final.blocked);
+            AssertFullRaster(final.presentation);
+            Assert::AreEqual(276,final.state.trustedCrop.top);
+        }
 
 		TEST_METHOD(BoundedRecoveryDoesNotPumpWithSmallChangesAndStillExposesMoreContent)
 		{
