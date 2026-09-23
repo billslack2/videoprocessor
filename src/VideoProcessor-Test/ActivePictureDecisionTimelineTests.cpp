@@ -1,6 +1,8 @@
 #include "pch.h"
 
 #include <ActivePictureDecisionTimeline.h>
+#include <vprenderer/BufferedPictureExpansion.h>
+#include <array>
 #include "CppUnitTest.h"
 
 #include <vector>
@@ -1347,6 +1349,137 @@ namespace VideoProcessorTest
 				8, 8, published));
 			Assert::AreEqual<uint64_t>(sequence - 2,
 				published.effectiveIdentity.acceptedSequence);
+		}
+	};
+
+	TEST_CLASS(BufferedInwardSafetyReviewTests)
+	{
+		using Sample = AlphaSourceCrop::BufferedPictureExpansionSample;
+		static ActivePictureTransitionModel Established(const ActivePictureBounds& base)
+		{
+			ActivePictureTransitionModel model;
+			for (uint64_t frame = 1; frame <= 4; ++frame) model.Observe(Trusted(frame, base));
+			return model;
+		}
+		static std::array<Sample, 2> Samples(const ActivePictureBounds& target = ScopeBounds())
+		{
+			std::array<Sample, 2> result;
+			for (size_t i = 0; i < result.size(); ++i)
+			{
+				result[i].identity = { 7, 100+i, 500+i, 100000+i*1000, 11, 13, 17 };
+				result[i].observation = Trusted(100+i, target);
+				result[i].observation.framesPerSecond = 24;
+				result[i].nearBlackEvaluated = true;
+			}
+			return result;
+		}
+		static ActivePictureFrameDecision Build(const std::array<Sample, 2>& samples,
+			ActivePictureTransitionModel model, const ActivePictureBounds& base = ShallowScopeBounds(),
+			uint8_t configured = 1, uint8_t available = 1, uint64_t continuity = 19, uint64_t policy = 23)
+		{
+			return AlphaSourceCrop::BuildBufferedInwardDecision(samples.data(), samples.size(),
+				model, base, configured, available, continuity, policy);
+		}
+	public:
+		TEST_METHOD(InwardCertificateRejectsEveryCurrentOrFutureEvidenceFault)
+		{
+			const auto live = Established(ShallowScopeBounds());
+			Assert::IsTrue(Build(Samples(), live).transition.publish);
+			for (int index : {0, 1})
+			for (int fault = 0; fault < 21; ++fault)
+			{
+				auto samples = Samples();
+				auto& item = samples[index];
+				switch (fault)
+				{
+				case 0: item.observation.available = false; break;
+				case 1: item.observation.transitionDeferred = true; break;
+				case 2: item.observation.classification = ActivePictureClassification::PROVISIONAL; break;
+				case 3: item.observation.classification = ActivePictureClassification::UNAVAILABLE; break;
+				case 4: item.observation.classification = ActivePictureClassification::FULL_RASTER_TRUSTED; break;
+				case 5: item.observation.axisEvidence.horizontal.barCandidate = true; break;
+				case 6: item.observation.axisEvidence.vertical.barCandidate = true; break;
+				case 7: item.nearBlackEvaluated = false; break;
+				case 8: item.retention.globalNearBlack = true; break;
+				case 9: item.observation.bounds.top += 4; break;
+				case 10: item.observation.bounds.bottom -= 4; break;
+				case 11: item.observation.bounds.trustedBarAxes = ActivePictureBounds::BarAxes::NONE; break;
+				case 12: ++item.identity.transportGeneration; break;
+				case 13: ++item.identity.sourceFormatGeneration; break;
+				case 14: ++item.identity.viewportGeneration; break;
+				case 15: ++item.identity.rendererGeneration; break;
+				case 16: ++item.identity.acceptedSequence; break;
+				case 17: ++item.observation.frameNumber; break;
+				case 18: item.identity.sourceFrameNumber += 2; break;
+				case 19: item.identity.captureTimestamp = samples[1-index].identity.captureTimestamp; break;
+				case 20: item.observation.bounds.rasterHeight += 2; break;
+				}
+				const auto message = L"sample=" + std::to_wstring(index) + L" fault=" + std::to_wstring(fault);
+				Assert::IsFalse(Build(samples, live).transition.publish, message.c_str());
+			}
+		}
+		TEST_METHOD(InwardProofRespectsBudgetsAndRequiresIndependentWindowEvidence)
+		{
+			const auto samples = Samples();
+			auto live = Established(ShallowScopeBounds());
+			Assert::IsFalse(Build(samples, live, ShallowScopeBounds(), 0, 8).transition.publish);
+			Assert::IsFalse(Build(samples, live, ShallowScopeBounds(), 8, 0).transition.publish);
+			Assert::IsFalse(Build(samples, live, ShallowScopeBounds(), 8, 8, 0, 23).transition.publish);
+			Assert::IsFalse(Build(samples, live, ShallowScopeBounds(), 8, 8, 19, 0).transition.publish);
+			Assert::IsFalse(AlphaSourceCrop::BuildBufferedInwardDecision(nullptr, 2, live,
+				ShallowScopeBounds(), 8, 8, 19, 23).transition.publish);
+			// A live pending candidate cannot turn a single buffered frame into proof.
+			Assert::IsFalse(live.Observe(Trusted(99, ScopeBounds())).publish);
+			Assert::IsFalse(AlphaSourceCrop::BuildBufferedInwardDecision(samples.data(), 1, live,
+				ShallowScopeBounds(), 8, 8, 19, 23).transition.publish);
+			const auto proof = Build(samples, live);
+			Assert::IsTrue(proof.transition.publish);
+			Assert::AreEqual<uint8_t>(2, proof.proofFrameCount);
+			Assert::AreEqual<uint64_t>(100, proof.transition.firstContradictoryFrame);
+			Assert::AreEqual<uint64_t>(101, proof.observationIdentity.acceptedSequence);
+		}
+		TEST_METHOD(InwardProofNeverMutatesLiveModelOrImportsFutureSequence)
+		{
+			auto live = Established(ShallowScopeBounds());
+			const auto samples = Samples();
+			Assert::IsTrue(Build(samples, live).transition.publish);
+			// Without applying the returned decision, live still needs both observations.
+			const auto first = live.Observe(samples[0].observation);
+			Assert::IsFalse(first.publish);
+			Assert::AreEqual(ShallowScopeBounds().top, first.stableBounds.top);
+			Assert::IsTrue(live.Observe(samples[1].observation).publish);
+		}
+		TEST_METHOD(InwardProofRetainsGeometryAndAspectDeadbands)
+		{
+			const auto base = ScopeBounds();
+			auto tiny = base; tiny.top += 4; tiny.bottom -= 4;
+			tiny.aspectRatio = 3840.0 / (tiny.bottom-tiny.top);
+			Assert::IsFalse(Build(Samples(tiny), Established(base), base).transition.publish);
+			auto underFivePercent = base; underFivePercent.top += 24; underFivePercent.bottom -= 24;
+			underFivePercent.aspectRatio = 3840.0 / (underFivePercent.bottom-underFivePercent.top);
+			Assert::IsFalse(Build(Samples(underFivePercent), Established(base), base).transition.publish);
+			// Do not bind proof to a supplied base different from the live stable reference.
+			Assert::IsFalse(Build(Samples(), Established(Stable220Bounds()), ShallowScopeBounds()).transition.publish);
+			Assert::IsFalse(Build(Samples(), Established(FullBounds()), FullBounds()).transition.publish);
+			Assert::IsFalse(Build(Samples(), ActivePictureTransitionModel{}).transition.publish);
+		}
+		TEST_METHOD(InwardProofSupportsBothAxesAtEveryPlaybackRateWithoutChangingLivePolicy)
+		{
+			for (bool sides : {false, true})
+			for (double fps : {23.976, 24.0, 25.0, 29.97, 30.0, 50.0, 59.94, 60.0})
+			{
+				const auto base = sides ? ShallowSideBounds() : ShallowScopeBounds();
+				const auto target = sides ? SideBounds() : ScopeBounds();
+				auto samples = Samples(target);
+				for (auto& sample : samples) sample.observation.framesPerSecond = fps;
+				auto live = Established(base);
+				const auto proof = Build(samples, live, base);
+				Assert::IsTrue(proof.transition.publish);
+				Assert::AreEqual<uint64_t>(100, proof.effectiveIdentity.acceptedSequence);
+				Assert::AreEqual<uint8_t>(2, proof.proofFrameCount);
+				Assert::IsTrue(live.AdoptPublishedDecision(proof.transition,
+					ActivePictureClassification::BAR_CROP_TRUSTED));
+			}
 		}
 	};
 }

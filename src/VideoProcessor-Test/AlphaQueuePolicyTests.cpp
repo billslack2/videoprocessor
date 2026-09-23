@@ -4,6 +4,7 @@
 #include <vprenderer/AlphaQueuePolicy.h>
 
 #include <limits>
+#include <deque>
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
@@ -12,6 +13,89 @@ namespace Tests
 	TEST_CLASS(AlphaQueuePolicyTests)
 	{
 	public:
+		TEST_METHOD(PreviewReportsPhysicalAvailabilityBeyondConfiguredBudget)
+		{
+			struct Frame { bool cadenceRepeat = false; };
+			const std::deque<Frame> queue(8);
+			const auto window = AlphaQueuePolicy::SelectActivePicturePreview(queue, 3, 8);
+			Assert::AreEqual<size_t>(7, window.availableFutureFrames);
+			Assert::AreEqual<size_t>(3, window.effectiveFutureFrames);
+			Assert::AreEqual<size_t>(4, window.indices.size());
+			for (size_t index = 0; index < window.indices.size(); ++index)
+				Assert::AreEqual(index, window.indices[index]);
+		}
+
+		TEST_METHOD(PreviewShortQueuesUseOnlyExistingSourceFrames)
+		{
+			struct Frame { bool cadenceRepeat = false; };
+			for (size_t count = 0; count <= 3; ++count)
+			{
+				const std::deque<Frame> queue(count);
+				const auto window = AlphaQueuePolicy::SelectActivePicturePreview(queue, 5, 8);
+				const size_t available = count > 0 ? count - 1 : 0;
+				Assert::AreEqual(available, window.availableFutureFrames);
+				Assert::AreEqual(available, window.effectiveFutureFrames);
+				Assert::AreEqual(count, window.indices.size());
+				Assert::IsTrue(AlphaQueuePolicy::CanDequeue(count, 1, false) == (count > 0));
+			}
+		}
+
+		TEST_METHOD(PreviewRepeatsDoNotCountAsAvailableEvidence)
+		{
+			struct Frame { bool cadenceRepeat = false; };
+			const std::deque<Frame> queue = {{false}, {true}, {false}, {true}, {false}, {true}};
+			const auto window = AlphaQueuePolicy::SelectActivePicturePreview(queue, 5, 8);
+			Assert::AreEqual<size_t>(2, window.availableFutureFrames);
+			Assert::AreEqual<size_t>(2, window.effectiveFutureFrames);
+			Assert::AreEqual<size_t>(3, window.indices.size());
+			Assert::AreEqual<size_t>(0, window.indices[0]);
+			Assert::AreEqual<size_t>(2, window.indices[1]);
+			Assert::AreEqual<size_t>(4, window.indices[2]);
+		}
+
+		TEST_METHOD(PreviewDisabledOrRepeatedCurrentDoesNotScheduleWork)
+		{
+			struct Frame { bool cadenceRepeat = false; };
+			for (bool repeatedCurrent : {false, true})
+			{
+				std::deque<Frame> queue(4);
+				queue.front().cadenceRepeat = repeatedCurrent;
+				const auto window = AlphaQueuePolicy::SelectActivePicturePreview(queue,
+					repeatedCurrent ? 5 : 0, 8);
+				Assert::AreEqual<size_t>(3, window.availableFutureFrames);
+				Assert::AreEqual<size_t>(0, window.effectiveFutureFrames);
+				Assert::IsTrue(window.indices.empty());
+			}
+		}
+
+		TEST_METHOD(PreviewClampsWorkWithoutHidingLargerPhysicalQueue)
+		{
+			struct Frame { bool cadenceRepeat = false; };
+			const std::deque<Frame> queue(32);
+			for (size_t requested : {size_t{1}, size_t{2}, size_t{3}, size_t{5}, size_t{8}, size_t{99}})
+			{
+				const auto window = AlphaQueuePolicy::SelectActivePicturePreview(queue, requested, 8);
+				const size_t effective = (std::min)(requested, size_t{8});
+				Assert::AreEqual<size_t>(31, window.availableFutureFrames);
+				Assert::AreEqual(effective, window.effectiveFutureFrames);
+				Assert::AreEqual(effective + 1, window.indices.size());
+			}
+		}
+
+		TEST_METHOD(PreviewSelectionDoesNotConsumeOrMutateQueue)
+		{
+			struct Frame { bool cadenceRepeat = false; size_t identity = 0; };
+			const std::deque<Frame> queue = {{false, 100}, {true, 100}, {false, 101}, {false, 102}};
+			for (int pass = 0; pass < 2; ++pass)
+			{
+				const auto window = AlphaQueuePolicy::SelectActivePicturePreview(queue, 2, 8);
+				Assert::AreEqual<size_t>(4, queue.size());
+				Assert::AreEqual<size_t>(100, queue.front().identity);
+				Assert::AreEqual<size_t>(102, queue.back().identity);
+				Assert::AreEqual<size_t>(3, window.indices.size());
+			}
+		}
+
 		TEST_METHOD(OmittedOverrideUsesSafeAlphaDefault)
 		{
 			Assert::AreEqual<size_t>(4,

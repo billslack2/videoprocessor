@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <limits>
 #include <string>
+#include <vector>
 
 namespace AlphaQueuePolicy
 {
@@ -13,6 +14,36 @@ namespace AlphaQueuePolicy
 	constexpr double DEFAULT_FRAME_RATE_HZ = 60.0;
 	constexpr double MINIMUM_RENDER_STALL_MS = 50.0;
 	constexpr double MINIMUM_STALE_BACKLOG_AGE_MS = 100.0;
+
+	struct ActivePicturePreviewWindow
+	{
+		size_t availableFutureFrames = 0;
+		size_t effectiveFutureFrames = 0;
+		std::vector<size_t> indices;
+	};
+
+	// Snapshot selection only: never changes queue depth or waits for evidence.
+	// Each queue entry exposes cadenceRepeat; repeats cannot add proof votes.
+	template<typename Queue>
+	ActivePicturePreviewWindow SelectActivePicturePreview(const Queue& queue,
+		size_t configured, size_t maxLookahead)
+	{
+		ActivePicturePreviewWindow result;
+		if (queue.empty()) return result;
+		const size_t requested = (std::min)(configured, maxLookahead);
+		const bool inspect = requested > 0 && !queue.front().cadenceRepeat;
+		for (size_t index = 0; index < queue.size(); ++index)
+		{
+			if (queue[index].cadenceRepeat) continue;
+			// Count the complete buffered source window even when work is capped
+			// or disabled. The current queue entry is not a future frame.
+			if (index != 0) ++result.availableFutureFrames;
+			if (inspect && result.indices.size() <= requested)
+				result.indices.push_back(index);
+		}
+		result.effectiveFutureFrames = result.indices.empty() ? 0 : result.indices.size() - 1;
+		return result;
+	}
 
 	inline size_t NormalizeDesiredDepth(size_t value)
 	{

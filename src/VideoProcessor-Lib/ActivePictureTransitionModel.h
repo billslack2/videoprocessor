@@ -210,6 +210,8 @@ public:
 	// ignores transitionDeferred and advances no temporal proof: callers still
 	// need ordinary confirmation/admission before publishing any geometry.
 	bool WouldAdmitGeometryChange(const ActivePictureObservation& observation) const;
+	// History is a prerequisite, never current pixel or publication authority.
+	bool FindRecentTrustedBarGeometry(const ActivePictureBounds& bounds, ActivePictureBounds& remembered) const;
 	// Synchronize the live model with a stable decision produced by the bounded
 	// queue lookahead model. Invalid or non-authoritative publications fail
 	// closed and leave this model unchanged.

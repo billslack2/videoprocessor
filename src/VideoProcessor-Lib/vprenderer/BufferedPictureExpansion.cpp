@@ -123,9 +123,9 @@ namespace AlphaSourceCrop
               (std::abs(previous.last.top - candidate.top) > (std::max)(4, candidate.rasterHeight / 100) ||
                std::abs(previous.last.bottom - candidate.bottom) > (std::max)(4, candidate.rasterHeight / 100)))))
         {
-            const bool keepFull = state.active || state.awaitingPublication;
+            const bool keepPresentationHold = state.active || state.awaitingPublication;
             state = {};
-            state.awaitingPublication = keepFull;
+            state.awaitingPublication = keepPresentationHold;
             state.base = current.trustedGeometry;
             state.identity = identity;
             if (!certified) return state;
@@ -134,8 +134,8 @@ namespace AlphaSourceCrop
         }
         if (!certified)
         {
-            // A ramp near the raster edge may lose bar authority. It cannot
-            // regain the old crop or count darkness/ambiguity as settled bars.
+            // A ramp near the raster edge may lose bar authority. Keep the
+            // established hold, but never count darkness/ambiguity as settled bars.
             // Fresh full authority and unrelated owners were handled above.
             state.quietSamples = 0;
             state.directionalChanges = 0;
@@ -237,19 +237,27 @@ namespace AlphaSourceCrop
         const BufferedPictureExpansionSample* samples, size_t count,
         const ActivePictureBounds& base, uint8_t configuredLookahead,
         uint8_t availableLookahead, uint64_t continuityGeneration,
-        uint64_t policyGeneration)
+        uint64_t policyGeneration, BufferedPictureExpansionDiagnostic* diagnostic)
     {
         BufferedPictureExpansionProof proof;
+        BufferedPictureExpansionDiagnostic details;
+        auto rejected = [&](const char* reason, int sample = -1)
+        {
+            details.reason = reason;
+            details.failedSample = sample;
+            if (diagnostic) *diagnostic = details;
+            return proof;
+        };
         constexpr uint8_t required = OUTWARD_PICTURE_CONFIRMATIONS_REQUIRED;
         constexpr uint8_t lead = required - 1;
         if (!samples || count < required || configuredLookahead < lead ||
             availableLookahead < lead || continuityGeneration == 0 || policyGeneration == 0)
-            return proof;
+            return rejected("budget");
         const auto& first = samples[0];
         if (first.identity.transportGeneration == 0 ||
             first.identity.sourceFormatGeneration == 0 || first.identity.acceptedSequence == 0 ||
             first.identity.acceptedSequence > UINT64_MAX - lead)
-            return proof;
+            return rejected("first-identity");
 
         OutwardPictureConfirmationState confirmation;
         for (uint8_t i = 0; i < required; ++i)
@@ -257,31 +265,35 @@ namespace AlphaSourceCrop
             const auto& sample = samples[i];
             if (!SameContext(first.identity, sample.identity) ||
                 sample.identity.acceptedSequence != first.identity.acceptedSequence + i ||
-                sample.observation.frameNumber != sample.identity.acceptedSequence ||
-                !sample.nearBlackEvaluated ||
+                sample.observation.frameNumber != sample.identity.acceptedSequence)
+                return rejected("sample-identity", i);
+            if (!sample.nearBlackEvaluated ||
                 !CurrentBroadEvidence(base, sample.observation, sample.retention,
                     first.identity.transportGeneration, sample.identity.acceptedSequence))
-                return proof;
+                return rejected("sample-evidence", i);
             // Accepted sequence continuity is mandatory. Where capture metadata
             // is supplied, repeated or missing source frames cannot count.
             if (i != 0 &&
                 ((sample.identity.sourceFrameNumber != 0 || samples[i - 1].identity.sourceFrameNumber != 0) &&
                     (samples[i - 1].identity.sourceFrameNumber == UINT64_MAX ||
                      sample.identity.sourceFrameNumber != samples[i - 1].identity.sourceFrameNumber + 1)))
-                return proof;
+                return rejected("source-continuity", i);
             if (i != 0 &&
                 ((sample.identity.captureTimestamp != 0 || samples[i - 1].identity.captureTimestamp != 0) &&
                     sample.identity.captureTimestamp <= samples[i - 1].identity.captureTimestamp))
-                return proof;
+                return rejected("timestamp-continuity", i);
             const auto result = ConfirmOutwardPictureTransition(confirmation, base,
                 sample.observation.bounds, sample.retention,
                 first.identity.transportGeneration, sample.identity.acceptedSequence);
             confirmation = result.state;
             // A restart means geometry wandered beyond the anchored scan step.
             if (!result.broadOpposingPicture || confirmation.confirmations != i + 1)
-                return proof;
+                return rejected("geometry-continuity", i);
         }
 
+        details.passes = true;
+        details.reason = "proof-ready";
+        if (diagnostic) *diagnostic = details;
         proof.valid = true;
         auto& decision = proof.decision;
         decision.observationIdentity = samples[required - 1].identity;
@@ -310,6 +322,116 @@ namespace AlphaSourceCrop
         transition.decisionLatencyFrames = lead;
         transition.reason = "buffered broad picture expansion confirmed on current and future frames";
         return proof;
+    }
+
+    BufferedPictureExpansionDiagnostic InspectBufferedPictureExpansion(
+        const BufferedPictureExpansionSample* samples, size_t count,
+        const ActivePictureBounds& base, uint8_t configuredLookahead,
+        uint8_t availableLookahead, uint64_t continuityGeneration,
+        uint64_t policyGeneration)
+    {
+        BufferedPictureExpansionDiagnostic diagnostic;
+        // Evaluate the exact production certificate, then discard it locally.
+        // The caller receives metrics, never a certificate it can publish.
+        BuildBufferedPictureExpansion(samples, count, base, configuredLookahead,
+            availableLookahead, continuityGeneration, policyGeneration, &diagnostic);
+        return diagnostic;
+    }
+
+    bool ObserveBufferedExpansionShadow(BufferedExpansionShadowTrace& trace,
+        const ActivePictureFrameIdentity& identity, const ActivePictureBounds& base,
+        bool passes, uint64_t policyGeneration, uint64_t continuityGeneration)
+    {
+        if (!trace.active || !SameContext(trace.identity, identity) ||
+            !SameBounds(trace.base, base) || trace.policyGeneration != policyGeneration ||
+            trace.continuityGeneration != continuityGeneration ||
+            identity.acceptedSequence < trace.identity.acceptedSequence)
+        {
+            trace = {};
+            trace.active = true;
+            trace.base = base;
+            trace.policyGeneration = policyGeneration;
+            trace.continuityGeneration = continuityGeneration;
+            trace.firstSequence = identity.acceptedSequence;
+        }
+        else if (identity.acceptedSequence == trace.identity.acceptedSequence)
+            return false;
+        trace.identity = identity;
+        ++trace.windows;
+        if (!passes) return false;
+        ++trace.passes;
+        if (trace.firstPassSequence != 0) return false;
+        trace.firstPassSequence = identity.acceptedSequence;
+        return true;
+    }
+
+    ActivePictureFrameDecision BuildBufferedInwardDecision(
+        const BufferedPictureExpansionSample* samples, size_t count,
+        ActivePictureTransitionModel liveModel, const ActivePictureBounds& base,
+        uint8_t configuredLookahead, uint8_t availableLookahead,
+        uint64_t continuityGeneration, uint64_t policyGeneration)
+    {
+        ActivePictureFrameDecision result;
+        const uint8_t budget = (std::min)((std::min)(configuredLookahead,
+            ActivePictureDecisionTimeline::MAX_LOOKAHEAD_FRAMES), availableLookahead);
+        if (!samples || count < 2 || budget == 0 ||
+            continuityGeneration == 0 || policyGeneration == 0) return result;
+        const auto& first = samples[0];
+        ActivePictureTransitionDecision geometry;
+        geometry.stableBounds = base;
+        geometry.bounds = first.observation.bounds;
+        if (!IsExactInwardActivePictureAssociationGeometry(geometry,
+                first.observation.classification) ||
+            first.identity.transportGeneration == 0 ||
+            first.identity.sourceFormatGeneration == 0 || first.identity.acceptedSequence == 0 ||
+            first.identity.acceptedSequence > UINT64_MAX - budget) return result;
+        // A cut may invalidate pre-window candidates before the live consumer.
+        // Retain established geometry/deadbands, but prove this window afresh.
+        liveModel.ResetCandidateEvidence();
+        count = (std::min)(count, size_t(budget) + 1);
+        for (size_t i = 0; i < count; ++i)
+        {
+            const auto& sample = samples[i];
+            if (!SameContext(first.identity, sample.identity) ||
+                sample.identity.acceptedSequence != first.identity.acceptedSequence + i ||
+                sample.observation.frameNumber != sample.identity.acceptedSequence ||
+                !sample.observation.available || sample.observation.transitionDeferred ||
+                sample.observation.classification != ActivePictureClassification::BAR_CROP_TRUSTED ||
+                sample.observation.axisEvidence.HasFailedBar() ||
+                !SameBounds(first.observation.bounds, sample.observation.bounds) ||
+                !sample.nearBlackEvaluated || sample.retention.globalNearBlack)
+                return {};
+            if (i != 0 &&
+                ((sample.identity.sourceFrameNumber != 0 || samples[i-1].identity.sourceFrameNumber != 0) &&
+                 (samples[i-1].identity.sourceFrameNumber == UINT64_MAX ||
+                  sample.identity.sourceFrameNumber != samples[i-1].identity.sourceFrameNumber + 1))) return {};
+            if (i != 0 &&
+                ((sample.identity.captureTimestamp != 0 || samples[i-1].identity.captureTimestamp != 0) &&
+                 sample.identity.captureTimestamp <= samples[i-1].identity.captureTimestamp)) return {};
+            // Established live crops are inspected on every source frame.
+            // Match that cadence using already-buffered evidence, not the
+            // sparse acquisition cadence used when no crop is established.
+            const auto transition = liveModel.Observe(sample.observation);
+            if (!transition.publish) continue;
+            if (i == 0 || !SameBounds(transition.stableBounds, base) ||
+                !SameBounds(transition.bounds, first.observation.bounds) ||
+                !IsExactInwardActivePictureAssociationGeometry(transition,
+                    sample.observation.classification)) return {};
+            result.transition = transition;
+            result.effectiveIdentity = first.identity;
+            result.observationIdentity = sample.identity;
+            result.configuredLookahead = (std::min)(configuredLookahead,
+                ActivePictureDecisionTimeline::MAX_LOOKAHEAD_FRAMES);
+            result.availableLookahead = availableLookahead;
+            result.effectiveLookahead = budget;
+            result.proofFrameCount = static_cast<uint8_t>(i + 1);
+            result.continuityGeneration = continuityGeneration;
+            result.lookaheadPolicyGeneration = policyGeneration;
+            result.association = ActivePictureDecisionAssociation::EXACT_INWARD;
+            result.inwardProof = ActivePictureInwardProofValidation::ACCEPTED;
+            return result;
+        }
+        return result;
     }
 
     bool ValidateBufferedPictureExpansion(
@@ -353,4 +475,35 @@ namespace AlphaSourceCrop
         // satisfied by this independent complete proof.
         return !EvaluateTransitionAdmission(current).deferPartialComposition;
     }
+    bool ValidateBufferedTranslatedPictureExpansion(
+        const BufferedPictureExpansionProof& proof,
+        const ActivePictureFrameIdentity& currentIdentity,
+        const TransitionAdmissionInput& current, bool modelWouldAdmit,
+        const ActivePictureBounds& subtitleBase)
+    {
+        if (current.presentation.action != VerticalBarPresentationAction::TRANSLATE ||
+            current.sourceGeneration == 0 ||
+            current.presentationEvidenceGeneration != current.sourceGeneration ||
+            !SameBounds(subtitleBase, current.trustedGeometry))
+            return false;
+        // The complete broad-picture certificate replaces only the old owner
+        // veto. All pixel, identity, composition and model gates remain intact.
+        auto unowned = current;
+        unowned.presentation.action = VerticalBarPresentationAction::NONE;
+        unowned.translationDriftActive = false;
+        unowned.previousOutward.verticalPresentationSeen = false;
+        return ValidateBufferedPictureExpansion(proof, currentIdentity, unowned,
+            modelWouldAdmit);
+    }
+
+    void RetireVerticalPresentationForBufferedExpansion(bool adopted,
+        VerticalBarPresentationState& presentation, VerticalTranslationDrift& drift,
+        OutwardPictureConfirmationState& outward)
+    {
+        if (!adopted) return;
+        presentation = {};
+        drift.Reset();
+        outward = {};
+    }
+
 }

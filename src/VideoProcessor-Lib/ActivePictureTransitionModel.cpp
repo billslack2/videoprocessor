@@ -821,3 +821,22 @@ bool ActivePictureTransitionModel::AdoptPublishedDecision(
 	ClearCandidate();
 	return true;
 }
+
+
+bool ActivePictureTransitionModel::FindRecentTrustedBarGeometry(
+    const ActivePictureBounds& bounds, ActivePictureBounds& remembered) const
+{
+    // Select the same first geometric match used by known-format reacquisition.
+    // An incompatible first match cannot be skipped in favor of another entry.
+    for (size_t index = 0; index < m_recentTrustedCount; ++index)
+    {
+        const auto& known = m_recentTrusted[index];
+        if (!SameBounds(known.bounds, bounds)) continue;
+        if (known.classification != ActivePictureClassification::BAR_CROP_TRUSTED ||
+            known.bounds.trustedBarAxes != ActivePictureBounds::BarAxes::TOP_BOTTOM)
+            return false;
+        remembered = known.bounds;
+        return true;
+    }
+    return false;
+}

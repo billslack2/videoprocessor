@@ -238,6 +238,7 @@
 	<ClInclude Include="AnalysisLumaSource.h" />
 	<ClInclude Include="ActivePictureAnalyzer.h" />
     <ClInclude Include="ActivePictureEvidence.h" />
+    <ClInclude Include="vprenderer\InwardCaptionEvidence.h" />
     <ClInclude Include="MainConfigSchema.h" />
     <ClInclude Include="ConfigurationLiveApply.h" />
     <ClInclude Include="ShaderConfigValidation.h" />
@@ -322,6 +323,7 @@
 	<ClCompile Include="AnalysisLumaSource.cpp" />
 	<ClCompile Include="ActivePictureAnalyzer.cpp" />
     <ClCompile Include="ActivePictureEvidence.cpp" />
+    <ClCompile Include="vprenderer\InwardCaptionEvidence.cpp" />
     <ClCompile Include="ACaptureDeviceDiscoverer.cpp" />
     <ClCompile Include="AutoPpmCalibrator.cpp" />
     <ClCompile Include="BitDepth.cpp" />

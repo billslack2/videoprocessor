@@ -50,6 +50,8 @@ namespace AlphaSourceCrop
 		bool outwardTransition = false;
 		bool broadOpposingPicture = false;
 		bool authoritative = false;
+        // Explanation only; never consumed by crop policy.
+        const char* diagnosticReason = "not-evaluated";
 	};
 
 	// Expanding a trusted crop changes the logical aspect only after the same
@@ -309,6 +311,8 @@ namespace AlphaSourceCrop
 		// The previous action owns classification of this scheduled sample even
 		// when holdMs is zero. An analyzed NONE still releases immediately.
 		bool previousOwnsCurrentAnalysis = false;
+		// Set only after eligible retiring-owner inspection completed on this frame.
+		bool retiringTranslationFitInspection = false;
 	};
 
 	bool IsVerticalBarPresentationActive(
@@ -452,6 +456,10 @@ namespace AlphaSourceCrop
 	// normally.
 	bool CanAnalyzeHeldVerticalBarGeometry(
 		const HeldBarAnalysisInput& input);
+
+	// Eligibility grants a fresh dense scan, never crop or presentation authority.
+	bool CanInspectRetiringTranslationFit(const HeldBarAnalysisInput& input,
+		const VerticalFitConfirmationState& fit, bool inspectionBlocked);
 
 	// Store exactly one held vertical action. FIT retains the widest measured
 	// extents; TRANSLATE retains the farthest same-direction displacement.
@@ -704,6 +712,32 @@ namespace AlphaSourceCrop
 	// deliberately absent from this contract.
 	PresentationEnvelopeGeometryDecision BuildPresentationEnvelope(
 		const PresentationEnvelopeGeometryInput& input);
+
+	struct PresentationEnvelopeContent
+	{
+		ActivePictureBounds bounds;
+		bool expandLeft = false;
+		bool expandTop = false;
+		bool expandRight = false;
+		bool expandBottom = false;
+	};
+
+	struct PresentationEnvelopeCompositionInput
+	{
+		ActivePictureBounds trustedPicture;
+		PresentationEnvelopeContent detectorContent;
+		PresentationEnvelopeContent denseContent;
+		int horizontalPadding = 0;
+		int verticalPadding = 0;
+	};
+
+	// The renderer supplies already-routed edges and source/base-validated
+	// evidence. Pad raw dense edges once, then union with the detector's selected
+	// bounds without extra padding. Flags define active components: invalid active
+	// bounds fail; unselected components do not participate. No crop authority or
+	// temporal state is created here.
+	PresentationEnvelopeGeometryDecision BuildComposedPresentationEnvelope(
+		const PresentationEnvelopeCompositionInput& input);
 
 	struct PresentationRect
 	{
@@ -959,12 +993,22 @@ namespace AlphaSourceCrop
 	bool ShouldSuppressNearBlackBarGeometryMutation(bool acquisitionBlocked,
 		bool stable, ActivePictureClassification classification);
 
+    struct MovingPicturePresentationHold
+    {
+        bool competingPresentation = false;
+        ActivePictureBounds base;
+        uint64_t sourceGeneration = 0;
+        uint64_t sourceSequence = 0;
+        uint64_t presentationEpoch = 0;
+    };
+
 	struct Input
 	{
+        MovingPicturePresentationHold movingPictureHold;
 		PictureTransitionHandoff pictureTransitionHandoff;
 		uint64_t framePresentationEpoch = 0;
-        // Presentation-only withdrawal during proved continuous edge motion.
-        // Does not create full-raster authority or arm general recovery.
+        // Retain a previously admitted scope crop during proved continuous motion.
+        // Does not grant authority, acquire a crop, or clear existing recovery.
         bool movingPictureTransition = false;
 		bool automaticCropEnabled = false;
 		bool nearBlackEpisodeRetainCrop = false;
@@ -1052,6 +1096,7 @@ namespace AlphaSourceCrop
 	};
 
 	bool HasCurrentPictureTransitionHandoff(const Input& input);
+    bool HasCurrentMovingPictureHold(const Input& input);
 
 	enum class DecisionOwner
 	{
@@ -1070,6 +1115,7 @@ namespace AlphaSourceCrop
 		NEAR_BLACK_EPISODE,
 		OUTWARD_FIT,
 		VERTICAL_TRANSLATION,
+        MOVING_PICTURE_HOLD,
 	};
 
 	enum class WithdrawalCause
