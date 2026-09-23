@@ -6,6 +6,7 @@
 #include <SceneDetector.h>
 #include <CropDiagnosticThrottle.h>
 #include <vector>
+#include <limits>
 #include <vprenderer/AlphaSourceCropPolicy.h>
 #include <vprenderer/BufferedPictureExpansion.h>
 
@@ -6142,6 +6143,207 @@ namespace Tests
 							: UnusedSpaceAxis::NONE);
 					Assert::AreEqual(static_cast<int>(expected),
 						static_cast<int>(fit.unusedAxis));
+				}
+			}
+		}
+
+		TEST_METHOD(DestinationPaddingUsesFinalPictureSpace)
+		{
+			const PresentationRect output = { 0.0, 0.0, 1920.0, 1080.0 };
+			for (auto alignment : { VerticalPictureAlignment::TOP,
+				VerticalPictureAlignment::BOTTOM })
+			{
+				const auto screen = FitAspect(16.0 / 9.0, output, alignment);
+				const auto picture = FitAspect(2.40, screen.picture, alignment);
+				const auto placed = PlaceFittedPicture(output, screen.picture,
+					picture.picture, alignment, 50);
+				Assert::IsTrue(placed.valid);
+				Assert::AreEqual(50, placed.effectivePaddingPixels);
+				Assert::AreEqual(alignment == VerticalPictureAlignment::TOP ? 50.0 : 230.0,
+					placed.picture.top, 0.0001);
+				Assert::AreEqual(800.0, placed.picture.bottom - placed.picture.top, 0.0001);
+			}
+		}
+
+		TEST_METHOD(DestinationPaddingClampsAndPreservesCenter)
+		{
+			const PresentationRect output = { 0.0, 0.0, 1920.0, 1080.0 };
+			for (auto alignment : { VerticalPictureAlignment::TOP,
+				VerticalPictureAlignment::CENTER, VerticalPictureAlignment::BOTTOM })
+			{
+				const auto picture = FitAspect(2.40, output, alignment);
+				for (int padding : { 0, 50, 280, 100000 })
+				{
+					const auto placed = PlaceFittedPicture(output, output,
+						picture.picture, alignment, padding);
+					const bool center = alignment == VerticalPictureAlignment::CENTER;
+					const int expected = center ? 0 : std::min(padding, 280);
+					Assert::IsTrue(placed.valid);
+					Assert::AreEqual(expected, placed.effectivePaddingPixels);
+					Assert::AreEqual(0, placed.outerPaddingPixels);
+					Assert::AreEqual(expected, placed.innerPaddingPixels);
+					Assert::AreEqual(center ? 140.0 :
+						(alignment == VerticalPictureAlignment::TOP ? expected : 280.0 - expected),
+						placed.picture.top, 0.0001);
+					Assert::AreEqual(800.0, placed.picture.bottom - placed.picture.top, 0.0001);
+					if (center) Assert::AreEqual("center-alignment", placed.reason);
+					else if (padding > 280)
+						Assert::AreEqual("limited-to-available-space", placed.reason);
+				}
+			}
+		}
+
+		TEST_METHOD(DestinationPaddingPreservesOuterInsetAndSpendsRemainderOnce)
+		{
+			const PresentationRect output = { 0.0, 0.0, 1920.0, 1080.0 };
+			for (auto alignment : { VerticalPictureAlignment::TOP, VerticalPictureAlignment::BOTTOM })
+			{
+				const auto screen = FitAspect(2.0, output, alignment);
+				const auto picture = FitAspect(2.40, screen.picture, alignment);
+				for (int padding : { 50, 120, 200, 100000 })
+				{
+					const auto placed = PlaceFittedPicture(output, screen.picture,
+						picture.picture, alignment, padding);
+					Assert::IsTrue(placed.valid);
+					Assert::AreEqual(120, placed.outerSlackPixels);
+					Assert::AreEqual(160, placed.innerSlackPixels);
+					Assert::AreEqual(std::min(padding, 120), placed.outerPaddingPixels);
+					Assert::AreEqual(std::min(padding, 280), placed.effectivePaddingPixels);
+					const double sign = alignment == VerticalPictureAlignment::TOP ? 1.0 : -1.0;
+					Assert::AreEqual(screen.picture.top + sign * std::min(padding, 120),
+						placed.screen.top, 0.0001);
+					Assert::AreEqual(picture.picture.top + sign * std::min(padding, 280),
+						placed.picture.top, 0.0001);
+					Assert::AreEqual(960.0, placed.screen.bottom - placed.screen.top, 0.0001);
+					Assert::IsTrue(placed.picture.top >= placed.screen.top &&
+						placed.picture.bottom <= placed.screen.bottom);
+					// Active NLS fills the configured screen, so only outer space is eligible.
+					const auto nls = PlaceFittedPicture(output, screen.picture,
+						screen.picture, alignment, padding);
+					Assert::AreEqual(std::min(padding, 120), nls.effectivePaddingPixels);
+					Assert::AreEqual(0, nls.innerPaddingPixels);
+					Assert::AreEqual(placed.screen.top, nls.picture.top, 0.0001);
+				}
+			}
+		}
+
+		TEST_METHOD(DestinationPaddingHasNoEffectWithoutVerticalSpace)
+		{
+			const PresentationRect output = { 0.0, 0.0, 1920.0, 1080.0 };
+			for (double aspect : { 16.0 / 9.0, 4.0 / 3.0 })
+				for (auto alignment : { VerticalPictureAlignment::TOP, VerticalPictureAlignment::BOTTOM })
+				{
+					const auto picture = FitAspect(aspect, output, alignment);
+					const auto placed = PlaceFittedPicture(output, output,
+						picture.picture, alignment, 50);
+					Assert::IsTrue(placed.valid);
+					Assert::AreEqual(0, placed.effectivePaddingPixels);
+					Assert::AreEqual("no-whole-pixel-space", placed.reason);
+					Assert::AreEqual(picture.picture.top, placed.picture.top);
+					Assert::AreEqual(picture.picture.bottom, placed.picture.bottom);
+				}
+		}
+
+		TEST_METHOD(DestinationPlacementMatrixPreservesSizeAndContainment)
+		{
+			for (const PresentationRect output : {
+				PresentationRect{ 0.0, 0.0, 1920.0, 1080.0 },
+				PresentationRect{ 100.0, 80.0, 3940.0, 2240.0 } })
+				for (auto alignment : { VerticalPictureAlignment::TOP,
+					VerticalPictureAlignment::CENTER, VerticalPictureAlignment::BOTTOM })
+					for (double screenAspect : { 4.0 / 3.0, 16.0 / 9.0, 2.0, 2.35, 2.40 })
+						for (double sourceAspect : { 4.0 / 3.0, 16.0 / 9.0, 2.0, 2.40, 2.76 })
+							for (double lens : { 1.0, 1.25 })
+								for (bool nlsActive : { false, true })
+									for (int padding : { 0, 50, 100000 })
+									{
+										const auto screen = FitAspect(screenAspect, output, alignment);
+										const auto picture = nlsActive ? screen : FitAspect(
+											ApplyAnamorphicLensCompensation(sourceAspect, lens), screen.picture, alignment);
+										const auto placed = PlaceFittedPicture(output, screen.picture,
+											picture.picture, alignment, padding);
+										Assert::IsTrue(placed.valid);
+										Assert::IsTrue(placed.screen.top >= output.top && placed.screen.bottom <= output.bottom);
+										Assert::IsTrue(placed.picture.top >= placed.screen.top - 1e-9 &&
+											placed.picture.bottom <= placed.screen.bottom + 1e-9);
+										Assert::AreEqual(picture.picture.left, placed.picture.left);
+										Assert::AreEqual(picture.picture.right, placed.picture.right);
+										Assert::AreEqual(picture.picture.bottom - picture.picture.top,
+											placed.picture.bottom - placed.picture.top, 1e-9);
+										Assert::IsTrue(placed.effectivePaddingPixels <= padding);
+										Assert::AreEqual(placed.outerPaddingPixels + placed.innerPaddingPixels,
+											placed.effectivePaddingPixels);
+										if (padding == 0 || alignment == VerticalPictureAlignment::CENTER)
+											Assert::AreEqual(picture.picture.top, placed.picture.top);
+									}
+		}
+
+		TEST_METHOD(DestinationPaddingRejectsInvalidBoundsAndHonorsWholePixels)
+		{
+			const PresentationRect output = { 0.0, 0.0, 1920.0, 1080.0 };
+			const double nan = (std::numeric_limits<double>::quiet_NaN)();
+			const double inf = (std::numeric_limits<double>::infinity)();
+			for (const auto picture : { PresentationRect{},
+				PresentationRect{ 0.0, nan, 1920.0, 800.0 },
+				PresentationRect{ 0.0, 0.0, inf, 800.0 },
+				PresentationRect{ 0.0, -1.0, 1920.0, 800.0 },
+				PresentationRect{ 0.0, 0.0, 1921.0, 800.0 } })
+				Assert::IsFalse(PlaceFittedPicture(output, output, picture,
+					VerticalPictureAlignment::TOP, 50).valid);
+			Assert::IsFalse(PlaceFittedPicture(output, output, output,
+				VerticalPictureAlignment::TOP, -1).valid);
+			Assert::IsFalse(PlaceFittedPicture(output, output, output,
+				static_cast<VerticalPictureAlignment>(99), 50).valid);
+			const PresentationRect screen = { 0.0, 0.0, 1920.0, 1000.25 };
+			const PresentationRect picture = { 0.0, 0.0, 1920.0, 900.5 };
+			const auto placed = PlaceFittedPicture(output, screen, picture,
+				VerticalPictureAlignment::TOP, 100000);
+			Assert::AreEqual(79, placed.outerPaddingPixels);
+			Assert::AreEqual(99, placed.innerPaddingPixels);
+			Assert::AreEqual(178, placed.effectivePaddingPixels);
+			Assert::IsTrue(placed.screen.bottom <= output.bottom &&
+				placed.picture.bottom <= placed.screen.bottom);
+		}
+
+		TEST_METHOD(DestinationPlacementFollowsSelectedEnvelopeAndRestoresRestingPosition)
+		{
+			Input input = TrustedScopeCrop();
+			const auto cropped = Evaluate(input);
+			Assert::IsTrue(cropped.applyCrop);
+			input.automaticCropEnabled = false;
+			const auto full = Evaluate(input);
+			AssertFullRaster(full);
+			PresentationEnvelopeGeometryInput envelopeInput;
+			envelopeInput.trustedPicture = cropped.sourceBounds;
+			envelopeInput.observedContent = cropped.sourceBounds;
+			envelopeInput.observedContent.bottom += 100;
+			envelopeInput.observedContentAvailable = true;
+			envelopeInput.expandBottom = true;
+			const auto subtitle = BuildPresentationEnvelope(envelopeInput);
+			Assert::IsTrue(subtitle.valid);
+			const PresentationRect output = { 0.0, 0.0, 1920.0, 1080.0 };
+			for (auto alignment : { VerticalPictureAlignment::TOP, VerticalPictureAlignment::BOTTOM })
+			{
+				double restingTop = -1.0;
+				// Subtitle entry, hold, release, full-raster fallback, and crop reacquisition.
+				for (const auto& source : { cropped.sourceBounds, subtitle.bounds,
+					subtitle.bounds, cropped.sourceBounds, full.sourceBounds, cropped.sourceBounds })
+				{
+					const double aspect = static_cast<double>(source.right - source.left) /
+						(source.bottom - source.top);
+					const auto picture = FitAspect(aspect, output, alignment);
+					const auto placed = PlaceFittedPicture(output, output, picture.picture, alignment, 50);
+					Assert::IsTrue(placed.valid);
+					Assert::AreEqual(picture.picture.bottom - picture.picture.top,
+						placed.picture.bottom - placed.picture.top, 1e-9);
+					Assert::IsTrue(placed.picture.top >= output.top && placed.picture.bottom <= output.bottom);
+					if (source.bottom == cropped.sourceBounds.bottom)
+					{
+						if (restingTop < 0.0) restingTop = placed.picture.top;
+						Assert::AreEqual(restingTop, placed.picture.top);
+					}
+					if (source.bottom == full.sourceBounds.bottom)
+						Assert::AreEqual(0, placed.effectivePaddingPixels);
 				}
 			}
 		}

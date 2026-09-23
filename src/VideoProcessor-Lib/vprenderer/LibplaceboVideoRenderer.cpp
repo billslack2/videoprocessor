@@ -11962,29 +11962,28 @@ struct LibplaceboVideoRenderer::Impl
 			// top/bottom a no-op for the complete NLS presentation.
 			const AlphaSourceCrop::PresentationRect screenAvailable = {
 				target.crop.x0, target.crop.y0, target.crop.x1, target.crop.y1 };
-			const AlphaSourceCrop::CenteredFitDecision screenFit =
-				fitTargetToAspect(screenLayoutAspect,
-					ResolveVerticalPictureAlignment(verticalAlignment));
-			int effectiveScreenEdgePadding = 0;
-			if (screenFit.valid &&
-				screenFit.unusedAxis == AlphaSourceCrop::UnusedSpaceAxis::VERTICAL &&
-				verticalAlignment != "center" && screenEdgePadding > 0)
-			{
-				const double availableSlack = verticalAlignment == "top"
-					? screenAvailable.bottom - screenFit.picture.bottom
-					: screenFit.picture.top - screenAvailable.top;
-				effectiveScreenEdgePadding = std::max(0, std::min(screenEdgePadding,
-					static_cast<int>(std::floor(availableSlack))));
-				const float shift = static_cast<float>(verticalAlignment == "top"
-					? effectiveScreenEdgePadding : -effectiveScreenEdgePadding);
-				target.crop.y0 += shift;
-				target.crop.y1 += shift;
-			}
-			const AlphaSourceCrop::PresentationRect finalScreen = {
+			fitTargetToAspect(screenLayoutAspect,
+				ResolveVerticalPictureAlignment(verticalAlignment));
+			const AlphaSourceCrop::PresentationRect fittedScreen = {
 				target.crop.x0, target.crop.y0, target.crop.x1, target.crop.y1 };
-			auto publishFinalLayout = [&](AlphaSourceCrop::UnusedSpaceAxis axis,
+			// All mapping paths finish here after sizing, including active NLS.
+			// Placement consumes only destination slack and never changes source.crop.
+			auto finishLayout = [&](AlphaSourceCrop::UnusedSpaceAxis axis,
 				const char* mapping)
 			{
+				const AlphaSourceCrop::PresentationRect fittedPicture = {
+					target.crop.x0, target.crop.y0, target.crop.x1, target.crop.y1 };
+				const auto placement = AlphaSourceCrop::PlaceFittedPicture(
+					screenAvailable, fittedScreen, fittedPicture,
+					ResolveVerticalPictureAlignment(verticalAlignment), screenEdgePadding);
+				const auto& finalScreen = placement.screen;
+				if (placement.valid)
+				{
+					target.crop.x0 = static_cast<float>(placement.picture.left);
+					target.crop.y0 = static_cast<float>(placement.picture.top);
+					target.crop.x1 = static_cast<float>(placement.picture.right);
+					target.crop.y1 = static_cast<float>(placement.picture.bottom);
+				}
 				std::ostringstream policy;
 				policy << width << 'x' << height << '|'
 					<< effectiveGeometry.left << ',' << effectiveGeometry.top << '-'
@@ -12004,13 +12003,19 @@ struct LibplaceboVideoRenderer::Impl
 					<< std::lround(target.crop.y1 * 10.0f) << '|'
 					<< static_cast<int>(axis) << '|' << mapping << '|'
 					<< verticalAlignment << '|'
-					<< screenEdgePadding << '|' << effectiveScreenEdgePadding << '|'
+					<< screenEdgePadding << '|' << placement.effectivePaddingPixels << '|'
+					<< placement.outerSlackPixels << '|' << placement.innerSlackPixels << '|'
+					<< placement.reason << '|'
+					<< screenAvailable.left << ',' << screenAvailable.top << ','
+					<< screenAvailable.right << ',' << screenAvailable.bottom << '|'
+					<< finalScreen.left << ',' << finalScreen.top << ','
+					<< finalScreen.right << ',' << finalScreen.bottom << '|'
 					<< cropDecision.verticalTranslationPixels;
 				if (policy.str() == lastFinalLayoutPolicy)
 					return;
 				lastFinalLayoutPolicy = policy.str();
 				DebugLog::Log(
-					"Alpha final layout: sequence=%llu generation=%llu crop_event=%llu epoch=%llu measurement=%llu cadence_repeat=%d raster=%dx%d trusted=%d,%d-%d,%d envelope=%d,%d-%d,%d presentation=%d,%d-%d,%d screen_aspect=%.5f screen=%.1f,%.1f-%.1f,%.1f picture=%.1f,%.1f-%.1f,%.1f unused_axis=%s mapping=%s vertical_alignment=%s screen_edge_padding_requested=%d screen_edge_padding_effective=%d subtitle_shift_source_pixels=%d anamorphic=%.5f crop_reason=\"%s\"",
+					"Alpha final layout: sequence=%llu generation=%llu crop_event=%llu epoch=%llu measurement=%llu cadence_repeat=%d raster=%dx%d trusted=%d,%d-%d,%d envelope=%d,%d-%d,%d presentation=%d,%d-%d,%d screen_aspect=%.5f screen=%.1f,%.1f-%.1f,%.1f picture=%.1f,%.1f-%.1f,%.1f unused_axis=%s mapping=%s vertical_alignment=%s screen_edge_padding_requested=%d screen_edge_padding_effective=%d screen_edge_padding_outer=%d screen_edge_padding_inner=%d outer_vertical_slack=%d inner_vertical_slack=%d placement_reason=%s output=%.1f,%.1f-%.1f,%.1f subtitle_shift_source_pixels=%d anamorphic=%.5f crop_reason=\"%s\"",
 					static_cast<unsigned long long>(sourceSequence),
 					static_cast<unsigned long long>(frameGeneration),
 					cropDiagnosticEvent, viewportRequestSerial, latestActivePictureEvidenceFrame,
@@ -12033,7 +12038,11 @@ struct LibplaceboVideoRenderer::Impl
 					target.crop.x1, target.crop.y1,
 					AlphaSourceCrop::UnusedSpaceAxisName(axis), mapping,
 					verticalAlignment.c_str(),
-					screenEdgePadding, effectiveScreenEdgePadding,
+					screenEdgePadding, placement.effectivePaddingPixels,
+					placement.outerPaddingPixels, placement.innerPaddingPixels,
+					placement.outerSlackPixels, placement.innerSlackPixels, placement.reason,
+					screenAvailable.left, screenAvailable.top,
+					screenAvailable.right, screenAvailable.bottom,
 					cropDecision.verticalTranslationPixels,
 					anamorphicScale,
 					cropDecision.reason.c_str());
@@ -12205,7 +12214,7 @@ struct LibplaceboVideoRenderer::Impl
 
 				if (finalNlsDecision.mode == NlsMappingMode::ACTIVE)
 				{
-					publishFinalLayout(
+					finishLayout(
 						AlphaSourceCrop::UnusedSpaceAxis::NONE, "nls");
 					return;
 				}
@@ -12219,7 +12228,7 @@ struct LibplaceboVideoRenderer::Impl
 						AlphaSourceCrop::ApplyAnamorphicLensCompensation(
 							pl_rect2df_aspect(&source.crop), anamorphicScale),
 						ResolveVerticalPictureAlignment(verticalAlignment));
-				publishFinalLayout(pictureFit.unusedAxis, "linear-nls-fallback");
+				finishLayout(pictureFit.unusedAxis, "linear-nls-fallback");
 				return;
 			}
 
@@ -12229,7 +12238,7 @@ struct LibplaceboVideoRenderer::Impl
 					AlphaSourceCrop::ApplyAnamorphicLensCompensation(
 						pl_rect2df_aspect(&source.crop), anamorphicScale),
 					ResolveVerticalPictureAlignment(verticalAlignment));
-			publishFinalLayout(pictureFit.unusedAxis, "linear");
+			finishLayout(pictureFit.unusedAxis, "linear");
 			// Never apply subtitle translation to the fitted destination. Moving
 			// target.crop cannot reveal source pixels; it only clips one edge and
 			// leaves an unequal gap at the other. Unsupported overlay evidence is

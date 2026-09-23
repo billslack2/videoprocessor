@@ -3,6 +3,7 @@
 #include "AlphaSourceCropPolicy.h"
 
 #include <cmath>
+#include <limits>
 
 
 namespace AlphaSourceCrop
@@ -1861,6 +1862,82 @@ namespace AlphaSourceCrop
 			centerX + pictureWidth * 0.5,
 			pictureTop + pictureHeight };
 		decision.valid = true;
+		return decision;
+	}
+
+	DestinationPlacementDecision PlaceFittedPicture(
+		const PresentationRect& output, const PresentationRect& fittedScreen,
+		const PresentationRect& fittedPicture,
+		VerticalPictureAlignment alignment, int requestedPaddingPixels)
+	{
+		DestinationPlacementDecision decision;
+		decision.screen = fittedScreen;
+		decision.picture = fittedPicture;
+		auto validRect = [](const PresentationRect& rect)
+		{
+			return std::isfinite(rect.left) && std::isfinite(rect.top) &&
+				std::isfinite(rect.right) && std::isfinite(rect.bottom) &&
+				std::isfinite(rect.right - rect.left) &&
+				std::isfinite(rect.bottom - rect.top) &&
+				rect.right > rect.left && rect.bottom > rect.top;
+		};
+		auto contains = [](const PresentationRect& outer, const PresentationRect& inner)
+		{
+			return inner.left >= outer.left && inner.top >= outer.top &&
+				inner.right <= outer.right && inner.bottom <= outer.bottom;
+		};
+		if (!validRect(output) || !validRect(fittedScreen) ||
+			!validRect(fittedPicture) || !contains(output, fittedScreen) ||
+			!contains(fittedScreen, fittedPicture))
+			return decision;
+		if (requestedPaddingPixels < 0)
+		{
+			decision.reason = "invalid-padding";
+			return decision;
+		}
+		if (alignment != VerticalPictureAlignment::TOP &&
+			alignment != VerticalPictureAlignment::CENTER &&
+			alignment != VerticalPictureAlignment::BOTTOM)
+		{
+			decision.reason = "invalid-alignment";
+			return decision;
+		}
+		decision.valid = true;
+		if (alignment == VerticalPictureAlignment::CENTER)
+		{
+			decision.reason = "center-alignment";
+			return decision;
+		}
+		const bool top = alignment == VerticalPictureAlignment::TOP;
+		auto wholePixels = [](double slack)
+		{
+			return static_cast<int>(std::floor(std::min(slack,
+				static_cast<double>((std::numeric_limits<int>::max)()))));
+		};
+		decision.outerSlackPixels = wholePixels(top
+			? output.bottom - fittedScreen.bottom : fittedScreen.top - output.top);
+		decision.innerSlackPixels = wholePixels(top
+			? fittedScreen.bottom - fittedPicture.bottom : fittedPicture.top - fittedScreen.top);
+		decision.outerPaddingPixels = std::min(requestedPaddingPixels,
+			decision.outerSlackPixels);
+		// Keep existing screen calibration behavior, then spend the remaining
+		// request inside that screen. Floor each boundary independently: a
+		// fractional pixel outside the screen cannot fund an inset inside it.
+		decision.innerPaddingPixels = std::min(
+			requestedPaddingPixels - decision.outerPaddingPixels,
+			decision.innerSlackPixels);
+		decision.effectivePaddingPixels = decision.outerPaddingPixels +
+			decision.innerPaddingPixels;
+		const double outerShift = top ? decision.outerPaddingPixels : -decision.outerPaddingPixels;
+		const double pictureShift = top ? decision.effectivePaddingPixels : -decision.effectivePaddingPixels;
+		decision.screen.top += outerShift;
+		decision.screen.bottom += outerShift;
+		decision.picture.top += pictureShift;
+		decision.picture.bottom += pictureShift;
+		decision.reason = requestedPaddingPixels == 0 ? "zero-padding" :
+			(decision.effectivePaddingPixels == requestedPaddingPixels ? "applied" :
+				(decision.effectivePaddingPixels == 0 ? "no-whole-pixel-space" :
+					"limited-to-available-space"));
 		return decision;
 	}
 
