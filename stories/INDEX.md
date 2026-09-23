@@ -6,9 +6,9 @@ story may have ordered child-task IDs as defined below.
 
 ## Registry state
 
-- Last assigned root story: `VP-0192`
-- Next root story number: `VP-0193`
-- Total indexed items: 211
+- Last assigned root story: `VP-0193`
+- Next root story number: `VP-0194`
+- Total indexed items: 212
 
 ## Story locations
 
@@ -248,6 +248,8 @@ they must not contain requirements that are absent from this file.
 | VP-0191 | Done | Prevent incompatible saved queue profiles during refresh transitions |
 
 | VP-0192 | Done | Windows installer with runtime setup and unrestricted build upgrades |
+
+| VP-0193 | Backlog | Safe, concrete screen positioning improvements |
 
 ## Codex story workflow
 
