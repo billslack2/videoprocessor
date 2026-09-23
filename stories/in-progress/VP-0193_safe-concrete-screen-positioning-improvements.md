@@ -2,10 +2,29 @@
 
 ## Status
 
-Backlog (2026-09-23). Requested as a new story following investigation of
-Top/Center/Bottom placement and its relationship to black-bar processing.
-Source inspection is complete enough to identify a bounded positioning issue;
-implementation and runtime reproduction have not started.
+In Progress (2026-09-23). Implementation authorized in this task. Current GitHub
+default and latest beta both resolve to `v1.3.005-beta`, fetched at
+`8becfd68a1832b4f615657b3e67398661a7dde40`. Source branch:
+`codex/vp-0193-screen-positioning`; clean starting worktree:
+`E:\codex\videoprocessor\vp-0193-screen-positioning`.
+
+Readiness review: the existing source-selection -> size/mapping -> destination
+placement model is sound. Configuration keys and live-apply plumbing already
+exist. The confirmed correction is final-picture padding; no new detector,
+source-lifetime, crop, or subtitle policy is required. Keep the existing outer
+screen inset first for compatibility, and use only the unconsumed request in
+eligible inner picture space after fitting. Apply this once through a shared
+final placement helper used by linear and active/fallback NLS paths. Whole-pixel
+insets are bounded at each containment boundary; screen remains inside output,
+and picture remains inside screen. The helper receives destination rectangles
+only, so cannot change source selection or scale.
+
+First validation step: extract the existing placement behavior and add a native
+regression for inner-only vertical space; record its failure before correcting
+it. Follow with nested-layout, no-space, invalid-geometry, and presentation
+sequence coverage, configuration round trips, and an x64 Release build. Hardware
+visual acceptance remains a separate required review item. No deployed debug
+log was present at either documented log path during readiness inspection.
 
 ## User story
 

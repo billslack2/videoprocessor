@@ -249,7 +249,7 @@ they must not contain requirements that are absent from this file.
 
 | VP-0192 | Done | Windows installer with runtime setup and unrestricted build upgrades |
 
-| VP-0193 | Backlog | Safe, concrete screen positioning improvements |
+| VP-0193 | In Progress | Safe, concrete screen positioning improvements |
 
 ## Codex story workflow
 
