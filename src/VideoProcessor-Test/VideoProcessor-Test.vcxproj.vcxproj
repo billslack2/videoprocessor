@@ -237,6 +237,7 @@
     <ClCompile Include="ActivePictureTransitionModelTests.cpp" />
 	<ClCompile Include="ActivePictureAnalyzerTests.cpp" />
     <ClCompile Include="ActivePictureEvidenceTests.cpp" />
+    <ClCompile Include="InwardCaptionEvidenceTests.cpp" />
     <ClCompile Include="FullRasterColorEvidenceFormatTests.cpp" />
 	<ClCompile Include="InvalidCaptureStateGraceTests.cpp" />
 	<ClCompile Include="EotfTransitionStabilizerTests.cpp" />

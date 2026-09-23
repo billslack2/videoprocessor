@@ -26,6 +26,7 @@
 #include <vprenderer/AlphaRenderLoadMeter.h>
 #include <vprenderer/AlphaNativeRgbIngress.h>
 #include <vprenderer/AlphaSourceCropPolicy.h>
+#include <vprenderer/InwardCaptionEvidence.h>
 #include <vprenderer/HdrPeakAnalysisCrop.h>
 #include <vprenderer/NativeStatsOverlayPlacement.h>
 #include <SceneDetector.h>
@@ -3933,6 +3934,25 @@ struct LibplaceboVideoRenderer::Impl
 	AlphaSourceCrop::KnownFullRasterRetentionState knownFullRasterRetention;
 	ActivePictureEvidence latestRawPictureEvidence;
 	uint64_t latestRawPictureEvidenceSequence = 0;
+    AlphaSourceCrop::InwardCaptionEvidence inwardCaptionEvidence;
+    ActivePictureBounds inwardCaptionEstablishedBase;
+    ActivePictureFrameIdentity inwardCaptionIdentity;
+
+    bool CurrentInwardCaptionProtection(uint64_t generation, uint64_t sequence,
+        uint64_t epoch, const ActivePictureBounds& geometry) const
+    {
+        const auto& picture = inwardCaptionEvidence.picture.trustedBounds;
+        return inwardCaptionEvidence.valid && automaticSourceCrop && scopeSubtitleFit &&
+            !nlsRequested && !fixedCropAspectConfigured &&
+            inwardCaptionIdentity.transportGeneration == generation &&
+            inwardCaptionIdentity.acceptedSequence == sequence &&
+            inwardCaptionIdentity.viewportGeneration == epoch &&
+            picture.left == geometry.left && picture.top == geometry.top &&
+            picture.right == geometry.right && picture.bottom == geometry.bottom &&
+            picture.rasterWidth == geometry.rasterWidth &&
+            picture.rasterHeight == geometry.rasterHeight &&
+            picture.trustedBarAxes == geometry.trustedBarAxes;
+    }
 	uint64_t latestFullRasterCommitSequence = 0;
 	uint64_t latestFullRasterCommitEpoch = 0;
 	std::string lastSourceCropPolicy;
@@ -8112,6 +8132,9 @@ struct LibplaceboVideoRenderer::Impl
 		knownFullRasterRetention = {};
 		latestRawPictureEvidence = {};
 		latestRawPictureEvidenceSequence = 0;
+        inwardCaptionEvidence = {};
+        inwardCaptionEstablishedBase = {};
+        inwardCaptionIdentity = {};
 		latestFullRasterCommitSequence = 0;
 		latestFullRasterCommitEpoch = 0;
 	}
@@ -8343,6 +8366,7 @@ struct LibplaceboVideoRenderer::Impl
 		// This catches a direct bars-to-live-raster cut on a non-scheduled frame;
 		// sparse acquisition cadence is still used when no pixels are excluded.
 		const bool forceRetentionSafetyAnalysis = cropPresentationRecovery.active ||
+            inwardCaptionEvidence.valid ||
 			AlphaSourceCrop::RequiresPerFramePresentationInspection(
 				trustedCropIsCurrentGeneration,
 				sceneSnapshotIsCurrentGeneration,
@@ -8488,10 +8512,52 @@ struct LibplaceboVideoRenderer::Impl
 			const auto diagnosticMeasuredClass = latestRawPictureEvidence.classification;
             const auto diagnosticMeasuredBounds = diagnosticMeasuredClass == ActivePictureClassification::PROVISIONAL
                 ? latestRawPictureEvidence.proposedBounds : latestRawPictureEvidence.trustedBounds;
+            // Re-inspect the candidate's own bars, not the obsolete taller
+            // picture. History proposes geometry; these current pixels certify
+            // both the picture and the complete caption-preserving envelope.
+            const bool previousCaptionProtected = inwardCaptionEvidence.valid &&
+                CurrentInwardCaptionProtection(analysisSource.generation,
+                    inwardCaptionIdentity.acceptedSequence,
+                    currentIdentity.viewportGeneration, presentationBeforeObservation);
+            const bool captionContinuation = previousCaptionProtected &&
+                inwardCaptionIdentity.transportGeneration == currentIdentity.transportGeneration &&
+                inwardCaptionIdentity.sourceFormatGeneration == currentIdentity.sourceFormatGeneration &&
+                inwardCaptionIdentity.viewportGeneration == currentIdentity.viewportGeneration &&
+                inwardCaptionIdentity.acceptedSequence <= frameNumber &&
+                frameNumber - inwardCaptionIdentity.acceptedSequence <= 1;
+            const auto captionBase = captionContinuation
+                ? inwardCaptionEstablishedBase : presentationBeforeObservation;
+            inwardCaptionEvidence = {};
+            inwardCaptionIdentity = {};
+            if (hadCurrentTrustedCropGeometry && automaticSourceCrop && scopeSubtitleFit &&
+                configuredScreenActive && !nlsRequested && !fixedCropAspectConfigured &&
+                globalNearBlack.evaluated && !globalNearBlack.nearBlack &&
+                nearBlackPresentationEpisode.mode == AlphaSourceCrop::NearBlackPresentationMode::INACTIVE &&
+                !movingPictureTransition.active && !movingPictureTransition.awaitingPublication &&
+                !scopeSubtitleDrift.IsActive() &&
+                scopeVerticalBarPresentation.action == AlphaSourceCrop::VerticalBarPresentationAction::NONE &&
+                !outwardPictureConfirmation.verticalPresentationSeen)
+            {
+                inwardCaptionEvidence = AlphaSourceCrop::InspectInwardCaptionEvidence(
+                    analysisSource, latestRawPictureEvidence, captionBase, nlsTransition);
+                if (inwardCaptionEvidence.valid)
+                {
+                    evidence = inwardCaptionEvidence.picture;
+                    inwardCaptionEstablishedBase = captionBase;
+                    inwardCaptionIdentity = currentIdentity;
+                }
+            }
+            if (previousCaptionProtected && !inwardCaptionEvidence.valid)
+                DebugLog::Log("Alpha inward caption protection ended: generation=%llu sequence=%llu epoch=%llu measured_class=%d measured=%d,%d-%d,%d reason=%s",
+                    analysisSource.generation, frameNumber, currentIdentity.viewportGeneration,
+                    static_cast<int>(diagnosticMeasuredClass), diagnosticMeasuredBounds.left,
+                    diagnosticMeasuredBounds.top, diagnosticMeasuredBounds.right, diagnosticMeasuredBounds.bottom,
+                    inwardCaptionEvidence.reason);
             // Preserve raw bar contradictions before either darkness constraint can
 			// downgrade them. Hypothesis bars may revoke, never establish full raster.
-			if (evidence.classification == ActivePictureClassification::BAR_CROP_TRUSTED ||
-				nativeBootstrapEvidence.classification == ActivePictureClassification::BAR_CROP_TRUSTED)
+			if (!inwardCaptionEvidence.valid &&
+                (evidence.classification == ActivePictureClassification::BAR_CROP_TRUSTED ||
+				 nativeBootstrapEvidence.classification == ActivePictureClassification::BAR_CROP_TRUSTED))
 				latestRawPictureEvidence.classification = ActivePictureClassification::BAR_CROP_TRUSTED;
 			latestRawPictureEvidenceSequence = frameNumber;
 			const bool nearBlackAcquisitionBlocked =
@@ -8837,6 +8903,24 @@ struct LibplaceboVideoRenderer::Impl
 				nlsGeometrySourceFormatKey =
 					currentIdentity.sourceFormatGeneration;
                 ++nlsGeometryGeneration;
+                if (CurrentInwardCaptionProtection(analysisSource.generation,
+                    frameNumber, currentIdentity.viewportGeneration, nlsGeometry))
+                {
+                    // Commit picture and protection together. No subtitle
+                    // translation is synthesized from this picture proof.
+                    ClearScopeSubtitleEvidence();
+                    ClearScopePresentationEvidence();
+                    scopeSubtitleInspection = {};
+                    scopeVerticalInspectionBridge = {};
+                    DebugLog::Log("Alpha inward caption adoption: generation=%llu sequence=%llu epoch=%llu queued=%d base=%d,%d-%d,%d picture=%d,%d-%d,%d protected=%d,%d-%d,%d placement=bounded-fit",
+                        analysisSource.generation, frameNumber, currentIdentity.viewportGeneration,
+                        applyScheduledDecision ? 1 : 0,
+                        inwardCaptionEstablishedBase.left, inwardCaptionEstablishedBase.top,
+                        inwardCaptionEstablishedBase.right, inwardCaptionEstablishedBase.bottom,
+                        nlsGeometry.left, nlsGeometry.top, nlsGeometry.right, nlsGeometry.bottom,
+                        inwardCaptionEvidence.protectedBounds.left, inwardCaptionEvidence.protectedBounds.top,
+                        inwardCaptionEvidence.protectedBounds.right, inwardCaptionEvidence.protectedBounds.bottom);
+                }
                 if (applyScheduledDecision && bufferedTranslationHandoff)
                 {
                     // Retire the old owner only after the actual geometry publication.
@@ -9564,6 +9648,9 @@ struct LibplaceboVideoRenderer::Impl
 		{
 			// An invalid analysis view is not a black frame. Publish an explicit
 			// unsafe result so neither a timer nor stale evidence can preserve crop.
+            inwardCaptionEvidence = {};
+            inwardCaptionEstablishedBase = {};
+            inwardCaptionIdentity = {};
 			latestActivePictureObservationSupportsCrop = false;
 			latestActivePictureEvidenceAvailable = false;
 			latestActivePictureEvidenceClassification =
@@ -9938,9 +10025,13 @@ struct LibplaceboVideoRenderer::Impl
 				latestCropRetentionEvidence.excludedVerticalBandsPixelSafe ? 1 : 0);
 		bool subtitleBarAnalysisScheduled = false;
 		bool subtitleBarAnalysisCompleted = false;
+        const bool inwardCaptionProtected = configuredScreenActive && nlsGeometryAvailable &&
+            nlsGeometrySourceGeneration == frameGeneration &&
+            CurrentInwardCaptionProtection(frameGeneration, sourceSequence,
+                viewportRequestSerial, nlsGeometry);
 		const auto subtitlePresentationBeforeAnalysis = scopeVerticalBarPresentation;
 		const auto fitBeforeAnalysis = scopeSubtitleFitConfirmation;
-		const float subtitleShiftSourcePixels =
+		const float subtitleShiftSourcePixels = inwardCaptionProtected ? 0.0f :
 			UpdateScopeSubtitleShift(&analysisSource,
 				width, height, configuredScreenActive, subtitleBarAuthority,
 				sourceSequence, forceSubtitleBarAnalysis,
@@ -10455,7 +10546,7 @@ struct LibplaceboVideoRenderer::Impl
 			 analysisValid = analysisSource.IsValid(),
 			 sceneHold, sceneResult, cadenceRepeat, subtitleShiftSourcePixels,
 			 subtitleBarAnalysisScheduled, subtitleBarAnalysisCompleted,
-			 forceSubtitleBarAnalysis,
+			 forceSubtitleBarAnalysis, inwardCaptionProtected,
 			 currentBarAuthority, sceneBarAuthority, heldBarAnalysisAuthority,
 			 subtitleBarAuthority,
 			 &hdrPeakAnalysisMotionProtectionPixels](
@@ -11160,6 +11251,31 @@ struct LibplaceboVideoRenderer::Impl
                 movingPictureTransition, frameGeneration, sourceSequence) &&
                 movingPictureTransition.identity.viewportGeneration == viewportRequestSerial;
 			cropInput.framePresentationEpoch = viewportRequestSerial;
+            const bool protectedCaptionFit = inwardCaptionProtected && configuredScreenActive &&
+                effectiveGeometryAvailable && effectiveGeometrySourceGeneration == frameGeneration &&
+                CurrentInwardCaptionProtection(frameGeneration, sourceSequence,
+                    viewportRequestSerial, effectiveGeometry) &&
+                !cropInput.movingPictureTransition && !nearBlackEpisodeFullRaster;
+            if (protectedCaptionFit)
+            {
+                // The candidate proof includes every picture and caption pixel.
+                // Use the existing bounded-fit policy, never a prematurely
+                // confirmed translation or a crop of the caption itself.
+                cropInput.verticalTranslationActive = false;
+                cropInput.verticalTranslationConfirmationPending = false;
+                cropInput.verticalFitConfirmationPending = false;
+                cropInput.verticalTranslationBaseRetentionActive = false;
+                cropInput.verticalTranslationEngageBaseRetentionActive = false;
+                cropInput.outwardPresentationActive = true;
+                cropInput.outwardExpansionAvailable = true;
+                cropInput.outwardExpansion = inwardCaptionEvidence.protectedBounds;
+                cropInput.outwardExpansionSourceGeneration = frameGeneration;
+                cropInput.currentVisibleBoundsAvailable = true;
+                cropInput.currentVisibleBase = effectiveGeometry;
+                cropInput.currentVisibleSourceGeneration = frameGeneration;
+                cropInput.currentVisibleSourceSequence = sourceSequence;
+                cropInput.currentVisibleBounds = inwardCaptionEvidence.protectedBounds;
+            }
 			const bool pictureConfirmationPending =
 				AlphaSourceCrop::HasCurrentPictureTransitionHandoff(cropInput);
 			AlphaSourceCrop::Decision cropDecision =
@@ -11232,6 +11348,10 @@ struct LibplaceboVideoRenderer::Impl
 			recoveryInput.nearBlackEvaluated = episodeInput.nearBlackEvaluated;
 			recoveryInput.globalNearBlack = episodeInput.globalNearBlack;
 			recoveryInput.confirmedPresentationResolved = episodeDecision.releasedToTrustedCrop ||
+                (protectedCaptionFit && cropDecision.applyCrop &&
+                 cropDecision.owner == AlphaSourceCrop::DecisionOwner::OUTWARD_FIT &&
+                 ActivePictureBoundsContain(cropDecision.sourceBounds,
+                    inwardCaptionEvidence.protectedBounds)) ||
 				(episodeInput.measurementCurrent && cropDecision.applyCrop &&
 				 ((cropDecision.owner == AlphaSourceCrop::DecisionOwner::OUTWARD_FIT &&
 				   confirmedCurrentVerticalFit) ||
@@ -11318,11 +11438,13 @@ struct LibplaceboVideoRenderer::Impl
 				aspectLimitFill = AlphaSourceCrop::EvaluateFixedAspectCrop(
 					fixedCropInput);
 			}
-			else if (nlsPresentationFailOpen || recoveryDecision.boundedPresentation)
+			else if (protectedCaptionFit || nlsPresentationFailOpen || recoveryDecision.boundedPresentation)
 			{
 				aspectLimitFill.sourceBounds = cropDecision.sourceBounds;
 				aspectLimitFill.reason =
-					"recovery preserves the complete visible envelope; aspect-limit fill withheld";
+                    protectedCaptionFit
+                    ? "known inward caption return preserves picture and caption; aspect-limit fill withheld"
+                    : "recovery preserves the complete visible envelope; aspect-limit fill withheld";
 			}
 			else if (nlsOwnsPresentationGeometry)
 			{
@@ -15076,6 +15198,8 @@ void LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
     ActivePictureBounds proofBase;
     ActivePictureTransitionModel liveProofModel;
     bool inwardProofEligible = false;
+    bool inwardCaptionInspectionEligible = false;
+    uint64_t inwardCaptionSourceGeneration = 0, inwardCaptionViewport = 0;
     bool shadowFit = false;
     bool diagnosticTrustedBase = false, diagnosticOwnerEligible = false;
     uint64_t diagnosticOwner = 0;
@@ -15122,6 +15246,13 @@ void LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
             // certificate; do not relax the inward proof's owner veto.
             inwardProofEligible = unowned && !m_impl->movingPictureTransition.active &&
                 !m_impl->movingPictureTransition.awaitingPublication;
+            inwardCaptionInspectionEligible = inwardProofEligible &&
+                m_impl->automaticSourceCrop && m_impl->scopeSubtitleFit &&
+                m_impl->renderConfiguredScreenActive && !m_impl->nlsRequested &&
+                !m_impl->fixedCropAspectConfigured &&
+                m_impl->nearBlackPresentationEpisode.mode == AlphaSourceCrop::NearBlackPresentationMode::INACTIVE;
+            inwardCaptionSourceGeneration = m_impl->nlsGeometrySourceGeneration;
+            inwardCaptionViewport = m_impl->renderViewportRequestSerial;
         }
     }
     std::vector<AlphaSourceCrop::BufferedPictureExpansionSample> proofSamples;
@@ -15166,21 +15297,33 @@ void LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
 		};
 		const ActivePictureEvidence evidence = queued.activePicturePreviewAnalyzed
 			? queued.activePicturePreviewEvidence : ExtractActivePictureEvidence(source);
+
+        auto observedEvidence = evidence;
+        if (inwardCaptionInspectionEligible &&
+            queued.activePictureIdentity.transportGeneration == inwardCaptionSourceGeneration &&
+            queued.activePictureIdentity.viewportGeneration == inwardCaptionViewport)
+        {
+            const auto caption = AlphaSourceCrop::InspectInwardCaptionEvidence(
+                source, evidence, proofBase, liveProofModel);
+            if (caption.valid) observedEvidence = caption.picture;
+        }
 		PreviewEvidence preview;
+		// Cache only extraction. Candidate proof belongs to this exact live
+        // base/window and must be recomputed when the consumer inspects pixels.
 		preview.evidence = evidence;
 		preview.identity = queued.activePictureIdentity;
-		preview.observation = MakeActivePictureObservation(evidence,
+		preview.observation = MakeActivePictureObservation(observedEvidence,
 			queued.sourceSequence, state.displayMode->RefreshRateHz());
-		if (evidence.available)
+		if (observedEvidence.available)
 		{
-			preview.observation.bounds = evidence.classification ==
+			preview.observation.bounds = observedEvidence.classification ==
 				ActivePictureClassification::BAR_CROP_TRUSTED
-				? evidence.trustedBounds : evidence.proposedBounds;
-			preview.observation.classification = evidence.classification;
-			if (evidence.classification ==
+				? observedEvidence.trustedBounds : observedEvidence.proposedBounds;
+			preview.observation.classification = observedEvidence.classification;
+			if (observedEvidence.classification ==
 				ActivePictureClassification::BAR_CROP_TRUSTED)
 			{
-				if (queued.activePicturePreviewAnalyzed)
+				if (queued.activePicturePreviewAnalyzed && queued.activePicturePreviewNearBlackEvaluated)
 				{
 					preview.nearBlackEvaluated = queued.activePicturePreviewNearBlackEvaluated;
 					preview.nearBlack = queued.activePicturePreviewNearBlack;
