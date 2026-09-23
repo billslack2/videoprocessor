@@ -2,29 +2,68 @@
 
 ## Status
 
-In Progress (2026-09-23). Implementation authorized in this task. Current GitHub
-default and latest beta both resolve to `v1.3.005-beta`, fetched at
-`8becfd68a1832b4f615657b3e67398661a7dde40`. Source branch:
-`codex/vp-0193-screen-positioning`; clean starting worktree:
+Review (2026-09-23). Implementation committed and pushed as
+`e0ce8e8a5ab513ad1d021b9b9fed38493dd3308b` on
+`codex/vp-0193-screen-positioning` in
 `E:\codex\videoprocessor\vp-0193-screen-positioning`.
+Draft PR: https://github.com/billslack2/videoprocessor/pull/111.
+Current default/latest beta was rediscovered as `v1.3.005-beta`, still at
+`8becfd68a1832b4f615657b3e67398661a7dde40` when the PR was created.
 
-Readiness review: the existing source-selection -> size/mapping -> destination
-placement model is sound. Configuration keys and live-apply plumbing already
-exist. The confirmed correction is final-picture padding; no new detector,
-source-lifetime, crop, or subtitle policy is required. Keep the existing outer
-screen inset first for compatibility, and use only the unconsumed request in
-eligible inner picture space after fitting. Apply this once through a shared
-final placement helper used by linear and active/fallback NLS paths. Whole-pixel
-insets are bounded at each containment boundary; screen remains inside output,
-and picture remains inside screen. The helper receives destination rectangles
-only, so cannot change source selection or scale.
+The source-selection -> size/mapping -> destination-placement model is sound.
+The correction uses a shared final-placement helper after picture sizing in
+linear, active NLS and fallback NLS paths. It preserves existing outer-screen
+inset first, then spends only the remaining request inside the screen. Each
+boundary is limited to its whole-pixel slack. Source selection and picture
+sizing are absent from the helper interface. Center, zero padding and no-space
+behavior remain unchanged. Final-layout logs now report outer/inner slack and
+inset, effective/requested padding, limiting reason and all three rectangles.
+Configuration help and reference text describe the corrected behavior.
 
-First validation step: extract the existing placement behavior and add a native
-regression for inner-only vertical space; record its failure before correcting
-it. Follow with nested-layout, no-space, invalid-geometry, and presentation
-sequence coverage, configuration round trips, and an x64 Release build. Hardware
-visual acceptance remains a separate required review item. No deployed debug
-log was present at either documented log path during readiness inspection.
+Automated evidence (paths relative to the source worktree):
+
+- Red regression: `TestResults/vp0193-red.trx` records expected 50 / actual 0
+  with the original outer-only calculation before the correction.
+- All eight added native regressions pass, including 1,800 geometry combinations,
+  nested containment, no-space, invalid/whole-pixel cases, selected subtitle
+  envelope entry/hold/release and profile inheritance/persistence/reload.
+- Full native suite: `TestResults/vp0193-native-all.trx` records 1,473/1,474
+  passed. The single failure explicitly required a Release renderer DLL that
+  had not yet been built. After building it, the integration test passed in
+  `TestResults/vp0193-renderer-integration.trx`. No unresolved failures remain.
+- Qt tests `every page round trips` and `Screen Config sections and inline units`
+  pass (`vp0193-config-roundtrip.log`, `vp0193-config-screen.log`). They cover
+  output-pixel units, Center disable/value retention, saved padding and reload.
+- x64 Release builds succeeded for host, renderer, ConfigDiscovery, Config and
+  tests. Native projects used installed VS2019 v142/MFC; Qt projects used VS2026
+  v143 and Qt 6.8.3. Production build logs: `vp0193-release-build.log` and
+  `vp0193-config-release-build.log`. Host/renderer version generation records
+  source commit `e0ce8e8a` and `VERSION_DIRTY=false`.
+- Existing compiler warnings and Qt deployment-tool warnings (DX compiler DLLs
+  and VCINSTALLDIR) remain; this is build evidence, not installer qualification.
+  Initial toolset/debug-info build issues were resolved with the installed
+  native MFC toolset and a clean native-test rebuild.
+
+Release output SHA-256:
+
+- `x64/Release/VideoProcessor-GUI.exe`:
+  `70C9B4249474E3F2A2E7F8BD9F543E539570DCED37FCCF381B1972C33EB0AB0F`
+- `x64/Release/vprenderer/VideoProcessorVPRenderer.dll`:
+  `C613E6356F1E352A670835AD221BD5747FF40DD2E0FD187D43D41943EF9FE8A8`
+- `x64/Release/VideoProcessorConfig.exe`:
+  `CC0DBB18F14090971732F658E8DD2F6D9623D6F4AFBD6EA33CC7C2EFE8C8BF41`
+
+Remaining acceptance: review placement ordering/compatibility and visually
+validate Top/Center/Bottom with zero/positive/excessive padding on 16:9 and scope
+targets, including subtitles, NLS, Screen/Zoom selection and live Apply. Automated
+geometry/envelope and reload coverage does not establish actual display/capture
+behavior. Existing crop/profile authority policy is unchanged; VP-0190 remains
+separate. The other bottom-positioning/zoom-to-fill field report is not claimed
+resolved. No deployed log was available at either documented path on inspection.
+
+Proposed merge/release decision: keep in Review until code/build review and live
+visual acceptance are complete. No merge, deployment, active configuration edit,
+installer or portable package was performed.
 
 ## User story
 
@@ -133,14 +172,11 @@ new story's padding correction explains every field report.
 
 ## Readiness and next action
 
-Reproduce the inner-slack example on the freshly discovered beta. Record the
-coordinate/containment contract for nested screen and picture placement, and
-verify the current settings/live-apply and subtitle paths before implementation.
-Compare existing outer-only layouts to the proposed final layout so the change
-cannot silently reposition established screen calibrations. Keep any additional
-fix limited to a demonstrated layout defect with a regression. If a new unknown
-would change crop authority or subtitle policy, record it separately rather than
-enlarging this story's correction.
+Readiness completed before implementation: existing settings and live-apply
+plumbing are usable, source/size/placement separation is appropriate, and the
+padding defect reproduces using fixed geometry. Review draft PR #111 and the
+recorded automated/build evidence. The next acceptance step is live visual
+validation listed under Status, followed by the merge/release decision.
 
 ## Related stories and source locations
 
