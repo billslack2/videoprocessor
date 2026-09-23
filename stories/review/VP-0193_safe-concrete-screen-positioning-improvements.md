@@ -65,6 +65,42 @@ Proposed merge/release decision: keep in Review until code/build review and live
 visual acceptance are complete. No merge, deployment, active configuration edit,
 installer or portable package was performed.
 
+## Requested build and deployment (2026-09-23)
+
+The user requested an EXE, setup and deployment. Built the exact clean, pushed
+feature commit `e0ce8e8a5ab513ad1d021b9b9fed38493dd3308b`; PR #111 remains
+unmerged. Latest beta/default was rechecked as `v1.3.005-beta` at `8becfd68`.
+The previously deployed gradual-expansion commit `de30461a` is an ancestor of
+that beta, so its source changes are included.
+
+Export directory:
+`E:\codex\releases\VideoProcessor-1.3.005-beta-e0ce8e8a5ab5-20260923`.
+
+- `VideoProcessor.exe` SHA-256:
+  `A2766757AFAC247298C13793313BB0D333476825EA5C945E469393F447B1C802`
+- `VideoProcessorSetup-1.3.005-beta-e0ce8e8a5ab5.exe` SHA-256:
+  `923C94CDCE73A7C68FB510AC35CFE0F562498E4BBD6116F1664EB30FC24530DD`
+- Rebuilt renderer SHA-256:
+  `8DAB4BF3E4A988DD258C69E44794475A02622173D578D3D19D79409F021B851B`
+- Full clean x64 Release solution rebuild passed. All 1,474 native tests passed
+  in this build; installer support, identity and runtime-packaging checks passed.
+  Both targeted configuration tests passed again against the rebuilt binaries.
+- Exact tools, source fingerprint, build/payload hashes and test results are in
+  `validation/release-receipt.json`, `installer-build.json`,
+  `INSTALL-MANIFEST.json`, checksum sidecars and the validation logs.
+- Setup is unsigned and includes app-local runtime DLLs. No public release or
+  clean-Windows/interactive qualification is claimed.
+
+Deployment is pending: isolated installer lifecycle testing cancelled safely
+because existing Config processes were running: PID 10840 in
+`C:\Videoprocessor\vp` and PID 24308 in `C:\vptest2`. Both predate this task's
+build. The user was asked to save edits and Exit both tray instances; they were
+not terminated. Setup's safety check ran before replacement, and no deployed
+files/configuration were changed. Resume lifecycle/failure tests after they exit,
+then run the prepared verified-backup deployment and record final installed
+host/renderer hashes and unchanged operator configuration/state. Remaining live
+screen acceptance still applies. Story remains Review.
+
 ## User story
 
 As a VP Renderer operator, I want Top, Center, Bottom, and screen-edge padding
