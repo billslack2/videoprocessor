@@ -1109,3 +1109,27 @@ Installer remains unsigned. Clean Windows without Visual Studio and interactive
 Config Apply/OK/reopen qualification were not performed. This packaging did not
 modify deployment or user configuration. Pinned source/tools/hashes provide
 repeatable identity, not a claim of byte-identical rebuilds.
+
+### 2026-09-23 tested lookahead and gradual-hold integration
+
+User authorized merging after reviewing the recent playback evidence and accepting
+ordinary viewing as the next validation step. [PR #110](https://github.com/billslack2/videoprocessor/pull/110)
+merged the accumulated available-frame lookahead, caption/presentation handoff,
+diagnostics and gradual scope-hold changes into `v1.3.005-beta` at
+`8becfd68a1832b4f615657b3e67398661a7dde40`. The fetched merge tree is identical
+to the tested/deployed feature commit `de30461a41c049ea07f1792611588d4bd524d05f`.
+GitHub reported a clean merge with no configured PR checks; local validation is
+the clean x64 Release build and 1,466 passing native tests recorded above.
+
+Two September 23 playback sessions (12:29:35-12:35:06 and 14:52:25-16:12:29)
+verified host/renderer identity, 19 genuine early applications (11 outward,
+8 inward), actual-availability-bounded preview, three gradual holds, and zero
+active general recovery episodes. This does not prove perfect detection:
+one ramp adjusted before motion recognition; four near-black/title withdrawals
+lack synchronized video; the dedicated caption-return path was not independently
+exercised by these sessions. Live-only endpoint quiet confirmation is unchanged.
+
+[Playback review and retained log snapshots](C:/Users/bslac/AppData/Local/Temp/vp-lookahead-review-20260923-161232/review.md).
+The already supplied setup/ZIP remain identified by the exact tested feature
+commit. This merge did not rebuild packages, redeploy, change configuration or
+update GitHub Release assets. The previously user-closed story remains Done.
