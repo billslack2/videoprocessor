@@ -1076,3 +1076,36 @@ Host and renderer startup logs both confirm clean commit
 `deployment-receipt.json`, the original RC2 asset/notes backup, final remote
 asset metadata, SHA files, and local validation evidence. Unsigned and clean-VM /
 interactive configuration qualification limitations above still apply.
+
+### 2026-09-23 requested test packages: gradual scope hold
+
+Packaged the user's explicitly selected deployed source `de30461a41c049ea07f1792611588d4bd524d05f`,
+preserving the separate caption return and lookahead fixes. The gradual-motion
+presentation holds the previously admitted scope crop until existing settlement
+or affirmative full-raster authority. This does not change this closed story's
+status or claim visual acceptance of the new test build. Source is recoverable
+on `codex/release-de30461a`; no beta merge or GitHub Release update was performed.
+
+Clean packaging checkout: `E:\codex\videoprocessor\release-de30461a`.
+- [Setup EXE](C:/Users/bslac/Documents/ChatGPT/Done/VP-test-de30461a41c0/VideoProcessorSetup-1.3.005-beta-de30461a41c0.exe).
+- [Portable ZIP](C:/Users/bslac/Documents/ChatGPT/Done/VP-test-de30461a41c0/VideoProcessor-1.3.005-beta-de30461a41c0-x64-Portable.zip).
+- [Checksums](C:/Users/bslac/Documents/ChatGPT/Done/VP-test-de30461a41c0/SHA256SUMS.txt); individual `.sha256` sidecars accompany both files.
+- [Release receipt](C:/Users/bslac/Documents/ChatGPT/Done/VP-test-de30461a41c0/validation/release-receipt.json).
+- [Isolated lifecycle receipt](C:/Users/bslac/Documents/ChatGPT/Done/VP-test-de30461a41c0/validation/isolated-lifecycle/lifecycle-receipt.json).
+
+Clean x64 Release solution rebuild and all 1,466 native tests passed, plus
+49 installer preservation/recovery, 12 identity and 23 prerequisite checks.
+All 70 ZIP payload entries match the manifest. Actual QA installers passed
+326 lifecycle checks, two legacy ZIP adoption cases and corrupt-package recovery.
+QA registration, menu locations and process guards were scoped to disposable
+folders to preserve the user's active Config sessions. Application payload
+hashes match the distributables. Initial QA uninstall process-scope and legacy
+fixture-marker failures were diagnosed, preserved and corrected in QA only;
+production packaging sources and packages were unchanged.
+
+Setup SHA-256: `E746D5A28C63452C2169A5D11B32EEE735A658D42C1779DA4D811E3F520ED517`.
+ZIP SHA-256: `70764859A0D0012D6400E6DEB536BA92DB8BD294A5FBE5AFEF138EFCC269E56D`.
+Installer remains unsigned. Clean Windows without Visual Studio and interactive
+Config Apply/OK/reopen qualification were not performed. This packaging did not
+modify deployment or user configuration. Pinned source/tools/hashes provide
+repeatable identity, not a claim of byte-identical rebuilds.
