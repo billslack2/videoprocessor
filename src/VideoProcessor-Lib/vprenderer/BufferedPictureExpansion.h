@@ -18,7 +18,7 @@ namespace AlphaSourceCrop
     struct MovingPictureTransitionState
     {
         bool active = false;
-        // Keep full presentation after motion ends until ordinary publication
+        // Keep the established presentation after motion ends until ordinary publication
         // accepts the new crop; this flag never delays the model or queued proof.
         bool awaitingPublication = false;
         ActivePictureBounds base, anchor, last, quietAnchor;

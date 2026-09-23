@@ -993,12 +993,22 @@ namespace AlphaSourceCrop
 	bool ShouldSuppressNearBlackBarGeometryMutation(bool acquisitionBlocked,
 		bool stable, ActivePictureClassification classification);
 
+    struct MovingPicturePresentationHold
+    {
+        bool competingPresentation = false;
+        ActivePictureBounds base;
+        uint64_t sourceGeneration = 0;
+        uint64_t sourceSequence = 0;
+        uint64_t presentationEpoch = 0;
+    };
+
 	struct Input
 	{
+        MovingPicturePresentationHold movingPictureHold;
 		PictureTransitionHandoff pictureTransitionHandoff;
 		uint64_t framePresentationEpoch = 0;
-        // Presentation-only withdrawal during proved continuous edge motion.
-        // Does not create full-raster authority or arm general recovery.
+        // Retain a previously admitted scope crop during proved continuous motion.
+        // Does not grant authority, acquire a crop, or clear existing recovery.
         bool movingPictureTransition = false;
 		bool automaticCropEnabled = false;
 		bool nearBlackEpisodeRetainCrop = false;
@@ -1086,6 +1096,7 @@ namespace AlphaSourceCrop
 	};
 
 	bool HasCurrentPictureTransitionHandoff(const Input& input);
+    bool HasCurrentMovingPictureHold(const Input& input);
 
 	enum class DecisionOwner
 	{
@@ -1104,6 +1115,7 @@ namespace AlphaSourceCrop
 		NEAR_BLACK_EPISODE,
 		OUTWARD_FIT,
 		VERTICAL_TRANSLATION,
+        MOVING_PICTURE_HOLD,
 	};
 
 	enum class WithdrawalCause

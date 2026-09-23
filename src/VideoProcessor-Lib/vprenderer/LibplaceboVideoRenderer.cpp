@@ -5315,8 +5315,8 @@ struct LibplaceboVideoRenderer::Impl
         if (AlphaSourceCrop::HasCurrentMovingPictureTransition(
             movingPictureTransition, source->generation, sourceSequence))
         {
-            // Full source is already visible. Scanning the obsolete scope bars
-            // would turn newly revealed picture into a competing dense FIT and
+            // The established scope framing intentionally holds during motion.
+            // Scanning newly revealed picture as subtitles would create a dense FIT and
             // cancel motion on the next frame. Resume inspection on normal exit.
             ClearScopeSubtitleEvidence();
             return 0.0f;
@@ -11250,6 +11250,13 @@ struct LibplaceboVideoRenderer::Impl
             cropInput.movingPictureTransition = AlphaSourceCrop::HasCurrentMovingPictureTransition(
                 movingPictureTransition, frameGeneration, sourceSequence) &&
                 movingPictureTransition.identity.viewportGeneration == viewportRequestSerial;
+            cropInput.movingPictureHold.base = movingPictureTransition.base;
+            cropInput.movingPictureHold.sourceGeneration = movingPictureTransition.identity.transportGeneration;
+            cropInput.movingPictureHold.sourceSequence = movingPictureTransition.identity.acceptedSequence;
+            cropInput.movingPictureHold.presentationEpoch = movingPictureTransition.identity.viewportGeneration;
+            // Detector-only expansion is the moving picture itself; dense FIT
+            // and translation remain competing presentation owners.
+            cropInput.movingPictureHold.competingPresentation = denseFitEvidenceActive;
 			cropInput.framePresentationEpoch = viewportRequestSerial;
             const bool protectedCaptionFit = inwardCaptionProtected && configuredScreenActive &&
                 effectiveGeometryAvailable && effectiveGeometrySourceGeneration == frameGeneration &&
@@ -11384,7 +11391,10 @@ struct LibplaceboVideoRenderer::Impl
 			const double finalTargetAspect = ResolveNlsTargetAspect(
 				configuredScreenActive, configuredScreenAspect, panelTargetAspect);
 			const bool nlsPresentationFailOpen = nlsRequested &&
-				(cropInput.presentationFailOpen || cropInput.movingPictureTransition || nearBlackEpisodeFullRaster ||
+				(cropInput.presentationFailOpen ||
+                 (cropInput.movingPictureTransition &&
+                  (!cropDecision.applyCrop || cropDecision.owner != AlphaSourceCrop::DecisionOwner::MOVING_PICTURE_HOLD)) ||
+                 nearBlackEpisodeFullRaster ||
 				 cropPresentationRecovery.active || admissionDecision.blocked);
 			const bool nlsActivePictureAvailable = nlsRequested &&
 				!nlsPresentationFailOpen && effectiveGeometryAvailable &&
@@ -11469,7 +11479,8 @@ struct LibplaceboVideoRenderer::Impl
 				AlphaSourceCrop::AspectLimitFillInput aspectLimitInput;
 				// Explicit fill can crop a current trusted full raster (for example
 				// 16:9 content on a 2.35:1 screen) as well as a trusted detected
-				// active picture. Do not use provisional or retained geometry here.
+				// active picture, including an explicitly admitted presentation hold.
+				// Unadmitted provisional geometry cannot enable fill.
 				aspectLimitInput.trustedContentAuthorityAccepted =
 					cropDecision.applyCrop ||
 					cropInput.fullRasterPresentationAuthoritative;

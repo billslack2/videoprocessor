@@ -199,6 +199,8 @@ namespace AlphaSourceCrop
 			return "scene-hold";
 		case DecisionOwner::AMBIGUITY_HOLD:
 			return "ambiguity-hold";
+		case DecisionOwner::MOVING_PICTURE_HOLD:
+            return "moving-picture-hold";
 		case DecisionOwner::PICTURE_CONFIRMATION:
 			return "picture-confirm";
 		case DecisionOwner::BAR_REFINEMENT:
@@ -929,6 +931,34 @@ namespace AlphaSourceCrop
 			HasAuthorityForCroppedAxes(input.geometry, input.rasterWidth, input.rasterHeight) &&
 			CropEdgesAreChromaAligned(input.geometry, input.rasterWidth, input.rasterHeight);
 	}
+
+    bool HasCurrentMovingPictureHold(const Input& input)
+    {
+        const auto& hold = input.movingPictureHold;
+        // Retain the exact already-established scope contract while the motion
+        // detector owns a gradual expansion. This is not new crop authority.
+        return input.movingPictureTransition && input.automaticCropEnabled &&
+            input.sharedGeometryAvailable && !input.presentationFailOpen &&
+            !input.nearBlackEpisodeFullRaster && !input.nearBlackEpisodeRetainCrop &&
+            !input.fullRasterPresentationAuthoritative &&
+            !input.barCropRefinementHorizontalConflict && !hold.competingPresentation &&
+            !input.verticalTranslationActive && !input.verticalTranslationConfirmationPending &&
+            !input.verticalFitConfirmationPending && !input.verticalTranslationBaseRetentionActive &&
+            !input.verticalTranslationEngageBaseRetentionActive &&
+            input.classification == ActivePictureClassification::BAR_CROP_TRUSTED &&
+            input.latestObservationClassification != ActivePictureClassification::FULL_RASTER_TRUSTED &&
+            hold.sourceGeneration != 0 && hold.sourceGeneration == input.frameSourceGeneration &&
+            input.geometrySourceGeneration == input.frameSourceGeneration &&
+            hold.sourceSequence != 0 && hold.sourceSequence == input.frameSourceSequence &&
+            hold.presentationEpoch == input.framePresentationEpoch &&
+            SameTrustedCropContract(hold.base, input.geometry) &&
+            input.geometry.trustedBarAxes == ActivePictureBounds::BarAxes::TOP_BOTTOM &&
+            input.geometry.left == 0 && input.geometry.right == input.rasterWidth &&
+            input.geometry.top > 0 && input.geometry.bottom < input.rasterHeight &&
+            ValidBounds(input.geometry, input.rasterWidth, input.rasterHeight) &&
+            HasAuthorityForCroppedAxes(input.geometry, input.rasterWidth, input.rasterHeight) &&
+            CropEdgesAreChromaAligned(input.geometry, input.rasterWidth, input.rasterHeight);
+    }
 
 	PresentationObservationDecision ResolvePresentationObservation(
 		const ActivePictureBounds& base, const ActivePictureEvidence& evidence,
@@ -2846,7 +2876,8 @@ namespace AlphaSourceCrop
 		// must wait for picture authority instead of manufacturing it.
 		const bool previouslyPresented = result.state.available &&
 			SameTrustedCropContract(result.state.trustedCrop, input.geometry);
-		if (!input.latestObservationSupportsCrop && !previouslyPresented)
+		if ((!input.latestObservationSupportsCrop ||
+            candidate.owner == DecisionOwner::MOVING_PICTURE_HOLD) && !previouslyPresented)
 		{
 			result.blocked = true;
 			result.presentation = {};
@@ -2876,11 +2907,6 @@ namespace AlphaSourceCrop
 			decision.reason = "automatic crop is off; preserving full raster";
 			return decision;
 		}
-        if (input.movingPictureTransition)
-        {
-            decision.reason = "moving picture edges awaiting settled geometry";
-            return decision;
-        }
 		if (input.nearBlackEpisodeFullRaster)
 		{
 			decision.reason =
@@ -2913,6 +2939,19 @@ namespace AlphaSourceCrop
 				: "shared geometry lacks crop authority";
 			return decision;
 		}
+        if (input.movingPictureTransition)
+        {
+            if (HasCurrentMovingPictureHold(input))
+            {
+                decision.sourceBounds = input.geometry;
+                decision.applyCrop = true;
+                decision.owner = DecisionOwner::MOVING_PICTURE_HOLD;
+                decision.reason = "established crop retained while moving picture edges settle";
+            }
+            else
+                decision.reason = "moving picture hold unavailable, stale, or conflicting";
+            return decision;
+        }
 		if (HasCurrentPictureTransitionHandoff(input))
 		{
 			// Preserve the old admitted contract; do not acquire the candidate,

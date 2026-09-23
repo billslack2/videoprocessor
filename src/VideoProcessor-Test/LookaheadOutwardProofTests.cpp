@@ -179,6 +179,7 @@ namespace Tests
 				crop.geometrySourceGeneration=crop.frameSourceGeneration=7;
 				crop.frameSourceSequence=sequence; crop.framePresentationEpoch=13;
 				crop.movingPictureTransition=HasCurrentMovingPictureTransition(moving,7,sequence);
+                if (crop.movingPictureTransition) crop.movingPictureHold={false,moving.base,7,sequence,13};
 				crop.latestObservationSupportsCrop=IsPixelSafeCropReaffirmation(geometry,
 					current.evidence.trustedBounds,retained.evidence.excludedBandsPixelSafe);
 				crop.barCropRefinementPending=!crop.latestObservationSupportsCrop;
@@ -466,11 +467,12 @@ namespace Tests
 				Assert::AreEqual(1884,replay.finalBounds.bottom);
 			}
 		}
-		TEST_METHOD(LocalMotionSettlementAndHardCutKeepFullUntilActualPublication)
+		TEST_METHOD(LocalMotionSettlementAndHardCutKeepScopeUntilActualPublication)
 		{
 			for (bool hardCut : {false,true})
 			{
 				BufferedMotionSequence replay;
+                BufferedPixelSample established(276,1884); replay.Step(established);
 				for (int top=268;top>=120;top-=4)
 				{
 					BufferedPixelSample moving(top,2160-top); replay.Step(moving);
@@ -493,9 +495,9 @@ namespace Tests
 					}
 					if (!acquired)
 					{
-						Assert::IsFalse(replay.presented.applyCrop,L"Motion cannot flash back to the old scope while final acquisition is pending.");
-						Assert::AreEqual(0,replay.finalBounds.top);
-						Assert::AreEqual(2160,replay.finalBounds.bottom);
+						Assert::IsTrue(replay.presented.applyCrop,L"Proved gradual motion keeps the already displayed scope until final publication.");
+						Assert::AreEqual(276,replay.finalBounds.top);
+						Assert::AreEqual(1884,replay.finalBounds.bottom);
 					}
 					else
 					{
@@ -524,15 +526,19 @@ namespace Tests
 			Assert::IsTrue(publications>=3,L"Disabled-motion control must reproduce repeated intermediate crop publications.");
 			Assert::IsTrue(visibleSizeChanges>=3,L"The reproduction must reach final presentation, not only detector flags.");
 		}
-		TEST_METHOD(ActualMovingPixelsDoNotProduceBufferedPresentationStaircase)
+		TEST_METHOD(ActualMovingPixelsHoldEstablishedScopeThroughRecoveryAdmissionAndFill)
 		{
 			for (int step : {2,4})
 			{
 				BufferedMotionSequence replay;
+                BufferedPixelSample established(276,1884); replay.Step(established);
+                const auto establishedFinal=replay.finalBounds;
+                Assert::IsTrue(establishedFinal.left>0 && establishedFinal.right<3840,
+                    L"The fixture must exercise configured wider-aspect fill, not raw crop alone.");
 				bool entered=false;
 				unsigned movingFrames=0;
-				// Stops at an intermediate aspect: full-frame is a temporary
-				// presentation choice, never a guessed 16:9 detection result.
+				// Stop at an intermediate aspect. Keep the established scope until
+                // actual publication; do not expose a guessed raster while moving.
 				for (int top=268;top>=120;top-=step)
 				{
 					BufferedPixelSample current(top,2160-top);
@@ -545,11 +551,12 @@ namespace Tests
 						++movingFrames;
 						Assert::IsTrue(replay.moving.active);
 						Assert::IsFalse(replay.published,L"Moving bars cannot publish intermediate formats.");
-						Assert::IsFalse(replay.presented.applyCrop);
-						Assert::AreEqual(0,replay.finalBounds.top);
-						Assert::AreEqual(2160,replay.finalBounds.bottom);
-						Assert::AreEqual(0,replay.finalBounds.left);
-						Assert::AreEqual(3840,replay.finalBounds.right);
+						Assert::IsTrue(replay.presented.applyCrop);
+                        Assert::IsTrue(replay.presented.owner==DecisionOwner::MOVING_PICTURE_HOLD);
+						Assert::AreEqual(276,replay.finalBounds.top);
+						Assert::AreEqual(1884,replay.finalBounds.bottom);
+						Assert::AreEqual(establishedFinal.left,replay.finalBounds.left);
+						Assert::AreEqual(establishedFinal.right,replay.finalBounds.right);
 					}
 				}
 				Assert::IsTrue(entered && movingFrames>10,L"Actual slow picture growth must be recognized.");
@@ -562,13 +569,18 @@ namespace Tests
 				{
 					replay.Step(settled,&settled,&settled);
 					if (replay.published) ++finalAcquisitions;
-					if (replay.presented.applyCrop)
+					if (replay.published || finalCrop)
 					{
 						finalCrop=true;
 						Assert::AreEqual(120,replay.finalBounds.top);
 						Assert::AreEqual(2040,replay.finalBounds.bottom);
 					}
-					else Assert::IsFalse(finalCrop,L"Settled picture must not alternate crop and full-frame.");
+					else
+                    {
+                        Assert::IsTrue(replay.presented.applyCrop);
+                        Assert::AreEqual(276,replay.finalBounds.top);
+                        Assert::AreEqual(1884,replay.finalBounds.bottom);
+                    }
 				}
 				Assert::IsFalse(replay.moving.active);
 				Assert::IsTrue(finalCrop,L"An intermediate final aspect must reacquire within one second.");
@@ -583,6 +595,79 @@ namespace Tests
 				Assert::AreEqual(2092,replay.finalBounds.bottom);
 			}
 		}
+
+        TEST_METHOD(GradualScopeExpansionDoesNotResizeBeforeTrustedFullRasterEndpoint)
+        {
+            BufferedMotionSequence replay;
+            BufferedPixelSample established(276,1884); replay.Step(established);
+            bool entered=false, fullRasterSeen=false;
+            for (int top=268; top>=8; top-=4)
+            {
+                BufferedPixelSample current(top,2160-top);
+                replay.Step(current);
+                entered=entered || replay.moving.active;
+                // Existing extraction recognizes a sufficiently tiny remaining
+                // bar as full raster. Keep that affirmative endpoint authority;
+                // this change must not force literal zero-pixel bars.
+                if (current.evidence.classification==ActivePictureClassification::FULL_RASTER_TRUSTED)
+                {
+                    fullRasterSeen=true;
+                    Assert::IsFalse(replay.moving.active);
+                    Assert::IsFalse(replay.moving.awaitingPublication);
+                    Assert::AreEqual(0,replay.finalBounds.top);
+                    Assert::AreEqual(2160,replay.finalBounds.bottom);
+                    continue;
+                }
+                Assert::IsFalse(fullRasterSeen);
+                if (entered)
+                {
+                    Assert::IsFalse(replay.published);
+                    Assert::IsTrue(replay.presented.applyCrop);
+                    Assert::AreEqual(276,replay.finalBounds.top);
+                    Assert::AreEqual(1884,replay.finalBounds.bottom);
+                }
+            }
+            Assert::IsTrue(entered);
+            Assert::IsTrue(fullRasterSeen,L"This fixture crosses the existing small-bar/full-raster detector threshold.");
+            BufferedPixelSample full(0,2160);
+            for (int frame=0; frame<12; ++frame)
+            {
+                replay.Step(full,&full,&full);
+                Assert::IsFalse(replay.moving.active);
+                Assert::IsFalse(replay.moving.awaitingPublication);
+                Assert::AreEqual(0,replay.finalBounds.top);
+                Assert::AreEqual(2160,replay.finalBounds.bottom);
+            }
+        }
+
+        TEST_METHOD(GradualReversalAndBriefPauseNeverReleaseTheEstablishedScope)
+        {
+            BufferedMotionSequence replay;
+            BufferedPixelSample established(276,1884); replay.Step(established);
+            for (int top=268; top>=180; top-=4)
+            {
+                BufferedPixelSample current(top,2160-top); replay.Step(current);
+            }
+            Assert::IsTrue(replay.moving.active);
+            BufferedPixelSample paused(180,1980);
+            for (int frame=0; frame<3; ++frame)
+            {
+                replay.Step(paused);
+                Assert::IsTrue(replay.moving.active);
+                Assert::AreEqual(276,replay.finalBounds.top);
+                Assert::AreEqual(1884,replay.finalBounds.bottom);
+            }
+            for (int top=184; top<=276; top+=4)
+            {
+                BufferedPixelSample current(top,2160-top); replay.Step(current);
+                Assert::IsFalse(replay.published);
+                Assert::IsTrue(replay.presented.applyCrop);
+                Assert::AreEqual(276,replay.finalBounds.top);
+                Assert::AreEqual(1884,replay.finalBounds.bottom);
+            }
+            Assert::IsFalse(replay.moving.active);
+            Assert::IsFalse(replay.moving.awaitingPublication);
+        }
 
 		TEST_METHOD(BufferedHardChangeKeepsFirstFrameTimingBeforeAndDuringMovement)
 		{

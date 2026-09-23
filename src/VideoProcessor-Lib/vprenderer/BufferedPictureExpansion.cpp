@@ -123,9 +123,9 @@ namespace AlphaSourceCrop
               (std::abs(previous.last.top - candidate.top) > (std::max)(4, candidate.rasterHeight / 100) ||
                std::abs(previous.last.bottom - candidate.bottom) > (std::max)(4, candidate.rasterHeight / 100)))))
         {
-            const bool keepFull = state.active || state.awaitingPublication;
+            const bool keepPresentationHold = state.active || state.awaitingPublication;
             state = {};
-            state.awaitingPublication = keepFull;
+            state.awaitingPublication = keepPresentationHold;
             state.base = current.trustedGeometry;
             state.identity = identity;
             if (!certified) return state;
@@ -134,8 +134,8 @@ namespace AlphaSourceCrop
         }
         if (!certified)
         {
-            // A ramp near the raster edge may lose bar authority. It cannot
-            // regain the old crop or count darkness/ambiguity as settled bars.
+            // A ramp near the raster edge may lose bar authority. Keep the
+            // established hold, but never count darkness/ambiguity as settled bars.
             // Fresh full authority and unrelated owners were handled above.
             state.quietSamples = 0;
             state.directionalChanges = 0;

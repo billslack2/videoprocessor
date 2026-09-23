@@ -6,11 +6,11 @@ The September 20 session showed a scope-to-16:9 expansion publishing intermediat
 
 The new tracker recognizes sustained, full-width opposing vertical expansion using the existing exact current-frame strip evidence. After the first qualified sample, at least three monotonic changes and cumulative movement on both edges greater than two detector scan steps are required. Quantized top/bottom edges may advance on alternating samples. A single hard jump followed by stationary or bounded jitter samples cannot establish movement.
 
-Once motion is established, local and queued publication are deferred and presentation uses the full source raster. This does not establish full-raster detection authority. Retaining the old scope crop would exclude newly revealed picture. Subtitle inspection is temporarily unnecessary while the full source is visible; its stale scope bars must not create a competing FIT owner. NLS and automatic fill cannot reuse the retained scope geometry during the hold.
+Once motion is established, local and queued publication are deferred. Presentation now retains the exact previously admitted scope crop through motion and the awaiting-publication phase. This deliberately clips newly revealed edge pixels temporarily, matching the requested steady-framing behavior instead of shrinking to full raster. The current source, sequence, viewport, exact base and vertical-only authority must match. The hold cannot acquire an unpresented crop or override an existing recovery obligation, near-black owner, explicit full-raster authority, or competing dense presentation. Subtitle inspection stays suppressed so newly revealed picture cannot become a competing FIT owner. Existing aspect-limit fill and NLS continue using the finally admitted held geometry.
 
-A trusted intermediate endpoint needs a quarter-second of adjacent, qualified observations inside an anchored scan-step band before the ordinary acquisition path resumes. The tracker does not assume the endpoint is 16:9. Large hard changes and affirmative full-raster observations leave motion immediately and use existing proof timing. A separate presentation hold remains until that ordinary publication completes, so the local confirmation frames cannot briefly restore the obsolete scope crop. Existing near-black, subtitle, crop admission, and recovery safeguards remain in force. Motion does not create another general recovery dwell, and cannot erase a pre-existing recovery obligation.
+A trusted intermediate endpoint needs a quarter-second of adjacent, qualified observations inside an anchored scan-step band before the ordinary acquisition path resumes. The tracker does not assume the endpoint is 16:9. Large hard changes and affirmative full-raster observations leave motion immediately and use existing proof timing. A separate presentation hold remains until that ordinary publication completes, so the local confirmation frames retain the same established framing. Existing near-black, subtitle, crop admission, and recovery safeguards remain in force. Motion does not create another general recovery dwell, and cannot erase a pre-existing recovery obligation.
 
-Distinct source/capture identity is required. Repeats and stale replays cannot advance quiet proof. A gap clears temporal proof but preserves an already established full presentation in the same context. Source, format, raster, viewport, renderer, and scene resets discard the episode through the existing reset paths. Ambiguous observations near the raster edge cannot quietly restore the old crop.
+Distinct source/capture identity is required. Repeats and stale replays cannot advance quiet proof. A gap clears temporal proof but preserves the established presentation hold in the same context. Source, format, raster, viewport, renderer, and scene resets discard the episode through the existing reset paths. Ambiguous observations cannot declare a settled endpoint or acquire a crop that was never presented.
 
 ## Regression coverage
 
@@ -33,7 +33,7 @@ The saved log establishes the observed staircase, but no source video was captur
 Baseline: fresh origin/v1.3.005-beta at 525767f6, then fast-forward integration of the existing deployed fixes through 75651be5. Worktree: E:\codex\videoprocessor\moving-picture-transition.
 
 
-## Final validation
+## Historical validation of the original motion tracker
 
 - x64 Release solution clean rebuild: succeeded, zero errors. Build log: `moving-final-local-settlement-rebuild.log`.
 - Focused injected fixtures: 34 passed, zero failed (`TestResults/moving-injected-fixtures-verified.trx`).
@@ -41,3 +41,13 @@ Baseline: fresh origin/v1.3.005-beta at 525767f6, then fast-forward integration 
 - Both independent reviewers report no remaining blocking findings after the final corrections.
 - `git diff --check` passed. No deployment, active configuration, or story-state changes.
 - The test artifacts were built from the final source changes in this worktree. A later deployment must rebuild from the committed source with clean version identity; these development binaries are not release packages.
+
+## September 22 presentation correction
+
+The earlier full-raster hold was intentional but produced the unwanted early shrink reported during the Mandalorian transition. The detector and quiet-settlement rules are unchanged; the correction is at final presentation arbitration. `MOVING_PICTURE_HOLD` makes this choice visible in existing crop diagnostics. The separate inward-caption-return helper and its live/queued eligibility are unchanged.
+
+Baseline: current remote beta `6785d0b1`, fast-forwarded through the tested caption build `c9755e84`. Source worktree: `E:\codex\videoprocessor\gradual-scope-hold`. See `GRADUAL_SCOPE_HOLD_LOOKAHEAD_REVIEW.md` for the frame-budget audit and deliberate exclusions.
+
+Seven selected tests were first run against the previous production policy and failed on assertions, including actual P010 motion through detection, recovery, final admission and aspect-limit fill. They establish that the previous policy withdraws the displayed crop. Additional tests cover a full-raster endpoint, reversal during an established motion episode, stale hold identity, conflicting owners and missing prior admission. These are synthetic source-pixel tests, not recordings of the exact Mandalorian scene.
+
+Recognition still requires sustained outward motion. This change does not promise to eliminate steps before motion is recognized or add an independent gradual inward-transition detector. A positive full-raster observation still uses the existing immediate exit. Live-only endpoint quiet proof remains approximately 250 ms; replacing it with queued settlement certification is separate work.

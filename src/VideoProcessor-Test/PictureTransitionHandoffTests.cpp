@@ -3,6 +3,8 @@
 #include <ActivePictureTransitionModel.h>
 #include <vprenderer/AlphaSourceCropPolicy.h>
 #include <vprenderer/BufferedPictureExpansion.h>
+#include <NlsGeometryPolicy.h>
+#include <utility>
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 using namespace AlphaSourceCrop;
@@ -81,6 +83,7 @@ namespace Tests
 				crop.frameLocalPresentationRetentionEvaluated=true;
 				crop.pictureTransitionHandoff=handoff;
                 crop.movingPictureTransition=HasCurrentMovingPictureTransition(moving,7,input.sourceSequence);
+                if (crop.movingPictureTransition) crop.movingPictureHold={false,moving.base,7,input.sourceSequence,9};
 				return crop;
 			}
 		};
@@ -104,7 +107,7 @@ namespace Tests
 						sequence.SetTarget(target); sequence.input.sourceSequence=first++; sequence.Step();
 					}
 					Assert::IsTrue(sequence.moving.active);
-					Assert::IsFalse(Evaluate(sequence.Crop()).applyCrop);
+					Assert::IsTrue(Evaluate(sequence.Crop()).applyCrop);
 				}
 				sequence.SetTarget(HandoffTaller());
 				for (uint64_t offset=0;offset<4;++offset)
@@ -190,9 +193,10 @@ namespace Tests
 					Assert::IsFalse(recovery.active,L"Temporary moving presentation must not create a recovery dwell.");
 					if (seq<103 && injectMovement)
 					{
-						Assert::IsFalse(shown.presentation.applyCrop);
-						Assert::AreEqual(0,shown.presentation.sourceBounds.top);
-						Assert::AreEqual(2160,shown.presentation.sourceBounds.bottom);
+                        Assert::IsTrue(shown.presentation.applyCrop);
+                        Assert::IsTrue(shown.presentation.owner==DecisionOwner::MOVING_PICTURE_HOLD);
+                        Assert::AreEqual(276,shown.presentation.sourceBounds.top);
+                        Assert::AreEqual(1884,shown.presentation.sourceBounds.bottom);
 					}
 					else if (seq<103)
 					{
@@ -210,6 +214,176 @@ namespace Tests
 				}
 			}
 		}
+
+        TEST_METHOD(MovingHoldPreservesAdmittedNlsGeometryUntilSettledPublication)
+        {
+            for (double targetAspect : {2.35,2.6})
+            {
+                HandoffSequence sequence;
+                auto initial=sequence.Crop(); initial.latestObservationSupportsCrop=true;
+                auto previous=AdmitCropPresentation({},initial,Evaluate(initial),9).state;
+                const auto map=[&](const Decision& shown)
+                {
+                    const auto source=ResolveNlsPresentationSourceGeometry(true,true,
+                        0,276,3840,1884,shown.applyCrop,
+                        shown.sourceBounds.left,shown.sourceBounds.top,
+                        shown.sourceBounds.right,shown.sourceBounds.bottom,3840,2160);
+                    const auto nlsCrop=ResolveNlsPresentationCrop(source,targetAspect,5.0,0.0,
+                        NlsAspectDirection::ANY,1.4,0.0,NlsPresentationCropPreference::PRESERVE_IMAGE);
+                    const auto mapping=EvaluateNlsMapping(nlsCrop.source.valid,nlsCrop.source.aspect,
+                        targetAspect,5.0,0.0,NlsAspectDirection::ANY,1.4);
+                    return std::make_pair(nlsCrop.source,mapping);
+                };
+                const auto before=map(Evaluate(initial));
+                Assert::IsTrue(before.second.mode==(targetAspect==2.35 ?
+                    NlsMappingMode::LINEAR_PASSTHROUGH : NlsMappingMode::ACTIVE));
+                unsigned held=0;
+                uint64_t seq=100;
+                for (int top=268; top>=180; top-=4)
+                {
+                    auto target=HandoffScope(); target.top=top; target.bottom=2160-top;
+                    target.aspectRatio=3840.0/(target.bottom-target.top);
+                    sequence.SetTarget(target); sequence.input.sourceSequence=seq++; sequence.Step();
+                    if (!sequence.moving.active) continue;
+                    auto crop=sequence.Crop();
+                    PresentationRecoveryInput recovery; recovery.crop=crop;
+                    recovery.candidate=Evaluate(crop); recovery.presentationEpoch=9;
+                    const auto recovered=EvaluatePresentationRecovery(recovery);
+                    Assert::IsFalse(recovered.state.active);
+                    const auto admitted=AdmitCropPresentation(previous,crop,recovered.presentation,9);
+                    previous=admitted.state;
+                    Assert::IsTrue(admitted.presentation.owner==DecisionOwner::MOVING_PICTURE_HOLD);
+                    const auto during=map(admitted.presentation);
+                    Assert::AreEqual(before.first.left,during.first.left);
+                    Assert::AreEqual(before.first.top,during.first.top);
+                    Assert::AreEqual(before.first.right,during.first.right);
+                    Assert::AreEqual(before.first.bottom,during.first.bottom);
+                    Assert::AreEqual(before.first.aspect,during.first.aspect,0.000001);
+                    Assert::IsTrue(before.second.mode==during.second.mode);
+                    Assert::AreEqual(before.second.stretchRatio,during.second.stretchRatio,0.000001);
+                    ++held;
+                }
+                Assert::IsTrue(held>10);
+                sequence.SetTarget(HandoffTaller());
+                for (int frame=0; frame<4; ++frame)
+                {
+                    sequence.input.sourceSequence=seq++; sequence.Step();
+                }
+                Assert::IsTrue(sequence.transition.publish);
+                auto settled=sequence.Crop(); settled.geometry=sequence.transition.bounds;
+                settled.latestObservationSupportsCrop=true;
+                const auto admitted=AdmitCropPresentation(previous,settled,Evaluate(settled),9);
+                const auto after=map(admitted.presentation);
+                Assert::AreEqual(68,after.first.top);
+                Assert::AreEqual(2092,after.first.bottom);
+                Assert::IsTrue(after.second.mode==NlsMappingMode::ACTIVE);
+                Assert::IsTrue(after.second.stretchRatio>before.second.stretchRatio+0.01);
+            }
+        }
+
+        TEST_METHOD(MovingHoldRequiresPriorAdmissionEvenWhenDetectorSupportsCrop)
+        {
+            HandoffSequence sequence;
+            auto crop=sequence.Crop();
+            crop.movingPictureTransition=true;
+            crop.movingPictureHold={false,crop.geometry,7,crop.frameSourceSequence,9};
+            for (bool supports : {false,true})
+            {
+                crop.latestObservationSupportsCrop=supports;
+                const auto candidate=Evaluate(crop);
+                Assert::IsTrue(candidate.applyCrop);
+                Assert::IsTrue(candidate.owner==DecisionOwner::MOVING_PICTURE_HOLD);
+                const auto unseen=AdmitCropPresentation({},crop,candidate,9);
+                Assert::IsTrue(unseen.blocked);
+                Assert::IsFalse(unseen.presentation.applyCrop);
+                auto acquisition=crop; acquisition.movingPictureTransition=false;
+                acquisition.latestObservationSupportsCrop=true;
+                const auto admitted=AdmitCropPresentation({},acquisition,Evaluate(acquisition),9);
+                Assert::IsTrue(admitted.state.available);
+                const auto shown=AdmitCropPresentation(admitted.state,crop,candidate,9);
+                Assert::IsFalse(shown.blocked);
+                Assert::AreEqual(276,shown.presentation.sourceBounds.top);
+                Assert::AreEqual(1884,shown.presentation.sourceBounds.bottom);
+                for (int fault=0; fault<4; ++fault)
+                {
+                    auto previous=admitted.state;
+                    if (fault==0) ++previous.sourceGeneration;
+                    if (fault==1) ++previous.presentationEpoch;
+                    if (fault==2) previous.trustedCrop.top+=2;
+                    if (fault==3) previous.available=false;
+                    const auto rejected=AdmitCropPresentation(previous,crop,candidate,9);
+                    Assert::IsTrue(rejected.blocked);
+                    Assert::IsFalse(rejected.presentation.applyCrop);
+                }
+            }
+        }
+
+        TEST_METHOD(MovingHoldCannotOverrideContextGeometryOrCompetingPresentation)
+        {
+            HandoffSequence sequence;
+            auto initial=sequence.Crop();
+            initial.movingPictureTransition=true;
+            initial.movingPictureHold={false,initial.geometry,7,initial.frameSourceSequence,9};
+            Assert::IsTrue(Evaluate(initial).owner==DecisionOwner::MOVING_PICTURE_HOLD);
+            for (int fault=0; fault<26; ++fault)
+            {
+                auto crop=initial;
+                switch (fault)
+                {
+                case 0: ++crop.frameSourceSequence; break;
+                case 1: ++crop.frameSourceGeneration; break;
+                case 2: ++crop.framePresentationEpoch; break;
+                case 3: ++crop.movingPictureHold.sourceSequence; break;
+                case 4: ++crop.movingPictureHold.sourceGeneration; break;
+                case 5: ++crop.movingPictureHold.presentationEpoch; break;
+                case 6: crop.movingPictureHold.base.top+=2; break;
+                case 7: crop.geometry.top+=2; break;
+                case 8: crop.geometrySourceGeneration=8; break;
+                case 9: crop.sharedGeometryAvailable=false; break;
+                case 10: crop.automaticCropEnabled=false; break;
+                case 11: crop.classification=ActivePictureClassification::UNAVAILABLE; break;
+                case 12: crop.geometry.trustedBarAxes=ActivePictureBounds::BarAxes::BOTH; crop.movingPictureHold.base=crop.geometry; break;
+                case 13: crop.geometry.left=2; break;
+                case 14: crop.geometry.top+=1; crop.movingPictureHold.base=crop.geometry; break;
+                case 15: crop.presentationFailOpen=true; break;
+                case 16: crop.nearBlackEpisodeFullRaster=true; break;
+                case 17: crop.nearBlackEpisodeRetainCrop=true; break;
+                case 18: crop.fullRasterPresentationAuthoritative=true; break;
+                case 19: crop.barCropRefinementHorizontalConflict=true; break;
+                case 20: crop.verticalTranslationActive=true; break;
+                case 21: crop.verticalTranslationConfirmationPending=true; break;
+                case 22: crop.verticalFitConfirmationPending=true; break;
+                case 23: crop.movingPictureHold.competingPresentation=true; break;
+                case 24: crop.verticalTranslationEngageBaseRetentionActive=true; break;
+                case 25: crop.frameSourceSequence=0; crop.movingPictureHold.sourceSequence=0; break;
+                }
+                Assert::IsTrue(Evaluate(crop).owner!=DecisionOwner::MOVING_PICTURE_HOLD);
+            }
+        }
+
+        TEST_METHOD(MovingHoldCannotResolvePreexistingRecovery)
+        {
+            HandoffSequence sequence;
+            auto crop=sequence.Crop();
+            crop.movingPictureTransition=true;
+            crop.movingPictureHold={false,crop.geometry,7,crop.frameSourceSequence,9};
+            PresentationRecoveryInput recovery;
+            recovery.crop=crop; recovery.candidate=Evaluate(crop);
+            Assert::IsTrue(recovery.candidate.applyCrop);
+            recovery.previous.active=true; recovery.previous.trustedCrop=crop.geometry;
+            recovery.previous.sourceGeneration=7; recovery.previous.presentationEpoch=9;
+            recovery.presentationEpoch=9;
+            recovery.measurementCurrent=recovery.retentionEvaluated=recovery.nearBlackEvaluated=true;
+            recovery.retentionBounds=crop.geometry; recovery.retentionSourceGeneration=7;
+            recovery.retentionSourceSequence=crop.frameSourceSequence;
+            recovery.observationAvailable=true;
+            recovery.observation=recovery.observedTrustedCrop=HandoffTaller();
+            recovery.observationClassification=ActivePictureClassification::BAR_CROP_TRUSTED;
+            const auto shown=EvaluatePresentationRecovery(recovery);
+            Assert::IsTrue(shown.state.active);
+            Assert::AreEqual(0u,shown.samples);
+            Assert::IsFalse(shown.presentation.applyCrop);
+        }
 
 		TEST_METHOD(HandoffCreationRejectsUnprovenOrMismatchedEvidence)
 		{
