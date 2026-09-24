@@ -39,6 +39,8 @@ public:
 	bool FinalizeRetirementForShutdown() noexcept override;
 	void Reset() override;
 	void ResetLiveQueue() override;
+	bool ExportHostCropHandoff(RendererCropHandoff& hint) const override;
+	void ImportHostCropHandoff(const RendererCropHandoff& hint) override;
 	void OnSize() override;
 	void OnPaint() override;
 	void OnDisplayChange() override;

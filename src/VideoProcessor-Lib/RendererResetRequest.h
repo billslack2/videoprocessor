@@ -80,6 +80,8 @@ struct RendererResetRequest
 	uint64_t sequence = 0;
 	uint64_t backendEpoch = 0;
 	RendererResetReason reason = RendererResetReason::None;
+	// Cleared if any non-host reset is coalesced into this operation.
+	bool hostCropContinuity = false;
 	RendererResetScope scope = RendererResetScope::Graph;
 	RendererResetOrigin origin = RendererResetOrigin::Unspecified;
 	uint64_t originGeneration = 0;

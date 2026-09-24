@@ -3983,6 +3983,9 @@ struct LibplaceboVideoRenderer::Impl
 	PresentationResetEpoch presentationResetEpoch;
 	uint64_t consumedPresentationResetEpoch = 0;
 	std::mutex renderMutex;
+	mutable std::mutex cropHandoffMutex;
+	RendererCropHandoff publishedCropHandoff;
+	RendererCropHandoff pendingCropHandoff;
 	ViewportIntentMailbox<RendererSettings> pendingProfileIntent;
 	bool renderConfiguredScreenActive = false;
 	uint64_t renderViewportRequestSerial = 0;
@@ -8339,6 +8342,50 @@ struct LibplaceboVideoRenderer::Impl
 		}
 
 		TraceBlackLevels(analysisSource, frameNumber);
+		RendererCropHandoff hostHint;
+		{
+			std::lock_guard<std::mutex> lock(cropHandoffMutex);
+			// An old in-flight frame cannot consume a hint for the replacement
+			// queue. A later generation discards it rather than replaying it.
+			if (pendingCropHandoff.verifiedTick &&
+				analysisSource.generation >= pendingCropHandoff.transportGeneration)
+			{
+				hostHint = pendingCropHandoff;
+				pendingCropHandoff = {};
+			}
+		}
+		if (hostHint.verifiedTick)
+		{
+			ActivePicturePresentationRetentionEvidence proof;
+			bool restored = automaticSourceCrop && !nlsGeometryAvailable &&
+				CanRestoreRendererCrop(hostHint, analysisSource,
+					currentIdentity.sourceFormatGeneration,
+					currentIdentity.viewportGeneration, GetTickCount64(), proof);
+			if (restored)
+			{
+				ActivePictureTransitionDecision seed;
+				seed.bounds = hostHint.bounds;
+				seed.publish = seed.stable = true;
+				seed.authoritativeClassification = ActivePictureClassification::BAR_CROP_TRUSTED;
+				restored = nlsTransition.AdoptPublishedDecision(seed,
+					ActivePictureClassification::BAR_CROP_TRUSTED);
+				if (restored)
+				{
+					nlsGeometry = hostHint.bounds;
+					nlsGeometryAvailable = true;
+					nlsGeometryClassification = ActivePictureClassification::BAR_CROP_TRUSTED;
+					nlsGeometrySourceGeneration = analysisSource.generation;
+					nlsGeometrySourceFormatKey = currentIdentity.sourceFormatGeneration;
+					++nlsGeometryGeneration;
+					nlsTransitionWithdrawn = false;
+				}
+			}
+			DebugLog::Log("Alpha host crop handoff: restored=%d source_generation=%llu rect=%d,%d-%d,%d pixel_safe=%d reason=\"%s\"",
+				restored ? 1 : 0, static_cast<unsigned long long>(analysisSource.generation),
+				hostHint.bounds.left, hostHint.bounds.top, hostHint.bounds.right, hostHint.bounds.bottom,
+				proof.currentlyPixelSafe ? 1 : 0,
+				proof.reason.empty() ? "incompatible, expired, disabled, or already acquired" : proof.reason.c_str());
+		}
 		TraceColorPictureEvidence(analysisSource, frameNumber, currentIdentity.viewportGeneration);
 		const bool needsActivePictureAnalysis =
 			nlsRequested || automaticSourceCrop || scopeSubtitleFit ||
@@ -9622,6 +9669,11 @@ struct LibplaceboVideoRenderer::Impl
 		}
 		if (analysisSource.IsValid())
 		{
+			if (videoFrame.IsSourceDiscontinuity())
+			{
+				std::lock_guard<std::mutex> lock(cropHandoffMutex);
+				pendingCropHandoff = {};
+			}
 			ActivePictureFrameIdentity currentActivePictureIdentity =
 				activePictureIdentity;
 			currentActivePictureIdentity.transportGeneration = frameGeneration;
@@ -9672,6 +9724,24 @@ struct LibplaceboVideoRenderer::Impl
 			fullRasterPresentationAuthorityAvailable = false;
 			fullRasterPresentationAuthoritySourceGeneration = 0;
 			activePictureAmbiguityHold.Reset();
+		}
+		{
+			std::lock_guard<std::mutex> lock(cropHandoffMutex);
+			publishedCropHandoff = {};
+			const auto& inspected = latestActivePicturePresentationRetentionBounds;
+			if (automaticSourceCrop && nlsGeometryAvailable &&
+				nlsGeometryClassification == ActivePictureClassification::BAR_CROP_TRUSTED &&
+				nlsGeometrySourceGeneration == frameGeneration &&
+				latestActivePicturePresentationRetentionEvaluated &&
+				latestActivePicturePresentationRetentionSafe &&
+				latestActivePicturePresentationRetentionSourceSequence == sourceSequence &&
+				latestActivePicturePresentationRetentionSourceGeneration == frameGeneration &&
+				inspected.left == nlsGeometry.left && inspected.top == nlsGeometry.top &&
+				inspected.right == nlsGeometry.right && inspected.bottom == nlsGeometry.bottom)
+			{
+				publishedCropHandoff = { nlsGeometry, AlphaSourceFormatKey(state),
+					viewportRequestSerial, frameGeneration, GetTickCount64() };
+			}
 		}
 		// A near-black entry is also a scene notification, but darkness alone
 		// does not disprove an established full-frame picture. Evaluate this once
@@ -14292,6 +14362,41 @@ void LibplaceboVideoRenderer::ResetLiveQueue()
 		m_impl->RequestPresentationStateReset();
 	BeginQueueGeneration("live queue reset");
 	m_sceneDetectorGeneration.fetch_add(1, std::memory_order_acq_rel);
+}
+
+bool LibplaceboVideoRenderer::ExportHostCropHandoff(RendererCropHandoff& hint) const
+{
+	hint = {};
+	if (!m_impl) return false;
+	std::lock_guard<std::mutex> queueLock(m_queueMutex);
+	std::lock_guard<std::mutex> hintLock(m_impl->cropHandoffMutex);
+	const auto& published = m_impl->publishedCropHandoff;
+	const uint64_t now = GetTickCount64();
+	if (!published.verifiedTick || now < published.verifiedTick ||
+		now - published.verifiedTick > 2000 ||
+		published.transportGeneration != m_queueGeneration ||
+		published.viewportGeneration != m_viewportRequestSerial.load(std::memory_order_acquire))
+		return false;
+	hint = published;
+	return true;
+}
+
+void LibplaceboVideoRenderer::ImportHostCropHandoff(const RendererCropHandoff& hint)
+{
+	if (!m_impl || !hint.verifiedTick) return;
+	{
+		std::lock_guard<std::mutex> stateLock(m_stateMutex);
+		if (!m_videoState || AlphaSourceFormatKey(*m_videoState) != hint.sourceFormatKey)
+			return;
+	}
+	std::lock_guard<std::mutex> queueLock(m_queueMutex);
+	const bool beforeStart = m_state.load(std::memory_order_acquire) == RendererState::RENDERSTATE_READY;
+	const uint64_t viewport = m_viewportRequestSerial.load(std::memory_order_acquire);
+	if (!beforeStart && viewport != hint.viewportGeneration) return;
+	std::lock_guard<std::mutex> hintLock(m_impl->cropHandoffMutex);
+	m_impl->pendingCropHandoff = hint;
+	m_impl->pendingCropHandoff.viewportGeneration = viewport;
+	m_impl->pendingCropHandoff.transportGeneration = m_queueGeneration + (beforeStart ? 1 : 0);
 }
 
 

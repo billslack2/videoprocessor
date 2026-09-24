@@ -61,6 +61,8 @@ public:
 	bool FinalizeRetirementForShutdown() noexcept override;
 	void Reset() override;
 	void ResetLiveQueue() override;
+	bool ExportHostCropHandoff(RendererCropHandoff& hint) const override;
+	void ImportHostCropHandoff(const RendererCropHandoff& hint) override;
 	void SetPostStallResetTelemetrySuppressedUntil(
 		uint64_t tick) override;
 	void OnSize() override;

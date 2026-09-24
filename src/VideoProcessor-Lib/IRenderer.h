@@ -14,6 +14,7 @@
 #include <RendererLiveness.h>
 #include <RendererResetRequest.h>
 #include <RendererOutputContractStatus.h>
+#include <RendererCropHandoff.h>
 #include <SubtitleRepositionMode.h>
 #include <cstdint>
 #include <functional>
@@ -175,6 +176,10 @@ public:
 	// Flush and re-prime only the live-source queue without rebuilding the
 	// renderer graph. Renderers without a live source may ignore this request.
 	virtual void ResetLiveQueue() {}
+	// Only the host's fullscreen/windowed replacement and its queue settle may
+	// transfer this hint. Import must revalidate it against fresh source pixels.
+	virtual bool ExportHostCropHandoff(RendererCropHandoff&) const { return false; }
+	virtual void ImportHostCropHandoff(const RendererCropHandoff&) {}
 	// Thread-safe publication of a VP-owned converted-frame reserve. DirectShow
 	// uses it only after a serialized reset to form deterministic prefill; it
 	// must never be interpreted as a madVR queue request or observation.

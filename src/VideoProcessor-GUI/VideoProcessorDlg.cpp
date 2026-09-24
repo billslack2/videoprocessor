@@ -5550,6 +5550,21 @@ void CVideoProcessorDlg::OnRendererDirectShowPrimariesSelected()
 }
 
 
+void CVideoProcessorDlg::CaptureAlphaHostCropHandoff()
+{
+	m_alphaHostCropHandoff = {};
+	m_alphaHostCropVideoState.Release();
+	m_alphaHostCropCaptureDevice.Release();
+	const auto profile = m_profileRuntime.GetSnapshot();
+	if (profile && m_videoRenderer && !m_activeRendererIsDirectShow &&
+		m_videoRenderer->ExportHostCropHandoff(m_alphaHostCropHandoff))
+	{
+		m_alphaHostCropVideoState = m_captureDeviceVideoState;
+		m_alphaHostCropCaptureDevice = m_captureDevice;
+		m_alphaHostCropProfileGeneration = profile->generation;
+	}
+}
+
 void CVideoProcessorDlg::OnBnClickedRendererFullScreenCheck()
 {
 	DbgLog((LOG_TRACE, 1, TEXT("CVideoProcessorDlg::OnBnClickedRendererFullScreenCheck()")));
@@ -5598,6 +5613,7 @@ void CVideoProcessorDlg::OnBnClickedRendererFullScreenCheck()
 		// owns a fresh queue, so the host boundary is diagnostic rather than a
 		// reason for a second delayed queue generation.
 		m_alphaHostTransitionPending = true;
+		CaptureAlphaHostCropHandoff();
 		DebugLog::Log(
 			"Alpha fullscreen host transition requested: state=fresh-start-pending");
 	}
@@ -5620,6 +5636,7 @@ void CVideoProcessorDlg::OnCbnSelchangeFullscreenmodeCombo()
 		if (m_videoRenderer && !m_activeRendererIsDirectShow)
 		{
 			m_alphaHostTransitionPending = true;
+			CaptureAlphaHostCropHandoff();
 			DebugLog::Log(
 				"Alpha fullscreen presentation-mode transition requested: "
 				"state=fresh-start-pending");
@@ -9152,6 +9169,14 @@ void CVideoProcessorDlg::RenderStart()
 			// must be forwarded before the first queued frame is accepted.
 			m_videoRenderer->SetSceneAwareTimingCorrection(
 				m_sceneAwareTimingCorrection);
+			if (m_alphaHostTransitionPending && profileSnapshot &&
+				profileSnapshot->generation == m_alphaHostCropProfileGeneration &&
+				m_captureDevice == m_alphaHostCropCaptureDevice &&
+				m_captureDeviceVideoState == m_alphaHostCropVideoState)
+				m_videoRenderer->ImportHostCropHandoff(m_alphaHostCropHandoff);
+			m_alphaHostCropHandoff = {};
+			m_alphaHostCropVideoState.Release();
+			m_alphaHostCropCaptureDevice.Release();
 			m_videoRenderer->Start();
 			m_freshRendererProfileConstruction = profileSnapshot &&
 				!profileSnapshot->queue.profile.empty();

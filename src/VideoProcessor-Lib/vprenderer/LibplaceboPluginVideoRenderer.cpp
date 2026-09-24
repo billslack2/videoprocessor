@@ -264,6 +264,16 @@ void LibplaceboPluginVideoRenderer::ResetLiveQueue()
 	m_renderer->ResetLiveQueue();
 }
 
+bool LibplaceboPluginVideoRenderer::ExportHostCropHandoff(RendererCropHandoff& hint) const
+{
+	return m_renderer && m_renderer->ExportHostCropHandoff(hint);
+}
+
+void LibplaceboPluginVideoRenderer::ImportHostCropHandoff(const RendererCropHandoff& hint)
+{
+	if (m_renderer) m_renderer->ImportHostCropHandoff(hint);
+}
+
 
 void LibplaceboPluginVideoRenderer::OnSize()
 {

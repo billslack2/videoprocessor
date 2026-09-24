@@ -122,6 +122,7 @@ namespace
 
 			const uint64_t now = state->clock ? state->clock() : 0;
 			request.bindingToken = token;
+			request.hostCropContinuity = request.reason == RendererResetReason::HostTransition;
 			request.sequence = ++state->nextSequence;
 			if (request.requestedTick == 0)
 				request.requestedTick = now;
@@ -156,6 +157,7 @@ namespace
 					request.deadlineTick,
 					RendererResetPriority(selected.reason),
 					selected.deadlineTick);
+				const bool hostCropContinuity = selected.hostCropContinuity && request.hostCropContinuity;
 				const RendererResetOriginContributors contributors =
 					selected.originContributors |
 					request.originContributors;
@@ -171,6 +173,7 @@ namespace
 						SubmissionDisposition::Coalesced;
 				}
 				selected.scope = strongestScope;
+				selected.hostCropContinuity = hostCropContinuity;
 				selected.targetWindow = retargetWindow;
 				selected.originContributors = contributors;
 			}
@@ -315,8 +318,13 @@ RendererResetCoordinator::RendererResetCoordinator(WakeUi wakeUi, Clock clock):
 					}
 					else
 					{
+						RendererCropHandoff cropHint;
+						const bool carryHostCrop = selection.request.hostCropContinuity &&
+							renderer->ExportHostCropHandoff(cropHint);
 						renderer->ResetLiveQueue();
 						state->ingress->WaitForDrain();
+						if (carryHostCrop)
+							renderer->ImportHostCropHandoff(cropHint);
 					}
 					succeeded = true;
 				}
