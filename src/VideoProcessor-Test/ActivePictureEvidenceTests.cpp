@@ -138,6 +138,32 @@ namespace VideoProcessorTest
 	TEST_CLASS(ActivePictureEvidenceTests)
 	{
 	public:
+		TEST_METHOD(SideZoneTelemetrySeparatesDarkCornerFromDimSideWithoutGrantingCrop)
+		{
+			for (bool darkCorner : {true, false})
+			{
+				P010Frame frame(960,540);
+				frame.Fill(160,512,512);
+				frame.BlackOutside(0,68,960,472);
+				frame.FillRectangle(880,68,960,472,80,640,512);
+				frame.FillRectangle(0,68,30,darkCorner ? 169 : 472,darkCorner ? 64 : 100);
+				const auto evidence=ExtractActivePictureEvidence(frame.P010Source());
+				Assert::AreEqual(0,evidence.axisEvidence.leftPictureMinimum);
+				Assert::IsTrue(evidence.axisEvidence.HasBlockingFailedBar(evidence.trustedBounds));
+				Assert::IsTrue(evidence.leftSideProbe.evaluated);
+				Assert::IsFalse(evidence.rightSideProbe.evaluated);
+				for (int depth=0;depth<3;++depth)
+					for (int zone=0;zone<4;++zone)
+					{
+						const auto& cell=evidence.leftSideProbe.cells[depth*4+zone];
+						const int luma=darkCorner ? (zone==0 ? 64 : 160) : 100;
+						Assert::AreEqual(luma,cell.meanLuma);
+						Assert::AreEqual(luma,cell.peakLuma);
+						Assert::AreEqual(luma>112 ? 12 : 0,cell.strong);
+						Assert::AreEqual(luma>88 ? 12 : 0,cell.nonBlack);
+					}
+			}
+		}
 		TEST_METHOD(DistributedSidePictureAdmitsOnlyVerifiedFullWidthVerticalCrop)
 		{
 			for (bool leftPicture : {true, false})

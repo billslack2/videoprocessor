@@ -11646,6 +11646,28 @@ struct LibplaceboVideoRenderer::Impl
 					sideSupport.leftPictureMinimum, sideSupport.rightPictureMinimum,
 					sideSupport.SupportsVerticalCropDespiteSideAmbiguity(rawCandidate.trustedBounds) ? 1 : 0,
 					sideSupport.HasBlockingFailedBar(rawCandidate.trustedBounds) ? 1 : 0);
+				// Share the existing bounded edge-log cadence and sample grid. No
+				// extra source reads or relaxed crop thresholds for this telemetry.
+				const auto logSideZones = [&](const ActivePictureSideProbe& probe, bool left) {
+					if (!probe.evaluated) return;
+					std::ostringstream cells;
+					for (size_t i = 0; i < probe.cells.size(); ++i)
+					{
+						if (i) cells << (i % 4 == 0 ? ';' : '|');
+						const auto& cell = probe.cells[i];
+						cells << cell.strong << ',' << cell.nonBlack << ',' << cell.meanLuma << ',' << cell.peakLuma;
+					}
+					const int step = std::max(1, sideSupport.sidePictureWidth / 128);
+					const int origin = left ? 0 : sideSupport.sidePictureWidth - 1;
+					const int direction = left ? 1 : -1;
+					DebugLog::Log("Alpha crop side zones: schema=1 generation=%llu sequence=%llu edge=%s x=%d,%d,%d aperture_y=%d-%d zones=4 samples_per_cell=12 order=depth-major-top-to-bottom strong_threshold=%d black_threshold=%d fields=strong,nonblack,mean_y,peak_y units=analysis-luma-10bit cells=%s policy_effect=none",
+						frameGeneration, sourceSequence, left ? "left" : "right",
+						origin, origin + direction * step, origin + direction * step * 2,
+						sideSupport.sidePictureTop, sideSupport.sidePictureBottom,
+						sideSupport.sidePictureThreshold, sideSupport.sidePictureThreshold - 24, cells.str().c_str());
+				};
+				logSideZones(rawCandidate.leftSideProbe, true);
+				logSideZones(rawCandidate.rightSideProbe, false);
 				DebugLog::Log("Alpha crop candidate levels: schema=1 generation=%llu sequence=%llu available=%d classification=%d candidate=%d,%d-%d,%d retained=%d,%d-%d,%d units=analysis-luma-10bit edge_fields=bar_pixels,floor,p90,dispersion,black_fraction,texture,continuity,trusted left=%d,%.1f,%.1f,%.1f,%.4f,%.1f,%.4f,%d top=%d,%.1f,%.1f,%.1f,%.4f,%.1f,%.4f,%d right=%d,%.1f,%.1f,%.1f,%.4f,%.1f,%.4f,%d bottom=%d,%.1f,%.1f,%.1f,%.4f,%.1f,%.4f,%d",
 					frameGeneration, sourceSequence, rawCandidate.available ? 1 : 0, static_cast<int>(rawCandidate.classification),
 					rawBounds.left, rawBounds.top, rawBounds.right, rawBounds.bottom,

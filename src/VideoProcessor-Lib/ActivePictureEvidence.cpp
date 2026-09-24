@@ -110,8 +110,11 @@ bool ScanBlackLine(SampleContext& samples, bool row, int coordinate, int thresho
 // An edge is positive picture evidence only when support is distributed over
 // the verified picture height and continues into the image. This rejects a
 // corner logo, sparse stars/credits, or a thin bright border at the raster edge.
-int InspectSidePicture(SampleContext& samples, bool left, int top, int bottom, int threshold)
+int InspectSidePicture(SampleContext& samples, bool left, int top, int bottom, int threshold,
+	ActivePictureSideProbe& probe)
 {
+	probe = {};
+	probe.evaluated = true;
 	int minimum = 12;
 	for (int depth = 0; depth < 3; ++depth)
 	{
@@ -120,11 +123,19 @@ int InspectSidePicture(SampleContext& samples, bool left, int top, int bottom, i
 		for (int zone = 0; zone < 4; ++zone)
 		{
 			int bright = 0;
+			auto& cell = probe.cells[depth * 4 + zone];
+			int sum = 0;
 			for (int i = 0; i < 12; ++i)
 			{
 				const int y = top + ((2 * (zone * 12 + i) + 1) * (bottom - top)) / 96;
-				bright += samples.Luma(x, y) > threshold;
+				const int luma = samples.Luma(x, y);
+				bright += luma > threshold;
+				cell.nonBlack += luma > threshold - 24;
+				cell.peakLuma = std::max(cell.peakLuma, luma);
+				sum += luma;
 			}
+			cell.strong = bright;
+			cell.meanLuma = sum / 12;
 			minimum = std::min(minimum, bright);
 		}
 	}
@@ -688,9 +699,9 @@ ActivePictureEvidence ExtractActivePictureEvidence(
 		axes.sidePictureBottom = bottom;
 		axes.sidePictureThreshold = blackThreshold + 24;
 		if (left == 0)
-			axes.leftPictureMinimum = InspectSidePicture(samples, true, top, bottom, axes.sidePictureThreshold);
+			axes.leftPictureMinimum = InspectSidePicture(samples, true, top, bottom, axes.sidePictureThreshold, result.leftSideProbe);
 		if (right == source.width)
-			axes.rightPictureMinimum = InspectSidePicture(samples, false, top, bottom, axes.sidePictureThreshold);
+			axes.rightPictureMinimum = InspectSidePicture(samples, false, top, bottom, axes.sidePictureThreshold, result.rightSideProbe);
 	}
 	const int trustedWidth =
 		result.trustedBounds.right - result.trustedBounds.left;
