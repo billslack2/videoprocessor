@@ -779,6 +779,28 @@ namespace AlphaSourceCrop
 		const PresentationRect& screen,
 		VerticalPictureAlignment verticalAlignment);
 
+	struct DestinationPlacementDecision
+	{
+		PresentationRect screen;
+		PresentationRect picture;
+		int outerSlackPixels = 0;
+		int innerSlackPixels = 0;
+		int outerPaddingPixels = 0;
+		int innerPaddingPixels = 0;
+		int effectivePaddingPixels = 0;
+		const char* reason = "invalid-geometry";
+		bool valid = false;
+	};
+
+	// Receives the final, already-sized and aligned destination rectangles.
+	// Preserve outer-screen placement first, then consume any remaining inset
+	// inside the screen. Only translation is permitted; source geometry and
+	// scaling are deliberately absent from this interface.
+	DestinationPlacementDecision PlaceFittedPicture(
+		const PresentationRect& output, const PresentationRect& fittedScreen,
+		const PresentationRect& fittedPicture,
+		VerticalPictureAlignment alignment, int requestedPaddingPixels);
+
 	// anamorphicScale describes the physical lens's horizontal expansion. The
 	// renderer must pre-compress by its reciprocal so the projected picture
 	// returns to the source proportions after passing through the lens.

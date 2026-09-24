@@ -4953,7 +4953,9 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 			"Reserves empty output space at the selected top or bottom screen edge. "
 			"It does not add content padding, crop the picture, or change its scale."));
 		form->addRow(QString(), helpLabel(QStringLiteral(
-			"Uses existing vertical slack only; Center disables this setting.")));
+			"Uses available vertical space around the fitted picture, up to the "
+			"requested inset. With no vertical space it has no effect. Center "
+			"disables this setting.")));
 		auto updateScreenEdgePadding = [verticalAlignment, screenEdgePadding]()
 		{
 			screenEdgePadding->setEnabled(
