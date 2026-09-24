@@ -101,6 +101,39 @@ then run the prepared verified-backup deployment and record final installed
 host/renderer hashes and unchanged operator configuration/state. Remaining live
 screen acceptance still applies. Story remains Review.
 
+## Complete portable ZIP (2026-09-23)
+
+User clarified that a complete ZIP was required. The previously linked EXE alone
+is not sufficient to deliver this renderer change; host and renderer must match.
+Reused the exact clean successful x64 Release build receipt through
+`vp-release/scripts/build-vp.ps1 -PortableZip -ReuseVerifiedBuild`. Source identity
+and all four build binary hashes were rechecked; all 1,474 native tests and the
+installer support/identity/runtime-packaging checks passed again.
+
+ZIP:
+`E:\codex\releases\VideoProcessor-1.3.005-beta-e0ce8e8a5ab5-20260923-portable\VideoProcessor-1.3.005-beta-e0ce8e8a5ab5-x64-Portable.zip`
+
+SHA-256:
+`57FF1BB9A2B6CC055FA43AB418D8EDBF88EC8EB0C2F27FD9A42498E343F24457`
+
+The archive is 40,272,298 bytes. All 70 manifest-listed payload files were
+independently hashed inside the archive (71 files including INSTALL-MANIFEST).
+It contains the matching host, renderer, Config/Discovery, shaders, documentation,
+licenses and app-local runtime dependencies. It includes `VideoProcessor.cfg.example`
+and no active `VideoProcessor.cfg`, preserving existing configuration on update.
+The checksum sidecar and `validation/release-receipt.json` accompany the ZIP in
+that export directory. Binaries remain unsigned. Packaging did not alter the
+playing installation or interrupt playback.
+
+The user installed the matching setup into `C:\vptest2` before playback checks;
+read-only inspection verified both installed host and renderer hashes match the
+requested build. This is distinct from the earlier pending deployment to
+`C:\Videoprocessor\vp`. The initial reported positioning issue was use of madVR;
+after switching to VP Renderer, logs confirmed bottom alignment of 2.7586:1 content.
+The 19:36:35-19:57:47 interval had no layout changes. Two subsequent manual resets
+briefly fell back to full raster, reacquiring the same crop after six frames.
+This does not complete all visual acceptance criteria or authorize merging PR #111.
+
 ## User story
 
 As a VP Renderer operator, I want Top, Center, Bottom, and screen-edge padding
