@@ -11632,6 +11632,13 @@ struct LibplaceboVideoRenderer::Impl
 					rawCandidate.trustedBounds.left, rawCandidate.trustedBounds.top, rawCandidate.trustedBounds.right, rawCandidate.trustedBounds.bottom,
 					effectiveGeometry.left, effectiveGeometry.top, effectiveGeometry.right, effectiveGeometry.bottom,
 					presentationCropBounds.left, presentationCropBounds.top, presentationCropBounds.right, presentationCropBounds.bottom);
+				const auto& sideSupport = rawCandidate.axisEvidence;
+				DebugLog::Log("Alpha crop side picture: schema=1 generation=%llu sequence=%llu aperture=%dx%d:%d-%d threshold=%d left_min=%d right_min=%d required_min=6 samples_per_zone=12 zones=4 depths=3 vertical_exception=%d blocking_failed_axis=%d",
+					frameGeneration, sourceSequence, sideSupport.sidePictureWidth, sideSupport.sidePictureHeight,
+					sideSupport.sidePictureTop, sideSupport.sidePictureBottom, sideSupport.sidePictureThreshold,
+					sideSupport.leftPictureMinimum, sideSupport.rightPictureMinimum,
+					sideSupport.SupportsVerticalCropDespiteSideAmbiguity(rawCandidate.trustedBounds) ? 1 : 0,
+					sideSupport.HasBlockingFailedBar(rawCandidate.trustedBounds) ? 1 : 0);
 				DebugLog::Log("Alpha crop candidate levels: schema=1 generation=%llu sequence=%llu available=%d classification=%d candidate=%d,%d-%d,%d retained=%d,%d-%d,%d units=analysis-luma-10bit edge_fields=bar_pixels,floor,p90,dispersion,black_fraction,texture,continuity,trusted left=%d,%.1f,%.1f,%.1f,%.4f,%.1f,%.4f,%d top=%d,%.1f,%.1f,%.1f,%.4f,%.1f,%.4f,%d right=%d,%.1f,%.1f,%.1f,%.4f,%.1f,%.4f,%d bottom=%d,%.1f,%.1f,%.1f,%.4f,%.1f,%.4f,%d",
 					frameGeneration, sourceSequence, rawCandidate.available ? 1 : 0, static_cast<int>(rawCandidate.classification),
 					rawBounds.left, rawBounds.top, rawBounds.right, rawBounds.bottom,

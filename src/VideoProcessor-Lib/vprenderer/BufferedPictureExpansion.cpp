@@ -397,7 +397,7 @@ namespace AlphaSourceCrop
                 sample.observation.frameNumber != sample.identity.acceptedSequence ||
                 !sample.observation.available || sample.observation.transitionDeferred ||
                 sample.observation.classification != ActivePictureClassification::BAR_CROP_TRUSTED ||
-                sample.observation.axisEvidence.HasFailedBar() ||
+                sample.observation.axisEvidence.HasBlockingFailedBar(sample.observation.bounds) ||
                 !SameBounds(first.observation.bounds, sample.observation.bounds) ||
                 !sample.nearBlackEvaluated || sample.retention.globalNearBlack)
                 return {};

@@ -201,8 +201,10 @@ bool ActivePictureTransitionModel::RetainsIncompleteInwardFormat(
 {
 	// Preserve initial acquisition (including a preceding full-raster/menu frame).
 	// A failed orthogonal bar is not evidence for a new complete program aspect.
+	// Fresh distributed side-picture support can disprove an all-sided inset
+	// while granting only the independently verified full-width vertical crop.
 	return m_hasStable && m_stableClassification == ActivePictureClassification::BAR_CROP_TRUSTED &&
-		evidence.HasFailedBar() && candidate.rasterWidth == m_stable.rasterWidth &&
+		evidence.HasBlockingFailedBar(candidate) && candidate.rasterWidth == m_stable.rasterWidth &&
 		candidate.rasterHeight == m_stable.rasterHeight &&
 		candidate.left >= m_stable.left && candidate.top >= m_stable.top &&
 		candidate.right <= m_stable.right && candidate.bottom <= m_stable.bottom &&
