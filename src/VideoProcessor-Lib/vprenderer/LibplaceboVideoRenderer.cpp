@@ -3958,6 +3958,13 @@ struct LibplaceboVideoRenderer::Impl
 	std::string lastSourceCropPolicy;
 	std::string lastFinalPresentationPolicy;
 	std::string lastFinalLayoutPolicy;
+	uint64_t lastFinalLayoutTick = 0;
+	uint64_t lastFinalLayoutSequence = 0;
+	uint64_t lastFinalLayoutGeneration = 0;
+	NlsSourceGeometry lastFinalLayoutSource;
+	AlphaSourceCrop::PresentationRect lastFinalLayoutScreen;
+	AlphaSourceCrop::PresentationRect lastFinalLayoutPicture;
+	int lastFinalLayoutSubtitleShift = 0;
 	std::string lastHdrPeakAnalysisPolicy;
 	uint64_t hdrPeakAnalysisIntervalStartedTick = 0;
 	uint64_t hdrPeakAnalysisNextTelemetryTick = 0;
@@ -11632,6 +11639,35 @@ struct LibplaceboVideoRenderer::Impl
 					rawCandidate.trustedBounds.left, rawCandidate.trustedBounds.top, rawCandidate.trustedBounds.right, rawCandidate.trustedBounds.bottom,
 					effectiveGeometry.left, effectiveGeometry.top, effectiveGeometry.right, effectiveGeometry.bottom,
 					presentationCropBounds.left, presentationCropBounds.top, presentationCropBounds.right, presentationCropBounds.bottom);
+				const auto& sideSupport = rawCandidate.axisEvidence;
+				DebugLog::Log("Alpha crop side picture: schema=1 generation=%llu sequence=%llu aperture=%dx%d:%d-%d threshold=%d left_min=%d right_min=%d required_min=6 samples_per_zone=12 zones=4 depths=3 vertical_exception=%d blocking_failed_axis=%d",
+					frameGeneration, sourceSequence, sideSupport.sidePictureWidth, sideSupport.sidePictureHeight,
+					sideSupport.sidePictureTop, sideSupport.sidePictureBottom, sideSupport.sidePictureThreshold,
+					sideSupport.leftPictureMinimum, sideSupport.rightPictureMinimum,
+					sideSupport.SupportsVerticalCropDespiteSideAmbiguity(rawCandidate.trustedBounds) ? 1 : 0,
+					sideSupport.HasBlockingFailedBar(rawCandidate.trustedBounds) ? 1 : 0);
+				// Share the existing bounded edge-log cadence and sample grid. No
+				// extra source reads or relaxed crop thresholds for this telemetry.
+				const auto logSideZones = [&](const ActivePictureSideProbe& probe, bool left) {
+					if (!probe.evaluated) return;
+					std::ostringstream cells;
+					for (size_t i = 0; i < probe.cells.size(); ++i)
+					{
+						if (i) cells << (i % 4 == 0 ? ';' : '|');
+						const auto& cell = probe.cells[i];
+						cells << cell.strong << ',' << cell.nonBlack << ',' << cell.meanLuma << ',' << cell.peakLuma;
+					}
+					const int step = std::max(1, sideSupport.sidePictureWidth / 128);
+					const int origin = left ? 0 : sideSupport.sidePictureWidth - 1;
+					const int direction = left ? 1 : -1;
+					DebugLog::Log("Alpha crop side zones: schema=1 generation=%llu sequence=%llu edge=%s x=%d,%d,%d aperture_y=%d-%d zones=4 samples_per_cell=12 order=depth-major-top-to-bottom strong_threshold=%d black_threshold=%d fields=strong,nonblack,mean_y,peak_y units=analysis-luma-10bit cells=%s policy_effect=none",
+						frameGeneration, sourceSequence, left ? "left" : "right",
+						origin, origin + direction * step, origin + direction * step * 2,
+						sideSupport.sidePictureTop, sideSupport.sidePictureBottom,
+						sideSupport.sidePictureThreshold, sideSupport.sidePictureThreshold - 24, cells.str().c_str());
+				};
+				logSideZones(rawCandidate.leftSideProbe, true);
+				logSideZones(rawCandidate.rightSideProbe, false);
 				DebugLog::Log("Alpha crop candidate levels: schema=1 generation=%llu sequence=%llu available=%d classification=%d candidate=%d,%d-%d,%d retained=%d,%d-%d,%d units=analysis-luma-10bit edge_fields=bar_pixels,floor,p90,dispersion,black_fraction,texture,continuity,trusted left=%d,%.1f,%.1f,%.1f,%.4f,%.1f,%.4f,%d top=%d,%.1f,%.1f,%.1f,%.4f,%.1f,%.4f,%d right=%d,%.1f,%.1f,%.1f,%.4f,%.1f,%.4f,%d bottom=%d,%.1f,%.1f,%.1f,%.4f,%.1f,%.4f,%d",
 					frameGeneration, sourceSequence, rawCandidate.available ? 1 : 0, static_cast<int>(rawCandidate.classification),
 					rawBounds.left, rawBounds.top, rawBounds.right, rawBounds.bottom,
@@ -12008,6 +12044,42 @@ struct LibplaceboVideoRenderer::Impl
 					<< cropDecision.verticalTranslationPixels;
 				if (policy.str() == lastFinalLayoutPolicy)
 					return;
+				const uint64_t layoutTick = GetTickCount64();
+				const bool priorLayout = !lastFinalLayoutPolicy.empty() &&
+					lastFinalLayoutGeneration == frameGeneration &&
+					sourceSequence >= lastFinalLayoutSequence;
+				const AlphaSourceCrop::PresentationRect picture = {
+					target.crop.x0, target.crop.y0, target.crop.x1, target.crop.y1 };
+				auto rectChanged = [](const AlphaSourceCrop::PresentationRect& a,
+					const AlphaSourceCrop::PresentationRect& b)
+				{
+					return std::abs(a.left - b.left) > 0.05 ||
+						std::abs(a.top - b.top) > 0.05 ||
+						std::abs(a.right - b.right) > 0.05 ||
+						std::abs(a.bottom - b.bottom) > 0.05;
+				};
+				const bool sourceChanged = priorLayout &&
+					(presentationSourceGeometry.left != lastFinalLayoutSource.left ||
+					 presentationSourceGeometry.top != lastFinalLayoutSource.top ||
+					 presentationSourceGeometry.right != lastFinalLayoutSource.right ||
+					 presentationSourceGeometry.bottom != lastFinalLayoutSource.bottom);
+				const bool screenChanged = priorLayout &&
+					rectChanged(finalScreen, lastFinalLayoutScreen);
+				const bool pictureChanged = priorLayout &&
+					rectChanged(picture, lastFinalLayoutPicture);
+				const bool subtitleChanged = priorLayout &&
+					cropDecision.verticalTranslationPixels != lastFinalLayoutSubtitleShift;
+				const auto& edgeEvidence = latestCropRetentionEvidence;
+				const bool edgeCurrent = cropEvidenceFresh &&
+					edgeEvidence.analysisValid && edgeEvidence.presentationValid;
+				const auto& edgeLeft = edgeEvidence.expansionStripsAvailable
+					? edgeEvidence.expandingLeft : edgeEvidence.excludedLeft;
+				const auto& edgeTop = edgeEvidence.expansionStripsAvailable
+					? edgeEvidence.expandingTop : edgeEvidence.excludedTop;
+				const auto& edgeRight = edgeEvidence.expansionStripsAvailable
+					? edgeEvidence.expandingRight : edgeEvidence.excludedRight;
+				const auto& edgeBottom = edgeEvidence.expansionStripsAvailable
+					? edgeEvidence.expandingBottom : edgeEvidence.excludedBottom;
 				lastFinalLayoutPolicy = policy.str();
 				DebugLog::Log(
 					"Alpha final layout: sequence=%llu generation=%llu crop_event=%llu epoch=%llu measurement=%llu cadence_repeat=%d raster=%dx%d trusted=%d,%d-%d,%d envelope=%d,%d-%d,%d presentation=%d,%d-%d,%d screen_aspect=%.5f screen=%.1f,%.1f-%.1f,%.1f picture=%.1f,%.1f-%.1f,%.1f unused_axis=%s mapping=%s vertical_alignment=%s screen_edge_padding_requested=%d screen_edge_padding_effective=%d subtitle_shift_source_pixels=%d anamorphic=%.5f crop_reason=\"%s\"",
@@ -12037,6 +12109,44 @@ struct LibplaceboVideoRenderer::Impl
 					cropDecision.verticalTranslationPixels,
 					anamorphicScale,
 					cropDecision.reason.c_str());
+				// One correlated, change-only record makes dark-scene replay possible
+				// without inferring sub-second timing from separate log streams. The
+				// gap is geometry, not a claim that the pixels themselves are black.
+				DebugLog::Log(
+					"Alpha layout transition: schema=1 generation=%llu sequence=%llu prior=%d prior_sequence=%llu interval_ms=%llu interval_frames=%llu source_changed=%d screen_changed=%d picture_changed=%d subtitle_changed=%d prior_source=%d,%d-%d,%d fit_gap_px=%.1f,%.1f,%.1f,%.1f auto_crop=%d fixed_crop=%d fill_applied=%d near_black=%d/%d p90=%.1f edge_current=%d edge_sequence=%llu edge_region=%s edge_fields=pixels,black_fraction,p90 left=%d,%.4f,%.1f top=%d,%.4f,%.1f right=%d,%.4f,%.1f bottom=%d,%.4f,%.1f",
+					static_cast<unsigned long long>(frameGeneration),
+					static_cast<unsigned long long>(sourceSequence),
+					priorLayout ? 1 : 0,
+					static_cast<unsigned long long>(priorLayout ? lastFinalLayoutSequence : 0),
+					static_cast<unsigned long long>(priorLayout ? layoutTick - lastFinalLayoutTick : 0),
+					static_cast<unsigned long long>(priorLayout ? sourceSequence - lastFinalLayoutSequence : 0),
+					sourceChanged ? 1 : 0, screenChanged ? 1 : 0,
+					pictureChanged ? 1 : 0, subtitleChanged ? 1 : 0,
+					priorLayout ? lastFinalLayoutSource.left : 0,
+					priorLayout ? lastFinalLayoutSource.top : 0,
+					priorLayout ? lastFinalLayoutSource.right : 0,
+					priorLayout ? lastFinalLayoutSource.bottom : 0,
+					picture.left - finalScreen.left, picture.top - finalScreen.top,
+					finalScreen.right - picture.right, finalScreen.bottom - picture.bottom,
+					automaticSourceCrop ? 1 : 0, fixedCropAspectConfigured ? 1 : 0,
+					aspectLimitFill.applied ? 1 : 0,
+					latestActivePictureGlobalNearBlackEvaluated ? 1 : 0,
+					latestActivePictureGlobalNearBlack ? 1 : 0,
+					latestActivePictureGlobalLumaP90,
+					edgeCurrent ? 1 : 0,
+					static_cast<unsigned long long>(latestActivePictureEvidenceFrame),
+					edgeEvidence.expansionStripsAvailable ? "expansion-strips" : "excluded-bands",
+					edgeLeft.barPixels, edgeLeft.blackFraction, edgeLeft.lumaP90,
+					edgeTop.barPixels, edgeTop.blackFraction, edgeTop.lumaP90,
+					edgeRight.barPixels, edgeRight.blackFraction, edgeRight.lumaP90,
+					edgeBottom.barPixels, edgeBottom.blackFraction, edgeBottom.lumaP90);
+				lastFinalLayoutTick = layoutTick;
+				lastFinalLayoutSequence = sourceSequence;
+				lastFinalLayoutGeneration = frameGeneration;
+				lastFinalLayoutSource = presentationSourceGeometry;
+				lastFinalLayoutScreen = finalScreen;
+				lastFinalLayoutPicture = picture;
+				lastFinalLayoutSubtitleShift = cropDecision.verticalTranslationPixels;
 			};
 
 			if (nlsRequested)

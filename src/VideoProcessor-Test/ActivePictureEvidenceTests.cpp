@@ -3,6 +3,7 @@
 #include <ActivePictureEvidence.h>
 #include <ActivePictureDecisionTimeline.h>
 #include <vprenderer/AlphaSourceCropPolicy.h>
+#include <vprenderer/BufferedPictureExpansion.h>
 #include "CppUnitTest.h"
 
 #include <vector>
@@ -137,6 +138,158 @@ namespace VideoProcessorTest
 	TEST_CLASS(ActivePictureEvidenceTests)
 	{
 	public:
+		TEST_METHOD(SideZoneTelemetrySeparatesDarkCornerFromDimSideWithoutGrantingCrop)
+		{
+			for (bool darkCorner : {true, false})
+			{
+				P010Frame frame(960,540);
+				frame.Fill(160,512,512);
+				frame.BlackOutside(0,68,960,472);
+				frame.FillRectangle(880,68,960,472,80,640,512);
+				frame.FillRectangle(0,68,30,darkCorner ? 169 : 472,darkCorner ? 64 : 100);
+				const auto evidence=ExtractActivePictureEvidence(frame.P010Source());
+				Assert::AreEqual(0,evidence.axisEvidence.leftPictureMinimum);
+				Assert::IsTrue(evidence.axisEvidence.HasBlockingFailedBar(evidence.trustedBounds));
+				Assert::IsTrue(evidence.leftSideProbe.evaluated);
+				Assert::IsFalse(evidence.rightSideProbe.evaluated);
+				for (int depth=0;depth<3;++depth)
+					for (int zone=0;zone<4;++zone)
+					{
+						const auto& cell=evidence.leftSideProbe.cells[depth*4+zone];
+						const int luma=darkCorner ? (zone==0 ? 64 : 160) : 100;
+						Assert::AreEqual(luma,cell.meanLuma);
+						Assert::AreEqual(luma,cell.peakLuma);
+						Assert::AreEqual(luma>112 ? 12 : 0,cell.strong);
+						Assert::AreEqual(luma>88 ? 12 : 0,cell.nonBlack);
+					}
+			}
+		}
+		TEST_METHOD(DistributedSidePictureAdmitsOnlyVerifiedFullWidthVerticalCrop)
+		{
+			for (bool leftPicture : {true, false})
+			{
+				P010Frame initial(960,540), scope(960,540);
+				initial.BlackOutside(0,18,960,522);
+				scope.Fill(160,512,512);
+				scope.BlackOutside(0,68,960,472);
+				scope.FillRectangle(leftPicture ? 880 : 0,68,leftPicture ? 960 : 80,472,80,640,512);
+				const auto base=ExtractActivePictureEvidence(initial.P010Source());
+				const auto evidence=ExtractActivePictureEvidence(scope.P010Source());
+				Assert::IsTrue(evidence.axisEvidence.HasFailedBar());
+				Assert::IsTrue(evidence.axisEvidence.SupportsVerticalCropDespiteSideAmbiguity(evidence.trustedBounds));
+				Assert::AreEqual(12,leftPicture ? evidence.axisEvidence.leftPictureMinimum : evidence.axisEvidence.rightPictureMinimum);
+				ActivePictureTransitionModel model;
+				for (uint64_t seq=1;seq<=4;++seq) model.Observe(MakeActivePictureObservation(base,seq,24));
+				bool published=false;
+				for (uint64_t seq=5;seq<=12;++seq)
+				{
+					AlphaSourceCrop::TransitionAdmissionInput input;
+					input.evidence=evidence;
+					input.retention=EvaluateActivePicturePresentationRetention(scope.P010Source(),base.trustedBounds);
+					input.trustedGeometry=input.presentationBeforeObservation=base.trustedBounds;
+					input.trustedGeometryAvailable=input.compatiblePresentation=true;
+					input.trustedGeneration=input.sourceGeneration=1;
+					input.sourceSequence=seq; input.framesPerSecond=24;
+					input.outwardCandidate=evidence.trustedBounds;
+					const auto admission=AlphaSourceCrop::EvaluateTransitionAdmission(input);
+					Assert::IsFalse(admission.observation.transitionDeferred);
+					const auto decision=model.Observe(admission.observation);
+					if (decision.publish)
+					{
+						published=true;
+						Assert::AreEqual(0,decision.bounds.left);
+						Assert::AreEqual(960,decision.bounds.right);
+						Assert::AreEqual(68,decision.bounds.top);
+						Assert::AreEqual(472,decision.bounds.bottom);
+					}
+				}
+				Assert::IsTrue(published);
+				// A certificate cannot be borrowed for another aperture or axis.
+				auto different=evidence.trustedBounds; different.top+=4;
+				Assert::IsTrue(evidence.axisEvidence.HasBlockingFailedBar(different));
+				different=evidence.trustedBounds; different.left=4;
+				Assert::IsTrue(evidence.axisEvidence.HasBlockingFailedBar(different));
+				different=evidence.trustedBounds; different.rasterWidth=1920;
+				Assert::IsTrue(evidence.axisEvidence.HasBlockingFailedBar(different));
+			}
+		}
+
+		TEST_METHOD(SidePictureCertificateRejectsLogosThinBordersAndDimMargins)
+		{
+			for (int pattern=0;pattern<5;++pattern)
+			{
+				P010Frame frame(960,540);
+				frame.BlackOutside(40,68,880,472);
+				frame.FillRectangle(880,68,960,472,80,640,512);
+				if (pattern==0) frame.FillRectangle(0,180,40,240,700); // corner/side logo
+				if (pattern==1) frame.FillRectangle(0,68,2,472,700); // thin border
+				if (pattern==2) frame.FillRectangle(0,68,40,472,100); // lifted dark edge
+				if (pattern==3) // sparse credits spread over all four zones
+					for (int y=80;y<472;y+=100) frame.FillRectangle(0,y,40,y+16,700);
+				const auto evidence=ExtractActivePictureEvidence(frame.P010Source());
+				Assert::IsTrue(evidence.axisEvidence.HasFailedBar());
+				Assert::IsFalse(evidence.axisEvidence.SupportsVerticalCropDespiteSideAmbiguity(evidence.trustedBounds));
+				Assert::IsTrue(evidence.axisEvidence.HasBlockingFailedBar(evidence.trustedBounds));
+			}
+		}
+
+		TEST_METHOD(SidePictureInwardQueueRequiresFreshProofInEveryFrame)
+		{
+			P010Frame initial(960,540), scope(960,540);
+			initial.BlackOutside(0,18,960,522);
+			scope.BlackOutside(0,68,960,472);
+			scope.FillRectangle(880,68,960,472,80,640,512);
+			const auto base=ExtractActivePictureEvidence(initial.P010Source());
+			const auto evidence=ExtractActivePictureEvidence(scope.P010Source());
+			ActivePictureTransitionModel model;
+			for (uint64_t seq=1;seq<=4;++seq) model.Observe(MakeActivePictureObservation(base,seq,24));
+			AlphaSourceCrop::BufferedPictureExpansionSample samples[5];
+			for (int i=0;i<5;++i)
+			{
+				const uint64_t seq=5+i;
+				samples[i].identity={1,seq,seq,seq*1000,1,1,1};
+				samples[i].observation=MakeActivePictureObservation(evidence,seq,24);
+				samples[i].retention=EvaluateActivePicturePresentationRetention(scope.P010Source(),base.trustedBounds);
+				samples[i].nearBlackEvaluated=true;
+			}
+			const auto build=[&]() { return AlphaSourceCrop::BuildBufferedInwardDecision(samples,5,model,base.trustedBounds,5,4,1,1); };
+			const auto proved=build();
+			Assert::IsTrue(proved.transition.publish);
+			ActivePictureDecisionTimeline timeline;
+			timeline.Reset(1);
+			ActivePictureFrameDecision queued;
+			for (uint64_t seq=1;seq<=4;++seq)
+			{
+				const ActivePictureFrameIdentity id{1,seq,seq,seq*1000,1,1,1};
+				const auto observation=MakeActivePictureObservation(base,seq,24);
+				timeline.TrackAcceptedFrame(id);
+				timeline.TrackLookaheadEvidence(id,observation,true,false);
+				timeline.SubmitScheduledObservation(id,observation,5,4,queued);
+			}
+			bool associated=false;
+			for (const auto& sample : samples)
+			{
+				timeline.TrackAcceptedFrame(sample.identity);
+				timeline.TrackLookaheadEvidence(sample.identity,sample.observation,true,false);
+				if (timeline.SubmitScheduledObservation(sample.identity,sample.observation,5,4,queued))
+					associated=associated || queued.association==ActivePictureDecisionAssociation::EXACT_INWARD;
+			}
+			Assert::IsTrue(associated);
+			samples[1].observation.axisEvidence.leftPictureMinimum=0;
+			Assert::IsFalse(build().transition.publish);
+			samples[1].observation.axisEvidence=evidence.axisEvidence;
+			samples[1].retention.globalNearBlack=true;
+			Assert::IsFalse(build().transition.publish);
+		}
+
+		TEST_METHOD(SidePictureProbeUsesNativeP210Luma)
+		{
+			P010Frame frame(960,540,32,true);
+			frame.BlackOutside(0,68,960,472);
+			frame.FillRectangle(880,68,960,472,80,640,512);
+			const auto evidence=ExtractActivePictureEvidence(frame.P210Source());
+			Assert::IsTrue(evidence.axisEvidence.SupportsVerticalCropDespiteSideAmbiguity(evidence.trustedBounds));
+		}
 
 
 		TEST_METHOD(FailedOrthogonalBarCannotPublishInventedFormatFromRealPixels)

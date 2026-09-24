@@ -107,6 +107,41 @@ bool ScanBlackLine(SampleContext& samples, bool row, int coordinate, int thresho
 	return black >= 44;
 }
 
+// An edge is positive picture evidence only when support is distributed over
+// the verified picture height and continues into the image. This rejects a
+// corner logo, sparse stars/credits, or a thin bright border at the raster edge.
+int InspectSidePicture(SampleContext& samples, bool left, int top, int bottom, int threshold,
+	ActivePictureSideProbe& probe)
+{
+	probe = {};
+	probe.evaluated = true;
+	int minimum = 12;
+	for (int depth = 0; depth < 3; ++depth)
+	{
+		const int inset = depth * std::max(1, samples.source.width / 128);
+		const int x = left ? inset : samples.source.width - 1 - inset;
+		for (int zone = 0; zone < 4; ++zone)
+		{
+			int bright = 0;
+			auto& cell = probe.cells[depth * 4 + zone];
+			int sum = 0;
+			for (int i = 0; i < 12; ++i)
+			{
+				const int y = top + ((2 * (zone * 12 + i) + 1) * (bottom - top)) / 96;
+				const int luma = samples.Luma(x, y);
+				bright += luma > threshold;
+				cell.nonBlack += luma > threshold - 24;
+				cell.peakLuma = std::max(cell.peakLuma, luma);
+				sum += luma;
+			}
+			cell.strong = bright;
+			cell.meanLuma = sum / 12;
+			minimum = std::min(minimum, bright);
+		}
+	}
+	return minimum;
+}
+
 ActivePictureEdgeEvidence InspectHorizontalEdge(SampleContext& samples, bool top,
 	int barPixels, int boundary, int blackFloor, int blackThreshold, int outerOffset = 0)
 {
@@ -651,6 +686,23 @@ ActivePictureEvidence ExtractActivePictureEvidence(
 	};
 	finishAxis(result.axisEvidence.vertical, verticalTrusted, result.top.trusted && result.bottom.trusted);
 	finishAxis(result.axisEvidence.horizontal, horizontalTrusted, result.left.trusted && result.right.trusted);
+	// A failed side proposal remains failed. Separately certify that one actual
+	// source edge carries broad picture, so it cannot masquerade as an all-sided
+	// inset. This certificate can authorize only the exact top/bottom crop.
+	if (verticalTrusted && result.axisEvidence.horizontal.FailedBar() &&
+		result.axisEvidence.horizontal.scanComplete && source.width >= 320 && source.height >= 180)
+	{
+		auto& axes = result.axisEvidence;
+		axes.sidePictureWidth = source.width;
+		axes.sidePictureHeight = source.height;
+		axes.sidePictureTop = top;
+		axes.sidePictureBottom = bottom;
+		axes.sidePictureThreshold = blackThreshold + 24;
+		if (left == 0)
+			axes.leftPictureMinimum = InspectSidePicture(samples, true, top, bottom, axes.sidePictureThreshold, result.leftSideProbe);
+		if (right == source.width)
+			axes.rightPictureMinimum = InspectSidePicture(samples, false, top, bottom, axes.sidePictureThreshold, result.rightSideProbe);
+	}
 	const int trustedWidth =
 		result.trustedBounds.right - result.trustedBounds.left;
 	const int trustedHeight =

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <array>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -42,6 +43,21 @@ struct ActivePictureEdgeEvidence
 };
 
 
+// Diagnostics from the existing side-probe samples. These measurements are
+// intentionally excluded from observation identity and crop admission policy.
+struct ActivePictureSideProbeCell
+{
+	int strong = 0;
+	int nonBlack = 0;
+	int meanLuma = 0;
+	int peakLuma = 0;
+};
+struct ActivePictureSideProbe
+{
+	bool evaluated = false;
+	std::array<ActivePictureSideProbeCell, 12> cells{}; // depth-major, then top-to-bottom zone
+};
+
 struct ActivePictureEvidence
 {
 	bool available = false;
@@ -54,6 +70,7 @@ struct ActivePictureEvidence
 	ActivePictureEdgeEvidence top;
 	ActivePictureEdgeEvidence right;
 	ActivePictureEdgeEvidence bottom;
+	ActivePictureSideProbe leftSideProbe, rightSideProbe;
 	size_t lumaSamples = 0;
 	size_t chromaSamples = 0;
 	std::string reason;

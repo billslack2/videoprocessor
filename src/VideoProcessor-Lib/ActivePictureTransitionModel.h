@@ -80,8 +80,7 @@ enum class ActivePictureClassification
 };
 
 
-// Measurement metadata is distinct from safe fallback coordinates. Full-extent
-// support is diagnostic only; this rollout gates failed bar proposals, not startup.
+// Measurement metadata is distinct from safe fallback coordinates.
 enum class ActivePictureAxisState : uint8_t { UNKNOWN, TRUSTED_BARS, FULL_EXTENT_SUPPORTED };
 enum class ActivePictureAxisReason : uint8_t
 {
@@ -104,9 +103,39 @@ struct ActivePictureAxisEvidence
 struct ActivePictureAxisEvidenceSet
 {
 	ActivePictureAxisEvidence horizontal, vertical;
+	// Fresh picture support at an uncropped source side, measured over the
+	// exact verified vertical aperture. Values are the minimum bright samples
+	// (of 12) in any of four height zones at any of three strip depths.
+	int sidePictureWidth = 0, sidePictureHeight = 0;
+	int sidePictureTop = 0, sidePictureBottom = 0;
+	int sidePictureThreshold = 0;
+	int leftPictureMinimum = -1, rightPictureMinimum = -1;
 	bool HasFailedBar() const { return horizontal.FailedBar() || vertical.FailedBar(); }
+	bool SupportsVerticalCropDespiteSideAmbiguity(const ActivePictureBounds& bounds) const
+	{
+		return horizontal.FailedBar() && horizontal.scanComplete &&
+			horizontal.reason == ActivePictureAxisReason::BAR_EDGE_REJECTED &&
+			vertical.state == ActivePictureAxisState::TRUSTED_BARS && vertical.scanComplete &&
+			bounds.trustedBarAxes == ActivePictureBounds::BarAxes::TOP_BOTTOM &&
+			bounds.left == 0 && bounds.right == bounds.rasterWidth &&
+			bounds.rasterWidth >= 320 && bounds.rasterHeight >= 180 &&
+			bounds.top > 0 && bounds.bottom < bounds.rasterHeight && bounds.bottom > bounds.top &&
+			sidePictureWidth == bounds.rasterWidth && sidePictureHeight == bounds.rasterHeight &&
+			sidePictureTop == bounds.top && sidePictureBottom == bounds.bottom &&
+			(leftPictureMinimum >= 6 || rightPictureMinimum >= 6);
+	}
+	bool HasBlockingFailedBar(const ActivePictureBounds& bounds) const
+	{
+		return HasFailedBar() && !SupportsVerticalCropDespiteSideAmbiguity(bounds);
+	}
 	bool operator==(const ActivePictureAxisEvidenceSet& other) const
-	{ return horizontal == other.horizontal && vertical == other.vertical; }
+	{
+		return horizontal == other.horizontal && vertical == other.vertical &&
+			sidePictureWidth == other.sidePictureWidth && sidePictureHeight == other.sidePictureHeight &&
+			sidePictureTop == other.sidePictureTop && sidePictureBottom == other.sidePictureBottom &&
+			sidePictureThreshold == other.sidePictureThreshold &&
+			leftPictureMinimum == other.leftPictureMinimum && rightPictureMinimum == other.rightPictureMinimum;
+	}
 };
 const char* ActivePictureAxisStateName(ActivePictureAxisState state);
 const char* ActivePictureAxisReasonName(ActivePictureAxisReason reason);

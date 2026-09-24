@@ -564,7 +564,7 @@ ActivePictureDecisionTimeline::ValidateExactInwardProof(
 			evidence.observation.classification !=
 				ActivePictureClassification::BAR_CROP_TRUSTED ||
 			!evidence.nearBlackEvaluated || evidence.observation.transitionDeferred ||
-			evidence.observation.axisEvidence.HasFailedBar())
+			evidence.observation.axisEvidence.HasBlockingFailedBar(evidence.observation.bounds))
 		{
 			return ActivePictureInwardProofValidation::EVIDENCE_NOT_TRUSTED;
 		}
