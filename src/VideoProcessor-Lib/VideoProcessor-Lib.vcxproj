@@ -216,6 +216,7 @@
 	<ClInclude Include="LiveOutputTrace.h" />
 	<ClInclude Include="MadVRShaderTransactionPolicy.h" />
     <ClInclude Include="IRenderer.h" />
+    <ClInclude Include="RendererCropHandoff.h" />
     <ClInclude Include="RendererLiveness.h" />
     <ClInclude Include="RendererPostStallResetAdvisor.h" />
     <ClInclude Include="RendererIngressState.h" />

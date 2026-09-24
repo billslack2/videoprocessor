@@ -84,6 +84,18 @@ namespace Tests
 			if (fail)
 				throw std::runtime_error("fake live failure");
 		}
+		bool ExportHostCropHandoff(RendererCropHandoff& hint) const override
+		{
+			hint.verifiedTick = 100;
+			return true;
+		}
+		void ImportHostCropHandoff(const RendererCropHandoff& hint) override
+		{
+			Assert::IsTrue(liveResetCalled);
+			Assert::AreEqual<uint64_t>(100, hint.verifiedTick);
+			cropHintImported = true;
+		}
+		std::atomic<bool> cropHintImported{false};
 
 		bool RetargetWindowWithIngressDrain(
 			uintptr_t targetWindow,
@@ -239,6 +251,49 @@ namespace Tests
 	TEST_CLASS(RendererResetCoordinatorTests)
 	{
 	public:
+		TEST_METHOD(OnlyHostQueueSettleTransfersCropHint)
+		{
+			for (const auto reason : {RendererResetReason::HostTransition,
+				RendererResetReason::RefreshTransition, RendererResetReason::Manual,
+				RendererResetReason::ProfileChange, RendererResetReason::SourceGapRecovery})
+			{
+				FakeResetClock clock;
+				RendererResetCoordinator coordinator([]() { return true; },
+					[&clock]() { return clock.Now(); });
+				coordinator.Bind(18);
+				coordinator.GetIngressState()->OpenAdmission();
+				Assert::IsTrue(coordinator.RequestUi(reason, RendererResetScope::LiveQueue));
+				RendererResetCoordinator::SelectedReset selected;
+				Assert::IsTrue(coordinator.DrainReady(clock.Now(), selected));
+				auto renderer = std::make_shared<FakeResetRenderer>();
+				Assert::IsTrue(coordinator.AcknowledgeBlackAndStart(selected, renderer) ==
+					RendererResetCoordinator::StartResult::Started);
+				Assert::IsTrue(WaitForCompletion(coordinator));
+				RendererResetCoordinator::OperationResult result;
+				Assert::IsTrue(coordinator.ConsumeCompletion(18, true, result));
+				Assert::IsTrue(result.succeeded);
+				Assert::AreEqual(reason == RendererResetReason::HostTransition,
+					renderer->cropHintImported.load());
+			}
+		}
+		TEST_METHOD(CoalescedNonHostResetDisablesCropContinuity)
+		{
+			for (bool hostFirst : {true, false})
+			{
+				FakeResetClock clock;
+				RendererResetCoordinator coordinator([]() { return true; },
+					[&clock]() { return clock.Now(); });
+				coordinator.Bind(18);
+				const auto first = hostFirst ? RendererResetReason::HostTransition : RendererResetReason::SourceGapRecovery;
+				const auto second = hostFirst ? RendererResetReason::SourceGapRecovery : RendererResetReason::HostTransition;
+				Assert::IsTrue(coordinator.RequestUi(first, RendererResetScope::LiveQueue));
+				Assert::IsTrue(coordinator.RequestUi(second, RendererResetScope::LiveQueue));
+				RendererResetCoordinator::SelectedReset selected;
+				Assert::IsTrue(coordinator.DrainReady(clock.Now(), selected));
+				Assert::IsTrue(selected.request.reason == RendererResetReason::HostTransition);
+				Assert::IsFalse(selected.request.hostCropContinuity);
+			}
+		}
 		TEST_METHOD(PresentationResetEpochInvalidatesPriorGeometryForLiveQueueReset)
 		{
 			PresentationResetEpoch resetEpoch;

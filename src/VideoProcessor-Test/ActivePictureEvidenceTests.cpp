@@ -2,6 +2,7 @@
 
 #include <ActivePictureEvidence.h>
 #include <ActivePictureDecisionTimeline.h>
+#include <RendererCropHandoff.h>
 #include <vprenderer/AlphaSourceCropPolicy.h>
 #include "CppUnitTest.h"
 
@@ -137,6 +138,67 @@ namespace VideoProcessorTest
 	TEST_CLASS(ActivePictureEvidenceTests)
 	{
 	public:
+		TEST_METHOD(DisplayHandoffRecoversVerifiedScopeFromAmbiguousDarkPixels)
+		{
+			P010Frame frame(960, 540);
+			frame.Fill(64, 512, 512);
+			// The picture's dark upper/left area obscures the true scope edge.
+			frame.FillRectangle(266, 144, 960, 472, 120);
+			const auto source = frame.P010Source();
+			const auto scope = ScopePresentation(960, 540, 68, 472);
+			RendererCropHandoff hint{ scope, 42, 7, source.generation, 100 };
+			ActivePicturePresentationRetentionEvidence proof;
+			Assert::IsTrue(CanRestoreRendererCrop(hint, source, 42, 7, 110, proof));
+			Assert::IsTrue(proof.activePicture.classification == ActivePictureClassification::PROVISIONAL);
+			Assert::IsTrue(proof.excludedBandsPixelSafe);
+			ActivePictureTransitionModel replacement;
+			ActivePictureTransitionDecision seed;
+			seed.bounds = scope;
+			seed.publish = seed.stable = true;
+			Assert::IsTrue(replacement.AdoptPublishedDecision(seed,
+				ActivePictureClassification::BAR_CROP_TRUSTED));
+			const auto retained = ConstrainNearBlackGeometryChange(proof, scope);
+			for (uint64_t sequence = 1; sequence <= 180; ++sequence)
+			{
+				const auto decision = replacement.Observe(
+					MakeActivePictureObservation(retained, sequence, 23.976));
+				Assert::IsTrue(decision.stable);
+				Assert::IsFalse(decision.clearTransition);
+				Assert::AreEqual(scope.top, decision.stableBounds.top);
+				Assert::AreEqual(scope.bottom, decision.stableBounds.bottom);
+			}
+		}
+
+		TEST_METHOD(DisplayHandoffRejectsChangedContextAndExpiredHint)
+		{
+			P010Frame frame(960, 540);
+			frame.BlackOutside(0, 68, 960, 472);
+			auto source = frame.P010Source();
+			RendererCropHandoff hint{ ScopePresentation(960, 540, 68, 472), 42, 7, 1, 100 };
+			ActivePicturePresentationRetentionEvidence proof;
+			Assert::IsFalse(CanRestoreRendererCrop(hint, source, 43, 7, 110, proof));
+			Assert::IsFalse(CanRestoreRendererCrop(hint, source, 42, 8, 110, proof));
+			Assert::IsFalse(CanRestoreRendererCrop(hint, source, 42, 7, 10101, proof));
+			Assert::IsFalse(CanRestoreRendererCrop(hint, source, 42, 7, 99, proof));
+			source.generation = 2;
+			Assert::IsFalse(CanRestoreRendererCrop(hint, source, 42, 7, 110, proof));
+			source.generation = 1;
+			hint.bounds.rasterWidth = 1920;
+			Assert::IsFalse(CanRestoreRendererCrop(hint, source, 42, 7, 110, proof));
+		}
+
+		TEST_METHOD(DisplayHandoffRejectsLivePictureAndOverlayInExcludedBands)
+		{
+			P010Frame frame(960, 540);
+			RendererCropHandoff hint{ ScopePresentation(960, 540, 68, 472), 42, 7, 1, 100 };
+			ActivePicturePresentationRetentionEvidence proof;
+			Assert::IsFalse(CanRestoreRendererCrop(hint, frame.P010Source(), 42, 7, 110, proof));
+			frame.BlackOutside(0, 68, 960, 472);
+			frame.FillRectangle(250, 490, 710, 520, 650);
+			Assert::IsFalse(CanRestoreRendererCrop(hint, frame.P010Source(), 42, 7, 110, proof));
+			frame.BlackOutside(0, 68, 960, 472, 64, 650, 512);
+			Assert::IsFalse(CanRestoreRendererCrop(hint, frame.P010Source(), 42, 7, 110, proof));
+		}
 
 
 		TEST_METHOD(FailedOrthogonalBarCannotPublishInventedFormatFromRealPixels)

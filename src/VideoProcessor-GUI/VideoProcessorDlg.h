@@ -650,6 +650,11 @@ protected:
 	// Fresh Alpha start causes retained until Rendering so reset policy can
 	// preserve refresh cleanup while logging host/backend skips explicitly.
 	bool m_alphaHostTransitionPending = false;
+	RendererCropHandoff m_alphaHostCropHandoff;
+	VideoStateComPtr m_alphaHostCropVideoState;
+	CComPtr<ACaptureDevice> m_alphaHostCropCaptureDevice;
+	uint64_t m_alphaHostCropProfileGeneration = 0;
+	void CaptureAlphaHostCropHandoff();
 	bool m_alphaBackendHandoffPending = false;
 	// These are deterministic reset boundaries, not post-stall hypotheses.
 	// They are consumed only after the replacement/retarget is rendering so the
