@@ -1133,3 +1133,28 @@ exercised by these sessions. Live-only endpoint quiet confirmation is unchanged.
 The already supplied setup/ZIP remain identified by the exact tested feature
 commit. This merge did not rebuild packages, redeploy, change configuration or
 update GitHub Release assets. The previously user-closed story remains Done.
+### 2026-09-24 distributed side evidence and crop diagnostics
+
+User authorized checking in and merging the tested bounded crop change and its diagnostics.
+[PR #114](https://github.com/billslack2/videoprocessor/pull/114) merged into
+`v1.3.005-beta` at `ff53b4683a2a6b59423f05918e29ce1e0c8cdca8`.
+The fetched merge tree exactly matches clean feature commit
+`873d8eb82fab18db1860717ed190a48d69872fba`, based on
+`8becfd68a1832b4f615657b3e67398661a7dde40`.
+
+The change permits only a verified full-width vertical crop when fresh picture
+support at one source side meets all four height zones at all three depths.
+It retains the temporal, near-black, subtitle, raster/aperture identity and
+inset safeguards. Per-zone side telemetry reuses existing samples without
+relaxing admission; correlated layout diagnostics from PR #112 are included.
+The independent fullscreen handoff proposal in PR #113 is not included.
+
+Validation: successful clean x64 Release solution build and 458 passing targeted
+active-picture, crop policy, buffered/timeline, native RGB and caption tests.
+GitHub reported no configured PR checks; the merge used pinned head/base commits.
+This is not a complete fix for ambiguous dark scenes: conservative acquisition
+holds and near-black presentation fallbacks remain possible and warrant separate
+follow-up. No additional threshold relaxation was merged.
+
+This check-in did not rebuild packages or change the running deployment. The
+previously user-closed story remains Done; this entry records follow-up evidence.
