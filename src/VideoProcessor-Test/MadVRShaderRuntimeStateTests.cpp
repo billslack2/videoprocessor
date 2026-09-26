@@ -4,6 +4,7 @@
 #include <microsoft_directshow/MadVRShaderRuntimeState.h>
 #include <microsoft_directshow/video_renderers/DirectShowViewportPlacement.h>
 #include <ShortcutRepeatGuard.h>
+#include <vprenderer/AlphaSourceCropPolicy.h>
 #include "CppUnitTest.h"
 
 #include <d3dcompiler.h>
@@ -117,6 +118,90 @@ namespace VideoProcessorTest
 			Assert::AreEqual(1812, selected.bottom);
 			Assert::AreEqual(2.4, selected.aspect, 0.000001);
 		}
+
+        TEST_METHOD(VerticalOnlyCropKeepsAllColumnsForNlsDespiteRejectedSideProposal)
+        {
+            // The upstream certificate removes only checked vertical bars.
+            // The rejected rough side proposal is deliberately kept distinct.
+            const ActivePictureBounds rejected = {0,276,3388,1884,3840,2160,
+                3388.0/1608.0,ActivePictureBounds::BarAxes::NONE};
+            AlphaSourceCrop::Input crop;
+            crop.automaticCropEnabled = crop.sharedGeometryAvailable = crop.latestObservationSupportsCrop = true;
+            crop.classification = ActivePictureClassification::BAR_CROP_TRUSTED;
+            crop.geometry = {0,272,3840,1888,3840,2160,3840.0/1616.0,
+                ActivePictureBounds::BarAxes::TOP_BOTTOM};
+            crop.rasterWidth=3840; crop.rasterHeight=2160;
+            crop.geometrySourceGeneration=crop.frameSourceGeneration=7;
+            const auto accepted=AlphaSourceCrop::Evaluate(crop);
+            Assert::IsTrue(accepted.applyCrop);
+            for(bool nlsRequested : {false,true})
+            {
+                const auto source=ResolveNlsPresentationSourceGeometry(nlsRequested,true,
+                    rejected.left,rejected.top,rejected.right,rejected.bottom,
+                    accepted.applyCrop,accepted.sourceBounds.left,accepted.sourceBounds.top,
+                    accepted.sourceBounds.right,accepted.sourceBounds.bottom,3840,2160);
+                Assert::IsTrue(source.valid);
+                Assert::AreEqual(0,source.left); Assert::AreEqual(3840,source.right);
+                Assert::AreEqual(272,source.top); Assert::AreEqual(1888,source.bottom);
+                Assert::AreEqual(3840.0/1616.0,source.aspect,0.000001);
+                Assert::IsTrue(source.aspect>rejected.aspectRatio);
+            }
+        }
+
+        TEST_METHOD(VerticalOnlySourceDoesNotImplicitlyEnableFillOrAdoptRejectedSide)
+        {
+            AlphaSourceCrop::AspectLimitFillInput fill;
+            fill.trustedContentAuthorityAccepted=true;
+            fill.screenAspect=2.4;
+            fill.sourceBounds={0,272,3840,1888,3840,2160,3840.0/1616.0,
+                ActivePictureBounds::BarAxes::TOP_BOTTOM};
+            const auto unchanged=AlphaSourceCrop::EvaluateAspectLimitFill(fill);
+            Assert::IsFalse(unchanged.applied);
+            Assert::AreEqual(0,unchanged.sourceBounds.left); Assert::AreEqual(3840,unchanged.sourceBounds.right);
+            Assert::AreEqual(272,unchanged.sourceBounds.top); Assert::AreEqual(1888,unchanged.sourceBounds.bottom);
+            // Explicit operator fill is allowed to remove additional picture;
+            // this is separate from permission to remove proven black bars.
+            fill.cropNarrowerContentToFillScreen=true;
+            fill.narrowerLimitConfigured=true; fill.narrowerAspectLimit=2.35;
+            const auto explicitFill=AlphaSourceCrop::EvaluateAspectLimitFill(fill);
+            Assert::IsTrue(explicitFill.applied);
+            Assert::AreEqual(0,explicitFill.sourceBounds.left); Assert::AreEqual(3840,explicitFill.sourceBounds.right);
+            Assert::IsTrue(explicitFill.sourceBounds.top>272 && explicitFill.sourceBounds.bottom<1888);
+            Assert::AreEqual(2.4,static_cast<double>(explicitFill.sourceBounds.right-explicitFill.sourceBounds.left)/
+                (explicitFill.sourceBounds.bottom-explicitFill.sourceBounds.top),0.002);
+        }
+
+        TEST_METHOD(VerticalOnlyFullWidthAspectControlsConfiguredTwoPointFourOneFillLimit)
+        {
+            for(int top : {272,282,286})
+            {
+                const int bottom=2160-top;
+                const double actualAspect=3840.0/(bottom-top);
+                AlphaSourceCrop::AspectLimitFillInput fill;
+                fill.trustedContentAuthorityAccepted=true;
+                fill.cropWiderContentToFillScreen=true;
+                fill.widerLimitConfigured=true; fill.widerAspectLimit=2.41;
+                fill.screenAspect=2.35;
+                fill.sourceBounds={0,top,3840,bottom,3840,2160,actualAspect,
+                    ActivePictureBounds::BarAxes::TOP_BOTTOM};
+                const auto result=AlphaSourceCrop::EvaluateAspectLimitFill(fill);
+                Assert::AreEqual(actualAspect,result.contentAspect,0.000001);
+                Assert::AreEqual(actualAspect<=fill.widerAspectLimit,result.applied);
+                Assert::AreEqual(top,result.sourceBounds.top); Assert::AreEqual(bottom,result.sourceBounds.bottom);
+                if(result.applied)
+                {
+                    Assert::IsTrue(result.sourceBounds.left>0);
+                    Assert::IsTrue(result.sourceBounds.right>3388,
+                        L"Explicit centered fill must not substitute the rejected rough right edge.");
+                    Assert::IsTrue(std::abs(result.sourceBounds.left-(3840-result.sourceBounds.right))<=2,
+                        L"Centered fill permits one chroma-alignment step of asymmetry.");
+                }
+                else
+                {
+                    Assert::AreEqual(0,result.sourceBounds.left); Assert::AreEqual(3840,result.sourceBounds.right);
+                }
+            }
+        }
 
 		TEST_METHOD(VpRendererNlsPassthroughInheritsViewportPresentation)
 		{

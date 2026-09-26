@@ -10,20 +10,42 @@ namespace
 {
 std::atomic<double> g_runtimeStableGeometryDeadbandPercent(
 	ActivePictureTransitionModel::DEFAULT_STABLE_GEOMETRY_DEADBAND_PERCENT);
+
+bool ExactSparseBounds(const ActivePictureBounds& a, const ActivePictureBounds& b)
+{
+    return a.left == b.left && a.top == b.top && a.right == b.right && a.bottom == b.bottom &&
+        a.rasterWidth == b.rasterWidth && a.rasterHeight == b.rasterHeight &&
+        a.trustedBarAxes == b.trustedBarAxes;
+}
+
 }
 
 
 void ActivePictureTransitionModel::Reset()
 {
 	m_hasStable = false;
+	m_stableOrigin = ActivePictureAuthorityOrigin::NATIVE;
 	m_stable = {};
 	m_stableClassification = ActivePictureClassification::UNAVAILABLE;
 	m_recentTrusted = {};
 	m_recentTrustedCount = 0;
+	m_qualifiedNativeGeometry = {};
+	m_rememberedContext = {};
+	m_rememberedContextFresh = false;
 	ClearCandidate();
 	m_unavailableCandidates = 0;
 	m_lastAnalyzedFrame = 0;
 	m_lastObservedFrame = 0;
+}
+
+
+void ActivePictureTransitionModel::ResetPresentationState()
+{
+    const auto qualification = m_qualifiedNativeGeometry;
+    const auto context = m_rememberedContext;
+    Reset();
+    m_qualifiedNativeGeometry = qualification;
+    m_rememberedContext = context;
 }
 
 
@@ -75,7 +97,8 @@ uint64_t ActivePictureTransitionModel::AnalysisIntervalFrames(
 bool ActivePictureTransitionModel::ShouldAnalyze(
 	uint64_t frameNumber, double framesPerSecond)
 {
-	const uint64_t interval = m_candidateUsesKnownTrustedGeometry ?
+	const uint64_t interval = (m_candidateUsesKnownTrustedGeometry ||
+        m_candidateOrigin == ActivePictureAuthorityOrigin::REMEMBERED_EDGE_RETURN) ?
 		1 : AnalysisIntervalFrames(framesPerSecond);
 	if (m_lastAnalyzedFrame != 0 && frameNumber <= m_lastAnalyzedFrame)
 		return false;
@@ -200,9 +223,9 @@ bool ActivePictureTransitionModel::RetainsIncompleteInwardFormat(
 	const ActivePictureBounds& candidate, const ActivePictureAxisEvidenceSet& evidence) const
 {
 	// Preserve initial acquisition (including a preceding full-raster/menu frame).
-	// A failed orthogonal bar is not evidence for a new complete program aspect.
-	// Fresh distributed side-picture support can disprove an all-sided inset
-	// while granting only the independently verified full-width vertical crop.
+	// A failed axis cannot authorize removing pixels on that axis. Current
+	// strict vertical profiles or the existing broad-side path can still admit
+	// an independently verified top/bottom crop which preserves every column.
 	return m_hasStable && m_stableClassification == ActivePictureClassification::BAR_CROP_TRUSTED &&
 		evidence.HasBlockingFailedBar(candidate) && candidate.rasterWidth == m_stable.rasterWidth &&
 		candidate.rasterHeight == m_stable.rasterHeight &&
@@ -230,6 +253,236 @@ const char* ActivePicturePublicationAdmissionName(ActivePicturePublicationAdmiss
 	}
 }
 
+bool ActivePictureTransitionModel::IsSparseBoundaryInwardTransitionGeometry(
+    const ActivePictureBounds& base, const ActivePictureBounds& target, double deadbandPercent)
+{
+    if (!std::isfinite(deadbandPercent) || deadbandPercent < 0.0 ||
+        deadbandPercent > MAX_STABLE_GEOMETRY_DEADBAND_PERCENT ||
+        base.rasterWidth < 320 || base.rasterHeight < 180 ||
+        base.left != 0 || base.right != base.rasterWidth || base.top < 0 ||
+        base.bottom > base.rasterHeight || base.top >= base.bottom ||
+        target.rasterWidth != base.rasterWidth || target.rasterHeight != base.rasterHeight ||
+        target.left != 0 || target.right != base.rasterWidth ||
+        target.trustedBarAxes != ActivePictureBounds::BarAxes::TOP_BOTTOM ||
+        target.top <= base.top || target.bottom >= base.bottom || target.top >= target.bottom)
+        return false;
+    const bool fullBase = IsFullRaster(base) && base.trustedBarAxes == ActivePictureBounds::BarAxes::NONE;
+    const bool verticalBase = base.top > 0 && base.bottom < base.rasterHeight &&
+        base.trustedBarAxes == ActivePictureBounds::BarAxes::TOP_BOTTOM;
+    if (!fullBase && !verticalBase) return false;
+    const int baseHeight = base.bottom - base.top;
+    const int targetHeight = target.bottom - target.top;
+    const double targetAspect = static_cast<double>(target.rasterWidth) / targetHeight;
+    if (targetHeight < target.rasterHeight / 3 || targetAspect < 1.0 || targetAspect > 4.0)
+        return false;
+    const int limit = std::max(2, static_cast<int>(std::lround(base.rasterHeight * deadbandPercent / 100.0)));
+    if (target.top - base.top <= limit && base.bottom - target.bottom <= limit &&
+        baseHeight - targetHeight <= limit) return false;
+    // The experiment never turns tiny inward sampling drift into a new format.
+    return (static_cast<double>(baseHeight) / targetHeight - 1.0) * 100.0 > STABLE_ASPECT_DEADBAND_PERCENT;
+}
+
+bool ActivePictureTransitionModel::ValidSparseTransitionObservation(
+    const ActivePictureObservation& observation) const
+{
+    const auto& proof = observation.sparseTransitionProof;
+    const auto& horizontal = observation.axisEvidence.horizontal;
+    if (observation.authorityOrigin != ActivePictureAuthorityOrigin::SPARSE_TRANSITION_EXPERIMENT ||
+        !m_hasStable || m_stableOrigin != ActivePictureAuthorityOrigin::NATIVE ||
+        !proof.available || !proof.referenceId || !proof.sourceGeneration ||
+        !proof.sourceSequence || proof.sourceSequence != observation.frameNumber ||
+        !ExactSparseBounds(proof.establishedBase, m_stable) ||
+        !ExactSparseBounds(proof.guardedBounds, observation.bounds) ||
+        !horizontal.scanComplete || horizontal.barCandidate || horizontal.FailedBar() ||
+        horizontal.state == ActivePictureAxisState::TRUSTED_BARS ||
+        !HasCropAuthority(observation)) return false;
+    const bool fullBase = IsFullRaster(m_stable);
+    if (m_stableClassification != (fullBase ? ActivePictureClassification::FULL_RASTER_TRUSTED :
+        ActivePictureClassification::BAR_CROP_TRUSTED)) return false;
+    return IsSparseBoundaryInwardTransitionGeometry(m_stable, observation.bounds, m_stableGeometryDeadbandPercent);
+}
+
+bool ActivePictureTransitionModel::SameSparseCandidateProof(const ActivePictureObservation& observation) const
+{
+    if (observation.authorityOrigin != ActivePictureAuthorityOrigin::SPARSE_TRANSITION_EXPERIMENT) return true;
+    const auto& a = m_candidateSparseTransitionProof;
+    const auto& b = observation.sparseTransitionProof;
+    return a.available && b.available && a.referenceId == b.referenceId &&
+        a.sourceGeneration == b.sourceGeneration && ExactSparseBounds(a.establishedBase, b.establishedBase) &&
+        ExactSparseBounds(a.guardedBounds, b.guardedBounds);
+}
+
+void ActivePictureTransitionModel::SetRememberedEdgeReturnContext(const RememberedEdgeReturnContext& context)
+{
+    const auto& old = m_rememberedContext;
+    const bool sameSourceContext = old.sourceGeneration && old.sourceGeneration == context.sourceGeneration &&
+        old.rendererGeneration == context.rendererGeneration && old.sourceFormatGeneration == context.sourceFormatGeneration;
+    const bool sameProofContext = sameSourceContext && old.enabled == context.enabled &&
+        old.viewportGeneration == context.viewportGeneration && old.policyGeneration == context.policyGeneration;
+    const bool backward = sameSourceContext && (context.sourceSequence < old.sourceSequence ||
+        context.timestampMs < old.timestampMs || context.sceneId < old.sceneId);
+    if (!sameSourceContext || backward)
+        m_qualifiedNativeGeometry = {};
+    const bool discontinuity = !sameProofContext || backward || context.discontinuity ||
+        context.sceneId != old.sceneId || (context.sourceSequence > old.sourceSequence &&
+        (context.sourceSequence - old.sourceSequence > 1 || context.timestampMs - old.timestampMs > 500));
+    if (discontinuity && m_candidateOrigin == ActivePictureAuthorityOrigin::REMEMBERED_EDGE_RETURN)
+        ClearCandidate();
+    m_rememberedContextFresh = context.enabled && context.sourceGeneration && context.sceneId &&
+        context.sourceSequence && context.timestampMs && !context.cadenceRepeat &&
+        (!sameSourceContext || context.sourceSequence > old.sourceSequence) && !backward;
+    m_rememberedContext = context;
+}
+
+bool ActivePictureTransitionModel::RecordIndependentNativeGeometry(const ActivePictureObservation& raw)
+{
+    const auto& context = m_rememberedContext;
+    if (!m_rememberedContextFresh || context.discontinuity || !m_hasStable || m_stableOrigin != ActivePictureAuthorityOrigin::NATIVE ||
+        m_stableClassification != ActivePictureClassification::BAR_CROP_TRUSTED ||
+        raw.authorityOrigin != ActivePictureAuthorityOrigin::NATIVE || raw.transitionDeferred ||
+        raw.sparseTransitionProof.available || raw.rememberedEdgeReturnProof.available ||
+        // A conservative boundary envelope is safe geometry, not an exact edge
+        // measurement from which to train the separate remembered-edge path.
+        raw.axisEvidence.HasVerticalCropBoundaryGuard() ||
+        raw.frameNumber != context.sourceSequence || !HasCropAuthority(raw) ||
+        raw.classification != ActivePictureClassification::BAR_CROP_TRUSTED ||
+        raw.bounds.trustedBarAxes != ActivePictureBounds::BarAxes::TOP_BOTTOM ||
+        raw.bounds.left != 0 || raw.bounds.right != raw.bounds.rasterWidth ||
+        !ExactSparseBounds(raw.bounds, m_stable) ||
+        raw.axisEvidence.vertical.state != ActivePictureAxisState::TRUSTED_BARS ||
+        !raw.axisEvidence.vertical.scanComplete || !raw.axisEvidence.horizontal.scanComplete ||
+        raw.axisEvidence.HasBlockingFailedBar(raw.bounds)) return false;
+    QualifiedNativeGeometry* entry = nullptr;
+    for (auto& value : m_qualifiedNativeGeometry)
+        if (value.id && ExactSparseBounds(value.bounds, raw.bounds)) { entry = &value; break; }
+    // Expired qualification cannot be revived by a single new native sample.
+    if (entry && (context.timestampMs < entry->lastTickMs ||
+        context.timestampMs - entry->lastTickMs > REMEMBERED_RETURN_MAX_AGE_MS ||
+        context.sceneId < entry->lastSceneId || (entry->lastSceneId != 0 &&
+        context.sceneId - entry->lastSceneId > REMEMBERED_RETURN_MAX_SCENE_DISTANCE)))
+        *entry = {};
+    if (!entry || !entry->id)
+    {
+        if (!entry) entry = &*std::min_element(m_qualifiedNativeGeometry.begin(), m_qualifiedNativeGeometry.end(),
+            [](const QualifiedNativeGeometry& a, const QualifiedNativeGeometry& b) { return a.lastTickMs < b.lastTickMs; });
+        *entry = {};
+        entry->bounds = raw.bounds;
+        entry->id = ++m_nextQualifiedNativeId;
+        entry->sourceGeneration = context.sourceGeneration;
+    }
+    if (context.sourceSequence <= entry->lastSequence) return false;
+    if (entry->pendingSceneId != context.sceneId || entry->lastSequence == UINT64_MAX ||
+        context.sourceSequence != entry->lastSequence + 1)
+    {
+        entry->pendingSceneId = context.sceneId;
+        entry->pendingVerifications = 1;
+    }
+    else if (entry->pendingVerifications < 3) ++entry->pendingVerifications;
+    if (entry->pendingVerifications >= 3 && entry->lastSceneId != context.sceneId)
+    {
+        if (entry->confirmedScenes < UINT32_MAX) ++entry->confirmedScenes;
+        entry->lastSceneId = context.sceneId;
+        ++entry->revision;
+    }
+    entry->lastSequence = context.sourceSequence;
+    entry->lastTickMs = context.timestampMs;
+    return true;
+}
+
+RememberedEdgeReturnNomination ActivePictureTransitionModel::NominateRememberedEdgeReturn(
+    const ActivePictureBounds& observed, bool topTrusted, bool bottomTrusted) const
+{
+    RememberedEdgeReturnNomination result;
+    const auto& context = m_rememberedContext;
+    if (!m_rememberedContextFresh || context.discontinuity || !m_hasStable ||
+        m_stableOrigin != ActivePictureAuthorityOrigin::NATIVE ||
+        observed.rasterWidth != m_stable.rasterWidth || observed.rasterHeight != m_stable.rasterHeight ||
+        observed.left != 0 || observed.right != observed.rasterWidth ||
+        observed.top < 0 || observed.bottom > observed.rasterHeight || observed.top >= observed.bottom) return result;
+    for (const auto& entry : m_qualifiedNativeGeometry)
+    {
+        if (!entry.id || entry.confirmedScenes < 2 || entry.sourceGeneration != context.sourceGeneration ||
+            context.timestampMs < entry.lastTickMs || context.timestampMs - entry.lastTickMs > REMEMBERED_RETURN_MAX_AGE_MS ||
+            context.sceneId < entry.lastSceneId || context.sceneId - entry.lastSceneId > REMEMBERED_RETURN_MAX_SCENE_DISTANCE ||
+            !IsSparseBoundaryInwardTransitionGeometry(m_stable, entry.bounds, m_stableGeometryDeadbandPercent)) continue;
+        const bool top = topTrusted && observed.top == entry.bounds.top;
+        const bool bottom = bottomTrusted && observed.bottom == entry.bounds.bottom;
+        if (top == bottom) continue; // Exactly one current independently trusted edge recurs.
+        if (result.available) return {}; // Recency cannot resolve an ambiguous prior.
+        result.available = true;
+        result.establishedBase = m_stable;
+        result.rememberedBounds = entry.bounds;
+        result.historyId = entry.id;
+        result.historyRevision = entry.revision;
+        result.sourceGeneration = context.sourceGeneration;
+        result.confirmedSceneCount = entry.confirmedScenes;
+        result.lastIndependentNativeSequence = entry.lastSequence;
+        result.lastIndependentNativeTickMs = entry.lastTickMs;
+        result.matchedEdge = top ? RememberedEdge::TOP : RememberedEdge::BOTTOM;
+        result.observedEdgeCoordinate = top ? observed.top : observed.bottom;
+        result.sceneId = context.sceneId;
+        result.sourceSequence = context.sourceSequence;
+        result.timestampMs = context.timestampMs;
+        result.rendererGeneration = context.rendererGeneration;
+        result.viewportGeneration = context.viewportGeneration;
+        result.sourceFormatGeneration = context.sourceFormatGeneration;
+        result.policyGeneration = context.policyGeneration;
+    }
+    return result;
+}
+
+bool ActivePictureTransitionModel::ValidRememberedEdgeReturnObservation(const ActivePictureObservation& observation) const
+{
+    const auto& proof = observation.rememberedEdgeReturnProof;
+    const auto& nomination = proof.nomination;
+    const auto& context = m_rememberedContext;
+    const auto& horizontal = observation.axisEvidence.horizontal;
+    if (observation.authorityOrigin != ActivePictureAuthorityOrigin::REMEMBERED_EDGE_RETURN ||
+        !context.enabled || context.cadenceRepeat || context.discontinuity || !m_hasStable ||
+        m_stableOrigin != ActivePictureAuthorityOrigin::NATIVE || !proof.available || !nomination.available ||
+        !HasCropAuthority(observation) || !context.sourceGeneration || !context.sceneId ||
+        nomination.sourceGeneration != context.sourceGeneration || nomination.sceneId != context.sceneId ||
+        nomination.rendererGeneration != context.rendererGeneration || nomination.viewportGeneration != context.viewportGeneration ||
+        nomination.sourceFormatGeneration != context.sourceFormatGeneration || nomination.policyGeneration != context.policyGeneration ||
+        proof.sourceSequence != observation.frameNumber || proof.sourceSequence != context.sourceSequence ||
+        nomination.sourceSequence != proof.sourceSequence || proof.timestampMs != context.timestampMs ||
+        nomination.timestampMs != proof.timestampMs || !proof.sourceSequence || !proof.timestampMs ||
+        !ExactSparseBounds(nomination.establishedBase, m_stable) ||
+        !ExactSparseBounds(nomination.rememberedBounds, observation.bounds) ||
+        !horizontal.scanComplete || horizontal.barCandidate || horizontal.FailedBar() ||
+        horizontal.state == ActivePictureAxisState::TRUSTED_BARS ||
+        !observation.axisEvidence.vertical.scanComplete ||
+        observation.axisEvidence.vertical.reason != ActivePictureAxisReason::BAR_ASYMMETRY ||
+        !observation.axisEvidence.vertical.FailedBar() ||
+        !IsSparseBoundaryInwardTransitionGeometry(m_stable, observation.bounds, m_stableGeometryDeadbandPercent)) return false;
+    const bool top = nomination.matchedEdge == RememberedEdge::TOP;
+    if ((!top && nomination.matchedEdge != RememberedEdge::BOTTOM) ||
+        nomination.observedEdgeCoordinate != (top ? observation.bounds.top : observation.bounds.bottom)) return false;
+    for (const auto& entry : m_qualifiedNativeGeometry)
+        if (entry.id == nomination.historyId && entry.revision == nomination.historyRevision &&
+            entry.sourceGeneration == context.sourceGeneration && entry.confirmedScenes >= 2 &&
+            entry.confirmedScenes == nomination.confirmedSceneCount &&
+            entry.lastSequence == nomination.lastIndependentNativeSequence && entry.lastTickMs == nomination.lastIndependentNativeTickMs &&
+            ExactSparseBounds(entry.bounds, observation.bounds) && context.timestampMs >= entry.lastTickMs &&
+            context.timestampMs - entry.lastTickMs <= REMEMBERED_RETURN_MAX_AGE_MS &&
+            context.sceneId >= entry.lastSceneId && context.sceneId - entry.lastSceneId <= REMEMBERED_RETURN_MAX_SCENE_DISTANCE)
+            return true;
+    return false;
+}
+
+bool ActivePictureTransitionModel::SameRememberedCandidateProof(const ActivePictureObservation& observation) const
+{
+    if (observation.authorityOrigin != ActivePictureAuthorityOrigin::REMEMBERED_EDGE_RETURN) return true;
+    const auto& a = m_candidateRememberedProof.nomination;
+    const auto& b = observation.rememberedEdgeReturnProof.nomination;
+    return m_candidateRememberedProof.available && observation.rememberedEdgeReturnProof.available &&
+        a.historyId == b.historyId && a.historyRevision == b.historyRevision && a.sourceGeneration == b.sourceGeneration &&
+        a.sceneId == b.sceneId && a.rendererGeneration == b.rendererGeneration && a.viewportGeneration == b.viewportGeneration &&
+        a.sourceFormatGeneration == b.sourceFormatGeneration && a.policyGeneration == b.policyGeneration &&
+        a.matchedEdge == b.matchedEdge && a.observedEdgeCoordinate == b.observedEdgeCoordinate &&
+        ExactSparseBounds(a.establishedBase, b.establishedBase) && ExactSparseBounds(a.rememberedBounds, b.rememberedBounds);
+}
+
 bool ActivePictureTransitionModel::HasCropAuthority(
 	const ActivePictureObservation& observation)
 {
@@ -241,6 +494,11 @@ bool ActivePictureTransitionModel::HasCropAuthority(
 		bounds.right > bounds.rasterWidth ||
 		bounds.bottom > bounds.rasterHeight ||
 		bounds.left >= bounds.right || bounds.top >= bounds.bottom)
+		return false;
+	if (observation.authorityOrigin != ActivePictureAuthorityOrigin::NATIVE &&
+		(observation.classification != ActivePictureClassification::BAR_CROP_TRUSTED ||
+		 bounds.left != 0 || bounds.right != bounds.rasterWidth ||
+		 bounds.trustedBarAxes != ActivePictureBounds::BarAxes::TOP_BOTTOM))
 		return false;
 	if (observation.classification ==
 		ActivePictureClassification::FULL_RASTER_TRUSTED)
@@ -291,9 +549,11 @@ bool ActivePictureTransitionModel::HasAuthorityForCroppedAxes(
 
 void ActivePictureTransitionModel::RememberTrustedGeometry(
 	const ActivePictureBounds& bounds,
-	ActivePictureClassification classification)
+	ActivePictureClassification classification, ActivePictureAuthorityOrigin origin)
 {
-	if (classification == ActivePictureClassification::UNAVAILABLE)
+	// Experimental geometry must never become a remembered native format.
+	if (origin != ActivePictureAuthorityOrigin::NATIVE ||
+		classification == ActivePictureClassification::UNAVAILABLE)
 		return;
 	for (size_t index = 0; index < m_recentTrustedCount; ++index)
 	{
@@ -332,6 +592,11 @@ bool ActivePictureTransitionModel::FindRecentTrustedGeometry(
 		const TrustedGeometry& known = m_recentTrusted[index];
 		if (!SameBounds(known.bounds, observation.bounds))
 			continue;
+		// Vertical crop permission belongs to its exact current aperture. History
+		// must not replace that aperture with a nearby, more tightly cropped one.
+		if (observation.axisEvidence.SupportsVerticalCropDespiteSideAmbiguity(observation.bounds) &&
+			!observation.axisEvidence.SupportsVerticalCropDespiteSideAmbiguity(known.bounds))
+			continue;
 		bounds = known.bounds;
 		classification = known.classification;
 		return true;
@@ -350,6 +615,10 @@ void ActivePictureTransitionModel::StartCandidate(
 	m_candidateUsesKnownTrustedGeometry = false;
 	m_candidate = observation.bounds;
 	m_candidateClassification = observation.classification;
+	m_candidateOrigin = observation.authorityOrigin;
+	m_candidateSparseTransitionProof = observation.sparseTransitionProof;
+	m_candidateRememberedProof = observation.rememberedEdgeReturnProof;
+	m_candidateRememberedLastSequence = observation.frameNumber;
 	m_matchingCandidates = 1;
 	m_firstContradictoryFrame = observation.frameNumber;
 }
@@ -359,6 +628,10 @@ void ActivePictureTransitionModel::ClearCandidate()
 {
 	m_candidate = {};
 	m_candidateClassification = ActivePictureClassification::UNAVAILABLE;
+	m_candidateOrigin = ActivePictureAuthorityOrigin::NATIVE;
+	m_candidateSparseTransitionProof = {};
+	m_candidateRememberedProof = {};
+	m_candidateRememberedLastSequence = 0;
 	m_candidateUsesKnownTrustedGeometry = false;
 	m_matchingCandidates = 0;
 	m_contradictoryCandidates = 0;
@@ -372,6 +645,32 @@ ActivePictureTransitionModel::CommitCandidate(
 	const ActivePictureObservation& observation,
 	const char* reason)
 {
+	if (m_candidateOrigin == ActivePictureAuthorityOrigin::SPARSE_TRANSITION_EXPERIMENT &&
+		(!ValidSparseTransitionObservation(observation) || !SameSparseCandidateProof(observation)))
+	{
+		ClearCandidate();
+		ActivePictureTransitionDecision retained;
+		retained.state = m_hasStable ? ActivePictureTransitionState::STABLE : ActivePictureTransitionState::UNAVAILABLE;
+		retained.stable = m_hasStable;
+		retained.bounds = retained.stableBounds = m_stable;
+		retained.authoritativeClassification = m_stableClassification;
+		retained.authorityOrigin = retained.stableAuthorityOrigin = m_stableOrigin;
+		retained.reason = "experimental inward proof no longer matches established base";
+		return retained;
+	}
+    if (m_candidateOrigin == ActivePictureAuthorityOrigin::REMEMBERED_EDGE_RETURN &&
+        (!ValidRememberedEdgeReturnObservation(observation) || !SameRememberedCandidateProof(observation)))
+    {
+        ClearCandidate();
+        ActivePictureTransitionDecision retained;
+        retained.state = ActivePictureTransitionState::STABLE;
+        retained.stable = m_hasStable;
+        retained.bounds = retained.stableBounds = m_stable;
+        retained.authoritativeClassification = m_stableClassification;
+        retained.authorityOrigin = retained.stableAuthorityOrigin = m_stableOrigin;
+        retained.reason = "remembered return proof no longer matches native history and base";
+        return retained;
+    }
 	// Confirm against the anchored candidate, then publish the current trusted
 	// sample. The first sample's tiny measurement error is not authority to
 	// exclude pixels verified on this commit frame. Provisional/history-only
@@ -383,7 +682,8 @@ ActivePictureTransitionModel::CommitCandidate(
 		SameBounds(m_candidate, observation.bounds) &&
 		StableRetentionAdmission(observation.bounds, observation.classification) ==
 			ActivePicturePublicationAdmission::ACCEPTED &&
-		!RetainsIncompleteInwardFormat(observation.bounds, observation.axisEvidence))
+		(!RetainsIncompleteInwardFormat(observation.bounds, observation.axisEvidence) ||
+		 ValidSparseTransitionObservation(observation) || ValidRememberedEdgeReturnObservation(observation)))
 	{
 		committedBounds = observation.bounds;
 	}
@@ -395,6 +695,8 @@ ActivePictureTransitionModel::CommitCandidate(
 	decision.stable = true;
 	decision.diagnostic = true;
 	decision.authoritativeClassification = m_candidateClassification;
+	decision.authorityOrigin = m_candidateOrigin;
+	decision.stableAuthorityOrigin = m_stableOrigin;
 	decision.knownTrustedGeometryReacquired =
 		m_candidateUsesKnownTrustedGeometry;
 	decision.matchingCandidates = m_matchingCandidates;
@@ -408,10 +710,11 @@ ActivePictureTransitionModel::CommitCandidate(
 	decision.reason = reason;
 	if (m_hasStable && !SameBounds(m_stable, committedBounds))
 	{
-		RememberTrustedGeometry(m_stable, m_stableClassification);
+		RememberTrustedGeometry(m_stable, m_stableClassification, m_stableOrigin);
 	}
 	m_stable = committedBounds;
 	m_stableClassification = m_candidateClassification;
+	m_stableOrigin = m_candidateOrigin;
 	m_hasStable = true;
 	m_unavailableCandidates = 0;
 	ClearCandidate();
@@ -429,9 +732,27 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 	decision.bounds = m_hasStable ? m_stable : ActivePictureBounds{};
 	decision.stableBounds = m_hasStable ? m_stable : ActivePictureBounds{};
 	decision.stable = m_hasStable;
+	decision.authorityOrigin = m_stableOrigin;
+	decision.stableAuthorityOrigin = m_stableOrigin;
 	decision.authoritativeClassification = m_hasStable
 		? m_stableClassification
 		: ActivePictureClassification::UNAVAILABLE;
+	const bool sparseTransition = observation.authorityOrigin == ActivePictureAuthorityOrigin::SPARSE_TRANSITION_EXPERIMENT;
+	const bool validSparseTransition = sparseTransition && ValidSparseTransitionObservation(observation);
+    const bool rememberedReturn = observation.authorityOrigin == ActivePictureAuthorityOrigin::REMEMBERED_EDGE_RETURN;
+    const bool validRememberedReturn = rememberedReturn && ValidRememberedEdgeReturnObservation(observation);
+    if (rememberedReturn && !validRememberedReturn)
+    {
+        ClearCandidate();
+        decision.reason = "remembered return proof does not match current native history and base";
+        return decision;
+    }
+	if (sparseTransition && !validSparseTransition)
+	{
+		ClearCandidate();
+		decision.reason = "experimental inward proof does not match current native base";
+		return decision;
+	}
 	if (observation.frameNumber != 0 && m_lastObservedFrame != 0 &&
 		observation.frameNumber <= m_lastObservedFrame)
 	{
@@ -440,6 +761,7 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 			decision.state =
 				ActivePictureTransitionState::CANDIDATE_TRANSITION;
 			decision.bounds = m_candidate;
+			decision.authorityOrigin = m_candidateOrigin;
 			decision.matchingCandidates = m_matchingCandidates;
 			decision.contradictoryCandidates = m_contradictoryCandidates;
 			decision.candidateReversals = m_candidateReversals;
@@ -450,7 +772,20 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 	}
 	if (observation.frameNumber != 0)
 		m_lastObservedFrame = observation.frameNumber;
+    if (rememberedReturn && m_candidateOrigin == ActivePictureAuthorityOrigin::REMEMBERED_EDGE_RETURN)
+    {
+        if (m_candidateRememberedLastSequence == UINT64_MAX || observation.frameNumber != m_candidateRememberedLastSequence + 1)
+            ClearCandidate();
+        else m_candidateRememberedLastSequence = observation.frameNumber;
+    }
 
+
+	if (observation.authorityOrigin == ActivePictureAuthorityOrigin::SPARSE_EXPERIMENT && m_hasStable)
+	{
+		ClearCandidate();
+		decision.reason = "experimental startup cannot replace established authority";
+		return decision;
+	}
 	if (observation.transitionDeferred)
 	{
 		decision.diagnostic = decision.diagnostic || m_matchingCandidates != 0;
@@ -484,16 +819,41 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 	ActivePictureBounds recentTrustedBounds;
 	ActivePictureClassification recentTrustedClassification =
 		ActivePictureClassification::UNAVAILABLE;
-	const bool matchesRecentTrusted = FindRecentTrustedGeometry(
-		observation, recentTrustedBounds, recentTrustedClassification);
-	if (RetainsIncompleteInwardFormat(matchesRecentTrusted ? recentTrustedBounds : observation.bounds,
-		observation.axisEvidence))
+	// History may name native formats, but cannot canonicalize or promote an
+	// experimental target into native authority or shorten its current proof.
+	const bool matchesRecentTrusted = observation.authorityOrigin == ActivePictureAuthorityOrigin::NATIVE &&
+		FindRecentTrustedGeometry(observation, recentTrustedBounds, recentTrustedClassification);
+	if (!validSparseTransition && !validRememberedReturn && RetainsIncompleteInwardFormat(
+		matchesRecentTrusted ? recentTrustedBounds : observation.bounds, observation.axisEvidence))
 	{
 		// Axis diagnostics already use the bounded edge trace. Only log a model
 		// event here when incomplete evidence actually cancels in-flight proof.
 		decision.diagnostic = m_matchingCandidates != 0;
 		ClearCandidate();
 		decision.reason = "failed bar axis cannot establish a new inward program format";
+		return decision;
+	}
+	const bool exactNativeVerification = m_hasStable &&
+		m_stableOrigin != ActivePictureAuthorityOrigin::NATIVE &&
+		observation.authorityOrigin == ActivePictureAuthorityOrigin::NATIVE &&
+		observation.classification == m_stableClassification && HasCropAuthority(observation) &&
+		!observation.axisEvidence.HasBlockingFailedBar(observation.bounds) &&
+		m_stable.left == observation.bounds.left && m_stable.top == observation.bounds.top &&
+		m_stable.right == observation.bounds.right && m_stable.bottom == observation.bounds.bottom &&
+		m_stable.rasterWidth == observation.bounds.rasterWidth &&
+		m_stable.rasterHeight == observation.bounds.rasterHeight &&
+		m_stable.trustedBarAxes == observation.bounds.trustedBarAxes;
+	if (exactNativeVerification)
+	{
+		// Current, non-deferred native authority verifies this exact rectangle.
+		// Near matches and remembered/provisional observations cannot upgrade it.
+		m_stableOrigin = ActivePictureAuthorityOrigin::NATIVE;
+		ClearCandidate();
+		decision.authorityOrigin = m_stableOrigin;
+		decision.stableAuthorityOrigin = m_stableOrigin;
+		decision.publish = true;
+		decision.diagnostic = true;
+		decision.reason = "exact native evidence verified experimental geometry";
 		return decision;
 	}
 	// History and look-ahead must obey the same retention policy as live
@@ -533,6 +893,7 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 			// hysteresis and later publish an internally inconsistent crop.
 			m_candidate = recentTrustedBounds;
 			m_candidateClassification = recentTrustedClassification;
+			m_candidateOrigin = ActivePictureAuthorityOrigin::NATIVE;
 			m_candidateUsesKnownTrustedGeometry = true;
 			decision.diagnostic = true;
 			decision.reason =
@@ -546,6 +907,7 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 		decision.state =
 			ActivePictureTransitionState::CANDIDATE_TRANSITION;
 		decision.bounds = m_candidate;
+		decision.authorityOrigin = m_candidateOrigin;
 		decision.stableBounds = m_stable;
 		decision.stable = true;
 		// Keep the last stable presentation while the known geometry is
@@ -570,6 +932,9 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 		const bool candidateChanged =
 			m_matchingCandidates == 0 ||
 			m_candidateClassification != observation.classification ||
+			m_candidateOrigin != observation.authorityOrigin ||
+			!SameSparseCandidateProof(observation) ||
+			!SameRememberedCandidateProof(observation) ||
 			!SameBounds(m_candidate, observation.bounds);
 		if (candidateChanged)
 			StartCandidate(observation);
@@ -577,6 +942,7 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 			++m_matchingCandidates;
 		decision.state = ActivePictureTransitionState::CANDIDATE_TRANSITION;
 		decision.bounds = m_candidate;
+		decision.authorityOrigin = m_candidateOrigin;
 		decision.stableBounds =
 			m_hasStable ? m_stable : ActivePictureBounds{};
 		decision.stable = m_hasStable;
@@ -595,6 +961,7 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 	{
 		m_candidate = observation.bounds;
 		m_candidateClassification = observation.classification;
+		m_candidateOrigin = observation.authorityOrigin;
 		m_matchingCandidates = 1;
 		m_firstContradictoryFrame = observation.frameNumber;
 		return CommitCandidate(
@@ -607,6 +974,9 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 	{
 		const bool candidateChanged = m_matchingCandidates == 0 ||
 			m_candidateClassification != observation.classification ||
+			m_candidateOrigin != observation.authorityOrigin ||
+			!SameSparseCandidateProof(observation) ||
+			!SameRememberedCandidateProof(observation) ||
 			!SameBounds(m_candidate, observation.bounds);
 		if (candidateChanged)
 			StartCandidate(observation);
@@ -615,6 +985,7 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 
 		decision.state = ActivePictureTransitionState::CANDIDATE_TRANSITION;
 		decision.bounds = m_candidate;
+		decision.authorityOrigin = m_candidateOrigin;
 		decision.stableBounds = m_stable;
 		decision.stable = true;
 		decision.diagnostic = candidateChanged;
@@ -634,6 +1005,9 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 	{
 		if (m_matchingCandidates == 0 ||
 			m_candidateClassification != observation.classification ||
+			m_candidateOrigin != observation.authorityOrigin ||
+			!SameSparseCandidateProof(observation) ||
+			!SameRememberedCandidateProof(observation) ||
 			!SameBounds(m_candidate, observation.bounds))
 		{
 			StartCandidate(observation);
@@ -649,6 +1023,7 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 		}
 		decision.state = ActivePictureTransitionState::CANDIDATE_TRANSITION;
 		decision.bounds = m_candidate;
+		decision.authorityOrigin = m_candidateOrigin;
 		decision.matchingCandidates = m_matchingCandidates;
 		decision.confidence = static_cast<double>(m_matchingCandidates) /
 			INITIAL_CONFIRMATIONS;
@@ -682,6 +1057,9 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 		++m_contradictoryCandidates;
 	if (m_matchingCandidates == 0 ||
 		m_candidateClassification != observation.classification ||
+		m_candidateOrigin != observation.authorityOrigin ||
+		!SameSparseCandidateProof(observation) ||
+		!SameRememberedCandidateProof(observation) ||
 		!SameBounds(m_candidate, observation.bounds))
 	{
 		StartCandidate(observation);
@@ -700,6 +1078,7 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 	const uint8_t required = CLEAR_TRANSITION_CONFIRMATIONS;
 	decision.state = ActivePictureTransitionState::CANDIDATE_TRANSITION;
 	decision.bounds = m_candidate;
+	decision.authorityOrigin = m_candidateOrigin;
 	decision.stable = true;
 	// Candidate changes are presentation-safe in the outward direction and
 	// harmlessly conservative in the inward direction. Retain the stable
@@ -721,14 +1100,38 @@ ActivePictureTransitionDecision ActivePictureTransitionModel::Observe(
 }
 
 
+bool ActivePictureTransitionModel::NativeObservationReaffirmsSparseEntry(
+	const ActivePictureObservation& observation, const ActivePictureBounds& entry) const
+{
+	// Corroborate only this already-published sparse startup rectangle. A native
+	// observation supplies independent evidence, not an upgrade of its origin.
+	const auto& bounds = observation.bounds;
+	return m_hasStable && m_stableOrigin == ActivePictureAuthorityOrigin::SPARSE_EXPERIMENT &&
+		m_stableClassification == ActivePictureClassification::BAR_CROP_TRUSTED &&
+		m_stable.left == entry.left && m_stable.top == entry.top &&
+		m_stable.right == entry.right && m_stable.bottom == entry.bottom &&
+		m_stable.rasterWidth == entry.rasterWidth && m_stable.rasterHeight == entry.rasterHeight &&
+		m_stable.trustedBarAxes == entry.trustedBarAxes &&
+		observation.authorityOrigin == ActivePictureAuthorityOrigin::NATIVE &&
+		observation.classification == ActivePictureClassification::BAR_CROP_TRUSTED &&
+		HasCropAuthority(observation) && !observation.transitionDeferred &&
+		!observation.axisEvidence.HasBlockingFailedBar(bounds) &&
+		bounds.trustedBarAxes == entry.trustedBarAxes &&
+		bounds.left >= entry.left && bounds.top >= entry.top &&
+		bounds.right <= entry.right && bounds.bottom <= entry.bottom &&
+		WithinStableGeometryDeadband(entry, bounds);
+}
+
 bool ActivePictureTransitionModel::WouldAdmitGeometryChange(
 	const ActivePictureObservation& observation) const
 {
-	return m_hasStable && HasCropAuthority(observation) &&
-		!SameBounds(m_stable, observation.bounds) &&
+	const bool sparseTransition = ValidSparseTransitionObservation(observation);
+    const bool rememberedReturn = ValidRememberedEdgeReturnObservation(observation);
+	return m_hasStable && (observation.authorityOrigin == ActivePictureAuthorityOrigin::NATIVE || sparseTransition || rememberedReturn) &&
+		HasCropAuthority(observation) && !SameBounds(m_stable, observation.bounds) &&
 		StableRetentionAdmission(observation.bounds, observation.classification) ==
 			ActivePicturePublicationAdmission::ACCEPTED &&
-		!RetainsIncompleteInwardFormat(observation.bounds, observation.axisEvidence);
+		(sparseTransition || rememberedReturn || !RetainsIncompleteInwardFormat(observation.bounds, observation.axisEvidence));
 }
 
 
@@ -745,10 +1148,14 @@ bool ActivePictureTransitionModel::AdoptPublishedDecision(
 		return false;
 	};
 	if (transitionDeferred) return reject(ActivePicturePublicationAdmission::DEFERRED);
+	// Sparse experimental proof is live-only; no queued certificate may promote it.
+	if (decision.authorityOrigin != ActivePictureAuthorityOrigin::NATIVE)
+		return reject(ActivePicturePublicationAdmission::NON_AUTHORITATIVE);
 	ActivePictureObservation observation;
 	observation.available = true;
 	observation.bounds = decision.bounds;
 	observation.classification = classification;
+	observation.authorityOrigin = decision.authorityOrigin;
 	if (!decision.publish || !decision.stable ||
 		!HasCropAuthority(observation))
 		return reject(ActivePicturePublicationAdmission::NON_AUTHORITATIVE);
@@ -814,10 +1221,11 @@ bool ActivePictureTransitionModel::AdoptPublishedDecision(
 		return reject(retention);
 	if (m_hasStable && !SameBounds(m_stable, decision.bounds))
 	{
-		RememberTrustedGeometry(m_stable, m_stableClassification);
+		RememberTrustedGeometry(m_stable, m_stableClassification, m_stableOrigin);
 	}
 	m_stable = decision.bounds;
 	m_stableClassification = classification;
+	m_stableOrigin = decision.authorityOrigin;
 	m_hasStable = true;
 	m_unavailableCandidates = 0;
 	ClearCandidate();

@@ -13,6 +13,15 @@ namespace AlphaSourceCrop
         bool nearBlackEvaluated = false;
     };
 
+    // Use the same trusted/provisional bounds contract as live analysis.
+    // This is the actual preview adapter, including its source-frame identity.
+    BufferedPictureExpansionSample MakeBufferedPictureSample(
+        const ActivePictureFrameIdentity& identity, const ActivePictureEvidence& evidence,
+        double framesPerSecond, bool nearBlackEvaluated, bool globalNearBlack);
+    bool BufferedPictureReferenceMatches(const ActivePictureFrameIdentity& first,
+        uint64_t trustedSourceGeneration, uint64_t trustedSourceFormat,
+        uint64_t liveViewportGeneration);
+
     // A presentation-only hold. It never grants crop or full-raster authority.
     // Only consecutive current source samples may establish or settle motion.
     struct MovingPictureTransitionState

@@ -43,8 +43,8 @@ struct ActivePictureEdgeEvidence
 };
 
 
-// Diagnostics from the existing side-probe samples. These measurements are
-// intentionally excluded from observation identity and crop admission policy.
+// Detailed side-probe samples. Only the explicit geometry-bound summary in
+// axisEvidence participates in observation identity and crop admission policy.
 struct ActivePictureSideProbeCell
 {
 	int strong = 0;
@@ -56,6 +56,23 @@ struct ActivePictureSideProbe
 {
 	bool evaluated = false;
 	std::array<ActivePictureSideProbeCell, 12> cells{}; // depth-major, then top-to-bottom zone
+};
+
+// Diagnostic detail for strict inspection of excluded top/bottom bands when
+// horizontal geometry is unresolved. Admission carries the geometry-bound
+// evaluated/clean result in axisEvidence; diagnostic detail is not authority.
+struct ActivePictureVerticalBarProfile
+{
+	bool evaluated = false, completed = false, clean = false;
+	int apertureTop = 0, apertureBottom = 0;
+	size_t samples = 0;
+	double referenceY = 0.0, referenceU = 0.0, referenceV = 0.0;
+	int firstMismatchX = -1, firstMismatchY = -1;
+	int maxLumaDelta = 0, maxChromaDelta = 0;
+	int mismatchSamples = 0, boundaryMismatchSamples = 0, deepMismatchSamples = 0;
+	int topFirstMismatchY = -1, topLastMismatchY = -1;
+	int bottomFirstMismatchY = -1, bottomLastMismatchY = -1;
+	const char* reason = "not-required";
 };
 
 struct ActivePictureEvidence
@@ -71,11 +88,50 @@ struct ActivePictureEvidence
 	ActivePictureEdgeEvidence right;
 	ActivePictureEdgeEvidence bottom;
 	ActivePictureSideProbe leftSideProbe, rightSideProbe;
+	ActivePictureVerticalBarProfile verticalBarProfile;
+	// Separate raw-profile diagnostics from the conservatively expanded recheck.
+	ActivePictureVerticalBarProfile verticalBarGuardProfile;
 	size_t lumaSamples = 0;
 	size_t chromaSamples = 0;
 	std::string reason;
+	ActivePictureAuthorityOrigin authorityOrigin = ActivePictureAuthorityOrigin::NATIVE;
+	SparseBoundaryTransitionProof sparseTransitionProof;
+	RememberedEdgeReturnProof rememberedEdgeReturnProof;
 };
 
+
+// Read-only measurements at actual source edges, even when the rough scan
+// proposes an inset there. Separate from axisEvidence: never crop authority.
+struct ActivePictureSideDiagnostics
+{
+    bool evaluated = false;
+    ActivePictureBounds aperture;
+    int threshold = 0;
+    int leftMinimum = -1, rightMinimum = -1;
+    ActivePictureSideProbe left, right;
+    size_t lumaSamples = 0;
+};
+ActivePictureSideDiagnostics MeasureActivePictureSideDiagnostics(
+    const AnalysisLumaSource& source, const ActivePictureEvidence& evidence);
+
+// Symmetry nominates a location only. These read-only measurements deliberately
+// do not grant authority, even if the ordinary whole-bar predicates pass.
+struct ActivePictureAdjacentBoundaryProbe
+{
+    double insideMean = 0.0, outsideMean = 0.0;
+    double outsideP90 = 0.0, outsideDispersion = 0.0, contrast = 0.0;
+    int supported = 0;
+};
+struct ActivePictureOpposingBoundaryDiagnostics
+{
+    bool evaluated = false;
+    ActivePictureBounds candidate;
+    ActivePictureEdgeEvidence top, bottom;
+    ActivePictureAdjacentBoundaryProbe topAdjacent, bottomAdjacent;
+    size_t lumaSamples = 0, chromaSamples = 0;
+};
+ActivePictureOpposingBoundaryDiagnostics MeasureActivePictureOpposingBoundaryDiagnostics(
+    const AnalysisLumaSource& source, const ActivePictureEvidence& evidence);
 
 // Shared conversion keeps live and queued observations tied to the same measurement.
 ActivePictureObservation MakeActivePictureObservation(const ActivePictureEvidence& evidence,
@@ -158,7 +214,8 @@ struct ActivePicturePresentationRetentionEvidence
 
 // Pure, bounded P010 inspection. It has no renderer, DirectShow, configuration,
 // or mutable global dependencies, so identical bytes always produce identical
-// evidence. At 4K the fixed grids inspect fewer than 30,000 luma samples.
+// evidence. Rough scanning has a fixed budget; strict vertical crop profiles
+// additionally inspect bounded grids over the prospective excluded bands.
 ActivePictureEvidence ExtractP010ActivePictureEvidence(
 	const P010PlaneView& view);
 

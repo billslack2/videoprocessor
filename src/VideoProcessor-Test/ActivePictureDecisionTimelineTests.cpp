@@ -168,6 +168,63 @@ namespace VideoProcessorTest
 	TEST_CLASS(ActivePictureDecisionTimelineTests)
 	{
 	public:
+        TEST_METHOD(GeometryReacquisitionInvalidatesOldPreviewButKeepsAcceptedQueue)
+        {
+            ActivePictureDecisionTimeline timeline;
+            constexpr uint64_t generation=71;
+            timeline.Reset(generation);
+            const ActivePictureBounds oldCrop{0,280,3840,1872,3840,2160,
+                3840.0/1592.0,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+            const ActivePictureBounds corrected{0,280,3840,1880,3840,2160,
+                2.4,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+            ActivePictureFrameDecision oldDecision;
+            for(uint64_t frame=1;frame<=4;++frame)
+                Assert::AreEqual(frame==4,timeline.SubmitScheduledObservation(
+                    Identity(generation,frame,frame),Trusted(frame,oldCrop),0,0,oldDecision));
+            Assert::IsTrue(timeline.IsDecisionCurrent(oldDecision));
+            timeline.MarkConsumed(Identity(generation,4,4));
+            std::array<ActivePictureFrameIdentity,8> pending;
+            for(size_t i=0;i<pending.size();++i)
+            {
+                pending[i]=Identity(generation,5+i,5+i);
+                Assert::IsTrue(timeline.TrackAcceptedFrame(pending[i]));
+                RecordLookaheadEvidence(timeline,pending[i],Trusted(5+i,oldCrop));
+            }
+            Assert::IsTrue(timeline.CanProveBufferedFrames(pending.data(),pending.size()));
+            const auto oldPolicy=timeline.LookaheadPolicyGeneration();
+            const auto oldContinuity=timeline.ContinuityGeneration();
+            timeline.InvalidateGeometryForReacquisition();
+            Assert::IsFalse(timeline.IsDecisionCurrent(oldDecision));
+            Assert::IsTrue(timeline.LookaheadPolicyGeneration()!=oldPolicy);
+            Assert::AreEqual(generation,timeline.TransportGeneration());
+            Assert::AreEqual(uint64_t{4},timeline.LastConsumedSequence());
+            Assert::AreEqual(oldContinuity,timeline.ContinuityGeneration());
+            Assert::IsTrue(timeline.CanProveBufferedFrames(pending.data(),pending.size()),
+                L"Geometry invalidation must preserve already accepted queued frames.");
+            const auto consumed=Identity(generation,4,4);
+            Assert::IsFalse(timeline.CanProveBufferedFrames(&consumed,1));
+            ActivePictureFrameDecision freshDecision;
+            for(size_t i=0;i<4;++i)
+            {
+                const auto& id=pending[i];
+                RecordLookaheadEvidence(timeline,id,Trusted(id.sourceFrameNumber,corrected));
+                const bool published=timeline.SubmitScheduledObservation(id,
+                    Trusted(id.sourceFrameNumber,corrected),0,0,freshDecision);
+                Assert::AreEqual(i==3,published,
+                    L"Old stable geometry must not survive to suppress ordinary fresh acquisition.");
+            }
+            Assert::AreEqual(280,freshDecision.transition.bounds.top);
+            Assert::AreEqual(1880,freshDecision.transition.bounds.bottom);
+            Assert::IsTrue(timeline.IsDecisionCurrent(freshDecision));
+            Assert::IsFalse(timeline.IsDecisionCurrent(oldDecision));
+            Assert::IsTrue(SameActivePictureFrameIdentity(pending[3],freshDecision.effectiveIdentity));
+            for(size_t i=4;i<pending.size();++i)
+                Assert::IsFalse(timeline.SubmitScheduledObservation(pending[i],
+                    Trusted(pending[i].sourceFrameNumber,corrected),0,0,freshDecision),
+                    L"Subsequent unchanged frames must not snap back to the obsolete crop.");
+            Assert::AreEqual(1880,freshDecision.transition.bounds.bottom);
+            Assert::IsTrue(timeline.TrackAcceptedFrame(Identity(generation,13,13)));
+        }
 		TEST_METHOD(ScheduledDecisionAcceptsOnlyCurrentTrustedContext)
 		{
 			const ActivePictureFrameIdentity current = {
@@ -1460,7 +1517,10 @@ namespace VideoProcessorTest
 			Assert::IsFalse(Build(Samples(underFivePercent), Established(base), base).transition.publish);
 			// Do not bind proof to a supplied base different from the live stable reference.
 			Assert::IsFalse(Build(Samples(), Established(Stable220Bounds()), ShallowScopeBounds()).transition.publish);
-			Assert::IsFalse(Build(Samples(), Established(FullBounds()), FullBounds()).transition.publish);
+			// Exact full-raster bases are now supported and covered separately.
+			// A non-full rectangle carrying NONE still cannot serve as that base.
+			auto partialFull = FullBounds(); partialFull.right -= 4;
+			Assert::IsFalse(Build(Samples(), Established(FullBounds()), partialFull).transition.publish);
 			Assert::IsFalse(Build(Samples(), ActivePictureTransitionModel{}).transition.publish);
 		}
 		TEST_METHOD(InwardProofSupportsBothAxesAtEveryPlaybackRateWithoutChangingLivePolicy)

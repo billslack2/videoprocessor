@@ -19,6 +19,9 @@
     <ClCompile Include="ActivePictureDecisionTimelineTests.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="FullRasterLookaheadTests.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="ActivePictureTransitionModelTests.cpp">
       <Filter>Resource Files</Filter>
     </ClCompile>
@@ -89,6 +92,27 @@
 	<ClCompile Include="RendererQueueLaunchContractModelTests.cpp">
 	  <Filter>Resource Files</Filter>
 	</ClCompile>
+    <ClCompile Include="LocalBoundaryDiagnosticsTests.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="LocalBoundaryAnchorDiagnosticsTests.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="SparseBoundaryCropExperimentTests.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="OpposingBoundaryDiagnosticsTests.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="DimSideCompositionGuardTests.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="SidePictureDiagnosticsTests.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="SparseBoundaryTransitionExperimentTests.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="Header Files">
@@ -106,4 +130,10 @@
   <ItemGroup>
     <ClCompile Include="FullRasterColorEvidenceFormatTests.cpp"><Filter>Source Files</Filter></ClCompile>
   </ItemGroup>
+  <ItemGroup><ClCompile Include="NearBlackNativeBoundaryRecoveryTests.cpp"><Filter>Source Files</Filter></ClCompile></ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="RememberedEdgeReturnTests.cpp"><Filter>Source Files</Filter></ClCompile>
+  </ItemGroup>
+  <ItemGroup><ClCompile Include="LocalBoundaryRefinementTests.cpp"><Filter>Source Files</Filter></ClCompile></ItemGroup>
+  <ItemGroup><ClCompile Include="SparseEntryEpisodeRecoveryTests.cpp"><Filter>Source Files</Filter></ClCompile></ItemGroup>
 </Project>

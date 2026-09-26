@@ -384,6 +384,12 @@
     <ClInclude Include="ActivePictureEvidence.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="LocalBoundaryDiagnostics.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="SparseBoundaryCropExperiment.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
 	<ClInclude Include="AnalysisLumaSource.h">
 	  <Filter>Header Files</Filter>
 	</ClInclude>
@@ -462,6 +468,12 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="ActivePictureEvidence.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="LocalBoundaryDiagnostics.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="SparseBoundaryCropExperiment.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
 	<ClCompile Include="AnalysisLumaSource.cpp">
@@ -645,4 +657,11 @@
   <ItemGroup>
     <Text Include="microsoft_directshow\live_source_filter\ALiveSourceVideoOutputPin_tracking_snippet.txt" />
   </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="RememberedEdgeReturn.h"><Filter>Header Files</Filter></ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="RememberedEdgeReturn.cpp"><Filter>Source Files</Filter></ClCompile>
+  </ItemGroup>
+  <ItemGroup><ClInclude Include="LocalBoundaryRefinement.h"><Filter>Header Files</Filter></ClInclude><ClCompile Include="LocalBoundaryRefinement.cpp"><Filter>Source Files</Filter></ClCompile></ItemGroup>
 </Project>

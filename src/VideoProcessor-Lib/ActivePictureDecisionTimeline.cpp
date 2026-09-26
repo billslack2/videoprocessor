@@ -184,13 +184,23 @@ bool IsExactInwardActivePictureAssociationGeometry(
 	const ActivePictureTransitionDecision& transition,
 	ActivePictureClassification classification)
 {
+	// An established full raster has no bar axis. It is also a valid inward
+	// reference, but only as an exact raster, never a provisional inset.
+	const auto& base = transition.stableBounds;
+	const bool fullRasterBase = base.trustedBarAxes == ActivePictureBounds::BarAxes::NONE &&
+		base.rasterWidth > 0 && base.rasterHeight > 0 &&
+		base.left == 0 && base.top == 0 &&
+		base.right == base.rasterWidth && base.bottom == base.rasterHeight;
 	return classification == ActivePictureClassification::BAR_CROP_TRUSTED &&
+		transition.bounds.left >= 0 && transition.bounds.top >= 0 &&
+		transition.bounds.right > transition.bounds.left &&
+		transition.bounds.bottom > transition.bounds.top &&
 		(transition.bounds.trustedBarAxes ==
 				ActivePictureBounds::BarAxes::TOP_BOTTOM ||
 			transition.bounds.trustedBarAxes ==
 				ActivePictureBounds::BarAxes::LEFT_RIGHT) &&
-		transition.stableBounds.trustedBarAxes ==
-			transition.bounds.trustedBarAxes &&
+		(fullRasterBase || transition.stableBounds.trustedBarAxes ==
+			transition.bounds.trustedBarAxes) &&
 		(transition.bounds.trustedBarAxes ==
 				ActivePictureBounds::BarAxes::TOP_BOTTOM
 			? transition.bounds.left == transition.stableBounds.left &&
@@ -351,6 +361,15 @@ void ActivePictureDecisionTimeline::InvalidateLookaheadPolicy(
 	++m_lookaheadPolicyGeneration;
 	if (m_lookaheadPolicyGeneration == 0)
 		++m_lookaheadPolicyGeneration;
+}
+
+
+void ActivePictureDecisionTimeline::InvalidateGeometryForReacquisition()
+{
+	m_transition.Reset();
+	InvalidateLookaheadPolicy(true);
+	// Accepted identities, FIFO position, and transport continuity remain valid.
+	// Only decisions derived from the withdrawn geometry must be regenerated.
 }
 
 

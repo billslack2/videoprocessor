@@ -65,6 +65,36 @@ namespace Tests
 			input.candidate = Evaluate(c);
 			return input;
 		}
+        PresentationRecoveryInput ExpiredFitInspection()
+        {
+            auto input = AgencyBoundedRecovery(4525);
+            auto& crop = input.crop;
+            crop.presentationFailOpen = false;
+            crop.verticalInspectionPending = true;
+            crop.verticalInspectionSourceGeneration = 7;
+            crop.verticalInspectionSourceSequence = 4525;
+            crop.frameLocalPresentationRetentionEvaluated = true;
+            crop.frameLocalPresentationRetentionSafe = false;
+            crop.currentVisibleBounds.top = 85;
+            crop.currentVisibleBounds.bottom = 2105;
+            input.observation.top = 188;
+            input.observation.bottom = 2092;
+
+            auto prior = crop;
+            prior.frameSourceSequence = 4524;
+            prior.latestObservationSupportsCrop = true;
+            prior.verticalInspectionPending = false;
+            prior.outwardPresentationActive = prior.outwardExpansionAvailable = true;
+            prior.outwardExpansionSourceGeneration = 7;
+            prior.outwardExpansion = crop.geometry;
+            prior.outwardExpansion.top = 34;
+            prior.outwardExpansion.bottom = 2126;
+            const auto admission = AdmitCropPresentation({}, prior, Evaluate(prior), 9).state;
+            input.previousAdmission = admission;
+            input.candidate = Evaluate(crop);
+            return input;
+        }
+
         PresentationRecoveryInput ChangedContractBoundedRecovery()
         {
             auto input=AgencyBoundedRecovery(6534);
@@ -1394,13 +1424,314 @@ namespace Tests
 			Assert::IsTrue(EvaluateTransitionAdmission(input).observation.transitionDeferred);
 		}
 
+
+        TEST_METHOD(InspectionReentryCannotContractAnOccupiedOutwardFit)
+        {
+            // Captured replay 4524 -> 4525: the dense FIT expires while the
+            // pixels still occupy both former bars. Inspection is permission
+            // to hold a picture, not permission to restore an older zoom.
+            auto input = ExpiredFitInspection();
+            auto& crop = input.crop;
+            auto admission = input.previousAdmission;
+            for (uint64_t seq = 4525; seq <= 4528; ++seq)
+            {
+                crop.frameSourceSequence = crop.currentVisibleSourceSequence =
+                    crop.verticalInspectionSourceSequence = input.retentionSourceSequence = seq;
+                crop.presentationFailOpen = seq == 4528;
+                input.candidate = Evaluate(crop);
+                const auto recovered = EvaluatePresentationRecovery(input);
+                const auto shown = AdmitCropPresentation(admission, crop, recovered.presentation, 9);
+                Assert::IsFalse(shown.blocked);
+                Assert::AreEqual(34, shown.presentation.sourceBounds.top,
+                    L"Inspection re-entry must not flash back to logical scope or trim the existing fit.");
+                Assert::AreEqual(2126, shown.presentation.sourceBounds.bottom);
+                Assert::IsTrue(recovered.state.active);
+                Assert::AreEqual(276, recovered.state.trustedCrop.top);
+                input.previous = recovered.state;
+                admission = shown.state;
+                input.previousAdmission = admission;
+            }
+        }
+
+
+        TEST_METHOD(InspectionReentryExposesLargerContentAndRejectsMissingExtentProof)
+        {
+            for (int variant = 0; variant < 4; ++variant)
+            {
+                auto input = ExpiredFitInspection();
+                if (variant == 0) { input.crop.currentVisibleBounds.top = 12; input.crop.currentVisibleBounds.bottom = 2148; }
+                if (variant == 1) { input.crop.currentVisibleBounds.top = 0; input.crop.currentVisibleBounds.bottom = 2160; }
+                if (variant == 2) input.crop.currentVisibleBoundsAvailable = false;
+                if (variant == 3) --input.crop.currentVisibleSourceSequence;
+                const auto result = EvaluatePresentationRecovery(input);
+                Assert::IsTrue(result.started);
+                Assert::AreEqual(variant == 0 ? 12 : 0, result.presentation.sourceBounds.top);
+                Assert::AreEqual(variant == 0 ? 2148 : 2160, result.presentation.sourceBounds.bottom);
+            }
+        }
+
+        TEST_METHOD(InspectionReentryRepeatPreservesFitWithoutCountingProof)
+        {
+            auto input = ExpiredFitInspection();
+            input.cadenceRepeat = true;
+            input.previousAdmission.presentationSourceSequence = input.crop.frameSourceSequence;
+            auto result = EvaluatePresentationRecovery(input);
+            Assert::IsTrue(result.started);
+            Assert::AreEqual(34, result.presentation.sourceBounds.top);
+            Assert::AreEqual(0u, result.samples);
+            Assert::IsTrue((result.gates & RECOVERY_REPEAT) != 0);
+            // Once current bars are safe, repeats still cannot release inward.
+            input.previous = result.state;
+            input.excludedBandsPixelSafe = true;
+            input.observation = input.observedTrustedCrop = input.crop.geometry;
+            input.crop.latestObservationClassification = input.observationClassification = ActivePictureClassification::BAR_CROP_TRUSTED;
+            input.crop.latestObservationSupportsCrop = true;
+            input.crop.latestObservationIsProvisional = false;
+            input.candidate = Evaluate(input.crop);
+            result = EvaluatePresentationRecovery(input);
+            Assert::IsFalse(result.released);
+            Assert::AreEqual(0u, result.samples);
+            Assert::AreEqual(34, result.presentation.sourceBounds.top);
+        }
+
+        TEST_METHOD(InspectionReentryRequiresCurrentContinuousMatchingFit)
+        {
+            for (int fault = 0; fault < 22; ++fault)
+            {
+                auto input = ExpiredFitInspection();
+                switch (fault)
+                {
+                case 0: input.previousAdmission.available = false; break;
+                case 1: input.previousAdmission.outwardPresentationAvailable = false; break;
+                case 2: --input.previousAdmission.sourceGeneration; break;
+                case 3: ++input.previousAdmission.presentationEpoch; break;
+                case 4: input.previousAdmission.trustedCrop.top += 2; break;
+                case 5: input.previousAdmission.trustedCrop.rasterWidth /= 2; break;
+                case 6: input.previousAdmission.presentationSourceSequence = 0; break;
+                case 7: --input.previousAdmission.presentationSourceSequence; break;
+                case 8: input.previousAdmission.presentationSourceSequence += 2; break;
+                case 9: input.previousAdmission.outwardPresentation.top = -2; break;
+                case 10: ++input.previousAdmission.outwardPresentation.top; break;
+                case 11: input.previousAdmission.outwardPresentation.top = 278; break;
+                case 12: input.previousAdmission.outwardPresentation = input.crop.geometry; break;
+                case 13: input.measurementCurrent = false; break;
+                case 14: input.retentionEvaluated = false; break;
+                case 15: --input.retentionSourceGeneration; break;
+                case 16: --input.retentionSourceSequence; break;
+                case 17: input.retentionBounds.top += 2; break;
+                case 18: input.excludedBandsPixelSafe = true; break;
+                case 19: input.nearBlackEvaluated = false; break;
+                case 20: input.globalNearBlack = true; break;
+                case 21: input.crop.latestObservationSupportsCrop = true; break;
+                }
+                const auto result = EvaluatePresentationRecovery(input);
+                const auto message = L"Unexpected inspection recovery for fault " + std::to_wstring(fault);
+                Assert::IsFalse(result.started, message.c_str());
+            }
+        }
+
+        TEST_METHOD(InspectionReentryPreservesConfirmedOwnerPrecedence)
+        {
+            for (int variant = 0; variant < 5; ++variant)
+            {
+                auto input = ExpiredFitInspection();
+                if (variant == 0) input.crop.automaticCropEnabled = false;
+                if (variant == 1) input.crop.fullRasterPresentationAuthoritative = true;
+                if (variant == 2) input.crop.movingPictureTransition = true;
+                if (variant == 3) input.crop.nearBlackEpisodeFullRaster = true;
+                if (variant == 4) input.confirmedPresentationResolved = true;
+                input.candidate = Evaluate(input.crop);
+                const auto result = EvaluatePresentationRecovery(input);
+                Assert::IsFalse(result.started);
+                Assert::AreEqual(input.candidate.sourceBounds.top, result.presentation.sourceBounds.top);
+            }
+        }
+
+
+        TEST_METHOD(InspectionReentryDoesNotDelayNativeResolutionInsideBridge)
+        {
+            for (int fault = -1; fault < 7; ++fault)
+            {
+                auto input = ExpiredFitInspection();
+                input.previous = EvaluatePresentationRecovery(input).state;
+                ++input.crop.frameSourceSequence;
+                input.retentionSourceSequence = input.crop.frameSourceSequence;
+                input.crop.currentVisibleBoundsAvailable = false;
+                input.crop.verticalInspectionPending = false;
+                input.excludedBandsPixelSafe = true;
+                input.crop.latestObservationSupportsCrop = true;
+                input.crop.latestObservationIsProvisional = false;
+                input.crop.latestObservationClassification = input.observationClassification = ActivePictureClassification::BAR_CROP_TRUSTED;
+                input.observation = input.observedTrustedCrop = input.crop.geometry;
+                switch (fault)
+                {
+                case 0: input.excludedBandsPixelSafe = false; break;
+                case 1: --input.retentionSourceSequence; break;
+                case 2: input.globalNearBlack = true; break;
+                case 3: input.cadenceRepeat = true; break;
+                case 4: input.observationAvailable = false; break;
+                case 5: input.crop.latestObservationSupportsCrop = false; break;
+                case 6: input.observedTrustedCrop.top += 40; break;
+                }
+                input.candidate = Evaluate(input.crop);
+                const auto result = EvaluatePresentationRecovery(input);
+                Assert::AreEqual(fault == -1, result.released);
+                if (fault == -1) Assert::AreEqual(276, result.presentation.sourceBounds.top);
+                else Assert::IsTrue(result.presentation.sourceBounds.top <= 34 &&
+                    result.presentation.sourceBounds.bottom >= 2126,
+                    L"Unproven native resolution may expose raster, but cannot contract the held fit.");
+            }
+        }
+
+
+
+        TEST_METHOD(InspectionReentrySafeResolutionSurvivesRepeatWithoutAddingDwell)
+        {
+            for (bool provisional : {false, true})
+            for (bool markedRepeat : {false, true})
+            {
+                auto input = ExpiredFitInspection();
+                auto result = EvaluatePresentationRecovery(input);
+                // A second inspected source frame is still inside the bridge.
+                input.previous = result.state;
+                ++input.crop.frameSourceSequence;
+                input.retentionSourceSequence = input.crop.currentVisibleSourceSequence =
+                    input.crop.verticalInspectionSourceSequence = input.crop.frameSourceSequence;
+                input.candidate = Evaluate(input.crop);
+                result = EvaluatePresentationRecovery(input);
+                input.previous = result.state;
+                input.cadenceRepeat = markedRepeat;
+                input.crop.verticalInspectionPending = false;
+                input.crop.currentVisibleBoundsAvailable = false;
+                input.excludedBandsPixelSafe = true;
+                input.crop.frameLocalPresentationRetentionSafe = true;
+                input.crop.latestObservationSupportsCrop = !provisional;
+                input.crop.latestObservationIsProvisional = provisional;
+                input.crop.latestObservationClassification = input.observationClassification = provisional
+                    ? ActivePictureClassification::PROVISIONAL : ActivePictureClassification::BAR_CROP_TRUSTED;
+                input.observation = input.observedTrustedCrop = input.crop.geometry;
+                input.candidate = Evaluate(input.crop);
+                result = EvaluatePresentationRecovery(input);
+                Assert::IsFalse(result.released, L"Even an unflagged same-sequence call cannot resolve the bridge.");
+                Assert::AreEqual(0u, result.samples);
+                Assert::IsTrue(result.state.inspectionReentryPending);
+                Assert::AreEqual(34, result.presentation.sourceBounds.top);
+                input.previous = result.state;
+                input.cadenceRepeat = false;
+                ++input.crop.frameSourceSequence;
+                input.retentionSourceSequence = input.crop.frameSourceSequence;
+                input.candidate = Evaluate(input.crop);
+                result = EvaluatePresentationRecovery(input);
+                Assert::IsTrue(result.released, L"The next current safe native or provisional frame keeps the original immediate bridge exit.");
+                Assert::AreEqual(276, result.presentation.sourceBounds.top);
+            }
+        }
+
+        TEST_METHOD(InspectionNativeResolutionCannotCrossContractOrSurviveAnotherOwner)
+        {
+            for (int variant = 0; variant < 3; ++variant)
+            {
+                auto input = ExpiredFitInspection();
+                auto result = EvaluatePresentationRecovery(input);
+                if (variant == 0)
+                {
+                    input.previous = result.state;
+                    ++input.crop.frameSourceSequence;
+                    input.retentionSourceSequence = input.crop.currentVisibleSourceSequence = input.crop.frameSourceSequence;
+                    input.crop.verticalInspectionPending = false;
+                    input.crop.presentationFailOpen = true;
+                    input.candidate = Evaluate(input.crop);
+                    result = EvaluatePresentationRecovery(input);
+                    Assert::IsFalse(result.state.inspectionReentryPending);
+                }
+                if (variant == 2) result.state.inspectionReentryPending = false; // Ordinary pre-existing recovery.
+                input.previous = result.state;
+                ++input.crop.frameSourceSequence;
+                input.retentionSourceSequence = input.crop.frameSourceSequence;
+                input.crop.verticalInspectionPending = input.crop.presentationFailOpen = false;
+                if (variant == 1)
+                {
+                    input.crop.geometry.top = 68; input.crop.geometry.bottom = 2092;
+                    input.crop.geometry.aspectRatio = 3840.0 / 2024;
+                }
+                input.retentionBounds = input.observation = input.observedTrustedCrop = input.crop.geometry;
+                input.crop.currentVisibleBoundsAvailable = false;
+                input.excludedBandsPixelSafe = true;
+                input.crop.latestObservationSupportsCrop = true;
+                input.crop.latestObservationIsProvisional = false;
+                input.crop.latestObservationClassification = input.observationClassification = ActivePictureClassification::BAR_CROP_TRUSTED;
+                input.candidate = Evaluate(input.crop);
+                result = EvaluatePresentationRecovery(input);
+                Assert::IsFalse(result.released);
+                Assert::IsFalse(result.state.inspectionReentryPending);
+                Assert::AreEqual(34, result.presentation.sourceBounds.top);
+            }
+        }
+
+        TEST_METHOD(InspectionReentryReturnsAfterExistingSafeCropProof)
+        {
+            auto input = ExpiredFitInspection();
+            auto result = EvaluatePresentationRecovery(input);
+            Assert::IsTrue(result.started);
+            input.previous = result.state;
+            ++input.crop.frameSourceSequence;
+            input.retentionSourceSequence = input.crop.currentVisibleSourceSequence = input.crop.frameSourceSequence;
+            input.crop.verticalInspectionPending = false;
+            input.crop.presentationFailOpen = true;
+            input.candidate = Evaluate(input.crop);
+            result = EvaluatePresentationRecovery(input);
+            Assert::IsFalse(result.state.inspectionReentryPending);
+            input.crop.presentationFailOpen = false;
+            for (unsigned frame = 1; frame <= result.required; ++frame)
+            {
+                input.previous = result.state;
+                ++input.crop.frameSourceSequence;
+                input.retentionSourceSequence = input.crop.frameSourceSequence;
+                input.crop.currentVisibleBoundsAvailable = false;
+                input.excludedBandsPixelSafe = true;
+                input.crop.latestObservationSupportsCrop = true;
+                input.crop.latestObservationIsProvisional = false;
+                input.crop.verticalInspectionPending = false;
+                input.crop.latestObservationClassification = input.observationClassification = ActivePictureClassification::BAR_CROP_TRUSTED;
+                input.observation = input.observedTrustedCrop = input.crop.geometry;
+                input.candidate = Evaluate(input.crop);
+                result = EvaluatePresentationRecovery(input);
+                Assert::AreEqual(frame == result.required, result.released);
+                Assert::AreEqual(frame == result.required ? 276 : 34, result.presentation.sourceBounds.top);
+            }
+        }
+
+        TEST_METHOD(AdmissionClearsPriorFitOnWithdrawalBlockedAndOtherOwners)
+        {
+            for (int variant = 0; variant < 5; ++variant)
+            {
+                auto input = ExpiredFitInspection();
+                auto candidate = input.candidate;
+                auto crop = input.crop;
+                if (variant == 0) { crop.presentationFailOpen = true; candidate = Evaluate(crop); }
+                if (variant == 1) { crop.geometry.top += 2; candidate = Evaluate(crop); }
+                if (variant == 2) { crop.latestObservationSupportsCrop = true; crop.verticalInspectionPending = false; candidate = Evaluate(crop); }
+                if (variant == 3) { crop.verticalInspectionPending = false; crop.verticalTranslationActive = true;
+                    crop.verticalTranslationPixels = 100; crop.verticalTranslationBase = crop.geometry;
+                    crop.verticalTranslationSourceGeneration = 7; candidate = Evaluate(crop); }
+                if (variant == 4) { crop.fullRasterPresentationAuthoritative = true; candidate = Evaluate(crop); }
+                const auto admitted = AdmitCropPresentation(input.previousAdmission, crop, candidate, 9);
+                Assert::IsFalse(admitted.state.outwardPresentationAvailable);
+                Assert::AreEqual(uint64_t{0}, admitted.state.presentationSourceSequence);
+            }
+        }
+
 		TEST_METHOD(BoundedRecoveryAgencyPreservesBlackTopThroughExpiredInspection)
 		{
 			auto input = AgencyBoundedRecovery();
 			AssertFullRaster(input.candidate); // Reproduce the unresolved-owner route.
-			auto admittedCrop = input.crop; admittedCrop.latestObservationSupportsCrop = true;
-			admittedCrop.presentationFailOpen = false;
+			// Establish the clean movie crop before the later overlay extends below it.
+            auto admittedCrop = TrustedScopeCrop();
+            admittedCrop.geometry = input.crop.geometry;
+            admittedCrop.frameSourceSequence = input.crop.frameSourceSequence - 1;
+            Assert::IsTrue(Evaluate(admittedCrop).owner == DecisionOwner::TRUSTED_CROP);
 			auto admitted = AdmitCropPresentation({}, admittedCrop, Evaluate(admittedCrop), 9).state;
+            Assert::IsTrue(admitted.available);
 			for (uint64_t seq = 4013; seq < 4302; ++seq)
 			{
 				input.crop.frameSourceSequence = input.crop.currentVisibleSourceSequence = input.retentionSourceSequence = seq;
@@ -4511,12 +4842,220 @@ namespace Tests
 				Assert::IsTrue(candidate.applyCrop);
 				AssertFullRaster(AdmitCropPresentation({}, crop, candidate, 3).presentation);
 				// The identical pending owner may retain a picture already acquired.
-				Input acquisition = crop;
-				acquisition.latestObservationSupportsCrop = true;
+				// Establish the reference through actual clean picture acquisition,
+				// not by relabeling the same pending retention owner as supported.
+				Input acquisition = TrustedScopeCrop();
+				acquisition.geometry = crop.geometry;
+				acquisition.geometrySourceGeneration = crop.geometrySourceGeneration;
+				acquisition.frameSourceGeneration = crop.frameSourceGeneration;
+				acquisition.frameSourceSequence = crop.frameSourceSequence;
 				const auto prior = AdmitCropPresentation({}, acquisition, Evaluate(acquisition), 3).state;
 				Assert::IsTrue(AdmitCropPresentation(prior, crop, candidate, 3).presentation.applyCrop);
 			}
 		}
+
+		TEST_METHOD(ZdfNewCropCannotAcquireThroughPendingOwnerDespiteSupportingObservation)
+		{
+			for (const auto bounds : { ActivePictureBounds{0,196,3840,1964,3840,2160,
+				3840.0/1768.0,ActivePictureBounds::BarAxes::TOP_BOTTOM},
+				ActivePictureBounds{0,168,3840,1988,3840,2160,
+				3840.0/1820.0,ActivePictureBounds::BarAxes::TOP_BOTTOM} })
+			for (bool fitPending : { false, true })
+			{
+				auto crop = TrustedScopeCrop();
+				crop.geometry = bounds;
+				crop.frameSourceSequence = 5071;
+				crop.latestObservationClassification = ActivePictureClassification::BAR_CROP_TRUSTED;
+				crop.frameLocalPresentationRetentionEvaluated = true;
+				crop.frameLocalPresentationRetentionSafe = false;
+				crop.verticalTranslationConfirmationPending = !fitPending;
+				crop.verticalFitConfirmationPending = fitPending;
+				crop.verticalTranslationBase = crop.geometry;
+				crop.verticalTranslationSourceGeneration = crop.frameSourceGeneration;
+				// Logical publication sets supports=true, but current excluded-band
+				// inspection has already contradicted the newly proposed crop.
+				Assert::IsTrue(crop.latestObservationSupportsCrop);
+				const auto candidate = Evaluate(crop);
+				Assert::IsTrue(candidate.applyCrop);
+				Assert::AreEqual(int(fitPending ? DecisionOwner::FIT_CONFIRMATION :
+					DecisionOwner::TRANSLATION_CONFIRMATION), int(candidate.owner));
+				const auto shown = AdmitCropPresentation({}, crop, candidate, 3);
+				Assert::IsTrue(shown.blocked,
+					L"A pending presentation correction cannot acquire an unseen crop even when logical observation supports it.");
+				AssertFullRaster(shown.presentation);
+				Assert::IsFalse(shown.state.available);
+			}
+		}
+
+		TEST_METHOD(ZdfAcquisitionGuardPreservesAlreadyPresentedCaptionBase)
+		{
+			for (bool fitPending : { false, true })
+			{
+				auto crop = TrustedScopeCrop();
+				crop.frameSourceSequence = 5000;
+				crop.latestObservationClassification = ActivePictureClassification::BAR_CROP_TRUSTED;
+				crop.frameLocalPresentationRetentionEvaluated = true;
+				crop.frameLocalPresentationRetentionSafe = true;
+				const auto clean = Evaluate(crop);
+				Assert::AreEqual(int(DecisionOwner::TRUSTED_CROP),int(clean.owner));
+				const auto prior = AdmitCropPresentation({},crop,clean,3);
+				Assert::IsTrue(prior.state.available);
+				for (bool supports : { false, true })
+				{
+					++crop.frameSourceSequence;
+					crop.latestObservationSupportsCrop = supports;
+					crop.frameLocalPresentationRetentionSafe = false;
+					crop.verticalTranslationConfirmationPending = !fitPending;
+					crop.verticalFitConfirmationPending = fitPending;
+					crop.verticalTranslationBase = crop.geometry;
+					crop.verticalTranslationSourceGeneration = crop.frameSourceGeneration;
+					const auto shown = AdmitCropPresentation(prior.state,crop,Evaluate(crop),3);
+					Assert::IsFalse(shown.blocked);
+					Assert::IsTrue(shown.presentation.applyCrop);
+					Assert::AreEqual(crop.geometry.top,shown.presentation.sourceBounds.top);
+					Assert::AreEqual(crop.geometry.bottom,shown.presentation.sourceBounds.bottom);
+				}
+			}
+		}
+
+		TEST_METHOD(ZdfPendingToConfirmedFitCannotLaunderUnresolvedCropAcquisition)
+		{
+			auto crop = TrustedScopeCrop();
+			crop.geometry = {0,196,3840,1964,3840,2160,3840.0/1768.0,
+				ActivePictureBounds::BarAxes::TOP_BOTTOM};
+			crop.latestObservationClassification = ActivePictureClassification::BAR_CROP_TRUSTED;
+			crop.frameLocalPresentationRetentionEvaluated = true;
+			crop.frameLocalPresentationRetentionSafe = false;
+			crop.verticalTranslationBase = crop.geometry;
+			crop.verticalTranslationSourceGeneration = crop.frameSourceGeneration;
+			crop.currentVisibleBoundsAvailable = true;
+			crop.currentVisibleBase = crop.geometry;
+			crop.currentVisibleSourceGeneration = crop.frameSourceGeneration;
+			crop.currentVisibleBounds = {0,0,3840,2160,3840,2160,16.0/9.0,
+				ActivePictureBounds::BarAxes::NONE};
+			CropPresentationAdmissionState admission;
+			for (uint64_t sequence = 5071; sequence <= 5075; ++sequence)
+			{
+				crop.frameSourceSequence = crop.currentVisibleSourceSequence = sequence;
+				crop.verticalTranslationConfirmationPending = sequence < 5073;
+				crop.verticalFitConfirmationPending = sequence == 5073;
+				crop.outwardPresentationActive = crop.outwardExpansionAvailable = sequence >= 5074;
+				crop.outwardExpansionSourceGeneration = crop.frameSourceGeneration;
+				crop.outwardExpansion = {0,172,3840,2008,3840,2160,3840.0/1836.0,
+					ActivePictureBounds::BarAxes::NONE};
+				const auto candidate = Evaluate(crop);
+				Assert::IsTrue(candidate.applyCrop);
+				if (sequence >= 5074)
+				{
+					Assert::AreEqual(int(DecisionOwner::OUTWARD_FIT),int(candidate.owner));
+					Assert::IsTrue(candidate.sourceBounds.top > crop.currentVisibleBounds.top);
+				}
+				// A changed owner name does not prove the still-excluded pixels safe.
+				const auto shown = AdmitCropPresentation(admission,crop,candidate,3);
+				AssertFullRaster(shown.presentation);
+				Assert::IsTrue(shown.blocked);
+				Assert::IsFalse(shown.state.available);
+				admission = shown.state;
+			}
+			// Real clean bars can acquire immediately, without a timer or restart.
+			++crop.frameSourceSequence;
+			crop.outwardPresentationActive = crop.outwardExpansionAvailable = false;
+			crop.currentVisibleBoundsAvailable = false;
+			crop.frameLocalPresentationRetentionSafe = true;
+			const auto acquired = AdmitCropPresentation(admission,crop,Evaluate(crop),3);
+			Assert::IsFalse(acquired.blocked);
+			Assert::IsTrue(acquired.presentation.applyCrop);
+			Assert::IsTrue(acquired.state.available);
+			Assert::AreEqual(int(DecisionOwner::TRUSTED_CROP),int(acquired.presentation.owner));
+		}
+
+
+        TEST_METHOD(ZdfUnseenConfirmedFitMustContainFreshVisiblePixelWitness)
+        {
+            auto crop = TrustedScopeCrop();
+            crop.frameSourceSequence = 5074;
+            crop.latestObservationClassification = ActivePictureClassification::BAR_CROP_TRUSTED;
+            crop.frameLocalPresentationRetentionEvaluated = true;
+            crop.frameLocalPresentationRetentionSafe = false;
+            crop.outwardPresentationActive = crop.outwardExpansionAvailable = true;
+            crop.outwardExpansionSourceGeneration = crop.frameSourceGeneration;
+            crop.outwardExpansion = crop.geometry;
+            crop.outwardExpansion.top = 172;
+            crop.outwardExpansion.bottom = 2008;
+            crop.currentVisibleBoundsAvailable = true;
+            crop.currentVisibleSourceGeneration = crop.frameSourceGeneration;
+            crop.currentVisibleSourceSequence = crop.frameSourceSequence;
+            crop.currentVisibleBase = crop.geometry;
+            crop.currentVisibleBounds = crop.outwardExpansion;
+            crop.currentVisibleBounds.top = 86;
+            crop.currentVisibleBounds.bottom = 2080;
+            crop.currentVisibleBounds.trustedBarAxes = ActivePictureBounds::BarAxes::NONE;
+            const auto candidate = Evaluate(crop);
+            Assert::AreEqual(int(DecisionOwner::OUTWARD_FIT),int(candidate.owner));
+            const auto shown = AdmitCropPresentation({},crop,candidate,3);
+            Assert::IsTrue(shown.blocked);
+            AssertFullRaster(shown.presentation);
+            Assert::IsFalse(shown.state.available);
+        }
+
+        TEST_METHOD(ZdfAcquisitionWitnessRequiresCurrentValidMatchingBounds)
+        {
+            for (int fault = 0; fault < 8; ++fault)
+            {
+                auto crop = TrustedScopeCrop();
+                crop.frameSourceSequence = 5074;
+                crop.latestObservationClassification = ActivePictureClassification::BAR_CROP_TRUSTED;
+                crop.frameLocalPresentationRetentionEvaluated = true;
+                crop.frameLocalPresentationRetentionSafe = false;
+                crop.currentVisibleBoundsAvailable = true;
+                crop.currentVisibleSourceGeneration = crop.frameSourceGeneration;
+                crop.currentVisibleSourceSequence = crop.frameSourceSequence;
+                crop.currentVisibleBase = crop.geometry;
+                crop.currentVisibleBounds = {0,86,3840,2080,3840,2160,3840.0/1994.0,
+                    ActivePictureBounds::BarAxes::NONE};
+                if (fault == 0) crop.currentVisibleSourceGeneration--;
+                if (fault == 1) crop.currentVisibleSourceSequence--;
+                if (fault == 2) crop.currentVisibleBase.top += 8;
+                if (fault == 3) crop.currentVisibleBounds.rasterWidth = 1920;
+                if (fault == 4) crop.currentVisibleBounds.top = -2;
+                if (fault == 5) crop.currentVisibleBounds.bottom = crop.currentVisibleBounds.top;
+                if (fault == 6) crop.currentVisibleBoundsAvailable = false;
+                if (fault == 7) crop.currentVisibleBase.trustedBarAxes = ActivePictureBounds::BarAxes::NONE;
+                const auto candidate = Evaluate(crop);
+                Assert::AreEqual(int(DecisionOwner::TRUSTED_CROP),int(candidate.owner));
+                const auto shown = AdmitCropPresentation({},crop,candidate,3);
+                Assert::IsFalse(shown.blocked,L"Stale or invalid evidence cannot veto unrelated current acquisition authority.");
+                Assert::IsTrue(shown.presentation.applyCrop);
+            }
+        }
+
+        TEST_METHOD(ZdfResolvedFitContainingCurrentPixelsCanAcquireWithoutPriorCrop)
+        {
+            auto crop = TrustedScopeCrop();
+            crop.frameSourceSequence = 5074;
+            crop.latestObservationClassification = ActivePictureClassification::BAR_CROP_TRUSTED;
+            crop.frameLocalPresentationRetentionEvaluated = true;
+            crop.frameLocalPresentationRetentionSafe = false;
+            crop.outwardPresentationActive = crop.outwardExpansionAvailable = true;
+            crop.outwardExpansionSourceGeneration = crop.frameSourceGeneration;
+            crop.outwardExpansion = crop.geometry;
+            crop.outwardExpansion.top = 86;
+            crop.outwardExpansion.bottom = 2080;
+            crop.currentVisibleBoundsAvailable = true;
+            crop.currentVisibleSourceGeneration = crop.frameSourceGeneration;
+            crop.currentVisibleSourceSequence = crop.frameSourceSequence;
+            crop.currentVisibleBase = crop.geometry;
+            crop.currentVisibleBounds = crop.outwardExpansion;
+            crop.currentVisibleBounds.trustedBarAxes = ActivePictureBounds::BarAxes::NONE;
+            const auto candidate = Evaluate(crop);
+            Assert::AreEqual(int(DecisionOwner::OUTWARD_FIT),int(candidate.owner));
+            const auto shown = AdmitCropPresentation({},crop,candidate,3);
+            Assert::IsFalse(shown.blocked);
+            Assert::IsTrue(shown.presentation.applyCrop);
+            Assert::IsTrue(shown.state.available);
+            Assert::AreEqual(86,shown.presentation.sourceBounds.top);
+            Assert::AreEqual(2080,shown.presentation.sourceBounds.bottom);
+        }
 
 		TEST_METHOD(PresentationAdmissionPreservesRealAspectChangesAndExistingRetention)
 		{

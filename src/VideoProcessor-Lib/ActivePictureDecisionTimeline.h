@@ -131,6 +131,8 @@ public:
 		uint64_t detectorFrameNumber);
 	void BreakContinuity(uint64_t detectorFrameNumber);
 	void InvalidateLookaheadPolicy(bool resetPartialEvidence = false);
+	// Withdraw obsolete crop authority without discarding queued source frames.
+	void InvalidateGeometryForReacquisition();
 	bool TrackLookaheadEvidence(
 		const ActivePictureFrameIdentity& identity,
 		const ActivePictureObservation& observation,
