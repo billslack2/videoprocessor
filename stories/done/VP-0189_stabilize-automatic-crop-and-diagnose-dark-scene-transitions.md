@@ -1158,3 +1158,16 @@ follow-up. No additional threshold relaxation was merged.
 
 This check-in did not rebuild packages or change the running deployment. The
 previously user-closed story remains Done; this entry records follow-up evidence.
+
+## September 26 consolidated framing merge and test packages
+
+User requested push and merge after local playback and packaging. [PR #115](https://github.com/billslack2/videoprocessor/pull/115) merged into `v1.3.005-beta` at `ab683eefe5fdffa018b788eedfcd8913dbebe1b4`. Its source tree matches tested feature commit `78a1f61bf1e6d6283fc990e86a32b7a8daf65802` exactly. Remote beta was unchanged at `ff53b468` before merge. No GitHub status checks were reported; exact-head local validation passed all 1,721 native tests after a full x64 Release build, plus packaging helper and payload checks. Independent reviews and acquisition-guard mutation evidence are documented in source review files.
+
+Local packages (source SHA in both names):
+- `E:\codex\videoprocessor\packages\temporal-acquisition-20260926-78a1f61b\VideoProcessorSetup-1.3.005-beta-78a1f61bf1e6.exe`
+- `E:\codex\videoprocessor\packages\temporal-acquisition-20260926-78a1f61b\VideoProcessor-1.3.005-beta-78a1f61bf1e6-x64-Portable.zip`
+- Each has a verified `.sha256` sidecar. Hashes, pinned tools, and validation qualifications are preserved in [release receipt](../assets/VP-0189/merge-115-20260926/release-receipt.json).
+
+Installer unsigned; real installer lifecycle and clean-Windows interactive qualification were not repeated. No release assets published, deployment/restart performed, or configuration changed during merge. Existing deployed diagnostic pair remains installed. Experimental sparse/remembered-edge crop paths default off; temporal comparison is diagnostic only.
+
+Open follow-up: the Fox-to-Alien sequence at 13:25:06 released established scope for 45.547 seconds, with a four-pixel outward bottom excursion and incomplete inward geometry. Sampling-equivalence did not apply; safe disputed-row handling is not yet proved. Later OSD-triggered releases have distinct outward-pixel evidence. See [investigation](../assets/VP-0189/merge-115-20260926/retention-follow-up.md). This merge does not fix or close that finding. Story status remains the explicit September 20 user closure; this evidence update does not reopen it.
