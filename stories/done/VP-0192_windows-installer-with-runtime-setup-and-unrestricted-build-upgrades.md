@@ -500,3 +500,7 @@ newly qualified; release notes disclose these limits. VP-0189 is unchanged.
 [Build receipt](../assets/releases/1.3-beta-RC2/build-release-receipt.json) ·
 [Checksums](../assets/releases/1.3-beta-RC2/SHA256SUMS.txt) ·
 [Release notes](../assets/releases/1.3-beta-RC2/release-notes.md).
+
+## September 26, 2026 — local crop-acquisition test package
+
+The user-requested ZDF admission correction was rebuilt, tested, packaged as setup plus portable ZIP with SHA-256 sidecars, and deployed locally. All 1,714 native tests and 84 installer/runtime/identity checks passed; payload and ZIP hashes verified. This is a fingerprinted unmerged, unsigned test build, not a new public release. Existing story status is unchanged. [Build and deployment evidence](../assets/releases/zdf-crop-acquisition-20260926/README.md).
