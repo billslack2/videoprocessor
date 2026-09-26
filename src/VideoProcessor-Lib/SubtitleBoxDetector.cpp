@@ -14,9 +14,14 @@ namespace
     }
     int Bits(uint64_t x) { int n=0; while(x) { x &= x-1; ++n; } return n; }
 }
+int SubtitleBoxDetector::SamplingStep(int width, int height)
+{
+    return std::max({1, (width + 959) / 960, (height + 539) / 540});
+}
+
 void SubtitleBoxDetector::Reset()
 {
-    m_result = {}; m_signature = {}; m_generation = m_viewport = m_sequence = 0;
+    m_result = {}; m_currentBarAnchor = {}; m_signature = {}; m_generation = m_viewport = m_sequence = 0;
     m_width = m_height = m_top = m_bottom = m_misses = 0;
     m_hasSequence = m_workLimit = false;
 }
@@ -28,10 +33,13 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
     // Inspect every source frame. Spatial sampling bounds cost without an idle
     // frame cadence that could postpone subtitle onset. Full line search remains
     // active throughout a cue, so an initially missed companion can be recovered.
-    const int step = std::max(1, (source.width + 959) / 960);
+    m_currentBarAnchor = {};
+    const int step = SamplingStep(source.width, source.height);
     const int w = (source.width + step - 1) / step;
     const int h = (source.height + step - 1) / step;
-    const int top = pictureTop / step, bottom = (pictureBottom + step - 1) / step;
+    // Match the actual sampled source coordinate, including a partial last bar row.
+    const int top = (pictureTop + step - 1) / step;
+    const int bottom = (pictureBottom + step - 1) / step;
     const int depth = std::max(24, h / 7);
     const int topEnd = pictureTop > 0 ? std::min(h,top+depth) : 0;
     const int bottomStart = pictureBottom < source.height ? std::max(0,bottom-depth) : h;
@@ -119,6 +127,7 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
     const int minimumHeight=std::max(3,h/240), maximumHeight=std::max(16,h/12);
     for(int y=0;y<h;++y) for(int x=0;x<w;++x)
     {
+        if(y>=topEnd && y<bottomStart) break;
         const int origin=y*w+x;
         if(m_mask[origin]!=1) continue;
         Line component{{x,y,x+1,y+1},0,1};
@@ -127,6 +136,8 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
         {
             const int i=m_flood[q], cy=i/w, cx=i-cy*w;
             ++component.ink;
+            component.topBarInk += cy < top;
+            component.bottomBarInk += cy >= bottom;
             component.box=Union(component.box,{cx,cy,cx+1,cy+1});
             for(int dy=-1;dy<=1;++dy) for(int dx=-1;dx<=1;++dx)
             {
@@ -139,7 +150,10 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
         const int cw=Width(component.box), ch=Height(component.box);
         if(component.ink>=3 && ch<=maximumHeight && cw<=maximumHeight*3 &&
             (ch>=minimumHeight || (cw<=minimumHeight*2 && ch>=2)))
+        {
             m_components.push_back(component);
+            for(int pixel : m_flood) m_mask[pixel] = 3; // accepted component only
+        }
         if(m_components.size()>=MaxComponents) { m_workLimit=true; return false; }
     }
     std::sort(m_components.begin(),m_components.end(),[](const Line&a,const Line&b){
@@ -158,7 +172,11 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
                 { best=i; bestGap=gap; }
         }
         if(best==m_lines.size()) m_lines.push_back(c);
-        else { m_lines[best].box=Union(m_lines[best].box,c.box); m_lines[best].ink+=c.ink; ++m_lines[best].components; }
+        else {
+            auto& line = m_lines[best];
+            line.box=Union(line.box,c.box); line.ink+=c.ink; ++line.components;
+            line.topBarInk+=c.topBarInk; line.bottomBarInk+=c.bottomBarInk;
+        }
     }
     // A text line needs several strokes, a plausible baseline, and whitespace.
     auto plausible=[&](const Line& l){
@@ -171,15 +189,17 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
     {
         const auto& l=m_lines[i];
         if(!plausible(l)) continue;
-        int barInk=0;
-        for(int y=l.box.top;y<l.box.bottom;++y)
-            if(y<top||y>=bottom)
-                for(int x=l.box.left;x<l.box.right;++x) barInk+=m_mask[y*w+x]!=0;
-        if(barInk>=6 && l.ink>score) { anchor=i; score=l.ink; }
+        // Eligibility belongs to this line's accepted components, never all
+        // bright pixels in its envelope (which includes discarded picture/noise).
+        const bool inTopBar = l.topBarInk >= 6;
+        const bool inBottomBar = l.bottomBarInk >= 6;
+        if(inTopBar != inBottomBar && l.ink>score) { anchor=i; score=l.ink; }
     }
     if(anchor==m_lines.size()) return false;
     const Line& a=m_lines[anchor];
-    const bool topCue=a.box.top<top;
+    const bool topCue=a.topBarInk>=6;
+    m_currentBarAnchor={a.box.left*step,a.box.top*step,
+        std::min(source.width,a.box.right*step),std::min(source.height,a.box.bottom*step)};
     box=a.box; lineCount=1;
     const int anchorHeight=Height(a.box);
     // Companions are compared to the original bar anchor, never admitted by a
@@ -201,7 +221,7 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
     // line extents are still inspected on every frame, even after geometry locks.
     signature={};
     for(int y=box.top;y<box.bottom;++y) for(int x=box.left;x<box.right;++x)
-        if(m_mask[y*w+x])
+        if(m_mask[y*w+x]==3)
         {
             const int sy=std::min(15,(y-box.top)*16/Height(box));
             const int sx=std::min(63,(x-box.left)*64/Width(box));
@@ -233,7 +253,14 @@ SubtitleBoxResult SubtitleBoxDetector::Analyze(const AnalysisLumaSource& source,
     {
         // Outline-only grace, explicitly reported as held. Never use this
         // diagnostic state as authorization to erase or move source pixels.
-        if(!m_workLimit && m_result.bounds.Valid() && ++m_misses<=2)
+        // Loss of bar evidence releases immediately, even if picture-side text
+        // remains. Grace is allowed only with a fresh accepted anchor inside the
+        // old cue, never for unrelated new bar content elsewhere in the raster.
+        const auto& prior=m_result.bounds;
+        const bool anchorStillPresent=m_currentBarAnchor.Valid() && prior.Valid() &&
+            m_currentBarAnchor.left>=prior.left && m_currentBarAnchor.top>=prior.top &&
+            m_currentBarAnchor.right<=prior.right && m_currentBarAnchor.bottom<=prior.bottom;
+        if(!m_workLimit && anchorStillPresent && ++m_misses<=2)
         { m_result.detected=false; m_result.held=true; m_result.revised=false; return m_result; }
         m_result={}; m_result.workLimit=m_workLimit; return m_result;
     }

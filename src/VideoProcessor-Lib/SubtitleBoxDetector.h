@@ -28,8 +28,13 @@ public:
     SubtitleBoxResult Analyze(const AnalysisLumaSource& source, int pictureTop,
         int pictureBottom, uint64_t sequence, uint64_t viewportGeneration);
     void Reset();
+    // UHD is sampled at 960x540: one quarter per axis, one sixteenth of pixels.
+    static int SamplingStep(int width, int height);
 private:
-    struct Line { SubtitleBoxRect box; int ink = 0, components = 0; };
+    struct Line {
+        SubtitleBoxRect box;
+        int ink = 0, components = 0, topBarInk = 0, bottomBarInk = 0;
+    };
     bool Detect(const AnalysisLumaSource& source, int pictureTop, int pictureBottom,
         SubtitleBoxRect& box, int& lines, std::array<uint64_t, 16>& signature);
     std::vector<uint16_t> m_luma;
@@ -38,6 +43,7 @@ private:
     std::vector<int> m_flood;
     std::vector<Line> m_components, m_lines;
     SubtitleBoxResult m_result;
+    SubtitleBoxRect m_currentBarAnchor;
     std::array<uint64_t, 16> m_signature{};
     uint64_t m_generation = 0, m_viewport = 0, m_sequence = 0, m_nextCue = 0;
     int m_width = 0, m_height = 0, m_top = 0, m_bottom = 0, m_misses = 0;
