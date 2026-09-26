@@ -6940,7 +6940,7 @@ struct LibplaceboVideoRenderer::Impl
 		outputDiagnostics = settings.outputDiagnostics;
 		shaderCacheEnabled = !settings.diagnosticDisableShaderCache;
         if (settings.subtitleBoxTest)
-            DebugLog::Log("SUBTITLE BBOX: enabled full_raster=1 no_warp=1 no_translation=1 outline_rgb=0,255,0 stroke_output_px=3 acquisition=every_source_frame");
+            DebugLog::Log("SUBTITLE BBOX: enabled full_raster=1 no_warp=1 no_translation=1 outline_rgb=0,255,0 stroke_output_px=3 acquisition=every_source_frame analysis_max=960x540 bar_evidence=accepted_components");
 
 		struct pl_log_params logParams{};
 		logParams.log_cb = LibplaceboLog;
@@ -12037,12 +12037,13 @@ struct LibplaceboVideoRenderer::Impl
             if (subtitleBoxResult.cue != subtitleBoxLoggedCue || subtitleBoxResult.revised || sourceSequence % 120 == 0)
             {
                 const auto& r=subtitleBoxResult.bounds;
-                DebugLog::Log("SUBTITLE BBOX: frame=%llu cue=%llu observed=%d held=%d revised=%d observations=%u lines=%d box=%d,%d-%d,%d bar_authority=%d picture=%d-%d cost_ms=%.3f peak_ms=%.3f detected_frames=%llu held_frames=%llu work_limit=%d",
+                DebugLog::Log("SUBTITLE BBOX: frame=%llu cue=%llu observed=%d held=%d revised=%d observations=%u lines=%d box=%d,%d-%d,%d bar_authority=%d picture=%d-%d cost_ms=%.3f peak_ms=%.3f detected_frames=%llu held_frames=%llu work_limit=%d analysis_step=%d",
                     sourceSequence,subtitleBoxResult.cue,subtitleBoxResult.detected?1:0,
                     subtitleBoxResult.held?1:0,subtitleBoxResult.revised?1:0,subtitleBoxResult.observations,
                     subtitleBoxResult.lineCount,r.left,r.top,r.right,r.bottom,barAuthority?1:0,
                     nlsGeometry.top,nlsGeometry.bottom,cost,subtitleBoxPeakMs,
-                    subtitleBoxDetectedFrames,subtitleBoxHeldFrames,subtitleBoxResult.workLimit?1:0);
+                    subtitleBoxDetectedFrames,subtitleBoxHeldFrames,subtitleBoxResult.workLimit?1:0,
+                    SubtitleBoxDetector::SamplingStep(width,height));
                 subtitleBoxLoggedCue=subtitleBoxResult.cue;
             }
         }

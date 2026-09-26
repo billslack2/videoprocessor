@@ -9,8 +9,10 @@ saved zoom, screen, or color settings. Disable the flag and restart to return.
 A three-output-pixel bright green outline encloses the detected cue. It is
 composited after source analysis; input pixels are never modified. No OCR,
 models, glyph extraction, erasure or relocation. Every new frame is inspected.
-Initial qualified detections are visible immediately. Two missed observations
-may hold the outline (logged as `held=1`); that is not fresh detection evidence.
+Initial qualified detections are visible immediately. An outline may hold for
+at most two failed complete-cue observations only while a fresh accepted
+bar anchor remains inside the previous cue (logged as `held=1`). Loss of bar
+evidence clears it immediately, even if picture-side text remains.
 The detector does not authorize any source treatment.
 
 `SUBTITLE BBOX` logs record cue, source frame, line count, geometry, current
@@ -26,3 +28,15 @@ late expansions, misses, false boxes, stable-cue coordinate drift and cost.
 The box must include every line from onset. Passing synthetic fixtures is not
 live acceptance. Colored/stylized text and stationary background edges remain
 important real-video cases to qualify before extraction work.
+
+Eligibility requires pixels from the accepted glyph components of the anchor
+line to lie in the trusted encoded bar. Bounding-box padding, rejected components
+and unrelated bright pixels inside the rectangle never count as bar evidence.
+This is a geometric eligibility gate, not proof that every accepted shape is text;
+real-video false-positive validation remains required.
+
+Detection samples at most 960x540, using an integer source stride. For 3840x2160
+this is a 4-pixel stride on both axes (one sixteenth of the source pixel count).
+Only bar/boundary strips are sampled; rendering stays full resolution and source
+coordinates are restored for the outline. Logs report `analysis_step`. No OCR or
+full-resolution subtitle scan is introduced by this diagnostic.

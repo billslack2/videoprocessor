@@ -119,6 +119,46 @@ public:
         Assert::IsFalse(d.Analyze(Source(f),45,315,1,1).detected);
         f=Frame();Assert::IsFalse(d.Analyze(Source(f),45,315,2,1).bounds.Valid());
     }
+    TEST_METHOD(PictureLineCannotBorrowRejectedBarPixelsInsideItsEnvelope) {
+        auto f=Frame();Text(f,200,300,20);
+        // One tiny accepted fragment has only two pixels in the bar. Isolated
+        // one-pixel noise must not supply the remaining bar proof for the line.
+        Fill(f,210,313,212,316,510);
+        for(int x : {221,234,247,260,273,286,299,312}) Fill(f,x,315,x+1,316,510);
+        SubtitleBoxDetector d;auto r=d.Analyze(Source(f),45,315,1,1);
+        Assert::IsFalse(r.detected);Assert::IsFalse(r.bounds.Valid());
+    }
+    TEST_METHOD(PaddingIntoBarDoesNotMakePictureTextEligible) {
+        auto f=Frame();Text(f,200,300,20);
+        // Bright isolated bar pixels elsewhere allow threshold estimation but
+        // do not belong to this picture-only cue (whose padding crosses y=315).
+        for(int x=10;x<50;x+=3) Fill(f,x,340,x+1,341,510);
+        SubtitleBoxDetector d;auto r=d.Analyze(Source(f),45,315,1,1);
+        Assert::IsFalse(r.detected);Assert::IsFalse(r.bounds.Valid());
+    }
+    TEST_METHOD(PartialSampledTopBarRowQualifiesOnFirstFrame) {
+        const int w=1920,h=1080,top=137,bottom=945;
+        std::vector<uint16_t> f(static_cast<size_t>(w)*h*3/2,512<<6);
+        for(int y=0;y<h;++y) for(int x=0;x<w;++x)
+            f[static_cast<size_t>(y)*w+x]=(y>=top && y<bottom ? 200:64)<<6;
+        // Only the first source row of each letter is inside the real top bar.
+        // Sampling at y=136 must count it, despite the unaligned boundary y=137.
+        for(int n=0;n<20;++n) for(int y=0;y<42;++y) for(int x=0;x<24;++x)
+            f[static_cast<size_t>(136+y)*w+600+n*39+x]=
+                (x<6 || x>=18 || y<6 || y>=36 ? 510:64)<<6;
+        auto source=Source(f);source.width=w;source.height=h;
+        source.rowBytes=source.chromaRowBytes=w*2;
+        SubtitleBoxDetector d;auto r=d.Analyze(source,top,bottom,1,1);
+        Assert::IsTrue(r.detected);Assert::AreEqual(uint32_t{1},r.observations);
+        Assert::IsTrue(r.bounds.top<=136 && r.bounds.bottom>=178);
+    }
+    TEST_METHOD(LosingBarLineImmediatelyClearsBoxDespiteRemainingPictureLine) {
+        auto f=Frame();Text(f,240,320,12);Text(f,150,295,25);
+        SubtitleBoxDetector d;Assert::IsTrue(d.Analyze(Source(f),45,315,1,1).detected);
+        Fill(f,0,315,W,H,64);
+        auto r=d.Analyze(Source(f),45,315,2,1);
+        Assert::IsFalse(r.detected);Assert::IsFalse(r.held);Assert::IsFalse(r.bounds.Valid());
+    }
     TEST_METHOD(TopBarAndBoundaryWorkAtLowPqLuma) {
         for(int y: {20,38,310,325}) {
             auto f=Frame();Text(f,200,y,20,410);SubtitleBoxDetector d;
@@ -126,9 +166,12 @@ public:
             Assert::IsTrue(r.bounds.top<=y && r.bounds.bottom>=y+14);
         }
     }
-    TEST_METHOD(HeldMissesAreExplicitAndReleaseIsBounded) {
+    TEST_METHOD(HoldRequiresCurrentBarAnchorAndRemainsBounded) {
         auto f=Frame();Text(f,200,320,20);SubtitleBoxDetector d;
-        d.Analyze(Source(f),45,315,1,1);f=Frame();
+        d.Analyze(Source(f),45,315,1,1);
+        // Too many companion proposals cannot authorize new geometry. A short
+        // diagnostic hold is allowed only while the original bar anchor exists.
+        Text(f,200,300,20);Text(f,200,284,20);Text(f,200,268,20);
         auto r=d.Analyze(Source(f),45,315,2,1);Assert::IsFalse(r.detected);Assert::IsTrue(r.held);
         d.Analyze(Source(f),45,315,3,1);
         Assert::IsFalse(d.Analyze(Source(f),45,315,4,1).bounds.Valid());
