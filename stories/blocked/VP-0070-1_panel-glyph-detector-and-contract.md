@@ -2,21 +2,19 @@
 
 ## Status
 
-Blocked (2026-09-20), at the user's request. Pause further subtitle work and
-revisit later after the user shares a video of the live behavior. The Step 1
-trial is not accepted as reliable; preserve the implementation and existing
-validation evidence for diagnosis. VP-0070-1 and remaining children are blocked.
+Blocked (2026-09-25). Keep the feature blocked for live validation, as requested.
+The user reports detections across the picture and reiterates that actual
+subtitle content must enter a black bar; reduced-resolution detection is enough.
+Applied a scoped eligibility correction on the named branch. The live failure
+is not yet diagnosed from a recording. No deployment or acceptance is claimed.
 
-Saved and pushed on the explicitly requested `subtitle-moving` branch in
-`billslack2/videoprocessor`, at `036db46e213835b861f181fab1a951b7afc94fe6`.
-No further implementation, merge, deployment or configuration change accompanies
-this pause. Resume by reviewing the user's video for onset delay, incomplete
-bounds, false positives and instability before choosing a correction.
-
-Source: `subtitle-moving` (also preserved on `codex/vp-0070-bbox-test`) at
-`036db46e213835b861f181fab1a951b7afc94fe6`, based on GitHub beta
-`v1.3.005-beta` at `b3c0b3a6a8fdf4f5bb1c9ce0dc3340a3d5e395d7`.
+Saved and pushed on `subtitle-moving` at
+`1ead05d2369169c87a5b09dbd28add99a4f0b0df`.
 Worktree: `E:\codex\videoprocessor\vp-0070-bbox-test`.
+Continued the explicitly named branch from 036db46e. GitHub beta was verified at
+ff53b4683a2a6b59423f05918e29ce1e0c8cdca8; this correction does not merge the
+newer beta into the saved experimental branch.
+
 
 The current trial supersedes the historical panel/OCR design below for Step 1:
 a renderer-neutral classical detector finds a bar-anchored cue and related
@@ -63,6 +61,47 @@ drift throughout each cue. `SUBTITLE BBOX` evidence is in
 is claimed. Historical requirements below are retained for context and require
 reconciliation before later steps; they do not mandate OCR or opaque panels for
 this authorized detection-only trial.
+
+## Bar eligibility and reduced-resolution detection (2026-09-25)
+
+Reproduced a false box with picture-only glyphs, a small boundary fragment, and
+rejected isolated bar pixels. The former check counted every bright mask pixel
+inside a line rectangle, including rejected components. Eligibility now sums
+bar pixels belonging to the accepted components of that specific line. Padding
+and discarded pixels cannot provide bar evidence. This closes a proven failure
+path; accepted shapes can still be non-text, and the user's live report has not
+been attributed conclusively without a recording.
+
+An outline clears immediately when its accepted bar anchor disappears, even if
+picture-only text remains. The maximum two-frame diagnostic hold requires a fresh
+bar anchor inside the old cue. Fixed top-boundary sampling so one sampled glyph
+row inside a real bar qualifies immediately.
+
+UHD already used stride four (960x540, one quarter per axis, one sixteenth of
+pixels). The limit now explicitly covers both axes. Only bar/boundary strips are
+sampled; rendering stays full resolution and logs report the actual stride.
+The global active-picture analyzer is unchanged.
+
+Validation: clean x64 Release build succeeded; all 17 subtitle tests passed.
+Both 342-frame replays retained 36/36 complete isolated cue onsets on their first
+frame, all 126 positive frames complete, 54 labeled negatives without fresh
+detection, and one unchanged two-line box across 18 changing-background frames.
+P95 detector-only CPU: 2.076 ms at 1080p and 2.067 ms at 4K. The previous oversized
+top-boundary case and real-caption precision remain open. Synthetic replay is
+not live acceptance.
+
+Full-suite qualification is NOT clean: 1,397/1,398 passed at the pinned commit,
+with ProfileChangeDisplayDurationIsBoundedAndLive failing. An isolated TEMP run
+passed 1,395/1,398, also failing SameSizeEditWithRestoredWriteTimeInvalidatesCache
+and UnifiedProfileRuntimeReloadsEditedViewportAndKeepsSelection. All three passed
+when run separately; root cause is unproven. No unrelated cache implementation
+was changed. The first development run also caught a hold fixture whose companion
+accidentally crossed the bar; it was corrected before the final commit.
+
+[Validation](../assets/VP-0070/bar-proof-1ead05d2/validation.json),
+[1080p replay](../assets/VP-0070/bar-proof-1ead05d2/1080p-results.json),
+[4K replay](../assets/VP-0070/bar-proof-1ead05d2/4k-results.json).
+No deployment or configuration changes were made for this correction.
 
 ## Startup correction and redeployment (2026-09-20)
 
