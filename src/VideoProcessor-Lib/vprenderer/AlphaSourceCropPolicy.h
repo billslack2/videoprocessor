@@ -384,7 +384,8 @@ namespace AlphaSourceCrop
 		OutwardPictureConfirmationDecision outward;
 		bool deferPresentation = false;
 		bool deferOutward = false;
-		// Uncertain opposing margins cannot authorize a format change.
+		// Unresolved margins defer composition changes unless the exact vertical
+		// crop has current strict excluded-band proof and retains full source width.
 		bool deferPartialComposition = false;
 	};
 	TransitionAdmissionDecision EvaluateTransitionAdmission(const TransitionAdmissionInput& input);
@@ -615,11 +616,21 @@ namespace AlphaSourceCrop
 
 
 	// Full raster is always outward-safe. Keep that presentation authority
-	// between sparse analysis samples, but withdraw it as soon as trusted bar
-	// evidence appears. Ambiguity cannot turn it into crop authority.
+	// between sparse analysis samples. Native trusted bars withdraw it promptly;
+	// a pending sparse transition preserves it until normal publication.
+	// Ambiguity cannot turn it into crop authority.
 	bool UpdateFullRasterPresentationAuthority(bool previouslyAuthoritative,
 		ActivePictureClassification currentClassification,
-		bool currentBoundsAreFullRaster);
+		bool currentBoundsAreFullRaster,
+		ActivePictureAuthorityOrigin origin = ActivePictureAuthorityOrigin::NATIVE);
+
+	// Call only when the renderer commits an unsuppressed model publication.
+	bool CommitSparseTransitionPresentationAuthority(bool previouslyAuthoritative,
+		const ActivePictureTransitionDecision& decision);
+
+	// A pending contained candidate cannot reclassify or rearm its old base.
+	bool SparseTransitionMayReaffirmOwnedCrop(const ActivePictureBounds& owned,
+		ActivePictureAuthorityOrigin ownedOrigin, const ActivePictureEvidence& evidence);
 
 	bool RequiresPerFramePresentationInspection(
 		bool trustedCropIsCurrentGeneration,
@@ -900,6 +911,7 @@ namespace AlphaSourceCrop
 		bool startedAtFullRaster = false;
 		bool entryTrustedCropAvailable = false;
 		ActivePictureBounds entryTrustedCrop;
+		ActivePictureAuthorityOrigin entryTrustedCropOrigin = ActivePictureAuthorityOrigin::NATIVE;
 		uint64_t fullRasterStartedSourceSequence = 0;
 		bool confirmedNonNearBlackContent = false;
 		uint64_t outwardConfirmationLastSourceSequence = 0;
@@ -910,6 +922,7 @@ namespace AlphaSourceCrop
 		uint32_t revalidationSamples = 0;
 		bool bootstrapCandidateAvailable = false;
 		ActivePictureBounds bootstrapCandidate;
+		ActivePictureAuthorityOrigin bootstrapCandidateOrigin = ActivePictureAuthorityOrigin::NATIVE;
 		uint64_t bootstrapCandidateStartedTick = 0;
 		uint64_t bootstrapLastQualifiedTick = 0;
 		uint64_t bootstrapLastSourceSequence = 0;
@@ -925,6 +938,10 @@ namespace AlphaSourceCrop
 		bool sceneBoundary = false;
 		bool trustedCropAvailable = false;
 		ActivePictureBounds trustedCrop;
+		ActivePictureAuthorityOrigin trustedCropOrigin = ActivePictureAuthorityOrigin::NATIVE;
+		// Positive read-only model check of the raw current native observation.
+		// Current retention provenance and all episode safety gates still apply.
+		bool currentNativeObservationReaffirmsSparseEntry = false;
 		bool boundedVisibleContentOutsideCrop = false;
 		bool fullRasterAuthorityAvailable = false;
 		// Current context checked by UpdateKnownFullRasterRetention; never inferred
@@ -950,6 +967,7 @@ namespace AlphaSourceCrop
 		bool reacquisitionIsCurrentAssociation = false;
 		bool nativeBootstrapContractAvailable = false;
 		ActivePictureBounds nativeBootstrapContract;
+		ActivePictureAuthorityOrigin nativeBootstrapOrigin = ActivePictureAuthorityOrigin::NATIVE;
 		bool nativeBootstrapRetentionEvaluated = false;
 		bool nativeBootstrapRetentionSafe = false;
 		bool nativeBootstrapOutwardVisible = false;
@@ -971,6 +989,9 @@ namespace AlphaSourceCrop
 		bool releasedToTrustedCrop = false;
 		bool bootstrapReleased = false;
 		bool resetTransitionEvidence = false;
+		// Reopen ordinary acquisition after verified outward sampling correction.
+		// The caller must withdraw the undersized trusted rectangle, not only votes.
+		bool resetTrustedGeometry = false;
 		bool revalidationChanged = false;
 		uint32_t revalidationGates = 0;
 		uint32_t revalidationSamples = 0;
@@ -986,7 +1007,11 @@ namespace AlphaSourceCrop
 	// full-raster episode may restore only its exact entry crop after a bounded,
 	// current-frame pixel-safe revalidation dwell. The same proof ends retained
 	// crop episodes once bright scope returns. Neither path grants authority to
-	// startup or unrelated recent geometry.
+	// startup or unrelated recent geometry. An independently safe sampling-sized
+	// outward correction may instead withdraw the undersized trusted contract
+	// and reopen ordinary acquisition; it never restores that unsafe old crop.
+	bool IsNearBlackNativeSamplingExpansion(const ActivePictureBounds& entry,
+		const ActivePictureBounds& candidate);
 	NearBlackPresentationEpisodeDecision EvaluateNearBlackPresentationEpisode(
 		const NearBlackPresentationEpisodeInput& input);
 	const char* NearBlackPresentationModeName(NearBlackPresentationMode mode);
@@ -1144,6 +1169,10 @@ namespace AlphaSourceCrop
 	// temporary full-raster withdrawals and of diagnostic logging.
 	struct CropPresentationAdmissionState
 	{
+		// Last admitted outward fit, distinct from the persistent logical crop.
+		bool outwardPresentationAvailable = false;
+		ActivePictureBounds outwardPresentation;
+		uint64_t presentationSourceSequence = 0;
 		bool available = false;
 		ActivePictureBounds trustedCrop;
 		uint64_t sourceGeneration = 0;
@@ -1182,12 +1211,15 @@ namespace AlphaSourceCrop
 		RECOVERY_FULL_AUTHORITY = 1u << 7,
 		RECOVERY_SEQUENCE_GAP = 1u << 8,
 		RECOVERY_OWNER = 1u << 9,
+		RECOVERY_INSPECTION_REENTRY = 1u << 10,
 	};
 	std::string RecoveryGateNames(uint32_t gates);
 
 	struct PresentationRecoveryState
 	{
 		bool active = false;
+        // Preserve the existing inspection window's immediate native resolution.
+        bool inspectionReentryPending = false;
 		// Outward-only while recovery is pending; inward return uses existing proof.
 		bool fallbackBoundsAvailable = false;
 		ActivePictureBounds fallbackBounds;
@@ -1203,6 +1235,7 @@ namespace AlphaSourceCrop
 	struct PresentationRecoveryInput
 	{
 		PresentationRecoveryState previous;
+		CropPresentationAdmissionState previousAdmission;
 		Input crop;
 		Decision candidate;
 		bool cadenceRepeat = false;

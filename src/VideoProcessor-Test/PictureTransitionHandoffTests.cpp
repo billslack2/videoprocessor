@@ -160,6 +160,9 @@ namespace Tests
 			{
 				HandoffSequence sequence;
 				auto initial=sequence.Crop(); initial.latestObservationSupportsCrop=true;
+                // Runtime refinement is pending only while current evidence does not support the crop.
+                initial.barCropRefinementPending=false;
+                Assert::IsTrue(Evaluate(initial).owner==DecisionOwner::TRUSTED_CROP);
 				auto admitted=AdmitCropPresentation({},initial,Evaluate(initial),9).state;
 				PresentationRecoveryState recovery;
 				if (injectMovement)
@@ -183,6 +186,7 @@ namespace Tests
 					{
 						crop.geometry=sequence.transition.bounds;
 						crop.latestObservationSupportsCrop=true;
+                        crop.barCropRefinementPending=false;
 					}
 					PresentationRecoveryInput recover;
 					recover.previous=recovery; recover.crop=crop; recover.candidate=Evaluate(crop);
@@ -221,6 +225,9 @@ namespace Tests
             {
                 HandoffSequence sequence;
                 auto initial=sequence.Crop(); initial.latestObservationSupportsCrop=true;
+                // Runtime refinement is pending only while current evidence does not support the crop.
+                initial.barCropRefinementPending=false;
+                Assert::IsTrue(Evaluate(initial).owner==DecisionOwner::TRUSTED_CROP);
                 auto previous=AdmitCropPresentation({},initial,Evaluate(initial),9).state;
                 const auto map=[&](const Decision& shown)
                 {
@@ -272,6 +279,8 @@ namespace Tests
                 Assert::IsTrue(sequence.transition.publish);
                 auto settled=sequence.Crop(); settled.geometry=sequence.transition.bounds;
                 settled.latestObservationSupportsCrop=true;
+                settled.barCropRefinementPending=false;
+                Assert::IsTrue(Evaluate(settled).owner==DecisionOwner::TRUSTED_CROP);
                 const auto admitted=AdmitCropPresentation(previous,settled,Evaluate(settled),9);
                 const auto after=map(admitted.presentation);
                 Assert::AreEqual(68,after.first.top);
@@ -298,6 +307,8 @@ namespace Tests
                 Assert::IsFalse(unseen.presentation.applyCrop);
                 auto acquisition=crop; acquisition.movingPictureTransition=false;
                 acquisition.latestObservationSupportsCrop=true;
+                acquisition.barCropRefinementPending=false;
+                Assert::IsTrue(Evaluate(acquisition).owner==DecisionOwner::TRUSTED_CROP);
                 const auto admitted=AdmitCropPresentation({},acquisition,Evaluate(acquisition),9);
                 Assert::IsTrue(admitted.state.available);
                 const auto shown=AdmitCropPresentation(admitted.state,crop,candidate,9);
@@ -466,6 +477,8 @@ namespace Tests
 			Assert::IsFalse(unseen.presentation.applyCrop);
 			auto acquisition=crop; acquisition.pictureTransitionHandoff={};
 			acquisition.latestObservationSupportsCrop=true;
+                acquisition.barCropRefinementPending=false;
+                Assert::IsTrue(Evaluate(acquisition).owner==DecisionOwner::TRUSTED_CROP);
 			const auto admitted=AdmitCropPresentation({},acquisition,Evaluate(acquisition),9);
 			Assert::IsTrue(AdmitCropPresentation(admitted.state,crop,candidate,9).presentation.applyCrop);
 			PresentationRecoveryInput recovery;

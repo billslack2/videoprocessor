@@ -238,6 +238,8 @@
 	<ClInclude Include="AnalysisLumaSource.h" />
 	<ClInclude Include="ActivePictureAnalyzer.h" />
     <ClInclude Include="ActivePictureEvidence.h" />
+    <ClInclude Include="LocalBoundaryDiagnostics.h" />
+    <ClInclude Include="SparseBoundaryCropExperiment.h" />
     <ClInclude Include="vprenderer\InwardCaptionEvidence.h" />
     <ClInclude Include="MainConfigSchema.h" />
     <ClInclude Include="ConfigurationLiveApply.h" />
@@ -323,6 +325,8 @@
 	<ClCompile Include="AnalysisLumaSource.cpp" />
 	<ClCompile Include="ActivePictureAnalyzer.cpp" />
     <ClCompile Include="ActivePictureEvidence.cpp" />
+    <ClCompile Include="LocalBoundaryDiagnostics.cpp" />
+    <ClCompile Include="SparseBoundaryCropExperiment.cpp" />
     <ClCompile Include="vprenderer\InwardCaptionEvidence.cpp" />
     <ClCompile Include="ACaptureDeviceDiscoverer.cpp" />
     <ClCompile Include="AutoPpmCalibrator.cpp" />
@@ -484,4 +488,11 @@
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
+  <ItemGroup>
+    <ClInclude Include="RememberedEdgeReturn.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="RememberedEdgeReturn.cpp" />
+  </ItemGroup>
+  <ItemGroup><ClInclude Include="LocalBoundaryRefinement.h" /><ClCompile Include="LocalBoundaryRefinement.cpp" /></ItemGroup>
 </Project>

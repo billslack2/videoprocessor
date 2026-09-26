@@ -365,6 +365,31 @@ namespace AlphaSourceCrop
         return true;
     }
 
+    BufferedPictureExpansionSample MakeBufferedPictureSample(
+        const ActivePictureFrameIdentity& identity, const ActivePictureEvidence& evidence,
+        double framesPerSecond, bool nearBlackEvaluated, bool globalNearBlack)
+    {
+        BufferedPictureExpansionSample sample;
+        sample.identity = identity;
+        sample.observation = MakeActivePictureObservation(evidence,
+            identity.acceptedSequence, framesPerSecond);
+        sample.nearBlackEvaluated = nearBlackEvaluated;
+        sample.retention.globalNearBlack = globalNearBlack;
+        return sample;
+    }
+
+    bool BufferedPictureReferenceMatches(const ActivePictureFrameIdentity& first,
+        uint64_t trustedSourceGeneration, uint64_t trustedSourceFormat,
+        uint64_t liveViewportGeneration)
+    {
+        return trustedSourceGeneration != 0 && trustedSourceFormat != 0 &&
+            first.acceptedSequence != 0 &&
+            first.transportGeneration == trustedSourceGeneration &&
+            first.rendererGeneration == trustedSourceGeneration &&
+            first.sourceFormatGeneration == trustedSourceFormat &&
+            first.viewportGeneration == liveViewportGeneration;
+    }
+
     ActivePictureFrameDecision BuildBufferedInwardDecision(
         const BufferedPictureExpansionSample* samples, size_t count,
         ActivePictureTransitionModel liveModel, const ActivePictureBounds& base,
