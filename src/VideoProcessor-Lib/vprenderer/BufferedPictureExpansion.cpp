@@ -390,6 +390,17 @@ namespace AlphaSourceCrop
             first.viewportGeneration == liveViewportGeneration;
     }
 
+    bool GuardedRememberedReferenceMatches(const ActivePictureFrameIdentity& first,
+        uint64_t trustedSourceGeneration, uint64_t trustedSourceFormat,
+        uint64_t liveViewportGeneration, uint64_t capturedShaderGeneration,
+        uint64_t currentShaderGeneration)
+    {
+        return BufferedPictureReferenceMatches(first, trustedSourceGeneration,
+            trustedSourceFormat, liveViewportGeneration) &&
+            capturedShaderGeneration != 0 &&
+            // Shader lifetimes and queue/source lifetimes are independent counters.
+            capturedShaderGeneration == currentShaderGeneration;
+    }
     ActivePictureFrameDecision BuildBufferedInwardDecision(
         const BufferedPictureExpansionSample* samples, size_t count,
         ActivePictureTransitionModel liveModel, const ActivePictureBounds& base,

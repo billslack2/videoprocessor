@@ -22,6 +22,11 @@ namespace AlphaSourceCrop
         uint64_t trustedSourceGeneration, uint64_t trustedSourceFormat,
         uint64_t liveViewportGeneration);
 
+    // Queue/source identity and shader lifetime use independent generation domains.
+    bool GuardedRememberedReferenceMatches(const ActivePictureFrameIdentity& first,
+        uint64_t trustedSourceGeneration, uint64_t trustedSourceFormat,
+        uint64_t liveViewportGeneration, uint64_t capturedShaderGeneration,
+        uint64_t currentShaderGeneration);
     // A presentation-only hold. It never grants crop or full-raster authority.
     // Only consecutive current source samples may establish or settle motion.
     struct MovingPictureTransitionState

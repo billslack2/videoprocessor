@@ -464,6 +464,23 @@ bool IsVerticalSamplingProposal(const ActivePictureBounds& base,
 		std::abs(proposed.bottom-base.bottom) <= step;
 }
 
+// Inward uncertainty is inside the retained picture. Only the newly excluded
+// rows need additional proof; this shape alone never grants retention.
+bool IsPartialVerticalSamplingProposal(const ActivePictureBounds& base,
+	const ActivePictureBounds& proposed)
+{
+	const auto axes = static_cast<unsigned>(base.trustedBarAxes);
+	if ((axes & static_cast<unsigned>(ActivePictureBounds::BarAxes::TOP_BOTTOM)) == 0 ||
+		base.top <= 0 || base.bottom >= base.rasterHeight ||
+		proposed.left < base.left || proposed.right > base.right ||
+		IsVerticalSamplingProposal(base, proposed))
+		return false;
+	const int step = std::max(2, base.rasterHeight / 540);
+	return proposed.top >= base.top - step &&
+		proposed.bottom <= base.bottom + step &&
+		(proposed.top < base.top || proposed.bottom > base.bottom);
+}
+
 bool SamplingExpansionPixelsAreSafe(SampleContext& samples,
 	const ActivePictureBounds& base, const ActivePictureBounds& proposed,
 	int blackThreshold, int& peakY, int& peakChromaDelta)
@@ -596,7 +613,7 @@ ExcludedBandVisibleExtent FindVerticalVisibleExtent(SampleContext& samples,
 
 bool CanRetainProvisionalSamplingCrop(const ActivePictureBounds& trusted,
 	const ActivePictureBounds& observed, ActivePictureClassification classification,
-	bool currentPresentationRetainable)
+	bool currentPresentationRetainable, bool partialSamplingReaffirmed)
 {
 	// This consumes current retention eligibility, including explicit edge tolerance.
 	// It never promotes provisional geometry to new format authority. Callers
@@ -608,7 +625,8 @@ bool CanRetainProvisionalSamplingCrop(const ActivePictureBounds& trusted,
 		classification == ActivePictureClassification::PROVISIONAL &&
 		IsValidBoundsForSource(trusted,raster) &&
 		IsValidBoundsForSource(observed,raster) &&
-		IsVerticalSamplingProposal(trusted,observed);
+		(IsVerticalSamplingProposal(trusted,observed) ||
+		 (partialSamplingReaffirmed && IsPartialVerticalSamplingProposal(trusted,observed)));
 }
 
 const char* ActivePictureAxisStateName(ActivePictureAxisState state)
@@ -1196,6 +1214,19 @@ ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRete
 			result.samplingStripPeakY,result.samplingStripPeakChromaDelta);
 		result.samplingStripConflict=!result.samplingReaffirmed;
 	}
+	// A partial dark-picture measurement may move far inward on one edge while
+	// missing the opposite edge by one scan step. Keep the original contract
+	// only with a separate current strip certificate, not geometry tolerance.
+	else if (result.excludedBandsPixelSafe && !result.proposedBoundsContained &&
+		result.proposedBoundsAvailable && !result.globalNearBlack &&
+		result.activePicture.classification == ActivePictureClassification::PROVISIONAL &&
+		IsPartialVerticalSamplingProposal(trustedPresentation, result.activePicture.proposedBounds))
+	{
+		result.partialSamplingEvaluated = true;
+		result.partialSamplingReaffirmed = SamplingExpansionPixelsAreSafe(samples,
+			trustedPresentation, result.activePicture.proposedBounds, blackThreshold,
+			result.samplingStripPeakY, result.samplingStripPeakChromaDelta);
+	}
 	// Acquisition may also be unavailable on a logo/title or exhaust its scan
 	// budget. Retain only the existing rectangle when current bands are safe.
 	// Other available conflicting proposals still veto retention, except for
@@ -1203,7 +1234,7 @@ ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRete
 	const bool geometryUnavailable = !result.activePicture.available &&
 		result.activePicture.classification == ActivePictureClassification::UNAVAILABLE;
 	result.currentlyPixelSafe = result.excludedBandsPixelSafe &&
-		(result.proposedBoundsContained || result.samplingReaffirmed ||
+		(result.proposedBoundsContained || result.samplingReaffirmed || result.partialSamplingReaffirmed ||
 		 result.globalNearBlack || geometryUnavailable);
 	result.lumaSamples += samples.lumaSamples;
 	result.chromaSamples += samples.chromaSamples;
@@ -1216,6 +1247,10 @@ ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRete
 		result.reason = "current proposal is contained and excluded bands remain pixel-safe";
 	else if (result.samplingReaffirmed)
 		result.reason = "one-scan-step provisional edge retained after current strip pixel proof";
+	else if (result.partialSamplingEvaluated)
+		result.reason = result.partialSamplingReaffirmed
+			? "partial inward proposal retained after current outward-strip pixel proof"
+			: "partial inward proposal has conflicting outward-strip pixels";
 	else if (result.samplingStripConflict)
 		result.reason = "one-scan-step border content tolerated within established framing";
 	else if (result.globalNearBlack)
