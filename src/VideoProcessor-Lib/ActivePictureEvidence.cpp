@@ -464,6 +464,23 @@ bool IsVerticalSamplingProposal(const ActivePictureBounds& base,
 		std::abs(proposed.bottom-base.bottom) <= step;
 }
 
+// Inward uncertainty is inside the retained picture. Only the newly excluded
+// rows need additional proof; this shape alone never grants retention.
+bool IsPartialVerticalSamplingProposal(const ActivePictureBounds& base,
+	const ActivePictureBounds& proposed)
+{
+	const auto axes = static_cast<unsigned>(base.trustedBarAxes);
+	if ((axes & static_cast<unsigned>(ActivePictureBounds::BarAxes::TOP_BOTTOM)) == 0 ||
+		base.top <= 0 || base.bottom >= base.rasterHeight ||
+		proposed.left < base.left || proposed.right > base.right ||
+		IsVerticalSamplingProposal(base, proposed))
+		return false;
+	const int step = std::max(2, base.rasterHeight / 540);
+	return proposed.top >= base.top - step &&
+		proposed.bottom <= base.bottom + step &&
+		(proposed.top < base.top || proposed.bottom > base.bottom);
+}
+
 bool SamplingExpansionPixelsAreSafe(SampleContext& samples,
 	const ActivePictureBounds& base, const ActivePictureBounds& proposed,
 	int blackThreshold, int& peakY, int& peakChromaDelta)
@@ -510,6 +527,35 @@ bool IsCrediblyVisible(SampleContext& samples, int x, int y,
 		std::abs(static_cast<int>(sample.chromaV) - 512) >= 64) &&
 		sample.luma >= blackThreshold + 8;
 	return elevatedLuma || colored;
+}
+
+// Require connected picture at the same neighboring sample columns across the
+// candidate edge. Aggregate black coverage can miss a narrow object; a black
+// gap around a caption/logo must not count as picture continuation.
+bool HasHorizontalPictureContinuation(SampleContext& samples, bool top,
+    int boundary, int blackThreshold)
+{
+    const int step = std::max(2, samples.source.height / 540);
+    const int inside = top ? boundary + step : boundary - 1 - step;
+    const int outside = top ? boundary - 1 - step : boundary + step;
+    const int farther = top ? boundary - 1 - 2 * step : boundary + 2 * step;
+    if (inside < 0 || inside >= samples.source.height ||
+        outside < 0 || outside >= samples.source.height ||
+        farther < 0 || farther >= samples.source.height)
+        return false;
+    const int columns = std::min(kVisibleExtentLineSamples, samples.source.width);
+    bool previous = false;
+    for (int column = 0; column < columns; ++column)
+    {
+        const int x = ((2 * column + 1) * samples.source.width) /
+            (2 * columns);
+        const bool connected = IsCrediblyVisible(samples, x, outside, blackThreshold) &&
+            IsCrediblyVisible(samples, x, farther, blackThreshold) &&
+            IsCrediblyVisible(samples, x, inside, blackThreshold);
+        if (connected && previous) return true;
+        previous = connected;
+    }
+    return false;
 }
 
 ExcludedBandVisibleExtent FindHorizontalVisibleExtent(SampleContext& samples,
@@ -596,7 +642,7 @@ ExcludedBandVisibleExtent FindVerticalVisibleExtent(SampleContext& samples,
 
 bool CanRetainProvisionalSamplingCrop(const ActivePictureBounds& trusted,
 	const ActivePictureBounds& observed, ActivePictureClassification classification,
-	bool currentPresentationRetainable)
+	bool currentPresentationRetainable, bool partialSamplingReaffirmed)
 {
 	// This consumes current retention eligibility, including explicit edge tolerance.
 	// It never promotes provisional geometry to new format authority. Callers
@@ -608,7 +654,8 @@ bool CanRetainProvisionalSamplingCrop(const ActivePictureBounds& trusted,
 		classification == ActivePictureClassification::PROVISIONAL &&
 		IsValidBoundsForSource(trusted,raster) &&
 		IsValidBoundsForSource(observed,raster) &&
-		IsVerticalSamplingProposal(trusted,observed);
+		(IsVerticalSamplingProposal(trusted,observed) ||
+		 (partialSamplingReaffirmed && IsPartialVerticalSamplingProposal(trusted,observed)));
 }
 
 const char* ActivePictureAxisStateName(ActivePictureAxisState state)
@@ -624,6 +671,7 @@ const char* ActivePictureAxisReasonName(ActivePictureAxisReason reason)
 	switch (reason) {
 	case ActivePictureAxisReason::SCAN_INCOMPLETE: return "scan-incomplete";
 	case ActivePictureAxisReason::BAR_EDGE_REJECTED: return "bar-edge-rejected";
+	case ActivePictureAxisReason::BAR_PICTURE_CONTINUATION: return "bar-picture-continuation";
 	case ActivePictureAxisReason::BAR_ASYMMETRY: return "bar-asymmetry";
 	case ActivePictureAxisReason::BAR_CONFIRMED: return "bar-confirmed";
 	case ActivePictureAxisReason::FULL_EXTENT_SUPPORTED: return "distributed-edge-content";
@@ -773,6 +821,18 @@ ActivePictureEvidence ExtractActivePictureEvidence(
 			blackFloor, blackThreshold);
 		result.bottom = InspectHorizontalEdge(samples, false, bottomBar, bottom,
 			blackFloor, blackThreshold);
+        const bool topContinues = result.top.trusted &&
+            HasHorizontalPictureContinuation(samples, true, top, blackThreshold);
+        const bool bottomContinues = result.bottom.trusted &&
+            HasHorizontalPictureContinuation(samples, false, bottom, blackThreshold);
+        if (topContinues || bottomContinues)
+        {
+            // Preserve measured bounds and independent horizontal authority.
+            // This rejects a candidate; it does not prove full-raster content.
+            if (topContinues) result.top.trusted = false;
+            if (bottomContinues) result.bottom.trusted = false;
+            result.axisEvidence.vertical.reason = ActivePictureAxisReason::BAR_PICTURE_CONTINUATION;
+        }
 		const int symmetryTolerance = std::max(yStep * 2, source.height / 360);
 		verticalTrusted = result.top.trusted && result.bottom.trusted &&
 			std::abs(topBar - bottomBar) <= symmetryTolerance;
@@ -960,12 +1020,14 @@ ActivePictureEvidence EvaluateSymmetricVerticalBarHypothesis(
 		ScanBlackLine(samples, true, y, blackThreshold, supported);
 		return supported;
 	};
-	if (broadPictureAt(insideRow) && broadPictureAt(outsideRow) &&
-		broadPictureAt(furtherOutsideRow))
+	if (HasHorizontalPictureContinuation(samples, !cleanTop, inferredBoundary, blackThreshold) ||
+        (broadPictureAt(insideRow) && broadPictureAt(outsideRow) &&
+         broadPictureAt(furtherOutsideRow)))
 	{
 		result.lumaSamples += samples.lumaSamples;
 		result.chromaSamples += samples.chromaSamples;
-		result.reason = "symmetric hypothesis contradicts connected broad picture";
+		result.axisEvidence.vertical.reason = ActivePictureAxisReason::BAR_PICTURE_CONTINUATION;
+		result.reason = "symmetric hypothesis contradicts connected picture";
 		return result;
 	}
 
@@ -1196,6 +1258,19 @@ ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRete
 			result.samplingStripPeakY,result.samplingStripPeakChromaDelta);
 		result.samplingStripConflict=!result.samplingReaffirmed;
 	}
+	// A partial dark-picture measurement may move far inward on one edge while
+	// missing the opposite edge by one scan step. Keep the original contract
+	// only with a separate current strip certificate, not geometry tolerance.
+	else if (result.excludedBandsPixelSafe && !result.proposedBoundsContained &&
+		result.proposedBoundsAvailable && !result.globalNearBlack &&
+		result.activePicture.classification == ActivePictureClassification::PROVISIONAL &&
+		IsPartialVerticalSamplingProposal(trustedPresentation, result.activePicture.proposedBounds))
+	{
+		result.partialSamplingEvaluated = true;
+		result.partialSamplingReaffirmed = SamplingExpansionPixelsAreSafe(samples,
+			trustedPresentation, result.activePicture.proposedBounds, blackThreshold,
+			result.samplingStripPeakY, result.samplingStripPeakChromaDelta);
+	}
 	// Acquisition may also be unavailable on a logo/title or exhaust its scan
 	// budget. Retain only the existing rectangle when current bands are safe.
 	// Other available conflicting proposals still veto retention, except for
@@ -1203,7 +1278,7 @@ ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRete
 	const bool geometryUnavailable = !result.activePicture.available &&
 		result.activePicture.classification == ActivePictureClassification::UNAVAILABLE;
 	result.currentlyPixelSafe = result.excludedBandsPixelSafe &&
-		(result.proposedBoundsContained || result.samplingReaffirmed ||
+		(result.proposedBoundsContained || result.samplingReaffirmed || result.partialSamplingReaffirmed ||
 		 result.globalNearBlack || geometryUnavailable);
 	result.lumaSamples += samples.lumaSamples;
 	result.chromaSamples += samples.chromaSamples;
@@ -1216,6 +1291,10 @@ ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRete
 		result.reason = "current proposal is contained and excluded bands remain pixel-safe";
 	else if (result.samplingReaffirmed)
 		result.reason = "one-scan-step provisional edge retained after current strip pixel proof";
+	else if (result.partialSamplingEvaluated)
+		result.reason = result.partialSamplingReaffirmed
+			? "partial inward proposal retained after current outward-strip pixel proof"
+			: "partial inward proposal has conflicting outward-strip pixels";
 	else if (result.samplingStripConflict)
 		result.reason = "one-scan-step border content tolerated within established framing";
 	else if (result.globalNearBlack)
@@ -1561,5 +1640,164 @@ FullRasterColorEvidence EvaluateFullRasterColorEvidence(
     result.candidateSupported = allEdges;
     result.reason = allEdges ? "weak full-raster color pattern; indistinguishable noisy bars remain possible" :
         "insufficient color detail or continuity for diagnostic full-raster pattern";
+    return result;
+}
+
+RelativeBarContrastEvidence InspectRelativeBarContrast(const AnalysisLumaSource& source,
+    const ActivePictureEvidence& raw, const ActivePictureBounds& base)
+{
+    constexpr int columns = 96;
+    constexpr int stripDepths = 6;
+    constexpr int boundaryRows = 8;
+    constexpr int profileTolerance = 4;
+    constexpr int minimumContrast = 8;
+    constexpr int minimumSupportedColumns = columns / 2;
+    constexpr int minimumSupportedPerQuartile = 6;
+    constexpr size_t sampleBudget = 16384;
+
+    RelativeBarContrastEvidence result;
+    result.evaluated = true;
+    result.base = base;
+    result.target = raw.trustedBounds;
+    result.sourceGeneration = source.generation;
+    result.reason = "geometry-not-eligible";
+    const auto& target = result.target;
+    const auto validVerticalBounds = [&](const ActivePictureBounds& bounds) {
+        return bounds.rasterWidth == source.width && bounds.rasterHeight == source.height &&
+            bounds.left == 0 && bounds.right == source.width && bounds.top > 0 &&
+            bounds.bottom < source.height && bounds.bottom > bounds.top &&
+            bounds.trustedBarAxes == ActivePictureBounds::BarAxes::TOP_BOTTOM &&
+            std::abs(bounds.top - (source.height - bounds.bottom)) <=
+                std::max(2, source.height / 270);
+    };
+    const auto& horizontal = raw.axisEvidence.horizontal;
+    const bool sideAllowed = horizontal.scanComplete &&
+        ((horizontal.state == ActivePictureAxisState::FULL_EXTENT_SUPPORTED && !horizontal.barCandidate) ||
+         (horizontal.FailedBar() && horizontal.reason == ActivePictureAxisReason::BAR_EDGE_REJECTED));
+    if (!source.IsValid() || source.generation == 0 || source.width < 320 || source.height < 180 ||
+        !raw.available || raw.authorityOrigin != ActivePictureAuthorityOrigin::NATIVE ||
+        raw.classification != ActivePictureClassification::BAR_CROP_TRUSTED ||
+        !raw.top.trusted || !raw.bottom.trusted || !sideAllowed ||
+        !raw.axisEvidence.vertical.scanComplete ||
+        raw.axisEvidence.vertical.state != ActivePictureAxisState::TRUSTED_BARS ||
+        !validVerticalBounds(base) || !validVerticalBounds(target) ||
+        target.top >= base.top || target.bottom <= base.bottom ||
+        (target.bottom - target.top) <= (base.bottom - base.top) * 1.05)
+        return result;
+
+    const auto readSample = [&](int x, int y, AnalysisLumaSample& sample) {
+        if (result.samples >= sampleBudget)
+        {
+            result.reason = "sample-budget";
+            return false;
+        }
+        ++result.samples;
+        if (!source.Sample(x, y, sample))
+        {
+            result.reason = "sample-invalid";
+            return false;
+        }
+        return true;
+    };
+    bool strong[2] = {false, false};
+    for (int side = 0; side < 2; ++side)
+    {
+        const int barHeight = side ? source.height - target.bottom : target.top;
+        const int rowStep = std::max(1, source.height / 540);
+        std::vector<int> rows;
+        for (int depth = 0; depth < barHeight; depth += rowStep)
+            rows.push_back(depth);
+        // Inspect every row adjacent to the actual discard boundary: do not let
+        // a caption line hide between the coarse bar-depth sampling rows.
+        for (int depth = std::max(0, barHeight - boundaryRows); depth < barHeight; ++depth)
+            rows.push_back(depth);
+        std::sort(rows.begin(), rows.end());
+        rows.erase(std::unique(rows.begin(), rows.end()), rows.end());
+
+        std::vector<AnalysisLumaSample> exterior;
+        std::vector<int> luma, chromaU, chromaV;
+        for (int depth : rows)
+        {
+            for (int column = 0; column < columns; ++column)
+            {
+                AnalysisLumaSample sample;
+                const int x = (2 * column + 1) * source.width / (2 * columns);
+                const int y = side ? source.height - 1 - depth : depth;
+                if (!readSample(x, y, sample))
+                    return result;
+                exterior.push_back(sample);
+                luma.push_back(sample.luma);
+                chromaU.push_back(sample.chromaU);
+                chromaV.push_back(sample.chromaV);
+            }
+        }
+        const double referenceY = Percentile(luma, .5);
+        const double referenceU = Percentile(chromaU, .5);
+        const double referenceV = Percentile(chromaV, .5);
+        result.reason = "bar-reference-not-black";
+        if (referenceY > 80 || std::abs(referenceU - 512) > 8 || std::abs(referenceV - 512) > 8)
+            return result;
+        result.reason = "bar-profile-contaminated";
+        for (const auto& pixel : exterior)
+        {
+            if (std::abs(pixel.luma - referenceY) > profileTolerance ||
+                std::abs(pixel.chromaU - referenceU) > profileTolerance ||
+                std::abs(pixel.chromaV - referenceV) > profileTolerance)
+                return result;
+        }
+
+        const int stripBegin = side ? base.bottom : target.top;
+        const int stripEnd = side ? target.bottom : base.top;
+        std::vector<int> picture;
+        int blackSamples = 0;
+        int continuousRows = 0;
+        double texture = 0;
+        for (int depth = 0; depth < stripDepths; ++depth)
+        {
+            const int y = stripBegin + (2 * depth + 1) * (stripEnd - stripBegin) / (2 * stripDepths);
+            int supported = 0;
+            int quartiles[4] = {};
+            int rowBlackSamples = 0;
+            int previous = -1;
+            for (int column = 0; column < columns; ++column)
+            {
+                AnalysisLumaSample sample;
+                if (!readSample((2 * column + 1) * source.width / (2 * columns), y, sample))
+                    return result;
+                const int value = sample.luma;
+                picture.push_back(value);
+                if (value >= referenceY + minimumContrast)
+                {
+                    ++supported;
+                    ++quartiles[column / (columns / 4)];
+                }
+                // Use the maximum existing bar cutoff (104), rather than its
+                // adaptive value. This makes the strong-strip corroboration
+                // no more permissive than BroadPictureLike's occupancy gate.
+                if (value <= 104)
+                {
+                    ++blackSamples;
+                    ++rowBlackSamples;
+                }
+                if (previous >= 0)
+                    texture += std::abs(value - previous);
+                previous = value;
+            }
+            result.reason = "strip-contrast-not-distributed";
+            if (supported < minimumSupportedColumns ||
+                *std::min_element(quartiles, quartiles + 4) < minimumSupportedPerQuartile)
+                return result;
+            continuousRows += rowBlackSamples >= 88;
+        }
+        // Keep BroadPictureLike's brightness/texture and occupancy limits on
+        // at least one newly exposed strip, measured from current pixels.
+        strong[side] = blackSamples <= picture.size() * .80 && continuousRows <= stripDepths * .85 &&
+            (Percentile(picture, .9) >= 112 || texture / (stripDepths * (columns - 1)) >= 12);
+    }
+    result.reason = "no-strong-picture-strip";
+    if (!strong[0] && !strong[1])
+        return result;
+    result.valid = true;
+    result.reason = "relative-bars-and-picture-confirmed";
     return result;
 }

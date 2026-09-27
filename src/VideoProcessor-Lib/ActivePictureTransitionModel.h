@@ -116,12 +116,16 @@ struct RememberedEdgeReturnNomination
     int observedEdgeCoordinate = 0;
     uint64_t sceneId = 0, sourceSequence = 0, timestampMs = 0;
     uint64_t rendererGeneration = 0, viewportGeneration = 0, sourceFormatGeneration = 0, policyGeneration = 0;
+    bool shadowOnly = false; // A diagnostic nominee can never carry crop authority.
+    bool guarded = false;
 };
 struct RememberedEdgeReturnProof
 {
     bool available = false;
     RememberedEdgeReturnNomination nomination;
     uint64_t sourceSequence = 0, timestampMs = 0;
+    bool guarded = false;
+    ActivePictureBounds presentationBounds;
 };
 struct RememberedEdgeReturnContext
 {
@@ -129,6 +133,14 @@ struct RememberedEdgeReturnContext
     uint64_t sourceGeneration = 0, sceneId = 0, sourceSequence = 0, timestampMs = 0;
     uint64_t rendererGeneration = 0, viewportGeneration = 0, sourceFormatGeneration = 0, policyGeneration = 0;
     bool cadenceRepeat = false, discontinuity = false;
+    // Diagnostic history collection only; never authorizes a remembered publication.
+    bool shadowOnly = false;
+    bool guardedEnabled = false;
+};
+struct RememberedEdgeReturnHistoryStatus
+{
+    uint32_t entries = 0, qualifiedEntries = 0, maxConfirmedScenes = 0;
+    bool overflowPending = false;
 };
 
 // Measurement metadata is distinct from safe fallback coordinates.
@@ -136,7 +148,8 @@ enum class ActivePictureAxisState : uint8_t { UNKNOWN, TRUSTED_BARS, FULL_EXTENT
 enum class ActivePictureAxisReason : uint8_t
 {
 	NOT_EVALUATED, SCAN_INCOMPLETE, BAR_EDGE_REJECTED, BAR_ASYMMETRY,
-	BAR_CONFIRMED, FULL_EXTENT_SUPPORTED, NO_FULL_EXTENT_SUPPORT
+	BAR_CONFIRMED, FULL_EXTENT_SUPPORTED, NO_FULL_EXTENT_SUPPORT,
+	BAR_PICTURE_CONTINUATION
 };
 struct ActivePictureAxisEvidence
 {
@@ -340,6 +353,9 @@ public:
 		const ActivePictureBounds& entry) const;
 	// History is a prerequisite, never current pixel or publication authority.
 	bool FindRecentTrustedBarGeometry(const ActivePictureBounds& bounds, ActivePictureBounds& remembered) const;
+    // Read-only multi-format corroboration; never grants pixel or crop authority.
+    bool HasQualifiedNativeAspectPair(const ActivePictureBounds& base, const ActivePictureBounds& target,
+        uint64_t sourceGeneration, uint64_t sceneId, uint64_t timestampMs) const;
     static constexpr uint64_t REMEMBERED_RETURN_MAX_AGE_MS = 600000;
     static constexpr uint64_t REMEMBERED_RETURN_MAX_SCENE_DISTANCE = 64;
     // Context.sceneId advances only on distinct confirmed scene edits. Generic
@@ -348,6 +364,13 @@ public:
     bool RecordIndependentNativeGeometry(const ActivePictureObservation& raw);
     RememberedEdgeReturnNomination NominateRememberedEdgeReturn(
         const ActivePictureBounds& observed, bool topTrusted, bool bottomTrusted) const;
+    RememberedEdgeReturnNomination NominateGuardedRememberedEdgeReturn(
+        const ActivePictureBounds& observed, bool topTrusted, bool bottomTrusted) const;
+    bool AdoptGuardedRememberedReturn(const ActivePictureObservation* observations,
+        size_t observationCount, ActivePictureTransitionDecision* outDecision = nullptr);
+    RememberedEdgeReturnNomination NominateRememberedEdgeReturnShadow(
+        const ActivePictureBounds& observed, bool topTrusted, bool bottomTrusted) const;
+    RememberedEdgeReturnHistoryStatus GetRememberedEdgeReturnHistoryStatus() const;
 	// Synchronize the live model with a stable decision produced by the bounded
 	// queue lookahead model. Invalid or non-authoritative publications fail
 	// closed and leave this model unchanged.
@@ -404,8 +427,15 @@ private:
 		const char* reason);
 	bool ValidSparseTransitionObservation(const ActivePictureObservation& observation) const;
 	bool SameSparseCandidateProof(const ActivePictureObservation& observation) const;
+    RememberedEdgeReturnNomination NominateRememberedEdgeReturnImpl(
+        const ActivePictureBounds& observed, bool topTrusted, bool bottomTrusted, bool shadow, bool guarded = false) const;
     bool ValidRememberedEdgeReturnObservation(const ActivePictureObservation& observation) const;
     bool SameRememberedCandidateProof(const ActivePictureObservation& observation) const;
+    struct RetiredNativeGeometry
+    {
+        ActivePictureBounds bounds;
+        uint64_t lastTickMs = 0, lastSceneId = 0;
+    };
     struct QualifiedNativeGeometry
     {
         ActivePictureBounds bounds;
@@ -414,13 +444,24 @@ private:
         uint64_t lastSceneId = 0, lastSequence = 0, lastTickMs = 0;
         uint64_t pendingSceneId = 0;
         uint8_t pendingVerifications = 0;
+        uint64_t activateAfterSceneId = 0;
+        std::array<RetiredNativeGeometry, 3> retired{};
+        uint64_t overflowTickMs = 0, overflowSceneId = 0;
     };
+    bool RememberedWitnessFresh(uint64_t tick, uint64_t scene) const;
+    bool RememberedEdgeAmbiguous(const QualifiedNativeGeometry& entry, bool top) const;
     std::array<QualifiedNativeGeometry, 3> m_qualifiedNativeGeometry{};
+    // One bounded staging candidate for family correction or a full qualified cache.
+    // It cannot nominate a crop until independently qualified and promoted.
+    QualifiedNativeGeometry m_pendingNativeGeometry;
     RememberedEdgeReturnContext m_rememberedContext;
     bool m_rememberedContextFresh = false;
     uint64_t m_nextQualifiedNativeId = 0;
     RememberedEdgeReturnProof m_candidateRememberedProof;
     uint64_t m_candidateRememberedLastSequence = 0;
+    bool m_guardedWindowAdmission = false;
+    bool m_hasGuardedRememberedEnvelope = false;
+    ActivePictureBounds m_guardedRememberedNominal;
 
 	void StartCandidate(const ActivePictureObservation& observation);
 	void ClearCandidate();

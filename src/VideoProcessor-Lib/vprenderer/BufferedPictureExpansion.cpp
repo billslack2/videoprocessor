@@ -70,6 +70,56 @@ namespace AlphaSourceCrop
             return ConfirmOutwardPictureTransition({}, base, observation.bounds,
                 retention, generation, sequence).broadOpposingPicture;
         }
+        bool CurrentRelativeEvidence(const ActivePictureBounds& base,
+            const ActivePictureObservation& observation,
+            const RelativeBarContrastEvidence& pixels, bool qualifiedAspectPair,
+            uint64_t generation)
+        {
+            const auto& axes = observation.axisEvidence;
+            const auto& horizontal = axes.horizontal;
+            const bool sideAllowed = horizontal.scanComplete &&
+                ((horizontal.state == ActivePictureAxisState::FULL_EXTENT_SUPPORTED && !horizontal.barCandidate) ||
+                 (horizontal.FailedBar() && horizontal.reason == ActivePictureAxisReason::BAR_EDGE_REJECTED));
+            return qualifiedAspectPair && pixels.evaluated && pixels.valid &&
+                generation != 0 && pixels.sourceGeneration == generation &&
+                SameBounds(pixels.base, base) && SameBounds(pixels.target, observation.bounds) &&
+                observation.available && !observation.transitionDeferred &&
+                observation.authorityOrigin == ActivePictureAuthorityOrigin::NATIVE &&
+                observation.classification == ActivePictureClassification::BAR_CROP_TRUSTED &&
+                BothEdgesExpand(base, observation.bounds) && sideAllowed &&
+                axes.vertical.scanComplete && axes.vertical.state == ActivePictureAxisState::TRUSTED_BARS;
+        }
+
+        bool CurrentScheduledExpansion(const BufferedPictureExpansionProof& proof,
+            const ActivePictureFrameIdentity& currentIdentity,
+            const TransitionAdmissionInput& current, bool modelWouldAdmit)
+        {
+            const auto& decision = proof.decision;
+            if (!proof.valid || !modelWouldAdmit || !current.compatiblePresentation ||
+                !current.trustedGeometryAvailable || current.sourceGeneration == 0 ||
+                current.trustedGeneration != current.sourceGeneration ||
+                current.sourceGeneration != currentIdentity.transportGeneration ||
+                current.sourceSequence != currentIdentity.acceptedSequence ||
+                decision.proofFrameCount != OUTWARD_PICTURE_CONFIRMATIONS_REQUIRED ||
+                decision.association != ActivePictureDecisionAssociation::OUTWARD ||
+                decision.transition.clearTransition ||
+                decision.transition.authoritativeClassification != ActivePictureClassification::BAR_CROP_TRUSTED ||
+                decision.effectiveIdentity.acceptedSequence > UINT64_MAX - (OUTWARD_PICTURE_CONFIRMATIONS_REQUIRED - 1) ||
+                decision.observationIdentity.acceptedSequence != decision.effectiveIdentity.acceptedSequence +
+                    OUTWARD_PICTURE_CONFIRMATIONS_REQUIRED - 1 ||
+                decision.configuredLookahead > ActivePictureDecisionTimeline::MAX_LOOKAHEAD_FRAMES ||
+                decision.effectiveLookahead != (std::min)(decision.configuredLookahead, decision.availableLookahead) ||
+                decision.effectiveLookahead < OUTWARD_PICTURE_CONFIRMATIONS_REQUIRED - 1 ||
+                decision.continuityGeneration == 0 || decision.lookaheadPolicyGeneration == 0 ||
+                !SameBounds(decision.transition.stableBounds, current.presentationBeforeObservation) ||
+                !SameBounds(decision.transition.stableBounds, current.trustedGeometry) ||
+                !SameBounds(decision.transition.bounds, current.outwardCandidate) ||
+                ValidateActivePictureScheduledDecision(decision, currentIdentity,
+                    current.evidence.trustedBounds, current.evidence.classification) !=
+                        ActivePictureScheduledDecisionValidation::ACCEPTED)
+                return false;
+            return true;
+        }
     }
 
     MovingPictureTransitionState ObserveMovingPictureTransition(
@@ -259,6 +309,17 @@ namespace AlphaSourceCrop
             first.identity.acceptedSequence > UINT64_MAX - lead)
             return rejected("first-identity");
 
+        bool relativeReady = true;
+        for (uint8_t i = 0; i < required; ++i)
+        {
+            const auto& sample = samples[i];
+            relativeReady = relativeReady && sample.nearBlackEvaluated &&
+                !sample.retention.globalNearBlack && sample.retention.analysisValid && sample.retention.presentationValid &&
+                sample.retention.expansionStripsAvailable &&
+                SameBounds(first.observation.bounds, sample.observation.bounds) &&
+                CurrentRelativeEvidence(base, sample.observation, sample.relativeContrast,
+                    sample.qualifiedAspectPair, first.identity.transportGeneration);
+        }
         OutwardPictureConfirmationState confirmation;
         for (uint8_t i = 0; i < required; ++i)
         {
@@ -267,9 +328,9 @@ namespace AlphaSourceCrop
                 sample.identity.acceptedSequence != first.identity.acceptedSequence + i ||
                 sample.observation.frameNumber != sample.identity.acceptedSequence)
                 return rejected("sample-identity", i);
-            if (!sample.nearBlackEvaluated ||
+            if (!relativeReady && (!sample.nearBlackEvaluated ||
                 !CurrentBroadEvidence(base, sample.observation, sample.retention,
-                    first.identity.transportGeneration, sample.identity.acceptedSequence))
+                    first.identity.transportGeneration, sample.identity.acceptedSequence)))
                 return rejected("sample-evidence", i);
             // Accepted sequence continuity is mandatory. Where capture metadata
             // is supplied, repeated or missing source frames cannot count.
@@ -282,19 +343,23 @@ namespace AlphaSourceCrop
                 ((sample.identity.captureTimestamp != 0 || samples[i - 1].identity.captureTimestamp != 0) &&
                     sample.identity.captureTimestamp <= samples[i - 1].identity.captureTimestamp))
                 return rejected("timestamp-continuity", i);
-            const auto result = ConfirmOutwardPictureTransition(confirmation, base,
-                sample.observation.bounds, sample.retention,
-                first.identity.transportGeneration, sample.identity.acceptedSequence);
-            confirmation = result.state;
-            // A restart means geometry wandered beyond the anchored scan step.
-            if (!result.broadOpposingPicture || confirmation.confirmations != i + 1)
-                return rejected("geometry-continuity", i);
+            if (!relativeReady)
+            {
+                const auto result = ConfirmOutwardPictureTransition(confirmation, base,
+                    sample.observation.bounds, sample.retention,
+                    first.identity.transportGeneration, sample.identity.acceptedSequence);
+                confirmation = result.state;
+                // A restart means geometry wandered beyond the anchored scan step.
+                if (!result.broadOpposingPicture || confirmation.confirmations != i + 1)
+                    return rejected("geometry-continuity", i);
+            }
         }
 
         details.passes = true;
-        details.reason = "proof-ready";
+        details.reason = relativeReady ? "relative-proof-ready" : "proof-ready";
         if (diagnostic) *diagnostic = details;
         proof.valid = true;
+        proof.relativeContrast = relativeReady;
         auto& decision = proof.decision;
         decision.observationIdentity = samples[required - 1].identity;
         decision.effectiveIdentity = first.identity;
@@ -320,7 +385,9 @@ namespace AlphaSourceCrop
         transition.confidence = 1.0;
         transition.firstContradictoryFrame = first.observation.frameNumber;
         transition.decisionLatencyFrames = lead;
-        transition.reason = "buffered broad picture expansion confirmed on current and future frames";
+        transition.reason = relativeReady ?
+            "buffered known-aspect relative bar contrast confirmed on current and future frames" :
+            "buffered broad picture expansion confirmed on current and future frames";
         return proof;
     }
 
@@ -390,6 +457,17 @@ namespace AlphaSourceCrop
             first.viewportGeneration == liveViewportGeneration;
     }
 
+    bool GuardedRememberedReferenceMatches(const ActivePictureFrameIdentity& first,
+        uint64_t trustedSourceGeneration, uint64_t trustedSourceFormat,
+        uint64_t liveViewportGeneration, uint64_t capturedShaderGeneration,
+        uint64_t currentShaderGeneration)
+    {
+        return BufferedPictureReferenceMatches(first, trustedSourceGeneration,
+            trustedSourceFormat, liveViewportGeneration) &&
+            capturedShaderGeneration != 0 &&
+            // Shader lifetimes and queue/source lifetimes are independent counters.
+            capturedShaderGeneration == currentShaderGeneration;
+    }
     ActivePictureFrameDecision BuildBufferedInwardDecision(
         const BufferedPictureExpansionSample* samples, size_t count,
         ActivePictureTransitionModel liveModel, const ActivePictureBounds& base,
@@ -466,30 +544,10 @@ namespace AlphaSourceCrop
         bool modelWouldAdmit)
     {
         const auto& decision = proof.decision;
-        if (!proof.valid || !modelWouldAdmit || !current.compatiblePresentation ||
-            !current.trustedGeometryAvailable || current.sourceGeneration == 0 ||
-            current.trustedGeneration != current.sourceGeneration ||
-            current.sourceGeneration != currentIdentity.transportGeneration ||
-            current.sourceSequence != currentIdentity.acceptedSequence ||
+        if (proof.relativeContrast ||
+            !CurrentScheduledExpansion(proof, currentIdentity, current, modelWouldAdmit) ||
             current.presentation.action != VerticalBarPresentationAction::NONE ||
-            current.translationDriftActive || current.previousOutward.verticalPresentationSeen ||
-            decision.proofFrameCount != OUTWARD_PICTURE_CONFIRMATIONS_REQUIRED ||
-            decision.association != ActivePictureDecisionAssociation::OUTWARD ||
-            decision.transition.clearTransition ||
-            decision.transition.authoritativeClassification != ActivePictureClassification::BAR_CROP_TRUSTED ||
-            decision.effectiveIdentity.acceptedSequence > UINT64_MAX - (OUTWARD_PICTURE_CONFIRMATIONS_REQUIRED - 1) ||
-            decision.observationIdentity.acceptedSequence != decision.effectiveIdentity.acceptedSequence +
-                OUTWARD_PICTURE_CONFIRMATIONS_REQUIRED - 1 ||
-            decision.configuredLookahead > ActivePictureDecisionTimeline::MAX_LOOKAHEAD_FRAMES ||
-            decision.effectiveLookahead != (std::min)(decision.configuredLookahead, decision.availableLookahead) ||
-            decision.effectiveLookahead < OUTWARD_PICTURE_CONFIRMATIONS_REQUIRED - 1 ||
-            decision.continuityGeneration == 0 || decision.lookaheadPolicyGeneration == 0 ||
-            !SameBounds(decision.transition.stableBounds, current.presentationBeforeObservation) ||
-            !SameBounds(decision.transition.stableBounds, current.trustedGeometry) ||
-            !SameBounds(decision.transition.bounds, current.outwardCandidate) ||
-            ValidateActivePictureScheduledDecision(decision, currentIdentity,
-                current.evidence.trustedBounds, current.evidence.classification) !=
-                    ActivePictureScheduledDecisionValidation::ACCEPTED)
+            current.translationDriftActive || current.previousOutward.verticalPresentationSeen)
             return false;
         const auto observation = MakeActivePictureObservation(current.evidence,
             current.sourceSequence, current.framesPerSecond);
@@ -519,6 +577,36 @@ namespace AlphaSourceCrop
         unowned.previousOutward.verticalPresentationSeen = false;
         return ValidateBufferedPictureExpansion(proof, currentIdentity, unowned,
             modelWouldAdmit);
+    }
+
+    bool ValidateBufferedRelativePictureExpansion(
+        const BufferedPictureExpansionProof& proof,
+        const ActivePictureFrameIdentity& currentIdentity,
+        const TransitionAdmissionInput& current, bool modelWouldAdmit,
+        bool qualifiedAspectPair, const RelativeBarContrastEvidence& currentRelative,
+        const ActivePictureBounds& subtitleBase, uint32_t fitConfirmations)
+    {
+        if (!proof.relativeContrast ||
+            !CurrentScheduledExpansion(proof, currentIdentity, current, modelWouldAdmit) ||
+            current.translationDriftActive || !current.retention.analysisValid ||
+            !current.retention.presentationValid || !current.retention.expansionStripsAvailable ||
+            current.retention.globalNearBlack)
+            return false;
+        if (current.presentation.action == VerticalBarPresentationAction::FIT)
+        {
+            if (fitConfirmations < VERTICAL_FIT_CONFIRMATIONS_REQUIRED ||
+                current.presentationEvidenceGeneration != current.sourceGeneration ||
+                !SameBounds(subtitleBase, current.trustedGeometry)) return false;
+        }
+        else if (current.presentation.action != VerticalBarPresentationAction::NONE ||
+            current.previousOutward.verticalPresentationSeen) return false;
+        const auto observation = MakeActivePictureObservation(current.evidence,
+            current.sourceSequence, current.framesPerSecond);
+        if (!CurrentRelativeEvidence(current.trustedGeometry, observation, currentRelative,
+            qualifiedAspectPair, current.sourceGeneration)) return false;
+        // Fresh samples span the full depth of both discarded bars. Retirement
+        // of the FIT owner belongs to the caller, only after successful adoption.
+        return !EvaluateTransitionAdmission(current).deferPartialComposition;
     }
 
     void RetireVerticalPresentationForBufferedExpansion(bool adopted,

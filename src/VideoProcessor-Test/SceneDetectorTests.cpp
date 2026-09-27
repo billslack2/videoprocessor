@@ -2,6 +2,8 @@
 #include "CppUnitTest.h"
 
 #include <SceneDetector.h>
+#include <ActivePictureEvidence.h>
+#include <ActivePictureTransitionModel.h>
 
 #include <algorithm>
 #include <vector>
@@ -262,4 +264,107 @@ namespace Tests
 			Assert::AreEqual(static_cast<uint64_t>(2), afterReset.generation);
 		}
 	};
+	// These tests characterize fresh HDMI capture IDs carrying identical pixels.
+	// They intentionally do not mark repeated pictures as queue cadence repeats.
+	TEST_CLASS(LearnedHdmiSceneCreditTests)
+	{
+		struct Rig
+		{
+			static constexpr int Width=960, Height=540, Top=68, Bottom=472;
+			std::vector<uint16_t> pixels;
+			SceneDetector detector;
+			ActivePictureTransitionModel model;
+			RememberedEdgeReturnContext context;
+			uint64_t lastConfirmedSequence=0, ownerSettledAfterSequence=0;
+			unsigned confirmedCuts=0;
+			Rig():pixels(Width*Height*3/2,static_cast<uint16_t>(512<<6))
+			{
+				context.enabled=context.guardedEnabled=true;
+				context.sourceGeneration=7; context.rendererGeneration=11;
+				context.viewportGeneration=13; context.sourceFormatGeneration=17; context.policyGeneration=19;
+				Picture(300);
+			}
+			void Rectangle(int left,int top,int right,int bottom,int luma)
+			{
+				for(int y=top;y<bottom;++y) for(int x=left;x<right;++x)
+					pixels[y*Width+x]=static_cast<uint16_t>(luma<<6);
+			}
+			void Picture(int luma)
+			{
+				Rectangle(0,0,Width,Height,64);
+				Rectangle(0,Top,Width,Bottom,luma);
+			}
+			void Feed(unsigned frames)
+			{
+				for(unsigned i=0;i<frames;++i)
+				{
+					++context.sourceSequence; context.timestampMs+=42;
+					context.cadenceRepeat=false; // HDMI delivers a new captured frame even while paused.
+					const AnalysisLumaSource source={reinterpret_cast<const uint8_t*>(pixels.data()),
+						pixels.size()*sizeof(uint16_t),Width,Height,Width*sizeof(uint16_t),Width*sizeof(uint16_t),
+						AnalysisLumaFormat::P010,VideoFrameEncoding::V210,ColorSpace::REC_709,7};
+					SceneDetectorInput sceneInput;
+					sceneInput.analysisSource=&source; sceneInput.sourceSequence=context.sourceSequence;
+					sceneInput.width=Width; sceneInput.height=Height; sceneInput.strideBytes=Width*sizeof(uint16_t);
+					sceneInput.generation=7; sceneInput.timestamp=static_cast<int64_t>(context.sourceSequence*417083);
+					sceneInput.frameDuration=417083; sceneInput.enabled=true;
+					const auto scene=detector.Analyze(sceneInput);
+					Assert::IsTrue(scene.status==SceneDetectorStatus::Active || scene.status==SceneDetectorStatus::Warming);
+					// Same confirmed-cut identity/discontinuity mapping as UpdateNlsForFrame.
+					if(scene.hardCutConfirmed && !context.cadenceRepeat && context.sourceSequence>lastConfirmedSequence)
+					{
+						++context.sceneId; ++confirmedCuts; lastConfirmedSequence=context.sourceSequence;
+						// Explicitly keep learning closed for a settled-owner interval;
+						// this fixture does not implement renderer caption/scene-hold policy.
+						ownerSettledAfterSequence=context.sourceSequence+48;
+					}
+					context.discontinuity=scene.safeBoundary || scene.hardCutCandidate || scene.hardCutConfirmed;
+					model.SetRememberedEdgeReturnContext(context);
+					const auto raw=ExtractActivePictureEvidence(source);
+					Assert::IsTrue(raw.available && raw.classification==ActivePictureClassification::BAR_CROP_TRUSTED);
+					Assert::AreEqual(int(ActivePictureAuthorityOrigin::NATIVE),int(raw.authorityOrigin));
+					Assert::AreEqual(Top,raw.trustedBounds.top); Assert::AreEqual(Bottom,raw.trustedBounds.bottom);
+					const auto observation=MakeActivePictureObservation(raw,context.sourceSequence,24);
+					model.Observe(observation);
+					const bool sceneHoldActive=context.sourceSequence<=ownerSettledAfterSequence;
+					const bool nearBlackAcquisitionBlocked=false, nlsHoldActive=false, transitionDeferred=false;
+					if(!nearBlackAcquisitionBlocked && !context.cadenceRepeat && !sceneHoldActive &&
+						!nlsHoldActive && !transitionDeferred)
+						model.RecordIndependentNativeGeometry(observation);
+				}
+			}
+		};
+	public:
+		TEST_METHOD(LearnedHdmiStaticAdvancingFramesCannotInventTwoSceneCredits)
+		{
+			Rig rig; rig.Feed(120);
+			const auto history=rig.model.GetRememberedEdgeReturnHistoryStatus();
+			Assert::AreEqual(0U,rig.confirmedCuts);
+			Assert::AreEqual(0U,history.maxConfirmedScenes);
+			Assert::AreEqual(0U,history.qualifiedEntries);
+		}
+		TEST_METHOD(LearnedHdmiRealCutThenPausedPixelsCanEarnOnlyOneSceneCredit)
+		{
+			Rig rig; rig.Feed(16); rig.Picture(700); rig.Feed(120);
+			const auto history=rig.model.GetRememberedEdgeReturnHistoryStatus();
+			Assert::AreEqual(1U,rig.confirmedCuts);
+			Assert::AreEqual(1U,history.maxConfirmedScenes);
+			Assert::AreEqual(0U,history.qualifiedEntries);
+		}
+		TEST_METHOD(LearnedHdmiBroadOsdAppearanceRemovalCanQualifyCommonGeometry)
+		{
+			Rig rig; rig.Feed(16);
+			// Broad menu panel stays inside the active picture and leaves all crop
+			// boundaries unchanged. The scene detector cannot know it is an OSD.
+			 rig.Rectangle(48,86,912,454,700); rig.Feed(80);
+			Assert::AreEqual(1U,rig.confirmedCuts);
+			Assert::AreEqual(1U,rig.model.GetRememberedEdgeReturnHistoryStatus().maxConfirmedScenes);
+			rig.Picture(300); rig.Feed(80);
+			const auto history=rig.model.GetRememberedEdgeReturnHistoryStatus();
+			Assert::AreEqual(2U,rig.confirmedCuts);
+			Assert::AreEqual(2U,history.maxConfirmedScenes);
+			Assert::AreEqual(1U,history.qualifiedEntries);
+		}
+	};
+
 }

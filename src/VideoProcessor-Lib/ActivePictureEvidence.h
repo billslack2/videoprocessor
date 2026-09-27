@@ -14,7 +14,7 @@
 // proof. Source identity and exact measurement-base checks remain mandatory.
 bool CanRetainProvisionalSamplingCrop(const ActivePictureBounds& trusted,
 	const ActivePictureBounds& observed, ActivePictureClassification classification,
-	bool currentPresentationRetainable);
+	bool currentPresentationRetainable, bool partialSamplingReaffirmed = false);
 
 struct P010PlaneView
 {
@@ -172,6 +172,10 @@ struct ActivePicturePresentationRetentionEvidence
 	bool proposedBoundsContained = false;
 	// Retention-only proof for one provisional vertical scan step; no new authority.
 	bool samplingReaffirmed = false;
+	// Separate strict proof for an inward partial observation with only a
+	// one-step outward vertical discrepancy. Never inherits border tolerance.
+	bool partialSamplingEvaluated = false;
+	bool partialSamplingReaffirmed = false;
 	// Geometry tolerance is distinct from pixel blackness. A one-step
 	// provisional border can remain in the same established presentation even
 	// when that narrow strip contains real edge pixels. This cannot move the
@@ -321,3 +325,15 @@ struct FullRasterColorEvidence
 };
 FullRasterColorEvidence EvaluateFullRasterColorEvidence(
     const AnalysisLumaSource& source);
+
+// Pixel-only corroboration; callers must independently qualify learned geometry.
+struct RelativeBarContrastEvidence
+{
+    bool evaluated = false, valid = false;
+    ActivePictureBounds base, target;
+    uint64_t sourceGeneration = 0;
+    size_t samples = 0;
+    const char* reason = "not-evaluated";
+};
+RelativeBarContrastEvidence InspectRelativeBarContrast(const AnalysisLumaSource& source,
+    const ActivePictureEvidence& raw, const ActivePictureBounds& base);

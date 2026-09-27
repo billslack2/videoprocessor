@@ -11,6 +11,8 @@ namespace AlphaSourceCrop
         ActivePictureObservation observation;
         ActivePicturePresentationRetentionEvidence retention;
         bool nearBlackEvaluated = false;
+        RelativeBarContrastEvidence relativeContrast;
+        bool qualifiedAspectPair = false;
     };
 
     // Use the same trusted/provisional bounds contract as live analysis.
@@ -22,6 +24,11 @@ namespace AlphaSourceCrop
         uint64_t trustedSourceGeneration, uint64_t trustedSourceFormat,
         uint64_t liveViewportGeneration);
 
+    // Queue/source identity and shader lifetime use independent generation domains.
+    bool GuardedRememberedReferenceMatches(const ActivePictureFrameIdentity& first,
+        uint64_t trustedSourceGeneration, uint64_t trustedSourceFormat,
+        uint64_t liveViewportGeneration, uint64_t capturedShaderGeneration,
+        uint64_t currentShaderGeneration);
     // A presentation-only hold. It never grants crop or full-raster authority.
     // Only consecutive current source samples may establish or settle motion.
     struct MovingPictureTransitionState
@@ -58,6 +65,7 @@ namespace AlphaSourceCrop
     struct BufferedPictureExpansionProof
     {
         bool valid = false;
+        bool relativeContrast = false;
         ActivePictureFrameDecision decision;
     };
 
@@ -120,6 +128,15 @@ namespace AlphaSourceCrop
         const ActivePictureFrameIdentity& currentIdentity,
         const TransitionAdmissionInput& current, bool modelWouldAdmit,
         const ActivePictureBounds& subtitleBase);
+
+    // Alternate proof requires independently qualified history and fresh pixels.
+    // Only a confirmed, same-source FIT owner may be retired after adoption.
+    bool ValidateBufferedRelativePictureExpansion(
+        const BufferedPictureExpansionProof& proof,
+        const ActivePictureFrameIdentity& currentIdentity,
+        const TransitionAdmissionInput& current, bool modelWouldAdmit,
+        bool qualifiedAspectPair, const RelativeBarContrastEvidence& currentRelative,
+        const ActivePictureBounds& subtitleBase, uint32_t fitConfirmations = 0);
 
     // Never retire an owner merely because a preview passed validation.
     void RetireVerticalPresentationForBufferedExpansion(bool adopted,

@@ -43,6 +43,151 @@ namespace Tests
     TEST_CLASS(PresentationEnvelopeCompositionTests)
     {
     public:
+        TEST_METHOD(EnvelopeSelectionNewBaseUsesCurrentPixelsNotHistoricalExtremes)
+        {
+            auto oldBase=Bounds(100,100,3740,2060); oldBase.trustedBarAxes=ActivePictureBounds::BarAxes::BOTH;
+            const auto oldWide=Bounds(0,0,3840,2160);
+            const auto current=Bounds(80,84,3760,2080);
+            auto history=UpdatePresentationEnvelopeExtents({},oldBase,oldWide,7,100,1000,2000);
+            history=UpdatePresentationEnvelopeExtents(history,oldBase,current,7,101,1042,2000);
+            Assert::AreEqual(0,history.bounds.top); Assert::AreEqual(0,history.bounds.left);
+            auto finalBase=Bounds(200,276,3640,1884); finalBase.trustedBarAxes=ActivePictureBounds::BarAxes::BOTH;
+            PresentationEnvelopeInput lifetime;
+            lifetime.envelopeAvailable=lifetime.effectiveGeometryAvailable=true;
+            lifetime.detectedSourceSequence=lifetime.currentSourceSequence=101;
+            lifetime.evidenceSourceGeneration=lifetime.frameSourceGeneration=7;
+            const auto live=EvaluatePresentationEnvelope(lifetime);
+            Assert::IsTrue(live.active && live.currentFrame,
+                L"The existing same-frame current-content exception remains valid after publication.");
+            PresentationEnvelopeSelectionInput select;
+            select.history=history; select.effectiveBase=finalBase; select.currentBounds=current;
+            select.frameGeneration=select.currentGeneration=7;
+            select.frameSequence=select.currentSequence=101; select.envelopeActive=live.active;
+            const auto selected=SelectPresentationEnvelopeBounds(select);
+            Assert::AreEqual(80,selected.left); Assert::AreEqual(84,selected.top);
+            Assert::AreEqual(3760,selected.right); Assert::AreEqual(2080,selected.bottom);
+            PresentationEnvelopeCompositionInput composition;
+            composition.trustedPicture=finalBase; composition.detectorContent.bounds=selected;
+            composition.detectorContent.expandLeft=composition.detectorContent.expandTop=true;
+            composition.detectorContent.expandRight=composition.detectorContent.expandBottom=true;
+            AssertBounds(BuildComposedPresentationEnvelope(composition),80,84,3760,2080);
+            // A truly current full-raster overlay is still covered immediately.
+            select.currentBounds=oldWide;
+            Assert::AreEqual(0,SelectPresentationEnvelopeBounds(select).top);
+        }
+
+        TEST_METHOD(EnvelopeSelectionKeepsOnlyCompatibleHistoryOrFreshValidCurrentBounds)
+        {
+            auto base=Bounds(100,100,3740,2060); base.trustedBarAxes=ActivePictureBounds::BarAxes::BOTH;
+            PresentationEnvelopeSelectionInput select;
+            select.history=UpdatePresentationEnvelopeExtents({},base,Bounds(0,0,3840,2160),7,100,1000,2000);
+            select.effectiveBase=base; select.currentBounds=Bounds(80,84,3760,2080);
+            select.frameGeneration=select.currentGeneration=7;
+            select.frameSequence=select.currentSequence=101; select.envelopeActive=true;
+            Assert::AreEqual(0,SelectPresentationEnvelopeBounds(select).top,
+                L"Exact-base historical hold remains available within its upstream lifetime.");
+            select.effectiveBase.top=104;
+            for(int fault=0;fault<8;++fault) {
+                auto invalid=select;
+                switch(fault) {
+                case 0:invalid.currentSequence=100;break;
+                case 1:invalid.currentGeneration=8;break;
+                case 2:invalid.currentBounds.rasterHeight=1080;break;
+                case 3:invalid.currentBounds.top=83;break;
+                case 4:invalid.currentBounds.left=-2;break;
+                case 5:invalid.envelopeActive=false;break;
+                case 6:invalid.frameGeneration=invalid.currentGeneration=0;break;
+                case 7:invalid.frameSequence=invalid.currentSequence=0;break;
+                }
+                const auto selected=SelectPresentationEnvelopeBounds(invalid);
+                Assert::AreEqual(104,selected.top); Assert::AreEqual(100,selected.left);
+                Assert::AreEqual(3740,selected.right); Assert::AreEqual(2060,selected.bottom);
+            }
+        }
+        TEST_METHOD(ExtentHistoryCurrentNarrowerPictureCannotRenewTwelveMinuteOldPeak)
+        {
+            auto base=Bounds(0,44,3840,2116); base.trustedBarAxes=ActivePictureBounds::BarAxes::TOP_BOTTOM;
+            auto state=UpdatePresentationEnvelopeExtents({},base,Bounds(0,0,3840,2132),2,3979,1000,2000);
+            for(uint64_t step=1;step<=734;++step)
+            {
+                state=UpdatePresentationEnvelopeExtents(state,base,Bounds(0,28,3840,2132),
+                    2,3979+step,1000+step*1000,2000);
+                Assert::IsTrue(state.available);
+                if(step>=3) Assert::AreEqual(28,state.bounds.top,
+                    L"New bottom/nearer top detections cannot keep the original top=0 alive.");
+                Assert::AreEqual(2132,state.bounds.bottom);
+            }
+            PresentationEnvelopeCompositionInput composition;
+            composition.trustedPicture=base; composition.detectorContent.bounds=state.bounds;
+            composition.detectorContent.expandTop=composition.detectorContent.expandBottom=true;
+            AssertBounds(BuildComposedPresentationEnvelope(composition),0,28,3840,2132);
+            state=UpdatePresentationEnvelopeExtents(state,base,base,2,21592,735042,2000);
+            Assert::IsTrue(state.available); Assert::AreEqual(28,state.bounds.top);
+            Assert::AreEqual(uint64_t(4713),state.sourceSequence);
+            state=UpdatePresentationEnvelopeExtents(state,base,base,2,21645,737001,2000);
+            Assert::IsFalse(state.available); Assert::AreEqual(44,state.bounds.top);
+            Assert::AreEqual(2116,state.bounds.bottom);
+        }
+
+        TEST_METHOD(ExtentHistoryEachSideExpiresIndependentlyWithoutCrossEdgeRenewal)
+        {
+            auto base=Bounds(100,100,3740,2060); base.trustedBarAxes=ActivePictureBounds::BarAxes::BOTH;
+            auto state=UpdatePresentationEnvelopeExtents({},base,Bounds(20,20,3820,2140),7,1,1000,2000);
+            state=UpdatePresentationEnvelopeExtents(state,base,Bounds(60,60,3820,2100),7,2,2000,2000);
+            state=UpdatePresentationEnvelopeExtents(state,base,Bounds(60,60,3800,2100),7,3,3001,2000);
+            Assert::AreEqual(60,state.bounds.left); Assert::AreEqual(60,state.bounds.top);
+            Assert::AreEqual(3820,state.bounds.right); Assert::AreEqual(2100,state.bounds.bottom);
+            Assert::AreEqual(uint64_t(2000),state.extentTicks[2]);
+            state=UpdatePresentationEnvelopeExtents(state,base,Bounds(60,60,3800,2100),7,4,4001,2000);
+            Assert::AreEqual(3800,state.bounds.right);
+            // The older top-only cue cannot be rejuvenated by a later bottom cue.
+            state=UpdatePresentationEnvelopeExtents({},base,Bounds(100,0,3740,2060),7,10,5000,2000);
+            state=UpdatePresentationEnvelopeExtents(state,base,Bounds(100,100,3740,2160),7,11,7001,2000);
+            Assert::AreEqual(100,state.bounds.top); Assert::AreEqual(2160,state.bounds.bottom);
+        }
+
+        TEST_METHOD(ExtentHistoryConstantCaptionGrowthAndConfiguredHoldRemainValid)
+        {
+            auto base=Bounds(0,276,3840,1884); base.trustedBarAxes=ActivePictureBounds::BarAxes::TOP_BOTTOM;
+            auto current=Bounds(0,276,3840,1980);
+            PresentationEnvelopeExtentState state;
+            for(uint64_t i=1;i<=5;++i) {
+                state=UpdatePresentationEnvelopeExtents(state,base,current,7,i,i*1000,2000);
+                Assert::IsTrue(state.available); Assert::AreEqual(1980,state.bounds.bottom);
+            }
+            state=UpdatePresentationEnvelopeExtents(state,base,Bounds(0,276,3840,2020),7,6,5042,2000);
+            Assert::AreEqual(2020,state.bounds.bottom);
+            state=UpdatePresentationEnvelopeExtents(state,base,base,7,7,7042,2000);
+            Assert::IsTrue(state.available); // Existing deadline is inclusive.
+            state=UpdatePresentationEnvelopeExtents(state,base,base,7,8,7043,2000);
+            Assert::IsFalse(state.available);
+            state=UpdatePresentationEnvelopeExtents(state,base,current,7,9,7085,0);
+            Assert::IsTrue(state.available);
+            state=UpdatePresentationEnvelopeExtents(state,base,base,7,10,7086,0);
+            Assert::IsFalse(state.available);
+        }
+
+        TEST_METHOD(ExtentHistoryRejectsStaleOrMalformedMeasurementsAndResetsNewContext)
+        {
+            auto base=Bounds(100,100,3740,2060); base.trustedBarAxes=ActivePictureBounds::BarAxes::BOTH;
+            const auto original=UpdatePresentationEnvelopeExtents({},base,Bounds(20,20,3820,2140),7,10,1000,2000);
+            const auto duplicate=UpdatePresentationEnvelopeExtents(original,base,Bounds(0,0,3840,2160),7,10,2000,2000);
+            Assert::AreEqual(20,duplicate.bounds.top); Assert::AreEqual(uint64_t(1000),duplicate.lastDetectionTick);
+            for(int fault=0;fault<8;++fault) {
+                auto current=Bounds(60,60,3800,2100); uint64_t gen=7,seq=11,tick=1100;
+                switch(fault) {
+                case 0:seq=9;break; case 1:tick=999;break; case 2:gen=0;break;
+                case 3:seq=0;break;case 4:tick=0;break;case 5:current.top=101;break;
+                case 6:current.left=-2;break;case 7:current.rasterWidth=1920;break;
+                }
+                Assert::IsFalse(UpdatePresentationEnvelopeExtents(original,base,current,gen,seq,tick,2000).available);
+            }
+            auto changed=UpdatePresentationEnvelopeExtents(original,base,Bounds(60,60,3800,2100),8,1,1100,2000);
+            Assert::AreEqual(60,changed.bounds.top); Assert::AreEqual(uint64_t(8),changed.sourceGeneration);
+            auto newBase=base;newBase.top=104;
+            changed=UpdatePresentationEnvelopeExtents(original,newBase,Bounds(60,60,3800,2100),7,11,1100,2000);
+            Assert::AreEqual(60,changed.bounds.top); Assert::AreEqual(104,changed.base.top);
+        }
         TEST_METHOD(RecordedDetectorAndDenseEdgesAreCompletedSeparatelyBeforeUnion)
         {
             const auto input=RecordedEnvelope();

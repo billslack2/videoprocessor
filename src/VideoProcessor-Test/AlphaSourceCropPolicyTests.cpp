@@ -6791,6 +6791,186 @@ namespace Tests
 				static_cast<int>(widerContent.unusedAxis));
 		}
 
+        TEST_METHOD(LoggedBottomPlacementAmbiguityKeepsBothFramesBottomAnchored)
+        {
+            const int sequences[]={6276,6290};
+            const int tops[]={108,96}, bottoms[]={1996,2042};
+            for(int i=0;i<2;++i)
+            {
+                auto crop=TrustedScopeCrop();
+                crop.geometry={0,168,3840,1992,3840,2160,3840.0/1824,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+                crop.frameSourceSequence=sequences[i];
+                crop.latestObservationSupportsCrop=false;
+                crop.latestObservationIsProvisional=true;
+                crop.latestObservationClassification=ActivePictureClassification::PROVISIONAL;
+                crop.ambiguityHoldActive=true;
+                crop.frameLocalPresentationRetentionEvaluated=true;
+                crop.frameLocalPresentationRetentionSafe=false;
+                crop.outwardPresentationActive=crop.outwardExpansionAvailable=true;
+                crop.outwardExpansionSourceGeneration=crop.frameSourceGeneration;
+                crop.outwardExpansion={0,tops[i],3840,bottoms[i],3840,2160,0,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+                const auto retained=Evaluate(crop);
+                Assert::IsTrue(retained.applyCrop && retained.outwardExpanded);
+                Assert::AreEqual(tops[i],retained.sourceBounds.top);
+                Assert::AreEqual(bottoms[i],retained.sourceBounds.bottom);
+                AspectLimitFillInput input;
+                input.trustedContentAuthorityAccepted=retained.applyCrop;
+                input.sourceBounds=retained.sourceBounds;
+                input.contentReferenceAvailable=true;input.contentReferenceBounds=crop.geometry;
+                input.cropWiderContentToFillScreen=input.widerLimitConfigured=true;
+                input.widerAspectLimit=2.0;input.screenAspect=16.0/9.0;
+                const auto filled=EvaluateAspectLimitFill(input);
+                const auto& selected=filled.applied ? filled.sourceBounds : retained.sourceBounds;
+                const auto source=ResolveNlsSourceGeometry(retained.applyCrop || filled.applied,
+                    selected.left,selected.top,selected.right,selected.bottom,3840,2160);
+                Assert::IsTrue(source.valid);
+                const auto layout=FitAspect(source.aspect,{0,0,3840,2160},VerticalPictureAlignment::BOTTOM);
+                Assert::IsTrue(layout.valid);
+                const auto trace="logged sequence="+std::to_string(sequences[i])+" fill="+std::to_string(filled.applied)+
+                    " picture.top="+std::to_string(layout.picture.top)+" bottom="+std::to_string(layout.picture.bottom);
+                Logger::WriteMessage(trace.c_str());
+                Assert::AreEqual(i==0 ? 272.0 : 214.0,layout.picture.top,0.001,
+                    L"Ambiguity expansion must not authorize full-height fill of out-of-limit logical content.");
+                Assert::AreEqual(2160.0,layout.picture.bottom,0.001);
+                Assert::AreEqual(0.0,layout.picture.left,0.001);Assert::AreEqual(3840.0,layout.picture.right,0.001);
+                Assert::IsFalse(filled.applied);
+                Assert::AreEqual(0,selected.left);Assert::AreEqual(3840,selected.right);
+                Assert::AreEqual(tops[i],selected.top);Assert::AreEqual(bottoms[i],selected.bottom);
+            }
+        }
+
+        TEST_METHOD(LoggedBottomPlacementRefinementDoesNotToggleFullHeightFill)
+        {
+            // Exact logged snapshots 3906 -> 3908 -> 3911. Legitimate outward
+            // protection changes height; bottom alignment does not freeze the top.
+            const int sequences[]={3906,3908,3911};
+            const int tops[]={94,176,94},bottoms[]={2052,1980,2052};
+            for(int i=0;i<3;++i)
+            {
+                auto crop=TrustedScopeCrop();
+                crop.geometry={0,176,3840,1980,3840,2160,3840.0/1804,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+                crop.frameSourceSequence=sequences[i];
+                crop.latestObservationSupportsCrop=false;
+                crop.barCropRefinementPending=true;
+                crop.latestObservationClassification=ActivePictureClassification::BAR_CROP_TRUSTED;
+                crop.outwardPresentationActive=crop.outwardExpansionAvailable=i!=1;
+                crop.outwardExpansionSourceGeneration=crop.frameSourceGeneration;
+                crop.outwardExpansion={0,tops[i],3840,bottoms[i],3840,2160,0,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+                const auto retained=Evaluate(crop);
+                Assert::IsTrue(retained.applyCrop);
+                Assert::AreEqual(tops[i],retained.sourceBounds.top);Assert::AreEqual(bottoms[i],retained.sourceBounds.bottom);
+                AspectLimitFillInput input;
+                input.trustedContentAuthorityAccepted=retained.applyCrop;
+                input.sourceBounds=retained.sourceBounds;input.contentReferenceAvailable=true;input.contentReferenceBounds=crop.geometry;
+                input.cropWiderContentToFillScreen=input.widerLimitConfigured=true;
+                input.widerAspectLimit=2.0;input.screenAspect=16.0/9.0;
+                const auto filled=EvaluateAspectLimitFill(input);
+                const auto& selected=filled.applied ? filled.sourceBounds : retained.sourceBounds;
+                const auto source=ResolveNlsSourceGeometry(true,selected.left,selected.top,selected.right,selected.bottom,3840,2160);
+                const auto layout=FitAspect(source.aspect,{0,0,3840,2160},VerticalPictureAlignment::BOTTOM);
+                Assert::IsTrue(source.valid && layout.valid);
+                Logger::WriteMessage(("logged sequence="+std::to_string(sequences[i])+" picture.top="+std::to_string(layout.picture.top)).c_str());
+                Assert::AreEqual(i==1 ? 356.0 : 202.0,layout.picture.top,0.001,
+                    L"Refinement must not toggle side fill and destroy the bottom-aligned slack.");
+                Assert::AreEqual(2160.0,layout.picture.bottom,0.001);
+                Assert::AreEqual(0.0,layout.picture.left,0.001);Assert::AreEqual(3840.0,layout.picture.right,0.001);
+                Assert::IsFalse(filled.applied);
+                Assert::AreEqual(0,selected.left);Assert::AreEqual(3840,selected.right);
+            }
+        }
+
+        TEST_METHOD(LoggedBottomPlacementEligibleFillStillUsesFullScreen)
+        {
+            AspectLimitFillInput input;
+            input.trustedContentAuthorityAccepted=true;
+            input.contentReferenceAvailable=true;
+            input.contentReferenceBounds={0,80,3840,2080,3840,2160,1.92,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+            input.sourceBounds={0,40,3840,2110,3840,2160,0,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+            input.cropWiderContentToFillScreen=input.widerLimitConfigured=true;
+            input.widerAspectLimit=2.0;input.screenAspect=16.0/9.0;
+            const auto filled=EvaluateAspectLimitFill(input);
+            Assert::IsTrue(filled.applied);
+            const auto& selected=filled.sourceBounds;
+            const auto source=ResolveNlsSourceGeometry(true,selected.left,selected.top,selected.right,selected.bottom,3840,2160);
+            const auto layout=FitAspect(source.aspect,{0,0,3840,2160},VerticalPictureAlignment::BOTTOM);
+            Assert::IsTrue(source.valid && layout.valid);
+            Assert::AreEqual(0.0,layout.picture.top,0.001);Assert::AreEqual(2160.0,layout.picture.bottom,0.001);
+            Assert::AreEqual(0.0,layout.picture.left,0.001);Assert::AreEqual(3840.0,layout.picture.right,0.001);
+        }
+
+        TEST_METHOD(FillContentReferenceRejectsBothLoggedGermanTvZoomBursts)
+        {
+            for(bool second:{false,true}) {
+                AspectLimitFillInput input;
+                input.trustedContentAuthorityAccepted=true;
+                input.cropWiderContentToFillScreen=input.widerLimitConfigured=true;
+                input.widerAspectLimit=2.0;input.screenAspect=16.0/9.0;
+                input.contentReferenceAvailable=true;
+                input.contentReferenceBounds={0,second?168:176,3840,second?1992:1980,3840,2160,0,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+                input.sourceBounds={0,second?96:94,3840,second?2042:2052,3840,2160,0,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+                const auto result=EvaluateAspectLimitFill(input);
+                Assert::IsFalse(result.applied,L"An expanded envelope must not bypass a content aspect above the configured 2.0 fill limit.");
+                Assert::AreEqual(0,result.sourceBounds.left);Assert::AreEqual(3840,result.sourceBounds.right);
+                // The old envelope-only calculation explains the logged side crop.
+                input.contentReferenceAvailable=false;
+                const auto old=EvaluateAspectLimitFill(input);Assert::IsTrue(old.applied);
+                Assert::AreEqual(second?190:180,old.sourceBounds.left);
+            }
+        }
+
+        TEST_METHOD(FillContentReferenceCannotCrossTheNarrowerLimitOrChangeDirection)
+        {
+            AspectLimitFillInput input;
+            input.trustedContentAuthorityAccepted=true;input.contentReferenceAvailable=true;
+            input.cropNarrowerContentToFillScreen=input.narrowerLimitConfigured=true;
+            input.narrowerAspectLimit=1.75;input.screenAspect=2.35;
+            input.contentReferenceBounds={200,0,3640,2160,3840,2160,0,ActivePictureBounds::BarAxes::LEFT_RIGHT};
+            input.sourceBounds={0,0,3840,2160,3840,2160,0,ActivePictureBounds::BarAxes::NONE};
+            Assert::IsFalse(EvaluateAspectLimitFill(input).applied);
+            input.narrowerLimitConfigured=false;input.cropWiderContentToFillScreen=true;input.screenAspect=1.70;
+            // Reference is narrower, expanded envelope wider: no side switch.
+            Assert::IsFalse(EvaluateAspectLimitFill(input).applied);
+        }
+
+        TEST_METHOD(FillContentReferencePreservesEligibleFillAndFullRaster)
+        {
+            AspectLimitFillInput input;
+            input.trustedContentAuthorityAccepted=true;input.contentReferenceAvailable=true;
+            input.cropWiderContentToFillScreen=input.widerLimitConfigured=true;
+            input.widerAspectLimit=2.41;input.screenAspect=16.0/9.0;
+            input.contentReferenceBounds={0,280,3840,1880,3840,2160,2.4,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+            input.sourceBounds={0,200,3840,1960,3840,2160,0,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+            auto result=EvaluateAspectLimitFill(input);Assert::IsTrue(result.applied);
+            Assert::AreEqual(200,result.sourceBounds.top);Assert::AreEqual(1960,result.sourceBounds.bottom);
+            input.widerAspectLimit=2.0;Assert::IsFalse(EvaluateAspectLimitFill(input).applied);
+            input.cropNarrowerContentToFillScreen=true;input.screenAspect=2.35;
+            input.contentReferenceBounds=input.sourceBounds={0,0,3840,2160,3840,2160,16.0/9,ActivePictureBounds::BarAxes::NONE};
+            Assert::IsTrue(EvaluateAspectLimitFill(input).applied);
+            input.trustedContentAuthorityAccepted=false;Assert::IsFalse(EvaluateAspectLimitFill(input).applied);
+        }
+
+        TEST_METHOD(FillContentReferenceRejectsMalformedReferenceAndKeepsActualEnvelopeLimit)
+        {
+            for(int fault=0;fault<4;++fault) {
+                AspectLimitFillInput input;
+                input.trustedContentAuthorityAccepted=true;input.contentReferenceAvailable=true;
+                input.cropWiderContentToFillScreen=true;input.screenAspect=16.0/9;
+                input.sourceBounds=input.contentReferenceBounds={0,280,3840,1880,3840,2160,2.4,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+                if(fault==0)input.contentReferenceBounds.bottom=input.contentReferenceBounds.top;
+                if(fault==1)input.contentReferenceBounds.left=-2;
+                if(fault==2)input.contentReferenceBounds.rasterWidth=1920;
+                if(fault==3)input.contentReferenceBounds.bottom=2164;
+                Assert::IsFalse(EvaluateAspectLimitFill(input).applied);
+            }
+            AspectLimitFillInput input;
+            input.trustedContentAuthorityAccepted=true;input.contentReferenceAvailable=true;
+            input.cropWiderContentToFillScreen=input.widerLimitConfigured=true;
+            input.screenAspect=16.0/9;input.widerAspectLimit=2.41;
+            input.contentReferenceBounds={176,356,3664,1804,3840,2160,3488.0/1448,ActivePictureBounds::BarAxes::BOTH};
+            input.sourceBounds={128,356,3712,1804,3840,2160,3584.0/1448,ActivePictureBounds::BarAxes::BOTH};
+            Assert::IsFalse(EvaluateAspectLimitFill(input).applied,L"A nominally eligible picture must not override the actual envelope's existing fill limit.");
+        }
+
 		TEST_METHOD(AspectLimitFillCropsTrustedNarrowerAndWiderContent)
 		{
 			AspectLimitFillInput input;
@@ -9157,4 +9337,320 @@ namespace Tests
 				std::string::npos);
 		}
 	};
+	TEST_CLASS(SamplingRefinementOutwardFitTests)
+	{
+		static SamplingRefinementOutwardFitInput Current()
+		{
+			SamplingRefinementOutwardFitInput input;
+			input.base = {0,44,3840,2116,3840,2160,1.85328,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+			input.rawBounds = input.visibleBase = input.base;
+			input.visibleBounds = input.outwardBounds = input.base;
+			input.visibleBounds.top = input.outwardBounds.top = 28;
+			input.visibleBounds.bottom = input.outwardBounds.bottom = 2132;
+			input.baseClassification = input.rawClassification = ActivePictureClassification::BAR_CROP_TRUSTED;
+			input.frameGeneration = input.baseGeneration = input.visibleGeneration = 7;
+			input.frameSequence = input.rawSequence = input.visibleSequence = 20520;
+			input.rawAvailable = input.visibleAvailable = input.outwardAvailable = true;
+			input.nearBlackEvaluated = true;
+			return input;
+		}
+	public:
+		TEST_METHOD(SamplingRefinementOutwardFitStopsBothEdgeJitterWithoutPromotingCrop)
+		{
+			for (const int envelopeTop : {26,28})
+			for (const int rawTop : {40,44,48})
+			for (const int rawBottom : {2112,2116,2120})
+			{
+				auto input = Current();
+				input.rawBounds.top = rawTop; input.rawBounds.bottom = rawBottom;
+				input.visibleBounds.top = input.outwardBounds.top = envelopeTop;
+				input.visibleBounds.bottom = input.outwardBounds.bottom = 2160-envelopeTop;
+				const bool exact = rawTop == 44 && rawBottom == 2116;
+				VerticalBarPresentationResolutionInput resolution;
+				resolution.genericUpperExpansion = resolution.genericLowerExpansion = true;
+				resolution.genericVerticalFitConfirmed = true;
+				resolution.genericVerticalFitAuthoritative = exact || CanUseSamplingRefinementOutwardFit(input);
+				resolution.genericUpperBound = envelopeTop; resolution.genericLowerBound = 2160-envelopeTop;
+				resolution.authoritativeTop = 44; resolution.authoritativeBottom = 2116; resolution.rasterHeight = 2160;
+				const auto routing = ResolveVerticalBarRendererRouting(ResolveVerticalBarPresentation(resolution));
+				Assert::IsTrue(routing.fitActive);
+				auto crop = TrustedScopeCrop(); crop.geometry = input.base;
+				crop.latestObservationSupportsCrop = exact;
+				crop.barCropRefinementPending = !exact;
+				crop.outwardPresentationActive = routing.fitActive;
+				crop.outwardExpansionAvailable = true; crop.outwardExpansion = input.outwardBounds;
+				crop.outwardExpansionSourceGeneration = 7;
+				const auto decision = Evaluate(crop);
+				Assert::AreEqual(envelopeTop, decision.sourceBounds.top);
+				Assert::AreEqual(2160-envelopeTop, decision.sourceBounds.bottom);
+				Assert::AreEqual(44, crop.geometry.top);
+				Assert::AreEqual(exact, crop.latestObservationSupportsCrop);
+			}
+		}
+		TEST_METHOD(SamplingRefinementOutwardFitAllowsOddMeasuredPixelsWithinAlignedEnvelope)
+		{
+			auto input = Current();
+			input.rawBounds.top = 40;
+			input.visibleBounds.bottom = 2131; // Actual source pixels before chroma alignment.
+			Assert::IsTrue(CanUseSamplingRefinementOutwardFit(input));
+		}
+		TEST_METHOD(SamplingRefinementOutwardFitRejectsStaleAndMismatchedEvidence)
+		{
+			for (int failure=0; failure<14; ++failure)
+			{
+				auto input = Current();
+				switch(failure) {
+				case 0: ++input.baseGeneration; break;
+				case 1: ++input.visibleGeneration; break;
+				case 2: --input.rawSequence; break;
+				case 3: --input.visibleSequence; break;
+				case 4: input.rawAvailable=false; break;
+				case 5: input.visibleAvailable=false; break;
+				case 6: input.outwardAvailable=false; break;
+				case 7: input.visibleBase.top+=2; break;
+				case 8: input.rawBounds.top-=6; break;
+				case 9: input.rawBounds.bottom+=6; break;
+				case 10: input.rawBounds.left+=2; break;
+				case 11: input.rawBounds.rasterWidth=1920; break;
+				case 12: input.frameGeneration=input.baseGeneration=input.visibleGeneration=0; break;
+				case 13: input.frameSequence=input.rawSequence=input.visibleSequence=0; break;
+				}
+				Assert::IsFalse(CanUseSamplingRefinementOutwardFit(input));
+			}
+		}
+		TEST_METHOD(SamplingRefinementOutwardFitPreservesOwnerAndEnvelopeVetoes)
+		{
+			for (int failure=0; failure<18; ++failure)
+			{
+				auto input = Current();
+				switch(failure) {
+				case 0: input.nearBlackEvaluated=false; break;
+				case 1: input.nearBlack=true; break;
+				case 2: input.moving=true; break;
+				case 3: input.competingOwner=true; break;
+				case 4: input.denseArbitrationEnabled=true; break;
+				case 5: input.rawClassification=ActivePictureClassification::UNAVAILABLE; break;
+				case 6: input.baseClassification=ActivePictureClassification::UNAVAILABLE; break;
+				case 7: input.rawOrigin=ActivePictureAuthorityOrigin::REMEMBERED_EDGE_RETURN; break;
+				case 8: input.baseOrigin=ActivePictureAuthorityOrigin::REMEMBERED_EDGE_RETURN; break;
+				case 9: input.outwardBounds.top=29; break;
+				case 10: input.outwardBounds.top=30; break;
+				case 11: input.visibleBounds.bottom=2116; break;
+				case 12: input.visibleBounds.top=44; break;
+				case 13: input.outwardBounds.bottom=2116; break;
+				case 14: input.outwardBounds.top=-2; break;
+				case 15: input.rawBounds.trustedBarAxes=ActivePictureBounds::BarAxes::NONE; break;
+				case 16: input.outwardBounds.left=2; break;
+				case 17: input.rawClassification=ActivePictureClassification::PROVISIONAL; break;
+				}
+				Assert::IsFalse(CanUseSamplingRefinementOutwardFit(input));
+			}
+		}
+	};
+
+	TEST_CLASS(ApprovedGenericFitHoldTests)
+	{
+		static ApprovedGenericFitHoldInput Current()
+		{
+			ApprovedGenericFitHoldInput input;
+			input.base = {0,44,3840,2116,3840,2160,1.85328,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+			input.rawBounds = input.retentionBase = input.base;
+			input.baseClassification = input.rawClassification = ActivePictureClassification::BAR_CROP_TRUSTED;
+			input.sourceGeneration = input.baseGeneration = input.retentionGeneration = 7;
+			input.sourceSequence = input.rawSequence = input.retentionSequence = 100;
+			input.presentationEpoch = 9; input.currentTick = 1000; input.holdMs = 500;
+			input.rawAvailable = input.retentionValid = input.excludedBandsSafe = input.nearBlackEvaluated = true;
+			return input;
+		}
+		static ActivePictureBounds Envelope(const ApprovedGenericFitHoldInput& input)
+		{
+			auto bounds = input.base; bounds.top = 28; bounds.bottom = 2132;
+			return bounds;
+		}
+		static void Advance(ApprovedGenericFitHoldInput& input, uint64_t tick)
+		{
+			++input.sourceSequence; input.rawSequence = input.retentionSequence = input.sourceSequence;
+			input.currentTick = tick;
+		}
+	public:
+		TEST_METHOD(ApprovedGenericFitHoldBridgesDropoutsWithoutRenewingAdmission)
+		{
+			auto input = Current(); auto envelope = Envelope(input);
+			input.previous = RecordApprovedGenericFitHold(input,envelope,envelope,true,true);
+			Assert::IsTrue(input.previous.available);
+			input.currentTick=1050;
+			auto duplicate=RecordApprovedGenericFitHold(input,envelope,envelope,true,true);
+			Assert::AreEqual(1000ULL,duplicate.admittedTick);
+			for (const uint64_t tick : {1100ULL,1200ULL,1500ULL})
+			{
+				Advance(input,tick); input.rawBounds.top = 40;
+				auto result = ResolveApprovedGenericFitHold(input);
+				Assert::IsTrue(result.active); Assert::AreEqual(28,result.bounds.top);
+				Assert::AreEqual(1000ULL,result.state.admittedTick);
+				input.previous = result.state;
+			}
+			Advance(input,1501); auto expired = ResolveApprovedGenericFitHold(input);
+			Assert::IsFalse(expired.active); Assert::IsFalse(expired.state.available);
+			input.previous = expired.state; input.currentTick = 1200;
+			Assert::IsFalse(ResolveApprovedGenericFitHold(input).active);
+		}
+		TEST_METHOD(ApprovedGenericFitHoldRecordsOnlyMatchingFinalGenericAdmission)
+		{
+			auto input = Current(); auto envelope = Envelope(input);
+			Assert::IsFalse(RecordApprovedGenericFitHold(input,envelope,envelope,false,true).available);
+			Assert::IsFalse(RecordApprovedGenericFitHold(input,envelope,envelope,true,false).available);
+			auto other = envelope; other.top=26;
+			Assert::IsFalse(RecordApprovedGenericFitHold(input,envelope,other,true,true).available);
+			other = envelope; other.bottom=input.base.bottom;
+			Assert::IsFalse(RecordApprovedGenericFitHold(input,other,other,true,true).available);
+			input.previous=RecordApprovedGenericFitHold(input,envelope,envelope,true,true);
+			Assert::IsTrue(input.previous.available);
+			Advance(input,1100); envelope.top=30; envelope.bottom=2130;
+			auto replaced=RecordApprovedGenericFitHold(input,envelope,envelope,true,true);
+			Assert::AreEqual(30,replaced.bounds.top); Assert::AreEqual(1100ULL,replaced.admittedTick);
+		}
+		TEST_METHOD(ApprovedGenericFitHoldRequiresCoveredCurrentPixelsOrSafeBands)
+		{
+			auto input=Current(); auto envelope=Envelope(input);
+			input.previous=RecordApprovedGenericFitHold(input,envelope,envelope,true,true); Advance(input,1100);
+			input.excludedBandsSafe=false;
+			Assert::IsFalse(ResolveApprovedGenericFitHold(input).active);
+			input.visibleAvailable=true; input.visibleBounds=envelope; input.visibleBounds.bottom=2131;
+			Assert::IsTrue(ResolveApprovedGenericFitHold(input).active);
+			input.visibleBounds.top=0; input.excludedBandsSafe=true;
+			Assert::IsFalse(ResolveApprovedGenericFitHold(input).active);
+		}
+		TEST_METHOD(ApprovedGenericFitHoldAcceptsInitialZeroPresentationEpoch)
+		{
+			auto input=Current(); input.presentationEpoch=0; auto envelope=Envelope(input);
+			input.previous=RecordApprovedGenericFitHold(input,envelope,envelope,true,true);
+			Assert::IsTrue(input.previous.available);
+			Advance(input,1100);
+			Assert::IsTrue(ResolveApprovedGenericFitHold(input).active);
+			input.presentationEpoch=1;
+			Assert::IsFalse(ResolveApprovedGenericFitHold(input).active);
+		}
+		TEST_METHOD(ApprovedGenericFitHoldRetiresOnContextAndOwnerChanges)
+		{
+			for(int failure=0;failure<16;++failure)
+			{
+				auto input=Current(); auto envelope=Envelope(input);
+				input.previous=RecordApprovedGenericFitHold(input,envelope,envelope,true,true); Advance(input,1100);
+				switch(failure) {
+				case 0: ++input.sourceGeneration; break;
+				case 1: ++input.presentationEpoch; break;
+				case 2: input.base.top+=2; break;
+				case 3: --input.rawSequence; break;
+				case 4: --input.retentionSequence; break;
+				case 5: input.nearBlack=true; break;
+				case 6: input.moving=true; break;
+				case 7: input.competingOwner=true; break;
+				case 8: input.denseArbitrationEnabled=true; break;
+				case 9: input.rawBounds.top-=6; break;
+				case 10: input.rawClassification=ActivePictureClassification::PROVISIONAL; break;
+				case 11: input.baseOrigin=ActivePictureAuthorityOrigin::REMEMBERED_EDGE_RETURN; break;
+				case 12: input.retentionValid=false; break;
+				case 13: input.currentTick=999; break;
+				case 14: input.holdMs=0; break;
+				case 15: input.rawBounds.left=2; break;
+				}
+				auto result=ResolveApprovedGenericFitHold(input);
+				Assert::IsFalse(result.active); Assert::IsFalse(result.state.available);
+			}
+		}
+	};
+
+    TEST_CLASS(DenseFitExtentLifetimeTests)
+    {
+        static VerticalBarPresentationUpdateInput Start(uint64_t hold=2000)
+        {
+            VerticalBarPresentationUpdateInput input;
+            input.current.action=VerticalBarPresentationAction::FIT;
+            input.upperContent=input.lowerContent=true;
+            input.upperContentTop=80; input.lowerContentBottom=2080;
+            input.currentTick=1000; input.currentSourceSequence=10;
+            input.holdMs=hold; input.translationEnabled=true;
+            return input;
+        }
+    public:
+        TEST_METHOD(DenseFitExtentsExpireIndependentlyDespiteContinuousOtherContent)
+        {
+            for(int shape=0;shape<4;++shape)
+            {
+                auto input=Start(); auto state=UpdateVerticalBarPresentation(input);
+                Assert::AreEqual(80,state.detectedTop); Assert::AreEqual(2080,state.detectedBottom);
+                input.previousOwnsCurrentAnalysis=true;
+                if(shape==0)input.upperContentTop=104;
+                if(shape==1)input.lowerContentBottom=2056;
+                if(shape==2)input.upperContent=false;
+                if(shape==3)input.lowerContent=false;
+                for(uint64_t tick=1100;tick<=3000;tick+=100)
+                {
+                    input.previous=state; input.currentTick=tick; ++input.currentSourceSequence;
+                    state=UpdateVerticalBarPresentation(input);
+                    Assert::AreEqual(80,state.detectedTop); Assert::AreEqual(2080,state.detectedBottom);
+                }
+                input.previous=state; input.currentTick=3100; ++input.currentSourceSequence;
+                state=UpdateVerticalBarPresentation(input);
+                const auto message=std::wstring(L"Dense FIT extent expiration case ")+std::to_wstring(shape);
+                Assert::AreEqual(shape==0?104:shape==2?0:80,state.detectedTop,message.c_str());
+                Assert::AreEqual(shape==1?2056:shape==3?0:2080,state.detectedBottom,message.c_str());
+                Assert::IsTrue(state.action==VerticalBarPresentationAction::FIT);
+                Assert::AreEqual(3100ULL,state.lastDetectionTick);
+                Assert::IsTrue(IsVerticalBarPresentationActive(state,3100,2000,input.currentSourceSequence));
+            }
+        }
+        TEST_METHOD(DenseFitZeroHoldUsesCurrentExtentsWhileTranslationRetentionIsUnchanged)
+        {
+            auto input=Start(0); input.previous=UpdateVerticalBarPresentation(input);
+            input.previousOwnsCurrentAnalysis=true;
+            input.upperContentTop=104; input.lowerContentBottom=2056;
+            input.currentTick=1100; ++input.currentSourceSequence;
+            const auto fit=UpdateVerticalBarPresentation(input);
+            Assert::AreEqual(104,fit.detectedTop); Assert::AreEqual(2056,fit.detectedBottom);
+
+            auto translate=Start(); translate.current.action=VerticalBarPresentationAction::TRANSLATE;
+            translate.current.translationPixels=-80.0f; translate.lowerContent=false;
+            translate.previous=UpdateVerticalBarPresentation(translate);
+            translate.previousOwnsCurrentAnalysis=true;
+            translate.currentTick=1100; ++translate.currentSourceSequence;
+            translate.current.translationPixels=-60.0f; translate.upperContentTop=104;
+            const auto held=UpdateVerticalBarPresentation(translate);
+            Assert::IsTrue(held.action==VerticalBarPresentationAction::TRANSLATE);
+            Assert::AreEqual(-80.0f,held.translationPixels); Assert::AreEqual(80,held.detectedTop);
+        }
+        TEST_METHOD(DenseFitStaleSamplesCannotResurrectExpiredOrBackwardPresentation)
+        {
+            auto original=Start(); const auto prior=UpdateVerticalBarPresentation(original);
+            for(int failure=0;failure<4;++failure)
+            {
+                auto input=original; input.previous=prior;
+                input.previousOwnsCurrentAnalysis=true;
+                input.currentTick=failure==3?999:failure==0?1100:3101;
+                if(failure<2)--input.currentSourceSequence;
+                const auto result=UpdateVerticalBarPresentation(input);
+                Assert::IsTrue(result.action==VerticalBarPresentationAction::NONE,
+                    L"An expired duplicate, backward source sequence, or backward clock cannot revive previous FIT geometry.");
+                Assert::AreEqual(0ULL,result.lastDetectionTick);
+            }
+        }
+        TEST_METHOD(DenseFitDuplicateSamplesCannotRefreshButNewFartherPixelsApplyImmediately)
+        {
+            auto input=Start(); input.previous=UpdateVerticalBarPresentation(input);
+            input.previousOwnsCurrentAnalysis=true;
+            input.currentTick=1100; input.upperContentTop=104;
+            const auto duplicate=UpdateVerticalBarPresentation(input);
+            Assert::AreEqual(1000ULL,duplicate.lastDetectionTick,
+                L"Revisiting the same dense source sample cannot renew a FIT lifetime.");
+            Assert::AreEqual(80,duplicate.detectedTop);
+            input.previous=duplicate; ++input.currentSourceSequence;
+            input.upperContentTop=60; input.lowerContentBottom=2090;
+            const auto expanded=UpdateVerticalBarPresentation(input);
+            Assert::AreEqual(60,expanded.detectedTop); Assert::AreEqual(2090,expanded.detectedBottom);
+            Assert::AreEqual(1100ULL,expanded.lastDetectionTick);
+            Assert::AreEqual(1100ULL,expanded.fitTopExtentTick);
+            Assert::AreEqual(1100ULL,expanded.fitBottomExtentTick);
+        }
+    };
+
 }

@@ -641,8 +641,24 @@ public:
             if(pattern==2)frame.Rectangle(480,267,600,276,300);
             if(pattern==3)for(int y=255;y<276;++y)frame.Rectangle(0,y,3840,y+1,64+(y-255)/2);
             const auto observed=ExtractActivePictureEvidence(frame.Source());
-            AssertFourKShadowedRaw(observed);
-            Assert::IsTrue(observed.verticalBarProfile.evaluated && !observed.verticalBarProfile.clean);
+            if(pattern==2)
+            {
+                // This object touches picture across the proposed boundary.
+                // Dense continuation now rejects it before strict profile recovery.
+                Assert::IsTrue(observed.available && !observed.top.trusted && observed.bottom.trusted);
+                Assert::IsTrue(observed.classification==ActivePictureClassification::PROVISIONAL);
+                Assert::IsTrue(observed.axisEvidence.vertical.reason==ActivePictureAxisReason::BAR_PICTURE_CONTINUATION);
+                Assert::IsTrue(observed.axisEvidence.horizontal.FailedBar());
+                Assert::AreEqual(0,observed.proposedBounds.left);
+                Assert::AreEqual(3468,observed.proposedBounds.right);
+                Assert::AreEqual(276,observed.proposedBounds.top);
+                Assert::AreEqual(1884,observed.proposedBounds.bottom);
+            }
+            else
+            {
+                AssertFourKShadowedRaw(observed);
+                Assert::IsTrue(observed.verticalBarProfile.evaluated && !observed.verticalBarProfile.clean);
+            }
             Assert::IsFalse(observed.axisEvidence.SupportsVerticalCropDespiteSideAmbiguity(observed.trustedBounds));
             Assert::IsTrue(observed.axisEvidence.HasBlockingFailedBar(observed.trustedBounds));
         }
