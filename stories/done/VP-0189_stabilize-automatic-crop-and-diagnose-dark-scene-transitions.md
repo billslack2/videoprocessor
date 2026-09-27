@@ -1171,3 +1171,8 @@ Local packages (source SHA in both names):
 Installer unsigned; real installer lifecycle and clean-Windows interactive qualification were not repeated. No release assets published, deployment/restart performed, or configuration changed during merge. Existing deployed diagnostic pair remains installed. Experimental sparse/remembered-edge crop paths default off; temporal comparison is diagnostic only.
 
 Open follow-up: the Fox-to-Alien sequence at 13:25:06 released established scope for 45.547 seconds, with a four-pixel outward bottom excursion and incomplete inward geometry. Sampling-equivalence did not apply; safe disputed-row handling is not yet proved. Later OSD-triggered releases have distinct outward-pixel evidence. See [investigation](../assets/VP-0189/merge-115-20260926/retention-follow-up.md). This merge does not fix or close that finding. Story status remains the explicit September 20 user closure; this evidence update does not reopen it.
+
+## September 27 framing-guard follow-up test package
+
+Reviewed and deployed unmerged test build 2f0e9f305773; 1,813 tests pass. [Package and deployment evidence](../assets/VP-0189/framing-guard-20260927/README.md). Historical story status is unchanged; the new follow-up remains subject to playback validation.
+

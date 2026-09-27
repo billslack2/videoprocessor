@@ -1,0 +1,13 @@
+Test package 2f0e9f3057736a36cf7ca651bcbdc4162d7d7449, clean source on codex/framing-guard-package-20260927; pushed to billslack2/videoprocessor. Base/current beta at packaging: ab683eefe5fdffa018b788eedfcd8913dbebe1b4. Not merged or published as a GitHub Release.
+
+Includes reviewed partial retention/inspection corrections, presentation-envelope lifetime fixes, guarded learned-aspect eligibility/families, and the German TV optional-fill reference guard. This guard prevents the demonstrated extra fill zoom; it does not prove the underlying false black-bar acquisition is eliminated. No speculative detector threshold changes.
+
+German TV tests: before fix 3 expected failures/1 preservation pass; after fix focused 6/6. Prior and clean-package full x64 Release runs both 1813/1813. No old assertions changed for the fill fix. Independent architecture/tests and renderer-wiring review approved; final reviewer confirmed clean snapshot matches approved files. Installer support 49 checks, identity checks and runtime packaging 23 checks pass.
+
+Installer lifecycle attempted under a separate QA AppId and Start-menu folder. It safely refused fresh installation while the user's VP and Config sessions were open. No forced closure of Config or bypass of the installer safety check. Fresh/upgrade/repair/rollback/uninstall lifecycle qualification remains incomplete for this build. Clean Windows without Visual Studio and interactive Config Apply/OK/reopen not qualified. Installer unsigned.
+
+Legacy setup-runtime CheckOnly returns 1 for the older central-runtime diagnostic; shipped installer/ZIP use verified app-local Microsoft runtime DLLs. No system-wide runtime installer was run.
+
+Deployed host and renderer from this exact x64 Release package; both startup identities and hashes verified. Guarded learned-aspect path enabled by default; sparse crop experiment off. Existing bounded local-boundary shadow diagnostic launch option preserved. User configuration hash unchanged; Config session left open. Backup and exact hashes in deployment.json.
+
+Next viewing tests: ordinary 1.85 fill, scope/IMAX changes, subtitles and playback controls; German TV desk scene if the reporter can replay it. Compare fill_reference_aspect, content_aspect, fill_applied and final layout. We still need source frames/clip to safely diagnose the initial false bar classification.

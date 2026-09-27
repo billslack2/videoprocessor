@@ -1,0 +1,31 @@
+{
+  "time": "2026-09-27T11:17:48.6706535-04:00",
+  "source": "E:\\codex\\videoprocessor\\framing-guard-package-20260927",
+  "commit": "2f0e9f3057736a36cf7ca651bcbdc4162d7d7449",
+  "configuration": "x64 Release",
+  "backup": "C:\\Videoprocessor\\vp\\deployment-backups\\framing-guard-2f0e9f305773-20260927-111748",
+  "processId": 45020,
+  "pair": [
+    {
+      "target": "VideoProcessor.exe",
+      "hash": "67D796025D068207A296459723EEF375280532AFDBDC87977621BF7B86CDC4DE",
+      "source": "VideoProcessor-GUI.exe"
+    },
+    {
+      "target": "vprenderer\\VideoProcessorVPRenderer.dll",
+      "hash": "7D69CD0B797CFC99BB5BC8187A2C9509E7A1834E2E22E1D396DDF850880F7FE9",
+      "source": "vprenderer\\VideoProcessorVPRenderer.dll"
+    }
+  ],
+  "configSha256": "6929D61E48B22C9DF8299AD299037C58242BCE5F1590BC173F74506F760D9336",
+  "configEdits": [],
+  "environment": {
+    "VP_LOCAL_BOUNDARY_TRACE": "shadow-refined",
+    "VP_BLACK_LEVEL_TRACE_SNAPSHOTS": "0",
+    "VP_SPARSE_BOUNDARY_CROP": "off",
+    "VP_REMEMBERED_EDGE_RETURN": null,
+    "VP_BLACK_LEVEL_TRACE_TRANSITIONS": "0"
+  },
+  "startupVerified": true,
+  "note": "Config process and configuration files preserved; host/renderer match distributed package. Non-config runtime dependencies already match payload."
+}
