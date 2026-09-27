@@ -2264,6 +2264,92 @@ public:
 TEST_CLASS(RememberedEdgeQualificationTests)
 {
 public:
+    TEST_METHOD(QualifiedAspectPairRequiresTwoIndependentlyLearnedFormats)
+    {
+        RecallRig rig;
+        rig.Learn(); rig.Establish(rig.wide,3); rig.Advance(4);
+        auto query=[&] { return rig.model.HasQualifiedNativeAspectPair(rig.wideEvidence.trustedBounds,
+            rig.scopeEvidence.trustedBounds,7,rig.context.sceneId,rig.context.timestampMs); };
+        Assert::IsFalse(query(),L"One native scene does not qualify the second format.");
+        for(int i=0;i<3;++i)rig.FeedNative(rig.wide,4);
+        rig.Advance(5);
+        const auto before=rig.model.GetRememberedEdgeReturnHistoryStatus();
+        Assert::IsTrue(query()); Assert::IsTrue(query());
+        const auto after=rig.model.GetRememberedEdgeReturnHistoryStatus();
+        Assert::AreEqual(before.qualifiedEntries,after.qualifiedEntries);
+        Assert::IsFalse(rig.model.HasQualifiedNativeAspectPair(rig.scopeEvidence.trustedBounds,
+            rig.wideEvidence.trustedBounds,7,5,rig.context.timestampMs),L"Base must match live native stable geometry.");
+        rig.Establish(rig.scope,6); rig.Advance(7);
+        Assert::IsTrue(rig.model.HasQualifiedNativeAspectPair(rig.scopeEvidence.trustedBounds,
+            rig.wideEvidence.trustedBounds,7,7,rig.context.timestampMs));
+    }
+    TEST_METHOD(QualifiedAspectPairRetiredNoiseDoesNotBridgeDistinctRepresentatives)
+    {
+        for(int oldTop:{272,268}) {
+            RecallRig rig(3840,2160); RecallPixels oldScope(3840,2160);
+            RecallScope(oldScope,oldTop,2160-oldTop);
+            rig.Establish(rig.wide,1);for(int i=0;i<3;++i)rig.FeedNative(rig.wide,2);
+            rig.Establish(oldScope,3);for(int i=0;i<3;++i)rig.FeedNative(oldScope,4);
+            for(uint64_t scene:{uint64_t(5),uint64_t(6)})for(int i=0;i<3;++i) {
+                rig.Advance(scene);
+                Assert::IsTrue(rig.model.RecordIndependentNativeGeometry(MakeActivePictureObservation(
+                    rig.scopeEvidence,rig.context.sourceSequence,24)));
+            }
+            rig.Establish(rig.wide,7);
+            auto query=rig.scopeEvidence.trustedBounds;
+            query.top=272;query.bottom=1888;query.aspectRatio=3840.0/(query.bottom-query.top);
+            Assert::AreEqual(oldTop==272,rig.model.HasQualifiedNativeAspectPair(rig.wideEvidence.trustedBounds,
+                query,7,7,rig.context.timestampMs),L"Equivalent retired edges are noise; a midpoint cannot bridge distinct representatives.");
+        }
+    }
+    TEST_METHOD(QualifiedAspectPairFamilyReplacementWaitsForLaterScene)
+    {
+        RecallRig rig(3840,2160); RecallPixels oldScope(3840,2160);
+        RecallScope(oldScope,264,1896);
+        const auto oldBounds=ExtractActivePictureEvidence(oldScope.Source()).trustedBounds;
+        rig.Establish(rig.wide,1);for(int i=0;i<3;++i)rig.FeedNative(rig.wide,2);
+        rig.Establish(oldScope,3);for(int i=0;i<3;++i)rig.FeedNative(oldScope,4);
+        rig.Advance(5);
+        Assert::IsTrue(rig.model.HasQualifiedNativeAspectPair(oldBounds,rig.wideEvidence.trustedBounds,7,5,rig.context.timestampMs));
+        for(uint64_t scene:{uint64_t(5),uint64_t(6)})for(int i=0;i<3;++i) {
+            rig.Advance(scene);
+            Assert::IsTrue(rig.model.RecordIndependentNativeGeometry(MakeActivePictureObservation(
+                rig.scopeEvidence,rig.context.sourceSequence,24)));
+        }
+        Assert::IsFalse(rig.model.HasQualifiedNativeAspectPair(oldBounds,rig.wideEvidence.trustedBounds,7,6,rig.context.timestampMs),
+            L"Retired base must not stand in for its freshly replaced representative.");
+        rig.Establish(rig.wide,6);
+        Assert::IsFalse(rig.model.HasQualifiedNativeAspectPair(rig.wideEvidence.trustedBounds,rig.scopeEvidence.trustedBounds,7,6,rig.context.timestampMs));
+        rig.Advance(7);
+        Assert::IsTrue(rig.model.HasQualifiedNativeAspectPair(rig.wideEvidence.trustedBounds,rig.scopeEvidence.trustedBounds,7,7,rig.context.timestampMs));
+        Assert::IsFalse(rig.model.HasQualifiedNativeAspectPair(rig.wideEvidence.trustedBounds,oldBounds,7,7,rig.context.timestampMs));
+    }
+    TEST_METHOD(QualifiedAspectPairRejectsStaleSourceAndGeometry)
+    {
+        RecallRig rig; rig.Learn(); rig.Establish(rig.wide,3);
+        for(int i=0;i<3;++i)rig.FeedNative(rig.wide,4);
+        rig.Advance(5);
+        const auto base=rig.wideEvidence.trustedBounds,target=rig.scopeEvidence.trustedBounds;
+        const auto now=rig.context.timestampMs;
+        Assert::IsTrue(rig.model.HasQualifiedNativeAspectPair(base,target,7,5,now));
+        Assert::IsFalse(rig.model.HasQualifiedNativeAspectPair(base,target,8,5,now));
+        Assert::IsFalse(rig.model.HasQualifiedNativeAspectPair(base,target,7,5,now+600001));
+        Assert::IsFalse(rig.model.HasQualifiedNativeAspectPair(base,target,7,70,now));
+        Assert::IsFalse(rig.model.HasQualifiedNativeAspectPair(base,target,7,1,1));
+        auto jitter=target; jitter.top+=2; jitter.bottom-=2;
+        jitter.aspectRatio=double(jitter.right)/(jitter.bottom-jitter.top);
+        Assert::IsTrue(rig.model.HasQualifiedNativeAspectPair(base,jitter,7,5,now));
+        jitter.top+=1; jitter.bottom-=1;
+        Assert::IsFalse(rig.model.HasQualifiedNativeAspectPair(base,jitter,7,5,now));
+        auto side=target; side.left=2;
+        Assert::IsFalse(rig.model.HasQualifiedNativeAspectPair(base,side,7,5,now));
+        auto shifted=target; shifted.top+=4; shifted.bottom+=4;
+        Assert::IsFalse(rig.model.HasQualifiedNativeAspectPair(base,shifted,7,5,now));
+        Assert::IsFalse(rig.model.HasQualifiedNativeAspectPair(base,base,7,5,now));
+        rig.Advance(6); rig.context.discontinuity=true; rig.model.SetRememberedEdgeReturnContext(rig.context);
+        Assert::IsFalse(rig.model.HasQualifiedNativeAspectPair(base,target,7,6,rig.context.timestampMs));
+    }
+
     TEST_METHOD(TwoConfirmedScenesEachRequireThreeIndependentNativeFrames)
     {
         for(int secondSceneFrames=0;secondSceneFrames<=3;++secondSceneFrames)

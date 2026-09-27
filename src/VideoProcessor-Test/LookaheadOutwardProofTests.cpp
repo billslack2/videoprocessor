@@ -243,6 +243,159 @@ namespace Tests
 	TEST_CLASS(LookaheadOutwardProofTests)
 	{
 	public:
+        TEST_METHOD(RelativeBufferedDarkExpansionRequiresIndependentQueuedProof)
+        {
+            const std::array<BufferedPixelSample,3> frames;
+            auto samples=BufferedSamples(frames);
+            // Isolate certificate transport/admission from the separately tested
+            // pixel extractor: the old absolute broad predicate fails this strip.
+            for (auto& sample : samples)
+            {
+                sample.retention.expandingBottom.lumaP90=94;
+                sample.retention.expandingBottom.texture=0;
+                sample.relativeContrast.evaluated=sample.relativeContrast.valid=true;
+                sample.relativeContrast.base=BufferedScope();
+                sample.relativeContrast.target=sample.observation.bounds;
+                sample.relativeContrast.sourceGeneration=7;
+                sample.qualifiedAspectPair=true;
+            }
+            const auto proof=BuildBufferedPictureExpansion(samples.data(),3,BufferedScope(),2,2,19,23);
+            Assert::IsTrue(proof.valid);
+            Assert::IsTrue(proof.relativeContrast);
+            auto alsoBroad=samples;
+            for (size_t i=0;i<alsoBroad.size();++i) alsoBroad[i].retention=frames[i].retention;
+            Assert::IsTrue(BuildBufferedPictureExpansion(alsoBroad.data(),3,BufferedScope(),2,2,19,23).relativeContrast,
+                L"A complete relative proof remains distinct even when the old broad proof also passes.");
+            auto current=BufferedLiveInput(frames[0]);
+            current.retention=samples[0].retention;
+            Assert::IsFalse(ValidateBufferedPictureExpansion(proof,BufferedIdentity(100),current,true));
+            Assert::IsTrue(ValidateBufferedRelativePictureExpansion(proof,BufferedIdentity(100),current,true,
+                true,samples[0].relativeContrast,BufferedScope()));
+            current.presentation.action=VerticalBarPresentationAction::FIT;
+            current.previousOutward.verticalPresentationSeen=true;
+            Assert::IsTrue(ValidateBufferedRelativePictureExpansion(proof,BufferedIdentity(100),current,true,
+                true,samples[0].relativeContrast,BufferedScope(),2));
+        }
+
+        TEST_METHOD(RelativeBufferedProofRejectsMissingOrConflictingFutureEvidence)
+        {
+            const std::array<BufferedPixelSample,3> frames;
+            auto original=BufferedSamples(frames);
+            for (auto& sample : original)
+            {
+                sample.retention.expandingBottom.lumaP90=94;
+                sample.retention.expandingBottom.texture=0;
+                sample.relativeContrast.evaluated=sample.relativeContrast.valid=true;
+                sample.relativeContrast.base=BufferedScope();
+                sample.relativeContrast.target=sample.observation.bounds;
+                sample.relativeContrast.sourceGeneration=7;
+                sample.qualifiedAspectPair=true;
+            }
+            for (int defect=0;defect<15;++defect)
+            {
+                auto samples=original;
+                auto& future=samples[1];
+                switch (defect)
+                {
+                case 0: future.qualifiedAspectPair=false; break;
+                case 1: future.relativeContrast.valid=false; break;
+                case 2: ++future.relativeContrast.base.top; break;
+                case 3: ++future.relativeContrast.sourceGeneration; break;
+                case 4: future.identity=original[0].identity; break;
+                case 5: future.retention.globalNearBlack=true; break;
+                case 6: future.observation.classification=ActivePictureClassification::PROVISIONAL; break;
+                case 7: future.observation.authorityOrigin=ActivePictureAuthorityOrigin::REMEMBERED_EDGE_RETURN; break;
+                case 8: future.nearBlackEvaluated=false; break;
+                case 9: future.observation.bounds.top+=2; future.relativeContrast.target=future.observation.bounds; break;
+                case 10: future.observation.axisEvidence.vertical.scanComplete=false; break;
+                case 11: future.observation.axisEvidence.horizontal.scanComplete=false; break;
+                case 12: future.relativeContrast.evaluated=false; break;
+                case 13: future.identity.captureTimestamp=original[0].identity.captureTimestamp; break;
+                case 14: future.retention.expansionStripsAvailable=false; break;
+                }
+                Assert::IsFalse(BuildBufferedPictureExpansion(samples.data(),3,BufferedScope(),2,2,19,23).valid);
+            }
+        }
+
+        TEST_METHOD(RelativeBufferedActualPixelsRecheckCaptionAfterPreview)
+        {
+            std::array<BufferedPixelSample,3> frames;
+            // Keep a native geometry nominee so this test isolates actual pixel
+            // proof and queued consumption; extractor acquisition has its own tests.
+            for (auto& frame : frames)
+            {
+                for (int y=68;y<276;++y)
+                    std::fill(frame.pixels.begin()+size_t(y)*3840,frame.pixels.begin()+size_t(y+1)*3840,uint16_t(158<<6));
+                for (int y=1884;y<2092;++y)
+                    std::fill(frame.pixels.begin()+size_t(y)*3840,frame.pixels.begin()+size_t(y+1)*3840,uint16_t(94<<6));
+                frame.retention=EvaluateActivePicturePresentationRetention(frame.Source(),BufferedScope());
+            }
+            auto samples=BufferedSamples(frames);
+            for (size_t i=0;i<samples.size();++i)
+            {
+                samples[i].qualifiedAspectPair=true;
+                samples[i].relativeContrast=InspectRelativeBarContrast(frames[i].Source(),frames[i].evidence,BufferedScope());
+                Assert::IsTrue(samples[i].relativeContrast.valid);
+            }
+            const auto proof=BuildBufferedPictureExpansion(samples.data(),3,BufferedScope(),2,2,19,23);
+            Assert::IsTrue(proof.valid); Assert::IsTrue(proof.relativeContrast);
+            auto current=BufferedLiveInput(frames[0]);
+            current.presentation.action=VerticalBarPresentationAction::FIT;
+            current.previousOutward.verticalPresentationSeen=true;
+            Assert::IsTrue(ValidateBufferedRelativePictureExpansion(proof,BufferedIdentity(100),current,true,
+                true,samples[0].relativeContrast,BufferedScope(),2));
+            // An overlay in the pixels this target would remove must veto a
+            // previously valid certificate, even though geometry/history agree.
+            for (int y=28;y<36;++y)
+                std::fill(frames[0].pixels.begin()+size_t(y)*3840+1200,
+                    frames[0].pixels.begin()+size_t(y)*3840+2600,uint16_t(512<<6));
+            const auto fresh=InspectRelativeBarContrast(frames[0].Source(),frames[0].evidence,BufferedScope());
+            Assert::IsFalse(fresh.valid);
+            Assert::IsFalse(ValidateBufferedRelativePictureExpansion(proof,BufferedIdentity(100),current,true,
+                true,fresh,BufferedScope(),2));
+        }
+
+        TEST_METHOD(RelativeBufferedLiveRevalidationPreservesOwnerAndIdentityVetoes)
+        {
+            const std::array<BufferedPixelSample,3> frames;
+            const auto samples=BufferedSamples(frames);
+            // A shaped certificate tests the consumer independently of its builder.
+            auto proof=BuildBufferedPictureExpansion(samples.data(),3,BufferedScope(),2,2,19,23);
+            Assert::IsTrue(proof.valid);
+            proof.relativeContrast=true;
+            RelativeBarContrastEvidence pixels;
+            pixels.evaluated=pixels.valid=true; pixels.base=BufferedScope();
+            pixels.target=frames[0].evidence.trustedBounds; pixels.sourceGeneration=7;
+            for (int defect=0;defect<13;++defect)
+            {
+                auto current=BufferedLiveInput(frames[0]);
+                current.presentation.action=VerticalBarPresentationAction::FIT;
+                current.previousOutward.verticalPresentationSeen=true;
+                auto fresh=pixels; auto identity=BufferedIdentity(100); auto base=BufferedScope();
+                bool qualified=true,admit=true; uint32_t confirmations=2;
+                switch(defect)
+                {
+                case 0: ++identity.acceptedSequence; break;
+                case 1: qualified=false; break;
+                case 2: fresh.valid=false; break; // Caption/OSD appeared after queued inspection.
+                case 3: ++base.top; break;
+                case 4: ++current.presentationEvidenceGeneration; break;
+                case 5: current.presentation.action=VerticalBarPresentationAction::TRANSLATE; break;
+                case 6: current.translationDriftActive=true; break;
+                case 7: admit=false; break;
+                case 8: confirmations=1; break;
+                case 9: ++fresh.target.bottom; break;
+                case 10: ++fresh.sourceGeneration; break;
+                case 11: current.retention.globalNearBlack=true; break;
+                case 12: current.retention.expansionStripsAvailable=false; break;
+                }
+                Assert::IsFalse(ValidateBufferedRelativePictureExpansion(proof,identity,current,admit,
+                    qualified,fresh,base,confirmations));
+            }
+            const auto current=BufferedLiveInput(frames[0]);
+            Assert::IsTrue(ValidateBufferedRelativePictureExpansion(proof,BufferedIdentity(100),current,true,true,pixels,BufferedScope()));
+        }
+
         TEST_METHOD(BufferedBroadExpansionRetiresTranslationOnFirstFrameAndKeepsFinalCrop)
         {
             const BufferedPixelSample taller;

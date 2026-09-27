@@ -1543,3 +1543,62 @@ bool ActivePictureTransitionModel::AdoptGuardedRememberedReturn(
     if (outDecision) *outDecision = decision;
     return true;
 }
+
+bool ActivePictureTransitionModel::HasQualifiedNativeAspectPair(const ActivePictureBounds& base,
+    const ActivePictureBounds& target, uint64_t sourceGeneration, uint64_t sceneId, uint64_t timestampMs) const
+{
+    // This is history corroboration only. Current pixels, frame identity and the
+    // independent publication guard remain the caller's responsibility.
+    if (!m_rememberedContextFresh || m_rememberedContext.discontinuity ||
+        !sourceGeneration || sourceGeneration != m_rememberedContext.sourceGeneration ||
+        !sceneId || !timestampMs || !m_hasStable ||
+        m_stableOrigin != ActivePictureAuthorityOrigin::NATIVE ||
+        m_stableClassification != ActivePictureClassification::BAR_CROP_TRUSTED)
+        return false;
+    const int step = std::max(2, base.rasterHeight / 540);
+    auto valid = [&](const ActivePictureBounds& b) {
+        if (b.rasterWidth <= 0 || b.rasterHeight <= 0 || b.left != 0 || b.right != b.rasterWidth ||
+            b.top <= 0 || b.bottom >= b.rasterHeight || b.top >= b.bottom ||
+            b.trustedBarAxes != ActivePictureBounds::BarAxes::TOP_BOTTOM ||
+            std::abs(b.top - (b.rasterHeight-b.bottom)) > 2*step ||
+            !std::isfinite(b.aspectRatio) || !IsCommonRememberedAspect(b)) return false;
+        const double measured = static_cast<double>(b.right)/(b.bottom-b.top);
+        return std::abs(measured-b.aspectRatio) <= 1e-6;
+    };
+    auto matches = [&](const ActivePictureBounds& a, const ActivePictureBounds& b) {
+        return a.rasterWidth == b.rasterWidth && a.rasterHeight == b.rasterHeight &&
+            a.left == b.left && a.right == b.right && a.trustedBarAxes == b.trustedBarAxes &&
+            std::abs(a.top-b.top) <= step && std::abs(a.bottom-b.bottom) <= step;
+    };
+    if (!valid(base) || !valid(target) || !valid(m_stable) || !matches(base,m_stable) ||
+        base.rasterWidth != target.rasterWidth || base.rasterHeight != target.rasterHeight ||
+        SameRememberedFamily(base,target) ||
+        (std::max(base.aspectRatio,target.aspectRatio)/std::min(base.aspectRatio,target.aspectRatio)-1.0)*100.0 <=
+            STABLE_ASPECT_DEADBAND_PERCENT)
+        return false;
+    auto fresh = [&](uint64_t tick, uint64_t scene) {
+        return tick && scene && timestampMs >= tick && timestampMs-tick <= REMEMBERED_RETURN_MAX_AGE_MS &&
+            sceneId >= scene && sceneId-scene <= REMEMBERED_RETURN_MAX_SCENE_DISTANCE;
+    };
+    auto qualifiedMatch = [&](const ActivePictureBounds& query) {
+        unsigned matching = 0;
+        for (const auto& entry : m_qualifiedNativeGeometry)
+        {
+            if (!entry.id || entry.confirmedScenes < 2 || entry.sourceGeneration != sourceGeneration ||
+                sceneId <= entry.activateAfterSceneId || !fresh(entry.lastTickMs,entry.lastSceneId) ||
+                !valid(entry.bounds) || !matches(query,entry.bounds)) continue;
+            if (fresh(entry.overflowTickMs,entry.overflowSceneId)) return false;
+            for (const auto& retired : entry.retired)
+            {
+                // Both boundaries are freshly measured by the separate pixel
+                // proof. Sampling-equivalent representatives are one geometry;
+                // a midpoint must not bridge distinct retired/active rectangles.
+                if (fresh(retired.lastTickMs,retired.lastSceneId) && matches(query,retired.bounds) &&
+                    !matches(entry.bounds,retired.bounds)) return false;
+            }
+            if (++matching > 1) return false;
+        }
+        return matching == 1;
+    };
+    return qualifiedMatch(base) && qualifiedMatch(target);
+}

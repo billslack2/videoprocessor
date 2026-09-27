@@ -148,7 +148,8 @@ enum class ActivePictureAxisState : uint8_t { UNKNOWN, TRUSTED_BARS, FULL_EXTENT
 enum class ActivePictureAxisReason : uint8_t
 {
 	NOT_EVALUATED, SCAN_INCOMPLETE, BAR_EDGE_REJECTED, BAR_ASYMMETRY,
-	BAR_CONFIRMED, FULL_EXTENT_SUPPORTED, NO_FULL_EXTENT_SUPPORT
+	BAR_CONFIRMED, FULL_EXTENT_SUPPORTED, NO_FULL_EXTENT_SUPPORT,
+	BAR_PICTURE_CONTINUATION
 };
 struct ActivePictureAxisEvidence
 {
@@ -352,6 +353,9 @@ public:
 		const ActivePictureBounds& entry) const;
 	// History is a prerequisite, never current pixel or publication authority.
 	bool FindRecentTrustedBarGeometry(const ActivePictureBounds& bounds, ActivePictureBounds& remembered) const;
+    // Read-only multi-format corroboration; never grants pixel or crop authority.
+    bool HasQualifiedNativeAspectPair(const ActivePictureBounds& base, const ActivePictureBounds& target,
+        uint64_t sourceGeneration, uint64_t sceneId, uint64_t timestampMs) const;
     static constexpr uint64_t REMEMBERED_RETURN_MAX_AGE_MS = 600000;
     static constexpr uint64_t REMEMBERED_RETURN_MAX_SCENE_DISTANCE = 64;
     // Context.sceneId advances only on distinct confirmed scene edits. Generic

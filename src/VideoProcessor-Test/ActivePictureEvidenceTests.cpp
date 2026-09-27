@@ -7,6 +7,8 @@
 #include "CppUnitTest.h"
 
 #include <vector>
+#include <chrono>
+#include <sstream>
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
@@ -230,6 +232,301 @@ namespace VideoProcessorTest
 	TEST_CLASS(ActivePictureEvidenceTests)
 	{
 	public:
+        TEST_METHOD(RelativeContrastMeasuredDarkExpansionUsesBothRealBars)
+        {
+            for(bool p210 : {false,true}) for(int edge : {64,68}) {
+                P010Frame frame(3840,2160,32,p210);
+                frame.Fill(64,512,512);
+                frame.FillRectangle(0,edge,3840,272,158);
+                frame.FillRectangle(0,272,3840,1888,300);
+                frame.FillRectangle(0,1888,3840,2160-edge,94);
+                auto source=p210?frame.P210Source():frame.P010Source();
+                // Geometry is natively certified on a bright frame, then inspected
+                // against the dark pixels. This tests corroboration, not extraction.
+                P010Frame bright(3840,2160,32,p210); bright.BlackOutside(0,edge,3840,2160-edge);
+                auto raw=ExtractActivePictureEvidence(p210?bright.P210Source():bright.P010Source());
+                Assert::IsTrue(raw.classification==ActivePictureClassification::BAR_CROP_TRUSTED);
+                const auto base=ScopePresentation(3840,2160,272,1888);
+                const auto proof=InspectRelativeBarContrast(source,raw,base);
+                Assert::IsTrue(proof.valid,L"Measured Y94 picture over Y64 bars must corroborate the independently qualified target.");
+                Assert::IsTrue(proof.evaluated && proof.samples>0 && proof.samples<=16384);
+                Assert::AreEqual(raw.trustedBounds.top,proof.target.top);
+                Assert::AreEqual(base.top,proof.base.top);
+            }
+        }
+
+        TEST_METHOD(RelativeContrastRejectsDeskMissingEdgeAndBarContamination)
+        {
+            const auto base=ScopePresentation(3840,2160,272,1888);
+            P010Frame bright(3840,2160); bright.BlackOutside(0,68,3840,2092);
+            const auto raw=ExtractActivePictureEvidence(bright.P010Source());
+            for(int fault=0;fault<8;++fault) {
+                P010Frame frame(3840,2160); frame.Fill(64,512,512);
+                frame.FillRectangle(0,68,3840,272,158);
+                frame.FillRectangle(0,272,3840,1888,300);
+                frame.FillRectangle(0,1888,3840,2092,94);
+                if(fault==0) frame.FillRectangle(0,0,3840,68,158); // unbarred desk
+                if(fault==1) frame.FillRectangle(0,1888,3840,2160,64); // no opposite picture
+                if(fault==2) frame.FillRectangle(0,2092,3840,2160,94); // picture extends outside
+                if(fault==3) frame.FillRectangle(960,0,1920,68,160); // OSD in prospective bar
+                if(fault==4) frame.FillRectangle(0,0,3840,68,64,540,512); // colored exterior
+                if(fault==5) { frame.FillRectangle(0,1888,3840,2092,64); frame.FillRectangle(1400,1950,2440,1980,700); }
+                if(fault==6) { frame.FillRectangle(0,1888,3840,2092,64); frame.FillRectangle(0,1888,500,2092,94); }
+                if(fault==7) frame.FillRectangle(960,2098,2880,2099,700); // one caption row between original sparse depths
+                Assert::IsFalse(InspectRelativeBarContrast(frame.P010Source(),raw,base).valid);
+            }
+        }
+
+        TEST_METHOD(RelativeContrastRejectsUncertifiedGeometryAndContext)
+        {
+            P010Frame frame(3840,2160); frame.BlackOutside(0,68,3840,2092);
+            const auto original=ExtractActivePictureEvidence(frame.P010Source());
+            for(int fault=0;fault<8;++fault) {
+                auto raw=original; auto base=ScopePresentation(3840,2160,272,1888); auto source=frame.P010Source();
+                if(fault==0) raw.classification=ActivePictureClassification::PROVISIONAL;
+                if(fault==1) raw.top.trusted=false;
+                if(fault==2) raw.bottom.trusted=false;
+                if(fault==3) raw.axisEvidence.horizontal.scanComplete=false;
+                if(fault==4) raw.trustedBounds.bottom-=80;
+                if(fault==5) base.rasterWidth=1920;
+                if(fault==6) raw.trustedBounds.left=16;
+                if(fault==7) source.dataBytes=1;
+                Assert::IsFalse(InspectRelativeBarContrast(source,raw,base).valid);
+            }
+        }
+
+        TEST_METHOD(RelativeContrastNativeV210MatchesPlanarAndRejectsUnknownSides)
+        {
+            P010Frame frame(960,540,32,true); frame.Fill(64,512,512);
+            frame.FillRectangle(0,18,960,68,158); frame.FillRectangle(0,68,960,472,300);
+            frame.FillRectangle(0,472,960,522,94);
+            P010Frame bright(960,540,32,true); bright.BlackOutside(0,18,960,522);
+            auto raw=ExtractActivePictureEvidence(bright.P210Source());
+            const auto base=ScopePresentation(960,540,68,472);
+            const auto planar=frame.P210Source(); const size_t pitch=960/6*16+32;
+            std::vector<uint8_t> bytes(pitch*540,0);
+            for(int y=0;y<540;++y) for(int x=0;x<960;x+=6) {
+                AnalysisLumaSample p[6];
+                for(int i=0;i<6;++i) Assert::IsTrue(planar.Sample(x+i,y,p[i]));
+                const uint32_t words[]={
+                    uint32_t(p[0].chromaU)|uint32_t(p[0].luma)<<10|uint32_t(p[0].chromaV)<<20,
+                    uint32_t(p[1].luma)|uint32_t(p[2].chromaU)<<10|uint32_t(p[2].luma)<<20,
+                    uint32_t(p[2].chromaV)|uint32_t(p[3].luma)<<10|uint32_t(p[4].chromaU)<<20,
+                    uint32_t(p[4].luma)|uint32_t(p[4].chromaV)<<10|uint32_t(p[5].luma)<<20};
+                auto* target=bytes.data()+size_t(y)*pitch+size_t(x/6)*16;
+                for(int word=0;word<4;++word) for(int b=0;b<4;++b)
+                    target[word*4+b]=static_cast<uint8_t>(words[word]>>(b*8));
+            }
+            AnalysisLumaSource native{bytes.data(),bytes.size(),960,540,pitch,0,
+                AnalysisLumaFormat::NativeYuv422,VideoFrameEncoding::V210,ColorSpace::REC_709,1};
+            auto a=InspectRelativeBarContrast(planar,raw,base), b=InspectRelativeBarContrast(native,raw,base);
+            Assert::IsTrue(a.valid && b.valid); Assert::AreEqual(a.samples,b.samples);
+            raw.axisEvidence.horizontal.state=ActivePictureAxisState::UNKNOWN;
+            raw.axisEvidence.horizontal.barCandidate=true;
+            raw.axisEvidence.horizontal.reason=ActivePictureAxisReason::BAR_EDGE_REJECTED;
+            Assert::IsTrue(InspectRelativeBarContrast(native,raw,base).valid,
+                L"No horizontal pixels are discarded, so rejected side artwork must not veto independently clean vertical bars.");
+            raw.axisEvidence.horizontal.reason=ActivePictureAxisReason::NO_FULL_EXTENT_SUPPORT;
+            Assert::IsFalse(InspectRelativeBarContrast(native,raw,base).valid);
+        }
+
+        TEST_METHOD(RelativeContrastDarkNativeExtractionAndBoundedCost)
+        {
+            for(bool p210 : {false,true}) {
+                P010Frame frame(3840,2160,32,p210); frame.Fill(64,512,512);
+                frame.FillRectangle(0,68,3840,272,158);
+                frame.FillRectangle(0,272,3840,1888,300);
+                frame.FillRectangle(0,1888,3840,2092,94);
+                const auto source=p210?frame.P210Source():frame.P010Source();
+                const auto before=frame.bytes;
+                const auto raw=ExtractActivePictureEvidence(source);
+                Assert::IsTrue(raw.available && raw.authorityOrigin==ActivePictureAuthorityOrigin::NATIVE);
+                Assert::IsTrue(raw.classification==ActivePictureClassification::BAR_CROP_TRUSTED,
+                    L"Dark pixels themselves must supply native geometry before relative corroboration.");
+                Assert::IsTrue(raw.trustedBounds.trustedBarAxes==ActivePictureBounds::BarAxes::TOP_BOTTOM);
+                Assert::AreEqual(0,raw.trustedBounds.left); Assert::AreEqual(3840,raw.trustedBounds.right);
+                Assert::IsTrue(raw.top.trusted && raw.bottom.trusted);
+                const auto base=ScopePresentation(3840,2160,272,1888);
+                auto proof=InspectRelativeBarContrast(source,raw,base);
+                Assert::IsTrue(proof.valid);
+                const auto started=std::chrono::steady_clock::now();
+                for(int i=0;i<20;++i) {
+                    proof=InspectRelativeBarContrast(source,raw,base);
+                    Assert::IsTrue(proof.valid && proof.samples<=16384);
+                }
+                const auto elapsed=std::chrono::duration<double,std::micro>(
+                    std::chrono::steady_clock::now()-started).count()/20;
+                std::ostringstream message;
+                message<<"Relative contrast 4K "<<(p210?"P210":"P010")<<" samples="<<proof.samples
+                    <<" average_us="<<elapsed<<" (informational; no timing threshold)";
+                Logger::WriteMessage(message.str().c_str());
+                Assert::IsTrue(before==frame.bytes,L"Inspection must not alter source pixels.");
+            }
+        }
+
+        TEST_METHOD(DeskConnectedSidePictureCannotAcquireAFalseVerticalCrop)
+        {
+            for (int height : {720, 1080, 2160})
+            for (bool p210 : {false, true})
+            for (bool above : {false, true})
+            for (bool right : {false, true})
+            {
+                const int width = height * 16 / 9;
+                const int bar = (height / 12) & ~3;
+                const int objectWidth = width / 100;
+                const int left = right ? width - objectWidth : 0;
+                P010Frame frame(width, height, 64, p210);
+                frame.BlackOutside(0, bar, width, height - bar);
+                // A narrow object/reflection reaches from the retained picture
+                // into the proposed bar at a side. It occupies less than 5% of
+                // the line, so the old aggregate bar test can accept it.
+                frame.FillRectangle(left, above ? 0 : height-bar-16,
+                    left+objectWidth, above ? bar+16 : height, 200);
+                const auto source = p210 ? frame.P210Source() : frame.P010Source();
+                const auto raw = ExtractActivePictureEvidence(source);
+                const auto startup = EvaluateSymmetricVerticalBarHypothesis(source, raw);
+                ActivePictureTransitionModel model;
+                bool acquired = false;
+                for (uint64_t sequence = 1; sequence <= 48; ++sequence)
+                {
+                    const auto decision = model.Observe(MakeActivePictureObservation(startup, sequence, 24));
+                    acquired = acquired || (decision.publish && decision.stable &&
+                        decision.authoritativeClassification == ActivePictureClassification::BAR_CROP_TRUSTED);
+                }
+                Assert::IsFalse(acquired,
+                    L"Connected side picture inside a proposed bar must not become logical crop authority.");
+                Assert::IsFalse(raw.classification == ActivePictureClassification::BAR_CROP_TRUSTED);
+                Assert::IsFalse(startup.classification == ActivePictureClassification::BAR_CROP_TRUSTED,
+                    L"The symmetry fallback must not undo the connected-picture veto.");
+            }
+        }
+
+        TEST_METHOD(DeskVetoPreservesCleanBarsAndDisconnectedSmallOverlay)
+        {
+            for (bool p210 : {false, true})
+            for (bool overlay : {false, true})
+            {
+                P010Frame frame(3840, 2160, 64, p210);
+                frame.BlackOutside(0, 176, 3840, 1984);
+                if (overlay) frame.FillRectangle(0, 20, 32, 52, 200);
+                const auto source = p210 ? frame.P210Source() : frame.P010Source();
+                const auto raw = ExtractActivePictureEvidence(source);
+                Assert::IsTrue(raw.classification == ActivePictureClassification::BAR_CROP_TRUSTED,
+                    L"Bright picture touching the sides between real bars is normal scope content.");
+                Assert::AreEqual(176, raw.trustedBounds.top);
+                Assert::AreEqual(1984, raw.trustedBounds.bottom);
+            }
+        }
+
+        TEST_METHOD(DeskVetoDoesNotTreatAnIsolatedPixelAsConnectedPicture)
+        {
+            P010Frame frame(3840, 2160);
+            frame.BlackOutside(0, 176, 3840, 1984);
+            frame.FillRectangle(22, 0, 23, 192, 200);
+            const auto raw = ExtractActivePictureEvidence(frame.P010Source());
+            Assert::IsTrue(raw.classification == ActivePictureClassification::BAR_CROP_TRUSTED);
+        }
+
+        TEST_METHOD(DeskVetoPreservesOneScanStepFringeAndRejectsDimColoredContinuation)
+        {
+            for (bool p210 : {false,true})
+            for (bool above : {false,true})
+            for (bool fringe : {false,true})
+            {
+                constexpr int width=1920,height=1080,top=88,bottom=992;
+                P010Frame frame(width,height,64,p210);
+                frame.BlackOutside(0,top,width,bottom);
+                frame.FillRectangle(0,above ? (fringe ? top-2 : 0) : bottom-8,
+                    24,above ? top+8 : (fringe ? bottom+2 : height),
+                    fringe ? 200 : 96,fringe ? 512 : 640,512);
+                const auto raw=ExtractActivePictureEvidence(p210 ? frame.P210Source() : frame.P010Source());
+                if (fringe)
+                    Assert::IsTrue(raw.classification==ActivePictureClassification::BAR_CROP_TRUSTED,
+                        L"One scan step of filtering fringe must not veto genuine bars.");
+                else
+                    Assert::IsTrue(raw.classification==ActivePictureClassification::PROVISIONAL &&
+                        raw.axisEvidence.vertical.reason==ActivePictureAxisReason::BAR_PICTURE_CONTINUATION,
+                        L"Credible dim chroma continuation must veto the proposed bar too.");
+            }
+        }
+
+        TEST_METHOD(DeskVetoAppliesToNativeV210AndRgbWithoutConversion)
+        {
+            constexpr int width=960,height=540,bar=44;
+            for (bool connected : {false,true})
+            {
+                P010Frame frame(width,height,32,true);
+                frame.BlackOutside(0,bar,width,height-bar);
+                if (connected) frame.FillRectangle(0,0,12,bar+12,200);
+                const auto planar=frame.P210Source();
+                const size_t pitch=width/6*16+32;
+                std::vector<uint8_t> bytes(pitch*height,0);
+                for(int y=0;y<height;++y) for(int x=0;x<width;x+=6) {
+                    AnalysisLumaSample p[6];
+                    for(int i=0;i<6;++i) Assert::IsTrue(planar.Sample(x+i,y,p[i]));
+                    const uint32_t words[]={
+                        uint32_t(p[0].chromaU)|uint32_t(p[0].luma)<<10|uint32_t(p[0].chromaV)<<20,
+                        uint32_t(p[1].luma)|uint32_t(p[2].chromaU)<<10|uint32_t(p[2].luma)<<20,
+                        uint32_t(p[2].chromaV)|uint32_t(p[3].luma)<<10|uint32_t(p[4].chromaU)<<20,
+                        uint32_t(p[4].luma)|uint32_t(p[4].chromaV)<<10|uint32_t(p[5].luma)<<20};
+                    auto* target=bytes.data()+size_t(y)*pitch+size_t(x/6)*16;
+                    for(int word=0;word<4;++word) for(int b=0;b<4;++b)
+                        target[word*4+b]=static_cast<uint8_t>(words[word]>>(b*8));
+                }
+                AnalysisLumaSource native{bytes.data(),bytes.size(),width,height,pitch,0,
+                    AnalysisLumaFormat::NativeYuv422,VideoFrameEncoding::V210,ColorSpace::REC_709,1};
+                const size_t rgbPitch=width*4+32;
+                std::vector<uint8_t> rgb(rgbPitch*height,0);
+                for(int y=0;y<height;++y) for(int x=0;x<width;++x) {
+                    const bool picture=(y>=bar && y<height-bar) || (connected && x<12 && y<bar+12);
+                    auto* pixel=rgb.data()+size_t(y)*rgbPitch+x*4;
+                    pixel[0]=pixel[1]=pixel[2]=picture ? 80 : 0; pixel[3]=255;
+                }
+                AnalysisLumaSource rgbSource{rgb.data(),rgb.size(),width,height,rgbPitch,0,
+                    AnalysisLumaFormat::NativeRgb,VideoFrameEncoding::BGRA_8BIT,ColorSpace::REC_709,1};
+                for (const auto& source : {native,rgbSource}) {
+                    const auto raw=ExtractActivePictureEvidence(source);
+                    Assert::IsTrue(raw.classification==(connected ? ActivePictureClassification::PROVISIONAL :
+                        ActivePictureClassification::BAR_CROP_TRUSTED));
+                    if (connected) Assert::IsTrue(raw.axisEvidence.vertical.reason==ActivePictureAxisReason::BAR_PICTURE_CONTINUATION);
+                }
+            }
+        }
+
+        TEST_METHOD(DeskVetoChecksActualSymmetricBoundaryWithLocalizedCaption)
+        {
+            for (bool connected : {false,true})
+            {
+                P010Frame frame(320,180);
+                frame.BlackOutside(0,22,320,158);
+                frame.FillRectangle(110,162,210,172,700);
+                if (connected) frame.FillRectangle(40,150,44,166,200);
+                const auto source=frame.P010Source();
+                const auto raw=ExtractActivePictureEvidence(source);
+                Assert::IsTrue(raw.classification==ActivePictureClassification::PROVISIONAL);
+                Assert::IsTrue(raw.top.trusted && raw.proposedBounds.bottom>160,
+                    L"The test must reach recovery of a different, inferred bottom boundary.");
+                const auto recovered=EvaluateSymmetricVerticalBarHypothesis(source,raw);
+                if (connected) {
+                    Assert::IsTrue(recovered.classification==ActivePictureClassification::PROVISIONAL);
+                    Assert::IsTrue(recovered.axisEvidence.vertical.reason==ActivePictureAxisReason::BAR_PICTURE_CONTINUATION);
+                } else {
+                    Assert::IsTrue(recovered.classification==ActivePictureClassification::BAR_CROP_TRUSTED);
+                    Assert::AreEqual(158,recovered.trustedBounds.bottom);
+                }
+            }
+        }
+
+        TEST_METHOD(DeskVetoDoesNotCountDuplicateColumnsAtSmallResolution)
+        {
+            P010Frame frame(160,90);
+            frame.BlackOutside(0,12,160,78);
+            frame.FillRectangle(11,0,12,20,200);
+            const auto raw=ExtractActivePictureEvidence(frame.P010Source());
+            Assert::IsTrue(raw.classification==ActivePictureClassification::BAR_CROP_TRUSTED,
+                L"Repeated samples of one physical column cannot supply two-column support.");
+        }
+
         TEST_METHOD(SparseNativeBarsCanContradictVisibleExtentSafety)
         {
             // Characterization of existing sampling, not reconstructed ZDF pixels:
@@ -253,11 +550,11 @@ namespace VideoProcessorTest
                     right,objectAbove ? top+8 : height,200);
                 const auto source=p210 ? frame.P210Source() : frame.P010Source();
                 const auto measured=ExtractActivePictureEvidence(source);
-                Assert::IsTrue(measured.classification==ActivePictureClassification::BAR_CROP_TRUSTED,
-                    L"The existing sparse detector accepts this mostly dark edge; this test does not demand new thresholds.");
-                Assert::IsTrue(measured.top.trusted && measured.bottom.trusted);
-                Assert::AreEqual(top,measured.trustedBounds.top);
-                Assert::AreEqual(bottom,measured.trustedBounds.bottom);
+                Assert::IsTrue(measured.classification==ActivePictureClassification::PROVISIONAL,
+                    L"Dense connected picture must veto the misleading aggregate black-bar evidence.");
+                Assert::IsTrue(measured.axisEvidence.vertical.reason==ActivePictureAxisReason::BAR_PICTURE_CONTINUATION);
+                Assert::AreEqual(top,measured.proposedBounds.top);
+                Assert::AreEqual(bottom,measured.proposedBounds.bottom);
                 const auto& occupiedEdge=objectAbove ? measured.top : measured.bottom;
                 Assert::IsTrue(occupiedEdge.blackFraction>=0.95 && occupiedEdge.continuity==1.0);
                 Assert::IsTrue(occupiedEdge.texture<=8.0 && occupiedEdge.lumaP90==64.0);
@@ -266,7 +563,7 @@ namespace VideoProcessorTest
                 else
                     Assert::IsTrue(occupiedEdge.blackFraction<0.96);
 
-                const auto safety=EvaluateActivePicturePresentationRetention(source,measured.trustedBounds);
+                const auto safety=EvaluateActivePicturePresentationRetention(source,measured.proposedBounds);
                 Assert::IsTrue(safety.analysisValid && safety.presentationValid);
                 Assert::IsFalse(safety.globalNearBlack);
                 Assert::IsFalse(safety.excludedBandsPixelSafe,

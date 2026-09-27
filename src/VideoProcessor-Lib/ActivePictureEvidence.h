@@ -325,3 +325,15 @@ struct FullRasterColorEvidence
 };
 FullRasterColorEvidence EvaluateFullRasterColorEvidence(
     const AnalysisLumaSource& source);
+
+// Pixel-only corroboration; callers must independently qualify learned geometry.
+struct RelativeBarContrastEvidence
+{
+    bool evaluated = false, valid = false;
+    ActivePictureBounds base, target;
+    uint64_t sourceGeneration = 0;
+    size_t samples = 0;
+    const char* reason = "not-evaluated";
+};
+RelativeBarContrastEvidence InspectRelativeBarContrast(const AnalysisLumaSource& source,
+    const ActivePictureEvidence& raw, const ActivePictureBounds& base);

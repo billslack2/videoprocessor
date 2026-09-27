@@ -6791,6 +6791,113 @@ namespace Tests
 				static_cast<int>(widerContent.unusedAxis));
 		}
 
+        TEST_METHOD(LoggedBottomPlacementAmbiguityKeepsBothFramesBottomAnchored)
+        {
+            const int sequences[]={6276,6290};
+            const int tops[]={108,96}, bottoms[]={1996,2042};
+            for(int i=0;i<2;++i)
+            {
+                auto crop=TrustedScopeCrop();
+                crop.geometry={0,168,3840,1992,3840,2160,3840.0/1824,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+                crop.frameSourceSequence=sequences[i];
+                crop.latestObservationSupportsCrop=false;
+                crop.latestObservationIsProvisional=true;
+                crop.latestObservationClassification=ActivePictureClassification::PROVISIONAL;
+                crop.ambiguityHoldActive=true;
+                crop.frameLocalPresentationRetentionEvaluated=true;
+                crop.frameLocalPresentationRetentionSafe=false;
+                crop.outwardPresentationActive=crop.outwardExpansionAvailable=true;
+                crop.outwardExpansionSourceGeneration=crop.frameSourceGeneration;
+                crop.outwardExpansion={0,tops[i],3840,bottoms[i],3840,2160,0,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+                const auto retained=Evaluate(crop);
+                Assert::IsTrue(retained.applyCrop && retained.outwardExpanded);
+                Assert::AreEqual(tops[i],retained.sourceBounds.top);
+                Assert::AreEqual(bottoms[i],retained.sourceBounds.bottom);
+                AspectLimitFillInput input;
+                input.trustedContentAuthorityAccepted=retained.applyCrop;
+                input.sourceBounds=retained.sourceBounds;
+                input.contentReferenceAvailable=true;input.contentReferenceBounds=crop.geometry;
+                input.cropWiderContentToFillScreen=input.widerLimitConfigured=true;
+                input.widerAspectLimit=2.0;input.screenAspect=16.0/9.0;
+                const auto filled=EvaluateAspectLimitFill(input);
+                const auto& selected=filled.applied ? filled.sourceBounds : retained.sourceBounds;
+                const auto source=ResolveNlsSourceGeometry(retained.applyCrop || filled.applied,
+                    selected.left,selected.top,selected.right,selected.bottom,3840,2160);
+                Assert::IsTrue(source.valid);
+                const auto layout=FitAspect(source.aspect,{0,0,3840,2160},VerticalPictureAlignment::BOTTOM);
+                Assert::IsTrue(layout.valid);
+                const auto trace="logged sequence="+std::to_string(sequences[i])+" fill="+std::to_string(filled.applied)+
+                    " picture.top="+std::to_string(layout.picture.top)+" bottom="+std::to_string(layout.picture.bottom);
+                Logger::WriteMessage(trace.c_str());
+                Assert::AreEqual(i==0 ? 272.0 : 214.0,layout.picture.top,0.001,
+                    L"Ambiguity expansion must not authorize full-height fill of out-of-limit logical content.");
+                Assert::AreEqual(2160.0,layout.picture.bottom,0.001);
+                Assert::AreEqual(0.0,layout.picture.left,0.001);Assert::AreEqual(3840.0,layout.picture.right,0.001);
+                Assert::IsFalse(filled.applied);
+                Assert::AreEqual(0,selected.left);Assert::AreEqual(3840,selected.right);
+                Assert::AreEqual(tops[i],selected.top);Assert::AreEqual(bottoms[i],selected.bottom);
+            }
+        }
+
+        TEST_METHOD(LoggedBottomPlacementRefinementDoesNotToggleFullHeightFill)
+        {
+            // Exact logged snapshots 3906 -> 3908 -> 3911. Legitimate outward
+            // protection changes height; bottom alignment does not freeze the top.
+            const int sequences[]={3906,3908,3911};
+            const int tops[]={94,176,94},bottoms[]={2052,1980,2052};
+            for(int i=0;i<3;++i)
+            {
+                auto crop=TrustedScopeCrop();
+                crop.geometry={0,176,3840,1980,3840,2160,3840.0/1804,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+                crop.frameSourceSequence=sequences[i];
+                crop.latestObservationSupportsCrop=false;
+                crop.barCropRefinementPending=true;
+                crop.latestObservationClassification=ActivePictureClassification::BAR_CROP_TRUSTED;
+                crop.outwardPresentationActive=crop.outwardExpansionAvailable=i!=1;
+                crop.outwardExpansionSourceGeneration=crop.frameSourceGeneration;
+                crop.outwardExpansion={0,tops[i],3840,bottoms[i],3840,2160,0,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+                const auto retained=Evaluate(crop);
+                Assert::IsTrue(retained.applyCrop);
+                Assert::AreEqual(tops[i],retained.sourceBounds.top);Assert::AreEqual(bottoms[i],retained.sourceBounds.bottom);
+                AspectLimitFillInput input;
+                input.trustedContentAuthorityAccepted=retained.applyCrop;
+                input.sourceBounds=retained.sourceBounds;input.contentReferenceAvailable=true;input.contentReferenceBounds=crop.geometry;
+                input.cropWiderContentToFillScreen=input.widerLimitConfigured=true;
+                input.widerAspectLimit=2.0;input.screenAspect=16.0/9.0;
+                const auto filled=EvaluateAspectLimitFill(input);
+                const auto& selected=filled.applied ? filled.sourceBounds : retained.sourceBounds;
+                const auto source=ResolveNlsSourceGeometry(true,selected.left,selected.top,selected.right,selected.bottom,3840,2160);
+                const auto layout=FitAspect(source.aspect,{0,0,3840,2160},VerticalPictureAlignment::BOTTOM);
+                Assert::IsTrue(source.valid && layout.valid);
+                Logger::WriteMessage(("logged sequence="+std::to_string(sequences[i])+" picture.top="+std::to_string(layout.picture.top)).c_str());
+                Assert::AreEqual(i==1 ? 356.0 : 202.0,layout.picture.top,0.001,
+                    L"Refinement must not toggle side fill and destroy the bottom-aligned slack.");
+                Assert::AreEqual(2160.0,layout.picture.bottom,0.001);
+                Assert::AreEqual(0.0,layout.picture.left,0.001);Assert::AreEqual(3840.0,layout.picture.right,0.001);
+                Assert::IsFalse(filled.applied);
+                Assert::AreEqual(0,selected.left);Assert::AreEqual(3840,selected.right);
+            }
+        }
+
+        TEST_METHOD(LoggedBottomPlacementEligibleFillStillUsesFullScreen)
+        {
+            AspectLimitFillInput input;
+            input.trustedContentAuthorityAccepted=true;
+            input.contentReferenceAvailable=true;
+            input.contentReferenceBounds={0,80,3840,2080,3840,2160,1.92,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+            input.sourceBounds={0,40,3840,2110,3840,2160,0,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+            input.cropWiderContentToFillScreen=input.widerLimitConfigured=true;
+            input.widerAspectLimit=2.0;input.screenAspect=16.0/9.0;
+            const auto filled=EvaluateAspectLimitFill(input);
+            Assert::IsTrue(filled.applied);
+            const auto& selected=filled.sourceBounds;
+            const auto source=ResolveNlsSourceGeometry(true,selected.left,selected.top,selected.right,selected.bottom,3840,2160);
+            const auto layout=FitAspect(source.aspect,{0,0,3840,2160},VerticalPictureAlignment::BOTTOM);
+            Assert::IsTrue(source.valid && layout.valid);
+            Assert::AreEqual(0.0,layout.picture.top,0.001);Assert::AreEqual(2160.0,layout.picture.bottom,0.001);
+            Assert::AreEqual(0.0,layout.picture.left,0.001);Assert::AreEqual(3840.0,layout.picture.right,0.001);
+        }
+
         TEST_METHOD(FillContentReferenceRejectsBothLoggedGermanTvZoomBursts)
         {
             for(bool second:{false,true}) {

@@ -9473,7 +9473,28 @@ struct LibplaceboVideoRenderer::Impl
                 !movingPictureTransition.active && !movingPictureTransition.awaitingPublication &&
                 AlphaSourceCrop::ValidateBufferedTranslatedPictureExpansion(*bufferedExpansion,
                     currentIdentity, admissionInput, eligiblePictureChange, subtitleBase);
-            const bool bufferedExpansionReady = bufferedTranslationHandoff ||
+            RelativeBarContrastEvidence currentRelativeContrast;
+            bool currentQualifiedPair = false;
+            const bool relativeOwnerEligible = rememberedEdgeGuarded && automaticSourceCrop &&
+                configuredScreenActive && !nlsRequested && !fixedCropAspectConfigured &&
+                nlsGeometryOrigin == ActivePictureAuthorityOrigin::NATIVE &&
+                !nearBlackAcquisitionBlocked && !wasMovingPicture && !wasAwaitingPicturePublication &&
+                !movingPictureTransition.active && !movingPictureTransition.awaitingPublication &&
+                nearBlackPresentationEpisode.mode == AlphaSourceCrop::NearBlackPresentationMode::INACTIVE;
+            if (bufferedExpansion && bufferedExpansion->relativeContrast && relativeOwnerEligible)
+            {
+                currentQualifiedPair = nlsTransition.HasQualifiedNativeAspectPair(nlsGeometry,
+                    evidence.trustedBounds, analysisSource.generation, rememberedEdgeSceneId, now);
+                if (currentQualifiedPair)
+                    currentRelativeContrast = InspectRelativeBarContrast(analysisSource, evidence, nlsGeometry);
+            }
+            const bool bufferedRelativeReady = relativeOwnerEligible && bufferedExpansion &&
+                AlphaSourceCrop::ValidateBufferedRelativePictureExpansion(*bufferedExpansion,
+                    currentIdentity, admissionInput, eligiblePictureChange, currentQualifiedPair,
+                    currentRelativeContrast, subtitleBase, scopeSubtitleFitConfirmation.confirmations);
+            const bool bufferedRelativeFitHandoff = bufferedRelativeReady &&
+                scopeVerticalBarPresentation.action == AlphaSourceCrop::VerticalBarPresentationAction::FIT;
+            const bool bufferedExpansionReady = bufferedTranslationHandoff || bufferedRelativeReady ||
                 (!movingPictureTransition.active && bufferedExpansion &&
                  AlphaSourceCrop::ValidateBufferedPictureExpansion(*bufferedExpansion,
                     currentIdentity, admissionInput, eligiblePictureChange));
@@ -9489,11 +9510,12 @@ struct LibplaceboVideoRenderer::Impl
 					frameNumber, framesPerSecond);
 			}
 			if (bufferedExpansion && bufferedExpansion->valid)
-				DebugLog::Log("Alpha buffered picture proof: instance=%s sequence=%llu through=%llu samples=%u current_valid=%d",
+				DebugLog::Log("Alpha buffered picture proof: instance=%s sequence=%llu through=%llu samples=%u current_valid=%d relative_contrast=%d qualified_pair=%d pixel_reason=%s",
 					diagnosticInstanceId.c_str(), frameNumber,
 					bufferedExpansion->decision.observationIdentity.acceptedSequence,
 					static_cast<unsigned>(bufferedExpansion->decision.proofFrameCount),
-					bufferedExpansionReady ? 1 : 0);
+					bufferedExpansionReady ? 1 : 0, bufferedExpansion->relativeContrast ? 1 : 0,
+                    currentQualifiedPair ? 1 : 0, currentRelativeContrast.reason);
 			const auto observation = admission.observation;
 			const bool deferPresentationOwnedTransition = admission.deferPresentation;
 			const bool deferOutwardLogicalTransition = admission.deferOutward;
@@ -9807,7 +9829,7 @@ struct LibplaceboVideoRenderer::Impl
                         inwardCaptionEvidence.protectedBounds.left, inwardCaptionEvidence.protectedBounds.top,
                         inwardCaptionEvidence.protectedBounds.right, inwardCaptionEvidence.protectedBounds.bottom);
                 }
-                if (applyScheduledDecision && bufferedTranslationHandoff)
+                if (applyScheduledDecision && (bufferedTranslationHandoff || bufferedRelativeFitHandoff))
                 {
                     // Retire the old owner only after the actual geometry publication.
                     // Rejected preview/adoption must leave subtitle presentation intact.
@@ -9818,10 +9840,11 @@ struct LibplaceboVideoRenderer::Impl
                     ClearScopePresentationEvidence();
                     scopeSubtitleInspection = {};
                     scopeVerticalInspectionBridge = {};
-                    DebugLog::Log("Alpha buffered translation handoff: instance=%s generation=%llu sequence=%llu through=%llu old_shift=%.1f new_base=%d,%d-%d,%d owner_retired=1",
+                    DebugLog::Log("Alpha buffered presentation handoff: instance=%s generation=%llu sequence=%llu through=%llu old_shift=%.1f new_base=%d,%d-%d,%d owner_retired=1 relative_fit=%d",
                         diagnosticInstanceId.c_str(), analysisSource.generation, frameNumber,
                         bufferedExpansion->decision.observationIdentity.acceptedSequence, oldShift,
-                        nlsGeometry.left, nlsGeometry.top, nlsGeometry.right, nlsGeometry.bottom);
+                        nlsGeometry.left, nlsGeometry.top, nlsGeometry.right, nlsGeometry.bottom,
+                        bufferedRelativeFitHandoff ? 1 : 0);
                 }
 				// Only a new temporal publication is a commitment; the stable-history
 				// fallback below must never re-arm authority after contradictory bars.
@@ -16400,6 +16423,8 @@ void LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
     bool inwardCaptionInspectionEligible = false;
     uint64_t inwardCaptionSourceGeneration = 0, inwardCaptionViewport = 0;
     bool shadowFit = false;
+    bool relativeContrastEligible = false;
+    uint64_t relativeContrastScene = 0;
     bool diagnosticTrustedBase = false, diagnosticOwnerEligible = false;
     uint64_t diagnosticOwner = 0;
     // Shadow comparison and separately authorized guarded certificates use the
@@ -16535,6 +16560,14 @@ void LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
         {
             proofBase = m_impl->nlsGeometry;
             liveProofModel = m_impl->nlsTransition;
+            relativeContrastEligible = m_impl->rememberedEdgeGuarded &&
+                m_impl->automaticSourceCrop && m_impl->renderConfiguredScreenActive &&
+                !m_impl->nlsRequested && !m_impl->fixedCropAspectConfigured &&
+                m_impl->nlsGeometryOrigin == ActivePictureAuthorityOrigin::NATIVE &&
+                (unowned || shadowFit) && !m_impl->movingPictureTransition.active &&
+                !m_impl->movingPictureTransition.awaitingPublication &&
+                m_impl->nearBlackPresentationEpisode.mode == AlphaSourceCrop::NearBlackPresentationMode::INACTIVE;
+            relativeContrastScene = m_impl->rememberedEdgeSceneId;
             // Translation is eligible only for the independent broad OUTWARD
             // certificate; do not relax the inward proof's owner veto.
             inwardProofEligible = unowned && !m_impl->movingPictureTransition.active &&
@@ -16659,6 +16692,18 @@ void LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
 		{
 			const auto proofInspectionStart = SteadyClock::now();
 			sample.retention = EvaluateActivePicturePresentationRetention(source, proofBase);
+            if (relativeContrastEligible && !queued.cadenceRepeat &&
+                !queued.frame.IsSourceDiscontinuity() &&
+                liveProofModel.HasQualifiedNativeAspectPair(proofBase, evidence.trustedBounds,
+                    sample.identity.transportGeneration, relativeContrastScene, rememberedWindowTick))
+            {
+                // The preview source uses a format key. Bind this independent
+                // pixel proof to the transport generation used at consumption.
+                auto relativeSource = source;
+                relativeSource.generation = sample.identity.transportGeneration;
+                sample.qualifiedAspectPair = true;
+                sample.relativeContrast = InspectRelativeBarContrast(relativeSource, evidence, proofBase);
+            }
 			proofInspectionMs += std::chrono::duration<double, std::milli>(
 				SteadyClock::now() - proofInspectionStart).count();
 			proofSamples.push_back(sample);
@@ -16777,18 +16822,41 @@ void LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
 			{
                 if (shadowFit)
                 {
-                    shadowDiagnostic = AlphaSourceCrop::InspectBufferedPictureExpansion(
+                    const auto fitProof = AlphaSourceCrop::BuildBufferedPictureExpansion(
                         proofSamples.data(), proofSamples.size(), proofBase, configured,
                         availableLookahead, m_activePictureTimeline.ContinuityGeneration(), lookaheadPolicyGeneration);
+                    auto broadShadowSamples = proofSamples;
+                    for (auto& sample : broadShadowSamples) sample.qualifiedAspectPair = false;
+                    shadowDiagnostic = AlphaSourceCrop::InspectBufferedPictureExpansion(
+                        broadShadowSamples.data(), broadShadowSamples.size(), proofBase, configured,
+                        availableLookahead, m_activePictureTimeline.ContinuityGeneration(), lookaheadPolicyGeneration);
+                    // Ordinary broad FIT proofs remain diagnostic only. The
+                    // separately qualified contrast proof samples the full depth of both discarded
+                    // bars before the live owner can be retired after adoption.
+                    if (fitProof.valid && fitProof.relativeContrast)
+                    {
+                        m_frameQueue.front().bufferedPictureExpansion = fitProof;
+                        diagnosticBuilt = diagnosticProofValid = true;
+                    }
                     shadowBuilt = true;
-                    diagnosticQueueStage = shadowDiagnostic.passes ? "shadow-fit-proof-ready" : "shadow-fit-proof-rejected";
+                    diagnosticQueueStage = diagnosticProofValid ? "relative-fit-proof-ready" :
+                        (shadowDiagnostic.passes ? "shadow-fit-proof-ready" : "shadow-fit-proof-rejected");
                 }
                 else
                 {
-                    m_frameQueue.front().bufferedPictureExpansion =
-                        AlphaSourceCrop::BuildBufferedPictureExpansion(proofSamples.data(),
+                    // Preserve the established broad path whenever it already
+                    // proves the window. History expiry must not slow a proof
+                    // that never needed learned-aspect corroboration.
+                    auto broadSamples = proofSamples;
+                    for (auto& sample : broadSamples) sample.qualifiedAspectPair = false;
+                    auto proof = AlphaSourceCrop::BuildBufferedPictureExpansion(broadSamples.data(),
+                        broadSamples.size(), proofBase, configured, availableLookahead,
+                        m_activePictureTimeline.ContinuityGeneration(), lookaheadPolicyGeneration);
+                    if (!proof.valid)
+                        proof = AlphaSourceCrop::BuildBufferedPictureExpansion(proofSamples.data(),
                             proofSamples.size(), proofBase, configured, availableLookahead,
                             m_activePictureTimeline.ContinuityGeneration(), lookaheadPolicyGeneration);
+                    m_frameQueue.front().bufferedPictureExpansion = proof;
                     diagnosticBuilt = true;
                     diagnosticProofValid = m_frameQueue.front().bufferedPictureExpansion.valid;
                     diagnosticQueueStage = diagnosticProofValid ? "proof-ready" : "proof-rejected";
@@ -16859,7 +16927,7 @@ void LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
                     for (const auto& sample : proofSamples)
                     {
                         const auto& r = sample.retention;
-                        DebugLog::Log("Alpha picture preview sample: schema=1 instance=%s generation=%llu sequence=%llu epoch=%llu window_first=%llu source_frame=%llu capture_timestamp=%llu available=%d class=%d deferred=%d axes_failed=%d near_black=%d/%d retention=%d/%d strips=%d candidate=%d,%d-%d,%d fields=pixels,black_fraction,p90,texture,continuity top=%d,%.4f,%.1f,%.1f,%.4f bottom=%d,%.4f,%.1f,%.1f,%.4f",
+                        DebugLog::Log("Alpha picture preview sample: schema=1 instance=%s generation=%llu sequence=%llu epoch=%llu window_first=%llu source_frame=%llu capture_timestamp=%llu available=%d class=%d deferred=%d axes_failed=%d near_black=%d/%d retention=%d/%d strips=%d candidate=%d,%d-%d,%d fields=pixels,black_fraction,p90,texture,continuity top=%d,%.4f,%.1f,%.1f,%.4f bottom=%d,%.4f,%.1f,%.1f,%.4f qualified_pair=%d relative_valid=%d relative_samples=%llu relative_reason=%s",
                             m_impl->diagnosticInstanceId.c_str(), sample.identity.transportGeneration,
                             sample.identity.acceptedSequence,sample.identity.viewportGeneration,first.identity.acceptedSequence,
                             sample.identity.sourceFrameNumber,sample.identity.captureTimestamp,
@@ -16870,7 +16938,9 @@ void LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
                             sample.observation.bounds.left,sample.observation.bounds.top,
                             sample.observation.bounds.right,sample.observation.bounds.bottom,
                             r.expandingTop.barPixels,r.expandingTop.blackFraction,r.expandingTop.lumaP90,r.expandingTop.texture,r.expandingTop.continuity,
-                            r.expandingBottom.barPixels,r.expandingBottom.blackFraction,r.expandingBottom.lumaP90,r.expandingBottom.texture,r.expandingBottom.continuity);
+                            r.expandingBottom.barPixels,r.expandingBottom.blackFraction,r.expandingBottom.lumaP90,r.expandingBottom.texture,r.expandingBottom.continuity,
+                            sample.qualifiedAspectPair ? 1 : 0, sample.relativeContrast.valid ? 1 : 0,
+                            static_cast<unsigned long long>(sample.relativeContrast.samples), sample.relativeContrast.reason);
                     }
             }
         }
