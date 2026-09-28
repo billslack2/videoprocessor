@@ -1004,6 +1004,8 @@ namespace AlphaSourceCrop
 		bool confirmedNonNearBlackContent = false;
 		uint64_t outwardConfirmationLastSourceSequence = 0;
 		uint32_t outwardConfirmationSamples = 0;
+		uint64_t toleratedOutwardLastSourceSequence = 0;
+		uint32_t toleratedOutwardSamples = 0;
 		uint64_t lastEvaluatedSourceSequence = 0;
 		uint64_t revalidationStartedSourceSequence = 0;
 		uint64_t revalidationLastSourceSequence = 0;
@@ -1031,6 +1033,8 @@ namespace AlphaSourceCrop
 		// Current retention provenance and all episode safety gates still apply.
 		bool currentNativeObservationReaffirmsSparseEntry = false;
 		bool boundedVisibleContentOutsideCrop = false;
+		bool weakBoundedFringe = false;
+		bool minorVerticalOutwardExtent = false;
 		bool fullRasterAuthorityAvailable = false;
 		// Current context checked by UpdateKnownFullRasterRetention; never inferred
 		// from the raw full-raster presentation flag alone.
@@ -1091,8 +1095,11 @@ namespace AlphaSourceCrop
 	};
 
 	// A sparse near-black episode chooses one safe presentation on entry. It can
-	// move from retained crop to full raster immediately for visibility. A
-	// full-raster episode may restore only its exact entry crop after a bounded,
+	// move from retained crop to full raster immediately for clear outward
+	// content beyond the established geometry tolerance. A small bounded
+	// vertical expansion retains the exact crop even when real edge pixels
+	// persist. A full-raster episode may restore only its exact entry
+	// crop after a bounded,
 	// current-frame pixel-safe revalidation dwell. The same proof ends retained
 	// crop episodes once bright scope returns. Neither path grants authority to
 	// startup or unrelated recent geometry. An independently safe sampling-sized
@@ -1102,6 +1109,14 @@ namespace AlphaSourceCrop
 		const ActivePictureBounds& candidate);
 	NearBlackPresentationEpisodeDecision EvaluateNearBlackPresentationEpisode(
 		const NearBlackPresentationEpisodeInput& input);
+	// The release frame has completed crop proof but its ordinary observation
+	// can still be provisional. Keep the crop owner through that handoff.
+	inline bool NearBlackEpisodeOwnsCropThisFrame(
+		const NearBlackPresentationEpisodeDecision& decision)
+	{
+		return decision.state.mode == NearBlackPresentationMode::RETAIN_CROP ||
+			decision.releasedToTrustedCrop;
+	}
 	const char* NearBlackPresentationModeName(NearBlackPresentationMode mode);
 	bool ShouldSuppressNearBlackBarGeometryMutation(bool acquisitionBlocked,
 		bool stable, ActivePictureClassification classification);

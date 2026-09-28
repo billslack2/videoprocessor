@@ -222,6 +222,12 @@ struct ActivePicturePresentationRetentionEvidence
 	bool outwardVisibleBoundsAvailable = false;
 	ActivePictureBounds outwardVisibleBounds;
 	ActivePictureVisibleExtentDiagnostic visibleLeft, visibleTop, visibleRight, visibleBottom;
+	// A sparse, near-threshold signal confined to the first two excluded rows.
+	// This describes evidence strength; it does not call those pixels black.
+	bool IsWeakBoundedFringe(const ActivePictureBounds& presentation) const;
+	// A bounded vertical expansion within the established 5% aspect tolerance.
+	// This may include real menu pixels: stable framing intentionally wins.
+	bool IsMinorVerticalOutwardExtent(const ActivePictureBounds& presentation) const;
 	ActivePictureEvidence activePicture;
 	ActivePictureEdgeEvidence excludedLeft;
 	ActivePictureEdgeEvidence excludedTop;

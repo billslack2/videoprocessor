@@ -2524,6 +2524,16 @@ namespace AlphaSourceCrop
 			decision.reason =
 				"presentation epoch changed; near-black proof restarted";
 		}
+		if (decision.state.mode == NearBlackPresentationMode::RETAIN_CROP &&
+			decision.state.presentationEpoch != input.presentationEpoch)
+		{
+			// A new viewport contract cannot inherit the old crop or its pending
+			// fringe votes. Ordinary current-epoch geometry chooses presentation.
+			decision.state = {};
+			decision.ended = true;
+			decision.reason =
+				"presentation epoch ended retained near-black episode";
+		}
 
 		if (input.sceneBoundary &&
 			decision.state.mode != NearBlackPresentationMode::INACTIVE)
@@ -2561,7 +2571,9 @@ namespace AlphaSourceCrop
 			decision.state.mode == NearBlackPresentationMode::INACTIVE)
 		{
 			decision.state.mode = input.trustedCropAvailable &&
-				!input.boundedVisibleContentOutsideCrop
+				(!input.boundedVisibleContentOutsideCrop ||
+				 (input.minorVerticalOutwardExtent &&
+				  !input.fullRasterAuthorityAvailable))
 				? NearBlackPresentationMode::RETAIN_CROP
 				: NearBlackPresentationMode::FULL_RASTER;
 			decision.state.sourceGeneration = input.sourceGeneration;
@@ -2590,14 +2602,48 @@ namespace AlphaSourceCrop
 		}
 
 		if (decision.state.mode == NearBlackPresentationMode::RETAIN_CROP &&
+			input.measurementCurrent && !input.boundedVisibleContentOutsideCrop)
+		{
+			decision.state.toleratedOutwardLastSourceSequence = 0;
+			decision.state.toleratedOutwardSamples = 0;
+		}
+		if (decision.state.mode == NearBlackPresentationMode::RETAIN_CROP &&
 			input.measurementCurrent && input.boundedVisibleContentOutsideCrop)
 		{
-			decision.state.mode = NearBlackPresentationMode::FULL_RASTER;
-			decision.state.fullRasterStartedSourceSequence =
-				input.sourceSequence;
-			decision.changedToFullRaster = true;
-			decision.reason =
-				"bounded visible title content latched full raster for episode";
+			// A bounded vertical expansion within the established aspect tolerance
+			// may contain real menu pixels. Duration alone cannot turn that small
+			// difference into a new picture size. Larger outward content remains
+			// an immediate visibility override.
+			const bool toleratedOutward = input.minorVerticalOutwardExtent &&
+				input.trustedCropAvailable &&
+				decision.state.entryTrustedCropAvailable &&
+				SameTrustedCropContract(input.trustedCrop,
+					decision.state.entryTrustedCrop) &&
+				!input.fullRasterAuthorityAvailable;
+			if (toleratedOutward && !input.cadenceRepeat && input.sourceSequence != 0 &&
+				input.sourceSequence > decision.state.toleratedOutwardLastSourceSequence)
+			{
+				decision.state.toleratedOutwardSamples =
+					decision.state.toleratedOutwardLastSourceSequence != 0 &&
+					input.sourceSequence ==
+						decision.state.toleratedOutwardLastSourceSequence + 1
+					? (decision.state.toleratedOutwardSamples < UINT32_MAX
+						? decision.state.toleratedOutwardSamples + 1 : UINT32_MAX) : 1;
+				decision.state.toleratedOutwardLastSourceSequence = input.sourceSequence;
+			}
+			if (!toleratedOutward)
+			{
+				decision.state.mode = NearBlackPresentationMode::FULL_RASTER;
+				decision.state.fullRasterStartedSourceSequence =
+					input.sourceSequence;
+				decision.changedToFullRaster = true;
+				decision.reason = "bounded visible title content latched full raster for episode";
+			}
+			else
+			{
+				decision.reason =
+					"minor bounded outward content retained established crop";
+			}
 		}
 		else if (decision.state.mode ==
 			NearBlackPresentationMode::RETAIN_CROP &&

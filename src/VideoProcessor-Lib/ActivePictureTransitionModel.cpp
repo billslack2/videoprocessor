@@ -228,6 +228,38 @@ bool ActivePictureTransitionModel::WithinStableGeometryDeadband(
 		std::abs(stableHeight - observationHeight) <= verticalLimit;
 }
 
+bool ActivePictureTransitionModel::IsMinorVerticalOutwardGeometry(
+	const ActivePictureBounds& established,
+	const ActivePictureBounds& expanded)
+{
+	if (established.rasterWidth <= 0 || established.rasterHeight <= 0 ||
+		established.trustedBarAxes != ActivePictureBounds::BarAxes::TOP_BOTTOM ||
+		established.left != 0 ||
+		established.right != established.rasterWidth ||
+		established.top <= 0 ||
+		established.bottom >= established.rasterHeight ||
+		established.top >= established.bottom ||
+		expanded.rasterWidth != established.rasterWidth ||
+		expanded.rasterHeight != established.rasterHeight ||
+		expanded.left != established.left ||
+		expanded.right != established.right ||
+		expanded.top < 0 ||
+		expanded.bottom > established.rasterHeight ||
+		expanded.top >= expanded.bottom)
+		return false;
+	const int topExpansion = established.top - expanded.top;
+	const int bottomExpansion = expanded.bottom - established.bottom;
+	if (topExpansion < 0 || bottomExpansion < 0 ||
+		(topExpansion == 0 && bottomExpansion == 0))
+		return false;
+	const double fraction = STABLE_ASPECT_DEADBAND_PERCENT / 100.0;
+	const double edgeLimit = established.rasterHeight * fraction / 2.0;
+	const double totalLimit =
+		(established.bottom - established.top) * fraction;
+	return topExpansion <= edgeLimit && bottomExpansion <= edgeLimit &&
+		topExpansion + bottomExpansion <= totalLimit;
+}
+
 ActivePicturePublicationAdmission ActivePictureTransitionModel::StableRetentionAdmission(
 	const ActivePictureBounds& bounds,
 	ActivePictureClassification classification) const
@@ -235,11 +267,15 @@ ActivePicturePublicationAdmission ActivePictureTransitionModel::StableRetentionA
 	if (!m_hasStable) return ActivePicturePublicationAdmission::ACCEPTED;
 	if (WithinStableGeometryDeadband(m_stable, bounds))
 		return ActivePicturePublicationAdmission::STABLE_GEOMETRY_RETAINED;
+	if (m_stableClassification == ActivePictureClassification::BAR_CROP_TRUSTED &&
+		classification == ActivePictureClassification::FULL_RASTER_TRUSTED &&
+		IsMinorVerticalOutwardGeometry(m_stable, bounds))
+		return ActivePicturePublicationAdmission::STABLE_ASPECT_RETAINED;
 
 	// A contained inset cannot hide new picture outside the accepted frame.
 	// Keep the established format through small AR drift or proportional
-	// zoom-out. Outward growth, translations, and full-raster evidence retain
-	// their normal admission and current-pixel visibility paths.
+	// zoom-out. Outward growth beyond the bounded tolerance, translations, and
+	// materially different full-raster evidence retain their normal paths.
 	if (m_stableClassification != ActivePictureClassification::BAR_CROP_TRUSTED ||
 		classification != ActivePictureClassification::BAR_CROP_TRUSTED ||
 		bounds.rasterWidth != m_stable.rasterWidth ||
