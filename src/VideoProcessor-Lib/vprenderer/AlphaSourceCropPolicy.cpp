@@ -1927,6 +1927,35 @@ namespace AlphaSourceCrop
             return input.currentBounds;
         return input.effectiveBase;
     }
+    ActivePictureBounds SelectGenericFitEnvelope(const PresentationEnvelopeSelectionInput& input)
+    {
+        const auto& current=input.currentBounds;
+        const auto& base=input.effectiveBase;
+        const auto& history=input.history;
+        // This is presentation retention, never new crop authority. The caller
+        // has already admitted the current generic FIT. Do not refresh the
+        // history's per-edge deadlines or hide any newly visible pixels.
+        if (!input.envelopeActive || !history.available ||
+            !input.frameGeneration || !input.frameSequence ||
+            input.currentGeneration!=input.frameGeneration ||
+            input.currentSequence!=input.frameSequence ||
+            history.sourceGeneration!=input.frameGeneration ||
+            !SameBounds(history.base,base) || history.base.trustedBarAxes!=base.trustedBarAxes ||
+            !ValidBounds(current,base.rasterWidth,base.rasterHeight) ||
+            !ValidBounds(history.bounds,base.rasterWidth,base.rasterHeight) ||
+            !CropEdgesAreChromaAligned(current,base.rasterWidth,base.rasterHeight) ||
+            !CropEdgesAreChromaAligned(history.bounds,base.rasterWidth,base.rasterHeight) ||
+            !ContainedBounds(current,base) || !ContainedBounds(history.bounds,base) ||
+            history.bounds.top>current.top || history.bounds.bottom<current.bottom ||
+            !SamplingEquivalentAxis(history.bounds.top,history.bounds.bottom,
+                current.top,current.bottom,SamplingTolerance(base)))
+            return current;
+        auto selected=current;
+        selected.top=history.bounds.top;
+        selected.bottom=history.bounds.bottom;
+        selected.aspectRatio=static_cast<double>(selected.right-selected.left)/(selected.bottom-selected.top);
+        return selected;
+    }
 	PresentationEnvelopeDecision EvaluatePresentationEnvelope(
 		const PresentationEnvelopeInput& input)
 	{

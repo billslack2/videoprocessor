@@ -749,6 +749,9 @@ namespace AlphaSourceCrop
         bool envelopeActive=false;
     };
     ActivePictureBounds SelectPresentationEnvelopeBounds(const PresentationEnvelopeSelectionInput& input);
+    // Generic FIT may retain only sampling-equivalent vertical extents;
+    // current pixels always win for outward growth or a different contract.
+    ActivePictureBounds SelectGenericFitEnvelope(const PresentationEnvelopeSelectionInput& input);
 	struct PresentationEnvelopeInput
 	{
 		bool envelopeAvailable = false;

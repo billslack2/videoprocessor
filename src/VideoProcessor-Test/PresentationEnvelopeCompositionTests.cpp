@@ -435,6 +435,139 @@ namespace Tests
             }
         }
 
+        TEST_METHOD(GenericFitSamplingEnvelopeStaysStableAcrossResolutions)
+        {
+            for (const int height : {540,720,1080,2160})
+            {
+                const int width=height*16/9 & ~1;
+                const int tolerance=std::max(2,std::max(width/480,height/270));
+                const auto base=Bounds(0,40,width,height-40,width,height);
+                auto outer=base; outer.top=20; outer.bottom=height-20;
+                PresentationEnvelopeSelectionInput input;
+                input.effectiveBase=base; input.envelopeActive=true;
+                input.frameGeneration=input.currentGeneration=3;
+                input.history=UpdatePresentationEnvelopeExtents({},base,outer,3,1,1000,2000);
+                for (int delta=0;delta<=tolerance;delta+=2)
+                {
+                    input.frameSequence=input.currentSequence=2+delta;
+                    input.currentBounds=outer; input.currentBounds.top+=delta;
+                    const auto selected=SelectGenericFitEnvelope(input);
+                    Assert::AreEqual(outer.top,selected.top);
+                    Assert::AreEqual(outer.bottom,selected.bottom);
+                }
+            }
+        }
+
+        TEST_METHOD(GenericFitSamplingEnvelopeDoesNotHideGrowthOrLargeChanges)
+        {
+            const auto base=Bounds(0,44,3840,2116);
+            const auto outer=Bounds(0,26,3840,2132);
+            PresentationEnvelopeSelectionInput input;
+            input.effectiveBase=base; input.envelopeActive=true;
+            input.frameGeneration=input.currentGeneration=3;
+            input.frameSequence=input.currentSequence=2;
+            input.history=UpdatePresentationEnvelopeExtents({},base,outer,3,1,1000,2000);
+            for (const int top : {16,24,36,44})
+            {
+                input.currentBounds=outer; input.currentBounds.top=top;
+                Assert::AreEqual(top,SelectGenericFitEnvelope(input).top);
+            }
+            input.currentBounds=Bounds(0,28,3840,2132);
+            for (int fault=0;fault<4;++fault)
+            {
+                auto invalid=input;
+                if(fault==0) invalid.envelopeActive=false;
+                if(fault==1) invalid.history.sourceGeneration=2;
+                if(fault==2) invalid.history.base.top+=2;
+                if(fault==3) invalid.history.available=false;
+                Assert::AreEqual(28,SelectGenericFitEnvelope(invalid).top);
+            }
+        }
+
+        TEST_METHOD(GenericFitSamplingEnvelopePreservesFillAcrossLoggedAndThresholdOffsets)
+        {
+            const auto base=Bounds(0,44,3840,2116);
+            const auto outer=Bounds(0,26,3840,2132);
+            PresentationEnvelopeSelectionInput selection;
+            selection.effectiveBase=base; selection.envelopeActive=true;
+            selection.frameGeneration=selection.currentGeneration=3;
+            selection.history=UpdatePresentationEnvelopeExtents({},base,outer,3,1,1000,2000);
+            AspectLimitFillInput fill;
+            fill.trustedContentAuthorityAccepted=true;
+            fill.contentReferenceAvailable=true; fill.contentReferenceBounds=base;
+            fill.screenAspect=16.0/9.0; fill.cropWiderContentToFillScreen=true;
+            fill.widerLimitConfigured=true; fill.widerAspectLimit=1.86;
+            fill.sourceBounds=outer;
+            const auto expected=EvaluateAspectLimitFill(fill);
+            Assert::IsTrue(expected.applied);
+            int frame=2;
+            for (int repeat=0;repeat<3;++repeat)
+                for (int topDelta : {0,2,4,6,8})
+                    for (int bottomDelta : {0,2,4,6,8})
+                    {
+                        selection.frameSequence=selection.currentSequence=frame++;
+                        selection.currentBounds=outer;
+                        selection.currentBounds.top+=topDelta;
+                        selection.currentBounds.bottom-=bottomDelta;
+                        fill.sourceBounds=SelectGenericFitEnvelope(selection);
+                        const auto actual=EvaluateAspectLimitFill(fill);
+                        Assert::IsTrue(actual.applied);
+                        if(topDelta+bottomDelta<=8)
+                        {
+                            Assert::AreEqual(expected.sourceBounds.left,actual.sourceBounds.left);
+                            Assert::AreEqual(expected.sourceBounds.top,actual.sourceBounds.top);
+                            Assert::AreEqual(expected.sourceBounds.right,actual.sourceBounds.right);
+                            Assert::AreEqual(expected.sourceBounds.bottom,actual.sourceBounds.bottom);
+                        }
+                        else
+                        {
+                            Assert::AreEqual(selection.currentBounds.top,fill.sourceBounds.top);
+                            Assert::AreEqual(selection.currentBounds.bottom,fill.sourceBounds.bottom);
+                        }
+                    }
+        }
+
+        TEST_METHOD(GenericFitSamplingEnvelopeKeepsHorizontalWitnessAndRejectsStaleCurrent)
+        {
+            const auto base=Bounds(100,100,3740,2060);
+            auto outer=Bounds(80,80,3760,2080);
+            PresentationEnvelopeSelectionInput input;
+            input.effectiveBase=base; input.envelopeActive=true;
+            input.frameGeneration=input.currentGeneration=3;
+            input.frameSequence=input.currentSequence=2;
+            input.history=UpdatePresentationEnvelopeExtents({},base,outer,3,1,1000,2000);
+            input.currentBounds=Bounds(60,82,3780,2078);
+            const auto selected=SelectGenericFitEnvelope(input);
+            Assert::AreEqual(60,selected.left); Assert::AreEqual(3780,selected.right);
+            Assert::AreEqual(80,selected.top); Assert::AreEqual(2080,selected.bottom);
+            for(int fault=0;fault<3;++fault)
+            {
+                auto invalid=input;
+                if(fault==0) invalid.currentGeneration=2;
+                if(fault==1) invalid.currentSequence=1;
+                if(fault==2) invalid.history.bounds.top=81;
+                Assert::AreEqual(82,SelectGenericFitEnvelope(invalid).top);
+            }
+        }
+
+        TEST_METHOD(GenericFitSamplingEnvelopeExpiresWithoutRefreshingOldEdges)
+        {
+            const auto base=Bounds(0,44,3840,2116);
+            const auto outer=Bounds(0,26,3840,2132);
+            const auto current=Bounds(0,28,3840,2132);
+            PresentationEnvelopeSelectionInput input;
+            input.effectiveBase=base; input.envelopeActive=true;
+            input.frameGeneration=input.currentGeneration=3;
+            input.history=UpdatePresentationEnvelopeExtents({},base,outer,3,1,1000,2000);
+            for(int frame=2;frame<=60;++frame)
+            {
+                const auto now=1000+frame*42;
+                input.history=UpdatePresentationEnvelopeExtents(input.history,base,current,3,frame,now,2000);
+                input.frameSequence=input.currentSequence=frame; input.currentBounds=current;
+                Assert::AreEqual(now<=3000 ? 26 : 28,SelectGenericFitEnvelope(input).top);
+            }
+        }
+
         TEST_METHOD(HeldDetectorAccumulationDoesNotShrinkUntilItsLifetimeIsInvalidated)
         {
             auto input=RecordedEnvelope();

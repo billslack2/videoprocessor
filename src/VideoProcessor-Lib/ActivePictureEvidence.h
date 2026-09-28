@@ -149,6 +149,22 @@ struct ActivePictureGlobalNearBlackEvidence
 };
 
 
+// Diagnostic witness from the actual two supporting depth lines. No additional sampling.
+struct ActivePictureVisibleExtentDiagnostic
+{
+	bool available = false;
+	int coordinate = 0; // Extent after one sample-step padding, before presentation margin.
+	int firstX = -1, firstY = -1;
+	int firstLuma = 0, firstU = 0, firstV = 0;
+	int firstReason = 0; // Bit 1: luma > cutoff; bit 2: chroma >= 64 and luma >= cutoff.
+	int firstLine = -1, secondLine = -1;
+	int firstLineSupport = 0, secondLineSupport = 0;
+	int peakLuma = 0, peakChromaDelta = 0; // Visible samples in the two supporting lines.
+	int sampleStep = 0, depthSamples = 0;
+	int lumaCutoff = 0;
+	int presentationMargin = 0;
+};
+
 // Per-frame pixel evidence for retaining an already trusted presentation
 // rectangle. This does not grant crop authority and does not apply temporal
 // policy. It only answers whether this frame is valid to inspect, whether the
@@ -205,6 +221,7 @@ struct ActivePicturePresentationRetentionEvidence
 	// already trusted presentation rectangle.
 	bool outwardVisibleBoundsAvailable = false;
 	ActivePictureBounds outwardVisibleBounds;
+	ActivePictureVisibleExtentDiagnostic visibleLeft, visibleTop, visibleRight, visibleBottom;
 	ActivePictureEvidence activePicture;
 	ActivePictureEdgeEvidence excludedLeft;
 	ActivePictureEdgeEvidence excludedTop;
