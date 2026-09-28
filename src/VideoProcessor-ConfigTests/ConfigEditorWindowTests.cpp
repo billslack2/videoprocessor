@@ -3197,6 +3197,79 @@ void testActiveProfileMarkersCoverRelevantLists()
         "The selected active row did not retain a full-width blue background");
 }
 
+void testActiveProfileOpensSelectedAfterLateStatusAndPreservesEdits()
+{
+    QTemporaryDir directory;
+    ConfigEditorWindow window(copyFixture(directory), 0, true);
+    auto* renderer = requireControl<QListWidget>(window,
+        QStringLiteral("config.vprenderer.profiles"));
+    auto* zoom = requireControl<QListWidget>(window,
+        QStringLiteral("config.vprenderer.zoom.profiles"));
+    auto* rendererStatus = requireControl<QLabel>(window,
+        QStringLiteral("config.vprenderer.selected_profile_status"));
+    auto* zoomStatus = requireControl<QLabel>(window,
+        QStringLiteral("config.vprenderer.zoom.selected_profile_status"));
+    require(renderer->count() >= 2 && zoom->count() >= 2,
+        "Profile fixture needs a nondefault Rendering and Zoom profile");
+    require(renderer->currentRow() == 0 && zoom->currentRow() == 0,
+        "Profile lists did not start with an editing selection");
+
+    // A snapshot may arrive after the editor has built its initial pages.
+    window.setActiveProfileStatusForTesting({}, {}, {}, {}, {}, true, {});
+    require(renderer->currentRow() == 0 && zoom->currentRow() == 0,
+        "An incomplete live snapshot moved the editing selection");
+    const QString activeRenderer = renderer->item(1)->data(Qt::UserRole).toString();
+    const QString activeZoom = zoom->item(1)->data(Qt::UserRole).toString();
+    window.setActiveProfileStatusForTesting({}, activeRenderer, {}, {}, {},
+        true, activeZoom);
+    require(renderer->currentRow() == 1 && zoom->currentRow() == 1,
+        "A late live snapshot did not select the active profiles");
+    require(rendererStatus->text().endsWith(QStringLiteral("(Active)")) &&
+        zoomStatus->text().endsWith(QStringLiteral("(Active)")),
+        "The selected profile details did not show the live active state");
+
+    renderer->setCurrentRow(0);
+    zoom->setCurrentRow(0);
+    window.setActiveProfileStatusForTesting({}, activeRenderer, {}, {}, {},
+        true, activeZoom);
+    require(renderer->currentRow() == 0 && zoom->currentRow() == 0,
+        "A status refresh displaced the profile selected for editing");
+    require(rendererStatus->text().endsWith(QStringLiteral("(Not active)")) &&
+        zoomStatus->text().endsWith(QStringLiteral("(Not active)")),
+        "The details label did not update after an editing selection");
+    window.setActiveProfileStatusForTesting({},
+        renderer->item(0)->data(Qt::UserRole).toString(), {}, {}, {}, true,
+        zoom->item(0)->data(Qt::UserRole).toString());
+    require(rendererStatus->text().endsWith(QStringLiteral("(Active)")) &&
+        zoomStatus->text().endsWith(QStringLiteral("(Active)")),
+        "A changed live profile did not refresh the selected details label");
+
+    window.show();
+    QCoreApplication::processEvents();
+    window.hide();
+    QCoreApplication::processEvents();
+    window.show();
+    QCoreApplication::processEvents();
+    window.setActiveProfileStatusForTesting({}, activeRenderer, {}, {}, {},
+        true, activeZoom);
+    require(renderer->currentRow() == 1 && zoom->currentRow() == 1,
+        "Reopening Config did not select the current active profiles");
+
+    QTemporaryDir earlyDirectory;
+    ConfigEditorWindow earlyWindow(copyFixture(earlyDirectory), 0, true);
+    auto* earlyRenderer = requireControl<QListWidget>(earlyWindow,
+        QStringLiteral("config.vprenderer.profiles"));
+    auto* earlyZoom = requireControl<QListWidget>(earlyWindow,
+        QStringLiteral("config.vprenderer.zoom.profiles"));
+    earlyRenderer->setCurrentRow(1);
+    earlyZoom->setCurrentRow(1);
+    earlyWindow.setActiveProfileStatusForTesting({},
+        earlyRenderer->item(0)->data(Qt::UserRole).toString(), {}, {}, {},
+        true, earlyZoom->item(0)->data(Qt::UserRole).toString());
+    require(earlyRenderer->currentRow() == 1 && earlyZoom->currentRow() == 1,
+        "A delayed snapshot displaced a row already chosen for editing");
+}
+
 void testActiveShaderMarkersUseAuthoritativeSet()
 {
     QTemporaryDir directory;
@@ -5914,6 +5987,8 @@ int main(int argc, char** argv)
     failures += run("queue units and LUT controls use consistent rows",
         testQueueUnitsAndLutControlsUseConsistentRows);
     failures += run("active profile markers cover relevant lists", testActiveProfileMarkersCoverRelevantLists);
+    failures += run("active profile opens selected after late status and preserves edits",
+        testActiveProfileOpensSelectedAfterLateStatusAndPreservesEdits);
     failures += run("active shader markers use authoritative set", testActiveShaderMarkersUseAuthoritativeSet);
     failures += run("unchanged active profile status avoids list invalidation",
         testUnchangedActiveProfileStatusDoesNotInvalidateLists);
