@@ -80,6 +80,23 @@
 
 namespace
 {
+	void LogCropExtentWitness(const char* context, uint64_t frameGeneration, uint64_t sourceSequence,
+		const ActivePicturePresentationRetentionEvidence& evidence)
+	{
+		auto logExtent = [&](const char* edge, const ActivePictureVisibleExtentDiagnostic& w, double floor) {
+			DebugLog::Log("Alpha crop extent witness: schema=2 context=%s generation=%llu sequence=%llu edge=%s available=%d floor=%.1f luma_cutoff=%d chroma_cutoff=64 first_xy=%d,%d first_yuv=%d,%d,%d first_reason=%d support_lines=%d,%d support_counts=%d,%d peak_y=%d peak_uv_delta=%d depth_samples=%d step=%d extent=%d presentation_margin=%d outward_available=%d outward=%d,%d-%d,%d",
+				context, frameGeneration, sourceSequence, edge, w.available ? 1 : 0, floor, w.lumaCutoff,
+				w.firstX,w.firstY,w.firstLuma,w.firstU,w.firstV,w.firstReason,
+				w.firstLine,w.secondLine,w.firstLineSupport,w.secondLineSupport,w.peakLuma,w.peakChromaDelta,
+				w.depthSamples,w.sampleStep,w.coordinate,w.presentationMargin,evidence.outwardVisibleBoundsAvailable ? 1 : 0,
+				evidence.outwardVisibleBounds.left,evidence.outwardVisibleBounds.top,evidence.outwardVisibleBounds.right,evidence.outwardVisibleBounds.bottom);
+		};
+		logExtent("top", evidence.visibleTop,evidence.excludedTop.lumaFloor);
+		logExtent("bottom", evidence.visibleBottom,evidence.excludedBottom.lumaFloor);
+		logExtent("left", evidence.visibleLeft,evidence.excludedLeft.lumaFloor);
+		logExtent("right", evidence.visibleRight,evidence.excludedRight.lumaFloor);
+	}
+
 	using SteadyClock = std::chrono::steady_clock;
 	constexpr size_t MAX_USER_SHADER_BYTES = 4 * 1024 * 1024;
 	uint64_t AlphaSourceFormatKey(const VideoState& state);
@@ -9088,6 +9105,10 @@ struct LibplaceboVideoRenderer::Impl
 					ActivePictureClassification::BAR_CROP_TRUSTED &&
 				bootstrapEvidence.trustedBounds.trustedBarAxes !=
 					ActivePictureBounds::BarAxes::NONE;
+			const uint64_t bootstrapProbeInterval = std::max<uint64_t>(1,
+				static_cast<uint64_t>(std::llround(std::max(1.0, framesPerSecond))));
+			const bool bootstrapProbeDue = needsNativeBootstrapEvidence &&
+				frameNumber % bootstrapProbeInterval == 0;
 			if (latestNativeBootstrapContractAvailable)
 			{
 				latestNativeBootstrapContract =
@@ -9099,6 +9120,8 @@ struct LibplaceboVideoRenderer::Impl
 						? sparseCandidate.retention
 						: EvaluateActivePicturePresentationRetention(
 							analysisSource, latestNativeBootstrapContract);
+				if (bootstrapProbeDue)
+					LogCropExtentWitness("bootstrap", analysisSource.generation, frameNumber, bootstrapRetention);
 				latestNativeBootstrapRetentionEvaluated =
 					bootstrapRetention.analysisValid &&
 					bootstrapRetention.presentationValid;
@@ -9125,10 +9148,7 @@ struct LibplaceboVideoRenderer::Impl
 			}
 			if (needsNativeBootstrapEvidence)
 			{
-				const uint64_t bootstrapProbeInterval = std::max<uint64_t>(1,
-					static_cast<uint64_t>(std::llround(std::max(1.0,
-						framesPerSecond))));
-				if (frameNumber % bootstrapProbeInterval == 0)
+				if (bootstrapProbeDue)
 				{
 					DebugLog::Log(
 						"Alpha near-black bootstrap probe: sequence=%llu generation=%llu raw_available=%d raw_classification=%d raw_rect=%d,%d-%d,%d contract=%d contract_origin=%s retention=%d/%d outward=%d global_near_black=%d global_evaluated=%d episode_epoch=%llu input_epoch=%llu",
@@ -11758,8 +11778,9 @@ struct LibplaceboVideoRenderer::Impl
 			ActivePictureBounds selectedDetectorBounds = detectorEnvelopeBounds;
 			if (genericFitHeld || currentGenericVerticalFit)
 			{
-				const auto& verticalBounds = genericFitHeld
-					? genericHoldDecision.bounds : scopePresentationCurrentBounds;
+				const auto verticalBounds = genericFitHeld
+                    ? genericHoldDecision.bounds
+                    : AlphaSourceCrop::SelectGenericFitEnvelope(envelopeSelection);
 				// Horizontal release evidence has its own bounded lifetime. Replace
 				// only the vertical extents authorized by the generic FIT owner.
 				selectedDetectorBounds.top = verticalBounds.top;
@@ -12702,6 +12723,8 @@ struct LibplaceboVideoRenderer::Impl
 					rawCandidate.trustedBounds.left, rawCandidate.trustedBounds.top, rawCandidate.trustedBounds.right, rawCandidate.trustedBounds.bottom,
 					effectiveGeometry.left, effectiveGeometry.top, effectiveGeometry.right, effectiveGeometry.bottom,
 					presentationCropBounds.left, presentationCropBounds.top, presentationCropBounds.right, presentationCropBounds.bottom);
+				if (cropEdgeSummaryDue)
+					LogCropExtentWitness("presentation", frameGeneration, sourceSequence, evidence);
 				const auto& sideSupport = rawCandidate.axisEvidence;
 				DebugLog::Log("Alpha crop side picture: schema=4 generation=%llu sequence=%llu witness_aperture=%dx%d:%d-%d threshold=%d left_min=%d right_min=%d required_min=6 samples_per_zone=12 zones=4 depths=3 left_strong_mask=%u right_strong_mask=%u left_nonblack_min=%d right_nonblack_min=%d vertical_profile_evaluated=%d vertical_profile_clean=%d vertical_profile_support=%d vertical_exception=%d blocking_failed_axis=%d",
 					frameGeneration, sourceSequence, sideSupport.sidePictureWidth, sideSupport.sidePictureHeight,

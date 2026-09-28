@@ -837,16 +837,16 @@ public:
                 const auto result=InspectRememberedEdgeReturnGuardedShadow(source,raw,nomination,rig.context.sourceSequence,rig.context.timestampMs);
                 Assert::IsTrue(result.wouldVerify);
                 EqualRecallBounds(target,result.target);
-                Assert::AreEqual(odd?3:2,result.retainedTopRows);
-                Assert::AreEqual(odd?3:2,result.retainedBottomRows);
+                Assert::AreEqual(2+(target.top%2),result.retainedTopRows);
+                Assert::AreEqual(2+(target.bottom%2),result.retainedBottomRows);
                 Assert::AreEqual(0,result.presentation.top%2); Assert::AreEqual(0,result.presentation.bottom%2);
-                Assert::AreEqual(target.top-(odd?3:2),result.presentation.top);
-                Assert::AreEqual(target.bottom+(odd?3:2),result.presentation.bottom);
+                Assert::AreEqual(target.top-(2+target.top%2),result.presentation.top);
+                Assert::AreEqual(target.bottom+(2+target.bottom%2),result.presentation.bottom);
                 AssertUnchangedRecallEvidence(ExtractActivePictureEvidence(source),raw);
             }
             // The original matched-edge chroma fringe must not migrate to the
             // new padded edge. This P010 pair is wholly outside the envelope.
-            const int firstDiscarded=target.bottom+(odd?3:2);
+            const int firstDiscarded=target.bottom+(2+target.bottom%2);
             const int x=50*(width-1)/95;
             p010.Rectangle(x,firstDiscarded,x+1,firstDiscarded+1,64,518,512);
             const auto outsideRaw=ExtractActivePictureEvidence(p010.Source());
@@ -2054,8 +2054,9 @@ public:
 
     TEST_METHOD(RememberedP010FringeFollowsChromaPairAtOddBoundary)
     {
-        // The native scanner steps by three at this resolution, so odd boundaries
-        // qualify through the real extractor and history, without invented metadata.
+        // Current acquisition rounds these genuine odd picture edges outward.
+        // Keep an explicit odd-target pure-inspector fixture as well: the
+        // consumer must still handle a previously qualified odd rectangle.
         for(bool bottom:{false,true})for(bool deeper:{false,true})
         {
             RecallRig rig(2880,1620);
@@ -2063,19 +2064,59 @@ public:
             rig.scopeEvidence=ExtractActivePictureEvidence(rig.scope.Source());
             rig.wideEvidence=ExtractActivePictureEvidence(rig.wide.Source());
             rig.QualifiedWide();
-            Assert::AreEqual(207,rig.scopeEvidence.trustedBounds.top);
-            Assert::AreEqual(1413,rig.scopeEvidence.trustedBounds.bottom);
+            Assert::AreEqual(206,rig.scopeEvidence.trustedBounds.top);
+            Assert::AreEqual(1414,rig.scopeEvidence.trustedBounds.bottom);
             RecallPixels frame(2880,1620,false);
             frame.Rectangle(0,bottom?411:207,2880,bottom?1413:1209,300);
             const int row=bottom?(deeper?1414:1413):(deeper?205:206);
             frame.Rectangle(0,row,2880,row+1,64,524,500);
-            const auto result=rig.Inspect(frame);
+            rig.Advance();
+            auto raw=ExtractActivePictureEvidence(frame.Source()); AssertRecallRaw(raw);
+            auto nomination=rig.Nominate(raw); Assert::IsTrue(nomination.available);
+            // Inject only the exact odd-boundary contract being unit tested;
+            // do not claim the current extractor learned odd coordinates.
+            nomination.rememberedBounds.top=207; nomination.rememberedBounds.bottom=1413;
+            nomination.rememberedBounds.aspectRatio=2880.0/(1413-207);
+            nomination.observedEdgeCoordinate=bottom ? 1413 : 207;
+            if(bottom)raw.proposedBounds.bottom=1413; else raw.proposedBounds.top=207;
+            raw.proposedBounds.aspectRatio=2880.0/(raw.proposedBounds.bottom-raw.proposedBounds.top);
+            const auto result=InspectRememberedEdgeReturn(frame.Source(),raw,nomination,
+                rig.context.sourceSequence,rig.context.timestampMs);
             Assert::AreEqual(!deeper,result.candidateAvailable);
             if(!deeper) {
                 Assert::AreEqual(96,result.edgeFringeSamples);
                 Assert::AreEqual(row,result.firstFringeY);Assert::AreEqual(row,result.lastFringeY);
-                EqualRecallBounds(rig.scopeEvidence.trustedBounds,result.evidence.trustedBounds);
+                EqualRecallBounds(nomination.rememberedBounds,result.evidence.trustedBounds);
             }
+        }
+    }
+
+    TEST_METHOD(RememberedOddPictureLearnsOutwardEvenEdgesAndKeepsFringeStrict)
+    {
+        for(bool bottom:{false,true})for(bool deeper:{false,true})
+        {
+            RecallRig rig(2880,1620);
+            RecallScope(rig.scope,207,1413); RecallScope(rig.wide,51,1569);
+            rig.scopeEvidence=ExtractActivePictureEvidence(rig.scope.Source());
+            rig.wideEvidence=ExtractActivePictureEvidence(rig.wide.Source());
+            rig.QualifiedWide();
+            const auto target=rig.scopeEvidence.trustedBounds;
+            Assert::AreEqual(206,target.top); Assert::AreEqual(1414,target.bottom);
+            RecallPixels frame(2880,1620,false);
+            frame.Rectangle(0,bottom?411:207,2880,bottom?1413:1209,300);
+            const int row=bottom ? target.bottom+(deeper?2:0) : target.top-(deeper?3:1);
+            frame.Rectangle(0,row,2880,row+1,64,524,500);
+            const auto result=rig.Inspect(frame);
+            Assert::AreEqual(!deeper,result.candidateAvailable);
+            if(!deeper)
+            {
+                Assert::AreEqual(192,result.edgeFringeSamples);
+                Assert::AreEqual(row&~1,result.firstFringeY);
+                Assert::AreEqual((row&~1)+1,result.lastFringeY);
+                EqualRecallBounds(target,result.evidence.trustedBounds);
+            }
+            else Assert::IsTrue(result.mismatches>0,
+                L"Moving the native crop outward must not extend the fringe allowance deeper into a bar.");
         }
     }
 

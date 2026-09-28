@@ -493,16 +493,26 @@ public:
             for(const auto& source:{p010.Source(),p210.Source(),packed.Source()})
             {
                 const auto observed=ExtractActivePictureEvidence(source);
-                AssertFourKShadowedRaw(observed);
+                // Bright off-grid rows now move the proposal outward before
+                // the existing guarded profile preserves its extra scan step.
+                const int expectedTop=firstTop==275 && (edges&1) ? 274 : 276;
+                const int expectedBottom=firstTop==275 && (edges&2) ? 1886 : 1884;
+                Assert::IsTrue(observed.available && observed.top.trusted && observed.bottom.trusted);
+                Assert::IsTrue(observed.axisEvidence.horizontal.FailedBar());
+                Assert::AreEqual(0,observed.proposedBounds.left);
+                Assert::AreEqual(3468,observed.proposedBounds.right);
+                Assert::AreEqual(expectedTop,observed.proposedBounds.top);
+                Assert::AreEqual(expectedBottom,observed.proposedBounds.bottom);
+                Assert::AreEqual(int(ActivePictureAuthorityOrigin::NATIVE),int(observed.authorityOrigin));
                 Assert::IsTrue(observed.axisEvidence.SupportsVerticalCropDespiteSideAmbiguity(observed.trustedBounds),
                     L"Current verified bars should admit only a conservatively expanded crop that retains quantized boundary pixels.");
                 const auto& target=observed.trustedBounds;
                 Assert::AreEqual(0,target.left); Assert::AreEqual(3840,target.right);
-                Assert::AreEqual(272,target.top); Assert::AreEqual(1888,target.bottom);
+                Assert::AreEqual(expectedTop-4,target.top); Assert::AreEqual(expectedBottom+4,target.bottom);
                 if(edges&1)Assert::IsTrue(target.top<=firstTop);
                 if(edges&2)Assert::IsTrue(target.bottom>=2160-firstTop);
-                Assert::AreEqual(276,observed.axisEvidence.sidePictureTop);
-                Assert::AreEqual(1884,observed.axisEvidence.sidePictureBottom);
+                Assert::AreEqual(expectedTop,observed.axisEvidence.sidePictureTop);
+                Assert::AreEqual(expectedBottom,observed.axisEvidence.sidePictureBottom);
                 Assert::AreEqual(observed.axisEvidence.sidePictureTop,target.top+observed.axisEvidence.verticalCropGuardTop);
                 Assert::AreEqual(observed.axisEvidence.sidePictureBottom,target.bottom-observed.axisEvidence.verticalCropGuardBottom);
                 Assert::IsTrue(observed.axisEvidence.verticalCropProfileClean);

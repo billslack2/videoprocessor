@@ -579,6 +579,184 @@ namespace VideoProcessorTest
             }
         }
 
+        TEST_METHOD(HardEdge42PixelBarsDoNotAcquirePictureClippingCrop)
+        {
+            // Synthetic hard edge: the native 4-row scan currently rounds 42 to44,
+            // while dense retention sees the real picture in the two excluded rows.
+            for (bool p210 : { false, true })
+            {
+                constexpr int width=3840, height=2160, top=42, bottom=2118;
+                P010Frame frame(width,height,64,p210);
+                frame.BlackOutside(0,top,width,bottom);
+                const auto source=p210 ? frame.P210Source() : frame.P010Source();
+                const auto raw=ExtractActivePictureEvidence(source);
+                Assert::IsTrue(raw.classification==ActivePictureClassification::BAR_CROP_TRUSTED);
+                Assert::IsTrue(raw.trustedBounds.top<=top && raw.trustedBounds.bottom>=bottom,
+                    L"Trusted crop must contain all hard-edged picture, including rows between coarse scan lines.");
+                const auto safety=EvaluateActivePicturePresentationRetention(source,raw.trustedBounds);
+                Assert::IsTrue(safety.CanRetainPresentation(),
+                    L"An unchanged clean hard-edge frame must retain its freshly acquired crop.");
+                Assert::IsFalse(safety.outwardVisibleBoundsAvailable);
+            }
+        }
+
+        TEST_METHOD(HardEdgeBarsRemainSafeAcrossVerticalScanPhasesAndResolutions)
+        {
+            for (int height : {720,1080,2160})
+            for (bool p210 : {false,true})
+            {
+                const int width=height*16/9;
+                const int step=std::max(2,height/540);
+                const int alignedBar=(height/40/step)*step;
+                for(int phase=0;phase<step;++phase)
+                {
+                    const int top=alignedBar+phase, bottom=height-top;
+                    P010Frame frame(width,height,64,p210);
+                    frame.BlackOutside(0,top,width,bottom);
+                    const auto source=p210 ? frame.P210Source() : frame.P010Source();
+                    const auto raw=ExtractActivePictureEvidence(source);
+                    std::wostringstream message;
+                    message<<L"height="<<height<<L" phase="<<phase<<L" P210="<<p210;
+                    Assert::IsTrue(raw.classification==ActivePictureClassification::BAR_CROP_TRUSTED,
+                        message.str().c_str());
+                    Assert::IsTrue(raw.trustedBounds.top<=top && raw.trustedBounds.bottom>=bottom,
+                        message.str().c_str());
+                    const auto safety=EvaluateActivePicturePresentationRetention(source,raw.trustedBounds);
+                    Assert::IsTrue(safety.CanRetainPresentation(),message.str().c_str());
+                    Assert::IsFalse(safety.outwardVisibleBoundsAvailable,message.str().c_str());
+                }
+            }
+        }
+
+        TEST_METHOD(HardEdgeAlignedBarsRemainPreciselyAcquiredAndRetained)
+        {
+            // Positive control: an exact boundary already on the coarse grid
+            // must not become a weaker crop or require a different black level.
+            for (int height : {720,1080,2160})
+            for (bool p210 : {false,true})
+            {
+                const int width=height*16/9, step=std::max(2,height/540);
+                const int top=(height/40/step)*step, bottom=height-top;
+                P010Frame frame(width,height,64,p210);
+                frame.BlackOutside(0,top,width,bottom);
+                const auto source=p210 ? frame.P210Source() : frame.P010Source();
+                const auto raw=ExtractActivePictureEvidence(source);
+                Assert::IsTrue(raw.classification==ActivePictureClassification::BAR_CROP_TRUSTED);
+                Assert::AreEqual(top,raw.trustedBounds.top);
+                Assert::AreEqual(bottom,raw.trustedBounds.bottom);
+                const auto safety=EvaluateActivePicturePresentationRetention(source,raw.trustedBounds);
+                Assert::IsTrue(safety.CanRetainPresentation());
+                Assert::IsFalse(safety.outwardVisibleBoundsAvailable);
+            }
+        }
+
+        TEST_METHOD(HardEdgePillarBarsRemainSafeAcrossHorizontalScanPhases)
+        {
+            for (int height : {720,1080,2160})
+            for (bool p210 : {false,true})
+            {
+                const int width=height*16/9, step=std::max(2,width/960);
+                const int alignedBar=(width/12/step)*step;
+                for(int phase=0;phase<step;++phase)
+                {
+                    const int left=alignedBar+phase, right=width-left;
+                    P010Frame frame(width,height,64,p210);
+                    frame.BlackOutside(left,0,right,height);
+                    const auto source=p210 ? frame.P210Source() : frame.P010Source();
+                    const auto raw=ExtractActivePictureEvidence(source);
+                    std::wostringstream message;
+                    message<<L"pillar width="<<width<<L" phase="<<phase<<L" P210="<<p210;
+                    Assert::IsTrue(raw.classification==ActivePictureClassification::BAR_CROP_TRUSTED,
+                        message.str().c_str());
+                    Assert::IsTrue(raw.trustedBounds.left<=left && raw.trustedBounds.right>=right,
+                        message.str().c_str());
+                    Assert::AreEqual(0,raw.trustedBounds.top);
+                    Assert::AreEqual(height,raw.trustedBounds.bottom);
+                    const auto safety=EvaluateActivePicturePresentationRetention(source,raw.trustedBounds);
+                    Assert::IsTrue(safety.CanRetainPresentation(),message.str().c_str());
+                    Assert::IsFalse(safety.outwardVisibleBoundsAvailable,message.str().c_str());
+                }
+            }
+        }
+
+        TEST_METHOD(OddHardEdgesPreservePictureWithSubsampledChromaAtBothAxes)
+        {
+            for(int height : {720,1080,2160})
+            for(bool p210 : {false,true})
+            {
+                const int width=height*16/9;
+                const int left=(width/12)|1, top=(height/12)|1;
+                const int right=width-left, bottom=height-top;
+                P010Frame frame(width,height,64,p210);
+                frame.Fill(64,512,512);
+                // Odd luma edges share chroma with the neighboring black pixel:
+                // 2x2 for P010 and 2x1 for P210. The high-luma colored picture
+                // must survive; shared chroma on black luma must not invent an OSD.
+                frame.FillRectangle(left,top,right,bottom,300,640,400);
+                const auto source=p210 ? frame.P210Source() : frame.P010Source();
+                const auto raw=ExtractActivePictureEvidence(source);
+                Assert::IsTrue(raw.classification==ActivePictureClassification::BAR_CROP_TRUSTED);
+                Assert::IsTrue(raw.trustedBounds.left<=left && raw.trustedBounds.right>=right &&
+                    raw.trustedBounds.top<=top && raw.trustedBounds.bottom>=bottom,
+                    L"Odd luma boundaries must not be rounded into actual picture for chroma alignment.");
+                const auto safety=EvaluateActivePicturePresentationRetention(source,raw.trustedBounds);
+                Assert::IsTrue(safety.CanRetainPresentation(),
+                    L"Acquisition and retention must agree despite chroma sharing at odd edges.");
+                Assert::IsFalse(safety.outwardVisibleBoundsAvailable);
+            }
+        }
+
+        TEST_METHOD(HardEdgeRefinementReservePreservesEvidenceAfterLongCoarseSearch)
+        {
+            // This broad, hard-edged window leaves only two coarse inspections.
+            // Refinement must not consume the remaining coarse budget and
+            // discard valid evidence that the existing detector could acquire.
+            for(bool p210 : {false,true})
+            {
+                P010Frame frame(3840,2160,64,p210);
+                frame.BlackOutside(448,500,3392,1660);
+                const auto source=p210 ? frame.P210Source() : frame.P010Source();
+                const auto raw=ExtractActivePictureEvidence(source);
+                Assert::IsTrue(raw.available);
+                Assert::IsTrue(raw.classification==ActivePictureClassification::BAR_CROP_TRUSTED);
+                Assert::IsTrue(raw.trustedBounds.left<=448 && raw.trustedBounds.top<=500 &&
+                    raw.trustedBounds.right>=3392 && raw.trustedBounds.bottom>=1660);
+                Assert::IsTrue(EvaluateActivePicturePresentationRetention(source,raw.trustedBounds).CanRetainPresentation());
+                Assert::IsTrue(raw.lumaSamples<=30000,
+                    L"The independent refinement reserve keeps total rough scanning bounded.");
+            }
+        }
+
+        TEST_METHOD(HardEdgeRefinementDoesNotInventBarsOnFullOrBlackFrames)
+        {
+            for(int height : {720,1080,2160})
+            for(bool p210 : {false,true})
+            for(bool black : {false,true})
+            {
+                const int width=height*16/9;
+                P010Frame frame(width,height,64,p210);
+                frame.Fill(black ? 64 : 300,512,512);
+                const auto source=p210 ? frame.P210Source() : frame.P010Source();
+                const auto raw=ExtractActivePictureEvidence(source);
+                if(black)
+                {
+                    Assert::IsFalse(raw.available,
+                        L"An exhausted all-black search cannot manufacture crop authority.");
+                    Assert::IsTrue(raw.classification==ActivePictureClassification::UNAVAILABLE);
+                }
+                else
+                {
+                    Assert::IsTrue(raw.classification==ActivePictureClassification::FULL_RASTER_TRUSTED);
+                    Assert::AreEqual(0,raw.trustedBounds.left);
+                    Assert::AreEqual(0,raw.trustedBounds.top);
+                    Assert::AreEqual(width,raw.trustedBounds.right);
+                    Assert::AreEqual(height,raw.trustedBounds.bottom);
+                }
+                Assert::IsTrue(raw.lumaSamples<=30000,
+                    L"Full/black frames must preserve the bounded native scan cost.");
+            }
+        }
+
         TEST_METHOD(GenuineSymmetricBarsAgreeWithVisibleExtentSafety)
         {
             for (bool p210 : {false,true})

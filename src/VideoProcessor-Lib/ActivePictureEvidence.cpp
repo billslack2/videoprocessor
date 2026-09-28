@@ -441,11 +441,7 @@ bool ExcludedBandPixelsAreSafe(const ActivePictureEdgeEvidence& evidence)
 		evidence.continuity >= 0.99;
 }
 
-struct ExcludedBandVisibleExtent
-{
-	bool available = false;
-	int coordinate = 0;
-};
+using ExcludedBandVisibleExtent = ActivePictureVisibleExtentDiagnostic;
 
 // Each provisional vertical edge may stop one coarse scan step early. This can
 // retain only an existing opposing-bar crop; it cannot establish new geometry,
@@ -512,13 +508,14 @@ bool SamplingExpansionPixelsAreSafe(SampleContext& samples,
 }
 
 bool IsCrediblyVisible(SampleContext& samples, int x, int y,
-	int blackThreshold)
+	int blackThreshold, AnalysisLumaSample* diagnosticSample = nullptr)
 {
 	AnalysisLumaSample sample;
 	if (!samples.source.Sample(x, y, sample))
 		return false;
 	++samples.lumaSamples;
 	++samples.chromaSamples;
+	if (diagnosticSample) *diagnosticSample = sample;
 	// Match the denser renderer-local bar pass: blackThreshold already carries
 	// 24 codes above the measured floor, so this is floor + 32. The denser grid
 	// and 2x2 support rule retain noise rejection while covering small controls.
@@ -565,17 +562,35 @@ ExcludedBandVisibleExtent FindHorizontalVisibleExtent(SampleContext& samples,
 	if (barPixels <= 0)
 		return result;
 	const int depthSamples = std::min(kVisibleExtentDepthSamples, barPixels);
+	result.lumaCutoff = blackThreshold + 8;
+	result.depthSamples = depthSamples;
 	int previousOccupied = -2;
+	ActivePictureVisibleExtentDiagnostic previousLine;
 	for (int d = 0; d < depthSamples; ++d)
 	{
 		const int depth = ((d * 2 + 1) * barPixels) / (depthSamples * 2);
 		const int y = top ? depth : samples.source.height - 1 - depth;
 		int visible = 0;
+		ActivePictureVisibleExtentDiagnostic line;
 		for (int i = 0; i < kVisibleExtentLineSamples; ++i)
 		{
 			const int x = ((i * 2 + 1) * samples.source.width) /
 				(kVisibleExtentLineSamples * 2);
-			visible += IsCrediblyVisible(samples, x, y, blackThreshold) ? 1 : 0;
+			AnalysisLumaSample pixel;
+			if (IsCrediblyVisible(samples, x, y, blackThreshold, &pixel))
+			{
+				const int chromaDelta = std::max(std::abs(int(pixel.chromaU)-512), std::abs(int(pixel.chromaV)-512));
+				if (visible == 0)
+				{
+					line.firstX=x; line.firstY=y; line.firstLuma=pixel.luma;
+					line.firstU=pixel.chromaU; line.firstV=pixel.chromaV;
+					line.firstReason=(pixel.luma > blackThreshold+8 ? 1 : 0) |
+						(chromaDelta >= 64 && pixel.luma >= blackThreshold+8 ? 2 : 0);
+				}
+				++visible;
+				line.peakLuma=std::max(line.peakLuma,int(pixel.luma));
+				line.peakChromaDelta=std::max(line.peakChromaDelta,chromaDelta);
+			}
 		}
 		// Two spatial samples are enough for a narrow glyph, but require the
 		// signal on adjacent depth rows below to reject isolated hot pixels.
@@ -583,6 +598,9 @@ ExcludedBandVisibleExtent FindHorizontalVisibleExtent(SampleContext& samples,
 			continue;
 		if (d != previousOccupied + 1)
 		{
+			previousLine = line;
+			previousLine.firstLine = y;
+			previousLine.firstLineSupport = visible;
 			previousOccupied = d;
 			continue;
 		}
@@ -590,6 +608,14 @@ ExcludedBandVisibleExtent FindHorizontalVisibleExtent(SampleContext& samples,
 		const int extentDepth = ((outerDepthIndex * 2 + 1) * barPixels) /
 			(depthSamples * 2);
 		const int sampleStep = std::max(1, barPixels / depthSamples);
+		result = previousLine;
+		result.secondLine = y;
+		result.secondLineSupport = visible;
+		result.peakLuma = std::max(result.peakLuma,line.peakLuma);
+		result.peakChromaDelta = std::max(result.peakChromaDelta,line.peakChromaDelta);
+		result.sampleStep = sampleStep;
+		result.depthSamples = depthSamples;
+		result.lumaCutoff = blackThreshold + 8;
 		result.available = true;
 		result.coordinate = top ? std::max(0, extentDepth - sampleStep) :
 			std::min(samples.source.height,
@@ -606,22 +632,43 @@ ExcludedBandVisibleExtent FindVerticalVisibleExtent(SampleContext& samples,
 	if (barPixels <= 0)
 		return result;
 	const int depthSamples = std::min(kVisibleExtentDepthSamples, barPixels);
+	result.lumaCutoff = blackThreshold + 8;
+	result.depthSamples = depthSamples;
 	int previousOccupied = -2;
+	ActivePictureVisibleExtentDiagnostic previousLine;
 	for (int d = 0; d < depthSamples; ++d)
 	{
 		const int depth = ((d * 2 + 1) * barPixels) / (depthSamples * 2);
 		const int x = left ? depth : samples.source.width - 1 - depth;
 		int visible = 0;
+		ActivePictureVisibleExtentDiagnostic line;
 		for (int i = 0; i < kVisibleExtentLineSamples; ++i)
 		{
 			const int y = ((i * 2 + 1) * samples.source.height) /
 				(kVisibleExtentLineSamples * 2);
-			visible += IsCrediblyVisible(samples, x, y, blackThreshold) ? 1 : 0;
+			AnalysisLumaSample pixel;
+			if (IsCrediblyVisible(samples, x, y, blackThreshold, &pixel))
+			{
+				const int chromaDelta = std::max(std::abs(int(pixel.chromaU)-512), std::abs(int(pixel.chromaV)-512));
+				if (visible == 0)
+				{
+					line.firstX=x; line.firstY=y; line.firstLuma=pixel.luma;
+					line.firstU=pixel.chromaU; line.firstV=pixel.chromaV;
+					line.firstReason=(pixel.luma > blackThreshold+8 ? 1 : 0) |
+						(chromaDelta >= 64 && pixel.luma >= blackThreshold+8 ? 2 : 0);
+				}
+				++visible;
+				line.peakLuma=std::max(line.peakLuma,int(pixel.luma));
+				line.peakChromaDelta=std::max(line.peakChromaDelta,chromaDelta);
+			}
 		}
 		if (visible < 2)
 			continue;
 		if (d != previousOccupied + 1)
 		{
+			previousLine = line;
+			previousLine.firstLine = x;
+			previousLine.firstLineSupport = visible;
 			previousOccupied = d;
 			continue;
 		}
@@ -629,6 +676,14 @@ ExcludedBandVisibleExtent FindVerticalVisibleExtent(SampleContext& samples,
 		const int extentDepth = ((outerDepthIndex * 2 + 1) * barPixels) /
 			(depthSamples * 2);
 		const int sampleStep = std::max(1, barPixels / depthSamples);
+		result = previousLine;
+		result.secondLine = x;
+		result.secondLineSupport = visible;
+		result.peakLuma = std::max(result.peakLuma,line.peakLuma);
+		result.peakChromaDelta = std::max(result.peakChromaDelta,line.peakChromaDelta);
+		result.sampleStep = sampleStep;
+		result.depthSamples = depthSamples;
+		result.lumaCutoff = blackThreshold + 8;
 		result.available = true;
 		result.coordinate = left ? std::max(0, extentDepth - sampleStep) :
 			std::min(samples.source.width,
@@ -757,6 +812,52 @@ ActivePictureEvidence ExtractActivePictureEvidence(
 	while (right - xStep > source.width / 2 &&
 		blackLine(false, right - 1, rightScan))
 		right -= xStep;
+
+	// A coarse stop is the first sampled picture line, not necessarily the
+	// first real picture line. Refine only its already bracketed interval,
+	// using the identical line predicate and a separate bounded reserve.
+	// Otherwise a native crop can exclude one to three visible rows that the
+	// denser retention pass correctly refuses on the very same source frame.
+	// Keep the entire existing coarse budget available to all four directions.
+	// Partial-axis evidence remains usable even when another axis used it up.
+	// 64 extra lines keep the worst rough-scan cost below 30,000 luma reads.
+	int refinementLinesRemaining = 64;
+	auto refineOutward = [&](bool row, bool leading, int& boundary,
+		int step, EdgeScan& scan) {
+		const int extent = row ? source.height : source.width;
+		if (!scan.complete || boundary <= 0 || boundary >= extent)
+			return true;
+		const int first = leading ? boundary - step + 1 : boundary + step - 2;
+		for (int offset = 0; offset < step - 1; ++offset)
+		{
+			const int coordinate = leading ? first + offset : first - offset;
+			if (coordinate < 0 || coordinate >= extent) continue;
+			// An uninspected bracket cannot keep the inward coarse boundary as
+			// crop authority. Explicitly reject this observation below.
+			if (refinementLinesRemaining <= 0) return false;
+			--refinementLinesRemaining;
+			bool supported = false;
+			if (!ScanBlackLine(samples, row, coordinate, blackThreshold, supported))
+			{
+				boundary = leading ? coordinate : coordinate + 1;
+				break;
+			}
+		}
+		// Preserve the whole chroma pair at odd picture boundaries. Rounding
+		// is always outward; it may retain a black pixel, never discard picture.
+		boundary = leading ? boundary & ~1 : std::min(extent, (boundary + 1) & ~1);
+		return true;
+	};
+	if (!refineOutward(true, true, top, yStep, topScan) ||
+		!refineOutward(true, false, bottom, yStep, bottomScan) ||
+		!refineOutward(false, true, left, xStep, leftScan) ||
+		!refineOutward(false, false, right, xStep, rightScan))
+	{
+		result.reason = "native edge refinement exhausted bounded reserve";
+		result.lumaSamples = samples.lumaSamples;
+		result.chromaSamples = samples.chromaSamples;
+		return result;
+	}
 
 	auto measuredAxis = [](const EdgeScan& first, const EdgeScan& last, int before, int after, int step) {
 		ActivePictureAxisEvidence axis;
@@ -1194,6 +1295,10 @@ ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRete
 		trustedPresentation.left, blackThreshold);
 	const auto rightExtent = FindVerticalVisibleExtent(samples, false,
 		source.width - trustedPresentation.right, blackThreshold);
+	result.visibleTop = topExtent; result.visibleBottom = bottomExtent;
+	result.visibleLeft = leftExtent; result.visibleRight = rightExtent;
+	result.visibleTop.presentationMargin = result.visibleBottom.presentationMargin = std::max(2, source.height / 180);
+	result.visibleLeft.presentationMargin = result.visibleRight.presentationMargin = std::max(2, source.width / 180);
 	const bool unsafeTop = !ExcludedBandPixelsAreSafe(result.excludedTop) ||
 		topExtent.available;
 	const bool unsafeBottom = !ExcludedBandPixelsAreSafe(result.excludedBottom) ||

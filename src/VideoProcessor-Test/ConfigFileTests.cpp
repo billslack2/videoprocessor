@@ -3214,15 +3214,15 @@ namespace VideoProcessorTest
 
 		TEST_METHOD(ProfileChangeDisplayDurationIsBoundedAndLive)
 		{
-			char temporaryDirectory[MAX_PATH] = {};
-			Assert::IsTrue(GetTempPathA(ARRAYSIZE(temporaryDirectory),
-				temporaryDirectory) > 0);
-			const std::string path = std::string(temporaryDirectory) +
-				"VideoProcessor-profile-display-duration-test.cfg";
+			CachedConfigTestFile temporaryFile;
+			const auto& path = temporaryFile.path;
 			{
 				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				Assert::IsTrue(file.is_open());
 				file << "[general]\nprofile_change_display_seconds: 60\n"
 					"[vprenderer]\nquality: high\n";
+				file.close();
+				Assert::IsFalse(file.fail());
 			}
 			ConfigFile config;
 			Assert::IsTrue(config.Load(path));
@@ -3233,14 +3233,21 @@ namespace VideoProcessorTest
 					{ "general", "profile_change_display_seconds" }));
 			{
 				std::ofstream file(path, std::ios::out | std::ios::trunc);
+				Assert::IsTrue(file.is_open());
 				file << "[general]\nprofile_change_display_seconds: 61\n"
 					"[vprenderer]\nquality: high\n";
+				file.close();
+				Assert::IsFalse(file.fail());
 			}
-			Assert::IsTrue(config.Load(path));
+			// Explicit reload validation uses Fresh in production; a same-length
+			// edit must not depend on filesystem timestamp resolution in this test.
+			Assert::IsTrue(config.Load(path, ConfigFile::ReadPolicy::Fresh));
+			std::string reloadedDuration;
+			Assert::IsTrue(config.TryGetString("general", "profile_change_display_seconds", reloadedDuration));
+			Assert::AreEqual(std::string("61"), reloadedDuration);
 			Assert::IsFalse(MainConfigSchema::Validate(config, error));
 			Assert::IsTrue(error.find("profile_change_display_seconds") !=
 				std::string::npos, std::wstring(error.begin(), error.end()).c_str());
-			DeleteFileA(path.c_str());
 		}
 
 		TEST_METHOD(EventActionArgumentsExpandAllSupportedValues)

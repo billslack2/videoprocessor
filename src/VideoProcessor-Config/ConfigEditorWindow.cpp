@@ -4989,9 +4989,12 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 		auto* cropNarrower = addBoolean(
 			QStringLiteral("Crop narrower content to fill screen"),
 			QStringLiteral("crop_narrower_content_to_fill_screen"));
-		auto* cropNarrowerLimit = addText(QStringLiteral("Aspect ratio limit"),
+		auto* cropNarrowerLimit = addText(QStringLiteral("Minimum eligible source aspect"),
 			QStringLiteral("crop_narrower_content_aspect_limit"));
-		cropNarrowerLimit->setPlaceholderText(QStringLiteral("Optional, e.g. 2.20:1"));
+		cropNarrowerLimit->setToolTip(QStringLiteral(
+            "Applies to content narrower than the screen, down to this source aspect. "
+            "Fills the screen by cropping top and bottom. This is an eligibility limit, not the output aspect."));
+        cropNarrowerLimit->setPlaceholderText(QStringLiteral("Optional, e.g. 2.20:1"));
 		cropNarrowerLimit->setEnabled(cropNarrower->isChecked());
 		connect(cropNarrower, &QCheckBox::toggled, this,
 			[cropNarrowerLimit](bool enabled)
@@ -5000,9 +5003,13 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 		auto* cropWider = addBoolean(
 			QStringLiteral("Crop wider content to fill screen"),
 			QStringLiteral("crop_wider_content_to_fill_screen"));
-		auto* cropWiderLimit = addText(QStringLiteral("Aspect ratio limit"),
+		auto* cropWiderLimit = addText(QStringLiteral("Maximum eligible source aspect"),
 			QStringLiteral("crop_wider_content_aspect_limit"));
-		cropWiderLimit->setPlaceholderText(QStringLiteral("Optional, e.g. 2.76:1"));
+		cropWiderLimit->setToolTip(QStringLiteral(
+            "Applies to content wider than the screen, up to this source aspect. "
+            "For a 16:9 screen, 1.90 allows 1.85:1 content to fill by cropping left and right. "
+            "This is an eligibility limit, not the output aspect."));
+        cropWiderLimit->setPlaceholderText(QStringLiteral("Optional, e.g. 2.76:1"));
 		cropWiderLimit->setEnabled(cropWider->isChecked());
 		connect(cropWider, &QCheckBox::toggled, this,
 			[cropWiderLimit](bool enabled)
