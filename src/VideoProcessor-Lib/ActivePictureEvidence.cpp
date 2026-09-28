@@ -1207,6 +1207,34 @@ ActivePictureGlobalNearBlackEvidence EvaluateP010ActivePictureGlobalNearBlack(
 	return EvaluateActivePictureGlobalNearBlack(source);
 }
 
+bool ActivePicturePresentationRetentionEvidence::IsWeakBoundedFringe(
+	const ActivePictureBounds& presentation) const
+{
+	if (!outwardVisibleBoundsAvailable || visibleLeft.available ||
+		visibleRight.available || visibleTop.available == visibleBottom.available)
+		return false;
+	const bool top = visibleTop.available;
+	const auto& witness = top ? visibleTop : visibleBottom;
+	if (witness.sampleStep != 1 || witness.firstLine < 0 ||
+		witness.secondLine < 0 || witness.firstLineSupport < 2 ||
+		witness.secondLineSupport < 2 ||
+		witness.firstLineSupport > kVisibleExtentLineSamples / 16 ||
+		witness.secondLineSupport > kVisibleExtentLineSamples / 16 ||
+		witness.peakLuma > witness.lumaCutoff + 8 ||
+		witness.peakChromaDelta >= 64)
+		return false;
+	const int outer = top
+		? std::min(witness.firstLine, witness.secondLine)
+		: std::max(witness.firstLine, witness.secondLine);
+	const int inner = top
+		? std::max(witness.firstLine, witness.secondLine)
+		: std::min(witness.firstLine, witness.secondLine);
+	if (top)
+		return inner < presentation.top && presentation.top - outer <= 2;
+	return inner >= presentation.bottom &&
+		outer - (presentation.bottom - 1) <= 2;
+}
+
 
 ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRetention(
 	const AnalysisLumaSource& source,

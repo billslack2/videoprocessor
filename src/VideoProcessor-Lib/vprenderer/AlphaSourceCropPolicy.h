@@ -1004,6 +1004,8 @@ namespace AlphaSourceCrop
 		bool confirmedNonNearBlackContent = false;
 		uint64_t outwardConfirmationLastSourceSequence = 0;
 		uint32_t outwardConfirmationSamples = 0;
+		uint64_t weakFringeLastSourceSequence = 0;
+		uint32_t weakFringeSamples = 0;
 		uint64_t lastEvaluatedSourceSequence = 0;
 		uint64_t revalidationStartedSourceSequence = 0;
 		uint64_t revalidationLastSourceSequence = 0;
@@ -1031,6 +1033,7 @@ namespace AlphaSourceCrop
 		// Current retention provenance and all episode safety gates still apply.
 		bool currentNativeObservationReaffirmsSparseEntry = false;
 		bool boundedVisibleContentOutsideCrop = false;
+		bool weakBoundedFringe = false;
 		bool fullRasterAuthorityAvailable = false;
 		// Current context checked by UpdateKnownFullRasterRetention; never inferred
 		// from the raw full-raster presentation flag alone.
@@ -1091,7 +1094,8 @@ namespace AlphaSourceCrop
 	};
 
 	// A sparse near-black episode chooses one safe presentation on entry. It can
-	// move from retained crop to full raster immediately for visibility. A
+	// move from retained crop to full raster immediately for clear outward
+	// content, or after a second consecutive weak fringe frame. A
 	// full-raster episode may restore only its exact entry crop after a bounded,
 	// current-frame pixel-safe revalidation dwell. The same proof ends retained
 	// crop episodes once bright scope returns. Neither path grants authority to

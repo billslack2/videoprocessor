@@ -8224,6 +8224,191 @@ namespace Tests
 				static_cast<int>(decision.state.mode));
 		}
 
+		TEST_METHOD(NearBlackIsolatedWeakBoundedFringeKeepsEstablishedCrop)
+		{
+			// The replay has 42-pixel bars around a fixed 1.85 picture. At frame
+			// 171, only two adjacent bar rows show sparse near-threshold pixels.
+			const ActivePictureBounds scope = { 0, 42, 3840, 2118, 3840, 2160,
+				3840.0 / 2076.0, ActivePictureBounds::BarAxes::TOP_BOTTOM };
+			NearBlackPresentationEpisodeInput input;
+			input.measurementCurrent = input.nearBlackEvaluated = true;
+			input.globalNearBlack = input.trustedCropAvailable = true;
+			input.trustedCrop = scope;
+			input.sourceGeneration = 1;
+			input.presentationEpoch = 1;
+			input.framesPerSecond = 24;
+			input.sourceSequence = 165;
+			auto decision = EvaluateNearBlackPresentationEpisode(input);
+			Assert::AreEqual(int(NearBlackPresentationMode::RETAIN_CROP),
+				int(decision.state.mode));
+
+			input.globalNearBlack = false;
+			for (uint64_t sequence = 166; sequence <= 170; ++sequence)
+			{
+				input.previous = decision.state;
+				input.sourceSequence = sequence;
+				decision = EvaluateNearBlackPresentationEpisode(input);
+				Assert::AreEqual(int(NearBlackPresentationMode::RETAIN_CROP),
+					int(decision.state.mode));
+			}
+
+			input.previous = decision.state;
+			input.sourceSequence = 171;
+			input.boundedVisibleContentOutsideCrop = true;
+			input.weakBoundedFringe = true;
+			decision = EvaluateNearBlackPresentationEpisode(input);
+			Assert::IsFalse(decision.changedToFullRaster);
+			Assert::AreEqual(int(NearBlackPresentationMode::RETAIN_CROP),
+				int(decision.state.mode));
+
+			Input crop = TrustedScopeCrop();
+			crop.geometry = scope;
+			crop.frameSourceSequence = 171;
+			crop.latestObservationSupportsCrop = false;
+			crop.latestObservationIsProvisional = true;
+			crop.nearBlackEpisodeRetainCrop = true;
+			const auto presentation = Evaluate(crop);
+			Assert::IsTrue(presentation.applyCrop);
+			Assert::AreEqual(42, presentation.sourceBounds.top);
+			Assert::AreEqual(2118, presentation.sourceBounds.bottom);
+
+			input.boundedVisibleContentOutsideCrop = false;
+			input.weakBoundedFringe = false;
+			for (uint64_t sequence = 172; sequence <= 178; ++sequence)
+			{
+				input.previous = decision.state;
+				input.sourceSequence = sequence;
+				decision = EvaluateNearBlackPresentationEpisode(input);
+				Assert::IsFalse(decision.changedToFullRaster);
+				Assert::IsTrue(decision.state.mode != NearBlackPresentationMode::FULL_RASTER);
+			}
+		}
+
+		TEST_METHOD(NearBlackWeakFringeNeedsTwoDistinctConsecutiveSourceFrames)
+		{
+			NearBlackPresentationEpisodeInput input;
+			input.measurementCurrent = input.nearBlackEvaluated = true;
+			input.globalNearBlack = input.trustedCropAvailable = true;
+			input.trustedCrop = TrustedScopeCrop().geometry;
+			input.sourceGeneration = input.presentationEpoch = 1;
+			input.sourceSequence = 200;
+			auto decision = EvaluateNearBlackPresentationEpisode(input);
+			Assert::AreEqual(int(NearBlackPresentationMode::RETAIN_CROP),
+				int(decision.state.mode));
+
+			input.globalNearBlack = false;
+			input.boundedVisibleContentOutsideCrop = input.weakBoundedFringe = true;
+			input.previous = decision.state;
+			input.sourceSequence = 201;
+			decision = EvaluateNearBlackPresentationEpisode(input);
+			Assert::IsFalse(decision.changedToFullRaster);
+
+			input.previous = decision.state;
+			input.cadenceRepeat = true;
+			decision = EvaluateNearBlackPresentationEpisode(input);
+			Assert::IsFalse(decision.changedToFullRaster);
+			input.cadenceRepeat = false;
+
+			// A missing source frame cannot turn two isolated hits into persistence.
+			input.previous = decision.state;
+			input.sourceSequence = 203;
+			decision = EvaluateNearBlackPresentationEpisode(input);
+			Assert::IsFalse(decision.changedToFullRaster);
+			input.previous = decision.state;
+			input.sourceSequence = 204;
+			decision = EvaluateNearBlackPresentationEpisode(input);
+			Assert::IsTrue(decision.changedToFullRaster);
+			Assert::AreEqual(int(NearBlackPresentationMode::FULL_RASTER),
+				int(decision.state.mode));
+		}
+
+		TEST_METHOD(NearBlackWeakFringeEpisodeEndsAtPresentationEpochChange)
+		{
+			NearBlackPresentationEpisodeInput input;
+			input.measurementCurrent = input.nearBlackEvaluated = true;
+			input.globalNearBlack = input.trustedCropAvailable = true;
+			input.trustedCrop = TrustedScopeCrop().geometry;
+			input.sourceGeneration = 1;
+			input.presentationEpoch = 8;
+			input.sourceSequence = 400;
+			auto decision = EvaluateNearBlackPresentationEpisode(input);
+			Assert::AreEqual(int(NearBlackPresentationMode::RETAIN_CROP),
+				int(decision.state.mode));
+
+			input.previous = decision.state;
+			input.globalNearBlack = false;
+			input.boundedVisibleContentOutsideCrop = input.weakBoundedFringe = true;
+			input.sourceSequence = 401;
+			decision = EvaluateNearBlackPresentationEpisode(input);
+			Assert::IsFalse(decision.changedToFullRaster);
+			Assert::AreEqual(1u, decision.state.weakFringeSamples);
+
+			// The next source frame belongs to a new viewport/profile epoch and
+			// even its trusted crop changed. The old episode and its pending vote
+			// cannot retain or replace the new geometry.
+			input.previous = decision.state;
+			input.presentationEpoch = 9;
+			input.trustedCrop.top += 4;
+			input.trustedCrop.bottom -= 4;
+			input.trustedCrop.aspectRatio = 3840.0 /
+				(input.trustedCrop.bottom - input.trustedCrop.top);
+			input.sourceSequence = 402;
+			decision = EvaluateNearBlackPresentationEpisode(input);
+			Assert::IsFalse(decision.changedToFullRaster);
+			Assert::IsTrue(decision.ended);
+			Assert::AreEqual(int(NearBlackPresentationMode::INACTIVE),
+				int(decision.state.mode));
+			Assert::AreEqual(0u, decision.state.weakFringeSamples);
+
+			input.previous = decision.state;
+			input.sourceSequence = 403;
+			decision = EvaluateNearBlackPresentationEpisode(input);
+			Assert::IsFalse(decision.changedToFullRaster);
+			Assert::AreEqual(int(NearBlackPresentationMode::INACTIVE),
+				int(decision.state.mode));
+		}
+
+		TEST_METHOD(NearBlackStrongBoundedOutwardContentStillExpandsImmediately)
+		{
+			NearBlackPresentationEpisodeInput input;
+			input.measurementCurrent = input.nearBlackEvaluated = true;
+			input.globalNearBlack = input.trustedCropAvailable = true;
+			input.trustedCrop = TrustedScopeCrop().geometry;
+			input.sourceGeneration = input.presentationEpoch = 1;
+			input.sourceSequence = 300;
+			auto decision = EvaluateNearBlackPresentationEpisode(input);
+			Assert::AreEqual(int(NearBlackPresentationMode::RETAIN_CROP),
+				int(decision.state.mode));
+
+			input.previous = decision.state;
+			input.globalNearBlack = false;
+			input.boundedVisibleContentOutsideCrop = true;
+			input.weakBoundedFringe = false;
+			input.sourceSequence = 301;
+			decision = EvaluateNearBlackPresentationEpisode(input);
+			Assert::IsTrue(decision.changedToFullRaster);
+			Assert::AreEqual(int(NearBlackPresentationMode::FULL_RASTER),
+				int(decision.state.mode));
+		}
+
+		TEST_METHOD(NearBlackWeakFringeAtDarkEntryStillStartsFullRaster)
+		{
+			NearBlackPresentationEpisodeInput input;
+			input.measurementCurrent = input.nearBlackEvaluated = true;
+			input.globalNearBlack = input.trustedCropAvailable = true;
+			input.trustedCrop = TrustedScopeCrop().geometry;
+			input.boundedVisibleContentOutsideCrop = true;
+			input.weakBoundedFringe = true;
+			input.sourceGeneration = input.presentationEpoch = 1;
+			input.sourceSequence = 500;
+			const auto decision = EvaluateNearBlackPresentationEpisode(input);
+			Assert::IsTrue(decision.started);
+			Assert::IsFalse(decision.changedToFullRaster);
+			Assert::AreEqual(int(NearBlackPresentationMode::FULL_RASTER),
+				int(decision.state.mode));
+			Assert::IsTrue(decision.state.startedAtFullRaster);
+		}
+
 		TEST_METHOD(NearBlackEpisodeSurvivesProfileGeometryWithdrawal)
 		{
 			NearBlackPresentationEpisodeInput input;

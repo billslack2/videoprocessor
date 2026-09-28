@@ -2524,6 +2524,16 @@ namespace AlphaSourceCrop
 			decision.reason =
 				"presentation epoch changed; near-black proof restarted";
 		}
+		if (decision.state.mode == NearBlackPresentationMode::RETAIN_CROP &&
+			decision.state.presentationEpoch != input.presentationEpoch)
+		{
+			// A new viewport contract cannot inherit the old crop or its pending
+			// fringe votes. Ordinary current-epoch geometry chooses presentation.
+			decision.state = {};
+			decision.ended = true;
+			decision.reason =
+				"presentation epoch ended retained near-black episode";
+		}
 
 		if (input.sceneBoundary &&
 			decision.state.mode != NearBlackPresentationMode::INACTIVE)
@@ -2590,14 +2600,48 @@ namespace AlphaSourceCrop
 		}
 
 		if (decision.state.mode == NearBlackPresentationMode::RETAIN_CROP &&
+			input.measurementCurrent && !input.boundedVisibleContentOutsideCrop)
+		{
+			decision.state.weakFringeLastSourceSequence = 0;
+			decision.state.weakFringeSamples = 0;
+		}
+		if (decision.state.mode == NearBlackPresentationMode::RETAIN_CROP &&
 			input.measurementCurrent && input.boundedVisibleContentOutsideCrop)
 		{
-			decision.state.mode = NearBlackPresentationMode::FULL_RASTER;
-			decision.state.fullRasterStartedSourceSequence =
-				input.sourceSequence;
-			decision.changedToFullRaster = true;
-			decision.reason =
-				"bounded visible title content latched full raster for episode";
+			// A shallow, sparse near-threshold fringe is not enough to change the
+			// established picture size on one source frame. Genuine stronger
+			// outward evidence remains an immediate visibility override.
+			const bool weakFringe = input.weakBoundedFringe &&
+				input.nearBlackEvaluated && !input.globalNearBlack &&
+				input.trustedCropAvailable &&
+				decision.state.entryTrustedCropAvailable &&
+				SameTrustedCropContract(input.trustedCrop,
+					decision.state.entryTrustedCrop) &&
+				!input.fullRasterAuthorityAvailable;
+			if (weakFringe && !input.cadenceRepeat && input.sourceSequence != 0 &&
+				input.sourceSequence > decision.state.weakFringeLastSourceSequence)
+			{
+				decision.state.weakFringeSamples =
+					decision.state.weakFringeLastSourceSequence != 0 &&
+					input.sourceSequence == decision.state.weakFringeLastSourceSequence + 1
+					? decision.state.weakFringeSamples + 1 : 1;
+				decision.state.weakFringeLastSourceSequence = input.sourceSequence;
+			}
+			if (!weakFringe || decision.state.weakFringeSamples >= 2)
+			{
+				decision.state.mode = NearBlackPresentationMode::FULL_RASTER;
+				decision.state.fullRasterStartedSourceSequence =
+					input.sourceSequence;
+				decision.changedToFullRaster = true;
+				decision.reason = weakFringe
+					? "consecutive weak fringe evidence latched full raster for episode"
+					: "bounded visible title content latched full raster for episode";
+			}
+			else
+			{
+				decision.reason =
+					"single weak bounded fringe retained established crop";
+			}
 		}
 		else if (decision.state.mode ==
 			NearBlackPresentationMode::RETAIN_CROP &&

@@ -11958,6 +11958,11 @@ struct LibplaceboVideoRenderer::Impl
 			episodeInput.boundedVisibleContentOutsideCrop =
 				episodeInput.measurementCurrent &&
 				latestActivePictureOutwardVisibleBoundsAvailable;
+			episodeInput.weakBoundedFringe =
+				episodeInput.boundedVisibleContentOutsideCrop &&
+				episodeInput.trustedCropAvailable &&
+				latestCropRetentionEvidence.IsWeakBoundedFringe(
+					episodeInput.trustedCrop);
 			episodeInput.fullRasterAuthorityAvailable =
 				fullRasterPresentationAuthorityAvailable &&
 				fullRasterPresentationAuthoritySourceGeneration == frameGeneration;
@@ -12046,10 +12051,13 @@ struct LibplaceboVideoRenderer::Impl
 						episodeInput);
 			if (episodeDecision.started || episodeDecision.changedToFullRaster ||
 				episodeDecision.releasedToTrustedCrop || episodeDecision.ended ||
-				episodeDecision.revalidationChanged)
+				episodeDecision.revalidationChanged ||
+				(episodeInput.weakBoundedFringe && !episodeInput.cadenceRepeat &&
+					episodeDecision.state.mode ==
+						AlphaSourceCrop::NearBlackPresentationMode::RETAIN_CROP))
 			{
 				DebugLog::Log(
-					"Alpha near-black presentation episode: sequence=%llu generation=%llu mode=%s started=%d to_full=%d to_crop=%d bootstrap_exit=%d ended=%d proof=%u/%u bootstrap=%u/%u sticky=%d evaluated=%d near_black=%d luma_p90=%.1f trusted_crop=%d reacquired=%d current_assoc=%d entry_origin=%d sparse_native_reaffirmed=%d native_bootstrap=%d native_rect=%d,%d-%d,%d native_retention=%d/%d native_outward=%d measurement_current=%d cadence_repeat=%d episode_epoch=%llu input_epoch=%llu native_epoch=%llu source_hz=%.5f measured_hz=%.5f chosen_hz=%.5f retention_safe=%d outward_visible=%d scene=%d reason=\"%s\"",
+					"Alpha near-black presentation episode: sequence=%llu generation=%llu mode=%s started=%d to_full=%d to_crop=%d bootstrap_exit=%d ended=%d proof=%u/%u bootstrap=%u/%u sticky=%d evaluated=%d near_black=%d luma_p90=%.1f trusted_crop=%d reacquired=%d current_assoc=%d entry_origin=%d sparse_native_reaffirmed=%d native_bootstrap=%d native_rect=%d,%d-%d,%d native_retention=%d/%d native_outward=%d measurement_current=%d cadence_repeat=%d episode_epoch=%llu input_epoch=%llu native_epoch=%llu source_hz=%.5f measured_hz=%.5f chosen_hz=%.5f retention_safe=%d outward_visible=%d weak_fringe=%d weak_frames=%u/2 scene=%d reason=\"%s\"",
 					static_cast<unsigned long long>(sourceSequence),
 					static_cast<unsigned long long>(frameGeneration),
 					AlphaSourceCrop::NearBlackPresentationModeName(
@@ -12102,6 +12110,8 @@ struct LibplaceboVideoRenderer::Impl
 					episodeInput.framesPerSecond,
 					episodeInput.retentionSafe ? 1 : 0,
 					episodeInput.boundedVisibleContentOutsideCrop ? 1 : 0,
+					episodeInput.weakBoundedFringe ? 1 : 0,
+					static_cast<unsigned>(episodeDecision.state.weakFringeSamples),
 					episodeInput.sceneBoundary ? 1 : 0,
 					episodeDecision.reason.c_str());
 			}

@@ -3537,6 +3537,95 @@ namespace VideoProcessorTest
 			Assert::IsTrue(retention.lumaSamples < 50000);
 		}
 
+		TEST_METHOD(FourKNearThresholdTwoRowFringeMatchesReplayWitness)
+		{
+			for (bool p210 : { false, true })
+			{
+				P010Frame frame(3840, 2160, 0, p210);
+				frame.BlackOutside(0, 42, 3840, 2118);
+				// Exact 256-column lattice positions from the replay: 3 supported
+				// samples at y=40 and 11 at y=41, just over the luma cutoff.
+				for (int sample = 106; sample < 117; ++sample)
+				{
+					const int x = ((2 * sample + 1) * 3840) / (2 * 256);
+					if (sample < 109)
+						frame.FillRectangle(x, 40, x + 1, 41, 99);
+					frame.FillRectangle(x, 41, x + 1, 42, sample == 116 ? 103 : 99);
+				}
+				const auto source = p210 ? frame.P210Source() : frame.P010Source();
+				const auto retention = EvaluateActivePicturePresentationRetention(source,
+					ScopePresentation(3840, 2160, 42, 2118));
+				Assert::IsTrue(retention.analysisValid && retention.presentationValid);
+				Assert::IsFalse(retention.globalNearBlack);
+				Assert::IsTrue(retention.visibleTop.available);
+				Assert::AreEqual(40, retention.visibleTop.firstLine);
+				Assert::AreEqual(41, retention.visibleTop.secondLine);
+				Assert::AreEqual(1597, retention.visibleTop.firstX);
+				Assert::AreEqual(99, retention.visibleTop.firstLuma);
+				Assert::AreEqual(96, retention.visibleTop.lumaCutoff);
+				Assert::AreEqual(3, retention.visibleTop.firstLineSupport);
+				Assert::AreEqual(11, retention.visibleTop.secondLineSupport);
+				Assert::IsTrue(retention.outwardVisibleBoundsAvailable);
+				Assert::AreEqual(27, retention.outwardVisibleBounds.top);
+				Assert::AreEqual(2118, retention.outwardVisibleBounds.bottom);
+				Assert::IsTrue(retention.IsWeakBoundedFringe(
+					ScopePresentation(3840, 2160, 42, 2118)));
+			}
+		}
+
+		TEST_METHOD(DisconnectedAdjacentRowSpecklesCurrentlyReportOutwardExtent)
+		{
+			P010Frame frame(320, 180);
+			frame.BlackOutside(0, 22, 320, 158);
+			// Each adjacent depth row has enough hits, but the two tiny groups
+			// have no spatial overlap or plausible picture continuity.
+			frame.FillRectangle(60, 8, 64, 9, 600);
+			frame.FillRectangle(260, 9, 264, 10, 600);
+			const auto retention = EvaluateActivePicturePresentationRetention(
+				frame.P010Source(), ScopePresentation(320, 180, 22, 158));
+			Assert::IsTrue(retention.visibleTop.available);
+			Assert::IsTrue(retention.visibleTop.firstLineSupport >= 2);
+			Assert::IsTrue(retention.visibleTop.secondLineSupport >= 2);
+			Assert::IsTrue(retention.outwardVisibleBoundsAvailable);
+			Assert::IsFalse(retention.IsWeakBoundedFringe(
+				ScopePresentation(320, 180, 22, 158)));
+		}
+
+		TEST_METHOD(ConnectedNarrowGlyphReportsOutwardExtent)
+		{
+			P010Frame frame(320, 180);
+			frame.BlackOutside(0, 22, 320, 158);
+			frame.FillRectangle(60, 8, 64, 10, 600);
+			const auto retention = EvaluateActivePicturePresentationRetention(
+				frame.P010Source(), ScopePresentation(320, 180, 22, 158));
+			Assert::IsTrue(retention.visibleTop.available);
+			Assert::IsTrue(retention.visibleTop.firstLineSupport >= 2);
+			Assert::IsTrue(retention.visibleTop.secondLineSupport >= 2);
+			Assert::IsTrue(retention.outwardVisibleBoundsAvailable);
+			Assert::IsFalse(retention.IsWeakBoundedFringe(
+				ScopePresentation(320, 180, 22, 158)));
+		}
+
+		TEST_METHOD(FourKRealTopTitleHasSubstantialOutwardPixelExtent)
+		{
+			for (bool p210 : { false, true })
+			{
+				P010Frame frame(3840, 2160, 0, p210);
+				frame.BlackOutside(0, 42, 3840, 2118);
+				frame.FillRectangle(1500, 12, 1800, 32, 300);
+				const auto source = p210 ? frame.P210Source() : frame.P010Source();
+				const auto retention = EvaluateActivePicturePresentationRetention(source,
+					ScopePresentation(3840, 2160, 42, 2118));
+				Assert::IsTrue(retention.visibleTop.available);
+				Assert::IsTrue(retention.visibleTop.firstLine <= 13);
+				Assert::IsTrue(retention.visibleTop.firstLineSupport >= 10);
+				Assert::IsTrue(retention.outwardVisibleBoundsAvailable);
+				Assert::IsTrue(retention.outwardVisibleBounds.top <= 12);
+				Assert::IsFalse(retention.IsWeakBoundedFringe(
+					ScopePresentation(3840, 2160, 42, 2118)));
+			}
+		}
+
 		TEST_METHOD(BottomAndSideOverlaysExpandOnlyTheirOccupiedEdges)
 		{
 			P010Frame bottom(320, 180);
