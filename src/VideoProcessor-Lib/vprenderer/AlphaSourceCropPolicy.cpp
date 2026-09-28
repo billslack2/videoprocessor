@@ -2571,7 +2571,9 @@ namespace AlphaSourceCrop
 			decision.state.mode == NearBlackPresentationMode::INACTIVE)
 		{
 			decision.state.mode = input.trustedCropAvailable &&
-				!input.boundedVisibleContentOutsideCrop
+				(!input.boundedVisibleContentOutsideCrop ||
+				 (input.minorVerticalOutwardExtent &&
+				  !input.fullRasterAuthorityAvailable))
 				? NearBlackPresentationMode::RETAIN_CROP
 				: NearBlackPresentationMode::FULL_RASTER;
 			decision.state.sourceGeneration = input.sourceGeneration;
@@ -2602,45 +2604,45 @@ namespace AlphaSourceCrop
 		if (decision.state.mode == NearBlackPresentationMode::RETAIN_CROP &&
 			input.measurementCurrent && !input.boundedVisibleContentOutsideCrop)
 		{
-			decision.state.weakFringeLastSourceSequence = 0;
-			decision.state.weakFringeSamples = 0;
+			decision.state.toleratedOutwardLastSourceSequence = 0;
+			decision.state.toleratedOutwardSamples = 0;
 		}
 		if (decision.state.mode == NearBlackPresentationMode::RETAIN_CROP &&
 			input.measurementCurrent && input.boundedVisibleContentOutsideCrop)
 		{
-			// A shallow, sparse near-threshold fringe is not enough to change the
-			// established picture size on one source frame. Genuine stronger
-			// outward evidence remains an immediate visibility override.
-			const bool weakFringe = input.weakBoundedFringe &&
-				input.nearBlackEvaluated && !input.globalNearBlack &&
+			// A bounded vertical expansion within the established aspect tolerance
+			// may contain real menu pixels. Duration alone cannot turn that small
+			// difference into a new picture size. Larger outward content remains
+			// an immediate visibility override.
+			const bool toleratedOutward = input.minorVerticalOutwardExtent &&
 				input.trustedCropAvailable &&
 				decision.state.entryTrustedCropAvailable &&
 				SameTrustedCropContract(input.trustedCrop,
 					decision.state.entryTrustedCrop) &&
 				!input.fullRasterAuthorityAvailable;
-			if (weakFringe && !input.cadenceRepeat && input.sourceSequence != 0 &&
-				input.sourceSequence > decision.state.weakFringeLastSourceSequence)
+			if (toleratedOutward && !input.cadenceRepeat && input.sourceSequence != 0 &&
+				input.sourceSequence > decision.state.toleratedOutwardLastSourceSequence)
 			{
-				decision.state.weakFringeSamples =
-					decision.state.weakFringeLastSourceSequence != 0 &&
-					input.sourceSequence == decision.state.weakFringeLastSourceSequence + 1
-					? decision.state.weakFringeSamples + 1 : 1;
-				decision.state.weakFringeLastSourceSequence = input.sourceSequence;
+				decision.state.toleratedOutwardSamples =
+					decision.state.toleratedOutwardLastSourceSequence != 0 &&
+					input.sourceSequence ==
+						decision.state.toleratedOutwardLastSourceSequence + 1
+					? (decision.state.toleratedOutwardSamples < UINT32_MAX
+						? decision.state.toleratedOutwardSamples + 1 : UINT32_MAX) : 1;
+				decision.state.toleratedOutwardLastSourceSequence = input.sourceSequence;
 			}
-			if (!weakFringe || decision.state.weakFringeSamples >= 2)
+			if (!toleratedOutward)
 			{
 				decision.state.mode = NearBlackPresentationMode::FULL_RASTER;
 				decision.state.fullRasterStartedSourceSequence =
 					input.sourceSequence;
 				decision.changedToFullRaster = true;
-				decision.reason = weakFringe
-					? "consecutive weak fringe evidence latched full raster for episode"
-					: "bounded visible title content latched full raster for episode";
+				decision.reason = "bounded visible title content latched full raster for episode";
 			}
 			else
 			{
 				decision.reason =
-					"single weak bounded fringe retained established crop";
+					"minor bounded outward content retained established crop";
 			}
 		}
 		else if (decision.state.mode ==

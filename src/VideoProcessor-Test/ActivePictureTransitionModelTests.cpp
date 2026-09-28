@@ -1343,7 +1343,7 @@ namespace VideoProcessorTest
 			Assert::AreEqual(recovered.bottom, published.bounds.bottom);
 		}
 
-		TEST_METHOD(AspectDeadbandPreservesMaterialImaxAndFullRasterTransitions)
+		TEST_METHOD(AspectDeadbandRetainsMinorFullRasterButAllowsMaterialTransitions)
 		{
 			ActivePictureTransitionModel model;
 			uint64_t frame = Establish(model, ScopeBounds());
@@ -1351,9 +1351,52 @@ namespace VideoProcessorTest
 			Assert::IsTrue(Observe(model, ImaxBounds(), frame++).publish);
 			const ActivePictureBounds full = {0,0,3840,2160,3840,2160,16.0/9.0,ActivePictureBounds::BarAxes::NONE};
 			Observe(model, full, frame++, ActivePictureClassification::FULL_RASTER_TRUSTED);
-			Assert::IsTrue(Observe(model, full, frame++, ActivePictureClassification::FULL_RASTER_TRUSTED).publish);
+			const auto minorFull = Observe(model, full, frame++,
+				ActivePictureClassification::FULL_RASTER_TRUSTED);
+			Assert::IsFalse(minorFull.publish);
+			Assert::AreEqual(ImaxBounds().top, minorFull.stableBounds.top);
 			Observe(model, ScopeBounds(), frame++);
 			Assert::IsTrue(Observe(model, ScopeBounds(), frame++).publish);
+			Observe(model, full, frame++, ActivePictureClassification::FULL_RASTER_TRUSTED);
+			Assert::IsTrue(Observe(model, full, frame++,
+				ActivePictureClassification::FULL_RASTER_TRUSTED).publish);
+		}
+
+		TEST_METHOD(OneEightyFiveToFullRasterWithinToleranceKeepsAcceptedCrop)
+		{
+			const ActivePictureBounds anchor = {0,42,3840,2118,3840,2160,
+				3840.0/2076.0,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+			const ActivePictureBounds full = {0,0,3840,2160,3840,2160,
+				16.0/9.0,ActivePictureBounds::BarAxes::NONE};
+			Assert::IsTrue(ActivePictureTransitionModel::
+				IsMinorVerticalOutwardGeometry(anchor, full));
+			ActivePictureTransitionModel model;
+			uint64_t frame = Establish(model, anchor);
+			for (int sample = 0; sample < 120; ++sample)
+			{
+				const auto decision = Observe(model, full, frame++,
+					ActivePictureClassification::FULL_RASTER_TRUSTED);
+				Assert::IsFalse(decision.publish);
+				Assert::IsTrue(decision.stable);
+				Assert::AreEqual(anchor.top, decision.stableBounds.top);
+				Assert::AreEqual(anchor.bottom, decision.stableBounds.bottom);
+			}
+			Assert::IsFalse(ActivePictureTransitionModel::
+				IsMinorVerticalOutwardGeometry(ScopeBounds(), full));
+			model.ResetPresentationState();
+			ActivePictureTransitionDecision fresh;
+			bool publishedAfterReset = false;
+			for (int sample = 0;
+				sample < ActivePictureTransitionModel::INITIAL_CONFIRMATIONS;
+				++sample)
+			{
+				fresh = Observe(model, full, frame++,
+					ActivePictureClassification::FULL_RASTER_TRUSTED);
+				publishedAfterReset = publishedAfterReset || fresh.publish;
+			}
+			Assert::IsTrue(publishedAfterReset);
+			Assert::IsTrue(fresh.stable);
+			Assert::AreEqual(0, fresh.stableBounds.top);
 		}
 
 		TEST_METHOD(TwoTwentyAndOneFortyThreeCanTransitionInBothDirections)

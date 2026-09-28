@@ -1235,6 +1235,15 @@ bool ActivePicturePresentationRetentionEvidence::IsWeakBoundedFringe(
 		outer - (presentation.bottom - 1) <= 2;
 }
 
+bool ActivePicturePresentationRetentionEvidence::IsMinorVerticalOutwardExtent(
+	const ActivePictureBounds& presentation) const
+{
+	return outwardVisibleBoundsAvailable && !visibleLeft.available &&
+		!visibleRight.available &&
+		ActivePictureTransitionModel::IsMinorVerticalOutwardGeometry(
+			presentation, outwardVisibleBounds);
+}
+
 
 ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRetention(
 	const AnalysisLumaSource& source,

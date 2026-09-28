@@ -322,10 +322,13 @@ public:
 	static constexpr double ANALYSIS_PERIOD_SECONDS = 0.080;
 	static constexpr double DEFAULT_STABLE_GEOMETRY_DEADBAND_PERCENT = 2.0;
 	static constexpr double MAX_STABLE_GEOMETRY_DEADBAND_PERCENT = 5.0;
-	// Additional inward-only format tolerance, anchored to accepted geometry.
-	// Real mixed-aspect expansions remain outward; only a materially narrower
-	// picture can replace an established frame.
+	// Additional format tolerance anchored to accepted geometry. A small
+	// vertical outward expansion also retains the established picture; larger
+	// mixed-aspect changes remain eligible for a new format.
 	static constexpr double STABLE_ASPECT_DEADBAND_PERCENT = 5.0;
+	static bool IsMinorVerticalOutwardGeometry(
+		const ActivePictureBounds& established,
+		const ActivePictureBounds& expanded);
 
 	void Reset();
     // Presentation-only changes discard authority and votes exactly like Reset,

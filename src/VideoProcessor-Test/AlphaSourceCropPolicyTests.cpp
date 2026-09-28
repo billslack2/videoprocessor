@@ -8256,6 +8256,7 @@ namespace Tests
 			input.sourceSequence = 171;
 			input.boundedVisibleContentOutsideCrop = true;
 			input.weakBoundedFringe = true;
+			input.minorVerticalOutwardExtent = true;
 			decision = EvaluateNearBlackPresentationEpisode(input);
 			Assert::IsFalse(decision.changedToFullRaster);
 			Assert::AreEqual(int(NearBlackPresentationMode::RETAIN_CROP),
@@ -8274,6 +8275,7 @@ namespace Tests
 
 			input.boundedVisibleContentOutsideCrop = false;
 			input.weakBoundedFringe = false;
+			input.minorVerticalOutwardExtent = false;
 			for (uint64_t sequence = 172; sequence <= 178; ++sequence)
 			{
 				input.previous = decision.state;
@@ -8284,7 +8286,7 @@ namespace Tests
 			}
 		}
 
-		TEST_METHOD(NearBlackWeakFringeNeedsTwoDistinctConsecutiveSourceFrames)
+		TEST_METHOD(NearBlackPersistentWeakFringeKeepsEstablishedCrop)
 		{
 			NearBlackPresentationEpisodeInput input;
 			input.measurementCurrent = input.nearBlackEvaluated = true;
@@ -8297,7 +8299,8 @@ namespace Tests
 				int(decision.state.mode));
 
 			input.globalNearBlack = false;
-			input.boundedVisibleContentOutsideCrop = input.weakBoundedFringe = true;
+			input.boundedVisibleContentOutsideCrop =
+				input.weakBoundedFringe = input.minorVerticalOutwardExtent = true;
 			input.previous = decision.state;
 			input.sourceSequence = 201;
 			decision = EvaluateNearBlackPresentationEpisode(input);
@@ -8309,13 +8312,28 @@ namespace Tests
 			Assert::IsFalse(decision.changedToFullRaster);
 			input.cadenceRepeat = false;
 
-			// A missing source frame cannot turn two isolated hits into persistence.
+			// A missing frame resets the diagnostic run, but persistence must not
+			// override the established geometry tolerance.
 			input.previous = decision.state;
 			input.sourceSequence = 203;
 			decision = EvaluateNearBlackPresentationEpisode(input);
 			Assert::IsFalse(decision.changedToFullRaster);
+			for (uint64_t sequence = 204; sequence <= 260; ++sequence)
+			{
+				input.previous = decision.state;
+				input.sourceSequence = sequence;
+				decision = EvaluateNearBlackPresentationEpisode(input);
+				Assert::IsFalse(decision.changedToFullRaster);
+				Assert::AreEqual(int(NearBlackPresentationMode::RETAIN_CROP),
+					int(decision.state.mode));
+			}
+			Assert::AreEqual(58u, decision.state.toleratedOutwardSamples);
+
+			// Stronger outward content still reveals the excluded band promptly.
 			input.previous = decision.state;
-			input.sourceSequence = 204;
+			input.sourceSequence = 261;
+			input.weakBoundedFringe = false;
+			input.minorVerticalOutwardExtent = false;
 			decision = EvaluateNearBlackPresentationEpisode(input);
 			Assert::IsTrue(decision.changedToFullRaster);
 			Assert::AreEqual(int(NearBlackPresentationMode::FULL_RASTER),
@@ -8337,11 +8355,12 @@ namespace Tests
 
 			input.previous = decision.state;
 			input.globalNearBlack = false;
-			input.boundedVisibleContentOutsideCrop = input.weakBoundedFringe = true;
+			input.boundedVisibleContentOutsideCrop =
+				input.weakBoundedFringe = input.minorVerticalOutwardExtent = true;
 			input.sourceSequence = 401;
 			decision = EvaluateNearBlackPresentationEpisode(input);
 			Assert::IsFalse(decision.changedToFullRaster);
-			Assert::AreEqual(1u, decision.state.weakFringeSamples);
+			Assert::AreEqual(1u, decision.state.toleratedOutwardSamples);
 
 			// The next source frame belongs to a new viewport/profile epoch and
 			// even its trusted crop changed. The old episode and its pending vote
@@ -8358,7 +8377,7 @@ namespace Tests
 			Assert::IsTrue(decision.ended);
 			Assert::AreEqual(int(NearBlackPresentationMode::INACTIVE),
 				int(decision.state.mode));
-			Assert::AreEqual(0u, decision.state.weakFringeSamples);
+			Assert::AreEqual(0u, decision.state.toleratedOutwardSamples);
 
 			input.previous = decision.state;
 			input.sourceSequence = 403;
@@ -8391,7 +8410,7 @@ namespace Tests
 				int(decision.state.mode));
 		}
 
-		TEST_METHOD(NearBlackWeakFringeAtDarkEntryStillStartsFullRaster)
+		TEST_METHOD(NearBlackMinorOutwardContentAtDarkEntryKeepsCrop)
 		{
 			NearBlackPresentationEpisodeInput input;
 			input.measurementCurrent = input.nearBlackEvaluated = true;
@@ -8399,14 +8418,15 @@ namespace Tests
 			input.trustedCrop = TrustedScopeCrop().geometry;
 			input.boundedVisibleContentOutsideCrop = true;
 			input.weakBoundedFringe = true;
+			input.minorVerticalOutwardExtent = true;
 			input.sourceGeneration = input.presentationEpoch = 1;
 			input.sourceSequence = 500;
 			const auto decision = EvaluateNearBlackPresentationEpisode(input);
 			Assert::IsTrue(decision.started);
 			Assert::IsFalse(decision.changedToFullRaster);
-			Assert::AreEqual(int(NearBlackPresentationMode::FULL_RASTER),
+			Assert::AreEqual(int(NearBlackPresentationMode::RETAIN_CROP),
 				int(decision.state.mode));
-			Assert::IsTrue(decision.state.startedAtFullRaster);
+			Assert::IsFalse(decision.state.startedAtFullRaster);
 		}
 
 		TEST_METHOD(NearBlackEpisodeSurvivesProfileGeometryWithdrawal)
@@ -9417,6 +9437,13 @@ namespace Tests
 				input.previous = episode.state;
 			}
 			Assert::IsTrue(episode.releasedToTrustedCrop);
+			VerticalInspectionBridgeState staleInspection;
+			staleInspection.active = true;
+			staleInspection.failOpenLatched = true;
+			staleInspection.sourceGeneration = input.sourceGeneration;
+			staleInspection.presentationEpoch = input.presentationEpoch;
+			staleInspection.trustedBase = input.trustedCrop;
+			staleInspection.firstCandidateSourceSequence = 1900;
 			Input crop = TrustedScopeCrop();
 			crop.geometry = input.trustedCrop;
 			crop.geometrySourceGeneration = crop.frameSourceGeneration = input.sourceGeneration;
@@ -9428,10 +9455,15 @@ namespace Tests
 			crop.latestObservationClassification = ActivePictureClassification::PROVISIONAL;
 			crop.frameLocalPresentationRetentionEvaluated = input.retentionEvaluated;
 			crop.frameLocalPresentationRetentionSafe = input.retentionSafe;
-			crop.nearBlackEpisodeRetainCrop = episode.state.mode == NearBlackPresentationMode::RETAIN_CROP;
+			crop.nearBlackEpisodeRetainCrop = NearBlackEpisodeOwnsCropThisFrame(episode);
 			crop.nearBlackEpisodeFullRaster = episode.state.mode == NearBlackPresentationMode::FULL_RASTER;
+			// The stale inspection latch would fail open here if episode release
+			// did not own the crop for this one handoff frame.
+			crop.presentationFailOpen = !crop.nearBlackEpisodeRetainCrop &&
+				staleInspection.failOpenLatched;
+			Assert::IsFalse(crop.presentationFailOpen);
 			const auto candidate = Evaluate(crop);
-			Assert::AreEqual(int(DecisionOwner::PIXEL_SAFE_RETENTION), int(candidate.owner));
+			Assert::AreEqual(int(DecisionOwner::NEAR_BLACK_EPISODE), int(candidate.owner));
 			for (bool recoveryActive : { false, true })
 			{
 				PresentationRecoveryInput recovery;
@@ -9451,9 +9483,23 @@ namespace Tests
 				Assert::AreEqual(3840, handedOff.presentation.sourceBounds.right);
 				Assert::AreEqual(1880, handedOff.presentation.sourceBounds.bottom);
 			}
+			VerticalInspectionBridgeInput inspection;
+			inspection.previous = staleInspection;
+			inspection.candidate = true;
+			inspection.retentionRequested = true;
+			inspection.containedRetentionResolved = episode.releasedToTrustedCrop;
+			inspection.sourceGeneration = input.sourceGeneration;
+			inspection.presentationEpoch = input.presentationEpoch;
+			inspection.trustedBase = input.trustedCrop;
+			inspection.sourceSequence = input.sourceSequence;
+			const auto retiredInspection = UpdateVerticalInspectionBridge(inspection);
+			Assert::IsFalse(retiredInspection.state.active);
+			Assert::IsFalse(retiredInspection.state.failOpenLatched);
 			// On the next bright frame normal crop authority resumes, with the
 			// same rectangle and no intervening full-raster presentation.
 			++crop.frameSourceSequence;
+			crop.nearBlackEpisodeRetainCrop = false;
+			crop.presentationFailOpen = retiredInspection.state.failOpenLatched;
 			crop.latestObservationSupportsCrop = true;
 			crop.latestObservationIsProvisional = false;
 			crop.latestObservationClassification = ActivePictureClassification::BAR_CROP_TRUSTED;

@@ -3573,6 +3573,107 @@ namespace VideoProcessorTest
 			}
 		}
 
+		TEST_METHOD(P010ReplayFringeRetainsEstablishedCropAcrossManyFrames)
+		{
+			using namespace AlphaSourceCrop;
+			const auto crop = ScopePresentation(3840, 2160, 42, 2118);
+			P010Frame frame(3840, 2160);
+			frame.BlackOutside(0, 42, 3840, 2118);
+			for (int sample = 106; sample < 117; ++sample)
+			{
+				const int x = ((2 * sample + 1) * 3840) / (2 * 256);
+				if (sample < 109)
+					frame.FillRectangle(x, 40, x + 1, 41, 99);
+				frame.FillRectangle(x, 41, x + 1, 42,
+					sample == 116 ? 103 : 99);
+			}
+			const auto retention = EvaluateP010ActivePicturePresentationRetention(
+				frame.View(), crop);
+			Assert::IsTrue(retention.outwardVisibleBoundsAvailable);
+			Assert::IsTrue(retention.IsWeakBoundedFringe(crop));
+
+			NearBlackPresentationEpisodeInput input;
+			input.measurementCurrent = input.nearBlackEvaluated = true;
+			input.globalNearBlack = input.trustedCropAvailable = true;
+			input.trustedCrop = crop;
+			input.sourceGeneration = input.presentationEpoch = 1;
+			input.sourceSequence = 100;
+			auto decision = EvaluateNearBlackPresentationEpisode(input);
+			Assert::AreEqual(int(NearBlackPresentationMode::RETAIN_CROP),
+				int(decision.state.mode));
+
+			input.globalNearBlack = false;
+			input.boundedVisibleContentOutsideCrop =
+				retention.outwardVisibleBoundsAvailable;
+			input.weakBoundedFringe = retention.IsWeakBoundedFringe(crop);
+			input.minorVerticalOutwardExtent =
+				retention.IsMinorVerticalOutwardExtent(crop);
+			Assert::IsTrue(input.minorVerticalOutwardExtent);
+			for (uint64_t sequence = 101; sequence <= 148; ++sequence)
+			{
+				input.previous = decision.state;
+				input.sourceSequence = sequence;
+				decision = EvaluateNearBlackPresentationEpisode(input);
+				Assert::IsFalse(decision.changedToFullRaster);
+				Assert::AreEqual(int(NearBlackPresentationMode::RETAIN_CROP),
+					int(decision.state.mode));
+				Assert::AreEqual(42, decision.state.entryTrustedCrop.top);
+				Assert::AreEqual(2118, decision.state.entryTrustedCrop.bottom);
+			}
+		}
+
+		TEST_METHOD(FourKBrightMenuPixelsWithinToleranceKeepEstablishedCrop)
+		{
+			using namespace AlphaSourceCrop;
+			const auto crop = ScopePresentation(3840, 2160, 42, 2118);
+			for (bool p210 : { false, true })
+			{
+				P010Frame frame(3840, 2160, 0, p210);
+				frame.BlackOutside(0, 42, 3840, 2118);
+				// Bright, real menu content spans the entire shallow top bar.
+				frame.FillRectangle(1500, 0, 1800, 42, 600);
+				const auto retention = EvaluateActivePicturePresentationRetention(
+					p210 ? frame.P210Source() : frame.P010Source(), crop);
+				Assert::IsTrue(retention.outwardVisibleBoundsAvailable);
+				Assert::AreEqual(0, retention.outwardVisibleBounds.top);
+				Assert::IsFalse(retention.IsWeakBoundedFringe(crop));
+				Assert::IsTrue(retention.IsMinorVerticalOutwardExtent(crop));
+
+				NearBlackPresentationEpisodeInput input;
+				input.measurementCurrent = input.nearBlackEvaluated = true;
+				input.globalNearBlack = input.trustedCropAvailable = true;
+				input.trustedCrop = crop;
+				input.sourceGeneration = input.presentationEpoch = 1;
+				input.sourceSequence = 100;
+				auto decision = EvaluateNearBlackPresentationEpisode(input);
+				input.previous = decision.state;
+				input.globalNearBlack = false;
+				input.boundedVisibleContentOutsideCrop = true;
+				input.minorVerticalOutwardExtent = true;
+				for (uint64_t sequence = 101; sequence <= 124; ++sequence)
+				{
+					input.previous = decision.state;
+					input.sourceSequence = sequence;
+					decision = EvaluateNearBlackPresentationEpisode(input);
+					Assert::IsFalse(decision.changedToFullRaster);
+					Assert::AreEqual(int(NearBlackPresentationMode::RETAIN_CROP),
+						int(decision.state.mode));
+				}
+			}
+		}
+
+		TEST_METHOD(FourKScopeTitleBeyondToleranceCanExpand)
+		{
+			const auto crop = ScopePresentation(3840, 2160, 280, 1880);
+			P010Frame frame(3840, 2160);
+			frame.BlackOutside(0, 280, 3840, 1880);
+			frame.FillRectangle(1500, 0, 1800, 42, 600);
+			const auto retention = EvaluateP010ActivePicturePresentationRetention(
+				frame.View(), crop);
+			Assert::IsTrue(retention.outwardVisibleBoundsAvailable);
+			Assert::IsFalse(retention.IsMinorVerticalOutwardExtent(crop));
+		}
+
 		TEST_METHOD(DisconnectedAdjacentRowSpecklesCurrentlyReportOutwardExtent)
 		{
 			P010Frame frame(320, 180);

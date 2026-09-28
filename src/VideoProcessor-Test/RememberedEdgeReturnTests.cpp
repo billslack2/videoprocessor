@@ -1382,6 +1382,10 @@ public:
             const auto stable=GuardedRecallSnapshot(rig.model).stableBounds;
             auto nominateFromFull=[&](const ActivePictureBounds& target,uint64_t scene) {
                 auto trial=rig;
+                // A 1.85-to-full change is within the stable presentation
+                // tolerance. Reopen presentation explicitly for this recall
+                // fixture while retaining its independently learned history.
+                if(flatFamily)trial.model.ResetPresentationState();
                 for(int i=0;i<ActivePictureTransitionModel::INITIAL_CONFIRMATIONS+2;++i) {
                     trial.Advance(scene);trial.model.Observe(MakeActivePictureObservation(fullRaw,trial.context.sourceSequence,24));
                 }
