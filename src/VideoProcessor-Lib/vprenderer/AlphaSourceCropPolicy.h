@@ -1002,6 +1002,11 @@ namespace AlphaSourceCrop
 		ActivePictureAuthorityOrigin entryTrustedCropOrigin = ActivePictureAuthorityOrigin::NATIVE;
 		uint64_t fullRasterStartedSourceSequence = 0;
 		bool confirmedNonNearBlackContent = false;
+		// Presentation-only envelope; never learned or published as crop authority.
+		bool boundedPresentationAvailable = false;
+		bool boundedPresentationFailed = false;
+		ActivePictureBounds boundedPresentation;
+		uint64_t boundedPresentationSequence = 0;
 		uint64_t outwardConfirmationLastSourceSequence = 0;
 		uint32_t outwardConfirmationSamples = 0;
 		uint64_t lastEvaluatedSourceSequence = 0;
@@ -1369,6 +1374,15 @@ namespace AlphaSourceCrop
 
 	PresentationRecoveryDecision EvaluatePresentationRecovery(
 		const PresentationRecoveryInput& input);
+
+	struct NearBlackBoundedPresentationDecision
+	{
+		NearBlackPresentationEpisodeState state;
+		Decision presentation;
+		bool boundedPresentation = false;
+	};
+	NearBlackBoundedPresentationDecision EvaluateNearBlackBoundedPresentation(
+		const NearBlackPresentationEpisodeState& previous, const PresentationRecoveryInput& input);
 
 	enum class ScenePresentationAction
 	{

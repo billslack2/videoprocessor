@@ -12422,6 +12422,26 @@ struct LibplaceboVideoRenderer::Impl
 			const auto recoveryDecision = AlphaSourceCrop::EvaluatePresentationRecovery(recoveryInput);
 			cropPresentationRecovery = recoveryDecision.state;
 			cropDecision = recoveryDecision.presentation;
+			// The episode still owns recovery timing. Only replace its full-raster
+			// presentation with an independently current bounded visible envelope.
+			auto nearBlackBoundedInput = recoveryInput;
+			nearBlackBoundedInput.previous = recoveryDecision.state;
+			nearBlackBoundedInput.candidate = cropDecision;
+			const auto nearBlackBoundedDecision = AlphaSourceCrop::EvaluateNearBlackBoundedPresentation(
+				nearBlackPresentationEpisode, nearBlackBoundedInput);
+			if (nearBlackBoundedDecision.state.boundedPresentationAvailable != nearBlackPresentationEpisode.boundedPresentationAvailable ||
+				nearBlackBoundedDecision.state.boundedPresentationFailed != nearBlackPresentationEpisode.boundedPresentationFailed ||
+				(nearBlackBoundedDecision.boundedPresentation &&
+				 !sameBounds(nearBlackBoundedDecision.presentation.sourceBounds, nearBlackPresentationEpisode.boundedPresentation)))
+				DebugLog::Log("Alpha near-black bounded presentation: instance=%s generation=%llu sequence=%llu epoch=%llu bounded=%d failed=%d rect=%d,%d-%d,%d reason=\"%s\"",
+					diagnosticInstanceId.c_str(), frameGeneration, sourceSequence, viewportRequestSerial,
+					nearBlackBoundedDecision.boundedPresentation ? 1 : 0,
+					nearBlackBoundedDecision.state.boundedPresentationFailed ? 1 : 0,
+					nearBlackBoundedDecision.presentation.sourceBounds.left, nearBlackBoundedDecision.presentation.sourceBounds.top,
+					nearBlackBoundedDecision.presentation.sourceBounds.right, nearBlackBoundedDecision.presentation.sourceBounds.bottom,
+					nearBlackBoundedDecision.presentation.reason.c_str());
+			nearBlackPresentationEpisode = nearBlackBoundedDecision.state;
+			cropDecision = nearBlackBoundedDecision.presentation;
 			const auto admissionDecision = AlphaSourceCrop::AdmitCropPresentation(
 				cropPresentationAdmission, cropInput, cropDecision, viewportRequestSerial);
 			const auto admissionLogTick = GetTickCount64();
@@ -12528,7 +12548,8 @@ struct LibplaceboVideoRenderer::Impl
 				aspectLimitFill = AlphaSourceCrop::EvaluateFixedAspectCrop(
 					fixedCropInput);
 			}
-			else if (protectedCaptionFit || nlsPresentationFailOpen || recoveryDecision.boundedPresentation)
+			else if (protectedCaptionFit || nlsPresentationFailOpen || recoveryDecision.boundedPresentation ||
+                nearBlackBoundedDecision.boundedPresentation)
 			{
 				aspectLimitFill.sourceBounds = cropDecision.sourceBounds;
 				aspectLimitFill.reason =
