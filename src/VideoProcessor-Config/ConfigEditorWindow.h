@@ -199,8 +199,18 @@ private:
     QSystemTrayIcon* tray_ = nullptr;
 	void* revealEvent_ = nullptr;
 	QWinEventNotifier* revealEventNotifier_ = nullptr;
-    struct ProfileListBinding { QListWidget* list; QString sectionPrefix; };
+    struct ProfileListBinding
+    {
+        QListWidget* list;
+        QString sectionPrefix;
+        QLabel* selectedTitle = nullptr;
+        bool pendingActiveSelection = true;
+        bool editSelectionTouched = false;
+    };
     std::vector<ProfileListBinding> activeProfileLists_;
+    bool profileSelectionReady_ = false;
+    bool selectingActiveProfile_ = false;
+    bool activeProfileSnapshotAvailable_ = false;
     struct RendererAutoStatusBinding
     {
         QString sectionPrefix;

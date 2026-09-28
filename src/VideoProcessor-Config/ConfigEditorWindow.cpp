@@ -953,6 +953,7 @@ ConfigEditorWindow::ConfigEditorWindow(QString configPath, quintptr ownerHandle,
         allRenderers_ = testAllRenderers;
     }
     setCentralWidget(createShell());
+    profileSelectionReady_ = true;
     refreshLimitedTransportControls();
     refreshCalibrationControls();
     if (!testMode_)
@@ -1616,7 +1617,11 @@ void ConfigEditorWindow::refreshActiveProfileIndicators()
     // notifications while the operator is opening or selecting from it.
     if (hasActiveOwnedPopup()) return;
 
-    const uint32_t expectedProcessId = ownerProcessId_;
+    // Config can remain in the tray across a VP restart. Its old owner HWND
+    // then disappears; read the sole live publisher as a standalone editor
+    // until a new VP activation associates this window with its fresh PID.
+    const uint32_t expectedProcessId = nativeOwnerIsValid() ?
+        ownerProcessId_ : 0;
     ActiveProfileStatus::Snapshot active;
     const bool available = ActiveProfileStatus::Read(expectedProcessId, active);
     const QString renderer = available ? QString::fromLocal8Bit(active.renderer) : QString();
@@ -1674,7 +1679,8 @@ void ConfigEditorWindow::applyActiveProfileIndicators(bool available,
     const QStringList& shaders, bool shaderAvailable, const QString& zoom,
     const QString& scaling, const QString& output)
 {
-    for (const ProfileListBinding& binding : activeProfileLists_)
+    activeProfileSnapshotAvailable_ = available;
+    for (ProfileListBinding& binding : activeProfileLists_)
     {
         const bool shaderList = binding.sectionPrefix.startsWith(
             QStringLiteral("shader."));
@@ -1685,6 +1691,7 @@ void ConfigEditorWindow::applyActiveProfileIndicators(bool available,
                         (binding.sectionPrefix == QStringLiteral("vprenderer.viewport") ? viewport :
                             (binding.sectionPrefix == QStringLiteral("vprenderer.zoom") ? zoom :
                                 (binding.sectionPrefix == QStringLiteral("queue") ? queue : QString()))))));
+        int activeRow = -1;
         for (int index = 0; binding.list && index < binding.list->count(); ++index)
         {
             QListWidgetItem* item = binding.list->item(index);
@@ -1702,6 +1709,35 @@ void ConfigEditorWindow::applyActiveProfileIndicators(bool available,
             // the UI thread for an unchanged shared-memory snapshot.
             if (item->data(ActiveProfileRole).toBool() != isActive)
                 item->setData(ActiveProfileRole, isActive);
+            if (isActive) activeRow = index;
+        }
+        // A profile list initially edits its first (default) row. Once the
+        // live snapshot arrives, open the active row instead. A later snapshot
+        // must never move an operator away from a row they chose to edit.
+        if (!shaderList && profileSelectionReady_ &&
+            binding.pendingActiveSelection)
+        {
+            if (binding.editSelectionTouched)
+                binding.pendingActiveSelection = false;
+            else if (activeRow >= 0)
+            {
+                selectingActiveProfile_ = true;
+                binding.list->setCurrentRow(activeRow);
+                selectingActiveProfile_ = false;
+                binding.pendingActiveSelection = false;
+            }
+        }
+        if (binding.selectedTitle && binding.list && binding.list->currentItem())
+        {
+            const QListWidgetItem* current = binding.list->currentItem();
+            const QString display = current->data(Qt::UserRole + 1).toString();
+            const QString title = !available ?
+                QStringLiteral("%1 (Live status unavailable)").arg(display) :
+                current->data(ActiveProfileRole).toBool() ?
+                    QStringLiteral("%1 (Active)").arg(display) :
+                    QStringLiteral("%1 (Not active)").arg(display);
+            if (binding.selectedTitle->text() != title)
+                binding.selectedTitle->setText(title);
         }
     }
     refreshRendererAutoStatus();
@@ -2797,6 +2833,7 @@ void ConfigEditorWindow::rebuildConfigurationShell()
     // Ordinary renderer-visibility changes are handled in place and never
     // enter this comparatively expensive path.
     migrateCalibrationProfiles();
+    profileSelectionReady_ = false;
     const int currentPage = pages_ ? pages_->currentIndex() : 0;
 	activeProfileLists_.clear();
 	rendererAutoStatusBindings_.clear();
@@ -2807,7 +2844,9 @@ void ConfigEditorWindow::rebuildConfigurationShell()
     QWidget* replacement = createShell();
     QWidget* previous = takeCentralWidget();
     setCentralWidget(replacement);
+    profileSelectionReady_ = true;
     selectPage(currentPage);
+    if (!testMode_) refreshActiveProfileIndicators();
     if (previous) previous->deleteLater();
 }
 
@@ -3788,8 +3827,12 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
     detailLayout->setContentsMargins(0, 0, 0, 0);
     detailLayout->setSpacing(12);
     auto* selectedTitle = new QLabel(QStringLiteral("Profile"));
+    selectedTitle->setObjectName(controlName(sectionPrefix,
+        QStringLiteral("selected_profile_status")));
     selectedTitle->setProperty("cardTitle", true);
     detailLayout->addWidget(selectedTitle);
+    if (showsActiveProfile)
+        activeProfileLists_.back().selectedTitle = selectedTitle;
     auto* name = new QLineEdit;
     name->setObjectName(controlName(sectionPrefix, QStringLiteral("name")));
     detailLayout->addWidget(fieldWithHelp(QStringLiteral("Name"), name,
@@ -5244,9 +5287,11 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         }
         const QString section = state->section;
         const QString display = current->data(Qt::UserRole + 1).toString();
-        selectedTitle->setText(current->data(ActiveProfileRole).toBool() ?
-            QStringLiteral("%1 (Active)").arg(display) :
-            QStringLiteral("%1 (Not active)").arg(display));
+        selectedTitle->setText(!activeProfileSnapshotAvailable_ ?
+            QStringLiteral("%1 (Live status unavailable)").arg(display) :
+            current->data(ActiveProfileRole).toBool() ?
+                QStringLiteral("%1 (Active)").arg(display) :
+                QStringLiteral("%1 (Not active)").arg(display));
         name->setText(display);
         shortcut->setText(canonicalShortcutText(
             value(section, QStringLiteral("shortcut"))));
@@ -5917,6 +5962,26 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         refresh(renamed);
     });
     refresh({});
+    if (showsActiveProfile)
+    {
+        const auto markEditSelection = [this, list]
+        {
+            if (!profileSelectionReady_ || selectingActiveProfile_) return;
+            for (ProfileListBinding& binding : activeProfileLists_)
+                if (binding.list == list)
+                {
+                    binding.editSelectionTouched = true;
+                    break;
+                }
+        };
+        connect(list, &QListWidget::currentRowChanged, this,
+            [markEditSelection](int) { markEditSelection(); });
+        connect(list, &QListWidget::itemClicked, this,
+            [markEditSelection](QListWidgetItem*) { markEditSelection(); });
+        for (QPushButton* button : { add, remove, up, down })
+            connect(button, &QPushButton::pressed, this,
+                markEditSelection);
+    }
 
     splitter->addWidget(createCard(QStringLiteral("Profiles"),
         QStringLiteral("The first profile in the list is the default. Add, remove, or reorder profiles here."), listContent));
@@ -7752,6 +7817,11 @@ void ConfigEditorWindow::closeEvent(QCloseEvent* event)
 
 void ConfigEditorWindow::hideEvent(QHideEvent* event)
 {
+    for (ProfileListBinding& binding : activeProfileLists_)
+    {
+        binding.pendingActiveSelection = true;
+        binding.editSelectionTouched = false;
+    }
     if (activeProfileTimer_) activeProfileTimer_->stop();
     pendingTopmostReassert_ = false;
     explicitRevealIntent_ = false;
