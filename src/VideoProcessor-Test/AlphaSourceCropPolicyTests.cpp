@@ -65,6 +65,44 @@ namespace Tests
 			input.candidate = Evaluate(c);
 			return input;
 		}
+        PresentationRecoveryInput ToyStoryNearBlackRecovery(uint64_t sequence = 30120)
+        {
+            auto input = AgencyBoundedRecovery(sequence);
+            auto& c = input.crop;
+            c.geometry = {0,42,3840,2118,3840,2160,3840.0/2076.0,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+            c.presentationFailOpen = false;
+            c.nearBlackEpisodeFullRaster = true;
+            c.latestObservationIsProvisional = false;
+            c.latestObservationClassification = ActivePictureClassification::BAR_CROP_TRUSTED;
+            input.observationClassification = c.latestObservationClassification;
+            input.retentionBounds = c.currentVisibleBase = c.geometry;
+            input.observation = c.geometry;
+            input.observation.top = 40;
+            c.currentVisibleBounds = c.geometry;
+            c.currentVisibleBounds.top = 27; // Log: rows 40/41 + conservative extent margin.
+            input.previousAdmission.available = true;
+            input.previousAdmission.trustedCrop = c.geometry;
+            input.previousAdmission.sourceGeneration = c.frameSourceGeneration;
+            input.previousAdmission.presentationEpoch = input.presentationEpoch;
+            input.candidate = Evaluate(c);
+            return input;
+        }
+        NearBlackPresentationEpisodeState ToyStoryRetainedEpisode(const PresentationRecoveryInput& recovery)
+        {
+            NearBlackPresentationEpisodeInput input;
+            input.measurementCurrent = input.nearBlackEvaluated = input.globalNearBlack = true;
+            input.trustedCropAvailable = true;
+            input.trustedCrop = recovery.crop.geometry;
+            input.sourceGeneration = recovery.crop.frameSourceGeneration;
+            input.sourceSequence = recovery.crop.frameSourceSequence - 6;
+            input.presentationEpoch = recovery.presentationEpoch;
+            auto entry = EvaluateNearBlackPresentationEpisode(input);
+            input.previous = entry.state;
+            input.sourceSequence = recovery.crop.frameSourceSequence;
+            input.globalNearBlack = false;
+            input.boundedVisibleContentOutsideCrop = true;
+            return EvaluateNearBlackPresentationEpisode(input).state;
+        }
         PresentationRecoveryInput ExpiredFitInspection()
         {
             auto input = AgencyBoundedRecovery(4525);
@@ -1721,6 +1759,249 @@ namespace Tests
             }
         }
 
+        TEST_METHOD(NearBlackBoundedReplayKeepsMeasuredFringeWithoutFullRasterFlash)
+        {
+            auto input = ToyStoryNearBlackRecovery();
+            const auto episode = ToyStoryRetainedEpisode(input);
+            Assert::IsTrue(episode.mode == NearBlackPresentationMode::FULL_RASTER);
+            AssertFullRaster(input.candidate); // Actual pre-fix episode presentation.
+            const auto result = EvaluateNearBlackBoundedPresentation(episode, input);
+            Assert::IsTrue(result.boundedPresentation);
+            Assert::IsTrue(result.presentation.applyCrop);
+            Assert::AreEqual(26, result.presentation.sourceBounds.top);
+            Assert::AreEqual(2118, result.presentation.sourceBounds.bottom);
+            Assert::IsTrue(result.state.mode == NearBlackPresentationMode::FULL_RASTER);
+            Assert::AreEqual(42, result.state.entryTrustedCrop.top); // No new logical AR.
+            Assert::IsFalse(AdmitCropPresentation(input.previousAdmission, input.crop,
+                result.presentation, input.presentationEpoch).blocked);
+        }
+        TEST_METHOD(NearBlackBoundedReplayHoldsEnvelopeAndExposesFurtherGrowth)
+        {
+            auto input = ToyStoryNearBlackRecovery();
+            auto state = ToyStoryRetainedEpisode(input);
+            for (int i = 0; i < 7; ++i)
+            {
+                input.crop.frameSourceSequence = input.retentionSourceSequence =
+                    input.crop.currentVisibleSourceSequence = 30120 + i;
+                input.crop.currentVisibleBounds.top = i % 2 ? 29 : 27;
+                auto result = EvaluateNearBlackBoundedPresentation(state, input);
+                Assert::IsTrue(result.presentation.applyCrop);
+                Assert::AreEqual(26, result.presentation.sourceBounds.top);
+                Assert::AreEqual(0u, result.state.revalidationSamples);
+                state = result.state;
+            }
+            ++input.crop.frameSourceSequence; ++input.retentionSourceSequence;
+            ++input.crop.currentVisibleSourceSequence;
+            input.crop.currentVisibleBounds.top = 11;
+            auto grown = EvaluateNearBlackBoundedPresentation(state, input);
+            Assert::AreEqual(10, grown.presentation.sourceBounds.top);
+            Assert::IsTrue(grown.presentation.applyCrop);
+        }
+        TEST_METHOD(NearBlackBoundedReplayRejectsStaleUnsafeAndCompetingEvidence)
+        {
+            for (int failure = 0; failure < 37; ++failure)
+            {
+                auto input = ToyStoryNearBlackRecovery();
+                auto state = ToyStoryRetainedEpisode(input);
+                switch (failure) {
+                case 0: input.measurementCurrent = false; break;
+                case 1: input.retentionEvaluated = false; break;
+                case 2: --input.retentionSourceSequence; break;
+                case 3: --input.retentionSourceGeneration; break;
+                case 4: input.retentionBounds.top += 2; break;
+                case 5: input.crop.currentVisibleBoundsAvailable = false; break;
+                case 6: --input.crop.currentVisibleSourceSequence; break;
+                case 7: --input.crop.currentVisibleSourceGeneration; break;
+                case 8: input.crop.currentVisibleBase.top += 2; break;
+                case 9: input.crop.currentVisibleBounds.top = 41; break; // Clips observed row 40.
+                case 10: input.globalNearBlack = true; break;
+                case 11: input.nearBlackEvaluated = false; break;
+                case 12: input.observationAvailable = false; break;
+                case 13: input.crop.fullRasterPresentationAuthoritative = true; break;
+                case 14: input.crop.movingPictureTransition = true; break;
+                case 15: input.crop.verticalTranslationActive = true; break;
+                case 16: input.crop.presentationFailOpen = true; break;
+                case 17: input.previousAdmission.available = false; break;
+                case 18: --input.presentationEpoch; break;
+                case 19: state.startedAtFullRaster = true; break;
+                case 20: state.entryTrustedCropOrigin = ActivePictureAuthorityOrigin::SPARSE_EXPERIMENT; break;
+                case 21: input.crop.automaticCropEnabled = false; break;
+                case 22: input.crop.verticalTranslationConfirmationPending = true; break;
+                case 23: input.crop.latestObservationIsUnavailable = true; break;
+                case 24: input.crop.currentVisibleBounds.bottom = 2162; break;
+                case 25: --input.previousAdmission.sourceGeneration; break;
+                case 26: --input.previousAdmission.presentationEpoch; break;
+                case 27: input.previousAdmission.trustedCrop.top += 2; break;
+                case 28: input.previous.active = true; break;
+                case 29: input.crop.verticalFitConfirmationPending = true; break;
+                case 30: input.crop.verticalInspectionPending = true; break;
+                case 31: input.crop.latestObservationClassification = ActivePictureClassification::FULL_RASTER_TRUSTED; break;
+                case 32: input.observationClassification = ActivePictureClassification::FULL_RASTER_TRUSTED; break;
+                case 33: --state.sourceGeneration; break;
+                case 34: state.entryTrustedCrop.top += 2; break;
+                case 35: --input.crop.geometrySourceGeneration; break;
+                case 36: input.crop.sharedGeometryAvailable = false; break;
+                }
+                AssertFullRaster(EvaluateNearBlackBoundedPresentation(state, input).presentation);
+            }
+        }
+        TEST_METHOD(NearBlackBoundedReplayReturnsOnlyAfterUnchangedSevenFrameProof)
+        {
+            auto input = ToyStoryNearBlackRecovery();
+            auto state = EvaluateNearBlackBoundedPresentation(ToyStoryRetainedEpisode(input), input).state;
+            NearBlackPresentationEpisodeInput proof;
+            proof.measurementCurrent = proof.nearBlackEvaluated = proof.trustedCropAvailable = true;
+            proof.trustedCrop = input.crop.geometry;
+            proof.sourceGeneration = input.crop.frameSourceGeneration;
+            proof.presentationEpoch = input.presentationEpoch;
+            proof.framesPerSecond = 24;
+            proof.currentObservationAvailable = proof.retentionEvaluated = proof.retentionSafe = true;
+            proof.retentionExcludedBandsPixelSafe = true;
+            proof.currentObservation = proof.retentionBounds = input.crop.geometry;
+            proof.currentObservationClassification = ActivePictureClassification::BAR_CROP_TRUSTED;
+            proof.retentionSourceGeneration = proof.sourceGeneration;
+            proof.knownTrustedGeometryReacquired = proof.reacquisitionIsCurrentAssociation = true;
+            proof.reacquiredTrustedGeometry = proof.trustedCrop;
+            proof.reacquiredTrustedClassification = ActivePictureClassification::BAR_CROP_TRUSTED;
+            proof.reacquiredSourceGeneration = proof.sourceGeneration;
+            proof.reacquiredPresentationEpoch = proof.presentationEpoch;
+            for (uint64_t i = 1; i <= 7; ++i)
+            {
+                proof.previous = state;
+                proof.sourceSequence = proof.retentionSourceSequence = proof.reacquiredSourceSequence = 30120+i;
+                const auto episode = EvaluateNearBlackPresentationEpisode(proof);
+                Assert::AreEqual(i == 7, episode.releasedToTrustedCrop);
+                input.crop.frameSourceSequence = input.retentionSourceSequence = 30120+i;
+                input.crop.currentVisibleBoundsAvailable = false;
+                input.excludedBandsPixelSafe = true;
+                input.observation = input.crop.geometry;
+                input.crop.latestObservationSupportsCrop = true;
+                input.crop.nearBlackEpisodeFullRaster = episode.state.mode == NearBlackPresentationMode::FULL_RASTER;
+                input.candidate = Evaluate(input.crop);
+                const auto presentation = EvaluateNearBlackBoundedPresentation(episode.state, input);
+                Assert::IsTrue(presentation.presentation.applyCrop);
+                Assert::AreEqual(i == 7 ? 42 : 26, presentation.presentation.sourceBounds.top);
+                Assert::AreEqual(episode.state.revalidationSamples, presentation.state.revalidationSamples);
+                state = presentation.state;
+            }
+        }
+        TEST_METHOD(NearBlackBoundedReplayCannotAcquireOnRepeatButPreservesCertifiedRepeat)
+        {
+            auto input = ToyStoryNearBlackRecovery();
+            const auto episode = ToyStoryRetainedEpisode(input);
+            input.cadenceRepeat = true;
+            AssertFullRaster(EvaluateNearBlackBoundedPresentation(episode, input).presentation);
+            input.cadenceRepeat = false;
+            auto first = EvaluateNearBlackBoundedPresentation(episode, input);
+            Assert::IsTrue(first.boundedPresentation);
+            input.cadenceRepeat = true;
+            auto repeat = EvaluateNearBlackBoundedPresentation(first.state, input);
+            Assert::IsTrue(repeat.boundedPresentation);
+            Assert::AreEqual(26, repeat.presentation.sourceBounds.top);
+            Assert::AreEqual(first.state.revalidationSamples, repeat.state.revalidationSamples);
+        }
+        TEST_METHOD(NearBlackBoundedReplayUsesRealP010AndV210ExtentEvidence)
+        {
+            const int width = 384, height = 216;
+            std::vector<uint16_t> planar(width*height*3/2, uint16_t(512<<6));
+            std::vector<uint32_t> packedPixels(width/6*4*height);
+            for (int y=0; y<height; ++y)
+            {
+                const uint32_t level = y<26 || y>=188 ? 64 : y<28 ? 103 : 281;
+                for (int x=0; x<width; ++x) planar[y*width+x] = uint16_t(level<<6);
+                for (int x=0; x<width; x+=6)
+                {
+                    auto words = packedPixels.data()+y*width/6*4+x/6*4;
+                    words[0]=512|(level<<10)|(512<<20);
+                    words[1]=level|(512<<10)|(level<<20);
+                    words[2]=512|(level<<10)|(512<<20);
+                    words[3]=level|(512<<10)|(level<<20);
+                }
+            }
+            for (bool packed : {false,true})
+            {
+                AnalysisLumaSource source{reinterpret_cast<const uint8_t*>(planar.data()),
+                    planar.size()*sizeof(uint16_t),width,height,width*2,width*2,
+                    AnalysisLumaFormat::P010,VideoFrameEncoding::V210,ColorSpace::REC_709,7};
+                if (packed) {
+                    source.data=reinterpret_cast<const uint8_t*>(packedPixels.data());
+                    source.dataBytes=packedPixels.size()*sizeof(uint32_t);
+                    source.rowBytes=width/6*16; source.chromaRowBytes=0;
+                    source.format=AnalysisLumaFormat::NativeYuv422;
+                }
+                auto input=ToyStoryNearBlackRecovery();
+                auto& crop=input.crop;
+                crop.rasterWidth=width; crop.rasterHeight=height;
+                crop.geometry={0,28,width,188,width,height,384.0/160.0,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+                const auto pixels=EvaluateActivePicturePresentationRetention(source,crop.geometry);
+                Assert::IsTrue(pixels.analysisValid && pixels.presentationValid && pixels.outwardVisibleBoundsAvailable);
+                Assert::IsFalse(pixels.excludedBandsPixelSafe);
+                input.retentionBounds=crop.currentVisibleBase=input.previousAdmission.trustedCrop=crop.geometry;
+                crop.currentVisibleBounds=pixels.outwardVisibleBounds;
+                input.observation=pixels.activePicture.proposedBounds;
+                input.observationClassification=crop.latestObservationClassification=pixels.activePicture.classification;
+                const auto coarse=ResolvePresentationObservation(crop.geometry,pixels.activePicture,pixels);
+                crop.currentVisibleBounds.top=std::min(crop.currentVisibleBounds.top,coarse.bounds.top);
+                crop.currentVisibleBounds.bottom=std::max(crop.currentVisibleBounds.bottom,coarse.bounds.bottom);
+                input.candidate=Evaluate(crop);
+                auto result=EvaluateNearBlackBoundedPresentation(ToyStoryRetainedEpisode(input),input);
+                Assert::IsTrue(result.boundedPresentation);
+                Assert::IsTrue(result.presentation.sourceBounds.top <= 26);
+                Assert::AreEqual(188,result.presentation.sourceBounds.bottom);
+                Assert::IsTrue(result.presentation.sourceBounds.top > 0);
+            }
+        }
+        TEST_METHOD(NearBlackBoundedReplayAcceptsExistingAcquisitionSuppressionWithoutNewAuthority)
+        {
+            auto input=ToyStoryNearBlackRecovery();
+            ActivePictureEvidence raw;
+            raw.available=true;
+            raw.classification=ActivePictureClassification::BAR_CROP_TRUSTED;
+            raw.proposedBounds=raw.trustedBounds=input.observation;
+            const auto constrained=ConstrainNearBlackCropAcquisition(raw,true);
+            Assert::IsTrue(constrained.classification == ActivePictureClassification::PROVISIONAL);
+            input.crop.latestObservationClassification=constrained.classification;
+            input.crop.latestObservationIsProvisional=true;
+            input.crop.latestObservationSupportsCrop=false;
+            const auto episode=ToyStoryRetainedEpisode(input);
+            const auto generic=EvaluatePresentationRecovery(input);
+            Assert::IsFalse(generic.state.active);
+            input.previous=generic.state;
+            input.candidate=generic.presentation;
+            const auto result=EvaluateNearBlackBoundedPresentation(episode,input);
+            Assert::IsTrue(result.boundedPresentation);
+            Assert::AreEqual(26,result.presentation.sourceBounds.top);
+            Assert::AreEqual(42,result.state.entryTrustedCrop.top);
+            Assert::IsFalse(AdmitCropPresentation(input.previousAdmission,input.crop,
+                result.presentation,input.presentationEpoch).blocked);
+        }
+        TEST_METHOD(NearBlackBoundedReplayGenuineRasterExpansionAlwaysWins)
+        {
+            auto input=ToyStoryNearBlackRecovery();
+            auto state=EvaluateNearBlackBoundedPresentation(ToyStoryRetainedEpisode(input),input).state;
+            ++input.crop.frameSourceSequence; ++input.retentionSourceSequence;
+            ++input.crop.currentVisibleSourceSequence;
+            input.crop.currentVisibleBounds.top=0;
+            input.crop.currentVisibleBounds.bottom=2160;
+            input.observation=input.crop.currentVisibleBounds;
+            const auto result=EvaluateNearBlackBoundedPresentation(state,input);
+            AssertFullRaster(result.presentation);
+            Assert::IsTrue(result.state.boundedPresentationFailed);
+        }
+        TEST_METHOD(NearBlackBoundedReplayLatchesFullRasterWhenProofIsLost)
+        {
+            auto input = ToyStoryNearBlackRecovery();
+            auto state = EvaluateNearBlackBoundedPresentation(ToyStoryRetainedEpisode(input), input).state;
+            ++input.crop.frameSourceSequence; ++input.retentionSourceSequence;
+            ++input.crop.currentVisibleSourceSequence;
+            input.crop.currentVisibleBoundsAvailable = false;
+            auto lost = EvaluateNearBlackBoundedPresentation(state, input);
+            AssertFullRaster(lost.presentation);
+            ++input.crop.frameSourceSequence; ++input.retentionSourceSequence;
+            ++input.crop.currentVisibleSourceSequence;
+            input.crop.currentVisibleBoundsAvailable = true;
+            AssertFullRaster(EvaluateNearBlackBoundedPresentation(lost.state, input).presentation);
+        }
 		TEST_METHOD(BoundedRecoveryAgencyPreservesBlackTopThroughExpiredInspection)
 		{
 			auto input = AgencyBoundedRecovery();
