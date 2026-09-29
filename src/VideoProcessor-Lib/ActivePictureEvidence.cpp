@@ -1208,6 +1208,54 @@ ActivePictureGlobalNearBlackEvidence EvaluateP010ActivePictureGlobalNearBlack(
 }
 
 
+bool ActivePicturePresentationRetentionEvidence::IsWeakBoundedFringe(
+	const ActivePictureBounds& presentation) const
+{
+	if (!analysisValid || !presentationValid || !outwardVisibleBoundsAvailable ||
+		presentation.rasterWidth <= 0 || presentation.rasterHeight <= 0 ||
+		presentation.left < 0 || presentation.top < 0 ||
+		presentation.left >= presentation.right || presentation.top >= presentation.bottom ||
+		presentation.right > presentation.rasterWidth ||
+		presentation.bottom > presentation.rasterHeight ||
+		outwardVisibleBounds.rasterWidth != presentation.rasterWidth ||
+		outwardVisibleBounds.rasterHeight != presentation.rasterHeight ||
+		outwardVisibleBounds.left < 0 || outwardVisibleBounds.top < 0 ||
+		outwardVisibleBounds.right > presentation.rasterWidth ||
+		outwardVisibleBounds.bottom > presentation.rasterHeight ||
+		outwardVisibleBounds.left != presentation.left ||
+		outwardVisibleBounds.top > presentation.top ||
+		outwardVisibleBounds.right != presentation.right ||
+		outwardVisibleBounds.bottom < presentation.bottom ||
+		visibleLeft.available || visibleRight.available ||
+		visibleTop.available == visibleBottom.available)
+		return false;
+	const bool top = visibleTop.available;
+	const auto& witness = top ? visibleTop : visibleBottom;
+	// These are measured source rows, before the outward presentation margin.
+	// Do not mistake a low average across a broad occupied bar for weak fringe.
+	if (witness.sampleStep != 1 || witness.firstLine < 0 || witness.secondLine < 0 ||
+		std::abs(witness.firstLine - witness.secondLine) != 1 ||
+		witness.firstLineSupport < 2 || witness.secondLineSupport < 2 ||
+		witness.firstLineSupport > kVisibleExtentLineSamples / 16 ||
+		witness.secondLineSupport > kVisibleExtentLineSamples / 16 ||
+		witness.peakLuma > witness.lumaCutoff + 8 || witness.peakChromaDelta >= 64)
+		return false;
+	const int outer = top
+		? std::min(witness.firstLine, witness.secondLine)
+		: std::max(witness.firstLine, witness.secondLine);
+	const int inner = top
+		? std::max(witness.firstLine, witness.secondLine)
+		: std::min(witness.firstLine, witness.secondLine);
+	if (top)
+		return outwardVisibleBounds.top < presentation.top &&
+			outwardVisibleBounds.bottom == presentation.bottom &&
+			inner < presentation.top && presentation.top - outer <= 2;
+	return outwardVisibleBounds.bottom > presentation.bottom &&
+		outwardVisibleBounds.top == presentation.top &&
+		inner >= presentation.bottom && outer < presentation.rasterHeight &&
+		outer - (presentation.bottom - 1) <= 2;
+}
+
 ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRetention(
 	const AnalysisLumaSource& source,
 	const ActivePictureBounds& trustedPresentation)

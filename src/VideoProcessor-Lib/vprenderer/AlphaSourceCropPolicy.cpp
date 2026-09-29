@@ -2483,6 +2483,56 @@ namespace AlphaSourceCrop
 			(candidate.bottom - candidate.top) - (entry.bottom - entry.top) <= tolerance;
 	}
 
+    bool CanRetainWeakFringeWithFill(const NearBlackPresentationEpisodeInput& input,
+        const CropPresentationAdmissionState& previous, const AspectLimitFillInput& fill,
+        bool weakBoundedFringe, bool competingPresentation)
+    {
+        // This preserves an already displayed optional fill, never crop acquisition.
+        // The caller supplies current source-row evidence; no percentage-wide
+        // exemption is permitted for actual picture outside the native contract.
+        const auto& base = input.trustedCrop;
+        if (!weakBoundedFringe || competingPresentation || !input.measurementCurrent ||
+            !input.nearBlackEvaluated || input.globalNearBlack || input.sceneBoundary ||
+            input.fullRasterAuthorityAvailable || !input.boundedVisibleContentOutsideCrop ||
+            !input.trustedCropAvailable || input.trustedCropOrigin != ActivePictureAuthorityOrigin::NATIVE ||
+            input.previous.mode != NearBlackPresentationMode::RETAIN_CROP ||
+            !input.previous.entryTrustedCropAvailable ||
+            input.previous.entryTrustedCropOrigin != ActivePictureAuthorityOrigin::NATIVE ||
+            input.previous.sourceGeneration != input.sourceGeneration ||
+            input.previous.presentationEpoch != input.presentationEpoch ||
+            !SameTrustedCropContract(base, input.previous.entryTrustedCrop) ||
+            !input.sourceGeneration || !input.sourceSequence ||
+            !input.retentionEvaluated || input.retentionSourceGeneration != input.sourceGeneration ||
+            input.retentionSourceSequence != input.sourceSequence || !SameBounds(base, input.retentionBounds) ||
+            !input.currentObservationAvailable ||
+            (input.currentObservationClassification != ActivePictureClassification::BAR_CROP_TRUSTED &&
+             input.currentObservationClassification != ActivePictureClassification::PROVISIONAL) ||
+            !previous.available || !previous.optionalFillApplied ||
+            previous.sourceGeneration != input.sourceGeneration || previous.presentationEpoch != input.presentationEpoch ||
+            !SameTrustedCropContract(previous.trustedCrop, base) ||
+            !std::isfinite(fill.screenAspect) || fill.screenAspect <= 0.0 ||
+            previous.optionalFillScreenAspect != fill.screenAspect ||
+            !fill.trustedContentAuthorityAccepted || !fill.contentReferenceAvailable ||
+            !SameBounds(fill.sourceBounds, base) || !SameBounds(fill.contentReferenceBounds, base))
+            return false;
+        const bool certifiedRepeat = previous.optionalFillSourceSequence == input.sourceSequence &&
+            input.previous.weakFringeFillSourceSequence == input.sourceSequence;
+        if (!certifiedRepeat && (input.cadenceRepeat || previous.optionalFillSourceSequence == 0 ||
+            previous.optionalFillSourceSequence != input.sourceSequence - 1))
+            return false;
+        if (!ValidBounds(base, base.rasterWidth, base.rasterHeight)) return false;
+        auto envelope = base;
+        envelope.top = std::max(0, base.top - 2);
+        envelope.bottom = std::min(base.rasterHeight, base.bottom + 2);
+        if (!ContainedBounds(envelope, input.currentObservation)) return false;
+        const auto evaluated = EvaluateAspectLimitFill(fill);
+        // Only established wider-content fill: it already intentionally removes
+        // side pixels. We tolerate at most two weak source rows at one bar edge.
+        return evaluated.applied && evaluated.sourceBounds.top == base.top &&
+            evaluated.sourceBounds.bottom == base.bottom &&
+            (evaluated.sourceBounds.left > base.left || evaluated.sourceBounds.right < base.right) &&
+            SameBounds(evaluated.sourceBounds, previous.optionalFillSourceBounds);
+    }
 	NearBlackPresentationEpisodeDecision EvaluateNearBlackPresentationEpisode(
 		const NearBlackPresentationEpisodeInput& input)
 	{
@@ -2529,6 +2579,13 @@ namespace AlphaSourceCrop
 				"presentation epoch changed; near-black proof restarted";
 		}
 
+        if (decision.state.mode == NearBlackPresentationMode::RETAIN_CROP &&
+            decision.state.presentationEpoch != input.presentationEpoch)
+        {
+            decision.state = {};
+            decision.ended = true;
+            decision.reason = "presentation epoch ended retained near-black episode";
+        }
 		if (input.sceneBoundary &&
 			decision.state.mode != NearBlackPresentationMode::INACTIVE)
 		{
@@ -2594,7 +2651,7 @@ namespace AlphaSourceCrop
 		}
 
 		if (decision.state.mode == NearBlackPresentationMode::RETAIN_CROP &&
-			input.measurementCurrent && input.boundedVisibleContentOutsideCrop)
+			input.measurementCurrent && input.boundedVisibleContentOutsideCrop && !input.weakFringeFillRetained)
 		{
 			decision.state.mode = NearBlackPresentationMode::FULL_RASTER;
 			decision.state.fullRasterStartedSourceSequence =
@@ -2615,6 +2672,11 @@ namespace AlphaSourceCrop
 				"lost retained title geometry latched full raster for episode";
 		}
 
+        if (decision.state.mode == NearBlackPresentationMode::RETAIN_CROP && input.weakFringeFillRetained)
+        {
+            decision.state.weakFringeFillSourceSequence = input.sourceSequence;
+            decision.reason = "two weak source rows retained established filled crop";
+        }
 		if (decision.state.mode == NearBlackPresentationMode::FULL_RASTER &&
 			decision.state.entryTrustedCropAvailable &&
 			input.measurementCurrent && !input.cadenceRepeat &&
@@ -3171,7 +3233,7 @@ namespace AlphaSourceCrop
 			bounds = crop.currentVisibleBounds;
 		else if (!crop.currentVisibleBoundsAvailable && input.excludedBandsPixelSafe &&
 			previous.boundedPresentationAvailable &&
-			ContainedBounds(base, input.observation))
+			ContainedBounds(previous.boundedPresentation, input.observation))
 			bounds = previous.boundedPresentation;
 		else
 			return reject();
