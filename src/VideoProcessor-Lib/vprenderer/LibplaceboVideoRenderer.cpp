@@ -6018,8 +6018,12 @@ struct LibplaceboVideoRenderer::Impl
 		// Re-resolve the presentation output on every profile/mode transition.
 		// A failed lookup must never reuse a stale name or fall back to primary.
 		std::string target;
-		IDXGISwapChain* native = vpOwnedSwapchain ? vpOwnedSwapchain.p :
-			(swapchain ? pl_d3d11_swapchain_unwrap(swapchain) : nullptr);
+		CComPtr<IDXGISwapChain> native;
+		if (vpOwnedSwapchain)
+			native = vpOwnedSwapchain;
+		else if (swapchain)
+			// unwrap returns an owned reference; adopt it so each poll releases it.
+			native.Attach(pl_d3d11_swapchain_unwrap(swapchain));
 		CComPtr<IDXGIOutput> output;
 		DXGI_OUTPUT_DESC desc{};
 		if (native && SUCCEEDED(native->GetContainingOutput(&output)) && output &&
