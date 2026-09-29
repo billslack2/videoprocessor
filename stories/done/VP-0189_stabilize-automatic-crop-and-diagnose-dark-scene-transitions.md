@@ -1176,3 +1176,18 @@ Open follow-up: the Fox-to-Alien sequence at 13:25:06 released established scope
 
 Reviewed and deployed unmerged test build 2f0e9f305773; 1,813 tests pass. [Package and deployment evidence](../assets/VP-0189/framing-guard-20260927/README.md). Historical story status is unchanged; the new follow-up remains subject to playback validation.
 
+
+## September 28: selected PR118 recovery behavior merged with PR120
+
+User replayed the local test build successfully and authorized check-in, merge, a clean beta rebuild, deployment, and setup/ZIP packaging. [PR #123](https://github.com/billslack2/videoprocessor/pull/123) merged feature `defed2baaf33798a1bdb3c1bd4c997ff9b96df14` into current beta at `651538484906bd7af921b579afb5862bf84e7e2f`. The clean merged source tree matches the tested feature sources. PR120 and BT.2020 changes remain included; the broader PR118 5% retention policy was not merged.
+
+Selected fixes preserve crop ownership through near-black recovery release, retire the prior inspection latch, reset retained episodes across presentation epochs, and validate bounded continuation against its actual held envelope. A narrow exception preserves already-applied optional wider fill for current weak two-source-row fringe evidence, with unchanged native crop, user fill eligibility, source/context identity, and no competing presentation owner. Repeat frames can reuse only their exact existing certificate and cannot earn proof or authority.
+
+Validation: nine test-first failures demonstrated gaps; no existing assertions weakened. The clean merged x64 Release rebuild passed all 1,883 native tests, 49 installer support/preservation checks, 12 identity checks and 23 runtime packaging checks. Both deployed runtime hashes match this clean build. Existing VideoProcessor.cfg remained byte-identical. [Deployment receipt](../assets/VP-0189/merge-123-20260928/DEPLOYMENT.json) records the prior-pair backup at `C:\Videoprocessor\vp\deployment-backups\beta-651538484906-20260928-215731`.
+
+Packages:
+- [Setup](E:/codex/videoprocessor/packages/beta-651538484906-20260928/VideoProcessorSetup-1.3.005-beta-651538484906.exe)
+- [Portable ZIP](E:/codex/videoprocessor/packages/beta-651538484906-20260928/VideoProcessor-1.3.005-beta-651538484906-x64-Portable.zip)
+- Each has a verified adjacent SHA256 sidecar; [release receipt](../assets/VP-0189/merge-123-20260928/release-receipt.json) records source, tools and hashes.
+
+Setup is unsigned. An isolated-identity real installer lifecycle attempt safely refused while the user's VP and Config processes were open; it did not change the production install or leave a QA registration. Lifecycle, clean-Windows-without-VS and interactive Config qualification are not claimed passed in this run; see [qualification notes](../assets/VP-0189/merge-123-20260928/QUALIFICATION.txt). No GitHub Release assets were published. Historical story status remains the explicit September 20 user closure; this entry records follow-up release evidence.

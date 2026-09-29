@@ -1,0 +1,8 @@
+Merged PR123 at651538484906bd7af921b579afb5862bf84e7e2f; clean detached beta checkout.
+Clean x64 Release rebuild: PASS. Full native suite:1,883/1,883 PASS.
+Installer support/preservation checks:49 PASS. Identity checks:12 PASS. Runtime packaging checks:23 PASS.
+Payload hashes, installer/ZIP identity and SHA256 sidecars verified by pinned release workflow.
+Real installer lifecycle: attempted with isolated QA AppId/shortcuts and unchanged application payload. Fresh setup safely refused because the user's VideoProcessor and Config processes were running. No production installation was altered by that test; no QA registration remains. Lifecycle scenarios are not claimed passed.
+Clean Windows without Visual Studio and interactive Config Apply/OK/reopen were not qualified in this run.
+Installer unsigned. No GitHub release assets published.
+Local deployment uses the same clean build host/renderer; configuration unchanged. See DEPLOYMENT.json for hashes and backup.

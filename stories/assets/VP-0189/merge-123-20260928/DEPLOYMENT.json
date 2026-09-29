@@ -1,0 +1,31 @@
+{
+  "time": "2026-09-28T21:57:32.3463701-04:00",
+  "source": "E:\\codex\\videoprocessor\\release-651538484906-20260928",
+  "base": "651538484906bd7af921b579afb5862bf84e7e2f",
+  "branch": "v1.3.005-beta (clean detached checkout)",
+  "dirty": false,
+  "configuration": "x64 Release",
+  "testsPassed": 1883,
+  "backup": "C:\\Videoprocessor\\vp\\deployment-backups\\beta-651538484906-20260928-215731",
+  "processId": 41048,
+  "configBefore": "1135E59398C11773C28E0404563DF38367376AE209434D8935ADF2113EB1B4B2",
+  "configAfterStop": "1135E59398C11773C28E0404563DF38367376AE209434D8935ADF2113EB1B4B2",
+  "configEdits": [],
+  "binaries": [
+    {
+      "SHA256": "D9631B433985710E97A59FBC8E41F9817348305C2995F1D5B630DDBA33D78108",
+      "target": "C:\\Videoprocessor\\vp\\VideoProcessor.exe",
+      "source": "E:\\codex\\videoprocessor\\release-651538484906-20260928\\x64\\Release\\VideoProcessor-GUI.exe"
+    },
+    {
+      "SHA256": "E4615DDF6FC3D86BFD367327AB84F817009430EBEFB314ABDB07D73656641261",
+      "target": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "source": "E:\\codex\\videoprocessor\\release-651538484906-20260928\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll"
+    },
+    {
+      "SHA256": "202F591E9AA389995FBFDE9AC0420DD88064B68AB6B0696A2026AC5435739D23",
+      "target": "C:\\Videoprocessor\\vp\\VideoProcessor.exe.runtime.json",
+      "source": "E:\\codex\\videoprocessor\\release-651538484906-20260928\\x64\\Release\\VideoProcessor-GUI.exe.runtime.json"
+    }
+  ]
+}
