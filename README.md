@@ -16,7 +16,8 @@ You can find all the static details on [videoprocessor.org](http://videoprocesso
 
 # Screenshot
 
-![Screenshot](https://github.com/defl/videoprocessor_website/blob/main/site/static/images/screenshot.png)
+<img width="1588" height="660" alt="image" src="https://github.com/user-attachments/assets/61d811fb-f8cd-46c6-8724-19db8d861081" />
+
 
 # License & legal
 
@@ -27,3 +28,4 @@ Parts of this code are made and owned by others, for example SDKs; in all such c
 ------
 
  Copyright 2021 [Dennis Fleurbaaij](mailto:mail@dennisfleurbaaij.com)
+ Copyright 2026 [Bill Slack ](mailto:bslack@gmail.com)
