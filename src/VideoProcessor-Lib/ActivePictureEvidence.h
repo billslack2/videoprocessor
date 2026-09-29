@@ -222,6 +222,10 @@ struct ActivePicturePresentationRetentionEvidence
 	bool outwardVisibleBoundsAvailable = false;
 	ActivePictureBounds outwardVisibleBounds;
 	ActivePictureVisibleExtentDiagnostic visibleLeft, visibleTop, visibleRight, visibleBottom;
+	// Classifies only a two-row, sparse near-threshold vertical fringe.
+	// This is not blackness/crop authority: policy must separately authorize
+	// retaining an existing presentation despite those weak visible pixels.
+	bool IsWeakBoundedFringe(const ActivePictureBounds& presentation) const;
 	ActivePictureEvidence activePicture;
 	ActivePictureEdgeEvidence excludedLeft;
 	ActivePictureEdgeEvidence excludedTop;

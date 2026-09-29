@@ -3695,6 +3695,7 @@ struct LibplaceboVideoRenderer::Impl
 	ActivePicturePresentationRetentionEvidence latestCropRetentionEvidence;
 	AlphaSourceCrop::PresentationRecoveryState cropPresentationRecovery;
 	AlphaSourceCrop::CropPresentationAdmissionState cropPresentationAdmission;
+    bool weakFringeFillPreviouslyRetained = false;
 	bool cropAdmissionPreviouslyBlocked = false;
 	std::string cropAdmissionPreviousReason;
 	uint64_t cropAdmissionLastLogTick = 0;
@@ -11831,6 +11832,37 @@ struct LibplaceboVideoRenderer::Impl
 			episodeInput.presentationEpoch = viewportRequestSerial;
 			episodeInput.sourceGeneration = frameGeneration;
 			episodeInput.sourceSequence = sourceSequence;
+            AlphaSourceCrop::AspectLimitFillInput configuredFillInput;
+            configuredFillInput.cropNarrowerContentToFillScreen = cropNarrowerContentToFillScreen;
+            configuredFillInput.narrowerLimitConfigured = cropNarrowerContentAspectLimitConfigured;
+            configuredFillInput.narrowerAspectLimit = cropNarrowerContentAspectLimit;
+            configuredFillInput.cropWiderContentToFillScreen = cropWiderContentToFillScreen;
+            configuredFillInput.widerLimitConfigured = cropWiderContentAspectLimitConfigured;
+            configuredFillInput.widerAspectLimit = cropWiderContentAspectLimit;
+            configuredFillInput.screenAspect = configuredScreenAspect;
+            auto fringeFillInput = configuredFillInput;
+            fringeFillInput.trustedContentAuthorityAccepted = episodeInput.trustedCropAvailable;
+            fringeFillInput.sourceBounds = fringeFillInput.contentReferenceBounds = episodeInput.trustedCrop;
+            fringeFillInput.contentReferenceAvailable = true;
+            const bool fringeCompetingPresentation = !automaticSourceCrop || !configuredScreenActive ||
+                fixedCropAspectConfigured || nlsRequested || inwardCaptionProtected ||
+                verticalFailOpen || outwardExpansionInvalid || pictureTransitionHandoff.active ||
+                releaseDriftBaseRetention || engageDriftBaseRetention ||
+                verticalTranslationActive || verticalFitActive || scopeSubtitleTranslationConfirmation.confirmations != 0 ||
+                scopeSubtitleFitConfirmation.confirmations != 0 || cropPresentationRecovery.active ||
+                scopeVerticalInspectionBridge.active || scopeVerticalInspectionBridge.failOpenLatched ||
+                movingPictureTransition.active || movingPictureTransition.awaitingPublication;
+            episodeInput.weakFringeFillRetained = AlphaSourceCrop::CanRetainWeakFringeWithFill(
+                episodeInput, cropPresentationAdmission, fringeFillInput,
+                latestCropRetentionEvidence.IsWeakBoundedFringe(episodeInput.trustedCrop),
+                fringeCompetingPresentation);
+            if (episodeInput.weakFringeFillRetained != weakFringeFillPreviouslyRetained)
+                DebugLog::Log("Alpha weak-fringe fill retention: instance=%s generation=%llu sequence=%llu epoch=%llu retained=%d base=%d,%d-%d,%d reason=\"two weak source rows; established optional fill\"",
+                    diagnosticInstanceId.c_str(), frameGeneration, sourceSequence, viewportRequestSerial,
+                    episodeInput.weakFringeFillRetained ? 1 : 0,
+                    episodeInput.trustedCrop.left, episodeInput.trustedCrop.top,
+                    episodeInput.trustedCrop.right, episodeInput.trustedCrop.bottom);
+            weakFringeFillPreviouslyRetained = episodeInput.weakFringeFillRetained;
 			const AlphaSourceCrop::NearBlackPresentationEpisodeDecision
 				episodeDecision =
 					AlphaSourceCrop::EvaluateNearBlackPresentationEpisode(
@@ -11919,8 +11951,7 @@ struct LibplaceboVideoRenderer::Impl
 			}
 			nearBlackPresentationEpisode = episodeDecision.state;
 			const bool nearBlackEpisodeRetainCrop =
-				nearBlackPresentationEpisode.mode ==
-					AlphaSourceCrop::NearBlackPresentationMode::RETAIN_CROP;
+				AlphaSourceCrop::NearBlackEpisodeOwnsCropThisFrame(episodeDecision);
 			const bool nearBlackEpisodeFullRaster =
 				episodeDecision.resetTrustedGeometry ||
 				nearBlackPresentationEpisode.mode ==
@@ -12164,7 +12195,7 @@ struct LibplaceboVideoRenderer::Impl
 				verticalFitConfirmationPending || verticalTranslationActive ||
 				verticalFitActive;
 			inspectionInput.samplingRetentionResolved = currentSamplingRetention;
-			inspectionInput.containedRetentionResolved = currentContainedInspectionRetention;
+			inspectionInput.containedRetentionResolved = currentContainedInspectionRetention || AlphaSourceCrop::NearBlackEpisodeResolvesInspection(episodeDecision);
 			inspectionInput.cropAuthorityResolved = effectiveLatestSupportsCrop;
 			inspectionInput.fullRasterAuthorityResolved =
 				latestActivePictureEvidenceClassification ==
@@ -12368,7 +12399,7 @@ struct LibplaceboVideoRenderer::Impl
 			}
 			else
 			{
-				AlphaSourceCrop::AspectLimitFillInput aspectLimitInput;
+				auto aspectLimitInput = configuredFillInput;
 				// Explicit fill can crop a current trusted full raster (for example
 				// 16:9 content on a 2.35:1 screen) as well as a trusted detected
 				// active picture, including an explicitly admitted presentation hold.
@@ -12376,19 +12407,6 @@ struct LibplaceboVideoRenderer::Impl
 				aspectLimitInput.trustedContentAuthorityAccepted =
 					cropDecision.applyCrop ||
 					cropInput.fullRasterPresentationAuthoritative;
-				aspectLimitInput.cropNarrowerContentToFillScreen =
-					cropNarrowerContentToFillScreen;
-				aspectLimitInput.narrowerLimitConfigured =
-					cropNarrowerContentAspectLimitConfigured;
-				aspectLimitInput.narrowerAspectLimit =
-					cropNarrowerContentAspectLimit;
-				aspectLimitInput.cropWiderContentToFillScreen =
-					cropWiderContentToFillScreen;
-				aspectLimitInput.widerLimitConfigured =
-					cropWiderContentAspectLimitConfigured;
-				aspectLimitInput.widerAspectLimit =
-					cropWiderContentAspectLimit;
-				aspectLimitInput.screenAspect = configuredScreenAspect;
 				aspectLimitInput.sourceBounds = cropDecision.sourceBounds;
                 aspectLimitInput.contentReferenceAvailable = true;
                 if (cropInput.fullRasterPresentationAuthoritative)
@@ -12401,6 +12419,18 @@ struct LibplaceboVideoRenderer::Impl
 				aspectLimitFill = AlphaSourceCrop::EvaluateAspectLimitFill(
 					aspectLimitInput);
 			}
+            // Keep only an actually applied optional fill on this admitted native base.
+            // Recording presentation never publishes or refreshes detector authority.
+            cropPresentationAdmission.optionalFillApplied = aspectLimitFill.applied &&
+                cropDecision.applyCrop && !fixedCropAspectConfigured && !nlsRequested &&
+                !protectedCaptionFit && !cropDecision.outwardExpanded && !cropDecision.verticallyTranslated &&
+                !cropInput.movingPictureTransition && !recoveryDecision.state.active &&
+                episodeInput.trustedCropOrigin == ActivePictureAuthorityOrigin::NATIVE &&
+                sameBounds(cropDecision.sourceBounds, cropInput.geometry);
+            cropPresentationAdmission.optionalFillSourceBounds = cropPresentationAdmission.optionalFillApplied
+                ? aspectLimitFill.sourceBounds : ActivePictureBounds{};
+            cropPresentationAdmission.optionalFillSourceSequence = sourceSequence;
+            cropPresentationAdmission.optionalFillScreenAspect = configuredScreenAspect;
 			const ActivePictureBounds& presentationCropBounds =
 				aspectLimitFill.applied ? aspectLimitFill.sourceBounds :
 				cropDecision.sourceBounds;

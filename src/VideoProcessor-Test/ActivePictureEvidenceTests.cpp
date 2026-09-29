@@ -232,6 +232,142 @@ namespace VideoProcessorTest
 	TEST_CLASS(ActivePictureEvidenceTests)
 	{
 	public:
+        TEST_METHOD(WeakFringeMeasuredReplayP010AndP210)
+        {
+            const auto crop = ScopePresentation(3840, 2160, 42, 2118);
+            for (bool p210 : { false, true })
+            {
+                P010Frame frame(3840, 2160, 32, p210);
+                frame.BlackOutside(0, 42, 3840, 2118);
+                // Reconstruct the observed Y/U/V witness, not the source movie.
+                for (int sample = 106; sample < 117; ++sample)
+                {
+                    const int x = ((2 * sample + 1) * 3840) / (2 * 256);
+                    if (sample < 109) frame.FillRectangle(x, 40, x + 1, 41, 99, 512, 515);
+                    frame.FillRectangle(x, 41, x + 1, 42,
+                        sample == 116 ? 103 : 99, 512, sample == 116 ? 535 : 515);
+                }
+                const auto evidence = EvaluateActivePicturePresentationRetention(
+                    p210 ? frame.P210Source() : frame.P010Source(), crop);
+                Assert::IsTrue(evidence.analysisValid && evidence.presentationValid);
+                Assert::IsTrue(evidence.outwardVisibleBoundsAvailable);
+                Assert::AreEqual(40, evidence.visibleTop.firstLine);
+                Assert::AreEqual(41, evidence.visibleTop.secondLine);
+                Assert::AreEqual(3, evidence.visibleTop.firstLineSupport);
+                Assert::AreEqual(11, evidence.visibleTop.secondLineSupport);
+                Assert::AreEqual(96, evidence.visibleTop.lumaCutoff);
+                Assert::AreEqual(103, evidence.visibleTop.peakLuma);
+                Assert::AreEqual(23, evidence.visibleTop.peakChromaDelta);
+                Assert::AreEqual(27, evidence.outwardVisibleBounds.top);
+                Assert::IsTrue(evidence.IsWeakBoundedFringe(crop));
+                // The larger initial crop already includes exactly these pixels.
+                const auto wider = ScopePresentation(3840, 2160, 38, 2120);
+                const auto contained = EvaluateActivePicturePresentationRetention(
+                    p210 ? frame.P210Source() : frame.P010Source(), wider);
+                Assert::IsFalse(contained.outwardVisibleBoundsAvailable);
+                Assert::IsFalse(contained.IsWeakBoundedFringe(wider));
+            }
+        }
+
+        TEST_METHOD(WeakFringeMeasuredBottomP010AndP210)
+        {
+            const auto crop = ScopePresentation(3840, 2160, 42, 2118);
+            for (bool p210 : { false, true })
+            {
+                P010Frame frame(3840, 2160, 32, p210);
+                frame.BlackOutside(0, 42, 3840, 2118);
+                for (int sample = 106; sample < 117; ++sample)
+                {
+                    const int x = ((2 * sample + 1) * 3840) / (2 * 256);
+                    if (sample < 109) frame.FillRectangle(x, 2119, x + 1, 2120, 99);
+                    frame.FillRectangle(x, 2118, x + 1, 2119, sample == 116 ? 103 : 99);
+                }
+                const auto evidence = EvaluateActivePicturePresentationRetention(
+                    p210 ? frame.P210Source() : frame.P010Source(), crop);
+                Assert::IsTrue(evidence.visibleBottom.available);
+                Assert::AreEqual(2119, evidence.visibleBottom.firstLine);
+                Assert::AreEqual(2118, evidence.visibleBottom.secondLine);
+                Assert::AreEqual(3, evidence.visibleBottom.firstLineSupport);
+                Assert::AreEqual(11, evidence.visibleBottom.secondLineSupport);
+                Assert::IsTrue(evidence.IsWeakBoundedFringe(crop));
+            }
+        }
+
+        TEST_METHOD(WeakFringeThresholdsRejectStrongerBroaderAndCompetingEvidence)
+        {
+            const auto crop = ScopePresentation(3840, 2160, 42, 2118);
+            ActivePicturePresentationRetentionEvidence weak;
+            weak.analysisValid = weak.presentationValid = weak.outwardVisibleBoundsAvailable = true;
+            weak.outwardVisibleBounds = crop;
+            weak.outwardVisibleBounds.top = 27;
+            auto& witness = weak.visibleTop;
+            witness.available = true;
+            witness.sampleStep = 1;
+            witness.firstLine = 40; witness.secondLine = 41;
+            witness.firstLineSupport = 3; witness.secondLineSupport = 11;
+            witness.lumaCutoff = 96; witness.peakLuma = 103; witness.peakChromaDelta = 23;
+            Assert::IsTrue(weak.IsWeakBoundedFringe(crop));
+            auto boundary = weak;
+            boundary.visibleTop.firstLineSupport = boundary.visibleTop.secondLineSupport = 16;
+            boundary.visibleTop.peakLuma = 104; boundary.visibleTop.peakChromaDelta = 63;
+            Assert::IsTrue(boundary.IsWeakBoundedFringe(crop));
+            for (int changed = 0; changed < 14; ++changed)
+            {
+                auto rejected = weak;
+                switch (changed)
+                {
+                case 0: rejected.visibleTop.firstLine = 39; rejected.visibleTop.secondLine = 40; break;
+                case 1: rejected.visibleTop.firstLineSupport = 17; break;
+                case 2: rejected.visibleTop.secondLineSupport = 17; break;
+                case 3: rejected.visibleTop.peakLuma = 105; break;
+                case 4: rejected.visibleTop.peakChromaDelta = 64; break;
+                case 5: rejected.visibleLeft.available = true; break;
+                case 6: rejected.visibleRight.available = true; break;
+                case 7: rejected.visibleBottom.available = true; break;
+                case 8: rejected.visibleTop.sampleStep = 2; break;
+                case 9: rejected.visibleTop.firstLineSupport = 1; break;
+                case 10: rejected.visibleTop.secondLineSupport = 1; break;
+                case 11: rejected.visibleTop.secondLine = 40; break;
+                case 12: rejected.visibleTop.secondLine = 42; break;
+                case 13: rejected.visibleTop.firstLine = -1; break;
+                }
+                Assert::IsFalse(rejected.IsWeakBoundedFringe(crop));
+            }
+        }
+
+        TEST_METHOD(WeakFringeRejectsInvalidEvidenceAndPresentation)
+        {
+            const auto crop = ScopePresentation(3840, 2160, 42, 2118);
+            ActivePicturePresentationRetentionEvidence weak;
+            weak.analysisValid = weak.presentationValid = weak.outwardVisibleBoundsAvailable = true;
+            weak.outwardVisibleBounds = crop; weak.outwardVisibleBounds.top = 27;
+            auto& witness = weak.visibleTop;
+            witness.available = true; witness.sampleStep = 1;
+            witness.firstLine = 40; witness.secondLine = 41;
+            witness.firstLineSupport = 3; witness.secondLineSupport = 11;
+            witness.lumaCutoff = 96; witness.peakLuma = 103;
+            for (int changed = 0; changed < 12; ++changed)
+            {
+                auto rejected = weak; auto badCrop = crop;
+                switch (changed)
+                {
+                case 0: rejected.analysisValid = false; break;
+                case 1: rejected.presentationValid = false; break;
+                case 2: rejected.outwardVisibleBoundsAvailable = false; break;
+                case 3: badCrop.rasterHeight = 0; break;
+                case 4: badCrop.top = badCrop.bottom; break;
+                case 5: badCrop.right = badCrop.rasterWidth + 1; break;
+                case 6: rejected.outwardVisibleBounds.rasterHeight += 2; break;
+                case 7: rejected.outwardVisibleBounds.top = crop.top + 1; break;
+                case 8: rejected.visibleTop.available = false; break;
+                case 9: rejected.outwardVisibleBounds.bottom += 2; break;
+                case 10: rejected.outwardVisibleBounds.right -= 2; break;
+                case 11: rejected.outwardVisibleBounds.top = crop.top; break;
+                }
+                Assert::IsFalse(rejected.IsWeakBoundedFringe(badCrop));
+            }
+        }
+
         TEST_METHOD(RelativeContrastMeasuredDarkExpansionUsesBothRealBars)
         {
             for(bool p210 : {false,true}) for(int edge : {64,68}) {

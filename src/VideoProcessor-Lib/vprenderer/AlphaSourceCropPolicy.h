@@ -1007,6 +1007,7 @@ namespace AlphaSourceCrop
 		bool boundedPresentationFailed = false;
 		ActivePictureBounds boundedPresentation;
 		uint64_t boundedPresentationSequence = 0;
+		uint64_t weakFringeFillSourceSequence = 0;
 		uint64_t outwardConfirmationLastSourceSequence = 0;
 		uint32_t outwardConfirmationSamples = 0;
 		uint64_t lastEvaluatedSourceSequence = 0;
@@ -1036,6 +1037,7 @@ namespace AlphaSourceCrop
 		// Current retention provenance and all episode safety gates still apply.
 		bool currentNativeObservationReaffirmsSparseEntry = false;
 		bool boundedVisibleContentOutsideCrop = false;
+        bool weakFringeFillRetained = false;
 		bool fullRasterAuthorityAvailable = false;
 		// Current context checked by UpdateKnownFullRasterRetention; never inferred
 		// from the raw full-raster presentation flag alone.
@@ -1096,7 +1098,8 @@ namespace AlphaSourceCrop
 	};
 
 	// A sparse near-black episode chooses one safe presentation on entry. It can
-	// move from retained crop to full raster immediately for visibility. A
+	// move from retained crop to full raster immediately for visibility, except
+	// two weak source rows with a current, previously applied optional-fill certificate. A
 	// full-raster episode may restore only its exact entry crop after a bounded,
 	// current-frame pixel-safe revalidation dwell. The same proof ends retained
 	// crop episodes once bright scope returns. Neither path grants authority to
@@ -1107,6 +1110,11 @@ namespace AlphaSourceCrop
 		const ActivePictureBounds& candidate);
 	NearBlackPresentationEpisodeDecision EvaluateNearBlackPresentationEpisode(
 		const NearBlackPresentationEpisodeInput& input);
+    // Preserve validated ownership through the release frame and retire old inspection.
+    inline bool NearBlackEpisodeOwnsCropThisFrame(const NearBlackPresentationEpisodeDecision& decision)
+    { return decision.state.mode == NearBlackPresentationMode::RETAIN_CROP || decision.releasedToTrustedCrop; }
+    inline bool NearBlackEpisodeResolvesInspection(const NearBlackPresentationEpisodeDecision& decision)
+    { return decision.releasedToTrustedCrop; }
 	const char* NearBlackPresentationModeName(NearBlackPresentationMode mode);
 	bool ShouldSuppressNearBlackBarGeometryMutation(bool acquisitionBlocked,
 		bool stable, ActivePictureClassification classification);
@@ -1264,6 +1272,11 @@ namespace AlphaSourceCrop
 	// temporary full-raster withdrawals and of diagnostic logging.
 	struct CropPresentationAdmissionState
 	{
+        // Actual optional fill from the immediately preceding presentation.
+        bool optionalFillApplied = false;
+        ActivePictureBounds optionalFillSourceBounds;
+        uint64_t optionalFillSourceSequence = 0;
+        double optionalFillScreenAspect = 0.0;
 		// Last admitted outward fit, distinct from the persistent logical crop.
 		bool outwardPresentationAvailable = false;
 		ActivePictureBounds outwardPresentation;
@@ -1274,6 +1287,10 @@ namespace AlphaSourceCrop
 		uint64_t presentationEpoch = 0;
 	};
 
+    // Presentation-only tolerance: at most two weak source rows, never new authority.
+    bool CanRetainWeakFringeWithFill(const NearBlackPresentationEpisodeInput& episode,
+        const CropPresentationAdmissionState& previous, const AspectLimitFillInput& currentFill,
+        bool weakBoundedFringe, bool competingPresentation);
 	struct CropPresentationAdmissionDecision
 	{
 		CropPresentationAdmissionState state;
