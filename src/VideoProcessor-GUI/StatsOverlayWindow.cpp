@@ -500,12 +500,9 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 
 	if (m_stats.isAlphaRenderer)
 	{
-		line.Format(TEXT("Aspect ratio:     %-s"),
+		line.Format(TEXT("Aspect Ratio: %s (%s)"),
 			m_stats.aspectRatio.IsEmpty() ? TEXT("---") :
-			static_cast<LPCTSTR>(m_stats.aspectRatio));
-		DrawText(hdc, line, PADDING, y);
-		y += lineHeight;
-		line.Format(TEXT("Name:             %-s"),
+			static_cast<LPCTSTR>(m_stats.aspectRatio),
 			m_stats.aspectName.IsEmpty() ? TEXT("Unknown") :
 			static_cast<LPCTSTR>(m_stats.aspectName));
 		DrawText(hdc, line, PADDING, y);
@@ -957,10 +954,10 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 
 int StatsOverlayWindow::CalculateRequiredHeight(const StatsData& stats) const
 {
-	// VP Renderer omits two DirectShow-only rows, but adds two aspect rows.
+	// VP Renderer omits two DirectShow-only rows, but adds one aspect row.
 	// The remaining rows mirror the exact
 	// optional conditions in DrawStats so the background follows its content.
-	size_t lineCount = 25;
+	size_t lineCount = stats.isAlphaRenderer ? 24 : 25;
 	++lineCount; // Surface mode is always shown.
 	if (stats.renderLoadKnown)
 		lineCount += 3;
