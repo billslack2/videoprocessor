@@ -117,4 +117,19 @@ active-picture selection, automatic crop behavior, or other renderer OSDs.
   unknown formatting, 3% hold, and source reacquisition.
 - Still needed: view the right-side native Ctrl+I OSD with a live source,
   confirm both rows fit and update on a real aspect transition, and confirm
-  the other renderer/profile overlays visually. No deployment has occurred.
+  the other renderer/profile overlays visually. Deployment evidence is recorded below.
+
+## Deployment (2026-09-30)
+
+- Deployed the host and VP Renderer DLL together from the successfully
+  completed x64 Release build of clean source commit
+  `c1824064ac97e0763cc94dfb112fff4e32f94424`. Both generated version
+  headers reported that commit with `VERSION_DIRTY=false`.
+- The previous installed pair was backed up at
+  `C:/Videoprocessor/vp/backups/vp-0194-20260930-095854-201`.
+  The deployment receipt is `deployment.json` in that folder.
+- Independent SHA-256 verification after copying matched the build artifacts:
+  host `D25CFA0B7796F44C1281CC0D1FF1A2DFE8C8C814F58AE52E45ACD886F4DFE59E`;
+  VP Renderer DLL `1E4AB195A94A418E1166A7D67D27AC574F008A2A058804BB6062A7DCF9824225`.
+- No configuration or state files were edited. VideoProcessor was stopped
+  before and after deployment; live Ctrl+I visual validation remains pending.
