@@ -86,7 +86,7 @@ ConfigurationRpcServer::~ConfigurationRpcServer()
 
 bool ConfigurationRpcServer::Start(void* dialogWindow,
 	unsigned int requestMessage, const DiscoveryInfo& info,
-	std::string& error)
+	std::string& error, uint16_t tcpPort, uint16_t discoveryPort)
 {
 	if (worker_.joinable() || discoveryWorker_.joinable() ||
 		socketsStarted_ || !dialogWindow ||
@@ -104,20 +104,6 @@ bool ConfigurationRpcServer::Start(void* dialogWindow,
 		return false;
 	}
 	socketsStarted_ = true;
-	Frame advertisement;
-	if (!BuildDiscoveryReply({ info.instanceId, info.computerName,
-		info.vpVersion, Port }, advertisement))
-	{
-		error = "Configuration RPC discovery identity is too large.";
-		Stop();
-		return false;
-	}
-	if (!Encode(advertisement, advertisement_))
-	{
-		error = "Configuration RPC discovery advertisement is invalid.";
-		Stop();
-		return false;
-	}
 	const SOCKET listener = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 	if (listener == INVALID_SOCKET)
 	{
@@ -137,11 +123,21 @@ bool ConfigurationRpcServer::Start(void* dialogWindow,
 	sockaddr_in address{};
 	address.sin_family = AF_INET;
 	address.sin_addr.s_addr = htonl(INADDR_ANY);
-	address.sin_port = htons(Port);
+	address.sin_port = htons(tcpPort);
 	if (bind(listener, reinterpret_cast<const sockaddr*>(&address),
 		sizeof(address)) == SOCKET_ERROR || listen(listener, 8) == SOCKET_ERROR)
 	{
 		error = "Could not bind configuration RPC port 41686.";
+		closesocket(listener);
+		Stop();
+		return false;
+	}
+	sockaddr_in boundTcp{};
+	int boundTcpSize = sizeof(boundTcp);
+	if (getsockname(listener, reinterpret_cast<sockaddr*>(&boundTcp),
+		&boundTcpSize) == SOCKET_ERROR)
+	{
+		error = "Could not inspect the configuration RPC port.";
 		closesocket(listener);
 		Stop();
 		return false;
@@ -157,7 +153,7 @@ bool ConfigurationRpcServer::Start(void* dialogWindow,
 		Stop();
 		return false;
 	}
-	address.sin_port = htons(DiscoveryPort);
+	address.sin_port = htons(discoveryPort);
 	if (bind(discovery, reinterpret_cast<const sockaddr*>(&address),
 		sizeof(address)) == SOCKET_ERROR)
 	{
@@ -167,6 +163,30 @@ bool ConfigurationRpcServer::Start(void* dialogWindow,
 		Stop();
 		return false;
 	}
+	sockaddr_in boundDiscovery{};
+	int boundDiscoverySize = sizeof(boundDiscovery);
+	if (getsockname(discovery, reinterpret_cast<sockaddr*>(&boundDiscovery),
+		&boundDiscoverySize) == SOCKET_ERROR)
+	{
+		error = "Could not inspect the configuration discovery port.";
+		closesocket(discovery);
+		closesocket(listener);
+		Stop();
+		return false;
+	}
+	Frame advertisement;
+	if (!BuildDiscoveryReply({ info.instanceId, info.computerName,
+		info.vpVersion, ntohs(boundTcp.sin_port) }, advertisement) ||
+		!Encode(advertisement, advertisement_))
+	{
+		error = "Configuration RPC discovery identity is invalid or too large.";
+		closesocket(discovery);
+		closesocket(listener);
+		Stop();
+		return false;
+	}
+	boundTcpPort_ = ntohs(boundTcp.sin_port);
+	boundDiscoveryPort_ = ntohs(boundDiscovery.sin_port);
 	dialogWindow_ = dialogWindow;
 	requestMessage_ = requestMessage;
 	stopping_.store(false);
@@ -213,6 +233,8 @@ void ConfigurationRpcServer::Stop()
 		WSACleanup();
 		socketsStarted_ = false;
 	}
+	boundTcpPort_ = 0;
+	boundDiscoveryPort_ = 0;
 }
 
 std::shared_ptr<ConfigurationRpcServer::Pending>

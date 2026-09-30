@@ -45,8 +45,11 @@ public:
 
 	bool Start(void* dialogWindow, unsigned int requestMessage,
 		const DiscoveryInfo& info,
-		std::string& error);
+		std::string& error, uint16_t tcpPort = Port,
+		uint16_t discoveryPort = DiscoveryPort);
 	void Stop();
+	uint16_t BoundTcpPort() const { return boundTcpPort_; }
+	uint16_t BoundDiscoveryPort() const { return boundDiscoveryPort_; }
 	std::shared_ptr<Pending> TakePending(uint64_t id);
 	void Complete(const std::shared_ptr<Pending>& pending);
 
@@ -69,4 +72,6 @@ private:
 	uint64_t nextId_ = 1;
 	std::map<uint64_t, std::shared_ptr<Pending>> pending_;
 	bool socketsStarted_ = false;
+	uint16_t boundTcpPort_ = 0;
+	uint16_t boundDiscoveryPort_ = 0;
 };
