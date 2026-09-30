@@ -2,11 +2,12 @@
 
 ## Status
 
-In Progress (2026-09-30). Implemented on source branch
-`codex/vp-0194-aspect-osd` at `bcc80ea9`, based on verified GitHub
-`v1.3.005-beta` tip `7b50c4339dcd6c6ad3f74ac53bf4cb2c3d661ff3`.
-Draft review: [PR #124](https://github.com/billslack2/videoprocessor/pull/124).
-Live Ctrl+I visual validation remains pending before review completion.
+Review (2026-09-30). User confirmed the live OSD feature looks good.
+[PR #124](https://github.com/billslack2/videoprocessor/pull/124) merged into
+`v1.3.005-beta` at `c84863eaa59e03fe218de824c34b7c0220c4fd87` from clean source
+commit `bcc80ea97972249b7a5325ea5bbf351d046e919a`. The x64 Release
+build and deployment were verified. Precise HDTV / Digital IMAX transition
+timing was not measured; automated tests were not rerun after the final viewport edit.
 
 ## User story
 
@@ -181,3 +182,8 @@ active-picture selection, automatic crop behavior, or other renderer OSDs.
 - Profile snapshot comparison now includes these two display fields so a live edit to the label or ratio spelling reaches the OSD even when the numeric ratio is unchanged. The row no longer includes vertical alignment; geometry behavior is unchanged.
 - A full clean-commit x64 Release build passed; both generated version headers report `bcc80ea` and `VERSION_DIRTY=false`. Live visual confirmation remains pending.
 - With VideoProcessor closed, deployed the host EXE and VP Renderer DLL together. The previous pair is backed up at `C:/Videoprocessor/vp/backups/vp-0194-viewport-osd-20260930-113253-137`, with a `deployment.json` receipt. Installed SHA-256 matched the build artifacts: host `09A9FFD27861F96E836BBABF9187AAF69D44DFAC43C57913BE0293FE7AB47606`; renderer `84CB38CD94A0A06589DAF1AD34901CA3A63C6EA24B1801CD1B539811975E0F6E`. Configuration files were untouched.
+## Merge and review handoff (2026-09-30)
+
+- User approved merging after live visual inspection and asked to move the story to Review.
+- PR #124 merged into the current GitHub default/latest beta branch `v1.3.005-beta` at merge commit `c84863eaa59e03fe218de824c34b7c0220c4fd87`. Source head was pinned to `bcc80ea97972249b7a5325ea5bbf351d046e919a`; base before merge was `7b50c4339dcd6c6ad3f74ac53bf4cb2c3d661ff3`.
+- The final clean source commit passed the full x64 Release solution build. Focused aspect tests passed on an earlier source commit, and their updated code compiled in the final build; no automated tests were run after the viewport edit. The user confirmed the displayed feature looks good in live use. Precise HDTV / Digital IMAX switch timing remains unmeasured.
