@@ -250,7 +250,7 @@ they must not contain requirements that are absent from this file.
 | VP-0192 | Done | Windows installer with runtime setup and unrestricted build upgrades |
 
 | VP-0193 | Review | Safe, concrete screen positioning improvements |
-| VP-0194 | Backlog | Show detected aspect ratio and common format name in the OSD |
+| VP-0194 | Backlog | Show detected aspect ratio and common format name in the VP Renderer Ctrl+I OSD |
 
 ## Codex story workflow
 

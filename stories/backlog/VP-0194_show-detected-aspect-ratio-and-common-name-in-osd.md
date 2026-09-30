@@ -1,22 +1,24 @@
-# VP-0194: Show detected aspect ratio and common format name in the OSD
+# VP-0194: Show detected aspect ratio and common format name in the VP Renderer Ctrl+I OSD
 
 ## Status
 
-Backlog. Add the currently detected active-picture aspect ratio to the existing
-operator OSD and append a recognizable common name when the value matches a
-supported format. Preserve the numeric measurement as the source of truth.
+Backlog. Add one ratio row to the existing right-side VP Renderer Ctrl+I OSD.
+Append a recognizable common name when the value matches a supported format,
+while preserving the numeric measurement as the source of truth.
 
 ## User story
 
-As a VideoProcessor operator, I want the OSD to show the detected active-picture
-aspect ratio and a common format name when one applies, so I can quickly
-understand what shape of picture VP is detecting.
+As a VideoProcessor operator, I want the VP Renderer Ctrl+I OSD on the right
+side to show the detected active-picture aspect ratio and a common format name
+when one applies, so I can quickly understand what shape of picture VP is
+detecting.
 
 ## Scope and required behavior
 
-1. Show the aspect ratio already detected by VP in the existing operator OSD.
-   Use the authoritative current detection result and do not add a new detector,
-   crop policy, or aspect-ratio override as part of this story.
+1. Add a single `Aspect ratio` row to the existing right-side Ctrl+I OSD when
+   VP Renderer is active. Show this row only on that VP Renderer OSD. Use the
+   authoritative current detection result and do not add a new detector, crop
+   policy, or aspect-ratio override as part of this story.
 2. Always show the numeric ratio in a stable, readable `width:height` form,
    normalized to height 1 (for example `1.78:1`). Keep enough precision to
    distinguish nearby formats. A common name supplements the measurement and
@@ -46,17 +48,20 @@ understand what shape of picture VP is detecting.
    and test the tolerance against realistic detector variation and boundary
    cases. Keep names easy to extend in one place.
 6. Update only when the displayed ratio/name changes; avoid per-frame OSD or
-   log churn. Retain the OSD's existing layout, lifetime, and visibility rules.
-   Verify that portrait and unusual ratios remain legible and fall back to the
-   numeric ratio without a misleading name.
+   log churn. Retain the VP Renderer Ctrl+I OSD's existing right-side placement,
+   typography, lifetime, and visibility rules. Do not add the row to madVR or
+   DirectShow OSD output, the separate Ctrl+Alt+I profile overlay, or another
+   panel or shortcut. Verify portrait and unusual ratios remain legible and
+   fall back to the numeric ratio without a misleading name.
 7. Update relevant help/reference text if the OSD's detected ratio or names
    need explanation. Do not add configuration unless implementation discovery
    shows a concrete user need for configurable naming.
 
 ## Acceptance criteria
 
-1. For known test geometry, the OSD displays the correct active-picture ratio
-   normalized to height 1, with enough precision for supported names.
+1. For known test geometry, the VP Renderer Ctrl+I OSD displays the correct
+   active-picture ratio normalized to height 1, with enough precision for
+   supported names.
 2. A named common format displays its numeric value and the expected name.
    Unsupported and portrait ratios display the numeric value without an
    incorrect name.
@@ -65,17 +70,20 @@ understand what shape of picture VP is detecting.
    unavailable measurements, and ratio changes while the OSD is open.
 4. The name matching uses the precise detected value, not a rounded string.
    OSD updates are change-triggered and do not add per-frame diagnostic churn.
-5. Existing OSD content, toggling, rendering paths, and layout remain intact;
-   verify readable placement on the relevant renderer(s), including long names
-   such as `Ultra Panavision 70`.
+5. Existing VP Renderer Ctrl+I content, toggling, rendering path, and layout
+   remain intact; verify readable placement in its right-side panel, including
+   long names such as `Ultra Panavision 70`. Other renderer OSDs and the
+   Ctrl+Alt+I profile overlay remain unchanged.
 6. Relevant tests and a successful x64 Release build pass. Record any remaining
    live OSD validation before moving the story to Review.
 
 ## Related context
 
-VP-0154 and VP-0189 concern black-bar detection and crop stability. This story
-consumes the existing detected aspect ratio; it does not alter detection,
-trust thresholds, active-picture selection, or automatic crop behavior.
+This story applies only to the VP Renderer right-side Ctrl+I statistics OSD.
+VP-0158 documents a separate Ctrl+Alt+I active-profile overlay; VP-0161
+documents the VP Renderer Ctrl+I health rows. This story consumes the existing
+detected aspect ratio and does not alter detection, trust thresholds,
+active-picture selection, automatic crop behavior, or other renderer OSDs.
 
 The starter labels reflect commonly cited theatrical and video formats. Some
 labels are approximate or refer to presentation traditions rather than a
@@ -85,8 +93,8 @@ the chosen matching tolerance in implementation.
 ## Readiness and next action
 
 Before implementation, locate the authoritative detected-ratio value and the
-existing operator OSD surface, then verify whether the value is accessible
-without changing renderer interfaces. Confirm the intended display precision,
-matching tolerance, and final starter labels against that data path. If those
-choices can be made without a new detector or pipeline dependency, record the
-readiness review and implement the OSD addition.
+existing VP Renderer Ctrl+I OSD surface, then verify whether the value is
+accessible without changing renderer interfaces. Confirm the intended display
+precision, matching tolerance, and final starter labels against that data path.
+If those choices can be made without a new detector or pipeline dependency,
+record the readiness review and implement the OSD addition.
