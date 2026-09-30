@@ -3,7 +3,7 @@
 ## Status
 
 In Progress (2026-09-30). Implemented on source branch
-`codex/vp-0194-aspect-osd` at `c1824064`, based on verified GitHub
+`codex/vp-0194-aspect-osd` at `a83e3dca`, based on verified GitHub
 `v1.3.005-beta` tip `7b50c4339dcd6c6ad3f74ac53bf4cb2c3d661ff3`.
 Draft review: [PR #124](https://github.com/billslack2/videoprocessor/pull/124).
 Live Ctrl+I visual validation remains pending before review completion.
@@ -16,8 +16,8 @@ understand what shape of picture VP is detecting.
 
 ## Scope and required behavior
 
-1. Add `Aspect ratio` and `Name` values to the existing right-side Ctrl+I OSD
-   when VP Renderer is active. Show them only on that VP Renderer OSD. Use the
+1. Show one `Aspect Ratio: <ratio> (<name>)` row in the existing right-side
+   Ctrl+I OSD when VP Renderer is active. Show them only on that VP Renderer OSD. Use the
    authoritative current detection result; do not add a new detector, crop
    policy, or aspect-ratio override.
 2. Use the complete supported ratio/name list below. Display ratio aliases for
@@ -84,7 +84,7 @@ understand what shape of picture VP is detecting.
    ratio changes while the OSD is open. Matching uses the measured value, not
    the rounded display string.
 6. Existing VP Renderer Ctrl+I content, toggling, rendering path, and layout
-   remain intact. Verify both values fit in the right-side panel and other
+   remain intact. Verify the combined row fits in the right-side panel and other
    renderer OSDs plus the Ctrl+Alt+I profile overlay remain unchanged.
 7. Relevant tests and a successful x64 Release build pass. Record any remaining
    live OSD validation before moving the story to Review.
@@ -109,14 +109,14 @@ active-picture selection, automatic crop behavior, or other renderer OSDs.
   needs 3. A source-generation change resets the label immediately.
   Unavailable detection shows `---` and `Unknown`; a busy renderer read
   retains the prior display.
-- The two rows are gated by the VP Renderer flag in the existing Ctrl+I
-  bitmap. Height includes both rows. DirectShow and the profile overlay are
-  untouched.
+- The one-line aspect row is gated by the VP Renderer flag in the existing
+  Ctrl+I bitmap. Height includes that row. DirectShow and the profile overlay
+  are untouched.
 - Full solution x64 Release build passed. Two focused Release tests passed,
   covering all 14 mappings, isolated 1% boundaries, overlap and tie cases,
   unknown formatting, 3% hold, and source reacquisition.
 - Still needed: view the right-side native Ctrl+I OSD with a live source,
-  confirm both rows fit and update on a real aspect transition, and confirm
+  confirm the combined row fits and updates on a real aspect transition, and confirm
   the other renderer/profile overlays visually. Deployment evidence is recorded below.
 
 ## Deployment (2026-09-30)
@@ -133,3 +133,30 @@ active-picture selection, automatic crop behavior, or other renderer OSDs.
   VP Renderer DLL `1E4AB195A94A418E1166A7D67D27AC574F008A2A058804BB6062A7DCF9824225`.
 - No configuration or state files were edited. VideoProcessor was stopped
   before and after deployment; live Ctrl+I visual validation remains pending.
+
+## User feedback and correction (2026-09-30)
+
+- The first deployed build showed `Aspect ratio: ---` and `Name: Unknown`
+  with `NLS: Off`. Fullscreen briefly showed HDTV, then a display transition
+  returned the OSD to Unknown. Investigation found that VP Renderer skipped
+  active-picture analysis when NLS, automatic crop, and other consumers were
+  off. The screenshot is evidence that the row rendered but had no trusted
+  detector result.
+- Source commits `e67a13d3` and `a83e3dca` make the visible Ctrl+I stats
+  panel request the existing detector without enabling NLS or automatic crop,
+  retain a trusted OSD label for up to nine one-second reads during temporary
+  detector withdrawal, and show ratio and name together as
+  `Aspect Ratio: 2.39:1 (Scope)`. A genuine new source still reacquires.
+- A serial full x64 Release rebuild and focused aspect OSD tests passed after
+  the detector correction. The final clean-commit x64 Release build passed
+  with both version headers reporting `a83e3dc` and `VERSION_DIRTY=false`.
+- Replaced the installed host and renderer DLL together from
+  `a83e3dca3c4c0e3d362deed1e34fcf3b6cc610f5` after confirming VP was
+  closed. The previous pair is backed up at
+  `C:/Videoprocessor/vp/backups/vp-0194-redisplay-20260930-104425-005`;
+  see its `deployment.json` receipt.
+- Independent deployed SHA-256 matches the new build artifacts: host
+  `C44E56CE37BFEF761AF89C370E4FD4A4977192A97FB906EA316B94E214C3504D`;
+  renderer `D9906F65D9B9EBD4A01888F47F0C44DA946C78F7010DD01A1EBD1E5E82181923`.
+  Configuration and state files were not edited. Live Ctrl+I verification of
+  NLS-off detection and fullscreen/windowed continuity remains pending.
