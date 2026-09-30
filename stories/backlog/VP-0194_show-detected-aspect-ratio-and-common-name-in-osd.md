@@ -16,8 +16,8 @@ understand what shape of picture VP is detecting.
 
 1. Add `Aspect ratio` and `Name` values to the existing right-side Ctrl+I OSD
    when VP Renderer is active. Show them only on that VP Renderer OSD. Use the
-authoritative current detection result; do not add a new detector, crop policy,
-or aspect-ratio override.
+   authoritative current detection result; do not add a new detector, crop policy,
+   or aspect-ratio override.
 2. Use these known mappings:
    - Detected `1.33:1`: display ratio `4:3`; name `TV`.
    - Detected `1.66:1`: display ratio `1.66:1`; name `European widescreen`.
