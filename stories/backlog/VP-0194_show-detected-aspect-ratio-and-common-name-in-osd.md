@@ -34,17 +34,23 @@ understand what shape of picture VP is detecting.
    - `2.39:1` → ratio `2.39:1`; name `Scope`.
    - `2.40:1` → ratio `2.40:1`; name `Scope`.
    - `2.76:1` → ratio `2.76:1`; name `Ultra Panavision 70`.
-3. For each supported ratio, snap the detected value when the relative
-   difference `|detected - target| / target` is 1% or less, inclusive. Targets
-   are the exact values `4/3`, `1.37`, `1.43`, `1.66`, `16/9`, `1.85`, `1.90`,
-   `2.00`, `2.20`, `21/9`, `2.35`, `2.39`, `2.40`, and `2.76`. If a value is
-   within 1% of multiple targets, choose the closest by relative difference;
-   use the lower target as a deterministic tie-break. Display the selected
-   canonical ratio/alias and name.
-4. If no supported target is within 1%, display the measured ratio in normalized
-   `width:height` form (for example `1.50:1`) and set the name to `Unknown`.
-   Keep the measured ratio visible with sufficient precision when no snap
-   applies.
+3. On the first trusted ratio for a source, choose the closest supported target
+   within 1% relative difference (`|detected - target| / target`), inclusive.
+   Targets are the exact values `4/3`, `1.37`, `1.43`, `1.66`, `16/9`, `1.85`,
+   `1.90`, `2.00`, `2.20`, `21/9`, `2.35`, `2.39`, `2.40`, and `2.76`. If more
+   than one target qualifies, choose the closest; break an exact tie toward the
+   lower target. This selects 2.39:1 or 2.40:1 from a precise initial reading.
+4. Once a target is selected, retain its displayed ratio and name through
+   ambiguous readings, including variation up to 3% relative to that held
+   target. Do not switch merely because a nearby target becomes momentarily
+   closer. Switch only after the existing detector confirms a genuine, stable
+   new active-picture aspect. If it offers no such confirmation signal, require
+   sustained readings that clearly favor the new target over the held target;
+   define the margin and confirmation duration at implementation readiness.
+   A single outlier must not switch the label. On a new source or detector
+   epoch, acquire from its current trusted ratio rather than a stale label.
+   A confirmed new aspect is reclassified using the 1% nearest-target rule.
+   If it has no target within 1%, display the measured ratio and `Unknown`.
 5. If no valid aspect ratio is available, use the existing OSD unavailable
    value for the ratio and show `Unknown` for the name. Do not fabricate a
    measurement.
@@ -60,12 +66,16 @@ understand what shape of picture VP is detecting.
 
 1. Tests verify all 14 supported mappings and the exact ratio/name text shown in
    the OSD.
-2. For each supported target, tests cover values below, exactly at, and above
-   the 1% relative-difference boundary. Inputs within range snap to the closest
-   target; inputs outside all ranges retain their measured ratio and show
-   `Unknown`.
+2. On initial acquisition and confirmed aspect changes, tests cover values
+   below, exactly at, and above each 1% relative-difference boundary. Values
+   within range snap to the closest target; values outside all ranges retain
+   their measured ratio and show `Unknown`.
 3. Tests cover overlapping match ranges among 2.33:1, 2.35:1, 2.39:1, and
-   2.40:1, including nearest-target selection and the deterministic tie-break.
+   2.40:1, including nearest-target selection and the exact tie-break. Exact
+   initial 2.39:1 and 2.40:1 readings select their respective targets.
+   Ambiguous jitter, including deviations up to 3% from the held target,
+   preserves the held label. A single outlier does not switch it; a sustained,
+   confirmed new aspect does. A new source reacquires its own initial label.
 4. Representative unsupported ratios such as 1.50:1 and 2.50:1 retain their
    measured ratio and show `Unknown` as the name.
 5. Tests cover invalid or unavailable measurements, numeric formatting, and
@@ -90,5 +100,5 @@ active-picture selection, automatic crop behavior, or other renderer OSDs.
 Before implementation, locate the authoritative detected-ratio value and the
 existing VP Renderer Ctrl+I OSD surface, then verify that both values can be
 added without changing detection or other renderers. Record the matching
-precision/tolerance decision and implementation readiness before moving this
-story to In Progress.
+precision/tolerance and transition-confirmation decisions, and implementation
+readiness before moving this story to In Progress.
