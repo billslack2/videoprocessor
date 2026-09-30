@@ -2,9 +2,11 @@
 
 ## Status
 
-Backlog. Add `Aspect ratio` and `Name` values to the existing right-side VP
-Renderer Ctrl+I OSD. Snap detected values within 1% of the closest supported
-common ratio and show its label; show `Unknown` outside the supported ranges.
+In Progress (2026-09-30). Implementation started from the verified GitHub
+`v1.3.005-beta` tip `7b50c4339dcd6c6ad3f74ac53bf4cb2c3d661ff3` on source branch
+`codex/vp-0194-aspect-osd` in the clean worktree
+`E:\codex\videoprocessor\vp-0194-aspect-osd`. Inspecting the existing VP Renderer
+Ctrl+I OSD and authoritative detected-ratio path before implementation.
 
 ## User story
 
