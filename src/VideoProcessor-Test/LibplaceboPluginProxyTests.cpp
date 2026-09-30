@@ -103,28 +103,32 @@ namespace VideoProcessorTest
 			Assert::IsTrue(AspectRatioOsd::Classify(2.345).ratio == L"2.35:1");
 			AspectRatioOsd osd;
 			DetectedPictureAspect reading{1, 1, 2.39, true};
-			Assert::IsTrue(osd.Update(reading).ratio == L"2.39:1");
+			Assert::IsTrue(osd.Update(reading, 1000).ratio == L"2.39:1");
 			reading.publicationGeneration = 2;
 			reading.ratio = 2.40;
-			for (int i = 0; i < 9; ++i)
-				Assert::IsTrue(osd.Update(reading).ratio == L"2.39:1");
-			Assert::IsTrue(osd.Update(reading).ratio == L"2.40:1");
+			Assert::IsTrue(osd.Update(reading, 1100).ratio == L"2.39:1");
+			Assert::IsTrue(osd.Update(reading, 6099).ratio == L"2.39:1");
+			Assert::IsTrue(osd.Update(reading, 6100).ratio == L"2.40:1");
 			reading.publicationGeneration = 3;
 			reading.ratio = 2.40 * 1.03;
-			Assert::IsTrue(osd.Update(reading).ratio == L"2.40:1");
+			Assert::IsTrue(osd.Update(reading, 6200).ratio == L"2.40:1");
 			reading.sourceGeneration = 2;
 			reading.publicationGeneration = 1;
 			reading.ratio = 2.39;
-			Assert::IsTrue(osd.Update(reading).ratio == L"2.39:1");
+			Assert::IsTrue(osd.Update(reading, 6300).ratio == L"2.39:1");
 			reading.available = false;
 			reading.sourceGeneration = 0; // display-mode handoff
-			for (int i = 0; i < 9; ++i)
-				Assert::IsTrue(osd.Update(reading).ratio == L"2.39:1");
-			Assert::IsTrue(osd.Update(reading).name == L"Unknown");
+			Assert::IsTrue(osd.Update(reading, 6400).ratio == L"2.39:1");
+			Assert::IsTrue(osd.Update(reading, 16399).ratio == L"2.39:1");
+			Assert::IsTrue(osd.Update(reading, 16400).name == L"Unknown");
 			reading.available = true;
 			reading.sourceGeneration = 3; // actual new source
 			reading.ratio = 16.0 / 9.0;
-			Assert::IsTrue(osd.Update(reading).ratio == L"16:9");
+			Assert::IsTrue(osd.Update(reading, 16500).ratio == L"16:9");
+			reading.publicationGeneration = 2;
+			reading.ratio = 1.90;
+			Assert::IsTrue(osd.Update(reading, 16600).ratio == L"1.90:1");
+			Assert::IsTrue(osd.Update(reading, 16600).name == L"Digital IMAX");
 		}
 
 		TEST_METHOD(RendererMetadataCyclesReuseAcceptedSnapshotWithoutDiskReads)

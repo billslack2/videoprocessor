@@ -7778,6 +7778,10 @@ void CVideoProcessorDlg::OnCommandToggleStatsOverlay()
 		return;
 	}
 	m_statsOverlayRequestedVisible = !m_statsOverlayRequestedVisible;
+	if (m_statsOverlayRequestedVisible)
+		SetTimer(ASPECT_OSD_TIMER_ID, 150, nullptr);
+	else
+		KillTimer(ASPECT_OSD_TIMER_ID);
 	ApplyStatsOverlayForActiveRenderer();
 	DebugLog::Log(
 		"Keyboard command handler: command=toggle-stats result=applied requested_after=%d",
@@ -14197,6 +14201,11 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 		UpdateProfileChangeOverlay(uiNow);
 		return;
 	}
+	if (nIDEvent == ASPECT_OSD_TIMER_ID)
+	{
+		PollAspectRatioOsd();
+		return;
+	}
 	if (m_configurationEditorPresentationRequired != 0 &&
 		m_configurationEditorPresentationAcknowledged !=
 			m_configurationEditorPresentationRequired &&
@@ -14816,6 +14825,36 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 	}
 
 	CDialog::OnTimer(nIDEvent);
+}
+
+void CVideoProcessorDlg::PollAspectRatioOsd()
+{
+	if (!m_statsOverlayRequestedVisible || !m_statsOverlay || !m_lastStatsData ||
+		!m_videoRenderer || !m_videoRenderer->SupportsNativeStatsOverlay() ||
+		m_rendererState != RendererState::RENDERSTATE_RENDERING ||
+		m_lastStatsTelemetryRenderer != m_videoRenderer.get() ||
+		m_lastStatsTelemetryGeneration != m_transitionGeneration ||
+		!m_lastStatsData->isAlphaRenderer)
+		return;
+
+	DetectedPictureAspect detected;
+	if (!m_videoRenderer->GetDetectedPictureAspect(detected))
+		return;
+	const auto& label = m_aspectRatioOsd.Update(detected, GetTickCount64());
+	if (m_lastStatsData->aspectRatio == label.ratio.c_str() &&
+		m_lastStatsData->aspectName == label.name.c_str())
+		return;
+
+	m_lastStatsData->aspectRatio = label.ratio.c_str();
+	m_lastStatsData->aspectName = label.name.c_str();
+	m_statsOverlay->UpdateStats(*m_lastStatsData);
+	std::vector<uint8_t> pixels;
+	int width = 0;
+	int height = 0;
+	int stride = 0;
+	if (m_statsOverlay->RenderBgra(pixels, width, height, stride))
+		m_videoRenderer->SetNativeStatsOverlay(
+			pixels.data(), pixels.size(), width, height, stride);
 }
 
 void CVideoProcessorDlg::UpdateStatsOverlay()
@@ -15838,7 +15877,7 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 			DetectedPictureAspect detected;
 			if (m_videoRenderer->GetDetectedPictureAspect(detected))
 			{
-				const auto& label = m_aspectRatioOsd.Update(detected);
+				const auto& label = m_aspectRatioOsd.Update(detected, GetTickCount64());
 				stats.aspectRatio = label.ratio.c_str();
 				stats.aspectName = label.name.c_str();
 			}
