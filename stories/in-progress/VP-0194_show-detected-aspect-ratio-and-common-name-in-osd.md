@@ -3,7 +3,7 @@
 ## Status
 
 In Progress (2026-09-30). Implemented on source branch
-`codex/vp-0194-aspect-osd` at `3280e496`, based on verified GitHub
+`codex/vp-0194-aspect-osd` at `bcc80ea9`, based on verified GitHub
 `v1.3.005-beta` tip `7b50c4339dcd6c6ad3f74ac53bf4cb2c3d661ff3`.
 Draft review: [PR #124](https://github.com/billslack2/videoprocessor/pull/124).
 Live Ctrl+I visual validation remains pending before review completion.
@@ -174,3 +174,10 @@ active-picture selection, automatic crop behavior, or other renderer OSDs.
 - Backed up the previous installed pair to `C:/Videoprocessor/vp/backups/vp-0194-fast-aspect-20260930-111219-133`; its `deployment.json` records both before and after hashes.
 - Independent installed SHA-256 verification matched the Release artifacts: host `BE391DFB9C4FE18D30422ED34CA0EC6D2AD414942759049478C8E0CB7F8041ED`; renderer `C614B49591C2B54268B7166307F30EBE672CB72D031CC6D53EAD0E592BC1D400`.
 - Configuration and state files were untouched. Live playback timing of the HDTV / Digital IMAX switch still needs user observation.
+## Configured viewport row correction (2026-09-30)
+
+- User showed `Viewport: scope (47:20, center)` although the active configuration has `[vprenderer.viewport.scope]`, `label: Scope`, and `screen_aspect: 2.35:1`. The prior row used the normalized profile key and the aspect parser's reduced fraction.
+- Source commit `bcc80ea97972249b7a5325ea5bbf351d046e919a` retains the configuration's display label and entered `screen_aspect` text in the resolved viewport snapshot. The Ctrl+I row now displays `Scope (2.35:1) [CinemaScope]` for that profile. A configured ratio without a match in the 14 known ratios shows its entered text with no bracketed name. The match uses the same 1% nearest-target classification; normalized numeric values still drive geometry.
+- Profile snapshot comparison now includes these two display fields so a live edit to the label or ratio spelling reaches the OSD even when the numeric ratio is unchanged. The row no longer includes vertical alignment; geometry behavior is unchanged.
+- A full clean-commit x64 Release build passed; both generated version headers report `bcc80ea` and `VERSION_DIRTY=false`. Live visual confirmation remains pending.
+- With VideoProcessor closed, deployed the host EXE and VP Renderer DLL together. The previous pair is backed up at `C:/Videoprocessor/vp/backups/vp-0194-viewport-osd-20260930-113253-137`, with a `deployment.json` receipt. Installed SHA-256 matched the build artifacts: host `09A9FFD27861F96E836BBABF9187AAF69D44DFAC43C57913BE0293FE7AB47606`; renderer `84CB38CD94A0A06589DAF1AD34901CA3A63C6EA24B1801CD1B539811975E0F6E`. Configuration files were untouched.
