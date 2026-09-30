@@ -418,6 +418,15 @@ bool ConfigFile::Load(const std::string& filename, ReadPolicy policy)
 }
 
 
+bool ConfigFile::LoadStagedCandidate(const std::string& stagedPath,
+	const std::string& logicalPath, ReadPolicy policy)
+{
+	if (logicalPath.empty() || !Load(stagedPath, policy)) return false;
+	m_loadedPath = logicalPath;
+	return true;
+}
+
+
 bool ConfigFile::TryResolveRendererConfigSelection(
 	const std::vector<std::string>& arguments,
 	std::string& filename,

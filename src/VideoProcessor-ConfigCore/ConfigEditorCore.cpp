@@ -147,6 +147,18 @@ namespace ConfigEditorCore
 		}
 	}
 
+	void ConfigDocument::ReplaceContents(const std::string& bytes)
+	{
+		const std::wstring originalPath = path;
+		const std::string baseline = loadedBytes;
+		const bool existed = existedAtLoad;
+		const bool remote = remoteSource;
+		LoadBytes(originalPath, bytes);
+		loadedBytes = baseline;
+		existedAtLoad = existed;
+		remoteSource = remote;
+	}
+
     bool ConfigDocument::MigrateTransferChoices()
     {
         bool changed = false;

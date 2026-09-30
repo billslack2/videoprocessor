@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 // Shared, Qt-independent wire contract for the configuration-only LAN API.
@@ -135,6 +136,50 @@ namespace ConfigurationRpcProtocol
 		value.assign(reinterpret_cast<const char*>(input.data() + cursor),
 			length);
 		cursor += length;
+		return true;
+	}
+
+	struct DiscoveryAdvertisement
+	{
+		std::string instanceId;
+		std::string computerName;
+		std::string vpVersion;
+		uint16_t rpcPort = 0;
+	};
+
+	inline bool BuildDiscoveryReply(const DiscoveryAdvertisement& info,
+		Frame& reply)
+	{
+		if (info.instanceId.empty() || info.instanceId.size() > 256 ||
+			info.computerName.empty() || info.computerName.size() > 256 ||
+			info.vpVersion.empty() || info.vpVersion.size() > 256 ||
+			info.rpcPort == 0) return false;
+		reply = {};
+		reply.operation = static_cast<uint16_t>(Operation::DiscoveryReply);
+		if (!WriteString(reply.payload, info.instanceId) ||
+			!WriteString(reply.payload, info.computerName) ||
+			!WriteString(reply.payload, info.vpVersion)) return false;
+		Write16(reply.payload, info.rpcPort);
+		return true;
+	}
+
+	inline bool ParseDiscoveryReply(const Frame& reply,
+		DiscoveryAdvertisement& info)
+	{
+		if (reply.operation != static_cast<uint16_t>(Operation::DiscoveryReply))
+			return false;
+		DiscoveryAdvertisement parsed;
+		size_t cursor = 0;
+		if (!ReadString(reply.payload, cursor, parsed.instanceId) ||
+			!ReadString(reply.payload, cursor, parsed.computerName) ||
+			!ReadString(reply.payload, cursor, parsed.vpVersion) ||
+			reply.payload.size() - cursor != 2) return false;
+		parsed.rpcPort = Read16(reply.payload.data() + cursor);
+		if (parsed.instanceId.empty() || parsed.instanceId.size() > 256 ||
+			parsed.computerName.empty() || parsed.computerName.size() > 256 ||
+			parsed.vpVersion.empty() || parsed.vpVersion.size() > 256 ||
+			parsed.rpcPort == 0) return false;
+		info = std::move(parsed);
 		return true;
 	}
 }

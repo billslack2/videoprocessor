@@ -29,6 +29,9 @@ namespace ConfigEditorCore
 		// Load exact bytes returned by a running VP without touching a local file.
 		// The path identifies the target. SaveSafely rejects remote documents.
 		void LoadBytes(const std::wstring& targetPath, const std::string& bytes);
+		// Replace editable contents while retaining the on-disk baseline loaded
+		// by the target. SaveSafely then enforces its normal conflict check.
+		void ReplaceContents(const std::string& bytes);
         // Invoke after older split-profile migrations. Archives original text
         // and requests an original-byte backup when saved. No disk writes.
         bool MigrateCalibrationProfiles();

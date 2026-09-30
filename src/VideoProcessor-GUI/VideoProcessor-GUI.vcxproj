@@ -50,6 +50,10 @@
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Use</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Use</PrecompiledHeader>
     </ClCompile>
+    <ClCompile Include="ConfigurationRpcServer.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Use</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Use</PrecompiledHeader>
+    </ClCompile>
     <ClCompile Include="WindowedVideoWindow.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Use</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Use</PrecompiledHeader>
@@ -69,6 +73,7 @@
     <ClInclude Include="version.h" />
     <ClInclude Include="VideoProcessorApp.h" />
     <ClInclude Include="VideoProcessorDlg.h" />
+    <ClInclude Include="ConfigurationRpcServer.h" />
     <ClInclude Include="WindowedVideoWindow.h" />
   </ItemGroup>
   <ItemGroup>

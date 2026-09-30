@@ -25,6 +25,11 @@ public:
 	// Explicit reload validation uses Fresh to independently sample the file.
 	bool Load(const std::string& filename = DEFAULT_FILENAME,
 		ReadPolicy policy = ReadPolicy::ReuseUnchanged);
+	// Parse a sibling staged candidate while resolving relative resources
+	// against the configuration path that will own it after commit.
+	bool LoadStagedCandidate(const std::string& stagedPath,
+		const std::string& logicalPath,
+		ReadPolicy policy = ReadPolicy::Fresh);
 	bool IsLoaded() const { return m_loaded; }
 	const std::string& GetLoadedPath() const { return m_loadedPath; }
     uint64_t GetContentIdentity() const { return m_contentIdentity; }

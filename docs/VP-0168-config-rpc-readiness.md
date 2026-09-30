@@ -52,3 +52,32 @@ directory checks, shader cache controls, and log-folder controls require
 target-aware handling before remote editing is enabled. A selected target
 must remain pinned through Apply, including when discovery refreshes or the
 target becomes unavailable.
+
+## Target endpoint contract (implementation in progress)
+
+The VP host listens on TCP **41686** and answers UDP discovery queries on
+**41687**. It accepts IPv4 loopback, RFC 1918 private addresses, and link-local
+peers. The discovery responder runs independently of the TCP request worker,
+so a slow Apply does not prevent a discovery reply. UDP queries and replies
+use the same 12-byte `VPCR` frame header as TCP. The reply carries the stable
+installation ID, computer name, VP version, and TCP port; the datagram source
+address is the reachable host address. No unsolicited announcements are sent.
+
+Each TCP connection carries one request and one response. The header contains
+magic `VPCR`, a big-endian protocol version (`1`), operation, and payload byte
+count. Requests with an unknown version, operation, flags, malformed length,
+or payload over 4 MiB are rejected before payload allocation. A response sets
+the response flag; a failed response also sets the error flag and carries one
+length-prefixed UTF-8 error string.
+
+| Operation | Request payload | Success payload |
+| --- | --- | --- |
+| `GetConfig` | Empty | UTF-8 target path; exact configuration bytes |
+| `GetCapabilities` | Empty | Capture devices; device/connection pairs; monitors; filtered renderers; all renderers; relative `luts/*.cube` paths. Each list starts with a big-endian count and contains length-prefixed UTF-8 strings. |
+| `ApplyConfig` | Exact baseline bytes; complete candidate bytes | Runtime action label; one status byte: `0` saved for next start, `1` applied live, `2` reset/restart requested. This never asserts a completed transition. |
+
+All three operations are marshalled to VP's dialog thread. `ApplyConfig`
+rejects a stale baseline, validates the candidate, stages runtime state using
+a sibling candidate file with the real configuration path retained as its
+logical path, and only then calls `SaveSafely` and the established runtime
+action dispatcher. The client supplies document bytes, never a target path.
