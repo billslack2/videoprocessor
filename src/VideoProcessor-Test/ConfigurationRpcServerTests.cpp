@@ -3,6 +3,7 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include "../VideoProcessor-GUI/ConfigurationRpcServer.h"
+#include <ConfigurationRpcClient.h>
 #include "CppUnitTest.h"
 
 #include <array>
@@ -40,6 +41,7 @@ namespace
 	{
 		ConfigurationRpcServer server;
 		std::atomic<int> handled{ 0 };
+		bool clientPayloads = false;
 		std::mutex mutex;
 		std::condition_variable ready;
 		HWND window = nullptr;
@@ -66,7 +68,53 @@ namespace
 					++self->handled;
 					pending->response.operation = pending->request.operation |
 						ResponseFlag;
-					WriteString(pending->response.payload, "target-response");
+					if (!self->clientPayloads)
+						WriteString(pending->response.payload, "target-response");
+					else if (pending->request.operation ==
+						static_cast<uint16_t>(Operation::GetConfig))
+					{
+						WriteString(pending->response.payload,
+							"C:\\VP\\VideoProcessor.cfg");
+						WriteString(pending->response.payload,
+							"# exact bytes\r\n[general]\r\nrenderer: VP Renderer\r\n");
+					}
+					else if (pending->request.operation ==
+						static_cast<uint16_t>(Operation::GetCapabilities))
+					{
+						Write32(pending->response.payload, 1);
+						WriteString(pending->response.payload, "DeckLink");
+						Write32(pending->response.payload, 1);
+						WriteString(pending->response.payload, "DeckLink");
+						Write32(pending->response.payload, 1);
+						WriteString(pending->response.payload, "HDMI");
+						Write32(pending->response.payload, 1);
+						WriteString(pending->response.payload, "Display 1");
+						Write32(pending->response.payload, 1);
+						WriteString(pending->response.payload, "VP Renderer");
+						Write32(pending->response.payload, 1);
+						WriteString(pending->response.payload, "VP Renderer");
+						Write32(pending->response.payload, 1);
+						WriteString(pending->response.payload, "luts/test.cube");
+					}
+					else if (pending->request.operation ==
+						static_cast<uint16_t>(Operation::ApplyConfig))
+					{
+						size_t cursor = 0;
+						std::string baseline;
+						std::string candidate;
+						if (!ReadString(pending->request.payload, cursor, baseline) ||
+							!ReadString(pending->request.payload, cursor, candidate) ||
+							baseline != "baseline" || candidate != "candidate")
+						{
+							pending->response.operation |= ErrorFlag;
+							WriteString(pending->response.payload, "stale baseline");
+						}
+						else
+						{
+							WriteString(pending->response.payload, "Save only");
+							pending->response.payload.push_back(0);
+						}
+					}
 					self->server.Complete(pending);
 				}
 				return 0;
@@ -263,6 +311,37 @@ namespace VideoProcessorTest
 			Assert::AreEqual(static_cast<int>(harness.server.BoundTcpPort()),
 				static_cast<int>(parsed.rpcPort));
 			Assert::AreEqual(0, harness.handled.load());
+		}
+
+		TEST_METHOD(ClientLoadsCapabilitiesAndAppliesWithoutFileAccess)
+		{
+			ServerHarness harness;
+			harness.clientPayloads = true;
+			Assert::IsTrue(harness.Start());
+			ConfigurationRpcClient client("127.0.0.1",
+				harness.server.BoundTcpPort());
+			std::string path, bytes, error;
+			Assert::IsTrue(client.GetConfig(path, bytes, error));
+			Assert::AreEqual(std::string("C:\\VP\\VideoProcessor.cfg"), path);
+			Assert::AreEqual(std::string(
+				"# exact bytes\r\n[general]\r\nrenderer: VP Renderer\r\n"), bytes);
+			ConfigurationRpcClient::Capabilities capabilities;
+			Assert::IsTrue(client.GetCapabilities(capabilities, error));
+			Assert::AreEqual(std::string("DeckLink"),
+				capabilities.captureDevices.front());
+			Assert::AreEqual(std::string("HDMI"),
+				capabilities.captureConnections.at("DeckLink").front());
+			Assert::AreEqual(std::string("luts/test.cube"),
+				capabilities.luts.front());
+			ConfigurationRpcClient::ApplyResult applied;
+			Assert::IsTrue(client.ApplyConfig("baseline", "candidate",
+				applied, error));
+			Assert::AreEqual(std::string("Save only"), applied.action);
+			Assert::AreEqual(0, static_cast<int>(applied.status));
+			Assert::IsFalse(client.ApplyConfig("stale", "candidate",
+				applied, error));
+			Assert::AreEqual(std::string("stale baseline"), error);
+			Assert::AreEqual(4, harness.handled.load());
 		}
 	};
 }

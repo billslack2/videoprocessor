@@ -13,6 +13,7 @@
 #include <ActiveProfileStatus.h>
 
 #include <ConfigEditorCore.h>
+#include <ConfigurationRpcClient.h>
 #include <RendererProfileConfig.h>
 
 #include <QAbstractItemView>
@@ -64,6 +65,7 @@
 #include <QScrollArea>
 #include <QShortcut>
 #include <QSignalBlocker>
+#include <QSettings>
 #include <QStyle>
 #include <QShowEvent>
 #include <QSplitter>
@@ -907,11 +909,17 @@ QRect ConfigEditorPlacement::ClampFrameToWorkArea(const QRect& frame,
 
 ConfigEditorWindow::ConfigEditorWindow(QString configPath, quintptr ownerHandle,
     bool testMode, const QStringList& testFilteredRenderers,
-    const QStringList& testAllRenderers)
+    const QStringList& testAllRenderers, const QString& remoteHost,
+    quint16 remotePort, const QString& remoteName)
     : configPath_(std::move(configPath)), ownerHandle_(ownerHandle),
       testMode_(testMode),
       document_(std::make_unique<ConfigEditorCore::ConfigDocument>())
 {
+	remoteHost_ = remoteHost;
+	remoteName_ = remoteName.isEmpty() ? remoteHost : remoteName;
+	if (!remoteHost_.isEmpty())
+		remoteClient_ = std::make_unique<ConfigurationRpcClient>(
+			remoteHost_.toStdString(), remotePort);
     // A VP-launched editor can acquire a native HWND while it is still being
     // constructed. Keep that frame off-screen until reveal() has finished
     // layout/polish work and the event loop is ready to paint it.
@@ -927,7 +935,9 @@ ConfigEditorWindow::ConfigEditorWindow(QString configPath, quintptr ownerHandle,
             GetWindowThreadProcessId(reinterpret_cast<HWND>(ownerHandle_), &processId);
         ownerProcessId_ = processId;
     }
-    setWindowTitle(QStringLiteral("VideoProcessor Configuration"));
+    setWindowTitle(remoteClient_ ?
+		QStringLiteral("VideoProcessor Configuration · %1").arg(remoteName_) :
+		QStringLiteral("VideoProcessor Configuration"));
     setAccessibleName(QStringLiteral("VideoProcessor Configuration"));
     setObjectName(QStringLiteral("root"));
     // This must be a Qt-owned flag, not only a later SetWindowPos call: the
@@ -953,6 +963,8 @@ ConfigEditorWindow::ConfigEditorWindow(QString configPath, quintptr ownerHandle,
         allRenderers_ = testAllRenderers;
     }
     setCentralWidget(createShell());
+	if (!remoteLoadError_.isEmpty())
+		setStatus(remoteLoadError_, true);
     profileSelectionReady_ = true;
     refreshLimitedTransportControls();
     refreshCalibrationControls();
@@ -961,7 +973,7 @@ ConfigEditorWindow::ConfigEditorWindow(QString configPath, quintptr ownerHandle,
         activeProfileTimer_ = new QTimer(this);
         connect(activeProfileTimer_, &QTimer::timeout, this,
             &ConfigEditorWindow::refreshActiveProfileIndicators);
-        refreshActiveProfileIndicators();
+        if (!remoteClient_) refreshActiveProfileIndicators();
         shaderCacheStatusTimer_ = new QTimer(this);
         shaderCacheStatusTimer_->setInterval(2000);
         connect(shaderCacheStatusTimer_, &QTimer::timeout, this,
@@ -1044,6 +1056,111 @@ ConfigEditorWindow::~ConfigEditorWindow()
     clearNativeOwner();
 }
 
+void ConfigEditorWindow::setTargetSelector(
+	std::function<bool(QString&, quint16&, QString&)> selector)
+{
+	targetSelector_ = std::move(selector);
+}
+
+void ConfigEditorWindow::selectAnotherTarget()
+{
+	if (!remoteClient_ || !targetSelector_) return;
+	if (dirty_)
+	{
+		QMessageBox prompt(this);
+		prompt.setWindowTitle(QStringLiteral("Change VideoProcessor target"));
+		prompt.setText(QStringLiteral("Resolve edits to the current target before switching."));
+		auto* apply = prompt.addButton(QStringLiteral("Apply to current target"),
+			QMessageBox::AcceptRole);
+		auto* discard = prompt.addButton(QStringLiteral("Discard edits"),
+			QMessageBox::DestructiveRole);
+		prompt.addButton(QMessageBox::Cancel);
+		prompt.exec();
+		if (prompt.clickedButton() == apply)
+		{
+			if (!saveChanges()) return;
+		}
+		else if (prompt.clickedButton() != discard) return;
+	}
+	QSettings preferences;
+	const QVariant oldPreference = preferences.value(
+		QStringLiteral("configRpc/selectedInstanceId"));
+	QString host, name;
+	quint16 port = 41686;
+	if (!targetSelector_(host, port, name)) return;
+	auto replacement = std::make_unique<ConfigurationRpcClient>(
+		host.toStdString(), port);
+	std::string path, bytes, error;
+	ConfigurationRpcClient::Capabilities capabilities;
+	if (!replacement->GetConfig(path, bytes, error) ||
+		!replacement->GetCapabilities(capabilities, error))
+	{
+		preferences.setValue(QStringLiteral("configRpc/selectedInstanceId"),
+			oldPreference);
+		setStatus(QString::fromUtf8(error), true);
+		return;
+	}
+	const QString previousHost = remoteHost_;
+	const QString previousName = remoteName_;
+	const QString previousPath = configPath_;
+	const auto previousDocument = *document_;
+	const auto previousSnapshot = savedSnapshot_;
+	const bool previousDirty = dirty_;
+	const bool previousLoaded = configurationLoaded_;
+	const bool previousMigrations = hasPendingMigrations_;
+	const auto previousDevices = captureDevices_;
+	const auto previousConnections = captureConnections_;
+	const auto previousMonitors = monitors_;
+	const auto previousFiltered = filteredRenderers_;
+	const auto previousAll = allRenderers_;
+	const auto previousLuts = remoteLuts_;
+	auto previousClient = std::move(remoteClient_);
+	remoteClient_ = std::move(replacement);
+	remoteHost_ = host;
+	remoteName_ = name.isEmpty() ? host : name;
+	loadConfiguration();
+	if (!remoteLoadError_.isEmpty())
+	{
+		remoteClient_ = std::move(previousClient);
+		remoteHost_ = previousHost;
+		remoteName_ = previousName;
+		configPath_ = previousPath;
+		*document_ = previousDocument;
+		savedSnapshot_ = previousSnapshot;
+		dirty_ = previousDirty;
+		configurationLoaded_ = previousLoaded;
+		hasPendingMigrations_ = previousMigrations;
+		captureDevices_ = previousDevices;
+		captureConnections_ = previousConnections;
+		monitors_ = previousMonitors;
+		filteredRenderers_ = previousFiltered;
+		allRenderers_ = previousAll;
+		remoteLuts_ = previousLuts;
+		preferences.setValue(QStringLiteral("configRpc/selectedInstanceId"),
+			oldPreference);
+		setStatus(remoteLoadError_, true);
+		return;
+	}
+	dirty_ = false;
+	migrateLldvInputPolicy();
+	migrateSharedRefreshRate();
+	migrateRefreshRateSwitchMode();
+	migrateSeparatedRendererProfiles();
+	migrateUnifiedColorOutputProfiles();
+	migrateCalibrationProfiles();
+	migrateViewportZoomProfiles();
+	loadDiscoveryCache();
+	rebuildConfigurationShell();
+	setWindowTitle(QStringLiteral("VideoProcessor Configuration · %1")
+		.arg(remoteName_));
+	if (trayOpenAction_)
+		trayOpenAction_->setText(QStringLiteral("Open Configuration (%1)")
+			.arg(remoteName_));
+	setStatus(remoteLoadError_.isEmpty() ?
+		QStringLiteral("Connected to %1.").arg(remoteName_) :
+		remoteLoadError_, !remoteLoadError_.isEmpty());
+}
+
 void ConfigEditorWindow::selectPage(int index)
 {
     if (!pages_ || index < 0 || index >= pages_->count()) return;
@@ -1073,9 +1190,30 @@ void ConfigEditorWindow::selectPage(int index)
 
 void ConfigEditorWindow::loadConfiguration()
 {
-    document_ = std::make_unique<ConfigEditorCore::ConfigDocument>();
     std::wstring error;
-	configurationLoaded_ = document_->Load(QFileInfo(configPath_).absoluteFilePath().toStdWString(), error);
+	if (remoteClient_)
+	{
+		std::string path;
+		std::string bytes;
+		std::string rpcError;
+		if (!remoteClient_->GetConfig(path, bytes, rpcError))
+		{
+			remoteLoadError_ = QString::fromUtf8(rpcError);
+			return;
+		}
+		auto loaded = std::make_unique<ConfigEditorCore::ConfigDocument>();
+		loaded->LoadBytes(QString::fromUtf8(path).toStdWString(), bytes);
+		configPath_ = QString::fromUtf8(path);
+		document_ = std::move(loaded);
+		configurationLoaded_ = true;
+		remoteLoadError_.clear();
+	}
+	else
+	{
+		document_ = std::make_unique<ConfigEditorCore::ConfigDocument>();
+		configurationLoaded_ = document_->Load(
+			QFileInfo(configPath_).absoluteFilePath().toStdWString(), error);
+	}
 	hasPendingMigrations_ = false;
 	savedSnapshot_ = configurationLoaded_ ? captureDocumentSnapshot(*document_) :
 		DocumentSnapshot{};
@@ -1511,6 +1649,37 @@ void ConfigEditorWindow::migrateSeparatedRendererProfiles()
 
 void ConfigEditorWindow::loadDiscoveryCache()
 {
+	if (remoteClient_)
+	{
+		captureDevices_.clear();
+		captureConnections_.clear();
+		monitors_.clear();
+		filteredRenderers_.clear();
+		allRenderers_.clear();
+		remoteLuts_.clear();
+		ConfigurationRpcClient::Capabilities offered;
+		std::string error;
+		if (!remoteClient_->GetCapabilities(offered, error))
+		{
+			remoteLoadError_ = QString::fromUtf8(error);
+			return;
+		}
+		const auto strings = [](const std::vector<std::string>& source)
+		{
+			QStringList result;
+			for (const auto& item : source) result.push_back(QString::fromUtf8(item));
+			return result;
+		};
+		captureDevices_ = strings(offered.captureDevices);
+		for (const auto& entry : offered.captureConnections)
+			captureConnections_.insert(QString::fromUtf8(entry.first),
+				strings(entry.second));
+		monitors_ = strings(offered.monitors);
+		filteredRenderers_ = strings(offered.filteredRenderers);
+		allRenderers_ = strings(offered.allRenderers);
+		remoteLuts_ = strings(offered.luts);
+		return;
+	}
     // Hardware discovery can enumerate COM registrations and capture/display
     // devices. Do it once before the pages are created; General, Actions, and
     // Shortcuts then share an immutable startup snapshot.
@@ -1613,6 +1782,7 @@ void ConfigEditorWindow::migrateRefreshRateSwitchMode()
 
 void ConfigEditorWindow::refreshActiveProfileIndicators()
 {
+	if (remoteClient_) return;
     // A combo popup has its own transient native window. Avoid unrelated model
     // notifications while the operator is opening or selecting from it.
     if (hasActiveOwnedPopup()) return;
@@ -1745,7 +1915,7 @@ void ConfigEditorWindow::applyActiveProfileIndicators(bool available,
 
 void ConfigEditorWindow::refreshMonitorDiscovery()
 {
-    if (testMode_ || monitorDiscoveryThread_) return;
+    if (testMode_ || remoteClient_ || monitorDiscoveryThread_) return;
 
     // Configuration activation can coincide with a Windows display-topology
     // rebuild. Keep hardware discovery away from the UI thread; every selector
@@ -2800,6 +2970,7 @@ bool ConfigEditorWindow::hasActiveOwnedPopup() const
 
 bool ConfigEditorWindow::notifyVideoProcessor()
 {
+	if (remoteClient_) return false;
     // Test-mode editors represent the normal VP-absent standalone case. This
     // also prevents a UI test from disturbing a developer's running VP.
     if (testMode_) return false;
@@ -2846,7 +3017,7 @@ void ConfigEditorWindow::rebuildConfigurationShell()
     setCentralWidget(replacement);
     profileSelectionReady_ = true;
     selectPage(currentPage);
-    if (!testMode_) refreshActiveProfileIndicators();
+	if (!testMode_ && !remoteClient_) refreshActiveProfileIndicators();
     if (previous) previous->deleteLater();
 }
 
@@ -2965,6 +3136,32 @@ bool ConfigEditorWindow::saveChanges()
         if (applyButton_) applyButton_->setEnabled(false);
         return false;
     }
+	if (remoteClient_)
+	{
+		ConfigurationRpcClient::ApplyResult applied;
+		std::string rpcError;
+		const std::string candidate = document_->Serialize();
+		if (!remoteClient_->ApplyConfig(document_->loadedBytes,
+			candidate, applied, rpcError))
+		{
+			setStatus(QString::fromUtf8(rpcError), true);
+			return false;
+		}
+		document_->loadedBytes = candidate;
+		document_->requiresMigrationBackup = false;
+		dirty_ = false;
+		if (saveButton_) saveButton_->setEnabled(true);
+		if (applyButton_) applyButton_->setEnabled(false);
+		savedSnapshot_ = captureDocumentSnapshot(*document_);
+		updateEffectSummary();
+		const QString outcome = applied.status == 0 ?
+			QStringLiteral("Saved on target for next start") :
+			applied.status == 1 ? QStringLiteral("Applied on target") :
+			QStringLiteral("Saved on target; reset or restart requested");
+		setStatus(QStringLiteral("%1: %2.").arg(outcome,
+			QString::fromUtf8(applied.action)));
+		return true;
+	}
     // Config is the interactive authority for this file. Save the user's
     // validated editor state instead of refusing a stale-file conflict.
     if (!ConfigEditorCore::SaveSafely(*document_, result, error, true))
@@ -3058,7 +3255,9 @@ QWidget* ConfigEditorWindow::createShell()
     brandLayout->setContentsMargins(5, 0, 0, 0);
     brandLayout->setSpacing(6);
     brand->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Preferred);
-    auto* title = new QLabel(QStringLiteral("VideoProcessor Configuration"));
+    auto* title = new QLabel(remoteClient_ ?
+		QStringLiteral("VideoProcessor Configuration · %1").arg(remoteName_) :
+		QStringLiteral("VideoProcessor Configuration"));
     title->setObjectName(QStringLiteral("brandTitle"));
     // Profile detail pages can legitimately request more horizontal space than
     // the initial window. Keep the product identity intact rather than
@@ -3067,6 +3266,37 @@ QWidget* ConfigEditorWindow::createShell()
     brandLayout->addWidget(title);
     headerLayout->addWidget(brand);
     headerLayout->addStretch();
+	if (remoteClient_)
+	{
+		auto* choose = new QPushButton(QStringLiteral("Choose target"));
+		connect(choose, &QPushButton::clicked, this,
+			[this] { selectAnotherTarget(); });
+		headerLayout->addWidget(choose);
+		auto* refresh = new QPushButton(QStringLiteral("Refresh target"));
+		refresh->setToolTip(QStringLiteral(
+			"Read the target configuration again. Unsaved edits will be discarded."));
+		connect(refresh, &QPushButton::clicked, this, [this]
+		{
+			if (dirty_ && QMessageBox::question(this,
+				QStringLiteral("Refresh target"),
+				QStringLiteral("Discard unsaved edits and reload the target?"),
+				QMessageBox::Yes | QMessageBox::No) != QMessageBox::Yes)
+				return;
+			loadConfiguration();
+			if (!configurationLoaded_ || !remoteLoadError_.isEmpty())
+			{
+				setStatus(remoteLoadError_, true);
+				return;
+			}
+			loadDiscoveryCache();
+			dirty_ = false;
+			rebuildConfigurationShell();
+			setStatus(remoteLoadError_.isEmpty() ?
+				QStringLiteral("Target configuration refreshed.") :
+				remoteLoadError_, !remoteLoadError_.isEmpty());
+		});
+		headerLayout->addWidget(refresh);
+	}
     rootLayout->addWidget(header);
 
     auto* center = new QWidget;
@@ -3274,7 +3504,14 @@ QWidget* ConfigEditorWindow::createShell()
         // is discarded without touching the file or signaling VideoProcessor.
         dirty_ = false;
         hide();
-        loadConfiguration();
+		if (remoteClient_ && document_)
+		{
+			const std::string baseline = document_->loadedBytes;
+			document_->LoadBytes(configPath_.toStdWString(), baseline);
+			savedSnapshot_ = captureDocumentSnapshot(*document_);
+			hasPendingMigrations_ = false;
+		}
+		else loadConfiguration();
 		rebuildConfigurationShell();
     });
     connect(applyButton_, &QPushButton::clicked, this, [this] { applyChanges(); });
@@ -4404,8 +4641,9 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 
         const QString lutDirectoryPath = QFileInfo(configPath_).absoluteDir()
             .filePath(QStringLiteral("luts"));
-        const auto discoveredLuts = [lutDirectoryPath]()
+        const auto discoveredLuts = [this, lutDirectoryPath]()
         {
+			if (remoteClient_) return remoteLuts_;
             QStringList result;
             const QDir lutDirectory(lutDirectoryPath);
             const QFileInfoList lutFiles = lutDirectory.entryInfoList(
@@ -4496,7 +4734,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                 !lutWatcher->directories().contains(lutDirectoryPath))
                 lutWatcher->addPath(lutDirectoryPath);
         };
-        watchLutDirectory();
+        if (!remoteClient_) watchLutDirectory();
         connect(lutWatcher, &QFileSystemWatcher::directoryChanged, this,
 			[refreshLutSelectors](const QString&) { refreshLutSelectors(); });
         auto* openLutFolder = new QPushButton;
@@ -4505,6 +4743,9 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         openLutFolder->setToolTip(QStringLiteral("Open the folder where VideoProcessor discovers 3D LUT files."));
         openLutFolder->setAccessibleName(QStringLiteral("Open LUT folder"));
         openLutFolder->setMaximumWidth(170);
+		openLutFolder->setEnabled(!remoteClient_);
+		if (remoteClient_) openLutFolder->setToolTip(
+			QStringLiteral("Manage LUT files on the VP computer."));
         connect(openLutFolder, &QPushButton::clicked, this,
 			[this, lutDirectoryPath, watchLutDirectory, refreshLutSelectors]
         {
@@ -6033,6 +6274,12 @@ QWidget* ConfigEditorWindow::createColorConfigPage()
 
 void ConfigEditorWindow::refreshShaderCacheStatus()
 {
+	if (remoteClient_)
+	{
+		if (shaderCacheStatus_) shaderCacheStatus_->setText(
+			QStringLiteral("Remote cache status is unavailable."));
+		return;
+	}
     const QDir rendererDirectory(QFileInfo(configPath_).absoluteDir().filePath(
         QStringLiteral("vprenderer")));
     const QFileInfo cache(rendererDirectory.filePath(
@@ -6639,6 +6886,9 @@ QWidget* ConfigEditorWindow::createShadersSetupPage()
     clearCache->setProperty("danger", true);
     clearCache->setAccessibleDescription(QStringLiteral(
         "Clear the persistent VP Renderer shader cache at the next renderer start."));
+	clearCache->setEnabled(!remoteClient_);
+	if (remoteClient_) clearCache->setToolTip(
+		QStringLiteral("Clear the cache on the VP computer."));
     buttons->addWidget(clearCache);
     buttons->addStretch();
     controlsLayout->addLayout(buttons);
@@ -7481,6 +7731,13 @@ QWidget* ConfigEditorWindow::createLogsPage()
     auto* actions = new QHBoxLayout;
     auto* openFolder = new QPushButton(QStringLiteral("Open log folder"));
     auto* openLog = new QPushButton(QStringLiteral("Open current log"));
+	openFolder->setEnabled(!remoteClient_);
+	openLog->setEnabled(!remoteClient_);
+	if (remoteClient_)
+	{
+		openFolder->setToolTip(QStringLiteral("Logs are on the VP computer."));
+		openLog->setToolTip(QStringLiteral("Logs are on the VP computer."));
+	}
     openFolder->setAccessibleDescription(QStringLiteral("Open the folder containing VideoProcessor logs."));
     openLog->setAccessibleDescription(QStringLiteral("Open the current VideoProcessor log."));
     actions->addWidget(openFolder);
@@ -7740,7 +7997,16 @@ void ConfigEditorWindow::setupTray()
     tray_ = new QSystemTrayIcon(windowIcon(), this);
     tray_->setToolTip(QStringLiteral("VideoProcessor Configuration"));
     auto* menu = new QMenu(this);
-    QAction* open = menu->addAction(QStringLiteral("Open configuration"));
+    QAction* open = menu->addAction(remoteClient_ ?
+		QStringLiteral("Open Configuration (%1)").arg(remoteName_) :
+		QStringLiteral("Open Configuration (offline)"));
+	trayOpenAction_ = open;
+	if (remoteClient_)
+	{
+		QAction* choose = menu->addAction(QStringLiteral("Choose VP target..."));
+		connect(choose, &QAction::triggered, this,
+			[this] { selectAnotherTarget(); });
+	}
     menu->addSeparator();
     QAction* exit = menu->addAction(QStringLiteral("Exit"));
     tray_->setContextMenu(menu);

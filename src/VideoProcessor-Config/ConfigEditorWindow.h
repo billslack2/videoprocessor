@@ -6,11 +6,13 @@
 #include <QStringList>
 
 #include <map>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
 
 class QLabel;
+class QAction;
 class QCheckBox;
 class QComboBox;
 class QHideEvent;
@@ -28,6 +30,7 @@ class QWinEventNotifier;
 class QFormLayout;
 
 namespace ConfigEditorCore { struct ConfigDocument; }
+class ConfigurationRpcClient;
 namespace ConfigEditorPlacement
 {
     QRect ClampFrameToWorkArea(const QRect& frame, const QRect& workArea);
@@ -38,10 +41,13 @@ class ConfigEditorWindow final : public QMainWindow
 public:
     explicit ConfigEditorWindow(QString configPath, quintptr ownerHandle = 0,
         bool testMode = false, const QStringList& testFilteredRenderers = {},
-        const QStringList& testAllRenderers = {});
+        const QStringList& testAllRenderers = {},
+        const QString& remoteHost = {}, quint16 remotePort = 41686,
+        const QString& remoteName = {});
     ~ConfigEditorWindow() override;
     void selectPage(int index);
     void reveal();
+    void setTargetSelector(std::function<bool(QString&, quint16&, QString&)> selector);
     void refreshMonitorDiscovery();
     void setActiveProfileStatusForTesting(const QString& queue,
         const QString& renderer, const QString& color, const QString& viewport,
@@ -132,6 +138,7 @@ private:
     void loadDiscoveryCache();
     void applyMonitorDiscovery(const QStringList& discovered);
     void setupTray();
+    void selectAnotherTarget();
     void exitApplication();
     void setStatus(const QString& message, bool error = false);
     void setWarningStatus(const QString& message);
@@ -149,6 +156,13 @@ private:
     void refreshLimitedTransportControls();
 
     QString configPath_;
+    QString remoteHost_;
+    QString remoteName_;
+    QString remoteLoadError_;
+    QStringList remoteLuts_;
+    std::unique_ptr<ConfigurationRpcClient> remoteClient_;
+    std::function<bool(QString&, quint16&, QString&)> targetSelector_;
+    QAction* trayOpenAction_ = nullptr;
     quintptr ownerHandle_ = 0;
     quint32 ownerProcessId_ = 0;
     bool ownerApplied_ = false;

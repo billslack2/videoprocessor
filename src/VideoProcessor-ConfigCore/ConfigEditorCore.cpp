@@ -612,6 +612,10 @@ namespace ConfigEditorCore
 
 	bool ValidateCandidate(const ConfigDocument& document, std::wstring& error)
 	{
+		// The target validates remote candidates against its own hardware and
+		// installation paths during ApplyConfig. Never create a local file at
+		// a path supplied by a remote installation.
+		if (document.remoteSource) return true;
 		if (document.path.empty())
 		{
 			error = L"A configuration path is required.";
