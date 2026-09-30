@@ -2,6 +2,7 @@
 #include "CppUnitTest.h"
 
 #include "../VideoProcessor-Lib/vprenderer/LibplaceboPluginVideoRenderer.h"
+#include "../VideoProcessor-Lib/AspectRatioOsd.h"
 #include "../VideoProcessor-Lib/vprenderer/OptionalRendererLayout.h"
 
 #include <type_traits>
@@ -43,6 +44,93 @@ namespace VideoProcessorTest
 	TEST_CLASS(LibplaceboPluginProxyTests)
 	{
 	public:
+		TEST_METHOD(AspectOsdMapsEveryNamedFormat)
+		{
+			struct Expected { double value; const wchar_t* ratio; const wchar_t* name; };
+			const Expected expected[] = {
+				{ 4.0 / 3.0, L"4:3", L"TV" },
+				{ 1.37, L"1.37:1", L"Academy" },
+				{ 1.43, L"1.43:1", L"IMAX 70mm" },
+				{ 1.66, L"1.66:1", L"European widescreen" },
+				{ 16.0 / 9.0, L"16:9", L"HDTV" },
+				{ 1.85, L"1.85:1", L"Flat" },
+				{ 1.90, L"1.90:1", L"Digital IMAX" },
+				{ 2.00, L"2.00:1", L"Univisium" },
+				{ 2.20, L"2.20:1", L"70mm / Todd-AO" },
+				{ 21.0 / 9.0, L"21:9", L"Consumer ultrawide" },
+				{ 2.35, L"2.35:1", L"CinemaScope" },
+				{ 2.39, L"2.39:1", L"Scope" },
+				{ 2.40, L"2.40:1", L"Scope" },
+				{ 2.76, L"2.76:1", L"Ultra Panavision 70" }
+			};
+			for (const auto& item : expected)
+			{
+				const auto label = AspectRatioOsd::Classify(item.value);
+				Assert::IsTrue(label.ratio == item.ratio);
+				Assert::IsTrue(label.name == item.name);
+			}
+			Assert::IsTrue(AspectRatioOsd::Classify(1.50).name == L"Unknown");
+			Assert::IsTrue(AspectRatioOsd::Classify(1.503).ratio == L"1.503:1");
+			Assert::IsTrue(AspectRatioOsd::Classify(2.50).ratio == L"2.50:1");
+			Assert::IsTrue(AspectRatioOsd::Classify(0.0).ratio == L"---");
+		}
+
+		TEST_METHOD(AspectOsdSnapsAtOnePercentAndHoldsAmbiguousChanges)
+		{
+			const double isolatedTargets[] = {
+				4.0 / 3.0, 1.37, 1.43, 1.66, 16.0 / 9.0,
+				1.85, 1.90, 2.00, 2.20, 2.76
+			};
+			for (double target : isolatedTargets)
+			{
+				const auto atTarget = AspectRatioOsd::Classify(target);
+				Assert::IsTrue(AspectRatioOsd::Classify(
+					target * 0.99).ratio == atTarget.ratio);
+				Assert::IsTrue(AspectRatioOsd::Classify(
+					target * 1.01).ratio == atTarget.ratio);
+				Assert::IsTrue(AspectRatioOsd::Classify(
+					target * 0.9899).name == L"Unknown");
+				Assert::IsTrue(AspectRatioOsd::Classify(
+					target * 1.0101).name == L"Unknown");
+			}
+			const auto atBoundary = AspectRatioOsd::Classify(2.76 * 1.01);
+			Assert::IsTrue(atBoundary.ratio == L"2.76:1");
+			Assert::IsTrue(AspectRatioOsd::Classify(2.76 * 1.01001).name == L"Unknown");
+			Assert::IsTrue(AspectRatioOsd::Classify(2.39).ratio == L"2.39:1");
+			Assert::IsTrue(AspectRatioOsd::Classify(2.40).ratio == L"2.40:1");
+			Assert::IsTrue(AspectRatioOsd::Classify(
+				2.0 * 2.39 * 2.40 / (2.39 + 2.40)).ratio == L"2.39:1");
+			Assert::IsTrue(AspectRatioOsd::Classify(2.345).ratio == L"2.35:1");
+			AspectRatioOsd osd;
+			DetectedPictureAspect reading{1, 1, 2.39, true};
+			Assert::IsTrue(osd.Update(reading, 1000).ratio == L"2.39:1");
+			reading.publicationGeneration = 2;
+			reading.ratio = 2.40;
+			Assert::IsTrue(osd.Update(reading, 1100).ratio == L"2.39:1");
+			Assert::IsTrue(osd.Update(reading, 6099).ratio == L"2.39:1");
+			Assert::IsTrue(osd.Update(reading, 6100).ratio == L"2.40:1");
+			reading.publicationGeneration = 3;
+			reading.ratio = 2.40 * 1.03;
+			Assert::IsTrue(osd.Update(reading, 6200).ratio == L"2.40:1");
+			reading.sourceGeneration = 2;
+			reading.publicationGeneration = 1;
+			reading.ratio = 2.39;
+			Assert::IsTrue(osd.Update(reading, 6300).ratio == L"2.39:1");
+			reading.available = false;
+			reading.sourceGeneration = 0; // display-mode handoff
+			Assert::IsTrue(osd.Update(reading, 6400).ratio == L"2.39:1");
+			Assert::IsTrue(osd.Update(reading, 16399).ratio == L"2.39:1");
+			Assert::IsTrue(osd.Update(reading, 16400).name == L"Unknown");
+			reading.available = true;
+			reading.sourceGeneration = 3; // actual new source
+			reading.ratio = 16.0 / 9.0;
+			Assert::IsTrue(osd.Update(reading, 16500).ratio == L"16:9");
+			reading.publicationGeneration = 2;
+			reading.ratio = 1.90;
+			Assert::IsTrue(osd.Update(reading, 16600).ratio == L"1.90:1");
+			Assert::IsTrue(osd.Update(reading, 16600).name == L"Digital IMAX");
+		}
+
 		TEST_METHOD(RendererMetadataCyclesReuseAcceptedSnapshotWithoutDiskReads)
 		{
 			// Exercise the real renderer DLL and D3D initialization without capture hardware.

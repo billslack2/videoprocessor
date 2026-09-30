@@ -43,6 +43,7 @@ namespace
 			left.effectiveSelections == right.effectiveSelections &&
 			left.managesShaderProfiles == right.managesShaderProfiles &&
 			left.viewport.profile == right.viewport.profile &&
+			left.viewport.profileLabel == right.viewport.profileLabel &&
 			left.viewport.zoomProfile == right.viewport.zoomProfile &&
 			left.viewport.screenAspect.numerator ==
 				right.viewport.screenAspect.numerator &&
@@ -50,6 +51,8 @@ namespace
 				right.viewport.screenAspect.denominator &&
 			left.viewport.hasScreenAspect ==
 				right.viewport.hasScreenAspect &&
+			left.viewport.screenAspectInput ==
+				right.viewport.screenAspectInput &&
 			left.viewport.verticalAlignment ==
 				right.viewport.verticalAlignment &&
 			left.viewport.anamorphicScale.numerator ==

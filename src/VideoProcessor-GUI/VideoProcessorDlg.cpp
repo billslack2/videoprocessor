@@ -7778,6 +7778,10 @@ void CVideoProcessorDlg::OnCommandToggleStatsOverlay()
 		return;
 	}
 	m_statsOverlayRequestedVisible = !m_statsOverlayRequestedVisible;
+	if (m_statsOverlayRequestedVisible)
+		SetTimer(ASPECT_OSD_TIMER_ID, 150, nullptr);
+	else
+		KillTimer(ASPECT_OSD_TIMER_ID);
 	ApplyStatsOverlayForActiveRenderer();
 	DebugLog::Log(
 		"Keyboard command handler: command=toggle-stats result=applied requested_after=%d",
@@ -14197,6 +14201,11 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 		UpdateProfileChangeOverlay(uiNow);
 		return;
 	}
+	if (nIDEvent == ASPECT_OSD_TIMER_ID)
+	{
+		PollAspectRatioOsd();
+		return;
+	}
 	if (m_configurationEditorPresentationRequired != 0 &&
 		m_configurationEditorPresentationAcknowledged !=
 			m_configurationEditorPresentationRequired &&
@@ -14816,6 +14825,36 @@ void CVideoProcessorDlg::OnTimer(UINT_PTR nIDEvent)
 	}
 
 	CDialog::OnTimer(nIDEvent);
+}
+
+void CVideoProcessorDlg::PollAspectRatioOsd()
+{
+	if (!m_statsOverlayRequestedVisible || !m_statsOverlay || !m_lastStatsData ||
+		!m_videoRenderer || !m_videoRenderer->SupportsNativeStatsOverlay() ||
+		m_rendererState != RendererState::RENDERSTATE_RENDERING ||
+		m_lastStatsTelemetryRenderer != m_videoRenderer.get() ||
+		m_lastStatsTelemetryGeneration != m_transitionGeneration ||
+		!m_lastStatsData->isAlphaRenderer)
+		return;
+
+	DetectedPictureAspect detected;
+	if (!m_videoRenderer->GetDetectedPictureAspect(detected))
+		return;
+	const auto& label = m_aspectRatioOsd.Update(detected, GetTickCount64());
+	if (m_lastStatsData->aspectRatio == label.ratio.c_str() &&
+		m_lastStatsData->aspectName == label.name.c_str())
+		return;
+
+	m_lastStatsData->aspectRatio = label.ratio.c_str();
+	m_lastStatsData->aspectName = label.name.c_str();
+	m_statsOverlay->UpdateStats(*m_lastStatsData);
+	std::vector<uint8_t> pixels;
+	int width = 0;
+	int height = 0;
+	int stride = 0;
+	if (m_statsOverlay->RenderBgra(pixels, width, height, stride))
+		m_videoRenderer->SetNativeStatsOverlay(
+			pixels.data(), pixels.size(), width, height, stride);
 }
 
 void CVideoProcessorDlg::UpdateStatsOverlay()
@@ -15686,6 +15725,7 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 	{
 		m_processCpuUsage.Reset();
 		m_cadenceIntervalEstimate.Reset();
+		m_aspectRatioOsd.Reset();
 		m_cpuUsageRenderer = statsRenderer;
 		m_cpuUsageRendererGeneration = m_transitionGeneration;
 		m_loggedCpuPeakPercent = 0.0;
@@ -15798,12 +15838,24 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 
 	if (const auto profileSnapshot = m_profileRuntime.GetSnapshot())
 	{
-		stats.viewport.Format(TEXT("%S (%S, %S)"),
-			profileSnapshot->viewport.profile.c_str(),
-			profileSnapshot->viewport.hasScreenAspect ?
-				profileSnapshot->viewport.screenAspect.Canonical().c_str() :
-				"renderer native",
-			profileSnapshot->viewport.verticalAlignment.c_str());
+		const auto& viewport = profileSnapshot->viewport;
+		const std::string& profileName = viewport.profileLabel.empty() ?
+			viewport.profile : viewport.profileLabel;
+		if (viewport.hasScreenAspect)
+		{
+			stats.viewport.Format(TEXT("%S (%S)"), profileName.c_str(),
+				viewport.screenAspectInput.c_str());
+			const auto known = AspectRatioOsd::Classify(viewport.screenAspect.value);
+			if (known.target >= 0)
+			{
+				stats.viewport += TEXT(" [");
+				stats.viewport += known.name.c_str();
+				stats.viewport += TEXT("]");
+			}
+		}
+		else
+			stats.viewport.Format(TEXT("%S (renderer native)"),
+				profileName.c_str());
 	}
 	else
 	{
@@ -15832,6 +15884,22 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		else
 			stats.rendererName = stats.isAlphaRenderer ?
 				TEXT("VP Renderer") : TEXT("DirectShow");
+		if (stats.isAlphaRenderer)
+		{
+			DetectedPictureAspect detected;
+			if (m_videoRenderer->GetDetectedPictureAspect(detected))
+			{
+				const auto& label = m_aspectRatioOsd.Update(detected, GetTickCount64());
+				stats.aspectRatio = label.ratio.c_str();
+				stats.aspectName = label.name.c_str();
+			}
+			else if (sameStatsTelemetryGeneration && m_lastStatsData)
+			{
+				// A busy render lock cannot blank the last displayed label.
+				stats.aspectRatio = m_lastStatsData->aspectRatio;
+				stats.aspectName = m_lastStatsData->aspectName;
+			}
+		}
 		stats.rawQueueSize = m_videoRenderer->GetFrameQueueSize();
 		stats.convertedQueueSize = m_videoRenderer->GetConvertedQueueSize();
 		stats.currentQueueSize = stats.rawQueueSize + stats.convertedQueueSize;

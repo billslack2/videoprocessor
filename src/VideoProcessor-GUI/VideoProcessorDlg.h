@@ -50,6 +50,7 @@
 #include <microsoft_directshow/DirectShowDefines.h>
 #include <microsoft_directshow/video_renderers/DirectShowVideoRenderer.h>
 #include <StatsOverlayWindow.h>
+#include <AspectRatioOsd.h>
 #include <CadenceIntervalEstimate.h>
 #include <ApplicationInterface.h>
 #include <ConfigurationApplyPolicy.h>
@@ -109,6 +110,7 @@ static_assert(WM_MESSAGE_RENDERER_ACTION_EVENT !=
 #define CONFIGURATION_LIVE_APPLY_TIMER_ID 13
 #define QUEUE_PROFILE_RESET_TIMER_ID 14
 #define PROFILE_CHANGE_OVERLAY_TIMER_ID 15
+#define ASPECT_OSD_TIMER_ID 16
 #define CONFIGURATION_EDITOR_HOTKEY_ID 0x5650
 #define SHADER_RULE_REFRESH_INTERVAL_MS 25
 #define CONFIGURATION_LIVE_APPLY_INTERVAL_MS 250
@@ -874,6 +876,7 @@ protected:
 	static constexpr double CPU_PEAK_LOG_STEP_PERCENT = 5.0;
 
 	StatsOverlayWindow* m_statsOverlay = nullptr;
+	AspectRatioOsd m_aspectRatioOsd;
 	InputLocked m_cadenceInputLocked = InputLocked::UNKNOWN;
 	CadenceIntervalEstimate m_cadenceIntervalEstimate;
 	ULONGLONG m_lastCadenceIntervalLogTick = 0;
@@ -1011,6 +1014,7 @@ protected:
 	void RebuildRendererCombo();
 	void ClearRendererCombo();
 	void UpdateStatsOverlay();
+	void PollAspectRatioOsd();
 	void LogMadVRPostStallResetDiagnostics(const StatsData& stats,
 		double measuredCaptureRateHz);
 	void LogDroppedCounterChanges(const StatsData& stats);

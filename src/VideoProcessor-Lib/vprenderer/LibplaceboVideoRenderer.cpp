@@ -3446,6 +3446,7 @@ struct LibplaceboVideoRenderer::Impl
 	pl_tex profileOverlayTexture = nullptr;
 	std::mutex statsOverlayMutex;
 	std::vector<uint8_t> statsOverlayPixels;
+	std::atomic_bool statsOverlayVisible{ false };
 	int statsOverlayWidth = 0;
 	int statsOverlayHeight = 0;
 	int statsOverlayStride = 0;
@@ -8666,7 +8667,8 @@ struct LibplaceboVideoRenderer::Impl
 		const bool needsActivePictureAnalysis =
 			nlsRequested || automaticSourceCrop || scopeSubtitleFit ||
 			hdrPeakAnalysisPictureOnly ||
-			hdrPeakAnalysisMotionCompensation;
+			hdrPeakAnalysisMotionCompensation ||
+			statsOverlayVisible.load(std::memory_order_acquire);
 		if (!needsActivePictureAnalysis)
 			return;
 
@@ -16056,6 +16058,36 @@ bool LibplaceboVideoRenderer::GetDisplayLutInfo(CString& details) const
 	return true;
 }
 
+bool LibplaceboVideoRenderer::GetDetectedPictureAspect(
+	DetectedPictureAspect& result) const
+{
+	result = {};
+	if (!m_impl)
+		return true;
+	std::unique_lock<std::mutex> guard(
+		m_impl->renderMutex, std::try_to_lock);
+	if (!guard.owns_lock())
+		return false;
+	result.sourceGeneration = m_impl->activePictureAnalysisSourceGeneration;
+	result.publicationGeneration = m_impl->nlsGeometryGeneration;
+	const ActivePictureBounds& geometry = m_impl->nlsGeometry;
+	if (m_impl->nlsGeometryAvailable &&
+		m_impl->nlsGeometrySourceGeneration == result.sourceGeneration &&
+		(m_impl->nlsGeometryClassification ==
+			ActivePictureClassification::FULL_RASTER_TRUSTED ||
+		 m_impl->nlsGeometryClassification ==
+			ActivePictureClassification::BAR_CROP_TRUSTED) &&
+		geometry.right > geometry.left && geometry.bottom > geometry.top)
+	{
+		result.ratio = static_cast<double>(geometry.right - geometry.left) /
+			(geometry.bottom - geometry.top);
+		result.available = std::isfinite(result.ratio) &&
+			result.ratio > 0.0;
+	}
+	return true;
+}
+
+
 bool LibplaceboVideoRenderer::GetVideoIngressInfo(CString& details) const
 {
 	if (!m_impl)
@@ -16174,6 +16206,10 @@ bool LibplaceboVideoRenderer::SetNativeStatsOverlay(
 	m_impl->statsOverlayHeight = pixels ? height : 0;
 	m_impl->statsOverlayStride = pixels ? stride : 0;
 	++m_impl->statsOverlaySerial;
+	// Ctrl+I needs the existing detector even when NLS and crop are off.
+	// This requests analysis only; it does not enable either presentation policy.
+	m_impl->statsOverlayVisible.store(pixels != nullptr,
+		std::memory_order_release);
 	return true;
 }
 

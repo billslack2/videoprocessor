@@ -19,6 +19,8 @@ struct StatsData
 {
 	// Video format info
 	CString resolution;        // e.g., "3840x2160"
+	CString aspectRatio;       // VP Renderer detected active picture
+	CString aspectName;
 	double refreshRate = 0.0;  // Hz (legacy - still used for display)
 	double displayRefreshRate = 0.0; // Measured or configured desktop/display refresh rate (Hz)
 	bool displayRefreshRateOverridden = false;

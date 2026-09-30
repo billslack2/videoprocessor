@@ -498,6 +498,17 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 	DrawText(hdc, line, PADDING, y);
 	y += lineHeight;
 
+	if (m_stats.isAlphaRenderer)
+	{
+		line.Format(TEXT("Aspect Ratio: %s (%s)"),
+			m_stats.aspectRatio.IsEmpty() ? TEXT("---") :
+			static_cast<LPCTSTR>(m_stats.aspectRatio),
+			m_stats.aspectName.IsEmpty() ? TEXT("Unknown") :
+			static_cast<LPCTSTR>(m_stats.aspectName));
+		DrawText(hdc, line, PADDING, y);
+		y += lineHeight;
+	}
+
 	// Refresh rate
 	line.Format(TEXT("Refresh:          %.6f Hz"), m_stats.refreshRate);
 	DrawText(hdc, line, PADDING, y);
@@ -943,10 +954,10 @@ void StatsOverlayWindow::DrawStats(HDC hdc)
 
 int StatsOverlayWindow::CalculateRequiredHeight(const StatsData& stats) const
 {
-	// Alpha omits two DirectShow-only rows (sample timestamp method and frame
-	// offset). The remaining rows mirror the exact
+	// VP Renderer omits two DirectShow-only rows, but adds one aspect row.
+	// The remaining rows mirror the exact
 	// optional conditions in DrawStats so the background follows its content.
-	size_t lineCount = stats.isAlphaRenderer ? 23 : 25;
+	size_t lineCount = stats.isAlphaRenderer ? 24 : 25;
 	++lineCount; // Surface mode is always shown.
 	if (stats.renderLoadKnown)
 		lineCount += 3;
