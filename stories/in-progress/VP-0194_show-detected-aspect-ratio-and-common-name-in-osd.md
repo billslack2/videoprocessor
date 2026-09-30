@@ -168,3 +168,9 @@ active-picture selection, automatic crop behavior, or other renderer OSDs.
 - A clear change outside the held target's 3% ambiguity range is displayed as soon as the renderer publishes its already-confirmed stable aspect. A competing label within 3% must remain the same committed publication for five seconds. Temporary detector unavailability keeps the prior trusted label for up to ten seconds, independent of polling frequency. A genuine source-generation change still resets it immediately.
 - The full solution x64 Release build passed from clean commit `3280e496`; both generated version headers report that commit and `VERSION_DIRTY=false`. The updated focused test compiles in that build. Live playback timing and the right-side OSD still require user validation.
 - Ratio names remain `2.35:1 (CinemaScope)` and `2.39:1` / `2.40:1 (Scope)`. Panavision names equipment, not an aspect ratio, so the detector cannot identify it from picture shape.
+## Responsiveness deployment (2026-09-30)
+
+- VideoProcessor was closed before deployment. Installed the host EXE and VP Renderer DLL together from the successful clean x64 Release build of `3280e4960c8ac3f8368afae211918ec794d88aaa`. Both generated version headers reported `VERSION_DIRTY=false`.
+- Backed up the previous installed pair to `C:/Videoprocessor/vp/backups/vp-0194-fast-aspect-20260930-111219-133`; its `deployment.json` records both before and after hashes.
+- Independent installed SHA-256 verification matched the Release artifacts: host `BE391DFB9C4FE18D30422ED34CA0EC6D2AD414942759049478C8E0CB7F8041ED`; renderer `C614B49591C2B54268B7166307F30EBE672CB72D031CC6D53EAD0E592BC1D400`.
+- Configuration and state files were untouched. Live playback timing of the HDTV / Digital IMAX switch still needs user observation.
