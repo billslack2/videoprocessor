@@ -2,11 +2,11 @@
 
 ## Status
 
-In Progress (2026-09-30). Implementation started from the verified GitHub
-`v1.3.005-beta` tip `7b50c4339dcd6c6ad3f74ac53bf4cb2c3d661ff3` on source branch
-`codex/vp-0194-aspect-osd` in the clean worktree
-`E:\codex\videoprocessor\vp-0194-aspect-osd`. Inspecting the existing VP Renderer
-Ctrl+I OSD and authoritative detected-ratio path before implementation.
+In Progress (2026-09-30). Implemented on source branch
+`codex/vp-0194-aspect-osd` at `c1824064`, based on verified GitHub
+`v1.3.005-beta` tip `7b50c4339dcd6c6ad3f74ac53bf4cb2c3d661ff3`.
+Draft review: [PR #124](https://github.com/billslack2/videoprocessor/pull/124).
+Live Ctrl+I visual validation remains pending before review completion.
 
 ## User story
 
@@ -97,10 +97,24 @@ documents the VP Renderer Ctrl+I health rows. This story consumes the existing
 detected aspect ratio and does not alter detection, trust thresholds,
 active-picture selection, automatic crop behavior, or other renderer OSDs.
 
-## Readiness and next action
+## Implementation and validation (2026-09-30)
 
-Before implementation, locate the authoritative detected-ratio value and the
-existing VP Renderer Ctrl+I OSD surface, then verify that both values can be
-added without changing detection or other renderers. Record the matching
-precision/tolerance and transition-confirmation decisions, and implementation
-readiness before moving this story to In Progress.
+- The OSD reads VP Renderer's committed, stable active-picture rectangle
+  through a nonblocking renderer snapshot. It uses the detector's source and
+  publication generations. Detector and crop policy are unchanged.
+- An OSD-only label state applies the 1% nearest-target rule to the unrounded
+  measured ratio. Exact initial 2.39 and 2.40 readings choose their respective
+  targets. A competing label within 3% of the held target needs 10 consecutive
+  one-second OSD reads of the same committed publication; a clearer change
+  needs 3. A source-generation change resets the label immediately.
+  Unavailable detection shows `---` and `Unknown`; a busy renderer read
+  retains the prior display.
+- The two rows are gated by the VP Renderer flag in the existing Ctrl+I
+  bitmap. Height includes both rows. DirectShow and the profile overlay are
+  untouched.
+- Full solution x64 Release build passed. Two focused Release tests passed,
+  covering all 14 mappings, isolated 1% boundaries, overlap and tie cases,
+  unknown formatting, 3% hold, and source reacquisition.
+- Still needed: view the right-side native Ctrl+I OSD with a live source,
+  confirm both rows fit and update on a real aspect transition, and confirm
+  the other renderer/profile overlays visually. No deployment has occurred.
