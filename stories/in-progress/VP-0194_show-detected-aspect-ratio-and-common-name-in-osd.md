@@ -3,7 +3,7 @@
 ## Status
 
 In Progress (2026-09-30). Implemented on source branch
-`codex/vp-0194-aspect-osd` at `a83e3dca`, based on verified GitHub
+`codex/vp-0194-aspect-osd` at `3280e496`, based on verified GitHub
 `v1.3.005-beta` tip `7b50c4339dcd6c6ad3f74ac53bf4cb2c3d661ff3`.
 Draft review: [PR #124](https://github.com/billslack2/videoprocessor/pull/124).
 Live Ctrl+I visual validation remains pending before review completion.
@@ -160,3 +160,11 @@ active-picture selection, automatic crop behavior, or other renderer OSDs.
   renderer `D9906F65D9B9EBD4A01888F47F0C44DA946C78F7010DD01A1EBD1E5E82181923`.
   Configuration and state files were not edited. Live Ctrl+I verification of
   NLS-off detection and fullscreen/windowed continuity remains pending.
+
+## OSD responsiveness correction (2026-09-30)
+
+- User reported that HDTV-to-IMAX changes in *Eternals* reached the OSD too slowly. The previous implementation checked the ratio only once per second and then required three OSD reads for clear changes.
+- Source commit `3280e496` polls the VP Renderer aspect snapshot every 150 ms only while the Ctrl+I OSD is visible. It rebuilds and submits the bitmap only when the displayed ratio or name changes; the rest of the statistics keep their existing one-second cadence.
+- A clear change outside the held target's 3% ambiguity range is displayed as soon as the renderer publishes its already-confirmed stable aspect. A competing label within 3% must remain the same committed publication for five seconds. Temporary detector unavailability keeps the prior trusted label for up to ten seconds, independent of polling frequency. A genuine source-generation change still resets it immediately.
+- The full solution x64 Release build passed from clean commit `3280e496`; both generated version headers report that commit and `VERSION_DIRTY=false`. The updated focused test compiles in that build. Live playback timing and the right-side OSD still require user validation.
+- Ratio names remain `2.35:1 (CinemaScope)` and `2.39:1` / `2.40:1 (Scope)`. Panavision names equipment, not an aspect ratio, so the detector cannot identify it from picture shape.
