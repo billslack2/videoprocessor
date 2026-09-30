@@ -3,8 +3,8 @@
 ## Status
 
 Backlog. Add `Aspect ratio` and `Name` values to the existing right-side VP
-Renderer Ctrl+I OSD. Snap measurements within 1% of a supported common ratio;
-show `Unknown` for values that do not match a supported ratio.
+Renderer Ctrl+I OSD. Snap detected values within 1% of the closest supported
+common ratio and show its label; show `Unknown` outside the supported ranges.
 
 ## User story
 
@@ -18,26 +18,33 @@ understand what shape of picture VP is detecting.
    when VP Renderer is active. Show them only on that VP Renderer OSD. Use the
    authoritative current detection result; do not add a new detector, crop
    policy, or aspect-ratio override.
-2. Use these known ratio mappings:
-   - `1.33:1` snaps to displayed ratio `4:3`; name `TV`.
-   - `1.66:1` snaps to displayed ratio `1.66:1`; name `European widescreen`.
-   - `1.78:1` snaps to displayed ratio `16:9`; name `HDTV`.
-   - `1.85:1` snaps to displayed ratio `1.85:1`; name `Flat`.
-   - `1.90:1` snaps to displayed ratio `1.90:1`; name `Digital IMAX`.
-   - `2.39:1` snaps to displayed ratio `2.39:1`; name `Scope`.
-   - `2.40:1` snaps to displayed ratio `2.40:1`; name `Scope`.
+2. Use the complete supported ratio/name list below. Display ratio aliases for
+   TV and HDTV; for other named formats display the canonical numeric ratio.
+   - `1.33:1` → ratio `4:3`; name `TV`.
+   - `1.37:1` → ratio `1.37:1`; name `Academy`.
+   - `1.43:1` → ratio `1.43:1`; name `IMAX 70mm`.
+   - `1.66:1` → ratio `1.66:1`; name `European widescreen`.
+   - `1.78:1` → ratio `16:9`; name `HDTV`.
+   - `1.85:1` → ratio `1.85:1`; name `Flat`.
+   - `1.90:1` → ratio `1.90:1`; name `Digital IMAX`.
+   - `2.00:1` → ratio `2.00:1`; name `Univisium`.
+   - `2.20:1` → ratio `2.20:1`; name `70mm / Todd-AO`.
+   - `2.33:1` → ratio `21:9`; name `Consumer ultrawide` (approximate).
+   - `2.35:1` → ratio `2.35:1`; name `CinemaScope` (historical).
+   - `2.39:1` → ratio `2.39:1`; name `Scope`.
+   - `2.40:1` → ratio `2.40:1`; name `Scope`.
+   - `2.76:1` → ratio `2.76:1`; name `Ultra Panavision 70`.
 3. For each supported ratio, snap the detected value when the relative
    difference `|detected - target| / target` is 1% or less, inclusive. Targets
-   are the exact values `4/3`, `1.66`, `16/9`, `1.85`, `1.90`, `2.39`, and
-   `2.40`. If the value is within 1% of multiple targets, choose the closest by
-   relative difference; use the lower target as a deterministic tie-break.
-   Display the chosen canonical ratio/alias and name. The 2.39:1 and 2.40:1
-   targets are both supported and must resolve independently to the closest
-   target.
+   are the exact values `4/3`, `1.37`, `1.43`, `1.66`, `16/9`, `1.85`, `1.90`,
+   `2.00`, `2.20`, `21/9`, `2.35`, `2.39`, `2.40`, and `2.76`. If a value is
+   within 1% of multiple targets, choose the closest by relative difference;
+   use the lower target as a deterministic tie-break. Display the selected
+   canonical ratio/alias and name.
 4. If no supported target is within 1%, display the measured ratio in normalized
-   `width:height` form (for example `1.37:1`) and set the name to `Unknown`.
-   Do not apply an unlisted label. Keep the measured ratio visible with
-   sufficient precision when no snap applies.
+   `width:height` form (for example `1.50:1`) and set the name to `Unknown`.
+   Keep the measured ratio visible with sufficient precision when no snap
+   applies.
 5. If no valid aspect ratio is available, use the existing OSD unavailable
    value for the ratio and show `Unknown` for the name. Do not fabricate a
    measurement.
@@ -51,17 +58,16 @@ understand what shape of picture VP is detecting.
 
 ## Acceptance criteria
 
-1. Tests verify all seven named mappings and the exact ratio/name text shown in
+1. Tests verify all 14 supported mappings and the exact ratio/name text shown in
    the OSD.
-2. For each supported target, tests cover measurements below, exactly at, and
-   above the 1% relative-difference boundary. Inputs within range snap to the
-   closest target; inputs outside all ranges retain their measured ratio and
-   show `Unknown`.
-3. Tests cover values between 2.39:1 and 2.40:1, including overlapping match
-   ranges, nearest-target selection, and the deterministic tie-break.
-4. Other representative ratios, including 1.37:1, 1.43:1, 2.00:1, 2.20:1,
-   2.33:1, 2.35:1, and 2.76:1, retain a numeric ratio and show `Unknown` as the
-   name.
+2. For each supported target, tests cover values below, exactly at, and above
+   the 1% relative-difference boundary. Inputs within range snap to the closest
+   target; inputs outside all ranges retain their measured ratio and show
+   `Unknown`.
+3. Tests cover overlapping match ranges among 2.33:1, 2.35:1, 2.39:1, and
+   2.40:1, including nearest-target selection and the deterministic tie-break.
+4. Representative unsupported ratios such as 1.50:1 and 2.50:1 retain their
+   measured ratio and show `Unknown` as the name.
 5. Tests cover invalid or unavailable measurements, numeric formatting, and
    ratio changes while the OSD is open. Matching uses the measured value, not
    the rounded display string.
