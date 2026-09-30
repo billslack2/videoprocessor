@@ -529,6 +529,13 @@ bool LibplaceboPluginVideoRenderer::GetDisplayLutInfo(CString& details) const
 	return m_renderer->GetDisplayLutInfo(details);
 }
 
+bool LibplaceboPluginVideoRenderer::GetDetectedPictureAspect(
+	DetectedPictureAspect& result) const
+{
+	return m_renderer->GetDetectedPictureAspect(result);
+}
+
+
 bool LibplaceboPluginVideoRenderer::GetVideoIngressInfo(CString& details) const
 {
 	return m_renderer->GetVideoIngressInfo(details);

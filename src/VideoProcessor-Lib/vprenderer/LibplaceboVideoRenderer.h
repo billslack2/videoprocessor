@@ -110,6 +110,7 @@ public:
 		RendererOutputContract::Status& status) const override;
 	bool RequestRenderedOutputCapture(CString& status) override;
 	bool GetDisplayLutInfo(CString& details) const override;
+	bool GetDetectedPictureAspect(DetectedPictureAspect& result) const override;
 	bool GetVideoIngressInfo(CString& details) const override;
 	bool GetPresentationTargetTiming(double& leadMs,
 		double& captureToTargetMs) const override;

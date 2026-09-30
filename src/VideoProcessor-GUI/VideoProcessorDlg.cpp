@@ -15686,6 +15686,7 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 	{
 		m_processCpuUsage.Reset();
 		m_cadenceIntervalEstimate.Reset();
+		m_aspectRatioOsd.Reset();
 		m_cpuUsageRenderer = statsRenderer;
 		m_cpuUsageRendererGeneration = m_transitionGeneration;
 		m_loggedCpuPeakPercent = 0.0;
@@ -15832,6 +15833,22 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 		else
 			stats.rendererName = stats.isAlphaRenderer ?
 				TEXT("VP Renderer") : TEXT("DirectShow");
+		if (stats.isAlphaRenderer)
+		{
+			DetectedPictureAspect detected;
+			if (m_videoRenderer->GetDetectedPictureAspect(detected))
+			{
+				const auto& label = m_aspectRatioOsd.Update(detected);
+				stats.aspectRatio = label.ratio.c_str();
+				stats.aspectName = label.name.c_str();
+			}
+			else if (sameStatsTelemetryGeneration && m_lastStatsData)
+			{
+				// A busy render lock cannot blank the last displayed label.
+				stats.aspectRatio = m_lastStatsData->aspectRatio;
+				stats.aspectName = m_lastStatsData->aspectName;
+			}
+		}
 		stats.rawQueueSize = m_videoRenderer->GetFrameQueueSize();
 		stats.convertedQueueSize = m_videoRenderer->GetConvertedQueueSize();
 		stats.currentQueueSize = stats.rawQueueSize + stats.convertedQueueSize;

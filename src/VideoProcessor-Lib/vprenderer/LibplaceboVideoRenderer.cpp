@@ -16056,6 +16056,36 @@ bool LibplaceboVideoRenderer::GetDisplayLutInfo(CString& details) const
 	return true;
 }
 
+bool LibplaceboVideoRenderer::GetDetectedPictureAspect(
+	DetectedPictureAspect& result) const
+{
+	result = {};
+	if (!m_impl)
+		return true;
+	std::unique_lock<std::mutex> guard(
+		m_impl->renderMutex, std::try_to_lock);
+	if (!guard.owns_lock())
+		return false;
+	result.sourceGeneration = m_impl->activePictureAnalysisSourceGeneration;
+	result.publicationGeneration = m_impl->nlsGeometryGeneration;
+	const ActivePictureBounds& geometry = m_impl->nlsGeometry;
+	if (m_impl->nlsGeometryAvailable &&
+		m_impl->nlsGeometrySourceGeneration == result.sourceGeneration &&
+		(m_impl->nlsGeometryClassification ==
+			ActivePictureClassification::FULL_RASTER_TRUSTED ||
+		 m_impl->nlsGeometryClassification ==
+			ActivePictureClassification::BAR_CROP_TRUSTED) &&
+		geometry.right > geometry.left && geometry.bottom > geometry.top)
+	{
+		result.ratio = static_cast<double>(geometry.right - geometry.left) /
+			(geometry.bottom - geometry.top);
+		result.available = std::isfinite(result.ratio) &&
+			result.ratio > 0.0;
+	}
+	return true;
+}
+
+
 bool LibplaceboVideoRenderer::GetVideoIngressInfo(CString& details) const
 {
 	if (!m_impl)

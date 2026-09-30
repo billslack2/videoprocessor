@@ -12,6 +12,7 @@
 #include <VideoFrame.h>
 #include <VideoState.h>
 #include <RendererLiveness.h>
+#include <AspectRatioOsd.h>
 #include <RendererResetRequest.h>
 #include <RendererOutputContractStatus.h>
 #include <SubtitleRepositionMode.h>
@@ -377,6 +378,13 @@ public:
 
 	// Actual renderer ingress selection, rather than the UI's requested
 	// conversion override. Renderers without native ingress leave this empty.
+	// False means the nonblocking renderer read was busy. On success,
+	// available distinguishes a trusted picture from no current result.
+	virtual bool GetDetectedPictureAspect(DetectedPictureAspect& result) const
+	{
+		result = {};
+		return true;
+	}
 	virtual bool GetVideoIngressInfo(CString& details) const
 	{
 		details.Empty();
