@@ -203,7 +203,7 @@ they must not contain requirements that are absent from this file.
 | VP-0165 | Backlog | Evaluate safe active-picture lookahead refinements |
 | VP-0166 | Done | Correct integrated target-frame 3D LUT application |
 | VP-0167 | Done | Restore madVR-style two-pass VP Renderer refresh-mode selection |
-| VP-0168 | Backlog | Native LAN configuration editor discovery and apply parity |
+| VP-0168 | In progress | Native LAN configuration editor discovery and apply parity |
 | VP-0169 | Done | Persist GUI edits into missing configuration sections |
 | VP-0170 | In Progress | Stabilize DirectShow/madVR EOTF transitions |
 | VP-0171 | Backlog | Opt-in ICC/ICM display-calibration profiles for VP Renderer |

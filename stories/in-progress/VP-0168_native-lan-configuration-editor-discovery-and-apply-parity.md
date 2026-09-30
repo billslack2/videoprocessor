@@ -2,7 +2,12 @@
 
 ## Status
 
-Backlog (2026-09-01). Proposed from the operator requirement to use the same
+In progress (2026-09-30). Implementation started from the current
+v1.3.005-beta integration tip. The readiness review is tracing the existing
+editor safe-save and VP asynchronous reload path before the RPC boundary is
+introduced.
+
+Originally proposed (2026-09-01) from the operator requirement to use the same
 native `VideoProcessorConfig.exe` UI locally or from a laptop to configure a
 running VideoProcessor instance on the same LAN.
 
