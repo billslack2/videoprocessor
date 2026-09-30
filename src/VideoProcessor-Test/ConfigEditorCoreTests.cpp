@@ -4,6 +4,7 @@
 #include <ConfigFile.h>
 #include <ConfigurationIdentity.h>
 #include <ConfigurationApplyPolicy.h>
+#include <ConfigurationRpcProtocol.h>
 #include <RendererResetPolicy.h>
 #include "CppUnitTest.h"
 
@@ -46,6 +47,60 @@ namespace VideoProcessorTest
 	TEST_CLASS(ConfigEditorCoreTests)
 	{
 	public:
+		TEST_METHOD(ConfigurationRpcRejectsMalformedAndOversizedFrames)
+		{
+			using namespace ConfigurationRpcProtocol;
+			Frame request;
+			request.operation = static_cast<uint16_t>(Operation::ApplyConfig);
+			Assert::IsTrue(WriteString(request.payload,
+				"# exact bytes\r\n[general]\r\nrenderer: alpha\r\n"));
+			std::vector<uint8_t> wire;
+			Assert::IsTrue(Encode(request, wire));
+			Frame decoded;
+			Assert::IsTrue(Decode(wire.data(), wire.size(), decoded));
+			Assert::IsTrue(request.operation == decoded.operation);
+			size_t cursor = 0;
+			std::string candidate;
+			Assert::IsTrue(ReadString(decoded.payload, cursor, candidate));
+			Assert::AreEqual(std::string(
+				"# exact bytes\r\n[general]\r\nrenderer: alpha\r\n"), candidate);
+			Assert::IsTrue(cursor == decoded.payload.size());
+			Assert::IsFalse(Decode(wire.data(), wire.size() - 1, decoded));
+			wire[4] = 0;
+			wire[5] = 2;
+			Assert::IsFalse(Decode(wire.data(), wire.size(), decoded));
+			wire[4] = 0;
+			wire[5] = 1;
+			wire[8] = 0xff;
+			uint32_t payloadBytes = 0;
+			Assert::IsFalse(DecodeHeader(wire.data(), wire.size(),
+				decoded.operation, payloadBytes));
+		}
+
+		TEST_METHOD(RemoteDocumentLoadsExactBytesWithoutClientFileAccess)
+		{
+			const std::wstring targetPath =
+				L"Z:\\target-only\\VideoProcessor.cfg";
+			const std::string original =
+				"# operator note\r\n[general]\r\nrenderer: alpha # keep comment\r\n"
+				"[unknown.section]\r\ncustom: unchanged\r\n";
+			ConfigEditorCore::ConfigDocument document;
+			document.LoadBytes(targetPath, original);
+			Assert::AreEqual(targetPath, document.path);
+			Assert::AreEqual(original, document.Serialize());
+			Assert::AreEqual(original, document.loadedBytes);
+			Assert::IsTrue(document.existedAtLoad);
+			Assert::IsTrue(document.remoteSource);
+			Assert::IsTrue(document.SetKnown("general", "renderer", "madvr"));
+			Assert::IsTrue(document.Serialize().find(
+				"[unknown.section]\r\ncustom: unchanged") != std::string::npos);
+			ConfigEditorCore::SaveResult result;
+			std::wstring error;
+			Assert::IsFalse(ConfigEditorCore::SaveSafely(document, result, error,
+				true));
+			Assert::IsTrue(error.find(L"RPC target") != std::wstring::npos);
+		}
+
         TEST_METHOD(RendererAndEditorConfigurationIdentityAgreeAcrossTextFormatsAndEdits)
         {
             const std::wstring path = MakeTemporaryConfigPath(L"vpc");
