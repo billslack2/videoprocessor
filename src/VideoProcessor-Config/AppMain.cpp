@@ -287,6 +287,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
 	quint16 remotePort = 41686;
 	bool offline = false;
 	bool explicitConfig = false;
+	bool discoverTargets = false;
     QString screenshotPath;
     int initialPage = 0;
     quintptr owner = 0;
@@ -316,6 +317,8 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
 		}
 		else if (arguments[index] == QStringLiteral("--offline"))
 			offline = true;
+		else if (arguments[index] == QStringLiteral("--discover"))
+			discoverTargets = true;
         else if (arguments[index] == QStringLiteral("--owner") && index + 1 < arguments.size())
             owner = parseOwner(arguments[++index]);
         else if (arguments[index] == QStringLiteral("--owner-process") && index + 1 < arguments.size())
@@ -338,7 +341,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
     }
     if (configPath.isEmpty()) configPath = defaultConfigPath();
     if (!ownerBelongsToProcess(owner, ownerProcessId)) owner = 0;
-	if (owner && remoteHost.isEmpty() && !offline)
+	if (owner && remoteHost.isEmpty() && !offline && !discoverTargets)
 	{
 		remoteHost = QStringLiteral("127.0.0.1");
 		remoteName = QStringLiteral("LOCAL");
@@ -346,7 +349,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
 	if (remoteHost == QStringLiteral("127.0.0.1"))
 		remoteName = QStringLiteral("LOCAL");
 	const bool noTarget = remoteHost.isEmpty() && !offline &&
-		!explicitConfig;
+		(!explicitConfig || discoverTargets);
 
     const std::wstring activationEventName = installationScopedEventName(
 		L"Local\\VideoProcessorConfigEditor.Activate.v1");
@@ -373,7 +376,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
     ConfigEditorWindow window(QFileInfo(configPath).absoluteFilePath(), owner,
 		false, {}, {}, remoteHost, remotePort, remoteName, noTarget);
 	std::unique_ptr<LanTargetWatcher> watcher;
-	if (!offline && !explicitConfig)
+	if (screenshotPath.isEmpty() || !offline)
 	{
 		watcher = std::make_unique<LanTargetWatcher>();
 		LanTargetWatcher* const watcherPtr = watcher.get();

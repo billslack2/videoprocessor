@@ -1117,7 +1117,8 @@ void ConfigEditorWindow::populateTargetChoices()
 	targetChoice_->clear();
 	targetChoices_.clear();
 	targetChoices_.push_back({ currentInstanceId_,
-		noTarget_ ? QStringLiteral("No target") : remoteName_,
+		noTarget_ ? QStringLiteral("No target") : remoteClient_ ?
+		remoteName_ : QStringLiteral("Offline file"),
 		remoteHost_, remotePort_, {} });
 	for (const auto& target : discoveredTargets_)
 	{
@@ -3405,7 +3406,7 @@ QWidget* ConfigEditorWindow::createShell()
     brandLayout->addWidget(title);
     headerLayout->addWidget(brand);
     headerLayout->addStretch();
-	if (remoteClient_ || noTarget_)
+	// Every launch mode can move from its current source to a discovered VP.
 	{
 		targetChoice_ = new QComboBox;
 		targetChoice_->setObjectName(QStringLiteral("config.targetChoice"));
@@ -8168,7 +8169,7 @@ void ConfigEditorWindow::setupTray()
 		QStringLiteral("Open Configuration (%1)").arg(remoteName_) :
 		QStringLiteral("Open Configuration (offline)"));
 	trayOpenAction_ = open;
-	if (remoteClient_ || noTarget_)
+	// Keep target selection available even when this instance opened a file.
 	{
 		targetsMenu_ = menu->addMenu(QStringLiteral("Targets"));
 		connect(targetsMenu_, &QMenu::aboutToShow, this,
@@ -8191,7 +8192,7 @@ void ConfigEditorWindow::populateTrayTargets()
 	if (!targetsMenu_) return;
 	targetsMenu_->clear();
 	if (targetChoices_.isEmpty() ||
-		(noTarget_ && targetChoices_.size() == 1))
+		(!remoteClient_ && targetChoices_.size() == 1))
 	{
 		auto* unavailable = targetsMenu_->addAction(
 			QStringLiteral("No VideoProcessor found"));
@@ -8199,14 +8200,14 @@ void ConfigEditorWindow::populateTrayTargets()
 	}
 	else
 	{
-		for (int index = noTarget_ ? 1 : 0;
+		for (int index = remoteClient_ ? 0 : 1;
 			index < targetChoices_.size(); ++index)
 		{
 			const Target target = targetChoices_[index];
 			auto* action = targetsMenu_->addAction(target.label);
 			action->setToolTip(QStringLiteral("%1:%2 · %3")
 				.arg(target.host).arg(target.port).arg(target.vpVersion));
-			if (!noTarget_ && index == 0)
+			if (remoteClient_ && index == 0)
 			{
 				action->setCheckable(true);
 				action->setChecked(true);

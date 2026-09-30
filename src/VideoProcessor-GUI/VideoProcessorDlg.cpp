@@ -7950,7 +7950,7 @@ void CVideoProcessorDlg::OnCommandConfigEditor()
 	const HWND editorOwner = ConfigurationEditorOwner();
 	wchar_t arguments[2 * MAX_PATH + 120] = {};
 	swprintf_s(arguments,
-		L"--config \"%s\" --owner %llu --owner-process %lu",
+		L"--config \"%s\" --discover --owner %llu --owner-process %lu",
 		configPath.c_str(),
 		static_cast<unsigned long long>(reinterpret_cast<UINT_PTR>(editorOwner)),
 		GetCurrentProcessId());
@@ -8004,7 +8004,7 @@ void CVideoProcessorDlg::StartConfigurationEditorInTray()
 	}
 
 	wchar_t arguments[2 * MAX_PATH + 32] = {};
-	swprintf_s(arguments, L"--config \"%s\" --background", configPath.c_str());
+	swprintf_s(arguments, L"--config \"%s\" --discover --background", configPath.c_str());
 	const HINSTANCE result = ShellExecuteW(GetSafeHwnd(), L"open", editorPath.c_str(),
 		arguments, editorDirectory.c_str(), SW_HIDE);
 	if (reinterpret_cast<INT_PTR>(result) <= 32)

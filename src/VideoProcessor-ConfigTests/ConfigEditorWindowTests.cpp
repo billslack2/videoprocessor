@@ -5945,6 +5945,28 @@ void testNoTargetStartupIsQuiet()
         "Empty LAN discovery changed the target unexpectedly");
 }
 
+void testOfflineFileStillOffersTargets()
+{
+    QTemporaryDir directory;
+    ConfigEditorWindow window(copyFixture(directory), 0, true);
+    auto* choice = requireControl<QComboBox>(window, "config.targetChoice");
+    auto* refresh = requireControl<QToolButton>(window, "config.refreshTargets");
+    require(choice->currentText() == QStringLiteral("Offline file"),
+        "The file editor hid its current target state");
+    int scans = 0;
+    window.setTargetRefresh([&] { ++scans; });
+    window.setDiscoveredTargets({
+        { QStringLiteral("local-installation"), QStringLiteral("LOCAL (127.0.0.1)"),
+            QStringLiteral("127.0.0.1"), 41686 }
+    });
+    require(choice->count() == 3 &&
+        choice->itemText(1) == QStringLiteral("LOCAL (127.0.0.1)"),
+        "Offline file mode did not offer a discovered VP");
+    refresh->click();
+    require(scans == 1 && QApplication::activeModalWidget() == nullptr,
+        "Offline file mode did not refresh targets inline");
+}
+
 int run(const char* name, const std::function<void()>& test)
 {
     if (!testNameFilter.isEmpty() &&
@@ -6071,6 +6093,7 @@ int main(int argc, char** argv)
     failures += run("Apply OK Cancel contract", testApplyOkCancelContract);
     failures += run("target dropdown refreshes inline", testTargetDropdownRefreshesInline);
     failures += run("no-target startup is quiet", testNoTargetStartupIsQuiet);
+    failures += run("offline file still offers targets", testOfflineFileStillOffersTargets);
     failures += run("DirectShow-only effect does not restart Alpha",
         testDirectShowOnlyEffectDoesNotRestartAlpha);
     failures += run("invalid renderer is rejected continuously",
