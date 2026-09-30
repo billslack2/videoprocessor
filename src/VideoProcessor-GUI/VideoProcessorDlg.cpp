@@ -3118,8 +3118,12 @@ ConfigurationRpcProtocol::Frame CVideoProcessorDlg::HandleConfigurationRpc(
 		return ConfigurationRpcError(operation, "Unsupported RPC operation.");
 	if (m_wantToTerminate)
 		return ConfigurationRpcError(operation, "VideoProcessor is stopping.");
+	if (request.payload.size() < 2 ||
+		Read16(request.payload.data()) != ConfigurationCompatibilityVersion)
+		return ConfigurationRpcError(operation,
+			"This Config UI uses an incompatible configuration model. Update VP and Config UI together.");
 	if (operation != static_cast<uint16_t>(Operation::ApplyConfig) &&
-		!request.payload.empty())
+		request.payload.size() != 2)
 		return ConfigurationRpcError(operation,
 			"This RPC operation does not accept a request body.");
 
@@ -3138,6 +3142,10 @@ ConfigurationRpcProtocol::Frame CVideoProcessorDlg::HandleConfigurationRpc(
 	response.operation = static_cast<uint16_t>(operation | ResponseFlag);
 	if (operation == static_cast<uint16_t>(Operation::GetCapabilities))
 	{
+		Write16(response.payload, ConfigurationCompatibilityVersion);
+		if (!WriteString(response.payload, ConfigurationRpcUtf8(VERSION_DESCRIBE)))
+			return ConfigurationRpcError(operation,
+				"VideoProcessor version exceeded the RPC limit.");
 		const auto devices = ConfigurationDiscovery::CaptureDeviceNames();
 		if (!ConfigurationRpcWriteWideList(response.payload, devices))
 			return ConfigurationRpcError(operation, "Too many capture devices.");
@@ -3177,7 +3185,7 @@ ConfigurationRpcProtocol::Frame CVideoProcessorDlg::HandleConfigurationRpc(
 		return response;
 	}
 
-	size_t cursor = 0;
+	size_t cursor = 2;
 	std::string baseline;
 	std::string candidate;
 	if (!ReadString(request.payload, cursor, baseline) ||

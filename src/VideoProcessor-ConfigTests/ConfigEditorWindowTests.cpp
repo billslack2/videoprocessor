@@ -5885,6 +5885,66 @@ output_range: full
     require(readBytes(path) == saved, "Migration/save is not idempotent");
 }
 
+void testTargetDropdownRefreshesInline()
+{
+    QTemporaryDir directory;
+    const QString path = copyFixture(directory);
+    ConfigEditorWindow window(path, 0, true, {}, {},
+        QStringLiteral("127.0.0.1"), 1, QStringLiteral("LOCAL"));
+    QList<ConfigEditorWindow::Target> discovered = {
+        { QStringLiteral("remote-a"), QStringLiteral("STUDY (192.168.1.20)"),
+            QStringLiteral("192.168.1.20"), 41686 },
+        { QStringLiteral("remote-b"), QStringLiteral("DEN (192.168.1.21)"),
+            QStringLiteral("192.168.1.21"), 41686 }
+    };
+    int scans = 0;
+    window.setTargetRefresh([&] { ++scans; });
+    window.setDiscoveredTargets(discovered);
+    auto* choice = requireControl<QComboBox>(window, "config.targetChoice");
+    auto* refresh = requireControl<QToolButton>(window, "config.refreshTargets");
+    require(choice->currentText() == QStringLiteral("LOCAL") &&
+        choice->count() == 4 &&
+        choice->itemText(1).startsWith(QStringLiteral("STUDY")) &&
+        choice->itemText(2).startsWith(QStringLiteral("DEN")),
+        "Discovered targets were not offered in the header dropdown");
+    require(refresh->toolTip().contains(QStringLiteral("Refresh")) &&
+        scans == 0, "Target refresh ran before the user requested it");
+    discovered.removeLast();
+    refresh->click();
+    window.setDiscoveredTargets(discovered);
+    require(scans == 1 && choice->count() == 3 &&
+        choice->currentText() == QStringLiteral("LOCAL") &&
+        QApplication::activeModalWidget() == nullptr,
+        "Refreshing targets did not update the dropdown in place");
+    window.setDiscoveredTargets({
+        { QStringLiteral("local-installation"), QStringLiteral("LOCAL (127.0.0.1)"),
+            QStringLiteral("127.0.0.1"), 1 }, discovered.front() });
+    require(choice->count() == 3,
+        "The current VP appeared twice after LAN discovery");
+    window.setDiscoveredTargets({
+        { QStringLiteral("local-installation"), QStringLiteral("LOCAL (192.168.1.25)"),
+            QStringLiteral("192.168.1.25"), 1 }, discovered.front() });
+    require(choice->count() == 3 &&
+        choice->currentText() == QStringLiteral("LOCAL"),
+        "A restarted VP was treated as a second target after its address changed");
+}
+
+void testNoTargetStartupIsQuiet()
+{
+    QTemporaryDir directory;
+    ConfigEditorWindow window(copyFixture(directory), 0, true, {}, {},
+        {}, 41686, {}, true);
+    auto* choice = requireControl<QComboBox>(window, "config.targetChoice");
+    require(choice->currentText() == QStringLiteral("No target") &&
+        !requireControl<QPushButton>(window, "applyConfiguration")->isEnabled() &&
+        !requireControl<QPushButton>(window, "okConfiguration")->isEnabled() &&
+        QApplication::activeModalWidget() == nullptr,
+        "No-target startup opened a prompt or allowed configuration writes");
+    window.setDiscoveredTargets({});
+    require(choice->currentText() == QStringLiteral("No target"),
+        "Empty LAN discovery changed the target unexpectedly");
+}
+
 int run(const char* name, const std::function<void()>& test)
 {
     if (!testNameFilter.isEmpty() &&
@@ -6009,6 +6069,8 @@ int main(int argc, char** argv)
     failures += run("missing configuration can be created from editor",
         testMissingConfigurationCanBeCreatedFromEditor);
     failures += run("Apply OK Cancel contract", testApplyOkCancelContract);
+    failures += run("target dropdown refreshes inline", testTargetDropdownRefreshesInline);
+    failures += run("no-target startup is quiet", testNoTargetStartupIsQuiet);
     failures += run("DirectShow-only effect does not restart Alpha",
         testDirectShowOnlyEffectDoesNotRestartAlpha);
     failures += run("invalid renderer is rejected continuously",

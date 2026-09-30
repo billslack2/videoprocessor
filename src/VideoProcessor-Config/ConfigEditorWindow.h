@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QMainWindow>
+#include <QList>
 #include <QMap>
 #include <QString>
 #include <QStringList>
@@ -18,6 +19,7 @@ class QComboBox;
 class QHideEvent;
 class QLineEdit;
 class QListWidget;
+class QMenu;
 class QPushButton;
 class QRect;
 class QStackedWidget;
@@ -39,15 +41,25 @@ namespace ConfigEditorPlacement
 class ConfigEditorWindow final : public QMainWindow
 {
 public:
+    struct Target
+    {
+        QString instanceId;
+        QString label;
+        QString host;
+        quint16 port = 41686;
+        QString vpVersion;
+    };
+
     explicit ConfigEditorWindow(QString configPath, quintptr ownerHandle = 0,
         bool testMode = false, const QStringList& testFilteredRenderers = {},
         const QStringList& testAllRenderers = {},
         const QString& remoteHost = {}, quint16 remotePort = 41686,
-        const QString& remoteName = {});
+        const QString& remoteName = {}, bool noTarget = false);
     ~ConfigEditorWindow() override;
     void selectPage(int index);
     void reveal();
-    void setTargetSelector(std::function<bool(QString&, quint16&, QString&)> selector);
+    void setTargetRefresh(std::function<void()> refresh);
+    void setDiscoveredTargets(const QList<Target>& targets);
     void refreshMonitorDiscovery();
     void setActiveProfileStatusForTesting(const QString& queue,
         const QString& renderer, const QString& color, const QString& viewport,
@@ -138,7 +150,11 @@ private:
     void loadDiscoveryCache();
     void applyMonitorDiscovery(const QStringList& discovered);
     void setupTray();
-    void selectAnotherTarget();
+    void refreshTargetChoices();
+    void populateTargetChoices();
+    void populateTrayTargets();
+    bool selectAnotherTarget(const Target& target);
+    void enterTargetAddress();
     void exitApplication();
     void setStatus(const QString& message, bool error = false);
     void setWarningStatus(const QString& message);
@@ -158,11 +174,20 @@ private:
     QString configPath_;
     QString remoteHost_;
     QString remoteName_;
+    QString currentInstanceId_;
+    quint16 remotePort_ = 41686;
+    bool noTarget_ = false;
     QString remoteLoadError_;
     QStringList remoteLuts_;
     std::unique_ptr<ConfigurationRpcClient> remoteClient_;
-    std::function<bool(QString&, quint16&, QString&)> targetSelector_;
+    std::function<void()> targetRefresh_;
+    QList<Target> discoveredTargets_;
+    QList<Target> targetChoices_;
+    QComboBox* targetChoice_ = nullptr;
     QAction* trayOpenAction_ = nullptr;
+    QMenu* targetsMenu_ = nullptr;
+    QString lastAutoAttemptKey_;
+    qint64 lastAutoAttemptMs_ = 0;
     quintptr ownerHandle_ = 0;
     quint32 ownerProcessId_ = 0;
     bool ownerApplied_ = false;

@@ -11,7 +11,10 @@
 // response; neither side may allocate from an unchecked network length.
 namespace ConfigurationRpcProtocol
 {
-	constexpr uint16_t Version = 1;
+	// Bump the wire version when an older peer must not read or apply settings.
+	constexpr uint16_t Version = 2;
+	// Bump this when the editor and VP configuration models cease to agree.
+	constexpr uint16_t ConfigurationCompatibilityVersion = 1;
 	constexpr uint32_t MaximumPayloadBytes = 4 * 1024 * 1024;
 	constexpr size_t HeaderBytes = 12;
 	constexpr uint16_t ResponseFlag = 0x8000;

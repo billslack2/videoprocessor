@@ -88,7 +88,10 @@ bool ConfigurationRpcClient::Request(uint16_t operation,
 		error = "A VP target address is required.";
 		return false;
 	}
-	Frame request{ operation, payload };
+	Frame request;
+	request.operation = operation;
+	Write16(request.payload, ConfigurationCompatibilityVersion);
+	request.payload.insert(request.payload.end(), payload.begin(), payload.end());
 	std::vector<uint8_t> wire;
 	if (!Encode(request, wire))
 	{
@@ -162,7 +165,14 @@ bool ConfigurationRpcClient::Request(uint16_t operation,
 	std::array<uint8_t, HeaderBytes> header{};
 	if (!ReceiveExact(socket.value, header.data(), header.size()))
 	{
-		error = "VP did not return a complete response. Refresh before retrying.";
+		error = "VP did not complete the configuration version handshake. Update VP and Config UI together, or retry when VP is running.";
+		return false;
+	}
+	if (header[0] == 'V' && header[1] == 'P' &&
+		header[2] == 'C' && header[3] == 'R' &&
+		Read16(header.data() + 4) != Version)
+	{
+		error = "This VP uses an incompatible configuration RPC version. Update VP and Config UI together.";
 		return false;
 	}
 	uint16_t responseOperation = 0;
@@ -203,6 +213,8 @@ bool ConfigurationRpcClient::Request(uint16_t operation,
 bool ConfigurationRpcClient::GetConfig(std::string& targetPath,
 	std::string& bytes, std::string& error) const
 {
+	Capabilities compatibility;
+	if (!GetCapabilities(compatibility, error)) return false;
 	std::vector<uint8_t> response;
 	if (!Request(static_cast<uint16_t>(Operation::GetConfig), {},
 		response, error)) return false;
@@ -224,6 +236,16 @@ bool ConfigurationRpcClient::GetCapabilities(Capabilities& capabilities,
 		response, error)) return false;
 	Capabilities parsed;
 	size_t cursor = 0;
+	if (response.size() < 2) goto invalid;
+	parsed.compatibilityVersion = Read16(response.data());
+	cursor = 2;
+	if (!ReadString(response, cursor, parsed.vpVersion) ||
+		parsed.vpVersion.empty()) goto invalid;
+	if (parsed.compatibilityVersion != ConfigurationCompatibilityVersion)
+	{
+		error = "This VP uses an incompatible configuration model. Update VP and Config UI together.";
+		return false;
+	}
 	if (!ReadList(response, cursor, parsed.captureDevices) ||
 		cursor > response.size() || response.size() - cursor < 4)
 		goto invalid;
@@ -257,6 +279,8 @@ bool ConfigurationRpcClient::ApplyConfig(const std::string& baseline,
 	const std::string& candidate, ApplyResult& result,
 	std::string& error) const
 {
+	Capabilities compatibility;
+	if (!GetCapabilities(compatibility, error)) return false;
 	Frame request;
 	if (!WriteString(request.payload, baseline) ||
 		!WriteString(request.payload, candidate))

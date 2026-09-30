@@ -42,6 +42,7 @@ namespace
 		ConfigurationRpcServer server;
 		std::atomic<int> handled{ 0 };
 		bool clientPayloads = false;
+		uint16_t compatibilityVersion = ConfigurationCompatibilityVersion;
 		std::mutex mutex;
 		std::condition_variable ready;
 		HWND window = nullptr;
@@ -81,6 +82,9 @@ namespace
 					else if (pending->request.operation ==
 						static_cast<uint16_t>(Operation::GetCapabilities))
 					{
+						Write16(pending->response.payload,
+							self->compatibilityVersion);
+						WriteString(pending->response.payload, "v1.3.005-beta");
 						Write32(pending->response.payload, 1);
 						WriteString(pending->response.payload, "DeckLink");
 						Write32(pending->response.payload, 1);
@@ -99,10 +103,13 @@ namespace
 					else if (pending->request.operation ==
 						static_cast<uint16_t>(Operation::ApplyConfig))
 					{
-						size_t cursor = 0;
+						size_t cursor = 2;
 						std::string baseline;
 						std::string candidate;
-						if (!ReadString(pending->request.payload, cursor, baseline) ||
+						if (pending->request.payload.size() < 2 ||
+							Read16(pending->request.payload.data()) !=
+								ConfigurationCompatibilityVersion ||
+							!ReadString(pending->request.payload, cursor, baseline) ||
 							!ReadString(pending->request.payload, cursor, candidate) ||
 							baseline != "baseline" || candidate != "candidate")
 						{
@@ -253,7 +260,7 @@ namespace VideoProcessorTest
 		{
 			ServerHarness harness;
 			Assert::IsTrue(harness.Start());
-			for (const uint32_t size : { 0u, MaximumPayloadBytes + 1 })
+			for (const uint32_t size : { 0u, 1u, MaximumPayloadBytes + 1 })
 			{
 				SocketGuard client{ Connect(harness.server.BoundTcpPort()) };
 				Assert::IsTrue(client.value != INVALID_SOCKET);
@@ -262,6 +269,11 @@ namespace VideoProcessorTest
 				std::vector<uint8_t> wire;
 				Assert::IsTrue(Encode(request, wire));
 				if (size == 0) wire[4] = 0xff;
+				else if (size == 1)
+				{
+					wire[4] = 0;
+					wire[5] = 1; // Previous Config wire version.
+				}
 				else
 				{
 					wire[8] = static_cast<uint8_t>(size >> 24);
@@ -327,6 +339,10 @@ namespace VideoProcessorTest
 				"# exact bytes\r\n[general]\r\nrenderer: VP Renderer\r\n"), bytes);
 			ConfigurationRpcClient::Capabilities capabilities;
 			Assert::IsTrue(client.GetCapabilities(capabilities, error));
+			Assert::AreEqual(static_cast<int>(ConfigurationCompatibilityVersion),
+				static_cast<int>(capabilities.compatibilityVersion));
+			Assert::AreEqual(std::string("v1.3.005-beta"),
+				capabilities.vpVersion);
 			Assert::AreEqual(std::string("DeckLink"),
 				capabilities.captureDevices.front());
 			Assert::AreEqual(std::string("HDMI"),
@@ -341,7 +357,26 @@ namespace VideoProcessorTest
 			Assert::IsFalse(client.ApplyConfig("stale", "candidate",
 				applied, error));
 			Assert::AreEqual(std::string("stale baseline"), error);
-			Assert::AreEqual(4, harness.handled.load());
+			Assert::AreEqual(7, harness.handled.load());
+		}
+
+		TEST_METHOD(IncompatibleConfigurationModelCannotReadOrApply)
+		{
+			ServerHarness harness;
+			harness.clientPayloads = true;
+			harness.compatibilityVersion =
+				ConfigurationCompatibilityVersion + 1;
+			Assert::IsTrue(harness.Start());
+			ConfigurationRpcClient client("127.0.0.1",
+				harness.server.BoundTcpPort());
+			std::string path, bytes, error;
+			Assert::IsFalse(client.GetConfig(path, bytes, error));
+			Assert::IsTrue(error.find("incompatible") != std::string::npos);
+			Assert::AreEqual(1, harness.handled.load());
+			ConfigurationRpcClient::ApplyResult result;
+			Assert::IsFalse(client.ApplyConfig("baseline", "candidate",
+				result, error));
+			Assert::AreEqual(2, harness.handled.load());
 		}
 	};
 }

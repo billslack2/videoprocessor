@@ -11,6 +11,8 @@ class ConfigurationRpcClient
 public:
 	struct Capabilities
 	{
+		uint16_t compatibilityVersion = 0;
+		std::string vpVersion;
 		std::vector<std::string> captureDevices;
 		std::map<std::string, std::vector<std::string>> captureConnections;
 		std::vector<std::string> monitors;
