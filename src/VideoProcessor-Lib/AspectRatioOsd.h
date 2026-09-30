@@ -32,11 +32,14 @@ public:
 		m_candidate = {};
 		m_candidateReads = 0;
 		m_candidatePublication = 0;
+		m_unavailableReads = 0;
 	}
 
 	const Label& Update(const DetectedPictureAspect& reading)
 	{
-		if (!m_hasSource || m_sourceGeneration != reading.sourceGeneration)
+		if (!m_hasSource ||
+			(reading.sourceGeneration != 0 &&
+			 m_sourceGeneration != reading.sourceGeneration))
 		{
 			Reset();
 			m_hasSource = true;
@@ -45,10 +48,16 @@ public:
 		if (!reading.available || !std::isfinite(reading.ratio) ||
 			reading.ratio <= 0.0)
 		{
-			m_label = {};
 			m_candidateReads = 0;
+			// Fullscreen/windowed handoff can temporarily withdraw the detector
+			// publication. Keep the last trusted display for a bounded interval
+			// while the same source is reacquired.
+			if (m_label.ratio != L"---" && ++m_unavailableReads < 10)
+				return m_label;
+			m_label = {};
 			return m_label;
 		}
+		m_unavailableReads = 0;
 		const Label incoming = Classify(reading.ratio);
 		if (m_label.ratio == L"---")
 		{
@@ -149,4 +158,5 @@ private:
 	Label m_candidate;
 	uint64_t m_candidatePublication = 0;
 	unsigned m_candidateReads = 0;
+	unsigned m_unavailableReads = 0;
 };

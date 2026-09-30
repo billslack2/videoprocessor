@@ -117,7 +117,14 @@ namespace VideoProcessorTest
 			reading.ratio = 2.39;
 			Assert::IsTrue(osd.Update(reading).ratio == L"2.39:1");
 			reading.available = false;
+			reading.sourceGeneration = 0; // display-mode handoff
+			for (int i = 0; i < 9; ++i)
+				Assert::IsTrue(osd.Update(reading).ratio == L"2.39:1");
 			Assert::IsTrue(osd.Update(reading).name == L"Unknown");
+			reading.available = true;
+			reading.sourceGeneration = 3; // actual new source
+			reading.ratio = 16.0 / 9.0;
+			Assert::IsTrue(osd.Update(reading).ratio == L"16:9");
 		}
 
 		TEST_METHOD(RendererMetadataCyclesReuseAcceptedSnapshotWithoutDiskReads)
