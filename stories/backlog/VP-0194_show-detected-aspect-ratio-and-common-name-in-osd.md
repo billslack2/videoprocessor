@@ -3,8 +3,8 @@
 ## Status
 
 Backlog. Add `Aspect ratio` and `Name` values to the existing right-side VP
-Renderer Ctrl+I OSD. Use the requested labels for 4:3, 16:9, and 2.40:1; show
-`Unknown` for the name of other detected ratios.
+Renderer Ctrl+I OSD. Show friendly ratio labels and names for the selected
+common formats; show `Unknown` for other detected ratios.
 
 ## User story
 
@@ -16,21 +16,23 @@ understand what shape of picture VP is detecting.
 
 1. Add `Aspect ratio` and `Name` values to the existing right-side Ctrl+I OSD
    when VP Renderer is active. Show them only on that VP Renderer OSD. Use the
-   authoritative current detection result; do not add a new detector, crop
-   policy, or aspect-ratio override.
-2. Use these requested known mappings:
+authoritative current detection result; do not add a new detector, crop policy,
+or aspect-ratio override.
+2. Use these known mappings:
    - Detected `1.33:1`: display ratio `4:3`; name `TV`.
+   - Detected `1.66:1`: display ratio `1.66:1`; name `European widescreen`.
    - Detected `1.78:1`: display ratio `16:9`; name `HDTV`.
+   - Detected `1.85:1`: display ratio `1.85:1`; name `Flat`.
+   - Detected `1.90:1`: display ratio `1.90:1`; name `Digital IMAX`.
+   - Detected `2.39:1`: display ratio `2.39:1`; name `Scope`.
    - Detected `2.40:1`: display ratio `2.40:1`; name `Scope`.
 3. For any other valid detected ratio, display its measured ratio in normalized
-   `width:height` form (for example `1.85:1`) and set the name to `Unknown`.
-   Do not apply unrequested names such as Academy, Flat, IMAX, or CinemaScope.
+   `width:height` form (for example `1.37:1`) and set the name to `Unknown`.
    Keep the ratio visible even when its name is `Unknown`.
-4. Define and test a matching tolerance around each of the three named ratios.
-   Match against the precise detected value rather than the formatted string.
-   Keep 1.33:1 and 1.78:1 distinct and avoid absorbing nearby unnamed formats
-   into a named range. Treat 2.39:1 and 2.40:1 as separate nominal inputs when
-   validating that the Scope tolerance does not label unintended ratios.
+4. Define and test a matching tolerance around each named ratio. Match against
+   the precise detected value rather than the formatted string. Keep nearby
+   named and unnamed formats distinct; in particular, test 1.85:1 vs. 1.90:1
+   and both 2.39:1 and 2.40:1 Scope mappings.
 5. If no valid aspect ratio is available, use the existing OSD unavailable
    value for the ratio and show `Unknown` for the name. Do not fabricate a
    measurement.
@@ -44,11 +46,11 @@ understand what shape of picture VP is detecting.
 
 ## Acceptance criteria
 
-1. Tests verify `1.33:1` displays `4:3` / `TV`, `1.78:1` displays `16:9` /
-   `HDTV`, and `2.40:1` displays `2.40:1` / `Scope`.
-2. Other representative ratios, including 1.37:1, 1.66:1, 1.85:1, 1.90:1,
-   2.00:1, 2.20:1, 2.35:1, and 2.39:1, retain a numeric ratio and show
-   `Unknown` as the name.
+1. Tests verify all seven named mappings and the exact ratio/name text shown in
+   the OSD.
+2. Other representative ratios, including 1.37:1, 1.43:1, 2.00:1, 2.20:1,
+   2.33:1, 2.35:1, and 2.76:1, retain a numeric ratio and show `Unknown` as the
+   name unless the operator later requests additional labels.
 3. Tests cover each named ratio's tolerance boundaries, invalid or unavailable
    measurements, numeric formatting, and ratio changes while the OSD is open.
    Matching uses the measured value, not the rounded display string.
