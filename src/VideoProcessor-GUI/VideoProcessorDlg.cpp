@@ -15838,12 +15838,24 @@ void CVideoProcessorDlg::UpdateStatsOverlay()
 
 	if (const auto profileSnapshot = m_profileRuntime.GetSnapshot())
 	{
-		stats.viewport.Format(TEXT("%S (%S, %S)"),
-			profileSnapshot->viewport.profile.c_str(),
-			profileSnapshot->viewport.hasScreenAspect ?
-				profileSnapshot->viewport.screenAspect.Canonical().c_str() :
-				"renderer native",
-			profileSnapshot->viewport.verticalAlignment.c_str());
+		const auto& viewport = profileSnapshot->viewport;
+		const std::string& profileName = viewport.profileLabel.empty() ?
+			viewport.profile : viewport.profileLabel;
+		if (viewport.hasScreenAspect)
+		{
+			stats.viewport.Format(TEXT("%S (%S)"), profileName.c_str(),
+				viewport.screenAspectInput.c_str());
+			const auto known = AspectRatioOsd::Classify(viewport.screenAspect.value);
+			if (known.target >= 0)
+			{
+				stats.viewport += TEXT(" [");
+				stats.viewport += known.name.c_str();
+				stats.viewport += TEXT("]");
+			}
+		}
+		else
+			stats.viewport.Format(TEXT("%S (renderer native)"),
+				profileName.c_str());
 	}
 	else
 	{

@@ -198,10 +198,12 @@ namespace RendererProfileConfig
 	{
 		std::string group = "viewport";
 		std::string profile = "default";
+		std::string profileLabel;
 		// Zoom is independently selectable from physical screen geometry.
 		// Keeping both names makes diagnostics and OSD state unambiguous.
 		std::string zoomProfile = "default";
 		AspectRatio screenAspect{ 16, 9, 16.0 / 9.0 };
+		std::string screenAspectInput;
 		bool hasScreenAspect = false;
 		std::string verticalAlignment = "center";
 		int screenEdgePadding = 0;
@@ -2197,6 +2199,7 @@ namespace RendererProfileConfig
 			return false;
 		}
 		viewport.profile = profile->second.name;
+		viewport.profileLabel = profile->second.label;
 		const auto& settings = profile->second.settings;
 		auto value = settings.find("screen_aspect");
 		if (value != settings.end())
@@ -2209,6 +2212,7 @@ namespace RendererProfileConfig
 				return false;
 			}
 			viewport.hasScreenAspect = true;
+			viewport.screenAspectInput = AspectRatioParser::Trim(value->second);
 		}
 		value = settings.find("vertical_alignment");
 		if (value != settings.end())
