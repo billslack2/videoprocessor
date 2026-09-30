@@ -754,6 +754,22 @@ void testEveryPageRoundTrips()
     selectData(requireControl<QComboBox>(window,
         QStringLiteral("config.vprenderer.viewport.vertical_alignment")),
         QStringLiteral("bottom"));
+    QComboBox* pictureAlignment = requireControl<QComboBox>(window,
+        QStringLiteral("config.vprenderer.viewport.vertical_alignment"));
+    QLineEdit* screenPadding = requireControl<QLineEdit>(window,
+        QStringLiteral("config.vprenderer.viewport.screen_edge_padding"));
+    require(screenPadding->isEnabled(), "Bottom alignment disabled screen padding");
+    require(requireControl<QLabel>(window,
+        QStringLiteral("config.vprenderer.viewport.screen_edge_padding.unit"))->text() ==
+        QStringLiteral("px"), "Screen padding lost its output-pixel unit");
+    screenPadding->setText(QStringLiteral("50"));
+    selectData(pictureAlignment, QStringLiteral("center"));
+    require(!screenPadding->isEnabled() && screenPadding->text() == QStringLiteral("50"),
+        "Center must disable screen padding while retaining its saved value");
+    selectData(pictureAlignment, QStringLiteral("top"));
+    require(screenPadding->isEnabled() && screenPadding->text() == QStringLiteral("50"),
+        "Top must restore the retained screen padding");
+    selectData(pictureAlignment, QStringLiteral("bottom"));
     requireControl<QCheckBox>(window,
         QStringLiteral("config.vprenderer.zoom.automatic_crop"))->setCheckState(Qt::Checked);
     requireControl<QCheckBox>(window,
@@ -1095,7 +1111,7 @@ void testEveryPageRoundTrips()
         "fullscreen_monitor_name: Test Display", "container_colorspace: BT2020",
         "queue_size: 48", "lead_frames: 3", "reset_queue_too_large_percent: 200",
         "shortcut: Ctrl+Q", "quality: balanced", "sdr_target_nits: 220", "tone_mapping: spline",
-        "screen_aspect: 21:10", "vertical_alignment: bottom", "anamorphic_scale: 4:3",
+        "screen_aspect: 21:10", "vertical_alignment: bottom", "screen_edge_padding: 50", "anamorphic_scale: 4:3",
         "automatic_crop: true",
         "crop_narrower_content_to_fill_screen: true",
         "crop_narrower_content_aspect_limit: 2.20:1",
@@ -1155,6 +1171,9 @@ void testEveryPageRoundTrips()
     require(requireControl<QComboBox>(reloaded,
         QStringLiteral("config.vprenderer.viewport.vertical_alignment"))->currentData().toString() ==
         QStringLiteral("bottom"), "Vertical alignment did not reload");
+    require(requireControl<QLineEdit>(reloaded,
+        QStringLiteral("config.vprenderer.viewport.screen_edge_padding"))->text() ==
+        QStringLiteral("50"), "Screen padding did not round-trip");
     require(requireControl<QComboBox>(reloaded,
         QStringLiteral("config.vprenderer.input_processing.video_conversion"))->currentData().toString() ==
         QStringLiteral("V210_TO_P010"), "VP Renderer input override did not reload");
