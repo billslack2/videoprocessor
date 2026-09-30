@@ -3,8 +3,8 @@
 ## Status
 
 Backlog. Add `Aspect ratio` and `Name` values to the existing right-side VP
-Renderer Ctrl+I OSD. Show friendly ratio labels and names for the selected
-common formats; show `Unknown` for other detected ratios.
+Renderer Ctrl+I OSD. Snap measurements within 1% of a supported common ratio;
+show `Unknown` for values that do not match a supported ratio.
 
 ## User story
 
@@ -16,23 +16,28 @@ understand what shape of picture VP is detecting.
 
 1. Add `Aspect ratio` and `Name` values to the existing right-side Ctrl+I OSD
    when VP Renderer is active. Show them only on that VP Renderer OSD. Use the
-   authoritative current detection result; do not add a new detector, crop policy,
-   or aspect-ratio override.
-2. Use these known mappings:
-   - Detected `1.33:1`: display ratio `4:3`; name `TV`.
-   - Detected `1.66:1`: display ratio `1.66:1`; name `European widescreen`.
-   - Detected `1.78:1`: display ratio `16:9`; name `HDTV`.
-   - Detected `1.85:1`: display ratio `1.85:1`; name `Flat`.
-   - Detected `1.90:1`: display ratio `1.90:1`; name `Digital IMAX`.
-   - Detected `2.39:1`: display ratio `2.39:1`; name `Scope`.
-   - Detected `2.40:1`: display ratio `2.40:1`; name `Scope`.
-3. For any other valid detected ratio, display its measured ratio in normalized
+   authoritative current detection result; do not add a new detector, crop
+   policy, or aspect-ratio override.
+2. Use these known ratio mappings:
+   - `1.33:1` snaps to displayed ratio `4:3`; name `TV`.
+   - `1.66:1` snaps to displayed ratio `1.66:1`; name `European widescreen`.
+   - `1.78:1` snaps to displayed ratio `16:9`; name `HDTV`.
+   - `1.85:1` snaps to displayed ratio `1.85:1`; name `Flat`.
+   - `1.90:1` snaps to displayed ratio `1.90:1`; name `Digital IMAX`.
+   - `2.39:1` snaps to displayed ratio `2.39:1`; name `Scope`.
+   - `2.40:1` snaps to displayed ratio `2.40:1`; name `Scope`.
+3. For each supported ratio, snap the detected value when the relative
+   difference `|detected - target| / target` is 1% or less, inclusive. Targets
+   are the exact values `4/3`, `1.66`, `16/9`, `1.85`, `1.90`, `2.39`, and
+   `2.40`. If the value is within 1% of multiple targets, choose the closest by
+   relative difference; use the lower target as a deterministic tie-break.
+   Display the chosen canonical ratio/alias and name. The 2.39:1 and 2.40:1
+   targets are both supported and must resolve independently to the closest
+   target.
+4. If no supported target is within 1%, display the measured ratio in normalized
    `width:height` form (for example `1.37:1`) and set the name to `Unknown`.
-   Keep the ratio visible even when its name is `Unknown`.
-4. Define and test a matching tolerance around each named ratio. Match against
-   the precise detected value rather than the formatted string. Keep nearby
-   named and unnamed formats distinct; in particular, test 1.85:1 vs. 1.90:1
-   and both 2.39:1 and 2.40:1 Scope mappings.
+   Do not apply an unlisted label. Keep the measured ratio visible with
+   sufficient precision when no snap applies.
 5. If no valid aspect ratio is available, use the existing OSD unavailable
    value for the ratio and show `Unknown` for the name. Do not fabricate a
    measurement.
@@ -48,16 +53,22 @@ understand what shape of picture VP is detecting.
 
 1. Tests verify all seven named mappings and the exact ratio/name text shown in
    the OSD.
-2. Other representative ratios, including 1.37:1, 1.43:1, 2.00:1, 2.20:1,
+2. For each supported target, tests cover measurements below, exactly at, and
+   above the 1% relative-difference boundary. Inputs within range snap to the
+   closest target; inputs outside all ranges retain their measured ratio and
+   show `Unknown`.
+3. Tests cover values between 2.39:1 and 2.40:1, including overlapping match
+   ranges, nearest-target selection, and the deterministic tie-break.
+4. Other representative ratios, including 1.37:1, 1.43:1, 2.00:1, 2.20:1,
    2.33:1, 2.35:1, and 2.76:1, retain a numeric ratio and show `Unknown` as the
-   name unless the operator later requests additional labels.
-3. Tests cover each named ratio's tolerance boundaries, invalid or unavailable
-   measurements, numeric formatting, and ratio changes while the OSD is open.
-   Matching uses the measured value, not the rounded display string.
-4. Existing VP Renderer Ctrl+I content, toggling, rendering path, and layout
+   name.
+5. Tests cover invalid or unavailable measurements, numeric formatting, and
+   ratio changes while the OSD is open. Matching uses the measured value, not
+   the rounded display string.
+6. Existing VP Renderer Ctrl+I content, toggling, rendering path, and layout
    remain intact. Verify both values fit in the right-side panel and other
    renderer OSDs plus the Ctrl+Alt+I profile overlay remain unchanged.
-5. Relevant tests and a successful x64 Release build pass. Record any remaining
+7. Relevant tests and a successful x64 Release build pass. Record any remaining
    live OSD validation before moving the story to Review.
 
 ## Related context
