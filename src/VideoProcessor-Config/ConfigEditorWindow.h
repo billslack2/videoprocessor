@@ -20,6 +20,7 @@ class QHideEvent;
 class QLineEdit;
 class QListWidget;
 class QMenu;
+class QProgressBar;
 class QPushButton;
 class QRect;
 class QStackedWidget;
@@ -60,6 +61,8 @@ public:
     void reveal();
     void setTargetRefresh(std::function<void()> refresh);
     void setDiscoveredTargets(const QList<Target>& targets);
+    bool awaitingTarget() const { return noTarget_; }
+    void finishInitialTargetSearch();
     void refreshMonitorDiscovery();
     void setActiveProfileStatusForTesting(const QString& queue,
         const QString& renderer, const QString& color, const QString& viewport,
@@ -177,6 +180,7 @@ private:
     QString currentInstanceId_;
     quint16 remotePort_ = 41686;
     bool noTarget_ = false;
+    bool initialSearchPending_ = false;
     QString remoteLoadError_;
     QStringList remoteLuts_;
     std::unique_ptr<ConfigurationRpcClient> remoteClient_;
@@ -184,6 +188,9 @@ private:
     QList<Target> discoveredTargets_;
     QList<Target> targetChoices_;
     QComboBox* targetChoice_ = nullptr;
+    QLabel* targetSearchTitle_ = nullptr;
+    QLabel* targetSearchHelp_ = nullptr;
+    QProgressBar* targetSearchProgress_ = nullptr;
     QAction* trayOpenAction_ = nullptr;
     QMenu* targetsMenu_ = nullptr;
     QString lastAutoAttemptKey_;

@@ -42,10 +42,12 @@
 #include <QListView>
 #include <QMessageBox>
 #include <QPlainTextEdit>
+#include <QProgressBar>
 #include <QPushButton>
 #include <QRect>
 #include <QScrollArea>
 #include <QScrollBar>
+#include <QSettings>
 #include <QShortcut>
 #include <QSpinBox>
 #include <QStandardItemModel>
@@ -5902,11 +5904,17 @@ void testTargetDropdownRefreshesInline()
     window.setDiscoveredTargets(discovered);
     auto* choice = requireControl<QComboBox>(window, "config.targetChoice");
     auto* refresh = requireControl<QToolButton>(window, "config.refreshTargets");
+    auto* caption = requireControl<QLabel>(window, "configTargetCaption");
     require(choice->currentText() == QStringLiteral("LOCAL") &&
         choice->count() == 4 &&
         choice->itemText(1).startsWith(QStringLiteral("STUDY")) &&
         choice->itemText(2).startsWith(QStringLiteral("DEN")),
         "Discovered targets were not offered in the header dropdown");
+    require(caption->text() == QStringLiteral("Configure VP:") &&
+        choice->property("targetSelector").toBool() &&
+        refresh->property("targetRefresh").toBool() &&
+        !refresh->icon().isNull(),
+        "The compact target label or styled refresh control is missing");
     require(refresh->toolTip().contains(QStringLiteral("Refresh")) &&
         scans == 0, "Target refresh ran before the user requested it");
     discovered.removeLast();
@@ -5935,14 +5943,34 @@ void testNoTargetStartupIsQuiet()
     ConfigEditorWindow window(copyFixture(directory), 0, true, {}, {},
         {}, 41686, {}, true);
     auto* choice = requireControl<QComboBox>(window, "config.targetChoice");
-    require(choice->currentText() == QStringLiteral("No target") &&
+    auto* title = requireControl<QLabel>(window, "config.targetSearchTitle");
+    auto* progress = requireControl<QProgressBar>(window, "configTargetSearchProgress");
+    require(choice->currentText() == QStringLiteral("Searching…") &&
+        title->text() == QStringLiteral("Looking for VideoProcessor…") &&
+        progress->minimum() == 0 && progress->maximum() == 0 &&
+        !progress->isHidden() &&
         !requireControl<QPushButton>(window, "applyConfiguration")->isEnabled() &&
         !requireControl<QPushButton>(window, "okConfiguration")->isEnabled() &&
         QApplication::activeModalWidget() == nullptr,
         "No-target startup opened a prompt or allowed configuration writes");
+    const QString captures = qEnvironmentVariable("VP_CONFIG_REVIEW_IMAGES");
+    if (!captures.isEmpty())
+    {
+        window.show();
+        QApplication::processEvents();
+        window.grab().save(QDir(captures).filePath(
+            QStringLiteral("target-search-loading.png")));
+        window.hide();
+    }
     window.setDiscoveredTargets({});
+    require(choice->currentText() == QStringLiteral("Searching…"),
+        "An empty first scan hid the loading state");
+    window.finishInitialTargetSearch();
     require(choice->currentText() == QStringLiteral("No target"),
-        "Empty LAN discovery changed the target unexpectedly");
+        "The completed search did not show a quiet no-target state");
+    require(title->text() == QStringLiteral("No VideoProcessor found") &&
+        progress->isHidden(),
+        "The search progress stayed visible after the initial search");
 }
 
 void testOfflineFileStillOffersTargets()
@@ -5965,6 +5993,41 @@ void testOfflineFileStillOffersTargets()
     refresh->click();
     require(scans == 1 && QApplication::activeModalWidget() == nullptr,
         "Offline file mode did not refresh targets inline");
+}
+
+void testStaleRememberedTargetFallsBackToLocal()
+{
+    QSettings settings;
+    const QString key = QStringLiteral("configRpc/selectedInstanceId");
+    const bool hadPrevious = settings.contains(key);
+    const QVariant previous = settings.value(key);
+    const auto restore = [&]
+    {
+        if (hadPrevious) settings.setValue(key, previous);
+        else settings.remove(key);
+        settings.sync();
+    };
+    settings.setValue(key, QStringLiteral("old-computer-no-longer-on-lan"));
+    settings.sync();
+    try
+    {
+        QTemporaryDir directory;
+        ConfigEditorWindow window(copyFixture(directory), 0, true, {}, {},
+            {}, 41686, {}, true);
+        window.setDiscoveredTargets({
+            { QStringLiteral("local-installation"), QStringLiteral("LOCAL"),
+                QStringLiteral("127.0.0.1"), 1 }
+        });
+        require(requireControl<QLabel>(window, "configurationStatus")->text()
+                .contains(QStringLiteral("Could not connect")),
+            "A missing remembered target prevented an attempt to connect to LOCAL");
+    }
+    catch (...)
+    {
+        restore();
+        throw;
+    }
+    restore();
 }
 
 int run(const char* name, const std::function<void()>& test)
@@ -6094,6 +6157,8 @@ int main(int argc, char** argv)
     failures += run("target dropdown refreshes inline", testTargetDropdownRefreshesInline);
     failures += run("no-target startup is quiet", testNoTargetStartupIsQuiet);
     failures += run("offline file still offers targets", testOfflineFileStillOffersTargets);
+    failures += run("stale remembered target falls back to local",
+        testStaleRememberedTargetFallsBackToLocal);
     failures += run("DirectShow-only effect does not restart Alpha",
         testDirectShowOnlyEffectDoesNotRestartAlpha);
     failures += run("invalid renderer is rejected continuously",

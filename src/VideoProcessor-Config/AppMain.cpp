@@ -48,24 +48,35 @@ class LanTargetWatcher final : public QObject
 		connect(&settle_, &QTimer::timeout, this, [this]
 		{
 			scanning_ = false;
-			if (results_) results_(found_);
+			const bool stillLooking = results_ && results_(found_);
+			if (rescanRequested_)
+			{
+				rescanRequested_ = false;
+				QTimer::singleShot(0, this, [this] { scan(); });
+			}
+			else periodic_.start(stillLooking ? 1500 : 15000);
 		});
-		periodic_.setInterval(15000);
+		periodic_.setSingleShot(true);
 		connect(&periodic_, &QTimer::timeout, this, [this] { scan(); });
-		periodic_.start();
 	}
-	void setResultsHandler(std::function<void(const QList<FoundTarget>&)> handler)
+	void setResultsHandler(std::function<bool(const QList<FoundTarget>&)> handler)
 	{
 		results_ = std::move(handler);
 	}
 	void scan()
 	{
 		using namespace ConfigurationRpcProtocol;
-		if (scanning_) return;
+		if (scanning_)
+		{
+			rescanRequested_ = true;
+			return;
+		}
+		periodic_.stop();
 		if (socket_.state() != QAbstractSocket::BoundState &&
 			!socket_.bind(QHostAddress::AnyIPv4, 0))
 		{
-			if (results_) results_({});
+			const bool stillLooking = results_ && results_({});
+			periodic_.start(stillLooking ? 1500 : 15000);
 			return;
 		}
 		Frame query;
@@ -89,7 +100,7 @@ class LanTargetWatcher final : public QObject
 		for (const auto& broadcast : broadcasts)
 			socket_.writeDatagram(reinterpret_cast<const char*>(bytes.data()),
 				static_cast<qint64>(bytes.size()), broadcast, 41687);
-		settle_.start(1800);
+		settle_.start(600);
 	}
 	private:
 	void readReplies()
@@ -128,14 +139,18 @@ class LanTargetWatcher final : public QObject
 			}
 			if (!duplicate && found_.size() < 10)
 				found_.push_back(candidate);
+			// Loopback identifies the VP on this computer. Offer it as soon as
+			// it answers instead of waiting for the LAN collection interval.
+			if (local && results_) results_(found_);
 		}
 	}
 	QUdpSocket socket_;
 	QTimer settle_;
 	QTimer periodic_;
 	QList<FoundTarget> found_;
-	std::function<void(const QList<FoundTarget>&)> results_;
+	std::function<bool(const QList<FoundTarget>&)> results_;
 	bool scanning_ = false;
+	bool rescanRequested_ = false;
 };
 
 bool parseTargetAddress(const QString& value, QString& host, quint16& port)
@@ -387,10 +402,14 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
 				choices.push_back({ target.instanceId, target.label,
 					target.address, target.port, target.vpVersion });
 			window.setDiscoveredTargets(choices);
+			return window.awaitingTarget();
 		});
 		window.setTargetRefresh([watcherPtr] { watcherPtr->scan(); });
 		QTimer::singleShot(0, watcherPtr, [watcherPtr] { watcherPtr->scan(); });
 	}
+	if (noTarget)
+		QTimer::singleShot(5000, &window,
+			[&window] { window.finishInitialTargetSearch(); });
     std::unique_ptr<QWinEventNotifier> activationNotifier;
     if (activationEvent)
     {

@@ -45,6 +45,7 @@
 #include <QHash>
 #include <QHideEvent>
 #include <QHBoxLayout>
+#include <QIcon>
 #include <QInputDialog>
 #include <QIntValidator>
 #include <QLabel>
@@ -56,8 +57,11 @@
 #include <QMenu>
 #include <QMessageBox>
 #include <QPainter>
+#include <QPainterPath>
 #include <QPlainTextEdit>
 #include <QPointer>
+#include <QProgressBar>
+#include <QPixmap>
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QRadioButton>
@@ -97,6 +101,32 @@ namespace
 // OUTOFCONTEXT events arrive on the Qt thread that installed the hook.
 // No window ownership changes, cross-process SendMessage or recurring polling.
 std::map<HWINEVENTHOOK, std::function<void()>> configForegroundHandlers;
+
+QIcon targetRefreshIcon()
+{
+	QPixmap image(36, 36);
+	image.setDevicePixelRatio(2.0);
+	image.fill(Qt::transparent);
+	QPainter painter(&image);
+	painter.setRenderHint(QPainter::Antialiasing, true);
+	painter.scale(0.75, 0.75);
+	painter.setPen(QPen(QColor(QStringLiteral("#91c7e9")), 2.0,
+		Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+	QPainterPath curves;
+	curves.moveTo(3, 11);
+	curves.cubicTo(3.5, 6.4, 7.3, 3, 12, 3);
+	curves.cubicTo(15.5, 3, 18.4, 4.6, 20, 7);
+	curves.moveTo(21, 13);
+	curves.cubicTo(20.5, 17.6, 16.7, 21, 12, 21);
+	curves.cubicTo(8.5, 21, 5.6, 19.4, 4, 17);
+	painter.drawPath(curves);
+	painter.drawPolyline(QPolygonF{ QPointF(16, 7), QPointF(20, 7),
+		QPointF(20, 3) });
+	painter.drawPolyline(QPolygonF{ QPointF(8, 17), QPointF(4, 17),
+		QPointF(4, 21) });
+	return QIcon(image);
+}
+
 void CALLBACK configForegroundChanged(HWINEVENTHOOK hook, DWORD, HWND,
     LONG, LONG, DWORD, DWORD)
 {
@@ -913,7 +943,7 @@ ConfigEditorWindow::ConfigEditorWindow(QString configPath, quintptr ownerHandle,
     const QStringList& testAllRenderers, const QString& remoteHost,
     quint16 remotePort, const QString& remoteName, bool noTarget)
     : configPath_(std::move(configPath)), ownerHandle_(ownerHandle),
-      noTarget_(noTarget), testMode_(testMode),
+      noTarget_(noTarget), initialSearchPending_(noTarget), testMode_(testMode),
       document_(std::make_unique<ConfigEditorCore::ConfigDocument>())
 {
 	remoteHost_ = remoteHost;
@@ -1065,8 +1095,37 @@ void ConfigEditorWindow::setTargetRefresh(std::function<void()> refresh)
 	targetRefresh_ = std::move(refresh);
 }
 
+void ConfigEditorWindow::finishInitialTargetSearch()
+{
+	if (!initialSearchPending_) return;
+	initialSearchPending_ = false;
+	if (!noTarget_) return;
+	if (targetSearchTitle_)
+		targetSearchTitle_->setText(QStringLiteral("No VideoProcessor found"));
+	if (targetSearchHelp_)
+		targetSearchHelp_->setText(QStringLiteral(
+			"Start VideoProcessor on this computer or another computer on the same LAN. "
+			"Available targets will appear automatically in the dropdown and tray menu."));
+	if (targetSearchProgress_) targetSearchProgress_->hide();
+	populateTargetChoices();
+	setStatus(QStringLiteral("No target is available. Checking this computer and LAN regularly."));
+}
+
 void ConfigEditorWindow::refreshTargetChoices()
 {
+	if (noTarget_)
+	{
+		initialSearchPending_ = true;
+		if (targetSearchTitle_)
+			targetSearchTitle_->setText(QStringLiteral("Looking for VideoProcessor…"));
+		if (targetSearchHelp_)
+			targetSearchHelp_->setText(QStringLiteral(
+				"Checking this computer first, then other VideoProcessors on your LAN."));
+		if (targetSearchProgress_) targetSearchProgress_->show();
+		populateTargetChoices();
+		QTimer::singleShot(5000, this,
+			[this] { finishInitialTargetSearch(); });
+	}
 	if (targetRefresh_) targetRefresh_();
 	if (noTarget_)
 		setStatus(QStringLiteral("Searching for VideoProcessor targets on this LAN."));
@@ -1091,20 +1150,20 @@ void ConfigEditorWindow::setDiscoveredTargets(const QList<Target>& targets)
 				break;
 			}
 	}
-	else if (discoveredTargets_.size() == 1)
-		preferred = &discoveredTargets_.front();
-	else
+	if (!preferred)
 		for (const auto& target : discoveredTargets_)
 			if (target.host == QStringLiteral("127.0.0.1"))
 			{
 				preferred = &target;
 				break;
 			}
+	if (!preferred && discoveredTargets_.size() == 1)
+		preferred = &discoveredTargets_.front();
 	if (!preferred) return;
 	const QString key = preferred->instanceId + u'|' + preferred->vpVersion +
 		u'|' + preferred->host + u'|' + QString::number(preferred->port);
 	const qint64 now = QDateTime::currentMSecsSinceEpoch();
-	if (key == lastAutoAttemptKey_ && now - lastAutoAttemptMs_ < 30000) return;
+	if (key == lastAutoAttemptKey_ && now - lastAutoAttemptMs_ < 3000) return;
 	lastAutoAttemptKey_ = key;
 	lastAutoAttemptMs_ = now;
 	selectAnotherTarget(*preferred);
@@ -1117,7 +1176,8 @@ void ConfigEditorWindow::populateTargetChoices()
 	targetChoice_->clear();
 	targetChoices_.clear();
 	targetChoices_.push_back({ currentInstanceId_,
-		noTarget_ ? QStringLiteral("No target") : remoteClient_ ?
+		noTarget_ ? (initialSearchPending_ ? QStringLiteral("Searching…") :
+			QStringLiteral("No target")) : remoteClient_ ?
 		remoteName_ : QStringLiteral("Offline file"),
 		remoteHost_, remotePort_, {} });
 	for (const auto& target : discoveredTargets_)
@@ -1205,14 +1265,6 @@ bool ConfigEditorWindow::selectAnotherTarget(const Target& target)
 	}
 	auto replacement = std::make_unique<ConfigurationRpcClient>(
 		target.host.toStdString(), target.port);
-	std::string path, bytes, error;
-	ConfigurationRpcClient::Capabilities capabilities;
-	if (!replacement->GetConfig(path, bytes, error) ||
-		!replacement->GetCapabilities(capabilities, error))
-	{
-		setStatus(QString::fromUtf8(error), true);
-		return false;
-	}
 	const QString previousHost = remoteHost_;
 	const QString previousName = remoteName_;
 	const QString previousInstanceId = currentInstanceId_;
@@ -3370,6 +3422,9 @@ QWidget* ConfigEditorWindow::createShell()
     rendererShortcutForm_ = nullptr;
     actionRendererTarget_ = nullptr;
     targetChoice_ = nullptr;
+	targetSearchTitle_ = nullptr;
+	targetSearchHelp_ = nullptr;
+	targetSearchProgress_ = nullptr;
     applyButton_ = nullptr;
     saveButton_ = nullptr;
     configurationHost_ = nullptr;
@@ -3408,11 +3463,19 @@ QWidget* ConfigEditorWindow::createShell()
     headerLayout->addStretch();
 	// Every launch mode can move from its current source to a discovered VP.
 	{
+		auto* caption = new QLabel(QStringLiteral("Configure VP:"));
+		caption->setObjectName(QStringLiteral("configTargetCaption"));
+		caption->setToolTip(QStringLiteral(
+			"Choose which VideoProcessor this window configures."));
+		headerLayout->addWidget(caption);
 		targetChoice_ = new QComboBox;
 		targetChoice_->setObjectName(QStringLiteral("config.targetChoice"));
+		targetChoice_->setProperty("targetSelector", true);
 		targetChoice_->setAccessibleName(QStringLiteral("VideoProcessor target"));
-		targetChoice_->setToolTip(QStringLiteral("VideoProcessor to configure"));
-		targetChoice_->setFixedWidth(230);
+		targetChoice_->setToolTip(QStringLiteral(
+			"Select the VideoProcessor whose settings you want to edit."));
+		targetChoice_->setFixedWidth(208);
+		caption->setBuddy(targetChoice_);
 		populateTargetChoices();
 		connect(targetChoice_, qOverload<int>(&QComboBox::activated), this,
 			[this](int index)
@@ -3429,11 +3492,12 @@ QWidget* ConfigEditorWindow::createShell()
 		headerLayout->addWidget(targetChoice_);
 		auto* refresh = new QToolButton;
 		refresh->setObjectName(QStringLiteral("config.refreshTargets"));
-		refresh->setIcon(style()->standardIcon(QStyle::SP_BrowserReload));
-		refresh->setIconSize(QSize(17, 17));
+		refresh->setProperty("targetRefresh", true);
+		refresh->setIcon(targetRefreshIcon());
+		refresh->setIconSize(QSize(18, 18));
 		refresh->setAccessibleName(QStringLiteral("Refresh targets"));
-		refresh->setToolTip(QStringLiteral("Refresh available VideoProcessors"));
-		refresh->setFixedSize(34, 32);
+		refresh->setToolTip(QStringLiteral("Refresh targets"));
+		refresh->setFixedSize(31, 31);
 		connect(refresh, &QToolButton::clicked, this,
 			[this] { refreshTargetChoices(); });
 		headerLayout->addWidget(refresh);
@@ -3603,14 +3667,22 @@ QWidget* ConfigEditorWindow::createShell()
 		auto* emptyLayout = new QVBoxLayout(emptyState);
 		emptyLayout->setContentsMargins(24, 24, 24, 24);
 		emptyLayout->addStretch();
-		auto* emptyTitle = new QLabel(QStringLiteral("No VideoProcessor found"));
+		auto* emptyTitle = new QLabel(initialSearchPending_ ?
+			QStringLiteral("Looking for VideoProcessor…") :
+			QStringLiteral("No VideoProcessor found"));
+		emptyTitle->setObjectName(QStringLiteral("config.targetSearchTitle"));
+		targetSearchTitle_ = emptyTitle;
 		emptyTitle->setStyleSheet(QStringLiteral(
 			"font-size: 22px; font-weight: 600; color: #f5f8ff;"));
 		emptyTitle->setAlignment(Qt::AlignCenter);
 		emptyLayout->addWidget(emptyTitle);
-		auto* help = new QLabel(QStringLiteral(
+		auto* help = new QLabel(initialSearchPending_ ? QStringLiteral(
+			"Checking this computer first, then other VideoProcessors on your LAN.") :
+			QStringLiteral(
 			"Start VideoProcessor on this computer or another computer on the same LAN. "
 			"Available targets will appear automatically in the dropdown and tray menu."));
+		help->setObjectName(QStringLiteral("config.targetSearchHelp"));
+		targetSearchHelp_ = help;
 		help->setWordWrap(true);
 		help->setAlignment(Qt::AlignCenter);
 		help->setFixedWidth(560);
@@ -3618,6 +3690,14 @@ QWidget* ConfigEditorWindow::createShell()
 		help->setStyleSheet(QStringLiteral(
 			"font-size: 14px; color: #a8bad0;"));
 		emptyLayout->addWidget(help, 0, Qt::AlignHCenter);
+		auto* progress = new QProgressBar(emptyState);
+		progress->setObjectName(QStringLiteral("configTargetSearchProgress"));
+		progress->setRange(0, 0);
+		progress->setTextVisible(false);
+		progress->setFixedSize(220, 5);
+		progress->setVisible(initialSearchPending_);
+		targetSearchProgress_ = progress;
+		emptyLayout->addWidget(progress, 0, Qt::AlignHCenter);
 		emptyLayout->addStretch();
 		rootLayout->addWidget(emptyState, 1);
 	}

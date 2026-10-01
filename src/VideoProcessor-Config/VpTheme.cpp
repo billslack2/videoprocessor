@@ -128,6 +128,36 @@ QString VpTheme::StyleSheet()
             border-bottom: 1px solid #233447;
         }
         #brandTitle { color: #f6f9fc; font-size: 20px; font-weight: 700; }
+        QLabel#configTargetCaption {
+            color: #9bb5c8;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        QComboBox[targetSelector="true"] {
+            font-size: 11px;
+            min-height: 25px;
+        }
+        QToolButton[targetRefresh="true"] {
+            background: #101d2a;
+            border: 1px solid #2d475f;
+            border-radius: 5px;
+            padding: 0;
+        }
+        QToolButton[targetRefresh="true"]:hover {
+            background: #16293a;
+            border-color: #4b89b4;
+        }
+        QToolButton[targetRefresh="true"]:pressed { background: #0c1824; }
+        QToolButton[targetRefresh="true"]:focus { border-color: #3a9de8; }
+        QProgressBar#configTargetSearchProgress {
+            background: #142434;
+            border: 0;
+            border-radius: 2px;
+        }
+        QProgressBar#configTargetSearchProgress::chunk {
+            background: #49b6ff;
+            border-radius: 2px;
+        }
         #brandSubtitle {
             color: #93a9bd;
             background: #101d2a;
