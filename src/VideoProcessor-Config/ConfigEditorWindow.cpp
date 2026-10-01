@@ -140,7 +140,7 @@ QIcon targetRefreshIcon()
 	return QIcon(image);
 }
 
-void CALLBACK configForegroundChanged(HWINEVENTHOOK hook, DWORD, HWND,
+void CALLBACK configWindowOrderChanged(HWINEVENTHOOK hook, DWORD, HWND,
     LONG, LONG, DWORD, DWORD)
 {
     const auto found = configForegroundHandlers.find(hook);
@@ -1067,11 +1067,24 @@ ConfigEditorWindow::ConfigEditorWindow(QString configPath, quintptr ownerHandle,
 
     const HWINEVENTHOOK foregroundHook = SetWinEventHook(
         EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND, nullptr,
-        configForegroundChanged, 0, 0, WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
+        configWindowOrderChanged, 0, 0, WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
     foregroundEventHook_ = foregroundHook;
     if (foregroundHook)
         configForegroundHandlers.emplace(foregroundHook,
-            [this] { repairOrderAboveVideoProcessor(); });
+            [this] { repairOrderAboveVideoProcessor(true); });
+    if (ownerProcessId_)
+    {
+        // VP can raise a topmost fullscreen window without acquiring the
+        // foreground, so a foreground-only hook misses that z-order change.
+        const HWINEVENTHOOK orderHook = SetWinEventHook(
+            EVENT_OBJECT_REORDER, EVENT_OBJECT_REORDER, nullptr,
+            configWindowOrderChanged, ownerProcessId_, 0,
+            WINEVENT_OUTOFCONTEXT);
+        ownerOrderEventHook_ = orderHook;
+        if (orderHook)
+            configForegroundHandlers.emplace(orderHook,
+                [this] { repairOrderAboveVideoProcessor(false); });
+    }
 
     if (ownerHandle_)
     {
@@ -1089,6 +1102,12 @@ ConfigEditorWindow::~ConfigEditorWindow()
     if (foregroundEventHook_)
     {
         const auto hook = static_cast<HWINEVENTHOOK>(foregroundEventHook_);
+        configForegroundHandlers.erase(hook);
+        UnhookWinEvent(hook);
+    }
+    if (ownerOrderEventHook_)
+    {
+        const auto hook = static_cast<HWINEVENTHOOK>(ownerOrderEventHook_);
         configForegroundHandlers.erase(hook);
         UnhookWinEvent(hook);
     }
@@ -3375,30 +3394,33 @@ void ConfigEditorWindow::positionForReveal()
         SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
 }
 
-void ConfigEditorWindow::repairOrderAboveVideoProcessor()
+void ConfigEditorWindow::repairOrderAboveVideoProcessor(
+    bool requireOwnerForeground)
 {
     if (foregroundRepairQueued_ || !isVisible() || isMinimized() || !nativeOwnerIsValid())
         return;
     DWORD foregroundProcess = 0;
     const HWND foreground = GetForegroundWindow();
     if (foreground) GetWindowThreadProcessId(foreground, &foregroundProcess);
-    if (foregroundProcess != ownerProcessId_) return;
+    if (requireOwnerForeground && foregroundProcess != ownerProcessId_) return;
     foregroundRepairQueued_ = true;
-    QTimer::singleShot(0, this, [this]
+    QTimer::singleShot(0, this, [this, requireOwnerForeground]
     {
         foregroundRepairQueued_ = false;
         if (!isVisible() || isMinimized() || !nativeOwnerIsValid()) return;
         const HWND foreground = GetForegroundWindow();
         DWORD process = 0;
         if (foreground) GetWindowThreadProcessId(foreground, &process);
-        if (process != ownerProcessId_) return;
+        if (requireOwnerForeground && process != ownerProcessId_) return;
         const HWND editor = reinterpret_cast<HWND>(effectiveWinId());
         // Keep the relative order above VP, rather than merely checking the
         // WS_EX_TOPMOST bit shared by both Config and fullscreen presentation.
         for (HWND window = GetTopWindow(nullptr); window; window = GetWindow(window, GW_HWNDNEXT))
         {
             if (window == editor) return;
-            if (window == foreground)
+            DWORD windowProcess = 0;
+            GetWindowThreadProcessId(window, &windowProcess);
+            if (windowProcess == ownerProcessId_)
             {
                 pendingTopmostReassert_ = true;
                 applyScopedTopmost();
