@@ -50,6 +50,15 @@ All 36 packaged files verified after extraction, the portable EXE launched,
 and a deployed screenshot showed This computer selected immediately. A
 physical two-computer LAN and Apply/OK test remains outstanding.
 
+2026-10-01: Corrected the header target selector and refresh control to match
+the small Configure VP caption. Source commit 4ea82570 passed the focused
+selector test and an x64 Release Config build; a preview screenshot was
+reviewed. The updated Config-only portable ZIP is
+C:\Users\bslac\Documents\ChatGPT\Done\VideoProcessorConfig-VP0168-4ea825704526-x64.zip
+(SHA-256 09FC2B5EDC6DD49D5F4CAD38877C17275EED01C8A965C041D1F9C3470367F7D4).
+All 36 files verified after extraction. Local deployment awaits exit of the
+currently running Config process so pending edits are not discarded.
+
 ## User story
 
 As a VideoProcessor operator, I want the native configuration editor running
