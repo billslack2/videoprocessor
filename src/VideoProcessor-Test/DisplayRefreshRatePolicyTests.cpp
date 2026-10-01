@@ -2,6 +2,7 @@
 #include "CppUnitTest.h"
 
 #include <DisplayRefreshRatePolicy.h>
+#include <DisplayModeEnumeration.h>
 
 #include <limits>
 
@@ -39,6 +40,56 @@ namespace Tests
 		static int Reason(DisplayRefreshRateReason value)
 		{
 			return static_cast<int>(value);
+		}
+
+		TEST_METHOD(ModeInventoryRetriesGrowthAndUsesReturnedCount)
+		{
+			std::vector<int> modes;
+			unsigned attempts = 0, call = 0;
+			const HRESULT result = ReadDisplayModeList(modes, [&](UINT* count, int* data) -> HRESULT {
+				++call;
+				if (!data) { *count = call == 1 ? 1 : 3; return S_OK; }
+				if (call == 2) { *count = 3; return DXGI_ERROR_MORE_DATA; }
+				data[0] = 23976; data[1] = 24000; *count = 2; return S_OK;
+			}, attempts);
+			Assert::AreEqual(S_OK, result);
+			Assert::AreEqual(2u, attempts);
+			Assert::AreEqual(size_t(2), modes.size());
+			Assert::AreEqual(23976, modes[0]);
+			Assert::AreEqual(24000, modes[1]);
+		}
+
+		TEST_METHOD(ModeInventoryClearsPartialListWhenDisplayDisappears)
+		{
+			for (const HRESULT finalResult : { S_OK, DXGI_ERROR_NOT_FOUND })
+			{
+				std::vector<int> modes{ 60 };
+				unsigned attempts = 0, call = 0;
+				const HRESULT result = ReadDisplayModeList(modes, [&](UINT* count, int* data) -> HRESULT {
+					++call;
+					if (call == 1) { *count = 1; return S_OK; }
+					if (data) { data[0] = 24; *count = 2; return DXGI_ERROR_MORE_DATA; }
+					*count = 0; return finalResult;
+				}, attempts);
+				Assert::AreEqual(finalResult, result);
+				Assert::IsTrue(modes.empty());
+			}
+		}
+
+		TEST_METHOD(ModeInventoryBoundsRetriesAndRejectsInvalidCounts)
+		{
+			std::vector<int> modes;
+			unsigned attempts = 0;
+			Assert::AreEqual(DXGI_ERROR_MORE_DATA, ReadDisplayModeList(modes,
+				[](UINT*, int*) -> HRESULT { return DXGI_ERROR_MORE_DATA; }, attempts));
+			Assert::AreEqual(3u, attempts);
+			Assert::IsTrue(modes.empty());
+			Assert::AreEqual(E_UNEXPECTED, ReadDisplayModeList(modes,
+				[](UINT* count, int*) -> HRESULT { *count = 16385; return S_OK; }, attempts));
+			Assert::AreEqual(1u, attempts);
+			Assert::AreEqual(E_UNEXPECTED, ReadDisplayModeList(modes,
+				[](UINT* count, int* data) -> HRESULT { *count = data ? 2 : 1; return S_OK; }, attempts));
+			Assert::IsTrue(modes.empty());
 		}
 
 		TEST_METHOD(AcceptsClean23976WithoutSnappingPrecision)
