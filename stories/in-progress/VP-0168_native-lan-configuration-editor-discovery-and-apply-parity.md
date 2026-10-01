@@ -155,6 +155,24 @@ not a fully qualified public release. Clean-machine installer lifecycle
 and physical two-computer Apply/OK testing remain outstanding. Packaging
 did not install or deploy VP or edit active configuration.
 
+2026-10-01: Deployed the verified x64 Release payload from integration
+commit f0589a49c6bbc6580b58ac8e6ab5f2a78edf75da to
+C:\Videoprocessor\vp while VP and Config were stopped. Backed up all 66
+replaced files under
+C:\Videoprocessor\vp\backup-VP0168-f0589a49c6bb-20261001-152114;
+added INSTALL-MANIFEST.json. Existing seed shaders, example configuration,
+unknown files, state, and active VideoProcessor.cfg were left in place.
+VideoProcessor.cfg remained byte-identical (SHA-256
+A1F53EEDFD60FFD0898AEE9B6D5C93938363FCBF2F163CF3A1D4753E3D55D3E8).
+Deployed/build SHA-256 matches: host
+0758D681E30B02641DBE42945EC0CD933B339210358D2B47C135FD3097B4E745,
+renderer D5588EBA011435A246D5E7C4470E68B15CD1BD0C790EDBA368FC5664BA3C335E,
+Config 6D522B6FADFC989B2DE8E45B1681FEA0B49A734CE4D0FD6702117382B0712069,
+and discovery DLL
+3554084D6F1856FBD294E6583B6356DF57479ACEFB755F95938BB7941764DB25.
+All four deployed runtime records confirmed x64 Release and matching binary
+hashes. VP playback was not restarted by the deployment.
+
 ## User story
 
 As a VideoProcessor operator, I want the native configuration editor running
