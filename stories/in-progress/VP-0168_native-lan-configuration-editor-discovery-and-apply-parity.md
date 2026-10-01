@@ -56,8 +56,16 @@ selector test and an x64 Release Config build; a preview screenshot was
 reviewed. The updated Config-only portable ZIP is
 C:\Users\bslac\Documents\ChatGPT\Done\VideoProcessorConfig-VP0168-4ea825704526-x64.zip
 (SHA-256 09FC2B5EDC6DD49D5F4CAD38877C17275EED01C8A965C041D1F9C3470367F7D4).
-All 36 files verified after extraction. Local deployment awaits exit of the
-currently running Config process so pending edits are not discarded.
+All 36 files verified after extraction. After Config exited, the x64 Release
+executable and discovery DLL were deployed to C:\Videoprocessor\vp\config.
+The four replaced files were backed up under
+config\backup-VP0168-compact-20261001-124527. The active VP configuration
+file was not edited. The installed executable SHA-256 is
+25ACC59C74927F24016806DD432EF547DA50FDD6BFCC3A522AAEC80C509774EE
+and the installed discovery DLL SHA-256 is
+7EF8F82111F25080DFCAE7C2BD5C5AEE2A45BD65B71F0481EC0883EFD8DA3755.
+A launch from the deployed folder showed the compact target controls and
+This computer selected. Physical two-computer testing remains outstanding.
 
 ## User story
 
