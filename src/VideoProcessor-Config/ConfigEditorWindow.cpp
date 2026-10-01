@@ -1253,6 +1253,13 @@ void ConfigEditorWindow::populateTargetChoices()
 			Qt::ToolTipRole);
 	}
 	targetChoice_->addItem(QStringLiteral("Enter address…"));
+	// Fusion's styled popup needs an explicit viewport height to expose its
+	// final row instead of adding an overflow control over that choice.
+	auto* list = targetChoice_->view();
+	const int visibleRows = std::min(targetChoice_->count(), 12);
+	const int rowHeight = std::max(1, list->sizeHintForRow(0));
+	list->setMinimumHeight(visibleRows * rowHeight +
+		2 * list->frameWidth() + 2);
 	targetChoice_->setCurrentIndex(0);
 }
 
@@ -3537,6 +3544,8 @@ QWidget* ConfigEditorWindow::createShell()
 		targetChoice_->setToolTip(QStringLiteral(
 			"Select the VideoProcessor whose settings you want to edit."));
 		targetChoice_->setFixedSize(184, 24);
+		targetChoice_->setMaxVisibleItems(12);
+		targetChoice_->view()->setStyleSheet(QStringLiteral("padding: 0px;"));
 		caption->setBuddy(targetChoice_);
 		populateTargetChoices();
 		connect(targetChoice_, qOverload<int>(&QComboBox::activated), this,

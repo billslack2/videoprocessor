@@ -34,8 +34,9 @@ public:
         {
             const bool compact = widget->property("targetSelector").toBool();
             const int arrowWidth = compact ? 23 : 31;
-            const QRect arrowRect(widget->width() - arrowWidth, 0,
-                arrowWidth, widget->height());
+            // Keep the themed border visible along the right edge.
+            const QRect arrowRect(widget->width() - arrowWidth, 1,
+                arrowWidth - 1, widget->height() - 2);
             painter->save();
             painter->setRenderHint(QPainter::Antialiasing, true);
             painter->fillRect(arrowRect, QColor(QStringLiteral("#121e2b")));

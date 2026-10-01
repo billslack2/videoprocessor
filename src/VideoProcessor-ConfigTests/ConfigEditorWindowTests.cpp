@@ -5922,6 +5922,28 @@ void testTargetDropdownRefreshesInline()
         "Target selector and refresh control are larger than the caption");
     require(refresh->toolTip().contains(QStringLiteral("Refresh")) &&
         scans == 0, "Target refresh ran before the user requested it");
+    window.show();
+    QApplication::processEvents();
+    choice->showPopup();
+    QApplication::processEvents();
+    auto* popup = choice->view();
+    const int finalRowBottom = popup->visualRect(
+        popup->model()->index(choice->count() - 1, 0)).bottom();
+    require(popup->viewport()->height() > finalRowBottom &&
+        !popup->horizontalScrollBar()->isVisible(),
+        "The target popup clipped its final choice");
+    const QString captures = qEnvironmentVariable("VP_CONFIG_REVIEW_IMAGES");
+    if (!captures.isEmpty())
+        popup->window()->grab().save(QDir(captures).filePath(
+            QStringLiteral("target-popup-after-fix.png")));
+    choice->hidePopup();
+    choice->clearFocus();
+    QApplication::processEvents();
+    const QImage selector = choice->grab().toImage();
+    require(selector.pixel(0, selector.height() / 2) ==
+            selector.pixel(selector.width() - 1, selector.height() / 2),
+        "The target selector's right border is missing");
+    window.hide();
     discovered.removeLast();
     refresh->click();
     window.setDiscoveredTargets(discovered);
@@ -5996,6 +6018,16 @@ void testOfflineFileStillOffersTargets()
     });
     require(choice->count() == 2 && choice->currentText() == QStringLiteral("This computer"),
         "Discovery duplicated the local file target");
+    window.show();
+    QApplication::processEvents();
+    choice->showPopup();
+    QApplication::processEvents();
+    auto* popup = choice->view();
+    require(popup->viewport()->height() > popup->visualRect(
+            popup->model()->index(choice->count() - 1, 0)).bottom(),
+        "The two-choice target popup clipped Enter address");
+    choice->hidePopup();
+    window.hide();
     auto* apply = requireControl<QPushButton>(window, "applyConfiguration");
     if (apply->isEnabled()) apply->click(); // Commit fixture migrations.
     auto* fullscreen = requireControl<QCheckBox>(window,
