@@ -39,7 +39,8 @@ public:
                 arrowWidth - 1, widget->height() - 2);
             painter->save();
             painter->setRenderHint(QPainter::Antialiasing, true);
-            painter->fillRect(arrowRect, QColor(QStringLiteral("#121e2b")));
+            // The stylesheet owns the rounded background and border.
+            // Painting a rectangular arrow background cuts off its corners.
             painter->setPen(QPen(QColor(QStringLiteral("#2b4258")), 1.0));
             painter->drawLine(arrowRect.topLeft(), arrowRect.bottomLeft());
             const QPointF center = arrowRect.center();
@@ -143,6 +144,13 @@ QString VpTheme::StyleSheet()
             font-size: 11px;
             min-height: 20px;
             padding: 1px 26px 1px 7px;
+        }
+        QComboBox[targetSelector="true"]::drop-down {
+            width: 23px;
+            background: transparent;
+            border: 0;
+            border-top-right-radius: 4px;
+            border-bottom-right-radius: 4px;
         }
         QToolButton[targetRefresh="true"] {
             background: #101d2a;

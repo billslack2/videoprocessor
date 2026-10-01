@@ -5,6 +5,7 @@
 #include <QMap>
 #include <QString>
 #include <QStringList>
+#include <ConfigurationRpcClient.h>
 
 #include <map>
 #include <functional>
@@ -33,7 +34,6 @@ class QWinEventNotifier;
 class QFormLayout;
 
 namespace ConfigEditorCore { struct ConfigDocument; }
-class ConfigurationRpcClient;
 namespace ConfigEditorPlacement
 {
     QRect ClampFrameToWorkArea(const QRect& frame, const QRect& workArea);
@@ -80,6 +80,7 @@ public:
 
 protected:
     bool event(QEvent* event) override;
+    bool eventFilter(QObject* watched, QEvent* event) override;
     void closeEvent(QCloseEvent* event) override;
     void hideEvent(QHideEvent* event) override;
     void showEvent(QShowEvent* event) override;
@@ -162,6 +163,20 @@ private:
     void populateTargetChoices();
     void populateTrayTargets();
     bool selectAnotherTarget(const Target& target);
+    void beginRemoteTargetSwitch(const Target& target);
+    void beginLocalTargetSwitch(const Target& target);
+    void finishLocalTargetSwitch(const Target& target,
+        std::unique_ptr<ConfigEditorCore::ConfigDocument> document,
+        bool loaded, const QString& error, const QStringList& devices,
+        const QMap<QString, QStringList>& connections,
+        const QStringList& monitors, const QStringList& filteredRenderers,
+        const QStringList& allRenderers);
+    void finishRemoteTargetSwitch(const Target& target,
+        std::string path, std::string bytes,
+        ConfigurationRpcClient::Capabilities capabilities,
+        const QString& error);
+    void showTargetSwitchOverlay(const QString& label);
+    void hideTargetSwitchOverlay();
     void enterTargetAddress();
     void exitApplication();
     void setStatus(const QString& message, bool error = false);
@@ -193,6 +208,28 @@ private:
     QString remoteLoadError_;
     QStringList remoteLuts_;
     std::unique_ptr<ConfigurationRpcClient> remoteClient_;
+    struct PreparedRemoteSwitch
+    {
+        std::string path;
+        std::string bytes;
+        ConfigurationRpcClient::Capabilities capabilities;
+    };
+    std::unique_ptr<PreparedRemoteSwitch> preparedRemoteSwitch_;
+    struct PreparedLocalSwitch
+    {
+        std::unique_ptr<ConfigEditorCore::ConfigDocument> document;
+        bool loaded = false;
+        QString error;
+        QStringList devices;
+        QMap<QString, QStringList> connections;
+        QStringList monitors;
+        QStringList filteredRenderers;
+        QStringList allRenderers;
+    };
+    std::unique_ptr<PreparedLocalSwitch> preparedLocalSwitch_;
+    bool targetSwitchPending_ = false;
+    QThread* targetSwitchThread_ = nullptr;
+    QWidget* targetSwitchOverlay_ = nullptr;
     std::function<void()> targetRefresh_;
     QList<Target> discoveredTargets_;
     QList<Target> targetChoices_;

@@ -1,5 +1,6 @@
 #define NOMINMAX
 #define WIN32_LEAN_AND_MEAN
+#include <winsock2.h>
 #include <windows.h>
 
 #include "ConfigEditorWindow.h"
@@ -9,6 +10,7 @@
 #include <ActiveProfileStatus.h>
 #include <ConfigurationLiveApply.h>
 #include <ConfigurationIdentity.h>
+#include <ConfigurationRpcProtocol.h>
 #include <RendererProfileConfig.h>
 #include <RendererConfigView.h>
 
@@ -56,10 +58,12 @@
 #include <QTableWidget>
 #include <QTabBar>
 #include <QTemporaryDir>
+#include <QThread>
 #include <QTimer>
 #include <QToolButton>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cstdint>
@@ -5943,6 +5947,15 @@ void testTargetDropdownRefreshesInline()
     require(selector.pixel(0, selector.height() / 2) ==
             selector.pixel(selector.width() - 1, selector.height() / 2),
         "The target selector's right border is missing");
+    if (!captures.isEmpty())
+        selector.save(QDir(captures).filePath(
+            QStringLiteral("target-selector-corners.png")));
+    const QColor leftCorner(selector.pixel(1, 1));
+    const QColor rightCorner(selector.pixel(selector.width() - 2, 1));
+    require(rightCorner.red() > 25 &&
+            std::abs(leftCorner.red() - rightCorner.red()) < 20 &&
+            std::abs(leftCorner.green() - rightCorner.green()) < 20,
+        "The arrow fill clipped the target selector's rounded corner");
     window.hide();
     discovered.removeLast();
     refresh->click();
@@ -5962,6 +5975,151 @@ void testTargetDropdownRefreshesInline()
     require(choice->count() == 3 &&
         choice->currentText() == QStringLiteral("This computer"),
         "A restarted VP was treated as a second target after its address changed");
+}
+
+void testRemoteTargetSwitchKeepsWindowResponsive()
+{
+    using namespace ConfigurationRpcProtocol;
+    QTemporaryDir directory;
+    const QString path = copyFixture(directory);
+    const std::string remoteBytes = readBytes(path).toStdString();
+    WSADATA data{};
+    require(WSAStartup(MAKEWORD(2, 2), &data) == 0,
+        "Cannot initialize the RPC stall fixture");
+    struct WinsockCleanup { ~WinsockCleanup() { WSACleanup(); } } cleanup;
+    const SOCKET listener = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    require(listener != INVALID_SOCKET, "Cannot open the RPC stall listener");
+    sockaddr_in address{};
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    address.sin_port = 0;
+    require(bind(listener, reinterpret_cast<sockaddr*>(&address),
+        sizeof(address)) == 0 && listen(listener, 1) == 0,
+        "Cannot listen for the stalled RPC request");
+    int addressSize = sizeof(address);
+    require(getsockname(listener, reinterpret_cast<sockaddr*>(&address),
+        &addressSize) == 0, "Cannot read the RPC stall port");
+    std::thread stalledServer([listener, path = path.toStdString(), remoteBytes]
+    {
+        const auto receiveExact = [](SOCKET socket, uint8_t* bytes, size_t count)
+        {
+            while (count != 0)
+            {
+                const int received = recv(socket,
+                    reinterpret_cast<char*>(bytes), static_cast<int>(count), 0);
+                if (received <= 0) return false;
+                bytes += received;
+                count -= received;
+            }
+            return true;
+        };
+        for (int request = 0; request < 3; ++request)
+        {
+            fd_set readable;
+            FD_ZERO(&readable);
+            FD_SET(listener, &readable);
+            timeval timeout{ 2, 0 };
+            if (select(0, &readable, nullptr, nullptr, &timeout) <= 0) break;
+            const SOCKET client = accept(listener, nullptr, nullptr);
+            if (client == INVALID_SOCKET) break;
+            std::array<uint8_t, HeaderBytes> header{};
+            uint8_t compatibility[2]{};
+            if (!receiveExact(client, header.data(), header.size()) ||
+                !receiveExact(client, compatibility, sizeof(compatibility)))
+            {
+                closesocket(client);
+                break;
+            }
+            const uint16_t operation = Read16(header.data() + 6);
+            Frame response;
+            response.operation = operation | ResponseFlag;
+            if (operation == static_cast<uint16_t>(Operation::GetCapabilities))
+            {
+                Write16(response.payload, ConfigurationCompatibilityVersion);
+                WriteString(response.payload, "1.3.test");
+                for (int list = 0; list < 6; ++list)
+                    Write32(response.payload, 0);
+            }
+            else if (operation == static_cast<uint16_t>(Operation::GetConfig))
+            {
+                WriteString(response.payload, path);
+                WriteString(response.payload, remoteBytes);
+            }
+            std::vector<uint8_t> wire;
+            Encode(response, wire);
+            if (request == 0)
+                std::this_thread::sleep_for(std::chrono::milliseconds(450));
+            size_t sent = 0;
+            while (sent < wire.size())
+            {
+                const int count = send(client,
+                    reinterpret_cast<const char*>(wire.data() + sent),
+                    static_cast<int>(wire.size() - sent), 0);
+                if (count <= 0) break;
+                sent += count;
+            }
+            closesocket(client);
+        }
+        closesocket(listener);
+    });
+    struct ThreadJoin
+    {
+        std::thread& thread;
+        ~ThreadJoin() { if (thread.joinable()) thread.join(); }
+    } join{ stalledServer };
+
+    ConfigEditorWindow window(path, 0, true, {}, {},
+        {}, 41686, {}, true);
+    window.show();
+    QApplication::processEvents();
+    window.setDiscoveredTargets({
+        { QStringLiteral("stalled"), QStringLiteral("SLOW VP"),
+            QStringLiteral("localhost"), ntohs(address.sin_port) }
+    });
+    auto* choice = requireControl<QComboBox>(window, "config.targetChoice");
+    require(choice->count() == 4 && choice->itemText(2) ==
+        QStringLiteral("SLOW VP"), "Stalled VP was not offered in the selector");
+    QElapsedTimer dispatch;
+    dispatch.start();
+    QMetaObject::invokeMethod(choice, "activated", Qt::DirectConnection,
+        Q_ARG(int, 2));
+    require(dispatch.elapsed() < 250,
+        "Selecting a remote VP blocked the UI thread");
+    auto* overlay = requireControl<QWidget>(window,
+        "config.targetSwitchOverlay");
+    auto* title = requireControl<QLabel>(window,
+        "config.targetSwitchTitle");
+    require(overlay->isVisible() && title->text().contains("SLOW VP"),
+        "Remote switching did not show its loading screen");
+    bool heartbeat = false;
+    QEventLoop eventLoop;
+    QTimer::singleShot(30, &window, [&] { heartbeat = true; });
+    QTimer::singleShot(100, &eventLoop, &QEventLoop::quit);
+    eventLoop.exec();
+    require(heartbeat && overlay->isVisible(),
+        "The loading screen did not stay responsive during the stalled request");
+    const QString captures = qEnvironmentVariable("VP_CONFIG_REVIEW_IMAGES");
+    if (!captures.isEmpty())
+        window.grab().save(QDir(captures).filePath(
+            QStringLiteral("target-switch-loading.png")));
+    window.resize(1140, 760);
+    QApplication::processEvents();
+    require(overlay->geometry() == window.centralWidget()->rect(),
+        "The loading screen did not follow a window resize");
+    QElapsedTimer completion;
+    completion.start();
+    while (window.findChild<QWidget*>("config.targetSwitchOverlay") &&
+        completion.elapsed() < 3000)
+    {
+        QApplication::processEvents();
+        QThread::msleep(5);
+    }
+    require(!window.findChild<QWidget*>("config.targetSwitchOverlay") &&
+        requireControl<QComboBox>(window, "config.targetChoice")->currentText() ==
+            QStringLiteral("SLOW VP") &&
+        requireControl<QPushButton>(window, "okConfiguration")->isEnabled() &&
+        !window.awaitingTarget(),
+        "Successful remote connection did not open the target configuration");
 }
 
 void testNoTargetStartupIsQuiet()
@@ -6063,8 +6221,21 @@ void testUnavailableRpcCanReturnToLocalFile()
     auto* choice = requireControl<QComboBox>(window, "config.targetChoice");
     require(choice->itemText(1) == QStringLiteral("This computer"),
         "Unavailable RPC target did not offer the local file");
+    QElapsedTimer dispatch;
+    dispatch.start();
     QMetaObject::invokeMethod(choice, "activated", Qt::DirectConnection,
         Q_ARG(int, 1));
+    require(dispatch.elapsed() < 250 &&
+        window.findChild<QWidget*>("config.targetSwitchOverlay"),
+        "Local target loading blocked the UI or skipped its loading screen");
+    QElapsedTimer completion;
+    completion.start();
+    while (window.findChild<QWidget*>("config.targetSwitchOverlay") &&
+        completion.elapsed() < 5000)
+    {
+        QApplication::processEvents();
+        QThread::msleep(5);
+    }
     require(requireControl<QComboBox>(window, "config.targetChoice")->currentText() ==
             QStringLiteral("This computer") &&
         requireControl<QPushButton>(window, "okConfiguration")->isEnabled(),
@@ -6105,6 +6276,14 @@ void testRememberedTargetDoesNotFallBackToLocal()
     }
     QMetaObject::invokeMethod(choice, "activated", Qt::DirectConnection,
         Q_ARG(int, 1));
+    QElapsedTimer completion;
+    completion.start();
+    while (window.findChild<QWidget*>("config.targetSwitchOverlay") &&
+        completion.elapsed() < 5000)
+    {
+        QApplication::processEvents();
+        QThread::msleep(5);
+    }
     require(requireControl<QComboBox>(window, "config.targetChoice")->currentText() ==
             QStringLiteral("This computer") &&
         requireControl<QPushButton>(window, "okConfiguration")->isEnabled(),
@@ -6256,6 +6435,8 @@ int main(int argc, char** argv)
         testMissingConfigurationCanBeCreatedFromEditor);
     failures += run("Apply OK Cancel contract", testApplyOkCancelContract);
     failures += run("target dropdown refreshes inline", testTargetDropdownRefreshesInline);
+    failures += run("remote target switch keeps window responsive",
+        testRemoteTargetSwitchKeepsWindowResponsive);
     failures += run("no-target startup is quiet", testNoTargetStartupIsQuiet);
     failures += run("offline file still offers targets", testOfflineFileStillOffersTargets);
     failures += run("unavailable RPC can return to local file",

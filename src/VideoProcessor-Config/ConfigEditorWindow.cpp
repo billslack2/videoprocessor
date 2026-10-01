@@ -66,6 +66,7 @@
 #include <QRegularExpression>
 #include <QRadioButton>
 #include <QRect>
+#include <QRegion>
 #include <QResizeEvent>
 #include <QScrollArea>
 #include <QShortcut>
@@ -98,6 +99,18 @@
 
 namespace
 {
+class TargetComboBox final : public QComboBox
+{
+protected:
+	void resizeEvent(QResizeEvent* event) override
+	{
+		QComboBox::resizeEvent(event);
+		QPainterPath shape;
+		shape.addRoundedRect(QRectF(rect()), 4, 4);
+		setMask(QRegion(shape.toFillPolygon().toPolygon()));
+	}
+};
+
 // OUTOFCONTEXT events arrive on the Qt thread that installed the hook.
 // No window ownership changes, cross-process SendMessage or recurring polling.
 std::map<HWINEVENTHOOK, std::function<void()>> configForegroundHandlers;
@@ -1085,6 +1098,11 @@ ConfigEditorWindow::~ConfigEditorWindow()
 		monitorDiscoveryThread_->wait();
 		monitorDiscoveryThread_ = nullptr;
 	}
+	if (targetSwitchThread_)
+	{
+		targetSwitchThread_->wait();
+		targetSwitchThread_ = nullptr;
+	}
 	if (revealEventNotifier_)
 		revealEventNotifier_->setEnabled(false);
 	if (revealEvent_)
@@ -1296,12 +1314,180 @@ void ConfigEditorWindow::enterTargetAddress()
 	selectAnotherTarget({ {}, host, host, port });
 }
 
+void ConfigEditorWindow::showTargetSwitchOverlay(const QString& label)
+{
+	if (!centralWidget()) return;
+	auto* overlay = new QWidget(centralWidget());
+	overlay->setObjectName(QStringLiteral("config.targetSwitchOverlay"));
+	overlay->setAttribute(Qt::WA_StyledBackground);
+	overlay->setStyleSheet(QStringLiteral("background: #0b121b;"));
+	overlay->setGeometry(centralWidget()->rect());
+	overlay->setFocusPolicy(Qt::StrongFocus);
+	auto* layout = new QVBoxLayout(overlay);
+	layout->setContentsMargins(24, 24, 24, 24);
+	layout->addStretch();
+	auto* title = new QLabel(label == QStringLiteral("This computer") ?
+		QStringLiteral("Loading settings on this computer…") :
+		QStringLiteral("Connecting to %1…").arg(label), overlay);
+	title->setObjectName(QStringLiteral("config.targetSwitchTitle"));
+	title->setAlignment(Qt::AlignCenter);
+	title->setStyleSheet(QStringLiteral(
+		"font-size: 22px; font-weight: 600; color: #f5f8ff;"));
+	layout->addWidget(title);
+	auto* help = new QLabel(QStringLiteral("Loading VideoProcessor settings and available devices."), overlay);
+	help->setAlignment(Qt::AlignCenter);
+	help->setStyleSheet(QStringLiteral("font-size: 14px; color: #a8bad0;"));
+	layout->addWidget(help);
+	auto* progress = new QProgressBar(overlay);
+	progress->setObjectName(QStringLiteral("configTargetSearchProgress"));
+	progress->setRange(0, 0);
+	progress->setTextVisible(false);
+	progress->setFixedSize(220, 5);
+	layout->addWidget(progress, 0, Qt::AlignHCenter);
+	layout->addStretch();
+	targetSwitchOverlay_ = overlay;
+	centralWidget()->installEventFilter(this);
+	overlay->show();
+	overlay->raise();
+	overlay->setFocus();
+}
+
+void ConfigEditorWindow::hideTargetSwitchOverlay()
+{
+	if (!targetSwitchOverlay_) return;
+	if (QWidget* parent = targetSwitchOverlay_->parentWidget())
+		parent->removeEventFilter(this);
+	delete targetSwitchOverlay_;
+	targetSwitchOverlay_ = nullptr;
+}
+
+bool ConfigEditorWindow::eventFilter(QObject* watched, QEvent* event)
+{
+	if (targetSwitchOverlay_ && watched == targetSwitchOverlay_->parent() &&
+		event->type() == QEvent::Resize)
+		targetSwitchOverlay_->setGeometry(
+			static_cast<QWidget*>(watched)->rect());
+	return QMainWindow::eventFilter(watched, event);
+}
+
+void ConfigEditorWindow::beginRemoteTargetSwitch(const Target& target)
+{
+	targetSwitchPending_ = true;
+	showTargetSwitchOverlay(target.label.section(QStringLiteral(" ("), 0, 0));
+	struct Result
+	{
+		std::string path;
+		std::string bytes;
+		std::string error;
+		ConfigurationRpcClient::Capabilities capabilities;
+	};
+	auto result = std::make_shared<Result>();
+	targetSwitchThread_ = QThread::create([result, target]
+	{
+		ConfigurationRpcClient client(target.host.toStdString(), target.port);
+		if (client.GetConfig(result->path, result->bytes, result->error))
+			client.GetCapabilities(result->capabilities, result->error);
+	});
+	targetSwitchThread_->setParent(this);
+	QThread* worker = targetSwitchThread_;
+	connect(worker, &QThread::finished, this, [this, worker, target, result]
+	{
+		if (targetSwitchThread_ == worker) targetSwitchThread_ = nullptr;
+		worker->deleteLater();
+		finishRemoteTargetSwitch(target, std::move(result->path),
+			std::move(result->bytes), std::move(result->capabilities),
+			QString::fromUtf8(result->error));
+	});
+	worker->start();
+}
+
+void ConfigEditorWindow::finishRemoteTargetSwitch(const Target& target,
+	std::string path, std::string bytes,
+	ConfigurationRpcClient::Capabilities capabilities, const QString& error)
+{
+	targetSwitchPending_ = false;
+	hideTargetSwitchOverlay();
+	if (!error.isEmpty())
+	{
+		setStatus(error, true);
+		return;
+	}
+	preparedRemoteSwitch_ = std::make_unique<PreparedRemoteSwitch>(
+		PreparedRemoteSwitch{ std::move(path), std::move(bytes),
+			std::move(capabilities) });
+	selectAnotherTarget(target);
+	preparedRemoteSwitch_.reset();
+}
+
+void ConfigEditorWindow::beginLocalTargetSwitch(const Target& target)
+{
+	targetSwitchPending_ = true;
+	showTargetSwitchOverlay(QStringLiteral("This computer"));
+	auto result = std::make_shared<PreparedLocalSwitch>();
+	const QString path = QFileInfo(localConfigPath_).absoluteFilePath();
+	targetSwitchThread_ = QThread::create([result, path]
+	{
+		result->document = std::make_unique<ConfigEditorCore::ConfigDocument>();
+		std::wstring error;
+		result->loaded = result->document->Load(path.toStdWString(), error);
+		result->error = QString::fromStdWString(error);
+		if (!result->loaded) return;
+		const HRESULT initialized = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+		result->devices = discoverValues("VPDiscoverCaptureDevices");
+		for (const QString& device : result->devices)
+			result->connections.insert(device, discoverCaptureConnections(device));
+		result->monitors = discoverValues("VPDiscoverMonitors");
+		result->filteredRenderers = discoverValues("VPDiscoverRenderers", true);
+		result->allRenderers = discoverValues("VPDiscoverRenderers", false);
+		if (SUCCEEDED(initialized)) CoUninitialize();
+	});
+	targetSwitchThread_->setParent(this);
+	QThread* worker = targetSwitchThread_;
+	connect(worker, &QThread::finished, this, [this, worker, target, result]
+	{
+		if (targetSwitchThread_ == worker) targetSwitchThread_ = nullptr;
+		worker->deleteLater();
+		finishLocalTargetSwitch(target, std::move(result->document),
+			result->loaded, result->error, result->devices,
+			result->connections, result->monitors,
+			result->filteredRenderers, result->allRenderers);
+	});
+	worker->start();
+}
+
+void ConfigEditorWindow::finishLocalTargetSwitch(const Target& target,
+	std::unique_ptr<ConfigEditorCore::ConfigDocument> document,
+	bool loaded, const QString& error, const QStringList& devices,
+	const QMap<QString, QStringList>& connections,
+	const QStringList& monitors, const QStringList& filteredRenderers,
+	const QStringList& allRenderers)
+{
+	targetSwitchPending_ = false;
+	hideTargetSwitchOverlay();
+	if (!loaded)
+	{
+		setStatus(error, true);
+		return;
+	}
+	preparedLocalSwitch_ = std::make_unique<PreparedLocalSwitch>();
+	preparedLocalSwitch_->document = std::move(document);
+	preparedLocalSwitch_->loaded = true;
+	preparedLocalSwitch_->devices = devices;
+	preparedLocalSwitch_->connections = connections;
+	preparedLocalSwitch_->monitors = monitors;
+	preparedLocalSwitch_->filteredRenderers = filteredRenderers;
+	preparedLocalSwitch_->allRenderers = allRenderers;
+	selectAnotherTarget(target);
+	preparedLocalSwitch_.reset();
+}
+
 bool ConfigEditorWindow::selectAnotherTarget(const Target& target)
 {
+	if (targetSwitchPending_) return false;
 	if (target.host.isEmpty() && !localAvailable_) return false;
 	if (!noTarget_ && target.host.compare(remoteHost_, Qt::CaseInsensitive) == 0 &&
 		target.port == remotePort_) return true;
-	if (dirty_)
+	if (dirty_ && !preparedRemoteSwitch_ && !preparedLocalSwitch_)
 	{
 		QMessageBox prompt(this);
 		prompt.setWindowTitle(QStringLiteral("Change VideoProcessor target"));
@@ -1317,6 +1503,12 @@ bool ConfigEditorWindow::selectAnotherTarget(const Target& target)
 			if (!saveChanges()) return false;
 		}
 		else if (prompt.clickedButton() != discard) return false;
+	}
+	if (!preparedRemoteSwitch_ && !preparedLocalSwitch_)
+	{
+		if (target.host.isEmpty()) beginLocalTargetSwitch(target);
+		else beginRemoteTargetSwitch(target);
+		return true;
 	}
 	std::unique_ptr<ConfigurationRpcClient> replacement;
 	if (!target.host.isEmpty())
@@ -1400,6 +1592,8 @@ bool ConfigEditorWindow::selectAnotherTarget(const Target& target)
 	migrateCalibrationProfiles();
 	migrateViewportZoomProfiles();
 	loadDiscoveryCache();
+	preparedRemoteSwitch_.reset();
+	preparedLocalSwitch_.reset();
 	rebuildConfigurationShell();
 	setWindowTitle(QStringLiteral("VideoProcessor Configuration · %1")
 		.arg(remoteName_));
@@ -1456,7 +1650,12 @@ void ConfigEditorWindow::loadConfiguration()
 		std::string path;
 		std::string bytes;
 		std::string rpcError;
-		if (!remoteClient_->GetConfig(path, bytes, rpcError))
+		if (preparedRemoteSwitch_)
+		{
+			path = preparedRemoteSwitch_->path;
+			bytes = preparedRemoteSwitch_->bytes;
+		}
+		else if (!remoteClient_->GetConfig(path, bytes, rpcError))
 		{
 			remoteLoadError_ = QString::fromUtf8(rpcError);
 			return;
@@ -1470,11 +1669,20 @@ void ConfigEditorWindow::loadConfiguration()
 	}
 	else
 	{
-		document_ = std::make_unique<ConfigEditorCore::ConfigDocument>();
-		configurationLoaded_ = document_->Load(
-			QFileInfo(configPath_).absoluteFilePath().toStdWString(), error);
-		remoteLoadError_ = configurationLoaded_ ? QString() :
-			QString::fromStdWString(error);
+		if (preparedLocalSwitch_)
+		{
+			document_ = std::move(preparedLocalSwitch_->document);
+			configurationLoaded_ = preparedLocalSwitch_->loaded;
+			remoteLoadError_ = preparedLocalSwitch_->error;
+		}
+		else
+		{
+			document_ = std::make_unique<ConfigEditorCore::ConfigDocument>();
+			configurationLoaded_ = document_->Load(
+				QFileInfo(configPath_).absoluteFilePath().toStdWString(), error);
+			remoteLoadError_ = configurationLoaded_ ? QString() :
+				QString::fromStdWString(error);
+		}
 	}
 	hasPendingMigrations_ = false;
 	savedSnapshot_ = configurationLoaded_ ? captureDocumentSnapshot(*document_) :
@@ -1921,7 +2129,9 @@ void ConfigEditorWindow::loadDiscoveryCache()
 		remoteLuts_.clear();
 		ConfigurationRpcClient::Capabilities offered;
 		std::string error;
-		if (!remoteClient_->GetCapabilities(offered, error))
+		if (preparedRemoteSwitch_)
+			offered = preparedRemoteSwitch_->capabilities;
+		else if (!remoteClient_->GetCapabilities(offered, error))
 		{
 			remoteLoadError_ = QString::fromUtf8(error);
 			return;
@@ -1940,6 +2150,16 @@ void ConfigEditorWindow::loadDiscoveryCache()
 		filteredRenderers_ = strings(offered.filteredRenderers);
 		allRenderers_ = strings(offered.allRenderers);
 		remoteLuts_ = strings(offered.luts);
+		return;
+	}
+	if (preparedLocalSwitch_)
+	{
+		captureDevices_ = preparedLocalSwitch_->devices;
+		captureConnections_ = preparedLocalSwitch_->connections;
+		monitors_ = preparedLocalSwitch_->monitors;
+		filteredRenderers_ = preparedLocalSwitch_->filteredRenderers;
+		allRenderers_ = preparedLocalSwitch_->allRenderers;
+		remoteLuts_.clear();
 		return;
 	}
     // Hardware discovery can enumerate COM registrations and capture/display
@@ -3537,7 +3757,7 @@ QWidget* ConfigEditorWindow::createShell()
 		caption->setToolTip(QStringLiteral(
 			"Choose which VideoProcessor this window configures."));
 		headerLayout->addWidget(caption);
-		targetChoice_ = new QComboBox;
+		targetChoice_ = new TargetComboBox;
 		targetChoice_->setObjectName(QStringLiteral("config.targetChoice"));
 		targetChoice_->setProperty("targetSelector", true);
 		targetChoice_->setAccessibleName(QStringLiteral("VideoProcessor target"));
