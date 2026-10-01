@@ -17,6 +17,17 @@ selection with a remembered target and a ten-instance discovery limit across
 the network. Discovery must find both the local and remote running VP systems;
 multiple versions across the LAN are the concern, not a same-computer feature.
 
+2026-10-01: Local configuration must remain editable and safely savable while
+VP is stopped. `LOCAL` opens the local configuration file immediately; LAN
+discovery runs alongside it and offers remote targets. Remote Apply/OK remains
+RPC through the target VP. Keep document editing and the wire contract separate
+from Windows-specific discovery and UI code so a future web or Android client
+can implement its own transport and presentation layer.
+Source commit `bbe152fc` on `codex/vp-0168-config-rpc` implements the local
+file startup and save path; the x64 Release Config and test projects build, and
+focused local-save, target-selector, RPC-to-local recovery, and Apply/OK/Cancel
+tests pass. A physical two-computer LAN test remains outstanding.
+
 ## User story
 
 As a VideoProcessor operator, I want the native configuration editor running
@@ -48,11 +59,12 @@ the real display update when I choose **Apply** or **OK**.
    save, reload, apply, reset, and renderer-restart decision path as a local
    configuration change. The laptop must never write the target's config file
    directly or independently decide which changes require a reset/restart.
-6. From the first implementation, editing a running local instance uses the
-   same RPC client and API against loopback. Only the selected endpoint changes
-   between local and remote use. Both exercise the same serialization,
-   validation, persistence, and runtime apply implementation. Existing local
-   functionality and Apply/OK behavior must remain equivalent to today.
+6. `LOCAL` loads and saves the configuration file on this computer using the
+   existing safe-save path. It remains available when VP is stopped and not
+   responding to RPC. When VP is running, local Apply/OK uses the existing
+   change notification and runtime apply behavior. A selected remote target
+   always uses `GetConfig`, `GetCapabilities`, and `ApplyConfig` through RPC;
+   the client never writes a remote target's file directly.
 7. Every running VP host exposes a discovery responder for the lifetime of its
    RPC endpoint, independently of whether its config editor is open. Discovery
    uses a fixed-port UDP LAN query/reply protocol: the config editor broadcasts
@@ -76,11 +88,11 @@ the real display update when I choose **Apply** or **OK**.
    selection in the tray when more than one instance is available, and make
    the selected target clear in the editor as well.
 10. Remember the last explicitly selected target in this client's preferences
-    and use it by default on subsequent opens and client restarts. With no
-    prior selection, default to the local instance. If the remembered target
-    is unavailable, show that state and allow another selection; do not silently
-    redirect pending edits to a different host. Resolve unsaved edits before
-    changing targets using the existing save/discard interaction.
+    and reconnect when it is discovered on subsequent opens and client
+    restarts. The local file remains the immediate default and stays editable
+    if the remembered remote is unavailable. Never redirect pending edits to
+    another host; resolve unsaved edits before changing targets using the
+    existing save/discard interaction.
 11. Discover and distinguish running VP instances across the same NETWORK,
     including different VP versions running on different computers. Identify
     targets by stable instance identity and endpoint, retaining computer name
@@ -104,9 +116,9 @@ the real display update when I choose **Apply** or **OK**.
   existing VP configuration/runtime ownership path.
 - Add instance selection/discovery and a local-versus-remote transport adapter
   to the existing native Qt editor while retaining one UI codebase.
-- Preserve existing standalone, local configuration-editor behavior when no
-  VP instance is running through an explicit offline file-editing mode. All
-  editing of running instances uses RPC, including local editing.
+- Open the local file editor by default, including when VP is stopped. Keep
+  LAN discovery and remote selection available without gating local edits on
+  a discovery response.
 - First delivery targets two Windows computers using the existing config EXE
   and its packaged dependencies; no new client application or platform port.
 - Auxiliary operations that currently open local folders/logs or clear shader
@@ -114,13 +126,15 @@ the real display update when I choose **Apply** or **OK**.
   these during implementation and disable unsupported remote operations with
   a clear explanation for the initial delivery.
 - Add focused unit/integration coverage for request validation, discovery
-  parsing, local-loopback parity, remote Apply/OK/Cancel behavior, and each
-  reported runtime outcome.
+  parsing, local saves with VP stopped, remote Apply/OK/Cancel behavior, and
+  each reported runtime outcome.
 
 ## Non-goals
 
-- A browser, WebAssembly, HTML, mobile, cloud, account, certificate, or
-  Internet-access configuration UI.
+- Shipping a browser, WebAssembly, HTML, mobile, cloud, account, certificate,
+  or Internet-access configuration UI in this story. Future web and Android
+  clients should reuse the document and RPC contract through platform-specific
+  adapters rather than depend on Win32 or the Qt desktop shell.
 - Continuous per-keystroke or slider-preview updates; requests occur only on
   **Apply** or **OK**.
 - General remote control of playback, capture, operating-system functions, or
@@ -130,8 +144,10 @@ the real display update when I choose **Apply** or **OK**.
 
 ## Acceptance criteria
 
-- Starting the same native config executable locally opens the established Qt
-  configuration UI and applies changes through the shared target-side API.
+- Starting the native config executable locally opens the established Qt
+  editor immediately with `LOCAL` selected, even when VP is stopped. Apply/OK
+  safely persists to the local file and reports that changes take effect when
+  VP next starts. Remote selections continue to apply through RPC.
 - Starting the config editor discovers both local and remote running VP hosts
   on the same LAN subnet, up to ten distinct instances network-wide. Verify
   discovery across multiple computers with both matching and differing VP
@@ -144,16 +160,17 @@ the real display update when I choose **Apply** or **OK**.
 - Tray actions use `Open Configuration (LOCAL)` or
   `Open Configuration (<computer name>)` as appropriate. Discovered systems
   across the network remain distinguishable and independently selectable.
-- The last explicitly selected target is restored after reopening/restarting
-  the client; an unavailable target does not cause silent fallback or writes
-  to another computer.
+- The last explicitly selected remote target reconnects when discovered after
+  reopening/restarting the client. Until then, `LOCAL` is editable; unsaved
+  local edits prevent an automatic target switch. No unavailable target causes
+  writes to another computer.
 - Duplicate discovery replies do not consume slots. Ten distinct instances
   end the scan; an eleventh is not added. Scans with fewer results time out.
 - Device, display, renderer, and LUT choices come from the selected target via
   `GetCapabilities`, including when the client's installed hardware differs.
-- Local loopback and a second Windows computer both exercise all three RPC
-  operations through the same client/server implementation. Verify document
-  round-trip preservation and target isolation with multiple VP instances.
+- A second Windows computer exercises all three RPC operations. Verify
+  document round-trip preservation and target isolation with multiple VP
+  instances. Local file editing works both with VP running and stopped.
 - With a remote instance selected, the UI loads that instance's configuration;
   editing controls changes neither its file nor its runtime state until
   **Apply** or **OK** is selected.
