@@ -103,6 +103,30 @@ C:\Users\bslac\Documents\ChatGPT\Done\VideoProcessorConfig-VP0168-16dcde9d-x64.z
 All 36 payload files verified after extraction; six Microsoft runtime DLL
 signatures and the EXE x64 Release record verified. No active VP
 configuration file was changed.
+
+2026-10-01: A first launch on the second Windows computer showed the remote
+VP in the target menu, but Config did not open it automatically and eventually
+displayed "No VideoProcessor found." Source commit
+bb450ab8a127eec75f2eb7fee7b57691c1a1eaf9 fixes remote-only first launch:
+when exactly one VP is discovered and no target has been remembered, connect
+to it through the responsive loading path. Multiple discovered VPs still
+require a choice; a local installation still opens This computer, and a
+remembered remote still retains its selection. If a discovered connection
+fails, keep the choice visible and show the connection error rather than
+claiming no VP was found. Focused first-launch, failed-connection, selector,
+and remembered-target tests passed, and the x64 Release Config build succeeded.
+The updated EXE and unchanged discovery DLL were deployed to
+C:\Videoprocessor\vp\config after backing up the four replaced files under
+config\backup-VP0168-autoconnect-20261001-142952. The EXE SHA-256 is
+7BD0922456240669E673325958A149C42A0ED82B9B5821E08FFBB77A8DD65109.
+The Config-only ZIP is
+C:\Users\bslac\Documents\ChatGPT\Done\VideoProcessorConfig-VP0168-bb450ab8a127-x64.zip
+(SHA-256 499BF102366299D0572B05FB43658DB9ED1FE5E898FBE5A1F85EFB4A5B00FC93).
+All 36 payload hashes, the EXE x64 Release record, and six Microsoft runtime
+DLL signatures verified after extraction. No active VP configuration file was
+changed. The new automatic connection still needs confirmation on the second
+computer; remote Apply/OK and multiple-host testing remain outstanding.
+
 ## User story
 
 As a VideoProcessor operator, I want the native configuration editor running
@@ -160,12 +184,16 @@ the real display update when I choose **Apply** or **OK**.
    as well as renderer restart, reset, and live update behavior.
 9. The editor and tray identify the local file choice as This computer.
    Remote targets use the computer name, with endpoint or version detail
-   where needed. Discovery adds choices without selecting a new remote.
+   where needed. Discovery adds choices without changing an existing
+   selection. On a
+   remote-only first launch with no remembered target, connect automatically
+   when exactly one VP is discovered; with multiple VPs, require a choice.
 
 10. Remember the last explicitly selected target in this client's preferences.
     On first launch, select This computer when a local VP installation exists,
-    even if VP is stopped. A remembered remote remains selected on later
-    launches. If unavailable, show its last name and an unavailable overlay
+    even if VP is stopped. Without a local installation, connect to the sole
+    discovered VP automatically or show a selector when multiple are found.
+    A remembered remote remains selected on later launches. If unavailable, show its last name and an unavailable overlay
     with editing disabled. Reconnect only to that same stable instance ID.
     The user may choose another target explicitly, including This computer.
     Resolve unsaved edits before changing targets.
@@ -229,8 +257,9 @@ the real display update when I choose **Apply** or **OK**.
 - Beside a local VP installation, Config immediately opens the editable
   local file as This computer even while VP is stopped. Apply/OK safely
   persists it for the next VP start. A remote-only Config copy has no
-  local file choice. LAN discovery runs in the background, and newly
-  discovered remotes require explicit selection.
+  local file choice. LAN discovery runs in the background. With no remembered
+  target, it connects to the sole discovered VP automatically; multiple
+  discovered VPs require explicit selection.
 
 - Starting the config editor discovers both local and remote running VP hosts
   on the same LAN subnet, up to ten distinct instances network-wide. Verify
