@@ -28,6 +28,14 @@ file startup and save path; the x64 Release Config and test projects build, and
 focused local-save, target-selector, RPC-to-local recovery, and Apply/OK/Cancel
 tests pass. A physical two-computer LAN test remains outstanding.
 
+2026-10-01: Default to This computer when a local VP installation exists.
+Remember the last selected target, including unavailable remotes; show the
+unavailable overlay until that same instance reconnects or the user chooses
+another target. Scan the LAN in the background and require explicit selection
+of new remotes. Source commit cb245b3f implements this behavior. The x64
+Release Config build and focused tests pass; deployment and a physical
+two-computer test remain outstanding.
+
 ## User story
 
 As a VideoProcessor operator, I want the native configuration editor running
@@ -59,12 +67,12 @@ the real display update when I choose **Apply** or **OK**.
    save, reload, apply, reset, and renderer-restart decision path as a local
    configuration change. The laptop must never write the target's config file
    directly or independently decide which changes require a reset/restart.
-6. `LOCAL` loads and saves the configuration file on this computer using the
-   existing safe-save path. It remains available when VP is stopped and not
-   responding to RPC. When VP is running, local Apply/OK uses the existing
-   change notification and runtime apply behavior. A selected remote target
-   always uses `GetConfig`, `GetCapabilities`, and `ApplyConfig` through RPC;
-   the client never writes a remote target's file directly.
+6. This computer is offered when a local VP installation is present next to
+   the configuration file or a configuration path is explicitly supplied.
+   It loads and saves the local file through the safe-save path, including
+   while VP is stopped. When VP runs, local Apply/OK uses the existing
+   change notification path. A selected remote target always uses RPC.
+
 7. Every running VP host exposes a discovery responder for the lifetime of its
    RPC endpoint, independently of whether its config editor is open. Discovery
    uses a fixed-port UDP LAN query/reply protocol: the config editor broadcasts
@@ -83,24 +91,25 @@ the real display update when I choose **Apply** or **OK**.
    restart from a completed one; the current local path requests transitions
    without waiting for renderer completion. Reuse its capture-restart behavior
    as well as renderer restart, reset, and live update behavior.
-9. The tray's open action reads `Open Configuration (<name>)`, using the remote
-   computer name or `LOCAL` for an instance on this computer. Provide target
-   selection in the tray when more than one instance is available, and make
-   the selected target clear in the editor as well.
-10. Remember the last explicitly selected target in this client's preferences
-    and reconnect when it is discovered on subsequent opens and client
-    restarts. The local file remains the immediate default and stays editable
-    if the remembered remote is unavailable. Never redirect pending edits to
-    another host; resolve unsaved edits before changing targets using the
-    existing save/discard interaction.
-11. Discover and distinguish running VP instances across the same NETWORK,
-    including different VP versions running on different computers. Identify
-    targets by stable instance identity and endpoint, retaining computer name
-    and version for selection. Two computers running the same VP version are
-    two targets, not a duplicate. Use `LOCAL` for this computer and the computer
-    name for remote targets; show a version/instance qualifier only when needed
-    to disambiguate names. Multiple installations on one computer are an edge
-    case rather than the focus of this requirement.
+9. The editor and tray identify the local file choice as This computer.
+   Remote targets use the computer name, with endpoint or version detail
+   where needed. Discovery adds choices without selecting a new remote.
+
+10. Remember the last explicitly selected target in this client's preferences.
+    On first launch, select This computer when a local VP installation exists,
+    even if VP is stopped. A remembered remote remains selected on later
+    launches. If unavailable, show its last name and an unavailable overlay
+    with editing disabled. Reconnect only to that same stable instance ID.
+    The user may choose another target explicitly, including This computer.
+    Resolve unsaved edits before changing targets.
+
+11. Discover and distinguish running VP instances across the same network,
+    including different versions on different computers. Use stable instance
+    identity and endpoint, retaining computer name and version. Two hosts
+    with the same VP version remain separate. Use This computer for the
+    local file choice and the computer name for remote targets; qualify
+    names with version or endpoint only when needed.
+
 12. Stop each discovery scan once ten distinct valid VP instances have been
     collected, counting local and remote instances together. Deduplicate
     replies before counting, ignore further results for that scan, and display
@@ -116,9 +125,11 @@ the real display update when I choose **Apply** or **OK**.
   existing VP configuration/runtime ownership path.
 - Add instance selection/discovery and a local-versus-remote transport adapter
   to the existing native Qt editor while retaining one UI codebase.
-- Open the local file editor by default, including when VP is stopped. Keep
-  LAN discovery and remote selection available without gating local edits on
-  a discovery response.
+- Open the local file editor by default when a local VP installation exists,
+  including while VP is stopped. Keep LAN discovery active in the background.
+  A previously selected remote stays selected and shows an unavailable
+  overlay until it reconnects or the user chooses another target.
+
 - First delivery targets two Windows computers using the existing config EXE
   and its packaged dependencies; no new client application or platform port.
 - Auxiliary operations that currently open local folders/logs or clear shader
@@ -144,10 +155,12 @@ the real display update when I choose **Apply** or **OK**.
 
 ## Acceptance criteria
 
-- Starting the native config executable locally opens the established Qt
-  editor immediately with `LOCAL` selected, even when VP is stopped. Apply/OK
-  safely persists to the local file and reports that changes take effect when
-  VP next starts. Remote selections continue to apply through RPC.
+- Beside a local VP installation, Config immediately opens the editable
+  local file as This computer even while VP is stopped. Apply/OK safely
+  persists it for the next VP start. A remote-only Config copy has no
+  local file choice. LAN discovery runs in the background, and newly
+  discovered remotes require explicit selection.
+
 - Starting the config editor discovers both local and remote running VP hosts
   on the same LAN subnet, up to ten distinct instances network-wide. Verify
   discovery across multiple computers with both matching and differing VP
@@ -157,13 +170,15 @@ the real display update when I choose **Apply** or **OK**.
   a new scan no longer advertises a stopped host. Loopback and LAN responses
   for one instance produce one entry, and two hosts sharing a version remain
   separate entries.
-- Tray actions use `Open Configuration (LOCAL)` or
-  `Open Configuration (<computer name>)` as appropriate. Discovered systems
-  across the network remain distinguishable and independently selectable.
-- The last explicitly selected remote target reconnects when discovered after
-  reopening/restarting the client. Until then, `LOCAL` is editable; unsaved
-  local edits prevent an automatic target switch. No unavailable target causes
-  writes to another computer.
+- Tray actions identify This computer or the selected remote computer name.
+  Discovered systems remain independently selectable.
+
+- After Config restarts, a remembered remote reconnects only to the same
+  stable instance. Until then, its last known name remains in the selector
+  with an unavailable overlay and editing disabled. The user may explicitly
+  choose the local file when available. No unavailable target writes to
+  another computer.
+
 - Duplicate discovery replies do not consume slots. Ten distinct instances
   end the scan; an eleventh is not added. Scans with fewer results time out.
 - Device, display, renderer, and LUT choices come from the selected target via
