@@ -61,3 +61,27 @@ Before allocation: 213 canonical files and table rows; highest root 0194,
 next 0195, registry counts and IDs agree. Pre-existing discrepancies:
 VP-0088 and VP-0168 use `In progress` capitalization; VP-0168 also uses
 that capitalization in the index instead of the canonical `In Progress`. These unrelated records were preserved.
+
+## Diagnostic ZIP (2026-10-01)
+
+User requested packaging the diagnostics as a ZIP. Built the exact clean,
+pushed feature commit `8d49537ee7a5f1ec54f7f90eb481b98430ce8edb`, based on
+beta `c84863eaa59e03fe218de824c34b7c0220c4fd87`. PR #125 remains unmerged.
+
+Output directory: `E:\codex\releases\VideoProcessor-refresh-diagnostics-8d49537ee7a5-20261001`.
+
+- ZIP: `VideoProcessor-1.3.005-beta-8d49537ee7a5-x64-Portable.zip` (40,406,409 bytes).
+- SHA-256: `4EEC7932D851463FC992BCC01B2016E0CA545534A4A1E9AF070EFBC3B80756D9`.
+- Checksum sidecar: the ZIP filename plus `.sha256`.
+- Receipt: `validation/release-receipt.json`; tool inputs and logs retained there.
+- Matching host, renderer, Config and discovery binaries from the full x64
+  Release rebuild. All 1,888 unit tests and installer support/identity/runtime
+  packaging checks passed. ZIP CRC and all 70 manifest hashes were independently
+  checked; all four VP binary hashes match `installer-build.json`.
+- Portable package carries private runtime DLLs and only `VideoProcessor.cfg.example`.
+- Standard workflow also produced the matching Setup executable and checksum in
+  the same directory; the requested deliverable is the portable ZIP.
+- Unsigned diagnostic distribution. Projector switching, clean Windows without
+  developer tools, interactive Config and real installer lifecycle qualification
+  were not performed. No deployment, installation, configuration changes or
+  GitHub Release publication was performed.
