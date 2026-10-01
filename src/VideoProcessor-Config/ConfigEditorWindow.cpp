@@ -3536,7 +3536,7 @@ QWidget* ConfigEditorWindow::createShell()
 		targetChoice_->setAccessibleName(QStringLiteral("VideoProcessor target"));
 		targetChoice_->setToolTip(QStringLiteral(
 			"Select the VideoProcessor whose settings you want to edit."));
-		targetChoice_->setFixedWidth(208);
+		targetChoice_->setFixedSize(184, 24);
 		caption->setBuddy(targetChoice_);
 		populateTargetChoices();
 		connect(targetChoice_, qOverload<int>(&QComboBox::activated), this,
@@ -3556,10 +3556,10 @@ QWidget* ConfigEditorWindow::createShell()
 		refresh->setObjectName(QStringLiteral("config.refreshTargets"));
 		refresh->setProperty("targetRefresh", true);
 		refresh->setIcon(targetRefreshIcon());
-		refresh->setIconSize(QSize(18, 18));
+		refresh->setIconSize(QSize(14, 14));
 		refresh->setAccessibleName(QStringLiteral("Refresh targets"));
 		refresh->setToolTip(QStringLiteral("Refresh targets"));
-		refresh->setFixedSize(31, 31);
+		refresh->setFixedSize(24, 24);
 		connect(refresh, &QToolButton::clicked, this,
 			[this] { refreshTargetChoices(); });
 		headerLayout->addWidget(refresh);

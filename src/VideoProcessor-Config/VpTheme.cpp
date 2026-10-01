@@ -19,7 +19,9 @@ public:
         if (control == CC_ComboBox && subControl == SC_ComboBoxArrow)
         {
             QRect result = option->rect;
-            result.setLeft(result.right() - 31);
+            const bool compact = widget &&
+                widget->property("targetSelector").toBool();
+            result.setLeft(result.right() - (compact ? 23 : 31));
             return result;
         }
         return QProxyStyle::subControlRect(control, option, subControl, widget);
@@ -30,7 +32,10 @@ public:
     {
         if (element == PE_IndicatorArrowDown && qobject_cast<const QComboBox*>(widget))
         {
-            const QRect arrowRect(widget->width() - 31, 0, 31, widget->height());
+            const bool compact = widget->property("targetSelector").toBool();
+            const int arrowWidth = compact ? 23 : 31;
+            const QRect arrowRect(widget->width() - arrowWidth, 0,
+                arrowWidth, widget->height());
             painter->save();
             painter->setRenderHint(QPainter::Antialiasing, true);
             painter->fillRect(arrowRect, QColor(QStringLiteral("#121e2b")));
@@ -134,8 +139,9 @@ QString VpTheme::StyleSheet()
             font-weight: 600;
         }
         QComboBox[targetSelector="true"] {
-            font-size: 13px;
-            min-height: 25px;
+            font-size: 11px;
+            min-height: 20px;
+            padding: 1px 26px 1px 7px;
         }
         QToolButton[targetRefresh="true"] {
             background: #101d2a;

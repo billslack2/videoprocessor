@@ -5914,6 +5914,12 @@ void testTargetDropdownRefreshesInline()
         refresh->property("targetRefresh").toBool() &&
         !refresh->icon().isNull(),
         "The compact target label or styled refresh control is missing");
+    choice->ensurePolished();
+    caption->ensurePolished();
+    require(choice->height() == 24 && refresh->height() == 24 &&
+        refresh->iconSize() == QSize(14, 14) &&
+        choice->font().pixelSize() == caption->font().pixelSize(),
+        "Target selector and refresh control are larger than the caption");
     require(refresh->toolTip().contains(QStringLiteral("Refresh")) &&
         scans == 0, "Target refresh ran before the user requested it");
     discovered.removeLast();
