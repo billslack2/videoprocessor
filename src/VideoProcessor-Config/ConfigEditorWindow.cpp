@@ -1130,7 +1130,9 @@ QString ConfigEditorWindow::targetSearchTitleText(bool searching) const
 {
 	if (rememberedTargetId_.isEmpty())
 		return searching ? QStringLiteral("Looking for VideoProcessor…") :
-			QStringLiteral("No VideoProcessor found");
+			!discoveredTargets_.isEmpty() ?
+				QStringLiteral("Choose a VideoProcessor") :
+				QStringLiteral("No VideoProcessor found");
 	return searching ?
 		QStringLiteral("Looking for %1…").arg(rememberedTargetName()) :
 		QStringLiteral("%1 is unavailable").arg(rememberedTargetName());
@@ -1138,22 +1140,29 @@ QString ConfigEditorWindow::targetSearchTitleText(bool searching) const
 
 void ConfigEditorWindow::finishInitialTargetSearch()
 {
-	if (!initialSearchPending_) return;
 	initialSearchPending_ = false;
 	if (!noTarget_) return;
 	if (targetSearchTitle_)
 		targetSearchTitle_->setText(targetSearchTitleText(false));
 	if (targetSearchHelp_)
 		targetSearchHelp_->setText(rememberedTargetId_.isEmpty() ?
-			QStringLiteral("Available VideoProcessors on this LAN appear in the "
-				"target menu above. Select one to edit its settings.") :
+			(discoveredTargets_.isEmpty() ?
+				QStringLiteral("Available VideoProcessors on this LAN appear in the "
+					"target menu above. Select one to edit its settings.") :
+				QStringLiteral("Select an available VideoProcessor from the "
+					"target menu above to edit its settings.")) :
 			QStringLiteral("Still looking for your last target. Select another "
 				"target above if you want to edit its settings."));
 	if (targetSearchProgress_) targetSearchProgress_->hide();
 	populateTargetChoices();
-	setStatus(rememberedTargetId_.isEmpty() ?
-		QStringLiteral("No target is available. Checking this LAN regularly.") :
-		QStringLiteral("%1 is unavailable. Still checking for it.")
+	if (!remoteLoadError_.isEmpty())
+		setStatus(remoteLoadError_, true);
+	else if (rememberedTargetId_.isEmpty())
+		setStatus(discoveredTargets_.isEmpty() ?
+			QStringLiteral("No target is available. Checking this LAN regularly.") :
+			QStringLiteral("Choose a VideoProcessor from the target menu."));
+	else
+		setStatus(QStringLiteral("%1 is unavailable. Still checking for it.")
 			.arg(rememberedTargetName()));
 }
 
@@ -1161,6 +1170,7 @@ void ConfigEditorWindow::refreshTargetChoices()
 {
 	if (noTarget_)
 	{
+		remoteLoadError_.clear();
 		initialSearchPending_ = true;
 		if (targetSearchTitle_)
 			targetSearchTitle_->setText(targetSearchTitleText(true));
@@ -1185,6 +1195,7 @@ void ConfigEditorWindow::setDiscoveredTargets(const QList<Target>& targets)
 	if (targetChoice_ && targetChoice_->view()->isVisible()) return;
 	populateTargetChoices();
 	if (!noTarget_) return;
+	if (!initialSearchPending_) finishInitialTargetSearch();
 	const Target* preferred = nullptr;
 	Target manual;
 	if (rememberedTargetId_.startsWith(QStringLiteral("manual:")))
@@ -1208,6 +1219,9 @@ void ConfigEditorWindow::setDiscoveredTargets(const QList<Target>& targets)
 				break;
 			}
 	}
+	else if (rememberedTargetId_.isEmpty() && !localAvailable_ &&
+		discoveredTargets_.size() == 1)
+		preferred = &discoveredTargets_.front();
 	if (!preferred) return;
 	const QString key = preferred->instanceId + u'|' + preferred->vpVersion +
 		u'|' + preferred->host + u'|' + QString::number(preferred->port);
@@ -1227,7 +1241,8 @@ void ConfigEditorWindow::populateTargetChoices()
 	targetChoices_.push_back({ currentInstanceId_,
 		noTarget_ ? (rememberedTargetId_.isEmpty() ?
 			(initialSearchPending_ ? QStringLiteral("Searching…") :
-				QStringLiteral("No target")) :
+				(discoveredTargets_.isEmpty() ? QStringLiteral("No target") :
+					QStringLiteral("Choose target"))) :
 			QStringLiteral("%1 (%2)").arg(rememberedTargetName(),
 				initialSearchPending_ ? QStringLiteral("searching…") :
 					QStringLiteral("unavailable"))) : remoteClient_ ?
@@ -1373,6 +1388,7 @@ bool ConfigEditorWindow::eventFilter(QObject* watched, QEvent* event)
 void ConfigEditorWindow::beginRemoteTargetSwitch(const Target& target)
 {
 	targetSwitchPending_ = true;
+	remoteLoadError_.clear();
 	showTargetSwitchOverlay(target.label.section(QStringLiteral(" ("), 0, 0));
 	struct Result
 	{
@@ -1409,6 +1425,7 @@ void ConfigEditorWindow::finishRemoteTargetSwitch(const Target& target,
 	hideTargetSwitchOverlay();
 	if (!error.isEmpty())
 	{
+		remoteLoadError_ = error;
 		setStatus(error, true);
 		return;
 	}
@@ -1466,6 +1483,7 @@ void ConfigEditorWindow::finishLocalTargetSwitch(const Target& target,
 	hideTargetSwitchOverlay();
 	if (!loaded)
 	{
+		remoteLoadError_ = error;
 		setStatus(error, true);
 		return;
 	}

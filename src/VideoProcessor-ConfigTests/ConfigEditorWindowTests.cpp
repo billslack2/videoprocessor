@@ -5977,7 +5977,7 @@ void testTargetDropdownRefreshesInline()
         "A restarted VP was treated as a second target after its address changed");
 }
 
-void testRemoteTargetSwitchKeepsWindowResponsive()
+void exerciseRemoteTargetSwitch(bool automatic)
 {
     using namespace ConfigurationRpcProtocol;
     QTemporaryDir directory;
@@ -6069,22 +6069,27 @@ void testRemoteTargetSwitchKeepsWindowResponsive()
     } join{ stalledServer };
 
     ConfigEditorWindow window(path, 0, true, {}, {},
-        {}, 41686, {}, true);
+        {}, 41686, {}, true, !automatic);
     window.show();
     QApplication::processEvents();
+    QElapsedTimer dispatch;
+    dispatch.start();
     window.setDiscoveredTargets({
         { QStringLiteral("stalled"), QStringLiteral("SLOW VP"),
             QStringLiteral("localhost"), ntohs(address.sin_port) }
     });
     auto* choice = requireControl<QComboBox>(window, "config.targetChoice");
-    require(choice->count() == 4 && choice->itemText(2) ==
+    require(choice->count() == (automatic ? 3 : 4) &&
+        choice->itemText(automatic ? 1 : 2) ==
         QStringLiteral("SLOW VP"), "Stalled VP was not offered in the selector");
-    QElapsedTimer dispatch;
-    dispatch.start();
-    QMetaObject::invokeMethod(choice, "activated", Qt::DirectConnection,
-        Q_ARG(int, 2));
+    if (!automatic)
+    {
+        dispatch.restart();
+        QMetaObject::invokeMethod(choice, "activated", Qt::DirectConnection,
+            Q_ARG(int, 2));
+    }
     require(dispatch.elapsed() < 250,
-        "Selecting a remote VP blocked the UI thread");
+        "Connecting to a remote VP blocked the UI thread");
     auto* overlay = requireControl<QWidget>(window,
         "config.targetSwitchOverlay");
     auto* title = requireControl<QLabel>(window,
@@ -6099,7 +6104,7 @@ void testRemoteTargetSwitchKeepsWindowResponsive()
     require(heartbeat && overlay->isVisible(),
         "The loading screen did not stay responsive during the stalled request");
     const QString captures = qEnvironmentVariable("VP_CONFIG_REVIEW_IMAGES");
-    if (!captures.isEmpty())
+    if (!automatic && !captures.isEmpty())
         window.grab().save(QDir(captures).filePath(
             QStringLiteral("target-switch-loading.png")));
     window.resize(1140, 760);
@@ -6120,6 +6125,16 @@ void testRemoteTargetSwitchKeepsWindowResponsive()
         requireControl<QPushButton>(window, "okConfiguration")->isEnabled() &&
         !window.awaitingTarget(),
         "Successful remote connection did not open the target configuration");
+}
+
+void testRemoteTargetSwitchKeepsWindowResponsive()
+{
+    exerciseRemoteTargetSwitch(false);
+}
+
+void testRemoteOnlyAutomaticallyOpensSoleVp()
+{
+    exerciseRemoteTargetSwitch(true);
 }
 
 void testNoTargetStartupIsQuiet()
@@ -6156,6 +6171,15 @@ void testNoTargetStartupIsQuiet()
     require(title->text() == QStringLiteral("No VideoProcessor found") &&
         progress->isHidden(),
         "The search progress stayed visible after the initial search");
+    window.setDiscoveredTargets({
+        { QStringLiteral("remote-a"), QStringLiteral("STUDY"),
+            QStringLiteral("192.168.1.20"), 41686 },
+        { QStringLiteral("remote-b"), QStringLiteral("DEN"),
+            QStringLiteral("192.168.1.21"), 41686 }
+    });
+    require(title->text() == QStringLiteral("Choose a VideoProcessor") &&
+        choice->currentText() == QStringLiteral("Choose target"),
+        "An available VP was still reported as not found after discovery");
 }
 
 void testOfflineFileStillOffersTargets()
@@ -6302,12 +6326,37 @@ void testRemoteOnlyClientHasNoLocalFileTarget()
         "A remote-only Config copy offered a local file target");
     window.setDiscoveredTargets({
         { QStringLiteral("lan-target"), QStringLiteral("LIVING ROOM"),
-            QStringLiteral("192.168.1.25"), 41686, {}, false }
+            QStringLiteral("localhost"), 1, {}, false }
     });
-    require(choice->currentText() == QStringLiteral("Searching…") &&
+    require(window.findChild<QWidget*>("config.targetSwitchOverlay") &&
         choice->itemText(1) == QStringLiteral("LIVING ROOM") &&
         !requireControl<QPushButton>(window, "okConfiguration")->isEnabled(),
-        "Discovery selected a remote target without the user's choice");
+        "A remote-only first launch did not connect to its sole VP");
+    QElapsedTimer completion;
+    completion.start();
+    while (window.findChild<QWidget*>("config.targetSwitchOverlay") &&
+        completion.elapsed() < 10000)
+    {
+        QApplication::processEvents();
+        QThread::msleep(5);
+    }
+    window.finishInitialTargetSearch();
+    require(!window.findChild<QWidget*>("config.targetSwitchOverlay") &&
+        window.awaitingTarget() &&
+        requireControl<QLabel>(window, "config.targetSearchTitle")->text() ==
+            QStringLiteral("Choose a VideoProcessor") &&
+        requireControl<QComboBox>(window, "config.targetChoice")->itemText(1) ==
+            QStringLiteral("LIVING ROOM"),
+        "A failed connection incorrectly said no VP was discovered");
+    window.setDiscoveredTargets({
+        { QStringLiteral("lan-target"), QStringLiteral("LIVING ROOM"),
+            QStringLiteral("localhost"), 1, {}, false },
+        { QStringLiteral("other-target"), QStringLiteral("STUDY"),
+            QStringLiteral("other-host"), 41686, {}, false }
+    });
+    require(!window.findChild<QWidget*>("config.targetSwitchOverlay") &&
+        requireControl<QComboBox>(window, "config.targetChoice")->count() == 4,
+        "Multiple remote targets were selected without user choice");
 }
 
 int run(const char* name, const std::function<void()>& test)
@@ -6437,6 +6486,8 @@ int main(int argc, char** argv)
     failures += run("target dropdown refreshes inline", testTargetDropdownRefreshesInline);
     failures += run("remote target switch keeps window responsive",
         testRemoteTargetSwitchKeepsWindowResponsive);
+    failures += run("remote-only client opens its sole discovered VP",
+        testRemoteOnlyAutomaticallyOpensSoleVp);
     failures += run("no-target startup is quiet", testNoTargetStartupIsQuiet);
     failures += run("offline file still offers targets", testOfflineFileStillOffersTargets);
     failures += run("unavailable RPC can return to local file",
