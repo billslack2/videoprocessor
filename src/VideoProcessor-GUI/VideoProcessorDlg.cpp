@@ -25,6 +25,7 @@
 #include <chrono>
 #include <cmath>
 #include <condition_variable>
+#include <cwctype>
 #include <fstream>
 #include <iomanip>
 #include <limits>
@@ -53,7 +54,9 @@
 #endif
 #include <guid.h>
 #include <ConfigFile.h>
+#include <ConfigurationDiscovery.h>
 #include <ConfigurationLiveApply.h>
+#include <ConfigurationRpcProtocol.h>
 #include <CaptureVideoStatePolicy.h>
 #include <ActiveProfileStatus.h>
 #include <ActiveOutputSweepPolicy.h>
@@ -68,6 +71,8 @@
 
 
 #include "VideoProcessorDlg.h"
+
+#pragma comment(lib, "Ws2_32.lib")
 
 namespace
 {
@@ -2081,6 +2086,7 @@ BEGIN_MESSAGE_MAP(CVideoProcessorDlg, CDialog)
 	ON_MESSAGE(WM_MESSAGE_RENDERER_ACTION_EVENT, &CVideoProcessorDlg::OnMessageRendererActionEvent)
 	ON_MESSAGE(WM_MESSAGE_RENDERER_RESTART_REQUIRED, &CVideoProcessorDlg::OnMessageRendererRestartRequired)
 	ON_MESSAGE(WM_MESSAGE_RENDERER_QUEUE_CONTRACT_CHANGED, &CVideoProcessorDlg::OnMessageRendererQueueContractChanged)
+	ON_MESSAGE(WM_MESSAGE_CONFIGURATION_RPC_REQUEST, &CVideoProcessorDlg::OnConfigurationRpcRequest)
 	ON_MESSAGE(WM_MODERN_OPERATOR_ACTION, &CVideoProcessorDlg::OnMessageModernOperatorAction)
 
 	// Command handlers (from accelerator)
@@ -3007,10 +3013,249 @@ void CVideoProcessorDlg::UpdateConfigurationEditorModal()
 #endif
 }
 
-void CVideoProcessorDlg::ApplySavedConfiguration()
+namespace
 {
-	if (!StageSavedConfiguration("editor-apply", false))
-		return;
+using ConfigurationRpcProtocol::Frame;
+using ConfigurationRpcProtocol::Operation;
+
+Frame ConfigurationRpcError(uint16_t operation, const std::string& message)
+{
+	Frame response;
+	response.operation = static_cast<uint16_t>(operation |
+		ConfigurationRpcProtocol::ResponseFlag |
+		ConfigurationRpcProtocol::ErrorFlag);
+	ConfigurationRpcProtocol::WriteString(response.payload, message);
+	return response;
+}
+
+std::wstring ConfigurationRpcWidePath(const std::string& narrow)
+{
+	if (narrow.empty()) return {};
+	const int length = MultiByteToWideChar(CP_ACP, 0, narrow.c_str(),
+		static_cast<int>(narrow.size()), nullptr, 0);
+	if (length <= 0) return {};
+	std::wstring result(static_cast<size_t>(length), L'\0');
+	if (MultiByteToWideChar(CP_ACP, 0, narrow.c_str(),
+		static_cast<int>(narrow.size()), &result[0], length) != length)
+		return {};
+	return result;
+}
+
+std::string ConfigurationRpcUtf8(const std::wstring& wide)
+{
+	if (wide.empty()) return {};
+	const int length = WideCharToMultiByte(CP_UTF8, 0, wide.data(),
+		static_cast<int>(wide.size()), nullptr, 0, nullptr, nullptr);
+	if (length <= 0) return {};
+	std::string result(static_cast<size_t>(length), '\0');
+	if (WideCharToMultiByte(CP_UTF8, 0, wide.data(),
+		static_cast<int>(wide.size()), &result[0], length, nullptr, nullptr) != length)
+		return {};
+	return result;
+}
+
+bool ConfigurationRpcWriteWideList(std::vector<uint8_t>& output,
+	const std::vector<std::wstring>& values)
+{
+	if (values.size() > 1024) return false;
+	ConfigurationRpcProtocol::Write32(output,
+		static_cast<uint32_t>(values.size()));
+	for (const auto& value : values)
+		if (!ConfigurationRpcProtocol::WriteString(output,
+			ConfigurationRpcUtf8(value))) return false;
+	return true;
+}
+
+std::vector<std::wstring> ConfigurationRpcLuts(const std::wstring& path)
+{
+	std::vector<std::wstring> result;
+	const size_t separator = path.find_last_of(L"\\/");
+	if (separator == std::wstring::npos) return result;
+	const std::wstring search = path.substr(0, separator + 1) +
+		L"luts\\*.cube";
+	WIN32_FIND_DATAW found{};
+	const HANDLE handle = FindFirstFileW(search.c_str(), &found);
+	if (handle == INVALID_HANDLE_VALUE) return result;
+	do
+	{
+		if (!(found.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) &&
+			result.size() < 1024)
+			result.push_back(L"luts/" + std::wstring(found.cFileName));
+	} while (FindNextFileW(handle, &found));
+	FindClose(handle);
+	std::sort(result.begin(), result.end());
+	return result;
+}
+
+struct ConfigurationRpcRemoveStage
+{
+	std::wstring path;
+	~ConfigurationRpcRemoveStage()
+	{
+		if (!path.empty()) DeleteFileW(path.c_str());
+	}
+};
+}
+
+LRESULT CVideoProcessorDlg::OnConfigurationRpcRequest(WPARAM id, LPARAM)
+{
+	const auto pending = m_configurationRpcServer.TakePending(
+		static_cast<uint64_t>(id));
+	if (!pending) return 0;
+	pending->response = HandleConfigurationRpc(pending->request);
+	m_configurationRpcServer.Complete(pending);
+	return 0;
+}
+
+ConfigurationRpcProtocol::Frame CVideoProcessorDlg::HandleConfigurationRpc(
+	const Frame& request)
+{
+	using namespace ConfigurationRpcProtocol;
+	const uint16_t operation = request.operation;
+	if (operation != static_cast<uint16_t>(Operation::GetConfig) &&
+		operation != static_cast<uint16_t>(Operation::GetCapabilities) &&
+		operation != static_cast<uint16_t>(Operation::ApplyConfig))
+		return ConfigurationRpcError(operation, "Unsupported RPC operation.");
+	if (m_wantToTerminate)
+		return ConfigurationRpcError(operation, "VideoProcessor is stopping.");
+	if (request.payload.size() < 2 ||
+		Read16(request.payload.data()) != ConfigurationCompatibilityVersion)
+		return ConfigurationRpcError(operation,
+			"This Config UI uses an incompatible configuration model. Update VP and Config UI together.");
+	if (operation != static_cast<uint16_t>(Operation::ApplyConfig) &&
+		request.payload.size() != 2)
+		return ConfigurationRpcError(operation,
+			"This RPC operation does not accept a request body.");
+
+	ConfigFile active;
+	if (!active.Load(ConfigFile::DEFAULT_FILENAME, ConfigFile::ReadPolicy::Fresh) ||
+		active.GetLoadedPath().empty())
+		return ConfigurationRpcError(operation,
+			"VideoProcessor could not read its active configuration.");
+	const std::string activePath = active.GetLoadedPath();
+	const std::wstring widePath = ConfigurationRpcWidePath(activePath);
+	if (widePath.empty())
+		return ConfigurationRpcError(operation,
+			"VideoProcessor could not resolve its configuration path.");
+
+	Frame response;
+	response.operation = static_cast<uint16_t>(operation | ResponseFlag);
+	if (operation == static_cast<uint16_t>(Operation::GetCapabilities))
+	{
+		Write16(response.payload, ConfigurationCompatibilityVersion);
+		if (!WriteString(response.payload, ConfigurationRpcUtf8(VERSION_DESCRIBE)))
+			return ConfigurationRpcError(operation,
+				"VideoProcessor version exceeded the RPC limit.");
+		const auto devices = ConfigurationDiscovery::CaptureDeviceNames();
+		if (!ConfigurationRpcWriteWideList(response.payload, devices))
+			return ConfigurationRpcError(operation, "Too many capture devices.");
+		Write32(response.payload, static_cast<uint32_t>(devices.size()));
+		for (const auto& device : devices)
+		{
+			if (!WriteString(response.payload, ConfigurationRpcUtf8(device)) ||
+				!ConfigurationRpcWriteWideList(response.payload,
+					ConfigurationDiscovery::CaptureConnectionNames(device)))
+				return ConfigurationRpcError(operation,
+					"Capture connection list exceeded the RPC limit.");
+		}
+		if (!ConfigurationRpcWriteWideList(response.payload,
+			ConfigurationDiscovery::ActiveMonitorNames()) ||
+			!ConfigurationRpcWriteWideList(response.payload,
+				ConfigurationDiscovery::RendererNames(true)) ||
+			!ConfigurationRpcWriteWideList(response.payload,
+				ConfigurationDiscovery::RendererNames(false)) ||
+			!ConfigurationRpcWriteWideList(response.payload,
+				ConfigurationRpcLuts(widePath)))
+			return ConfigurationRpcError(operation,
+				"Capabilities exceeded the RPC limit.");
+		return response;
+	}
+
+	ConfigEditorCore::ConfigDocument document;
+	std::wstring error;
+	if (!document.Load(widePath, error) || !document.existedAtLoad)
+		return ConfigurationRpcError(operation,
+			"VideoProcessor could not read its configuration document.");
+	if (operation == static_cast<uint16_t>(Operation::GetConfig))
+	{
+		if (!WriteString(response.payload, ConfigurationRpcUtf8(widePath)) ||
+			!WriteString(response.payload, document.loadedBytes))
+			return ConfigurationRpcError(operation,
+				"Configuration exceeds the RPC document limit.");
+		return response;
+	}
+
+	size_t cursor = 2;
+	std::string baseline;
+	std::string candidate;
+	if (!ReadString(request.payload, cursor, baseline) ||
+		!ReadString(request.payload, cursor, candidate) ||
+		cursor != request.payload.size())
+		return ConfigurationRpcError(operation,
+			"ApplyConfig requires one baseline and one candidate document.");
+	if (baseline != document.loadedBytes)
+		return ConfigurationRpcError(operation,
+			"The target configuration changed after it was opened. Refresh and review before applying.");
+	document.ReplaceContents(candidate);
+	if (!ConfigEditorCore::ValidateCandidate(document, error))
+		return ConfigurationRpcError(operation, ConfigurationRpcUtf8(error));
+
+	const std::wstring stagePath = widePath + L".vpconfig-rpc-stage." +
+		std::to_wstring(GetCurrentProcessId()) + L"." +
+		std::to_wstring(GetTickCount64()) + L".tmp";
+	const HANDLE stage = CreateFileW(stagePath.c_str(), GENERIC_WRITE, 0,
+		nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
+	if (stage == INVALID_HANDLE_VALUE)
+		return ConfigurationRpcError(operation,
+			"Could not create a target-side staging file.");
+	ConfigurationRpcRemoveStage removeStage{ stagePath };
+	DWORD written = 0;
+	const BOOL wrote = WriteFile(stage, candidate.data(),
+		static_cast<DWORD>(candidate.size()), &written, nullptr);
+	const BOOL flushed = wrote && written == candidate.size() &&
+		FlushFileBuffers(stage);
+	CloseHandle(stage);
+	if (!flushed)
+		return ConfigurationRpcError(operation,
+			"Could not write the target-side staging file.");
+	const int pathLength = WideCharToMultiByte(CP_ACP, 0, stagePath.c_str(),
+		-1, nullptr, 0, nullptr, nullptr);
+	std::string narrowStage(static_cast<size_t>(std::max(0, pathLength)), '\0');
+	if (pathLength <= 1 || !WideCharToMultiByte(CP_ACP, 0,
+		stagePath.c_str(), -1, &narrowStage[0], pathLength,
+		nullptr, nullptr))
+		return ConfigurationRpcError(operation,
+			"Could not resolve the target-side staging path.");
+	narrowStage.pop_back();
+	if (!StageSavedConfiguration("editor-apply", false,
+		narrowStage, activePath))
+	{
+		ClearStagedConfiguration();
+		return ConfigurationRpcError(operation,
+			"VideoProcessor rejected the candidate during runtime staging. Review target logs and settings.");
+	}
+	const auto action = m_stagedConfigurationAction;
+	ConfigEditorCore::SaveResult saved;
+	if (!ConfigEditorCore::SaveSafely(document, saved, error))
+	{
+		ClearStagedConfiguration();
+		return ConfigurationRpcError(operation, ConfigurationRpcUtf8(error));
+	}
+	if (!ApplySavedConfiguration(true))
+		return ConfigurationRpcError(operation,
+			"The configuration was saved, but VideoProcessor could not publish the requested runtime change. Refresh the target before retrying.");
+	WriteString(response.payload, ActionLabel(action));
+	response.payload.push_back(action == ConfigurationApplyPolicy::Action::SaveOnly ?
+		0 : action == ConfigurationApplyPolicy::Action::RestartCapture ||
+			action == ConfigurationApplyPolicy::Action::RestartRenderer ||
+			action == ConfigurationApplyPolicy::Action::ResetQueues ? 2 : 1);
+	return response;
+}
+
+bool CVideoProcessorDlg::ApplySavedConfiguration(bool alreadyStaged)
+{
+	if (!alreadyStaged && !StageSavedConfiguration("editor-apply", false))
+		return false;
 	// The target is read when a fullscreen host is created, so publish an
 	// accepted monitor change before any renderer transition. This preserves the
 	// current presentation state while making the next fullscreen entry use the
@@ -3022,14 +3267,12 @@ void CVideoProcessorDlg::ApplySavedConfiguration()
 	case ConfigurationApplyPolicy::Action::RestartCapture:
 	{
 		const bool replaceShortcuts = m_stagedShortcutsChanged;
-		if (PublishStagedConfiguration(replaceShortcuts))
-		{
-			DebugLog::Log(
-				"Configuration transaction accepted: action=restart-capture state=published shortcuts=%s",
-				replaceShortcuts ? "replaced" : "retained");
-			m_wantToRestartCapture = true;
-			OnCaptureDeviceSelected();
-		}
+		if (!PublishStagedConfiguration(replaceShortcuts)) return false;
+		DebugLog::Log(
+			"Configuration transaction accepted: action=restart-capture state=published shortcuts=%s",
+			replaceShortcuts ? "replaced" : "retained");
+		m_wantToRestartCapture = true;
+		OnCaptureDeviceSelected();
 		break;
 	}
 	case ConfigurationApplyPolicy::Action::RestartRenderer:
@@ -3044,19 +3287,19 @@ void CVideoProcessorDlg::ApplySavedConfiguration()
 	case ConfigurationApplyPolicy::Action::ApplyProfiles:
 	{
 		const bool replaceShortcuts = m_stagedShortcutsChanged;
-		if (PublishStagedConfiguration(replaceShortcuts))
-			DebugLog::Log(
-				"Configuration transaction accepted: action=reset-queues state=published shortcuts=%s",
-				replaceShortcuts ? "replaced" : "retained");
+		if (!PublishStagedConfiguration(replaceShortcuts)) return false;
+		DebugLog::Log(
+			"Configuration transaction accepted: action=reset-queues state=published shortcuts=%s",
+			replaceShortcuts ? "replaced" : "retained");
 		break;
 	}
 	case ConfigurationApplyPolicy::Action::ReloadShortcuts:
-		PublishStagedShortcutsOnly();
+		if (!PublishStagedShortcutsOnly()) return false;
 		break;
 	case ConfigurationApplyPolicy::Action::ApplyInterface:
-		if (PublishStagedConfiguration(false))
-			DebugLog::Log(
-				"Configuration transaction accepted: action=apply-display state=published");
+		if (!PublishStagedConfiguration(false)) return false;
+		DebugLog::Log(
+			"Configuration transaction accepted: action=apply-display state=published");
 		break;
 	default:
 		DebugLog::Log(
@@ -3065,6 +3308,7 @@ void CVideoProcessorDlg::ApplySavedConfiguration()
 		ClearStagedConfiguration();
 		break;
 	}
+	return true;
 }
 
 void CVideoProcessorDlg::ConfigureActiveOutputSweep(
@@ -3834,7 +4078,8 @@ void CVideoProcessorDlg::UpdateActiveOutputSweep(ULONGLONG now)
 }
 
 bool CVideoProcessorDlg::StageSavedConfiguration(
-	const char* reason, bool stageAccelerators)
+	const char* reason, bool stageAccelerators,
+	const std::string& candidatePath, const std::string& logicalPath)
 {
 	ClearStagedConfiguration();
 	const auto readPolicy = strcmp(reason, "renderer-lifecycle") == 0 ?
@@ -3844,7 +4089,10 @@ bool CVideoProcessorDlg::StageSavedConfiguration(
 	for (unsigned int attempt = 1; attempt <= 3; ++attempt)
 	{
 		auto first = std::make_unique<ConfigFile>();
-		if (!first->Load(ConfigFile::DEFAULT_FILENAME, readPolicy))
+		const bool firstLoaded = candidatePath.empty() ?
+			first->Load(ConfigFile::DEFAULT_FILENAME, readPolicy) :
+			first->LoadStagedCandidate(candidatePath, logicalPath, readPolicy);
+		if (!firstLoaded)
 		{
 			DebugLog::Log(
 				"Configuration reload rejected: reason=%s attempt=%u failure=load",
@@ -3854,7 +4102,10 @@ bool CVideoProcessorDlg::StageSavedConfiguration(
 		const ConfigurationSnapshot firstSnapshot =
 			CaptureConfigurationSnapshot(*first);
 		auto second = std::make_unique<ConfigFile>();
-		if (!second->Load(ConfigFile::DEFAULT_FILENAME, readPolicy) ||
+		const bool secondLoaded = candidatePath.empty() ?
+			second->Load(ConfigFile::DEFAULT_FILENAME, readPolicy) :
+			second->LoadStagedCandidate(candidatePath, logicalPath, readPolicy);
+		if (!secondLoaded ||
 			CaptureConfigurationSnapshot(*second) != firstSnapshot)
 		{
 			DebugLog::Log(
@@ -4773,6 +5024,7 @@ bool CVideoProcessorDlg::TryGetDisplayRefreshRateOverride(
 
 CVideoProcessorDlg::~CVideoProcessorDlg()
 {
+	m_configurationRpcServer.Stop();
 	KillTimer(PROFILE_CHANGE_OVERLAY_TIMER_ID);
 	ClearStagedConfiguration();
 	if (m_fullScreenVideoWindow &&
@@ -7698,7 +7950,7 @@ void CVideoProcessorDlg::OnCommandConfigEditor()
 	const HWND editorOwner = ConfigurationEditorOwner();
 	wchar_t arguments[2 * MAX_PATH + 120] = {};
 	swprintf_s(arguments,
-		L"--config \"%s\" --owner %llu --owner-process %lu",
+		L"--config \"%s\" --discover --owner %llu --owner-process %lu",
 		configPath.c_str(),
 		static_cast<unsigned long long>(reinterpret_cast<UINT_PTR>(editorOwner)),
 		GetCurrentProcessId());
@@ -7752,7 +8004,7 @@ void CVideoProcessorDlg::StartConfigurationEditorInTray()
 	}
 
 	wchar_t arguments[2 * MAX_PATH + 32] = {};
-	swprintf_s(arguments, L"--config \"%s\" --background", configPath.c_str());
+	swprintf_s(arguments, L"--config \"%s\" --discover --background", configPath.c_str());
 	const HINSTANCE result = ShellExecuteW(GetSafeHwnd(), L"open", editorPath.c_str(),
 		arguments, editorDirectory.c_str(), SW_HIDE);
 	if (reinterpret_cast<INT_PTR>(result) <= 32)
@@ -13208,6 +13460,40 @@ BOOL CVideoProcessorDlg::OnInitDialog()
 	if (m_startMinimized) {
 		ShowWindow(SW_MINIMIZE);
 	}
+	wchar_t computerName[256] = {};
+	DWORD computerNameLength = ARRAYSIZE(computerName);
+	std::wstring installationDirectory;
+	if (!GetComputerNameW(computerName, &computerNameLength) ||
+		!GetApplicationDirectory(installationDirectory))
+	{
+		DebugLog::Log("Configuration RPC unavailable: could not identify this VP installation");
+	}
+	else
+	{
+		std::wstring identitySource(computerName, computerNameLength);
+		identitySource += L'|';
+		identitySource += installationDirectory;
+		uint64_t identityHash = 1469598103934665603ull;
+		for (wchar_t character : identitySource)
+		{
+			identityHash ^= static_cast<uint16_t>(std::towlower(character));
+			identityHash *= 1099511628211ull;
+		}
+		std::ostringstream identity;
+		identity << std::hex << identityHash;
+		const ConfigurationRpcServer::DiscoveryInfo info{
+			identity.str(), ConfigurationRpcUtf8(std::wstring(computerName,
+				computerNameLength)), ConfigurationRpcUtf8(VERSION_DESCRIBE) };
+		std::string rpcError;
+		if (!m_configurationRpcServer.Start(GetSafeHwnd(),
+			WM_MESSAGE_CONFIGURATION_RPC_REQUEST, info, rpcError))
+			DebugLog::Log("Configuration RPC unavailable: %s", rpcError.c_str());
+		else
+			DebugLog::Log("Configuration RPC listening on private IPv4 peers, TCP port %u, UDP discovery port %u, instance=%s",
+				ConfigurationRpcServer::Port,
+				ConfigurationRpcServer::DiscoveryPort,
+				info.instanceId.c_str());
+	}
 	
 	return TRUE;
 }
@@ -14142,6 +14428,7 @@ void CVideoProcessorDlg::OnClose()
 	// Set intent first, stopping the discoverer will lead to state update calls
 	m_desiredCaptureDevice = nullptr;
 	m_wantToTerminate = true;
+	m_configurationRpcServer.Stop();
 	KillTimer(FULLSCREEN_FOCUS_TIMER_ID);
 	if (m_fullscreenRetargetPending)
 		ClearFullscreenRetarget(false);
