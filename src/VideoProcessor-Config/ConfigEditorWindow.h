@@ -49,6 +49,7 @@ public:
         QString host;
         quint16 port = 41686;
         QString vpVersion;
+        bool local = false;
     };
 
     explicit ConfigEditorWindow(QString configPath, quintptr ownerHandle = 0,
@@ -175,6 +176,7 @@ private:
     void refreshLimitedTransportControls();
 
     QString configPath_;
+    QString localConfigPath_;
     QString remoteHost_;
     QString remoteName_;
     QString currentInstanceId_;

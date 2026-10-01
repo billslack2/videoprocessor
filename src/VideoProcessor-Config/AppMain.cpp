@@ -301,8 +301,6 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
 	QString remoteName;
 	quint16 remotePort = 41686;
 	bool offline = false;
-	bool explicitConfig = false;
-	bool discoverTargets = false;
     QString screenshotPath;
     int initialPage = 0;
     quintptr owner = 0;
@@ -319,7 +317,6 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
         if (arguments[index] == QStringLiteral("--config") && index + 1 < arguments.size())
 		{
 			configPath = arguments[++index];
-			explicitConfig = true;
 		}
 		else if (arguments[index] == QStringLiteral("--connect") && index + 1 < arguments.size())
 		{
@@ -333,7 +330,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
 		else if (arguments[index] == QStringLiteral("--offline"))
 			offline = true;
 		else if (arguments[index] == QStringLiteral("--discover"))
-			discoverTargets = true;
+			continue; // Retained for existing VP launch arguments.
         else if (arguments[index] == QStringLiteral("--owner") && index + 1 < arguments.size())
             owner = parseOwner(arguments[++index]);
         else if (arguments[index] == QStringLiteral("--owner-process") && index + 1 < arguments.size())
@@ -356,15 +353,10 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
     }
     if (configPath.isEmpty()) configPath = defaultConfigPath();
     if (!ownerBelongsToProcess(owner, ownerProcessId)) owner = 0;
-	if (owner && remoteHost.isEmpty() && !offline && !discoverTargets)
-	{
-		remoteHost = QStringLiteral("127.0.0.1");
-		remoteName = QStringLiteral("LOCAL");
-	}
 	if (remoteHost == QStringLiteral("127.0.0.1"))
 		remoteName = QStringLiteral("LOCAL");
-	const bool noTarget = remoteHost.isEmpty() && !offline &&
-		(!explicitConfig || discoverTargets);
+	// The local configuration file remains editable while VP is stopped.
+	// Discovery adds remote choices without blocking the local editor.
 
     const std::wstring activationEventName = installationScopedEventName(
 		L"Local\\VideoProcessorConfigEditor.Activate.v1");
@@ -389,7 +381,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
     }
 
     ConfigEditorWindow window(QFileInfo(configPath).absoluteFilePath(), owner,
-		false, {}, {}, remoteHost, remotePort, remoteName, noTarget);
+		false, {}, {}, remoteHost, remotePort, remoteName);
 	std::unique_ptr<LanTargetWatcher> watcher;
 	if (screenshotPath.isEmpty() || !offline)
 	{
@@ -400,16 +392,13 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
 			QList<ConfigEditorWindow::Target> choices;
 			for (const auto& target : found)
 				choices.push_back({ target.instanceId, target.label,
-					target.address, target.port, target.vpVersion });
+					target.address, target.port, target.vpVersion, target.local });
 			window.setDiscoveredTargets(choices);
 			return window.awaitingTarget();
 		});
 		window.setTargetRefresh([watcherPtr] { watcherPtr->scan(); });
 		QTimer::singleShot(0, watcherPtr, [watcherPtr] { watcherPtr->scan(); });
 	}
-	if (noTarget)
-		QTimer::singleShot(5000, &window,
-			[&window] { window.finishInitialTargetSearch(); });
     std::unique_ptr<QWinEventNotifier> activationNotifier;
     if (activationEvent)
     {

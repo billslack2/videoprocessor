@@ -942,7 +942,8 @@ ConfigEditorWindow::ConfigEditorWindow(QString configPath, quintptr ownerHandle,
     bool testMode, const QStringList& testFilteredRenderers,
     const QStringList& testAllRenderers, const QString& remoteHost,
     quint16 remotePort, const QString& remoteName, bool noTarget)
-    : configPath_(std::move(configPath)), ownerHandle_(ownerHandle),
+    : configPath_(std::move(configPath)), localConfigPath_(configPath_),
+      ownerHandle_(ownerHandle),
       noTarget_(noTarget), initialSearchPending_(noTarget), testMode_(testMode),
       document_(std::make_unique<ConfigEditorCore::ConfigDocument>())
 {
@@ -1136,7 +1137,25 @@ void ConfigEditorWindow::setDiscoveredTargets(const QList<Target>& targets)
 	discoveredTargets_ = targets;
 	if (targetChoice_ && targetChoice_->view()->isVisible()) return;
 	populateTargetChoices();
-	if (!noTarget_) return;
+	if (!noTarget_)
+	{
+		// A remembered remote can reconnect after startup, but never replace
+		// local edits that the user has already begun.
+		if (testMode_ || remoteClient_ || dirty_ || !configurationLoaded_)
+			return;
+		QSettings preferences;
+		const QString remembered = preferences.value(
+			QStringLiteral("configRpc/selectedInstanceId")).toString();
+		if (remembered.isEmpty() || remembered == QStringLiteral("local")) return;
+		for (const auto& target : discoveredTargets_)
+			if (target.instanceId == remembered && !target.local &&
+				target.host != QStringLiteral("127.0.0.1"))
+			{
+				selectAnotherTarget(target);
+				break;
+			}
+		return;
+	}
 	QSettings preferences;
 	const QString remembered = preferences.value(
 		QStringLiteral("configRpc/selectedInstanceId")).toString();
@@ -1178,10 +1197,15 @@ void ConfigEditorWindow::populateTargetChoices()
 	targetChoices_.push_back({ currentInstanceId_,
 		noTarget_ ? (initialSearchPending_ ? QStringLiteral("Searching…") :
 			QStringLiteral("No target")) : remoteClient_ ?
-		remoteName_ : QStringLiteral("Offline file"),
+		remoteName_ : QStringLiteral("LOCAL"),
 		remoteHost_, remotePort_, {} });
+	if (remoteClient_)
+		targetChoices_.push_back({ {}, QStringLiteral("LOCAL"), {}, 41686, {} });
 	for (const auto& target : discoveredTargets_)
 	{
+		if (!noTarget_ && (target.local ||
+			target.host == QStringLiteral("127.0.0.1")))
+			continue;
 		if (!noTarget_ &&
 			((!currentInstanceId_.isEmpty() &&
 				target.instanceId == currentInstanceId_) ||
@@ -1201,8 +1225,10 @@ void ConfigEditorWindow::populateTargetChoices()
 	{
 		targetChoice_->addItem(target.label);
 		targetChoice_->setItemData(targetChoice_->count() - 1,
-			QStringLiteral("%1:%2 · %3").arg(target.host)
-				.arg(target.port).arg(target.vpVersion),
+			target.host.isEmpty() ?
+				QStringLiteral("Configuration file on this computer") :
+				QStringLiteral("%1:%2 · %3").arg(target.host)
+					.arg(target.port).arg(target.vpVersion),
 			Qt::ToolTipRole);
 	}
 	targetChoice_->addItem(QStringLiteral("Enter address…"));
@@ -1263,8 +1289,10 @@ bool ConfigEditorWindow::selectAnotherTarget(const Target& target)
 		}
 		else if (prompt.clickedButton() != discard) return false;
 	}
-	auto replacement = std::make_unique<ConfigurationRpcClient>(
-		target.host.toStdString(), target.port);
+	std::unique_ptr<ConfigurationRpcClient> replacement;
+	if (!target.host.isEmpty())
+		replacement = std::make_unique<ConfigurationRpcClient>(
+			target.host.toStdString(), target.port);
 	const QString previousHost = remoteHost_;
 	const QString previousName = remoteName_;
 	const QString previousInstanceId = currentInstanceId_;
@@ -1286,11 +1314,13 @@ bool ConfigEditorWindow::selectAnotherTarget(const Target& target)
 	remoteClient_ = std::move(replacement);
 	remoteHost_ = target.host;
 	remotePort_ = target.port;
-	remoteName_ = target.label.section(QStringLiteral(" ("), 0, 0);
+	remoteName_ = target.host.isEmpty() ? QStringLiteral("LOCAL") :
+		target.label.section(QStringLiteral(" ("), 0, 0);
 	currentInstanceId_ = target.instanceId;
 	noTarget_ = false;
+	if (!remoteClient_) configPath_ = localConfigPath_;
 	loadConfiguration();
-	if (!remoteLoadError_.isEmpty())
+	if (!remoteLoadError_.isEmpty() || !configurationLoaded_)
 	{
 		remoteClient_ = std::move(previousClient);
 		remoteHost_ = previousHost;
@@ -1313,16 +1343,22 @@ bool ConfigEditorWindow::selectAnotherTarget(const Target& target)
 		setStatus(remoteLoadError_, true);
 		return false;
 	}
-	QSettings preferences;
-	if (!target.instanceId.isEmpty())
-		preferences.setValue(QStringLiteral("configRpc/selectedInstanceId"),
-			target.instanceId);
-	else
+	if (!testMode_)
 	{
-		preferences.setValue(QStringLiteral("configRpc/selectedInstanceId"),
-			QStringLiteral("manual:%1:%2").arg(target.host).arg(target.port));
-		preferences.setValue(QStringLiteral("configRpc/manualHost"), target.host);
-		preferences.setValue(QStringLiteral("configRpc/manualPort"), target.port);
+		QSettings preferences;
+		if (target.host.isEmpty())
+			preferences.setValue(QStringLiteral("configRpc/selectedInstanceId"),
+				QStringLiteral("local"));
+		else if (!target.instanceId.isEmpty())
+			preferences.setValue(QStringLiteral("configRpc/selectedInstanceId"),
+				target.instanceId);
+		else
+		{
+			preferences.setValue(QStringLiteral("configRpc/selectedInstanceId"),
+				QStringLiteral("manual:%1:%2").arg(target.host).arg(target.port));
+			preferences.setValue(QStringLiteral("configRpc/manualHost"), target.host);
+			preferences.setValue(QStringLiteral("configRpc/manualPort"), target.port);
+		}
 	}
 	dirty_ = false;
 	migrateLldvInputPolicy();
@@ -1406,6 +1442,8 @@ void ConfigEditorWindow::loadConfiguration()
 		document_ = std::make_unique<ConfigEditorCore::ConfigDocument>();
 		configurationLoaded_ = document_->Load(
 			QFileInfo(configPath_).absoluteFilePath().toStdWString(), error);
+		remoteLoadError_ = configurationLoaded_ ? QString() :
+			QString::fromStdWString(error);
 	}
 	hasPendingMigrations_ = false;
 	savedSnapshot_ = configurationLoaded_ ? captureDocumentSnapshot(*document_) :
@@ -8244,10 +8282,10 @@ void ConfigEditorWindow::setupTray()
     tray_ = new QSystemTrayIcon(windowIcon(), this);
     tray_->setToolTip(QStringLiteral("VideoProcessor Configuration"));
     auto* menu = new QMenu(this);
-    QAction* open = menu->addAction(noTarget_ ?
+	QAction* open = menu->addAction(noTarget_ ?
 		QStringLiteral("Open Configuration (no target)") : remoteClient_ ?
 		QStringLiteral("Open Configuration (%1)").arg(remoteName_) :
-		QStringLiteral("Open Configuration (offline)"));
+		QStringLiteral("Open Configuration (LOCAL)"));
 	trayOpenAction_ = open;
 	// Keep target selection available even when this instance opened a file.
 	{
@@ -8271,8 +8309,7 @@ void ConfigEditorWindow::populateTrayTargets()
 {
 	if (!targetsMenu_) return;
 	targetsMenu_->clear();
-	if (targetChoices_.isEmpty() ||
-		(!remoteClient_ && targetChoices_.size() == 1))
+	if (targetChoices_.isEmpty())
 	{
 		auto* unavailable = targetsMenu_->addAction(
 			QStringLiteral("No VideoProcessor found"));
@@ -8280,14 +8317,16 @@ void ConfigEditorWindow::populateTrayTargets()
 	}
 	else
 	{
-		for (int index = remoteClient_ ? 0 : 1;
+		for (int index = 0;
 			index < targetChoices_.size(); ++index)
 		{
 			const Target target = targetChoices_[index];
 			auto* action = targetsMenu_->addAction(target.label);
-			action->setToolTip(QStringLiteral("%1:%2 · %3")
-				.arg(target.host).arg(target.port).arg(target.vpVersion));
-			if (remoteClient_ && index == 0)
+			action->setToolTip(target.host.isEmpty() ?
+				QStringLiteral("Configuration file on this computer") :
+				QStringLiteral("%1:%2 · %3")
+					.arg(target.host).arg(target.port).arg(target.vpVersion));
+			if (index == 0)
 			{
 				action->setCheckable(true);
 				action->setChecked(true);
