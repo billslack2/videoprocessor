@@ -136,7 +136,7 @@ private:
     bool savedForegroundOnlyEnabled() const;
     void returnFocusToPresentationTarget(const char* reason);
     void applyScopedTopmost();
-    void repairOrderAboveVideoProcessor();
+    void repairOrderAboveVideoProcessor(bool requireOwnerForeground);
     void removeScopedTopmost();
     bool hasActiveOwnedPopup() const;
     bool nativeOwnerIsValid() const;
@@ -249,6 +249,7 @@ private:
     quintptr presentationTargetAcknowledgementHandle_ = 0;
     quint32 presentationTargetAcknowledgementProcessId_ = 0;
     void* foregroundEventHook_ = nullptr;
+    void* ownerOrderEventHook_ = nullptr;
     bool foregroundRepairQueued_ = false;
     bool pendingTopmostReassert_ = false;
     bool topmostReassertDeferredForPopup_ = false;
