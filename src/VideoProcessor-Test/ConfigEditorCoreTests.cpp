@@ -129,11 +129,12 @@ namespace VideoProcessorTest
 				"# exact bytes\r\n[general]\r\nrenderer: alpha\r\n"), candidate);
 			Assert::IsTrue(cursor == decoded.payload.size());
 			Assert::IsFalse(Decode(wire.data(), wire.size() - 1, decoded));
-			wire[4] = 0;
-			wire[5] = 2;
+			const uint16_t incompatibleVersion = Version + 1;
+			wire[4] = static_cast<uint8_t>(incompatibleVersion >> 8);
+			wire[5] = static_cast<uint8_t>(incompatibleVersion);
 			Assert::IsFalse(Decode(wire.data(), wire.size(), decoded));
-			wire[4] = 0;
-			wire[5] = 1;
+			wire[4] = static_cast<uint8_t>(Version >> 8);
+			wire[5] = static_cast<uint8_t>(Version);
 			wire[8] = 0xff;
 			uint32_t payloadBytes = 0;
 			Assert::IsFalse(DecodeHeader(wire.data(), wire.size(),
