@@ -127,6 +127,34 @@ DLL signatures verified after extraction. No active VP configuration file was
 changed. The new automatic connection still needs confirmation on the second
 computer; remote Apply/OK and multiple-host testing remain outstanding.
 
+2026-10-01: Built private x64 Release test packages from clean integration
+branch codex/vp-0168-package-20261001, commit
+f0589a49c6bbc6580b58ac8e6ab5f2a78edf75da. Its base is current beta
+c84863eaa59e03fe218de824c34b7c0220c4fd87; it integrates the still
+unmerged VP-0168 Config feature bb450ab8a127eec75f2eb7fee7b57691c1a1eaf9.
+The branch also fixes a stale RPC protocol-version test and the Config
+topmost ordering case where VP raises its fullscreen host without acquiring
+foreground. The full solution rebuilt successfully in x64 Release. Setup
+compiled with Inno Setup 6.7.3; the portable ZIP's 71 files matched the
+staged payload and build receipt, and the separate Config ZIP's 34 files,
+Release records, and Microsoft runtime signatures verified after extraction.
+Artifacts under C:\Users\bslac\Documents\ChatGPT\Done:
+- VideoProcessorSetup-1.3.005-beta-f0589a49c6bb.exe
+  SHA-256 66F4EEC36E0E6763CF651D5F657351EBD1DBF8A5F92F880EBF9FB1F89977C298
+- VideoProcessor-1.3.005-beta-f0589a49c6bb-x64-Portable.zip
+  SHA-256 B253298448FEC863CE28BB180A6A6AC0341056A6857DE248169F1BA9BDCB563B
+- VideoProcessorConfig-1.3.005-beta-f0589a49c6bb-x64.zip
+  SHA-256 19A6804AED86E4D6AF33E6C50B89BC7575EC7992EFC8130C31F9B20357D80F11
+Installer support, identity, and runtime checks passed (49, 12, and 23).
+A full core run passed 1,894/1,894 before the final Config-only z-order
+change; the exact final-commit run passed 1,893/1,894, with a file-cache
+timing test passing in isolation. The final Config UI run had one
+foreground-stability assertion fail; it passed in isolation, and the new
+fullscreen z-order regression passed. These are private test packages,
+not a fully qualified public release. Clean-machine installer lifecycle
+and physical two-computer Apply/OK testing remain outstanding. Packaging
+did not install or deploy VP or edit active configuration.
+
 ## User story
 
 As a VideoProcessor operator, I want the native configuration editor running
