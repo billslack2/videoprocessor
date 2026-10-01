@@ -56,7 +56,9 @@ public:
         bool testMode = false, const QStringList& testFilteredRenderers = {},
         const QStringList& testAllRenderers = {},
         const QString& remoteHost = {}, quint16 remotePort = 41686,
-        const QString& remoteName = {}, bool noTarget = false);
+        const QString& remoteName = {}, bool noTarget = false,
+        bool localAvailable = true, const QString& rememberedTargetId = {},
+        const QString& rememberedTargetLabel = {});
     ~ConfigEditorWindow() override;
     void selectPage(int index);
     void reveal();
@@ -155,6 +157,8 @@ private:
     void applyMonitorDiscovery(const QStringList& discovered);
     void setupTray();
     void refreshTargetChoices();
+    QString rememberedTargetName() const;
+    QString targetSearchTitleText(bool searching) const;
     void populateTargetChoices();
     void populateTrayTargets();
     bool selectAnotherTarget(const Target& target);
@@ -182,6 +186,9 @@ private:
     QString currentInstanceId_;
     quint16 remotePort_ = 41686;
     bool noTarget_ = false;
+    bool localAvailable_ = true;
+    QString rememberedTargetId_;
+    QString rememberedTargetLabel_;
     bool initialSearchPending_ = false;
     QString remoteLoadError_;
     QStringList remoteLuts_;

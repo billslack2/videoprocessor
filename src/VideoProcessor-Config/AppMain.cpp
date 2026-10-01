@@ -19,10 +19,13 @@
 #include <QUdpSocket>
 #include <QSet>
 #include <QScreen>
+#include <QSettings>
 #include <QTimer>
 #include <QWinEventNotifier>
 
 #include <functional>
+#include <cwctype>
+#include <cstdint>
 #include <utility>
 
 namespace
@@ -125,7 +128,7 @@ class LanTargetWatcher final : public QObject
 			const QString version = QString::fromUtf8(identity.vpVersion);
 			FoundTarget candidate{ id,
 				QStringLiteral("%1 (%2) · %3").arg(
-					local ? QStringLiteral("LOCAL") :
+					local ? QStringLiteral("This computer") :
 						QString::fromUtf8(identity.computerName),
 					sender.toString(), version),
 				sender.toString(), identity.rpcPort, local, version };
@@ -184,7 +187,8 @@ QString defaultConfigPath()
     {
         const QString installed = installation.filePath(
             QStringLiteral("VideoProcessor.cfg"));
-        if (QFileInfo::exists(installed))
+        if (QFileInfo::exists(installed) || QFileInfo::exists(
+            installation.filePath(QStringLiteral("VideoProcessor.exe"))))
             return QFileInfo(installed).absoluteFilePath();
     }
 
@@ -203,6 +207,28 @@ QString defaultConfigPath()
         if (!candidate.cdUp()) break;
     }
     return beside;
+}
+
+QString localVpInstanceId(const QString& configPath)
+{
+	// Match VP's stable discovery identity so a saved loopback target from
+	// earlier Config releases becomes the local file choice, even with VP off.
+	wchar_t computerName[256] = {};
+	DWORD length = ARRAYSIZE(computerName);
+	if (!GetComputerNameW(computerName, &length)) return {};
+	QString directory = QDir::toNativeSeparators(
+		QFileInfo(configPath).absolutePath());
+	if (!directory.endsWith(u'\\')) directory += u'\\';
+	std::wstring source(computerName, length);
+	source += L'|';
+	source += directory.toStdWString();
+	uint64_t hash = 1469598103934665603ull;
+	for (wchar_t character : source)
+	{
+		hash ^= static_cast<uint16_t>(std::towlower(character));
+		hash *= 1099511628211ull;
+	}
+	return QString::number(hash, 16);
 }
 
 quintptr parseOwner(const QString& value)
@@ -301,6 +327,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
 	QString remoteName;
 	quint16 remotePort = 41686;
 	bool offline = false;
+	bool explicitConfig = false;
     QString screenshotPath;
     int initialPage = 0;
     quintptr owner = 0;
@@ -317,6 +344,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
         if (arguments[index] == QStringLiteral("--config") && index + 1 < arguments.size())
 		{
 			configPath = arguments[++index];
+			explicitConfig = true;
 		}
 		else if (arguments[index] == QStringLiteral("--connect") && index + 1 < arguments.size())
 		{
@@ -354,9 +382,31 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
     if (configPath.isEmpty()) configPath = defaultConfigPath();
     if (!ownerBelongsToProcess(owner, ownerProcessId)) owner = 0;
 	if (remoteHost == QStringLiteral("127.0.0.1"))
-		remoteName = QStringLiteral("LOCAL");
-	// The local configuration file remains editable while VP is stopped.
-	// Discovery adds remote choices without blocking the local editor.
+		remoteName = QStringLiteral("This computer");
+	const bool localAvailable = explicitConfig || offline || QFileInfo::exists(
+		QFileInfo(configPath).dir().filePath(QStringLiteral("VideoProcessor.exe")));
+	QSettings preferences;
+	QString rememberedTarget = preferences.value(
+		QStringLiteral("configRpc/selectedInstanceId")).toString();
+	QString rememberedLabel = preferences.value(
+		QStringLiteral("configRpc/selectedLabel")).toString();
+	if (localAvailable && rememberedTarget == localVpInstanceId(configPath))
+	{
+		rememberedTarget = QStringLiteral("local");
+		rememberedLabel = QStringLiteral("This computer");
+		preferences.setValue(QStringLiteral("configRpc/selectedInstanceId"),
+			rememberedTarget);
+		preferences.setValue(QStringLiteral("configRpc/selectedLabel"),
+			rememberedLabel);
+	}
+	if (rememberedLabel.isEmpty() &&
+		rememberedTarget.startsWith(QStringLiteral("manual:")))
+		rememberedLabel = preferences.value(
+			QStringLiteral("configRpc/manualHost")).toString();
+	const bool rememberRemote = !rememberedTarget.isEmpty() &&
+		rememberedTarget != QStringLiteral("local");
+	const bool noTarget = remoteHost.isEmpty() && !offline &&
+		(rememberRemote || !localAvailable);
 
     const std::wstring activationEventName = installationScopedEventName(
 		L"Local\\VideoProcessorConfigEditor.Activate.v1");
@@ -381,7 +431,8 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
     }
 
     ConfigEditorWindow window(QFileInfo(configPath).absoluteFilePath(), owner,
-		false, {}, {}, remoteHost, remotePort, remoteName);
+		false, {}, {}, remoteHost, remotePort, remoteName, noTarget,
+		localAvailable, rememberedTarget, rememberedLabel);
 	std::unique_ptr<LanTargetWatcher> watcher;
 	if (screenshotPath.isEmpty() || !offline)
 	{
@@ -399,6 +450,9 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
 		window.setTargetRefresh([watcherPtr] { watcherPtr->scan(); });
 		QTimer::singleShot(0, watcherPtr, [watcherPtr] { watcherPtr->scan(); });
 	}
+	if (noTarget)
+		QTimer::singleShot(5000, &window,
+			[&window] { window.finishInitialTargetSearch(); });
     std::unique_ptr<QWinEventNotifier> activationNotifier;
     if (activationEvent)
     {

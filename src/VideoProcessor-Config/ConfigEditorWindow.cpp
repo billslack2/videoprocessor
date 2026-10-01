@@ -941,10 +941,15 @@ QRect ConfigEditorPlacement::ClampFrameToWorkArea(const QRect& frame,
 ConfigEditorWindow::ConfigEditorWindow(QString configPath, quintptr ownerHandle,
     bool testMode, const QStringList& testFilteredRenderers,
     const QStringList& testAllRenderers, const QString& remoteHost,
-    quint16 remotePort, const QString& remoteName, bool noTarget)
+    quint16 remotePort, const QString& remoteName, bool noTarget,
+    bool localAvailable, const QString& rememberedTargetId,
+    const QString& rememberedTargetLabel)
     : configPath_(std::move(configPath)), localConfigPath_(configPath_),
       ownerHandle_(ownerHandle),
-      noTarget_(noTarget), initialSearchPending_(noTarget), testMode_(testMode),
+      noTarget_(noTarget), localAvailable_(localAvailable),
+      rememberedTargetId_(rememberedTargetId),
+      rememberedTargetLabel_(rememberedTargetLabel),
+      initialSearchPending_(noTarget), testMode_(testMode),
       document_(std::make_unique<ConfigEditorCore::ConfigDocument>())
 {
 	remoteHost_ = remoteHost;
@@ -1096,20 +1101,42 @@ void ConfigEditorWindow::setTargetRefresh(std::function<void()> refresh)
 	targetRefresh_ = std::move(refresh);
 }
 
+QString ConfigEditorWindow::rememberedTargetName() const
+{
+	return rememberedTargetLabel_.trimmed().isEmpty() ?
+		QStringLiteral("Last used VideoProcessor") :
+		rememberedTargetLabel_.trimmed();
+}
+
+QString ConfigEditorWindow::targetSearchTitleText(bool searching) const
+{
+	if (rememberedTargetId_.isEmpty())
+		return searching ? QStringLiteral("Looking for VideoProcessor…") :
+			QStringLiteral("No VideoProcessor found");
+	return searching ?
+		QStringLiteral("Looking for %1…").arg(rememberedTargetName()) :
+		QStringLiteral("%1 is unavailable").arg(rememberedTargetName());
+}
+
 void ConfigEditorWindow::finishInitialTargetSearch()
 {
 	if (!initialSearchPending_) return;
 	initialSearchPending_ = false;
 	if (!noTarget_) return;
 	if (targetSearchTitle_)
-		targetSearchTitle_->setText(QStringLiteral("No VideoProcessor found"));
+		targetSearchTitle_->setText(targetSearchTitleText(false));
 	if (targetSearchHelp_)
-		targetSearchHelp_->setText(QStringLiteral(
-			"Start VideoProcessor on this computer or another computer on the same LAN. "
-			"Available targets will appear automatically in the dropdown and tray menu."));
+		targetSearchHelp_->setText(rememberedTargetId_.isEmpty() ?
+			QStringLiteral("Available VideoProcessors on this LAN appear in the "
+				"target menu above. Select one to edit its settings.") :
+			QStringLiteral("Still looking for your last target. Select another "
+				"target above if you want to edit its settings."));
 	if (targetSearchProgress_) targetSearchProgress_->hide();
 	populateTargetChoices();
-	setStatus(QStringLiteral("No target is available. Checking this computer and LAN regularly."));
+	setStatus(rememberedTargetId_.isEmpty() ?
+		QStringLiteral("No target is available. Checking this LAN regularly.") :
+		QStringLiteral("%1 is unavailable. Still checking for it.")
+			.arg(rememberedTargetName()));
 }
 
 void ConfigEditorWindow::refreshTargetChoices()
@@ -1118,10 +1145,12 @@ void ConfigEditorWindow::refreshTargetChoices()
 	{
 		initialSearchPending_ = true;
 		if (targetSearchTitle_)
-			targetSearchTitle_->setText(QStringLiteral("Looking for VideoProcessor…"));
+			targetSearchTitle_->setText(targetSearchTitleText(true));
 		if (targetSearchHelp_)
-			targetSearchHelp_->setText(QStringLiteral(
-				"Checking this computer first, then other VideoProcessors on your LAN."));
+			targetSearchHelp_->setText(rememberedTargetId_.isEmpty() ?
+				QStringLiteral("Checking for VideoProcessors on this LAN. "
+					"Select a target above to edit its settings.") :
+				QStringLiteral("Checking your LAN for the last selected VideoProcessor."));
 		if (targetSearchProgress_) targetSearchProgress_->show();
 		populateTargetChoices();
 		QTimer::singleShot(5000, this,
@@ -1137,47 +1166,30 @@ void ConfigEditorWindow::setDiscoveredTargets(const QList<Target>& targets)
 	discoveredTargets_ = targets;
 	if (targetChoice_ && targetChoice_->view()->isVisible()) return;
 	populateTargetChoices();
-	if (!noTarget_)
-	{
-		// A remembered remote can reconnect after startup, but never replace
-		// local edits that the user has already begun.
-		if (testMode_ || remoteClient_ || dirty_ || !configurationLoaded_)
-			return;
-		QSettings preferences;
-		const QString remembered = preferences.value(
-			QStringLiteral("configRpc/selectedInstanceId")).toString();
-		if (remembered.isEmpty() || remembered == QStringLiteral("local")) return;
-		for (const auto& target : discoveredTargets_)
-			if (target.instanceId == remembered && !target.local &&
-				target.host != QStringLiteral("127.0.0.1"))
-			{
-				selectAnotherTarget(target);
-				break;
-			}
-		return;
-	}
-	QSettings preferences;
-	const QString remembered = preferences.value(
-		QStringLiteral("configRpc/selectedInstanceId")).toString();
+	if (!noTarget_) return;
 	const Target* preferred = nullptr;
-	if (!remembered.isEmpty())
+	Target manual;
+	if (rememberedTargetId_.startsWith(QStringLiteral("manual:")))
+	{
+		QSettings preferences;
+		manual.host = preferences.value(
+			QStringLiteral("configRpc/manualHost")).toString();
+		manual.port = static_cast<quint16>(preferences.value(
+			QStringLiteral("configRpc/manualPort"), 41686).toUInt());
+		manual.label = manual.host;
+		if (!manual.host.isEmpty() && manual.port != 0)
+			preferred = &manual;
+	}
+	else if (!rememberedTargetId_.isEmpty() &&
+		rememberedTargetId_ != QStringLiteral("local"))
 	{
 		for (const auto& target : discoveredTargets_)
-			if (target.instanceId == remembered)
+			if (target.instanceId == rememberedTargetId_)
 			{
 				preferred = &target;
 				break;
 			}
 	}
-	if (!preferred)
-		for (const auto& target : discoveredTargets_)
-			if (target.host == QStringLiteral("127.0.0.1"))
-			{
-				preferred = &target;
-				break;
-			}
-	if (!preferred && discoveredTargets_.size() == 1)
-		preferred = &discoveredTargets_.front();
 	if (!preferred) return;
 	const QString key = preferred->instanceId + u'|' + preferred->vpVersion +
 		u'|' + preferred->host + u'|' + QString::number(preferred->port);
@@ -1195,15 +1207,19 @@ void ConfigEditorWindow::populateTargetChoices()
 	targetChoice_->clear();
 	targetChoices_.clear();
 	targetChoices_.push_back({ currentInstanceId_,
-		noTarget_ ? (initialSearchPending_ ? QStringLiteral("Searching…") :
-			QStringLiteral("No target")) : remoteClient_ ?
-		remoteName_ : QStringLiteral("LOCAL"),
+		noTarget_ ? (rememberedTargetId_.isEmpty() ?
+			(initialSearchPending_ ? QStringLiteral("Searching…") :
+				QStringLiteral("No target")) :
+			QStringLiteral("%1 (%2)").arg(rememberedTargetName(),
+				initialSearchPending_ ? QStringLiteral("searching…") :
+					QStringLiteral("unavailable"))) : remoteClient_ ?
+		remoteName_ : QStringLiteral("This computer"),
 		remoteHost_, remotePort_, {} });
-	if (remoteClient_)
-		targetChoices_.push_back({ {}, QStringLiteral("LOCAL"), {}, 41686, {} });
+	if (localAvailable_ && (remoteClient_ || noTarget_))
+		targetChoices_.push_back({ {}, QStringLiteral("This computer"), {}, 41686, {} });
 	for (const auto& target : discoveredTargets_)
 	{
-		if (!noTarget_ && (target.local ||
+		if (localAvailable_ && (target.local ||
 			target.host == QStringLiteral("127.0.0.1")))
 			continue;
 		if (!noTarget_ &&
@@ -1221,10 +1237,15 @@ void ConfigEditorWindow::populateTargetChoices()
 		}
 		targetChoices_.push_back(target);
 	}
-	for (const auto& target : targetChoices_)
+	for (int index = 0; index < targetChoices_.size(); ++index)
 	{
+		const auto& target = targetChoices_[index];
 		targetChoice_->addItem(target.label);
 		targetChoice_->setItemData(targetChoice_->count() - 1,
+			noTarget_ && index == 0 ?
+				(rememberedTargetId_.isEmpty() ?
+					QStringLiteral("Searching for VideoProcessors") :
+					QStringLiteral("%1 is not connected").arg(rememberedTargetName())) :
 			target.host.isEmpty() ?
 				QStringLiteral("Configuration file on this computer") :
 				QStringLiteral("%1:%2 · %3").arg(target.host)
@@ -1270,6 +1291,7 @@ void ConfigEditorWindow::enterTargetAddress()
 
 bool ConfigEditorWindow::selectAnotherTarget(const Target& target)
 {
+	if (target.host.isEmpty() && !localAvailable_) return false;
 	if (!noTarget_ && target.host.compare(remoteHost_, Qt::CaseInsensitive) == 0 &&
 		target.port == remotePort_) return true;
 	if (dirty_)
@@ -1314,7 +1336,7 @@ bool ConfigEditorWindow::selectAnotherTarget(const Target& target)
 	remoteClient_ = std::move(replacement);
 	remoteHost_ = target.host;
 	remotePort_ = target.port;
-	remoteName_ = target.host.isEmpty() ? QStringLiteral("LOCAL") :
+	remoteName_ = target.host.isEmpty() ? QStringLiteral("This computer") :
 		target.label.section(QStringLiteral(" ("), 0, 0);
 	currentInstanceId_ = target.instanceId;
 	noTarget_ = false;
@@ -1346,6 +1368,8 @@ bool ConfigEditorWindow::selectAnotherTarget(const Target& target)
 	if (!testMode_)
 	{
 		QSettings preferences;
+		preferences.setValue(QStringLiteral("configRpc/selectedLabel"),
+			remoteName_);
 		if (target.host.isEmpty())
 			preferences.setValue(QStringLiteral("configRpc/selectedInstanceId"),
 				QStringLiteral("local"));
@@ -3705,20 +3729,23 @@ QWidget* ConfigEditorWindow::createShell()
 		auto* emptyLayout = new QVBoxLayout(emptyState);
 		emptyLayout->setContentsMargins(24, 24, 24, 24);
 		emptyLayout->addStretch();
-		auto* emptyTitle = new QLabel(initialSearchPending_ ?
-			QStringLiteral("Looking for VideoProcessor…") :
-			QStringLiteral("No VideoProcessor found"));
+		auto* emptyTitle = new QLabel(
+			targetSearchTitleText(initialSearchPending_));
 		emptyTitle->setObjectName(QStringLiteral("config.targetSearchTitle"));
 		targetSearchTitle_ = emptyTitle;
+		emptyTitle->setWordWrap(true);
+		emptyTitle->setMaximumWidth(700);
 		emptyTitle->setStyleSheet(QStringLiteral(
 			"font-size: 22px; font-weight: 600; color: #f5f8ff;"));
 		emptyTitle->setAlignment(Qt::AlignCenter);
 		emptyLayout->addWidget(emptyTitle);
-		auto* help = new QLabel(initialSearchPending_ ? QStringLiteral(
-			"Checking this computer first, then other VideoProcessors on your LAN.") :
-			QStringLiteral(
-			"Start VideoProcessor on this computer or another computer on the same LAN. "
-			"Available targets will appear automatically in the dropdown and tray menu."));
+		auto* help = new QLabel(initialSearchPending_ ?
+			(rememberedTargetId_.isEmpty() ? QStringLiteral(
+				"Checking for VideoProcessors on this LAN. Select a target "
+				"above to edit its settings.") :
+				QStringLiteral("Checking your LAN for the last selected VideoProcessor.")) :
+			QStringLiteral("Available targets appear automatically. Select another "
+				"target above if you want to edit its settings."));
 		help->setObjectName(QStringLiteral("config.targetSearchHelp"));
 		targetSearchHelp_ = help;
 		help->setWordWrap(true);
@@ -8283,9 +8310,11 @@ void ConfigEditorWindow::setupTray()
     tray_->setToolTip(QStringLiteral("VideoProcessor Configuration"));
     auto* menu = new QMenu(this);
 	QAction* open = menu->addAction(noTarget_ ?
-		QStringLiteral("Open Configuration (no target)") : remoteClient_ ?
+		QStringLiteral("Open Configuration (%1)").arg(
+			rememberedTargetId_.isEmpty() ? QStringLiteral("no target") :
+				rememberedTargetName()) : remoteClient_ ?
 		QStringLiteral("Open Configuration (%1)").arg(remoteName_) :
-		QStringLiteral("Open Configuration (LOCAL)"));
+		QStringLiteral("Open Configuration (This computer)"));
 	trayOpenAction_ = open;
 	// Keep target selection available even when this instance opened a file.
 	{
@@ -8309,7 +8338,8 @@ void ConfigEditorWindow::populateTrayTargets()
 {
 	if (!targetsMenu_) return;
 	targetsMenu_->clear();
-	if (targetChoices_.isEmpty())
+	if (targetChoices_.isEmpty() ||
+		(noTarget_ && targetChoices_.size() == 1))
 	{
 		auto* unavailable = targetsMenu_->addAction(
 			QStringLiteral("No VideoProcessor found"));
@@ -8317,7 +8347,12 @@ void ConfigEditorWindow::populateTrayTargets()
 	}
 	else
 	{
-		for (int index = 0;
+		if (noTarget_)
+		{
+			auto* waiting = targetsMenu_->addAction(targetChoices_.front().label);
+			waiting->setEnabled(false);
+		}
+		for (int index = noTarget_ ? 1 : 0;
 			index < targetChoices_.size(); ++index)
 		{
 			const Target target = targetChoices_[index];
@@ -8326,7 +8361,7 @@ void ConfigEditorWindow::populateTrayTargets()
 				QStringLiteral("Configuration file on this computer") :
 				QStringLiteral("%1:%2 · %3")
 					.arg(target.host).arg(target.port).arg(target.vpVersion));
-			if (index == 0)
+			if (!noTarget_ && index == 0)
 			{
 				action->setCheckable(true);
 				action->setChecked(true);

@@ -5904,7 +5904,7 @@ void testTargetDropdownRefreshesInline()
     auto* choice = requireControl<QComboBox>(window, "config.targetChoice");
     auto* refresh = requireControl<QToolButton>(window, "config.refreshTargets");
     auto* caption = requireControl<QLabel>(window, "configTargetCaption");
-    require(choice->currentText() == QStringLiteral("LOCAL") &&
+    require(choice->currentText() == QStringLiteral("This computer") &&
         choice->count() == 4 &&
         choice->itemText(1).startsWith(QStringLiteral("STUDY")) &&
         choice->itemText(2).startsWith(QStringLiteral("DEN")),
@@ -5920,19 +5920,19 @@ void testTargetDropdownRefreshesInline()
     refresh->click();
     window.setDiscoveredTargets(discovered);
     require(scans == 1 && choice->count() == 3 &&
-        choice->currentText() == QStringLiteral("LOCAL") &&
+        choice->currentText() == QStringLiteral("This computer") &&
         QApplication::activeModalWidget() == nullptr,
         "Refreshing targets did not update the dropdown in place");
     window.setDiscoveredTargets({
-        { QStringLiteral("local-installation"), QStringLiteral("LOCAL (127.0.0.1)"),
+        { QStringLiteral("local-installation"), QStringLiteral("This computer (127.0.0.1)"),
             QStringLiteral("127.0.0.1"), 1 }, discovered.front() });
     require(choice->count() == 3,
         "The current VP appeared twice after LAN discovery");
     window.setDiscoveredTargets({
-        { QStringLiteral("local-installation"), QStringLiteral("LOCAL (192.168.1.25)"),
+        { QStringLiteral("local-installation"), QStringLiteral("This computer (192.168.1.25)"),
 			QStringLiteral("192.168.1.25"), 1, {}, true }, discovered.front() });
     require(choice->count() == 3 &&
-        choice->currentText() == QStringLiteral("LOCAL"),
+        choice->currentText() == QStringLiteral("This computer"),
         "A restarted VP was treated as a second target after its address changed");
 }
 
@@ -5979,16 +5979,16 @@ void testOfflineFileStillOffersTargets()
     ConfigEditorWindow window(path, 0, true);
     auto* choice = requireControl<QComboBox>(window, "config.targetChoice");
     auto* refresh = requireControl<QToolButton>(window, "config.refreshTargets");
-    require(choice->currentText() == QStringLiteral("LOCAL") &&
+    require(choice->currentText() == QStringLiteral("This computer") &&
         requireControl<QPushButton>(window, "okConfiguration")->isEnabled(),
         "The local file was not editable without a running VP");
     int scans = 0;
     window.setTargetRefresh([&] { ++scans; });
     window.setDiscoveredTargets({
-        { QStringLiteral("local-installation"), QStringLiteral("LOCAL (127.0.0.1)"),
+        { QStringLiteral("local-installation"), QStringLiteral("This computer (127.0.0.1)"),
 			QStringLiteral("127.0.0.1"), 41686, {}, true }
     });
-    require(choice->count() == 2 && choice->currentText() == QStringLiteral("LOCAL"),
+    require(choice->count() == 2 && choice->currentText() == QStringLiteral("This computer"),
         "Discovery duplicated the local file target");
     auto* apply = requireControl<QPushButton>(window, "applyConfiguration");
     if (apply->isEnabled()) apply->click(); // Commit fixture migrations.
@@ -6021,50 +6021,76 @@ void testUnavailableRpcCanReturnToLocalFile()
     QTemporaryDir directory;
     const QString path = copyFixture(directory);
     ConfigEditorWindow window(path, 0, true, {}, {},
-        QStringLiteral("127.0.0.1"), 1, QStringLiteral("LOCAL"));
+        QStringLiteral("127.0.0.1"), 1, QStringLiteral("This computer"));
     auto* choice = requireControl<QComboBox>(window, "config.targetChoice");
-    require(choice->itemText(1) == QStringLiteral("LOCAL"),
+    require(choice->itemText(1) == QStringLiteral("This computer"),
         "Unavailable RPC target did not offer the local file");
     QMetaObject::invokeMethod(choice, "activated", Qt::DirectConnection,
         Q_ARG(int, 1));
-    require(choice->currentText() == QStringLiteral("LOCAL") &&
+    require(requireControl<QComboBox>(window, "config.targetChoice")->currentText() ==
+            QStringLiteral("This computer") &&
         requireControl<QPushButton>(window, "okConfiguration")->isEnabled(),
-        "Selecting LOCAL did not recover the editable file after RPC failure");
+        "Selecting This computer did not recover the editable file after RPC failure");
 }
 
-void testStaleRememberedTargetFallsBackToLocal()
+void testRememberedTargetDoesNotFallBackToLocal()
 {
-    QSettings settings;
-    const QString key = QStringLiteral("configRpc/selectedInstanceId");
-    const bool hadPrevious = settings.contains(key);
-    const QVariant previous = settings.value(key);
-    const auto restore = [&]
+    QTemporaryDir directory;
+    ConfigEditorWindow window(copyFixture(directory), 0, true, {}, {},
+        {}, 41686, {}, true, true,
+        QStringLiteral("old-computer-no-longer-on-lan"),
+        QStringLiteral("STUDY"));
+    auto* choice = requireControl<QComboBox>(window, "config.targetChoice");
+    require(choice->currentText() == QStringLiteral("STUDY (searching…)") &&
+        choice->itemText(1) == QStringLiteral("This computer"),
+        "The remembered remote did not remain selected while searching");
+    window.setDiscoveredTargets({
+        { QStringLiteral("local-installation"), QStringLiteral("This computer"),
+            QStringLiteral("127.0.0.1"), 1, {}, true }
+    });
+    require(choice->currentText() == QStringLiteral("STUDY (searching…)") &&
+        !requireControl<QPushButton>(window, "okConfiguration")->isEnabled(),
+        "The remembered remote silently fell back to the local file");
+    window.finishInitialTargetSearch();
+    require(requireControl<QLabel>(window, "config.targetSearchTitle")->text()
+            .contains(QStringLiteral("STUDY is unavailable")) &&
+        choice->currentText() == QStringLiteral("STUDY (unavailable)"),
+        "An unavailable remembered target was not explained");
+    const QString captures = qEnvironmentVariable("VP_CONFIG_REVIEW_IMAGES");
+    if (!captures.isEmpty())
     {
-        if (hadPrevious) settings.setValue(key, previous);
-        else settings.remove(key);
-        settings.sync();
-    };
-    settings.setValue(key, QStringLiteral("old-computer-no-longer-on-lan"));
-    settings.sync();
-    try
-    {
-        QTemporaryDir directory;
-        ConfigEditorWindow window(copyFixture(directory), 0, true, {}, {},
-            {}, 41686, {}, true);
-        window.setDiscoveredTargets({
-            { QStringLiteral("local-installation"), QStringLiteral("LOCAL"),
-                QStringLiteral("127.0.0.1"), 1 }
-        });
-        require(requireControl<QLabel>(window, "configurationStatus")->text()
-                .contains(QStringLiteral("Could not connect")),
-            "A missing remembered target prevented an attempt to connect to LOCAL");
+        window.show();
+        QApplication::processEvents();
+        window.grab().save(QDir(captures).filePath(
+            QStringLiteral("remembered-target-unavailable.png")));
+        window.hide();
     }
-    catch (...)
-    {
-        restore();
-        throw;
-    }
-    restore();
+    QMetaObject::invokeMethod(choice, "activated", Qt::DirectConnection,
+        Q_ARG(int, 1));
+    require(requireControl<QComboBox>(window, "config.targetChoice")->currentText() ==
+            QStringLiteral("This computer") &&
+        requireControl<QPushButton>(window, "okConfiguration")->isEnabled(),
+        "The user could not explicitly choose local editing");
+}
+
+void testRemoteOnlyClientHasNoLocalFileTarget()
+{
+    QTemporaryDir directory;
+    ConfigEditorWindow window(copyFixture(directory), 0, true, {}, {},
+        {}, 41686, {}, true, false);
+    auto* choice = requireControl<QComboBox>(window, "config.targetChoice");
+    require(choice->count() == 2 &&
+        choice->itemText(1) == QStringLiteral("Enter address…") &&
+        !requireControl<QPushButton>(window, "okConfiguration")->isEnabled(),
+        "A remote-only Config copy offered a local file target");
+    window.setDiscoveredTargets({
+        { QStringLiteral("lan-target"), QStringLiteral("LIVING ROOM"),
+            QStringLiteral("192.168.1.25"), 41686, {}, false }
+    });
+    require(choice->currentText() == QStringLiteral("Searching…") &&
+        choice->itemText(1) == QStringLiteral("LIVING ROOM") &&
+        !requireControl<QPushButton>(window, "okConfiguration")->isEnabled(),
+        "Discovery selected a remote target without the user's choice");
 }
 
 int run(const char* name, const std::function<void()>& test)
@@ -6196,8 +6222,10 @@ int main(int argc, char** argv)
     failures += run("offline file still offers targets", testOfflineFileStillOffersTargets);
     failures += run("unavailable RPC can return to local file",
         testUnavailableRpcCanReturnToLocalFile);
-    failures += run("stale remembered target falls back to local",
-        testStaleRememberedTargetFallsBackToLocal);
+    failures += run("remembered target does not fall back to local",
+        testRememberedTargetDoesNotFallBackToLocal);
+    failures += run("remote-only client has no local file target",
+        testRemoteOnlyClientHasNoLocalFileTarget);
     failures += run("DirectShow-only effect does not restart Alpha",
         testDirectShowOnlyEffectDoesNotRestartAlpha);
     failures += run("invalid renderer is rejected continuously",
