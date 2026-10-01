@@ -36,6 +36,20 @@ of new remotes. Source commit cb245b3f implements this behavior. The x64
 Release Config build and focused tests pass; deployment and a physical
 two-computer test remain outstanding.
 
+2026-10-01: Deployed the x64 Release Config executable and discovery DLL from
+cb245b3f to C:\Videoprocessor\vp\config after backing up the four replaced
+files under config\backup-VP0168-20261001-102033. The active VP configuration
+file was not edited. The deployed executable SHA-256 is
+7952F5AB4DBBB7E120CBF1CF00C03B95E3860A74B403BB22CB53C67D208ACA23;
+the discovery DLL SHA-256 is
+7EF8F82111F25080DFCAE7C2BD5C5AEE2A45BD65B71F0481EC0883EFD8DA3755.
+The Config-only x64 ZIP is
+C:\Users\bslac\Documents\ChatGPT\Done\VideoProcessorConfig-VP0168-cb245b3f3c6e-x64.zip
+(SHA-256 7325A1E7826AA3860E49E942D4205ACC622926347A30BDD8F3FA7704B1E5F43E).
+All 36 packaged files verified after extraction, the portable EXE launched,
+and a deployed screenshot showed This computer selected immediately. A
+physical two-computer LAN and Apply/OK test remains outstanding.
+
 ## User story
 
 As a VideoProcessor operator, I want the native configuration editor running
