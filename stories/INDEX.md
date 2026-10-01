@@ -252,7 +252,7 @@ they must not contain requirements that are absent from this file.
 | VP-0193 | Review | Safe, concrete screen positioning improvements |
 | VP-0194 | Review | Show aspect ratio and name in the VP Renderer Ctrl+I OSD |
 
-| VP-0195 | In Progress | Diagnose available display modes and refresh transitions |
+| VP-0195 | Review | Diagnose available display modes and refresh transitions |
 
 ## Codex story workflow
 
