@@ -6,9 +6,9 @@ story may have ordered child-task IDs as defined below.
 
 ## Registry state
 
-- Last assigned root story: `VP-0194`
-- Next root story number: `VP-0195`
-- Total indexed items: 213
+- Last assigned root story: `VP-0195`
+- Next root story number: `VP-0196`
+- Total indexed items: 214
 
 ## Story locations
 
@@ -251,6 +251,8 @@ they must not contain requirements that are absent from this file.
 
 | VP-0193 | Review | Safe, concrete screen positioning improvements |
 | VP-0194 | Review | Show aspect ratio and name in the VP Renderer Ctrl+I OSD |
+
+| VP-0195 | In Progress | Diagnose available display modes and refresh transitions |
 
 ## Codex story workflow
 
