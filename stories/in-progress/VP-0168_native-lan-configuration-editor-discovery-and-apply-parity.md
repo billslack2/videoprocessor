@@ -67,6 +67,20 @@ and the installed discovery DLL SHA-256 is
 A launch from the deployed folder showed the compact target controls and
 This computer selected. Physical two-computer testing remains outstanding.
 
+2026-10-01: Fixed the compact selector's clipped popup and right border in
+source commit 3a05e43c. The two-choice and four-choice popup tests pass,
+including visibility of the final menu choice and the selector border. The
+x64 Release Config executable was deployed after Config exited; the four
+replaced files were backed up under
+C:\Videoprocessor\vp\config\backup-VP0168-popup-20261001-125540.
+The installed executable SHA-256 is
+E67598B95F62552BF081545EA7436D4EC21A299FFE6BCFF6B8F141390D9D53CC.
+The refreshed Config-only ZIP is
+C:\Users\bslac\Documents\ChatGPT\Done\VideoProcessorConfig-VP0168-3a05e43c1d76-x64.zip
+(SHA-256 CF350B854C1C3B7A4A778BB13266E0EC5D1CBC363362233DAFC0A6D0307FA797).
+All 36 packaged files verified after extraction. The active VP configuration
+file was not edited; physical two-computer testing remains outstanding.
+
 ## User story
 
 As a VideoProcessor operator, I want the native configuration editor running
