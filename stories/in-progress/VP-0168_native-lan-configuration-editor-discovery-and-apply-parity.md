@@ -81,6 +81,28 @@ C:\Users\bslac\Documents\ChatGPT\Done\VideoProcessorConfig-VP0168-3a05e43c1d76-x
 All 36 packaged files verified after extraction. The active VP configuration
 file was not edited; physical two-computer testing remains outstanding.
 
+2026-10-01: Source commit 16dcde9d36b0b1285f1b6b76294b72b8c837aaa4
+rounds the target selector corners and moves local file/device discovery and
+remote configuration/capability RPC loads to worker threads. A full-window
+loading screen remains responsive during selection; a delayed loopback RPC
+test verifies timer processing, window resizing, and successful target
+loading. Focused selector, remote switch, offline local recovery, and
+remembered-target tests pass. The full Config UI suite had one existing
+Windows foreground-ordering failure, reproducible with the selector mask
+disabled; other cases passed. Physical two-computer testing remains
+outstanding. The x64 Release Config EXE and unchanged discovery DLL were
+deployed after backing up the four replaced files under
+C:\Videoprocessor\vp\config\backup-VP0168-responsive-20261001-133027.
+The installed EXE SHA-256 is
+4E5FEF869982FF9715F39908B98F779F6DC59C6DC1EDA283C50196E102E840E4;
+the discovery DLL SHA-256 remains
+7EF8F82111F25080DFCAE7C2BD5C5AEE2A45BD65B71F0481EC0883EFD8DA3755.
+The Config-only portable ZIP is
+C:\Users\bslac\Documents\ChatGPT\Done\VideoProcessorConfig-VP0168-16dcde9d-x64.zip
+(SHA-256 F0436047CC4EB32EC524BD72EEA1F2B6B88784945F1EB0EF0FDA26BC31A9177D).
+All 36 payload files verified after extraction; six Microsoft runtime DLL
+signatures and the EXE x64 Release record verified. No active VP
+configuration file was changed.
 ## User story
 
 As a VideoProcessor operator, I want the native configuration editor running
@@ -200,6 +222,10 @@ the real display update when I choose **Apply** or **OK**.
 
 ## Acceptance criteria
 
+- Switching targets shows a loading screen while local file/device discovery
+  or remote RPC reads run off the main UI thread. The window continues to
+  repaint and respond to resize events; a failed connection preserves the
+  previous target.
 - Beside a local VP installation, Config immediately opens the editable
   local file as This computer even while VP is stopped. Apply/OK safely
   persists it for the next VP start. A remote-only Config copy has no
