@@ -44,8 +44,7 @@ public:
 		else if (method == ConversionMethod::AVX2)
 		{
 			m_cpuFeaturesChecked = false;
-			if (!CheckCPUFeatures())
-				throw std::runtime_error("AVX2 was requested on an unsupported CPU");
+			CheckCPUFeatures(); // Unsupported CPUs keep the scalar fallback.
 		}
 		else if (method == ConversionMethod::AUTO)
 		{

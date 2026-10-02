@@ -79,7 +79,7 @@
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <AdditionalIncludeDirectories>..\VideoProcessor-Lib;..\..\3rdparty\libplacebo\include;..\..\3rdparty\nvapi;..\..\3rdparty\blackmagic_decklink;..\..\3rdparty\microsoft_directshow_baseclasses;..\..\3rdparty\lavfilters;..\..\3rdparty\mpc_video_renderer</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
-      <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
+      <EnableEnhancedInstructionSet>AdvancedVectorExtensions</EnableEnhancedInstructionSet>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
