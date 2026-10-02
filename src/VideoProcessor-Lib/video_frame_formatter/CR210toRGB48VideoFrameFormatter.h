@@ -42,6 +42,9 @@ public:
 	void SetConversionMethod(ConversionMethod method) { m_conversionMethod = method; }
 
 private:
+	void ConvertRowsAVX2(const uint8_t* sourceFrame, uint16_t* destinationFrame,
+		uint32_t firstLine, uint32_t lineCount) const;
+
 	static constexpr size_t PERFORMANCE_WINDOW_SIZE = 600;
 	static constexpr uint32_t MAX_WORKERS = 2;
 

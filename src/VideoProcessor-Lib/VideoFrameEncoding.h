@@ -9,7 +9,8 @@
 #pragma once
 
 
-#include <atlstr.h>
+#include <Windows.h>
+#include <cstdint>
 
 /**
  * We define this as how the frame data is encoded.

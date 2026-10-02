@@ -71,6 +71,14 @@ public:
 	void LoadConfigurationFile();
 
 private:
+	void ProcessAdvancedSegmentScalar(const uint8_t* srcData, uint32_t srcStride,
+		uint16_t* dstY, uint16_t* dstUV, uint32_t width,
+		uint32_t startLine, uint32_t endLine) noexcept;
+
+	void ProcessAdvancedSegmentAVX2(const uint8_t* srcData, uint32_t srcStride,
+		uint16_t* dstY, uint16_t* dstUV, uint32_t width,
+		uint32_t startLine, uint32_t endLine) noexcept;
+
 	uint32_t m_height = 0;
 	uint32_t m_width = 0;
 	uint32_t m_stride;

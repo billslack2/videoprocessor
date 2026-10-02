@@ -7,6 +7,8 @@
  */
 
 #include <pch.h>
+#include <VideoFrame.h>
+#include <VideoState.h>
 
 #include "CNoopVideoFrameFormatter.h"
 

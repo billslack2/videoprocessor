@@ -6,167 +6,20 @@
  */
 
 #include <pch.h>
+#include <VideoFrame.h>
+#include <VideoState.h>
 
-#include <immintrin.h>
-#include <intrin.h>
+#include <CpuFeatures.h>
+#include "CR12BtoRGB48VideoFrameFormatter.Common.h"
+
 #include <limits>
 
 #include "CR12BtoRGB48VideoFrameFormatter.h"
 
 
-namespace
-{
-	constexpr uint32_t PIXELS_PER_BLOCK = 8;
-	constexpr uint32_t BYTES_PER_BLOCK = 36;
-
-	inline uint16_t Expand12To16(uint16_t value)
-	{
-		// Bit replication maps both endpoints exactly: 0x000 -> 0x0000, 0xFFF -> 0xFFFF.
-		return static_cast<uint16_t>((value << 4) | (value >> 8));
-	}
-
-	inline uint8_t Byte(const uint8_t* source, uint32_t word, uint32_t byte)
-	{
-		return source[word * 4 + byte];
-	}
-
-	inline uint16_t LowNibble(const uint8_t* source, uint32_t word, uint32_t byte)
-	{
-		return static_cast<uint16_t>(Byte(source, word, byte) & 0x0F);
-	}
-
-	inline uint16_t HighNibble(const uint8_t* source, uint32_t word, uint32_t byte)
-	{
-		return static_cast<uint16_t>(Byte(source, word, byte) >> 4);
-	}
-
-	inline void StoreRGB48(uint16_t*& destination, uint16_t red, uint16_t green, uint16_t blue)
-	{
-		*destination++ = Expand12To16(red);
-		*destination++ = Expand12To16(green);
-		*destination++ = Expand12To16(blue);
-	}
-
-	void ConvertBlockScalar(const uint8_t* source, uint16_t* destination)
-	{
-		// Mapping from the DeckLink SDK R12B table (eight pixels / nine 32-bit words).
-		StoreRGB48(destination,
-			Byte(source, 0, 3) | (LowNibble(source, 0, 2) << 8),
-			HighNibble(source, 0, 2) | (static_cast<uint16_t>(Byte(source, 0, 1)) << 4),
-			Byte(source, 0, 0) | (LowNibble(source, 1, 3) << 8));
-		StoreRGB48(destination,
-			HighNibble(source, 1, 3) | (static_cast<uint16_t>(Byte(source, 1, 2)) << 4),
-			Byte(source, 1, 1) | (LowNibble(source, 1, 0) << 8),
-			HighNibble(source, 1, 0) | (static_cast<uint16_t>(Byte(source, 2, 3)) << 4));
-		StoreRGB48(destination,
-			Byte(source, 2, 2) | (LowNibble(source, 2, 1) << 8),
-			HighNibble(source, 2, 1) | (static_cast<uint16_t>(Byte(source, 2, 0)) << 4),
-			Byte(source, 3, 3) | (LowNibble(source, 3, 2) << 8));
-		StoreRGB48(destination,
-			HighNibble(source, 3, 2) | (static_cast<uint16_t>(Byte(source, 3, 1)) << 4),
-			Byte(source, 3, 0) | (LowNibble(source, 4, 3) << 8),
-			HighNibble(source, 4, 3) | (static_cast<uint16_t>(Byte(source, 4, 2)) << 4));
-		StoreRGB48(destination,
-			Byte(source, 4, 1) | (LowNibble(source, 4, 0) << 8),
-			HighNibble(source, 4, 0) | (static_cast<uint16_t>(Byte(source, 5, 3)) << 4),
-			Byte(source, 5, 2) | (LowNibble(source, 5, 1) << 8));
-		StoreRGB48(destination,
-			HighNibble(source, 5, 1) | (static_cast<uint16_t>(Byte(source, 5, 0)) << 4),
-			Byte(source, 6, 3) | (LowNibble(source, 6, 2) << 8),
-			HighNibble(source, 6, 2) | (static_cast<uint16_t>(Byte(source, 6, 1)) << 4));
-		StoreRGB48(destination,
-			Byte(source, 6, 0) | (LowNibble(source, 7, 3) << 8),
-			HighNibble(source, 7, 3) | (static_cast<uint16_t>(Byte(source, 7, 2)) << 4),
-			Byte(source, 7, 1) | (LowNibble(source, 7, 0) << 8));
-		StoreRGB48(destination,
-			HighNibble(source, 7, 0) | (static_cast<uint16_t>(Byte(source, 8, 3)) << 4),
-			Byte(source, 8, 2) | (LowNibble(source, 8, 1) << 8),
-			HighNibble(source, 8, 1) | (static_cast<uint16_t>(Byte(source, 8, 0)) << 4));
-	}
-
-	bool CpuSupportsAVX2() noexcept
-	{
-		int cpuInfo[4] = {};
-		__cpuid(cpuInfo, 0);
-		if (cpuInfo[0] < 7)
-			return false;
-		__cpuid(cpuInfo, 1);
-		constexpr int osxsave = 1 << 27;
-		constexpr int avx = 1 << 28;
-		if ((cpuInfo[2] & (osxsave | avx)) != (osxsave | avx))
-			return false;
-		if ((_xgetbv(0) & 0x6) != 0x6)
-			return false;
-		__cpuidex(cpuInfo, 7, 0);
-		return (cpuInfo[1] & (1 << 5)) != 0;
-	}
-
-	inline __m128i UnpackEightR12Components(const uint8_t* logical) noexcept
-	{
-		const __m128i packed = _mm_loadu_si128(
-			reinterpret_cast<const __m128i*>(logical));
-		const __m128i evenBytes = _mm_setr_epi8(
-			0, 1, 3, 4, 6, 7, 9, 10,
-			-1, -1, -1, -1, -1, -1, -1, -1);
-		const __m128i oddBytes = _mm_setr_epi8(
-			1, 2, 4, 5, 7, 8, 10, 11,
-			-1, -1, -1, -1, -1, -1, -1, -1);
-		const __m128i mask12 = _mm_set1_epi16(0x0fff);
-		const __m128i even = _mm_and_si128(
-			_mm_shuffle_epi8(packed, evenBytes), mask12);
-		const __m128i odd = _mm_and_si128(_mm_srli_epi16(
-			_mm_shuffle_epi8(packed, oddBytes), 4), mask12);
-		return _mm_unpacklo_epi16(even, odd);
-	}
-
-	inline __m128i ExpandEightR12Components(__m128i values) noexcept
-	{
-		return _mm_or_si128(_mm_slli_epi16(values, 4),
-			_mm_srli_epi16(values, 8));
-	}
-
-	void ConvertSixteenPixelsAVX2(const uint8_t* source,
-		uint16_t* destination) noexcept
-	{
-		// Two documented R12B blocks contain 16 RGB pixels: 48 components in
-		// 72 bytes. Normalize the per-32-bit-word byte order, then unpack the
-		// continuous Method C4 stream in six groups of eight components.
-		alignas(32) uint8_t logical[80] = {};
-		const __m256i reverseEachWord = _mm256_setr_epi8(
-			3, 2, 1, 0, 7, 6, 5, 4, 11, 10, 9, 8, 15, 14, 13, 12,
-			3, 2, 1, 0, 7, 6, 5, 4, 11, 10, 9, 8, 15, 14, 13, 12);
-		for (uint32_t offset = 0; offset < 64; offset += 32)
-		{
-			_mm256_store_si256(reinterpret_cast<__m256i*>(logical + offset),
-				_mm256_shuffle_epi8(_mm256_loadu_si256(
-					reinterpret_cast<const __m256i*>(source + offset)),
-					reverseEachWord));
-		}
-		const __m128i reverseTwoWords = _mm_setr_epi8(
-			3, 2, 1, 0, 7, 6, 5, 4,
-			-1, -1, -1, -1, -1, -1, -1, -1);
-		_mm_storel_epi64(reinterpret_cast<__m128i*>(logical + 64),
-			_mm_shuffle_epi8(_mm_loadl_epi64(
-				reinterpret_cast<const __m128i*>(source + 64)), reverseTwoWords));
-
-		for (uint32_t group = 0; group < 6; group += 2)
-		{
-			const __m128i first = ExpandEightR12Components(
-				UnpackEightR12Components(logical + group * 12U));
-			const __m128i second = ExpandEightR12Components(
-				UnpackEightR12Components(logical + (group + 1U) * 12U));
-			__m256i output = _mm256_castsi128_si256(first);
-			output = _mm256_inserti128_si256(output, second, 1);
-			_mm256_storeu_si256(reinterpret_cast<__m256i*>(
-				destination + group * 8U), output);
-		}
-	}
-}
-
-
 CR12BtoRGB48VideoFrameFormatter::CR12BtoRGB48VideoFrameFormatter()
 {
-	m_hasAVX2 = CpuSupportsAVX2();
+	m_hasAVX2 = CpuFeatures::SupportsAvx2Kernels();
 	for (uint32_t i = 0; i < MAX_WORKERS; ++i)
 	{
 		m_conversionWork[i] = CreateThreadpoolWork(ConversionWorkCallback, this, nullptr);
@@ -262,6 +115,12 @@ void CR12BtoRGB48VideoFrameFormatter::ConvertRows(
 	const uint8_t* sourceFrame, uint16_t* destinationFrame,
 	uint32_t firstLine, uint32_t lineCount) const
 {
+	if (m_hasAVX2 && m_conversionMethod != ConversionMethod::SCALAR)
+	{
+		ConvertRowsAVX2(sourceFrame, destinationFrame, firstLine, lineCount);
+		return;
+	}
+
 	const uint32_t blocksPerLine = m_width / PIXELS_PER_BLOCK;
 	const uint32_t endLine = firstLine + lineCount;
 	for (uint32_t line = firstLine; line < endLine; ++line)
@@ -269,15 +128,7 @@ void CR12BtoRGB48VideoFrameFormatter::ConvertRows(
 		const uint8_t* source = sourceFrame + static_cast<size_t>(line) * m_inputStride;
 		uint16_t* destination = destinationFrame + static_cast<size_t>(line) * m_width * 3;
 		uint32_t block = 0;
-		if (m_hasAVX2 && m_conversionMethod != ConversionMethod::SCALAR)
-		{
-			for (; block + 1 < blocksPerLine; block += 2)
-			{
-				ConvertSixteenPixelsAVX2(source, destination);
-				source += BYTES_PER_BLOCK * 2U;
-				destination += PIXELS_PER_BLOCK * 3U * 2U;
-			}
-		}
+
 		for (; block < blocksPerLine; ++block)
 		{
 			ConvertBlockScalar(source, destination);
