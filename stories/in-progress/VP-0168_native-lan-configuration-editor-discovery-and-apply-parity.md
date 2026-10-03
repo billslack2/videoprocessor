@@ -173,6 +173,28 @@ and discovery DLL
 All four deployed runtime records confirmed x64 Release and matching binary
 hashes. VP playback was not restarted by the deployment.
 
+2026-10-02: A later optional-AVX2 test deployment used build 4bad3af4
+from the beta before VP-0168 integration, which removed the Config target
+selector and VP RPC responder. This mismatched deployment was corrected with
+clean branch codex/vp-0168-avx2-integration-20261002 at
+fbe30e2a1c9bde7831f67736e52048ef90e03b45. It merges the VP-0168
+packaging branch and optional AVX2 change over current beta c84863ea and is
+pushed to billslack2/videoprocessor. A fresh x64 Release solution rebuild and
+installer/portable staging succeeded. Config UI tests passed 89/89,
+including selector, responsive switching, and sole-remote first launch.
+Native tests passed 1,899/1,901; both failed 4K timing smoke tests passed
+when rerun alone. Five AVX2 boundary checks passed. The matched host,
+renderer, Config, discovery DLL, four Release runtime records, and install
+manifest were deployed to C:\Videoprocessor\vp; 62 managed files matched the
+new manifest. Replaced files were backed up under
+C:\Videoprocessor\vp\backup-corrected-VP0168-AVX2-20261002-203658. The active
+VideoProcessor.cfg was unchanged (SHA-256
+4FE6F880C9C1734E13E36C558B1F51DD9A192E666B4BAE2C02C6BB6DAC819EC0).
+A screenshot from the installed Config confirms the This computer selector.
+The updated standalone client ZIP is
+C:\Users\bslac\Documents\ChatGPT\Done\VideoProcessorConfig-1.3.005-beta-fbe30e2a1c9b-x64.zip
+(SHA-256 351B3633A510A75D270A4B8558F0FDB61CAAFE5507689DEC30E5EA658F7D9C6A).
+Physical two-computer discovery and remote Apply/OK remain to be verified.
 ## User story
 
 As a VideoProcessor operator, I want the native configuration editor running
