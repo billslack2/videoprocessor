@@ -1,0 +1,1671 @@
+{
+  "media_sha256": "4c5b3da9c702141dd9ad5223ffa094eb9c6453a28e41dd70863c13e1fe03c9ea",
+  "manifest_sha256": "4136f117f7561578878ad3a749597374e7789f7ce31ee9e0dfad8b208f40efe0",
+  "probe_sha256": "3a3212e4fd3bcc6dc9030b8843557705c46a85a6001daee02eb1fb7f391e9ddb",
+  "opencv": "4.8.1",
+  "sample_fps": "60",
+  "lookahead": 3,
+  "presentation_padding_pixels": 10,
+  "cut_bottom_gap_pixels": 15,
+  "injected_measurement_gaps_capture_frame_samples": [],
+  "diagnostic_supplied_bars": false,
+  "note": "Native recorded raster; this is not a recovery of the original 4K input. Sampling is deterministic and does not establish source-frame identity. Each crop phase starts a fresh process; resize transition state is not replayed. Strict containment gates acceptance; 2px tolerance is sensitivity reporting only. Raw detection metrics exclude the additional 10px presentation padding. Cut/paste previews apply production placement to original pixels in software; they do not validate the GPU shader. The manifest's heldout label denotes independently annotated reserved cues; these cues have now been exercised during iteration, not blind final validation.",
+  "report_only": false,
+  "segments": {
+    "windowed": {
+      "frames": 2490,
+      "capture_frame_range": [
+        60,
+        2550
+      ],
+      "crop_xywh": [
+        1024,
+        446,
+        1040,
+        585
+      ],
+      "cues": {
+        "blank_opening": {
+          "split": "development",
+          "contamination": [],
+          "positive": false,
+          "frames": 121,
+          "bar_authority": 121,
+          "measured": 0,
+          "measured_complete_strict": 121,
+          "displayed": 0,
+          "held_frames": 0,
+          "injected_failure_frames": 0,
+          "complete_tolerance_2px": 121,
+          "complete_strict": 121,
+          "line_count_matches": 121,
+          "distinct_displayed_boxes": 0,
+          "all_frames_same_box": false,
+          "area_ratio_min_max": null,
+          "edge_padding_order": [
+            "left",
+            "top",
+            "right",
+            "bottom"
+          ],
+          "edge_padding_min_max": null,
+          "padding_limit_pixels": 8,
+          "oversized_frames": 0,
+          "max_edge_motion_pixels": 0,
+          "late_growth_events": 0,
+          "cut_valid_frames": 0,
+          "cut_geometry_failures": [],
+          "distinct_cut_destinations": 0,
+          "cut_current_bottom_gap_min_max": null,
+          "first_complete_capture_frame": 60,
+          "first_complete_tolerance_2px_capture_frame": 60,
+          "first_complete_frames_after_onset": null,
+          "first_sample_capture_frame": 60,
+          "first_sample_complete": true,
+          "first_sample_complete_tolerance_2px": true,
+          "verified_onset_frame": null,
+          "onset_in_replay": false,
+          "first_sample_frames_after_onset": null
+        },
+        "tc14_service": {
+          "split": "development",
+          "contamination": [],
+          "positive": true,
+          "frames": 121,
+          "bar_authority": 121,
+          "measured": 121,
+          "measured_complete_strict": 121,
+          "displayed": 121,
+          "held_frames": 0,
+          "injected_failure_frames": 0,
+          "complete_tolerance_2px": 121,
+          "complete_strict": 121,
+          "line_count_matches": 121,
+          "distinct_displayed_boxes": 1,
+          "all_frames_same_box": true,
+          "area_ratio_min_max": [
+            1.4630303030303031,
+            1.4630303030303031
+          ],
+          "edge_padding_order": [
+            "left",
+            "top",
+            "right",
+            "bottom"
+          ],
+          "edge_padding_min_max": [
+            [
+              4,
+              4
+            ],
+            [
+              4,
+              4
+            ],
+            [
+              5,
+              5
+            ],
+            [
+              6,
+              6
+            ]
+          ],
+          "padding_limit_pixels": 12,
+          "oversized_frames": 0,
+          "max_edge_motion_pixels": 0,
+          "late_growth_events": 0,
+          "cut_valid_frames": 121,
+          "cut_geometry_failures": [],
+          "distinct_cut_destinations": 1,
+          "cut_current_bottom_gap_min_max": [
+            15,
+            15
+          ],
+          "first_complete_capture_frame": 240,
+          "first_complete_tolerance_2px_capture_frame": 240,
+          "first_complete_frames_after_onset": null,
+          "first_sample_capture_frame": 240,
+          "first_sample_complete": true,
+          "first_sample_complete_tolerance_2px": true,
+          "verified_onset_frame": null,
+          "onset_in_replay": false,
+          "first_sample_frames_after_onset": null
+        },
+        "this_way": {
+          "split": "development",
+          "contamination": [],
+          "positive": true,
+          "frames": 61,
+          "bar_authority": 61,
+          "measured": 61,
+          "measured_complete_strict": 61,
+          "displayed": 61,
+          "held_frames": 0,
+          "injected_failure_frames": 0,
+          "complete_tolerance_2px": 61,
+          "complete_strict": 61,
+          "line_count_matches": 61,
+          "distinct_displayed_boxes": 1,
+          "all_frames_same_box": true,
+          "area_ratio_min_max": [
+            1.4478021978021978,
+            1.4478021978021978
+          ],
+          "edge_padding_order": [
+            "left",
+            "top",
+            "right",
+            "bottom"
+          ],
+          "edge_padding_min_max": [
+            [
+              4,
+              4
+            ],
+            [
+              4,
+              4
+            ],
+            [
+              0,
+              0
+            ],
+            [
+              6,
+              6
+            ]
+          ],
+          "padding_limit_pixels": 12,
+          "oversized_frames": 0,
+          "max_edge_motion_pixels": 0,
+          "late_growth_events": 0,
+          "cut_valid_frames": 61,
+          "cut_geometry_failures": [],
+          "distinct_cut_destinations": 1,
+          "cut_current_bottom_gap_min_max": [
+            15,
+            15
+          ],
+          "first_complete_capture_frame": 420,
+          "first_complete_tolerance_2px_capture_frame": 420,
+          "first_complete_frames_after_onset": null,
+          "first_sample_capture_frame": 420,
+          "first_sample_complete": true,
+          "first_sample_complete_tolerance_2px": true,
+          "verified_onset_frame": null,
+          "onset_in_replay": false,
+          "first_sample_frames_after_onset": null
+        },
+        "blank_corridor": {
+          "split": "development",
+          "contamination": [],
+          "positive": false,
+          "frames": 181,
+          "bar_authority": 181,
+          "measured": 0,
+          "measured_complete_strict": 181,
+          "displayed": 0,
+          "held_frames": 0,
+          "injected_failure_frames": 0,
+          "complete_tolerance_2px": 181,
+          "complete_strict": 181,
+          "line_count_matches": 181,
+          "distinct_displayed_boxes": 0,
+          "all_frames_same_box": false,
+          "area_ratio_min_max": null,
+          "edge_padding_order": [
+            "left",
+            "top",
+            "right",
+            "bottom"
+          ],
+          "edge_padding_min_max": null,
+          "padding_limit_pixels": 8,
+          "oversized_frames": 0,
+          "max_edge_motion_pixels": 0,
+          "late_growth_events": 0,
+          "cut_valid_frames": 0,
+          "cut_geometry_failures": [],
+          "distinct_cut_destinations": 0,
+          "cut_current_bottom_gap_min_max": null,
+          "first_complete_capture_frame": 540,
+          "first_complete_tolerance_2px_capture_frame": 540,
+          "first_complete_frames_after_onset": null,
+          "first_sample_capture_frame": 540,
+          "first_sample_complete": true,
+          "first_sample_complete_tolerance_2px": true,
+          "verified_onset_frame": null,
+          "onset_in_replay": false,
+          "first_sample_frames_after_onset": null
+        },
+        "blank_hud": {
+          "split": "diagnostic",
+          "contamination": [
+            "player_hud"
+          ],
+          "positive": false,
+          "frames": 61,
+          "bar_authority": 61,
+          "measured": 0,
+          "measured_complete_strict": 61,
+          "displayed": 0,
+          "held_frames": 0,
+          "injected_failure_frames": 0,
+          "complete_tolerance_2px": 61,
+          "complete_strict": 61,
+          "line_count_matches": 61,
+          "distinct_displayed_boxes": 0,
+          "all_frames_same_box": false,
+          "area_ratio_min_max": null,
+          "edge_padding_order": [
+            "left",
+            "top",
+            "right",
+            "bottom"
+          ],
+          "edge_padding_min_max": null,
+          "padding_limit_pixels": 8,
+          "oversized_frames": 0,
+          "max_edge_motion_pixels": 0,
+          "late_growth_events": 0,
+          "cut_valid_frames": 0,
+          "cut_geometry_failures": [],
+          "distinct_cut_destinations": 0,
+          "cut_current_bottom_gap_min_max": null,
+          "first_complete_capture_frame": 780,
+          "first_complete_tolerance_2px_capture_frame": 780,
+          "first_complete_frames_after_onset": null,
+          "first_sample_capture_frame": 780,
+          "first_sample_complete": true,
+          "first_sample_complete_tolerance_2px": true,
+          "verified_onset_frame": null,
+          "onset_in_replay": false,
+          "first_sample_frames_after_onset": null
+        },
+        "anxieties": {
+          "split": "development",
+          "contamination": [],
+          "positive": true,
+          "frames": 16,
+          "bar_authority": 16,
+          "measured": 16,
+          "measured_complete_strict": 16,
+          "displayed": 16,
+          "held_frames": 0,
+          "injected_failure_frames": 0,
+          "complete_tolerance_2px": 16,
+          "complete_strict": 16,
+          "line_count_matches": 16,
+          "distinct_displayed_boxes": 1,
+          "all_frames_same_box": true,
+          "area_ratio_min_max": [
+            1.445977011494253,
+            1.445977011494253
+          ],
+          "edge_padding_order": [
+            "left",
+            "top",
+            "right",
+            "bottom"
+          ],
+          "edge_padding_min_max": [
+            [
+              4,
+              4
+            ],
+            [
+              4,
+              4
+            ],
+            [
+              5,
+              5
+            ],
+            [
+              6,
+              6
+            ]
+          ],
+          "padding_limit_pixels": 12,
+          "oversized_frames": 0,
+          "max_edge_motion_pixels": 0,
+          "late_growth_events": 0,
+          "cut_valid_frames": 16,
+          "cut_geometry_failures": [],
+          "distinct_cut_destinations": 1,
+          "cut_current_bottom_gap_min_max": [
+            15,
+            15
+          ],
+          "first_complete_capture_frame": 1140,
+          "first_complete_tolerance_2px_capture_frame": 1140,
+          "first_complete_frames_after_onset": null,
+          "first_sample_capture_frame": 1140,
+          "first_sample_complete": true,
+          "first_sample_complete_tolerance_2px": true,
+          "verified_onset_frame": null,
+          "onset_in_replay": false,
+          "first_sample_frames_after_onset": null
+        },
+        "concentration_two_lines": {
+          "split": "development",
+          "contamination": [],
+          "positive": true,
+          "frames": 121,
+          "bar_authority": 121,
+          "measured": 121,
+          "measured_complete_strict": 121,
+          "displayed": 121,
+          "held_frames": 0,
+          "injected_failure_frames": 0,
+          "complete_tolerance_2px": 121,
+          "complete_strict": 121,
+          "line_count_matches": 121,
+          "distinct_displayed_boxes": 1,
+          "all_frames_same_box": true,
+          "area_ratio_min_max": [
+            1.2033898305084745,
+            1.2033898305084745
+          ],
+          "edge_padding_order": [
+            "left",
+            "top",
+            "right",
+            "bottom"
+          ],
+          "edge_padding_min_max": [
+            [
+              4,
+              4
+            ],
+            [
+              5,
+              5
+            ],
+            [
+              2,
+              2
+            ],
+            [
+              6,
+              6
+            ]
+          ],
+          "padding_limit_pixels": 12,
+          "oversized_frames": 0,
+          "max_edge_motion_pixels": 0,
+          "late_growth_events": 0,
+          "cut_valid_frames": 121,
+          "cut_geometry_failures": [],
+          "distinct_cut_destinations": 1,
+          "cut_current_bottom_gap_min_max": [
+            15,
+            15
+          ],
+          "first_complete_capture_frame": 1200,
+          "first_complete_tolerance_2px_capture_frame": 1200,
+          "first_complete_frames_after_onset": null,
+          "first_sample_capture_frame": 1200,
+          "first_sample_complete": true,
+          "first_sample_complete_tolerance_2px": true,
+          "verified_onset_frame": null,
+          "onset_in_replay": false,
+          "first_sample_frames_after_onset": null
+        },
+        "master_yoda_two_lines": {
+          "split": "development",
+          "contamination": [],
+          "positive": true,
+          "frames": 121,
+          "bar_authority": 121,
+          "measured": 121,
+          "measured_complete_strict": 121,
+          "displayed": 121,
+          "held_frames": 0,
+          "injected_failure_frames": 0,
+          "complete_tolerance_2px": 121,
+          "complete_strict": 121,
+          "line_count_matches": 121,
+          "distinct_displayed_boxes": 1,
+          "all_frames_same_box": true,
+          "area_ratio_min_max": [
+            1.2137931034482758,
+            1.2137931034482758
+          ],
+          "edge_padding_order": [
+            "left",
+            "top",
+            "right",
+            "bottom"
+          ],
+          "edge_padding_min_max": [
+            [
+              4,
+              4
+            ],
+            [
+              5,
+              5
+            ],
+            [
+              0,
+              0
+            ],
+            [
+              6,
+              6
+            ]
+          ],
+          "padding_limit_pixels": 10,
+          "oversized_frames": 0,
+          "max_edge_motion_pixels": 0,
+          "late_growth_events": 0,
+          "cut_valid_frames": 121,
+          "cut_geometry_failures": [],
+          "distinct_cut_destinations": 1,
+          "cut_current_bottom_gap_min_max": [
+            15,
+            15
+          ],
+          "first_complete_capture_frame": 1380,
+          "first_complete_tolerance_2px_capture_frame": 1380,
+          "first_complete_frames_after_onset": null,
+          "first_sample_capture_frame": 1380,
+          "first_sample_complete": true,
+          "first_sample_complete_tolerance_2px": true,
+          "verified_onset_frame": null,
+          "onset_in_replay": false,
+          "first_sample_frames_after_onset": null
+        },
+        "expense_moment": {
+          "split": "development",
+          "contamination": [],
+          "positive": true,
+          "frames": 121,
+          "bar_authority": 121,
+          "measured": 121,
+          "measured_complete_strict": 121,
+          "displayed": 121,
+          "held_frames": 0,
+          "injected_failure_frames": 0,
+          "complete_tolerance_2px": 121,
+          "complete_strict": 121,
+          "line_count_matches": 121,
+          "distinct_displayed_boxes": 1,
+          "all_frames_same_box": true,
+          "area_ratio_min_max": [
+            1.4476885644768855,
+            1.4476885644768855
+          ],
+          "edge_padding_order": [
+            "left",
+            "top",
+            "right",
+            "bottom"
+          ],
+          "edge_padding_min_max": [
+            [
+              4,
+              4
+            ],
+            [
+              4,
+              4
+            ],
+            [
+              5,
+              5
+            ],
+            [
+              6,
+              6
+            ]
+          ],
+          "padding_limit_pixels": 12,
+          "oversized_frames": 0,
+          "max_edge_motion_pixels": 0,
+          "late_growth_events": 0,
+          "cut_valid_frames": 121,
+          "cut_geometry_failures": [],
+          "distinct_cut_destinations": 1,
+          "cut_current_bottom_gap_min_max": [
+            15,
+            15
+          ],
+          "first_complete_capture_frame": 1560,
+          "first_complete_tolerance_2px_capture_frame": 1560,
+          "first_complete_frames_after_onset": null,
+          "first_sample_capture_frame": 1560,
+          "first_sample_complete": true,
+          "first_sample_complete_tolerance_2px": true,
+          "verified_onset_frame": null,
+          "onset_in_replay": false,
+          "first_sample_frames_after_onset": null
+        },
+        "living_force_two_lines": {
+          "split": "development",
+          "contamination": [],
+          "positive": true,
+          "frames": 121,
+          "bar_authority": 121,
+          "measured": 121,
+          "measured_complete_strict": 121,
+          "displayed": 121,
+          "held_frames": 0,
+          "injected_failure_frames": 0,
+          "complete_tolerance_2px": 121,
+          "complete_strict": 121,
+          "line_count_matches": 121,
+          "distinct_displayed_boxes": 1,
+          "all_frames_same_box": true,
+          "area_ratio_min_max": [
+            1.2033542976939204,
+            1.2033542976939204
+          ],
+          "edge_padding_order": [
+            "left",
+            "top",
+            "right",
+            "bottom"
+          ],
+          "edge_padding_min_max": [
+            [
+              5,
+              5
+            ],
+            [
+              4,
+              4
+            ],
+            [
+              5,
+              5
+            ],
+            [
+              6,
+              6
+            ]
+          ],
+          "padding_limit_pixels": 12,
+          "oversized_frames": 0,
+          "max_edge_motion_pixels": 0,
+          "late_growth_events": 0,
+          "cut_valid_frames": 121,
+          "cut_geometry_failures": [],
+          "distinct_cut_destinations": 1,
+          "cut_current_bottom_gap_min_max": [
+            14,
+            15
+          ],
+          "first_complete_capture_frame": 1740,
+          "first_complete_tolerance_2px_capture_frame": 1740,
+          "first_complete_frames_after_onset": null,
+          "first_sample_capture_frame": 1740,
+          "first_sample_complete": true,
+          "first_sample_complete_tolerance_2px": true,
+          "verified_onset_frame": null,
+          "onset_in_replay": false,
+          "first_sample_frames_after_onset": null
+        },
+        "yes_master_green": {
+          "split": "diagnostic",
+          "contamination": [
+            "existing_green_box_in_part_of_interval"
+          ],
+          "positive": true,
+          "frames": 61,
+          "bar_authority": 61,
+          "measured": 13,
+          "measured_complete_strict": 13,
+          "displayed": 13,
+          "held_frames": 0,
+          "injected_failure_frames": 0,
+          "complete_tolerance_2px": 13,
+          "complete_strict": 13,
+          "line_count_matches": 13,
+          "distinct_displayed_boxes": 2,
+          "all_frames_same_box": false,
+          "area_ratio_min_max": [
+            1.3953488372093024,
+            1.4883720930232558
+          ],
+          "edge_padding_order": [
+            "left",
+            "top",
+            "right",
+            "bottom"
+          ],
+          "edge_padding_min_max": [
+            [
+              5,
+              5
+            ],
+            [
+              4,
+              4
+            ],
+            [
+              4,
+              4
+            ],
+            [
+              3,
+              5
+            ]
+          ],
+          "padding_limit_pixels": 11,
+          "oversized_frames": 0,
+          "max_edge_motion_pixels": 2,
+          "late_growth_events": 0,
+          "cut_valid_frames": 13,
+          "cut_geometry_failures": [],
+          "distinct_cut_destinations": 2,
+          "cut_current_bottom_gap_min_max": [
+            15,
+            15
+          ],
+          "first_complete_capture_frame": 1920,
+          "first_complete_tolerance_2px_capture_frame": 1920,
+          "first_complete_frames_after_onset": null,
+          "first_sample_capture_frame": 1920,
+          "first_sample_complete": true,
+          "first_sample_complete_tolerance_2px": true,
+          "verified_onset_frame": null,
+          "onset_in_replay": false,
+          "first_sample_frames_after_onset": null
+        },
+        "blank_before_demands": {
+          "split": "development",
+          "contamination": [],
+          "positive": false,
+          "frames": 73,
+          "bar_authority": 73,
+          "measured": 0,
+          "measured_complete_strict": 73,
+          "displayed": 0,
+          "held_frames": 0,
+          "injected_failure_frames": 0,
+          "complete_tolerance_2px": 73,
+          "complete_strict": 73,
+          "line_count_matches": 73,
+          "distinct_displayed_boxes": 0,
+          "all_frames_same_box": false,
+          "area_ratio_min_max": null,
+          "edge_padding_order": [
+            "left",
+            "top",
+            "right",
+            "bottom"
+          ],
+          "edge_padding_min_max": null,
+          "padding_limit_pixels": 8,
+          "oversized_frames": 0,
+          "max_edge_motion_pixels": 0,
+          "late_growth_events": 0,
+          "cut_valid_frames": 0,
+          "cut_geometry_failures": [],
+          "distinct_cut_destinations": 0,
+          "cut_current_bottom_gap_min_max": null,
+          "first_complete_capture_frame": 2040,
+          "first_complete_tolerance_2px_capture_frame": 2040,
+          "first_complete_frames_after_onset": null,
+          "first_sample_capture_frame": 2040,
+          "first_sample_complete": true,
+          "first_sample_complete_tolerance_2px": true,
+          "verified_onset_frame": null,
+          "onset_in_replay": false,
+          "first_sample_frames_after_onset": null
+        },
+        "viceroy_demands_heldout": {
+          "split": "heldout",
+          "contamination": [],
+          "positive": true,
+          "frames": 225,
+          "bar_authority": 225,
+          "measured": 225,
+          "measured_complete_strict": 225,
+          "displayed": 225,
+          "held_frames": 0,
+          "injected_failure_frames": 0,
+          "complete_tolerance_2px": 225,
+          "complete_strict": 225,
+          "line_count_matches": 225,
+          "distinct_displayed_boxes": 1,
+          "all_frames_same_box": true,
+          "area_ratio_min_max": [
+            1.2054794520547945,
+            1.2054794520547945
+          ],
+          "edge_padding_order": [
+            "left",
+            "top",
+            "right",
+            "bottom"
+          ],
+          "edge_padding_min_max": [
+            [
+              4,
+              4
+            ],
+            [
+              4,
+              4
+            ],
+            [
+              6,
+              6
+            ],
+            [
+              6,
+              6
+            ]
+          ],
+          "padding_limit_pixels": 12,
+          "oversized_frames": 0,
+          "max_edge_motion_pixels": 0,
+          "late_growth_events": 0,
+          "cut_valid_frames": 225,
+          "cut_geometry_failures": [],
+          "distinct_cut_destinations": 1,
+          "cut_current_bottom_gap_min_max": [
+            15,
+            15
+          ],
+          "first_complete_capture_frame": 2113,
+          "first_complete_tolerance_2px_capture_frame": 2113,
+          "first_complete_frames_after_onset": 0,
+          "first_sample_capture_frame": 2113,
+          "first_sample_complete": true,
+          "first_sample_complete_tolerance_2px": true,
+          "verified_onset_frame": 2113,
+          "onset_in_replay": true,
+          "first_sample_frames_after_onset": 0
+        },
+        "federation_cowards": {
+          "split": "development",
+          "contamination": [],
+          "positive": true,
+          "frames": 61,
+          "bar_authority": 61,
+          "measured": 61,
+          "measured_complete_strict": 61,
+          "displayed": 61,
+          "held_frames": 0,
+          "injected_failure_frames": 0,
+          "complete_tolerance_2px": 61,
+          "complete_strict": 61,
+          "line_count_matches": 61,
+          "distinct_displayed_boxes": 1,
+          "all_frames_same_box": true,
+          "area_ratio_min_max": [
+            1.4522613065326633,
+            1.4522613065326633
+          ],
+          "edge_padding_order": [
+            "left",
+            "top",
+            "right",
+            "bottom"
+          ],
+          "edge_padding_min_max": [
+            [
+              4,
+              4
+            ],
+            [
+              4,
+              4
+            ],
+            [
+              6,
+              6
+            ],
+            [
+              6,
+              6
+            ]
+          ],
+          "padding_limit_pixels": 12,
+          "oversized_frames": 0,
+          "max_edge_motion_pixels": 0,
+          "late_growth_events": 0,
+          "cut_valid_frames": 61,
+          "cut_geometry_failures": [],
+          "distinct_cut_destinations": 1,
+          "cut_current_bottom_gap_min_max": [
+            15,
+            15
+          ],
+          "first_complete_capture_frame": 2400,
+          "first_complete_tolerance_2px_capture_frame": 2400,
+          "first_complete_frames_after_onset": null,
+          "first_sample_capture_frame": 2400,
+          "first_sample_complete": true,
+          "first_sample_complete_tolerance_2px": true,
+          "verified_onset_frame": null,
+          "onset_in_replay": false,
+          "first_sample_frames_after_onset": null
+        },
+        "negotiations_windowed": {
+          "split": "development",
+          "contamination": [],
+          "positive": true,
+          "frames": 16,
+          "bar_authority": 16,
+          "measured": 16,
+          "measured_complete_strict": 16,
+          "displayed": 16,
+          "held_frames": 0,
+          "injected_failure_frames": 0,
+          "complete_tolerance_2px": 16,
+          "complete_strict": 16,
+          "line_count_matches": 16,
+          "distinct_displayed_boxes": 1,
+          "all_frames_same_box": true,
+          "area_ratio_min_max": [
+            1.455897435897436,
+            1.455897435897436
+          ],
+          "edge_padding_order": [
+            "left",
+            "top",
+            "right",
+            "bottom"
+          ],
+          "edge_padding_min_max": [
+            [
+              5,
+              5
+            ],
+            [
+              4,
+              4
+            ],
+            [
+              4,
+              4
+            ],
+            [
+              6,
+              6
+            ]
+          ],
+          "padding_limit_pixels": 12,
+          "oversized_frames": 0,
+          "max_edge_motion_pixels": 0,
+          "late_growth_events": 0,
+          "cut_valid_frames": 16,
+          "cut_geometry_failures": [],
+          "distinct_cut_destinations": 1,
+          "cut_current_bottom_gap_min_max": [
+            15,
+            15
+          ],
+          "first_complete_capture_frame": 2520,
+          "first_complete_tolerance_2px_capture_frame": 2520,
+          "first_complete_frames_after_onset": null,
+          "first_sample_capture_frame": 2520,
+          "first_sample_complete": true,
+          "first_sample_complete_tolerance_2px": true,
+          "verified_onset_frame": null,
+          "onset_in_replay": false,
+          "first_sample_frames_after_onset": null
+        },
+        "blank_after_demands": {
+          "split": "heldout",
+          "contamination": [],
+          "positive": false,
+          "frames": 3,
+          "bar_authority": 3,
+          "measured": 0,
+          "measured_complete_strict": 3,
+          "displayed": 0,
+          "held_frames": 0,
+          "injected_failure_frames": 0,
+          "complete_tolerance_2px": 3,
+          "complete_strict": 3,
+          "line_count_matches": 3,
+          "distinct_displayed_boxes": 0,
+          "all_frames_same_box": false,
+          "area_ratio_min_max": null,
+          "edge_padding_order": [
+            "left",
+            "top",
+            "right",
+            "bottom"
+          ],
+          "edge_padding_min_max": null,
+          "padding_limit_pixels": 8,
+          "oversized_frames": 0,
+          "max_edge_motion_pixels": 0,
+          "late_growth_events": 0,
+          "cut_valid_frames": 0,
+          "cut_geometry_failures": [],
+          "distinct_cut_destinations": 0,
+          "cut_current_bottom_gap_min_max": null,
+          "first_complete_capture_frame": 2338,
+          "first_complete_tolerance_2px_capture_frame": 2338,
+          "first_complete_frames_after_onset": null,
+          "first_sample_capture_frame": 2338,
+          "first_sample_complete": true,
+          "first_sample_complete_tolerance_2px": true,
+          "verified_onset_frame": null,
+          "onset_in_replay": false,
+          "first_sample_frames_after_onset": null
+        }
+      }
+    },
+    "maximized": {
+      "frames": 1981,
+      "capture_frame_range": [
+        2580,
+        4561
+      ],
+      "crop_xywh": [
+        544,
+        176,
+        2000,
+        1125
+      ],
+      "cues": {
+        "negotiations_maximized": {
+          "split": "development",
+          "contamination": [],
+          "positive": true,
+          "frames": 61,
+          "bar_authority": 61,
+          "measured": 61,
+          "measured_complete_strict": 61,
+          "displayed": 61,
+          "held_frames": 0,
+          "injected_failure_frames": 0,
+          "complete_tolerance_2px": 61,
+          "complete_strict": 61,
+          "line_count_matches": 61,
+          "distinct_displayed_boxes": 1,
+          "all_frames_same_box": true,
+          "area_ratio_min_max": [
+            1.3478038815117466,
+            1.3478038815117466
+          ],
+          "edge_padding_order": [
+            "left",
+            "top",
+            "right",
+            "bottom"
+          ],
+          "edge_padding_min_max": [
+            [
+              5,
+              5
+            ],
+            [
+              7,
+              7
+            ],
+            [
+              9,
+              9
+            ],
+            [
+              7,
+              7
+            ]
+          ],
+          "padding_limit_pixels": 22,
+          "oversized_frames": 0,
+          "max_edge_motion_pixels": 0,
+          "late_growth_events": 0,
+          "cut_valid_frames": 61,
+          "cut_geometry_failures": [],
+          "distinct_cut_destinations": 1,
+          "cut_current_bottom_gap_min_max": [
+            15,
+            15
+          ],
+          "first_complete_capture_frame": 2580,
+          "first_complete_tolerance_2px_capture_frame": 2580,
+          "first_complete_frames_after_onset": null,
+          "first_sample_capture_frame": 2580,
+          "first_sample_complete": true,
+          "first_sample_complete_tolerance_2px": true,
+          "verified_onset_frame": null,
+          "onset_in_replay": false,
+          "first_sample_frames_after_onset": null
+        },
+        "what_did_you_say": {
+          "split": "development",
+          "contamination": [],
+          "positive": true,
+          "frames": 121,
+          "bar_authority": 121,
+          "measured": 121,
+          "measured_complete_strict": 121,
+          "displayed": 121,
+          "held_frames": 0,
+          "injected_failure_frames": 0,
+          "complete_tolerance_2px": 121,
+          "complete_strict": 121,
+          "line_count_matches": 121,
+          "distinct_displayed_boxes": 1,
+          "all_frames_same_box": true,
+          "area_ratio_min_max": [
+            1.3504536894367403,
+            1.3504536894367403
+          ],
+          "edge_padding_order": [
+            "left",
+            "top",
+            "right",
+            "bottom"
+          ],
+          "edge_padding_min_max": [
+            [
+              6,
+              6
+            ],
+            [
+              7,
+              7
+            ],
+            [
+              7,
+              7
+            ],
+            [
+              7,
+              7
+            ]
+          ],
+          "padding_limit_pixels": 22,
+          "oversized_frames": 0,
+          "max_edge_motion_pixels": 0,
+          "late_growth_events": 0,
+          "cut_valid_frames": 121,
+          "cut_geometry_failures": [],
+          "distinct_cut_destinations": 1,
+          "cut_current_bottom_gap_min_max": [
+            15,
+            15
+          ],
+          "first_complete_capture_frame": 2700,
+          "first_complete_tolerance_2px_capture_frame": 2700,
+          "first_complete_frames_after_onset": null,
+          "first_sample_capture_frame": 2700,
+          "first_sample_complete": true,
+          "first_sample_complete_tolerance_2px": true,
+          "verified_onset_frame": null,
+          "onset_in_replay": false,
+          "first_sample_frames_after_onset": null
+        },
+        "ambassadors_green_two_lines": {
+          "split": "diagnostic",
+          "contamination": [
+            "existing_green_box_around_lower_line"
+          ],
+          "positive": true,
+          "frames": 121,
+          "bar_authority": 121,
+          "measured": 90,
+          "measured_complete_strict": 90,
+          "displayed": 90,
+          "held_frames": 0,
+          "injected_failure_frames": 0,
+          "complete_tolerance_2px": 90,
+          "complete_strict": 90,
+          "line_count_matches": 90,
+          "distinct_displayed_boxes": 1,
+          "all_frames_same_box": false,
+          "area_ratio_min_max": [
+            1.1746338259441709,
+            1.1746338259441709
+          ],
+          "edge_padding_order": [
+            "left",
+            "top",
+            "right",
+            "bottom"
+          ],
+          "edge_padding_min_max": [
+            [
+              6,
+              6
+            ],
+            [
+              7,
+              7
+            ],
+            [
+              8,
+              8
+            ],
+            [
+              9,
+              9
+            ]
+          ],
+          "padding_limit_pixels": 22,
+          "oversized_frames": 0,
+          "max_edge_motion_pixels": 0,
+          "late_growth_events": 0,
+          "cut_valid_frames": 90,
+          "cut_geometry_failures": [],
+          "distinct_cut_destinations": 1,
+          "cut_current_bottom_gap_min_max": [
+            15,
+            15
+          ],
+          "first_complete_capture_frame": 2880,
+          "first_complete_tolerance_2px_capture_frame": 2880,
+          "first_complete_frames_after_onset": null,
+          "first_sample_capture_frame": 2880,
+          "first_sample_complete": true,
+          "first_sample_complete_tolerance_2px": true,
+          "verified_onset_frame": null,
+          "onset_in_replay": false,
+          "first_sample_frames_after_onset": null
+        },
+        "knew_it": {
+          "split": "development",
+          "contamination": [],
+          "positive": true,
+          "frames": 61,
+          "bar_authority": 61,
+          "measured": 61,
+          "measured_complete_strict": 61,
+          "displayed": 61,
+          "held_frames": 0,
+          "injected_failure_frames": 0,
+          "complete_tolerance_2px": 61,
+          "complete_strict": 61,
+          "line_count_matches": 61,
+          "distinct_displayed_boxes": 1,
+          "all_frames_same_box": true,
+          "area_ratio_min_max": [
+            1.566167290886392,
+            1.566167290886392
+          ],
+          "edge_padding_order": [
+            "left",
+            "top",
+            "right",
+            "bottom"
+          ],
+          "edge_padding_min_max": [
+            [
+              6,
+              6
+            ],
+            [
+              7,
+              7
+            ],
+            [
+              9,
+              9
+            ],
+            [
+              9,
+              9
+            ]
+          ],
+          "padding_limit_pixels": 18,
+          "oversized_frames": 0,
+          "max_edge_motion_pixels": 0,
+          "late_growth_events": 0,
+          "cut_valid_frames": 61,
+          "cut_geometry_failures": [],
+          "distinct_cut_destinations": 1,
+          "cut_current_bottom_gap_min_max": [
+            15,
+            15
+          ],
+          "first_complete_capture_frame": 3060,
+          "first_complete_tolerance_2px_capture_frame": 3060,
+          "first_complete_frames_after_onset": null,
+          "first_sample_capture_frame": 3060,
+          "first_sample_complete": true,
+          "first_sample_complete_tolerance_2px": true,
+          "verified_onset_frame": null,
+          "onset_in_replay": false,
+          "first_sample_frames_after_onset": null
+        },
+        "force_settlement": {
+          "split": "development",
+          "contamination": [],
+          "positive": true,
+          "frames": 61,
+          "bar_authority": 61,
+          "measured": 61,
+          "measured_complete_strict": 61,
+          "displayed": 61,
+          "held_frames": 0,
+          "injected_failure_frames": 0,
+          "complete_tolerance_2px": 61,
+          "complete_strict": 61,
+          "line_count_matches": 61,
+          "distinct_displayed_boxes": 1,
+          "all_frames_same_box": true,
+          "area_ratio_min_max": [
+            1.3460700089755098,
+            1.3460700089755098
+          ],
+          "edge_padding_order": [
+            "left",
+            "top",
+            "right",
+            "bottom"
+          ],
+          "edge_padding_min_max": [
+            [
+              7,
+              7
+            ],
+            [
+              7,
+              7
+            ],
+            [
+              8,
+              8
+            ],
+            [
+              7,
+              7
+            ]
+          ],
+          "padding_limit_pixels": 22,
+          "oversized_frames": 0,
+          "max_edge_motion_pixels": 0,
+          "late_growth_events": 0,
+          "cut_valid_frames": 61,
+          "cut_geometry_failures": [],
+          "distinct_cut_destinations": 1,
+          "cut_current_bottom_gap_min_max": [
+            15,
+            15
+          ],
+          "first_complete_capture_frame": 3180,
+          "first_complete_tolerance_2px_capture_frame": 3180,
+          "first_complete_frames_after_onset": null,
+          "first_sample_capture_frame": 3180,
+          "first_sample_complete": true,
+          "first_sample_complete_tolerance_2px": true,
+          "verified_onset_frame": null,
+          "onset_in_replay": false,
+          "first_sample_frames_after_onset": null
+        },
+        "distract_sidious_heldout": {
+          "split": "heldout",
+          "contamination": [],
+          "positive": true,
+          "frames": 250,
+          "bar_authority": 250,
+          "measured": 250,
+          "measured_complete_strict": 250,
+          "displayed": 250,
+          "held_frames": 0,
+          "injected_failure_frames": 0,
+          "complete_tolerance_2px": 250,
+          "complete_strict": 250,
+          "line_count_matches": 250,
+          "distinct_displayed_boxes": 1,
+          "all_frames_same_box": true,
+          "area_ratio_min_max": [
+            1.1867163252638113,
+            1.1867163252638113
+          ],
+          "edge_padding_order": [
+            "left",
+            "top",
+            "right",
+            "bottom"
+          ],
+          "edge_padding_min_max": [
+            [
+              7,
+              7
+            ],
+            [
+              7,
+              7
+            ],
+            [
+              9,
+              9
+            ],
+            [
+              9,
+              9
+            ]
+          ],
+          "padding_limit_pixels": 18,
+          "oversized_frames": 0,
+          "max_edge_motion_pixels": 0,
+          "late_growth_events": 0,
+          "cut_valid_frames": 250,
+          "cut_geometry_failures": [],
+          "distinct_cut_destinations": 1,
+          "cut_current_bottom_gap_min_max": [
+            15,
+            15
+          ],
+          "first_complete_capture_frame": 3299,
+          "first_complete_tolerance_2px_capture_frame": 3299,
+          "first_complete_frames_after_onset": 0,
+          "first_sample_capture_frame": 3299,
+          "first_sample_complete": true,
+          "first_sample_complete_tolerance_2px": true,
+          "verified_onset_frame": 3299,
+          "onset_in_replay": true,
+          "first_sample_frames_after_onset": 0
+        },
+        "brain_dead": {
+          "split": "development",
+          "contamination": [],
+          "positive": true,
+          "frames": 61,
+          "bar_authority": 61,
+          "measured": 61,
+          "measured_complete_strict": 61,
+          "displayed": 61,
+          "held_frames": 0,
+          "injected_failure_frames": 0,
+          "complete_tolerance_2px": 61,
+          "complete_strict": 61,
+          "line_count_matches": 61,
+          "distinct_displayed_boxes": 1,
+          "all_frames_same_box": true,
+          "area_ratio_min_max": [
+            1.3616042780748663,
+            1.3616042780748663
+          ],
+          "edge_padding_order": [
+            "left",
+            "top",
+            "right",
+            "bottom"
+          ],
+          "edge_padding_min_max": [
+            [
+              5,
+              5
+            ],
+            [
+              7,
+              7
+            ],
+            [
+              9,
+              9
+            ],
+            [
+              7,
+              7
+            ]
+          ],
+          "padding_limit_pixels": 22,
+          "oversized_frames": 0,
+          "max_edge_motion_pixels": 0,
+          "late_growth_events": 0,
+          "cut_valid_frames": 61,
+          "cut_geometry_failures": [],
+          "distinct_cut_destinations": 1,
+          "cut_current_bottom_gap_min_max": [
+            15,
+            15
+          ],
+          "first_complete_capture_frame": 3600,
+          "first_complete_tolerance_2px_capture_frame": 3600,
+          "first_complete_frames_after_onset": null,
+          "first_sample_capture_frame": 3600,
+          "first_sample_complete": true,
+          "first_sample_complete_tolerance_2px": true,
+          "verified_onset_frame": null,
+          "onset_in_replay": false,
+          "first_sample_frames_after_onset": null
+        },
+        "two_jedi": {
+          "split": "development",
+          "contamination": [],
+          "positive": true,
+          "frames": 181,
+          "bar_authority": 181,
+          "measured": 181,
+          "measured_complete_strict": 181,
+          "displayed": 181,
+          "held_frames": 0,
+          "injected_failure_frames": 0,
+          "complete_tolerance_2px": 181,
+          "complete_strict": 181,
+          "line_count_matches": 181,
+          "distinct_displayed_boxes": 1,
+          "all_frames_same_box": true,
+          "area_ratio_min_max": [
+            1.3397618752325438,
+            1.3397618752325438
+          ],
+          "edge_padding_order": [
+            "left",
+            "top",
+            "right",
+            "bottom"
+          ],
+          "edge_padding_min_max": [
+            [
+              5,
+              5
+            ],
+            [
+              7,
+              7
+            ],
+            [
+              7,
+              7
+            ],
+            [
+              7,
+              7
+            ]
+          ],
+          "padding_limit_pixels": 22,
+          "oversized_frames": 0,
+          "max_edge_motion_pixels": 0,
+          "late_growth_events": 0,
+          "cut_valid_frames": 181,
+          "cut_geometry_failures": [],
+          "distinct_cut_destinations": 1,
+          "cut_current_bottom_gap_min_max": [
+            15,
+            15
+          ],
+          "first_complete_capture_frame": 3720,
+          "first_complete_tolerance_2px_capture_frame": 3720,
+          "first_complete_frames_after_onset": null,
+          "first_sample_capture_frame": 3720,
+          "first_sample_complete": true,
+          "first_sample_complete_tolerance_2px": true,
+          "verified_onset_frame": null,
+          "onset_in_replay": false,
+          "first_sample_frames_after_onset": null
+        },
+        "send_droid": {
+          "split": "development",
+          "contamination": [],
+          "positive": true,
+          "frames": 61,
+          "bar_authority": 61,
+          "measured": 61,
+          "measured_complete_strict": 61,
+          "displayed": 61,
+          "held_frames": 0,
+          "injected_failure_frames": 0,
+          "complete_tolerance_2px": 61,
+          "complete_strict": 61,
+          "line_count_matches": 61,
+          "distinct_displayed_boxes": 1,
+          "all_frames_same_box": true,
+          "area_ratio_min_max": [
+            1.513991769547325,
+            1.513991769547325
+          ],
+          "edge_padding_order": [
+            "left",
+            "top",
+            "right",
+            "bottom"
+          ],
+          "edge_padding_min_max": [
+            [
+              5,
+              5
+            ],
+            [
+              7,
+              7
+            ],
+            [
+              8,
+              8
+            ],
+            [
+              9,
+              9
+            ]
+          ],
+          "padding_limit_pixels": 18,
+          "oversized_frames": 0,
+          "max_edge_motion_pixels": 0,
+          "late_growth_events": 0,
+          "cut_valid_frames": 61,
+          "cut_geometry_failures": [],
+          "distinct_cut_destinations": 1,
+          "cut_current_bottom_gap_min_max": [
+            15,
+            15
+          ],
+          "first_complete_capture_frame": 3960,
+          "first_complete_tolerance_2px_capture_frame": 3960,
+          "first_complete_frames_after_onset": null,
+          "first_sample_capture_frame": 3960,
+          "first_sample_complete": true,
+          "first_sample_complete_tolerance_2px": true,
+          "verified_onset_frame": null,
+          "onset_in_replay": false,
+          "first_sample_frames_after_onset": null
+        },
+        "blank_droid": {
+          "split": "development",
+          "contamination": [],
+          "positive": false,
+          "frames": 208,
+          "bar_authority": 208,
+          "measured": 0,
+          "measured_complete_strict": 208,
+          "displayed": 0,
+          "held_frames": 0,
+          "injected_failure_frames": 0,
+          "complete_tolerance_2px": 208,
+          "complete_strict": 208,
+          "line_count_matches": 208,
+          "distinct_displayed_boxes": 0,
+          "all_frames_same_box": false,
+          "area_ratio_min_max": null,
+          "edge_padding_order": [
+            "left",
+            "top",
+            "right",
+            "bottom"
+          ],
+          "edge_padding_min_max": null,
+          "padding_limit_pixels": 8,
+          "oversized_frames": 0,
+          "max_edge_motion_pixels": 0,
+          "late_growth_events": 0,
+          "cut_valid_frames": 0,
+          "cut_geometry_failures": [],
+          "distinct_cut_destinations": 0,
+          "cut_current_bottom_gap_min_max": null,
+          "first_complete_capture_frame": 4080,
+          "first_complete_tolerance_2px_capture_frame": 4080,
+          "first_complete_frames_after_onset": null,
+          "first_sample_capture_frame": 4080,
+          "first_sample_complete": true,
+          "first_sample_complete_tolerance_2px": true,
+          "verified_onset_frame": null,
+          "onset_in_replay": false,
+          "first_sample_frames_after_onset": null
+        },
+        "italic_wait_heldout": {
+          "split": "heldout",
+          "contamination": [],
+          "positive": true,
+          "frames": 177,
+          "bar_authority": 177,
+          "measured": 177,
+          "measured_complete_strict": 177,
+          "displayed": 177,
+          "held_frames": 0,
+          "injected_failure_frames": 0,
+          "complete_tolerance_2px": 177,
+          "complete_strict": 177,
+          "line_count_matches": 177,
+          "distinct_displayed_boxes": 1,
+          "all_frames_same_box": true,
+          "area_ratio_min_max": [
+            1.3458161992330084,
+            1.3458161992330084
+          ],
+          "edge_padding_order": [
+            "left",
+            "top",
+            "right",
+            "bottom"
+          ],
+          "edge_padding_min_max": [
+            [
+              7,
+              7
+            ],
+            [
+              6,
+              6
+            ],
+            [
+              7,
+              7
+            ],
+            [
+              9,
+              9
+            ]
+          ],
+          "padding_limit_pixels": 23,
+          "oversized_frames": 0,
+          "max_edge_motion_pixels": 0,
+          "late_growth_events": 0,
+          "cut_valid_frames": 177,
+          "cut_geometry_failures": [],
+          "distinct_cut_destinations": 1,
+          "cut_current_bottom_gap_min_max": [
+            15,
+            15
+          ],
+          "first_complete_capture_frame": 4288,
+          "first_complete_tolerance_2px_capture_frame": 4288,
+          "first_complete_frames_after_onset": 0,
+          "first_sample_capture_frame": 4288,
+          "first_sample_complete": true,
+          "first_sample_complete_tolerance_2px": true,
+          "verified_onset_frame": 4288,
+          "onset_in_replay": true,
+          "first_sample_frames_after_onset": 0
+        }
+      }
+    }
+  },
+  "acceptance_failures": [],
+  "accepted": true
+}

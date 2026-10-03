@@ -1,0 +1,367 @@
+{
+  "created": "2026-10-03T08:02:12.4153367-04:00",
+  "source_commit": "5ae388020caf402079f15b627d79f82f8d56c885",
+  "beta_commit": "c84863eaa59e03fe218de824c34b7c0220c4fd87",
+  "branch": "codex/subtitle-cut-paste",
+  "configuration": "Release",
+  "architecture": "x64",
+  "type": "isolated experimental folder",
+  "build_records": [
+    {
+      "file": "VideoProcessor.exe",
+      "toolsetVersion": "14.29.30133",
+      "sha256": "BC7F1FB1A51AA12C919F315ECF04F2FDF75D6B584FF489B91562D59FE5B1F331"
+    },
+    {
+      "file": "config/VideoProcessorConfig.exe",
+      "toolsetVersion": "14.44.35207",
+      "sha256": "0EF7908167C7A1C2ADB44F842C671F7459183F8D19B659D70AA8E255B945B999"
+    },
+    {
+      "file": "config/VideoProcessorConfigDiscovery.dll",
+      "toolsetVersion": "14.29.30133",
+      "sha256": "5415FFE6F2FEDBB49D853631761CD293298CF801859896C528A2F87048E043E0"
+    },
+    {
+      "file": "vprenderer/VideoProcessorVPRenderer.dll",
+      "toolsetVersion": "14.29.30133",
+      "sha256": "CEE5B3BE0EA838DF4B70B6EC3407D558979BE02DA176AF0CCE8F7123C0F4E71D"
+    }
+  ],
+  "private_runtime": {
+    "mode": "app-local",
+    "architecture": "x64",
+    "crtMinimum": "14.44.35211.0",
+    "mfcMinimum": "14.29.30133",
+    "files": [
+      {
+        "path": "mfc140u.dll",
+        "version": "14.29.30139.0",
+        "minimumVersion": "14.29.30133",
+        "sha256": "E06C4BD078F4690AA8874A3DEB38E802B2A16CCB602A7EDC2E077E98C05B5807"
+      },
+      {
+        "path": "msvcp140.dll",
+        "version": "14.51.36247.0",
+        "minimumVersion": "14.44.35211.0",
+        "sha256": "7C26614E1D733892C2DEAC7E245CE115504B1D80592DD0A01B08E3E5A55F89CA"
+      },
+      {
+        "path": "vcruntime140_1.dll",
+        "version": "14.51.36247.0",
+        "minimumVersion": "14.44.35211.0",
+        "sha256": "A7146C08F89FE5B04541AB507CDB59FF7B44534D4BA3C668A426C6450A03434E"
+      },
+      {
+        "path": "vcruntime140.dll",
+        "version": "14.51.36247.0",
+        "minimumVersion": "14.44.35211.0",
+        "sha256": "D1F4225DF2CD877DBF130D5668A021DCE3F94118455FF5EC952061C30AFC9CE7"
+      },
+      {
+        "path": "config/msvcp140_1.dll",
+        "version": "14.51.36247.0",
+        "minimumVersion": "14.44.35211.0",
+        "sha256": "206C931BF90FDAD8816DE3B5E2EF80B2BCAA9406C89ECC05FE6FDDFFE251E982"
+      },
+      {
+        "path": "config/msvcp140.dll",
+        "version": "14.51.36247.0",
+        "minimumVersion": "14.44.35211.0",
+        "sha256": "7C26614E1D733892C2DEAC7E245CE115504B1D80592DD0A01B08E3E5A55F89CA"
+      },
+      {
+        "path": "config/vcruntime140_1.dll",
+        "version": "14.51.36247.0",
+        "minimumVersion": "14.44.35211.0",
+        "sha256": "A7146C08F89FE5B04541AB507CDB59FF7B44534D4BA3C668A426C6450A03434E"
+      },
+      {
+        "path": "config/vcruntime140.dll",
+        "version": "14.51.36247.0",
+        "minimumVersion": "14.44.35211.0",
+        "sha256": "D1F4225DF2CD877DBF130D5668A021DCE3F94118455FF5EC952061C30AFC9CE7"
+      },
+      {
+        "path": "config/msvcp140_2.dll",
+        "version": "14.51.36247.0",
+        "minimumVersion": "14.44.35211.0",
+        "sha256": "D50D7883F20D1DC6191768D3746F52DD9CAC89C346FFAED5BE1F110C2F34A838"
+      },
+      {
+        "path": "config/mfc140u.dll",
+        "version": "14.29.30139.0",
+        "minimumVersion": "14.29.30133",
+        "sha256": "E06C4BD078F4690AA8874A3DEB38E802B2A16CCB602A7EDC2E077E98C05B5807"
+      },
+      {
+        "path": "vprenderer/mfc140u.dll",
+        "version": "14.29.30139.0",
+        "minimumVersion": "14.29.30133",
+        "sha256": "E06C4BD078F4690AA8874A3DEB38E802B2A16CCB602A7EDC2E077E98C05B5807"
+      },
+      {
+        "path": "vprenderer/msvcp140.dll",
+        "version": "14.51.36247.0",
+        "minimumVersion": "14.44.35211.0",
+        "sha256": "7C26614E1D733892C2DEAC7E245CE115504B1D80592DD0A01B08E3E5A55F89CA"
+      },
+      {
+        "path": "vprenderer/vcruntime140_1.dll",
+        "version": "14.51.36247.0",
+        "minimumVersion": "14.44.35211.0",
+        "sha256": "A7146C08F89FE5B04541AB507CDB59FF7B44534D4BA3C668A426C6450A03434E"
+      },
+      {
+        "path": "vprenderer/vcruntime140.dll",
+        "version": "14.51.36247.0",
+        "minimumVersion": "14.44.35211.0",
+        "sha256": "D1F4225DF2CD877DBF130D5668A021DCE3F94118455FF5EC952061C30AFC9CE7"
+      }
+    ]
+  },
+  "source_configuration": "E:\\codex\\subtitle-phantom-test-db757d0d",
+  "configuration_edits": [
+    "Subtitle-BOX.cfg: subtitle_bbox_test=true, subtitle_cut_paste_test=false",
+    "Subtitle-MOVE.cfg: subtitle_bbox_test=false, subtitle_cut_paste_test=true"
+  ],
+  "live_playback": "Not launched",
+  "files": [
+    {
+      "file": "LICENSE.txt",
+      "sha256": "77ADB2C4C34FC00AED71853639E65AA64CACBF6FFC56712854C12FB6A36E629D"
+    },
+    {
+      "file": "VideoProcessor.exe",
+      "sha256": "BC7F1FB1A51AA12C919F315ECF04F2FDF75D6B584FF489B91562D59FE5B1F331"
+    },
+    {
+      "file": "config\\VideoProcessorConfig.exe",
+      "sha256": "0EF7908167C7A1C2ADB44F842C671F7459183F8D19B659D70AA8E255B945B999"
+    },
+    {
+      "file": "config\\VideoProcessorConfigDiscovery.dll",
+      "sha256": "5415FFE6F2FEDBB49D853631761CD293298CF801859896C528A2F87048E043E0"
+    },
+    {
+      "file": "docs\\REQ-006-sdr-transfer-implementation.md",
+      "sha256": "68BA050C1FC24337CF7D824F38796CBD4AF2A31166EBB355B4FB388DC9D668C0"
+    },
+    {
+      "file": "docs\\VP-0174-config-ui.md",
+      "sha256": "1F3F549DDDCE83E2C2A65023A80D3C09F18C46C866B290A3C379D3CBFDF73DEC"
+    },
+    {
+      "file": "docs\\CONFIGURATION.html",
+      "sha256": "00F94749C7AC9FE53FE651C98B4855FCC7F90674353E2D755B0831FCCBBC207B"
+    },
+    {
+      "file": "docs\\VideoProcessor_NLS_Configuration_Guide.pdf",
+      "sha256": "06E48CA06F6C81597B4BEDE31C1335DD9708980B6F2580BE1CF30CE5ACEEE2AF"
+    },
+    {
+      "file": "RELEASE-MANIFEST.json",
+      "sha256": "781D7CAB31C34EDF90C423A8E6A5114845096A2BC0086ED538A49D97C702E32B"
+    },
+    {
+      "file": "RELEASE-LAYOUT.md",
+      "sha256": "AB4AF7CE6736F2B212769C082EAA2E58A80D4D5ADCFC3EEDDA67C7BE9675A254"
+    },
+    {
+      "file": "config\\Qt6Core.dll",
+      "sha256": "0CC62E841959FB8F6D366EA116C6F6BBC273E30F0EF90D8AA2E4ADEB81FD63F8"
+    },
+    {
+      "file": "config\\Qt6Gui.dll",
+      "sha256": "CA9F20D9B59D5BC321A87005B926B853EBCD6A2394823E14D3C8B5FC5702FA8C"
+    },
+    {
+      "file": "config\\Qt6Widgets.dll",
+      "sha256": "D34EF78B3D3B5506EE8279CE6EFBFC263D773B74860AF76E66B0715346897A3A"
+    },
+    {
+      "file": "config\\Qt6Network.dll",
+      "sha256": "2C2F65C70989646F06D668883C031F06FAC3F8DE1F459278C94CC50DFE89988D"
+    },
+    {
+      "file": "config\\Qt6Svg.dll",
+      "sha256": "EFAF94C5C757A430EC5B89FC209089B14171B5CCE945DB961C32264F1CC99F80"
+    },
+    {
+      "file": "config\\opengl32sw.dll",
+      "sha256": "B04DE4541863BC7D8879040A78889C4849C1B1DA2784C4630F734C146C2998CE"
+    },
+    {
+      "file": "config\\generic\\qtuiotouchplugin.dll",
+      "sha256": "8E123C011D13DDF884D33F6FBA50182D6525A3A7504B7EAC0788EF45AB2F2CB1"
+    },
+    {
+      "file": "config\\iconengines\\qsvgicon.dll",
+      "sha256": "6418CB7F188AF89FC6876059692D3940377A80BBDB55D70AB907406B46F671D0"
+    },
+    {
+      "file": "config\\imageformats\\qgif.dll",
+      "sha256": "0EE32E5B48BF1404532842862045C523E0C915F223E34EA900C709E7C72B0B1E"
+    },
+    {
+      "file": "config\\imageformats\\qico.dll",
+      "sha256": "30B344703BCCBF4BF70809CB9B6CE0075B74BDC765D18E539339190B095BB552"
+    },
+    {
+      "file": "config\\imageformats\\qjpeg.dll",
+      "sha256": "1C3F3996B18B9A6D3F2690EF333843C9195BEC2A4EB08F6E68A3B3BC7F097C32"
+    },
+    {
+      "file": "config\\imageformats\\qsvg.dll",
+      "sha256": "D901931D7F5DA8B408F9FCFCFE9E53A4D2247B5FA391FD67AC22A9E9F13C1636"
+    },
+    {
+      "file": "config\\networkinformation\\qnetworklistmanager.dll",
+      "sha256": "9950A4A34DF745DF88B84BB605982999332F27217CBA5802C2C30DF5197DB247"
+    },
+    {
+      "file": "config\\platforms\\qwindows.dll",
+      "sha256": "12577A7C4F2230BBEA53F279573D7E3D1A08D631197855481E1E1580F61BB877"
+    },
+    {
+      "file": "config\\styles\\qmodernwindowsstyle.dll",
+      "sha256": "33F30E3ED3159B607CAC9FB13C478F3E1059B63B39201194EE5F67D239180F01"
+    },
+    {
+      "file": "config\\tls\\qcertonlybackend.dll",
+      "sha256": "063F369B7975C97FB989EDA88F7A78896E7C6D5DE2B73CCCF30AEFA92B608AFF"
+    },
+    {
+      "file": "config\\tls\\qschannelbackend.dll",
+      "sha256": "C58AB3C5873D3D5187FF1E6703662810F555EBE60C532E025250C47BBAC2E50C"
+    },
+    {
+      "file": "shaders\\Adaptive sharpen.hlsl",
+      "sha256": "15F34316C637FBAE3108901FA464523A0E199C571B1FAA7206A5FAFD275BDE9C"
+    },
+    {
+      "file": "shaders\\Debanding mild.hlsl",
+      "sha256": "6A2C35A4F88485E9DDD20EFCBD78D5C0C4FED056661B3F4735025199DC2127CE"
+    },
+    {
+      "file": "shaders\\Denoise.hlsl",
+      "sha256": "D3B6769B1625023EC715C0AF03C0BF8B0CCA459C2DE71A9A72EF2A8CE5C8313E"
+    },
+    {
+      "file": "shaders\\Invert.hlsl",
+      "sha256": "FDCF3ED4202C6AE471290073C8959EE9CE06E2696D2F89AEC980E62DAA8EB786"
+    },
+    {
+      "file": "shaders\\NLS.hlsl",
+      "sha256": "D597771F7DA9C72E3E27D83D6E91619307FC25C5EF5879206FCB911EB74FB40F"
+    },
+    {
+      "file": "shaders\\NLS.glsl",
+      "sha256": "4F2C672CC6335B15CA936A97A30217BD4B62F991BD444E53FC24DDEAC1F772A9"
+    },
+    {
+      "file": "shaders\\NLSPlus.glsl",
+      "sha256": "E8BB7E307DCBFDDC7A89E5EA319CEE4CFB460B45C05E88A33CE0E0E179172548"
+    },
+    {
+      "file": "vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "CEE5B3BE0EA838DF4B70B6EC3407D558979BE02DA176AF0CCE8F7123C0F4E71D"
+    },
+    {
+      "file": "vprenderer\\libplacebo-360.dll",
+      "sha256": "2BEFD13B92CCC8C034CD2EBEE6E3BDDC7F8FC1323B135AE005F11506C086C572"
+    },
+    {
+      "file": "vprenderer\\libdovi.dll",
+      "sha256": "D0EBC0D98AC67DC28B176F77AF125F2066DCB6CF6283F71C102D67F0EEB1DF7C"
+    },
+    {
+      "file": "vprenderer\\liblcms2-2.dll",
+      "sha256": "DC241CBDF2D295846EC564C1EB3C01639D43C0D72415A8758E65D71DF31CC0BA"
+    },
+    {
+      "file": "vprenderer\\libshaderc_shared.dll",
+      "sha256": "0A2146B2A200E32B28333A67B6A0BC652060B8C2032745B5EE287CBDEFA19348"
+    },
+    {
+      "file": "vprenderer\\libspirv-cross-c-shared.dll",
+      "sha256": "8855B4DB816F817D4CD084FA3D332A0E357D6B738938E7AAD7E93DE61E8DF52D"
+    },
+    {
+      "file": "vprenderer\\libgcc_s_seh-1.dll",
+      "sha256": "278F1101F2371C58B6B412A3206718E22343940A5164ACEB4FB75F2BF3B38ED4"
+    },
+    {
+      "file": "vprenderer\\libstdc++-6.dll",
+      "sha256": "3529D11C422B2AAF0BBAD7221BF62BA7B5A39F854E89A015BB58B6B55A677DA1"
+    },
+    {
+      "file": "vprenderer\\libwinpthread-1.dll",
+      "sha256": "655BA5BD12BF5F2545F522A4B04A7475B0347837F04D1F42C9A292F2CB62C274"
+    },
+    {
+      "file": "vprenderer\\vulkan-1.dll",
+      "sha256": "0E1AD448ED92AD05CCEBF9DC74CD3686767E6C2B1961A8453EB6DA8371B21F27"
+    },
+    {
+      "file": "vprenderer\\README.txt",
+      "sha256": "A67FC7E6CA7CA2551FF14D78E8EADE23BD819365F3A7453B28E6539712EBEBAD"
+    },
+    {
+      "file": "vprenderer\\third_party_licenses\\libplacebo-LICENSE.txt",
+      "sha256": "575888BE9AC31801886BABCA6456E1BEB346FA4FB3DD76F52111F8048E38D58A"
+    },
+    {
+      "file": "vprenderer\\third_party_licenses\\nvapi-LICENSE.txt",
+      "sha256": "4276D61AEAB3D8912BA64123209147C4A0C4FB5D191CC5DF1072B1799A06F8E9"
+    },
+    {
+      "file": "vprenderer\\third_party_licenses\\gcc-libs\\COPYING.LIB",
+      "sha256": "362AA1AF296393556B4C77891986CC62EF2B55CAF5B9DFD2AB9102E742D880B7"
+    },
+    {
+      "file": "vprenderer\\third_party_licenses\\gcc-libs\\COPYING.RUNTIME",
+      "sha256": "90077BA306EE9D8ED966CAB1B4ABD69B6E728ACF08777283CC50283CD9503FA6"
+    },
+    {
+      "file": "vprenderer\\third_party_licenses\\gcc-libs\\COPYING3",
+      "sha256": "0B383D5A63DA644F628D99C33976EA6487ED89AAA59F0B3257992DEAC1171E6B"
+    },
+    {
+      "file": "vprenderer\\third_party_licenses\\gcc-libs\\README",
+      "sha256": "F7A987390F717EA722AB70E67EDA45A3F2D3E82D4751E12E86CE351BD014B4B2"
+    },
+    {
+      "file": "vprenderer\\third_party_licenses\\lcms2\\LICENSE",
+      "sha256": "BC1BA06A8FDF54466DAA2B9A927FDCA7C4D626A598045B2DA62494A556491AF6"
+    },
+    {
+      "file": "vprenderer\\third_party_licenses\\lcms2\\LICENSE-fast_float",
+      "sha256": "B3D1EAE7F524FC9DDD48562A4652EFD2BCD848E38B03F05E388BCCE943E73DF2"
+    },
+    {
+      "file": "vprenderer\\third_party_licenses\\libdovi\\LICENSE",
+      "sha256": "872A6F75427DD427E93247D450E4F65203BB931F8E07F90C36E555E41F3C1C6E"
+    },
+    {
+      "file": "vprenderer\\third_party_licenses\\shaderc\\LICENSE",
+      "sha256": "1EB85FC97224598DAD1852B5D6483BBCF0AA8608790DCC657A5A2A761AE9C8C6"
+    },
+    {
+      "file": "vprenderer\\third_party_licenses\\spirv-cross\\LICENSE",
+      "sha256": "3DDF9BE5C28FE27DAD143A5DC76EEA25222AD1DD68934A047064E56ED2FA40C5"
+    },
+    {
+      "file": "vprenderer\\third_party_licenses\\spirv-tools\\LICENSE",
+      "sha256": "3DDF9BE5C28FE27DAD143A5DC76EEA25222AD1DD68934A047064E56ED2FA40C5"
+    },
+    {
+      "file": "vprenderer\\third_party_licenses\\vulkan-loader\\LICENSE",
+      "sha256": "557BD2CC07EFF373F3F26C8D5726FEFE8E7FC4ADD97796C2FBF24F74A200214A"
+    },
+    {
+      "file": "vprenderer\\third_party_licenses\\winpthreads\\COPYING",
+      "sha256": "1C8D23063C3772B9435831410B31B51FEF3D9CF2138A442DC367EF5D72239F67"
+    }
+  ]
+}

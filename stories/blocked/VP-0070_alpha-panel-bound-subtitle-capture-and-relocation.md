@@ -2,6 +2,35 @@
 
 ## Status
 
+Blocked (2026-10-03), unchanged. Follow-up adds current-ink-verified rescue for at
+most two missed source frames, 10px outward box padding, and optional current-frame
+rectangular cut/paste with a stable 15px inset above the active-picture bottom.
+This copies picture pixels inside the rectangle and clears exposed source black;
+it is an experiment, not production glyph extraction/restoration.
+
+Saved locally at `5ae388020caf402079f15b627d79f82f8d56c885` on
+`codex/subtitle-cut-paste`, based on the freshly verified same beta tip.
+Clean x64 Release: **1,990/1,990 native tests; 83/83 Config checks**. Final recording
+regressions retain 807/807 sampled and 2,018/2,018 capture positives, 19 stable cue
+intervals, 0/234 and 0/586 negative boxes, and valid padded/stable cut placements.
+Injected one/two-frame segmentation misses retain geometry; blank controls clear.
+RGB and HDR P010 GPU readback tests pass. Live capture remains unqualified.
+
+Run either command in `E:\codex\subtitle-cut-paste-test-5ae38802`:
+`START-SUBTITLE-BOX.cmd` or `START-SUBTITLE-MOVE.cmd`. Both use full-raster/no-warp
+diagnostic presentation. Paired Release hashes verified; existing cfg/state
+preserved and backed up; mode copies alter only the two subtitle flags.
+No normal-install changes, playback launch, beta merge, or source public upload.
+
+[Final validation](../assets/VP-0070/cut-paste-5ae38802/validation.md),
+[test-copy receipt](../assets/VP-0070/cut-paste-5ae38802/test-copy.json),
+[checks and hashes](../assets/VP-0070/cut-paste-5ae38802/validation-final.json),
+[sampled replay](../assets/VP-0070/cut-paste-5ae38802/recording-23976.json),
+[every-frame replay](../assets/VP-0070/cut-paste-5ae38802/recording-60.json),
+[injected failure replay](../assets/VP-0070/cut-paste-5ae38802/recording-injected-faults.json).
+
+## Previous Phantom detection trial (2026-10-03)
+
 Blocked (2026-10-03), unchanged. Added the user's Phantom Menace recording as a
 repeatable actual-pixel regression and iterated with three reviewers. The new
 diagnostic proves bars independently, preserves partial crossings and both lines,

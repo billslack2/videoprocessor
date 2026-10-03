@@ -1,0 +1,22 @@
+{
+  "source_commit": "5ae388020caf402079f15b627d79f82f8d56c885",
+  "configuration": "Release",
+  "architecture": "x64",
+  "native_tests_passed": 1990,
+  "native_failures": 0,
+  "config_tests_passed": 83,
+  "config_failures": 0,
+  "gpu_validation": "Offscreen WARP RGB and HDR P010 current-frame copy, overlap, clear, dynamic rebinding and disable passed",
+  "configuration_check": "Both exact deployed mode configs accepted by production parser; original cfg/state unchanged",
+  "live_playback": "Not launched",
+  "story": "VP-0070 remains Blocked",
+  "evidence_root": "E:/codex/videoprocessor/subtitle-cut-paste/artifacts",
+  "files": {
+    "VideoProcessor.exe": "bc7f1fb1a51aa12c919f315ecf04f2fdf75d6b584ff489b91562d59fe5b1f331",
+    "vprenderer\\VideoProcessorVPRenderer.dll": "cee5b3be0ea838df4b70b6ec3407d558979be02da176af0cce8f7123c0f4e71d",
+    "Subtitle-BOX.cfg": "1930227e554e043ed1ab34e4b7b235294ce65658a87c46a50935c9f628da9e62",
+    "Subtitle-MOVE.cfg": "ac03a834d29a0a3ee97e10b584f6dfedb509ec912f1d233d6ec64aab1d54aa86",
+    "VideoProcessor.cfg": "5bf8cd06e6c5041b62e8fbdf282b262077c632be5eb7130e80c9e8e4f9a15ea1",
+    "VideoProcessor.state": "bbe251b99c7b6a05468f695a829f60432456a22bb0c71a4edb8597592dbe700d"
+  }
+}
