@@ -8,6 +8,7 @@
 #pragma once
 
 #include <Windows.h>
+#include <VideoFrameEncoding.h>
 
 #include <video_frame_formatter/IVideoFrameFormatter.h>
 
