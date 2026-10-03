@@ -2,6 +2,31 @@
 
 ## Status
 
+Blocked (2026-10-02), as requested. The team implemented and independently reviewed
+queued-frame confirmation, current-frame bar proof across AR changes, both subtitle
+line orders, corner-title rejection and Config persistence. Saved/pushed at
+`b1b6847fad4a0eec1dba790fe024999e7cdc153f` on `codex/subtitle-lookahead`, based on the
+GitHub beta tip `c84863eaa59e03fe218de824c34b7c0220c4fd87` discovered at task start.
+The original `subtitle-moving` branch is preserved.
+
+Clean x64 Release: 1,935/1,935 native tests (including 50 subtitle regressions) and
+82 Config checks passed. The new isolated test copy is
+`E:\codex\subtitle-lookahead-test-b1b6847f\START-SUBTITLE-TEST.cmd`.
+Current trial config/state copied unchanged and backed up; exact config validated
+with production reader. No usual-install changes or playback launch.
+
+Spatial corpus still fails complete-box/stability acceptance on busy scenery:
+complete 168/198 HD and 177/198 UHD positive frames, with 0/360 negative/gap boxes
+at each size. Look-ahead behavior has unit coverage but awaits live playback.
+No production relocation or story acceptance is claimed.
+
+[Validation and limits](../assets/VP-0070/lookahead-b1b6847f/validation.md),
+[test-copy receipt](../assets/VP-0070/lookahead-b1b6847f/test-copy.json),
+[1080p replay](../assets/VP-0070/lookahead-b1b6847f/1080p-results.json),
+[4K replay](../assets/VP-0070/lookahead-b1b6847f/4k-results.json).
+
+## Previous trial status (2026-09-25)
+
 Blocked (2026-09-25). Keep the feature blocked for live validation, as requested.
 The user reports detections across the picture and reiterates that actual
 subtitle content must enter a black bar; reduced-resolution detection is enough.

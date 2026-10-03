@@ -1,0 +1,290 @@
+{
+  "1080p": {
+    "cases": {
+      "blank": {
+        "frames": 18,
+        "detected": 0,
+        "complete": 0,
+        "correct": 18,
+        "false_positives": 0,
+        "complete_onsets": 0
+      },
+      "topbar": {
+        "frames": 18,
+        "detected": 18,
+        "complete": 18,
+        "correct": 18,
+        "false_positives": 0,
+        "complete_onsets": 6
+      },
+      "topcross": {
+        "frames": 18,
+        "detected": 18,
+        "complete": 15,
+        "correct": 15,
+        "false_positives": 0,
+        "complete_onsets": 5
+      },
+      "bottomcross": {
+        "frames": 18,
+        "detected": 18,
+        "complete": 12,
+        "correct": 12,
+        "false_positives": 0,
+        "complete_onsets": 4
+      },
+      "bottomtwo": {
+        "frames": 18,
+        "detected": 18,
+        "complete": 12,
+        "correct": 12,
+        "false_positives": 0,
+        "complete_onsets": 4
+      },
+      "upper_crossing_two": {
+        "frames": 18,
+        "detected": 18,
+        "complete": 9,
+        "correct": 9,
+        "false_positives": 0,
+        "complete_onsets": 3
+      },
+      "bar": {
+        "frames": 18,
+        "detected": 18,
+        "complete": 18,
+        "correct": 18,
+        "false_positives": 0,
+        "complete_onsets": 6
+      },
+      "short": {
+        "frames": 18,
+        "detected": 18,
+        "complete": 18,
+        "correct": 18,
+        "false_positives": 0,
+        "complete_onsets": 6
+      },
+      "two_glyph": {
+        "frames": 18,
+        "detected": 18,
+        "complete": 18,
+        "correct": 18,
+        "false_positives": 0,
+        "complete_onsets": 6
+      },
+      "picture": {
+        "frames": 18,
+        "detected": 0,
+        "complete": 0,
+        "correct": 18,
+        "false_positives": 0,
+        "complete_onsets": 0
+      },
+      "menu": {
+        "frames": 18,
+        "detected": 0,
+        "complete": 0,
+        "correct": 18,
+        "false_positives": 0,
+        "complete_onsets": 0
+      },
+      "left_title": {
+        "frames": 18,
+        "detected": 0,
+        "complete": 0,
+        "correct": 18,
+        "false_positives": 0,
+        "complete_onsets": 0
+      },
+      "right_title": {
+        "frames": 18,
+        "detected": 0,
+        "complete": 0,
+        "correct": 18,
+        "false_positives": 0,
+        "complete_onsets": 0
+      },
+      "left_title_with_subtitle": {
+        "frames": 18,
+        "detected": 18,
+        "complete": 18,
+        "correct": 18,
+        "false_positives": 0,
+        "complete_onsets": 6
+      },
+      "right_title_with_subtitle": {
+        "frames": 18,
+        "detected": 18,
+        "complete": 18,
+        "correct": 18,
+        "false_positives": 0,
+        "complete_onsets": 6
+      },
+      "continuous_two_line": {
+        "frames": 18,
+        "detected": 18,
+        "complete": 12,
+        "correct": 12,
+        "false_positives": 0,
+        "complete_onsets": 4
+      }
+    },
+    "cost_ms": {
+      "p50": 1.70315,
+      "p95": 2.77643,
+      "p99": 3.242445,
+      "max": 3.6922
+    },
+    "continuous_unique_boxes": 3,
+    "negative_frames_including_gaps": 360,
+    "negative_frames_with_box": 0,
+    "two_glyph_area_ratios": [
+      1.362
+    ]
+  },
+  "4k": {
+    "cases": {
+      "blank": {
+        "frames": 18,
+        "detected": 0,
+        "complete": 0,
+        "correct": 18,
+        "false_positives": 0,
+        "complete_onsets": 0
+      },
+      "topbar": {
+        "frames": 18,
+        "detected": 18,
+        "complete": 18,
+        "correct": 18,
+        "false_positives": 0,
+        "complete_onsets": 6
+      },
+      "topcross": {
+        "frames": 18,
+        "detected": 18,
+        "complete": 15,
+        "correct": 15,
+        "false_positives": 0,
+        "complete_onsets": 5
+      },
+      "bottomcross": {
+        "frames": 18,
+        "detected": 18,
+        "complete": 18,
+        "correct": 15,
+        "false_positives": 0,
+        "complete_onsets": 6
+      },
+      "bottomtwo": {
+        "frames": 18,
+        "detected": 18,
+        "complete": 12,
+        "correct": 12,
+        "false_positives": 0,
+        "complete_onsets": 4
+      },
+      "upper_crossing_two": {
+        "frames": 18,
+        "detected": 18,
+        "complete": 12,
+        "correct": 12,
+        "false_positives": 0,
+        "complete_onsets": 4
+      },
+      "bar": {
+        "frames": 18,
+        "detected": 18,
+        "complete": 18,
+        "correct": 18,
+        "false_positives": 0,
+        "complete_onsets": 6
+      },
+      "short": {
+        "frames": 18,
+        "detected": 18,
+        "complete": 18,
+        "correct": 18,
+        "false_positives": 0,
+        "complete_onsets": 6
+      },
+      "two_glyph": {
+        "frames": 18,
+        "detected": 18,
+        "complete": 18,
+        "correct": 0,
+        "false_positives": 0,
+        "complete_onsets": 6
+      },
+      "picture": {
+        "frames": 18,
+        "detected": 0,
+        "complete": 0,
+        "correct": 18,
+        "false_positives": 0,
+        "complete_onsets": 0
+      },
+      "menu": {
+        "frames": 18,
+        "detected": 0,
+        "complete": 0,
+        "correct": 18,
+        "false_positives": 0,
+        "complete_onsets": 0
+      },
+      "left_title": {
+        "frames": 18,
+        "detected": 0,
+        "complete": 0,
+        "correct": 18,
+        "false_positives": 0,
+        "complete_onsets": 0
+      },
+      "right_title": {
+        "frames": 18,
+        "detected": 0,
+        "complete": 0,
+        "correct": 18,
+        "false_positives": 0,
+        "complete_onsets": 0
+      },
+      "left_title_with_subtitle": {
+        "frames": 18,
+        "detected": 18,
+        "complete": 18,
+        "correct": 18,
+        "false_positives": 0,
+        "complete_onsets": 6
+      },
+      "right_title_with_subtitle": {
+        "frames": 18,
+        "detected": 18,
+        "complete": 18,
+        "correct": 18,
+        "false_positives": 0,
+        "complete_onsets": 6
+      },
+      "continuous_two_line": {
+        "frames": 18,
+        "detected": 18,
+        "complete": 12,
+        "correct": 12,
+        "false_positives": 0,
+        "complete_onsets": 4
+      }
+    },
+    "cost_ms": {
+      "p50": 2.59,
+      "p95": 3.903845,
+      "p99": 4.238109999999997,
+      "max": 4.9491
+    },
+    "continuous_unique_boxes": 4,
+    "negative_frames_including_gaps": 360,
+    "negative_frames_with_box": 0,
+    "two_glyph_area_ratios": [
+      1.509
+    ]
+  }
+}
