@@ -4,6 +4,7 @@
 #include <ITimingClock.h>
 #include <VideoConversionOverride.h>
 #include <ActivePictureDecisionTimeline.h>
+#include <SubtitleBoxLookahead.h>
 #include <CropDiagnosticThrottle.h>
 #include <RememberedEdgeReturn.h>
 #include <vprenderer/BufferedPictureExpansion.h>
@@ -142,6 +143,8 @@ private:
 		ActivePictureEvidence activePicturePreviewEvidence;
 		bool activePicturePreviewNearBlackEvaluated = false;
 		bool activePicturePreviewNearBlack = false;
+        SubtitleBoxObservation subtitleBoxObservation;
+        SubtitleBoxPreview subtitleBoxPreview;
 		AlphaSourceCrop::BufferedPictureExpansionProof bufferedPictureExpansion;
         GuardedRememberedEdgeReturnCertificate guardedRememberedReturn;
 		int64_t enqueueQpc = 0;

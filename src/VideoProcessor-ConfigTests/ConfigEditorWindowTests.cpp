@@ -398,6 +398,39 @@ void save(ConfigEditorWindow& window)
     require(!button->isEnabled(), "Apply did not complete successfully");
 }
 
+void testSubtitleDiagnosticSurvivesConfigSaveAndReopen()
+{
+    QTemporaryDir directory;
+    const QString path = directory.filePath("VideoProcessor.cfg");
+    {
+        QFile file(path);
+        require(file.open(QIODevice::WriteOnly), "Cannot create subtitle diagnostic fixture");
+        file.write("[vprenderer]\nsdr_target_nits: 100\nsubtitle_bbox_test: true\n");
+    }
+    for (const char* white : { "120", "140" })
+    {
+        ConfigEditorWindow window(path, 0, true);
+        requireControl<QLineEdit>(window, "config.vprenderer.sdr_target_nits")->setText(white);
+        save(window);
+        ConfigFile config;
+        require(config.Load(path.toStdString()), "Saved subtitle config failed to reload");
+        RendererProfileConfig::Model model;
+        std::string error;
+        require(RendererProfileConfig::Read(config, model, error), error.c_str());
+        bool found = false;
+        for (const auto& profile : model.profiles)
+        {
+            const auto setting = profile.second.settings.find("subtitle_bbox_test");
+            if (setting != profile.second.settings.end())
+            {
+                require(setting->second == "true", "Config changed the subtitle diagnostic value");
+                found = true;
+            }
+        }
+        require(found, "Config lost the subtitle diagnostic from the renderer profile");
+    }
+}
+
 void testHdrTargetLuminanceValidationRetainsSavedValue()
 {
     QTemporaryDir directory;
@@ -5924,6 +5957,8 @@ int main(int argc, char** argv)
     QApplication::setStyle(VpTheme::CreateStyle());
     application.setStyleSheet(VpTheme::StyleSheet());
     int failures = 0;
+    failures += run("subtitle diagnostic survives Config save and reopen",
+        testSubtitleDiagnosticSurvivesConfigSaveAndReopen);
     failures += run("audited Boolean aliases and inherited Auto status", testAuditedBooleanAliasesAndInheritedAutoStatus);
     failures += run("invalid audited values remain actionable", testInvalidAuditedValuesRemainActionable);
     failures += run("diagnostic preset describes flags and retention default", testDiagnosticPresetDescribesFlagsAndRetentionUsesDefault);

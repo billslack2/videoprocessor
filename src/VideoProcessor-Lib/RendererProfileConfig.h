@@ -556,6 +556,7 @@ namespace RendererProfileConfig
 		}
 		if (group == "display")
 		{
+			if (key == "subtitle_bbox_test") return IsBoolean(value);
 			if (key == "calibration_lut_enabled") return IsBoolean(value);
 			if (key == "calibration_lut_bt709" ||
 				key == "calibration_lut_p3_d65" ||
@@ -1738,7 +1739,7 @@ namespace RendererProfileConfig
 				continue;
 			const std::set<std::string> baseKeys = {
 				"sdr_target_nits", "sdr_black_nits", "profile_update_mode",
-				"live_profile_updates",
+				"live_profile_updates", "subtitle_bbox_test",
 				"switch_refresh_rate",
 				"quality", "tone_mapping", "gamut_mapping", "peak_detection",
 				"contrast_recovery", "upscaler", "downscaler", "deband",

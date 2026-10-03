@@ -260,9 +260,12 @@ ActivePictureGlobalNearBlackEvidence EvaluateP010ActivePictureGlobalNearBlack(
 // encoded bar before any trusted presentation exists. One clean bar is mirrored
 // and the opposite bar must still be predominantly coherent black with a broad
 // picture boundary. The ordinary extractor remains conservative/provisional.
+// Subtitle diagnostics may also re-inspect a rejected edge already aligned with
+// that hypothesis. Crop callers leave this opt-in disabled.
 ActivePictureEvidence EvaluateSymmetricVerticalBarHypothesis(
 	const AnalysisLumaSource& source,
-	const ActivePictureEvidence& observed);
+	const ActivePictureEvidence& observed,
+    bool allowRejectedAlignedEdge = false);
 
 // Bounded presentation-retention inspection. The excluded-band predicate uses
 // the same black, luma-dispersion, texture, neutral-chroma, and continuity

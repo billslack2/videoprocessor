@@ -21,7 +21,9 @@ int SubtitleBoxDetector::SamplingStep(int width, int height)
 
 void SubtitleBoxDetector::Reset()
 {
-    m_result = {}; m_currentBarAnchor = {}; m_signature = {}; m_generation = m_viewport = m_sequence = 0;
+    m_result = {}; m_currentBarAnchor = {}; m_signature = {}; m_currentAnchorSignature = {};
+    m_currentLineBounds = {}; m_currentLineSignatures = {};
+    m_generation = m_viewport = m_sequence = 0;
     m_width = m_height = m_top = m_bottom = m_misses = 0;
     m_hasSequence = m_workLimit = false;
 }
@@ -34,6 +36,8 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
     // frame cadence that could postpone subtitle onset. Full line search remains
     // active throughout a cue, so an initially missed companion can be recovered.
     m_currentBarAnchor = {};
+    m_currentAnchorSignature = {};
+    m_currentLineBounds = {}; m_currentLineSignatures = {};
     const int step = SamplingStep(source.width, source.height);
     const int w = (source.width + step - 1) / step;
     const int h = (source.height + step - 1) / step;
@@ -181,14 +185,24 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
     // A text line needs several strokes, a plausible baseline, and whitespace.
     auto plausible=[&](const Line& l){
         const int lw=Width(l.box),lh=Height(l.box);
-        return l.components>=2 && lh>=minimumHeight && lw*10>=lh*13 &&
+        // Direct bar ink supports narrow words such as "Hi". Picture-only
+        // companions retain the wider-text requirement so narrow scenery
+        // fragments cannot attach themselves to an otherwise valid bar cue.
+        const int minimumAspectTenths=(l.topBarInk>=6 || l.bottomBarInk>=6)?8:13;
+        return l.components>=2 && lh>=minimumHeight && lw*10>=lh*minimumAspectTenths &&
             lw<w*9/10 && l.ink>=12 && l.ink*100<lw*lh*82;
+    };
+    // The diagnostic targets centered movie subtitles. A title or player label
+    // near either corner must not win the anchor search merely by having more
+    // ink. Keep this independent of line width so short centered cues qualify.
+    auto centered=[&](const Line& l){
+        return std::abs(l.box.left+l.box.right-w)*5<=w*2;
     };
     size_t anchor=m_lines.size(); int score=0;
     for(size_t i=0;i<m_lines.size();++i)
     {
         const auto& l=m_lines[i];
-        if(!plausible(l)) continue;
+        if(!plausible(l) || !centered(l)) continue;
         // Eligibility belongs to this line's accepted components, never all
         // bright pixels in its envelope (which includes discarded picture/noise).
         const bool inTopBar = l.topBarInk >= 6;
@@ -197,36 +211,64 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
     }
     if(anchor==m_lines.size()) return false;
     const Line& a=m_lines[anchor];
-    const bool topCue=a.topBarInk>=6;
     m_currentBarAnchor={a.box.left*step,a.box.top*step,
         std::min(source.width,a.box.right*step),std::min(source.height,a.box.bottom*step)};
     box=a.box; lineCount=1;
+    std::array<SubtitleBoxRect,3> lineBoxes{};
+    lineBoxes[0]=a.box;
     const int anchorHeight=Height(a.box);
     // Companions are compared to the original bar anchor, never admitted by a
-    // chain of unrelated picture/UI text. Gather the entire cue on its first frame.
+    // chain of unrelated picture/UI text. Search on both sides: the strongest
+    // bar anchor may be the upper line crossing the lower picture boundary.
     for(size_t i=0;i<m_lines.size();++i)
     {
         const Line& l=m_lines[i];
-        if(i==anchor || !plausible(l)) continue;
+        if(i==anchor || !plausible(l) || !centered(l)) continue;
         const int lh=Height(l.box);
         const int overlap=std::min(a.box.right,l.box.right)-std::max(a.box.left,l.box.left);
-        const int gap=topCue?l.box.top-a.box.bottom:a.box.top-l.box.bottom;
+        const int gap=std::max(a.box.top,l.box.top)-std::min(a.box.bottom,l.box.bottom);
         if(gap < -std::min(lh,anchorHeight)/3 || gap>anchorHeight*3 ||
             lh*2<anchorHeight || lh>anchorHeight*2 ||
             overlap<std::min(Width(a.box),Width(l.box))/3) continue;
         if(++lineCount>3) return false;
+        lineBoxes[lineCount-1]=l.box;
         box=Union(box,l.box);
     }
     // A small tolerant visual signature is used only for cue identity. All
     // line extents are still inspected on every frame, even after geometry locks.
-    signature={};
-    for(int y=box.top;y<box.bottom;++y) for(int x=box.left;x<box.right;++x)
-        if(m_mask[y*w+x]==3)
+    auto makeSignature=[&](const SubtitleBoxRect& extent,std::array<uint64_t,16>& value){
+        value={};
+        for(int y=extent.top;y<extent.bottom;++y) for(int x=extent.left;x<extent.right;++x)
+            if(m_mask[y*w+x]==3)
+            {
+                const int sy=std::min(15,(y-extent.top)*16/Height(extent));
+                const int sx=std::min(63,(x-extent.left)*64/Width(extent));
+                value[sy]|=uint64_t{1}<<sx;
+            }
+    };
+    makeSignature(box,signature);
+    makeSignature(a.box,m_currentAnchorSignature);
+    auto makeLineSignature=[&](const SubtitleBoxRect& extent,SubtitleLineSignature& value){
+        std::array<uint16_t,64*16> inkCounts{},sampleCounts{};
+        for(int y=extent.top;y<extent.bottom;++y) for(int x=extent.left;x<extent.right;++x)
         {
-            const int sy=std::min(15,(y-box.top)*16/Height(box));
-            const int sx=std::min(63,(x-box.left)*64/Width(box));
-            signature[sy]|=uint64_t{1}<<sx;
+            const int sy=std::min(15,(y-extent.top)*16/Height(extent));
+            const int sx=std::min(63,(x-extent.left)*64/Width(extent));
+            const int cell=sy*64+sx;
+            ++sampleCounts[cell];
+            inkCounts[cell]+=m_mask[y*w+x]==3;
         }
+        for(size_t cell=0;cell<value.size();++cell)
+            value[cell]=sampleCounts[cell] ? static_cast<uint8_t>(
+                (inkCounts[cell]*255+sampleCounts[cell]/2)/sampleCounts[cell]) : 0;
+    };
+    for(int i=0;i<lineCount;++i)
+    {
+        const auto& line=lineBoxes[i];
+        makeLineSignature(line,m_currentLineSignatures[i]);
+        m_currentLineBounds[i]={line.left*step,line.top*step,
+            std::min(source.width,line.right*step),std::min(source.height,line.bottom*step)};
+    }
     const int padding=std::max(4,source.height/270);
     box={std::max(0,box.left*step-padding),std::max(0,box.top*step-padding),
         std::min(source.width,box.right*step+padding),std::min(source.height,box.bottom*step+padding)};
@@ -286,5 +328,8 @@ SubtitleBoxResult SubtitleBoxDetector::Analyze(const AnalysisLumaSource& source,
         m_result.lineCount=lines; m_signature=signature;
     }
     m_result.detected=true; m_result.held=false; m_result.revised=revised; m_result.workLimit=false;
+    m_result.anchor=m_currentBarAnchor; m_result.signature=signature;
+    m_result.anchorSignature=m_currentAnchorSignature;
+    m_result.lineBounds=m_currentLineBounds; m_result.lineSignatures=m_currentLineSignatures;
     m_misses=0; return m_result;
 }

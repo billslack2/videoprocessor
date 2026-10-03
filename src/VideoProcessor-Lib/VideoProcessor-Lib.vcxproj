@@ -237,6 +237,7 @@
     <ClInclude Include="ActivePictureTransitionModel.h" />
 	<ClInclude Include="AnalysisLumaSource.h" />
     <ClInclude Include="SubtitleBoxDetector.h" />
+    <ClInclude Include="SubtitleBoxLookahead.h" />
 	<ClInclude Include="ActivePictureAnalyzer.h" />
     <ClInclude Include="ActivePictureEvidence.h" />
     <ClInclude Include="LocalBoundaryDiagnostics.h" />

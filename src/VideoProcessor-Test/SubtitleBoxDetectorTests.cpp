@@ -79,14 +79,178 @@ public:
         Assert::AreNotEqual(first.cue,changed.cue);
     }
     TEST_METHOD(UhdShortTwoGlyphCueAppearsOnFirstFrame) {
-        auto lowResolution=Frame();Text(lowResolution,200,320,2);
+        auto lowResolution=Frame();Text(lowResolution,309,320,2);
         const int scale=6,w=W*scale,h=H*scale;
         std::vector<uint16_t> big(static_cast<size_t>(w)*h*3/2,512<<6);
         for(int y=0;y<h;++y) for(int x=0;x<w;++x) big[static_cast<size_t>(y)*w+x]=lowResolution[(y/scale)*W+x/scale];
         auto s=Source(big);s.width=w;s.height=h;s.rowBytes=s.chromaRowBytes=w*2;
         SubtitleBoxDetector d;auto r=d.Analyze(s,45*scale,315*scale,1,1);
-        Assert::IsTrue(r.detected);Assert::IsTrue(r.bounds.left<=200*scale);
-        Assert::IsTrue(r.bounds.right>=221*scale);Assert::IsTrue(r.bounds.bottom>=334*scale);
+        Assert::IsTrue(r.detected);Assert::IsTrue(r.bounds.left<=309*scale);
+        Assert::IsTrue(r.bounds.right>=330*scale);Assert::IsTrue(r.bounds.bottom>=334*scale);
+    }
+    TEST_METHOD(NarrowCenteredHiRasterIsNotRejectedByWordAspectRatio) {
+        // Rasterized H and dotted i, from a 31x29 antialiased font glyph mask
+        // thresholded at half intensity. Its width/height is close to one.
+        const uint32_t rows[]={0x00000000,0x1e000000,0x3f06000c,0x3f0f001e,
+            0x3e0e001e,0x1c0e001e,0x000e001e,0x000e001e,0x000e001e,0x000e001e,
+            0x1e0e001e,0x1e0e001e,0x1e0f001e,0x1e0ffffe,0x1e0ffffe,0x1e0ffffe,
+            0x1e0e001e,0x1e0e001e,0x1e0e001e,0x1e0e001e,0x1e0e001e,0x1e0e001e,
+            0x1e0e001e,0x1e0e001e,0x1e0e001e,0x1e0e001e,0x1e0f001e,0x0c06000c,0};
+        auto f=Frame();Fill(f,301,308,338,341,64);
+        for(int y=0;y<29;++y) for(int x=0;x<31;++x)
+            if(rows[y]&(uint32_t{1}<<x)) Fill(f,304+x,310+y,305+x,311+y,510);
+        SubtitleBoxDetector detector;auto r=detector.Analyze(Source(f),45,315,1,1);
+        Assert::IsTrue(r.detected);Assert::AreEqual(1,r.lineCount);
+        Assert::IsTrue(r.bounds.left<=305 && r.bounds.top<=311);
+        Assert::IsTrue(r.bounds.right>=334 && r.bounds.bottom>=338);
+    }
+    TEST_METHOD(LongChangedPictureLineRetainsDistinctDensityWithSameBarCompanion) {
+        const int w=960,h=540;
+        for(int count : {22,40,65}) {
+            auto frame=[&](bool changed){
+                std::vector<uint16_t> pixels(static_cast<size_t>(w)*h*3/2,512<<6);
+                for(int y=0;y<h;++y) for(int x=0;x<w;++x)
+                    pixels[y*w+x]=(y>=68 && y<472?200:64)<<6;
+                auto word=[&](int y,int letters,bool hShape){
+                    const int left=(w-(letters-1)*13-8)/2;
+                    for(int n=0;n<letters;++n) for(int yy=-1;yy<=14;++yy) for(int xx=-1;xx<=8;++xx) {
+                        const bool stroke=xx>=0 && xx<8 && yy>=0 && yy<14 &&
+                            (xx<2 || xx>=6 || (hShape?(yy>=6 && yy<8):(yy<2 || yy>=12)));
+                        pixels[(y+yy)*w+left+n*13+xx]=(stroke?510:64)<<6;
+                    }
+                };
+                word(480,20,false);word(442,count,changed);return pixels;
+            };
+            auto oldPixels=frame(false),newPixels=frame(true);
+            auto source=[&](const std::vector<uint16_t>& pixels){
+                auto s=Source(pixels);s.width=w;s.height=h;s.rowBytes=s.chromaRowBytes=w*2;return s;
+            };
+            SubtitleBoxDetector beforeDetector,afterDetector;
+            const auto before=beforeDetector.Analyze(source(oldPixels),68,472,1,1);
+            const auto after=afterDetector.Analyze(source(newPixels),68,472,2,1);
+            Assert::IsTrue(before.detected && after.detected);
+            Assert::AreEqual(2,before.lineCount);Assert::AreEqual(2,after.lineCount);
+            Assert::AreEqual(before.bounds.left,after.bounds.left);
+            Assert::AreEqual(before.bounds.right,after.bounds.right);
+            Assert::IsTrue(before.lineSignatures[0]==after.lineSignatures[0]);
+            int difference=0,total=0;
+            for(size_t i=0;i<before.lineSignatures[1].size();++i) {
+                const int a=before.lineSignatures[1][i],b=after.lineSignatures[1][i];
+                difference+=std::abs(a-b);total+=std::max(a,b);
+            }
+            Assert::IsTrue(difference*100>total*25);
+        }
+    }
+    TEST_METHOD(NarrowPictureShapeCannotJoinValidBarSubtitle) {
+        auto f=Frame();Text(f,200,320,20);
+        for(int x : {310,323}) {
+            Fill(f,x-1,284,x+9,310,64);
+            Fill(f,x,285,x+8,309,510);Fill(f,x+2,287,x+6,307,64);
+        }
+        SubtitleBoxDetector detector;const auto r=detector.Analyze(Source(f),45,315,1,1);
+        Assert::IsTrue(r.detected);Assert::AreEqual(1,r.lineCount);
+        Assert::IsTrue(r.bounds.top>=315 && r.bounds.bottom>=334);
+    }
+    TEST_METHOD(IsolatedCornerTitlesDoNotQualifyInEitherBar) {
+        for(int left : {20,520}) for(int top : {20,325}) {
+            auto f=Frame();Text(f,left,top,8);SubtitleBoxDetector d;
+            auto r=d.Analyze(Source(f),45,315,1,1);
+            Assert::IsFalse(r.detected);Assert::IsFalse(r.bounds.Valid());
+        }
+    }
+    TEST_METHOD(DiagnosticFlagNamedDisplayProfilePreservesBooleansAndRejectsInvalid) {
+        for(const char* value : {"true","false","not-a-bool"}) {
+            char directory[MAX_PATH]{},path[MAX_PATH]{};
+            Assert::IsTrue(GetTempPathA(MAX_PATH,directory)!=0);
+            Assert::IsTrue(GetTempFileNameA(directory,"vpb",0,path)!=0);
+            { std::ofstream file(path);file<<"[vprenderer.profile_1]\nsubtitle_bbox_test: "<<value<<"\n"; }
+            ConfigFile config;const bool loaded=config.Load(path);DeleteFileA(path);
+            Assert::IsTrue(loaded);
+            RendererProfileConfig::Model model;std::string error;
+            const bool valid=std::string(value)!="not-a-bool";
+            Assert::AreEqual(valid,RendererProfileConfig::Read(config,model,error));
+            if(valid) {
+                const auto profile=model.profiles.find("display.profile_1");
+                Assert::IsTrue(profile!=model.profiles.end());
+                const auto setting=profile->second.settings.find("subtitle_bbox_test");
+                Assert::IsTrue(setting!=profile->second.settings.end());
+                Assert::AreEqual(std::string(value),setting->second);
+            }
+        }
+    }
+    TEST_METHOD(CornerTitleCannotSuppressShortCenteredSubtitle) {
+        for(int left : {20,455}) {
+            auto f=Frame();Text(f,left,20,12);Text(f,309,325,2);
+            SubtitleBoxDetector d;auto r=d.Analyze(Source(f),45,315,1,1);
+            Assert::IsTrue(r.detected);Assert::AreEqual(1,r.lineCount);
+            Assert::IsTrue(r.bounds.left<=309 && r.bounds.right>=330);
+            Assert::IsTrue(r.bounds.top>=315 && r.bounds.bottom>=339);
+        }
+    }
+    TEST_METHOD(UpperBoundaryAnchorIncludesLowerBarCompanionOnFirstFrame) {
+        auto f=Frame();Text(f,150,307,26);Text(f,240,333,12);
+        SubtitleBoxDetector d;auto r=d.Analyze(Source(f),45,315,1,1);
+        Assert::IsTrue(r.detected);Assert::AreEqual(2,r.lineCount);
+        Assert::IsTrue(r.bounds.left<=150 && r.bounds.right>=483);
+        Assert::IsTrue(r.bounds.top<=307 && r.bounds.bottom>=347);
+        Assert::AreEqual(uint32_t{1},r.observations);
+    }
+    TEST_METHOD(TwoBarLinesAreCompleteRegardlessOfStrongerAnchor) {
+        for(bool upperIsWider : {false,true}) {
+            auto f=Frame();
+            Text(f,upperIsWider?150:240,317,upperIsWider?26:12);
+            Text(f,upperIsWider?240:150,341,upperIsWider?12:26);
+            SubtitleBoxDetector d;auto r=d.Analyze(Source(f),45,315,1,1);
+            Assert::IsTrue(r.detected);Assert::AreEqual(2,r.lineCount);
+            Assert::IsTrue(r.bounds.left<=150 && r.bounds.right>=483);
+            Assert::IsTrue(r.bounds.top<=317 && r.bounds.bottom>=355);
+        }
+    }
+    TEST_METHOD(TopBoundaryAnchorIncludesUpperBarCompanionOnFirstFrame) {
+        auto f=Frame();Text(f,240,12,12);Text(f,150,38,26);
+        SubtitleBoxDetector d;auto r=d.Analyze(Source(f),45,315,1,1);
+        Assert::IsTrue(r.detected);Assert::AreEqual(2,r.lineCount);
+        Assert::IsTrue(r.bounds.left<=150 && r.bounds.right>=483);
+        Assert::IsTrue(r.bounds.top<=12 && r.bounds.bottom>=52);
+    }
+    TEST_METHOD(CompanionCannotChainAnotherPictureLineIntoTheBox) {
+        auto f=Frame();Text(f,200,320,20);Text(f,240,283,12);Text(f,240,246,12);
+        SubtitleBoxDetector d;auto r=d.Analyze(Source(f),45,315,1,1);
+        Assert::IsTrue(r.detected);Assert::AreEqual(2,r.lineCount);
+        Assert::IsTrue(r.bounds.top<=283 && r.bounds.top>260);
+        Assert::IsTrue(r.bounds.bottom>=334);
+    }
+    TEST_METHOD(FarSideLabelCannotJoinWideCenteredSubtitle) {
+        auto f=Frame();Text(f,100,320,34);Text(f,70,342,8);
+        SubtitleBoxDetector d;auto r=d.Analyze(Source(f),45,315,1,1);
+        Assert::IsTrue(r.detected);Assert::AreEqual(1,r.lineCount);
+        Assert::IsTrue(r.bounds.left<=100 && r.bounds.left>70);
+        Assert::IsTrue(r.bounds.bottom>=334 && r.bounds.bottom<342);
+    }
+    TEST_METHOD(QueuedObservationKeepsBarAnchorEvidenceSeparateFromCompanion) {
+        auto f=Frame();Text(f,240,320,12);SubtitleBoxDetector firstDetector;
+        const auto first=firstDetector.Analyze(Source(f),45,315,1,1);
+        Text(f,150,295,25);SubtitleBoxDetector nextDetector;
+        const auto next=nextDetector.Analyze(Source(f),45,315,2,1);
+        Assert::IsTrue(first.detected && next.detected);
+        Assert::AreEqual(first.anchor.left,next.anchor.left);
+        Assert::AreEqual(first.anchor.top,next.anchor.top);
+        Assert::AreEqual(first.anchor.right,next.anchor.right);
+        Assert::AreEqual(first.anchor.bottom,next.anchor.bottom);
+        Assert::IsTrue(first.anchorSignature==next.anchorSignature);
+        Assert::IsTrue(first.signature!=next.signature);
+        Assert::IsTrue(next.bounds.top<next.anchor.top);
+    }
+    TEST_METHOD(QueuedLineEvidenceSurvivesStrongerSecondLineChangingTheAnchor) {
+        auto f=Frame();Text(f,240,307,12);SubtitleBoxDetector firstDetector;
+        const auto first=firstDetector.Analyze(Source(f),45,315,1,1);
+        Text(f,150,333,26);SubtitleBoxDetector nextDetector;
+        const auto next=nextDetector.Analyze(Source(f),45,315,2,1);
+        Assert::IsTrue(first.detected && next.detected);Assert::AreEqual(2,next.lineCount);
+        Assert::AreNotEqual(first.anchor.top,next.anchor.top);
+        Assert::AreEqual(first.lineBounds[0].top,next.lineBounds[1].top);
+        Assert::AreEqual(first.lineBounds[0].left,next.lineBounds[1].left);
+        Assert::IsTrue(first.lineSignatures[0]==next.lineSignatures[1]);
     }
     TEST_METHOD(FirstFrameIncludesBarLineAndWiderPictureCompanion) {
         auto f=Frame();Text(f,240,320,12);Text(f,150,295,25);

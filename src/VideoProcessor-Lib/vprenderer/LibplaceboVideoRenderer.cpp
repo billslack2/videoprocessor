@@ -1515,6 +1515,8 @@ namespace
 		if (rule.name.empty())
 			return;
 
+        config.TryGetBool(rule.section, "subtitle_bbox_test", settings.subtitleBoxTest);
+
 		auto readChoice = [&config, &rule](const char* key, std::string& target,
 			std::initializer_list<const char*> choices)
 		{
@@ -3447,6 +3449,7 @@ struct LibplaceboVideoRenderer::Impl
 	uint64_t sourceUploadCpuIntervalSamples = 0;
 	pl_tex subtitleBoxTexture = nullptr;
 	SubtitleBoxDetector subtitleBoxDetector;
+    SubtitleBoxPresentation subtitleBoxPresentation;
 	SubtitleBoxResult subtitleBoxResult;
 	uint64_t subtitleBoxLoggedCue = 0;
 	uint64_t subtitleBoxDetectedFrames = 0, subtitleBoxHeldFrames = 0;
@@ -9968,6 +9971,7 @@ struct LibplaceboVideoRenderer::Impl
 		uint64_t sourceSequence,
 		const ActivePictureFrameIdentity& activePictureIdentity,
 		const ActivePictureFrameDecision* activePicturePreviewDecision,
+        const SubtitleBoxPreview* subtitlePreview,
 		const AlphaSourceCrop::BufferedPictureExpansionProof* bufferedExpansion,
         const GuardedRememberedEdgeReturnCertificate* guardedReturn,
 		int64_t enqueueQpc,
@@ -13358,14 +13362,28 @@ struct LibplaceboVideoRenderer::Impl
         if (activeSettings.subtitleBoxTest)
         {
             const auto boxStart = SteadyClock::now();
-            const bool barAuthority = nlsGeometryAvailable &&
-                nlsGeometrySourceGeneration == frameGeneration &&
-                nlsGeometryClassification == ActivePictureClassification::BAR_CROP_TRUSTED &&
-                nlsGeometry.rasterWidth == width && nlsGeometry.rasterHeight == height;
-            if (barAuthority)
-                subtitleBoxResult = subtitleBoxDetector.Analyze(analysisSource,
-                    nlsGeometry.top, nlsGeometry.bottom, sourceSequence, viewportRequestSerial);
-            else { subtitleBoxDetector.Reset(); subtitleBoxResult = {}; }
+            auto subtitleIdentity = activePictureIdentity;
+            subtitleIdentity.transportGeneration = frameGeneration;
+            subtitleIdentity.sourceFormatGeneration = AlphaSourceFormatKey(state);
+            subtitleIdentity.viewportGeneration = viewportRequestSerial;
+            subtitleIdentity.rendererGeneration = frameGeneration;
+            if (subtitlePreview && !SubtitleBoxLookahead::IsCurrent(*subtitlePreview,
+                subtitleIdentity,localBoundaryPolicyGeneration,localBoundaryContinuityGeneration))
+                subtitlePreview = nullptr;
+            SubtitleBoxPreview livePreview;
+            if (!subtitlePreview)
+            {
+                const auto raw = ExtractActivePictureEvidence(analysisSource);
+                const auto observed = SubtitleBoxLookahead::Measure(subtitleBoxDetector,
+                    analysisSource, raw, subtitleIdentity, videoFrame.IsSourceDiscontinuity());
+                livePreview = SubtitleBoxLookahead::Resolve(&observed, 1,
+                    localBoundaryPolicyGeneration, localBoundaryContinuityGeneration);
+                livePreview.newScanMs = observed.analysisMs;
+                livePreview.newScanFrames = 1;
+                subtitlePreview = &livePreview;
+            }
+            const bool barAuthority = subtitlePreview->current.barAuthority;
+            subtitleBoxResult = subtitleBoxPresentation.Consume(*subtitlePreview);
             const double cost = std::chrono::duration<double, std::milli>(SteadyClock::now()-boxStart).count();
             subtitleBoxPeakMs = std::max(subtitleBoxPeakMs,cost);
             subtitleBoxDetectedFrames += !cadenceRepeat && subtitleBoxResult.detected;
@@ -13373,16 +13391,19 @@ struct LibplaceboVideoRenderer::Impl
             if (subtitleBoxResult.cue != subtitleBoxLoggedCue || subtitleBoxResult.revised || sourceSequence % 120 == 0)
             {
                 const auto& r=subtitleBoxResult.bounds;
-                DebugLog::Log("SUBTITLE BBOX: frame=%llu cue=%llu observed=%d held=%d revised=%d observations=%u lines=%d box=%d,%d-%d,%d bar_authority=%d picture=%d-%d cost_ms=%.3f peak_ms=%.3f detected_frames=%llu held_frames=%llu work_limit=%d analysis_step=%d",
+                DebugLog::Log("SUBTITLE BBOX: frame=%llu cue=%llu observed=%d held=%d revised=%d observations=%u lines=%d box=%d,%d-%d,%d bar_authority=%d picture=%d-%d consume_ms=%.3f peak_consume_ms=%.3f detected_frames=%llu held_frames=%llu work_limit=%d analysis_step=%d future_available=%d matching_frames=%u current_scan_ms=%.3f window_new_scan_ms=%.3f window_new_scans=%u",
                     sourceSequence,subtitleBoxResult.cue,subtitleBoxResult.detected?1:0,
                     subtitleBoxResult.held?1:0,subtitleBoxResult.revised?1:0,subtitleBoxResult.observations,
                     subtitleBoxResult.lineCount,r.left,r.top,r.right,r.bottom,barAuthority?1:0,
-                    nlsGeometry.top,nlsGeometry.bottom,cost,subtitleBoxPeakMs,
+                    subtitlePreview->current.pictureTop,subtitlePreview->current.pictureBottom,cost,subtitleBoxPeakMs,
                     subtitleBoxDetectedFrames,subtitleBoxHeldFrames,subtitleBoxResult.workLimit?1:0,
-                    SubtitleBoxDetector::SamplingStep(width,height));
+                    SubtitleBoxDetector::SamplingStep(width,height),
+                    subtitlePreview->futureAvailable ? 1 : 0, subtitlePreview->matchingFrames,
+                    subtitlePreview->current.analysisMs, subtitlePreview->newScanMs, subtitlePreview->newScanFrames);
                 subtitleBoxLoggedCue=subtitleBoxResult.cue;
             }
         }
+        else { subtitleBoxPresentation.Reset(); subtitleBoxResult = {}; }
 		const HdrPeakAnalysisCrop::Decision hdrPeakAnalysisDecision =
 			ApplyHdrPeakAnalysisCrop(frameGeneration, sourceSequence,
 				hdrTrustedPicture, renderImage.crop,
@@ -16395,6 +16416,7 @@ void LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
     bool inwardCaptionInspectionEligible = false;
     uint64_t inwardCaptionSourceGeneration = 0, inwardCaptionViewport = 0;
     bool shadowFit = false;
+    bool subtitlePreviewEnabled = false;
     bool relativeContrastEligible = false;
     uint64_t relativeContrastScene = 0;
     bool diagnosticTrustedBase = false, diagnosticOwnerEligible = false;
@@ -16439,6 +16461,7 @@ void LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
 	{
 		std::lock_guard<std::mutex> renderGuard(m_impl->renderMutex);
         rememberedWindowTick = GetTickCount64();
+        subtitlePreviewEnabled = m_impl->activeSettings.subtitleBoxTest;
         if (!previewFrames.empty() && (m_impl->rememberedEdgeGuarded ||
             (m_impl->rememberedEdgeShadow && rememberedWindowTick >= m_impl->rememberedShadowWindowNextTick)))
         {
@@ -16570,6 +16593,15 @@ void LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
 	};
 	std::vector<PreviewEvidence> observations;
 	observations.reserve(previewFrames.size());
+    std::vector<SubtitleBoxObservation> subtitleObservations;
+    if (subtitlePreviewEnabled)
+    {
+        subtitleObservations.resize((std::min)(previewFrames.size(), SubtitleBoxLookahead::MaxFrames));
+        for (size_t i = 0; i < subtitleObservations.size(); ++i)
+            subtitleObservations[i].identity = previewFrames[i].activePictureIdentity;
+    }
+    double subtitleNewScanMs = 0.0;
+    unsigned subtitleNewScanFrames = 0;
     size_t previewIndex = 0;
 	for (const QueuedFrame& queued : previewFrames)
 	{
@@ -16609,6 +16641,20 @@ void LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
 		};
 		const ActivePictureEvidence evidence = queued.activePicturePreviewAnalyzed
 			? queued.activePicturePreviewEvidence : ExtractActivePictureEvidence(source);
+        if (rememberedIndex < subtitleObservations.size())
+        {
+            if (queued.subtitleBoxObservation.analyzed &&
+                SameActivePictureFrameIdentity(queued.subtitleBoxObservation.identity, queued.activePictureIdentity))
+                subtitleObservations[rememberedIndex] = queued.subtitleBoxObservation;
+            else
+            {
+                // Scanner storage is render-thread owned and reused across windows.
+                auto& observed = subtitleObservations[rememberedIndex];
+                observed = SubtitleBoxLookahead::Measure(m_impl->subtitleBoxDetector, source,
+                    evidence, queued.activePictureIdentity, queued.frame.IsSourceDiscontinuity());
+                subtitleNewScanMs += observed.analysisMs; ++subtitleNewScanFrames;
+            }
+        }
         if (rememberedWindowTrace && rememberedIndex < rememberedWindowSamples.size())
         {
             auto& shadow = rememberedWindowSamples[rememberedIndex];
@@ -16917,6 +16963,29 @@ void LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
             }
         }
 
+        // Reuse raw measurements as this sliding window advances. Only current
+        // presentation consumes cue state; future scans do not advance it.
+        bool subtitleWindowCurrent = !subtitleObservations.empty() && !m_frameQueue.empty();
+        for (const auto& subtitle : subtitleObservations)
+        {
+            auto queued = std::find_if(m_frameQueue.begin(),m_frameQueue.end(),
+                [&subtitle](const QueuedFrame& candidate) {
+                    return !candidate.cadenceRepeat &&
+                        SameActivePictureFrameIdentity(candidate.activePictureIdentity,subtitle.identity);
+                });
+            if (queued == m_frameQueue.end()) { subtitleWindowCurrent = false; continue; }
+            queued->subtitleBoxObservation = subtitle;
+        }
+        if (subtitleWindowCurrent && SameActivePictureFrameIdentity(
+            m_frameQueue.front().activePictureIdentity,subtitleObservations.front().identity))
+        {
+            m_frameQueue.front().subtitleBoxPreview = SubtitleBoxLookahead::Resolve(
+                subtitleObservations.data(),subtitleObservations.size(),lookaheadPolicyGeneration,
+                m_activePictureTimeline.ContinuityGeneration());
+            m_frameQueue.front().subtitleBoxPreview.newScanMs = subtitleNewScanMs;
+            m_frameQueue.front().subtitleBoxPreview.newScanFrames = subtitleNewScanFrames;
+        }
+
 		for (const PreviewEvidence& preview : observations)
 		{
 			auto queued = std::find_if(m_frameQueue.begin(), m_frameQueue.end(),
@@ -17207,6 +17276,8 @@ void LibplaceboVideoRenderer::RenderLoop()
 		bool activePicturePreviewIdentityMatches = false;
 		uint64_t activePictureCurrentPolicyGeneration = 0;
 		ActivePictureFrameDecision activePicturePreviewDecision;
+        SubtitleBoxPreview subtitlePreview;
+        bool subtitlePreviewCurrent = false;
 		AlphaSourceCrop::BufferedPictureExpansionProof bufferedExpansion;
 		bool bufferedExpansionCurrent = false;
         GuardedRememberedEdgeReturnCertificate guardedReturn;
@@ -17311,6 +17382,7 @@ void LibplaceboVideoRenderer::RenderLoop()
 				m_frameQueue.front().activePicturePreviewDecisionAvailable;
 			activePicturePreviewDecision =
 				m_frameQueue.front().activePicturePreviewDecision;
+            subtitlePreview = m_frameQueue.front().subtitleBoxPreview;
 			bufferedExpansion = m_frameQueue.front().bufferedPictureExpansion;
             guardedReturn = m_frameQueue.front().guardedRememberedReturn;
 			enqueueQpc = m_frameQueue.front().enqueueQpc;
@@ -17455,6 +17527,9 @@ void LibplaceboVideoRenderer::RenderLoop()
 					m_activePictureTimeline.LookaheadPolicyGeneration();
 				m_impl->localBoundaryPolicyGeneration = activePictureCurrentPolicyGeneration;
 				m_impl->localBoundaryContinuityGeneration = m_activePictureTimeline.ContinuityGeneration();
+                subtitlePreviewCurrent = SubtitleBoxLookahead::IsCurrent(subtitlePreview,
+                    activePictureIdentity,activePictureCurrentPolicyGeneration,
+                    m_impl->localBoundaryContinuityGeneration);
 				activePicturePreviewPolicyMatches =
 					activePicturePreviewDecisionAvailable &&
 					activePicturePreviewDecision.lookaheadPolicyGeneration ==
@@ -17495,6 +17570,7 @@ void LibplaceboVideoRenderer::RenderLoop()
 					activePictureIdentity,
 					activePicturePreviewIdentityMatches
 						? &activePicturePreviewDecision : nullptr,
+                    subtitlePreviewCurrent ? &subtitlePreview : nullptr,
 					bufferedExpansionCurrent ? &bufferedExpansion : nullptr,
                     guardedReturnCurrent ? &guardedReturn : nullptr,
 					enqueueQpc,
@@ -17642,6 +17718,8 @@ void LibplaceboVideoRenderer::RenderLoop()
 					queued.activePicturePreviewEvidence = {};
 					queued.activePicturePreviewNearBlackEvaluated = false;
 					queued.activePicturePreviewNearBlack = false;
+                    queued.subtitleBoxObservation = {};
+                    queued.subtitleBoxPreview = {};
 					queued.bufferedPictureExpansion = {};
                     queued.guardedRememberedReturn = {};
 				}
@@ -17868,6 +17946,9 @@ void LibplaceboVideoRenderer::RenderLoop()
 						repeatFrame.generation = frameGeneration;
 						repeatFrame.sourceSequence = sourceSequence;
 						repeatFrame.activePictureIdentity = activePictureIdentity;
+                        repeatFrame.subtitleBoxPreview = subtitlePreview;
+                        repeatFrame.subtitleBoxPreview.newScanMs = 0.0;
+                        repeatFrame.subtitleBoxPreview.newScanFrames = 0;
 						repeatFrame.enqueueQpc = enqueueQpc;
 						repeatFrame.cadenceRepeat = true;
 						repeatFrame.cadenceActionId = correctionDecision.actionId;
