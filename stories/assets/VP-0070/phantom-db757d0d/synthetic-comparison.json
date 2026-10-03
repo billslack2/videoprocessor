@@ -1,0 +1,900 @@
+{
+  "1080p": {
+    "cases": {
+      "blank": {
+        "frames": [
+          18,
+          18
+        ],
+        "detected": [
+          0,
+          0
+        ],
+        "complete": [
+          0,
+          0
+        ],
+        "correct": [
+          18,
+          18
+        ],
+        "false_positives": [
+          0,
+          0
+        ],
+        "complete_onsets": [
+          0,
+          0
+        ]
+      },
+      "topbar": {
+        "frames": [
+          18,
+          18
+        ],
+        "detected": [
+          18,
+          18
+        ],
+        "complete": [
+          18,
+          18
+        ],
+        "correct": [
+          18,
+          18
+        ],
+        "false_positives": [
+          0,
+          0
+        ],
+        "complete_onsets": [
+          6,
+          6
+        ]
+      },
+      "topcross": {
+        "frames": [
+          18,
+          18
+        ],
+        "detected": [
+          18,
+          18
+        ],
+        "complete": [
+          15,
+          15
+        ],
+        "correct": [
+          15,
+          12
+        ],
+        "false_positives": [
+          0,
+          0
+        ],
+        "complete_onsets": [
+          5,
+          5
+        ]
+      },
+      "bottomcross": {
+        "frames": [
+          18,
+          18
+        ],
+        "detected": [
+          18,
+          18
+        ],
+        "complete": [
+          12,
+          18
+        ],
+        "correct": [
+          12,
+          9
+        ],
+        "false_positives": [
+          0,
+          0
+        ],
+        "complete_onsets": [
+          4,
+          6
+        ]
+      },
+      "bottomtwo": {
+        "frames": [
+          18,
+          18
+        ],
+        "detected": [
+          18,
+          18
+        ],
+        "complete": [
+          12,
+          15
+        ],
+        "correct": [
+          12,
+          15
+        ],
+        "false_positives": [
+          0,
+          0
+        ],
+        "complete_onsets": [
+          4,
+          5
+        ]
+      },
+      "upper_crossing_two": {
+        "frames": [
+          18,
+          18
+        ],
+        "detected": [
+          18,
+          18
+        ],
+        "complete": [
+          9,
+          15
+        ],
+        "correct": [
+          9,
+          15
+        ],
+        "false_positives": [
+          0,
+          0
+        ],
+        "complete_onsets": [
+          3,
+          5
+        ]
+      },
+      "bar": {
+        "frames": [
+          18,
+          18
+        ],
+        "detected": [
+          18,
+          18
+        ],
+        "complete": [
+          18,
+          18
+        ],
+        "correct": [
+          18,
+          18
+        ],
+        "false_positives": [
+          0,
+          0
+        ],
+        "complete_onsets": [
+          6,
+          6
+        ]
+      },
+      "short": {
+        "frames": [
+          18,
+          18
+        ],
+        "detected": [
+          18,
+          18
+        ],
+        "complete": [
+          18,
+          18
+        ],
+        "correct": [
+          18,
+          0
+        ],
+        "false_positives": [
+          0,
+          0
+        ],
+        "complete_onsets": [
+          6,
+          6
+        ]
+      },
+      "two_glyph": {
+        "frames": [
+          18,
+          18
+        ],
+        "detected": [
+          18,
+          18
+        ],
+        "complete": [
+          18,
+          18
+        ],
+        "correct": [
+          18,
+          0
+        ],
+        "false_positives": [
+          0,
+          0
+        ],
+        "complete_onsets": [
+          6,
+          6
+        ]
+      },
+      "picture": {
+        "frames": [
+          18,
+          18
+        ],
+        "detected": [
+          0,
+          0
+        ],
+        "complete": [
+          0,
+          0
+        ],
+        "correct": [
+          18,
+          18
+        ],
+        "false_positives": [
+          0,
+          0
+        ],
+        "complete_onsets": [
+          0,
+          0
+        ]
+      },
+      "menu": {
+        "frames": [
+          18,
+          18
+        ],
+        "detected": [
+          0,
+          0
+        ],
+        "complete": [
+          0,
+          0
+        ],
+        "correct": [
+          18,
+          18
+        ],
+        "false_positives": [
+          0,
+          0
+        ],
+        "complete_onsets": [
+          0,
+          0
+        ]
+      },
+      "left_title": {
+        "frames": [
+          18,
+          18
+        ],
+        "detected": [
+          0,
+          0
+        ],
+        "complete": [
+          0,
+          0
+        ],
+        "correct": [
+          18,
+          18
+        ],
+        "false_positives": [
+          0,
+          0
+        ],
+        "complete_onsets": [
+          0,
+          0
+        ]
+      },
+      "right_title": {
+        "frames": [
+          18,
+          18
+        ],
+        "detected": [
+          0,
+          0
+        ],
+        "complete": [
+          0,
+          0
+        ],
+        "correct": [
+          18,
+          18
+        ],
+        "false_positives": [
+          0,
+          0
+        ],
+        "complete_onsets": [
+          0,
+          0
+        ]
+      },
+      "left_title_with_subtitle": {
+        "frames": [
+          18,
+          18
+        ],
+        "detected": [
+          18,
+          18
+        ],
+        "complete": [
+          18,
+          18
+        ],
+        "correct": [
+          18,
+          0
+        ],
+        "false_positives": [
+          0,
+          0
+        ],
+        "complete_onsets": [
+          6,
+          6
+        ]
+      },
+      "right_title_with_subtitle": {
+        "frames": [
+          18,
+          18
+        ],
+        "detected": [
+          18,
+          18
+        ],
+        "complete": [
+          18,
+          18
+        ],
+        "correct": [
+          18,
+          0
+        ],
+        "false_positives": [
+          0,
+          0
+        ],
+        "complete_onsets": [
+          6,
+          6
+        ]
+      },
+      "continuous_two_line": {
+        "frames": [
+          18,
+          18
+        ],
+        "detected": [
+          18,
+          18
+        ],
+        "complete": [
+          12,
+          15
+        ],
+        "correct": [
+          12,
+          15
+        ],
+        "false_positives": [
+          0,
+          0
+        ],
+        "complete_onsets": [
+          4,
+          5
+        ]
+      }
+    },
+    "positive_complete": [
+      168,
+      186
+    ],
+    "positive_correct": [
+      168,
+      102
+    ],
+    "positive_frames": 198,
+    "negative_frames_including_gaps": 360,
+    "negative_false_boxes": 0,
+    "continuous_unique_boxes": [
+      3,
+      2
+    ],
+    "cost_ms": [
+      {
+        "p50": 1.70315,
+        "p95": 2.77643,
+        "p99": 3.242445,
+        "max": 3.6922
+      },
+      {
+        "p50": 2.1131,
+        "p95": 3.7078699999999993,
+        "p99": 4.100187999999999,
+        "max": 4.9551
+      }
+    ]
+  },
+  "4k": {
+    "cases": {
+      "blank": {
+        "frames": [
+          18,
+          18
+        ],
+        "detected": [
+          0,
+          0
+        ],
+        "complete": [
+          0,
+          0
+        ],
+        "correct": [
+          18,
+          18
+        ],
+        "false_positives": [
+          0,
+          0
+        ],
+        "complete_onsets": [
+          0,
+          0
+        ]
+      },
+      "topbar": {
+        "frames": [
+          18,
+          18
+        ],
+        "detected": [
+          18,
+          18
+        ],
+        "complete": [
+          18,
+          18
+        ],
+        "correct": [
+          18,
+          18
+        ],
+        "false_positives": [
+          0,
+          0
+        ],
+        "complete_onsets": [
+          6,
+          6
+        ]
+      },
+      "topcross": {
+        "frames": [
+          18,
+          18
+        ],
+        "detected": [
+          18,
+          18
+        ],
+        "complete": [
+          15,
+          15
+        ],
+        "correct": [
+          15,
+          12
+        ],
+        "false_positives": [
+          0,
+          0
+        ],
+        "complete_onsets": [
+          5,
+          5
+        ]
+      },
+      "bottomcross": {
+        "frames": [
+          18,
+          18
+        ],
+        "detected": [
+          18,
+          18
+        ],
+        "complete": [
+          18,
+          18
+        ],
+        "correct": [
+          15,
+          9
+        ],
+        "false_positives": [
+          0,
+          0
+        ],
+        "complete_onsets": [
+          6,
+          6
+        ]
+      },
+      "bottomtwo": {
+        "frames": [
+          18,
+          18
+        ],
+        "detected": [
+          18,
+          18
+        ],
+        "complete": [
+          12,
+          12
+        ],
+        "correct": [
+          12,
+          12
+        ],
+        "false_positives": [
+          0,
+          0
+        ],
+        "complete_onsets": [
+          4,
+          4
+        ]
+      },
+      "upper_crossing_two": {
+        "frames": [
+          18,
+          18
+        ],
+        "detected": [
+          18,
+          18
+        ],
+        "complete": [
+          12,
+          18
+        ],
+        "correct": [
+          12,
+          18
+        ],
+        "false_positives": [
+          0,
+          0
+        ],
+        "complete_onsets": [
+          4,
+          6
+        ]
+      },
+      "bar": {
+        "frames": [
+          18,
+          18
+        ],
+        "detected": [
+          18,
+          18
+        ],
+        "complete": [
+          18,
+          18
+        ],
+        "correct": [
+          18,
+          18
+        ],
+        "false_positives": [
+          0,
+          0
+        ],
+        "complete_onsets": [
+          6,
+          6
+        ]
+      },
+      "short": {
+        "frames": [
+          18,
+          18
+        ],
+        "detected": [
+          18,
+          18
+        ],
+        "complete": [
+          18,
+          18
+        ],
+        "correct": [
+          18,
+          18
+        ],
+        "false_positives": [
+          0,
+          0
+        ],
+        "complete_onsets": [
+          6,
+          6
+        ]
+      },
+      "two_glyph": {
+        "frames": [
+          18,
+          18
+        ],
+        "detected": [
+          18,
+          18
+        ],
+        "complete": [
+          18,
+          18
+        ],
+        "correct": [
+          0,
+          0
+        ],
+        "false_positives": [
+          0,
+          0
+        ],
+        "complete_onsets": [
+          6,
+          6
+        ]
+      },
+      "picture": {
+        "frames": [
+          18,
+          18
+        ],
+        "detected": [
+          0,
+          0
+        ],
+        "complete": [
+          0,
+          0
+        ],
+        "correct": [
+          18,
+          18
+        ],
+        "false_positives": [
+          0,
+          0
+        ],
+        "complete_onsets": [
+          0,
+          0
+        ]
+      },
+      "menu": {
+        "frames": [
+          18,
+          18
+        ],
+        "detected": [
+          0,
+          0
+        ],
+        "complete": [
+          0,
+          0
+        ],
+        "correct": [
+          18,
+          18
+        ],
+        "false_positives": [
+          0,
+          0
+        ],
+        "complete_onsets": [
+          0,
+          0
+        ]
+      },
+      "left_title": {
+        "frames": [
+          18,
+          18
+        ],
+        "detected": [
+          0,
+          0
+        ],
+        "complete": [
+          0,
+          0
+        ],
+        "correct": [
+          18,
+          18
+        ],
+        "false_positives": [
+          0,
+          0
+        ],
+        "complete_onsets": [
+          0,
+          0
+        ]
+      },
+      "right_title": {
+        "frames": [
+          18,
+          18
+        ],
+        "detected": [
+          0,
+          0
+        ],
+        "complete": [
+          0,
+          0
+        ],
+        "correct": [
+          18,
+          18
+        ],
+        "false_positives": [
+          0,
+          0
+        ],
+        "complete_onsets": [
+          0,
+          0
+        ]
+      },
+      "left_title_with_subtitle": {
+        "frames": [
+          18,
+          18
+        ],
+        "detected": [
+          18,
+          18
+        ],
+        "complete": [
+          18,
+          18
+        ],
+        "correct": [
+          18,
+          18
+        ],
+        "false_positives": [
+          0,
+          0
+        ],
+        "complete_onsets": [
+          6,
+          6
+        ]
+      },
+      "right_title_with_subtitle": {
+        "frames": [
+          18,
+          18
+        ],
+        "detected": [
+          18,
+          18
+        ],
+        "complete": [
+          18,
+          18
+        ],
+        "correct": [
+          18,
+          18
+        ],
+        "false_positives": [
+          0,
+          0
+        ],
+        "complete_onsets": [
+          6,
+          6
+        ]
+      },
+      "continuous_two_line": {
+        "frames": [
+          18,
+          18
+        ],
+        "detected": [
+          18,
+          18
+        ],
+        "complete": [
+          12,
+          12
+        ],
+        "correct": [
+          12,
+          12
+        ],
+        "false_positives": [
+          0,
+          0
+        ],
+        "complete_onsets": [
+          4,
+          4
+        ]
+      }
+    },
+    "positive_complete": [
+      177,
+      183
+    ],
+    "positive_correct": [
+      156,
+      153
+    ],
+    "positive_frames": 198,
+    "negative_frames_including_gaps": 360,
+    "negative_false_boxes": 0,
+    "continuous_unique_boxes": [
+      4,
+      3
+    ],
+    "cost_ms": [
+      {
+        "p50": 2.59,
+        "p95": 3.903845,
+        "p99": 4.238109999999997,
+        "max": 4.9491
+      },
+      {
+        "p50": 3.03795,
+        "p95": 4.534394999999999,
+        "p99": 4.904305999999997,
+        "max": 5.5297
+      }
+    ]
+  }
+}

@@ -2,6 +2,38 @@
 
 ## Status
 
+Blocked (2026-10-03), unchanged. Added the user's Phantom Menace recording as a
+repeatable actual-pixel regression and iterated with three reviewers. The new
+diagnostic proves bars independently, preserves partial crossings and both lines,
+recovers sampled-away punctuation and rejects mismatched picture highlights.
+
+Saved locally on `codex/subtitle-phantom` at
+`db757d0de6734efc66aec99f0f8f0a5dd0da7b25`. Feature-branch public upload is pending
+explicit approval after automatic review rejected it. Existing branches remain.
+
+Pinned x64 Release: **1,966/1,966 native tests**, including **81 subtitle tests**,
+and **82 Config checks** passed. Actual recording: 807/807 sampled positive frames
+and 2,018/2,018 every-capture-frame positives complete; 19 annotated cue intervals
+each keep one fixed box; 0/234 and 0/586 respective negative boxes. Three complete
+annotated cues have no captured-frame onset delay. Sixteen other positive
+intervals are interior-only, so they make no onset claim. Labels informed the
+iteration; this is regression evidence, not unseen or original-4K validation.
+
+Run `E:\codex\subtitle-phantom-test-db757d0d\START-SUBTITLE-TEST.cmd`.
+Playable green-box previews and a repeatable local recording-test launcher are
+in that isolated folder. Previous trial config/state copied unchanged and backed
+up; paired build hashes and exact config validated. No usual-install changes or
+playback launch. Broader synthetic scenery still produces incomplete/changing
+boxes, so production extraction/relocation remains blocked.
+
+[Validation and limits](../assets/VP-0070/phantom-db757d0d/validation.md),
+[test-copy receipt](../assets/VP-0070/phantom-db757d0d/test-copy.json),
+[sampled recording report](../assets/VP-0070/phantom-db757d0d/recording-23976.json),
+[every-frame recording report](../assets/VP-0070/phantom-db757d0d/recording-60.json),
+[broader corpus comparison](../assets/VP-0070/phantom-db757d0d/synthetic-comparison.json).
+
+## Previous lookahead trial (2026-10-02)
+
 Blocked (2026-10-02), as requested. The team implemented and independently reviewed
 queued-frame confirmation, current-frame bar proof across AR changes, both subtitle
 line orders, corner-title rejection and Config persistence. Saved/pushed at
