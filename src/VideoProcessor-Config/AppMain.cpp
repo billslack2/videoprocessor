@@ -7,6 +7,7 @@
 #include "ConfigEditorWindow.h"
 #include "Resource.h"
 #include "VpTheme.h"
+#include <ConfigurationRpcProtocol.h>
 
 #include <QApplication>
 #include <QCryptographicHash>
@@ -14,12 +15,164 @@
 #include <QFileInfo>
 #include <QImage>
 #include <QMessageBox>
+#include <QNetworkInterface>
+#include <QUdpSocket>
+#include <QSet>
 #include <QScreen>
+#include <QSettings>
 #include <QTimer>
 #include <QWinEventNotifier>
 
+#include <functional>
+#include <cwctype>
+#include <cstdint>
+#include <utility>
+
 namespace
 {
+struct FoundTarget
+{
+	QString instanceId;
+	QString label;
+	QString address;
+	quint16 port = 41686;
+	bool local = false;
+	QString vpVersion;
+};
+
+class LanTargetWatcher final : public QObject
+{
+	public:
+	explicit LanTargetWatcher(QObject* parent = nullptr) : QObject(parent)
+	{
+		settle_.setSingleShot(true);
+		connect(&socket_, &QUdpSocket::readyRead, this,
+			[this] { readReplies(); });
+		connect(&settle_, &QTimer::timeout, this, [this]
+		{
+			scanning_ = false;
+			const bool stillLooking = results_ && results_(found_);
+			if (rescanRequested_)
+			{
+				rescanRequested_ = false;
+				QTimer::singleShot(0, this, [this] { scan(); });
+			}
+			else periodic_.start(stillLooking ? 1500 : 15000);
+		});
+		periodic_.setSingleShot(true);
+		connect(&periodic_, &QTimer::timeout, this, [this] { scan(); });
+	}
+	void setResultsHandler(std::function<bool(const QList<FoundTarget>&)> handler)
+	{
+		results_ = std::move(handler);
+	}
+	void scan()
+	{
+		using namespace ConfigurationRpcProtocol;
+		if (scanning_)
+		{
+			rescanRequested_ = true;
+			return;
+		}
+		periodic_.stop();
+		if (socket_.state() != QAbstractSocket::BoundState &&
+			!socket_.bind(QHostAddress::AnyIPv4, 0))
+		{
+			const bool stillLooking = results_ && results_({});
+			periodic_.start(stillLooking ? 1500 : 15000);
+			return;
+		}
+		Frame query;
+		query.operation = static_cast<uint16_t>(Operation::DiscoveryQuery);
+		std::vector<uint8_t> bytes;
+		if (!Encode(query, bytes)) return;
+		found_.clear();
+		scanning_ = true;
+		QSet<QHostAddress> broadcasts;
+		broadcasts.insert(QHostAddress::Broadcast);
+		broadcasts.insert(QHostAddress::LocalHost);
+		for (const auto& adapter : QNetworkInterface::allInterfaces())
+		{
+			if (!(adapter.flags() & QNetworkInterface::IsUp) ||
+				!(adapter.flags() & QNetworkInterface::CanBroadcast)) continue;
+			for (const auto& address : adapter.addressEntries())
+				if (address.ip().protocol() == QAbstractSocket::IPv4Protocol &&
+					!address.broadcast().isNull())
+					broadcasts.insert(address.broadcast());
+		}
+		for (const auto& broadcast : broadcasts)
+			socket_.writeDatagram(reinterpret_cast<const char*>(bytes.data()),
+				static_cast<qint64>(bytes.size()), broadcast, 41687);
+		settle_.start(600);
+	}
+	private:
+	void readReplies()
+	{
+		using namespace ConfigurationRpcProtocol;
+		while (socket_.hasPendingDatagrams())
+		{
+			QByteArray datagram;
+			datagram.resize(static_cast<qsizetype>(
+				socket_.pendingDatagramSize()));
+			QHostAddress sender;
+			const qint64 received = socket_.readDatagram(datagram.data(),
+				datagram.size(), &sender);
+			Frame reply;
+			DiscoveryAdvertisement identity;
+			if (!scanning_ || received <= 0 || !Decode(
+				reinterpret_cast<const uint8_t*>(datagram.constData()),
+				static_cast<size_t>(received), reply) ||
+				!ParseDiscoveryReply(reply, identity)) continue;
+			const QString id = QString::fromUtf8(identity.instanceId);
+			const bool local = sender.isLoopback();
+			const QString version = QString::fromUtf8(identity.vpVersion);
+			FoundTarget candidate{ id,
+				QStringLiteral("%1 (%2) · %3").arg(
+					local ? QStringLiteral("This computer") :
+						QString::fromUtf8(identity.computerName),
+					sender.toString(), version),
+				sender.toString(), identity.rpcPort, local, version };
+			bool duplicate = false;
+			for (auto& target : found_)
+			{
+				if (target.instanceId != id) continue;
+				if (local && !target.local) target = candidate;
+				duplicate = true;
+				break;
+			}
+			if (!duplicate && found_.size() < 10)
+				found_.push_back(candidate);
+			// Loopback identifies the VP on this computer. Offer it as soon as
+			// it answers instead of waiting for the LAN collection interval.
+			if (local && results_) results_(found_);
+		}
+	}
+	QUdpSocket socket_;
+	QTimer settle_;
+	QTimer periodic_;
+	QList<FoundTarget> found_;
+	std::function<bool(const QList<FoundTarget>&)> results_;
+	bool scanning_ = false;
+	bool rescanRequested_ = false;
+};
+
+bool parseTargetAddress(const QString& value, QString& host, quint16& port)
+{
+	const QString trimmed = value.trimmed();
+	const int colon = trimmed.lastIndexOf(u':');
+	port = 41686;
+	host = trimmed;
+	if (colon > 0)
+	{
+		bool valid = false;
+		const uint parsed = trimmed.mid(colon + 1).toUInt(&valid);
+		if (!valid || parsed == 0 || parsed > 65535) return false;
+		host = trimmed.left(colon);
+		port = static_cast<quint16>(parsed);
+	}
+	return !host.isEmpty();
+}
+
 QString defaultConfigPath()
 {
     const QString beside = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("VideoProcessor.cfg"));
@@ -34,7 +187,8 @@ QString defaultConfigPath()
     {
         const QString installed = installation.filePath(
             QStringLiteral("VideoProcessor.cfg"));
-        if (QFileInfo::exists(installed))
+        if (QFileInfo::exists(installed) || QFileInfo::exists(
+            installation.filePath(QStringLiteral("VideoProcessor.exe"))))
             return QFileInfo(installed).absoluteFilePath();
     }
 
@@ -53,6 +207,28 @@ QString defaultConfigPath()
         if (!candidate.cdUp()) break;
     }
     return beside;
+}
+
+QString localVpInstanceId(const QString& configPath)
+{
+	// Match VP's stable discovery identity so a saved loopback target from
+	// earlier Config releases becomes the local file choice, even with VP off.
+	wchar_t computerName[256] = {};
+	DWORD length = ARRAYSIZE(computerName);
+	if (!GetComputerNameW(computerName, &length)) return {};
+	QString directory = QDir::toNativeSeparators(
+		QFileInfo(configPath).absolutePath());
+	if (!directory.endsWith(u'\\')) directory += u'\\';
+	std::wstring source(computerName, length);
+	source += L'|';
+	source += directory.toStdWString();
+	uint64_t hash = 1469598103934665603ull;
+	for (wchar_t character : source)
+	{
+		hash ^= static_cast<uint16_t>(std::towlower(character));
+		hash *= 1099511628211ull;
+	}
+	return QString::number(hash, 16);
 }
 
 quintptr parseOwner(const QString& value)
@@ -147,6 +323,11 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
         QApplication::setWindowIcon(QIcon(QPixmap::fromImage(QImage::fromHICON(icon))));
 
     QString configPath;
+	QString remoteHost;
+	QString remoteName;
+	quint16 remotePort = 41686;
+	bool offline = false;
+	bool explicitConfig = false;
     QString screenshotPath;
     int initialPage = 0;
     quintptr owner = 0;
@@ -161,7 +342,23 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
     for (int index = 1; index < arguments.size(); ++index)
     {
         if (arguments[index] == QStringLiteral("--config") && index + 1 < arguments.size())
-            configPath = arguments[++index];
+		{
+			configPath = arguments[++index];
+			explicitConfig = true;
+		}
+		else if (arguments[index] == QStringLiteral("--connect") && index + 1 < arguments.size())
+		{
+			if (!parseTargetAddress(arguments[++index], remoteHost, remotePort))
+			{
+				QMessageBox::warning(nullptr, QStringLiteral("Invalid address"),
+					QStringLiteral("Use --connect COMPUTER or --connect IPv4[:port]."));
+				return 2;
+			}
+		}
+		else if (arguments[index] == QStringLiteral("--offline"))
+			offline = true;
+		else if (arguments[index] == QStringLiteral("--discover"))
+			continue; // Retained for existing VP launch arguments.
         else if (arguments[index] == QStringLiteral("--owner") && index + 1 < arguments.size())
             owner = parseOwner(arguments[++index]);
         else if (arguments[index] == QStringLiteral("--owner-process") && index + 1 < arguments.size())
@@ -184,9 +381,35 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
     }
     if (configPath.isEmpty()) configPath = defaultConfigPath();
     if (!ownerBelongsToProcess(owner, ownerProcessId)) owner = 0;
+	if (remoteHost == QStringLiteral("127.0.0.1"))
+		remoteName = QStringLiteral("This computer");
+	const bool localAvailable = explicitConfig || offline || QFileInfo::exists(
+		QFileInfo(configPath).dir().filePath(QStringLiteral("VideoProcessor.exe")));
+	QSettings preferences;
+	QString rememberedTarget = preferences.value(
+		QStringLiteral("configRpc/selectedInstanceId")).toString();
+	QString rememberedLabel = preferences.value(
+		QStringLiteral("configRpc/selectedLabel")).toString();
+	if (localAvailable && rememberedTarget == localVpInstanceId(configPath))
+	{
+		rememberedTarget = QStringLiteral("local");
+		rememberedLabel = QStringLiteral("This computer");
+		preferences.setValue(QStringLiteral("configRpc/selectedInstanceId"),
+			rememberedTarget);
+		preferences.setValue(QStringLiteral("configRpc/selectedLabel"),
+			rememberedLabel);
+	}
+	if (rememberedLabel.isEmpty() &&
+		rememberedTarget.startsWith(QStringLiteral("manual:")))
+		rememberedLabel = preferences.value(
+			QStringLiteral("configRpc/manualHost")).toString();
+	const bool rememberRemote = !rememberedTarget.isEmpty() &&
+		rememberedTarget != QStringLiteral("local");
+	const bool noTarget = remoteHost.isEmpty() && !offline &&
+		(rememberRemote || !localAvailable);
 
     const std::wstring activationEventName = installationScopedEventName(
-        L"Local\\VideoProcessorConfigEditor.Activate.v1");
+		L"Local\\VideoProcessorConfigEditor.Activate.v1");
     HANDLE activationEvent = screenshotPath.isEmpty() ?
         CreateEventW(nullptr, FALSE, FALSE, activationEventName.c_str()) : nullptr;
     const bool existingInstance = activationEvent &&
@@ -198,8 +421,8 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
         // background warm-up must never pull focus from the user.
         if (!startInTray)
         {
-            const bool acknowledged = activateExistingWindow(
-                owner, ownerProcessId);
+			const bool acknowledged = remoteHost.isEmpty() &&
+				activateExistingWindow(owner, ownerProcessId);
             if (!acknowledged) SetEvent(activationEvent);
         }
         CloseHandle(activationEvent);
@@ -207,7 +430,29 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
         return 0;
     }
 
-    ConfigEditorWindow window(QFileInfo(configPath).absoluteFilePath(), owner);
+    ConfigEditorWindow window(QFileInfo(configPath).absoluteFilePath(), owner,
+		false, {}, {}, remoteHost, remotePort, remoteName, noTarget,
+		localAvailable, rememberedTarget, rememberedLabel);
+	std::unique_ptr<LanTargetWatcher> watcher;
+	if (screenshotPath.isEmpty() || !offline)
+	{
+		watcher = std::make_unique<LanTargetWatcher>();
+		LanTargetWatcher* const watcherPtr = watcher.get();
+		watcher->setResultsHandler([&window](const QList<FoundTarget>& found)
+		{
+			QList<ConfigEditorWindow::Target> choices;
+			for (const auto& target : found)
+				choices.push_back({ target.instanceId, target.label,
+					target.address, target.port, target.vpVersion, target.local });
+			window.setDiscoveredTargets(choices);
+			return window.awaitingTarget();
+		});
+		window.setTargetRefresh([watcherPtr] { watcherPtr->scan(); });
+		QTimer::singleShot(0, watcherPtr, [watcherPtr] { watcherPtr->scan(); });
+	}
+	if (noTarget)
+		QTimer::singleShot(5000, &window,
+			[&window] { window.finishInitialTargetSearch(); });
     std::unique_ptr<QWinEventNotifier> activationNotifier;
     if (activationEvent)
     {
@@ -228,7 +473,8 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
         // briefly showing an empty Win32 frame during startup.
         QTimer::singleShot(0, &window, [&window] { window.reveal(); });
     if (!screenshotPath.isEmpty())
-        QTimer::singleShot(400, &window, [&window, screenshotPath]
+		QTimer::singleShot(watcher ? 2500 : 400, &window,
+			[&window, screenshotPath]
         {
             window.grab().save(screenshotPath);
             QCoreApplication::quit();

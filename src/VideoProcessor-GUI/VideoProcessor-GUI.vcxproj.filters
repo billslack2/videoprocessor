@@ -18,6 +18,9 @@
     <ClCompile Include="VideoProcessorDlg.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="ConfigurationRpcServer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="WindowedVideoWindow.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -84,6 +87,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="VideoProcessorDlg.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ConfigurationRpcServer.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="StatsOverlayWindow.h">
