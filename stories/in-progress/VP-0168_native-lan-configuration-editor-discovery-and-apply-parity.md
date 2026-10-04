@@ -379,3 +379,32 @@ the real display update when I choose **Apply** or **OK**.
   current configuration model and trace the exact local Apply call chain,
   runtime-thread ownership, persistence conflict behavior, and restart
   reporting contract.
+
+## Screen/RPC deployment — 2026-10-03
+
+Deployed clean x64 Release commit `7853f23147ae5ec85e68190c64605f67502fca5c`
+from `codex/deploy-screen-rpc-no-subtitle-20261003` to `C:\Videoprocessor\vp`.
+The source starts from beta `c84863ea`, retains the previously deployed
+RPC/optional-AVX2 integration `fbe30e2a`, and adds the screen/zoom content
+eligibility fix from PR #126. The parked VP-0070 subtitle WIP commits
+`dc65626a` and `1a0d3b71` are not ancestors and were not included.
+
+The complete x64 Release solution build and all **1,906 native tests passed**.
+Config checks: **88 passed, one foreground-stability failure**. The exact same
+failure reproduced in the verified prior `fbe30e2a` Config test build; Config
+editor/core/tests sources are unchanged. The installed latest RPC Config editor
+and discovery DLL were retained and verified against their existing manifest.
+This deployment does not resolve the existing foreground-test limitation or
+qualify physical two-computer RPC behavior.
+
+Backed up and replaced the matching host/renderer pair, runtime receipts, and
+configuration documentation. Updated installation source/hash metadata. Both
+runtime hashes match the new build. `VideoProcessor.cfg` and
+`VideoProcessor.state` remain byte-identical; **no configuration values edited**.
+Backup: `C:\Videoprocessor\vp\deployment-backups\screen-rpc-20261003-235932-7853f231`.
+Playback was not started; live playback remains unverified. Story status remains
+In progress; VP-0070 remains Blocked.
+
+[Deployment receipt and hashes](../assets/VP-0168/screen-rpc-7853f231/deployment-receipt.json),
+[previous-build foreground failure](../assets/VP-0168/screen-rpc-7853f231/config-focus-baseline.log),
+[new-build foreground failure](../assets/VP-0168/screen-rpc-7853f231/config-focus-recheck.log).

@@ -1,0 +1,85 @@
+{
+  "sourceCommit": "7853f23147ae5ec85e68190c64605f67502fca5c",
+  "sourceFingerprint": "237fb658e509f2afb2e374315ae568ec9ee24170d8217c85e5c31c18a2e4dbc3",
+  "branch": "codex/deploy-screen-rpc-no-subtitle-20261003",
+  "betaCommit": "c84863eaa59e03fe218de824c34b7c0220c4fd87",
+  "previousDeployedCommit": "fbe30e2a1c9bde7831f67736e52048ef90e03b45",
+  "excludedSubtitleCommits": [
+    "dc65626a",
+    "1a0d3b718370fff128a29e972e78c7fec8ddb77e"
+  ],
+  "configuration": "Release",
+  "architecture": "x64",
+  "nativeTestsPassed": 1906,
+  "configChecksPassed": 88,
+  "configKnownFailure": "FAIL stable reveal endpoint survives hidden Qt window: Config lost foreground without user input after a settled reveal",
+  "configKnownFailureReproducedOnPreviousDeployedBuild": true,
+  "deployedAt": "2026-10-03T23:59:32.6118769-04:00",
+  "destination": "C:\\Videoprocessor\\vp",
+  "backup": "C:\\Videoprocessor\\vp\\deployment-backups\\screen-rpc-20261003-235932-7853f231",
+  "replaced": [
+    {
+      "path": "VideoProcessor.exe",
+      "existed": true,
+      "previousSha256": "82F944FFE12B9FFE6179A3D20D3FBC8AEA461027B7BD96E5ABFA161E596AC14E",
+      "sha256": "B6F8ED1B7793789CC9CF8E2A86B5EAFFE4A655E11A2252033B24C7C48CFB6EF4"
+    },
+    {
+      "path": "vprenderer/VideoProcessorVPRenderer.dll",
+      "existed": true,
+      "previousSha256": "B86DD12C4E18BEC7D8D122A511F120F4DDE1F168413DBB6CF3B48A6E0B751918",
+      "sha256": "2ADE9A10FA19C14BCFE8AAFC93B521509214623E4E251968C99B9169F5E7ECB4"
+    },
+    {
+      "path": "VideoProcessor-GUI.exe.runtime.json",
+      "existed": true,
+      "previousSha256": "81E2E0D5B1D2BF4E564B9713411A0748037ACC81A8D2E107C83C306EFE79F15C",
+      "sha256": "ABF8DD47FD231EA8F54A9F4975CDFB2F93B13217E1BD86B3B1926EA671F7E76E"
+    },
+    {
+      "path": "vprenderer/VideoProcessorVPRenderer.dll.runtime.json",
+      "existed": true,
+      "previousSha256": "FED6EDFD07A5E48C924C48174A1E547DCF312016FACC437C5A71BD8CEF3C34D1",
+      "sha256": "34EF4E8A6C139178F542DB64D18FDBD072058EBBC3DCAAE2AFAE6684AC0B5E4C"
+    },
+    {
+      "path": "CONFIGURATION.html",
+      "existed": true,
+      "previousSha256": "3DF71EE74F2BB29CC00CA9E517D30E9F629D5949E2B43C0DA7872748DA30B5FF",
+      "sha256": "FCEBC6165DD24214C3CBA402A9619DA166CD2799541B38BCA41F2DCD4FA01235"
+    },
+    {
+      "path": "docs/CONFIGURATION.html",
+      "existed": true,
+      "previousSha256": "00F94749C7AC9FE53FE651C98B4855FCC7F90674353E2D755B0831FCCBBC207B",
+      "sha256": "FCEBC6165DD24214C3CBA402A9619DA166CD2799541B38BCA41F2DCD4FA01235"
+    }
+  ],
+  "retainedRpcArtifacts": [
+    {
+      "path": "config/VideoProcessorConfig.exe",
+      "sha256": "F808E949F36BEF0BE402125EE3E4D3C7D972C84B8C448A3B2A3AA964D3C1EEBB",
+      "builtFrom": "fbe30e2a1c9bde7831f67736e52048ef90e03b45",
+      "reason": "Latest RPC sources unchanged in new deployment commit"
+    },
+    {
+      "path": "config/VideoProcessorConfigDiscovery.dll",
+      "sha256": "63B6E6DCD81DA53A9F80C0C0A1A6C844251818C7F5FE9D186B5CD5AC26CA410D",
+      "builtFrom": "fbe30e2a1c9bde7831f67736e52048ef90e03b45",
+      "reason": "Latest RPC sources unchanged in new deployment commit"
+    }
+  ],
+  "preservedOperatorData": [
+    {
+      "path": "VideoProcessor.cfg",
+      "sha256": "6F62749F4A84DAF6AD4E0C805BFEEA359F91BFF58F50241AA74564CB0293F23C"
+    },
+    {
+      "path": "VideoProcessor.state",
+      "sha256": "8B01FD956AE2C03D621B4D8E5BB46CA5192B83B3B59D8CAF6FE79665F23FAD3B"
+    }
+  ],
+  "configurationEdits": [],
+  "playbackStarted": false,
+  "livePlaybackVerified": false
+}
