@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|x64"><Configuration>Debug</Configuration><Platform>x64</Platform></ProjectConfiguration>
@@ -33,11 +33,11 @@
   <PropertyGroup><OutDir>$(ProjectDir)x64\$(Configuration)\</OutDir><IntDir>$(ProjectDir)x64\$(Configuration)\</IntDir></PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile><WarningLevel>Level3</WarningLevel><SDLCheck>true</SDLCheck><ConformanceMode>true</ConformanceMode><LanguageStandard>stdcpp17</LanguageStandard><PreprocessorDefinitions>_DEBUG;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions><AdditionalIncludeDirectories>..\VideoProcessor-Lib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories></ClCompile>
-    <Link><SubSystem>Windows</SubSystem><GenerateDebugInformation>true</GenerateDebugInformation><AdditionalDependencies>ole32.lib;oleaut32.lib;shell32.lib;comctl32.lib;strmiids.lib;Propsys.lib;%(AdditionalDependencies)</AdditionalDependencies></Link>
+    <Link><SubSystem>Windows</SubSystem><GenerateDebugInformation>true</GenerateDebugInformation><AdditionalDependencies>ole32.lib;oleaut32.lib;shell32.lib;comctl32.lib;strmiids.lib;Propsys.lib;LibMWCaptured.lib;%(AdditionalDependencies)</AdditionalDependencies><AdditionalLibraryDirectories>..\..\3rdparty\magewell\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories></Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile><WarningLevel>Level3</WarningLevel><SDLCheck>true</SDLCheck><ConformanceMode>true</ConformanceMode><LanguageStandard>stdcpp17</LanguageStandard><FunctionLevelLinking>true</FunctionLevelLinking><PreprocessorDefinitions>NDEBUG;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions><AdditionalIncludeDirectories>..\VideoProcessor-Lib;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories></ClCompile>
-    <Link><SubSystem>Windows</SubSystem><GenerateDebugInformation>true</GenerateDebugInformation><AdditionalDependencies>ole32.lib;oleaut32.lib;shell32.lib;comctl32.lib;strmiids.lib;Propsys.lib;%(AdditionalDependencies)</AdditionalDependencies></Link>
+    <Link><SubSystem>Windows</SubSystem><GenerateDebugInformation>true</GenerateDebugInformation><AdditionalDependencies>ole32.lib;oleaut32.lib;shell32.lib;comctl32.lib;strmiids.lib;Propsys.lib;LibMWCapture.lib;%(AdditionalDependencies)</AdditionalDependencies><AdditionalLibraryDirectories>..\..\3rdparty\magewell\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories></Link>
   </ItemDefinitionGroup>
   <ItemGroup><ClCompile Include="ConfigurationDiscoveryBridge.cpp" /></ItemGroup>
   <ItemGroup>

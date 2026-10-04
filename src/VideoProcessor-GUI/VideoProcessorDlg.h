@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright(C) 2021 Dennis Fleurbaaij <mail@dennisfleurbaaij.com>
  *
  * This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, version 3.
@@ -23,6 +23,7 @@
 #include <vector>
 
 #include <blackmagic_decklink/BlackMagicDeckLinkCaptureDeviceDiscoverer.h>
+#include <magewell/MagewellCaptureDeviceDiscoverer.h>
 #include <PixelValueRange.h>
 #include <OutputReadinessController.h>
 #include <ShortcutRepeatGuard.h>
@@ -580,6 +581,7 @@ protected:
 	//
 
 	CComPtr<BlackMagicDeckLinkCaptureDeviceDiscoverer> m_blackMagicDeviceDiscoverer;
+	CComPtr<MagewellCaptureDeviceDiscoverer> m_magewellDeviceDiscoverer;
 
 	std::set<ACaptureDeviceComPtr> m_captureDevices;
 	CComPtr<ACaptureDevice>	m_captureDevice;

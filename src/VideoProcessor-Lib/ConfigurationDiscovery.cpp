@@ -7,6 +7,8 @@
 
 #include <DeckLinkAPI_h.h>
 
+#include <LibMWCapture/MWCapture.h>
+
 #include <algorithm>
 
 namespace
@@ -62,6 +64,132 @@ namespace
 				}
 		}
 	}
+
+	// The Magewell SDK reports names as ANSI. Product names are plain ASCII,
+	// so a direct widening avoids any dependency on the active code page.
+	std::wstring WidenAscii(const CHAR* value, size_t capacity)
+	{
+		std::wstring widened;
+		for (size_t index = 0; index < capacity && value[index] != '\0'; ++index)
+			widened.push_back(static_cast<wchar_t>(
+				static_cast<unsigned char>(value[index])));
+		return widened;
+	}
+
+	// Mirrors the DeckLink convention: a single device is named plainly and
+	// multiple devices carry a one-based suffix so each entry stays unique.
+	std::wstring MagewellDisplayName(
+		const MWCAP_CHANNEL_INFO& info, int index, int channelCount)
+	{
+		std::wstring name = WidenAscii(
+			info.szProductName, sizeof(info.szProductName));
+		if (name.empty())
+			name = L"Magewell Capture";
+		if (channelCount > 1)
+			name += L" (" + std::to_wstring(index + 1) + L")";
+		return name;
+	}
+
+	// Magewell devices are enumerated through the MWCapture SDK rather than
+	// through COM. The SDK instance is opened and closed inside this call
+	// because configuration discovery is a short-lived query, not a session.
+	void AppendMagewellCaptureDeviceNames(std::vector<std::wstring>& names)
+	{
+		if (!MWCaptureInitInstance())
+			return;
+
+		if (MWRefreshDevice() != MW_SUCCEEDED)
+		{
+			MWCaptureExitInstance();
+			return;
+		}
+
+		const int channelCount = MWGetChannelCount();
+		for (int index = 0; index < channelCount; ++index)
+		{
+			MWCAP_CHANNEL_INFO info = {};
+			if (MWGetChannelInfoByIndex(index, &info) != MW_SUCCEEDED)
+				continue;
+
+			names.emplace_back(
+				MagewellDisplayName(info, index, channelCount));
+		}
+
+		MWCaptureExitInstance();
+	}
+
+	// Reports the physical connectors of a Magewell channel using the same
+	// connection labels the DeckLink path produces, so the configuration
+	// editor presents one consistent vocabulary regardless of vendor.
+	std::vector<std::wstring> MagewellCaptureConnectionNames(
+		const std::wstring& captureDeviceName)
+	{
+		std::vector<std::wstring> names;
+		if (!MWCaptureInitInstance())
+			return names;
+
+		if (MWRefreshDevice() != MW_SUCCEEDED)
+		{
+			MWCaptureExitInstance();
+			return names;
+		}
+
+		const int channelCount = MWGetChannelCount();
+		for (int index = 0; index < channelCount; ++index)
+		{
+			MWCAP_CHANNEL_INFO info = {};
+			if (MWGetChannelInfoByIndex(index, &info) != MW_SUCCEEDED)
+				continue;
+			if (_wcsicmp(MagewellDisplayName(info, index, channelCount).c_str(),
+				captureDeviceName.c_str()) != 0)
+				continue;
+
+			WCHAR path[128] = {};
+			if (MWGetDevicePath(index, path) != MW_SUCCEEDED)
+				break;
+
+			const HCHANNEL channel = MWOpenChannelByPath(path);
+			if (channel == nullptr)
+				break;
+
+			DWORD sources[16] = {};
+			DWORD sourceCount = ARRAYSIZE(sources);
+			if (MWGetVideoInputSourceArray(channel, sources, &sourceCount)
+				== MW_SUCCEEDED)
+			{
+				DWORD seen = 0;
+				for (DWORD source = 0; source < sourceCount; ++source)
+				{
+					const DWORD type = INPUT_TYPE(sources[source]);
+					if ((seen & type) != 0)
+						continue;
+					seen |= type;
+
+					switch (type)
+					{
+					case MWCAP_VIDEO_INPUT_TYPE_HDMI:
+						names.emplace_back(L"HDMI"); break;
+					case MWCAP_VIDEO_INPUT_TYPE_SDI:
+						names.emplace_back(L"SDI"); break;
+					case MWCAP_VIDEO_INPUT_TYPE_COMPONENT:
+						names.emplace_back(L"Component"); break;
+					case MWCAP_VIDEO_INPUT_TYPE_CVBS:
+						names.emplace_back(L"Composite"); break;
+					case MWCAP_VIDEO_INPUT_TYPE_YC:
+						names.emplace_back(L"S-Video"); break;
+					default:
+						break;
+					}
+				}
+			}
+
+			MWCloseChannel(channel);
+			break;
+		}
+
+		MWCaptureExitInstance();
+		return names;
+	}
 }
 
 std::vector<std::wstring> ConfigurationDiscovery::RendererNames(bool hideLegacyRenderers)
@@ -93,20 +221,25 @@ std::vector<std::wstring> ConfigurationDiscovery::CaptureDeviceNames()
 {
 	std::vector<std::wstring> names;
 	CComPtr<IDeckLinkIterator> iterator;
+	// A machine may have one vendor's card, the other, or both. A missing
+	// vendor runtime is a normal condition here, not an error, so each
+	// backend is enumerated independently and contributes what it finds.
 	if (CoCreateInstance(CLSID_CDeckLinkIterator, nullptr, CLSCTX_ALL,
-		IID_IDeckLinkIterator, reinterpret_cast<void**>(&iterator)) != S_OK)
-		return names;
-	for (;;)
+		IID_IDeckLinkIterator, reinterpret_cast<void**>(&iterator)) == S_OK)
 	{
-		CComPtr<IDeckLink> device;
-		if (iterator->Next(&device) != S_OK || !device) break;
-		BSTR displayName = nullptr;
-		if (device->GetDisplayName(&displayName) == S_OK && displayName)
+		for (;;)
 		{
-			names.emplace_back(displayName);
-			SysFreeString(displayName);
+			CComPtr<IDeckLink> device;
+			if (iterator->Next(&device) != S_OK || !device) break;
+			BSTR displayName = nullptr;
+			if (device->GetDisplayName(&displayName) == S_OK && displayName)
+			{
+				names.emplace_back(displayName);
+				SysFreeString(displayName);
+			}
 		}
 	}
+	AppendMagewellCaptureDeviceNames(names);
 	return names;
 }
 
@@ -117,7 +250,7 @@ std::vector<std::wstring> ConfigurationDiscovery::CaptureConnectionNames(
 	CComPtr<IDeckLinkIterator> iterator;
 	if (CoCreateInstance(CLSID_CDeckLinkIterator, nullptr, CLSCTX_ALL,
 		IID_IDeckLinkIterator, reinterpret_cast<void**>(&iterator)) != S_OK)
-		return names;
+		return MagewellCaptureConnectionNames(captureDeviceName);
 	for (;;)
 	{
 		CComPtr<IDeckLink> device;
@@ -146,7 +279,7 @@ std::vector<std::wstring> ConfigurationDiscovery::CaptureConnectionNames(
 				names.emplace_back(connection.second);
 		return names;
 	}
-	return names;
+	return MagewellCaptureConnectionNames(captureDeviceName);
 }
 
 std::vector<std::wstring> ConfigurationDiscovery::ActiveMonitorNames()
