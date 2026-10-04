@@ -4,6 +4,7 @@
 #include <ConfigFile.h>
 #include <ConfigurationIdentity.h>
 #include <ConfigurationApplyPolicy.h>
+#include <ConfigurationRpcProtocol.h>
 #include <RendererResetPolicy.h>
 #include "CppUnitTest.h"
 
@@ -46,6 +47,124 @@ namespace VideoProcessorTest
 	TEST_CLASS(ConfigEditorCoreTests)
 	{
 	public:
+		TEST_METHOD(ConfigurationRpcDiscoveryReplyRequiresCompleteIdentity)
+		{
+			using namespace ConfigurationRpcProtocol;
+			const DiscoveryAdvertisement offered{
+				"host-install-42", "LIVINGROOM", "v1.3.005-beta", 41686 };
+			Frame reply;
+			Assert::IsTrue(BuildDiscoveryReply(offered, reply));
+			std::vector<uint8_t> bytes;
+			Assert::IsTrue(Encode(reply, bytes));
+			Frame decoded;
+			Assert::IsTrue(Decode(bytes.data(), bytes.size(), decoded));
+			DiscoveryAdvertisement parsed;
+			Assert::IsTrue(ParseDiscoveryReply(decoded, parsed));
+			Assert::AreEqual(offered.instanceId, parsed.instanceId);
+			Assert::AreEqual(offered.computerName, parsed.computerName);
+			Assert::AreEqual(offered.vpVersion, parsed.vpVersion);
+			Assert::IsTrue(offered.rpcPort == parsed.rpcPort);
+			decoded.payload.push_back(0);
+			Assert::IsFalse(ParseDiscoveryReply(decoded, parsed));
+			Assert::IsFalse(BuildDiscoveryReply(
+				{ "", "LIVINGROOM", "v1.3.005-beta", 41686 }, reply));
+		}
+
+		TEST_METHOD(TargetStagesCandidateWithLogicalConfigPathBeforeSafeSave)
+		{
+			const std::wstring path = MakeTemporaryConfigPath(L"rpc");
+			const std::wstring stagePath = path + L".stage";
+			const std::string original =
+				"# preserve this note\r\n[command_line]\r\nstartminimized: false\r\n";
+			const std::string candidate =
+				"# preserve this note\r\n[command_line]\r\nstartminimized: true\r\n";
+			WriteBytes(path, original);
+			WriteBytes(stagePath, candidate);
+			const auto narrow = [](const std::wstring& wide)
+			{
+				const int length = WideCharToMultiByte(CP_ACP, 0,
+					wide.c_str(), -1, nullptr, 0, nullptr, nullptr);
+				std::string result(static_cast<size_t>(length), '\0');
+				WideCharToMultiByte(CP_ACP, 0, wide.c_str(), -1,
+					&result[0], length, nullptr, nullptr);
+				result.pop_back();
+				return result;
+			};
+			ConfigFile staged;
+			Assert::IsTrue(staged.LoadStagedCandidate(narrow(stagePath),
+				narrow(path)));
+			Assert::AreEqual(narrow(path), staged.GetLoadedPath());
+			Assert::AreEqual(original, ReadBytes(path));
+			ConfigEditorCore::ConfigDocument document;
+			std::wstring error;
+			Assert::IsTrue(document.Load(path, error), error.c_str());
+			document.ReplaceContents(candidate);
+			Assert::AreEqual(original, document.loadedBytes);
+			Assert::AreEqual(candidate, document.Serialize());
+			ConfigEditorCore::SaveResult save;
+			const bool saved = ConfigEditorCore::SaveSafely(document, save, error);
+			if (!saved) Logger::WriteMessage(error.c_str());
+			Assert::IsTrue(saved, error.c_str());
+			Assert::AreEqual(candidate, ReadBytes(path));
+			DeleteFileW(stagePath.c_str());
+			DeleteFileW(path.c_str());
+		}
+
+		TEST_METHOD(ConfigurationRpcRejectsMalformedAndOversizedFrames)
+		{
+			using namespace ConfigurationRpcProtocol;
+			Frame request;
+			request.operation = static_cast<uint16_t>(Operation::ApplyConfig);
+			Assert::IsTrue(WriteString(request.payload,
+				"# exact bytes\r\n[general]\r\nrenderer: alpha\r\n"));
+			std::vector<uint8_t> wire;
+			Assert::IsTrue(Encode(request, wire));
+			Frame decoded;
+			Assert::IsTrue(Decode(wire.data(), wire.size(), decoded));
+			Assert::IsTrue(request.operation == decoded.operation);
+			size_t cursor = 0;
+			std::string candidate;
+			Assert::IsTrue(ReadString(decoded.payload, cursor, candidate));
+			Assert::AreEqual(std::string(
+				"# exact bytes\r\n[general]\r\nrenderer: alpha\r\n"), candidate);
+			Assert::IsTrue(cursor == decoded.payload.size());
+			Assert::IsFalse(Decode(wire.data(), wire.size() - 1, decoded));
+			const uint16_t incompatibleVersion = Version + 1;
+			wire[4] = static_cast<uint8_t>(incompatibleVersion >> 8);
+			wire[5] = static_cast<uint8_t>(incompatibleVersion);
+			Assert::IsFalse(Decode(wire.data(), wire.size(), decoded));
+			wire[4] = static_cast<uint8_t>(Version >> 8);
+			wire[5] = static_cast<uint8_t>(Version);
+			wire[8] = 0xff;
+			uint32_t payloadBytes = 0;
+			Assert::IsFalse(DecodeHeader(wire.data(), wire.size(),
+				decoded.operation, payloadBytes));
+		}
+
+		TEST_METHOD(RemoteDocumentLoadsExactBytesWithoutClientFileAccess)
+		{
+			const std::wstring targetPath =
+				L"Z:\\target-only\\VideoProcessor.cfg";
+			const std::string original =
+				"# operator note\r\n[general]\r\nrenderer: alpha # keep comment\r\n"
+				"[unknown.section]\r\ncustom: unchanged\r\n";
+			ConfigEditorCore::ConfigDocument document;
+			document.LoadBytes(targetPath, original);
+			Assert::AreEqual(targetPath, document.path);
+			Assert::AreEqual(original, document.Serialize());
+			Assert::AreEqual(original, document.loadedBytes);
+			Assert::IsTrue(document.existedAtLoad);
+			Assert::IsTrue(document.remoteSource);
+			Assert::IsTrue(document.SetKnown("general", "renderer", "madvr"));
+			Assert::IsTrue(document.Serialize().find(
+				"[unknown.section]\r\ncustom: unchanged") != std::string::npos);
+			ConfigEditorCore::SaveResult result;
+			std::wstring error;
+			Assert::IsFalse(ConfigEditorCore::SaveSafely(document, result, error,
+				true));
+			Assert::IsTrue(error.find(L"RPC target") != std::wstring::npos);
+		}
+
         TEST_METHOD(RendererAndEditorConfigurationIdentityAgreeAcrossTextFormatsAndEdits)
         {
             const std::wstring path = MakeTemporaryConfigPath(L"vpc");

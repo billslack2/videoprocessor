@@ -1,5 +1,6 @@
 #define NOMINMAX
 #define WIN32_LEAN_AND_MEAN
+#include <winsock2.h>
 #include <windows.h>
 
 #include "ConfigEditorWindow.h"
@@ -9,6 +10,7 @@
 #include <ActiveProfileStatus.h>
 #include <ConfigurationLiveApply.h>
 #include <ConfigurationIdentity.h>
+#include <ConfigurationRpcProtocol.h>
 #include <RendererProfileConfig.h>
 #include <RendererConfigView.h>
 
@@ -42,10 +44,12 @@
 #include <QListView>
 #include <QMessageBox>
 #include <QPlainTextEdit>
+#include <QProgressBar>
 #include <QPushButton>
 #include <QRect>
 #include <QScrollArea>
 #include <QScrollBar>
+#include <QSettings>
 #include <QShortcut>
 #include <QSpinBox>
 #include <QStandardItemModel>
@@ -54,10 +58,12 @@
 #include <QTableWidget>
 #include <QTabBar>
 #include <QTemporaryDir>
+#include <QThread>
 #include <QTimer>
 #include <QToolButton>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cstdint>
@@ -5885,6 +5891,474 @@ output_range: full
     require(readBytes(path) == saved, "Migration/save is not idempotent");
 }
 
+void testTargetDropdownRefreshesInline()
+{
+    QTemporaryDir directory;
+    const QString path = copyFixture(directory);
+    ConfigEditorWindow window(path, 0, true);
+    QList<ConfigEditorWindow::Target> discovered = {
+        { QStringLiteral("remote-a"), QStringLiteral("STUDY (192.168.1.20)"),
+            QStringLiteral("192.168.1.20"), 41686 },
+        { QStringLiteral("remote-b"), QStringLiteral("DEN (192.168.1.21)"),
+            QStringLiteral("192.168.1.21"), 41686 }
+    };
+    int scans = 0;
+    window.setTargetRefresh([&] { ++scans; });
+    window.setDiscoveredTargets(discovered);
+    auto* choice = requireControl<QComboBox>(window, "config.targetChoice");
+    auto* refresh = requireControl<QToolButton>(window, "config.refreshTargets");
+    auto* caption = requireControl<QLabel>(window, "configTargetCaption");
+    require(choice->currentText() == QStringLiteral("This computer") &&
+        choice->count() == 4 &&
+        choice->itemText(1).startsWith(QStringLiteral("STUDY")) &&
+        choice->itemText(2).startsWith(QStringLiteral("DEN")),
+        "Discovered targets were not offered in the header dropdown");
+    require(caption->text() == QStringLiteral("Configure VP:") &&
+        choice->property("targetSelector").toBool() &&
+        refresh->property("targetRefresh").toBool() &&
+        !refresh->icon().isNull(),
+        "The compact target label or styled refresh control is missing");
+    choice->ensurePolished();
+    caption->ensurePolished();
+    require(choice->height() == 24 && refresh->height() == 24 &&
+        refresh->iconSize() == QSize(14, 14) &&
+        choice->font().pixelSize() == caption->font().pixelSize(),
+        "Target selector and refresh control are larger than the caption");
+    require(refresh->toolTip().contains(QStringLiteral("Refresh")) &&
+        scans == 0, "Target refresh ran before the user requested it");
+    window.show();
+    QApplication::processEvents();
+    choice->showPopup();
+    QApplication::processEvents();
+    auto* popup = choice->view();
+    const int finalRowBottom = popup->visualRect(
+        popup->model()->index(choice->count() - 1, 0)).bottom();
+    require(popup->viewport()->height() > finalRowBottom &&
+        !popup->horizontalScrollBar()->isVisible(),
+        "The target popup clipped its final choice");
+    const QString captures = qEnvironmentVariable("VP_CONFIG_REVIEW_IMAGES");
+    if (!captures.isEmpty())
+        popup->window()->grab().save(QDir(captures).filePath(
+            QStringLiteral("target-popup-after-fix.png")));
+    choice->hidePopup();
+    choice->clearFocus();
+    QApplication::processEvents();
+    const QImage selector = choice->grab().toImage();
+    require(selector.pixel(0, selector.height() / 2) ==
+            selector.pixel(selector.width() - 1, selector.height() / 2),
+        "The target selector's right border is missing");
+    if (!captures.isEmpty())
+        selector.save(QDir(captures).filePath(
+            QStringLiteral("target-selector-corners.png")));
+    const QColor leftCorner(selector.pixel(1, 1));
+    const QColor rightCorner(selector.pixel(selector.width() - 2, 1));
+    require(rightCorner.red() > 25 &&
+            std::abs(leftCorner.red() - rightCorner.red()) < 20 &&
+            std::abs(leftCorner.green() - rightCorner.green()) < 20,
+        "The arrow fill clipped the target selector's rounded corner");
+    window.hide();
+    discovered.removeLast();
+    refresh->click();
+    window.setDiscoveredTargets(discovered);
+    require(scans == 1 && choice->count() == 3 &&
+        choice->currentText() == QStringLiteral("This computer") &&
+        QApplication::activeModalWidget() == nullptr,
+        "Refreshing targets did not update the dropdown in place");
+    window.setDiscoveredTargets({
+        { QStringLiteral("local-installation"), QStringLiteral("This computer (127.0.0.1)"),
+            QStringLiteral("127.0.0.1"), 1 }, discovered.front() });
+    require(choice->count() == 3,
+        "The current VP appeared twice after LAN discovery");
+    window.setDiscoveredTargets({
+        { QStringLiteral("local-installation"), QStringLiteral("This computer (192.168.1.25)"),
+			QStringLiteral("192.168.1.25"), 1, {}, true }, discovered.front() });
+    require(choice->count() == 3 &&
+        choice->currentText() == QStringLiteral("This computer"),
+        "A restarted VP was treated as a second target after its address changed");
+}
+
+void exerciseRemoteTargetSwitch(bool automatic)
+{
+    using namespace ConfigurationRpcProtocol;
+    QTemporaryDir directory;
+    const QString path = copyFixture(directory);
+    const std::string remoteBytes = readBytes(path).toStdString();
+    WSADATA data{};
+    require(WSAStartup(MAKEWORD(2, 2), &data) == 0,
+        "Cannot initialize the RPC stall fixture");
+    struct WinsockCleanup { ~WinsockCleanup() { WSACleanup(); } } cleanup;
+    const SOCKET listener = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    require(listener != INVALID_SOCKET, "Cannot open the RPC stall listener");
+    sockaddr_in address{};
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    address.sin_port = 0;
+    require(bind(listener, reinterpret_cast<sockaddr*>(&address),
+        sizeof(address)) == 0 && listen(listener, 1) == 0,
+        "Cannot listen for the stalled RPC request");
+    int addressSize = sizeof(address);
+    require(getsockname(listener, reinterpret_cast<sockaddr*>(&address),
+        &addressSize) == 0, "Cannot read the RPC stall port");
+    std::thread stalledServer([listener, path = path.toStdString(), remoteBytes]
+    {
+        const auto receiveExact = [](SOCKET socket, uint8_t* bytes, size_t count)
+        {
+            while (count != 0)
+            {
+                const int received = recv(socket,
+                    reinterpret_cast<char*>(bytes), static_cast<int>(count), 0);
+                if (received <= 0) return false;
+                bytes += received;
+                count -= received;
+            }
+            return true;
+        };
+        for (int request = 0; request < 3; ++request)
+        {
+            fd_set readable;
+            FD_ZERO(&readable);
+            FD_SET(listener, &readable);
+            timeval timeout{ 2, 0 };
+            if (select(0, &readable, nullptr, nullptr, &timeout) <= 0) break;
+            const SOCKET client = accept(listener, nullptr, nullptr);
+            if (client == INVALID_SOCKET) break;
+            std::array<uint8_t, HeaderBytes> header{};
+            uint8_t compatibility[2]{};
+            if (!receiveExact(client, header.data(), header.size()) ||
+                !receiveExact(client, compatibility, sizeof(compatibility)))
+            {
+                closesocket(client);
+                break;
+            }
+            const uint16_t operation = Read16(header.data() + 6);
+            Frame response;
+            response.operation = operation | ResponseFlag;
+            if (operation == static_cast<uint16_t>(Operation::GetCapabilities))
+            {
+                Write16(response.payload, ConfigurationCompatibilityVersion);
+                WriteString(response.payload, "1.3.test");
+                for (int list = 0; list < 6; ++list)
+                    Write32(response.payload, 0);
+            }
+            else if (operation == static_cast<uint16_t>(Operation::GetConfig))
+            {
+                WriteString(response.payload, path);
+                WriteString(response.payload, remoteBytes);
+            }
+            std::vector<uint8_t> wire;
+            Encode(response, wire);
+            if (request == 0)
+                std::this_thread::sleep_for(std::chrono::milliseconds(450));
+            size_t sent = 0;
+            while (sent < wire.size())
+            {
+                const int count = send(client,
+                    reinterpret_cast<const char*>(wire.data() + sent),
+                    static_cast<int>(wire.size() - sent), 0);
+                if (count <= 0) break;
+                sent += count;
+            }
+            closesocket(client);
+        }
+        closesocket(listener);
+    });
+    struct ThreadJoin
+    {
+        std::thread& thread;
+        ~ThreadJoin() { if (thread.joinable()) thread.join(); }
+    } join{ stalledServer };
+
+    ConfigEditorWindow window(path, 0, true, {}, {},
+        {}, 41686, {}, true, !automatic);
+    window.show();
+    QApplication::processEvents();
+    QElapsedTimer dispatch;
+    dispatch.start();
+    window.setDiscoveredTargets({
+        { QStringLiteral("stalled"), QStringLiteral("SLOW VP"),
+            QStringLiteral("localhost"), ntohs(address.sin_port) }
+    });
+    auto* choice = requireControl<QComboBox>(window, "config.targetChoice");
+    require(choice->count() == (automatic ? 3 : 4) &&
+        choice->itemText(automatic ? 1 : 2) ==
+        QStringLiteral("SLOW VP"), "Stalled VP was not offered in the selector");
+    if (!automatic)
+    {
+        dispatch.restart();
+        QMetaObject::invokeMethod(choice, "activated", Qt::DirectConnection,
+            Q_ARG(int, 2));
+    }
+    require(dispatch.elapsed() < 250,
+        "Connecting to a remote VP blocked the UI thread");
+    auto* overlay = requireControl<QWidget>(window,
+        "config.targetSwitchOverlay");
+    auto* title = requireControl<QLabel>(window,
+        "config.targetSwitchTitle");
+    require(overlay->isVisible() && title->text().contains("SLOW VP"),
+        "Remote switching did not show its loading screen");
+    bool heartbeat = false;
+    QEventLoop eventLoop;
+    QTimer::singleShot(30, &window, [&] { heartbeat = true; });
+    QTimer::singleShot(100, &eventLoop, &QEventLoop::quit);
+    eventLoop.exec();
+    require(heartbeat && overlay->isVisible(),
+        "The loading screen did not stay responsive during the stalled request");
+    const QString captures = qEnvironmentVariable("VP_CONFIG_REVIEW_IMAGES");
+    if (!automatic && !captures.isEmpty())
+        window.grab().save(QDir(captures).filePath(
+            QStringLiteral("target-switch-loading.png")));
+    window.resize(1140, 760);
+    QApplication::processEvents();
+    require(overlay->geometry() == window.centralWidget()->rect(),
+        "The loading screen did not follow a window resize");
+    QElapsedTimer completion;
+    completion.start();
+    while (window.findChild<QWidget*>("config.targetSwitchOverlay") &&
+        completion.elapsed() < 3000)
+    {
+        QApplication::processEvents();
+        QThread::msleep(5);
+    }
+    require(!window.findChild<QWidget*>("config.targetSwitchOverlay") &&
+        requireControl<QComboBox>(window, "config.targetChoice")->currentText() ==
+            QStringLiteral("SLOW VP") &&
+        requireControl<QPushButton>(window, "okConfiguration")->isEnabled() &&
+        !window.awaitingTarget(),
+        "Successful remote connection did not open the target configuration");
+}
+
+void testRemoteTargetSwitchKeepsWindowResponsive()
+{
+    exerciseRemoteTargetSwitch(false);
+}
+
+void testRemoteOnlyAutomaticallyOpensSoleVp()
+{
+    exerciseRemoteTargetSwitch(true);
+}
+
+void testNoTargetStartupIsQuiet()
+{
+    QTemporaryDir directory;
+    ConfigEditorWindow window(copyFixture(directory), 0, true, {}, {},
+        {}, 41686, {}, true);
+    auto* choice = requireControl<QComboBox>(window, "config.targetChoice");
+    auto* title = requireControl<QLabel>(window, "config.targetSearchTitle");
+    auto* progress = requireControl<QProgressBar>(window, "configTargetSearchProgress");
+    require(choice->currentText() == QStringLiteral("Searching…") &&
+        title->text() == QStringLiteral("Looking for VideoProcessor…") &&
+        progress->minimum() == 0 && progress->maximum() == 0 &&
+        !progress->isHidden() &&
+        !requireControl<QPushButton>(window, "applyConfiguration")->isEnabled() &&
+        !requireControl<QPushButton>(window, "okConfiguration")->isEnabled() &&
+        QApplication::activeModalWidget() == nullptr,
+        "No-target startup opened a prompt or allowed configuration writes");
+    const QString captures = qEnvironmentVariable("VP_CONFIG_REVIEW_IMAGES");
+    if (!captures.isEmpty())
+    {
+        window.show();
+        QApplication::processEvents();
+        window.grab().save(QDir(captures).filePath(
+            QStringLiteral("target-search-loading.png")));
+        window.hide();
+    }
+    window.setDiscoveredTargets({});
+    require(choice->currentText() == QStringLiteral("Searching…"),
+        "An empty first scan hid the loading state");
+    window.finishInitialTargetSearch();
+    require(choice->currentText() == QStringLiteral("No target"),
+        "The completed search did not show a quiet no-target state");
+    require(title->text() == QStringLiteral("No VideoProcessor found") &&
+        progress->isHidden(),
+        "The search progress stayed visible after the initial search");
+    window.setDiscoveredTargets({
+        { QStringLiteral("remote-a"), QStringLiteral("STUDY"),
+            QStringLiteral("192.168.1.20"), 41686 },
+        { QStringLiteral("remote-b"), QStringLiteral("DEN"),
+            QStringLiteral("192.168.1.21"), 41686 }
+    });
+    require(title->text() == QStringLiteral("Choose a VideoProcessor") &&
+        choice->currentText() == QStringLiteral("Choose target"),
+        "An available VP was still reported as not found after discovery");
+}
+
+void testOfflineFileStillOffersTargets()
+{
+    QTemporaryDir directory;
+    const QString path = copyFixture(directory);
+    ConfigEditorWindow window(path, 0, true);
+    auto* choice = requireControl<QComboBox>(window, "config.targetChoice");
+    auto* refresh = requireControl<QToolButton>(window, "config.refreshTargets");
+    require(choice->currentText() == QStringLiteral("This computer") &&
+        requireControl<QPushButton>(window, "okConfiguration")->isEnabled(),
+        "The local file was not editable without a running VP");
+    int scans = 0;
+    window.setTargetRefresh([&] { ++scans; });
+    window.setDiscoveredTargets({
+        { QStringLiteral("local-installation"), QStringLiteral("This computer (127.0.0.1)"),
+			QStringLiteral("127.0.0.1"), 41686, {}, true }
+    });
+    require(choice->count() == 2 && choice->currentText() == QStringLiteral("This computer"),
+        "Discovery duplicated the local file target");
+    window.show();
+    QApplication::processEvents();
+    choice->showPopup();
+    QApplication::processEvents();
+    auto* popup = choice->view();
+    require(popup->viewport()->height() > popup->visualRect(
+            popup->model()->index(choice->count() - 1, 0)).bottom(),
+        "The two-choice target popup clipped Enter address");
+    choice->hidePopup();
+    window.hide();
+    auto* apply = requireControl<QPushButton>(window, "applyConfiguration");
+    if (apply->isEnabled()) apply->click(); // Commit fixture migrations.
+    auto* fullscreen = requireControl<QCheckBox>(window,
+        QStringLiteral("config.general.fullscreen"));
+    const bool changed = !fullscreen->isChecked();
+    fullscreen->setChecked(changed);
+    require(apply->isEnabled(), "Local edit did not enable Apply");
+    apply->click();
+    require(!apply->isEnabled(), "Local Apply did not save while VP was absent");
+    ConfigEditorCore::ConfigDocument saved;
+    std::wstring error;
+    require(saved.Load(path.toStdWString(), error) &&
+        saved.Get("general", "fullscreen") == (changed ? "true" : "false"),
+        "Offline local Apply did not persist the edited configuration");
+    window.setDiscoveredTargets({
+        { QStringLiteral("remote-a"), QStringLiteral("STUDY (192.168.1.20)"),
+            QStringLiteral("192.168.1.20"), 41686 }
+    });
+    require(choice->count() == 3 &&
+        choice->itemText(1).startsWith(QStringLiteral("STUDY")),
+        "Local file mode did not offer a discovered remote VP");
+    refresh->click();
+    require(scans == 1 && QApplication::activeModalWidget() == nullptr,
+		"Local file mode did not refresh targets inline");
+}
+
+void testUnavailableRpcCanReturnToLocalFile()
+{
+    QTemporaryDir directory;
+    const QString path = copyFixture(directory);
+    ConfigEditorWindow window(path, 0, true, {}, {},
+        QStringLiteral("127.0.0.1"), 1, QStringLiteral("This computer"));
+    auto* choice = requireControl<QComboBox>(window, "config.targetChoice");
+    require(choice->itemText(1) == QStringLiteral("This computer"),
+        "Unavailable RPC target did not offer the local file");
+    QElapsedTimer dispatch;
+    dispatch.start();
+    QMetaObject::invokeMethod(choice, "activated", Qt::DirectConnection,
+        Q_ARG(int, 1));
+    require(dispatch.elapsed() < 250 &&
+        window.findChild<QWidget*>("config.targetSwitchOverlay"),
+        "Local target loading blocked the UI or skipped its loading screen");
+    QElapsedTimer completion;
+    completion.start();
+    while (window.findChild<QWidget*>("config.targetSwitchOverlay") &&
+        completion.elapsed() < 5000)
+    {
+        QApplication::processEvents();
+        QThread::msleep(5);
+    }
+    require(requireControl<QComboBox>(window, "config.targetChoice")->currentText() ==
+            QStringLiteral("This computer") &&
+        requireControl<QPushButton>(window, "okConfiguration")->isEnabled(),
+        "Selecting This computer did not recover the editable file after RPC failure");
+}
+
+void testRememberedTargetDoesNotFallBackToLocal()
+{
+    QTemporaryDir directory;
+    ConfigEditorWindow window(copyFixture(directory), 0, true, {}, {},
+        {}, 41686, {}, true, true,
+        QStringLiteral("old-computer-no-longer-on-lan"),
+        QStringLiteral("STUDY"));
+    auto* choice = requireControl<QComboBox>(window, "config.targetChoice");
+    require(choice->currentText() == QStringLiteral("STUDY (searching…)") &&
+        choice->itemText(1) == QStringLiteral("This computer"),
+        "The remembered remote did not remain selected while searching");
+    window.setDiscoveredTargets({
+        { QStringLiteral("local-installation"), QStringLiteral("This computer"),
+            QStringLiteral("127.0.0.1"), 1, {}, true }
+    });
+    require(choice->currentText() == QStringLiteral("STUDY (searching…)") &&
+        !requireControl<QPushButton>(window, "okConfiguration")->isEnabled(),
+        "The remembered remote silently fell back to the local file");
+    window.finishInitialTargetSearch();
+    require(requireControl<QLabel>(window, "config.targetSearchTitle")->text()
+            .contains(QStringLiteral("STUDY is unavailable")) &&
+        choice->currentText() == QStringLiteral("STUDY (unavailable)"),
+        "An unavailable remembered target was not explained");
+    const QString captures = qEnvironmentVariable("VP_CONFIG_REVIEW_IMAGES");
+    if (!captures.isEmpty())
+    {
+        window.show();
+        QApplication::processEvents();
+        window.grab().save(QDir(captures).filePath(
+            QStringLiteral("remembered-target-unavailable.png")));
+        window.hide();
+    }
+    QMetaObject::invokeMethod(choice, "activated", Qt::DirectConnection,
+        Q_ARG(int, 1));
+    QElapsedTimer completion;
+    completion.start();
+    while (window.findChild<QWidget*>("config.targetSwitchOverlay") &&
+        completion.elapsed() < 5000)
+    {
+        QApplication::processEvents();
+        QThread::msleep(5);
+    }
+    require(requireControl<QComboBox>(window, "config.targetChoice")->currentText() ==
+            QStringLiteral("This computer") &&
+        requireControl<QPushButton>(window, "okConfiguration")->isEnabled(),
+        "The user could not explicitly choose local editing");
+}
+
+void testRemoteOnlyClientHasNoLocalFileTarget()
+{
+    QTemporaryDir directory;
+    ConfigEditorWindow window(copyFixture(directory), 0, true, {}, {},
+        {}, 41686, {}, true, false);
+    auto* choice = requireControl<QComboBox>(window, "config.targetChoice");
+    require(choice->count() == 2 &&
+        choice->itemText(1) == QStringLiteral("Enter address…") &&
+        !requireControl<QPushButton>(window, "okConfiguration")->isEnabled(),
+        "A remote-only Config copy offered a local file target");
+    window.setDiscoveredTargets({
+        { QStringLiteral("lan-target"), QStringLiteral("LIVING ROOM"),
+            QStringLiteral("localhost"), 1, {}, false }
+    });
+    require(window.findChild<QWidget*>("config.targetSwitchOverlay") &&
+        choice->itemText(1) == QStringLiteral("LIVING ROOM") &&
+        !requireControl<QPushButton>(window, "okConfiguration")->isEnabled(),
+        "A remote-only first launch did not connect to its sole VP");
+    QElapsedTimer completion;
+    completion.start();
+    while (window.findChild<QWidget*>("config.targetSwitchOverlay") &&
+        completion.elapsed() < 10000)
+    {
+        QApplication::processEvents();
+        QThread::msleep(5);
+    }
+    window.finishInitialTargetSearch();
+    require(!window.findChild<QWidget*>("config.targetSwitchOverlay") &&
+        window.awaitingTarget() &&
+        requireControl<QLabel>(window, "config.targetSearchTitle")->text() ==
+            QStringLiteral("Choose a VideoProcessor") &&
+        requireControl<QComboBox>(window, "config.targetChoice")->itemText(1) ==
+            QStringLiteral("LIVING ROOM"),
+        "A failed connection incorrectly said no VP was discovered");
+    window.setDiscoveredTargets({
+        { QStringLiteral("lan-target"), QStringLiteral("LIVING ROOM"),
+            QStringLiteral("localhost"), 1, {}, false },
+        { QStringLiteral("other-target"), QStringLiteral("STUDY"),
+            QStringLiteral("other-host"), 41686, {}, false }
+    });
+    require(!window.findChild<QWidget*>("config.targetSwitchOverlay") &&
+        requireControl<QComboBox>(window, "config.targetChoice")->count() == 4,
+        "Multiple remote targets were selected without user choice");
+}
+
 int run(const char* name, const std::function<void()>& test)
 {
     if (!testNameFilter.isEmpty() &&
@@ -6009,6 +6483,19 @@ int main(int argc, char** argv)
     failures += run("missing configuration can be created from editor",
         testMissingConfigurationCanBeCreatedFromEditor);
     failures += run("Apply OK Cancel contract", testApplyOkCancelContract);
+    failures += run("target dropdown refreshes inline", testTargetDropdownRefreshesInline);
+    failures += run("remote target switch keeps window responsive",
+        testRemoteTargetSwitchKeepsWindowResponsive);
+    failures += run("remote-only client opens its sole discovered VP",
+        testRemoteOnlyAutomaticallyOpensSoleVp);
+    failures += run("no-target startup is quiet", testNoTargetStartupIsQuiet);
+    failures += run("offline file still offers targets", testOfflineFileStillOffersTargets);
+    failures += run("unavailable RPC can return to local file",
+        testUnavailableRpcCanReturnToLocalFile);
+    failures += run("remembered target does not fall back to local",
+        testRememberedTargetDoesNotFallBackToLocal);
+    failures += run("remote-only client has no local file target",
+        testRemoteOnlyClientHasNoLocalFileTarget);
     failures += run("DirectShow-only effect does not restart Alpha",
         testDirectShowOnlyEffectDoesNotRestartAlpha);
     failures += run("invalid renderer is rejected continuously",

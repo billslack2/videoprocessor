@@ -19,7 +19,9 @@ public:
         if (control == CC_ComboBox && subControl == SC_ComboBoxArrow)
         {
             QRect result = option->rect;
-            result.setLeft(result.right() - 31);
+            const bool compact = widget &&
+                widget->property("targetSelector").toBool();
+            result.setLeft(result.right() - (compact ? 23 : 31));
             return result;
         }
         return QProxyStyle::subControlRect(control, option, subControl, widget);
@@ -30,10 +32,15 @@ public:
     {
         if (element == PE_IndicatorArrowDown && qobject_cast<const QComboBox*>(widget))
         {
-            const QRect arrowRect(widget->width() - 31, 0, 31, widget->height());
+            const bool compact = widget->property("targetSelector").toBool();
+            const int arrowWidth = compact ? 23 : 31;
+            // Keep the themed border visible along the right edge.
+            const QRect arrowRect(widget->width() - arrowWidth, 1,
+                arrowWidth - 1, widget->height() - 2);
             painter->save();
             painter->setRenderHint(QPainter::Antialiasing, true);
-            painter->fillRect(arrowRect, QColor(QStringLiteral("#121e2b")));
+            // The stylesheet owns the rounded background and border.
+            // Painting a rectangular arrow background cuts off its corners.
             painter->setPen(QPen(QColor(QStringLiteral("#2b4258")), 1.0));
             painter->drawLine(arrowRect.topLeft(), arrowRect.bottomLeft());
             const QPointF center = arrowRect.center();
@@ -128,6 +135,44 @@ QString VpTheme::StyleSheet()
             border-bottom: 1px solid #233447;
         }
         #brandTitle { color: #f6f9fc; font-size: 20px; font-weight: 700; }
+        QLabel#configTargetCaption {
+            color: #9bb5c8;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        QComboBox[targetSelector="true"] {
+            font-size: 11px;
+            min-height: 20px;
+            padding: 1px 26px 1px 7px;
+        }
+        QComboBox[targetSelector="true"]::drop-down {
+            width: 23px;
+            background: transparent;
+            border: 0;
+            border-top-right-radius: 4px;
+            border-bottom-right-radius: 4px;
+        }
+        QToolButton[targetRefresh="true"] {
+            background: #101d2a;
+            border: 1px solid #2d475f;
+            border-radius: 5px;
+            padding: 0;
+        }
+        QToolButton[targetRefresh="true"]:hover {
+            background: #16293a;
+            border-color: #4b89b4;
+        }
+        QToolButton[targetRefresh="true"]:pressed { background: #0c1824; }
+        QToolButton[targetRefresh="true"]:focus { border-color: #3a9de8; }
+        QProgressBar#configTargetSearchProgress {
+            background: #142434;
+            border: 0;
+            border-radius: 2px;
+        }
+        QProgressBar#configTargetSearchProgress::chunk {
+            background: #49b6ff;
+            border-radius: 2px;
+        }
         #brandSubtitle {
             color: #93a9bd;
             background: #101d2a;
