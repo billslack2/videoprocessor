@@ -2270,6 +2270,7 @@ namespace AlphaSourceCrop
 				decision.reason = "content is narrower than the configured aspect limit";
 				return decision;
 			}
+			decision.contentEligible = true;
 			// Crop only top/bottom edges, symmetrically and on chroma boundaries,
 			// to widen the selected active picture to the screen aspect.
 			int filledHeight = static_cast<int>(std::floor(width / input.screenAspect));
@@ -2302,6 +2303,7 @@ namespace AlphaSourceCrop
 				decision.reason = "content is wider than the configured aspect limit";
 				return decision;
 			}
+			decision.contentEligible = true;
 			// Crop only left/right edges, symmetrically and on chroma boundaries,
 			// to narrow the selected active picture to the screen aspect.
 			int filledWidth = static_cast<int>(std::floor(height * input.screenAspect));
@@ -2321,9 +2323,39 @@ namespace AlphaSourceCrop
 			decision.reason = "trusted wider content filled with centered left and right crop";
 			return decision;
 		}
+		decision.contentEligible = true;
 		decision.reason = "content already matches the screen aspect";
 		return decision;
 	}
+
+    bool ShouldApplyDynamicSourceCrop(bool automaticCropRequested,
+        bool subtitleFitEnabled, const Input& crop, const AspectLimitFillInput& fill)
+    {
+        if (automaticCropRequested)
+            return true;
+        if (!fill.cropNarrowerContentToFillScreen && !fill.cropWiderContentToFillScreen)
+            return subtitleFitEnabled;
+
+        auto contentFill = fill;
+        contentFill.contentReferenceAvailable = true;
+        if (crop.fullRasterPresentationAuthoritative)
+        {
+            contentFill.trustedContentAuthorityAccepted = true;
+            contentFill.sourceBounds = FullRaster(crop.rasterWidth, crop.rasterHeight);
+        }
+        else
+        {
+            contentFill.trustedContentAuthorityAccepted = crop.sharedGeometryAvailable &&
+                crop.geometrySourceGeneration != 0 &&
+                crop.geometrySourceGeneration == crop.frameSourceGeneration &&
+                crop.classification == ActivePictureClassification::BAR_CROP_TRUSTED &&
+                ValidBounds(crop.geometry, crop.rasterWidth, crop.rasterHeight);
+            contentFill.sourceBounds = crop.geometry;
+        }
+        contentFill.contentReferenceBounds = contentFill.sourceBounds;
+        const auto decision = EvaluateAspectLimitFill(contentFill);
+        return decision.contentEligible;
+    }
 
 	AspectLimitFillDecision EvaluateFixedAspectCrop(
 		const FixedAspectCropInput& input)

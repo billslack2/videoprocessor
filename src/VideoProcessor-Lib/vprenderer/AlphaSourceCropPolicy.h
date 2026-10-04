@@ -915,6 +915,7 @@ namespace AlphaSourceCrop
 	{
 		ActivePictureBounds sourceBounds;
 		bool applied = false;
+        bool contentEligible = false;
 		double contentAspect = 0.0;
         double referenceAspect = 0.0;
 		std::string reason;
@@ -922,6 +923,13 @@ namespace AlphaSourceCrop
 
 	AspectLimitFillDecision EvaluateAspectLimitFill(
 		const AspectLimitFillInput& input);
+
+    struct Input;
+
+    // Fill-only profiles may remove bars only for eligible trusted content.
+    // The content reference is the movie picture, never a subtitle envelope.
+    bool ShouldApplyDynamicSourceCrop(bool automaticCropRequested,
+        bool subtitleFitEnabled, const Input& crop, const AspectLimitFillInput& fill);
 
 	struct FixedAspectCropInput
 	{
