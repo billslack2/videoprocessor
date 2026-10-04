@@ -253,7 +253,7 @@ they must not contain requirements that are absent from this file.
 | VP-0194 | Review | Show aspect ratio and name in the VP Renderer Ctrl+I OSD |
 
 | VP-0195 | Review | Diagnose available display modes and refresh transitions |
-| VP-0196 | In Progress | Correct anamorphic lens layout with NLS and diagnostic telemetry |
+| VP-0196 | Review | Correct anamorphic lens layout with NLS and diagnostic telemetry |
 
 ## Codex story workflow
 
