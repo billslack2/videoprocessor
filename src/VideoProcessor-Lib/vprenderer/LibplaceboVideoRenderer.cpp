@@ -817,6 +817,7 @@ namespace
 		int screenEdgePadding = 0;
 		double anamorphicScale = 1.0;
 		bool automaticSourceCrop = false;
+		bool automaticSourceCropRequested = false;
 		bool cropNarrowerContentToFillScreen = false;
 		bool cropNarrowerContentAspectLimitConfigured = false;
 		double cropNarrowerContentAspectLimit = 0.0;
@@ -909,6 +910,7 @@ namespace
 				<< settings.configuredScreenAspect << '|' << settings.configuredScreenTarget << '|'
 				<< settings.verticalAlignment << '|'
 				<< settings.anamorphicScale << '|'
+				<< settings.automaticSourceCropRequested << '|'
 				<< settings.automaticSourceCrop << '|'
 				<< settings.cropNarrowerContentToFillScreen << '|'
 				<< settings.cropNarrowerContentAspectLimitConfigured << '|'
@@ -1760,7 +1762,7 @@ namespace
 			return config.TryGetBool(rule.section, genericKey, value);
 		};
 		if (!readViewportBool("automatic_crop",
-			settings.automaticSourceCrop) &&
+			settings.automaticSourceCropRequested) &&
 			readViewportString("automatic_crop", raw))
 			DebugLog::Log("profile '%s': invalid automatic_crop '%s'",
 				rule.name.c_str(), raw.c_str());
@@ -1822,7 +1824,7 @@ namespace
 			else DebugLog::Log("profile '%s': invalid fixed_crop_aspect '%s'",
 				rule.name.c_str(), raw.c_str());
 		}
-		settings.automaticSourceCrop = settings.automaticSourceCrop ||
+		settings.automaticSourceCrop = settings.automaticSourceCropRequested ||
 			settings.cropNarrowerContentToFillScreen ||
 			settings.cropWiderContentToFillScreen;
 		if (!readViewportBool("subtitle_fit", settings.scopeSubtitleFit) &&
@@ -2210,12 +2212,12 @@ namespace
 		}
 		if (TryGetDisplayString(config, "automatic_crop", rawValue) &&
 			!TryGetDisplayBool(config, "automatic_crop",
-				settings.automaticSourceCrop))
+				settings.automaticSourceCropRequested))
 		{
 			DebugLog::Log(
 				"libplacebo: invalid automatic_crop value '%s'; using false",
 				rawValue.c_str());
-			settings.automaticSourceCrop = false;
+			settings.automaticSourceCropRequested = false;
 		}
 		if (TryGetDisplayString(config, "crop_narrower_content_to_fill_screen", rawValue) &&
 			!TryGetDisplayBool(config, "crop_narrower_content_to_fill_screen",
@@ -2280,7 +2282,7 @@ namespace
 			}
 			else DebugLog::Log("libplacebo: fixed_crop_aspect must be a ratio or decimal between 1.0 and 4.0; disabling it");
 		}
-		settings.automaticSourceCrop = settings.automaticSourceCrop ||
+		settings.automaticSourceCrop = settings.automaticSourceCropRequested ||
 			settings.cropNarrowerContentToFillScreen ||
 			settings.cropWiderContentToFillScreen;
 		if (TryGetDisplayString(config, "subtitle_hold_seconds", rawValue))
@@ -3609,6 +3611,7 @@ struct LibplaceboVideoRenderer::Impl
 	int screenEdgePadding = 0;
 	double anamorphicScale = 1.0;
 	bool automaticSourceCrop = false;
+	bool automaticSourceCropRequested = false;
 	bool cropNarrowerContentToFillScreen = false;
 	bool cropNarrowerContentAspectLimitConfigured = false;
 	double cropNarrowerContentAspectLimit = 0.0;
@@ -6976,6 +6979,7 @@ struct LibplaceboVideoRenderer::Impl
 		verticalAlignment = settings.verticalAlignment;
 		screenEdgePadding = settings.screenEdgePadding;
 		anamorphicScale = settings.anamorphicScale;
+		automaticSourceCropRequested = settings.automaticSourceCropRequested;
 		automaticSourceCrop = settings.automaticSourceCrop;
 		cropNarrowerContentToFillScreen =
 			settings.cropNarrowerContentToFillScreen;
@@ -7090,6 +7094,7 @@ struct LibplaceboVideoRenderer::Impl
 			verticalAlignment != settings.verticalAlignment ||
 			screenEdgePadding != settings.screenEdgePadding ||
 			anamorphicScale != settings.anamorphicScale ||
+			automaticSourceCropRequested != settings.automaticSourceCropRequested ||
 			automaticSourceCrop != settings.automaticSourceCrop ||
 			cropNarrowerContentToFillScreen !=
 				settings.cropNarrowerContentToFillScreen ||
@@ -7124,6 +7129,7 @@ struct LibplaceboVideoRenderer::Impl
 		verticalAlignment = settings.verticalAlignment;
 		screenEdgePadding = settings.screenEdgePadding;
 		anamorphicScale = settings.anamorphicScale;
+		automaticSourceCropRequested = settings.automaticSourceCropRequested;
 		automaticSourceCrop = settings.automaticSourceCrop;
 		cropNarrowerContentToFillScreen =
 			settings.cropNarrowerContentToFillScreen;
@@ -7158,6 +7164,7 @@ struct LibplaceboVideoRenderer::Impl
 		activeSettings.verticalAlignment = settings.verticalAlignment;
 		activeSettings.screenEdgePadding = settings.screenEdgePadding;
 		activeSettings.anamorphicScale = settings.anamorphicScale;
+		activeSettings.automaticSourceCropRequested = settings.automaticSourceCropRequested;
 		activeSettings.automaticSourceCrop = settings.automaticSourceCrop;
 		activeSettings.cropNarrowerContentToFillScreen =
 			settings.cropNarrowerContentToFillScreen;
@@ -7327,6 +7334,7 @@ struct LibplaceboVideoRenderer::Impl
 			current.configuredScreenTarget != next.configuredScreenTarget ||
 			current.verticalAlignment != next.verticalAlignment ||
 			current.anamorphicScale != next.anamorphicScale ||
+			current.automaticSourceCropRequested != next.automaticSourceCropRequested ||
 			current.automaticSourceCrop != next.automaticSourceCrop ||
 			current.cropNarrowerContentToFillScreen !=
 				next.cropNarrowerContentToFillScreen ||
@@ -12147,6 +12155,10 @@ struct LibplaceboVideoRenderer::Impl
                 cropInput.currentVisibleSourceSequence = sourceSequence;
                 cropInput.currentVisibleBounds = inwardCaptionEvidence.protectedBounds;
             }
+            // Fill enables analysis, not unconditional black-bar removal. Decide
+            // from the trusted movie bounds before subtitle/retention expansion.
+            cropInput.automaticCropEnabled = AlphaSourceCrop::ShouldApplyDynamicSourceCrop(
+                automaticSourceCropRequested, scopeSubtitleFit, cropInput, configuredFillInput);
 			AlphaSourceCrop::PresentationRecoveryInput recoveryInput;
 			recoveryInput.previous = cropPresentationRecovery;
 			recoveryInput.previousAdmission = cropPresentationAdmission;
