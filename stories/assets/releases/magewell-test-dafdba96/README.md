@@ -16,3 +16,5 @@ Local output: E:\codex\releases\magewell-test-dafdba96
 - [Portable ZIP](E:/codex/releases/magewell-test-dafdba96/VideoProcessor-1.3.005-beta-dafdba962487-x64-Portable.zip)
 - [Build receipt](release-receipt.json)
 - SHA-256 sidecars are preserved alongside this record.
+
+Draft release created at the user's request: [1.3-Magewell-Alpha1](https://github.com/billslack2/videoprocessor/releases/tag/untagged-fde05f2730bae019b680), release ID 403255289. Tag 1.3-Magewell-Alpha1 pins dafdba962487381be87fd04ccf9b07ff1375dbe5; target branch codex/magewell-optional. Draft and prerelease flags verified true. Setup, portable ZIP and both SHA-256 sidecars uploaded; GitHub setup/ZIP digest and size match the build receipt. Not published.
