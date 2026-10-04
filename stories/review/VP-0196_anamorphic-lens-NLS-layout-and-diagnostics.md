@@ -175,3 +175,17 @@ Restarted process 74624 responded. Logs confirm host/renderer clean identity
 Observed preserved active settings: physical screen 2.35, lens 1.0, NLS waiting
 under presentation fail-open. This verifies live telemetry, not physical lens
 acceptance. Story remains Review for user testing.
+
+## Separate test deployment — 2026-10-04 17:32 EDT
+User corrected the desired location: run separately, not from the main deployment.
+Extracted and hash-verified the portable package into
+E:\VideoProcessor-Test\VP0196-0b41c322. Copied the user's current configuration,
+state, shaders and LUTs into that separate folder; main configuration was not edited.
+Restored the 68 backed-up main-deployment entries from
+C:\Videoprocessor\vp\deployment-backups\vp0196-rebased-20261004-150459,
+verifying each restored hash against that snapshot. Main VP/Config remain stopped.
+Only the separate VP (PID 103828) and its separate Config (PID 118496) are running.
+Startup confirms host/renderer 0b41c322 and its own log:
+E:\VideoProcessor-Test\VP0196-0b41c322\logs\vp.log.
+Use the separate executable for further VP-0196 testing. Receipt:
+E:\codex\releases\VideoProcessor-vp0196-0b41c322c79d-20261004\standalone-receipt.json.
