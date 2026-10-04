@@ -504,3 +504,7 @@ newly qualified; release notes disclose these limits. VP-0189 is unchanged.
 ## September 26, 2026 — local crop-acquisition test package
 
 The user-requested ZDF admission correction was rebuilt, tested, packaged as setup plus portable ZIP with SHA-256 sidecars, and deployed locally. All 1,714 native tests and 84 installer/runtime/identity checks passed; payload and ZIP hashes verified. This is a fingerprinted unmerged, unsigned test build, not a new public release. Existing story status is unchanged. [Build and deployment evidence](../assets/releases/zdf-crop-acquisition-20260926/README.md).
+
+## October 4, 2026 — Magewell feature trial package
+
+Created the user-requested separate runnable directory, setup installer and portable ZIP from clean, pushed PR #129 commit dafdba962487381be87fd04ccf9b07ff1375dbe5. All 1,930 native tests and 84 packaging checks passed; 62 extracted managed files match the manifest. Unsigned, unmerged test build; existing installation untouched. Live installer lifecycle, clean Windows and physical Magewell capture remain unqualified. No story status change. [Artifacts, checksums and receipt](../assets/releases/magewell-test-dafdba96/README.md).

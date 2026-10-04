@@ -1,0 +1,13 @@
+{
+  "sourceCommit": "dafdba962487381be87fd04ccf9b07ff1375dbe5",
+  "managedFilesVerified": 62,
+  "copiedConfigSource": "C:\\Videoprocessor\\vp\\VideoProcessor.cfg",
+  "originalConfigSha256": "FFF964AE4F59330434FB89CA6D7CCA03789D96EB0748FC9ACED097070F63CB63",
+  "configChange": "startminimized: true -> false (trial folder only)",
+  "currentConfigSha256": "F2BFFFE1976806726DA19FA50B84F5F1167D5B6BFB1EC16C3799B69FBFE95656",
+  "copiedState": true,
+  "liveInstallerLifecycle": "Not run: existing Config process left untouched",
+  "hardwareCapture": "Not verified; no Magewell hardware",
+  "cleanWindows": "Not tested",
+  "signed": false
+}
