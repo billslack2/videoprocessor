@@ -3114,7 +3114,9 @@ ConfigurationRpcProtocol::Frame CVideoProcessorDlg::HandleConfigurationRpc(
 	const uint16_t operation = request.operation;
 	if (operation != static_cast<uint16_t>(Operation::GetConfig) &&
 		operation != static_cast<uint16_t>(Operation::GetCapabilities) &&
-		operation != static_cast<uint16_t>(Operation::ApplyConfig))
+		operation != static_cast<uint16_t>(Operation::ApplyConfig) &&
+		operation != static_cast<uint16_t>(Operation::SelectProfile) &&
+		operation != static_cast<uint16_t>(Operation::RunAction))
 		return ConfigurationRpcError(operation, "Unsupported RPC operation.");
 	if (m_wantToTerminate)
 		return ConfigurationRpcError(operation, "VideoProcessor is stopping.");
@@ -3122,10 +3124,62 @@ ConfigurationRpcProtocol::Frame CVideoProcessorDlg::HandleConfigurationRpc(
 		Read16(request.payload.data()) != ConfigurationCompatibilityVersion)
 		return ConfigurationRpcError(operation,
 			"This Config UI uses an incompatible configuration model. Update VP and Config UI together.");
-	if (operation != static_cast<uint16_t>(Operation::ApplyConfig) &&
+	if ((operation == static_cast<uint16_t>(Operation::GetConfig) ||
+		operation == static_cast<uint16_t>(Operation::GetCapabilities)) &&
 		request.payload.size() != 2)
 		return ConfigurationRpcError(operation,
 			"This RPC operation does not accept a request body.");
+
+	if (operation == static_cast<uint16_t>(Operation::SelectProfile))
+	{
+		size_t cursor = 2;
+		std::string group, profile, error;
+		if (!ReadString(request.payload, cursor, group) || group.empty() ||
+			group.size() > 64 || !ReadString(request.payload, cursor, profile) ||
+			profile.empty() || profile.size() > 64 ||
+			request.payload.size() - cursor != 1 || request.payload[cursor] > 1)
+			return ConfigurationRpcError(operation, "Invalid profile selection request.");
+		UnifiedProfileRuntime::SelectionResult result;
+		if (!m_profileRuntime.SelectProfile(group, profile,
+			request.payload[cursor] != 0, GetUnifiedProfileSourceLookup(),
+			result, error))
+			return ConfigurationRpcError(operation, error);
+		if (result.changed)
+		{
+			const bool queueReset = result.snapshot &&
+				QueueProfileRestartPolicy::RequiresResetAfterManualSelection(
+					group == "queue", result.snapshot->queue.profile, true);
+			ApplyUnifiedProfileSnapshot(result.snapshot, true, queueReset);
+			if (!EventActionLauncher::IsRenderingSelectionFeedback(
+				m_profileActionProcessActive.load(), result.selections, false))
+				ScheduleUnifiedProfileActions(result.actions);
+			if (queueReset)
+				QueueUnifiedQueueProfileReset(result.snapshot,
+					"config-ui:" + group + "." + profile);
+		}
+		Frame response;
+		response.operation = static_cast<uint16_t>(operation | ResponseFlag);
+		return response;
+	}
+	if (operation == static_cast<uint16_t>(Operation::RunAction))
+	{
+		size_t cursor = 2;
+		std::string name, error;
+		if (!ReadString(request.payload, cursor, name) || name.empty() ||
+			name.size() > 64 || cursor != request.payload.size())
+			return ConfigurationRpcError(operation, "Invalid action request.");
+		UnifiedProfileRuntime::ActionInvocation invocation;
+		if (!m_profileRuntime.PrepareManualAction(name, invocation, error))
+			return ConfigurationRpcError(operation, error);
+		if (!m_unifiedActionCancelEvent ||
+			!IsUnifiedActionRendererSelected(invocation.action))
+			return ConfigurationRpcError(operation,
+				"Action cannot run for the selected VP renderer.");
+		ScheduleUnifiedProfileActions({ invocation });
+		Frame response;
+		response.operation = static_cast<uint16_t>(operation | ResponseFlag);
+		return response;
+	}
 
 	ConfigFile active;
 	if (!active.Load(ConfigFile::DEFAULT_FILENAME, ConfigFile::ReadPolicy::Fresh) ||

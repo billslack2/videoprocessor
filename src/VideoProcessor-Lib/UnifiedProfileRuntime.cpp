@@ -455,6 +455,118 @@ namespace UnifiedProfileRuntime
 		return true;
 	}
 
+	bool Runtime::SelectProfile(const std::string& groupName,
+		const std::string& profileName, bool enabled,
+		const DisplayRuleExpression::ValueLookup& sourceValues,
+		SelectionResult& result, std::string& error)
+	{
+		std::lock_guard<std::mutex> guard(m_mutex);
+		result = {};
+		error.clear();
+		if (!m_initialized)
+		{
+			error = "unified profile runtime is not initialized";
+			return false;
+		}
+		const auto group = std::find_if(m_model.groups.begin(), m_model.groups.end(),
+			[&](const RendererProfileConfig::Group& candidate)
+			{ return candidate.name == groupName; });
+		if (group == m_model.groups.end() ||
+			std::find(group->profiles.begin(), group->profiles.end(), profileName) ==
+			group->profiles.end() || (!group->multiSelection && !enabled))
+		{
+			error = "profile is not available in the active VP configuration";
+			return false;
+		}
+		const auto current = std::atomic_load(&m_snapshot);
+		RendererProfileConfig::Selections manual = current ?
+			current->manualSelections : RendererProfileConfig::Selections();
+		std::set<std::string> sessionOverrides = m_sessionOverrideGroups;
+		RendererProfileConfig::Selection selected;
+		if (group->multiSelection)
+		{
+			if (current)
+			{
+				const auto active = current->effectiveSelections.find(groupName);
+				if (active != current->effectiveSelections.end())
+					selected = active->second;
+			}
+			selected.erase(std::remove(selected.begin(), selected.end(), profileName),
+				selected.end());
+			if (enabled)
+			{
+				if (profileName == group->defaultSelection)
+					selected.clear();
+				else selected.erase(std::remove(selected.begin(), selected.end(),
+					group->defaultSelection), selected.end());
+				selected.push_back(profileName);
+			}
+			if (selected.empty()) selected.push_back(group->defaultSelection);
+			RendererProfileConfig::Selection ordered;
+			for (const auto& member : group->profiles)
+				if (std::find(selected.begin(), selected.end(), member) != selected.end())
+					ordered.push_back(member);
+			selected = std::move(ordered);
+		}
+		else selected = { profileName };
+		manual[groupName] = selected;
+		sessionOverrides.insert(groupName);
+		result.selections.push_back({ groupName, selected, false });
+		const auto values = sourceValues ? sourceValues :
+			DisplayRuleExpression::ValueLookup([](const std::string&,
+				std::string&) { return false; });
+		std::shared_ptr<const Snapshot> candidate;
+		if (!BuildSnapshot(manual, sessionOverrides, values, m_generation + 1,
+			candidate, error)) return false;
+		if (current && SameEffectiveState(*current, *candidate) &&
+			sessionOverrides == m_sessionOverrideGroups)
+		{
+			result.snapshot = current;
+			return true;
+		}
+		if (!CollectTransitionActionInvocations(current, candidate, "manual",
+			result.actions, error)) return false;
+		if (m_model.persistSelection && !PersistSelections(manual, error))
+			return false;
+		++m_generation;
+		m_sessionOverrideGroups = std::move(sessionOverrides);
+		std::atomic_store(&m_snapshot, candidate);
+		result.changed = true;
+		result.snapshot = candidate;
+		return true;
+	}
+
+	bool Runtime::PrepareManualAction(const std::string& name,
+		ActionInvocation& invocation, std::string& error) const
+	{
+		std::lock_guard<std::mutex> guard(m_mutex);
+		error.clear();
+		if (!m_initialized)
+		{
+			error = "unified profile runtime is not initialized";
+			return false;
+		}
+		const auto action = std::find_if(m_model.actions.begin(), m_model.actions.end(),
+			[&](const RendererProfileConfig::Model::EventAction& candidate)
+			{ return candidate.name == name; });
+		if (action == m_model.actions.end())
+		{
+			error = "action is not enabled in the active VP configuration";
+			return false;
+		}
+		const auto snapshot = std::atomic_load(&m_snapshot);
+		RendererProfileConfig::Model::EventAction expanded;
+		const auto values = [&snapshot](const std::string& variable,
+			std::string& value)
+		{ return LookupActionValue(variable, "manual", "config-ui",
+			snapshot, snapshot, value); };
+		if (!EventActionLauncher::ExpandArgumentVariables(*action, values,
+			expanded, error)) return false;
+		expanded.delaySeconds = 0;
+		invocation = { std::move(expanded), "manual", "config-ui" };
+		return true;
+	}
+
 	bool Runtime::SelectCycleKey(const std::string& key,
 		const DisplayRuleExpression::ValueLookup& sourceValues,
 		SelectionResult& result, std::string& error)

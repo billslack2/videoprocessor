@@ -352,7 +352,9 @@ void ConfigurationRpcServer::HandleClient(uintptr_t rawSocket)
 		(operation & (ResponseFlag | ErrorFlag)) != 0 ||
 		operation < static_cast<uint16_t>(Operation::GetConfig) ||
 		(operation > static_cast<uint16_t>(Operation::ApplyConfig) &&
-		 operation != static_cast<uint16_t>(Operation::GetActiveProfileStatus)))
+		 operation != static_cast<uint16_t>(Operation::GetActiveProfileStatus) &&
+		 operation != static_cast<uint16_t>(Operation::SelectProfile) &&
+		 operation != static_cast<uint16_t>(Operation::RunAction)))
 		return;
 	std::vector<uint8_t> wire(header.begin(), header.end());
 	wire.resize(HeaderBytes + payloadBytes);

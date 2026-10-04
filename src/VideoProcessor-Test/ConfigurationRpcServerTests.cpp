@@ -42,6 +42,7 @@ namespace
 	{
 		ConfigurationRpcServer server;
 		std::atomic<int> handled{ 0 };
+		std::atomic<int> manualCommands{ 0 };
 		bool clientPayloads = false;
 		uint16_t compatibilityVersion = ConfigurationCompatibilityVersion;
 		std::mutex mutex;
@@ -100,6 +101,33 @@ namespace
 						WriteString(pending->response.payload, "VP Renderer");
 						Write32(pending->response.payload, 1);
 						WriteString(pending->response.payload, "luts/test.cube");
+					}
+					else if (pending->request.operation ==
+						static_cast<uint16_t>(Operation::SelectProfile) ||
+						pending->request.operation ==
+						static_cast<uint16_t>(Operation::RunAction))
+					{
+						size_t cursor = 2;
+						std::string first, second;
+						const bool profile = pending->request.operation ==
+							static_cast<uint16_t>(Operation::SelectProfile);
+						const bool valid = pending->request.payload.size() >= 2 &&
+							Read16(pending->request.payload.data()) ==
+								ConfigurationCompatibilityVersion &&
+							ReadString(pending->request.payload, cursor, first) &&
+							(!profile || ReadString(pending->request.payload,
+								cursor, second)) &&
+							(profile ? first == "viewport" && second == "scope" &&
+								pending->request.payload.size() - cursor == 1 &&
+								pending->request.payload[cursor] == 1 :
+								first == "do_it" &&
+								cursor == pending->request.payload.size());
+						if (valid) ++self->manualCommands;
+						else
+						{
+							pending->response.operation |= ErrorFlag;
+							WriteString(pending->response.payload, "invalid command");
+						}
 					}
 					else if (pending->request.operation ==
 						static_cast<uint16_t>(Operation::ApplyConfig))
@@ -393,6 +421,20 @@ namespace VideoProcessorTest
 			Assert::IsFalse(changed.shaderAvailable);
 			Assert::IsTrue(changed.shaders.empty());
 			Assert::AreEqual(0, harness.handled.load());
+		}
+
+		TEST_METHOD(ManualCommandsUseNamedRequestsOnOwnerThread)
+		{
+			ServerHarness harness;
+			harness.clientPayloads = true;
+			Assert::IsTrue(harness.Start());
+			ConfigurationRpcClient client("127.0.0.1",
+				harness.server.BoundTcpPort());
+			std::string error;
+			Assert::IsTrue(client.SelectProfile("viewport", "scope", true, error));
+			Assert::IsTrue(client.RunAction("do_it", error));
+			Assert::AreEqual(2, harness.handled.load());
+			Assert::AreEqual(2, harness.manualCommands.load());
 		}
 
 		TEST_METHOD(IncompatibleConfigurationModelCannotReadOrApply)

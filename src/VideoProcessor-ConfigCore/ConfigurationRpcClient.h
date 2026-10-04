@@ -34,6 +34,9 @@ public:
 		std::string& error) const;
 	bool GetActiveProfileStatus(ConfigurationRpcProtocol::LiveProfileStatus& status,
 		std::string& error) const;
+	bool SelectProfile(const std::string& group, const std::string& profile,
+		bool enabled, std::string& error) const;
+	bool RunAction(const std::string& action, std::string& error) const;
 	bool ApplyConfig(const std::string& baseline,
 		const std::string& candidate, ApplyResult& result,
 		std::string& error) const;

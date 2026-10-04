@@ -1127,6 +1127,11 @@ ConfigEditorWindow::~ConfigEditorWindow()
 		activeProfileThread_->wait();
 		activeProfileThread_ = nullptr;
 	}
+	if (manualCommandThread_)
+	{
+		manualCommandThread_->wait();
+		manualCommandThread_ = nullptr;
+	}
 	if (revealEventNotifier_)
 		revealEventNotifier_->setEnabled(false);
 	if (revealEvent_)
@@ -2307,6 +2312,121 @@ void ConfigEditorWindow::migrateRefreshRateSwitchMode()
 		dirty_ = true;
 		hasPendingMigrations_ = true;
 	}
+}
+
+void ConfigEditorWindow::installProfileContextMenu(QListWidget* list,
+	const QString& sectionPrefix)
+{
+	list->setContextMenuPolicy(Qt::CustomContextMenu);
+	connect(list, &QListWidget::customContextMenuRequested, this,
+		[this, list, sectionPrefix](const QPoint& point)
+		{
+			QListWidgetItem* item = list->itemAt(point);
+			if (!item) return;
+			const QString section = item->data(Qt::UserRole).toString();
+			if (section.isEmpty()) return;
+			const QMap<QString, QString> groups{
+				{ QStringLiteral("queue"), QStringLiteral("queue") },
+				{ QStringLiteral("vprenderer"), QStringLiteral("display") },
+				{ QStringLiteral("vprenderer.color"), QStringLiteral("color") },
+				{ QStringLiteral("vprenderer.scaling"), QStringLiteral("scaling") },
+				{ QStringLiteral("vprenderer.output"), QStringLiteral("output") },
+				{ QStringLiteral("vprenderer.viewport"), QStringLiteral("viewport") },
+				{ QStringLiteral("vprenderer.zoom"), QStringLiteral("zoom") },
+				{ QStringLiteral("lldv"), QStringLiteral("lldv") },
+				{ QStringLiteral("shader.nls"), QStringLiteral("nls") },
+				{ QStringLiteral("shader.standard"), QStringLiteral("standard_shaders") }
+			};
+			const QString group = groups.value(sectionPrefix);
+			if (group.isEmpty() ||
+				(section.compare(sectionPrefix, Qt::CaseInsensitive) != 0 &&
+				 !section.startsWith(sectionPrefix + u'.', Qt::CaseInsensitive)))
+				return;
+			const QString name = section.compare(sectionPrefix,
+				Qt::CaseInsensitive) == 0 ? QStringLiteral("base") :
+				section.mid(sectionPrefix.size() + 1);
+			const bool standard = group == QStringLiteral("standard_shaders");
+			const bool defaultShader = standard && name == QStringLiteral("base");
+			const bool enabled = !standard || defaultShader ||
+				!item->data(ActiveProfileRole).toBool();
+			QMenu menu(list);
+			QAction* command = menu.addAction(standard && !defaultShader ?
+				(enabled ? QStringLiteral("Enable in VP") :
+					QStringLiteral("Disable in VP")) :
+				QStringLiteral("Activate in VP"));
+			command->setEnabled(!noTarget_ && !manualCommandThread_);
+			command->setToolTip(QStringLiteral(
+				"Uses the configuration currently saved in VideoProcessor."));
+			if (menu.exec(list->viewport()->mapToGlobal(point)) == command)
+				runTargetCommand(group, name, enabled, false);
+		});
+}
+
+void ConfigEditorWindow::installActionContextMenu(QListWidget* list)
+{
+	list->setContextMenuPolicy(Qt::CustomContextMenu);
+	connect(list, &QListWidget::customContextMenuRequested, this,
+		[this, list](const QPoint& point)
+		{
+			QListWidgetItem* item = list->itemAt(point);
+			if (!item) return;
+			const QString section = item->data(Qt::UserRole).toString();
+			if (!section.startsWith(QStringLiteral("actions."),
+				Qt::CaseInsensitive)) return;
+			QMenu menu(list);
+			QAction* command = menu.addAction(QStringLiteral("Run now in VP"));
+			command->setToolTip(QStringLiteral(
+				"Runs the saved enabled action on the selected VP without its event rule or delay."));
+			const QString enabledText = value(section,
+				QStringLiteral("enabled")).trimmed().toLower();
+			const bool enabled = enabledText != QStringLiteral("false") &&
+				enabledText != QStringLiteral("off") &&
+				enabledText != QStringLiteral("no") &&
+				enabledText != QStringLiteral("0");
+			command->setEnabled(!noTarget_ && !manualCommandThread_ &&
+				enabled);
+			if (menu.exec(list->viewport()->mapToGlobal(point)) == command)
+				runTargetCommand({}, section.mid(8), true, true);
+		});
+}
+
+void ConfigEditorWindow::runTargetCommand(const QString& group,
+	const QString& name, bool enabled, bool action)
+{
+	if (noTarget_ || manualCommandThread_) return;
+	const QString host = remoteClient_ ? remoteHost_ : QStringLiteral("127.0.0.1");
+	const quint16 port = remoteClient_ ? remotePort_ : 41686;
+	const QString instanceId = currentInstanceId_;
+	struct Result { bool success = false; std::string error; };
+	const auto result = std::make_shared<Result>();
+	setStatus(action ? QStringLiteral("Running action in VP…") :
+		QStringLiteral("Selecting profile in VP…"));
+	manualCommandThread_ = QThread::create([result, host, port,
+		group, name, enabled, action]
+	{
+		ConfigurationRpcClient client(host.toStdString(), port);
+		result->success = action ?
+			client.RunAction(name.toLocal8Bit().toStdString(), result->error) :
+			client.SelectProfile(group.toStdString(),
+				name.toLocal8Bit().toStdString(), enabled, result->error);
+	});
+	manualCommandThread_->setParent(this);
+	QThread* worker = manualCommandThread_;
+	connect(worker, &QThread::finished, this,
+		[this, worker, result, host, port, instanceId, name, action]
+		{
+			if (manualCommandThread_ == worker) manualCommandThread_ = nullptr;
+			worker->deleteLater();
+			if ((remoteClient_ ? remoteHost_ : QStringLiteral("127.0.0.1")) != host ||
+				(remoteClient_ ? remotePort_ : 41686) != port ||
+				currentInstanceId_ != instanceId) return;
+			setStatus(result->success ?
+				(action ? QStringLiteral("Action %1 queued in VP.") :
+					QStringLiteral("Profile %1 selected in VP.")).arg(name) :
+				QString::fromStdString(result->error), !result->success);
+			if (result->success) refreshActiveProfileIndicators();
+		});
+	manualCommandThread_->start();
 }
 
 void ConfigEditorWindow::refreshActiveProfileIndicators()
@@ -4699,6 +4819,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         list->setItemDelegate(new ProfileStateItemDelegate(list));
         activeProfileLists_.push_back({ list, sectionPrefix });
     }
+    installProfileContextMenu(list, sectionPrefix);
     listLayout->addWidget(list, 1);
 
     auto* detail = new QWidget;
@@ -7115,6 +7236,7 @@ QWidget* ConfigEditorWindow::createNlsShadersPage()
     list->setDragDropOverwriteMode(false);
     list->setItemDelegate(new ProfileStateItemDelegate(list));
     activeProfileLists_.push_back({ list, QStringLiteral("shader.nls") });
+    installProfileContextMenu(list, QStringLiteral("shader.nls"));
     auto* profileActions = new QHBoxLayout;
     auto* addProfile = new QPushButton(QStringLiteral("+ Add profile"));
     addProfile->setObjectName(QStringLiteral("config.shader.nls.add"));
@@ -7597,6 +7719,7 @@ QWidget* ConfigEditorWindow::createStandardShadersPage()
     list->setDragDropOverwriteMode(false);
     list->setItemDelegate(new ProfileStateItemDelegate(list));
     activeProfileLists_.push_back({ list, root });
+    installProfileContextMenu(list, root);
     auto* addShader = new QPushButton(QStringLiteral("+ Add profile"));
     addShader->setObjectName(QStringLiteral("config.shader.standard.add"));
     addShader->setAccessibleDescription(
@@ -7923,6 +8046,7 @@ QWidget* ConfigEditorWindow::createActionsPage()
     list->setObjectName(QStringLiteral("config.actions.items"));
     list->setAccessibleName(QStringLiteral("Configured actions"));
     list->setAccessibleDescription(QStringLiteral("Actions that VideoProcessor can run after selected events."));
+    installActionContextMenu(list);
     listLayout->addWidget(add);
     listLayout->addWidget(remove);
     listLayout->addWidget(list, 1);

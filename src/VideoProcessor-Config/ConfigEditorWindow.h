@@ -182,6 +182,10 @@ private:
     void setStatus(const QString& message, bool error = false);
     void setWarningStatus(const QString& message);
     void refreshActiveProfileIndicators();
+    void installProfileContextMenu(QListWidget* list, const QString& sectionPrefix);
+    void installActionContextMenu(QListWidget* list);
+    void runTargetCommand(const QString& group, const QString& name,
+        bool enabled, bool action);
     void applyActiveProfileIndicators(bool available, const QString& queue,
         const QString& renderer, const QString& color, const QString& viewport,
         const QStringList& shaders, bool shaderAvailable,
@@ -283,6 +287,7 @@ private:
     QThread* monitorDiscoveryThread_ = nullptr;
     QTimer* activeProfileTimer_ = nullptr;
     QThread* activeProfileThread_ = nullptr;
+    QThread* manualCommandThread_ = nullptr;
     QTimer* shaderCacheStatusTimer_ = nullptr;
     QComboBox* actionRendererTarget_ = nullptr;
     QFormLayout* rendererShortcutForm_ = nullptr;
