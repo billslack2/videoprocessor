@@ -1,7 +1,7 @@
 # VP-0196: Correct anamorphic lens layout with NLS and diagnostic telemetry
 
 ## Status
-Backlog
+In Progress
 
 Created 2026-10-04. User authorized implementation, tests, an x64 Release build,
 and deployment to C:\Videoprocessor\vp for live validation. No beta merge or
@@ -57,6 +57,7 @@ unindexed records, missing files or registry/count discrepancies. Existing legac
 status prose/capitalization is left unchanged; this record uses the exact state.
 
 ## Implementation and validation
-Pending implementation. Remote beta and default branch both v1.3.005-beta at
+Implementation started on codex/vp0196-anamorphic-nls in
+E:\codex\videoprocessor\anamorphic-review-20261004. Remote beta and default branch both v1.3.005-beta at
 c84863eaa59e03fe218de824c34b7c0220c4fd87. Standing user instructions authorize
 that discovered beta as base.
