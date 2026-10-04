@@ -4,6 +4,7 @@
 #include <ws2tcpip.h>
 #include "../VideoProcessor-GUI/ConfigurationRpcServer.h"
 #include <ConfigurationRpcClient.h>
+#include <ActiveProfileStatus.h>
 #include "CppUnitTest.h"
 
 #include <array>
@@ -358,6 +359,40 @@ namespace VideoProcessorTest
 				applied, error));
 			Assert::AreEqual(std::string("stale baseline"), error);
 			Assert::AreEqual(7, harness.handled.load());
+		}
+
+		TEST_METHOD(ActiveProfilePollingReadsSnapshotWithoutPostingToOwner)
+		{
+			ServerHarness harness;
+			Assert::IsTrue(harness.Start());
+			ActiveProfileStatus::Publish(GetCurrentProcessId(), 1,
+				{ { "display", "cinema" }, { "color", "hdr" },
+				  { "queue", "base" }, { "viewport", "wide" } },
+				2, true, { "shader.main", "shader.detail" });
+			ConfigurationRpcClient client("127.0.0.1",
+				harness.server.BoundTcpPort());
+			for (int index = 0; index < 3; ++index)
+			{
+				LiveProfileStatus status;
+				std::string error;
+				Assert::IsTrue(client.GetActiveProfileStatus(status, error));
+				Assert::IsTrue(status.available);
+				Assert::AreEqual(std::string("queue"), status.queue);
+				Assert::AreEqual(std::string("vprenderer.cinema"), status.renderer);
+				Assert::AreEqual(std::string("vprenderer.color.hdr"), status.color);
+				Assert::AreEqual(std::string("vprenderer.viewport.wide"), status.viewport);
+				Assert::IsTrue(status.shaderAvailable);
+				Assert::AreEqual(static_cast<size_t>(2), status.shaders.size());
+			}
+			ActiveProfileStatus::Publish(GetCurrentProcessId(), 2,
+				{ { "display", "sports" } }, 3, false, {});
+			LiveProfileStatus changed;
+			std::string error;
+			Assert::IsTrue(client.GetActiveProfileStatus(changed, error));
+			Assert::AreEqual(std::string("vprenderer.sports"), changed.renderer);
+			Assert::IsFalse(changed.shaderAvailable);
+			Assert::IsTrue(changed.shaders.empty());
+			Assert::AreEqual(0, harness.handled.load());
 		}
 
 		TEST_METHOD(IncompatibleConfigurationModelCannotReadOrApply)

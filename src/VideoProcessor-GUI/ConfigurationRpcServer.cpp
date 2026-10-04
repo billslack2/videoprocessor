@@ -3,6 +3,7 @@
 #include <ws2tcpip.h>
 
 #include "ConfigurationRpcServer.h"
+#include "ActiveProfileStatus.h"
 
 #include <algorithm>
 #include <array>
@@ -24,6 +25,40 @@ Frame ErrorResponse(uint16_t requestOperation, const std::string& message)
 		ResponseFlag | ErrorFlag);
 	WriteString(result.payload, message);
 	return result;
+}
+
+Frame ActiveProfileResponse(const Frame& request)
+{
+	if (request.payload.size() != 2 ||
+		Read16(request.payload.data()) != ConfigurationCompatibilityVersion)
+		return ErrorResponse(request.operation,
+			"This VP uses an incompatible configuration model. Update VP and Config UI together.");
+	LiveProfileStatus status;
+	ActiveProfileStatus::Snapshot snapshot;
+	status.available = ActiveProfileStatus::Read(GetCurrentProcessId(), snapshot);
+	if (status.available)
+	{
+		const auto bounded = [](const auto& value)
+		{
+			return std::string(value, strnlen_s(value, sizeof(value)));
+		};
+		status.queue = bounded(snapshot.queue);
+		status.renderer = bounded(snapshot.renderer);
+		status.color = bounded(snapshot.color);
+		status.scaling = bounded(snapshot.scaling);
+		status.output = bounded(snapshot.output);
+		status.viewport = bounded(snapshot.viewport);
+		status.zoom = bounded(snapshot.zoom);
+		status.shaderAvailable = ActiveProfileStatus::ShaderSetIsCurrent(snapshot);
+		if (status.shaderAvailable)
+			for (uint32_t index = 0; index < snapshot.shaderCount; ++index)
+				status.shaders.push_back(bounded(snapshot.shaders[index]));
+	}
+	Frame response;
+	response.operation = static_cast<uint16_t>(request.operation | ResponseFlag);
+	if (!BuildLiveProfileStatus(status, response.payload))
+		return ErrorResponse(request.operation, "Active-profile status is invalid.");
+	return response;
 }
 
 bool PrivatePeer(const sockaddr_in& peer)
@@ -316,7 +351,8 @@ void ConfigurationRpcServer::HandleClient(uintptr_t rawSocket)
 	if (!DecodeHeader(header.data(), header.size(), operation, payloadBytes) ||
 		(operation & (ResponseFlag | ErrorFlag)) != 0 ||
 		operation < static_cast<uint16_t>(Operation::GetConfig) ||
-		operation > static_cast<uint16_t>(Operation::ApplyConfig))
+		(operation > static_cast<uint16_t>(Operation::ApplyConfig) &&
+		 operation != static_cast<uint16_t>(Operation::GetActiveProfileStatus)))
 		return;
 	std::vector<uint8_t> wire(header.begin(), header.end());
 	wire.resize(HeaderBytes + payloadBytes);
@@ -324,7 +360,8 @@ void ConfigurationRpcServer::HandleClient(uintptr_t rawSocket)
 		wire.data() + HeaderBytes, payloadBytes)) return;
 	Frame request;
 	if (!Decode(wire.data(), wire.size(), request)) return;
-	Frame response = Dispatch(request);
+	Frame response = operation == static_cast<uint16_t>(Operation::GetActiveProfileStatus) ?
+		ActiveProfileResponse(request) : Dispatch(request);
 	std::vector<uint8_t> encoded;
 	if (Encode(response, encoded)) SendExact(client, encoded.data(), encoded.size());
 }

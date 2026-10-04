@@ -26,7 +26,8 @@ namespace ConfigurationRpcProtocol
 		GetCapabilities = 2,
 		ApplyConfig = 3,
 		DiscoveryQuery = 4,
-		DiscoveryReply = 5
+		DiscoveryReply = 5,
+		GetActiveProfileStatus = 6
 	};
 
 	struct Frame
@@ -71,6 +72,7 @@ namespace ConfigurationRpcProtocol
 		case static_cast<uint16_t>(Operation::ApplyConfig):
 		case static_cast<uint16_t>(Operation::DiscoveryQuery):
 		case static_cast<uint16_t>(Operation::DiscoveryReply):
+		case static_cast<uint16_t>(Operation::GetActiveProfileStatus):
 			return true;
 		default:
 			return false;
@@ -139,6 +141,86 @@ namespace ConfigurationRpcProtocol
 		value.assign(reinterpret_cast<const char*>(input.data() + cursor),
 			length);
 		cursor += length;
+		return true;
+	}
+
+	// A bounded, read-only snapshot of VP's already-published active selections.
+	// The editor requests it only while visible; no configuration or renderer
+	// work is performed for a status request.
+	struct LiveProfileStatus
+	{
+		bool available = false;
+		std::string queue;
+		std::string renderer;
+		std::string color;
+		std::string scaling;
+		std::string output;
+		std::string viewport;
+		std::string zoom;
+		bool shaderAvailable = false;
+		std::vector<std::string> shaders;
+	};
+
+	constexpr uint8_t LiveProfileStatusVersion = 1;
+	constexpr size_t MaximumProfileSectionBytes = 96;
+	constexpr size_t MaximumProfileShaders = 16;
+
+	inline bool BuildLiveProfileStatus(const LiveProfileStatus& status,
+		std::vector<uint8_t>& payload)
+	{
+		payload = { LiveProfileStatusVersion,
+			static_cast<uint8_t>(status.available ? 1 : 0) };
+		if (!status.available) return true;
+		const std::string* const sections[] = { &status.queue,
+			&status.renderer, &status.color, &status.scaling,
+			&status.output, &status.viewport, &status.zoom };
+		for (const auto* section : sections)
+			if (section->size() > MaximumProfileSectionBytes ||
+				!WriteString(payload, *section)) return false;
+		if (status.shaders.size() > MaximumProfileShaders) return false;
+		payload.push_back(status.shaderAvailable ? 1 : 0);
+		Write32(payload, static_cast<uint32_t>(status.shaders.size()));
+		for (const auto& shader : status.shaders)
+			if (shader.size() > MaximumProfileSectionBytes ||
+				!WriteString(payload, shader)) return false;
+		return true;
+	}
+
+	inline bool ParseLiveProfileStatus(const std::vector<uint8_t>& payload,
+		LiveProfileStatus& status)
+	{
+		if (payload.size() < 2 || payload[0] != LiveProfileStatusVersion ||
+			payload[1] > 1) return false;
+		LiveProfileStatus parsed;
+		parsed.available = payload[1] != 0;
+		if (!parsed.available)
+		{
+			if (payload.size() != 2) return false;
+			status = std::move(parsed);
+			return true;
+		}
+		size_t cursor = 2;
+		std::string* const sections[] = { &parsed.queue,
+			&parsed.renderer, &parsed.color, &parsed.scaling,
+			&parsed.output, &parsed.viewport, &parsed.zoom };
+		for (auto* section : sections)
+			if (!ReadString(payload, cursor, *section) ||
+				section->size() > MaximumProfileSectionBytes) return false;
+		if (cursor > payload.size() || payload.size() - cursor < 5 ||
+			payload[cursor] > 1) return false;
+		parsed.shaderAvailable = payload[cursor++] != 0;
+		const uint32_t count = Read32(payload.data() + cursor);
+		cursor += 4;
+		if (count > MaximumProfileShaders) return false;
+		for (uint32_t index = 0; index < count; ++index)
+		{
+			std::string section;
+			if (!ReadString(payload, cursor, section) ||
+				section.size() > MaximumProfileSectionBytes) return false;
+			parsed.shaders.push_back(std::move(section));
+		}
+		if (cursor != payload.size()) return false;
+		status = std::move(parsed);
 		return true;
 	}
 
