@@ -85,6 +85,11 @@ namespace UnifiedProfileRuntime
 		bool SelectKey(const std::string& key,
 			const DisplayRuleExpression::ValueLookup& sourceValues,
 			SelectionResult& result, std::string& error);
+		bool SelectProfile(const std::string& group, const std::string& profile,
+			bool enabled, const DisplayRuleExpression::ValueLookup& sourceValues,
+			SelectionResult& result, std::string& error);
+		bool PrepareManualAction(const std::string& name,
+			ActionInvocation& invocation, std::string& error) const;
 
 		// Advances each ordered group whose profiles share this cycle key.
 		bool SelectCycleKey(const std::string& key,

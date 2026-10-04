@@ -7,97 +7,15 @@
  */
 
 #include <pch.h>
+#include <VideoFrame.h>
+#include <VideoState.h>
 #include "CV210toP010VideoFrameFormatter.h"
-#include <immintrin.h>
-#include <intrin.h> // For __cpuid
+#include <CpuFeatures.h>
 #include <iomanip>  // For std::setprecision
 #include <ConfigFile.h>
 
-// Macros for V210 unpacking
-#define V210_READ_PACK_BLOCK(a, b, c) \
-    do {                              \
-        val  = *src++;                \
-        a = val & 0x3FF;              \
-        b = (val >> 10) & 0x3FF;      \
-        c = (val >> 20) & 0x3FF;      \
-    } while (0)
+#include "CV210toP010VideoFrameFormatter.Common.h"
 
-#define PIXELS_PER_PACK 6
-#define BYTES_PER_PACK (4 * sizeof(uint32_t))
-
-namespace
-{
-    struct V210Pack
-    {
-        uint16_t y[PIXELS_PER_PACK];
-        uint16_t u[PIXELS_PER_PACK / 2];
-        uint16_t v[PIXELS_PER_PACK / 2];
-    };
-
-    inline V210Pack ReadV210Pack(const uint32_t*& source) noexcept
-    {
-        const uint32_t word0 = *source++;
-        const uint32_t word1 = *source++;
-        const uint32_t word2 = *source++;
-        const uint32_t word3 = *source++;
-        return {
-            {
-                static_cast<uint16_t>((word0 >> 10) & 0x3FF),
-                static_cast<uint16_t>(word1 & 0x3FF),
-                static_cast<uint16_t>((word1 >> 20) & 0x3FF),
-                static_cast<uint16_t>((word2 >> 10) & 0x3FF),
-                static_cast<uint16_t>(word3 & 0x3FF),
-                static_cast<uint16_t>((word3 >> 20) & 0x3FF)
-            },
-            {
-                static_cast<uint16_t>(word0 & 0x3FF),
-                static_cast<uint16_t>((word1 >> 10) & 0x3FF),
-                static_cast<uint16_t>((word2 >> 20) & 0x3FF)
-            },
-            {
-                static_cast<uint16_t>((word0 >> 20) & 0x3FF),
-                static_cast<uint16_t>(word2 & 0x3FF),
-                static_cast<uint16_t>((word3 >> 10) & 0x3FF)
-            }
-        };
-    }
-
-    inline void WriteV210PackToP010(const V210Pack& pack, uint32_t pixelCount,
-        uint16_t*& dstY, uint16_t*& dstUV) noexcept
-    {
-        for (uint32_t pixel = 0; pixel < pixelCount; ++pixel)
-            *dstY++ = static_cast<uint16_t>(pack.y[pixel] << 6);
-
-        if (dstUV)
-        {
-            for (uint32_t pair = 0; pair < pixelCount / 2; ++pair)
-            {
-                *dstUV++ = static_cast<uint16_t>(pack.u[pair] << 6);
-                *dstUV++ = static_cast<uint16_t>(pack.v[pair] << 6);
-            }
-        }
-
-    }
-
-    inline uint16_t AverageP010Chroma(uint16_t evenValue,
-        uint16_t oddCode) noexcept
-    {
-        const uint16_t evenCode = static_cast<uint16_t>(evenValue >> 6);
-        return static_cast<uint16_t>(
-            ((static_cast<uint32_t>(evenCode) + oddCode + 1U) >> 1) << 6);
-    }
-
-    inline void AverageV210PackChromaIntoP010(const V210Pack& oddPack,
-        uint32_t pixelCount, uint16_t*& dstUV) noexcept
-    {
-        for (uint32_t pair = 0; pair < pixelCount / 2; ++pair)
-        {
-            dstUV[0] = AverageP010Chroma(dstUV[0], oddPack.u[pair]);
-            dstUV[1] = AverageP010Chroma(dstUV[1], oddPack.v[pair]);
-            dstUV += 2;
-        }
-    }
-}
 
 // =====================================================================
 // Constructor / Destructor
@@ -318,189 +236,7 @@ void CV210toP010VideoFrameFormatter::ProcessLineSegment(
 }
 
 // Template constants eliminate the unused chroma work in Release builds.
-template<bool AverageChroma>
-void CV210toP010VideoFrameFormatter::ProcessLineSegmentImpl(
-    const uint8_t* srcData, uint32_t srcStride,
-    uint16_t* dstY, uint16_t* dstUV,
-    uint32_t width, uint32_t startLine, uint32_t endLine) noexcept
-{
-    const uint32_t pixelsPerIter = 12;
-    const uint32_t numIters = width / pixelsPerIter;
-    const uint32_t remainderPixels = width % pixelsPerIter;
 
-    // Constants
-    const __m256i mask_3ff = _mm256_set1_epi32(0x3FF);
-    
-    // Y permutation indices and shifts
-    const __m256i y_idx0 = _mm256_setr_epi32(0, 1, 1, 2, 3, 3, 4, 5);
-    const __m256i y_shift0 = _mm256_setr_epi32(10, 0, 20, 10, 0, 20, 10, 0);
-    const __m256i y_idx1 = _mm256_setr_epi32(5, 6, 7, 7, 0, 0, 0, 0);
-    const __m256i y_shift1 = _mm256_setr_epi32(20, 10, 0, 20, 0, 0, 0, 0);
-    
-    // UV permutation indices and shifts
-    const __m256i uv_idx0 = _mm256_setr_epi32(0, 0, 1, 2, 2, 3, 4, 4);
-    const __m256i uv_shift0 = _mm256_setr_epi32(0, 20, 10, 0, 20, 10, 0, 20);
-    const __m256i uv_idx1 = _mm256_setr_epi32(5, 6, 6, 7, 0, 0, 0, 0);
-    const __m256i uv_shift1 = _mm256_setr_epi32(10, 0, 20, 10, 0, 0, 0, 0);
-
-    // Process line pairs (even, odd)
-    for (uint32_t line = startLine; line < endLine; line += 2)
-    {
-        const uint32_t* src_even = reinterpret_cast<const uint32_t*>(srcData + static_cast<ptrdiff_t>(line) * srcStride);
-        const uint32_t* src_odd = reinterpret_cast<const uint32_t*>(srcData + static_cast<ptrdiff_t>(line + 1) * srcStride);
-        
-        uint16_t* lineY_even = dstY + static_cast<ptrdiff_t>(line) * width;
-        uint16_t* lineY_odd = dstY + static_cast<ptrdiff_t>(line + 1) * width;
-        uint16_t* lineUV = dstUV + static_cast<ptrdiff_t>(line >> 1) * width;
-
-        // Prefetch next lines to hide memory latency
-        // MEMORY OPTIMIZATION: Deeper prefetch for Ryzen's large L3 cache (32MB on 5800G)
-        // Prefetch 4-6 lines ahead instead of 2 to better utilize memory bandwidth
-        // Modern DDR4 benefits from further-ahead prefetching to hide latency
-        if (line + 6 < endLine)
-        {
-            _mm_prefetch(reinterpret_cast<const char*>(srcData + static_cast<ptrdiff_t>(line + 4) * srcStride), _MM_HINT_T0);
-            _mm_prefetch(reinterpret_cast<const char*>(srcData + static_cast<ptrdiff_t>(line + 5) * srcStride), _MM_HINT_T0);
-            _mm_prefetch(reinterpret_cast<const char*>(srcData + static_cast<ptrdiff_t>(line + 6) * srcStride), _MM_HINT_T0);
-            _mm_prefetch(reinterpret_cast<const char*>(srcData + static_cast<ptrdiff_t>(line + 7) * srcStride), _MM_HINT_T0);
-        }
-        // Roll back prefetch optimization to original 2-line distance
-        else if (line + 2 < endLine)
-        {
-            _mm_prefetch(reinterpret_cast<const char*>(srcData + static_cast<ptrdiff_t>(line + 2) * srcStride), _MM_HINT_T0);
-            _mm_prefetch(reinterpret_cast<const char*>(srcData + static_cast<ptrdiff_t>(line + 3) * srcStride), _MM_HINT_T0);
-        }
-
-        for (uint32_t i = 0; i < numIters; i++)
-        {
-            // Load 32 bytes from even line (8 ints, 12 pixels)
-            __m256i in_even = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(src_even));
-            src_even += 8;
-
-            // Load 32 bytes from odd line (8 ints, 12 pixels)
-            __m256i in_odd = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(src_odd));
-            src_odd += 8;
-
-            // Process Y from even line (Y0..Y7)
-            __m256i y0_even = _mm256_permutevar8x32_epi32(in_even, y_idx0);
-            y0_even = _mm256_srlv_epi32(y0_even, y_shift0);
-            y0_even = _mm256_and_si256(y0_even, mask_3ff);
-            y0_even = _mm256_slli_epi32(y0_even, 6);
-
-            // Process Y from even line (Y8..Y11)
-            __m256i y1_even = _mm256_permutevar8x32_epi32(in_even, y_idx1);
-            y1_even = _mm256_srlv_epi32(y1_even, y_shift1);
-            y1_even = _mm256_and_si256(y1_even, mask_3ff);
-            y1_even = _mm256_slli_epi32(y1_even, 6);
-
-            // Process Y from odd line (Y0..Y7)
-            __m256i y0_odd = _mm256_permutevar8x32_epi32(in_odd, y_idx0);
-            y0_odd = _mm256_srlv_epi32(y0_odd, y_shift0);
-            y0_odd = _mm256_and_si256(y0_odd, mask_3ff);
-            y0_odd = _mm256_slli_epi32(y0_odd, 6);
-
-            // Process Y from odd line (Y8..Y11)
-            __m256i y1_odd = _mm256_permutevar8x32_epi32(in_odd, y_idx1);
-            y1_odd = _mm256_srlv_epi32(y1_odd, y_shift1);
-            y1_odd = _mm256_and_si256(y1_odd, mask_3ff);
-            y1_odd = _mm256_slli_epi32(y1_odd, 6);
-
-            // Store Y from even line (unaligned stores - safe for any pointer)
-            {
-                __m128i y0_lo = _mm256_castsi256_si128(y0_even);
-                __m128i y0_hi = _mm256_extracti128_si256(y0_even, 1);
-                __m128i packed0 = _mm_packus_epi32(y0_lo, y0_hi);
-                
-                __m128i y1_lo = _mm256_castsi256_si128(y1_even);
-                __m128i packed1 = _mm_packus_epi32(y1_lo, y1_lo);
-
-                _mm_storeu_si128(reinterpret_cast<__m128i*>(lineY_even), packed0);
-                _mm_storel_epi64(reinterpret_cast<__m128i*>(lineY_even + 8), packed1);
-                lineY_even += 12;
-            }
-
-            // Store Y from odd line
-            {
-                __m128i y0_lo = _mm256_castsi256_si128(y0_odd);
-                __m128i y0_hi = _mm256_extracti128_si256(y0_odd, 1);
-                __m128i packed0 = _mm_packus_epi32(y0_lo, y0_hi);
-                
-                __m128i y1_lo = _mm256_castsi256_si128(y1_odd);
-                __m128i packed1 = _mm_packus_epi32(y1_lo, y1_lo);
-
-                _mm_storeu_si128(reinterpret_cast<__m128i*>(lineY_odd), packed0);
-                _mm_storel_epi64(reinterpret_cast<__m128i*>(lineY_odd + 8), packed1);
-                lineY_odd += 12;
-            }
-
-            // LEGACY selects even-row chroma; AVERAGE also unpacks the odd row.
-            __m256i uv0_even = _mm256_permutevar8x32_epi32(in_even, uv_idx0);
-            uv0_even = _mm256_and_si256(
-                _mm256_srlv_epi32(uv0_even, uv_shift0), mask_3ff);
-            __m256i uv0 = uv0_even;
-            if (AverageChroma)
-            {
-                __m256i uv0_odd = _mm256_permutevar8x32_epi32(in_odd, uv_idx0);
-                uv0_odd = _mm256_and_si256(
-                    _mm256_srlv_epi32(uv0_odd, uv_shift0), mask_3ff);
-                uv0 = _mm256_srli_epi32(_mm256_add_epi32(
-                    _mm256_add_epi32(uv0_even, uv0_odd),
-                    _mm256_set1_epi32(1)), 1);
-            }
-            uv0 = _mm256_slli_epi32(uv0, 6);
-
-            __m256i uv1_even = _mm256_permutevar8x32_epi32(in_even, uv_idx1);
-            uv1_even = _mm256_and_si256(
-                _mm256_srlv_epi32(uv1_even, uv_shift1), mask_3ff);
-            __m256i uv1 = uv1_even;
-            if (AverageChroma)
-            {
-                __m256i uv1_odd = _mm256_permutevar8x32_epi32(in_odd, uv_idx1);
-                uv1_odd = _mm256_and_si256(
-                    _mm256_srlv_epi32(uv1_odd, uv_shift1), mask_3ff);
-                uv1 = _mm256_srli_epi32(_mm256_add_epi32(
-                    _mm256_add_epi32(uv1_even, uv1_odd),
-                    _mm256_set1_epi32(1)), 1);
-            }
-            uv1 = _mm256_slli_epi32(uv1, 6);
-
-            // Store UV
-            {
-                __m128i uv0_lo = _mm256_castsi256_si128(uv0);
-                __m128i uv0_hi = _mm256_extracti128_si256(uv0, 1);
-                __m128i packed0 = _mm_packus_epi32(uv0_lo, uv0_hi);
-                
-                __m128i uv1_lo = _mm256_castsi256_si128(uv1);
-                __m128i packed1 = _mm_packus_epi32(uv1_lo, uv1_lo);
-
-                _mm_storeu_si128(reinterpret_cast<__m128i*>(lineUV), packed0);
-                _mm_storel_epi64(reinterpret_cast<__m128i*>(lineUV + 8), packed1);
-                lineUV += 12;
-            }
-        }
-
-        // Decode at most two terminal packs and write only active pixels. This
-        // is needed when the active width ends within DeckLink's padded v210 row.
-        if (remainderPixels > 0)
-        {
-            uint32_t remaining = remainderPixels;
-            while (remaining > 0)
-            {
-                const uint32_t pixelCount = std::min<uint32_t>(PIXELS_PER_PACK, remaining);
-                const V210Pack evenPack = ReadV210Pack(src_even);
-                const V210Pack oddPack = ReadV210Pack(src_odd);
-                uint16_t* tailUV = lineUV;
-                WriteV210PackToP010(evenPack, pixelCount, lineY_even, lineUV);
-                uint16_t* noChroma = nullptr;
-                WriteV210PackToP010(oddPack, pixelCount, lineY_odd, noChroma);
-                if (AverageChroma)
-                    AverageV210PackChromaIntoP010(oddPack, pixelCount, tailUV);
-                remaining -= pixelCount;
-            }
-        }
-
-    }
-}
 
 // =====================================================================
 // Threaded conversion - divides frame into segments for parallel processing
@@ -522,13 +258,13 @@ bool CV210toP010VideoFrameFormatter::ConvertV210ToP010_Threaded(
     const uint32_t totalLinePairs = height / 2;
     const uint32_t linePairsPerThread = totalLinePairs / (threadCount + 1); // +1 for main thread
     const uint32_t linesPerThread = linePairsPerThread * 2;
-    
+
     // Distribute work to worker threads
     uint32_t currentLine = 0;
     for (uint32_t i = 0; i < threadCount; i++)
     {
         ThreadContext& ctx = m_threadContexts[i];
-        
+
         {
             std::lock_guard<std::mutex> lock(ctx.mutex);
             ctx.work = { srcData, srcStride, dstY, dstUV, width,
@@ -541,7 +277,7 @@ bool CV210toP010VideoFrameFormatter::ConvertV210ToP010_Threaded(
 
     // Main thread processes the remaining lines
     ProcessLineSegment(srcData, srcStride, dstY, dstUV, width, currentLine, height);
-    
+
     // Usually already complete; otherwise park until the helper publishes
     // its output. No spinning while another thread is descheduled.
     for (uint32_t i = 0; i < threadCount; ++i)
@@ -555,29 +291,7 @@ bool CV210toP010VideoFrameFormatter::ConvertV210ToP010_Threaded(
 }
 
 // CPU feature detection
-bool CV210toP010VideoFrameFormatter::CheckCPUFeatures() const
-{
-    if (!m_cpuFeaturesChecked)
-    {
-        int cpuInfo[4];
-        __cpuid(cpuInfo, 0);
-        int nIds = cpuInfo[0];
 
-        m_hasAVX2 = false;
-        m_hasAVX2MemoryOps = false;
-        m_actualMaxThreads = GetMaxThreadCount();
-
-        if (nIds >= 7)
-        {
-            __cpuidex(cpuInfo, 7, 0);
-            m_hasAVX2 = (cpuInfo[1] & (1 << 5)) != 0; // EBX bit 5 is AVX2
-            m_hasAVX2MemoryOps = m_hasAVX2;
-        }
-        
-        m_cpuFeaturesChecked = true;
-    }
-    return m_hasAVX2;
-}
 
 bool CV210toP010VideoFrameFormatter::HasAVX2MemoryOps() const
 {
@@ -641,7 +355,7 @@ bool CV210toP010VideoFrameFormatter::FormatVideoFrame(
 
     const uint32_t pixels = m_height * m_width;
     const uint32_t yPlaneSize = pixels * sizeof(uint16_t);
-    
+
     uint16_t* dstY = reinterpret_cast<uint16_t*>(outBuffer);
     uint16_t* dstUV = reinterpret_cast<uint16_t*>(outBuffer + yPlaneSize);
 
@@ -671,7 +385,7 @@ LONG CV210toP010VideoFrameFormatter::GetOutFrameSize() const
 // =====================================================================
 bool CV210toP010VideoFrameFormatter::ConvertV210ToP010(
     const uint8_t* srcData,
-    uint32_t srcStride, 
+    uint32_t srcStride,
     uint16_t* dstY,
     uint16_t* dstUV,
     uint32_t width,
@@ -744,6 +458,11 @@ bool CV210toP010VideoFrameFormatter::ConvertV210ToP010_SIMD(
     uint32_t width,
     uint32_t height) noexcept
 {
+    if (!CheckCPUFeatures())
+    {
+        return ConvertV210ToP010_Optimized(srcData, srcStride, dstY, dstUV, width, height);
+    }
+
     if (m_chromaDownsampling == ChromaDownsampling::ADVANCED)
     {
         ProcessAdvancedSegment(srcData, srcStride, dstY, dstUV, width, 0, height, true);
@@ -755,180 +474,6 @@ bool CV210toP010VideoFrameFormatter::ConvertV210ToP010_SIMD(
         return ConvertV210ToP010_SIMDImpl<false>(srcData, srcStride, dstY, dstUV, width, height);
 }
 
-template<bool AverageChroma>
-bool CV210toP010VideoFrameFormatter::ConvertV210ToP010_SIMDImpl(
-    const uint8_t* srcData,
-    uint32_t srcStride,
-    uint16_t* dstY,
-    uint16_t* dstUV,
-    uint32_t width,
-    uint32_t height) noexcept
-{
-    if (!CheckCPUFeatures())
-    {
-        return ConvertV210ToP010_Optimized(srcData, srcStride, dstY, dstUV, width, height);
-    }
-
-    const uint32_t pixelsPerIter = 12;
-    const uint32_t numIters = width / pixelsPerIter;
-    const uint32_t remainderPixels = width % pixelsPerIter;
-
-    // Constants
-    const __m256i mask_3ff = _mm256_set1_epi32(0x3FF);
-    
-    // Y permutation indices and shifts
-    const __m256i y_idx0 = _mm256_setr_epi32(0, 1, 1, 2, 3, 3, 4, 5);
-    const __m256i y_shift0 = _mm256_setr_epi32(10, 0, 20, 10, 0, 20, 10, 0);
-    const __m256i y_idx1 = _mm256_setr_epi32(5, 6, 7, 7, 0, 0, 0, 0);
-    const __m256i y_shift1 = _mm256_setr_epi32(20, 10, 0, 20, 0, 0, 0, 0);
-    
-    // UV permutation indices and shifts
-    const __m256i uv_idx0 = _mm256_setr_epi32(0, 0, 1, 2, 2, 3, 4, 4);
-    const __m256i uv_shift0 = _mm256_setr_epi32(0, 20, 10, 0, 20, 10, 0, 20);
-    const __m256i uv_idx1 = _mm256_setr_epi32(5, 6, 6, 7, 0, 0, 0, 0);
-    const __m256i uv_shift1 = _mm256_setr_epi32(10, 0, 20, 10, 0, 0, 0, 0);
-
-    // Process line pairs (even, odd)
-    for (uint32_t line = 0; line < height; line += 2)
-    {
-        const uint32_t* src_even = reinterpret_cast<const uint32_t*>(srcData + static_cast<ptrdiff_t>(line) * srcStride);
-        const uint32_t* src_odd = reinterpret_cast<const uint32_t*>(srcData + static_cast<ptrdiff_t>(line + 1) * srcStride);
-        
-        uint16_t* lineY_even = dstY + static_cast<ptrdiff_t>(line) * width;
-        uint16_t* lineY_odd = dstY + static_cast<ptrdiff_t>(line + 1) * width;
-        uint16_t* lineUV = dstUV + static_cast<ptrdiff_t>(line >> 1) * width;
-
-        for (uint32_t i = 0; i < numIters; i++)
-        {
-            // Load 32 bytes from even line (8 ints, 12 pixels)
-            __m256i in_even = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(src_even));
-            src_even += 8;
-
-            // Load 32 bytes from odd line (8 ints, 12 pixels)
-            __m256i in_odd = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(src_odd));
-            src_odd += 8;
-
-            // Process Y from even line (Y0..Y7)
-            __m256i y0_even = _mm256_permutevar8x32_epi32(in_even, y_idx0);
-            y0_even = _mm256_srlv_epi32(y0_even, y_shift0);
-            y0_even = _mm256_and_si256(y0_even, mask_3ff);
-            y0_even = _mm256_slli_epi32(y0_even, 6);
-
-            // Process Y from even line (Y8..Y11)
-            __m256i y1_even = _mm256_permutevar8x32_epi32(in_even, y_idx1);
-            y1_even = _mm256_srlv_epi32(y1_even, y_shift1);
-            y1_even = _mm256_and_si256(y1_even, mask_3ff);
-            y1_even = _mm256_slli_epi32(y1_even, 6);
-
-            // Process Y from odd line (Y0..Y7)
-            __m256i y0_odd = _mm256_permutevar8x32_epi32(in_odd, y_idx0);
-            y0_odd = _mm256_srlv_epi32(y0_odd, y_shift0);
-            y0_odd = _mm256_and_si256(y0_odd, mask_3ff);
-            y0_odd = _mm256_slli_epi32(y0_odd, 6);
-
-            // Process Y from odd line (Y8..Y11)
-            __m256i y1_odd = _mm256_permutevar8x32_epi32(in_odd, y_idx1);
-            y1_odd = _mm256_srlv_epi32(y1_odd, y_shift1);
-            y1_odd = _mm256_and_si256(y1_odd, mask_3ff);
-            y1_odd = _mm256_slli_epi32(y1_odd, 6);
-
-            // Store Y from even line (unaligned stores - safe for any pointer)
-            {
-                __m128i y0_lo = _mm256_castsi256_si128(y0_even);
-                __m128i y0_hi = _mm256_extracti128_si256(y0_even, 1);
-                __m128i packed0 = _mm_packus_epi32(y0_lo, y0_hi);
-                
-                __m128i y1_lo = _mm256_castsi256_si128(y1_even);
-                __m128i packed1 = _mm_packus_epi32(y1_lo, y1_lo);
-
-                _mm_storeu_si128(reinterpret_cast<__m128i*>(lineY_even), packed0);
-                _mm_storel_epi64(reinterpret_cast<__m128i*>(lineY_even + 8), packed1);
-                lineY_even += 12;
-            }
-
-            // Store Y from odd line
-            {
-                __m128i y0_lo = _mm256_castsi256_si128(y0_odd);
-                __m128i y0_hi = _mm256_extracti128_si256(y0_odd, 1);
-                __m128i packed0 = _mm_packus_epi32(y0_lo, y0_hi);
-                
-                __m128i y1_lo = _mm256_castsi256_si128(y1_odd);
-                __m128i packed1 = _mm_packus_epi32(y1_lo, y1_lo);
-
-                _mm_storeu_si128(reinterpret_cast<__m128i*>(lineY_odd), packed0);
-                _mm_storel_epi64(reinterpret_cast<__m128i*>(lineY_odd + 8), packed1);
-                lineY_odd += 12;
-            }
-
-            // LEGACY selects even-row chroma; AVERAGE also unpacks the odd row.
-            __m256i uv0_even = _mm256_permutevar8x32_epi32(in_even, uv_idx0);
-            uv0_even = _mm256_and_si256(
-                _mm256_srlv_epi32(uv0_even, uv_shift0), mask_3ff);
-            __m256i uv0 = uv0_even;
-            if (AverageChroma)
-            {
-                __m256i uv0_odd = _mm256_permutevar8x32_epi32(in_odd, uv_idx0);
-                uv0_odd = _mm256_and_si256(
-                    _mm256_srlv_epi32(uv0_odd, uv_shift0), mask_3ff);
-                uv0 = _mm256_srli_epi32(_mm256_add_epi32(
-                    _mm256_add_epi32(uv0_even, uv0_odd),
-                    _mm256_set1_epi32(1)), 1);
-            }
-            uv0 = _mm256_slli_epi32(uv0, 6);
-
-            __m256i uv1_even = _mm256_permutevar8x32_epi32(in_even, uv_idx1);
-            uv1_even = _mm256_and_si256(
-                _mm256_srlv_epi32(uv1_even, uv_shift1), mask_3ff);
-            __m256i uv1 = uv1_even;
-            if (AverageChroma)
-            {
-                __m256i uv1_odd = _mm256_permutevar8x32_epi32(in_odd, uv_idx1);
-                uv1_odd = _mm256_and_si256(
-                    _mm256_srlv_epi32(uv1_odd, uv_shift1), mask_3ff);
-                uv1 = _mm256_srli_epi32(_mm256_add_epi32(
-                    _mm256_add_epi32(uv1_even, uv1_odd),
-                    _mm256_set1_epi32(1)), 1);
-            }
-            uv1 = _mm256_slli_epi32(uv1, 6);
-
-            // Store UV
-            {
-                __m128i uv0_lo = _mm256_castsi256_si128(uv0);
-                __m128i uv0_hi = _mm256_extracti128_si256(uv0, 1);
-                __m128i packed0 = _mm_packus_epi32(uv0_lo, uv0_hi);
-                
-                __m128i uv1_lo = _mm256_castsi256_si128(uv1);
-                __m128i packed1 = _mm_packus_epi32(uv1_lo, uv1_lo);
-
-                _mm_storeu_si128(reinterpret_cast<__m128i*>(lineUV), packed0);
-                _mm_storel_epi64(reinterpret_cast<__m128i*>(lineUV + 8), packed1);
-                lineUV += 12;
-            }
-        }
-
-        // Decode at most two terminal packs and write only active pixels. This
-        // is needed when the active width ends within DeckLink's padded v210 row.
-        if (remainderPixels > 0)
-        {
-            uint32_t remaining = remainderPixels;
-            while (remaining > 0)
-            {
-                const uint32_t pixelCount = std::min<uint32_t>(PIXELS_PER_PACK, remaining);
-                const V210Pack evenPack = ReadV210Pack(src_even);
-                const V210Pack oddPack = ReadV210Pack(src_odd);
-                uint16_t* tailUV = lineUV;
-                WriteV210PackToP010(evenPack, pixelCount, lineY_even, lineUV);
-                uint16_t* noChroma = nullptr;
-                WriteV210PackToP010(oddPack, pixelCount, lineY_odd, noChroma);
-                if (AverageChroma)
-                    AverageV210PackChromaIntoP010(oddPack, pixelCount, tailUV);
-                remaining -= pixelCount;
-            }
-        }
-    }
-
-    return true;
-}
 
 // =====================================================================
 bool CV210toP010VideoFrameFormatter::ConvertV210ToP010_Optimized(
@@ -955,46 +500,46 @@ bool CV210toP010VideoFrameFormatter::ConvertV210ToP010_OptimizedImpl(
     uint32_t height) noexcept
 {
     const uint32_t packsPerLine = width / PIXELS_PER_PACK;
-    
+
     for (uint32_t line = 0; line < height; line++)
     {
         const uint32_t* src = reinterpret_cast<const uint32_t*>(
             srcData + line * srcStride);
         const bool isEvenLine = (line & 1) == 0;
-        
+
         uint16_t* lineY = dstY + static_cast<ptrdiff_t>(line) * width;
         uint16_t* lineUV = dstUV + static_cast<ptrdiff_t>(line >> 1) * width;
-        
+
         uint16_t* dstY_ptr = lineY;
         uint16_t* dstUV_ptr = lineUV;
-        
+
         // Tight loop - one pack per iteration
         for (uint32_t pack = 0; pack < packsPerLine; pack++)
         {
             uint32_t val;
             uint16_t u, y1, y2, v;
-            
+
             if (isEvenLine)
             {
                 // Even line: write both Y and UV
                 V210_READ_PACK_BLOCK(u, y1, v);
-                *dstUV_ptr++ = u << 6; 
-                *dstY_ptr++ = y1 << 6; 
-                *dstUV_ptr++ = v << 6;
-                
-                V210_READ_PACK_BLOCK(y1, u, y2);
-                *dstY_ptr++ = y1 << 6; 
-                *dstUV_ptr++ = u << 6; 
-                *dstY_ptr++ = y2 << 6;
-                
-                V210_READ_PACK_BLOCK(v, y1, u);
-                *dstUV_ptr++ = v << 6; 
-                *dstY_ptr++ = y1 << 6; 
                 *dstUV_ptr++ = u << 6;
-                
+                *dstY_ptr++ = y1 << 6;
+                *dstUV_ptr++ = v << 6;
+
+                V210_READ_PACK_BLOCK(y1, u, y2);
+                *dstY_ptr++ = y1 << 6;
+                *dstUV_ptr++ = u << 6;
+                *dstY_ptr++ = y2 << 6;
+
+                V210_READ_PACK_BLOCK(v, y1, u);
+                *dstUV_ptr++ = v << 6;
+                *dstY_ptr++ = y1 << 6;
+                *dstUV_ptr++ = u << 6;
+
                 V210_READ_PACK_BLOCK(y1, v, y2);
-                *dstY_ptr++ = y1 << 6; 
-                *dstUV_ptr++ = v << 6; 
+                *dstY_ptr++ = y1 << 6;
+                *dstUV_ptr++ = v << 6;
                 *dstY_ptr++ = y2 << 6;
             }
             else
@@ -1005,19 +550,19 @@ bool CV210toP010VideoFrameFormatter::ConvertV210ToP010_OptimizedImpl(
                 if (AverageChroma) { *dstUV_ptr = AverageP010Chroma(*dstUV_ptr, u); ++dstUV_ptr; }
                 *dstY_ptr++ = y1 << 6;
                 if (AverageChroma) { *dstUV_ptr = AverageP010Chroma(*dstUV_ptr, v); ++dstUV_ptr; }
-                
+
                 V210_READ_PACK_BLOCK(y1, u, y2);
-                *dstY_ptr++ = y1 << 6; 
+                *dstY_ptr++ = y1 << 6;
                 if (AverageChroma) { *dstUV_ptr = AverageP010Chroma(*dstUV_ptr, u); ++dstUV_ptr; }
                 *dstY_ptr++ = y2 << 6;
-                
+
                 V210_READ_PACK_BLOCK(v, y1, u);
                 if (AverageChroma) { *dstUV_ptr = AverageP010Chroma(*dstUV_ptr, v); ++dstUV_ptr; }
                 *dstY_ptr++ = y1 << 6;
                 if (AverageChroma) { *dstUV_ptr = AverageP010Chroma(*dstUV_ptr, u); ++dstUV_ptr; }
-                
+
                 V210_READ_PACK_BLOCK(y1, v, y2);
-                *dstY_ptr++ = y1 << 6; 
+                *dstY_ptr++ = y1 << 6;
                 if (AverageChroma) { *dstUV_ptr = AverageP010Chroma(*dstUV_ptr, v); ++dstUV_ptr; }
                 *dstY_ptr++ = y2 << 6;
             }
@@ -1038,7 +583,7 @@ bool CV210toP010VideoFrameFormatter::ConvertV210ToP010_OptimizedImpl(
             }
         }
     }
-    
+
     return true;
 }
 
@@ -1069,25 +614,25 @@ bool CV210toP010VideoFrameFormatter::ConvertV210ToP010_StandardImpl(
     // Standard implementation matching the reference optimization level
     // Uses the same macros and logic flow as the original reference code
     // Portable scalar baseline without SIMD optimizations.
-    
+
     const uint32_t packsPerLine = width / PIXELS_PER_PACK;
-    
+
     for (uint32_t line = 0; line < height; line++)
     {
         const uint32_t* src = reinterpret_cast<const uint32_t*>(
             srcData + line * srcStride);
         const bool isEvenLine = (line & 1) == 0;
-        
+
         // Set destination pointers for this line (matches reference logic)
         uint16_t* dstY_ptr = dstY + static_cast<ptrdiff_t>(line) * width;
         uint16_t* dstUV_ptr = dstUV + static_cast<ptrdiff_t>(line >> 1) * width;
-        
+
         // Process each pack using the same macro-based approach as reference
         for (uint32_t pack = 0; pack < packsPerLine; pack++)
         {
             uint32_t val;
             uint16_t u, y1, y2, v;
-            
+
             if (isEvenLine)
             {
                 // Even line: write both Y and UV (matches reference exactly)
@@ -1095,17 +640,17 @@ bool CV210toP010VideoFrameFormatter::ConvertV210ToP010_StandardImpl(
                 *dstUV_ptr++ = u << 6;
                 *dstY_ptr++ = y1 << 6;
                 *dstUV_ptr++ = v << 6;
-                
+
                 V210_READ_PACK_BLOCK(y1, u, y2);
                 *dstY_ptr++ = y1 << 6;
                 *dstUV_ptr++ = u << 6;
                 *dstY_ptr++ = y2 << 6;
-                
+
                 V210_READ_PACK_BLOCK(v, y1, u);
                 *dstUV_ptr++ = v << 6;
                 *dstY_ptr++ = y1 << 6;
                 *dstUV_ptr++ = u << 6;
-                
+
                 V210_READ_PACK_BLOCK(y1, v, y2);
                 *dstY_ptr++ = y1 << 6;
                 *dstUV_ptr++ = v << 6;
@@ -1118,17 +663,17 @@ bool CV210toP010VideoFrameFormatter::ConvertV210ToP010_StandardImpl(
                 if (AverageChroma) { *dstUV_ptr = AverageP010Chroma(*dstUV_ptr, u); ++dstUV_ptr; }
                 *dstY_ptr++ = y1 << 6;
                 if (AverageChroma) { *dstUV_ptr = AverageP010Chroma(*dstUV_ptr, v); ++dstUV_ptr; }
-                
+
                 V210_READ_PACK_BLOCK(y1, u, y2);
                 *dstY_ptr++ = y1 << 6;
                 if (AverageChroma) { *dstUV_ptr = AverageP010Chroma(*dstUV_ptr, u); ++dstUV_ptr; }
                 *dstY_ptr++ = y2 << 6;
-                
+
                 V210_READ_PACK_BLOCK(v, y1, u);
                 if (AverageChroma) { *dstUV_ptr = AverageP010Chroma(*dstUV_ptr, v); ++dstUV_ptr; }
                 *dstY_ptr++ = y1 << 6;
                 if (AverageChroma) { *dstUV_ptr = AverageP010Chroma(*dstUV_ptr, u); ++dstUV_ptr; }
-                
+
                 V210_READ_PACK_BLOCK(y1, v, y2);
                 *dstY_ptr++ = y1 << 6;
                 if (AverageChroma) { *dstUV_ptr = AverageP010Chroma(*dstUV_ptr, v); ++dstUV_ptr; }
@@ -1151,7 +696,7 @@ bool CV210toP010VideoFrameFormatter::ConvertV210ToP010_StandardImpl(
             }
         }
     }
-    
+
     return true;
 }
 
@@ -1159,13 +704,13 @@ bool CV210toP010VideoFrameFormatter::ConvertV210ToP010_StandardImpl(
 void CV210toP010VideoFrameFormatter::LogConversionPerformance(uint64_t conversionTimeUs, bool success) const
 {
     m_performanceWindow.AddSample(static_cast<double>(conversionTimeUs));
-    
+
 #ifdef _DEBUG
     m_totalConversions++;
     m_totalConversionTimeUs += conversionTimeUs;
     m_scalarConversions++;
     m_scalarConversionTimeUs += conversionTimeUs;
-    
+
     if (m_totalConversions % 100 == 0)
     {
         LogPerformanceStats();
@@ -1179,9 +724,21 @@ void CV210toP010VideoFrameFormatter::LogConversionPerformance(uint64_t conversio
 // Coefficients sum exactly to 16384; constants remain exact, signed lobes are
 // retained until final rounding and 0..1023 saturation (not nominal-range clipping).
 // Source halos clamp to frame edges, never to helper partition edges.
+
+
 void CV210toP010VideoFrameFormatter::ProcessAdvancedSegment(
     const uint8_t* srcData, uint32_t srcStride, uint16_t* dstY, uint16_t* dstUV,
     uint32_t width, uint32_t startLine, uint32_t endLine, bool useSimd) noexcept
+{
+    if (useSimd && CheckCPUFeatures())
+        ProcessAdvancedSegmentAVX2(srcData, srcStride, dstY, dstUV, width, startLine, endLine);
+    else
+        ProcessAdvancedSegmentScalar(srcData, srcStride, dstY, dstUV, width, startLine, endLine);
+}
+
+void CV210toP010VideoFrameFormatter::ProcessAdvancedSegmentScalar(
+    const uint8_t* srcData, uint32_t srcStride, uint16_t* dstY, uint16_t* dstUV,
+    uint32_t width, uint32_t startLine, uint32_t endLine) noexcept
 {
     static constexpr int weights[12] = {
         60, 247, -557, -1092, 2220, 7314, 7314, 2220, -1092, -557, 247, 60
@@ -1203,54 +760,7 @@ void CV210toP010VideoFrameFormatter::ProcessAdvancedSegment(
         auto* y1 = y0 + width;
         auto* uv = dstUV + static_cast<size_t>(line / 2) * width;
         uint32_t x = 0;
-        if (useSimd)
-        {
-            const __m256i mask = _mm256_set1_epi32(1023);
-            const __m256i yi0 = _mm256_setr_epi32(0, 1, 1, 2, 3, 3, 4, 5);
-            const __m256i ys0 = _mm256_setr_epi32(10, 0, 20, 10, 0, 20, 10, 0);
-            const __m256i yi1 = _mm256_setr_epi32(5, 6, 7, 7, 0, 0, 0, 0);
-            const __m256i ys1 = _mm256_setr_epi32(20, 10, 0, 20, 0, 0, 0, 0);
-            const __m256i ci0 = _mm256_setr_epi32(0, 0, 1, 2, 2, 3, 4, 4);
-            const __m256i cs0 = _mm256_setr_epi32(0, 20, 10, 0, 20, 10, 0, 20);
-            const __m256i ci1 = _mm256_setr_epi32(5, 6, 6, 7, 0, 0, 0, 0);
-            const __m256i cs1 = _mm256_setr_epi32(10, 0, 20, 10, 0, 0, 0, 0);
-            const auto unpack = [&](const __m256i packed, const __m256i indices, const __m256i shifts) {
-                return _mm256_and_si256(_mm256_srlv_epi32(
-                    _mm256_permutevar8x32_epi32(packed, indices), shifts), mask);
-            };
-            const auto store = [](uint16_t* out, __m256i first, __m256i last) {
-                const __m128i a = _mm_packus_epi32(_mm256_castsi256_si128(first),
-                    _mm256_extracti128_si256(first, 1));
-                const __m128i b = _mm_packus_epi32(_mm256_castsi256_si128(last),
-                    _mm256_castsi256_si128(last));
-                _mm_storeu_si128(reinterpret_cast<__m128i*>(out), a);
-                _mm_storel_epi64(reinterpret_cast<__m128i*>(out + 8), b);
-            };
-            for (; x + 12 <= width; x += 12)
-            {
-                const uint32_t offset = (x / 6) * 4;
-                const __m256i even = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(rows[5] + offset));
-                const __m256i odd = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(rows[6] + offset));
-                store(y0 + x, _mm256_slli_epi32(unpack(even, yi0, ys0), 6),
-                    _mm256_slli_epi32(unpack(even, yi1, ys1), 6));
-                store(y1 + x, _mm256_slli_epi32(unpack(odd, yi0, ys0), 6),
-                    _mm256_slli_epi32(unpack(odd, yi1, ys1), 6));
-                __m256i sum0 = _mm256_set1_epi32(8192);
-                __m256i sum1 = sum0;
-                for (int tap = 0; tap < 12; ++tap)
-                {
-                    const __m256i packed = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(rows[tap] + offset));
-                    const __m256i weight = _mm256_set1_epi32(weights[tap]);
-                    sum0 = _mm256_add_epi32(sum0, _mm256_mullo_epi32(unpack(packed, ci0, cs0), weight));
-                    sum1 = _mm256_add_epi32(sum1, _mm256_mullo_epi32(unpack(packed, ci1, cs1), weight));
-                }
-                const auto finish = [&](const __m256i sum) {
-                    return _mm256_slli_epi32(_mm256_min_epi32(mask, _mm256_max_epi32(
-                        _mm256_setzero_si256(), _mm256_srai_epi32(sum, 14))), 6);
-                };
-                store(uv + x, finish(sum0), finish(sum1));
-            }
-        }
+
         for (; x < width; ++x)
         {
             y0[x] = static_cast<uint16_t>(sample(rows[5], x * 2 + 1) << 6);
@@ -1261,4 +771,16 @@ void CV210toP010VideoFrameFormatter::ProcessAdvancedSegment(
             uv[x] = static_cast<uint16_t>((std::min)(1023, (std::max)(0, sum) / 16384) << 6);
         }
     }
+}
+
+bool CV210toP010VideoFrameFormatter::CheckCPUFeatures() const
+{
+    if (!m_cpuFeaturesChecked)
+    {
+        m_hasAVX2 = CpuFeatures::SupportsAvx2Kernels();
+        m_hasAVX2MemoryOps = m_hasAVX2;
+        m_actualMaxThreads = GetMaxThreadCount();
+        m_cpuFeaturesChecked = true;
+    }
+    return m_hasAVX2;
 }

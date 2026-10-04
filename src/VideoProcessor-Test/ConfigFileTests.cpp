@@ -177,6 +177,69 @@ namespace VideoProcessorTest
 	TEST_CLASS(ConfigFileTests)
 	{
 	public:
+		TEST_METHOD(ManualProfileAndActionCommandsUseSavedRuntimeModel)
+		{
+			CachedConfigTestFile file;
+			std::ofstream(file.path) <<
+				"[general]\npersist_profile_selection: false\n"
+				"[vprenderer.viewport.scope]\nscreen_aspect: 47:20\n"
+				"[shader.standard]\ntype: multi\n"
+				"[shader.standard.deband]\nshader_type: custom\n"
+				"stage: pre_resize\nhlsl_file: Deband.hlsl\n"
+				"[shader.standard.sharpen]\nshader_type: custom\n"
+				"stage: pre_resize\nhlsl_file: Sharpen.hlsl\n"
+				"[actions.do_it]\non: profile.viewport.changed\n"
+				"run: C:\\Windows\\System32\\cmd.exe /c echo ${event}\n"
+				"delay_seconds: 20\n"
+				"[actions.draft]\nenabled: false\n";
+			ConfigFile config;
+			Assert::IsTrue(config.Load(file.path));
+			UnifiedProfileRuntime::Runtime runtime;
+			std::string error;
+			Assert::IsTrue(runtime.Initialize(config, {}, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			UnifiedProfileRuntime::SelectionResult selected;
+			Assert::IsTrue(runtime.SelectProfile("viewport", "scope", true,
+				{}, selected, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			Assert::IsTrue(selected.changed);
+			Assert::AreEqual(std::string("scope"),
+				selected.snapshot->viewport.profile);
+			Assert::IsFalse(runtime.SelectProfile("viewport", "unknown", true,
+				{}, selected, error));
+			Assert::IsTrue(runtime.SelectProfile("standard_shaders", "deband",
+				true, {}, selected, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			Assert::AreEqual(std::string("deband"),
+				RendererProfileConfig::FormatSelection(
+					selected.snapshot->effectiveSelections.at("standard_shaders")));
+			Assert::IsTrue(runtime.SelectProfile("standard_shaders", "sharpen",
+				true, {}, selected, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			Assert::AreEqual(std::string("deband|sharpen"),
+				RendererProfileConfig::FormatSelection(
+					selected.snapshot->effectiveSelections.at("standard_shaders")));
+			Assert::IsTrue(runtime.SelectProfile("standard_shaders", "deband",
+				false, {}, selected, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			Assert::AreEqual(std::string("sharpen"),
+				RendererProfileConfig::FormatSelection(
+					selected.snapshot->effectiveSelections.at("standard_shaders")));
+			Assert::IsTrue(runtime.SelectProfile("standard_shaders", "sharpen",
+				false, {}, selected, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			Assert::AreEqual(std::string("base"),
+				RendererProfileConfig::FormatSelection(
+					selected.snapshot->effectiveSelections.at("standard_shaders")));
+			UnifiedProfileRuntime::ActionInvocation invocation;
+			Assert::IsTrue(runtime.PrepareManualAction("do_it", invocation, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			Assert::AreEqual(0, invocation.action.delaySeconds);
+			Assert::IsTrue(invocation.action.arguments.find("manual") !=
+				std::string::npos);
+			Assert::IsFalse(runtime.PrepareManualAction("draft", invocation, error));
+		}
+
         TEST_METHOD(UnifiedColorOutputMigrationPreservesEveryBaselineSettingAndArchivesSelectors)
         {
             using namespace ColorOutputProfileMigration;

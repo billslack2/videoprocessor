@@ -7591,6 +7591,123 @@ namespace Tests
             Assert::IsFalse(EvaluateAspectLimitFill(input).applied,L"A nominally eligible picture must not override the actual envelope's existing fill limit.");
         }
 
+        TEST_METHOD(FillOnlyScopeSubtitlesKeepTheCompleteSixteenByNineFrameStationary)
+        {
+            AspectLimitFillInput fill;
+            fill.cropNarrowerContentToFillScreen = fill.cropWiderContentToFillScreen = true;
+            fill.narrowerLimitConfigured = fill.widerLimitConfigured = true;
+            fill.narrowerAspectLimit = 1.71; fill.widerAspectLimit = 1.86;
+            fill.screenAspect = 16.0 / 9.0;
+            for (bool subtitleFit : {false, true})
+            {
+                auto crop = TrustedScopeCrop();
+                crop.geometry.top = 276; // Deployed incident: 2.388:1 movie.
+                for (int bottom : {1884, 1938, 1958, 2160, 1934, 1884})
+                {
+                    crop.outwardExpansionAvailable = crop.outwardPresentationActive = bottom > 1884;
+                    crop.outwardExpansion = crop.geometry;
+                    crop.outwardExpansion.bottom = bottom;
+                    crop.outwardExpansionSourceGeneration = crop.frameSourceGeneration;
+                    crop.automaticCropEnabled = ShouldApplyDynamicSourceCrop(false, subtitleFit, crop, fill);
+                    crop.verticalTranslationActive = subtitleFit && bottom > 1884;
+                    crop.verticalTranslationPixels = 74;
+                    PresentationRecoveryInput recovery;
+                    recovery.crop = crop;
+                    recovery.candidate = Evaluate(crop);
+                    recovery.previous.active = true;
+                    recovery.previous.trustedCrop = crop.geometry;
+                    recovery.previous.sourceGeneration = crop.frameSourceGeneration;
+                    const auto recovered = EvaluatePresentationRecovery(recovery);
+                    Assert::IsFalse(recovered.state.active);
+                    recovery.candidate = recovered.presentation;
+                    const auto bounded = EvaluateNearBlackBoundedPresentation({}, recovery);
+                    const auto admitted = AdmitCropPresentation({}, crop, bounded.presentation, 1);
+                    const auto& result = admitted.presentation;
+                    Assert::IsFalse(result.applyCrop);
+                    Assert::IsFalse(result.verticallyTranslated);
+                    Assert::AreEqual(0, result.sourceBounds.left);
+                    Assert::AreEqual(0, result.sourceBounds.top);
+                    Assert::AreEqual(3840, result.sourceBounds.right);
+                    Assert::AreEqual(2160, result.sourceBounds.bottom);
+                    const double aspect = double(result.sourceBounds.right - result.sourceBounds.left) /
+                        (result.sourceBounds.bottom - result.sourceBounds.top);
+                    const auto fit = FitAspect(aspect, {0, 0, 3840, 2160},
+                        VerticalPictureAlignment::CENTER);
+                    Assert::AreEqual(0.0, fit.picture.top);
+                    Assert::AreEqual(2160.0, fit.picture.bottom);
+                }
+            }
+        }
+
+        TEST_METHOD(FillOnlyEligibleContentStillCropsOnBothSidesOfScreenAspect)
+        {
+            AspectLimitFillInput fill;
+            fill.cropNarrowerContentToFillScreen = fill.cropWiderContentToFillScreen = true;
+            fill.narrowerLimitConfigured = fill.widerLimitConfigured = true;
+            fill.narrowerAspectLimit = 1.71; fill.widerAspectLimit = 1.86;
+            fill.screenAspect = 16.0 / 9.0;
+            for (const auto bounds : {
+                ActivePictureBounds{0, 44, 3840, 2116, 3840, 2160, 0, ActivePictureBounds::BarAxes::TOP_BOTTOM},
+                ActivePictureBounds{40, 0, 3800, 2160, 3840, 2160, 0, ActivePictureBounds::BarAxes::LEFT_RIGHT}})
+            {
+                auto crop = TrustedScopeCrop(); crop.geometry = bounds;
+                crop.automaticCropEnabled = ShouldApplyDynamicSourceCrop(false, false, crop, fill);
+                Assert::IsTrue(crop.automaticCropEnabled);
+                const auto candidate = Evaluate(crop);
+                Assert::IsTrue(candidate.applyCrop);
+                fill.sourceBounds = candidate.sourceBounds;
+                fill.trustedContentAuthorityAccepted = true;
+                Assert::IsTrue(EvaluateAspectLimitFill(fill).applied);
+            }
+        }
+
+        TEST_METHOD(FillOnlyContentEligibilityRejectsStaleUnknownAndMalformedPicture)
+        {
+            AspectLimitFillInput fill;
+            fill.cropWiderContentToFillScreen = fill.widerLimitConfigured = true;
+            fill.widerAspectLimit = 1.86; fill.screenAspect = 16.0 / 9.0;
+            for (int fault = 0; fault < 5; ++fault)
+            {
+                auto crop = TrustedScopeCrop();
+                crop.geometry.top = 44; crop.geometry.bottom = 2116;
+                if (fault == 0) crop.sharedGeometryAvailable = false;
+                if (fault == 1) --crop.geometrySourceGeneration;
+                if (fault == 2) crop.classification = ActivePictureClassification::FULL_RASTER_TRUSTED;
+                if (fault == 3) crop.geometry.bottom = crop.geometry.top;
+                if (fault == 4) crop.geometry.rasterWidth = 1920;
+                Assert::IsFalse(ShouldApplyDynamicSourceCrop(false, false, crop, fill));
+            }
+        }
+
+        TEST_METHOD(FillOnlyEligibilityPreservesExplicitAutoCropAndIndependentSubtitleFit)
+        {
+            auto crop = TrustedScopeCrop();
+            AspectLimitFillInput fill;
+            fill.cropWiderContentToFillScreen = fill.widerLimitConfigured = true;
+            fill.widerAspectLimit = 1.86; fill.screenAspect = 16.0 / 9.0;
+            Assert::IsFalse(ShouldApplyDynamicSourceCrop(false, false, crop, fill));
+            Assert::IsTrue(ShouldApplyDynamicSourceCrop(true, false, crop, fill));
+            fill.cropWiderContentToFillScreen = false;
+            Assert::IsFalse(ShouldApplyDynamicSourceCrop(false, false, crop, fill));
+            Assert::IsTrue(ShouldApplyDynamicSourceCrop(false, true, crop, fill));
+        }
+
+        TEST_METHOD(FillOnlyUsesContentInsteadOfTransportAspectAndPreservesExactMatches)
+        {
+            auto crop = TrustedScopeCrop();
+            AspectLimitFillInput fill;
+            fill.cropNarrowerContentToFillScreen = fill.narrowerLimitConfigured = true;
+            fill.narrowerAspectLimit = 2.32; fill.screenAspect = 2.35;
+            crop.fullRasterPresentationAuthoritative = true;
+            Assert::IsFalse(ShouldApplyDynamicSourceCrop(false, false, crop, fill));
+            fill.narrowerAspectLimit = 1.71;
+            Assert::IsTrue(ShouldApplyDynamicSourceCrop(false, false, crop, fill));
+            crop.fullRasterPresentationAuthoritative = false;
+            crop.geometry = {320, 180, 3520, 1980, 3840, 2160, 16.0 / 9.0, ActivePictureBounds::BarAxes::BOTH};
+            fill.screenAspect = 16.0 / 9.0;
+            Assert::IsTrue(ShouldApplyDynamicSourceCrop(false, false, crop, fill));
+        }
+
 		TEST_METHOD(AspectLimitFillCropsTrustedNarrowerAndWiderContent)
 		{
 			AspectLimitFillInput input;

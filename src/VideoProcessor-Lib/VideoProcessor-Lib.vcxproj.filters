@@ -664,4 +664,21 @@
     <ClCompile Include="RememberedEdgeReturn.cpp"><Filter>Source Files</Filter></ClCompile>
   </ItemGroup>
   <ItemGroup><ClInclude Include="LocalBoundaryRefinement.h"><Filter>Header Files</Filter></ClInclude><ClCompile Include="LocalBoundaryRefinement.cpp"><Filter>Source Files</Filter></ClCompile></ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="video_frame_formatter\CARGBtoP010VideoFrameFormatter.Common.h" />
+    <ClCompile Include="video_frame_formatter\CARGBtoP010VideoFrameFormatter.AVX2.cpp" />
+    <ClInclude Include="video_frame_formatter\CDeckLinkRGBToP010VideoFrameFormatter.Common.h" />
+    <ClCompile Include="video_frame_formatter\CDeckLinkRGBToP010VideoFrameFormatter.AVX2.cpp" />
+    <ClInclude Include="video_frame_formatter\CR210toRGB48VideoFrameFormatter.Common.h" />
+    <ClCompile Include="video_frame_formatter\CR210toRGB48VideoFrameFormatter.AVX2.cpp" />
+    <ClInclude Include="video_frame_formatter\CR12BtoRGB48VideoFrameFormatter.Common.h" />
+    <ClCompile Include="video_frame_formatter\CR12BtoRGB48VideoFrameFormatter.AVX2.cpp" />
+    <ClCompile Include="video_frame_formatter\CUYVYtoP010VideoFrameFormatter.AVX2.cpp" />
+    <ClCompile Include="video_frame_formatter\CUYVYtoP210VideoFrameFormatter.AVX2.cpp" />
+    <ClCompile Include="video_frame_formatter\CV210toP210VideoFrameFormatter.AVX2.cpp" />
+    <ClInclude Include="video_frame_formatter\CV210toP010VideoFrameFormatter.Common.h" />
+    <ClCompile Include="video_frame_formatter\CV210toP010VideoFrameFormatter.AVX2.cpp" />
+    <ClInclude Include="CpuFeatures.h" />
+    <ClCompile Include="CpuFeatures.cpp" />
+  </ItemGroup>
 </Project>
