@@ -455,14 +455,18 @@ namespace UnifiedProfileRuntime
 		return true;
 	}
 
-	bool Runtime::SelectProfile(const std::string& groupName,
-		const std::string& profileName, bool enabled,
+	bool Runtime::SelectProfile(const std::string& requestedGroup,
+		const std::string& requestedProfile, bool enabled,
 		const DisplayRuleExpression::ValueLookup& sourceValues,
 		SelectionResult& result, std::string& error)
 	{
 		std::lock_guard<std::mutex> guard(m_mutex);
 		result = {};
 		error.clear();
+		// Config preserves the spelling of section headers for display, while
+		// ConfigFile stores the runtime model under normalized section IDs.
+		const std::string groupName = ConfigFile::NormalizeName(requestedGroup);
+		const std::string profileName = ConfigFile::NormalizeName(requestedProfile);
 		if (!m_initialized)
 		{
 			error = "unified profile runtime is not initialized";
@@ -536,11 +540,12 @@ namespace UnifiedProfileRuntime
 		return true;
 	}
 
-	bool Runtime::PrepareManualAction(const std::string& name,
+	bool Runtime::PrepareManualAction(const std::string& requestedName,
 		ActionInvocation& invocation, std::string& error) const
 	{
 		std::lock_guard<std::mutex> guard(m_mutex);
 		error.clear();
+		const std::string name = ConfigFile::NormalizeName(requestedName);
 		if (!m_initialized)
 		{
 			error = "unified profile runtime is not initialized";

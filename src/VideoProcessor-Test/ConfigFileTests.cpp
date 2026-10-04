@@ -177,6 +177,27 @@ namespace VideoProcessorTest
 	TEST_CLASS(ConfigFileTests)
 	{
 	public:
+		TEST_METHOD(ManualQueueSelectionUsesSavedSectionIdWithoutShortcut)
+		{
+			CachedConfigTestFile file;
+			std::ofstream(file.path) <<
+				"[queue.Default]\nqueue_size: 16\ntarget_frames: 2\n"
+				"[queue.VP_60]\nqueue_size: 24\ntarget_frames: 3\n";
+			ConfigFile config;
+			Assert::IsTrue(config.Load(file.path));
+			UnifiedProfileRuntime::Runtime runtime;
+			std::string error;
+			Assert::IsTrue(runtime.Initialize(config, {}, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			UnifiedProfileRuntime::SelectionResult selected;
+			Assert::IsTrue(runtime.SelectProfile("QUEUE", "VP_60", true,
+				{}, selected, error),
+				std::wstring(error.begin(), error.end()).c_str());
+			Assert::IsTrue(selected.changed);
+			Assert::AreEqual(std::string("vp_60"),
+				selected.snapshot->queue.profile);
+		}
+
 		TEST_METHOD(ManualProfileAndActionCommandsUseSavedRuntimeModel)
 		{
 			CachedConfigTestFile file;
@@ -232,7 +253,7 @@ namespace VideoProcessorTest
 				RendererProfileConfig::FormatSelection(
 					selected.snapshot->effectiveSelections.at("standard_shaders")));
 			UnifiedProfileRuntime::ActionInvocation invocation;
-			Assert::IsTrue(runtime.PrepareManualAction("do_it", invocation, error),
+			Assert::IsTrue(runtime.PrepareManualAction("Do_It", invocation, error),
 				std::wstring(error.begin(), error.end()).c_str());
 			Assert::AreEqual(0, invocation.action.delaySeconds);
 			Assert::IsTrue(invocation.action.arguments.find("manual") !=
