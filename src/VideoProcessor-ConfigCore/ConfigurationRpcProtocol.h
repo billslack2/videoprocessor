@@ -27,7 +27,9 @@ namespace ConfigurationRpcProtocol
 		ApplyConfig = 3,
 		DiscoveryQuery = 4,
 		DiscoveryReply = 5,
-		GetActiveProfileStatus = 6
+		GetActiveProfileStatus = 6,
+		SelectProfile = 7,
+		RunAction = 8
 	};
 
 	struct Frame
@@ -73,6 +75,8 @@ namespace ConfigurationRpcProtocol
 		case static_cast<uint16_t>(Operation::DiscoveryQuery):
 		case static_cast<uint16_t>(Operation::DiscoveryReply):
 		case static_cast<uint16_t>(Operation::GetActiveProfileStatus):
+		case static_cast<uint16_t>(Operation::SelectProfile):
+		case static_cast<uint16_t>(Operation::RunAction):
 			return true;
 		default:
 			return false;

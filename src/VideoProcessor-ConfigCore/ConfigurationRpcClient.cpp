@@ -151,7 +151,9 @@ bool ConfigurationRpcClient::Request(uint16_t operation,
 		error = "Could not connect to VP. Check its address, network, and firewall.";
 		return false;
 	}
-	const int timeout = operation == static_cast<uint16_t>(Operation::ApplyConfig) ?
+	const int timeout = operation == static_cast<uint16_t>(Operation::ApplyConfig) ||
+		operation == static_cast<uint16_t>(Operation::SelectProfile) ||
+		operation == static_cast<uint16_t>(Operation::RunAction) ?
 		50000 : operation == static_cast<uint16_t>(Operation::GetActiveProfileStatus) ?
 		1500 : 10000;
 	setsockopt(socket.value, SOL_SOCKET, SO_RCVTIMEO,
@@ -285,6 +287,50 @@ bool ConfigurationRpcClient::GetActiveProfileStatus(LiveProfileStatus& status,
 	if (!ParseLiveProfileStatus(response, status))
 	{
 		error = "VP returned invalid active-profile status.";
+		return false;
+	}
+	return true;
+}
+
+bool ConfigurationRpcClient::SelectProfile(const std::string& group,
+	const std::string& profile, bool enabled, std::string& error) const
+{
+	Frame request;
+	if (group.empty() || profile.empty() || group.size() > 64 ||
+		profile.size() > 64 || !WriteString(request.payload, group) ||
+		!WriteString(request.payload, profile))
+	{
+		error = "Select a saved profile.";
+		return false;
+	}
+	request.payload.push_back(enabled ? 1 : 0);
+	std::vector<uint8_t> response;
+	if (!Request(static_cast<uint16_t>(Operation::SelectProfile),
+		request.payload, response, error)) return false;
+	if (!response.empty())
+	{
+		error = "VP returned an invalid profile selection response.";
+		return false;
+	}
+	return true;
+}
+
+bool ConfigurationRpcClient::RunAction(const std::string& action,
+	std::string& error) const
+{
+	Frame request;
+	if (action.empty() || action.size() > 64 ||
+		!WriteString(request.payload, action))
+	{
+		error = "Select a saved action.";
+		return false;
+	}
+	std::vector<uint8_t> response;
+	if (!Request(static_cast<uint16_t>(Operation::RunAction),
+		request.payload, response, error)) return false;
+	if (!response.empty())
+	{
+		error = "VP returned an invalid action response.";
 		return false;
 	}
 	return true;
