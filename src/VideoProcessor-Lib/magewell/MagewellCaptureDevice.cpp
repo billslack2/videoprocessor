@@ -19,6 +19,7 @@
 
 #include <stdexcept>
 #include <algorithm>
+#include <chrono>
 
 
 // The Magewell device clock is expressed in 100ns units, which is 10,000,000
@@ -112,6 +113,7 @@ bool MagewellCaptureDevice::SignalDescription::SameFormatAs(
 		colorFormat == other.colorFormat &&
 		quantRange == other.quantRange &&
 		bitDepth == other.bitDepth &&
+		inputSampling == other.inputSampling &&
 		eotf == other.eotf &&
 		colorSpace == other.colorSpace &&
 		hasHdrData == other.hasHdrData &&
@@ -261,19 +263,38 @@ void MagewellCaptureDevice::StartCapture(CaptureRunToken captureRunToken)
 		channel = OpenChannel();
 		if (!channel)
 			throw std::runtime_error("Failed to open the Magewell capture channel");
+		if (m_sdkInstance->Api().MWGetInputSourceScan(
+			channel, &m_originalScanEnabled) != MW_SUCCEEDED)
+			throw std::runtime_error("Failed to read Magewell input AutoScan state");
+		m_restoreScan = true;
+		// AutoScan may choose any connected input, overriding this device's
+		// configured connector. Disable it before selecting the full source ID.
+		if (m_sdkInstance->Api().MWSetInputSourceScan(channel, FALSE) != MW_SUCCEEDED)
+			throw std::runtime_error("Failed to disable Magewell input AutoScan");
 		if (m_sdkInstance->Api().MWSetVideoInputSource(
 			channel, static_cast<DWORD>(m_captureInputId)) != MW_SUCCEEDED)
 			throw std::runtime_error("Failed to select the configured Magewell video input");
+		DWORD selectedSource = 0;
+		BOOLEAN scanEnabled = TRUE;
+		if (m_sdkInstance->Api().MWGetInputSourceScan(channel, &scanEnabled) != MW_SUCCEEDED ||
+			scanEnabled != FALSE ||
+			m_sdkInstance->Api().MWGetVideoInputSource(channel, &selectedSource) != MW_SUCCEEDED ||
+			selectedSource != static_cast<DWORD>(m_captureInputId))
+			throw std::runtime_error("Magewell did not retain the configured video input");
 		LONGLONG startDeviceTime = 0;
 		if (m_sdkInstance->Api().MWGetDeviceTime(channel, &startDeviceTime)
 			!= MW_SUCCEEDED)
 			throw std::runtime_error("Failed to establish Magewell capture clock baseline");
-		m_channel.store(channel, std::memory_order_release);
+		{
+			std::lock_guard<std::mutex> clockLock(m_clockMutex);
+			m_lastClockTicks = 0;
+			m_timingBaselineTicks.store(
+				static_cast<timingclocktime_t>(startDeviceTime),
+				std::memory_order_release);
+			m_channel.store(channel, std::memory_order_release);
+		}
 		m_capturedVideoFrameCount = 0;
 		m_missedVideoFrameCount = 0;
-		m_timingBaselineTicks.store(
-			static_cast<timingclocktime_t>(startDeviceTime),
-			std::memory_order_release);
 		m_captureThreadRunning.store(true, std::memory_order_release);
 		m_outputCaptureData.store(true, std::memory_order_release);
 		m_captureThread = std::thread(
@@ -283,9 +304,15 @@ void MagewellCaptureDevice::StartCapture(CaptureRunToken captureRunToken)
 	{
 		m_captureThreadRunning.store(false, std::memory_order_release);
 		m_outputCaptureData.store(false, std::memory_order_release);
-		m_channel.store(nullptr, std::memory_order_release);
-		if (channel)
-			m_sdkInstance->Api().MWCloseChannel(channel);
+		{
+			std::lock_guard<std::mutex> clockLock(m_clockMutex);
+			m_channel.store(nullptr, std::memory_order_release);
+			if (channel)
+			{
+				RestoreInputScan(channel);
+				m_sdkInstance->Api().MWCloseChannel(channel);
+			}
+		}
 		try { Error(CString(exception.what())); }
 		catch (...) { DebugLog::Log("Magewell setup error callback threw"); }
 		try { UpdateState(CaptureDeviceState::CAPTUREDEVICESTATE_READY); }
@@ -296,9 +323,15 @@ void MagewellCaptureDevice::StartCapture(CaptureRunToken captureRunToken)
 	{
 		m_captureThreadRunning.store(false, std::memory_order_release);
 		m_outputCaptureData.store(false, std::memory_order_release);
-		m_channel.store(nullptr, std::memory_order_release);
-		if (channel)
-			m_sdkInstance->Api().MWCloseChannel(channel);
+		{
+			std::lock_guard<std::mutex> clockLock(m_clockMutex);
+			m_channel.store(nullptr, std::memory_order_release);
+			if (channel)
+			{
+				RestoreInputScan(channel);
+				m_sdkInstance->Api().MWCloseChannel(channel);
+			}
+		}
 		try { Error(TEXT("Unknown Magewell capture setup failure")); }
 		catch (...) { DebugLog::Log("Magewell setup error callback threw"); }
 		try { UpdateState(CaptureDeviceState::CAPTUREDEVICESTATE_READY); }
@@ -318,9 +351,15 @@ void MagewellCaptureDevice::StopCapture()
 	if (m_captureThread.joinable())
 		m_captureThread.join();
 
-	const HCHANNEL channel = m_channel.exchange(nullptr, std::memory_order_acq_rel);
-	if (channel)
-		m_sdkInstance->Api().MWCloseChannel(channel);
+	{
+		std::lock_guard<std::mutex> clockLock(m_clockMutex);
+		const HCHANNEL channel = m_channel.exchange(nullptr, std::memory_order_acq_rel);
+		if (channel)
+		{
+			RestoreInputScan(channel);
+			m_sdkInstance->Api().MWCloseChannel(channel);
+		}
+	}
 
 	UpdateState(m_canCapture
 		? CaptureDeviceState::CAPTUREDEVICESTATE_READY
@@ -501,10 +540,38 @@ bool MagewellCaptureDevice::ReadSignal(
 
 	MWCAP_INPUT_SPECIFIC_STATUS specific = {};
 	if (m_sdkInstance->Api().MWGetInputSpecificStatus(channel, &specific) == MW_SUCCEEDED &&
-		specific.bValid &&
-		specific.dwVideoInputType == MWCAP_VIDEO_INPUT_TYPE_HDMI)
+		specific.bValid)
 	{
-		signal.bitDepth = specific.hdmiStatus.byBitDepth;
+		if (specific.dwVideoInputType == MWCAP_VIDEO_INPUT_TYPE_HDMI)
+		{
+			signal.bitDepth = specific.hdmiStatus.byBitDepth;
+			signal.inputSampling = static_cast<int>(specific.hdmiStatus.pixelEncoding);
+		}
+		else if (specific.dwVideoInputType == MWCAP_VIDEO_INPUT_TYPE_SDI)
+		{
+			switch (specific.sdiStatus.sdiBitDepth)
+			{
+			case SDI_BIT_DEPTH_8BIT: signal.bitDepth = 8; break;
+			case SDI_BIT_DEPTH_10BIT: signal.bitDepth = 10; break;
+			case SDI_BIT_DEPTH_12BIT: signal.bitDepth = 12; break;
+			default: break;
+			}
+			switch (specific.sdiStatus.sdiSamplingStruct)
+			{
+			case SDI_SAMPLING_444_RGB:
+			case SDI_SAMPLING_4444_RGBA:
+				signal.inputSampling = 0; break;
+			case SDI_SAMPLING_422_YCbCr:
+			case SDI_SAMPLING_4224_YCbCrA:
+				signal.inputSampling = 1; break;
+			case SDI_SAMPLING_444_YCbCr:
+			case SDI_SAMPLING_4444_YCbCrA:
+				signal.inputSampling = 2; break;
+			case SDI_SAMPLING_420_YCbCr:
+				signal.inputSampling = 3; break;
+			default: break;
+			}
+		}
 	}
 
 	// HDR metadata is only carried over HDMI. Absence is the normal case.
@@ -567,7 +634,7 @@ void MagewellCaptureDevice::ChooseCaptureFormat(
 		if (signal.bitDepth == 10 && supports(MWFOURCC_RGB10))
 		{
 			fourcc = MWFOURCC_RGB10;
-			encoding = VideoFrameEncoding::R210;
+			encoding = VideoFrameEncoding::R10l;
 			return;
 		}
 		throw std::runtime_error(
@@ -588,14 +655,14 @@ void MagewellCaptureDevice::ChooseCaptureFormat(
 }
 
 
-void MagewellCaptureDevice::RepackRGB10ToR210(
+void MagewellCaptureDevice::RepackRGB10ToR10l(
 	const uint8_t* source, uint32_t sourceStride,
 	uint8_t* destination, uint32_t destinationStride,
 	uint32_t width, uint32_t height)
 {
 	// SDK RGB10 uses DXGI_FORMAT_R10G10B10A2_UNORM: red occupies the low
-	// ten bits, then green, blue and two alpha bits. VP's R210 stores the
-	// same component codes in a big-endian R10:G10:B10 word, with
+	// ten bits, then green, blue and two alpha bits. VP's R10l stores the
+	// same component codes in a little-endian R10:G10:B10:00 word, with
 	// each destination row padded to 64 pixels. No quantization occurs here.
 	for (uint32_t row = 0; row < height; ++row)
 	{
@@ -608,11 +675,8 @@ void MagewellCaptureDevice::RepackRGB10ToR210(
 			const uint32_t red = packed & 0x3FF;
 			const uint32_t green = (packed >> 10) & 0x3FF;
 			const uint32_t blue = (packed >> 20) & 0x3FF;
-			const uint32_t r210 = (red << 20) | (green << 10) | blue;
-			output[(size_t)pixel * 4 + 0] = static_cast<uint8_t>(r210 >> 24);
-			output[(size_t)pixel * 4 + 1] = static_cast<uint8_t>(r210 >> 16);
-			output[(size_t)pixel * 4 + 2] = static_cast<uint8_t>(r210 >> 8);
-			output[(size_t)pixel * 4 + 3] = static_cast<uint8_t>(r210);
+			const uint32_t r10l = (red << 22) | (green << 12) | (blue << 2);
+			memcpy(output + (size_t)pixel * 4, &r10l, sizeof(r10l));
 		}
 	}
 }
@@ -706,7 +770,7 @@ uint32_t MagewellCaptureDevice::BytesPerRowFor(
 	case VideoFrameEncoding::BGRA_8BIT:
 	case VideoFrameEncoding::ARGB_8BIT:
 		return width * 4;
-	case VideoFrameEncoding::R210:
+	case VideoFrameEncoding::R10l:
 		return ((width + 63) / 64) * 256;
 	default:
 		throw std::runtime_error("Unsupported Magewell capture encoding");
@@ -741,7 +805,8 @@ void MagewellCaptureDevice::PublishCardState(const SignalDescription& signal)
 	case MWCAP_VIDEO_COLOR_FORMAT_YUV709:
 	case MWCAP_VIDEO_COLOR_FORMAT_YUV2020:
 	case MWCAP_VIDEO_COLOR_FORMAT_YUV2020C:
-		cardState->inputEncoding = ColorFormat::YCbCr422;
+		cardState->inputEncoding = signal.inputSampling == 1
+			? ColorFormat::YCbCr422 : ColorFormat::UNKNOWN;
 		break;
 	default:
 		cardState->inputEncoding = ColorFormat::UNKNOWN;
@@ -757,6 +822,10 @@ void MagewellCaptureDevice::PublishCardState(const SignalDescription& signal)
 	}
 
 	CString text;
+	if (signal.inputSampling == 2)
+		cardState->other.push_back(CString(_T("Wire sampling: YCbCr 4:4:4")));
+	else if (signal.inputSampling == 3)
+		cardState->other.push_back(CString(_T("Wire sampling: YCbCr 4:2:0")));
 
 	if (signal.quantRange == MWCAP_VIDEO_QUANTIZATION_FULL)
 		cardState->other.push_back(CString(_T("Quantization range: full")));
@@ -827,12 +896,24 @@ bool MagewellCaptureDevice::PublishVideoState(
 			? (double)MAGEWELL_CLOCK_TICKS_SECOND / signal.frameDuration100ns : 0.0,
 		(unsigned int)signal.bitDepth,
 		encoding == VideoFrameEncoding::V210 ? "V210" :
-			(encoding == VideoFrameEncoding::R210 ? "R210" : "ARGB"),
+			(encoding == VideoFrameEncoding::R10l ? "R10l" : "ARGB"),
 		(int)signal.colorSpace, (int)signal.eotf, signal.hasHdrData ? 1 : 0);
 
 	m_callback->OnCaptureDeviceVideoStateChange(
 		this, captureRunToken, videoState);
 	return true;
+}
+
+
+void MagewellCaptureDevice::PublishInvalidVideoState(
+	CaptureRunToken captureRunToken)
+{
+	if (!m_callback)
+		return;
+	VideoStateComPtr invalidState = new VideoState();
+	invalidState->valid = false;
+	m_callback->OnCaptureDeviceVideoStateChange(
+		this, captureRunToken, invalidState);
 }
 
 
@@ -854,22 +935,38 @@ void MagewellCaptureDevice::CaptureThread(CaptureRunToken captureRunToken)
 	catch (const std::exception& exception)
 	{
 		DebugLog::Log("Magewell capture thread aborted: %s", exception.what());
+		if (m_state.load() == CaptureDeviceState::CAPTUREDEVICESTATE_CAPTURING)
+		{
+			try { PublishInvalidVideoState(captureRunToken); }
+			catch (...) { DebugLog::Log("Magewell invalid video state callback threw"); }
+		}
 		try { Error(CString(exception.what())); }
 		catch (...) { DebugLog::Log("Magewell error callback threw"); }
 	}
 	catch (...)
 	{
 		DebugLog::Log("Magewell capture thread aborted on an unknown exception");
+		if (m_state.load() == CaptureDeviceState::CAPTUREDEVICESTATE_CAPTURING)
+		{
+			try { PublishInvalidVideoState(captureRunToken); }
+			catch (...) { DebugLog::Log("Magewell invalid video state callback threw"); }
+		}
 		try { Error(TEXT("Unknown error in the Magewell capture thread")); }
 		catch (...) { DebugLog::Log("Magewell error callback threw"); }
 	}
 	m_captureThreadRunning.store(false, std::memory_order_release);
 	if (m_state.load() == CaptureDeviceState::CAPTUREDEVICESTATE_STARTING)
 	{
-		const HCHANNEL channel = m_channel.exchange(
-			nullptr, std::memory_order_acq_rel);
-		if (channel)
-			m_sdkInstance->Api().MWCloseChannel(channel);
+		{
+			std::lock_guard<std::mutex> clockLock(m_clockMutex);
+			const HCHANNEL channel = m_channel.exchange(
+				nullptr, std::memory_order_acq_rel);
+			if (channel)
+			{
+				RestoreInputScan(channel);
+				m_sdkInstance->Api().MWCloseChannel(channel);
+			}
+		}
 		try { UpdateState(CaptureDeviceState::CAPTUREDEVICESTATE_READY); }
 		catch (...) { DebugLog::Log("Magewell READY callback threw"); }
 	}
@@ -890,6 +987,7 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 
 	SignalDescription current;
 	bool haveState = false;
+	bool haveCardState = false;
 	DWORD fourcc = 0;
 	VideoFrameEncoding encoding = VideoFrameEncoding::UNKNOWN;
 	uint32_t stride = 0;
@@ -902,8 +1000,35 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 	bool repackRGB10 = false;
 	std::vector<uint8_t> scratch;
 	std::vector<DWORD> supportedFormats;
-
 	bool capturing = false;
+	std::string lastUnsupportedReason;
+	auto lastSignalPoll = std::chrono::steady_clock::now();
+	auto lastFrameNotification = lastSignalPoll;
+	int notifyFailures = 0, signalFailures = 0, bufferFailures = 0;
+	int copyFailures = 0, frameInfoFailures = 0, clockFailures = 0;
+	const auto sdkFailure = [](int& failures, const char* message)
+	{
+		if (++failures >= 5)
+			throw std::runtime_error(message);
+	};
+	const auto unsupportedSignal = [&](const char* reason)
+	{
+		if (haveState)
+			PublishInvalidVideoState(captureRunToken);
+		if (capturing)
+		{
+			m_sdkInstance->Api().MWStopVideoCapture(channel);
+			capturing = false;
+		}
+		buffers.clear();
+		haveState = false;
+		if (lastUnsupportedReason != reason)
+		{
+			lastUnsupportedReason = reason;
+			Error(CString(reason));
+		}
+	};
+
 	// Every in-flight renderer reference retains its own shared owner in
 	// MagewellCaptureBuffer. Clearing this pool on a format change or an
 	// exception cannot free a buffer still being read downstream.
@@ -967,12 +1092,29 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 
 	while (m_captureThreadRunning.load(std::memory_order_acquire))
 	{
-		if (WaitForSingleObject(notifyEvent, 100) != WAIT_OBJECT_0)
-			continue;
-
 		ULONGLONG notifyStatus = 0;
-		if (m_sdkInstance->Api().MWGetNotifyStatus(channel, notify, &notifyStatus) != MW_SUCCEEDED)
+		const DWORD waitResult = WaitForSingleObject(notifyEvent, 100);
+		if (waitResult == WAIT_TIMEOUT)
+		{
+			const auto now = std::chrono::steady_clock::now();
+			if (now - lastSignalPoll < std::chrono::milliseconds(250))
+				continue;
+			lastSignalPoll = now;
+			notifyStatus = MWCAP_NOTIFY_VIDEO_SIGNAL_CHANGE;
+		}
+		else if (waitResult != WAIT_OBJECT_0)
+			throw std::runtime_error("Magewell notification wait failed; capture stopped. Restart required");
+		else if (m_sdkInstance->Api().MWGetNotifyStatus(channel, notify, &notifyStatus) != MW_SUCCEEDED)
+		{
+			sdkFailure(notifyFailures, "Magewell notifications repeatedly failed; capture stopped. Restart required");
 			continue;
+		}
+		else
+		{
+			notifyFailures = 0;
+			if (notifyStatus & MWCAP_NOTIFY_VIDEO_FRAME_BUFFERED)
+				lastFrameNotification = std::chrono::steady_clock::now();
+		}
 
 		const bool formatEvent = (notifyStatus & (
 			MWCAP_NOTIFY_VIDEO_SIGNAL_CHANGE |
@@ -983,10 +1125,26 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 		if (formatEvent || !haveState)
 		{
 			SignalDescription signal;
-			if (!ReadSignal(channel, signal))
+			bool signalRead = false;
+			try { signalRead = ReadSignal(channel, signal); }
+			catch (const std::exception& exception)
+			{
+				current = signal;
+				unsupportedSignal(exception.what());
 				continue;
+			}
+			if (!signalRead)
+			{
+				sdkFailure(signalFailures, "Magewell signal status repeatedly failed; capture stopped. Restart required");
+				continue;
+			}
+			signalFailures = 0;
 
-			PublishCardState(signal);
+			if (!haveCardState || !signal.SameFormatAs(current))
+			{
+				PublishCardState(signal);
+				haveCardState = true;
+			}
 
 			if (!signal.SameFormatAs(current))
 				DebugLog::Log(
@@ -1031,16 +1189,13 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 				buffers.clear();
 				current = signal;
 
-				ChooseCaptureFormat(current, supportedFormats, fourcc, encoding);
-				try
-				{
-					stride = BytesPerRowFor(encoding, current.width);
-				}
+				try { ChooseCaptureFormat(current, supportedFormats, fourcc, encoding); }
 				catch (const std::exception& exception)
 				{
-					Error(CString(exception.what()));
-					goto cleanup;
+					unsupportedSignal(exception.what());
+					continue;
 				}
+				stride = BytesPerRowFor(encoding, current.width);
 				const uint64_t deliveryBytes =
 					static_cast<uint64_t>(stride) * current.height;
 				if (deliveryBytes == 0 || deliveryBytes > 128ULL * 1024 * 1024)
@@ -1051,7 +1206,7 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 				// which is planar: luma plane then chroma plane, both at
 				// width * 2 bytes per row.
 				repackP210 = (encoding == VideoFrameEncoding::V210);
-				repackRGB10 = (encoding == VideoFrameEncoding::R210);
+				repackRGB10 = (encoding == VideoFrameEncoding::R10l);
 				if (repackP210)
 				{
 					// P210 is planar and a different size to v210, so the card
@@ -1093,20 +1248,26 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 				buffers.reserve(MAGEWELL_CAPTURE_BUFFER_COUNT);
 				for (int i = 0; i < MAGEWELL_CAPTURE_BUFFER_COUNT; ++i)
 					buffers.push_back(
-						std::make_shared<MagewellCaptureBuffer>(frameSize));
+						std::make_shared<MagewellCaptureBuffer>(frameSize,
+							m_memoryBudget));
 				bufferIndex = 0;
 
 				if (m_sdkInstance->Api().MWStartVideoCapture(channel, captureEvent) != MW_SUCCEEDED)
-				{
-					Error(TEXT("Failed to restart Magewell capture after format change"));
-					goto cleanup;
-				}
+					throw std::runtime_error("Failed to restart Magewell capture after format change");
 				capturing = true;
 
 				if (!PublishVideoState(current, encoding, captureRunToken))
 					continue;
 				haveState = true;
+				lastUnsupportedReason.clear();
+				lastFrameNotification = std::chrono::steady_clock::now();
 			}
+
+			if (haveState &&
+				std::chrono::steady_clock::now() - lastFrameNotification >
+					std::chrono::seconds(2))
+				throw std::runtime_error(
+					"Magewell stopped reporting buffered frames for two seconds; capture stopped. Restart required");
 
 			if (formatEvent)
 				continue;
@@ -1121,11 +1282,15 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 
 		MWCAP_VIDEO_BUFFER_INFO bufferInfo = {};
 		if (m_sdkInstance->Api().MWGetVideoBufferInfo(channel, &bufferInfo) != MW_SUCCEEDED)
+		{
+			sdkFailure(bufferFailures, "Magewell video buffer status repeatedly failed; capture stopped. Restart required");
 			continue;
+		}
+		bufferFailures = 0;
 
-		// Take the next buffer the renderer has finished with. A buffer still
-		// referenced downstream must not be overwritten, so if every buffer is
-		// held the frame is dropped and counted rather than corrupting one.
+		// Take the next buffer the renderer has finished with. Grow within the
+		// Magewell memory budget when all are held; configured renderer queue
+		// and lookahead depth can exceed the initial eight buffers.
 		MagewellCaptureBuffer* buffer = nullptr;
 		for (size_t attempt = 0; attempt < buffers.size(); ++attempt)
 		{
@@ -1140,14 +1305,18 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 
 		if (!buffer)
 		{
-			++m_missedVideoFrameCount;
-			continue;
+			buffers.push_back(std::make_shared<MagewellCaptureBuffer>(
+				frameSize, m_memoryBudget));
+			buffer = buffers.back().get();
+			bufferIndex = 0;
+			DebugLog::Log("Magewell capture pool expanded to %u buffers",
+				static_cast<unsigned int>(buffers.size()));
 		}
 
 		// The output colour format and range are stated explicitly so the
 		// card's conversion matches what the video state promises downstream.
 		// State the output matrix and range so captured bytes agree with the
-		// existing VP converters. ARGB expects full RGB; R210 expects limited
+		// existing VP converters. ARGB expects full RGB; R10l expects limited
 		// RGB; V210 expects limited YCbCr in the signaled color space.
 
 
@@ -1191,7 +1360,11 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 				? MWCAP_VIDEO_QUANTIZATION_FULL
 				: MWCAP_VIDEO_QUANTIZATION_LIMITED,
 			MWCAP_VIDEO_SATURATION_UNKNOWN) != MW_SUCCEEDED)
+		{
+			sdkFailure(copyFailures, "Magewell frame copy repeatedly failed; capture stopped. Restart required");
 			continue;
+		}
+		copyFailures = 0;
 
 		if (WaitForSingleObject(captureEvent, 200) != WAIT_OBJECT_0)
 			throw std::runtime_error("Magewell frame copy timed out; capture stopped to avoid a late write into reused memory");
@@ -1206,9 +1379,10 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 		if (m_sdkInstance->Api().MWGetVideoFrameInfo(
 			channel, captureStatus.iFrame, &frameInfo) != MW_SUCCEEDED)
 		{
-			++m_missedVideoFrameCount;
+			sdkFailure(frameInfoFailures, "Magewell frame information repeatedly failed; capture stopped. Restart required");
 			continue;
 		}
+		frameInfoFailures = 0;
 
 		// Convert the card's P210 into the v210 the renderer expects. Done
 		// before the frame is handed over so everything downstream sees the
@@ -1219,7 +1393,7 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 				buffer->Data(), stride,
 				current.width, current.height);
 		else if (repackRGB10)
-			RepackRGB10ToR210(
+			RepackRGB10ToR10l(
 				scratch.data(), captureStride,
 				buffer->Data(), stride,
 				current.width, current.height);
@@ -1238,8 +1412,16 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 
 		LONGLONG deviceTime = 0;
 		if (m_sdkInstance->Api().MWGetDeviceTime(channel, &deviceTime) == MW_SUCCEEDED)
+		{
 			m_hardwareLatencyMs.store(
 				(double)(deviceTime - rawCaptureTicks) / 10000.0);
+			clockFailures = 0;
+		}
+		else
+		{
+			sdkFailure(clockFailures, "Magewell hardware clock repeatedly failed; capture stopped. Restart required");
+			continue;
+		}
 
 
 		const uint64_t counter = ++m_capturedVideoFrameCount;
@@ -1287,6 +1469,24 @@ void MagewellCaptureDevice::Error(const CString& error)
 }
 
 
+void MagewellCaptureDevice::RestoreInputScan(HCHANNEL channel) noexcept
+{
+	if (!m_restoreScan)
+		return;
+	m_restoreScan = false;
+	try
+	{
+		if (m_sdkInstance->Api().MWSetInputSourceScan(
+			channel, m_originalScanEnabled) != MW_SUCCEEDED)
+			DebugLog::Log("Magewell failed to restore input AutoScan state");
+	}
+	catch (...)
+	{
+		DebugLog::Log("Magewell input AutoScan restoration threw");
+	}
+}
+
+
 //
 // ITimingClock
 //
@@ -1294,23 +1494,33 @@ void MagewellCaptureDevice::Error(const CString& error)
 
 timingclocktime_t MagewellCaptureDevice::TimingClockNow()
 {
+	std::lock_guard<std::mutex> clockLock(m_clockMutex);
 	const HCHANNEL channel = m_channel.load(std::memory_order_acquire);
 	if (!channel)
-		throw std::runtime_error("Magewell timing clock read without a channel");
+		return m_lastClockTicks;
 
 	LONGLONG deviceTime = 0;
-	if (m_sdkInstance->Api().MWGetDeviceTime(channel, &deviceTime) != MW_SUCCEEDED)
-		throw std::runtime_error("Could not read the Magewell hardware clock");
+	try
+	{
+		if (m_sdkInstance->Api().MWGetDeviceTime(channel, &deviceTime) != MW_SUCCEEDED)
+			return m_lastClockTicks;
+	}
+	catch (...)
+	{
+		return m_lastClockTicks;
+	}
 
 	// The baseline is set before capture starts, so the clock and every frame
 	// use the same zero even before the first frame is delivered.
 	const timingclocktime_t baseline =
 		m_timingBaselineTicks.load(std::memory_order_acquire);
 	if (baseline < 0)
-		throw std::runtime_error("Magewell capture clock baseline is unavailable");
+		return m_lastClockTicks;
 	const timingclocktime_t rebased =
 		static_cast<timingclocktime_t>(deviceTime) - baseline;
-	return rebased + m_frameOffsetTicks.load();
+	if (rebased > m_lastClockTicks)
+		m_lastClockTicks = rebased;
+	return m_lastClockTicks;
 }
 
 

@@ -95,6 +95,9 @@ void MagewellCaptureDeviceDiscoverer::Discover(const MagewellSdkInstancePtr& sdk
 	if (m_sdkInstance->Api().MWRefreshDevice() != MW_SUCCEEDED)
 	{
 		DebugLog::Log("Magewell discovery found no devices: refresh failed");
+		MagewellSdkInstance::SetDiscoveryUnavailableReason(
+			L"Magewell device discovery failed while refreshing the device list.");
+		m_sdkInstance.reset();
 		return;
 	}
 
@@ -151,6 +154,21 @@ void MagewellCaptureDeviceDiscoverer::Discover(const MagewellSdkInstancePtr& sdk
 			DebugLog::Log("Magewell channel %d could not be opened: %s",
 				index, exception.what());
 		}
+	}
+
+	if (m_captureDevices.empty())
+	{
+		const std::wstring reason =
+			L"No usable Magewell Pro Capture device was found. Check that a supported card is connected and its driver is working.";
+		MagewellSdkInstance::SetDiscoveryUnavailableReason(reason);
+		DebugLog::Log("Magewell discovery unavailable: %S", reason.c_str());
+		// No reported device owns the SDK token, so an idle SDK monitoring
+		// thread is unnecessary on machines without a usable Magewell card.
+		m_sdkInstance.reset();
+	}
+	else
+	{
+		MagewellSdkInstance::SetDiscoveryUnavailableReason(L"");
 	}
 }
 

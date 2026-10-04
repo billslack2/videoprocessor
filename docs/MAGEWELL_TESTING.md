@@ -3,8 +3,9 @@
 This integration ships in the same x64 Release build as the existing capture
 paths. Magewell appears as a capture choice only when the official runtime can
 be loaded and a usable card is discovered. A saved Magewell selection should
-produce a clear unavailable message when the runtime cannot load; other capture
-devices and renderers must continue working.
+produce a clear unavailable message when the runtime cannot load or no
+supported card is present; other capture devices and renderers must continue
+working.
 
 The **development SDK** is needed to compile VP. A viewer machine needs the
 official Magewell **runtime and driver** for its card, not the SDK headers or
@@ -16,12 +17,33 @@ Defender settings to make a test pass.
 
 This backend targets the Magewell **Pro Capture** family only. USB Capture and
 Eco Capture use different capture APIs and are excluded from discovery.
-Supported outputs are ARGB for RGB 8-bit, RGB10 repacked to VP's existing R210
-for RGB 10-bit, and P210 repacked to VP's existing V210 for YCbCr. Output choice
-is checked against the card's reported capabilities. RGB 12-bit and unknown
-RGB depth are explicitly rejected; they are not silently converted to 4:2:2.
-The YCbCr path delivers 10-bit 4:2:2; it does not preserve 12-bit precision or
-4:4:4 chroma when those are supplied by the source.
+Supported outputs are ARGB for RGB 8-bit, RGB10 repacked to VP's existing R10l
+for RGB 10-bit, and P210 repacked to VP's existing V210 for YCbCr. The default
+RGB10-to-R10l path preserves 4:4:4 channel data. Output choice is checked
+against the card's reported capabilities. RGB 12-bit and unknown RGB depth are
+explicitly rejected; they are not silently converted to 4:2:2. The YCbCr path
+delivers 10-bit 4:2:2; it does not preserve 12-bit precision or 4:4:4 chroma
+when those are supplied by the source. A forced P010 conversion reduces
+4:4:4 to 4:2:0, and the existing converter has a BT.601 limitation for SD RGB.
+R10l capture currently requests limited-range RGB, so full-range RGB/HDR input
+needs explicit image-level qualification.
+
+Magewell capture starts with eight reusable frame buffers and grows its pool
+when renderer queue or crop lookahead holds them. The 1 GiB budget counts all
+live Magewell delivery buffers for that device, including buffers still held
+by downstream frame references across format changes or after StopCapture;
+their bytes stop counting only when the final reference releases. A separate
+SDK input scratch buffer used for P210 or RGB10 repacking is capped at 128 MiB
+and is not included in that pool budget. If another delivery buffer would
+exceed 1 GiB, capture reports an error and requires a restart with lower queue
+depth or resolution.
+
+Unsupported signals invalidate the video state and are polled for recovery.
+Repeated SDK failures or two seconds without buffered-frame notifications
+invalidate video and stop delivery with an error requiring Restart. The capture
+lifecycle remains active until Stop so the existing GUI can retire its renderer
+and offer Restart safely. A temporary clock-read failure returns the last valid
+monotonic sample; the capture worker handles persistent clock failures.
 
 The SDK headers are a build prerequisite for this single build. Set the
 `VP_MAGEWELL_SDK_ROOT` environment variable or the MSBuild `MagewellSdkRoot`
@@ -60,16 +82,19 @@ run `MagewellRuntimeProbe.exe --expect-unavailable`. If the source checkout and
 built binaries are also present on that VM, pass the probe to
 `test_magewell_isolation.ps1 -MissingRuntimeProbe <path>`. On a
 runtime-installed machine with no card, run
-`MagewellRuntimeProbe.exe --expect-no-devices`. Use `--status` to print the
-actual production loader result without imposing either expectation.
+`MagewellRuntimeProbe.exe --expect-no-devices`. The updated production probe
+must print `MAGEWELL_NO_DEVICES` and confirm the runtime module is unloaded
+before the discoverer's `Stop()` call. Use `--status` to print the actual
+production loader result without imposing either expectation.
 
 The development machine used for this work has
 `C:\Windows\System32\LibMWCapture.dll`. An injected missing DLL test is useful
 for exercising error handling, but it is **not** a clean machine startup test.
-On 2026-10-04 the production loader probe reported
-`MAGEWELL_AVAILABLE: channels=0` here, as expected for a runtime-installed
-machine without Magewell hardware. This observation is an interim local check;
-it does not qualify a physical capture path.
+An earlier direct loader probe on 2026-10-04 reported
+`MAGEWELL_AVAILABLE: channels=0` here. That observation predates the updated
+discoverer probe and does not establish that the current no-card path releases
+the runtime module; record the new `MAGEWELL_NO_DEVICES` probe result after the
+final build. Neither probe qualifies a physical capture path.
 Run the **same packaged VP binaries** on a clean Windows VM with neither the
 Magewell runtime nor hardware. VP and Config must start, the Magewell choice
 must be absent or disabled, and a saved Magewell configuration must report why
@@ -109,10 +134,12 @@ it passed. Divide rare modes across the two testers where possible.
 | SDR YCbCr 4:2:2 | Feed a 10-bit 4:2:2 signal, including odd/edge patterns if the source permits. | P210 to v210 conversion preserves pixel order, stride, luma range, chroma phase, and motion. |
 | BT.601 SD | Feed 480i/p or 576i/p BT.601 color bars. | VP reports BT.601 and colors match the source; the capture request must not silently use BT.709. |
 | BT.709 HD | Feed 720p/1080p SDR bars and grayscale. | Reported matrix, range, and pixels agree. |
-| BT.2020 HDR | Feed PQ/HDR10 with known highlights and metadata, then HLG if available. | VP reports the intended color space and EOTF. Metadata and image update as source changes, with no retained HDR state after returning to SDR. |
-| RGB 10/12-bit | Feed deep RGB, especially saturated fine detail. | Either a supported precision preserving route works and is identified, or VP clearly marks that mode unsupported. It must not silently discard chroma or precision. |
+| BT.2020 HDR | Feed PQ/HDR10 with known highlights and metadata, then HLG if available. If the source can produce full-range RGB HDR, test it separately. | VP reports the intended color space and EOTF. Metadata and image update as source changes, with no retained HDR state after returning to SDR. Compare full-range black and white levels; this build requests limited range for R10l, so record any clipping or level mismatch as a qualification failure. |
+| RGB 10/12-bit | Feed deep RGB, especially saturated fine detail. | The default supported 10-bit route enters VP Renderer as native R10l and preserves channel order and 4:4:4 detail; unsupported 12-bit modes are clearly rejected. Also test any forced P010 conversion separately: it reduces 4:4:4 to 4:2:0, and the existing converter's BT.601 behavior for SD RGB needs visual qualification. |
+| VP Renderer queue and crop lookahead | With a supported source, try `queue_size: 32` with `target_frames: 3`, then `target_frames: 10`; enable `active_picture_lookahead_frames: 8` on a black-bar transition. Use a copied test configuration. | Both queue targets begin presenting without a frozen startup at tested resolutions within the pool budget. Lookahead logs show available future frames when enough have arrived. If a more demanding combination exceeds 1 GiB, VP reports a capture error instead of freezing silently; reduce queue depth or resolution and restart. |
 | Unsupported capture format | Use a mode the specific card cannot output, if available through source settings. | VP rejects the mode clearly and remains responsive; it does not show a black frame as a successful capture. |
-| Signal transitions | Switch SDR/HDR, resolution, frame rate, RGB/YCbCr, cable state, and input connector while VP runs. Repeat several times. | Reacquisition succeeds, old metadata and frames do not linger, and no escalating memory use or deadlock appears. |
+| Frame delivery watchdog and recovery | After a valid signal, stop frame delivery or interrupt the input long enough to exceed the two-second no-frame watchdog. Also test brief unsupported formats and persistent SDK failures. | Brief unsupported input is polled and recovers when a supported signal returns. A prolonged delivery failure or repeated SDK error stops frame delivery, publishes invalid video state, and reports that restart is required. The capture lifecycle remains active until the existing GUI retires it; stop and restart through VP before resuming capture. |
+| Signal transitions | Switch SDR/HDR, resolution, frame rate, RGB/YCbCr, cable state, and input connector while VP runs. Repeat several times. | Reacquisition succeeds, old metadata and frames do not linger, and no escalating memory use or deadlock appears. A disappearing card or failed capture reports an error and permits restart after it returns. |
 | Stop and restart | Start and stop capture repeatedly, close VP during active capture, and reopen it. | No hang, crash, use-after-free symptom, retained capture session, or failure to reopen the card. |
 | Existing path | Use DeckLink or another existing capture path and each renderer normally used by the tester. | Behavior matches the beta build for the same source and settings. |
 

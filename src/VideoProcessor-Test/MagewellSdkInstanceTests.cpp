@@ -149,12 +149,12 @@ namespace Tests
 			g_activeRuntime = nullptr;
 		}
 
-		TEST_METHOD(MissingRequiredExportUnloadsRuntimeBeforeInitialization)
+		TEST_METHOD(MissingScanExportUnloadsRuntimeBeforeInitialization)
 		{
 			const std::lock_guard<std::mutex> testLock(g_testMutex);
 			FakeRuntime runtime;
 			PrepareFakeRuntime(runtime);
-			runtime.missingExport = "MWGetDevicePath";
+			runtime.missingExport = "MWSetInputSourceScan";
 			std::wstring reason;
 
 			const auto instance = Acquire(runtime, reason);
@@ -163,7 +163,7 @@ namespace Tests
 			Assert::AreEqual(1, static_cast<int>(runtime.loadCount));
 			Assert::AreEqual(0, static_cast<int>(runtime.initializeCount));
 			Assert::AreEqual(1, static_cast<int>(runtime.freeCount));
-			Assert::IsTrue(reason.find(L"MWGetDevicePath") != std::wstring::npos);
+			Assert::IsTrue(reason.find(L"MWSetInputSourceScan") != std::wstring::npos);
 			g_activeRuntime = nullptr;
 		}
 

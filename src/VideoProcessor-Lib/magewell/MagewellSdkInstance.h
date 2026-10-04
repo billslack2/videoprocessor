@@ -31,8 +31,9 @@ public:
 	// the normal result on a machine with no Magewell runtime installed.
 	static std::shared_ptr<MagewellSdkInstance> Acquire();
 
-	// Describes why Acquire() most recently returned nullptr. An empty string
-	// means that the runtime is available (or that no failure has occurred).
+	// Describes why Magewell discovery is unavailable. This may reflect either
+	// a runtime loading failure or a successful runtime load with no usable card.
+	// An empty string means no unavailable reason is currently recorded.
 	static std::wstring UnavailableReason();
 
 	const MagewellSdkApi& Api() const noexcept { return m_api; }
@@ -74,6 +75,7 @@ private:
 		std::wstring& failureReason);
 	static std::shared_ptr<MagewellSdkInstance> AcquireCachedWithLoader(
 		const RuntimeLoader& loader);
+	static void SetDiscoveryUnavailableReason(const std::wstring& reason);
 
 	MagewellSdkApi m_api;
 	HMODULE m_module = nullptr;
@@ -81,6 +83,7 @@ private:
 	RuntimeLoader::FreeModule m_freeModule = nullptr;
 	void* m_loaderContext = nullptr;
 
+	friend class MagewellCaptureDeviceDiscoverer;
 	friend class MagewellSdkTestAccess;
 };
 

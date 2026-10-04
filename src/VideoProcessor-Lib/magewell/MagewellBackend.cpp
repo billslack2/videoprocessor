@@ -53,7 +53,7 @@ namespace MagewellBackend
         if (reason.empty())
             return CString();
         CString message;
-        message.Format(TEXT("Magewell unavailable. Install or repair the official Magewell runtime and device driver. %s"), reason.c_str());
+        message.Format(TEXT("Magewell unavailable. %s"), reason.c_str());
         return message;
     }
     void AppendDeviceNames(std::vector<std::wstring>& names)

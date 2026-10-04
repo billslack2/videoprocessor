@@ -2,6 +2,7 @@
 #include "CppUnitTest.h"
 
 #include <magewell/MagewellCaptureDeviceDiscoverer.h>
+#include <magewell/MagewellBackend.h>
 #include "MagewellSdkTestAccess.h"
 
 #include <cstring>
@@ -26,10 +27,13 @@ namespace
 	int g_openCount = 0;
 	int g_closeCount = 0;
 	int g_familyId = MW_FAMILY_ID_PRO_CAPTURE;
+	int g_channelCount = 1;
 	bool g_openSucceeds = true;
+	BOOLEAN g_inputSourceScan = TRUE;
+	MW_RESULT g_refreshResult = MW_SUCCEEDED;
 
-	MW_RESULT FakeRefreshDevice() { return MW_SUCCEEDED; }
-	int FakeGetChannelCount() { return 1; }
+	MW_RESULT FakeRefreshDevice() { return g_refreshResult; }
+	int FakeGetChannelCount() { return g_channelCount; }
 	MW_RESULT FakeGetChannelInfoByIndex(int index, MWCAP_CHANNEL_INFO* info)
 	{
 		if (index != 0 || !info) return MW_FAILED;
@@ -63,6 +67,17 @@ namespace
 		*source = INPUT_SOURCE(MWCAP_VIDEO_INPUT_TYPE_HDMI, 0);
 		return MW_SUCCEEDED;
 	}
+	MW_RESULT FakeGetInputSourceScan(HCHANNEL, BOOLEAN* scan)
+	{
+		if (!scan) return MW_FAILED;
+		*scan = g_inputSourceScan;
+		return MW_SUCCEEDED;
+	}
+	MW_RESULT FakeSetInputSourceScan(HCHANNEL, BOOLEAN scan)
+	{
+		g_inputSourceScan = scan;
+		return MW_SUCCEEDED;
+	}
 
 	MagewellSdkApi FakeApi()
 	{
@@ -75,6 +90,8 @@ namespace
 		api.MWCloseChannel = &FakeCloseChannel;
 		api.MWGetVideoInputSourceArray = &FakeGetVideoInputSourceArray;
 		api.MWGetVideoInputSource = &FakeGetVideoInputSource;
+		api.MWGetInputSourceScan = &FakeGetInputSourceScan;
+		api.MWSetInputSourceScan = &FakeSetInputSourceScan;
 		return api;
 	}
 
@@ -135,8 +152,52 @@ namespace Tests
 			Assert::AreEqual(0, callback.lost);
 		}
 
+		TEST_METHOD(NoUsableCardReleasesSdkAndReportsUnavailableReason)
+		{
+			g_channelCount = 0;
+			g_refreshResult = MW_SUCCEEDED;
+			Callback callback;
+			std::weak_ptr<MagewellSdkInstance> weakSdk;
+			MagewellCaptureDeviceDiscoverer discoverer(callback);
+			auto sdk = MagewellSdkTestAccess::Create(FakeApi());
+			weakSdk = sdk;
+			MagewellDiscoveryTestAccess::Discover(discoverer, sdk);
+			sdk.reset();
+
+			Assert::AreEqual(0, callback.found);
+			Assert::IsTrue(weakSdk.expired());
+			const std::wstring reason = MagewellSdkInstance::UnavailableReason();
+			Assert::IsTrue(reason.find(L"No usable Magewell Pro Capture device") != std::wstring::npos);
+			Assert::IsTrue(MagewellBackend::UnavailableMessage(
+				TEXT("Fake Pro Capture")).Find(TEXT("No usable Magewell Pro Capture device")) >= 0);
+			discoverer.Stop();
+			g_channelCount = 1;
+		}
+
+		TEST_METHOD(RefreshFailureReleasesSdkAndReportsActionableReason)
+		{
+			g_refreshResult = MW_FAILED;
+			Callback callback;
+			std::weak_ptr<MagewellSdkInstance> weakSdk;
+			MagewellCaptureDeviceDiscoverer discoverer(callback);
+			auto sdk = MagewellSdkTestAccess::Create(FakeApi());
+			weakSdk = sdk;
+			MagewellDiscoveryTestAccess::Discover(discoverer, sdk);
+			sdk.reset();
+
+			Assert::AreEqual(0, callback.found);
+			Assert::IsTrue(weakSdk.expired());
+			const std::wstring reason = MagewellSdkInstance::UnavailableReason();
+			Assert::IsTrue(reason.find(L"failed while refreshing") != std::wstring::npos);
+			discoverer.Stop();
+			g_refreshResult = MW_SUCCEEDED;
+		}
+
 		TEST_METHOD(FoundDeviceSurvivesDiscovererStopWhileClientRetainsIt)
 		{
+			g_channelCount = 1;
+			g_refreshResult = MW_SUCCEEDED;
+			g_inputSourceScan = TRUE;
 			g_openCount = 0;
 			g_closeCount = 0;
 			g_familyId = MW_FAMILY_ID_PRO_CAPTURE;
@@ -167,30 +228,44 @@ namespace Tests
 
 		TEST_METHOD(UnsupportedFamilyAndUnopenableCardStayHidden)
 		{
+			g_channelCount = 1;
+			g_inputSourceScan = TRUE;
+			g_refreshResult = MW_SUCCEEDED;
 			g_openCount = 0;
 			g_closeCount = 0;
 			g_familyId = MW_FAMILY_ID_PRO_CAPTURE + 1;
 			g_openSucceeds = true;
 			Callback callback;
+			std::weak_ptr<MagewellSdkInstance> weakSdk;
 			MagewellCaptureDeviceDiscoverer discoverer(callback);
 			auto sdk = MagewellSdkTestAccess::Create(FakeApi());
+			weakSdk = sdk;
 			MagewellDiscoveryTestAccess::Discover(discoverer, sdk);
+			sdk.reset();
 			Assert::AreEqual(0, callback.found);
 			Assert::AreEqual(0, g_openCount);
+			Assert::IsTrue(weakSdk.expired());
 			discoverer.Stop();
 
 			g_familyId = MW_FAMILY_ID_PRO_CAPTURE;
 			g_openSucceeds = false;
 			MagewellCaptureDeviceDiscoverer second(callback);
-			MagewellDiscoveryTestAccess::Discover(second, sdk);
+			auto secondSdk = MagewellSdkTestAccess::Create(FakeApi());
+			weakSdk = secondSdk;
+			MagewellDiscoveryTestAccess::Discover(second, secondSdk);
+			secondSdk.reset();
 			Assert::AreEqual(0, callback.found);
 			Assert::AreEqual(1, g_openCount);
 			Assert::AreEqual(0, g_closeCount);
+			Assert::IsTrue(weakSdk.expired());
 			second.Stop();
 		}
 
 		TEST_METHOD(GuiStyleDetachedFoundAndLostTokensOwnDeviceIndependently)
 		{
+			g_channelCount = 1;
+			g_refreshResult = MW_SUCCEEDED;
+			g_inputSourceScan = TRUE;
 			g_familyId = MW_FAMILY_ID_PRO_CAPTURE;
 			g_openSucceeds = true;
 			DetachingCallback callback;

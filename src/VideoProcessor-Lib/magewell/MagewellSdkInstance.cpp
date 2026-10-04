@@ -135,6 +135,15 @@ std::wstring MagewellSdkInstance::UnavailableReason()
 }
 
 
+void MagewellSdkInstance::SetDiscoveryUnavailableReason(
+	const std::wstring& reason)
+{
+	auto& manager = GetMagewellSdkManager();
+	std::lock_guard<std::mutex> lock(manager.mutex);
+	manager.unavailableReason = reason;
+}
+
+
 HMODULE MagewellSdkInstance::LoadRuntimeFromSystem32(
 	std::wstring& failureReason)
 {

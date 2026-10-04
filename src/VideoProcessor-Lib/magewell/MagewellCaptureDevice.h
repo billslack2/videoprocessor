@@ -10,6 +10,7 @@
 
 
 #include <atomic>
+#include <cstdint>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -22,6 +23,30 @@
 #include <ITimingClock.h>
 #include <VideoFrameEncoding.h>
 #include <magewell/MagewellSdkInstance.h>
+#include <stdexcept>
+
+class MagewellCaptureMemoryBudget
+{
+public:
+	explicit MagewellCaptureMemoryBudget(uint64_t limit): m_limit(limit) {}
+	bool Reserve(uint64_t bytes)
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		if (bytes > m_limit - m_used)
+			return false;
+		m_used += bytes;
+		return true;
+	}
+	void Release(uint64_t bytes)
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		m_used -= bytes;
+	}
+private:
+	const uint64_t m_limit;
+	uint64_t m_used = 0;
+	std::mutex m_mutex;
+};
 
 
 /**
@@ -44,8 +69,28 @@ class MagewellCaptureBuffer:
 {
 public:
 
-	explicit MagewellCaptureBuffer(size_t size):
-		m_data(size), m_refCount(0) {}
+	explicit MagewellCaptureBuffer(size_t size,
+		std::shared_ptr<MagewellCaptureMemoryBudget> budget = nullptr):
+		m_budget(std::move(budget)), m_refCount(0)
+	{
+		if (m_budget && !m_budget->Reserve(size))
+			throw std::runtime_error("Magewell capture pool memory budget exceeded; reduce renderer queue depth or resolution and restart");
+		try { m_data.resize(size); }
+		catch (...)
+		{
+			if (m_budget) m_budget->Release(size);
+			throw;
+		}
+	}
+	~MagewellCaptureBuffer()
+	{
+		const size_t bytes = m_data.size();
+		{
+			std::vector<BYTE> released;
+			released.swap(m_data);
+		}
+		if (m_budget) m_budget->Release(bytes);
+	}
 
 	BYTE* Data() { return m_data.data(); }
 	uint32_t Size() const { return (uint32_t)m_data.size(); }
@@ -58,6 +103,7 @@ public:
 private:
 	friend class MagewellCaptureTestAccess;
 
+	std::shared_ptr<MagewellCaptureMemoryBudget> m_budget;
 	std::vector<BYTE> m_data;
 	std::atomic<ULONG> m_refCount;
 	std::mutex m_referenceMutex;
@@ -124,6 +170,8 @@ private:
 		MWCAP_VIDEO_COLOR_FORMAT colorFormat = MWCAP_VIDEO_COLOR_FORMAT_UNKNOWN;
 		MWCAP_VIDEO_QUANTIZATION_RANGE quantRange = MWCAP_VIDEO_QUANTIZATION_UNKNOWN;
 		BYTE bitDepth = 0;
+		// -1 means the wire-side sampling could not be identified.
+		int inputSampling = -1;
 		EOTF eotf = EOTF::UNKNOWN;
 		ColorSpace colorSpace = ColorSpace::UNKNOWN;
 		bool hasHdrData = false;
@@ -146,12 +194,12 @@ private:
 	bool ReadHdrInfoFrame(HCHANNEL channel, SignalDescription& signal) const;
 
 	// Chooses only formats the card reports as supported. RGB8 uses ARGB,
-	// RGB10 is repacked into R210, and YCbCr uses P210 repacked into V210.
+	// RGB10 is repacked into R10l, and YCbCr uses P210 repacked into V210.
 	static void ChooseCaptureFormat(
 		const SignalDescription& signal,
 		const std::vector<DWORD>& supportedFormats,
 		DWORD& fourcc, VideoFrameEncoding& encoding);
-	static void RepackRGB10ToR210(
+	static void RepackRGB10ToR10l(
 		const uint8_t* source, uint32_t sourceStride,
 		uint8_t* destination, uint32_t destinationStride,
 		uint32_t width, uint32_t height);
@@ -180,6 +228,8 @@ private:
 		CaptureRunToken captureRunToken);
 	void UpdateState(CaptureDeviceState state);
 	void Error(const CString& error);
+	void PublishInvalidVideoState(CaptureRunToken captureRunToken);
+	void RestoreInputScan(HCHANNEL channel) noexcept;
 
 	MagewellSdkInstancePtr m_sdkInstance;
 	std::wstring m_devicePath;
@@ -193,6 +243,8 @@ private:
 	// Held only while capturing. Read by the timing clock, which VP only
 	// calls during a capture run.
 	std::atomic<HCHANNEL> m_channel{ nullptr };
+	BOOLEAN m_originalScanEnabled = FALSE;
+	bool m_restoreScan = false;
 
 	std::thread m_captureThread;
 	std::atomic_bool m_captureThreadRunning{ false };
@@ -203,9 +255,17 @@ private:
 	// before capture starts and subtract it from the clock and every frame,
 	// giving VP one stable stream-relative origin. -1 means unset.
 	std::atomic<timingclocktime_t> m_timingBaselineTicks{ -1 };
+	// Serializes SDK clock reads with channel close and retains a monotonic
+	// clock sample when the driver temporarily cannot provide device time.
+	mutable std::mutex m_clockMutex;
+	timingclocktime_t m_lastClockTicks = 0;
 	std::atomic<double> m_hardwareLatencyMs{ 0 };
 	std::atomic<uint64_t> m_capturedVideoFrameCount{ 0 };
 	std::atomic<uint64_t> m_missedVideoFrameCount{ 0 };
+	// Shared with every buffer so renderer-held frames remain charged after a
+	// format change or Stop. This cap applies only to Magewell capture memory.
+	std::shared_ptr<MagewellCaptureMemoryBudget> m_memoryBudget =
+		std::make_shared<MagewellCaptureMemoryBudget>(1024ULL * 1024 * 1024);
 
 	std::atomic<CaptureDeviceState> m_state{
 		CaptureDeviceState::CAPTUREDEVICESTATE_UNKNOWN };
