@@ -7,6 +7,8 @@
 #include <CropDiagnosticThrottle.h>
 #include <vector>
 #include <vprenderer/AlphaSourceCropPolicy.h>
+#include <vprenderer/AnamorphicPresentation.h>
+#include <NlsGeometryPolicy.h>
 #include <vprenderer/BufferedPictureExpansion.h>
 
 
@@ -7737,6 +7739,88 @@ namespace Tests
 				static_cast<double>(failOpen.sourceBounds.right - failOpen.sourceBounds.left) /
 				(failOpen.sourceBounds.bottom - failOpen.sourceBounds.top), 0.002);
 		}
+
+
+        TEST_METHOD(AnamorphicMatchingScreenUsesFullProjectorRaster)
+        {
+            const auto screen = AnamorphicPresentation::FitScreen(true, 64.0/27.0, 4.0/3.0,
+                {0,0,1920,1080}, VerticalPictureAlignment::CENTER, 0);
+            const auto picture = AnamorphicPresentation::FitPicture(64.0/27.0, 4.0/3.0,
+                screen, VerticalPictureAlignment::CENTER);
+            Assert::IsTrue(screen.valid && picture.valid);
+            Assert::AreEqual(0.0, picture.picture.left, 1e-8);
+            Assert::AreEqual(0.0, picture.picture.top, 1e-8);
+            Assert::AreEqual(1920.0, picture.picture.right, 1e-8);
+            Assert::AreEqual(1080.0, picture.picture.bottom, 1e-8);
+            const auto narrow = AnamorphicPresentation::FitPicture(16.0/9.0, 4.0/3.0,
+                screen, VerticalPictureAlignment::CENTER);
+            Assert::AreEqual(240.0, narrow.picture.left, 1e-8);
+            Assert::AreEqual(0.0, narrow.picture.top, 1e-8);
+        }
+
+        TEST_METHOD(AnamorphicPhysicalNlsRatioDoesNotIncludeLens)
+        {
+            for (double lens : {0.5, 1.0, 16.0/15.0, 1.25, 4.0/3.0, 2.0})
+            {
+                const auto screen = AnamorphicPresentation::FitScreen(true, 64.0/27.0, lens,
+                    {0,0,1920,1080}, VerticalPictureAlignment::CENTER, 0);
+                const auto decision = EvaluateNlsMapping(true, 16.0/9.0,
+                    screen.physicalAspect, 0.1, 0.0, NlsAspectDirection::ANY, 1.4);
+                Assert::AreEqual(static_cast<int>(NlsMappingMode::ACTIVE), static_cast<int>(decision.mode));
+                Assert::AreEqual(4.0/3.0, decision.stretchRatio, 1e-8);
+                Assert::AreEqual(screen.physicalAspect,
+                    (screen.rect.right-screen.rect.left)/(screen.rect.bottom-screen.rect.top)*lens, 1e-8);
+            }
+        }
+
+        TEST_METHOD(AnamorphicInferredScreenAndExtremeRatiosStayInOutput)
+        {
+            for (double lens : {0.5, 1.0, 16.0/15.0, 1.25, 4.0/3.0, 2.0})
+            {
+                const auto inferred = AnamorphicPresentation::FitScreen(false, 0.0, lens,
+                    {0,0,1919,1079}, VerticalPictureAlignment::CENTER, 0);
+                Assert::AreEqual(1919.0/1079.0*lens, inferred.physicalAspect, 1e-8);
+                Assert::AreEqual(0.0, inferred.rect.left, 1e-8);
+                Assert::AreEqual(1919.0, inferred.rect.right, 1e-8);
+                for (double physical : {1.0, 1.7777777778, 2.35, 4.0})
+                    for (double content : {1.0, 1.85, 2.4, 4.0})
+                    {
+                        const auto screen = AnamorphicPresentation::FitScreen(true, physical, lens,
+                            {0,0,1919,1079}, VerticalPictureAlignment::CENTER, 0);
+                        const auto fit = AnamorphicPresentation::FitPicture(content, lens, screen,
+                            VerticalPictureAlignment::CENTER);
+                        Assert::IsTrue(fit.valid);
+                        Assert::IsTrue(fit.picture.left >= -1e-6 && fit.picture.top >= -1e-6 &&
+                            fit.picture.right <= 1919.000001 && fit.picture.bottom <= 1079.000001);
+                        Assert::AreEqual(content, lens*(fit.picture.right-fit.picture.left)/
+                            (fit.picture.bottom-fit.picture.top), 1e-8);
+                    }
+            }
+        }
+
+        TEST_METHOD(AnamorphicUnityAndAlignmentPreserveExistingContract)
+        {
+            const PresentationRect output = {0,0,1920,1080};
+            for (auto align : {VerticalPictureAlignment::TOP, VerticalPictureAlignment::CENTER,
+                VerticalPictureAlignment::BOTTOM})
+            {
+                const auto screen = AnamorphicPresentation::FitScreen(true, 2.4, 1.0, output, align, 0);
+                const auto oldScreen = FitAspect(2.4, output, align);
+                const auto oldFit = FitAspect(1.85, oldScreen.picture, align);
+                const auto fit = AnamorphicPresentation::FitPicture(1.85, 1.0, screen, align);
+                Assert::AreEqual(oldFit.picture.left, fit.picture.left, 1e-8);
+                Assert::AreEqual(oldFit.picture.top, fit.picture.top, 1e-8);
+                Assert::AreEqual(oldFit.picture.right, fit.picture.right, 1e-8);
+                Assert::AreEqual(oldFit.picture.bottom, fit.picture.bottom, 1e-8);
+            }
+            const auto top = AnamorphicPresentation::FitScreen(true, 2.4, 1.0, output,
+                VerticalPictureAlignment::TOP, 9999);
+            Assert::AreEqual(280, top.effectivePadding);
+            Assert::AreEqual(1080.0, top.rect.bottom, 1e-8);
+            Assert::AreEqual(300.0f, AnamorphicPresentation::OverlayWidth(400.0f, 4.0/3.0), 1e-4f);
+            Assert::IsFalse(AnamorphicPresentation::FitScreen(true, 2.4, 0.0, output,
+                VerticalPictureAlignment::CENTER, 0).valid);
+        }
 
 		TEST_METHOD(TwoToOneLensPrecompressesSixteenByNineToEightByNine)
 		{

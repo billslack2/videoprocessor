@@ -5,6 +5,10 @@
 #include <vprenderer/LibplaceboRenderParameters.h>
 #include <vprenderer/LibplaceboCalibrationLutPolicy.h>
 #include <vprenderer/LibplaceboOutputPolicy.h>
+#include <vprenderer/AnamorphicPresentation.h>
+#include <vprenderer/NativeStatsOverlayPlacement.h>
+#include <vprenderer/NlsHookRecovery.h>
+#include <NlsGeometryPolicy.h>
 #include <libplacebo/d3d11.h>
 #include <libplacebo/renderer.h>
 #include <libplacebo/shaders/custom.h>
@@ -165,6 +169,17 @@ namespace
 		uint8_t b;
 		uint8_t a;
 	};
+
+    struct AnamorphicGpuCase
+    {
+        pl_rect2df sourceCrop{};
+        int outputWidth = 192, outputHeight = 108;
+        bool configured = true;
+        double screenAspect = 64.0/27.0, lens = 4.0/3.0;
+        pl_rect2df submittedCrop{};
+        bool retried = false;
+        bool overlay = false, cropLocalOverlay = false;
+    };
 
 	struct RenderStepCapture
 	{
@@ -476,6 +491,11 @@ namespace
             return codes;
         }
 
+        void ResetFailedHook(uint64_t signature)
+        {
+            NlsHookRecovery::ResetFailedHook(m_renderer, signature);
+        }
+
 		pl_gpu Gpu() const
 		{
 			return m_d3d11 ? m_d3d11->gpu : nullptr;
@@ -493,7 +513,7 @@ namespace
 
 		std::vector<RgbaPixel> RenderCoordinateField(
 			const pl_hook* hook, int width = 64, int height = 64,
-			const LuminanceCase* luminance = nullptr)
+			const LuminanceCase* luminance = nullptr, AnamorphicGpuCase* geometry = nullptr)
 		{
 			pl_gpu gpu = m_d3d11->gpu;
 			const enum pl_fmt_caps requiredCaps = static_cast<enum pl_fmt_caps>(
@@ -522,8 +542,9 @@ namespace
 			Assert::IsNotNull(sourceTexture);
 
 			pl_tex_params targetParams{};
-			targetParams.w = luminance ? luminance->outputSize : width;
-			targetParams.h = luminance ? luminance->outputSize : height;
+			targetParams.blit_dst = geometry != nullptr; // pl_frame_clear requires this capability.
+			targetParams.w = geometry ? geometry->outputWidth : (luminance ? luminance->outputSize : width);
+			targetParams.h = geometry ? geometry->outputHeight : (luminance ? luminance->outputSize : height);
 			targetParams.format = format;
 			targetParams.renderable = true;
 			targetParams.host_readable = true;
@@ -556,8 +577,65 @@ namespace
 				params.hooks = &hook;
 				params.num_hooks = 1;
 			}
-			Assert::IsTrue(pl_render_image(
-				m_renderer, &image, &target, &params));
+            if (geometry)
+            {
+                using namespace AlphaSourceCrop;
+                const auto screen = AnamorphicPresentation::FitScreen(geometry->configured,
+                    geometry->screenAspect, geometry->lens,
+                    {0,0,static_cast<double>(targetParams.w),static_cast<double>(targetParams.h)},
+                    VerticalPictureAlignment::CENTER, 0);
+                image.crop = geometry->sourceCrop;
+                const auto fit = AnamorphicPresentation::FitPicture(pl_rect2df_aspect(&image.crop),
+                    geometry->lens, screen, VerticalPictureAlignment::CENTER);
+                const auto rect = hook ? screen.rect : fit.picture;
+                Assert::IsTrue(targetTexture->params.blit_dst, L"Recovery target must support clearing");
+                const pl_frame fullTarget = target;
+                target.crop = {static_cast<float>(rect.left),static_cast<float>(rect.top),
+                    static_cast<float>(rect.right),static_cast<float>(rect.bottom)};
+                const float black[] = {0,0,0};
+                pl_frame_clear(gpu, &fullTarget, black);
+                pl_tex overlayTexture = nullptr;
+                pl_overlay overlay{};
+                pl_overlay_part part{};
+                if (geometry->overlay)
+                {
+                    std::vector<RgbaPixel> bitmap(40*20, RgbaPixel{255,0,255,255});
+                    pl_tex_params bitmapParams = sourceParams;
+                    bitmapParams.w = 40; bitmapParams.h = 20;
+                    bitmapParams.initial_data = bitmap.data();
+                    overlayTexture = pl_tex_create(gpu, &bitmapParams);
+                    Assert::IsNotNull(overlayTexture);
+                    overlay.tex = overlayTexture;
+                    overlay.mode = PL_OVERLAY_NORMAL;
+                    overlay.coords = geometry->cropLocalOverlay ? PL_OVERLAY_COORDS_DST_CROP : PL_OVERLAY_COORDS_DST_FRAME;
+                    overlay.repr = pl_color_repr_rgb;
+                    overlay.repr.alpha = PL_ALPHA_INDEPENDENT;
+                    overlay.color = pl_color_space_srgb;
+                    part.src = {0,0,40,20};
+                    const auto placement = NativeStatsOverlayPlacement::PlaceTopLeft(
+                        {target.crop.x0,target.crop.y0,target.crop.x1,target.crop.y1},
+                        {0,0,static_cast<float>(targetParams.w),static_cast<float>(targetParams.h)},
+                        AnamorphicPresentation::OverlayWidth(40, geometry->lens), 20, 4);
+                    const float ox = geometry->cropLocalOverlay ? target.crop.x0 : 0;
+                    const float oy = geometry->cropLocalOverlay ? target.crop.y0 : 0;
+                    part.dst = {placement.panel.left-ox,placement.panel.top-oy,
+                        placement.panel.right-ox,placement.panel.bottom-oy};
+                    overlay.parts = &part; overlay.num_parts = 1;
+                    target.overlays = &overlay; target.num_overlays = 1;
+                }
+                const auto result = NlsHookRecovery::Render(m_renderer, gpu, image, target,
+                    fullTarget, params, hook, [&]()
+                    {
+                        target.crop = {static_cast<float>(fit.picture.left),static_cast<float>(fit.picture.top),
+                            static_cast<float>(fit.picture.right),static_cast<float>(fit.picture.bottom)};
+                    });
+                Assert::IsTrue(result.rendered);
+                geometry->retried = result.retried;
+                geometry->submittedCrop = target.crop;
+                pl_tex_destroy(gpu, &overlayTexture);
+            }
+            else
+                Assert::IsTrue(pl_render_image(m_renderer, &image, &target, &params));
 			pl_gpu_finish(gpu);
 
 			std::vector<RgbaPixel> result(targetParams.w * targetParams.h);
@@ -1481,6 +1559,148 @@ namespace VideoProcessorTest
 				withCalibration.g > 240 && withCalibration.b < 15,
 				L"Distinct calibration LUT was not applied after HDR-to-SDR DTM");
 		}
+
+
+        TEST_METHOD(AnamorphicGpuMatchingContentFillsRasterAndCropsSourceBars)
+        {
+            TargetLutGpuFixture fixture;
+            Assert::IsTrue(fixture.Create());
+            AnamorphicGpuCase g;
+            g.sourceCrop = {0,27,256,135}; // 256/108 = 64/27, selected from a taller source
+            const auto pixels = fixture.RenderCoordinateField(nullptr, 256, 162, nullptr, &g);
+            Assert::AreEqual(0.0f, g.submittedCrop.x0, 1e-4f);
+            Assert::AreEqual(0.0f, g.submittedCrop.y0, 1e-4f);
+            Assert::AreEqual(192.0f, g.submittedCrop.x1, 1e-4f);
+            Assert::AreEqual(108.0f, g.submittedCrop.y1, 1e-4f);
+            Assert::IsTrue(pixels[0].g > 25); // selected picture reaches top-left
+            Assert::IsTrue(pixels.back().g > 170 && pixels.back().r > 240);
+            Assert::IsFalse(g.retried);
+        }
+
+        TEST_METHOD(AnamorphicGpuNlsCompositionPreservesPhysicalCoordinateMapping)
+        {
+            TargetLutGpuFixture fixture;
+            Assert::IsTrue(fixture.Create());
+            for (const char* shader : {"NLS.glsl", "NLSPlus.glsl"})
+            {
+                const pl_hook* hook = ParseBundledNlsShader(fixture.Gpu(), shader, 0.25, 0.8);
+                Assert::IsNotNull(hook);
+                for (bool vertical : {false, true})
+                {
+
+                    AnamorphicGpuCase reference;
+                    reference.lens = 1.0;
+                    reference.screenAspect = vertical ? 16.0/9.0 : 2.4;
+                    reference.sourceCrop = vertical ? pl_rect2df{8,20,152,92} : pl_rect2df{8,20,152,100};
+                    reference.outputWidth = vertical ? 160 : 240;
+                    reference.outputHeight = vertical ? 90 : 100;
+                    const auto bindGeometry = [&](const AnamorphicGpuCase& g)
+                    {
+                        const double physical = AnamorphicPresentation::PhysicalTarget(g.configured,
+                            g.screenAspect, double(g.outputWidth)/g.outputHeight, g.lens);
+                        const auto mapping = EvaluateNlsMapping(true, pl_rect2df_aspect(&g.sourceCrop),
+                            physical, 0.1, 0.0, NlsAspectDirection::ANY, 1.4);
+                        Assert::AreEqual(static_cast<int>(NlsMappingMode::ACTIVE), static_cast<int>(mapping.mode));
+                        BindNlsShader(hook, static_cast<float>(mapping.stretchRatio), mapping.verticalWarp ? 1.0f : 0.0f);
+                    };
+                    bindGeometry(reference);
+                    const auto baseline = fixture.RenderCoordinateField(hook, 160, 120, nullptr, &reference);
+                    for (double lens : {0.5, 16.0/15.0, 1.25, 4.0/3.0, 2.0})
+                    {
+                        auto candidate = reference;
+                        candidate.lens = lens;
+                        candidate.outputWidth = static_cast<int>(std::lround(reference.outputWidth/lens)) + 1;
+                        candidate.outputHeight += 3; // odd raster and fractional target edges
+                        bindGeometry(candidate);
+                        const auto pixels = fixture.RenderCoordinateField(hook, 160, 120, nullptr, &candidate);
+                        // Compare physical normalized positions after optical expansion.
+                        for (double v : {0.1, 0.5, 0.9}) for (double u : {0.1, 0.5, 0.9})
+                        {
+                            auto sample = [u,v](const std::vector<RgbaPixel>& values, const AnamorphicGpuCase& c)
+                            {
+                                int x = static_cast<int>(c.submittedCrop.x0 + u*(c.submittedCrop.x1-c.submittedCrop.x0));
+                                int y = static_cast<int>(c.submittedCrop.y0 + v*(c.submittedCrop.y1-c.submittedCrop.y0));
+                                return values[y*c.outputWidth+x];
+                            };
+                            const auto a = sample(baseline, reference), b = sample(pixels, candidate);
+                            Assert::IsTrue(std::abs(int(a.r)-int(b.r)) <= 6 && std::abs(int(a.g)-int(b.g)) <= 6);
+                        }
+                        Assert::IsFalse(candidate.retried);
+                    }
+                }
+                pl_mpv_user_shader_destroy(&hook);
+            }
+        }
+
+
+        TEST_METHOD(AnamorphicGpuFractionalCropAndNativeOverlayCoordinates)
+        {
+            TargetLutGpuFixture fixture;
+            Assert::IsTrue(fixture.Create());
+            for (bool cropLocal : {false, true})
+            {
+                AnamorphicGpuCase g;
+                g.outputWidth = 193; g.outputHeight = 109;
+                g.sourceCrop = {7.25f,13.5f,151.75f,103.25f};
+                g.screenAspect = 2.4; g.lens = 1.25;
+                g.overlay = true; g.cropLocalOverlay = cropLocal;
+                const auto pixels = fixture.RenderCoordinateField(nullptr, 161, 121, nullptr, &g);
+                int minX=193, minY=109, maxX=-1, maxY=-1;
+                for (int y=0;y<109;++y) for (int x=0;x<193;++x)
+                {
+                    const auto pixel=pixels[y*193+x];
+                    if (pixel.r>240 && pixel.b>240 && pixel.g<10)
+                    { minX=std::min(minX,x); maxX=std::max(maxX,x); minY=std::min(minY,y); maxY=std::max(maxY,y); }
+                }
+                Assert::IsTrue(maxX>=minX && maxY>=minY);
+                // 40x20 square-pixel bitmap must be 32x20 before a 1.25x lens.
+                Assert::IsTrue(std::abs((maxX-minX+1)-32)<=1 && std::abs((maxY-minY+1)-20)<=1);
+                Assert::IsTrue(minX>=g.submittedCrop.x0 && minY>=g.submittedCrop.y0);
+                Assert::IsTrue(maxX<g.submittedCrop.x1 && maxY<g.submittedCrop.y1);
+            }
+        }
+
+        TEST_METHOD(AnamorphicGpuRuntimeHookFailureRecoversAndCanBeReset)
+        {
+            TargetLutGpuFixture fixture;
+            Assert::IsTrue(fixture.Create());
+            int calls = 0;
+            pl_hook broken{};
+            broken.stages = PL_HOOK_RGB;
+            broken.input = PL_HOOK_SIG_NONE;
+            broken.signature = 0x0196;
+            broken.priv = &calls;
+            broken.hook = [](void* context, const pl_hook_params*)
+            {
+                ++*static_cast<int*>(context);
+                pl_hook_res result{};
+                result.failed = true;
+                return result;
+            };
+            AnamorphicGpuCase g;
+            g.sourceCrop = {0,0,160,90};
+            const auto expected = fixture.RenderCoordinateField(nullptr, 160, 90, nullptr, &g);
+            const auto pixels = fixture.RenderCoordinateField(&broken, 160, 90, nullptr, &g);
+            Assert::IsTrue(g.retried);
+            Assert::AreEqual(1, calls);
+            Assert::AreEqual(24.0f, g.submittedCrop.x0, 1e-4f);
+            Assert::AreEqual(168.0f, g.submittedCrop.x1, 1e-4f);
+            Assert::IsTrue(pixels[54*192+3].r == 0 && pixels[54*192+188].g == 0, L"Fallback margins must be black");
+            int maxDifference = 0;
+            for (size_t i = 0; i < pixels.size(); ++i)
+                maxDifference = std::max(maxDifference, std::max(std::abs(int(pixels[i].r)-int(expected[i].r)),
+                    std::abs(int(pixels[i].g)-int(expected[i].g))));
+            const std::wstring evidence = L"Recovery differs from ordinary fit: max=" + std::to_wstring(maxDifference) +
+                L" center=" + std::to_wstring(pixels[54*192+96].r) + L" expected=" + std::to_wstring(expected[54*192+96].r);
+            Assert::IsTrue(maxDifference <= 2, evidence.c_str());
+            // Same failed signature remains disabled until explicitly reset.
+            fixture.RenderCoordinateField(&broken, 160, 90, nullptr, &g);
+            Assert::AreEqual(1, calls);
+            fixture.ResetFailedHook(broken.signature);
+            fixture.RenderCoordinateField(&broken, 160, 90, nullptr, &g);
+            Assert::AreEqual(2, calls);
+            Assert::IsTrue(g.retried);
+        }
 
 		TEST_METHOD(BundledNlsGlSlHooksMovePixelsOnTheRealGpuPath)
 		{
