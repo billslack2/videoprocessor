@@ -408,3 +408,25 @@ In progress; VP-0070 remains Blocked.
 [Deployment receipt and hashes](../assets/VP-0168/screen-rpc-7853f231/deployment-receipt.json),
 [previous-build foreground failure](../assets/VP-0168/screen-rpc-7853f231/config-focus-baseline.log),
 [new-build foreground failure](../assets/VP-0168/screen-rpc-7853f231/config-focus-recheck.log).
+
+## Config RPC and manual activation beta merge — 2026-10-04
+
+[PR #127](https://github.com/billslack2/videoprocessor/pull/127) merged the
+VP-0168 Config RPC, remote active-profile status, saved profile/action
+activation, and mixed-case ID fix into `v1.3.005-beta`. The reviewed feature
+commit is `16800b9e21abe79da3e77e2ee784bfa4c47e7194`; the beta merge
+commit is `982adb0ea309a7cf314ec2c933bd3213153ff649`. The focused
+integration excludes the unrelated optional AVX2 and fill-only zoom changes
+from the earlier local deployment branch.
+
+A clean x64 Release solution rebuild passed before the isolated RPC-version
+test correction; the final committed tree rebuilt successfully. All 200
+focused native configuration/RPC tests and 89 offscreen Config UI tests
+passed. The no-shortcut queue fix was deployed locally from source commit
+`a013757c`, and the operator confirmed that selecting the queue works.
+No installer or ZIP was produced for this merge. The previously deployed
+local build remains installed; this merge did not replace it or edit
+`VideoProcessor.cfg`.
+
+The story remains in progress until its full two-computer discovery,
+target-isolation, and remote Apply/OK acceptance checks are recorded.
