@@ -89,6 +89,7 @@ namespace ConfigEditorCore
 {
 	bool ConfigDocument::Load(const std::wstring& input, std::wstring& error)
 	{
+		remoteSource = false;
 		requiresMigrationBackup = false;
 		path = input;
 		std::ifstream inputFile(ToNarrow(path), std::ios::binary);
@@ -115,25 +116,47 @@ namespace ConfigEditorCore
 
 		const std::string text((std::istreambuf_iterator<char>(inputFile)),
 			std::istreambuf_iterator<char>());
-		loadedBytes = text;
+		LoadBytes(input, text);
+		remoteSource = false;
+		return true;
+	}
+
+	void ConfigDocument::LoadBytes(const std::wstring& targetPath,
+		const std::string& bytes)
+	{
+		path = targetPath;
+		remoteSource = true;
+		requiresMigrationBackup = false;
+		loadedBytes = bytes;
 		existedAtLoad = true;
-		lineEnding = text.find("\r\n") != std::string::npos ? "\r\n" : "\n";
-		hasTerminalLineEnding = !text.empty() &&
-			(text.back() == '\r' || text.back() == '\n');
+		lineEnding = bytes.find("\r\n") != std::string::npos ? "\r\n" : "\n";
+		hasTerminalLineEnding = !bytes.empty() &&
+			(bytes.back() == '\r' || bytes.back() == '\n');
 		lines.clear();
 		size_t start = 0;
-		while (start < text.size())
+		while (start < bytes.size())
 		{
-			const size_t end = text.find_first_of("\r\n", start);
-			lines.push_back(text.substr(start, end == std::string::npos ?
+			const size_t end = bytes.find_first_of("\r\n", start);
+			lines.push_back(bytes.substr(start, end == std::string::npos ?
 				std::string::npos : end - start));
 			if (end == std::string::npos) break;
 			start = end + 1;
-			if (text[end] == '\r' && start < text.size() &&
-				text[start] == '\n')
+			if (bytes[end] == '\r' && start < bytes.size() &&
+				bytes[start] == '\n')
 				++start;
 		}
-		return true;
+	}
+
+	void ConfigDocument::ReplaceContents(const std::string& bytes)
+	{
+		const std::wstring originalPath = path;
+		const std::string baseline = loadedBytes;
+		const bool existed = existedAtLoad;
+		const bool remote = remoteSource;
+		LoadBytes(originalPath, bytes);
+		loadedBytes = baseline;
+		existedAtLoad = existed;
+		remoteSource = remote;
 	}
 
     bool ConfigDocument::MigrateTransferChoices()
@@ -589,6 +612,10 @@ namespace ConfigEditorCore
 
 	bool ValidateCandidate(const ConfigDocument& document, std::wstring& error)
 	{
+		// The target validates remote candidates against its own hardware and
+		// installation paths during ApplyConfig. Never create a local file at
+		// a path supplied by a remote installation.
+		if (document.remoteSource) return true;
 		if (document.path.empty())
 		{
 			error = L"A configuration path is required.";
@@ -630,6 +657,11 @@ namespace ConfigEditorCore
 		std::wstring& error, bool overwriteExternalChanges)
 	{
 		result = {};
+		if (document.remoteSource)
+		{
+			error = L"A running VideoProcessor owns this configuration. Apply it through the selected RPC target.";
+			return false;
+		}
 		if (!ValidateCandidate(document, error)) return false;
 		bool creatingConfiguration = !document.existedAtLoad;
 		if (document.existedAtLoad)

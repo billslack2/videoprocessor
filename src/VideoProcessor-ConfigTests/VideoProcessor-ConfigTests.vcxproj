@@ -42,7 +42,7 @@
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalLibraryDirectories>$(QtRoot)\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>Qt6Widgets.lib;Qt6Gui.lib;Qt6Core.lib;shell32.lib;user32.lib;ole32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>Qt6Widgets.lib;Qt6Gui.lib;Qt6Core.lib;Ws2_32.lib;shell32.lib;user32.lib;ole32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
       <Command>"$(QtRoot)\bin\windeployqt.exe" --release --no-translations --no-system-d3d-compiler "$(TargetPath)"
@@ -54,6 +54,7 @@ copy /Y "$(QtRoot)\plugins\platforms\qoffscreen.dll" "$(TargetDir)platforms\qoff
     <ClCompile Include="..\VideoProcessor-Config\ConfigEditorWindow.cpp" />
     <ClCompile Include="..\VideoProcessor-Config\VpTheme.cpp" />
     <ClCompile Include="..\VideoProcessor-ConfigCore\ConfigEditorCore.cpp" />
+    <ClCompile Include="..\VideoProcessor-ConfigCore\ConfigurationRpcClient.cpp" />
     <ClCompile Include="..\VideoProcessor-Lib\ShaderConfigValidation.cpp" />
     <ClCompile Include="..\VideoProcessor-Lib\ConfigFile.cpp" />
   </ItemGroup>

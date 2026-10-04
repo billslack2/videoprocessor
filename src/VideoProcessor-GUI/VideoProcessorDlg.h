@@ -56,6 +56,7 @@
 #include <ConfigurationApplyPolicy.h>
 #include <CaptureVideoStatePolicy.h>
 #include <ConfigEditorCore.h>
+#include "ConfigurationRpcServer.h"
 #include "ModernOperatorView.h"
 
 #include "resource.h"
@@ -83,6 +84,7 @@
 #define WM_MESSAGE_FULLSCREEN_HOST_RESIZED               (WM_APP + 19)
 #define WM_MESSAGE_RENDERER_ACTION_EVENT                 (WM_APP + 20)
 #define WM_MESSAGE_RENDERER_QUEUE_CONTRACT_CHANGED       (WM_APP + 21)
+#define WM_MESSAGE_CONFIGURATION_RPC_REQUEST             (WM_APP + 22)
 
 static_assert(WM_MESSAGE_DIRECTSHOW_NOTIFICATION !=
 	WM_MESSAGE_DIRECTSHOW_OWNER_COMPLETION,
@@ -488,6 +490,7 @@ protected:
 	WORD m_lastBackgroundShortcutCommand = 0;
 	ULONGLONG m_lastBackgroundShortcutTick = 0;
 	HANDLE m_configurationChangedEvent = nullptr;
+	ConfigurationRpcServer m_configurationRpcServer;
 	std::map<std::string, std::map<std::string, std::string>>
 		m_configurationSnapshot;
 	struct StagedRuntimeSettings
@@ -1020,7 +1023,9 @@ protected:
 	void LogDroppedCounterChanges(const StatsData& stats);
 	void ApplyStatsOverlayForActiveRenderer();
 	void LoadDisplayRefreshRateOverrides();
-	void ApplySavedConfiguration();
+	bool ApplySavedConfiguration(bool alreadyStaged = false);
+	ConfigurationRpcProtocol::Frame HandleConfigurationRpc(
+		const ConfigurationRpcProtocol::Frame& request);
 	void UpdateActiveOutputSweep(ULONGLONG now);
 	bool StartActiveOutputSweep();
 	bool ApplyActiveOutputSweepCase(size_t index);
@@ -1035,7 +1040,9 @@ protected:
 		const char* trigger);
 	void ToggleActiveOutputSweepPause();
 	void ClearActiveOutputSweepSummary(const char* reason);
-	bool StageSavedConfiguration(const char* reason, bool stageAccelerators);
+	bool StageSavedConfiguration(const char* reason, bool stageAccelerators,
+		const std::string& candidatePath = {},
+		const std::string& logicalPath = {});
 	bool PublishStagedConfiguration(bool replaceAccelerators);
 	bool PublishStagedShortcutsOnly();
 	bool ReplaceStagedAccelerators();
@@ -1146,6 +1153,7 @@ protected:
 	afx_msg void OnSysCommand(UINT command, LPARAM lParam);
 	afx_msg void OnTimer(UINT_PTR nIDEvent);
 	afx_msg LRESULT OnConfigurationEditorHotkey(WPARAM wParam, LPARAM lParam);
+	afx_msg LRESULT OnConfigurationRpcRequest(WPARAM wParam, LPARAM lParam);
 	afx_msg LRESULT OnConfigurationEditorAssociation(WPARAM wParam,
 		LPARAM lParam);
 	afx_msg LRESULT OnConfigurationEditorPresentationTargetAcknowledgement(
