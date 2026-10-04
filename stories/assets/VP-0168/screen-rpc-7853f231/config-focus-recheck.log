@@ -1,0 +1,2 @@
+START stable reveal endpoint survives hidden Qt window
+FAIL stable reveal endpoint survives hidden Qt window: Config lost foreground without user input after a settled reveal
