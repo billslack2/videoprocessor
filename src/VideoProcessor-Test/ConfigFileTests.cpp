@@ -85,6 +85,54 @@ namespace VideoProcessorTest
             Assert::AreEqual(std::string("50"), padding);
         }
 
+        TEST_METHOD(DestinationPaddingProfileInheritanceAndReloadPreserveSelection)
+        {
+            CachedConfigTestFile file;
+            auto write = [&file](const char* alignment, int padding)
+            {
+                std::ofstream(file.path) << "[general]\npersist_profile_selection: true\n"
+                    "[vprenderer.viewport]\nvertical_alignment: " << alignment <<
+                    "\nscreen_edge_padding: " << padding << "\n"
+                    "[vprenderer.viewport.scope]\nwhen: $key==\"F2\"\nscreen_aspect: 47:20\n"
+                    "[vprenderer.viewport.centered]\nwhen: $key==\"F3\"\nvertical_alignment: center\n"
+                    "[vprenderer.viewport.zero]\nwhen: $key==\"F4\"\nscreen_edge_padding: 0\n";
+            };
+            write("top", 50);
+            ConfigFile initial;
+            Assert::IsTrue(initial.Load(file.path));
+            UnifiedProfileRuntime::Runtime runtime;
+            std::string error;
+            Assert::IsTrue(runtime.Initialize(initial, {}, error),
+                std::wstring(error.begin(), error.end()).c_str());
+            UnifiedProfileRuntime::SelectionResult selected;
+            Assert::IsTrue(runtime.SelectKey("F2", {}, selected, error));
+            const auto original = selected.snapshot;
+            Assert::AreEqual(std::string("scope"), original->viewport.profile);
+            Assert::AreEqual(50, original->viewport.screenEdgePadding);
+            Assert::AreEqual(std::string("top"), original->viewport.verticalAlignment);
+
+            write("bottom", 75);
+            ConfigFile edited;
+            Assert::IsTrue(edited.Load(file.path));
+            UnifiedProfileRuntime::RefreshResult reloaded;
+            Assert::IsTrue(runtime.Reload(edited, {}, reloaded, error),
+                std::wstring(error.begin(), error.end()).c_str());
+            Assert::IsTrue(reloaded.changed);
+            Assert::AreEqual(std::string("scope"), reloaded.snapshot->viewport.profile);
+            Assert::AreEqual(75, reloaded.snapshot->viewport.screenEdgePadding);
+            Assert::AreEqual(std::string("bottom"), reloaded.snapshot->viewport.verticalAlignment);
+            Assert::AreEqual(50, original->viewport.screenEdgePadding);
+            Assert::AreEqual(std::string("top"), original->viewport.verticalAlignment);
+
+            Assert::IsTrue(runtime.SelectKey("F3", {}, selected, error));
+            Assert::AreEqual(std::string("center"), selected.snapshot->viewport.verticalAlignment);
+            Assert::AreEqual(75, selected.snapshot->viewport.screenEdgePadding);
+            Assert::IsTrue(runtime.SelectKey("F4", {}, selected, error));
+            Assert::AreEqual(std::string("bottom"), selected.snapshot->viewport.verticalAlignment);
+            Assert::AreEqual(0, selected.snapshot->viewport.screenEdgePadding);
+            DeleteFileA(runtime.StatePath().c_str());
+        }
+
 		TEST_METHOD(RestartReadersReuseOneReadAndExplicitReloadSamplesIndependently)
 		{
 			CachedConfigTestFile file;
