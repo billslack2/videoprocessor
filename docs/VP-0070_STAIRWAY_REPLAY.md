@@ -16,6 +16,19 @@ glyph expansion and keep one box through locally ambiguous frames. A scene or
 cue change still clears the lock. Padding is added only after detection and
 does not count as glyph evidence.
 
+This recording also has a dark, translucent backing behind the subtitle rows.
+The backing is separate evidence from the bright glyphs: a broad top edge near
+each candidate line is sampled at reduced resolution, then compared at fixed
+source coordinates across the four-frame lookahead. In the reviewed question
+interval both real rows had a matching backing edge on all 65 samples, while
+the moving picture row falsely grouped as a third text row had none. The
+reviewed blank interval had no measured rows or backing edges. A stable backing
+can resolve borderline picture-side glyph coverage only when the bar anchor,
+line signature, and at least 90% of the line's fixed glyph pixels still agree.
+Backing alone cannot acquire or keep a subtitle. The panel edge does not enlarge
+the glyph box; relocating the translucent appearance is a separate rendering
+choice, since copying its source pixels also copies the scenery beneath it.
+
 In a continuous natural-bar replay, the reviewed question cue displayed a
 complete two-line box on 65/65 sampled frames, with one identical box and no
 oversized frames. Its raw top edge was one pixel short of strict manual
