@@ -132,3 +132,46 @@ Collect startup plus VP anamorphic layout/recovery records and a photograph for
 any black-bar report. Keep this story in Review until user projector acceptance;
 separately resolve/reproduce the three Config UI foreground test failures before
 claiming complete UI qualification.
+## Rebased package and deployment — 2026-10-04 15:08 EDT
+At user request, fetched remote beta explicitly and rebased onto
+982adb0ea309a7cf314ec2c933bd3213153ff649 (v1.3.005-beta, PR #127 Config/RPC work).
+Git range-diff confirms the anamorphic patch is unchanged. New clean commit:
+0b41c322c79d6d30cbcd99e80741aaa9f7466675, pushed with an explicit lease to
+codex/vp0196-anamorphic-nls. Remote beta still matched 982adb0e after deployment.
+This is a combined test candidate; no beta merge or public release was performed.
+
+Full x64 Release rebuild and packaging workflow passed. 1,906/1,906 unit tests,
+49 installer preservation/recovery helper checks, 12 identity checks, runtime
+packaging/signature/hash checks, and 225 actual installer lifecycle checks passed.
+Lifecycle tests used the same payload with a separate QA AppId, installation
+folder and Start menu group; the user's installation/registration was untouched.
+The first QA attempt rolled back when the inherited PowerShell module path hid
+Get-FileHash. The repeat with the standard Windows PowerShell module path passed;
+both attempt logs are retained. Clean Windows without Visual Studio and physical
+multi-monitor/optical qualification remain untested. The previous three Config
+foreground UI failures were not rerun as a full UI suite on this rebased build.
+
+Unsigned distribution directory:
+E:\codex\releases\VideoProcessor-vp0196-0b41c322c79d-20261004
+- VideoProcessorSetup-1.3.005-beta-0b41c322c79d.exe
+- VideoProcessor-1.3.005-beta-0b41c322c79d-x64-Portable.zip
+- SHA-256 sidecars, INSTALL-MANIFEST.json, installer-build.json,
+  validation/release-receipt.json and deployment-receipt.json.
+The QA-only installer EXE was excluded from exported artifacts; QA scripts and
+logs are retained under validation/isolated-installer-qa.
+
+Stopped VP and the warm/background Config process as requested. Deployed the
+verified managed payload, including matching host, renderer, Config and discovery
+DLL plus private runtimes/documentation; preserved existing seed files and user
+settings. All 68 copied/verified entries match their source hashes. An initial
+copy hit a transient locked Config runtime DLL; after the stopped process released
+it, copying completed with the original backup preserved and unchanged hashes
+skipped. No binaries were launched until the entire deployment verified.
+Backup: C:\Videoprocessor\vp\deployment-backups\vp0196-rebased-20261004-150459.
+Configuration edits: NONE; hash preservation was checked before restart.
+
+Restarted process 74624 responded. Logs confirm host/renderer clean identity
+0b41c322 and successful live 3840x2160 rendering with VP anamorphic layout schema1.
+Observed preserved active settings: physical screen 2.35, lens 1.0, NLS waiting
+under presentation fail-open. This verifies live telemetry, not physical lens
+acceptance. Story remains Review for user testing.
