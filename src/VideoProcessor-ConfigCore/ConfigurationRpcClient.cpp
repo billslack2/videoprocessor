@@ -152,7 +152,8 @@ bool ConfigurationRpcClient::Request(uint16_t operation,
 		return false;
 	}
 	const int timeout = operation == static_cast<uint16_t>(Operation::ApplyConfig) ?
-		50000 : 10000;
+		50000 : operation == static_cast<uint16_t>(Operation::GetActiveProfileStatus) ?
+		1500 : 10000;
 	setsockopt(socket.value, SOL_SOCKET, SO_RCVTIMEO,
 		reinterpret_cast<const char*>(&timeout), sizeof(timeout));
 	setsockopt(socket.value, SOL_SOCKET, SO_SNDTIMEO,
@@ -273,6 +274,20 @@ bool ConfigurationRpcClient::GetCapabilities(Capabilities& capabilities,
 invalid:
 	error = "VP returned invalid capability data.";
 	return false;
+}
+
+bool ConfigurationRpcClient::GetActiveProfileStatus(LiveProfileStatus& status,
+	std::string& error) const
+{
+	std::vector<uint8_t> response;
+	if (!Request(static_cast<uint16_t>(Operation::GetActiveProfileStatus), {},
+		response, error)) return false;
+	if (!ParseLiveProfileStatus(response, status))
+	{
+		error = "VP returned invalid active-profile status.";
+		return false;
+	}
+	return true;
 }
 
 bool ConfigurationRpcClient::ApplyConfig(const std::string& baseline,

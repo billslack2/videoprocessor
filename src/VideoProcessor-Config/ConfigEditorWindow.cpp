@@ -1122,6 +1122,11 @@ ConfigEditorWindow::~ConfigEditorWindow()
 		targetSwitchThread_->wait();
 		targetSwitchThread_ = nullptr;
 	}
+	if (activeProfileThread_)
+	{
+		activeProfileThread_->wait();
+		activeProfileThread_ = nullptr;
+	}
 	if (revealEventNotifier_)
 		revealEventNotifier_->setEnabled(false);
 	if (revealEvent_)
@@ -1632,6 +1637,11 @@ bool ConfigEditorWindow::selectAnotherTarget(const Target& target)
 	preparedRemoteSwitch_.reset();
 	preparedLocalSwitch_.reset();
 	rebuildConfigurationShell();
+	if (activeProfileTimer_)
+	{
+		activeProfileTimer_->setInterval(remoteClient_ ? 3000 : 500);
+		if (isVisible()) refreshActiveProfileIndicators();
+	}
 	setWindowTitle(QStringLiteral("VideoProcessor Configuration · %1")
 		.arg(remoteName_));
 	if (trayOpenAction_)
@@ -2301,10 +2311,61 @@ void ConfigEditorWindow::migrateRefreshRateSwitchMode()
 
 void ConfigEditorWindow::refreshActiveProfileIndicators()
 {
-	if (remoteClient_) return;
     // A combo popup has its own transient native window. Avoid unrelated model
     // notifications while the operator is opening or selecting from it.
     if (hasActiveOwnedPopup()) return;
+	if (remoteClient_)
+	{
+		if (activeProfileThread_ || !isVisible() || noTarget_) return;
+		const QString host = remoteHost_;
+		const quint16 port = remotePort_;
+		const QString instanceId = currentInstanceId_;
+		struct Result
+		{
+			ConfigurationRpcProtocol::LiveProfileStatus status;
+			bool success = false;
+		};
+		const auto result = std::make_shared<Result>();
+		activeProfileThread_ = QThread::create([result, host, port]
+		{
+			ConfigurationRpcClient client(host.toStdString(), port);
+			std::string error;
+			result->success = client.GetActiveProfileStatus(result->status, error);
+		});
+		activeProfileThread_->setParent(this);
+		QThread* worker = activeProfileThread_;
+		connect(worker, &QThread::finished, this,
+			[this, worker, result, host, port, instanceId]
+			{
+				if (activeProfileThread_ == worker) activeProfileThread_ = nullptr;
+				worker->deleteLater();
+				if (!remoteClient_ || noTarget_ || !isVisible()) return;
+				if (remoteHost_ != host || remotePort_ != port ||
+					currentInstanceId_ != instanceId)
+				{
+					refreshActiveProfileIndicators();
+					return;
+				}
+				if (hasActiveOwnedPopup()) return;
+				const auto& status = result->status;
+				const bool available = result->success && status.available;
+				QStringList shaders;
+				if (available && status.shaderAvailable)
+					for (const auto& shader : status.shaders)
+						shaders.push_back(QString::fromLocal8Bit(shader.c_str()));
+				applyActiveProfileIndicators(available,
+					QString::fromLocal8Bit(status.queue.c_str()),
+					QString::fromLocal8Bit(status.renderer.c_str()),
+					QString::fromLocal8Bit(status.color.c_str()),
+					QString::fromLocal8Bit(status.viewport.c_str()),
+					shaders, available && status.shaderAvailable,
+					QString::fromLocal8Bit(status.zoom.c_str()),
+					QString::fromLocal8Bit(status.scaling.c_str()),
+					QString::fromLocal8Bit(status.output.c_str()));
+			});
+		activeProfileThread_->start();
+		return;
+	}
 
     // Config can remain in the tray across a VP restart. Its old owner HWND
     // then disappears; read the sole live publisher as a standalone editor
@@ -8743,7 +8804,7 @@ void ConfigEditorWindow::showEvent(QShowEvent* event)
     if (activeProfileTimer_ && !activeProfileTimer_->isActive())
     {
         refreshActiveProfileIndicators();
-        activeProfileTimer_->start(500);
+        activeProfileTimer_->start(remoteClient_ ? 3000 : 500);
     }
     scopedTopmostEligible_ = true;
     pendingTopmostReassert_ = true;

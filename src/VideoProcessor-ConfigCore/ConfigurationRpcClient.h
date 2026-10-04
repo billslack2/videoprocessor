@@ -1,4 +1,5 @@
 #pragma once
+#include "ConfigurationRpcProtocol.h"
 
 #include <cstdint>
 #include <map>
@@ -30,6 +31,8 @@ public:
 	bool GetConfig(std::string& targetPath, std::string& bytes,
 		std::string& error) const;
 	bool GetCapabilities(Capabilities& capabilities,
+		std::string& error) const;
+	bool GetActiveProfileStatus(ConfigurationRpcProtocol::LiveProfileStatus& status,
 		std::string& error) const;
 	bool ApplyConfig(const std::string& baseline,
 		const std::string& candidate, ApplyResult& result,
