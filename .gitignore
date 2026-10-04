@@ -79,3 +79,4 @@ ipch/
 
 # Generated packaging, installer tooling and test artifacts
 /artifacts/
+3rdparty/magewell/ 
