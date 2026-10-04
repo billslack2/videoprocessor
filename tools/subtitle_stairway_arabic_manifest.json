@@ -1,0 +1,203 @@
+{
+  "schema": 1,
+  "description": "Focused, manually reviewed replay annotations for the 2026-10-03 stairway and Arabic subtitle recording. Original recording remains a private local file; input pixels are not modified. Green diagnostic boxes are preserved in the recording and all affected annotations are diagnostic-only.",
+  "media": {
+    "basename": "2026-10-03 17-53-57.mp4",
+    "sha256": "b2713f928d4e16dd301711608a7283a40a7529c1be50f942c221ac754398d3b3",
+    "width_height_frames": [
+      2560,
+      1440,
+      62154
+    ],
+    "fps": 60
+  },
+  "annotation_method": "Cue line envelopes and the Arabic onset/preceding blank sample were visually reviewed from original decoded recording frames. Manual line boxes follow visible glyph extents with approximately one pixel antialias margin. Source screen pixels and existing green detector overlay are retained unchanged; intervals containing the overlay are diagnostic-only. Frame ranges and rectangles are half-open. Stairway annotations are reviewed interior samples; their cue onset is not asserted. Arabic onset sample is frame 50369 (839.483 s), immediately preceded by reviewed blank frame 50368 (839.467 s); this only establishes the recorded subtitle appearance boundary and does not establish detector correctness.",
+  "limitations": [
+    "The recording is a desktop capture and does not recover original 4K pixels or original source-frame timing.",
+    "The stairway cue annotations are diagnostic because the capture already contains green detector overlays during part of the interval; do not interpret them as clean detector acceptance results.",
+    "The Arabic cue is diagnostic because a partial green detector rectangle is burned into the recorded pixels over the cue; its manually reviewed full-line boxes describe the subtitle, not that overlay.",
+    "The Arabic line boxes are manually reviewed. The cue becomes visually occluded later in the shot, so no exact offset is claimed.",
+    "The black-bar boundary is manually reviewed with approximately one pixel uncertainty: active picture y=183..1257 in the full native capture; annotations intentionally include glyphs extending into the lower bar."
+  ],
+  "segments": [
+    {
+      "id": "stairway",
+      "frames": [
+        3540,
+        3920
+      ],
+      "crop_xywh": [
+        0,
+        0,
+        2560,
+        1440
+      ],
+      "reviewed_picture_y": [
+        183,
+        1257
+      ]
+    },
+    {
+      "id": "arabic",
+      "frames": [
+        50340,
+        50700
+      ],
+      "crop_xywh": [
+        0,
+        0,
+        2560,
+        1440
+      ],
+      "reviewed_picture_y": [
+        183,
+        1257
+      ]
+    }
+  ],
+  "annotations": [
+    {
+      "id": "stairway_treaty_two_lines_partial_capture_box",
+      "segment": "stairway",
+      "frames": [
+        3570,
+        3780
+      ],
+      "line_boxes": [
+        [
+          846,
+          1140,
+          1713,
+          1195
+        ],
+        [
+          759,
+          1227,
+          1796,
+          1283
+        ]
+      ],
+      "split": "diagnostic",
+      "range_kind": "verified_interior",
+      "contamination": [
+        "existing_green_box_partial_or_absent_during_interval",
+        "lower_line_crosses_picture_bar_boundary"
+      ]
+    },
+    {
+      "id": "stairway_followup_two_lines",
+      "segment": "stairway",
+      "frames": [
+        3900,
+        3960
+      ],
+      "line_boxes": [
+        [
+          1043,
+          1140,
+          1516,
+          1185
+        ],
+        [
+          879,
+          1228,
+          1679,
+          1283
+        ]
+      ],
+      "split": "diagnostic",
+      "range_kind": "verified_interior",
+      "contamination": [
+        "existing_green_box_around_lines",
+        "lower_line_crosses_picture_bar_boundary"
+      ]
+    },
+    {
+      "id": "arabic_pre_onset_blank_frame",
+      "segment": "arabic",
+      "frames": [
+        50368,
+        50369
+      ],
+      "line_boxes": [],
+      "split": "diagnostic",
+      "range_kind": "verified_blank_gap",
+      "contamination": [
+        "adjacent_scene_cut_at_839_183s"
+      ]
+    },
+    {
+      "id": "arabic_onset_partial_box",
+      "segment": "arabic",
+      "frames": [
+        50369,
+        50370
+      ],
+      "line_boxes": [
+        [
+          1040,
+          1111,
+          1490,
+          1185
+        ],
+        [
+          959,
+          1204,
+          1597,
+          1284
+        ]
+      ],
+      "split": "diagnostic",
+      "range_kind": "onset_sample",
+      "onset_frame": 50369,
+      "contamination": [
+        "existing_green_box_covers_only_left_part_of_both_lines",
+        "rtl_arabic_disconnected_dots_and_diacritics",
+        "lower_line_crosses_picture_bar_boundary"
+      ]
+    },
+    {
+      "id": "arabic_partial_box_interior",
+      "segment": "arabic",
+      "frames": [
+        50370,
+        50580
+      ],
+      "line_boxes": [
+        [
+          1040,
+          1111,
+          1490,
+          1185
+        ],
+        [
+          959,
+          1204,
+          1597,
+          1284
+        ]
+      ],
+      "split": "diagnostic",
+      "range_kind": "verified_interior",
+      "contamination": [
+        "existing_green_box_covers_only_left_part_of_both_lines",
+        "rtl_arabic_disconnected_dots_and_diacritics",
+        "lower_line_crosses_picture_bar_boundary"
+      ]
+    },
+    {
+      "id": "arabic_after_cue_blank",
+      "segment": "arabic",
+      "frames": [
+        50670,
+        50700
+      ],
+      "line_boxes": [],
+      "split": "diagnostic",
+      "range_kind": "verified_interior",
+      "contamination": [
+        "subtitle_region_clear_at_844_5s_after_foreground_occlusion"
+      ]
+    }
+  ]
+}

@@ -8,6 +8,7 @@
 #include <libplacebo/d3d11.h>
 #include <libplacebo/renderer.h>
 #include <libplacebo/shaders/custom.h>
+#include <SubtitleCutPasteShader.h>
 
 #include <cstdint>
 #include <cmath>
@@ -567,6 +568,86 @@ namespace
 			Assert::IsTrue(pl_tex_download(gpu, &download));
 			pl_tex_destroy(gpu, &targetTexture);
 			pl_tex_destroy(gpu, &sourceTexture);
+			return result;
+		}
+
+		std::vector<RgbaPixel> RenderSubtitlePattern(const pl_hook* hook, bool hdrP010, int phase,
+			const SubtitleCutPasteGeometry& geometry, pl_color_transfer transfer=PL_COLOR_TRC_UNKNOWN,
+			bool blackBar=false)
+		{
+			constexpr int width=64,height=64;
+			const auto gpu=Gpu();
+			const auto outputFormat=pl_find_fmt(gpu,PL_FMT_UNORM,4,8,8,
+				static_cast<pl_fmt_caps>(PL_FMT_CAP_SAMPLEABLE|PL_FMT_CAP_RENDERABLE|PL_FMT_CAP_HOST_READABLE));
+			Assert::IsNotNull(outputFormat);
+			std::vector<RgbaPixel> pixels(width*height);
+			std::vector<uint16_t> luma(width*height),chroma(width*height/2,512<<6);
+			for(int y=0;y<height;++y) for(int x=0;x<width;++x) {
+				pixels[y*width+x]={uint8_t((x*3+phase*43)%256),uint8_t((y*3+phase*57)%256),uint8_t((x+y+phase*71)%256),255};
+				luma[y*width+x]=uint16_t((64+(x*3+y*7+phase*113)%800)<<6);
+			}
+			if(blackBar) for(int y=(std::max)(0,geometry.pictureBottom);y<height;++y)
+				for(int x=0;x<width;++x) {
+					pixels[y*width+x]={0,0,0,255};luma[y*width+x]=uint16_t(64<<6);
+				}
+			// A simple white glyph and controlled destination/source samples make
+			// every experimental backing mode observable for every test geometry.
+			const int glyphLeft=geometry.content.left+(geometry.content.right-geometry.content.left)/2-2;
+			const int glyphTop=geometry.content.top+(geometry.content.bottom-geometry.content.top)/2-5;
+			for(int y=glyphTop;y<glyphTop+11;++y)for(int x=glyphLeft;x<glyphLeft+4;++x) {
+				pixels[y*width+x]={245,245,245,255};luma[y*width+x]=uint16_t(580<<6);
+			}
+			const int backingX=geometry.destination.left+1,backingY=geometry.destination.top+1;
+			const int sourceX=geometry.source.left+1,sourceY=geometry.source.top+1;
+			pixels[backingY*width+backingX]={200,180,160,255};
+			luma[backingY*width+backingX]=uint16_t(800<<6);
+			pixels[sourceY*width+sourceX]={0,0,0,255};
+			luma[sourceY*width+sourceX]=uint16_t(64<<6);
+            // A rejected-key sample in source/destination overlap proves that
+            // cleanup continues through the moved panel without a black seam.
+            const int overlapY=(std::max)(geometry.content.top,geometry.destination.top)+1;
+            if(overlapY<geometry.destination.bottom) {
+                const int mappedY=overlapY+geometry.source.top-geometry.destination.top;
+                pixels[mappedY*width+geometry.content.left+1]={0,0,0,255};
+                luma[mappedY*width+geometry.content.left+1]=uint16_t(64<<6);
+            }
+            // Bright scenery in the added padding must neither move as text nor
+            // be erased from its original location by a keyed mode.
+            const int borderX=geometry.source.left+1,borderY=geometry.source.bottom-2;
+            pixels[borderY*width+borderX]={245,245,245,255};
+            luma[borderY*width+borderX]=uint16_t(580<<6);
+			pl_tex textures[2]{};
+			pl_tex_params input{};input.w=width;input.h=height;input.sampleable=true;
+			input.format=hdrP010?pl_find_fmt(gpu,PL_FMT_UNORM,1,16,16,PL_FMT_CAP_SAMPLEABLE):outputFormat;
+			Assert::IsNotNull(input.format);input.initial_data=hdrP010?static_cast<const void*>(luma.data()):pixels.data();
+			textures[0]=pl_tex_create(gpu,&input);Assert::IsNotNull(textures[0]);
+			auto image=MakeRgbFrame(textures[0]);
+			if(hdrP010) {
+				input.w=width/2;input.h=height/2;
+				input.format=pl_find_fmt(gpu,PL_FMT_UNORM,2,16,16,PL_FMT_CAP_SAMPLEABLE);
+				Assert::IsNotNull(input.format);input.initial_data=chroma.data();
+				textures[1]=pl_tex_create(gpu,&input);Assert::IsNotNull(textures[1]);
+				image.num_planes=2;image.planes[0].components=1;image.planes[0].component_mapping[0]=0;
+				image.planes[1].texture=textures[1];image.planes[1].components=2;
+				image.planes[1].component_mapping[0]=1;image.planes[1].component_mapping[1]=2;
+				image.repr.sys=PL_COLOR_SYSTEM_BT_2020_NC;image.repr.levels=PL_COLOR_LEVELS_LIMITED;
+				image.repr.alpha=PL_ALPHA_NONE;image.repr.bits.sample_depth=16;
+				image.repr.bits.color_depth=10;image.repr.bits.bit_shift=6;
+				image.color.primaries=PL_COLOR_PRIM_BT_2020;image.color.transfer=PL_COLOR_TRC_PQ;
+				image.color.hdr.min_luma=0.005f;image.color.hdr.max_luma=1000.0f;
+			}
+            if(transfer!=PL_COLOR_TRC_UNKNOWN) image.color.transfer=transfer;
+			pl_tex_params output{};output.w=width;output.h=height;output.format=outputFormat;
+			output.renderable=true;output.host_readable=true;
+			pl_tex targetTexture=pl_tex_create(gpu,&output);Assert::IsNotNull(targetTexture);
+			auto target=MakeRgbFrame(targetTexture);target.color=image.color;
+			auto params=pl_render_fast_params;params.dither_params=nullptr;params.peak_detect_params=nullptr;
+			if(hook) {params.hooks=&hook;params.num_hooks=1;}
+			Assert::IsTrue(pl_render_image(m_renderer,&image,&target,&params));pl_gpu_finish(gpu);
+			std::vector<RgbaPixel> result(width*height);
+			pl_tex_transfer_params download{};download.tex=targetTexture;download.ptr=result.data();
+			Assert::IsTrue(pl_tex_download(gpu,&download));
+			pl_tex_destroy(gpu,&targetTexture);pl_tex_destroy(gpu,&textures[0]);pl_tex_destroy(gpu,&textures[1]);
 			return result;
 		}
 
@@ -1480,6 +1561,169 @@ namespace VideoProcessorTest
 			Assert::IsTrue(withCalibration.r < 15 &&
 				withCalibration.g > 240 && withCalibration.b < 15,
 				L"Distinct calibration LUT was not applied after HDR-to-SDR DTM");
+		}
+
+		TEST_METHOD(SubtitleCutPasteGpuReadbackUsesCurrentPixelsAndDestinationFirstOverlap)
+		{
+			TargetLutGpuFixture fixture;Assert::IsTrue(fixture.Create());
+			const auto* hook=CreateSubtitleCutPasteHook(fixture.Gpu());Assert::IsNotNull(hook);
+			for(const auto transfer:{PL_COLOR_TRC_SRGB,PL_COLOR_TRC_PQ,PL_COLOR_TRC_GAMMA18,
+                PL_COLOR_TRC_GAMMA20,PL_COLOR_TRC_GAMMA22,PL_COLOR_TRC_GAMMA24,
+                PL_COLOR_TRC_GAMMA26,PL_COLOR_TRC_GAMMA28}) for(int phase=0;phase<3;++phase) {
+                const bool hdrP010=transfer==PL_COLOR_TRC_PQ;
+                const double gamma=transfer==PL_COLOR_TRC_GAMMA18?1.8:transfer==PL_COLOR_TRC_GAMMA20?2.0:
+                    transfer==PL_COLOR_TRC_GAMMA22?2.2:transfer==PL_COLOR_TRC_GAMMA26?2.6:
+                    transfer==PL_COLOR_TRC_GAMMA28?2.8:2.4;
+				const auto geometry=phase<2 ? ComputeSubtitleCutPaste({20,46,44,61},64,64,8,56,10,15) :
+					ComputeSubtitleCutPaste({24,48,36,60},64,64,8,56,2,5);
+				Assert::IsTrue(geometry.valid);Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry));
+				Assert::IsFalse(BindSubtitleCutPasteHook(hook,geometry,-1));
+				Assert::IsFalse(BindSubtitleCutPasteHook(hook,geometry,5));
+				Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,0));
+				const auto baseline=fixture.RenderSubtitlePattern(nullptr,hdrP010,phase,geometry,transfer);
+				const auto moved=fixture.RenderSubtitlePattern(hook,hdrP010,phase,geometry,transfer);
+				for(int y=0;y<64;++y) for(int x=0;x<64;++x) {
+					const auto sample=MapSubtitleCutPastePixel(geometry,x,y);
+					const RgbaPixel expected=sample.clear?RgbaPixel{0,0,0,255}:baseline[sample.y*64+sample.x];
+					Assert::IsTrue(PixelDistance(expected,moved[y*64+x])<=6,
+						L"GPU cut/paste differs from immutable current-frame pixel mapping");
+				}
+				std::array<std::vector<RgbaPixel>,4> keyed;
+				for(int mode=1;mode<=4;++mode) {
+					Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,mode,transfer));
+					bool found=false;
+					for(int parameter=0;parameter<hook->num_parameters;++parameter)
+						if(hook->parameters[parameter].name &&
+							std::strcmp(hook->parameters[parameter].name,"background_mode")==0) {
+							found=true;Assert::AreEqual(float(mode),hook->parameters[parameter].data->f);
+						}
+					Assert::IsTrue(found,L"the selected backing mode reaches the parsed GPU hook");
+					keyed[size_t(mode-1)]=fixture.RenderSubtitlePattern(hook,hdrP010,phase,geometry,transfer);
+				}
+				const int backingPixel=(geometry.destination.top+1)*64+geometry.destination.left+1;
+				const int glyphLeft=geometry.content.left+(geometry.content.right-geometry.content.left)/2-2;
+				const int glyphTop=geometry.content.top+(geometry.content.bottom-geometry.content.top)/2-5;
+				const int glyphX=glyphLeft+1;
+				const int glyphY=glyphTop+1+geometry.destination.top-geometry.source.top;
+				const int glyphPixel=glyphY*64+glyphX;
+				const int originalGlyphPixel=(glyphTop+1)*64+glyphX;
+				const auto& transparent=keyed[0][backingPixel];
+				const auto& blended=keyed[1][backingPixel];
+				const auto& black=keyed[2][backingPixel];
+				const auto& gray=keyed[3][backingPixel];
+				auto intensity=[](const RgbaPixel& p){return int(p.r)+int(p.g)+int(p.b);};
+				Assert::IsTrue(PixelDistance(baseline[backingPixel],transparent)<=6,
+					L"transparent backing preserves the active destination where no keyed glyph exists");
+				Assert::IsTrue(intensity(transparent)>intensity(blended)+12 &&
+					intensity(blended)>intensity(black)+8 && intensity(gray)>intensity(black)+8 &&
+					intensity(gray)<intensity(transparent),
+					L"blend, black, and dark-gray modes produce distinct destination backing pixels");
+                auto decode=[hdrP010,transfer,gamma](double v) {
+                    v/=255.0;
+                    if(!hdrP010 && transfer!=PL_COLOR_TRC_SRGB) return std::pow(v,gamma);
+                    if(!hdrP010) return v<=0.04045?v/12.92:std::pow((v+0.055)/1.055,2.4);
+                    const double q=std::pow(v,1.0/78.84375);
+                    return std::pow((std::max)(q-0.8359375,0.0)/(18.8515625-18.6875*q),1.0/0.1593017578125)*10000.0/203.0;
+                };
+                auto encode=[hdrP010,transfer,gamma](double v) {
+                    if(!hdrP010 && transfer!=PL_COLOR_TRC_SRGB) return 255.0*std::pow(v,1.0/gamma);
+                    if(!hdrP010) return 255.0*(v<=0.0031308?v*12.92:1.055*std::pow(v,1.0/2.4)-0.055);
+                    const double q=std::pow(v*203.0/10000.0,0.1593017578125);
+                    return 255.0*std::pow((0.8359375+18.8515625*q)/(1.0+18.6875*q),78.84375);
+                };
+                Assert::IsTrue(std::abs(double(blended.r)-encode(decode(transparent.r)*0.5))<=5.0,
+                    L"blend attenuates light by half, not the encoded PQ or SDR signal");
+                Assert::IsTrue(std::abs(double(gray.r)-encode(0.08))<=5.0,
+                    L"dark gray is eight percent reference white in SDR and PQ");
+                const int cleanupX=geometry.content.left+1;
+                auto checkFill=[&](int y,bool overlap) {
+                    const int left=(std::max)(0,geometry.source.left-2);
+                    const int right=(std::min)(63,geometry.source.right+1);
+                    const double t=(cleanupX+0.5-geometry.source.left)/(geometry.source.right-geometry.source.left);
+                    const double fill=decode(baseline[y*64+left].r)*(1.0-t)+decode(baseline[y*64+right].r)*t;
+                    Assert::IsTrue(std::abs(double(keyed[0][y*64+cleanupX].r)-encode(fill))<=7.0,
+                        L"transparent cleanup uses current side pixels across source and overlap");
+                    Assert::IsTrue(std::abs(double(keyed[1][y*64+cleanupX].r)-encode(fill*(overlap?0.5:1.0)))<=7.0,
+                        L"blend panel and source cleanup share the same approximation without a black overlap seam");
+                };
+                const int overlapY=(std::max)(geometry.content.top,geometry.destination.top)+1;
+                if(overlapY<geometry.destination.bottom) checkFill(overlapY,true);
+                const int vacatedY=(std::max)(geometry.content.top,geometry.destination.bottom)+1;
+                if(vacatedY<geometry.pictureBottom && vacatedY<geometry.content.bottom) checkFill(vacatedY,false);
+                const int borderX=geometry.source.left+1,borderY=geometry.source.bottom-2;
+                const int borderOriginal=borderY*64+borderX;
+                const int borderMoved=(borderY+geometry.destination.top-geometry.source.top)*64+borderX;
+                Assert::IsTrue(PixelDistance(baseline[borderMoved],keyed[0][borderMoved])<=6,
+                    L"bright picture pixels in padding must not be copied as subtitle glyphs");
+                Assert::IsTrue(intensity(keyed[2][borderMoved])<12,
+                    L"opaque black padding excludes bright source scenery from its key");
+                for(const auto& image:keyed) Assert::IsTrue(PixelDistance(baseline[borderOriginal],image[borderOriginal])<=6,
+                    L"keyed cleanup preserves original pixels outside detected content");
+				for(const auto& image:keyed) {
+					Assert::IsTrue(PixelDistance(baseline[originalGlyphPixel],image[glyphPixel])<=8,
+						L"a white subtitle core survives the approximate color key at SDR and realistic PQ levels");
+				}
+				Assert::IsTrue(BindSubtitleCutPasteHook(hook,{}));
+				const auto disabled=fixture.RenderSubtitlePattern(hook,hdrP010,phase,geometry,transfer);
+				for(size_t i=0;i<baseline.size();++i) Assert::IsTrue(PixelDistance(baseline[i],disabled[i])<=6);
+			}
+			pl_mpv_user_shader_destroy(&hook);
+		}
+
+		TEST_METHOD(SubtitleCrossingPictureAndBlackBarDoesNotMoveBlackBackground)
+		{
+			TargetLutGpuFixture fixture;Assert::IsTrue(fixture.Create());
+			const auto* hook=CreateSubtitleCutPasteHook(fixture.Gpu());Assert::IsNotNull(hook);
+			const auto geometry=ComputeSubtitleCutPaste({20,46,44,61},64,64,8,56,10,15);
+			Assert::IsTrue(geometry.valid);
+			const auto baseline=fixture.RenderSubtitlePattern(nullptr,false,0,geometry,PL_COLOR_TRC_SRGB,true);
+			std::array<std::vector<RgbaPixel>,4> keyed;
+			for(int mode=1;mode<=4;++mode) {
+				Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,mode,PL_COLOR_TRC_SRGB));
+				keyed[size_t(mode-1)]=fixture.RenderSubtitlePattern(hook,false,0,geometry,PL_COLOR_TRC_SRGB,true);
+			}
+			const int glyphLeft=geometry.content.left+(geometry.content.right-geometry.content.left)/2-2;
+			const int glyphTop=geometry.content.top+(geometry.content.bottom-geometry.content.top)/2-5;
+			for(const int sourceY:{53,58}) {
+				Assert::IsTrue((sourceY==53 && sourceY<geometry.pictureBottom) ||
+					(sourceY==58 && sourceY>=geometry.pictureBottom),
+					L"the two tested glyph rows straddle the real picture/bar boundary");
+				const int sourceX=glyphLeft+1;
+				const int destinationY=sourceY+geometry.destination.top-geometry.source.top;
+				const int sourceIndex=sourceY*64+sourceX;
+				const int destinationIndex=destinationY*64+sourceX;
+				Assert::IsTrue(sourceY>=glyphTop && sourceY<glyphTop+11);
+				Assert::IsTrue(PixelDistance(baseline[sourceIndex],keyed[0][destinationIndex])<=8 &&
+					PixelDistance(baseline[sourceIndex],keyed[1][destinationIndex])<=8 &&
+					PixelDistance(baseline[sourceIndex],keyed[2][destinationIndex])<=8 &&
+					PixelDistance(baseline[sourceIndex],keyed[3][destinationIndex])<=8,
+					L"subtitle glyph cores survive when a line crosses the active-picture/black-bar boundary");
+			}
+			const int barGapX=geometry.content.left+2,barGapY=58;
+			const int movedBarGapY=barGapY+geometry.destination.top-geometry.source.top;
+			const int barGapSource=barGapY*64+barGapX,movedBarGap=movedBarGapY*64+barGapX;
+			Assert::IsTrue(PixelDistance(baseline[barGapSource],RgbaPixel{0,0,0,255})<=6);
+			Assert::IsTrue(PixelDistance(baseline[movedBarGap],keyed[0][movedBarGap])<=6,
+				L"transparent mode shows the active picture through the mapped black-bar background");
+			auto decode=[](double v){v/=255.0;return v<=0.04045?v/12.92:std::pow((v+0.055)/1.055,2.4);};
+			auto encode=[](double v){return 255.0*(v<=0.0031308?v*12.92:1.055*std::pow(v,1.0/2.4)-0.055);};
+			for(const auto channel:{&RgbaPixel::r,&RgbaPixel::g,&RgbaPixel::b})
+				Assert::IsTrue(std::abs(double(keyed[1][movedBarGap].*channel)-
+					encode(decode(baseline[movedBarGap].*channel)*0.5))<=7.0,
+					L"blend mode blends the active picture behind glyphs that originated in the black bar");
+			Assert::IsTrue(PixelDistance(keyed[2][movedBarGap],RgbaPixel{0,0,0,255})<=6,
+				L"black mode deliberately keeps an opaque black panel behind the moved glyph");
+			const uint8_t gray=static_cast<uint8_t>(std::round(encode(0.08)));
+			Assert::IsTrue(PixelDistance(keyed[3][movedBarGap],RgbaPixel{gray,gray,gray,255})<=7,
+				L"dark-gray mode deliberately keeps its panel behind glyphs from either source region");
+			const int paddingX=geometry.source.left+2;
+			const int movedPadding=(movedBarGapY*64+paddingX);
+			Assert::IsTrue(PixelDistance(baseline[movedPadding],keyed[0][movedPadding])<=6,
+				L"black-bar pixels in added padding do not become an opaque moved rectangle");
+			Assert::IsTrue(PixelDistance(baseline[barGapSource],keyed[0][barGapSource])<=6 &&
+				PixelDistance(baseline[barGapSource],keyed[1][barGapSource])<=6,
+				L"the original black bar remains black after glyph cleanup");
+			pl_mpv_user_shader_destroy(&hook);
 		}
 
 		TEST_METHOD(BundledNlsGlSlHooksMovePixelsOnTheRealGpuPath)

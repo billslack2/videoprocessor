@@ -1,0 +1,216 @@
+{
+  "schema": 1,
+  "description": "Diagnostic-only replay of manually reviewed no-box capture intervals. Original decoded crop pixels are unchanged. These clips are selected historical failure frames, not clean continuous acceptance.",
+  "media": {
+    "basename": "2026-10-03 14-03-19.mp4",
+    "sha256": "1684b68b0bec79be6b353a09078d72643866f5109e0c1a12191481f5432763d1",
+    "width_height_frames": [
+      2560,
+      1440,
+      2300
+    ],
+    "fps": 60
+  },
+  "annotation_method": "All forty capture frames were individually visually inspected. Subtitle line ROIs were manually chosen; bright neutral pixels aided line envelopes with 1px antialias margin. Every complete movie crop also had zero pixels matching even the relaxed green-border screen (G>50 and G>B+25 and G>R+25). No green was erased. Rectangles and frame intervals are half-open.",
+  "limitations": [
+    "Diagnostic split only: biased selection of four historical missing-box intervals totaling forty 60Hz capture frames.",
+    "Post-render screen RGB is not original 4K input or original luma/transfer representation.",
+    "Each short interval starts a fresh probe process without the acquired cue, preceding bar reference or following recovery frame. It cannot establish temporal continuity or validate the observed hold/dropout fix.",
+    "60Hz capture repeats 23.976Hz input. Use default 24000/1001 sampling; do not count capture duplicates as independent confirmation. The three-frame interval may yield only one probe observation.",
+    "No source onset is annotated and no first-frame acquisition claim is supported.",
+    "Existing source subtitle translucent panel is retained. Full neighboring frames contain green borders and are deliberately excluded, never erased.",
+    "Use --report-only. Optionally --lookahead 0 diagnoses immediate fresh acquisition; the normal lookahead diagnostic has too few independent frames to judge production tracking. Do not supply reviewed bars except in a separately labelled bar-extraction diagnostic."
+  ],
+  "segments": [
+    {
+      "id": "motion_no_box",
+      "frames": [
+        836,
+        843
+      ],
+      "crop_xywh": [
+        544,
+        176,
+        2000,
+        1125
+      ],
+      "reviewed_picture_y": [
+        144,
+        981
+      ]
+    },
+    {
+      "id": "growls_no_box",
+      "frames": [
+        1193,
+        1196
+      ],
+      "crop_xywh": [
+        544,
+        176,
+        2000,
+        1125
+      ],
+      "reviewed_picture_y": [
+        144,
+        981
+      ]
+    },
+    {
+      "id": "beeps_no_box",
+      "frames": [
+        2024,
+        2044
+      ],
+      "crop_xywh": [
+        544,
+        176,
+        2000,
+        1125
+      ],
+      "reviewed_picture_y": [
+        144,
+        981
+      ]
+    },
+    {
+      "id": "panaka_three_lines_no_box",
+      "frames": [
+        2184,
+        2194
+      ],
+      "crop_xywh": [
+        544,
+        176,
+        2000,
+        1125
+      ],
+      "reviewed_picture_y": [
+        144,
+        981
+      ]
+    }
+  ],
+  "annotations": [
+    {
+      "id": "motion_no_box",
+      "segment": "motion_no_box",
+      "frames": [
+        836,
+        843
+      ],
+      "line_boxes": [
+        [
+          695,
+          890,
+          1306,
+          935
+        ],
+        [
+          685,
+          959,
+          1312,
+          1003
+        ]
+      ],
+      "split": "diagnostic",
+      "range_kind": "verified_no_box_cue_interior",
+      "contamination": [
+        "post-render RGB capture; no diagnostic green pixels in selected crop",
+        "failure-selected short interval; capture duplicates and no temporal history"
+      ]
+    },
+    {
+      "id": "growls_no_box",
+      "segment": "growls_no_box",
+      "frames": [
+        1193,
+        1196
+      ],
+      "line_boxes": [
+        [
+          765,
+          891,
+          1232,
+          926
+        ],
+        [
+          903,
+          959,
+          1095,
+          1003
+        ]
+      ],
+      "split": "diagnostic",
+      "range_kind": "verified_no_box_cue_interior",
+      "contamination": [
+        "post-render RGB capture; no diagnostic green pixels in selected crop",
+        "failure-selected short interval; capture duplicates and no temporal history"
+      ]
+    },
+    {
+      "id": "beeps_no_box",
+      "segment": "beeps_no_box",
+      "frames": [
+        2024,
+        2044
+      ],
+      "line_boxes": [
+        [
+          822,
+          890,
+          1179,
+          934
+        ],
+        [
+          910,
+          959,
+          1088,
+          1003
+        ]
+      ],
+      "split": "diagnostic",
+      "range_kind": "verified_no_box_cue_interior",
+      "contamination": [
+        "post-render RGB capture; no diagnostic green pixels in selected crop",
+        "failure-selected short interval; capture duplicates and no temporal history"
+      ]
+    },
+    {
+      "id": "panaka_three_lines_no_box",
+      "segment": "panaka_three_lines_no_box",
+      "frames": [
+        2184,
+        2194
+      ],
+      "line_boxes": [
+        [
+          921,
+          822,
+          1081,
+          857
+        ],
+        [
+          931,
+          890,
+          1068,
+          934
+        ],
+        [
+          657,
+          959,
+          1342,
+          1003
+        ]
+      ],
+      "split": "diagnostic",
+      "range_kind": "verified_no_box_cue_interior",
+      "contamination": [
+        "post-render RGB capture; no diagnostic green pixels in selected crop",
+        "failure-selected short interval; capture duplicates and no temporal history"
+      ]
+    }
+  ],
+  "annotation_revision": 2,
+  "previous_manifest_sha256": "97bfb86b54aafc8e6339636dda54d5e4f5b188e4d3922b61417e5bf09def550a"
+}

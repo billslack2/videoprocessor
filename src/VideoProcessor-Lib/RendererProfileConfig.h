@@ -556,6 +556,10 @@ namespace RendererProfileConfig
 		}
 		if (group == "display")
 		{
+			if ((key == "subtitle_bbox_test" || key == "subtitle_cut_paste_test")) return IsBoolean(value);
+			if (key == "subtitle_box_padding_sides" || key == "subtitle_box_padding_top" || key == "subtitle_box_padding_bottom" || key == "subtitle_move_inset") { int parsed=0; return ParseInteger(value,0,500,parsed); }
+		if (key == "subtitle_cut_paste_background") return IsChoice(value,
+				{ "rectangle", "transparent", "blend", "black", "dark_gray" });
 			if (key == "calibration_lut_enabled") return IsBoolean(value);
 			if (key == "calibration_lut_bt709" ||
 				key == "calibration_lut_p3_d65" ||
@@ -699,7 +703,10 @@ namespace RendererProfileConfig
 			return IsChoice(value, { "follow_input", "follow_input_lldv", "hdr_luminance_user", "user" });
 		if (key == "profile_update_mode")
 			return IsChoice(value, { "rebuild", "live", "never" });
-		if (key == "live_profile_updates" ||
+		if (key == "subtitle_box_padding_sides" || key == "subtitle_box_padding_top" || key == "subtitle_box_padding_bottom" || key == "subtitle_move_inset") { int parsed=0; return ParseInteger(value,0,500,parsed); }
+		if (key == "subtitle_cut_paste_background") return IsChoice(value,
+			{ "rectangle", "transparent", "blend", "black", "dark_gray" });
+		if ((key == "subtitle_bbox_test" || key == "subtitle_cut_paste_test") || key == "live_profile_updates" ||
 			key == "switch_refresh_rate" || key == "output_diagnostics" ||
 			key == "diagnostic_disable_shader_cache" ||
 			key == "diagnostic_disable_compute" ||
@@ -714,6 +721,8 @@ namespace RendererProfileConfig
 	inline bool ValidateCanonicalDisplaySetting(
 		const std::string& key, const std::string& value)
 	{
+		if ((key == "subtitle_bbox_test" || key == "subtitle_cut_paste_test" ||
+			key == "subtitle_cut_paste_background" || key == "subtitle_box_padding_sides" || key == "subtitle_box_padding_top" || key == "subtitle_box_padding_bottom" || key == "subtitle_move_inset")) return ValidateBaseSetting(key, value);
 		if (key == "video_conversion" || key == "container_colorspace" ||
 			key == "hdr_colorspace" || key == "hdr_luminance")
 			return ValidateBaseSetting(key, value);
@@ -1737,7 +1746,9 @@ namespace RendererProfileConfig
 				continue;
 			const std::set<std::string> baseKeys = {
 				"sdr_target_nits", "sdr_black_nits", "profile_update_mode",
-				"live_profile_updates",
+				"live_profile_updates", "subtitle_bbox_test", "subtitle_cut_paste_test",
+				"subtitle_cut_paste_background",
+                "subtitle_box_padding_sides", "subtitle_box_padding_top", "subtitle_box_padding_bottom", "subtitle_move_inset",
 				"switch_refresh_rate",
 				"quality", "tone_mapping", "gamut_mapping", "peak_detection",
 				"contrast_recovery", "upscaler", "downscaler", "deband",
