@@ -77,6 +77,14 @@ namespace SubtitleBoxLookahead
 {
     constexpr size_t MaxFrames = 8;
 
+    inline bool SamePanelTopEdge(const SubtitlePanelTopEdge& a,
+        const SubtitlePanelTopEdge& b, int tolerance)
+    {
+        if (!a.Valid() || !b.Valid() || std::abs(a.y-b.y)>tolerance) return false;
+        const int overlap=(std::min)(a.right,b.right)-(std::max)(a.left,b.left);
+        return overlap>0 && overlap*2>=(std::min)(a.right-a.left,b.right-b.left);
+    }
+
     inline bool HasBarEvidence(const SubtitleBoxObservation& observation)
     {
         return observation.barAuthority || observation.barTrackingAuthority;
@@ -794,8 +802,29 @@ namespace SubtitleBoxLookahead
             const unsigned required=(frames[0].text.lineCount>=3 && supportEnd>=4)?3u:2u;
             const double farthestCoverage=frames[0].text.lineCount<3?1.0:
                 OwnedLinePixelCoverage(frames[0],line,frames[crowdedFarthest]);
-            const double minimumCoverage=(line==crowdedAnchorLine)?0.90:0.975;
             const bool fullHorizon=supportEnd>=4;
+            // A consistent broad backing edge may resolve a borderline
+            // picture-side row, but only with matching current/future glyph
+            // signatures and at least 90% of its fixed glyph pixels present.
+            // It cannot relax the mandatory bar-anchor or four-frame window.
+            unsigned panelMatches=0;bool farthestPanelMatch=false;
+            if(fullHorizon && line!=crowdedAnchorLine &&
+                frames[0].text.panelTopEdges[line].Valid())
+                for(size_t frame=0;frame<supportEnd;++frame)
+                    for(int other=0;other<frames[frame].text.lineCount;++other)
+                        if(SameCrowdedLine(frames[0].text.lineBounds[line],
+                                frames[frame].text.lineBounds[other],tolerance) &&
+                            SimilarSignature(frames[0].text.lineSignatures[line],
+                                frames[frame].text.lineSignatures[other]) &&
+                            SamePanelTopEdge(frames[0].text.panelTopEdges[line],
+                                frames[frame].text.panelTopEdges[other],tolerance) &&
+                            SameLinePixels(frames[0],line,frames[frame],other)) {
+                            ++panelMatches;
+                            if(frame==crowdedFarthest) farthestPanelMatch=true;
+                            break;
+                        }
+            const bool stablePanel=panelMatches>=3 && farthestPanelMatch;
+            const double minimumCoverage=(line==crowdedAnchorLine || stablePanel)?0.90:0.975;
             const int anchorHeight=crowdedAnchorLine>=0?
                 frames[0].text.lineBounds[crowdedAnchorLine].bottom-
                     frames[0].text.lineBounds[crowdedAnchorLine].top:0;
@@ -819,6 +848,7 @@ namespace SubtitleBoxLookahead
                 const int line=acceptedLines[k];
                 result.text.lineBounds[k]=frames[0].text.lineBounds[line];
                 result.text.lineSignatures[k]=frames[0].text.lineSignatures[line];
+                result.text.panelTopEdges[k]=frames[0].text.panelTopEdges[line];
                 const auto& r=frames[0].text.lineBounds[line]; auto& box=result.text.bounds;
                 box={(std::min)(box.left,r.left),(std::min)(box.top,r.top),
                     (std::max)(box.right,r.right),(std::max)(box.bottom,r.bottom)};
@@ -887,6 +917,7 @@ namespace SubtitleBoxLookahead
                 result.text.lineCount = next.text.lineCount;
                 result.text.lineBounds = next.text.lineBounds;
                 result.text.lineSignatures = next.text.lineSignatures;
+                result.text.panelTopEdges = next.text.panelTopEdges;
                 result.text.signature = next.text.signature;
             }
         }

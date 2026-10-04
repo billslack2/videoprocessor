@@ -23,7 +23,7 @@ void SubtitleBoxDetector::Reset()
 {
     m_inkSnapshot.reset();
     m_result = {}; m_currentBarAnchor = {}; m_signature = {}; m_currentAnchorSignature = {};
-    m_currentLineBounds = {}; m_currentLineSignatures = {};
+    m_currentLineBounds = {}; m_currentLineSignatures = {}; m_currentPanelTopEdges = {};
     m_generation = m_viewport = m_sequence = 0;
     m_width = m_height = m_top = m_bottom = m_misses = 0;
     m_hasSequence = m_workLimit = false;
@@ -39,7 +39,7 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
     m_currentBarAnchor = {};
     m_inkSnapshot.reset();
     m_currentAnchorSignature = {};
-    m_currentLineBounds = {}; m_currentLineSignatures = {};
+    m_currentLineBounds = {}; m_currentLineSignatures = {}; m_currentPanelTopEdges = {};
     const int step = SamplingStep(source.width, source.height);
     const int w = (source.width + step - 1) / step;
     const int h = (source.height + step - 1) / step;
@@ -620,6 +620,37 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
         makeLineSignature(line,m_currentLineSignatures[i],i);
         m_currentLineBounds[i]={line.left*step,line.top*step,
             std::min(source.width,line.right*step),std::min(source.height,line.bottom*step)};
+        // A translucent backing can supply a broad, stable top edge. Reuse
+        // the same reduced-resolution luma grid already sampled for glyphs;
+        // this never searches new source pixels or grants subtitle eligibility.
+        const int lineHeight=Height(line);
+        const bool nearTop=line.top<topEnd;
+        const int bandStart=nearTop?1:bottomStart+1;
+        const int bandEnd=nearTop?topEnd-2:h-2;
+        const int lowY=std::max(bandStart,line.top-2*lineHeight);
+        // Stay clear of the glyph's own outline and the picture/bar boundary;
+        // neither is evidence for a separate translucent backing.
+        const int highY=std::min(bandEnd,line.top-std::max(3,lineHeight/2));
+        unsigned bestSupport=0;
+        for(int y=highY;y>=lowY;--y) {
+            if(evidence.sourceRows[y-1]<pictureTop ||
+                evidence.sourceRows[y+1]>=pictureBottom)
+                continue;
+            unsigned tested=0,supported=0,positiveDrop=0;
+            for(int x=line.left;x<line.right;++x) {
+                const int drop=int(m_luma[(y-1)*w+x])-int(m_luma[(y+1)*w+x]);
+                ++tested;
+                if(drop>=48) {++supported;positiveDrop+=unsigned(drop);}
+            }
+            if(tested<8 || supported*10000<tested*4500 ||
+                positiveDrop<supported*60)continue;
+            const unsigned strength=supported*10000/tested;
+            if(strength>bestSupport) {
+                m_currentPanelTopEdges[i]={evidence.sourceRows[y],
+                    m_currentLineBounds[i].left,m_currentLineBounds[i].right,strength};
+                bestSupport=strength;
+            }
+        }
     }
     // Include unsampled antialias fringes and tiny terminal punctuation. This
     // conservative envelope is not glyph evidence and cannot grant bar entry.
@@ -685,5 +716,6 @@ SubtitleBoxResult SubtitleBoxDetector::Analyze(const AnalysisLumaSource& source,
     m_result.anchor=m_currentBarAnchor; m_result.signature=signature;
     m_result.anchorSignature=m_currentAnchorSignature;
     m_result.lineBounds=m_currentLineBounds; m_result.lineSignatures=m_currentLineSignatures;
+    m_result.panelTopEdges=m_currentPanelTopEdges;
     m_misses=0; return m_result;
 }

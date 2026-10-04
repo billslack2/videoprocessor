@@ -1440,6 +1440,68 @@ public:
         Assert::AreEqual(318,preview.text.bounds.top);
         Assert::AreEqual(348,preview.text.bounds.bottom);
     }
+    TEST_METHOD(TranslucentBackingTopEdgeIsAuxiliaryEvidenceOnly) {
+        auto blank=Pixels();
+        SubtitleBoxDetector scanner;
+        Assert::IsFalse(scanner.Analyze(Source(blank),45,315,1,1).detected);
+        auto backed=blank;
+        Fill(backed,150,280,500,315,190);
+        Text(backed,175,307,22);Text(backed,240,336,12);
+        scanner.Reset();
+        const auto result=scanner.Analyze(Source(backed),45,315,2,1);
+        Assert::IsTrue(result.detected);
+        bool found=false;
+        for(int line=0;line<result.lineCount;++line)
+            if(result.panelTopEdges[line].Valid() &&
+                std::abs(result.panelTopEdges[line].y-280)<=2 &&
+                result.panelTopEdges[line].supportBasisPoints>=9000)found=true;
+        Assert::IsTrue(found,L"detector-owned line has broad backing edge on sampled grid");
+        auto narrow=blank;
+        Fill(narrow,220,280,250,315,190);
+        Text(narrow,175,307,22);Text(narrow,240,336,12);
+        scanner.Reset();
+        const auto narrowResult=scanner.Analyze(Source(narrow),45,315,3,1);
+        Assert::IsTrue(narrowResult.detected);
+        for(int line=0;line<narrowResult.lineCount;++line)
+            Assert::IsFalse(narrowResult.panelTopEdges[line].Valid(),
+                L"a narrow picture edge cannot masquerade as broad subtitle backing");
+    }
+    TEST_METHOD(StablePanelCanResolveBorderlineCrowdedRowButNotMissingGlyphs) {
+        auto crowded=[](uint64_t sequence,bool panel,int lostEvery) {
+            auto o=Cue(sequence,true);o.pictureBottom=340;o.text.lineCount=3;
+            const SubtitleBoxRect pictureRow={280,280,360,296};
+            o.text.lineBounds[2]=pictureRow;o.text.lineSignatures[2].fill(0x77);
+            auto ink=std::make_shared<SubtitleInkSnapshot>(*o.ink);
+            unsigned ordinal=0;
+            for(int y=pictureRow.top;y<pictureRow.bottom;++y)
+                for(int x=pictureRow.left;x<pictureRow.right;++x)
+                    if((x-pictureRow.left)%8<4) {
+                        const size_t p=size_t(y)*640+x;
+                        const uint64_t bit=uint64_t{1}<<(p%64);
+                        if(!lostEvery || (++ordinal%lostEvery)!=0)
+                            ink->rawInk[p/64]|=bit;
+                        ink->ownedInk[p/64]|=bit;
+                    }
+            o.ink=ink;
+            if(panel)o.text.panelTopEdges[2]={270,280,360,8000};
+            return o;
+        };
+        const auto noPanel=Resolve({crowded(1,false,0),crowded(2,false,0),
+            crowded(3,false,0),crowded(4,false,13)});
+        Assert::AreEqual(2,noPanel.text.lineCount,
+            L"borderline picture ink alone is insufficient for the farthest row");
+        const auto backed=Resolve({crowded(1,true,0),crowded(2,true,0),
+            crowded(3,true,0),crowded(4,true,13)});
+        Assert::AreEqual(3,backed.text.lineCount,
+            L"stable backing supports a row with independently persistent glyphs");
+        const auto panelGone=Resolve({crowded(1,true,0),crowded(2,true,0),
+            crowded(3,true,0),crowded(4,false,13)});
+        Assert::AreEqual(2,panelGone.text.lineCount);
+        const auto glyphsGone=Resolve({crowded(1,true,0),crowded(2,true,0),
+            crowded(3,true,0),crowded(4,true,4)});
+        Assert::AreEqual(2,glyphsGone.text.lineCount,
+            L"stable backing cannot replace current/future glyph proof");
+    }
     TEST_METHOD(FutureOnlyThirdRowNeedsCurrentAndFarthestFixedPixelProof) {
         auto withPictureRow=[](uint64_t sequence,int shift,bool grouped) {
             SubtitleBoxObservation o=Cue(sequence,true);o.pictureBottom=340;
