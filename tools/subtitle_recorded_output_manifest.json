@@ -1,0 +1,150 @@
+{
+  "schema": 1,
+  "kind": "rendered-output-observer",
+  "clean_detector_acceptance": false,
+  "fps": 60,
+  "width": 2560,
+  "height": 1440,
+  "frame_ranges": "zero-based half-open",
+  "note": "Original recording pixels are preserved. Green borders, source clearing, moved glyphs and playback/UI overlays are retained. This measures historical rendered failures; it cannot prove an updated detector or renderer succeeds. Capture repeats 23.976Hz source frames at 60Hz.",
+  "clips": [
+    {
+      "basename": "2026-10-03 14-03-19.mp4",
+      "sha256": "1684b68b0bec79be6b353a09078d72643866f5109e0c1a12191481f5432763d1",
+      "mode": "bbox",
+      "cases": [
+        {
+          "id": "two_lines_motion",
+          "frames": [
+            660,
+            870
+          ],
+          "kind": "green_bbox",
+          "search_rect": [
+            800,
+            950,
+            2200,
+            1240
+          ],
+          "note": "Text presence and unchanged cue visually reviewed. One-pixel green threshold variation may be compression; larger movement and disappearance are output defects."
+        },
+        {
+          "id": "growls_two_lines",
+          "frames": [
+            1140,
+            1343
+          ],
+          "kind": "green_bbox",
+          "search_rect": [
+            800,
+            950,
+            2200,
+            1240
+          ],
+          "note": "Text presence and unchanged cue visually reviewed. One-pixel green threshold variation may be compression; larger movement and disappearance are output defects."
+        },
+        {
+          "id": "beeps_two_lines",
+          "frames": [
+            1920,
+            2070
+          ],
+          "kind": "green_bbox",
+          "search_rect": [
+            800,
+            950,
+            2200,
+            1240
+          ],
+          "note": "Text presence and unchanged cue visually reviewed. One-pixel green threshold variation may be compression; larger movement and disappearance are output defects."
+        },
+        {
+          "id": "three_lines",
+          "frames": [
+            2100,
+            2208
+          ],
+          "kind": "green_bbox",
+          "search_rect": [
+            800,
+            950,
+            2200,
+            1240
+          ],
+          "note": "Text presence and unchanged cue visually reviewed. One-pixel green threshold variation may be compression; larger movement and disappearance are output defects."
+        }
+      ]
+    },
+    {
+      "basename": "2026-10-03 13-57-41.mp4",
+      "sha256": "ab1526c4b20a429259ea62404dc9ca3635c649dd60497da3821a5cbc55580735",
+      "mode": "mixed movement backgrounds",
+      "cases": [
+        {
+          "id": "credits_end_reversion",
+          "frames": [
+            2100,
+            2247
+          ],
+          "kind": "glyph_position",
+          "reference_frame": 2160,
+          "template_rect": [
+            850,
+            1085,
+            1650,
+            1226
+          ],
+          "search_rect": [
+            800,
+            1000,
+            1700,
+            1330
+          ],
+          "expected_template_xy": [
+            850,
+            1085
+          ],
+          "source_delta_y": 42,
+          "minimum_match": 0.8,
+          "note": "Visually reviewed same cue throughout; final capture frames return downward to original source location before next cue."
+        },
+        {
+          "id": "solution_end_reversion",
+          "frames": [
+            9132,
+            9257
+          ],
+          "kind": "glyph_position",
+          "reference_frame": 9180,
+          "template_rect": [
+            850,
+            1085,
+            1650,
+            1226
+          ],
+          "search_rect": [
+            800,
+            1000,
+            1700,
+            1330
+          ],
+          "expected_template_xy": [
+            850,
+            1085
+          ],
+          "source_delta_y": 50,
+          "minimum_match": 0.8,
+          "note": "Visually reviewed same cue throughout; final capture frames return downward to original source location before next cue."
+        }
+      ]
+    }
+  ],
+  "composition_observations": [
+    {
+      "clip": "2026-10-03 13-57-41.mp4",
+      "frame": 1920,
+      "seconds": 32,
+      "observation": "Dark/black fill begins partway through first-line glyph height; top of moved text remains over picture. Original source panel remains visible around replacement edges. This is a composition seam, not evidence of a cue tracking jump."
+    }
+  ]
+}

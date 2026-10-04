@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "description": "Fixed rendered-output regressions. These screen recordings contain prior bbox/cut-paste effects and are NOT clean detector inputs.",
+  "crop_xywh": [544, 176, 2000, 1125],
+  "fps": 60,
+  "annotation_method": "Glyph templates are selected manually from the actual caption pixels; no OCR. Line envelopes include a 2px antialiasing margin around reviewed white glyph cores. Cue transition candidates from template matching were visually checked in original decoded frames. Coordinates are native recorded movie pixels, not original 4K source pixels.",
+  "clips": [
+    {
+      "id": "underwater",
+      "basename": "2026-10-03 08-29-49.mp4",
+      "sha256": "7d798f8e2cd98cd4b55ac6e8783e7e5db319dbe9c0d54d9f015bb06d14c4de19",
+      "capture_frames": [3300, 3720],
+      "rendered_mode": "cut-paste",
+      "labels": [
+        {"id": "growling", "frames": [3422, 3572], "reference_frame": 3480,
+         "template_box": [882, 958, 1116, 1004], "line_boxes": [[882, 958, 1116, 1004]]}
+      ]
+    },
+    {
+      "id": "stairs",
+      "basename": "2026-10-03 08-34-41.mp4",
+      "sha256": "ffcb405d0d2589e3465d2b8edd5f942e3e78e53b521d23f83e2ba8b265957e20",
+      "capture_frames": [900, 1320],
+      "rendered_mode": "bbox",
+      "labels": [
+        {"id": "explain_invasion", "frames": [900, 1083], "reference_frame": 1020,
+         "note": "Cue already active at the beginning of this selected clip; no onset claim.",
+         "template_box": [850, 958, 1147, 997],
+         "line_boxes": [[654, 889, 1344, 935], [850, 958, 1147, 996]]},
+        {"id": "sign_treaty", "frames": [1083, 1350], "reference_frame": 1260,
+         "note": "Selected clip ends before this cue ends; acceptance covers selected frames only.",
+         "template_box": [592, 958, 1404, 1005],
+         "line_boxes": [[660, 889, 1339, 935], [592, 958, 1404, 1004]]}
+      ]
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+ <ItemGroup Label="ProjectConfigurations"><ProjectConfiguration Include="Release|x64"><Configuration>Release</Configuration><Platform>x64</Platform></ProjectConfiguration></ItemGroup>
+ <PropertyGroup Label="Globals"><ProjectGuid>{F9AB3869-2840-4D6D-88D4-749315F26370}</ProjectGuid><WindowsTargetPlatformVersion>10.0.26100.0</WindowsTargetPlatformVersion></PropertyGroup>
+ <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+ <PropertyGroup Label="Configuration"><ConfigurationType>Application</ConfigurationType><PlatformToolset>v142</PlatformToolset><UseOfMfc>Dynamic</UseOfMfc></PropertyGroup>
+ <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+ <PropertyGroup><OutDir>$(ProjectDir)..\x64\Release\</OutDir><IntDir>$(ProjectDir)..\x64\Release\obj\SubtitleBoxProbe\</IntDir><TargetName>SubtitleBoxProbe</TargetName></PropertyGroup>
+ <ItemDefinitionGroup><ClCompile><AdditionalIncludeDirectories>$(ProjectDir)..\src\VideoProcessor-Lib</AdditionalIncludeDirectories><RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary><Optimization>MaxSpeed</Optimization><ExceptionHandling>Sync</ExceptionHandling><PreprocessorDefinitions>NDEBUG;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions></ClCompile><Link><AdditionalDependencies>$(ProjectDir)..\x64\Release\VideoProcessor-Lib.lib;%(AdditionalDependencies)</AdditionalDependencies></Link></ItemDefinitionGroup>
+ <ItemGroup><ClCompile Include="subtitle_bbox_probe.cpp" /></ItemGroup>
+ <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+</Project>

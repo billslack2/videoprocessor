@@ -1058,7 +1058,8 @@ ActivePictureEvidence ExtractActivePictureEvidence(
 
 ActivePictureEvidence EvaluateSymmetricVerticalBarHypothesis(
 	const AnalysisLumaSource& source,
-	const ActivePictureEvidence& observed)
+	const ActivePictureEvidence& observed,
+    bool allowRejectedAlignedEdge)
 {
 	ActivePictureEvidence result = observed;
 	if (!source.IsValid() || !observed.available ||
@@ -1087,7 +1088,12 @@ ActivePictureEvidence EvaluateSymmetricVerticalBarHypothesis(
 	const bool oppositeExpanded = cleanTop
 		? observed.proposedBounds.bottom > inferredBottom + step
 		: observed.proposedBounds.top < inferredTop - step;
-	if (!oppositeExpanded || inferredBottom <= inferredTop)
+    const bool rejectedAlignedEdge = allowRejectedAlignedEdge && (cleanTop
+        ? (!observed.bottom.trusted && std::abs(observed.proposedBounds.bottom-inferredBottom) <= step)
+        : (!observed.top.trusted && std::abs(observed.proposedBounds.top-inferredTop) <= step));
+    // A subtitle can spoil strict edge statistics without moving the proposed
+    // boundary. The diagnostic opt-in still needs all pixel checks below.
+	if ((!oppositeExpanded && !rejectedAlignedEdge) || inferredBottom <= inferredTop)
 		return result;
 
 	SampleContext samples{ source };
