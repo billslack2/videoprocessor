@@ -16460,18 +16460,9 @@ bool LibplaceboVideoRenderer::SetNativeProfileOverlay(
 bool LibplaceboVideoRenderer::GetConversionPerformance(
 	double& currentUs, double& avg10s, double& max10s) const
 {
-	if (!m_impl)
-		return false;
-	std::unique_lock<std::mutex> renderGuard(
-		m_impl->renderMutex, std::try_to_lock);
-	if (!renderGuard.owns_lock())
-		return false;
-	std::unique_lock<std::mutex> formatterGuard(
-		m_impl->formatterMutex, std::try_to_lock);
-	if (!formatterGuard.owns_lock() || !m_impl->formatter)
-		return false;
-	m_impl->formatter->GetConversionPerformance(currentUs, avg10s, max10s);
-	return currentUs > 0.0 || avg10s > 0.0 || max10s > 0.0;
+	std::lock_guard<std::mutex> guard(m_conversionTimingMutex);
+	return m_conversionTiming.Snapshot(GetTickCount64(),
+		currentUs, avg10s, max10s);
 }
 
 
@@ -17368,6 +17359,8 @@ void LibplaceboVideoRenderer::ConversionLoop()
 			error = "unknown exception";
 		}
 		frame.SourceBufferRelease();
+		const double conversionUs = converted ?
+			converted->conversionCpuMs * 1000.0 : 0.0;
 		bool published = false;
 		{
 			std::lock_guard<std::mutex> guard(m_queueMutex);
@@ -17384,6 +17377,11 @@ void LibplaceboVideoRenderer::ConversionLoop()
 					queued->conversionInProgress = false;
 					queued->conversionFailed = !error.empty();
 					queued->converted = std::move(converted);
+					if (error.empty())
+					{
+						std::lock_guard<std::mutex> timingGuard(m_conversionTimingMutex);
+						m_conversionTiming.Record(GetTickCount64(), conversionUs);
+					}
 					published = true;
 				}
 			}
@@ -18378,6 +18376,10 @@ void LibplaceboVideoRenderer::BeginQueueGeneration(
 		ClearQueueLocked(reason);
 		if (++m_queueGeneration == 0)
 			++m_queueGeneration;
+		{
+			std::lock_guard<std::mutex> timingGuard(m_conversionTimingMutex);
+			m_conversionTiming.Reset();
+		}
 		m_activePictureTimeline.Reset(m_queueGeneration);
 		m_overflowLoggedGeneration = 0;
 		m_startupPrefillPending = true;

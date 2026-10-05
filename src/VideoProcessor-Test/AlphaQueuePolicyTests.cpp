@@ -2,6 +2,7 @@
 #include "CppUnitTest.h"
 
 #include <vprenderer/AlphaQueuePolicy.h>
+#include <vprenderer/AlphaConversionTimingWindow.h>
 
 #include <limits>
 #include <deque>
@@ -13,6 +14,27 @@ namespace Tests
 	TEST_CLASS(AlphaQueuePolicyTests)
 	{
 	public:
+		TEST_METHOD(ConversionTimingWindowReportsWorkerCostAndExpiresOldFrames)
+		{
+			AlphaConversionTimingWindow timing;
+			double latest = 0.0;
+			double average = 0.0;
+			double peak = 0.0;
+			Assert::IsFalse(timing.Snapshot(1000, latest, average, peak));
+			timing.Record(1000, 2000.0);
+			timing.Record(2000, 4000.0);
+			Assert::IsTrue(timing.Snapshot(2000, latest, average, peak));
+			Assert::AreEqual(4000.0, latest);
+			Assert::AreEqual(3000.0, average);
+			Assert::AreEqual(4000.0, peak);
+			Assert::IsTrue(timing.Snapshot(11001, latest, average, peak));
+			Assert::AreEqual(4000.0, average);
+			Assert::IsFalse(timing.Snapshot(12001, latest, average, peak));
+			timing.Record(12001, 3000.0);
+			timing.Reset();
+			Assert::IsFalse(timing.Snapshot(12001, latest, average, peak));
+		}
+
 		TEST_METHOD(PreviewReportsPhysicalAvailabilityBeyondConfiguredBudget)
 		{
 			struct Frame { bool cadenceRepeat = false; };

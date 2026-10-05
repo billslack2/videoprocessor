@@ -7,6 +7,7 @@
 #include <CropDiagnosticThrottle.h>
 #include <RememberedEdgeReturn.h>
 #include <vprenderer/BufferedPictureExpansion.h>
+#include <vprenderer/AlphaConversionTimingWindow.h>
 #include <video_frame_formatter/IVideoFrameFormatter.h>
 
 #include <atomic>
@@ -225,6 +226,8 @@ private:
 	std::thread m_conversionThread;
 	std::mutex m_conversionPoolMutex;
 	std::vector<std::vector<BYTE>> m_conversionBufferPool;
+	mutable std::mutex m_conversionTimingMutex;
+	AlphaConversionTimingWindow m_conversionTiming;
 	std::thread m_stopWorker;
 	std::atomic_bool m_stopWorkerStarted{false};
 

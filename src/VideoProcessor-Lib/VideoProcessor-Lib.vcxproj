@@ -233,6 +233,7 @@
     <ClInclude Include="vprenderer\\AlphaPresentationTelemetry.h" />
     <ClInclude Include="vprenderer\\AlphaD3D11FrameGpuTimer.h" />
     <ClInclude Include="vprenderer\\AlphaRenderLoadMeter.h" />
+    <ClInclude Include="vprenderer\\AlphaConversionTimingWindow.h" />
     <ClInclude Include="ActivePictureDecisionTimeline.h" />
     <ClInclude Include="ActivePictureTransitionModel.h" />
 	<ClInclude Include="AnalysisLumaSource.h" />
