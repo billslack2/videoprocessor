@@ -67,6 +67,28 @@ namespace Tests
     TEST_CLASS(CpuFeaturesTests)
     {
     public:
+        TEST_METHOD(XgetbvRequiresBothCpuAndOsXsave)
+        {
+            Assert::IsFalse(CpuFeatures::CanReadXcr0(0));
+            Assert::IsFalse(CpuFeatures::CanReadXcr0(1u << 26));
+            Assert::IsFalse(CpuFeatures::CanReadXcr0(1u << 27));
+            Assert::IsTrue(CpuFeatures::CanReadXcr0((1u << 26) | (1u << 27)));
+        }
+        TEST_METHOD(DiagnosticsAgreeWithDispatch)
+        {
+            const auto& d = CpuFeatures::GetDiagnostics();
+            Assert::IsTrue(d.xgetbvRead == CpuFeatures::CanReadXcr0(d.cpu.leaf1Ecx));
+            Assert::IsTrue(CpuFeatures::SupportsAvx2Kernels() ==
+                (!d.disabledByEnvironment && CpuFeatures::CanUseAvx2Kernels(d.cpu)));
+        }
+        TEST_METHOD(InstructionProbeExecutesOrReportsUnsupported)
+        {
+            const auto result = CpuFeatures::RunAvx2Probe();
+            const auto& cpu = CpuFeatures::GetDiagnostics().cpu;
+            const bool instructionAvailable = (cpu.leaf7Ebx & (1u << 5)) && (cpu.xcr0 & 6) == 6;
+            Assert::IsTrue(result == (instructionAvailable ? CpuFeatures::ProbeResult::Pass :
+                CpuFeatures::ProbeResult::Unsupported));
+        }
         TEST_METHOD(Avx2TargetAcceptsCompleteCpuAndOsState)
         {
             Assert::IsTrue(CpuFeatures::CanUseAvx2Kernels(SupportedCpu()));
