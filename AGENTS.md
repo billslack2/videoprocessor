@@ -77,3 +77,11 @@
   and reopen Config. Record any untested VM/interactive coverage explicitly.
 - See docs/VP-0192_INSTALLER.md for the current build and runtime contract;
   docs/VP-0107_RELEASE_LAYOUT.md documents the legacy packager.
+
+## Portable sample configuration contract
+- Every portable ZIP must contain root VideoProcessor.cfg.example, nonempty and
+  byte-identical to the source VideoProcessor.cfg, recorded as a seed in its manifest.
+- Never include an active VideoProcessor.cfg in the ZIP or replace an operator's
+  saved configuration. For a fresh folder only, copy the example to VideoProcessor.cfg.
+- Run tools/test_portable_config_contract.ps1 and validate each finished archive
+  with tools/test_portable_config.ps1 before exporting or sharing it.

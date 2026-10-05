@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <!-- Development headers only. Every release contains the same optional backend;
+       vendor import libraries and runtime binaries are never linked or copied. -->
+  <PropertyGroup>
+    <MagewellSdkRoot Condition="'$(MagewellSdkRoot)' == '' and '$(VP_MAGEWELL_SDK_ROOT)' != ''">$(VP_MAGEWELL_SDK_ROOT)</MagewellSdkRoot>
+    <MagewellSdkRoot Condition="'$(MagewellSdkRoot)' == ''">$(MSBuildThisFileDirectory)..\..\..\3rdparty\magewell\SDKv3</MagewellSdkRoot>
+  </PropertyGroup>
+  <Target Name="CheckMagewellDevelopmentHeaders" BeforeTargets="PrepareForBuild">
+    <Error Condition="!Exists('$(MagewellSdkRoot)\Include\LibMWCapture\MWCapture.h')" Text="Set MagewellSdkRoot (or VP_MAGEWELL_SDK_ROOT) to the official MWCapture SDK's SDKv3 directory. Only the build machine needs these headers; users do not need the development SDK." />
+  </Target>
+</Project>

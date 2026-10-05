@@ -34,6 +34,8 @@
 #include <vprenderer/InwardCaptionEvidence.h>
 #include <vprenderer/HdrPeakAnalysisCrop.h>
 #include <vprenderer/NativeStatsOverlayPlacement.h>
+#include <vprenderer/AnamorphicPresentation.h>
+#include <vprenderer/NlsHookRecovery.h>
 #include <SceneDetector.h>
 #include <vprenderer/LibplaceboOutputPolicy.h>
 #include <HdrTargetLuminance.h>
@@ -3552,6 +3554,11 @@ struct LibplaceboVideoRenderer::Impl
 	const struct pl_hook* nlsHook = nullptr;
 	std::string nlsHookSignature;
 	std::string rejectedNlsHookSignature;
+	std::string runtimeRejectedNlsHookSignature;
+	uint64_t runtimeRejectedNlsSignature = 0;
+	std::string lastAnamorphicLayout;
+	uint64_t lastAnamorphicLayoutTick = 0;
+	uint64_t anamorphicSuppressedLayouts = 0;
 	std::string activeNlsShaderPath;
 	std::string lastNlsHookBindingPolicy;
 	struct pl_color_map_params colorMapParams{};
@@ -7605,6 +7612,9 @@ struct LibplaceboVideoRenderer::Impl
 		nlsDecision = {};
 		nlsHookSignature.clear();
 		rejectedNlsHookSignature.clear();
+		NlsHookRecovery::ResetFailedHook(renderer, runtimeRejectedNlsSignature);
+		runtimeRejectedNlsSignature = 0;
+		runtimeRejectedNlsHookSignature.clear();
 		{
 			std::lock_guard<std::mutex> guard(shaderStatusMutex);
 			activeNlsShaderPath.clear();
@@ -7859,6 +7869,8 @@ struct LibplaceboVideoRenderer::Impl
 		const std::map<std::string, std::string> parameters =
 			FixedNlsParameters(nlsRule);
 		const std::string hookKey = NlsHookKey(nlsRule, parameters);
+		if (runtimeRejectedNlsHookSignature == hookKey)
+			return false;
 		if (nlsHook && nlsHookSignature == hookKey)
 		{
 			NlsHookMappingState binding;
@@ -10283,9 +10295,9 @@ struct LibplaceboVideoRenderer::Impl
 				outputClient.right - outputClient.left) /
 				(outputClient.bottom - outputClient.top);
 		}
-		const double frameNlsTargetAspect = ResolveNlsTargetAspect(
+		const double frameNlsTargetAspect = AnamorphicPresentation::PhysicalTarget(
 			configuredScreenActive, configuredScreenAspect,
-			outputPanelAspect);
+			outputPanelAspect, anamorphicScale);
 		const bool retainedNlsModeAvailable =
 			nlsDecisionBeforeSceneAnalysis.mode != NlsMappingMode::WAITING &&
 			nlsDecisionBeforeSceneAnalysis.mode != NlsMappingMode::OFF;
@@ -11243,6 +11255,8 @@ struct LibplaceboVideoRenderer::Impl
 			outputContractLogged = true;
 		}
 
+		AnamorphicPresentation::Screen frameScreen;
+		pl_rect2df linearFallbackCrop{};
 		const double nominalSourceRateHz = state.displayMode->RefreshRateHz();
 		auto configureViewport =
 			[this, &image, width, height, frameGeneration, sourceSequence,
@@ -11253,7 +11267,7 @@ struct LibplaceboVideoRenderer::Impl
 			 forceSubtitleBarAnalysis, inwardCaptionProtected,
 			 currentBarAuthority, sceneBarAuthority, heldBarAnalysisAuthority,
 			 subtitleBarAuthority,
-			 &hdrPeakAnalysisMotionProtectionPixels](
+			 &hdrPeakAnalysisMotionProtectionPixels, &frameScreen, &linearFallbackCrop](
 				struct pl_frame& source,
 				struct pl_frame& target,
 				bool configuredScreenActive,
@@ -12322,8 +12336,8 @@ struct LibplaceboVideoRenderer::Impl
 
 
 			const double panelTargetAspect = pl_rect2df_aspect(&target.crop);
-			const double finalTargetAspect = ResolveNlsTargetAspect(
-				configuredScreenActive, configuredScreenAspect, panelTargetAspect);
+			const double finalTargetAspect = AnamorphicPresentation::PhysicalTarget(
+				configuredScreenActive, configuredScreenAspect, panelTargetAspect, anamorphicScale);
 			const bool nlsPresentationFailOpen = nlsRequested &&
 				(cropInput.presentationFailOpen ||
                  (cropInput.movingPictureTransition &&
@@ -12895,23 +12909,6 @@ struct LibplaceboVideoRenderer::Impl
 				if (trustedActivePicture)
 					*trustedActivePicture = true;
 			}
-			auto fitTargetToAspect = [&target](double aspect,
-				AlphaSourceCrop::VerticalPictureAlignment alignment)
-			{
-				const AlphaSourceCrop::PresentationRect available = {
-					target.crop.x0, target.crop.y0,
-					target.crop.x1, target.crop.y1 };
-				const AlphaSourceCrop::CenteredFitDecision fit =
-					AlphaSourceCrop::FitAspect(aspect, available, alignment);
-				if (fit.valid)
-				{
-					target.crop.x0 = static_cast<float>(fit.picture.left);
-					target.crop.y0 = static_cast<float>(fit.picture.top);
-					target.crop.x1 = static_cast<float>(fit.picture.right);
-					target.crop.y1 = static_cast<float>(fit.picture.bottom);
-				}
-				return fit;
-			};
 			// This is the sole per-frame NLS authority. Derive every mapping input
 			// from the exact source rectangle selected above, then publish crop,
 			// hook, runtime geometry, status, and destination layout as one decision.
@@ -12968,34 +12965,21 @@ struct LibplaceboVideoRenderer::Impl
 				presentationSourceGeometry.aspect;
 			const bool finalBoundsAuthoritative = !nlsPresentationFailOpen &&
 				finalSourceGeometry.valid && presentationSourceGeometry.valid;
-			const double screenLayoutAspect = configuredScreenActive || nlsRequested
-				? finalTargetAspect : pl_rect2df_aspect(&target.crop);
-			// The configured screen is itself a fitted destination rectangle. Apply
-			// the resting alignment here as well as to the later linear picture fit:
-			// active NLS returns after this stage, so centering this fit would make
-			// top/bottom a no-op for the complete NLS presentation.
-			const AlphaSourceCrop::PresentationRect screenAvailable = {
-				target.crop.x0, target.crop.y0, target.crop.x1, target.crop.y1 };
-			const AlphaSourceCrop::CenteredFitDecision screenFit =
-				fitTargetToAspect(screenLayoutAspect,
-					ResolveVerticalPictureAlignment(verticalAlignment));
-			int effectiveScreenEdgePadding = 0;
-			if (screenFit.valid &&
-				screenFit.unusedAxis == AlphaSourceCrop::UnusedSpaceAxis::VERTICAL &&
-				verticalAlignment != "center" && screenEdgePadding > 0)
-			{
-				const double availableSlack = verticalAlignment == "top"
-					? screenAvailable.bottom - screenFit.picture.bottom
-					: screenFit.picture.top - screenAvailable.top;
-				effectiveScreenEdgePadding = std::max(0, std::min(screenEdgePadding,
-					static_cast<int>(std::floor(availableSlack))));
-				const float shift = static_cast<float>(verticalAlignment == "top"
-					? effectiveScreenEdgePadding : -effectiveScreenEdgePadding);
-				target.crop.y0 += shift;
-				target.crop.y1 += shift;
-			}
-			const AlphaSourceCrop::PresentationRect finalScreen = {
-				target.crop.x0, target.crop.y0, target.crop.x1, target.crop.y1 };
+            const AlphaSourceCrop::PresentationRect screenAvailable = {
+                target.crop.x0, target.crop.y0, target.crop.x1, target.crop.y1 };
+            frameScreen = AnamorphicPresentation::FitScreen(configuredScreenActive,
+                configuredScreenAspect, anamorphicScale, screenAvailable,
+                ResolveVerticalPictureAlignment(verticalAlignment), screenEdgePadding);
+            const auto finalScreen = frameScreen.rect;
+            const int effectiveScreenEdgePadding = frameScreen.effectivePadding;
+            target.crop = { static_cast<float>(finalScreen.left), static_cast<float>(finalScreen.top),
+                static_cast<float>(finalScreen.right), static_cast<float>(finalScreen.bottom) };
+            const auto linearFit = AnamorphicPresentation::FitPicture(
+                pl_rect2df_aspect(&source.crop), anamorphicScale, frameScreen,
+                ResolveVerticalPictureAlignment(verticalAlignment));
+            linearFallbackCrop = { static_cast<float>(linearFit.picture.left),
+                static_cast<float>(linearFit.picture.top), static_cast<float>(linearFit.picture.right),
+                static_cast<float>(linearFit.picture.bottom) };
 			auto publishFinalLayout = [&](AlphaSourceCrop::UnusedSpaceAxis axis,
 				const char* mapping)
 			{
@@ -13145,11 +13129,11 @@ struct LibplaceboVideoRenderer::Impl
 				if (finalNlsDecision.mode == NlsMappingMode::ACTIVE &&
 					!EnsureNlsHook(finalNlsDecision))
 				{
-					finalNlsDecision = {};
-					finalNlsDecision.sourceAspect = finalSourceAspect;
-					finalNlsDecision.targetAspect = finalTargetAspect;
-					finalNlsDecision.reason =
-						"GLSL hook is unavailable; preserving safe passthrough";
+					finalNlsDecision.mode = NlsMappingMode::SAFE_FIT;
+                    finalNlsDecision.stretchRatio = 1.0;
+                    finalNlsDecision.reason = runtimeRejectedNlsHookSignature.empty() ?
+                        "GLSL hook is unavailable; lens-aware linear fallback" :
+                        "runtime hook failure is latched; lens-aware linear fallback";
 				}
 				MadVRShaderLoader::SetRuntimeNlsDecision(finalNlsDecision);
 				if (finalNlsDecision.mode == NlsMappingMode::ACTIVE)
@@ -13302,22 +13286,14 @@ struct LibplaceboVideoRenderer::Impl
 				// ordinary centered scaling inside the target viewport. Otherwise a
 				// A source classified within target tolerance would otherwise still be
 				// stretched vertically despite having no active NLS hook.
-				const AlphaSourceCrop::CenteredFitDecision pictureFit =
-					fitTargetToAspect(
-						AlphaSourceCrop::ApplyAnamorphicLensCompensation(
-							pl_rect2df_aspect(&source.crop), anamorphicScale),
-						ResolveVerticalPictureAlignment(verticalAlignment));
-				publishFinalLayout(pictureFit.unusedAxis, "linear-nls-fallback");
+                target.crop = linearFallbackCrop;
+                publishFinalLayout(linearFit.unusedAxis, "linear-nls-fallback");
 				return;
 			}
 
 			// NLS is off: use the same final source rectangle with ordinary scaling.
-			const AlphaSourceCrop::CenteredFitDecision pictureFit =
-				fitTargetToAspect(
-					AlphaSourceCrop::ApplyAnamorphicLensCompensation(
-						pl_rect2df_aspect(&source.crop), anamorphicScale),
-					ResolveVerticalPictureAlignment(verticalAlignment));
-			publishFinalLayout(pictureFit.unusedAxis, "linear");
+            target.crop = linearFallbackCrop;
+            publishFinalLayout(linearFit.unusedAxis, "linear");
 			// Never apply subtitle translation to the fitted destination. Moving
 			// target.crop cannot reveal source pixels; it only clips one edge and
 			// leaves an unequal gap at the other. Unsupported overlay evidence is
@@ -13486,6 +13462,11 @@ struct LibplaceboVideoRenderer::Impl
 		struct pl_overlay overlays[3]{};
 		struct pl_overlay_part overlayParts[3]{};
 		int overlayCount = 0;
+		auto assembleOverlays = [&]()
+		{
+			overlayCount = 0;
+			target.overlays = nullptr;
+			target.num_overlays = 0;
 		if (statsOverlayTexture)
 		{
 			pl_overlay& overlay = overlays[overlayCount];
@@ -13510,7 +13491,7 @@ struct LibplaceboVideoRenderer::Impl
 			const NativeStatsOverlayPlacement::Result placement =
 				NativeStatsOverlayPlacement::Place(
 					pictureRect, outputRect,
-					static_cast<float>(statsOverlayTexture->params.w),
+					AnamorphicPresentation::OverlayWidth(static_cast<float>(statsOverlayTexture->params.w), anamorphicScale),
 					static_cast<float>(statsOverlayTexture->params.h));
 			overlayPart.dst = {
 				placement.panel.left, placement.panel.top,
@@ -13583,7 +13564,7 @@ struct LibplaceboVideoRenderer::Impl
 			const NativeStatsOverlayPlacement::Result placement =
 				NativeStatsOverlayPlacement::PlaceTopRight(
 					pictureRect, outputRect,
-					static_cast<float>(sweepOverlayTexture->params.w),
+					AnamorphicPresentation::OverlayWidth(static_cast<float>(sweepOverlayTexture->params.w), anamorphicScale),
 					static_cast<float>(sweepOverlayTexture->params.h));
 			overlayPart.dst = { placement.panel.left, placement.panel.top,
 				placement.panel.right, placement.panel.bottom };
@@ -13654,7 +13635,7 @@ struct LibplaceboVideoRenderer::Impl
 			const NativeStatsOverlayPlacement::Result placement =
 				NativeStatsOverlayPlacement::PlaceTopLeft(
 					cropLocalPicture, cropLocalOutput,
-					static_cast<float>(profileOverlayTexture->params.w) *
+					AnamorphicPresentation::OverlayWidth(static_cast<float>(profileOverlayTexture->params.w), anamorphicScale) *
 						profileScale,
 					static_cast<float>(profileOverlayTexture->params.h) *
 						profileScale,
@@ -13711,6 +13692,8 @@ struct LibplaceboVideoRenderer::Impl
 			target.overlays = overlays;
 			target.num_overlays = overlayCount;
 		}
+		};
+		assembleOverlays();
 		const SteadyClock::time_point renderStart = SteadyClock::now();
 		const bool targetLutApplied =
 			target.lut == displayLut && target.lut_type == PL_LUT_NORMALIZED;
@@ -13723,14 +13706,66 @@ struct LibplaceboVideoRenderer::Impl
 			&originalPrPassAccumulator : nullptr;
 		frameGpuTiming.BeginStage(
 			AlphaD3D11FrameGpuTimer::Stage::CoreRender);
-		bool rendered = false;
-		rendered = pl_render_image(
-			renderer,
-			&renderImage,
-			&target,
-			&renderParams);
+        const pl_hook* submittedNls = renderParams.num_hooks == 1 ? nlsHook : nullptr;
+        const auto hookRender = NlsHookRecovery::Render(renderer, d3d11->gpu,
+            renderImage, target, baseTarget, renderParams, submittedNls, [&]()
+            {
+                runtimeRejectedNlsHookSignature = nlsHookSignature;
+                runtimeRejectedNlsSignature = nlsHook->signature;
+                target.crop = linearFallbackCrop;
+                nlsDecision.mode = NlsMappingMode::SAFE_FIT;
+                nlsDecision.stretchRatio = 1.0;
+                nlsDecision.reason = "runtime NLS hook disabled; lens-aware linear fallback";
+                MadVRShaderLoader::SetRuntimeNlsDecision(nlsDecision);
+                MadVRShaderLoader::SetRuntimeShaderSelection(requestedShaderSelector,
+                    requestedShaderSelector, nlsDecision.mode);
+                SetShaderStatus("NLS: Safe fit (hook failure)");
+                assembleOverlays();
+            });
+        bool rendered = hookRender.rendered;
+        if (hookRender.retried)
+            DebugLog::Log("VP anamorphic hook recovery: schema=1 sequence=%llu generation=%llu hook=%llu errors=0x%x retry=1 rendered=%d lens=%.6f latch=until_shader_selection_change",
+                sourceSequence, frameGeneration, hookRender.failedSignature, hookRender.errors,
+                rendered ? 1 : 0, anamorphicScale);
+
 		frameGpuTiming.EndStage();
 		frameGpuTiming.EndRender();
+        // Final submitted geometry, bounded to 4 changes/second and a 10s
+        // heartbeat for lens users. Sequence is correlation, never the key.
+        std::ostringstream layoutKey;
+        layoutKey << frameGeneration << '|' << viewportRequestSerial << '|' << width << 'x' << height
+            << '|' << configuredScreenActive << '|' << frameScreen.physicalAspect << '|' << anamorphicScale
+            << '|' << renderImage.crop.x0 << ',' << renderImage.crop.y0 << ',' << renderImage.crop.x1 << ',' << renderImage.crop.y1
+            << '|' << target.crop.x0 << ',' << target.crop.y0 << ',' << target.crop.x1 << ',' << target.crop.y1
+            << '|' << baseTarget.crop.x1 << ',' << baseTarget.crop.y1 << '|' << renderParams.num_hooks
+            << '|' << static_cast<int>(nlsDecision.mode) << '|' << runtimeRejectedNlsHookSignature << '|' << rendered;
+        const uint64_t layoutNow = GetTickCount64();
+        const bool layoutChanged = layoutKey.str() != lastAnamorphicLayout;
+        if (lastAnamorphicLayout.empty() || hookRender.retried ||
+            (layoutChanged && layoutNow - lastAnamorphicLayoutTick >= 250) ||
+            (anamorphicScale != 1.0 && layoutNow - lastAnamorphicLayoutTick >= 10000))
+        {
+            DebugLog::Log("VP anamorphic layout: schema=1 sequence=%llu generation=%llu viewport=%llu configured=%d raster=%dx%d output=%.0fx%.0f source=%.2f,%.2f-%.2f,%.2f content_aspect=%.6f physical_screen=%.6f raster_screen=%.6f lens=%.6f screen=%.2f,%.2f-%.2f,%.2f picture=%.2f,%.2f-%.2f,%.2f output_margins=%.2f,%.2f,%.2f,%.2f screen_margins=%.2f,%.2f,%.2f,%.2f nls=%s hook_active=%d hook_latched=%d retry=%d rendered=%d alignment=%s padding=%d/%d overlays=%d suppressed=%llu reason=\"%s\"",
+                sourceSequence, frameGeneration, viewportRequestSerial, configuredScreenActive ? 1 : 0,
+                width, height, baseTarget.crop.x1-baseTarget.crop.x0, baseTarget.crop.y1-baseTarget.crop.y0,
+                renderImage.crop.x0, renderImage.crop.y0, renderImage.crop.x1, renderImage.crop.y1,
+                pl_rect2df_aspect(&renderImage.crop), frameScreen.physicalAspect, frameScreen.rasterAspect, anamorphicScale,
+                frameScreen.rect.left, frameScreen.rect.top, frameScreen.rect.right, frameScreen.rect.bottom,
+                target.crop.x0, target.crop.y0, target.crop.x1, target.crop.y1,
+                target.crop.x0-baseTarget.crop.x0, target.crop.y0-baseTarget.crop.y0,
+                baseTarget.crop.x1-target.crop.x1, baseTarget.crop.y1-target.crop.y1,
+                target.crop.x0-frameScreen.rect.left, target.crop.y0-frameScreen.rect.top,
+                frameScreen.rect.right-target.crop.x1, frameScreen.rect.bottom-target.crop.y1,
+                nlsRequested ? NlsMappingModeName(nlsDecision.mode) : "off", renderParams.num_hooks,
+                runtimeRejectedNlsHookSignature.empty() ? 0 : 1, hookRender.retried ? 1 : 0, rendered ? 1 : 0,
+                verticalAlignment.c_str(), screenEdgePadding, frameScreen.effectivePadding, target.num_overlays,
+                anamorphicSuppressedLayouts, nlsRequested ? nlsDecision.reason.c_str() : "ordinary lens-aware fit");
+            lastAnamorphicLayout = layoutKey.str();
+            lastAnamorphicLayoutTick = layoutNow;
+            anamorphicSuppressedLayouts = 0;
+        }
+        else if (layoutChanged) ++anamorphicSuppressedLayouts;
+
 		timerSuspension.Resume();
 		renderParams.info_callback = nullptr;
 		renderParams.info_priv = nullptr;
@@ -13807,6 +13842,15 @@ struct LibplaceboVideoRenderer::Impl
 				else
 					--diagnosticReadbackFramesRemaining;
 			}
+            if (!rendered)
+            {
+                // The pinned API requires consuming every acquired frame. Clear
+                // failed/partial output before submission; never show a failed
+                // NLS attempt. VP-owned presentation instead retains its old frame.
+                pl_frame_clear(d3d11->gpu, &baseTarget, black);
+                DebugLog::Log("VP anamorphic render failure: schema=1 sequence=%llu generation=%llu recovery=%d present_policy=black_clear consume_acquired_frame=1",
+                    sourceSequence, frameGeneration, hookRender.retried ? 1 : 0);
+            }
 			submitted = pl_swapchain_submit_frame(swapchain);
 			if (submitted)
 				pl_swapchain_swap_buffers(swapchain);

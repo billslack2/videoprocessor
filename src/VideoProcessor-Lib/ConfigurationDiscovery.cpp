@@ -7,6 +7,8 @@
 
 #include <DeckLinkAPI_h.h>
 
+#include "magewell/MagewellBackend.h"
+
 #include <algorithm>
 
 namespace
@@ -93,20 +95,25 @@ std::vector<std::wstring> ConfigurationDiscovery::CaptureDeviceNames()
 {
 	std::vector<std::wstring> names;
 	CComPtr<IDeckLinkIterator> iterator;
+	// A machine may have one vendor's card, the other, or both. A missing
+	// vendor runtime is a normal condition here, not an error, so each
+	// backend is enumerated independently and contributes what it finds.
 	if (CoCreateInstance(CLSID_CDeckLinkIterator, nullptr, CLSCTX_ALL,
-		IID_IDeckLinkIterator, reinterpret_cast<void**>(&iterator)) != S_OK)
-		return names;
-	for (;;)
+		IID_IDeckLinkIterator, reinterpret_cast<void**>(&iterator)) == S_OK)
 	{
-		CComPtr<IDeckLink> device;
-		if (iterator->Next(&device) != S_OK || !device) break;
-		BSTR displayName = nullptr;
-		if (device->GetDisplayName(&displayName) == S_OK && displayName)
+		for (;;)
 		{
-			names.emplace_back(displayName);
-			SysFreeString(displayName);
+			CComPtr<IDeckLink> device;
+			if (iterator->Next(&device) != S_OK || !device) break;
+			BSTR displayName = nullptr;
+			if (device->GetDisplayName(&displayName) == S_OK && displayName)
+			{
+				names.emplace_back(displayName);
+				SysFreeString(displayName);
+			}
 		}
 	}
+	MagewellBackend::AppendDeviceNames(names);
 	return names;
 }
 
@@ -117,7 +124,7 @@ std::vector<std::wstring> ConfigurationDiscovery::CaptureConnectionNames(
 	CComPtr<IDeckLinkIterator> iterator;
 	if (CoCreateInstance(CLSID_CDeckLinkIterator, nullptr, CLSCTX_ALL,
 		IID_IDeckLinkIterator, reinterpret_cast<void**>(&iterator)) != S_OK)
-		return names;
+		return MagewellBackend::ConnectionNames(captureDeviceName);
 	for (;;)
 	{
 		CComPtr<IDeckLink> device;
@@ -146,7 +153,7 @@ std::vector<std::wstring> ConfigurationDiscovery::CaptureConnectionNames(
 				names.emplace_back(connection.second);
 		return names;
 	}
-	return names;
+	return MagewellBackend::ConnectionNames(captureDeviceName);
 }
 
 std::vector<std::wstring> ConfigurationDiscovery::ActiveMonitorNames()

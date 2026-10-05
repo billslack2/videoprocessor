@@ -2308,6 +2308,7 @@ CVideoProcessorDlg::CVideoProcessorDlg():
 		DeckLinkPixelFormatName(deckLinkFormatPreferences.rgb12));
 	m_blackMagicDeviceDiscoverer = new BlackMagicDeckLinkCaptureDeviceDiscoverer(
 		*this, deckLinkFormatPreferences);
+	m_magewellDeviceDiscoverer = MagewellBackend::CreateDiscoverer(*this);
 	
 	// Initialize stats overlay
 	m_statsOverlay = new StatsOverlayWindow();
@@ -13449,9 +13450,34 @@ BOOL CVideoProcessorDlg::OnInitDialog()
 		m_fullScreenModeCombo.SetCurSel(1);
 
 
-	// Start discovery services
-	m_blackMagicDeviceDiscoverer->Start();
+	// Start discovery services.
+	// A machine may have hardware from one vendor, the other, or both. A
+	// vendor runtime that is not installed is a normal condition here, so a
+	// failing backend is logged and the remaining backends still run.
+	try
+	{
+		m_blackMagicDeviceDiscoverer->Start();
+	}
+	catch (const std::exception& exception)
+	{
+		DebugLog::Log("DeckLink discovery unavailable: %s", exception.what());
+	}
 
+	try
+	{
+		m_magewellDeviceDiscoverer->Start();
+	}
+	catch (const std::exception& exception)
+	{
+		DebugLog::Log("Magewell discovery unavailable: %s", exception.what());
+	}
+
+	const CString magewellUnavailable = MagewellBackend::UnavailableMessage(m_initialCaptureDevice);
+	if (!magewellUnavailable.IsEmpty())
+    {
+		m_captureDeviceStateText.SetWindowText(magewellUnavailable);
+		DebugLog::Log("%S", magewellUnavailable.GetString());
+    }
 	m_accelerator = CreateConfiguredAccelerators(
 		m_shaderShortcutRules,
 		m_shaderShortcutKeys,
@@ -14493,8 +14519,28 @@ void CVideoProcessorDlg::OnClose()
 	// Stop discovery
 	if (m_blackMagicDeviceDiscoverer)
 	{
-		m_blackMagicDeviceDiscoverer->Stop();
+		try
+		{
+			m_blackMagicDeviceDiscoverer->Stop();
+		}
+		catch (const std::exception&)
+		{
+			// Never started because the runtime is absent. Nothing to unwind.
+		}
 		m_blackMagicDeviceDiscoverer.Release();
+	}
+
+	if (m_magewellDeviceDiscoverer)
+	{
+		try
+		{
+			m_magewellDeviceDiscoverer->Stop();
+		}
+		catch (const std::exception&)
+		{
+			// Never started because the runtime is absent. Nothing to unwind.
+		}
+		m_magewellDeviceDiscoverer.Release();
 	}
 
 	UpdateState();

@@ -23,6 +23,7 @@
 #include <vector>
 
 #include <blackmagic_decklink/BlackMagicDeckLinkCaptureDeviceDiscoverer.h>
+#include <magewell/MagewellBackend.h>
 #include <PixelValueRange.h>
 #include <OutputReadinessController.h>
 #include <ShortcutRepeatGuard.h>
@@ -580,6 +581,7 @@ protected:
 	//
 
 	CComPtr<BlackMagicDeckLinkCaptureDeviceDiscoverer> m_blackMagicDeviceDiscoverer;
+	CComPtr<ACaptureDeviceDiscoverer> m_magewellDeviceDiscoverer;
 
 	std::set<ACaptureDeviceComPtr> m_captureDevices;
 	CComPtr<ACaptureDevice>	m_captureDevice;

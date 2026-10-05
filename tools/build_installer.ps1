@@ -1,4 +1,4 @@
-﻿[CmdletBinding()]
+[CmdletBinding()]
 param(
     [Parameter(Mandatory=$true)][ValidatePattern('^\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?$')][string]$CoreVersion,
     [Parameter(Mandatory=$true)][string]$VcRedistPath,
@@ -98,6 +98,7 @@ try {
         Set-Content -LiteralPath ($installer + '.sha256') -Encoding ASCII
     $distributionFiles = @($installer, ($installer + '.sha256'))
     if ($PortableZip) {
+        & (Join-Path $PSScriptRoot 'test_portable_config_contract.ps1')
         # Export the same self-contained payload, without installing anything.
         $portable = [IO.Path]::GetFullPath((Join-Path $artifactRoot 'portable\VideoProcessor'))
         if (-not $portable.StartsWith($artifactRoot + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Unsafe portable stage.' }
@@ -114,6 +115,12 @@ try {
         $portableManifest | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $portable 'INSTALL-MANIFEST.json') -Encoding UTF8
         $zip = Join-Path $output "VideoProcessor-$CoreVersion-$buildLabel-x64-Portable.zip"
         Compress-Archive -Path (Join-Path $portable '*') -DestinationPath $zip -Force
+        try {
+            & (Join-Path $PSScriptRoot 'test_portable_config.ps1') -ZipPath $zip
+        } catch {
+            Move-Item -LiteralPath $zip -Destination ($zip + '.invalid-' + [guid]::NewGuid().ToString('N'))
+            throw
+        }
         "$((Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash)  $([IO.Path]::GetFileName($zip))" |
             Set-Content -LiteralPath ($zip + '.sha256') -Encoding ASCII
         $distributionFiles += @($zip, ($zip + '.sha256'))
