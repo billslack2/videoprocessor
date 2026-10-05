@@ -189,3 +189,32 @@ Startup confirms host/renderer 0b41c322 and its own log:
 E:\VideoProcessor-Test\VP0196-0b41c322\logs\vp.log.
 Use the separate executable for further VP-0196 testing. Receipt:
 E:\codex\releases\VideoProcessor-vp0196-0b41c322c79d-20261004\standalone-receipt.json.
+
+## Combined Magewell package — 2026-10-05
+User authorized including 0b41c322 in the latest Magewell build. The reported log
+was dafdba96: active NLS retained identical rectangles for lens 1.0, 2.0 and 1.25,
+confirming the missing VP-0196 path. Remote codex/magewell-optional remains
+dafdba962487381be87fd04ccf9b07ff1375dbe5 and contributor PR #128 remains
+315c0f98f2f7ec2356986fffae96235d738b84f0; no newer remote update was found.
+
+Merged both histories without conflicts in clean commit
+18a3ea99da3bc9f3aeccfb2e61e81d892a45a266, pushed on
+codex/magewell-anamorphic-20261005. Capture matches dafdba96 and renderer/geometry
+tests match 0b41c322. The shared Magewell branch, beta and other local work were
+preserved. Full x64 Release build with SDK headers 3.3.1.1596 and all 1,938 native
+tests passed. Installer support, identity and runtime packaging checks passed.
+Magewell isolation was checked relative to 0b41c322; GUI/Config/discovery have no
+vendor load-time imports and no vendor runtime is bundled. Production no-card
+probe passed with runtime unload before Stop. Physical Magewell capture, optical
+acceptance and clean Windows remain unqualified. Real installer lifecycle was
+not rerun with VP/Config sessions active; unchanged packaging previously passed
+225 isolated lifecycle checks.
+
+Unsigned, hash-recorded packages and validation:
+E:\codex\releases\VideoProcessor-Magewell-Anamorphic-18a3ea99da3b-20261005
+- VideoProcessorSetup-1.3.005-beta-18a3ea99da3b.exe
+- VideoProcessor-1.3.005-beta-18a3ea99da3b-x64-Portable.zip
+- SHA-256 sidecars, validation/release-receipt.json, Magewell check logs,
+  TESTING.txt and both testing/diagnostic guides.
+No deployment was changed or process stopped. Use a separate portable folder.
+Story remains Review for tester validation.
