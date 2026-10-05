@@ -637,10 +637,17 @@ void MagewellCaptureDevice::ChooseCaptureFormat(
 			encoding = VideoFrameEncoding::R10l;
 			return;
 		}
-		throw std::runtime_error(
-			"Magewell RGB input requires ARGB for 8-bit or RGB10 for 10-bit; 12-bit RGB and unknown depth are unsupported");
+		// Preserve the earlier deep-RGB compatibility route: the card converts
+		// 12-bit RGB to limited-range 10-bit YCbCr P210, repacked below as V210.
+		// This is intentionally lossy (12 -> 10 bits and 4:4:4 -> 4:2:2), not
+		// native 12-bit RGB delivery. Keep unknown depths and other missing
+		// capabilities rejected rather than silently degrading every RGB mode.
+		if (signal.bitDepth != 12)
+			throw std::runtime_error(
+				"Magewell RGB input requires ARGB for 8-bit, RGB10 for 10-bit, or P210 conversion for 12-bit; unknown depth is unsupported");
 	}
-	if (signal.colorFormat != MWCAP_VIDEO_COLOR_FORMAT_YUV601 &&
+	if (signal.colorFormat != MWCAP_VIDEO_COLOR_FORMAT_RGB &&
+		signal.colorFormat != MWCAP_VIDEO_COLOR_FORMAT_YUV601 &&
 		signal.colorFormat != MWCAP_VIDEO_COLOR_FORMAT_YUV709 &&
 		signal.colorFormat != MWCAP_VIDEO_COLOR_FORMAT_YUV2020 &&
 		signal.colorFormat != MWCAP_VIDEO_COLOR_FORMAT_YUV2020C)
@@ -1195,6 +1202,9 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 					unsupportedSignal(exception.what());
 					continue;
 				}
+				if (current.colorFormat == MWCAP_VIDEO_COLOR_FORMAT_RGB &&
+					current.bitDepth == 12)
+					DebugLog::Log("Magewell compatibility conversion: RGB 12-bit input -> P210/V210 10-bit YCbCr 4:2:2; precision and chroma reduced");
 				stride = BytesPerRowFor(encoding, current.width);
 				const uint64_t deliveryBytes =
 					static_cast<uint64_t>(stride) * current.height;

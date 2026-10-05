@@ -20,8 +20,9 @@ Eco Capture use different capture APIs and are excluded from discovery.
 Supported outputs are ARGB for RGB 8-bit, RGB10 repacked to VP's existing R10l
 for RGB 10-bit, and P210 repacked to VP's existing V210 for YCbCr. The default
 RGB10-to-R10l path preserves 4:4:4 channel data. Output choice is checked
-against the card's reported capabilities. RGB 12-bit and unknown RGB depth are
-explicitly rejected; they are not silently converted to 4:2:2. The YCbCr path
+against the card's reported capabilities. RGB 12-bit uses a logged P210
+compatibility conversion to 10-bit YCbCr 4:2:2; unknown RGB depth is rejected.
+The YCbCr path
 delivers 10-bit 4:2:2; it does not preserve 12-bit precision or 4:4:4 chroma
 when those are supplied by the source. A forced P010 conversion reduces
 4:4:4 to 4:2:0, and the existing converter has a BT.601 limitation for SD RGB.
@@ -135,7 +136,7 @@ it passed. Divide rare modes across the two testers where possible.
 | BT.601 SD | Feed 480i/p or 576i/p BT.601 color bars. | VP reports BT.601 and colors match the source; the capture request must not silently use BT.709. |
 | BT.709 HD | Feed 720p/1080p SDR bars and grayscale. | Reported matrix, range, and pixels agree. |
 | BT.2020 HDR | Feed PQ/HDR10 with known highlights and metadata, then HLG if available. If the source can produce full-range RGB HDR, test it separately. | VP reports the intended color space and EOTF. Metadata and image update as source changes, with no retained HDR state after returning to SDR. Compare full-range black and white levels; this build requests limited range for R10l, so record any clipping or level mismatch as a qualification failure. |
-| RGB 10/12-bit | Feed deep RGB, especially saturated fine detail. | The default supported 10-bit route enters VP Renderer as native R10l and preserves channel order and 4:4:4 detail; unsupported 12-bit modes are clearly rejected. Also test any forced P010 conversion separately: it reduces 4:4:4 to 4:2:0, and the existing converter's BT.601 behavior for SD RGB needs visual qualification. |
+| RGB 10/12-bit | Feed deep RGB, especially saturated fine detail. | The default supported 10-bit route enters VP Renderer as native R10l and preserves channel order and 4:4:4 detail; 12-bit RGB uses P210/V210 compatibility conversion with reduced precision and 4:2:2 chroma. Also test any forced P010 conversion separately: it reduces 4:4:4 to 4:2:0, and the existing converter's BT.601 behavior for SD RGB needs visual qualification. |
 | VP Renderer queue and crop lookahead | With a supported source, try `queue_size: 32` with `target_frames: 3`, then `target_frames: 10`; enable `active_picture_lookahead_frames: 8` on a black-bar transition. Use a copied test configuration. | Both queue targets begin presenting without a frozen startup at tested resolutions within the pool budget. Lookahead logs show available future frames when enough have arrived. If a more demanding combination exceeds 1 GiB, VP reports a capture error instead of freezing silently; reduce queue depth or resolution and restart. |
 | Unsupported capture format | Use a mode the specific card cannot output, if available through source settings. | VP rejects the mode clearly and remains responsive; it does not show a black frame as a successful capture. |
 | Frame delivery watchdog and recovery | After a valid signal, stop frame delivery or interrupt the input long enough to exceed the two-second no-frame watchdog. Also test brief unsupported formats and persistent SDK failures. | Brief unsupported input is polled and recovers when a supported signal returns. A prolonged delivery failure or repeated SDK error stops frame delivery, publishes invalid video state, and reports that restart is required. The capture lifecycle remains active until the existing GUI retires it; stop and restart through VP before resuming capture. |
@@ -147,6 +148,60 @@ For each test, report **pass**, **fail**, or **not available** with one sentence
 of observation. For a failure, include the exact mode and a log excerpt spanning
 the signal change, format selection, and resulting error. Avoid editing the
 active VP configuration wholesale; save a copy before any needed changes.
+
+## October 5, 2026 conversion profiling
+
+Production source: `dafdba962487381be87fd04ccf9b07ff1375dbe5`, based on
+the verified current beta `982adb0ea309a7cf314ec2c933bd3213153ff649`.
+Only tests and this report changed for the investigation; capture, DeckLink,
+shared converters and renderer implementation remain unchanged.
+
+Luna (High) added and ran the tests; Sol (Medium) and Astra reviewed the
+methodology and interpretation. On the local Ryzen 7 5700G, x64 Release,
+the actual production repackers were measured at 3840x2160. Each case used
+8 warmups and 120 measured calls, repeated in three separate test runs.
+Allocation, pattern generation and correctness validation were outside the
+timed region. Tests decode the output components to verify all four patterned
+buffers and cover partial groups and padded rows. Timings are characterization,
+not machine-dependent pass/fail thresholds.
+
+| Operation / layout | Per-run mean range (ms/frame) | Per-run p95 range (ms) | Worst observed sample (ms) |
+| --- | --- | --- | --- |
+| P210 to V210, fixed scratch and four rotating outputs | 4.392–4.453 | 4.622–4.800 | 6.523 |
+| P210 to V210, four rotating input/output pairs | 4.401–4.534 | 4.619–4.850 | 6.461 |
+| RGB10 to R10l, four rotating input/output pairs | 2.940–3.092 | 3.156–3.589 | 3.759 |
+
+All 35 Magewell tests passed, followed by three successful runs of both
+profiling tests. Local evidence is in `artifacts/magewell-profile-20261005/`
+(`magewell-all.trx`, `profile-1.trx` through `profile-3.trx`, and matching logs).
+The rebuilt test DLL is under `src/VideoProcessor-Test/x64/Release/`, not the
+older packaged test DLL at the repository-level `x64/Release/`.
+
+The YUV repack consumes about 26–27% of a 59.94 Hz frame's 16.68 ms budget.
+It is material overhead, but these measurements do not reproduce the tester's
+roughly 30 ms delivery interval. They exclude SDK transfers, buffer pinning,
+notification scheduling, the renderer callback and concurrent hardware load.
+The tester has a 5700X, not this machine's 5700G; these are not interchangeable
+performance measurements. Four output buffers also do not reproduce the full
+observed live pool. Do not conclude that the complete capture path is fast
+enough, or that the CPU contribution has been ruled out.
+
+The adapter always requests P210 for supported YUV input, including 8-bit.
+At 4K59.94 this is about 1.99 GB/s of SDK output before repack and renderer
+upload. The SDK sample pins reusable transfer buffers with `MWPinVideoBuffer`;
+the current adapter does not. Direct V210 or 8-bit capture and pinned buffers
+are candidates for measured hardware comparisons, not proven fixes. A FOURCC
+being defined in SDK headers does not establish support on the tester's card.
+
+For the next hardware run, keep settings fixed and record 60 seconds each of
+1080p59.94, 4K23.976 and 4K59.94, with input chroma/depth noted. Avoid fullscreen
+toggles and profile changes during each steady interval. Collect the full log,
+card/driver/firmware and PCIe negotiated link details if available. A diagnostic
+build should additionally summarize SDK copy/completion time, repack time,
+callback time, frame timestamp gaps and supported capture FOURCCs. Those stage
+timings are not present in Alpha1; another Alpha1 log alone cannot identify
+which stage is causing skipped frames. No diagnostic runtime changes or new
+tester package were made by this profiling investigation.
 
 ## Release decision
 

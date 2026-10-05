@@ -9,7 +9,12 @@
 #include "MagewellSdkTestAccess.h"
 
 #include <array>
+#include <algorithm>
+#include <chrono>
 #include <condition_variable>
+#include <iomanip>
+#include <sstream>
+#include <vector>
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
 
@@ -94,7 +99,7 @@ namespace Tests
 		std::atomic_bool failOpen{ false };
 		std::atomic_bool streamFrames{ false };
 		std::atomic_bool formatEventPending{ false };
-		std::atomic<int> signalMode{ 0 }; // YUV, unsupported RGB12, invalid geometry, SDI RGB.
+		std::atomic<int> signalMode{ 0 }; // YUV, RGB12, invalid geometry, SDI RGB, unsupported RGB16.
 		std::atomic<int> sdiDepth{ SDI_BIT_DEPTH_10BIT };
 		std::atomic_bool failCopies{ false };
 		HANDLE fakeNotifyEvent = nullptr;
@@ -102,6 +107,147 @@ namespace Tests
 		MWCAP_VIDEO_COLOR_FORMAT requestedColor = MWCAP_VIDEO_COLOR_FORMAT_UNKNOWN;
 		MWCAP_VIDEO_QUANTIZATION_RANGE requestedRange =
 			MWCAP_VIDEO_QUANTIZATION_UNKNOWN;
+
+		struct RepackTimingSummary
+		{
+			double meanMs = 0.0;
+			double p50Ms = 0.0;
+			double p95Ms = 0.0;
+			double maxMs = 0.0;
+		};
+
+		template<typename Repack>
+		RepackTimingSummary MeasureRepack(Repack&& repack, size_t bufferCount)
+		{
+			constexpr size_t warmupCount = 8;
+			constexpr size_t sampleCount = 120;
+			for (size_t i = 0; i < warmupCount; ++i)
+				repack(i % bufferCount);
+
+			std::vector<double> samples;
+			samples.reserve(sampleCount);
+			for (size_t i = 0; i < sampleCount; ++i)
+			{
+				const auto start = std::chrono::steady_clock::now();
+				repack(i % bufferCount);
+				const auto stop = std::chrono::steady_clock::now();
+				samples.push_back(std::chrono::duration<double, std::milli>(
+					stop - start).count());
+			}
+
+			std::sort(samples.begin(), samples.end());
+			RepackTimingSummary result;
+			for (const double sample : samples)
+				result.meanMs += sample;
+			result.meanMs /= samples.size();
+			result.p50Ms = samples[samples.size() / 2];
+			result.p95Ms = samples[(samples.size() * 95 + 99) / 100 - 1];
+			result.maxMs = samples.back();
+			return result;
+		}
+
+		std::wstring FormatRepackTimings(const wchar_t* format,
+			const wchar_t* workingSet, const RepackTimingSummary& timing)
+		{
+			std::wostringstream message;
+			message << L"Magewell "
+#ifdef NDEBUG
+				<< L"Release ";
+#else
+				<< L"Debug ";
+#endif
+			message << L"4K60 " << format << L" " << workingSet
+				<< L" samples=120 mean_ms=" << std::fixed << std::setprecision(3)
+				<< timing.meanMs << L" p50_ms=" << timing.p50Ms
+				<< L" p95_ms=" << timing.p95Ms << L" max_ms=" << timing.maxMs
+				<< L" frame_budget_ms=16.683";
+			return message.str();
+		}
+
+		void FillP210Frame(std::vector<uint8_t>& frame, uint32_t stride,
+			uint32_t width, uint32_t height, uint32_t seed)
+		{
+			const size_t lumaPlaneBytes = static_cast<size_t>(stride) * height;
+			for (uint32_t row = 0; row < height; ++row)
+			{
+				auto* luma = reinterpret_cast<uint16_t*>(
+					frame.data() + static_cast<size_t>(row) * stride);
+				auto* chroma = reinterpret_cast<uint16_t*>(
+					frame.data() + lumaPlaneBytes + static_cast<size_t>(row) * stride);
+				for (uint32_t i = 0; i < width; ++i)
+				{
+					luma[i] = static_cast<uint16_t>(
+						((i * 13 + row * 17 + seed * 97) & 0x3FF) << 6);
+					chroma[i] = static_cast<uint16_t>(
+						((i * 19 + row * 7 + seed * 31) & 0x3FF) << 6);
+				}
+			}
+		}
+
+		bool VerifyP210ToV210(const std::vector<uint8_t>& source,
+			uint32_t sourceStride, const std::vector<uint8_t>& destination,
+			uint32_t destinationStride, uint32_t width, uint32_t height)
+		{
+			const size_t lumaPlaneBytes = static_cast<size_t>(sourceStride) * height;
+			for (uint32_t row = 0; row < height; ++row)
+			{
+				const auto* luma = reinterpret_cast<const uint16_t*>(
+					source.data() + static_cast<size_t>(row) * sourceStride);
+				const auto* chroma = reinterpret_cast<const uint16_t*>(
+					source.data() + lumaPlaneBytes + static_cast<size_t>(row) * sourceStride);
+				const auto* words = reinterpret_cast<const uint32_t*>(
+					destination.data() + static_cast<size_t>(row) * destinationStride);
+				for (uint32_t group = 0; group * 6 < width; ++group)
+				{
+					const uint32_t pixel = group * 6;
+					const uint32_t actual[12] = {
+						words[group * 4] & 0x3FF,
+						(words[group * 4] >> 10) & 0x3FF,
+						(words[group * 4] >> 20) & 0x3FF,
+						words[group * 4 + 1] & 0x3FF,
+						(words[group * 4 + 1] >> 10) & 0x3FF,
+						(words[group * 4 + 1] >> 20) & 0x3FF,
+						words[group * 4 + 2] & 0x3FF,
+						(words[group * 4 + 2] >> 10) & 0x3FF,
+						(words[group * 4 + 2] >> 20) & 0x3FF,
+						words[group * 4 + 3] & 0x3FF,
+						(words[group * 4 + 3] >> 10) & 0x3FF,
+						(words[group * 4 + 3] >> 20) & 0x3FF };
+					const uint32_t sourceIndex[12] = {
+						pixel, pixel, pixel + 1, pixel + 1, pixel + 2, pixel + 2,
+						pixel + 3, pixel + 3, pixel + 4, pixel + 4, pixel + 5, pixel + 5 };
+					const bool isChroma[12] = {
+						true, false, true, false, true, false,
+						true, false, true, false, true, false };
+					for (size_t component = 0; component < 12; ++component)
+					{
+						const uint32_t index = std::min(sourceIndex[component], width - 1);
+					const uint32_t expected = (isChroma[component]
+						? chroma[index] : luma[index]) >> 6;
+					if (actual[component] != expected)
+						return false;
+					}
+				}
+			}
+			return true;
+		}
+
+		void FillRgb10Frame(std::vector<uint8_t>& frame, uint32_t stride,
+			uint32_t width, uint32_t height, uint32_t seed)
+		{
+			for (uint32_t row = 0; row < height; ++row)
+			{
+				auto* pixels = reinterpret_cast<uint32_t*>(
+					frame.data() + static_cast<size_t>(row) * stride);
+				for (uint32_t x = 0; x < width; ++x)
+				{
+					const uint32_t r = (x * 5 + row * 3 + seed * 11) & 0x3FF;
+					const uint32_t g = (x * 7 + row * 13 + seed * 17) & 0x3FF;
+					const uint32_t b = (x * 19 + row * 23 + seed * 29) & 0x3FF;
+					pixels[x] = r | (g << 10) | (b << 20) | (3u << 30);
+				}
+			}
+		}
 
 		HCHANNEL FakeOpen(const WCHAR*) { return reinterpret_cast<HCHANNEL>(1); }
 		void FakeClose(HCHANNEL) { ++closeCalls; }
@@ -180,19 +326,19 @@ namespace Tests
 			signal->cy = 100;
 			signal->dwFrameDuration = 166667;
 			signal->colorFormat = MWCAP_VIDEO_COLOR_FORMAT_YUV601;
-			if (signalMode == 1 || signalMode == 3)
+			if (signalMode == 1 || signalMode == 3 || signalMode == 4)
 				signal->colorFormat = MWCAP_VIDEO_COLOR_FORMAT_RGB;
 			if (signalMode == 2) signal->cx = 0;
 			return MW_SUCCEEDED;
 		}
 		MW_RESULT FakeInputSpecific(HCHANNEL, MWCAP_INPUT_SPECIFIC_STATUS* status)
 		{
-			if (signalMode == 1)
+			if (signalMode == 1 || signalMode == 4)
 			{
 				*status = {};
 				status->bValid = TRUE;
 				status->dwVideoInputType = MWCAP_VIDEO_INPUT_TYPE_HDMI;
-				status->hdmiStatus.byBitDepth = 12;
+				status->hdmiStatus.byBitDepth = signalMode == 1 ? 12 : 16;
 				return MW_SUCCEEDED;
 			}
 			if (signalMode == 3)
@@ -514,7 +660,7 @@ namespace Tests
 			Assert::IsTrue(callback.errors.front().Find(TEXT("memory budget")) >= 0);
 		}
 
-		TEST_METHOD(SdiRgbDepthSelectsNativeFormatsAndRejectsTwelveBit)
+		TEST_METHOD(SdiRgbDepthSelectsNativeFormatsAndConvertsTwelveBit)
 		{
 			signalMode = 3;
 			const auto sdk = MagewellSdkTestAccess::Create(CaptureApi());
@@ -531,9 +677,27 @@ namespace Tests
 			Assert::IsTrue(MagewellCaptureTestAccess::ReadFormat(device, depth, sampling, encoding));
 			Assert::IsTrue(encoding == VideoFrameEncoding::ARGB_8BIT);
 			sdiDepth = SDI_BIT_DEPTH_12BIT;
-			Assert::ExpectException<std::runtime_error>([&]() {
-				MagewellCaptureTestAccess::ReadFormat(device, depth, sampling, encoding);
-			});
+			Assert::IsTrue(MagewellCaptureTestAccess::ReadFormat(device, depth, sampling, encoding));
+			Assert::AreEqual<int>(12, depth);
+			Assert::IsTrue(encoding == VideoFrameEncoding::V210);
+		}
+
+		TEST_METHOD(HdmiRgb12DeliversConvertedYuvFrames)
+		{
+			signalMode = 1;
+			QueueCallback callback;
+			const auto sdk = MagewellSdkTestAccess::Create(CaptureApi());
+			MWCAP_CHANNEL_INFO info = {};
+			MagewellCaptureDevice device(sdk, L"fake", info, TEXT("fake"));
+			device.SetCallbackHandler(&callback);
+			device.StartCapture(1);
+			const bool delivered = callback.Wait([&]() { return !callback.frames.empty(); });
+			device.StopCapture();
+			device.SetCallbackHandler(nullptr);
+			Assert::IsTrue(delivered);
+			Assert::IsTrue(callback.errors.empty());
+			Assert::IsTrue(requestedColor == MWCAP_VIDEO_COLOR_FORMAT_YUV601);
+			Assert::IsTrue(requestedRange == MWCAP_VIDEO_QUANTIZATION_LIMITED);
 		}
 
 		TEST_METHOD(UnsupportedSignalRecoversWithoutRestartOrDriverNotification)
@@ -548,7 +712,7 @@ namespace Tests
 			bool invalidated = false, recovered = false, deliveredAgain = false;
 			if (first)
 			{
-				signalMode = 1;
+				signalMode = 4;
 				formatEventPending = true;
 				SetEvent(fakeNotifyEvent);
 				invalidated = callback.Wait([&]() { return callback.invalidStates > 0; });
@@ -841,10 +1005,10 @@ namespace Tests
 				10, formats, fourcc, encoding);
 			Assert::AreEqual<DWORD>(MWFOURCC_RGB10, fourcc);
 			Assert::IsTrue(encoding == VideoFrameEncoding::R10l);
-			Assert::ExpectException<std::runtime_error>([&]() {
-				MagewellCaptureTestAccess::Choose(MWCAP_VIDEO_COLOR_FORMAT_RGB,
-					12, formats, fourcc, encoding);
-			});
+			MagewellCaptureTestAccess::Choose(MWCAP_VIDEO_COLOR_FORMAT_RGB,
+				12, formats, fourcc, encoding);
+			Assert::AreEqual<DWORD>(MWFOURCC_P210, fourcc);
+			Assert::IsTrue(encoding == VideoFrameEncoding::V210);
 			Assert::ExpectException<std::runtime_error>([&]() {
 				MagewellCaptureTestAccess::Choose(MWCAP_VIDEO_COLOR_FORMAT_YUV709,
 					10, { MWFOURCC_ARGB }, fourcc, encoding);
@@ -857,6 +1021,29 @@ namespace Tests
 				MagewellCaptureTestAccess::Choose(MWCAP_VIDEO_COLOR_FORMAT_YUV709,
 					10, formats, fourcc, encoding, 1919);
 			});
+		}
+
+		TEST_METHOD(Rgb12CompatibilityRequiresP210AndEvenWidth)
+		{
+			DWORD fourcc = 0;
+			VideoFrameEncoding encoding = VideoFrameEncoding::UNKNOWN;
+			MagewellCaptureTestAccess::Choose(MWCAP_VIDEO_COLOR_FORMAT_RGB,
+				12, { MWFOURCC_P210 }, fourcc, encoding);
+			Assert::AreEqual<DWORD>(MWFOURCC_P210, fourcc);
+			Assert::IsTrue(encoding == VideoFrameEncoding::V210);
+			Assert::ExpectException<std::runtime_error>([&]() {
+				MagewellCaptureTestAccess::Choose(MWCAP_VIDEO_COLOR_FORMAT_RGB,
+					12, { MWFOURCC_ARGB, MWFOURCC_RGB10 }, fourcc, encoding);
+			});
+			Assert::ExpectException<std::runtime_error>([&]() {
+				MagewellCaptureTestAccess::Choose(MWCAP_VIDEO_COLOR_FORMAT_RGB,
+					12, { MWFOURCC_P210 }, fourcc, encoding, 1919);
+			});
+			for (BYTE depth : { BYTE(0), BYTE(10), BYTE(16) })
+				Assert::ExpectException<std::runtime_error>([&]() {
+					MagewellCaptureTestAccess::Choose(MWCAP_VIDEO_COLOR_FORMAT_RGB,
+						depth, { MWFOURCC_P210 }, fourcc, encoding);
+				});
 		}
 
 		TEST_METHOD(Rgb10ToR10lPreservesChannelCodesAndRowPadding)
@@ -942,6 +1129,135 @@ namespace Tests
 			Assert::AreEqual<uint8_t>(0xCD, result[16]);
 			Assert::AreEqual<uint8_t>(0xCD, result[127]);
 			Assert::AreEqual<uint8_t>(0xCD, result[144]);
+		}
+
+		TEST_METHOD(P210ToV210FourKRepackProfileAndReference)
+		{
+			constexpr uint32_t width = 3840;
+			constexpr uint32_t height = 2160;
+			constexpr uint32_t sourceStride = width * 2;
+			constexpr uint32_t destinationStride = ((width + 47) / 48) * 128;
+			constexpr size_t bufferCount = 4;
+			std::vector<std::vector<uint8_t>> sources(bufferCount,
+				std::vector<uint8_t>(static_cast<size_t>(sourceStride) * height * 2));
+			std::vector<std::vector<uint8_t>> destinations(bufferCount,
+				std::vector<uint8_t>(static_cast<size_t>(destinationStride) * height));
+			for (size_t i = 0; i < bufferCount; ++i)
+				FillP210Frame(sources[i], sourceStride, width, height,
+					static_cast<uint32_t>(i + 1));
+
+			MagewellCaptureTestAccess::RepackYuv(sources[0].data(), sourceStride,
+				destinations[0].data(), destinationStride, width, height);
+			Assert::IsTrue(VerifyP210ToV210(sources[0], sourceStride, destinations[0],
+				destinationStride, width, height),
+				L"The full-frame V210 words must decode to the source P210 codes.");
+
+			const auto singleBuffer = MeasureRepack([&](size_t) {
+				MagewellCaptureTestAccess::RepackYuv(sources[0].data(), sourceStride,
+					destinations[0].data(), destinationStride, width, height);
+			}, 1);
+			const auto rotatingBuffers = MeasureRepack([&](size_t index) {
+				MagewellCaptureTestAccess::RepackYuv(sources[index].data(), sourceStride,
+					destinations[index].data(), destinationStride, width, height);
+			}, bufferCount);
+			for (size_t i = 0; i < bufferCount; ++i)
+				Assert::IsTrue(VerifyP210ToV210(sources[i], sourceStride,
+					destinations[i], destinationStride, width, height),
+					L"Each rotating P210 output must match its corresponding source frame.");
+			const auto captureLayout = MeasureRepack([&](size_t index) {
+				MagewellCaptureTestAccess::RepackYuv(sources[0].data(), sourceStride,
+					destinations[index].data(), destinationStride, width, height);
+			}, bufferCount);
+			for (size_t i = 0; i < bufferCount; ++i)
+				Assert::IsTrue(VerifyP210ToV210(sources[0], sourceStride,
+					destinations[i], destinationStride, width, height),
+					L"Every timed P210 output buffer must contain a valid full-frame repack.");
+			Logger::WriteMessage(FormatRepackTimings(L"P210-to-V210",
+				L"single-buffer", singleBuffer).c_str());
+			Logger::WriteMessage(FormatRepackTimings(L"P210-to-V210",
+				L"rotating-4", rotatingBuffers).c_str());
+			Logger::WriteMessage(FormatRepackTimings(L"P210-to-V210",
+				L"capture-layout", captureLayout).c_str());
+		}
+
+		TEST_METHOD(P210TailWidthsAndPaddedRowsMatchDecodedCodes)
+		{
+			constexpr uint32_t height = 2;
+			for (const uint32_t width : { 8u, 10u })
+			{
+				const uint32_t sourceStride = width * 2 + 8;
+				const uint32_t destinationStride = ((width + 47) / 48) * 128;
+				std::vector<uint8_t> source(static_cast<size_t>(sourceStride) * height * 2, 0xA5);
+				FillP210Frame(source, sourceStride, width, height, width);
+				std::vector<uint8_t> destination(
+					static_cast<size_t>(destinationStride) * height, 0xCD);
+				MagewellCaptureTestAccess::RepackYuv(source.data(), sourceStride,
+					destination.data(), destinationStride, width, height);
+				Assert::IsTrue(VerifyP210ToV210(source, sourceStride, destination,
+					destinationStride, width, height),
+					L"Partial V210 groups must repeat the final P210 sample for width remainder 2 or 4.");
+				for (uint32_t row = 0; row < height; ++row)
+					for (uint32_t byte = 32; byte < destinationStride; ++byte)
+						Assert::AreEqual<uint8_t>(0xCD, destination[
+							static_cast<size_t>(row) * destinationStride + byte],
+							L"Repacking must leave aligned V210 row padding untouched.");
+			}
+		}
+
+		TEST_METHOD(Rgb10ToR10lFourKRepackProfileAndReference)
+		{
+			constexpr uint32_t width = 3840;
+			constexpr uint32_t height = 2160;
+			constexpr uint32_t sourceStride = width * 4;
+			constexpr uint32_t destinationStride = ((width + 63) / 64) * 256;
+			constexpr size_t bufferCount = 4;
+			std::vector<std::vector<uint8_t>> sources(bufferCount,
+				std::vector<uint8_t>(static_cast<size_t>(sourceStride) * height));
+			std::vector<std::vector<uint8_t>> destinations(bufferCount,
+				std::vector<uint8_t>(static_cast<size_t>(destinationStride) * height));
+			for (size_t i = 0; i < bufferCount; ++i)
+				FillRgb10Frame(sources[i], sourceStride, width, height,
+					static_cast<uint32_t>(i + 1));
+
+			MagewellCaptureTestAccess::RepackRgb(sources[0].data(), sourceStride,
+				destinations[0].data(), destinationStride, width, height);
+			auto verifyRgbOutput = [&](size_t index) {
+				for (uint32_t row = 0; row < height; ++row)
+				{
+					const auto* source = reinterpret_cast<const uint32_t*>(
+						sources[index].data() + static_cast<size_t>(row) * sourceStride);
+					const auto* output = reinterpret_cast<const uint32_t*>(
+						destinations[index].data() + static_cast<size_t>(row) * destinationStride);
+					for (uint32_t x = 0; x < width; ++x)
+					{
+						const uint32_t packed = source[x];
+						if (((output[x] >> 22) & 0x3FF) != (packed & 0x3FF) ||
+							((output[x] >> 12) & 0x3FF) != ((packed >> 10) & 0x3FF) ||
+							((output[x] >> 2) & 0x3FF) != ((packed >> 20) & 0x3FF) ||
+							(output[x] & 0x3) != 0)
+							return false;
+					}
+				}
+				return true;
+			};
+			Assert::IsTrue(verifyRgbOutput(0),
+				L"The full-frame R10l channel codes must match the source RGB10 values.");
+
+			const auto singleBuffer = MeasureRepack([&](size_t) {
+				MagewellCaptureTestAccess::RepackRgb(sources[0].data(), sourceStride,
+					destinations[0].data(), destinationStride, width, height);
+			}, 1);
+			const auto rotatingBuffers = MeasureRepack([&](size_t index) {
+				MagewellCaptureTestAccess::RepackRgb(sources[index].data(), sourceStride,
+					destinations[index].data(), destinationStride, width, height);
+			}, bufferCount);
+			for (size_t i = 0; i < bufferCount; ++i)
+				Assert::IsTrue(verifyRgbOutput(i),
+					L"Every timed RGB10 output buffer must preserve all 10-bit channel codes.");
+			Logger::WriteMessage(FormatRepackTimings(L"RGB10-to-R10l",
+				L"single-buffer", singleBuffer).c_str());
+			Logger::WriteMessage(FormatRepackTimings(L"RGB10-to-R10l",
+				L"rotating-4", rotatingBuffers).c_str());
 		}
 	};
 }
