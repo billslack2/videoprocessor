@@ -151,6 +151,30 @@ namespace Tests
 			Assert::IsTrue(AlphaQueuePolicy::CanDequeue(1, 1, false));
 		}
 
+		TEST_METHOD(ConversionWorkerPreparesOnlyThePresentationWindow)
+		{
+			Assert::AreEqual<size_t>(0,
+				AlphaQueuePolicy::ConversionPreparationDepth(0, 9));
+			Assert::AreEqual<size_t>(5,
+				AlphaQueuePolicy::ConversionPreparationDepth(5, 9));
+			Assert::AreEqual<size_t>(9,
+				AlphaQueuePolicy::ConversionPreparationDepth(32, 9));
+		}
+
+		TEST_METHOD(DeliveryWaitsForPreparedHeadWithoutChangingReserve)
+		{
+			Assert::IsFalse(AlphaQueuePolicy::CanDequeuePrepared(
+				9, 9, false, true, false, false));
+			Assert::IsTrue(AlphaQueuePolicy::CanDequeuePrepared(
+				9, 9, false, true, true, false));
+			Assert::IsTrue(AlphaQueuePolicy::CanDequeuePrepared(
+				9, 9, false, true, false, true));
+			Assert::IsTrue(AlphaQueuePolicy::CanDequeuePrepared(
+				9, 9, false, false, false, false));
+			Assert::IsFalse(AlphaQueuePolicy::CanDequeuePrepared(
+				8, 9, false, true, true, false));
+		}
+
 		TEST_METHOD(RenderStallThresholdScalesWithFramePeriod)
 		{
 			Assert::AreEqual(50.0,

@@ -3497,9 +3497,10 @@ struct LibplaceboVideoRenderer::Impl
 	uint64_t displayLutNextVersionCheckTick = 0;
 	bool displayCalibrationContractLogged = false;
 	std::unique_ptr<IVideoFrameFormatter> formatter;
+	std::mutex formatterMutex;
 	VideoStateComPtr formatterState;
-	std::vector<BYTE> convertedFrame;
 	bool formatterContractLogged = false;
+	ColorSpace lastRenderedFormatterColorspace = ColorSpace::UNKNOWN;
 	std::mutex ingressStatusMutex;
 	std::string ingressStatus = "P010 (initializing)";
 	struct pl_render_params renderParams{};
@@ -7051,11 +7052,11 @@ struct LibplaceboVideoRenderer::Impl
 
 		if (!IsNativeRgbUpload(state->videoFrameEncoding, videoConversionOverride))
 		{
+			std::lock_guard<std::mutex> formatterGuard(formatterMutex);
 			formatter = CreateAlphaFormatter(state->videoFrameEncoding,
 				videoConversionOverride);
 			formatter->OnVideoState(state);
 			formatterState = state;
-			convertedFrame.resize(static_cast<size_t>(formatter->GetOutFrameSize()));
 		}
 		LoadDisplayLut(settings);
 		ConfigureRenderParams(settings, "renderer initialization");
@@ -9959,6 +9960,7 @@ struct LibplaceboVideoRenderer::Impl
 	bool RenderLocked(
 		const VideoFrame& videoFrame,
 		VideoStateComPtr& statePtr,
+		const std::shared_ptr<const QueuedFrame::ConvertedPayload>& convertedPayload,
 		uint64_t frameGeneration,
 		uint64_t sourceSequence,
 		const ActivePictureFrameIdentity& activePictureIdentity,
@@ -10133,29 +10135,19 @@ struct LibplaceboVideoRenderer::Impl
 		const BYTE* uvPixels = nullptr;
 		VideoFrameFormatterOutputContract formattedContract;
 		AnalysisLumaSource analysisSource;
-		bool formatterStateChanged = false;
 		bool logFormatterContract = false;
-		double conversionCpuMs = 0.0;
+		const double conversionCpuMs = convertedPayload ?
+			convertedPayload->conversionCpuMs : 0.0;
 		if (!nativeRgbUpload)
 		{
-			const auto conversionStarted = SteadyClock::now();
-			if (!formatterState || formatterState->colorspace != state.colorspace)
-			{
-				formatter->OnVideoState(statePtr);
-				formatterState = statePtr;
-				formatterStateChanged = true;
-			}
-			const bool converted = formatter->FormatVideoFrame(
-				videoFrame, convertedFrame.data());
-			conversionCpuMs = std::chrono::duration<double, std::milli>(
-				SteadyClock::now() - conversionStarted).count();
-			if (!converted)
+			if (!convertedPayload || convertedPayload->pixels.empty())
 				return false;
-			formattedContract = formatter->GetOutputContract();
+			formattedContract = convertedPayload->contract;
 			if (!formattedContract.IsValid())
 				throw std::runtime_error(
 					"Alpha formatter did not declare its output range contract");
-			logFormatterContract = !formatterContractLogged || formatterStateChanged;
+			logFormatterContract = !formatterContractLogged ||
+				lastRenderedFormatterColorspace != state.colorspace;
 			if (logFormatterContract)
 			{
 				const char* const range =
@@ -10168,8 +10160,9 @@ struct LibplaceboVideoRenderer::Impl
 					static_cast<unsigned>(formattedContract.colorDepth),
 					static_cast<unsigned>(formattedContract.bitShift), width, height);
 				formatterContractLogged = true;
+				lastRenderedFormatterColorspace = state.colorspace;
 			}
-			yPixels = convertedFrame.data();
+			yPixels = convertedPayload->pixels.data();
 			uvPixels = yPixels + p010RowBytes * static_cast<size_t>(height);
 			if (logFormatterContract && outputDiagnostics)
 			{
@@ -10192,7 +10185,7 @@ struct LibplaceboVideoRenderer::Impl
 		else
 		{
 			analysisSource = {
-				yPixels, convertedFrame.size(), width, height, p010RowBytes,
+				yPixels, convertedPayload->pixels.size(), width, height, p010RowBytes,
 				p010RowBytes, lossless422Upload ? AnalysisLumaFormat::P210 :
 				AnalysisLumaFormat::P010,
 				state.videoFrameEncoding, state.colorspace, frameGeneration
@@ -14000,7 +13993,7 @@ struct LibplaceboVideoRenderer::Impl
 			{
 				nextFramePacingTraceTick = pacingTraceTick + 2000;
 				DebugLog::Log(
-					"Alpha frame pacing trace: generation=%llu source=%llu source_frame=%llu reason=%s cadence_repeat=%d submit_gap_ms=%.3f threshold_ms=%.3f callback_gap_ms=%.3f enqueue_gap_ms=%.3f callback_to_enqueue_ms=%.3f preview_wait_ms=%.3f dequeue_wait_ms=%.3f lookahead_ms=%.3f pre_render_active_ms=%.3f render_lock_wait_ms=%.3f native_rgb=%d conversion_ms=%.3f source_upload_cpu_ms=%.3f render_ms=%.3f swap_ms=%.3f queue_after=%zu oldest_ms=%.3f callback_qpc=%lld enqueue_qpc=%lld dequeue_qpc=%lld swap_start_qpc=%lld swap_end_qpc=%lld qpc_hz=%lld present_id=%u stats_available=%d stats_disjoint=%d stats_hr=0x%08lX stats_present=%u stats_present_refresh=%u stats_sync_refresh=%u stats_sync_qpc=%lld stats_present_delta=%u stats_refresh_delta=%u expected_max_refreshes=%u",
+					"Alpha frame pacing trace: generation=%llu source=%llu source_frame=%llu reason=%s cadence_repeat=%d submit_gap_ms=%.3f threshold_ms=%.3f callback_gap_ms=%.3f enqueue_gap_ms=%.3f callback_to_enqueue_ms=%.3f preview_wait_ms=%.3f dequeue_wait_ms=%.3f lookahead_ms=%.3f pre_render_active_ms=%.3f render_lock_wait_ms=%.3f native_rgb=%d conversion_ms=%.3f conversion_ready_age_ms=%.3f source_upload_cpu_ms=%.3f render_ms=%.3f swap_ms=%.3f queue_after=%zu oldest_ms=%.3f callback_qpc=%lld enqueue_qpc=%lld conversion_end_qpc=%lld dequeue_qpc=%lld swap_start_qpc=%lld swap_end_qpc=%lld qpc_hz=%lld present_id=%u stats_available=%d stats_disjoint=%d stats_hr=0x%08lX stats_present=%u stats_present_refresh=%u stats_sync_refresh=%u stats_sync_qpc=%lld stats_present_delta=%u stats_refresh_delta=%u expected_max_refreshes=%u",
 					static_cast<unsigned long long>(frameGeneration),
 					static_cast<unsigned long long>(sourceSequence),
 					static_cast<unsigned long long>(videoFrame.GetCounter()),
@@ -14015,11 +14008,18 @@ struct LibplaceboVideoRenderer::Impl
 					preRenderTimings.activeMs,
 					preRenderTimings.renderLockWaitMs,
 					nativeRgbUpload ? 1 : 0,
-					conversionCpuMs, sourceUploadCpuLastMs,
+					conversionCpuMs,
+					convertedPayload && qpcFrequency.QuadPart > 0 &&
+						dequeueQpc >= convertedPayload->completedQpc ?
+						static_cast<double>(dequeueQpc - convertedPayload->completedQpc) *
+						1000.0 / qpcFrequency.QuadPart : -1.0,
+					sourceUploadCpuLastMs,
 					renderMs, swapBlockMs, queueDepthAfterDequeue,
 					oldestQueuedAgeMs,
 					static_cast<long long>(callbackQpc),
 					static_cast<long long>(enqueueQpc),
+					static_cast<long long>(convertedPayload ?
+						convertedPayload->completedQpc : 0),
 					static_cast<long long>(dequeueQpc),
 					static_cast<long long>(swapStartQpc),
 					static_cast<long long>(swapEndQpc),
@@ -14464,15 +14464,17 @@ LibplaceboVideoRenderer::~LibplaceboVideoRenderer()
 {
 	if (m_stopWorker.joinable())
 		m_stopWorker.join();
+	{
+		std::lock_guard<std::mutex> guard(m_queueMutex);
+		m_stopRequested = true;
+	}
+	m_queueChanged.notify_all();
 	if (m_renderThread.joinable())
 	{
-		{
-			std::lock_guard<std::mutex> guard(m_queueMutex);
-			m_stopRequested = true;
-		}
-		m_queueChanged.notify_all();
 		m_renderThread.join();
 	}
+	if (m_conversionThread.joinable())
+		m_conversionThread.join();
 	ClearQueue("renderer destruction");
 	m_impl.reset();
 }
@@ -14746,7 +14748,7 @@ void LibplaceboVideoRenderer::OnVideoFrame(VideoFrame& videoFrame)
 			return;
 		}
 	}
-	m_queueChanged.notify_one();
+	m_queueChanged.notify_all();
 }
 
 
@@ -15415,6 +15417,8 @@ void LibplaceboVideoRenderer::StopInternal(
 	m_queueChanged.notify_all();
 	if (m_renderThread.joinable())
 		m_renderThread.join();
+	if (m_conversionThread.joinable())
+		m_conversionThread.join();
 	ClearQueue("renderer stop");
 	if (drainAfterGraphStop)
 		drainAfterGraphStop();
@@ -15428,19 +15432,21 @@ void LibplaceboVideoRenderer::Retire() noexcept
 	{
 		if (m_stopWorker.joinable())
 			m_stopWorker.join();
+		{
+			std::lock_guard<std::mutex> guard(m_queueMutex);
+			m_stopRequested = true;
+		}
+		m_queueChanged.notify_all();
 		// Do not call Stop(): this can run after the GUI has already processed
 		// the stopped-state notification, and a second callback could be applied
 		// to the replacement renderer. Join directly before releasing the
 		// swapchain, so no render or present can still use it.
 		if (m_renderThread.joinable())
 		{
-			{
-				std::lock_guard<std::mutex> guard(m_queueMutex);
-				m_stopRequested = true;
-			}
-			m_queueChanged.notify_all();
 			m_renderThread.join();
 		}
+		if (m_conversionThread.joinable())
+			m_conversionThread.join();
 		ClearQueue("renderer retirement");
 		bool blackPresented = false;
 		bool externalStateRestored = true;
@@ -16456,9 +16462,13 @@ bool LibplaceboVideoRenderer::GetConversionPerformance(
 {
 	if (!m_impl)
 		return false;
-	std::unique_lock<std::mutex> guard(
+	std::unique_lock<std::mutex> renderGuard(
 		m_impl->renderMutex, std::try_to_lock);
-	if (!guard.owns_lock() || !m_impl->formatter)
+	if (!renderGuard.owns_lock())
+		return false;
+	std::unique_lock<std::mutex> formatterGuard(
+		m_impl->formatterMutex, std::try_to_lock);
+	if (!formatterGuard.owns_lock() || !m_impl->formatter)
 		return false;
 	m_impl->formatter->GetConversionPerformance(currentUs, avg10s, max10s);
 	return currentUs > 0.0 || avg10s > 0.0 || max10s > 0.0;
@@ -17240,6 +17250,163 @@ void LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
 }
 
 
+bool LibplaceboVideoRenderer::HasConversionWorkLocked() const
+{
+	const size_t window = AlphaQueuePolicy::ConversionPreparationDepth(
+		m_frameQueue.size(), PrefillTargetLocked());
+	return std::any_of(m_frameQueue.begin(), m_frameQueue.begin() + window,
+		[](const QueuedFrame& queued)
+		{
+			return !queued.converted && !queued.conversionInProgress &&
+				!queued.conversionFailed;
+		});
+}
+
+
+std::shared_ptr<LibplaceboVideoRenderer::QueuedFrame::ConvertedPayload>
+LibplaceboVideoRenderer::AcquireConversionPayload()
+{
+	auto* payload = new QueuedFrame::ConvertedPayload();
+	{
+		std::lock_guard<std::mutex> guard(m_conversionPoolMutex);
+		if (!m_conversionBufferPool.empty())
+		{
+			payload->pixels = std::move(m_conversionBufferPool.back());
+			m_conversionBufferPool.pop_back();
+		}
+	}
+	return std::shared_ptr<QueuedFrame::ConvertedPayload>(payload,
+		[this](QueuedFrame::ConvertedPayload* released)
+		{
+			try
+			{
+				std::lock_guard<std::mutex> guard(m_conversionPoolMutex);
+				if (m_conversionBufferPool.size() < 2)
+					m_conversionBufferPool.push_back(std::move(released->pixels));
+			}
+			catch (...)
+			{
+				// A failed pool insertion must not escape shared_ptr cleanup.
+			}
+			delete released;
+		});
+}
+
+
+void LibplaceboVideoRenderer::ConversionLoop()
+{
+	DebugLog::Log("Alpha conversion worker started: prepared frames are handed to the presentation thread");
+	for (;;)
+	{
+		VideoFrame frame;
+		VideoStateComPtr state;
+		uint64_t generation = 0;
+		uint64_t sequence = 0;
+		{
+			std::unique_lock<std::mutex> guard(m_queueMutex);
+			m_queueChanged.wait(guard, [this]()
+			{
+				return m_stopRequested || HasConversionWorkLocked();
+			});
+			if (m_stopRequested)
+				break;
+			const size_t window = AlphaQueuePolicy::ConversionPreparationDepth(
+				m_frameQueue.size(), PrefillTargetLocked());
+			const auto windowEnd = m_frameQueue.begin() + window;
+			auto queued = std::find_if(m_frameQueue.begin(), windowEnd,
+				[](const QueuedFrame& item)
+				{
+					return !item.converted && !item.conversionInProgress &&
+						!item.conversionFailed;
+				});
+			if (queued == windowEnd)
+				continue;
+			queued->conversionInProgress = true;
+			frame = queued->frame;
+			frame.SourceBufferAddRef();
+			state = queued->state;
+			generation = queued->generation;
+			sequence = queued->sourceSequence;
+		}
+		std::shared_ptr<QueuedFrame::ConvertedPayload> converted;
+		std::string error;
+		try
+		{
+			if (!state || !m_impl->formatter)
+				throw std::runtime_error("formatter or frame state unavailable");
+			converted = AcquireConversionPayload();
+			const auto started = SteadyClock::now();
+			{
+				std::lock_guard<std::mutex> formatterGuard(m_impl->formatterMutex);
+				if (!m_impl->formatterState ||
+					m_impl->formatterState->colorspace != state->colorspace)
+				{
+					m_impl->formatter->OnVideoState(state);
+					m_impl->formatterState = state;
+				}
+				const LONG byteCount = m_impl->formatter->GetOutFrameSize();
+				if (byteCount <= 0)
+					throw std::runtime_error("formatter returned an empty frame size");
+				converted->pixels.resize(static_cast<size_t>(byteCount));
+				if (!m_impl->formatter->FormatVideoFrame(frame,
+					converted->pixels.data()))
+					throw std::runtime_error("frame conversion failed");
+				converted->contract = m_impl->formatter->GetOutputContract();
+			}
+			converted->conversionCpuMs = std::chrono::duration<double, std::milli>(
+				SteadyClock::now() - started).count();
+			converted->completedQpc = PerformanceCounterNow();
+			if (!converted->contract.IsValid())
+				throw std::runtime_error("formatter output contract invalid");
+		}
+		catch (const std::exception& e)
+		{
+			error = e.what();
+		}
+		catch (...)
+		{
+			error = "unknown exception";
+		}
+		frame.SourceBufferRelease();
+		bool published = false;
+		{
+			std::lock_guard<std::mutex> guard(m_queueMutex);
+			if (!m_stopRequested && generation == m_queueGeneration)
+			{
+				auto queued = std::find_if(m_frameQueue.begin(), m_frameQueue.end(),
+					[generation, sequence](const QueuedFrame& item)
+					{
+						return item.generation == generation &&
+							item.sourceSequence == sequence;
+					});
+				if (queued != m_frameQueue.end())
+				{
+					queued->conversionInProgress = false;
+					queued->conversionFailed = !error.empty();
+					queued->converted = std::move(converted);
+					published = true;
+				}
+			}
+		}
+		if (published)
+		{
+			if (!error.empty())
+			{
+				const uint64_t failures = m_conversionFailures.fetch_add(
+					1, std::memory_order_relaxed) + 1;
+				if ((failures & (failures - 1)) == 0)
+					DebugLog::Log("Alpha conversion failed: generation=%llu source=%llu failures=%llu error=%s",
+						static_cast<unsigned long long>(generation),
+						static_cast<unsigned long long>(sequence),
+						static_cast<unsigned long long>(failures), error.c_str());
+			}
+			m_queueChanged.notify_all();
+		}
+	}
+	DebugLog::Log("Alpha conversion worker stopped");
+}
+
+
 void LibplaceboVideoRenderer::RenderLoop()
 {
 	unsigned int consecutiveFailures = 0;
@@ -17272,6 +17439,9 @@ void LibplaceboVideoRenderer::RenderLoop()
 			std::lock_guard<std::mutex> queueGuard(m_queueMutex);
 			if (m_stopRequested)
 				return;
+			if (m_impl->formatter && !m_conversionThread.joinable())
+				m_conversionThread = std::thread(
+					&LibplaceboVideoRenderer::ConversionLoop, this);
 			SetState(RendererState::RENDERSTATE_RENDERING);
 		}
 	}
@@ -17307,6 +17477,8 @@ void LibplaceboVideoRenderer::RenderLoop()
 	{
 		VideoFrame frame;
 		VideoStateComPtr state;
+		std::shared_ptr<const QueuedFrame::ConvertedPayload> convertedPayload;
+		bool conversionFailed = false;
 		uint64_t frameGeneration = 0;
 		uint64_t sourceSequence = 0;
 		ActivePictureFrameIdentity activePictureIdentity;
@@ -17348,6 +17520,8 @@ void LibplaceboVideoRenderer::RenderLoop()
 		size_t depthSummaryMin = 0;
 		size_t depthSummaryMax = 0;
 		size_t depthSummaryCapacity = 0;
+		size_t depthSummaryPreparedHead = 0;
+		bool depthSummaryConversionInFlight = false;
 		uint64_t depthSummaryDequeues = 0;
 		double previewWaitMs = 0.0;
 		double dequeueWaitMs = 0.0;
@@ -17427,6 +17601,8 @@ void LibplaceboVideoRenderer::RenderLoop()
 			}
 			frame = m_frameQueue.front().frame;
 			state = m_frameQueue.front().state;
+			convertedPayload = m_frameQueue.front().converted;
+			conversionFailed = m_frameQueue.front().conversionFailed;
 			frameGeneration = m_frameQueue.front().generation;
 			sourceSequence = m_frameQueue.front().sourceSequence;
 			activePictureIdentity =
@@ -17503,6 +17679,18 @@ void LibplaceboVideoRenderer::RenderLoop()
 				depthSummaryMax = m_queueDepthWindowMax;
 				depthSummaryCapacity =
 					m_useFrameQueue ? m_frameQueueMaxSize : 1;
+				for (const QueuedFrame& queued : m_frameQueue)
+				{
+					if (m_impl && m_impl->formatter && !queued.converted)
+						break;
+					++depthSummaryPreparedHead;
+				}
+				depthSummaryConversionInFlight = std::any_of(
+					m_frameQueue.begin(), m_frameQueue.end(),
+					[](const QueuedFrame& queued)
+					{
+						return queued.conversionInProgress;
+					});
 				depthSummaryDequeues = m_queueDepthWindowDequeues;
 				m_queueDepthWindowStartNs = nowNs;
 				m_queueDepthWindowDequeues = 0;
@@ -17510,6 +17698,9 @@ void LibplaceboVideoRenderer::RenderLoop()
 			}
 		}
 
+		// Popping the head can expose a not-yet-converted frame inside the
+		// bounded preparation window even when no new capture has arrived.
+		m_queueChanged.notify_all();
 
 		if (prefillReleased)
 		{
@@ -17522,7 +17713,7 @@ void LibplaceboVideoRenderer::RenderLoop()
 		if (depthSummaryReady)
 		{
 			DebugLog::Log(
-				"Alpha queue depth summary: generation=%llu current=%zu desired=%zu healthy=%zu..%zu observed=%zu..%zu dequeues=%llu hard_capacity=%zu",
+				"Alpha queue depth summary: generation=%llu current=%zu desired=%zu healthy=%zu..%zu observed=%zu..%zu dequeues=%llu hard_capacity=%zu prepared_head=%zu conversion_in_flight=%d",
 				static_cast<unsigned long long>(depthSummaryGeneration),
 				depthSummaryCurrent,
 				depthSummaryDesired,
@@ -17531,7 +17722,9 @@ void LibplaceboVideoRenderer::RenderLoop()
 				depthSummaryMin,
 				depthSummaryMax,
 				static_cast<unsigned long long>(depthSummaryDequeues),
-				depthSummaryCapacity);
+				depthSummaryCapacity,
+				depthSummaryPreparedHead,
+				depthSummaryConversionInFlight ? 1 : 0);
 		}
 
 		bool rendered = false;
@@ -17542,6 +17735,20 @@ void LibplaceboVideoRenderer::RenderLoop()
 		const double captureRateHz =
 			m_measuredFrameRate.load(std::memory_order_relaxed);
 		const SteadyClock::time_point renderCycleStart = SteadyClock::now();
+		if (conversionFailed)
+		{
+			frame.SourceBufferRelease();
+			m_droppedFrames.fetch_add(1, std::memory_order_relaxed);
+			if (++consecutiveFailures >= 300)
+			{
+				DebugLog::Log("Alpha conversion failed for 300 consecutive frames; marking renderer failed");
+				std::lock_guard<std::mutex> queueGuard(m_queueMutex);
+				if (!m_stopRequested)
+					SetState(RendererState::RENDERSTATE_FAILED);
+				break;
+			}
+			continue;
+		}
 		const double preRenderActiveMs = std::max(0.0,
 			std::chrono::duration<double, std::milli>(
 				renderCycleStart - preRenderActiveStart).count() - dequeueWaitMs);
@@ -17627,6 +17834,7 @@ void LibplaceboVideoRenderer::RenderLoop()
 				rendered = state && m_impl->RenderLocked(
 					frame,
 					state,
+					convertedPayload,
 					frameGeneration,
 					sourceSequence,
 					activePictureIdentity,
@@ -18046,6 +18254,7 @@ void LibplaceboVideoRenderer::RenderLoop()
 						QueuedFrame repeatFrame;
 						repeatFrame.frame = frame;
 						repeatFrame.state = state;
+						repeatFrame.converted = convertedPayload;
 						repeatFrame.generation = frameGeneration;
 						repeatFrame.sourceSequence = sourceSequence;
 						repeatFrame.activePictureIdentity = activePictureIdentity;
@@ -18097,7 +18306,7 @@ void LibplaceboVideoRenderer::RenderLoop()
 						repeatQueueDepth,
 						repeatCount);
 				}
-				m_queueChanged.notify_one();
+				m_queueChanged.notify_all();
 				continue;
 			}
 			{
@@ -18247,10 +18456,13 @@ size_t LibplaceboVideoRenderer::PrefillTargetLocked() const
 
 bool LibplaceboVideoRenderer::CanDequeueLocked() const
 {
-	return AlphaQueuePolicy::CanDequeue(
+	return AlphaQueuePolicy::CanDequeuePrepared(
 		m_frameQueue.size(),
 		PrefillTargetLocked(),
-		m_startupPrefillPending);
+		m_startupPrefillPending,
+		m_impl && m_impl->formatter != nullptr,
+		!m_frameQueue.empty() && m_frameQueue.front().converted != nullptr,
+		!m_frameQueue.empty() && m_frameQueue.front().conversionFailed);
 }
 
 
