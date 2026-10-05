@@ -461,14 +461,20 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
         const bool detachedHead=substantial(c) && owner && m_lines[owner-1].components==1 &&
             Height(c.box)<=glyphHeight*3/4 && Width(c.box)<=maximumDetachedWidth;
         const int narrowMarkWidth=glyphHeight/2+1;
+        // A leading hyphen/em dash is a real subtitle glyph even when its
+        // horizontal stroke is a detached, dense component. Accept it only at
+        // a line's leading/trailing edge; sparse marks sampled unevenly retain
+        // the existing bounded attachment behavior.
         const int componentBoxArea=Width(c.box)*Height(c.box);
-        const bool sparseWideMark=Width(c.box)>narrowMarkWidth &&
+        const bool horizontalDash=Width(c.box)>narrowMarkWidth &&
             Width(c.box)<=maximumDetachedWidth &&
-            Height(c.box)<=glyphHeight/3+1 && componentBoxArea>0 &&
+            Height(c.box)<=glyphHeight/3+1 &&
+            Width(c.box)>=Height(c.box)*2;
+        const bool sparseWideMark=horizontalDash && componentBoxArea>0 &&
             c.ink*100<=componentBoxArea*85;
         if(!detachedHead && (substantial(c) || Height(c.box)>glyphHeight/2+1 ||
-            (Width(c.box)>narrowMarkWidth && !sparseWideMark))) continue;
-        size_t best=m_lines.size();int bestGap=glyphHeight;
+            (Width(c.box)>narrowMarkWidth && !horizontalDash))) continue;
+        size_t best=m_lines.size();int bestGap=glyphHeight*2;
         for(size_t i=0;i<m_lines.size();++i) {
             const auto& l=m_lines[i];
             const auto& core=coreExtents[i];
@@ -476,7 +482,12 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
             // Every attachment must be close to the original letters. Attached
             // dots cannot authorize a growing chain of unrelated bright specks.
             const int gap=std::max({0,core.left-c.box.right,c.box.left-core.right});
-            if(gap>glyphHeight/2 || gap>=bestGap || c.box.top<core.top-glyphHeight/4 ||
+            const int centerOffset=std::abs((c.box.top+c.box.bottom)-(core.top+core.bottom));
+            const bool terminalDash=horizontalDash && centerOffset<=glyphHeight &&
+                (c.box.right<=core.left || c.box.left>=core.right);
+            if(horizontalDash && !terminalDash && !sparseWideMark) continue;
+            const int maximumGap=terminalDash?glyphHeight*2:glyphHeight/2;
+            if(gap>maximumGap || gap>=bestGap || c.box.top<core.top-glyphHeight/4 ||
                 c.box.bottom>core.bottom+glyphHeight/4) continue;
             if(detachedHead) {
                 if(std::abs(c.box.top-core.top)>glyphHeight/4+1 || c.box.bottom>=core.bottom) continue;

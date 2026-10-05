@@ -58,7 +58,7 @@ inline const pl_hook* CreateSubtitleCutPasteHook(pl_gpu gpu)
 //!PARAM background_mode
 //!TYPE DYNAMIC float
 //!MINIMUM 0.0
-//!MAXIMUM 4.0
+//!MAXIMUM 5.0
 0.0
 //!PARAM transfer_mode
 //!TYPE DYNAMIC float
@@ -156,6 +156,38 @@ float subtitleGlyphAlpha(vec3 rgb) {
     float nearNeutral=1.0-smoothstep(0.10,0.28,hi-lo);
     return smoothstep(0.15,0.50,lo)*nearNeutral;
 }
+// Continue the clean picture immediately above the detected text into the
+// vacated source region. Reflection keeps the first row continuous. A side
+// feather meets the known pixels at both edges of the missing region. All
+// samples come from this frame and the geometry is fixed for a held cue.
+vec3 subtitleGeneratedFill(vec2 p) {
+    if(p.y<picture_top || p.y>=picture_bottom) return vec3(0.0);
+    float sampleY=clamp(2.0*content_top-p.y-1.0,
+        picture_top+0.5,max(picture_top+0.5,content_top-0.5));
+    vec3 reflected=vec3(0.0);
+    reflected+=subtitleLinear(HOOKED_tex(vec2(clamp(p.x-2.0,0.5,HOOKED_size.x-0.5),sampleY)*HOOKED_pt).rgb)*0.12;
+    reflected+=subtitleLinear(HOOKED_tex(vec2(clamp(p.x-1.0,0.5,HOOKED_size.x-0.5),sampleY)*HOOKED_pt).rgb)*0.22;
+    reflected+=subtitleLinear(HOOKED_tex(vec2(clamp(p.x,0.5,HOOKED_size.x-0.5),sampleY)*HOOKED_pt).rgb)*0.32;
+    reflected+=subtitleLinear(HOOKED_tex(vec2(clamp(p.x+1.0,0.5,HOOKED_size.x-0.5),sampleY)*HOOKED_pt).rgb)*0.22;
+    reflected+=subtitleLinear(HOOKED_tex(vec2(clamp(p.x+2.0,0.5,HOOKED_size.x-0.5),sampleY)*HOOKED_pt).rgb)*0.12;
+    float left=max(0.5,content_left-1.5);
+    float right=min(HOOKED_size.x-0.5,content_right+1.5);
+    vec3 a=subtitleLinear(HOOKED_tex(vec2(left,p.y)*HOOKED_pt).rgb);
+    vec3 b=subtitleLinear(HOOKED_tex(vec2(right,p.y)*HOOKED_pt).rgb);
+    vec3 side=mix(a,b,clamp((p.x-content_left)/max(content_right-content_left,1.0),0.0,1.0));
+    float edge=min(p.x-content_left,content_right-p.x);
+    return mix(side,reflected,smoothstep(0.0,24.0,edge)*step(picture_top+1.0,content_top));
+}
+float subtitleRoundedPanelMask(vec2 p) {
+    vec2 halfSize=vec2(destination_right-destination_left,
+        destination_bottom-destination_top)*0.5;
+    float radius=min(28.0,min(halfSize.x,halfSize.y)*0.18);
+    vec2 center=vec2(destination_left+destination_right,
+        destination_top+destination_bottom)*0.5;
+    vec2 q=abs(p-center)-(halfSize-vec2(radius));
+    float distance=length(max(q,vec2(0.0)))+min(max(q.x,q.y),0.0)-radius;
+    return 1.0-smoothstep(-0.75,0.75,distance);
+}
 vec4 hook() {
     vec2 p=HOOKED_pos*HOOKED_size;
     if(enabled>0.5) {
@@ -165,27 +197,34 @@ vec4 hook() {
                 source_top-destination_top)*HOOKED_pt;
             vec4 source=HOOKED_tex(sourcePos);
             if(background_mode<0.5) return source;
-            vec3 backing=subtitleLinear(HOOKED_tex(HOOKED_pos).rgb);
+            vec3 original=subtitleLinear(HOOKED_tex(HOOKED_pos).rgb);
+            vec3 backing=original;
             // Use the same smooth current-frame cleanup in overlap and vacated
             // source pixels, avoiding a black seam through the moved line.
             if(p.x>=content_left && p.x<content_right &&
-               p.y>=content_top && p.y<content_bottom) backing=subtitleSourceFill(p);
+               p.y>=content_top && p.y<content_bottom)
+                backing=background_mode>4.5 ? subtitleGeneratedFill(p) : subtitleSourceFill(p);
             if(background_mode>1.5 && background_mode<2.5)
                 backing*=0.50;
             else if(background_mode>2.5 && background_mode<3.5)
                 backing=vec3(0.0);
             else if(background_mode>3.5)
-                backing=vec3(0.08);
+                backing=background_mode>4.5 ? mix(backing,vec3(0.08),0.45) : vec3(0.08);
             vec2 sourcePixel=sourcePos*HOOKED_size;
             float alpha=(sourcePixel.x>=content_left && sourcePixel.x<content_right &&
                 sourcePixel.y>=content_top && sourcePixel.y<content_bottom) ? subtitleGlyphAlpha(source.rgb) : 0.0;
-            return vec4(subtitleSignal(mix(backing,subtitleLinear(source.rgb),alpha)),1.0);
+            // Generated blend/solid panels follow a rounded rectangle. The
+            // antialiased edge reveals the live destination pixels beneath it.
+            float panelMask=background_mode>1.5 ? subtitleRoundedPanelMask(p) : 1.0;
+            vec3 canvas=mix(original,backing,panelMask);
+            return vec4(subtitleSignal(mix(canvas,subtitleLinear(source.rgb),alpha)),1.0);
         }
         if(p.x>=source_left && p.x<source_right && p.y>=source_top && p.y<source_bottom) {
             if(background_mode>0.5 && !(p.x>=content_left && p.x<content_right &&
                 p.y>=content_top && p.y<content_bottom)) return HOOKED_tex(HOOKED_pos);
-            if(background_mode>0.5 && background_mode<2.5)
-                return vec4(subtitleSignal(subtitleSourceFill(p)),1.0);
+            if(background_mode>0.5 && (background_mode<2.5 || background_mode>4.5))
+                return vec4(subtitleSignal(background_mode>4.5 ?
+                    subtitleGeneratedFill(p) : subtitleSourceFill(p)),1.0);
             return vec4(0.0,0.0,0.0,1.0);
         }
     }
@@ -198,7 +237,7 @@ vec4 hook() {
 inline bool BindSubtitleCutPasteHook(const pl_hook* hook,
     const SubtitleCutPasteGeometry& geometry, int backgroundMode=0, pl_color_transfer transfer=PL_COLOR_TRC_SRGB)
 {
-    if (!hook || backgroundMode<0 || backgroundMode>4) return false;
+    if (!hook || backgroundMode<0 || backgroundMode>5) return false;
     const char* names[]={"enabled","source_left","source_top","source_right","source_bottom",
         "destination_left","destination_top","destination_right","destination_bottom","background_mode",
         "transfer_mode","picture_top","picture_bottom","transfer_gamma",

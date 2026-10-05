@@ -1,8 +1,8 @@
 # VP-0070 subtitle consistency experiment
 
 Story status remains **Blocked**. This is an isolated diagnostic experiment built
-on beta `v1.3.005-beta` (`c84863eaa59e03fe218de824c34b7c0220c4fd87`) plus prior
-subtitle work. It does not establish reliable recognition of arbitrary content.
+on the latest beta integration tip plus prior subtitle work. It does not
+establish reliable recognition of arbitrary content.
 
 ## Detection and continuity
 
@@ -52,19 +52,24 @@ Set these integer source-pixel distances in `[vprenderer]` (or the active named
 renderer profile). Accepted range is 0 through 500. Restart after editing.
 
 ```ini
-subtitle_box_padding_sides: 30
-subtitle_box_padding_top: 30
-subtitle_box_padding_bottom: 10
-subtitle_move_inset: 15
+subtitle_box_padding_sides: 60
+subtitle_box_padding_top: 60
+subtitle_box_padding_bottom: 20
+subtitle_move_inset: 0
 ```
 
-These defaults triple the previous top/side buffer. They affect both the green
-outline and moving panel, not raw detection or identity. Keyed modes separate
+These defaults double the prior top/side buffer and double the lower buffer.
+They affect both the green outline and moved panel, not raw eligibility or cue
+identity. The larger margin contains detached leading marks and the visible
+rounded subtitle backing. Generated blend/black/gray panels use an antialiased
+rounded rectangle with radius derived from panel height and capped at 28 source
+pixels. The destination backing meets the active-picture lower edge by default;
+20 pixels of bottom padding remains inside it below the glyphs. Set a positive
+inset only when an intentional gap is wanted. Keyed modes separate
 the detected content rectangle from that panel: extra padding does not create
 new glyph candidates or enlarge source cleanup. Rectangle mode copies the whole
 padded patch. Bounds clip to the
-source raster. The inset is the gap between the padded destination and active
-picture bottom. Too-tall or non-upward placements leave the input unchanged.
+source raster. Too-tall or non-upward placements leave the input unchanged.
 
 `subtitle_bbox_test: true` displays the green box. Mutually exclusive
 `subtitle_cut_paste_test: true` enables movement. Both display the complete
@@ -79,6 +84,7 @@ unwarped source raster for this experiment.
 | `blend` | Same approximate cleanup, with a half-strength linear-light destination backing for SDR/PQ. |
 | `black` | Keyed text over an opaque black destination panel. Vacated detected content is black. |
 | `dark_gray` | Keyed text over an opaque panel at 8% reference white (16.24 nits for PQ). Vacated detected content is black. |
+| `generated_gray` | Keyed text over live destination picture with a rounded, 45%-opacity backing at 8% reference white. A deterministic picture extension fills vacated source content within the active picture. |
 
 The keyed modes sample glyphs across the complete detected bounds, including text
 that crosses from the active picture into a black bar. Black pixels from the bar
@@ -102,6 +108,19 @@ promise of half displayed luminance. BT.1886 uses a zero-black gamma approximati
 The shader performs SDR/PQ blending in decoded light, then returns to the input
 transfer. This avoids treating PQ code values as brightness. The hook remains
 before output color management. No full-resolution CPU pixel-copy loop is added.
+
+`generated_gray` is a bounded visual prototype. The destination keeps real
+movie pixels under the gray backing, including where the mapped source patch
+would have contained black-bar pixels; only keyed glyphs move from that patch.
+For the original text area that must be cleared inside the active picture,
+the shader reflects clean rows above the detected bounds, softens them over
+five horizontal samples, and feathers to clean side samples at the edges.
+The bar outside the active picture stays black. This uses one deterministic
+method over the whole filled area and the current frame, without random seeds
+or random texture selection. It cannot reconstruct detail hidden by subtitles
+or black bars, and moving scenery can make the generated source cleanup change
+over a held cue. True cue-frozen inpainting would require a separate persistent
+frame/texture cache and validation at scene cuts and cue revisions.
 
 `SUBTITLE MODE` logs the effective mode and padding; `SUBTITLE BBOX` reports cue,
 frame, current/held state, geometry, bar authority and costs. The generic MOVE

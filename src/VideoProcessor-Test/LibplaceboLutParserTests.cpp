@@ -675,7 +675,8 @@ namespace
 			for(int y=glyphTop;y<glyphTop+11;++y)for(int x=glyphLeft;x<glyphLeft+4;++x) {
 				pixels[y*width+x]={245,245,245,255};luma[y*width+x]=uint16_t(580<<6);
 			}
-			const int backingX=geometry.destination.left+1,backingY=geometry.destination.top+1;
+			const int backingX=geometry.destination.left+(std::max)(1,geometry.content.left-geometry.source.left-1);
+			const int backingY=geometry.destination.top+(std::max)(1,geometry.content.top-geometry.source.top-1);
 			const int sourceX=geometry.source.left+1,sourceY=geometry.source.top+1;
 			pixels[backingY*width+backingX]={200,180,160,255};
 			luma[backingY*width+backingX]=uint16_t(800<<6);
@@ -1797,7 +1798,7 @@ namespace VideoProcessorTest
 					ComputeSubtitleCutPaste({24,48,36,60},64,64,8,56,2,5);
 				Assert::IsTrue(geometry.valid);Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry));
 				Assert::IsFalse(BindSubtitleCutPasteHook(hook,geometry,-1));
-				Assert::IsFalse(BindSubtitleCutPasteHook(hook,geometry,5));
+				Assert::IsFalse(BindSubtitleCutPasteHook(hook,geometry,6));
 				Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,0));
 				const auto baseline=fixture.RenderSubtitlePattern(nullptr,hdrP010,phase,geometry,transfer);
 				const auto moved=fixture.RenderSubtitlePattern(hook,hdrP010,phase,geometry,transfer);
@@ -1819,7 +1820,10 @@ namespace VideoProcessorTest
 					Assert::IsTrue(found,L"the selected backing mode reaches the parsed GPU hook");
 					keyed[size_t(mode-1)]=fixture.RenderSubtitlePattern(hook,hdrP010,phase,geometry,transfer);
 				}
-				const int backingPixel=(geometry.destination.top+1)*64+geometry.destination.left+1;
+				const int backingX=geometry.destination.left+(std::max)(1,geometry.content.left-geometry.source.left-1);
+				const int backingY=geometry.destination.top+(std::max)(1,geometry.content.top-geometry.source.top-1);
+				const int backingPixel=backingY*64+backingX;
+				const int roundedCornerPixel=geometry.destination.top*64+geometry.destination.left;
 				const int glyphLeft=geometry.content.left+(geometry.content.right-geometry.content.left)/2-2;
 				const int glyphTop=geometry.content.top+(geometry.content.bottom-geometry.content.top)/2-5;
 				const int glyphX=glyphLeft+1;
@@ -1833,10 +1837,19 @@ namespace VideoProcessorTest
 				auto intensity=[](const RgbaPixel& p){return int(p.r)+int(p.g)+int(p.b);};
 				Assert::IsTrue(PixelDistance(baseline[backingPixel],transparent)<=6,
 					L"transparent backing preserves the active destination where no keyed glyph exists");
+				Assert::IsTrue(PixelDistance(baseline[roundedCornerPixel],keyed[0][roundedCornerPixel])<=6,
+					L"transparent mode has no generated backing in the rounded panel corner");
 				Assert::IsTrue(intensity(transparent)>intensity(blended)+12 &&
 					intensity(blended)>intensity(black)+8 && intensity(gray)>intensity(black)+8 &&
 					intensity(gray)<intensity(transparent),
 					L"blend, black, and dark-gray modes produce distinct destination backing pixels");
+				Assert::IsTrue(PixelDistance(baseline[roundedCornerPixel],keyed[2][roundedCornerPixel])<
+					PixelDistance(baseline[backingPixel],keyed[2][backingPixel]) &&
+					PixelDistance(baseline[roundedCornerPixel],keyed[3][roundedCornerPixel])<
+					PixelDistance(baseline[backingPixel],keyed[3][backingPixel]) &&
+					PixelDistance(baseline[roundedCornerPixel],keyed[1][roundedCornerPixel])<
+					PixelDistance(baseline[backingPixel],keyed[1][backingPixel]),
+					L"generated black/gray panels curve away at antialiased corners");
                 auto decode=[hdrP010,transfer,gamma](double v) {
                     v/=255.0;
                     if(!hdrP010 && transfer!=PL_COLOR_TRC_SRGB) return std::pow(v,gamma);
@@ -1896,8 +1909,8 @@ namespace VideoProcessorTest
 			const auto geometry=ComputeSubtitleCutPaste({20,46,44,61},64,64,8,56,10,15);
 			Assert::IsTrue(geometry.valid);
 			const auto baseline=fixture.RenderSubtitlePattern(nullptr,false,0,geometry,PL_COLOR_TRC_SRGB,true);
-			std::array<std::vector<RgbaPixel>,4> keyed;
-			for(int mode=1;mode<=4;++mode) {
+			std::array<std::vector<RgbaPixel>,5> keyed;
+			for(int mode=1;mode<=5;++mode) {
 				Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,mode,PL_COLOR_TRC_SRGB));
 				keyed[size_t(mode-1)]=fixture.RenderSubtitlePattern(hook,false,0,geometry,PL_COLOR_TRC_SRGB,true);
 			}
@@ -1935,6 +1948,12 @@ namespace VideoProcessorTest
 			const uint8_t gray=static_cast<uint8_t>(std::round(encode(0.08)));
 			Assert::IsTrue(PixelDistance(keyed[3][movedBarGap],RgbaPixel{gray,gray,gray,255})<=7,
 				L"dark-gray mode deliberately keeps its panel behind glyphs from either source region");
+			for(const auto channel:{&RgbaPixel::r,&RgbaPixel::g,&RgbaPixel::b})
+				Assert::IsTrue(std::abs(double(keyed[4][movedBarGap].*channel)-
+					encode(decode(baseline[movedBarGap].*channel)*0.55+0.08*0.45))<=7.0,
+					L"generated-gray backing preserves real destination picture under its gray overlay");
+			Assert::IsTrue(PixelDistance(keyed[4][movedBarGap],keyed[4][movedBarGap-64])<45,
+				L"the generated panel must not bring the source black-bar color into the picture");
 			const int paddingX=geometry.source.left+2;
 			const int movedPadding=(movedBarGapY*64+paddingX);
 			Assert::IsTrue(PixelDistance(baseline[movedPadding],keyed[0][movedPadding])<=6,

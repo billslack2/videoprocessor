@@ -47,6 +47,10 @@ foreach($dir in @('config','vprenderer','shaders')) {
 Get-ChildItem -LiteralPath $seedRoot -File | Where-Object {
  $_.Extension -in @('.cfg','.dll') -or $_.Name -eq 'LICENSE.txt'
 } | ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination $dest }
+# The generated-background variant starts from the proven dark-gray trial
+# profile and changes only its background-mode value below.
+Copy-Item -LiteralPath (Join-Path $dest 'Subtitle-MOVE-DARK-GRAY.cfg') `
+ -Destination (Join-Path $dest 'Subtitle-MOVE-GENERATED-GRAY.cfg')
 foreach($source in $map.Keys) {
  $target=Join-Path $dest $map[$source]
  New-Item -ItemType Directory -Path (Split-Path -Parent $target) -Force | Out-Null
@@ -88,12 +92,12 @@ function Set-RendererSetting([string]$Text,[string]$Key,[string]$Value) {
  else { $body=$body.TrimEnd()+"`r`n"+$Key+": "+$Value+"`r`n" }
  return $Text.Substring(0,$section.Index)+$body+$Text.Substring($section.Index+$section.Length)
 }
-$modes=[ordered]@{'BOX'='box';'MOVE'='transparent';'MOVE-RECTANGLE'='rectangle';'MOVE-TRANSPARENT'='transparent';'MOVE-BLEND'='blend';'MOVE-BLACK'='black';'MOVE-DARK-GRAY'='dark_gray'}
+$modes=[ordered]@{'BOX'='box';'MOVE'='transparent';'MOVE-RECTANGLE'='rectangle';'MOVE-TRANSPARENT'='transparent';'MOVE-BLEND'='blend';'MOVE-BLACK'='black';'MOVE-DARK-GRAY'='dark_gray';'MOVE-GENERATED-GRAY'='generated_gray'}
 foreach($label in $modes.Keys) {
  $cfg=Join-Path $dest ("Subtitle-$label.cfg")
  $text=[IO.File]::ReadAllText($cfg)
- foreach($entry in @(@('subtitle_box_padding_sides','30'),@('subtitle_box_padding_top','30'),@('subtitle_box_padding_bottom','10'),@('subtitle_move_inset','15'))) {
-  if(-not [regex]::IsMatch($text,('(?m)^'+[regex]::Escape($entry[0])+'\s*:'))) { $text=Set-RendererSetting $text $entry[0] $entry[1] }
+ foreach($entry in @(@('subtitle_box_padding_sides','60'),@('subtitle_box_padding_top','60'),@('subtitle_box_padding_bottom','20'),@('subtitle_move_inset','0'))) {
+  $text=Set-RendererSetting $text $entry[0] $entry[1]
  }
  $text=Set-RendererSetting $text 'subtitle_cut_paste_background' $(if($label -eq 'BOX'){'rectangle'}else{$modes[$label]})
  $text=Set-RendererSetting $text 'subtitle_bbox_test' $(if($label -eq 'BOX'){'true'}else{'false'})
@@ -119,14 +123,19 @@ $readme=@(
  'START-SUBTITLE-MOVE-BLEND.cmd: the same key with dimmed destination backing.',
  'START-SUBTITLE-MOVE-BLACK.cmd: opaque black destination backing.',
  'START-SUBTITLE-MOVE-DARK-GRAY.cmd: opaque dark gray destination backing.',
+ 'START-SUBTITLE-MOVE-GENERATED-GRAY.cmd: live destination picture under a rounded semi-transparent gray panel.',
  'START-SUBTITLE-MOVE.cmd: default transparent mode; use MOVE-RECTANGLE for raw patch copy.','',
  'Transparent and blend fill the original subtitle area in the picture using',
  'smooth current-frame side samples. This can smear scenery and cannot recover',
  'hidden detail. The approximate key can lose colored glyphs or dark outlines,',
  'and retain bright picture details. Black and gray use the same glyph key.','',
+ 'Generated gray keeps live destination pixels under its panel. Clearing the',
+ 'old in-picture subtitle area uses deterministic row reflection and side',
+ 'interpolation. Moving scenery can change that fill; hidden scene detail cannot',
+ 'be recovered from an opaque bar. This mode is experimental.','',
  'Edit [vprenderer] in the selected Subtitle-*.cfg; restart after editing:',
- 'subtitle_box_padding_sides: 30','subtitle_box_padding_top: 30',
- 'subtitle_box_padding_bottom: 10','subtitle_move_inset: 15',
+ 'subtitle_box_padding_sides: 60','subtitle_box_padding_top: 60',
+ 'subtitle_box_padding_bottom: 20','subtitle_move_inset: 0',
  'All values are source pixels, integer range 0 through 500. Too much padding',
  'can make a patch too tall to fit; movement then stays disabled for that frame.','',
  'Copied configs were backed up before minimal edits. The runtime SUBTITLE MODE',

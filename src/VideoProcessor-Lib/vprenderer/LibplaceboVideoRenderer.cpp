@@ -813,8 +813,8 @@ namespace
         bool subtitleBoxTest = false;
         bool subtitleCutPasteTest = false;
         SubtitleBoxPadding subtitleBoxPadding;
-        int subtitleMoveInset = 15;
-        int subtitleCutPasteBackground = 0; // rectangle, transparent, blend, black, dark_gray
+        int subtitleMoveInset = 0;
+        int subtitleCutPasteBackground = 0; // rectangle, transparent, blend, black, dark_gray, generated_gray
 		// Developer-only probes. These are deliberately named experiments rather
 		// than a generic D3D11/DXGI flag escape hatch.
 		bool diagnosticDisableCompute = false;
@@ -1309,8 +1309,8 @@ namespace
 	}
 
     const char* SubtitleBackgroundName(int mode) {
-        static const char* names[]={"rectangle","transparent","blend","black","dark_gray"};
-        return mode>=0 && mode<5 ? names[mode] : "invalid";
+        static const char* names[]={"rectangle","transparent","blend","black","dark_gray","generated_gray"};
+        return mode>=0 && mode<6 ? names[mode] : "invalid";
     }
 
     bool TryParseSubtitleCutPasteBackground(const std::string& value, int& mode)
@@ -1321,6 +1321,7 @@ namespace
         else if (normalized=="blend") mode=2;
         else if (normalized=="black") mode=3;
         else if (normalized=="dark_gray") mode=4;
+        else if (normalized=="generated_gray") mode=5;
         else return false;
         return true;
     }
@@ -6888,7 +6889,7 @@ struct LibplaceboVideoRenderer::Impl
 		outputDiagnostics = settings.outputDiagnostics;
 		shaderCacheEnabled = !settings.diagnosticDisableShaderCache;
         if (settings.subtitleBoxTest || settings.subtitleCutPasteTest)
-            DebugLog::Log("SUBTITLE TEST: bbox=%d cut_paste=%d full_raster=1 no_warp=1 outward_padding_source_px=10 bottom_inset_source_px=15 stroke_output_px=3 acquisition=every_source_frame analysis_max=960x540", settings.subtitleBoxTest?1:0, settings.subtitleCutPasteTest?1:0);
+            DebugLog::Log("SUBTITLE TEST: bbox=%d cut_paste=%d full_raster=1 no_warp=1 padding_sides_source_px=%d padding_top_source_px=%d padding_bottom_source_px=%d bottom_inset_source_px=%d stroke_output_px=3 acquisition=every_source_frame analysis_max=960x540", settings.subtitleBoxTest?1:0, settings.subtitleCutPasteTest?1:0, settings.subtitleBoxPadding.sides, settings.subtitleBoxPadding.top, settings.subtitleBoxPadding.bottom, settings.subtitleMoveInset);
 
 		struct pl_log_params logParams{};
 		logParams.log_cb = LibplaceboLog;

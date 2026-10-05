@@ -559,7 +559,7 @@ namespace RendererProfileConfig
 			if ((key == "subtitle_bbox_test" || key == "subtitle_cut_paste_test")) return IsBoolean(value);
 			if (key == "subtitle_box_padding_sides" || key == "subtitle_box_padding_top" || key == "subtitle_box_padding_bottom" || key == "subtitle_move_inset") { int parsed=0; return ParseInteger(value,0,500,parsed); }
 		if (key == "subtitle_cut_paste_background") return IsChoice(value,
-				{ "rectangle", "transparent", "blend", "black", "dark_gray" });
+				{ "rectangle", "transparent", "blend", "black", "dark_gray", "generated_gray" });
 			if (key == "calibration_lut_enabled") return IsBoolean(value);
 			if (key == "calibration_lut_bt709" ||
 				key == "calibration_lut_p3_d65" ||
@@ -705,7 +705,7 @@ namespace RendererProfileConfig
 			return IsChoice(value, { "rebuild", "live", "never" });
 		if (key == "subtitle_box_padding_sides" || key == "subtitle_box_padding_top" || key == "subtitle_box_padding_bottom" || key == "subtitle_move_inset") { int parsed=0; return ParseInteger(value,0,500,parsed); }
 		if (key == "subtitle_cut_paste_background") return IsChoice(value,
-			{ "rectangle", "transparent", "blend", "black", "dark_gray" });
+			{ "rectangle", "transparent", "blend", "black", "dark_gray", "generated_gray" });
 		if ((key == "subtitle_bbox_test" || key == "subtitle_cut_paste_test") || key == "live_profile_updates" ||
 			key == "switch_refresh_rate" || key == "output_diagnostics" ||
 			key == "diagnostic_disable_shader_cache" ||

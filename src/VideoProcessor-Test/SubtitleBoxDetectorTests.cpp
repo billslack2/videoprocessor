@@ -72,7 +72,7 @@ public:
         Assert::IsTrue(enabled);
     }
     TEST_METHOD(CutPasteBackgroundModesLoadFromRendererRootAndValidate) {
-        for(const char* value:{"rectangle","transparent","blend","black","dark_gray"}) {
+        for(const char* value:{"rectangle","transparent","blend","black","dark_gray","generated_gray"}) {
             char directory[MAX_PATH]{},path[MAX_PATH]{};
             Assert::IsTrue(GetTempPathA(MAX_PATH,directory)!=0);
             Assert::IsTrue(GetTempFileNameA(directory,"vpb",0,path)!=0);
@@ -187,6 +187,17 @@ public:
         Assert::IsTrue(r.anchor.Valid() && r.anchor.top<315 && r.anchor.bottom>315);
         Assert::IsTrue(r.bounds.left<=222 && r.bounds.right>=418,
             L"the bar-crossing line is a minimum span; a wider companion line must expand the union");
+    }
+    TEST_METHOD(DetachedLeadingDashBeyondHalfGlyphGapStaysInSubtitleBounds) {
+        auto f=Frame();
+        Text(f,160,305,18); // accepted lower-bar anchor
+        Text(f,170,280,18); // wider picture-side companion
+        Fill(f,137,277,158,291,64);
+        Fill(f,142,284,155,287,510); // detached hyphen, 15 px gap to the letters
+        SubtitleBoxDetector detector;const auto r=detector.Analyze(Source(f),45,315,1,1);
+        Assert::IsTrue(r.detected);Assert::AreEqual(2,r.lineCount);
+        Assert::IsTrue(r.bounds.left<=138,
+            L"a leading dash aligned with the selected line must travel with the complete subtitle crop");
     }
     TEST_METHOD(PictureOnlyJoinedTextCannotUseOffCenterBarTitleAsAnchor) {
         auto f=Frame();

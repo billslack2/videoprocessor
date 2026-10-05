@@ -34,14 +34,14 @@ public:
     TEST_METHOD(IndependentPaddingAndInsetChangesInvalidateCachedPlacement) {
         auto p=Preview();auto r=Text();SubtitleCutPastePresentation state;
         const auto initial=state.Consume(r,p);Assert::IsTrue(initial.valid);
-        const auto wider=state.Consume(r,p,SubtitleBoxPadding(60,30,10),15);
+        const auto wider=state.Consume(r,p,SubtitleBoxPadding(60,60,20),0);
         Assert::AreEqual(140,wider.source.left);Assert::AreEqual(460,wider.source.right);
         Assert::AreEqual(initial.destination.top,wider.destination.top);
-        const auto taller=state.Consume(r,p,SubtitleBoxPadding(60,50,10),15);
+        const auto taller=state.Consume(r,p,SubtitleBoxPadding(60,80,20),0);
         Assert::AreEqual(wider.destination.top-20,taller.destination.top);
-        const auto bottom=state.Consume(r,p,SubtitleBoxPadding(60,50,20),15);
+        const auto bottom=state.Consume(r,p,SubtitleBoxPadding(60,80,30),0);
         Assert::AreEqual(taller.source.bottom+10,bottom.source.bottom);
-        const auto inset=state.Consume(r,p,SubtitleBoxPadding(60,50,20),25);
+        const auto inset=state.Consume(r,p,SubtitleBoxPadding(60,80,30),10);
         Assert::AreEqual(bottom.destination.bottom-10,inset.destination.bottom);
         Assert::AreEqual(200,r.bounds.left);Assert::AreEqual(295,r.bounds.top);
     }
@@ -56,14 +56,15 @@ public:
     }
     TEST_METHOD(GeometryConfigLoadsAtRendererRootAndRejectsInvalidValues) {
         for(const char* key:{"subtitle_box_padding_sides","subtitle_box_padding_top","subtitle_box_padding_bottom","subtitle_move_inset"}) {
-            for(const char* value:{"0","30","500","-1","501","2.5","many"}) {
+            for(const char* value:{"0","30","60","500","-1","501","2.5","many"}) {
                 char directory[MAX_PATH]{},path[MAX_PATH]{};
                 Assert::IsTrue(GetTempPathA(MAX_PATH,directory)!=0);
                 Assert::IsTrue(GetTempFileNameA(directory,"vpp",0,path)!=0);
                 {std::ofstream file(path);file<<"[vprenderer]\n"<<key<<": "<<value<<"\n";}
                 ConfigFile config;Assert::IsTrue(config.Load(path));DeleteFileA(path);
                 RendererProfileConfig::Model model;std::string error,actual;
-                const bool expected=std::string(value)=="0" || std::string(value)=="30" || std::string(value)=="500";
+                const bool expected=std::string(value)=="0" || std::string(value)=="30" ||
+                    std::string(value)=="60" || std::string(value)=="500";
                 Assert::AreEqual(expected,RendererProfileConfig::Read(config,model,error));
                 if(expected) {
                     Assert::IsTrue(RendererConfigView(config).TryGetDisplayString(key,actual));
@@ -80,30 +81,30 @@ public:
         Assert::AreEqual(first.destination.bottom,stable.destination.bottom);
         Assert::AreEqual(315,stable.pictureBottom);
         ++r.cue;const auto next=state.Consume(r,p);
-        Assert::AreEqual(301,next.destination.bottom);Assert::AreEqual(316,next.pictureBottom);
+        Assert::AreEqual(316,next.destination.bottom);Assert::AreEqual(316,next.pictureBottom);
         p.current.pictureBottom=315;++p.current.identity.viewportGeneration;
-        Assert::AreEqual(300,state.Consume(r,p).destination.bottom);
+        Assert::AreEqual(315,state.Consume(r,p).destination.bottom);
         p.current.pictureBottom=316;++p.policyGeneration;
-        Assert::AreEqual(301,state.Consume(r,p).destination.bottom);
+        Assert::AreEqual(316,state.Consume(r,p).destination.bottom);
         p.current.pictureBottom=315;++p.continuityGeneration;
-        Assert::AreEqual(300,state.Consume(r,p).destination.bottom);
+        Assert::AreEqual(315,state.Consume(r,p).destination.bottom);
     }
     TEST_METHOD(PlacementNeverSurvivesLostCueOrFreshBarAuthority) {
         auto p=Preview();auto r=Text();SubtitleCutPastePresentation state;
         Assert::IsTrue(state.Consume(r,p).valid);
         p.current.barAuthority=false;Assert::IsFalse(state.Consume(r,p).valid);
         p.current.barAuthority=true;p.current.pictureBottom=316;
-        Assert::AreEqual(301,state.Consume(r,p).destination.bottom);
+        Assert::AreEqual(316,state.Consume(r,p).destination.bottom);
         r.detected=false;Assert::IsFalse(state.Consume(r,p).valid);
         r.detected=true;p.current.pictureBottom=315;
-        Assert::AreEqual(300,state.Consume(r,p).destination.bottom);
+        Assert::AreEqual(315,state.Consume(r,p).destination.bottom);
         p.current.discontinuity=true;p.current.pictureBottom=316;
-        Assert::AreEqual(301,state.Consume(r,p).destination.bottom);
+        Assert::AreEqual(316,state.Consume(r,p).destination.bottom);
     }
-    TEST_METHOD(DefaultPaddingAddsThirtyTopAndSidesAndTenBelow) {
+    TEST_METHOD(DefaultPaddingIncludesWideBlackPanelAndDetachedPunctuation) {
         const auto r=ExpandSubtitleBox({200,295,400,330},640,360);
-        Assert::AreEqual(170,r.left);Assert::AreEqual(265,r.top);
-        Assert::AreEqual(430,r.right);Assert::AreEqual(340,r.bottom);
+        Assert::AreEqual(140,r.left);Assert::AreEqual(235,r.top);
+        Assert::AreEqual(460,r.right);Assert::AreEqual(350,r.bottom);
     }
     TEST_METHOD(PaddingClipsEveryRasterEdgeWithoutOverflow) {
         const auto r=ExpandSubtitleBox({2,3,638,359},640,360);
@@ -114,10 +115,10 @@ public:
         Assert::AreEqual(0,huge.top);Assert::AreEqual(360,huge.bottom);
         Assert::IsFalse(ExpandSubtitleBox({700,20,710,30},640,360).Valid());
     }
-    TEST_METHOD(MovePreservesSizeAndHorizontalPositionWithFifteenPixelGap) {
+    TEST_METHOD(MovePreservesSizeAndReachesTheActivePictureBoundary) {
         const auto g=ComputeSubtitleCutPaste({200,295,400,330},640,360,45,315);
         Assert::IsTrue(g.valid);
-        Assert::AreEqual(300,g.destination.bottom);Assert::AreEqual(225,g.destination.top);
+        Assert::AreEqual(315,g.destination.bottom);Assert::AreEqual(200,g.destination.top);
         Assert::AreEqual(g.source.left,g.destination.left);
         Assert::AreEqual(g.source.right,g.destination.right);
         Assert::AreEqual(g.source.bottom-g.source.top,g.destination.bottom-g.destination.top);
@@ -125,11 +126,13 @@ public:
     TEST_METHOD(DestinationWinsOverlapAndUncoveredSourceClears) {
         const auto g=ComputeSubtitleCutPaste({200,295,400,330},640,360,45,315);
         const auto overlap=MapSubtitleCutPastePixel(g,210,290);
-        Assert::IsFalse(overlap.clear);Assert::AreEqual(210,overlap.x);Assert::AreEqual(330,overlap.y);
-        Assert::IsTrue(MapSubtitleCutPastePixel(g,210,300).clear);
-        Assert::IsTrue(MapSubtitleCutPastePixel(g,210,339).clear);
-        const auto outside=MapSubtitleCutPastePixel(g,210,340);
-        Assert::IsFalse(outside.clear);Assert::AreEqual(340,outside.y);
+        Assert::IsFalse(overlap.clear);Assert::AreEqual(210,overlap.x);Assert::AreEqual(325,overlap.y);
+        const auto deeperOverlap=MapSubtitleCutPastePixel(g,210,300);
+        Assert::IsFalse(deeperOverlap.clear);Assert::AreEqual(335,deeperOverlap.y);
+        Assert::IsTrue(MapSubtitleCutPastePixel(g,210,330).clear);
+        Assert::IsTrue(MapSubtitleCutPastePixel(g,210,349).clear);
+        const auto outside=MapSubtitleCutPastePixel(g,210,350);
+        Assert::IsFalse(outside.clear);Assert::AreEqual(350,outside.y);
         Assert::IsFalse(MapSubtitleCutPastePixel(g,g.source.right,300).clear);
     }
     TEST_METHOD(RejectsMissingBarInvalidPictureAndDownwardMove) {

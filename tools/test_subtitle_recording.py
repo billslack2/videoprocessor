@@ -43,8 +43,8 @@ def cut_paste_checks(row, width, height):
         return [] if not int(row["cut_valid"]) else ["cut_without_detection"]
     raw = csv_rect(row, "")
     padded = csv_rect(row, "padded_")
-    expected = (max(0, raw[0]-30), max(0, raw[1]-30),
-                min(width, raw[2]+30), min(height, raw[3]+10))
+    expected = (max(0, raw[0]-60), max(0, raw[1]-60),
+                min(width, raw[2]+60), min(height, raw[3]+20))
     failures = []
     if padded != expected: failures.append("incorrect_display_padding")
     if not int(row["cut_valid"]):
@@ -54,7 +54,7 @@ def cut_paste_checks(row, width, height):
     if source[0] != target[0] or source[2] != target[2] or source[3]-source[1] != target[3]-target[1]:
         failures.append("cut_changes_size_or_horizontal_position")
     if target[1] >= source[1]: failures.append("cut_not_shifted_upward")
-    if target[3] != int(row["cut_picture_bottom"])-15: failures.append("incorrect_cut_bottom_inset")
+    if target[3] != int(row["cut_picture_bottom"]): failures.append("panel_does_not_cover_picture_bar_boundary")
     if target[1] < int(row["cut_picture_top"]) or target[3] > int(row["cut_picture_bottom"]):
         failures.append("cut_outside_active_picture")
     return failures
@@ -257,8 +257,8 @@ def main():
                 strict.append(displayed and all(contains(box, line) for line in expected) if positive else not displayed)
                 complete.append(displayed and all(contains(box, line, 2) for line in expected) if positive else not displayed)
                 # Report production display coverage separately from raw
-                # segmentation extent. ExpandSubtitleBox adds 30 px on each
-                # side, 30 px above, and 10 px below before presentation.
+                # segmentation extent. ExpandSubtitleBox adds 60 px on each
+                # side, 60 px above, and 20 px below before presentation.
                 padded = csv_rect(row, "padded_") if displayed else None
                 presentation_complete.append(displayed and all(contains(padded, line) for line in expected)
                                              if positive else not displayed)

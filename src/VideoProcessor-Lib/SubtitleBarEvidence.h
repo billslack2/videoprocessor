@@ -80,16 +80,35 @@ inline SubtitleBarEvidence ExtractSubtitleBarEvidence(const AnalysisLumaSource& 
             }
             runs[i]=first;
         }
-        auto ordered=runs;
-        std::nth_element(ordered.begin(),ordered.begin()+Columns/2,ordered.end());
-        depth=ordered[Columns/2];
-        for(int run:runs)support+=std::abs(run-depth)<=tolerance;
-        if(depth<2*step+1 || depth>=limit || support*100<Columns*35)return false;
+        // A centered opaque subtitle panel continues the black bar into the
+        // picture. Its top edge may own most column runs, so the all-column
+        // median would mistake the panel for the picture/bar boundary. Use
+        // matching runs at both outside flanks to propose the plane instead.
+        // If either flank is obscured, do not infer a new boundary from an
+        // interior edge alone.
+        constexpr int FlankColumns=Columns/8;
+        std::array<int,2*FlankColumns> flankRuns{};
+        for(int i=0;i<FlankColumns;++i) {
+            flankRuns[i]=runs[i];
+            flankRuns[FlankColumns+i]=runs[Columns-FlankColumns+i];
+        }
+        std::nth_element(flankRuns.begin(),flankRuns.begin()+FlankColumns,flankRuns.end());
+        depth=flankRuns[FlankColumns];
+        int leftSupport=0,rightSupport=0;
+        for(int i=0;i<Columns;++i) {
+            if(std::abs(runs[i]-depth)>tolerance)continue;
+            ++support;
+            if(i<FlankColumns)++leftSupport;
+            if(i>=Columns-FlankColumns)++rightSupport;
+        }
+        if(depth<2*step+1 || depth>=limit || support*5<Columns ||
+            leftSupport<FlankColumns*3/4 || rightSupport<FlankColumns*3/4)return false;
 
         // A threshold crossing alone is not an encoded edge: smooth dark scene
         // gradients also cross the black threshold. Require abrupt native-row
         // contrast at distributed columns close to this frame's proposed plane.
         unsigned boundaryZones=0;
+        int leftBoundarySupport=0,rightBoundarySupport=0;
         for(int i=0;i<Columns;++i) {
             if(std::abs(runs[i]-depth)>tolerance)continue;
             // Resampling can spread a sharp encoded edge over several rows.
@@ -106,10 +125,13 @@ inline SubtitleBarEvidence ExtractSubtitleBarEvidence(const AnalysisLumaSource& 
             const int neighboringRise=(std::max)({0,values[1]-values[0],values[8]-values[7]});
             if(jump>=8 && jump>neighboringRise*3/2+2) {
                 ++boundarySupport;boundaryZones|=1u<<(i/32);
+                if(i<FlankColumns)++leftBoundarySupport;
+                if(i>=Columns-FlankColumns)++rightBoundarySupport;
             }
         }
         int zones=0;for(unsigned bits=boundaryZones;bits;bits>>=1)zones+=bits&1;
-        if(boundarySupport<8 || zones<2)return false;
+        if(boundarySupport<8 || zones<2 ||
+            leftBoundarySupport<4 || rightBoundarySupport<4)return false;
         size_t blackCount=0,total=0;
         for(int d=0;d<depth;d+=step) {
             int intrusion=0;
@@ -136,7 +158,7 @@ inline SubtitleBarEvidence ExtractSubtitleBarEvidence(const AnalysisLumaSource& 
                 if(candidate<2*step+1) continue;
                 int candidateSupport=0;
                 for(int run:runs) candidateSupport+=std::abs(run-candidate)<=tolerance;
-                if(candidateSupport*100<Columns*35) continue;
+                if(candidateSupport*5<Columns) continue;
                 size_t candidateBlack=0,candidateTotal=0;
                 int candidateMaxIntrusion=0;
                 for(int d=0;d<candidate;d+=step) {

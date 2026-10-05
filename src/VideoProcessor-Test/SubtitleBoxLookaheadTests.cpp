@@ -974,6 +974,31 @@ public:
             Assert::AreEqual(bottom,evidence.bottom);
         }
     }
+    TEST_METHOD(SubtitleBarsKeepActualBoundaryUnderWideCenteredOpaquePanels) {
+        for(int width:{192,352,480}) {
+            auto pixels=Pixels();
+            const int left=(640-width)/2;
+            // The black panel crosses the picture/bar edge. At 55% and 75%
+            // width its upper edge would win an all-column run median.
+            Fill(pixels,left,280,left+width,340,64);
+            Text(pixels,255,301,10);
+            const auto evidence=ExtractSubtitleBarEvidence(Source(pixels));
+            Assert::IsTrue(evidence.available);
+            Assert::AreEqual(45,evidence.top);
+            Assert::AreEqual(315,evidence.bottom,
+                L"a centered subtitle panel must not become the bar plane");
+            Assert::IsTrue(evidence.bottomBoundarySupport>=8);
+        }
+    }
+    TEST_METHOD(SubtitleBarsDoNotInventBoundaryFromCenteredPanelWithoutSideBars) {
+        for(int width:{192,352,480}) {
+            auto pixels=Pixels(true);
+            const int left=(640-width)/2;
+            Fill(pixels,left,280,left+width,360,64);
+            Assert::IsFalse(ExtractSubtitleBarEvidence(Source(pixels)).available,
+                L"an interior panel edge cannot establish a full-width bar");
+        }
+    }
     TEST_METHOD(SubtitleBarsRejectConnectedPictureOnOnlyTheAffectedEdge) {
         for(bool top:{false,true}) {
             auto pixels=Pixels();

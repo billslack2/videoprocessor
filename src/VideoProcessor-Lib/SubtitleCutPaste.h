@@ -5,7 +5,7 @@
 
 struct SubtitleBoxPadding
 {
-    int sides = 30, top = 30, bottom = 10;
+    int sides = 60, top = 60, bottom = 20;
     SubtitleBoxPadding() = default;
     SubtitleBoxPadding(int uniform) : sides(uniform), top(uniform), bottom(uniform) {}
     SubtitleBoxPadding(int horizontal, int above, int below) : sides(horizontal), top(above), bottom(below) {}
@@ -40,7 +40,7 @@ struct SubtitleCutPasteGeometry
 };
 
 inline SubtitleCutPasteGeometry ComputeSubtitleCutPaste(const SubtitleBoxRect& bounds,
-    int width, int height, int pictureTop, int pictureBottom, SubtitleBoxPadding padding = {}, int gap = 15)
+    int width, int height, int pictureTop, int pictureBottom, SubtitleBoxPadding padding = {}, int gap = 0)
 {
     SubtitleCutPasteGeometry result;
     result.pictureTop=pictureTop;result.pictureBottom=pictureBottom;
@@ -90,7 +90,7 @@ class SubtitleCutPastePresentation
 public:
     void Reset() { m_geometry={};m_reference={};m_cue=0;m_policy=m_continuity=0; }
     SubtitleCutPasteGeometry Consume(const SubtitleBoxResult& text,
-        const SubtitleBoxPreview& preview, SubtitleBoxPadding padding={}, int gap=15)
+        const SubtitleBoxPreview& preview, SubtitleBoxPadding padding={}, int gap=0)
     {
         if (!text.detected || !text.bounds.Valid() || !preview.available ||
             !preview.current.analyzed || !SubtitleBoxLookahead::HasBarEvidence(preview.current) || text.workLimit) {
@@ -123,5 +123,5 @@ private:
     SubtitleBoxObservation m_reference;
     uint64_t m_cue=0,m_policy=0,m_continuity=0;
     SubtitleBoxPadding m_padding;
-    int m_gap=15;
+    int m_gap=0;
 };
