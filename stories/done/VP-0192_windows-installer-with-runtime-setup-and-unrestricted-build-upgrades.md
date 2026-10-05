@@ -508,3 +508,7 @@ The user-requested ZDF admission correction was rebuilt, tested, packaged as set
 ## October 4, 2026 — Magewell feature trial package
 
 Created the user-requested separate runnable directory, setup installer and portable ZIP from clean, pushed PR #129 commit dafdba962487381be87fd04ccf9b07ff1375dbe5. All 1,930 native tests and 84 packaging checks passed; 62 extracted managed files match the manifest. Unsigned, unmerged test build; existing installation untouched. Live installer lifecycle, clean Windows and physical Magewell capture remain unqualified. No story status change. [Artifacts, checksums and receipt](../assets/releases/magewell-test-dafdba96/README.md).
+
+## October 5, 2026 — current-beta Magewell deployment
+
+At the user's request, advanced codex/magewell-optional to current merged beta 61fb90ad038e5b9a17c33245c97e2bca42641754, built setup/portable ZIP, and deployed the verified x64 Release payload to C:\Videoprocessor\vp with backups. 1,943 native tests, 84 installer/runtime helper checks, 8 portable contract checks and 225 isolated installer lifecycle checks passed. Active config/state unchanged. Unsigned; hardware and clean-Windows qualification remain outstanding. [Artifacts and evidence](../assets/releases/magewell-beta-61fb90ad-20261005/README.md). Story status unchanged.

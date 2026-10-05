@@ -1,0 +1,226 @@
+PASS actual installer fresh exit zero
+PASS actual installer fresh uses original custom directory
+PASS actual installer fresh managed hashes match, including host/renderer
+PASS actual installer fresh excludes setup-only file docs/REQ-006-sdr-transfer-implementation.md
+PASS actual installer fresh excludes setup-only file docs/VP-0174-config-ui.md
+PASS actual installer fresh excludes setup-only file prerequisites/runtime-common.ps1
+PASS actual installer fresh excludes setup-only file prerequisites/runtime-requirement.json
+PASS actual installer fresh excludes setup-only file prerequisites/setup-runtime.ps1
+PASS actual installer fresh excludes setup-only file prerequisites/vc_redist.x64.exe
+PASS actual installer fresh excludes setup-only file RELEASE-LAYOUT.md
+PASS actual installer fresh excludes setup-only file RELEASE-MANIFEST.json
+PASS actual installer fresh excludes setup-only file SETUP-RUNTIME.cmd
+PASS actual installer fresh excludes setup-only file setup/install-support.ps1
+PASS actual installer fresh excludes setup-only file setup/RECOVERY.md
+PASS actual installer fresh excludes setup-only file START-HERE.txt
+PASS actual installer fresh excludes setup-only file VideoProcessor.cfg.example
+PASS actual installer fresh leaves no prerequisites directory
+PASS actual installer fresh leaves no setup directory
+PASS actual installer fresh leaves no .vp-installer-backups directory
+PASS actual installer fresh retains user guide/license docs/CONFIGURATION.html
+PASS actual installer fresh retains user guide/license docs/VideoProcessor_NLS_Configuration_Guide.pdf
+PASS actual installer fresh retains user guide/license LICENSE.txt
+PASS actual installer fresh retains user guide/license vprenderer/third_party_licenses/libplacebo-LICENSE.txt
+PASS actual installer fresh provides Uninstall VideoProcessor shortcut
+PASS actual installer fresh shortcut targets registered uninstaller
+PASS actual installer fresh hides internal E:\codex\videoprocessor\magewell-optional\artifacts\magewell-beta-qa-61fb90ad\artifacts\installer-e2e-e667e1ba00a14e8a8399d0793a359841\Custom VP space\unins000.exe
+PASS actual installer fresh hides internal E:\codex\videoprocessor\magewell-optional\artifacts\magewell-beta-qa-61fb90ad\artifacts\installer-e2e-e667e1ba00a14e8a8399d0793a359841\Custom VP space\unins000.dat
+PASS installer creates no desktop files
+PASS actual installer fresh has one uninstall entry
+PASS packaged Config launches without elevation
+PASS actual installer refuses running background Config
+PASS running-process rejection preserves old application
+PASS Config runs for the uninstall refusal test
+PASS Config loads its private VC runtime dependencies
+PASS Config loads VCRUNTIME140_1.dll from its own folder
+PASS Config loads MSVCP140.dll from its own folder
+PASS Config loads VCRUNTIME140.dll from its own folder
+PASS Config loads MSVCP140_1.dll from its own folder
+PASS Config loads MSVCP140_2.dll from its own folder
+PASS Config loads mfc140u.dll from its own folder
+PASS uninstall cancels safely while Config is in the tray
+PASS cancelled uninstall retains registration
+PASS uninstall names Config and explains tray Exit, Retry and Cancel
+PASS cancelled uninstall preserves shaders\private.hlsl
+PASS cancelled uninstall preserves luts\private.cube
+PASS cancelled uninstall preserves VideoProcessor.state
+PASS cancelled uninstall preserves shaders\NLS.glsl
+PASS cancelled uninstall preserves VideoProcessor.cfg
+PASS cancelled uninstall preserves private.txt
+PASS cancelled uninstall preserves logs\operator.log
+PASS actual installer reinstall-remembered-path exit zero
+PASS actual installer reinstall-remembered-path uses original custom directory
+PASS actual installer reinstall-remembered-path managed hashes match, including host/renderer
+PASS actual installer reinstall-remembered-path excludes setup-only file docs/REQ-006-sdr-transfer-implementation.md
+PASS actual installer reinstall-remembered-path excludes setup-only file docs/VP-0174-config-ui.md
+PASS actual installer reinstall-remembered-path excludes setup-only file prerequisites/runtime-common.ps1
+PASS actual installer reinstall-remembered-path excludes setup-only file prerequisites/runtime-requirement.json
+PASS actual installer reinstall-remembered-path excludes setup-only file prerequisites/setup-runtime.ps1
+PASS actual installer reinstall-remembered-path excludes setup-only file prerequisites/vc_redist.x64.exe
+PASS actual installer reinstall-remembered-path excludes setup-only file RELEASE-LAYOUT.md
+PASS actual installer reinstall-remembered-path excludes setup-only file RELEASE-MANIFEST.json
+PASS actual installer reinstall-remembered-path excludes setup-only file SETUP-RUNTIME.cmd
+PASS actual installer reinstall-remembered-path excludes setup-only file setup/install-support.ps1
+PASS actual installer reinstall-remembered-path excludes setup-only file setup/RECOVERY.md
+PASS actual installer reinstall-remembered-path excludes setup-only file START-HERE.txt
+PASS actual installer reinstall-remembered-path excludes setup-only file VideoProcessor.cfg.example
+PASS actual installer reinstall-remembered-path leaves no prerequisites directory
+PASS actual installer reinstall-remembered-path leaves no setup directory
+PASS actual installer reinstall-remembered-path leaves no .vp-installer-backups directory
+PASS actual installer reinstall-remembered-path retains user guide/license docs/CONFIGURATION.html
+PASS actual installer reinstall-remembered-path retains user guide/license docs/VideoProcessor_NLS_Configuration_Guide.pdf
+PASS actual installer reinstall-remembered-path retains user guide/license LICENSE.txt
+PASS actual installer reinstall-remembered-path retains user guide/license vprenderer/third_party_licenses/libplacebo-LICENSE.txt
+PASS actual installer reinstall-remembered-path provides Uninstall VideoProcessor shortcut
+PASS actual installer reinstall-remembered-path shortcut targets registered uninstaller
+PASS actual installer reinstall-remembered-path hides internal E:\codex\videoprocessor\magewell-optional\artifacts\magewell-beta-qa-61fb90ad\artifacts\installer-e2e-e667e1ba00a14e8a8399d0793a359841\Custom VP space\unins000.exe
+PASS actual installer reinstall-remembered-path hides internal E:\codex\videoprocessor\magewell-optional\artifacts\magewell-beta-qa-61fb90ad\artifacts\installer-e2e-e667e1ba00a14e8a8399d0793a359841\Custom VP space\unins000.dat
+PASS installer creates no desktop files
+PASS actual installer reinstall-remembered-path has one uninstall entry
+PASS repair preserves unknown DLL outside active load path
+PASS repair removes obsolete DLL from load path
+PASS actual installer missing-manifest exit zero
+PASS actual installer missing-manifest uses original custom directory
+PASS actual installer missing-manifest managed hashes match, including host/renderer
+PASS actual installer missing-manifest excludes setup-only file docs/REQ-006-sdr-transfer-implementation.md
+PASS actual installer missing-manifest excludes setup-only file docs/VP-0174-config-ui.md
+PASS actual installer missing-manifest excludes setup-only file prerequisites/runtime-common.ps1
+PASS actual installer missing-manifest excludes setup-only file prerequisites/runtime-requirement.json
+PASS actual installer missing-manifest excludes setup-only file prerequisites/setup-runtime.ps1
+PASS actual installer missing-manifest excludes setup-only file prerequisites/vc_redist.x64.exe
+PASS actual installer missing-manifest excludes setup-only file RELEASE-LAYOUT.md
+PASS actual installer missing-manifest excludes setup-only file RELEASE-MANIFEST.json
+PASS actual installer missing-manifest excludes setup-only file SETUP-RUNTIME.cmd
+PASS actual installer missing-manifest excludes setup-only file setup/install-support.ps1
+PASS actual installer missing-manifest excludes setup-only file setup/RECOVERY.md
+PASS actual installer missing-manifest excludes setup-only file START-HERE.txt
+PASS actual installer missing-manifest excludes setup-only file VideoProcessor.cfg.example
+PASS actual installer missing-manifest leaves no prerequisites directory
+PASS actual installer missing-manifest leaves no setup directory
+PASS actual installer missing-manifest leaves no .vp-installer-backups directory
+PASS actual installer missing-manifest retains user guide/license docs/CONFIGURATION.html
+PASS actual installer missing-manifest retains user guide/license docs/VideoProcessor_NLS_Configuration_Guide.pdf
+PASS actual installer missing-manifest retains user guide/license LICENSE.txt
+PASS actual installer missing-manifest retains user guide/license vprenderer/third_party_licenses/libplacebo-LICENSE.txt
+PASS actual installer missing-manifest provides Uninstall VideoProcessor shortcut
+PASS actual installer missing-manifest shortcut targets registered uninstaller
+PASS actual installer missing-manifest hides internal E:\codex\videoprocessor\magewell-optional\artifacts\magewell-beta-qa-61fb90ad\artifacts\installer-e2e-e667e1ba00a14e8a8399d0793a359841\Custom VP space\unins000.exe
+PASS actual installer missing-manifest hides internal E:\codex\videoprocessor\magewell-optional\artifacts\magewell-beta-qa-61fb90ad\artifacts\installer-e2e-e667e1ba00a14e8a8399d0793a359841\Custom VP space\unins000.dat
+PASS installer creates no desktop files
+PASS actual installer missing-manifest has one uninstall entry
+PASS actual installer damaged-uninstall-data exit zero
+PASS actual installer damaged-uninstall-data uses original custom directory
+PASS actual installer damaged-uninstall-data managed hashes match, including host/renderer
+PASS actual installer damaged-uninstall-data excludes setup-only file docs/REQ-006-sdr-transfer-implementation.md
+PASS actual installer damaged-uninstall-data excludes setup-only file docs/VP-0174-config-ui.md
+PASS actual installer damaged-uninstall-data excludes setup-only file prerequisites/runtime-common.ps1
+PASS actual installer damaged-uninstall-data excludes setup-only file prerequisites/runtime-requirement.json
+PASS actual installer damaged-uninstall-data excludes setup-only file prerequisites/setup-runtime.ps1
+PASS actual installer damaged-uninstall-data excludes setup-only file prerequisites/vc_redist.x64.exe
+PASS actual installer damaged-uninstall-data excludes setup-only file RELEASE-LAYOUT.md
+PASS actual installer damaged-uninstall-data excludes setup-only file RELEASE-MANIFEST.json
+PASS actual installer damaged-uninstall-data excludes setup-only file SETUP-RUNTIME.cmd
+PASS actual installer damaged-uninstall-data excludes setup-only file setup/install-support.ps1
+PASS actual installer damaged-uninstall-data excludes setup-only file setup/RECOVERY.md
+PASS actual installer damaged-uninstall-data excludes setup-only file START-HERE.txt
+PASS actual installer damaged-uninstall-data excludes setup-only file VideoProcessor.cfg.example
+PASS actual installer damaged-uninstall-data leaves no prerequisites directory
+PASS actual installer damaged-uninstall-data leaves no setup directory
+PASS actual installer damaged-uninstall-data leaves no .vp-installer-backups directory
+PASS actual installer damaged-uninstall-data retains user guide/license docs/CONFIGURATION.html
+PASS actual installer damaged-uninstall-data retains user guide/license docs/VideoProcessor_NLS_Configuration_Guide.pdf
+PASS actual installer damaged-uninstall-data retains user guide/license LICENSE.txt
+PASS actual installer damaged-uninstall-data retains user guide/license vprenderer/third_party_licenses/libplacebo-LICENSE.txt
+PASS actual installer damaged-uninstall-data provides Uninstall VideoProcessor shortcut
+PASS actual installer damaged-uninstall-data shortcut targets registered uninstaller
+PASS actual installer damaged-uninstall-data hides internal E:\codex\videoprocessor\magewell-optional\artifacts\magewell-beta-qa-61fb90ad\artifacts\installer-e2e-e667e1ba00a14e8a8399d0793a359841\Custom VP space\unins001.exe
+PASS actual installer damaged-uninstall-data hides internal E:\codex\videoprocessor\magewell-optional\artifacts\magewell-beta-qa-61fb90ad\artifacts\installer-e2e-e667e1ba00a14e8a8399d0793a359841\Custom VP space\unins001.dat
+PASS installer creates no desktop files
+PASS actual installer damaged-uninstall-data has one uninstall entry
+PASS actual reinstall preserves shaders\private.hlsl
+PASS actual reinstall preserves luts\private.cube
+PASS actual reinstall preserves VideoProcessor.state
+PASS actual reinstall preserves shaders\NLS.glsl
+PASS actual reinstall preserves VideoProcessor.cfg
+PASS actual reinstall preserves private.txt
+PASS actual reinstall preserves logs\operator.log
+PASS actual uninstall exit zero
+PASS actual uninstall removes registration
+PASS actual uninstall removes managed host
+PASS actual uninstall removes its friendly shortcut
+PASS actual uninstall preserves shaders\private.hlsl
+PASS actual uninstall preserves luts\private.cube
+PASS actual uninstall preserves VideoProcessor.state
+PASS actual uninstall preserves shaders\NLS.glsl
+PASS actual uninstall preserves VideoProcessor.cfg
+PASS actual uninstall preserves private.txt
+PASS actual uninstall preserves logs\operator.log
+PASS actual installer reinstall-preserved-directory exit zero
+PASS actual installer reinstall-preserved-directory uses original custom directory
+PASS actual installer reinstall-preserved-directory managed hashes match, including host/renderer
+PASS actual installer reinstall-preserved-directory excludes setup-only file docs/REQ-006-sdr-transfer-implementation.md
+PASS actual installer reinstall-preserved-directory excludes setup-only file docs/VP-0174-config-ui.md
+PASS actual installer reinstall-preserved-directory excludes setup-only file prerequisites/runtime-common.ps1
+PASS actual installer reinstall-preserved-directory excludes setup-only file prerequisites/runtime-requirement.json
+PASS actual installer reinstall-preserved-directory excludes setup-only file prerequisites/setup-runtime.ps1
+PASS actual installer reinstall-preserved-directory excludes setup-only file prerequisites/vc_redist.x64.exe
+PASS actual installer reinstall-preserved-directory excludes setup-only file RELEASE-LAYOUT.md
+PASS actual installer reinstall-preserved-directory excludes setup-only file RELEASE-MANIFEST.json
+PASS actual installer reinstall-preserved-directory excludes setup-only file SETUP-RUNTIME.cmd
+PASS actual installer reinstall-preserved-directory excludes setup-only file setup/install-support.ps1
+PASS actual installer reinstall-preserved-directory excludes setup-only file setup/RECOVERY.md
+PASS actual installer reinstall-preserved-directory excludes setup-only file START-HERE.txt
+PASS actual installer reinstall-preserved-directory excludes setup-only file VideoProcessor.cfg.example
+PASS actual installer reinstall-preserved-directory leaves no prerequisites directory
+PASS actual installer reinstall-preserved-directory leaves no setup directory
+PASS actual installer reinstall-preserved-directory leaves no .vp-installer-backups directory
+PASS actual installer reinstall-preserved-directory retains user guide/license docs/CONFIGURATION.html
+PASS actual installer reinstall-preserved-directory retains user guide/license docs/VideoProcessor_NLS_Configuration_Guide.pdf
+PASS actual installer reinstall-preserved-directory retains user guide/license LICENSE.txt
+PASS actual installer reinstall-preserved-directory retains user guide/license vprenderer/third_party_licenses/libplacebo-LICENSE.txt
+PASS actual installer reinstall-preserved-directory provides Uninstall VideoProcessor shortcut
+PASS actual installer reinstall-preserved-directory shortcut targets registered uninstaller
+PASS actual installer reinstall-preserved-directory hides internal E:\codex\videoprocessor\magewell-optional\artifacts\magewell-beta-qa-61fb90ad\artifacts\installer-e2e-e667e1ba00a14e8a8399d0793a359841\Custom VP space\unins001.exe
+PASS actual installer reinstall-preserved-directory hides internal E:\codex\videoprocessor\magewell-optional\artifacts\magewell-beta-qa-61fb90ad\artifacts\installer-e2e-e667e1ba00a14e8a8399d0793a359841\Custom VP space\unins001.dat
+PASS installer creates no desktop files
+PASS actual installer reinstall-preserved-directory has one uninstall entry
+PASS reinstall after uninstall preserves shaders\private.hlsl
+PASS reinstall after uninstall preserves luts\private.cube
+PASS reinstall after uninstall preserves VideoProcessor.state
+PASS reinstall after uninstall preserves shaders\NLS.glsl
+PASS reinstall after uninstall preserves VideoProcessor.cfg
+PASS reinstall after uninstall preserves private.txt
+PASS reinstall after uninstall preserves logs\operator.log
+PASS manual folder deletion leaves remembered registration
+PASS actual installer repair-manually-deleted-folder exit zero
+PASS actual installer repair-manually-deleted-folder uses original custom directory
+PASS actual installer repair-manually-deleted-folder managed hashes match, including host/renderer
+PASS actual installer repair-manually-deleted-folder excludes setup-only file docs/REQ-006-sdr-transfer-implementation.md
+PASS actual installer repair-manually-deleted-folder excludes setup-only file docs/VP-0174-config-ui.md
+PASS actual installer repair-manually-deleted-folder excludes setup-only file prerequisites/runtime-common.ps1
+PASS actual installer repair-manually-deleted-folder excludes setup-only file prerequisites/runtime-requirement.json
+PASS actual installer repair-manually-deleted-folder excludes setup-only file prerequisites/setup-runtime.ps1
+PASS actual installer repair-manually-deleted-folder excludes setup-only file prerequisites/vc_redist.x64.exe
+PASS actual installer repair-manually-deleted-folder excludes setup-only file RELEASE-LAYOUT.md
+PASS actual installer repair-manually-deleted-folder excludes setup-only file RELEASE-MANIFEST.json
+PASS actual installer repair-manually-deleted-folder excludes setup-only file SETUP-RUNTIME.cmd
+PASS actual installer repair-manually-deleted-folder excludes setup-only file setup/install-support.ps1
+PASS actual installer repair-manually-deleted-folder excludes setup-only file setup/RECOVERY.md
+PASS actual installer repair-manually-deleted-folder excludes setup-only file START-HERE.txt
+PASS actual installer repair-manually-deleted-folder excludes setup-only file VideoProcessor.cfg.example
+PASS actual installer repair-manually-deleted-folder leaves no prerequisites directory
+PASS actual installer repair-manually-deleted-folder leaves no setup directory
+PASS actual installer repair-manually-deleted-folder leaves no .vp-installer-backups directory
+PASS actual installer repair-manually-deleted-folder retains user guide/license docs/CONFIGURATION.html
+PASS actual installer repair-manually-deleted-folder retains user guide/license docs/VideoProcessor_NLS_Configuration_Guide.pdf
+PASS actual installer repair-manually-deleted-folder retains user guide/license LICENSE.txt
+PASS actual installer repair-manually-deleted-folder retains user guide/license vprenderer/third_party_licenses/libplacebo-LICENSE.txt
+PASS actual installer repair-manually-deleted-folder provides Uninstall VideoProcessor shortcut
+PASS actual installer repair-manually-deleted-folder shortcut targets registered uninstaller
+PASS actual installer repair-manually-deleted-folder hides internal E:\codex\videoprocessor\magewell-optional\artifacts\magewell-beta-qa-61fb90ad\artifacts\installer-e2e-e667e1ba00a14e8a8399d0793a359841\Custom VP space\unins000.exe
+PASS actual installer repair-manually-deleted-folder hides internal E:\codex\videoprocessor\magewell-optional\artifacts\magewell-beta-qa-61fb90ad\artifacts\installer-e2e-e667e1ba00a14e8a8399d0793a359841\Custom VP space\unins000.dat
+PASS installer creates no desktop files
+PASS actual installer repair-manually-deleted-folder has one uninstall entry
+PASS repair seeds configuration when no file survives
+PASS test installation registration cleaned up
+225 actual-installer checks passed. Logs and retained data: E:\codex\videoprocessor\magewell-optional\artifacts\magewell-beta-qa-61fb90ad\artifacts\installer-e2e-e667e1ba00a14e8a8399d0793a359841
