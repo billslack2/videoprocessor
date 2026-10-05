@@ -16,3 +16,5 @@ Unsigned distribution. Clean Windows without Visual Studio/runtime, interactive 
 See validation/release-receipt.json, validation/deployment.json and validation/installer-lifecycle.log for exact evidence.
 
 [Setup](E:/codex/releases/magewell-beta-61fb90ad-20261005/VideoProcessorSetup-1.3.005-beta-61fb90ad038e.exe) · [ZIP](E:/codex/releases/magewell-beta-61fb90ad-20261005/VideoProcessor-1.3.005-beta-61fb90ad038e-x64-Portable.zip) · [Receipt](release-receipt.json) · [Deployment](deployment.json).
+
+Superseded for this request by [final 554b9f98 evidence](../magewell-beta-554b9f98-20261005/README.md) after beta advanced during packaging.
