@@ -260,3 +260,14 @@ E:\codex\releases\VideoProcessor-Magewell-Anamorphic-b09988946c1e-20261005
 No deployment or running process changed. Extract into a separate folder;
 fresh users may copy the sample to VideoProcessor.cfg, existing users preserve
 their own configuration. Story remains Review for tester validation.
+
+## Beta merge — 2026-10-05
+User authorized push and merge. PR #130:
+https://github.com/billslack2/videoprocessor/pull/130
+Merged the tested combined branch b09988946c1e49086d73c76d7efaefb44d36f28d
+into the discovered current beta v1.3.005-beta, producing
+61fb90ad038e5b9a17c33245c97e2bca42641754. Verified the fetched merged tree is
+identical to the tested source (1,943 tests passed). Includes anamorphic/NLS,
+optional Magewell updates and portable sample configuration enforcement.
+No deployment or new package build performed. Existing b0998894 packages retain
+their accurate source identity. Remains Review pending physical tester acceptance.
