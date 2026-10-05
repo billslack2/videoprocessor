@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 #include <cstdint>
 
 namespace CpuFeatures
@@ -22,5 +22,21 @@ namespace CpuFeatures
             (cpu.leaf7Ebx & RequiredLeaf7) == RequiredLeaf7 &&
             (cpu.xcr0 & 6) == 6;
     }
+    struct Diagnostics
+    {
+        Snapshot cpu{};
+        bool xgetbvRead = false;
+        bool disabledByEnvironment = false;
+    };
+    constexpr bool CanReadXcr0(uint32_t leaf1Ecx) noexcept
+    {
+        constexpr uint32_t mask = (1u << 26) | (1u << 27);
+        return (leaf1Ecx & mask) == mask;
+    }
+    const Diagnostics& GetDiagnostics() noexcept;
     bool SupportsAvx2Kernels() noexcept;
+    // Explicit diagnostic only: tries an AVX2 instruction even when dispatch is
+    // disabled. A narrow SEH boundary catches only illegal instructions.
+    enum class ProbeResult { Pass = 0, Unsupported = 2, IncorrectResult = 3 };
+    ProbeResult RunAvx2Probe() noexcept;
 }

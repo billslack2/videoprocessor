@@ -68,7 +68,7 @@ class Avx2BoundaryTests(unittest.TestCase):
                     self.assertNotIn(setting.text, ("AdvancedVectorExtensions2", "AdvancedVectorExtensions512"), str(path))
 
     def test_kernels_disable_ltcg_and_pch(self):
-        self.assertEqual(8, len(kernels()))
+        self.assertEqual(9, len(kernels()))
         for item in kernels():
             for name, value in (("EnableEnhancedInstructionSet", "AdvancedVectorExtensions2"),
                                 ("WholeProgramOptimization", "false"), ("PrecompiledHeader", "NotUsing")):
@@ -95,7 +95,7 @@ class Avx2BoundaryTests(unittest.TestCase):
     def test_release_objects_only_publish_dispatched_kernels(self):
         # Shared inline COMDAT helpers compiled for AVX2 must not be selected for
         # baseline callers by the linker. These are the only allowed functions.
-        allowed = re.compile(r"(?:^\?(?:ConvertAVX2|ConvertRowsAVX2|ConvertLimited10RowPairsAVX2|"
+        allowed = re.compile(r"(?:^\?(?:ExecuteAvx2Probe|ConvertAVX2|ConvertRowsAVX2|ConvertLimited10RowPairsAVX2|"
                              r"ConvertR12RowPairsAVX2|ProcessAdvancedSegmentAVX2)@|"
                              r"^\?\?\$(?:ProcessLineSegmentImpl|ConvertV210ToP010_SIMDImpl)@)")
         for item in kernels():
