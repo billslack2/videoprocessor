@@ -121,6 +121,70 @@ namespace Tests
 			Assert::AreEqual(10.0, snapshot.measuredDisplayHz, 0.001);
 		}
 
+		TEST_METHOD(RepeatedFrameStatisticsDoNotAdvanceWarming)
+		{
+			AlphaPresentationTelemetry telemetry;
+			telemetry.Observe(Sample(1, 100));
+			telemetry.Observe(Sample(2, 200));
+			telemetry.Observe(Sample(2, 200));
+			Assert::AreEqual(static_cast<uint32_t>(2),
+				telemetry.Snapshot().cadenceSamples);
+			Assert::IsTrue(telemetry.Snapshot().evidence ==
+				AlphaPresentationEvidence::Warming);
+			telemetry.Observe(Sample(3, 300));
+			Assert::AreEqual(static_cast<uint32_t>(3),
+				telemetry.Snapshot().cadenceSamples);
+		}
+
+		TEST_METHOD(RepeatedFrameStatisticsPreserveStableEvidence)
+		{
+			AlphaPresentationTelemetry telemetry;
+			for (uint32_t index = 1; index <= 10; ++index)
+				telemetry.Observe(Sample(index, index * 100));
+			telemetry.Observe(Sample(10, 1000));
+			Assert::IsTrue(telemetry.Snapshot().evidence ==
+				AlphaPresentationEvidence::Stable);
+			Assert::AreEqual(static_cast<uint32_t>(10),
+				telemetry.Snapshot().cadenceSamples);
+			telemetry.Observe(Sample(11, 1100));
+			Assert::IsTrue(telemetry.Snapshot().evidence ==
+				AlphaPresentationEvidence::Stable);
+			Assert::AreEqual(static_cast<uint32_t>(11),
+				telemetry.Snapshot().cadenceSamples);
+		}
+
+		TEST_METHOD(StaleFrameStatisticsEventuallyLoseStableEvidence)
+		{
+			AlphaPresentationTelemetry telemetry;
+			for (uint32_t index = 1; index <= 10; ++index)
+				telemetry.Observe(Sample(index, index * 100));
+			for (uint32_t duplicate = 0; duplicate < 17; ++duplicate)
+				telemetry.Observe(Sample(10, 1000));
+			Assert::IsTrue(telemetry.Snapshot().evidence ==
+				AlphaPresentationEvidence::Unavailable);
+			Assert::AreEqual(static_cast<uint32_t>(0),
+				telemetry.Snapshot().cadenceSamples);
+			telemetry.Observe(Sample(11, 1100));
+			Assert::IsTrue(telemetry.Snapshot().evidence ==
+				AlphaPresentationEvidence::Warming);
+			Assert::AreEqual(static_cast<uint32_t>(1),
+				telemetry.Snapshot().cadenceSamples);
+		}
+
+		TEST_METHOD(InconsistentFrameStatisticsStillInvalidateCadence)
+		{
+			AlphaPresentationTelemetry telemetry;
+			for (uint32_t index = 1; index <= 10; ++index)
+				telemetry.Observe(Sample(index, index * 100));
+			AlphaDxgiPresentationSample inconsistent = Sample(11, 1100);
+			inconsistent.syncRefreshCount = 10;
+			telemetry.Observe(inconsistent);
+			Assert::IsTrue(telemetry.Snapshot().evidence ==
+				AlphaPresentationEvidence::Disjoint);
+			Assert::AreEqual(static_cast<uint32_t>(0),
+				telemetry.Snapshot().cadenceSamples);
+		}
+
 		TEST_METHOD(AcceptsCadenceMatchingExpectedOutput)
 		{
 			AlphaPresentationTelemetry telemetry;

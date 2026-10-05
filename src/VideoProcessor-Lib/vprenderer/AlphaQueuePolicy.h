@@ -96,6 +96,20 @@ namespace AlphaQueuePolicy
 			queueDepth > HealthyLowWater(desired);
 	}
 
+	inline size_t ConversionPreparationDepth(size_t queueDepth,
+		size_t desiredDepth)
+	{
+		return std::min(queueDepth, NormalizeDesiredDepth(desiredDepth));
+	}
+
+	inline bool CanDequeuePrepared(size_t queueDepth, size_t desiredDepth,
+		bool startupPrefillPending, bool requiresConversion,
+		bool converted, bool conversionFailed)
+	{
+		return CanDequeue(queueDepth, desiredDepth, startupPrefillPending) &&
+			(!requiresConversion || converted || conversionFailed);
+	}
+
 	inline double ValidFrameRateOrDefault(double frameRateHz)
 	{
 		return frameRateHz >= 10.0 && frameRateHz <= 240.0 ?
