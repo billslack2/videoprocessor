@@ -8,6 +8,7 @@
 namespace
 {
 	constexpr uint32_t MIN_STABLE_SAMPLES = 8;
+	constexpr uint32_t MAX_DUPLICATE_OBSERVATIONS = 16;
 	constexpr double MIN_STABLE_SECONDS = 0.25;
 	constexpr double MAX_EXPECTED_RATE_RELATIVE_ERROR = 0.01;
 
@@ -35,6 +36,8 @@ void AlphaPresentationTelemetry::Reset(uint64_t generation)
 	m_lastPresentedSequence = 0;
 	m_lastPresentId = 0;
 	m_lastPresentRefresh = 0;
+	m_hasLastObservation = false;
+	m_duplicateObservations = 0;
 	m_timingStatus = AlphaPresentationTimingStatus::NoSwapchain;
 	m_frameStatisticsResult = 0;
 	ResetCadence(AlphaPresentationEvidence::Unavailable);
@@ -64,22 +67,47 @@ void AlphaPresentationTelemetry::Observe(
 	if (sample.disjoint)
 	{
 		ResetCadence(AlphaPresentationEvidence::Disjoint);
+		m_hasLastObservation = false;
+		m_duplicateObservations = 0;
 		return;
 	}
 	if (!sample.available || sample.qpcFrequency <= 0 || sample.syncQpc <= 0)
 	{
 		ResetCadence(AlphaPresentationEvidence::Unavailable);
+		m_hasLastObservation = false;
+		m_duplicateObservations = 0;
+		return;
+	}
+	// GetFrameStatistics can return the same latest displayed frame on several
+	// submissions. It supplies no new cadence interval, but is not a disjoint.
+	if (m_hasLastObservation &&
+		sample.presentCount == m_lastObservedSample.presentCount &&
+		sample.presentRefreshCount == m_lastObservedSample.presentRefreshCount &&
+		sample.syncRefreshCount == m_lastObservedSample.syncRefreshCount &&
+		sample.syncQpc == m_lastObservedSample.syncQpc &&
+		sample.qpcFrequency == m_lastObservedSample.qpcFrequency &&
+		sample.expectedDisplayHz == m_lastObservedSample.expectedDisplayHz)
+	{
+		if (m_duplicateObservations < MAX_DUPLICATE_OBSERVATIONS)
+			++m_duplicateObservations;
+		if (m_duplicateObservations >= MAX_DUPLICATE_OBSERVATIONS)
+			ResetCadence(AlphaPresentationEvidence::Unavailable);
+		return;
+	}
+	m_duplicateObservations = 0;
+
+	if (m_hasLastObservation &&
+		(sample.syncRefreshCount <= m_lastObservedSample.syncRefreshCount ||
+			sample.syncQpc <= m_lastObservedSample.syncQpc ||
+			sample.presentCount < m_lastObservedSample.presentCount ||
+			sample.presentRefreshCount <
+				m_lastObservedSample.presentRefreshCount))
+	{
+		ResetCadence(AlphaPresentationEvidence::Disjoint);
+		m_hasLastObservation = false;
 		return;
 	}
 	m_lastPresentId = sample.presentCount;
-
-	if (m_cadenceSamples != 0 &&
-		(sample.syncRefreshCount < m_lastSyncRefresh ||
-			sample.syncQpc <= m_lastSyncQpc))
-	{
-		ResetCadence(AlphaPresentationEvidence::Disjoint);
-		return;
-	}
 	if (m_cadenceSamples != 0 && sample.expectedDisplayHz >= 10.0)
 	{
 		const uint32_t intervalRefreshes =
@@ -95,6 +123,7 @@ void AlphaPresentationTelemetry::Observe(
 				intervalHz, sample.expectedDisplayHz))
 			{
 				ResetCadence(AlphaPresentationEvidence::Disjoint);
+				m_hasLastObservation = false;
 				return;
 			}
 		}
@@ -142,7 +171,13 @@ void AlphaPresentationTelemetry::Observe(
 		else
 		{
 			ResetCadence(AlphaPresentationEvidence::Disjoint);
+			m_hasLastObservation = false;
 		}
+	}
+	if (m_evidence != AlphaPresentationEvidence::Disjoint)
+	{
+		m_lastObservedSample = sample;
+		m_hasLastObservation = true;
 	}
 }
 

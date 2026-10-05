@@ -144,6 +144,7 @@ private:
 		bool activePicturePreviewNearBlack = false;
 		AlphaSourceCrop::BufferedPictureExpansionProof bufferedPictureExpansion;
         GuardedRememberedEdgeReturnCertificate guardedRememberedReturn;
+		int64_t callbackQpc = 0;
 		int64_t enqueueQpc = 0;
 		bool cadenceRepeat = false;
 		uint64_t cadenceActionId = 0;
