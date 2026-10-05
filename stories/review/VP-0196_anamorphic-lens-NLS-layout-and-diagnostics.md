@@ -218,3 +218,45 @@ E:\codex\releases\VideoProcessor-Magewell-Anamorphic-18a3ea99da3b-20261005
   TESTING.txt and both testing/diagnostic guides.
 No deployment was changed or process stopped. Use a separate portable folder.
 Story remains Review for tester validation.
+
+## Updated Magewell rebuild and portable config enforcement — 2026-10-05
+User explicitly requested committing the local Magewell updates before rebuilding.
+Committed and pushed codex/magewell-optional at
+42bb002642eca668beebeaf0c80f88cabfb27023 (RGB12 compatibility conversion,
+format rejection, logging/profiling and tests). Merged into the combined branch
+codex/magewell-anamorphic-20261005 at
+b09988946c1e49086d73c76d7efaefb44d36f28d and pushed. Capture sources match
+42bb0026 and renderer sources match 0b41c322 exactly.
+
+The previous portable archive already contained root VideoProcessor.cfg.example
+(10,233 bytes). Installer seeds the active name; portable keeps the example name
+so upgrades do not overwrite user settings. Packaging commit d78f9d02 now enforces
+one nonempty root sample matching source SHA-256 and seed manifest metadata,
+rejects an active config, and blocks distribution on failure. Eight fixture
+checks cover valid, missing, empty, changed, nested, duplicate, active config
+and bad manifest cases. Updated repository AGENTS.md, installer documentation,
+and persistent vp-release skill/export workflow. Skill validation passed.
+
+Full x64 Release build succeeded. Initial suite passed 1,942/1,943: the unchanged
+DeckLink sustained conversion timing benchmark exceeded p95 during concurrent
+probe compilation. Preserved initial evidence; standalone benchmark passed.
+Reused verified Release binaries with unchanged hashes/source and reran the full
+workflow without concurrent compilation: 1,943/1,943 passed. All eight portable
+config checks, actual archive validation, installer support/identity and runtime
+packaging checks passed. Magewell PE checks have no vendor load-time imports;
+new-change source isolation used d78f9d02 (three Magewell files). Production
+no-card probe passed and unloaded runtime before Stop. Hardware capture, optical
+acceptance, clean Windows and interactive qualification remain pending; real
+installer lifecycle was not rerun. Packages remain unsigned.
+
+Verified packages, hashes and receipts:
+E:\codex\releases\VideoProcessor-Magewell-Anamorphic-b09988946c1e-20261005
+- VideoProcessorSetup-1.3.005-beta-b09988946c1e.exe
+  SHA256 9702721FF89D2DFB31EB65A1E7B1586598E67ABDE584568269F18C615BD97F05
+- VideoProcessor-1.3.005-beta-b09988946c1e-x64-Portable.zip
+  SHA256 88037FC18A5398FC9AE212788036EA4EE3C08AF12082899704575D11CA96CC41
+- validation/release-receipt.json, initial-failed-run evidence, Magewell logs,
+  TESTING.txt and capture/anamorphic diagnostic guides.
+No deployment or running process changed. Extract into a separate folder;
+fresh users may copy the sample to VideoProcessor.cfg, existing users preserve
+their own configuration. Story remains Review for tester validation.
