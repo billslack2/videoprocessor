@@ -2,6 +2,7 @@
 #include "CppUnitTest.h"
 
 #include <vprenderer/AlphaQueuePolicy.h>
+#include <vprenderer/AlphaConversionTimingWindow.h>
 
 #include <limits>
 #include <deque>
@@ -13,6 +14,27 @@ namespace Tests
 	TEST_CLASS(AlphaQueuePolicyTests)
 	{
 	public:
+		TEST_METHOD(ConversionTimingWindowReportsWorkerCostAndExpiresOldFrames)
+		{
+			AlphaConversionTimingWindow timing;
+			double latest = 0.0;
+			double average = 0.0;
+			double peak = 0.0;
+			Assert::IsFalse(timing.Snapshot(1000, latest, average, peak));
+			timing.Record(1000, 2000.0);
+			timing.Record(2000, 4000.0);
+			Assert::IsTrue(timing.Snapshot(2000, latest, average, peak));
+			Assert::AreEqual(4000.0, latest);
+			Assert::AreEqual(3000.0, average);
+			Assert::AreEqual(4000.0, peak);
+			Assert::IsTrue(timing.Snapshot(11001, latest, average, peak));
+			Assert::AreEqual(4000.0, average);
+			Assert::IsFalse(timing.Snapshot(12001, latest, average, peak));
+			timing.Record(12001, 3000.0);
+			timing.Reset();
+			Assert::IsFalse(timing.Snapshot(12001, latest, average, peak));
+		}
+
 		TEST_METHOD(PreviewReportsPhysicalAvailabilityBeyondConfiguredBudget)
 		{
 			struct Frame { bool cadenceRepeat = false; };
@@ -149,6 +171,30 @@ namespace Tests
 			Assert::IsFalse(AlphaQueuePolicy::CanDequeue(3, 4, false));
 			Assert::IsTrue(AlphaQueuePolicy::CanDequeue(4, 4, false));
 			Assert::IsTrue(AlphaQueuePolicy::CanDequeue(1, 1, false));
+		}
+
+		TEST_METHOD(ConversionWorkerPreparesOnlyThePresentationWindow)
+		{
+			Assert::AreEqual<size_t>(0,
+				AlphaQueuePolicy::ConversionPreparationDepth(0, 9));
+			Assert::AreEqual<size_t>(5,
+				AlphaQueuePolicy::ConversionPreparationDepth(5, 9));
+			Assert::AreEqual<size_t>(9,
+				AlphaQueuePolicy::ConversionPreparationDepth(32, 9));
+		}
+
+		TEST_METHOD(DeliveryWaitsForPreparedHeadWithoutChangingReserve)
+		{
+			Assert::IsFalse(AlphaQueuePolicy::CanDequeuePrepared(
+				9, 9, false, true, false, false));
+			Assert::IsTrue(AlphaQueuePolicy::CanDequeuePrepared(
+				9, 9, false, true, true, false));
+			Assert::IsTrue(AlphaQueuePolicy::CanDequeuePrepared(
+				9, 9, false, true, false, true));
+			Assert::IsTrue(AlphaQueuePolicy::CanDequeuePrepared(
+				9, 9, false, false, false, false));
+			Assert::IsFalse(AlphaQueuePolicy::CanDequeuePrepared(
+				8, 9, false, true, true, false));
 		}
 
 		TEST_METHOD(RenderStallThresholdScalesWithFramePeriod)

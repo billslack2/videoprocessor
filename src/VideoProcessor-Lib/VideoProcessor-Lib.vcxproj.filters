@@ -90,6 +90,9 @@
     <ClInclude Include="vprenderer\\AlphaRenderLoadMeter.h">
       <Filter>Header Files\libplacebo</Filter>
     </ClInclude>
+    <ClInclude Include="vprenderer\\AlphaConversionTimingWindow.h">
+      <Filter>Header Files\libplacebo</Filter>
+    </ClInclude>
     <ClInclude Include="ProcessCpuUsageWindow.h">
       <Filter>Header Files</Filter>
     </ClInclude>

@@ -7,6 +7,8 @@
 #include <CropDiagnosticThrottle.h>
 #include <RememberedEdgeReturn.h>
 #include <vprenderer/BufferedPictureExpansion.h>
+#include <vprenderer/AlphaConversionTimingWindow.h>
+#include <video_frame_formatter/IVideoFrameFormatter.h>
 
 #include <atomic>
 #include <condition_variable>
@@ -131,6 +133,13 @@ private:
 	struct Impl;
 	struct QueuedFrame
 	{
+		struct ConvertedPayload
+		{
+			std::vector<BYTE> pixels;
+			VideoFrameFormatterOutputContract contract;
+			double conversionCpuMs = 0.0;
+			int64_t completedQpc = 0;
+		};
 		VideoFrame frame;
 		VideoStateComPtr state;
 		uint64_t generation = 0;
@@ -144,7 +153,11 @@ private:
 		bool activePicturePreviewNearBlack = false;
 		AlphaSourceCrop::BufferedPictureExpansionProof bufferedPictureExpansion;
         GuardedRememberedEdgeReturnCertificate guardedRememberedReturn;
+		int64_t callbackQpc = 0;
 		int64_t enqueueQpc = 0;
+		std::shared_ptr<const ConvertedPayload> converted;
+		bool conversionInProgress = false;
+		bool conversionFailed = false;
 		bool cadenceRepeat = false;
 		uint64_t cadenceActionId = 0;
 		uint64_t cadencePolicyGeneration = 0;
@@ -155,6 +168,9 @@ private:
 	};
 
 	void RenderLoop();
+	void ConversionLoop();
+	bool HasConversionWorkLocked() const;
+	std::shared_ptr<QueuedFrame::ConvertedPayload> AcquireConversionPayload();
 	void StopInternal(const std::function<void()>& drainAfterGraphStop);
 	void AnalyzeActivePictureLookahead(
 		std::vector<QueuedFrame>& previewFrames,
@@ -207,6 +223,11 @@ private:
 	bool m_queueDepthWindowHasSamples = false;
 	bool m_stopRequested = false;
 	std::thread m_renderThread;
+	std::thread m_conversionThread;
+	std::mutex m_conversionPoolMutex;
+	std::vector<std::vector<BYTE>> m_conversionBufferPool;
+	mutable std::mutex m_conversionTimingMutex;
+	AlphaConversionTimingWindow m_conversionTiming;
 	std::thread m_stopWorker;
 	std::atomic_bool m_stopWorkerStarted{false};
 
@@ -224,6 +245,7 @@ private:
 	std::atomic<double> m_presentationTargetLeadMs{0.0};
 	std::atomic<double> m_captureToPresentationTargetMs{0.0};
 	std::atomic<uint64_t> m_droppedFrames{0};
+	std::atomic<uint64_t> m_conversionFailures{0};
 	std::atomic<size_t> m_activePictureLookaheadFrames{0};
 	uint64_t m_activePictureLookaheadLoggedGeneration = 0;
 	size_t m_activePictureLookaheadLoggedAvailable = 0xff;

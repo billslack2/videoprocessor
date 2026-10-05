@@ -34,6 +34,8 @@
 #include <vprenderer/InwardCaptionEvidence.h>
 #include <vprenderer/HdrPeakAnalysisCrop.h>
 #include <vprenderer/NativeStatsOverlayPlacement.h>
+#include <vprenderer/AnamorphicPresentation.h>
+#include <vprenderer/NlsHookRecovery.h>
 #include <SceneDetector.h>
 #include <vprenderer/LibplaceboOutputPolicy.h>
 #include <HdrTargetLuminance.h>
@@ -66,6 +68,7 @@
 #include <chrono>
 #include <cctype>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
@@ -3413,6 +3416,14 @@ struct LibplaceboVideoRenderer::Impl
 	SceneDetector sceneDetector;
 	AlphaCadenceCorrectionPolicy cadenceCorrectionPolicy;
 	AlphaPresentationTelemetry presentationTelemetry;
+	uint64_t lastFramePacingGeneration = 0;
+	int64_t lastFramePacingSubmitQpc = 0;
+	int64_t lastFramePacingCallbackQpc = 0;
+	int64_t lastFramePacingEnqueueQpc = 0;
+	bool lastFramePacingStatsAvailable = false;
+	uint32_t lastFramePacingStatsPresentCount = 0;
+	uint32_t lastFramePacingStatsPresentRefresh = 0;
+	uint64_t nextFramePacingTraceTick = 0;
 	ScopedDisplayRefreshRate displayRefreshRate;
 	pl_log log = nullptr;
 	pl_d3d11 d3d11 = nullptr;
@@ -3490,9 +3501,10 @@ struct LibplaceboVideoRenderer::Impl
 	uint64_t displayLutNextVersionCheckTick = 0;
 	bool displayCalibrationContractLogged = false;
 	std::unique_ptr<IVideoFrameFormatter> formatter;
+	std::mutex formatterMutex;
 	VideoStateComPtr formatterState;
-	std::vector<BYTE> convertedFrame;
 	bool formatterContractLogged = false;
+	ColorSpace lastRenderedFormatterColorspace = ColorSpace::UNKNOWN;
 	std::mutex ingressStatusMutex;
 	std::string ingressStatus = "P010 (initializing)";
 	struct pl_render_params renderParams{};
@@ -3544,6 +3556,11 @@ struct LibplaceboVideoRenderer::Impl
 	const struct pl_hook* nlsHook = nullptr;
 	std::string nlsHookSignature;
 	std::string rejectedNlsHookSignature;
+	std::string runtimeRejectedNlsHookSignature;
+	uint64_t runtimeRejectedNlsSignature = 0;
+	std::string lastAnamorphicLayout;
+	uint64_t lastAnamorphicLayoutTick = 0;
+	uint64_t anamorphicSuppressedLayouts = 0;
 	std::string activeNlsShaderPath;
 	std::string lastNlsHookBindingPolicy;
 	struct pl_color_map_params colorMapParams{};
@@ -7046,11 +7063,11 @@ struct LibplaceboVideoRenderer::Impl
 
 		if (!IsNativeRgbUpload(state->videoFrameEncoding, videoConversionOverride))
 		{
+			std::lock_guard<std::mutex> formatterGuard(formatterMutex);
 			formatter = CreateAlphaFormatter(state->videoFrameEncoding,
 				videoConversionOverride);
 			formatter->OnVideoState(state);
 			formatterState = state;
-			convertedFrame.resize(static_cast<size_t>(formatter->GetOutFrameSize()));
 		}
 		LoadDisplayLut(settings);
 		ConfigureRenderParams(settings, "renderer initialization");
@@ -7603,6 +7620,9 @@ struct LibplaceboVideoRenderer::Impl
 		nlsDecision = {};
 		nlsHookSignature.clear();
 		rejectedNlsHookSignature.clear();
+		NlsHookRecovery::ResetFailedHook(renderer, runtimeRejectedNlsSignature);
+		runtimeRejectedNlsSignature = 0;
+		runtimeRejectedNlsHookSignature.clear();
 		{
 			std::lock_guard<std::mutex> guard(shaderStatusMutex);
 			activeNlsShaderPath.clear();
@@ -7857,6 +7877,8 @@ struct LibplaceboVideoRenderer::Impl
 		const std::map<std::string, std::string> parameters =
 			FixedNlsParameters(nlsRule);
 		const std::string hookKey = NlsHookKey(nlsRule, parameters);
+		if (runtimeRejectedNlsHookSignature == hookKey)
+			return false;
 		if (nlsHook && nlsHookSignature == hookKey)
 		{
 			NlsHookMappingState binding;
@@ -9958,17 +9980,20 @@ struct LibplaceboVideoRenderer::Impl
 	bool RenderLocked(
 		const VideoFrame& videoFrame,
 		VideoStateComPtr& statePtr,
+		const std::shared_ptr<const QueuedFrame::ConvertedPayload>& convertedPayload,
 		uint64_t frameGeneration,
 		uint64_t sourceSequence,
 		const ActivePictureFrameIdentity& activePictureIdentity,
 		const ActivePictureFrameDecision* activePicturePreviewDecision,
 		const AlphaSourceCrop::BufferedPictureExpansionProof* bufferedExpansion,
         const GuardedRememberedEdgeReturnCertificate* guardedReturn,
+		int64_t callbackQpc,
 		int64_t enqueueQpc,
 		int64_t dequeueQpc,
 		size_t queueDepthAfterDequeue,
 		size_t desiredQueueDepth,
 		double oldestQueuedAgeMs,
+		const AlphaPreRenderTimings& preRenderTimings,
 		bool cadenceRepeat,
 		double captureRateHz,
 		bool configuredScreenActive,
@@ -10130,23 +10155,19 @@ struct LibplaceboVideoRenderer::Impl
 		const BYTE* uvPixels = nullptr;
 		VideoFrameFormatterOutputContract formattedContract;
 		AnalysisLumaSource analysisSource;
-		bool formatterStateChanged = false;
 		bool logFormatterContract = false;
+		const double conversionCpuMs = convertedPayload ?
+			convertedPayload->conversionCpuMs : 0.0;
 		if (!nativeRgbUpload)
 		{
-			if (!formatterState || formatterState->colorspace != state.colorspace)
-			{
-				formatter->OnVideoState(statePtr);
-				formatterState = statePtr;
-				formatterStateChanged = true;
-			}
-			if (!formatter->FormatVideoFrame(videoFrame, convertedFrame.data()))
+			if (!convertedPayload || convertedPayload->pixels.empty())
 				return false;
-			formattedContract = formatter->GetOutputContract();
+			formattedContract = convertedPayload->contract;
 			if (!formattedContract.IsValid())
 				throw std::runtime_error(
 					"Alpha formatter did not declare its output range contract");
-			logFormatterContract = !formatterContractLogged || formatterStateChanged;
+			logFormatterContract = !formatterContractLogged ||
+				lastRenderedFormatterColorspace != state.colorspace;
 			if (logFormatterContract)
 			{
 				const char* const range =
@@ -10159,8 +10180,9 @@ struct LibplaceboVideoRenderer::Impl
 					static_cast<unsigned>(formattedContract.colorDepth),
 					static_cast<unsigned>(formattedContract.bitShift), width, height);
 				formatterContractLogged = true;
+				lastRenderedFormatterColorspace = state.colorspace;
 			}
-			yPixels = convertedFrame.data();
+			yPixels = convertedPayload->pixels.data();
 			uvPixels = yPixels + p010RowBytes * static_cast<size_t>(height);
 			if (logFormatterContract && outputDiagnostics)
 			{
@@ -10183,7 +10205,7 @@ struct LibplaceboVideoRenderer::Impl
 		else
 		{
 			analysisSource = {
-				yPixels, convertedFrame.size(), width, height, p010RowBytes,
+				yPixels, convertedPayload->pixels.size(), width, height, p010RowBytes,
 				p010RowBytes, lossless422Upload ? AnalysisLumaFormat::P210 :
 				AnalysisLumaFormat::P010,
 				state.videoFrameEncoding, state.colorspace, frameGeneration
@@ -10281,9 +10303,9 @@ struct LibplaceboVideoRenderer::Impl
 				outputClient.right - outputClient.left) /
 				(outputClient.bottom - outputClient.top);
 		}
-		const double frameNlsTargetAspect = ResolveNlsTargetAspect(
+		const double frameNlsTargetAspect = AnamorphicPresentation::PhysicalTarget(
 			configuredScreenActive, configuredScreenAspect,
-			outputPanelAspect);
+			outputPanelAspect, anamorphicScale);
 		const bool retainedNlsModeAvailable =
 			nlsDecisionBeforeSceneAnalysis.mode != NlsMappingMode::WAITING &&
 			nlsDecisionBeforeSceneAnalysis.mode != NlsMappingMode::OFF;
@@ -11241,6 +11263,8 @@ struct LibplaceboVideoRenderer::Impl
 			outputContractLogged = true;
 		}
 
+		AnamorphicPresentation::Screen frameScreen;
+		pl_rect2df linearFallbackCrop{};
 		const double nominalSourceRateHz = state.displayMode->RefreshRateHz();
 		auto configureViewport =
 			[this, &image, width, height, frameGeneration, sourceSequence,
@@ -11251,7 +11275,7 @@ struct LibplaceboVideoRenderer::Impl
 			 forceSubtitleBarAnalysis, inwardCaptionProtected,
 			 currentBarAuthority, sceneBarAuthority, heldBarAnalysisAuthority,
 			 subtitleBarAuthority,
-			 &hdrPeakAnalysisMotionProtectionPixels](
+			 &hdrPeakAnalysisMotionProtectionPixels, &frameScreen, &linearFallbackCrop](
 				struct pl_frame& source,
 				struct pl_frame& target,
 				bool configuredScreenActive,
@@ -12324,8 +12348,8 @@ struct LibplaceboVideoRenderer::Impl
 
 
 			const double panelTargetAspect = pl_rect2df_aspect(&target.crop);
-			const double finalTargetAspect = ResolveNlsTargetAspect(
-				configuredScreenActive, configuredScreenAspect, panelTargetAspect);
+			const double finalTargetAspect = AnamorphicPresentation::PhysicalTarget(
+				configuredScreenActive, configuredScreenAspect, panelTargetAspect, anamorphicScale);
 			const bool nlsPresentationFailOpen = nlsRequested &&
 				(cropInput.presentationFailOpen ||
                  (cropInput.movingPictureTransition &&
@@ -12897,23 +12921,6 @@ struct LibplaceboVideoRenderer::Impl
 				if (trustedActivePicture)
 					*trustedActivePicture = true;
 			}
-			auto fitTargetToAspect = [&target](double aspect,
-				AlphaSourceCrop::VerticalPictureAlignment alignment)
-			{
-				const AlphaSourceCrop::PresentationRect available = {
-					target.crop.x0, target.crop.y0,
-					target.crop.x1, target.crop.y1 };
-				const AlphaSourceCrop::CenteredFitDecision fit =
-					AlphaSourceCrop::FitAspect(aspect, available, alignment);
-				if (fit.valid)
-				{
-					target.crop.x0 = static_cast<float>(fit.picture.left);
-					target.crop.y0 = static_cast<float>(fit.picture.top);
-					target.crop.x1 = static_cast<float>(fit.picture.right);
-					target.crop.y1 = static_cast<float>(fit.picture.bottom);
-				}
-				return fit;
-			};
 			// This is the sole per-frame NLS authority. Derive every mapping input
 			// from the exact source rectangle selected above, then publish crop,
 			// hook, runtime geometry, status, and destination layout as one decision.
@@ -12970,34 +12977,21 @@ struct LibplaceboVideoRenderer::Impl
 				presentationSourceGeometry.aspect;
 			const bool finalBoundsAuthoritative = !nlsPresentationFailOpen &&
 				finalSourceGeometry.valid && presentationSourceGeometry.valid;
-			const double screenLayoutAspect = configuredScreenActive || nlsRequested
-				? finalTargetAspect : pl_rect2df_aspect(&target.crop);
-			// The configured screen is itself a fitted destination rectangle. Apply
-			// the resting alignment here as well as to the later linear picture fit:
-			// active NLS returns after this stage, so centering this fit would make
-			// top/bottom a no-op for the complete NLS presentation.
-			const AlphaSourceCrop::PresentationRect screenAvailable = {
-				target.crop.x0, target.crop.y0, target.crop.x1, target.crop.y1 };
-			const AlphaSourceCrop::CenteredFitDecision screenFit =
-				fitTargetToAspect(screenLayoutAspect,
-					ResolveVerticalPictureAlignment(verticalAlignment));
-			int effectiveScreenEdgePadding = 0;
-			if (screenFit.valid &&
-				screenFit.unusedAxis == AlphaSourceCrop::UnusedSpaceAxis::VERTICAL &&
-				verticalAlignment != "center" && screenEdgePadding > 0)
-			{
-				const double availableSlack = verticalAlignment == "top"
-					? screenAvailable.bottom - screenFit.picture.bottom
-					: screenFit.picture.top - screenAvailable.top;
-				effectiveScreenEdgePadding = std::max(0, std::min(screenEdgePadding,
-					static_cast<int>(std::floor(availableSlack))));
-				const float shift = static_cast<float>(verticalAlignment == "top"
-					? effectiveScreenEdgePadding : -effectiveScreenEdgePadding);
-				target.crop.y0 += shift;
-				target.crop.y1 += shift;
-			}
-			const AlphaSourceCrop::PresentationRect finalScreen = {
-				target.crop.x0, target.crop.y0, target.crop.x1, target.crop.y1 };
+            const AlphaSourceCrop::PresentationRect screenAvailable = {
+                target.crop.x0, target.crop.y0, target.crop.x1, target.crop.y1 };
+            frameScreen = AnamorphicPresentation::FitScreen(configuredScreenActive,
+                configuredScreenAspect, anamorphicScale, screenAvailable,
+                ResolveVerticalPictureAlignment(verticalAlignment), screenEdgePadding);
+            const auto finalScreen = frameScreen.rect;
+            const int effectiveScreenEdgePadding = frameScreen.effectivePadding;
+            target.crop = { static_cast<float>(finalScreen.left), static_cast<float>(finalScreen.top),
+                static_cast<float>(finalScreen.right), static_cast<float>(finalScreen.bottom) };
+            const auto linearFit = AnamorphicPresentation::FitPicture(
+                pl_rect2df_aspect(&source.crop), anamorphicScale, frameScreen,
+                ResolveVerticalPictureAlignment(verticalAlignment));
+            linearFallbackCrop = { static_cast<float>(linearFit.picture.left),
+                static_cast<float>(linearFit.picture.top), static_cast<float>(linearFit.picture.right),
+                static_cast<float>(linearFit.picture.bottom) };
 			auto publishFinalLayout = [&](AlphaSourceCrop::UnusedSpaceAxis axis,
 				const char* mapping)
 			{
@@ -13147,11 +13141,11 @@ struct LibplaceboVideoRenderer::Impl
 				if (finalNlsDecision.mode == NlsMappingMode::ACTIVE &&
 					!EnsureNlsHook(finalNlsDecision))
 				{
-					finalNlsDecision = {};
-					finalNlsDecision.sourceAspect = finalSourceAspect;
-					finalNlsDecision.targetAspect = finalTargetAspect;
-					finalNlsDecision.reason =
-						"GLSL hook is unavailable; preserving safe passthrough";
+					finalNlsDecision.mode = NlsMappingMode::SAFE_FIT;
+                    finalNlsDecision.stretchRatio = 1.0;
+                    finalNlsDecision.reason = runtimeRejectedNlsHookSignature.empty() ?
+                        "GLSL hook is unavailable; lens-aware linear fallback" :
+                        "runtime hook failure is latched; lens-aware linear fallback";
 				}
 				MadVRShaderLoader::SetRuntimeNlsDecision(finalNlsDecision);
 				if (finalNlsDecision.mode == NlsMappingMode::ACTIVE)
@@ -13304,22 +13298,14 @@ struct LibplaceboVideoRenderer::Impl
 				// ordinary centered scaling inside the target viewport. Otherwise a
 				// A source classified within target tolerance would otherwise still be
 				// stretched vertically despite having no active NLS hook.
-				const AlphaSourceCrop::CenteredFitDecision pictureFit =
-					fitTargetToAspect(
-						AlphaSourceCrop::ApplyAnamorphicLensCompensation(
-							pl_rect2df_aspect(&source.crop), anamorphicScale),
-						ResolveVerticalPictureAlignment(verticalAlignment));
-				publishFinalLayout(pictureFit.unusedAxis, "linear-nls-fallback");
+                target.crop = linearFallbackCrop;
+                publishFinalLayout(linearFit.unusedAxis, "linear-nls-fallback");
 				return;
 			}
 
 			// NLS is off: use the same final source rectangle with ordinary scaling.
-			const AlphaSourceCrop::CenteredFitDecision pictureFit =
-				fitTargetToAspect(
-					AlphaSourceCrop::ApplyAnamorphicLensCompensation(
-						pl_rect2df_aspect(&source.crop), anamorphicScale),
-					ResolveVerticalPictureAlignment(verticalAlignment));
-			publishFinalLayout(pictureFit.unusedAxis, "linear");
+            target.crop = linearFallbackCrop;
+            publishFinalLayout(linearFit.unusedAxis, "linear");
 			// Never apply subtitle translation to the fitted destination. Moving
 			// target.crop cannot reveal source pixels; it only clips one edge and
 			// leaves an unequal gap at the other. Unsupported overlay evidence is
@@ -13488,6 +13474,11 @@ struct LibplaceboVideoRenderer::Impl
 		struct pl_overlay overlays[3]{};
 		struct pl_overlay_part overlayParts[3]{};
 		int overlayCount = 0;
+		auto assembleOverlays = [&]()
+		{
+			overlayCount = 0;
+			target.overlays = nullptr;
+			target.num_overlays = 0;
 		if (statsOverlayTexture)
 		{
 			pl_overlay& overlay = overlays[overlayCount];
@@ -13512,7 +13503,7 @@ struct LibplaceboVideoRenderer::Impl
 			const NativeStatsOverlayPlacement::Result placement =
 				NativeStatsOverlayPlacement::Place(
 					pictureRect, outputRect,
-					static_cast<float>(statsOverlayTexture->params.w),
+					AnamorphicPresentation::OverlayWidth(static_cast<float>(statsOverlayTexture->params.w), anamorphicScale),
 					static_cast<float>(statsOverlayTexture->params.h));
 			overlayPart.dst = {
 				placement.panel.left, placement.panel.top,
@@ -13585,7 +13576,7 @@ struct LibplaceboVideoRenderer::Impl
 			const NativeStatsOverlayPlacement::Result placement =
 				NativeStatsOverlayPlacement::PlaceTopRight(
 					pictureRect, outputRect,
-					static_cast<float>(sweepOverlayTexture->params.w),
+					AnamorphicPresentation::OverlayWidth(static_cast<float>(sweepOverlayTexture->params.w), anamorphicScale),
 					static_cast<float>(sweepOverlayTexture->params.h));
 			overlayPart.dst = { placement.panel.left, placement.panel.top,
 				placement.panel.right, placement.panel.bottom };
@@ -13656,7 +13647,7 @@ struct LibplaceboVideoRenderer::Impl
 			const NativeStatsOverlayPlacement::Result placement =
 				NativeStatsOverlayPlacement::PlaceTopLeft(
 					cropLocalPicture, cropLocalOutput,
-					static_cast<float>(profileOverlayTexture->params.w) *
+					AnamorphicPresentation::OverlayWidth(static_cast<float>(profileOverlayTexture->params.w), anamorphicScale) *
 						profileScale,
 					static_cast<float>(profileOverlayTexture->params.h) *
 						profileScale,
@@ -13713,6 +13704,8 @@ struct LibplaceboVideoRenderer::Impl
 			target.overlays = overlays;
 			target.num_overlays = overlayCount;
 		}
+		};
+		assembleOverlays();
 		const SteadyClock::time_point renderStart = SteadyClock::now();
 		const bool targetLutApplied =
 			target.lut == displayLut && target.lut_type == PL_LUT_NORMALIZED;
@@ -13725,14 +13718,66 @@ struct LibplaceboVideoRenderer::Impl
 			&originalPrPassAccumulator : nullptr;
 		frameGpuTiming.BeginStage(
 			AlphaD3D11FrameGpuTimer::Stage::CoreRender);
-		bool rendered = false;
-		rendered = pl_render_image(
-			renderer,
-			&renderImage,
-			&target,
-			&renderParams);
+        const pl_hook* submittedNls = renderParams.num_hooks == 1 ? nlsHook : nullptr;
+        const auto hookRender = NlsHookRecovery::Render(renderer, d3d11->gpu,
+            renderImage, target, baseTarget, renderParams, submittedNls, [&]()
+            {
+                runtimeRejectedNlsHookSignature = nlsHookSignature;
+                runtimeRejectedNlsSignature = nlsHook->signature;
+                target.crop = linearFallbackCrop;
+                nlsDecision.mode = NlsMappingMode::SAFE_FIT;
+                nlsDecision.stretchRatio = 1.0;
+                nlsDecision.reason = "runtime NLS hook disabled; lens-aware linear fallback";
+                MadVRShaderLoader::SetRuntimeNlsDecision(nlsDecision);
+                MadVRShaderLoader::SetRuntimeShaderSelection(requestedShaderSelector,
+                    requestedShaderSelector, nlsDecision.mode);
+                SetShaderStatus("NLS: Safe fit (hook failure)");
+                assembleOverlays();
+            });
+        bool rendered = hookRender.rendered;
+        if (hookRender.retried)
+            DebugLog::Log("VP anamorphic hook recovery: schema=1 sequence=%llu generation=%llu hook=%llu errors=0x%x retry=1 rendered=%d lens=%.6f latch=until_shader_selection_change",
+                sourceSequence, frameGeneration, hookRender.failedSignature, hookRender.errors,
+                rendered ? 1 : 0, anamorphicScale);
+
 		frameGpuTiming.EndStage();
 		frameGpuTiming.EndRender();
+        // Final submitted geometry, bounded to 4 changes/second and a 10s
+        // heartbeat for lens users. Sequence is correlation, never the key.
+        std::ostringstream layoutKey;
+        layoutKey << frameGeneration << '|' << viewportRequestSerial << '|' << width << 'x' << height
+            << '|' << configuredScreenActive << '|' << frameScreen.physicalAspect << '|' << anamorphicScale
+            << '|' << renderImage.crop.x0 << ',' << renderImage.crop.y0 << ',' << renderImage.crop.x1 << ',' << renderImage.crop.y1
+            << '|' << target.crop.x0 << ',' << target.crop.y0 << ',' << target.crop.x1 << ',' << target.crop.y1
+            << '|' << baseTarget.crop.x1 << ',' << baseTarget.crop.y1 << '|' << renderParams.num_hooks
+            << '|' << static_cast<int>(nlsDecision.mode) << '|' << runtimeRejectedNlsHookSignature << '|' << rendered;
+        const uint64_t layoutNow = GetTickCount64();
+        const bool layoutChanged = layoutKey.str() != lastAnamorphicLayout;
+        if (lastAnamorphicLayout.empty() || hookRender.retried ||
+            (layoutChanged && layoutNow - lastAnamorphicLayoutTick >= 250) ||
+            (anamorphicScale != 1.0 && layoutNow - lastAnamorphicLayoutTick >= 10000))
+        {
+            DebugLog::Log("VP anamorphic layout: schema=1 sequence=%llu generation=%llu viewport=%llu configured=%d raster=%dx%d output=%.0fx%.0f source=%.2f,%.2f-%.2f,%.2f content_aspect=%.6f physical_screen=%.6f raster_screen=%.6f lens=%.6f screen=%.2f,%.2f-%.2f,%.2f picture=%.2f,%.2f-%.2f,%.2f output_margins=%.2f,%.2f,%.2f,%.2f screen_margins=%.2f,%.2f,%.2f,%.2f nls=%s hook_active=%d hook_latched=%d retry=%d rendered=%d alignment=%s padding=%d/%d overlays=%d suppressed=%llu reason=\"%s\"",
+                sourceSequence, frameGeneration, viewportRequestSerial, configuredScreenActive ? 1 : 0,
+                width, height, baseTarget.crop.x1-baseTarget.crop.x0, baseTarget.crop.y1-baseTarget.crop.y0,
+                renderImage.crop.x0, renderImage.crop.y0, renderImage.crop.x1, renderImage.crop.y1,
+                pl_rect2df_aspect(&renderImage.crop), frameScreen.physicalAspect, frameScreen.rasterAspect, anamorphicScale,
+                frameScreen.rect.left, frameScreen.rect.top, frameScreen.rect.right, frameScreen.rect.bottom,
+                target.crop.x0, target.crop.y0, target.crop.x1, target.crop.y1,
+                target.crop.x0-baseTarget.crop.x0, target.crop.y0-baseTarget.crop.y0,
+                baseTarget.crop.x1-target.crop.x1, baseTarget.crop.y1-target.crop.y1,
+                target.crop.x0-frameScreen.rect.left, target.crop.y0-frameScreen.rect.top,
+                frameScreen.rect.right-target.crop.x1, frameScreen.rect.bottom-target.crop.y1,
+                nlsRequested ? NlsMappingModeName(nlsDecision.mode) : "off", renderParams.num_hooks,
+                runtimeRejectedNlsHookSignature.empty() ? 0 : 1, hookRender.retried ? 1 : 0, rendered ? 1 : 0,
+                verticalAlignment.c_str(), screenEdgePadding, frameScreen.effectivePadding, target.num_overlays,
+                anamorphicSuppressedLayouts, nlsRequested ? nlsDecision.reason.c_str() : "ordinary lens-aware fit");
+            lastAnamorphicLayout = layoutKey.str();
+            lastAnamorphicLayoutTick = layoutNow;
+            anamorphicSuppressedLayouts = 0;
+        }
+        else if (layoutChanged) ++anamorphicSuppressedLayouts;
+
 		timerSuspension.Resume();
 		renderParams.info_callback = nullptr;
 		renderParams.info_priv = nullptr;
@@ -13809,6 +13854,15 @@ struct LibplaceboVideoRenderer::Impl
 				else
 					--diagnosticReadbackFramesRemaining;
 			}
+            if (!rendered)
+            {
+                // The pinned API requires consuming every acquired frame. Clear
+                // failed/partial output before submission; never show a failed
+                // NLS attempt. VP-owned presentation instead retains its old frame.
+                pl_frame_clear(d3d11->gpu, &baseTarget, black);
+                DebugLog::Log("VP anamorphic render failure: schema=1 sequence=%llu generation=%llu recovery=%d present_policy=black_clear consume_acquired_frame=1",
+                    sourceSequence, frameGeneration, hookRender.retried ? 1 : 0);
+            }
 			submitted = pl_swapchain_submit_frame(swapchain);
 			if (submitted)
 				pl_swapchain_swap_buffers(swapchain);
@@ -13834,14 +13888,21 @@ struct LibplaceboVideoRenderer::Impl
 			AlphaPresentationRecord record;
 			record.generation = frameGeneration;
 			record.sourceSequence = sourceSequence;
+			record.sourceFrameNumber = videoFrame.GetCounter();
 			record.captureTimestamp = videoFrame.GetTimingTimestamp();
+			record.callbackQpc = callbackQpc;
 			record.enqueueQpc = enqueueQpc;
 			record.dequeueQpc = dequeueQpc;
 			record.submitQpc = swapStartQpc;
 			record.queueDepthAfterDequeue = queueDepthAfterDequeue;
 			record.oldestQueuedAgeMs = oldestQueuedAgeMs;
 			record.renderMs = renderMs;
+			record.conversionCpuMs = conversionCpuMs;
+			record.sourceUploadCpuMs = sourceUploadCpuLastMs;
+			record.nativeRgbUpload = nativeRgbUpload;
 			record.swapBlockMs = swapBlockMs;
+			record.preRender = preRenderTimings;
+			record.cadenceRepeat = cadenceRepeat;
 			record.releaseReason = AlphaSourceReleaseReason::Submitted;
 
 			AlphaDxgiPresentationSample sample;
@@ -13894,10 +13955,186 @@ struct LibplaceboVideoRenderer::Impl
 						: AlphaPresentationTimingStatus::FrameStatisticsFailed;
 				}
 			}
+			record.frameStatsAvailable = sample.available;
+			record.frameStatsDisjoint = sample.disjoint;
+			record.frameStatsResult = sample.frameStatisticsResult;
+			record.observedPresentCount = sample.presentCount;
+			record.observedPresentRefreshCount =
+				sample.presentRefreshCount;
+			record.observedSyncRefreshCount = sample.syncRefreshCount;
+			record.observedSyncQpc = sample.syncQpc;
 			presentationTelemetry.RecordSubmission(record);
 			presentationTelemetry.Observe(sample);
 			const AlphaPresentationSnapshot presentationSnapshot =
 				presentationTelemetry.Snapshot();
+			if (lastFramePacingGeneration != frameGeneration)
+			{
+				lastFramePacingGeneration = frameGeneration;
+				lastFramePacingSubmitQpc = 0;
+				lastFramePacingCallbackQpc = 0;
+				lastFramePacingEnqueueQpc = 0;
+				lastFramePacingStatsAvailable = false;
+				nextFramePacingTraceTick = 0;
+			}
+			const double submitGapMs =
+				qpcFrequency.QuadPart > 0 && lastFramePacingSubmitQpc > 0 &&
+				swapStartQpc > lastFramePacingSubmitQpc
+				? static_cast<double>(swapStartQpc - lastFramePacingSubmitQpc) *
+					1000.0 / static_cast<double>(qpcFrequency.QuadPart)
+				: 0.0;
+			const double enqueueGapMs =
+				qpcFrequency.QuadPart > 0 && lastFramePacingEnqueueQpc > 0 &&
+				enqueueQpc > lastFramePacingEnqueueQpc
+				? static_cast<double>(enqueueQpc - lastFramePacingEnqueueQpc) *
+					1000.0 / static_cast<double>(qpcFrequency.QuadPart)
+				: 0.0;
+			const double callbackGapMs =
+				qpcFrequency.QuadPart > 0 &&
+				lastFramePacingCallbackQpc > 0 &&
+				callbackQpc > lastFramePacingCallbackQpc
+				? static_cast<double>(callbackQpc -
+					lastFramePacingCallbackQpc) * 1000.0 /
+					static_cast<double>(qpcFrequency.QuadPart)
+				: 0.0;
+			const double callbackToEnqueueMs =
+				qpcFrequency.QuadPart > 0 && callbackQpc > 0 &&
+				enqueueQpc >= callbackQpc ?
+				static_cast<double>(enqueueQpc - callbackQpc) * 1000.0 /
+					static_cast<double>(qpcFrequency.QuadPart) : 0.0;
+			lastFramePacingSubmitQpc = swapStartQpc;
+			lastFramePacingCallbackQpc = callbackQpc;
+			lastFramePacingEnqueueQpc = enqueueQpc;
+			const double traceSourceRateHz =
+				captureRateHz >= 10.0 && captureRateHz <= 240.0 ?
+				captureRateHz : nominalSourceRateHz;
+			const double sourcePeriodMs =
+				traceSourceRateHz >= 10.0 && traceSourceRateHz <= 240.0 ?
+				1000.0 / traceSourceRateHz : 0.0;
+			const double displayPeriodMs =
+				sample.expectedDisplayHz >= 10.0 &&
+				sample.expectedDisplayHz <= 240.0 ?
+				1000.0 / sample.expectedDisplayHz : 0.0;
+			const double submitGapThresholdMs = sourcePeriodMs +
+				(displayPeriodMs > 0.0 ?
+					0.75 * displayPeriodMs : 0.5 * sourcePeriodMs);
+			const uint32_t expectedMaximumRefreshes =
+				sourcePeriodMs > 0.0 && displayPeriodMs > 0.0 ?
+				static_cast<uint32_t>(std::max(1.0,
+					std::ceil(sourcePeriodMs / displayPeriodMs <= 1.1 ?
+						1.0 : sourcePeriodMs / displayPeriodMs))) : 0;
+			uint32_t statsPresentDelta = 0;
+			uint32_t statsRefreshDelta = 0;
+			if (sample.available && lastFramePacingStatsAvailable)
+			{
+				statsPresentDelta = sample.presentCount -
+					lastFramePacingStatsPresentCount;
+				statsRefreshDelta = sample.presentRefreshCount -
+					lastFramePacingStatsPresentRefresh;
+			}
+			lastFramePacingStatsAvailable = sample.available;
+			if (sample.available)
+			{
+				lastFramePacingStatsPresentCount = sample.presentCount;
+				lastFramePacingStatsPresentRefresh =
+					sample.presentRefreshCount;
+			}
+			const bool submitGap = sourcePeriodMs > 0.0 &&
+				submitGapMs > submitGapThresholdMs;
+			const bool displayRefreshGap =
+				expectedMaximumRefreshes > 0 && statsPresentDelta == 1 &&
+				statsRefreshDelta > expectedMaximumRefreshes;
+			const uint64_t pacingTraceTick = GetTickCount64();
+			if ((submitGap || displayRefreshGap) &&
+				pacingTraceTick >= nextFramePacingTraceTick)
+			{
+				nextFramePacingTraceTick = pacingTraceTick + 2000;
+				DebugLog::Log(
+					"Alpha frame pacing trace: generation=%llu source=%llu source_frame=%llu reason=%s cadence_repeat=%d submit_gap_ms=%.3f threshold_ms=%.3f callback_gap_ms=%.3f enqueue_gap_ms=%.3f callback_to_enqueue_ms=%.3f preview_wait_ms=%.3f dequeue_wait_ms=%.3f lookahead_ms=%.3f pre_render_active_ms=%.3f render_lock_wait_ms=%.3f native_rgb=%d conversion_ms=%.3f conversion_ready_age_ms=%.3f source_upload_cpu_ms=%.3f render_ms=%.3f swap_ms=%.3f queue_after=%zu oldest_ms=%.3f callback_qpc=%lld enqueue_qpc=%lld conversion_end_qpc=%lld dequeue_qpc=%lld swap_start_qpc=%lld swap_end_qpc=%lld qpc_hz=%lld present_id=%u stats_available=%d stats_disjoint=%d stats_hr=0x%08lX stats_present=%u stats_present_refresh=%u stats_sync_refresh=%u stats_sync_qpc=%lld stats_present_delta=%u stats_refresh_delta=%u expected_max_refreshes=%u",
+					static_cast<unsigned long long>(frameGeneration),
+					static_cast<unsigned long long>(sourceSequence),
+					static_cast<unsigned long long>(videoFrame.GetCounter()),
+					submitGap && displayRefreshGap ? "submit_and_display" :
+						(submitGap ? "submit_gap" : "display_refresh_gap"),
+					cadenceRepeat ? 1 : 0,
+					submitGapMs, submitGapThresholdMs,
+					callbackGapMs, enqueueGapMs, callbackToEnqueueMs,
+					preRenderTimings.previewWaitMs,
+					preRenderTimings.dequeueWaitMs,
+					preRenderTimings.lookaheadMs,
+					preRenderTimings.activeMs,
+					preRenderTimings.renderLockWaitMs,
+					nativeRgbUpload ? 1 : 0,
+					conversionCpuMs,
+					convertedPayload && qpcFrequency.QuadPart > 0 &&
+						dequeueQpc >= convertedPayload->completedQpc ?
+						static_cast<double>(dequeueQpc - convertedPayload->completedQpc) *
+						1000.0 / qpcFrequency.QuadPart : -1.0,
+					sourceUploadCpuLastMs,
+					renderMs, swapBlockMs, queueDepthAfterDequeue,
+					oldestQueuedAgeMs,
+					static_cast<long long>(callbackQpc),
+					static_cast<long long>(enqueueQpc),
+					static_cast<long long>(convertedPayload ?
+						convertedPayload->completedQpc : 0),
+					static_cast<long long>(dequeueQpc),
+					static_cast<long long>(swapStartQpc),
+					static_cast<long long>(swapEndQpc),
+					static_cast<long long>(qpcFrequency.QuadPart),
+					record.presentId, sample.available ? 1 : 0,
+					sample.disjoint ? 1 : 0,
+					static_cast<unsigned long>(sample.frameStatisticsResult),
+					sample.presentCount, sample.presentRefreshCount,
+					sample.syncRefreshCount,
+					static_cast<long long>(sample.syncQpc),
+					statsPresentDelta, statsRefreshDelta,
+					expectedMaximumRefreshes);
+				const auto& recent = presentationTelemetry.RecentRecords();
+				const size_t first = recent.size() > 8 ? recent.size() - 8 : 0;
+				const int64_t baseQpc = recent[first].callbackQpc > 0 ?
+					recent[first].callbackQpc : recent[first].enqueueQpc;
+				auto relativeMs = [&](int64_t qpc)
+				{
+					return qpcFrequency.QuadPart > 0 && qpc > 0 &&
+						baseQpc > 0 ?
+						static_cast<double>(qpc - baseQpc) * 1000.0 /
+						static_cast<double>(qpcFrequency.QuadPart) : -1.0;
+				};
+				std::string history;
+				for (size_t index = first; index < recent.size(); ++index)
+				{
+					const AlphaPresentationRecord& prior = recent[index];
+					char entry[320];
+					std::snprintf(entry, sizeof(entry),
+						" [%llu,%llu,%lld,%d,%.2f,%.2f,%.2f,%.2f,%zu,%.2f,%.2f,%.2f,%.2f,%.2f,%u,%d,%d,%X,%u,%u,%u,%.2f]",
+						static_cast<unsigned long long>(prior.sourceSequence),
+						static_cast<unsigned long long>(prior.sourceFrameNumber),
+						static_cast<long long>(prior.captureTimestamp),
+						prior.cadenceRepeat ? 1 : 0,
+						relativeMs(prior.callbackQpc),
+						relativeMs(prior.enqueueQpc),
+						relativeMs(prior.dequeueQpc),
+						relativeMs(prior.submitQpc),
+						prior.queueDepthAfterDequeue,
+						prior.preRender.lookaheadMs,
+						prior.conversionCpuMs,
+						prior.sourceUploadCpuMs,
+						prior.renderMs, prior.swapBlockMs,
+						prior.presentId,
+						prior.frameStatsAvailable ? 1 : 0,
+						prior.frameStatsDisjoint ? 1 : 0,
+						static_cast<unsigned int>(prior.frameStatsResult),
+						prior.observedPresentCount,
+						prior.observedPresentRefreshCount,
+						prior.observedSyncRefreshCount,
+						relativeMs(prior.observedSyncQpc));
+					history += entry;
+				}
+				DebugLog::Log(
+					"Alpha frame pacing history: generation=%llu trigger_source=%llu fields=source,source_frame,capture_timestamp,cadence_repeat,callback_ms,enqueue_ms,dequeue_ms,swap_start_ms,queue_after,lookahead_ms,conversion_ms,upload_cpu_ms,render_ms,swap_ms,present_id,stats_available,stats_disjoint,stats_hr,stats_present,stats_present_refresh,stats_sync_refresh,stats_sync_ms base_qpc=%lld records=%s",
+					static_cast<unsigned long long>(frameGeneration),
+					static_cast<unsigned long long>(sourceSequence),
+					static_cast<long long>(baseQpc), history.c_str());
+			}
 			const double osdPresentationHz = OsdTimingPolicy::WarmingEnabled ?
 				presentationSnapshot.measuredDisplayHz : presentationSnapshot.observedDisplayHz;
 			if (sample.available &&
@@ -14283,15 +14520,17 @@ LibplaceboVideoRenderer::~LibplaceboVideoRenderer()
 {
 	if (m_stopWorker.joinable())
 		m_stopWorker.join();
+	{
+		std::lock_guard<std::mutex> guard(m_queueMutex);
+		m_stopRequested = true;
+	}
+	m_queueChanged.notify_all();
 	if (m_renderThread.joinable())
 	{
-		{
-			std::lock_guard<std::mutex> guard(m_queueMutex);
-			m_stopRequested = true;
-		}
-		m_queueChanged.notify_all();
 		m_renderThread.join();
 	}
+	if (m_conversionThread.joinable())
+		m_conversionThread.join();
 	ClearQueue("renderer destruction");
 	m_impl.reset();
 }
@@ -14423,6 +14662,7 @@ bool LibplaceboVideoRenderer::OnVideoState(VideoStateComPtr& videoState)
 
 void LibplaceboVideoRenderer::OnVideoFrame(VideoFrame& videoFrame)
 {
+	const int64_t callbackQpc = PerformanceCounterNow();
 	if (m_state.load(std::memory_order_acquire) != RendererState::RENDERSTATE_RENDERING)
 		return;
 
@@ -14552,6 +14792,7 @@ void LibplaceboVideoRenderer::OnVideoFrame(VideoFrame& videoFrame)
 			queuedFrame.generation = enqueueGeneration;
 			queuedFrame.sourceSequence = sourceSequence;
 			queuedFrame.activePictureIdentity = activePictureIdentity;
+			queuedFrame.callbackQpc = callbackQpc;
 			queuedFrame.enqueueQpc = PerformanceCounterNow();
 			m_frameQueue.push_back(std::move(queuedFrame));
 		}
@@ -14563,7 +14804,7 @@ void LibplaceboVideoRenderer::OnVideoFrame(VideoFrame& videoFrame)
 			return;
 		}
 	}
-	m_queueChanged.notify_one();
+	m_queueChanged.notify_all();
 }
 
 
@@ -15232,6 +15473,8 @@ void LibplaceboVideoRenderer::StopInternal(
 	m_queueChanged.notify_all();
 	if (m_renderThread.joinable())
 		m_renderThread.join();
+	if (m_conversionThread.joinable())
+		m_conversionThread.join();
 	ClearQueue("renderer stop");
 	if (drainAfterGraphStop)
 		drainAfterGraphStop();
@@ -15245,19 +15488,21 @@ void LibplaceboVideoRenderer::Retire() noexcept
 	{
 		if (m_stopWorker.joinable())
 			m_stopWorker.join();
+		{
+			std::lock_guard<std::mutex> guard(m_queueMutex);
+			m_stopRequested = true;
+		}
+		m_queueChanged.notify_all();
 		// Do not call Stop(): this can run after the GUI has already processed
 		// the stopped-state notification, and a second callback could be applied
 		// to the replacement renderer. Join directly before releasing the
 		// swapchain, so no render or present can still use it.
 		if (m_renderThread.joinable())
 		{
-			{
-				std::lock_guard<std::mutex> guard(m_queueMutex);
-				m_stopRequested = true;
-			}
-			m_queueChanged.notify_all();
 			m_renderThread.join();
 		}
+		if (m_conversionThread.joinable())
+			m_conversionThread.join();
 		ClearQueue("renderer retirement");
 		bool blackPresented = false;
 		bool externalStateRestored = true;
@@ -16271,14 +16516,9 @@ bool LibplaceboVideoRenderer::SetNativeProfileOverlay(
 bool LibplaceboVideoRenderer::GetConversionPerformance(
 	double& currentUs, double& avg10s, double& max10s) const
 {
-	if (!m_impl)
-		return false;
-	std::unique_lock<std::mutex> guard(
-		m_impl->renderMutex, std::try_to_lock);
-	if (!guard.owns_lock() || !m_impl->formatter)
-		return false;
-	m_impl->formatter->GetConversionPerformance(currentUs, avg10s, max10s);
-	return currentUs > 0.0 || avg10s > 0.0 || max10s > 0.0;
+	std::lock_guard<std::mutex> guard(m_conversionTimingMutex);
+	return m_conversionTiming.Snapshot(GetTickCount64(),
+		currentUs, avg10s, max10s);
 }
 
 
@@ -17057,6 +17297,170 @@ void LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
 }
 
 
+bool LibplaceboVideoRenderer::HasConversionWorkLocked() const
+{
+	const size_t window = AlphaQueuePolicy::ConversionPreparationDepth(
+		m_frameQueue.size(), PrefillTargetLocked());
+	return std::any_of(m_frameQueue.begin(), m_frameQueue.begin() + window,
+		[](const QueuedFrame& queued)
+		{
+			return !queued.converted && !queued.conversionInProgress &&
+				!queued.conversionFailed;
+		});
+}
+
+
+std::shared_ptr<LibplaceboVideoRenderer::QueuedFrame::ConvertedPayload>
+LibplaceboVideoRenderer::AcquireConversionPayload()
+{
+	auto* payload = new QueuedFrame::ConvertedPayload();
+	{
+		std::lock_guard<std::mutex> guard(m_conversionPoolMutex);
+		if (!m_conversionBufferPool.empty())
+		{
+			payload->pixels = std::move(m_conversionBufferPool.back());
+			m_conversionBufferPool.pop_back();
+		}
+	}
+	return std::shared_ptr<QueuedFrame::ConvertedPayload>(payload,
+		[this](QueuedFrame::ConvertedPayload* released)
+		{
+			try
+			{
+				std::lock_guard<std::mutex> guard(m_conversionPoolMutex);
+				if (m_conversionBufferPool.size() < 2)
+					m_conversionBufferPool.push_back(std::move(released->pixels));
+			}
+			catch (...)
+			{
+				// A failed pool insertion must not escape shared_ptr cleanup.
+			}
+			delete released;
+		});
+}
+
+
+void LibplaceboVideoRenderer::ConversionLoop()
+{
+	DebugLog::Log("Alpha conversion worker started: prepared frames are handed to the presentation thread");
+	for (;;)
+	{
+		VideoFrame frame;
+		VideoStateComPtr state;
+		uint64_t generation = 0;
+		uint64_t sequence = 0;
+		{
+			std::unique_lock<std::mutex> guard(m_queueMutex);
+			m_queueChanged.wait(guard, [this]()
+			{
+				return m_stopRequested || HasConversionWorkLocked();
+			});
+			if (m_stopRequested)
+				break;
+			const size_t window = AlphaQueuePolicy::ConversionPreparationDepth(
+				m_frameQueue.size(), PrefillTargetLocked());
+			const auto windowEnd = m_frameQueue.begin() + window;
+			auto queued = std::find_if(m_frameQueue.begin(), windowEnd,
+				[](const QueuedFrame& item)
+				{
+					return !item.converted && !item.conversionInProgress &&
+						!item.conversionFailed;
+				});
+			if (queued == windowEnd)
+				continue;
+			queued->conversionInProgress = true;
+			frame = queued->frame;
+			frame.SourceBufferAddRef();
+			state = queued->state;
+			generation = queued->generation;
+			sequence = queued->sourceSequence;
+		}
+		std::shared_ptr<QueuedFrame::ConvertedPayload> converted;
+		std::string error;
+		try
+		{
+			if (!state || !m_impl->formatter)
+				throw std::runtime_error("formatter or frame state unavailable");
+			converted = AcquireConversionPayload();
+			const auto started = SteadyClock::now();
+			{
+				std::lock_guard<std::mutex> formatterGuard(m_impl->formatterMutex);
+				if (!m_impl->formatterState ||
+					m_impl->formatterState->colorspace != state->colorspace)
+				{
+					m_impl->formatter->OnVideoState(state);
+					m_impl->formatterState = state;
+				}
+				const LONG byteCount = m_impl->formatter->GetOutFrameSize();
+				if (byteCount <= 0)
+					throw std::runtime_error("formatter returned an empty frame size");
+				converted->pixels.resize(static_cast<size_t>(byteCount));
+				if (!m_impl->formatter->FormatVideoFrame(frame,
+					converted->pixels.data()))
+					throw std::runtime_error("frame conversion failed");
+				converted->contract = m_impl->formatter->GetOutputContract();
+			}
+			converted->conversionCpuMs = std::chrono::duration<double, std::milli>(
+				SteadyClock::now() - started).count();
+			converted->completedQpc = PerformanceCounterNow();
+			if (!converted->contract.IsValid())
+				throw std::runtime_error("formatter output contract invalid");
+		}
+		catch (const std::exception& e)
+		{
+			error = e.what();
+		}
+		catch (...)
+		{
+			error = "unknown exception";
+		}
+		frame.SourceBufferRelease();
+		const double conversionUs = converted ?
+			converted->conversionCpuMs * 1000.0 : 0.0;
+		bool published = false;
+		{
+			std::lock_guard<std::mutex> guard(m_queueMutex);
+			if (!m_stopRequested && generation == m_queueGeneration)
+			{
+				auto queued = std::find_if(m_frameQueue.begin(), m_frameQueue.end(),
+					[generation, sequence](const QueuedFrame& item)
+					{
+						return item.generation == generation &&
+							item.sourceSequence == sequence;
+					});
+				if (queued != m_frameQueue.end())
+				{
+					queued->conversionInProgress = false;
+					queued->conversionFailed = !error.empty();
+					queued->converted = std::move(converted);
+					if (error.empty())
+					{
+						std::lock_guard<std::mutex> timingGuard(m_conversionTimingMutex);
+						m_conversionTiming.Record(GetTickCount64(), conversionUs);
+					}
+					published = true;
+				}
+			}
+		}
+		if (published)
+		{
+			if (!error.empty())
+			{
+				const uint64_t failures = m_conversionFailures.fetch_add(
+					1, std::memory_order_relaxed) + 1;
+				if ((failures & (failures - 1)) == 0)
+					DebugLog::Log("Alpha conversion failed: generation=%llu source=%llu failures=%llu error=%s",
+						static_cast<unsigned long long>(generation),
+						static_cast<unsigned long long>(sequence),
+						static_cast<unsigned long long>(failures), error.c_str());
+			}
+			m_queueChanged.notify_all();
+		}
+	}
+	DebugLog::Log("Alpha conversion worker stopped");
+}
+
+
 void LibplaceboVideoRenderer::RenderLoop()
 {
 	unsigned int consecutiveFailures = 0;
@@ -17089,6 +17493,9 @@ void LibplaceboVideoRenderer::RenderLoop()
 			std::lock_guard<std::mutex> queueGuard(m_queueMutex);
 			if (m_stopRequested)
 				return;
+			if (m_impl->formatter && !m_conversionThread.joinable())
+				m_conversionThread = std::thread(
+					&LibplaceboVideoRenderer::ConversionLoop, this);
 			SetState(RendererState::RENDERSTATE_RENDERING);
 		}
 	}
@@ -17111,10 +17518,21 @@ void LibplaceboVideoRenderer::RenderLoop()
 			SetState(RendererState::RENDERSTATE_FAILED);
 		return;
 	}
+	uint64_t preRenderTimingWindowStart = GetTickCount64();
+	uint64_t preRenderTimingSamples = 0;
+	uint64_t preRenderLookaheadSamples = 0;
+	double preRenderPreviewWaitMaxMs = 0.0;
+	double preRenderDequeueWaitMaxMs = 0.0;
+	double preRenderLookaheadTotalMs = 0.0;
+	double preRenderLookaheadMaxMs = 0.0;
+	double preRenderLockWaitMaxMs = 0.0;
+	double preRenderActiveMaxMs = 0.0;
 	for (;;)
 	{
 		VideoFrame frame;
 		VideoStateComPtr state;
+		std::shared_ptr<const QueuedFrame::ConvertedPayload> convertedPayload;
+		bool conversionFailed = false;
 		uint64_t frameGeneration = 0;
 		uint64_t sourceSequence = 0;
 		ActivePictureFrameIdentity activePictureIdentity;
@@ -17129,6 +17547,7 @@ void LibplaceboVideoRenderer::RenderLoop()
         GuardedRememberedEdgeReturnCertificate guardedReturn;
         bool guardedReturnCurrent = false;
 		int64_t enqueueQpc = 0;
+		int64_t callbackQpc = 0;
 		int64_t dequeueQpc = 0;
 		size_t queueDepthAfterDequeue = 0;
 		size_t desiredQueueDepth = 1;
@@ -17155,13 +17574,22 @@ void LibplaceboVideoRenderer::RenderLoop()
 		size_t depthSummaryMin = 0;
 		size_t depthSummaryMax = 0;
 		size_t depthSummaryCapacity = 0;
+		size_t depthSummaryPreparedHead = 0;
+		bool depthSummaryConversionInFlight = false;
 		uint64_t depthSummaryDequeues = 0;
+		double previewWaitMs = 0.0;
+		double dequeueWaitMs = 0.0;
+		double lookaheadMs = 0.0;
+		double renderLockWaitMs = 0.0;
 		// Inspect current + future buffered frames before consuming current. Never
 		// wait for extra proof frames: a short window keeps the normal live fallback.
 		{
+			const auto waitStarted = SteadyClock::now();
 			std::unique_lock<std::mutex> previewLock(m_queueMutex);
 			m_queueChanged.wait(previewLock, [this]() { return m_stopRequested || CanDequeueLocked(); });
 			if (m_stopRequested) break;
+			previewWaitMs = std::chrono::duration<double, std::milli>(
+				SteadyClock::now() - waitStarted).count();
             const auto window = AlphaQueuePolicy::SelectActivePicturePreview(
                 m_frameQueue, m_activePictureLookaheadFrames.load(std::memory_order_acquire),
                 ActivePictureDecisionTimeline::MAX_LOOKAHEAD_FRAMES);
@@ -17175,9 +17603,11 @@ void LibplaceboVideoRenderer::RenderLoop()
             }
 		}
 
+		const auto preRenderActiveStart = SteadyClock::now();
 		if (!activePicturePreviewFrames.empty() &&
 			m_activePictureLookaheadFrames.load(std::memory_order_acquire) > 0)
 		{
+			const auto lookaheadStarted = SteadyClock::now();
 			try
 			{
 				AnalyzeActivePictureLookahead(
@@ -17196,6 +17626,8 @@ void LibplaceboVideoRenderer::RenderLoop()
 				DebugLog::Log(
 					"Alpha active-picture look-ahead preview failed: unknown exception");
 			}
+			lookaheadMs = std::chrono::duration<double, std::milli>(
+				SteadyClock::now() - lookaheadStarted).count();
 		}
 		// References are acquired while selecting preview work. A live profile
 		// change may disable analysis after selection, so release independently
@@ -17204,6 +17636,7 @@ void LibplaceboVideoRenderer::RenderLoop()
 			preview.frame.SourceBufferRelease();
 
 		{
+			const auto waitStarted = SteadyClock::now();
 			std::unique_lock<std::mutex> lock(m_queueMutex);
 			m_queueChanged.wait(lock, [this]()
 			{
@@ -17211,6 +17644,8 @@ void LibplaceboVideoRenderer::RenderLoop()
 			});
 			if (m_stopRequested)
 				break;
+			dequeueWaitMs = std::chrono::duration<double, std::milli>(
+				SteadyClock::now() - waitStarted).count();
 			if (m_startupPrefillPending)
 			{
 				m_startupPrefillPending = false;
@@ -17220,6 +17655,8 @@ void LibplaceboVideoRenderer::RenderLoop()
 			}
 			frame = m_frameQueue.front().frame;
 			state = m_frameQueue.front().state;
+			convertedPayload = m_frameQueue.front().converted;
+			conversionFailed = m_frameQueue.front().conversionFailed;
 			frameGeneration = m_frameQueue.front().generation;
 			sourceSequence = m_frameQueue.front().sourceSequence;
 			activePictureIdentity =
@@ -17230,6 +17667,7 @@ void LibplaceboVideoRenderer::RenderLoop()
 				m_frameQueue.front().activePicturePreviewDecision;
 			bufferedExpansion = m_frameQueue.front().bufferedPictureExpansion;
             guardedReturn = m_frameQueue.front().guardedRememberedReturn;
+			callbackQpc = m_frameQueue.front().callbackQpc;
 			enqueueQpc = m_frameQueue.front().enqueueQpc;
 			cadenceRepeat = m_frameQueue.front().cadenceRepeat;
 			cadenceActionId =
@@ -17295,6 +17733,18 @@ void LibplaceboVideoRenderer::RenderLoop()
 				depthSummaryMax = m_queueDepthWindowMax;
 				depthSummaryCapacity =
 					m_useFrameQueue ? m_frameQueueMaxSize : 1;
+				for (const QueuedFrame& queued : m_frameQueue)
+				{
+					if (m_impl && m_impl->formatter && !queued.converted)
+						break;
+					++depthSummaryPreparedHead;
+				}
+				depthSummaryConversionInFlight = std::any_of(
+					m_frameQueue.begin(), m_frameQueue.end(),
+					[](const QueuedFrame& queued)
+					{
+						return queued.conversionInProgress;
+					});
 				depthSummaryDequeues = m_queueDepthWindowDequeues;
 				m_queueDepthWindowStartNs = nowNs;
 				m_queueDepthWindowDequeues = 0;
@@ -17302,6 +17752,9 @@ void LibplaceboVideoRenderer::RenderLoop()
 			}
 		}
 
+		// Popping the head can expose a not-yet-converted frame inside the
+		// bounded preparation window even when no new capture has arrived.
+		m_queueChanged.notify_all();
 
 		if (prefillReleased)
 		{
@@ -17314,7 +17767,7 @@ void LibplaceboVideoRenderer::RenderLoop()
 		if (depthSummaryReady)
 		{
 			DebugLog::Log(
-				"Alpha queue depth summary: generation=%llu current=%zu desired=%zu healthy=%zu..%zu observed=%zu..%zu dequeues=%llu hard_capacity=%zu",
+				"Alpha queue depth summary: generation=%llu current=%zu desired=%zu healthy=%zu..%zu observed=%zu..%zu dequeues=%llu hard_capacity=%zu prepared_head=%zu conversion_in_flight=%d",
 				static_cast<unsigned long long>(depthSummaryGeneration),
 				depthSummaryCurrent,
 				depthSummaryDesired,
@@ -17323,7 +17776,9 @@ void LibplaceboVideoRenderer::RenderLoop()
 				depthSummaryMin,
 				depthSummaryMax,
 				static_cast<unsigned long long>(depthSummaryDequeues),
-				depthSummaryCapacity);
+				depthSummaryCapacity,
+				depthSummaryPreparedHead,
+				depthSummaryConversionInFlight ? 1 : 0);
 		}
 
 		bool rendered = false;
@@ -17334,9 +17789,35 @@ void LibplaceboVideoRenderer::RenderLoop()
 		const double captureRateHz =
 			m_measuredFrameRate.load(std::memory_order_relaxed);
 		const SteadyClock::time_point renderCycleStart = SteadyClock::now();
+		if (conversionFailed)
+		{
+			frame.SourceBufferRelease();
+			m_droppedFrames.fetch_add(1, std::memory_order_relaxed);
+			if (++consecutiveFailures >= 300)
+			{
+				DebugLog::Log("Alpha conversion failed for 300 consecutive frames; marking renderer failed");
+				std::lock_guard<std::mutex> queueGuard(m_queueMutex);
+				if (!m_stopRequested)
+					SetState(RendererState::RENDERSTATE_FAILED);
+				break;
+			}
+			continue;
+		}
+		const double preRenderActiveMs = std::max(0.0,
+			std::chrono::duration<double, std::milli>(
+				renderCycleStart - preRenderActiveStart).count() - dequeueWaitMs);
+		AlphaPreRenderTimings preRenderTimings;
+		preRenderTimings.previewWaitMs = previewWaitMs;
+		preRenderTimings.dequeueWaitMs = dequeueWaitMs;
+		preRenderTimings.lookaheadMs = lookaheadMs;
+		preRenderTimings.activeMs = preRenderActiveMs;
 		try
 		{
+			const auto lockStarted = SteadyClock::now();
 			std::lock_guard<std::mutex> renderGuard(m_impl->renderMutex);
+			renderLockWaitMs = std::chrono::duration<double, std::milli>(
+				SteadyClock::now() - lockStarted).count();
+			preRenderTimings.renderLockWaitMs = renderLockWaitMs;
 			// UI-originated control changes never wait behind shader compilation.
 			// Coalesced work is applied here, on the render thread, once the GPU is
 			// available again and before the next frame is described.
@@ -17407,6 +17888,7 @@ void LibplaceboVideoRenderer::RenderLoop()
 				rendered = state && m_impl->RenderLocked(
 					frame,
 					state,
+					convertedPayload,
 					frameGeneration,
 					sourceSequence,
 					activePictureIdentity,
@@ -17414,11 +17896,13 @@ void LibplaceboVideoRenderer::RenderLoop()
 						? &activePicturePreviewDecision : nullptr,
 					bufferedExpansionCurrent ? &bufferedExpansion : nullptr,
                     guardedReturnCurrent ? &guardedReturn : nullptr,
+					callbackQpc,
 					enqueueQpc,
 					dequeueQpc,
 					queueDepthAfterDequeue,
 					desiredQueueDepth,
 					oldestQueuedAgeMs,
+					preRenderTimings,
 					cadenceRepeat,
 					captureRateHz,
 					m_impl->renderConfiguredScreenActive,
@@ -17537,6 +18021,48 @@ void LibplaceboVideoRenderer::RenderLoop()
 		catch (...)
 		{
 			DebugLog::Log("libplacebo render failure: unknown exception");
+		}
+		++preRenderTimingSamples;
+		preRenderPreviewWaitMaxMs = std::max(preRenderPreviewWaitMaxMs,
+			previewWaitMs);
+		preRenderDequeueWaitMaxMs = std::max(preRenderDequeueWaitMaxMs,
+			dequeueWaitMs);
+		if (lookaheadMs > 0.0)
+		{
+			++preRenderLookaheadSamples;
+			preRenderLookaheadTotalMs += lookaheadMs;
+			preRenderLookaheadMaxMs = std::max(preRenderLookaheadMaxMs,
+				lookaheadMs);
+		}
+		preRenderLockWaitMaxMs = std::max(preRenderLockWaitMaxMs,
+			renderLockWaitMs);
+		preRenderActiveMaxMs = std::max(preRenderActiveMaxMs,
+			preRenderActiveMs);
+		const uint64_t preRenderTimingNow = GetTickCount64();
+		if (preRenderTimingNow - preRenderTimingWindowStart >= 5000)
+		{
+			DebugLog::Log(
+				"Alpha pre-render timing: generation=%llu frames=%llu preview_wait_max_ms=%.3f dequeue_wait_max_ms=%.3f lookahead_frames=%llu lookahead_avg_ms=%.3f lookahead_max_ms=%.3f render_lock_wait_max_ms=%.3f pre_render_active_max_ms=%.3f",
+				static_cast<unsigned long long>(frameGeneration),
+				static_cast<unsigned long long>(preRenderTimingSamples),
+				preRenderPreviewWaitMaxMs,
+				preRenderDequeueWaitMaxMs,
+				static_cast<unsigned long long>(preRenderLookaheadSamples),
+				preRenderLookaheadSamples > 0 ?
+					preRenderLookaheadTotalMs /
+					static_cast<double>(preRenderLookaheadSamples) : 0.0,
+				preRenderLookaheadMaxMs,
+				preRenderLockWaitMaxMs,
+				preRenderActiveMaxMs);
+			preRenderTimingWindowStart = preRenderTimingNow;
+			preRenderTimingSamples = 0;
+			preRenderLookaheadSamples = 0;
+			preRenderPreviewWaitMaxMs = 0.0;
+			preRenderDequeueWaitMaxMs = 0.0;
+			preRenderLookaheadTotalMs = 0.0;
+			preRenderLookaheadMaxMs = 0.0;
+			preRenderLockWaitMaxMs = 0.0;
+			preRenderActiveMaxMs = 0.0;
 		}
 
 		{
@@ -17782,9 +18308,11 @@ void LibplaceboVideoRenderer::RenderLoop()
 						QueuedFrame repeatFrame;
 						repeatFrame.frame = frame;
 						repeatFrame.state = state;
+						repeatFrame.converted = convertedPayload;
 						repeatFrame.generation = frameGeneration;
 						repeatFrame.sourceSequence = sourceSequence;
 						repeatFrame.activePictureIdentity = activePictureIdentity;
+						repeatFrame.callbackQpc = callbackQpc;
 						repeatFrame.enqueueQpc = enqueueQpc;
 						repeatFrame.cadenceRepeat = true;
 						repeatFrame.cadenceActionId = correctionDecision.actionId;
@@ -17832,7 +18360,7 @@ void LibplaceboVideoRenderer::RenderLoop()
 						repeatQueueDepth,
 						repeatCount);
 				}
-				m_queueChanged.notify_one();
+				m_queueChanged.notify_all();
 				continue;
 			}
 			{
@@ -17904,6 +18432,10 @@ void LibplaceboVideoRenderer::BeginQueueGeneration(
 		ClearQueueLocked(reason);
 		if (++m_queueGeneration == 0)
 			++m_queueGeneration;
+		{
+			std::lock_guard<std::mutex> timingGuard(m_conversionTimingMutex);
+			m_conversionTiming.Reset();
+		}
 		m_activePictureTimeline.Reset(m_queueGeneration);
 		m_overflowLoggedGeneration = 0;
 		m_startupPrefillPending = true;
@@ -17982,10 +18514,13 @@ size_t LibplaceboVideoRenderer::PrefillTargetLocked() const
 
 bool LibplaceboVideoRenderer::CanDequeueLocked() const
 {
-	return AlphaQueuePolicy::CanDequeue(
+	return AlphaQueuePolicy::CanDequeuePrepared(
 		m_frameQueue.size(),
 		PrefillTargetLocked(),
-		m_startupPrefillPending);
+		m_startupPrefillPending,
+		m_impl && m_impl->formatter != nullptr,
+		!m_frameQueue.empty() && m_frameQueue.front().converted != nullptr,
+		!m_frameQueue.empty() && m_frameQueue.front().conversionFailed);
 }
 
 

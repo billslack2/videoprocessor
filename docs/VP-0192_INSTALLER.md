@@ -203,3 +203,13 @@ installation and keep their evidence under artifacts.
 
 Record OS builds, privilege level, runtime versions, installer hashes and logs.
 Missing clean-machine or interactive coverage remains an acceptance gap.
+
+## Required portable sample check
+Every portable ZIP includes VideoProcessor.cfg.example at the archive root.
+Setup seeds the same sample under the active name VideoProcessor.cfg only when
+that file is absent. In a fresh portable folder, copy the example to
+VideoProcessor.cfg before editing it. Preserve an existing configuration on upgrades.
+The packager runs tools/test_portable_config_contract.ps1 and checks the finished
+ZIP with tools/test_portable_config.ps1. Missing, empty, changed, misplaced or
+untracked samples fail packaging; the source and manifest SHA-256 must agree.
+An active VideoProcessor.cfg in the portable ZIP is also rejected.
