@@ -10,6 +10,7 @@
 
 
 #include <video_frame_formatter/IVideoFrameFormatter.h>
+#include <VideoFrameEncoding.h>
 
 
  /**

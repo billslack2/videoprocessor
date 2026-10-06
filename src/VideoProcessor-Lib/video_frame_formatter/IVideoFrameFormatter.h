@@ -11,8 +11,13 @@
 
 #include <cstdint>
 
-#include <VideoFrame.h>
-#include <VideoState.h>
+#include <Windows.h>
+
+// Keep conversion kernel declarations independent of ATL startup initializers.
+class VideoFrame;
+class VideoState;
+namespace ATL { template<class T> class CComPtr; }
+typedef ATL::CComPtr<VideoState> VideoStateComPtr;
 
 
 enum class VideoFrameSampleRange

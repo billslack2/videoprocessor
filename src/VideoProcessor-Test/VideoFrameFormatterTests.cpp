@@ -1,5 +1,7 @@
 #include "pch.h"
 #include "CppUnitTest.h"
+#include <VideoFrame.h>
+#include <VideoState.h>
 
 #include <ConfigFile.h>
 #include <MainConfigSchema.h>

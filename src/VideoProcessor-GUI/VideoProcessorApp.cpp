@@ -12,6 +12,7 @@
 #include <winnt.h>
 #include <VideoProcessorDlg.h>
 #include <DebugLog.h>
+#include <CpuFeatures.h>
 #include <ConfigFile.h>
 #include <QueueConfiguration.h>
 #include <DisplayRuleExpression.h>
@@ -117,6 +118,24 @@ std::wstring DeckLinkName(IDeckLink* deckLink, bool model)
 	std::wstring name(value, SysStringLen(value));
 	SysFreeString(value);
 	return name;
+}
+
+void LogCpuCapabilities()
+{
+    const auto& diagnostics = CpuFeatures::GetDiagnostics();
+    const auto& cpu = diagnostics.cpu;
+    DebugLog::Log("cpu: detection=CPUID guarded-XGETBV max_leaf=%u leaf1_ecx=0x%08x leaf7_ebx=0x%08x xgetbv=%s xcr0=0x%llx",
+        cpu.maxLeaf, cpu.leaf1Ecx, cpu.leaf7Ebx,
+        diagnostics.xgetbvRead ? "read-after-XSAVE+OSXSAVE" : "skipped",
+        static_cast<unsigned long long>(cpu.xcr0));
+    DebugLog::Log("cpu: xsave=%d osxsave=%d avx=%d fma=%d avx2=%d bmi1=%d bmi2=%d xmm_ymm_os_state=%d",
+        !!(cpu.leaf1Ecx & (1u<<26)), !!(cpu.leaf1Ecx & (1u<<27)),
+        !!(cpu.leaf1Ecx & (1u<<28)), !!(cpu.leaf1Ecx & (1u<<12)),
+        !!(cpu.leaf7Ebx & (1u<<5)), !!(cpu.leaf7Ebx & (1u<<3)),
+        !!(cpu.leaf7Ebx & (1u<<8)), (cpu.xcr0 & 6) == 6);
+    DebugLog::Log("cpu: avx2_target_eligible=%d VP_DISABLE_AVX2=%d conversion_path=%s instruction_probe=not-run",
+        CpuFeatures::CanUseAvx2Kernels(cpu), diagnostics.disabledByEnvironment,
+        CpuFeatures::SupportsAvx2Kernels() ? "AVX2" : "baseline-AVX");
 }
 
 void LogStartupPlatformInventory()
@@ -251,6 +270,15 @@ const wchar_t COMMAND_LINE_HELP[] = LR"(VideoProcessor GUI command-line help
 Usage:
   VideoProcessor.exe /help
   VideoProcessor.exe help
+
+Diagnostics (log and exit before capture, renderer, or display recovery):
+  VideoProcessor.exe /cpu_check
+      Safely log CPU/OS capability checks and selected conversion path.
+  VideoProcessor.exe /avx2_probe
+      Also execute an isolated AVX2 instruction probe, even if AVX2 dispatch
+      is disabled. Catch illegal instruction and log UNSUPPORTED (exit 2).
+      PASS exits 0; incorrect arithmetic exits 3. Forces logging for this run.
+      These switches do not change configuration or enable AVX2 dispatch.
 
 Recovery:
   VideoProcessor.exe /fix_display
@@ -1299,6 +1327,8 @@ BOOL CVideoProcessorApp::InitInstance()
 
 	bool helpRequested = false;
 	bool fixDisplayRequested = false;
+	bool cpuCheckRequested = false;
+	bool avx2ProbeRequested = false;
 	for (int i = 1; i < argumentCount; ++i)
 	{
 		if (IsHelpArgument(arguments[i]))
@@ -1306,6 +1336,10 @@ BOOL CVideoProcessorApp::InitInstance()
 			helpRequested = true;
 			break;
 		}
+        if (IsCommandLineOption(arguments[i], L"/cpu_check"))
+            cpuCheckRequested = true;
+        if (IsCommandLineOption(arguments[i], L"/avx2_probe"))
+            avx2ProbeRequested = true;
 		if (IsCommandLineOption(arguments[i], L"/fix_display") ||
 			IsCommandLineOption(arguments[i], L"-fix_display") ||
 			IsCommandLineOption(arguments[i], L"--fix_display"))
@@ -1321,7 +1355,7 @@ BOOL CVideoProcessorApp::InitInstance()
 
 	// Resolve startup-only logging configuration before rotation and before
 	// any producer thread can enqueue a diagnostic.
-	if (LoadDebugLoggingEnabled())
+	if (cpuCheckRequested || avx2ProbeRequested || LoadDebugLoggingEnabled())
 	{
 		const auto debugLogRetention = LoadDebugLogRetentionSetting();
 		DEBUGLOG_INIT(
@@ -1332,8 +1366,28 @@ BOOL CVideoProcessorApp::InitInstance()
 			static_cast<unsigned long long>(ConfigFile::GetLoadCount()));
 		DebugLog::Log("VP build identity: module=host commit=%ls branch=%ls dirty=%d build=%ls",
 			VERSION_URL, VERSION_BRANCH, VERSION_DIRTY ? 1 : 0, VERSION_DESCRIBE);
-		LogStartupPlatformInventory();
+        LogCpuCapabilities();
+        if (!cpuCheckRequested && !avx2ProbeRequested)
+            LogStartupPlatformInventory();
 	}
+
+    if (cpuCheckRequested || avx2ProbeRequested)
+    {
+        if (avx2ProbeRequested)
+        {
+            DebugLog::Log("cpu: avx2_probe=begin explicit-opt-in=1 dispatch-override=0");
+            const auto result = CpuFeatures::RunAvx2Probe();
+            m_startupExitCode = static_cast<int>(result);
+            DebugLog::Log("cpu: avx2_probe=%s exception=0x%08x exit_code=%d",
+                result == CpuFeatures::ProbeResult::Pass ? "PASS" :
+                result == CpuFeatures::ProbeResult::Unsupported ? "UNSUPPORTED" : "INCORRECT_RESULT",
+                result == CpuFeatures::ProbeResult::Unsupported ? EXCEPTION_ILLEGAL_INSTRUCTION : 0u,
+                m_startupExitCode);
+        }
+        DebugLog::Log("cpu: diagnostics complete; capture/renderer not started");
+        DEBUGLOG_SHUTDOWN();
+        return FALSE;
+    }
 
 	m_displayRecoveryStatePath = CurrentStatePath();
 	if (fixDisplayRequested)
