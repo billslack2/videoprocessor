@@ -366,7 +366,7 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "Dennis Fleurbaaij"
+            VALUE "CompanyName", "Bill Slack"
             VALUE "FileDescription", "VideoProcessor main executable"
             VALUE "FileVersion", "0.0.0.0"
             VALUE "InternalName", "VideoProcessor.exe"
