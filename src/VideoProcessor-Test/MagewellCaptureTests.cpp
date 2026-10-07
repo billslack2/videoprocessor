@@ -1128,7 +1128,12 @@ namespace Tests
 			});
 			bool recovered = false;
 			bool nativeFrame = false;
-			if (fallbackFrame && !callback.frames.empty() && callback.errors.empty())
+			bool fallbackSucceeded = false;
+			{
+				std::lock_guard<std::mutex> lock(callback.mutex);
+				fallbackSucceeded = fallbackFrame && !callback.frames.empty() && callback.errors.empty();
+			}
+			if (fallbackSucceeded)
 			{
 				signalMode = 6; // Valid HDMI 8-bit metadata arrives.
 				formatEventPending = true;
@@ -1136,7 +1141,12 @@ namespace Tests
 				recovered = callback.Wait([&]() {
 					return callback.validStates >= 2 || !callback.errors.empty();
 				});
-				if (recovered && callback.errors.empty())
+				bool recoverySucceeded = false;
+				{
+					std::lock_guard<std::mutex> lock(callback.mutex);
+					recoverySucceeded = recovered && callback.errors.empty();
+				}
+				if (recoverySucceeded)
 				{
 					SetEvent(fakeNotifyEvent);
 					nativeFrame = callback.Wait([&]() {
