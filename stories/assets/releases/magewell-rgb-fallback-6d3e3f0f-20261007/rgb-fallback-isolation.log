@@ -1,0 +1,5 @@
+PASS: 4 changed source paths stay within the Magewell integration surface from b801730610a095826799275084ce65a29a0fc167.
+PASS: x64 PE has no Magewell load-time or delay imports: VideoProcessor-GUI.exe SHA256=6926806862B24031E46B9E6366393E1EEAB3F4AE701772081E774A3A300A875E
+PASS: x64 PE has no Magewell load-time or delay imports: VideoProcessorConfig.exe SHA256=88720D61C7555252D141767011FD151AF8A206F5808CF654650EC7897CC6CDE3
+PASS: x64 PE has no Magewell load-time or delay imports: VideoProcessorConfigDiscovery.dll SHA256=FA8C26CC69CE47EEBD32AF2C348C7074A630A68996ED4599450F91814702569D
+Missing-runtime execution was not checked. Supply -MissingRuntimeProbe for the full isolation gate.
