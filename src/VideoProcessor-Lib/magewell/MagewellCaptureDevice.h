@@ -170,6 +170,10 @@ private:
 		MWCAP_VIDEO_COLOR_FORMAT colorFormat = MWCAP_VIDEO_COLOR_FORMAT_UNKNOWN;
 		MWCAP_VIDEO_QUANTIZATION_RANGE quantRange = MWCAP_VIDEO_QUANTIZATION_UNKNOWN;
 		BYTE bitDepth = 0;
+		// Diagnostic status only; excluded from output-format identity.
+		MW_RESULT inputStatusResult = MW_FAILED;
+		bool inputStatusValid = false;
+		DWORD inputType = 0;
 		// -1 means the wire-side sampling could not be identified.
 		int inputSampling = -1;
 		EOTF eotf = EOTF::UNKNOWN;

@@ -99,9 +99,12 @@ namespace Tests
 		std::atomic_bool failOpen{ false };
 		std::atomic_bool streamFrames{ false };
 		std::atomic_bool formatEventPending{ false };
-		std::atomic<int> signalMode{ 0 }; // YUV, RGB12, invalid geometry, SDI RGB, unsupported RGB16.
+		std::atomic<int> signalMode{ 0 }; // YUV, RGB12, invalid geometry, SDI RGB, malformed RGB depth.
 		std::atomic<int> sdiDepth{ SDI_BIT_DEPTH_10BIT };
 		std::atomic_bool failCopies{ false };
+		std::atomic_bool exposeNativeRgbFormats{ false };
+		std::atomic<DWORD> firstCopyFourcc{ 0 };
+		std::atomic<DWORD> lastCopyFourcc{ 0 };
 		HANDLE fakeNotifyEvent = nullptr;
 		HANDLE fakeCaptureEvent = nullptr;
 		MWCAP_VIDEO_COLOR_FORMAT requestedColor = MWCAP_VIDEO_COLOR_FORMAT_UNKNOWN;
@@ -326,19 +329,43 @@ namespace Tests
 			signal->cy = 100;
 			signal->dwFrameDuration = 166667;
 			signal->colorFormat = MWCAP_VIDEO_COLOR_FORMAT_YUV601;
-			if (signalMode == 1 || signalMode == 3 || signalMode == 4)
+			if (signalMode == 1 || signalMode == 3 || signalMode == 4 ||
+				signalMode == 5 || signalMode == 6 || signalMode == 7 ||
+				signalMode == 8)
 				signal->colorFormat = MWCAP_VIDEO_COLOR_FORMAT_RGB;
 			if (signalMode == 2) signal->cx = 0;
 			return MW_SUCCEEDED;
 		}
 		MW_RESULT FakeInputSpecific(HCHANNEL, MWCAP_INPUT_SPECIFIC_STATUS* status)
 		{
+			if (signalMode == 5) return MW_FAILED;
+			if (signalMode == 7)
+			{
+				*status = {};
+				return MW_SUCCEEDED; // SDK call worked, but metadata is invalid.
+			}
+			if (signalMode == 8)
+			{
+				*status = {};
+				status->bValid = TRUE;
+				status->dwVideoInputType = MWCAP_VIDEO_INPUT_TYPE_HDMI;
+				status->hdmiStatus.byBitDepth = 0;
+				return MW_SUCCEEDED;
+			}
+			if (signalMode == 6)
+			{
+				*status = {};
+				status->bValid = TRUE;
+				status->dwVideoInputType = MWCAP_VIDEO_INPUT_TYPE_HDMI;
+				status->hdmiStatus.byBitDepth = 8;
+				return MW_SUCCEEDED;
+			}
 			if (signalMode == 1 || signalMode == 4)
 			{
 				*status = {};
 				status->bValid = TRUE;
 				status->dwVideoInputType = MWCAP_VIDEO_INPUT_TYPE_HDMI;
-				status->hdmiStatus.byBitDepth = signalMode == 1 ? 12 : 16;
+				status->hdmiStatus.byBitDepth = signalMode == 1 ? 12 : 9;
 				return MW_SUCCEEDED;
 			}
 			if (signalMode == 3)
@@ -356,8 +383,16 @@ namespace Tests
 		MW_RESULT FakeFamily(HCHANNEL, void*, DWORD) { return MW_FAILED; }
 		MW_RESULT FakeFormats(HCHANNEL, DWORD* formats, int* count)
 		{
-			if (formats) formats[0] = MWFOURCC_P210;
-			*count = 1;
+			if (formats)
+			{
+				formats[0] = MWFOURCC_P210;
+				if (exposeNativeRgbFormats.load())
+				{
+					formats[1] = MWFOURCC_ARGB;
+					formats[2] = MWFOURCC_RGB10;
+				}
+			}
+			*count = exposeNativeRgbFormats.load() ? 3 : 1;
 			return MW_SUCCEEDED;
 		}
 		MW_RESULT FakeCaptureStart(HCHANNEL, HANDLE eventHandle)
@@ -412,19 +447,27 @@ namespace Tests
 		{
 			requestedColor = color;
 			requestedRange = range;
+			DWORD noFormatCapturedYet = 0;
+			firstCopyFourcc.compare_exchange_strong(noFormatCapturedYet, fourcc);
+			lastCopyFourcc = fourcc;
 			if (failCopies.load())
 			{
 				SetEvent(fakeNotifyEvent);
 				return MW_FAILED;
 			}
-			if (fourcc != MWFOURCC_P210 || frameBytes != 40800 ||
-				stride != 204 || width != 102 || height != 100)
+			if (frameBytes != 40800 || width != 102 || height != 100 ||
+				(fourcc != MWFOURCC_P210 && fourcc != MWFOURCC_ARGB) ||
+				(fourcc == MWFOURCC_P210 && stride != 204) ||
+				(fourcc == MWFOURCC_ARGB && stride != 408))
 				return MW_FAILED;
 			memset(frame, 0, frameBytes);
-			const uint16_t luma[] = { 64, 128, 192, 256, 320, 384 };
-			const uint16_t chroma[] = { 704, 768, 832, 896, 960, 1024 };
-			memcpy(frame, luma, sizeof(luma));
-			memcpy(frame + stride * height, chroma, sizeof(chroma));
+			if (fourcc == MWFOURCC_P210)
+			{
+				const uint16_t luma[] = { 64, 128, 192, 256, 320, 384 };
+				const uint16_t chroma[] = { 704, 768, 832, 896, 960, 1024 };
+				memcpy(frame, luma, sizeof(luma));
+				memcpy(frame + stride * height, chroma, sizeof(chroma));
+			}
 			SetEvent(fakeCaptureEvent);
 			if (streamFrames.load()) SetEvent(fakeNotifyEvent);
 			return MW_SUCCEEDED;
@@ -465,6 +508,7 @@ namespace Tests
 			std::condition_variable changed;
 			std::vector<std::unique_ptr<VideoFrame>> frames;
 			std::vector<CString> errors;
+			std::vector<VideoFrameEncoding> encodings;
 			int validStates = 0, invalidStates = 0;
 			size_t goal = 34;
 			bool failClockAfterFirstFrame = false;
@@ -479,6 +523,7 @@ namespace Tests
 			{
 				std::lock_guard<std::mutex> lock(mutex);
 				if (state->valid) ++validStates; else ++invalidStates;
+				if (state->valid) encodings.push_back(state->videoFrameEncoding);
 				changed.notify_all();
 			}
 			void OnCaptureDeviceVideoFrame(
@@ -577,6 +622,9 @@ namespace Tests
 			stopCalls = unregisterCalls = notifyReads = startCalls = closeCalls = 0;
 			fakeDeviceTime = 1000000;
 			failDeviceTime = failOpen = streamFrames = formatEventPending = failCopies = false;
+			exposeNativeRgbFormats = false;
+			firstCopyFourcc = 0;
+			lastCopyFourcc = 0;
 			selectedInput = 0;
 			scanEnabled = true;
 			signalMode = 0;
@@ -991,7 +1039,7 @@ namespace Tests
 			device.SetCallbackHandler(nullptr);
 		}
 
-		TEST_METHOD(CapabilityPolicyPreservesRgbAndRejectsUnsupportedDepth)
+		TEST_METHOD(RgbPolicyUsesNativeFormatsWhenAvailableAndP210ForFallbackDepths)
 		{
 			DWORD fourcc = 0;
 			VideoFrameEncoding encoding = VideoFrameEncoding::UNKNOWN;
@@ -1005,13 +1053,36 @@ namespace Tests
 				10, formats, fourcc, encoding);
 			Assert::AreEqual<DWORD>(MWFOURCC_RGB10, fourcc);
 			Assert::IsTrue(encoding == VideoFrameEncoding::R10l);
-			MagewellCaptureTestAccess::Choose(MWCAP_VIDEO_COLOR_FORMAT_RGB,
-				12, formats, fourcc, encoding);
-			Assert::AreEqual<DWORD>(MWFOURCC_P210, fourcc);
-			Assert::IsTrue(encoding == VideoFrameEncoding::V210);
+			for (BYTE depth : { BYTE(0), BYTE(8), BYTE(10), BYTE(12), BYTE(16) })
+			{
+				MagewellCaptureTestAccess::Choose(MWCAP_VIDEO_COLOR_FORMAT_RGB,
+					depth, { MWFOURCC_P210 }, fourcc, encoding);
+				Assert::AreEqual<DWORD>(MWFOURCC_P210, fourcc);
+				Assert::IsTrue(encoding == VideoFrameEncoding::V210);
+			}
+			for (BYTE depth : { BYTE(0), BYTE(8), BYTE(10), BYTE(12), BYTE(16) })
+			{
+				MagewellCaptureTestAccess::Choose(MWCAP_VIDEO_COLOR_FORMAT_RGB,
+					depth, formats, fourcc, encoding);
+				const DWORD expected = depth == 8 ? MWFOURCC_ARGB :
+					(depth == 10 ? MWFOURCC_RGB10 : MWFOURCC_P210);
+				Assert::AreEqual<DWORD>(expected, fourcc);
+			}
+			Assert::ExpectException<std::runtime_error>([&]() {
+				MagewellCaptureTestAccess::Choose(MWCAP_VIDEO_COLOR_FORMAT_RGB,
+					9, formats, fourcc, encoding);
+			});
+			Assert::ExpectException<std::runtime_error>([&]() {
+				MagewellCaptureTestAccess::Choose(MWCAP_VIDEO_COLOR_FORMAT_RGB,
+					8, { MWFOURCC_RGB10 }, fourcc, encoding);
+			});
+			Assert::ExpectException<std::runtime_error>([&]() {
+				MagewellCaptureTestAccess::Choose(MWCAP_VIDEO_COLOR_FORMAT_RGB,
+					10, { MWFOURCC_ARGB }, fourcc, encoding);
+			});
 			Assert::ExpectException<std::runtime_error>([&]() {
 				MagewellCaptureTestAccess::Choose(MWCAP_VIDEO_COLOR_FORMAT_YUV709,
-					10, { MWFOURCC_ARGB }, fourcc, encoding);
+				10, { MWFOURCC_ARGB }, fourcc, encoding);
 			});
 			Assert::ExpectException<std::runtime_error>([&]() {
 				MagewellCaptureTestAccess::Choose(MWCAP_VIDEO_COLOR_FORMAT_UNKNOWN,
@@ -1023,27 +1094,83 @@ namespace Tests
 			});
 		}
 
-		TEST_METHOD(Rgb12CompatibilityRequiresP210AndEvenWidth)
+		TEST_METHOD(RgbFallbackRequiresP210AndEvenWidth)
 		{
 			DWORD fourcc = 0;
 			VideoFrameEncoding encoding = VideoFrameEncoding::UNKNOWN;
-			MagewellCaptureTestAccess::Choose(MWCAP_VIDEO_COLOR_FORMAT_RGB,
-				12, { MWFOURCC_P210 }, fourcc, encoding);
-			Assert::AreEqual<DWORD>(MWFOURCC_P210, fourcc);
-			Assert::IsTrue(encoding == VideoFrameEncoding::V210);
-			Assert::ExpectException<std::runtime_error>([&]() {
-				MagewellCaptureTestAccess::Choose(MWCAP_VIDEO_COLOR_FORMAT_RGB,
-					12, { MWFOURCC_ARGB, MWFOURCC_RGB10 }, fourcc, encoding);
-			});
-			Assert::ExpectException<std::runtime_error>([&]() {
-				MagewellCaptureTestAccess::Choose(MWCAP_VIDEO_COLOR_FORMAT_RGB,
-					12, { MWFOURCC_P210 }, fourcc, encoding, 1919);
-			});
-			for (BYTE depth : { BYTE(0), BYTE(10), BYTE(16) })
+			for (BYTE depth : { BYTE(0), BYTE(8), BYTE(10), BYTE(12), BYTE(16) })
 				Assert::ExpectException<std::runtime_error>([&]() {
 					MagewellCaptureTestAccess::Choose(MWCAP_VIDEO_COLOR_FORMAT_RGB,
-						depth, { MWFOURCC_P210 }, fourcc, encoding);
+						depth, { MWFOURCC_P210 }, fourcc, encoding, 1919);
 				});
+		}
+
+		TEST_METHOD(FailedRgbDepthMetadataFallsBackAndRecoversToNativeArgb)
+		{
+			exposeNativeRgbFormats = true;
+			signalMode = 5; // RGB, but the input-specific status query fails.
+			QueueCallback callback;
+			const auto sdk = MagewellSdkTestAccess::Create(CaptureApi());
+			MWCAP_CHANNEL_INFO info = {};
+			MagewellCaptureDevice device(sdk, L"fake", info, TEXT("fake"));
+			BYTE depth = 99;
+			int sampling = -1;
+			VideoFrameEncoding encoding = VideoFrameEncoding::UNKNOWN;
+			Assert::IsTrue(MagewellCaptureTestAccess::ReadFormat(
+				device, depth, sampling, encoding));
+			Assert::AreEqual<BYTE>(0, depth);
+			Assert::IsTrue(encoding == VideoFrameEncoding::V210);
+
+			device.SetCallbackHandler(&callback);
+			device.StartCapture(1);
+			const bool fallbackFrame = callback.Wait([&]() {
+				return !callback.frames.empty() || !callback.errors.empty();
+			});
+			bool recovered = false;
+			bool nativeFrame = false;
+			if (fallbackFrame && !callback.frames.empty() && callback.errors.empty())
+			{
+				signalMode = 6; // Valid HDMI 8-bit metadata arrives.
+				formatEventPending = true;
+				SetEvent(fakeNotifyEvent);
+				recovered = callback.Wait([&]() {
+					return callback.validStates >= 2 || !callback.errors.empty();
+				});
+				if (recovered && callback.errors.empty())
+				{
+					SetEvent(fakeNotifyEvent);
+					nativeFrame = callback.Wait([&]() {
+						return callback.frames.size() >= 2 || !callback.errors.empty();
+					});
+				}
+			}
+			device.StopCapture();
+			device.SetCallbackHandler(nullptr);
+			Assert::IsTrue(fallbackFrame && recovered && nativeFrame);
+			Assert::IsTrue(callback.errors.empty());
+			Assert::IsTrue(callback.encodings.size() >= 2);
+			Assert::IsTrue(callback.encodings[0] == VideoFrameEncoding::V210);
+			Assert::IsTrue(callback.encodings.back() == VideoFrameEncoding::ARGB_8BIT);
+			Assert::AreEqual<DWORD>(MWFOURCC_P210, firstCopyFourcc.load());
+			Assert::AreEqual<DWORD>(MWFOURCC_ARGB, lastCopyFourcc.load());
+		}
+
+		TEST_METHOD(InvalidAndZeroDepthRgbMetadataRemainUnknownAndUseP210)
+		{
+			const auto sdk = MagewellSdkTestAccess::Create(CaptureApi());
+			MWCAP_CHANNEL_INFO info = {};
+			MagewellCaptureDevice device(sdk, L"fake", info, TEXT("fake"));
+			BYTE depth = 99;
+			int sampling = -1;
+			VideoFrameEncoding encoding = VideoFrameEncoding::UNKNOWN;
+			for (const int mode : { 7, 8 })
+			{
+				signalMode = mode;
+				Assert::IsTrue(MagewellCaptureTestAccess::ReadFormat(
+					device, depth, sampling, encoding));
+				Assert::AreEqual<BYTE>(0, depth);
+				Assert::IsTrue(encoding == VideoFrameEncoding::V210);
+			}
 		}
 
 		TEST_METHOD(Rgb10ToR10lPreservesChannelCodesAndRowPadding)
