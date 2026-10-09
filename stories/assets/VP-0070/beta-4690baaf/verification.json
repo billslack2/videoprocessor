@@ -1,0 +1,55 @@
+{
+  "feature_commit": "4690baafba91210b7eecd5fedfe8b8819ffa53a1",
+  "base_commit": "b801730610a095826799275084ce65a29a0fc167",
+  "pull_request": "https://github.com/billslack2/videoprocessor/pull/135",
+  "configuration": "Release",
+  "architecture": "x64",
+  "native_tests": {
+    "passed": 2327,
+    "total": 2327
+  },
+  "subtitle_config_tests": {
+    "passed": 6,
+    "total": 6
+  },
+  "logs": [
+    {
+      "file": "subtitle-merge-build.log",
+      "sha256": "6ed45b59e6b7354c8528b54cbb1cb603b7f36a6545f96f2c1c9886cad667d75d"
+    },
+    {
+      "file": "subtitle-merge-native-tests.log",
+      "sha256": "70cf60457a64a1e9e7be05aa3c34deb6afab57e1be3e94f14cd7850d73e59bd1"
+    },
+    {
+      "file": "subtitle-merge-config-exact-tests.log",
+      "sha256": "7ce9475c43cd490d7d87e4d8a537d92121d60f8fb0428e0018531b17531bbe38"
+    }
+  ],
+  "binaries": [
+    {
+      "file": "VideoProcessor-GUI.exe",
+      "sha256": "2b55ba9402f18593adeb338845f7124e29a3ccca8b3fbfc29301dd4e15763200"
+    },
+    {
+      "file": "VideoProcessorVPRenderer.dll",
+      "sha256": "f472f35eeab9fb8c6aade78e3fdc17c833a392389cbb3c230ae2dc3762dad207"
+    },
+    {
+      "file": "VideoProcessorConfig.exe",
+      "sha256": "25d5a7f53b233129586828632ed60f584d5c5d85da1b92ca2a70364f08c88829"
+    }
+  ],
+  "prior_replay": {
+    "caption_samples": 43,
+    "misses": 0,
+    "extra_detections": 0,
+    "screenshot_variants": 18
+  },
+  "limitations": [
+    "Live HDMI stability remains beta validation.",
+    "No installer/ZIP or GitHub Release published in this merge."
+  ],
+  "merge_commit": "abc631aadb70d692b391dfb04cc9c9459c45e1d4",
+  "merged_beta_tree_matches_tested_feature": true
+}

@@ -1,6 +1,24 @@
 # VP-0070: CIH bar/boundary subtitle capture and relocation
 
-## Status
+## Beta integration — 2026-10-09
+
+User-authorized merge: [PR #135](https://github.com/billslack2/videoprocessor/pull/135)
+into `v1.4.00-beta`, merge `abc631aadb70d692b391dfb04cc9c9459c45e1d4`.
+Feature `4690baafba91210b7eecd5fedfe8b8819ffa53a1` has the same tree as the merge.
+The clean feature x64 Release build passed **2,327/2,327 native tests** and
+**6/6 subtitle Config tests**. Includes subtitle profiles, beta reconstruction
+and solid relocation, native punctuation completion, scaling/shape/offset,
+black-backed continuity, and layout/performance telemetry.
+
+[Verification and binary/log hashes](../assets/VP-0070/beta-4690baaf/verification.json).
+Prior screenshot replays cover 18 resolution/mirror variants; thunder recording
+retains 43/43 caption samples with no extra detections. These are rendered SDR
+replays, not full HDR HDMI qualification. Live stability and broader parent
+acceptance remain open; this merge does not close the blocked follow-up tasks.
+No installer, portable ZIP, or GitHub Release was published by this merge.
+The user's existing installation was not changed again during integration.
+
+## Historical status — 2026-10-03
 
 Blocked (2026-10-03), unchanged. Follow-up adds current-ink-verified rescue for at
 most two missed source frames, 10px outward box padding, and optional current-frame
