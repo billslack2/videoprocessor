@@ -1,0 +1,26 @@
+{
+  "release": "https://github.com/billslack2/videoprocessor/releases/tag/1.4-beta-rc2",
+  "commit": "abc631aadb70d692b391dfb04cc9c9459c45e1d4",
+  "version": "1.4.00-rc2",
+  "native_tests_passed": 2327,
+  "config_tests_passed": 10,
+  "signed": false,
+  "artifacts": [
+    {
+      "name": "VideoProcessorSetup-1.4.00-rc2-abc631aadb70.exe",
+      "sha256": "2FC6C47D6FEB3131BFA5D08C8C9E9CC18448C2911544043E03C73FE2EDF7136A",
+      "length": 28881566,
+      "url": "https://github.com/billslack2/videoprocessor/releases/download/1.4-beta-rc2/VideoProcessorSetup-1.4.00-rc2-abc631aadb70.exe",
+      "checksum_url": "https://github.com/billslack2/videoprocessor/releases/download/1.4-beta-rc2/VideoProcessorSetup-1.4.00-rc2-abc631aadb70.exe.sha256"
+    },
+    {
+      "name": "VideoProcessor-1.4.00-rc2-abc631aadb70-x64-Portable.zip",
+      "sha256": "436249A57CE6C72138F943224861143ACCBEF0B55D6BA1F57E729923D243F498",
+      "length": 40752489,
+      "url": "https://github.com/billslack2/videoprocessor/releases/download/1.4-beta-rc2/VideoProcessor-1.4.00-rc2-abc631aadb70-x64-Portable.zip",
+      "checksum_url": "https://github.com/billslack2/videoprocessor/releases/download/1.4-beta-rc2/VideoProcessor-1.4.00-rc2-abc631aadb70-x64-Portable.zip.sha256"
+    }
+  ],
+  "validation_receipt": "E:\\codex\\releases\\VideoProcessor-1.4-RC2-abc631aadb70-20261009\\validation\\release-receipt.json",
+  "qualification": "Unit and packaging checks passed; isolated installer lifecycle blocked by running VP/Config. Clean Windows and interactive installation qualification remain unverified."
+}
