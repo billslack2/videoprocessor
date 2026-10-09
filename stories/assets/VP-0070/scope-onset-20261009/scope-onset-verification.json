@@ -1,0 +1,76 @@
+{
+  "base": "73953a364058b1cf6e5875dfc62e32df4e3bdcd5",
+  "branch": "codex/subtitle-held-authority-20261009",
+  "configuration": "Release",
+  "platform": "x64",
+  "deployed": false,
+  "build_log": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\scope-onset-build.log",
+  "build_log_sha256": "a8e59b26689b3e0dd217176d3949294437c68ab7e61653b23dbd087ef2074628",
+  "source_hashes": [
+    {
+      "Path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\src\\VideoProcessor-Lib\\vprenderer\\AlphaSourceCropPolicy.cpp",
+      "Hash": "d192c027cd6c2437cfa93d0f34a6534072264043cfb6b303a32680a54ce489ff"
+    },
+    {
+      "Path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\src\\VideoProcessor-Lib\\vprenderer\\AlphaSourceCropPolicy.h",
+      "Hash": "d33a8463772c01e8100d47156d604ad8ff85586357347b2afd4890895bd56c02"
+    },
+    {
+      "Path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\src\\VideoProcessor-Lib\\vprenderer\\LibplaceboVideoRenderer.cpp",
+      "Hash": "94369835d330d380d7c6661b92b403f92a1c707f8761e1879fde13cb8521ef68"
+    },
+    {
+      "Path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\src\\VideoProcessor-Lib\\vprenderer\\SubtitleBarRecovery.h",
+      "Hash": "00442390bb797d6674f9269a026ec67c6de30ebf7423005846123612c0e78bcc"
+    },
+    {
+      "Path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\src\\VideoProcessor-Test\\ActivePictureEvidenceTests.cpp",
+      "Hash": "17d0293910f881e8835a2c534b7f50b5709acd5b48aad764be21602d99456b82"
+    },
+    {
+      "Path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\src\\VideoProcessor-Test\\AlphaSourceCropPolicyTests.cpp",
+      "Hash": "97b109ba038b13cfdde542dad9eb5773024f4b247e023b4cecb1a3863ffff4e5"
+    }
+  ],
+  "binaries": [
+    {
+      "Path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\x64\\Release\\VideoProcessor-GUI.exe",
+      "Hash": "7447e1e323627555195da46325fa991274ebf2c6c78295f0a058ddff9965c213"
+    },
+    {
+      "Path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "Hash": "870d4947a8e1e804597c3260acf11499dda7de9c52bae8e077bf41cf04775996"
+    }
+  ],
+  "tests": {
+    "total": 2345,
+    "passed": 2345,
+    "failed": 0,
+    "trx": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\TestResults\\scope-onset\\full.trx",
+    "trx_sha256": "f8a905462d8450d260e1043615815ba9e1eb06b218ca2e111cf53c42629aa0bd"
+  },
+  "evidence": {
+    "recording": "C:\\Users\\bslac\\Videos\\2026-10-09 18-53-36.mp4",
+    "visible_full_raster_seconds": [
+      20.58,
+      20.65
+    ],
+    "moved_sequences": [
+      2859,
+      2860,
+      2861
+    ],
+    "classic_sequences": [
+      598,
+      599,
+      600
+    ],
+    "source_fps": 23.97602,
+    "recording_fps": 60,
+    "log_excerpt_sha256": "bedd053e24cf2c07111bb1c0cc4a24e4d3dfb9e8eb5c0e248bb96e38f5d1093e"
+  },
+  "limitations": [
+    "Policy tests exercise confirmation, episode policy, crop evaluation and final admission; live HDMI replay of this candidate is not yet verified.",
+    "The recording shows the deployed predecessor, not the new candidate."
+  ]
+}

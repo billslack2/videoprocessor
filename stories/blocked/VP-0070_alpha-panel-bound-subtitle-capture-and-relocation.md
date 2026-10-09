@@ -1,6 +1,36 @@
 # VP-0070: CIH bar/boundary subtitle capture and relocation
 
 
+## Scope onset presentation flash corrected locally - 2026-10-09
+
+The user reproduced the four-sided black-box flash in both moved and Classic
+modes. The recording `2026-10-09 18-53-36.mp4` visibly narrows at about
+20.58-20.65 seconds. At 18:53:57 source sequences 2859/2860 entered full-raster
+presentation while dense translation was confirming 1/3 and 2/3; sequence 2861
+restored scope. Classic repeats the same sequence at 19:03:46, frames 598-600.
+The retained native scope geometry remained available. This was an episode
+presentation-policy override, not failure to capture caption glyphs.
+
+The shared near-black episode now yields to existing bounded-confirmation crop
+handling when current physical bars re-prove the exact retained scope contract.
+It requires same generation/epoch, a current finite pending translation, and
+an existing RETAIN_CROP episode. It cannot recover an already-full-raster
+episode before confirmation. Full-raster authority, incompatible bars, stale
+samples and conflicting FIT continue to reject it. Normal crop and admission
+still decide final presentation. Subtitle detection/rendering did not change.
+
+The x64 Release solution build succeeded and **2,345 native tests passed**.
+Two new regression tests cover the complete three-sample onset through final
+crop admission, evidence loss, and stale/conflicting/full-raster negative cases.
+[Verification and exact source/binary hashes](../assets/VP-0070/scope-onset-20261009/scope-onset-verification.json).
+[Moved and Classic logs](../assets/VP-0070/scope-onset-20261009/scope-onset-log-evidence.txt).
+[Recorded before/during/after frames](../assets/VP-0070/scope-onset-20261009/scope-onset-before-during-after.jpg).
+
+Candidate remains local on `codex/subtitle-held-authority-20261009`, based on
+`73953a364058b1cf6e5875dfc62e32df4e3bdcd5`, including the earlier deployed
+shared-authority fix. This follow-up is not deployed or merged; live HDMI
+verification is pending. No active configuration was changed.
+
 ## Shared subtitle authority recovery deployed - 2026-10-09
 
 Implemented on `codex/subtitle-held-authority-20261009`, based on beta merge
