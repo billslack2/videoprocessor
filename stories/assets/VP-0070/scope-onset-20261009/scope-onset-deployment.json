@@ -1,0 +1,9 @@
+{
+  "deployed": true,
+  "backup": "C:\\Videoprocessor\\vp\\backups\\scope-onset-20261009-192008",
+  "changed_files": 4,
+  "configuration_edits": [],
+  "protected_files_preserved": true,
+  "host_sha256": "7447e1e323627555195da46325fa991274ebf2c6c78295f0a058ddff9965c213",
+  "renderer_sha256": "870d4947a8e1e804597c3260acf11499dda7de9c52bae8e077bf41cf04775996"
+}

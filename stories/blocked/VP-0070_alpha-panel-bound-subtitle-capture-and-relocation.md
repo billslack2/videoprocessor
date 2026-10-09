@@ -28,8 +28,12 @@ crop admission, evidence loss, and stale/conflicting/full-raster negative cases.
 
 Candidate remains local on `codex/subtitle-held-authority-20261009`, based on
 `73953a364058b1cf6e5875dfc62e32df4e3bdcd5`, including the earlier deployed
-shared-authority fix. This follow-up is not deployed or merged; live HDMI
-verification is pending. No active configuration was changed.
+shared-authority fix. This follow-up was deployed on user request at 19:20 on 2026-10-09; it is not merged.
+Both x64 Release host and renderer and their runtime metadata match the verified
+build hashes. VP and Config were stopped. Settings, state and shader cache were
+preserved byte-for-byte; no configuration edits. Backup: `C:\Videoprocessor\vp\backups\scope-onset-20261009-192008`.
+[Deployment receipt](../assets/VP-0070/scope-onset-20261009/scope-onset-deployment.json).
+Live HDMI replay remains pending.
 
 ## Shared subtitle authority recovery deployed - 2026-10-09
 
