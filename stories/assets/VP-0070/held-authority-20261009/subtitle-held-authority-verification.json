@@ -1,0 +1,58 @@
+{
+  "base": "73953a364058b1cf6e5875dfc62e32df4e3bdcd5",
+  "branch": "codex/subtitle-held-authority-20261009",
+  "configuration": "Release",
+  "platform": "x64",
+  "build": "passed x64 Release build",
+  "build_log": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\held-authority-final-build.log",
+  "build_log_sha256": "e2eb383a9f5b81cc1d91cc531c22a2d70f91c940ebc807fd48e16e72221830ce",
+  "binaries": [
+    {
+      "Path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\x64\\Release\\VideoProcessor-GUI.exe",
+      "Hash": "479c8ec7f8480b4b6385bff21de8cc802719c375a490f0558fc3c1f46dd7a33f"
+    },
+    {
+      "Path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "Hash": "f90e0d923e3b3145f6d16fd732ed4968be98b7c64bc2cec4e7e1a35ce3788c8e"
+    }
+  ],
+  "source_hashes": [
+    {
+      "Path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\src\\VideoProcessor-Lib\\vprenderer\\AlphaSourceCropPolicy.cpp",
+      "Hash": "7ff6f12e7cea5e695537b834e41947397039bba8f83774f79192bb7d57ff3ea1"
+    },
+    {
+      "Path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\src\\VideoProcessor-Lib\\vprenderer\\AlphaSourceCropPolicy.h",
+      "Hash": "cc1037393c5e156ba75cbcc026d2b87b8ddd73734ab1a9e9df724c59f44720e6"
+    },
+    {
+      "Path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\src\\VideoProcessor-Lib\\vprenderer\\LibplaceboVideoRenderer.cpp",
+      "Hash": "babd3576b0132b3a7f5b16556bb7b47b95aaf52aae43b4023b01e2ba95759fd1"
+    },
+    {
+      "Path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\src\\VideoProcessor-Test\\ActivePictureEvidenceTests.cpp",
+      "Hash": "17d0293910f881e8835a2c534b7f50b5709acd5b48aad764be21602d99456b82"
+    },
+    {
+      "Path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\src\\VideoProcessor-Test\\AlphaSourceCropPolicyTests.cpp",
+      "Hash": "2c572240a16af629bd41c2f1357328374d020b8aa011482c48d1b0a1feb644d8"
+    },
+    {
+      "Path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\src\\VideoProcessor-Lib\\vprenderer\\SubtitleBarRecovery.h",
+      "Hash": "00442390bb797d6674f9269a026ec67c6de30ebf7423005846123612c0e78bcc"
+    }
+  ],
+  "tests": {
+    "total": 2343,
+    "passed": 2343,
+    "failed": 0,
+    "trx": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\TestResults\\held-authority\\full.trx",
+    "trx_sha256": "4ecbd3194b0aa6694c2e4e8a2e2692e71b26b794431535e9aae4a9684860402e"
+  },
+  "screenshots": "4/4 fresh-bar recovery and glyph detection cases passed at rendered screenshot resolution",
+  "limitations": [
+    "Live HDMI playback must verify the full renderer state history.",
+    "Screenshot recovery probes are rendered SDR proxies.",
+    "Adds a physical-bar probe only when shared authority is unavailable; no new GPU passes."
+  ]
+}

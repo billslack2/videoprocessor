@@ -1,0 +1,9 @@
+{
+  "deployed": true,
+  "backup": "C:\\Videoprocessor\\vp\\backups\\subtitle-held-authority-20261009-185113",
+  "changed_files": 4,
+  "configuration_edits": [],
+  "protected_files_preserved": true,
+  "host_sha256": "479c8ec7f8480b4b6385bff21de8cc802719c375a490f0558fc3c1f46dd7a33f",
+  "renderer_sha256": "f90e0d923e3b3145f6d16fd732ed4968be98b7c64bc2cec4e7e1a35ce3788c8e"
+}

@@ -1,0 +1,27 @@
+{
+  "base_commit": "73953a364058b1cf6e5875dfc62e32df4e3bdcd5",
+  "candidate": "subtitle-held-authority-20261009 working tree",
+  "cases": [
+    {
+      "fixture": "stabilizers",
+      "width": 2008,
+      "height": 1112,
+      "picture_top": 140,
+      "picture_bottom": 978,
+      "png_sha256": "2beafd5cd2b84eb2fcd9f8f7ac5c1d366ba48bd07dd9a930095bdc7fa97b16c3",
+      "output": "recovered=138,980 valid=1 recovery_ms=0.9335\nbars=140,979 available=1 ref=1,0 fractions=1.0000,0.9767 runs=0,32\nflipped=0 edge=0 detected=1 lines=1 limit=0 bounds=580,940-1412,995 capture=561,927-1437,983 cleanup=556,922-1442,980 mean_ms=5.7822 median_ms=5.6718 max_ms=6.3843\nline0=587,947-1404,987\nrecovered=138,980 valid=1 recovery_ms=0.6312\nbars=140,979 available=1 ref=1,0 fractions=1.0000,0.9767 runs=0,32\nflipped=0 edge=1 detected=1 lines=1 limit=0 bounds=580,940-1397,995 capture=561,927-1437,982 cleanup=556,922-1442,979 mean_ms=6.0309 median_ms=6.3587 max_ms=6.4298\nline0=587,947-1403,987\n"
+    },
+    {
+      "fixture": "pitch",
+      "width": 2005,
+      "height": 1121,
+      "picture_top": 140,
+      "picture_bottom": 978,
+      "png_sha256": "69f8dc8e23b5dd8a1c8c54350c157e331977ad6aefecdf86ee66b892674d854d",
+      "output": "recovered=138,980 valid=1 recovery_ms=1.0749\nbars=139,978 available=1 ref=0,1 fractions=0.9859,0.9860 runs=128,5\nflipped=0 edge=0 detected=1 lines=1 limit=0 bounds=601,940-1406,1007 capture=582,927-1428,983 cleanup=577,922-1433,980 mean_ms=6.6347 median_ms=5.8856 max_ms=8.6500\nline0=607,946-1398,999\nrecovered=138,980 valid=1 recovery_ms=0.6605\nbars=139,978 available=1 ref=0,1 fractions=0.9859,0.9860 runs=128,5\nflipped=0 edge=1 detected=1 lines=1 limit=0 bounds=601,940-1406,1007 capture=582,927-1428,982 cleanup=577,922-1433,979 mean_ms=5.7550 median_ms=5.8319 max_ms=6.0055\nline0=607,946-1398,999\n"
+    }
+  ],
+  "context": "Subsequent scope log confirmed skipped analysis; this replay verifies fresh bar recovery and glyph detection only.",
+  "result": "Both screenshots detect at measured boundary and one-pixel inward perturbation. Runtime logs instead report analysis_reason=not-analyzed and bar_reason=shared-classic-authority-unavailable.",
+  "limitations": "Rendered screenshot SDR replay at screenshot resolution; supplied picture bounds. Does not reproduce HDMI framing-state history and is not a full pipeline regression pass."
+}

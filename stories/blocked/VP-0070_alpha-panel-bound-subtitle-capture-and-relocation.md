@@ -1,6 +1,28 @@
 # VP-0070: CIH bar/boundary subtitle capture and relocation
 
 
+## Shared subtitle authority recovery deployed - 2026-10-09
+
+Implemented on `codex/subtitle-held-authority-20261009`, based on beta merge
+`73953a364058b1cf6e5875dfc62e32df4e3bdcd5`. Both Classic and moved modes use
+fresh physical-bar reproof against retained same-generation scope geometry.
+Recovery requires two current edges, compatible bounds, and no lost picture
+rows; full-frame classification, missing/black evidence and moving-picture
+transitions cannot borrow stale scope. The existing dense translation
+confirmation remains mandatory before ending a conservative near-black episode.
+Normal crop/admission checks still apply. No forced aspect or detector threshold
+relaxation was introduced.
+
+x64 Release build succeeded. All **2,343 native tests passed**, including three
+new policy tests; four screenshot recovery/detection replay cases passed.
+[Source/binary hashes and verification](../assets/VP-0070/held-authority-20261009/subtitle-held-authority-verification.json).
+[Deployment and backup](../assets/VP-0070/held-authority-20261009/subtitle-held-authority-deployment.json).
+Host and renderer deployed together, with runtime metadata and configuration
+preservation verified. This is a local working-tree update, not a new release.
+Live HDMI replay still needs confirmation in both styles; re-enter the scene
+from established scope playback rather than relying only on startup at a paused
+caption. Source hashes identify the exact candidate. Parent status remains open.
+
 ## Scope replay confirms authority gating - 2026-10-09 18:27
 
 User repeated the missed captions with scope enabled. New logs confirm
