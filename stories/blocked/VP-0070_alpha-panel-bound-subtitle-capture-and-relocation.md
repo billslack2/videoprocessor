@@ -1,5 +1,57 @@
 # VP-0070: CIH bar/boundary subtitle capture and relocation
 
+
+## Published RC2.1 and missed-caption investigation — 2026-10-09
+
+
+
+Merged [PR #136](https://github.com/billslack2/videoprocessor/pull/136) into
+
+`v1.4.00-beta` at `73953a364058b1cf6e5875dfc62e32df4e3bdcd5`.
+
+Published [1.4 RC2.1](https://github.com/billslack2/videoprocessor/releases/tag/1.4-beta-rc2.1):
+
+shared Classic aspect authority, false-scene rejection, stable caption backing.
+
+[Artifacts, checksums and qualification](../assets/VP-0070/rc2.1-73953a36/release.json)
+
+and [verification receipt](../assets/VP-0070/rc2.1-73953a36/release-receipt.json).
+
+All 2,340 native tests and 10 Config tests passed, plus packaging/runtime/portable checks.
+
+Unsigned prerelease. Isolated installer refused running VP/Config; full lifecycle,
+
+clean Windows and interactive Config qualification remain unverified. No deployment
+
+or interruption of user playback was performed by this release workflow.
+
+
+
+New user screenshots “Those are the forward stabilizers.” and “And those two
+
+control the pitch?” reproduce successful direct glyph detection (4/4 boundary
+
+variants). [Saved fixtures and results](../assets/VP-0070/rc2.1-73953a36/missed-captions/results.json).
+
+The paused live log at 18:18 shows `analysis_reason=not-analyzed` and
+
+`bar_reason=shared-classic-authority-unavailable`. User clarified that the display
+
+was set to 16:9 to capture screenshots. Logs confirm `screen_aspect=1.77778` and
+
+`automatic crop is off; preserving full raster`. This session does not establish
+
+a subtitle miss during normal scope playback. The earlier framing-regression
+
+interpretation was withdrawn. Both screenshots detect with supplied bar bounds;
+
+the saved test is a detector regression fixture, not a native HDMI/full-history
+
+integration test. No detector relaxation or aspect policy change was made.
+
+The release does not close the parent story or these follow-ups.
+
+
 ## Published release — 2026-10-09
 
 [1.4 RC2](https://github.com/billslack2/videoprocessor/releases/tag/1.4-beta-rc2)
