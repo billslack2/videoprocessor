@@ -4,6 +4,7 @@
 #include <ITimingClock.h>
 #include <VideoConversionOverride.h>
 #include <ActivePictureDecisionTimeline.h>
+#include <SubtitleBoxLookahead.h>
 #include <CropDiagnosticThrottle.h>
 #include <RememberedEdgeReturn.h>
 #include <vprenderer/BufferedPictureExpansion.h>
@@ -103,6 +104,8 @@ public:
 		CString& activeState,
 		bool& rendererRestartRequired,
 		bool& liveResetRequired) override;
+	bool CycleSubtitlePreviewMode(SubtitlePreviewMode& mode) override;
+	void ResetSubtitlePreviewMode() override;
 	size_t GetFrameQueueSize() override;
 	double EntryLatencyMs() const override;
 	double ExitLatencyMs() const override;
@@ -151,6 +154,8 @@ private:
 		ActivePictureEvidence activePicturePreviewEvidence;
 		bool activePicturePreviewNearBlackEvaluated = false;
 		bool activePicturePreviewNearBlack = false;
+        SubtitleBoxObservation subtitleBoxObservation;
+        SubtitleBoxPreview subtitleBoxPreview;
 		AlphaSourceCrop::BufferedPictureExpansionProof bufferedPictureExpansion;
         GuardedRememberedEdgeReturnCertificate guardedRememberedReturn;
 		int64_t callbackQpc = 0;
@@ -175,7 +180,8 @@ private:
 	void AnalyzeActivePictureLookahead(
 		std::vector<QueuedFrame>& previewFrames,
 		size_t queuedFutureFrames,
-		uint64_t lookaheadPolicyGeneration);
+		uint64_t lookaheadPolicyGeneration,
+		uint64_t continuityGeneration);
 	void ClearQueue(const char* reason = "queue clear");
 	void BeginQueueGeneration(const char* reason, bool clearStopRequest = false);
 	void ClearQueueLocked(const char* reason);

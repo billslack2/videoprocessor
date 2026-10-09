@@ -244,6 +244,12 @@
     <ClInclude Include="ActivePictureDecisionTimeline.h" />
     <ClInclude Include="ActivePictureTransitionModel.h" />
 	<ClInclude Include="AnalysisLumaSource.h" />
+    <ClInclude Include="SubtitleBoxDetector.h" />
+    <ClInclude Include="SubtitleOpaqueCardRefinement.h" />
+    <ClInclude Include="SubtitleBoxLookahead.h" />
+    <ClInclude Include="SubtitleCutPaste.h" />
+    <ClInclude Include="SubtitleCutPasteShader.h" />
+    <ClInclude Include="SubtitleBarEvidence.h" />
 	<ClInclude Include="ActivePictureAnalyzer.h" />
     <ClInclude Include="ActivePictureEvidence.h" />
     <ClInclude Include="LocalBoundaryDiagnostics.h" />
@@ -331,6 +337,7 @@
     <ClCompile Include="ActivePictureDecisionTimeline.cpp" />
     <ClCompile Include="ActivePictureTransitionModel.cpp" />
 	<ClCompile Include="AnalysisLumaSource.cpp" />
+    <ClCompile Include="SubtitleBoxDetector.cpp" />
 	<ClCompile Include="ActivePictureAnalyzer.cpp" />
     <ClCompile Include="ActivePictureEvidence.cpp" />
     <ClCompile Include="LocalBoundaryDiagnostics.cpp" />

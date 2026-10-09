@@ -2178,7 +2178,7 @@ namespace VideoProcessorTest
 			Assert::IsTrue(viewport.hasScreenAspect);
 			Assert::AreEqual("top", viewport.verticalAlignment.c_str());
 			Assert::IsTrue(viewport.automaticCrop);
-			Assert::IsTrue(viewport.subtitleFit);
+			Assert::IsFalse(viewport.subtitleFit); // Retired Screen setting is ignored.
 
 			UnifiedProfileRuntime::Runtime runtime;
 			Assert::IsTrue(runtime.Initialize(config,
@@ -2513,6 +2513,190 @@ namespace VideoProcessorTest
 				reloaded.snapshot->viewport.screenAspect.denominator);
 			DeleteFileA(path.c_str());
 		}
+
+
+        TEST_METHOD(SubtitleHdrAnalysisOverridesLegacyZoomForEveryStyle)
+        {
+            for(const char* style : {"classic","generated_gray","black","off"})
+                for(bool explicitOverride : {false,true}) {
+                    CachedConfigTestFile fixture;
+                    {
+                        std::ofstream file(fixture.path);
+                        file << "[vprenderer.zoom.Legacy]\nhdr_peak_analysis_picture_only: true\n"
+                            "hdr_peak_analysis_motion_compensation: false\nhdr_peak_analysis_height_percent: 68\n"
+                            "hdr_peak_analysis_position: bottom\n[vprenderer.subtitles.Current]\ntype: " << style << "\n";
+                        if(explicitOverride) file << "hdr_peak_analysis_picture_only: false\n"
+                            "hdr_peak_analysis_motion_compensation: true\nhdr_peak_analysis_height_percent: 80\n"
+                            "hdr_peak_analysis_position: top\n";
+                    }
+                    ConfigFile config;Assert::IsTrue(config.Load(fixture.path));
+                    UnifiedProfileRuntime::Runtime runtime;std::string error;
+                    Assert::IsTrue(runtime.Initialize(config,[](const std::string&,std::string&){return false;},error),std::wstring(error.begin(),error.end()).c_str());
+                    const auto& view=runtime.GetSnapshot()->viewport;
+                    Assert::AreEqual(!explicitOverride,view.hdrPeakAnalysisPictureOnly);
+                    Assert::AreEqual(explicitOverride,view.hdrPeakAnalysisMotionCompensation);
+                    Assert::AreEqual(explicitOverride?80:68,view.hdrPeakAnalysisHeightPercent);
+                    Assert::AreEqual(std::string(explicitOverride?"top":"bottom"),view.hdrPeakAnalysisPosition);
+                }
+            std::string expected;
+            Assert::IsFalse(RendererProfileConfig::ValidateProfileSetting("subtitles","hdr_peak_analysis_height_percent","9",expected));
+            Assert::IsFalse(RendererProfileConfig::ValidateProfileSetting("subtitles","hdr_peak_analysis_picture_only","maybe",expected));
+        }
+
+        TEST_METHOD(ClassicSubtitleDefaultsRestoreDriftAndPreserveExplicitZero)
+        {
+            for (bool explicitZero : { false, true }) {
+                CachedConfigTestFile fixture;
+                {
+                    std::ofstream file(fixture.path);
+                    // Legacy values must not leak into the new independent profile.
+                    file << "[vprenderer.zoom.Old]\nsubtitle_engage_drift_ms: 999\nsubtitle_padding_pixels: 99\n"
+                        "[vprenderer.subtitles.Classic]\ntype: classic\n";
+                    if (explicitZero) file << "offset_pixels: 0\nsubtitle_engage_drift_ms: 0\nsubtitle_release_drift_ms: 0\nsubtitle_target_buffer_pixels: 0\n";
+                }
+                ConfigFile config; Assert::IsTrue(config.Load(fixture.path));
+                std::string error; UnifiedProfileRuntime::Runtime runtime;
+                Assert::IsTrue(runtime.Initialize(config,[](const std::string&,std::string&){return false;},error),std::wstring(error.begin(),error.end()).c_str());
+                const auto& view=runtime.GetSnapshot()->viewport;
+                Assert::IsTrue(view.subtitleFit);
+                Assert::AreEqual(uint64_t(2000),view.subtitleHoldMilliseconds);
+                Assert::AreEqual(uint64_t(explicitZero ? 0 : 500),view.subtitleEngageDriftMilliseconds);
+                Assert::AreEqual(uint64_t(explicitZero ? 0 : 2000),view.subtitleReleaseDriftMilliseconds);
+                Assert::AreEqual(explicitZero ? 0 : 20,view.subtitlePaddingPixels);
+                Assert::AreEqual(explicitZero ? 0 : 10,view.subtitleTargetBufferPixels);
+            }
+        }
+
+        TEST_METHOD(SubtitleBackgroundLayoutDefaultsValidationAndLiveProfilePolicy)
+        {
+            std::string expected;
+            for(const char* value:{"true","false","on","off","1","0"})
+                Assert::IsTrue(RendererProfileConfig::ValidateProfileSetting("subtitles","rounded_corners",value,expected));
+            for(const char* value:{"extend","float"})
+                Assert::IsTrue(RendererProfileConfig::ValidateProfileSetting("subtitles","background_edge",value,expected));
+            Assert::IsFalse(RendererProfileConfig::ValidateProfileSetting("subtitles","rounded_corners","maybe",expected));
+            Assert::IsFalse(RendererProfileConfig::ValidateProfileSetting("subtitles","background_edge","auto",expected));
+            for(const char* type:{"off","classic","generated_gray","black"}) {
+                std::map<std::string,std::string> values{{"type",type}};
+                auto layout=RendererProfileConfig::ResolveSubtitleBackgroundLayout(values);
+                Assert::IsTrue(layout.roundedCorners && !layout.floatBackground);
+                values["rounded_corners"]="false";values["background_edge"]="float";
+                layout=RendererProfileConfig::ResolveSubtitleBackgroundLayout(values);
+                const bool moved=std::string(type)=="generated_gray" || std::string(type)=="black";
+                Assert::IsTrue(layout.roundedCorners==!moved && layout.floatBackground==moved);
+                values["rounded_corners"]="bad";values["background_edge"]="bad";
+                layout=RendererProfileConfig::ResolveSubtitleBackgroundLayout(values);
+                Assert::IsTrue(layout.roundedCorners && !layout.floatBackground);
+            }
+            for(const char* type:{"generated_gray","black"}) {
+                CachedConfigTestFile fixture;
+                { std::ofstream file(fixture.path);file<<"[vprenderer.subtitles.Shape]\ntype: "<<type<<"\nrounded_corners: false\nbackground_edge: float\n"; }
+                ConfigFile config;Assert::IsTrue(config.Load(fixture.path));
+                RendererProfileConfig::Model model;std::string error;
+                Assert::IsTrue(RendererProfileConfig::Read(config,model,error));
+                const auto layout=RendererProfileConfig::ResolveSubtitleBackgroundLayout(model.profiles.at("subtitles.shape").settings);
+                Assert::IsTrue(!layout.roundedCorners && layout.floatBackground);
+            }
+            for(const char* key:{"rounded_corners","background_edge"})
+                Assert::IsTrue(ConfigurationApplyPolicy::ClassifyChange({"vprenderer.subtitles.Shape",key})==ConfigurationApplyPolicy::Action::ApplyProfiles);
+        }
+
+        TEST_METHOD(SubtitleTextReductionIsOptionalBoundedAndMovedProfileOnly)
+        {
+            std::string expected;
+            for(const char* value:{"0","1","25","50","75"})
+                Assert::IsTrue(RendererProfileConfig::ValidateProfileSetting("subtitles","text_reduction_percent",value,expected));
+            for(const char* value:{"-1","76","100","25.5","none","","999999999999999"})
+                Assert::IsFalse(RendererProfileConfig::ValidateProfileSetting("subtitles","text_reduction_percent",value,expected));
+            for(const char* type:{"off","classic","generated_gray","black"}) {
+                std::map<std::string,std::string> settings{{"type",type}};
+                Assert::AreEqual(0,RendererProfileConfig::ResolveSubtitleTextReduction(settings));
+                settings["text_reduction_percent"]="75";
+                const bool moved=std::string(type)=="generated_gray" || std::string(type)=="black";
+                Assert::AreEqual(moved?75:0,RendererProfileConfig::ResolveSubtitleTextReduction(settings));
+                settings["text_reduction_percent"]="0";
+                Assert::AreEqual(0,RendererProfileConfig::ResolveSubtitleTextReduction(settings));
+                settings["text_reduction_percent"]="76";
+                Assert::AreEqual(0,RendererProfileConfig::ResolveSubtitleTextReduction(settings));
+            }
+            for(const char* type:{"generated_gray","black"}) {
+                CachedConfigTestFile fixture;
+                { std::ofstream file(fixture.path);file<<"[vprenderer.subtitles.Small]\ntype: "<<type<<"\ntext_reduction_percent: 75\n"; }
+                ConfigFile config;Assert::IsTrue(config.Load(fixture.path));
+                RendererProfileConfig::Model model;std::string error;
+                Assert::IsTrue(RendererProfileConfig::Read(config,model,error));
+                Assert::AreEqual(75,RendererProfileConfig::ResolveSubtitleTextReduction(model.profiles.at("subtitles.small").settings));
+            }
+        }
+
+        TEST_METHOD(ClassicSubtitleControlsResolveFromTheirOwnProfile)
+        {
+            CachedConfigTestFile fixture;
+            {
+                std::ofstream file(fixture.path);
+                file << "[vprenderer.subtitles.Classic]\ntype: classic\noffset_pixels: 23\n"
+                    "subtitle_hold_seconds: 1.5\nsubtitle_engage_drift_ms: 500\nsubtitle_release_drift_ms: 1700\nsubtitle_target_buffer_pixels: 12\n";
+            }
+            ConfigFile config; Assert::IsTrue(config.Load(fixture.path));
+            std::string error; UnifiedProfileRuntime::Runtime runtime;
+            Assert::IsTrue(runtime.Initialize(config,[](const std::string&,std::string&){return false;},error),std::wstring(error.begin(),error.end()).c_str());
+            const auto& view=runtime.GetSnapshot()->viewport;
+            Assert::IsTrue(view.subtitleFit);
+            Assert::AreEqual(uint64_t(1500),view.subtitleHoldMilliseconds);
+            Assert::AreEqual(uint64_t(500),view.subtitleEngageDriftMilliseconds);
+            Assert::AreEqual(uint64_t(1700),view.subtitleReleaseDriftMilliseconds);
+            Assert::AreEqual(23,view.subtitlePaddingPixels);
+            Assert::AreEqual(12,view.subtitleTargetBufferPixels);
+            std::string expected;
+            Assert::IsFalse(RendererProfileConfig::ValidateProfileSetting("subtitles","subtitle_hold_seconds","0.1",expected));
+            Assert::IsFalse(RendererProfileConfig::ValidateProfileSetting("subtitles","subtitle_target_buffer_pixels","51",expected));
+            Assert::IsFalse(RendererProfileConfig::ValidateProfileSetting("subtitles","subtitle_engage_drift_ms","30001",expected));
+        }
+
+        TEST_METHOD(SubtitleProfilesCycleIndependentlyAndIgnoreLegacyKnobs)
+        {
+            CachedConfigTestFile fixture;
+            {
+                std::ofstream file(fixture.path);
+                file << "[general]\npersist_profile_selection: false\n"
+                    "[vprenderer]\nsubtitle_move_inset: broken-old-value\nsubtitle_cut_paste_test: true\n"
+                    "[vprenderer.viewport.Scope]\nscreen_aspect: 2.35:1\nsubtitle_fit: false\n"
+                    "[vprenderer.zoom.Fill]\nautomatic_crop: true\nsubtitle_padding_pixels: 499\n"
+                    "[vprenderer.subtitles.Classic]\ntype: classic\noffset_pixels: 15\ncycle_shortcut: Ctrl+Shift+T\n"
+                    "[vprenderer.subtitles.Gray]\ntype: generated_gray\ncycle_shortcut: Ctrl+Shift+T\n"
+                    "[vprenderer.subtitles.Black]\ntype: black\ncycle_shortcut: Ctrl+Shift+T\n"
+                    "[vprenderer.subtitles.Off]\ntype: off\ncycle_shortcut: Ctrl+Shift+T\n";
+            }
+            ConfigFile config; Assert::IsTrue(config.Load(fixture.path));
+            std::string error;
+            RendererProfileConfig::Model model;
+            Assert::IsTrue(RendererProfileConfig::Read(config,model,error),std::wstring(error.begin(),error.end()).c_str());
+            Assert::IsTrue(model.profiles.at("display.base").settings.count("subtitle_move_inset")==0);
+            Assert::IsTrue(model.profiles.at("zoom.fill").settings.count("subtitle_padding_pixels")==0);
+            Assert::AreEqual(std::string("15"),model.profiles.at("subtitles.gray").settings.at("offset_pixels"));
+            UnifiedProfileRuntime::Runtime runtime;
+            const auto lookup=[](const std::string&,std::string&){return false;};
+            Assert::IsTrue(runtime.Initialize(config,lookup,error),std::wstring(error.begin(),error.end()).c_str());
+            Assert::IsTrue(runtime.GetSnapshot()->viewport.subtitleFit);
+            UnifiedProfileRuntime::SelectionResult selection;
+            for(const char* name:{"gray","black","off","classic"}) {
+                Assert::IsTrue(runtime.SelectCycleKey("Ctrl+Shift+T",lookup,selection,error));
+                Assert::AreEqual(std::string(name),selection.snapshot->effectiveSelections.at("subtitles").front());
+                Assert::AreEqual(std::string("scope"),selection.snapshot->viewport.profile);
+                Assert::AreEqual(std::string("fill"),selection.snapshot->viewport.zoomProfile);
+                Assert::IsTrue(selection.snapshot->viewport.automaticCrop);
+                Assert::AreEqual(std::string(name)=="classic",selection.snapshot->viewport.subtitleFit);
+                Assert::AreEqual(15,selection.snapshot->viewport.subtitlePaddingPixels);
+            }
+            Assert::AreEqual(std::string("vprenderer.subtitles"),ConfigurationApplyPolicy::OrderedProfileGroup("vprenderer.subtitles.gray"));
+            std::string expected;
+            Assert::IsFalse(RendererProfileConfig::ValidateProfileSetting("subtitles","type","blend",expected));
+            Assert::IsFalse(RendererProfileConfig::ValidateProfileSetting("subtitles","offset_pixels","501",expected));
+            Assert::IsFalse(RendererProfileConfig::ValidateProfileSetting("subtitles","subtitle_move_inset","15",expected));
+            const auto osd=ProfileChangeOverlay::CollectAll({{"subtitles","gray"}});
+            Assert::AreEqual(size_t(1),osd.size());
+            Assert::AreEqual(std::string("Subtitles"),osd.front().label);
+        }
 
 		TEST_METHOD(ZoomShortcutNeverChangesSelectedScreenProfile)
 		{
@@ -3292,7 +3476,7 @@ namespace VideoProcessorTest
 
 		TEST_METHOD(LibplaceboPluginApiVersionCoversConfigurationSnapshots)
 		{
-			Assert::AreEqual(static_cast<uint32_t>(20),
+			Assert::AreEqual(static_cast<uint32_t>(24),
 				VP_LIBPLACEBO_PLUGIN_API_VERSION);
 		}
 
@@ -4298,7 +4482,7 @@ namespace VideoProcessorTest
 			Assert::AreEqual(47ull, viewport.screenAspect.numerator);
 			Assert::AreEqual(20ull, viewport.screenAspect.denominator);
 			Assert::IsTrue(viewport.automaticCrop);
-			Assert::IsTrue(viewport.subtitleFit);
+			Assert::IsFalse(viewport.subtitleFit); // Retired Screen setting is ignored.
 		}
 
 		TEST_METHOD(Vp0079EmptyShaderRootResolvesAsExplicitOff)

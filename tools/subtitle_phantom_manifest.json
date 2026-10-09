@@ -1,0 +1,552 @@
+{
+  "schema": 1,
+  "description": "Manual actual-pixel subtitle regression. Native recorded raster, no OCR or detector-derived labels. Original and decoded imagery remain private local files.",
+  "media": {
+    "basename": "2026-10-02 21-25-45.mp4",
+    "sha256": "4c5b3da9c702141dd9ad5223ffa094eb9c6453a28e41dd70863c13e1fe03c9ea",
+    "width_height_frames": [
+      2560,
+      1440,
+      4688
+    ],
+    "fps": 60
+  },
+  "annotation_method": "Cue identities, crop and line envelopes were visually reviewed from the original recording. Bright neutral pixels inside manually selected text-only ROIs aided edge placement; scene pixels were manually excluded. Boxes include one pixel of antialias margin. Held-out cue onsets/offsets and boxes were independently reviewed before detector comparison. Other intervals are deliberately interior-only and make no first-frame claim. All frame ranges and rectangles are half-open.",
+  "limitations": [
+    "Desktop recording does not recover original 4K pixels.",
+    "24000/1001 sampling reduces 60Hz duplicates but does not establish original source frame identity.",
+    "Annotated interior ranges omit unreviewed transitions; unannotated frames still replay through pipeline.",
+    "Observed bars have approximately one pixel boundary uncertainty.",
+    "Existing green diagnostic rectangles and player HUD are preserved, and affected annotations are diagnostic-only."
+  ],
+  "segments": [
+    {
+      "id": "windowed",
+      "frames": [
+        60,
+        2550
+      ],
+      "crop_xywh": [
+        1024,
+        446,
+        1040,
+        585
+      ],
+      "reviewed_picture_y": [
+        74,
+        511
+      ]
+    },
+    {
+      "id": "maximized",
+      "frames": [
+        2580,
+        4561
+      ],
+      "crop_xywh": [
+        544,
+        176,
+        2000,
+        1125
+      ],
+      "reviewed_picture_y": [
+        144,
+        981
+      ]
+    }
+  ],
+  "annotations": [
+    {
+      "id": "blank_opening",
+      "segment": "windowed",
+      "frames": [
+        60,
+        181
+      ],
+      "line_boxes": [],
+      "split": "development",
+      "range_kind": "verified_interior"
+    },
+    {
+      "id": "tc14_service",
+      "segment": "windowed",
+      "frames": [
+        240,
+        361
+      ],
+      "line_boxes": [
+        [
+          382,
+          498,
+          657,
+          522
+        ]
+      ],
+      "split": "development",
+      "range_kind": "verified_interior"
+    },
+    {
+      "id": "this_way",
+      "segment": "windowed",
+      "frames": [
+        420,
+        481
+      ],
+      "line_boxes": [
+        [
+          428,
+          498,
+          610,
+          522
+        ]
+      ],
+      "split": "development",
+      "range_kind": "verified_interior"
+    },
+    {
+      "id": "blank_corridor",
+      "segment": "windowed",
+      "frames": [
+        540,
+        721
+      ],
+      "line_boxes": [],
+      "split": "development",
+      "range_kind": "verified_interior"
+    },
+    {
+      "id": "blank_hud",
+      "segment": "windowed",
+      "frames": [
+        780,
+        841
+      ],
+      "line_boxes": [],
+      "split": "diagnostic",
+      "range_kind": "verified_interior",
+      "contamination": [
+        "player_hud"
+      ]
+    },
+    {
+      "id": "anxieties",
+      "segment": "windowed",
+      "frames": [
+        1140,
+        1156
+      ],
+      "line_boxes": [
+        [
+          302,
+          498,
+          737,
+          522
+        ]
+      ],
+      "split": "development",
+      "range_kind": "verified_interior"
+    },
+    {
+      "id": "concentration_two_lines",
+      "segment": "windowed",
+      "frames": [
+        1200,
+        1321
+      ],
+      "line_boxes": [
+        [
+          310,
+          463,
+          730,
+          486
+        ],
+        [
+          427,
+          498,
+          611,
+          522
+        ]
+      ],
+      "split": "development",
+      "range_kind": "verified_interior"
+    },
+    {
+      "id": "master_yoda_two_lines",
+      "segment": "windowed",
+      "frames": [
+        1380,
+        1501
+      ],
+      "line_boxes": [
+        [
+          406,
+          463,
+          633,
+          482
+        ],
+        [
+          346,
+          498,
+          694,
+          518
+        ]
+      ],
+      "split": "development",
+      "range_kind": "verified_interior"
+    },
+    {
+      "id": "expense_moment",
+      "segment": "windowed",
+      "frames": [
+        1560,
+        1681
+      ],
+      "line_boxes": [
+        [
+          314,
+          498,
+          725,
+          522
+        ]
+      ],
+      "split": "development",
+      "range_kind": "verified_interior"
+    },
+    {
+      "id": "living_force_two_lines",
+      "segment": "windowed",
+      "frames": [
+        1740,
+        1861
+      ],
+      "line_boxes": [
+        [
+          361,
+          462,
+          679,
+          486
+        ],
+        [
+          430,
+          499,
+          608,
+          522
+        ]
+      ],
+      "split": "development",
+      "range_kind": "verified_interior"
+    },
+    {
+      "id": "yes_master_green",
+      "segment": "windowed",
+      "frames": [
+        1920,
+        1981
+      ],
+      "line_boxes": [
+        [
+          455,
+          498,
+          584,
+          521
+        ]
+      ],
+      "split": "diagnostic",
+      "range_kind": "verified_interior",
+      "contamination": [
+        "existing_green_box_in_part_of_interval"
+      ]
+    },
+    {
+      "id": "blank_before_demands",
+      "segment": "windowed",
+      "frames": [
+        2040,
+        2113
+      ],
+      "line_boxes": [],
+      "split": "development",
+      "range_kind": "verified_interior"
+    },
+    {
+      "id": "viceroy_demands_heldout",
+      "segment": "windowed",
+      "frames": [
+        2113,
+        2338
+      ],
+      "line_boxes": [
+        [
+          330,
+          462,
+          710,
+          486
+        ],
+        [
+          300,
+          498,
+          738,
+          518
+        ]
+      ],
+      "split": "heldout",
+      "range_kind": "full_verified_cue",
+      "onset_frame": 2113
+    },
+    {
+      "id": "federation_cowards",
+      "segment": "windowed",
+      "frames": [
+        2400,
+        2461
+      ],
+      "line_boxes": [
+        [
+          320,
+          498,
+          718,
+          522
+        ]
+      ],
+      "split": "development",
+      "range_kind": "verified_interior"
+    },
+    {
+      "id": "negotiations_windowed",
+      "segment": "windowed",
+      "frames": [
+        2520,
+        2536
+      ],
+      "line_boxes": [
+        [
+          357,
+          498,
+          682,
+          522
+        ]
+      ],
+      "split": "development",
+      "range_kind": "verified_interior"
+    },
+    {
+      "id": "negotiations_maximized",
+      "segment": "maximized",
+      "frames": [
+        2580,
+        2641
+      ],
+      "line_boxes": [
+        [
+          687,
+          959,
+          1310,
+          1003
+        ]
+      ],
+      "split": "development",
+      "range_kind": "verified_interior"
+    },
+    {
+      "id": "what_did_you_say",
+      "segment": "maximized",
+      "frames": [
+        2700,
+        2821
+      ],
+      "line_boxes": [
+        [
+          733,
+          959,
+          1264,
+          1003
+        ]
+      ],
+      "split": "development",
+      "range_kind": "verified_interior"
+    },
+    {
+      "id": "ambassadors_green_two_lines",
+      "segment": "maximized",
+      "frames": [
+        2880,
+        3001
+      ],
+      "line_boxes": [
+        [
+          637,
+          890,
+          1362,
+          934
+        ],
+        [
+          911,
+          959,
+          1088,
+          995
+        ]
+      ],
+      "split": "diagnostic",
+      "range_kind": "verified_interior",
+      "contamination": [
+        "existing_green_box_around_lower_line"
+      ]
+    },
+    {
+      "id": "knew_it",
+      "segment": "maximized",
+      "frames": [
+        3060,
+        3121
+      ],
+      "line_boxes": [
+        [
+          910,
+          959,
+          1088,
+          995
+        ]
+      ],
+      "split": "development",
+      "range_kind": "verified_interior"
+    },
+    {
+      "id": "force_settlement",
+      "segment": "maximized",
+      "frames": [
+        3180,
+        3241
+      ],
+      "line_boxes": [
+        [
+          644,
+          959,
+          1353,
+          1003
+        ]
+      ],
+      "split": "development",
+      "range_kind": "verified_interior"
+    },
+    {
+      "id": "distract_sidious_heldout",
+      "segment": "maximized",
+      "frames": [
+        3299,
+        3549
+      ],
+      "line_boxes": [
+        [
+          855,
+          890,
+          1146,
+          926
+        ],
+        [
+          731,
+          959,
+          1268,
+          995
+        ]
+      ],
+      "split": "heldout",
+      "range_kind": "full_verified_cue",
+      "onset_frame": 3299
+    },
+    {
+      "id": "brain_dead",
+      "segment": "maximized",
+      "frames": [
+        3600,
+        3661
+      ],
+      "line_boxes": [
+        [
+          786,
+          959,
+          1211,
+          1003
+        ]
+      ],
+      "split": "development",
+      "range_kind": "verified_interior"
+    },
+    {
+      "id": "two_jedi",
+      "segment": "maximized",
+      "frames": [
+        3720,
+        3901
+      ],
+      "line_boxes": [
+        [
+          633,
+          959,
+          1366,
+          1003
+        ]
+      ],
+      "split": "development",
+      "range_kind": "verified_interior"
+    },
+    {
+      "id": "send_droid",
+      "segment": "maximized",
+      "frames": [
+        3960,
+        4021
+      ],
+      "line_boxes": [
+        [
+          864,
+          959,
+          1134,
+          995
+        ]
+      ],
+      "split": "development",
+      "range_kind": "verified_interior"
+    },
+    {
+      "id": "blank_droid",
+      "segment": "maximized",
+      "frames": [
+        4080,
+        4288
+      ],
+      "line_boxes": [],
+      "split": "development",
+      "range_kind": "verified_interior"
+    },
+    {
+      "id": "italic_wait_heldout",
+      "segment": "maximized",
+      "frames": [
+        4288,
+        4465
+      ],
+      "line_boxes": [
+        [
+          530,
+          958,
+          1471,
+          1004
+        ]
+      ],
+      "split": "heldout",
+      "range_kind": "full_verified_cue",
+      "onset_frame": 4288
+    },
+    {
+      "id": "blank_after_demands",
+      "segment": "windowed",
+      "frames": [
+        2338,
+        2341
+      ],
+      "line_boxes": [],
+      "split": "heldout",
+      "range_kind": "verified_blank_gap"
+    }
+  ]
+}

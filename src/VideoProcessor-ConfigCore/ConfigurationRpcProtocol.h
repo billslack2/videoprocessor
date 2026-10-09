@@ -161,11 +161,12 @@ namespace ConfigurationRpcProtocol
 		std::string output;
 		std::string viewport;
 		std::string zoom;
+        std::string subtitles;
 		bool shaderAvailable = false;
 		std::vector<std::string> shaders;
 	};
 
-	constexpr uint8_t LiveProfileStatusVersion = 1;
+	constexpr uint8_t LiveProfileStatusVersion = 2;
 	constexpr size_t MaximumProfileSectionBytes = 96;
 	constexpr size_t MaximumProfileShaders = 16;
 
@@ -177,7 +178,7 @@ namespace ConfigurationRpcProtocol
 		if (!status.available) return true;
 		const std::string* const sections[] = { &status.queue,
 			&status.renderer, &status.color, &status.scaling,
-			&status.output, &status.viewport, &status.zoom };
+			&status.output, &status.viewport, &status.zoom, &status.subtitles };
 		for (const auto* section : sections)
 			if (section->size() > MaximumProfileSectionBytes ||
 				!WriteString(payload, *section)) return false;
@@ -193,7 +194,7 @@ namespace ConfigurationRpcProtocol
 	inline bool ParseLiveProfileStatus(const std::vector<uint8_t>& payload,
 		LiveProfileStatus& status)
 	{
-		if (payload.size() < 2 || payload[0] != LiveProfileStatusVersion ||
+		if (payload.size() < 2 || (payload[0] != 1 && payload[0] != LiveProfileStatusVersion) ||
 			payload[1] > 1) return false;
 		LiveProfileStatus parsed;
 		parsed.available = payload[1] != 0;
@@ -210,6 +211,7 @@ namespace ConfigurationRpcProtocol
 		for (auto* section : sections)
 			if (!ReadString(payload, cursor, *section) ||
 				section->size() > MaximumProfileSectionBytes) return false;
+        if(payload[0]>=2 && (!ReadString(payload,cursor,parsed.subtitles) || parsed.subtitles.size()>MaximumProfileSectionBytes)) return false;
 		if (cursor > payload.size() || payload.size() - cursor < 5 ||
 			payload[cursor] > 1) return false;
 		parsed.shaderAvailable = payload[cursor++] != 0;

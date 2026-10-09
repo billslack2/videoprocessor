@@ -8,6 +8,8 @@
 
 #pragma once
 
+#include <SubtitlePreviewMode.h>
+
 
 #include <VideoFrame.h>
 #include <VideoState.h>
@@ -560,5 +562,11 @@ public:
 		refreshRateHz = 0.0;
 		return false;
 	}
+
+	// Cycle renderer-local subtitle preview modes without changing or persisting
+	// configuration. Unsupported renderers leave the mode unchanged.
+	virtual bool CycleSubtitlePreviewMode(SubtitlePreviewMode&) { return false; }
+	// CPU-only: restore normal subtitle handling even while a GPU reset is busy.
+	virtual void ResetSubtitlePreviewMode() {}
 
 };

@@ -200,6 +200,11 @@ struct ActivePicturePresentationRetentionEvidence
 	int samplingStripPeakY = 0;
 	int samplingStripPeakChromaDelta = 0;
 	bool samplingStripConflict = false;
+	// Reused by the presentation-only relocation recheck; raw extraction is unchanged.
+	int presentationBlackFloor = 0;
+	int presentationBlackThreshold = 0;
+	bool relocatedOverlayExclusionEvaluated = false;
+	bool relocatedOverlayResidualsExcluded = false;
 	bool excludedBandsPixelSafe = false;
 	bool excludedHorizontalBandsPixelSafe = false;
 	bool excludedVerticalBandsPixelSafe = false;
@@ -260,9 +265,12 @@ ActivePictureGlobalNearBlackEvidence EvaluateP010ActivePictureGlobalNearBlack(
 // encoded bar before any trusted presentation exists. One clean bar is mirrored
 // and the opposite bar must still be predominantly coherent black with a broad
 // picture boundary. The ordinary extractor remains conservative/provisional.
+// Subtitle diagnostics may also re-inspect a rejected edge already aligned with
+// that hypothesis. Crop callers leave this opt-in disabled.
 ActivePictureEvidence EvaluateSymmetricVerticalBarHypothesis(
 	const AnalysisLumaSource& source,
-	const ActivePictureEvidence& observed);
+	const ActivePictureEvidence& observed,
+    bool allowRejectedAlignedEdge = false);
 
 // Bounded presentation-retention inspection. The excluded-band predicate uses
 // the same black, luma-dispersion, texture, neutral-chroma, and continuity
@@ -358,3 +366,16 @@ struct RelativeBarContrastEvidence
 };
 RelativeBarContrastEvidence InspectRelativeBarContrast(const AnalysisLumaSource& source,
     const ActivePictureEvidence& raw, const ActivePictureBounds& base);
+
+// Caller must certify successful current-frame composition, background-safe erasure,
+// and a relocated destination inside trustedPresentation. Only the erased top/bottom
+// bar footprint is excluded. Acquisition, global darkness, and expansion evidence
+// remain raw. Invalid input returns unchanged evidence with evaluated=false.
+// Optional native glyph height permits only a proved sparse neutral residual halo;
+// zero keeps exact-footprint behavior. This never authorizes source cleanup.
+ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRetentionExcludingRelocatedOverlay(
+	const AnalysisLumaSource& source,
+	const ActivePictureBounds& trustedPresentation,
+	const ActivePicturePresentationRetentionEvidence& raw,
+	const ActivePictureBounds& erasedSourceBounds,
+	int relocatedGlyphHeight = 0);

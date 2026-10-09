@@ -1,0 +1,13 @@
+# Subtitle continuity and layout diagnostics
+
+This update retains an acquired cue through modest whole-line ink coverage fluctuation when black backing is freshly revalidated. It requires at least 90% line coverage (previously 95% for strict retention), while preserving the existing 85% per-component/local coverage checks, 8% whole-line difference limit, local difference limit, and new-glyph vetoes. Therefore 90% is not a blanket allowance to change 10% of the caption. The comparison stays anchored to acquisition pixels; successive weak frames do not redefine the reference.
+
+Without proved backing the 95% rule remains. Weaker evidence still uses the configured grace period. Confirmed added glyphs use the existing expansion path; this change does not authorize capture of new picture pixels, alter AR decisions, or change sampling cadence.
+
+`SUBTITLE LAYOUT` records changes to the final relocation geometry: current/previous cue, old/new destination, scale and glyph translation, tracker decision, backing proof, minimum measured line coverage and maximum line difference. Coverage numbers are partial if `match` reports an early comparison failure; `context-or-pixel-proof` can occur before line metrics are available. Reasons distinguish acquisition, cue reacquisition/replacement, confirmed glyph expansion, picture-boundary changes, other placement/settings changes, and hidden output. These coordinates precede the renderer's final crop/fit mapping. Use existing `SUBTITLE ASPECT` and AR logs for changes caused by that later mapping. Reacquired vs genuinely replaced captions are intentionally not claimed distinguishable by this log alone.
+
+A single compact connected glyph with direct bar support may now nominate a caption; existing contrast, black-surround, centering, size and ink-density checks remain. The new fixture is a script-neutral raster proxy, not an OCR/language certification. Solid bright patches and isolated picture-only shapes remain rejected.
+
+Validation adds sustained (longer than grace) minor-coverage retention, removed-glyph and missing-backing rejection, and compact-glyph positive/negative tests. Existing expansion, replacement, punctuation, GPU composition and active-picture tests remain in the suite. Screenshot replays cover question marks, parentheses and three lines at multiple resolutions/mirrors; a recorded thunder sequence covers automatic boundary recovery.
+
+The three-line capacity and bounded native expansion distances are unchanged. Live HDMI validation of reported occasional breathing is still required; there is no recording reproducing that particular report.

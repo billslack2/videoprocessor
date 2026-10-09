@@ -36,56 +36,14 @@ namespace
 		int right = 0;
 		int bottom = 0;
 		int characters = 0;
-		int textCharacters = 0;
-		int digitCharacters = 0;
-		int symbolCharacters = 0;
+		int visibleGlyphs = 0;
 		int wordCount = 0;
 		int maximumWordGap = 0;
 		int lineCount = 1;
-		bool containsMusicNote = false;
 		bool centered = false;
 		std::wstring text;
 		std::vector<WindowsOcrWordBox> words;
 	};
-
-	bool IsMusicNote(wchar_t character)
-	{
-		return character == L'\u2669' || character == L'\u266A' ||
-			character == L'\u266B' || character == L'\u266C';
-	}
-
-	bool IsSubtitlePunctuation(wchar_t character)
-	{
-		switch (character)
-		{
-		case L' ':
-		case L'\t':
-		case L'.':
-		case L',':
-		case L'!':
-		case L'?':
-		case L':':
-		case L';':
-		case L'\'':
-		case L'"':
-		case L'-':
-		case L'_':
-		case L'(':
-		case L')':
-		case L'[':
-		case L']':
-		case L'{':
-		case L'}':
-		case L'/':
-		case L'\\':
-		case L'\u2026':
-		case L'\u2013':
-		case L'\u2014':
-			return true;
-		default:
-			return false;
-		}
-	}
 
 	uint64_t HashSubtitleText(const std::wstring& text)
 	{
@@ -260,20 +218,7 @@ WindowsOcrSubtitleResult DetectWindowsOcrSubtitle(
 			const std::wstring lineText = line.Text().c_str();
 			box.text = lineText;
 			for (const wchar_t character : lineText)
-			{
-				if (IsMusicNote(character))
-				box.containsMusicNote = true;
-				else if (std::iswdigit(character))
-				{
-					++box.textCharacters;
-					++box.digitCharacters;
-				}
-				else if (std::iswalpha(character) ||
-					(character >= 0x80 && !IsSubtitlePunctuation(character)))
-					++box.textCharacters;
-				else if (!IsSubtitlePunctuation(character))
-					++box.symbolCharacters;
-			}
+				if (!std::iswspace(character)) ++box.visibleGlyphs;
 			box.wordCount = words;
 			std::sort(box.words.begin(), box.words.end(),
 				[](const WindowsOcrWordBox& a,
@@ -291,15 +236,11 @@ WindowsOcrSubtitleResult DetectWindowsOcrSubtitle(
 				centerX >= width * 3 / 10 && centerX <= width * 7 / 10 &&
 				box.right >= width * 2 / 5 &&
 				box.left <= width * 3 / 5;
-			const int meaningfulCharacters =
-				box.textCharacters + (box.containsMusicNote ? 1 : 0);
-			const bool subtitleCharacters =
-				meaningfulCharacters >= (box.containsMusicNote ? 1 : 3) &&
-				(box.characters == 0 ||
-					box.textCharacters * 100 >= box.characters * 30 ||
-					box.containsMusicNote) &&
-				box.symbolCharacters * 100 <=
-					std::max(1, box.characters) * 45;
+			// Do not impose a language, letter, or punctuation whitelist here.
+			// Text geometry and the independent bar-anchor checks below reject
+			// menus and picture labels; any OCR-reported visible glyph can belong
+			// to a subtitle, including unknown symbols and musical notation.
+			const bool subtitleCharacters = box.visibleGlyphs > 0;
 			const bool navigationSpacing =
 				words >= 4 &&
 				box.maximumWordGap >
@@ -358,13 +299,10 @@ WindowsOcrSubtitleResult DetectWindowsOcrSubtitle(
 					block.words.insert(block.words.end(),
 						prior.words.begin(), prior.words.end());
 					block.characters += prior.characters;
-					block.textCharacters += prior.textCharacters;
-					block.digitCharacters += prior.digitCharacters;
-					block.symbolCharacters += prior.symbolCharacters;
+					block.visibleGlyphs += prior.visibleGlyphs;
 					block.wordCount += prior.wordCount;
 					block.maximumWordGap = std::max(
 						block.maximumWordGap, prior.maximumWordGap);
-					block.containsMusicNote |= prior.containsMusicNote;
 					block.text = prior.text + L"\n" + block.text;
 					++block.lineCount;
 					++includedLines;
@@ -393,13 +331,10 @@ WindowsOcrSubtitleResult DetectWindowsOcrSubtitle(
 					block.words.insert(block.words.end(),
 						next.words.begin(), next.words.end());
 					block.characters += next.characters;
-					block.textCharacters += next.textCharacters;
-					block.digitCharacters += next.digitCharacters;
-					block.symbolCharacters += next.symbolCharacters;
+					block.visibleGlyphs += next.visibleGlyphs;
 					block.wordCount += next.wordCount;
 					block.maximumWordGap = std::max(
 						block.maximumWordGap, next.maximumWordGap);
-					block.containsMusicNote |= next.containsMusicNote;
 					block.text += L"\n" + next.text;
 					++block.lineCount;
 					++includedLines;

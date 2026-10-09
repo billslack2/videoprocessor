@@ -1,0 +1,354 @@
+{
+  "schema": 1,
+  "description": "Visually reviewed clean-raster diagnostic annotations for the 2026-10-03 stairway recording. Frames are preserved; annotations label visible subtitle glyph bounds and a reviewed no-subtitle sample.",
+  "media": {
+    "basename": "2026-10-03 19-50-41.mp4",
+    "sha256": "720273938b1b351e759a7f9d6e86cd3545ef5e04d847528e0c89596c6b347771",
+    "width_height_frames": [
+      2560,
+      1440,
+      6253
+    ],
+    "fps": 60
+  },
+  "annotation_method": "Full-raster source frames were visually reviewed at native 2560x1440 resolution. Glyph rectangles were measured from the clean no-box playback at subtitle rows using bright glyph pixels, then checked visually. Rectangles are half-open. Picture top and bottom edges were confirmed at y=176 and y=1218; the second subtitle line extends into the lower black bar through y=1234/1235. Additional sustained labels were reviewed at 0.25-second steps across question frames 4380\u20134544 and treaty frames 4590\u20134800. Frame 4543 (75.717 s) is the first visually confirmed treaty caption; question labels end before it. The treaty text then rises slightly before reaching its stable interior bounds at frame 4590. A separate blank interval is reviewed at 0.5-second steps from 70\u201372 s; the preceding interval around 69 s has the caption \u201c(Engine Powering Down)\u201d and is excluded.",
+  "limitations": [
+    "This is a screen recording, not the original movie bitstream or source-frame timeline.",
+    "The clean source segment has no diagnostic green box burned into the raster; the app's earlier 0\u201345 s viewport is scaled and separately diagnostic-only.",
+    "Subtitle cue samples are short reviewed intervals around representative frames; they do not assert exact cue onset or offset.",
+    "The 70 s blank sample is a short reviewed frame window during a shot with no visible subtitle.",
+    "The 70\u201372 s blank interval is visually clear at 0.5 s samples; exact subtitle onset after the blank is not claimed. The question-to-treaty transition is directly reviewed at frames 4540\u20134544 and first shows treaty glyphs at frame 4543."
+  ],
+  "segments": [
+    {
+      "id": "stairway_clean_source",
+      "frames": [
+        3000,
+        5880
+      ],
+      "crop_xywh": [
+        0,
+        0,
+        2560,
+        1440
+      ],
+      "reviewed_picture_y": [
+        176,
+        1218
+      ]
+    },
+    {
+      "id": "stairway_stability",
+      "frames": [
+        4200,
+        4801
+      ],
+      "crop_xywh": [
+        0,
+        0,
+        2560,
+        1440
+      ],
+      "reviewed_picture_y": [
+        176,
+        1218
+      ]
+    }
+  ],
+  "annotations": [
+    {
+      "id": "question_clean_65s",
+      "segment": "stairway_clean_source",
+      "frames": [
+        3895,
+        3905
+      ],
+      "line_boxes": [
+        [
+          834,
+          1100,
+          1726,
+          1155
+        ],
+        [
+          1088,
+          1190,
+          1469,
+          1234
+        ]
+      ],
+      "split": "diagnostic",
+      "range_kind": "verified_interior",
+      "contamination": [
+        "lower_line_crosses_picture_bar_boundary"
+      ]
+    },
+    {
+      "id": "treaty_clean_66s",
+      "segment": "stairway_clean_source",
+      "frames": [
+        3955,
+        3965
+      ],
+      "line_boxes": [
+        [
+          841,
+          1091,
+          1719,
+          1146
+        ],
+        [
+          753,
+          1180,
+          1803,
+          1235
+        ]
+      ],
+      "split": "diagnostic",
+      "range_kind": "verified_interior",
+      "contamination": [
+        "lower_line_crosses_picture_bar_boundary"
+      ]
+    },
+    {
+      "id": "treaty_clean_67s",
+      "segment": "stairway_clean_source",
+      "frames": [
+        4015,
+        4025
+      ],
+      "line_boxes": [
+        [
+          841,
+          1090,
+          1719,
+          1146
+        ],
+        [
+          753,
+          1180,
+          1803,
+          1235
+        ]
+      ],
+      "split": "diagnostic",
+      "range_kind": "verified_interior",
+      "contamination": [
+        "lower_line_crosses_picture_bar_boundary"
+      ]
+    },
+    {
+      "id": "blank_clean_70s",
+      "segment": "stairway_clean_source",
+      "frames": [
+        4195,
+        4205
+      ],
+      "line_boxes": [],
+      "split": "diagnostic",
+      "range_kind": "verified_blank_gap",
+      "contamination": []
+    },
+    {
+      "id": "question_clean_73s",
+      "segment": "stairway_clean_source",
+      "frames": [
+        4375,
+        4385
+      ],
+      "line_boxes": [
+        [
+          834,
+          1100,
+          1726,
+          1155
+        ],
+        [
+          1088,
+          1190,
+          1469,
+          1234
+        ]
+      ],
+      "split": "diagnostic",
+      "range_kind": "verified_interior",
+      "contamination": [
+        "lower_line_crosses_picture_bar_boundary"
+      ]
+    },
+    {
+      "id": "question_clean_75s",
+      "segment": "stairway_clean_source",
+      "frames": [
+        4495,
+        4505
+      ],
+      "line_boxes": [
+        [
+          834,
+          1100,
+          1726,
+          1155
+        ],
+        [
+          1088,
+          1190,
+          1469,
+          1234
+        ]
+      ],
+      "split": "diagnostic",
+      "range_kind": "verified_interior",
+      "contamination": [
+        "lower_line_crosses_picture_bar_boundary"
+      ]
+    },
+    {
+      "id": "treaty_clean_77s",
+      "segment": "stairway_clean_source",
+      "frames": [
+        4615,
+        4625
+      ],
+      "line_boxes": [
+        [
+          841,
+          1091,
+          1719,
+          1146
+        ],
+        [
+          753,
+          1180,
+          1803,
+          1235
+        ]
+      ],
+      "split": "diagnostic",
+      "range_kind": "verified_interior",
+      "contamination": [
+        "lower_line_crosses_picture_bar_boundary"
+      ]
+    },
+    {
+      "id": "treaty_clean_78s",
+      "segment": "stairway_clean_source",
+      "frames": [
+        4675,
+        4685
+      ],
+      "line_boxes": [
+        [
+          841,
+          1091,
+          1719,
+          1146
+        ],
+        [
+          753,
+          1180,
+          1803,
+          1235
+        ]
+      ],
+      "split": "diagnostic",
+      "range_kind": "verified_interior",
+      "contamination": [
+        "lower_line_crosses_picture_bar_boundary"
+      ]
+    },
+    {
+      "id": "treaty_clean_80s",
+      "segment": "stairway_clean_source",
+      "frames": [
+        4795,
+        4805
+      ],
+      "line_boxes": [
+        [
+          841,
+          1091,
+          1719,
+          1146
+        ],
+        [
+          753,
+          1180,
+          1803,
+          1235
+        ]
+      ],
+      "split": "diagnostic",
+      "range_kind": "verified_interior",
+      "contamination": [
+        "lower_line_crosses_picture_bar_boundary"
+      ]
+    },
+    {
+      "segment": "stairway_stability",
+      "split": "diagnostic",
+      "id": "blank_stable_70_72s",
+      "frames": [
+        4200,
+        4320
+      ],
+      "line_boxes": [],
+      "range_kind": "verified_blank_gap",
+      "contamination": []
+    },
+    {
+      "segment": "stairway_stability",
+      "split": "diagnostic",
+      "id": "question_stable_73_75_5s",
+      "frames": [
+        4380,
+        4543
+      ],
+      "line_boxes": [
+        [
+          834,
+          1100,
+          1726,
+          1155
+        ],
+        [
+          1088,
+          1190,
+          1469,
+          1234
+        ]
+      ],
+      "range_kind": "verified_interior",
+      "contamination": [
+        "lower_line_crosses_picture_bar_boundary"
+      ]
+    },
+    {
+      "segment": "stairway_stability",
+      "split": "diagnostic",
+      "id": "treaty_stable_76_5_80s",
+      "frames": [
+        4590,
+        4801
+      ],
+      "line_boxes": [
+        [
+          841,
+          1091,
+          1719,
+          1146
+        ],
+        [
+          753,
+          1180,
+          1803,
+          1235
+        ]
+      ],
+      "range_kind": "verified_interior",
+      "contamination": [
+        "lower_line_crosses_picture_bar_boundary"
+      ]
+    }
+  ]
+}

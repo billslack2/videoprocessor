@@ -156,7 +156,7 @@ namespace ProfileChangeOverlay
 	inline const std::vector<std::string>& PreferredOrder()
 	{
 		static const std::vector<std::string> order = {
-			"display", "color", "output", "viewport", "zoom", "input",
+			"display", "color", "output", "viewport", "zoom", "subtitles", "input",
 			"scaling", "queue", "lldv", "standard_shaders", "nls"
 		};
 		return order;

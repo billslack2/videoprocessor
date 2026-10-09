@@ -12,6 +12,7 @@
 #include <libplacebo/d3d11.h>
 #include <libplacebo/renderer.h>
 #include <libplacebo/shaders/custom.h>
+#include <SubtitleCutPasteShader.h>
 
 #include <cstdint>
 #include <cmath>
@@ -645,6 +646,166 @@ namespace
 			Assert::IsTrue(pl_tex_download(gpu, &download));
 			pl_tex_destroy(gpu, &targetTexture);
 			pl_tex_destroy(gpu, &sourceTexture);
+			return result;
+		}
+
+		std::vector<RgbaPixel> RenderSubtitlePattern(const pl_hook* hook, bool hdrP010, int phase,
+			const SubtitleCutPasteGeometry& geometry, pl_color_transfer transfer=PL_COLOR_TRC_UNKNOWN,
+			bool blackBar=false, bool oldSubtitleCard=false,
+			int sceneGray=-1, bool diagonalStair=false, int cardGray=0,
+            const SubtitleBoxRect* independentCard=nullptr, bool originalCornerInk=false, bool fringeSceneryInk=false,
+            const pl_rect2df* sourceCrop=nullptr,const pl_hook* additionalHook=nullptr, bool brightBottomFringe=false, int brightFringeY=-1, bool auxiliarySamples=true, bool reconstructionPattern=false,
+            const std::vector<RgbaPixel>* recordedPixels=nullptr, int width=64, int height=64)
+		{
+
+			const auto gpu=Gpu();
+			const auto outputFormat=pl_find_fmt(gpu,PL_FMT_UNORM,4,8,8,
+				static_cast<pl_fmt_caps>(PL_FMT_CAP_SAMPLEABLE|PL_FMT_CAP_RENDERABLE|PL_FMT_CAP_HOST_READABLE));
+			Assert::IsNotNull(outputFormat);
+			std::vector<RgbaPixel> pixels(width*height);
+			std::vector<uint16_t> luma(width*height),chroma(width*height/2,512<<6);
+			for(int y=0;y<height;++y) for(int x=0;x<width;++x) {
+				pixels[y*width+x]={uint8_t((x*3+phase*43)%256),uint8_t((y*3+phase*57)%256),uint8_t((x+y+phase*71)%256),255};
+				luma[y*width+x]=uint16_t((64+(x*3+y*7+phase*113)%800)<<6);
+			}
+			if(sceneGray>=0) for(int i=0;i<width*height;++i) {
+				const auto gray=uint8_t((std::min)(sceneGray,255));
+				pixels[i]={gray,gray,gray,255};
+				luma[i]=uint16_t((64+gray*3)<<6);
+			}
+			// A bright descending balustrade edge above the cleanup region must not
+			// be reflected into the old subtitle card below it.
+			if(diagonalStair) for(int y=17;y<=21;++y)
+				for(int x=20+2*(y-19);x<=44+2*(y-19);++x) {
+					pixels[y*width+x]={245,245,245,255};
+					luma[y*width+x]=uint16_t(800<<6);
+				}
+            // Independent two-dimensional texture for reconstruction filter tests.
+            if(reconstructionPattern) for(int y=0;y<height;++y)for(int x=0;x<width;++x) {
+                const uint8_t v=((x/4+y/4)%2)?220:32;
+                pixels[y*width+x]={v,v,v,255};luma[y*width+x]=uint16_t((64+v*3)<<6);
+            }
+            if(blackBar) for(int y=0;y<(std::min)(height,geometry.pictureTop);++y)
+                for(int x=0;x<width;++x) {
+                    pixels[y*width+x]={0,0,0,255};luma[y*width+x]=uint16_t(64<<6);
+                }
+			if(blackBar) for(int y=(std::max)(0,geometry.pictureBottom);y<height;++y)
+				for(int x=0;x<width;++x) {
+					pixels[y*width+x]={0,0,0,255};luma[y*width+x]=uint16_t(64<<6);
+				}
+            const SubtitleBoxRect card=independentCard ? *independentCard :
+                SubtitleBoxRect{geometry.source.left+1,geometry.source.top+1,
+                    geometry.source.right-1,geometry.pictureBottom};
+            if(oldSubtitleCard) for(int y=(std::max)(0,card.top);
+                y<(std::min)(card.bottom,geometry.pictureBottom);++y)
+                for(int x=(std::max)(0,card.left);x<(std::min)(card.right,width);++x) {
+                    // An independent rounded card must not be manufactured from
+                    // the geometry that the shader is being asked to validate.
+                    if(independentCard && y<card.top+4) {
+                        const int dx=(std::max)(card.left+4-x,x-(card.right-5));
+                        const int dy=card.top+4-y;
+                        if(dx>0 && dx*dx+dy*dy>16) continue;
+                    }
+                    pixels[y*width+x]={uint8_t(cardGray),uint8_t(cardGray),uint8_t(cardGray),255};
+                    luma[y*width+x]=uint16_t((64+cardGray*3)<<6);
+                }
+			if(oldSubtitleCard && auxiliarySamples) {
+				const int nearby=geometry.pictureBottom-2;
+				pixels[nearby*width+geometry.source.left+1]={8,8,8,255};
+				luma[nearby*width+geometry.source.left+1]=uint16_t(90<<6);
+			}
+			// A simple white glyph and controlled destination/source samples make
+			// every experimental backing mode observable for every test geometry.
+			const int glyphLeft=geometry.content.left+(geometry.content.right-geometry.content.left)/2-2;
+			const int glyphTop=geometry.content.top+(geometry.content.bottom-geometry.content.top)/2-5;
+			for(int y=glyphTop;y<glyphTop+11;++y)for(int x=glyphLeft;x<glyphLeft+4;++x) {
+				pixels[y*width+x]={245,245,245,255};luma[y*width+x]=uint16_t(580<<6);
+			}
+            if(auxiliarySamples) {
+			const int backingX=geometry.destination.left+(std::max)(1,geometry.content.left-geometry.source.left-1);
+			const int backingY=geometry.destination.top+(std::max)(1,geometry.content.top-geometry.source.top-1);
+			const int sourceX=geometry.source.left+1,sourceY=geometry.source.top+1;
+			pixels[backingY*width+backingX]={200,180,160,255};
+			luma[backingY*width+backingX]=uint16_t(800<<6);
+			pixels[sourceY*width+sourceX]={0,0,0,255};
+			luma[sourceY*width+sourceX]=uint16_t(64<<6);
+            // A rejected-key sample in source/destination overlap proves that
+            // cleanup continues through the moved panel without a black seam.
+            const int overlapY=(std::max)(geometry.content.top,geometry.destination.top)+1;
+            if(overlapY<geometry.destination.bottom) {
+                const int mappedY=overlapY+geometry.source.top-geometry.destination.top;
+                pixels[mappedY*width+geometry.content.left+1]={0,0,0,255};
+                luma[mappedY*width+geometry.content.left+1]=uint16_t(64<<6);
+            }
+            // Bright scenery in the added padding must neither move as text nor
+            // be erased from its original location by a keyed mode.
+            const int borderX=geometry.source.left+1,borderY=geometry.source.bottom-2;
+            pixels[borderY*width+borderX]={245,245,245,255};
+            luma[borderY*width+borderX]=uint16_t(580<<6);
+            }
+            if(fringeSceneryInk) {
+                // Same white stroke outside the opaque card in the picture,
+                // and in the black bar. Only the latter is subtitle material.
+                const int x=geometry.content.left+1;
+                for(const int y:{geometry.content.top+3,geometry.pictureBottom+1}) {
+                    pixels[y*width+x]={245,245,245,255};luma[y*width+x]=uint16_t(580<<6);
+                }
+            }
+            if(brightBottomFringe) {
+                const int y=brightFringeY>=0?brightFringeY:geometry.content.bottom-1;
+                for(int x=geometry.content.left;x<geometry.content.right;++x) {
+                    pixels[y*width+x]={245,245,245,255};luma[y*width+x]=uint16_t(580<<6);
+                }
+            }
+            if(originalCornerInk) {
+                // A fragment of the old first glyph overlaps the rounded
+                // destination corner. Its mapped replacement sample is black.
+                const int corner= (geometry.destination.top+1)*width+geometry.destination.left;
+                pixels[corner]={245,245,245,255};luma[corner]=uint16_t(580<<6);
+            }
+            if(recordedPixels) { Assert::AreEqual(size_t(width*height),recordedPixels->size());pixels=*recordedPixels; }
+			pl_tex textures[2]{};
+			pl_tex_params input{};input.w=width;input.h=height;input.sampleable=true;
+			input.format=hdrP010?pl_find_fmt(gpu,PL_FMT_UNORM,1,16,16,PL_FMT_CAP_SAMPLEABLE):outputFormat;
+			Assert::IsNotNull(input.format);input.initial_data=hdrP010?static_cast<const void*>(luma.data()):pixels.data();
+			textures[0]=pl_tex_create(gpu,&input);Assert::IsNotNull(textures[0]);
+			auto image=MakeRgbFrame(textures[0]);
+			if(hdrP010) {
+				input.w=width/2;input.h=height/2;
+				input.format=pl_find_fmt(gpu,PL_FMT_UNORM,2,16,16,PL_FMT_CAP_SAMPLEABLE);
+				Assert::IsNotNull(input.format);input.initial_data=chroma.data();
+				textures[1]=pl_tex_create(gpu,&input);Assert::IsNotNull(textures[1]);
+				image.num_planes=2;image.planes[0].components=1;image.planes[0].component_mapping[0]=0;
+				image.planes[1].texture=textures[1];image.planes[1].components=2;
+				image.planes[1].component_mapping[0]=1;image.planes[1].component_mapping[1]=2;
+				image.repr.sys=PL_COLOR_SYSTEM_BT_2020_NC;image.repr.levels=PL_COLOR_LEVELS_LIMITED;
+				image.repr.alpha=PL_ALPHA_NONE;image.repr.bits.sample_depth=16;
+				image.repr.bits.color_depth=10;image.repr.bits.bit_shift=6;
+				image.color.primaries=PL_COLOR_PRIM_BT_2020;image.color.transfer=PL_COLOR_TRC_PQ;
+				image.color.hdr.min_luma=0.005f;image.color.hdr.max_luma=1000.0f;
+			}
+            if(transfer!=PL_COLOR_TRC_UNKNOWN) image.color.transfer=transfer;
+            if(sourceCrop)image.crop=*sourceCrop;
+			pl_tex_params output{};output.w=width;output.h=height;output.format=outputFormat;
+			output.renderable=true;output.host_readable=true;
+			pl_tex targetTexture=pl_tex_create(gpu,&output);Assert::IsNotNull(targetTexture);
+			auto target=MakeRgbFrame(targetTexture);target.color=image.color;
+			auto params=pl_render_fast_params;params.dither_params=nullptr;params.peak_detect_params=nullptr;
+            pl_tex compositionTexture=nullptr;
+            if(sourceCrop && hook) {
+                pl_frame composed{};
+                Assert::IsTrue(ComposeSubtitleBeforeCrop(m_renderer,gpu,image,hook,&compositionTexture,composed));
+                image=composed;
+            }
+            const pl_hook* hooks[2]={sourceCrop ? additionalHook : hook,additionalHook};
+            if(hooks[0]) {params.hooks=hooks;params.num_hooks=sourceCrop?1:(additionalHook?2:1);}
+            const auto rendered=NlsHookRecovery::Render(m_renderer,gpu,image,target,target,params,additionalHook,[](){});
+            Assert::IsTrue(rendered.rendered);pl_gpu_finish(gpu);
+			std::vector<RgbaPixel> result(width*height);
+			pl_tex_transfer_params download{};download.tex=targetTexture;download.ptr=result.data();
+			Assert::IsTrue(pl_tex_download(gpu,&download));
+			pl_tex_destroy(gpu,&compositionTexture);
+            pl_tex_destroy(gpu,&targetTexture);pl_tex_destroy(gpu,&textures[0]);pl_tex_destroy(gpu,&textures[1]);
 			return result;
 		}
 
@@ -1701,6 +1862,1162 @@ namespace VideoProcessorTest
             Assert::AreEqual(2, calls);
             Assert::IsTrue(g.retried);
         }
+		TEST_METHOD(SubtitleCutPasteGpuReadbackUsesCurrentPixelsAndDestinationFirstOverlap)
+		{
+			TargetLutGpuFixture fixture;Assert::IsTrue(fixture.Create());
+			const auto* hook=CreateSubtitleCutPasteHook(fixture.Gpu());Assert::IsNotNull(hook);
+			for(const auto transfer:{PL_COLOR_TRC_SRGB,PL_COLOR_TRC_PQ,PL_COLOR_TRC_GAMMA18,
+                PL_COLOR_TRC_GAMMA20,PL_COLOR_TRC_GAMMA22,PL_COLOR_TRC_GAMMA24,
+                PL_COLOR_TRC_GAMMA26,PL_COLOR_TRC_GAMMA28}) for(int phase=0;phase<3;++phase) {
+                const bool hdrP010=transfer==PL_COLOR_TRC_PQ;
+                const double gamma=transfer==PL_COLOR_TRC_GAMMA18?1.8:transfer==PL_COLOR_TRC_GAMMA20?2.0:
+                    transfer==PL_COLOR_TRC_GAMMA22?2.2:transfer==PL_COLOR_TRC_GAMMA26?2.6:
+                    transfer==PL_COLOR_TRC_GAMMA28?2.8:2.4;
+				const auto geometry=phase<2 ? ComputeSubtitleCutPaste({20,46,44,61},64,64,8,56,10,15) :
+					ComputeSubtitleCutPaste({24,48,36,60},64,64,8,56,2,5);
+				Assert::IsTrue(geometry.valid);Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry));
+				Assert::IsFalse(BindSubtitleCutPasteHook(hook,geometry,-1));
+				Assert::IsFalse(BindSubtitleCutPasteHook(hook,geometry,6));
+				Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,0));
+				const auto baseline=fixture.RenderSubtitlePattern(nullptr,hdrP010,phase,geometry,transfer);
+				const auto moved=fixture.RenderSubtitlePattern(hook,hdrP010,phase,geometry,transfer);
+				for(int y=0;y<64;++y) for(int x=0;x<64;++x) {
+					const auto sample=MapSubtitleCutPastePixel(geometry,x,y);
+					const RgbaPixel expected=sample.clear?RgbaPixel{0,0,0,255}:baseline[sample.y*64+sample.x];
+					Assert::IsTrue(PixelDistance(expected,moved[y*64+x])<=6,
+						L"GPU cut/paste differs from immutable current-frame pixel mapping");
+				}
+				std::array<std::vector<RgbaPixel>,4> keyed;
+				for(int mode=1;mode<=4;++mode) {
+					Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,mode,transfer));
+					bool found=false;
+					for(int parameter=0;parameter<hook->num_parameters;++parameter)
+						if(hook->parameters[parameter].name &&
+							std::strcmp(hook->parameters[parameter].name,"background_mode")==0) {
+							found=true;Assert::AreEqual(float(mode),hook->parameters[parameter].data->f);
+						}
+					Assert::IsTrue(found,L"the selected backing mode reaches the parsed GPU hook");
+					keyed[size_t(mode-1)]=fixture.RenderSubtitlePattern(hook,hdrP010,phase,geometry,transfer);
+				}
+			const int backingX=geometry.destination.left+(std::max)(1,geometry.content.left-geometry.source.left-1);
+				const int backingY=geometry.destination.top+(std::max)(1,geometry.content.top-geometry.source.top-1);
+				const int backingPixel=backingY*64+backingX;
+				const int roundedCornerPixel=geometry.destination.top*64+geometry.destination.left;
+                const int blackCornerPixel=roundedCornerPixel-6;
+				const int glyphLeft=geometry.content.left+(geometry.content.right-geometry.content.left)/2-2;
+				const int glyphTop=geometry.content.top+(geometry.content.bottom-geometry.content.top)/2-5;
+				const int glyphX=glyphLeft+1;
+				const int glyphY=glyphTop+1+geometry.destination.top-geometry.source.top;
+				const int glyphPixel=glyphY*64+glyphX;
+				const int originalGlyphPixel=(glyphTop+1)*64+glyphX;
+				const auto& transparent=keyed[0][backingPixel];
+				const auto& blended=keyed[1][backingPixel];
+				const auto& black=keyed[2][backingPixel];
+				const auto& gray=keyed[3][backingPixel];
+				auto intensity=[](const RgbaPixel& p){return int(p.r)+int(p.g)+int(p.b);};
+				Assert::IsTrue(PixelDistance(baseline[backingPixel],transparent)<=6,
+					L"transparent backing preserves the active destination where no keyed glyph exists");
+				Assert::IsTrue(PixelDistance(baseline[roundedCornerPixel],keyed[0][roundedCornerPixel])<=6,
+					L"transparent mode has no generated backing in the rounded panel corner");
+				Assert::IsTrue(intensity(transparent)>intensity(blended)+12 &&
+					intensity(blended)>intensity(black)+8 && intensity(gray)>intensity(black)+8 &&
+					intensity(gray)<intensity(transparent),
+					L"blend, black, and dark-gray modes produce distinct destination backing pixels");
+				Assert::IsTrue(PixelDistance(baseline[blackCornerPixel],keyed[2][blackCornerPixel])<
+					PixelDistance(baseline[backingPixel],keyed[2][backingPixel]) &&
+					PixelDistance(baseline[roundedCornerPixel],keyed[3][roundedCornerPixel])<
+					PixelDistance(baseline[backingPixel],keyed[3][backingPixel]) &&
+					PixelDistance(baseline[roundedCornerPixel],keyed[1][roundedCornerPixel])<
+					PixelDistance(baseline[backingPixel],keyed[1][backingPixel]),
+					L"generated black/gray panels curve away at antialiased corners");
+                auto decode=[hdrP010,transfer,gamma](double v) {
+                    v/=255.0;
+                    if(!hdrP010 && transfer!=PL_COLOR_TRC_SRGB) return std::pow(v,gamma);
+                    if(!hdrP010) return v<=0.04045?v/12.92:std::pow((v+0.055)/1.055,2.4);
+                    const double q=std::pow(v,1.0/78.84375);
+                    return std::pow((std::max)(q-0.8359375,0.0)/(18.8515625-18.6875*q),1.0/0.1593017578125)*10000.0/203.0;
+                };
+                auto encode=[hdrP010,transfer,gamma](double v) {
+                    if(!hdrP010 && transfer!=PL_COLOR_TRC_SRGB) return 255.0*std::pow(v,1.0/gamma);
+                    if(!hdrP010) return 255.0*(v<=0.0031308?v*12.92:1.055*std::pow(v,1.0/2.4)-0.055);
+                    const double q=std::pow(v*203.0/10000.0,0.1593017578125);
+                    return 255.0*std::pow((0.8359375+18.8515625*q)/(1.0+18.6875*q),78.84375);
+                };
+                Assert::IsTrue(std::abs(double(blended.r)-encode(decode(transparent.r)*0.5))<=5.0,
+                    L"blend attenuates light by half, not the encoded PQ or SDR signal");
+                Assert::IsTrue(std::abs(double(gray.r)-encode(0.08))<=5.0,
+                    L"dark gray is eight percent reference white in SDR and PQ");
+                const int cleanupX=geometry.content.left+1;
+                auto checkFill=[&](int y,bool overlap) {
+                    const int left=(std::max)(0,geometry.source.left-2);
+                    const int right=(std::min)(63,geometry.source.right+1);
+                    const double t=(cleanupX+0.5-geometry.source.left)/(geometry.source.right-geometry.source.left);
+                    const double fill=decode(baseline[y*64+left].r)*(1.0-t)+decode(baseline[y*64+right].r)*t;
+                    Assert::IsTrue(std::abs(double(keyed[0][y*64+cleanupX].r)-encode(fill))<=7.0,
+                        L"transparent cleanup uses current side pixels across source and overlap");
+                    Assert::IsTrue(std::abs(double(keyed[1][y*64+cleanupX].r)-encode(fill*(overlap?0.5:1.0)))<=7.0,
+                        L"blend panel and source cleanup share the same approximation without a black overlap seam");
+                };
+                const int overlapY=(std::max)(geometry.content.top,geometry.destination.top)+1;
+                if(overlapY<geometry.destination.bottom) checkFill(overlapY,true);
+                const int vacatedY=(std::max)(geometry.content.top,geometry.destination.bottom)+1;
+                if(vacatedY<geometry.pictureBottom && vacatedY<geometry.content.bottom) checkFill(vacatedY,false);
+                const int borderX=geometry.source.left+1,borderY=geometry.source.bottom-2;
+                const int borderOriginal=borderY*64+borderX;
+                const int borderMoved=(borderY+geometry.destination.top-geometry.source.top)*64+borderX;
+                Assert::IsTrue(PixelDistance(baseline[borderMoved],keyed[0][borderMoved])<=6,
+                    L"bright picture pixels in padding must not be copied as subtitle glyphs");
+                Assert::IsTrue(intensity(keyed[2][borderMoved])<12,
+                    L"opaque black padding excludes bright source scenery from its key");
+                for(const auto& image:keyed) Assert::IsTrue(PixelDistance(baseline[borderOriginal],image[borderOriginal])<=6,
+                    L"keyed cleanup preserves original pixels outside detected content");
+				for(const auto& image:keyed) {
+					Assert::IsTrue(PixelDistance(baseline[originalGlyphPixel],image[glyphPixel])<=8,
+						L"a white subtitle core survives the approximate color key at SDR and realistic PQ levels");
+				}
+				Assert::IsTrue(BindSubtitleCutPasteHook(hook,{}));
+				const auto disabled=fixture.RenderSubtitlePattern(hook,hdrP010,phase,geometry,transfer);
+				for(size_t i=0;i<baseline.size();++i) Assert::IsTrue(PixelDistance(baseline[i],disabled[i])<=6);
+			}
+			pl_mpv_user_shader_destroy(&hook);
+		}
+
+		TEST_METHOD(SubtitleCrossingPictureAndBlackBarDoesNotMoveBlackBackground)
+		{
+			TargetLutGpuFixture fixture;Assert::IsTrue(fixture.Create());
+			const auto* hook=CreateSubtitleCutPasteHook(fixture.Gpu());Assert::IsNotNull(hook);
+			const auto geometry=ComputeSubtitleCutPaste({20,46,44,61},64,64,8,56,10,15);
+			Assert::IsTrue(geometry.valid);
+			const auto baseline=fixture.RenderSubtitlePattern(nullptr,false,0,geometry,PL_COLOR_TRC_SRGB,true);
+			std::array<std::vector<RgbaPixel>,5> keyed;
+            SubtitleGeneratedGrayStyle tintOnly;tintOnly.blurPixels=0;
+			for(int mode=1;mode<=5;++mode) {
+                auto modeStyle=tintOnly;
+                // Solid now honors the supplied color; this case tests black.
+                if(mode==3) modeStyle.color={0.0f,0.0f,0.0f};
+				Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,mode,PL_COLOR_TRC_SRGB,modeStyle));
+				keyed[size_t(mode-1)]=fixture.RenderSubtitlePattern(hook,false,0,geometry,PL_COLOR_TRC_SRGB,true);
+			}
+			const int glyphLeft=geometry.content.left+(geometry.content.right-geometry.content.left)/2-2;
+			const int glyphTop=geometry.content.top+(geometry.content.bottom-geometry.content.top)/2-5;
+			for(const int sourceY:{53,58}) {
+				Assert::IsTrue((sourceY==53 && sourceY<geometry.pictureBottom) ||
+					(sourceY==58 && sourceY>=geometry.pictureBottom),
+					L"the two tested glyph rows straddle the real picture/bar boundary");
+				const int sourceX=glyphLeft+1;
+				const int destinationY=sourceY+geometry.destination.top-geometry.source.top;
+				const int sourceIndex=sourceY*64+sourceX;
+				const int destinationIndex=destinationY*64+sourceX;
+				Assert::IsTrue(sourceY>=glyphTop && sourceY<glyphTop+11);
+				Assert::IsTrue(PixelDistance(baseline[sourceIndex],keyed[0][destinationIndex])<=8 &&
+					PixelDistance(baseline[sourceIndex],keyed[1][destinationIndex])<=8 &&
+					PixelDistance(baseline[sourceIndex],keyed[2][destinationIndex])<=8 &&
+					PixelDistance(baseline[sourceIndex],keyed[3][destinationIndex])<=8,
+					L"subtitle glyph cores survive when a line crosses the active-picture/black-bar boundary");
+			}
+			const int barGapX=geometry.content.left+2,barGapY=58;
+			const int movedBarGapY=barGapY+geometry.destination.top-geometry.source.top;
+			const int barGapSource=barGapY*64+barGapX,movedBarGap=movedBarGapY*64+barGapX;
+			Assert::IsTrue(PixelDistance(baseline[barGapSource],RgbaPixel{0,0,0,255})<=6);
+			Assert::IsTrue(PixelDistance(baseline[movedBarGap],keyed[0][movedBarGap])<=6,
+				L"transparent mode shows the active picture through the mapped black-bar background");
+			auto decode=[](double v){v/=255.0;return v<=0.04045?v/12.92:std::pow((v+0.055)/1.055,2.4);};
+			auto encode=[](double v){return 255.0*(v<=0.0031308?v*12.92:1.055*std::pow(v,1.0/2.4)-0.055);};
+			for(const auto channel:{&RgbaPixel::r,&RgbaPixel::g,&RgbaPixel::b})
+				Assert::IsTrue(std::abs(double(keyed[1][movedBarGap].*channel)-
+					encode(decode(baseline[movedBarGap].*channel)*0.5))<=7.0,
+					L"blend mode blends the active picture behind glyphs that originated in the black bar");
+			Assert::IsTrue(PixelDistance(keyed[2][movedBarGap],RgbaPixel{0,0,0,255})<=6,
+				L"black mode deliberately keeps an opaque black panel behind the moved glyph");
+			const uint8_t gray=static_cast<uint8_t>(std::round(encode(0.08)));
+			Assert::IsTrue(PixelDistance(keyed[3][movedBarGap],RgbaPixel{gray,gray,gray,255})<=7,
+				L"dark-gray mode deliberately keeps its panel behind glyphs from either source region");
+			for(const auto channel:{&RgbaPixel::r,&RgbaPixel::g,&RgbaPixel::b})
+				Assert::IsTrue(std::abs(double(keyed[4][movedBarGap].*channel)-
+					encode(decode(baseline[movedBarGap].*channel)*0.15+(4.0/255.0/12.92)*0.85))<=7.0,
+					L"generated-gray backing preserves real destination picture under its gray overlay");
+			Assert::IsTrue(PixelDistance(keyed[4][movedBarGap],keyed[4][movedBarGap-64])<45,
+				L"the generated panel must not bring the source black-bar color into the picture");
+			const int paddingX=geometry.source.left+2;
+			const int movedPadding=(movedBarGapY*64+paddingX);
+			Assert::IsTrue(PixelDistance(baseline[movedPadding],keyed[0][movedPadding])<=6,
+				L"black-bar pixels in added padding do not become an opaque moved rectangle");
+			Assert::IsTrue(PixelDistance(baseline[barGapSource],keyed[0][barGapSource])<=6 &&
+				PixelDistance(baseline[barGapSource],keyed[1][barGapSource])<=6,
+				L"the original black bar remains black after glyph cleanup");
+			pl_mpv_user_shader_destroy(&hook);
+		}
+
+		TEST_METHOD(GeneratedGrayRestoresOldCardThroughPictureEdgeAndBindsStyle)
+		{
+			TargetLutGpuFixture fixture;Assert::IsTrue(fixture.Create());
+			const auto* hook=CreateSubtitleCutPasteHook(fixture.Gpu());Assert::IsNotNull(hook);
+			const auto geometry=ComputeSubtitleCutPaste({20,40,44,57},64,64,8,56,
+				SubtitleBoxPadding(12,12,8));
+			Assert::IsTrue(geometry.valid);
+			SubtitleGeneratedGrayStyle style;
+			Assert::IsTrue(ParseSubtitleRgbHex("FF0000",style.color));
+			Assert::IsTrue(ParseSubtitleRgbHex("202020",style.borderColor));
+			style.opacity=0.65f;style.borderOpacity=0.8f;style.borderWidth=2.0f;
+			Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,5,PL_COLOR_TRC_SRGB,style));
+			auto parameter=[&](const char* name) {
+				for(int i=0;i<hook->num_parameters;++i)
+					if(hook->parameters[i].name && std::strcmp(hook->parameters[i].name,name)==0)
+						return hook->parameters[i].data->f;
+				return -1.0f;
+			};
+			Assert::AreEqual(0.65f,parameter("generated_opacity"));
+			Assert::AreEqual(0.16f,parameter("generated_max_luminance"));
+            Assert::AreEqual(3.0f,parameter("generated_blur_px"));
+			Assert::AreEqual(2.0f,parameter("generated_border_width"));
+			Assert::AreEqual(float(geometry.pictureBottom),parameter("generated_clean_bottom"));
+			const auto baseline=fixture.RenderSubtitlePattern(nullptr,false,0,geometry,PL_COLOR_TRC_SRGB,true,true);
+			const auto moved=fixture.RenderSubtitlePattern(hook,false,0,geometry,PL_COLOR_TRC_SRGB,true,true);
+			const int bottomStrip=54*64+25;
+			Assert::IsTrue(PixelDistance(baseline[bottomStrip],RgbaPixel{0,0,0,255})<=6);
+			Assert::IsTrue(moved[bottomStrip].r>baseline[bottomStrip].r+20,
+				L"old black card strip at the picture edge must receive generated picture under the moved panel");
+			Assert::IsTrue(moved[bottomStrip].r>moved[bottomStrip].g+15,
+				L"configured panel color and opacity must reach the GPU output");
+			const int border=(geometry.destination.top+1)*64+
+				(geometry.destination.left+geometry.destination.right)/2;
+			style.borderWidth=0.0f;
+			Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,5,PL_COLOR_TRC_SRGB,style));
+			const auto withoutBorder=fixture.RenderSubtitlePattern(hook,false,0,geometry,PL_COLOR_TRC_SRGB,true,true);
+			Assert::IsTrue(moved[border].r+10<withoutBorder[border].r,
+				L"the configured dark outline must be visible on the rounded panel edge");
+			style.opacity=0.0f;
+			// Probe beyond the additional six-pixel display strip.
+			const int nearby=54*64+geometry.source.left-7;
+			Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,5,PL_COLOR_TRC_SRGB,style));
+			const auto transparentPanel=fixture.RenderSubtitlePattern(hook,false,0,geometry,PL_COLOR_TRC_SRGB,true,true);
+			Assert::IsTrue(PixelDistance(transparentPanel[nearby],baseline[nearby])<=6,
+				L"nearby dark picture outside the card shape must survive source cleanup");
+			pl_mpv_user_shader_destroy(&hook);
+		}
+
+        TEST_METHOD(OffsetSubtitleBackingReachesBothBarsWithoutMovingGlyphs)
+        {
+            TargetLutGpuFixture fixture;Assert::IsTrue(fixture.Create());
+            const auto* hook=CreateSubtitleCutPasteHook(fixture.Gpu());Assert::IsNotNull(hook);
+            // Rebind one hook repeatedly: no renderer/device recreation between styles.
+            for(bool top:{false,true}) for(int mode:{3,5,3,5}) {
+                const auto g=ComputeSubtitleCutPaste(top?SubtitleBoxRect{20,3,44,18}:SubtitleBoxRect{20,46,44,61},
+                    64,64,8,56,SubtitleBoxPadding(4,4,4),6);
+                Assert::IsTrue(g.valid);
+                SubtitleGeneratedGrayStyle style;ParseSubtitleRgbHex("FF0000",style.color);
+                style.opacity=1;style.maxLuminance=1;style.blurPixels=6;
+                Assert::IsTrue(BindSubtitleCutPasteHook(hook,g,mode,PL_COLOR_TRC_SRGB,style));
+                const auto moved=fixture.RenderSubtitlePattern(hook,false,0,g,PL_COLOR_TRC_SRGB,true);
+                const auto original=fixture.RenderSubtitlePattern(nullptr,false,0,g,PL_COLOR_TRC_SRGB,true);
+                const int x=(g.destination.left+g.destination.right)/2;
+                const int first=top?g.pictureTop:g.destination.bottom;
+                const int last=top?g.destination.top:g.pictureBottom;
+                Assert::IsTrue(last>first);
+                for(int y=first;y<last;++y)
+                    Assert::IsTrue(moved[y*64+x].r>100 && moved[y*64+x].r>moved[y*64+x].g+60,
+                        L"Offset gap must have the selected backing through the picture/bar edge");
+                const int outside=(top?g.pictureTop-1:g.pictureBottom)*64+g.destination.left-1;
+                Assert::IsTrue(PixelDistance(original[outside],moved[outside])<=6,
+                    L"Background extension must stop at the bar edge");
+                const auto roi=ComputeSubtitleGaussianRegion(g,5,6);
+                Assert::IsTrue(roi.top<=g.pictureTop || !top);
+                Assert::IsTrue(roi.top+roi.height*roi.step>=g.pictureBottom || top);
+            }
+            pl_mpv_user_shader_destroy(&hook);
+        }
+
+        TEST_METHOD(SolidSubtitleColorAndBorderReachGpuWithoutOpacityOrBlur)
+        {
+            TargetLutGpuFixture fixture;Assert::IsTrue(fixture.Create());
+            const auto* hook=CreateSubtitleCutPasteHook(fixture.Gpu());Assert::IsNotNull(hook);
+            const auto g=ComputeSubtitleCutPaste({20,40,44,57},64,64,8,56,SubtitleBoxPadding(12,12,8));
+            SubtitleGeneratedGrayStyle style;
+            Assert::IsTrue(ParseSubtitleRgbHex("FF0000",style.color));
+            style.opacity=0.0f;style.blurPixels=30;style.maxLuminance=0.01f;
+            style.borderColor={0,0,0};style.borderOpacity=1;style.borderWidth=2;
+            Assert::IsTrue(BindSubtitleCutPasteHook(hook,g,3,PL_COLOR_TRC_SRGB,style));
+            const auto bordered=fixture.RenderSubtitlePattern(hook,false,0,g,PL_COLOR_TRC_SRGB,true,true);
+            const int middle=54*64+25;
+            Assert::IsTrue(bordered[middle].r>240 && bordered[middle].g<10 && bordered[middle].b<10,
+                L"Solid color must remain opaque, unblurred, and independent of reconstruction brightness");
+            style.borderWidth=0;
+            Assert::IsTrue(BindSubtitleCutPasteHook(hook,g,3,PL_COLOR_TRC_SRGB,style));
+            const auto plain=fixture.RenderSubtitlePattern(hook,false,0,g,PL_COLOR_TRC_SRGB,true,true);
+            const int edge=(g.destination.top+1)*64+(g.destination.left+g.destination.right)/2;
+            Assert::IsTrue(bordered[edge].r+30<plain[edge].r,L"Solid border must reach the shader");
+            const int outside=10*64+2;
+            const auto original=fixture.RenderSubtitlePattern(nullptr,false,0,g,PL_COLOR_TRC_SRGB,true,true);
+            Assert::IsTrue(PixelDistance(original[outside],plain[outside])<=6,L"Solid styling must not alter unrelated picture content");
+            pl_mpv_user_shader_destroy(&hook);
+        }
+
+        TEST_METHOD(BlackAndGeneratedPanelsExtendSixPixelsWithoutMovingGlyphs)
+        {
+            TargetLutGpuFixture fixture;Assert::IsTrue(fixture.Create());
+            const auto* hook=CreateSubtitleCutPasteHook(fixture.Gpu());Assert::IsNotNull(hook);
+            const auto geometry=ComputeSubtitleCutPaste({20,46,44,61},64,64,8,56,0,0);
+            const auto baseline=fixture.RenderSubtitlePattern(nullptr,false,0,geometry);
+            for(const int mode:{3,5}) {
+                Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,mode,PL_COLOR_TRC_SRGB));
+                const auto moved=fixture.RenderSubtitlePattern(hook,false,0,geometry);
+                const int y=geometry.destination.bottom-1;
+                for(const int x:{geometry.destination.left-5,geometry.destination.right+4})
+                    Assert::IsTrue(PixelDistance(moved[y*64+x],baseline[y*64+x])>12,
+                        L"both backgrounds must extend into the six-pixel side strip");
+                for(const int x:{geometry.destination.left-7,geometry.destination.right+6})
+                    Assert::IsTrue(PixelDistance(moved[y*64+x],baseline[y*64+x])<=6,
+                        L"the extra background must stop after six source pixels");
+                const int glyphX=31;
+                const int originalGlyphY=49;
+                const int movedGlyphY=originalGlyphY+geometry.destination.top-geometry.source.top;
+                Assert::IsTrue(PixelDistance(moved[movedGlyphY*64+glyphX],baseline[originalGlyphY*64+glyphX])<=8,
+                    L"widening the background must not shift subtitle glyphs");
+            }
+            pl_mpv_user_shader_destroy(&hook);
+        }
+
+        TEST_METHOD(KeyedSubtitleCaptureExcludesPictureSceneryOutsideMeasuredCard)
+        {
+            TargetLutGpuFixture fixture;Assert::IsTrue(fixture.Create());
+            const auto* hook=CreateSubtitleCutPasteHook(fixture.Gpu());Assert::IsNotNull(hook);
+            // Detection fringe is wider than the actual card. A bright scene
+            // stroke lies in that fringe, beside the true subtitle glyphs.
+            const SubtitleBoxRect content{16,40,48,60};
+            const SubtitleBoxRect card{20,36,44,56};
+            const auto geometry=ComputeSubtitleCutPaste(content,64,64,8,56,
+                SubtitleBoxPadding(0),0,&card);
+            Assert::IsTrue(geometry.valid);
+            const int shift=geometry.destination.top-geometry.source.top;
+            const int pictureStroke=(content.top+3+shift)*64+content.left+1;
+            const int barStroke=(geometry.pictureBottom+1+shift)*64+content.left+1;
+            const int trueGlyph=(content.top+(content.bottom-content.top)/2-5+shift)*64+30;
+            for(const int mode:{1,2,3,4,5}) {
+                Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,mode,PL_COLOR_TRC_SRGB));
+                const auto moved=fixture.RenderSubtitlePattern(hook,false,0,geometry,
+                    PL_COLOR_TRC_SRGB,true,true,100,false,0,&card,false,true);
+                Assert::IsTrue(moved[pictureStroke].r<180,
+                    L"bright picture detail in the glyph-envelope fringe must not move as text");
+                Assert::IsTrue(moved[barStroke].r>220,
+                    L"bar glyphs outside the picture-card width must remain intact");
+                Assert::IsTrue(moved[trueGlyph].r>220,
+                    L"actual picture-side glyphs within the card must remain intact");
+            }
+            // Rectangle mode deliberately remains a literal copy diagnostic.
+            Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,0,PL_COLOR_TRC_SRGB));
+            const auto raw=fixture.RenderSubtitlePattern(hook,false,0,geometry,
+                PL_COLOR_TRC_SRGB,true,true,100,false,0,&card,false,true);
+            Assert::IsTrue(raw[pictureStroke].r>220);
+            // In the overlap region, generated backing must retain the live
+            // scene outside the measured card rather than reflect replacement
+            // pixels there. Disable tint and blur to isolate source ownership.
+            SubtitleGeneratedGrayStyle untinted;
+            untinted.opacity=0.0f;untinted.maxLuminance=1.0f;untinted.blurPixels=0.0f;
+            Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,5,PL_COLOR_TRC_SRGB,untinted));
+            const auto overlap=fixture.RenderSubtitlePattern(hook,false,0,geometry,
+                PL_COLOR_TRC_SRGB,true,true,100,false,0,&card,false,true);
+            Assert::IsTrue(overlap[(content.top+3)*64+content.left+1].r>200,
+                L"generated destination backing must use real overlap scenery outside the measured card");
+            // An inset moves text up but backing now extends to the bar.
+            // Untinted reconstruction must preserve live scenery in that fill;
+            // solid mode intentionally covers it with the configured color.
+            const auto inset=ComputeSubtitleCutPaste(content,64,64,8,56,
+                SubtitleBoxPadding(0),16,&card);
+            Assert::IsTrue(inset.valid);
+            const int originalStroke=(content.top+3)*64+content.left+1;
+            for(const int mode:{3,5}) {
+                Assert::IsTrue(BindSubtitleCutPasteHook(hook,inset,mode,PL_COLOR_TRC_SRGB,untinted));
+                const auto preserved=fixture.RenderSubtitlePattern(hook,false,0,inset,
+                    PL_COLOR_TRC_SRGB,true,true,100,false,0,&card,false,true);
+                if(mode==5)Assert::IsTrue(preserved[originalStroke].r>220,
+                    L"reconstructed gap must retain live scenery outside measured cleanup");
+                else Assert::IsTrue(preserved[originalStroke].r<40,
+                    L"solid backing must cover the inset gap through the bar");
+            }
+            pl_mpv_user_shader_destroy(&hook);
+        }
+
+        TEST_METHOD(BlackRoundedDestinationCannotRevealOriginalGlyphAtCorner)
+        {
+            TargetLutGpuFixture fixture;Assert::IsTrue(fixture.Create());
+            const auto* hook=CreateSubtitleCutPasteHook(fixture.Gpu());Assert::IsNotNull(hook);
+            const SubtitleBoxRect glyphs{20,40,44,57};
+            const SubtitleBoxRect card{8,28,56,56};
+            const auto geometry=ComputeSubtitleCutPaste(glyphs,64,64,8,56,
+                SubtitleBoxPadding(0),0,&card);
+            Assert::IsTrue(geometry.valid);
+            Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,3,PL_COLOR_TRC_SRGB));
+            const auto baseline=fixture.RenderSubtitlePattern(nullptr,false,0,geometry,
+                PL_COLOR_TRC_SRGB,true,true,200,false,0,&card,true);
+            const auto moved=fixture.RenderSubtitlePattern(hook,false,0,geometry,
+                PL_COLOR_TRC_SRGB,true,true,200,false,0,&card,true);
+            const int corner=(geometry.destination.top+1)*64+geometry.destination.left;
+            Assert::IsTrue(baseline[corner].r>200);
+            Assert::IsTrue(PixelDistance(moved[corner],RgbaPixel{0,0,0,255})<=6,
+                L"the antialiased black destination corner must not expose the original glyph");
+            pl_mpv_user_shader_destroy(&hook);
+        }
+
+        TEST_METHOD(MeasuredCardEdgesRestoreOutsideSamplingRectangleAtEveryDisplayPadding)
+        {
+            TargetLutGpuFixture fixture;Assert::IsTrue(fixture.Create());
+            const auto* hook=CreateSubtitleCutPasteHook(fixture.Gpu());Assert::IsNotNull(hook);
+            const SubtitleBoxRect glyphs{20,40,44,57};
+            // Original card is wider/taller than glyphs, and deliberately does
+            // not depend on ComputeSubtitleCutPaste or display padding.
+            const SubtitleBoxRect card{8,28,56,56};
+            for(const int margin:{0,3,7}) {
+                const auto geometry=ComputeSubtitleCutPaste(glyphs,64,64,8,56,
+                    SubtitleBoxPadding(margin),0,&card);
+                Assert::IsTrue(geometry.valid);
+                Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,5,PL_COLOR_TRC_SRGB));
+                const auto baseline=fixture.RenderSubtitlePattern(nullptr,false,0,geometry,
+                    PL_COLOR_TRC_SRGB,true,true,200,false,0,&card,false,false,nullptr,nullptr,false,-1,false);
+                const auto moved=fixture.RenderSubtitlePattern(hook,false,0,geometry,
+                    PL_COLOR_TRC_SRGB,true,true,200,false,0,&card,false,false,nullptr,nullptr,false,-1,false);
+                // Inspect the independently drawn old card without auxiliary fixture
+                // markers. Widened display may now cover these same edge pixels.
+                for(int y=card.top+4;y<card.bottom;++y)for(const int x:{9,54}) {
+                    const int pixel=y*64+x;
+                    Assert::IsTrue(PixelDistance(baseline[pixel],RgbaPixel{0,0,0,255})<=6);
+                    Assert::IsTrue(moved[pixel].r>40 && moved[pixel].g>40,
+                        L"measured old-card edges must restore even with zero display padding");
+                }
+                for(int y=card.top+4;y<card.bottom;++y)
+                    for(int x=card.left;x<card.right;++x) {
+                        if(x>=geometry.destination.left && x<geometry.destination.right &&
+                            y>=geometry.destination.top && y<geometry.destination.bottom) continue;
+                        const auto& pixel=moved[y*64+x];
+                        Assert::IsTrue(pixel.r>40 && pixel.g>40,
+                            L"all vacated original-card pixels must be restored, including old glyphs");
+                    }
+                for(const int y:{30,40,55})for(const int x:{1,62}) {
+                    const int pixel=y*64+x;
+                    Assert::IsTrue(PixelDistance(baseline[pixel],moved[pixel])<=6,
+                        L"picture beyond measured card and destination must remain unchanged");
+                }
+                Assert::IsTrue(PixelDistance(moved[56*64+9],RgbaPixel{0,0,0,255})<=6,
+                    L"restoration must stop exactly at the black-bar seam");
+            }
+            pl_mpv_user_shader_destroy(&hook);
+        }
+
+        TEST_METHOD(SubtitleGpuComposesBeforeCropAcrossAspectChangesAndNlsRecovery) {
+            TargetLutGpuFixture fixture;Assert::IsTrue(fixture.Create());
+            const auto* hook=CreateSubtitleCutPasteHook(fixture.Gpu());Assert::IsNotNull(hook);
+            const auto source=ComputeSubtitleCutPaste({20,48,44,61},64,64,8,56,4);
+            pl_hook broken{};broken.stages=PL_HOOK_RGB;broken.input=PL_HOOK_SIG_NONE;
+            broken.signature=0x0070197;
+            broken.hook=[](void*,const pl_hook_params*) {pl_hook_res r{};r.failed=true;return r;};
+            for(const bool hdr:{false,true})for(const int mode:{3,5})
+            for(const pl_rect2df crop: {pl_rect2df{0,8,64,56},pl_rect2df{0,12,64,52}}) {
+                const auto g=FitSubtitleToVisiblePicture(source,{int(crop.x0),int(crop.y0),int(crop.x1),int(crop.y1)});
+                Assert::IsTrue(g.valid);
+                const auto transfer=hdr?PL_COLOR_TRC_PQ:PL_COLOR_TRC_SRGB;
+                Assert::IsTrue(BindSubtitleCutPasteHook(hook,g,mode,transfer));
+                const auto baseline=fixture.RenderSubtitlePattern(nullptr,hdr,0,g,transfer,true,false,100);
+                const auto normal=fixture.RenderSubtitlePattern(hook,hdr,0,g,transfer,
+                    true,false,100,false,0,nullptr,false,false,&crop);
+                fixture.ResetFailedHook(broken.signature);
+                const auto recovery=fixture.RenderSubtitlePattern(hook,hdr,0,g,transfer,
+                    true,false,100,false,0,nullptr,false,false,&crop,&broken);
+                const int sourceGlyph=54+g.destination.top-g.source.top;
+                const int outputY=int((sourceGlyph+0.5-crop.y0)*64.0/(crop.y1-crop.y0));
+                Assert::IsTrue(PixelDistance(normal[outputY*64+32],baseline[54*64+32])<=8,L"subtitle must be moved before source crop and scaling");
+                for(size_t i=0;i<normal.size();++i)
+                    Assert::IsTrue(PixelDistance(normal[i],recovery[i])<=6,
+                        L"NLS-only failure must retain the precomposed subtitle on fallback");
+            }
+            pl_mpv_user_shader_destroy(&hook);
+        }
+        TEST_METHOD(SubtitleGpuRejectsBrightPictureSliverInsideCleanupFringe) {
+            TargetLutGpuFixture fixture;Assert::IsTrue(fixture.Create());
+            const auto* hook=CreateSubtitleCutPasteHook(fixture.Gpu());Assert::IsNotNull(hook);
+            SubtitleBoxResult text;text.bounds={20,40,44,57};text.lineCount=1;
+            text.lineBounds[0]={20,43,44,54};
+            const SubtitleBoxRect measuredCard{15,37,49,58},actualCard{16,38,48,55};
+            const auto original=ComputeSubtitleCutPaste(text.bounds,64,64,8,60,4,0,&measuredCard,20);
+            Assert::IsTrue(original.valid);
+            auto corrected=original;corrected.content=SubtitleGlyphCaptureBounds(text,64,64);
+            const int seamY=56+original.destination.top-original.source.top;
+            const int glyphY=48+original.destination.top-original.source.top;
+            for(const int mode:{3,5}) {
+                Assert::IsTrue(BindSubtitleCutPasteHook(hook,original,mode,PL_COLOR_TRC_SRGB));
+                const auto before=fixture.RenderSubtitlePattern(hook,false,0,original,PL_COLOR_TRC_SRGB,
+                    true,true,100,false,0,&actualCard,false,false,nullptr,nullptr,true);
+                Assert::IsTrue(before[seamY*64+32].r>220,L"fixture must reproduce copied scenery in the old glyph fringe");
+                Assert::IsTrue(BindSubtitleCutPasteHook(hook,corrected,mode,PL_COLOR_TRC_SRGB));
+                const auto after=fixture.RenderSubtitlePattern(hook,false,0,original,PL_COLOR_TRC_SRGB,
+                    true,true,100,false,0,&actualCard,false,false,nullptr,nullptr,true);
+                Assert::IsTrue(after[seamY*64+32].r<(mode==3?8:160),L"picture seam must not be extracted as text");
+                Assert::IsTrue(after[glyphY*64+32].r>220,L"actual glyph must remain intact");
+            }
+            pl_mpv_user_shader_destroy(&hook);
+        }
+        TEST_METHOD(PhysicalPictureEdgeDoesNotCopyCardFringeAsBarGlyph) {
+            std::vector<RgbaPixel> pixels(64*64,RgbaPixel{0,0,0,255});
+            auto fill=[&](int l,int t,int r,int b,uint8_t v) {
+                for(int y=t;y<b;++y)for(int x=l;x<r;++x)pixels[y*64+x]={v,v,v,255};
+            };
+            fill(0,10,64,52,150);fill(20,39,44,49,0);
+            fill(24,41,36,46,255);fill(20,50,44,51,170);
+            fill(30,54,33,56,255);
+            const SubtitleBoxRect cleanup{18,38,46,52};
+            auto g=ComputeSubtitleCutPaste({20,40,44,56},64,64,10,49,{0,0,0},4,&cleanup);
+            g.content={20,40,44,56};g.glyphLines[0]=g.content;
+            g.pictureCapture={20,39,44,49};
+            g=FitSubtitleToVisiblePicture(g,{0,10,64,52},4);
+            Assert::IsTrue(g.valid);
+            TargetLutGpuFixture fixture;Assert::IsTrue(fixture.Create());
+            const auto* hook=CreateSubtitleCutPasteHook(fixture.Gpu());Assert::IsNotNull(hook);
+            SubtitleGeneratedGrayStyle style;style.blurPixels=0;style.opacity=1;
+            for(int mode:{3,5}) {
+                Assert::IsTrue(BindSubtitleCutPasteHook(hook,g,mode,PL_COLOR_TRC_SRGB,style));
+                const auto result=fixture.RenderSubtitlePattern(hook,false,0,g,PL_COLOR_TRC_SRGB,
+                    true,false,-1,false,0,nullptr,false,false,nullptr,nullptr,false,-1,false,false,&pixels,64,64);
+                const int dy=g.destination.top-g.source.top;
+                Assert::IsTrue(result[(50+dy)*64+22].r<40,
+                    L"picture fringe must not bypass card ownership through a one-row detector edge mismatch");
+                Assert::IsTrue(result[(54+dy)*64+31].r>220,
+                    L"actual glyph content in the physical black bar must still move");
+            }
+            // The same disputed rows remain available when the detector has
+            // independently proved opaque backing and an actual glyph there.
+            fill(20,49,44,53,0);fill(30,50,33,52,255);
+            const SubtitleBoxRect proven{20,39,44,53};
+            g=ComputeSubtitleCutPaste({20,40,44,56},64,64,10,49,{0,0,0},4,&cleanup,0,&proven);
+            g.content={20,40,44,56};g.glyphLines[0]=g.content;
+            g=FitSubtitleToVisiblePicture(g,{0,10,64,52},4);
+            Assert::IsTrue(g.valid);
+            Assert::IsTrue(BindSubtitleCutPasteHook(hook,g,3,PL_COLOR_TRC_SRGB,style));
+            const auto attached=fixture.RenderSubtitlePattern(hook,false,0,g,PL_COLOR_TRC_SRGB,
+                true,false,-1,false,0,nullptr,false,false,nullptr,nullptr,false,-1,false,false,&pixels,64,64);
+            Assert::IsTrue(attached[(50+g.destination.top-g.source.top)*64+31].r>220,
+                L"verified glyphs in boundary uncertainty rows must remain intact");
+            pl_mpv_user_shader_destroy(&hook);
+        }
+
+        TEST_METHOD(CompositorBoundaryGapCannotEraseInteriorGlyphRows) {
+            TargetLutGpuFixture fixture;Assert::IsTrue(fixture.Create());
+            const auto* hook=CreateSubtitleCutPasteHook(fixture.Gpu());Assert::IsNotNull(hook);
+            for(bool top:{false,true}) for(int gap:{1,2,3}) {
+                std::vector<RgbaPixel> pixels(64*64,RgbaPixel{0,0,0,255});
+                for(int y=10;y<52;++y)for(int x=0;x<64;++x)pixels[y*64+x]={80,80,80,255};
+                for(int y=38;y<56;++y)for(int x=18;x<46;++x)pixels[y*64+x]={0,0,0,255};
+                // Entire vertical strokes are already captured. Only the AR/card
+                // ownership gap cuts them; no detector or OCR participates.
+                for(int y=40;y<56;++y)for(int x=29;x<35;++x)pixels[y*64+x]={255,255,255,255};
+                // Terminal strokes connect on just one side of the disputed band.
+                for(int y=40;y<52;++y)for(int x=37;x<40;++x)pixels[y*64+x]={255,255,255,255};
+                for(int y=52-gap;y<56;++y)for(int x=41;x<44;++x)pixels[y*64+x]={255,255,255,255};
+                for(int y=52-gap;y<52;++y)pixels[y*64+22]={255,255,255,255}; // detached stripe
+                if(top)for(int y=0;y<32;++y)for(int x=0;x<64;++x)std::swap(pixels[y*64+x],pixels[(63-y)*64+x]);
+                const SubtitleBoxRect card{18,top?12+gap:38,46,top?26:52-gap};
+                const SubtitleBoxRect ink{20,top?8:40,44,top?24:56};
+                auto g=ComputeSubtitleCutPaste(ink,64,64,top?12+gap:10,top?54:52-gap,{4,4,4},4,&card,0,&card);
+                g.content=ink;g.glyphLines[0]=ink;
+                g=FitSubtitleToVisiblePicture(g,top?SubtitleBoxRect{0,12,64,54}:SubtitleBoxRect{0,10,64,52},4);
+                Assert::IsTrue(g.valid);
+                auto reference=g;if(top)reference.pictureCapture.top=12;else reference.pictureCapture.bottom=52;
+                SubtitleGeneratedGrayStyle style;style.blurPixels=0;style.opacity=1;
+                for(int mode:{3,5}) {
+                    auto render=[&](const SubtitleCutPasteGeometry& geometry) {
+                        Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,mode,PL_COLOR_TRC_SRGB,style));
+                        return fixture.RenderSubtitlePattern(hook,false,0,geometry,PL_COLOR_TRC_SRGB,
+                            true,false,-1,false,0,nullptr,false,false,nullptr,nullptr,false,-1,false,false,&pixels,64,64);
+                    };
+                    const auto expected=render(reference),actual=render(g);
+                    for(int y=ink.top;y<ink.bottom;++y) for(int x:{31,38,42}) {
+                        const int index=(y+g.destination.top-g.source.top)*64+x;
+                        if(x==31)Assert::IsTrue(expected[index].r>220);
+                        Assert::IsTrue(std::abs(int(expected[index].r)-int(actual[index].r))<=1,
+                            L"compositor must not erase interior glyph rows when card and AR boundaries differ");
+                    }
+                    for(int row=52-gap;row<52;++row) {
+                        const int y=top?63-row:row;
+                        Assert::IsTrue(actual[(y+g.destination.top-g.source.top)*64+22].r<40,
+                            L"detached bright content in the disputed strip is not a connected glyph");
+                    }
+                }
+            }
+            pl_mpv_user_shader_destroy(&hook);
+        }
+
+        TEST_METHOD(AntialiasedBoundaryRowSurvivesSolidAndReconstructedComposition) {
+            constexpr int w=640,h=360;
+            TargetLutGpuFixture fixture;Assert::IsTrue(fixture.Create());
+            const auto* hook=CreateSubtitleCutPasteHook(fixture.Gpu());Assert::IsNotNull(hook);
+            for(bool top:{false,true}) {
+                std::vector<RgbaPixel> pixels(w*h,RgbaPixel{0,0,0,255});
+                auto fill=[&](int l,int t,int r,int b,uint8_t v) {
+                    for(int y=t;y<b;++y)for(int x=l;x<r;++x)pixels[y*w+x]={v,v,v,255};
+                };
+                fill(0,45,w,315,50);fill(180,298,465,315,0);
+                for(int n=0;n<18;++n) {
+                    const int x=195+13*n;
+                    fill(x-1,304,x+9,320,0);fill(x,305,x+8,319,255);fill(x+2,307,x+6,317,0);
+                }
+                for(int y=316;y<318;++y)for(int x=180;x<465;++x)
+                    if(pixels[y*w+x].r==255)pixels[y*w+x]={120,120,120,255};
+                if(top)for(int y=0;y<h/2;++y)for(int x=0;x<w;++x)std::swap(pixels[y*w+x],pixels[(h-1-y)*w+x]);
+                AnalysisLumaSource source;source.data=reinterpret_cast<const uint8_t*>(pixels.data());
+                source.dataBytes=pixels.size()*sizeof(RgbaPixel);source.width=w;source.height=h;source.rowBytes=w*4;
+                source.format=AnalysisLumaFormat::NativeRgb;source.encoding=VideoFrameEncoding::BGRA_8BIT;source.generation=1;
+                SubtitleBoxDetector detector;const auto text=detector.Analyze(source,45,315,1,1);
+                Assert::IsTrue(text.detected);
+                auto g=ComputeSubtitleCutPaste(text.bounds,w,h,45,315,{6,6,6},5,&text.sourcePanel,0,&text.capturePanel);
+                g.content=SubtitleGlyphCaptureBounds(text,w,h);g.glyphLines=SubtitleGlyphCaptureLines(text,w,h);
+                g=FitSubtitleToVisiblePicture(g,top?SubtitleBoxRect{0,43,w,315}:SubtitleBoxRect{0,45,w,317},5);
+                Assert::IsTrue(g.valid);
+                SubtitleGeneratedGrayStyle style;style.blurPixels=30;style.opacity=1;
+                for(int mode:{3,5}) {
+                    Assert::IsTrue(BindSubtitleCutPasteHook(hook,g,mode,PL_COLOR_TRC_SRGB,style));
+                    const auto output=fixture.RenderSubtitlePattern(hook,false,0,g,PL_COLOR_TRC_SRGB,
+                        true,false,-1,false,0,nullptr,false,false,nullptr,nullptr,false,-1,false,false,&pixels,w,h);
+                    const int y=(top?h-1-316:316)+g.destination.top-g.source.top;
+                    const int x=196+g.destination.left-g.source.left;
+                    // Compare against explicitly known fixture backing; keying
+                    // is transfer-dependent, so raw source byte120 is not an
+                    // assertion about the final composited antialias value.
+                    auto reference=g;reference.pictureCapture={180,top?42:298,465,top?62:318};
+                    reference.content={195,top?41:305,424,top?55:319};
+                    reference.glyphLines[0]=reference.content;
+                    Assert::IsTrue(BindSubtitleCutPasteHook(hook,reference,mode,PL_COLOR_TRC_SRGB,style));
+                    const auto expected=fixture.RenderSubtitlePattern(hook,false,0,reference,PL_COLOR_TRC_SRGB,
+                        true,false,-1,false,0,nullptr,false,false,nullptr,nullptr,false,-1,false,false,&pixels,w,h);
+                    Assert::IsTrue(expected[y*w+x].r>8,L"fixture must render visible antialiased ink at the disputed row");
+                    std::ostringstream diagnostic;
+                    diagnostic<<"AA boundary top="<<top<<" mode="<<mode<<" pixel="<<int(output[y*w+x].r)<<" expected="<<int(expected[y*w+x].r)
+                        <<" card="<<g.pictureCapture.left<<","<<g.pictureCapture.top<<"-"<<g.pictureCapture.right<<","<<g.pictureCapture.bottom
+                        <<" line="<<g.glyphLines[0].left<<","<<g.glyphLines[0].top<<"-"<<g.glyphLines[0].right<<","<<g.glyphLines[0].bottom
+                        <<" source="<<g.source.top<<" destination="<<g.destination.top<<" sample="<<x<<","<<y;
+                    Logger::WriteMessage(diagnostic.str().c_str());
+                    Assert::IsTrue(std::abs(int(output[y*w+x].r)-int(expected[y*w+x].r))<=1,
+                        L"an antialiased stroke must not become a missing row at the physical bar boundary");
+                }
+            }
+            pl_mpv_user_shader_destroy(&hook);
+        }
+        TEST_METHOD(AttachedCleanupIncludesReconciledRowsBeforeGaussianBlur) {
+            std::vector<RgbaPixel> pixels(64*64,RgbaPixel{0,0,0,255});
+            for(int y=10;y<52;++y)for(int x=0;x<64;++x)pixels[y*64+x]={80,80,80,255};
+            for(int y=39;y<49;++y)for(int x=20;x<44;++x)pixels[y*64+x]={0,0,0,255};
+            for(int y=49;y<52;++y)for(int x=20;x<44;++x)pixels[y*64+x]={220,220,220,255};
+            for(int y=54;y<56;++y)for(int x=30;x<33;++x)pixels[y*64+x]={255,255,255,255};
+            const SubtitleBoxRect card{20,39,44,49};
+            auto g=ComputeSubtitleCutPaste({20,40,44,56},64,64,10,49,{0,0,0},4,&card,0,&card);
+            g.content={20,40,44,56};g.glyphLines[0]=g.content;
+            g=FitSubtitleToVisiblePicture(g,{0,10,64,52},4);
+            auto oracle=g;oracle.generatedCleanup.bottom=52;
+            TargetLutGpuFixture fixture;Assert::IsTrue(fixture.Create());
+            const auto* hook=CreateSubtitleCutPasteHook(fixture.Gpu());Assert::IsNotNull(hook);
+            for(int mode:{3,5})for(float radius:{0.0f,3.0f,30.0f}) {
+                SubtitleGeneratedGrayStyle style;style.blurPixels=radius;style.opacity=0;style.maxLuminance=1;
+                auto render=[&](const SubtitleCutPasteGeometry& geometry) {
+                    Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,mode,PL_COLOR_TRC_SRGB,style));
+                    return fixture.RenderSubtitlePattern(hook,false,0,geometry,PL_COLOR_TRC_SRGB,
+                        true,false,-1,false,0,nullptr,false,false,nullptr,nullptr,false,-1,false,false,&pixels,64,64);
+                };
+                const auto expected=render(oracle),actual=render(g);
+                for(size_t i=0;i<actual.size();++i)Assert::IsTrue(std::abs(int(actual[i].r)-int(expected[i].r))<=1,
+                    L"attached edge must use the same reconstructed/blurred backing as the original card");
+            }
+            pl_mpv_user_shader_destroy(&hook);
+        }
+        TEST_METHOD(ReducedSubtitleGpuMatchesNativeAreaCoverageWithoutSceneLeakOrCleanupSliver) {
+            constexpr int w=128,h=128;
+            TargetLutGpuFixture fixture;Assert::IsTrue(fixture.Create());
+            const auto* hook=CreateSubtitleCutPasteHook(fixture.Gpu());Assert::IsNotNull(hook);
+            const SubtitleBoxPadding padding{4,4,4};
+            SubtitleGeneratedGrayStyle style;style.color={0,0,0};style.opacity=1;style.blurPixels=6;style.maxLuminance=1;
+            for(bool top:{false,true})for(int kind:{0,1,2})for(int gap:{0,7}) {
+                SubtitleBoxRect content=kind==0?SubtitleBoxRect{40,114,88,124}:
+                    kind==1?SubtitleBoxRect{40,104,88,118}:SubtitleBoxRect{40,92,88,102};
+                SubtitleBoxRect card=kind==0?SubtitleBoxRect{}:
+                    kind==1?SubtitleBoxRect{33,108,94,112}:SubtitleBoxRect{34,88,94,106};
+                std::vector<RgbaPixel> pixels(w*h,RgbaPixel{0,0,0,255});
+                auto fill=[&](int l,int t,int r,int b,RgbaPixel v) {
+                    for(int y=t;y<b;++y)for(int x=l;x<r;++x)pixels[y*w+x]=v;
+                };
+                fill(0,16,w,112,{65,90,120,255});
+                if(card.Valid())fill(card.left,card.top,card.right,card.bottom,{0,0,0,255});
+                const int first=kind==1?108:content.top+1;
+                fill(46,first,50,content.bottom-1,{255,255,255,255});
+                fill(60,first,61,content.bottom-1,{255,255,255,255});
+                pixels[(content.bottom-2)*w+85]={255,255,255,255}; // isolated punctuation
+                if(kind==1)fill(40,104,88,106,{255,255,255,255}); // bright picture inside coarse ink envelope, outside card
+                if(top) {
+                    for(int y=0;y<h/2;++y)for(int x=0;x<w;++x)std::swap(pixels[y*w+x],pixels[(h-1-y)*w+x]);
+                    content={content.left,h-content.bottom,content.right,h-content.top};
+                    if(card.Valid())card={card.left,h-card.bottom,card.right,h-card.top};
+                }
+                auto base=ComputeSubtitleCutPaste(content,w,h,16,112,padding,gap,&card,20,&card,true);
+                base.glyphLines[0]=content;base=FitSubtitleToVisiblePicture(base,{0,16,w,112},gap);
+                Assert::IsTrue(base.valid);
+                for(int mode:{3,5}) {
+                    auto render=[&](const SubtitleCutPasteGeometry& geometry) {
+                        Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,mode,PL_COLOR_TRC_SRGB,style));
+                        return fixture.RenderSubtitlePattern(hook,false,0,geometry,PL_COLOR_TRC_SRGB,
+                            true,false,-1,false,0,nullptr,false,false,nullptr,nullptr,false,-1,false,false,&pixels,w,h);
+                    };
+                    // Zero reduction now uses centered placement too; verify a
+                    // real shader result rather than the superseded source pivot.
+                    const auto centered=ApplySubtitleTextReduction(base,0,padding);
+                    const auto zero=render(centered);
+                    Assert::IsTrue(centered.valid && centered.centeredGlyphMapping && !zero.empty());
+                    for(int percent:{0,25,50,75}) {
+                        const auto g=ApplySubtitleTextReduction(base,percent,padding);
+                        const auto output=render(g);
+                        const double scale=g.glyphScale,footprint=1.0/scale;
+                        const int left=int(std::floor(scale*content.left+g.glyphTranslateX))-1;
+                        const int right=int(std::ceil(scale*content.right+g.glyphTranslateX))+1;
+                        const int firstRow=int(std::floor(scale*content.top+g.glyphTranslateY))-1;
+                        const int lastRow=int(std::ceil(scale*content.bottom+g.glyphTranslateY))+1;
+                        double expectedEnergy=0;unsigned coveredPixels=0;
+                        for(int y=firstRow;y<lastRow;++y)for(int x=left;x<right;++x) {
+                            const double sx=(x+0.5-g.glyphTranslateX)/scale,sy=(y+0.5-g.glyphTranslateY)/scale;
+                            const double l=sx-footprint/2,r=sx+footprint/2,t=sy-footprint/2,b=sy+footprint/2;
+                            double alpha=0;
+                            // Independent exact cell-area oracle: only bright owned native pixels count.
+                            for(int yy=int(std::floor(t));yy<int(std::ceil(b));++yy)
+                                for(int xx=int(std::floor(l));xx<int(std::ceil(r));++xx) {
+                                    if(xx<content.left || xx>=content.right || yy<content.top || yy>=content.bottom)continue;
+                                    const bool picture=yy>=g.pictureTop && yy<g.pictureBottom;
+                                    const bool owned=card.Valid() && xx>=card.left && xx<card.right && yy>=card.top && yy<card.bottom;
+                                    if(picture && !owned)continue;
+                                    if(pixels[yy*w+xx].r!=255 || pixels[yy*w+xx].g!=255)continue;
+                                    const double overlapX=(std::min)(r,double(xx+1))-(std::max)(l,double(xx));
+                                    alpha+=overlapX*((std::min)(b,double(yy+1))-(std::max)(t,double(yy)));
+                                }
+                            alpha/=footprint*footprint;
+                            expectedEnergy+=alpha;coveredPixels+=alpha>0;
+                            const double expected=255.0*(alpha<=0.0031308?12.92*alpha:1.055*std::pow(alpha,1.0/2.4)-0.055);
+                            Assert::IsTrue(std::abs(int(output[y*w+x].r)-expected)<=4.0 &&
+                                std::abs(int(output[y*w+x].g)-expected)<=4.0,
+                                L"native-keyed area filtering preserves thin strokes and excludes unowned scene content");
+                        }
+                        Assert::IsTrue(coveredPixels>2 && expectedEnergy>0);
+                        const int edgeRow=top?16:111;
+                        Assert::IsTrue(output[edgeRow*w+64].r<5 && output[edgeRow*w+64].g<5,
+                            L"reduced panel remains filled through the physical black-bar boundary");
+                        for(int y=0;y<h;++y)if(y<16 || y>=112)
+                            for(int x=content.left;x<content.right;++x)if(pixels[y*w+x].r==255)
+                                Assert::IsTrue(output[y*w+x].r<5,L"original bar glyphs are removed at every text size");
+                    }
+                }
+            }
+            pl_mpv_user_shader_destroy(&hook);
+        }
+        TEST_METHOD(SubtitleFloatingCornersAndBridgeUseTheSameGpuMaskAtBothEdges) {
+            constexpr int w=128,h=128;
+            TargetLutGpuFixture fixture;Assert::IsTrue(fixture.Create());
+            const auto* hook=CreateSubtitleCutPasteHook(fixture.Gpu());Assert::IsNotNull(hook);
+            for(bool top:{false,true})for(bool rounded:{false,true})for(bool floating:{false,true})for(int mode:{3,5}) {
+                std::vector<RgbaPixel> pixels(w*h,RgbaPixel{0,0,0,255});
+                for(int y=16;y<112;++y)for(int x=0;x<w;++x)pixels[y*w+x]={80,100,120,255};
+                const SubtitleBoxRect ink=top?SubtitleBoxRect{40,3,88,11}:SubtitleBoxRect{40,117,88,125};
+                for(int y=ink.top;y<ink.bottom;++y)for(int x=50;x<78;++x)pixels[y*w+x]={255,255,255,255};
+                const SubtitleBoxRect empty{};
+                auto g=ComputeSubtitleCutPaste(ink,w,h,16,112,{5,5,5},12,&empty,0,&empty);
+                g=ApplySubtitleTextReduction(g,0,{5,5,5},rounded,floating);
+                Assert::IsTrue(g.valid);
+                SubtitleGeneratedGrayStyle style;style.color={0,0,0};style.opacity=1;style.blurPixels=6;
+                Assert::IsTrue(BindSubtitleCutPasteHook(hook,g,mode,PL_COLOR_TRC_SRGB,style));
+                const auto output=fixture.RenderSubtitlePattern(hook,false,0,g,PL_COLOR_TRC_SRGB,
+                    true,false,-1,false,0,nullptr,false,false,nullptr,nullptr,false,-1,false,false,&pixels,w,h);
+                const int bridgeY=top?21:106;
+                Assert::IsTrue(floating?output[bridgeY*w+64].r>=75:output[bridgeY*w+64].r<5,
+                    L"floating retains the picture gap; attached fills it");
+                const int cornerX=g.destination.left-6,cornerY=top?g.destination.bottom-1:g.destination.top;
+                // At half a pixel inside a square edge, the existing 0.75px
+                // smoothstep retains ~7.4% of linear backdrop (about 18 sRGB
+                // levels here). Rounded corners expose much more picture.
+                const auto cornerMessage=std::wstring(L"corner switch: r=")+std::to_wstring(output[cornerY*w+cornerX].r);
+                Assert::IsTrue(rounded?output[cornerY*w+cornerX].r>50:output[cornerY*w+cornerX].r<25,
+                    cornerMessage.c_str());
+                const int cx=int(64*g.glyphScale+g.glyphTranslateX);
+                const int cy=int((ink.top+ink.bottom)*0.5f*g.glyphScale+g.glyphTranslateY);
+                Assert::IsTrue(output[cy*w+cx].r>230,L"explicit centered mapping also works at 100 percent size");
+                const auto roi=ComputeSubtitleGaussianRegion(g,mode,6);
+                if(mode==5 && floating)Assert::IsTrue(top?roi.top>0:roi.top+roi.height*roi.step<128,
+                    L"float blur bounds exclude needless extension");
+            }
+            pl_mpv_user_shader_destroy(&hook);
+        }
+        TEST_METHOD(QuarterSizeSubtitlePunctuationSurvivesEveryNativePhaseAtBothEdges) {
+            constexpr int w=128,h=128;
+            TargetLutGpuFixture fixture;Assert::IsTrue(fixture.Create());
+            const auto* hook=CreateSubtitleCutPasteHook(fixture.Gpu());Assert::IsNotNull(hook);
+            SubtitleGeneratedGrayStyle style;style.color={0,0,0};style.opacity=1;style.blurPixels=0;
+            for(bool top:{false,true})for(int phase=0;phase<4;++phase) {
+                std::vector<RgbaPixel> pixels(w*h,RgbaPixel{0,0,0,255});
+                for(int y=16;y<112;++y)for(int x=0;x<w;++x)pixels[y*w+x]={50,70,90,255};
+                const int px=81+phase,py=115+phase;
+                pixels[(top?h-1-py:py)*w+px]={255,255,255,255};
+                const SubtitleBoxRect content=top?SubtitleBoxRect{40,4,88,14}:SubtitleBoxRect{40,114,88,124};
+                const SubtitleBoxRect empty{};
+                auto g=ComputeSubtitleCutPaste(content,w,h,16,112,{4,4,4},7,&empty,0,&empty);
+                g.glyphLines[0]=content;g=FitSubtitleToVisiblePicture(g,{0,16,w,112},7);
+                g=ApplySubtitleTextReduction(g,75,{4,4,4});Assert::IsTrue(g.valid);
+                for(int mode:{3,5}) {
+                    Assert::IsTrue(BindSubtitleCutPasteHook(hook,g,mode,PL_COLOR_TRC_SRGB,style));
+                    const auto output=fixture.RenderSubtitlePattern(hook,false,0,g,PL_COLOR_TRC_SRGB,
+                        true,false,-1,false,0,nullptr,false,false,nullptr,nullptr,false,-1,false,false,&pixels,w,h);
+                    const int x=int(std::floor((px+0.5f)*g.glyphScale+g.glyphTranslateX));
+                    const int y=int(std::floor(((top?h-1-py:py)+0.5f)*g.glyphScale+g.glyphTranslateY));
+                    int peak=0;
+                    for(int dy=-1;dy<=1;++dy)for(int dx=-1;dx<=1;++dx)
+                        peak=(std::max)(peak,int(output[(y+dy)*w+x+dx].r));
+                    Assert::IsTrue(peak>=30,L"keying after averaging would erase this single-pixel punctuation");
+                }
+            }
+            pl_mpv_user_shader_destroy(&hook);
+        }
+
+        TEST_METHOD(RecordedSubtitlePlaybackDiagnostic) {
+            char path[4096]{};
+            if(!GetEnvironmentVariableA("VP_SUBTITLE_REPLAY_BGRA",path,sizeof(path))) { Logger::WriteMessage("Recording diagnostic not requested");return; }
+            std::ifstream file(path,std::ios::binary|std::ios::ate);Assert::IsTrue(file.good());
+            const bool uhd=file.tellg()==std::streamoff(3840ll*2160*4);file.seekg(0);
+            const int width=uhd?3840:2560,height=uhd?2160:1440;
+            const int pictureTop=uhd?263:175,pictureBottom=uhd?1897:1265;
+            std::vector<RgbaPixel> pixels(width*height);
+            file.read(reinterpret_cast<char*>(pixels.data()),pixels.size()*sizeof(RgbaPixel));
+            Assert::AreEqual(std::streamsize(pixels.size()*sizeof(RgbaPixel)),file.gcount());
+            char hdr[8]{};const bool pq=GetEnvironmentVariableA("VP_SUBTITLE_REPLAY_PQ",hdr,sizeof(hdr)) && hdr[0]=='1';
+            const auto transfer=pq?PL_COLOR_TRC_PQ:PL_COLOR_TRC_SRGB;
+            AnalysisLumaSource source;source.data=reinterpret_cast<const uint8_t*>(pixels.data());
+            source.dataBytes=pixels.size()*4;source.width=width;source.height=height;
+            source.rowBytes=width*4;source.format=AnalysisLumaFormat::NativeRgb;
+            source.encoding=VideoFrameEncoding::BGRA_8BIT;source.generation=1;
+            SubtitleBoxDetector detector;detector.SetNearBarDistance(20);
+            const auto text=detector.Analyze(source,pictureTop,pictureBottom,1,1);
+            Assert::IsTrue(text.detected);
+            SubtitlePaddingPolicy policy{true};
+            const auto pad=SubtitleRelativePadding(SubtitleTypicalLineHeight(text),policy);
+            auto g=ComputeSubtitleCutPaste(SubtitleGlyphCaptureBounds(text,width,height),width,height,pictureTop,pictureBottom,pad,15,&text.sourcePanel,20,
+                text.capturePanelMeasured?&text.capturePanel:nullptr);
+            g.content=SubtitleGlyphCaptureBounds(text,width,height);g.glyphLines=SubtitleGlyphCaptureLines(text,width,height);
+            g=FitSubtitleToVisiblePicture(g,{0,uhd?262:pictureTop,width,uhd?1898:pictureBottom},15);
+            char reductionText[16]{};
+            const int reduction=GetEnvironmentVariableA("VP_SUBTITLE_REPLAY_REDUCTION",reductionText,sizeof(reductionText))
+                ? (std::max)(0,(std::min)(75,std::atoi(reductionText))) : 0;
+            g=ApplySubtitleTextReduction(g,reduction,pad);
+            Assert::IsTrue(g.valid);
+            if(pq) for(auto& pixel:pixels) for(auto* channel:{&pixel.r,&pixel.g,&pixel.b}) {
+                const double v=*channel/255.0;
+                const double linear=v<=0.04045?v/12.92:std::pow((v+0.055)/1.055,2.4);
+                const double power=std::pow(linear*203.0/10000.0,0.1593017578125);
+                *channel=uint8_t(std::lround(255*std::pow((0.8359375+18.8515625*power)/(1+18.6875*power),78.84375)));
+            }
+            for(auto& pixel:pixels)std::swap(pixel.r,pixel.b);
+            TargetLutGpuFixture fixture;Assert::IsTrue(fixture.Create());
+            const auto* hook=CreateSubtitleCutPasteHook(fixture.Gpu());Assert::IsNotNull(hook);
+            SubtitleGeneratedGrayStyle style;style.blurPixels=30;
+            Assert::IsTrue(BindSubtitleCutPasteHook(hook,g,5,transfer,style));
+            const auto result=fixture.RenderSubtitlePattern(hook,false,0,g,transfer,
+                true,false,-1,false,0,nullptr,false,false,nullptr,nullptr,false,-1,false,false,&pixels,width,height);
+            std::ofstream output(std::string(path)+".rgba",std::ios::binary);
+            output.write(reinterpret_cast<const char*>(result.data()),result.size()*sizeof(RgbaPixel));
+            std::ofstream geometry(std::string(path)+".geometry.txt");
+            geometry<<"reduction "<<reduction<<" glyph_mapping "<<g.glyphScale<<","<<g.glyphTranslateX<<","<<g.glyphTranslateY<<"\n";
+            geometry<<g.source.left<<","<<g.source.top<<","<<g.source.right<<","<<g.source.bottom<<"\n"
+                <<g.destination.left<<","<<g.destination.top<<","<<g.destination.right<<","<<g.destination.bottom<<"\n"
+                <<"panel "<<text.sourcePanel.left<<","<<text.sourcePanel.top<<","<<text.sourcePanel.right<<","<<text.sourcePanel.bottom<<"\n";
+            for(const auto& line:text.lineBounds)geometry<<"line "<<line.left<<","<<line.top<<","<<line.right<<","<<line.bottom<<"\n";
+            pl_mpv_user_shader_destroy(&hook);
+        }
+
+        TEST_METHOD(HorizontalCaptureGuardPreservesTerminalGlyphStroke) {
+            TargetLutGpuFixture fixture;Assert::IsTrue(fixture.Create());
+            const auto* hook=CreateSubtitleCutPasteHook(fixture.Gpu());Assert::IsNotNull(hook);
+            SubtitleBoxResult text;text.bounds={20,40,44,57};text.lineCount=1;
+            // The fixture's white stroke occupies x=30..33. A sampled terminal
+            // extent at 32 used to clip its two rightmost native pixels.
+            text.lineBounds[0]={20,43,32,54};
+            const SubtitleBoxRect card{15,37,49,58};
+            const auto original=ComputeSubtitleCutPaste(text.bounds,64,64,8,60,4,0,&card,20);
+            auto guarded=original;guarded.content=SubtitleGlyphCaptureBounds(text,64,64);
+            guarded.glyphLines=SubtitleGlyphCaptureLines(text,64,64);
+            const int y=48+original.destination.top-original.source.top;
+            for(int mode:{3,5}) {
+                auto clipped=original;clipped.content=text.lineBounds[0];clipped.glyphLines[0]=text.lineBounds[0];
+                Assert::IsTrue(BindSubtitleCutPasteHook(hook,clipped,mode,PL_COLOR_TRC_SRGB));
+                const auto before=fixture.RenderSubtitlePattern(hook,false,0,original,PL_COLOR_TRC_SRGB,
+                    true,true,100,false,0,&card,false,false);
+                Assert::IsTrue(before[y*64+33].r<180,L"fixture reproduces truncated terminal stroke");
+                Assert::IsTrue(BindSubtitleCutPasteHook(hook,guarded,mode,PL_COLOR_TRC_SRGB));
+                const auto after=fixture.RenderSubtitlePattern(hook,false,0,original,PL_COLOR_TRC_SRGB,
+                    true,true,100,false,0,&card,false,false);
+                Assert::IsTrue(after[y*64+33].r>220,L"both native fringe pixels must move with the glyph");
+            }
+            pl_mpv_user_shader_destroy(&hook);
+        }
+
+        TEST_METHOD(SubtitleGpuRejectsSeamsBetweenLinesAndAtTrailingCell) {
+            TargetLutGpuFixture fixture;Assert::IsTrue(fixture.Create());
+            const auto* hook=CreateSubtitleCutPasteHook(fixture.Gpu());Assert::IsNotNull(hook);
+            SubtitleBoxResult text;text.bounds={20,40,44,57};text.lineCount=2;
+            text.lineBounds[0]={20,40,44,43};text.lineBounds[1]={20,47,44,54};
+            const SubtitleBoxRect card{15,37,49,58};
+            const auto original=ComputeSubtitleCutPaste(text.bounds,64,64,8,60,4,0,&card,20);
+            auto corrected=original;corrected.content=SubtitleGlyphCaptureBounds(text,64,64);
+            corrected.glyphLines=SubtitleGlyphCaptureLines(text,64,64);
+            for(const int mode:{3,5}) for(const int sourceY:{44,54,55,56}) {
+                const int y=sourceY+original.destination.top-original.source.top;
+                Assert::IsTrue(BindSubtitleCutPasteHook(hook,original,mode,PL_COLOR_TRC_SRGB));
+                const auto before=fixture.RenderSubtitlePattern(hook,false,0,original,PL_COLOR_TRC_SRGB,
+                    true,true,100,false,0,&card,false,false,nullptr,nullptr,true,sourceY);
+                Assert::IsTrue(before[y*64+32].r>220,L"original rectangular extraction reproduces seam");
+                Assert::IsTrue(BindSubtitleCutPasteHook(hook,corrected,mode,PL_COLOR_TRC_SRGB));
+                const auto after=fixture.RenderSubtitlePattern(hook,false,0,original,PL_COLOR_TRC_SRGB,
+                    true,true,100,false,0,&card,false,false,nullptr,nullptr,true,sourceY);
+                Assert::IsTrue(after[y*64+32].r<(mode==3?8:160));
+                const int glyphY=48+original.destination.top-original.source.top;
+                Assert::IsTrue(after[glyphY*64+32].r>220,L"glyph survives seam rejection");
+            }
+            pl_mpv_user_shader_destroy(&hook);
+        }
+        TEST_METHOD(TopSubtitleGpuMovesGlyphDownAndRestoresPictureFromBelow) {
+            TargetLutGpuFixture fixture;Assert::IsTrue(fixture.Create());
+            const auto* hook=CreateSubtitleCutPasteHook(fixture.Gpu());Assert::IsNotNull(hook);
+            const SubtitleBoxRect card{10,2,54,19};
+            const auto g=ComputeSubtitleCutPaste({20,3,44,16},64,64,8,56,
+                SubtitleBoxPadding(4,2,5),0,&card);
+            Assert::IsTrue(g.valid);Assert::AreEqual(8,g.destination.top);
+            for(const int mode:{3,5}) {
+                Assert::IsTrue(BindSubtitleCutPasteHook(hook,g,mode,PL_COLOR_TRC_SRGB));
+                const auto moved=fixture.RenderSubtitlePattern(hook,false,0,g,
+                    PL_COLOR_TRC_SRGB,true,true,160,false,0,&card);
+                const int glyphY=8+g.destination.top-g.source.top;
+                Assert::IsTrue(moved[glyphY*64+32].r>220,L"top glyph must survive downward movement");
+                const auto& vacated=moved[9*64+11];
+                if(mode==5) Assert::IsTrue(vacated.r>60,L"old top-card edge must use clean picture below");
+                else Assert::IsTrue(vacated.r<8);
+                Assert::IsTrue(moved[1*64+32].r<8,L"top bar remains black");
+            }
+            pl_mpv_user_shader_destroy(&hook);
+        }
+        TEST_METHOD(GeneratedGrayRemovesEntireCardRegardlessOfCardBrightness)
+        {
+            TargetLutGpuFixture fixture;Assert::IsTrue(fixture.Create());
+            const auto* hook=CreateSubtitleCutPasteHook(fixture.Gpu());Assert::IsNotNull(hook);
+            const auto geometry=ComputeSubtitleCutPaste({20,40,44,57},64,64,8,56,SubtitleBoxPadding(12,12,8));
+            Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,5,PL_COLOR_TRC_SRGB));
+            const auto black=fixture.RenderSubtitlePattern(hook,false,0,geometry,PL_COLOR_TRC_SRGB,true,true,200,false,0);
+            const auto gray=fixture.RenderSubtitlePattern(hook,false,0,geometry,PL_COLOR_TRC_SRGB,true,true,200,false,85);
+            // These are outside the glyph rectangle and include the last picture
+            // row: no original card tint/outline may survive under the new panel.
+            for(int y=geometry.source.top+2;y<geometry.pictureBottom;++y)
+                for(const int x:{geometry.source.left+2,geometry.source.right-3})
+                    Assert::IsTrue(PixelDistance(black[y*64+x],gray[y*64+x])<=6,
+                        L"source card shading must not survive outside the glyph bounds");
+            pl_mpv_user_shader_destroy(&hook);
+        }
+
+		TEST_METHOD(GeneratedGrayPreservesReflectedTextureAndSoftensBrightBacking)
+		{
+			TargetLutGpuFixture fixture;Assert::IsTrue(fixture.Create());
+			const auto* hook=CreateSubtitleCutPasteHook(fixture.Gpu());Assert::IsNotNull(hook);
+			const auto geometry=ComputeSubtitleCutPaste({12,40,52,57},64,64,8,56,
+				SubtitleBoxPadding(6,12,8));
+			Assert::IsTrue(geometry.valid);
+			SubtitleGeneratedGrayStyle style;
+            // This regression exercises the previously configurable gray tint.
+            // Near-black runtime defaults are covered independently.
+            Assert::IsTrue(ParseSubtitleRgbHex("505050",style.color));
+			Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,5,PL_COLOR_TRC_SRGB,style));
+			const auto dark=fixture.RenderSubtitlePattern(hook,false,0,geometry,
+				PL_COLOR_TRC_SRGB,true,true,16,true);
+			const auto bright=fixture.RenderSubtitlePattern(hook,false,0,geometry,
+				PL_COLOR_TRC_SRGB,true,true,230,true);
+			auto decode=[](uint8_t byte) {
+				const double v=double(byte)/255.0;
+				return v<=0.04045 ? v/12.92 : std::pow((v+0.055)/1.055,2.4);
+			};
+			const int panel=28*64+17;
+			for(const auto* image:{&dark,&bright}) {
+				const auto& pixel=(*image)[panel];
+				const double luminance=0.2126*decode(pixel.r)+0.7152*decode(pixel.g)+
+					0.0722*decode(pixel.b);
+				Assert::IsTrue(luminance<=0.17,
+					L"the gray overlay and soft shoulder must subdue the bright backing");
+			}
+			Assert::IsTrue(int(bright[panel].r)>int(dark[panel].r)+10,
+				L"the backing must retain a visible difference between bright and dark scenes");
+			const int oldCardEdge=54*64+25;
+			Assert::IsTrue(dark[oldCardEdge].r>20 && bright[oldCardEdge].r>20,
+				L"the old black card must be reconstructed through pictureBottom");
+			const auto noStair=fixture.RenderSubtitlePattern(hook,false,0,geometry,
+				PL_COLOR_TRC_SRGB,true,true,16,false);
+			const int reflectedStair=36*64+25;
+			const int textureDelta=int(dark[reflectedStair].r)-int(noStair[reflectedStair].r);
+			const std::wstring textureEvidence=L"reflected texture delta="+std::to_wstring(textureDelta)+
+				L" bright="+std::to_wstring(bright[reflectedStair].r)+
+				L" side="+std::to_wstring(noStair[reflectedStair].r);
+			Assert::IsTrue(textureDelta>4,textureEvidence.c_str());
+			const int movedGlyph=39*64+31;
+			Assert::IsTrue(bright[movedGlyph].r>220 && dark[movedGlyph].r>220,
+				L"the generated backing must not dim moved white glyphs");
+			pl_mpv_user_shader_destroy(&hook);
+		}
+
+        TEST_METHOD(GeneratedBlurSoftensWholeOverlayKeepingGlyphsAndOutsidePictureSharp)
+        {
+            TargetLutGpuFixture fixture;Assert::IsTrue(fixture.Create());
+            const auto* hook=CreateSubtitleCutPasteHook(fixture.Gpu());Assert::IsNotNull(hook);
+            const auto g=ComputeSubtitleCutPaste({12,40,52,57},64,64,8,56,SubtitleBoxPadding(6,12,8));
+            SubtitleGeneratedGrayStyle style;style.opacity=0.0f;style.maxLuminance=1.0f;
+            for(const bool hdr:{false,true}) {
+                const auto transfer=hdr?PL_COLOR_TRC_PQ:PL_COLOR_TRC_SRGB;
+                auto render=[&](float radius,int mode=5) {
+                    style.blurPixels=radius;Assert::IsTrue(BindSubtitleCutPasteHook(hook,g,mode,transfer,style));
+                    return fixture.RenderSubtitlePattern(hook,hdr,0,g,transfer,true,true,100,false,0,
+                        nullptr,false,false,nullptr,nullptr,false,-1,false,true);
+                };
+                const auto sharp=render(0),blurred=render(3),again=render(0);
+                // Check both real picture under the panel and reconstructed
+                // picture below it. The former was previously left sharp.
+                for(const auto rows:{std::pair<int,int>{24,28},{48,55}}) {
+                    int sharpVariation=0,blurVariation=0;
+                    for(int y=rows.first;y<rows.second;++y)for(int x=24;x<40;++x) {
+                        sharpVariation+=PixelDistance(sharp[y*64+x],sharp[(y-1)*64+x]);
+                        sharpVariation+=PixelDistance(sharp[y*64+x],sharp[y*64+x-1]);
+                        blurVariation+=PixelDistance(blurred[y*64+x],blurred[(y-1)*64+x]);
+                        blurVariation+=PixelDistance(blurred[y*64+x],blurred[y*64+x-1]);
+                    }
+                    Assert::IsTrue(sharpVariation>50 && blurVariation<sharpVariation*0.8,
+                        (L"both background regions must soften; y="+std::to_wstring(rows.first)+L" sharp="+std::to_wstring(sharpVariation)+L" blur="+std::to_wstring(blurVariation)).c_str());
+                }
+                const int glyphX=(g.content.left+g.content.right)/2;
+                const int glyphY=(g.content.top+g.content.bottom)/2+g.destination.top-g.source.top;
+                Assert::IsTrue(PixelDistance(sharp[glyphY*64+glyphX],blurred[glyphY*64+glyphX])<=2,L"glyph center stays sharp");
+                for(int y=0;y<64;++y)for(int x=0;x<64;++x) {
+                    Assert::IsTrue(PixelDistance(sharp[y*64+x],again[y*64+x])<=2,L"zero disables blur on the same hook");
+                    const bool inPanel=x>=g.destination.left-6 && x<g.destination.right+6 && y>=g.destination.top && y<g.destination.bottom;
+                    const bool inCleanup=x>=g.generatedCleanup.left && x<g.generatedCleanup.right && y>=g.generatedCleanup.top && y<g.generatedCleanup.bottom;
+                    if(!inPanel && !inCleanup)
+                        Assert::IsTrue(PixelDistance(sharp[y*64+x],blurred[y*64+x])<=2,L"picture outside overlay and cleanup remains unchanged");
+                }
+                const auto blackSharp=render(0,3),blackBlur=render(30,3);
+                for(int i=0;i<64*64;++i)Assert::IsTrue(PixelDistance(blackSharp[i],blackBlur[i])<=2,L"black mode ignores reconstruction blur");
+            }
+            pl_mpv_user_shader_destroy(&hook);
+        }
+
+        TEST_METHOD(GaussianWorkIsLimitedToPaddedSubtitleRegion)
+        {
+            const SubtitleBoxRect card{1300,1650,2540,1900};
+            const auto g=ComputeSubtitleCutPaste({1320,1700,2520,1930},3840,2160,260,1900,
+                SubtitleBoxPadding(60,30,20),0,&card);
+            Assert::IsTrue(g.valid);
+            for(const float radius:{0.5f,3.0f,8.0f,30.0f}) {
+                const auto roi=ComputeSubtitleGaussianRegion(g,5,radius);
+                Assert::IsTrue(roi.active);
+                Assert::IsTrue(roi.left<=g.destination.left-6-radius && roi.top<=g.destination.top-radius);
+                Assert::IsTrue(roi.left+roi.width*roi.step>=g.destination.right+6+radius);
+                Assert::IsTrue(roi.top+roi.height*roi.step>=card.bottom+radius);
+                Assert::IsTrue(roi.width*roi.height<3840.0f*2160.0f*0.15f,L"Gaussian targets must not cover the full 4K frame");
+                Assert::AreEqual(radius>=4?2.0f:1.0f,roi.step);
+            }
+            Assert::IsFalse(ComputeSubtitleGaussianRegion(g,5,0).active);
+            Assert::IsFalse(ComputeSubtitleGaussianRegion(g,3,30).active);
+            Assert::IsFalse(ComputeSubtitleGaussianRegion({},5,30).active);
+        }
+
+        TEST_METHOD(GeneratedBlurSoftensRealOverlayForBarOnlyCaptions)
+        {
+            TargetLutGpuFixture fixture;Assert::IsTrue(fixture.Create());
+            const auto* hook=CreateSubtitleCutPasteHook(fixture.Gpu());Assert::IsNotNull(hook);
+            const SubtitleBoxRect noCard{};
+            for(const bool top:{false,true}) {
+                const auto g=ComputeSubtitleCutPaste(top?SubtitleBoxRect{12,0,52,13}:SubtitleBoxRect{12,50,52,63},
+                    64,64,top?16:8,top?56:48,SubtitleBoxPadding(6,6,1),0,&noCard);
+                Assert::IsTrue(g.valid);Assert::IsFalse(g.generatedCleanup.Valid());
+                SubtitleGeneratedGrayStyle style;style.opacity=0;style.maxLuminance=1;
+                auto render=[&](float radius) {
+                    style.blurPixels=radius;
+                    Assert::IsTrue(BindSubtitleCutPasteHook(hook,g,5,PL_COLOR_TRC_SRGB,style));
+                    return fixture.RenderSubtitlePattern(hook,false,0,g,PL_COLOR_TRC_SRGB,true,false,100,false,0,
+                        nullptr,false,false,nullptr,nullptr,false,-1,false,true);
+                };
+                const auto sharp=render(0),blurred=render(3);
+                int before=0,after=0;
+                for(int y=top?22:31;y<(top?26:35);++y)for(int x=16;x<25;++x) {
+                    before+=PixelDistance(sharp[y*64+x],sharp[y*64+x-1]);
+                    before+=PixelDistance(sharp[y*64+x],sharp[(y-1)*64+x]);
+                    after+=PixelDistance(blurred[y*64+x],blurred[y*64+x-1]);
+                    after+=PixelDistance(blurred[y*64+x],blurred[(y-1)*64+x]);
+                }
+                Assert::IsTrue(before>50 && after<before*0.8,(L"real overlay must blur; top="+std::to_wstring(top)+L" sharp="+std::to_wstring(before)+L" blur="+std::to_wstring(after)).c_str());
+                // Radius 8 used to land on the identical phase of this 8-pixel
+                // checkerboard, leaving full contrast: the sparse-grid defect.
+                for(const float radius:{8.0f,30.0f}) {
+                    const auto wide=render(radius);int variation=0;
+                    for(int y=top?22:31;y<(top?26:35);++y)for(int x=16;x<25;++x) {
+                        variation+=PixelDistance(wide[y*64+x],wide[y*64+x-1]);
+                        variation+=PixelDistance(wide[y*64+x],wide[(y-1)*64+x]);
+                    }
+                    Assert::IsTrue(variation<before*0.20,
+                        (L"wide Gaussian must remove grid resonance: radius="+std::to_wstring(radius)+L" sharp="+std::to_wstring(before)+L" wide="+std::to_wstring(variation)).c_str());
+                }
+            }
+            pl_mpv_user_shader_destroy(&hook);
+        }
+
+        TEST_METHOD(GeneratedBlurClampsToCleanPictureForTopAndBottomCards)
+        {
+            TargetLutGpuFixture fixture;Assert::IsTrue(fixture.Create());
+            const auto* hook=CreateSubtitleCutPasteHook(fixture.Gpu());Assert::IsNotNull(hook);
+            for(const bool top:{false,true}) {
+                const auto g=ComputeSubtitleCutPaste(top?SubtitleBoxRect{12,7,52,24}:SubtitleBoxRect{12,40,52,57},
+                    64,64,8,56,SubtitleBoxPadding(6,8,8));
+                const SubtitleBoxRect card=g.generatedCleanup;
+                SubtitleGeneratedGrayStyle style;style.opacity=0.0f;style.maxLuminance=1.0f;style.blurPixels=30;
+                Assert::IsTrue(BindSubtitleCutPasteHook(hook,g,5,PL_COLOR_TRC_SRGB,style));
+                auto render=[&](int gray) {return fixture.RenderSubtitlePattern(hook,false,0,g,PL_COLOR_TRC_SRGB,
+                    true,true,150,false,gray,&card,false,false,nullptr,nullptr,false,-1,false);};
+                const auto black=render(0),colored=render(80);
+                // All taps must remain outside the card even at maximum radius.
+                // Compare central cleanup pixels outside the moved glyph column.
+                for(int y=card.top;y<card.bottom;++y)for(const int x:{24,39}) {
+                    const int sourceY=y+g.source.top-g.destination.top;
+                    // An intentionally gray source card keys as ink in the
+                    // glyph envelope. Probe the clean, bar-facing margin only.
+                    if(sourceY>=g.content.top && sourceY<g.content.bottom)continue;
+                    Assert::IsTrue(PixelDistance(black[y*64+x],colored[y*64+x])<=3,L"old backing must not leak into blur taps");
+                    Assert::IsTrue(black[y*64+x].r>125,L"black physical bars must not bleed into the reconstructed picture");
+                }
+            }
+            pl_mpv_user_shader_destroy(&hook);
+        }
+
+		TEST_METHOD(BlackPanelCoversLastPictureRowWithSquareLowerCorners)
+		{
+			TargetLutGpuFixture fixture;Assert::IsTrue(fixture.Create());
+			const auto* hook=CreateSubtitleCutPasteHook(fixture.Gpu());Assert::IsNotNull(hook);
+			const auto geometry=ComputeSubtitleCutPaste({20,46,44,61},64,64,8,56,
+				SubtitleBoxPadding(10,10,10));
+			Assert::IsTrue(geometry.valid);
+			Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,3,PL_COLOR_TRC_SRGB));
+			const auto baseline=fixture.RenderSubtitlePattern(nullptr,false,0,geometry,
+				PL_COLOR_TRC_SRGB,false,false,230);
+			const auto moved=fixture.RenderSubtitlePattern(hook,false,0,geometry,
+				PL_COLOR_TRC_SRGB,false,false,230);
+			const int lastPictureY=geometry.pictureBottom-1;
+			for(const int x:{geometry.destination.left+2,geometry.destination.right-3}) {
+				const int pixel=lastPictureY*64+x;
+				Assert::IsTrue(baseline[pixel].r>80,
+					L"the synthetic source row must expose a measurable lower-corner seam");
+				Assert::IsTrue(moved[pixel].r<12,
+					L"black backing reaches the last picture row and has square lower corners");
+			}
+			const int firstBarPixel=geometry.pictureBottom*64+
+				geometry.destination.left+2;
+			Assert::IsTrue(PixelDistance(moved[firstBarPixel],baseline[firstBarPixel])<=6,
+				L"the panel ends exactly at the picture/bar boundary");
+			pl_mpv_user_shader_destroy(&hook);
+		}
 
 		TEST_METHOD(BundledNlsGlSlHooksMovePixelsOnTheRealGpuPath)
 		{

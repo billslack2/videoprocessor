@@ -4,6 +4,9 @@
     <ClCompile Include="CpuFeaturesTests.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="SubtitleCutPasteTests.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="WindowResizeLayoutTests.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>

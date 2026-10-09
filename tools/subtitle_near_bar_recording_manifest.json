@@ -1,0 +1,12 @@
+{
+  "recording": "2026-10-07 07-29-59.mp4",
+  "width": 2560, "height": 1440, "frames_per_sample": 30,
+  "samples": [
+    {"seconds": 5, "lines": 1, "previously_detected": true},
+    {"seconds": 54.5, "lines": 1, "previously_detected": true},
+    {"seconds": 71, "lines": 2, "previously_detected": false},
+    {"seconds": 137, "lines": 2, "previously_detected": false},
+    {"seconds": 153.5, "lines": 2, "previously_detected": false},
+    {"seconds": 170, "lines": 1, "previously_detected": true}
+  ]
+}

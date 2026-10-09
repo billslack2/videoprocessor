@@ -530,6 +530,7 @@ struct ShortcutDefinition
 
 const ShortcutDefinition SHORTCUT_DEFINITIONS[] =
 {
+
 	{ "auto_set",              ID_COMMAND_AUTO_SET,               'A',       FCONTROL | FSHIFT },
 	{ "fullscreen_exit",       ID_COMMAND_FULLSCREEN_EXIT,        VK_ESCAPE, 0 },
 	{ "fullscreen_toggle",     ID_COMMAND_FULLSCREEN_TOGGLE,
@@ -2107,6 +2108,7 @@ BEGIN_MESSAGE_MAP(CVideoProcessorDlg, CDialog)
 	ON_COMMAND(ID_COMMAND_DISPLAY_RULE_AUTO, &CVideoProcessorDlg::OnCommandDisplayRuleAuto)
 	ON_COMMAND(ID_COMMAND_CONFIG_EDITOR, &CVideoProcessorDlg::OnCommandConfigEditor)
 	ON_COMMAND(ID_COMMAND_TOGGLE_NO_UI, &CVideoProcessorDlg::OnCommandToggleNoUi)
+	ON_COMMAND(ID_COMMAND_SUBTITLE_TOGGLE, &CVideoProcessorDlg::OnCommandSubtitleToggle)
 	ON_MESSAGE(WM_HOTKEY, &CVideoProcessorDlg::OnConfigurationEditorHotkey)
 	ON_REGISTERED_MESSAGE(WM_CONFIGURATION_EDITOR_ASSOCIATION,
 		&CVideoProcessorDlg::OnConfigurationEditorAssociation)
@@ -7378,8 +7380,10 @@ LRESULT CVideoProcessorDlg::OnMessageExternalShortcut(WPARAM wParam,
 	LPARAM lParam)
 {
 	const BYTE supportedModifiers = FCONTROL | FALT | FSHIFT;
+	const UINT_PTR repeatFlag = 0x100;
 	if (wParam > 0xffff ||
-		(static_cast<UINT_PTR>(lParam) & ~supportedModifiers) != 0)
+		(static_cast<UINT_PTR>(lParam) &
+			~(static_cast<UINT_PTR>(supportedModifiers) | repeatFlag)) != 0)
 	{
 		DebugLog::Log(
 			"External shortcut rejected: key=%llu modifiers=0x%llx reason=invalid-payload",
@@ -7389,10 +7393,19 @@ LRESULT CVideoProcessorDlg::OnMessageExternalShortcut(WPARAM wParam,
 	}
 
 	const WORD key = static_cast<WORD>(wParam);
-	const BYTE modifiers = static_cast<BYTE>(lParam);
+	const UINT_PTR shortcutFlags = static_cast<UINT_PTR>(lParam);
+	const BYTE modifiers = static_cast<BYTE>(shortcutFlags & supportedModifiers);
+	const bool repeat = (shortcutFlags & repeatFlag) != 0;
 	const bool control = (modifiers & FCONTROL) != 0;
 	const bool alt = (modifiers & FALT) != 0;
 	const bool shift = (modifiers & FSHIFT) != 0;
+	if (MatchesSubtitleShortcut(key, control, shift, alt) &&
+		m_rendererState == RendererState::RENDERSTATE_RENDERING && m_videoRenderer)
+	{
+		if (!repeat)
+			AdvanceSubtitlePreviewMode();
+		return 1;
+	}
 	const bool rightAlt = (::GetKeyState(VK_RMENU) & 0x8000) != 0;
 	const ACCEL* matchedAccelerator = nullptr;
 	for (const ACCEL& accelerator : m_configuredAccelerators)
@@ -7435,6 +7448,39 @@ LRESULT CVideoProcessorDlg::OnMessageExternalShortcut(WPARAM wParam,
 		"External shortcut rejected: key=%u modifiers=0x%02x reason=not-configured",
 		static_cast<unsigned>(key), static_cast<unsigned>(modifiers));
 	return 0;
+}
+
+
+bool CVideoProcessorDlg::MatchesSubtitleShortcut(unsigned key, bool control, bool shift, bool alt) const
+{
+    for(const auto& binding:m_configuredAccelerators)
+        if(binding.cmd==ID_COMMAND_SUBTITLE_TOGGLE && IsSubtitlePreviewShortcut(key,control,shift,alt,
+            binding.key,(binding.fVirt&FCONTROL)!=0,(binding.fVirt&FSHIFT)!=0,(binding.fVirt&FALT)!=0)) return true;
+    return false;
+}
+
+void CVideoProcessorDlg::OnCommandSubtitleToggle()
+{
+    // Windowed/fullscreen key paths and the background observer each suppress
+    // auto-repeat before dispatching this command.
+    AdvanceSubtitlePreviewMode();
+}
+
+bool CVideoProcessorDlg::AdvanceSubtitlePreviewMode()
+{
+	if (!m_videoRenderer ||
+		m_rendererState != RendererState::RENDERSTATE_RENDERING)
+		return false;
+	SubtitlePreviewMode mode = SubtitlePreviewMode::None;
+	if (!m_videoRenderer->CycleSubtitlePreviewMode(mode))
+	{
+		DebugLog::Log(
+			"SUBTITLE PREVIEW: Ctrl+Shift+T is unavailable for the active renderer");
+		return false;
+	}
+	DebugLog::Log("SUBTITLE PREVIEW: selected %s",
+		SubtitlePreviewModeName(mode));
+	return true;
 }
 
 
@@ -13595,6 +13641,13 @@ BOOL CVideoProcessorDlg::PreTranslateMessage(MSG* pMsg)
 		m_shaderShortcutKeys.end();
 	const bool repeat = (static_cast<ULONG_PTR>(pMsg->lParam) &
 		(1ull << 30)) != 0;
+	if (keyDown && MatchesSubtitleShortcut(virtualKey, control, shift, alt) &&
+		m_rendererState == RendererState::RENDERSTATE_RENDERING && m_videoRenderer)
+	{
+		if (!repeat)
+			AdvanceSubtitlePreviewMode();
+		return TRUE;
+	}
 	if (keyDown && virtualKey == VK_SPACE && !repeat && !control && !alt &&
 		!shift && m_activeOutputSweepRunning)
 	{
@@ -14461,6 +14514,7 @@ void CVideoProcessorDlg::OnDisplayChange(UINT bitsPerPixel, int width, int heigh
 	if (m_videoRenderer &&
 		m_rendererState == RendererState::RENDERSTATE_RENDERING)
 	{
+		m_videoRenderer->ResetSubtitlePreviewMode();
 		// Treat every confirmed Windows display/HDMI transition as requiring one
 		// post-settle queue reset.  The reset coordinator coalesces duplicate
 		// notifications and any higher-priority renderer recovery safely.
