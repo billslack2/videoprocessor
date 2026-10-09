@@ -152,6 +152,70 @@ TEST_CLASS(SubtitleBoxLookaheadTests) {
         source.colorspace=ColorSpace::REC_709;source.generation=2;return source;
     }
 public:
+    TEST_METHOD(SharedPictureAuthorityKeepsCaptionAcrossAmbiguousBarPixels) {
+        auto pixels=Pixels();Fill(pixels,0,0,640,360,64);
+        Fill(pixels,260,100,380,200,300);Text(pixels,200,310,16);
+        const auto source=Source(pixels);
+        const auto independent=ExtractSubtitleBarEvidence(source);
+        Assert::IsFalse(independent.bottom<360 && independent.available);
+        SubtitlePictureAuthority authority;authority.required=true;authority.identity=Identity(1);
+        authority.bounds={0,45,640,315,640,360,640.0/270,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+        SubtitleMeasurementSampler sampler;SubtitleBoxPresentation tracker;uint64_t cue=0;
+        for(uint64_t frame=1;frame<=20;++frame) {
+            auto key=Cue(frame);key.sharedPicture=authority;
+            auto observation=sampler.Measure(source,key,{},60);
+            Assert::IsTrue(observation.barAuthority);Assert::AreEqual(315,observation.pictureBottom);
+            Assert::IsTrue(observation.text.detected);
+            auto preview=SubtitleBoxLookahead::Resolve(&observation,1,0,0);
+            const auto result=tracker.Consume(preview,250,1000.0/60);
+            Assert::IsTrue(result.detected);
+            if(frame==1)cue=result.cue;
+            Assert::AreEqual(cue,result.cue);
+        }
+        // Authority can persist; missing glyphs still cannot become retained text.
+        Fill(pixels,190,300,430,340,64);
+        auto key=Cue(21);key.sharedPicture=authority;
+        auto blank=sampler.Measure(Source(pixels),key,{},60);
+        Assert::IsFalse(blank.text.detected);
+        Assert::IsFalse(tracker.Consume(SubtitleBoxLookahead::Resolve(&blank,1,0,0),250,1000.0/60).detected);
+    }
+    TEST_METHOD(SharedPictureAuthorityWithdrawalAndContextChangesStopDetection) {
+        auto pixels=Pixels();Text(pixels,200,318,16);SubtitleMeasurementSampler sampler;
+        for(int change=0;change<6;++change) {
+            auto key=Cue(1);key.sharedPicture.required=true;key.sharedPicture.identity=Identity(1);
+            key.sharedPicture.bounds={0,45,640,315,640,360};
+            if(change==0)key.sharedPicture.bounds={};
+            if(change==1)key.sharedPicture.bounds={0,0,640,360,640,360};
+            if(change==2)++key.sharedPicture.identity.transportGeneration;
+            if(change==3)++key.sharedPicture.identity.viewportGeneration;
+            if(change==4)++key.sharedPicture.identity.sourceFormatGeneration;
+            if(change==5)++key.sharedPicture.identity.rendererGeneration;
+            auto observation=sampler.Measure(Source(pixels),key,{},60);
+            Assert::IsFalse(observation.barAuthority);Assert::IsFalse(observation.text.detected);
+        }
+    }
+    TEST_METHOD(WorkerKeyIncludesSharedAuthorityEvenForSameSourceFrame) {
+        auto a=Cue(1);a.sharedPicture.required=true;a.sharedPicture.identity=Identity(1);
+        a.sharedPicture.bounds={0,45,640,315,640,360};auto b=a;
+        Assert::IsTrue(SubtitleMeasurementWorker::SameKey(a,b));
+        b.sharedPicture.bounds.bottom=310;Assert::IsFalse(SubtitleMeasurementWorker::SameKey(a,b));
+        b=a;b.sharedPicture.bounds={};Assert::IsFalse(SubtitleMeasurementWorker::SameKey(a,b));
+        b=a;b.sharedPicture.required=false;Assert::IsFalse(SubtitleMeasurementWorker::SameKey(a,b));
+    }
+    TEST_METHOD(PendingMeasurementUsesSharedAuthorityWithoutIndependentBarVeto) {
+        auto pixels=Pixels();Fill(pixels,0,0,640,360,64);Text(pixels,200,310,16);
+        auto key=Cue(1);key.sharedPicture.required=true;key.sharedPicture.identity=Identity(1);
+        key.sharedPicture.bounds={0,45,640,315,640,360};SubtitleMeasurementSampler sampler;
+        auto observed=sampler.Measure(Source(pixels),key,{},60);
+        Assert::IsTrue(observed.text.detected);
+        auto ready=SubtitleBoxLookahead::Resolve(&observed,1,0,0);SubtitlePendingMeasurementGuard guard;
+        guard.Resolve(ready,Source(pixels),1000.0/60,250);
+        SubtitleBoxPreview pending;pending.current=key;pending.current.identity=Identity(2);
+        Assert::IsTrue(guard.Resolve(pending,Source(pixels),1000.0/60,250));
+        pending={};pending.current=key;pending.current.identity=Identity(3);pending.current.sharedPicture.bounds={};
+        Assert::IsFalse(guard.Resolve(pending,Source(pixels),1000.0/60,250));
+    }
+
     TEST_METHOD(BackedMinorCoverageVariationRetainsCueBeyondGrace) {
         const auto initial=CompleteBackedCue(1);
         SubtitleBoxPresentation tracker;const auto acquired=tracker.Consume(Resolve({initial}));

@@ -233,67 +233,44 @@ namespace VideoProcessorTest
 	TEST_CLASS(ActivePictureEvidenceTests)
 	{
 	public:
-		TEST_METHOD(RelocationModeSwitchUsesArBoundsDespiteIndependentSubtitleEdges)
+        TEST_METHOD(SubtitleStylesShareCropAspectAndOnlyChangeFinalTranslation)
         {
             using namespace AlphaSourceCrop;
-            for(bool top:{false,true}) {
-                P010Frame frame(640,360); frame.BlackOutside(0,48,640,312);
-                const auto scope=ScopePresentation(640,360,48,312);
-                Input base; base.automaticCropEnabled=base.sharedGeometryAvailable=base.latestObservationSupportsCrop=true;
-                base.geometry=scope; base.classification=base.latestObservationClassification=ActivePictureClassification::BAR_CROP_TRUSTED;
-                base.geometrySourceGeneration=base.frameSourceGeneration=1;
-                base.frameSourceSequence=100; base.framePresentationEpoch=4; base.rasterWidth=640;base.rasterHeight=360;
-                const auto admitted=AdmitCropPresentation({},base,Evaluate(base),4).state;
-                Assert::IsTrue(admitted.available);
-                const SubtitleBoxRect text=top?SubtitleBoxRect{100,12,540,34}:SubtitleBoxRect{100,326,540,348};
-                frame.FillRectangle(text.left,text.top,text.right,text.bottom,700);
-                const auto raw=EvaluateActivePicturePresentationRetention(frame.P010Source(),scope);
-                // Four-pixel discrepancy reproduces independently sampled edges.
-                auto move=ComputeSubtitleCutPaste(text,640,360,44,316,SubtitleBoxPadding{0,0,0});
-                move=FitSubtitleToVisiblePicture(move,{0,48,640,312},0);
-                Assert::IsTrue(move.valid);
-                Assert::IsTrue(move.destination.top>=48 && move.destination.bottom<=312);
-                for(int mode:{0,5,3,0,5}) {
-                    auto crop=base; crop.frameSourceSequence++;
-                    crop.latestObservationSupportsCrop=false;crop.latestObservationIsProvisional=true;
-                    crop.latestObservationClassification=ActivePictureClassification::PROVISIONAL;
-                    crop.outwardPresentationActive=crop.outwardExpansionAvailable=true;
-                    crop.outwardExpansion=scope;crop.outwardExpansion.top=0;crop.outwardExpansion.bottom=360;
-                    crop.outwardExpansionSourceGeneration=1;
-                    crop.presentationFailOpen=crop.verticalInspectionPending=true;
-                    ActivePicturePresentationRetentionEvidence corrected;
-                    const bool retained=ApplyRelocatedSubtitleRetention(crop,admitted,frame.P010Source(),raw,move,mode!=0,true,corrected);
-                    Assert::AreEqual(mode!=0,retained);
-                    Assert::IsFalse(raw.excludedBandsPixelSafe);
-                    if(mode==0) { Assert::IsTrue(crop.outwardPresentationActive);continue; }
-                    const auto decision=Evaluate(crop);
-                    Assert::IsTrue(decision.applyCrop);
-                    Assert::AreEqual(48,decision.sourceBounds.top);
-                    Assert::AreEqual(312,decision.sourceBounds.bottom);
-                    Assert::IsFalse(decision.outwardExpanded);
+            for(int shift:{-30,0,30})for(bool expanded:{false,true}) {
+                Input input; input.automaticCropEnabled=input.sharedGeometryAvailable=input.latestObservationSupportsCrop=true;
+                input.geometry=ScopePresentation(640,360,48,312);
+                input.classification=input.latestObservationClassification=ActivePictureClassification::BAR_CROP_TRUSTED;
+                input.geometrySourceGeneration=input.frameSourceGeneration=1;
+                input.rasterWidth=640;input.rasterHeight=360;
+                input.verticalTranslationActive=shift!=0;input.verticalTranslationPixels=shift;
+                input.verticalTranslationBase=input.geometry;input.verticalTranslationSourceGeneration=1;
+                if(expanded) {
+                    input.outwardPresentationActive=input.outwardExpansionAvailable=true;
+                    input.outwardExpansion=input.geometry;input.outwardExpansion.top=40;input.outwardExpansion.bottom=320;
+                    input.outwardExpansionSourceGeneration=1;
+                }
+                const auto shared=Evaluate(input);
+                Assert::AreEqual(!(expanded && shift!=0),shared.applyCrop);
+                for(auto mode:{SubtitlePreviewMode::None,SubtitlePreviewMode::GeneratedGrayBackground,SubtitlePreviewMode::BlackBackground}) {
+                    const auto display=SubtitlePresentationBounds(shared,mode);
+                    Assert::AreEqual(shared.sourceBounds.right-shared.sourceBounds.left,display.right-display.left);
+                    Assert::AreEqual(shared.sourceBounds.bottom-shared.sourceBounds.top,display.bottom-display.top);
+                    const int undo=mode==SubtitlePreviewMode::None?0:shared.verticalTranslationPixels;
+                    Assert::AreEqual(shared.sourceBounds.top-undo,display.top);
+                    Assert::AreEqual(shared.sourceBounds.bottom-undo,display.bottom);
                 }
             }
         }
-        TEST_METHOD(RelocationHandoffRejectsStaleFailedOrUncontainedComposition)
+        TEST_METHOD(SubtitleStylesDoNotOverrideFailedCropOrRealPictureExpansion)
         {
             using namespace AlphaSourceCrop;
-            for(int bad=0;bad<7;++bad) {
-                P010Frame frame(640,360);frame.BlackOutside(0,48,640,312);frame.FillRectangle(100,326,540,348,700);
-                Input crop;crop.automaticCropEnabled=crop.sharedGeometryAvailable=true;
-                crop.geometry=ScopePresentation(640,360,48,312);crop.classification=ActivePictureClassification::BAR_CROP_TRUSTED;
-                crop.geometrySourceGeneration=crop.frameSourceGeneration=1;crop.frameSourceSequence=100;crop.framePresentationEpoch=4;
-                crop.rasterWidth=640;crop.rasterHeight=360;
-                CropPresentationAdmissionState admitted;admitted.available=true;admitted.trustedCrop=crop.geometry;admitted.sourceGeneration=1;admitted.presentationEpoch=4;
-                auto move=ComputeSubtitleCutPaste({100,326,540,348},640,360,48,312,SubtitleBoxPadding{0,0,0});
-                if(bad==2) admitted.presentationEpoch=3;
-                if(bad==3) admitted.sourceGeneration=2;
-                if(bad==4) move.destination.bottom=313;
-                if(bad==5) crop.latestObservationClassification=ActivePictureClassification::FULL_RASTER_TRUSTED;
-                if(bad==6) frame.FillRectangle(100,10,540,24,700);
-                const auto raw=EvaluateActivePicturePresentationRetention(frame.P010Source(),crop.geometry);
-                ActivePicturePresentationRetentionEvidence corrected;
-                Assert::IsFalse(ApplyRelocatedSubtitleRetention(crop,admitted,frame.P010Source(),raw,move,bad!=0,bad!=1,corrected));
-                Assert::IsFalse(crop.frameLocalPresentationRetentionSafe);
+            for(bool crop:{false,true}) {
+                Decision shared;shared.applyCrop=crop;shared.sourceBounds=ScopePresentation(640,360,10,350);
+                shared.outwardExpanded=true;
+                for(auto mode:{SubtitlePreviewMode::None,SubtitlePreviewMode::GeneratedGrayBackground,SubtitlePreviewMode::BlackBackground}) {
+                    const auto display=SubtitlePresentationBounds(shared,mode);
+                    Assert::AreEqual(10,display.top);Assert::AreEqual(350,display.bottom);
+                }
             }
         }
 		TEST_METHOD(RelocatedResidualDotsAndQuotesCanRetainPresentationWithoutChangingRawEvidence)

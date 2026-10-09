@@ -859,7 +859,10 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
         }
         // Rounded card corners can expose one side. Neighboring glyphs may
         // interrupt another; two distributed opaque sides establish support.
-        const bool crossing=c.topBarInk || c.bottomBarInk;
+        // Near-bar nomination increments topBarInk/bottomBarInk even when
+        // every stroke is in the picture. Only physical bar pixels justify
+        // the reduced one-strip proof used by genuinely crossing lettering.
+        const bool crossing=c.actualBarInk;
         const bool horizontalCardStrip=(samples[0]>=2 && black[0]*100>=samples[0]*85) ||
             (samples[1]>=2 && black[1]*100>=samples[1]*85);
         // A crossing glyph can expose just one or two picture sample rows.
@@ -1219,6 +1222,30 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
                 ++tested[tile];dark[tile]+=darkSample(x,y);
             }
         }
+        // Component envelopes can surround real scenery (a window or lens
+        // opening). The exterior strips below are necessary but insufficient:
+        // unowned pixels INSIDE a component must also be black backing. Keep
+        // one sampled pixel around actual strokes for antialiasing. This does
+        // not use glyph holes as a substitute for the exterior card proof.
+        unsigned interiorTested=0,interiorBlack=0;
+        for(const auto& c:m_components) {
+            if(componentOwners[c.label]!=index+1) continue;
+            for(int y=(std::max)(first,c.box.top);y<(std::min)(last,c.box.bottom);++y)
+                for(int x=c.box.left;x<c.box.right;++x) {
+                    bool stroke=false;
+                    for(int dy=-1;dy<=1 && !stroke;++dy)
+                        for(int dx=-1;dx<=1;++dx) {
+                            const int xx=x+dx,yy=y+dy;
+                            if(xx>=0 && xx<w && yy>=0 && yy<h && m_labels[yy*w+xx]==c.label) {
+                                stroke=true;break;
+                            }
+                        }
+                    if(stroke) continue;
+                    ++interiorTested;
+                    interiorBlack+=m_luma[y*w+x]<=cardDarkLimit;
+                }
+        }
+        if(interiorTested>=9 && interiorBlack*100<interiorTested*85) return false;
         unsigned total=0,black=0;int supported=0;
         for(int tile=0;tile<3;++tile) {
             total+=tested[tile];black+=dark[tile];

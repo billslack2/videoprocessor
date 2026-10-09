@@ -2562,13 +2562,16 @@ namespace
                     const auto type=ConfigFile::NormalizeName(get("type"));
                     settings.subtitleMode=type=="black"?SubtitlePreviewMode::BlackBackground:
                         type=="generated_gray"?SubtitlePreviewMode::GeneratedGrayBackground:SubtitlePreviewMode::None;
-                    settings.scopeSubtitleFit=type.empty() || type=="classic";
+                    const bool classicStyle=type.empty() || type=="classic";
+                    settings.scopeSubtitleFit=classicStyle || SubtitlePreviewOverridesClassicHandling(settings.subtitleMode);
                     int n=0;
                     if(settings.scopeSubtitleFit) {
                         settings.scopeSubtitleHoldMs=RendererProfileConfig::DEFAULT_CLASSIC_SUBTITLE_HOLD_MS;
                         settings.scopeSubtitleEngageDriftMs=RendererProfileConfig::DEFAULT_CLASSIC_SUBTITLE_ENGAGE_DRIFT_MS;
                         settings.scopeSubtitleReleaseDriftMs=RendererProfileConfig::DEFAULT_CLASSIC_SUBTITLE_RELEASE_DRIFT_MS;
                         settings.scopeSubtitlePaddingPixels=RendererProfileConfig::DEFAULT_CLASSIC_SUBTITLE_PADDING_PIXELS;
+                    }
+                    if(classicStyle) {
                         if(RendererProfileConfig::ParseInteger(get("offset_pixels"),0,500,n)) settings.scopeSubtitlePaddingPixels=n;
                         double seconds=0;
                         if(ParseDouble(get("subtitle_hold_seconds"),seconds)) settings.scopeSubtitleHoldMs=static_cast<uint64_t>(std::llround(seconds*1000));
@@ -3687,6 +3690,9 @@ struct LibplaceboVideoRenderer::Impl
     SubtitleStabilityTelemetry subtitleStabilityTelemetry;
     pl_tex subtitleCompositionTexture=nullptr;
     SubtitlePaddingGuard subtitlePaddingGuard;
+    SubtitleLayoutAnchor subtitleLayoutAnchor;
+    ActivePictureBounds scopeSubtitleAnalysisBounds;
+    SubtitlePictureAuthority subtitleSharedPicture;
     SubtitleCutPasteGeometry subtitleLoggedLayout;
     uint64_t subtitleLayoutCue=0;
 	SubtitleBoxResult subtitleBoxResult;
@@ -4458,7 +4464,7 @@ struct LibplaceboVideoRenderer::Impl
 			pl_mpv_user_shader_destroy(&nlsHook);
             pl_mpv_user_shader_destroy(&subtitleCutPasteHook);
             subtitleCutPasteHookFailed = false;
-            subtitleCutPastePresentation.Reset();
+            subtitleCutPastePresentation.Reset(); subtitleLayoutAnchor.Reset();
 			pl_renderer_destroy(&renderer);
 			pl_lut_free(&displayLut);
 			if (d3d11)
@@ -5388,6 +5394,7 @@ struct LibplaceboVideoRenderer::Impl
 
 	void ClearScopeSubtitleEvidence()
 	{
+        scopeSubtitleAnalysisBounds={};subtitleSharedPicture={};
 		scopeSubtitleAnalysisFrame = 0;
 		scopeVerticalBarPresentation = {};
 		scopeSubtitleTranslationConfirmation = {};
@@ -5426,6 +5433,7 @@ struct LibplaceboVideoRenderer::Impl
 			*analysisScheduled = false;
 		if (analysisCompleted)
 			*analysisCompleted = false;
+        scopeSubtitleAnalysisBounds={};
 		const uint64_t now = GetTickCount64();
 		const bool sourceIsCurrent = source && source->IsValid() &&
 			source->width == width && source->height == height &&
@@ -5522,6 +5530,11 @@ struct LibplaceboVideoRenderer::Impl
 			scopeSubtitlePictureBottom = barAuthority->bottom;
 		}
 
+        // Export the exact authority after ALL existing Classic admission and
+        // authority-gap retention checks, including the held stored base.
+        scopeSubtitleAnalysisBounds={scopeSubtitlePictureLeft,scopeSubtitlePictureTop,
+            scopeSubtitlePictureRight,scopeSubtitlePictureBottom,width,height,0.0,
+            ActivePictureBounds::BarAxes::TOP_BOTTOM};
 		// This inexpensive pass deliberately avoids OCR and models. Shared crop
 		// authority supplies the bar edges; this code only finds meaningful
 		// non-black content inside those already-proven encoded bars.
@@ -7698,9 +7711,10 @@ struct LibplaceboVideoRenderer::Impl
 
     SubtitleBoxObservation QueueSubtitleMeasurement(const VideoFrame& frame,const VideoState& state,
         const ActivePictureFrameIdentity& identity,bool discontinuity,
-        const SubtitleBarTrackingReference& prior,uint64_t policy,uint64_t continuity,int nearBar,int optimizationMode)
+        const SubtitleBarTrackingReference& prior,uint64_t policy,uint64_t continuity,int nearBar,int optimizationMode,
+        const SubtitlePictureAuthority& sharedPicture)
     {
-        SubtitleBoxObservation key;key.identity=identity;key.policyGeneration=policy;
+        SubtitleBoxObservation key;key.sharedPicture=sharedPicture;key.identity=identity;key.policyGeneration=policy;
         key.continuityGeneration=continuity;key.nearBarDistance=nearBar;key.optimizationMode=optimizationMode;key.discontinuity=discontinuity;
         key.width=static_cast<int>(state.displayMode->FrameWidth());
         key.height=static_cast<int>(state.displayMode->FrameHeight());
@@ -11129,16 +11143,22 @@ struct LibplaceboVideoRenderer::Impl
                 viewportRequestSerial, nlsGeometry);
 		const auto subtitlePresentationBeforeAnalysis = scopeVerticalBarPresentation;
 		const auto fitBeforeAnalysis = scopeSubtitleFitConfirmation;
-		// Relocation owns subtitle placement, including frames with a weak cue.
-		// Discard classic hold/drift so toggling cannot carry a stale picture shift.
-		const bool overrideClassicSubtitles = SubtitlePreviewOverridesClassicHandling(subtitlePreviewMode);
-		if (overrideClassicSubtitles) ClearScopeSubtitleEvidence();
-		const float subtitleShiftSourcePixels = (overrideClassicSubtitles || inwardCaptionProtected) ? 0.0f :
-			UpdateScopeSubtitleShift(&analysisSource,
-				width, height, configuredScreenActive, subtitleBarAuthority,
-				sourceSequence, forceSubtitleBarAnalysis,
-				heldBarAnalysisAuthority, &subtitleBarAnalysisScheduled,
-				&subtitleBarAnalysisCompleted, retiringTranslationFitInspection);
+        // All enabled subtitle styles share raw-source bar analysis and crop
+        // arbitration. Relocation changes only final presentation, never evidence.
+        const float subtitleShiftSourcePixels = inwardCaptionProtected ? 0.0f :
+            UpdateScopeSubtitleShift(&analysisSource,
+                width, height, configuredScreenActive, subtitleBarAuthority,
+                sourceSequence, forceSubtitleBarAnalysis,
+                heldBarAnalysisAuthority, &subtitleBarAnalysisScheduled,
+                &subtitleBarAnalysisCompleted, retiringTranslationFitInspection);
+        subtitleSharedPicture.required=true;
+        subtitleSharedPicture.bounds=inwardCaptionProtected?ActivePictureBounds{}:scopeSubtitleAnalysisBounds;
+        subtitleSharedPicture.identity=activePictureIdentity;
+        subtitleSharedPicture.identity.transportGeneration=frameGeneration;
+        subtitleSharedPicture.identity.sourceFormatGeneration=AlphaSourceFormatKey(state);
+        subtitleSharedPicture.identity.viewportGeneration=viewportRequestSerial;
+        subtitleSharedPicture.identity.rendererGeneration=frameGeneration;
+
 		if (retiringTranslationFitInspection)
 		{
 			const bool adopted = subtitleBarAnalysisCompleted &&
@@ -11659,7 +11679,8 @@ struct LibplaceboVideoRenderer::Impl
             subtitleIdentity.viewportGeneration = viewportRequestSerial;
             subtitleIdentity.rendererGeneration = frameGeneration;
             if (subtitlePreview && !SubtitleBoxLookahead::IsCurrent(*subtitlePreview,
-                subtitleIdentity,localBoundaryPolicyGeneration,localBoundaryContinuityGeneration))
+                subtitleIdentity,localBoundaryPolicyGeneration,localBoundaryContinuityGeneration) ||
+                (subtitlePreview && !subtitlePreview->current.sharedPicture.Matches(subtitleSharedPicture)))
                 subtitlePreview = nullptr;
             SubtitleBoxPreview livePreview;
             if (!subtitlePreview)
@@ -11667,14 +11688,15 @@ struct LibplaceboVideoRenderer::Impl
                 if (!subtitleBoxPresentation.ReusePreviewForRepeatedSourceFrame(
                     subtitleIdentity,analysisSource.width,analysisSource.height,
                     videoFrame.IsSourceDiscontinuity(),localBoundaryPolicyGeneration,
-                    localBoundaryContinuityGeneration,livePreview))
+                    localBoundaryContinuityGeneration,livePreview) ||
+                    !livePreview.current.sharedPicture.Matches(subtitleSharedPicture))
                 {
                     const auto priorBar = subtitleBoxPresentation.BarTrackingReferenceFor(
                         subtitleIdentity,analysisSource.width,analysisSource.height,
                         localBoundaryPolicyGeneration,localBoundaryContinuityGeneration);
                     const auto observed = QueueSubtitleMeasurement(videoFrame,state,subtitleIdentity,
                         videoFrame.IsSourceDiscontinuity(),priorBar,localBoundaryPolicyGeneration,
-                        localBoundaryContinuityGeneration,activeSettings.subtitleNearBarDistance,activeSettings.subtitleDetectionOptimization);
+                        localBoundaryContinuityGeneration,activeSettings.subtitleNearBarDistance,activeSettings.subtitleDetectionOptimization,subtitleSharedPicture);
                     livePreview = SubtitleBoxLookahead::Resolve(&observed, 1,
                         localBoundaryPolicyGeneration, localBoundaryContinuityGeneration);
                     livePreview.newScanMs = 0;
@@ -11687,6 +11709,14 @@ struct LibplaceboVideoRenderer::Impl
             const double subtitleFrameMs=state.displayMode && state.displayMode->TimeScale()>0
                 ? 1000.0*state.displayMode->FrameDuration()/state.displayMode->TimeScale() : 1000.0/60.0;
             auto currentSubtitlePreview=*subtitlePreview;
+            for(unsigned i=0;i<currentSubtitlePreview.followingCount;++i)
+                if(!currentSubtitlePreview.following[i].sharedPicture.Matches(subtitleSharedPicture)) {
+                    const auto current=currentSubtitlePreview.current;
+                    currentSubtitlePreview=SubtitleBoxLookahead::Resolve(&current,1,
+                        localBoundaryPolicyGeneration,localBoundaryContinuityGeneration);
+                    break;
+                }
+
             ++subtitlePerf.frames;
             if(!currentSubtitlePreview.available) {
                 ++subtitlePerf.pending;
@@ -11732,10 +11762,12 @@ struct LibplaceboVideoRenderer::Impl
                     : SubtitleBoxRect{0,detectedMove.pictureTop,width,detectedMove.pictureBottom};
                 // Text scale is display-only. Apply after physical viewport
                 // fitting; source extraction, cleanup and AR authority stay intact.
-                const auto move=ApplySubtitleTextReduction(FitSubtitleToVisiblePicture(detectedMove,
+                auto move=ApplySubtitleTextReduction(FitSubtitleToVisiblePicture(detectedMove,
                     visiblePicture, activeSettings.subtitleMoveInset),
                     activeSettings.subtitleTextReductionPercent, safeSubtitlePadding,
                     activeSettings.subtitleRoundedCorners, activeSettings.subtitleFloatBackground);
+                move=subtitleLayoutAnchor.Consume(move,subtitleBoxResult,*subtitlePreview,
+                    safeSubtitlePadding,activeSettings.subtitleMoveInset,activeSettings.subtitleFloatBackground);
                 const auto& priorLayout=subtitleLoggedLayout;
                 auto equalRect=[](const SubtitleBoxRect& a,const SubtitleBoxRect& b) {
                     return a.left==b.left && a.top==b.top && a.right==b.right && a.bottom==b.bottom;
@@ -11753,15 +11785,18 @@ struct LibplaceboVideoRenderer::Impl
                         subtitleLayoutCue!=subtitleBoxResult.cue?"cue-reacquired-or-replaced":
                         subtitleBoxResult.revised?"confirmed-glyph-expansion":
                         (move.pictureTop!=priorLayout.pictureTop || move.pictureBottom!=priorLayout.pictureBottom)?
-                            "picture-boundary-change":"placement-or-settings-change";
-                    DebugLog::Log("SUBTITLE LAYOUT: frame=%llu cue=%llu previous_cue=%llu reason=%s tracker=%s match=%s backing=%d min_coverage_pct=%u max_difference_pct=%u old=%d,%d-%d,%d new=%d,%d-%d,%d scale=%.4f->%.4f translation=%.2f,%.2f->%.2f,%.2f",
+                            "picture-boundary-change":
+                        !equalRect(move.generatedCleanup,priorLayout.generatedCleanup)?"accepted-cleanup-change":"placement-or-settings-change";
+                    DebugLog::Log("SUBTITLE LAYOUT: frame=%llu cue=%llu previous_cue=%llu reason=%s tracker=%s match=%s backing=%d min_coverage_pct=%u max_difference_pct=%u old=%d,%d-%d,%d new=%d,%d-%d,%d scale=%.4f->%.4f translation=%.2f,%.2f->%.2f,%.2f backing_decision=%s measured_cleanup=%d,%d-%d,%d accepted_cleanup=%d,%d-%d,%d",
                         sourceSequence,subtitleBoxResult.cue,subtitleLayoutCue,reason,
                         subtitleBoxPresentation.DecisionReason(),match.reason,match.backingConfirmed?1:0,
                         match.minimumCoverage,match.maximumDifference,
                         priorLayout.destination.left,priorLayout.destination.top,priorLayout.destination.right,priorLayout.destination.bottom,
                         move.destination.left,move.destination.top,move.destination.right,move.destination.bottom,
                         priorLayout.glyphScale,move.glyphScale,priorLayout.glyphTranslateX,priorLayout.glyphTranslateY,
-                        move.glyphTranslateX,move.glyphTranslateY);
+                        move.glyphTranslateX,move.glyphTranslateY,subtitleCutPastePresentation.BackingDecisionReason(),
+                        subtitleBoxResult.sourcePanel.left,subtitleBoxResult.sourcePanel.top,subtitleBoxResult.sourcePanel.right,subtitleBoxResult.sourcePanel.bottom,
+                        move.generatedCleanup.left,move.generatedCleanup.top,move.generatedCleanup.right,move.generatedCleanup.bottom);
                 }
                 subtitleLoggedLayout=move;subtitleLayoutCue=subtitleBoxResult.cue;
                 subtitleMoveValid=move.valid;
@@ -11792,7 +11827,7 @@ struct LibplaceboVideoRenderer::Impl
                     }
                 }
             }
-            else subtitleCutPastePresentation.Reset();
+            else { subtitleCutPastePresentation.Reset(); subtitleLayoutAnchor.Reset(); }
             const bool subtitleVisible=subtitleBoxResult.detected &&
                 (!subtitleCutPasteTest || subtitleHookBound);
             const auto transition=subtitleStabilityTelemetry.Observe(subtitlePreview->current,
@@ -11862,6 +11897,12 @@ struct LibplaceboVideoRenderer::Impl
                         sourceSequence,subtitleBoxResult.cue,subtitleBoxResult.capturePanelMeasured?1:0,
                         card.left,card.top,card.right,card.bottom,cleanup.left,cleanup.top,cleanup.right,cleanup.bottom,
                         display.left,display.top,display.right,display.bottom,geometry.pictureTop,geometry.pictureBottom);
+                    const auto& measured=subtitleBoxResult.sourcePanel;
+                    DebugLog::Log("SUBTITLE BACKING: frame=%llu cue=%llu reason=%s held_measurements=%llu measured=%d,%d-%d,%d accepted=%d,%d-%d,%d",
+                        sourceSequence,subtitleBoxResult.cue,subtitleCutPastePresentation.BackingDecisionReason(),
+                        subtitleCutPastePresentation.HeldBackingMeasurements(),
+                        measured.left,measured.top,measured.right,measured.bottom,
+                        cleanup.left,cleanup.top,cleanup.right,cleanup.bottom);
                     for(int line=0;line<subtitleBoxResult.lineCount && line<3;++line) {
                         const auto& capture=geometry.glyphLines[line];
                         DebugLog::Log("SUBTITLE CAPTURE LINE: frame=%llu cue=%llu line=%d capture=%d,%d-%d,%d",
@@ -11875,7 +11916,7 @@ struct LibplaceboVideoRenderer::Impl
                 subtitleAnalysisLogTick=analysisLogNow;
             }
         }
-        else { subtitlePendingGuard.Reset(); subtitleBoxPresentation.Reset(); subtitleStabilityTelemetry.Reset(); subtitlePaddingGuard.Reset(); subtitleBoxResult = {}; subtitleCutPastePresentation.Reset(); }
+        else { subtitlePendingGuard.Reset(); subtitleBoxPresentation.Reset(); subtitleStabilityTelemetry.Reset(); subtitlePaddingGuard.Reset(); subtitleBoxResult = {}; subtitleCutPastePresentation.Reset(); subtitleLayoutAnchor.Reset(); }
 
         const auto subtitlePerfNow=GetTickCount64();
         if(!subtitlePerfTick)subtitlePerfTick=subtitlePerfNow;
@@ -12829,28 +12870,8 @@ struct LibplaceboVideoRenderer::Impl
                 cropInput.currentVisibleSourceSequence = sourceSequence;
                 cropInput.currentVisibleBounds = inwardCaptionEvidence.protectedBounds;
             }
-            // A successful relocation removes these source pixels before cropping.
-            // Recheck all other excluded pixels; UI and real picture expansion still veto.
-            const bool relocationMeasurementCurrent = configuredScreenActive &&
-                episodeInput.measurementCurrent && episodeInput.retentionEvaluated &&
-                episodeInput.retentionSourceSequence == sourceSequence &&
-                episodeInput.retentionSourceGeneration == frameGeneration &&
-                sameBounds(episodeInput.retentionBounds,effectiveGeometry);
-            ActivePicturePresentationRetentionEvidence relocatedRetention;
-            const bool relocatedSubtitleRetainsPicture = ApplyRelocatedSubtitleRetention(
-                cropInput,cropPresentationAdmission,analysisSource,latestCropRetentionEvidence,
-                relocatedSubtitle,subtitleCompositionSucceeded,relocationMeasurementCurrent,relocatedRetention);
-            if(relocatedSubtitleRetainsPicture) scopeVerticalInspectionBridge = {};
-            if(subtitleCompositionSucceeded && sourceSequence % 24 == 0)
-                DebugLog::Log("SUBTITLE ASPECT: frame=%llu composed=1 current=%d excluded_scan=%d remaining_bands_safe=%d retain_picture=%d residual_tolerance=%d subtitle_edges=%d,%d picture_edges=%d,%d destination=%d,%d-%d,%d",
-                    sourceSequence,relocationMeasurementCurrent?1:0,
-                    relocatedRetention.relocatedOverlayExclusionEvaluated?1:0,
-                    relocatedRetention.excludedBandsPixelSafe?1:0,relocatedSubtitleRetainsPicture?1:0,
-                    relocatedRetention.relocatedOverlayResidualsExcluded?1:0,
-                    relocatedSubtitle.pictureTop,relocatedSubtitle.pictureBottom,effectiveGeometry.top,effectiveGeometry.bottom,
-                    relocatedSubtitle.destination.left,relocatedSubtitle.destination.top,
-                    relocatedSubtitle.destination.right,relocatedSubtitle.destination.bottom);
-
+            // Relocation success is deliberately absent from crop authority.
+            // The same raw-source policy protects Classic, reconstructed and solid captions.
             // Fill enables analysis, not unconditional black-bar removal. Decide
             // from the trusted movie bounds before subtitle/retention expansion.
             cropInput.automaticCropEnabled = AlphaSourceCrop::ShouldApplyDynamicSourceCrop(
@@ -12862,7 +12883,7 @@ struct LibplaceboVideoRenderer::Impl
 			recoveryInput.cadenceRepeat = cadenceRepeat;
 			recoveryInput.measurementCurrent = episodeInput.measurementCurrent;
 			recoveryInput.retentionEvaluated = episodeInput.retentionEvaluated;
-			recoveryInput.excludedBandsPixelSafe = relocatedSubtitleRetainsPicture || latestCropRetentionEvidence.excludedBandsPixelSafe;
+			recoveryInput.excludedBandsPixelSafe = latestCropRetentionEvidence.excludedBandsPixelSafe;
 			recoveryInput.observationAvailable = latestCropRetentionEvidence.proposedBoundsAvailable;
 			recoveryInput.observation = latestCropRetentionEvidence.activePicture.proposedBounds;
 			recoveryInput.observedTrustedCrop = latestCropRetentionEvidence.activePicture.trustedBounds;
@@ -12894,7 +12915,7 @@ struct LibplaceboVideoRenderer::Impl
 						LATEST_OBSERVATION_UNREAFFIRMED;
 			AlphaSourceCrop::VerticalInspectionBridgeInput inspectionInput;
 			inspectionInput.previous = scopeVerticalInspectionBridge;
-			inspectionInput.candidate = verticalInspectionCandidate && !relocatedSubtitleRetainsPicture;
+			inspectionInput.candidate = verticalInspectionCandidate;
 			inspectionInput.retentionRequested =
 				verticalInspectionFallbackRequested;
 			inspectionInput.denseAnalysisCompleted =
@@ -12941,7 +12962,7 @@ struct LibplaceboVideoRenderer::Impl
 			// Inspection may have changed ownership; reuse the same source evidence.
 			recoveryInput.crop = cropInput;
 			recoveryInput.candidate = cropDecision;
-			recoveryInput.confirmedPresentationResolved = relocatedSubtitleRetainsPicture || episodeDecision.releasedToTrustedCrop ||
+			recoveryInput.confirmedPresentationResolved = episodeDecision.releasedToTrustedCrop ||
                 (protectedCaptionFit && cropDecision.applyCrop &&
                  cropDecision.owner == AlphaSourceCrop::DecisionOwner::OUTWARD_FIT &&
                  ActivePictureBoundsContain(cropDecision.sourceBounds,
@@ -13019,6 +13040,16 @@ struct LibplaceboVideoRenderer::Impl
 				scopeGenericFitHold = {};
 
 
+            const auto sharedSubtitleCrop = cropDecision.sourceBounds;
+            cropDecision.sourceBounds = SubtitlePresentationBounds(cropDecision, subtitlePreviewMode);
+            if(sourceSequence % 120 == 0 && scopeSubtitleFit)
+                DebugLog::Log("SUBTITLE ASPECT POLICY: frame=%llu style=%d shared_policy=1 composed=%d owner=%s shared=%d,%d-%d,%d display=%d,%d-%d,%d requested_translation=%d",
+                    sourceSequence,static_cast<int>(subtitlePreviewMode),subtitleCompositionSucceeded?1:0,
+                    AlphaSourceCrop::DecisionOwnerName(cropDecision.owner),
+                    sharedSubtitleCrop.left,sharedSubtitleCrop.top,sharedSubtitleCrop.right,sharedSubtitleCrop.bottom,
+                    cropDecision.sourceBounds.left,cropDecision.sourceBounds.top,cropDecision.sourceBounds.right,cropDecision.sourceBounds.bottom,
+                    cropDecision.verticalTranslationPixels);
+
 			const double panelTargetAspect = pl_rect2df_aspect(&target.crop);
 			const double finalTargetAspect = AnamorphicPresentation::PhysicalTarget(
 				configuredScreenActive, configuredScreenAspect, panelTargetAspect, anamorphicScale);
@@ -13080,7 +13111,7 @@ struct LibplaceboVideoRenderer::Impl
 				aspectLimitFill = AlphaSourceCrop::EvaluateFixedAspectCrop(
 					fixedCropInput);
 			}
-			else if ((protectedCaptionFit && !relocatedSubtitleRetainsPicture) || nlsPresentationFailOpen || recoveryDecision.boundedPresentation ||
+			else if (protectedCaptionFit || nlsPresentationFailOpen || recoveryDecision.boundedPresentation ||
                 nearBlackBoundedDecision.boundedPresentation)
 			{
 				aspectLimitFill.sourceBounds = cropDecision.sourceBounds;
@@ -13133,7 +13164,7 @@ struct LibplaceboVideoRenderer::Impl
             // Recording presentation never publishes or refreshes detector authority.
             cropPresentationAdmission.optionalFillApplied = aspectLimitFill.applied &&
                 cropDecision.applyCrop && !fixedCropAspectConfigured && !nlsRequested &&
-                (!protectedCaptionFit || relocatedSubtitleRetainsPicture) && !cropDecision.outwardExpanded && !cropDecision.verticallyTranslated &&
+                !protectedCaptionFit && !cropDecision.outwardExpanded && !cropDecision.verticallyTranslated &&
                 !cropInput.movingPictureTransition && !recoveryDecision.state.active &&
                 episodeInput.trustedCropOrigin == ActivePictureAuthorityOrigin::NATIVE &&
                 sameBounds(cropDecision.sourceBounds, cropInput.geometry);
@@ -17319,6 +17350,7 @@ void LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
             a.rasterWidth == b.rasterWidth && a.rasterHeight == b.rasterHeight &&
             a.trustedBarAxes == b.trustedBarAxes;
     };
+    SubtitlePictureAuthority subtitleSharedPictureSnapshot;
     // Called only under renderMutex; never nest it with queueMutex.
     const auto rememberedOwnerEligible = [&]() {
         return ((m_impl->rememberedEdgeShadow && !m_impl->rememberedEdgeEnabled) || m_impl->rememberedEdgeGuarded) &&
@@ -17333,6 +17365,8 @@ void LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
 	{
 		std::lock_guard<std::mutex> renderGuard(m_impl->renderMutex);
         rememberedWindowTick = GetTickCount64();
+        subtitleSharedPictureSnapshot=m_impl->subtitleSharedPicture;
+        subtitleSharedPictureSnapshot.required=true;
         subtitleNearBarDistance=m_impl->activeSettings.subtitleNearBarDistance;
         subtitleDetectionOptimization=m_impl->activeSettings.subtitleDetectionOptimization;
         subtitlePreviewEnabled = m_impl->SubtitlePreviewEnabled(
@@ -17536,6 +17570,7 @@ void LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
         if (rememberedIndex < subtitleObservations.size())
         {
             if (queued.subtitleBoxObservation.optimizationMode==subtitleDetectionOptimization && queued.subtitleBoxObservation.nearBarDistance==subtitleNearBarDistance &&
+                queued.subtitleBoxObservation.sharedPicture.Matches(subtitleSharedPictureSnapshot) &&
                 SubtitleBoxLookahead::CanReuseMeasurement(queued.subtitleBoxObservation,
                 queued.activePictureIdentity,source.width,source.height,lookaheadPolicyGeneration,
                 subtitleContinuityGeneration,queued.frame.IsSourceDiscontinuity(),
@@ -17548,7 +17583,7 @@ void LibplaceboVideoRenderer::AnalyzeActivePictureLookahead(
                 subtitleObservations[rememberedIndex]=m_impl->QueueSubtitleMeasurement(
                     queued.frame,state,queued.activePictureIdentity,queued.frame.IsSourceDiscontinuity(),
                     subtitleBarTrackingReference,lookaheadPolicyGeneration,subtitleContinuityGeneration,
-                    subtitleNearBarDistance,subtitleDetectionOptimization);
+                    subtitleNearBarDistance,subtitleDetectionOptimization,subtitleSharedPictureSnapshot);
             }
             subtitleBarTrackingReference=SubtitleBoxLookahead::AdvanceBarTrackingReference(
                 subtitleObservations[rememberedIndex]);
