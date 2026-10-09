@@ -76,6 +76,8 @@ public:
 		CString& activeState,
 		bool& rendererRestartRequired,
 		bool& liveResetRequired) override;
+	bool CycleSubtitlePreviewMode(SubtitlePreviewMode& mode) override;
+	void ResetSubtitlePreviewMode() override;
 	size_t GetFrameQueueSize() override;
 	double EntryLatencyMs() const override;
 	double ExitLatencyMs() const override;

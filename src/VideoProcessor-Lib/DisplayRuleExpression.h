@@ -23,7 +23,7 @@ namespace DisplayRuleExpression
 	{
 		return name == "input" || name == "scaling" ||
 			name == "display" || name == "color" || name == "output" ||
-			name == "viewport" || name == "zoom" || name == "queue" ||
+			name == "viewport" || name == "zoom" || name == "subtitles" || name == "queue" ||
 			name == "lldv" || name == "nls" ||
 			name == "standard_shaders";
 	}

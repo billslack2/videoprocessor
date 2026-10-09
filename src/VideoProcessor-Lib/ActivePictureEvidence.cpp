@@ -58,9 +58,31 @@ struct SampleContext
 	const AnalysisLumaSource& source;
 	size_t lumaSamples = 0;
 	size_t chromaSamples = 0;
+	// Presentation-only ownership: never mask picture pixels or side bars.
+	const ActivePictureBounds* erasedOverlay = nullptr;
+	const ActivePictureBounds* presentation = nullptr;
+	int erasedBlackFloor = 0;
+	const std::vector<uint8_t>* residualOverlay = nullptr;
+	ActivePictureBounds residualBounds;
+	bool IsResidualOverlay(int x, int y) const
+	{
+		return residualOverlay && x >= residualBounds.left && x < residualBounds.right &&
+			y >= residualBounds.top && y < residualBounds.bottom &&
+			(*residualOverlay)[size_t(y-residualBounds.top) *
+				(residualBounds.right-residualBounds.left) + x-residualBounds.left] != 0;
+	}
+	bool IsErasedOverlay(int x, int y) const
+	{
+		return erasedOverlay && presentation &&
+			x >= erasedOverlay->left && x < erasedOverlay->right &&
+			y >= erasedOverlay->top && y < erasedOverlay->bottom &&
+			x >= presentation->left && x < presentation->right &&
+			(y < presentation->top || y >= presentation->bottom);
+	}
 
 	int Luma(int x, int y)
 	{
+		if (IsErasedOverlay(x, y) || IsResidualOverlay(x, y)) return erasedBlackFloor;
 		AnalysisLumaSample sample;
 		if (!source.Sample(x, y, sample))
 			return 0;
@@ -70,6 +92,7 @@ struct SampleContext
 
 	void Chroma(int x, int y, int& u, int& v)
 	{
+		if (IsErasedOverlay(x, y) || IsResidualOverlay(x, y)) { u = v = 512; return; }
 		AnalysisLumaSample sample;
 		if (!source.Sample(x, y, sample))
 		{
@@ -510,6 +533,7 @@ bool SamplingExpansionPixelsAreSafe(SampleContext& samples,
 bool IsCrediblyVisible(SampleContext& samples, int x, int y,
 	int blackThreshold, AnalysisLumaSample* diagnosticSample = nullptr)
 {
+	if (samples.IsErasedOverlay(x, y) || samples.IsResidualOverlay(x, y)) return false;
 	AnalysisLumaSample sample;
 	if (!samples.source.Sample(x, y, sample))
 		return false;
@@ -1058,7 +1082,8 @@ ActivePictureEvidence ExtractActivePictureEvidence(
 
 ActivePictureEvidence EvaluateSymmetricVerticalBarHypothesis(
 	const AnalysisLumaSource& source,
-	const ActivePictureEvidence& observed)
+	const ActivePictureEvidence& observed,
+    bool allowRejectedAlignedEdge)
 {
 	ActivePictureEvidence result = observed;
 	if (!source.IsValid() || !observed.available ||
@@ -1087,7 +1112,12 @@ ActivePictureEvidence EvaluateSymmetricVerticalBarHypothesis(
 	const bool oppositeExpanded = cleanTop
 		? observed.proposedBounds.bottom > inferredBottom + step
 		: observed.proposedBounds.top < inferredTop - step;
-	if (!oppositeExpanded || inferredBottom <= inferredTop)
+    const bool rejectedAlignedEdge = allowRejectedAlignedEdge && (cleanTop
+        ? (!observed.bottom.trusted && std::abs(observed.proposedBounds.bottom-inferredBottom) <= step)
+        : (!observed.top.trusted && std::abs(observed.proposedBounds.top-inferredTop) <= step));
+    // A subtitle can spoil strict edge statistics without moving the proposed
+    // boundary. The diagnostic opt-in still needs all pixel checks below.
+	if ((!oppositeExpanded && !rejectedAlignedEdge) || inferredBottom <= inferredTop)
 		return result;
 
 	SampleContext samples{ source };
@@ -1300,6 +1330,8 @@ ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRete
 	const int blackFloor = observedLow < 32 ? 0 :
 		Bounded(observedLow, 48, 80);
 	const int blackThreshold = std::min(104, blackFloor + 24);
+	result.presentationBlackFloor = blackFloor;
+	result.presentationBlackThreshold = blackThreshold;
 
 	result.excludedTop = InspectHorizontalEdge(samples, true,
 		trustedPresentation.top, trustedPresentation.top,
@@ -1459,6 +1491,197 @@ ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRete
 	return result;
 }
 
+
+
+ActivePicturePresentationRetentionEvidence EvaluateActivePicturePresentationRetentionExcludingRelocatedOverlay(
+	const AnalysisLumaSource& source,
+	const ActivePictureBounds& trustedPresentation,
+	const ActivePicturePresentationRetentionEvidence& raw,
+	const ActivePictureBounds& erasedSourceBounds,
+	int relocatedGlyphHeight)
+{
+	// Most frames have complete capture. Pay for native residual inspection
+	// only when the inexpensive ordinary bar proof still finds content.
+	if (relocatedGlyphHeight > 0)
+	{
+		const auto strict = EvaluateActivePicturePresentationRetentionExcludingRelocatedOverlay(
+			source, trustedPresentation, raw, erasedSourceBounds, 0);
+		if (!strict.relocatedOverlayExclusionEvaluated || strict.excludedBandsPixelSafe)
+			return strict;
+	}
+	auto result = raw;
+	result.relocatedOverlayExclusionEvaluated = false;
+	result.relocatedOverlayResidualsExcluded = false;
+	if (!raw.analysisValid || !raw.presentationValid || !source.IsValid() ||
+		!IsValidBoundsForSource(trustedPresentation, source) ||
+		!IsValidBoundsForSource(erasedSourceBounds, source) ||
+		raw.presentationBlackThreshold <= 0 ||
+		raw.excludedTop.barPixels != trustedPresentation.top ||
+		raw.excludedBottom.barPixels != source.height - trustedPresentation.bottom ||
+		raw.excludedLeft.barPixels != trustedPresentation.left ||
+		raw.excludedRight.barPixels != source.width - trustedPresentation.right ||
+		erasedSourceBounds.right <= trustedPresentation.left ||
+		erasedSourceBounds.left >= trustedPresentation.right)
+		return result;
+	const bool touchesTop = erasedSourceBounds.top < trustedPresentation.top;
+	const bool touchesBottom = erasedSourceBounds.bottom > trustedPresentation.bottom;
+	if (!touchesTop && !touchesBottom) return result;
+	SampleContext samples{ source };
+	samples.erasedOverlay = &erasedSourceBounds;
+	samples.presentation = &trustedPresentation;
+	samples.erasedBlackFloor = raw.presentationBlackFloor;
+	const int blackThreshold = raw.presentationBlackThreshold;
+	// Presentation safety may tolerate a few missed terminal glyph pixels after
+	// successful relocation. Prove their native-pixel shape and opaque surrounds;
+	// never erase them here and never change raw picture/transition evidence.
+	std::vector<uint8_t> residual;
+	if (relocatedGlyphHeight > 0 && relocatedGlyphHeight <= 256)
+	{
+		const int g = relocatedGlyphHeight;
+		ActivePictureBounds halo = erasedSourceBounds;
+		halo.left = std::max(trustedPresentation.left, halo.left - 3*g);
+		halo.right = std::min(trustedPresentation.right, halo.right + 3*g);
+		halo.top = std::max(0, halo.top - std::max(1,g/4));
+		halo.bottom = std::min(source.height, halo.bottom + std::max(1,g/4));
+		const int hw = halo.right-halo.left, hh = halo.bottom-halo.top;
+		// Keep adversarial/invalid cue unions from creating an unbounded pass.
+		if (hw > 0 && hh > 0 && size_t(hw)*hh <= 2*1024*1024)
+		{
+			residual.assign(size_t(hw)*hh,0);
+			bool supported = true;
+			size_t inspected = 0, occupied = 0;
+			const size_t maxInk = size_t(std::min(2048,std::max(12,g*g/2)));
+			for (int y=halo.top; y<halo.bottom && supported; ++y)
+				for (int x=halo.left; x<halo.right; ++x)
+				{
+					if ((y >= trustedPresentation.top && y < trustedPresentation.bottom) ||
+						samples.IsErasedOverlay(x,y)) continue;
+					AnalysisLumaSample pixel;
+					if (!source.Sample(x,y,pixel)) { supported=false; break; }
+					++inspected; ++samples.lumaSamples; ++samples.chromaSamples;
+					if (std::abs(int(pixel.chromaU)-512)>32 ||
+						std::abs(int(pixel.chromaV)-512)>32) { supported=false; break; }
+					if (pixel.luma <= blackThreshold) continue;
+					// A component touching the proof perimeter or live picture edge
+					// is unbounded content, not an isolated missed mark.
+					if (x==halo.left || x==halo.right-1 || y==halo.top || y==halo.bottom-1 ||
+						y==trustedPresentation.top-1 || y==trustedPresentation.bottom ||
+						++occupied>maxInk) { supported=false; break; }
+					residual[size_t(y-halo.top)*hw+x-halo.left]=1;
+				}
+			if (!inspected || !occupied || occupied*100>inspected*3) supported=false;
+			std::vector<size_t> flood;
+			unsigned components=0;
+			for (size_t origin=0; origin<residual.size() && supported; ++origin)
+			{
+				if (residual[origin]!=1) continue;
+				if (++components>8) { supported=false; break; }
+				flood.clear(); flood.push_back(origin); residual[origin]=2;
+				int minX=int(origin%hw), maxX=minX, minY=int(origin/hw), maxY=minY;
+				for (size_t q=0;q<flood.size();++q)
+				{
+					const int x=int(flood[q]%hw),y=int(flood[q]/hw);
+					minX=std::min(minX,x);maxX=std::max(maxX,x);
+					minY=std::min(minY,y);maxY=std::max(maxY,y);
+					for(int dy=-1;dy<=1;++dy)for(int dx=-1;dx<=1;++dx)
+					{
+						const int nx=x+dx,ny=y+dy;
+						if(nx<0 || nx>=hw || ny<0 || ny>=hh)continue;
+						const size_t next=size_t(ny)*hw+nx;
+						if(residual[next]==1){residual[next]=2;flood.push_back(next);}
+					}
+				}
+				// Tall narrow quotes/diacritics are valid; broad blocks are not.
+				if(maxX-minX+1>std::max(2,g/3+1) ||
+					maxY-minY+1>std::max(2,g*2/3+1)) supported=false;
+			}
+			if (supported)
+			{
+				samples.residualOverlay=&residual;
+				samples.residualBounds=halo;
+				result.relocatedOverlayResidualsExcluded=true;
+			}
+		}
+	}
+	if (touchesTop)
+	{
+		result.excludedTop = InspectHorizontalEdge(samples, true,
+			trustedPresentation.top, trustedPresentation.top,
+			raw.presentationBlackFloor, blackThreshold);
+		result.visibleTop = FindHorizontalVisibleExtent(samples, true,
+			trustedPresentation.top, blackThreshold);
+		result.visibleTop.presentationMargin = std::max(2, source.height / 180);
+	}
+	if (touchesBottom)
+	{
+		result.excludedBottom = InspectHorizontalEdge(samples, false,
+			source.height - trustedPresentation.bottom, trustedPresentation.bottom,
+			raw.presentationBlackFloor, blackThreshold);
+		result.visibleBottom = FindHorizontalVisibleExtent(samples, false,
+			source.height - trustedPresentation.bottom, blackThreshold);
+		result.visibleBottom.presentationMargin = std::max(2, source.height / 180);
+	}
+	result.outwardVisibleBoundsAvailable = false;
+	result.outwardVisibleBounds = {};
+	const bool unsafeTop = !ExcludedBandPixelsAreSafe(result.excludedTop) ||
+		result.visibleTop.available;
+	const bool unsafeBottom = !ExcludedBandPixelsAreSafe(result.excludedBottom) ||
+		result.visibleBottom.available;
+	const bool unsafeLeft = !ExcludedBandPixelsAreSafe(result.excludedLeft) ||
+		result.visibleLeft.available;
+	const bool unsafeRight = !ExcludedBandPixelsAreSafe(result.excludedRight) ||
+		result.visibleRight.available;
+	result.excludedHorizontalBandsPixelSafe = !unsafeLeft && !unsafeRight;
+	result.excludedVerticalBandsPixelSafe = !unsafeTop && !unsafeBottom;
+	result.excludedBandsPixelSafe =
+		!unsafeLeft && !unsafeTop && !unsafeRight && !unsafeBottom;
+	if (!result.excludedBandsPixelSafe)
+	{
+		// Every unsafe edge must be bounded. Otherwise fail open exactly as
+		// before; a partial estimate must never hide unmeasured live pixels.
+		const bool allUnsafeEdgesBounded = (!unsafeTop || result.visibleTop.available) &&
+			(!unsafeBottom || result.visibleBottom.available) &&
+			(!unsafeLeft || result.visibleLeft.available) &&
+			(!unsafeRight || result.visibleRight.available);
+		if (allUnsafeEdgesBounded)
+		{
+			const int verticalMargin = std::max(2, source.height / 180);
+			const int horizontalMargin = std::max(2, source.width / 180);
+			result.outwardVisibleBounds = trustedPresentation;
+			if (unsafeTop)
+				result.outwardVisibleBounds.top = std::max(
+					0, result.visibleTop.coordinate - verticalMargin);
+			if (unsafeBottom)
+				result.outwardVisibleBounds.bottom = std::min(source.height,
+					result.visibleBottom.coordinate + verticalMargin);
+			if (unsafeLeft)
+				result.outwardVisibleBounds.left = std::max(
+					0, result.visibleLeft.coordinate - horizontalMargin);
+			if (unsafeRight)
+				result.outwardVisibleBounds.right = std::min(source.width,
+					result.visibleRight.coordinate + horizontalMargin);
+			result.outwardVisibleBounds.aspectRatio = static_cast<double>(
+				result.outwardVisibleBounds.right - result.outwardVisibleBounds.left) /
+				std::max(1, result.outwardVisibleBounds.bottom -
+					result.outwardVisibleBounds.top);
+			result.outwardVisibleBounds.trustedBarAxes =
+				ActivePictureBounds::BarAxes::NONE;
+			result.outwardVisibleBoundsAvailable = true;
+		}
+	}
+	const bool geometryUnavailable = !result.activePicture.available &&
+		result.activePicture.classification == ActivePictureClassification::UNAVAILABLE;
+	result.currentlyPixelSafe = result.excludedBandsPixelSafe &&
+		(result.proposedBoundsContained || result.samplingReaffirmed || result.partialSamplingReaffirmed ||
+		 result.globalNearBlack || geometryUnavailable);
+	result.relocatedOverlayExclusionEvaluated = true;
+	result.lumaSamples += samples.lumaSamples;
+	result.chromaSamples += samples.chromaSamples;
+	result.reason = result.excludedBandsPixelSafe
+		? "relocated overlay excluded; remaining presentation bands are pixel-safe"
+		: "content outside relocated overlay still requires presentation protection";
+	return result;
+}
 
 ActivePicturePresentationRetentionEvidence
 	EvaluateP010ActivePicturePresentationRetention(

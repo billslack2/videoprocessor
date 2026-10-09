@@ -71,7 +71,7 @@ public:
         const QString& renderer, const QString& color, const QString& viewport,
         const QStringList& shaders, bool shaderAvailable = true,
         const QString& zoom = {}, const QString& scaling = {},
-        const QString& output = {});
+        const QString& output = {}, const QString& subtitles = {});
     void setCalibrationStatusForTesting(bool available, bool attached,
         quint64 configIdentity, const QString& configPath,
         const QString& renderer, const QString& color, bool hdrSource = false);
@@ -114,6 +114,7 @@ private:
     QPushButton* addNavigationButton(const QString& text, int pageIndex);
     QString value(const QString& section, const QString& key, const QString& fallback = {}) const;
     QStringList profileSections(const QString& root) const;
+    QString legacySubtitleHdrValue(const QString& key) const;
     QString inheritedSharedInputLabel(const QString& key) const;
     void refreshInheritedSharedInputChoices(const QString& key);
     QLineEdit* bindTextField(const QString& section, const QString& key, const QString& fallback = {});
@@ -190,7 +191,7 @@ private:
         const QString& renderer, const QString& color, const QString& viewport,
         const QStringList& shaders, bool shaderAvailable,
         const QString& zoom = {}, const QString& scaling = {},
-        const QString& output = {});
+        const QString& output = {}, const QString& subtitles = {});
     void refreshRendererAutoStatus();
     void refreshCalibrationControls();
     void seedCalibratedProfile(const QString& root, const QString& section);
@@ -310,6 +311,8 @@ private:
     bool profileSelectionReady_ = false;
     bool selectingActiveProfile_ = false;
     bool activeProfileSnapshotAvailable_ = false;
+    QString subtitleHdrFallbackSelection_;
+    std::function<void()> refreshSubtitleHdrFallback_;
     struct RendererAutoStatusBinding
     {
         QString sectionPrefix;

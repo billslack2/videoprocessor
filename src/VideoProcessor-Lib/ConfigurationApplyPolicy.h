@@ -127,7 +127,7 @@ namespace ConfigurationApplyPolicy
 	{
 		const std::string section = NormalizeSection(rawSection);
 		return HasPrefix(section, "vprenderer.viewport") ||
-			HasPrefix(section, "vprenderer.zoom");
+			HasPrefix(section, "vprenderer.zoom") || HasPrefix(section, "vprenderer.subtitles");
 	}
 
 	// Scaling profiles alter only the per-frame libplacebo render parameters.
@@ -155,6 +155,7 @@ namespace ConfigurationApplyPolicy
 		if (HasPrefix(section, "profiles.renderer")) return "profiles.renderer";
 		if (HasPrefix(section, "profiles.viewport")) return "profiles.viewport";
 		if (HasPrefix(section, "profiles.shader")) return "profiles.shader";
+		if (HasPrefix(section, "vprenderer.subtitles")) return "vprenderer.subtitles";
 		if (IsViewportProfileSection(section))
 			return HasPrefix(section, "vprenderer.zoom") ?
 				"vprenderer.zoom" : "vprenderer.viewport";

@@ -31,7 +31,7 @@ class AlphaD3D11FrameGpuTimer
 {
 public:
 	static constexpr size_t CAPACITY = 16;
-	static constexpr size_t MAXIMUM_STAGES = 6;
+	static constexpr size_t MAXIMUM_STAGES = 7;
 	static constexpr uint64_t MINIMUM_RESOLVE_LAG_FRAMES = 2;
 	static constexpr double MAXIMUM_VALID_RENDER_MS = 1000.0;
 
@@ -40,6 +40,8 @@ public:
 		SourceUpload,
 		OverlayUpload,
 		CoreRender,
+        SubtitleBlack,
+        SubtitleGenerated,
 	};
 
 	struct Sample
@@ -52,6 +54,7 @@ public:
 		double sourceUploadMilliseconds = 0.0;
 		double overlayUploadMilliseconds = 0.0;
 		double coreRenderMilliseconds = 0.0;
+        double subtitleBlackMilliseconds = 0.0, subtitleGeneratedMilliseconds = 0.0;
 		size_t stages = 0;
 	};
 
@@ -250,6 +253,7 @@ public:
 		double sourceUploadMilliseconds = 0.0;
 		double overlayUploadMilliseconds = 0.0;
 		double coreRenderMilliseconds = 0.0;
+        double subtitleBlackMilliseconds = 0.0, subtitleGeneratedMilliseconds = 0.0;
 		for (size_t stage = 0; stage < slot.stageCount; ++stage)
 		{
 			UINT64 start = 0;
@@ -284,7 +288,11 @@ public:
 			case Stage::OverlayUpload:
 				overlayUploadMilliseconds += stageMilliseconds;
 				break;
-			case Stage::CoreRender:
+			case Stage::SubtitleBlack:
+                subtitleBlackMilliseconds += stageMilliseconds; break;
+            case Stage::SubtitleGenerated:
+                subtitleGeneratedMilliseconds += stageMilliseconds; break;
+            case Stage::CoreRender:
 				coreRenderMilliseconds += stageMilliseconds;
 				break;
 			}
@@ -303,6 +311,8 @@ public:
 		sample.sourceUploadMilliseconds = sourceUploadMilliseconds;
 		sample.overlayUploadMilliseconds = overlayUploadMilliseconds;
 		sample.coreRenderMilliseconds = coreRenderMilliseconds;
+        sample.subtitleBlackMilliseconds = subtitleBlackMilliseconds;
+        sample.subtitleGeneratedMilliseconds = subtitleGeneratedMilliseconds;
 		sample.stages = slot.stageCount;
 		m_resolved.fetch_add(1, std::memory_order_relaxed);
 		PopOldest();

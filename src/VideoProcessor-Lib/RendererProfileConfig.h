@@ -1,5 +1,7 @@
 #pragma once
 #include "ProfileSectionIdentity.h"
+#include "SubtitleDetectionOptimization.h"
+#include "SubtitleGeneratedGrayStyle.h"
 
 #include "ConfigFile.h"
 #include "ColorOutputProfileMigration.h"
@@ -12,6 +14,7 @@
 #include "HdrTargetLuminance.h"
 
 #include <algorithm>
+#include <cctype>
 #include <climits>
 #include <cmath>
 #include <limits>
@@ -33,6 +36,11 @@ namespace RendererProfileConfig
 	// and makes cue release needlessly sensitive to individual samples.
 	constexpr double MIN_SUBTITLE_HOLD_SECONDS = 0.25;
 	constexpr double MAX_SUBTITLE_HOLD_SECONDS = 30.0;
+	// Defaults for the independent Classic subtitle profile; explicit zero remains valid.
+	constexpr uint64_t DEFAULT_CLASSIC_SUBTITLE_HOLD_MS = 2000;
+	constexpr uint64_t DEFAULT_CLASSIC_SUBTITLE_ENGAGE_DRIFT_MS = 500;
+	constexpr uint64_t DEFAULT_CLASSIC_SUBTITLE_RELEASE_DRIFT_MS = 2000;
+	constexpr int DEFAULT_CLASSIC_SUBTITLE_PADDING_PIXELS = 20;
 	constexpr int DEFAULT_SUBTITLE_TARGET_BUFFER_PIXELS = 10;
 	constexpr int MAX_SUBTITLE_TARGET_BUFFER_PIXELS = 50;
 	constexpr int DEFAULT_HDR_PEAK_ANALYSIS_HEIGHT_PERCENT = 75;
@@ -516,9 +524,73 @@ namespace RendererProfileConfig
 		return true;
 	}
 
+    // Reduction belongs only to moved profiles. Invalid/missing values keep
+    // the original size; Classic and Off never inherit a moved-mode setting.
+    inline int ResolveSubtitleTextReduction(const std::map<std::string,std::string>& settings)
+    {
+        const auto type=settings.find("type"),value=settings.find("text_reduction_percent");
+        if(type==settings.end() || value==settings.end())return 0;
+        const auto mode=ConfigFile::NormalizeName(type->second);
+        int reduction=0;
+        return (mode=="generated_gray" || mode=="black") && ParseInteger(value->second,0,75,reduction)
+            ? reduction : 0;
+    }
+
+    struct SubtitleBackgroundLayout
+    {
+        bool roundedCorners = true;
+        bool floatBackground = false;
+    };
+
+    inline SubtitleBackgroundLayout ResolveSubtitleBackgroundLayout(const std::map<std::string,std::string>& settings)
+    {
+        SubtitleBackgroundLayout layout;
+        const auto type=settings.find("type");
+        if(type==settings.end()) return layout;
+        const auto mode=ConfigFile::NormalizeName(type->second);
+        if(mode!="generated_gray" && mode!="black") return layout;
+        const auto rounded=settings.find("rounded_corners"), edge=settings.find("background_edge");
+        if(rounded!=settings.end()) ParseBoolean(rounded->second,layout.roundedCorners);
+        if(edge!=settings.end()) layout.floatBackground=ConfigFile::NormalizeName(edge->second)=="float";
+        return layout;
+    }
+
+    inline bool IsLegacySubtitleKey(const std::string& key)
+    {
+        return key.rfind("subtitle_", 0) == 0 || key.rfind("scope_subtitle_", 0) == 0;
+    }
+
 	inline bool ValidateProfileSetting(const std::string& group, const std::string& key,
 		const std::string& value, std::string& expected)
 	{
+        if (group == "subtitles") {
+            if (key == "type") return IsChoice(value, { "off", "classic", "generated_gray", "black" });
+            if (key == "hdr_peak_analysis_picture_only" || key == "hdr_peak_analysis_motion_compensation") return IsBoolean(value);
+            if (key == "hdr_peak_analysis_height_percent") { int n=0; return ParseInteger(value,MIN_HDR_PEAK_ANALYSIS_HEIGHT_PERCENT,MAX_HDR_PEAK_ANALYSIS_HEIGHT_PERCENT,n); }
+            if (key == "hdr_peak_analysis_position") return IsChoice(value,{"top","center","bottom"});
+            if (key == "rounded_corners") return IsBoolean(value);
+            if (key == "background_edge") return IsChoice(value, { "extend", "float" });
+            if (key == "text_reduction_percent") { int n=0; return ParseInteger(value,0,75,n); }
+            if (key == "minimum_headroom_pixels") { int n=0; return ParseInteger(value,0,200,n); }
+            if (key == "offset_pixels") { int n=0; return ParseInteger(value,0,500,n); }
+            if (key == "subtitle_hold_seconds") return IsNumberInRange(value, MIN_SUBTITLE_HOLD_SECONDS, MAX_SUBTITLE_HOLD_SECONDS);
+            if (key == "subtitle_engage_drift_ms" || key == "subtitle_release_drift_ms") { int n=0; return ParseInteger(value,0,30000,n); }
+            if (key == "subtitle_target_buffer_pixels") { int n=0; return ParseInteger(value,0,MAX_SUBTITLE_TARGET_BUFFER_PIXELS,n); }
+            // offset_pixels is the Classic padding as well as the moved-mode inset.
+
+            if (key == "subtitle_hold_ms") { int n=0; return ParseInteger(value,0,1000,n); }
+            if (key == "subtitle_near_bar_px") { int n=0; return ParseInteger(value,0,200,n); }
+            if (key == "subtitle_generated_gray_color" || key == "subtitle_generated_gray_border_color") {
+                std::array<float,3> rgb; return ParseSubtitleRgbHex(value,rgb);
+            }
+            if (key == "subtitle_generated_gray_opacity" || key == "subtitle_generated_gray_border_opacity") return IsNumberInRange(value,0,1);
+            if (key == "subtitle_generated_gray_blur_px") return IsNumberInRange(value,0,30);
+            if (key == "subtitle_generated_gray_max_luminance") return IsNumberInRange(value,0.01,1);
+            if (key == "subtitle_generated_gray_border_width") return IsNumberInRange(value,0,8);
+            expected="a subtitle type, inward offset, or supported advanced subtitle setting";
+            return false;
+        }
+
 		if (group == "input")
 		{
 			if (key == "tone_mapping") return IsChoice(value, { "auto", "spline", "bt2390", "st2094-40", "reinhard" });
@@ -556,6 +628,27 @@ namespace RendererProfileConfig
 		}
 		if (group == "display")
 		{
+			if ((key == "subtitle_bbox_test" || key == "subtitle_cut_paste_test")) return IsBoolean(value);
+        if(key=="subtitle_detection_optimization"){int mode=0;return ParseSubtitleDetectionOptimization(value,mode);}
+			if (key == "subtitle_near_bar_px") { int parsed=0; return ParseInteger(value,0,200,parsed); }
+        if (key == "subtitle_hold_ms") { int parsed=0; return ParseInteger(value,0,1000,parsed); }
+        if (key == "subtitle_box_padding_mode") return IsChoice(value,{"glyph","fixed"});
+        if (key == "subtitle_box_padding_sides_percent" || key == "subtitle_box_padding_top_percent" || key == "subtitle_box_padding_bottom_percent") { int parsed=0; return ParseInteger(value,0,200,parsed); }
+		if (key == "subtitle_box_padding_sides" || key == "subtitle_box_padding_top" || key == "subtitle_box_padding_bottom" || key == "subtitle_move_inset") { int parsed=0; return ParseInteger(value,0,500,parsed); }
+			if (key == "subtitle_generated_gray_color" || key == "subtitle_generated_gray_border_color") {
+				if (value.size() != 6) return false;
+				return std::all_of(value.begin(), value.end(), [](unsigned char c) { return std::isxdigit(c) != 0; });
+			}
+			if (key == "subtitle_generated_gray_opacity" || key == "subtitle_generated_gray_border_opacity")
+				return IsNumberInRange(value, 0.0, 1.0);
+			if (key == "subtitle_generated_gray_max_luminance")
+				return IsNumberInRange(value, 0.01, 1.0);
+			if (key == "subtitle_generated_gray_blur_px")
+				return IsNumberInRange(value, 0.0, 30.0);
+			if (key == "subtitle_generated_gray_border_width")
+				return IsNumberInRange(value, 0.0, 8.0);
+		if (key == "subtitle_cut_paste_background") return IsChoice(value,
+				{ "rectangle", "transparent", "blend", "black", "dark_gray", "generated_gray" });
 			if (key == "calibration_lut_enabled") return IsBoolean(value);
 			if (key == "calibration_lut_bt709" ||
 				key == "calibration_lut_p3_d65" ||
@@ -699,7 +792,27 @@ namespace RendererProfileConfig
 			return IsChoice(value, { "follow_input", "follow_input_lldv", "hdr_luminance_user", "user" });
 		if (key == "profile_update_mode")
 			return IsChoice(value, { "rebuild", "live", "never" });
-		if (key == "live_profile_updates" ||
+        if(key=="subtitle_detection_optimization"){int mode=0;return ParseSubtitleDetectionOptimization(value,mode);}
+		if (key == "subtitle_near_bar_px") { int parsed=0; return ParseInteger(value,0,200,parsed); }
+        if (key == "subtitle_hold_ms") { int parsed=0; return ParseInteger(value,0,1000,parsed); }
+        if (key == "subtitle_box_padding_mode") return IsChoice(value,{"glyph","fixed"});
+        if (key == "subtitle_box_padding_sides_percent" || key == "subtitle_box_padding_top_percent" || key == "subtitle_box_padding_bottom_percent") { int parsed=0; return ParseInteger(value,0,200,parsed); }
+		if (key == "subtitle_box_padding_sides" || key == "subtitle_box_padding_top" || key == "subtitle_box_padding_bottom" || key == "subtitle_move_inset") { int parsed=0; return ParseInteger(value,0,500,parsed); }
+		if (key == "subtitle_generated_gray_color" || key == "subtitle_generated_gray_border_color") {
+			if (value.size() != 6) return false;
+			return std::all_of(value.begin(), value.end(), [](unsigned char c) { return std::isxdigit(c) != 0; });
+		}
+		if (key == "subtitle_generated_gray_opacity" || key == "subtitle_generated_gray_border_opacity")
+			return IsNumberInRange(value, 0.0, 1.0);
+		if (key == "subtitle_generated_gray_max_luminance")
+			return IsNumberInRange(value, 0.01, 1.0);
+		if (key == "subtitle_generated_gray_blur_px")
+			return IsNumberInRange(value, 0.0, 30.0);
+		if (key == "subtitle_generated_gray_border_width")
+			return IsNumberInRange(value, 0.0, 8.0);
+		if (key == "subtitle_cut_paste_background") return IsChoice(value,
+			{ "rectangle", "transparent", "blend", "black", "dark_gray", "generated_gray" });
+		if ((key == "subtitle_bbox_test" || key == "subtitle_cut_paste_test") || key == "live_profile_updates" ||
 			key == "switch_refresh_rate" || key == "output_diagnostics" ||
 			key == "diagnostic_disable_shader_cache" ||
 			key == "diagnostic_disable_compute" ||
@@ -714,6 +827,13 @@ namespace RendererProfileConfig
 	inline bool ValidateCanonicalDisplaySetting(
 		const std::string& key, const std::string& value)
 	{
+		if ((key == "subtitle_bbox_test" || key == "subtitle_cut_paste_test" ||
+			key == "subtitle_box_padding_mode" || key == "subtitle_box_padding_sides_percent" || key == "subtitle_box_padding_top_percent" || key == "subtitle_box_padding_bottom_percent" ||
+            key == "subtitle_detection_optimization" || key == "subtitle_near_bar_px" || key == "subtitle_hold_ms" || key == "subtitle_cut_paste_background" || key == "subtitle_box_padding_sides" || key == "subtitle_box_padding_top" || key == "subtitle_box_padding_bottom" || key == "subtitle_move_inset" ||
+			key == "subtitle_generated_gray_color" || key == "subtitle_generated_gray_opacity" ||
+			key == "subtitle_generated_gray_max_luminance" || key == "subtitle_generated_gray_blur_px" ||
+			key == "subtitle_generated_gray_border_color" || key == "subtitle_generated_gray_border_opacity" ||
+			key == "subtitle_generated_gray_border_width")) return ValidateBaseSetting(key, value);
 		if (key == "video_conversion" || key == "container_colorspace" ||
 			key == "hdr_colorspace" || key == "hdr_luminance")
 			return ValidateBaseSetting(key, value);
@@ -764,7 +884,7 @@ namespace RendererProfileConfig
 		if (const auto* display = config.GetSectionValues(
 			RendererConfigView::DISPLAY_SECTION))
 			for (const auto& value : *display)
-				if (!ValidateCanonicalDisplaySetting(
+				if (!IsLegacySubtitleKey(value.first) && !ValidateCanonicalDisplaySetting(
 					value.first, value.second))
 				{
 					error = "[" +
@@ -776,7 +896,7 @@ namespace RendererProfileConfig
 		if (const auto* renderer = config.GetSectionValues(
 			RendererConfigView::VPRENDERER_SECTION))
 			for (const auto& value : *renderer)
-				if (value.first != "when" && value.first != "shortcut" &&
+				if (!IsLegacySubtitleKey(value.first) && value.first != "when" && value.first != "shortcut" &&
 					!((RendererConfigView::IsPolicyKey(value.first) &&
 						ValidateBaseSetting(value.first, value.second)) ||
 						ValidateCanonicalDisplaySetting(value.first, value.second)))
@@ -907,7 +1027,7 @@ namespace RendererProfileConfig
 
 	inline bool IsRendererChildNamespace(const std::string& name)
 	{
-		for (const char* child : { "input", "input_processing", "scaling", "color", "output", "viewport", "zoom" })
+		for (const char* child : { "input", "input_processing", "scaling", "color", "output", "viewport", "zoom", "subtitles" })
 		{
 			const std::string root(child);
 			if (name == root ||
@@ -981,6 +1101,7 @@ namespace RendererProfileConfig
                 settings[canonical] = CanonicalAliasValue(canonical, value);
             return;
         }
+        if (section.find("subtitles") == std::string::npos && IsLegacySubtitleKey(key)) return;
         settings[key] = value;
     }
 
@@ -1141,6 +1262,7 @@ namespace RendererProfileConfig
 
 			{ "viewport", "vprenderer.viewport", true },
 			{ "zoom", "vprenderer.zoom", true },
+            { "subtitles", "vprenderer.subtitles", true },
 			{ "queue", "queue", true },
 			{ "lldv", "lldv", true }
 		};
@@ -1199,8 +1321,9 @@ namespace RendererProfileConfig
 			if (baselineValues)
 				for (const auto& entry : *baselineValues)
 				{
+                    if (std::string(spec.name) != "subtitles" && IsLegacySubtitleKey(entry.first)) continue;
 					if ((std::string(spec.name) == "viewport" ||
-						std::string(spec.name) == "zoom") && entry.first == "label")
+						std::string(spec.name) == "zoom" || std::string(spec.name) == "subtitles") && entry.first == "label")
 					{
 						base.label = entry.second;
 						continue;
@@ -1338,8 +1461,9 @@ namespace RendererProfileConfig
 				std::string profileCycleShortcut;
 				for (const auto& entry : *values)
 				{
+                    if (std::string(spec.name) != "subtitles" && IsLegacySubtitleKey(entry.first)) continue;
 					if ((std::string(spec.name) == "viewport" ||
-						std::string(spec.name) == "zoom") && entry.first == "label")
+						std::string(spec.name) == "zoom" || std::string(spec.name) == "subtitles") && entry.first == "label")
 					{
 						profile.label = entry.second;
 						continue;
@@ -1737,7 +1861,14 @@ namespace RendererProfileConfig
 				continue;
 			const std::set<std::string> baseKeys = {
 				"sdr_target_nits", "sdr_black_nits", "profile_update_mode",
-				"live_profile_updates",
+				"live_profile_updates", "subtitle_bbox_test", "subtitle_cut_paste_test",
+				"subtitle_cut_paste_background",
+				"subtitle_generated_gray_color", "subtitle_generated_gray_opacity",
+				"subtitle_generated_gray_max_luminance", "subtitle_generated_gray_blur_px",
+				"subtitle_generated_gray_border_color", "subtitle_generated_gray_border_opacity",
+				"subtitle_generated_gray_border_width",
+                "subtitle_box_padding_mode", "subtitle_box_padding_sides_percent", "subtitle_box_padding_top_percent", "subtitle_box_padding_bottom_percent",
+                "subtitle_detection_optimization", "subtitle_near_bar_px", "subtitle_hold_ms", "subtitle_box_padding_sides", "subtitle_box_padding_top", "subtitle_box_padding_bottom", "subtitle_move_inset",
 				"switch_refresh_rate",
 				"quality", "tone_mapping", "gamut_mapping", "peak_detection",
 				"contrast_recovery", "upscaler", "downscaler", "deband",
@@ -1778,7 +1909,7 @@ namespace RendererProfileConfig
 
 		const std::vector<std::string> expectedGroups = {
 			"input", "scaling", "display", "color", "output", "viewport",
-			"zoom", "queue", "lldv" };
+			"zoom", "subtitles", "queue", "lldv" };
 		for (const std::string& groupName : expectedGroups)
 		{
 			const std::string section = "profile_groups." + groupName;
@@ -2180,6 +2311,23 @@ namespace RendererProfileConfig
 		}
 		return true;
 	}
+
+    // Subtitle profiles own HDR protection for every processing style. Fields
+    // omitted by old configurations retain their already-resolved Zoom values.
+    inline void ApplySubtitleHdrAnalysisSettings(const Profile& subtitle,
+        ResolvedViewport& viewport)
+    {
+        const auto& settings=subtitle.settings;
+        auto value=settings.find("hdr_peak_analysis_picture_only");
+        if(value!=settings.end()) ParseBoolean(value->second,viewport.hdrPeakAnalysisPictureOnly);
+        value=settings.find("hdr_peak_analysis_motion_compensation");
+        if(value!=settings.end()) ParseBoolean(value->second,viewport.hdrPeakAnalysisMotionCompensation);
+        value=settings.find("hdr_peak_analysis_height_percent");
+        if(value!=settings.end()) ParseInteger(value->second,MIN_HDR_PEAK_ANALYSIS_HEIGHT_PERCENT,
+            MAX_HDR_PEAK_ANALYSIS_HEIGHT_PERCENT,viewport.hdrPeakAnalysisHeightPercent);
+        value=settings.find("hdr_peak_analysis_position");
+        if(value!=settings.end()) viewport.hdrPeakAnalysisPosition=ConfigFile::NormalizeName(value->second);
+    }
 
 	inline bool ResolveViewport(const Model& model,
 		const std::string& profileName, uint64_t generation,

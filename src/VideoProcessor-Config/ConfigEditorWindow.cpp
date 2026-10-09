@@ -7,6 +7,7 @@
 #include "ConfigEditorWindow.h"
 #include "ColorOutputProfileMigration.h"
 #include "ProfileListController.h"
+#include "InlineColorPicker.h"
 #include <ConfigurationApplyPolicy.h>
 #include <ConfigurationIdentity.h>
 #include <ConfigurationLiveApply.h>
@@ -22,6 +23,7 @@
 #include <QAccessible>
 #include <QApplication>
 #include <QDoubleValidator>
+#include <QRegularExpressionValidator>
 #include <QStandardItemModel>
 #include <QButtonGroup>
 #include <QCheckBox>
@@ -854,6 +856,9 @@ bool openPathExternally(const QString& path)
 QString friendlyChoiceLabel(const QString& raw)
 {
     static const QHash<QString, QString> labels = {
+        { QStringLiteral("CLASSIC"), QStringLiteral("Classic") },
+        { QStringLiteral("GENERATED_GRAY"), QStringLiteral("Move / Reconstruction (Beta)") },
+        { QStringLiteral("BLACK"), QStringLiteral("Move / Solid Background (Beta)") },
         { QStringLiteral("AUTO"), QStringLiteral("Auto") },
         { QStringLiteral("NONE"), QStringLiteral("Disabled") },
         { QStringLiteral("V210_TO_P010"), QStringLiteral("V210 to P010") },
@@ -1969,16 +1974,10 @@ void ConfigEditorWindow::migrateViewportZoomProfiles()
         QStringLiteral("crop_wider_content_to_fill_screen"),
         QStringLiteral("crop_wider_content_aspect_limit"),
 		QStringLiteral("fixed_crop_aspect"),
-        QStringLiteral("subtitle_fit"),
         QStringLiteral("hdr_peak_analysis_picture_only"),
 		QStringLiteral("hdr_peak_analysis_motion_compensation"),
 		QStringLiteral("hdr_peak_analysis_height_percent"),
-		QStringLiteral("hdr_peak_analysis_position"),
-        QStringLiteral("subtitle_hold_seconds"),
-        QStringLiteral("subtitle_engage_drift_ms"),
-        QStringLiteral("subtitle_release_drift_ms"),
-        QStringLiteral("subtitle_padding_pixels"),
-        QStringLiteral("subtitle_target_buffer_pixels") };
+		QStringLiteral("hdr_peak_analysis_position") };
     const QStringList screenKeys = {
         QStringLiteral("screen_aspect"),
         QStringLiteral("vertical_alignment"),
@@ -2333,6 +2332,7 @@ void ConfigEditorWindow::installProfileContextMenu(QListWidget* list,
 				{ QStringLiteral("vprenderer.output"), QStringLiteral("output") },
 				{ QStringLiteral("vprenderer.viewport"), QStringLiteral("viewport") },
 				{ QStringLiteral("vprenderer.zoom"), QStringLiteral("zoom") },
+                { QStringLiteral("vprenderer.subtitles"), QStringLiteral("subtitles") },
 				{ QStringLiteral("lldv"), QStringLiteral("lldv") },
 				{ QStringLiteral("shader.nls"), QStringLiteral("nls") },
 				{ QStringLiteral("shader.standard"), QStringLiteral("standard_shaders") }
@@ -2481,7 +2481,8 @@ void ConfigEditorWindow::refreshActiveProfileIndicators()
 					shaders, available && status.shaderAvailable,
 					QString::fromLocal8Bit(status.zoom.c_str()),
 					QString::fromLocal8Bit(status.scaling.c_str()),
-					QString::fromLocal8Bit(status.output.c_str()));
+					QString::fromLocal8Bit(status.output.c_str()),
+                    QString::fromLocal8Bit(status.subtitles.c_str()));
 			});
 		activeProfileThread_->start();
 		return;
@@ -2499,6 +2500,7 @@ void ConfigEditorWindow::refreshActiveProfileIndicators()
     const QString scaling = available ? QString::fromLocal8Bit(active.scaling) : QString();
     const QString output = available ? QString::fromLocal8Bit(active.output) : QString();
     const QString viewport = available ? QString::fromLocal8Bit(active.viewport) : QString();
+    const QString subtitles = available ? QString::fromLocal8Bit(active.subtitles) : QString();
     const QString zoom = available ? QString::fromLocal8Bit(active.zoom) : QString();
     const QString queue = available ? QString::fromLocal8Bit(active.queue) : QString();
     const QString sourceEotf = available ?
@@ -2524,7 +2526,7 @@ void ConfigEditorWindow::refreshActiveProfileIndicators()
         for (uint32_t index = 0; index < active.shaderCount; ++index)
             shaders.push_back(QString::fromLocal8Bit(active.shaders[index]));
     applyActiveProfileIndicators(available, queue, renderer, color, viewport,
-        shaders, shaderAvailable, zoom, scaling, output);
+        shaders, shaderAvailable, zoom, scaling, output, subtitles);
     refreshRendererAutoStatus();
     refreshCalibrationControls();
     if (auto* label = findChild<QLabel*>(QStringLiteral("config.color_output.live_status")))
@@ -2537,17 +2539,17 @@ void ConfigEditorWindow::refreshActiveProfileIndicators()
 void ConfigEditorWindow::setActiveProfileStatusForTesting(const QString& queue,
     const QString& renderer, const QString& color, const QString& viewport,
     const QStringList& shaders, bool shaderAvailable, const QString& zoom,
-    const QString& scaling, const QString& output)
+    const QString& scaling, const QString& output, const QString& subtitles)
 {
     applyActiveProfileIndicators(true, queue, renderer, color, viewport, shaders,
-        shaderAvailable, zoom, scaling, output);
+        shaderAvailable, zoom, scaling, output, subtitles);
 }
 
 void ConfigEditorWindow::applyActiveProfileIndicators(bool available,
     const QString& queue, const QString& renderer, const QString& color,
     const QString& viewport,
     const QStringList& shaders, bool shaderAvailable, const QString& zoom,
-    const QString& scaling, const QString& output)
+    const QString& scaling, const QString& output, const QString& subtitles)
 {
     activeProfileSnapshotAvailable_ = available;
     for (ProfileListBinding& binding : activeProfileLists_)
@@ -2560,7 +2562,8 @@ void ConfigEditorWindow::applyActiveProfileIndicators(bool available,
                     (binding.sectionPrefix == QStringLiteral("vprenderer.output") ? output :
                         (binding.sectionPrefix == QStringLiteral("vprenderer.viewport") ? viewport :
                             (binding.sectionPrefix == QStringLiteral("vprenderer.zoom") ? zoom :
-                                (binding.sectionPrefix == QStringLiteral("queue") ? queue : QString()))))));
+                                (binding.sectionPrefix == QStringLiteral("subtitles") || binding.sectionPrefix == QStringLiteral("vprenderer.subtitles") ? subtitles :
+                                (binding.sectionPrefix == QStringLiteral("queue") ? queue : QString())))))));
         int activeRow = -1;
         for (int index = 0; binding.list && index < binding.list->count(); ++index)
         {
@@ -2610,6 +2613,12 @@ void ConfigEditorWindow::applyActiveProfileIndicators(bool available,
                 binding.selectedTitle->setText(title);
         }
     }
+    const QString hdrSelection=available ? viewport+QStringLiteral("\n")+zoom : QString();
+    if (hdrSelection!=subtitleHdrFallbackSelection_) {
+        subtitleHdrFallbackSelection_=hdrSelection;
+        if (refreshSubtitleHdrFallback_) refreshSubtitleHdrFallback_();
+    }
+
     refreshRendererAutoStatus();
 }
 
@@ -4061,6 +4070,9 @@ QWidget* ConfigEditorWindow::createShell()
     pages_->addWidget(createColorConfigPage());
 	pages_->addWidget(createScalingPage());
 	pages_->addWidget(createZoomPage());
+    pages_->addWidget(createProfilePage(QStringLiteral("Subtitles"),
+        QStringLiteral("Choose subtitle processing and inward placement. The first profile is the default."),
+        QStringLiteral("vprenderer.subtitles")));
 
     auto* navGroup = new QButtonGroup(root);
     navGroup->setExclusive(true);
@@ -4133,7 +4145,7 @@ QWidget* ConfigEditorWindow::createShell()
                 { QStringLiteral("NLS"), 9 } }, page);
         }
         else if (page == 2 || page == 4 || page == 11 || page == 13 ||
-			page == 16 || page == 17 || page == 18)
+			page == 16 || page == 17 || page == 18 || page == 19)
         {
             vpNavigation->setChecked(true);
             showSectionTabs({ { QStringLiteral("Rendering"), 2 },
@@ -4141,6 +4153,7 @@ QWidget* ConfigEditorWindow::createShell()
 				{ QStringLiteral("Scaling"), 17 },
 				{ QStringLiteral("Screen"), 4 },
 				{ QStringLiteral("Zoom"), 18 },
+                { QStringLiteral("Subtitles"), 19 },
 				{ QStringLiteral("Processing"), 11 } }, page);
         }
         else if (page == 3 || page == 12)
@@ -4620,6 +4633,28 @@ QWidget* ConfigEditorWindow::createStartupPage()
     return createPage(QStringLiteral("General"), QStringLiteral("Choose how VideoProcessor starts and which hardware it uses."), cards);
 }
 
+QString ConfigEditorWindow::legacySubtitleHdrValue(const QString& key) const
+{
+                    QString legacy;
+                    for (const QString& root : {QStringLiteral("vprenderer.viewport"),QStringLiteral("vprenderer.zoom")}) {
+                        const auto sections=profileSections(root);
+                        if (sections.isEmpty()) continue;
+                        QString selected=sections.front();
+                        for (const auto& binding : activeProfileLists_)
+                            if (binding.sectionPrefix==root)
+                                for (int i=0;i<binding.list->count();++i)
+                                    if (binding.list->item(i)->data(ActiveProfileRole).toBool())
+                                        selected=binding.list->item(i)->data(Qt::UserRole).toString();
+                        QString configured=value(selected,key);
+                        if (configured.isEmpty()) configured=value(sections.front(),key);
+                        if (!configured.isEmpty()) legacy=configured;
+                    }
+                    if (!legacy.isEmpty()) return legacy;
+                    if (key==QStringLiteral("hdr_peak_analysis_height_percent")) return QStringLiteral("75");
+                    if (key==QStringLiteral("hdr_peak_analysis_position")) return QStringLiteral("top");
+                    return QStringLiteral("false");
+}
+
 QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QString& description,
     const QString& sectionPrefix)
 {
@@ -4813,7 +4848,8 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         sectionPrefix == QStringLiteral("vprenderer.scaling") ||
         sectionPrefix == QStringLiteral("vprenderer.color") ||
         sectionPrefix == QStringLiteral("vprenderer.viewport") ||
-        sectionPrefix == QStringLiteral("vprenderer.zoom");
+        sectionPrefix == QStringLiteral("vprenderer.zoom") ||
+        sectionPrefix == QStringLiteral("vprenderer.subtitles");
     if (showsActiveProfile)
     {
         list->setItemDelegate(new ProfileStateItemDelegate(list));
@@ -4883,7 +4919,8 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         const QString sectionObjectPrefix = sectionPrefix == QStringLiteral("vprenderer.viewport") ?
             QStringLiteral("screenSection") :
             (sectionPrefix == QStringLiteral("vprenderer.zoom") ?
-                QStringLiteral("zoomSection") : QStringLiteral("rendererSection"));
+                QStringLiteral("zoomSection") : (sectionPrefix == QStringLiteral("vprenderer.subtitles") ?
+                QStringLiteral("subtitleSection") : QStringLiteral("rendererSection")));
         auto* section = new QWidget(profileFields);
         auto* sectionLayout = new QVBoxLayout(section);
         sectionLayout->setContentsMargins(0, 0, 0, 0);
@@ -4939,12 +4976,12 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 	QCheckBox* motionCompensatedHdrAnalysis = nullptr;
 	QLineEdit* hdrAnalysisHeight = nullptr;
 	QComboBox* hdrAnalysisPosition = nullptr;
-	QCheckBox* subtitleFit = nullptr;
-	QLineEdit* subtitleHold = nullptr;
-	QLineEdit* subtitleEngageDrift = nullptr;
-	QLineEdit* subtitleReleaseDrift = nullptr;
-	QLineEdit* subtitlePadding = nullptr;
-	QLineEdit* subtitleTargetBuffer = nullptr;
+
+
+
+
+
+
     const int fixedUnitFieldWidth = QLineEdit().sizeHint().width();
     const auto deprecatedViewportAlias = [sectionPrefix](const QString& key) -> QString
     {
@@ -5957,6 +5994,169 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 			"Optional sigmoidization before upscaling. It reduces ringing artifacts; Auto uses the scaling-quality preset."));
 		addRendererAutoStatus(QStringLiteral("sigmoid"), antiRinging);
 	}
+    else if (sectionPrefix == QStringLiteral("vprenderer.subtitles"))
+    {
+        auto* type = addChoice(QStringLiteral("Processing style"), QStringLiteral("type"),
+            {QStringLiteral("off"), QStringLiteral("classic"), QStringLiteral("generated_gray"), QStringLiteral("black")}, false);
+        type->setItemText(0, QStringLiteral("Off"));
+        type->setItemText(1, QStringLiteral("Classic"));
+        type->setItemText(2, QStringLiteral("Move / Reconstruction (Beta)"));
+        type->setItemText(3, QStringLiteral("Move / Solid Background (Beta)"));
+        auto* offset = addText(QStringLiteral("Inward offset / Classic padding"), QStringLiteral("offset_pixels"), QStringLiteral("source pixels"));
+        offset->setValidator(new QIntValidator(0,500,offset));
+        offset->setToolTip(QStringLiteral("Offsets the whole moved subtitle box: bottom subtitles move higher and top subtitles move lower. Text stays centered within the box; extension to the black bar does not count toward centering. In Classic, this is the original subtitle padding."));
+        auto* commonForm=form;
+        form = addCollapsibleSection(QStringLiteral("classic"), QStringLiteral("Classic picture movement"), QString(), true);
+        auto* classicSection=profileFieldsLayout->itemAt(profileFieldsLayout->count()-1)->widget();
+        auto number=[&](const QString& label,const QString& key,double low,double high,const QString& unit) {
+            auto* field=addText(label,key,unit);
+            if(key==QStringLiteral("subtitle_engage_drift_ms") || key==QStringLiteral("subtitle_release_drift_ms") || key==QStringLiteral("subtitle_target_buffer_pixels"))
+                field->setValidator(new QIntValidator(static_cast<int>(low),static_cast<int>(high),field));
+            else {
+                auto* validator=new QDoubleValidator(low,high,3,field);
+                validator->setNotation(QDoubleValidator::StandardNotation);
+                field->setValidator(validator);
+            }
+            return field;
+        };
+        number(QStringLiteral("Hold after subtitles disappear"),QStringLiteral("subtitle_hold_seconds"),0.25,30,QStringLiteral("seconds"));
+        number(QStringLiteral("Engage drift duration"),QStringLiteral("subtitle_engage_drift_ms"),0,30000,QStringLiteral("ms"));
+        number(QStringLiteral("Release drift duration"),QStringLiteral("subtitle_release_drift_ms"),0,30000,QStringLiteral("ms"));
+        number(QStringLiteral("Target buffer"),QStringLiteral("subtitle_target_buffer_pixels"),0,50,QStringLiteral("source pixels"));
+        form = addCollapsibleSection(QStringLiteral("appearance"), QStringLiteral("Background appearance"), QString(), true);
+        auto* appearanceSection=profileFieldsLayout->itemAt(profileFieldsLayout->count()-1)->widget();
+        auto color=[&](const QString& label,const QString& key) {
+            auto* field=addText(label,key,QStringLiteral("RRGGBB"));
+            field->setMaxLength(6);
+            field->setValidator(new QRegularExpressionValidator(QRegularExpression(QStringLiteral("[0-9A-Fa-f]{6}")),field));
+            form->addRow(new InlineColorPicker(field,label));
+        };
+        auto* rounded = addBoolean(QStringLiteral("Rounded corners"), QStringLiteral("rounded_corners"));
+        rounded->setToolTip(QStringLiteral("Round the subtitle box corners. Floating boxes round all four corners."));
+        auto* edge = addChoice(QStringLiteral("Background edge"), QStringLiteral("background_edge"),
+            {QStringLiteral("extend"), QStringLiteral("float")}, false);
+        edge->setItemText(0, QStringLiteral("Extend to black bar"));
+        edge->setItemText(1, QStringLiteral("Float"));
+        edge->setToolTip(QStringLiteral("Float offsets the whole box from the black bar. Original subtitle backing that overlaps the picture always forces extension to the bar."));
+        auto* textReduction = addText(QStringLiteral("Text size reduction"),
+            QStringLiteral("text_reduction_percent"), QStringLiteral("% (0 = unchanged)"));
+        textReduction->setValidator(new QIntValidator(0,75,textReduction));
+        textReduction->setToolTip(QStringLiteral(
+            "Reduces moved subtitle text size. 0% keeps the current size; "
+            "75% reduces it to 25% of its original size. Applies to both moved styles."));
+        number(QStringLiteral("Minimum headroom above text"),QStringLiteral("minimum_headroom_pixels"),0,200,QStringLiteral("source pixels"));
+        color(QStringLiteral("Background color"),QStringLiteral("subtitle_generated_gray_color"));
+        color(QStringLiteral("Border color"),QStringLiteral("subtitle_generated_gray_border_color"));
+        number(QStringLiteral("Border opacity"),QStringLiteral("subtitle_generated_gray_border_opacity"),0,1,QStringLiteral("0–1"));
+        number(QStringLiteral("Border width"),QStringLiteral("subtitle_generated_gray_border_width"),0,8,QStringLiteral("source pixels"));
+        form = addCollapsibleSection(QStringLiteral("reconstruction"), QStringLiteral("Reconstruction"), QString(), true);
+        auto* reconstructionSection=profileFieldsLayout->itemAt(profileFieldsLayout->count()-1)->widget();
+        number(QStringLiteral("Background opacity"),QStringLiteral("subtitle_generated_gray_opacity"),0,1,QStringLiteral("0–1"));
+        number(QStringLiteral("Background blur"),QStringLiteral("subtitle_generated_gray_blur_px"),0,30,QStringLiteral("source pixels"));
+        number(QStringLiteral("Brightness limit"),QStringLiteral("subtitle_generated_gray_max_luminance"),0.01,1,QStringLiteral("linear 0.01–1"));
+        form = addCollapsibleSection(QStringLiteral("hdr_analysis"),
+            QStringLiteral("HDR analysis"), QStringLiteral("Protect HDR analysis from subtitles in every processing style."), false);
+		pictureOnlyHdrAnalysis = addBoolean(
+            QStringLiteral("Limit HDR analysis to picture center"),
+            QStringLiteral("hdr_peak_analysis_picture_only"));
+        pictureOnlyHdrAnalysis->setToolTip(QStringLiteral(
+            "When a current trusted active-picture rectangle is available, "
+			"use its configured central height and full available width for "
+			"libplacebo's HDR peak and average-luminance analysis. This inset "
+			"rejects subtitles and OSDs that cross from a black bar into the "
+			"picture. Full-raster, invalid, or stale geometry falls back to "
+			"full-frame analysis."));
+		motionCompensatedHdrAnalysis = addBoolean(
+			QStringLiteral("Protect HDR analysis during subtitle movement"),
+			QStringLiteral("hdr_peak_analysis_motion_compensation"));
+		motionCompensatedHdrAnalysis->setToolTip(QStringLiteral(
+			"Experimental. When fixed center analysis is off, use VP's pending or "
+			"active subtitle handling to exclude the affected active-picture "
+			"edge from HDR analysis. This uses existing geometry and does not use OCR."));
+		// Keep the established Boolean keys as the persistence contract, but
+		// present their mutually exclusive semantics as one mode. This also
+		// preserves configurations written by earlier VP-0147 test builds.
+		pictureOnlyHdrAnalysis->hide();
+		motionCompensatedHdrAnalysis->hide();
+		if (QWidget* label = form->labelForField(pictureOnlyHdrAnalysis))
+			label->hide();
+		if (QWidget* label = form->labelForField(motionCompensatedHdrAnalysis))
+			label->hide();
+		hdrAnalysisMode = new QComboBox;
+		hdrAnalysisMode->setObjectName(controlName(sectionPrefix,
+			QStringLiteral("hdr_peak_analysis_mode")));
+		hdrAnalysisMode->setAccessibleName(
+			QStringLiteral("HDR analysis protection"));
+		hdrAnalysisMode->setSizePolicy(
+			QSizePolicy::Expanding, QSizePolicy::Fixed);
+		hdrAnalysisMode->addItem(QStringLiteral("Off"), QStringLiteral("off"));
+		hdrAnalysisMode->addItem(QStringLiteral("Smart (Experimental)"),
+			QStringLiteral("automatic"));
+		hdrAnalysisMode->addItem(QStringLiteral("Percentage (Beta)"),
+			QStringLiteral("fixed"));
+		hdrAnalysisMode->setToolTip(QStringLiteral(
+			"Off uses normal full-presentation HDR analysis. Smart protects only the "
+			"active-picture edge affected by VP's subtitle handling. Percentage "
+			"uses the configured top, center, or bottom band. On bar-cropped content it "
+			"uses the visible active picture; on full-raster content it uses the final "
+			"presentation crop."));
+		form->addRow(QStringLiteral("HDR analysis protection"), hdrAnalysisMode);
+		hdrAnalysisHeight = addText(
+			QStringLiteral("HDR analysis height"),
+			QStringLiteral("hdr_peak_analysis_height_percent"),
+			QStringLiteral("%"));
+		hdrAnalysisHeight->setValidator(new QIntValidator(10, 100, hdrAnalysisHeight));
+		hdrAnalysisHeight->setToolTip(QStringLiteral(
+			"Percentage of visible picture height analyzed by libplacebo. Smaller values "
+			"exclude more subtitle and OSD area."));
+		hdrAnalysisHeight->setEnabled(false);
+		hdrAnalysisPosition = addChoice(QStringLiteral("HDR analysis position"),
+			QStringLiteral("hdr_peak_analysis_position"),
+			{ QStringLiteral("top"), QStringLiteral("center"),
+				QStringLiteral("bottom") }, false);
+		hdrAnalysisPosition->setToolTip(QStringLiteral(
+			"Anchors the percentage band within the visible picture. Top is the default "
+			"because subtitles are usually at the bottom."));
+		hdrAnalysisPosition->setProperty("requiresHdrFixedMode", true);
+		hdrAnalysisPosition->setEnabled(false);
+		connect(hdrAnalysisMode,
+			qOverload<int>(&QComboBox::currentIndexChanged), this,
+			[this, state, hdrAnalysisMode, pictureOnlyHdrAnalysis,
+			 motionCompensatedHdrAnalysis, hdrAnalysisHeight, hdrAnalysisPosition](int index)
+			{
+				if (index < 0) return;
+				const QString mode = hdrAnalysisMode->itemData(index).toString();
+				const bool fixed = mode == QStringLiteral("fixed");
+				const bool automatic = mode == QStringLiteral("automatic");
+				hdrAnalysisHeight->setEnabled(fixed);
+				hdrAnalysisPosition->setEnabled(fixed);
+				if (state->loading) return;
+				pictureOnlyHdrAnalysis->setChecked(fixed);
+				motionCompensatedHdrAnalysis->setChecked(automatic);
+                // Persist both halves even if one checkbox did not change:
+                // an omitted half must not revive a conflicting legacy mode.
+                if (!state->section.isEmpty() && document_) {
+                    document_->SetKnown(state->section.toStdString(), "hdr_peak_analysis_picture_only", fixed ? "true" : "false");
+                    document_->SetKnown(state->section.toStdString(), "hdr_peak_analysis_motion_compensation", automatic ? "true" : "false");
+                    markDirty();
+                }
+			});
+        // Let the scroll area grow to the styled controls' minimum sizes rather
+        // than squeezing newly visible sections into the previous style's height.
+        for(auto* layout:profileFields->findChildren<QLayout*>())
+            layout->setSizeConstraint(QLayout::SetMinimumSize);
+        profileFieldsLayout->setSizeConstraint(QLayout::SetMinimumSize);
+        detailLayout->setSizeConstraint(QLayout::SetMinimumSize);
+        auto update=[type,classicSection,appearanceSection,reconstructionSection,commonForm,offset] {
+            const auto mode=type->currentData().toString();
+            classicSection->setVisible(mode==QStringLiteral("classic"));
+            appearanceSection->setVisible(mode==QStringLiteral("generated_gray") || mode==QStringLiteral("black"));
+            reconstructionSection->setVisible(mode==QStringLiteral("generated_gray"));
+            commonForm->setRowVisible(offset->parentWidget(),mode!=QStringLiteral("off"));
+        };
+        connect(type,qOverload<int>(&QComboBox::currentIndexChanged),this,[update](int){update();});
+        update();
+    }
 	else if (sectionPrefix == QStringLiteral("vprenderer.viewport") ||
 		sectionPrefix == QStringLiteral("vprenderer.zoom"))
     {
@@ -6068,124 +6268,8 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 			"Center-crop trusted content to this exact aspect before fitting it to the physical screen. "
 			"This overrides the fill-screen crop choices for this Zoom profile."));
 
-        form = addCollapsibleSection(QStringLiteral("subtitles"),
-            QStringLiteral("Subtitles"), QStringLiteral(
-                "Keep subtitle content visible, control how VP moves it into the screen, "
-                "and keep edge overlays out of HDR peak analysis."), false);
-		subtitleFit = addBoolean(
-			QStringLiteral("Keep subtitles inside screen bounds"),
-			QStringLiteral("subtitle_fit"));
-		pictureOnlyHdrAnalysis = addBoolean(
-            QStringLiteral("Limit HDR analysis to picture center"),
-            QStringLiteral("hdr_peak_analysis_picture_only"));
-        pictureOnlyHdrAnalysis->setToolTip(QStringLiteral(
-            "When a current trusted active-picture rectangle is available, "
-			"use its configured central height and full available width for "
-			"libplacebo's HDR peak and average-luminance analysis. This inset "
-			"rejects subtitles and OSDs that cross from a black bar into the "
-			"picture. Full-raster, invalid, or stale geometry falls back to "
-			"full-frame analysis."));
-		motionCompensatedHdrAnalysis = addBoolean(
-			QStringLiteral("Protect HDR analysis during subtitle movement"),
-			QStringLiteral("hdr_peak_analysis_motion_compensation"));
-		motionCompensatedHdrAnalysis->setToolTip(QStringLiteral(
-			"Experimental. When fixed center analysis is off, use VP's pending or "
-			"active subtitle-picture movement to exclude the affected active-picture "
-			"edge from HDR analysis. This uses existing geometry and does not use OCR."));
-		// Keep the established Boolean keys as the persistence contract, but
-		// present their mutually exclusive semantics as one mode. This also
-		// preserves configurations written by earlier VP-0147 test builds.
-		pictureOnlyHdrAnalysis->hide();
-		motionCompensatedHdrAnalysis->hide();
-		if (QWidget* label = form->labelForField(pictureOnlyHdrAnalysis))
-			label->hide();
-		if (QWidget* label = form->labelForField(motionCompensatedHdrAnalysis))
-			label->hide();
-		hdrAnalysisMode = new QComboBox;
-		hdrAnalysisMode->setObjectName(controlName(sectionPrefix,
-			QStringLiteral("hdr_peak_analysis_mode")));
-		hdrAnalysisMode->setAccessibleName(
-			QStringLiteral("HDR analysis protection"));
-		hdrAnalysisMode->setSizePolicy(
-			QSizePolicy::Expanding, QSizePolicy::Fixed);
-		hdrAnalysisMode->addItem(QStringLiteral("Off"), QStringLiteral("off"));
-		hdrAnalysisMode->addItem(QStringLiteral("Smart (Experimental)"),
-			QStringLiteral("automatic"));
-		hdrAnalysisMode->addItem(QStringLiteral("Percentage (Beta)"),
-			QStringLiteral("fixed"));
-		hdrAnalysisMode->setToolTip(QStringLiteral(
-			"Off uses normal full-presentation HDR analysis. Smart protects only the "
-			"active-picture edge affected by VP's subtitle-picture movement. Percentage "
-			"uses the configured top, center, or bottom band. On bar-cropped content it "
-			"uses the visible active picture; on full-raster content it uses the final "
-			"presentation crop."));
-		form->addRow(QStringLiteral("HDR analysis protection"), hdrAnalysisMode);
-		hdrAnalysisHeight = addText(
-			QStringLiteral("HDR analysis height"),
-			QStringLiteral("hdr_peak_analysis_height_percent"),
-			QStringLiteral("%"));
-		hdrAnalysisHeight->setValidator(new QIntValidator(10, 100, hdrAnalysisHeight));
-		hdrAnalysisHeight->setToolTip(QStringLiteral(
-			"Percentage of visible picture height analyzed by libplacebo. Smaller values "
-			"exclude more subtitle and OSD area."));
-		hdrAnalysisHeight->setEnabled(false);
-		hdrAnalysisPosition = addChoice(QStringLiteral("HDR analysis position"),
-			QStringLiteral("hdr_peak_analysis_position"),
-			{ QStringLiteral("top"), QStringLiteral("center"),
-				QStringLiteral("bottom") }, false);
-		hdrAnalysisPosition->setToolTip(QStringLiteral(
-			"Anchors the percentage band within the visible picture. Top is the default "
-			"because subtitles are usually at the bottom."));
-		hdrAnalysisPosition->setProperty("requiresHdrFixedMode", true);
-		hdrAnalysisPosition->setEnabled(false);
-		connect(hdrAnalysisMode,
-			qOverload<int>(&QComboBox::currentIndexChanged), this,
-			[state, hdrAnalysisMode, pictureOnlyHdrAnalysis,
-			 motionCompensatedHdrAnalysis, hdrAnalysisHeight, hdrAnalysisPosition](int index)
-			{
-				if (index < 0) return;
-				const QString mode = hdrAnalysisMode->itemData(index).toString();
-				const bool fixed = mode == QStringLiteral("fixed");
-				const bool automatic = mode == QStringLiteral("automatic");
-				hdrAnalysisHeight->setEnabled(fixed);
-				hdrAnalysisPosition->setEnabled(fixed);
-				if (state->loading) return;
-				pictureOnlyHdrAnalysis->setChecked(fixed);
-				motionCompensatedHdrAnalysis->setChecked(automatic);
-			});
-		subtitleHold = addText(QStringLiteral("Subtitle hold"),
-            QStringLiteral("subtitle_hold_seconds"), QStringLiteral("ms"), 1000.0);
-        subtitleHold->setValidator(new QIntValidator(250, 30000, subtitleHold));
-        subtitleHold->setToolTip(QStringLiteral(
-            "Must be between 250 and 30000 ms. The minimum spans the "
-            "renderer's scheduled subtitle-analysis cadence."));
-		subtitleEngageDrift = addText(QStringLiteral("Subtitle engage drift"),
-			QStringLiteral("subtitle_engage_drift_ms"), QStringLiteral("ms"));
-		subtitleReleaseDrift = addText(QStringLiteral("Subtitle release drift"),
-			QStringLiteral("subtitle_release_drift_ms"), QStringLiteral("ms"));
-		subtitlePadding = addText(QStringLiteral("Subtitle padding"),
-			QStringLiteral("subtitle_padding_pixels"), QStringLiteral("pixels"));
-		subtitleTargetBuffer = addText(
-            QStringLiteral("Subtitle target buffer"),
-            QStringLiteral("subtitle_target_buffer_pixels"),
-            QStringLiteral("pixels"));
-        subtitleTargetBuffer->setToolTip(QStringLiteral(
-            "Must be between 0 and 50 pixels. Adds outward reserve to an "
-            "accepted subtitle target so small later extent changes do not "
-            "start another movement."));
-		const auto updateSubtitleFitControls = [subtitleHold,
-			subtitleEngageDrift, subtitleReleaseDrift, subtitlePadding,
-			subtitleTargetBuffer](bool enabled)
-		{
-			subtitleHold->setEnabled(enabled);
-			subtitleEngageDrift->setEnabled(enabled);
-			subtitleReleaseDrift->setEnabled(enabled);
-			subtitlePadding->setEnabled(enabled);
-			subtitleTargetBuffer->setEnabled(enabled);
-		};
-		updateSubtitleFitControls(subtitleFit->isChecked());
-		connect(subtitleFit, &QCheckBox::toggled, this,
-			updateSubtitleFitControls);
+
+
 		}
     }
     else
@@ -6305,7 +6389,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         rule->setPlainText(expression);
         useRule->setChecked(!expression.isEmpty());
         ruleField->setVisible(!expression.isEmpty());
-        auto fallback = [this, sectionPrefix](const QString& key) -> QString
+        auto fallback = [this, sectionPrefix, section](const QString& key) -> QString
         {
             if (sectionPrefix == QStringLiteral("vprenderer.color"))
             {
@@ -6337,6 +6421,28 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                 if (key == QStringLiteral("screen_aspect")) return QString();
                 if (key == QStringLiteral("vertical_alignment")) return QStringLiteral("center");
 				if (key == QStringLiteral("screen_edge_padding")) return QStringLiteral("0");
+            }
+            if (sectionPrefix == QStringLiteral("vprenderer.subtitles")) {
+                if (key.startsWith(QStringLiteral("hdr_peak_analysis_"))) {
+                    return legacySubtitleHdrValue(key);
+                }
+                if(key == QStringLiteral("type")) return QStringLiteral("classic");
+                if(key == QStringLiteral("offset_pixels")) return value(section,QStringLiteral("type"))==QStringLiteral("classic") || value(section,QStringLiteral("type")).isEmpty() ? QString::number(RendererProfileConfig::DEFAULT_CLASSIC_SUBTITLE_PADDING_PIXELS) : QStringLiteral("0");
+                if(key == QStringLiteral("subtitle_hold_seconds")) return QStringLiteral("2");
+                if(key == QStringLiteral("subtitle_engage_drift_ms")) return QString::number(RendererProfileConfig::DEFAULT_CLASSIC_SUBTITLE_ENGAGE_DRIFT_MS);
+                if(key == QStringLiteral("subtitle_release_drift_ms")) return QString::number(RendererProfileConfig::DEFAULT_CLASSIC_SUBTITLE_RELEASE_DRIFT_MS);
+                if(key == QStringLiteral("subtitle_target_buffer_pixels")) return QStringLiteral("10");
+                if(key == QStringLiteral("subtitle_generated_gray_color")) return value(section,QStringLiteral("type"))==QStringLiteral("black") ? QStringLiteral("000000") : QStringLiteral("040404");
+                if(key == QStringLiteral("minimum_headroom_pixels")) return QStringLiteral("12");
+                if(key == QStringLiteral("text_reduction_percent")) return QStringLiteral("0");
+                if(key == QStringLiteral("rounded_corners")) return QStringLiteral("true");
+                if(key == QStringLiteral("background_edge")) return QStringLiteral("extend");
+                if(key == QStringLiteral("subtitle_generated_gray_border_color")) return QStringLiteral("000000");
+                if(key == QStringLiteral("subtitle_generated_gray_border_opacity")) return QStringLiteral("0.65");
+                if(key == QStringLiteral("subtitle_generated_gray_border_width")) return QStringLiteral("0");
+                if(key == QStringLiteral("subtitle_generated_gray_opacity")) return QStringLiteral("0.85");
+                if(key == QStringLiteral("subtitle_generated_gray_blur_px")) return QStringLiteral("3");
+                if(key == QStringLiteral("subtitle_generated_gray_max_luminance")) return QStringLiteral("0.16");
             }
             if (sectionPrefix == QStringLiteral("vprenderer.zoom"))
             {
@@ -6684,6 +6790,42 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             refreshRendererAutoStatus();
     };
 
+    if (sectionPrefix == QStringLiteral("vprenderer.subtitles")) {
+        const QPointer<QListWidget> guardedList=list;
+        refreshSubtitleHdrFallback_=[this,state,fields,guardedList,hdrAnalysisMode,
+            pictureOnlyHdrAnalysis,motionCompensatedHdrAnalysis,hdrAnalysisHeight,hdrAnalysisPosition] {
+            if (!guardedList || state->loading || state->section.isEmpty()) return;
+            for (const Field& field : *fields) {
+                if (!field.key.startsWith(QStringLiteral("hdr_peak_analysis_"))) continue;
+                // Preserve both the current profile's edits and explicit values
+                // inherited from the default Subtitle profile.
+                if (!value(state->section,field.key).isEmpty() ||
+                    (guardedList->count()>0 && !value(guardedList->item(0)->data(Qt::UserRole).toString(),field.key).isEmpty())) continue;
+                const QString inherited=legacySubtitleHdrValue(field.key);
+                const QSignalBlocker blocker(field.widget);
+                if (field.kind==Field::Boolean)
+                    qobject_cast<QCheckBox*>(field.widget)->setChecked(configuredBooleanValue(inherited,false));
+                else if (field.kind==Field::Text)
+                    qobject_cast<QLineEdit*>(field.widget)->setText(inherited);
+                else if (field.kind==Field::Choice) {
+                    auto* combo=qobject_cast<QComboBox*>(field.widget);
+                    combo->setCurrentIndex(combo->findData(inherited));
+                }
+                field.widget->setProperty("effectiveValue",inherited);
+            }
+            const QString mode=pictureOnlyHdrAnalysis->isChecked() ? QStringLiteral("fixed") :
+                (motionCompensatedHdrAnalysis->isChecked()?QStringLiteral("automatic"):QStringLiteral("off"));
+            const QSignalBlocker blocker(hdrAnalysisMode);
+            hdrAnalysisMode->setCurrentIndex(hdrAnalysisMode->findData(mode));
+            hdrAnalysisHeight->setEnabled(mode==QStringLiteral("fixed"));
+            hdrAnalysisPosition->setEnabled(mode==QStringLiteral("fixed"));
+        };
+        auto* style=profileFields->findChild<QComboBox*>(controlName(sectionPrefix,QStringLiteral("type")));
+        connect(style,qOverload<int>(&QComboBox::currentIndexChanged),this,[state,list,loadDetails](int) {
+            if(!state->loading) loadDetails(list->currentItem());
+        });
+    }
+
     if (sectionPrefix == QStringLiteral("vprenderer.color"))
         if (auto* response = combinedSdrResponse)
             connect(response, qOverload<int>(&QComboBox::activated), this,
@@ -6959,7 +7101,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         const QString old = state->section;
         if (!document_->RenameSection(old.toStdString(), renamed.toStdString())) return;
         if (sectionPrefix == QStringLiteral("vprenderer.viewport") ||
-            sectionPrefix == QStringLiteral("vprenderer.zoom"))
+            sectionPrefix == QStringLiteral("vprenderer.zoom") || sectionPrefix == QStringLiteral("vprenderer.subtitles"))
             document_->SetKnown(renamed.toStdString(), "label", requested.toLocal8Bit().constData());
         state->section = renamed;
         markDirty();
@@ -6989,12 +7131,20 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
 
     splitter->addWidget(createCard(QStringLiteral("Profiles"),
         QStringLiteral("The first profile in the list is the default. Add, remove, or reorder profiles here."), listContent));
-    splitter->addWidget(createCard(QStringLiteral("Profile details"),
-        QStringLiteral("Shortcut and rule come first, followed by profile-specific settings."), detail));
+    auto* detailsCard=createCard(QStringLiteral("Profile details"),
+        QStringLiteral("Shortcut and rule come first, followed by profile-specific settings."), detail);
+    if(sectionPrefix==QStringLiteral("vprenderer.subtitles"))
+        detailsCard->layout()->setSizeConstraint(QLayout::SetMinimumSize);
+    splitter->addWidget(detailsCard);
     splitter->setStretchFactor(0, 0);
     splitter->setStretchFactor(1, 1);
     splitter->setSizes({ 310, 620 });
-    return createPage(title, description, splitter);
+    auto* page=createPage(title, description, splitter);
+    if(sectionPrefix==QStringLiteral("vprenderer.subtitles")) {
+        splitter->setSizePolicy(QSizePolicy::Preferred,QSizePolicy::Minimum);
+        qobject_cast<QScrollArea*>(page)->widget()->layout()->setSizeConstraint(QLayout::SetMinimumSize);
+    }
+    return page;
 }
 
 QWidget* ConfigEditorWindow::createQueuePage()
@@ -7203,7 +7353,7 @@ QWidget* ConfigEditorWindow::createViewportPage()
 QWidget* ConfigEditorWindow::createZoomPage()
 {
 	return createProfilePage(QStringLiteral("Zoom"),
-		QStringLiteral("Configure independent crop/fill and subtitle profiles. Zoom shortcuts never change the selected Screen geometry."),
+		QStringLiteral("Configure independent crop/fill profiles. Zoom shortcuts never change the selected Screen geometry."),
 		QStringLiteral("vprenderer.zoom"));
 }
 

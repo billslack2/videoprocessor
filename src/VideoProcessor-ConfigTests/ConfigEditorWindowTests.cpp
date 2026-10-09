@@ -22,6 +22,8 @@
 #include <QRadioButton>
 #include <QFontDatabase>
 #include <QColor>
+#include "../VideoProcessor-Config/InlineColorPicker.h"
+#include <QToolButton>
 #include <QComboBox>
 #include <QDialog>
 #include <QDir>
@@ -404,6 +406,90 @@ void save(ConfigEditorWindow& window)
     require(!button->isEnabled(), "Apply did not complete successfully");
 }
 
+void testSubtitleDiagnosticSurvivesConfigSaveAndReopen()
+{
+    QTemporaryDir directory;
+    const QString path = directory.filePath("VideoProcessor.cfg");
+    {
+        QFile file(path);
+        require(file.open(QIODevice::WriteOnly), "Cannot create subtitle diagnostic fixture");
+        file.write("[vprenderer]\nsdr_target_nits: 100\nsubtitle_bbox_test: true\n");
+    }
+    for (const char* white : { "120", "140" })
+    {
+        ConfigEditorWindow window(path, 0, true);
+        requireControl<QLineEdit>(window, "config.vprenderer.sdr_target_nits")->setText(white);
+        save(window);
+        ConfigFile config;
+        require(config.Load(path.toStdString()), "Saved subtitle config failed to reload");
+        RendererProfileConfig::Model model;
+        std::string error;
+        require(RendererProfileConfig::Read(config, model, error), error.c_str());
+        bool found = false;
+        for (const auto& profile : model.profiles)
+        {
+            const auto setting = profile.second.settings.find("subtitle_bbox_test");
+            if (setting != profile.second.settings.end())
+            {
+                require(setting->second == "true", "Config changed the subtitle diagnostic value");
+                found = true;
+            }
+        }
+        require(!found, "Legacy subtitle controls still affect renderer profiles");
+    }
+}
+
+void testSubtitleCutPasteSurvivesConfigSaveAndReopen()
+{
+    QTemporaryDir directory;
+    const QString path = directory.filePath("VideoProcessor.cfg");
+    {
+        QFile file(path);
+        require(file.open(QIODevice::WriteOnly), "Cannot create subtitle diagnostic fixture");
+        file.write("[vprenderer]\nsdr_target_nits: 100\nsubtitle_cut_paste_test: true\n"
+            "subtitle_cut_paste_background: dark_gray\nsubtitle_box_padding_sides: 60\n"
+            "subtitle_box_padding_top: 40\nsubtitle_box_padding_bottom: 12\nsubtitle_move_inset: 20\n");
+    }
+    for (const char* white : { "120", "140" })
+    {
+        ConfigEditorWindow window(path, 0, true);
+        requireControl<QLineEdit>(window, "config.vprenderer.sdr_target_nits")->setText(white);
+        save(window);
+        ConfigFile config;
+        require(config.Load(path.toStdString()), "Saved subtitle config failed to reload");
+        RendererProfileConfig::Model model;
+        std::string error;
+        require(RendererProfileConfig::Read(config, model, error), error.c_str());
+        bool found = false;
+        for (const auto& profile : model.profiles)
+        {
+            const auto setting = profile.second.settings.find("subtitle_cut_paste_test");
+            if (setting != profile.second.settings.end())
+            {
+                require(setting->second == "true", "Config changed the subtitle diagnostic value");
+                found = true;
+            }
+        }
+        require(!found, "Legacy subtitle controls still affect renderer profiles");
+        for (const auto& expected : std::map<std::string,std::string>{
+            {"subtitle_cut_paste_background","dark_gray"}, {"subtitle_box_padding_sides","60"},
+            {"subtitle_box_padding_top","40"}, {"subtitle_box_padding_bottom","12"},
+            {"subtitle_move_inset","20"}})
+        {
+            bool preserved=false;
+            for (const auto& profile : model.profiles) {
+                const auto entry=profile.second.settings.find(expected.first);
+                if(entry!=profile.second.settings.end()) {
+                    require(entry->second==expected.second,"Config changed subtitle mode or geometry");
+                    preserved=true;
+                }
+            }
+            require(!preserved,"Legacy subtitle geometry still affects renderer profiles");
+            require(readBytes(path).contains(QByteArray::fromStdString(expected.first+": "+expected.second)),"Ignored legacy configuration was not preserved");
+        }
+    }
+}
+
 void testHdrTargetLuminanceValidationRetainsSavedValue()
 {
     QTemporaryDir directory;
@@ -626,7 +712,7 @@ void testEveryPageRoundTrips()
 
     QStackedWidget* pages = requireControl<QStackedWidget>(window,
         QStringLiteral("settingsPages"));
-    require(pages->count() == 19,
+    require(pages->count() == 20,
         "Renderer, Scaling, Color, Output, Screen, Zoom, Processing, shader, and shortcut pages were not added as dedicated settings pages");
     for (QPushButton* button : window.findChildren<QPushButton*>())
         require(!button->property("navChild").toBool(),
@@ -667,7 +753,7 @@ void testEveryPageRoundTrips()
     vpRenderer->click();
     requireTabs({ QStringLiteral("Rendering"), QStringLiteral("Color / Output"),
         QStringLiteral("Scaling"),
-        QStringLiteral("Screen"), QStringLiteral("Zoom"),
+        QStringLiteral("Screen"), QStringLiteral("Zoom"), QStringLiteral("Subtitles"),
         QStringLiteral("Processing") });
     directShow->click();
     requireTabs({ QStringLiteral("General"), QStringLiteral("Input Processing") });
@@ -1264,17 +1350,19 @@ void testRendererSectionTabsRemainSynchronizedDuringRapidClicks()
 
     requireTabs({ QStringLiteral("Rendering"), QStringLiteral("Color / Output"),
         QStringLiteral("Scaling"),
-        QStringLiteral("Screen"), QStringLiteral("Zoom"),
+        QStringLiteral("Screen"), QStringLiteral("Zoom"), QStringLiteral("Subtitles"),
         QStringLiteral("Processing") });
     runSequence({
         { 1, 16, "Color / Output", "config.vprenderer.color.profiles" },
         { 3, 4, "Screen", "config.vprenderer.viewport.profiles" },
         { 4, 18, "Zoom", "config.vprenderer.zoom.crop_narrower_content_to_fill_screen" },
-        { 5, 11, "Input processing", "config.vprenderer.input_processing.video_conversion" },
+        { 5, 19, "Subtitles", "config.vprenderer.subtitles.profiles" },
+        { 6, 11, "Input processing", "config.vprenderer.input_processing.video_conversion" },
         { 1, 16, "Color / Output", "config.vprenderer.color.profiles" },
         { 2, 17, "Scaling", "config.vprenderer.scaling.profiles" },
         { 0, 2, "Rendering", "config.vprenderer.profiles" },
-        { 5, 11, "Input processing", "config.vprenderer.input_processing.video_conversion" },
+        { 5, 19, "Subtitles", "config.vprenderer.subtitles.profiles" },
+        { 6, 11, "Input processing", "config.vprenderer.input_processing.video_conversion" },
         { 4, 18, "Zoom", "config.vprenderer.zoom.crop_narrower_content_to_fill_screen" },
         { 3, 4, "Screen", "config.vprenderer.viewport.profiles" },
         { 1, 16, "Color / Output", "config.vprenderer.color.profiles" },
@@ -2851,7 +2939,7 @@ void testScreenConfigSectionsAndInlineUnits()
         "Screen does not use the expected geometry section heading and state");
     require(requireControl<QWidget>(window,
         QStringLiteral("screenSection.geometry.content"))->isVisibleTo(&window) &&
-        !window.findChild<QWidget*>(QStringLiteral("zoomSection.subtitles.content"))->isVisibleTo(&window),
+        !window.findChild<QWidget*>(QStringLiteral("zoomSection.hdr_analysis.content")),
         "Screen geometry page contains Zoom content");
     require(window.findChild<QCheckBox*>(
         QStringLiteral("config.vprenderer.viewport.automatic_crop")) == nullptr,
@@ -2864,15 +2952,20 @@ void testScreenConfigSectionsAndInlineUnits()
     require(automaticCrop->accessibleName() ==
         QStringLiteral("Automatically crop black bars"),
         "Zoom does not expose the independent automatic black-bar crop option");
+    require(!window.findChild<QWidget*>("config.vprenderer.zoom.hdr_peak_analysis_mode"),"HDR analysis must be moved out of Zoom");
+    window.selectPage(19);QCoreApplication::processEvents();
+    require(requireControl<QListWidget>(window,"config.vprenderer.subtitles.profiles")->count()==0,"Old Screen fixture unexpectedly has Subtitle profiles");
+    requireControl<QPushButton>(window,"config.vprenderer.subtitles.add_profile")->click();
+    QCoreApplication::processEvents();
     QToolButton* subtitles = requireControl<QToolButton>(window,
-        QStringLiteral("zoomSection.subtitles"));
-    require(!subtitles->isChecked() && subtitles->text() == QStringLiteral("Subtitles"),
+        QStringLiteral("subtitleSection.hdr_analysis"));
+    require(!subtitles->isChecked() && subtitles->text() == QStringLiteral("HDR analysis"),
         "Zoom does not use the expected Subtitles section heading and state");
     subtitles->click();
     QCoreApplication::processEvents();
 	QComboBox* hdrAnalysisMode = requireControl<QComboBox>(window,
 		QStringLiteral(
-			"config.vprenderer.zoom.hdr_peak_analysis_mode"));
+			"config.vprenderer.subtitles.hdr_peak_analysis_mode"));
 	require(hdrAnalysisMode->currentData().toString() == QStringLiteral("off") &&
 		hdrAnalysisMode->accessibleName() ==
 			QStringLiteral("HDR analysis protection") &&
@@ -2883,61 +2976,20 @@ void testScreenConfigSectionsAndInlineUnits()
 		hdrAnalysisMode->itemData(1).toString() == QStringLiteral("automatic") &&
 		hdrAnalysisMode->itemText(2) == QStringLiteral("Percentage (Beta)") &&
 		hdrAnalysisMode->itemData(2).toString() == QStringLiteral("fixed"),
-		"Zoom subtitles do not expose the default-off exclusive HDR analysis modes");
+		"Subtitle profiles do not expose the default-off exclusive HDR analysis modes");
 	QLineEdit* hdrAnalysisHeight = requireControl<QLineEdit>(window,
 		QStringLiteral(
-			"config.vprenderer.zoom.hdr_peak_analysis_height_percent"));
+			"config.vprenderer.subtitles.hdr_peak_analysis_height_percent"));
 	require(hdrAnalysisHeight->text() == QStringLiteral("75") &&
 		!hdrAnalysisHeight->isEnabled(),
 		"HDR analysis height does not default to 75% or follow the disabled toggle");
 	QComboBox* hdrAnalysisPosition = requireControl<QComboBox>(window,
-		QStringLiteral("config.vprenderer.zoom.hdr_peak_analysis_position"));
+		QStringLiteral("config.vprenderer.subtitles.hdr_peak_analysis_position"));
 	require(hdrAnalysisPosition->currentData().toString() == QStringLiteral("top") &&
 		!hdrAnalysisPosition->isEnabled(),
 		"HDR analysis position does not default to disabled Top");
-	QCheckBox* subtitleFit = requireControl<QCheckBox>(window,
-		QStringLiteral("config.vprenderer.zoom.subtitle_fit"));
-    QLineEdit* hold = requireControl<QLineEdit>(window,
-        QStringLiteral("config.vprenderer.zoom.subtitle_hold_seconds"));
-	QLineEdit* engageDrift = requireControl<QLineEdit>(window,
-		QStringLiteral("config.vprenderer.zoom.subtitle_engage_drift_ms"));
-	QLineEdit* releaseDrift = requireControl<QLineEdit>(window,
-		QStringLiteral("config.vprenderer.zoom.subtitle_release_drift_ms"));
-	QLineEdit* padding = requireControl<QLineEdit>(window,
-		QStringLiteral("config.vprenderer.zoom.subtitle_padding_pixels"));
-	QLineEdit* targetBuffer = requireControl<QLineEdit>(window,
-		QStringLiteral("config.vprenderer.zoom.subtitle_target_buffer_pixels"));
-    QLabel* holdUnit = requireControl<QLabel>(window,
-        QStringLiteral("config.vprenderer.zoom.subtitle_hold_seconds.unit"));
-    QLabel* engageUnit = requireControl<QLabel>(window,
-        QStringLiteral("config.vprenderer.zoom.subtitle_engage_drift_ms.unit"));
-    QLabel* paddingUnit = requireControl<QLabel>(window,
-        QStringLiteral("config.vprenderer.zoom.subtitle_padding_pixels.unit"));
-    require(holdUnit->text() == QStringLiteral("ms") &&
-        engageUnit->text() == QStringLiteral("ms") &&
-        paddingUnit->text() == QStringLiteral("pixels"),
-        "Zoom fixed-unit inputs are missing inline unit labels");
-    require(hold->text() == QStringLiteral("2000"),
-        "Subtitle hold is not presented in milliseconds");
-	subtitleFit->setChecked(false);
-	require(!hold->isEnabled() &&
-		!engageDrift->isEnabled() && !releaseDrift->isEnabled() &&
-		!padding->isEnabled() && !targetBuffer->isEnabled(),
-		"Subtitle-fit-only controls remain editable while fitting is disabled");
-	require(hdrAnalysisMode->isEnabled(),
-		"Independent HDR analysis protection was disabled with subtitle fitting");
-	subtitleFit->setChecked(true);
-	require(hold->isEnabled() && engageDrift->isEnabled() &&
-		releaseDrift->isEnabled() && padding->isEnabled() &&
-		targetBuffer->isEnabled(),
-		"Subtitle-fit-only controls did not enable with subtitle fitting");
-    require(hold->minimumWidth() > 0 &&
-        hold->minimumWidth() == hold->maximumWidth() &&
-        hold->alignment() == Qt::AlignRight &&
-        holdUnit->x() >= hold->x() + hold->width(),
-        "Zoom unit input is not consistently sized, aligned, and labeled");
-
-    hold->setText(QStringLiteral("1500"));
+    require(!window.findChild<QCheckBox*>("config.vprenderer.zoom.subtitle_fit"),
+        "Subtitle fitting still exposed on Zoom");
 	selectData(hdrAnalysisMode, QStringLiteral("fixed"));
 	require(hdrAnalysisHeight->isEnabled(),
 		"HDR analysis height did not enable in fixed-percentage mode");
@@ -2950,23 +3002,22 @@ void testScreenConfigSectionsAndInlineUnits()
 		"HDR fixed-percentage controls remained enabled in automatic-movement mode");
     save(window);
     const QByteArray saved = readBytes(path);
-    require(saved.contains("subtitle_hold_seconds: 1.5"),
-        "Millisecond subtitle hold did not preserve the seconds-based config contract");
+
 	require(saved.contains("hdr_peak_analysis_picture_only: false"),
 		"Automatic mode did not disable fixed-percentage HDR analysis");
 	require(saved.contains("hdr_peak_analysis_motion_compensation: true"),
-		"Automatic movement mode was not persisted in Zoom");
+		"Automatic movement mode was not persisted in Subtitles");
 	require(saved.contains("hdr_peak_analysis_height_percent: 70"),
-		"HDR active-picture analysis height was not persisted in Zoom");
+		"HDR active-picture analysis height was not persisted in Subtitles");
 	require(saved.contains("hdr_peak_analysis_position: bottom"),
-		"HDR analysis position was not persisted in Zoom");
+		"HDR analysis position was not persisted in Subtitles");
 
     QListWidget* profiles = requireControl<QListWidget>(window,
-        QStringLiteral("config.vprenderer.zoom.profiles"));
+        QStringLiteral("config.vprenderer.subtitles.profiles"));
     if (profiles->count() > 1) profiles->setCurrentRow(1);
     QCoreApplication::processEvents();
     require(subtitles->isChecked(),
-        "Zoom section expansion state changed when selecting another profile");
+        "Subtitle section expansion state changed when selecting another profile");
 }
 
 void testSeparatedProfilesDoNotLeaveShortcutShellsBehind()
@@ -3032,7 +3083,7 @@ void testSeparatedProfilesDoNotLeaveShortcutShellsBehind()
         "A separated owner did not receive its migrated profile");
     require(hasProfile(screen, QStringLiteral("vprenderer.viewport.scope")) &&
         !hasProfile(screen, QStringLiteral("vprenderer.viewport.scope_and_crop")) &&
-        hasProfile(zoom, QStringLiteral("vprenderer.zoom.scope")) &&
+        !hasProfile(zoom, QStringLiteral("vprenderer.zoom.scope")) &&
         hasProfile(zoom, QStringLiteral("vprenderer.zoom.scope_and_crop")),
         "Screen and Zoom migration did not separate their selectable profiles");
 
@@ -3069,7 +3120,7 @@ void testQueueUnitsAndLutControlsUseConsistentRows()
     QLabel* recoveryUnit = requireControl<QLabel>(window,
         QStringLiteral("config.queue.reset_queue_too_large_percent.unit"));
     const int fixedUnitFieldWidth = requireControl<QLineEdit>(window,
-        QStringLiteral("config.vprenderer.zoom.subtitle_hold_seconds"))->minimumWidth();
+        QStringLiteral("config.vprenderer.subtitles.offset_pixels"))->minimumWidth();
     const QStringList queueValueKeys = {
         QStringLiteral("queue_size"),
         QStringLiteral("lead_frames"),
@@ -6359,6 +6410,252 @@ void testRemoteOnlyClientHasNoLocalFileTarget()
         "Multiple remote targets were selected without user choice");
 }
 
+
+void testSubtitleProfileTabRoundTrip()
+{
+    QTemporaryDir dir;
+    const QString path=dir.filePath("VideoProcessor.cfg");
+    QFile file(path); require(file.open(QIODevice::WriteOnly),"Cannot write subtitle profile fixture");
+    file.write("[general]\nrenderer: VideoProcessor Renderer (Alpha)\n"
+        "[vprenderer.zoom.First]\nsubtitle_fit: true\nautomatic_crop: true\n"
+        "[vprenderer.subtitles.Classic]\ntype: classic\noffset_pixels: 0\ncycle_shortcut: Ctrl+Shift+T\n"
+        "[vprenderer.subtitles.Gray]\ntype: generated_gray\noffset_pixels: 15\ncycle_shortcut: Ctrl+Shift+T\n");file.close();
+    ConfigEditorWindow window(path,0,true);
+    window.show(); QApplication::processEvents();
+    auto* pages=requireControl<QStackedWidget>(window,"settingsPages");pages->setCurrentIndex(19);
+    auto* list=requireControl<QListWidget>(window,"config.vprenderer.subtitles.profiles");
+    require(list->count()==2,"Subtitle profiles missing");list->setCurrentRow(1);
+    auto* type=requireControl<QComboBox>(window,"config.vprenderer.subtitles.type");
+    auto* offset=requireControl<QLineEdit>(window,"config.vprenderer.subtitles.offset_pixels");
+    require(type->count()==4 && type->currentData().toString()=="generated_gray","Four subtitle styles not resolved");
+    require(offset->text()=="15","Profile offset missing");
+    require(type->itemText(1)=="Classic" && type->itemText(2)=="Move / Reconstruction (Beta)" && type->itemText(3)=="Move / Solid Background (Beta)","Subtitle labels do not match their stored types");
+    auto* color=requireControl<QLineEdit>(window,"config.vprenderer.subtitles.subtitle_generated_gray_color");
+    auto* blur=requireControl<QLineEdit>(window,"config.vprenderer.subtitles.subtitle_generated_gray_blur_px");
+    require(blur->isVisible(),"Reconstruction controls hidden");
+    auto* choose=requireControl<QPushButton>(window,"config.vprenderer.subtitles.subtitle_generated_gray_color.picker.toggle");
+    choose->click();QApplication::processEvents();
+    auto* picker=dynamic_cast<InlineColorEditor*>(requireControl<QWidget>(window,"config.vprenderer.subtitles.subtitle_generated_gray_color.picker.editor"));
+    require(picker!=nullptr,"Compact editor missing");
+    require(!picker->isWindow() && picker->isVisible(),"Color picker must be embedded and non-modal");
+    require(picker->findChildren<QLineEdit*>().isEmpty() && picker->findChildren<QPushButton*>().size()==48,
+        "Compact picker must contain only basic swatches and color surfaces, without custom/numeric controls");
+    requireControl<QWidget>(*picker,"hueSaturation");requireControl<QWidget>(*picker,"brightness");
+    for(auto* swatch:picker->findChildren<QPushButton*>()) {
+        require(swatch->size()==QSize(21,19),"Global button style enlarged a compact color swatch");
+        require(picker->rect().contains(QRect(swatch->mapTo(picker,QPoint(0,0)),swatch->size())),"Basic color grid is clipped inside the compact picker");
+    }
+    auto* firstSwatch=requireControl<QPushButton>(*picker,"basicColor.0");
+    auto* lastInFirstRow=requireControl<QPushButton>(*picker,"basicColor.7");
+    auto* firstInSecondRow=requireControl<QPushButton>(*picker,"basicColor.8");
+    require(firstSwatch->y()==lastInFirstRow->y() && firstInSecondRow->y()>firstSwatch->y(),"Basic colors must have eight columns and six rows");
+
+    color->setText("18A7C3");
+    require(picker->currentColor()==QColor("#18A7C3"),"Hex edits must synchronize the full-range picker");
+    color->setText("18");require(color->text()=="18","Picker overwrote an incomplete hex edit");
+    picker->setCurrentColor(QColor("#203040"));
+    require(!QApplication::activeModalWidget(),"Inline editing opened a modal window");
+    if(!qEnvironmentVariable("VP_CONFIG_REVIEW_IMAGES").isEmpty()) {
+        window.resize(1180,1250);QApplication::processEvents();
+        for(auto* parent=picker->parentWidget();parent;parent=parent->parentWidget())
+            if(auto* scroll=qobject_cast<QScrollArea*>(parent)) {
+                scroll->ensureWidgetVisible(picker);QApplication::processEvents();break;
+            }
+        window.grab().save(qEnvironmentVariable("VP_CONFIG_REVIEW_IMAGES")+"/subtitle-color-picker.png");
+    }
+    choose->click();QApplication::processEvents();
+    require(!picker->isVisible(),"Inline color picker did not collapse");
+    require(color->text()=="203040","Inline color selection failed");
+    auto* headroom=requireControl<QLineEdit>(window,"config.vprenderer.subtitles.minimum_headroom_pixels");
+    require(headroom->text()=="12","Moved subtitle headroom default missing");headroom->setText("24");
+    blur->setText("30");
+    requireControl<QLineEdit>(window,"config.vprenderer.subtitles.subtitle_generated_gray_border_width")->setText("2");
+    list->setCurrentRow(0);
+    auto* hold=requireControl<QLineEdit>(window,"config.vprenderer.subtitles.subtitle_hold_seconds");
+    require(hold->isVisible() && !blur->isVisible(),"Classic/reconstruction visibility incorrect");
+    require(requireControl<QLineEdit>(window,"config.vprenderer.subtitles.subtitle_engage_drift_ms")->text()=="500","Classic engage default missing");
+    require(requireControl<QLineEdit>(window,"config.vprenderer.subtitles.subtitle_release_drift_ms")->text()=="2000","Classic release default missing");
+    hold->setText("1.5");
+    requireControl<QLineEdit>(window,"config.vprenderer.subtitles.subtitle_engage_drift_ms")->setText("500");
+    list->setCurrentRow(1);
+    require(picker->currentColor()==QColor("#203040"),"Profile reload did not synchronize picker");
+    auto* borderChoose=requireControl<QPushButton>(window,"config.vprenderer.subtitles.subtitle_generated_gray_border_color.picker.toggle");
+    borderChoose->click();
+    auto* borderPicker=dynamic_cast<InlineColorEditor*>(requireControl<QWidget>(window,"config.vprenderer.subtitles.subtitle_generated_gray_border_color.picker.editor"));
+    require(borderPicker!=nullptr,"Compact border editor missing");
+    borderPicker->setCurrentColor(QColor("#6C2E91"));borderChoose->click();
+    require(color->text()=="203040","Border color changed background color");
+
+    require(!window.findChild<QCheckBox*>("config.vprenderer.zoom.subtitle_fit"),"Legacy subtitle control remains on Zoom");
+    window.setActiveProfileStatusForTesting({}, {}, {}, {}, {}, false, {}, {}, {}, "vprenderer.subtitles.gray");
+    type->setCurrentIndex(type->findData("black"));offset->setText("22");
+    require(color->isVisible() && !blur->isVisible(),"Solid mode must show shared appearance without reconstruction controls");
+    require(color->text()=="203040","Switching styles discarded background color");
+    auto checkVisibleRows=[&] {
+        QApplication::processEvents();
+        for(auto* field:window.findChildren<QLineEdit*>())
+            if(field->objectName().startsWith("config.vprenderer.subtitles.") && field->isVisible())
+            {
+                require(field->parentWidget()->rect().contains(field->geometry()),"Subtitle control clipped by its row after style switch");
+                for(auto* parent=field->parentWidget();parent;parent=parent->parentWidget())
+                    if(parent->property("card").toBool()) {
+                        require(parent->rect().contains(QRect(field->mapTo(parent,QPoint(0,0)),field->size())),"Subtitle control clipped by profile card after style switch");
+                        break;
+                    }
+            }
+    };
+    checkVisibleRows();
+    type->setCurrentIndex(2);checkVisibleRows();
+    type->setCurrentIndex(3);checkVisibleRows();
+
+
+    if(!qEnvironmentVariable("VP_CONFIG_REVIEW_IMAGES").isEmpty()) {
+        window.resize(1180,1250); QApplication::processEvents();
+        window.grab().save(qEnvironmentVariable("VP_CONFIG_REVIEW_IMAGES")+"/subtitle-solid.png");
+        type->setCurrentIndex(2); QApplication::processEvents();
+        auto* brightness=requireControl<QLineEdit>(window,"config.vprenderer.subtitles.subtitle_generated_gray_max_luminance");
+        for(auto* parent=brightness->parentWidget();parent;parent=parent->parentWidget())
+            if(auto* scroll=qobject_cast<QScrollArea*>(parent)) {
+                scroll->ensureWidgetVisible(brightness); QApplication::processEvents();
+                require(scroll->viewport()->rect().contains(QRect(brightness->mapTo(scroll->viewport(),QPoint(0,0)),brightness->size())),"Reconstruction controls cannot be reached by scrolling");
+                break;
+            }
+        window.grab().save(qEnvironmentVariable("VP_CONFIG_REVIEW_IMAGES")+"/subtitle-reconstructed.png");
+        list->setCurrentRow(0); QApplication::processEvents();
+        window.grab().save(qEnvironmentVariable("VP_CONFIG_REVIEW_IMAGES")+"/subtitle-classic.png");
+        list->setCurrentRow(1); type->setCurrentIndex(3);
+    }
+    save(window);
+    ConfigEditorWindow reopened(path,0,true);
+    requireControl<QListWidget>(reopened,"config.vprenderer.subtitles.profiles")->setCurrentRow(1);
+    require(requireControl<QComboBox>(reopened,"config.vprenderer.subtitles.type")->currentData().toString()=="black","Subtitle style not saved");
+    require(requireControl<QLineEdit>(reopened,"config.vprenderer.subtitles.offset_pixels")->text()=="22","Subtitle offset not saved");
+    require(requireControl<QLineEdit>(reopened,"config.vprenderer.subtitles.subtitle_generated_gray_color")->text()=="203040","Solid color not saved");
+    require(requireControl<QLineEdit>(reopened,"config.vprenderer.subtitles.subtitle_generated_gray_border_color")->text()=="6C2E91","Arbitrary border color not saved");
+    require(requireControl<QLineEdit>(reopened,"config.vprenderer.subtitles.minimum_headroom_pixels")->text()=="24","Headroom not saved");
+    require(requireControl<QLineEdit>(reopened,"config.vprenderer.subtitles.subtitle_generated_gray_border_width")->text()=="2","Border not saved");
+    requireControl<QComboBox>(reopened,"config.vprenderer.subtitles.type")->setCurrentIndex(2);
+    require(requireControl<QLineEdit>(reopened,"config.vprenderer.subtitles.subtitle_generated_gray_blur_px")->text()=="30","Switching modes lost blur setting");
+    requireControl<QListWidget>(reopened,"config.vprenderer.subtitles.profiles")->setCurrentRow(0);
+    require(requireControl<QLineEdit>(reopened,"config.vprenderer.subtitles.subtitle_hold_seconds")->text()=="1.5","Classic hold not saved");
+
+}
+
+void testSubtitleBackgroundShapeRoundTripAndVisibility()
+{
+    QTemporaryDir dir;const QString path=dir.filePath("VideoProcessor.cfg");
+    QFile file(path);require(file.open(QIODevice::WriteOnly),"Cannot write subtitle shape fixture");
+    // Avoid the unrelated refresh-rate migration, which intentionally marks old configs dirty.
+    file.write("[general]\nrenderer: VP Renderer\nswitch_refresh_rate: fullscreen_only\n[vprenderer.subtitles.Moved]\ntype: generated_gray\n");file.close();
+    ConfigEditorWindow window(path,0,true);window.show();window.selectPage(19);QApplication::processEvents();
+    auto* type=requireControl<QComboBox>(window,"config.vprenderer.subtitles.type");
+    auto* rounded=requireControl<QCheckBox>(window,"config.vprenderer.subtitles.rounded_corners");
+    auto* edge=requireControl<QComboBox>(window,"config.vprenderer.subtitles.background_edge");
+    require(rounded->isChecked() && edge->currentData().toString()=="extend","Shape defaults changed existing rounded extended behavior");
+    require(!requireControl<QPushButton>(window,"applyConfiguration")->isEnabled(),"Loading shape defaults dirtied configuration");
+    rounded->setChecked(false);selectData(edge,"float");
+    for(const auto& style:{"black","classic","off","generated_gray"}) {
+        selectData(type,style);QApplication::processEvents();
+        const bool moved=QString(style)=="black" || QString(style)=="generated_gray";
+        require(rounded->isVisible()==moved && edge->isVisible()==moved,"Shape controls must only show for moved styles");
+        require(!rounded->isChecked() && edge->currentData().toString()=="float","Style switch lost shape selection");
+    }
+    selectData(type,"black");save(window);
+    ConfigEditorWindow reopened(path,0,true);
+    require(!requireControl<QCheckBox>(reopened,"config.vprenderer.subtitles.rounded_corners")->isChecked(),"Square corners did not persist");
+    require(requireControl<QComboBox>(reopened,"config.vprenderer.subtitles.background_edge")->currentData().toString()=="float","Float did not persist");
+    requireControl<QCheckBox>(reopened,"config.vprenderer.subtitles.rounded_corners")->setChecked(true);
+    selectData(requireControl<QComboBox>(reopened,"config.vprenderer.subtitles.background_edge"),"extend");save(reopened);
+    ConfigEditorWindow restored(path,0,true);
+    require(requireControl<QCheckBox>(restored,"config.vprenderer.subtitles.rounded_corners")->isChecked() && requireControl<QComboBox>(restored,"config.vprenderer.subtitles.background_edge")->currentData().toString()=="extend","Restored shape did not persist");
+}
+
+void testSubtitleTextSizeReductionRoundTripAndStyleVisibility()
+{
+    QTemporaryDir dir;
+    const QString path=dir.filePath("VideoProcessor.cfg");
+    QFile file(path); require(file.open(QIODevice::WriteOnly),"Cannot write subtitle text size fixture");
+    file.write("[general]\nrenderer: VP Renderer\n"
+        "[vprenderer.subtitles.Moved]\ntype: generated_gray\n");file.close();
+    ConfigEditorWindow window(path,0,true);
+    window.show();
+    requireControl<QStackedWidget>(window,"settingsPages")->setCurrentIndex(19);
+    QApplication::processEvents();
+    auto* type=requireControl<QComboBox>(window,"config.vprenderer.subtitles.type");
+    auto* reduction=requireControl<QLineEdit>(window,"config.vprenderer.subtitles.text_reduction_percent");
+    require(reduction->isVisible() && reduction->text()=="0",
+        "Moved text size must default to no reduction");
+    require(reduction->toolTip().contains("0% keeps") && reduction->toolTip().contains("25%"),
+        "Text size help must explain unchanged and minimum sizes");
+    for(const auto& input:{QStringLiteral("-1"),QStringLiteral("76"),QStringLiteral("12.5")}) {
+        reduction->setText(input);
+        require(!reduction->hasAcceptableInput(),"Text size accepts a value outside integer 0-75 percent");
+    }
+    reduction->setText("75");
+    require(reduction->hasAcceptableInput(),"Text size rejects the 75 percent reduction endpoint");
+    for(const auto& style:{QStringLiteral("black"),QStringLiteral("classic"),QStringLiteral("off"),QStringLiteral("generated_gray")}) {
+        type->setCurrentIndex(type->findData(style));QApplication::processEvents();
+        const bool moved=style=="black" || style=="generated_gray";
+        require(reduction->isVisible()==moved,"Text size visibility does not match moved subtitle styles");
+        require(reduction->text()=="75","Switching subtitle styles discarded text size");
+    }
+    type->setCurrentIndex(type->findData("black"));
+    save(window);
+    ConfigEditorWindow reopened(path,0,true);
+    auto* reopenedType=requireControl<QComboBox>(reopened,"config.vprenderer.subtitles.type");
+    auto* reopenedReduction=requireControl<QLineEdit>(reopened,"config.vprenderer.subtitles.text_reduction_percent");
+    require(reopenedType->currentData().toString()=="black" && reopenedReduction->text()=="75",
+        "Solid text size reduction did not survive save/reopen");
+    reopenedType->setCurrentIndex(reopenedType->findData("generated_gray"));
+    reopenedReduction->setText("0");
+    require(reopenedReduction->hasAcceptableInput(),"Text size rejects no reduction");
+    save(reopened);
+    ConfigEditorWindow unchanged(path,0,true);
+    require(requireControl<QComboBox>(unchanged,"config.vprenderer.subtitles.type")->currentData().toString()=="generated_gray" &&
+        requireControl<QLineEdit>(unchanged,"config.vprenderer.subtitles.text_reduction_percent")->text()=="0",
+        "Explicit zero text size reduction did not survive save/reopen");
+}
+
+void testSubtitleHdrLegacyFallbackAndSharedModes()
+{
+    QTemporaryDir dir;const QString path=dir.filePath("VideoProcessor.cfg");
+    const QByteArray fixture="[general]\nrenderer: VP Renderer\nswitch_refresh_rate: fullscreen_only\n"
+        "[vprenderer.zoom.First]\nautomatic_crop: true\nhdr_peak_analysis_picture_only: true\n"
+        "hdr_peak_analysis_motion_compensation: false\nhdr_peak_analysis_height_percent: 68\n"
+        "hdr_peak_analysis_position: bottom\n# keep the legacy owner until edited\n"
+        "[vprenderer.zoom.Second]\nhdr_peak_analysis_picture_only: false\nhdr_peak_analysis_motion_compensation: true\n"
+        "hdr_peak_analysis_height_percent: 80\nhdr_peak_analysis_position: top\n"
+        "[vprenderer.subtitles.First]\ntype: classic\n";
+    QFile file(path);require(file.open(QIODevice::WriteOnly),"Cannot write HDR fallback fixture");file.write(fixture);file.close();
+    ConfigEditorWindow window(path,0,true);window.show();window.selectPage(19);QApplication::processEvents();
+    auto* section=requireControl<QToolButton>(window,"subtitleSection.hdr_analysis");section->click();
+    auto* mode=requireControl<QComboBox>(window,"config.vprenderer.subtitles.hdr_peak_analysis_mode");
+    auto* height=requireControl<QLineEdit>(window,"config.vprenderer.subtitles.hdr_peak_analysis_height_percent");
+    auto* position=requireControl<QComboBox>(window,"config.vprenderer.subtitles.hdr_peak_analysis_position");
+    require(mode->currentData().toString()=="fixed" && height->text()=="68" && position->currentData().toString()=="bottom","Subtitle controls did not preserve legacy HDR settings");
+    require(!requireControl<QPushButton>(window,"applyConfiguration")->isEnabled(),"Loading inherited HDR settings dirtied the profile");
+    require(readBytes(path)==fixture,"Merely opening Subtitle HDR controls rewrote the old configuration");
+    window.setActiveProfileStatusForTesting({}, {}, {}, {}, {}, false,"vprenderer.zoom.Second",{}, {},"vprenderer.subtitles.First");
+    require(mode->currentData().toString()=="automatic" && height->text()=="80" && position->currentData().toString()=="top","Live Zoom switch did not refresh inherited Subtitle HDR values");
+    require(!requireControl<QPushButton>(window,"applyConfiguration")->isEnabled(),"Refreshing inherited HDR settings wrote overrides");
+    selectData(mode,"fixed");height->setText("77");
+    auto* offset=requireControl<QLineEdit>(window,"config.vprenderer.subtitles.offset_pixels");offset->setText("29");
+    window.setActiveProfileStatusForTesting({}, {}, {}, {}, {}, false,"vprenderer.zoom.First",{}, {},"vprenderer.subtitles.First");
+    require(mode->currentData().toString()=="fixed" && height->text()=="77" && offset->text()=="29","Live fallback refresh overwrote pending Subtitle edits");
+    require(position->currentData().toString()=="bottom","Still-inherited HDR field did not follow changed legacy owner");
+    auto* type=requireControl<QComboBox>(window,"config.vprenderer.subtitles.type");
+    for(const auto& style:{"classic","generated_gray","black"}) {
+        selectData(type,style);QApplication::processEvents();
+        require(mode->isVisible() && height->isVisible() && mode->currentData().toString()=="fixed","HDR protection became Classic-only or was reset by switching subtitle style");
+    }
+    selectData(mode,"automatic");save(window);
+    const auto saved=readBytes(path);
+    require(saved.contains("# keep the legacy owner until edited") && saved.contains("hdr_peak_analysis_height_percent: 68"),"Legacy values/comments lost");
+    ConfigEditorWindow reopened(path,0,true);
+    require(requireControl<QComboBox>(reopened,"config.vprenderer.subtitles.hdr_peak_analysis_mode")->currentData().toString()=="automatic","Subtitle Smart override did not survive a legacy Percentage setting");
+    require(!requireControl<QLineEdit>(reopened,"config.vprenderer.subtitles.hdr_peak_analysis_height_percent")->isEnabled(),"Percentage controls enabled during Smart mode");
+}
+
 int run(const char* name, const std::function<void()>& test)
 {
     if (!testNameFilter.isEmpty() &&
@@ -6398,6 +6695,13 @@ int main(int argc, char** argv)
     QApplication::setStyle(VpTheme::CreateStyle());
     application.setStyleSheet(VpTheme::StyleSheet());
     int failures = 0;
+    failures += run("subtitle profile tab round trip", testSubtitleProfileTabRoundTrip);
+    failures += run("subtitle background shape round trip and visibility", testSubtitleBackgroundShapeRoundTripAndVisibility);
+    failures += run("subtitle text size reduction round trip and style visibility", testSubtitleTextSizeReductionRoundTripAndStyleVisibility);
+    failures += run("subtitle HDR legacy fallback and shared modes", testSubtitleHdrLegacyFallbackAndSharedModes);
+    failures += run("subtitle diagnostic survives Config save and reopen",
+        testSubtitleDiagnosticSurvivesConfigSaveAndReopen);
+    failures += run("Subtitle cut paste survives config save and reopen", testSubtitleCutPasteSurvivesConfigSaveAndReopen);
     failures += run("audited Boolean aliases and inherited Auto status", testAuditedBooleanAliasesAndInheritedAutoStatus);
     failures += run("invalid audited values remain actionable", testInvalidAuditedValuesRemainActionable);
     failures += run("diagnostic preset describes flags and retention default", testDiagnosticPresetDescribesFlagsAndRetentionUsesDefault);

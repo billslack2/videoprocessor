@@ -2,6 +2,7 @@
 #include "CppUnitTest.h"
 
 #include <vprenderer/HdrPeakAnalysisCrop.h>
+#include <SubtitleCutPaste.h>
 
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
@@ -205,6 +206,45 @@ namespace Tests
 			Assert::IsFalse(HdrPeakAnalysisCrop::Resolve(
 				false, true, 8, trusted, presentation).AppliesRestriction());
 		}
+
+        TEST_METHOD(SmartMovedOverlayUsesTrustedAnalysisEdgeDespiteDetectorDisagreement)
+        {
+            for(bool top:{false,true})for(int delta=-3;delta<=3;++delta) {
+                HdrPeakAnalysisCrop::TrustedPicture trusted={0,45+delta,640,315+delta,640,360,7,true};
+                const SubtitleBoxRect card=top?SubtitleBoxRect{190,45,410,85}:SubtitleBoxRect{190,275,410,315};
+                const auto g=ComputeSubtitleCutPaste(top?SubtitleBoxRect{200,20,400,60}:SubtitleBoxRect{200,295,400,330},
+                    640,360,45,315,10,15,&card,0,&card);
+                const float protection=SubtitleHdrProtectionPixels(g,true,trusted.top,trusted.bottom);
+                const auto decision=HdrPeakAnalysisCrop::ResolvePolicy(false,true,true,7,trusted,
+                    pl_rect2df{0,0,640,360},75,protection);
+                Assert::IsTrue(decision.AppliesRestriction());
+                if(top)Assert::AreEqual(float((std::max)(g.destination.bottom,card.bottom)),decision.trustedIntersection.y0);
+                else Assert::AreEqual(float((std::min)(g.destination.top,card.top)),decision.trustedIntersection.y1);
+            }
+        }
+
+        TEST_METHOD(SmartProtectionIncludesMovedOverlayAndOriginalBackingForEitherBar)
+        {
+            HdrPeakAnalysisCrop::TrustedPicture trusted={0,45,640,315,640,360,7,true};
+            const pl_rect2df presentation{0,45,640,315};
+            for(bool top:{false,true}) {
+                const SubtitleBoxRect card=top?SubtitleBoxRect{190,45,410,85}:SubtitleBoxRect{190,275,410,315};
+                const auto g=ComputeSubtitleCutPaste(top?SubtitleBoxRect{200,20,400,60}:SubtitleBoxRect{200,295,400,330},
+                    640,360,45,315,10,15,&card,0,&card);
+                Assert::IsTrue(g.valid);
+                const float protection=SubtitleHdrProtectionPixels(g,true,trusted.top,trusted.bottom);
+                const auto smart=HdrPeakAnalysisCrop::ResolvePolicy(false,true,true,7,trusted,presentation,75,protection);
+                Assert::IsTrue(smart.AppliesRestriction());
+                if(top)Assert::AreEqual(float((std::max)(g.destination.bottom,card.bottom)),smart.trustedIntersection.y0);
+                else Assert::AreEqual(float((std::min)(g.destination.top,card.top)),smart.trustedIntersection.y1);
+                const auto fixed=HdrPeakAnalysisCrop::ResolvePolicy(true,true,true,7,trusted,presentation,75,protection);
+                const auto oldFixed=HdrPeakAnalysisCrop::ResolvePolicy(true,false,true,7,trusted,presentation,75,0);
+                Assert::AreEqual(oldFixed.trustedIntersection.y0,fixed.trustedIntersection.y0);
+                Assert::AreEqual(oldFixed.trustedIntersection.y1,fixed.trustedIntersection.y1);
+                Assert::AreEqual(0.0f,SubtitleHdrProtectionPixels(g,false,trusted.top,trusted.bottom));
+            }
+            Assert::AreEqual(0.0f,SubtitleHdrProtectionPixels({},true,45,315));
+        }
 
 		TEST_METHOD(MotionCompensationTrimsOnlyMovementOwningEdge)
 		{

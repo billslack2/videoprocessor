@@ -1064,6 +1064,35 @@ namespace UnifiedProfileRuntime
 			!RendererProfileConfig::ResolveZoom(m_model, selectedZoom->second.front(),
 				viewport, error))
 			return false;
+        // Subtitle policy is independent of Screen and Zoom. Old controls are ignored.
+        viewport.subtitleFit = true;
+        viewport.subtitleHoldMilliseconds = RendererProfileConfig::DEFAULT_CLASSIC_SUBTITLE_HOLD_MS;
+        viewport.subtitleEngageDriftMilliseconds = RendererProfileConfig::DEFAULT_CLASSIC_SUBTITLE_ENGAGE_DRIFT_MS;
+        viewport.subtitleReleaseDriftMilliseconds = RendererProfileConfig::DEFAULT_CLASSIC_SUBTITLE_RELEASE_DRIFT_MS;
+        viewport.subtitlePaddingPixels = RendererProfileConfig::DEFAULT_CLASSIC_SUBTITLE_PADDING_PIXELS;
+        viewport.subtitleTargetBufferPixels = RendererProfileConfig::DEFAULT_SUBTITLE_TARGET_BUFFER_PIXELS;
+        const auto selectedSubtitles = effective.find("subtitles");
+        if (selectedSubtitles != effective.end() && !selectedSubtitles->second.empty()) {
+            const auto p = m_model.profiles.find("subtitles." + selectedSubtitles->second.front());
+            if (p != m_model.profiles.end()) {
+                RendererProfileConfig::ApplySubtitleHdrAnalysisSettings(p->second,viewport);
+                const auto type=p->second.settings.find("type");
+                viewport.subtitleFit = type==p->second.settings.end() || ConfigFile::NormalizeName(type->second)=="classic";
+                if (!viewport.subtitleFit) viewport.subtitlePaddingPixels = 0;
+                const auto offset=p->second.settings.find("offset_pixels");
+                if(offset!=p->second.settings.end()) RendererProfileConfig::ParseInteger(offset->second,0,500,viewport.subtitlePaddingPixels);
+                if(viewport.subtitleFit) {
+                    const auto& values=p->second.settings;
+                    auto get=[&](const char* key) { auto it=values.find(key); return it==values.end()?std::string():it->second; };
+                    double seconds=0;
+                    if(DisplayRuleExpression::ParseNumber(get("subtitle_hold_seconds"),seconds)) viewport.subtitleHoldMilliseconds=static_cast<uint64_t>(std::llround(seconds*1000));
+                    int n=0;
+                    if(RendererProfileConfig::ParseInteger(get("subtitle_engage_drift_ms"),0,30000,n)) viewport.subtitleEngageDriftMilliseconds=n;
+                    if(RendererProfileConfig::ParseInteger(get("subtitle_release_drift_ms"),0,30000,n)) viewport.subtitleReleaseDriftMilliseconds=n;
+                    if(RendererProfileConfig::ParseInteger(get("subtitle_target_buffer_pixels"),0,50,n)) viewport.subtitleTargetBufferPixels=n;
+                }
+            }
+        }
 		RendererProfileConfig::ResolvedQueue queue;
 		const auto selectedQueue = effective.find("queue");
 		if (selectedQueue != effective.end() && !selectedQueue->second.empty() &&

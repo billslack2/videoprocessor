@@ -464,6 +464,18 @@ bool LibplaceboPluginVideoRenderer::ApplyApplicationState(
 		rendererRestartRequired, liveResetRequired);
 }
 
+
+void LibplaceboPluginVideoRenderer::ResetSubtitlePreviewMode()
+{
+	if(m_renderer) m_renderer->ResetSubtitlePreviewMode();
+}
+
+bool LibplaceboPluginVideoRenderer::CycleSubtitlePreviewMode(
+	SubtitlePreviewMode& mode)
+{
+	return m_renderer && m_renderer->CycleSubtitlePreviewMode(mode);
+}
+
 size_t LibplaceboPluginVideoRenderer::GetFrameQueueSize()
 {
 	return m_renderer->GetFrameQueueSize();

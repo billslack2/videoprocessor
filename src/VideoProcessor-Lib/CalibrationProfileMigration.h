@@ -33,7 +33,7 @@ namespace CalibrationProfileMigration
     inline bool IsRendering(const std::string& section)
     {
         if (!ColorOutputProfileMigration::IsProfile(section, "vprenderer")) return false;
-        for (const char* child : { "input", "input_processing", "scaling", "color", "output", "viewport", "zoom" })
+        for (const char* child : { "input", "input_processing", "scaling", "color", "output", "viewport", "zoom", "subtitles" })
             if (section == std::string("vprenderer.") + child) return false;
         return true;
     }

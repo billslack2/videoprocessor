@@ -1,0 +1,122 @@
+{
+  "schema": 1,
+  "description": "Native unprocessed source interval from the four-mode courtyard recording. Green-box and moved modes are excluded from detector inputs.",
+  "media": {
+    "basename": "2026-10-06 17-21-56.mp4",
+    "sha256": "44d99bf7eacd7ebeba26977543f9a6c0172b3dde2484b6ed6ead04ba03cb15f1",
+    "width_height_frames": [
+      2560,
+      1440,
+      14779
+    ],
+    "fps": 60
+  },
+  "annotation_method": "Original raster visually reviewed at t31,32,33 and t34,35,36,37. Pixel bounds measured on source black-backed glyphs. Coordinates below are half-open relative to movie crop (544,176). Stable interior intervals only; no onset or offset claim. Independent allowed extents explicitly exclude scenery above the shallow Whoa panel.",
+  "limitations": [
+    "Desktop capture, not original movie bitstream. Native crop is not resized.",
+    "Subtitle background is fully opaque black by user configuration.",
+    "Only clean initial mode is replayed. Seek UI, t69, diagnostic boxes, and replacement outputs are excluded.",
+    "Panel expected rectangle covers only visible source intrusion into picture; exact hidden card extent inside letterbox is not observable."
+  ],
+  "segments": [
+    {
+      "id": "courtyard_clean_source",
+      "frames": [
+        1800,
+        2280
+      ],
+      "crop_xywh": [
+        544,
+        176,
+        2000,
+        1124
+      ],
+      "reviewed_picture_y": [
+        143,
+        982
+      ]
+    }
+  ],
+  "annotations": [
+    {
+      "id": "two_line_upper_picture",
+      "segment": "courtyard_clean_source",
+      "frames": [
+        1860,
+        1950
+      ],
+      "line_boxes": [
+        [
+          680,
+          930,
+          1318,
+          961
+        ],
+        [
+          852,
+          976,
+          1146,
+          1006
+        ]
+      ],
+      "split": "regression",
+      "range_kind": "verified_interior",
+      "allowed_detection_xyxy": [
+        650,
+        910,
+        1350,
+        1020
+      ],
+      "source_panel_expected_xyxy": [
+        664,
+        919,
+        1337,
+        982
+      ],
+      "source_panel_tolerance": 3,
+      "allowed_source_panel_xyxy": [
+        650,
+        907,
+        1350,
+        1020
+      ]
+    },
+    {
+      "id": "whoa_reject_debris",
+      "segment": "courtyard_clean_source",
+      "frames": [
+        2040,
+        2220
+      ],
+      "line_boxes": [
+        [
+          804,
+          975,
+          1192,
+          1005
+        ]
+      ],
+      "split": "regression",
+      "range_kind": "verified_interior",
+      "allowed_detection_xyxy": [
+        780,
+        954,
+        1225,
+        1020
+      ],
+      "source_panel_expected_xyxy": [
+        791,
+        965,
+        1210,
+        982
+      ],
+      "source_panel_tolerance": 3,
+      "allowed_source_panel_xyxy": [
+        780,
+        950,
+        1225,
+        1020
+      ]
+    }
+  ]
+}

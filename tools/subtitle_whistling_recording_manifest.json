@@ -1,0 +1,62 @@
+{
+  "schema": 1,
+  "media": {
+    "basename": "2026-10-06 20-04-33.mp4",
+    "sha256": "93bf01d72c33e803d2469dff16a586f6474f8fb87266a6f1ae23f03dd19eba48",
+    "width_height_frames": [
+      2560,
+      1440,
+      6478
+    ],
+    "fps": 60
+  },
+  "segments": [
+    {
+      "id": "raw_whistling",
+      "frames": [
+        3660,
+        4130
+      ],
+      "crop_xywh": [
+        544,
+        176,
+        2000,
+        1124
+      ],
+      "reviewed_picture_y": [
+        143,
+        982
+      ]
+    }
+  ],
+  "annotations": [
+    {
+      "id": "whistling_clean_interior",
+      "segment": "raw_whistling",
+      "frames": [
+        4080,
+        4120
+      ],
+      "line_boxes": [
+        [
+          914,
+          975,
+          1086,
+          1005
+        ]
+      ],
+      "split": "regression",
+      "range_kind": "verified_interior",
+      "allowed_detection_xyxy": [
+        894,
+        959,
+        1110,
+        1020
+      ]
+    }
+  ],
+  "limitations": [
+    "Desktop capture downscales 3840x2160 live input to a 2000x1124 movie rectangle; native replay cannot establish equivalence to the live sampling grid.",
+    "Only unprocessed source pass used. Seek overlays and Ctrl-T mode transitions excluded."
+  ]
+}

@@ -31,8 +31,11 @@ bool ForwardFullscreenShortcut(HWND fullscreen, UINT message,
 	// through CVideoProcessorDlg::PreTranslateMessage. Route scalar input to
 	// the dialog's common configured-command dispatcher while this key message
 	// is still being handled; no render or cross-process wait is involved.
+	const bool repeat = (static_cast<ULONG_PTR>(keyData) & (1ull << 30)) != 0;
+	const LPARAM shortcutFlags = static_cast<LPARAM>(modifiers) |
+		(repeat ? 0x100 : 0);
 	const LRESULT routed = mainWindow->SendMessage(
-		WM_MESSAGE_EXTERNAL_SHORTCUT, virtualKey, modifiers);
+		WM_MESSAGE_EXTERNAL_SHORTCUT, virtualKey, shortcutFlags);
 	DebugLog::Log(
 		"Fullscreen keyboard forwarding: message=0x%04x vk=0x%02x modifiers=0x%02x host=%p main=%p routed=%d repeat=%d",
 		message, static_cast<unsigned int>(virtualKey),
