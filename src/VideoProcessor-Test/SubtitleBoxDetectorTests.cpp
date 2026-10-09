@@ -67,6 +67,40 @@ TEST_CLASS(SubtitleBoxDetectorTests) {
         s.format=AnalysisLumaFormat::P010;s.generation=gen;return s;
     }
 public:
+    TEST_METHOD(BlackRimCannotHideSceneInsideNearBarComponentEnvelope) {
+        for(bool atTop:{false,true})for(bool blackInterior:{false,true})for(int width:{24,64}) {
+            auto f=Frame();const int height=18;
+            const int x=320-width/2,y=atTop?49:315-height-4;
+            Fill(f,x-6,y-4,x+width+6,y+height+4,64);
+            Fill(f,x,y,x+width,y+height,510);
+            Fill(f,x+3,y+3,x+width-3,y+height-3,blackInterior?64:180);
+            SubtitleBoxDetector detector;detector.SetNearBarDistance(20);
+            const auto result=detector.Analyze(Source(f),45,315,1,1);
+            Assert::AreEqual(blackInterior,result.detected,
+                L"black exterior cannot conceal picture inside a shape; real black-backed connected glyphs stay eligible");
+        }
+    }
+
+    TEST_METHOD(NearBarSceneOpeningCannotBorrowCrossingGlyphBackingException) {
+        for(bool atTop:{false,true})for(bool backed:{false,true})for(int width:{24,64}) {
+            auto f=Frame();const int height=18;
+            const int x=320-width/2,y=atTop?45:315-height;
+            // A scene opening touches the picture edge, has a dark interior,
+            // and one black horizontal rail. No ink enters the encoded bar.
+            Fill(f,x,y,x+width,y+height,510);
+            Fill(f,x+2,y+2,x+width-2,y+height-2,64);
+            Fill(f,x,atTop?y+height:y-3,x+width,atTop?y+height+3:y,64);
+            if(backed) {
+                Fill(f,x-5,y,x,y+height,64);
+                Fill(f,x+width,y,x+width+5,y+height,64);
+            }
+            SubtitleBoxDetector detector;detector.SetNearBarDistance(20);
+            const auto result=detector.Analyze(Source(f),45,315,1,1);
+            Assert::AreEqual(backed,result.detected,
+                L"a picture-only shape needs distributed backing; a real backed connected glyph remains eligible");
+        }
+    }
+
     TEST_METHOD(CompactConnectedBarGlyphCanSeedCaptionWithoutLatinWordAspect) {
         for(bool solid:{false,true})for(bool inPicture:{false,true}) {
             auto f=Frame();const int y=inPicture?280:322;

@@ -33,9 +33,35 @@ struct SubtitleBarTrackingReference
     }
 };
 
+// Snapshot of the SAME bar authority consumed by Classic. Queued scans may
+// speculate with a snapshot, but presentation must match the current decision.
+struct SubtitlePictureAuthority {
+    bool required=false;
+    ActivePictureBounds bounds;
+    ActivePictureFrameIdentity identity;
+    bool Matches(const SubtitlePictureAuthority& other) const {
+        return required==other.required && (!required ||
+            (bounds.left==other.bounds.left && bounds.top==other.bounds.top &&
+             bounds.right==other.bounds.right && bounds.bottom==other.bounds.bottom &&
+             bounds.rasterWidth==other.bounds.rasterWidth && bounds.rasterHeight==other.bounds.rasterHeight &&
+             identity.transportGeneration==other.identity.transportGeneration &&
+             identity.sourceFormatGeneration==other.identity.sourceFormatGeneration &&
+             identity.viewportGeneration==other.identity.viewportGeneration &&
+             identity.rendererGeneration==other.identity.rendererGeneration));
+    }
+    bool AvailableFor(const ActivePictureFrameIdentity& frame,int width,int height) const {
+        auto next=*this;next.identity=frame;
+        return required && Matches(next) && bounds.rasterWidth==width && bounds.rasterHeight==height &&
+            bounds.left>=0 && bounds.right<=width && bounds.left<bounds.right &&
+            bounds.top>=0 && bounds.bottom<=height && bounds.top<bounds.bottom &&
+            (bounds.top>0 || bounds.bottom<height);
+    }
+};
+
 // A measurement belongs to source pixels, never retained presentation geometry.
 struct SubtitleBoxObservation
 {
+    SubtitlePictureAuthority sharedPicture;
     int nearBarDistance=0;
     int optimizationMode=0;
     ActivePictureFrameIdentity identity;
@@ -115,7 +141,8 @@ namespace SubtitleBoxLookahead
         const AnalysisLumaSource& source, const ActivePictureEvidence& raw,
         const ActivePictureFrameIdentity& identity, bool discontinuity,
         const SubtitleBarTrackingReference& priorBar = {},
-        uint64_t policyGeneration = 0, uint64_t continuityGeneration = 0)
+        uint64_t policyGeneration = 0, uint64_t continuityGeneration = 0,
+        const SubtitlePictureAuthority& sharedPicture = {})
     {
         SubtitleBoxObservation result;
         const auto start = std::chrono::steady_clock::now();
@@ -127,6 +154,26 @@ namespace SubtitleBoxLookahead
         result.continuityGeneration = continuityGeneration;
         result.discontinuity = discontinuity;
         result.incomingBarTrackingReference = priorBar;
+        result.sharedPicture=sharedPicture;
+        if(sharedPicture.required) {
+            result.barEvidence.reason="shared-classic-authority-unavailable";
+            // No independent edge scan, reference retention, or opposite-bar
+            // hypothesis may overturn Classic's current/retained authority.
+            if(sharedPicture.AvailableFor(identity,source.width,source.height) && source.IsValid()) {
+                result.pictureTop=sharedPicture.bounds.top;result.pictureBottom=sharedPicture.bounds.bottom;
+                result.barAuthority=true;result.barEvidence.available=true;
+                result.barEvidence.top=result.pictureTop;result.barEvidence.bottom=result.pictureBottom;
+                result.barEvidence.reason="shared-classic-picture-authority";
+                scanner.Reset();
+                result.text=scanner.Analyze(source,result.pictureTop,result.pictureBottom,
+                    identity.acceptedSequence,identity.viewportGeneration);
+                result.ink=scanner.InkSnapshot();
+            }
+            result.analysisMs=std::chrono::duration<double,std::milli>(
+                std::chrono::steady_clock::now()-start).count();
+            return result;
+        }
+
         // Raw crop evidence is retained by the caller for its own purpose. Its
         // connected-picture veto cannot decide whether edge-crossing text exists.
         (void)raw;

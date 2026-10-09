@@ -478,6 +478,79 @@ inline SubtitleCutPasteGeometry ApplySubtitleTextReduction(SubtitleCutPasteGeome
     return g;
 }
 
+// Final display anchoring is separate from current-frame capture and cleanup.
+// A growing source card must not recenter an already accepted glyph mapping.
+class SubtitleLayoutAnchor
+{
+public:
+    void Reset() { m_valid=false; m_geometry={}; m_reference={}; }
+    SubtitleCutPasteGeometry Consume(SubtitleCutPasteGeometry g,
+        const SubtitleBoxResult& text,const SubtitleBoxPreview& preview,
+        SubtitleBoxPadding padding,int offset,bool floatBackground=false)
+    {
+        if(!g.valid || !text.detected || !preview.available || preview.current.discontinuity) {
+            Reset();return g;
+        }
+        auto equal=[](const SubtitleBoxRect& a,const SubtitleBoxRect& b) {
+            return a.left==b.left && a.top==b.top && a.right==b.right && a.bottom==b.bottom;
+        };
+        const auto& a=m_reference.identity;const auto& b=preview.current.identity;
+        const bool same=m_valid && m_cue==text.cue && !text.revised &&
+            m_policy==preview.policyGeneration && m_continuity==preview.continuityGeneration &&
+            a.transportGeneration==b.transportGeneration && a.sourceFormatGeneration==b.sourceFormatGeneration &&
+            a.viewportGeneration==b.viewportGeneration && a.rendererGeneration==b.rendererGeneration &&
+            m_reference.width==preview.current.width && m_reference.height==preview.current.height &&
+            m_geometry.fromTopBar==g.fromTopBar && equal(m_geometry.placementLimits,g.placementLimits) &&
+            m_geometry.glyphScale==g.glyphScale && m_padding==padding && m_offset==offset &&
+            m_geometry.roundedCorners==g.roundedCorners && m_float==floatBackground;
+        if(same) {
+            g.glyphTranslateX=m_geometry.glyphTranslateX;
+            g.glyphTranslateY=m_geometry.glyphTranslateY;
+            // Keep the acquired display box. Only current cleanup coverage may
+            // enlarge its background; source/capture/masks always stay fresh.
+            auto box=m_geometry.destination;
+            auto coverage=g.generatedCleanup;
+            if(coverage.Valid()) {
+                if(g.placementLimits.Valid())coverage={
+                    (std::max)(coverage.left,g.placementLimits.left),
+                    (std::max)(coverage.top,g.placementLimits.top),
+                    (std::min)(coverage.right,g.placementLimits.right),
+                    (std::min)(coverage.bottom,g.placementLimits.bottom)};
+                if(coverage.Valid()) {
+                    // Prefer symmetric horizontal growth about the original
+                    // center. At viewport edges the background may be asymmetric,
+                    // but text must not move and cleanup must remain covered.
+                    const float radius=(std::max)((std::max)(m_centerX-box.left,box.right-m_centerX),
+                        (std::max)(m_centerX-coverage.left,coverage.right-m_centerX));
+                    box.left=int(std::floor(m_centerX-radius));box.right=int(std::ceil(m_centerX+radius));
+                    // The offset-to-bar extension already covers this margin.
+                    // Absorbing it into the centered box on the second frame
+                    // would resize every offset cue despite unchanged backing.
+                    if(!g.extendToBar || !g.fromTopBar)box.top=(std::min)(box.top,coverage.top);
+                    if(!g.extendToBar || g.fromTopBar)box.bottom=(std::max)(box.bottom,coverage.bottom);
+                    if(g.placementLimits.Valid()) {
+                        box.left=(std::max)(box.left,g.placementLimits.left);
+                        box.right=(std::min)(box.right,g.placementLimits.right);
+                    }
+                }
+            }
+            g.destination=box;
+        } else m_centerX=(g.destination.left+g.destination.right)*0.5f;
+        m_geometry=g;m_reference=preview.current;m_reference.ink.reset();m_reference.text={};
+        m_cue=text.cue;m_policy=preview.policyGeneration;m_continuity=preview.continuityGeneration;
+        m_padding=padding;m_offset=offset;m_float=floatBackground;m_valid=true;
+        return g;
+    }
+private:
+    bool m_valid=false,m_float=false;
+    float m_centerX=0;
+    SubtitleCutPasteGeometry m_geometry;
+    SubtitleBoxObservation m_reference;
+    SubtitleBoxPadding m_padding;
+    int m_offset=0;
+    uint64_t m_cue=0,m_policy=0,m_continuity=0;
+};
+
 // Signed edge exclusion consumed by the existing Smart HDR analysis policy.
 // Positive protects the lower edge; negative protects the upper edge. Include
 // both the displayed overlay and vacated backing, without moving picture geometry.
@@ -521,7 +594,9 @@ inline SubtitleCutPasteSample MapSubtitleCutPastePixel(
 class SubtitleCutPastePresentation
 {
 public:
-    void Reset() { m_geometry={};m_reference={};m_cue=0;m_policy=m_continuity=0;m_sourcePanel={};m_relativeDisplay=false; }
+    void Reset() { m_geometry={};m_reference={};m_cue=0;m_policy=m_continuity=0;m_sourcePanel={};m_relativeDisplay=false;m_backingReason="reset";m_backingHeld=0; }
+    const char* BackingDecisionReason() const { return m_backingReason; }
+    uint64_t HeldBackingMeasurements() const { return m_backingHeld; }
     SubtitleCutPasteGeometry Consume(const SubtitleBoxResult& text,
         const SubtitleBoxPreview& preview, SubtitleBoxPadding padding={}, int gap=0,
         const SubtitleBoxRect* displayBounds=nullptr)
@@ -532,6 +607,29 @@ public:
             Reset();return {};
         }
         const auto& current=preview.current;
+        const bool sameDisplayCue=m_relativeDisplay==(displayBounds!=nullptr) && m_geometry.valid && !current.discontinuity && m_cue==text.cue &&
+            m_policy==preview.policyGeneration && m_continuity==preview.continuityGeneration &&
+            m_padding==padding && m_gap==gap && SubtitleBoxLookahead::SameContext(m_reference,current);
+        auto panel=text.sourcePanel;
+        m_backingReason="acquired";
+        if(sameDisplayCue) {
+            // An unchanged opaque caption owns the same original footprint.
+            // Dark scenery can merge with its blank margins, so a fresh larger
+            // black run is not evidence that the caption itself grew. Keep the
+            // accepted removal footprint; current glyph masks/card interiors
+            // remain independent and fresh below. A tracker-confirmed glyph
+            // correction can enlarge coverage, but never shrink the old card.
+            m_backingReason=text.revised?"confirmed-glyph-expansion":"retained-cue-footprint";
+            if(text.revised && panel.Valid()) {
+                if(m_sourcePanel.Valid()) panel={
+                    (std::min)(panel.left,m_sourcePanel.left),(std::min)(panel.top,m_sourcePanel.top),
+                    (std::max)(panel.right,m_sourcePanel.right),(std::max)(panel.bottom,m_sourcePanel.bottom)};
+            } else {
+                if(panel.left!=m_sourcePanel.left || panel.top!=m_sourcePanel.top ||
+                    panel.right!=m_sourcePanel.right || panel.bottom!=m_sourcePanel.bottom)++m_backingHeld;
+                panel=m_sourcePanel;
+            }
+        } else m_backingHeld=0;
         const auto& display=displayBounds && displayBounds->Valid()?*displayBounds:text.bounds;
         const auto padded=ExpandSubtitleBox(display,current.width,current.height,padding);
         const auto content=SubtitleGlyphCaptureBounds(text,current.width,current.height);
@@ -554,8 +652,8 @@ public:
         const bool same=sameCapture && sameLines && m_relativeDisplay==(displayBounds!=nullptr) && m_geometry.valid && !current.discontinuity && m_cue==text.cue &&
             m_policy==preview.policyGeneration && m_continuity==preview.continuityGeneration &&
             m_padding==padding && m_gap==gap &&
-            m_sourcePanel.left==text.sourcePanel.left && m_sourcePanel.top==text.sourcePanel.top &&
-            m_sourcePanel.right==text.sourcePanel.right && m_sourcePanel.bottom==text.sourcePanel.bottom &&
+            m_sourcePanel.left==panel.left && m_sourcePanel.top==panel.top &&
+            m_sourcePanel.right==panel.right && m_sourcePanel.bottom==panel.bottom &&
             SubtitleBoxLookahead::SameContext(m_reference,current) &&
             oldContent.left==content.left && oldContent.top==content.top &&
             oldContent.right==content.right && oldContent.bottom==content.bottom &&
@@ -563,18 +661,15 @@ public:
             old.right==padded.right && old.bottom==padded.bottom;
         if (same && m_geometry.destination.top>=current.pictureTop &&
             m_geometry.destination.bottom<=current.pictureBottom) return m_geometry;
-        const bool sameDisplayCue=m_relativeDisplay==(displayBounds!=nullptr) && m_geometry.valid && !current.discontinuity && m_cue==text.cue &&
-            m_policy==preview.policyGeneration && m_continuity==preview.continuityGeneration &&
-            m_padding==padding && m_gap==gap && SubtitleBoxLookahead::SameContext(m_reference,current);
         auto next=ComputeSubtitleCutPaste(display,current.width,current.height,
-            current.pictureTop,current.pictureBottom,padding,gap,&text.sourcePanel,current.nearBarDistance,
-            text.capturePanelMeasured?&text.capturePanel:nullptr,
+            current.pictureTop,current.pictureBottom,padding,gap,&panel,current.nearBarDistance,
+            &captureInPicture,
             text.nearBarEligibilityMeasured && text.nearBarEligible);
         if(next.valid) {
             // The frozen display envelope controls appearance, never clipping.
             // Accepted current glyphs must fit even when their corrected bounds
             // exceed the acquired padding. Keep that envelope for the cue, while
-            // current measured ownership alone still controls extraction/cleanup.
+            // fresh measured interiors alone still control glyph extraction.
             auto envelope=next.source;
             if(content.Valid()) envelope={
                 (std::min)(envelope.left,content.left),(std::min)(envelope.top,content.top),
@@ -619,7 +714,7 @@ public:
         m_geometry.content=content;m_geometry.glyphLines=glyphLines;
         m_reference=current;m_reference.ink.reset();m_reference.text={};
         m_cue=text.cue;m_policy=preview.policyGeneration;m_continuity=preview.continuityGeneration;
-        m_padding=padding;m_gap=gap;m_sourcePanel=text.sourcePanel;m_relativeDisplay=displayBounds!=nullptr;
+        m_padding=padding;m_gap=gap;m_sourcePanel=panel;m_relativeDisplay=displayBounds!=nullptr;
         return m_geometry;
     }
 private:
@@ -627,6 +722,8 @@ private:
     SubtitleBoxObservation m_reference;
     uint64_t m_cue=0,m_policy=0,m_continuity=0;
     SubtitleBoxRect m_sourcePanel;
+    const char* m_backingReason="reset";
+    uint64_t m_backingHeld=0;
     SubtitleBoxPadding m_padding;
     int m_gap=0;
     bool m_relativeDisplay=false;

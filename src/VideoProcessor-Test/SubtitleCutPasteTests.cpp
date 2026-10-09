@@ -22,6 +22,174 @@ TEST_CLASS(SubtitleCutPasteTests) {
         SubtitleBoxResult r;r.detected=true;r.cue=1;r.bounds={200,295,400,330};return r;
     }
 public:
+    TEST_METHOD(VaryingBackingMeasurementsCannotBreatheAnUnchangedCaption) {
+        // Sequence modeled on the reported UHD playback: its glyphs matched 100%,
+        // but changing blank margins repeatedly grew the display to 1719 px.
+        const std::array<SubtitleBoxRect,8> measured{{
+            {1174,1702,2670,1906},{1174,1702,2678,1906},
+            {1174,1702,2682,1906},{1174,1702,2714,1906},
+            {1174,1702,2746,1906},{1174,1702,2766,1906},
+            {1174,1702,2778,1906},{1174,1702,2670,1906}}};
+        for(bool top:{false,true})for(bool floating:{false,true})for(int reduction:{0,30,75}) {
+            auto p=Preview();p.current.width=3840;p.current.height=2160;
+            p.current.pictureTop=254;p.current.pictureBottom=1906;
+            auto text=Text();text.bounds={1226,1742,2610,2002};text.lineCount=2;
+            text.lineBounds[0]={1230,1892,2600,1992};text.lineBounds[1]={1302,1748,2540,1848};
+            auto mirror=[](SubtitleBoxRect r) {return SubtitleBoxRect{r.left,2160-r.bottom,r.right,2160-r.top};};
+            if(top) {text.bounds=mirror(text.bounds);for(int i=0;i<2;++i)text.lineBounds[i]=mirror(text.lineBounds[i]);}
+            text.capturePanelMeasured=true;
+            SubtitleCutPastePresentation presentation;SubtitleLayoutAnchor anchor;
+            const SubtitleBoxPadding padding{73,60,25};
+            SubtitleCutPasteGeometry first;
+            for(size_t frame=0;frame<measured.size();++frame) {
+                text.sourcePanel=top?mirror(measured[frame]):measured[frame];
+                text.capturePanel=text.sourcePanel;
+                p.current.identity.acceptedSequence=frame+1;p.current.text=text;
+                auto g=presentation.Consume(text,p,padding,15);
+                Assert::AreEqual(text.capturePanel.right,g.pictureCapture.right,L"current extraction stays fresh");
+                g=ApplySubtitleTextReduction(FitSubtitleToVisiblePicture(g,{0,254,3840,1906},15),reduction,padding,true,floating);
+                g=anchor.Consume(g,text,p,padding,15,floating);
+                Assert::IsTrue(g.valid);
+                if(frame==0)first=g;
+                Assert::IsTrue(SubtitleBoxLookahead::SameLine(first.destination,g.destination,0),L"blank-edge jitter must not resize the card");
+                Assert::IsTrue(SubtitleBoxLookahead::SameLine(first.generatedCleanup,g.generatedCleanup,0));
+                Assert::AreEqual(first.glyphTranslateX,g.glyphTranslateX);Assert::AreEqual(first.glyphTranslateY,g.glyphTranslateY);
+            }
+            Assert::AreEqual(uint64_t(6),presentation.HeldBackingMeasurements());
+        }
+    }
+    TEST_METHOD(StableFootprintStillAllowsConfirmedPunctuationAndPictureLineRecovery) {
+        for(bool top:{false,true})for(int direction:{0,1,2}) {
+            auto p=Preview();auto text=Text();text.lineCount=1;text.lineBounds[0]=text.bounds;
+            text.sourcePanel={190,280,410,315};text.capturePanel=text.sourcePanel;text.capturePanelMeasured=true;
+            auto mirror=[](SubtitleBoxRect r) {return SubtitleBoxRect{r.left,360-r.bottom,r.right,360-r.top};};
+            if(top) {text.bounds=mirror(text.bounds);text.lineBounds[0]=text.bounds;text.sourcePanel=mirror(text.sourcePanel);text.capturePanel=text.sourcePanel;}
+            SubtitleCutPastePresentation presentation;SubtitleLayoutAnchor anchor;
+            const SubtitleBoxPadding padding{12,18,10};
+            auto compose=[&]() {
+                p.current.text=text;++p.current.identity.acceptedSequence;
+                auto g=presentation.Consume(text,p,padding,15);
+                g=ApplySubtitleTextReduction(FitSubtitleToVisiblePicture(g,{0,45,640,315},15),75,padding,true,true);
+                return anchor.Consume(g,text,p,padding,15,true);
+            };
+            const auto first=compose();Assert::IsTrue(first.valid);
+            // Corresponds to the tracker's current-plus-queued glyph correction.
+            text.revised=true;
+            if(direction==0) {text.bounds.left=170;text.sourcePanel.left=160;}
+            if(direction==1) {text.bounds.right=435;text.sourcePanel.right=445;}
+            if(direction==2) {
+                if(top) {text.bounds.bottom=90;text.sourcePanel.bottom=100;}
+                else {text.bounds.top=270;text.sourcePanel.top=260;}
+            }
+            text.lineBounds[0]=text.bounds;text.capturePanel=text.sourcePanel;
+            const auto corrected=compose();Assert::IsTrue(corrected.valid);
+            Assert::IsTrue(corrected.generatedCleanup.left<=text.sourcePanel.left && corrected.generatedCleanup.right>=text.sourcePanel.right &&
+                corrected.generatedCleanup.top<=text.sourcePanel.top && corrected.generatedCleanup.bottom>=text.sourcePanel.bottom);
+            Assert::IsTrue(corrected.destination.left<=corrected.generatedCleanup.left && corrected.destination.right>=corrected.generatedCleanup.right &&
+                (top?corrected.destination.bottom>=corrected.generatedCleanup.bottom:corrected.destination.top<=corrected.generatedCleanup.top));
+            Assert::IsTrue(corrected.extendToBar,L"recovered picture-side backing must meet the physical bar");
+            text.revised=false;text.sourcePanel={};text.capturePanel={};
+            const auto weak=compose();Assert::IsTrue(weak.valid && !weak.pictureCapture.Valid());
+            Assert::IsTrue(SubtitleBoxLookahead::SameLine(corrected.generatedCleanup,weak.generatedCleanup,0));
+            Assert::IsTrue(SubtitleBoxLookahead::SameLine(corrected.destination,weak.destination,0));
+        }
+    }
+    TEST_METHOD(BarOnlyCueCannotBorrowFreshSceneMarginsButConfirmedIntrusionCanGrow) {
+        auto p=Preview();auto text=Text();text.bounds={200,322,400,340};text.lineCount=1;text.lineBounds[0]=text.bounds;
+        text.capturePanelMeasured=true;
+        SubtitleCutPastePresentation presentation;
+        const auto first=presentation.Consume(text,p,10,15);Assert::IsTrue(first.valid && !first.generatedCleanup.Valid());
+        text.sourcePanel=text.capturePanel={180,280,420,315};
+        const auto ambiguous=presentation.Consume(text,p,10,15);
+        Assert::IsFalse(ambiguous.generatedCleanup.Valid(),L"a black scene patch without added caption ink cannot authorize picture removal");
+        Assert::IsTrue(ambiguous.pictureCapture.Valid(),L"current capture authority remains independent");
+        text.revised=true;text.bounds.top=text.lineBounds[0].top=290;
+        const auto corrected=presentation.Consume(text,p,10,15);
+        Assert::IsTrue(corrected.generatedCleanup.Valid() && corrected.pictureIntrusion);
+    }
+    TEST_METHOD(BackingFootprintReleasesOnCueAndContextChanges) {
+        for(int change=0;change<5;++change) {
+            auto p=Preview();auto text=Text();text.sourcePanel={180,270,420,315};
+            SubtitleCutPastePresentation presentation;presentation.Consume(text,p,10);
+            text.sourcePanel={190,285,410,315};
+            if(change==0)++text.cue;
+            if(change==1)++p.policyGeneration;
+            if(change==2)++p.continuityGeneration;
+            if(change==3)++p.current.identity.sourceFormatGeneration;
+            if(change==4)p.current.discontinuity=true;
+            const auto fresh=presentation.Consume(text,p,10);
+            Assert::IsTrue(fresh.valid && SubtitleBoxLookahead::SameLine(text.sourcePanel,fresh.generatedCleanup,0));
+        }
+    }
+    TEST_METHOD(FinalAnchorKeepsTextFixedWhenCurrentMeasurementsVary) {
+        for(bool top:{false,true})for(bool floating:{false,true})for(int reduction:{0,25,75}) {
+            auto p=Preview();auto text=Text();text.lineCount=1;text.lineBounds[0]=text.bounds;
+            SubtitleLayoutAnchor anchor;SubtitleCutPastePresentation presentation;
+            const SubtitleBoxPadding padding{12,18,10};
+            SubtitleCutPasteGeometry first;
+            for(int frame=0;frame<40;++frame) {
+                const int extra=frame<30?frame*2:0;
+                text.sourcePanel=text.capturePanel={190,290,410+extra,315};text.capturePanelMeasured=true;
+                text.bounds=text.lineBounds[0]=top?SubtitleBoxRect{200,30,400,65}:SubtitleBoxRect{200,295,400,330};
+                if(top)text.sourcePanel=text.capturePanel={190,45,410+extra,70};
+                p.current.identity.acceptedSequence=frame+1;p.current.text=text;
+                auto fresh=presentation.Consume(text,p,padding,15);
+                fresh=ApplySubtitleTextReduction(FitSubtitleToVisiblePicture(fresh,{0,45,640,315},15),
+                    reduction,padding,true,floating);
+                const auto result=anchor.Consume(fresh,text,p,padding,15,floating);
+                Assert::IsTrue(result.valid,(L"top="+std::to_wstring(top)+L" floating="+std::to_wstring(floating)+L" reduction="+std::to_wstring(reduction)+L" frame="+std::to_wstring(frame)).c_str());
+                if(frame==0)first=result;
+                Assert::AreEqual(first.glyphTranslateX,result.glyphTranslateX);
+                Assert::AreEqual(first.glyphTranslateY,result.glyphTranslateY);
+                Assert::AreEqual(first.glyphScale,result.glyphScale);
+                Assert::AreEqual(fresh.source.right,result.source.right,L"capture must not freeze with placement");
+                Assert::AreEqual(fresh.pictureCapture.right,result.pictureCapture.right);
+                Assert::AreEqual(fresh.generatedCleanup.right,result.generatedCleanup.right);
+                Assert::IsTrue(result.destination.left<=result.generatedCleanup.left &&
+                    result.destination.right>=result.generatedCleanup.right &&
+                    (top && result.extendToBar ? result.placementLimits.top : result.destination.top)<=result.generatedCleanup.top &&
+                    (!top && result.extendToBar ? result.placementLimits.bottom : result.destination.bottom)>=result.generatedCleanup.bottom);
+            }
+        }
+    }
+    TEST_METHOD(FinalAnchorIgnoresUnconfirmedLayoutJitterButReleasesOnExplicitChanges) {
+        auto p=Preview();auto text=Text();SubtitleLayoutAnchor anchor;
+        auto first=ComputeSubtitleCutPaste(text.bounds,640,360,45,315,12,15);
+        first=ApplySubtitleTextReduction(FitSubtitleToVisiblePicture(first,{0,45,640,315},15),25);
+        const auto acquired=anchor.Consume(first,text,p,{},15);
+        auto candidate=first;candidate.destination.right+=40;candidate.glyphTranslateX+=20;
+        candidate.generatedCleanup={};
+        auto held=anchor.Consume(candidate,text,p,{},15);
+        Assert::AreEqual(acquired.glyphTranslateX,held.glyphTranslateX);
+        Assert::AreEqual(acquired.destination.right,held.destination.right);
+        for(int change=0;change<7;++change) {
+            SubtitleLayoutAnchor freshAnchor;freshAnchor.Consume(first,text,p,{},15);
+            auto changedText=text;auto changedPreview=p;auto next=candidate;int offset=15;bool floating=false;
+            if(change==0)changedText.revised=true;
+            if(change==1)++changedText.cue;
+            if(change==2)++changedPreview.policyGeneration;
+            if(change==3)next.placementLimits.left+=10;
+            if(change==4)++offset;
+            if(change==5)next.glyphScale=0.5f;
+            if(change==6)floating=true;
+            auto accepted=freshAnchor.Consume(next,changedText,changedPreview,{},offset,floating);
+            Assert::AreEqual(next.glyphTranslateX,accepted.glyphTranslateX);
+        }
+    }
+    TEST_METHOD(FinalAnchorBackgroundIntrusionDoesNotRecenterFloatingText) {
+        auto p=Preview();auto text=Text();text.bounds={200,320,400,340};
+        SubtitleLayoutAnchor anchor;SubtitleBoxRect empty;
+        auto first=ComputeSubtitleCutPaste(text.bounds,640,360,45,315,12,15,&empty);
+        first=ApplySubtitleTextReduction(FitSubtitleToVisiblePicture(first,{0,45,640,315},15),25,{},true,true);
+        const auto acquired=anchor.Consume(first,text,p,{},15,true);
+        Assert::IsFalse(acquired.extendToBar);
+        auto candidate=first;candidate.generatedCleanup={190,300,440,315};candidate.extendToBar=true;
+        candidate.glyphTranslateX+=20;
+        const auto held=anchor.Consume(candidate,text,p,{},15,true);
+        Assert::IsTrue(held.extendToBar);
+        Assert::AreEqual(acquired.glyphTranslateX,held.glyphTranslateX);
+        Assert::IsTrue(held.destination.right>=440);
+    }
     TEST_METHOD(TextReductionKeepsSourceAuthorityAndPaddingAtEitherEdge) {
         const SubtitleBoxPadding padding{12,18,10};
         auto sameRect=[](const SubtitleBoxRect& a,const SubtitleBoxRect& b) {
@@ -132,7 +300,7 @@ public:
         Assert::IsTrue(a.valid && b.valid);
         Assert::AreEqual(a.glyphTranslateX,b.glyphTranslateX);Assert::AreEqual(a.glyphTranslateY,b.glyphTranslateY);
         Assert::AreEqual(a.destination.top,b.destination.top);Assert::AreEqual(a.destination.bottom,b.destination.bottom);
-        Assert::AreEqual(290,second.generatedCleanup.top,L"fresh cleanup is not replaced by the frozen display envelope");
+        Assert::AreEqual(275,second.generatedCleanup.top,L"an unchanged opaque cue retains its acquired cleanup footprint");
     }
     TEST_METHOD(FreshCrossingInkOverridesFloatEvenWithFrozenBarOnlyDisplay) {
         auto p=Preview();auto text=Text();text.bounds={200,323,400,340};text.sourcePanel={};
@@ -513,7 +681,7 @@ public:
         Assert::AreEqual(160,g.destination.left);Assert::AreEqual(440,g.destination.right);
         Assert::AreEqual(200,g.content.left);Assert::AreEqual(400,g.content.right);
     }
-    TEST_METHOD(SameCueDisplayCannotShrinkButCleanupUsesCurrentPanel) {
+    TEST_METHOD(SameCueKeepsCleanupFootprintWhileCaptureUsesCurrentPanel) {
         auto p=Preview();auto r=Text();SubtitleCutPastePresentation state;
         r.sourcePanel={160,280,440,315};
         const auto initial=state.Consume(r,p,{5,5,5});
@@ -521,7 +689,7 @@ public:
         const auto narrower=state.Consume(r,p,{5,5,5});
         Assert::AreEqual(initial.destination.left,narrower.destination.left);
         Assert::AreEqual(initial.destination.right,narrower.destination.right);
-        Assert::AreEqual(180,narrower.generatedCleanup.left);
+        Assert::AreEqual(160,narrower.generatedCleanup.left);
         Assert::AreEqual(420,narrower.pictureCapture.right);
         Assert::AreEqual(initial.destination.top,narrower.destination.top);
         ++r.cue;++p.current.identity.acceptedSequence;
@@ -814,22 +982,26 @@ public:
         Assert::IsFalse(barOnly.generatedCleanup.Valid(),
             L"display padding alone must not authorize erasing picture content");
     }
-    TEST_METHOD(MeasuredCardChangeInvalidatesPresentationGeometry) {
+    TEST_METHOD(ConfirmedGlyphCorrectionCanExpandTheCleanupFootprint) {
         auto p=Preview();auto r=Text();SubtitleCutPastePresentation state;
         r.sourcePanel={180,275,420,315};
         const auto first=state.Consume(r,p,SubtitleBoxPadding(0));
         Assert::IsTrue(first.valid);
-        r.sourcePanel={170,270,430,315};
+        r.sourcePanel={170,270,430,315};r.revised=true;
         const auto changed=state.Consume(r,p,SubtitleBoxPadding(0));
         Assert::AreEqual(170,changed.generatedCleanup.left);
         Assert::AreEqual(270,changed.generatedCleanup.top);
         Assert::AreEqual(430,changed.generatedCleanup.right);
         Assert::AreEqual(first.destination.top,changed.destination.top,
             L"refining the source card must not move the displayed glyphs");
-        r.sourcePanel={};
+        r.sourcePanel={};r.revised=false;
         const auto absent=state.Consume(r,p,SubtitleBoxPadding(0));
-        Assert::IsFalse(absent.generatedCleanup.Valid(),
-            L"missing measured card must invalidate cleanup rather than borrow the glyph fringe");
+        Assert::AreEqual(170,absent.generatedCleanup.left,
+            L"weaker card measurement cannot expose an accepted opaque backing again");
+        Assert::IsFalse(absent.pictureCapture.Valid(),L"held cleanup must never grant stale extraction authority");
+        ++r.cue;
+        const auto replaced=state.Consume(r,p,SubtitleBoxPadding(0));
+        Assert::IsFalse(replaced.generatedCleanup.Valid(),L"a new cue never inherits the previous footprint");
     }
     TEST_METHOD(WholeCuePlacementCleansBothOriginalPictureLineAndMovesBothLines) {
         // The upper subtitle line is already over the picture; the lower line

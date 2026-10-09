@@ -18,7 +18,7 @@ public:
         m_scanner.SetOptimizationMode(key.optimizationMode);
         m_scanner.SetNearBarDistance(key.nearBarDistance);
         auto result=SubtitleBoxLookahead::Measure(m_scanner,source,{},key.identity,key.discontinuity,
-            prior,key.policyGeneration,key.continuityGeneration);
+            prior,key.policyGeneration,key.continuityGeneration,key.sharedPicture);
         result.analysisMs=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-started).count();
         return result;
     }
@@ -46,7 +46,7 @@ public:
         return SameActivePictureFrameIdentity(a.identity,b.identity) &&
             a.width==b.width && a.height==b.height && a.nearBarDistance==b.nearBarDistance && a.optimizationMode==b.optimizationMode &&
             a.policyGeneration==b.policyGeneration && a.continuityGeneration==b.continuityGeneration &&
-            a.discontinuity==b.discontinuity;
+            a.discontinuity==b.discontinuity && a.sharedPicture.Matches(b.sharedPicture);
     }
     bool TryTake(const SubtitleBoxObservation& key,SubtitleBoxObservation& out) {
         std::lock_guard<std::mutex> lock(m_mutex);
@@ -156,8 +156,15 @@ public:
                 std::abs(int(now.chromaU)-sample.value.chromaU)>8 ||
                 std::abs(int(now.chromaV)-sample.value.chromaV)>8) {Reset();return false;}
         }
-        const auto bars=ExtractSubtitleBarEvidence(source);
-        if(!bars.available || bars.top!=old.pictureTop || bars.bottom!=old.pictureBottom) {Reset();return false;}
+        SubtitleBarEvidence bars;
+        if(key.sharedPicture.required) {
+            if(!key.sharedPicture.Matches(old.sharedPicture) ||
+                !key.sharedPicture.AvailableFor(key.identity,source.width,source.height)) {Reset();return false;}
+            bars=old.barEvidence;
+        } else {
+            bars=ExtractSubtitleBarEvidence(source);
+            if(!bars.available || bars.top!=old.pictureTop || bars.bottom!=old.pictureBottom) {Reset();return false;}
+        }
         m_elapsed+=frameMs;m_last=b;
         preview=m_reference;preview.current.identity=b;preview.current.discontinuity=false;
         preview.current.barEvidence=bars;preview.current.barTrackingAuthority=false;
