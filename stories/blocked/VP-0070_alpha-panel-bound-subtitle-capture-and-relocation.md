@@ -1,6 +1,22 @@
 # VP-0070: CIH bar/boundary subtitle capture and relocation
 
 
+## Scope replay confirms authority gating - 2026-10-09 18:27
+
+User repeated the missed captions with scope enabled. New logs confirm
+`screen_aspect=2.35000`, retained trusted geometry `0,270-3840,1886`, but
+candidate `0,276-3840,1902` rejected as `bar-asymmetry`. At 18:25:40 the shared
+subtitle action is temporarily held through an authority gap; at 18:25:41 that
+hold releases. At 18:27:12-22 BBOX repeatedly reports `not-analyzed` and
+`shared-classic-authority-unavailable`, while display owner is `fit` with
+`0,142-3840,1918`. Direct screenshot glyph tests still pass 4/4.
+This new scope replay supersedes the earlier inconclusive 16:9 session: the
+failure occurs before glyph analysis, in shared framing/authority admission.
+No fix is included in RC2.1. Investigate safe continued analysis against retained
+trusted bar geometry during ambiguous evidence without bypassing genuine picture
+expansion, scene-change protection, or shared Classic/moved policy.
+[Scope log excerpt](../assets/VP-0070/rc2.1-73953a36/missed-captions/scope-log-excerpt.txt).
+
 ## Published RC2.1 and missed-caption investigation — 2026-10-09
 
 
