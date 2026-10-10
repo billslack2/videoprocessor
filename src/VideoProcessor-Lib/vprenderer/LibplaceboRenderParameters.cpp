@@ -3,6 +3,7 @@
 #include <Windows.h>
 
 #include <type_traits>
+#include <algorithm>
 
 namespace
 {
@@ -361,6 +362,23 @@ namespace LibplaceboRenderParameters
 		{
 			return false;
 		}
+
+        auto& constants = projection.colorMapParams.tone_constants;
+        float* toneFields[] = { &constants.knee_adaptation, &constants.knee_minimum,
+            &constants.knee_maximum, &constants.knee_default, &constants.slope_tuning,
+            &constants.slope_offset, &constants.spline_contrast, &constants.knee_offset,
+            &constants.reinhard_contrast };
+        for (int i = 0; i < ToneMappingTuning::Percentile; ++i)
+            if (settings.toneTuning[i]) *toneFields[i] = static_cast<float>(*settings.toneTuning[i]);
+        constants.knee_default = (std::max)(constants.knee_minimum,
+            (std::min)(constants.knee_maximum, constants.knee_default));
+        if (projection.renderParams.peak_detect_params) {
+            auto& peak = projection.peakDetectParams;
+            float* peakFields[] = { &peak.percentile, &peak.smoothing_period,
+                &peak.scene_threshold_low, &peak.scene_threshold_high, &peak.black_cutoff };
+            for (int i = ToneMappingTuning::Percentile; i < ToneMappingTuning::Count; ++i)
+                if (settings.toneTuning[i]) *peakFields[i - ToneMappingTuning::Percentile] = static_cast<float>(*settings.toneTuning[i]);
+        }
 
 		if (settings.upscaler != "auto")
 		{

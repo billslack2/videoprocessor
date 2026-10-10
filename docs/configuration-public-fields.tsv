@@ -53,6 +53,20 @@ vprenderer.calibration_lut_bt2020	vprenderer-calibration-lut	Color / Output (leg
 vprenderer.tone_mapping	vprenderer-tone-mapping	VP Renderer	yes
 vprenderer.gamut_mapping	vprenderer-gamut-mapping	VP Renderer	yes
 vprenderer.peak_detection	vprenderer-peak-detection	VP Renderer	yes
+vprenderer.knee_adaptation	vprenderer-knee-adaptation	VP Renderer	yes
+vprenderer.knee_minimum	vprenderer-knee-minimum	VP Renderer	yes
+vprenderer.knee_maximum	vprenderer-knee-maximum	VP Renderer	yes
+vprenderer.knee_default	vprenderer-knee-default	VP Renderer	yes
+vprenderer.slope_tuning	vprenderer-slope-tuning	VP Renderer	yes
+vprenderer.slope_offset	vprenderer-slope-offset	VP Renderer	yes
+vprenderer.spline_contrast	vprenderer-spline-contrast	VP Renderer	yes
+vprenderer.knee_offset	vprenderer-knee-offset	VP Renderer	yes
+vprenderer.reinhard_contrast	vprenderer-reinhard-contrast	VP Renderer	yes
+vprenderer.percentile	vprenderer-percentile	VP Renderer	yes
+vprenderer.smoothing_period	vprenderer-smoothing-period	VP Renderer	yes
+vprenderer.scene_threshold_low	vprenderer-scene-threshold-low	VP Renderer	yes
+vprenderer.scene_threshold_high	vprenderer-scene-threshold-high	VP Renderer	yes
+vprenderer.black_cutoff	vprenderer-black-cutoff	VP Renderer	yes
 vprenderer.contrast_recovery	vprenderer-contrast-recovery	VP Renderer	yes
 vprenderer.upscaler	vprenderer-upscaler	Scaling (legacy spelling)	yes
 vprenderer.downscaler	vprenderer-downscaler	Scaling (legacy spelling)	yes
