@@ -1,0 +1,85 @@
+{
+  "sourceCommit": "c2fe3427a18cf211d75ad106efe651c195fe1be5",
+  "noOpParent": "505f95e829db0cc485d4a50e26078982a7d1bcb3",
+  "betaBase": "19d744402ef3acd518053f673f7dffdfd7a16163",
+  "releaseTag": "auto-update-test",
+  "channel": "beta",
+  "sequence": 20261010221520,
+  "qualification": {
+    "schema": 1,
+    "inputs": {
+      "checkout": "E:\\codex\\videoprocessor\\github-updater-20261010",
+      "sourceCommit": "c2fe3427a18cf211d75ad106efe651c195fe1be5",
+      "betaCommit": "19d744402ef3acd518053f673f7dffdfd7a16163",
+      "installerToolingCommit": "",
+      "coreVersion": "1.4.0-auto-update-test",
+      "vsInstallPath": "C:\\Program Files\\Microsoft Visual Studio\\18\\Professional",
+      "qtRoot": "C:\\Users\\bslac\\AppData\\Local\\VideoProcessor\\dependencies\\Qt\\6.8.3\\msvc2022_64",
+      "vcRedistPath": "C:\\Program Files\\Microsoft Visual Studio\\18\\Professional\\VC\\Redist\\MSVC\\14.51.36231\\vc_redist.x64.exe",
+      "isccPath": "E:\\codex\\tools\\inno-6.7.3\\app\\ISCC.exe",
+      "portableZip": false,
+      "reuseVerifiedBuild": true,
+      "workflowSha256": "BD44792277513CF1C860EEB32935069337D0C5BDD680869693B7430AC56F7878",
+      "outputDirectory": "E:\\codex\\releases\\auto-update-test-qualification-c2fe3427"
+    },
+    "sourceFingerprint": "9f5e218d5f83442cdb6c65dccbd7e1b30a1f319668380d8f44b850649c622741",
+    "testsPassed": 2371,
+    "legacyRuntimeCheckExit": 1,
+    "tools": [
+      {
+        "path": "C:\\Program Files\\Microsoft Visual Studio\\18\\Professional\\MSBuild\\Current\\Bin\\MSBuild.exe",
+        "version": "18.7.8.30822",
+        "sha256": "CFDB6C62EFC59D2EB216ACF753108C63C733A814BEF4E3AEBB2C63AC16B7B1B1"
+      },
+      {
+        "path": "C:\\Program Files\\Microsoft Visual Studio\\18\\Professional\\Common7\\IDE\\CommonExtensions\\Microsoft\\TestWindow\\vstest.console.exe",
+        "version": "18.0.11814.123",
+        "sha256": "A0C6D8CAE2646462A609FC64633B9AF2E7A500218E31A5E5DEE365601268360B"
+      },
+      {
+        "path": "E:\\codex\\tools\\inno-6.7.3\\app\\ISCC.exe",
+        "version": "0.0.0.0",
+        "sha256": "0A8757031B33777E4C9CBFFEE40F11A5062B36D25CBE144C1DB73B6102B80AD7"
+      },
+      {
+        "path": "C:\\Program Files\\Microsoft Visual Studio\\18\\Professional\\VC\\Redist\\MSVC\\14.51.36231\\vc_redist.x64.exe",
+        "version": "14.51.36247.0",
+        "sha256": "843068991DAAA1F73AD9F6239BCE4D0F6A07A51F18C37EA2A867E9BECA71295C"
+      },
+      {
+        "path": "C:\\Users\\bslac\\AppData\\Local\\VideoProcessor\\dependencies\\Qt\\6.8.3\\msvc2022_64\\bin\\Qt6Core.dll",
+        "version": "6.8.3.0",
+        "sha256": "0CC62E841959FB8F6D366EA116C6F6BBC273E30F0EF90D8AA2E4ADEB81FD63F8"
+      }
+    ],
+    "artifacts": [
+      {
+        "name": "VideoProcessorSetup-1.4.0-auto-update-test-c2fe3427a18c.exe",
+        "sha256": "3B59DF74FECCE89449F4C48A5553046CAB2F21EA86EA6A96256FEA805EBE20AA",
+        "length": 28912283
+      }
+    ],
+    "signed": false,
+    "qualification": "Full unit suite and packaging helper tests passed. Real installer lifecycle and clean Windows/interactive qualification must be reported separately.",
+    "reproducibility": "Pinned source and recorded tools/dependencies; byte-identical PE/installer rebuilds are not asserted."
+  },
+  "packages": [
+    {
+      "file": "VideoProcessorConfigSetup-1.4.0-auto-update-test-c2fe3427a18c.exe",
+      "sha256": "3D1A4295157E99C2202E27C8219BFF2578AEE4B8A51508116ED5FB4A8C4C71E7",
+      "size": 17929118,
+      "manifestSha256": "ECA5FBE4C80C1690542A95984C65D9F9342B072E4E2CC50B0D9F563846CF0A0D"
+    },
+    {
+      "file": "VideoProcessorSetup-1.4.0-auto-update-test-c2fe3427a18c.exe",
+      "sha256": "8EBF8139BA9F72F9D0C6C984648E41BE0C76E48A2F11F0D062D1153C07DEC59E",
+      "size": 28912759,
+      "manifestSha256": "4313B8F366A3AA457E6B0FF910B0F890CC0BE10BD2561AC51C19ECBEA1C23C3E"
+    }
+  ],
+  "updateManifestSha256": "3ABFC6F5629353EFEBEDFBFF62EBE874710E2EB86AF58E4ED9C819038DEF7C47",
+  "updatePolicyTests": 29,
+  "configShutdownTest": "passed",
+  "initialQualification": "2370 of 2371 passed; cache timestamp test failed, then passed in isolation and in the complete rerun. No excluded tests or changed source.",
+  "limitations": "Clean Windows without VS and live application restart/update remain user testing. Windows installers are not Authenticode signed."
+}
