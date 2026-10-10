@@ -193,11 +193,21 @@ namespace VideoProcessorTest
                 Assert::IsTrue(RendererProfileConfig::Read(config,model,error),Wide(error).c_str());
                 Assert::IsTrue(RendererProfileConfig::ValidateOwnedSections(config,error),Wide(error).c_str());
                 const auto& inherited=model.profiles.at("display.child");
-                for(const auto& spec:ToneMappingTuning::Specs())
-                    Assert::IsTrue(inherited.settings.count(spec.key)==1,Wide(std::string("Missing startup tuning key: ")+spec.key).c_str());
-                Assert::AreEqual(std::string("30.81"),RequiredProfileSetting(inherited,"black_cutoff"));
-                Assert::AreEqual(std::string("90.343"),RequiredProfileSetting(inherited,"smoothing_period"));
-                Assert::AreEqual(std::string("99.985"),RequiredProfileSetting(inherited,"percentile"));
+                const RendererConfigView root(config);
+                std::map<std::string,std::string> resolved;
+                // Rendering root settings are read separately before the selected
+                // profile overlay; only a named baseline is copied into the model.
+                for(const auto& spec:ToneMappingTuning::Specs()) {
+                    std::string value;
+                    if(root.TryGetDisplayString(spec.key,value))resolved[spec.key]=value;
+                    const auto selected=inherited.settings.find(spec.key);
+                    if(selected!=inherited.settings.end())resolved[spec.key]=selected->second;
+                    Assert::IsTrue(resolved.count(spec.key)==1,Wide(std::string("Missing resolved startup tuning key: ")+spec.key).c_str());
+                }
+                Assert::AreEqual(std::string("30.81"),resolved.at("black_cutoff"));
+                Assert::AreEqual(std::string("90.343"),resolved.at("smoothing_period"));
+                Assert::AreEqual(std::string("99.985"),resolved.at("percentile"));
+                Assert::IsTrue(ToneMappingTuning::IsAuto(resolved.at("knee_adaptation")));
                 Assert::IsTrue(model.profiles.count("subtitles.reconstruction")==1);
                 std::ifstream input(file.Path(),std::ios::binary);std::ostringstream after;after<<input.rdbuf();
                 Assert::AreEqual(contents,after.str(),L"Startup validation must not rewrite configuration");
