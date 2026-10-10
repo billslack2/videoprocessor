@@ -1,6 +1,7 @@
 #include <pch.h>
 
 #include "AlphaSourceCropPolicy.h"
+#include "SubtitleAssistedAcquisition.h"
 
 #include <cmath>
 
@@ -2640,6 +2641,36 @@ namespace AlphaSourceCrop
             (evaluated.sourceBounds.left > base.left || evaluated.sourceBounds.right < base.right) &&
             SameBounds(evaluated.sourceBounds, previous.optionalFillSourceBounds);
     }
+    bool CanCollectSubtitleAssistedStartupEvidence(const NearBlackPresentationEpisodeState& episode,
+        const SubtitleAssistedStartupPresentationInput& input)
+    {
+        return episode.mode == NearBlackPresentationMode::FULL_RASTER &&
+            episode.startedAtFullRaster && episode.startedWithoutTrustedCrop &&
+            !episode.entryTrustedCropAvailable && !episode.boundedPresentationAvailable &&
+            !episode.boundedPresentationFailed && !episode.confirmedNonNearBlackContent &&
+            episode.outwardConfirmationSamples == 0 &&
+            input.identity.transportGeneration != 0 && input.identity.acceptedSequence != 0 &&
+            episode.sourceGeneration == input.identity.transportGeneration &&
+            episode.presentationEpoch == input.identity.viewportGeneration &&
+            input.identity.acceptedSequence > episode.startedSourceSequence &&
+            input.measurementAvailable && input.nearBlackEvaluated && !input.globalNearBlack &&
+            SameActivePictureFrameIdentity(input.identity, input.measurementIdentity) &&
+            !input.trustedCropAvailable && !input.fullRasterAuthorityAvailable &&
+            !input.knownFullRasterRetained && !input.cropAdmissionAvailable &&
+            !input.sourceDiscontinuity && !input.sceneTransition && !input.recoveryActive &&
+            !input.conflictingPresentationOwnership;
+    }
+    bool CanPresentSubtitleAssistedStartupEvidence(const NearBlackPresentationEpisodeState& episode,
+        const SubtitleAssistedStartupPresentationInput& input, const SubtitleAssistedAcquisitionDecision& proof)
+    {
+        return CanCollectSubtitleAssistedStartupEvidence(episode, input) &&
+            proof.confirmed && !proof.inhibited &&
+            proof.matchingFrames >= SubtitleAssistedAcquisitionGate::RequiredFrames &&
+            SameActivePictureFrameIdentity(proof.identity, input.identity) &&
+            proof.policyGeneration == input.policyGeneration &&
+            proof.continuityGeneration == input.continuityGeneration;
+    }
+
 	NearBlackPresentationEpisodeDecision EvaluateNearBlackPresentationEpisode(
 		const NearBlackPresentationEpisodeInput& input)
 	{
@@ -2797,6 +2828,8 @@ namespace AlphaSourceCrop
 			decision.state.presentationEpoch = input.presentationEpoch;
 			decision.state.startedAtFullRaster =
 				decision.state.mode == NearBlackPresentationMode::FULL_RASTER;
+            decision.state.startedWithoutTrustedCrop = !input.trustedCropAvailable &&
+                !input.fullRasterAuthorityAvailable && !input.knownFullRasterRetained;
 			// Outward pixels select a safe presentation, not the lifetime of the
 			// existing picture contract. Save it even when those pixels coincide
 			// with episode entry, so the unchanged recovery proof can revalidate

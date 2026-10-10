@@ -7,6 +7,7 @@
 #include "ActivePictureTransitionModel.h"
 #include "ActivePictureEvidence.h"
 #include "SceneDetector.h"
+#include "ActivePictureDecisionTimeline.h"
 
 
 namespace AlphaSourceCrop
@@ -1005,6 +1006,9 @@ namespace AlphaSourceCrop
 		uint64_t presentationEpoch = 0;
 		// Keep native acquisition available for episodes that began at full raster.
 		bool startedAtFullRaster = false;
+        // Immutable episode-entry provenance. An epoch reset cannot turn loss of
+        // a previous trusted picture into an unclassified startup episode.
+        bool startedWithoutTrustedCrop = false;
 		bool entryTrustedCropAvailable = false;
 		ActivePictureBounds entryTrustedCrop;
 		ActivePictureAuthorityOrigin entryTrustedCropOrigin = ActivePictureAuthorityOrigin::NATIVE;
@@ -1030,6 +1034,24 @@ namespace AlphaSourceCrop
 		uint64_t bootstrapLastSourceSequence = 0;
 		uint32_t bootstrapSamples = 0;
 	};
+
+    struct SubtitleAssistedAcquisitionDecision;
+    struct SubtitleAssistedStartupPresentationInput
+    {
+        ActivePictureFrameIdentity identity, measurementIdentity;
+        uint64_t policyGeneration = 0, continuityGeneration = 0;
+        bool measurementAvailable = false, nearBlackEvaluated = false, globalNearBlack = false;
+        bool trustedCropAvailable = false, fullRasterAuthorityAvailable = false;
+        bool knownFullRasterRetained = false, cropAdmissionAvailable = false;
+        bool sourceDiscontinuity = false, sceneTransition = false, recoveryActive = false;
+        bool conflictingPresentationOwnership = false;
+    };
+    // Read-only permission to collect evidence during an unclassified entry.
+    // Neither function ends the episode or grants native crop/history authority.
+    bool CanCollectSubtitleAssistedStartupEvidence(const NearBlackPresentationEpisodeState& episode,
+        const SubtitleAssistedStartupPresentationInput& input);
+    bool CanPresentSubtitleAssistedStartupEvidence(const NearBlackPresentationEpisodeState& episode,
+        const SubtitleAssistedStartupPresentationInput& input, const SubtitleAssistedAcquisitionDecision& proof);
 
 	struct NearBlackPresentationEpisodeInput
 	{

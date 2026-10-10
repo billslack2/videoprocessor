@@ -191,3 +191,112 @@ public:
     }
 };
 }
+#include <vprenderer/AlphaSourceCropPolicy.h>
+namespace Tests {
+TEST_CLASS(SubtitleAssistedStartupEligibilityTests) {
+    static NearBlackPresentationEpisodeInput Blank(bool trusted=false) {
+        NearBlackPresentationEpisodeInput e;e.sourceGeneration=1;e.sourceSequence=1;e.presentationEpoch=3;
+        e.measurementCurrent=e.nearBlackEvaluated=e.globalNearBlack=true;
+        e.trustedCropAvailable=trusted;e.boundedVisibleContentOutsideCrop=trusted;
+        if(trusted)e.trustedCrop={0,28,640,332,640,360,640.0/304,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+        return e;
+    }
+    static SubtitleAssistedStartupPresentationInput Bright(uint64_t n=2) {
+        SubtitleAssistedStartupPresentationInput i;i.identity={1,n,n,n*1000,2,3,4};i.measurementIdentity=i.identity;
+        i.policyGeneration=5;i.continuityGeneration=6;i.measurementAvailable=i.nearBlackEvaluated=true;return i;
+    }
+    static SubtitleAssistedAcquisitionDecision Proof(const SubtitleAssistedStartupPresentationInput& i) {
+        SubtitleAssistedAcquisitionDecision p;p.confirmed=true;p.matchingFrames=4;p.identity=i.identity;
+        p.policyGeneration=i.policyGeneration;p.continuityGeneration=i.continuityGeneration;return p;
+    }
+public:
+    TEST_METHOD(RealBlankEpisodeAllowsCollectionButNoPresentationUntilFourProofs) {
+        auto episodeInput=Blank();auto episode=EvaluateNearBlackPresentationEpisode(episodeInput).state;
+        Assert::IsTrue(episode.startedWithoutTrustedCrop);SubtitleAssistedAcquisitionGate gate;
+        for(uint64_t n=2;n<=5;++n) {
+            auto input=Bright(n);Assert::IsTrue(CanCollectSubtitleAssistedStartupEvidence(episode,input));
+            SubtitleAssistedAcquisitionInput frame;frame.identity=frame.proofIdentity=input.identity;
+            frame.sourceGeneration=1;frame.policyGeneration=5;frame.continuityGeneration=6;
+            frame.candidate={0,28,640,332,640,360};frame.protectedBounds={0,28,640,354,640,360};frame.sourceProofAccepted=true;
+            const auto proof=gate.Evaluate(frame);
+            Assert::AreEqual(n==5,CanPresentSubtitleAssistedStartupEvidence(episode,input,proof));
+            episodeInput.previous=episode;episodeInput.sourceSequence=n;episodeInput.globalNearBlack=false;
+            episode=EvaluateNearBlackPresentationEpisode(episodeInput).state;
+            Assert::IsTrue(episode.mode==NearBlackPresentationMode::FULL_RASTER);
+            Assert::IsFalse(episode.entryTrustedCropAvailable);
+        }
+        auto input=Bright(6);SubtitleAssistedAcquisitionInput fail;fail.identity=fail.proofIdentity=input.identity;
+        fail.sourceGeneration=1;fail.policyGeneration=5;fail.continuityGeneration=6;
+        fail.candidate={0,28,640,332,640,360};fail.protectedBounds={0,28,640,354,640,360};
+        const auto withdrawn=gate.Evaluate(fail);Assert::IsTrue(withdrawn.inhibited);
+        Assert::IsFalse(CanPresentSubtitleAssistedStartupEvidence(episode,input,withdrawn));
+        Assert::IsTrue(episode.mode==NearBlackPresentationMode::FULL_RASTER);
+    }
+    TEST_METHOD(EpochExpirationCannotManufactureColdOrigin) {
+        for(bool trusted:{false,true}) {
+            auto entry=Blank(trusted);auto episode=EvaluateNearBlackPresentationEpisode(entry).state;
+            Assert::AreEqual(!trusted,episode.startedWithoutTrustedCrop);
+            entry.previous=episode;entry.sourceSequence=2;entry.presentationEpoch=7;
+            entry.trustedCropAvailable=false;entry.globalNearBlack=false;entry.boundedVisibleContentOutsideCrop=false;
+            episode=EvaluateNearBlackPresentationEpisode(entry).state;
+            Assert::IsFalse(episode.entryTrustedCropAvailable);Assert::AreEqual(!trusted,episode.startedWithoutTrustedCrop);
+            auto input=Bright(3);input.identity.viewportGeneration=7;input.measurementIdentity=input.identity;
+            Assert::AreEqual(!trusted,CanCollectSubtitleAssistedStartupEvidence(episode,input));
+        }
+    }
+    TEST_METHOD(ActiveAuthorityDarknessRecoveryAndStaleContextAllBlock) {
+        const auto original=EvaluateNearBlackPresentationEpisode(Blank()).state;
+        for(int defect=0;defect<21;++defect) {
+            auto episode=original;auto input=Bright();
+            if(defect==0)input.globalNearBlack=true;
+            if(defect==1)input.nearBlackEvaluated=false;
+            if(defect==2)input.measurementAvailable=false;
+            if(defect==3)input.measurementIdentity.acceptedSequence++;
+            if(defect==4)input.identity.viewportGeneration++,input.measurementIdentity=input.identity;
+            if(defect==5)input.identity.transportGeneration++,input.measurementIdentity=input.identity;
+            if(defect==6)input.trustedCropAvailable=true;
+            if(defect==7)input.fullRasterAuthorityAvailable=true;
+            if(defect==8)input.knownFullRasterRetained=true;
+            if(defect==9)input.cropAdmissionAvailable=true;
+            if(defect==10)input.sourceDiscontinuity=true;
+            if(defect==11)input.sceneTransition=true;
+            if(defect==12)input.recoveryActive=true;
+            if(defect==13)input.conflictingPresentationOwnership=true;
+            if(defect==14)episode.boundedPresentationAvailable=true;
+            if(defect==15)episode.boundedPresentationFailed=true;
+            if(defect==16)episode.confirmedNonNearBlackContent=true;
+            if(defect==17)episode.outwardConfirmationSamples=1;
+            if(defect==18)episode.entryTrustedCropAvailable=true;
+            if(defect==19)episode.startedWithoutTrustedCrop=false;
+            if(defect==20)episode.mode=NearBlackPresentationMode::RETAIN_CROP;
+            Assert::IsFalse(CanCollectSubtitleAssistedStartupEvidence(episode,input));
+            Assert::IsFalse(CanPresentSubtitleAssistedStartupEvidence(episode,input,Proof(input)));
+        }
+    }
+    TEST_METHOD(FinalOverlayRequiresExactCurrentConfirmedProof) {
+        const auto episode=EvaluateNearBlackPresentationEpisode(Blank()).state;const auto input=Bright();
+        for(int defect=0;defect<10;++defect) {
+            auto proof=Proof(input);
+            if(defect==0)proof.confirmed=false;
+            if(defect==1)proof.inhibited=true;
+            if(defect==2)proof.matchingFrames=3;
+            if(defect==3)proof.identity.acceptedSequence++;
+            if(defect==4)proof.identity.captureTimestamp++;
+            if(defect==5)proof.identity.sourceFormatGeneration++;
+            if(defect==6)proof.identity.rendererGeneration++;
+            if(defect==7)proof.identity.viewportGeneration++;
+            if(defect==8)proof.policyGeneration++;
+            if(defect==9)proof.continuityGeneration++;
+            Assert::IsFalse(CanPresentSubtitleAssistedStartupEvidence(episode,input,proof));
+        }
+    }
+    TEST_METHOD(NativeFullFrameAtEpisodeEntryCannotBecomeCold) {
+        auto input=Blank();input.fullRasterAuthorityAvailable=true;
+        auto episode=EvaluateNearBlackPresentationEpisode(input).state;
+        Assert::IsFalse(episode.startedWithoutTrustedCrop);
+        input.fullRasterAuthorityAvailable=false;input.knownFullRasterRetained=true;
+        episode=EvaluateNearBlackPresentationEpisode(input).state;
+        Assert::IsFalse(episode.startedWithoutTrustedCrop);
+    }
+};
+}

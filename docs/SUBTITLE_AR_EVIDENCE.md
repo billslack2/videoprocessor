@@ -121,3 +121,19 @@ fringe. This single-frame replay is a regression fixture for diagnosis, not a
 claim that every subtitle or aspect transition is supported. The initial cold
 path deliberately declines existing cropped authority, both contaminated edges,
 and glyphs touching the raw-black moat.
+
+### Unclassified near-black startup
+
+A blank input at startup can latch the existing full-raster near-black episode
+before any picture has been classified. The episode now records whether it began
+without crop or full-raster authority; losing a previously trusted reference or
+changing the viewport cannot manufacture that origin.
+
+Only that unclassified episode may collect assisted evidence after fresh original
+pixels are independently non-near-black. The same exact-frame predicate gates
+worker permission, rendering-thread proof, and final presentation. Four current
+proofs may select a presentation-only overlay while the native episode remains
+FULL_RASTER. No episode reset or history publication occurs. Existing admission,
+recovery, transition, scene, fixed-crop, NLS, and fail-open exclusions still apply.
+Missing proof immediately returns to the episode's full raster. Telemetry labels
+this exception `startup_overlay=1`.

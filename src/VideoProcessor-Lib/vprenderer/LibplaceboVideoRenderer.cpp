@@ -11210,13 +11210,48 @@ struct LibplaceboVideoRenderer::Impl
         subtitleSharedPicture.identity.sourceFormatGeneration=AlphaSourceFormatKey(state);
         subtitleSharedPicture.identity.viewportGeneration=viewportRequestSerial;
         subtitleSharedPicture.identity.rendererGeneration=frameGeneration;
+        // Startup's unclassified full-raster episode may collect independent
+        // source proof without releasing the native episode or learning geometry.
+        // Rebuild this input at each use so later admission/episode updates cannot
+        // reuse an earlier permission decision.
+        auto subtitleStartupInputFor = [&](const ActivePictureFrameIdentity& identity) {
+            AlphaSourceCrop::SubtitleAssistedStartupPresentationInput input;
+            input.identity=identity;
+            input.policyGeneration=localBoundaryPolicyGeneration;
+            input.continuityGeneration=localBoundaryContinuityGeneration;
+            input.measurementAvailable=analysisSource.IsValid() &&
+                analysisSource.generation==identity.transportGeneration &&
+                latestActivePictureEvidenceAvailable && latestActivePictureEvidenceFrame==identity.acceptedSequence;
+            // UpdateNlsForFrame above synchronously measured this exact analysis
+            // source; never attach today's identity to an older measurement.
+            if(input.measurementAvailable) input.measurementIdentity=identity;
+            input.nearBlackEvaluated=latestActivePictureGlobalNearBlackEvaluated;
+            input.globalNearBlack=latestActivePictureGlobalNearBlack;
+            input.trustedCropAvailable=nlsGeometryAvailable && nlsGeometrySourceGeneration==frameGeneration &&
+                nlsGeometryClassification==ActivePictureClassification::BAR_CROP_TRUSTED;
+            input.fullRasterAuthorityAvailable=fullRasterPresentationAuthorityAvailable ||
+                (nlsGeometryAvailable && nlsGeometrySourceGeneration==frameGeneration &&
+                 nlsGeometryClassification==ActivePictureClassification::FULL_RASTER_TRUSTED);
+            input.knownFullRasterRetained=knownFullRasterRetention.available;
+            input.cropAdmissionAvailable=cropPresentationAdmission.available;
+            input.sourceDiscontinuity=videoFrame.IsSourceDiscontinuity();
+            input.sceneTransition=sceneResult.hardCutCandidate || sceneResult.safeBoundary || sceneHold.cropActive ||
+                movingPictureTransition.active || movingPictureTransition.awaitingPublication;
+            input.recoveryActive=cropPresentationRecovery.active;
+            input.conflictingPresentationOwnership=!automaticSourceCrop || !configuredScreenActive || nlsRequested ||
+                fixedCropAspectConfigured || inwardCaptionProtected || scopeVerticalInspectionBridge.failOpenLatched ||
+                !SubtitlePreviewOverridesClassicHandling(CurrentSubtitlePreviewMode());
+            return input;
+        };
         subtitleSharedPicture.allowAssistedNomination=automaticSourceCrop && configuredScreenActive &&
             SubtitlePreviewOverridesClassicHandling(CurrentSubtitlePreviewMode()) && !nlsRequested &&
             !fixedCropAspectConfigured && !inwardCaptionProtected && !videoFrame.IsSourceDiscontinuity() &&
             !sceneResult.hardCutCandidate && !sceneResult.safeBoundary && !sceneHold.cropActive &&
             !movingPictureTransition.active && !movingPictureTransition.awaitingPublication &&
             !cropPresentationRecovery.active && !scopeVerticalInspectionBridge.failOpenLatched &&
-            nearBlackPresentationEpisode.mode==AlphaSourceCrop::NearBlackPresentationMode::INACTIVE &&
+            (nearBlackPresentationEpisode.mode==AlphaSourceCrop::NearBlackPresentationMode::INACTIVE ||
+             AlphaSourceCrop::CanCollectSubtitleAssistedStartupEvidence(nearBlackPresentationEpisode,
+                 subtitleStartupInputFor(subtitleSharedPicture.identity))) &&
             !subtitleSharedPicture.AvailableFor(subtitleSharedPicture.identity,width,height);
 
 		if (retiringTranslationFitInspection)
@@ -11810,7 +11845,9 @@ struct LibplaceboVideoRenderer::Impl
                 !scopeVerticalInspectionBridge.failOpenLatched && SubtitlePreviewOverridesClassicHandling(subtitlePreviewMode) &&
                 !videoFrame.IsSourceDiscontinuity() && !sceneResult.hardCutCandidate && !sceneResult.safeBoundary &&
                 !sceneHold.cropActive && !movingPictureTransition.active && !movingPictureTransition.awaitingPublication &&
-                nearBlackPresentationEpisode.mode==AlphaSourceCrop::NearBlackPresentationMode::INACTIVE;
+                (nearBlackPresentationEpisode.mode==AlphaSourceCrop::NearBlackPresentationMode::INACTIVE ||
+                 AlphaSourceCrop::CanCollectSubtitleAssistedStartupEvidence(nearBlackPresentationEpisode,
+                     subtitleStartupInputFor(subtitleIdentity)));
             if(assistedContext && currentSubtitlePreview.available && assistedObservation.assistedSourceCandidate &&
                 SameActivePictureFrameIdentity(assistedObservation.identity,subtitleIdentity) &&
                 assistedObservation.policyGeneration==localBoundaryPolicyGeneration &&
@@ -12125,7 +12162,7 @@ struct LibplaceboVideoRenderer::Impl
 			 sceneHold, sceneResult, cadenceRepeat, subtitleShiftSourcePixels,
 			 subtitlePreviewMode,
              &subtitleEvidenceObservation, subtitleEvidenceObservationAvailable, subtitleEvidenceIdentity,
-             &assistedSourceProof, &assistedAcquisition, assistedProofMs,
+             &assistedSourceProof, &assistedAcquisition, assistedProofMs, &subtitleStartupInputFor,
              assistedIndependentRawClear, &assistedRevalidationBounds,
              subtitleCutPasteBackground, subtitleEvidencePolicy=localBoundaryPolicyGeneration,
              subtitleEvidenceContinuity=localBoundaryContinuityGeneration,
@@ -13336,6 +13373,14 @@ struct LibplaceboVideoRenderer::Impl
             assistedPresentationInput.move=relocatedSubtitle;
             assistedPresentationInput.backgroundMode=subtitleCutPasteBackground;
             assistedPresentationInput.compositionSucceeded=subtitleCompositionSucceeded;
+            auto assistedStartupInput=subtitleStartupInputFor(subtitleEvidenceIdentity);
+            assistedStartupInput.trustedCropAvailable=assistedStartupInput.trustedCropAvailable ||
+                (effectiveGeometryAvailable && effectiveClassification==ActivePictureClassification::BAR_CROP_TRUSTED);
+            assistedStartupInput.conflictingPresentationOwnership=assistedStartupInput.conflictingPresentationOwnership ||
+                useSceneVerificationGeometry || protectedCaptionFit || admissionDecision.blocked || cropInput.presentationFailOpen ||
+                verticalFailOpen || outwardExpansionInvalid || recoveryDecision.boundedPresentation || nearBlackBoundedDecision.boundedPresentation;
+            const bool assistedStartupPresentation=AlphaSourceCrop::CanPresentSubtitleAssistedStartupEvidence(
+                nearBlackPresentationEpisode,assistedStartupInput,assistedAcquisition);
             const bool assistedDisplayEligible=assistedSourceProof.verified && automaticSourceCrop && configuredScreenActive &&
                 !fixedCropAspectConfigured && !nlsRequested && !sourceDiscontinuity && !protectedCaptionFit &&
                 !cropDecision.applyCrop && cropDecision.sourceBounds.left==0 && cropDecision.sourceBounds.top==0 &&
@@ -13344,8 +13389,8 @@ struct LibplaceboVideoRenderer::Impl
                 !sceneHold.cropActive && !sceneResult.hardCutCandidate && !sceneResult.safeBoundary && !useSceneVerificationGeometry &&
                 !admissionDecision.blocked && !cropInput.presentationFailOpen && !verticalFailOpen &&
                 !outwardExpansionInvalid && !scopeVerticalInspectionBridge.failOpenLatched &&
-                !cropPresentationRecovery.active && !nearBlackEpisodeFullRaster &&
-                nearBlackPresentationEpisode.mode==AlphaSourceCrop::NearBlackPresentationMode::INACTIVE &&
+                !cropPresentationRecovery.active && (!nearBlackEpisodeFullRaster || assistedStartupPresentation) &&
+                (nearBlackPresentationEpisode.mode==AlphaSourceCrop::NearBlackPresentationMode::INACTIVE || assistedStartupPresentation) &&
                 !recoveryDecision.boundedPresentation && !nearBlackBoundedDecision.boundedPresentation &&
                 SubtitlePreviewOverridesClassicHandling(subtitlePreviewMode);
             auto assistedDisplay=assistedDisplayEligible
@@ -13372,10 +13417,10 @@ struct LibplaceboVideoRenderer::Impl
                 !assistedSourceProof.verified?assistedSourceProof.reason:assistedAcquisition.reason;
             if(!cadenceRepeat && SubtitlePreviewOverridesClassicHandling(subtitlePreviewMode) &&
                 (subtitleAssistedLogReason!=assistedReason || assistedTick-subtitleAssistedLogTick>=2000)) {
-                DebugLog::Log("SUBTITLE ASSISTED AR: generation=%llu sequence=%llu epoch=%llu logical_mutation=0 history_learning=0 nominated=%d proof=%d confirmations=%u inhibited=%d eligible=%d applied=%d composed=%d candidate=%d,%d-%d,%d display=%d,%d-%d,%d native_pixels=%zu glyph_pixels=%zu ms=%.3f reason=%s",
+                DebugLog::Log("SUBTITLE ASSISTED AR: generation=%llu sequence=%llu epoch=%llu logical_mutation=0 history_learning=0 nominated=%d proof=%d confirmations=%u inhibited=%d eligible=%d applied=%d composed=%d startup_overlay=%d candidate=%d,%d-%d,%d display=%d,%d-%d,%d native_pixels=%zu glyph_pixels=%zu ms=%.3f reason=%s",
                     frameGeneration,sourceSequence,viewportRequestSerial,subtitleEvidenceObservation.assistedSourceCandidate?1:0,
                     assistedSourceProof.verified?1:0,assistedAcquisition.matchingFrames,assistedAcquisition.inhibited?1:0,
-                    assistedDisplayEligible?1:0,assistedDisplayApplied?1:0,assistedDisplay.composed?1:0,
+                    assistedDisplayEligible?1:0,assistedDisplayApplied?1:0,assistedDisplay.composed?1:0,assistedStartupPresentation?1:0,
                     assistedSourceProof.candidate.left,assistedSourceProof.candidate.top,assistedSourceProof.candidate.right,assistedSourceProof.candidate.bottom,
                     assistedDisplay.bounds.left,assistedDisplay.bounds.top,assistedDisplay.bounds.right,assistedDisplay.bounds.bottom,
                     assistedSourceProof.nativePixels,assistedSourceProof.ownedBarPixels,assistedProofMs,assistedReason);
