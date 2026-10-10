@@ -23,7 +23,10 @@ that every original native HDR flash is eliminated. Live playback still
 needs qualification. No additional user recording was requested.
 
 Source: E:\codex\videoprocessor\subtitle-false-flash-20261009, fresh current
-beta 73953a36 plus preserved deployed fixes. Not deployed. Evidence and source/
+beta 73953a36 plus preserved deployed fixes. Deployed verified x64 Release
+host/renderer/Config with settings preserved; VP PID 7252 responds
+and loaded the expected renderer. No configuration edits. Backup:
+C:\Videoprocessor\vp\backups\false-flash-20261009-230738. Deployment receipt: stories/assets/VP-0070/false-flash-20261009/deployment.json. Evidence and source/
 binary/test hashes: stories/assets/VP-0070/false-flash-20261009.
 
 

@@ -1,0 +1,16 @@
+{
+  "deployed": true,
+  "backup": "C:\\Videoprocessor\\vp\\backups\\false-flash-20261009-230738",
+  "changed_files": 6,
+  "configuration_edits": [],
+  "protected_files_preserved": true,
+  "host_sha256": "4d16b52f0fee787580e1cd58885f8f9aa7d60c25c8ea8e1335a79d00a283d2d5",
+  "renderer_sha256": "47459d4e61f67ca7e184cdc9d3f9a8c5a29c4230b3c705aa436b01958aa8710a",
+  "startup": {
+    "renderer": [
+      "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll"
+    ],
+    "pid": 7252,
+    "responding": true
+  }
+}
