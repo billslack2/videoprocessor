@@ -1,5 +1,29 @@
 # VP-0070: CIH bar/boundary subtitle capture and relocation
 
+## 1.4 RC2.2 published - 2026-10-10
+
+Release: https://github.com/billslack2/videoprocessor/releases/tag/1.4-beta-rc2.2
+Source: 19d744402ef3acd518053f673f7dffdfd7a16163 (PR #137).
+User clarified the requested point version as RC2.2. The clean merged beta
+was rebuilt x64 Release and packaged as Setup plus Portable ZIP, SHA256
+sidecars, and a source/tool/hash receipt. All five remote asset digests match.
+Evidence and links: stories/assets/VP-0070/rc2.2-19d74440/release.json.
+
+Final qualification passed 2,371 native tests, ten subtitle/Remote Config tests,
+49 installer support checks, 12 identity checks, 23 runtime checks, payload
+hashes, and portable sample validation. The first full run had one unchanged
+configuration-cache test failure: a rapid same-size edit with restored write
+time can retain identical Windows change metadata. A disposable-file probe
+confirmed this edge case; five cache tests passed in isolation, and the full
+qualification rerun passed without source changes. The failed run and
+investigation are preserved; the known limitation is in the release notes.
+
+Identity-isolated installer QA refused running Config and created no
+registration. Full lifecycle, clean-Windows and interactive Config coverage
+remain unverified. The distribution is unsigned. No deployment or active
+configuration changes were made for this release. VP-0070 remains blocked
+for the broader work; VP-0189 remains in Review.
+
 ## Tested changes merged for next point release - 2026-10-10
 
 PR #137 merged into v1.4.00-beta at 19d744402ef3acd518053f673f7dffdfd7a16163.

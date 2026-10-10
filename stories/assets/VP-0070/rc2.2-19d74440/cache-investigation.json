@@ -1,0 +1,11 @@
+{
+  "failedRun": "release-verification-cce37222fa3947eeb0a41673f66e5cde",
+  "failedTest": "SameSizeEditWithRestoredWriteTimeInvalidatesCache",
+  "firstRunPassed": 2370,
+  "firstRunFailed": 1,
+  "investigation": "Unchanged cache compares file identity, size, write time and change time. Disposable rapid same-size edit/restored-time probe produced identical metadata despite changed contents in 169 of 200 trials.",
+  "focusedCacheTestsPassed": 5,
+  "sourceChanged": false,
+  "retry": "Explicit ReuseVerifiedBuild after investigation; all full-suite and packaging checks run again.",
+  "limitation": "A rapid external same-size edit that restores the timestamp can retain cached configuration. Explicit Fresh reads do not use that cache."
+}

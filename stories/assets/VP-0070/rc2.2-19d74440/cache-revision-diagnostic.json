@@ -1,0 +1,45 @@
+{
+  "trials": 200,
+  "metadata_collisions": 169,
+  "examples": [
+    {
+      "trial": 0,
+      "before": [
+        134361055598036119,
+        134361055598036119
+      ],
+      "after": [
+        134361055598036119,
+        134361055598036119
+      ],
+      "same_metadata": true,
+      "contents": "[general]\nvalue: two\n"
+    },
+    {
+      "trial": 1,
+      "before": [
+        134361055598086064,
+        134361055598086064
+      ],
+      "after": [
+        134361055598086064,
+        134361055598086064
+      ],
+      "same_metadata": true,
+      "contents": "[general]\nvalue: two\n"
+    },
+    {
+      "trial": 2,
+      "before": [
+        134361055598096074,
+        134361055598096074
+      ],
+      "after": [
+        134361055598096074,
+        134361055598096074
+      ],
+      "same_metadata": true,
+      "contents": "[general]\nvalue: two\n"
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "qaIdentity": "7F7B2BEA-D95C-4213-BBE3-134543C70E81",
+  "result": "Blocked safely before installation because VideoProcessorConfig PID 25432 was running",
+  "registrationCreated": false,
+  "fullLifecycleVerified": false,
+  "cleanWindowsVerified": false,
+  "interactiveConfigVerified": false,
+  "qaInstallerSha256": "D177E1AF03F107DDF16294678BE197A7B4316B308D7A50DE1BD1EA7724535DB3",
+  "note": "QA installer has isolated application ID and shortcut group. It is not a distribution artifact."
+}

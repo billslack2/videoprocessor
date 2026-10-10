@@ -1,0 +1,48 @@
+{
+  "release": "https://github.com/billslack2/videoprocessor/releases/tag/1.4-beta-rc2.2",
+  "commit": "19d744402ef3acd518053f673f7dffdfd7a16163",
+  "version": "1.4.00-rc2.2",
+  "native_tests_passed": 2371,
+  "config_tests_passed": 10,
+  "installer_support_checks": 49,
+  "installer_identity_checks": 12,
+  "runtime_checks": 23,
+  "signed": false,
+  "assets": [
+    {
+      "name": "release-receipt.json",
+      "url": "https://github.com/billslack2/videoprocessor/releases/download/1.4-beta-rc2.2/release-receipt.json",
+      "digest": "sha256:b5af6a72e20ae9ed4644d899a284a63f495f71df6b80e6abd68c4c2903d312a0",
+      "size": 3103
+    },
+    {
+      "name": "VideoProcessor-1.4.00-rc2.2-19d744402ef3-x64-Portable.zip",
+      "url": "https://github.com/billslack2/videoprocessor/releases/download/1.4-beta-rc2.2/VideoProcessor-1.4.00-rc2.2-19d744402ef3-x64-Portable.zip",
+      "digest": "sha256:a74c386f7c793adf005bb08a027a3637e96b54c709b9575b44758d88a75a0429",
+      "size": 40764665
+    },
+    {
+      "name": "VideoProcessor-1.4.00-rc2.2-19d744402ef3-x64-Portable.zip.sha256",
+      "url": "https://github.com/billslack2/videoprocessor/releases/download/1.4-beta-rc2.2/VideoProcessor-1.4.00-rc2.2-19d744402ef3-x64-Portable.zip.sha256",
+      "digest": "sha256:3b765134c4559a55269ffe75893c6950900cd454f80b1f10a0d51963ffd582e1",
+      "size": 125
+    },
+    {
+      "name": "VideoProcessorSetup-1.4.00-rc2.2-19d744402ef3.exe",
+      "url": "https://github.com/billslack2/videoprocessor/releases/download/1.4-beta-rc2.2/VideoProcessorSetup-1.4.00-rc2.2-19d744402ef3.exe",
+      "digest": "sha256:66e7fe1bac98f84fa6d5796ec438d42e579b84887f1b2fda4bf39b016a9b350b",
+      "size": 28890365
+    },
+    {
+      "name": "VideoProcessorSetup-1.4.00-rc2.2-19d744402ef3.exe.sha256",
+      "url": "https://github.com/billslack2/videoprocessor/releases/download/1.4-beta-rc2.2/VideoProcessorSetup-1.4.00-rc2.2-19d744402ef3.exe.sha256",
+      "digest": "sha256:7f218abd01634ee4d6f456c7ff1a1ab47be6e0833f89f3bd985bc55a31129aee",
+      "size": 117
+    }
+  ],
+  "final_trx_sha256": "7748EE316A94531C175A93D150269DEA4D8529239CA670A784E27964D9E38C72",
+  "initial_failed_trx_sha256": "553C749DC4FE467FEB65E0C1829C6E6D5DBB88F1367EDD0579CA659005DACFF9",
+  "validation_receipt": "release-receipt.json",
+  "qualification": "Isolated installer refused running Config without registration. Full lifecycle, clean Windows and interactive Config remain unverified. Initial cache test failure investigated as existing same-metadata external-edit edge case; final full suite passed without source changes.",
+  "deployment": "No deployment or user configuration edits during release creation."
+}
