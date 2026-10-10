@@ -212,9 +212,10 @@ namespace VideoProcessorTest
                 std::ifstream input(file.Path(),std::ios::binary);std::ostringstream after;after<<input.rdbuf();
                 Assert::AreEqual(contents,after.str(),L"Startup validation must not rewrite configuration");
             }
-            TemporaryConfigFile invalid;invalid.Write("[vprenderer]\nblack_cutoff: 100.01\n");
+            TemporaryConfigFile invalid;invalid.Write("[vprenderer.Standard_Scope]\nblack_cutoff: 100.01\n");
             ConfigFile config;Assert::IsTrue(config.Load(invalid.Path()));std::string error;
-            Assert::IsFalse(RendererProfileConfig::ValidateOwnedSections(config,error));
+            RendererProfileConfig::Model invalidModel;
+            Assert::IsFalse(RendererProfileConfig::Read(config,invalidModel,error));
             Assert::IsTrue(error.find("black_cutoff")!=std::string::npos);
         }
         TEST_METHOD(ToneTuningMapsEveryNativeParameterAndPreservesPresetDefaults)
