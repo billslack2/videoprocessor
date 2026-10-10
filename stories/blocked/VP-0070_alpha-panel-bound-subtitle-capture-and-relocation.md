@@ -20,7 +20,11 @@ passed. GPU checks cover gray/red/white restore on both beta backgrounds in
 SDR and PQ HDR, with unchanged backdrop and unrelated picture pixels. Config
 round-trip checks confirm defaults, persistence and existing style visibility.
 
-Not deployed. Runtime pair and Config executable hashes, source hashes and
+Deployed the verified x64 Release host, renderer and Config app on 2026-10-09.
+VP restarted successfully (PID 34204), responding with the deployed renderer loaded.
+Backup: C:\Videoprocessor\vp\backups\text-color-20261009-223133.
+Deployment receipt: stories/assets/VP-0070/text-color-20261009/deployment.json.
+Runtime pair and Config executable hashes, source hashes and
 TRX identity are recorded in stories/assets/VP-0070/text-color-20261009/verification.json.
 Active user configuration was not edited. Story retains its live-qualification status.
 

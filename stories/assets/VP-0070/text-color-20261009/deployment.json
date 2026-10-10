@@ -1,0 +1,16 @@
+{
+  "deployed": true,
+  "backup": "C:\\Videoprocessor\\vp\\backups\\text-color-20261009-223133",
+  "changed_files": 6,
+  "configuration_edits": [],
+  "protected_files_preserved": true,
+  "host_sha256": "0443f68f9d016c49fa71ee73e20d3d459091df111059ed04df795437499dc665",
+  "renderer_sha256": "019231267740e2a5d6d405e0e3dd913654a30fc3c1aeebc434e5936ad6f5e8cb",
+  "startup": {
+    "pid": 34204,
+    "responding": true,
+    "renderer": [
+      "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll"
+    ]
+  }
+}
