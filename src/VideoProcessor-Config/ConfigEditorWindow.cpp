@@ -1044,9 +1044,6 @@ ConfigEditorWindow::ConfigEditorWindow(QString configPath, quintptr ownerHandle,
     if (!testMode_)
     {
         setupTray();
-        auto* help = menuBar()->addMenu(QStringLiteral("Help"));
-        connect(help->addAction(QStringLiteral("Check for updates on this computer…")),
-            &QAction::triggered, this, [this] { showUpdates(); });
         auto* updateTimer = new QTimer(this);
         updateTimer->setInterval(6 * 60 * 60 * 1000);
         connect(updateTimer, &QTimer::timeout, this, [] { UpdateLauncher::Launch(true); });

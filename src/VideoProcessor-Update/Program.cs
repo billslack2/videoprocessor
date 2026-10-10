@@ -25,6 +25,7 @@ namespace VideoProcessor.Update
             bool background = args.Contains("--background") || service || control;
             try
             {
+                if (control) Console.SetOut(new StreamWriter(Console.OpenStandardOutput(), new UTF8Encoding(false)) { AutoFlush = true });
                 ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
                 Application.EnableVisualStyles();
                 string root = AppDomain.CurrentDomain.BaseDirectory;
@@ -76,7 +77,7 @@ namespace VideoProcessor.Update
             }
             catch (Exception ex)
             {
-                if (control) Console.WriteLine(UpdateCore.Serialize(new { error = ex.Message }));
+                if (control) Console.WriteLine(UpdateCore.Serialize(new { error = ex.Message, connectionError = ex is IOException || ex is TimeoutException }));
                 else if (!background) MessageBox.Show(ex.Message, "VideoProcessor updates", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return 1;
             }

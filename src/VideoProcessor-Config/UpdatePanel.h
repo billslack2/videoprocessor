@@ -1,6 +1,7 @@
 #pragma once
 #include <QWidget>
 #include <QEvent>
+#include <QElapsedTimer>
 #include <QFrame>
 #include <QFormLayout>
 #include <QShowEvent>
@@ -62,7 +63,7 @@ public:
         install_->setProperty("primary", true);
         for (auto* button : {check_, download_, install_, skip_}) actions->addWidget(button);
         actions->addStretch(); available->addLayout(actions); setAvailable(false);
-        connect(check_, &QPushButton::clicked, this, [this] { request("check"); });
+        connect(check_, &QPushButton::clicked, this, [this] { if (connectionLost_) { startHelper(); request("state"); } else request("check"); });
         connect(download_, &QPushButton::clicked, this, [this] { request("download"); });
         connect(skip_, &QPushButton::clicked, this, [this] { request("skip"); });
         connect(install_, &QPushButton::clicked, this, [this] {
@@ -75,7 +76,7 @@ public:
         connect(process_, &QProcess::finished, this, [this](int, QProcess::ExitStatus) {
             timeout_.stop();
             const auto reply = QJsonDocument::fromJson(process_->readAllStandardOutput().trimmed());
-            if (!reply.isObject()) { status_->setText("Update helper unavailable. Retry opening Updates after setup finishes."); setAvailable(false); return; }
+            if (!reply.isObject()) { connectionFailed(); return; }
             applyState(reply.object());
             if (!pending_.isEmpty())
             {
@@ -83,7 +84,7 @@ public:
                 QTimer::singleShot(0, this, [this, command] { request(command.value("command").toString(), command); });
             }
         });
-        connect(process_, &QProcess::errorOccurred, this, [this](QProcess::ProcessError) { status_->setText("The update helper could not start. Install a current full or Config-only package."); setAvailable(false); });
+        connect(process_, &QProcess::errorOccurred, this, [this](QProcess::ProcessError) { connectionFailed(); });
         timeout_.setSingleShot(true); timeout_.setInterval(8000);
         connect(&timeout_, &QTimer::timeout, this, [this] { process_->kill(); });
         poll_.setInterval(1500); connect(&poll_, &QTimer::timeout, this, [this] { request("state"); });
@@ -99,7 +100,12 @@ public:
     }
     void applyState(const QJsonObject& state)
     {
-        if (state.contains("error")) { status_->setText(state.value("error").toString()); return; }
+        if (state.contains("error")) {
+            if (state.value("connectionError").toBool()) connectionFailed();
+            else status_->setText(state.value("error").toString());
+            return;
+        }
+        connectionLost_ = false; check_->setText("Check now");
         QSignalBlocker modeBlock(mode_), channelBlock(channel_), restartBlock(restart_);
         mode_->setCurrentIndex(mode_->findData(state.value("mode").toString()));
         channel_->setCurrentIndex(channel_->findData(state.value("channel").toString()));
@@ -119,8 +125,7 @@ protected:
         QWidget::showEvent(event);
         if (!connected_) return;
         if (!QFileInfo::exists(helper_)) { status_->setText("This copy does not include the updater. Install a current full or Config-only package."); return; }
-        QProcess::startDetached(helper_, {"--root", root_, "--service"}, root_);
-        serviceActive_ = true; poll_.start();
+        startHelper(); poll_.start();
         QTimer::singleShot(500, this, [this] { if (isVisible()) request("state"); });
     }
     void hideEvent(QHideEvent* event) override
@@ -131,6 +136,20 @@ protected:
     }
 
 private:
+    void startHelper()
+    {
+        if (!connected_ || !QFileInfo::exists(helper_)) return;
+        if (restartClock_.isValid() && restartClock_.elapsed() < 10000) return;
+        restartClock_.start();
+        serviceActive_ = QProcess::startDetached(helper_, {"--root", root_, "--service"}, root_);
+    }
+    void connectionFailed()
+    {
+        connectionLost_ = true; pending_ = {}; // Never replay a possibly completed install or preference change.
+        status_->setText("Connection to the updater was interrupted. Reconnecting…");
+        setAvailable(false); check_->setText("Reconnect"); check_->setEnabled(true);
+        if (isVisible()) startHelper();
+    }
     void setAvailable(bool available) { for (auto* button : {check_, download_, install_, skip_}) button->setEnabled(available); mode_->setEnabled(available); channel_->setEnabled(available); restart_->setEnabled(available); }
     void request(const QString& command, QJsonObject object = {})
     {
@@ -148,6 +167,8 @@ private:
     QString root_, helper_;
     bool connected_;
     bool serviceActive_ = false;
+    bool connectionLost_ = false;
+    QElapsedTimer restartClock_;
     QJsonObject pending_;
     QLabel *identity_, *status_;
     QComboBox *mode_, *channel_;

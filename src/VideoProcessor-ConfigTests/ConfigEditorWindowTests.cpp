@@ -2191,6 +2191,12 @@ void testIntegratedUpdatesRespectLocalPackage()
     require(!mode->isEnabled(), "Preferences remained mutable during installation operation");
     panel.applyState(QJsonObject{{"error", "Update helper unavailable"}});
     require(panel.findChild<QLabel*>("updates.status")->text().contains("unavailable"), "Helper error was not visible inside Config");
+    panel.applyState(QJsonObject{{"error", "Timed out"}, {"connectionError", true}});
+    require(panel.findChild<QLabel*>("updates.status")->text().contains("Reconnecting") &&
+        !panel.findChild<QLabel*>("updates.status")->text().contains("setup"), "Disconnect incorrectly blamed setup");
+    state["busy"] = false; panel.applyState(state);
+    require(mode->isEnabled(), "Healthy helper response did not recover the page");
+
 }
 
 void testUpdateShutdownDiscardsEditsWithoutPrompt()
