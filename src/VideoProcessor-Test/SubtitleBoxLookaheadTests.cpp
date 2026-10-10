@@ -434,6 +434,41 @@ public:
             Assert::IsFalse(observation.barAuthority);Assert::IsFalse(observation.text.detected);
         }
     }
+    TEST_METHOD(AssistedNominationRequiresExplicitPermissionAndMatchingSharedContext) {
+        auto pixels=Pixels();Text(pixels,200,318,16);SubtitleMeasurementSampler sampler;
+        for(int shape=0;shape<2;++shape) {
+            auto key=Cue(1);key.sharedPicture.required=true;key.sharedPicture.identity=Identity(1);
+            if(shape)key.sharedPicture.bounds={0,0,640,360,640,360};
+            key.sharedPicture.allowAssistedNomination=true;
+            auto allowed=sampler.Measure(Source(pixels),key,{},60);
+            Assert::IsTrue(allowed.assistedSourceCandidate);
+            Assert::IsTrue(allowed.text.detected);
+            Assert::IsTrue(allowed.sharedPicture.Matches(key.sharedPicture));
+            for(int defect=0;defect<6;++defect) {
+                auto rejected=key;
+                if(defect==0)rejected.sharedPicture.allowAssistedNomination=false;
+                if(defect==1)++rejected.sharedPicture.identity.transportGeneration;
+                if(defect==2)++rejected.sharedPicture.identity.sourceFormatGeneration;
+                if(defect==3)++rejected.sharedPicture.identity.viewportGeneration;
+                if(defect==4)++rejected.sharedPicture.identity.rendererGeneration;
+                if(defect==5)rejected.discontinuity=true;
+                const auto observed=sampler.Measure(Source(pixels),rejected,{},60);
+                Assert::IsFalse(observed.assistedSourceCandidate);
+                Assert::IsFalse(observed.barAuthority);
+                Assert::IsFalse(observed.text.detected);
+            }
+            key.sharedPicture.bounds={0,45,640,315,640,360};
+            Assert::IsFalse(sampler.Measure(Source(pixels),key,{},60).assistedSourceCandidate);
+        }
+    }
+    TEST_METHOD(AssistedNominationPermissionInvalidatesWorkerKey) {
+        auto a=Cue(1);a.sharedPicture.required=true;a.sharedPicture.identity=Identity(1);
+        auto b=a;b.sharedPicture.allowAssistedNomination=true;
+        Assert::IsFalse(a.sharedPicture.Matches(b.sharedPicture));
+        Assert::IsFalse(SubtitleMeasurementWorker::SameKey(a,b));
+        a.sharedPicture.allowAssistedNomination=true;
+        Assert::IsTrue(SubtitleMeasurementWorker::SameKey(a,b));
+    }
     TEST_METHOD(WorkerKeyIncludesSharedAuthorityEvenForSameSourceFrame) {
         auto a=Cue(1);a.sharedPicture.required=true;a.sharedPicture.identity=Identity(1);
         a.sharedPicture.bounds={0,45,640,315,640,360};auto b=a;

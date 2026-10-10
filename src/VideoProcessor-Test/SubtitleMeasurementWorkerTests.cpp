@@ -121,11 +121,12 @@ public:
         auto observed=Ready(1).current;observed.assistedSourceCandidate=true;
         observed.assistedBounds={0,12,160,78,160,90};
         observed.sharedPicture.bounds={0,0,160,90,160,90};
+        observed.sharedPicture.allowAssistedNomination=true;
         const auto reuse=[](const SubtitleBoxObservation& value) {
             return SubtitleBoxLookahead::CanReuseMeasurement(value,Identity(1),160,90,11,21,false,{});
         };
         Assert::IsTrue(reuse(observed));
-        for(int scenario=0;scenario<6;++scenario) {
+        for(int scenario=0;scenario<8;++scenario) {
             auto unsafe=observed;
             if(scenario==0)unsafe.analysisRefresh=true;
             if(scenario==1)unsafe.pendingRefresh=true;
@@ -133,6 +134,8 @@ public:
             if(scenario==3)unsafe.text.workLimit=true;
             if(scenario==4)unsafe.identity=Identity(2);
             if(scenario==5)unsafe.sharedPicture.bounds={0,12,160,78,160,90};
+            if(scenario==6)unsafe.sharedPicture.allowAssistedNomination=false;
+            if(scenario==7)++unsafe.sharedPicture.identity.sourceFormatGeneration;
             Assert::IsFalse(reuse(unsafe));
         }
     }

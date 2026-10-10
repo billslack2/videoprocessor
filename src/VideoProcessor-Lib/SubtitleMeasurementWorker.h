@@ -24,8 +24,8 @@ public:
         // Classic's shared authority/key unchanged and cannot seed native bar
         // tracking. Rendering separately proves the full current source bands
         // before this measurement can be composed or influence display bounds.
-        if (!key.discontinuity && key.sharedPicture.required && source.IsValid() &&
-            !key.sharedPicture.AvailableFor(key.identity,source.width,source.height)) {
+        if (!key.discontinuity && source.IsValid() &&
+            key.sharedPicture.AllowsAssistedNominationFor(key.identity,source.width,source.height)) {
             const auto raw=ExtractActivePictureEvidence(source);
             const auto nomination=NominateSubtitleAssistedSourceBounds(source,raw);
             if (nomination.nominated) {

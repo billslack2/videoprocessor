@@ -11210,6 +11210,14 @@ struct LibplaceboVideoRenderer::Impl
         subtitleSharedPicture.identity.sourceFormatGeneration=AlphaSourceFormatKey(state);
         subtitleSharedPicture.identity.viewportGeneration=viewportRequestSerial;
         subtitleSharedPicture.identity.rendererGeneration=frameGeneration;
+        subtitleSharedPicture.allowAssistedNomination=automaticSourceCrop && configuredScreenActive &&
+            SubtitlePreviewOverridesClassicHandling(CurrentSubtitlePreviewMode()) && !nlsRequested &&
+            !fixedCropAspectConfigured && !inwardCaptionProtected && !videoFrame.IsSourceDiscontinuity() &&
+            !sceneResult.hardCutCandidate && !sceneResult.safeBoundary && !sceneHold.cropActive &&
+            !movingPictureTransition.active && !movingPictureTransition.awaitingPublication &&
+            !cropPresentationRecovery.active && !scopeVerticalInspectionBridge.failOpenLatched &&
+            nearBlackPresentationEpisode.mode==AlphaSourceCrop::NearBlackPresentationMode::INACTIVE &&
+            !subtitleSharedPicture.AvailableFor(subtitleSharedPicture.identity,width,height);
 
 		if (retiringTranslationFitInspection)
 		{
@@ -11798,7 +11806,8 @@ struct LibplaceboVideoRenderer::Impl
             const auto& assistedObservation=currentSubtitlePreview.current;
             const bool assistedContext=analysisSource.generation==subtitleIdentity.transportGeneration &&
                 automaticSourceCrop && configuredScreenActive && !nlsRequested &&
-                !fixedCropAspectConfigured && SubtitlePreviewOverridesClassicHandling(subtitlePreviewMode) &&
+                !fixedCropAspectConfigured && !inwardCaptionProtected && !cropPresentationRecovery.active &&
+                !scopeVerticalInspectionBridge.failOpenLatched && SubtitlePreviewOverridesClassicHandling(subtitlePreviewMode) &&
                 !videoFrame.IsSourceDiscontinuity() && !sceneResult.hardCutCandidate && !sceneResult.safeBoundary &&
                 !sceneHold.cropActive && !movingPictureTransition.active && !movingPictureTransition.awaitingPublication &&
                 nearBlackPresentationEpisode.mode==AlphaSourceCrop::NearBlackPresentationMode::INACTIVE;
@@ -13328,7 +13337,7 @@ struct LibplaceboVideoRenderer::Impl
             assistedPresentationInput.backgroundMode=subtitleCutPasteBackground;
             assistedPresentationInput.compositionSucceeded=subtitleCompositionSucceeded;
             const bool assistedDisplayEligible=assistedSourceProof.verified && automaticSourceCrop && configuredScreenActive &&
-                !fixedCropAspectConfigured && !nlsRequested && !sourceDiscontinuity &&
+                !fixedCropAspectConfigured && !nlsRequested && !sourceDiscontinuity && !protectedCaptionFit &&
                 !cropDecision.applyCrop && cropDecision.sourceBounds.left==0 && cropDecision.sourceBounds.top==0 &&
                 cropDecision.sourceBounds.right==width && cropDecision.sourceBounds.bottom==height &&
                 !cropInput.movingPictureTransition && !cropInput.pictureTransitionHandoff.active &&

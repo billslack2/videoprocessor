@@ -73,7 +73,10 @@ build and synthetic tests do not certify all HDMI content.
 ## Cold-start source-assisted presentation
 
 The subtitle worker may independently nominate a full-width vertical aperture
-only when Classic has no available cropped picture. Both boundaries must have
+only when Classic has no available cropped picture and the current renderer
+policy explicitly permits nomination. Withdrawal alone is never permission;
+foreign contexts, disabled styles, transitions and recovery cannot opt in.
+Permission changes invalidate queued measurements. Both boundaries must have
 current contrast support distributed across at least three horizontal zones and
 both halves of the raster. Exactly one edge must already pass native bar checks.
 The opposite edge is measured independently; symmetry or a single rightmost

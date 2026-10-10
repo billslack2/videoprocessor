@@ -39,8 +39,9 @@ struct SubtitlePictureAuthority {
     bool required=false;
     ActivePictureBounds bounds;
     ActivePictureFrameIdentity identity;
+    bool allowAssistedNomination=false; // Explicit display-policy permission, never implied by withdrawal.
     bool Matches(const SubtitlePictureAuthority& other) const {
-        return required==other.required && (!required ||
+        return required==other.required && allowAssistedNomination==other.allowAssistedNomination && (!required ||
             (bounds.left==other.bounds.left && bounds.top==other.bounds.top &&
              bounds.right==other.bounds.right && bounds.bottom==other.bounds.bottom &&
              bounds.rasterWidth==other.bounds.rasterWidth && bounds.rasterHeight==other.bounds.rasterHeight &&
@@ -48,6 +49,10 @@ struct SubtitlePictureAuthority {
              identity.sourceFormatGeneration==other.identity.sourceFormatGeneration &&
              identity.viewportGeneration==other.identity.viewportGeneration &&
              identity.rendererGeneration==other.identity.rendererGeneration));
+    }
+    bool AllowsAssistedNominationFor(const ActivePictureFrameIdentity& frame,int width,int height) const {
+        auto current=*this;current.identity=frame;
+        return required && allowAssistedNomination && Matches(current) && !AvailableFor(frame,width,height);
     }
     bool AvailableFor(const ActivePictureFrameIdentity& frame,int width,int height) const {
         auto next=*this;next.identity=frame;
@@ -316,8 +321,7 @@ namespace SubtitleBoxLookahead
         if (observation.assistedSourceCandidate)
             return !observation.analysisRefresh && !observation.pendingRefresh &&
                 !observation.text.held && !observation.text.workLimit &&
-                observation.sharedPicture.required &&
-                !observation.sharedPicture.AvailableFor(identity,width,height);
+                observation.sharedPicture.AllowsAssistedNominationFor(identity,width,height);
         if (observation.text.detected && observation.barAuthority &&
             !observation.currentAnchorUsesTrackedEdge &&
             observation.pictureTop==observation.barEvidence.top &&
