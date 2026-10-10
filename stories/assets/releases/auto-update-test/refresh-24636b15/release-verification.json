@@ -1,0 +1,47 @@
+{
+  "sourceCommit": "24636b15fa61338b9d7cecaf77b69385b7823791",
+  "sequence": 20261010234621,
+  "channel": "beta",
+  "configuration": "Release",
+  "architecture": "x64",
+  "testsRun": false,
+  "testsSkipReason": "Explicit user request",
+  "artifacts": [
+    {
+      "name": "build-receipt.json",
+      "sha256": "9ED0B2EB451FCCBE2794871693F766EB5915A5DB64C3FBA564C572E3E7457243"
+    },
+    {
+      "name": "release-notes.md",
+      "sha256": "5B3D39FFF53A295C3B13CC177E37FEB6B84E0FE9BDEA33ACD1E3EBB2B878435E"
+    },
+    {
+      "name": "VideoProcessorConfigSetup-1.4.0-auto-update-test-24636b15fa61.exe",
+      "sha256": "03C0A3E97CFF934BEC1F91DBF78EB1F89B4CACDA86BD749B43371F1FA05C368F"
+    },
+    {
+      "name": "VideoProcessorConfigSetup-1.4.0-auto-update-test-24636b15fa61.exe.manifest.json",
+      "sha256": "F13E40CFE6DD87246BA8652945234D033A9E312ABEFB992DC73736C9132FEE1F"
+    },
+    {
+      "name": "VideoProcessorConfigSetup-1.4.0-auto-update-test-24636b15fa61.exe.sha256",
+      "sha256": "8A404D40D642CA8CD78E754C6F8AF6B5D2290C7780CEFDEDEFF15FD9296DB0C5"
+    },
+    {
+      "name": "VideoProcessorSetup-1.4.0-auto-update-test-24636b15fa61.exe",
+      "sha256": "8411FD338A6F6A20B4B6A607209D2BE7FB59F9EF52921CFE4F160C77C29BF2DA"
+    },
+    {
+      "name": "VideoProcessorSetup-1.4.0-auto-update-test-24636b15fa61.exe.manifest.json",
+      "sha256": "C05293E4F579EBD3A1195179AC7CC5B47DD92313607F2DA3AA8727175F5D9087"
+    },
+    {
+      "name": "VideoProcessorSetup-1.4.0-auto-update-test-24636b15fa61.exe.sha256",
+      "sha256": "3A6B832982C71FCA72F376A29BFDCBB964E91C1A0AE20E4582670F1F5156DC34"
+    },
+    {
+      "name": "vp-update.json",
+      "sha256": "3979D93FFB963A0901C514EACBD104E81DD0A793D02B6D8DA4BEB0ABCD981724"
+    }
+  ]
+}
