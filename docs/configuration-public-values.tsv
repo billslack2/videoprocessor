@@ -114,6 +114,8 @@ vprenderer.report_bt2020_to_display	true
 vprenderer.report_bt2020_to_display	false
 general.switch_refresh_rate	true
 general.switch_refresh_rate	false
+general.scale_osd	true
+general.scale_osd	false
 vprenderer.viewport.<variant>.automatic_crop	true
 vprenderer.viewport.<variant>.automatic_crop	false
 vprenderer.viewport.<variant>.vertical_alignment	top

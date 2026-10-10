@@ -4598,6 +4598,11 @@ QWidget* ConfigEditorWindow::createStartupPage()
 	});
 	sourceForm->addRow(QStringLiteral("Profile display"),
 		profileChangeDisplay);
+	auto* scaleOsd = bindCheckField(QStringLiteral("Scale OSD with resolution"),
+		QStringLiteral("general"), QStringLiteral("scale_osd"));
+	scaleOsd->setToolTip(QStringLiteral(
+		"Keep the stats OSD the same apparent size at every output resolution: 25% larger than native at 4K, about 37% smaller at 1080p. Unticked, it is drawn at its native size, so it looks twice as large at 1080p as at 4K. VP Renderer only."));
+	sourceForm->addRow(QString(), scaleOsd);
 
     auto* input = new QWidget;
     auto* inputForm = new QFormLayout(input);
