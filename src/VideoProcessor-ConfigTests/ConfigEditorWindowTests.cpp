@@ -2161,7 +2161,7 @@ void testIntegratedUpdatesRespectLocalPackage()
     require(!panel.isWindow(), "Updates opened a separate top-level window");
     ConfigEditorWindow window(copyFixture(directory), 0, true);
     auto* entry = window.findChild<QPushButton*>("config.openUpdates");
-    require(entry, "Top bar has no Updates entry"); entry->click(); QApplication::processEvents();
+    require(entry, "Sidebar has no Updates entry"); window.show(); entry->click(); QApplication::processEvents();
     auto* pages = window.findChild<QStackedWidget*>("settingsPages");
     auto* embedded = window.findChild<QWidget*>("config.updates");
     require(embedded && pages && pages->currentWidget()->isAncestorOf(embedded) && !embedded->isWindow(),

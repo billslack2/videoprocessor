@@ -3,8 +3,8 @@
 ## Scope
 
 Update settings, status, release notes and download/install controls live in a
-native Qt settings page inside Config, accessible from the top-bar Updates button
-and sidebar. The Windows player and Config launch a shared,
+native Qt settings page inside Config, accessible from Updates below DirectShow
+in the sidebar. The Windows player and Config launch a shared,
 hidden `VideoProcessorUpdate.exe` backend. It uses GitHub Releases in
 `billslack2/videoprocessor`; no service, account token, or private update server
 is required. Public releases are required for this unauthenticated client.

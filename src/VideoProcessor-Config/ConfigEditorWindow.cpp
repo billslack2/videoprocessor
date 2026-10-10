@@ -3996,11 +3996,6 @@ QWidget* ConfigEditorWindow::createShell()
     brandLayout->addWidget(title);
     headerLayout->addWidget(brand);
     headerLayout->addStretch();
-    auto* updates = new QPushButton(QStringLiteral("Updates"));
-    updates->setObjectName(QStringLiteral("config.openUpdates"));
-    updates->setToolTip(QStringLiteral("Manage updates for Config and VP installed on this computer."));
-    connect(updates, &QPushButton::clicked, this, &ConfigEditorWindow::showUpdates);
-    headerLayout->addWidget(updates);
 	// Every launch mode can move from its current source to a discovered VP.
 	{
 		auto* caption = new QLabel(QStringLiteral("Configure VP:"));
@@ -4119,8 +4114,8 @@ QWidget* ConfigEditorWindow::createShell()
     navLayout->addSpacing(8);
     QPushButton* vpNavigation = addLeaf(QStringLiteral("VP Renderer"), 2);
     QPushButton* directShowNavigation = addLeaf(QStringLiteral("DirectShow"), 3);
+    addLeaf(QStringLiteral("Updates"), 20)->setObjectName(QStringLiteral("config.openUpdates"));
     navLayout->addStretch();
-    addLeaf(QStringLiteral("Updates"), 20);
 
     auto* pageHost = new QWidget;
     pageHost->setObjectName(QStringLiteral("sectionPageHost"));
