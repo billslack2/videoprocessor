@@ -190,7 +190,12 @@ inline SubtitleAssistedReacquisitionMeasurement MeasureSubtitleAssistedReacquisi
     const auto first=ReacquisitionNominationFor(source,initial);if(!first.nominated)return fail(first.reason);
     SubtitleBoxDetector scanner;scanner.SetNearBarDistance(nearBarDistance);scanner.SetOptimizationMode(optimizationMode);
     const auto text=scanner.Analyze(source,initial.top,initial.bottom,sequence,viewportGeneration);const auto ink=scanner.InkSnapshot();
-    if(!ink)return fail("reacquisition-current-ink-unavailable");
+    if(!ink) {
+        if(text.workLimit)return fail("reacquisition-initial-detector-work-limit");
+        if(text.diagnosticReason && std::strcmp(text.diagnosticReason,"no-bright-ink")==0)
+            return fail("reacquisition-initial-no-bright-ink");
+        return fail("reacquisition-current-ink-unavailable");
+    }
     // Search owns no composition footprint. The renderer later intersects this
     // evidence with exact producer-derived capture lines before any crop.
     const auto connected=SubtitleReacquisitionDetail::BuildConnectedInk(source,initial,text,*ink,text.bounds,first.blackThreshold);

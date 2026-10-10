@@ -196,6 +196,22 @@ public:
         const auto proof=VerifySubtitleAssistedReacquisitionEvidence(f.Source(),n,f.text,*f.ink,f.capture);
         Assert::IsFalse(proof.verified);Assert::AreEqual("native-disconnected-ink",proof.reason);
     }
+    TEST_METHOD(OutwardGuardRetainsOldPictureFringeButCannotHideUnknownExcludedInk) {
+        for(bool p210:{false,true}) {
+            AssistedSourceFixture f(p210);const auto n=ReacquisitionNominationFor(f.Source(),f.nomination.candidate);
+            Assert::IsTrue(n.candidate.top<f.top && n.candidate.bottom>f.bottom);
+            // Original picture remains in the candidate, including real pixels
+            // on its outward guard rows. They are never classed as subtitle ink.
+            f.Fill(0,n.candidate.top,f.w,f.top,200);
+            f.Fill(0,f.bottom,f.w,n.candidate.bottom,200);
+            Assert::IsTrue(VerifySubtitleAssistedReacquisitionEvidence(f.Source(),n,f.text,*f.ink,f.capture).verified);
+            const auto before=f.data;
+            f.Fill(100,n.candidate.top-1,101,n.candidate.top,300);
+            const auto proof=VerifySubtitleAssistedReacquisitionEvidence(f.Source(),n,f.text,*f.ink,f.capture);
+            Assert::IsFalse(proof.verified);Assert::AreEqual("native-unowned-content",proof.reason);
+            Assert::AreEqual(int(200<<6),int(before[size_t(n.candidate.top)*f.pitch+100]));
+        }
+    }
     TEST_METHOD(UnownedChromaticAndStaleMorphologyFailStrictCurrentProof) {
         for(int scenario=0;scenario<5;++scenario) {
             AssistedSourceFixture f(true);const auto n=ReacquisitionNominationFor(f.Source(),f.nomination.candidate);

@@ -203,7 +203,7 @@ public:
         const auto source=WorkerContractSource(*pixels,key);Assert::IsTrue(source.generation!=key.identity.transportGeneration);
         SubtitleMeasurementSampler sampler;const auto observed=sampler.Measure(source,key,{},24.0);
         Assert::IsTrue(observed.assistedReacquisitionAttempted);
-        Assert::AreEqual("reacquisition-current-ink-unavailable",observed.assistedReacquisitionReason);
+        Assert::AreEqual("reacquisition-initial-no-bright-ink",observed.assistedReacquisitionReason);
         Assert::IsFalse(observed.assistedReacquisitionCandidate,L"a source-contract match must not waive morphology proof");
         Assert::IsTrue(SubtitleMeasurementWorker::SameKey(key,observed));
         for(int scenario=0;scenario<6;++scenario) {
@@ -240,11 +240,11 @@ public:
         Assert::IsTrue(SameActivePictureFrameIdentity(key.identity,observed.identity));
         Assert::IsTrue(SubtitleMeasurementWorker::SameKey(key,observed));
         Assert::IsTrue(observed.assistedReacquisitionAttempted);Assert::IsFalse(observed.assistedReacquisitionCandidate);
-        Assert::AreEqual("reacquisition-current-ink-unavailable",observed.assistedReacquisitionReason);
+        Assert::AreEqual("reacquisition-initial-no-bright-ink",observed.assistedReacquisitionReason);
         const auto diagnostic=worker.TakeDiagnostics();
         Assert::AreEqual(uint64_t(1),diagnostic.reacquisitionRequested);Assert::AreEqual(uint64_t(1),diagnostic.reacquisitionAttempted);
         Assert::AreEqual(uint64_t(0),diagnostic.reacquisitionAccepted);Assert::AreEqual(uint64_t(0),diagnostic.reacquisitionSourceMismatch);
-        Assert::AreEqual("reacquisition-current-ink-unavailable",diagnostic.reacquisitionLastReason);
+        Assert::AreEqual("reacquisition-initial-no-bright-ink",diagnostic.reacquisitionLastReason);
         Assert::AreEqual(uint64_t(0),worker.TakeDiagnostics().reacquisitionRequested);
     }
 };

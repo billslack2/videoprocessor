@@ -11296,9 +11296,9 @@ struct LibplaceboVideoRenderer::Impl
             return input;
         };
         auto subtitleReacquisitionAdmissionPredictionFor = [&](const ActivePictureFrameIdentity& identity) {
-            // Worker scheduling only: a retained native rectangle without fresh
-            // acquisition support would be rejected by ordinary admission. The
-            // fully resolved actual admission below is mandatory for display.
+            // Worker scheduling only: predict native admission for the retained
+            // rectangle. Collection may audit an alternative to a visible-pixel
+            // conflict; only fully resolved actual admission permits display.
             AlphaSourceCrop::Input predictionInput;
             predictionInput.automaticCropEnabled=automaticSourceCrop;
             predictionInput.frameSourceGeneration=identity.transportGeneration;
@@ -13492,12 +13492,27 @@ struct LibplaceboVideoRenderer::Impl
             reacquisitionFinalInput.conflictingPresentationOwnership=reacquisitionFinalInput.conflictingPresentationOwnership ||
                 useSceneVerificationGeometry || protectedCaptionFit || cropInput.movingPictureTransition ||
                 cropInput.pictureTransitionHandoff.active || recoveryDecision.boundedPresentation || nearBlackBoundedDecision.boundedPresentation;
+            // The strict verifier read this exact ORIGINAL source and accepted
+            // only connected current glyphs inside producer-derived cleanup.
+            // Keep the native visible witness intact; this is clearance for a
+            // different display rectangle, later checked against actual composition.
+            if(assistedReacquisition && assistedSourceProof.verified) {
+                auto& clearance=reacquisitionFinalInput.candidateClearance;
+                clearance.wholeNativeBandsVerified=true;
+                clearance.identity=subtitleEvidenceIdentity;
+                clearance.sourceGeneration=analysisSource.generation;
+                clearance.policyGeneration=subtitleEvidencePolicy;
+                clearance.continuityGeneration=subtitleEvidenceContinuity;
+                clearance.candidate=assistedSourceProof.candidate;
+            }
             const bool reacquisitionTransitionPresentation=assistedReacquisition &&
                 AlphaSourceCrop::CanPresentSubtitleAssistedReacquisitionEvidence(reacquisitionFinalInput,
                     admissionDecision,assistedAcquisition,subtitleCompositionSucceeded);
             const auto reacquisitionFinalEligibility=AlphaSourceCrop::EvaluateSubtitleAssistedReacquisitionEligibility(
                 reacquisitionFinalInput,admissionDecision);
             const bool reacquisitionRetainedPresentation=reacquisitionTransitionPresentation && reacquisitionFinalEligibility.retainedCrop;
+            const bool reacquisitionCandidateClearance=AlphaSourceCrop::HasCurrentSubtitleAssistedCandidateClearance(
+                reacquisitionFinalInput,assistedAcquisition.candidate);
             // The pre-existing unclassified cold path also accepts the stronger
             // opt-in source proof. It may not override any admission denial.
             const bool reacquisitionColdPresentation=assistedReacquisition && activeSettings.subtitleArReacquisition &&
@@ -13549,7 +13564,7 @@ struct LibplaceboVideoRenderer::Impl
                 !assistedComposition.allow?assistedComposition.reason:assistedDisplay.reason;
             if(!cadenceRepeat && SubtitlePreviewOverridesClassicHandling(subtitlePreviewMode) &&
                 (subtitleAssistedLogReason!=assistedReason || assistedTick-subtitleAssistedLogTick>=2000)) {
-                DebugLog::Log("SUBTITLE ASSISTED AR: generation=%llu sequence=%llu epoch=%llu logical_mutation=0 history_learning=0 nominated=%d proof=%d confirmations=%u inhibited=%d eligible=%d applied=%d composed=%d startup_overlay=%d reacquisition_enabled=%d reacquisition_candidate=%d reacquisition_transition=%d reacquisition_retained=%d reacquisition_collect=%d collection_policy=%s final_policy=%s admission_blocked=%d admission_block=%d visible_conflict=%d candidate=%d,%d-%d,%d display=%d,%d-%d,%d native_pixels=%zu glyph_pixels=%zu ms=%.3f reason=%s native_reason=\"%s\"",
+                DebugLog::Log("SUBTITLE ASSISTED AR: generation=%llu sequence=%llu epoch=%llu logical_mutation=0 history_learning=0 nominated=%d proof=%d confirmations=%u inhibited=%d eligible=%d applied=%d composed=%d startup_overlay=%d reacquisition_enabled=%d reacquisition_candidate=%d reacquisition_transition=%d reacquisition_retained=%d reacquisition_collect=%d collection_policy=%s final_policy=%s admission_blocked=%d admission_block=%d visible_conflict=%d candidate_relative_conflict=%d candidate_clearance=%d candidate=%d,%d-%d,%d display=%d,%d-%d,%d native_pixels=%zu glyph_pixels=%zu ms=%.3f reason=%s native_reason=\"%s\"",
                     frameGeneration,sourceSequence,viewportRequestSerial,subtitleEvidenceObservation.assistedSourceCandidate?1:0,
                     assistedSourceProof.verified?1:0,assistedAcquisition.matchingFrames,assistedAcquisition.inhibited?1:0,
                     assistedDisplayEligible?1:0,assistedDisplayApplied?1:0,assistedDisplay.composed?1:0,assistedStartupPresentation?1:0,
@@ -13559,6 +13574,7 @@ struct LibplaceboVideoRenderer::Impl
                     reacquisitionColdPresentation?"cold-current-source-presentation":reacquisitionFinalEligibility.reason,
                     admissionDecision.blocked?1:0,
                     static_cast<int>(admissionDecision.blockReason),admissionDecision.currentVisibleConflict?1:0,
+                    reacquisitionFinalEligibility.candidateRelativeConflict?1:0,reacquisitionCandidateClearance?1:0,
                     assistedSourceProof.candidate.left,assistedSourceProof.candidate.top,assistedSourceProof.candidate.right,assistedSourceProof.candidate.bottom,
                     assistedDisplay.bounds.left,assistedDisplay.bounds.top,assistedDisplay.bounds.right,assistedDisplay.bounds.bottom,
                     assistedSourceProof.nativePixels,assistedSourceProof.ownedBarPixels,assistedProofMs,assistedReason,admissionDecision.presentation.reason.c_str());

@@ -1378,12 +1378,23 @@ namespace AlphaSourceCrop
 
     // Optional presentation-only reacquisition. Native geometry constrains an
     // already admitted replacement; it never supplies candidate geometry/proof.
+    // Current ORIGINAL-source audit for a particular alternative rectangle.
+    // This is not native crop authority. The renderer must also validate the
+    // exact cleanup/destination contract with SelectSubtitleAssistedPresentation.
+    struct SubtitleAssistedCandidateClearance
+    {
+        bool wholeNativeBandsVerified = false;
+        ActivePictureFrameIdentity identity;
+        uint64_t sourceGeneration = 0, policyGeneration = 0, continuityGeneration = 0;
+        ActivePictureBounds candidate;
+    };
     struct SubtitleAssistedReacquisitionInput
     {
         bool featureEnabled = false;
         ActivePictureFrameIdentity identity, measurementIdentity;
         uint64_t sourceGeneration = 0, policyGeneration = 0, continuityGeneration = 0;
         CropPresentationAdmissionState priorAdmission;
+        SubtitleAssistedCandidateClearance candidateClearance;
         ActivePictureBounds nativeGeometry, retentionBounds;
         ActivePictureFrameIdentity retentionIdentity;
         ActivePictureClassification currentClassification = ActivePictureClassification::UNAVAILABLE;
@@ -1398,7 +1409,7 @@ namespace AlphaSourceCrop
     };
     struct SubtitleAssistedReacquisitionEligibility
     {
-        bool allowed = false, retainedCrop = false;
+        bool allowed = false, retainedCrop = false, candidateRelativeConflict = false;
         const char* reason = "not-evaluated";
     };
     // A prediction only schedules source measurement. Display consumes actual
@@ -1409,6 +1420,8 @@ namespace AlphaSourceCrop
     bool CanCollectSubtitleAssistedReacquisitionEvidence(
         const SubtitleAssistedReacquisitionInput& input,
         const CropPresentationAdmissionDecision& predictedAdmission);
+    bool HasCurrentSubtitleAssistedCandidateClearance(
+        const SubtitleAssistedReacquisitionInput& input, const ActivePictureBounds& candidate);
     bool CanPresentSubtitleAssistedReacquisitionEvidence(
         const SubtitleAssistedReacquisitionInput& input,
         const CropPresentationAdmissionDecision& actualAdmission,

@@ -320,6 +320,21 @@ TEST_CLASS(SubtitleAssistedReacquisitionEligibilityTests) {
             candidate.applyCrop=true;candidate.owner=DecisionOwner::PIXEL_SAFE_RETENTION;
             candidate.sourceBounds=native.geometry;
         }
+        void SetUnadmittedVisibleConflict() {
+            native.geometry={0,28,640,332,640,360,640.0/304,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+            candidate.sourceBounds=native.geometry;input.nativeGeometry=native.geometry;
+            native.currentVisibleBoundsAvailable=true;
+            native.currentVisibleSourceGeneration=input.identity.transportGeneration;
+            native.currentVisibleSourceSequence=input.identity.acceptedSequence;
+            native.currentVisibleBase=native.geometry;
+            native.currentVisibleBounds={0,28,640,354,640,360};
+            input.currentVisibleConflict=true;input.currentClassification=ActivePictureClassification::PROVISIONAL;
+        }
+        void SetClearance(const ActivePictureBounds& bounds) {
+            auto& c=input.candidateClearance;c.wholeNativeBandsVerified=true;c.identity=input.identity;
+            c.sourceGeneration=input.sourceGeneration;c.policyGeneration=input.policyGeneration;
+            c.continuityGeneration=input.continuityGeneration;c.candidate=bounds;
+        }
         CropPresentationAdmissionDecision Admission() const {
             return AdmitCropPresentation(input.priorAdmission,native,candidate,input.identity.viewportGeneration);
         }
@@ -524,6 +539,102 @@ public:
             if(defect==1)proof.candidate.top=10;
             if(defect==2)proof.candidate.bottom=350;
             if(defect==3)proof.candidate.left=2;
+            Assert::IsFalse(CanPresentSubtitleAssistedReacquisitionEvidence(f.input,admission,proof,true));
+        }
+    }
+    TEST_METHOD(UnadmittedVisibleConflictCollectsOnlyCandidateSpecificEvidence) {
+        Fixture f;f.SetUnadmittedVisibleConflict();const auto admission=f.Admission();
+        Assert::IsTrue(admission.blocked);Assert::IsTrue(admission.currentVisibleConflict);
+        Assert::IsTrue(admission.blockReason==CropPresentationAdmissionBlockReason::MISSING_ACQUISITION_AUTHORITY);
+        const auto eligibility=EvaluateSubtitleAssistedReacquisitionEligibility(f.input,admission);
+        Assert::IsTrue(eligibility.allowed);Assert::IsTrue(eligibility.candidateRelativeConflict);
+        Assert::IsFalse(eligibility.retainedCrop);
+        // Scheduling cannot clear a visible witness or supply display proof.
+        Assert::IsFalse(CanPresentSubtitleAssistedReacquisitionEvidence(f.input,admission,f.Proof(),true));
+        Assert::IsFalse(HasCurrentSubtitleAssistedCandidateClearance(f.input,f.Proof().candidate));
+        Assert::IsFalse(admission.state.available);Assert::IsTrue(admission.currentVisibleConflict);
+    }
+    TEST_METHOD(UnadmittedOutwardCandidatePreservesNativePictureAndRequiresFourComposedProofs) {
+        SubtitleAssistedAcquisitionGate gate;
+        for(uint64_t n=1;n<=4;++n) {
+            Fixture f(n);f.SetUnadmittedVisibleConflict();auto frame=f.Frame();
+            frame.candidate.top=26;frame.candidate.bottom=334;frame.protectedBounds.top=26;
+            f.SetClearance(frame.candidate);const auto admission=f.Admission();const auto proof=gate.Evaluate(frame);
+            Assert::AreEqual(n==4,CanPresentSubtitleAssistedReacquisitionEvidence(f.input,admission,proof,true));
+            Assert::IsFalse(CanPresentSubtitleAssistedReacquisitionEvidence(f.input,admission,proof,false));
+            Assert::IsFalse(admission.state.available);Assert::IsTrue(admission.blocked);
+            Assert::IsTrue(admission.currentVisibleConflict);Assert::IsFalse(admission.presentation.applyCrop);
+            Assert::AreEqual(28,f.input.nativeGeometry.top);Assert::AreEqual(332,f.input.nativeGeometry.bottom);
+        }
+        Fixture missing(5);missing.SetUnadmittedVisibleConflict();auto lost=missing.Frame();
+        lost.candidate.top=26;lost.candidate.bottom=334;lost.protectedBounds.top=26;lost.sourceProofAccepted=false;
+        Assert::IsTrue(gate.Evaluate(lost).inhibited);
+        Fixture after(6);after.SetUnadmittedVisibleConflict();auto frame=after.Frame();
+        frame.candidate.top=26;frame.candidate.bottom=334;frame.protectedBounds.top=26;after.SetClearance(frame.candidate);
+        Assert::IsFalse(CanPresentSubtitleAssistedReacquisitionEvidence(after.input,after.Admission(),gate.Evaluate(frame),true));
+    }
+    TEST_METHOD(CandidateClearanceCannotCrossIdentityContextGeometryOrMissingAudit) {
+        for(int defect=0;defect<16;++defect) {
+            Fixture f;f.SetUnadmittedVisibleConflict();auto proof=f.Proof();f.SetClearance(proof.candidate);
+            auto& c=f.input.candidateClearance;
+            if(defect==0)c.wholeNativeBandsVerified=false;
+            if(defect==1)c.sourceGeneration++;
+            if(defect==2)c.identity.acceptedSequence++;
+            if(defect==3)c.identity.transportGeneration++;
+            if(defect==4)c.identity.sourceFormatGeneration++;
+            if(defect==5)c.identity.viewportGeneration++;
+            if(defect==6)c.identity.rendererGeneration++;
+            if(defect==7)c.identity.captureTimestamp++;
+            if(defect==8)c.identity.sourceFrameNumber++;
+            if(defect==9)c.policyGeneration++;
+            if(defect==10)c.continuityGeneration++;
+            if(defect==11)c.candidate.top--;
+            if(defect==12)c.candidate.bottom++;
+            if(defect==13)c.candidate.rasterWidth++;
+            if(defect==14)c.candidate.trustedBarAxes=ActivePictureBounds::BarAxes::TOP_BOTTOM;
+            if(defect==15)proof.candidate.top--;
+            Assert::IsFalse(HasCurrentSubtitleAssistedCandidateClearance(f.input,proof.candidate));
+            Assert::IsFalse(CanPresentSubtitleAssistedReacquisitionEvidence(f.input,f.Admission(),proof,true));
+        }
+    }
+    TEST_METHOD(VisibleConflictAlternativeCannotContractKnownNativePicture) {
+        for(int defect=0;defect<5;++defect) {
+            Fixture f;f.SetUnadmittedVisibleConflict();auto proof=f.Proof();
+            if(defect==0)proof.candidate.top++;
+            if(defect==1)proof.candidate.bottom--;
+            if(defect==2)proof.candidate.left++;
+            if(defect==3)proof.candidate.right--;
+            if(defect==4)proof.candidate.rasterHeight++;
+            f.SetClearance(proof.candidate);
+            Assert::IsFalse(CanPresentSubtitleAssistedReacquisitionEvidence(f.input,f.Admission(),proof,true));
+        }
+        Fixture f;f.SetUnadmittedVisibleConflict();const auto proof=f.Proof();f.SetClearance(proof.candidate);
+        Assert::IsTrue(CanPresentSubtitleAssistedReacquisitionEvidence(f.input,f.Admission(),proof,true));
+    }
+    TEST_METHOD(CandidateRelativeCollectionKeepsAllIndependentOwnershipVetoes) {
+        for(int defect=0;defect<20;++defect) {
+            Fixture f;f.SetUnadmittedVisibleConflict();auto admission=f.Admission();auto proof=f.Proof();f.SetClearance(proof.candidate);
+            if(defect==0)f.input.featureEnabled=false;
+            if(defect==1)f.input.fixedCrop=true;
+            if(defect==2)f.input.nls=true;
+            if(defect==3)f.input.sceneTransition=true;
+            if(defect==4)f.input.recoveryActive=true;
+            if(defect==5)f.input.presentationFailOpen=true;
+            if(defect==6)f.input.conflictingPresentationOwnership=true;
+            if(defect==7)f.input.globalNearBlack=true;
+            if(defect==8)f.input.nearBlackEpisodeActive=true;
+            if(defect==9)f.input.sourceDiscontinuity=true;
+            if(defect==10)f.input.fullRasterAuthorityAvailable=true;
+            if(defect==11)f.input.latestObservationSupportsCrop=true;
+            if(defect==12)f.input.currentClassification=ActivePictureClassification::BAR_CROP_TRUSTED;
+            if(defect==13)f.input.currentClassification=ActivePictureClassification::FULL_RASTER_TRUSTED;
+            if(defect==14)f.input.nativeGeometry.trustedBarAxes=ActivePictureBounds::BarAxes::NONE;
+            if(defect==15)admission.blockReason=CropPresentationAdmissionBlockReason::CURRENT_VISIBLE_PIXELS;
+            if(defect==16)admission.blocked=false;
+            if(defect==17)f.input.measurementIdentity.acceptedSequence++;
+            if(defect==18)f.input.priorAdmission.available=true,f.input.priorAdmission.sourceGeneration=1,f.input.priorAdmission.presentationEpoch=3;
+            if(defect==19)admission.state.available=true,admission.state.sourceGeneration=1,admission.state.presentationEpoch=3;
+            Assert::IsFalse(CanCollectSubtitleAssistedReacquisitionEvidence(f.input,admission));
             Assert::IsFalse(CanPresentSubtitleAssistedReacquisitionEvidence(f.input,admission,proof,true));
         }
     }

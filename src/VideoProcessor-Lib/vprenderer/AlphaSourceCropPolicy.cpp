@@ -3892,7 +3892,7 @@ namespace AlphaSourceCrop
         if(input.fullRasterAuthorityAvailable || input.sourceDiscontinuity || input.sceneTransition ||
             input.recoveryActive || input.presentationFailOpen || input.conflictingPresentationOwnership)
             return reject("presentation-owner-conflict");
-        if(input.currentVisibleConflict || admission.currentVisibleConflict)return reject("current-visible-conflict");
+        const bool visibleConflict=input.currentVisibleConflict || admission.currentVisibleConflict;
         if(!ValidBounds(raster,raster.rasterWidth,raster.rasterHeight))return reject("invalid-native-presentation");
         const bool prior=admittedInContext(input.priorAdmission),current=admittedInContext(admission.state);
         if(!prior && !current) {
@@ -3900,8 +3900,25 @@ namespace AlphaSourceCrop
                 CropPresentationAdmissionBlockReason::MISSING_ACQUISITION_AUTHORITY || admission.presentation.applyCrop ||
                 raster.left!=0 || raster.top!=0 || raster.right!=raster.rasterWidth || raster.bottom!=raster.rasterHeight)
                 return reject("missing-acquisition-denial-required");
+            if(visibleConflict) {
+                // The witness vetoes the incumbent rectangle, not every possible
+                // source rectangle. Collection asks for an independently audited
+                // alternative; it cannot waive the native admission decision.
+                const auto& native=input.nativeGeometry;
+                if(input.latestObservationSupportsCrop ||
+                    (input.currentClassification!=ActivePictureClassification::PROVISIONAL &&
+                     input.currentClassification!=ActivePictureClassification::UNAVAILABLE))
+                    return reject("affirmative-native-observation");
+                if(!ValidBounds(native,raster.rasterWidth,raster.rasterHeight) || native.left!=0 ||
+                    native.right!=native.rasterWidth || native.top<=0 || native.bottom>=native.rasterHeight ||
+                    native.trustedBarAxes!=ActivePictureBounds::BarAxes::TOP_BOTTOM)
+                    return reject("candidate-relative-native-picture-required");
+                result.allowed=true;result.candidateRelativeConflict=true;
+                result.reason="unadmitted-candidate-relative-source-collection";return result;
+            }
             result.allowed=true;result.reason="unadmitted-current-source-collection";return result;
         }
+        if(visibleConflict)return reject("current-visible-conflict");
         if(!prior || !current)return reject("retained-admission-context-mismatch");
         if(input.latestObservationSupportsCrop ||
             (input.currentClassification!=ActivePictureClassification::PROVISIONAL &&
@@ -3928,6 +3945,22 @@ namespace AlphaSourceCrop
     {
         return EvaluateSubtitleAssistedReacquisitionEligibility(input,admission).allowed;
     }
+    bool HasCurrentSubtitleAssistedCandidateClearance(
+        const SubtitleAssistedReacquisitionInput& input, const ActivePictureBounds& candidate)
+    {
+        const auto& clearance=input.candidateClearance;
+        return clearance.wholeNativeBandsVerified &&
+            clearance.sourceGeneration==input.identity.transportGeneration &&
+            SameActivePictureFrameIdentity(clearance.identity,input.identity) &&
+            clearance.policyGeneration==input.policyGeneration &&
+            clearance.continuityGeneration==input.continuityGeneration &&
+            SameBounds(clearance.candidate,candidate) &&
+            clearance.candidate.trustedBarAxes==ActivePictureBounds::BarAxes::NONE &&
+            candidate.trustedBarAxes==ActivePictureBounds::BarAxes::NONE &&
+            ValidBounds(candidate,input.nativeGeometry.rasterWidth,input.nativeGeometry.rasterHeight) &&
+            input.nativeGeometry.trustedBarAxes==ActivePictureBounds::BarAxes::TOP_BOTTOM &&
+            ContainedBounds(candidate,input.nativeGeometry);
+    }
     bool CanPresentSubtitleAssistedReacquisitionEvidence(
         const SubtitleAssistedReacquisitionInput& input,
         const CropPresentationAdmissionDecision& admission,
@@ -3940,7 +3973,12 @@ namespace AlphaSourceCrop
         // rectangle can nominate an expansion or supply a temporal proof vote.
         const bool containedReplacement=!eligibility.retainedCrop ||
             (ContainedBounds(raster,b) && (b.top>raster.top || b.bottom<raster.bottom));
-        return eligibility.allowed && containedReplacement && compositionSucceeded &&
+        // Every witness pixel must either remain inside this alternative picture
+        // or belong to current glyphs covered by the exact composed cleanup.
+        // The strict native audit supplies that evidence, never a bounding box.
+        const bool candidateClearsConflict=!eligibility.candidateRelativeConflict ||
+            HasCurrentSubtitleAssistedCandidateClearance(input,b);
+        return eligibility.allowed && containedReplacement && candidateClearsConflict && compositionSucceeded &&
             proof.confirmed && !proof.inhibited &&
             proof.matchingFrames >= SubtitleAssistedAcquisitionGate::RequiredFrames &&
             SameActivePictureFrameIdentity(proof.identity, input.identity) &&
