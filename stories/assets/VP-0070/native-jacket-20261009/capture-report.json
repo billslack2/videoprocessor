@@ -1,0 +1,12 @@
+{
+  "native_capture": "C:\\Users\\bslac\\Documents\\ChatGPT\\VP Low Priority\\native-jacket\\jacket.v210",
+  "sha256": "e61b28ba3176074ccc0d7becc407a7803b5155680e8aa3ef50016bea1c59c06f",
+  "width": 3840,
+  "height": 2160,
+  "stride": 10240,
+  "format": "v210 BT.2020 PQ",
+  "native_replay": "no-backed-anchor; not detected; also rejected in P010 replay",
+  "qualification": "Previous bright-core patch did not resolve reported live jacket false positive. Native capture after restart and live post-restart logs reject. Exact failing native frame/state has not yet been reproduced. Paused source repetition is expected and not diagnostic of a bug.",
+  "source_worktree": "E:\\codex\\videoprocessor\\subtitle-native-jacket-20261009",
+  "production_changes_this_turn": false
+}

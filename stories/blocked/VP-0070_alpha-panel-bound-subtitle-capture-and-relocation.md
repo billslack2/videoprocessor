@@ -1,5 +1,24 @@
 # VP-0070: CIH bar/boundary subtitle capture and relocation
 
+## Jacket live qualification failed - 2026-10-09
+
+Operator reports zero improvement after false-flash deployment. Paused scene
+shows an empty solid box over the jacket. Repeated detections are expected
+while paused; the fault is admission of scenery, not repetition. At 23:09:22
+logs accept source region about 1411,1725-1626,1884, picture 276..1884.
+The prior synthetic bright-core fix is NOT qualified as resolving this case.
+
+Built a temporary DeckLink one-frame helper outside production. Briefly stopped
+and restarted VP to obtain original v210 pixels after capture negotiation.
+The first startup blank was discarded. Saved a real 3840x2160 native paused
+scene frame (22,118,400 bytes). Direct native and P010 replays reject, as do
+current live logs after restart. Exact failing native admission still has not
+been reproduced. Awaiting operator confirmation whether patch disappeared
+after restart. No additional production code changes or deployment this turn.
+Evidence: stories/assets/VP-0070/native-jacket-20261009/capture-report.json;
+full native pixels and failing session retained in local native-jacket folder.
+
+
 ## Near-bar bright-core bypass - 2026-10-09
 
 Investigated 2026-10-09 22-35-01.mp4 and native logs at 22:35:07-08.
