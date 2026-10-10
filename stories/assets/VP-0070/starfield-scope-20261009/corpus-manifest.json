@@ -1,0 +1,296 @@
+[
+  {
+    "name": "beeping_15",
+    "frame": 900,
+    "time": 15.0,
+    "positive": true,
+    "phase": 0,
+    "bgra": "beeping_15-phase0.bgra",
+    "physical_picture": [
+      22,
+      174,
+      2538,
+      1230
+    ],
+    "target_picture": [
+      0,
+      276,
+      3840,
+      1884
+    ],
+    "frozen_sha256": "522b2d4ca0090d455cf8ba23d7c66a7d54770cedd696ab7bad42ed732dcb0a39"
+  },
+  {
+    "name": "beeping_15",
+    "frame": 900,
+    "time": 15.0,
+    "positive": true,
+    "phase": 1,
+    "bgra": "beeping_15-phase1.bgra",
+    "physical_picture": [
+      22,
+      174,
+      2538,
+      1230
+    ],
+    "target_picture": [
+      0,
+      277,
+      3840,
+      1885
+    ],
+    "frozen_sha256": "522b2d4ca0090d455cf8ba23d7c66a7d54770cedd696ab7bad42ed732dcb0a39"
+  },
+  {
+    "name": "beeping_36",
+    "frame": 2160,
+    "time": 36.0,
+    "positive": true,
+    "phase": 0,
+    "bgra": "beeping_36-phase0.bgra",
+    "physical_picture": [
+      22,
+      174,
+      2538,
+      1230
+    ],
+    "target_picture": [
+      0,
+      276,
+      3840,
+      1884
+    ],
+    "frozen_sha256": "4b6964bb850f2a7137e88661d9baf860c44cc220120922fda686a09beb3a4389"
+  },
+  {
+    "name": "beeping_36",
+    "frame": 2160,
+    "time": 36.0,
+    "positive": true,
+    "phase": 1,
+    "bgra": "beeping_36-phase1.bgra",
+    "physical_picture": [
+      22,
+      174,
+      2538,
+      1230
+    ],
+    "target_picture": [
+      0,
+      277,
+      3840,
+      1885
+    ],
+    "frozen_sha256": "4b6964bb850f2a7137e88661d9baf860c44cc220120922fda686a09beb3a4389"
+  },
+  {
+    "name": "beeping_50",
+    "frame": 3000,
+    "time": 50.0,
+    "positive": true,
+    "phase": 0,
+    "bgra": "beeping_50-phase0.bgra",
+    "physical_picture": [
+      312,
+      314,
+      2248,
+      1126
+    ],
+    "target_picture": [
+      0,
+      276,
+      3840,
+      1884
+    ],
+    "frozen_sha256": "71a7854a8a0499be920f3fe09dc53ac56b3d443a7e5bea2b7b7fb26b150d41b4"
+  },
+  {
+    "name": "beeping_50",
+    "frame": 3000,
+    "time": 50.0,
+    "positive": true,
+    "phase": 1,
+    "bgra": "beeping_50-phase1.bgra",
+    "physical_picture": [
+      312,
+      314,
+      2248,
+      1126
+    ],
+    "target_picture": [
+      0,
+      277,
+      3840,
+      1885
+    ],
+    "frozen_sha256": "71a7854a8a0499be920f3fe09dc53ac56b3d443a7e5bea2b7b7fb26b150d41b4"
+  },
+  {
+    "name": "autopilot_53",
+    "frame": 3180,
+    "time": 53.0,
+    "positive": true,
+    "phase": 0,
+    "bgra": "autopilot_53-phase0.bgra",
+    "physical_picture": [
+      312,
+      314,
+      2248,
+      1126
+    ],
+    "target_picture": [
+      0,
+      276,
+      3840,
+      1884
+    ],
+    "frozen_sha256": "295167e0b79e2cb5fa4058077d67e8f6268bad93cea07ccfdc4ade8292d6e7b4"
+  },
+  {
+    "name": "autopilot_53",
+    "frame": 3180,
+    "time": 53.0,
+    "positive": true,
+    "phase": 1,
+    "bgra": "autopilot_53-phase1.bgra",
+    "physical_picture": [
+      312,
+      314,
+      2248,
+      1126
+    ],
+    "target_picture": [
+      0,
+      277,
+      3840,
+      1885
+    ],
+    "frozen_sha256": "295167e0b79e2cb5fa4058077d67e8f6268bad93cea07ccfdc4ade8292d6e7b4"
+  },
+  {
+    "name": "starfield_14",
+    "frame": 840,
+    "time": 14.0,
+    "positive": false,
+    "phase": 0,
+    "bgra": "starfield_14-phase0.bgra",
+    "physical_picture": [
+      22,
+      174,
+      2538,
+      1230
+    ],
+    "target_picture": [
+      0,
+      276,
+      3840,
+      1884
+    ],
+    "frozen_sha256": "0b4a764dae4f3b65332db9b85175eb0e605e84de9570de8b39dd35e80d51d2fa"
+  },
+  {
+    "name": "starfield_14",
+    "frame": 840,
+    "time": 14.0,
+    "positive": false,
+    "phase": 1,
+    "bgra": "starfield_14-phase1.bgra",
+    "physical_picture": [
+      22,
+      174,
+      2538,
+      1230
+    ],
+    "target_picture": [
+      0,
+      277,
+      3840,
+      1885
+    ],
+    "frozen_sha256": "0b4a764dae4f3b65332db9b85175eb0e605e84de9570de8b39dd35e80d51d2fa"
+  },
+  {
+    "name": "starfield_13_5",
+    "frame": 810,
+    "time": 13.5,
+    "positive": false,
+    "phase": 0,
+    "bgra": "starfield_13_5-phase0.bgra",
+    "physical_picture": [
+      22,
+      174,
+      2538,
+      1230
+    ],
+    "target_picture": [
+      0,
+      276,
+      3840,
+      1884
+    ],
+    "frozen_sha256": "59ba7dea83f4b4441212ceeb61f4094b7da1f766820b25198da231a7b1b43bd3"
+  },
+  {
+    "name": "starfield_13_5",
+    "frame": 810,
+    "time": 13.5,
+    "positive": false,
+    "phase": 1,
+    "bgra": "starfield_13_5-phase1.bgra",
+    "physical_picture": [
+      22,
+      174,
+      2538,
+      1230
+    ],
+    "target_picture": [
+      0,
+      277,
+      3840,
+      1885
+    ],
+    "frozen_sha256": "59ba7dea83f4b4441212ceeb61f4094b7da1f766820b25198da231a7b1b43bd3"
+  },
+  {
+    "name": "starfield_24",
+    "frame": 1440,
+    "time": 24.0,
+    "positive": false,
+    "phase": 0,
+    "bgra": "starfield_24-phase0.bgra",
+    "physical_picture": [
+      22,
+      174,
+      2538,
+      1230
+    ],
+    "target_picture": [
+      0,
+      276,
+      3840,
+      1884
+    ],
+    "frozen_sha256": "100d5c1de864e410ac4f399e805c29170906d485e125476b25b5fb15326ff642"
+  },
+  {
+    "name": "starfield_24",
+    "frame": 1440,
+    "time": 24.0,
+    "positive": false,
+    "phase": 1,
+    "bgra": "starfield_24-phase1.bgra",
+    "physical_picture": [
+      22,
+      174,
+      2538,
+      1230
+    ],
+    "target_picture": [
+      0,
+      277,
+      3840,
+      1885
+    ],
+    "frozen_sha256": "100d5c1de864e410ac4f399e805c29170906d485e125476b25b5fb15326ff642"
+  }
+]

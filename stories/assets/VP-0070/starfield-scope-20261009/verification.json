@@ -1,0 +1,133 @@
+{
+  "base": "73953a364058b1cf6e5875dfc62e32df4e3bdcd5",
+  "branch": "codex/subtitle-held-authority-20261009",
+  "configuration": "Release",
+  "platform": "x64",
+  "deployed": false,
+  "build_logs": [
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\starfield-release-rebuild.log",
+      "sha256": "34a24a97df73a86d87dba5febb7f65ce188b3e54a96754b3b1dcfc42f93d86da"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\starfield-final-release-build.log",
+      "sha256": "b9a36c2e0cd39c1c3e2417789f08dc8560a272b2e408cbfd167f525ff939f35d"
+    }
+  ],
+  "source_hashes": [
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\src\\VideoProcessor-Lib\\SubtitleBoxDetector.cpp",
+      "sha256": "bccfbe8cabb0e7f8a2d0fcad41bdecef112882d282835cfbb1e31bf7cbe6a18c"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\src\\VideoProcessor-Lib\\SubtitleBoxDetector.h",
+      "sha256": "97d02f47263e762ea8f4741ad962bb5638f30bd6150ae8f43249f803362a1258"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\src\\VideoProcessor-Lib\\SubtitleBoxLookahead.h",
+      "sha256": "2200eff2bd1e0748b562ed1c87de36d1104b9b0cddbc4c878e89057de466aa03"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\src\\VideoProcessor-Lib\\SubtitleMeasurementWorker.h",
+      "sha256": "b4e09c4c1fc057281907aeb50be6fd383a7eafafe72266b96a80afcf0aec21ff"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\src\\VideoProcessor-Lib\\SubtitleOpaqueCardRefinement.h",
+      "sha256": "839065e44826ea9c25d4713dc327e0556721d5e3eb7af24496c9e8758c8142aa"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\src\\VideoProcessor-Lib\\vprenderer\\AlphaSourceCropPolicy.cpp",
+      "sha256": "b2da670d829851864f892778bc874fc5ff22f7c2ba7f474d02d7c6a3306df869"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\src\\VideoProcessor-Lib\\vprenderer\\AlphaSourceCropPolicy.h",
+      "sha256": "3c993708c006917bec427a12034249b2eeebb0a631c999435fd5881f766c3dad"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\src\\VideoProcessor-Lib\\vprenderer\\LibplaceboVideoRenderer.cpp",
+      "sha256": "546d3ab2c540d8d8486874155444320281f1cb24ed79a0450f18078da02782a1"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\src\\VideoProcessor-Lib\\vprenderer\\SubtitleBarRecovery.h",
+      "sha256": "97f158a7824fb4015d638798906494d2061de313f7ffc170e674a1308c4ebdad"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\src\\VideoProcessor-Test\\ActivePictureEvidenceTests.cpp",
+      "sha256": "57acab48af5d571fcd2398073962ff38fcb58168058eb0618db20896cb0f05c0"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\src\\VideoProcessor-Test\\AlphaSourceCropPolicyTests.cpp",
+      "sha256": "fee032317e0cc989d7b03bd410798539bcc44db826eb41d13baafb3224fa1173"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\src\\VideoProcessor-Test\\SubtitleBoxDetectorTests.cpp",
+      "sha256": "c2a101de6b435254d701811a5112d220f768069b3ed964fac52b919b870368e5"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\src\\VideoProcessor-Test\\SubtitleBoxLookaheadTests.cpp",
+      "sha256": "1a619ac832c2c25529807f97e83bdbf98eb0c36fb1213032922bc2828390868d"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\src\\VideoProcessor-Test\\SubtitleMeasurementWorkerTests.cpp",
+      "sha256": "4e49d6f80b8719d3d78c4da78047395dd8f787c188351a7cf1d6fb1afab6624f"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\src\\VideoProcessor-Test\\SubtitleOpaqueCardRefinementTests.cpp",
+      "sha256": "8d6252a2a3a28a493d7976b4a480c120559da47367b51684cc89f1456e78482a"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\src\\VideoProcessor-Test\\VideoProcessor-Test.vcxproj.vcxproj",
+      "sha256": "0975bd710bc5505b3d2122ed7fc554d52db74159918c623e53970a4d7f7b1871"
+    }
+  ],
+  "binaries": [
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\x64\\Release\\VideoProcessor-GUI.exe",
+      "sha256": "67a6a391f3d65c66cd13c5bd5c34de8ae26c846b7768e38c9f349eb3eefb81a6"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "04ed8459b67d2dbb7b214bb8f1ecffc461ae4bc60d24b1ff9da52e5c810a085f"
+    }
+  ],
+  "tests": {
+    "total": 2368,
+    "passed": 2368,
+    "failed": 0,
+    "trx": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\TestResults\\starfield\\full.trx",
+    "trx_sha256": "0bfc2bff5f1d059ea2e4322e767c146ffc68e2128a876e7a90bf868e38379a4a"
+  },
+  "recording": {
+    "path": "C:\\Users\\bslac\\Videos\\2026-10-09 21-10-25.mp4",
+    "sha256": "2681928e302274a8a9789c1ca5c1e8b747199e8ce7e4624253181ef24d2f9676",
+    "contains_off_playback": false
+  },
+  "replay": {
+    "baseline": {
+      "caption_fallback": {
+        "median_of_warm_medians_ms": 0.35555000000000003,
+        "range_warm_medians_ms": [
+          0.3516,
+          0.3604
+        ],
+        "max_warm_p95_ms": 0.43
+      }
+    },
+    "candidate": {
+      "caption_fallback": {
+        "median_of_warm_medians_ms": 0.6956,
+        "range_warm_medians_ms": [
+          0.6871,
+          0.7077
+        ],
+        "max_warm_p95_ms": 0.8838
+      }
+    },
+    "assertions": "PASS: all8 exact-plane caption variants recovered and detected1line; all12 no-caption variants produced no glyph detection. Four padded-plane caption fallback cases remain intentionally documented failures."
+  },
+  "limitations": [
+    "Inverse approximation of rendered desktop recording, not native capture.",
+    "Four deliberately padded bar-plane cases remain rejected; exact logged native planes pass all eight caption cases.",
+    "Candidate has not been deployed or validated in live playback."
+  ]
+}

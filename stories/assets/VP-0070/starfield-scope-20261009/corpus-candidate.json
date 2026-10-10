@@ -1,0 +1,646 @@
+[
+  {
+    "name": "beeping_15",
+    "frame": 900,
+    "time": 15.0,
+    "positive": true,
+    "phase": 0,
+    "bgra": "beeping_15-phase0.bgra",
+    "physical_picture": [
+      22,
+      174,
+      2538,
+      1230
+    ],
+    "target_picture": [
+      0,
+      276,
+      3840,
+      1884
+    ],
+    "frozen_sha256": "522b2d4ca0090d455cf8ba23d7c66a7d54770cedd696ab7bad42ed732dcb0a39",
+    "pad": 0,
+    "output": "recovered=276,1884 valid=1 recovery_ms=0.7711\nrecovery_warm_median_ms=0.651600 p95_ms=0.796200\ngated=analyzed detected=1 lines=1 reason=detected bars=276,1884\nsamples_extract=39797 samples_reference=60789\nbars=282,1884 available=1 ref=1,1 fractions=1.0000,0.9955 runs=0,1\nflipped=0 edge=0 detected=1 lines=1 limit=0 bounds=1666,1814-2174,1930 capture=1616,1784-2228,1887 cleanup=1610,1778-2234,1884 mean_ms=12.1204 median_ms=12.7250 max_ms=14.7460\nreason=detected components=11 nearGap=0 inferred=0\nline0=1675,1823-2164,1920\nrecovered=276,1884 valid=1 recovery_ms=0.7531\nrecovery_warm_median_ms=0.943800 p95_ms=0.997700\ngated=analyzed detected=1 lines=1 reason=detected bars=276,1884\nsamples_extract=39797 samples_reference=60789\nbars=282,1884 available=1 ref=1,1 fractions=1.0000,0.9955 runs=0,1\nflipped=0 edge=1 detected=1 lines=1 limit=0 bounds=1666,1814-2174,1930 capture=1616,1784-2228,1886 cleanup=1610,1778-2234,1883 mean_ms=9.8558 median_ms=9.8877 max_ms=10.3901\nreason=detected components=11 nearGap=0 inferred=0\nline0=1675,1823-2164,1920\n"
+  },
+  {
+    "name": "beeping_15",
+    "frame": 900,
+    "time": 15.0,
+    "positive": true,
+    "phase": 0,
+    "bgra": "beeping_15-phase0.bgra",
+    "physical_picture": [
+      22,
+      174,
+      2538,
+      1230
+    ],
+    "target_picture": [
+      0,
+      276,
+      3840,
+      1884
+    ],
+    "frozen_sha256": "522b2d4ca0090d455cf8ba23d7c66a7d54770cedd696ab7bad42ed732dcb0a39",
+    "pad": 2,
+    "output": "recovered=274,1886 valid=1 recovery_ms=0.7133\nrecovery_warm_median_ms=0.633000 p95_ms=0.794300\ngated=analyzed detected=1 lines=1 reason=detected bars=274,1886\nsamples_extract=39797 samples_reference=60789\nbars=282,1884 available=1 ref=1,1 fractions=1.0000,0.9955 runs=0,1\nflipped=0 edge=0 detected=1 lines=1 limit=0 bounds=1666,1814-2174,1930 capture=1616,1784-2228,1887 cleanup=1610,1778-2234,1884 mean_ms=8.2262 median_ms=8.2277 max_ms=8.2352\nreason=detected components=11 nearGap=0 inferred=0\nline0=1675,1823-2164,1920\nrecovered=274,1886 valid=1 recovery_ms=0.7501\nrecovery_warm_median_ms=0.635700 p95_ms=0.656800\ngated=analyzed detected=1 lines=1 reason=detected bars=274,1886\nsamples_extract=39797 samples_reference=60789\nbars=282,1884 available=1 ref=1,1 fractions=1.0000,0.9955 runs=0,1\nflipped=0 edge=1 detected=1 lines=1 limit=0 bounds=1666,1814-2174,1930 capture=1616,1784-2228,1886 cleanup=1610,1778-2234,1883 mean_ms=8.7583 median_ms=8.4632 max_ms=9.4766\nreason=detected components=11 nearGap=0 inferred=0\nline0=1675,1823-2164,1920\n"
+  },
+  {
+    "name": "beeping_15",
+    "frame": 900,
+    "time": 15.0,
+    "positive": true,
+    "phase": 1,
+    "bgra": "beeping_15-phase1.bgra",
+    "physical_picture": [
+      22,
+      174,
+      2538,
+      1230
+    ],
+    "target_picture": [
+      0,
+      277,
+      3840,
+      1885
+    ],
+    "frozen_sha256": "522b2d4ca0090d455cf8ba23d7c66a7d54770cedd696ab7bad42ed732dcb0a39",
+    "pad": 0,
+    "output": "recovered=277,1885 valid=1 recovery_ms=0.7289\nrecovery_warm_median_ms=0.630900 p95_ms=0.788500\ngated=analyzed detected=1 lines=1 reason=detected bars=277,1885\nsamples_extract=39812 samples_reference=60804\nbars=283,1885 available=1 ref=1,1 fractions=1.0000,0.9953 runs=0,1\nflipped=0 edge=0 detected=1 lines=1 limit=0 bounds=1666,1818-2174,1934 capture=1616,1784-2228,1888 cleanup=1610,1778-2234,1885 mean_ms=8.3454 median_ms=8.3379 max_ms=8.3893\nreason=detected components=11 nearGap=0 inferred=0\nline0=1675,1824-2164,1924\nrecovered=277,1885 valid=1 recovery_ms=0.7950\nrecovery_warm_median_ms=0.633400 p95_ms=0.647500\ngated=analyzed detected=1 lines=1 reason=detected bars=277,1885\nsamples_extract=39812 samples_reference=60804\nbars=283,1885 available=1 ref=1,1 fractions=1.0000,0.9953 runs=0,1\nflipped=0 edge=1 detected=1 lines=1 limit=0 bounds=1666,1818-2174,1934 capture=1616,1784-2228,1887 cleanup=1610,1778-2234,1884 mean_ms=8.6426 median_ms=8.6187 max_ms=8.8330\nreason=detected components=11 nearGap=0 inferred=0\nline0=1675,1824-2164,1924\n"
+  },
+  {
+    "name": "beeping_15",
+    "frame": 900,
+    "time": 15.0,
+    "positive": true,
+    "phase": 1,
+    "bgra": "beeping_15-phase1.bgra",
+    "physical_picture": [
+      22,
+      174,
+      2538,
+      1230
+    ],
+    "target_picture": [
+      0,
+      277,
+      3840,
+      1885
+    ],
+    "frozen_sha256": "522b2d4ca0090d455cf8ba23d7c66a7d54770cedd696ab7bad42ed732dcb0a39",
+    "pad": 2,
+    "output": "recovered=275,1887 valid=1 recovery_ms=0.7515\nrecovery_warm_median_ms=0.631800 p95_ms=0.652900\ngated=analyzed detected=1 lines=1 reason=detected bars=275,1887\nsamples_extract=39812 samples_reference=60804\nbars=283,1885 available=1 ref=1,1 fractions=1.0000,0.9953 runs=0,1\nflipped=0 edge=0 detected=1 lines=1 limit=0 bounds=1666,1818-2174,1934 capture=1616,1784-2228,1888 cleanup=1610,1778-2234,1885 mean_ms=8.7932 median_ms=8.7958 max_ms=8.9941\nreason=detected components=11 nearGap=0 inferred=0\nline0=1675,1824-2164,1924\nrecovered=275,1887 valid=1 recovery_ms=0.7281\nrecovery_warm_median_ms=0.643700 p95_ms=0.755200\ngated=analyzed detected=1 lines=1 reason=detected bars=275,1887\nsamples_extract=39812 samples_reference=60804\nbars=283,1885 available=1 ref=1,1 fractions=1.0000,0.9953 runs=0,1\nflipped=0 edge=1 detected=1 lines=1 limit=0 bounds=1666,1818-2174,1934 capture=1616,1784-2228,1887 cleanup=1610,1778-2234,1884 mean_ms=8.8772 median_ms=8.6601 max_ms=9.3524\nreason=detected components=11 nearGap=0 inferred=0\nline0=1675,1824-2164,1924\n"
+  },
+  {
+    "name": "beeping_36",
+    "frame": 2160,
+    "time": 36.0,
+    "positive": true,
+    "phase": 0,
+    "bgra": "beeping_36-phase0.bgra",
+    "physical_picture": [
+      22,
+      174,
+      2538,
+      1230
+    ],
+    "target_picture": [
+      0,
+      276,
+      3840,
+      1884
+    ],
+    "frozen_sha256": "4b6964bb850f2a7137e88661d9baf860c44cc220120922fda686a09beb3a4389",
+    "pad": 0,
+    "output": "recovered=276,1884 valid=1 recovery_ms=0.7591\nrecovery_warm_median_ms=0.647000 p95_ms=0.823600\ngated=analyzed detected=1 lines=1 reason=detected bars=276,1884\nsamples_extract=39696 samples_reference=60688\nbars=279,1884 available=1 ref=1,1 fractions=1.0000,0.9955 runs=0,1\nflipped=0 edge=0 detected=1 lines=1 limit=0 bounds=1666,1814-2174,1930 capture=1616,1784-2228,1887 cleanup=1610,1778-2234,1884 mean_ms=8.4514 median_ms=8.4234 max_ms=8.6640\nreason=detected components=11 nearGap=0 inferred=0\nline0=1675,1823-2164,1920\nrecovered=276,1884 valid=1 recovery_ms=0.7750\nrecovery_warm_median_ms=0.640300 p95_ms=0.690600\ngated=analyzed detected=1 lines=1 reason=detected bars=276,1884\nsamples_extract=39696 samples_reference=60688\nbars=279,1884 available=1 ref=1,1 fractions=1.0000,0.9955 runs=0,1\nflipped=0 edge=1 detected=1 lines=1 limit=0 bounds=1666,1814-2174,1930 capture=1616,1784-2228,1886 cleanup=1610,1778-2234,1883 mean_ms=8.8022 median_ms=8.5686 max_ms=9.5542\nreason=detected components=11 nearGap=0 inferred=0\nline0=1675,1823-2164,1920\n"
+  },
+  {
+    "name": "beeping_36",
+    "frame": 2160,
+    "time": 36.0,
+    "positive": true,
+    "phase": 0,
+    "bgra": "beeping_36-phase0.bgra",
+    "physical_picture": [
+      22,
+      174,
+      2538,
+      1230
+    ],
+    "target_picture": [
+      0,
+      276,
+      3840,
+      1884
+    ],
+    "frozen_sha256": "4b6964bb850f2a7137e88661d9baf860c44cc220120922fda686a09beb3a4389",
+    "pad": 2,
+    "output": "recovered=274,1886 valid=1 recovery_ms=0.7226\nrecovery_warm_median_ms=0.640800 p95_ms=0.742100\ngated=analyzed detected=1 lines=1 reason=detected bars=274,1886\nsamples_extract=39696 samples_reference=60688\nbars=279,1884 available=1 ref=1,1 fractions=1.0000,0.9955 runs=0,1\nflipped=0 edge=0 detected=1 lines=1 limit=0 bounds=1666,1814-2174,1930 capture=1616,1784-2228,1887 cleanup=1610,1778-2234,1884 mean_ms=8.4044 median_ms=8.4191 max_ms=8.5635\nreason=detected components=11 nearGap=0 inferred=0\nline0=1675,1823-2164,1920\nrecovered=274,1886 valid=1 recovery_ms=0.9238\nrecovery_warm_median_ms=0.634700 p95_ms=0.810300\ngated=analyzed detected=1 lines=1 reason=detected bars=274,1886\nsamples_extract=39696 samples_reference=60688\nbars=279,1884 available=1 ref=1,1 fractions=1.0000,0.9955 runs=0,1\nflipped=0 edge=1 detected=1 lines=1 limit=0 bounds=1666,1814-2174,1930 capture=1616,1784-2228,1886 cleanup=1610,1778-2234,1883 mean_ms=9.0060 median_ms=8.6396 max_ms=9.9336\nreason=detected components=11 nearGap=0 inferred=0\nline0=1675,1823-2164,1920\n"
+  },
+  {
+    "name": "beeping_36",
+    "frame": 2160,
+    "time": 36.0,
+    "positive": true,
+    "phase": 1,
+    "bgra": "beeping_36-phase1.bgra",
+    "physical_picture": [
+      22,
+      174,
+      2538,
+      1230
+    ],
+    "target_picture": [
+      0,
+      277,
+      3840,
+      1885
+    ],
+    "frozen_sha256": "4b6964bb850f2a7137e88661d9baf860c44cc220120922fda686a09beb3a4389",
+    "pad": 0,
+    "output": "recovered=277,1885 valid=1 recovery_ms=0.7270\nrecovery_warm_median_ms=0.637800 p95_ms=0.779900\ngated=analyzed detected=1 lines=1 reason=detected bars=277,1885\nsamples_extract=39702 samples_reference=60694\nbars=280,1885 available=1 ref=1,1 fractions=1.0000,0.9954 runs=0,1\nflipped=0 edge=0 detected=1 lines=1 limit=0 bounds=1666,1818-2174,1934 capture=1616,1784-2228,1888 cleanup=1610,1778-2234,1885 mean_ms=8.6697 median_ms=8.6380 max_ms=8.8360\nreason=detected components=11 nearGap=0 inferred=0\nline0=1675,1824-2164,1924\nrecovered=277,1885 valid=1 recovery_ms=0.8606\nrecovery_warm_median_ms=0.648200 p95_ms=0.868000\ngated=analyzed detected=1 lines=1 reason=detected bars=277,1885\nsamples_extract=39702 samples_reference=60694\nbars=280,1885 available=1 ref=1,1 fractions=1.0000,0.9954 runs=0,1\nflipped=0 edge=1 detected=1 lines=1 limit=0 bounds=1666,1818-2174,1934 capture=1616,1784-2228,1887 cleanup=1610,1778-2234,1884 mean_ms=10.0309 median_ms=9.3580 max_ms=11.5116\nreason=detected components=11 nearGap=0 inferred=0\nline0=1675,1824-2164,1924\n"
+  },
+  {
+    "name": "beeping_36",
+    "frame": 2160,
+    "time": 36.0,
+    "positive": true,
+    "phase": 1,
+    "bgra": "beeping_36-phase1.bgra",
+    "physical_picture": [
+      22,
+      174,
+      2538,
+      1230
+    ],
+    "target_picture": [
+      0,
+      277,
+      3840,
+      1885
+    ],
+    "frozen_sha256": "4b6964bb850f2a7137e88661d9baf860c44cc220120922fda686a09beb3a4389",
+    "pad": 2,
+    "output": "recovered=275,1887 valid=1 recovery_ms=0.7169\nrecovery_warm_median_ms=0.633200 p95_ms=0.863900\ngated=analyzed detected=1 lines=1 reason=detected bars=275,1887\nsamples_extract=39702 samples_reference=60694\nbars=280,1885 available=1 ref=1,1 fractions=1.0000,0.9954 runs=0,1\nflipped=0 edge=0 detected=1 lines=1 limit=0 bounds=1666,1818-2174,1934 capture=1616,1784-2228,1888 cleanup=1610,1778-2234,1885 mean_ms=8.4105 median_ms=8.3627 max_ms=8.5298\nreason=detected components=11 nearGap=0 inferred=0\nline0=1675,1824-2164,1924\nrecovered=275,1887 valid=1 recovery_ms=0.7026\nrecovery_warm_median_ms=0.625800 p95_ms=0.726800\ngated=analyzed detected=1 lines=1 reason=detected bars=275,1887\nsamples_extract=39702 samples_reference=60694\nbars=280,1885 available=1 ref=1,1 fractions=1.0000,0.9954 runs=0,1\nflipped=0 edge=1 detected=1 lines=1 limit=0 bounds=1666,1818-2174,1934 capture=1616,1784-2228,1887 cleanup=1610,1778-2234,1884 mean_ms=8.6875 median_ms=8.7607 max_ms=8.9626\nreason=detected components=11 nearGap=0 inferred=0\nline0=1675,1824-2164,1924\n"
+  },
+  {
+    "name": "beeping_50",
+    "frame": 3000,
+    "time": 50.0,
+    "positive": true,
+    "phase": 0,
+    "bgra": "beeping_50-phase0.bgra",
+    "physical_picture": [
+      312,
+      314,
+      2248,
+      1126
+    ],
+    "target_picture": [
+      0,
+      276,
+      3840,
+      1884
+    ],
+    "frozen_sha256": "71a7854a8a0499be920f3fe09dc53ac56b3d443a7e5bea2b7b7fb26b150d41b4",
+    "pad": 0,
+    "output": "recovered=276,1884 valid=1 recovery_ms=0.8175\nrecovery_warm_median_ms=0.691300 p95_ms=0.852900\ngated=analyzed detected=1 lines=1 reason=detected bars=276,1884\nsamples_extract=21817 samples_reference=42809\nbars=0,2160 available=0 ref=1,1 fractions=0.9989,0.9960 runs=2,1\nflipped=0 edge=0 detected=1 lines=1 limit=0 bounds=1666,1814-2174,1930 capture=1616,1784-2228,1887 cleanup=1610,1778-2234,1884 mean_ms=7.9207 median_ms=7.8540 max_ms=8.0930\nreason=detected components=11 nearGap=0 inferred=0\nline0=1675,1824-2164,1920\nrecovered=276,1884 valid=1 recovery_ms=0.8857\nrecovery_warm_median_ms=0.698600 p95_ms=0.865000\ngated=analyzed detected=1 lines=1 reason=detected bars=276,1884\nsamples_extract=21817 samples_reference=42809\nbars=0,2160 available=0 ref=1,1 fractions=0.9989,0.9960 runs=2,1\nflipped=0 edge=1 detected=1 lines=1 limit=0 bounds=1666,1814-2174,1930 capture=1616,1784-2228,1886 cleanup=1610,1778-2234,1883 mean_ms=7.6737 median_ms=7.6676 max_ms=7.6911\nreason=detected components=11 nearGap=0 inferred=0\nline0=1675,1824-2164,1920\n"
+  },
+  {
+    "name": "beeping_50",
+    "frame": 3000,
+    "time": 50.0,
+    "positive": true,
+    "phase": 0,
+    "bgra": "beeping_50-phase0.bgra",
+    "physical_picture": [
+      312,
+      314,
+      2248,
+      1126
+    ],
+    "target_picture": [
+      0,
+      276,
+      3840,
+      1884
+    ],
+    "frozen_sha256": "71a7854a8a0499be920f3fe09dc53ac56b3d443a7e5bea2b7b7fb26b150d41b4",
+    "pad": 2,
+    "output": "recovered=0,0 valid=0 recovery_ms=0.6364\nrecovery_warm_median_ms=0.547800 p95_ms=0.579000\ngated=not-analyzed no-authority\nsamples_extract=21817 samples_reference=42809\nbars=0,2160 available=0 ref=1,1 fractions=0.9989,0.9960 runs=2,1\nflipped=0 edge=0 detected=1 lines=1 limit=0 bounds=1666,1814-2174,1930 capture=1616,1784-2228,1887 cleanup=1610,1778-2234,1884 mean_ms=8.8440 median_ms=8.1190 max_ms=10.4461\nreason=detected components=11 nearGap=0 inferred=0\nline0=1675,1824-2164,1920\nrecovered=0,0 valid=0 recovery_ms=0.6406\nrecovery_warm_median_ms=0.542200 p95_ms=0.563000\ngated=not-analyzed no-authority\nsamples_extract=21817 samples_reference=42809\nbars=0,2160 available=0 ref=1,1 fractions=0.9989,0.9960 runs=2,1\nflipped=0 edge=1 detected=1 lines=1 limit=0 bounds=1666,1814-2174,1930 capture=1616,1784-2228,1886 cleanup=1610,1778-2234,1883 mean_ms=7.7746 median_ms=7.7841 max_ms=7.9768\nreason=detected components=11 nearGap=0 inferred=0\nline0=1675,1824-2164,1920\n"
+  },
+  {
+    "name": "beeping_50",
+    "frame": 3000,
+    "time": 50.0,
+    "positive": true,
+    "phase": 1,
+    "bgra": "beeping_50-phase1.bgra",
+    "physical_picture": [
+      312,
+      314,
+      2248,
+      1126
+    ],
+    "target_picture": [
+      0,
+      277,
+      3840,
+      1885
+    ],
+    "frozen_sha256": "71a7854a8a0499be920f3fe09dc53ac56b3d443a7e5bea2b7b7fb26b150d41b4",
+    "pad": 0,
+    "output": "recovered=277,1885 valid=1 recovery_ms=0.8091\nrecovery_warm_median_ms=0.687100 p95_ms=0.844300\ngated=analyzed detected=1 lines=1 reason=detected bars=277,1885\nsamples_extract=21838 samples_reference=42830\nbars=0,2160 available=0 ref=1,1 fractions=0.9989,0.9960 runs=2,1\nflipped=0 edge=0 detected=1 lines=1 limit=0 bounds=1666,1818-2174,1934 capture=1616,1784-2228,1888 cleanup=1610,1778-2234,1885 mean_ms=8.3256 median_ms=8.0173 max_ms=9.0922\nreason=detected components=10 nearGap=0 inferred=0\nline0=1675,1825-2164,1924\nrecovered=277,1885 valid=1 recovery_ms=0.7854\nrecovery_warm_median_ms=0.691600 p95_ms=0.872200\ngated=analyzed detected=1 lines=1 reason=detected bars=277,1885\nsamples_extract=21838 samples_reference=42830\nbars=0,2160 available=0 ref=1,1 fractions=0.9989,0.9960 runs=2,1\nflipped=0 edge=1 detected=1 lines=1 limit=0 bounds=1666,1818-2174,1934 capture=1616,1784-2228,1887 cleanup=1610,1778-2234,1884 mean_ms=8.3140 median_ms=8.2477 max_ms=8.4995\nreason=detected components=10 nearGap=0 inferred=0\nline0=1675,1825-2164,1924\n"
+  },
+  {
+    "name": "beeping_50",
+    "frame": 3000,
+    "time": 50.0,
+    "positive": true,
+    "phase": 1,
+    "bgra": "beeping_50-phase1.bgra",
+    "physical_picture": [
+      312,
+      314,
+      2248,
+      1126
+    ],
+    "target_picture": [
+      0,
+      277,
+      3840,
+      1885
+    ],
+    "frozen_sha256": "71a7854a8a0499be920f3fe09dc53ac56b3d443a7e5bea2b7b7fb26b150d41b4",
+    "pad": 2,
+    "output": "recovered=0,0 valid=0 recovery_ms=0.6456\nrecovery_warm_median_ms=0.545000 p95_ms=0.560600\ngated=not-analyzed no-authority\nsamples_extract=21838 samples_reference=42830\nbars=0,2160 available=0 ref=1,1 fractions=0.9989,0.9960 runs=2,1\nflipped=0 edge=0 detected=1 lines=1 limit=0 bounds=1666,1818-2174,1934 capture=1616,1784-2228,1888 cleanup=1610,1778-2234,1885 mean_ms=7.9758 median_ms=7.9282 max_ms=8.1292\nreason=detected components=10 nearGap=0 inferred=0\nline0=1675,1825-2164,1924\nrecovered=0,0 valid=0 recovery_ms=0.6344\nrecovery_warm_median_ms=0.546300 p95_ms=0.577500\ngated=not-analyzed no-authority\nsamples_extract=21838 samples_reference=42830\nbars=0,2160 available=0 ref=1,1 fractions=0.9989,0.9960 runs=2,1\nflipped=0 edge=1 detected=1 lines=1 limit=0 bounds=1666,1818-2174,1934 capture=1616,1784-2228,1887 cleanup=1610,1778-2234,1884 mean_ms=7.9750 median_ms=7.9562 max_ms=8.0373\nreason=detected components=10 nearGap=0 inferred=0\nline0=1675,1825-2164,1924\n"
+  },
+  {
+    "name": "autopilot_53",
+    "frame": 3180,
+    "time": 53.0,
+    "positive": true,
+    "phase": 0,
+    "bgra": "autopilot_53-phase0.bgra",
+    "physical_picture": [
+      312,
+      314,
+      2248,
+      1126
+    ],
+    "target_picture": [
+      0,
+      276,
+      3840,
+      1884
+    ],
+    "frozen_sha256": "295167e0b79e2cb5fa4058077d67e8f6268bad93cea07ccfdc4ade8292d6e7b4",
+    "pad": 0,
+    "output": "recovered=276,1884 valid=1 recovery_ms=0.8808\nrecovery_warm_median_ms=0.699900 p95_ms=0.710800\ngated=analyzed detected=1 lines=1 reason=detected bars=276,1884\nsamples_extract=21858 samples_reference=42850\nbars=0,2160 available=0 ref=1,1 fractions=0.9996,0.9837 runs=1,6\nflipped=0 edge=0 detected=1 lines=1 limit=0 bounds=1018,1814-2818,1930 capture=968,1784-2876,1887 cleanup=962,1778-2882,1884 mean_ms=9.2904 median_ms=9.2560 max_ms=9.4198\nreason=detected components=38 nearGap=0 inferred=0\nline0=1027,1824-2808,1920\nrecovered=276,1884 valid=1 recovery_ms=0.8411\nrecovery_warm_median_ms=0.702600 p95_ms=0.836900\ngated=analyzed detected=1 lines=1 reason=detected bars=276,1884\nsamples_extract=21858 samples_reference=42850\nbars=0,2160 available=0 ref=1,1 fractions=0.9996,0.9837 runs=1,6\nflipped=0 edge=1 detected=1 lines=1 limit=0 bounds=1018,1814-2818,1930 capture=968,1784-2876,1886 cleanup=962,1778-2882,1883 mean_ms=10.9634 median_ms=10.4501 max_ms=12.8131\nreason=detected components=38 nearGap=0 inferred=0\nline0=1027,1824-2808,1920\n"
+  },
+  {
+    "name": "autopilot_53",
+    "frame": 3180,
+    "time": 53.0,
+    "positive": true,
+    "phase": 0,
+    "bgra": "autopilot_53-phase0.bgra",
+    "physical_picture": [
+      312,
+      314,
+      2248,
+      1126
+    ],
+    "target_picture": [
+      0,
+      276,
+      3840,
+      1884
+    ],
+    "frozen_sha256": "295167e0b79e2cb5fa4058077d67e8f6268bad93cea07ccfdc4ade8292d6e7b4",
+    "pad": 2,
+    "output": "recovered=0,0 valid=0 recovery_ms=0.6552\nrecovery_warm_median_ms=0.550600 p95_ms=0.622100\ngated=not-analyzed no-authority\nsamples_extract=21858 samples_reference=42850\nbars=0,2160 available=0 ref=1,1 fractions=0.9996,0.9837 runs=1,6\nflipped=0 edge=0 detected=1 lines=1 limit=0 bounds=1018,1814-2818,1930 capture=968,1784-2876,1887 cleanup=962,1778-2882,1884 mean_ms=9.1707 median_ms=9.1533 max_ms=9.2504\nreason=detected components=38 nearGap=0 inferred=0\nline0=1027,1824-2808,1920\nrecovered=0,0 valid=0 recovery_ms=0.6228\nrecovery_warm_median_ms=0.551900 p95_ms=0.605900\ngated=not-analyzed no-authority\nsamples_extract=21858 samples_reference=42850\nbars=0,2160 available=0 ref=1,1 fractions=0.9996,0.9837 runs=1,6\nflipped=0 edge=1 detected=1 lines=1 limit=0 bounds=1018,1814-2818,1930 capture=968,1784-2876,1886 cleanup=962,1778-2882,1883 mean_ms=9.1571 median_ms=9.1547 max_ms=9.1706\nreason=detected components=38 nearGap=0 inferred=0\nline0=1027,1824-2808,1920\n"
+  },
+  {
+    "name": "autopilot_53",
+    "frame": 3180,
+    "time": 53.0,
+    "positive": true,
+    "phase": 1,
+    "bgra": "autopilot_53-phase1.bgra",
+    "physical_picture": [
+      312,
+      314,
+      2248,
+      1126
+    ],
+    "target_picture": [
+      0,
+      277,
+      3840,
+      1885
+    ],
+    "frozen_sha256": "295167e0b79e2cb5fa4058077d67e8f6268bad93cea07ccfdc4ade8292d6e7b4",
+    "pad": 0,
+    "output": "recovered=277,1885 valid=1 recovery_ms=0.8026\nrecovery_warm_median_ms=0.707700 p95_ms=0.883800\ngated=analyzed detected=1 lines=1 reason=detected bars=277,1885\nsamples_extract=21871 samples_reference=42863\nbars=0,2160 available=0 ref=1,1 fractions=0.9996,0.9835 runs=1,6\nflipped=0 edge=0 detected=1 lines=1 limit=0 bounds=1018,1818-2818,1934 capture=964,1784-2876,1888 cleanup=958,1778-2882,1885 mean_ms=10.1779 median_ms=10.2175 max_ms=10.3318\nreason=detected components=38 nearGap=0 inferred=0\nline0=1027,1825-2808,1924\nrecovered=277,1885 valid=1 recovery_ms=1.0035\nrecovery_warm_median_ms=0.705200 p95_ms=0.883800\ngated=analyzed detected=1 lines=1 reason=detected bars=277,1885\nsamples_extract=21871 samples_reference=42863\nbars=0,2160 available=0 ref=1,1 fractions=0.9996,0.9835 runs=1,6\nflipped=0 edge=1 detected=1 lines=1 limit=0 bounds=1018,1818-2818,1934 capture=964,1784-2876,1887 cleanup=958,1778-2882,1884 mean_ms=10.0441 median_ms=10.0527 max_ms=10.2464\nreason=detected components=38 nearGap=0 inferred=0\nline0=1027,1825-2808,1924\n"
+  },
+  {
+    "name": "autopilot_53",
+    "frame": 3180,
+    "time": 53.0,
+    "positive": true,
+    "phase": 1,
+    "bgra": "autopilot_53-phase1.bgra",
+    "physical_picture": [
+      312,
+      314,
+      2248,
+      1126
+    ],
+    "target_picture": [
+      0,
+      277,
+      3840,
+      1885
+    ],
+    "frozen_sha256": "295167e0b79e2cb5fa4058077d67e8f6268bad93cea07ccfdc4ade8292d6e7b4",
+    "pad": 2,
+    "output": "recovered=0,0 valid=0 recovery_ms=0.6525\nrecovery_warm_median_ms=0.549500 p95_ms=0.562300\ngated=not-analyzed no-authority\nsamples_extract=21871 samples_reference=42863\nbars=0,2160 available=0 ref=1,1 fractions=0.9996,0.9835 runs=1,6\nflipped=0 edge=0 detected=1 lines=1 limit=0 bounds=1018,1818-2818,1934 capture=964,1784-2876,1888 cleanup=958,1778-2882,1885 mean_ms=10.1786 median_ms=10.1372 max_ms=10.6321\nreason=detected components=38 nearGap=0 inferred=0\nline0=1027,1825-2808,1924\nrecovered=0,0 valid=0 recovery_ms=0.6860\nrecovery_warm_median_ms=0.550700 p95_ms=0.571400\ngated=not-analyzed no-authority\nsamples_extract=21871 samples_reference=42863\nbars=0,2160 available=0 ref=1,1 fractions=0.9996,0.9835 runs=1,6\nflipped=0 edge=1 detected=1 lines=1 limit=0 bounds=1018,1818-2818,1934 capture=964,1784-2876,1887 cleanup=958,1778-2882,1884 mean_ms=9.9282 median_ms=9.8766 max_ms=10.0423\nreason=detected components=38 nearGap=0 inferred=0\nline0=1027,1825-2808,1924\n"
+  },
+  {
+    "name": "starfield_14",
+    "frame": 840,
+    "time": 14.0,
+    "positive": false,
+    "phase": 0,
+    "bgra": "starfield_14-phase0.bgra",
+    "physical_picture": [
+      22,
+      174,
+      2538,
+      1230
+    ],
+    "target_picture": [
+      0,
+      276,
+      3840,
+      1884
+    ],
+    "frozen_sha256": "0b4a764dae4f3b65332db9b85175eb0e605e84de9570de8b39dd35e80d51d2fa",
+    "pad": 0,
+    "output": "recovered=0,0 valid=0 recovery_ms=0.5018\nrecovery_warm_median_ms=0.426600 p95_ms=0.445500\ngated=not-analyzed no-authority\nsamples_extract=26557 samples_reference=26557\nbars=0,1938 available=1 ref=0,0 fractions=0.0000,0.0000 runs=0,0\nflipped=0 edge=0 detected=0 lines=0 limit=0 bounds=0,0-0,0 capture=0,0-0,0 cleanup=0,0-0,0 mean_ms=14.7330 median_ms=14.7093 max_ms=14.7979\nreason=no-backed-anchor components=41 nearGap=-1 inferred=0\nrecovered=0,0 valid=0 recovery_ms=0.5035\nrecovery_warm_median_ms=0.424700 p95_ms=0.433300\ngated=not-analyzed no-authority\nsamples_extract=26557 samples_reference=26557\nbars=0,1938 available=1 ref=0,0 fractions=0.0000,0.0000 runs=0,0\nflipped=0 edge=1 detected=0 lines=0 limit=0 bounds=0,0-0,0 capture=0,0-0,0 cleanup=0,0-0,0 mean_ms=14.7841 median_ms=14.8647 max_ms=15.1035\nreason=no-backed-anchor components=41 nearGap=-1 inferred=0\n"
+  },
+  {
+    "name": "starfield_14",
+    "frame": 840,
+    "time": 14.0,
+    "positive": false,
+    "phase": 0,
+    "bgra": "starfield_14-phase0.bgra",
+    "physical_picture": [
+      22,
+      174,
+      2538,
+      1230
+    ],
+    "target_picture": [
+      0,
+      276,
+      3840,
+      1884
+    ],
+    "frozen_sha256": "0b4a764dae4f3b65332db9b85175eb0e605e84de9570de8b39dd35e80d51d2fa",
+    "pad": 2,
+    "output": "recovered=0,0 valid=0 recovery_ms=0.5029\nrecovery_warm_median_ms=0.423600 p95_ms=0.438300\ngated=not-analyzed no-authority\nsamples_extract=26557 samples_reference=26557\nbars=0,1938 available=1 ref=0,0 fractions=0.0000,0.0000 runs=0,0\nflipped=0 edge=0 detected=0 lines=0 limit=0 bounds=0,0-0,0 capture=0,0-0,0 cleanup=0,0-0,0 mean_ms=14.6279 median_ms=14.4407 max_ms=15.0836\nreason=no-backed-anchor components=41 nearGap=-1 inferred=0\nrecovered=0,0 valid=0 recovery_ms=0.4938\nrecovery_warm_median_ms=0.423600 p95_ms=0.439000\ngated=not-analyzed no-authority\nsamples_extract=26557 samples_reference=26557\nbars=0,1938 available=1 ref=0,0 fractions=0.0000,0.0000 runs=0,0\nflipped=0 edge=1 detected=0 lines=0 limit=0 bounds=0,0-0,0 capture=0,0-0,0 cleanup=0,0-0,0 mean_ms=14.7705 median_ms=14.4736 max_ms=15.3723\nreason=no-backed-anchor components=41 nearGap=-1 inferred=0\n"
+  },
+  {
+    "name": "starfield_14",
+    "frame": 840,
+    "time": 14.0,
+    "positive": false,
+    "phase": 1,
+    "bgra": "starfield_14-phase1.bgra",
+    "physical_picture": [
+      22,
+      174,
+      2538,
+      1230
+    ],
+    "target_picture": [
+      0,
+      277,
+      3840,
+      1885
+    ],
+    "frozen_sha256": "0b4a764dae4f3b65332db9b85175eb0e605e84de9570de8b39dd35e80d51d2fa",
+    "pad": 0,
+    "output": "recovered=0,0 valid=0 recovery_ms=0.4961\nrecovery_warm_median_ms=0.424600 p95_ms=0.433100\ngated=not-analyzed no-authority\nsamples_extract=26442 samples_reference=26442\nbars=0,1939 available=1 ref=0,0 fractions=0.0000,0.0000 runs=0,0\nflipped=0 edge=0 detected=0 lines=0 limit=0 bounds=0,0-0,0 capture=0,0-0,0 cleanup=0,0-0,0 mean_ms=14.7322 median_ms=14.7765 max_ms=14.8129\nreason=no-backed-anchor components=38 nearGap=-1 inferred=0\nrecovered=0,0 valid=0 recovery_ms=0.5261\nrecovery_warm_median_ms=0.422900 p95_ms=0.560100\ngated=not-analyzed no-authority\nsamples_extract=26442 samples_reference=26442\nbars=0,1939 available=1 ref=0,0 fractions=0.0000,0.0000 runs=0,0\nflipped=0 edge=1 detected=0 lines=0 limit=0 bounds=0,0-0,0 capture=0,0-0,0 cleanup=0,0-0,0 mean_ms=14.8034 median_ms=14.6769 max_ms=15.0680\nreason=no-backed-anchor components=35 nearGap=-1 inferred=0\n"
+  },
+  {
+    "name": "starfield_14",
+    "frame": 840,
+    "time": 14.0,
+    "positive": false,
+    "phase": 1,
+    "bgra": "starfield_14-phase1.bgra",
+    "physical_picture": [
+      22,
+      174,
+      2538,
+      1230
+    ],
+    "target_picture": [
+      0,
+      277,
+      3840,
+      1885
+    ],
+    "frozen_sha256": "0b4a764dae4f3b65332db9b85175eb0e605e84de9570de8b39dd35e80d51d2fa",
+    "pad": 2,
+    "output": "recovered=0,0 valid=0 recovery_ms=0.5429\nrecovery_warm_median_ms=0.421100 p95_ms=0.543900\ngated=not-analyzed no-authority\nsamples_extract=26442 samples_reference=26442\nbars=0,1939 available=1 ref=0,0 fractions=0.0000,0.0000 runs=0,0\nflipped=0 edge=0 detected=0 lines=0 limit=0 bounds=0,0-0,0 capture=0,0-0,0 cleanup=0,0-0,0 mean_ms=15.2013 median_ms=15.2284 max_ms=15.2820\nreason=no-backed-anchor components=38 nearGap=-1 inferred=0\nrecovered=0,0 valid=0 recovery_ms=0.5649\nrecovery_warm_median_ms=0.422400 p95_ms=0.489800\ngated=not-analyzed no-authority\nsamples_extract=26442 samples_reference=26442\nbars=0,1939 available=1 ref=0,0 fractions=0.0000,0.0000 runs=0,0\nflipped=0 edge=1 detected=0 lines=0 limit=0 bounds=0,0-0,0 capture=0,0-0,0 cleanup=0,0-0,0 mean_ms=14.5614 median_ms=14.5105 max_ms=14.7866\nreason=no-backed-anchor components=35 nearGap=-1 inferred=0\n"
+  },
+  {
+    "name": "starfield_13_5",
+    "frame": 810,
+    "time": 13.5,
+    "positive": false,
+    "phase": 0,
+    "bgra": "starfield_13_5-phase0.bgra",
+    "physical_picture": [
+      22,
+      174,
+      2538,
+      1230
+    ],
+    "target_picture": [
+      0,
+      276,
+      3840,
+      1884
+    ],
+    "frozen_sha256": "59ba7dea83f4b4441212ceeb61f4094b7da1f766820b25198da231a7b1b43bd3",
+    "pad": 0,
+    "output": "recovered=0,0 valid=0 recovery_ms=0.6971\nrecovery_warm_median_ms=0.567400 p95_ms=0.581100\ngated=not-analyzed no-authority\nsamples_extract=36204 samples_reference=36204\nbars=278,1937 available=1 ref=0,0 fractions=0.0000,0.0000 runs=0,0\nflipped=0 edge=0 detected=0 lines=0 limit=0 bounds=0,0-0,0 capture=0,0-0,0 cleanup=0,0-0,0 mean_ms=14.2854 median_ms=14.3223 max_ms=14.3744\nreason=no-backed-anchor components=470 nearGap=-1 inferred=0\nrecovered=0,0 valid=0 recovery_ms=0.6357\nrecovery_warm_median_ms=0.567500 p95_ms=0.592600\ngated=not-analyzed no-authority\nsamples_extract=36204 samples_reference=36204\nbars=278,1937 available=1 ref=0,0 fractions=0.0000,0.0000 runs=0,0\nflipped=0 edge=1 detected=0 lines=0 limit=0 bounds=0,0-0,0 capture=0,0-0,0 cleanup=0,0-0,0 mean_ms=14.3154 median_ms=14.1635 max_ms=14.7757\nreason=no-backed-anchor components=471 nearGap=-1 inferred=0\n"
+  },
+  {
+    "name": "starfield_13_5",
+    "frame": 810,
+    "time": 13.5,
+    "positive": false,
+    "phase": 0,
+    "bgra": "starfield_13_5-phase0.bgra",
+    "physical_picture": [
+      22,
+      174,
+      2538,
+      1230
+    ],
+    "target_picture": [
+      0,
+      276,
+      3840,
+      1884
+    ],
+    "frozen_sha256": "59ba7dea83f4b4441212ceeb61f4094b7da1f766820b25198da231a7b1b43bd3",
+    "pad": 2,
+    "output": "recovered=0,0 valid=0 recovery_ms=0.6483\nrecovery_warm_median_ms=0.568300 p95_ms=0.718400\ngated=not-analyzed no-authority\nsamples_extract=36204 samples_reference=36204\nbars=278,1937 available=1 ref=0,0 fractions=0.0000,0.0000 runs=0,0\nflipped=0 edge=0 detected=0 lines=0 limit=0 bounds=0,0-0,0 capture=0,0-0,0 cleanup=0,0-0,0 mean_ms=14.2541 median_ms=14.3360 max_ms=14.3817\nreason=no-backed-anchor components=470 nearGap=-1 inferred=0\nrecovered=0,0 valid=0 recovery_ms=0.6317\nrecovery_warm_median_ms=0.572300 p95_ms=0.712100\ngated=not-analyzed no-authority\nsamples_extract=36204 samples_reference=36204\nbars=278,1937 available=1 ref=0,0 fractions=0.0000,0.0000 runs=0,0\nflipped=0 edge=1 detected=0 lines=0 limit=0 bounds=0,0-0,0 capture=0,0-0,0 cleanup=0,0-0,0 mean_ms=16.1652 median_ms=15.9721 max_ms=18.2198\nreason=no-backed-anchor components=471 nearGap=-1 inferred=0\n"
+  },
+  {
+    "name": "starfield_13_5",
+    "frame": 810,
+    "time": 13.5,
+    "positive": false,
+    "phase": 1,
+    "bgra": "starfield_13_5-phase1.bgra",
+    "physical_picture": [
+      22,
+      174,
+      2538,
+      1230
+    ],
+    "target_picture": [
+      0,
+      277,
+      3840,
+      1885
+    ],
+    "frozen_sha256": "59ba7dea83f4b4441212ceeb61f4094b7da1f766820b25198da231a7b1b43bd3",
+    "pad": 0,
+    "output": "recovered=0,0 valid=0 recovery_ms=0.7326\nrecovery_warm_median_ms=0.644100 p95_ms=0.700400\ngated=not-analyzed no-authority\nsamples_extract=36256 samples_reference=36256\nbars=279,1938 available=1 ref=0,0 fractions=0.0000,0.0000 runs=0,0\nflipped=0 edge=0 detected=0 lines=0 limit=0 bounds=0,0-0,0 capture=0,0-0,0 cleanup=0,0-0,0 mean_ms=14.3944 median_ms=14.3042 max_ms=14.6159\nreason=no-backed-anchor components=475 nearGap=-1 inferred=0\nrecovered=0,0 valid=0 recovery_ms=0.7143\nrecovery_warm_median_ms=0.637300 p95_ms=0.660400\ngated=not-analyzed no-authority\nsamples_extract=36256 samples_reference=36256\nbars=279,1938 available=1 ref=0,0 fractions=0.0000,0.0000 runs=0,0\nflipped=0 edge=1 detected=0 lines=0 limit=0 bounds=0,0-0,0 capture=0,0-0,0 cleanup=0,0-0,0 mean_ms=15.3616 median_ms=15.2681 max_ms=16.1944\nreason=no-backed-anchor components=476 nearGap=-1 inferred=0\n"
+  },
+  {
+    "name": "starfield_13_5",
+    "frame": 810,
+    "time": 13.5,
+    "positive": false,
+    "phase": 1,
+    "bgra": "starfield_13_5-phase1.bgra",
+    "physical_picture": [
+      22,
+      174,
+      2538,
+      1230
+    ],
+    "target_picture": [
+      0,
+      277,
+      3840,
+      1885
+    ],
+    "frozen_sha256": "59ba7dea83f4b4441212ceeb61f4094b7da1f766820b25198da231a7b1b43bd3",
+    "pad": 2,
+    "output": "recovered=0,0 valid=0 recovery_ms=0.6341\nrecovery_warm_median_ms=0.571500 p95_ms=0.611400\ngated=not-analyzed no-authority\nsamples_extract=36256 samples_reference=36256\nbars=279,1938 available=1 ref=0,0 fractions=0.0000,0.0000 runs=0,0\nflipped=0 edge=0 detected=0 lines=0 limit=0 bounds=0,0-0,0 capture=0,0-0,0 cleanup=0,0-0,0 mean_ms=15.2100 median_ms=14.9364 max_ms=15.9111\nreason=no-backed-anchor components=475 nearGap=-1 inferred=0\nrecovered=0,0 valid=0 recovery_ms=1.0359\nrecovery_warm_median_ms=0.568800 p95_ms=0.583500\ngated=not-analyzed no-authority\nsamples_extract=36256 samples_reference=36256\nbars=279,1938 available=1 ref=0,0 fractions=0.0000,0.0000 runs=0,0\nflipped=0 edge=1 detected=0 lines=0 limit=0 bounds=0,0-0,0 capture=0,0-0,0 cleanup=0,0-0,0 mean_ms=14.4916 median_ms=14.4380 max_ms=14.8577\nreason=no-backed-anchor components=476 nearGap=-1 inferred=0\n"
+  },
+  {
+    "name": "starfield_24",
+    "frame": 1440,
+    "time": 24.0,
+    "positive": false,
+    "phase": 0,
+    "bgra": "starfield_24-phase0.bgra",
+    "physical_picture": [
+      22,
+      174,
+      2538,
+      1230
+    ],
+    "target_picture": [
+      0,
+      276,
+      3840,
+      1884
+    ],
+    "frozen_sha256": "100d5c1de864e410ac4f399e805c29170906d485e125476b25b5fb15326ff642",
+    "pad": 0,
+    "output": "recovered=0,0 valid=0 recovery_ms=1.0348\nrecovery_warm_median_ms=0.582900 p95_ms=0.738700\ngated=not-analyzed no-authority\nsamples_extract=36204 samples_reference=36204\nbars=278,1937 available=1 ref=0,0 fractions=0.0000,0.0000 runs=0,0\nflipped=0 edge=0 detected=0 lines=0 limit=0 bounds=0,0-0,0 capture=0,0-0,0 cleanup=0,0-0,0 mean_ms=14.9774 median_ms=14.7542 max_ms=15.4795\nreason=no-backed-anchor components=309 nearGap=-1 inferred=0\nrecovered=0,0 valid=0 recovery_ms=0.6496\nrecovery_warm_median_ms=0.572100 p95_ms=0.638100\ngated=not-analyzed no-authority\nsamples_extract=36204 samples_reference=36204\nbars=278,1937 available=1 ref=0,0 fractions=0.0000,0.0000 runs=0,0\nflipped=0 edge=1 detected=0 lines=0 limit=0 bounds=0,0-0,0 capture=0,0-0,0 cleanup=0,0-0,0 mean_ms=15.3382 median_ms=15.3965 max_ms=15.4047\nreason=no-backed-anchor components=311 nearGap=-1 inferred=0\n"
+  },
+  {
+    "name": "starfield_24",
+    "frame": 1440,
+    "time": 24.0,
+    "positive": false,
+    "phase": 0,
+    "bgra": "starfield_24-phase0.bgra",
+    "physical_picture": [
+      22,
+      174,
+      2538,
+      1230
+    ],
+    "target_picture": [
+      0,
+      276,
+      3840,
+      1884
+    ],
+    "frozen_sha256": "100d5c1de864e410ac4f399e805c29170906d485e125476b25b5fb15326ff642",
+    "pad": 2,
+    "output": "recovered=0,0 valid=0 recovery_ms=0.6540\nrecovery_warm_median_ms=0.567700 p95_ms=0.742100\ngated=not-analyzed no-authority\nsamples_extract=36204 samples_reference=36204\nbars=278,1937 available=1 ref=0,0 fractions=0.0000,0.0000 runs=0,0\nflipped=0 edge=0 detected=0 lines=0 limit=0 bounds=0,0-0,0 capture=0,0-0,0 cleanup=0,0-0,0 mean_ms=15.3115 median_ms=15.3639 max_ms=15.6022\nreason=no-backed-anchor components=309 nearGap=-1 inferred=0\nrecovered=0,0 valid=0 recovery_ms=0.6177\nrecovery_warm_median_ms=0.565800 p95_ms=0.598700\ngated=not-analyzed no-authority\nsamples_extract=36204 samples_reference=36204\nbars=278,1937 available=1 ref=0,0 fractions=0.0000,0.0000 runs=0,0\nflipped=0 edge=1 detected=0 lines=0 limit=0 bounds=0,0-0,0 capture=0,0-0,0 cleanup=0,0-0,0 mean_ms=15.2061 median_ms=15.0934 max_ms=15.4602\nreason=no-backed-anchor components=311 nearGap=-1 inferred=0\n"
+  },
+  {
+    "name": "starfield_24",
+    "frame": 1440,
+    "time": 24.0,
+    "positive": false,
+    "phase": 1,
+    "bgra": "starfield_24-phase1.bgra",
+    "physical_picture": [
+      22,
+      174,
+      2538,
+      1230
+    ],
+    "target_picture": [
+      0,
+      277,
+      3840,
+      1885
+    ],
+    "frozen_sha256": "100d5c1de864e410ac4f399e805c29170906d485e125476b25b5fb15326ff642",
+    "pad": 0,
+    "output": "recovered=0,0 valid=0 recovery_ms=0.6564\nrecovery_warm_median_ms=0.574600 p95_ms=0.730700\ngated=not-analyzed no-authority\nsamples_extract=36268 samples_reference=36268\nbars=279,1938 available=1 ref=0,0 fractions=0.0000,0.0000 runs=0,0\nflipped=0 edge=0 detected=0 lines=0 limit=0 bounds=0,0-0,0 capture=0,0-0,0 cleanup=0,0-0,0 mean_ms=14.6483 median_ms=14.7027 max_ms=14.7447\nreason=no-backed-anchor components=318 nearGap=-1 inferred=0\nrecovered=0,0 valid=0 recovery_ms=0.6378\nrecovery_warm_median_ms=0.572200 p95_ms=0.717100\ngated=not-analyzed no-authority\nsamples_extract=36268 samples_reference=36268\nbars=279,1938 available=1 ref=0,0 fractions=0.0000,0.0000 runs=0,0\nflipped=0 edge=1 detected=0 lines=0 limit=0 bounds=0,0-0,0 capture=0,0-0,0 cleanup=0,0-0,0 mean_ms=14.6492 median_ms=14.6695 max_ms=14.7501\nreason=no-backed-anchor components=321 nearGap=-1 inferred=0\n"
+  },
+  {
+    "name": "starfield_24",
+    "frame": 1440,
+    "time": 24.0,
+    "positive": false,
+    "phase": 1,
+    "bgra": "starfield_24-phase1.bgra",
+    "physical_picture": [
+      22,
+      174,
+      2538,
+      1230
+    ],
+    "target_picture": [
+      0,
+      277,
+      3840,
+      1885
+    ],
+    "frozen_sha256": "100d5c1de864e410ac4f399e805c29170906d485e125476b25b5fb15326ff642",
+    "pad": 2,
+    "output": "recovered=0,0 valid=0 recovery_ms=0.6436\nrecovery_warm_median_ms=0.571200 p95_ms=0.726800\ngated=not-analyzed no-authority\nsamples_extract=36268 samples_reference=36268\nbars=279,1938 available=1 ref=0,0 fractions=0.0000,0.0000 runs=0,0\nflipped=0 edge=0 detected=0 lines=0 limit=0 bounds=0,0-0,0 capture=0,0-0,0 cleanup=0,0-0,0 mean_ms=15.3961 median_ms=15.5387 max_ms=15.7013\nreason=no-backed-anchor components=318 nearGap=-1 inferred=0\nrecovered=0,0 valid=0 recovery_ms=0.6623\nrecovery_warm_median_ms=0.571800 p95_ms=0.731500\ngated=not-analyzed no-authority\nsamples_extract=36268 samples_reference=36268\nbars=279,1938 available=1 ref=0,0 fractions=0.0000,0.0000 runs=0,0\nflipped=0 edge=1 detected=0 lines=0 limit=0 bounds=0,0-0,0 capture=0,0-0,0 cleanup=0,0-0,0 mean_ms=15.0888 median_ms=14.9118 max_ms=15.6959\nreason=no-backed-anchor components=321 nearGap=-1 inferred=0\n"
+  }
+]

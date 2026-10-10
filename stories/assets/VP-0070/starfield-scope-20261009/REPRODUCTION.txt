@@ -1,0 +1,3 @@
+Complete local replay workspace: C:\Users\bslac\Documents\ChatGPT\VP Low Priority\starfield-regression
+Video: C:\Users\bslac\Videos\2026-10-09 21-10-25.mp4
+Only compact scripts/results are checked in. Native build dependencies and generated PNG/BGRA/binaries remain local. To recreate in another folder, supply the recorded source checkout/dependencies and copy its Release VideoProcessor-Lib.lib plus SubtitleBoxDetector.cpp as detector.cpp, then run rebuild_and_run.ps1. See verification.json for source identity and recording hash.

@@ -1,0 +1,23 @@
+{
+  "baseline": {
+    "caption_fallback": {
+      "median_of_warm_medians_ms": 0.35555000000000003,
+      "range_warm_medians_ms": [
+        0.3516,
+        0.3604
+      ],
+      "max_warm_p95_ms": 0.43
+    }
+  },
+  "candidate": {
+    "caption_fallback": {
+      "median_of_warm_medians_ms": 0.6956,
+      "range_warm_medians_ms": [
+        0.6871,
+        0.7077
+      ],
+      "max_warm_p95_ms": 0.8838
+    }
+  },
+  "assertions": "PASS: all8 exact-plane caption variants recovered and detected1line; all12 no-caption variants produced no glyph detection. Four padded-plane caption fallback cases remain intentionally documented failures."
+}

@@ -1,6 +1,48 @@
 # VP-0070: CIH bar/boundary subtitle capture and relocation
 
 
+## Starfield scope authority and subtitle inspection - 2026-10-09
+
+Used `2026-10-09 21-10-25.mp4`; ignored the later accidental recording.
+The recording does not contain Off playback. Off being unaffected is the
+operator's observation. At 52.900 seconds scope shrinks to four-sided bars
+before controls appear. Logs show already accepted subtitle translation at
+276..1884, bounded caption pixels down to 1937, and a 70-pixel shift being
+overridden when global p90 crosses the dark-scene threshold. The earlier
+[Beeping] caption also loses inspection authority in dark scenery and is
+picked up immediately after a brighter shot.
+
+Shared inspection now revalidates both previously trusted physical bar planes
+from fresh unmasked pixels if independent first-run extraction fails. Global
+darkness no longer vetoes that inspection. Existing source/geometry/transition
+guards, both-edge contrast and band safety checks still apply; inspection does
+not grant crop authority or glyph ownership. No glyph thresholds were relaxed.
+
+Near-black arbitration now honors an already admitted native scope when the
+shared subtitle presentation covers the current bounded outward evidence.
+Dark onset requires fresh physical-bar proof and ordinary bounded confirmation.
+The configured engage animation, including zero and partial displacement, uses
+its confirmed target for this guard while actual presentation keeps its timed
+movement. Release, expired/stale context, full-raster authority, scene changes,
+and uncovered/opposite-edge picture intrusion cannot use the exception. New
+transition-only diagnostics expose the guard's decisions.
+
+Validation: clean x64 Release rebuild followed by final Release build after
+engage review; all 2368 native tests passed, including 8 new tests.
+Recorded-frame baseline/candidate replay passes all 8 exact remembered-plane
+caption cases and 12 no-caption negatives. Four deliberately padded-plane
+fallback probes remain rejected; this is an explicit limitation. Replay is an
+inverse approximation of desktop video, not native capture or live qualification.
+Additional helper cost in this RGB replay was about 0.34 ms (candidate median
+0.70 ms); this does not establish native P010/GPU or end-to-end playback cost.
+
+Candidate is built and verified locally, NOT deployed. Existing configuration
+and running VP are unchanged. Story remains blocked pending live qualification.
+Source remains on codex/subtitle-held-authority-20261009, based on verified beta
+73953a364058b1cf6e5875dfc62e32df4e3bdcd5; prior local fixes are preserved.
+Evidence: `stories/assets/VP-0070/starfield-scope-20261009/verification.json`
+and the adjacent corpus reports/scripts, with recording and binary hashes.
+
 ## Caption continuity and capture-mask conflicts corrected locally - 2026-10-09
 
 The user replayed Classic and Reconstruction in `2026-10-09 20-04-02.mp4`.
