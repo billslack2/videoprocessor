@@ -77,9 +77,11 @@ namespace NativeStatsOverlayPlacement
 			std::min(first.bottom, second.bottom) };
 	}
 
+	// maxScale above 1.0 lets a caller enlarge the panel; the default keeps the
+	// original shrink-to-fit-only behaviour for every existing caller.
 	inline Result Place(const Rect& requestedPicture, const Rect& output,
 		float panelWidth, float panelHeight,
-		float insetPixels = kDefaultInsetPixels)
+		float insetPixels = kDefaultInsetPixels, float maxScale = 1.0f)
 	{
 		Result result;
 		result.visiblePicture = Intersect(requestedPicture, output);
@@ -97,17 +99,17 @@ namespace NativeStatsOverlayPlacement
 		const float inset = std::max(0.0f, insetPixels);
 		const float insetWidth = std::max(0.0f, availableWidth - inset);
 		const float insetHeight = std::max(0.0f, availableHeight - inset);
-		result.scale = std::min(1.0f, std::min(
+		result.scale = std::min(maxScale, std::min(
 			insetWidth / panelWidth, insetHeight / panelHeight));
 		if (result.scale <= 0.0f)
 		{
 			// A picture smaller than the requested inset still receives a panel,
 			// scaled uniformly to remain inside the rendered image.
-			result.scale = std::min(1.0f, std::min(
+			result.scale = std::min(maxScale, std::min(
 				availableWidth / panelWidth, availableHeight / panelHeight));
 			result.insetClamped = true;
 		}
-		if (result.scale < 1.0f)
+		if (result.scale < maxScale)
 			result.insetClamped = true;
 
 		const float width = panelWidth * result.scale;
