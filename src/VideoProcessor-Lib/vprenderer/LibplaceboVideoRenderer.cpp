@@ -36,6 +36,7 @@
 #include <vprenderer/SubtitlePresentationEvidence.h>
 #include <vprenderer/SubtitlePresentationContinuity.h>
 #include <SubtitleSceneEvidence.h>
+#include <vprenderer/AnalysisSourceCapture.h>
 #include <vprenderer/InwardCaptionEvidence.h>
 #include <vprenderer/HdrPeakAnalysisCrop.h>
 #include <vprenderer/NativeStatsOverlayPlacement.h>
@@ -3706,6 +3707,7 @@ struct LibplaceboVideoRenderer::Impl
     SubtitleBoxPresentation subtitleBoxPresentation;
     SubtitleStabilityTelemetry subtitleStabilityTelemetry;
     SubtitleSceneEvidenceDiagnostics subtitleSceneEvidenceDiagnostics;
+    AnalysisSourceCapture analysisSourceCapture;
     AlphaSourceCrop::SubtitlePresentationContinuityGate subtitlePresentationContinuity;
     std::string subtitlePresentationEvidenceReason;
     bool subtitlePresentationEvidenceAccepted=false;
@@ -11722,6 +11724,9 @@ struct LibplaceboVideoRenderer::Impl
         subtitleEvidenceIdentity.sourceFormatGeneration=AlphaSourceFormatKey(state);
         subtitleEvidenceIdentity.viewportGeneration=viewportRequestSerial;
         subtitleEvidenceIdentity.rendererGeneration=frameGeneration;
+        analysisSourceCapture.Observe(analysisSource,subtitleEvidenceIdentity,
+            latestActivePictureEvidenceBounds,latestActivePictureEvidenceClassification,
+            latestActivePictureEvidenceAvailable,latestActivePictureEvidenceFrame,nlsGeometry);
         SubtitleBoxPadding safeSubtitlePadding = activeSettings.subtitleBoxPadding;
         if (subtitlePreviewEnabled)
         {
