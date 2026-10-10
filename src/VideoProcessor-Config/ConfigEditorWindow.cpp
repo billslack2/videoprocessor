@@ -5,6 +5,7 @@
 #include <objbase.h>
 
 #include "ConfigEditorWindow.h"
+#include "UpdatePanel.h"
 #include "ColorOutputProfileMigration.h"
 #include "ProfileListController.h"
 #include "InlineColorPicker.h"
@@ -1045,7 +1046,7 @@ ConfigEditorWindow::ConfigEditorWindow(QString configPath, quintptr ownerHandle,
         setupTray();
         auto* help = menuBar()->addMenu(QStringLiteral("Help"));
         connect(help->addAction(QStringLiteral("Check for updates on this computer…")),
-            &QAction::triggered, this, [this] { UpdateLauncher::Launch(false, reinterpret_cast<HWND>(winId())); });
+            &QAction::triggered, this, [this] { showUpdates(); });
         auto* updateTimer = new QTimer(this);
         updateTimer->setInterval(6 * 60 * 60 * 1000);
         connect(updateTimer, &QTimer::timeout, this, [] { UpdateLauncher::Launch(true); });
@@ -1679,6 +1680,7 @@ bool ConfigEditorWindow::selectAnotherTarget(const Target& target)
 void ConfigEditorWindow::selectPage(int index)
 {
     if (!pages_ || index < 0 || index >= pages_->count()) return;
+    if (noTarget_ && index != 20) index = 21;
     if (index == 13) index = 16; // Preserve old Output page links.
     pages_->setCurrentIndex(index);
     if (!navigation_) return;
@@ -3946,6 +3948,7 @@ bool ConfigEditorWindow::saveChanges()
 QWidget* ConfigEditorWindow::createShell()
 {
     pages_ = nullptr;
+    updatePanel_ = nullptr;
     navigation_ = nullptr;
     status_ = nullptr;
     effectSummary_ = nullptr;
@@ -3993,6 +3996,11 @@ QWidget* ConfigEditorWindow::createShell()
     brandLayout->addWidget(title);
     headerLayout->addWidget(brand);
     headerLayout->addStretch();
+    auto* updates = new QPushButton(QStringLiteral("Updates"));
+    updates->setObjectName(QStringLiteral("config.openUpdates"));
+    updates->setToolTip(QStringLiteral("Manage updates for Config and VP installed on this computer."));
+    connect(updates, &QPushButton::clicked, this, &ConfigEditorWindow::showUpdates);
+    headerLayout->addWidget(updates);
 	// Every launch mode can move from its current source to a discovered VP.
 	{
 		auto* caption = new QLabel(QStringLiteral("Configure VP:"));
@@ -4087,6 +4095,10 @@ QWidget* ConfigEditorWindow::createShell()
         QStringLiteral("Choose subtitle processing and inward placement. The first profile is the default."),
         QStringLiteral("vprenderer.subtitles")));
 
+    updatePanel_ = new UpdatePanel(QString::fromStdWString(UpdateLauncher::InstallationRoot()), nullptr, !testMode_);
+    pages_->addWidget(createPage(QStringLiteral("Updates"),
+        QStringLiteral("Manage updates on this computer. Remote VideoProcessors update separately."), updatePanel_));
+
     auto* navGroup = new QButtonGroup(root);
     navGroup->setExclusive(true);
     const auto addLeaf = [this, navLayout, navGroup](const QString& title, int page)
@@ -4108,6 +4120,7 @@ QWidget* ConfigEditorWindow::createShell()
     QPushButton* vpNavigation = addLeaf(QStringLiteral("VP Renderer"), 2);
     QPushButton* directShowNavigation = addLeaf(QStringLiteral("DirectShow"), 3);
     navLayout->addStretch();
+    addLeaf(QStringLiteral("Updates"), 20);
 
     auto* pageHost = new QWidget;
     pageHost->setObjectName(QStringLiteral("sectionPageHost"));
@@ -4199,8 +4212,7 @@ QWidget* ConfigEditorWindow::createShell()
     configurationHost_ = center;
 	if (noTarget_)
 	{
-		center->setParent(root);
-		center->hide();
+
 		auto* emptyState = new QWidget;
 		auto* emptyLayout = new QVBoxLayout(emptyState);
 		emptyLayout->setContentsMargins(24, 24, 24, 24);
@@ -4240,9 +4252,12 @@ QWidget* ConfigEditorWindow::createShell()
 		targetSearchProgress_ = progress;
 		emptyLayout->addWidget(progress, 0, Qt::AlignHCenter);
 		emptyLayout->addStretch();
-		rootLayout->addWidget(emptyState, 1);
+        pages_->addWidget(emptyState);
+        pages_->setCurrentWidget(emptyState);
+        for (auto* button : navigation_->findChildren<QPushButton*>())
+            button->setEnabled(button->property("pageIndex").toInt() == 20);
 	}
-	else rootLayout->addWidget(center, 1);
+    rootLayout->addWidget(center, 1);
 
     auto* footer = new QWidget;
     footer->setObjectName(QStringLiteral("footer"));
@@ -8924,6 +8939,12 @@ QWidget* ConfigEditorWindow::createShortcutsSetupPage()
         content);
 }
 
+void ConfigEditorWindow::showUpdates()
+{
+    reveal();
+    selectPage(20);
+}
+
 void ConfigEditorWindow::setupTray()
 {
     if (!QSystemTrayIcon::isSystemTrayAvailable()) return;
@@ -8945,7 +8966,7 @@ void ConfigEditorWindow::setupTray()
 	}
     menu->addSeparator();
     connect(menu->addAction(QStringLiteral("Check for updates on this computer…")),
-        &QAction::triggered, this, [this] { UpdateLauncher::Launch(false, reinterpret_cast<HWND>(winId())); });
+        &QAction::triggered, this, [this] { showUpdates(); });
     QAction* exit = menu->addAction(QStringLiteral("Exit"));
     tray_->setContextMenu(menu);
     connect(open, &QAction::triggered, this, [this] { reveal(); });

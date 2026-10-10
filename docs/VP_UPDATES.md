@@ -2,8 +2,10 @@
 
 ## Scope
 
-The Windows player and Qt Config app launch a shared, separate
-`VideoProcessorUpdate.exe`. It uses GitHub Releases in
+Update settings, status, release notes and download/install controls live in a
+native Qt settings page inside Config, accessible from the top-bar Updates button
+and sidebar. The Windows player and Config launch a shared,
+hidden `VideoProcessorUpdate.exe` backend. It uses GitHub Releases in
 `billslack2/videoprocessor`; no service, account token, or private update server
 is required. Public releases are required for this unauthenticated client.
 
@@ -29,7 +31,10 @@ VP process fails conservatively.
 ## User flow and playback
 
 - VP exposes **Check for updates** in its window system menu. Config exposes
-  **Check for updates on this computer** in Help and the tray menu.
+  **Check for updates on this computer** in Help and the tray menu. All entry
+  points, including running the helper EXE directly and clicking its tray
+  notification, open Config with `--updates`. An existing Config instance is
+  reused through its installation-scoped activation event.
 - Apps launch a background helper after 30 seconds and every six hours while
   running. Shared per-installation preferences limit network checks to once per
   day. Stable/beta selection, automatic-check preference, skipped release, and
@@ -67,6 +72,22 @@ Updating Config on one computer never deploys to its remote VP target. Release
 metadata includes RPC/settings compatibility. A changed compatibility version
 warns that the other machines must be updated; normal connection-time RPC
 compatibility checks remain authoritative.
+
+## Config UI and helper control
+
+Config's Updates panel is independent of the selected VP target and remains
+available without a target. The local installation manifest determines whether
+it updates full VP or only Config; no running/local VP is required for Config-only.
+The shared helper retains signed metadata verification, download checks, local
+process shutdown and installer recovery. It stays alive through Config shutdown.
+
+The panel uses asynchronous `QProcess` control clients. They communicate with the
+single helper through a bounded, current-user-only Windows named pipe scoped to
+the installation. This does not expose a LAN listener. Commands return state,
+change validated preferences, check, download, skip, or install a verified package.
+The Qt UI confirms manual installation; the helper never shows a second updater
+window. Polls run only while the panel exists; closing it does not cancel an
+already-started installation or stop a pending automatic update.
 
 ## Trust model
 
@@ -164,6 +185,11 @@ of this implementation.
 - `tools/test_portable_update.ps1 -IsccPath <ISCC>`: real full/Config-only
   installer runs against dummy portable folders with unique QA identities; checks
   replacement, settings preservation and absence of registration/shortcuts.
+- `tools/test_update_control.ps1`: real hidden helper/client round trips for both
+  package flavors, preference validation, invalid install refusal, no window and
+  idle shutdown; temporary inventories require no VP executable.
+- `VideoProcessorConfigTests.exe --test "integrated updates respect local package"`:
+  native panel package identity, preferences, busy state and helper errors.
 - Compile the full x64 Release solution, the helper, and both Inno flavors.
 
 Release qualification still needs a disposable-machine end-to-end download,

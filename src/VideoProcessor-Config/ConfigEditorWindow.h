@@ -62,6 +62,7 @@ public:
     ~ConfigEditorWindow() override;
     void selectPage(int index);
     void reveal();
+    void showUpdates();
     void setTargetRefresh(std::function<void()> refresh);
     void setDiscoveredTargets(const QList<Target>& targets);
     bool awaitingTarget() const { return noTarget_; }
@@ -298,6 +299,7 @@ private:
     QWidget* configurationHost_ = nullptr;
     QLabel* shaderCacheStatus_ = nullptr;
     QSystemTrayIcon* tray_ = nullptr;
+    QWidget* updatePanel_ = nullptr;
 	void* revealEvent_ = nullptr;
 	QWinEventNotifier* revealEventNotifier_ = nullptr;
     struct ProfileListBinding

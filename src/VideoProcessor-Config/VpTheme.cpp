@@ -164,6 +164,10 @@ QString VpTheme::StyleSheet()
         }
         QToolButton[targetRefresh="true"]:pressed { background: #0c1824; }
         QToolButton[targetRefresh="true"]:focus { border-color: #3a9de8; }
+        QProgressBar#updatesProgress { background: #0b121b; border: 1px solid #2c4659; border-radius: 4px; color: #dce8f3; text-align: center; height: 16px; }
+        QProgressBar#updatesProgress::chunk { background: #1789c7; border-radius: 3px; }
+        QMenuBar { background: #0b121b; color: #dce8f3; }
+        QMenuBar::item:selected { background: #193044; }
         QProgressBar#configTargetSearchProgress {
             background: #142434;
             border: 0;

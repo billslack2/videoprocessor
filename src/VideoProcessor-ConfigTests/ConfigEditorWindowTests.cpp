@@ -4,6 +4,7 @@
 #include <windows.h>
 
 #include "ConfigEditorWindow.h"
+#include "../VideoProcessor-Config/UpdatePanel.h"
 #include "ConfigEditorCore.h"
 #include "../VideoProcessor-Config/ProfileListController.h"
 #include "VpTheme.h"
@@ -2150,6 +2151,46 @@ void answerMessageBox(int result)
             }
     });
     timer->start();
+}
+
+void testIntegratedUpdatesRespectLocalPackage()
+{
+    QTemporaryDir directory;
+    QWidget host; host.resize(1000, 700);
+    UpdatePanel panel(directory.path(), &host, false);
+    require(!panel.isWindow(), "Updates opened a separate top-level window");
+    ConfigEditorWindow window(copyFixture(directory), 0, true);
+    auto* entry = window.findChild<QPushButton*>("config.openUpdates");
+    require(entry, "Top bar has no Updates entry"); entry->click(); QApplication::processEvents();
+    auto* pages = window.findChild<QStackedWidget*>("settingsPages");
+    auto* embedded = window.findChild<QWidget*>("config.updates");
+    require(embedded && pages && pages->currentWidget()->isAncestorOf(embedded) && !embedded->isWindow(),
+        "Updates was not part of the Config settings page stack");
+    require(window.findChild<QWidget*>("brandHeader")->isVisible() &&
+        window.findChild<QWidget*>("sidebar")->isVisible(), "Updates hid the standard Config navigation");
+    window.selectPage(0);
+    require(!embedded->isVisible() && pages->currentIndex() == 0, "Settings navigation did not leave Updates");
+    window.showUpdates();
+    QJsonObject state{{"flavor", "config"}, {"version", "test"}, {"mode", "notify"}, {"channel", "beta"},
+        {"status", "No update available"}, {"busy", false}, {"canDownload", false}, {"canInstall", false}};
+    panel.applyState(state);
+    auto* identity = panel.findChild<QLabel*>("updates.identity");
+    require(identity && identity->text().contains("Config only"), "Config-only updates incorrectly require VP");
+    auto* mode = panel.findChild<QComboBox*>("updates.mode");
+    require(mode && mode->currentData() == "notify" && mode->isEnabled(), "Update mode did not reflect helper settings");
+    static_cast<UpdatePanel*>(embedded)->applyState(state);
+    const QString captures = qEnvironmentVariable("VP_CONFIG_REVIEW_IMAGES");
+    if (!captures.isEmpty()) { QApplication::processEvents(); window.grab().save(QDir(captures).filePath("updates-settings.png")); }
+    ConfigEditorWindow offline(directory.filePath(QStringLiteral("VideoProcessor.cfg")), 0, true, {}, {}, {}, 41686, {}, true);
+    offline.showUpdates(); QApplication::processEvents();
+    require(offline.findChild<QWidget*>("config.updates")->isVisible(), "Updates unavailable without a VP target");
+    require(!offline.findChild<QPushButton*>("applyConfiguration")->isEnabled(), "Updates enabled offline configuration writes");
+
+    state["flavor"] = "full"; state["busy"] = true; state["status"] = "Downloading"; panel.applyState(state);
+    require(identity->text().contains("VideoProcessor and Config"), "Full package identity was not shown");
+    require(!mode->isEnabled(), "Preferences remained mutable during installation operation");
+    panel.applyState(QJsonObject{{"error", "Update helper unavailable"}});
+    require(panel.findChild<QLabel*>("updates.status")->text().contains("unavailable"), "Helper error was not visible inside Config");
 }
 
 void testUpdateShutdownDiscardsEditsWithoutPrompt()
@@ -6739,6 +6780,7 @@ int main(int argc, char** argv)
     QApplication::setStyle(VpTheme::CreateStyle());
     application.setStyleSheet(VpTheme::StyleSheet());
     int failures = 0;
+    failures += run("integrated updates respect local package", testIntegratedUpdatesRespectLocalPackage);
     failures += run("update shutdown discards edits without prompt", testUpdateShutdownDiscardsEditsWithoutPrompt);
     failures += run("subtitle profile tab round trip", testSubtitleProfileTabRoundTrip);
     failures += run("subtitle background shape round trip and visibility", testSubtitleBackgroundShapeRoundTripAndVisibility);
