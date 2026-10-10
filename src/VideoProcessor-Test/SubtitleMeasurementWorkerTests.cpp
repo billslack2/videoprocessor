@@ -163,5 +163,20 @@ public:
             Assert::IsFalse(presentation.Consume(failed).detected);
         }
     }
+    TEST_METHOD(ReacquisitionPermissionWithdrawalInvalidatesRepeatedCueAndFallback) {
+        for(bool later:{false,true}) {
+            auto ready=Ready(1);ready.current.assistedSourceCandidate=ready.current.assistedReacquisitionCandidate=true;
+            ready.current.assistedBounds={0,20,160,70,160,90};ready.current.sharedPicture.allowAssistedReacquisition=true;
+            SubtitleBoxPresentation presentation;Assert::IsTrue(presentation.Consume(ready).detected);
+            auto failed=ready;failed.current.sharedPicture.allowAssistedReacquisition=false;
+            if(later)failed.current.identity=Identity(2);
+            Assert::IsTrue(failed.current.sharedPicture.AvailableFor(failed.current.identity,160,90));
+            Assert::IsFalse(presentation.Consume(failed).detected);
+            Assert::IsFalse(SubtitleMeasurementWorker::SameKey(ready.current,failed.current));
+            auto pixels=Pixels();SubtitlePendingMeasurementGuard guard;
+            Assert::IsFalse(guard.RememberAccepted(ready,ready.text,Source(pixels),40,250));
+            Assert::IsFalse(SubtitleBoxLookahead::AdvanceBarTrackingReference(ready.current).valid);
+        }
+    }
 };
 }

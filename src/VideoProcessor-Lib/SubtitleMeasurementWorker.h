@@ -1,6 +1,7 @@
 #pragma once
 #include <SubtitleBoxLookahead.h>
 #include <vprenderer/SubtitleAssistedSourceEvidence.h>
+#include <vprenderer/SubtitleAssistedReacquisition.h>
 #include <condition_variable>
 #include <deque>
 #include <functional>
@@ -16,6 +17,27 @@ public:
     SubtitleBoxObservation Measure(const AnalysisLumaSource& source,const SubtitleBoxObservation& key,
         const SubtitleBarTrackingReference& prior,double /*fps*/) {
         const auto started=std::chrono::steady_clock::now();
+        // Successful opt-in work replaces the ordinary scan, rather than paying
+        // for a third detector pass against the historical physical plane.
+        if(!key.discontinuity && source.generation==key.identity.transportGeneration &&
+            source.width==key.width && source.height==key.height &&
+            key.sharedPicture.AllowsAssistedReacquisitionFor(key.identity,source.width,source.height)) {
+            const auto fresh=MeasureSubtitleAssistedReacquisition(source,key.identity.acceptedSequence,
+                key.identity.viewportGeneration,key.nearBarDistance,key.optimizationMode);
+            if(fresh.available) {
+                auto result=key;
+                result.assistedSourceCandidate=result.assistedReacquisitionCandidate=true;
+                result.assistedBounds=fresh.nomination.candidate;
+                result.pictureTop=result.assistedBounds.top;result.pictureBottom=result.assistedBounds.bottom;
+                result.analyzed=result.barAuthority=true;result.barTrackingAuthority=false;
+                result.analysisRefresh=result.pendingRefresh=result.currentAnchorUsesTrackedEdge=false;
+                result.hasBarTrackingReference=false;result.incomingBarTrackingReference={};
+                result.barEvidence={};result.barEvidence.reason="assisted-reacquisition-nomination-only";
+                result.text=fresh.text;result.ink=fresh.ink;
+                result.analysisMs=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-started).count();
+                return result;
+            }
+        }
         m_scanner.SetOptimizationMode(key.optimizationMode);
         m_scanner.SetNearBarDistance(key.nearBarDistance);
         auto result=SubtitleBoxLookahead::Measure(m_scanner,source,{},key.identity,key.discontinuity,
@@ -163,7 +185,7 @@ public:
             return !oldCard.Valid() || contains(newCard,oldCard);
         };
         if(!preview.available || !preview.current.analyzed || preview.current.pendingRefresh ||
-            preview.current.discontinuity || preview.current.assistedSourceCandidate || !preview.current.barAuthority ||
+            preview.current.discontinuity || preview.current.assistedSourceCandidate || preview.current.assistedReacquisitionCandidate || !preview.current.barAuthority ||
             !source.IsValid() || source.width!=preview.current.width || source.height!=preview.current.height ||
             !accepted.detected || accepted.workLimit || accepted.lineCount<1 || accepted.lineCount>3 ||
             !covers(preview.current.text) || !covers(preview.text)) { Reset();return false; }
@@ -174,7 +196,7 @@ public:
     bool Resolve(SubtitleBoxPreview& preview,const AnalysisLumaSource& source,
         double frameMs,int holdMs) {
         const auto key=preview.current;
-        if (key.assistedSourceCandidate || m_reference.current.assistedSourceCandidate) { Reset();return false; }
+        if (key.assistedSourceCandidate || key.assistedReacquisitionCandidate || m_reference.current.assistedSourceCandidate || m_reference.current.assistedReacquisitionCandidate) { Reset();return false; }
         if(preview.available) {
             if(key.pendingRefresh)return false; // A repeated presentation cannot renew the budget.
             if(key.analyzed && key.text.detected && key.barAuthority && !key.text.workLimit) {

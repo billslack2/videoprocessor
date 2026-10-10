@@ -300,3 +300,165 @@ public:
     }
 };
 }
+
+
+namespace Tests {
+TEST_CLASS(SubtitleAssistedReacquisitionEligibilityTests) {
+    struct Fixture {
+        SubtitleAssistedReacquisitionInput input;
+        AlphaSourceCrop::Input native;
+        Decision candidate;
+        Fixture(uint64_t sequence=4) {
+            input.featureEnabled=true;input.identity={1,sequence,sequence,sequence*1000,2,3,4};
+            input.measurementIdentity=input.identity;input.sourceGeneration=1;
+            input.policyGeneration=5;input.continuityGeneration=6;
+            input.measurementAvailable=input.nearBlackEvaluated=true;
+            input.nativePresentationFullRaster=input.automaticCropEnabled=true;
+            native.automaticCropEnabled=true;native.frameSourceGeneration=1;native.frameSourceSequence=sequence;
+            native.rasterWidth=640;native.rasterHeight=360;
+            native.geometry={0,12,640,348,640,360,640.0/336,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+            candidate.applyCrop=true;candidate.owner=DecisionOwner::PIXEL_SAFE_RETENTION;
+            candidate.sourceBounds=native.geometry;
+        }
+        CropPresentationAdmissionDecision Admission() const {
+            return AdmitCropPresentation(input.priorAdmission,native,candidate,input.identity.viewportGeneration);
+        }
+        SubtitleAssistedAcquisitionInput Frame() const {
+            SubtitleAssistedAcquisitionInput f;f.identity=f.proofIdentity=input.identity;
+            f.sourceGeneration=input.sourceGeneration;f.policyGeneration=input.policyGeneration;
+            f.continuityGeneration=input.continuityGeneration;f.sourceProofAccepted=true;
+            f.candidate={0,28,640,332,640,360};f.protectedBounds={0,28,640,354,640,360};return f;
+        }
+        SubtitleAssistedAcquisitionDecision Proof() const {
+            SubtitleAssistedAcquisitionGate gate;SubtitleAssistedAcquisitionDecision proof;
+            for(uint64_t n=1;n<=4;++n){auto f=Frame();f.identity.acceptedSequence=f.identity.sourceFrameNumber=n;
+                f.identity.captureTimestamp=n*1000;f.proofIdentity=f.identity;proof=gate.Evaluate(f);}
+            return proof;
+        }
+    };
+public:
+    TEST_METHOD(DefaultOffAndRetainedLogicalAspectCannotGrantPermission) {
+        Fixture f;SubtitleAssistedReacquisitionInput defaults;
+        Assert::IsFalse(defaults.featureEnabled);
+        f.input.featureEnabled=false;
+        Assert::IsFalse(CanCollectSubtitleAssistedReacquisitionEvidence(f.input,f.Admission()));
+        f.input.featureEnabled=true;
+        for(int top:{12,28,40}) {
+            f.native.geometry.top=top;f.native.geometry.bottom=360-top;f.candidate.sourceBounds=f.native.geometry;
+            const auto admission=f.Admission();
+            Assert::IsTrue(admission.blocked);
+            Assert::IsTrue(admission.blockReason==CropPresentationAdmissionBlockReason::MISSING_ACQUISITION_AUTHORITY);
+            Assert::IsFalse(admission.state.available);
+            Assert::IsTrue(CanCollectSubtitleAssistedReacquisitionEvidence(f.input,admission));
+            Assert::IsTrue(CanPresentSubtitleAssistedReacquisitionEvidence(f.input,admission,f.Proof(),true));
+            Assert::IsFalse(f.input.priorAdmission.available);
+            Assert::AreEqual(top,f.native.geometry.top);
+        }
+    }
+    TEST_METHOD(PreviouslyAdmittedScopeCannotUseReacquisition) {
+        Fixture f;f.input.priorAdmission.available=true;f.input.priorAdmission.sourceGeneration=1;
+        f.input.priorAdmission.presentationEpoch=3;f.input.priorAdmission.trustedCrop=f.native.geometry;
+        Assert::IsFalse(CanCollectSubtitleAssistedReacquisitionEvidence(f.input,f.Admission()));
+        // A different saved logical crop is still admitted ownership in this context.
+        f.input.priorAdmission.trustedCrop.top=28;
+        Assert::IsFalse(CanCollectSubtitleAssistedReacquisitionEvidence(f.input,f.Admission()));
+        // Old-context records are not current authority; they still supply no proof.
+        f.input.priorAdmission.sourceGeneration=9;
+        Assert::IsTrue(CanCollectSubtitleAssistedReacquisitionEvidence(f.input,f.Admission()));
+        Assert::IsFalse(CanPresentSubtitleAssistedReacquisitionEvidence(f.input,f.Admission(),{},true));
+    }
+    TEST_METHOD(EveryCurrentContextAndPresentationVetoBlocksCollection) {
+        for(int defect=0;defect<32;++defect) {
+            Fixture f;auto admission=f.Admission();
+            if(defect==0)f.input.featureEnabled=false;
+            if(defect==1)f.input.automaticCropEnabled=false;
+            if(defect==2)f.input.fixedCrop=true;
+            if(defect==3)f.input.nls=true;
+            if(defect==4)f.input.sourceGeneration++;
+            if(defect==5)f.input.measurementAvailable=false;
+            if(defect==6)f.input.nearBlackEvaluated=false;
+            if(defect==7)f.input.globalNearBlack=true;
+            if(defect==8)f.input.nearBlackEpisodeActive=true;
+            if(defect==9)f.input.nativePresentationFullRaster=false;
+            if(defect==10)f.input.fullRasterAuthorityAvailable=true;
+            if(defect==11)f.input.sourceDiscontinuity=true;
+            if(defect==12)f.input.sceneTransition=true;
+            if(defect==13)f.input.recoveryActive=true;
+            if(defect==14)f.input.presentationFailOpen=true;
+            if(defect==15)f.input.conflictingPresentationOwnership=true;
+            if(defect==16)f.input.measurementIdentity.acceptedSequence++;
+            if(defect==17)f.input.measurementIdentity.transportGeneration++;
+            if(defect==18)f.input.measurementIdentity.sourceFormatGeneration++;
+            if(defect==19)f.input.measurementIdentity.viewportGeneration++;
+            if(defect==20)f.input.measurementIdentity.rendererGeneration++;
+            if(defect==21)f.input.measurementIdentity.captureTimestamp++;
+            if(defect==22)admission.blocked=false;
+            if(defect==23)admission.blockReason=CropPresentationAdmissionBlockReason::CURRENT_VISIBLE_PIXELS;
+            if(defect==24)admission.blockReason=CropPresentationAdmissionBlockReason::NONE;
+            if(defect==25)admission.currentVisibleConflict=true;
+            if(defect==26)admission.presentation.applyCrop=true;
+            if(defect==27)admission.presentation.sourceBounds.top=1;
+            if(defect==28)admission.state.available=true,admission.state.sourceGeneration=1,admission.state.presentationEpoch=3;
+            if(defect==29)admission.sourceGeneration++;
+            if(defect==30)admission.sourceSequence++;
+            if(defect==31)admission.presentationEpoch++;
+            Assert::IsFalse(CanCollectSubtitleAssistedReacquisitionEvidence(f.input,admission));
+            Assert::IsFalse(CanPresentSubtitleAssistedReacquisitionEvidence(f.input,admission,f.Proof(),true));
+        }
+    }
+    TEST_METHOD(MissingAcquisitionCannotHideSimultaneousVisiblePixelVeto) {
+        Fixture f;f.native.currentVisibleBoundsAvailable=true;
+        f.native.currentVisibleSourceGeneration=1;f.native.currentVisibleSourceSequence=4;
+        f.native.currentVisibleBase=f.native.geometry;f.native.currentVisibleBounds=f.native.geometry;
+        f.candidate.sourceBounds.top=28;f.candidate.sourceBounds.bottom=332;
+        auto admission=f.Admission();
+        Assert::IsTrue(admission.currentVisibleConflict);
+        Assert::IsTrue(admission.blockReason==CropPresentationAdmissionBlockReason::MISSING_ACQUISITION_AUTHORITY);
+        Assert::IsFalse(CanCollectSubtitleAssistedReacquisitionEvidence(f.input,admission));
+        f.native.latestObservationSupportsCrop=true;f.candidate.owner=DecisionOwner::TRUSTED_CROP;
+        admission=f.Admission();
+        Assert::IsTrue(admission.blockReason==CropPresentationAdmissionBlockReason::CURRENT_VISIBLE_PIXELS);
+        Assert::IsFalse(CanCollectSubtitleAssistedReacquisitionEvidence(f.input,admission));
+    }
+    TEST_METHOD(FinalPresentationRequiresActualDenialCompositionAndExactProof) {
+        for(int defect=0;defect<12;++defect) {
+            Fixture f;auto proof=f.Proof();bool composed=true;
+            if(defect==0)composed=false;
+            if(defect==1)proof.confirmed=false;
+            if(defect==2)proof.inhibited=true;
+            if(defect==3)proof.matchingFrames=3;
+            if(defect==4)proof.identity.acceptedSequence++;
+            if(defect==5)proof.identity.captureTimestamp++;
+            if(defect==6)proof.policyGeneration++;
+            if(defect==7)proof.continuityGeneration++;
+            if(defect==8)proof.candidate.rasterWidth++;
+            if(defect==9)proof.candidate.trustedBarAxes=ActivePictureBounds::BarAxes::TOP_BOTTOM;
+            if(defect==10)proof.candidate.top=0;
+            if(defect==11)proof.identity.sourceFormatGeneration++;
+            Assert::IsFalse(CanPresentSubtitleAssistedReacquisitionEvidence(f.input,f.Admission(),proof,composed));
+        }
+        Fixture f;const auto prediction=f.Admission();Assert::IsTrue(CanCollectSubtitleAssistedReacquisitionEvidence(f.input,prediction));
+        f.native.latestObservationSupportsCrop=true;f.candidate.owner=DecisionOwner::TRUSTED_CROP;
+        const auto actual=f.Admission();Assert::IsFalse(actual.blocked);
+        Assert::IsFalse(CanPresentSubtitleAssistedReacquisitionEvidence(f.input,actual,f.Proof(),true));
+    }
+    TEST_METHOD(FourFreshFramesDropoutLatchAndProfileContextResetRemainRequired) {
+        SubtitleAssistedAcquisitionGate gate;
+        for(uint64_t n=1;n<=4;++n) {
+            Fixture f(n);const auto proof=gate.Evaluate(f.Frame());
+            Assert::AreEqual(n==4,CanPresentSubtitleAssistedReacquisitionEvidence(f.input,f.Admission(),proof,true));
+        }
+        Fixture failed(5);auto frame=failed.Frame();frame.sourceProofAccepted=false;
+        Assert::IsTrue(gate.Evaluate(frame).inhibited);
+        Fixture after(6);Assert::IsFalse(CanPresentSubtitleAssistedReacquisitionEvidence(after.input,after.Admission(),gate.Evaluate(after.Frame()),true));
+        // Runtime changes must advance policyGeneration; no old proof crosses it.
+        Fixture changed;auto old=changed.Proof();changed.input.policyGeneration++;
+        Assert::IsFalse(CanPresentSubtitleAssistedReacquisitionEvidence(changed.input,changed.Admission(),old,true));
+        for(uint64_t n=7;n<=10;++n) {
+            Fixture fresh(n);fresh.input.policyGeneration++;
+            const auto proof=gate.Evaluate(fresh.Frame());
+            Assert::AreEqual(n==10,CanPresentSubtitleAssistedReacquisitionEvidence(fresh.input,fresh.Admission(),proof,true));
+        }
+    }
+};
+}

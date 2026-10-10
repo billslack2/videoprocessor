@@ -566,6 +566,7 @@
   </ImportGroup>
   <ItemGroup>
     <ClInclude Include="RememberedEdgeReturn.h" />
+    <ClInclude Include="vprenderer\SubtitleAssistedReacquisition.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="RememberedEdgeReturn.cpp" />

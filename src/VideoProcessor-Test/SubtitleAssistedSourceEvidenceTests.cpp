@@ -173,3 +173,96 @@ public:
 
 
 
+#include <vprenderer/SubtitleAssistedReacquisition.h>
+#include <SubtitleMeasurementWorker.h>
+namespace VideoProcessorTest {
+TEST_CLASS(SubtitleAssistedReacquisitionTests) {
+public:
+    TEST_METHOD(ConnectedCurrentGlyphsPreserveBothEdgesAndNativeFormats) {
+        for(bool p210:{false,true})for(bool upper:{false,true}) {
+            AssistedSourceFixture f(p210,upper); const auto original=f.data;
+            const auto n=ReacquisitionNominationFor(f.Source(),f.nomination.candidate);
+            const auto proof=VerifySubtitleAssistedReacquisitionEvidence(f.Source(),n,f.text,*f.ink,f.capture);
+            Assert::IsTrue(proof.verified);Assert::IsTrue(original==f.data);
+            Assert::IsTrue(proof.candidate.trustedBarAxes==ActivePictureBounds::BarAxes::NONE);
+        }
+    }
+    TEST_METHOD(DisconnectedNativePixelInsideSampleRadiusIsNotGlyphOwnership) {
+        AssistedSourceFixture f(true,false,false,6);
+        const auto n=ReacquisitionNominationFor(f.Source(),f.nomination.candidate);
+        Assert::IsTrue(VerifySubtitleAssistedReacquisitionEvidence(f.Source(),n,f.text,*f.ink,f.capture).verified);
+        f.Fill(1185,1980,1186,1981,300);
+        Assert::IsTrue(f.Proof().verified,L"existing cold proof retains its bounded-radius behavior");
+        const auto proof=VerifySubtitleAssistedReacquisitionEvidence(f.Source(),n,f.text,*f.ink,f.capture);
+        Assert::IsFalse(proof.verified);Assert::AreEqual("native-disconnected-ink",proof.reason);
+    }
+    TEST_METHOD(UnownedChromaticAndStaleMorphologyFailStrictCurrentProof) {
+        for(int scenario=0;scenario<5;++scenario) {
+            AssistedSourceFixture f(true);const auto n=ReacquisitionNominationFor(f.Source(),f.nomination.candidate);
+            if(scenario==0)f.Fill(100,20,101,21,300);
+            if(scenario==1)f.Chroma(196,330,600,512);
+            if(scenario==2)f.text.held=true;
+            if(scenario==3)f.text.workLimit=true;
+            if(scenario==4)f.capture.left=200;
+            Assert::IsFalse(VerifySubtitleAssistedReacquisitionEvidence(f.Source(),n,f.text,*f.ink,f.capture).verified);
+        }
+    }
+    TEST_METHOD(ConnectedAuditFindsOutwardPictureGrowthAndRemoteIsolatedContent) {
+        AssistedSourceFixture f(true);
+        const auto n=ReacquisitionNominationFor(f.Source(),f.nomination.candidate);
+        auto ink=SubtitleReacquisitionDetail::BuildConnectedInk(f.Source(),n.candidate,f.text,*f.ink,f.capture,n.blackThreshold);
+        Assert::IsTrue(ink.valid);
+        f.Fill(0,40,f.w,f.top,200);
+        auto audit=SubtitleReacquisitionDetail::AuditBands(f.Source(),n.candidate,ink,n.blackThreshold);
+        Assert::IsTrue(audit.valid);Assert::AreEqual(40,audit.firstTop);
+        f.Fill(100,20,101,21,300);
+        audit=SubtitleReacquisitionDetail::AuditBands(f.Source(),n.candidate,ink,n.blackThreshold);
+        Assert::AreEqual(20,audit.firstTop);
+    }
+    TEST_METHOD(NominationRejectsNearBlackPaletteAndUnsupportedSources) {
+        AssistedSourceFixture f;const auto bounds=f.nomination.candidate;
+        f.Fill(0,f.top,f.w,f.bottom,90);
+        Assert::IsFalse(ReacquisitionNominationFor(f.Source(),bounds).nominated);
+        AssistedSourceFixture g;g.Fill(0,0,g.w,1,110);
+        Assert::IsFalse(ReacquisitionNominationFor(g.Source(),bounds).nominated);
+        auto source=g.Source();source.generation=0;
+        Assert::IsFalse(ReacquisitionNominationFor(source,bounds).nominated);
+        source=g.Source();--source.dataBytes;
+        Assert::IsFalse(ReacquisitionNominationFor(source,bounds).nominated);
+    }
+    TEST_METHOD(OptInPermissionIsDistinctFromColdPermissionAndNativeAvailability) {
+        SubtitlePictureAuthority a;a.required=true;a.bounds={0,10,640,350,640,360};a.identity={1,100,500,999,2,3,4};
+        Assert::IsTrue(a.AvailableFor(a.identity,640,360));
+        Assert::IsFalse(a.AllowsAssistedReacquisitionFor(a.identity,640,360));
+        a.allowAssistedNomination=true;
+        Assert::IsFalse(a.AllowsAssistedNominationFor(a.identity,640,360));
+        Assert::IsFalse(a.AllowsAssistedReacquisitionFor(a.identity,640,360));
+        auto enabled=a;enabled.allowAssistedReacquisition=true;
+        Assert::IsFalse(a.Matches(enabled));Assert::IsTrue(enabled.AllowsAssistedReacquisitionFor(a.identity,640,360));
+        auto stale=a.identity;++stale.transportGeneration;
+        Assert::IsFalse(enabled.AllowsAssistedReacquisitionFor(stale,640,360));
+        SubtitleBoxObservation observation;observation.sharedPicture=enabled;observation.identity=a.identity;
+        observation.width=640;observation.height=360;observation.analyzed=observation.barAuthority=true;
+        observation.assistedSourceCandidate=observation.assistedReacquisitionCandidate=true;observation.assistedBounds=enabled.bounds;
+        Assert::IsTrue(SubtitleBoxLookahead::CanReuseMeasurement(observation,a.identity,640,360,0,0,false,{}));
+        Assert::IsFalse(SubtitleBoxLookahead::AdvanceBarTrackingReference(observation).valid);
+        auto cold=observation;cold.assistedReacquisitionCandidate=false;
+        Assert::IsFalse(SubtitleBoxLookahead::SameMeasurementProvenance(cold,observation));
+        observation.sharedPicture.allowAssistedReacquisition=false;
+        Assert::IsFalse(SubtitleBoxLookahead::CanReuseMeasurement(observation,a.identity,640,360,0,0,false,{}));
+    }
+    TEST_METHOD(UnalignedPaddedPlanarAndPackedNativeReaderMatchesAuthoritativeSample) {
+        for(auto format:{AnalysisLumaFormat::P010,AnalysisLumaFormat::P210,AnalysisLumaFormat::NativeYuv422}) {
+            const int w=336,h=180;const size_t pitch=format==AnalysisLumaFormat::NativeYuv422?1024:704;
+            const size_t bytes=pitch*(format==AnalysisLumaFormat::P010?h+h/2:format==AnalysisLumaFormat::P210?h*2:h);
+            std::vector<uint8_t> storage(bytes+1);for(size_t i=0;i<storage.size();++i)storage[i]=uint8_t((i*73+17)&255);
+            AnalysisLumaSource s{storage.data()+1,bytes,w,h,pitch,format==AnalysisLumaFormat::NativeYuv422?0:pitch,format,VideoFrameEncoding::V210,ColorSpace::REC_709,1};
+            Assert::IsTrue(SubtitleReacquisitionDetail::Supported(s));SubtitleReacquisitionDetail::Reader reader{s};
+            for(int y:{0,1,17,179})for(int x=0;x<w;++x) {
+                AnalysisLumaSample expected;Assert::IsTrue(s.Sample(x,y,expected));const auto actual=reader.At(x,y);
+                Assert::AreEqual(int(expected.luma),int(actual.luma));Assert::AreEqual(int(expected.chromaU),int(actual.chromaU));Assert::AreEqual(int(expected.chromaV),int(actual.chromaV));
+            }
+        }
+    }
+};
+}

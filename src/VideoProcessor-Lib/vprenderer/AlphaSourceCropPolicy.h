@@ -1350,11 +1350,22 @@ namespace AlphaSourceCrop
     bool CanRetainWeakFringeWithFill(const NearBlackPresentationEpisodeInput& episode,
         const CropPresentationAdmissionState& previous, const AspectLimitFillInput& currentFill,
         bool weakBoundedFringe, bool competingPresentation);
+    enum class CropPresentationAdmissionBlockReason
+    {
+        NONE,
+        MISSING_ACQUISITION_AUTHORITY,
+        CURRENT_VISIBLE_PIXELS,
+    };
 	struct CropPresentationAdmissionDecision
 	{
 		CropPresentationAdmissionState state;
 		Decision presentation;
 		bool blocked = false;
+        CropPresentationAdmissionBlockReason blockReason = CropPresentationAdmissionBlockReason::NONE;
+        // Also evaluated when missing acquisition is the first denial. This
+        // prevents an optional consumer from bypassing a second pixel veto.
+        bool currentVisibleConflict = false;
+        uint64_t sourceGeneration = 0, sourceSequence = 0, presentationEpoch = 0;
 	};
 
 	// Candidate must be the result of Evaluate followed by presentation recovery.
@@ -1363,6 +1374,32 @@ namespace AlphaSourceCrop
 		const CropPresentationAdmissionState& previous,
 		const Input& input, const Decision& candidate,
 		uint64_t presentationEpoch);
+
+
+    // Optional presentation-only reacquisition. Retained logical geometry is
+    // deliberately not an input: neither its presence nor its aspect is proof.
+    struct SubtitleAssistedReacquisitionInput
+    {
+        bool featureEnabled = false;
+        ActivePictureFrameIdentity identity, measurementIdentity;
+        uint64_t sourceGeneration = 0, policyGeneration = 0, continuityGeneration = 0;
+        CropPresentationAdmissionState priorAdmission;
+        bool measurementAvailable = false, nearBlackEvaluated = false, globalNearBlack = false;
+        bool nearBlackEpisodeActive = false, nativePresentationFullRaster = false;
+        bool automaticCropEnabled = false, fixedCrop = false, nls = false;
+        bool fullRasterAuthorityAvailable = false, sourceDiscontinuity = false;
+        bool sceneTransition = false, recoveryActive = false, presentationFailOpen = false;
+        bool conflictingPresentationOwnership = false;
+    };
+    // Prediction is a read-only call to the ordinary admission policy; its
+    // typed missing-acquisition denial is the only bypass this path supports.
+    bool CanCollectSubtitleAssistedReacquisitionEvidence(
+        const SubtitleAssistedReacquisitionInput& input,
+        const CropPresentationAdmissionDecision& predictedAdmission);
+    bool CanPresentSubtitleAssistedReacquisitionEvidence(
+        const SubtitleAssistedReacquisitionInput& input,
+        const CropPresentationAdmissionDecision& actualAdmission,
+        const SubtitleAssistedAcquisitionDecision& proof, bool compositionSucceeded);
 
 
 	// A temporary presentation withdrawal is not full-raster aspect authority.

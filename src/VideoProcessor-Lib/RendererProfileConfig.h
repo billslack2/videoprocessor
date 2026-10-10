@@ -558,6 +558,8 @@ namespace RendererProfileConfig
 
     inline bool IsLegacySubtitleKey(const std::string& key)
     {
+        // Reacquisition is a current renderer-owned opt-in, not a retired subtitle control.
+        if (key == "subtitle_ar_reacquisition") return false;
         return key.rfind("subtitle_", 0) == 0 || key.rfind("scope_subtitle_", 0) == 0;
     }
 
@@ -635,6 +637,7 @@ namespace RendererProfileConfig
 		}
 		if (group == "display")
 		{
+			if (key == "subtitle_ar_reacquisition") return IsBoolean(value);
 			if ((key == "subtitle_bbox_test" || key == "subtitle_cut_paste_test")) return IsBoolean(value);
         if(key=="subtitle_detection_optimization"){int mode=0;return ParseSubtitleDetectionOptimization(value,mode);}
 			if (key == "subtitle_near_bar_px") { int parsed=0; return ParseInteger(value,0,200,parsed); }
@@ -887,6 +890,20 @@ namespace RendererProfileConfig
 		if (!ConfigSchema::ValidateSection(config,
 			RendererConfigView::GENERAL_SECTION, policyRules, error))
 			return false;
+
+        // The non-unified compatibility reader otherwise returns before its
+        // legacy base schema. Validate this new opt-in wherever its runtime
+        // aliases are consumed, without tightening unrelated legacy settings.
+        for (const char* section : { RendererConfigView::LEGACY_DISPLAY_SECTION,
+            RendererConfigView::HISTORICAL_DISPLAY_SECTION })
+        {
+            std::string value;
+            if (config.TryGetString(section, "subtitle_ar_reacquisition", value) && !IsBoolean(value))
+            {
+                error = "[" + std::string(section) + "] key 'subtitle_ar_reacquisition' must be a Boolean";
+                return false;
+            }
+        }
 
 		if (const auto* display = config.GetSectionValues(
 			RendererConfigView::DISPLAY_SECTION))
@@ -1883,7 +1900,7 @@ namespace RendererProfileConfig
 				continue;
 			const std::set<std::string> baseKeys = {
 				"sdr_target_nits", "sdr_black_nits", "profile_update_mode",
-				"live_profile_updates", "subtitle_bbox_test", "subtitle_cut_paste_test",
+				"live_profile_updates", "subtitle_ar_reacquisition", "subtitle_bbox_test", "subtitle_cut_paste_test",
 				"subtitle_cut_paste_background",
 				"subtitle_text_color", "subtitle_generated_gray_color", "subtitle_generated_gray_opacity",
 				"subtitle_generated_gray_max_luminance", "subtitle_generated_gray_blur_px",

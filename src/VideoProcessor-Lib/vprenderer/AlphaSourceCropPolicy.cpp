@@ -3791,6 +3791,9 @@ namespace AlphaSourceCrop
 		uint64_t presentationEpoch)
 	{
 		CropPresentationAdmissionDecision result;
+        result.sourceGeneration = input.frameSourceGeneration;
+        result.sourceSequence = input.frameSourceSequence;
+        result.presentationEpoch = presentationEpoch;
 		result.state = previous;
 		result.presentation = candidate;
 		if (!input.automaticCropEnabled || input.fullRasterPresentationAuthoritative ||
@@ -3819,18 +3822,6 @@ namespace AlphaSourceCrop
 		const bool retentionOnly = candidate.owner != DecisionOwner::TRUSTED_CROP &&
 			candidate.owner != DecisionOwner::OUTWARD_FIT &&
 			candidate.owner != DecisionOwner::VERTICAL_TRANSLATION;
-		if ((!input.latestObservationSupportsCrop || retentionOnly) && !previouslyPresented)
-		{
-			result.blocked = true;
-			result.presentation = {};
-			result.presentation.sourceBounds = FullRaster(input.rasterWidth, input.rasterHeight);
-			result.presentation.reason =
-				"unpresented crop requires current picture acquisition authority";
-			return result;
-		}
-		// Current visible pixels are a veto, never new authority. Check the final
-		// resolved rectangle, so a complete caption/FIT envelope still acquires.
-		// Established contracts keep their existing bounded overlay handling.
 		const bool currentVisibleWitness = input.currentVisibleBoundsAvailable &&
 			input.frameSourceGeneration != 0 && input.frameSourceSequence != 0 &&
 			input.currentVisibleSourceGeneration == input.frameSourceGeneration &&
@@ -3838,12 +3829,27 @@ namespace AlphaSourceCrop
 			SameTrustedCropContract(input.currentVisibleBase, input.geometry) &&
 			ValidBounds(input.currentVisibleBounds, input.rasterWidth, input.rasterHeight) &&
 			ContainedBounds(input.currentVisibleBounds, input.geometry);
-		if (!previouslyPresented && currentVisibleWitness &&
-			!ContainedBounds(candidate.sourceBounds, input.currentVisibleBounds))
+        result.currentVisibleConflict = !previouslyPresented && currentVisibleWitness &&
+            !ContainedBounds(candidate.sourceBounds, input.currentVisibleBounds);
+		if ((!input.latestObservationSupportsCrop || retentionOnly) && !previouslyPresented)
 		{
 			result.blocked = true;
 			result.presentation = {};
 			result.presentation.sourceBounds = FullRaster(input.rasterWidth, input.rasterHeight);
+			result.blockReason = CropPresentationAdmissionBlockReason::MISSING_ACQUISITION_AUTHORITY;
+			result.presentation.reason =
+				"unpresented crop requires current picture acquisition authority";
+			return result;
+		}
+		// Current visible pixels are a veto, never new authority. Check the final
+		// resolved rectangle, so a complete caption/FIT envelope still acquires.
+		// Established contracts keep their existing bounded overlay handling.
+		if (result.currentVisibleConflict)
+		{
+			result.blocked = true;
+			result.presentation = {};
+			result.presentation.sourceBounds = FullRaster(input.rasterWidth, input.rasterHeight);
+			result.blockReason = CropPresentationAdmissionBlockReason::CURRENT_VISIBLE_PIXELS;
 			result.presentation.reason = "unpresented crop excludes current visible pixels";
 			return result;
 		}
@@ -3860,6 +3866,55 @@ namespace AlphaSourceCrop
         }
 		return result;
 	}
+
+
+    bool CanCollectSubtitleAssistedReacquisitionEvidence(
+        const SubtitleAssistedReacquisitionInput& input,
+        const CropPresentationAdmissionDecision& admission)
+    {
+        const auto& raster = admission.presentation.sourceBounds;
+        const auto admittedInContext = [&](const CropPresentationAdmissionState& state)
+        {
+            return state.available && state.sourceGeneration == input.identity.transportGeneration &&
+                state.presentationEpoch == input.identity.viewportGeneration;
+        };
+        return input.featureEnabled && input.automaticCropEnabled && !input.fixedCrop && !input.nls &&
+            input.identity.transportGeneration != 0 && input.identity.acceptedSequence != 0 &&
+            input.sourceGeneration == input.identity.transportGeneration &&
+            input.measurementAvailable && input.nearBlackEvaluated && !input.globalNearBlack &&
+            SameActivePictureFrameIdentity(input.identity, input.measurementIdentity) &&
+            !input.nearBlackEpisodeActive && input.nativePresentationFullRaster &&
+            !input.fullRasterAuthorityAvailable && !input.sourceDiscontinuity &&
+            !input.sceneTransition && !input.recoveryActive && !input.presentationFailOpen &&
+            !input.conflictingPresentationOwnership &&
+            !admittedInContext(input.priorAdmission) && !admittedInContext(admission.state) &&
+            admission.sourceGeneration == input.identity.transportGeneration &&
+            admission.sourceSequence == input.identity.acceptedSequence &&
+            admission.presentationEpoch == input.identity.viewportGeneration &&
+            !admission.currentVisibleConflict && admission.blocked && admission.blockReason ==
+                CropPresentationAdmissionBlockReason::MISSING_ACQUISITION_AUTHORITY &&
+            !admission.presentation.applyCrop &&
+            ValidBounds(raster, raster.rasterWidth, raster.rasterHeight) &&
+            raster.left == 0 && raster.top == 0 &&
+            raster.right == raster.rasterWidth && raster.bottom == raster.rasterHeight;
+    }
+    bool CanPresentSubtitleAssistedReacquisitionEvidence(
+        const SubtitleAssistedReacquisitionInput& input,
+        const CropPresentationAdmissionDecision& admission,
+        const SubtitleAssistedAcquisitionDecision& proof, bool compositionSucceeded)
+    {
+        const auto& b = proof.candidate;
+        const auto& raster = admission.presentation.sourceBounds;
+        return CanCollectSubtitleAssistedReacquisitionEvidence(input, admission) && compositionSucceeded &&
+            proof.confirmed && !proof.inhibited &&
+            proof.matchingFrames >= SubtitleAssistedAcquisitionGate::RequiredFrames &&
+            SameActivePictureFrameIdentity(proof.identity, input.identity) &&
+            proof.policyGeneration == input.policyGeneration &&
+            proof.continuityGeneration == input.continuityGeneration &&
+            ValidBounds(b, raster.rasterWidth, raster.rasterHeight) &&
+            b.left == 0 && b.right == raster.rasterWidth && b.top > 0 && b.bottom < raster.rasterHeight &&
+            b.trustedBarAxes == ActivePictureBounds::BarAxes::NONE;
+    }
 
 	Decision Evaluate(const Input& input)
 	{

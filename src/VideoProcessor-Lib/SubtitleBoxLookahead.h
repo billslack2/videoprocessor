@@ -39,9 +39,10 @@ struct SubtitlePictureAuthority {
     bool required=false;
     ActivePictureBounds bounds;
     ActivePictureFrameIdentity identity;
+    bool allowAssistedReacquisition=false; // Opt-in alternative source proof, independent of native history.
     bool allowAssistedNomination=false; // Explicit display-policy permission, never implied by withdrawal.
     bool Matches(const SubtitlePictureAuthority& other) const {
-        return required==other.required && allowAssistedNomination==other.allowAssistedNomination && (!required ||
+        return required==other.required && allowAssistedReacquisition==other.allowAssistedReacquisition && allowAssistedNomination==other.allowAssistedNomination && (!required ||
             (bounds.left==other.bounds.left && bounds.top==other.bounds.top &&
              bounds.right==other.bounds.right && bounds.bottom==other.bounds.bottom &&
              bounds.rasterWidth==other.bounds.rasterWidth && bounds.rasterHeight==other.bounds.rasterHeight &&
@@ -49,6 +50,10 @@ struct SubtitlePictureAuthority {
              identity.sourceFormatGeneration==other.identity.sourceFormatGeneration &&
              identity.viewportGeneration==other.identity.viewportGeneration &&
              identity.rendererGeneration==other.identity.rendererGeneration));
+    }
+    bool AllowsAssistedReacquisitionFor(const ActivePictureFrameIdentity& frame,int width,int height) const {
+        auto current=*this;current.identity=frame;
+        return required && allowAssistedReacquisition && Matches(current) && bounds.rasterWidth==width && bounds.rasterHeight==height;
     }
     bool AllowsAssistedNominationFor(const ActivePictureFrameIdentity& frame,int width,int height) const {
         auto current=*this;current.identity=frame;
@@ -69,6 +74,7 @@ struct SubtitleBoxObservation
     SubtitlePictureAuthority sharedPicture;
     // Independent detector ROI only; never native bar or crop authority.
     bool assistedSourceCandidate = false;
+    bool assistedReacquisitionCandidate = false; // Subtype; must never inherit cold-start permission.
     ActivePictureBounds assistedBounds;
     int nearBarDistance=0;
     int optimizationMode=0;
@@ -133,7 +139,7 @@ namespace SubtitleBoxLookahead
         const SubtitleBoxObservation& observation)
     {
         SubtitleBarTrackingReference result;
-        if (!observation.analyzed || observation.discontinuity || observation.assistedSourceCandidate ||
+        if (!observation.analyzed || observation.discontinuity || observation.assistedSourceCandidate || observation.assistedReacquisitionCandidate ||
             !HasBarEvidence(observation)) return result;
         result.identity = observation.identity;
         result.width = observation.width; result.height = observation.height;
@@ -318,6 +324,10 @@ namespace SubtitleBoxLookahead
             observation.discontinuity != discontinuity) return false;
         // Exact-frame reuse is safe for detector geometry, but cannot promote
         // an assisted measurement into the native bar-tracking reference.
+        if (observation.assistedReacquisitionCandidate)
+            return observation.assistedSourceCandidate && !observation.analysisRefresh && !observation.pendingRefresh &&
+                !observation.text.held && !observation.text.workLimit &&
+                observation.sharedPicture.AllowsAssistedReacquisitionFor(identity,width,height);
         if (observation.assistedSourceCandidate)
             return !observation.analysisRefresh && !observation.pendingRefresh &&
                 !observation.text.held && !observation.text.workLimit &&
@@ -349,7 +359,7 @@ namespace SubtitleBoxLookahead
 
     inline bool SameMeasurementProvenance(const SubtitleBoxObservation& a, const SubtitleBoxObservation& b)
     {
-        return a.assistedSourceCandidate == b.assistedSourceCandidate &&
+        return a.assistedReacquisitionCandidate == b.assistedReacquisitionCandidate && a.assistedSourceCandidate == b.assistedSourceCandidate &&
             (!a.assistedSourceCandidate ||
              (a.assistedBounds.left == b.assistedBounds.left && a.assistedBounds.top == b.assistedBounds.top &&
               a.assistedBounds.right == b.assistedBounds.right && a.assistedBounds.bottom == b.assistedBounds.bottom &&
@@ -1357,6 +1367,11 @@ public:
         // Assisted source proof is checked by the caller before Consume. A
         // failed current proof must not revive the old cue through repeated-
         // frame, fixed-template, or pending-worker continuation.
+        if (preview.current.assistedReacquisitionCandidate &&
+            (!preview.current.assistedSourceCandidate || !preview.current.sharedPicture.AllowsAssistedReacquisitionFor(
+                preview.current.identity,preview.current.width,preview.current.height))) {
+            Reset();m_decisionReason="assisted-reacquisition-permission-withdrawn";return {};
+        }
         if (preview.current.assistedSourceCandidate &&
             (!preview.current.barAuthority || !preview.current.analyzed ||
              !preview.current.text.detected || preview.current.text.workLimit ||

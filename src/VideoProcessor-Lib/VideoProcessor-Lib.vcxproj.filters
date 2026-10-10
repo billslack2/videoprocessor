@@ -690,4 +690,5 @@
     <ClInclude Include="CpuFeatures.h" />
     <ClCompile Include="CpuFeatures.cpp" />
   </ItemGroup>
+  <ItemGroup><ClInclude Include="vprenderer\SubtitleAssistedReacquisition.h"><Filter>Header Files</Filter></ClInclude></ItemGroup>
 </Project>

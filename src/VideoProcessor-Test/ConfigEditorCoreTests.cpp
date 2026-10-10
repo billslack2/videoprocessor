@@ -2,6 +2,7 @@
 
 #include <ConfigEditorCore.h>
 #include <ConfigFile.h>
+#include <RendererProfileConfig.h>
 #include <ConfigurationIdentity.h>
 #include <ConfigurationApplyPolicy.h>
 #include <ConfigurationRpcProtocol.h>
@@ -875,6 +876,85 @@ namespace VideoProcessorTest
 				"# A/B comparison\nbounded_invalid_capture_recovery: true\n"), document.Serialize());
 			DeleteFileW(path.c_str());
 		}
+
+
+        TEST_METHOD(SubtitleArReacquisitionDefaultsOffAndValidatesBooleanValues)
+        {
+            for (const char* value : { "", "true", "false", "yes", "off", "1", "0", "invalid", "2" })
+            {
+                const std::wstring path = MakeTemporaryConfigPath(L"sar");
+                const std::string text = std::string("[vprenderer]\n") +
+                    (*value ? std::string("subtitle_ar_reacquisition: ") + value + "\n" : "");
+                WriteBytes(path, text);
+                ConfigEditorCore::ConfigDocument document;
+                std::wstring error;
+                Assert::IsTrue(document.Load(path, error), error.c_str());
+                const bool valid = std::string(value) != "invalid" && std::string(value) != "2";
+                Assert::AreEqual(valid, ConfigEditorCore::ValidateCandidate(document, error));
+                ConfigFile config;
+                Assert::IsTrue(config.Load(std::string(path.begin(), path.end())));
+                bool enabled = false;
+                const bool present = RendererConfigView(config).TryGetDisplayBool("subtitle_ar_reacquisition", enabled);
+                if (!*value) { Assert::IsFalse(present); Assert::IsFalse(enabled); }
+                if (std::string(value) == "true") Assert::IsTrue(enabled);
+                if (std::string(value) == "false") Assert::IsFalse(enabled);
+                DeleteFileW(path.c_str());
+            }
+        }
+
+        TEST_METHOD(SubtitleArReacquisitionNamedProfilesInheritAndOverride)
+        {
+            const std::wstring path = MakeTemporaryConfigPath(L"sar");
+            WriteBytes(path, "[vprenderer.Default]\nsubtitle_ar_reacquisition: true\n"
+                "[vprenderer.Inherited]\nquality: high\n"
+                "[vprenderer.Disabled]\nsubtitle_ar_reacquisition: false\n");
+            ConfigFile config;
+            Assert::IsTrue(config.Load(std::string(path.begin(), path.end())));
+            RendererProfileConfig::Model model;
+            std::string error;
+            Assert::IsTrue(RendererProfileConfig::Read(config, model, error));
+            Assert::AreEqual(std::string("true"), model.profiles.at("display.default").settings.at("subtitle_ar_reacquisition"));
+            Assert::AreEqual(std::string("true"), model.profiles.at("display.inherited").settings.at("subtitle_ar_reacquisition"));
+            Assert::AreEqual(std::string("false"), model.profiles.at("display.disabled").settings.at("subtitle_ar_reacquisition"));
+            Assert::IsFalse(RendererProfileConfig::IsLegacySubtitleKey("subtitle_ar_reacquisition"));
+            Assert::IsTrue(RendererProfileConfig::IsLegacySubtitleKey("subtitle_detection_optimization"));
+            DeleteFileW(path.c_str());
+        }
+
+        TEST_METHOD(SubtitleArReacquisitionInvalidNamedValueCannotBypassValidation)
+        {
+            for (const char* section : { "vprenderer.Default", "vpvr.display", "display", "libplacebo" })
+            {
+                const std::wstring path = MakeTemporaryConfigPath(L"sar");
+                WriteBytes(path, std::string("[") + section + "]\nsubtitle_ar_reacquisition: perhaps\n");
+                ConfigEditorCore::ConfigDocument document;
+                std::wstring error;
+                Assert::IsTrue(document.Load(path, error), error.c_str());
+                const std::string diagnostic = std::string("Invalid Boolean accepted in [") + section + "]";
+                const std::wstring wideDiagnostic(diagnostic.begin(), diagnostic.end());
+                Assert::IsFalse(ConfigEditorCore::ValidateCandidate(document, error), wideDiagnostic.c_str());
+                DeleteFileW(path.c_str());
+            }
+        }
+
+        TEST_METHOD(SubtitleArReacquisitionFileOnlySettingSurvivesEditorSave)
+        {
+            const std::wstring path = MakeTemporaryConfigPath(L"sar");
+            const std::string original = "[logging]\r\nenabled: true\r\n[vprenderer]\r\n"
+                "# Optional AR recovery\r\nsubtitle_ar_reacquisition = true ; keep this explanation\r\n";
+            WriteBytes(path, original);
+            ConfigEditorCore::ConfigDocument document;
+            std::wstring error;
+            Assert::IsTrue(document.Load(path, error), error.c_str());
+            Assert::IsTrue(ConfigEditorCore::ValidateCandidate(document, error), error.c_str());
+            Assert::AreEqual(original, document.Serialize());
+            Assert::IsTrue(document.SetExisting("logging", "enabled", "false"));
+            ConfigEditorCore::SaveResult result;
+            Assert::IsTrue(ConfigEditorCore::SaveSafely(document, result, error), error.c_str());
+            Assert::AreEqual(std::string("[logging]\r\nenabled: false\r\n[vprenderer]\r\n"
+                "# Optional AR recovery\r\nsubtitle_ar_reacquisition = true ; keep this explanation\r\n"), ReadBytes(path));
+            DeleteFileW(path.c_str());
+        }
 
 		TEST_METHOD(ConfigEditorCoreNoOpRoundTripIsByteIdentical)
 		{
