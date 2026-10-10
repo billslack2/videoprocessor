@@ -3,6 +3,7 @@
 
 #include "ConfigFile.h"
 #include "RendererProfileConfig.h"
+#include "MainConfigSchema.h"
 #include <vprenderer/LibplaceboRenderParameters.h>
 
 #include <Windows.h>
@@ -165,6 +166,120 @@ namespace VideoProcessorTest
 	TEST_CLASS(LibplaceboRenderParametersTests)
 	{
 	public:
+        TEST_METHOD(StartupSchemasAcceptSavedToneControlsAlongsideSubtitleProfiles)
+        {
+            // Regression for deploying a runtime older than the saved Config UI:
+            // black_cutoff was rejected at startup despite being a valid saved option.
+            for (const char* section : { "vprenderer", "vprenderer.Standard_Scope" }) {
+                const std::string contents = std::string("[general]\nrenderer: VP Renderer\n[") + section + "]\n"
+                    "# Preserve the operator's fractional peak settings.\n"
+                    "knee_adaptation: AUTO\nknee_minimum: 0.2\nknee_maximum: 0.9\nknee_default: 0.4\n"
+                    "slope_tuning: 2.5\nslope_offset: 0.3\nspline_contrast: 1.2\nknee_offset: 1.4\n"
+                    "reinhard_contrast: 0.65\npercentile: 99.985\nsmoothing_period: 90.343\n"
+                    "scene_threshold_low: 9.09\nscene_threshold_high: 51.29\nblack_cutoff: 30.81\n"
+                    "[vprenderer.Child]\nquality: high\n"
+                    "[vprenderer.subtitles.Classic]\ntype: classic\noffset_pixels: 15\n"
+                    "[vprenderer.subtitles.Reconstruction]\ntype: generated_gray\n"
+                    "rounded_corners: true\nbackground_edge: float\ntext_reduction_percent: 25\n";
+                TemporaryConfigFile file;file.Write(contents.c_str());
+                ConfigFile config;Assert::IsTrue(config.Load(file.Path(),ConfigFile::ReadPolicy::Fresh));
+                Assert::IsTrue(config.GetWarnings().empty());
+                std::string error;
+                // These are the same main/schema/model entry points used before
+                // VideoProcessorApp creates a capture graph or presentation UI.
+                Assert::IsTrue(MainConfigSchema::Validate(config,error),Wide(error).c_str());
+                Assert::IsTrue(DisplayRuleExpression::ValidateConfig(config,error),Wide(error).c_str());
+                RendererProfileConfig::Model model;
+                Assert::IsTrue(RendererProfileConfig::Read(config,model,error),Wide(error).c_str());
+                Assert::IsTrue(RendererProfileConfig::ValidateOwnedSections(config,error),Wide(error).c_str());
+                const auto& inherited=model.profiles.at("display.child");
+                for(const auto& spec:ToneMappingTuning::Specs())
+                    Assert::IsTrue(inherited.settings.count(spec.key)==1,Wide(std::string("Missing startup tuning key: ")+spec.key).c_str());
+                Assert::AreEqual(std::string("30.81"),RequiredProfileSetting(inherited,"black_cutoff"));
+                Assert::AreEqual(std::string("90.343"),RequiredProfileSetting(inherited,"smoothing_period"));
+                Assert::AreEqual(std::string("99.985"),RequiredProfileSetting(inherited,"percentile"));
+                Assert::IsTrue(model.profiles.count("subtitles.reconstruction")==1);
+                std::ifstream input(file.Path(),std::ios::binary);std::ostringstream after;after<<input.rdbuf();
+                Assert::AreEqual(contents,after.str(),L"Startup validation must not rewrite configuration");
+            }
+            TemporaryConfigFile invalid;invalid.Write("[vprenderer]\nblack_cutoff: 100.01\n");
+            ConfigFile config;Assert::IsTrue(config.Load(invalid.Path()));std::string error;
+            Assert::IsFalse(RendererProfileConfig::ValidateOwnedSections(config,error));
+            Assert::IsTrue(error.find("black_cutoff")!=std::string::npos);
+        }
+        TEST_METHOD(ToneTuningMapsEveryNativeParameterAndPreservesPresetDefaults)
+        {
+            Settings settings;
+            settings.peakDetection = PeakDetection::HighQuality;
+            const double values[] = { .7, .2, .9, .6, 2.5, .3, 1.2, 1.4, .65, 99.9, 45, 2, 5, 3 };
+            for (int i=0; i<ToneMappingTuning::Count; ++i) settings.toneTuning[i] = values[i];
+            Projection tuned;
+            BuildOrFail(settings, false, tuned);
+            const auto& c = tuned.colorMapParams.tone_constants;
+            const auto& p = tuned.peakDetectParams;
+            const float actual[] = { c.knee_adaptation, c.knee_minimum, c.knee_maximum, c.knee_default,
+                c.slope_tuning, c.slope_offset, c.spline_contrast, c.knee_offset, c.reinhard_contrast,
+                p.percentile, p.smoothing_period, p.scene_threshold_low, p.scene_threshold_high, p.black_cutoff };
+            for (int i=0; i<ToneMappingTuning::Count; ++i)
+                Assert::AreEqual(static_cast<float>(values[i]), actual[i], 0.00001f);
+            settings.peakDetection = PeakDetection::Off;
+            Projection disabled;
+            BuildOrFail(settings, false, disabled);
+            Assert::IsTrue(disabled.renderParams.peak_detect_params == nullptr);
+            settings.toneTuning = {};
+            settings.peakDetection = PeakDetection::HighQuality;
+            Projection restored;
+            BuildOrFail(settings, false, restored);
+            const auto* defaults = NativeData<pl_peak_detect_params>("pl_peak_detect_high_quality_params");
+            AssertSameData(defaults, &restored.peakDetectParams, sizeof(*defaults), L"Reset must preserve native HQ preset");
+            settings.peakDetection = PeakDetection::Standard;
+            Projection standard;
+            BuildOrFail(settings, false, standard);
+            Assert::AreEqual(100.f, standard.peakDetectParams.percentile);
+            settings.toneTuning[ToneMappingTuning::KneeMinimum] = .45;
+            BuildOrFail(settings, false, standard);
+            Assert::AreEqual(.45f, standard.colorMapParams.tone_constants.knee_default);
+        }
+
+        TEST_METHOD(ToneTuningValidatesBoundsAndInheritedRelations)
+        {
+            ToneMappingTuning::Override number;
+            for (int i=0; i<ToneMappingTuning::Count; ++i) {
+                Assert::IsTrue(ToneMappingTuning::Parse(i, "AUTO", number));
+                Assert::IsFalse(number.has_value());
+                for (const char* bad : { "nan", "inf", "0.4junk", "a u t o", "-1", "10001" })
+                    Assert::IsFalse(ToneMappingTuning::Parse(i, bad, number));
+            }
+            for (const char* bad : { "0", "0.5", "1" })
+                Assert::IsFalse(ToneMappingTuning::Parse(ToneMappingTuning::KneeMinimum, bad, number));
+            Assert::IsTrue(ToneMappingTuning::Parse(ToneMappingTuning::Percentile,"99.995",number));
+            Assert::AreEqual(99.995, *number);
+            for (const char* child : { "knee_default: 0.15\n", "scene_threshold_high: 1\n" }) {
+                TemporaryConfigFile file;
+                file.Write((std::string("[vprenderer.First]\nknee_minimum: 0.2\nscene_threshold_low: 2\n[vprenderer.Child]\n")+child).c_str());
+                ConfigFile config; Assert::IsTrue(config.Load(file.Path()));
+                RendererProfileConfig::Model model; std::string error;
+                Assert::IsFalse(RendererProfileConfig::Read(config,model,error));
+                Assert::IsTrue(error.find("child") != std::string::npos);
+            }
+            TemporaryConfigFile file;
+            file.Write("[vprenderer.First]\nknee_adaptation: 0.7\nscene_threshold_low: 2\n[vprenderer.Child]\nknee_adaptation: AUTO\nscene_threshold_high: 0\n");
+            ConfigFile config; Assert::IsTrue(config.Load(file.Path()));
+            RendererProfileConfig::Model model; std::string error;
+            Assert::IsTrue(RendererProfileConfig::Read(config,model,error),Wide(error).c_str());
+            ToneMappingTuning::Overrides overrides{};
+            for (const char* name : { "display.first", "display.child" }) {
+                const auto& profile=model.profiles.at(name);
+                ToneMappingTuning::Read([&](const char* key,std::string& raw) {
+                    auto found=profile.settings.find(key);
+                    if(found==profile.settings.end()) return false;
+                    raw=found->second;return true;
+                },overrides);
+                if(std::string(name)=="display.first") Assert::AreEqual(.7,*overrides[ToneMappingTuning::KneeAdaptation]);
+                else Assert::IsFalse(overrides[ToneMappingTuning::KneeAdaptation].has_value());
+            }
+        }
+
         TEST_METHOD(DefaultAndLegacyAutoBlackSurviveWhiteInheritanceAtNativeBoundary)
         {
             for (const char* blackLine : { "", "sdr_black_nits: AUTO\n",

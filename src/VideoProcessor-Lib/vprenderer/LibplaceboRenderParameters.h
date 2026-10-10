@@ -7,6 +7,7 @@
 #include <libplacebo/renderer.h>
 
 #include <string>
+#include "../ToneMappingTuning.h"
 
 namespace LibplaceboRenderParameters
 {
@@ -41,6 +42,7 @@ namespace LibplaceboRenderParameters
 		std::string toneMapping = "auto";
 		std::string gamutMapping = "auto";
 		PeakDetection peakDetection = PeakDetection::Auto;
+		ToneMappingTuning::Overrides toneTuning{};
 		bool hasContrastRecovery = false;
 		float contrastRecovery = 0.0f;
 		std::string upscaler = "auto";

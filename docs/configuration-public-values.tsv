@@ -302,3 +302,17 @@ vprenderer.downscaler	none
 vprenderer.downscaler	ewa_lanczos
 vprenderer.scaling.downscaler	none
 vprenderer.scaling.downscaler	ewa_lanczos
+vprenderer.knee_adaptation	AUTO
+vprenderer.knee_minimum	AUTO
+vprenderer.knee_maximum	AUTO
+vprenderer.knee_default	AUTO
+vprenderer.slope_tuning	AUTO
+vprenderer.slope_offset	AUTO
+vprenderer.spline_contrast	AUTO
+vprenderer.knee_offset	AUTO
+vprenderer.reinhard_contrast	AUTO
+vprenderer.percentile	AUTO
+vprenderer.smoothing_period	AUTO
+vprenderer.scene_threshold_low	AUTO
+vprenderer.scene_threshold_high	AUTO
+vprenderer.black_cutoff	AUTO
