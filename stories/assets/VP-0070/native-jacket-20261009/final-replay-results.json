@@ -1,0 +1,72 @@
+[
+  {
+    "case": "native-jacket\\live-buffer-00.v210",
+    "exit": 0,
+    "result": [
+      "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=23"
+    ]
+  },
+  {
+    "case": "native-jacket\\jacket-isolated.p210",
+    "exit": 0,
+    "result": [
+      "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=6"
+    ]
+  },
+  {
+    "case": "starfield-regression\\autopilot_53-phase0.bgra",
+    "exit": 0,
+    "result": [
+      "detected=1 lines=1 bounds=1018,1814-2818,1930 reason=detected components=38"
+    ]
+  },
+  {
+    "case": "starfield-regression\\autopilot_53-phase1.bgra",
+    "exit": 0,
+    "result": [
+      "detected=1 lines=1 bounds=1018,1818-2818,1934 reason=detected components=38"
+    ]
+  },
+  {
+    "case": "starfield-regression\\beeping_15-phase0.bgra",
+    "exit": 0,
+    "result": [
+      "detected=1 lines=1 bounds=1666,1814-2174,1930 reason=detected components=11"
+    ]
+  },
+  {
+    "case": "starfield-regression\\beeping_15-phase1.bgra",
+    "exit": 0,
+    "result": [
+      "detected=1 lines=1 bounds=1666,1818-2174,1934 reason=detected components=11"
+    ]
+  },
+  {
+    "case": "starfield-regression\\beeping_36-phase0.bgra",
+    "exit": 0,
+    "result": [
+      "detected=1 lines=1 bounds=1666,1814-2174,1930 reason=detected components=11"
+    ]
+  },
+  {
+    "case": "starfield-regression\\beeping_36-phase1.bgra",
+    "exit": 0,
+    "result": [
+      "detected=1 lines=1 bounds=1666,1818-2174,1934 reason=detected components=11"
+    ]
+  },
+  {
+    "case": "starfield-regression\\beeping_50-phase0.bgra",
+    "exit": 0,
+    "result": [
+      "detected=1 lines=1 bounds=1666,1814-2174,1930 reason=detected components=11"
+    ]
+  },
+  {
+    "case": "starfield-regression\\beeping_50-phase1.bgra",
+    "exit": 0,
+    "result": [
+      "detected=1 lines=1 bounds=1666,1818-2174,1934 reason=detected components=10"
+    ]
+  }
+]

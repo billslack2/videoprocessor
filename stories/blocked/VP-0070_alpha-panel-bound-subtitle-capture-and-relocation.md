@@ -1,5 +1,33 @@
 # VP-0070: CIH bar/boundary subtitle capture and relocation
 
+## Exact native jacket false-positive reproduced and corrected locally - 2026-10-10
+
+Read-only extraction of aligned native v210 buffers from the running VP process
+captured the actual failing paused frame without restarting. The previous
+Release detector reproduces the live log exactly: box 1358,1794-1618,1894,
+23 components, picture 276..1884. Repetition while paused is expected; the
+failure is classifying jacket shadows as a caption.
+
+Two picture-only fragments were nominated near the bar despite no physical
+bar ink. A dim learned palette and one-sided contrast against the letterbox
+edge supplied insufficient text evidence. The fix requires a bounded bright
+stroke with opposing dark samples inside sampled picture rows before such
+components can seed a caption. Physical bar ink, native thin-stroke recovery,
+and existing script-neutral line/punctuation checks retain their prior rules.
+
+The exact native frame and an isolated native 352x184 jacket patch now reject.
+The patch is a permanent regression with top/bottom mirrors and four sampling
+phases. Eight recorded autopilot/[Beeping] controls retain identical bounds.
+The x64 Release solution build succeeds. All 2,371 native tests pass, including
+the new jacket regression; detailed results are in the adjacent capture report. No deployment of this new fix has occurred; live
+qualification remains outstanding. Prior uncommitted subtitle/AR/color work
+is preserved in E:\codex\videoprocessor\subtitle-native-jacket-20261009,
+based on remote beta 73953a364058b1cf6e5875dfc62e32df4e3bdcd5.
+
+Evidence: stories/assets/VP-0070/native-jacket-20261009/capture-report.json,
+final-replay-results.json, and exact-failing-excerpt.txt. Full native buffers
+remain local; only the minimized test patch is added to the source worktree.
+
 ## Jacket live qualification failed - 2026-10-09
 
 Operator reports zero improvement after false-flash deployment. Paused scene

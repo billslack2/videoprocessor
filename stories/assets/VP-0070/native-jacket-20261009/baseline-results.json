@@ -1,0 +1,14 @@
+[
+  {
+    "case": "native-jacket\\live-buffer-00.v210",
+    "result": [
+      "detected=1 lines=1 bounds=1358,1794-1618,1894 reason=detected components=23"
+    ]
+  },
+  {
+    "case": "native-jacket\\jacket-isolated.p210",
+    "result": [
+      "detected=1 lines=1 bounds=1358,1794-1618,1894 reason=detected components=6"
+    ]
+  }
+]
