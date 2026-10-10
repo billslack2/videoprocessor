@@ -3745,6 +3745,14 @@ struct LibplaceboVideoRenderer::Impl
 	// Kept deliberately short for the Ctrl+I OSD: "Disabled",
 	// "Loaded: validating", "Active: name (65^3)", or "Rejected: reason".
 	std::string displayLutStatus = "Disabled";
+	// The render thread holds renderMutex through Present, so the UI's
+	// try_lock can miss every tick for a whole session. It republishes the
+	// OSD strings here, under their own lock, for the UI to fall back on.
+	mutable std::mutex osdCacheMutex;
+	bool osdCacheValid = false;
+	ULONGLONG osdCacheTick = 0;
+	CString osdOutputMode;
+	CString osdDisplayLut;
 	std::string displayLutPath;
 	std::string displayLutConstrainedBaseDirectory;
 	std::string displayLutTarget = "none";
@@ -16838,8 +16846,34 @@ bool LibplaceboVideoRenderer::GetOutputModeInfo(CString& details) const
 
 	std::unique_lock<std::mutex> guard(
 		m_impl->renderMutex, std::try_to_lock);
-	if (!guard.owns_lock())
+	if (guard.owns_lock())
+		return FormatOutputModeInfoLocked(details);
+	std::lock_guard<std::mutex> cacheGuard(m_impl->osdCacheMutex);
+	if (!m_impl->osdCacheValid)
 		return false;
+	details = m_impl->osdOutputMode;
+	return true;
+}
+
+void LibplaceboVideoRenderer::RefreshOsdCacheLocked()
+{
+	// Caller holds renderMutex. A few hundred ms of staleness is invisible
+	// on a 1 Hz OSD and keeps the string formatting off most frames.
+	const ULONGLONG now = GetTickCount64();
+	if (m_impl->osdCacheValid && now - m_impl->osdCacheTick < 250)
+		return;
+	CString outputMode;
+	FormatOutputModeInfoLocked(outputMode);
+	const CString displayLut(CStringA(m_impl->displayLutStatus.c_str()));
+	std::lock_guard<std::mutex> cacheGuard(m_impl->osdCacheMutex);
+	m_impl->osdOutputMode = outputMode;
+	m_impl->osdDisplayLut = displayLut;
+	m_impl->osdCacheTick = now;
+	m_impl->osdCacheValid = true;
+}
+
+bool LibplaceboVideoRenderer::FormatOutputModeInfoLocked(CString& details) const
+{
 	auto requestPresentation = [](LibplaceboOutput::PresentationRequest value)
 	{
 		switch (value)
@@ -17138,9 +17172,15 @@ bool LibplaceboVideoRenderer::GetDisplayLutInfo(CString& details) const
 
 	std::unique_lock<std::mutex> guard(
 		m_impl->renderMutex, std::try_to_lock);
-	if (!guard.owns_lock())
+	if (guard.owns_lock())
+	{
+		details = CString(CStringA(m_impl->displayLutStatus.c_str()));
+		return true;
+	}
+	std::lock_guard<std::mutex> cacheGuard(m_impl->osdCacheMutex);
+	if (!m_impl->osdCacheValid)
 		return false;
-	details = CString(CStringA(m_impl->displayLutStatus.c_str()));
+	details = m_impl->osdDisplayLut;
 	return true;
 }
 
@@ -19017,6 +19057,7 @@ void LibplaceboVideoRenderer::RenderLoop()
 					m_frameQueue.size(),
 					static_cast<unsigned long long>(m_activePictureTimeline.LookaheadPolicyGeneration()));
 			}
+			RefreshOsdCacheLocked();
 		}
 
 		if (cadenceRepeat)
