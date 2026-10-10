@@ -35,6 +35,9 @@
 #include <vprenderer/SubtitleAspectRetention.h>
 #include <vprenderer/SubtitlePresentationEvidence.h>
 #include <vprenderer/SubtitlePresentationContinuity.h>
+#include <vprenderer/SubtitleAssistedSourceEvidence.h>
+#include <vprenderer/SubtitleAssistedAcquisition.h>
+#include <vprenderer/SubtitleAssistedPresentation.h>
 #include <SubtitleSceneEvidence.h>
 #include <vprenderer/AnalysisSourceCapture.h>
 #include <vprenderer/InwardCaptionEvidence.h>
@@ -3709,6 +3712,10 @@ struct LibplaceboVideoRenderer::Impl
     SubtitleSceneEvidenceDiagnostics subtitleSceneEvidenceDiagnostics;
     AnalysisSourceCapture analysisSourceCapture;
     AlphaSourceCrop::SubtitlePresentationContinuityGate subtitlePresentationContinuity;
+    AlphaSourceCrop::SubtitleAssistedAcquisitionGate subtitleAssistedAcquisition;
+    AlphaSourceCrop::SubtitlePresentationContinuityGate subtitleAssistedCompositionContinuity;
+    uint64_t subtitleAssistedLogTick=0;
+    std::string subtitleAssistedLogReason;
     std::string subtitlePresentationEvidenceReason;
     bool subtitlePresentationEvidenceAccepted=false;
     uint64_t subtitlePresentationEvidenceLogTick=0;
@@ -11719,6 +11726,11 @@ struct LibplaceboVideoRenderer::Impl
         // Generated pixels never re-enter either detector.
         SubtitleBoxObservation subtitleEvidenceObservation;
         bool subtitleEvidenceObservationAvailable=false;
+        SubtitleAssistedSourceProof assistedSourceProof;
+        AlphaSourceCrop::SubtitleAssistedAcquisitionDecision assistedAcquisition;
+        double assistedProofMs=0;
+        bool assistedIndependentRawClear=false;
+        ActivePictureBounds assistedRevalidationBounds;
         auto subtitleEvidenceIdentity=activePictureIdentity;
         subtitleEvidenceIdentity.transportGeneration=frameGeneration;
         subtitleEvidenceIdentity.sourceFormatGeneration=AlphaSourceFormatKey(state);
@@ -11774,6 +11786,76 @@ struct LibplaceboVideoRenderer::Impl
                     break;
                 }
 
+            // An independently nominated ROI is only a question for the text
+            // detector. Verify the exact current ORIGINAL pixels before allowing
+            // that ROI to influence subtitle composition or final presentation.
+            AlphaSourceCrop::SubtitleAssistedAcquisitionInput assistedInput;
+            assistedInput.identity=subtitleIdentity;
+            assistedInput.sourceGeneration=analysisSource.generation;
+            assistedInput.policyGeneration=localBoundaryPolicyGeneration;
+            assistedInput.continuityGeneration=localBoundaryContinuityGeneration;
+            assistedInput.discontinuity=videoFrame.IsSourceDiscontinuity();
+            const auto& assistedObservation=currentSubtitlePreview.current;
+            const bool assistedContext=analysisSource.generation==subtitleIdentity.transportGeneration &&
+                automaticSourceCrop && configuredScreenActive && !nlsRequested &&
+                !fixedCropAspectConfigured && SubtitlePreviewOverridesClassicHandling(subtitlePreviewMode) &&
+                !videoFrame.IsSourceDiscontinuity() && !sceneResult.hardCutCandidate && !sceneResult.safeBoundary &&
+                !sceneHold.cropActive && !movingPictureTransition.active && !movingPictureTransition.awaitingPublication &&
+                nearBlackPresentationEpisode.mode==AlphaSourceCrop::NearBlackPresentationMode::INACTIVE;
+            if(assistedContext && currentSubtitlePreview.available && assistedObservation.assistedSourceCandidate &&
+                SameActivePictureFrameIdentity(assistedObservation.identity,subtitleIdentity) &&
+                assistedObservation.policyGeneration==localBoundaryPolicyGeneration &&
+                assistedObservation.continuityGeneration==localBoundaryContinuityGeneration &&
+                !assistedObservation.discontinuity && !assistedObservation.analysisRefresh &&
+                !assistedObservation.pendingRefresh && assistedObservation.ink) {
+                const auto started=SteadyClock::now();
+                const auto nomination=NominateSubtitleAssistedSourceBounds(analysisSource,ExtractActivePictureEvidence(analysisSource));
+                const auto& a=nomination.candidate;const auto& b=assistedObservation.assistedBounds;
+                if(nomination.nominated && a.left==b.left && a.top==b.top && a.right==b.right && a.bottom==b.bottom &&
+                    a.rasterWidth==b.rasterWidth && a.rasterHeight==b.rasterHeight &&
+                    assistedObservation.pictureTop==a.top && assistedObservation.pictureBottom==a.bottom)
+                    assistedSourceProof=VerifySubtitleAssistedSourceEvidence(analysisSource,nomination,
+                        assistedObservation.text,*assistedObservation.ink,
+                        SubtitleGlyphCaptureBounds(assistedObservation.text,width,height));
+                else assistedSourceProof.reason="current-nomination-mismatch";
+                assistedProofMs=std::chrono::duration<double,std::milli>(SteadyClock::now()-started).count();
+                assistedInput.proofIdentity=assistedObservation.identity;
+                assistedInput.candidate=nomination.candidate;
+                assistedInput.protectedBounds=nomination.candidate;
+                if(assistedSourceProof.verified) {
+                    const auto& caption=assistedSourceProof.protectedSubtitleBounds;
+                    assistedInput.protectedBounds.top=(std::min)(assistedInput.protectedBounds.top,caption.top);
+                    assistedInput.protectedBounds.bottom=(std::max)(assistedInput.protectedBounds.bottom,caption.bottom);
+                    assistedInput.protectedBounds.aspectRatio=double(width)/(assistedInput.protectedBounds.bottom-assistedInput.protectedBounds.top);
+                    assistedInput.sourceProofAccepted=true;
+                }
+            }
+            if(!assistedSourceProof.verified && assistedContext &&
+                subtitleAssistedAcquisition.CandidateForRevalidation(subtitleIdentity,localBoundaryPolicyGeneration,
+                    localBoundaryContinuityGeneration,assistedRevalidationBounds)) {
+                // This raw check only rearms future four-frame proof. It cannot
+                // grant a crop and never excludes subtitle or generated pixels.
+                const auto clear=EvaluateActivePicturePresentationRetention(analysisSource,assistedRevalidationBounds);
+                const auto& native=clear.activePicture.trustedBounds;
+                assistedIndependentRawClear=analysisSource.generation==subtitleIdentity.transportGeneration &&
+                    clear.analysisValid && clear.presentationValid &&
+                    clear.excludedBandsPixelSafe && !clear.globalNearBlack &&
+                    clear.activePicture.classification==ActivePictureClassification::BAR_CROP_TRUSTED &&
+                    native.rasterWidth==width && native.rasterHeight==height && native.left==0 && native.right==width &&
+                    native.top>=assistedRevalidationBounds.top && native.bottom<=assistedRevalidationBounds.bottom;
+                if(assistedIndependentRawClear) {
+                    assistedInput.proofIdentity=subtitleIdentity;
+                    assistedInput.candidate=assistedInput.protectedBounds=assistedRevalidationBounds;
+                    assistedInput.independentRawBandsClear=true;
+                }
+            }
+            assistedAcquisition=subtitleAssistedAcquisition.Evaluate(assistedInput);
+            if(assistedObservation.assistedSourceCandidate && !assistedSourceProof.verified) {
+                currentSubtitlePreview.text={};currentSubtitlePreview.current.text={};
+                currentSubtitlePreview.current.barAuthority=false;
+                currentSubtitlePreview.followingCount=0;currentSubtitlePreview.matchingFrames=0;
+                currentSubtitlePreview.currentLinesConfirmed=false;
+            }
             ++subtitlePerf.frames;
             if(!currentSubtitlePreview.available) {
                 ++subtitlePerf.pending;
@@ -11840,7 +11922,9 @@ struct LibplaceboVideoRenderer::Impl
                     activeSettings.subtitlePaddingPolicy.glyphRelative?&displayBounds:nullptr);
                 // Final placement must fit the AR owner's picture, not an
                 // independently sampled subtitle bar edge (which can differ by pixels).
-                const SubtitleBoxRect visiblePicture = configuredScreenActive && nlsGeometryAvailable &&
+                const SubtitleBoxRect visiblePicture = assistedSourceProof.verified
+                    ? SubtitleBoxRect{0,assistedSourceProof.candidate.top,width,assistedSourceProof.candidate.bottom}
+                    : configuredScreenActive && nlsGeometryAvailable &&
                     nlsGeometrySourceGeneration == frameGeneration
                     ? SubtitleBoxRect{nlsGeometry.left,nlsGeometry.top,nlsGeometry.right,nlsGeometry.bottom}
                     : SubtitleBoxRect{0,detectedMove.pictureTop,width,detectedMove.pictureBottom};
@@ -12000,7 +12084,7 @@ struct LibplaceboVideoRenderer::Impl
                 subtitleAnalysisLogTick=analysisLogNow;
             }
         }
-        else { subtitlePresentationContinuity.Reset(); subtitleSceneEvidenceDiagnostics.Reset(); subtitlePendingGuard.Reset(); subtitleBoxPresentation.Reset(); subtitleStabilityTelemetry.Reset(); subtitlePaddingGuard.Reset(); subtitleBoxResult = {}; subtitleCutPastePresentation.Reset(); subtitleLayoutAnchor.Reset(); }
+        else { subtitleAssistedAcquisition.Reset(); subtitleAssistedCompositionContinuity.Reset(); subtitlePresentationContinuity.Reset(); subtitleSceneEvidenceDiagnostics.Reset(); subtitlePendingGuard.Reset(); subtitleBoxPresentation.Reset(); subtitleStabilityTelemetry.Reset(); subtitlePaddingGuard.Reset(); subtitleBoxResult = {}; subtitleCutPastePresentation.Reset(); subtitleLayoutAnchor.Reset(); }
 
         const auto subtitlePerfNow=GetTickCount64();
         if(!subtitlePerfTick)subtitlePerfTick=subtitlePerfNow;
@@ -12032,6 +12116,8 @@ struct LibplaceboVideoRenderer::Impl
 			 sceneHold, sceneResult, cadenceRepeat, subtitleShiftSourcePixels,
 			 subtitlePreviewMode,
              &subtitleEvidenceObservation, subtitleEvidenceObservationAvailable, subtitleEvidenceIdentity,
+             &assistedSourceProof, &assistedAcquisition, assistedProofMs,
+             assistedIndependentRawClear, &assistedRevalidationBounds,
              subtitleCutPasteBackground, subtitleEvidencePolicy=localBoundaryPolicyGeneration,
              subtitleEvidenceContinuity=localBoundaryContinuityGeneration,
              sourceDiscontinuity=videoFrame.IsSourceDiscontinuity(),
@@ -13229,6 +13315,63 @@ struct LibplaceboVideoRenderer::Impl
                 SteadyClock::now()-subtitleEvidenceStart).count();
             cropDecision.sourceBounds=subtitleDisplay.accepted?subtitleDisplay.bounds:
                 SubtitlePresentationBounds(cropDecision,subtitlePreviewMode);
+            // This separate display decision is never submitted to logical AR,
+            // native history, crop admission, trusted HDR picture authority, or generic-fit holds.
+            AlphaSourceCrop::SubtitleAssistedPresentationInput assistedPresentationInput;
+            assistedPresentationInput.proof=assistedAcquisition;
+            assistedPresentationInput.identity=subtitleEvidenceIdentity;
+            assistedPresentationInput.policyGeneration=subtitleEvidencePolicy;
+            assistedPresentationInput.continuityGeneration=subtitleEvidenceContinuity;
+            assistedPresentationInput.observation=subtitleEvidenceObservationAvailable?&subtitleEvidenceObservation:nullptr;
+            assistedPresentationInput.acceptedCue=&subtitleBoxResult;
+            assistedPresentationInput.move=relocatedSubtitle;
+            assistedPresentationInput.backgroundMode=subtitleCutPasteBackground;
+            assistedPresentationInput.compositionSucceeded=subtitleCompositionSucceeded;
+            const bool assistedDisplayEligible=assistedSourceProof.verified && automaticSourceCrop && configuredScreenActive &&
+                !fixedCropAspectConfigured && !nlsRequested && !sourceDiscontinuity &&
+                !cropDecision.applyCrop && cropDecision.sourceBounds.left==0 && cropDecision.sourceBounds.top==0 &&
+                cropDecision.sourceBounds.right==width && cropDecision.sourceBounds.bottom==height &&
+                !cropInput.movingPictureTransition && !cropInput.pictureTransitionHandoff.active &&
+                !sceneHold.cropActive && !sceneResult.hardCutCandidate && !sceneResult.safeBoundary && !useSceneVerificationGeometry &&
+                !admissionDecision.blocked && !cropInput.presentationFailOpen && !verticalFailOpen &&
+                !outwardExpansionInvalid && !scopeVerticalInspectionBridge.failOpenLatched &&
+                !cropPresentationRecovery.active && !nearBlackEpisodeFullRaster &&
+                nearBlackPresentationEpisode.mode==AlphaSourceCrop::NearBlackPresentationMode::INACTIVE &&
+                !recoveryDecision.boundedPresentation && !nearBlackBoundedDecision.boundedPresentation &&
+                SubtitlePreviewOverridesClassicHandling(subtitlePreviewMode);
+            auto assistedDisplay=assistedDisplayEligible
+                ? AlphaSourceCrop::SelectSubtitleAssistedPresentation(assistedPresentationInput)
+                : AlphaSourceCrop::SubtitleAssistedPresentationDecision{};
+            AlphaSourceCrop::SubtitlePresentationContinuityInput assistedCompositionInput;
+            assistedCompositionInput.identity=subtitleEvidenceIdentity;
+            assistedCompositionInput.policyGeneration=subtitleEvidencePolicy;
+            assistedCompositionInput.continuityGeneration=subtitleEvidenceContinuity;
+            assistedCompositionInput.logical=assistedIndependentRawClear?assistedRevalidationBounds:assistedAcquisition.candidate;
+            assistedCompositionInput.independentRawBandsClear=assistedIndependentRawClear;
+            assistedCompositionInput.discontinuity=sourceDiscontinuity;
+            assistedCompositionInput.certificateAccepted=assistedDisplay.available && assistedDisplay.composed;
+            const auto assistedComposition=subtitleAssistedCompositionContinuity.Evaluate(assistedCompositionInput);
+            if(assistedDisplay.composed && !assistedComposition.allow) {
+                // The certified destination lies in candidate, which is also
+                // contained by this wider original-caption envelope.
+                assistedPresentationInput.compositionSucceeded=false;
+                assistedDisplay=AlphaSourceCrop::SelectSubtitleAssistedPresentation(assistedPresentationInput);
+            }
+            const bool assistedDisplayApplied=assistedDisplay.available;
+            const auto assistedTick=GetTickCount64();
+            const char* assistedReason=assistedDisplayApplied?assistedDisplay.reason:
+                !assistedSourceProof.verified?assistedSourceProof.reason:assistedAcquisition.reason;
+            if(!cadenceRepeat && SubtitlePreviewOverridesClassicHandling(subtitlePreviewMode) &&
+                (subtitleAssistedLogReason!=assistedReason || assistedTick-subtitleAssistedLogTick>=2000)) {
+                DebugLog::Log("SUBTITLE ASSISTED AR: generation=%llu sequence=%llu epoch=%llu logical_mutation=0 history_learning=0 nominated=%d proof=%d confirmations=%u inhibited=%d eligible=%d applied=%d composed=%d candidate=%d,%d-%d,%d display=%d,%d-%d,%d native_pixels=%zu glyph_pixels=%zu ms=%.3f reason=%s",
+                    frameGeneration,sourceSequence,viewportRequestSerial,subtitleEvidenceObservation.assistedSourceCandidate?1:0,
+                    assistedSourceProof.verified?1:0,assistedAcquisition.matchingFrames,assistedAcquisition.inhibited?1:0,
+                    assistedDisplayEligible?1:0,assistedDisplayApplied?1:0,assistedDisplay.composed?1:0,
+                    assistedSourceProof.candidate.left,assistedSourceProof.candidate.top,assistedSourceProof.candidate.right,assistedSourceProof.candidate.bottom,
+                    assistedDisplay.bounds.left,assistedDisplay.bounds.top,assistedDisplay.bounds.right,assistedDisplay.bounds.bottom,
+                    assistedSourceProof.nativePixels,assistedSourceProof.ownedBarPixels,assistedProofMs,assistedReason);
+                subtitleAssistedLogReason=assistedReason;subtitleAssistedLogTick=assistedTick;
+            }
             const auto subtitleEvidenceTick=GetTickCount64();
             if(SubtitlePreviewOverridesClassicHandling(subtitlePreviewMode) && !cadenceRepeat &&
                 (subtitlePresentationEvidenceReason!=subtitleDisplay.reason ||
@@ -13318,12 +13461,12 @@ struct LibplaceboVideoRenderer::Impl
 				aspectLimitFill = AlphaSourceCrop::EvaluateFixedAspectCrop(
 					fixedCropInput);
 			}
-			else if (subtitleDisplay.accepted || protectedCaptionFit || nlsPresentationFailOpen || recoveryDecision.boundedPresentation ||
+			else if (assistedDisplayApplied || subtitleDisplay.accepted || protectedCaptionFit || nlsPresentationFailOpen || recoveryDecision.boundedPresentation ||
                 nearBlackBoundedDecision.boundedPresentation)
 			{
 				aspectLimitFill.sourceBounds = cropDecision.sourceBounds;
 				aspectLimitFill.reason =
-                    subtitleDisplay.accepted
+                    assistedDisplayApplied ? "source-verified assisted presentation; optional fill withheld" : subtitleDisplay.accepted
                     ? "verified relocated caption and established picture preserved; aspect-limit fill withheld"
                     : protectedCaptionFit
                     ? "known inward caption return preserves picture and caption; aspect-limit fill withheld"
@@ -13373,7 +13516,7 @@ struct LibplaceboVideoRenderer::Impl
             // Recording presentation never publishes or refreshes detector authority.
             cropPresentationAdmission.optionalFillApplied = aspectLimitFill.applied &&
                 cropDecision.applyCrop && !fixedCropAspectConfigured && !nlsRequested &&
-                !protectedCaptionFit && !cropDecision.outwardExpanded && !cropDecision.verticallyTranslated &&
+                !assistedDisplayApplied && !protectedCaptionFit && !cropDecision.outwardExpanded && !cropDecision.verticallyTranslated &&
                 !cropInput.movingPictureTransition && !recoveryDecision.state.active &&
                 episodeInput.trustedCropOrigin == ActivePictureAuthorityOrigin::NATIVE &&
                 sameBounds(cropDecision.sourceBounds, cropInput.geometry);
@@ -13382,6 +13525,7 @@ struct LibplaceboVideoRenderer::Impl
             cropPresentationAdmission.optionalFillSourceSequence = sourceSequence;
             cropPresentationAdmission.optionalFillScreenAspect = configuredScreenAspect;
 			const ActivePictureBounds& presentationCropBounds =
+                assistedDisplayApplied ? assistedDisplay.bounds :
 				aspectLimitFill.applied ? aspectLimitFill.sourceBounds :
 				cropDecision.sourceBounds;
 			// Diagnostics reuse the evidence already sampled above; no pixel scans.
@@ -13400,7 +13544,7 @@ struct LibplaceboVideoRenderer::Impl
 				DebugLog::Log("Alpha crop diagnostics: schema=1 recovery_dwell_ms=250 summary_ms=2000 sampling_equivalence=max(2,width/480,height/270) sampling_requires=same-bars-and-current-safe-bands provisional_sampling=per-vertical-edge-scan-step-contained-sides-and-current-strip-check partial_composition=defer-publication failed_bar_axis=retain-established-inward-format axis_full_extent=diagnostic-only axis_extent_support=both-outer-lines-6-of-12-per-quartile-above-cutoff-plus24 stable_aspect_deadband_percent=%.1f stable_aspect_scope=contained-trusted-picture all_sided_inset=retain-inner-composition scheduled_admission=exact-or-current-proven-outward-scan-step-reference-and-live-deadbands picture_handoff=broad-vertical-confirmation-bounded-by-existing-proof-budget outward_proof_sampling=anchored-max(2,width/960,height/540) global_grid=16x16 near_black_p90_max=96 edge_grid=48x6 extent_grid_max=256x64 extent_support=2x2 black_floor=perimeter-p10-clamped-48-80 black_threshold=min(104,floor+24) retention_black_min=0.95 retention_p90_max=min(104,floor+24) dispersion_max=24 texture_max=8 chroma_neutral_min=0.90 continuity_min=0.99 trace_budget=%u trace_max=2400 trace_scope=candidate-and-presentation evidence=existing-samples capture_missed_semantics=timestamp-gap-estimate", ActivePictureTransitionModel::STABLE_ASPECT_DEADBAND_PERCENT, cropTraceRemaining);
 			}
 			const uint64_t cropTick = episodeInput.currentTick;
-			const bool cropApplied = cropDecision.applyCrop || aspectLimitFill.applied;
+			const bool cropApplied = assistedDisplayApplied || cropDecision.applyCrop || aspectLimitFill.applied;
 			const bool actualCropChanged = !cropDiagnosticPreviousAvailable ||
 				cropApplied != cropDiagnosticPreviousApplied ||
 				presentationCropBounds.left != cropDiagnosticPreviousBounds.left ||
@@ -13820,7 +13964,7 @@ struct LibplaceboVideoRenderer::Impl
 						outwardExpansionInvalid ? 1 : 0);
 				}
 			}
-			if (cropDecision.applyCrop || aspectLimitFill.applied)
+			if (assistedDisplayApplied || cropDecision.applyCrop || aspectLimitFill.applied)
 			{
 				source.crop.x0 = static_cast<float>(
 					presentationCropBounds.left);
@@ -13831,7 +13975,7 @@ struct LibplaceboVideoRenderer::Impl
 				source.crop.y1 = static_cast<float>(
 					presentationCropBounds.bottom);
 				if (trustedActivePicture)
-					*trustedActivePicture = true;
+					*trustedActivePicture = !assistedDisplayApplied;
 			}
 			// This is the sole per-frame NLS authority. Derive every mapping input
 			// from the exact source rectangle selected above, then publish crop,
@@ -13852,13 +13996,13 @@ struct LibplaceboVideoRenderer::Impl
 			const NlsSourceGeometry finalSourceGeometry =
 				nlsOwnsPresentationGeometry ? nlsCandidateSourceGeometry :
 				ResolveNlsSourceGeometry(
-					cropDecision.applyCrop || aspectLimitFill.applied,
+					assistedDisplayApplied || cropDecision.applyCrop || aspectLimitFill.applied,
 					presentationCropBounds.left,
 					presentationCropBounds.top,
 					presentationCropBounds.right,
 					presentationCropBounds.bottom,
 					width, height);
-			if ((nlsOwnsPresentationGeometry || cropDecision.applyCrop ||
+			if ((assistedDisplayApplied || nlsOwnsPresentationGeometry || cropDecision.applyCrop ||
 				aspectLimitFill.applied) && finalSourceGeometry.valid)
 			{
 				source.crop.x0 = static_cast<float>(finalSourceGeometry.left);

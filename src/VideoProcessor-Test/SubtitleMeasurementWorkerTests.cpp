@@ -88,5 +88,77 @@ public:
         Assert::IsFalse(guard.Resolve(pending,Source(pixels),40,250));
         Assert::IsFalse(pending.available);
     }
+    TEST_METHOD(AssistedCandidateNeverSeedsNativeBarTrackingOrPendingFallback) {
+        auto pixels=Pixels();auto ready=Ready(1);
+        Assert::IsTrue(SubtitleBoxLookahead::AdvanceBarTrackingReference(ready.current).valid);
+        ready.current.assistedSourceCandidate=true;
+        ready.current.assistedBounds={0,12,160,78,160,90};
+        Assert::IsFalse(SubtitleBoxLookahead::AdvanceBarTrackingReference(ready.current).valid);
+        SubtitlePendingMeasurementGuard guard;
+        Assert::IsFalse(guard.RememberAccepted(ready,ready.text,Source(pixels),40,250));
+        auto pending=Pending(2);
+        Assert::IsFalse(guard.Resolve(pending,Source(pixels),40,250));
+        // The lower-level available path must not bypass RememberAccepted.
+        Assert::IsFalse(guard.Resolve(ready,Source(pixels),40,250));
+        pending=Pending(2);
+        Assert::IsFalse(guard.Resolve(pending,Source(pixels),40,250));
+    }
+    TEST_METHOD(AssistedAndNativeMeasurementsCannotConfirmEachOther) {
+        auto native=Ready(1).current;auto assisted=Ready(2).current;
+        Assert::IsTrue(SubtitleBoxLookahead::SameContext(native,assisted));
+        assisted.assistedSourceCandidate=true;assisted.assistedBounds={0,12,160,78,160,90};
+        Assert::IsFalse(SubtitleBoxLookahead::SameContext(native,assisted));
+        SubtitleBoxObservation frames[]={native,assisted};
+        const auto preview=SubtitleBoxLookahead::Resolve(frames,2,11,21);
+        Assert::IsFalse(preview.futureAvailable);
+        Assert::AreEqual(0u,preview.followingCount);
+        native.assistedSourceCandidate=true;native.assistedBounds=assisted.assistedBounds;
+        Assert::IsTrue(SubtitleBoxLookahead::SameContext(native,assisted));
+        ++assisted.assistedBounds.top;
+        Assert::IsFalse(SubtitleBoxLookahead::SameContext(native,assisted));
+    }
+    TEST_METHOD(AssistedMeasurementReuseRequiresExactFreshSourceAndAbsentNativeAuthority) {
+        auto observed=Ready(1).current;observed.assistedSourceCandidate=true;
+        observed.assistedBounds={0,12,160,78,160,90};
+        observed.sharedPicture.bounds={0,0,160,90,160,90};
+        const auto reuse=[](const SubtitleBoxObservation& value) {
+            return SubtitleBoxLookahead::CanReuseMeasurement(value,Identity(1),160,90,11,21,false,{});
+        };
+        Assert::IsTrue(reuse(observed));
+        for(int scenario=0;scenario<6;++scenario) {
+            auto unsafe=observed;
+            if(scenario==0)unsafe.analysisRefresh=true;
+            if(scenario==1)unsafe.pendingRefresh=true;
+            if(scenario==2)unsafe.text.held=true;
+            if(scenario==3)unsafe.text.workLimit=true;
+            if(scenario==4)unsafe.identity=Identity(2);
+            if(scenario==5)unsafe.sharedPicture.bounds={0,12,160,78,160,90};
+            Assert::IsFalse(reuse(unsafe));
+        }
+    }
+    TEST_METHOD(WorkerLookupKeepsOriginalAuthorityKeyForAssistedResults) {
+        const auto request=Ready(1).current;auto result=request;
+        result.assistedSourceCandidate=true;result.assistedBounds={0,20,160,70,160,90};
+        // Provenance describes the output, not a replacement for the queued key.
+        Assert::IsTrue(SubtitleMeasurementWorker::SameKey(request,result));
+        result.sharedPicture.bounds=result.assistedBounds;
+        Assert::IsFalse(SubtitleMeasurementWorker::SameKey(request,result));
+    }
+    TEST_METHOD(AssistedCurrentProofLossCannotReuseCueOnRepeatedOrLaterFrame) {
+        for(int later=0;later<2;++later)for(int scenario=0;scenario<6;++scenario) {
+            SubtitleBoxPresentation presentation;auto ready=Ready(1);
+            ready.current.assistedSourceCandidate=true;ready.current.assistedBounds={0,12,160,78,160,90};
+            Assert::IsTrue(presentation.Consume(ready).detected);
+            auto failed=ready;
+            if(later)failed.current.identity=Identity(2);
+            if(scenario==0)failed.current.barAuthority=false;
+            if(scenario==1)failed.current.text={};
+            if(scenario==2)failed.current.text.held=true;
+            if(scenario==3)failed.current.text.workLimit=true;
+            if(scenario==4)failed.current.pendingRefresh=true;
+            if(scenario==5)failed.current.analysisRefresh=true;
+            Assert::IsFalse(presentation.Consume(failed).detected);
+        }
+    }
 };
 }

@@ -2,8 +2,10 @@
 
 This change uses fresh subtitle measurements to verify when an already admitted
 picture can be displayed without the expanded envelope that protected the original
-caption. It does not acquire a new source aspect ratio from moved text, generated
-backgrounds, or cleanup pixels.
+caption. It never acquires native source aspect authority from moved text, generated
+backgrounds, or cleanup pixels. A separate cold-start presentation path can
+nominate a guarded aperture from independently measured source boundaries when
+Classic has no cropped authority; it cannot teach native geometry history.
 
 ## Evidence order
 
@@ -67,3 +69,52 @@ colored unexplained content, real expansion, insufficient coverage, and the
 continuity latch. A 4K timing test records cost without a brittle timing assertion.
 Playback observation still needs actual caption/format transitions; a successful
 build and synthetic tests do not certify all HDMI content.
+
+## Cold-start source-assisted presentation
+
+The subtitle worker may independently nominate a full-width vertical aperture
+only when Classic has no available cropped picture. Both boundaries must have
+current contrast support distributed across at least three horizontal zones and
+both halves of the raster. Exactly one edge must already pass native bar checks.
+The opposite edge is measured independently; symmetry or a single rightmost
+column cannot establish its location. The candidate moves outward by one subtitle
+sampling step to retain the native picture fringe. Its axes remain NONE.
+
+The worker nomination is explicitly marked assisted and never seeds normal bar
+tracking, pending-measurement continuation, scene evidence, or native presentation
+certificates. The rendering thread re-nominates from the current original source
+and requires exact agreement, current frame/policy/continuity identity and fresh
+complete glyph morphology before using the measurement for composition.
+
+A bounded P010/P210 native-pixel audit checks the entirety of both excluded bands.
+All pixels must be neutral. Nonblack pixels may be explained only by current owned
+glyph samples, expanded by at most sampling-step plus one native pixel (maximum
+five), and contained in the exact production glyph capture footprint. A raw-black
+moat separates the excluded bands from the picture; picture-side glyphs cannot
+supply masking authority outside that moat. Unowned content, chromatic growth,
+insufficient spatial support, missing/stale evidence, work limits, and excessive
+coverage all reject the proof. No bounding-box, cleanup-panel, or synthetic-pixel
+mask is used. Morphology remains a visual heuristic, not semantic text recognition.
+
+Four consecutive distinct source frames with the same guarded geometry are
+required. Missing proof or geometric jitter after confirmation withdraws the
+assisted crop and inhibits reacquisition until independently clear raw bands or a
+real source/policy context reset. Duplicate presentations cannot add votes.
+Successful current subtitle composition may release the original caption envelope;
+otherwise a proven original-caption envelope remains protected. A separate latch
+prevents intermittent composition success from repeatedly narrowing the crop.
+
+This only selects final linear presentation while the normal shared decision is
+full raster. Fixed crop, NLS, picture transitions and near-black recovery retain
+their existing authority. Optional fill is withheld, native history/admission and trusted HDR picture
+authority remain unchanged, and the result is never advertised as native trusted AR.
+`SUBTITLE ASSISTED AR` logs nomination, proof, confirmation, inhibition, bounds,
+composition, audit counts and elapsed time with `logical_mutation=0 history_learning=0`.
+
+The paused 3840x2160 input supplied during development independently nominates
+0,274–3840,1888; the proof audits 2,096,640 excluded native pixels and accounts for
+16,734 subtitle pixels. Cropping at the unguarded top278 would remove real picture
+fringe. This single-frame replay is a regression fixture for diagnosis, not a
+claim that every subtitle or aspect transition is supported. The initial cold
+path deliberately declines existing cropped authority, both contaminated edges,
+and glyphs touching the raw-black moat.

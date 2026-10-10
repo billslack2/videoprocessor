@@ -99,6 +99,11 @@ void AssertBounds(const ActivePictureBounds& expected,const ActivePictureBounds&
 }
 TEST_CLASS(SubtitlePresentationEvidenceTests) {
 public:
+    TEST_METHOD(AssistedObservationCannotBorrowNativeAdmissionCertificate) {
+        SubtitleEvidenceFixture fixture;
+        fixture.observation.assistedSourceCandidate=true;
+        Assert::IsFalse(AlphaSourceCrop::EvaluateSubtitlePresentationEvidence(fixture.input,fixture.Source()).accepted);
+    }
     TEST_METHOD(CurrentRelocatedSubtitleRetainsExactLogicalBoundsAcrossEdgesAndFormats) {
         for(bool top:{false,true})for(bool crossing:{false,true})for(bool p210:{false,true})for(int mode:{3,5}) {
             SubtitleEvidenceFixture f(top,crossing,p210);f.input.backgroundMode=mode;

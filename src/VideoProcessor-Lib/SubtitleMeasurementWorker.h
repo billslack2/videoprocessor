@@ -1,5 +1,6 @@
 #pragma once
 #include <SubtitleBoxLookahead.h>
+#include <vprenderer/SubtitleAssistedSourceEvidence.h>
 #include <condition_variable>
 #include <deque>
 #include <functional>
@@ -19,6 +20,26 @@ public:
         m_scanner.SetNearBarDistance(key.nearBarDistance);
         auto result=SubtitleBoxLookahead::Measure(m_scanner,source,{},key.identity,key.discontinuity,
             prior,key.policyGeneration,key.continuityGeneration,key.sharedPicture);
+        // Cold-start detector nomination is a distinct provenance. It keeps
+        // Classic's shared authority/key unchanged and cannot seed native bar
+        // tracking. Rendering separately proves the full current source bands
+        // before this measurement can be composed or influence display bounds.
+        if (!key.discontinuity && key.sharedPicture.required && source.IsValid() &&
+            !key.sharedPicture.AvailableFor(key.identity,source.width,source.height)) {
+            const auto raw=ExtractActivePictureEvidence(source);
+            const auto nomination=NominateSubtitleAssistedSourceBounds(source,raw);
+            if (nomination.nominated) {
+                result.assistedSourceCandidate=true;result.assistedBounds=nomination.candidate;
+                result.pictureTop=nomination.candidate.top;result.pictureBottom=nomination.candidate.bottom;
+                result.barAuthority=true;result.barTrackingAuthority=false;
+                result.hasBarTrackingReference=false;result.incomingBarTrackingReference={};
+                result.barEvidence={};result.barEvidence.reason="assisted-detector-nomination-only";
+                m_scanner.Reset();
+                result.text=m_scanner.Analyze(source,result.pictureTop,result.pictureBottom,
+                    key.identity.acceptedSequence,key.identity.viewportGeneration);
+                result.ink=m_scanner.InkSnapshot();
+            }
+        }
         result.analysisMs=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-started).count();
         return result;
     }
@@ -142,7 +163,7 @@ public:
             return !oldCard.Valid() || contains(newCard,oldCard);
         };
         if(!preview.available || !preview.current.analyzed || preview.current.pendingRefresh ||
-            preview.current.discontinuity || !preview.current.barAuthority ||
+            preview.current.discontinuity || preview.current.assistedSourceCandidate || !preview.current.barAuthority ||
             !source.IsValid() || source.width!=preview.current.width || source.height!=preview.current.height ||
             !accepted.detected || accepted.workLimit || accepted.lineCount<1 || accepted.lineCount>3 ||
             !covers(preview.current.text) || !covers(preview.text)) { Reset();return false; }
@@ -153,6 +174,7 @@ public:
     bool Resolve(SubtitleBoxPreview& preview,const AnalysisLumaSource& source,
         double frameMs,int holdMs) {
         const auto key=preview.current;
+        if (key.assistedSourceCandidate || m_reference.current.assistedSourceCandidate) { Reset();return false; }
         if(preview.available) {
             if(key.pendingRefresh)return false; // A repeated presentation cannot renew the budget.
             if(key.analyzed && key.text.detected && key.barAuthority && !key.text.workLimit) {

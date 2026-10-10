@@ -100,6 +100,7 @@ inline SubtitlePresentationEvidence EvaluateSubtitlePresentationEvidence(
     if (!input.observation || !input.acceptedCue) return reject("missing-current-cue");
     const auto& observed=*input.observation;
     const auto& accepted=*input.acceptedCue;
+    if(observed.assistedSourceCandidate) return reject("assisted-observation-is-not-native-authority");
     if (!SameActivePictureFrameIdentity(observed.identity,input.identity) ||
         observed.policyGeneration!=input.policyGeneration ||
         observed.continuityGeneration!=input.continuityGeneration ||

@@ -153,6 +153,7 @@ private:
     {
         reason = "measurement-unavailable";
         if (!o || !o->analyzed) return false;
+        if (o->assistedSourceCandidate) { reason="assisted-region-not-scene-authority"; return false; }
         reason = "stale-or-incomplete-measurement";
         if (!SameContext(identity, o->identity) || identity.acceptedSequence != o->identity.acceptedSequence ||
             identity.sourceFrameNumber != o->identity.sourceFrameNumber ||

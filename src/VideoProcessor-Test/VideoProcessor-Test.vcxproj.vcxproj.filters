@@ -7,6 +7,12 @@
     <ClCompile Include="SubtitlePresentationEvidenceTests.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="SubtitleAssistedAcquisitionTests.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="SubtitleAssistedSourceEvidenceTests.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="SubtitleSceneEvidenceTests.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>

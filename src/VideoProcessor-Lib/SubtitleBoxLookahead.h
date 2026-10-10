@@ -62,6 +62,9 @@ struct SubtitlePictureAuthority {
 struct SubtitleBoxObservation
 {
     SubtitlePictureAuthority sharedPicture;
+    // Independent detector ROI only; never native bar or crop authority.
+    bool assistedSourceCandidate = false;
+    ActivePictureBounds assistedBounds;
     int nearBarDistance=0;
     int optimizationMode=0;
     ActivePictureFrameIdentity identity;
@@ -125,7 +128,7 @@ namespace SubtitleBoxLookahead
         const SubtitleBoxObservation& observation)
     {
         SubtitleBarTrackingReference result;
-        if (!observation.analyzed || observation.discontinuity ||
+        if (!observation.analyzed || observation.discontinuity || observation.assistedSourceCandidate ||
             !HasBarEvidence(observation)) return result;
         result.identity = observation.identity;
         result.width = observation.width; result.height = observation.height;
@@ -308,6 +311,13 @@ namespace SubtitleBoxLookahead
             observation.policyGeneration != policyGeneration ||
             observation.continuityGeneration != continuityGeneration ||
             observation.discontinuity != discontinuity) return false;
+        // Exact-frame reuse is safe for detector geometry, but cannot promote
+        // an assisted measurement into the native bar-tracking reference.
+        if (observation.assistedSourceCandidate)
+            return !observation.analysisRefresh && !observation.pendingRefresh &&
+                !observation.text.held && !observation.text.workLimit &&
+                observation.sharedPicture.required &&
+                !observation.sharedPicture.AvailableFor(identity,width,height);
         if (observation.text.detected && observation.barAuthority &&
             !observation.currentAnchorUsesTrackedEdge &&
             observation.pictureTop==observation.barEvidence.top &&
@@ -333,10 +343,20 @@ namespace SubtitleBoxLookahead
             observation.barTrackingReferenceBottom == currentReference.pictureBottom;
     }
 
+    inline bool SameMeasurementProvenance(const SubtitleBoxObservation& a, const SubtitleBoxObservation& b)
+    {
+        return a.assistedSourceCandidate == b.assistedSourceCandidate &&
+            (!a.assistedSourceCandidate ||
+             (a.assistedBounds.left == b.assistedBounds.left && a.assistedBounds.top == b.assistedBounds.top &&
+              a.assistedBounds.right == b.assistedBounds.right && a.assistedBounds.bottom == b.assistedBounds.bottom &&
+              a.assistedBounds.rasterWidth == b.assistedBounds.rasterWidth &&
+              a.assistedBounds.rasterHeight == b.assistedBounds.rasterHeight));
+    }
+
     inline bool SameContext(const SubtitleBoxObservation& a, const SubtitleBoxObservation& b)
     {
         const auto& x = a.identity; const auto& y = b.identity;
-        return x.transportGeneration == y.transportGeneration &&
+        return SameMeasurementProvenance(a,b) && x.transportGeneration == y.transportGeneration &&
             x.sourceFormatGeneration == y.sourceFormatGeneration &&
             x.viewportGeneration == y.viewportGeneration && x.rendererGeneration == y.rendererGeneration &&
             a.width == b.width && a.height == b.height && a.nearBarDistance==b.nearBarDistance &&
@@ -973,7 +993,7 @@ namespace SubtitleBoxLookahead
                 a.transportGeneration!=b.transportGeneration || a.sourceFormatGeneration!=b.sourceFormatGeneration ||
                 a.viewportGeneration!=b.viewportGeneration || a.rendererGeneration!=b.rendererGeneration ||
                 previous.width!=next.width || previous.height!=next.height ||
-                previous.nearBarDistance!=next.nearBarDistance ||
+                previous.nearBarDistance!=next.nearBarDistance || !SameMeasurementProvenance(previous,next) ||
                 previous.policyGeneration!=next.policyGeneration ||
                 previous.continuityGeneration!=next.continuityGeneration)break;
         }
@@ -1330,7 +1350,17 @@ public:
         double sourceFrameMilliseconds = 1000.0/60.0)
     {
         if (!preview.available) { Reset(); m_decisionReason="preview-unavailable"; return {}; }
-        if (m_hasPrevious && SameActivePictureFrameIdentity(m_previous.current.identity,preview.current.identity) &&
+        // Assisted source proof is checked by the caller before Consume. A
+        // failed current proof must not revive the old cue through repeated-
+        // frame, fixed-template, or pending-worker continuation.
+        if (preview.current.assistedSourceCandidate &&
+            (!preview.current.barAuthority || !preview.current.analyzed ||
+             !preview.current.text.detected || preview.current.text.workLimit ||
+             preview.current.text.held || preview.current.pendingRefresh || preview.current.analysisRefresh)) {
+            Reset();m_decisionReason="assisted-current-proof-unavailable";return {};
+        }
+        if (m_hasPrevious && SubtitleBoxLookahead::SameMeasurementProvenance(m_previous.current,preview.current) &&
+            SameActivePictureFrameIdentity(m_previous.current.identity,preview.current.identity) &&
             m_previous.policyGeneration == preview.policyGeneration &&
             m_previous.continuityGeneration == preview.continuityGeneration) return m_result;
         auto continuityPreview=preview;

@@ -47,6 +47,15 @@ TEST_CLASS(SubtitleSceneEvidenceTests) {
         return helper.Analyze(frame.Source(),observation.identity,&observation,accepted);
     }
 public:
+    TEST_METHOD(AssistedDetectionRegionCannotSupplySceneMask) {
+        Frame frame;auto cue=Caption(frame,1);cue.assistedSourceCandidate=true;
+        SubtitleSceneEvidenceDiagnostics helper;
+        const auto first=Analyze(helper,frame,cue);
+        Assert::IsFalse(first.currentMaskAccepted);
+        cue.identity=Identity(2);
+        const auto second=Analyze(helper,frame,cue);
+        Assert::IsFalse(second.excludedComparisonAvailable);
+    }
     TEST_METHOD(SubtitleAppearanceAndDisappearanceUseSameUnionPixels) {
         SubtitleSceneEvidenceDiagnostics helper;Frame blank,caption;
         auto first=Observation(1);Assert::IsFalse(Analyze(helper,blank,first,false).evaluated);
