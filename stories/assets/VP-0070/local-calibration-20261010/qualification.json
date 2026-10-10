@@ -1,0 +1,33 @@
+{
+  "date": "2026-10-10",
+  "source_worktree": "E:\\codex\\videoprocessor\\subtitle-native-jacket-20261009",
+  "base": "73953a364058b1cf6e5875dfc62e32df4e3bdcd5",
+  "deployed": false,
+  "cause": "Unsupported near-bar fallback learned an ink palette from scattered picture edges. Spatially unrelated candidates on one row were also combined before calibration.",
+  "change": "Remove global near-picture palette fallback. Select independently supported local glyph rows or physical bar ink; keep separated same-row regions independent and cap pending calibration bands at 128.",
+  "native_capture_sha256": "93D21C59FFF7FA234DA2F66796E36B6F5973A7D90F9A6824BC3F1E4EDB838D3B",
+  "baseline": "Deployed bounded-stroke guard accepts 1422,1738-1626,1894, components=20",
+  "result": "Revised detector rejects as no-bright-ink before component admission",
+  "negative_replays": 6,
+  "recorded_caption_controls": 8,
+  "caption_bounds_unchanged": true,
+  "detector_tests_passed": 128,
+  "jacket_variants": 48,
+  "paused_repeats_per_variant": 3,
+  "full_tests": "2371/2371 passed, 5.8893 minutes",
+  "test_expectation_note": "Replaced previous single hollow-glyph test which expected lower brightness (400) to fail solely because unrelated scene texture was brighter (510). The new test requires flat patches to reject and real hollow strokes at 180,400,510 to detect at both edges, independently of unrelated brightness.",
+  "timing": "40 cold-reset analyses per case; native failed frame median 11.389 -> 8.256 ms; recorded positive medians differ by -0.125..+0.512 ms. Offline diagnostic only, not live latency qualification.",
+  "detector_sha256": "E70477CBC1BC58187D6970B2104A57A4C2F6A78C234541C15CA8647014F059AE",
+  "build": "x64 Release solution succeeded",
+  "build_hashes": [
+    {
+      "Path": "E:\\codex\\videoprocessor\\subtitle-native-jacket-20261009\\x64\\Release\\VideoProcessor-GUI.exe",
+      "Hash": "93E201706BB0AB421A1BACB59211209A33B6AF00FDCE1ED56A4748AA8955B2C7"
+    },
+    {
+      "Path": "E:\\codex\\videoprocessor\\subtitle-native-jacket-20261009\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "Hash": "E903AF63990273347BFAB7F26093830418417B6B9C95BF8A168AC7DEE1807C0C"
+    }
+  ],
+  "full_trx_sha256": "76BBDF742DDB5C80F32F972B5E1377C0CAC95F7BB4ACA7B96CDF427151B47A7A"
+}

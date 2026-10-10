@@ -1,0 +1,254 @@
+[
+  {
+    "case": "native-jacket\\live-buffer-00.v210",
+    "version": "old",
+    "exit": 0,
+    "result": [
+      "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=23",
+      "TIMING median_ms=11.255 p95_ms=12.619"
+    ]
+  },
+  {
+    "case": "native-jacket\\live-buffer-00.v210",
+    "version": "new",
+    "exit": 0,
+    "result": [
+      "detected=0 lines=0 bounds=0,0-0,0 reason=no-bright-ink components=0",
+      "TIMING median_ms=8.015 p95_ms=8.483"
+    ]
+  },
+  {
+    "case": "native-jacket\\followup\\live-buffer-00.v210",
+    "version": "old",
+    "exit": 0,
+    "result": [
+      "detected=1 lines=1 bounds=1422,1738-1626,1894 reason=detected components=20",
+      "TIMING median_ms=11.389 p95_ms=14.272"
+    ]
+  },
+  {
+    "case": "native-jacket\\followup\\live-buffer-00.v210",
+    "version": "new",
+    "exit": 0,
+    "result": [
+      "detected=0 lines=0 bounds=0,0-0,0 reason=no-bright-ink components=0",
+      "TIMING median_ms=8.256 p95_ms=8.602"
+    ]
+  },
+  {
+    "case": "native-jacket\\followup\\jacket-isolated.p210",
+    "version": "old",
+    "exit": 0,
+    "result": [
+      "detected=1 lines=1 bounds=1422,1738-1626,1894 reason=detected components=4",
+      "TIMING median_ms=10.216 p95_ms=11.251"
+    ]
+  },
+  {
+    "case": "native-jacket\\followup\\jacket-isolated.p210",
+    "version": "new",
+    "exit": 0,
+    "result": [
+      "detected=0 lines=0 bounds=0,0-0,0 reason=no-bright-ink components=0",
+      "TIMING median_ms=4.649 p95_ms=5.431"
+    ]
+  },
+  {
+    "case": "native-jacket\\jacket-first.v210",
+    "version": "old",
+    "exit": 0,
+    "result": [
+      "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=18",
+      "TIMING median_ms=11.800 p95_ms=12.198"
+    ]
+  },
+  {
+    "case": "native-jacket\\jacket-first.v210",
+    "version": "new",
+    "exit": 0,
+    "result": [
+      "detected=0 lines=0 bounds=0,0-0,0 reason=no-bright-ink components=0",
+      "TIMING median_ms=8.273 p95_ms=8.991"
+    ]
+  },
+  {
+    "case": "native-jacket\\jacket-second.v210",
+    "version": "old",
+    "exit": 0,
+    "result": [
+      "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=18",
+      "TIMING median_ms=11.878 p95_ms=12.563"
+    ]
+  },
+  {
+    "case": "native-jacket\\jacket-second.v210",
+    "version": "new",
+    "exit": 0,
+    "result": [
+      "detected=0 lines=0 bounds=0,0-0,0 reason=no-bright-ink components=0",
+      "TIMING median_ms=8.195 p95_ms=9.395"
+    ]
+  },
+  {
+    "case": "native-jacket\\jacket.v210",
+    "version": "old",
+    "exit": 0,
+    "result": [
+      "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=22",
+      "TIMING median_ms=11.831 p95_ms=12.513"
+    ]
+  },
+  {
+    "case": "native-jacket\\jacket.v210",
+    "version": "new",
+    "exit": 0,
+    "result": [
+      "detected=0 lines=0 bounds=0,0-0,0 reason=no-bright-ink components=0",
+      "TIMING median_ms=8.066 p95_ms=9.156"
+    ]
+  },
+  {
+    "case": "starfield-regression\\autopilot_53-phase0.bgra",
+    "version": "old",
+    "exit": 0,
+    "result": [
+      "detected=1 lines=1 bounds=1018,1814-2818,1930 reason=detected components=38",
+      "TIMING median_ms=9.277 p95_ms=9.723"
+    ]
+  },
+  {
+    "case": "starfield-regression\\autopilot_53-phase0.bgra",
+    "version": "new",
+    "exit": 0,
+    "result": [
+      "detected=1 lines=1 bounds=1018,1814-2818,1930 reason=detected components=38",
+      "TIMING median_ms=9.698 p95_ms=11.239"
+    ]
+  },
+  {
+    "case": "starfield-regression\\autopilot_53-phase1.bgra",
+    "version": "old",
+    "exit": 0,
+    "result": [
+      "detected=1 lines=1 bounds=1018,1818-2818,1934 reason=detected components=38",
+      "TIMING median_ms=9.588 p95_ms=10.468"
+    ]
+  },
+  {
+    "case": "starfield-regression\\autopilot_53-phase1.bgra",
+    "version": "new",
+    "exit": 0,
+    "result": [
+      "detected=1 lines=1 bounds=1018,1818-2818,1934 reason=detected components=38",
+      "TIMING median_ms=9.778 p95_ms=11.649"
+    ]
+  },
+  {
+    "case": "starfield-regression\\beeping_15-phase0.bgra",
+    "version": "old",
+    "exit": 0,
+    "result": [
+      "detected=1 lines=1 bounds=1666,1814-2174,1930 reason=detected components=11",
+      "TIMING median_ms=7.870 p95_ms=9.253"
+    ]
+  },
+  {
+    "case": "starfield-regression\\beeping_15-phase0.bgra",
+    "version": "new",
+    "exit": 0,
+    "result": [
+      "detected=1 lines=1 bounds=1666,1814-2174,1930 reason=detected components=11",
+      "TIMING median_ms=7.972 p95_ms=8.278"
+    ]
+  },
+  {
+    "case": "starfield-regression\\beeping_15-phase1.bgra",
+    "version": "old",
+    "exit": 0,
+    "result": [
+      "detected=1 lines=1 bounds=1666,1818-2174,1934 reason=detected components=11",
+      "TIMING median_ms=8.275 p95_ms=9.088"
+    ]
+  },
+  {
+    "case": "starfield-regression\\beeping_15-phase1.bgra",
+    "version": "new",
+    "exit": 0,
+    "result": [
+      "detected=1 lines=1 bounds=1666,1818-2174,1934 reason=detected components=11",
+      "TIMING median_ms=8.150 p95_ms=8.567"
+    ]
+  },
+  {
+    "case": "starfield-regression\\beeping_36-phase0.bgra",
+    "version": "old",
+    "exit": 0,
+    "result": [
+      "detected=1 lines=1 bounds=1666,1814-2174,1930 reason=detected components=11",
+      "TIMING median_ms=7.896 p95_ms=8.236"
+    ]
+  },
+  {
+    "case": "starfield-regression\\beeping_36-phase0.bgra",
+    "version": "new",
+    "exit": 0,
+    "result": [
+      "detected=1 lines=1 bounds=1666,1814-2174,1930 reason=detected components=11",
+      "TIMING median_ms=7.986 p95_ms=8.413"
+    ]
+  },
+  {
+    "case": "starfield-regression\\beeping_36-phase1.bgra",
+    "version": "old",
+    "exit": 0,
+    "result": [
+      "detected=1 lines=1 bounds=1666,1818-2174,1934 reason=detected components=11",
+      "TIMING median_ms=8.113 p95_ms=8.711"
+    ]
+  },
+  {
+    "case": "starfield-regression\\beeping_36-phase1.bgra",
+    "version": "new",
+    "exit": 0,
+    "result": [
+      "detected=1 lines=1 bounds=1666,1818-2174,1934 reason=detected components=11",
+      "TIMING median_ms=8.162 p95_ms=8.890"
+    ]
+  },
+  {
+    "case": "starfield-regression\\beeping_50-phase0.bgra",
+    "version": "old",
+    "exit": 0,
+    "result": [
+      "detected=1 lines=1 bounds=1666,1814-2174,1930 reason=detected components=11",
+      "TIMING median_ms=7.394 p95_ms=8.435"
+    ]
+  },
+  {
+    "case": "starfield-regression\\beeping_50-phase0.bgra",
+    "version": "new",
+    "exit": 0,
+    "result": [
+      "detected=1 lines=1 bounds=1666,1814-2174,1930 reason=detected components=11",
+      "TIMING median_ms=7.906 p95_ms=9.032"
+    ]
+  },
+  {
+    "case": "starfield-regression\\beeping_50-phase1.bgra",
+    "version": "old",
+    "exit": 0,
+    "result": [
+      "detected=1 lines=1 bounds=1666,1818-2174,1934 reason=detected components=10",
+      "TIMING median_ms=7.698 p95_ms=8.020"
+    ]
+  },
+  {
+    "case": "starfield-regression\\beeping_50-phase1.bgra",
+    "version": "new",
+    "exit": 0,
+    "result": [
+      "detected=1 lines=1 bounds=1666,1818-2174,1934 reason=detected components=10",
+      "TIMING median_ms=8.159 p95_ms=9.097"
+    ]
+  }
+]

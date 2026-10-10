@@ -1,5 +1,44 @@
 # VP-0070: CIH bar/boundary subtitle capture and relocation
 
+## Remove unsupported scene palette fallback - 2026-10-10
+
+Operator confirmed the first bounded-stroke guard still admits jacket folds.
+Captured the exact new paused v210 frame from running VP without restarting.
+The deployed code reproduces box 1422,1738-1626,1894 with 20 components. Its
+two accepted fragments contain no physical bar ink. A global near-bar fallback
+learned a dim ink palette from scattered scene edges, making its own input
+look like text. The prior one-stroke guard did not remove that admission path.
+
+Removed this fallback. Palette calibration now requires physical bar ink or a
+supported local glyph row. Separated same-row regions stay separate instead
+of combining a short caption and unrelated brighter scenery into one rejected
+calibration band. Pending local bands have a bounded work limit. Existing
+core, backing, physical-bar, script-neutral grouping and capture rules remain.
+This change is limited to the detector; aspect authority and placement are
+unchanged.
+
+Both exact failures now reject before component admission. Six negative
+replay inputs reject, and eight recorded autopilot/[Beeping] controls retain
+identical bounds. Permanent regression coverage now includes two native jacket
+patches, both frame edges, four sampling phases, three brightness gains and
+three consecutive observations per variant (48 variants total). All 128
+detector tests pass. The x64 Release solution build succeeded. The full native
+suite passed all 2,371 tests in 5.8893 minutes; no failed tests.
+
+One former test expected a genuine hollow glyph at luma 400 to fail because
+unrelated same-row scenery was at 510. That expectation encoded the global
+palette bug. Its replacement requires flat patches to reject, and hollow
+strokes at 180/400/510 to detect at both edges regardless of those highlights.
+Existing low-PQ, thin-native-core and script/punctuation regressions pass.
+
+Offline native-jacket median cost improved from 11.389 to 8.256 ms. Positive
+caption median differences were -0.125 to +0.512 ms in 40-reset replays; this
+is not a live latency qualification. Nothing from this follow-up is deployed.
+Source remains subtitle-native-jacket-20261009 at the unchanged remote beta
+base 73953a364058b1cf6e5875dfc62e32df4e3bdcd5 with prior work preserved.
+Evidence: stories/assets/VP-0070/local-calibration-20261010/qualification.json
+and replay-results.json. Full native buffers remain local.
+
 ## Native jacket fix deployed - 2026-10-10 00:10 EDT
 
 User requested deployment. Installed the tested x64 Release host and renderer
