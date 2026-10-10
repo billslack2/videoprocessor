@@ -1,0 +1,16 @@
+{
+  "deployed_at": "2026-10-10T00:36:19.0158344-04:00",
+  "backup": "C:\\Videoprocessor\\vp\\backups\\local-calibration-20261010-003610",
+  "process_id": 32276,
+  "configuration_edits": [],
+  "artifacts": [
+    {
+      "Path": "E:\\codex\\videoprocessor\\subtitle-native-jacket-20261009\\x64\\Release\\VideoProcessor-GUI.exe",
+      "Hash": "93E201706BB0AB421A1BACB59211209A33B6AF00FDCE1ED56A4748AA8955B2C7"
+    },
+    {
+      "Path": "E:\\codex\\videoprocessor\\subtitle-native-jacket-20261009\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "Hash": "E903AF63990273347BFAB7F26093830418417B6B9C95BF8A168AC7DEE1807C0C"
+    }
+  ]
+}

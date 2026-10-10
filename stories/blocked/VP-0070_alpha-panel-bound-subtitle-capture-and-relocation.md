@@ -1,5 +1,16 @@
 # VP-0070: CIH bar/boundary subtitle capture and relocation
 
+## Local calibration fix deployed - 2026-10-10 00:36 EDT
+
+On explicit user request, stopped VP and Config, installed the successfully
+built x64 Release host/renderer pair, verified both installed SHA256 hashes,
+and restarted VP (PID 32276). No configuration or state edits were made.
+The backed-up VideoProcessor.exe and VideoProcessorVPRenderer.dll are in
+C:\Videoprocessor\vp\backups\local-calibration-20261010-003610.
+Receipt: stories/assets/VP-0070/local-calibration-20261010/deployment.json.
+Offline validation is 2,371/2,371 tests plus exact native captures and 48
+jacket variants; operator confirmation of live playback remains outstanding.
+
 ## Remove unsupported scene palette fallback - 2026-10-10
 
 Operator confirmed the first bounded-stroke guard still admits jacket folds.
