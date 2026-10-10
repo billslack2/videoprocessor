@@ -1,0 +1,42 @@
+[
+  {
+    "test": "subtitle profile tab round trip",
+    "exitCode": 0
+  },
+  {
+    "test": "subtitle background shape round trip and visibility",
+    "exitCode": 0
+  },
+  {
+    "test": "subtitle text size reduction round trip and style visibility",
+    "exitCode": 0
+  },
+  {
+    "test": "subtitle HDR legacy fallback and shared modes",
+    "exitCode": 0
+  },
+  {
+    "test": "subtitle diagnostic survives Config save and reopen",
+    "exitCode": 0
+  },
+  {
+    "test": "Subtitle cut paste survives config save and reopen",
+    "exitCode": 0
+  },
+  {
+    "test": "remote target switch keeps window responsive",
+    "exitCode": 0
+  },
+  {
+    "test": "remote-only client opens its sole discovered VP",
+    "exitCode": 0
+  },
+  {
+    "test": "remote-only client has no local file target",
+    "exitCode": 0
+  },
+  {
+    "test": "remembered target does not fall back to local",
+    "exitCode": 0
+  }
+]

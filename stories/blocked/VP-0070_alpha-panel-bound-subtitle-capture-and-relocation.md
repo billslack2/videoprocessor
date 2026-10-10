@@ -1,5 +1,17 @@
 # VP-0070: CIH bar/boundary subtitle capture and relocation
 
+## Tested changes merged for next point release - 2026-10-10
+
+PR #137 merged into v1.4.00-beta at 19d744402ef3acd518053f673f7dffdfd7a16163.
+Its tree is identical to tested feature commit 486e180f3fe6787fef7ce404fce87cd00c93f18d.
+The committed x64 Release build passed all 2,371 native tests and ten subtitle/
+Remote Config tests. Integration evidence: stories/assets/VP-0070/integration-19d74440/.
+A clean release branch is pushed as codex/release-subtitle-20261010.
+Release label is pending clarification: user requested an RC4 point release,
+while the latest published tag is 1.4-beta-rc2.1 and no RC4 exists.
+No new release tag, distribution or deployment has been made for this request.
+The root story remains blocked; release preparation does not close the broader work.
+
 ## Local calibration fix deployed - 2026-10-10 00:36 EDT
 
 On explicit user request, stopped VP and Config, installed the successfully

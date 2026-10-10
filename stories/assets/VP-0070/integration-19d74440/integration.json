@@ -1,0 +1,14 @@
+{
+  "date": "2026-10-10",
+  "pull_request": "https://github.com/billslack2/videoprocessor/pull/137",
+  "feature_commit": "486e180f3fe6787fef7ce404fce87cd00c93f18d",
+  "beta_commit": "19d744402ef3acd518053f673f7dffdfd7a16163",
+  "source_trees_identical": true,
+  "native_tests_passed": 2371,
+  "native_trx_sha256": "CE102D6818C4BA44AAD11FE762B73A715323B71B8C785DE32A8187DB209E83A7",
+  "config_tests_passed": 10,
+  "release_checkout": "E:\\codex\\videoprocessor\\release-subtitle-20261010",
+  "release_branch": "codex/release-subtitle-20261010",
+  "release_status": "Awaiting clarification of requested RC4 point version; latest published version is RC2.1. No release tag or packages published yet.",
+  "deployment": "No additional deployment performed for this release request."
+}
