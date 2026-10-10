@@ -539,8 +539,10 @@ bool MagewellCaptureDevice::ReadSignal(
 	signal.quantRange = status.quantRange;
 
 	MWCAP_INPUT_SPECIFIC_STATUS specific = {};
-	if (m_sdkInstance->Api().MWGetInputSpecificStatus(channel, &specific) == MW_SUCCEEDED &&
-		specific.bValid)
+	signal.inputStatusResult = m_sdkInstance->Api().MWGetInputSpecificStatus(channel, &specific);
+	signal.inputStatusValid = signal.inputStatusResult == MW_SUCCEEDED && specific.bValid;
+	signal.inputType = signal.inputStatusValid ? specific.dwVideoInputType : 0;
+	if (signal.inputStatusValid)
 	{
 		if (specific.dwVideoInputType == MWCAP_VIDEO_INPUT_TYPE_HDMI)
 		{
@@ -624,7 +626,7 @@ void MagewellCaptureDevice::ChooseCaptureFormat(
 	};
 	if (signal.colorFormat == MWCAP_VIDEO_COLOR_FORMAT_RGB)
 	{
-		if (signal.bitDepth > 0 && signal.bitDepth <= 8 &&
+		if (signal.bitDepth == 8 &&
 			supports(MWFOURCC_ARGB))
 		{
 			fourcc = MWFOURCC_ARGB;
@@ -637,14 +639,16 @@ void MagewellCaptureDevice::ChooseCaptureFormat(
 			encoding = VideoFrameEncoding::R10l;
 			return;
 		}
-		// Preserve the earlier deep-RGB compatibility route: the card converts
-		// 12-bit RGB to limited-range 10-bit YCbCr P210, repacked below as V210.
-		// This is intentionally lossy (12 -> 10 bits and 4:4:4 -> 4:2:2), not
-		// native 12-bit RGB delivery. Keep unknown depths and other missing
-		// capabilities rejected rather than silently degrading every RGB mode.
-		if (signal.bitDepth != 12)
-			throw std::runtime_error(
-				"Magewell RGB input requires ARGB for 8-bit, RGB10 for 10-bit, or P210 conversion for 12-bit; unknown depth is unsupported");
+		// Input depth is metadata, not the layout of the SDK destination buffer.
+		// Even if input-specific status is temporarily unavailable, request an
+		// explicit, capability-checked P210 output. The SDK performs the colour
+		// conversion; VP only unpacks the known 10-bit destination format.
+		// Prefer native RGB above, but do not reject a card that only offers
+		// P210. Preserve diagnostics for malformed depths rather than guessing.
+		if (signal.bitDepth != 0 && signal.bitDepth != 8 &&
+			signal.bitDepth != 10 && signal.bitDepth != 12 && signal.bitDepth != 16)
+			throw std::runtime_error("Magewell reported unsupported RGB input bit depth " +
+				std::to_string(signal.bitDepth));
 	}
 	if (signal.colorFormat != MWCAP_VIDEO_COLOR_FORMAT_RGB &&
 		signal.colorFormat != MWCAP_VIDEO_COLOR_FORMAT_YUV601 &&
@@ -656,7 +660,11 @@ void MagewellCaptureDevice::ChooseCaptureFormat(
 		throw std::runtime_error("Magewell P210 requires an even input width");
 	if (!supports(MWFOURCC_P210))
 		throw std::runtime_error(
-			"Magewell card does not support P210 required for YCbCr capture");
+			"Magewell has no compatible capture output: P210 unavailable (input color=" +
+			std::to_string(static_cast<int>(signal.colorFormat)) + ", depth=" +
+			std::to_string(signal.bitDepth) + ", ARGB=" +
+			std::to_string(supports(MWFOURCC_ARGB)) + ", RGB10=" +
+			std::to_string(supports(MWFOURCC_RGB10)) + ")");
 	fourcc = MWFOURCC_P210;
 	encoding = VideoFrameEncoding::V210;
 }
@@ -1095,6 +1103,9 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 			formatCount <= 0 || formatCount > static_cast<int>(supportedFormats.size()))
 			throw std::runtime_error("Magewell capture format capability list failed");
 		supportedFormats.resize(formatCount);
+		DebugLog::Log("Magewell capture output capabilities: count=%d", formatCount);
+		for (DWORD format : supportedFormats)
+			DebugLog::Log("Magewell capture output FOURCC: 0x%08lX", format);
 	}
 
 	while (m_captureThreadRunning.load(std::memory_order_acquire))
@@ -1153,14 +1164,23 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 				haveCardState = true;
 			}
 
-			if (!signal.SameFormatAs(current))
+			if (!signal.SameFormatAs(current) ||
+				signal.inputStatusResult != current.inputStatusResult ||
+				signal.inputStatusValid != current.inputStatusValid ||
+				signal.inputType != current.inputType)
 				DebugLog::Log(
 					"Magewell signal read: locked=%d %ux%u colorFormat=%d "
-					"bitDepth=%u quant=%d eotf=%d (event=%d)",
+					"bitDepth=%u quant=%d eotf=%d (event=%d) inputStatus=%d valid=%d type=%lu",
 					signal.locked ? 1 : 0, signal.width, signal.height,
 					(int)signal.colorFormat, (unsigned int)signal.bitDepth,
 					(int)signal.quantRange, (int)signal.eotf,
-					formatEvent ? 1 : 0);
+					formatEvent ? 1 : 0, (int)signal.inputStatusResult,
+					signal.inputStatusValid ? 1 : 0, signal.inputType);
+			// Keep diagnostic metadata current without restarting an unchanged
+			// output format just because the SDK status validity changed.
+			current.inputStatusResult = signal.inputStatusResult;
+			current.inputStatusValid = signal.inputStatusValid;
+			current.inputType = signal.inputType;
 
 			if (!signal.locked)
 			{
@@ -1202,9 +1222,10 @@ void MagewellCaptureDevice::CaptureThreadBody(CaptureRunToken captureRunToken)
 					unsupportedSignal(exception.what());
 					continue;
 				}
-				if (current.colorFormat == MWCAP_VIDEO_COLOR_FORMAT_RGB &&
-					current.bitDepth == 12)
-					DebugLog::Log("Magewell compatibility conversion: RGB 12-bit input -> P210/V210 10-bit YCbCr 4:2:2; precision and chroma reduced");
+				if (current.colorFormat == MWCAP_VIDEO_COLOR_FORMAT_RGB && fourcc == MWFOURCC_P210)
+					DebugLog::Log("Magewell compatibility conversion: RGB input depth=%u (0=unknown) -> P210/V210 limited-range 10-bit YCbCr 4:2:2; chroma reduced; precision reduced if input depth exceeds 10 bits; inputStatus=%d valid=%d type=%lu",
+						(unsigned int)current.bitDepth, (int)current.inputStatusResult,
+						current.inputStatusValid ? 1 : 0, current.inputType);
 				stride = BytesPerRowFor(encoding, current.width);
 				const uint64_t deliveryBytes =
 					static_cast<uint64_t>(stride) * current.height;
