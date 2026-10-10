@@ -1,4 +1,5 @@
 #include "pch.h"
+#include <vprenderer/SubtitleBarRecovery.h>
 
 #include <ActivePictureEvidence.h>
 #include <vprenderer/SubtitleAspectRetention.h>
@@ -233,6 +234,86 @@ namespace VideoProcessorTest
 	TEST_CLASS(ActivePictureEvidenceTests)
 	{
 	public:
+        TEST_METHOD(SharedSubtitleRecoveryReprovesBarsWithoutActiveCaptionHold)
+        {
+            P010Frame frame(640,360); frame.BlackOutside(0,46,640,314);
+            // The opaque caption straddles the lower boundary; bright strokes
+            // produce asymmetric generic evidence, but both flanks stay black.
+            frame.FillRectangle(180,302,460,314,64);
+            for(int x=194;x<448;x+=12)frame.FillRectangle(x,308,x+5,322,800);
+            auto source=frame.P010Source();
+            ActivePictureBounds trusted{0,45,640,315,640,360,0.0,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+            for(int repeat=0;repeat<8;++repeat) {
+                const auto b=RecoverSubtitleInspectionBars(source,trusted,1,
+                    ActivePictureClassification::PROVISIONAL,true,false);
+                Assert::AreEqual(640,b.rasterWidth);
+                Assert::AreEqual(45,b.top); Assert::AreEqual(315,b.bottom);
+            }
+        }
+        TEST_METHOD(SharedSubtitleRecoveryRejectsExpansionStaleAndDisabledContexts)
+        {
+            P010Frame frame(640,360);frame.BlackOutside(0,46,640,314);
+            auto source=frame.P010Source();
+            ActivePictureBounds trusted{0,46,640,314,640,360,0.0,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+            auto check=[&](uint64_t generation,ActivePictureClassification c,bool enabled,bool blocked) {
+                return RecoverSubtitleInspectionBars(source,trusted,generation,c,enabled,blocked).rasterWidth;
+            };
+            Assert::AreEqual(0,check(2,ActivePictureClassification::PROVISIONAL,true,false));
+            Assert::AreEqual(0,check(1,ActivePictureClassification::FULL_RASTER_TRUSTED,true,false));
+            Assert::AreEqual(0,check(1,ActivePictureClassification::UNAVAILABLE,true,false));
+            Assert::AreEqual(0,check(1,ActivePictureClassification::PROVISIONAL,false,false));
+            Assert::AreEqual(0,check(1,ActivePictureClassification::PROVISIONAL,true,true));
+            frame.FillRectangle(0,314,640,315,300); // even one picture row must not be clipped
+            Assert::AreEqual(0,check(1,ActivePictureClassification::PROVISIONAL,true,false));
+            frame.FillRectangle(0,314,640,330,300); // genuine broad picture expansion
+            Assert::AreEqual(0,check(1,ActivePictureClassification::PROVISIONAL,true,false));
+            frame.Fill(64,512,512); // all black cannot establish physical edges
+            Assert::AreEqual(0,check(1,ActivePictureClassification::PROVISIONAL,true,false));
+        }
+
+        TEST_METHOD(SharedSubtitleRecoveryRevalidatesDarkEdgesWithoutCreatingCaption)
+        {
+            P010Frame frame(640,360); frame.Fill(64,512,512);
+            // Both outside flanks are black scenery. Only distributed interior
+            // sections expose the encoded edge; first-run acquisition must fail.
+            for(int x : {144,432}) {
+                frame.FillRectangle(x,46,x+64,53,180);
+                frame.FillRectangle(x,307,x+64,314,180);
+            }
+            const auto source=frame.P010Source();
+            const auto raw=ExtractSubtitleBarEvidence(source);
+            Assert::IsFalse(raw.top>0 && raw.bottom<360);
+            ActivePictureBounds trusted{0,46,640,314,640,360,0.0,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+            const auto recovered=RecoverSubtitleInspectionBars(source,trusted,1,
+                ActivePictureClassification::PROVISIONAL,true,false);
+            Assert::AreEqual(46,recovered.top); Assert::AreEqual(314,recovered.bottom);
+            SubtitleBoxDetector detector;
+            for(uint64_t sequence=1;sequence<=4;++sequence)
+                Assert::IsFalse(detector.Analyze(source,recovered.top,recovered.bottom,sequence,1).detected,
+                    L"Fresh bar inspection is not subtitle ownership");
+        }
+        TEST_METHOD(SharedSubtitleReferenceRecoveryRequiresBothEdgesAndRejectsUnsafeBands)
+        {
+            ActivePictureBounds trusted{0,46,640,314,640,360,0.0,ActivePictureBounds::BarAxes::TOP_BOTTOM};
+            auto check=[&](P010Frame& frame,uint64_t generation=1) {
+                return RecoverSubtitleInspectionBars(frame.P010Source(),trusted,generation,
+                    ActivePictureClassification::PROVISIONAL,true,false).rasterWidth;
+            };
+            P010Frame frame(640,360); frame.Fill(64,512,512);
+            Assert::AreEqual(0,check(frame)); // all black cannot prove either edge
+            for(int x : {144,432})frame.FillRectangle(x,46,x+64,53,180);
+            Assert::AreEqual(0,check(frame)); // one edge cannot reopen inspection
+            for(int x : {144,432})frame.FillRectangle(x,307,x+64,314,180);
+            Assert::AreEqual(640,check(frame));
+            Assert::AreEqual(0,check(frame,2));
+            frame.FillRectangle(0,314,640,315,300);
+            Assert::AreEqual(0,check(frame)); // last native bar row, off sample grid
+            frame.FillRectangle(0,314,640,330,300);
+            Assert::AreEqual(0,check(frame)); // genuine broad picture expansion
+            P010Frame changed(640,360); changed.BlackOutside(0,60,640,300);
+            Assert::AreEqual(0,check(changed)); // freshly proved different format wins
+        }
+
         TEST_METHOD(SubtitleStylesShareCropAspectAndOnlyChangeFinalTranslation)
         {
             using namespace AlphaSourceCrop;

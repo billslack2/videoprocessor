@@ -1,4 +1,4 @@
-#include "pch.h"
+﻿#include "pch.h"
 #include "CppUnitTest.h"
 
 #include <vprenderer/LibplaceboDisplayLut.h>
@@ -2123,6 +2123,35 @@ namespace VideoProcessorTest
                 const auto roi=ComputeSubtitleGaussianRegion(g,5,6);
                 Assert::IsTrue(roi.top<=g.pictureTop || !top);
                 Assert::IsTrue(roi.top+roi.height*roi.step>=g.pictureBottom || top);
+            }
+            pl_mpv_user_shader_destroy(&hook);
+        }
+
+        TEST_METHOD(SubtitleTextTintDimsOnlyGlyphsInSdrAndHdr)
+        {
+            TargetLutGpuFixture fixture;Assert::IsTrue(fixture.Create());
+            const auto* hook=CreateSubtitleCutPasteHook(fixture.Gpu());Assert::IsNotNull(hook);
+            const auto geometry=ComputeSubtitleCutPaste({20,46,44,61},64,64,8,56,0,0);
+            for(const int mode:{3,5}) for(const bool hdr:{false,true}) {
+                const auto transfer=hdr?PL_COLOR_TRC_PQ:PL_COLOR_TRC_SRGB;
+                SubtitleGeneratedGrayStyle style;
+                Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,mode,transfer,style));
+                const auto original=fixture.RenderSubtitlePattern(hook,hdr,0,geometry,transfer,true);
+                Assert::IsTrue(ParseSubtitleRgbHex("808080",style.textColor));
+                Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,mode,transfer,style));
+                const auto dim=fixture.RenderSubtitlePattern(hook,hdr,0,geometry,transfer,true);
+                const int glyph=(49+geometry.destination.top-geometry.source.top)*64+31;
+                Assert::IsTrue(dim[glyph].r+15<original[glyph].r,L"Gray must dim glyph cores for both transfer functions");
+                Assert::IsTrue(PixelDistance(dim[10*64+2],original[10*64+2])<=1,L"Text tint cannot affect unrelated picture");
+                Assert::IsTrue(PixelDistance(dim[(geometry.destination.top+1)*64+geometry.destination.left+1],original[(geometry.destination.top+1)*64+geometry.destination.left+1])<=1,L"Text tint cannot recolor the backing");
+                Assert::IsTrue(ParseSubtitleRgbHex("FF0000",style.textColor));
+                Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,mode,transfer,style));
+                const auto red=fixture.RenderSubtitlePattern(hook,hdr,0,geometry,transfer,true);
+                Assert::IsTrue(red[glyph].r>red[glyph].g+15 && red[glyph].r>red[glyph].b+15,L"Arbitrary text tint must reach glyph pixels");
+                style.textColor={1,1,1};
+                Assert::IsTrue(BindSubtitleCutPasteHook(hook,geometry,mode,transfer,style));
+                const auto restored=fixture.RenderSubtitlePattern(hook,hdr,0,geometry,transfer,true);
+                Assert::IsTrue(PixelDistance(restored[glyph],original[glyph])<=1,L"White restores original text without stale tint");
             }
             pl_mpv_user_shader_destroy(&hook);
         }

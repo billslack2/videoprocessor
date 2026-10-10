@@ -1,4 +1,4 @@
-#include "pch.h"
+﻿#include "pch.h"
 #include "CppUnitTest.h"
 #include <SubtitleBoxDetector.h>
 #include <SubtitleOpaqueCardRefinement.h>
@@ -67,6 +67,67 @@ TEST_CLASS(SubtitleBoxDetectorTests) {
         s.format=AnalysisLumaFormat::P010;s.generation=gen;return s;
     }
 public:
+    TEST_METHOD(JacketSceneEdgesCannotCalibrateTextWithoutSupportedRow) {
+        for(const char* fixture:{"jacket-shadow-yuv422.bin","jacket-folds-yuv422.bin"}) {
+            const int width=3840,height=2160,patchWidth=352,patchHeight=184;
+            const std::string sourcePath=__FILE__;
+            const auto folder=sourcePath.substr(0,sourcePath.find_last_of("/\\")+1);
+            std::ifstream input(folder+"fixtures/"+fixture,std::ios::binary);
+            std::vector<uint16_t> patch(size_t(patchWidth)*patchHeight*2);
+            Assert::IsTrue(bool(input),L"missing native jacket regression fixture");
+            input.read(reinterpret_cast<char*>(patch.data()),patch.size()*sizeof(uint16_t));
+            Assert::AreEqual(static_cast<long long>(patch.size()*sizeof(uint16_t)),
+                static_cast<long long>(input.gcount()));
+            for(bool upper:{false,true})for(int phase=0;phase<4;++phase)for(int gain:{3,4,5}) {
+                std::vector<uint16_t> frame(size_t(width)*height*2,uint16_t(512<<6));
+                for(int y=0;y<height;++y)for(int x=0;x<width;++x)
+                    frame[size_t(y)*width+x]=uint16_t((y>=276 && y<1884?200:64)<<6);
+                for(int y=0;y<patchHeight;++y)for(int x=0;x<patchWidth;++x) {
+                    frame[size_t(y+1720)*width+x+1312+phase]=uint16_t((std::min)(1023,(std::max)(0,64+(int(patch[size_t(y)*patchWidth+x])-64)*gain/4))<<6);
+                    // Move chroma by complete pairs; odd luma phases intentionally
+                    // retain native 4:2:2 subsampling uncertainty.
+                    frame[size_t(width)*height+size_t(y+1720)*width+x+1312+(phase/2)*2]=
+                        uint16_t(patch[size_t(patchWidth)*patchHeight+size_t(y)*patchWidth+x]<<6);
+                }
+                if(upper)for(int y=0;y<height/2;++y)for(int x=0;x<width;++x) {
+                    std::swap(frame[size_t(y)*width+x],frame[size_t(height-1-y)*width+x]);
+                    std::swap(frame[size_t(width)*height+size_t(y)*width+x],
+                        frame[size_t(width)*height+size_t(height-1-y)*width+x]);
+                }
+                AnalysisLumaSource source;source.data=reinterpret_cast<const uint8_t*>(frame.data());
+                source.dataBytes=frame.size()*sizeof(uint16_t);source.width=width;source.height=height;
+                source.rowBytes=source.chromaRowBytes=width*2;source.format=AnalysisLumaFormat::P210;
+                SubtitleBoxDetector detector;detector.SetNearBarDistance(20);
+                for(int sequence=1;sequence<=3;++sequence) {
+                    const auto result=detector.Analyze(source,276,1884,sequence,1);
+                    Assert::IsFalse(result.detected,L"jacket folds contain no caption, even beside a black bar");
+                    Assert::IsFalse(result.bounds.Valid());
+                }
+            }
+        }
+
+    }
+
+    TEST_METHOD(NearBarShortGlyphCalibratesLocallyWithoutBorrowingSceneBrightness) {
+        for(bool atTop:{false,true})for(int value:{180,400,510})for(bool stroke:{false,true}) {
+            auto f=Frame();
+            Fill(f,282,287,344,315,64);
+            Fill(f,300,293,326,311,value);if(stroke)Fill(f,303,296,323,308,64);
+            // A flat bright patch is not a glyph. A supported hollow stroke
+            // is, even when unrelated scenery on the same row is brighter.
+            Fill(f,510,287,630,315,64);
+            for(int x=516;x<620;x+=12) {
+                Fill(f,x,293,x+8,311,510);Fill(f,x+2,295,x+6,309,64);
+            }
+            if(atTop)for(int y=0;y<H/2;++y)for(int x=0;x<W;++x)
+                std::swap(f[y*W+x],f[(H-1-y)*W+x]);
+            SubtitleBoxDetector detector;detector.SetNearBarDistance(20);
+            const auto result=detector.Analyze(Source(f),45,315,1,1);
+            Assert::AreEqual(stroke,result.detected,
+                L"require positive local stroke evidence, independently of brighter scene texture");
+        }
+    }
+
     TEST_METHOD(BlackRimCannotHideSceneInsideNearBarComponentEnvelope) {
         for(bool atTop:{false,true})for(bool blackInterior:{false,true})for(int width:{24,64}) {
             auto f=Frame();const int height=18;
@@ -588,12 +649,14 @@ public:
         Assert::AreEqual(0.85f,style.opacity);Assert::AreEqual(3.0f,style.blurPixels);
     }
     TEST_METHOD(GeneratedGrayStyleValidatesColorOpacityAndBorder) {
-        const std::string good="[vprenderer.subtitles]\nsubtitle_generated_gray_color: 604A3C\n"
+        const std::string good="[vprenderer.subtitles]\nsubtitle_text_color: B0B0B0\nsubtitle_generated_gray_color: 604A3C\n"
             "subtitle_generated_gray_opacity: 0.35\nsubtitle_generated_gray_blur_px: 30\nsubtitle_generated_gray_max_luminance: 0.45\n"
             "subtitle_generated_gray_border_color: 101010\n"
             "subtitle_generated_gray_border_opacity: 0.8\nsubtitle_generated_gray_border_width: 1.5\n";
         for(const auto& entry:std::vector<std::pair<std::string,bool>>{
             {good,true},
+            {"[vprenderer.subtitles]\nsubtitle_text_color: GGGGGG\n",false},
+            {"[vprenderer.subtitles]\nsubtitle_text_color: 12345\n",false},
             {"[vprenderer.subtitles]\nsubtitle_generated_gray_color: 60ZZ3C\n",false},
             {"[vprenderer.subtitles]\nsubtitle_generated_gray_opacity: 1.1\n",false},
             {"[vprenderer.subtitles]\nsubtitle_generated_gray_max_luminance: 0\n",false},
@@ -1998,6 +2061,42 @@ public:
                 }
             }
     }
+    TEST_METHOD(ThreeLineCardKeepsIndependentInnerSideWhenShadowTouchesOuterSide) {
+        for(int shadowTop : {260,275})
+        for(bool topSide : {false,true}) for(bool rightSide : {false,true}) {
+            auto f=Frame();PanelToBar(f,206,250,434);
+            Text(f,241,255,12);Text(f,215,279,16);Text(f,297,303,3);
+            Fill(f,202,shadowTop,207,315,64);
+            if(rightSide)for(int y=0;y<H;++y)for(int x=0;x<W/2;++x)
+                std::swap(f[y*W+x],f[y*W+W-1-x]);
+            if(topSide)for(int y=0;y<H/2;++y)for(int x=0;x<W;++x)
+                std::swap(f[y*W+x],f[(H-1-y)*W+x]);
+            SubtitleBoxRect seed{215,279,418,293};
+            if(rightSide)seed={W-seed.right,seed.top,W-seed.left,seed.bottom};
+            if(topSide)seed={seed.left,H-seed.bottom,seed.right,H-seed.top};
+            SubtitleOpaqueCardRefinement refined;
+            Assert::IsTrue(RefineSubtitleOpaqueCard(Source(f),seed,14,45,315,72,375,512,512,refined));
+            Assert::IsTrue(refined.interior.top <= (topSide?45:250));
+            Assert::IsTrue(refined.interior.bottom >= (topSide?110:315));
+            Assert::IsTrue(refined.interior.left >= 205 && refined.interior.right <= 435,
+                L"an attached shadow must not replace the independently witnessed inner side");
+            Assert::IsTrue(refined.glyphRowCount==3);
+            Assert::IsTrue(refined.sampledPixels<=131072 && !refined.workLimit);
+            SubtitleBoxDetector detector;
+            const auto box=detector.Analyze(Source(f),45,315,1,1);
+            Assert::IsTrue(box.detected && !box.workLimit);
+            Assert::AreEqual(3,box.lineCount);
+            Assert::IsTrue(box.sourcePanel.top <= (topSide?45:250));
+            Assert::IsTrue(box.sourcePanel.bottom >= (topSide?110:315));
+            const auto ink=detector.InkSnapshot();Assert::IsTrue(bool(ink));
+            unsigned expected=0,owned=0;
+            for(int y=0;y<H;++y)for(int x=0;x<W;++x)if((f[y*W+x]>>6)==510) {
+                ++expected;owned+=ink->Get(x,y,true);
+            }
+            Assert::IsTrue(owned*100>=expected*99,L"all three lines' bright strokes must retain copy ownership");
+        }
+    }
+
     TEST_METHOD(ThreeLineOpaqueCardRetainsTallCompanionAndBacking) {
         for(bool topSide : {false,true}) {
             auto f=Frame();PanelToBar(f,190,238,450);

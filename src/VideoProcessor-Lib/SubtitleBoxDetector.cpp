@@ -204,7 +204,6 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
     uint32_t brightCount=0;
     for(int v=std::min(1023,bar+80);v<1024;++v) brightCount+=barHistogram[v];
     auto inkHistogram=barHistogram;
-    bool learnNearPanel=false;
     auto locallyDarkInk=[&](int x,int y) {
         if(x<2 || x>=w-2 || y<2 || y>=h-2 ||
             (y>=topEnd-2 && y<bottomStart+2))return false;
@@ -218,9 +217,10 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
     // A few unrelated bright bar pixels, or another picture row outside the
     // eligibility corridor, must not set this caption's brightness or color.
     struct CalibrationBand { SubtitleBoxRect box;unsigned ink=0; };
-    CalibrationBand pending,calibration;
+    CalibrationBand calibration;
+    std::vector<CalibrationBand> pendingBands;
     int calibrationGap=std::numeric_limits<int>::max();
-    auto considerCalibration=[&]() {
+    auto considerCalibration=[&](const CalibrationBand& pending) {
         if(!pending.ink)return;
         const auto& r=pending.box;const int height=Height(r),width=Width(r);
         const bool crosses=r.top*step<pictureTop || r.bottom*step>pictureBottom;
@@ -243,20 +243,48 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
             (gap<calibrationGap || (gap==calibrationGap && pending.ink>calibration.ink))) {
             calibration=pending;calibrationGap=gap;
         }
-        pending={};
     };
+    // Keep separated same-row regions independent. Otherwise unrelated bright
+    // scenery can erase a small caption's local evidence and force a scene-wide
+    // fallback. Every palette must come from bar ink or a supported local row.
+    const int calibrationWordGap=std::max(8,h/12);
     for(int y=0;y<h;++y) {
-        unsigned count=0;int left=w,right=0;
-        if(y<topEnd || y>=bottomStart)for(int x=2;x<w-2;++x)if(locallyDarkInk(x,y)) {
-            ++count;left=(std::min)(left,x);right=x+1;
+        for(size_t i=0;i<pendingBands.size();) {
+            if(y-pendingBands[i].box.bottom>1) {
+                considerCalibration(pendingBands[i]);
+                pendingBands.erase(pendingBands.begin()+i);
+            } else ++i;
         }
-        if(count>=2) {
-            if(pending.ink && y-pending.box.bottom>1)considerCalibration();
-            const SubtitleBoxRect row{left,y,right,y+1};
-            pending.box=pending.ink?Union(pending.box,row):row;pending.ink+=count;
-        } else if(pending.ink && y-pending.box.bottom>1)considerCalibration();
+        CalibrationBand row;
+        auto addRow=[&]() {
+            if(!row.ink)return;
+            size_t best=pendingBands.size();
+            for(size_t i=0;i<pendingBands.size();++i) {
+                const auto& band=pendingBands[i].box;
+                if(row.box.left>band.right || row.box.right<band.left)continue;
+                if(best==pendingBands.size())best=i;
+                else {
+                    pendingBands[best].box=Union(pendingBands[best].box,band);
+                    pendingBands[best].ink+=pendingBands[i].ink;
+                    pendingBands.erase(pendingBands.begin()+i--);
+                }
+            }
+            if(best==pendingBands.size())pendingBands.push_back(row);
+            else {
+                pendingBands[best].box=Union(pendingBands[best].box,row.box);
+                pendingBands[best].ink+=row.ink;
+            }
+            row={};
+        };
+        if(y<topEnd || y>=bottomStart)for(int x=2;x<w-2;++x)if(locallyDarkInk(x,y)) {
+            if(row.ink && x-row.box.right>calibrationWordGap)addRow();
+            const SubtitleBoxRect pixel{x,y,x+1,y+1};
+            row.box=row.ink?Union(row.box,pixel):pixel;++row.ink;
+        }
+        addRow();
+        if(pendingBands.size()>128) {m_workLimit=true;m_diagnosticReason="calibration-budget";return false;}
     }
-    considerCalibration();
+    for(const auto& band:pendingBands)considerCalibration(band);
     const bool localPalette=calibration.ink!=0;
     auto calibrationPixel=[&](int x,int y) {
         return x>=calibration.box.left && x<calibration.box.right &&
@@ -267,23 +295,18 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
         for(int y=calibration.box.top;y<calibration.box.bottom;++y)
             for(int x=calibration.box.left;x<calibration.box.right;++x)
                 if(calibrationPixel(x,y)){++inkHistogram[m_luma[y*w+x]];++brightCount;}
-    } else if(!brightCount && nearBarDistance>0) {
-        // Sparse symbol-only observations retain the existing fallback; a
-        // supported caption row above never borrows this global palette.
-        inkHistogram={};learnNearPanel=true;
-        for(int y=0;y<h;++y)for(int x=0;x<w;++x)
-            if(locallyDarkInk(x,y)){++inkHistogram[m_luma[y*w+x]];++brightCount;}
     }
+    // Do not learn "text" from scattered scene edges when no supported row
+    // exists: that circular evidence admitted jacket folds beside an empty bar.
     if(!brightCount){m_diagnosticReason="no-bright-ink";return false;}
     cumulative=0;int ink=std::min(1023,bar+80);
     const uint32_t inkQuantile=(brightCount*3+3)/4;
     for(;ink<1023;++ink){cumulative+=inkHistogram[ink];if(cumulative>=inkQuantile)break;}
     const int threshold=bar+std::max(64,(ink-bar)*70/100);
     std::array<uint32_t,1024> histU{},histV{};uint32_t colors=0;
-    for(int y=0;y<h;++y)if(y<top || y>=bottom || learnNearPanel || localPalette)
+    for(int y=0;y<h;++y)if(y<top || y>=bottom || localPalette)
         for(int x=0;x<w;++x)
-            if(m_luma[y*w+x]>=threshold && (localPalette?calibrationPixel(x,y):
-                (!learnNearPanel || locallyDarkInk(x,y)))) {
+            if(m_luma[y*w+x]>=threshold && (!localPalette || calibrationPixel(x,y))) {
                 const auto uv=m_chroma[y*w+x];++histU[uv&1023];++histV[uv>>16];++colors;
             }
     auto median=[colors](const std::array<uint32_t,1024>& histogram){
@@ -326,6 +349,8 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
     evidence.ownedInk.assign(evidence.rawInk.size(),0);
     evidence.blackBacking.assign(evidence.rawInk.size(),0);
     const int trackingBlackLimit=bar+std::max(12,(ink-bar)/48);
+    evidence.paletteValid=true; evidence.inkFloor=threshold;
+    evidence.inkU=inkU; evidence.inkV=inkV; evidence.blackLimit=trackingBlackLimit;
     for(int y=0;y<h;++y) {
         if(y>=topEnd && y<bottomStart)continue; // Unread raster is not black evidence.
         for(int x=0;x<w;++x) {
@@ -474,7 +499,9 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
     };
     for(auto& c:m_components) {
         const auto peakColor=m_chroma[c.peakPixel];
-        if(c.topBarInk || c.bottomBarInk || (c.peakLuma>=coreThreshold &&
+        // Near-bar counters include search nominations, not measured bar ink.
+        // They must not exempt picture texture from the bright-core proof.
+        if(c.actualBarInk || (c.peakLuma>=coreThreshold &&
             coreColor(peakColor&1023,peakColor>>16))) continue;
         c.hasTextCore=false;
         const int gy=c.peakPixel/w,gx=c.peakPixel%w;
@@ -489,6 +516,34 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
                     c.hasTextCore=true;break;
                 }
             }
+    }
+    // Picture-only nominations need a bounded bright stroke, not a one-sided
+    // brightness edge against the letterbox bar. Both opposing samples must
+    // remain inside picture content; physical bar ink retains its own proof.
+    for(auto& c:m_components) {
+        if(c.actualBarInk || !c.hasTextCore || Height(c.box)<minimumHeight)continue;
+        const int reach=(std::max)(radius,((std::min)(Width(c.box),Height(c.box))+1)/2+1);
+        bool boundedCore=false;
+        auto darkRay=[&](int x,int y,int dx,int dy) {
+            for(int distance=1;distance<=reach;++distance) {
+                const int xx=x+dx*distance,yy=y+dy*distance;
+                if(xx<0 || xx>=w || yy<0 || yy>=h || (yy>=topEnd && yy<bottomStart) ||
+                    evidence.sourceRows[yy]<pictureTop || evidence.sourceRows[yy]>=pictureBottom)break;
+                if(m_luma[yy*w+xx]<=componentCardLimit)return true;
+            }
+            return false;
+        };
+        for(int y=c.box.top;y<c.box.bottom && !boundedCore;++y)
+            for(int x=c.box.left;x<c.box.right;++x) {
+                const int pixel=y*w+x;
+                if(m_labels[pixel]!=c.label ||
+                    m_luma[pixel]<(c.peakLuma>=coreThreshold?coreThreshold:threshold))continue;
+                const auto color=m_chroma[pixel];
+                if(!coreColor(color&1023,color>>16))continue;
+                if((darkRay(x,y,-1,0) && darkRay(x,y,1,0)) ||
+                    (darkRay(x,y,0,-1) && darkRay(x,y,0,1))) {boundedCore=true;break;}
+            }
+        if(!boundedCore)c.hasTextCore=false;
     }
     // Learn character scale from components that actually enter a bar. Tiny
     // picture highlights must not seed a line and chain into real lettering.
@@ -1271,6 +1326,7 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
     }
     if(anchor==m_lines.size()) return false;
     const Line& a=m_lines[anchor];
+
     if(!onOpaqueCard(a,anchor)) return false;
     m_currentBarAnchor={a.box.left*step,a.box.top*step,
         std::min(source.width,a.box.right*step),std::min(source.height,a.box.bottom*step)};
@@ -1502,6 +1558,12 @@ bool SubtitleBoxDetector::Detect(const AnalysisLumaSource& source, int pictureTo
     // not set the maximum width or hide another row on that same proved card.
     // Healthy already-measured cards keep their existing fast path.
     if(incompleteCardSeed>=0) {
+        // The bar anchor can be a short third line. Its nearby whitespace
+        // cannot establish the width of the full card when scenery joins a
+        // side. Use the strongest accepted width already proved in picture.
+        for(int i=0;i<lineCount;++i)
+            if(lineBoxes[i].top<bottom && lineBoxes[i].bottom>top &&
+                Width(lineBoxes[i])>Width(lineBoxes[incompleteCardSeed]))incompleteCardSeed=i;
         const auto seed=lineBoxes[incompleteCardSeed];
         const SubtitleBoxRect nativeSeed{seed.left*step,seed.top*step,seed.right*step,seed.bottom*step};
         SubtitleOpaqueCardRefinement refined;

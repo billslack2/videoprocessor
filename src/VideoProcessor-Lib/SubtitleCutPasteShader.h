@@ -165,6 +165,21 @@ inline const pl_hook* CreateSubtitleCutPasteHook(pl_gpu gpu)
 //!MINIMUM 0.0
 //!MAXIMUM 65536.0
 0.0
+//!PARAM text_color_r
+//!TYPE DYNAMIC float
+//!MINIMUM 0.0
+//!MAXIMUM 1.0
+1.0
+//!PARAM text_color_g
+//!TYPE DYNAMIC float
+//!MINIMUM 0.0
+//!MAXIMUM 1.0
+1.0
+//!PARAM text_color_b
+//!TYPE DYNAMIC float
+//!MINIMUM 0.0
+//!MAXIMUM 1.0
+1.0
 //!PARAM generated_color_r
 //!TYPE DYNAMIC float
 //!MINIMUM 0.0
@@ -602,6 +617,10 @@ vec4 hook() {
                     (!inPicture || onSourceCard || (subtitleGlyphAlpha(source.rgb)>0.01 && subtitleConnectedBoundaryStroke(sourcePixel))) && subtitleOwnedLine(sourcePixel)) ? subtitleGlyphAlpha(source.rgb) : 0.0;
                 glyphColor=subtitleLinear(source.rgb);
             }
+            // Tint only the extracted glyph, after ownership/alpha and area filtering.
+            // Identity white preserves source values; linear multiplication keeps
+            // dimming relative to the original SDR/HDR text brightness.
+            glyphColor*=vec3(text_color_r,text_color_g,text_color_b);
             // Generated blend/solid panels follow a rounded rectangle. The
             // antialiased edge reveals the live destination pixels beneath it.
             float panelMask=background_mode>1.5 ? subtitleRoundedPanelMask(p) : 1.0;
@@ -712,6 +731,7 @@ inline bool BindSubtitleCutPasteHook(const pl_hook* hook,
         "transfer_mode","picture_top","picture_bottom","transfer_gamma",
         "content_left","content_top","content_right","content_bottom",
         "generated_clean_left","generated_clean_top","generated_clean_right","generated_clean_bottom",
+        "text_color_r","text_color_g","text_color_b",
         "generated_color_r","generated_color_g","generated_color_b","generated_opacity",
         "generated_max_luminance","generated_blur_px","blur_active","blur_roi_left","blur_roi_top","blur_roi_w","blur_roi_h","blur_step",
         "generated_border_r","generated_border_g","generated_border_b",
@@ -733,6 +753,7 @@ inline bool BindSubtitleCutPasteHook(const pl_hook* hook,
         float(geometry.content.left),float(geometry.content.top),float(geometry.content.right),float(geometry.content.bottom),
         float(geometry.generatedCleanup.left),float(geometry.generatedCleanup.top),
         float(geometry.generatedCleanup.right),float(geometry.generatedCleanup.bottom),
+        generated.textColor[0],generated.textColor[1],generated.textColor[2],
         generated.color[0],generated.color[1],generated.color[2],generated.opacity,
         generated.maxLuminance,generated.blurPixels,roi.active?1.0f:0.0f,roi.left,roi.top,roi.width,roi.height,roi.step,
         generated.borderColor[0],generated.borderColor[1],generated.borderColor[2],

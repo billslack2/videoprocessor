@@ -2515,6 +2515,81 @@ namespace AlphaSourceCrop
 			(candidate.bottom - candidate.top) - (entry.bottom - entry.top) <= tolerance;
 	}
 
+    bool CanRetainEstablishedScopeForSubtitle(const NearBlackPresentationEpisodeInput& input,
+        const CropPresentationAdmissionState& previous,
+        const EstablishedSubtitleTranslationInput& translation)
+    {
+        const auto& base = input.trustedCrop;
+        const auto& owner = translation.presentation;
+        // This cannot acquire scope or recover a full-raster episode. A live
+        // translation is an existing presentation owner, not new AR evidence.
+        if (translation.competingPresentation || !input.measurementCurrent ||
+            !input.nearBlackEvaluated || input.sceneBoundary || input.fullRasterAuthorityAvailable ||
+            input.previous.mode == NearBlackPresentationMode::FULL_RASTER ||
+            !input.sourceGeneration || !input.sourceSequence || !input.trustedCropAvailable ||
+            input.trustedCropOrigin != ActivePictureAuthorityOrigin::NATIVE ||
+            !previous.available || previous.sourceGeneration != input.sourceGeneration ||
+            previous.presentationEpoch != input.presentationEpoch ||
+            !SameBounds(previous.trustedCrop, base) ||
+            translation.sourceGeneration != input.sourceGeneration || !SameBounds(translation.base, base) ||
+            !ValidBounds(base, base.rasterWidth, base.rasterHeight) ||
+            base.left != 0 || base.right != base.rasterWidth || base.top <= 0 || base.bottom >= base.rasterHeight ||
+            !input.retentionEvaluated || input.retentionSourceGeneration != input.sourceGeneration ||
+            input.retentionSourceSequence != input.sourceSequence || !SameBounds(input.retentionBounds, base) ||
+            !input.boundedVisibleContentOutsideCrop || !input.currentObservationAvailable ||
+            (input.currentObservationClassification != ActivePictureClassification::PROVISIONAL &&
+             input.currentObservationClassification != ActivePictureClassification::BAR_CROP_TRUSTED))
+            return false;
+        if (input.previous.mode == NearBlackPresentationMode::RETAIN_CROP &&
+            (input.previous.sourceGeneration != input.sourceGeneration ||
+             input.previous.presentationEpoch != input.presentationEpoch ||
+             !input.previous.entryTrustedCropAvailable || !SameBounds(input.previous.entryTrustedCrop, base)))
+            return false;
+        // A first caption may need the normal bounded confirmation before its
+        // shift engages. Only fresh physical-bar reproof may use that existing
+        // confirmation owner in darkness; held geometry alone is insufficient.
+        const auto& pending = input.subtitleTranslationConfirmation;
+        const bool freshPending = owner.action == VerticalBarPresentationAction::NONE &&
+            input.subtitleInspectionGeneration == input.sourceGeneration &&
+            SameBounds(input.subtitleInspectionBars, base) &&
+            pending.lastObservedSourceSequence == input.sourceSequence &&
+            pending.confirmations > 0 && pending.confirmations < VERTICAL_TRANSLATION_CONFIRMATIONS_REQUIRED &&
+            std::isfinite(pending.candidateTranslationPixels) &&
+            std::abs(pending.candidateTranslationPixels) > 0.5f;
+        const bool confirmed = owner.action == VerticalBarPresentationAction::TRANSLATE &&
+            owner.sourceSequence != 0 && owner.sourceSequence <= input.sourceSequence &&
+            std::isfinite(owner.translationPixels) &&
+            CanRetainVerticalBarPresentationAcrossAuthorityGap(owner, translation.sourceGeneration,
+                input.sourceGeneration, input.currentTick, translation.holdMs, input.sourceSequence);
+        if (!confirmed && !freshPending) return false;
+        // Preserve the normal configured engage, including its initial zero
+        // displacement. Its target already passed confirmation; the animation
+        // must not become a new full-raster episode. Release drift has no live
+        // requested owner and must never use this target-coverage exception.
+        const bool engaging = confirmed && translation.engagingTranslation;
+        const double resolved = translation.resolvedTranslationPixels;
+        if (engaging && (std::abs(resolved) > std::abs(owner.translationPixels) + 1.0 ||
+            (resolved != 0.0 && (resolved > 0) != (owner.translationPixels > 0))))
+            return false;
+        const double shift = freshPending ? pending.candidateTranslationPixels :
+            (engaging ? owner.translationPixels : resolved);
+        if (std::abs(shift) <= 0.5 ||
+            (!freshPending && ((shift > 0) != (owner.translationPixels > 0) ||
+             std::abs(shift) > std::abs(owner.translationPixels) + 1.0)) ||
+            base.top + shift < 0 || base.bottom + shift > base.rasterHeight)
+            return false;
+        // Do not reclassify an opposite-edge, side, or deeper picture intrusion
+        // as a caption. Its complete bounded envelope must fit the live shift.
+        // During confirmation this only removes the episode veto; the ordinary
+        // two-sample confirmation policy still controls the actual presentation.
+        auto covered = base;
+        if (shift > 0) covered.bottom += static_cast<int>(shift);
+        else covered.top += static_cast<int>(shift);
+        return ValidBounds(translation.visibleBounds, base.rasterWidth, base.rasterHeight) &&
+            ValidBounds(input.currentObservation, base.rasterWidth, base.rasterHeight) &&
+            ContainedBounds(covered, translation.visibleBounds) &&
+            ContainedBounds(covered, input.currentObservation);
+    }
     bool CanRetainWeakFringeWithFill(const NearBlackPresentationEpisodeInput& input,
         const CropPresentationAdmissionState& previous, const AspectLimitFillInput& fill,
         bool weakBoundedFringe, bool competingPresentation)
@@ -2648,6 +2723,66 @@ namespace AlphaSourceCrop
 			decision.reason =
 				"non-near-black full-raster authority ended title episode";
 		}
+
+        if (input.establishedScopeSubtitleRetained)
+        {
+            decision.ended = decision.state.mode != NearBlackPresentationMode::INACTIVE;
+            decision.state = {};
+            decision.reason = "established scope uses bounded subtitle presentation through darkness";
+            return decision;
+        }
+        // A subtitle may have started the conservative episode. Its pixels
+        // remain visible via the ordinary confirmed translation. This releases
+        // only the episode veto; all normal crop/admission gates still run.
+        const auto& subtitleBars = input.subtitleInspectionBars;
+        const int subtitleTolerance = std::max(2, input.trustedCrop.rasterHeight / 270);
+        const bool currentPhysicalBars = input.measurementCurrent &&
+            input.nearBlackEvaluated && !input.globalNearBlack && !input.sceneBoundary &&
+            !input.fullRasterAuthorityAvailable && input.trustedCropAvailable &&
+            input.trustedCropOrigin == ActivePictureAuthorityOrigin::NATIVE &&
+            input.sourceGeneration != 0 && input.sourceSequence != 0 &&
+            input.subtitleInspectionGeneration == input.sourceGeneration &&
+            input.currentObservationAvailable &&
+            (input.currentObservationClassification == ActivePictureClassification::PROVISIONAL ||
+             input.currentObservationClassification == ActivePictureClassification::BAR_CROP_TRUSTED) &&
+            ValidBounds(subtitleBars, input.trustedCrop.rasterWidth, input.trustedCrop.rasterHeight) &&
+            subtitleBars.left == 0 && subtitleBars.right == input.trustedCrop.rasterWidth &&
+            subtitleBars.top > 0 && subtitleBars.bottom < input.trustedCrop.rasterHeight &&
+            std::abs(subtitleBars.top - input.trustedCrop.top) <= subtitleTolerance &&
+            std::abs(subtitleBars.bottom - input.trustedCrop.bottom) <= subtitleTolerance;
+        const bool currentSubtitleTranslation = currentPhysicalBars &&
+            input.subtitlePresentation.action == VerticalBarPresentationAction::TRANSLATE &&
+            std::isfinite(input.subtitlePresentation.translationPixels) &&
+            std::abs(input.subtitlePresentation.translationPixels) > 0.5f &&
+            input.subtitlePresentation.sourceSequence == input.sourceSequence;
+        // The ordinary crop policy already retains an admitted scope contract
+        // while dense translation confirms. Do not let the near-black episode
+        // preempt that owner on its first two samples. Fresh physical bars and
+        // the exact retained contract are required; established full-raster
+        // presentation still needs confirmed recovery above.
+        const auto& confirmation = input.subtitleTranslationConfirmation;
+        const bool currentScopeConfirmation = currentPhysicalBars &&
+            decision.state.mode == NearBlackPresentationMode::RETAIN_CROP &&
+            decision.state.sourceGeneration == input.sourceGeneration &&
+            decision.state.presentationEpoch == input.presentationEpoch &&
+            decision.state.entryTrustedCropAvailable &&
+            SameBounds(decision.state.entryTrustedCrop, input.trustedCrop) &&
+            SameBounds(subtitleBars, input.trustedCrop) &&
+            confirmation.lastObservedSourceSequence == input.sourceSequence &&
+            confirmation.confirmations > 0 &&
+            confirmation.confirmations < VERTICAL_TRANSLATION_CONFIRMATIONS_REQUIRED &&
+            std::isfinite(confirmation.candidateTranslationPixels) &&
+            std::abs(confirmation.candidateTranslationPixels) > 0.5f &&
+            input.subtitlePresentation.action != VerticalBarPresentationAction::FIT;
+        if (currentSubtitleTranslation || currentScopeConfirmation)
+        {
+            decision.ended = decision.state.mode != NearBlackPresentationMode::INACTIVE;
+            decision.state = {};
+            decision.reason = currentScopeConfirmation
+                ? "fresh physical bars preserved established scope during bounded confirmation"
+                : "fresh physical bars and confirmed subtitle translation resumed shared presentation";
+            return decision;
+        }
 
 		if (input.measurementCurrent && input.nearBlackEvaluated &&
 			input.globalNearBlack &&

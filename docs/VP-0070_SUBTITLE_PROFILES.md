@@ -196,3 +196,12 @@ Float keeps all four corners visible; Extend squares the bar-facing corners.
 Verified source-picture overlap forces extension for the remainder of that cue.
 Display coverage is retained independently from current capture/cleanup proof.
 Settings apply live and do not modify detection or aspect-ratio authority.
+
+### Moved subtitle text color
+
+`subtitle_text_color` accepts six-digit sRGB hex; `FFFFFF` preserves the
+original text. Choose a gray such as `B0B0B0` to dim text, or a color to tint
+it. The Subtitle appearance section reuses the compact color picker. Applies
+to both Move styles, including reduced text; Classic remains unchanged.
+Tinting is applied in linear light after extraction, relative to source SDR/HDR
+brightness. Detection, glyph coverage and background reconstruction are unchanged.

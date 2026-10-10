@@ -1,4 +1,5 @@
 #include <pch.h>
+#include "SubtitleBarRecovery.h"
 
 #include "LibplaceboVideoRenderer.h"
 #include <vprenderer/PresentationResetEpoch.h>
@@ -931,6 +932,9 @@ namespace
             << settings.subtitleBoxTest << '|'
             << settings.subtitleCutPasteTest << '|'
             << settings.subtitleCutPasteBackground << '|'
+            << settings.subtitleGeneratedGray.textColor[0] << '|'
+            << settings.subtitleGeneratedGray.textColor[1] << '|'
+            << settings.subtitleGeneratedGray.textColor[2] << '|'
             << settings.subtitleGeneratedGray.color[0] << '|'
             << settings.subtitleGeneratedGray.color[1] << '|'
             << settings.subtitleGeneratedGray.color[2] << '|'
@@ -1387,6 +1391,7 @@ namespace
         std::string raw;
         std::array<float,3> color{};
         double amount=0.0;
+        if (read("subtitle_text_color",raw) && ParseSubtitleRgbHex(raw,color)) style.textColor=color;
         if (read("subtitle_generated_gray_color",raw) && ParseSubtitleRgbHex(raw,color))
             style.color=color;
         if (read("subtitle_generated_gray_opacity",raw) && ParseDouble(raw,amount) &&
@@ -2584,6 +2589,7 @@ namespace
                     if(type=="black") settings.subtitleGeneratedGray.color={0.0f,0.0f,0.0f};
                     if(RendererProfileConfig::ParseInteger(get("subtitle_hold_ms"),0,1000,n)) settings.subtitleHoldMs=n;
                     if(RendererProfileConfig::ParseInteger(get("subtitle_near_bar_px"),0,200,n)) settings.subtitleNearBarDistance=n;
+                    ParseSubtitleRgbHex(get("subtitle_text_color"),settings.subtitleGeneratedGray.textColor);
                     ParseSubtitleRgbHex(get("subtitle_generated_gray_color"),settings.subtitleGeneratedGray.color);
                     ParseSubtitleRgbHex(get("subtitle_generated_gray_border_color"),settings.subtitleGeneratedGray.borderColor);
                     for(auto entry:{std::make_pair("subtitle_generated_gray_opacity",&settings.subtitleGeneratedGray.opacity),
@@ -3969,6 +3975,7 @@ struct LibplaceboVideoRenderer::Impl
 	AlphaSourceCrop::PresentationRecoveryState cropPresentationRecovery;
 	AlphaSourceCrop::CropPresentationAdmissionState cropPresentationAdmission;
     bool weakFringeFillPreviouslyRetained = false;
+    bool establishedScopeSubtitlePreviouslyRetained = false;
 	bool cropAdmissionPreviouslyBlocked = false;
 	std::string cropAdmissionPreviousReason;
 	uint64_t cropAdmissionLastLogTick = 0;
@@ -7617,7 +7624,8 @@ struct LibplaceboVideoRenderer::Impl
         changed(current.subtitleCutPasteTest != next.subtitleCutPasteTest, "subtitle_cut_paste_test");
         changed(current.subtitleCutPasteBackground != next.subtitleCutPasteBackground,
             "subtitle_cut_paste_background");
-        changed(current.subtitleGeneratedGray.color != next.subtitleGeneratedGray.color ||
+        changed(current.subtitleGeneratedGray.textColor != next.subtitleGeneratedGray.textColor ||
+            current.subtitleGeneratedGray.color != next.subtitleGeneratedGray.color ||
             current.subtitleGeneratedGray.opacity != next.subtitleGeneratedGray.opacity ||
             current.subtitleGeneratedGray.maxLuminance != next.subtitleGeneratedGray.maxLuminance ||
             current.subtitleGeneratedGray.blurPixels != next.subtitleGeneratedGray.blurPixels ||
@@ -11100,10 +11108,25 @@ struct LibplaceboVideoRenderer::Impl
 				AlphaSourceCrop::NearBlackPresentationMode::INACTIVE &&
 			(retiringTranslationFitInspection ||
 			 AlphaSourceCrop::CanAnalyzeHeldVerticalBarGeometry(heldAnalysisInput));
+        // A caption can make generic crop evidence provisional and outlive the
+        // old presentation hold. Re-prove the retained physical bars for fresh
+        // shared inspection, even while near-black presentation is conservative.
+        const auto recoveredSubtitleBars = RecoverSubtitleInspectionBars(analysisSource,
+            nlsGeometry, nlsGeometrySourceGeneration, latestActivePictureEvidenceClassification,
+            configuredScreenActive && automaticSourceCrop && trustedNlsBarGeometry &&
+                !currentBarAuthority && !sceneBarAuthority && !heldBarAnalysisAuthority,
+            AlphaSourceCrop::HasCurrentMovingPictureTransition(movingPictureTransition,
+                frameGeneration, sourceSequence));
+        const bool recoveredSubtitleInspection = recoveredSubtitleBars.rasterWidth != 0;
+        if (recoveredSubtitleInspection && (sourceSequence % 120 == 0))
+            DebugLog::Log("SUBTITLE SHARED RECOVERY: sequence=%llu bars=%d-%d prior=%d-%d inspection_only=1",
+                static_cast<unsigned long long>(sourceSequence), recoveredSubtitleBars.top,
+                recoveredSubtitleBars.bottom, nlsGeometry.top, nlsGeometry.bottom);
 		const ActivePictureBounds* subtitleBarAuthority =
 			currentBarAuthority ? &nlsGeometry :
 			(sceneBarAuthority ? &sceneVerificationGeometry :
-				(heldBarAnalysisAuthority ? &nlsGeometry : nullptr));
+				(heldBarAnalysisAuthority ? &nlsGeometry :
+                    (recoveredSubtitleInspection ? &recoveredSubtitleBars : nullptr)));
 		// The first subtitle/UI frame may be the one that makes the retained crop
 		// pixel-unsafe. Do not wait for the normal three-frame subtitle scan in
 		// that case: inspect the already-proven bars on this frame so final
@@ -11127,7 +11150,7 @@ struct LibplaceboVideoRenderer::Impl
 		const auto subtitleInspectionDecision = AlphaSourceCrop::UpdateSubtitleInspection(subtitleInspection);
 		scopeSubtitleInspection = subtitleInspectionDecision.state;
 		const bool forceSubtitleBarAnalysis = retiringTranslationFitInspection ||
-			subtitleInspectionDecision.forceAnalysis ||
+			subtitleInspectionDecision.forceAnalysis || recoveredSubtitleInspection ||
 			(latestActivePictureEvidenceWasStartupHypothesis && subtitleBarAuthority != nullptr);
 		if (subtitleInspectionDecision.forceAnalysis)
 			DebugLog::Log("Alpha subtitle inspection: sequence=%llu generation=%llu reason=new-vertical-content base=%d,%d-%d,%d horizontal_safe=%d vertical_safe=%d",
@@ -11722,13 +11745,15 @@ struct LibplaceboVideoRenderer::Impl
                 ++subtitlePerf.pending;
                 if(subtitlePendingGuard.Resolve(currentSubtitlePreview,analysisSource,subtitleFrameMs,activeSettings.subtitleHoldMs))++subtitlePerf.recovered;
             }
+            subtitleBoxPresentation.RefreshReferencePixels(currentSubtitlePreview,analysisSource);
             subtitlePreview=&currentSubtitlePreview;
             subtitleBoxResult = subtitleBoxPresentation.Consume(*subtitlePreview, activeSettings.subtitleHoldMs,subtitleFrameMs);
             // Only an accepted cue may seed the late-worker fallback. An
             // unconfirmed detector candidate must never gain authority here.
             if(!subtitleBoxResult.detected) subtitlePendingGuard.Reset();
             else if(currentSubtitlePreview.available && !currentSubtitlePreview.current.pendingRefresh)
-                subtitlePendingGuard.Resolve(currentSubtitlePreview,analysisSource,subtitleFrameMs,activeSettings.subtitleHoldMs);
+                subtitlePendingGuard.RememberAccepted(currentSubtitlePreview,subtitleBoxResult,
+                    analysisSource,subtitleFrameMs,activeSettings.subtitleHoldMs);
             bool subtitleMoveValid=false,subtitleHookBound=false;
             const auto previousDisplayBounds=subtitlePaddingGuard.DisplayBounds();
             const int previousGlyphHeight=subtitlePaddingGuard.GlyphHeight();
@@ -11787,10 +11812,10 @@ struct LibplaceboVideoRenderer::Impl
                         (move.pictureTop!=priorLayout.pictureTop || move.pictureBottom!=priorLayout.pictureBottom)?
                             "picture-boundary-change":
                         !equalRect(move.generatedCleanup,priorLayout.generatedCleanup)?"accepted-cleanup-change":"placement-or-settings-change";
-                    DebugLog::Log("SUBTITLE LAYOUT: frame=%llu cue=%llu previous_cue=%llu reason=%s tracker=%s match=%s backing=%d min_coverage_pct=%u max_difference_pct=%u old=%d,%d-%d,%d new=%d,%d-%d,%d scale=%.4f->%.4f translation=%.2f,%.2f->%.2f,%.2f backing_decision=%s measured_cleanup=%d,%d-%d,%d accepted_cleanup=%d,%d-%d,%d",
+                    DebugLog::Log("SUBTITLE LAYOUT: frame=%llu cue=%llu previous_cue=%llu reason=%s tracker=%s match=%s backing=%d min_coverage_pct=%u max_difference_pct=%u match_line=%d component_owned=%u component_covered=%u tiny_fringe=%u reference_refresh=%s reference_samples=%u old=%d,%d-%d,%d new=%d,%d-%d,%d scale=%.4f->%.4f translation=%.2f,%.2f->%.2f,%.2f backing_decision=%s measured_cleanup=%d,%d-%d,%d accepted_cleanup=%d,%d-%d,%d",
                         sourceSequence,subtitleBoxResult.cue,subtitleLayoutCue,reason,
                         subtitleBoxPresentation.DecisionReason(),match.reason,match.backingConfirmed?1:0,
-                        match.minimumCoverage,match.maximumDifference,
+                        match.minimumCoverage,match.maximumDifference,match.line,match.componentOwned,match.componentCovered,match.tinyFringeAllowances,subtitleBoxPresentation.ReferenceRefreshReason(),subtitleBoxPresentation.ReferenceSampleCount(),
                         priorLayout.destination.left,priorLayout.destination.top,priorLayout.destination.right,priorLayout.destination.bottom,
                         move.destination.left,move.destination.top,move.destination.right,move.destination.bottom,
                         priorLayout.glyphScale,move.glyphScale,priorLayout.glyphTranslateX,priorLayout.glyphTranslateY,
@@ -11950,6 +11975,7 @@ struct LibplaceboVideoRenderer::Impl
 			 subtitleBarAnalysisScheduled, subtitleBarAnalysisCompleted,
 			 forceSubtitleBarAnalysis, inwardCaptionProtected,
 			 currentBarAuthority, sceneBarAuthority, heldBarAnalysisAuthority,
+             recoveredSubtitleInspection, recoveredSubtitleBars,
 			 subtitleBarAuthority,
 			 &hdrPeakAnalysisMotionProtectionPixels, &frameScreen, &linearFallbackCrop](
 				struct pl_frame& source,
@@ -12452,6 +12478,12 @@ struct LibplaceboVideoRenderer::Impl
 					fullRetentionInput.independentCutEvidence ? 1 : 0,
 					static_cast<unsigned>(knownFullRasterRetention.reaffirmationSamples));
 			AlphaSourceCrop::NearBlackPresentationEpisodeInput episodeInput;
+            if (recoveredSubtitleInspection && subtitleBarAnalysisCompleted) {
+                episodeInput.subtitleInspectionBars = recoveredSubtitleBars;
+                episodeInput.subtitleInspectionGeneration = frameGeneration;
+                episodeInput.subtitlePresentation = scopeVerticalBarPresentation;
+                episodeInput.subtitleTranslationConfirmation = scopeSubtitleTranslationConfirmation;
+            }
 			episodeInput.knownFullRasterRetained = knownFullRasterRetention.available;
 			episodeInput.previous = nearBlackPresentationEpisode;
 			episodeInput.measurementCurrent =
@@ -12557,6 +12589,39 @@ struct LibplaceboVideoRenderer::Impl
 			episodeInput.presentationEpoch = viewportRequestSerial;
 			episodeInput.sourceGeneration = frameGeneration;
 			episodeInput.sourceSequence = sourceSequence;
+            AlphaSourceCrop::EstablishedSubtitleTranslationInput establishedTranslation;
+            establishedTranslation.base = {scopeSubtitlePictureLeft, scopeSubtitlePictureTop,
+                scopeSubtitlePictureRight, scopeSubtitlePictureBottom, width, height, 0.0,
+                ActivePictureBounds::BarAxes::TOP_BOTTOM};
+            establishedTranslation.visibleBounds = latestCropRetentionEvidence.outwardVisibleBounds;
+            establishedTranslation.presentation = scopeVerticalBarPresentation;
+            establishedTranslation.sourceGeneration = scopeSubtitleEvidenceSourceGeneration;
+            establishedTranslation.holdMs = scopeSubtitleHoldMs;
+            establishedTranslation.resolvedTranslationPixels = verticalTranslationPixels;
+            establishedTranslation.engagingTranslation = requestedSubtitleTranslation && scopeSubtitleDrift.IsActive();
+            establishedTranslation.competingPresentation = !automaticSourceCrop || !configuredScreenActive ||
+                fixedCropAspectConfigured || nlsRequested || inwardCaptionProtected ||
+                (!verticalTranslationActive && !establishedTranslation.engagingTranslation &&
+                 scopeSubtitleTranslationConfirmation.confirmations == 0) ||
+                verticalFailOpen || verticalFitActive ||
+                outwardExpansionInvalid || pictureTransitionHandoff.active ||
+                leftBarContentActive || rightBarContentActive ||
+                currentDetectorLeftExpansion || currentDetectorRightExpansion ||
+                movingPictureTransition.active || movingPictureTransition.awaitingPublication;
+            episodeInput.establishedScopeSubtitleRetained =
+                AlphaSourceCrop::CanRetainEstablishedScopeForSubtitle(
+                    episodeInput, cropPresentationAdmission, establishedTranslation);
+            if (episodeInput.establishedScopeSubtitleRetained != establishedScopeSubtitlePreviouslyRetained)
+                DebugLog::Log("Alpha subtitle scope retention: generation=%llu sequence=%llu epoch=%llu retained=%d near_black=%d pending=%u action=%d shift=%d base=%d,%d-%d,%d outward=%d,%d-%d,%d reason=\"admitted scope and bounded shared subtitle presentation\"",
+                    frameGeneration, sourceSequence, viewportRequestSerial,
+                    episodeInput.establishedScopeSubtitleRetained ? 1 : 0,
+                    episodeInput.globalNearBlack ? 1 : 0,
+                    static_cast<unsigned>(scopeSubtitleTranslationConfirmation.confirmations),
+                    static_cast<int>(scopeVerticalBarPresentation.action), verticalTranslationPixels,
+                    effectiveGeometry.left, effectiveGeometry.top, effectiveGeometry.right, effectiveGeometry.bottom,
+                    establishedTranslation.visibleBounds.left, establishedTranslation.visibleBounds.top,
+                    establishedTranslation.visibleBounds.right, establishedTranslation.visibleBounds.bottom);
+            establishedScopeSubtitlePreviouslyRetained = episodeInput.establishedScopeSubtitleRetained;
             AlphaSourceCrop::AspectLimitFillInput configuredFillInput;
             configuredFillInput.cropNarrowerContentToFillScreen = cropNarrowerContentToFillScreen;
             configuredFillInput.narrowerLimitConfigured = cropNarrowerContentAspectLimitConfigured;

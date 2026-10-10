@@ -68,6 +68,42 @@ public:
         Assert::AreEqual(1889,r.interior.bottom);Assert::AreEqual(1,r.glyphRowCount);
         Assert::IsTrue(r.interior.bottom<1897);
     }
+    TEST_METHOD(OptionalInnerSideBudgetExhaustionPreservesCompletedProof) {
+        Frame f;f.Fill({200,1690,3400,1850},0);
+        // This one-pixel whitespace seam independently nominates an inner
+        // side. The first full-width proof completes before that optional
+        // second trial consumes the remaining shared sample budget.
+        f.Fill({205,1766,206,1800},220);
+        for(int x=1400;x<2400;x+=40)f.Fill({x,1730,x+12,1766},220);
+        SubtitleOpaqueCardRefinement r;
+        Assert::IsTrue(RefineSubtitleOpaqueCard(f.Source(),{1400,1730,2400,1766},36,
+            263,1897,28,550,512,512,r));
+        Assert::IsTrue(r.workLimit);
+        Assert::IsTrue(r.sampledPixels>131072 && r.sampledPixels<133000);
+        Assert::AreEqual(200,r.interior.left);Assert::AreEqual(3400,r.interior.right);
+        Assert::AreEqual(1690,r.interior.top);Assert::AreEqual(1850,r.interior.bottom);
+        Assert::AreEqual(1,r.glyphRowCount);
+        Assert::IsTrue(r.glyphRows[0].left<=1402 && r.glyphRows[0].right>=2370);
+    }
+    TEST_METHOD(InnerSideTrialPreservesDetachedDotAcrossSamplingPhases) {
+        Frame f;f.Fill({200,1720,1800,1850},0);f.Fill({206,1660,1800,1720},0);
+        // Dense neutral strokes close the wider lower proof while the
+        // independently measured inner side proves the taller backing.
+        f.Fill({600,1700,1400,1720},220);f.Fill({1000,1720,1001,1730},220);
+        for(int x=600;x<1400;x+=40)f.Fill({x,1730,x+12,1767},220);
+        // The first trial samples row 1768; the inner trial samples 1769.
+        // This detached punctuation pixel must survive the improved proof.
+        f.Fill({704,1768,705,1769},220);
+        SubtitleOpaqueCardRefinement r;
+        Assert::IsTrue(RefineSubtitleOpaqueCard(f.Source(),{600,1730,1400,1766},36,
+            263,1897,28,550,512,512,r));
+        Assert::IsFalse(r.workLimit);
+        Assert::AreEqual(206,r.interior.left);Assert::AreEqual(1660,r.interior.top);
+        Assert::AreEqual(1,r.glyphRowCount);
+        Assert::IsTrue(r.glyphRows[0].left<=704 && r.glyphRows[0].right>704);
+        Assert::IsTrue(r.glyphRows[0].top<=1768 && r.glyphRows[0].bottom>1768,
+            L"A later sampling phase cannot revoke already proved punctuation");
+    }
     TEST_METHOD(OffCenterWordSeedRecoversCardWithoutPromotingWeakOrColoredInk) {
         const int w=640,h=360;
         std::vector<uint16_t> pixels(size_t(w)*h*3/2,uint16_t(512<<6));

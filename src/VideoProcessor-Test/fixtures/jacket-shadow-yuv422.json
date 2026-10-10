@@ -1,0 +1,19 @@
+{
+  "description": "Exact native jacket/shadow patch from confirmed false subtitle. No glyphs. Old detector accepted two fragments as a line. Full scene omitted.",
+  "layout": "Little endian uint16 native 10-bit codes: 352x184 Y followed by 352x184 interleaved U/V (4:2:2).",
+  "source_rect": [
+    1312,
+    1720,
+    1664,
+    1904
+  ],
+  "source_size": [
+    3840,
+    2160
+  ],
+  "picture": [
+    276,
+    1884
+  ],
+  "sha256": "09cee733ce7b9ecbb61054554410564f1f1165b984282b8dd9c0b87c5a3b1a72"
+}

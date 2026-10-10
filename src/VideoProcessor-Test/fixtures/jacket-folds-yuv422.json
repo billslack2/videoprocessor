@@ -1,0 +1,19 @@
+{
+  "description": "Second exact native false caption; jacket folds accepted by the first bounded-stroke guard. No text.",
+  "layout": "Little endian uint16 native 10-bit codes: 352x184 Y then 352x184 interleaved UV (4:2:2).",
+  "source_rect": [
+    1312,
+    1720,
+    1664,
+    1904
+  ],
+  "source_size": [
+    3840,
+    2160
+  ],
+  "picture": [
+    276,
+    1884
+  ],
+  "sha256": "a0a1a9bb51ca1d7a001bd180901f670375a166f400ff7488f039cf78a0d82a53"
+}
