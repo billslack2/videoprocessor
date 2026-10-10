@@ -1,0 +1,134 @@
+{
+  "base": "73953a364058b1cf6e5875dfc62e32df4e3bdcd5",
+  "branch": "codex/subtitle-text-color-20261009",
+  "configuration": "Release",
+  "platform": "x64",
+  "deployed": false,
+  "build_log": "E:\\codex\\videoprocessor\\subtitle-text-color-20261009\\text-color-release-build.log",
+  "build_log_sha256": "759b1959f7c5a867d45ee5f674e1a68f5b2a7b82e26e63c205d04b6ab812b5c0",
+  "source_hashes": [
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-text-color-20261009\\VideoProcessor.cfg",
+      "sha256": "642adddfa7ce5febb0ed25151d411269a201342040674087c545e282f37439b7"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-text-color-20261009\\docs\\VP-0070_SUBTITLE_PROFILES.md",
+      "sha256": "c16ce2f1a8b5b6a7c1340dc701367a8d3d272313514dac61c348dcfcf2f1233a"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-text-color-20261009\\src\\VideoProcessor-Config\\ConfigEditorWindow.cpp",
+      "sha256": "20b2379fe3c99e238aff78f05628c344235ffa5ba2790cd24c0508dc33249d90"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-text-color-20261009\\src\\VideoProcessor-ConfigTests\\ConfigEditorWindowTests.cpp",
+      "sha256": "b8079f7f075b736fa7d0ae5dd227d83ec2ba82b6999bcdb2f408808dbe84e4af"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-text-color-20261009\\src\\VideoProcessor-Lib\\RendererProfileConfig.h",
+      "sha256": "09f374b3c3b7514711dd45478ede2dee3359d2ee9491e90add5551eed43fd8eb"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-text-color-20261009\\src\\VideoProcessor-Lib\\SubtitleBoxDetector.cpp",
+      "sha256": "bccfbe8cabb0e7f8a2d0fcad41bdecef112882d282835cfbb1e31bf7cbe6a18c"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-text-color-20261009\\src\\VideoProcessor-Lib\\SubtitleBoxDetector.h",
+      "sha256": "97d02f47263e762ea8f4741ad962bb5638f30bd6150ae8f43249f803362a1258"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-text-color-20261009\\src\\VideoProcessor-Lib\\SubtitleBoxLookahead.h",
+      "sha256": "2200eff2bd1e0748b562ed1c87de36d1104b9b0cddbc4c878e89057de466aa03"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-text-color-20261009\\src\\VideoProcessor-Lib\\SubtitleCutPasteShader.h",
+      "sha256": "f203e8cd79964c4263d15b45ab0e488686686bfcc1924ba2741a043c62da7cd2"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-text-color-20261009\\src\\VideoProcessor-Lib\\SubtitleGeneratedGrayStyle.h",
+      "sha256": "ff57dbe818163b53ef59439a27da6bbd6f501e1e013404e6eb63fb1d310c023b"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-text-color-20261009\\src\\VideoProcessor-Lib\\SubtitleMeasurementWorker.h",
+      "sha256": "b4e09c4c1fc057281907aeb50be6fd383a7eafafe72266b96a80afcf0aec21ff"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-text-color-20261009\\src\\VideoProcessor-Lib\\SubtitleOpaqueCardRefinement.h",
+      "sha256": "839065e44826ea9c25d4713dc327e0556721d5e3eb7af24496c9e8758c8142aa"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-text-color-20261009\\src\\VideoProcessor-Lib\\vprenderer\\AlphaSourceCropPolicy.cpp",
+      "sha256": "37ed7e27d634a2041fee7180737ed987f6a118937b565684c2921bd7bf16e974"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-text-color-20261009\\src\\VideoProcessor-Lib\\vprenderer\\AlphaSourceCropPolicy.h",
+      "sha256": "03a73b61814db4f2f5e20eec4ea356cc78092d5af01dc86413d4ae4ed1f43d70"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-text-color-20261009\\src\\VideoProcessor-Lib\\vprenderer\\LibplaceboVideoRenderer.cpp",
+      "sha256": "1a7537d340ba53a05069d552a57d6fe9799f3454ce2d536efab144707c0161de"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-text-color-20261009\\src\\VideoProcessor-Lib\\vprenderer\\SubtitleBarRecovery.h",
+      "sha256": "97f158a7824fb4015d638798906494d2061de313f7ffc170e674a1308c4ebdad"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-text-color-20261009\\src\\VideoProcessor-Test\\ActivePictureEvidenceTests.cpp",
+      "sha256": "57acab48af5d571fcd2398073962ff38fcb58168058eb0618db20896cb0f05c0"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-text-color-20261009\\src\\VideoProcessor-Test\\AlphaSourceCropPolicyTests.cpp",
+      "sha256": "a7d60dcf3d1f3c3e6c81ad85071e7702cd67ffe77b6acf2eb55d092cd16712c3"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-text-color-20261009\\src\\VideoProcessor-Test\\LibplaceboLutParserTests.cpp",
+      "sha256": "cb0bd42f7b6d7563aa56d835cffdfc29ad5847a17911d8b850288f09e7246941"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-text-color-20261009\\src\\VideoProcessor-Test\\SubtitleBoxDetectorTests.cpp",
+      "sha256": "e55001b7087dfe234a56c621b064fde615fe5c03b54e0cf1c2b966cc96b9e936"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-text-color-20261009\\src\\VideoProcessor-Test\\SubtitleBoxLookaheadTests.cpp",
+      "sha256": "1a619ac832c2c25529807f97e83bdbf98eb0c36fb1213032922bc2828390868d"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-text-color-20261009\\src\\VideoProcessor-Test\\SubtitleMeasurementWorkerTests.cpp",
+      "sha256": "4e49d6f80b8719d3d78c4da78047395dd8f787c188351a7cf1d6fb1afab6624f"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-text-color-20261009\\src\\VideoProcessor-Test\\SubtitleOpaqueCardRefinementTests.cpp",
+      "sha256": "8d6252a2a3a28a493d7976b4a480c120559da47367b51684cc89f1456e78482a"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-text-color-20261009\\src\\VideoProcessor-Test\\VideoProcessor-Test.vcxproj.vcxproj",
+      "sha256": "0975bd710bc5505b3d2122ed7fc554d52db74159918c623e53970a4d7f7b1871"
+    }
+  ],
+  "binaries": [
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-text-color-20261009\\x64\\Release\\VideoProcessor-GUI.exe",
+      "sha256": "0443f68f9d016c49fa71ee73e20d3d459091df111059ed04df795437499dc665"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-text-color-20261009\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "019231267740e2a5d6d405e0e3dd913654a30fc3c1aeebc434e5936ad6f5e8cb"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-text-color-20261009\\x64\\Release\\VideoProcessorConfig.exe",
+      "sha256": "aad205bdded1e76824d46795ae52adeb04a54b0bac75c9e0f240b9bef4cecc6f"
+    }
+  ],
+  "tests": {
+    "passed": 2369,
+    "total": 2369,
+    "failed": 0,
+    "trx": "E:\\codex\\videoprocessor\\subtitle-text-color-20261009\\TestResults\\text-color\\full.trx",
+    "trx_sha256": "9ae2eee49a2a489c6ab381c95108d6a84a91ee89952ca427cbe3bbabbaf8cfbd",
+    "config_tests": 3
+  },
+  "setting": {
+    "key": "subtitle_text_color",
+    "default": "FFFFFF",
+    "meaning": "Linear-light glyph tint relative to original source; white is identity; both beta Move styles only."
+  }
+}

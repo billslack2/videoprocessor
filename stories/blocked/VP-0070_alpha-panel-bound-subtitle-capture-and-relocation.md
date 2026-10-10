@@ -1,6 +1,29 @@
 # VP-0070: CIH bar/boundary subtitle capture and relocation
 
 
+## Optional moved subtitle text color - 2026-10-09
+
+Added subtitle_text_color (six-digit sRGB hex) to base and named subtitle
+profiles, inherited settings and live renderer fingerprints. Config reuses
+the compact color picker under Subtitle appearance. Default FFFFFF preserves
+original source text; gray dims it and other colors tint it. Both beta Move
+styles support the option; Classic remains unchanged. Linear-light tint is
+applied only to extracted glyph color after ownership, alpha and reduction,
+so detection, antialiasing coverage and backdrop reconstruction remain intact.
+No renderer restart is required by this appearance-only setting.
+
+Created codex/subtitle-text-color-20261009 in a clean E: worktree from freshly
+fetched beta 73953a364058b1cf6e5875dfc62e32df4e3bdcd5, carrying forward the
+previously deployed uncommitted fixes without changing their original checkout.
+Release x64 build succeeded; all 2369 native tests and 3 focused Config tests
+passed. GPU checks cover gray/red/white restore on both beta backgrounds in
+SDR and PQ HDR, with unchanged backdrop and unrelated picture pixels. Config
+round-trip checks confirm defaults, persistence and existing style visibility.
+
+Not deployed. Runtime pair and Config executable hashes, source hashes and
+TRX identity are recorded in stories/assets/VP-0070/text-color-20261009/verification.json.
+Active user configuration was not edited. Story retains its live-qualification status.
+
 ## Starfield scope authority and subtitle inspection - 2026-10-09
 
 Used `2026-10-09 21-10-25.mp4`; ignored the later accidental recording.

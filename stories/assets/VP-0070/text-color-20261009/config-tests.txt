@@ -1,0 +1,6 @@
+START subtitle profile tab round trip
+PASS subtitle profile tab round trip
+START subtitle background shape round trip and visibility
+PASS subtitle background shape round trip and visibility
+START subtitle text size reduction round trip and style visibility
+PASS subtitle text size reduction round trip and style visibility
