@@ -1,0 +1,16 @@
+{
+  "deployed_at": "2026-10-10T00:10:42.4592485-04:00",
+  "backup": "C:\\Videoprocessor\\vp\\backups\\native-jacket-fix-20261010-001042",
+  "process_id": 13072,
+  "configuration_edits": [],
+  "artifacts": [
+    {
+      "Path": "E:\\codex\\videoprocessor\\subtitle-native-jacket-20261009\\x64\\Release\\VideoProcessor-GUI.exe",
+      "Hash": "5D812E2DD5C61E78C66659B63B13C44B57F8BAF19ADBBD93DC940EF49CDFA952"
+    },
+    {
+      "Path": "E:\\codex\\videoprocessor\\subtitle-native-jacket-20261009\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "Hash": "1E41E8EA19992479FE45244B21CDF771C4FA996E4796435B7A82B68107FD3439"
+    }
+  ]
+}

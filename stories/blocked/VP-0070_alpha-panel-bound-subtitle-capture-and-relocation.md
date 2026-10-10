@@ -1,5 +1,18 @@
 # VP-0070: CIH bar/boundary subtitle capture and relocation
 
+## Native jacket fix deployed - 2026-10-10 00:10 EDT
+
+User requested deployment. Installed the tested x64 Release host and renderer
+pair from subtitle-native-jacket-20261009; both installed SHA256 values match
+the recorded artifacts. VP started and responds (PID 13072). No configuration
+or state edits. Backup: C:\Videoprocessor\vp\backups\native-jacket-fix-20261010-001042
+contains VideoProcessor.exe and VideoProcessorVPRenderer.dll.
+Deployment receipt: stories/assets/VP-0070/native-jacket-20261009/deployment.json.
+Startup logs still show a smaller candidate near the same jacket area
+(1354,1842-1426,1894). Deployment is verified, but live resolution must NOT be
+claimed from the passing captured-frame regression. Logs are retained locally
+as native-jacket/post-deployment.log for follow-up.
+
 ## Exact native jacket false-positive reproduced and corrected locally - 2026-10-10
 
 Read-only extraction of aligned native v210 buffers from the running VP process
