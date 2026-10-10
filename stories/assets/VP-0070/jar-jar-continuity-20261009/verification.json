@@ -1,0 +1,149 @@
+{
+  "base": "73953a364058b1cf6e5875dfc62e32df4e3bdcd5",
+  "branch": "codex/subtitle-held-authority-20261009",
+  "configuration": "Release",
+  "platform": "x64",
+  "deployed": false,
+  "build_log": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\subtitle-reference-release-rebuild.log",
+  "build_log_sha256": "52effa83a9baa57e9e2e3294b8fdda4dce9f8ba41eadd7deb5336e310cedc19f",
+  "source_hashes": [
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\src\\VideoProcessor-Lib\\SubtitleBoxDetector.cpp",
+      "sha256": "bccfbe8cabb0e7f8a2d0fcad41bdecef112882d282835cfbb1e31bf7cbe6a18c"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\src\\VideoProcessor-Lib\\SubtitleBoxDetector.h",
+      "sha256": "97d02f47263e762ea8f4741ad962bb5638f30bd6150ae8f43249f803362a1258"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\src\\VideoProcessor-Lib\\SubtitleBoxLookahead.h",
+      "sha256": "2200eff2bd1e0748b562ed1c87de36d1104b9b0cddbc4c878e89057de466aa03"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\src\\VideoProcessor-Lib\\SubtitleMeasurementWorker.h",
+      "sha256": "b4e09c4c1fc057281907aeb50be6fd383a7eafafe72266b96a80afcf0aec21ff"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\src\\VideoProcessor-Lib\\SubtitleOpaqueCardRefinement.h",
+      "sha256": "839065e44826ea9c25d4713dc327e0556721d5e3eb7af24496c9e8758c8142aa"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\src\\VideoProcessor-Lib\\vprenderer\\AlphaSourceCropPolicy.cpp",
+      "sha256": "d192c027cd6c2437cfa93d0f34a6534072264043cfb6b303a32680a54ce489ff"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\src\\VideoProcessor-Lib\\vprenderer\\AlphaSourceCropPolicy.h",
+      "sha256": "d33a8463772c01e8100d47156d604ad8ff85586357347b2afd4890895bd56c02"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\src\\VideoProcessor-Lib\\vprenderer\\LibplaceboVideoRenderer.cpp",
+      "sha256": "e84d27393d467cfdfabdb85f060a8c160efbba8beac313d368cbaaa5bf881189"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\src\\VideoProcessor-Lib\\vprenderer\\SubtitleBarRecovery.h",
+      "sha256": "00442390bb797d6674f9269a026ec67c6de30ebf7423005846123612c0e78bcc"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\src\\VideoProcessor-Test\\ActivePictureEvidenceTests.cpp",
+      "sha256": "17d0293910f881e8835a2c534b7f50b5709acd5b48aad764be21602d99456b82"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\src\\VideoProcessor-Test\\AlphaSourceCropPolicyTests.cpp",
+      "sha256": "97b109ba038b13cfdde542dad9eb5773024f4b247e023b4cecb1a3863ffff4e5"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\src\\VideoProcessor-Test\\SubtitleBoxDetectorTests.cpp",
+      "sha256": "c2a101de6b435254d701811a5112d220f768069b3ed964fac52b919b870368e5"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\src\\VideoProcessor-Test\\SubtitleBoxLookaheadTests.cpp",
+      "sha256": "1a619ac832c2c25529807f97e83bdbf98eb0c36fb1213032922bc2828390868d"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\src\\VideoProcessor-Test\\SubtitleMeasurementWorkerTests.cpp",
+      "sha256": "4e49d6f80b8719d3d78c4da78047395dd8f787c188351a7cf1d6fb1afab6624f"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\src\\VideoProcessor-Test\\SubtitleOpaqueCardRefinementTests.cpp",
+      "sha256": "8d6252a2a3a28a493d7976b4a480c120559da47367b51684cc89f1456e78482a"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\src\\VideoProcessor-Test\\VideoProcessor-Test.vcxproj.vcxproj",
+      "sha256": "0975bd710bc5505b3d2122ed7fc554d52db74159918c623e53970a4d7f7b1871"
+    }
+  ],
+  "binaries": [
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\x64\\Release\\VideoProcessor-GUI.exe",
+      "sha256": "682791201e00bf51fb2bb1f46f86afe6dcbfe878ce7cad5c0104a3ee5f8913b0"
+    },
+    {
+      "path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "sha256": "fdf88bb829f355afc26952fed24595f75110797e87cb52a35ad5543d1cfb740b"
+    }
+  ],
+  "tests": {
+    "total": 2360,
+    "passed": 2360,
+    "failed": 0,
+    "trx": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\TestResults\\subtitle-reference\\full.trx",
+    "trx_sha256": "3a85b5abbdd370e584b06644b748c94e849117e8a2c5346a2e1b45de5f1a0d7c"
+  },
+  "sequence_replay": {
+    "input": "rendered Classic desktop recording, inverse-affine approximation, not native capture",
+    "frames": 109,
+    "established_three_lines_sequence": 6,
+    "presentation_line_losses_until_real_change": [],
+    "changes": [
+      {
+        "sequence": 1,
+        "cue": 1,
+        "lines": 2,
+        "reason": "detected"
+      },
+      {
+        "sequence": 6,
+        "cue": 1,
+        "lines": 3,
+        "reason": "detected"
+      },
+      {
+        "sequence": 55,
+        "cue": 2,
+        "lines": 3,
+        "reason": "detected"
+      },
+      {
+        "sequence": 77,
+        "cue": 3,
+        "lines": 2,
+        "reason": "detected"
+      }
+    ],
+    "refresh_timing_ms": {
+      "calls": 108,
+      "sum": 60.67029999999998,
+      "mean": 0.5617620370370371,
+      "median": 0.5420499999999999,
+      "p95": 0.7112,
+      "max": 2.9204
+    },
+    "refresh_samples": {
+      "sum": 1677872,
+      "mean": 15535.851851851852,
+      "max": 16997
+    },
+    "sha256": {
+      "sequence.cpp": "c5262da9ec38e9c98032cfb42e48af084d7bce5a048bf659a38648abf1c81190",
+      "detector.cpp": "bccfbe8cabb0e7f8a2d0fcad41bdecef112882d282835cfbb1e31bf7cbe6a18c",
+      "SubtitleBoxLookahead.h": "2200eff2bd1e0748b562ed1c87de36d1104b9b0cddbc4c878e89057de466aa03",
+      "bin/SequenceReplay.exe": "0675ce7ce3e2e09d6bd1816dc56cc7a48c8f83051ede6abcef6dc0d45be00855",
+      "final-candidate.csv": "ceda1c32560b8f283662474fdc67dfb7f5b2f1308f8b5245326e6c9967aee0a2"
+    }
+  },
+  "limitations": [
+    "Replay is an inverse approximation of rendered Classic desktop recording, not native capture.",
+    "Conservative initial acquisition and a later full-caption reacquisition remain; no line loss after full acquisition in this replay.",
+    "Candidate has not been deployed or tested in live playback."
+  ]
+}

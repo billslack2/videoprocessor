@@ -1,0 +1,32 @@
+PAIR seq=1 row=0 future=0 geom=1 sig=1 pix=1 a=1783,1821,2048,1904 b=1783,1821,2048,1904
+PAIR seq=1 row=0 future=1 geom=1 sig=1 pix=1 a=1783,1821,2048,1904 b=1783,1821,2048,1904
+PAIR seq=1 row=0 future=2 geom=1 sig=1 pix=1 a=1783,1821,2048,1904 b=1783,1821,2048,1904
+PAIR seq=1 row=0 future=3 geom=1 sig=1 pix=1 a=1783,1821,2048,1904 b=1783,1821,2048,1904
+RES seq=1 line=0 anchor=0 support=4/3 horizon=4 coverage=1.00000 min=0.90000 panel=0 farpanel=0 nearest=1 farpixels=1
+PAIR seq=1 row=1 future=0 geom=1 sig=1 pix=1 a=1286,1671,2548,1776 b=1286,1671,2548,1776
+PAIR seq=1 row=1 future=1 geom=1 sig=1 pix=1 a=1286,1671,2548,1776 b=1286,1671,2548,1776
+PAIR seq=1 row=1 future=2 geom=1 sig=1 pix=1 a=1286,1671,2548,1776 b=1286,1671,2548,1772
+PAIR seq=1 row=1 future=3 geom=1 sig=1 pix=1 a=1286,1671,2548,1776 b=1286,1671,2548,1776
+RES seq=1 line=1 anchor=0 support=4/3 horizon=4 coverage=1.00000 min=0.90000 panel=4 farpanel=1 nearest=1 farpixels=1
+PAIR seq=1 row=2 future=0 geom=1 sig=1 pix=1 a=1445,1523,2396,1624 b=1445,1523,2396,1624
+PAIR seq=1 row=2 future=1 geom=0 sig=0 pix=1 a=1445,1523,2396,1624 b=1456,1528,2396,1624
+PAIR seq=1 row=2 future=2 geom=0 sig=0 pix=1 a=1445,1523,2396,1624 b=1448,1520,2396,1620
+PAIR seq=1 row=2 future=3 geom=0 sig=0 pix=1 a=1445,1523,2396,1624 b=1456,1528,2396,1624
+RES seq=1 line=2 anchor=0 support=1/3 horizon=4 coverage=0.99795 min=0.97500 panel=1 farpanel=0 nearest=1 farpixels=1
+COMP seq=52 line=1 bounds=2052,1676-2064,1684 owned=5 covered=4
+PAIR seq=53 row=0 future=0 geom=1 sig=1 pix=1 a=1783,1821,2048,1904 b=1783,1821,2048,1904
+PAIR seq=53 row=0 future=1 geom=1 sig=1 pix=1 a=1783,1821,2048,1904 b=1783,1821,2048,1904
+PAIR seq=53 row=0 future=2 geom=1 sig=1 pix=1 a=1783,1821,2048,1904 b=1783,1821,2048,1904
+PAIR seq=53 row=0 future=3 geom=1 sig=1 pix=1 a=1783,1821,2048,1904 b=1783,1821,2048,1904
+RES seq=53 line=0 anchor=0 support=4/3 horizon=4 coverage=1.00000 min=0.90000 panel=0 farpanel=0 nearest=1 farpixels=1
+PAIR seq=53 row=1 future=0 geom=1 sig=1 pix=1 a=1286,1671,2552,1776 b=1286,1671,2552,1776
+PAIR seq=53 row=1 future=1 geom=1 sig=1 pix=1 a=1286,1671,2552,1776 b=1286,1671,2552,1776
+PAIR seq=53 row=1 future=2 geom=0 sig=1 pix=1 a=1286,1671,2552,1776 b=1286,1671,2548,1776
+PAIR seq=53 row=1 future=3 geom=0 sig=1 pix=1 a=1286,1671,2552,1776 b=1286,1671,2548,1776
+RES seq=53 line=1 anchor=0 support=2/3 horizon=4 coverage=1.00000 min=0.97500 panel=2 farpanel=0 nearest=1 farpixels=1
+PAIR seq=53 row=2 future=0 geom=1 sig=1 pix=1 a=1452,1528,2400,1624 b=1452,1528,2400,1624
+PAIR seq=53 row=2 future=1 geom=1 sig=1 pix=1 a=1452,1528,2400,1624 b=1452,1528,2400,1624
+PAIR seq=53 row=2 future=2 geom=0 sig=0 pix=1 a=1452,1528,2400,1624 b=1468,1528,2396,1624
+PAIR seq=53 row=2 future=3 geom=0 sig=0 pix=1 a=1452,1528,2400,1624 b=1448,1528,2396,1624
+RES seq=53 line=2 anchor=0 support=2/3 horizon=4 coverage=1.00000 min=0.97500 panel=2 farpanel=0 nearest=1 farpixels=1
+COMP seq=53 line=1 bounds=2052,1676-2064,1684 owned=5 covered=4

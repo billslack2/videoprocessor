@@ -1,0 +1,16 @@
+{
+  "deployed": true,
+  "backup": "C:\\Videoprocessor\\vp\\backups\\subtitle-continuity-20261009-210031",
+  "changed_files": 4,
+  "configuration_edits": [],
+  "protected_files_preserved": true,
+  "host_sha256": "682791201e00bf51fb2bb1f46f86afe6dcbfe878ce7cad5c0104a3ee5f8913b0",
+  "renderer_sha256": "fdf88bb829f355afc26952fed24595f75110797e87cb52a35ad5543d1cfb740b",
+  "startup": {
+    "pid": 27680,
+    "responding": true,
+    "renderer_loaded": true,
+    "renderer_path": "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll",
+    "started_at": "2026-10-09T21:00:55.9658425-04:00"
+  }
+}

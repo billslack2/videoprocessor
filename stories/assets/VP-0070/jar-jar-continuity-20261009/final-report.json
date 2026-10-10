@@ -1,0 +1,52 @@
+{
+  "input": "rendered Classic desktop recording, inverse-affine approximation, not native capture",
+  "frames": 109,
+  "established_three_lines_sequence": 6,
+  "presentation_line_losses_until_real_change": [],
+  "changes": [
+    {
+      "sequence": 1,
+      "cue": 1,
+      "lines": 2,
+      "reason": "detected"
+    },
+    {
+      "sequence": 6,
+      "cue": 1,
+      "lines": 3,
+      "reason": "detected"
+    },
+    {
+      "sequence": 55,
+      "cue": 2,
+      "lines": 3,
+      "reason": "detected"
+    },
+    {
+      "sequence": 77,
+      "cue": 3,
+      "lines": 2,
+      "reason": "detected"
+    }
+  ],
+  "refresh_timing_ms": {
+    "calls": 108,
+    "sum": 60.67029999999998,
+    "mean": 0.5617620370370371,
+    "median": 0.5420499999999999,
+    "p95": 0.7112,
+    "max": 2.9204
+  },
+  "refresh_samples": {
+    "sum": 1677872,
+    "mean": 15535.851851851852,
+    "max": 16997
+  },
+  "sha256": {
+    "sequence.cpp": "c5262da9ec38e9c98032cfb42e48af084d7bce5a048bf659a38648abf1c81190",
+    "detector.cpp": "bccfbe8cabb0e7f8a2d0fcad41bdecef112882d282835cfbb1e31bf7cbe6a18c",
+    "SubtitleBoxLookahead.h": "2200eff2bd1e0748b562ed1c87de36d1104b9b0cddbc4c878e89057de466aa03",
+    "bin/SequenceReplay.exe": "0675ce7ce3e2e09d6bd1816dc56cc7a48c8f83051ede6abcef6dc0d45be00855",
+    "final-candidate.csv": "ceda1c32560b8f283662474fdc67dfb7f5b2f1308f8b5245326e6c9967aee0a2"
+  }
+}

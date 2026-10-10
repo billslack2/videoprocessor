@@ -1,6 +1,54 @@
 # VP-0070: CIH bar/boundary subtitle capture and relocation
 
 
+## Caption continuity and capture-mask conflicts corrected locally - 2026-10-09
+
+The user replayed Classic and Reconstruction in `2026-10-09 20-04-02.mp4`.
+Logs repeat full-three-line -> partial-two-line reacquisition -> expansion
+while physical picture bounds stay 276..1884. This is caption continuity,
+not the earlier scope-presentation regression. Native analysis marked unsampled
+upper rows as absent when adaptive refinement missed them; continuity read that
+incomplete bitmap as negative pixel evidence.
+
+Established rows now receive an independent, bounded current-source pixel check
+using their acquisition palette. Its result is continuity-only: new acquisition
+and new glyph ownership keep the original current detector evidence. Capture
+retention checks both detector and resolved row masks. Lookahead's confirmation
+of one surviving row can no longer veto grace as a confirmed whole-caption
+replacement. Acquisition continuity references only accepted current-owned rows,
+so a rejected extra candidate is not required to remain visible. A late-worker
+fallback cannot be seeded with partial detector/resolved extraction.
+
+A separate quantization case allows one missing fringe sample from one 5-6 pixel
+component per cue only with fresh black backing, >=98% affected-line coverage,
+<=2% difference, and unchanged local/new-ink vetoes. Acquisition/extension
+thresholds remain strict. Diagnostics now identify failed line/component counts
+and independent sampling status, instead of a generic context failure.
+
+Clean x64 Release solution rebuild succeeded; all 2,360 native tests passed,
+including 12 new regression tests. The rendered Classic desktop recording was
+inverse-mapped to a 4K approximation and replayed through production detection,
+lookahead and presentation. Baseline loses two rows at sequence53; candidate
+retains all three through53-54, with no line loss after full acquisition at6
+through76. Genuine two-line replacement at77 still switches. Initial conservative
+two-line acquisition and full-three-line reacquisition at55 remain; this is not
+proof of zero cue-identity changes or exact native-capture behavior. Current
+reference sampling mean0.562ms/p95 0.711ms/max2.920ms in that Release RGB replay,
+max16,997 of65,536 allowed samples. This is not live/GPU performance qualification.
+
+[Verification and source/runtime hashes](../assets/VP-0070/jar-jar-continuity-20261009/verification.json).
+[Replay result and limitations](../assets/VP-0070/jar-jar-continuity-20261009/final-report.json).
+[Baseline](../assets/VP-0070/jar-jar-continuity-20261009/baseline.csv).
+[Candidate sequence](../assets/VP-0070/jar-jar-continuity-20261009/final-candidate.csv).
+
+Source remains local on codex/subtitle-held-authority-20261009, based on
+73953a364058b1cf6e5875dfc62e32df4e3bdcd5, together with earlier deployed fixes.
+Deployed on explicit user request after the full suite passed. Both Release
+host and renderer were backed up and replaced, with exact runtime hash checks;
+active configuration was preserved. VP was started and its loaded renderer
+verified. [Deployment receipt and backup](../assets/VP-0070/jar-jar-continuity-20261009/deployment.json).
+Not merged or released. Live content replay remains operator validation.
+
 ## Three-line card with connected dark scenery - 2026-10-09
 
 User's Jar Jar caption lost its entire upper line and partially copied the
