@@ -1,0 +1,81 @@
+{
+  "base": "73953a364058b1cf6e5875dfc62e32df4e3bdcd5",
+  "branch": "codex/subtitle-held-authority-20261009",
+  "configuration": "Release",
+  "platform": "x64",
+  "deployed": false,
+  "build_log": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\jar-jar-build.log",
+  "build_log_sha256": "64e4826e63df5c68545479cd2a2114505772dd4c6d6f7aee3be3d3d3a4d00b9a",
+  "source_hashes": [
+    {
+      "Path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\src\\VideoProcessor-Lib\\SubtitleBoxDetector.cpp",
+      "Hash": "7e705adfd4a7aa5c345f192bbd5d5e726d5b291b4f1c28f95276b81475b17158"
+    },
+    {
+      "Path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\src\\VideoProcessor-Lib\\SubtitleOpaqueCardRefinement.h",
+      "Hash": "839065e44826ea9c25d4713dc327e0556721d5e3eb7af24496c9e8758c8142aa"
+    },
+    {
+      "Path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\src\\VideoProcessor-Lib\\vprenderer\\AlphaSourceCropPolicy.cpp",
+      "Hash": "d192c027cd6c2437cfa93d0f34a6534072264043cfb6b303a32680a54ce489ff"
+    },
+    {
+      "Path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\src\\VideoProcessor-Lib\\vprenderer\\AlphaSourceCropPolicy.h",
+      "Hash": "d33a8463772c01e8100d47156d604ad8ff85586357347b2afd4890895bd56c02"
+    },
+    {
+      "Path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\src\\VideoProcessor-Lib\\vprenderer\\LibplaceboVideoRenderer.cpp",
+      "Hash": "94369835d330d380d7c6661b92b403f92a1c707f8761e1879fde13cb8521ef68"
+    },
+    {
+      "Path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\src\\VideoProcessor-Test\\ActivePictureEvidenceTests.cpp",
+      "Hash": "17d0293910f881e8835a2c534b7f50b5709acd5b48aad764be21602d99456b82"
+    },
+    {
+      "Path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\src\\VideoProcessor-Test\\AlphaSourceCropPolicyTests.cpp",
+      "Hash": "97b109ba038b13cfdde542dad9eb5773024f4b247e023b4cecb1a3863ffff4e5"
+    },
+    {
+      "Path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\src\\VideoProcessor-Test\\SubtitleBoxDetectorTests.cpp",
+      "Hash": "c2a101de6b435254d701811a5112d220f768069b3ed964fac52b919b870368e5"
+    },
+    {
+      "Path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\src\\VideoProcessor-Test\\SubtitleOpaqueCardRefinementTests.cpp",
+      "Hash": "8d6252a2a3a28a493d7976b4a480c120559da47367b51684cc89f1456e78482a"
+    },
+    {
+      "Path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\src\\VideoProcessor-Lib\\vprenderer\\SubtitleBarRecovery.h",
+      "Hash": "00442390bb797d6674f9269a026ec67c6de30ebf7423005846123612c0e78bcc"
+    }
+  ],
+  "binaries": [
+    {
+      "Path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\x64\\Release\\VideoProcessor-GUI.exe",
+      "Hash": "1af60828baef75810e5d80409916a18362233794dc3128db3d0732738dda043d"
+    },
+    {
+      "Path": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\x64\\Release\\vprenderer\\VideoProcessorVPRenderer.dll",
+      "Hash": "8d4623a1d557fad032a9804616de5f99a8fa0a5c94e7200b01fd21bfefb67fb5"
+    }
+  ],
+  "tests": {
+    "total": 2348,
+    "passed": 2348,
+    "failed": 0,
+    "trx": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009\\TestResults\\jar-jar\\full.trx",
+    "trx_sha256": "fed92d894a1f5f8d6319f0effb8a148e32cd42ffd7d3c1f1682a5f9e76d5ff81"
+  },
+  "evidence": {
+    "screenshot_replay": "subtitle-jar-jar-regression/verified/report.txt",
+    "variants": 5,
+    "physical_bar_offsets": 2,
+    "reviewed_by": [
+      "card_architecture_review",
+      "card_regression_review"
+    ]
+  },
+  "limitations": [
+    "Screenshot replay is an SDR approximation with bounded exterior-shadow perturbations, not the original native P210 frame.",
+    "Live playback of this candidate has not yet been verified."
+  ]
+}

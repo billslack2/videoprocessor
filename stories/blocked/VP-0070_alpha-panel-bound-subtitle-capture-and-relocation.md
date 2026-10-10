@@ -1,6 +1,43 @@
 # VP-0070: CIH bar/boundary subtitle capture and relocation
 
 
+## Three-line card with connected dark scenery - 2026-10-09
+
+User's Jar Jar caption lost its entire upper line and partially copied the
+other rows. Logs at 19:25:11/frame4061 show three complete lines, then at
+19:25:12/frame4068 only two lines with the same 55 components. Card top jumped
+from1501 to1612. This was not the three-line capacity or aspect ratio policy.
+The short bar anchor nominated refinement, while connected dark clothing made
+the lower card appear wider than its independently visible upper edge.
+
+Refinement now chooses the widest accepted picture-overlapping line. It tests
+up to four independently corroborated edge pairs, accepting a nearby inner side
+only after the existing full opaque/finite backing proof, with more vertical
+coverage and exact preservation of earlier same-frame glyph evidence. If no
+inner side is found beside that row, a second bounded whitespace search reaches
+two glyph heights. All work shares the original sample budget; completed proof
+survives optional exhaustion. No initial caption, AR or color thresholds changed.
+
+Team reviews required protection against optional-budget failure and sampling
+phase differences dropping punctuation. Added tests cover both, and mirrored
+three-line cards with near/far shadow attachment verify actual copy ownership.
+The x64 Release solution succeeded; all **2,348 native tests passed**. Screenshot
+replay checks the original plus four exterior-shadow perturbations at two bar
+boundaries: all retain the full top line. These are SDR screenshot approximations,
+not original native P210 frames; live replay remains operator validation.
+
+Deployed the paired Release host and renderer with timestamped backup and exact
+hash verification, preserved active configuration, and started VP as requested.
+[Verification](../assets/VP-0070/jar-jar-20261009/jar-jar-verification.json).
+[Deployment](../assets/VP-0070/jar-jar-20261009/jar-jar-deployment.json).
+[Original screenshot](../assets/VP-0070/jar-jar-20261009/off.png).
+[Replay results](../assets/VP-0070/jar-jar-20261009/candidate-replay.txt).
+[Replay fixture generator](../assets/VP-0070/jar-jar-20261009/reproduce.py).
+
+Source remains local on codex/subtitle-held-authority-20261009, based on
+73953a364058b1cf6e5875dfc62e32df4e3bdcd5, including the earlier deployed shared
+bar-authority and scope-onset corrections. Not merged or released.
+
 ## Scope onset presentation flash corrected locally - 2026-10-09
 
 The user reproduced the four-sided black-box flash in both moved and Classic

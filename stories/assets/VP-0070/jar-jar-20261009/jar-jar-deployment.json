@@ -1,0 +1,31 @@
+{
+  "deployed_at": "2026-10-09T20:01:44.017076-04:00",
+  "source": "E:\\codex\\videoprocessor\\subtitle-held-authority-20261009",
+  "backup": "C:\\Videoprocessor\\vp\\backups\\jar-jar-20261009-200143",
+  "configuration_edits": [],
+  "build_receipt_sha256": "10c077c1f6440aefae73de440d8cd2502a5f1a3d4a2cd461445e635f2d490ecc",
+  "protected_files": {
+    "RELEASE-MANIFEST.json": "9e521d5266e658f756692f89ece4b1e767f4a49aa9948f7f6b2401270517485f",
+    "NPNnnNPn.cfg": "a3998d9b6de8c08536af4c5d6125ef486e37a829dcca9b63064b2473b3e459d6",
+    "VideoProcessor.cfg": "02cb077d9759f0480287812a7af2fb5934e17803e3e8294cf3ce1f77866195e2",
+    "VideoProcessor.state": "a7515bfeffccd889ccf8aa259bdbffd648fe855ac12157c26d99fde6078e5669",
+    "active-output-sweep-hdr-template.cfg": "54deca40f8cda2157e06d3089a73ae1a89318dad8db0926de73fbd82fcdbbf67",
+    "active-output-sweep-sdr-template.cfg": "629f45b04d711033c6205e4beadb858a1f9e8f9585256c8915d5a672ab12f326",
+    "vprenderer\\VideoProcessorShaderCache.bin": "4f0458fb04514861f6a9ce6c5e526580f939354a11fb6e3826c574dc6f7072ee",
+    "INSTALL-MANIFEST.json": "2fb61e4facb3061e4aaa553a35d66abfad9512b8f8617ef6d19b70b4d0bcd941"
+  },
+  "deployed_sha256": {
+    "VideoProcessor.exe": "1af60828baef75810e5d80409916a18362233794dc3128db3d0732738dda043d",
+    "VideoProcessor.exe.runtime.json": "f67c135d17965340df4ccc5fecb229eb1a1e3b79cf39ee2333ba7716fb0d5614",
+    "vprenderer\\VideoProcessorVPRenderer.dll": "8d4623a1d557fad032a9804616de5f99a8fa0a5c94e7200b01fd21bfefb67fb5",
+    "vprenderer\\VideoProcessorVPRenderer.dll.runtime.json": "ee0d948695410090525d0559ff8107946c53401ff9878c2718089695698aa004"
+  },
+  "runtime_payload_sha256": {
+    "VideoProcessor.exe": "1af60828baef75810e5d80409916a18362233794dc3128db3d0732738dda043d",
+    "VideoProcessor.exe.runtime.json": "f67c135d17965340df4ccc5fecb229eb1a1e3b79cf39ee2333ba7716fb0d5614",
+    "vprenderer\\VideoProcessorVPRenderer.dll": "8d4623a1d557fad032a9804616de5f99a8fa0a5c94e7200b01fd21bfefb67fb5",
+    "vprenderer\\VideoProcessorVPRenderer.dll.runtime.json": "ee0d948695410090525d0559ff8107946c53401ff9878c2718089695698aa004"
+  },
+  "started_process_id": 36588,
+  "startup_process_responding": true
+}

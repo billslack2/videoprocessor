@@ -1,0 +1,65 @@
+uhd0
+recovered=274,1886 valid=1 recovery_ms=0.7197
+bars=275,1884 available=1 ref=0,1 fractions=0.9857,0.9982 runs=128,1
+flipped=0 edge=0 detected=1 lines=3 limit=0 bounds=1286,1526-2546,1910 capture=1238,1497-2599,1887 cleanup=1231,1491-2605,1884 mean_ms=12.1339 median_ms=12.0651 max_ms=12.4316
+line0=1784,1824-2044,1900
+line1=1295,1678-2536,1776
+line2=1451,1534-2392,1632
+recovered=274,1886 valid=1 recovery_ms=0.9612
+bars=275,1884 available=1 ref=0,1 fractions=0.9857,0.9982 runs=128,1
+flipped=0 edge=1 detected=1 lines=3 limit=0 bounds=1286,1526-2546,1910 capture=1238,1497-2599,1886 cleanup=1231,1491-2605,1883 mean_ms=12.3108 median_ms=12.1672 max_ms=12.8318
+line0=1784,1824-2044,1900
+line1=1295,1678-2536,1776
+line2=1451,1534-2392,1632
+robe1580
+recovered=274,1886 valid=1 recovery_ms=0.7167
+bars=275,1884 available=1 ref=0,1 fractions=0.9857,0.9982 runs=128,1
+flipped=0 edge=0 detected=1 lines=3 limit=0 bounds=1286,1526-2546,1910 capture=1240,1495-2596,1887 cleanup=1232,1489-2606,1884 mean_ms=12.7519 median_ms=12.7332 max_ms=13.2725
+line0=1784,1824-2044,1900
+line1=1295,1678-2536,1776
+line2=1451,1534-2388,1632
+recovered=274,1886 valid=1 recovery_ms=0.7030
+bars=275,1884 available=1 ref=0,1 fractions=0.9857,0.9982 runs=128,1
+flipped=0 edge=1 detected=1 lines=3 limit=0 bounds=1286,1526-2546,1910 capture=1240,1495-2596,1886 cleanup=1232,1489-2606,1883 mean_ms=12.0022 median_ms=11.9750 max_ms=12.1055
+line0=1784,1824-2044,1900
+line1=1295,1678-2536,1776
+line2=1451,1534-2388,1632
+robe1612
+recovered=274,1886 valid=1 recovery_ms=0.8096
+bars=275,1884 available=1 ref=0,1 fractions=0.9857,0.9982 runs=128,1
+flipped=0 edge=0 detected=1 lines=3 limit=0 bounds=1286,1526-2546,1910 capture=1240,1495-2596,1887 cleanup=1232,1489-2606,1884 mean_ms=12.3195 median_ms=12.1382 max_ms=12.8307
+line0=1784,1824-2044,1900
+line1=1295,1678-2536,1776
+line2=1451,1534-2388,1632
+recovered=274,1886 valid=1 recovery_ms=0.7024
+bars=275,1884 available=1 ref=0,1 fractions=0.9857,0.9982 runs=128,1
+flipped=0 edge=1 detected=1 lines=3 limit=0 bounds=1286,1526-2546,1910 capture=1240,1495-2596,1886 cleanup=1232,1489-2606,1883 mean_ms=12.1073 median_ms=12.0734 max_ms=12.1832
+line0=1784,1824-2044,1900
+line1=1295,1678-2536,1776
+line2=1451,1534-2388,1632
+robe1650
+recovered=274,1886 valid=1 recovery_ms=0.9016
+bars=275,1884 available=1 ref=0,1 fractions=0.9857,0.9982 runs=128,1
+flipped=0 edge=0 detected=1 lines=3 limit=0 bounds=1286,1526-2546,1910 capture=1238,1497-2599,1887 cleanup=1231,1491-2605,1884 mean_ms=12.4968 median_ms=12.7295 max_ms=12.8353
+line0=1784,1824-2044,1900
+line1=1295,1678-2536,1776
+line2=1451,1534-2392,1632
+recovered=274,1886 valid=1 recovery_ms=0.7088
+bars=275,1884 available=1 ref=0,1 fractions=0.9857,0.9982 runs=128,1
+flipped=0 edge=1 detected=1 lines=3 limit=0 bounds=1286,1526-2546,1910 capture=1238,1497-2599,1886 cleanup=1231,1491-2605,1883 mean_ms=13.0419 median_ms=12.4865 max_ms=14.1801
+line0=1784,1824-2044,1900
+line1=1295,1678-2536,1776
+line2=1451,1534-2392,1632
+robe1700
+recovered=274,1886 valid=1 recovery_ms=0.7342
+bars=275,1884 available=1 ref=0,1 fractions=0.9857,0.9982 runs=128,1
+flipped=0 edge=0 detected=1 lines=3 limit=0 bounds=1286,1526-2546,1910 capture=1238,1497-2599,1887 cleanup=1231,1491-2605,1884 mean_ms=12.7978 median_ms=12.3914 max_ms=13.7659
+line0=1784,1824-2044,1900
+line1=1295,1678-2536,1776
+line2=1451,1534-2392,1632
+recovered=274,1886 valid=1 recovery_ms=0.7809
+bars=275,1884 available=1 ref=0,1 fractions=0.9857,0.9982 runs=128,1
+flipped=0 edge=1 detected=1 lines=3 limit=0 bounds=1286,1526-2546,1910 capture=1238,1497-2599,1886 cleanup=1231,1491-2605,1883 mean_ms=12.8543 median_ms=12.4744 max_ms=14.2171
+line0=1784,1824-2044,1900
+line1=1295,1678-2536,1776
+line2=1451,1534-2392,1632
