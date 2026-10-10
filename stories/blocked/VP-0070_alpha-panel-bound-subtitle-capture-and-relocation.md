@@ -36,8 +36,13 @@ inverse approximation of desktop video, not native capture or live qualification
 Additional helper cost in this RGB replay was about 0.34 ms (candidate median
 0.70 ms); this does not establish native P010/GPU or end-to-end playback cost.
 
-Candidate is built and verified locally, NOT deployed. Existing configuration
-and running VP are unchanged. Story remains blocked pending live qualification.
+Deployed the verified x64 Release host/renderer pair on user request at
+2026-10-09 21:45 local time; both installed SHA256 hashes match build artifacts.
+VP started and responds, with the deployed renderer loaded (PID 36948).
+Configuration edits: none. Protected configuration/state files were backed up
+and verified unchanged during replacement. Backup: `C:\Videoprocessor\vp\backups\starfield-20261009-214527`.
+Deployment receipt: `stories/assets/VP-0070/starfield-scope-20261009/deployment.json`.
+Story remains blocked pending the operator's live playback qualification.
 Source remains on codex/subtitle-held-authority-20261009, based on verified beta
 73953a364058b1cf6e5875dfc62e32df4e3bdcd5; prior local fixes are preserved.
 Evidence: `stories/assets/VP-0070/starfield-scope-20261009/verification.json`

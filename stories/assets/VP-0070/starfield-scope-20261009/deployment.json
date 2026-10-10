@@ -1,0 +1,16 @@
+{
+  "deployed": true,
+  "backup": "C:\\Videoprocessor\\vp\\backups\\starfield-20261009-214527",
+  "changed_files": 4,
+  "configuration_edits": [],
+  "protected_files_preserved": true,
+  "host_sha256": "67a6a391f3d65c66cd13c5bd5c34de8ae26c846b7768e38c9f349eb3eefb81a6",
+  "renderer_sha256": "04ed8459b67d2dbb7b214bb8f1ecffc461ae4bc60d24b1ff9da52e5c810a085f",
+  "startup": {
+    "responding": true,
+    "renderer": [
+      "C:\\Videoprocessor\\vp\\vprenderer\\VideoProcessorVPRenderer.dll"
+    ],
+    "pid": 36948
+  }
+}
