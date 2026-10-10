@@ -1,5 +1,32 @@
 # VP-0070: CIH bar/boundary subtitle capture and relocation
 
+## Near-bar bright-core bypass - 2026-10-09
+
+Investigated 2026-10-09 22-35-01.mp4 and native logs at 22:35:07-08.
+Sixteen cue acquisitions (25..40) flash over jacket scenery while the shared
+picture boundaries remain 276..1884. Found a concrete admission defect:
+near-bar nomination increments topBarInk/bottomBarInk, and those counters
+incorrectly exempted picture-only components from bright-core validation.
+The exemption now requires actualBarInk. Existing bounded native-neighborhood
+core recovery remains active for thin strokes and antialiasing. No timing,
+hold, aspect, or renderer-composition policy changed.
+
+Added NearBarNominationCannotBypassBrightGlyphCore: weak P010 fragments fail,
+real bright cores pass, mirrored at both bars. Before the fix the controlled
+weak fragment was detected; after it is rejected. Release x64 build passed;
+all 2370 native tests passed. All eight saved real dark-scene caption replays
+remain detected, including Beeping and autopilot.
+
+Limitation: the desktop recording is tone-mapped and already composed. Its
+41 inverse-resized SDR frames reject before and after, so this is NOT proof
+that every original native HDR flash is eliminated. Live playback still
+needs qualification. No additional user recording was requested.
+
+Source: E:\codex\videoprocessor\subtitle-false-flash-20261009, fresh current
+beta 73953a36 plus preserved deployed fixes. Not deployed. Evidence and source/
+binary/test hashes: stories/assets/VP-0070/false-flash-20261009.
+
+
 
 ## Optional moved subtitle text color - 2026-10-09
 

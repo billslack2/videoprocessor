@@ -1,0 +1,34 @@
+[
+  {
+    "case": "autopilot_53-phase0.bgra",
+    "result": "detected=1 lines=1 bounds=1018,1814-2818,1930 reason=detected components=38"
+  },
+  {
+    "case": "autopilot_53-phase1.bgra",
+    "result": "detected=1 lines=1 bounds=1018,1818-2818,1934 reason=detected components=38"
+  },
+  {
+    "case": "beeping_15-phase0.bgra",
+    "result": "detected=1 lines=1 bounds=1666,1814-2174,1930 reason=detected components=11"
+  },
+  {
+    "case": "beeping_15-phase1.bgra",
+    "result": "detected=1 lines=1 bounds=1666,1818-2174,1934 reason=detected components=11"
+  },
+  {
+    "case": "beeping_36-phase0.bgra",
+    "result": "detected=1 lines=1 bounds=1666,1814-2174,1930 reason=detected components=11"
+  },
+  {
+    "case": "beeping_36-phase1.bgra",
+    "result": "detected=1 lines=1 bounds=1666,1818-2174,1934 reason=detected components=11"
+  },
+  {
+    "case": "beeping_50-phase0.bgra",
+    "result": "detected=1 lines=1 bounds=1666,1814-2174,1930 reason=detected components=11"
+  },
+  {
+    "case": "beeping_50-phase1.bgra",
+    "result": "detected=1 lines=1 bounds=1666,1818-2174,1934 reason=detected components=10"
+  }
+]

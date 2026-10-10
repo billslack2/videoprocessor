@@ -1,0 +1,207 @@
+[
+  {
+    "frame": 45,
+    "before": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=9",
+    "after": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=9"
+  },
+  {
+    "frame": 46,
+    "before": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=8",
+    "after": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=8"
+  },
+  {
+    "frame": 47,
+    "before": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=9",
+    "after": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=9"
+  },
+  {
+    "frame": 48,
+    "before": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=11",
+    "after": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=11"
+  },
+  {
+    "frame": 49,
+    "before": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=16",
+    "after": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=16"
+  },
+  {
+    "frame": 50,
+    "before": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=10",
+    "after": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=10"
+  },
+  {
+    "frame": 51,
+    "before": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=8",
+    "after": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=8"
+  },
+  {
+    "frame": 52,
+    "before": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=12",
+    "after": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=12"
+  },
+  {
+    "frame": 53,
+    "before": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=14",
+    "after": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=14"
+  },
+  {
+    "frame": 54,
+    "before": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=8",
+    "after": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=8"
+  },
+  {
+    "frame": 55,
+    "before": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=12",
+    "after": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=12"
+  },
+  {
+    "frame": 56,
+    "before": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=14",
+    "after": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=14"
+  },
+  {
+    "frame": 57,
+    "before": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=9",
+    "after": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=9"
+  },
+  {
+    "frame": 58,
+    "before": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=10",
+    "after": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=10"
+  },
+  {
+    "frame": 59,
+    "before": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=11",
+    "after": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=11"
+  },
+  {
+    "frame": 60,
+    "before": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=14",
+    "after": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=14"
+  },
+  {
+    "frame": 61,
+    "before": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=18",
+    "after": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=18"
+  },
+  {
+    "frame": 62,
+    "before": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=8",
+    "after": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=8"
+  },
+  {
+    "frame": 63,
+    "before": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=6",
+    "after": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=6"
+  },
+  {
+    "frame": 64,
+    "before": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=20",
+    "after": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=20"
+  },
+  {
+    "frame": 65,
+    "before": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=7",
+    "after": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=7"
+  },
+  {
+    "frame": 66,
+    "before": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=3",
+    "after": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=3"
+  },
+  {
+    "frame": 67,
+    "before": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=2",
+    "after": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=2"
+  },
+  {
+    "frame": 68,
+    "before": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=4",
+    "after": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=4"
+  },
+  {
+    "frame": 69,
+    "before": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=7",
+    "after": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=7"
+  },
+  {
+    "frame": 70,
+    "before": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=5",
+    "after": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=5"
+  },
+  {
+    "frame": 71,
+    "before": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=14",
+    "after": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=14"
+  },
+  {
+    "frame": 72,
+    "before": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=7",
+    "after": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=7"
+  },
+  {
+    "frame": 73,
+    "before": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=5",
+    "after": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=5"
+  },
+  {
+    "frame": 74,
+    "before": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=5",
+    "after": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=5"
+  },
+  {
+    "frame": 75,
+    "before": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=5",
+    "after": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=5"
+  },
+  {
+    "frame": 76,
+    "before": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=8",
+    "after": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=8"
+  },
+  {
+    "frame": 77,
+    "before": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=9",
+    "after": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=9"
+  },
+  {
+    "frame": 78,
+    "before": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=5",
+    "after": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=5"
+  },
+  {
+    "frame": 79,
+    "before": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=12",
+    "after": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=12"
+  },
+  {
+    "frame": 80,
+    "before": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=14",
+    "after": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=14"
+  },
+  {
+    "frame": 81,
+    "before": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=5",
+    "after": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=5"
+  },
+  {
+    "frame": 82,
+    "before": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=13",
+    "after": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=13"
+  },
+  {
+    "frame": 83,
+    "before": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=4",
+    "after": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=4"
+  },
+  {
+    "frame": 84,
+    "before": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=10",
+    "after": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=10"
+  },
+  {
+    "frame": 85,
+    "before": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=12",
+    "after": "detected=0 lines=0 bounds=0,0-0,0 reason=no-backed-anchor components=12"
+  }
+]
