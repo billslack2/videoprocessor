@@ -7,6 +7,7 @@
  */
 
 #include <pch.h>
+#include <UpdateLauncher.h>
 #include <ApplicationShutdownPolicy.h>
 
 #include <winnt.h>
@@ -1319,6 +1320,11 @@ void PrintCommandLineHelp()
 
 BOOL CVideoProcessorApp::InitInstance()
 {
+    if (UpdateLauncher::InstallationPending())
+    {
+        MessageBoxW(nullptr, L"An update is being installed. Please wait for setup to finish.", L"VideoProcessor updates", MB_OK | MB_ICONINFORMATION);
+        return FALSE;
+    }
 	// Handle help before creating any UI, COM objects, or background workers.
 	int argumentCount = 0;
 	LPWSTR* arguments = CommandLineToArgvW(GetCommandLine(), &argumentCount);

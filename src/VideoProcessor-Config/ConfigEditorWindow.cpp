@@ -12,6 +12,8 @@
 #include <ConfigurationIdentity.h>
 #include <ConfigurationLiveApply.h>
 #include <ActiveProfileStatus.h>
+#include <UpdateLauncher.h>
+#include <QMenuBar>
 
 #include <ConfigEditorCore.h>
 #include <ConfigurationRpcClient.h>
@@ -1038,7 +1040,18 @@ ConfigEditorWindow::ConfigEditorWindow(QString configPath, quintptr ownerHandle,
             &ConfigEditorWindow::refreshShaderCacheStatus);
         shaderCacheStatusTimer_->start();
     }
-    if (!testMode_) setupTray();
+    if (!testMode_)
+    {
+        setupTray();
+        auto* help = menuBar()->addMenu(QStringLiteral("Help"));
+        connect(help->addAction(QStringLiteral("Check for updates on this computer…")),
+            &QAction::triggered, this, [this] { UpdateLauncher::Launch(false, reinterpret_cast<HWND>(winId())); });
+        auto* updateTimer = new QTimer(this);
+        updateTimer->setInterval(6 * 60 * 60 * 1000);
+        connect(updateTimer, &QTimer::timeout, this, [] { UpdateLauncher::Launch(true); });
+        updateTimer->start();
+        QTimer::singleShot(30000, this, [] { UpdateLauncher::Launch(true); });
+    }
 	const std::wstring revealEventName =
 		ConfigurationLiveApply::ConfigurationEditorRevealEventName(
 			GetCurrentProcessId());
@@ -8931,6 +8944,8 @@ void ConfigEditorWindow::setupTray()
 			[this] { populateTrayTargets(); });
 	}
     menu->addSeparator();
+    connect(menu->addAction(QStringLiteral("Check for updates on this computer…")),
+        &QAction::triggered, this, [this] { UpdateLauncher::Launch(false, reinterpret_cast<HWND>(winId())); });
     QAction* exit = menu->addAction(QStringLiteral("Exit"));
     tray_->setContextMenu(menu);
     connect(open, &QAction::triggered, this, [this] { reveal(); });
@@ -9104,6 +9119,19 @@ bool ConfigEditorWindow::nativeEvent(const QByteArray& eventType,
 {
     Q_UNUSED(eventType);
     MSG* message = static_cast<MSG*>(nativeMessage);
+    static const UINT updateExitMessage = RegisterWindowMessageW(L"VideoProcessor.UpdateExit.v1");
+    if (message && updateExitMessage && message->message == updateExitMessage)
+    {
+        // Updating exits Config, including its tray process, without saving edits.
+        *result = 1;
+        if (!updateExitPending_)
+        {
+            updateExitPending_ = true;
+            QTimer::singleShot(0, this, [this] { exitApplication(); });
+        }
+        return true;
+    }
+
     static const UINT activationMessage = RegisterWindowMessageW(
         L"VideoProcessor.ConfigEditor.Activate.v1");
     static const UINT presentationTargetMessage = RegisterWindowMessageW(

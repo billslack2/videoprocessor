@@ -3,6 +3,7 @@
 #include <windows.h>
 #include <objbase.h>
 #include <shellapi.h>
+#include <UpdateLauncher.h>
 
 #include "ConfigEditorWindow.h"
 #include "Resource.h"
@@ -309,6 +310,11 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int)
     const HRESULT comResult = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     int argc = __argc;
     QApplication app(argc, __argv);
+    if (UpdateLauncher::InstallationPending())
+    {
+        MessageBoxW(nullptr, L"An update is being installed. Please wait for setup to finish.", L"VideoProcessor updates", MB_OK | MB_ICONINFORMATION);
+        return 0;
+    }
     QApplication::setApplicationName(QStringLiteral("VideoProcessor Configuration"));
     QApplication::setOrganizationName(QStringLiteral("VideoProcessor"));
     QApplication::setQuitOnLastWindowClosed(false);

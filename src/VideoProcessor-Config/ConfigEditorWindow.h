@@ -264,6 +264,7 @@ private:
     bool popupActivationTransition_ = false;
     bool returnFocusAfterHide_ = false;
     bool exitRequested_ = false;
+    bool updateExitPending_ = false;
     bool configurationLoaded_ = false;
     bool dirty_ = false;
     bool validationValid_ = true;

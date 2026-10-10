@@ -1,5 +1,8 @@
 # VP-0192 Windows installer
 
+For signed GitHub update checks and the separate Config-only product, see
+[GitHub-hosted updates](VP_UPDATES.md).
+
 ## Install and update
 
 Download the selected x64 Setup executable from

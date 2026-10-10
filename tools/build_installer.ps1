@@ -3,7 +3,10 @@ param(
     [Parameter(Mandatory=$true)][ValidatePattern('^\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?$')][string]$CoreVersion,
     [Parameter(Mandatory=$true)][string]$VcRedistPath,
     [Parameter(Mandatory=$true)][string]$IsccPath,
-    [string]$MSBuildPath, [string[]]$RuntimeDirectories, [switch]$SkipBuild, [switch]$PortableZip
+    [string]$MSBuildPath, [string[]]$RuntimeDirectories, [switch]$SkipBuild, [switch]$PortableZip,
+    [ValidateSet('full','config')][string]$Flavor = 'full',
+    [ValidateSet('stable','beta')][string]$UpdateChannel = 'beta',
+    [ValidateRange(0,9007199254740991)][long]$ReleaseSequence = 0
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
@@ -15,6 +18,7 @@ try {
     $commit = $identity.commit
     $buildLabel = $identity.label
     $installerBaseName = Get-VpInstallerBaseName $CoreVersion $identity
+    if ($Flavor -eq 'config') { $installerBaseName = $installerBaseName.Replace('VideoProcessorSetup-', 'VideoProcessorConfigSetup-') }
     $numbers = ($CoreVersion -split '-', 2)[0].Split('.')
     if (@($numbers | Where-Object { [int]$_ -gt 65535 }).Count) { throw 'Version components must fit Windows version metadata (0-65535).' }
     $fileVersion = (($numbers | ForEach-Object { [int]$_ }) -join '.') + '.0'
@@ -54,6 +58,9 @@ try {
     & (Join-Path $PSScriptRoot 'package_release.ps1') -VcRedistPath $VcRedistPath
     $payload = Join-Path $artifactRoot 'release\VideoProcessor'
     $localRuntime = & (Join-Path $PSScriptRoot 'stage_app_local_runtime.ps1') -PayloadRoot $payload -RuntimeDirectories $RuntimeDirectories
+    # The updater is managed .NET Framework code using Windows' existing runtime.
+    # Stage it after native dependency closure, so it is not treated as a VC binary.
+    & (Join-Path $PSScriptRoot 'build_updater.ps1') -OutputPath (Join-Path $payload 'VideoProcessorUpdate.exe')
     $null = New-Item -ItemType Directory -Path (Join-Path $payload 'setup') -Force
     Copy-Item -LiteralPath (Join-Path $root 'packaging\installer\install-support.ps1') -Destination (Join-Path $payload 'setup')
     Copy-Item -LiteralPath (Join-Path $root 'docs\VP-0192_INSTALLER.md') -Destination (Join-Path $payload 'setup\RECOVERY.md')
@@ -74,14 +81,21 @@ try {
             $cleanupFiles += [ordered]@{ path=$portablePath; sha256=(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash }
             return
         }
+        if ($Flavor -eq 'config' -and $portablePath -notmatch '^(config/|licenses/|LICENSE\.txt$|CONFIGURATION\.html$|VideoProcessorUpdate\.exe$)') { return }
         $policy = if ($relative -match '^shaders\\|^VideoProcessor\.cfg$') { 'seed' } else { 'managed' }
         [ordered]@{ path=$relative.Replace('\','/'); policy=$policy; sha256=(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash }
     })
+    if ($Flavor -eq 'config') { $localRuntime.files = @($localRuntime.files | Where-Object { $_.path -like 'config/*' }) }
+    $protocol = Get-Content -LiteralPath (Join-Path $root 'src\VideoProcessor-ConfigCore\ConfigurationRpcProtocol.h') -Raw
+    if ($protocol -notmatch 'constexpr\s+\w+\s+Version\s*=\s*(\d+)') { throw 'RPC protocol version not found.' }
+    $rpcVersion = [int]$Matches[1]
+    if ($protocol -notmatch 'constexpr\s+\w+\s+ConfigurationCompatibilityVersion\s*=\s*(\d+)') { throw 'Configuration compatibility version not found.' }
+    $configurationVersion = [int]$Matches[1]
     [ordered]@{
-        schemaVersion=1; applicationId='VideoProcessor-42D852F1-70E9-43ED-8739-D61752106D59'
-        coreVersion=$CoreVersion; build=$identity.build; sourceCommit=$commit; sourceFingerprint=$identity.fingerprint; dirty=$identity.dirty; uninstallEntryPoint='Uninstall VideoProcessor.lnk'; runtimeMode='app-local'; appLocalRuntime=$localRuntime; compiler='Inno Setup 6.7.3'; files=$files; cleanupFiles=$cleanupFiles
+        schemaVersion=1; applicationId=$(if ($Flavor -eq 'full') { 'VideoProcessor-42D852F1-70E9-43ED-8739-D61752106D59' } else { 'VideoProcessorConfig-BA15DBE8-210F-42AA-AE86-B4628395E77F' }); flavor=$Flavor; updateSequence=$ReleaseSequence; updateChannel=$UpdateChannel; rpcVersion=$rpcVersion; configurationVersion=$configurationVersion
+        coreVersion=$CoreVersion; build=$identity.build; sourceCommit=$commit; sourceFingerprint=$identity.fingerprint; dirty=$identity.dirty; uninstallEntryPoint=$(if ($Flavor -eq 'full') { 'Uninstall VideoProcessor.lnk' } else { 'Uninstall VideoProcessor Config.lnk' }); runtimeMode='app-local'; appLocalRuntime=$localRuntime; compiler='Inno Setup 6.7.3'; files=$files; cleanupFiles=$cleanupFiles
     } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $payload 'INSTALL-MANIFEST.json') -Encoding UTF8
-    $include = Join-Path $artifactRoot 'installer-payload.iss'
+    $include = Join-Path $artifactRoot ('installer-payload-' + $Flavor + '.iss')
     $lines = @(foreach ($entry in $files) {
         $relative = $entry.path.Replace('/','\')
         $directory = Split-Path -Parent $relative
@@ -91,16 +105,19 @@ try {
     })
     $lines | Set-Content -LiteralPath $include -Encoding UTF8
     $output = Join-Path $artifactRoot 'installers'
-    & $IsccPath "/DPayloadRoot=$payload" "/DPayloadInclude=$include" "/DOutputRoot=$output" "/DCoreVersion=$CoreVersion" "/DBuildCommit=$buildLabel" "/DInstallerBaseName=$installerBaseName" "/DFileVersion=$fileVersion" "/DSetupIcon=$root\images\VideoProcessor.ico" (Join-Path $root 'packaging\installer\VideoProcessor.iss')
+    $flavorArguments = @(); if ($Flavor -eq 'config') { $flavorArguments += '/DConfigOnly' }
+    & $IsccPath @flavorArguments "/DPayloadRoot=$payload" "/DPayloadInclude=$include" "/DOutputRoot=$output" "/DCoreVersion=$CoreVersion" "/DBuildCommit=$buildLabel" "/DInstallerBaseName=$installerBaseName" "/DFileVersion=$fileVersion" "/DSetupIcon=$root\images\VideoProcessor.ico" (Join-Path $root 'packaging\installer\VideoProcessor.iss')
     if ($LASTEXITCODE -ne 0) { throw 'Inno Setup compilation failed.' }
     $installer = Join-Path $output "$installerBaseName.exe"
     "$((Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash)  $([IO.Path]::GetFileName($installer))" |
         Set-Content -LiteralPath ($installer + '.sha256') -Encoding ASCII
-    $distributionFiles = @($installer, ($installer + '.sha256'))
+    $manifestCopy = $installer + '.manifest.json'
+    Copy-Item -LiteralPath (Join-Path $payload 'INSTALL-MANIFEST.json') -Destination $manifestCopy
+    $distributionFiles = @($installer, ($installer + '.sha256'), $manifestCopy)
     if ($PortableZip) {
         & (Join-Path $PSScriptRoot 'test_portable_config_contract.ps1')
         # Export the same self-contained payload, without installing anything.
-        $portable = [IO.Path]::GetFullPath((Join-Path $artifactRoot 'portable\VideoProcessor'))
+        $portable = [IO.Path]::GetFullPath((Join-Path $artifactRoot ('portable\' + $(if ($Flavor -eq 'full') { 'VideoProcessor' } else { 'VideoProcessorConfig' }))))
         if (-not $portable.StartsWith($artifactRoot + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Unsafe portable stage.' }
         if (Test-Path -LiteralPath $portable) { Remove-Item -LiteralPath $portable -Recurse -Force }
         $portableManifest = Get-Content -LiteralPath (Join-Path $payload 'INSTALL-MANIFEST.json') -Raw | ConvertFrom-Json
@@ -111,9 +128,15 @@ try {
             $null = New-Item -ItemType Directory -Path (Split-Path -Parent $destination) -Force
             Copy-Item -LiteralPath $source -Destination $destination
         }
+        if ($Flavor -eq 'config') {
+            $sample = Join-Path $root 'VideoProcessor.cfg'
+            Copy-Item -LiteralPath $sample -Destination (Join-Path $portable 'VideoProcessor.cfg.example')
+            $portableManifest.files += [pscustomobject]@{path='VideoProcessor.cfg.example';policy='seed';sha256=(Get-FileHash -LiteralPath $sample -Algorithm SHA256).Hash}
+        }
         $portableManifest.cleanupFiles = @($portableManifest.cleanupFiles | Where-Object { $_.path -notin $portableManifest.files.path })
         $portableManifest | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $portable 'INSTALL-MANIFEST.json') -Encoding UTF8
-        $zip = Join-Path $output "VideoProcessor-$CoreVersion-$buildLabel-x64-Portable.zip"
+        $portableName = if ($Flavor -eq 'full') { 'VideoProcessor' } else { 'VideoProcessorConfig' }
+        $zip = Join-Path $output "$portableName-$CoreVersion-$buildLabel-x64-Portable.zip"
         Compress-Archive -Path (Join-Path $portable '*') -DestinationPath $zip -Force
         try {
             & (Join-Path $PSScriptRoot 'test_portable_config.ps1') -ZipPath $zip
@@ -135,5 +158,5 @@ try {
     }
     Write-Host "Installer: $installer"
     Write-Host "Source: $($identity.build)"
-    Write-Host 'Unsigned distribution: qualify and publisher-sign before public release. See docs/VP-0192_INSTALLER.md.'
+    Write-Host 'Publish only qualified builds with a signed vp-update.json descriptor. Windows publisher signing is separate. See docs/VP_UPDATES.md.'
 } finally { Pop-Location }

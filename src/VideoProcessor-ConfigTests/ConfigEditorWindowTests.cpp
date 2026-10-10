@@ -1,4 +1,4 @@
-﻿#define NOMINMAX
+#define NOMINMAX
 #define WIN32_LEAN_AND_MEAN
 #include <winsock2.h>
 #include <windows.h>
@@ -2150,6 +2150,45 @@ void answerMessageBox(int result)
             }
     });
     timer->start();
+}
+
+void testUpdateShutdownDiscardsEditsWithoutPrompt()
+{
+    QTemporaryDir directory;
+    const QString path = copyFixture(directory);
+    const QByteArray original = readBytes(path);
+    const UINT message = RegisterWindowMessageW(L"VideoProcessor.UpdateExit.v1");
+    require(message != 0, "Cannot register updater shutdown request");
+    for (bool dirty : { false, true })
+    {
+        ConfigEditorWindow window(path, 0, true);
+        if (dirty)
+        {
+            auto* field = requireControl<QCheckBox>(window, "config.general.fullscreen");
+            field->setChecked(!field->isChecked());
+        }
+        const HWND handle = reinterpret_cast<HWND>(window.winId());
+        window.hide();
+        bool prompted = false;
+        QTimer dismissUnexpectedPrompt;
+        QObject::connect(&dismissUnexpectedPrompt, &QTimer::timeout, [&prompted]
+        {
+            for (QWidget* widget : QApplication::topLevelWidgets())
+                if (auto* dialog = qobject_cast<QMessageBox*>(widget))
+                {
+                    prompted = true;
+                    dialog->done(QMessageBox::Cancel);
+                }
+        });
+        dismissUnexpectedPrompt.start(10);
+        for (int attempt = 0; attempt < 2; ++attempt)
+            require(SendMessageW(handle, message, 0, 0) == 1,
+                "Updater shutdown was not acknowledged");
+        require(!prompted, "Updater shutdown prompted about unsaved edits");
+        require(window.isHidden(), "Updater shutdown revealed hidden Config");
+        require(readBytes(path) == original, "Updater shutdown saved unsaved edits");
+        // Destroy the fixture before its queued application quit.
+    }
 }
 
 void testLldvStandardProfiles()
@@ -6700,6 +6739,7 @@ int main(int argc, char** argv)
     QApplication::setStyle(VpTheme::CreateStyle());
     application.setStyleSheet(VpTheme::StyleSheet());
     int failures = 0;
+    failures += run("update shutdown discards edits without prompt", testUpdateShutdownDiscardsEditsWithoutPrompt);
     failures += run("subtitle profile tab round trip", testSubtitleProfileTabRoundTrip);
     failures += run("subtitle background shape round trip and visibility", testSubtitleBackgroundShapeRoundTripAndVisibility);
     failures += run("subtitle text size reduction round trip and style visibility", testSubtitleTextSizeReductionRoundTripAndStyleVisibility);
