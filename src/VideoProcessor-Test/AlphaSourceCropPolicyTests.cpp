@@ -377,6 +377,426 @@ namespace Tests
 	TEST_CLASS(AlphaSourceCropPolicyTests)
 	{
 	public:
+        struct DarkSubtitleFixture
+        {
+            NearBlackPresentationEpisodeInput episode;
+            CropPresentationAdmissionState admission;
+            EstablishedSubtitleTranslationInput translation;
+            DarkSubtitleFixture()
+            {
+                episode = ReaffirmedRetainedScope();
+                episode.previous = {};
+                episode.trustedCrop = {0,276,3840,1884,3840,2160,2.388,
+                    ActivePictureBounds::BarAxes::TOP_BOTTOM};
+                episode.retentionBounds = episode.trustedCrop;
+                episode.retentionSourceSequence = episode.sourceSequence;
+                episode.currentObservation = episode.trustedCrop;
+                episode.currentObservation.right = 3818;
+                episode.currentObservation.bottom = 1902;
+                episode.currentObservationClassification = ActivePictureClassification::PROVISIONAL;
+                episode.retentionSafe = episode.retentionExcludedBandsPixelSafe = false;
+                episode.boundedVisibleContentOutsideCrop = true;
+                episode.globalNearBlack = true;
+                episode.sourceGeneration = episode.retentionSourceGeneration = 2;
+                episode.sourceSequence = episode.retentionSourceSequence = 913;
+                episode.currentTick = 1000;
+                admission.available = true;
+                admission.trustedCrop = episode.trustedCrop;
+                admission.sourceGeneration = episode.sourceGeneration;
+                admission.presentationEpoch = episode.presentationEpoch;
+                translation.base = episode.trustedCrop;
+                translation.visibleBounds = episode.trustedCrop;
+                translation.visibleBounds.bottom = 1937;
+                translation.sourceGeneration = episode.sourceGeneration;
+                translation.holdMs = 5000;
+                translation.resolvedTranslationPixels = 70;
+                translation.presentation.action = VerticalBarPresentationAction::TRANSLATE;
+                translation.presentation.translationPixels = 70;
+                translation.presentation.detectedBottom = 1930;
+                translation.presentation.sourceSequence = episode.sourceSequence - 1;
+                translation.presentation.lastDetectionTick = 1000;
+            }
+            bool Certificate() const
+            {
+                return CanRetainEstablishedScopeForSubtitle(episode, admission, translation);
+            }
+        };
+
+        TEST_METHOD(DarkStarfieldCannotPreemptEstablishedCaptionTranslation)
+        {
+            DarkSubtitleFixture f;
+            // Exact failure shape: confirmed scope and translation, caption-only
+            // bottom witness, a provisional darker right edge, then p90 crosses
+            // the global-near-black cutoff on a skipped dense-analysis frame.
+            auto crop = TrustedScopeCrop();
+            crop.geometry = crop.verticalTranslationBase = f.episode.trustedCrop;
+            crop.geometrySourceGeneration = crop.frameSourceGeneration = f.episode.sourceGeneration;
+            crop.verticalTranslationSourceGeneration = f.episode.sourceGeneration;
+            crop.latestObservationSupportsCrop = false;
+            crop.latestObservationIsProvisional = true;
+            crop.latestObservationClassification = ActivePictureClassification::PROVISIONAL;
+            crop.frameLocalPresentationRetentionEvaluated = true;
+            crop.frameLocalPresentationRetentionSafe = false;
+            crop.verticalTranslationActive = true;
+            crop.verticalTranslationPixels = 70;
+            for (int frame = 0; frame < 80; ++frame)
+            {
+                f.episode.globalNearBlack = frame % 3 == 0;
+                f.episode.retentionSourceSequence = f.episode.sourceSequence;
+                f.episode.establishedScopeSubtitleRetained = f.Certificate();
+                Assert::IsTrue(f.episode.establishedScopeSubtitleRetained);
+                const auto decision = EvaluateNearBlackPresentationEpisode(f.episode);
+                Assert::IsTrue(decision.state.mode == NearBlackPresentationMode::INACTIVE);
+                crop.frameSourceSequence = f.episode.sourceSequence;
+                crop.nearBlackEpisodeFullRaster = decision.state.mode == NearBlackPresentationMode::FULL_RASTER;
+                const auto presented = Evaluate(crop);
+                Assert::IsTrue(presented.applyCrop && presented.verticallyTranslated);
+                Assert::AreEqual(1608, presented.sourceBounds.bottom - presented.sourceBounds.top);
+                Assert::AreEqual(1954, presented.sourceBounds.bottom);
+                f.episode.previous = decision.state;
+                ++f.episode.sourceSequence;
+                f.episode.currentTick += 42;
+            }
+        }
+
+        TEST_METHOD(DarkCaptionRetentionRejectsStaleConflictingAndUncoveredEvidence)
+        {
+            for (int variant = 0; variant < 23; ++variant)
+            {
+                DarkSubtitleFixture f;
+                switch (variant)
+                {
+                case 0: f.episode.measurementCurrent = false; break;
+                case 1: f.episode.retentionSourceSequence--; break;
+                case 2: f.episode.retentionSourceGeneration++; break;
+                case 3: f.episode.sceneBoundary = true; break;
+                case 4: f.episode.fullRasterAuthorityAvailable = true; break;
+                case 5: f.admission.presentationEpoch++; break;
+                case 6: f.admission.sourceGeneration++; break;
+                case 7: f.admission.available = false; break;
+                case 8: f.translation.sourceGeneration++; break;
+                case 9: f.translation.base.top++; break;
+                case 10: f.translation.competingPresentation = true; break;
+                case 11: f.translation.presentation.action = VerticalBarPresentationAction::FIT; break;
+                case 12: f.translation.presentation.sourceSequence = f.episode.sourceSequence + 1; break;
+                case 13: f.episode.currentTick = 6001; break;
+                case 14: f.translation.visibleBounds.bottom = 1955; break; // deeper picture
+                case 15: f.translation.visibleBounds.top = 275; break; // opposite-edge intrusion
+                case 16: f.episode.currentObservation.top = 275; break;
+                case 17: f.episode.currentObservationClassification = ActivePictureClassification::FULL_RASTER_TRUSTED; break;
+                case 18: f.episode.previous.mode = NearBlackPresentationMode::FULL_RASTER; break;
+                case 19: f.translation.resolvedTranslationPixels = -70; break;
+                case 20: f.translation.resolvedTranslationPixels = 0; break;
+                case 21: f.translation.visibleBounds = {}; break;
+                case 22: f.episode.trustedCropOrigin = ActivePictureAuthorityOrigin::SPARSE_EXPERIMENT; break;
+                }
+                Assert::IsFalse(f.Certificate());
+            }
+            DarkSubtitleFixture f;
+            f.episode.establishedScopeSubtitleRetained = f.Certificate();
+            Assert::IsTrue(EvaluateNearBlackPresentationEpisode(f.episode).state.mode == NearBlackPresentationMode::INACTIVE);
+            // A new current intrusion must restore ordinary conservative policy
+            // immediately, even while the old subtitle action remains alive.
+            f.translation.visibleBounds.bottom = 1980;
+            f.episode.establishedScopeSubtitleRetained = f.Certificate();
+            Assert::IsFalse(f.episode.establishedScopeSubtitleRetained);
+            Assert::IsTrue(EvaluateNearBlackPresentationEpisode(f.episode).state.mode == NearBlackPresentationMode::FULL_RASTER);
+        }
+
+        TEST_METHOD(DarkCaptionOnsetUsesFreshPhysicalBarsThroughNormalConfirmation)
+        {
+            DarkSubtitleFixture f;
+            f.translation.presentation = {};
+            f.translation.resolvedTranslationPixels = 0;
+            f.episode.subtitleInspectionBars = f.episode.trustedCrop;
+            f.episode.subtitleInspectionGeneration = f.episode.sourceGeneration;
+            auto crop = TrustedScopeCrop();
+            crop.geometry = crop.verticalTranslationBase = f.episode.trustedCrop;
+            crop.geometrySourceGeneration = crop.frameSourceGeneration = f.episode.sourceGeneration;
+            crop.verticalTranslationSourceGeneration = f.episode.sourceGeneration;
+            crop.latestObservationSupportsCrop = false;
+            crop.latestObservationIsProvisional = true;
+            crop.latestObservationClassification = ActivePictureClassification::PROVISIONAL;
+            crop.frameLocalPresentationRetentionEvaluated = true;
+            crop.frameLocalPresentationRetentionSafe = false;
+            VerticalTranslationConfirmationState confirmation;
+            for (unsigned sample = 1; sample <= 3; ++sample)
+            {
+                VerticalTranslationConfirmationInput onset;
+                onset.previous = confirmation;
+                onset.sourceSequence = f.episode.sourceSequence;
+                onset.observed.action = VerticalBarPresentationAction::TRANSLATE;
+                onset.observed.translationPixels = 70;
+                onset.targetBufferPixels = 10;
+                const auto confirmed = ConfirmVerticalTranslation(onset);
+                confirmation = confirmed.state;
+                Assert::AreEqual(sample < 3, confirmed.pending);
+                f.episode.subtitleTranslationConfirmation = confirmation;
+                if (!confirmed.pending)
+                {
+                    f.translation.presentation.action = VerticalBarPresentationAction::TRANSLATE;
+                    f.translation.presentation.translationPixels = confirmed.effective.translationPixels;
+                    f.translation.presentation.sourceSequence = f.episode.sourceSequence;
+                    f.translation.resolvedTranslationPixels = static_cast<int>(confirmed.effective.translationPixels);
+                }
+                f.episode.retentionSourceSequence = f.episode.sourceSequence;
+                f.episode.establishedScopeSubtitleRetained = f.Certificate();
+                Assert::IsTrue(f.episode.establishedScopeSubtitleRetained);
+                const auto policy = EvaluateNearBlackPresentationEpisode(f.episode);
+                Assert::IsTrue(policy.state.mode == NearBlackPresentationMode::INACTIVE);
+                crop.frameSourceSequence = f.episode.sourceSequence;
+                crop.nearBlackEpisodeFullRaster = policy.state.mode == NearBlackPresentationMode::FULL_RASTER;
+                crop.verticalTranslationConfirmationPending = confirmed.pending;
+                crop.verticalTranslationActive = !confirmed.pending;
+                crop.verticalTranslationPixels = f.translation.resolvedTranslationPixels;
+                const auto presented = AdmitCropPresentation(f.admission, crop, Evaluate(crop), f.episode.presentationEpoch);
+                Assert::IsFalse(presented.blocked);
+                Assert::IsTrue(presented.presentation.applyCrop);
+                Assert::AreEqual(1608, presented.presentation.sourceBounds.bottom - presented.presentation.sourceBounds.top);
+                f.admission = presented.state;
+                f.episode.previous = policy.state;
+                ++f.episode.sourceSequence;
+                f.episode.currentTick += 42;
+            }
+        }
+
+        TEST_METHOD(DarkConfirmedCaptionKeepsScopeDuringZeroAndPartialEngage)
+        {
+            DarkSubtitleFixture f;
+            auto crop = TrustedScopeCrop();
+            crop.geometry = crop.verticalTranslationBase = f.episode.trustedCrop;
+            crop.geometrySourceGeneration = crop.frameSourceGeneration = f.episode.sourceGeneration;
+            crop.verticalTranslationSourceGeneration = f.episode.sourceGeneration;
+            crop.latestObservationSupportsCrop = false;
+            crop.latestObservationIsProvisional = true;
+            crop.latestObservationClassification = ActivePictureClassification::PROVISIONAL;
+            crop.frameLocalPresentationRetentionEvaluated = true;
+            crop.frameLocalPresentationRetentionSafe = false;
+            VerticalTranslationDrift drift;
+            for (int step = 0; step <= 5; ++step)
+            {
+                f.episode.currentTick = 1000 + step * 100;
+                f.episode.retentionSourceSequence = f.episode.sourceSequence;
+                const auto applied = drift.Resolve(70, f.episode.currentTick, 500);
+                f.translation.engagingTranslation = drift.IsActive();
+                VerticalBarPresentationResolutionInput resolution;
+                resolution.detailedAction = VerticalBarPresentationAction::TRANSLATE;
+                resolution.translationPixels = applied;
+                resolution.zeroTranslationRetainsTrustedBase = drift.IsActive();
+                resolution.authoritativeTop = f.episode.trustedCrop.top;
+                resolution.authoritativeBottom = f.episode.trustedCrop.bottom;
+                resolution.rasterHeight = 2160;
+                const auto routed = ResolveVerticalBarRendererRouting(ResolveVerticalBarPresentation(resolution));
+                f.translation.resolvedTranslationPixels = routed.translationPixels;
+                Assert::AreEqual(step == 0, !routed.translationActive);
+                f.episode.establishedScopeSubtitleRetained = f.Certificate();
+                Assert::IsTrue(f.episode.establishedScopeSubtitleRetained);
+                const auto policy = EvaluateNearBlackPresentationEpisode(f.episode);
+                Assert::IsTrue(policy.state.mode == NearBlackPresentationMode::INACTIVE);
+                crop.frameSourceSequence = f.episode.sourceSequence;
+                crop.nearBlackEpisodeFullRaster = policy.state.mode == NearBlackPresentationMode::FULL_RASTER;
+                crop.verticalTranslationEngageBaseRetentionActive = drift.IsActive() && !routed.translationActive;
+                crop.verticalTranslationActive = routed.translationActive;
+                crop.verticalTranslationPixels = routed.translationPixels;
+                const auto presented = AdmitCropPresentation(f.admission, crop, Evaluate(crop), f.episode.presentationEpoch);
+                Assert::IsFalse(presented.blocked);
+                Assert::IsTrue(presented.presentation.applyCrop);
+                Assert::AreEqual(1608, presented.presentation.sourceBounds.bottom - presented.presentation.sourceBounds.top);
+                Assert::AreEqual(1884 + routed.translationPixels, presented.presentation.sourceBounds.bottom);
+                f.admission = presented.state;
+                f.episode.previous = policy.state;
+                ++f.episode.sourceSequence;
+            }
+            Assert::IsFalse(drift.IsActive());
+            // The certificate never renews the owner's timestamp. A held target
+            // cannot turn expiration or a caption's disappearance into a lease.
+            f.episode.retentionSourceSequence = f.episode.sourceSequence;
+            f.translation.engagingTranslation = true;
+            f.translation.resolvedTranslationPixels = 14;
+            f.episode.currentTick = 6001;
+            Assert::IsFalse(f.Certificate());
+            f.episode.currentTick = 1100;
+            f.episode.boundedVisibleContentOutsideCrop = false;
+            Assert::IsFalse(f.Certificate());
+            f.episode.boundedVisibleContentOutsideCrop = true;
+            f.translation.presentation = {}; // Release drift has no requested owner.
+            Assert::IsFalse(f.Certificate());
+            f.translation.presentation.action = VerticalBarPresentationAction::TRANSLATE;
+            f.translation.presentation.translationPixels = 70;
+            f.translation.presentation.sourceSequence = f.episode.sourceSequence;
+            f.translation.engagingTranslation = false;
+            Assert::IsFalse(f.Certificate()); // Partial reach alone cannot cover this witness.
+        }
+        TEST_METHOD(DarkPendingCaptionCannotUseHeldOrConflictingPhysicalBars)
+        {
+            for (int variant = 0; variant < 8; ++variant)
+            {
+                DarkSubtitleFixture f;
+                f.translation.presentation = {};
+                f.translation.resolvedTranslationPixels = 0;
+                f.episode.subtitleInspectionBars = f.episode.trustedCrop;
+                f.episode.subtitleInspectionGeneration = f.episode.sourceGeneration;
+                f.episode.subtitleTranslationConfirmation = {70, 1, f.episode.sourceSequence};
+                Assert::IsTrue(f.Certificate());
+                switch (variant)
+                {
+                case 0: f.episode.subtitleInspectionBars = {}; break;
+                case 1: f.episode.subtitleInspectionBars.top++; break;
+                case 2: f.episode.subtitleInspectionGeneration++; break;
+                case 3: f.episode.subtitleTranslationConfirmation.lastObservedSourceSequence--; break;
+                case 4: f.episode.subtitleTranslationConfirmation.confirmations = 0; break;
+                case 5: f.episode.subtitleTranslationConfirmation.confirmations = 3; break;
+                case 6: f.episode.subtitleTranslationConfirmation.candidateTranslationPixels = 40; break;
+                case 7: f.translation.presentation.action = VerticalBarPresentationAction::FIT; break;
+                }
+                f.episode.establishedScopeSubtitleRetained = f.Certificate();
+                Assert::IsFalse(f.episode.establishedScopeSubtitleRetained);
+                Assert::IsTrue(EvaluateNearBlackPresentationEpisode(f.episode).state.mode == NearBlackPresentationMode::FULL_RASTER);
+            }
+        }
+        TEST_METHOD(DarkCaptionRetentionHandlesUpperBarWithoutExtendingItsLease)
+        {
+            DarkSubtitleFixture f;
+            f.translation.presentation.translationPixels = -70;
+            f.translation.resolvedTranslationPixels = -70;
+            f.translation.visibleBounds = f.episode.trustedCrop;
+            f.translation.visibleBounds.top = 223;
+            f.episode.currentObservation = f.translation.visibleBounds;
+            Assert::IsTrue(f.Certificate());
+            f.translation.visibleBounds.bottom++;
+            Assert::IsFalse(f.Certificate());
+            f.translation.visibleBounds.bottom--;
+            f.episode.currentTick = 6001;
+            Assert::IsFalse(f.Certificate());
+        }
+        TEST_METHOD(ScopeOnsetRetainsPresentationThroughConfirmationAndEngage)
+        {
+            auto episode = ReaffirmedRetainedScope();
+            episode.retentionSafe = episode.retentionExcludedBandsPixelSafe = false;
+            episode.boundedVisibleContentOutsideCrop = true;
+            episode.currentObservationClassification = ActivePictureClassification::PROVISIONAL;
+            episode.subtitleInspectionBars = episode.trustedCrop;
+            episode.subtitleInspectionGeneration = episode.sourceGeneration;
+            auto crop = TrustedScopeCrop();
+            crop.geometry = episode.trustedCrop;
+            crop.geometrySourceGeneration = crop.frameSourceGeneration = episode.sourceGeneration;
+            auto admission = AdmitCropPresentation({}, crop, Evaluate(crop), episode.presentationEpoch).state;
+            Assert::IsTrue(admission.available);
+            crop.latestObservationSupportsCrop = false;
+            crop.latestObservationIsProvisional = true;
+            crop.latestObservationClassification = ActivePictureClassification::PROVISIONAL;
+            crop.frameLocalPresentationRetentionEvaluated = true;
+            crop.frameLocalPresentationRetentionSafe = false;
+            crop.verticalTranslationBase = crop.geometry;
+            crop.verticalTranslationSourceGeneration = episode.sourceGeneration;
+            VerticalTranslationConfirmationState confirmation;
+            for (unsigned sample = 1; sample <= 3; ++sample)
+            {
+                ++episode.sourceSequence;
+                VerticalTranslationConfirmationInput onset;
+                onset.previous = confirmation;
+                onset.sourceSequence = episode.sourceSequence;
+                onset.observed.action = VerticalBarPresentationAction::TRANSLATE;
+                onset.observed.translationPixels = 62;
+                onset.targetBufferPixels = 10;
+                const auto confirmed = ConfirmVerticalTranslation(onset);
+                confirmation = confirmed.state;
+                Assert::AreEqual(sample < 3, confirmed.pending);
+                episode.subtitleTranslationConfirmation = confirmation;
+                if (!confirmed.pending)
+                {
+                    episode.subtitlePresentation.action = VerticalBarPresentationAction::TRANSLATE;
+                    episode.subtitlePresentation.translationPixels = confirmed.effective.translationPixels;
+                    episode.subtitlePresentation.sourceSequence = episode.sourceSequence;
+                }
+                const auto policy = EvaluateNearBlackPresentationEpisode(episode);
+                Assert::IsFalse(policy.changedToFullRaster);
+                Assert::IsTrue(policy.state.mode == NearBlackPresentationMode::INACTIVE);
+                episode.previous = policy.state;
+                crop.frameSourceSequence = episode.sourceSequence;
+                crop.nearBlackEpisodeFullRaster = policy.state.mode == NearBlackPresentationMode::FULL_RASTER;
+                crop.verticalTranslationConfirmationPending = confirmed.pending;
+                crop.verticalTranslationEngageBaseRetentionActive = !confirmed.pending;
+                const auto presented = AdmitCropPresentation(admission, crop, Evaluate(crop), episode.presentationEpoch);
+                Assert::IsFalse(presented.blocked);
+                Assert::IsTrue(presented.presentation.applyCrop);
+                Assert::AreEqual(episode.trustedCrop.top, presented.presentation.sourceBounds.top);
+                Assert::AreEqual(episode.trustedCrop.bottom, presented.presentation.sourceBounds.bottom);
+                admission = presented.state;
+            }
+            // If evidence disappears rather than confirming, the ordinary crop
+            // policy must stop retaining unsafe pixels; this is not a new lease.
+            crop.verticalTranslationEngageBaseRetentionActive = false;
+            Assert::IsFalse(Evaluate(crop).applyCrop);
+        }
+
+        TEST_METHOD(ScopeOnsetCannotBypassFullRasterOrStaleConflictingEvidence)
+        {
+            auto input = ReaffirmedRetainedScope();
+            ++input.sourceSequence;
+            input.retentionSafe = input.retentionExcludedBandsPixelSafe = false;
+            input.boundedVisibleContentOutsideCrop = true;
+            input.currentObservationClassification = ActivePictureClassification::PROVISIONAL;
+            input.subtitleInspectionBars = input.trustedCrop;
+            input.subtitleInspectionGeneration = input.sourceGeneration;
+            input.subtitleTranslationConfirmation = {62, 1, input.sourceSequence};
+            Assert::IsTrue(EvaluateNearBlackPresentationEpisode(input).ended);
+            auto reject = [&](NearBlackPresentationEpisodeInput bad) {
+                const auto decision = EvaluateNearBlackPresentationEpisode(bad);
+                Assert::IsTrue(decision.state.mode == NearBlackPresentationMode::FULL_RASTER);
+            };
+            auto bad = input; bad.subtitleInspectionGeneration++; reject(bad);
+            bad = input; bad.subtitleInspectionBars = {}; reject(bad);
+            bad = input; bad.subtitleInspectionBars.top++; reject(bad);
+            bad = input; bad.subtitleTranslationConfirmation.lastObservedSourceSequence--; reject(bad);
+            bad = input; bad.subtitleTranslationConfirmation.confirmations = 0; reject(bad);
+            bad = input; bad.subtitleTranslationConfirmation.confirmations = 3; reject(bad);
+            bad = input; bad.subtitleTranslationConfirmation.candidateTranslationPixels = 0; reject(bad);
+            bad = input; bad.subtitlePresentation.action = VerticalBarPresentationAction::FIT; reject(bad);
+            bad = input; bad.currentObservationClassification = ActivePictureClassification::FULL_RASTER_TRUSTED; reject(bad);
+            bad = input; bad.currentObservationClassification = ActivePictureClassification::UNAVAILABLE; reject(bad);
+            bad = input; bad.previous.entryTrustedCrop.top++; reject(bad);
+            bad = input; bad.previous.mode = NearBlackPresentationMode::FULL_RASTER; reject(bad);
+            bad = input; bad.globalNearBlack = true; reject(bad);
+            // A full-raster authority or epoch/scene reset must never be
+            // overridden by an old pending translation (normal policy owns it).
+            bad = input; bad.fullRasterAuthorityAvailable = true;
+            Assert::IsFalse(EvaluateNearBlackPresentationEpisode(bad).reason ==
+                std::string("fresh physical bars preserved established scope during bounded confirmation"));
+            bad = input; bad.presentationEpoch++;
+            Assert::IsFalse(EvaluateNearBlackPresentationEpisode(bad).reason ==
+                std::string("fresh physical bars preserved established scope during bounded confirmation"));
+            bad = input; bad.sceneBoundary = true;
+            Assert::IsFalse(EvaluateNearBlackPresentationEpisode(bad).reason ==
+                std::string("fresh physical bars preserved established scope during bounded confirmation"));
+        }
+
+        TEST_METHOD(SharedCaptionReproofReleasesEpisodeOnlyWithFreshConfirmedTranslation)
+        {
+            auto input=ReaffirmedRetainedScope(true);
+            ++input.sourceSequence;
+            input.retentionSafe=input.retentionExcludedBandsPixelSafe=false;
+            input.boundedVisibleContentOutsideCrop=true;
+            input.currentObservationClassification=ActivePictureClassification::PROVISIONAL;
+            input.subtitleInspectionBars=input.trustedCrop;
+            input.subtitleInspectionGeneration=input.sourceGeneration;
+            input.subtitlePresentation.action=VerticalBarPresentationAction::TRANSLATE;
+            input.subtitlePresentation.translationPixels=32;
+            input.subtitlePresentation.sourceSequence=input.sourceSequence;
+            Assert::IsTrue(EvaluateNearBlackPresentationEpisode(input).ended);
+            auto reject=[&](NearBlackPresentationEpisodeInput bad) {
+                Assert::IsFalse(EvaluateNearBlackPresentationEpisode(bad).state.mode==NearBlackPresentationMode::INACTIVE);
+            };
+            auto bad=input;bad.subtitleInspectionGeneration++;reject(bad);
+            bad=input;bad.subtitlePresentation.sourceSequence--;reject(bad);
+            bad=input;bad.subtitlePresentation.action=VerticalBarPresentationAction::FIT;reject(bad);
+            bad=input;bad.subtitleInspectionBars.bottom+=30;reject(bad);
+            bad=input;bad.subtitleInspectionBars={};reject(bad);
+            bad=input;bad.globalNearBlack=true;reject(bad);
+            bad=input;bad.measurementCurrent=false;reject(bad);
+            bad=input;bad.currentObservationClassification=ActivePictureClassification::UNAVAILABLE;reject(bad);
+        }
+
 
 
 

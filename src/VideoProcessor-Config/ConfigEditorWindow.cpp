@@ -6023,13 +6023,14 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
         number(QStringLiteral("Engage drift duration"),QStringLiteral("subtitle_engage_drift_ms"),0,30000,QStringLiteral("ms"));
         number(QStringLiteral("Release drift duration"),QStringLiteral("subtitle_release_drift_ms"),0,30000,QStringLiteral("ms"));
         number(QStringLiteral("Target buffer"),QStringLiteral("subtitle_target_buffer_pixels"),0,50,QStringLiteral("source pixels"));
-        form = addCollapsibleSection(QStringLiteral("appearance"), QStringLiteral("Background appearance"), QString(), true);
+        form = addCollapsibleSection(QStringLiteral("appearance"), QStringLiteral("Subtitle appearance"), QString(), true);
         auto* appearanceSection=profileFieldsLayout->itemAt(profileFieldsLayout->count()-1)->widget();
         auto color=[&](const QString& label,const QString& key) {
             auto* field=addText(label,key,QStringLiteral("RRGGBB"));
             field->setMaxLength(6);
             field->setValidator(new QRegularExpressionValidator(QRegularExpression(QStringLiteral("[0-9A-Fa-f]{6}")),field));
             form->addRow(new InlineColorPicker(field,label));
+            return field;
         };
         auto* rounded = addBoolean(QStringLiteral("Rounded corners"), QStringLiteral("rounded_corners"));
         rounded->setToolTip(QStringLiteral("Round the subtitle box corners. Floating boxes round all four corners."));
@@ -6045,6 +6046,8 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
             "Reduces moved subtitle text size. 0% keeps the current size; "
             "75% reduces it to 25% of its original size. Applies to both moved styles."));
         number(QStringLiteral("Minimum headroom above text"),QStringLiteral("minimum_headroom_pixels"),0,200,QStringLiteral("source pixels"));
+        color(QStringLiteral("Text color"),QStringLiteral("subtitle_text_color"))->setToolTip(
+            QStringLiteral("White (FFFFFF) preserves the original text. Choose a darker gray to dim it, or a color to tint it. Applies to both Move styles; detection and background are unchanged."));
         color(QStringLiteral("Background color"),QStringLiteral("subtitle_generated_gray_color"));
         color(QStringLiteral("Border color"),QStringLiteral("subtitle_generated_gray_border_color"));
         number(QStringLiteral("Border opacity"),QStringLiteral("subtitle_generated_gray_border_opacity"),0,1,QStringLiteral("0–1"));
@@ -6432,6 +6435,7 @@ QWidget* ConfigEditorWindow::createProfilePage(const QString& title, const QStri
                 if(key == QStringLiteral("subtitle_engage_drift_ms")) return QString::number(RendererProfileConfig::DEFAULT_CLASSIC_SUBTITLE_ENGAGE_DRIFT_MS);
                 if(key == QStringLiteral("subtitle_release_drift_ms")) return QString::number(RendererProfileConfig::DEFAULT_CLASSIC_SUBTITLE_RELEASE_DRIFT_MS);
                 if(key == QStringLiteral("subtitle_target_buffer_pixels")) return QStringLiteral("10");
+                if(key == QStringLiteral("subtitle_text_color")) return QStringLiteral("FFFFFF");
                 if(key == QStringLiteral("subtitle_generated_gray_color")) return value(section,QStringLiteral("type"))==QStringLiteral("black") ? QStringLiteral("000000") : QStringLiteral("040404");
                 if(key == QStringLiteral("minimum_headroom_pixels")) return QStringLiteral("12");
                 if(key == QStringLiteral("text_reduction_percent")) return QStringLiteral("0");

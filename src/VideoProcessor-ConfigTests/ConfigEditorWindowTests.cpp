@@ -1,4 +1,4 @@
-#define NOMINMAX
+﻿#define NOMINMAX
 #define WIN32_LEAN_AND_MEAN
 #include <winsock2.h>
 #include <windows.h>
@@ -6430,6 +6430,10 @@ void testSubtitleProfileTabRoundTrip()
     require(type->count()==4 && type->currentData().toString()=="generated_gray","Four subtitle styles not resolved");
     require(offset->text()=="15","Profile offset missing");
     require(type->itemText(1)=="Classic" && type->itemText(2)=="Move / Reconstruction (Beta)" && type->itemText(3)=="Move / Solid Background (Beta)","Subtitle labels do not match their stored types");
+    auto* textColor=requireControl<QLineEdit>(window,"config.vprenderer.subtitles.subtitle_text_color");
+    require(textColor->text()=="FFFFFF","Text color must default to original white");
+    textColor->setText("B0B0B0");
+    requireControl<QPushButton>(window,"config.vprenderer.subtitles.subtitle_text_color.picker.toggle");
     auto* color=requireControl<QLineEdit>(window,"config.vprenderer.subtitles.subtitle_generated_gray_color");
     auto* blur=requireControl<QLineEdit>(window,"config.vprenderer.subtitles.subtitle_generated_gray_blur_px");
     require(blur->isVisible(),"Reconstruction controls hidden");
@@ -6530,6 +6534,7 @@ void testSubtitleProfileTabRoundTrip()
     requireControl<QListWidget>(reopened,"config.vprenderer.subtitles.profiles")->setCurrentRow(1);
     require(requireControl<QComboBox>(reopened,"config.vprenderer.subtitles.type")->currentData().toString()=="black","Subtitle style not saved");
     require(requireControl<QLineEdit>(reopened,"config.vprenderer.subtitles.offset_pixels")->text()=="22","Subtitle offset not saved");
+    require(requireControl<QLineEdit>(reopened,"config.vprenderer.subtitles.subtitle_text_color")->text()=="B0B0B0","Text color not saved");
     require(requireControl<QLineEdit>(reopened,"config.vprenderer.subtitles.subtitle_generated_gray_color")->text()=="203040","Solid color not saved");
     require(requireControl<QLineEdit>(reopened,"config.vprenderer.subtitles.subtitle_generated_gray_border_color")->text()=="6C2E91","Arbitrary border color not saved");
     require(requireControl<QLineEdit>(reopened,"config.vprenderer.subtitles.minimum_headroom_pixels")->text()=="24","Headroom not saved");

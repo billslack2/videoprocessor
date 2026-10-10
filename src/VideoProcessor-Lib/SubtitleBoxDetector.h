@@ -26,6 +26,10 @@ using SubtitleLineSignature = std::array<uint8_t, 64 * 16>;
 // boundary rows. Raw ink is captured before component grouping can fail.
 struct SubtitleInkSnapshot {
     bool rawEvidenceComplete=false;
+    // Detector palette for independent current-frame continuity sampling.
+    // Raw evidence covers sampled search regions, not the entire raster.
+    bool paletteValid=false;
+    int inkFloor=0, inkU=512, inkV=512, blackLimit=0;
     int width=0,height=0,step=0;
     std::vector<int> sourceRows;
     std::vector<uint64_t> rawInk,ownedInk;

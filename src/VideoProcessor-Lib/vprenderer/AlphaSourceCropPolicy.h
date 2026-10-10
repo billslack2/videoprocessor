@@ -1033,6 +1033,15 @@ namespace AlphaSourceCrop
 
 	struct NearBlackPresentationEpisodeInput
 	{
+        // Freshly re-proved physical bars plus Classic's CURRENT confirmed
+        // translation can explain excluded caption pixels without discarding them.
+        ActivePictureBounds subtitleInspectionBars;
+        VerticalBarPresentationState subtitlePresentation;
+        // Current bounded confirmation may retain an already displayed scope
+        // contract; it cannot recover an episode that is already full raster.
+        VerticalTranslationConfirmationState subtitleTranslationConfirmation;
+        uint64_t subtitleInspectionGeneration = 0;
+
 		NearBlackPresentationEpisodeState previous;
 		bool measurementCurrent = false;
 		bool nearBlackEvaluated = false;
@@ -1046,6 +1055,8 @@ namespace AlphaSourceCrop
 		bool currentNativeObservationReaffirmsSparseEntry = false;
 		bool boundedVisibleContentOutsideCrop = false;
         bool weakFringeFillRetained = false;
+        // Set only by CanRetainEstablishedScopeForSubtitle, using current pixels.
+        bool establishedScopeSubtitleRetained = false;
 		bool fullRasterAuthorityAvailable = false;
 		// Current context checked by UpdateKnownFullRasterRetention; never inferred
 		// from the raw full-raster presentation flag alone.
@@ -1295,6 +1306,24 @@ namespace AlphaSourceCrop
 		uint64_t presentationEpoch = 0;
 	};
 
+    struct EstablishedSubtitleTranslationInput
+    {
+        ActivePictureBounds base;
+        ActivePictureBounds visibleBounds;
+        VerticalBarPresentationState presentation;
+        uint64_t sourceGeneration = 0;
+        uint64_t holdMs = 0;
+        int resolvedTranslationPixels = 0;
+        // A configured engage may not have reached its confirmed target yet.
+        bool engagingTranslation = false;
+        bool competingPresentation = false;
+    };
+
+    // Retains an already admitted scope presentation through darkness only when
+    // its live shared translation covers all current outward evidence.
+    bool CanRetainEstablishedScopeForSubtitle(const NearBlackPresentationEpisodeInput& episode,
+        const CropPresentationAdmissionState& previous,
+        const EstablishedSubtitleTranslationInput& translation);
     // Presentation-only tolerance: at most two weak source rows, never new authority.
     bool CanRetainWeakFringeWithFill(const NearBlackPresentationEpisodeInput& episode,
         const CropPresentationAdmissionState& previous, const AspectLimitFillInput& currentFill,

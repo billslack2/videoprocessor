@@ -656,12 +656,14 @@ namespace SubtitleBoxLookahead
     inline bool StableBlackBacking(const SubtitleBoxObservation&,const SubtitleBoxObservation&);
     struct InkMatchDiagnostics {
         unsigned minimumCoverage=100, maximumDifference=0;
+        unsigned componentOwned=0,componentCovered=0,tinyFringeAllowances=0;
+        int line=-1;
         const char* reason="not-compared";
         bool backingConfirmed=false;
     };
     inline bool SameInkAtReference(const SubtitleBoxObservation& reference,
         const SubtitleBoxObservation& current,unsigned minimumLineCoveragePercent=95, bool backedTracking=false,
-        InkMatchDiagnostics* diagnostic=nullptr)
+        InkMatchDiagnostics* diagnostic=nullptr, bool allowTinyFringeLoss=false)
     {
         if(diagnostic)*diagnostic={};
         auto reject=[&](const char* reason){if(diagnostic)diagnostic->reason=reason;return false;};
@@ -678,8 +680,11 @@ namespace SubtitleBoxLookahead
             old.rawInk.size()!=words || old.ownedInk.size()!=words || now.rawInk.size()!=words) return reject("context-or-pixel-proof");
         struct Counts { unsigned owned=0,covered=0,different=0,total=0,added=0; };
         unsigned currentBarInk=0;
+        bool tinyFringeUsed=false;
         for (int line=0;line<reference.text.lineCount;++line)
         {
+            if(diagnostic)diagnostic->line=line;
+            bool tinyFringeOnLine=false;
             const auto& bounds=reference.text.lineBounds[line];
             if (!bounds.Valid()) return reject("context-or-pixel-proof");
             const int left=(std::max)(0,bounds.left/old.step);
@@ -699,13 +704,21 @@ namespace SubtitleBoxLookahead
                 visited[start]=1;pending.clear();pending.push_back(int(start));
                 int minX=x,maxX=x,minY=y,maxY=y;
                 unsigned owned=0,covered=0;
+                bool missingInterior=false;
                 for(size_t at=0;at<pending.size();++at) {
                     const int index=pending[at],cx=left+index%roiWidth,cy=top+index/roiWidth;
                     minX=(std::min)(minX,cx);maxX=(std::max)(maxX,cx);
                     minY=(std::min)(minY,cy);maxY=(std::max)(maxY,cy);++owned;
                     const auto row=std::lower_bound(now.sourceRows.begin(),now.sourceRows.end(),old.sourceRows[cy]);
-                    covered+=row!=now.sourceRows.end() && *row==old.sourceRows[cy] &&
+                    const bool present=row!=now.sourceRows.end() && *row==old.sourceRows[cy] &&
                         now.Get(cx,int(row-now.sourceRows.begin()));
+                    covered+=present;
+                    if(!present) {
+                        bool fringe=false;
+                        for(int dy=-1;dy<=1;++dy)for(int dx=-1;dx<=1;++dx)
+                            fringe |= !old.Get(cx+dx,cy+dy,true);
+                        missingInterior |= !fringe;
+                    }
                     for(int dy=-1;dy<=1;++dy)for(int dx=-1;dx<=1;++dx) {
                         const int nx=cx+dx,ny=cy+dy;
                         if(nx<left || nx>=right || ny<top || ny>=bottom || !old.Get(nx,ny,true))continue;
@@ -714,7 +727,16 @@ namespace SubtitleBoxLookahead
                     }
                 }
                 if(!backedTracking && owned>=4 && covered*100<owned*85) {
-                    return reject("context-or-pixel-proof");
+                    // At this sampling scale one fringe pixel is 17--20% of a
+                    // tiny dot. Retention may tolerate that quantization only
+                    // once per cue, with fresh backing and near-exact line proof.
+                    if(!allowTinyFringeLoss || tinyFringeUsed || missingInterior ||
+                        owned<5 || owned>6 || covered+1!=owned) {
+                        if(diagnostic) {diagnostic->componentOwned=owned;diagnostic->componentCovered=covered;}
+                        return reject("component-coverage");
+                    }
+                    if(diagnostic)++diagnostic->tinyFringeAllowances;
+                    tinyFringeUsed=tinyFringeOnLine=true;
                 }
                 for(int yy=minY;yy<=maxY;++yy)for(int xx=minX;xx<=maxX;++xx)
                     glyphEnvelope[size_t(yy-top)*roiWidth+xx-left]=1;
@@ -758,7 +780,7 @@ namespace SubtitleBoxLookahead
                 // strokes. A tall newly filled interior remains contradictory
                 // even when its attached fringe outnumbers detached pixels.
                 if(detachedPixels>=4 &&
-                    detachedBottom-detachedTop>=(std::max)(3,roiHeight/2))return reject("context-or-pixel-proof");
+                    detachedBottom-detachedTop>=(std::max)(3,roiHeight/2))return reject("new-detached-component");
             }
             std::vector<Counts> columns(size_t(right-left));
             Counts all;
@@ -773,7 +795,7 @@ namespace SubtitleBoxLookahead
                     const bool owned=old.Get(x,y,true), before=old.Get(x,y);
                     // A shifted explicitly sampled boundary row is not evidence
                     // for the same source pixels. Do not interpolate a glyph.
-                    if (row<0) { if (owned || before) return reject("context-or-pixel-proof"); continue; }
+                    if (row<0) { if (owned || before) return reject("source-row-unavailable"); continue; }
                     const bool after=now.Get(x,row);
                     auto& c=columns[size_t(x-left)];
                     c.owned+=owned; c.covered+=owned&&after;
@@ -807,6 +829,8 @@ namespace SubtitleBoxLookahead
                 diagnostic->maximumDifference=(std::max)(diagnostic->maximumDifference,
                     all.total?all.different*100/all.total:0u);
             }
+            if(tinyFringeOnLine && (all.covered*100<all.owned*98 ||
+                all.different*100>all.total*2))return reject("tiny-component-line-change");
             if (all.owned<6 || all.covered*100<all.owned*minimumLineCoveragePercent ||
                 all.different*100>all.total*(backedTracking ? 45u : 8u) ||
                 (backedTracking && all.added*100>all.total*3)) {
@@ -876,12 +900,13 @@ namespace SubtitleBoxLookahead
 
     // Retention can tolerate a small whole-line coverage fluctuation once
     // black backing is freshly proved. Component, local-window and added-ink
-    // vetoes are unchanged; this does not authorize new glyph ownership.
+    // vetoes remain, with one tightly bounded tiny-fringe quantization allowance;
+    // this does not authorize new glyph ownership.
     inline bool ConfidentSameInk(const SubtitleBoxObservation& reference,
         const SubtitleBoxObservation& current, InkMatchDiagnostics* diagnostic=nullptr)
     {
         const bool backed=StableBlackBacking(reference,current);
-        const bool match=SameInkAtReference(reference,current,backed?90:95,false,diagnostic);
+        const bool match=SameInkAtReference(reference,current,backed?90:95,false,diagnostic,backed);
         if(diagnostic)diagnostic->backingConfirmed=backed;
         return match;
     }
@@ -1218,7 +1243,7 @@ public:
         m_barTrackingReference = {};
         m_expansionEvidence.clear();
         m_hasPrevious = false; m_bridgedFrames = 0;
-        m_diagnosticWeakMs=0;m_decisionReason="reset";
+        m_diagnosticWeakMs=0;m_decisionReason="reset";m_referenceSamples=0;m_referenceRefresh="reset";m_refreshedReference={};
         m_weakTemplateMilliseconds = 0; m_weakTemplateExhausted = false;
     }
     const char* DecisionReason() const { return m_decisionReason; }
@@ -1232,6 +1257,59 @@ public:
             policyGeneration,continuityGeneration)
             ? m_barTrackingReference : SubtitleBarTrackingReference{};
     }
+    // Detection regions are proposals, not negative evidence outside them.
+    // Re-read established glyphs and their immediate backing from this frame
+    // before continuity decides whether a partial grouping is a new caption.
+    // No remembered image pixels or ownership bits are copied into the result.
+    bool RefreshReferencePixels(const SubtitleBoxPreview& preview,const AnalysisLumaSource& source) {
+        m_referenceSamples=0; m_referenceRefresh="not-eligible"; m_refreshedReference={};
+        if(!preview.available || !m_hasPrevious || !m_result.detected ||
+            preview.current.discontinuity || preview.current.pendingRefresh ||
+            preview.current.identity.acceptedSequence!=m_previous.current.identity.acceptedSequence+1 ||
+            preview.policyGeneration!=m_previous.policyGeneration ||
+            preview.continuityGeneration!=m_previous.continuityGeneration ||
+            !SubtitleBoxLookahead::SameContext(m_inkReference,preview.current) ||
+            !source.IsValid() || source.width!=preview.current.width || source.height!=preview.current.height ||
+            !m_inkReference.ink || !m_inkReference.ink->paletteValid)return false;
+        const auto& palette=*m_inkReference.ink;
+        if(!preview.current.ink || preview.current.ink->width!=palette.width ||
+            preview.current.ink->height!=palette.height || preview.current.ink->step!=palette.step ||
+            preview.current.ink->sourceRows!=palette.sourceRows || palette.step<=0)return false;
+        auto fresh=std::make_shared<SubtitleInkSnapshot>(*preview.current.ink);
+        const size_t words=(size_t(fresh->width)*fresh->height+63)/64;
+        if(fresh->rawInk.size()!=words || fresh->blackBacking.size()!=words)return false;
+        for(int line=0;line<m_result.lineCount && line<3;++line) {
+            const auto& box=m_result.lineBounds[line];
+            if(!box.Valid())return false;
+            const int left=(std::max)(0,box.left/fresh->step-1);
+            const int right=(std::min)(fresh->width,(box.right+fresh->step-1)/fresh->step+1);
+            const int top=(std::max)(0,box.top/fresh->step-1);
+            const int bottom=(std::min)(fresh->height,(box.bottom+fresh->step-1)/fresh->step+1);
+            for(int y=top;y<bottom;++y)for(int x=left;x<right;++x) {
+                if(m_referenceSamples>=65536) {m_referenceRefresh="budget";return false;}
+                AnalysisLumaSample pixel;
+                if(!source.Sample(x*fresh->step,fresh->sourceRows[y],pixel)) {
+                    m_referenceRefresh="sample-failed";return false;
+                }
+                ++m_referenceSamples;
+                const size_t i=size_t(y)*fresh->width+x;const uint64_t bit=uint64_t(1)<<(i%64);
+                const bool bright=pixel.luma>=palette.inkFloor &&
+                    std::abs(int(pixel.chromaU)-palette.inkU)<=80 &&
+                    std::abs(int(pixel.chromaV)-palette.inkV)<=80;
+                fresh->rawInk[i/64]=(fresh->rawInk[i/64]&~bit)|(bright?bit:0);
+                fresh->blackBacking[i/64]=(fresh->blackBacking[i/64]&~bit)|
+                    (pixel.luma<=palette.blackLimit?bit:0);
+            }
+        }
+        // This uses the acquisition palette only to revalidate that caption.
+        // Never replace the detector snapshot used to acquire a new caption.
+        m_refreshedReference=preview.current;
+        m_refreshedReference.ink=std::move(fresh);
+        m_referenceRefresh="current-reference-pixels";
+        return true;
+    }
+    unsigned ReferenceSampleCount() const {return m_referenceSamples;}
+    const char* ReferenceRefreshReason() const {return m_referenceRefresh;}
     bool ReusePreviewForRepeatedSourceFrame(const ActivePictureFrameIdentity& identity,
         int width, int height, bool discontinuity,
         uint64_t policyGeneration, uint64_t continuityGeneration,
@@ -1255,6 +1333,13 @@ public:
         if (m_hasPrevious && SameActivePictureFrameIdentity(m_previous.current.identity,preview.current.identity) &&
             m_previous.policyGeneration == preview.policyGeneration &&
             m_previous.continuityGeneration == preview.continuityGeneration) return m_result;
+        auto continuityPreview=preview;
+        if(m_refreshedReference.ink &&
+            SameActivePictureFrameIdentity(m_refreshedReference.identity,preview.current.identity) &&
+            SubtitleBoxLookahead::SameContext(m_refreshedReference,preview.current))
+            continuityPreview.current.ink=m_refreshedReference.ink;
+        m_refreshedReference={};
+        const auto& continuity=continuityPreview.current;
         bool same = m_hasPrevious && !preview.current.discontinuity &&
             m_previous.policyGeneration == preview.policyGeneration &&
             m_previous.continuityGeneration == preview.continuityGeneration &&
@@ -1268,17 +1353,17 @@ public:
                 (std::max)(4,preview.current.height/180)))) ||
                 SubtitleBoxLookahead::ContainsCurrentInk(m_result.bounds,preview.current.text));
         const bool currentTemplatePixelsMatch=
-            SubtitleBoxLookahead::ConfidentSameInk(m_inkReference,preview.current,&m_inkDiagnostic);
+            SubtitleBoxLookahead::ConfidentSameInk(m_inkReference,continuity,&m_inkDiagnostic);
         // Coarse grouping signatures preserve geometry, but cannot overrule a
         // changed local glyph at the fixed acquisition coordinates.
         if(m_hasPrevious && m_result.detected && m_inkReference.ink && !currentTemplatePixelsMatch)same=false;
         const bool groupingMatches=SubtitleBoxLookahead::SameCue(m_reference,preview.current);
-        const bool expansionStillVisible=ExpansionStillVisible(preview);
-        bool workLimitCurrentPixelsMatch=SubtitleBoxLookahead::WorkLimitHasCurrentCuePixels(m_inkReference,preview.current);
+        const bool expansionStillVisible=ExpansionStillVisible(continuityPreview);
+        bool workLimitCurrentPixelsMatch=SubtitleBoxLookahead::WorkLimitHasCurrentCuePixels(m_inkReference,continuity);
         // Learned extensions also need current pixels: the resource-limit path
         // must not borrow missing extension ink from a queued future frame.
         if(workLimitCurrentPixelsMatch)for(const auto& evidence:m_expansionEvidence)
-            if(!SameExtensionInk(evidence.ink,preview.current.ink,evidence.bounds)) {
+            if(!SameExtensionInk(evidence.ink,continuity.ink,evidence.bounds)) {
                 workLimitCurrentPixelsMatch=false;break;
             }
         const bool continuationContextEligible=m_hasPrevious && m_result.detected &&
@@ -1304,7 +1389,10 @@ public:
         const double frameMs=std::isfinite(sourceFrameMilliseconds) && sourceFrameMilliseconds>0.0
             ? sourceFrameMilliseconds : 1000.0/60.0;
         const double holdMs=(std::max)(0,(std::min)(1000,holdMilliseconds));
-        const bool confirmedReplacement=preview.current.text.detected &&
+        // Crowded Resolve marks currentLinesConfirmed when ANY row survives.
+        // A confirmed subset is not proof that the entire caption changed.
+        const bool confirmedReplacement=preview.current.text.detected && preview.text.detected &&
+            preview.text.lineCount==preview.current.text.lineCount &&
             preview.currentLinesConfirmed && preview.matchingFrames>=2 &&
             preview.current.text.lineCount==m_inkReference.text.lineCount &&
             SubtitleBoxLookahead::SameLine(preview.current.text.bounds,m_inkReference.text.bounds,
@@ -1313,14 +1401,14 @@ public:
         const bool backedPartialEligible=continuationContextEligible && !currentTemplatePixelsMatch &&
             !confirmedReplacement &&
             (!preview.current.text.detected || SubtitleBoxLookahead::ContainsCurrentInk(m_result.bounds,preview.current.text)) &&
-            SubtitleBoxLookahead::BackedPartialInkAtReference(m_inkReference,preview.current);
+            SubtitleBoxLookahead::BackedPartialInkAtReference(m_inkReference,continuity);
         const bool weakTemplateEligible=!m_weakTemplateExhausted &&
             m_weakTemplateMilliseconds+frameMs<=holdMs+0.000001 && continuationContextEligible &&
             !currentTemplatePixelsMatch &&
             (((!preview.current.text.detected || detectedSubset) &&
-                SubtitleBoxLookahead::SameInkAtReference(m_inkReference,preview.current,90)) ||
+                SubtitleBoxLookahead::SameInkAtReference(m_inkReference,continuity,90)) ||
                 backedPartialEligible || workLimitCurrentPixelsMatch) &&
-            NoNewInkOutsideReference(preview.current);
+            NoNewInkOutsideReference(continuity);
         SubtitleBoxRect novelExtension,confirmedExtension;
         const bool hasNovelExtension=currentTemplateEligible && preview.current.ink &&
             GatherNewInkExtension(*preview.current.ink,novelExtension);
@@ -1350,9 +1438,29 @@ public:
                 m_weakTemplateExhausted=true;
         }
         if(!expansionStillVisible) { templateStillVisible=false; same=false; }
+        bool captureContainsReference=true;
+        if(currentTemplateEligible && m_inkDiagnostic.backingConfirmed && m_result.capturePanelMeasured) {
+            const auto contains=[](const SubtitleBoxRect& outer,const SubtitleBoxRect& inner) {
+                return outer.Valid() && outer.left<=inner.left && outer.right>=inner.right &&
+                    outer.top<=inner.top && outer.bottom>=inner.bottom;
+            };
+            for(const auto* candidate : {&preview.current.text,&preview.text}) {
+              const auto& now=*candidate;
+              for(int i=0;i<m_result.lineCount;++i) {
+                const auto& line=m_result.lineBounds[i];
+                bool hasLine=false;
+                for(int j=0;j<now.lineCount;++j)hasLine|=contains(now.lineBounds[j],line);
+                auto inside=line;
+                inside.top=(std::max)(inside.top,preview.current.pictureTop);
+                inside.bottom=(std::min)(inside.bottom,preview.current.pictureBottom);
+                captureContainsReference &= hasLine && (!inside.Valid() ||
+                    (now.capturePanelMeasured && contains(now.capturePanel,inside)));
+              }
+            }
+        }
         const bool templateHeld=templateStillVisible &&
-            (weakTemplateEligible || !groupingMatches ||
-                preview.current.text.lineCount<m_result.lineCount || preview.text.lineCount==0);
+            (weakTemplateEligible || !groupingMatches || !captureContainsReference ||
+                preview.current.text.lineCount<m_result.lineCount || preview.text.lineCount<m_result.lineCount);
         if (templateStillVisible) same=true;
         auto result = preview.text;
         const bool trackedCueConfirmed = preview.current.barTrackingAuthority &&
@@ -1396,7 +1504,7 @@ public:
             {
                 result.cue = ++m_nextCue; result.observations = 1; result.revised = false;
                 m_reference = preview.current; m_reference.text = result;
-                m_inkReference = preview.current;
+                m_inkReference = AcquisitionReference(preview.current,result);
                 m_expansionEvidence.clear();
             }
         }
@@ -1476,6 +1584,28 @@ public:
         return result;
     }
 private:
+    static SubtitleBoxObservation AcquisitionReference(const SubtitleBoxObservation& current,
+        const SubtitleBoxResult& accepted) {
+        auto reference=current;
+        // Pruning confirms a subset, not ownership of every detector proposal.
+        // Future-enriched rows must not borrow ownership from a smaller current mask.
+        if(!current.ink || accepted.lineCount<1 || accepted.lineCount>current.text.lineCount ||
+            current.text.lineCount>3)return reference;
+        for(int i=0;i<accepted.lineCount;++i) {
+            const auto& row=accepted.lineBounds[i];bool owned=false;
+            for(int j=0;j<current.text.lineCount;++j) {
+                const auto& source=current.text.lineBounds[j];
+                owned |= row.Valid() && source.Valid() && row.left>=source.left &&
+                    row.right<=source.right && row.top>=source.top && row.bottom<=source.bottom;
+            }
+            if(!owned)return reference;
+        }
+        reference.text=accepted;
+        return reference;
+    }
+    SubtitleBoxObservation m_refreshedReference;
+    unsigned m_referenceSamples=0;
+    const char* m_referenceRefresh="not-eligible";
     // A confirmed extension has current fixed-pixel proof and current black-card
     // ownership. Attach it to its existing baseline, or retain a separate row;
     // never turn a multi-row union into a picture-sized extraction rectangle.

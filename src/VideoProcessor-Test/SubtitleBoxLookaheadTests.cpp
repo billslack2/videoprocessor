@@ -93,6 +93,13 @@ TEST_CLASS(SubtitleBoxLookaheadTests) {
     static SubtitleBoxPreview Resolve(std::initializer_list<SubtitleBoxObservation> frames) {
         return SubtitleBoxLookahead::Resolve(frames.begin(),frames.size(),7,8);
     }
+    static SubtitleBoxPreview ConfirmedPreview(const SubtitleBoxObservation& current) {
+        auto b=current,c=current,d=current;
+        b.identity=Identity(current.identity.acceptedSequence+1);
+        c.identity=Identity(current.identity.acceptedSequence+2);
+        d.identity=Identity(current.identity.acceptedSequence+3);
+        return Resolve({current,b,c,d});
+    }
     static void Fill(std::vector<uint16_t>& f,int left,int top,int right,int bottom,int code) {
         for(int y=top;y<bottom;++y) for(int x=left;x<right;++x) f[y*640+x]=uint16_t(code<<6);
     }
@@ -152,6 +159,239 @@ TEST_CLASS(SubtitleBoxLookaheadTests) {
         source.colorspace=ColorSpace::REC_709;source.generation=2;return source;
     }
 public:
+    TEST_METHOD(CurrentReferencePixelsPreserveThreeLinesThroughPartialGroupingAndCapture) {
+        for(bool top : {false,true}) {
+            auto acquired=NearCardThreeRows(1,top);
+            auto palette=std::make_shared<SubtitleInkSnapshot>(*acquired.ink);
+            palette->paletteValid=true;palette->inkFloor=375;palette->blackLimit=80;
+            acquired.ink=palette;
+            auto pixels=Pixels();Fill(pixels,0,0,640,360,64);
+            for(int y=0;y<360;++y)for(int x=0;x<640;++x)
+                if(palette->Get(x,y))pixels[y*640+x]=uint16_t(600<<6);
+            SubtitleBoxPresentation tracker;SubtitleCutPastePresentation compositor;
+            auto initial=ConfirmedPreview(acquired);auto accepted=tracker.Consume(initial);
+            Assert::IsTrue(accepted.detected);const auto cue=accepted.cue;
+            const auto geometry=compositor.Consume(accepted,initial);
+            Assert::IsTrue(geometry.valid);
+            for(uint64_t sequence=2;sequence<=16;++sequence) {
+                auto current=acquired;current.identity=Identity(sequence);
+                auto ink=std::make_shared<SubtitleInkSnapshot>(*palette);
+                const int missing=top?2:0;
+                const auto lost=acquired.text.lineBounds[missing];
+                // This is unknown/unsampled analysis coverage, not absent pixels.
+                for(int y=lost.top-1;y<=lost.bottom;++y)for(int x=lost.left-1;x<=lost.right;++x) {
+                    const size_t i=size_t(y)*640+x;const uint64_t bit=uint64_t(1)<<(i%64);
+                    ink->rawInk[i/64]&=~bit;ink->ownedInk[i/64]&=~bit;ink->blackBacking[i/64]&=~bit;
+                }
+                current.ink=ink;
+                if(sequence%2==0) {
+                    current.text.lineCount=2;
+                    if(!top)for(int i=0;i<2;++i)current.text.lineBounds[i]=acquired.text.lineBounds[i+1];
+                    current.text.bounds.top=current.text.lineBounds[0].top;
+                    current.text.bounds.bottom=current.text.lineBounds[1].bottom;
+                }
+                // Alternate lost grouping and same-count but narrowed copy mask.
+                if(top)current.text.capturePanel.bottom=lost.top;
+                else current.text.capturePanel.top=lost.bottom;
+                auto preview=Resolve({current});
+                Assert::IsTrue(tracker.RefreshReferencePixels(preview,Source(pixels)));
+                Assert::IsTrue(tracker.ReferenceSampleCount()>0 && tracker.ReferenceSampleCount()<=65536);
+                const auto result=tracker.Consume(preview);
+                Assert::IsTrue(result.detected);Assert::AreEqual(cue,result.cue);
+                Assert::AreEqual(3,result.lineCount);
+                const auto move=compositor.Consume(result,preview);
+                Assert::IsTrue(move.valid);
+                Assert::AreEqual(geometry.pictureCapture.top,move.pictureCapture.top);
+                Assert::AreEqual(geometry.pictureCapture.bottom,move.pictureCapture.bottom);
+                for(int i=0;i<3;++i) {
+                    Assert::AreEqual(acquired.text.lineBounds[i].top,result.lineBounds[i].top);
+                    Assert::AreEqual(acquired.text.lineBounds[i].bottom,result.lineBounds[i].bottom);
+                }
+            }
+            auto changed=acquired;changed.identity=Identity(17);
+            const auto lost=acquired.text.lineBounds[top?2:0];
+            Fill(pixels,lost.left,lost.top,lost.right,lost.bottom,64);
+            changed.text.detected=false;changed.text.lineCount=0;changed.text.bounds={};
+            auto preview=Resolve({changed});
+            Assert::IsTrue(tracker.RefreshReferencePixels(preview,Source(pixels)));
+            const auto gone=tracker.Consume(preview);
+            Assert::IsFalse(gone.detected,L"A genuinely removed line cannot borrow remembered pixels");
+        }
+    }
+    TEST_METHOD(CurrentReferenceSamplingRejectsDiscontinuityAndChangedContext) {
+        for(int change=0;change<4;++change) {
+            auto acquired=NearCardThreeRows(1,false);
+            auto ink=std::make_shared<SubtitleInkSnapshot>(*acquired.ink);
+            ink->paletteValid=true;ink->inkFloor=375;ink->blackLimit=80;acquired.ink=ink;
+            SubtitleBoxPresentation tracker;Assert::IsTrue(tracker.Consume(ConfirmedPreview(acquired)).detected);
+            auto next=acquired;next.identity=Identity(2);
+            if(change==0)next.discontinuity=true;
+            if(change==1)next.identity.sourceFormatGeneration++;
+            if(change==2)next.barAuthority=false;
+            if(change==3)next.identity.acceptedSequence++;
+            auto preview=Resolve({next});auto pixels=Pixels();
+            const auto before=preview.current.ink;
+            Assert::IsFalse(tracker.RefreshReferencePixels(preview,Source(pixels)));
+            Assert::IsTrue(preview.current.ink==before);
+        }
+    }
+    TEST_METHOD(CurrentReferenceRefreshCannotPoisonReplacementPalette) {
+        auto acquired=NearCardThreeRows(1,false);
+        auto oldInk=std::make_shared<SubtitleInkSnapshot>(*acquired.ink);
+        oldInk->paletteValid=true;oldInk->inkFloor=700;oldInk->blackLimit=80;
+        acquired.ink=oldInk;
+        SubtitleBoxPresentation tracker;
+        const auto old=tracker.Consume(ConfirmedPreview(acquired));
+        auto replacement=NearCardThreeRows(2,false);
+        auto newInk=std::make_shared<SubtitleInkSnapshot>(*replacement.ink);
+        newInk->paletteValid=true;newInk->inkFloor=375;newInk->blackLimit=80;
+        replacement.ink=newInk;
+        auto pixels=Pixels();Fill(pixels,0,0,640,360,64);
+        for(int y=0;y<360;++y)for(int x=0;x<640;++x)
+            if(newInk->Get(x,y))pixels[y*640+x]=uint16_t(600<<6);
+        auto preview=ConfirmedPreview(replacement);
+        Assert::IsTrue(tracker.RefreshReferencePixels(preview,Source(pixels)));
+        Assert::IsTrue(preview.current.ink==newInk,L"Continuity palette must not overwrite acquisition evidence");
+        const auto accepted=tracker.Consume(preview);
+        Assert::IsTrue(accepted.detected);Assert::IsTrue(accepted.cue!=old.cue);
+        auto partial=replacement;partial.identity=Identity(3);
+        auto unknown=std::make_shared<SubtitleInkSnapshot>(*newInk);
+        std::fill(unknown->rawInk.begin(),unknown->rawInk.end(),0);
+        std::fill(unknown->blackBacking.begin(),unknown->blackBacking.end(),0);
+        partial.ink=unknown;partial.text.detected=false;partial.text.lineCount=0;
+        preview=Resolve({partial});
+        Assert::IsTrue(tracker.RefreshReferencePixels(preview,Source(pixels)));
+        const auto held=tracker.Consume(preview);
+        Assert::IsTrue(held.detected);Assert::AreEqual(accepted.cue,held.cue);
+        Assert::AreEqual(3,held.lineCount);
+    }
+    TEST_METHOD(CurrentReferenceFailedSamplingLeavesDetectorEvidenceUntouched) {
+        auto acquired=NearCardThreeRows(1,false);
+        auto ink=std::make_shared<SubtitleInkSnapshot>(*acquired.ink);
+        ink->paletteValid=true;ink->inkFloor=375;ink->blackLimit=80;acquired.ink=ink;
+        SubtitleBoxPresentation tracker;tracker.Consume(ConfirmedPreview(acquired));
+        acquired.identity=Identity(2);auto preview=ConfirmedPreview(acquired);
+        auto pixels=Pixels();auto source=Source(pixels);source.dataBytes=0;
+        Assert::IsFalse(tracker.RefreshReferencePixels(preview,source));
+        Assert::IsTrue(preview.current.ink==ink);
+    }
+    TEST_METHOD(ResolvedSubsetCannotDropVerifiedCaptureRows) {
+        for(int omitted : {0,1}) {
+            auto acquired=NearCardThreeRows(1,false);
+            SubtitleBoxPresentation tracker;SubtitleCutPastePresentation compositor;
+            auto first=ConfirmedPreview(acquired);const auto accepted=tracker.Consume(first);
+            compositor.Consume(accepted,first);
+            auto current=acquired;current.identity=Identity(2);
+            auto preview=ConfirmedPreview(current);preview.futureAvailable=true;
+            preview.currentLinesConfirmed=true;preview.matchingFrames=4;
+            preview.text.lineCount=0;preview.text.lineBounds={};
+            preview.text.lineCapturePanels={};preview.text.linePanels={};
+            for(int i=0;i<3;++i)if(i!=omitted) {
+                const int dst=preview.text.lineCount++;
+                preview.text.lineBounds[dst]=current.text.lineBounds[i];
+                preview.text.lineCapturePanels[dst]=current.text.lineCapturePanels[i];
+                preview.text.linePanels[dst]=current.text.linePanels[i];
+            }
+            const auto held=tracker.Consume(preview);
+            Assert::AreEqual(accepted.cue,held.cue);Assert::AreEqual(3,held.lineCount);
+            const auto geometry=compositor.Consume(held,preview);Assert::IsTrue(geometry.valid);
+            for(int i=0;i<3;++i) {
+                const auto& row=acquired.text.lineBounds[i];
+                Assert::AreEqual(row.top,held.lineBounds[i].top);
+                const int center=(row.top+row.bottom)/2;
+                bool covered=false;
+                for(const auto& mask:geometry.glyphLines)
+                    covered |= mask.Valid() && mask.top<=center && mask.bottom>center;
+                Assert::IsTrue(covered,L"Every original row must remain in the extraction mask");
+            }
+        }
+    }
+    TEST_METHOD(ConfirmedSubsetCannotVetoCurrentPixelGraceAsFullReplacement) {
+        for(bool fullReplacement : {false,true}) {
+            auto acquired=NearCardThreeRows(1,false);
+            SubtitleBoxPresentation tracker;const auto initial=tracker.Consume(ConfirmedPreview(acquired));
+            auto current=acquired;current.identity=Identity(2);
+            // Segmentation signatures vary while all but a fringe of actual ink remains.
+            for(auto& signature:current.text.lineSignatures)signature.fill(0xaa);
+            auto ink=std::make_shared<SubtitleInkSnapshot>(*acquired.ink);
+            for(int y=264;y<267;++y)for(int x=200;x<205;++x) {
+                const size_t p=size_t(y)*640+x;ink->rawInk[p/64]&=~(uint64_t(1)<<(p%64));
+            }
+            current.ink=ink;
+            auto preview=ConfirmedPreview(current);preview.futureAvailable=true;
+            preview.matchingFrames=2;preview.currentLinesConfirmed=true;
+            if(!fullReplacement) {
+                preview.text.lineCount=1;preview.text.lineBounds[0]=current.text.lineBounds[2];
+                preview.text.lineBounds[1]={};preview.text.lineBounds[2]={};
+            }
+            const auto result=tracker.Consume(preview,250,40);
+            Assert::IsTrue(result.detected);Assert::AreEqual(3,result.lineCount);
+            if(fullReplacement)Assert::IsTrue(result.cue!=initial.cue);
+            else {
+                Assert::AreEqual(initial.cue,result.cue);
+                Assert::IsTrue(result.held);
+                Assert::AreEqual(acquired.text.lineBounds[0].top,result.lineBounds[0].top);
+            }
+        }
+    }
+    TEST_METHOD(RejectedCandidateRowIsNotRequiredForAcceptedCueContinuity) {
+        auto current=NearCardThreeRows(1,false);
+        auto preview=ConfirmedPreview(current);
+        preview.text.lineCount=2;
+        for(int i=0;i<2;++i)preview.text.lineBounds[i]=current.text.lineBounds[i+1];
+        preview.text.lineBounds[2]={};
+        preview.text.bounds.top=preview.text.lineBounds[0].top;
+        SubtitleBoxPresentation tracker;const auto accepted=tracker.Consume(preview);
+        Assert::IsTrue(accepted.detected);Assert::AreEqual(2,accepted.lineCount);
+        auto next=current;next.identity=Identity(2);next.text=preview.text;
+        auto ink=std::make_shared<SubtitleInkSnapshot>(*current.ink);
+        const auto rejected=current.text.lineBounds[0];
+        for(int y=rejected.top;y<rejected.bottom;++y)for(int x=rejected.left;x<rejected.right;++x) {
+            const size_t p=size_t(y)*640+x;const uint64_t bit=uint64_t(1)<<(p%64);
+            ink->rawInk[p/64]&=~bit;ink->ownedInk[p/64]&=~bit;ink->blackBacking[p/64]|=bit;
+        }
+        next.ink=ink;
+        const auto held=tracker.Consume(ConfirmedPreview(next));
+        Assert::AreEqual(accepted.cue,held.cue);
+        Assert::AreEqual(2,held.lineCount);
+        // A later fully confirmed row can still join this caption.
+        current.identity=Identity(3);
+        const auto expanded=tracker.Consume(ConfirmedPreview(current));
+        Assert::AreEqual(accepted.cue,expanded.cue);Assert::AreEqual(3,expanded.lineCount);
+        // Removing a genuinely accepted row must invalidate the template.
+        next.identity=Identity(4);next.text.detected=false;next.text.lineCount=0;
+        const auto gone=tracker.Consume(Resolve({next}));
+        Assert::IsFalse(gone.detected);
+    }
+    TEST_METHOD(BackedTinyComponentRetentionAllowsOnlyOneFringeSample) {
+        for(int count : {4,5,6})for(int lost : {1,2}) {
+            auto old=CompleteBackedCue(1);
+            auto ink=std::make_shared<SubtitleInkSnapshot>(*old.ink);
+            // Isolate a tiny component in existing empty space on the first row.
+            for(int y=318;y<332;++y)for(int x=205;x<209;++x) {
+                const size_t p=size_t(y)*640+x;const uint64_t bit=uint64_t(1)<<(p%64);
+                ink->rawInk[p/64]&=~bit;ink->ownedInk[p/64]&=~bit;ink->blackBacking[p/64]|=bit;
+            }
+            for(int i=0;i<count;++i) {
+                const size_t p=size_t(321+i/2)*640+206+i%2;const uint64_t bit=uint64_t(1)<<(p%64);
+                ink->rawInk[p/64]|=bit;ink->ownedInk[p/64]|=bit;ink->blackBacking[p/64]&=~bit;
+            }
+            old.ink=ink;auto now=old;now.identity=Identity(2);
+            auto partial=std::make_shared<SubtitleInkSnapshot>(*ink);
+            for(int i=count-lost;i<count;++i) {
+                const size_t p=size_t(321+i/2)*640+206+i%2;
+                partial->rawInk[p/64]&=~(uint64_t(1)<<(p%64));
+            }
+            now.ink=partial;
+            const bool allowed=count>=5 && lost==1;
+            Assert::AreEqual(allowed,SubtitleBoxLookahead::ConfidentSameInk(old,now));
+            Assert::IsFalse(SubtitleBoxLookahead::SameInkAtReference(old,now),
+                L"Acquisition and extension proof must retain the strict component rule");
+            std::fill(partial->blackBacking.begin(),partial->blackBacking.end(),0);
+            Assert::IsFalse(SubtitleBoxLookahead::ConfidentSameInk(old,now),
+                L"Tiny loss exception requires freshly verified backing");
+        }
+    }
     TEST_METHOD(SharedPictureAuthorityKeepsCaptionAcrossAmbiguousBarPixels) {
         auto pixels=Pixels();Fill(pixels,0,0,640,360,64);
         Fill(pixels,260,100,380,200,300);Text(pixels,200,310,16);

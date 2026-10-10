@@ -8,6 +8,8 @@
 struct SubtitleGeneratedGrayStyle
 {
     std::array<float, 3> color{0.001214108f, 0.001214108f, 0.001214108f};
+    // Linear-light glyph tint: white is an exact identity, gray dims SDR/HDR text.
+    std::array<float, 3> textColor{1.0f, 1.0f, 1.0f};
     float opacity = 0.85f;
     // Source-pixel radius; zero disables whole-overlay backdrop blur. Smooth separable Gaussian; support radius in source pixels.
     float blurPixels = 3.0f;

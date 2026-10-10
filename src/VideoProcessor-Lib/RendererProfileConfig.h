@@ -580,7 +580,7 @@ namespace RendererProfileConfig
 
             if (key == "subtitle_hold_ms") { int n=0; return ParseInteger(value,0,1000,n); }
             if (key == "subtitle_near_bar_px") { int n=0; return ParseInteger(value,0,200,n); }
-            if (key == "subtitle_generated_gray_color" || key == "subtitle_generated_gray_border_color") {
+            if (key == "subtitle_text_color" || key == "subtitle_generated_gray_color" || key == "subtitle_generated_gray_border_color") {
                 std::array<float,3> rgb; return ParseSubtitleRgbHex(value,rgb);
             }
             if (key == "subtitle_generated_gray_opacity" || key == "subtitle_generated_gray_border_opacity") return IsNumberInRange(value,0,1);
@@ -635,7 +635,7 @@ namespace RendererProfileConfig
         if (key == "subtitle_box_padding_mode") return IsChoice(value,{"glyph","fixed"});
         if (key == "subtitle_box_padding_sides_percent" || key == "subtitle_box_padding_top_percent" || key == "subtitle_box_padding_bottom_percent") { int parsed=0; return ParseInteger(value,0,200,parsed); }
 		if (key == "subtitle_box_padding_sides" || key == "subtitle_box_padding_top" || key == "subtitle_box_padding_bottom" || key == "subtitle_move_inset") { int parsed=0; return ParseInteger(value,0,500,parsed); }
-			if (key == "subtitle_generated_gray_color" || key == "subtitle_generated_gray_border_color") {
+			if (key == "subtitle_text_color" || key == "subtitle_generated_gray_color" || key == "subtitle_generated_gray_border_color") {
 				if (value.size() != 6) return false;
 				return std::all_of(value.begin(), value.end(), [](unsigned char c) { return std::isxdigit(c) != 0; });
 			}
@@ -798,7 +798,7 @@ namespace RendererProfileConfig
         if (key == "subtitle_box_padding_mode") return IsChoice(value,{"glyph","fixed"});
         if (key == "subtitle_box_padding_sides_percent" || key == "subtitle_box_padding_top_percent" || key == "subtitle_box_padding_bottom_percent") { int parsed=0; return ParseInteger(value,0,200,parsed); }
 		if (key == "subtitle_box_padding_sides" || key == "subtitle_box_padding_top" || key == "subtitle_box_padding_bottom" || key == "subtitle_move_inset") { int parsed=0; return ParseInteger(value,0,500,parsed); }
-		if (key == "subtitle_generated_gray_color" || key == "subtitle_generated_gray_border_color") {
+		if (key == "subtitle_text_color" || key == "subtitle_generated_gray_color" || key == "subtitle_generated_gray_border_color") {
 			if (value.size() != 6) return false;
 			return std::all_of(value.begin(), value.end(), [](unsigned char c) { return std::isxdigit(c) != 0; });
 		}
@@ -830,7 +830,7 @@ namespace RendererProfileConfig
 		if ((key == "subtitle_bbox_test" || key == "subtitle_cut_paste_test" ||
 			key == "subtitle_box_padding_mode" || key == "subtitle_box_padding_sides_percent" || key == "subtitle_box_padding_top_percent" || key == "subtitle_box_padding_bottom_percent" ||
             key == "subtitle_detection_optimization" || key == "subtitle_near_bar_px" || key == "subtitle_hold_ms" || key == "subtitle_cut_paste_background" || key == "subtitle_box_padding_sides" || key == "subtitle_box_padding_top" || key == "subtitle_box_padding_bottom" || key == "subtitle_move_inset" ||
-			key == "subtitle_generated_gray_color" || key == "subtitle_generated_gray_opacity" ||
+			key == "subtitle_text_color" || key == "subtitle_generated_gray_color" || key == "subtitle_generated_gray_opacity" ||
 			key == "subtitle_generated_gray_max_luminance" || key == "subtitle_generated_gray_blur_px" ||
 			key == "subtitle_generated_gray_border_color" || key == "subtitle_generated_gray_border_opacity" ||
 			key == "subtitle_generated_gray_border_width")) return ValidateBaseSetting(key, value);
@@ -1863,7 +1863,7 @@ namespace RendererProfileConfig
 				"sdr_target_nits", "sdr_black_nits", "profile_update_mode",
 				"live_profile_updates", "subtitle_bbox_test", "subtitle_cut_paste_test",
 				"subtitle_cut_paste_background",
-				"subtitle_generated_gray_color", "subtitle_generated_gray_opacity",
+				"subtitle_text_color", "subtitle_generated_gray_color", "subtitle_generated_gray_opacity",
 				"subtitle_generated_gray_max_luminance", "subtitle_generated_gray_blur_px",
 				"subtitle_generated_gray_border_color", "subtitle_generated_gray_border_opacity",
 				"subtitle_generated_gray_border_width",

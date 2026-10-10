@@ -119,6 +119,37 @@ private:
 class SubtitlePendingMeasurementGuard {
 public:
     void Reset() { m_reference={};m_samples.clear();m_elapsed=0;m_last={}; }
+    // Only accepted extraction may seed the late-worker fallback. A held cue
+    // can be more complete than either current grouping or lookahead pruning;
+    // never turn those partial measurements into a smaller replacement cue.
+    bool RememberAccepted(const SubtitleBoxPreview& preview,const SubtitleBoxResult& accepted,
+        const AnalysisLumaSource& source,double frameMs,int holdMs) {
+        const auto contains=[](const SubtitleBoxRect& outer,const SubtitleBoxRect& inner) {
+            return outer.Valid() && inner.Valid() && outer.left<=inner.left &&
+                outer.top<=inner.top && outer.right>=inner.right && outer.bottom>=inner.bottom;
+        };
+        const auto covers=[&](const SubtitleBoxResult& measured) {
+            if(!measured.detected || measured.workLimit || measured.lineCount<accepted.lineCount ||
+                measured.lineCount>3)return false;
+            for(int line=0;line<accepted.lineCount;++line) {
+                const auto& glyph=accepted.lineBounds[line];bool found=false;
+                for(int other=0;other<measured.lineCount;++other)
+                    found|=contains(measured.lineBounds[other],glyph);
+                if(!found)return false;
+            }
+            const auto& oldCard=accepted.capturePanelMeasured?accepted.capturePanel:accepted.sourcePanel;
+            const auto& newCard=measured.capturePanelMeasured?measured.capturePanel:measured.sourcePanel;
+            return !oldCard.Valid() || contains(newCard,oldCard);
+        };
+        if(!preview.available || !preview.current.analyzed || preview.current.pendingRefresh ||
+            preview.current.discontinuity || !preview.current.barAuthority ||
+            !source.IsValid() || source.width!=preview.current.width || source.height!=preview.current.height ||
+            !accepted.detected || accepted.workLimit || accepted.lineCount<1 || accepted.lineCount>3 ||
+            !covers(preview.current.text) || !covers(preview.text)) { Reset();return false; }
+        auto seed=preview;seed.current.text=accepted;seed.text=accepted;
+        Resolve(seed,source,frameMs,holdMs);
+        return !m_samples.empty();
+    }
     bool Resolve(SubtitleBoxPreview& preview,const AnalysisLumaSource& source,
         double frameMs,int holdMs) {
         const auto key=preview.current;
